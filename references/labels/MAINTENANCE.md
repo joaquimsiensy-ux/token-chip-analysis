@@ -67,7 +67,7 @@ python3 roundtrip_check.py                       # 发布版 ⊆ 新构建（行
 python3 benchmark_labels.py --labels-dir=sources/out   # 发布前预检（fail-fast 已装）
 cp sources/out/labels-*.csv ../../references/labels/   # 发布
 python3 benchmark_labels.py --save               # 回归 PASS 才算完（七链强制出现，缺链即 FAIL）
-python3 tests_manifest.py --write 2>/dev/null || python3 ../tests/labels_manifest.py --write  # 生成校验和 manifest（守护工具，见 scripts/tests/）
+python3 ../tests/labels_manifest.py --write      # 发布落印（校验和 manifest；add_labels 增量入库后同样要 --write）
 ```
 
 - 构建器输出 v4 全列并自动拆 privacy 子表。
