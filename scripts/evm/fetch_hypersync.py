@@ -1,59 +1,71 @@
 #!/usr/bin/env python3
-"""envio HyperSync 全量/补拉 ERC20 转账事件,输出 CSV 格式与 fetch_alchemy.py 的 transfers_full.csv 一致。
-来源：SIREN(BSC) 分析会话实战产物, 2026-07。
+"""envio HyperSync 全量/补拉 ERC20 转账事件，输出 CSV 与 fetch_alchemy.py 的 transfers_full.csv 同构。
+来源：SIREN(BSC) 2026-07 实战产物；v3.5 参数化+断点续传（ASTEROID(ETH) 2026-07-18 收编）。
 
-参数读取方式（跑前必看）：
-  命令行传参：python3 fetch_hypersync.py <api_token> <from_block>
-    - api_token：envio HyperSync 的 Bearer token（从 ~/.claude/api-keys.md 登记文件取用，不写死进 skill 目录）
-    - from_block：起始区块号（全量从 0 或合约部署块起；补缺口从缺口起始块起）
-  硬编码常量（跑前按标的改脚本顶部）：
-    - D          输出目录（原值为 SIREN 会话 scratchpad 路径，必改）
-    - TOKEN_ADDR 目标代币合约地址（必改）
-    - url        端点 https://bsc.hypersync.xyz/query（换链改子域）
-自动按 next_block 游标翻页直到 archive_height，无需断点续传逻辑（够快，一般一次跑完）。
+用法：python3 fetch_hypersync.py <api_token> <from_block> \
+        --url https://eth.hypersync.xyz/query --token-addr 0x标的 --out data/transfers_full.csv
+  - api_token：envio Bearer token（~/.claude/api-keys.md 取用，不写死进 skill）
+  - from_block：起始块（部署块起；断点续传时自动改用已有 CSV 末行块）
+  - --url 换链改子域（bsc/eth/base…）；--sleep 请求间隔（ETH 实测 0.25s 全程稳，BSC 高峰建议 0.5s）
+断点续传：--out 已存在且非空时自动从末行块续拉（重叠由下游按 uniqueId 去重）。
 """
-import requests, json, csv, os, sys, time, datetime
+import requests, json, csv, os, sys, time, datetime, argparse
 
-D = "/private/tmp/claude-502/-Users-uravvv-Desktop-----fable----/02251dc4-e11a-419c-b617-7991c8cb72f2/scratchpad/siren/data"
-TOKEN_ADDR = "0x997a58129890bbda032231a52ed1ddc845fc18e1"
 TRANSFER = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
-OUT = os.path.join(D, "transfers_gap.csv")
 
-def main(api_token, from_block):
-    url = "https://bsc.hypersync.xyz/query"
-    headers = {"Authorization": f"Bearer {api_token}", "Content-Type": "application/json"}
-    f = open(OUT, "w", newline="")
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("api_token")
+    ap.add_argument("from_block", type=int)
+    ap.add_argument("--url", default="https://bsc.hypersync.xyz/query")
+    ap.add_argument("--token-addr", required=True)
+    ap.add_argument("--out", default="data/transfers_full.csv")
+    ap.add_argument("--sleep", type=float, default=0.25)
+    a = ap.parse_args()
+    headers = {"Authorization": f"Bearer {a.api_token}", "Content-Type": "application/json"}
+    resume, mode = a.from_block, "w"
+    if os.path.exists(a.out) and os.path.getsize(a.out) > 100:
+        with open(a.out, "rb") as fh:
+            try:
+                fh.seek(-4096, os.SEEK_END)
+            except OSError:
+                fh.seek(0)
+            tail = fh.read().decode(errors="ignore").strip().splitlines()
+            last = tail[-1].split(",")
+            if last and last[0].isdigit():
+                resume, mode = int(last[0]), "a"
+                print(f"[resume] 从已有 CSV 末行块 {resume} 续拉", flush=True)
+    f = open(a.out, mode, newline="")
     w = csv.writer(f)
-    w.writerow(["block", "ts", "tx", "from", "to", "value_raw", "uniqueId"])
-    total = 0
-    cur = from_block
-    t0 = time.time()
+    if mode == "w":
+        w.writerow(["block", "ts", "tx", "from", "to", "value_raw", "uniqueId"])
+    total, cur, t0, e429 = 0, resume, time.time(), 0
     while True:
         q = {"from_block": cur,
-             "logs": [{"address": [TOKEN_ADDR], "topics": [[TRANSFER]]}],
+             "logs": [{"address": [a.token_addr], "topics": [[TRANSFER]]}],
              "field_selection": {
                  "log": ["block_number", "log_index", "transaction_hash", "topic1", "topic2", "data"],
                  "block": ["number", "timestamp"]}}
         ok = False
-        for attempt in range(10):
+        for attempt in range(12):
             try:
-                r = requests.post(url, json=q, headers=headers, timeout=90)
+                r = requests.post(a.url, json=q, headers=headers, timeout=90)
                 if r.status_code == 200:
                     j = r.json(); ok = True; break
-                print(f"[http {r.status_code}] {r.text[:150]}", flush=True)
-                time.sleep(3 * (attempt + 1))
+                if r.status_code == 429:
+                    e429 += 1
+                print(f"[http {r.status_code}] {r.text[:120]}", flush=True)
+                time.sleep(min(3 * (attempt + 1), 30))
             except Exception as e:
                 print(f"[exc] {str(e)[:100]}", flush=True)
-                time.sleep(3 * (attempt + 1))
+                time.sleep(min(3 * (attempt + 1), 30))
         if not ok:
             print("[fatal] giving up", flush=True); sys.exit(2)
-        bts = {}
-        n = 0
+        bts, n = {}, 0
         for batch in j.get("data", []):
             for b in batch.get("blocks", []):
                 ts = b.get("timestamp")
-                ts = int(ts, 16) if isinstance(ts, str) else int(ts)
-                bts[int(b["number"])] = ts
+                bts[int(b["number"])] = int(ts, 16) if isinstance(ts, str) else int(ts)
             for lg in batch.get("logs", []):
                 bn = int(lg["block_number"])
                 ts = bts.get(bn)
@@ -67,15 +79,15 @@ def main(api_token, from_block):
                             f"{lg['transaction_hash']}:log:{li}"])
                 n += 1
         total += n
-        nxt = j.get("next_block")
-        ah = j.get("archive_height")
-        print(f"[prog] +{n} total {total} next {nxt} height {ah} {time.time()-t0:.0f}s", flush=True)
+        nxt, ah = j.get("next_block"), j.get("archive_height")
+        if total % 50000 < n or n == 0:
+            print(f"[prog] +{n} total {total} next {nxt} height {ah} 429s {e429} {time.time()-t0:.0f}s", flush=True)
         if not nxt or (ah and nxt >= ah):
             break
         cur = nxt
-        time.sleep(0.15)
+        time.sleep(a.sleep)
     f.close()
-    print(f"[COMPLETE] {total} transfers, {time.time()-t0:.0f}s", flush=True)
+    print(f"[COMPLETE] {total} transfers this run, tip {ah}, 429s {e429}, {time.time()-t0:.0f}s", flush=True)
 
 if __name__ == "__main__":
-    main(sys.argv[1], int(sys.argv[2]))
+    main()

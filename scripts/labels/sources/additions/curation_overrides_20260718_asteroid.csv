@@ -1,0 +1,2 @@
+"address","chain","name","category","tier","source","added_date","evidence","risk_flags","merge_policy","balance_policy","source_snapshot_at","verified_at","status","raw_labels"
+"0x000000000004444c5dc75cb358380d2e3de08a90","eth","Uniswap V4 PoolManager（ETH 单例，全部 V4 池托管）","protocol","exclude","curation","2026-07-18","ETH 主网 V4 官方单例；ASTEROID(ETH) 分析实测其持仓为 V4 池流动性（含标的 0.9%），dawsbot 源错标 Sandwich Attacker 险致误判；Uniswap 官方部署表亲验 2026-07-18","","no_merge","exclude","","2026-07-18","",""

@@ -56,3 +56,9 @@
 - 现象：lifecycle_flow footnote / 图表任意文本含成对 `$`（如"已收 $27.4万…($3.4万)"）时，matplotlib 把 `$...$` 段当 LaTeX mathtext 解析，遇中文/特殊字符直接 `ParseException` 崩溃 savefig；单个 `$` 也会告警。
 - 对策：图表文本里金额一律写"27.4万U/30.8万美元"或转义 `\$`；报告 md 正文不受影响（只有 matplotlib 渲染的字符串有此坑）。
 - （来源：HAN(Robinhood) 分析，2026-07-16）
+
+## zsh 变量存 curl 选项不分词（exit 5 假死）
+
+- 现象：`P="-x http://127.0.0.1:7897"; curl $P …` 在 zsh 下 `$P` 不做词分割（zsh 默认 SH_WORD_SPLIT 关闭），整串被当**一个**参数传给 curl，报 exit 5（CURLE_COULDNT_RESOLVE_PROXY）；同一命令在 bash 正常，极易误判为代理挂了。
+- 对策：代理/多段选项要么直接写死在命令里，要么用 `${=P}` 强制分词，要么数组 `P=(-x http://127.0.0.1:7897); curl $P[@]`。
+- （来源：ASTEROID(ETH) 分析，2026-07-18）

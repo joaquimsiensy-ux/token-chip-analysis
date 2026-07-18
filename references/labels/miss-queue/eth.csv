@@ -1,0 +1,69 @@
+address,chain,reason,weight,context,seen_date
+0x76a411f14a704099ba476ce8dffc288a53295218,eth,高度数节点 deg=37944（疑似路由/分发设施）,37944,ASTEROID cluster,2026-07-18
+0x53e3d506f468c4bc30cc8caa21eb7e56c2fa2d55,eth,高度数节点 deg=8846（疑似路由/分发设施）,8846,ASTEROID cluster,2026-07-18
+0xbcb4e4bcc41ab1494a3eb3456ed4edb8da5d46e4,eth,高度数节点 deg=208（疑似路由/分发设施）,208,ASTEROID cluster,2026-07-18
+0x88649f4743a758171077b98ee2003f1989b1615a,eth,高度数节点 deg=1520（疑似路由/分发设施）,1520,ASTEROID cluster,2026-07-18
+0x3d90f66b534dd8482b181e24655a9e8265316be9,eth,高度数节点 deg=256（疑似路由/分发设施）,256,ASTEROID cluster,2026-07-18
+0x7f54f05635d15cde17a49502fedb9d1803a3be8a,eth,高度数节点 deg=4874（疑似路由/分发设施）,4874,ASTEROID cluster,2026-07-18
+0xc10ee9031f2a0b84766a86b55a8d90f357910fb4,eth,高度数节点 deg=233（疑似路由/分发设施）,233,ASTEROID cluster,2026-07-18
+0x4313c378cc91ea583c91387b9216e2c03096b27f,eth,高度数节点 deg=1142（疑似路由/分发设施）,1142,ASTEROID cluster,2026-07-18
+0x163f3103de041d25464e2c8a4f8f3187ec1856e0,eth,高度数节点 deg=5406（疑似路由/分发设施）,5406,ASTEROID cluster,2026-07-18
+0x4c3ccc98c01103be72bcfd29e1d2454c98d1a6e3,eth,高度数节点 deg=703（疑似路由/分发设施）,703,ASTEROID cluster,2026-07-18
+0x07964f135f276412b3182a3b2407b8dd45000000,eth,高度数节点 deg=437（疑似路由/分发设施）,437,ASTEROID cluster,2026-07-18
+0x6a93ef5f666eebe84ba130f8404ad56ee197006c,eth,高度数节点 deg=228（疑似路由/分发设施）,228,ASTEROID cluster,2026-07-18
+0xd78d199f8c402e7b5cc2abe278df0412400a3bae,eth,高度数节点 deg=1543（疑似路由/分发设施）,1543,ASTEROID cluster,2026-07-18
+0x8392876883cf0e9e7ee24d9b1f606ed88644f23b,eth,高度数节点 deg=343（疑似路由/分发设施）,343,ASTEROID cluster,2026-07-18
+0x4bab2cb2ed6ee2d564ba5398cab4161d95e58f1b,eth,高度数节点 deg=599（疑似路由/分发设施）,599,ASTEROID cluster,2026-07-18
+0xa5f91e598668040055dc861a7316e677a5b730b0,eth,高度数节点 deg=318（疑似路由/分发设施）,318,ASTEROID cluster,2026-07-18
+0x08989c58bc6b18e8e2910815309a89de4f1275b2,eth,高度数节点 deg=5531（疑似路由/分发设施）,5531,ASTEROID cluster,2026-07-18
+0x6747bcaf9bd5a5f0758cbe08903490e45ddfacb5,eth,高度数节点 deg=4975（疑似路由/分发设施）,4975,ASTEROID cluster,2026-07-18
+0x76718094c323e3f0d99a0521dfc66523d1e96083,eth,高度数节点 deg=384（疑似路由/分发设施）,384,ASTEROID cluster,2026-07-18
+0x9a47f3289794e9bbc6a3c571f6d96ad4e7baed16,eth,高度数节点 deg=263（疑似路由/分发设施）,263,ASTEROID cluster,2026-07-18
+0x8f10b468b06c6fd214b65f87778827f7d113f996,eth,高度数节点 deg=891（疑似路由/分发设施）,891,ASTEROID cluster,2026-07-18
+0xef6fc636a63859e08ad3479fe456262eed2e5042,eth,高度数节点 deg=768（疑似路由/分发设施）,768,ASTEROID cluster,2026-07-18
+0x21e218172bf42044c3cc32a6f24388dcffc3c51b,eth,高度数节点 deg=389（疑似路由/分发设施）,389,ASTEROID cluster,2026-07-18
+0x168e9b3c9ddfb013a4130276f9c500a3ce50fde7,eth,高度数节点 deg=15782（疑似路由/分发设施）,15782,ASTEROID cluster,2026-07-18
+0xcecce0afaf8deac100fd1cf7753c97305ded8ab5,eth,高度数节点 deg=4000（疑似路由/分发设施）,4000,ASTEROID cluster,2026-07-18
+0x0e55db2d5e07cc6b067f352ba35a6beafb33c282,eth,高度数节点 deg=13032（疑似路由/分发设施）,13032,ASTEROID cluster,2026-07-18
+0xc41bb16bb5f7121947e381bb2b20e2a723f39163,eth,高度数节点 deg=1015（疑似路由/分发设施）,1015,ASTEROID cluster,2026-07-18
+0xa7341b4927e6729a2f4e4c06295686f7c65a2a92,eth,高度数节点 deg=217（疑似路由/分发设施）,217,ASTEROID cluster,2026-07-18
+0x28b1dc1a5e3699a428bc51d234dfab7c9cb2a183,eth,高度数节点 deg=383（疑似路由/分发设施）,383,ASTEROID cluster,2026-07-18
+0x4c82d1fbfe28c977cbb58d8c7ff8fcf9f70a2cca,eth,高度数节点 deg=1427（疑似路由/分发设施）,1427,ASTEROID cluster,2026-07-18
+0x89c6340b1a1f4b25d36cd8b063d49045caf3f818,eth,高度数节点 deg=283（疑似路由/分发设施）,283,ASTEROID cluster,2026-07-18
+0x7f51c134230eb9e5aba42bc364d3d3eba26d9712,eth,高度数节点 deg=333（疑似路由/分发设施）,333,ASTEROID cluster,2026-07-18
+0x22ecf2bed494976503a8087add30e134c30fbd98,eth,高度数节点 deg=320（疑似路由/分发设施）,320,ASTEROID cluster,2026-07-18
+0x62425cd6bdcb6bfe51558ea465b063486b70dc9f,eth,共同 gas funder 服务 5 地址（疑似热钱包/代付服务）,5,ASTEROID cluster,2026-07-18
+0x2cff890f0378a11913b6129b2e97417a2c302680,eth,共同 gas funder 服务 7 地址（疑似热钱包/代付服务）,7,ASTEROID cluster,2026-07-18
+0x1887fa9edadeab7562b01cc3f4fa246ace2c3cdd,eth,共同 gas funder 服务 4 地址（疑似热钱包/代付服务）,4,ASTEROID cluster,2026-07-18
+0x00000011f84b9aa48e5f8aa8b9897600006289be,eth,共同 gas funder 服务 3 地址（疑似热钱包/代付服务）,3,ASTEROID cluster,2026-07-18
+0x0000000000000068f116a894984e2db1123eb395,eth,共同 gas funder 服务 7 地址（疑似热钱包/代付服务）,7,ASTEROID cluster,2026-07-18
+0x5babe600b9fcd5fb7b66c0611bf4896d967b23a1,eth,共同 gas funder 服务 3 地址（疑似热钱包/代付服务）,3,ASTEROID cluster,2026-07-18
+0x3807771db053dae9ead980692b6ef85c9c10f0bd,eth,共同 gas funder 服务 4 地址（疑似热钱包/代付服务）,4,ASTEROID cluster,2026-07-18
+0x00000000008d5f1200332af8a6813cb8377b5bfd,eth,守门员FUNNEL in89/out62 ret=0.000（漏斗形状，判明身份后回填标签库）,1053,ASTEROID cluster,2026-07-18
+0x4313c378cc91ea583c91387b9216e2c03096b27f,eth,守门员FUNNEL in297/out1039 ret=0.000（漏斗形状，判明身份后回填标签库）,13268,ASTEROID cluster,2026-07-18
+0x00000000009726632680fb29d3f7a9734e3010e2,eth,守门员FUNNEL in105/out115 ret=0.000（漏斗形状，判明身份后回填标签库）,1565,ASTEROID cluster,2026-07-18
+0xdd7e7253c73ce7351c6c966bb852d6d552b75469,eth,守门员FUNNEL in31/out35 ret=0.004（漏斗形状，判明身份后回填标签库）,150,ASTEROID cluster,2026-07-18
+0x61230b10cf353774ba086c126064efa813b5fd6f,eth,守门员FUNNEL in90/out65 ret=0.000（漏斗形状，判明身份后回填标签库）,348,ASTEROID cluster,2026-07-18
+0x25ed72c3f671b626810a6db597dcfd50f215a423,eth,守门员FUNNEL in66/out77 ret=0.000（漏斗形状，判明身份后回填标签库）,712,ASTEROID cluster,2026-07-18
+0x76718094c323e3f0d99a0521dfc66523d1e96083,eth,守门员FUNNEL in88/out320 ret=0.000（漏斗形状，判明身份后回填标签库）,1345,ASTEROID cluster,2026-07-18
+0xc41bb16bb5f7121947e381bb2b20e2a723f39163,eth,守门员FUNNEL in359/out745 ret=0.000（漏斗形状，判明身份后回填标签库）,3509,ASTEROID cluster,2026-07-18
+0xf24be3404b723e35d9ebc60977b646d2581f57f0,eth,守门员FUNNEL in90/out91 ret=0.000（漏斗形状，判明身份后回填标签库）,1762,ASTEROID cluster,2026-07-18
+0x53e3d506f468c4bc30cc8caa21eb7e56c2fa2d55,eth,守门员FUNNEL in3693/out6466 ret=0.000（漏斗形状，判明身份后回填标签库）,54497,ASTEROID cluster,2026-07-18
+0x7f54f05635d15cde17a49502fedb9d1803a3be8a,eth,守门员FUNNEL in2129/out3989 ret=0.000（漏斗形状，判明身份后回填标签库）,111750,ASTEROID cluster,2026-07-18
+0xa98ec39a06a9720d0146118c222ac8f36bdc2696,eth,守门员FUNNEL in32/out37 ret=0.000（漏斗形状，判明身份后回填标签库）,998,ASTEROID cluster,2026-07-18
+0xad3b67bca8935cb510c8d18bd45f0b94f54a968f,eth,守门员FUNNEL in47/out56 ret=0.000（漏斗形状，判明身份后回填标签库）,306,ASTEROID cluster,2026-07-18
+0x2cc3696211db0d64c58fd5f61d661b54c7c5ea2b,eth,守门员FUNNEL in64/out44 ret=0.000（漏斗形状，判明身份后回填标签库）,4207,ASTEROID cluster,2026-07-18
+0x168e9b3c9ddfb013a4130276f9c500a3ce50fde7,eth,守门员FUNNEL in6036/out12935 ret=0.002（漏斗形状，判明身份后回填标签库）,165631,ASTEROID cluster,2026-07-18
+0x0476c2483f4c6aa4dfb6efa29815ab74d9c1e508,eth,守门员FUNNEL in60/out42 ret=0.000（漏斗形状，判明身份后回填标签库）,402,ASTEROID cluster,2026-07-18
+0x69460570c93f9de5e2edbc3052bf10125f0ca22d,eth,守门员FUNNEL in169/out136 ret=0.000（漏斗形状，判明身份后回填标签库）,1565,ASTEROID cluster,2026-07-18
+0xdeadc0de0000e54725ad1bf220324717043e02bf,eth,守门员FUNNEL in112/out92 ret=0.000（漏斗形状，判明身份后回填标签库）,762,ASTEROID cluster,2026-07-18
+0x4bab2cb2ed6ee2d564ba5398cab4161d95e58f1b,eth,守门员FUNNEL in346/out466 ret=0.000（漏斗形状，判明身份后回填标签库）,3867,ASTEROID cluster,2026-07-18
+0x0e55db2d5e07cc6b067f352ba35a6beafb33c282,eth,守门员FUNNEL in5536/out9781 ret=0.003（漏斗形状，判明身份后回填标签库）,105411,ASTEROID cluster,2026-07-18
+0xba7a03a37c0799a4182d1c4ca3bf3321f8ba3329,eth,守门员FUNNEL in115/out152 ret=0.000（漏斗形状，判明身份后回填标签库）,2260,ASTEROID cluster,2026-07-18
+0x08989c58bc6b18e8e2910815309a89de4f1275b2,eth,守门员FUNNEL in1766/out4519 ret=0.000（漏斗形状，判明身份后回填标签库）,32801,ASTEROID cluster,2026-07-18
+0x76a411f14a704099ba476ce8dffc288a53295218,eth,守门员FUNNEL in24369/out31124 ret=0.001（漏斗形状，判明身份后回填标签库）,422727,ASTEROID cluster,2026-07-18
+0x8392876883cf0e9e7ee24d9b1f606ed88644f23b,eth,守门员FUNNEL in252/out138 ret=0.000（漏斗形状，判明身份后回填标签库）,1395,ASTEROID cluster,2026-07-18
+0xc10ee9031f2a0b84766a86b55a8d90f357910fb4,eth,守门员FUNNEL in129/out165 ret=0.000（漏斗形状，判明身份后回填标签库）,18608,ASTEROID cluster,2026-07-18
+0x8f10b468b06c6fd214b65f87778827f7d113f996,eth,守门员FUNNEL in545/out637 ret=0.000（漏斗形状，判明身份后回填标签库）,33764,ASTEROID cluster,2026-07-18
+0xa5d87aab3b1818ba74875db0e69ae91588de004f,eth,守门员FUNNEL in39/out36 ret=0.000（漏斗形状，判明身份后回填标签库）,331,ASTEROID cluster,2026-07-18
+0x2d5805a423d6ce771f06972ad4499f120902631a,eth,守门员FUNNEL in59/out38 ret=0.000（漏斗形状，判明身份后回填标签库）,403,ASTEROID cluster,2026-07-18

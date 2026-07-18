@@ -95,7 +95,7 @@ description: 对任意链上代币（EVM/Solana/Hyperliquid/Filecoin 及新链�
 
 **刀 2——控上下文（缓存读占成本 63%）**：
 3. 大结果一律落盘：脚本 stdout 只回显 ≤20 行摘要；调用存量脚本输出不可控时加 `| head -30` 兜底——**仅限跑完才输出的一次性命令；流式/长跑任务禁用管道截断**（head 关闭管道后上游进程收 SIGPIPE 会被提前杀死、还被误当成"只是省显示"），此类输出先落文件再 head 文件；异常检测内置进脚本主动报告
-4. 读大文件必带 limit/offset；**playbook/中间稿/旧报告禁止整读**——先 Grep 定位节标题再区间读（playbook v3.0 重组后按主题组可定点）；分析开局只全读 SKILL.md + 当链 pipeline，其余文档按阶段按需读
+4. 读大文件必带 limit/offset；**playbook 分册/中间稿/旧报告禁止整读**——先看 analysis-playbook.md 路由索引定位节，再区间读对应分册（v3.5 四分册：供给对账/实体聚类/状态异常/复核措辞）；分析开局只全读 SKILL.md + 当链 pipeline，其余文档按阶段按需读
 5. 阶段边界写**交接包**：阶段 3 结束把关键结论写入 `findings.md`（结论+数字+tx哈希+图表路径+数据口径+已排除假设）——这是断点资产不只是好习惯；**上下文超 30 万后**，在下个阶段边界主动建议用户 /compact 或新开会话续跑（交接包在盘，断点无损）
 6. 复盘（阶段 6）与 /token-update 在轻上下文里做：报告刚交付且上下文已超 30 万时，建议用户新开会话跑复盘（只读 CHANGELOG 头部+复盘清单，成本约 1/5）
 7. 后台长任务运行期主会话不做零散小交互（缓存 >5min 空窗会整体重写）
@@ -130,7 +130,11 @@ description: 对任意链上代币（EVM/Solana/Hyperliquid/Filecoin 及新链�
 - `data-pipeline-hyperliquid.md` — 官方 API/Hypurrscan 端点与口径坑
 - `data-pipeline-filecoin.md` — Filfox 管道、创世 ID 段标签、multisig 直读
 - `data-pipeline-robinhood.md` — Blockscout/RPC 双通道（都要浏览器 UA）、gas 溯源、发射台指纹、方法论坑
-- `analysis-playbook.md` — 链无关方法学（对账/标注/归因/聚类/标签体系与类型三分类 §6a/建仓成本按需工具 §6b/状态评估/复核/措辞）
+- `analysis-playbook.md` — 链无关方法学**路由索引**（四问总纲+节→分册对照表；v3.5 拆四分册）
+- `playbook-supply-recon.md` — 分册1 供给与对账（§1 分母口径/§2 对账 gate/§8 cohort 留存质押）
+- `playbook-entity-cluster.md` — 分册2 实体识别与聚类（§3 标注/§4 归因/§6 聚类含半枢纽与代买枢纽裁决/§6a 标签体系与世代阵营法/§6b 成本工具）
+- `playbook-state-anomaly.md` — 分册3 状态评估与市场异常（§5 CEX 净流/§7 状态评估/§9 刷量克制/§9a 死币复活盘两亚型）
+- `playbook-evidence-wording.md` — 分册4 证据复核与措辞（§10 对抗复核/§11 措辞纪律）
 - `research-workflows.md` — 调研 fan-out（含项目方背景调查标配路线）与对抗复核的 prompt 模板、任务编排纪律
 - `report-template.md` — 四问报告结构与 P0/P1 标签体系、三张标准图+全周期流转路径图规范、analysis-state.json（默认交付的机器状态文件）、措辞对照表、HTML 排版约定、交付 checklist
 - `monitoring-package.md` — 监控包分册（v3.3 拆分）：appendix.json schema 与 report-extract 四键硬标准、sentinel/监控建议两档字段纪律、「买入后监控包」三件产出流程——默认分析不读，买入后/滚动 JSON 时读
