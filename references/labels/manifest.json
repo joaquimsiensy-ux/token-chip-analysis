@@ -1,0 +1,55 @@
+{
+ "generated_at": "2026-07-18 16:01:34",
+ "files": {
+  "codehash-robinhood.csv": {
+   "sha256": "ff4f3c16974fed723f000bcc058f30a4bb2c7b0827f3cfe8d1e29338f05d5b92",
+   "rows": 3,
+   "bytes": 1040
+  },
+  "labels-base.csv": {
+   "sha256": "160ec632165559c9d64aadaa4ab9aab5f83926a2bda6c4d894c5be577d424a6e",
+   "rows": 14185,
+   "bytes": 2687397
+  },
+  "labels-bsc-privacy.csv": {
+   "sha256": "6900c32f6fadaf13aa48cb0c61a7938fa19488e34d735938452c5ac5912cbcc2",
+   "rows": 123604,
+   "bytes": 24659870
+  },
+  "labels-bsc.csv": {
+   "sha256": "fcda3e8a153388e9f0b2d20a8c5f14016c8a8d018f5d65cd2517c77ceea556f2",
+   "rows": 15157,
+   "bytes": 2645935
+  },
+  "labels-eth-privacy.csv": {
+   "sha256": "2fc7cc7074d95196301e42990807f138c19c9efb6cd64120ebf4fc4d831150e3",
+   "rows": 166690,
+   "bytes": 33176897
+  },
+  "labels-eth.csv": {
+   "sha256": "9b7904e565751cc022c72b39c44be539d528456cca97003bfd909f3af4e7071c",
+   "rows": 140029,
+   "bytes": 21560225
+  },
+  "labels-filecoin.csv": {
+   "sha256": "e4bd8183706f8a656793485e00986e12ba6291b7ff974897de8832798f242ae5",
+   "rows": 25,
+   "bytes": 4273
+  },
+  "labels-hyperliquid.csv": {
+   "sha256": "b1e1c63efce7c1ee73d4779948b66fe26094f417f5ea836bbcc931764672df9f",
+   "rows": 936,
+   "bytes": 219317
+  },
+  "labels-robinhood.csv": {
+   "sha256": "4473c57cc528b4c8bf997ca328b3579437b3d91b347784c4aaab8058e88a0ea2",
+   "rows": 293,
+   "bytes": 77333
+  },
+  "labels-sol.csv": {
+   "sha256": "b00e60fc7b29a763066cc2b560fcf56ce01106de8c041585d949d890bc588fa9",
+   "rows": 8180,
+   "bytes": 1519945
+  }
+ }
+}
