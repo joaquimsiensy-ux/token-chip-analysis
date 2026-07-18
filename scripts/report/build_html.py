@@ -215,7 +215,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--md", required=True)
     ap.add_argument("--out", required=True)
-    ap.add_argument("--json", help="机器可读 JSON 附录文件（schema 见 report-template.md）")
+    ap.add_argument("--json", help="机器可读 JSON 附录文件（schema 见 monitoring-package.md）")
     ap.add_argument("--title", default=None)
     a = ap.parse_args()
 
@@ -238,7 +238,7 @@ def main():
             else:
                 for k in ("chip_summary", "addresses", "unlock_events", "source_line"):
                     if k not in data:
-                        warns.append(f"[WARN] JSON 附录缺监控抽取必备键: {k}（看板按四键取值，schema 见 report-template.md）")
+                        warns.append(f"[WARN] JSON 附录缺监控抽取必备键: {k}（看板按四键取值，schema 见 monitoring-package.md）")
                 for ad in (data.get("addresses") or []):
                     addr = str(ad.get("address", "")) if isinstance(ad, dict) else str(ad)
                     if any(t in addr for t in ("…", "...", "*")):

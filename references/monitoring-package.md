@@ -1,0 +1,108 @@
+# 监控包分册：JSON 附录 schema 与买入后生成流程
+
+> **默认分析会话不读本文件**（v3.3 拆分自 report-template.md——本块占其近三成体量，而 v3.2 起默认交付不含监控包）。只在两个场景读：①用户确认买入/点名监控 → 按下方「买入后监控包」节补生成；②/token-update 更新**带监控包**的旧研报 → U5 滚动 JSON 按本文 schema。呈现纪律（标签制/【总量X%】/完整地址）仍以 report-template.md 为准。
+
+## JSON 附录 schema（`appendix.json`，供后续监控脚本消费）
+
+### 监控抽取块硬性标准（用户看板方指定格式，2026-07-13，逐字执行）
+
+**带监控包的**报告 HTML（v3.2 起=买入后版本；默认报告无此块）末尾内嵌机器可读 JSON 附录，嵌入形式**固定**为：
+
+```html
+<script type="application/json" id="report-extract">…</script>
+```
+
+- **id 必须是 `report-extract`**：用户的看板/监控系统只认这个 id——历史教训：曾有报告写成自定义 id 导致自动抽取失败。一律走 build_html.py 管道出 HTML，别手写嵌入。
+- **JSON 顶层四键必备**（看板按键取值，键名一字不可改；build_html.py 缺键会打 WARN 拒绝交付）：
+
+```json
+{"chip_summary": {"zhuang_count": 庄家组数,
+                  "total_share_pct": 庄家合计持仓占总供应的百分数,
+                  "total_tokens": 合计枚数,
+                  "last_action": "庄家最后一次链上动作一句话"},
+ "addresses": [{"address": "0x开头的完整地址，绝对不要缩写省略",
+                "chain": "bsc|eth|base|sol|robinhood",
+                "role": "钱包标签+一句话角色（如：大庄#1钱包#2·拆分中枢）",
+                "balance_est": 当前持有枚数,
+                "group": "同一关联集群填相同组名（组内互转不算流出），独立地址留空",
+                "sentinel": true或false,
+                "watch": true或false,
+                "why": "一句话：为什么要监控/为什么跳过",
+                "round_target": 可选_整数橱窗仓的整数目标枚数,
+                "watch_return": 可选_true}],
+ "unlock_events": [{"date": "YYYY-MM-DD", "label": "解锁内容一句话"}],
+ "source_line": "数据截至时间+口径"}
+```
+
+**addresses 字段纪律（交付前逐条对照）**：
+- **address 必须完整**，绝对不要缩写省略——一律从落盘数据文件复制；build_html.py 见省略号/星号会 WARN
+- **chain** 小写枚举：bsc / eth / base / sol / robinhood；新链沿用小写简名扩展（如 hyperliquid、filecoin）
+- **role 以钱包标签开头**（与正文、附录 B 一致），后接一句话角色——看板卡片直接显示，正文读者拿标签来这里反查地址
+- **group**：同一关联集群填相同组名（看板视组内互转为内部调仓、**不算流出**）；独立地址留空 `""`
+- **sentinel=true 只给「理应长期沉睡、任何转出都是重大事件」的地址**（锁仓合约、从未动过的金库、零卖出囤仓鲸）；会周期性正常动的地址（空投池、税池、做市、持续发放的奖励池）**必须 sentinel=false**，否则看板天天误报红卡——sentinel 布尔值与第七章"转出即预警清单"一一对应
+- **watch=false 的也要列出**便于审计（交易所热钱包、流动性池、纯 gas 资金源），why 写清为什么跳过
+- **round_target**（可选）：该地址是「整数橱窗仓」（持仓刻意停在 1000万/500万 这类整数上的操盘指纹，playbook §6a）时填整数目标枚数，看板在它「破整」时红卡告警；不是就**省略该字段**
+- **watch_return**（可选）：已清仓离场但值得盯「回场」的地址（如发射团队、历史主庄）填 `true`，看板在它重新持币时红卡告警；不是就省略
+
+**阵营演变图的抽取约定**：各阵营持仓占比演变图（标准图 1）在 HTML 里内嵌为 `<img id="chart-camps" src="data:image/png;base64,...">`（或 alt 含「阵营」二字），看板会自动抽出独立 png 使用。build_html.py 已自动给 alt/题注含「阵营」的第一张图加该 id——md 里图 1 题注用标准名"各阵营持仓占比演变"即天然满足（图 1 前置到 TL;DR 不影响该约定，仍是全文第一张匹配图）。
+
+### 完整数据键（与四键并存于同一 appendix.json，键名保持稳定）
+
+四键是看板抽取的最小集；以下详细键继续携带（重绘图 1 基线、复盘、告警规则细化用；看板不读它们，不冲突）。同一地址在 addresses 与 whale_groups/vault_addresses/monitoring_advice 多处出现时，余额/角色不得互相矛盾：
+
+```json
+{
+  "token": {"symbol": "", "chain": "", "contract": "", "total_supply": 0,
+            "decimals": 0, "analysis_date": "", "data_cutoff": "",
+            "skill_version": ""},
+  "whale_groups": [
+    {"id": 1, "label": "大庄#1", "tier": "P0",
+     "type": "single|multi-linked|disguised",
+     "status": "active|exited", "addresses": ["完整地址"],
+     "current_share_pct": 0.0, "peak_share_pct": 0.0,
+     "est_cost_usd": 0, "avg_cost_price": 0, "cost_method": "可选：按需算过才填",
+     "evidence_summary": ""}
+  ],
+  "vault_addresses": [
+    {"address": "", "label": "项目方钱包#N·金库/vesting/做市", "balance_pct": 0.0}
+  ],
+  "camp_share_series": [
+    {"ts": "ISO8601", "项目方": 0.0, "大庄": 0.0, "小庄": 0.0, "离场庄": 0.0,
+     "狙击集团": 0.0, "刷量地址": 0.0, "流动性池": 0.0, "其他大户": 0.0,
+     "散户": 0.0, "锁仓/销毁": 0.0}
+  ],
+  "key_events": [{"ts": "ISO8601", "desc": ""}],
+  "monitoring_advice": [
+    {"watch": "完整地址", "label": "钱包标签", "mode": "any_out|threshold",
+     "alert_threshold_pct": 1.0,
+     "trigger": "any_out=任何转出即预警 / threshold=累计减持超阈值(默认1%总供应)预警",
+     "meaning": "触发意味着什么（如：大庄#1 开始出货）",
+     "reason": "为什么选这一档（理应沉睡 / 会正常活动怕误报）",
+     "check_hint": "浏览器地址页/RPC 余额轮询"}
+  ]
+}
+```
+
+- token.skill_version（**v2.1.0 起必填**）：写交付时 CHANGELOG 最新版本号——/token-update 增量更新靠它识别旧报告的框架版本；旧 JSON 缺失此字段视为未知旧版，全部实体按现行标准重判（见 update-workflow.md 铁律节）
+- whale_groups：`label` 用 v2.0 标签（大庄#1/小庄#2/离场庄#1/狙击集团/项目方），`tier` 填 P0/P1；成本三字段（est_cost_usd/avg_cost_price/cost_method）改为**可选**——报告里按需算过才填，没算就整组省略
+- monitoring_advice：`mode` 两档与第七章监控建议两清单一一对应；`alert_threshold_pct` 仅 threshold 档必填（默认 1.0=总供应 1%）
+- camp_share_series：阵营键用 v2.0 标签体系名（缺的阵营省略）
+
+序列采样密度：`camp_share_series` 全历史 ≤500 个点（等距或事件驱动采样），够重绘图 1 即可，别把逐笔快照全塞进去。
+HTML 内嵌后监控脚本提取方式已写在 build_html.py docstring。**JSON 里的地址必须与附录 B 一致且为完整地址**（从落盘数据文件复制）。
+
+**投后监控衔接（固定收尾句，2026-07-13 定，v3.2 措辞更新）**：本 schema 正是投后监控脚本的标准输入（report-extract 四键→看板地址名单与红卡规则、monitoring_advice→告警规则细化、camp_share_series→基线）。用户买入后有固定的"投后管理"后续需求（链上异动哨兵+声量扫描+飞书推送）；监控系统本身不属于本 skill。**默认报告（无监控包）末尾附一句："如决定买入，回复一声即可补生成监控包（观察哨清单＋监控建议＋JSON 附录），可直接喂给投后监控看板。"** 带监控包的版本末尾照旧写"如需投后监控，本 JSON 附录可直接喂给监控脚本"。
+
+## 买入后监控包（v3.2 新增：默认不做，用户确认买入/点名监控时执行）
+
+**触发**：用户在报告交付后表示"买入了 / 决定买 / 要监控 XX"。可能发生在同会话，也可能是几天后的新会话（材料全部来自落盘产物，不依赖分析会话上下文）。
+
+**原料**（都在原分析工作目录）：附录 B 标签↔地址对照表（实体名单与角色）＋ `data/` 落盘数据（期末余额快照、阵营序列 CSV、锁仓/解锁事件）＋ 报告第七章状态评估（判断哪些地址理应沉睡）。地址一律从落盘文件复制（完整地址纪律照旧）。
+
+**产出三件**（格式标准全按本文既有各节，一条不改）：
+1. 第七章补写观察哨信号清单＋两档监控建议（含逐条原因），Edit 进 `报告.md`
+2. `appendix.json`（四键＋完整数据键、sentinel 纪律、monitoring_advice 与两档清单一一对应）
+3. 重跑 `build_html.py --md 报告.md --out 报告.html --json appendix.json`——出带 `id="report-extract"` 的监控版 HTML，覆盖原文件（原版无独立价值，不必留档）
+
+**质检**：build_html 退出码 0 且零 WARN（四键齐/地址完整）；sentinel 纪律复查（周期性会动的地址必须 false）；观察哨条目与状态评估结论对齐（正文说"理应沉睡"的地址必须进转出即预警清单）。新会话执行时：只读附录 B＋data/ 目录＋第七章，**禁止整读旧报告**（成本纪律刀 2）。若为 /token-update 场景顺带补包，观察哨基线从本次更新数据起算。
+

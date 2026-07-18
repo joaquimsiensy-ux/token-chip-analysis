@@ -5,7 +5,7 @@ description: 对任意链上代币（EVM/Solana/Hyperliquid/Filecoin 及新链�
 
 # 代币筹码分析（Token Chip Analysis）
 
-对一个代币的项目方/庄家/做市商回答四个固定命题（v2.0 四问框架，2026-07-14 取代五问）：**①有几个庄？（按 P0/P1 标签体系分级：项目方 / 大庄 / 小庄 / 离场庄 / 狙击集团 / 刷量地址，见 playbook §6a）②每个庄什么类型（单地址明牌/多地址互转·gas同源/伪装分散·指纹一致）？③各阵营全历史持仓占比如何演变（占总供应量，锁仓/销毁单列；建仓后动没动、拉升期有没有出货）？④项目方背景调查（创始人/项目历史含黑历史、社媒运营、大V关注、互动与热度、水军嫌疑；无项目方看 dev）？** 交付一份每条结论可独立验证的**自包含 HTML 报告**（图 1/图 2 前置于 TL;DR 顶部 + 每个 P0 实体一张全周期流转路径图）。建仓成本不再是固定命题（§6b 降为按需工具）。**监控包（观察哨+两档监控建议+JSON 附录）v3.2 起默认不随报告生成——用户看完报告确认买入后按需补生成**（report-template.md「买入后监控包」节；用户实测约 3/4 标的不买入，监控产物只为持仓服务）。
+对一个代币的项目方/庄家/做市商回答四个固定命题（v2.0 四问框架，2026-07-14 取代五问）：**①有几个庄？（按 P0/P1 标签体系分级：项目方 / 大庄 / 小庄 / 离场庄 / 狙击集团 / 刷量地址，见 playbook §6a）②每个庄什么类型（单地址明牌/多地址互转·gas同源/伪装分散·指纹一致）？③各阵营全历史持仓占比如何演变（占总供应量，锁仓/销毁单列；建仓后动没动、拉升期有没有出货）？④项目方背景调查（创始人/项目历史含黑历史、社媒运营、大V关注、互动与热度、水军嫌疑；无项目方看 dev）？** 交付一份每条结论可独立验证的**自包含 HTML 报告**（图 1/图 2 前置于 TL;DR 顶部 + 每个 P0 实体一张全周期流转路径图）。建仓成本不再是固定命题（§6b 降为按需工具）。**监控包（观察哨+两档监控建议+JSON 附录）v3.2 起默认不随报告生成——用户看完报告确认买入后按需补生成**（monitoring-package.md「买入后监控包」节；用户实测约 3/4 标的不买入，监控产物只为持仓服务）。
 
 **四问是下限不是上限（开放条款）**：链上任何不属于四问的显著结构性异常——暴跌/暴涨归因、假量对倒矩阵、流动性池异动、治理/权限异动、跨链桥异常等——必须单列章节报告，并在 TL;DR 增设"本次特有发现"条目（确无发现时明写"无"，这也是结论）。禁止因"框架未覆盖"而略去；报告骨架是最小集，允许按标的插入特有章节（见 report-template.md）。
 
@@ -29,7 +29,8 @@ description: 对任意链上代币（EVM/Solana/Hyperliquid/Filecoin 及新链�
 阶段2 对账关卡（硬性，不过不进分析）
 阶段3 分析：地址标注 / 金库归因 / 庄级实体识别与 P0/P1 标签分级 / 演变重放 / 项目方背景调查
 阶段4 对抗复核（必做）
-阶段5 HTML 报告（三张标准图 + JSON 附录）+ 质检
+阶段5 HTML 报告（三张标准图 + 附录四件套 + analysis-state.json）+ 质检
+  （监控包默认不做，买入后补——v3.2）
 阶段6 复盘沉淀（固定最后一步，见 references/retrospective.md）
 ```
 
@@ -74,7 +75,7 @@ description: 对任意链上代币（EVM/Solana/Hyperliquid/Filecoin 及新链�
 
 ## 阶段 5：报告
 
-报告本体先写 `报告.md` + `charts/*.png`。**三张标准图必配**（阵营占比演变/庄级实体vs价格/价格与关键事件），直接调 `scripts/report/standard_charts.py` 的三个函数——规格与配色已固化，不要每次重新设计；**图 1/图 2 放 TL;DR 顶部（问 1 直答上方）**。**每个 P0 级实体必配一张全周期流转路径图**（`scripts/report/lifecycle_flow.py`，样图 references/examples/lifecycle-flow-sample.png）。结构与措辞纪律见 `references/report-template.md`（四问逐条直答 + 标签体系 + 代币数量带【总量X%】 + 正文零地址 + 局限性独立成章）。然后 `python3 scripts/report/build_html.py --md 报告.md --out 报告.html` 出自包含 HTML（PDF 仅当用户点名，用 md2pdf.py）。质检：build_html 退出码 0（缺图会打 WARN 拒绝交付）+ 浏览器目检（图全显/表格无错位）。**附录四件套**（验证步骤/标签↔地址对照/复核修正记录/来源）——附录 B 地址对照任何情况下不可省（正文零地址的可验证性支点）。**监控包默认不做（v3.2）**：观察哨/两档监控建议/appendix.json 在用户确认买入后按 report-template「买入后监控包」节补生成（新会话可执行，材料全在落盘产物；report-extract 四键/sentinel 纪律等格式标准原样不变），报告末尾带固定句"如决定买入，回复一声即可补生成监控包"。交付前 checklist 见 report-template.md 末节。
+报告本体先写 `报告.md` + `charts/*.png`。**三张标准图必配**（阵营占比演变/庄级实体vs价格/价格与关键事件），直接调 `scripts/report/standard_charts.py` 的三个函数——规格与配色已固化，不要每次重新设计；**图 1/图 2 放 TL;DR 顶部（问 1 直答上方）**。**每个 P0 级实体必配一张全周期流转路径图**（`scripts/report/lifecycle_flow.py`，样图 references/examples/lifecycle-flow-sample.png）。结构与措辞纪律见 `references/report-template.md`（四问逐条直答 + 标签体系 + 代币数量带【总量X%】 + 正文零地址 + 局限性独立成章）。然后 `python3 scripts/report/build_html.py --md 报告.md --out 报告.html` 出自包含 HTML（PDF 仅当用户点名，用 md2pdf.py）。质检：build_html 退出码 0（缺图会打 WARN 拒绝交付）+ 浏览器目检（图全显/表格无错位）。**附录四件套**（验证步骤/标签↔地址对照/复核修正记录/来源）——附录 B 地址对照任何情况下不可省（正文零地址的可验证性支点）。**监控包默认不做（v3.2）**：观察哨/两档监控建议/appendix.json 在用户确认买入后按 monitoring-package.md「买入后监控包」节补生成（新会话可执行，材料全在落盘产物；report-extract 四键/sentinel 纪律等格式标准原样不变），报告末尾带固定句"如决定买入，回复一声即可补生成监控包"。**默认交付另落一份 `analysis-state.json`**（appendix 的机器子集：token/whale_groups/vault_addresses/addresses 骨架+camp_share_series，无监控文案——/token-update 的实体表原料，防日后从报告文字反抄地址；schema 见 report-template「默认交付的机器状态文件」节）。交付前 checklist 见 report-template.md 末节。
 
 ## 阶段 6：复盘与迭代（固定最后一步，不可省略）
 
@@ -86,14 +87,14 @@ description: 对任意链上代币（EVM/Solana/Hyperliquid/Filecoin 及新链�
 
 ## 成本纪律（v3.1 三刀版，2026-07-18 全量账单解剖后重订）
 
-**实证结论（65 会话账单拆解）**：63% 的钱是缓存读——每轮工具调用都要重读全部会话历史；输出只占 18%（HTML 由脚本拼装几乎免费）。恒等式：**成本 ≈ 轮次 × 平均上下文 × 单价**，三个因子三把刀。历史基线：v1.0 前五次 266-480 轮、缓存读 4200 万~1.24 亿 tokens；v1.1 后 bibi 约 66 轮（轮次降 75%），但上下文膨胀吃掉了红利（实测分析会话峰值 40-75 万 tokens）。参考预算：轮次 <150、缓存读 <4000 万、**上下文峰值 <30 万**（新链首战可放宽；超了如实报告原因即可，不许为达标偷工减料）。
+**实证结论（65 会话账单拆解，2026-07-18）**：63% 的钱是缓存读——每轮工具调用都要重读全部会话历史；输出只占 18%（HTML 由脚本拼装几乎免费）。恒等式：**成本 ≈ 轮次 × 平均上下文 × 单价**，三个因子三把刀（历史基线数字在 CHANGELOG v3.1.0 条目可考古）。参考预算：轮次 <150、缓存读 <4000 万、**上下文峰值 <30 万**（新链首战可放宽；超了如实报告原因即可，不许为达标偷工减料）。
 
 **刀 1——机械活换便宜模型（执行类轮次占成本 55%）**：
 1. 机械阶段一律派 `model: sonnet` 子代理执行（Agent 工具的 model 参数；Workflow 的 agent() 用 opts.model='sonnet'，纯跑批可再加 effort:'low'）——单价约主模型 3/10，且子代理不背主线几十万上下文。**外包清单**：标准脚本跑批与重试循环（采集/余额扫描/CSV 加工）、对账三查的执行侧、标签库批量 lookup、图表脚本执行、数据完整性验证。**禁止外包**：聚类判定、实体定性、对抗复核裁决、报告撰写——一切需要"判断"的环节留在主模型（质量底线，铁律 6）。
 2. 外包 prompt 四要素：目标 + 脚本路径与参数 + 期望产物落盘路径 + 回报格式（≤30 行摘要：行数/区间/异常计数/文件路径，禁止贴原始数据）。prompt 必须自包含（链名/合约地址/输出目录写死），子代理看不到主线对话。
 
 **刀 2——控上下文（缓存读占成本 63%）**：
-3. 大结果一律落盘：脚本 stdout 只回显 ≤20 行摘要；调用存量脚本输出不可控时加 `| head -30` 兜底；异常检测内置进脚本主动报告
+3. 大结果一律落盘：脚本 stdout 只回显 ≤20 行摘要；调用存量脚本输出不可控时加 `| head -30` 兜底——**仅限跑完才输出的一次性命令；流式/长跑任务禁用管道截断**（head 关闭管道后上游进程收 SIGPIPE 会被提前杀死、还被误当成"只是省显示"），此类输出先落文件再 head 文件；异常检测内置进脚本主动报告
 4. 读大文件必带 limit/offset；**playbook/中间稿/旧报告禁止整读**——先 Grep 定位节标题再区间读（playbook v3.0 重组后按主题组可定点）；分析开局只全读 SKILL.md + 当链 pipeline，其余文档按阶段按需读
 5. 阶段边界写**交接包**：阶段 3 结束把关键结论写入 `findings.md`（结论+数字+tx哈希+图表路径+数据口径+已排除假设）——这是断点资产不只是好习惯；**上下文超 30 万后**，在下个阶段边界主动建议用户 /compact 或新开会话续跑（交接包在盘，断点无损）
 6. 复盘（阶段 6）与 /token-update 在轻上下文里做：报告刚交付且上下文已超 30 万时，建议用户新开会话跑复盘（只读 CHANGELOG 头部+复盘清单，成本约 1/5）
@@ -128,9 +129,11 @@ description: 对任意链上代币（EVM/Solana/Hyperliquid/Filecoin 及新链�
 - `data-pipeline-solana.md` — 全量扫描与托管判别（IO 实录核验版：双 RPC 互补矩阵、死亡名单、签名投毒坑）
 - `data-pipeline-hyperliquid.md` — 官方 API/Hypurrscan 端点与口径坑
 - `data-pipeline-filecoin.md` — Filfox 管道、创世 ID 段标签、multisig 直读
+- `data-pipeline-robinhood.md` — Blockscout/RPC 双通道（都要浏览器 UA）、gas 溯源、发射台指纹、方法论坑
 - `analysis-playbook.md` — 链无关方法学（对账/标注/归因/聚类/标签体系与类型三分类 §6a/建仓成本按需工具 §6b/状态评估/复核/措辞）
 - `research-workflows.md` — 调研 fan-out（含项目方背景调查标配路线）与对抗复核的 prompt 模板、任务编排纪律
-- `report-template.md` — 四问报告结构与 P0/P1 标签体系、三张标准图+全周期流转路径图规范、JSON 附录 schema 与监控抽取硬标准（report-extract 四键）、监控建议两档、措辞对照表、HTML 排版约定
+- `report-template.md` — 四问报告结构与 P0/P1 标签体系、三张标准图+全周期流转路径图规范、analysis-state.json（默认交付的机器状态文件）、措辞对照表、HTML 排版约定、交付 checklist
+- `monitoring-package.md` — 监控包分册（v3.3 拆分）：appendix.json schema 与 report-extract 四键硬标准、sentinel/监控建议两档字段纪律、「买入后监控包」三件产出流程——默认分析不读，买入后/滚动 JSON 时读
 - `update-workflow.md` — /token-update 增量更新六阶段（旧研报资产盘点与兜底、增量起点与重叠窗去重、新庄扫描口径、滚动 JSON、何时该回全量）
 - `address-book.md` — 跨分析累积的基础设施地址标签库（手工实战核验层）
 - `labels/README.md` — 批量地址标签库**使用篇**（七链 ~47.1 万条 CSV + labels_resolver.py 共享内核，v4.2+ 2026-07-18）：**聚类前把全部候选地址先过一遍 label_lookup.py**（七段输出，`--json` 出 JSONL）；EVM/SOL/HL/FIL 主力脚本已内置 resolver 自动兜底（`--no-labels` 关闭，缺表显式报 degraded_mode）；决策三维、惯犯 serial-actor 层（提示不定罪纪律）、codehash 指纹、行为守门员、miss 队列——用法/纪律/盲区全在该 README

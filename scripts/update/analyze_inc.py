@@ -71,7 +71,11 @@ def main():
     unit = 10 ** dec
     bal_old = load_balances(args.old_balances)
     bal_new = load_balances(args.balances)
-    with open(args.appendix) as f:
+    apath = args.appendix
+    if not os.path.exists(apath) and apath == "appendix.json" and os.path.exists("analysis-state.json"):
+        print("NOTE: 无 appendix.json（未买入标的无监控包），改读 analysis-state.json（U0 4c）")
+        apath = "analysis-state.json"
+    with open(apath) as f:
         app = json.load(f)
     with open(args.stats) as f:
         stats = {a.lower(): {k: (int(v) if k in ("buy", "sell", "t_in", "t_out", "burn") else v)
@@ -166,6 +170,8 @@ def main():
 
     # ── 3) 观察哨逐条核查 ──
     sentinels = []
+    if not app.get("monitoring_advice"):
+        print("NOTE: 无观察哨基线（monitoring_advice 缺失/为空）——简报 U3c 按'无基线'如实声明，本节跳过")
     for m in app.get("monitoring_advice", []):
         a = str(m.get("watch", "")).lower()
         if not a.startswith("0x"):

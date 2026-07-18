@@ -20,6 +20,8 @@
           buy/sell=与 config pools 直接对手；t_in/t_out=非池转账；burn=入 0x0/dead。
 供给闭合：全地址余额和应=0；正余额合计与 total_supply−累计烧毁 比对；负余额地址应仅 0x0。
 对不上=增量数据有洞（最常见：重叠窗处理错、窗口内漏段）＝回 U1 补，不许"差不多"。
+退出码（v3.3 硬关卡）：非零地址负余额=1；旧快照含 ZERO 负项且全网恒等式不闭合=1；
+  正余额型旧快照（无 ZERO 键，实战两种格式并存）恒等式不适用、打 NOTE 降级为对表关卡兜底。
 """
 import argparse, gzip, json, sys
 from collections import defaultdict
@@ -64,7 +66,9 @@ def main():
     total, dec, pools = load_cfg()
     unit = 10 ** dec
     bal = defaultdict(int)
-    for k, v in load_balances(args.old_balances).items():
+    old_bal = load_balances(args.old_balances)
+    old_has_zero = ZERO in old_bal  # 旧快照是否保留 mint 负项（两种格式实战都存在，决定恒等式关卡是否适用）
+    for k, v in old_bal.items():
         bal[k] = v
 
     rows = []
@@ -130,7 +134,7 @@ def main():
 
     print(f"重放 {n} 条（跳过重叠窗内 {skipped} 条、去重 {dup} 条），窗口末块 {last_block}")
 
-    # ── 供给闭合 ──
+    # ── 供给闭合（v3.3 硬关卡：恒等式与负余额由退出码兜底，不再只打印） ──
     sum_all = sum(bal.values())
     pos = {k: v for k, v in bal.items() if v > 0 and k != ZERO}
     neg = {k: v for k, v in bal.items() if v < 0 and k != ZERO}
@@ -139,7 +143,14 @@ def main():
     print(f"正余额合计 {sum_pos} vs total_supply {total} → "
           f"{'PASS' if sum_pos == total else 'Δ=' + str(sum_pos - total) + '（有烧毁到0x0则为负常态，人工核对）'}")
     if neg:
-        print(f"⚠ 非零地址出现负余额（数据有洞）: {list(neg.items())[:5]}")
+        print(f"FAIL: 非零地址出现负余额=数据有洞（漏段/重叠窗错），回 U1 补数据: {list(neg.items())[:5]}")
+        sys.exit(1)
+    if sum_all != 0:
+        if old_has_zero:
+            print(f"FAIL: 全地址余额和 {sum_all} ≠ 0——旧快照含 ZERO 负项，恒等式必须闭合；数据有洞，回 U1 补数据")
+            sys.exit(1)
+        print("NOTE: 旧快照未保留 ZERO/mint 负项（正余额型快照），全网恒等式不适用——"
+              "供给闭合由上方 sum_pos vs total 人工核对 + verify_balances 对表关卡兜底")
     print(f"持币地址数: {len(pos)}")
 
     # ── 可选双路径互验 ──

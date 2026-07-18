@@ -6,8 +6,9 @@
 用法（在 sources/ 目录下）：
   python3 ../probe_codetype.py ofac_eth.txt ofac_eth_codetype.json
   python3 ../probe_codetype.py scamsniffer_address.json scamsniffer_codetype.json
-RPC：默认 dRPC（key 读 ~/.claude/api-keys.md 登记的 dRPC 通道，此处内置端点模板），
-     可用环境变量 ETH_RPC 覆盖。批量 JSON-RPC（每批 40），429 退避重试。
+RPC：必须通过环境变量 ETH_RPC 提供端点（如 dRPC：去 ~/.claude/api-keys.md 第 3 节取 key，
+     拼 https://lb.drpc.org/ogrpc?network=ethereum&dkey=<key>）。铁律 5：key 永不写死进本目录。
+     批量 JSON-RPC（每批 40），429 退避重试。
 注意：EIP-7702 委托 EOA 的 getCode 返回 0xef0100…（非空）——按'合约'保守处理即可，
      不跨链注入一个可能换 delegate 的地址是安全方向。
 """
@@ -24,8 +25,9 @@ def _rpc_url():
     u = os.environ.get('ETH_RPC')
     if u:
         return u
-    # dRPC key（api-keys.md 第 3 节登记值的原始存放处没有独立文件，直接用登记 key）
-    return 'https://lb.drpc.org/ogrpc?network=ethereum&dkey=***REMOVED-DRPC-KEY***'
+    sys.exit('缺 ETH_RPC 环境变量。去 ~/.claude/api-keys.md 第 3 节取 dRPC key，'
+             '运行前 export ETH_RPC="https://lb.drpc.org/ogrpc?network=ethereum&dkey=<key>"'
+             '（铁律 5：key 不写死进 skill 目录）')
 
 
 def load_addrs(path):

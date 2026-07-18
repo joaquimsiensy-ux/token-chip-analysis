@@ -58,6 +58,14 @@ def main():
     for name in re.findall(r'^- `([\w/.-]+\.md)`', skill, re.M):
         if not (os.path.exists(os.path.join(ROOT, 'references', name)) or os.path.exists(os.path.join(ROOT, name))):
             fails.append(f'SKILL.md 深入阅读清单断链: {name}')
+    # 4) 反向漏列：references/ 顶层与 labels/ 的 md 都必须出现在 SKILL.md（v3.3：robinhood 曾漏列，
+    #    正向断链检查抓不到"存在但没列"）
+    should_list = sorted(glob.glob(os.path.join(ROOT, 'references', '*.md'))) \
+                + sorted(glob.glob(os.path.join(ROOT, 'references', 'labels', '*.md')))
+    for p in should_list:
+        base = os.path.relpath(p, os.path.join(ROOT, 'references'))  # 如 labels/README.md
+        if base not in skill and os.path.basename(p) not in skill:
+            fails.append(f'SKILL.md 深入阅读清单漏列: references/{base}')
 
     if fails:
         for f in fails[:30]:

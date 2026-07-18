@@ -12,9 +12,11 @@ VEX(verify_balances) 四次 /token-update 实战合并参数化收编（v2.10.0�
 config 可选 "rpc_ua" 覆盖默认）：
   python3 verify_balances.py [--balances data/balances_new.json] [--appendix appendix.json]
                              [--block N]   # 显式对账块；默认用 balances 文件 meta 的 last_block
-退出码：全部精确一致=0；存在差异=仍为 0 但打印明细（活跃地址微差需人工判断，不武断 FAIL）。
+appendix.json 缺失时自动改读 analysis-state.json（v3.3：未买入标的默认无监控包，同构机器子集）。
+退出码（v3.3 硬关卡）：归档块口径全一致=0；归档块口径存在 MISMATCH=1（对账关卡 FAIL，回 U1 补数据）；
+退化 latest 口径且存在差异=2（INCONCLUSIVE，不作放行依据——活跃地址天然微差，须换归档块或人工逐条核对）。
 """
-import argparse, json, random, sys, time
+import argparse, json, os, random, sys, time
 import urllib.request
 import ssl, certifi
 
@@ -115,7 +117,11 @@ def main():
     token, rpc, ua, dec = load_cfg()
     unit = 10 ** dec
     bal, meta_block = load_balances(args.balances)
-    with open(args.appendix) as f:
+    apath = args.appendix
+    if not os.path.exists(apath) and apath == "appendix.json" and os.path.exists("analysis-state.json"):
+        print("NOTE: 无 appendix.json（未买入标的无监控包），改读 analysis-state.json（U0 4c）")
+        apath = "analysis-state.json"
+    with open(apath) as f:
         app = json.load(f)
     names = build_names(app, bal)
     print(f"对表名单 {len(names)} 址（实体表∪观察哨∪top20∪随机5）")
@@ -146,8 +152,15 @@ def main():
         else:
             bad += 1
             print(f"MISMATCH {a}: 重放 {r/unit:,.2f} vs 链上 {o/unit:,.2f} (Δ {(r-o)/unit:+,.4f})")
-    print(f"对表 {len(names)} 址：精确一致 {ok}、不一致 {bad}"
-          + ("" if tag != "latest" else "（latest 口径，活跃地址微差需人工核对是否均为截止后新交易）"))
+    print(f"对表 {len(names)} 址：精确一致 {ok}、不一致 {bad}")
+    # v3.3 硬关卡：文档承诺的"不过不进分析"由退出码兜底，不再依赖人读输出
+    if bad and tag != "latest":
+        print("FAIL: 归档块精确口径存在 MISMATCH=增量数据有洞（最常见：重叠窗处理错/窗口漏段）——回 U1 补数据")
+        sys.exit(1)
+    if bad:
+        print("INCONCLUSIVE: latest 口径存在差异，不作对账关卡放行依据——换归档块重跑，或逐条人工确认均为截止后新交易")
+        sys.exit(2)
+    print(f"PASS{'' if tag != 'latest' else '（latest 口径——归档块不可用时的降级通过，结论按人工确认口径）'}")
 
 
 if __name__ == "__main__":

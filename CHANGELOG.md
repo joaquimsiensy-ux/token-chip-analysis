@@ -13,6 +13,7 @@
 - **2.24.0/2.25.0 曾物理倒排**（同日并行会话插入位置错位）——2026-07-18 稳定化时仅调整排列顺序，两条内容一字未动
 
 ## 版本索引（活跃窗口，新在上）
+- **3.3.0 2026-07-18 体检修复八项**（自查+codex 交叉复核融合，用户批 1-8 全做）：密钥去硬编码/v3.2 漏改五处收口/三对重复条目消除/导航反向检查、analysis-state.json 默认机器状态文件、对账关卡退出码硬化+离线契约测试（run_all.py 全家桶）、monitoring-package.md 拆册、整编 60KB 线绑定拆分动作
 - **3.2.0 2026-07-18 监控包按需化**：观察哨/两档监控建议/appendix.json 默认不随报告生成，用户确认买入后补（新增「买入后监控包」流程）；格式标准原样不动；附录 B 升为不可省支点
 - **3.1.0 2026-07-18 成本纪律三刀版**：全量账单解剖(65 会话拆账、63% 缓存读)→机械外包 sonnet 子代理/上下文 30 万线+交接包断点/文档定点读；用户批 A 档全部、否决 B/C 档
 - **3.0.0 2026-07-18 稳定化大版本**：git 基线/标签库双真相收敛/复盘机制升级(质量指标+candidate+整编+预测追踪)/playbook 重组/守护三件套/瘦身 287→97MB
@@ -20,6 +21,21 @@
 - 2.25.0 2026-07-17 标签库 v4.2 round-trip 闭环 | 2.24.0 DUMBMONEY(Robinhood)
 - 2.23.0 2026-07-17 Pointless 二次增量 | 2.22.0 TRASH 二次增量 | 2.21.0 标签库 v4.1 ⚠撞号 | 2.21.0 BEGGAR ⚠撞号 | 2.20.0 标签库 v4
 - （2.19.0 及更早共 40 条 → CHANGELOG-archive.md）
+
+## [3.3.0] - 2026-07-18 — 体检修复八项：一致性收口+硬关卡机器化+监控分册（自查+codex 交叉复核融合，用户批 1-8 全做）
+
+> 触发：v3.2 交付后用户要求全面体检 skill 找优化空间（@CX）。自查+codex 双向复核、每条声明亲手验证后定 13 项清单，用户批 1-8。核心判断（双方一致）：方法本身扎实，真问题是三层失同步——v3.2 按需化没改干净、文档间重复条目开始漂移、文档承诺的"硬关卡"在脚本层不硬。
+
+- **①密钥去硬编码**：probe_codetype.py 内置 dRPC key 明文违反铁律 5（全库扫描仅此 1 处）——改为 ETH_RPC 环境变量必填、缺失报错指路 api-keys.md。key 已随 git 化进历史：仓库纯本机无远程暂不清洗，**分享 skill 目录前必须先处理 git 历史**；轮换 key 受阻于 dRPC 账号未登记（见 api-keys.md 第 3 节⚠）。
+- **②v3.2 漏改五处收口**：SKILL.md 工作流总览"JSON 附录"残留、report-template checklist 两个第 13 条撞号、骨架元信息行/JSON 节"必须"措辞未条件化、update-workflow U5 骨架与 checklist 无"无监控包"分支标注、playbook §7 标题与 §11 观察哨机制+retrospective"appendix 即登记处"未跟 v3.2——全部按"监控包 关/开 两分支"统一收口（codex 方案：收口分支而非到处打补丁）。顺带成本纪律条 3 补 `| head` 流式风险限定（SIGPIPE 会提前杀上游进程，流式长任务先落文件再 head）。
+- **③三对重复条目消除**：playbook"注资证据分级"+"gas funder 公共性体检"双份（已现措辞分叉——漂移现场证据）、§6a"计数分级+离场庄亚型"双份、update-workflow U3a 巨型段（4585 字符单行）与 playbook §6 跨文档双份——各留一处主本+指针；U3a 独有的"≥1% 候选资金对手方无条件展开"深挖线条款并入 playbook §6 主本后再压缩，零语义丢失。
+- **④导航反向检查**：SKILL.md 深入阅读清单补漏列的 data-pipeline-robinhood.md；docs_lint 新增反向漏列检查（references 下存在但 SKILL.md 未列 → FAIL）——正向断链查不出"存在但没列"。
+- **★⑤analysis-state.json（默认交付的机器状态文件，codex 提出）**：v3.2 砍 appendix 的连锁缺口——未买入标的做 /token-update 时实体表只能从附录 B 文字反抄地址。新增默认交付物 analysis-state.json=appendix 机器子集（token/whale_groups/vault_addresses/addresses 五字段版/camp_share_series，无一切监控文案），schema 定义在 report-template 新节；verify_balances/analyze_inc 已内置缺 appendix 自动读它；U0 资产表/U5 滚动/checklist 11 条同步。
+- **★⑥对账关卡退出码硬化+离线契约测试**：replay_inc 非零地址负余额=exit 1、含 ZERO 快照恒等式不闭合=exit 1（实证两种快照格式并存：GME/BEGGAR 含 ZERO 负项、COMPUTE 正余额型——后者恒等式不适用打 NOTE 降级，防误拦）；verify_balances 归档块口径 MISMATCH=exit 1、latest 口径差异=exit 2 INCONCLUSIVE 不再假 PASS。新增 test_replay_inc.py（四路径 fixture）+ test_build_html.py（WARN 拒交付与 report-extract 四键契约）+ **run_all.py 一键全家桶**（3 lint+2 测试），retrospective 步骤 3 改跑全家桶——"文档说硬"首次变成"退出码硬"。
+- **⑦monitoring-package.md 拆册**：JSON schema+买入后监控包节（占 report-template 29%、默认分析用不到）独立成册，report-template 留指针（31.1K→22.8K）；SKILL.md/update-workflow/playbook/build_html 全部引用改指向；SKILL.md 成本纪律砍历史基线数字段（数字在本 CHANGELOG v3.1.0 可考古）。
+- **⑧整编 60KB 线绑定动作**：v3.0 整编后 playbook 仍 96KB、触发器永久为真形同虚设——线不动，绑定明确动作：超线整编=四分册主题拆分+路由索引（供给对账/实体聚类/状态异常/证据复核），v3.5 兑现；拆分纪律=先冻结规则清单逐条迁移核对。
+- 未做项（用户未批或双方共识不做）：背景调研路线精简（旧案不重开）、"观察哨"双义改名、脚本成熟度元数据、版本号重定义（用户 7-14 规则不翻案）、playbook 立即大拆分（v3.5）、砍复核/换 sonnet 判断环节（B 档否决维持）。
+- 守护全家桶 5/5 PASS（docs_lint 20 文档含新册+反向检查）。**验证纪律实录**：codex 两条声明按验证打了折扣——verify_balances"返回 0"是刻意设计（latest 口径天然微差）非 bug，精细化而非推翻；恒等式硬化若按 codex 原方案无条件 FAIL 会误拦 COMPUTE 型快照，实证三个实战产物后才定条件版。
 
 ## [3.2.0] - 2026-07-18 — 监控包按需化：观察哨/监控建议/JSON 附录从标配改为买入后生成（用户定）
 
