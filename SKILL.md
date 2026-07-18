@@ -1,6 +1,6 @@
 ---
 name: token-chip-analysis
-description: 对任意链上代币（BSC/ETH 等 EVM、Solana、Hyperliquid、Filecoin 及新链）做机构级庄家链上行为分析——全量链上数据采集与重放、庄级实体识别与 P0/P1 标签分级（项目方/大庄/小庄/离场庄/狙击集团/刷量地址）、各阵营持仓占比演变、P0 实体全周期流转路径图、项目方背景调查、对抗复核、自包含 HTML 报告（含机器可读 JSON 附录与监控建议供投后监控）。当用户问"某代币的筹码分析/筹码结构/庄家行为分析"、"有几个庄/庄家什么类型"、"庄家/项目方/做市商在吸筹还是砸盘"、"有没有关联地址/老鼠仓/单一实体控盘"、"庄家是不是跑了/弃盘了"、"这个币该不该买/该不该卖/解锁抛压大不大"、"帮我看看某代币的链上持仓/大户动向"，或提到 holder analysis、鲸鱼追踪、代币尽调时使用。与 gmgn-token 的区别：gmgn-token 是快速查询单项数据；本 skill 是数小时的深度分析工程（全量数据+交叉验证+HTML 交付）。只查价格/K线/热榜/新币列表不要用本 skill。
+description: 对任意链上代币（EVM/Solana/Hyperliquid/Filecoin 及新链）做机构级庄家链上行为分析——全量数据采集重放、庄级实体识别与 P0/P1 标签分级（项目方/大庄/小庄/离场庄/狙击集团/刷量地址）、各阵营持仓演变、P0 流转路径图、项目方背景调查、对抗复核、自包含 HTML 报告（含 JSON 附录与监控建议）。当用户问"某代币的筹码分析/筹码结构/庄家行为分析"、"有几个庄/庄家什么类型"、"庄家/项目方/做市商在吸筹还是砸盘"、"有没有关联地址/老鼠仓/单一实体控盘"、"庄家是不是跑了/弃盘了"、"该不该买/该不该卖/解锁抛压大不大"、"看看某代币的链上持仓/大户动向"，或提到 holder analysis、鲸鱼追踪、代币尽调时使用。与 gmgn-token 的区别：gmgn-token 是快速单项查询；本 skill 是数小时深度分析工程。只查价格/K线/热榜/新币列表不要用本 skill。
 ---
 
 # 代币筹码分析（Token Chip Analysis）
@@ -78,7 +78,7 @@ description: 对任意链上代币（BSC/ETH 等 EVM、Solana、Hyperliquid、Fi
 
 ## 阶段 6：复盘与迭代（固定最后一步，不可省略）
 
-按 `references/retrospective.md` 执行：生成五类复盘清单（新数据源/新坑/方法修正/脚本变更/遗留 TODO）→ AskUserQuestion 确认 → 写入对应 references + CHANGELOG 次版本 +1，并记录本次轮次数/Bash 调用数等成本指标。
+按 `references/retrospective.md` 执行：生成五类复盘清单（新数据源/新坑/方法修正/脚本变更/遗留 TODO）→ AskUserQuestion 确认 → 写入对应 references + CHANGELOG 次版本 +1。v3.0 起同步执行：成本 3 指标 + **质量 4 指标**（初稿结论数/复核判定分布/漏检数/数字错误数）、分析方法类新规则按 **candidate 分级**入库、逢 0/5 版本做**整编**（减法）、写入后跑 `scripts/tests/` 守护三件套 + git commit——细则全在 retrospective.md。
 
 ## 更新模式（/token-update，增量刷新已有研报）
 
@@ -126,6 +126,7 @@ description: 对任意链上代币（BSC/ETH 等 EVM、Solana、Hyperliquid、Fi
 - `report-template.md` — 四问报告结构与 P0/P1 标签体系、三张标准图+全周期流转路径图规范、JSON 附录 schema 与监控抽取硬标准（report-extract 四键）、监控建议两档、措辞对照表、HTML 排版约定
 - `update-workflow.md` — /token-update 增量更新六阶段（旧研报资产盘点与兜底、增量起点与重叠窗去重、新庄扫描口径、滚动 JSON、何时该回全量）
 - `address-book.md` — 跨分析累积的基础设施地址标签库（手工实战核验层）
-- `labels/README.md` — 批量地址标签库（七链 ~46.9 万条 CSV + labels_resolver.py 共享内核 + label_lookup.py 查询器，v4 2026-07-17）：**聚类前把全部候选地址先过一遍**（SERIAL/RISK/RISK-CANDIDATE/RISK-UNKNOWN/EXCLUDE/IDENTITY/PRIVACY 七段输出，`--json` 出 JSONL）；EVM cluster.py / analyze_holdings.py、SOL replay_edges.py / build_evolution.py、HL main_metrics.py 已内置 resolver 自动兜底（`--no-labels` 关闭，缺表显式报 degraded_mode）；决策三维（merge_policy/balance_policy/风险四档白名单）、惯犯 serial-actor 层、Robinhood codehash 指纹（fingerprint_check.py）、实战 miss 队列、增量入库 add_labels.py——用法与纪律见该 README
+- `labels/README.md` — 批量地址标签库**使用篇**（七链 ~47.1 万条 CSV + labels_resolver.py 共享内核，v4.2+ 2026-07-18）：**聚类前把全部候选地址先过一遍 label_lookup.py**（七段输出，`--json` 出 JSONL）；EVM/SOL/HL/FIL 主力脚本已内置 resolver 自动兜底（`--no-labels` 关闭，缺表显式报 degraded_mode）；决策三维、惯犯 serial-actor 层（提示不定罪纪律）、codehash 指纹、行为守门员、miss 队列——用法/纪律/盲区全在该 README
+- `labels/MAINTENANCE.md` — 标签库**维护篇**（重建/发布流程含 roundtrip+manifest 门禁、curation 层语义、数据源清单、注入清洗纪律、benchmark、扩容路线）——只在维护标签库时读，分析会话不用碰
 - `environment.md` — 本机环境坑速查
 - `retrospective.md` — 阶段 6 复盘迭代操作手册
