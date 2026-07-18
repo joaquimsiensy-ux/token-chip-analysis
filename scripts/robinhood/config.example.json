@@ -1,0 +1,44 @@
+{
+  "_comment": "来源：RAXOL(Robinhood) 分析会话实战产物 2026-07-12，v1.3 参数化收编进 skill。复制为 config.json 放到工作目录（脚本都读运行目录下的 config.json），按标的填写。数据输出到工作目录 data/ 子目录。",
+  "token": "0x标的合约地址（小写）",
+  "pool": "0x主池地址（pull_ohlcv.py 拉 GeckoTerminal K线用；Dexscreener latest/dex/tokens/{token} 可查）",
+  "decimals": 18,
+  "total_supply_tokens": 1000000000,
+  "hypersync": {
+    "_comment": "envio HyperSync（Robinhood 链）。key 留空则读环境变量 HYPERSYNC_KEY；再没有则报错——从 ~/.claude/api-keys.md 登记文件取用（envio 条目），不写死进 skill 目录",
+    "url": "https://robinhood.hypersync.xyz/query",
+    "key": ""
+  },
+  "rpc": "https://rpc.mainnet.chain.robinhood.com",
+  "rpc_comment": "EVM RPC（scripts/update/ 的 verify_balances / getcode_recheck 用；Robinhood 链必须浏览器 UA，默认已带，可选 rpc_ua 覆盖）。v2.10 增量通用件收编时新增",
+  "pools": {
+    "0x主池地址": "V2主池",
+    "0x其他池地址…": "V3-USDG池"
+  },
+  "pools_comment": "标的全部池 {地址:标签}（scripts/update/ 窗口买卖归因用；pool/pool_manager/v2_pairs 会自动并入，此处补其余池即可）",
+  "infra_addresses_comment": "gas_trace.py 溯源时剔除的基础设施地址：链级三件套已预填（Relay solver / 聚合器执行器 / V4 PoolManager，见 references/address-book.md），零地址必留；按标的补充：主池、税 swapper、金库、发射台合约等",
+  "infra_addresses": [
+    "0x0000000000000000000000000000000000000000",
+    "0xf70da97812cb96acdf810712aa562db8dfa3dbef",
+    "0x00000000aa59b37306e34cef3e021e07156cfa3a",
+    "0x8366a39cc670b4001a1121b8f6a443a643e40951"
+  ],
+  "gas_trace": {
+    "_comment": "溯源目标筛选阈值：峰值持仓占总量比例 / 现仓占比（满足其一即入选），每地址取最早 N 笔入金。gas_trace_bs.py 可加 extra_targets:[部署者/金库等重点地址] 强制纳入溯源",
+    "peak_share_min": 0.004,
+    "balance_share_min": 0.0008,
+    "per_addr_limit": 8,
+    "extra_targets": []
+  },
+  "_cost_engine_comment": "以下为 cost_engine.py / pull_weth_pool.py 可选字段（v1.7 收编）：fee_distributor=fee 分配器地址（该地址→用户的转账算 fee 不算买入，防虚增成本）；quote_token=主池报价币（默认 WETH 0x0bd7…ad73）；deploy_block=发射区块（pull_weth_pool 起扫块，缺省 0）。另需自备 data/quote_usd_hour.json=报价币/USD 小时K（binance.vision ETHUSDT klines 可拉）",
+  "fee_distributor": "",
+  "quote_token": "0x0bd7d308f8e1639fab988df18a8011f41eacad73",
+  "deploy_block": 0,
+  "pool_manager": "0x8366a39cc670b4001a1121b8f6a443a643e40951",
+  "pool_manager_comment": "Uniswap V4 PoolManager 单例（pull_swaps_v4.py 用）",
+  "swap_pools_v4": [
+    "0x主池poolId",
+    "0x次池poolId…"
+  ],
+  "swap_pools_v4_comment": "V4 标的全部池的 poolId 列表（Dexscreener/GT 查；pull_swaps_v4.py 按 topic1=poolId 过滤 PoolManager 的 Swap/ModifyLiquidity）。V3 池仍用 swap_pools + pull_swaps.py"
+}

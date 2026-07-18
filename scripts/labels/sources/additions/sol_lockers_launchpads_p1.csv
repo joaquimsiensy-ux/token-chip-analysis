@@ -1,0 +1,7 @@
+address,chain,name,category,tier,source,added_date,evidence,risk_flags,merge_policy,balance_policy,source_snapshot_at,verified_at,status,raw_labels
+LocpQgucEQHbqNABEYvBvwoxCPsSbG91A1QaQhQQqjn,sol,Jupiter Lock 锁仓程序,locker,exclude,registry-official,2026-07-17,官方 developers.jup.ag/docs/lock + GitHub jup-lock declare_id 双源；RPC executable=True 亲验 2026-07-17,,,,2026-07-17,2026-07-17,,
+CChTq6PthWU82YZkbveA3WDf7s97BWhBK4Vx9bmsT743,sol,Bonfida Token Vesting 程序,locker,exclude,registry-official,2026-07-17,官方 GitHub Bonfida/token-vesting mainnet ID；RPC executable=True 亲验 2026-07-17,,,,2026-07-17,2026-07-17,,
+boop8hVGQGqehUK2iVEMEnMrL5RbjywRzHKBmBE7ry4,sol,Boop.fun 发射台主程序,launchpad,exclude,manual-chainverify,2026-07-17,官方前端 bundle 明文 + RPC executable=True + Bitquery 三重验证 2026-07-17,,,,2026-07-17,2026-07-17,,
+5qWya6UjwWnGVhdSBL3hyZ7B45jbk6Byt1hwd7ohEGXE,sol,Believe 平台 Token Authority（平台操作钱包·非项目方）,launchpad,identity,bitquery-community,2026-07-17,单源 Bitquery（C 级候选）；RPC 验证为 System Program 普通钱包；Believe 无自有程序、平台钱包直调 Meteora DBC 建池,,,,2026-07-17,2026-07-17,,
+dbcij3LWUppWqq96dh6gJWwBifmcGfLSB5D4DuSMaqN,sol,Meteora DBC（dynamic bonding curve·Believe 发射通道）,launchpad,exclude,manual-chainverify,2026-07-17,Meteora 官方 GitHub README mainnet ID；Believe 平台经此程序发币（docs.believe.app 无自有链上程序）,,,,2026-07-17,2026-07-17,,
+cpamdpZCGKUy5JxQXB4dcpGPiikHawvSWAd6mEn1sGG,sol,Meteora DAMM v2（DBC/Boop 毕业池程序）,program,exclude,manual-chainverify,2026-07-17,Meteora 官方 GitHub damm-v2 mainnet ID；Boop 官方 Notion 明文指认毕业池程序,,,,2026-07-17,2026-07-17,,

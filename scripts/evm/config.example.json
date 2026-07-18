@@ -1,0 +1,58 @@
+{
+  "_comment": "来源：OPN(BSC) 分析会话实战产物, 2026-07。复制为 config.json 放到工作目录（scratchpad），按标的填写。脚本都读同目录 config.json",
+  "token": "0x7977bf3e7e0c954d12cdca3e013adaf57e0b06e0",
+  "decimals": 18,
+  "total_supply_m": 1000,
+  "chains": {
+    "bsc": {
+      "scan_rpc_pool": [
+        {"url": "https://bsc.rpc.blxrbdn.com", "step": 10000, "workers": 7, "cooldown": 0.1},
+        {"url": "https://bsc.drpc.org", "step": 10000, "workers": 1, "cooldown": 8.0}
+      ],
+      "ts_rpc": "https://bsc-dataseed.bnbchain.org",
+      "start_time_utc": "2026-01-05T00:00:00Z",
+      "bisect_low_block": 60000000
+    },
+    "eth": {
+      "etherscan_key": "填用户提供的免费key（仅chainid=1可用）"
+    }
+  },
+  "hypersync": {
+    "_comment": "envio HyperSync 全量转账主力通道（fetch_hypersync.py）。token 留空：从 ~/.claude/api-keys.md 登记文件取用，不写死进 skill 目录。换链改子域，如 eth.hypersync.xyz",
+    "url": "https://bsc.hypersync.xyz/query",
+    "token": ""
+  },
+  "alchemy": {
+    "_comment": "alchemy_getAssetTransfers 备用通道（fetch_alchemy.py，带时间戳）。key 留空：从 ~/.claude/api-keys.md 登记文件取用，不写死进 skill 目录。换链改前缀，如 eth-mainnet",
+    "url": "https://bnb-mainnet.g.alchemy.com/v2/",
+    "key": ""
+  },
+  "cex_wallets": {
+    "_comment": "常用 CEX 热钱包标签底册见 references/address-book.md，按标的所在链筛选补充",
+    "0xf977814e90da44bfa03b6295a0616a897441acec": "cex_binance|Binance HotWallet20",
+    "0x8894e0a0c962cb723c1976a4421c95949be2d4e3": "cex_binance|Binance 51",
+    "0xe2fc31f816a9b94326492132018c3aecc4a93ae1": "cex_binance|Binance Withdrawals7",
+    "0x631fc1ea2270e98fbd9d92658ece0f5a269aa161": "cex_binance|Binance BSC hot",
+    "0x5a52e96bacdabb82fd05763e25335261b270efcb": "cex_binance|Binance 28",
+    "0x28c6c06298d514db089934071355e5743bf21d60": "cex_binance|Binance 14 (ETH)",
+    "0xdfd5293d8e347dfe59e90efd55b2956a1343963d": "cex_binance|Binance 16 (ETH)",
+    "0xf89d7b9c864f589bbf53a82105107622b35eaa40": "cex_bybit|Bybit HotWallet",
+    "0x4982085c9e2f89f2ecb8131eca71afad896e89cb": "cex_mexc|MEXC 13",
+    "0x75e89d5979e4f6fba9f97c104c2f0afb3f1dcb88": "cex_mexc|MEXC 1 (ETH)",
+    "0x0d0707963952f2fba59dd06f2b425ace40b492fe": "cex_gate|Gate.io 1",
+    "0x1ab4973a48dc892cd9971ece8e01dcc7688f8f23": "cex_bitget|Bitget 6",
+    "0x2b5634c42055806a59e9107ed44d43c426e58258": "cex_kucoin|KuCoin 1 (ETH)",
+    "0xdc76cd25977e0a5ae17155770273ad58648900d3": "cex_htx|HTX 56 (ETH)",
+    "0x6cc5f688a315f3dc28a7781717a9a798a59fda7b": "cex_okx|OKX (ETH)"
+  },
+  "team_wallets": {
+    "_comment": "阶段0/3 识别后填入：金库/vesting/分发器等官方地址",
+    "0x示例": "team_treasury|运营金库"
+  },
+  "mm_wallets": {
+    "0xf584f8728b874a6a5c7a8d4d387c9aae9172d621": "mm_jump|Jump Trading",
+    "0xdbf5e9c5206d0db70a90108bf936da60221dc080": "mm_wintermute|Wintermute",
+    "0xd8d6ffe342210057bf4dcc31da28d006f253cef0": "mm_gsr|GSR",
+    "0xddacad3b1edee8e2f5b2e84f658202534fcb0374": "mm_dwf|DWF Labs"
+  }
+}

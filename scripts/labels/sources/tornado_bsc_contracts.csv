@@ -1,0 +1,6 @@
+address,chain,name,category,tier,source,added_date,evidence,risk_flags,merge_policy,balance_policy,source_snapshot_at,verified_at,status,raw_labels
+0x0d5550d52428e7e3175bfc9550207e4ad3859b17,bsc,Tornado Cash BSC Proxy（用户入口，tx.to 皆为它）,mixer,exclude,manual-chainverify,2026-07-17,B8 审计链上实测：面额合约 Deposit 事件所在 tx 的 to 全部为它（2026-07-17 HyperSync+RPC 亲验）,tornado-cash,,,2026-07-17,2026-07-17,,
+0x84443cfd09a48af6ef360c6976c5392ac5023a1f,bsc,Tornado Cash BSC 0.1 BNB 面额池,mixer,exclude,manual-chainverify,2026-07-17,spellbook tornado_cash_bnb_deposits.sql 面额表+链上 Deposit 事件亲验（2026-07-17）,tornado-cash,,,2026-07-17,2026-07-17,,
+0xd47438c816c9e7f2e2888e060936a499af9582b3,bsc,Tornado Cash BSC 1 BNB 面额池,mixer,exclude,manual-chainverify,2026-07-17,spellbook tornado_cash_bnb_deposits.sql 面额表+链上 Deposit 事件亲验（2026-07-17）,tornado-cash,,,2026-07-17,2026-07-17,,
+0x330bdfade01ee9bf63c209ee33102dd334618e0a,bsc,Tornado Cash BSC 10 BNB 面额池,mixer,exclude,manual-chainverify,2026-07-17,spellbook tornado_cash_bnb_deposits.sql 面额表+链上 Deposit 事件亲验（2026-07-17）,tornado-cash,,,2026-07-17,2026-07-17,,
+0x1e34a77868e19a6647b1f2f47b51ed72dede95dd,bsc,Tornado Cash BSC 100 BNB 面额池,mixer,exclude,manual-chainverify,2026-07-17,spellbook tornado_cash_bnb_deposits.sql 面额表+链上 Deposit 事件亲验（2026-07-17）,tornado-cash,,,2026-07-17,2026-07-17,,

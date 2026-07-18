@@ -1,0 +1,53 @@
+{
+ "date": "2026-07-16",
+ "goldset": "goldset.csv",
+ "total": 447,
+ "chains": {
+  "base": {
+   "entity": 0,
+   "entity_wrong_exclude": 0,
+   "entity_identity_tagged": 0,
+   "infra_manual": 13,
+   "infra_manual_hit": 13,
+   "infra_field": 0,
+   "infra_field_hit": 0
+  },
+  "bsc": {
+   "entity": 7,
+   "entity_wrong_exclude": 0,
+   "entity_identity_tagged": 0,
+   "infra_manual": 36,
+   "infra_manual_hit": 36,
+   "infra_field": 0,
+   "infra_field_hit": 0
+  },
+  "eth": {
+   "entity": 1,
+   "entity_wrong_exclude": 0,
+   "entity_identity_tagged": 0,
+   "infra_manual": 25,
+   "infra_manual_hit": 25,
+   "infra_field": 1,
+   "infra_field_hit": 1
+  },
+  "robinhood": {
+   "entity": 192,
+   "entity_wrong_exclude": 0,
+   "entity_identity_tagged": 0,
+   "infra_manual": 45,
+   "infra_manual_hit": 45,
+   "infra_field": 16,
+   "infra_field_hit": 8
+  },
+  "sol": {
+   "entity": 81,
+   "entity_wrong_exclude": 0,
+   "entity_identity_tagged": 0,
+   "infra_manual": 26,
+   "infra_manual_hit": 26,
+   "infra_field": 4,
+   "infra_field_hit": 0
+  }
+ },
+ "violations": []
+}

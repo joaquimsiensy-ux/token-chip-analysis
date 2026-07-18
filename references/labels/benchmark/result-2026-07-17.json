@@ -1,0 +1,98 @@
+{
+ "date": "2026-07-17",
+ "goldset": "goldset.csv",
+ "total": 964,
+ "chains": {
+  "base": {
+   "entity": 0,
+   "entity_wrong_exclude": 0,
+   "entity_identity_tagged": 0,
+   "random_eoa": 0,
+   "random_eoa_wrong_exclude": 0,
+   "infra_manual": 115,
+   "infra_manual_hit": 115,
+   "infra_field": 0,
+   "infra_field_hit": 0,
+   "weak_gate": true
+  },
+  "bsc": {
+   "entity": 7,
+   "entity_wrong_exclude": 0,
+   "entity_identity_tagged": 3,
+   "random_eoa": 60,
+   "random_eoa_wrong_exclude": 0,
+   "infra_manual": 168,
+   "infra_manual_hit": 168,
+   "infra_field": 0,
+   "infra_field_hit": 0,
+   "weak_gate": false
+  },
+  "eth": {
+   "entity": 1,
+   "entity_wrong_exclude": 0,
+   "entity_identity_tagged": 0,
+   "random_eoa": 0,
+   "random_eoa_wrong_exclude": 0,
+   "infra_manual": 39,
+   "infra_manual_hit": 39,
+   "infra_field": 1,
+   "infra_field_hit": 1,
+   "weak_gate": true
+  },
+  "filecoin": {
+   "entity": 0,
+   "entity_wrong_exclude": 0,
+   "entity_identity_tagged": 0,
+   "random_eoa": 0,
+   "random_eoa_wrong_exclude": 0,
+   "infra_manual": 10,
+   "infra_manual_hit": 10,
+   "infra_field": 0,
+   "infra_field_hit": 0,
+   "weak_gate": true
+  },
+  "hyperliquid": {
+   "entity": 0,
+   "entity_wrong_exclude": 0,
+   "entity_identity_tagged": 0,
+   "random_eoa": 0,
+   "random_eoa_wrong_exclude": 0,
+   "infra_manual": 62,
+   "infra_manual_hit": 62,
+   "infra_field": 0,
+   "infra_field_hit": 0,
+   "weak_gate": true
+  },
+  "robinhood": {
+   "entity": 229,
+   "entity_wrong_exclude": 0,
+   "entity_identity_tagged": 89,
+   "random_eoa": 60,
+   "random_eoa_wrong_exclude": 0,
+   "infra_manual": 62,
+   "infra_manual_hit": 62,
+   "infra_field": 23,
+   "infra_field_hit": 13,
+   "weak_gate": false
+  },
+  "sol": {
+   "entity": 81,
+   "entity_wrong_exclude": 0,
+   "entity_identity_tagged": 37,
+   "random_eoa": 0,
+   "random_eoa_wrong_exclude": 0,
+   "infra_manual": 42,
+   "infra_manual_hit": 42,
+   "infra_field": 4,
+   "infra_field_hit": 0,
+   "weak_gate": false
+  }
+ },
+ "violations": [],
+ "weak_gate_chains": [
+  "base",
+  "eth",
+  "filecoin",
+  "hyperliquid"
+ ]
+}

@@ -1,0 +1,26 @@
+address,chain,name,category,tier,source,added_date,evidence,risk_flags,merge_policy,balance_policy,source_snapshot_at,verified_at,status,raw_labels
+f00,filecoin,Official,infra,exclude,manual-filfox,2026-07-17,filfox /address/f00 官方标签（actor=system，2026-07-17 拉取）,,,,2026-07-17,2026-07-17,,system
+f01,filecoin,Official,infra,exclude,manual-filfox,2026-07-17,filfox /address/f01 官方标签（actor=init，2026-07-17 拉取）,,,,2026-07-17,2026-07-17,,init
+f02,filecoin,Official,infra,exclude,manual-filfox,2026-07-17,filfox /address/f02 官方标签（actor=reward，2026-07-17 拉取）,,,,2026-07-17,2026-07-17,,reward
+f03,filecoin,Official,infra,exclude,manual-filfox,2026-07-17,filfox /address/f03 官方标签（actor=cron，2026-07-17 拉取）,,,,2026-07-17,2026-07-17,,cron
+f04,filecoin,Official,infra,exclude,manual-filfox,2026-07-17,filfox /address/f04 官方标签（actor=storagepower，2026-07-17 拉取）,,,,2026-07-17,2026-07-17,,storagepower
+f05,filecoin,Official,infra,exclude,manual-filfox,2026-07-17,filfox /address/f05 官方标签（actor=storagemarket，2026-07-17 拉取）,,,,2026-07-17,2026-07-17,,storagemarket
+f06,filecoin,Official,infra,exclude,manual-filfox,2026-07-17,filfox /address/f06 官方标签（actor=verifiedregistry，2026-07-17 拉取）,,,,2026-07-17,2026-07-17,,verifiedregistry
+f07,filecoin,Filecoin 系统 actor（datacap）,infra,exclude,manual-filfox,2026-07-17,filfox /address/f07 官方标签（actor=datacap，2026-07-17 拉取）,,,,2026-07-17,2026-07-17,,datacap
+f010,filecoin,Filecoin 系统 actor（eam）,infra,exclude,manual-filfox,2026-07-17,filfox /address/f010 官方标签（actor=eam，2026-07-17 拉取）,,,,2026-07-17,2026-07-17,,eam
+f080,filecoin,Root Verifier,entity,identity,manual-filfox,2026-07-17,filfox /address/f080 官方标签（actor=multisig，2026-07-17 拉取）,,,,2026-07-17,2026-07-17,,multisig
+f090,filecoin,Reserved,fund,identity,manual-filfox,2026-07-17,filfox /address/f090 官方标签（actor=account，2026-07-17 拉取）,,,,2026-07-17,2026-07-17,,account
+f099,filecoin,Burn Account,burn,exclude,manual-filfox,2026-07-17,filfox /address/f099 官方标签（actor=account，2026-07-17 拉取）,,,,2026-07-17,2026-07-17,,account
+f0100,filecoin,Official,entity,identity,manual-filfox,2026-07-17,filfox /address/f0100 官方标签（actor=account，2026-07-17 拉取）,,,,2026-07-17,2026-07-17,,account
+f0101,filecoin,Official,entity,identity,manual-filfox,2026-07-17,filfox /address/f0101 官方标签（actor=account，2026-07-17 拉取）,,,,2026-07-17,2026-07-17,,account
+f0102,filecoin,Official,entity,identity,manual-filfox,2026-07-17,filfox /address/f0102 官方标签（actor=account，2026-07-17 拉取）,,,,2026-07-17,2026-07-17,,account
+f0110,filecoin,Faucet,entity,identity,manual-filfox,2026-07-17,filfox /address/f0110 官方标签（actor=account，2026-07-17 拉取）,,,,2026-07-17,2026-07-17,,account
+f0111,filecoin,Faucet,entity,identity,manual-filfox,2026-07-17,filfox /address/f0111 官方标签（actor=account，2026-07-17 拉取）,,,,2026-07-17,2026-07-17,,account
+f0112,filecoin,Bot,entity,identity,manual-filfox,2026-07-17,filfox /address/f0112 官方标签（actor=account，2026-07-17 拉取）,,,,2026-07-17,2026-07-17,,account
+f0113,filecoin,Bot,entity,identity,manual-filfox,2026-07-17,filfox /address/f0113 官方标签（actor=account，2026-07-17 拉取）,,,,2026-07-17,2026-07-17,,account
+f0114,filecoin,Bot,entity,identity,manual-filfox,2026-07-17,filfox /address/f0114 官方标签（actor=account，2026-07-17 拉取）,,,,2026-07-17,2026-07-17,,account
+f0117,filecoin,Protocol Labs,fund,identity,manual-filfox,2026-07-17,filfox /address/f0117 官方标签（actor=multisig，2026-07-17 拉取）,,,,2026-07-17,2026-07-17,,multisig
+f0118,filecoin,Protocol Labs,fund,identity,manual-filfox,2026-07-17,filfox /address/f0118 官方标签（actor=multisig，2026-07-17 拉取）,,,,2026-07-17,2026-07-17,,multisig
+f0119,filecoin,Protocol Labs,fund,identity,manual-filfox,2026-07-17,filfox /address/f0119 官方标签（actor=multisig，2026-07-17 拉取）,,,,2026-07-17,2026-07-17,,multisig
+f0120,filecoin,Protocol Labs,fund,identity,manual-filfox,2026-07-17,filfox /address/f0120 官方标签（actor=multisig，2026-07-17 拉取）,,,,2026-07-17,2026-07-17,,multisig
+f0121,filecoin,Filecoin Foundation,fund,identity,manual-filfox,2026-07-17,filfox /address/f0121 官方标签（actor=multisig，2026-07-17 拉取）,,,,2026-07-17,2026-07-17,,multisig

@@ -1,0 +1,4 @@
+fingerprint_sha256,code_len,selector_sig,name,verdict,evidence,sample_address,added_date
+791c79c7135b3b9c7784acbf41fc75aa8cf9b647c0a5b2794a6613bd490575a0,23452,a84d6fcaaa58b52b,公共bot卖币执行合约模板（用户调用同tx代卖进池）,infra-candidate,RAXOL/GME/Pointless 案实测三部署同模板；61.7万tx/204万转账级公共设施,0x9be3cc594a47d90148b9f65466c57600018d237c,2026-07-17
+39756e997807cad857ba710f3d60bbe97572ef8abacd84987295105fa72f71c6,23617,c945c9e3ec292330,公共bot卖币执行合约模板·改版（selector集演化）,infra-candidate,GME 增量更新实测第三部署；行为同款、字节码为升级版（2026-07-17 指纹取样发现）,0x68be5163fdd75ecad02aee1c9242e8afc8e95c8d,2026-07-17
+52aeafde43bd0b94f31117e5ea729575439ee64f8fb8058e01b1ae02a322b8ee,3055,dc6b414003f7fdd3,公共bot卖币执行合约·轻量变体（3KB）,infra-candidate,Pointless D14 告警甄别实测：246 独立 txfrom、655 笔原子入→卖、余额恒 0,0x2a7f3d7486641c77600b9b9256132755c8aebb4f,2026-07-17

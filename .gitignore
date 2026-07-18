@@ -1,0 +1,18 @@
+# 系统与缓存垃圾
+.DS_Store
+__pycache__/
+*.pyc
+*.prev
+.goplus_cache.json
+
+# 可重建的 staging 构建输出（真源在 additions/ 与小型 source 文件，发布版在 references/labels/）
+scripts/labels/sources/out/
+
+# 大文件原始源（README 约定"不长存，重建前重下载"；dune 两表保留 .gz 压缩包免重耗 credits，解压版忽略）
+scripts/labels/sources/accounts.csv
+scripts/labels/sources/tokens.csv
+scripts/labels/sources/brianleect_eth.json
+scripts/labels/sources/brianleect_bsc.json
+scripts/labels/sources/dune_tornado.csv
+scripts/labels/sources/dune_labels_v2.csv
+scripts/labels/sources/robinhood_verified_contracts.csv

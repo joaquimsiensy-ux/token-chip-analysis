@@ -1,0 +1,49 @@
+{
+  "_comment": "来源：HYPE(Hyperliquid) 分析会话实战产物, 2026-07。collect.py / snapshot_series.py 的标的配置。复制为 config.json（同目录）或用 --config <path> 指定；示例值即 HYPE 实战原值，换标的逐项改。main_metrics.py 未读本文件（参考实现，跑前改脚本内常量）。",
+  "_comment_token_symbol": "现货代币符号，拼进 Hypurrscan 路径 /holders/<symbol>、/twap/<symbol>、/holdersAtTimeWithLimit/<symbol>/…",
+  "token_symbol": "HYPE",
+  "_comment_token_id": "官方 info API tokenDetails 用的 tokenId（spotMeta 里查）",
+  "token_id": "0x0d01dc56dcaaca66ad901c959b4011ec",
+  "_comment_candle_coin": "candleSnapshot 的 coin 参数：现货对用 @<spotMeta里的pair索引>（HYPE/USDC 为 @107），永续直接写币名",
+  "candle_coin": "@107",
+  "_comment_tge_ms": "TGE/创世时间戳（毫秒），ledger/fills 分页起点。HYPE 为 2024-11-29 00:00 UTC 附近",
+  "tge_ms": 1732838400000,
+  "_comment_snapshot_start_s": "历史持仓快照起点（秒）。Hypurrscan 对该标的的最早可用快照时间，试探 /holdersAtTimeWithLimit 确定",
+  "snapshot_start_s": 1732991430,
+  "_comment_entities": "核心实体地址表（名称→地址）：官方金库/援助基金/团队/基金会/未来排放等。阶段0 识别后填入；collect.py entities/worklist 子命令用",
+  "entities": {
+    "assistance_fund": "0xfefefefefefefefefefefefefefefefefefefefe",
+    "assistance_fund2": "0xccd69f432ce1d8c9cdc31bd535dd11b37cbea4ea",
+    "team_hyperlabs": "0x43e9abea1910387c4292bca4b94de81462f8a251",
+    "hyper_foundation": "0xd57ecca444a9acb7208d286be439de12dd09de5d",
+    "future_emissions": "0xdddddddddddddddddddddddddddddddddddddddd"
+  },
+  "_comment_team_entity": "entities 里代表团队/分发金库的键名：worklist 子命令从它的 ledger 提取 spotTransfer 接收地址（team_recv），vesting 子命令追踪这些地址",
+  "team_entity": "team_hyperlabs",
+  "_comment_fills_recent_entity": "entities 里需要补拉近30天 fills（判断是否仍在市场操作）的实体键名，HYPE 场景=回购援助基金；留空则跳过该步",
+  "fills_recent_entity": "assistance_fund",
+  "_comment_evm_bridge": "HyperEVM 跨链桥系统地址（流水量过大不拉 ledger，只用于排除集）",
+  "evm_bridge": "0x2222222222222222222222222222222222222222",
+  "_comment_watch": "snapshot_series.py 逐档快照要追踪持仓曲线的地址表（名称→地址），通常 = entities + 桥 + 烧毁地址；键名即输出 JSON 的字段名",
+  "watch": {
+    "assistance_fund": "0xfefefefefefefefefefefefefefefefefefefefe",
+    "assistance_fund2": "0xccd69f432ce1d8c9cdc31bd535dd11b37cbea4ea",
+    "team_hyperlabs": "0x43e9abea1910387c4292bca4b94de81462f8a251",
+    "hyper_foundation": "0xd57ecca444a9acb7208d286be439de12dd09de5d",
+    "evm_bridge": "0x2222222222222222222222222222222222222222",
+    "burn_0": "0x0000000000000000000000000000000000000000",
+    "burn_dead": "0x000000000000000000000000000000000000dead"
+  },
+  "_comment_summary": "snapshot_series.py 末尾 stdout 摘要引用的 watch 键名（不影响输出 JSON）：summary_fund=回购/关键基金曲线（算近90天日均斜率），summary_cols=打印列（列标题→watch键）。watch 键改名时同步改",
+  "summary_fund": "assistance_fund",
+  "summary_cols": {
+    "AF持仓(M)": "assistance_fund",
+    "团队现货(M)": "team_hyperlabs",
+    "基金会(M)": "hyper_foundation",
+    "EVM桥(M)": "evm_bridge"
+  },
+  "_comment_data_dir": "数据目录（collect.py 写入、snapshot_series.py 读取）。留空 = 脚本所在目录的父目录下 data/（与实战目录结构一致）",
+  "data_dir": "",
+  "_comment_out_dir": "snapshot_series.py 输出目录。留空 = 脚本所在目录的父目录下 analysis/out/",
+  "out_dir": ""
+}
