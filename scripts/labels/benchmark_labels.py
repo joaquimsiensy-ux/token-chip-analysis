@@ -32,6 +32,14 @@ def main():
             gs_path = a
     if not os.path.exists(gs_path):
         print(f'FAIL: 金标集不存在 {gs_path}（先跑 build_goldset.py）'); sys.exit(1)
+    if labels_dir is not None:
+        # fail-fast（2026-07-18 稳定化修复）：--labels-dir 按 cwd 相对解析，在 sources/ 目录里跑
+        # README 的预检命令会解析到不存在的 sources/sources/out——此前表加载为空却照常输出
+        # "PASS: 错误 exclude = 0"（空表下恒真的假通过，门禁被路径错误静默绕过）。
+        import glob as _glob
+        if not _glob.glob(os.path.join(labels_dir, 'labels-*.csv')):
+            print(f'FAIL: --labels-dir={labels_dir} 下找不到任何 labels-*.csv（cwd={os.getcwd()}）——'
+                  f'相对路径按当前目录解析，请在 scripts/labels/ 下运行或改用绝对路径'); sys.exit(2)
 
     rows = list(csv.DictReader(open(gs_path)))
     by_chain = {}

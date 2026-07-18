@@ -99,9 +99,13 @@ def map_label(label: str):
     if any(l.endswith(s) for s in PROTOCOL_SUFFIX): return ('protocol', 'exclude')
     return (l or 'other', 'identity')  # 长尾默认识别级，保留原 label 作类目
 
-SRC_PRIORITY = {'manual': 0, 'addressbook': 0, 'serial': 0, 'registry': 1, 'spellbook': 1, 'solprog': 1,
+SRC_PRIORITY = {'curation': -1, 'manual': 0, 'addressbook': 0, 'serial': 0, 'registry': 1, 'spellbook': 1, 'solprog': 1,
                 'dune': 1, 'jup': 2, 'dawsbot': 2, 'brianleect': 3, 'tokens': 4,
                 'gmgn': 5, 'kolscan': 5}
+# curation = 人工精修固化层（additions/curation_overrides_*.csv），必须严格高于 manual/addressbook：
+# add_labels.py 对同级采用"新条目覆盖"、本构建器采用"先到保留"，两语义不一致曾致 v4.2 期间
+# 直改发布库的 ~20 行精修（Relay solver 官方 API 亲验等）在全量重建时被 gen_manual 泛化行回退
+#（2026-07-18 稳定化审计列级 diff 实测）。精修行救回 override 文件并用 curation 源后此回退不再可能。
 
 book = {}  # (chain, address) -> row dict
 
@@ -145,6 +149,11 @@ def upsert(chain, address, name, category, tier, source, date='', evidence='', r
         # 高优先级源带 policy 覆盖值 → 一并生效（v4.2 round-trip 闭环）
         if merge_policy: old['merge_policy'] = merge_policy
         if balance_policy: old['balance_policy'] = balance_policy
+        # 高优先级源的 evidence/verified_at/status 同样覆盖（有值才覆盖；2026-07-18 稳定化修复：
+        # 此前三列只走末尾"补空"逻辑，curation 精修的证据出处会被先到的低层源占住无法救回）
+        if evidence: old['evidence'] = evidence
+        if verified_at: old['verified_at'] = verified_at
+        if status: old['status'] = status
         old['_p'] = prio
     elif name and not old['name']:
         old['name'] = name
