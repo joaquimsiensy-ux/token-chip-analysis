@@ -19,7 +19,10 @@
 | `0x5a52e96bacdabb82fd05763e25335261b270efcb` | Binance 28 | |
 | `0x28c6c06298d514db089934071355e5743bf21d60` | Binance 14 (ETH) | |
 | `0xdfd5293d8e347dfe59e90efd55b2956a1343963d` | Binance 16 (ETH) | |
-| `0xf89d7b9c864f589bbf53a82105107622b35eaa40` | Bybit HotWallet | |
+| `0xf89d7b9c864f589bbf53a82105107622b35eaa40` | Bybit HotWallet | BSC/ETH/Arbitrum 多链同址；Bybit PoR 审计 2026-04-22 清单命中（SQD 分析核验 2026-07-20） |
+| `0x9d271a4e9523d74572b618ec10419a0a330e1bf0` | Bybit Hot Wallet 10 (Arbitrum) | Arbiscan 官方标签 + Bybit PoR 审计 2026-04-22 双证（SQD 分析核验 2026-07-20） |
+| `0x7da0b9211020d3775b18116fe751c555b9a7058c` | Bybit (Arbitrum) | Bybit PoR 审计 2026-04-22 清单 arbitrum 段命中（SQD 分析核验 2026-07-20）；⚠SQD 案实见仿冒前缀假地址 `0x7da05d2dc6…` 贴脸投毒——引用必完整比对 |
+| `0xb9de92603d5e2a568bf67ad3f03a04f3a83cf3b2` | Bybit 储备/归集仓 (Arbitrum·行为学判定) | 本期 PoR 清单未列；判定依据=资金源 99.9% 来自上列 PoR 实锤钱包（f89d+9d27）+先 990/90 枚 dust 测试后大额的所内调度指纹、nonce=3（SQD 复核 2026-07-20）——引用时注明行为学置信 |
 | `0x4982085c9e2f89f2ecb8131eca71afad896e89cb` | MEXC 13 | |
 | `0x4e3ae00e8323558fa5cac04b152238924aa31b60` | MEXC 15 (Base) | Basescan 官方标签 2026-07-18 亲验；Base 链主力 CEX 通道，充值/提现/gas 提款服务共用；曾被三路复核分别误读为大户/工作室操作台/服务热钱包——热钱包持币榜形态酷似大户，定性必看官方标签 |
 | `0x75e89d5979e4f6fba9f97c104c2f0afb3f1dcb88` | MEXC 1 (ETH) | |

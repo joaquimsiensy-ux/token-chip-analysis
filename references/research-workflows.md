@@ -21,6 +21,8 @@
 
 **官推回收账号侦测补充（外部 SGL/项目币分析考古，2026-07）**：老号改头换面冒充新项目官号，四路交叉核查——①firecrawl 直抓 `x.com/<handle>` 看有没有推过其它币 CA/cashtag（现存的也算前科）②`twitterscore.io/twitter/<handle>/`（WebFetch 可解、非 JS 死页）返回注册时间 / **改名记录（Renamed N times + previous names）** / 粉丝 / notable smart followers 带各自评分——与 memory.lol 互补 ③web.archive.org 快照比对找已删喊单帖 ④Google `"<handle>" + pump/CA` 找缓存。红旗：推特 URL 与现 handle 不一致、bio 自列前项目（`$STX $TVK` 类）、"cooking alpha daily"喊单 bio、注册远早于代币、`x.com/i/communities/` 社区号（判否）。合格画像=专属官号+蓝V+几百至千粉+账号贴合代币+bio 挂 CA+深底横盘。⚠️ `syndication.twitter.com/srv/timeline-profile` 免登录通道 2026-07 已全面 429 失效。
 
+**官方合约地址表一次拿全（正经项目标配动作，外加路线 2 的官方侧补充）**：正经 VC 币的官方 GitHub 合约仓库 README（github raw 直抓）通常自带全套协议合约地址表（代币/金库/质押/VestingFactory 等）——先抓它再谈聚类，官方系地址命名与归属一步到位（SQD 案全套协议合约+VestingFactory 一次拿全，配套 vesting 工厂枚举见 playbook-supply-recon §1）。（来源：SQD(Arbitrum) 分析，2026-07-20）
+
 另一种 fan-out 形态：对 N 个可疑地址各派一个代理 WebFetch 浏览器地址页，按统一 schema 输出（首笔注资来源/官方标签/钱包年龄/是否仍持仓），脚本端按 first_funder 分组——29 地址一轮并行约 10 分钟出全量结构化结果。（SIREN）**（外部 ASTEROID(ETH) 考古增强，2026-07）** 可升级用 Claude Code `Workflow` 工具编排（JS `tasks.push(()=>agent(COMMON+target))`），每 agent 输出加 `status_now∈[holding/accumulating/distributing/exited/inactive_dust]` 枚举、各落一份 `trace_<addr8>.md` 证据文件（每条论断带 tx hash），供对抗复核"只定位证据不信结论"独立重推；返回的 scriptPath 可编辑后 resume、失败用 journal.jsonl 续跑。
 
 **prompt 纪律（写成 COMMON 前缀，所有路共用）**：

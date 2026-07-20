@@ -181,9 +181,10 @@ def _circled(i):
     return chr(0x2460 + i - 1) if 1 <= i <= 20 else f"({i})"
 
 
-def plot_price_events(price_series, volume_series, events, out_png, token):
+def plot_price_events(price_series, volume_series, events, out_png, token, granularity="小时线"):
     """图3：全历史价格与关键事件（上 panel 价格对数+编号事件竖线，下 panel 成交额柱）。
 
+    granularity: 标题括注的数据粒度（"小时线"/"日线"等，v3.9 参数化——老币日线数据时勿再硬扛"小时线"标题）
     price_series:  {"ts": [...], "usd": [...]}（K线 close 即可，小时粒度典型）
     volume_series: {"ts": [...], "usd": [...]}（成交额）
     events: [{"ts": datetime, "desc": "07-06 18:35 — 代币铸造/交易开始；…"}]
@@ -198,7 +199,7 @@ def plot_price_events(price_series, volume_series, events, out_png, token):
     ax.plot(price_series["ts"], price_series["usd"], color="tab:blue", lw=1.6)
     _log_price_axis(ax)
     ax.set_ylabel("价格 USD(对数)")
-    ax.set_title(f"{token} 全历史价格与关键事件（小时线）")
+    ax.set_title(f"{token} 全历史价格与关键事件（{granularity}）")
     ax.margins(x=0.01)
 
     lines = []

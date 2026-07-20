@@ -1,4 +1,4 @@
-# EVM 链数据管道实测手册（BSC/Base，2026-07 实测版）
+# EVM 链数据管道实测手册（BSC/Base/Arbitrum，2026-07 实测版）
 
 > 本文合并两次 BSC 实战的通道结论。两份结论不矛盾：SIREN 会话因"从零分析"未复测 bloXroute，其免费端点死亡名单不含 blxrbdn；OPN 实测 blxrbdn 可用。两表合并即为下方决策树。（来源：OPN/SIREN(BSC) 分析，2026-07）
 > 所有限速/吞吐数字为当时实测，节点政策随时会变；复用任何通道前先按 §6 做 1 分钟能力探测。
@@ -50,6 +50,7 @@
 | nodies / ankr / merkle / omniatech | 限范围/限量/限流，均无法扫全史 | （来源：OPN/SIREN(BSC) 分析，2026-07） |
 | Routescan | 不支持 BSC（`chain not supported`） | （来源：外部 CZ(BSC) 考古，2026-07） |
 | `api-legacy.bubblemaps.io` | 返回 400——Bubblemaps legacy API 已死（BSC/ETH 两场会话独立验证） | （来源：外部 CZ/ASTEROID 考古，2026-07） |
+| CryptoCompare min-api histoday | 已并入 CoinDesk、强制要求 API key——免 key 历史日K时代结束；TGE 老币全史价格改走 Gate 现货日K（§4） | （来源：SQD(Arbitrum) 分析，2026-07-20） |
 
 ## 3. 各通道操作细节
 
@@ -60,6 +61,7 @@
 - key 不落盘：用户账号见 memory `onchain-data-accounts.md`，token 每次让用户现提供。
 - **transactions 端点做 BNB 注资溯源**：body `{"transactions":[{"to":[addr]}],"field_selection":{"transaction":["block_number","from","to","value"]}}`（value 为 hex）——单址全链入金一次查询 ~2.3s 到 tip，比逐块扫快几个量级；⚠25 址×全链批量会 10 分钟超时，可用姿势=关键地址单址逐查 / 发射窗小块段批量（from/to_block 圈定）。（来源：哈基米(BSC) 分析，2026-07-18）
 - 分段多进程姿势：复制脚本改 OUT 与 to_block 边界（`if nxt >= BOUND: break`）、sleep 提至 0.5s，各进程独立 CSV 事后按 (tx,log_index) 去重合并；改 config 后重启前删本地缓存的段清单文件。（来源：哈基米(BSC) 分析，2026-07-18）
+- **多会话共享 key 限速冲突**：并行分析会话同打一个 HyperSync key/端点会互相触发 429（SQD 案与另一标的采集会话撞车实测）——开工前 `ps aux | grep fetch_hypersync` 查有无在跑进程；撞车时不必停工，调低单会话吞吐预期、靠 429 退避共存（SQD 案 83.2 万条 56 分钟、429×20 次全部自愈）。（来源：SQD(Arbitrum) 分析，2026-07-20）
 
 ### 3.2 Alchemy getAssetTransfers（scripts/evm/fetch_alchemy.py）
 - POST `https://bnb-mainnet.g.alchemy.com/v2/{KEY}`，method=`alchemy_getAssetTransfers`，params 含 `contractAddresses`、`category:["erc20"]`、`maxCount:"0x3e8"`、`pageKey` 分页；返回自带时间戳。（来源：SIREN(BSC) 分析，2026-07）
@@ -102,6 +104,8 @@
 | CEX 封闭盘识别三角 | ①`api.kucoin.com/api/v3/currencies/{SYM}`（免 key，isDepositEnabled/isWithdrawEnabled/chains 含合约地址）②各所现价：Gate `api.gateio.ws/api/v4/spot/tickers?currency_pair={SYM}_USDT`、MEXC `api.mexc.com/api/v3/ticker/price?symbol={SYM}USDT`（均走 clash 代理）③链上池价 GeckoTerminal | rug 后风控关充值→"链上买→充值→场内卖"套利腿被斩断→各所内盘成独立封闭盘、价格脱锚（SIREN 实测 KuCoin/Gate 较链上 +135%）。**多所价差>20% 时 CoinGecko 聚合价被污染成系统性坏数据，估值必须弃用**（SIREN CG $0.055 vs 真实 $0.0288） | （来源：SIREN(BSC) 分析，2026-07-19） |
 | 单地址全量流水独立复核 | HyperSync query 按 address 过滤 topics | 对关键黑箱地址（如托管合约）用 HyperSync 独立重扫其全部 Transfer（可跨全部代币），与扫块 CSV 互为独立通道——对账级双验证的低成本方式 | （来源：bibi(BSC) 分析，2026-07-12） |
 | 千级地址现时余额 | scripts/evm/multicall_balances.py | 见 §3.5 | （来源：SIREN(BSC) 分析，2026-07） |
+| TGE 老币全史日K | `api.gateio.ws/api/v4/spot/candlesticks?currency_pair={SYM}_USDT&interval=1d&limit=1000`（走 clash 代理） | 免 key 单次最多 1000 根，SQD 实测一次拿 796 根全史——上过 Gate 现货的 TGE 老币全史价格正解（GT 181 根墙/CoinGecko 365 天墙的解法）；上过 Gate 的币远多于上币安的，覆盖面广 | （来源：SQD(Arbitrum) 分析，2026-07-20） |
+| 第三方富豪榜快照（CoinCarp 类） | — | ⚠只当历史线索、绝不当现状数据：快照可严重过时（SQD 案榜前 8 有 6 个现持已清零，快照疑似两年前）——现状持仓一律链上实查 | （来源：SQD(Arbitrum) 分析，2026-07-20） |
 
 gmgn-cli 使用坑（fetch_gmgn.sh 已内置处理）：
 - 命令用全路径 `~/.npm-global/bin/gmgn-cli`（不在 PATH；报 command not found 时别去重装）。（来源：SIREN(BSC) 分析，2026-07）
@@ -243,5 +247,17 @@ gmgn-cli 使用坑（fetch_gmgn.sh 已内置处理）：
 
 - mint 走 facilitator **批量代执行**（一个 tx 打包约 47 笔 mint、付款币全额入池），facilitator=MINTER 角色持有者——mint 账本按 Transfer(from=0x0) 的**接收地址**记，不能按 tx.from（否则全记到 facilitator 名下）（来源：PING(Base) 分析，2026-07-17）
 - 转账笔数与市值的异常比可极端（实测 $150 万级市值 239 万笔 Transfer）——数据量预估禁止按市值直觉，先抽样按事件密度外推（呼应 §8.1 抽样坑与 playbook §9 异常比信号）（来源：PING(Base) 分析，2026-07-17）
+
+## 9. Arbitrum 链专节（SQD 全量实测，2026-07-20）
+
+Arbitrum One（chainid 42161）待遇比 BSC/Base 好：Etherscan V2 免费层全开 + 官方公共 RPC 稳定直连，EVM 通用管道原样可用，无需专用脚本。
+
+- **全量转账主通道 = HyperSync `arbitrum.hypersync.xyz`**：fetch_hypersync.py 改 config 端点即用；SQD 实测 83.2 万条 Transfer 56 分钟拉完（sleep 0.25）。（来源：SQD(Arbitrum) 分析，2026-07-20）
+- **Etherscan V2 免费层对 chainid=42161 全可用**（与 BSC/Base/OP 锁付费层待遇相反，免费三链 ETH/Arb/Polygon 见 api-keys）：tokentx、getLogs（工厂事件枚举 1000 条/页）、proxy 系 eth_getTransactionByHash / eth_getBlockByNumber 全通——对账交叉验证与 vesting 工厂枚举（playbook-supply-recon §1）都走它。（来源：SQD(Arbitrum) 分析，2026-07-20）
+- **官方公共 RPC `arb1.arbitrum.io/rpc` 直连免代理**：eth_call balanceOf / getCode 稳定，对账现值核验十几连发无限速。（来源：SQD(Arbitrum) 分析，2026-07-20）
+- **Blockscout Arbitrum**：`arbitrum.blockscout.com/api/v2/addresses/{addr}`（免 key 走代理）——标签/is_contract/ens 通道结构可用（SQD 案标签全空但接口正常，标签覆盖别指望它）。（来源：SQD(Arbitrum) 分析，2026-07-20）
+- **价格：GeckoTerminal 免费层对老币有一年历史墙**——OHLCV 单次仅回约 181 根，且 before_timestamp 翻页也翻不过 1 年深度——TGE 老币全史价格改走 Gate 现货日K（§4）。（来源：SQD(Arbitrum) 分析，2026-07-20）
+- 0 值转账投毒与仿冒地址贴脸在 Arbitrum 同样高发（SQD 案 31,814 笔 0 值占 3.8%；仿冒关键实体地址前缀的假地址实见）——计数剔 0 值、关键地址完整比对，既有纪律 Arbitrum 再验证。（来源：SQD(Arbitrum) 分析，2026-07-20）
+- labels 标签库暂无 arbitrum 链表，用 eth 库跨链复用可命中主流 CEX（SQD 案命中 17 个 CEX 地址——Arbitrum 大所热钱包多与 ETH 主网同址）；HTX 例外未命中（见 CHANGELOG v3.9.0 Known Gaps）。（来源：SQD(Arbitrum) 分析，2026-07-20）
 
 通用环境坑（macOS SSL 证书、reportlab 中文字体、前台 sleep 被 Block 等）不在本文重复，见 skill 其他参考文档与 memory（mac-python-pdf-environment.md、onchain-data-accounts.md）。

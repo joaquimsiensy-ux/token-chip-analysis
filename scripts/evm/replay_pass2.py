@@ -8,6 +8,9 @@ camps.json 格式：{"camps": {"阵营名": [地址...]}, "entities": {"实体�
 分母：{data-dir}/replay_stats.json 的 mint_total_wei（replay_pass1 输出的总铸量口径）。
 输出：{data-dir}/camp_series.json {"dates":[...], "阵营名":[pct...], "散户":[...]}、{data-dir}/entity_series.json
   散户 = 100 − 已知阵营合计。
+烧毁处理（v3.9 修复）：烧入 0x0 的量自动计入"销毁"阵营（camps.json 无需配置 0x0；未配置"销毁"
+  阵营且确有烧毁时自动增列）。修复前烧毁量残留在散户残差里（SQD 案散户虚高 2.65pp）。
+  mint（from=0x0）不记账；全程无烧毁时"销毁"曲线不输出。0xdead 类烧毁地址仍需在 camps.json 显式归入"销毁"。
 """
 import csv, json, argparse
 from collections import defaultdict
@@ -23,6 +26,7 @@ def main():
     spec = json.load(open(a.camps))
     total = int(json.load(open(f"{a.data_dir}/replay_stats.json"))["mint_total_wei"])
     camps = {k: set(x.lower() for x in v) for k, v in spec.get("camps", {}).items()}
+    camps.setdefault("销毁", set())
     ents = {k: set(x.lower() for x in v) for k, v in spec.get("entities", {}).items()}
     addr2camp = {}
     for c, s in camps.items():
@@ -54,6 +58,8 @@ def main():
 
     def apply(ad, delta):
         if ad == Z:
+            if delta > 0:  # 烧入 0x0 = 销毁；mint（Z 为 from、delta<0）不记账
+                camp_bal["销毁"] += delta
             return
         bal[ad] += delta
         c = addr2camp.get(ad)
@@ -76,9 +82,11 @@ def main():
             apply(frm, -v)
             apply(to, v)
     snap()
+    if "销毁" in series and all(v == 0 for v in series["销毁"]):
+        del series["销毁"]
     json.dump({"dates": dates, **{k: v for k, v in series.items()}}, open(f"{a.data_dir}/camp_series.json", "w"))
     json.dump({"dates": dates, **{k: v for k, v in eseries.items()}}, open(f"{a.data_dir}/entity_series.json", "w"))
-    print(f"天数={len(dates)} 阵营={list(camps)+['散户']} 实体={list(ents)}")
+    print(f"天数={len(dates)} 阵营={[k for k in series]} 实体={list(ents)}")
     print("末日阵营占比:", {k: series[k][-1] for k in series})
     print("末日实体占比:", {k: eseries[k][-1] for k in eseries})
 

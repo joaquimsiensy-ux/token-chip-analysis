@@ -13,6 +13,7 @@
 - **2.24.0/2.25.0 曾物理倒排**（同日并行会话插入位置错位）——2026-07-18 稳定化时仅调整排列顺序，两条内容一字未动
 
 ## 版本索引（活跃窗口，新在上）
+- **3.9.0 2026-07-21 SQD(Arbitrum) 全量复盘：Arbitrum 首战**：data-pipeline-evm 新增 §9 Arbitrum 专节（HyperSync arbitrum 端点/Etherscan V2 免费层全开/arb1 RPC 免代理/Gate 现货日K=TGE 老币全史价格正解/GT 1 年墙/CryptoCompare 入死亡名单）+ CEX 取证两件正式（交易所 PoR 审计文件=地址归属实锤通道/CEX 回旋地址剔除=窗口净流榜提出侧污染）+ 方法 5 条 candidate（vesting 工厂枚举/官方桶金额对表归属/可回收 MM 贷款指纹/公告前夜充值取证三件套/质押押金内部人分解）+ 脚本修复 2（replay_pass2 烧毁落散户桶 bug/图3 粒度参数化）+ 环境坑（Monitor 检测 /proc 在 macOS 恒真）
 - **3.8.1 2026-07-20 文档小修**：时间戳时区纪律——分钟级时间双标 UTC+北京（SIREN 回测"凌晨先崩"被用户按 GMGN 本地时间质疑的沟通事故）
 - **3.8.0 2026-07-20 SIREN 交付后问答复盘——报告可读性两条用户验收硬性**：①术语大白话纪律（验收=读者不提问读懂全文；行业词首现带比喻+比喻库沉淀；自造绰号首现交代由来；绰号≥5 配角色速查卡；checklist 7b）②流转图自解释验收（目的=只看图看完实体全部操作；卡片全带【总量%】/分合动作写边标签/归属证据有落点/账目行加法配平"期初−期末=Σ去向"——SIREN 净出漏四仓 15.2pp 被用户加法抓出的实锤）＋lifecycle_flow footnote 半角 $ 数学模式坑
 - **3.7.0 2026-07-19 AKE(Akedo·BSC) 全量复盘**：币安 Alpha 在架高控盘游戏币（项目方托管 62.5%、真实散户 4.4%）。通道/坑 5 条（Alpha 场内↔链上结算引擎桥识别/CEX 归集批次节奏≠行为指纹[REFUTED 源]/投毒 dust 伪 gas 种子+幽灵地址反污染/Alpha Box 空投标的三件套时序指纹+Router 充值必拆新币vs回充）+ 方法 3 条 candidate（fapi OI 方向法分"多头拥挤vs轧空"/社区分发桶女巫化回收识别/可升级代理托管盘锁仓硬度必查升级历史）+ 脚本收编 2（trace_network.py 传仓 BFS / merge_parts.py 段合并）+ standard_charts 增 CEX托管标准阵营键。对抗复核 4 路：CONFIRMED 7 / WEAKENED 3 / REFUTED 1（"Gate 同分钟末笔=同一操作者+出货管道"整体撤换）/ 完整性补 3（女巫管道 7.19%、ATH 桶违表出库、幽灵地址替换）
@@ -25,6 +26,36 @@
 - **3.0.0 2026-07-18 稳定化大版本**：git 基线/标签库双真相收敛/复盘机制升级(质量指标+candidate+整编+预测追踪)/playbook 重组/守护三件套/瘦身 287→97MB
 - 2.29.0 2026-07-18 jesse(Base) 全量复盘 | 2.28.0 哈基米(BSC)
 - （2.27.0 及更早共 48 条 → CHANGELOG-archive.md）
+
+## [3.9.0] - 2026-07-21 — SQD(Arbitrum) 全量复盘：Arbitrum 首战 + VC 币 vesting 取证
+
+> Arbitrum One 首战（此前无该链专属 pipeline，EVM 通用管道实测全通，新增 data-pipeline-evm §9 专节）。83.2 万条 Transfer 全量重放；正经 VC 币标的（TGE 老币、vesting 体系 257 合约），与 meme 盘方法面互补。
+
+**通道/坑（数据工程类，直接正式）**：
+- data-pipeline-evm §9 Arbitrum 专节：HyperSync `arbitrum.hypersync.xyz`（83.2 万条 56 分钟）；Etherscan V2 免费层对 chainid=42161 全可用（与 BSC/Base 相反）；`arb1.arbitrum.io/rpc` 直连免代理；Blockscout Arbitrum 结构可用；0 值投毒+仿冒地址贴脸 Arbitrum 再验证；labels 用 eth 库跨链复用命中 17 CEX
+- §4 辅助面两行：**Gate 现货日K（limit=1000 一次拿全史）= 上过 Gate 的 TGE 老币全史价格正解**（GT 181 根墙/CoinGecko 365 天墙的解法）；第三方富豪榜快照（CoinCarp 类）只当历史线索绝不当现状（SQD 案榜前 8 有 6 个现持已清零）
+- 死亡名单+1：CryptoCompare histoday 已并入 CoinDesk 强制 key
+- §3.1 HyperSync 多会话共享 key 限速冲突：开工前 `ps aux | grep fetch_hypersync` 查撞车，撞车靠 429 退避共存
+- playbook-entity-cluster §3：**交易所 PoR 审计文件=CEX 地址归属实锤正解**（Bybit PoR PDF 命中 3 址直接翻案一实体；权威度高于一切行为推定；清单未列的周边仓用资金源+调度指纹补充判定）；§6a：**CEX 回旋地址剔除**（提出≈充回+现余 0+等额分片=纯过手，SQD 案 201 址 7.82 亿枚把两窗净提币 top15 打成半榜虚影——窗口净流榜必做）
+- environment.md：监视器进程存活检测——macOS 无 /proc，`[ ! -d /proc/<pid> ]` 恒真秒退误报，一律 `ps -p`
+- address-book：Bybit Arbitrum 三址入库（9d27 双证/7da0 PoR+仿冒警示/b9de 行为学储备仓）+ f89d 多链同址补注
+
+**方法（candidate 级，单案待复现转正）**：
+- vesting 工厂枚举法（supply-recon §1）：工厂创建事件一次拿全子合约+受益人+额度+期限，精度比第三方解锁表高一个量级；声明额度 vs 实际注入两口径分开
+- 官方桶金额精确对表归属法（entity-cluster §4）：创世分发金额与 tokenomics 桶百分比逐桶对表，分毫不差=归属铁证
+- 可回收 MM 贷款指纹（entity-cluster §4）：vesting 受益人+官方 revoker 回收再锁=官方出借库存做市的账本实锤
+- 公告前夜大额充值取证范式（evidence-wording §11）：公告时刻锁定+dust→大额充值序列+金额归集闭环三件套="预知公告时点"链上铁证级；意图仍两解并列
+- 质押押金内部人构成分解（supply-recon §8）：押金按官方自营/vesting 直押/受益人直押/真外部四层拆，区间呈现（SQD 案 2.395 亿押金真外部仅 3,940 万）
+- research-workflows §一：官方 GitHub 合约仓库 README 抓全套地址表（正经项目标配动作）
+
+**脚本**：
+- **replay_pass2.py 烧毁落散户桶 bug 修复**：原 `apply()` 对 0x0 直接 return，烧入 0x0 的量不进"销毁"阵营、残留散户残差（SQD 案散户虚高 2.65pp）——修复后烧入自动计入"销毁"阵营（合成数据自测配平），全程无烧毁时不输出该曲线
+- standard_charts.plot_price_events 增 `granularity` 参数（默认"小时线"）——老币日线数据不再硬扛错误标题
+
+**Known Gaps（SQD 遗留，增量更新时核）**：①HTX 在 Arbitrum 的热钱包全程未识别（HTX 是 SQD 报告量约 75% 的所，CEX 托管 12.84% 为下限）——下次 HTX 主力标的先试 HTX PoR 文件；②labels 库无 arbitrum 链表（Dune labels 有 arbitrum 段，扩容候选）；③0x96973f7b 上游 0xc2478177（33.3M）未定性+三个 0.2-0.4pp 边界地址未入册；④BSC/Base 桥出分支内部分布未穿透（合计 3.9%，供给背书已闭合）；⑤两组高吞吐疑似 CEX 冷热对未具名
+
+**质量指标**：初稿关键结论 6 条；复核判定 CONFIRMED 4 / WEAKENED 2 / REFUTED 0；漏检实体 0（Bybit 系为误归因翻案、非漏检）；传播级数字错误 2（散户/销毁口径、mint−burn 文字口径，均交付前修正）；修正记录 12 条全部印入报告附录 C。
+**成本指标**：主线约 95 轮（<150 达标）；上下文峰值约 30 万（贴线，报告成文靠交接包护航）；Workflow 子代理：背调 5 agent 69.6 万 tokens + 复核 6 agent 84 万 tokens（判断环节主模型未降级）；交付约 6 小时（含与并行会话抢 HyperSync 配额等待）；Bash 调用数未单独计数。
 
 ## [3.8.1] - 2026-07-20 — 文档小修：时间戳时区纪律
 
