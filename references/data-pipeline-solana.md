@@ -154,9 +154,9 @@ meme/微盘"庄"（多钱包控盘团伙）的关联硬证据（任一即可，�
   - `/vas/api/v1/token_trades/sol/<mint>?limit=100&maker=<wallet>`：**按钱包过滤的逐笔成交**（带 tx_hash/priority_fee/tip），`data.next` cursor 分页——溯源单钱包买卖节奏利器；不带 maker 返回空
   - `/api/v1/token_stat/sol/<mint>`：holder_count/top_10_holder_rate/dev_team_hold_rate；`/api/v1/token_holder_stat/sol/<mint>`：dev_count/**sniper_count/bundler_count/fresh_wallet_count**（一眼看清庄家结构）
   - `/defi/quotation/v1/tokens/kline/sol/<mint>?resolution=1d`：日 K
-  - **口径坑**：GMGN holders 是**当前**持仓口径，与 RugCheck（账户总数口径）可差 2–20 倍，两者交叉验证不互替。GMGN 的 bundler/sniper 标签是线索不是定论，仍须落链上 §3b 指纹确认。
+  - **口径坑**：GMGN holders 是**当前**持仓口径，与 RugCheck（账户总数口径）可差 2–20 倍，两者交叉验证不互替。GMGN 的 bundler/sniper 标签是线索不是定论，仍须落链上 §3b 指纹确认（二见实证：某 top 大户带 bundler 标签、链上实为毕业+6h 才进场的外盘买家——直接采信会把建仓时点/成本全判错；来源：USELESS(Solana) 分析，2026-07-21）。
 - **pump.fun coin API**：v1（frontend-api）已死（530）；**v3 可用**——`frontend-api-v3.pump.fun` 拿代币元数据/creator/description（来源：外部 CLAW 考古，2026-07）。**v3 的 creator 履历三端点**（走 clash 代理，dev 前科调查核心通道）：①`/coins?creator=<addr>&limit=100&includeNsfw=true` = creator 名下全部发币记录；②`/users/<addr>` = 平台账号画像（用户名/关注数/是否绑定 X）——**x_username=null 可证明"链上 creator 与官推无平台级绑定"**（官推侦查的链上侧交叉证据）；③`/balances/<addr>` = 站内持仓视角（不含毕业后链上 SPL 持仓，引用须注明口径）（来源：PUB(Solana) 分析，2026-07-14）。
-- **RugCheck `api.rugcheck.xyz/v1/tokens/<mint>/report`（免 key）**（外部 SGL/CLAW 分析实测，2026-07）：一次拿 topHolders（含 owner+pct+**insider 标记**）+ markets（LP 名单）+ **insiderNetworks**（转账关联的内幕簇，直接给出关联地址网络）+ launchpad——**是 `getTokenLargestAccounts` 恒 429 的最佳替代**（§0a），insider 关联比自建聚类省事，但仍按 analysis-playbook §6 硬规则复核。**坑：免费层 insiderNetworks 的 size 字段有值但 accounts 成员列表可为空**——只能当线索计数用，成员名单要自建聚类复现（来源：PUB(Solana) 分析，2026-07-14）。
+- **RugCheck `api.rugcheck.xyz/v1/tokens/<mint>/report`（免 key）**（外部 SGL/CLAW 分析实测，2026-07）：一次拿 topHolders（含 owner+pct+**insider 标记**）+ markets（LP 名单）+ **insiderNetworks**（转账关联的内幕簇，直接给出关联地址网络）+ launchpad——**是 `getTokenLargestAccounts` 恒 429 的最佳替代**（§0a），insider 关联比自建聚类省事，但仍按 analysis-playbook §6 硬规则复核。**坑：免费层 insiderNetworks 的 size 字段有值但 accounts 成员列表可为空**——只能当线索计数用，成员名单要自建聚类复现（来源：PUB(Solana) 分析，2026-07-14；USELESS 案 2026-07-21 再确认免费层 accounts=None）。**knownAccounts 字段实测 388 条 AMM 池/基础设施标签，可直接作算集中度前的剔除表**（来源：USELESS(Solana) 分析，2026-07-21）。
 - **GMGN 正规 key 通道 CLI 的两个高价值参数**（gmgn-* skills，Cloudflare 拦的是免 key 抓取，此通道不受影响）：`token holders --tag`（smart_degen/sniper/bundler/transfer_in 等 10 类标签过滤）与 `traders --order-by profit`（盈利榜）——transfer_in 过滤结果是 §2a 判别流程的候选入口（来源：PUB(Solana) 分析，2026-07-14）。
 - **Bags 平台盘专项**（外部 SGL/P0 分析，2026-07）：算集中度前必先剔平台基础设施——链上 creator 统一 `BAGSB9TpG…`（平台署名非项目方）、平台金库 `FhVo3mqL…` 恰持**每币 17% 整数配额**（单日 3000+ 签名高频机器钱包）；mint 后缀 BAGS；`bags.fm` 代币页可查创作者费累计领取额（=项目方还在乎的链上心跳）。整数配额（17.001%/20.001%）= 设计分配非市场吸筹。
 - **Solscan**：地址公开标签（CEX/项目方）、逐笔交易历史核验；RPC 侧等价物为 `getSignaturesForAddress` + `getTransaction`。报告页眉声明"所有关键地址均可在 Solscan 点击验证"作为可验证性背书（注意 WebFetch 抓不了 Solscan，背书是给人手点的）`[VERIFIED·IO实录]`。
@@ -164,8 +164,11 @@ meme/微盘"庄"（多钱包控盘团伙）的关联硬证据（任一即可，�
   - 资金费率史：`/fapi/v1/fundingRate?symbol=<SYM>USDT&limit=90`（返回逐 8h 费率）
   - OI 历史：`/futures/data/openInterestHist?symbol=<SYM>USDT&period=1d&limit=30`（响应还自带 `CMCCirculatingSupply` 字段，是流通量口径的又一免费来源）
   - 本机直连可用——**api.binance.com 被 451 拦但 fapi.binance.com 没拦**（与 data-api.binance.vision 同属绕拦通道）。OI 降+价升+费率中性 = 现货驱动反弹的标准证据组合。
+  - **坑：/fapi/v1/fundingRate 只返回最近 500 条（约 166 天），接口首条≠永续上线日**——据此判上市时间会系统性晚判（USELESS 案据此误判币安永续上线日，靠事件线外部调研才纠正）；上线日用公告/事件线定，费率史只当近期窗口用（来源：USELESS(Solana) 分析，2026-07-21）
 - **Coinglass** `coinglass.com/currencies/<SYMBOL>`：OI/费率的网页兜底（标的没上币安永续时用）`[VERIFIED·IO实录]`。
 - **解锁表多源交叉** `[VERIFIED·IO实录]`：DropsTab `dropstab.com/coins/<slug>/vesting` + Tokenomist `tokenomist.ai/<slug>`（+CryptoRank/Coinglass vesting 页）+ 链上机械解锁指纹（第 3 节）互验；下一个解锁日的时间和量往往是全案最重要的单一外部信息。
+- **Vybe v4 top-holders（Solana CEX 标签荒的最大补丁）**：`api.vybenetwork.xyz/v4/tokens/<mint>/top-holders?limit=1000&page=N`（header `x-api-key`，key 见 api-keys.md 第 12 节）单页 1000 个 **owner 级**持仓自带标注，实测命中 Gate/Kraken/MEXC/KuCoin/Coinbase/Crypto.com/Wintermute/KOL/MEV Bot——免费可用源里最好的 Solana CEX/机构标签面。**⚠余额字段系统性虚高不可用**（top1000 加总=总供应 113%）：只用它的标签，余额一律以链上快照为准（来源：USELESS(Solana) 分析，2026-07-21）
+- **CMC data-api 全史日线**：`api.coinmarketcap.com/data-api/v3/cryptocurrency/detail/chart?id=<cmc_id>&range=ALL` 一次拿发射日起全史日级量价（USELESS 案 437 点全覆盖）——补 GeckoTerminal 公共 API 只回溯 180 天的洞；cmc_id 从币页 URL/search 端点拿（来源：USELESS(Solana) 分析，2026-07-21）
 - **CoinGecko**（`/api/v3/coins/<id>/market_chart?vs_currency=usd&days=90&interval=daily`）：近 90 天日线量价结构 `[VERIFIED·IO实录]`。**坑：coin id ≠ 项目名/slug**（io.net 的 id 是 `io` 不是 `io-net`），先查 `/api/v3/coins/list` 或 search 端点确认 id；免费层限速紧，失败等 30s 重试。
 - **CoinMarketCap**：流通量口径来源（与链上总供应分开标注，见第 1 节）`[VERIFIED·IO实录]`。
 - **项目官方 tokenomics 文档**：分配结构对表，用于金库/排放池定性 `[VERIFIED·IO实录]`。
@@ -261,3 +264,14 @@ IO 当时全程用会话内联 Python 完成、未沉淀成脚本文件；但找
 5. **观察哨核查加固**：余额不变≠没动（可能转出又转回）——sentinel 级地址补签名列表验证（窗口内零签名才是硬结论）。
 
 配套纪律：**cutoff 时间戳一律 `datetime.fromisoformat` 验算，禁止手算 unix 秒**（实战手算错 2 天导致签名史首跑作废，且错误 cutoff 不报错、只静默漏数据）；数据文件 meta 的 `updated` 字段是"最后写入时间"不是"覆盖范围"，增量起点判定看数据末行而非 meta（发射日流水文件 updated=07-13 但只覆盖 02-24，望文生义会把增量起点定错 4.5 个月）。（来源：CLUDE(Solana) 增量更新，2026-07-15）
+
+## 11. 长币龄混合重建 + 高密度期定向采集（USELESS(Solana) 2026-07-21 实战）
+
+§8"全程 SQD 重放不现实"与 §9 锚点法的合体升级——14 个月+币龄、13.5 万持仓账户量级标的实战定型：
+
+1. **混合重建演变架构（长币龄标准件，两端精确、中段插值）**：①发射窗（发射日起 24-48h）用 `window_fetch.py` 拉全量边（精确——狙击/bundle 分析必须逐笔）②核心实体（庄/项目方/大户）ATA 级全流水（`whale_deep.py`，精确）③中段日级锚点前向填充（`anchor_sampler.py`）④**当前快照封口 + 末日快照注入**——把 data_cutoff 日全量快照作为最后一个锚点注入序列，修"清仓发生在锚点观测窗外则旧值永久残留"的系统性尾部误差。图 1/图 2 由 ①②③④ 合成，散户=残差；精度声明照 §9 写进局限性（来源：USELESS(Solana) 分析，2026-07-21）。
+2. **SQD 高密度期定向拉取用小段+并发（`window_fetch.py`）**：密集期（发射窗/事件日）正解=**2000 slot 小段 × 8 并发**，失败段落 `.gaps.json`（必须为空才算完整）。反面教训：fetch_sqd_transfers 的 50K 大段在发射期反复 curl 超时截断重试，120 分钟只推进 3.4 链上小时；小段版 29 秒拉完 1 万 slot、发射日 24h（16.5 万边）82 分钟零缺口。
+3. **日级锚点采样（`anchor_sampler.py`）与它的观测边界（★阴性依据禁用）**：从新到旧滚动校准 slot↔ts（分段线性外推、漂移 >4h 自动重估，435 天约 5s/天）。**⚠观测窗真相**：名义 1h 窗（9000 slot）在高活跃期因响应截断实际仅 ~3.6 分钟，且 SQD tokenBalances 只记**发生变动**的账户——静止大户被系统性漏观测。因此**锚点单独不可作任何"某地址没动/没持仓"的阴性依据**，阴性结论必须快照或全流水兜底；锚点只用于正向变动观测与序列插值（对抗复核实测抓出，来源：USELESS(Solana) 分析，2026-07-21）。
+4. **publicnode 大扫描死角补充（§0a/§1 的边界）**：13.5 万 token account 量级的 mint，publicnode getProgramAccounts 恒 504（dataSlice 也救不回）；**api.mainnet-beta 做 SPL 大扫描会静默返回空结果**（不报错——危险，靠对账关卡拦住，勿当"该 mint 无账户"）。分片扫描（`scan_sharded.py`，amount 低位字节递归分片）可行但两个坑：①owner 位置 memcmp 必须整 32 字节（1 字节分片语法合法但过滤不生效）②零余额账户 8 字节 amount 全零、全部堆在全零前缀片——递归下钻全零前缀至 8 字节终点片直接跳过（分析只要非零余额）。USELESS 案分片全量未跑完（publicnode 间歇 504），对账改用"8 样本独立单查 + top20 对表"替代过关——**分片器待后续标的全量验证**。
+5. **whale_deep 按地址频率分派（先估频再选通道）**：深挖前先 getSignaturesForAddress 拉一页估频——高频地址（creator 类，签名 7 万+）ATA 级全 decode 需数小时/地址不可行，改**事件窗定向拉**（只 decode 关键时间窗）；低频囤仓户（15-172 笔）全量 decode 秒-分钟级。一刀切全量 decode 会把预算烧在单个高频地址上（来源：USELESS(Solana) 分析，2026-07-21）。
+6. **letsbonk 平台币三件套（§8.5/§8.6 的平台变体，vs pump.fun 差异）**：①铸造边 2 条——curve 拿大头 + dev 直分一笔，且 **dev-buy 可在数秒内卖回**（实测 6 秒）制造"creator 已清仓"表象——creator 状态判定必须看直分笔的后续流向，不能只看当前余额；②**creator fee 走 Raydium Lock 的 burn&earn harvest 账本**（非 pump.fun 费领取模式）——费农收入=真实收益引擎，dev"弃盘与否"必查 harvest 流水；③毕业迁移约 20.7% 供应入 Raydium 池（来源：USELESS(Solana) 分析，2026-07-21）。

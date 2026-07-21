@@ -13,6 +13,7 @@
 - **2.24.0/2.25.0 曾物理倒排**（同日并行会话插入位置错位）——2026-07-18 稳定化时仅调整排列顺序，两条内容一字未动
 
 ## 版本索引（活跃窗口，新在上）
+- **3.11.0 2026-07-21 USELESS(Solana) 全量复盘：letsbonk 长币龄混合重建 + CEX 托管层指纹**：data-pipeline-solana 新增 §11 六件（混合重建演变架构·末日快照注入/SQD 高密度期 2000 slot 小段×8 并发/日级锚点观测边界·阴性依据禁用/publicnode 大扫描死角·mainnet-beta 静默空/whale_deep 按频分派/letsbonk 三件套）+§4 增 Vybe v4 top-holders（Solana CEX 标签荒最大补丁·余额虚高 113% 只用标签）/CMC data-api 全史日线/fapi fundingRate 500 条墙≠上线日/RugCheck knownAccounts 剔除表；方法 1 候选（CEX 提币囤仓的托管/储备层指纹组）+2 正式（同分钟批量出账伪影二见/发射窗"净拿>0"过滤禁令·闪电套利层）；脚本收编 3（window_fetch/anchor_sampler 参数化/scan_sharded 待验）；environment 增 heredoc 全角标点坑
 - **3.10.0 2026-07-21 LPT(ETH+Arbitrum) 全量复盘：质押型代币首战**：data-pipeline-evm 新增 §10 质押型标的范式六件（权益=ERC20+bonded 合并口径·金库残差/账本状态机重放+事件自带总额校准锚点/已铸未领桶/TransferBond 暗道审计/L1→L2 迁移月双计坑/月度峰值口径）+§9 增量（HyperSync 同 key 多端点限流共享+二战数据点）+§4 三行（subgraph 前端 bundle 白嫖法/web3_sha3+openchain 事件签名正反解/Poloniex 老币早期价格）+§5 Burn 独立事件幽灵差额排查；supply-recon 增 CMC/CG 冻结快照必查（LPT 案低报 11%）；方法 4 条 candidate（高扇出≠服务商三判据/CEX 质押产品三件套/机构托管轮换链指纹/庄不成立呈现范式）+2 正式（月末快照天然原子化+脉冲月双报/落盘取值纪律扩至 topic0）；脚本收编 fetch_hypersync_logs.py（合约全事件版）
 - **3.9.0 2026-07-21 SQD(Arbitrum) 全量复盘：Arbitrum 首战**：data-pipeline-evm 新增 §9 Arbitrum 专节（HyperSync arbitrum 端点/Etherscan V2 免费层全开/arb1 RPC 免代理/Gate 现货日K=TGE 老币全史价格正解/GT 1 年墙/CryptoCompare 入死亡名单）+ CEX 取证两件正式（交易所 PoR 审计文件=地址归属实锤通道/CEX 回旋地址剔除=窗口净流榜提出侧污染）+ 方法 5 条 candidate（vesting 工厂枚举/官方桶金额对表归属/可回收 MM 贷款指纹/公告前夜充值取证三件套/质押押金内部人分解）+ 脚本修复 2（replay_pass2 烧毁落散户桶 bug/图3 粒度参数化）+ 环境坑（Monitor 检测 /proc 在 macOS 恒真）
 - **3.8.1 2026-07-20 文档小修**：时间戳时区纪律——分钟级时间双标 UTC+北京（SIREN 回测"凌晨先崩"被用户按 GMGN 本地时间质疑的沟通事故）
@@ -27,6 +28,28 @@
 - **3.0.0 2026-07-18 稳定化大版本**：git 基线/标签库双真相收敛/复盘机制升级(质量指标+candidate+整编+预测追踪)/playbook 重组/守护三件套/瘦身 287→97MB
 - 2.29.0 2026-07-18 jesse(Base) 全量复盘 | 2.28.0 哈基米(BSC)
 - （2.27.0 及更早共 48 条 → CHANGELOG-archive.md）
+
+## [3.11.0] - 2026-07-21 — USELESS(Solana) 全量复盘：letsbonk 长币龄标的混合重建 + CEX 托管层指纹
+
+> letsbonk 平台币首战（与 pump.fun 的平台差异成体系记录）；14 个月+币龄、13.5 万持仓账户量级的 Solana meme 标的，混合重建演变架构（两端精确、中段插值）实战定型。开工时 skill v3.10.0。
+
+**通道/坑（数据工程类，直接正式）**：
+- **data-pipeline-solana §11 新节·长币龄混合重建+高密度期定向采集六件**：①混合重建演变架构（发射窗全量边+核心实体 ATA 流水+日级锚点前向填充+当前快照封口；**末日快照注入**修"清仓发生在锚点观测窗外则旧值永久残留"的尾部误差）②SQD 高密度期正解=2000 slot 小段×8 并发（发射日 24h/16.5 万边 82 分钟零缺口 vs 50K 大段 120 分钟仅推 3.4 链上小时）③**日级锚点观测边界**（高活跃期名义 1h 窗实际仅 ~3.6 分钟且只记变动账户——锚点单独禁作阴性依据，须快照/流水兜底；复核 3 实测抓出）④publicnode 大扫描死角（13.5 万账户 mint 恒 504；**api.mainnet-beta SPL 大扫静默返回空**=危险靠对账拦；owner memcmp 必须整 32 字节；amount 低位分片全零前缀逐层下钻跳过）⑤whale_deep 按地址频率分派（先一页估频：高频 7 万签名地址改事件窗定向拉，低频囤仓户秒级全 decode）⑥letsbonk 三件套（铸造边 2 条+dev-buy 数秒可卖回制造"creator 清仓"表象/creator fee 走 Raydium Lock burn&earn harvest 账本=真实收益引擎必查/毕业迁移 20.7% 入 Raydium）
+- §4 辅助数据面 4 处：**Vybe v4 top-holders=Solana CEX 标签荒的最大补丁**（`/v4/tokens/<mint>/top-holders` 单页 1000 owner 级自带 Gate/Kraken/MEXC/KuCoin/Coinbase/Crypto.com/Wintermute/KOL/MEV Bot 标注；⚠余额字段系统性虚高——top1000 加总=总供应 113%，只用标签、余额链上为准）；**CMC data-api chart range=ALL** 全史日线（USELESS 案 437 点，补 GeckoTerminal 180 天回溯墙）；**fapi fundingRate 只回最近 500 条、接口首条≠永续上线日**（据此误判币安永续上线日、事件线调研纠正的实锤）；RugCheck insiderNetworks 免费层 accounts=None 再确认+**knownAccounts 388 条 AMM 池标签可作基础设施剔除表**
+- GMGN bundler 标签≠发射日链上事实二见实证（带 bundler 标签的 top 大户实为毕业+6h 外盘买家）——§4"标签是线索不是定论"追加实证
+- environment.md Shell 坑：**heredoc 内联 Python 对中文 str.replace 全角标点必须逐字符对准**（半角写法静默不生效无报错），中文精确替换一律 Edit 工具
+
+**方法（playbook）**：
+- 【候选·单案】**CEX 提币"囤仓大户"的托管/储备层判定指纹组**（entity-cluster §4）：跨户 raw 级逐位相等转账+同秒多户+整点提币窗+持仓篮子镜像+durable nonce/系统地址注资，满足多条即判托管/储备层——"提币囤仓=大户建仓"叙事整体反转为中性所方调度、CEX 托管合计上修；前置层**"同分钟批量注资/出账=交易所批次伪影"升正式**（机制二见：充值侧 AKE 71 址同批/提币侧本案），时间对齐类关联必先拉同窗全量做对照组
+- 正式（机制明确）：**发射窗协同分层禁止只用"净拿>0"过滤**（entity-cluster §6a 流量/存量条扩展）——该过滤静默丢弃"毛量巨大、净额≈0"的闪电套利层（52 址毛量 86.94%/净持仓 0），"最强协同组"帽子戴错组（复核 1 REFUTED 实锤）；bundle/狙击分析必须流量、存量双口径各自分层再交叉
+- report-template 流转图：**footnote 承载复核后行为链定性**=自解释验收的有效形态（读者只看图即得复核后最终定性）
+
+**脚本**：收编 3——`window_fetch.py`（SQD 定向小段窗+并发，失败段 gaps.json 落盘）/`anchor_sampler.py`（日级锚点滚动校准；**参考锚定点已参数化**进 config.json ref_slot/ref_ts，收编时去除标的写死值）/`scan_sharded.py`（amount 低位递归分片，**分片逻辑可行、全量因 publicnode 间歇 504 未跑完待验**）；案例专属不收编（留 USELESS 目录存档）：build_camp_series/make_charts/make_flows/launch_analysis/gate2_reconcile
+
+**Known Gaps（USELESS 遗留，增量更新时核）**：①分片全量扫描未完成（publicnode 间歇 504），对账已用 8 样本独立单查+top20 对表替代过关，全量 owner 口径快照缺 ②MfDuWeq 中枢（62.8% 供给历史过手）未穿透，复核 3 建议补观察哨 ③F8/dev 发射前 SOL 注资源未穷尽（主钱包签名过多，免费 RPC 翻页仅覆盖 2025-08 后）④锚点 fail 6 天（05-11/12/13 发射期由精确数据覆盖；09-19/20、06-24 插值）⑤发射 24h 末 12 址接盘大户（合计 16.4%）离场路径未逐个溯源（现全归零）
+
+**质量指标**：初稿关键结论 6 条；复核判定 CONFIRMED 5 / WEAKENED 3 / REFUTED 5；漏检实体 2（F8↔dev 关联、闪电套利层）；传播级数字错误 2（囤仓群文图口径分叉、dev 收益 74 倍失真）——全部在交付前修正。
+**成本指标**：交付用时约 15 小时（跨夜，含约 6 小时后台挂机）；上下文峰值约 17 万；Bash 调用密集但多为并行采集（轮次数未单独计数）。
 
 ## [3.10.0] - 2026-07-21 — LPT(ETH+Arbitrum) 全量复盘：质押型代币首战 + "庄不成立"呈现范式
 

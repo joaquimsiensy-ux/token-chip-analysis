@@ -35,3 +35,9 @@ MINT 来源约定：脚本读 `MINT` 环境变量或工作目录 `config.json` �
 16. **gas_fast.py** — 翻页上限版 gas 溯源（gas_origin.py 的加固版）：`oldest_sigs` 加 max_pages=2 上限，超深高频地址标 approx，避免卡死；落仓户签名少秒完成。**取最早入金 funder 作聚类依据**（非任意交互，规避高频服务热钱包误合并）。
 17. **snapshot_diff.py** — /token-update 快照对比法第一步:新旧 holders_owners.json 全量 diff,输出实体逐址变动/大额变动榜(新面孔·清零标注)/新 top30 粗筛。`--entities` 传旧研报实体表 {addr:label}。（来源:CLUDE(Solana) 增量更新,2026-07-15）
 18. **probe_window_moves.py** — /token-update 快照对比法第二步:对大额变动地址批量拉窗口内 ATA 签名史,逐笔解析并按对手方分类(pool_buy/pool_sell/direct_transfer),汇总"直转对"识别换仓/洗仓/归集。`--cutoff` 只收 ISO 时间字符串(内部 datetime 解析,禁手算 unix——实战手算错 2 天首跑作废);直转对金额取对手方 |Δ| 口径(本址净额会虚高)。净额一律以快照 diff 为权威。（来源:CLUDE(Solana) 增量更新,2026-07-15）
+
+## 新增脚本（USELESS(Solana) 2026-07-21 收编）
+
+19. **window_fetch.py** — SQD 定向窗口拉取（高密度期正解）:2000 slot 小段 × 8 并发,专攻发射窗/事件日,输出与 fetch_sqd_transfers 兼容的边表;失败段落 `<out>.gaps.json`(必须为空才算完整)。反面:50K 大段在发射期反复超时截断(120min 仅推 3.4 链上小时),小段版发射日 24h(16.5 万边)82 分钟零缺口。pipeline §11.2。
+20. **anchor_sampler.py** — SQD 日级锚点采样器:从新到旧滚动校准 slot↔ts(分段线性,漂移>4h 自动重估),435 天约 5s/天;断点续传。参考锚定点从 config.json 的 ref_slot/ref_ts 或 CLI --ref-slot/--ref-ts 传入(取法:getSlot+getBlockTime 一对近期映射)。**⚠锚点单独不可作阴性依据**(高活跃期实际窗口仅数分钟且只记变动账户,见 pipeline §11.3),阴性结论须快照/全流水兜底。
+21. **scan_sharded.py** — publicnode 大响应 504 时的分片全量扫描:按 amount 低位字节(offset 64, u64 LE)递归分片,全零前缀(零余额账户堆积处)递归下钻至 8 字节终点片跳过;`--smoke` 冒烟模式;分片缓存 data/_shards2/ 断点续跑。**状态:分片逻辑实测可行,全量扫描因 publicnode 间歇 504 未跑完,待后续标的验证**(pipeline §11.4)。
