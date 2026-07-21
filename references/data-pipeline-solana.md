@@ -310,7 +310,7 @@ IO 当时全程用会话内联 Python 完成、未沉淀成脚本文件；但找
 
 ### 13c. 溯源解码 v2（`decode_txs_v2.py`,三板斧落地）
 
-JSON-RPC batch + 跨地址共享 sig 缓存（`--cache-dir`,按 sig 前 2 字符 256 片）+ `--rpc` 端点可换。**mainnet-beta 实测硬墙**：batch 内子请求被**按方法逐个限流**（"Too many requests for a specific RPC call",20 笔只放行 ~9 笔）——batch 默认 8,429 子请求自动收回重试（绝不能记 decode_fail,首测 22/40 假失败的教训）。公共节点净速度收益约 1.5 倍;**真价值=①缓存**（关联地址重复交易第二址起零请求,实测 18/40 命中）**②Helius 就位即切**（`--rpc https://mainnet.helius-rpc.com/?api-key=<key>` 免代理 50 RPS,batch 可调大）。Helius 注册待用户搭手（Google OAuth 需真实浏览器登录态;纯邮箱流程 2026-07-09 被 bot 检测拒绝两次,勿再盲试）。
+JSON-RPC batch + 跨地址共享 sig 缓存（`--cache-dir`,按 sig 前 2 字符 256 片）+ `--rpc` 端点可换。**mainnet-beta 实测硬墙**：batch 内子请求被**按方法逐个限流**（"Too many requests for a specific RPC call",20 笔只放行 ~9 笔）——batch 默认 8,429 子请求自动收回重试（绝不能记 decode_fail,首测 22/40 假失败的教训）。公共节点净速度收益约 1.5 倍;**真价值=①缓存**（关联地址重复交易第二址起零请求,实测 18/40 命中）**②Helius 就位即切**（`--rpc https://mainnet.helius-rpc.com/?api-key=<key>` 免代理 50 RPS,batch 可调大）。**Helius 已就位**（2026-07-21 用户 Google OAuth 注册,key 存 ~/.config/helius/api-key,api-keys.md 第 15 节）：端点国内直连免代理;**免费层不支持 batch**（403 码 -32403,单元素数组同拒）——正解=`--workers 6 --interval 0.12` 单笔并发贴满 10RPS,实测 40 笔 5.3s=7.5 笔/s（公共节点约 7 倍;45 址溯源老基准 4 分钟→约 35 秒）;archival 10 credits/笔,免费月额≈10 万笔。
 
 ### 13d. Solana HyperSync 通道（solana.hypersync.xyz,early access——第二引擎/指纹查询,非主力）
 

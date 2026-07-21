@@ -93,6 +93,8 @@ def main():
     ap.add_argument("--proxy", default=None)
     ap.add_argument("--cache-dir", default="data/txcache", help="跨地址共享缓存;空串禁用")
     ap.add_argument("--rpc", default=DEF_RPC)
+    ap.add_argument("--workers", type=int, default=1,
+                    help="单笔并发线程数(>1 时忽略 batch;Helius 免费层建议 6+interval 0.12=贴 10RPS)")
     a = ap.parse_args()
 
     mint = a.mint
@@ -150,6 +152,61 @@ def main():
 
     t0, n_ok, n_fail = time.time(), 0, 0
     retry_cnt = {}
+
+    # 单笔并发路径(--workers>1):多线程各自 Session 并发发单笔,主线程节流提交+统一落盘。
+    # 适用 Helius 这类"不支持 batch 但 RPS 富余"的端点(免费层 10 RPS,串行只吃到 1.6/s)。
+    if a.workers > 1:
+        import threading as _th
+        from concurrent.futures import ThreadPoolExecutor as _TPE
+        tl = _th.local()
+
+        def one(sig):
+            if not hasattr(tl, "s"):
+                tl.s = requests.Session()
+                if a.proxy:
+                    tl.s.proxies = {"http": a.proxy, "https": a.proxy}
+            b = {"jsonrpc": "2.0", "id": 0, "method": "getTransaction",
+                 "params": [sig, {"encoding": "jsonParsed",
+                                  "maxSupportedTransactionVersion": 0,
+                                  "commitment": "confirmed"}]}
+            for attempt in range(5):
+                try:
+                    r = tl.s.post(a.rpc, json=b, timeout=45)
+                    if r.status_code == 429:
+                        time.sleep(4 * (attempt + 1))
+                        continue
+                    d = r.json()
+                    if (d.get("error") or {}).get("code") == 429:
+                        time.sleep(4 * (attempt + 1))
+                        continue
+                    return sig, d.get("result")
+                except Exception:
+                    time.sleep(2 * (attempt + 1))
+            return sig, None
+
+        with _TPE(a.workers) as ex:
+            futs = []
+            for sig in todo:
+                futs.append(ex.submit(one, sig))
+                time.sleep(a.interval)          # 节流提交=全局速率上限 1/interval
+            for k, fut in enumerate(futs):
+                sig, res = fut.result()
+                if res is None:
+                    n_fail += 1
+                    f.write(json.dumps({"sig": sig, "decode_fail": True}) + "\n")
+                else:
+                    row = decode_result(sig, res, mint, a.pool)
+                    f.write(json.dumps(row) + "\n")
+                    cache.put(row)
+                    n_ok += 1
+                if (k + 1) % 100 == 0:
+                    f.flush()
+                    rate = (k + 1) / (time.time() - t0)
+                    log(f"{k+1}/{len(todo)} ok={n_ok} fail={n_fail} rate={rate:.1f}/s")
+        f.close()
+        log(f"DONE ok={n_ok} fail={n_fail} cache_hit={hit} 耗时{(time.time()-t0)/60:.1f}min")
+        return
+
     i = 0
     while i < len(todo):
         chunk = todo[i:i + a.batch]
@@ -158,6 +215,8 @@ def main():
                                   "maxSupportedTransactionVersion": 0,
                                   "commitment": "confirmed"}]}
                 for k, sig in enumerate(chunk)]
+        if len(chunk) == 1:
+            body = body[0]   # 单笔发裸对象——部分端点把单元素数组也当 batch 拒(Helius 免费层实测)
         results = None
         for attempt in range(5):
             try:
@@ -166,15 +225,17 @@ def main():
                     time.sleep(6 * (attempt + 1))
                     continue
                 d = r.json()
+                if isinstance(d, dict) and "id" in d:
+                    d = [d]          # 单对象响应 → 统一列表处理
                 if isinstance(d, list):
                     results = d
                     break
                 if isinstance(d, dict) and (d.get("error") or {}).get("code") == 429:
                     time.sleep(6 * (attempt + 1))
                     continue
-                # 端点不支持 batch(返回单对象错误)→ 降级单笔模式
+                # 无 id 的顶层错误对象 = batch 被端点拒绝(如 Helius 免费层 -32403)→ 降级单笔
                 if isinstance(d, dict):
-                    log("端点疑似不支持 batch,降级为单笔(batch=1)")
+                    log(f"端点拒绝 batch({json.dumps(d.get('error'))[:80]})——降级单笔模式")
                     a.batch = 1
                     break
             except Exception:
