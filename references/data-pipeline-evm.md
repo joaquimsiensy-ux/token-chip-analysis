@@ -61,7 +61,7 @@
 - key 不落盘：用户账号见 memory `onchain-data-accounts.md`，token 每次让用户现提供。
 - **transactions 端点做 BNB 注资溯源**：body `{"transactions":[{"to":[addr]}],"field_selection":{"transaction":["block_number","from","to","value"]}}`（value 为 hex）——单址全链入金一次查询 ~2.3s 到 tip，比逐块扫快几个量级；⚠25 址×全链批量会 10 分钟超时，可用姿势=关键地址单址逐查 / 发射窗小块段批量（from/to_block 圈定）。（来源：哈基米(BSC) 分析，2026-07-18）
 - 分段多进程姿势：复制脚本改 OUT 与 to_block 边界（`if nxt >= BOUND: break`）、sleep 提至 0.5s，各进程独立 CSV 事后按 (tx,log_index) 去重合并；改 config 后重启前删本地缓存的段清单文件。（来源：哈基米(BSC) 分析，2026-07-18）
-- **多会话共享 key 限速冲突**：并行分析会话同打一个 HyperSync key/端点会互相触发 429（SQD 案与另一标的采集会话撞车实测）——开工前 `ps aux | grep fetch_hypersync` 查有无在跑进程；撞车时不必停工，调低单会话吞吐预期、靠 429 退避共存（SQD 案 83.2 万条 56 分钟、429×20 次全部自愈）。（来源：SQD(Arbitrum) 分析，2026-07-20）
+- **多会话共享 key 限速冲突**：并行分析会话同打一个 HyperSync key/端点会互相触发 429（SQD 案与另一标的采集会话撞车实测）——开工前 `ps aux | grep fetch_hypersync` 查有无在跑进程；撞车时不必停工，调低单会话吞吐预期、靠 429 退避共存（SQD 案 83.2 万条 56 分钟、429×20 次全部自愈）。（来源：SQD(Arbitrum) 分析，2026-07-20）**限流是 key 级共享、不是端点独立**——同 key 打不同链子域（eth+arbitrum）并发同样互抢限额：LPT 案 eth+arbitrum 三进程并发时 arbitrum 端点 429 密集，串行后恢复；多链标的的分链采集按链串行或错峰，别指望换端点绕开限额。（来源：LPT(ETH+Arbitrum) 分析，2026-07-21）
 
 ### 3.2 Alchemy getAssetTransfers（scripts/evm/fetch_alchemy.py）
 - POST `https://bnb-mainnet.g.alchemy.com/v2/{KEY}`，method=`alchemy_getAssetTransfers`，params 含 `contractAddresses`、`category:["erc20"]`、`maxCount:"0x3e8"`、`pageKey` 分页；返回自带时间戳。（来源：SIREN(BSC) 分析，2026-07）
@@ -106,6 +106,9 @@
 | 千级地址现时余额 | scripts/evm/multicall_balances.py | 见 §3.5 | （来源：SIREN(BSC) 分析，2026-07） |
 | TGE 老币全史日K | `api.gateio.ws/api/v4/spot/candlesticks?currency_pair={SYM}_USDT&interval=1d&limit=1000`（走 clash 代理） | 免 key 单次最多 1000 根，SQD 实测一次拿 796 根全史——上过 Gate 现货的 TGE 老币全史价格正解（GT 181 根墙/CoinGecko 365 天墙的解法）；上过 Gate 的币远多于上币安的，覆盖面广 | （来源：SQD(Arbitrum) 分析，2026-07-20） |
 | 第三方富豪榜快照（CoinCarp 类） | — | ⚠只当历史线索、绝不当现状数据：快照可严重过时（SQD 案榜前 8 有 6 个现持已清零，快照疑似两年前）——现状持仓一律链上实查 | （来源：SQD(Arbitrum) 分析，2026-07-20） |
+| 官方 subgraph 免 key 白嫖 | 项目 explorer 前端 bundle 里 grep `gateway.thegraph` 附近的压缩变量赋值 | 前端直连 The Graph gateway 的项目会把 API key 以 NEXT_PUBLIC_ 环境变量内联进公开打包 JS（每个访问者浏览器都在用）——提取即得免 key 通道，**对任何"前端直连 subgraph"的项目通用**；LPT 案 10 次查询拿到质押账本快照/全轮次历史，与链上重放双源互验。批量分页快照落盘模板：LPT 工作目录 fetch_subgraph.py（专属存档，非复用件；skip 分页有 5000+1000 上限） | （来源：LPT(ETH+Arbitrum) 分析，2026-07-21） |
+| 事件签名 topic0 正算/反查 | 正算：`web3_sha3` RPC（publicnode 支持）；反查：`api.openchain.xyz/signature-database/v1/lookup?event=0x...,0x...&filter=true` | 本机无 keccak 库时 web3_sha3 直接算事件签名 topic0（比装包/在线工具快）；openchain 批量逗号分隔一次全解（LPT 案 BondingManager 12 种 topic0 一次解完）——⚠参数名是 `event` 不是 `topic`，用错返回全空**不报错** | （来源：LPT(ETH+Arbitrum) 分析，2026-07-21） |
+| 更老币（2021 前上所）早期价格 | Poloniex candles API（2021-01 起可用，limit 500） | 2018-2021 段老币价格免费源全谱系实测：CoinGecko `/coins/{id}/history` 免费层对老币历史**全 no-price**（月度快照 41 连败）、CryptoCompare histoday 无数据（已入死亡名单）、币安月度包仅覆盖上所后——2021 前只剩 Poloniex candles；更早段报告声明截断 | （来源：LPT(ETH+Arbitrum) 分析，2026-07-21） |
 
 gmgn-cli 使用坑（fetch_gmgn.sh 已内置处理）：
 - 命令用全路径 `~/.npm-global/bin/gmgn-cli`（不在 PATH；报 command not found 时别去重装）。（来源：SIREN(BSC) 分析，2026-07）
@@ -120,6 +123,8 @@ gmgn-cli 使用坑（fetch_gmgn.sh 已内置处理）：
 2. **全网余额和=0**：所有地址重建余额求和应为零（mint/burn 计入），不为零即漏了转账段。（来源：SIREN(BSC) 分析，2026-07）
 3. **总量恒等式 wei 级闭合**：跨链代币各链余量之和 ≈ 总供应，精确到 wei。（来源：OPN(BSC) 分析，2026-07）
 4. **时间戳锚点插值抽查**：锚点表（每隔固定块距，或每 100 万块一个）bisect 线性插值出的日期，抽几笔与浏览器页面核对。（来源：OPN/SIREN(BSC) 分析，2026-07）
+
+**对账差额排查步骤（供给恒等式不闭合时按序查）——查完常规漏段后必查 Burn/Mint 独立事件**：2017 老版 OpenZeppelin `burn()` 只发 `Burn(address,uint256)` **不发 Transfer**——只采 Transfer topic 重放会出现"重放净供给 > 链上 totalSupply"的幽灵差额（LPT 案 604 枚，burner 主力=治理合约每次投票烧 100）。排查法：web3_sha3 算 Burn/Mint topic0 后 HyperSync 定向拉（几秒）；注意新链侧可能是"Burn 事件+Transfer(to=0x0) 双发"路径（此时 Burn 事件是 Transfer 的子集，不另计，勿双扣）。链无关坑，凡 2018 前老合约必查。（来源：LPT(ETH+Arbitrum) 分析，2026-07-21）
 
 加分项：重建结果与第三方链上分析师独立披露的同口径数字对表，独立吻合是结论可信度的最强背书（具体数字属于当次报告，不进本手册）。（来源：SIREN(BSC) 分析，2026-07）
 
@@ -252,12 +257,23 @@ gmgn-cli 使用坑（fetch_gmgn.sh 已内置处理）：
 
 Arbitrum One（chainid 42161）待遇比 BSC/Base 好：Etherscan V2 免费层全开 + 官方公共 RPC 稳定直连，EVM 通用管道原样可用，无需专用脚本。
 
-- **全量转账主通道 = HyperSync `arbitrum.hypersync.xyz`**：fetch_hypersync.py 改 config 端点即用；SQD 实测 83.2 万条 Transfer 56 分钟拉完（sleep 0.25）。（来源：SQD(Arbitrum) 分析，2026-07-20）
+- **全量转账主通道 = HyperSync `arbitrum.hypersync.xyz`**：fetch_hypersync.py 改 config 端点即用；SQD 实测 83.2 万条 Transfer 56 分钟拉完（sleep 0.25）。（来源：SQD(Arbitrum) 分析，2026-07-20）二战数据点：LPT 案 129.4 万条 Transfer 97 分钟（含与 eth 端点同 key 争抢限流段，见 §3.1 key 级共享限流）；40.9 万条合约全事件（不筛 topic，fetch_hypersync_logs.py）26 分钟。（来源：LPT(ETH+Arbitrum) 分析，2026-07-21）
 - **Etherscan V2 免费层对 chainid=42161 全可用**（与 BSC/Base/OP 锁付费层待遇相反，免费三链 ETH/Arb/Polygon 见 api-keys）：tokentx、getLogs（工厂事件枚举 1000 条/页）、proxy 系 eth_getTransactionByHash / eth_getBlockByNumber 全通——对账交叉验证与 vesting 工厂枚举（playbook-supply-recon §1）都走它。（来源：SQD(Arbitrum) 分析，2026-07-20）
 - **官方公共 RPC `arb1.arbitrum.io/rpc` 直连免代理**：eth_call balanceOf / getCode 稳定，对账现值核验十几连发无限速。（来源：SQD(Arbitrum) 分析，2026-07-20）
 - **Blockscout Arbitrum**：`arbitrum.blockscout.com/api/v2/addresses/{addr}`（免 key 走代理）——标签/is_contract/ens 通道结构可用（SQD 案标签全空但接口正常，标签覆盖别指望它）。（来源：SQD(Arbitrum) 分析，2026-07-20）
 - **价格：GeckoTerminal 免费层对老币有一年历史墙**——OHLCV 单次仅回约 181 根，且 before_timestamp 翻页也翻不过 1 年深度——TGE 老币全史价格改走 Gate 现货日K（§4）。（来源：SQD(Arbitrum) 分析，2026-07-20）
 - 0 值转账投毒与仿冒地址贴脸在 Arbitrum 同样高发（SQD 案 31,814 笔 0 值占 3.8%；仿冒关键实体地址前缀的假地址实见）——计数剔 0 值、关键地址完整比对，既有纪律 Arbitrum 再验证。（来源：SQD(Arbitrum) 分析，2026-07-20）
 - labels 标签库暂无 arbitrum 链表，用 eth 库跨链复用可命中主流 CEX（SQD 案命中 17 个 CEX 地址——Arbitrum 大所热钱包多与 ETH 主网同址）；HTX 例外未命中（见 CHANGELOG v3.9.0 Known Gaps）。（来源：SQD(Arbitrum) 分析，2026-07-20）
+
+## 10. 质押型代币标的范式（方法链无关，LPT(ETH+Arbitrum) 首战实测，2026-07-21）
+
+标的有原生质押体系（BondingManager/Staking 类合约，bond 时代币 Transfer 进协议金库）时，纯 ERC20 Transfer 重放会把全部质押大户记成"转给协议"，筹码结构整体失真。标准动作六件：
+
+1. **权益合并口径**：持仓 = ERC20 余额 + bonded 质押权益，两账本合并（规则见 playbook-supply-recon §1）。金库（Minter 类）行**必须替换为残差**（金库余额 − Σ已归属 bonded），否则与穿透归属双计。（来源：LPT(ETH+Arbitrum) 分析，2026-07-21）
+2. **质押账本状态机重放**：用 fetch_hypersync_logs.py（scripts/evm/，全事件版：不筛 topic、保留 topic0-3+data）拉质押合约全事件，先解出 topic0 映射**落盘成 topic_map JSON**，再写状态机重放。**"关键字符串从落盘文件取"纪律覆盖 topic0/事件签名**——LPT 案手敲 TransferBond topic0 错一段，扫出 0 笔 silent fail（无报错，靠"这类事件不可能为零"的直觉才发现）。**校准锚点范式**：事件自带事后绝对值字段的（如 Bond 事件自带 bonded 总额），重放时逐事件比对作内置校准锚点——状态机漂移即刻暴露，比"只在末态对账"早几个量级发现 bug；老版本事件缺金额字段时联表同 tx 的 Transfer 补金额。（来源：LPT(ETH+Arbitrum) 分析，2026-07-21）
+3. **记账式通胀的"已铸未领"桶**：奖励 mint 进金库但不分发（用户 claim 才落账）时，"已铸未领"必须单列桶（LPT 案 639 万 = 11.6% 总供给）——它既不是协议自有也不是可动用流通（规则见 playbook-supply-recon §1）；分析时对 top N 委托人可用 pendingStake 类 eth_call 校准到含未领口径。（来源：LPT(ETH+Arbitrum) 分析，2026-07-21）
+4. **非 Transfer 换手事件审计（TransferBond 类）**：质押权益可不经 ERC20 Transfer 直接换主（LPT 案 1,774 万枚/1.1 万笔）——实体溯源与"庄不成立"阴性排查必须扫这类场外换手暗道。定性纪律：大额几乎全是跨链迁移中继批量落账（单中继服务 99-478 人=公共通道，按 §6 公共服务规则不作关联边），真定向转让极少但每笔都值得看。（来源：LPT(ETH+Arbitrum) 分析，2026-07-21）
+5. **跨链迁移衔接的双计坑**：L1→L2 迁移常走 Migrator 特殊流程**不发 L1 Unbond 事件**——L1 账本"迁移后残留"+ L2 账本新记录在衔接月双计（LPT 案实体峰值虚增近一倍：19.4%→修复后 12.4%）。对策：L1 账本截断在迁移前最后一个完整月，衔接毛刺量化后写进报告局限性。（来源：LPT(ETH+Arbitrum) 分析，2026-07-21）
+6. **月度粒度的峰值口径**：月末快照天然 sig 原子化，但月内脉冲被平滑——峰值口径纪律见 playbook-entity-cluster §6a。双链 ERC20+质押账本合并月度权益引擎（跟踪集+retail 聚合+质押前向填充）结构参考：LPT 工作目录 build_evolution.py / rebuild_stake_ledger.py（专属存档，非复用件）。（来源：LPT(ETH+Arbitrum) 分析，2026-07-21）
 
 通用环境坑（macOS SSL 证书、reportlab 中文字体、前台 sleep 被 Block 等）不在本文重复，见 skill 其他参考文档与 memory（mac-python-pdf-environment.md、onchain-data-accounts.md）。

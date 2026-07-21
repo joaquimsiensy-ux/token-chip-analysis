@@ -13,6 +13,7 @@
 - **2.24.0/2.25.0 曾物理倒排**（同日并行会话插入位置错位）——2026-07-18 稳定化时仅调整排列顺序，两条内容一字未动
 
 ## 版本索引（活跃窗口，新在上）
+- **3.10.0 2026-07-21 LPT(ETH+Arbitrum) 全量复盘：质押型代币首战**：data-pipeline-evm 新增 §10 质押型标的范式六件（权益=ERC20+bonded 合并口径·金库残差/账本状态机重放+事件自带总额校准锚点/已铸未领桶/TransferBond 暗道审计/L1→L2 迁移月双计坑/月度峰值口径）+§9 增量（HyperSync 同 key 多端点限流共享+二战数据点）+§4 三行（subgraph 前端 bundle 白嫖法/web3_sha3+openchain 事件签名正反解/Poloniex 老币早期价格）+§5 Burn 独立事件幽灵差额排查；supply-recon 增 CMC/CG 冻结快照必查（LPT 案低报 11%）；方法 4 条 candidate（高扇出≠服务商三判据/CEX 质押产品三件套/机构托管轮换链指纹/庄不成立呈现范式）+2 正式（月末快照天然原子化+脉冲月双报/落盘取值纪律扩至 topic0）；脚本收编 fetch_hypersync_logs.py（合约全事件版）
 - **3.9.0 2026-07-21 SQD(Arbitrum) 全量复盘：Arbitrum 首战**：data-pipeline-evm 新增 §9 Arbitrum 专节（HyperSync arbitrum 端点/Etherscan V2 免费层全开/arb1 RPC 免代理/Gate 现货日K=TGE 老币全史价格正解/GT 1 年墙/CryptoCompare 入死亡名单）+ CEX 取证两件正式（交易所 PoR 审计文件=地址归属实锤通道/CEX 回旋地址剔除=窗口净流榜提出侧污染）+ 方法 5 条 candidate（vesting 工厂枚举/官方桶金额对表归属/可回收 MM 贷款指纹/公告前夜充值取证三件套/质押押金内部人分解）+ 脚本修复 2（replay_pass2 烧毁落散户桶 bug/图3 粒度参数化）+ 环境坑（Monitor 检测 /proc 在 macOS 恒真）
 - **3.8.1 2026-07-20 文档小修**：时间戳时区纪律——分钟级时间双标 UTC+北京（SIREN 回测"凌晨先崩"被用户按 GMGN 本地时间质疑的沟通事故）
 - **3.8.0 2026-07-20 SIREN 交付后问答复盘——报告可读性两条用户验收硬性**：①术语大白话纪律（验收=读者不提问读懂全文；行业词首现带比喻+比喻库沉淀；自造绰号首现交代由来；绰号≥5 配角色速查卡；checklist 7b）②流转图自解释验收（目的=只看图看完实体全部操作；卡片全带【总量%】/分合动作写边标签/归属证据有落点/账目行加法配平"期初−期末=Σ去向"——SIREN 净出漏四仓 15.2pp 被用户加法抓出的实锤）＋lifecycle_flow footnote 半角 $ 数学模式坑
@@ -26,6 +27,33 @@
 - **3.0.0 2026-07-18 稳定化大版本**：git 基线/标签库双真相收敛/复盘机制升级(质量指标+candidate+整编+预测追踪)/playbook 重组/守护三件套/瘦身 287→97MB
 - 2.29.0 2026-07-18 jesse(Base) 全量复盘 | 2.28.0 哈基米(BSC)
 - （2.27.0 及更早共 48 条 → CHANGELOG-archive.md）
+
+## [3.10.0] - 2026-07-21 — LPT(ETH+Arbitrum) 全量复盘：质押型代币首战 + "庄不成立"呈现范式
+
+> 首个原生质押体系标的（BondingManager 质押账本、记账式通胀、L1→L2 迁移史、TGE 8 年老币），与 meme 盘/VC 币（SQD）互补的第三类标的。双链合计 2.6GB/856 万事件重放；开工时 skill v3.8.1、写入时接 v3.9.0（并行会话竞态已按其 §9 做增量、未重复建节）。
+
+**通道/坑（数据工程类，直接正式）**：
+- **data-pipeline-evm §10 新节·质押型代币标的范式六件**：①权益=ERC20+bonded 合并口径（金库 Minter 行替换为残差，防与穿透归属双计）②质押账本状态机重放（topic_map 落盘纪律+Bond 事件自带事后总额做校准锚点+老事件联表 Transfer 补金额）③记账式通胀"已铸未领"桶单列（LPT 案 639 万=11.6% 总供给，既非协议自有也非可动用流通）④TransferBond 类非 Transfer 换手暗道审计（LPT 案 1,774 万枚/1.1 万笔；迁移中继批量落账=公共通道不作关联边）⑤L1→L2 迁移月双计坑（迁移不发 L1 Unbond，实体峰值虚增近一倍 19.4%→12.4%；对策=L1 账本截断在迁移前最后完整月+衔接毛刺写局限性）⑥月度粒度峰值口径
+- §9 Arbitrum 增量：**HyperSync 限流是 key 级共享、不是端点独立**（eth+arbitrum 同 key 三进程并发时 arbitrum 429 密集、串行恢复）；二战数据点 129.4 万条 Transfer 97 分钟/40.9 万条合约全事件 26 分钟
+- §4 三行：**The Graph 官方 subgraph 免 key 白嫖法**（explorer 前端 bundle grep `gateway.thegraph` 附近提取 NEXT_PUBLIC_ 内联 key——"前端直连 subgraph"项目通用，质押账本快照与链上重放双源互验）；事件签名 topic0 正算 `web3_sha3` RPC+反查 openchain lookup（⚠参数名是 `event` 不是 `topic`，用错全空不报错）；**Poloniex candles=2021 前老币价格唯一免费源**（CoinGecko `/coins/{id}/history` 免费层对老币历史全 no-price 41 连败、币安月度包仅覆盖上所后）
+- §5 对账差额排查加一条：**2017 老版 OZ `burn()` 只发 Burn 事件不发 Transfer** 的幽灵差额（重放净供给>链上 totalSupply，LPT 案 604 枚）——web3_sha3 算 topic0 后 HyperSync 定向拉几秒查完；新链侧"Burn+Transfer(to=0x0) 双发"路径勿双扣
+- supply-recon §1/§2：**CMC/CG 供给数据可能是冻结快照**（两家同值且精确对应链上历史时点值=快照冻结，LPT 案冻结 5 个月低报 11%）——老通胀币供给必须链上实查、第三方注明抓取时点；合并口径/已铸未领桶规则版；校准锚点范式通用规则
+
+**方法（candidate 级，单案待复现转正）**：
+- **"高扇出≠公共服务商"反向判据**（entity-cluster §6）：扇出度高（508 对手方）不足以判服务商——流量集中度（单一对手 45%）+生命周期同步性（与实体同日启停）+下游网络跨代连续性三条全中=实体自有分发网应并入（吞吐口径）；与"行为半枢纽剔除"分工明确（剔除管"不串外人"、本条管"不排自家"）——R4 复核推翻初判的教训
+- **交易所质押产品识别三件套**（entity-cluster §3）：①资金 99%+ 溯至 CEX 热钱包本体且大额回流本体（散户做不到）②链上试水恰在该所 staking 产品官宣前数周（Wayback 对时间线）③受托节点专业且几乎专属——命中即归 CEX 桶不判庄；LPT 案把"全网最大神秘巨鲸 6.96%"翻案为 Bitvavo 产品
+- **机构托管"逐月换仓轮换链"指纹**（entity-cluster §4）：每月整仓转新址+40+ 跳+余额守恒+OTC 台起点=托管安全轮换非出货；与"传动链分批剥离出金"（主仓递减+剥离额有出金去向=离场）按余额守恒性区分
+- **"庄不成立"老基础设施币呈现范式**（entity-cluster §6）：报告价值支点改为①第三方供给口径纠错②托管化趋势量化③机构体系全周期故事（含离场价位与当前作业模式）④通胀分配结构；四问照答，"无庄"用全谱系阴性排查支撑（含 TransferBond 暗道审计）
+- 正式 2 条（机制明确直入）：**月末快照粒度天然 sig 原子化**（月末余额已结清体系内互转）+月内脉冲被平滑的代价（离场清算月含一次性脉冲时以相邻月常态口径双报）（§6a）；**落盘取值纪律扩展覆盖 topic0/事件签名**（从 topic_map JSON 取不从记忆敲——手敲 TransferBond topic0 错一段扫出 0 笔 silent fail 实录）（§6）
+
+**脚本**：
+- 收编 `scripts/evm/fetch_hypersync_logs.py`：HyperSync 合约**全事件**版（不筛 topic、保留 topic0-3+data、断点续传）——BondingManager 类质押账本采集通用件
+- 留工作目录（专属存档非复用件，pipeline §10 已注明）：rebuild_stake_ledger.py/rebuild_stake_l1.py（Livepeer 状态机重放，"事件自带绝对值做校准锚点"范式已入 playbook）、build_evolution.py（双链 ERC20+质押合并月度权益引擎，结构可参考）、fetch_subgraph.py（subgraph 批量分页快照模板）
+
+**Known Gaps（LPT 遗留，增量更新时核）**：①Bitvavo 中转A 2026-07-20 新出 16.6 万去向未落定（数据截止时在途，观察哨候选）②疑似关联对（Coinbase 双 55 万仓）待互转证据③现役第三大委托人 0x5509be53(120 万,2.17%) 身份未明④传动链末端 123.3 万去向不明（0x0eb93a59 之后）⑤轮换链 B 仍月末活跃轮换中⑥labels 库 miss-queue：Upbit 4 址（route2 high 置信）建议回填主库、0xca07de3e（轮换链B跳板）等未标注⑦GoPlus 报 token owner 0x8dddb96c… 与 explorer controller 0xf96d54e4… 不一致未闭合（权限归属细节，不影响结论）
+
+**质量指标**：初稿核心结论 13 条；复核判定 CONFIRMED 2 / WEAKENED 1 / REFUTED 0 + 数字修正 3 + 完整性补录 4；漏检实体 2 址（复核补）；传播级数字错误 2 处（实体峰值 19.4% 迁移双计、通胀总额少 9,195——桥中悬空在途提现）——全部在复核层拦截，未出报告。
+**成本指标**：双链合计原始数据 2.6GB/856 万事件；墙钟约 5.5 小时（采集 2.3h 并行）；轮次数/Bash 调用数未单独计数（收尾会话另计）。
 
 ## [3.9.0] - 2026-07-21 — SQD(Arbitrum) 全量复盘：Arbitrum 首战 + VC 币 vesting 取证
 
