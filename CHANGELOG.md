@@ -32,6 +32,19 @@
 - 2.29.0 2026-07-18 jesse(Base) 全量复盘 | 2.28.0 哈基米(BSC)
 - （2.27.0 及更早共 48 条 → CHANGELOG-archive.md）
 
+## [3.11.3] - 2026-07-21 — Solana 采集加速工程：SQD v2 采集器 + 溯源批量化 + Solana HyperSync 通道（非复盘专项）
+
+> 起因：3.11.2 解决 EVM 侧后，Solana 侧同题（§8 实测 SQD 单流 1.5-4x 实时→全程重放不可行→§11 混合重建凑合）。@CX 交叉复核后用户拍板方案 1/2/3/5（方案 4 实时档案暂缓）。最大翻案：**"SQD 慢"的真凶是明文传输**——v1/window_fetch 的 curl 全没开压缩，gzip 同段对照 21 倍（4.65→98 slots/s）。开工时 skill v3.11.2。
+
+**通道/坑（全部当日实测，详见 data-pipeline-solana §13）**：
+- **SQD 传输层三个数字**：gzip=21 倍；限流 20req/10s 长流碰不到（串行 30 请求 0 429、8 路并发全 200），真瓶颈=单 IP 带宽整形 ~1MB/s（3 路≈8 路聚合——**多注册 key 无意义**，用户问过此路）；单响应解压 ~32MB 上限按最后 slot 续拉即可（v1 50K 段超时死循环=明文 150s 传不完一响应，压缩后自愈）
+- **fetch_sqd_transfers_v2.py**（scripts/solana 新件，全程重放主力）：requests.Session（自动 gzip+连接复用）+自适应区域并发（全局段队列动态领取、区域 1 万-100 万 slot 按耗时伸缩）+全局令牌桶（默认 4rps；1.6 在高密度段顶死请求数的教训）+gaps 重试 2 轮后继续（修 v1"首个未完段后整体丢弃"）。BONK 实测 40 万 slot+22.3 万边三跑 ~11 分钟缺口自动收敛，稳态 639 slots/s=**255 倍实时**（对照 window_fetch 同类 82 分钟→约 7 倍）——**2-6 个月币全程重放复活（数小时级），§11 混合重建降级为 1 年+币龄专用**。冒烟抓 2 个并发 bug（按空洞分配首扫并发恒 1→全局段队列；初始单段 6 worker 扑空 5 个退出→在飞计数等待）
+- **decode_txs_v2.py**（scripts/solana 新件，溯源三板斧）：JSON-RPC batch+跨地址 sig 缓存（256 片；实测 18/40 命中零请求——关联地址重复交易极多）+429 子请求收回重试（首测 22/40 假失败的 bug 教训）。**mainnet-beta 硬墙实测：batch 子请求按方法逐个限流**（"Too many requests for a specific RPC call"，20 笔放行 ~9）→batch 默认 8、公共节点净提速仅 ~1.5 倍；真价值=缓存+Helius 就位即切（--rpc 参数）。Helius 注册待用户搭手（Google OAuth 需真实浏览器；纯邮箱 07-09 被 bot 拒 2 次勿盲试；只注册免费层用于溯源——付费档"不买"决策见 3.11.2 不变）
+- **Solana HyperSync 通道开通**（solana.hypersync.xyz，early access，现役付费 key 直用）：**实测发现文档未载的 mint 服务端过滤**（`token_balances` 收 `mint` 键，字段 slot/mint/owner/account/pre_amount/post_amount/transaction_index 与 SQD 同构直喂 pair_tx）；响应结构顶层数组（无 EVM 的 data 包裹）、游标 next_slot。吞吐：单通道 623 slots/s 打平 SQD（"读取后过滤"型），未达 3600 验收线；**双通道同跑聚合 1,211≈两倍——并行分段有效叠加**；fee_payer 服务端过滤=SQD 没有的洗仓指纹查询。滚动窗 slot 391.79M 起 ≈196 天，窗外老币无效；mint 过滤 pre/post 语义（关户行）未验收
+- **SQD gateway key 登记**（api-keys.md 第 14 节，~/.config/sqd/api-key）：公共 datasets 路径完全不认证（真假 key 全 200，Bearer/X-API-Key/query 三形态无差别）——专属端点 URL 待用户从 portal.sqd.dev/app 后台 key 详情页抄回
+
+成本指标：轮次 ~44 / Bash 调用 ~60 / 交付约 2.5h（不含评估轮）。质量指标：v2 三跑缺口收敛+输出与 v1 逐字段同构验证；decode v2 40 签名 fail=0+缓存命中验证；POC 双通道对照实验定量（623/639/1211 三数字）；遗留 5 项显式记录（§13 尾）。
+
 ## [3.11.2] - 2026-07-21 — 采集加速工程：HyperSync Starter 付费档 + 官方客户端 v2 + 多源对账闸门（非复盘专项）
 
 > 起因：采集全量转账事件占全流程时间大头，用户决策付费提速。评估期与 codex 三轮 @CX 交叉复核（加速方案全景 / 数仓一致性三问 / Helius·SQD 付费选型纠偏），最终选型：EVM=HyperSync Starter（$70/月）+官方客户端；SOL=维持 SQD Portal 免费层（Helius 不买——"按 mint 拉全量转账"在 Solana 结构性不存在，50RPS 凑等价结果一个中型币要 17h+烧光月额；Solana HyperSync 已上线 early access 但滚动窗仅 ~196 天）；AWS/BigQuery 数仓（D/E）暂缓，待用户抽已分析币做分区级准入验证。开工时 skill v3.11.1。
