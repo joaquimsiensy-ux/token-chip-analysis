@@ -18,9 +18,22 @@
     }
   },
   "hypersync": {
-    "_comment": "envio HyperSync 全量转账主力通道（fetch_hypersync.py）。token 留空：从 ~/.claude/api-keys.md 登记文件取用，不写死进 skill 目录。换链改子域，如 eth.hypersync.xyz",
+    "_comment": "envio HyperSync 通道（v3.11.2 起大标的首选 fetch_hypersync_v2.py 官方客户端版,v1 fetch_hypersync.py 兜底）。token 留空：从 ~/.claude/api-keys.md 登记文件取用（现役 Starter 付费档 key）,不写死进 skill 目录。换链改子域，如 eth.hypersync.xyz",
+    "_tier": "Starter 付费档: v1 用 sleep 0.12(429=0 实测);v2 用 concurrency 10。免费层: v1 sleep 0.5;v2 concurrency ≤4",
     "url": "https://bsc.hypersync.xyz/query",
     "token": ""
+  },
+  "hypersync_v2": {
+    "_comment": "官方客户端采集器（fetch_hypersync_v2.py,Rust 并发+Parquet 直写,v3.11.2 POC 实测 ~1 万条/s=手写轮询的 18 倍）。url 用裸域名不带 /query",
+    "url": "https://bsc.hypersync.xyz",
+    "token": "",
+    "concurrency": 10,
+    "outdir": "data/v2"
+  },
+  "sqd": {
+    "_comment": "SQD Portal 薄采集器（fetch_sqd_evm.py,免 key;定位=HyperSync 故障预案+数仓准入对照源,平时不跑）。chain 快捷名 bsc/eth/base/arbitrum",
+    "chain": "bsc",
+    "sleep": 0.5
   },
   "alchemy": {
     "_comment": "alchemy_getAssetTransfers 备用通道（fetch_alchemy.py，带时间戳）。key 留空：从 ~/.claude/api-keys.md 登记文件取用，不写死进 skill 目录。换链改前缀，如 eth-mainnet",
@@ -36,6 +49,8 @@
     "to_block": null,
     "segments": 12,
     "workers": 6,
+    "sleep": 0.1,
+    "_tier": "Starter 付费档全局请求率 workers×(1/sleep) ≤ 8/s;v3.11.2 起大标的优先用 fetch_hypersync_v2.py,本件转为无 pip 环境的并行兜底",
     "outdir": "data/base"
   },
   "watchdog": {

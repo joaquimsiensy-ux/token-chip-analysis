@@ -13,6 +13,9 @@
 - **2.24.0/2.25.0 曾物理倒排**（同日并行会话插入位置错位）——2026-07-18 稳定化时仅调整排列顺序，两条内容一字未动
 
 ## 版本索引（活跃窗口，新在上）
+- **3.11.3 2026-07-21 Solana 采集加速工程（非复盘专项，@CX 三轮交叉复核）**：SQD 传输层真相实测（gzip=21 倍·明文是 §8"1.5-4x 实时"的真凶/限流 20req10s 长流碰不到·真瓶颈=单 IP 带宽整形 1MB/s·多 key 无意义/单响应解压 32MB 上限）；新件 2（fetch_sqd_transfers_v2 全程采集器：requests+自适应区域并发+全局令牌桶+gaps 重试,BONK 实测 639 slots/s=255 倍实时、三跑缺口自动收敛,2-6 个月币全程重放复活、§11 混合重建降级为 1 年+币龄专用 / decode_txs_v2 溯源：JSON-RPC batch+跨地址 sig 缓存+429 收回重试,mainnet-beta 方法级限流 ~10 笔窗实测,Helius 就位即切）；新通道 Solana HyperSync（隐藏 mint 服务端过滤实测——文档未载,`token_balances` 收 `mint` 键;单通道 623 打平 SQD 未达 3600 验收线,双引擎并行聚合 1211 有效叠加;fee_payer 指纹查询独有;滚动窗 196 天）；SQD gateway key 登记（公共端点不认证,专属端点待用户后台抄回）；data-pipeline-solana 新增 §13；成本：44 轮/约 60 Bash/2.5h；遗留 5 项见 §13 尾
+- **3.11.2 2026-07-21 采集加速工程（非复盘专项）：HyperSync Starter 付费档+官方客户端 v2+多源对账闸门**：全量采集小时级→分钟级（SIREN 全史 21,689,815 条 18.8 分钟=19,265 条/s，vs 免费层当年 1568 万条 5.2h，同口径 23 倍）；新件 3（fetch_hypersync_v2 官方客户端 1 万条/s=18 倍付费单进程 / fetch_sqd_evm 免 key 对照源·SQD 无自助付费档 / transfers_lib 多源集合对账 fail-closed+block_hash 防重组去重键+部署块·锚点跨币缓存）；v1/par 付费参数化+8 列兼容；§1 决策树重写（v2 首选）；数仓 D/E 评估结论存档待准入（AWS bnb 无 logs·sonarx T+7 / BigQuery 无聚簇老币单查 200-500GiB / Dune 按 MB 计费大币不成立 / Solana HyperSync 滚动窗 ~196 天）
+- **3.11.1 2026-07-21 销户账户覆盖审计（SQD 对账盲区加固，非复盘专项）**：data-pipeline-solana 新增 §12（GPA 快照只见存活账户→已 closeAccount 者的中间路径是"重放 vs 快照"对账天然盲区；mint 初始化史+tokenBalances=独立账户目录；sigs/blocks 双模式选路；slot+owner 判定粒度；undetermined 诚实纪律；退出码 gate 语义）+ 脚本收编 audit_closed_accounts.py（PUB 全程 93/93、USELESS 定向段 7/7 双案冒烟，SQD 销户覆盖首获专项验证）。来源：Helius vs SQD 采集通道 @CX 交叉复核，codex 反向审计法提议的工程化
 - **3.11.0 2026-07-21 USELESS(Solana) 全量复盘：letsbonk 长币龄混合重建 + CEX 托管层指纹**：data-pipeline-solana 新增 §11 六件（混合重建演变架构·末日快照注入/SQD 高密度期 2000 slot 小段×8 并发/日级锚点观测边界·阴性依据禁用/publicnode 大扫描死角·mainnet-beta 静默空/whale_deep 按频分派/letsbonk 三件套）+§4 增 Vybe v4 top-holders（Solana CEX 标签荒最大补丁·余额虚高 113% 只用标签）/CMC data-api 全史日线/fapi fundingRate 500 条墙≠上线日/RugCheck knownAccounts 剔除表；方法 1 候选（CEX 提币囤仓的托管/储备层指纹组）+2 正式（同分钟批量出账伪影二见/发射窗"净拿>0"过滤禁令·闪电套利层）；脚本收编 3（window_fetch/anchor_sampler 参数化/scan_sharded 待验）；environment 增 heredoc 全角标点坑
 - **3.10.0 2026-07-21 LPT(ETH+Arbitrum) 全量复盘：质押型代币首战**：data-pipeline-evm 新增 §10 质押型标的范式六件（权益=ERC20+bonded 合并口径·金库残差/账本状态机重放+事件自带总额校准锚点/已铸未领桶/TransferBond 暗道审计/L1→L2 迁移月双计坑/月度峰值口径）+§9 增量（HyperSync 同 key 多端点限流共享+二战数据点）+§4 三行（subgraph 前端 bundle 白嫖法/web3_sha3+openchain 事件签名正反解/Poloniex 老币早期价格）+§5 Burn 独立事件幽灵差额排查；supply-recon 增 CMC/CG 冻结快照必查（LPT 案低报 11%）；方法 4 条 candidate（高扇出≠服务商三判据/CEX 质押产品三件套/机构托管轮换链指纹/庄不成立呈现范式）+2 正式（月末快照天然原子化+脉冲月双报/落盘取值纪律扩至 topic0）；脚本收编 fetch_hypersync_logs.py（合约全事件版）
 - **3.9.0 2026-07-21 SQD(Arbitrum) 全量复盘：Arbitrum 首战**：data-pipeline-evm 新增 §9 Arbitrum 专节（HyperSync arbitrum 端点/Etherscan V2 免费层全开/arb1 RPC 免代理/Gate 现货日K=TGE 老币全史价格正解/GT 1 年墙/CryptoCompare 入死亡名单）+ CEX 取证两件正式（交易所 PoR 审计文件=地址归属实锤通道/CEX 回旋地址剔除=窗口净流榜提出侧污染）+ 方法 5 条 candidate（vesting 工厂枚举/官方桶金额对表归属/可回收 MM 贷款指纹/公告前夜充值取证三件套/质押押金内部人分解）+ 脚本修复 2（replay_pass2 烧毁落散户桶 bug/图3 粒度参数化）+ 环境坑（Monitor 检测 /proc 在 macOS 恒真）
@@ -28,6 +31,30 @@
 - **3.0.0 2026-07-18 稳定化大版本**：git 基线/标签库双真相收敛/复盘机制升级(质量指标+candidate+整编+预测追踪)/playbook 重组/守护三件套/瘦身 287→97MB
 - 2.29.0 2026-07-18 jesse(Base) 全量复盘 | 2.28.0 哈基米(BSC)
 - （2.27.0 及更早共 48 条 → CHANGELOG-archive.md）
+
+## [3.11.2] - 2026-07-21 — 采集加速工程：HyperSync Starter 付费档 + 官方客户端 v2 + 多源对账闸门（非复盘专项）
+
+> 起因：采集全量转账事件占全流程时间大头，用户决策付费提速。评估期与 codex 三轮 @CX 交叉复核（加速方案全景 / 数仓一致性三问 / Helius·SQD 付费选型纠偏），最终选型：EVM=HyperSync Starter（$70/月）+官方客户端；SOL=维持 SQD Portal 免费层（Helius 不买——"按 mint 拉全量转账"在 Solana 结构性不存在，50RPS 凑等价结果一个中型币要 17h+烧光月额；Solana HyperSync 已上线 early access 但滚动窗仅 ~196 天）；AWS/BigQuery 数仓（D/E）暂缓，待用户抽已分析币做分区级准入验证。开工时 skill v3.11.1。
+
+**通道/坑（全部当日实测）**：
+- **HyperSync Starter 付费档接入**（key 登记 api-keys.md 第 1 节；100rpm 基础+overage 5x=500rpm，超量按请求计费单币 <$1）：0.12s 间隔 **429=0**（免费层同参数 173 次/时级腰斩）；但 v1 手写轮询单进程吞吐仅 552-792 条/s（ETH RTT~0.2s / BSC RTT~0.6s）——**付费买到的是限速层解除与高峰稳定性，吞吐瓶颈=RTT×串行等待，解药=官方客户端自动并发**（付费不换客户端只吃到零头）
+- **fetch_hypersync_v2.py 官方客户端采集器**（scripts/evm 新件；`pip install hypersync`，Rust 内核自动并发+Parquet 直写，concurrency=10 默认；url 用裸域名不带 /query；断点=run_*/done.json 记 next_block）：CAKE 90,719 行/9s=**10,080 条/s**（18 倍于付费 v1 单进程）；**SIREN 全史 21,689,815 条 1126s=18.8 分钟**（19,265 条/s；vs 免费层当年 1568 万条 5.2h，同口径 **23 倍**；行数落在当时估算 22.6M/上限 25M 区间内）
+- **fetch_sqd_evm.py SQD Portal 薄采集器**（scripts/evm 新件；免 key，公共限流 20 请求/10s，实测 280 条/s）：定位=HyperSync 平台级故障预案+数仓切源准入对照源，平时不跑；SQD Portal **无自助付费档**（官网 "pricing coming soon"，2026-07-21 核实——想付费也没有产品可买）
+- **transfers_lib.py 多源对账闸门**（scripts/evm 新件，M 工程件核心）：标准 8 列含 block_hash，去重键 (block_hash,tx,log_index) 防链重组；merge_sources 两两重叠块区**集合级对账，不等即 exit(3) fail-closed**（PING 案跨源 uniqueId 双计 5485 负余额事故的制度化防线；负面测试：故意删 1 行被精确指认 tx+log_index）；**三源交叉实测 SQD×v1×v2 同区间逐行一致**；配套 ~/.cache/chip-analysis/ 部署块缓存 get_deploy_block + 时间戳锚点库 add_anchors/estimate_ts 跨币复用（发射窗精确配价仍禁用插值）
+- v1/par 付费参数化+block_hash 列：新文件 8 列（尾列 block_hash），老 7 列文件续拉自动维持老格式（表头探测）；par 版 sleep 配置化，付费档全局请求率 workers×(1/sleep)≤8/s，超了只会互相挤兑
+- **数仓 D/E 评估结论存档**（暂缓实施，待准入）：AWS 公共数据湖 v1.0/eth 有 token_transfers+logs（⚠token_transfers 有浮点精度事故公开报告，只可走 raw logs 自解码）、sonarx base/arbitrum 表**实测滞后 T+7**（官方宣称日更不成立）、**bnb 只有 blocks+transactions 无 logs**（BSC 走不通）；BigQuery 无 BSC/Base、goog 官方版 ETH 滞后 12-15 分钟、token_transfers 无 token_address 聚簇（老币单查扫 200-500GiB，免费 1TiB/月仅够 2-5 次，超量 $6.25/TiB 便宜但需绑卡）；Dune 2026-04 起按导出 MB 计费（Free 20cr/MB·2500cr/月≈3-5 个 10 万行小币，千万行大币成本结构不成立——**BSC 大币正解=HyperSync 付费而非 Dune 付费**）
+
+成本指标：轮次 ~28 / Bash 调用 ~40 / 交付约 2h（不含前三轮评估会话）。质量指标：非复盘条目按修号 +1（3.11.1 先例）；POC 三组验收（条/秒、429=0、同区间逐行 diff=0）全过；fail-closed 负面测试通过；SIREN 全史行数与当时估算闭合。
+
+## [3.11.1] - 2026-07-21 — 销户账户覆盖审计：SQD 边集对账盲区加固（非复盘专项）
+
+> 起因：评估 Helius 付费通道时经 @CX 交叉复核确认"按 mint 拉全量转账"在 Solana RPC 层不存在（普通 Transfer 指令不引用 mint），连带发现现行对账体系的结构性盲区——GPA 快照只见存活账户，已 closeAccount 销户者（bot/中转/洗仓的常态收尾）若被采集通道漏边，"重放 vs 快照"对账看不见（关闭前必归零，期末供给照样闭合）。codex 第二意见提议的反向审计法当日工程化落地。开工时 skill v3.11.0。
+
+- **data-pipeline-solana §12 新节**：盲区原理 / 独立发现源（初始化指令必引 mint + pre/postTokenBalances 自带 mint·owner，双通道并集收集器——tokenBalances 通道产率高一个量级）/ sigs·blocks 双模式（--mode auto 3 页探路未进区间自动切 blocks；历史定向段边集签名史新→老翻页到不了区间，正解=区间内 getBlock 整块提取）/ slot+owner 判定粒度声明（SQD 边无 sig 字段）/ **undetermined 诚实纪律**（深挖账户 all_zero_delta·fetch_failed 分类="没查出来"≠"没事件"，不构成"无漏"证据，过半自动告警）/ 退出码 gate 语义（0 零漏边·2 发现漏边·1 失败）/ 定位=阶段 2 三查后例行抽查项（非硬 gate，missing 才升级堵漏）
+- **脚本收编 audit_closed_accounts.py**（scripts/solana 第 22 件）
+- **首轮实证**：PUB 全程边集 93/93 全覆盖（sigs 模式）、USELESS 定向段区间内 7/7（blocks 模式，14 事件 out_of_range 正确跳过）——SQD 通道销户覆盖首次获得专项验证；冒烟自身抓出两处设计修正（定向段翻页不可达 → blocks 模式；深挖零事件静默当"无事件" → undetermined 分类）
+
+成本指标：轮次 ~14 / Bash 调用 ~11 / 交付约 1.5h（含双案冒烟与两轮设计修正）。质量指标：非复盘条目按修号 +1（次号保留给分析复盘，依版本规则）；冒烟发现设计缺陷 2 处、交付前全部修复。
 
 ## [3.11.0] - 2026-07-21 — USELESS(Solana) 全量复盘：letsbonk 长币龄标的混合重建 + CEX 托管层指纹
 

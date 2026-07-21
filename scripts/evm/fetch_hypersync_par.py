@@ -7,8 +7,12 @@
 config.json 对应节（见 config.example.json）:
   {"url": "https://base.hypersync.xyz/query", "key": "<envio key，从 api-keys.md 取>",
    "token": "<标的合约>", "from_block": 0, "to_block": null,
-   "segments": 12, "workers": 6, "outdir": "data/base"}
-（来源：VIRTUAL(Base+ETH) 多链分析 2026-07-18 收编，v3.4 参数化）"""
+   "segments": 12, "workers": 6, "sleep": 0.1, "outdir": "data/base"}
+⚠️ 档位与并发（v3.11.2，Starter 付费档实测前的规划值）:
+  - 免费层: workers 2-3 × sleep 0.5（key 级共享限流,多进程收益有限）
+  - Starter 付费档(500rpm 爆发): 全局请求率 workers×(1/sleep) 必须 ≤ 8/s——
+    workers=1 sleep=0.12 即吃满;workers>2 只会互相挤兑触发 429,别开
+（来源：VIRTUAL(Base+ETH) 多链分析 2026-07-18 收编，v3.4 参数化；v3.11.2 付费档指引）"""
 import requests, json, csv, os, sys, time, datetime, threading, queue, argparse
 
 TRANSFER = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
@@ -20,7 +24,7 @@ def get_height(url, key):
     return r.json()["height"]
 
 
-def worker(url, key, token, seg_q, outdir, stats, lock):
+def worker(url, key, token, seg_q, outdir, stats, lock, sleep_s):
     headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
     while True:
         try:
@@ -32,6 +36,7 @@ def worker(url, key, token, seg_q, outdir, stats, lock):
         csv_f = os.path.join(outdir, f"part_{i:02d}.csv")
         cur = s0
         mode = "w"
+        with_bh = True
         if os.path.exists(prog_f):
             saved = int(open(prog_f).read().strip() or s0)
             if saved >= s1:
@@ -40,15 +45,18 @@ def worker(url, key, token, seg_q, outdir, stats, lock):
                 continue
             cur = saved
             mode = "a"
+            if os.path.exists(csv_f):
+                with open(csv_f) as fh:
+                    with_bh = "block_hash" in fh.readline()  # 老 7 列 part 续拉维持老格式
         f = open(csv_f, mode, newline="")
         w = csv.writer(f)
         if mode == "w":
-            w.writerow(["block", "ts", "tx", "log_index", "from", "to", "value_raw"])
+            w.writerow(["block", "ts", "tx", "log_index", "from", "to", "value_raw", "block_hash"])
         while cur < s1:
             q = {"from_block": cur, "to_block": s1,
                  "logs": [{"address": [token], "topics": [[TRANSFER]]}],
                  "field_selection": {
-                     "log": ["block_number", "log_index", "transaction_hash", "topic1", "topic2", "data"],
+                     "log": ["block_number", "block_hash", "log_index", "transaction_hash", "topic1", "topic2", "data"],
                      "block": ["number", "timestamp"]}}
             j = None
             for attempt in range(12):
@@ -75,9 +83,12 @@ def worker(url, key, token, seg_q, outdir, stats, lock):
                     bn = int(lg["block_number"])
                     ts = bts.get(bn)
                     iso = datetime.datetime.fromtimestamp(ts, datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%S") if ts else ""
-                    w.writerow([bn, iso, lg["transaction_hash"], int(lg["log_index"]),
-                                "0x" + lg["topic1"][-40:], "0x" + lg["topic2"][-40:],
-                                int(lg.get("data") or "0x0", 16) if lg.get("data") not in ("0x", "", None) else 0])
+                    row = [bn, iso, lg["transaction_hash"], int(lg["log_index"]),
+                           "0x" + lg["topic1"][-40:], "0x" + lg["topic2"][-40:],
+                           int(lg.get("data") or "0x0", 16) if lg.get("data") not in ("0x", "", None) else 0]
+                    if with_bh:
+                        row.append(lg.get("block_hash") or "")
+                    w.writerow(row)
                     n += 1
             nxt = j.get("next_block")
             if not nxt or nxt <= cur:
@@ -87,7 +98,7 @@ def worker(url, key, token, seg_q, outdir, stats, lock):
             open(prog_f, "w").write(str(cur))
             with lock:
                 stats["rows"] += n
-            time.sleep(0.1)
+            time.sleep(sleep_s)
         f.close()
         with lock:
             stats["done_segs"] += 1
@@ -133,7 +144,8 @@ def main():
         seg_q.put(s)
     stats = {"rows": 0, "done_segs": 0, "errors": 0}
     lock = threading.Lock()
-    threads = [threading.Thread(target=worker, args=(url, key, token, seg_q, outdir, stats, lock), daemon=True)
+    sleep_s = c.get("sleep", 0.1)
+    threads = [threading.Thread(target=worker, args=(url, key, token, seg_q, outdir, stats, lock, sleep_s), daemon=True)
                for _ in range(c.get("workers", 4))]
     t0 = time.time()
     for t in threads:

@@ -41,3 +41,7 @@ MINT 来源约定：脚本读 `MINT` 环境变量或工作目录 `config.json` �
 19. **window_fetch.py** — SQD 定向窗口拉取（高密度期正解）:2000 slot 小段 × 8 并发,专攻发射窗/事件日,输出与 fetch_sqd_transfers 兼容的边表;失败段落 `<out>.gaps.json`(必须为空才算完整)。反面:50K 大段在发射期反复超时截断(120min 仅推 3.4 链上小时),小段版发射日 24h(16.5 万边)82 分钟零缺口。pipeline §11.2。
 20. **anchor_sampler.py** — SQD 日级锚点采样器:从新到旧滚动校准 slot↔ts(分段线性,漂移>4h 自动重估),435 天约 5s/天;断点续传。参考锚定点从 config.json 的 ref_slot/ref_ts 或 CLI --ref-slot/--ref-ts 传入(取法:getSlot+getBlockTime 一对近期映射)。**⚠锚点单独不可作阴性依据**(高活跃期实际窗口仅数分钟且只记变动账户,见 pipeline §11.3),阴性结论须快照/全流水兜底。
 21. **scan_sharded.py** — publicnode 大响应 504 时的分片全量扫描:按 amount 低位字节(offset 64, u64 LE)递归分片,全零前缀(零余额账户堆积处)递归下钻至 8 字节终点片跳过;`--smoke` 冒烟模式;分片缓存 data/_shards2/ 断点续跑。**状态:分片逻辑实测可行,全量扫描因 publicnode 间歇 504 未跑完,待后续标的验证**(pipeline §11.4)。
+
+## 新增脚本（销户覆盖审计 2026-07-21 收编）
+
+22. **audit_closed_accounts.py** — SQD 边集销户账户覆盖审计（对账盲区加固，pipeline §12）:mint 签名史/区间内 getBlock 双模式发现历史账户（含已 closeAccount 者，GPA 快照看不见的那批）→ 销户账户自身签名史 decode 实际转账 → slot+owner 粒度对照边集出覆盖率。`--mode auto` 自动选路（定向段边集切 blocks）;深挖结果分类透明（all_zero_delta/fetch_failed=undetermined 不算"无漏"）;退出码 0=零漏边/2=发现漏边/1=失败。阶段 2 三查后例行抽查项。来源:Helius vs SQD 通道交叉复核（codex 提议反向审计法）,PUB 93/93+USELESS 7/7 双案冒烟,2026-07-21。

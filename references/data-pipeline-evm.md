@@ -9,18 +9,31 @@
 
 ```
 预估 Transfer 总条数？（先抽样发射首月外推，报保守上限）
-├─ < 300 万条 ────→ bloXroute getLogs 扫块（免注册，scripts/evm/scan_transfers.py）
-├─ ≥ 300 万条 ────→ ① envio HyperSync【首选】（需免费 token，scripts/evm/fetch_hypersync.py）
-│                    ② Alchemy getAssetTransfers【备选】（需免费 key，scripts/evm/fetch_alchemy.py）
-├─ 跨链代币的 ETH 主网侧 → Etherscan V2 免费 key（仅 chainid=1，scripts/evm/fetch_etherscan.py）
+├─ 任何量级【v3.11.2 起默认,Starter 付费 key 在役】
+│     → ① HyperSync 官方客户端 v2【首选】（scripts/evm/fetch_hypersync_v2.py，
+│          Rust 自动并发+Parquet 直写，实测 ~1 万条/s = 手写轮询 18 倍）
+│       ② v1 手写轮询【兜底】（fetch_hypersync.py，无 pip 环境/逐字段调试用）
+├─ < 300 万条且 ≤60 天新盘（手头无任何 key 的冷启动）→ bloXroute getLogs 扫块（scan_transfers.py）
+├─ HyperSync 平台级故障 / 数仓切源准入对照 → SQD Portal 薄采集器（fetch_sqd_evm.py，免 key，~280 条/s）
+├─ 跨链代币的 ETH 主网侧补充 → Etherscan V2 免费 key（仅 chainid=1，fetch_etherscan.py）
 └─ 任何情况下都别碰 ──→ §2 死亡名单端点（禁止重探）
+
+落盘与合并纪律（v3.11.2 起）：多源产物一律经 transfers_lib.py merge 合并——重叠块区
+集合级对账，不等即 exit(3) fail-closed（PING 案 uniqueId 双计 5485 负余额的制度化防线）；
+标准 8 列含 block_hash，去重键 (block_hash,tx,log_index) 防链重组。
 ```
 
-分叉依据：bloXroute 8 并发扫 249.6 万行约 80 分钟，量级再大耗时不可控且免注册通道无 SLA；HyperSync 拉 1568 万条约 5.2 小时且全程稳定。（来源：OPN/SIREN(BSC) 分析，2026-07）
+分叉依据：bloXroute 8 并发扫 249.6 万行约 80 分钟，量级再大耗时不可控且免注册通道无 SLA；HyperSync 免费层拉 1568 万条约 5.2 小时（来源：OPN/SIREN(BSC) 分析，2026-07）；**Starter 付费档（$70/月,100rpm+overage 5x=500rpm）+官方客户端后，同类量级压至半小时内**（v3.11.2 POC，2026-07-21，详见下表）。
+
+配套缓存（transfers_lib.py，存 `~/.cache/chip-analysis/`，跨币跨会话复用）：
+- **部署块缓存** `get_deploy_block(chain, token, fetch_fn)`——每币首次定位后永存，免每次从 0 扫空段；
+- **时间戳锚点库** `add_anchors(chain, pairs)` / `estimate_ts`——按链累积复用，v2 产物的 blocks.parquet (number,timestamp) 直接喂入，新币插值免重复采锚点（⚠发射窗口精确配价仍禁用插值，恒定偏差坑见 §6）。
 
 | 通道 | 注册要求 | 限速实测 | 吞吐实测 | 断点续传 | 脚本 | 来源 |
 |---|---|---|---|---|---|---|
-| envio HyperSync | 免费 token（app.envio.dev 注册需 VPN；API 端点国内直连） | ⚠2026-07-18 起免费层限流收紧：0.15s 间隔高峰期 429 频发（实测 173 次/时级、吞吐腰斩），**0.5s 间隔基本消失**；同 key 2-3 进程按块段分兵并行可行（互扰有限），大标的提速正解=分段多进程+断点续拉（436 万条实战） | ~1000-1300 logs/2s；1568 万条约 5.2h | from_block 起点 + 增量写 CSV | fetch_hypersync.py | （来源：SIREN(BSC) 2026-07；哈基米(BSC) 429 实测 2026-07-18） |
+| **HyperSync 官方客户端 v2（Starter 付费档,现役首选）** | Starter $70/月（key 见 api-keys.md 第 1 节;100rpm 基础+overage 5x=500rpm 超量按请求计费,单币 <$1） | concurrency=10 全程 429=0；付费限速解除后瓶颈=RTT×串行,官方客户端自动并发正是解药 | **10,080 条/s**（CAKE 90,719 行/9s,BSC）；三源对账与 v1/SQD 逐行一致 | run_*/done.json 记 next_block,重跑自动续 | fetch_hypersync_v2.py（pip install hypersync） | （v3.11.2 POC,2026-07-21） |
+| envio HyperSync v1 手写轮询（兜底） | 同上 key 通用 | 免费层:0.5s 间隔基本无 429（2026-07-18 收紧后实测）;**Starter 付费档:0.12s 间隔 429=0**,但单进程吞吐仅 552-792 条/s（RTT 主导,ETH RTT~0.2s/BSC~0.6s）——付费买到的是高峰稳定性,大标的提速必须换 v2 | 免费层 ~1000-1300 logs/2s,1568 万条约 5.2h;付费单进程 ETH 792 条/s、BSC 552 条/s | from_block 起点 + 增量写 CSV（v3.11.2 起新文件 8 列含 block_hash,老 7 列续拉自动兼容） | fetch_hypersync.py | （来源：SIREN(BSC) 2026-07；哈基米(BSC) 429 实测 2026-07-18；v3.11.2 付费实测 2026-07-21） |
+| SQD Portal 薄采集器（故障预案+对照源） | 免 key 免注册（portal.sqd.dev 公共端点;注册 gateway key 免费可选更稳） | 公共限流 20 请求/10s,sleep 0.5 保守;无自助付费档（官网 pricing coming soon,2026-07-21 核实） | ~280 条/s（CAKE 21,857 行/79s）——平时不跑,HyperSync 平台级故障或数仓切源准入对照时才上 | CSV 末行块+1 | fetch_sqd_evm.py | （v3.11.2,2026-07-21） |
 | Alchemy getAssetTransfers | 免费 key（dashboard.alchemy.com 国内直连） | 平台级 429 全局限流，高峰期可整夜不可用 | ~46 万条/10 分钟，1000 条/页 | 读 CSV 末行区块置 fromBlock（勿依赖 pageKey） | fetch_alchemy.py | （来源：SIREN(BSC) 分析，2026-07） |
 | bloXroute getLogs | 免注册 | ⚠**并发承受力已变**（2026-07-19 SIREN 实测）：8 并发 curl 线程池整体挂死零产出、requests 3 线程 0.5s 间隔稳定；历史窗口比 07-18 更宽（下界块 100.1M~101.5M ≈55-60 天，二分探测）——**窗口是动态的，用前必二分**。降级为"近期段快扫" | requests 3 线程 万块段 ~50 段/4 分钟（SIREN 396 万条约 30 分钟）；旧 8 并发数字已不可复现 | done-segments 清单 + 失败段补扫 | scan_transfers.py（curl 线程池版本机挂死，改用 requests.Session） | （来源：OPN(BSC) 2026-07；哈基米(BSC) 窗口实测 2026-07-18；SIREN(BSC) 并发/窗口实测 2026-07-19） |
 | Etherscan V2（仅 ETH 主网） | 用户免费 key | 免费层限速未成瓶颈 | tokentx 每页 10000 条，7 万余行顺利拉完 | 按返回末行 block 续页 | fetch_etherscan.py | （来源：OPN(BSC) 分析，2026-07） |

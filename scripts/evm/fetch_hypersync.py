@@ -6,8 +6,12 @@
         --url https://eth.hypersync.xyz/query --token-addr 0x标的 --out data/transfers_full.csv
   - api_token：envio Bearer token（~/.claude/api-keys.md 取用，不写死进 skill）
   - from_block：起始块（部署块起；断点续传时自动改用已有 CSV 末行块）
-  - --url 换链改子域（bsc/eth/base…）；--sleep 请求间隔（ETH 实测 0.25s 全程稳，BSC 高峰建议 0.5s）
-断点续传：--out 已存在且非空时自动从末行块续拉（重叠由下游按 uniqueId 去重）。
+  - --url 换链改子域（bsc/eth/base…）；--sleep 请求间隔，按账号档位选：
+      免费层 0.5s（2026-07-18 起限流收紧后的实测稳值；ETH 低峰可试 0.25s）
+      Starter 付费档 0.12s（≈500rpm 爆发上限；单进程即吃满，勿再多进程同 key 并发）
+      （Starter=100rpm 基础+overage 爆发，超量按请求计费，token 设置里需开 overage ceiling 5x）
+断点续传：--out 已存在且非空时自动从末行块续拉（重叠由下游按 uniqueId 去重）；
+  老 7 列 CSV 续拉时自动维持 7 列，新文件起手为 8 列（尾列 block_hash，供防重组去重键）。
 """
 import requests, json, csv, os, sys, time, datetime, argparse
 
@@ -23,8 +27,10 @@ def main():
     ap.add_argument("--sleep", type=float, default=0.25)
     a = ap.parse_args()
     headers = {"Authorization": f"Bearer {a.api_token}", "Content-Type": "application/json"}
-    resume, mode = a.from_block, "w"
+    resume, mode, with_bh = a.from_block, "w", True
     if os.path.exists(a.out) and os.path.getsize(a.out) > 100:
+        with open(a.out) as fh:
+            with_bh = "block_hash" in fh.readline()  # 老 7 列文件续拉时维持老格式
         with open(a.out, "rb") as fh:
             try:
                 fh.seek(-4096, os.SEEK_END)
@@ -34,17 +40,17 @@ def main():
             last = tail[-1].split(",")
             if last and last[0].isdigit():
                 resume, mode = int(last[0]), "a"
-                print(f"[resume] 从已有 CSV 末行块 {resume} 续拉", flush=True)
+                print(f"[resume] 从已有 CSV 末行块 {resume} 续拉（block_hash 列: {with_bh}）", flush=True)
     f = open(a.out, mode, newline="")
     w = csv.writer(f)
     if mode == "w":
-        w.writerow(["block", "ts", "tx", "from", "to", "value_raw", "uniqueId"])
+        w.writerow(["block", "ts", "tx", "from", "to", "value_raw", "uniqueId", "block_hash"])
     total, cur, t0, e429 = 0, resume, time.time(), 0
     while True:
         q = {"from_block": cur,
              "logs": [{"address": [a.token_addr], "topics": [[TRANSFER]]}],
              "field_selection": {
-                 "log": ["block_number", "log_index", "transaction_hash", "topic1", "topic2", "data"],
+                 "log": ["block_number", "block_hash", "log_index", "transaction_hash", "topic1", "topic2", "data"],
                  "block": ["number", "timestamp"]}}
         ok = False
         for attempt in range(12):
@@ -75,8 +81,11 @@ def main():
                 data = lg.get("data") or "0x0"
                 val = int(data, 16) if data not in ("0x", "") else 0
                 li = int(lg["log_index"])
-                w.writerow([bn, iso, lg["transaction_hash"], frm, to, val,
-                            f"{lg['transaction_hash']}:log:{li}"])
+                row = [bn, iso, lg["transaction_hash"], frm, to, val,
+                       f"{lg['transaction_hash']}:log:{li}"]
+                if with_bh:
+                    row.append(lg.get("block_hash") or "")
+                w.writerow(row)
                 n += 1
         total += n
         nxt, ah = j.get("next_block"), j.get("archive_height")

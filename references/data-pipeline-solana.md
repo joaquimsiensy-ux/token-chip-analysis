@@ -275,3 +275,50 @@ IO 当时全程用会话内联 Python 完成、未沉淀成脚本文件；但找
 4. **publicnode 大扫描死角补充（§0a/§1 的边界）**：13.5 万 token account 量级的 mint，publicnode getProgramAccounts 恒 504（dataSlice 也救不回）；**api.mainnet-beta 做 SPL 大扫描会静默返回空结果**（不报错——危险，靠对账关卡拦住，勿当"该 mint 无账户"）。分片扫描（`scan_sharded.py`，amount 低位字节递归分片）可行但两个坑：①owner 位置 memcmp 必须整 32 字节（1 字节分片语法合法但过滤不生效）②零余额账户 8 字节 amount 全零、全部堆在全零前缀片——递归下钻全零前缀至 8 字节终点片直接跳过（分析只要非零余额）。USELESS 案分片全量未跑完（publicnode 间歇 504），对账改用"8 样本独立单查 + top20 对表"替代过关——**分片器待后续标的全量验证**。
 5. **whale_deep 按地址频率分派（先估频再选通道）**：深挖前先 getSignaturesForAddress 拉一页估频——高频地址（creator 类，签名 7 万+）ATA 级全 decode 需数小时/地址不可行，改**事件窗定向拉**（只 decode 关键时间窗）；低频囤仓户（15-172 笔）全量 decode 秒-分钟级。一刀切全量 decode 会把预算烧在单个高频地址上（来源：USELESS(Solana) 分析，2026-07-21）。
 6. **letsbonk 平台币三件套（§8.5/§8.6 的平台变体，vs pump.fun 差异）**：①铸造边 2 条——curve 拿大头 + dev 直分一笔，且 **dev-buy 可在数秒内卖回**（实测 6 秒）制造"creator 已清仓"表象——creator 状态判定必须看直分笔的后续流向，不能只看当前余额；②**creator fee 走 Raydium Lock 的 burn&earn harvest 账本**（非 pump.fun 费领取模式）——费农收入=真实收益引擎，dev"弃盘与否"必查 harvest 流水；③毕业迁移约 20.7% 供应入 Raydium 池（来源：USELESS(Solana) 分析，2026-07-21）。
+
+## 12. 销户账户覆盖审计（SQD 边集对账盲区加固，2026-07-21）
+
+**盲区原理**：`getProgramAccounts` 快照只见**当前存活**的 token account；被 `closeAccount` 销户的账户（关闭前必归零）不影响期末供给闭合，但其全部中间路径（吸筹/中转/出货边）若被采集通道漏掉，"重放 vs 快照"对账**天然看不见**——快照侧根本没有这些账户。而销户恰是 bot/中转/洗仓账户的常态收尾动作。
+
+**独立发现源**：普通 Transfer 指令不引用 mint，但 ①一切 token account 的初始化指令（initializeAccount/2/3、ATA create，含 inner CPI）**必引用 mint** ②交易 meta 的 pre/postTokenBalances 条目自带 mint+owner。因此"mint 自身签名史"与"区间内 getBlock 整块"是不依赖 GPA 快照、不依赖 SQD 自身的第三方账户目录——用它抽查 SQD 边集，专测销户账户的转账覆盖。
+
+**脚本**：`scripts/solana/audit_closed_accounts.py <MINT> [--edges <soltx.jsonl.gz>]`（对旧研报目录审计用 `--edges/--out` 指路径）。流程=发现历史账户样本 → getMultipleAccounts 判存活/销户（此法 publicnode 屏蔽，走 api.mainnet-beta+代理）→ 销户账户拉自身签名史（销户后签名史仍可查，§3a 坑 4 同源事实）decode 实际转账 → 逐事件对照边集。
+
+- **两种样本发现模式**（`--mode auto|sigs|blocks`，默认 auto）：sigs=mint 签名史抽样（全程边集适用；签名史新→老翻页，历史定向段边集会翻不到区间）；blocks=边集 slot 区间内均匀抽 getBlock 整块提取（定向段正解，免翻页）。auto 3 页探路未进区间自动切 blocks。
+- **判定粒度声明**：覆盖=边集存在 slot 相同且 from/to 含该 owner 的边。SQD 边是 owner 级同 tx 净变动聚合、无 sig 字段，slot+owner 是可用最细粒度（同 slot 同 owner 多笔时有极低概率误判为覆盖，审计是抽查性质，接受）。边集区间外事件计 out_of_range 不算漏。
+- **undetermined 语义（诚实纪律）**：深挖账户按结果分类 events_found / all_zero_delta / fetch_failed——后两类是"没查出来"不是"没事件"（高频中转户 delta 笔可能在 --deep-sigs 窗口外），不构成"无漏"证据；过半 undetermined 时脚本自动告警。
+- **退出码**：0=抽样零漏边；2=发现漏边（对账 gate 语义，报告 missing_detail 带 tx 级证据）；1=运行失败/样本无效。
+- **定位**：SQD 全量重放路线的对账**补充抽查项**（非硬 gate）——阶段 2 三查过后例行跑一次，发现 missing 才升级为堵漏行动（用 window_fetch 补拉缺口段）。首轮实证：PUB 全程边集 93/93 全覆盖（sigs 模式）、USELESS 定向段区间内 7/7 全覆盖（blocks 模式）——SQD 通道销户覆盖首次获得专项验证。
+
+（来源：Helius vs SQD 采集通道交叉复核——codex 第二意见提议"用 mint 初始化历史反向审计数据湖"，本脚本为其工程化落地并经 PUB/USELESS 双案冒烟；2026-07-21）
+
+## 13. Solana 采集加速工程（2026-07-21，@CX 交叉复核定案后实施）
+
+**背景**：§8 吞吐量化（SQD 单流 1.5-4x 实时→全程重放不可行→被迫 §11 混合重建）的根因被实测翻案——瓶颈大头不是 SQD 服务端，是**明文传输浪费**（v1/window_fetch 的 curl 全部没开压缩）。本节三件新工程 + 一条新通道，全程重放对 2-6 个月币龄重新可行。
+
+### 13a. 传输层实测真相（改变所有 SQD 件的三个数字）
+
+- **gzip 压缩 = 21 倍**：同段对照实测明文 4.65 slots/s vs `--compressed` 98 slots/s（wSOL 高密度压测,压缩比 ~40x；普通 mint 预计 5-15x）。requests.Session 默认协商 gzip——**新脚本一律 requests,遗留 curl 件必须补 `--compressed`**。
+- **限流真相**：文档标称 20 请求/10 秒,长流模式实测**碰不到**（串行 30 请求 0 个 429、8 路长流并发全 200）;真实瓶颈=**单 IP 总带宽整形 ~1MB/s**（3 路与 8 路聚合吞吐相同——加流数不加总量,多注册 key 无意义）。
+- **服务端单响应上限**：解压后 ~32MB 自动截断,客户端按最后 slot 续拉即可（v1 的 50K 段超时死循环是明文时代 150 秒传不完一个响应所致,压缩后自愈）。
+- **SQD gateway key**（api-keys.md 第 14 节,存 `~/.config/sqd/api-key`）：公共 datasets 路径实测**完全不认证**（真/假 key 全 200）,key 专属端点 URL 待用户从 portal.sqd.dev/app 后台 key 详情页抄回后启用（v2 采集器 `--url` 直接换）。
+
+### 13b. 全程采集器 v2（`fetch_sqd_transfers_v2.py`,取代 v1 做全程重放）
+
+三刀：requests.Session（连接复用+自动 gzip）/ 自适应区域并发（全局段队列动态领取,区域大小按耗时自动伸缩 1 万-100 万 slot,发射窗自动缩、死亡期自动放大）/ 全局令牌桶（默认 4 rps 防雪崩护栏——高密度段 1.6 会顶死请求数,实测教训）。失败区域重试 2 轮后进 gaps 继续别的段（修 v1"第一个未完段之后整体丢弃"缺陷）,gaps 非空退出码 2、清零前不得进重放。输出/断点与 v1 完全同构（v1 meta 自动迁移）。
+**实测（BONK,全网顶级密度）**：40 万 slot（≈28 链上小时）+22.3 万边,三跑累计 ~11 分钟、缺口全自动补扫收敛,稳态 639 slots/s ≈ **255 倍实时**（vs v1 的 1.5-4 倍）;同类任务对照 window_fetch 82 分钟 → **约 7 倍**。普通密度币自适应放大区域后更快——**2-6 个月币龄全程重放=数小时级,夜间挂机稳稳可行**;§11 混合重建降级为超长币龄（1 年+）专用。
+
+### 13c. 溯源解码 v2（`decode_txs_v2.py`,三板斧落地）
+
+JSON-RPC batch + 跨地址共享 sig 缓存（`--cache-dir`,按 sig 前 2 字符 256 片）+ `--rpc` 端点可换。**mainnet-beta 实测硬墙**：batch 内子请求被**按方法逐个限流**（"Too many requests for a specific RPC call",20 笔只放行 ~9 笔）——batch 默认 8,429 子请求自动收回重试（绝不能记 decode_fail,首测 22/40 假失败的教训）。公共节点净速度收益约 1.5 倍;**真价值=①缓存**（关联地址重复交易第二址起零请求,实测 18/40 命中）**②Helius 就位即切**（`--rpc https://mainnet.helius-rpc.com/?api-key=<key>` 免代理 50 RPS,batch 可调大）。Helius 注册待用户搭手（Google OAuth 需真实浏览器登录态;纯邮箱流程 2026-07-09 被 bot 检测拒绝两次,勿再盲试）。
+
+### 13d. Solana HyperSync 通道（solana.hypersync.xyz,early access——第二引擎/指纹查询,非主力）
+
+- **文档未载的隐藏能力（实测发现）**：`token_balances` 过滤器接受 **`mint` 键**（官方文档只写指令级过滤原语）——服务端 mint 过滤生效（100 slot 段全网无关数据被滤净,只回目标 mint 行）。字段全集=`slot/mint/owner/account/pre_amount/post_amount/transaction_index`,与 SQD tokenBalance 语义同构可直接喂 pair_tx 解析核。响应结构与 EVM 不同：**顶层直接放 instructions/token_balances 等数组**（无 data 包裹）,游标字段 next_slot。
+- **吞吐判定（POC 2026-07-21）**：mint 过滤模式单通道 623 slots/s ≈ SQD 打平（"读取后过滤"型,非索引跳读）,未达"4 个月币≤2h"验收线（3600）;**但双通道同跑聚合 1,211 ≈ 两倍单跑**——瓶颈在各自服务端时间片,**与 SQD 并行分段有效叠加**（消耗 HyperSync Starter 付费请求,~2 rps,量级上 overage 费忽略不计）。
+- **定位**：①全程采集第二引擎（与 v2 分段并行,聚合近翻倍——整合待做,v2 预留 Fetcher 抽象）②质量准入的独立对照源（SOL 侧终于有第二数据源可做集合对账）③ `fee_payer` 服务端过滤=SQD 没有的指纹查询（Streamflow 代付提取、批量代付网络一查一个准）。
+- **边界**：滚动窗口 slot 391,791,680 起（≈196 天,持续前移）——窗口外老币无效;early access schema 可变;mint 过滤的 pre/post 语义（关户行是否收录）**未验收**,与 SQD 对账时必查。
+
+**遗留后续项**：①v2 整合 HyperSync 第二引擎 ②HyperSync mint 过滤完备性验收（关户/清仓行）③Helius 注册（用户搭手）④SQD key 专属端点补录 ⑤实时 mint 档案（方案 4,用户暂缓）。
+
+（来源：Solana 采集加速工程,@CX 三轮交叉复核 + 本机四组实测,2026-07-21）
