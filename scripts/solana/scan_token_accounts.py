@@ -1,7 +1,10 @@
 #!/usr/bin/env python3
 """SPL / Token-2022 全量持仓扫描（getProgramAccounts + dataSlice{32,40}）。
 
-用法：python3 scan_token_accounts.py <mint> [--program token2022|spl] [--rpc URL]
+用法：python3 scan_token_accounts.py <mint> [--program token2022|spl] [--rpc URL] [--timeout 秒]
+大盘子 mint（20万+ 账户）：publicnode 恒 504、Helius 默认 120s 也断——
+  --rpc <helius端点> --timeout 300 一次拉全（curl 已内置 --compressed，gzip 对 60MB+ 响应是成败关键；
+  GOAT 24.7万账户 67MB 实测，2026-07-22）
 输出（写入 ./data/）：
   holders_accounts.json  每行 {account, owner, amount_raw}
   holders_owners.json    owner 聚合去重 {owner: amount_raw}，降序
@@ -38,7 +41,7 @@ def rpc_call(url: str, payload: dict, out_file: Path, timeout: int = 120):
     body = json.dumps(payload)
     for attempt in range(4):
         p = subprocess.run(
-            ["curl", "-s", "-m", str(timeout), url, "-X", "POST",
+            ["curl", "-s", "--compressed", "-m", str(timeout), url, "-X", "POST",
              "-H", "Content-Type: application/json", "-d", body, "-o", str(out_file)],
             capture_output=True, text=True, timeout=timeout + 30)
         # 校验返回体为含 result 的合法 JSON 才算成功——curl 对 504/HTML 错误页同样 returncode=0，
@@ -64,6 +67,8 @@ def main():
     ap.add_argument("--datasizes", default="165,170",
                     help="逗号分隔的 dataSize 列表，或 'all'=无 dataSize 过滤单发全扫"
                          "（publicnode 会 504；api.mainnet-beta 实测放行，2026-07-13）")
+    ap.add_argument("--timeout", type=int, default=150,
+                    help="GPA 请求超时秒（大盘子 mint 配 Helius 用 300，2026-07-22 GOAT 实测）")
     args = ap.parse_args()
 
     prog = T22 if args.program == "token2022" else SPL
@@ -103,7 +108,7 @@ def main():
             payload = {"jsonrpc": "2.0", "id": 1, "method": "getProgramAccounts", "params": [
                 prog, {"encoding": "base64", "dataSlice": {"offset": 32, "length": 40},
                        "filters": filters}]}
-            ok = rpc_call(args.rpc, payload, raw_f, 150)
+            ok = rpc_call(args.rpc, payload, raw_f, args.timeout)
             if not ok:
                 print(f"FATAL: getProgramAccounts dataSize={ds} 失败", file=sys.stderr); sys.exit(1)
             resp = json.loads(raw_f.read_text())

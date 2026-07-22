@@ -137,6 +137,7 @@
 | `wdrwhnCv4pzW8beKsbPa4S2UDZrXenjg16KJdKSpb5u` | Streamflow 自动提取服务 feePayer | 多笔提取共用它作 feePayer = 同批操作；"即建即提" stream 洗筹一跳中转的识别锚点 |
 | `pfeeUxB6jkeY1Hxd7CsFCAjcbHA9rWtchMGdZ6VojVZ` | pump.fun fee 程序 | **RugCheck 的 creator 字段可能标成此程序派生的费金库 PDA**（与 pump.fun API 的真 creator 不冲突）——两源分歧先查所标地址的 owner 是否为它再下结论（CLUDE(Solana) 实测 2026-07-13） |
 | `pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA` | PumpSwap AMM 程序 | 毕业池程序；其 creator-vault-authority PDA 是 dev 币本位创作者费的领取来源——dev"从池子收币"多半是**领费不是交易**，勿误判为买入（CLUDE(Solana) 实测 2026-07-13） |
+| `39azUYFWPz3VHgKCf3VChUwbpURdCHRxjWVowf5jUJjg` | pump.fun→Raydium 官方毕业迁移钱包（Raydium Migrator） | 毕业时以 Withdraw 指令自 bonding curve 提出毕业储备注入 Raydium 池，过手约 2.069 亿枚 ≈20.7% 供应（**协议常数，pump.fun 毕业币同级**）、数十秒内完成过手。**发射窗重放的瞬时峰值榜必剔此址**——GOAT 案初稿曾把它误判"狙击集团 20.69% 瞬时峰"（复核 REFUTED 实体作废）；§8.6 成本重建的"迁移笔剔除"同源坑。走 PumpSwap 毕业的新币无此址过手（见上 pAMMBay 行）（GOAT(Solana) 实测 2026-07-22） |
 | `HNCne2FkVaNghhjKXapxJzPaBvAKDG1Ge3gqhZyfVWLM` | Base-Solana 官方桥 Bridge 程序（Coinbase/docs.base.org 确认） | Solana→Base 跨链桥主程序；某钱包大额代币转入它=跨链桥出。出现在做"代币转股权/ACE 轮"的项目（币桥到 Base 侧锁仓/股权化）（OPAL(Solana) 实测 2026-07-14） |
 | `g1et5VenhfJHJwsdJsDbxWZuotD5H4iELNG61kS4fb9` | Base-Solana 官方桥 Base Relayer 程序 | 上条桥的可选 relayer（Solana→Base 方向代付 Base gas），与 Bridge 程序伴随出现（OPAL(Solana) 实测 2026-07-14） |
 | （某项目专属桥托管仓，用 owner 程序判别） | 桥托管 token account（例 OPAL 的 `F8446Bh5…` 恰持 2.5% 整数=ACE 轮满额） | 由多个散户地址在几天内桥出汇入的整数配额托管仓＝股权轮/跨链募集，非市场买盘；判别=其入账 tx 涉及上面两个桥程序 |

@@ -26,9 +26,12 @@ PROXY = "http://127.0.0.1:7897"
 def rpc(method, params, retries=5):
     body = json.dumps({"jsonrpc": "2.0", "id": 1, "method": method, "params": params})
     for i in range(retries):
-        p = subprocess.run(["curl", "-s", "-m", "30", "-x", PROXY, RPC, "-X", "POST",
-                            "-H", "Content-Type: application/json", "-d", body],
-                           capture_output=True, text=True, timeout=45)
+        cmd = ["curl", "-s", "-m", "30"]
+        if PROXY:
+            cmd += ["-x", PROXY]
+        cmd += [RPC, "-X", "POST",
+                "-H", "Content-Type: application/json", "-d", body]
+        p = subprocess.run(cmd, capture_output=True, text=True, timeout=45)
         try:
             d = json.loads(p.stdout)
             if "result" in d:
@@ -114,10 +117,18 @@ def main():
     ap.add_argument("owners", nargs="+")
     ap.add_argument("--mint")
     ap.add_argument("--known-sig", help="ATA 已销户且账本无记录时，手动给一笔含该 owner 的交易签名")
+    ap.add_argument("--rpc", help="覆盖 RPC 端点（如 Helius，免代理时配 --proxy none）")
+    ap.add_argument("--proxy", help="覆盖代理，传 none 禁用")
+    ap.add_argument("--out", default="data/whale_deep.json", help="输出文件（并行分组时各组独立文件防写冲突）")
     args = ap.parse_args()
+    global RPC, PROXY
+    if args.rpc:
+        RPC = args.rpc
+    if args.proxy:
+        PROXY = None if args.proxy == "none" else args.proxy
     mint = resolve_mint(args.mint)
     Path("data").mkdir(exist_ok=True)
-    out_f = Path("data/whale_deep.json")
+    out_f = Path(args.out)
     out = json.loads(out_f.read_text()) if out_f.exists() else {}
     for owner in args.owners:
         if owner in out:

@@ -13,6 +13,7 @@
 - **2.24.0/2.25.0 曾物理倒排**（同日并行会话插入位置错位）——2026-07-18 稳定化时仅调整排列顺序，两条内容一字未动
 
 ## 版本索引（活跃窗口，新在上）
+- **3.17.0 2026-07-22 GOAT(Solana) easy 二战复盘：长币龄混合重建工程加固+CEX 间调度商指纹**：Helius 大扫描 300s+gzip 通道（24.7 万账户 67MB 一次拉全，分片器降末位）/window_fetch gap 合并重复坑+负余额指纹/whale_deep cap 截断语义+10RPS 并发纪律/pump.fun 毕业迁移钱包入 address-book（发射窗峰值榜必剔）/编造地址 base58 侧五六犯；candidate 2 组（CEX 间库存调度商指纹 state-anomaly §9c+锚点复用两扫描 §11.3）；whale_deep 三参数悬账收编+scan_token_accounts --compressed/--timeout；easy 成本基准 GOAT 行（2-3h 档初步稳定）
 - **3.16.0 2026-07-22 B 档五项收官：/collect-data 批量预采集+网络层异步化+复核 workflow 固化+Sourcify/DefiLlama 双通道+文件守卫 hook（非复盘专项）**：@CX 方案 B 档全部落地——新命令 /collect-data（collect_queue.py 多币串行队列，EVM 五链+Solana，manifest 记账/残缺 run 隔离/断点幂等，CAKE 296 万行+wSOL 缺口态+错址 fail-closed 三路实测）；net.py+rpc_batch.py 进程内异步替代 curl 子进程树（httpx+tenacity+msgspec，40 址与 curl 逐项等价）；adversarial-review 固化 workflow（schema 强制裁决 JSON+同批并行 fan-out，冒烟 2 路 100s）；Sourcify 合约身份批查（sourcify_check.py，v2 直连免 key，代理实现名一次拿到）；DefiLlama 老币历史价格主兜底（llama_price.py，CAKE 2020 起 2117 点全史实测）；guard_file_ops hook（Read 巨文件拦截+原始采集产物写保护，热加载实证）+PostCompact 提醒；HyperSync key 固化 ~/.config/hypersync/token
 - **3.15.0 2026-07-22 QUQ(BSC) 完整版复盘+逢5轻整编**：公共基础设施先验三测（部署早于代币=强公共信号+同模板 code size 指纹——449e 大翻案教训）/寄存仓移仓指纹（监管点名对齐+3天原路等额往返）/净成本病态敏感双口径（正式：净额<毛额1%禁点估计,+剔自控镜像流第三口径）/bot 营运峰≠EOA 囤仓峰入 §9b 排代际/R2 备择解释路对结构性定性必设；快照缺块坑（供给闭合对缺整行免疫,done.json 前置第5查+负余额指纹）/手写地址第四犯工具化 real_addr/bscscan WebFetch 截断地址禁入产物/HyperSync v2 增量 4s+补丁段核验；整编：高扇出三判据两案转正、CEX 事件驱动做市纪律降档存档、5 条标疑、归档滚动 12+1 条（3.6.0 缺失正文补档）；D3 三大文档拆分推迟单独会话
 - **3.14.0 2026-07-22 DuckDB 重放/缩图引擎三阶段落地（非复盘专项，@CX 交叉复核方案执行）**：亿级样本主路径换列式引擎——新件 7（replay_duck 合一引擎 v1CSV+v2parquet 双输入/cluster_prep_duck 缩图件+cluster --prep/golden_baseline 回归门禁/test_engine_equivalence hypothesis 性质测试/env_check 版本锁/run_guarded 长跑监督器/pyproject+requirements.lock 依赖锁）；等价实证=ASTEROID+SIREN 七项全等（含 merged.csv 逐字节）+QUQ 1.03 亿行三件逐键全等+聚类四类判定全等；性能=QUQ 核心重放 31s（原数十分钟）/缩图 19.5s 出 76 万聚合边/SIREN 7.1GB 守限（旧外推 19GB）；DuckDB 数字安全坑 6 条实测入 data-pipeline-evm §12（UHUGEINT SUM 退化 DOUBLE/VARINT 乘法退化/hex cast 位宽/temp 磁盘 GB-GiB/块界感知去重/窗口成本）；三缺口修复（pass1 坏行记账/cluster 阈值整数化/dedup 重组冲突检测）+排序确定化；changelog_lint 自动 hook 进 settings.json
@@ -28,6 +29,29 @@
 - 3.4.0 VIRTUAL(Base+ETH) 多链 | 3.3.0 体检修复 | 3.2.0 监控包按需化 | 3.1.0 成本三刀 | 3.0.0 稳定化
 - 2.29.0 jesse(Base) | 2.28.0 哈基米(BSC)
 - （3.9.0 及更早正文共 61 条 → CHANGELOG-archive.md，含 3.6.0 补档）
+
+## [3.17.0] - 2026-07-22 — GOAT(Solana) easy 二战复盘：长币龄混合重建工程加固 + CEX 间调度商指纹
+
+> retro 原料=GOAT分析/findings.md E6 素材清单（easy 交付后新会话执行）；用户批"全部写入"。Solana 侧 easy 首例：651 天 pump.fun 毕业币、7.6 万独立 owner、§11 混合重建全程实战。
+
+**数据工程 5 条（正式）**：
+- **Helius 大扫描通道打通**：24.7 万 token account / 67MB 响应，publicnode 恒 504、Helius 默认 120s 超时同样断——Helius + curl `--compressed`(gzip) + 300s 长超时一次拉全（§1 实测升级行 + §11.4 死角地图更新，scan_sharded 分片器降末位备选）；`scan_token_accounts.py` 加 `--timeout` 参数并内置 `--compressed`
+- **window_fetch gap 段补拉合并纪律**（§11.2）：标 gap 的段仍写出部分数据，补拉后 cat 追加合并=9,212 行重复边；快查指纹=**重放负余额账户数暴增**（534→dedup 后 1）；正解=gap 段整段替换或全字段 dedup，两位数以上负余额先查重复再查通道
+- **whale_deep cap 截断样本用途边界 + Helius 并发纪律**（§11.5）：签名史翻到 cap（2000 笔）即截断样本——起点非零禁从零累积持仓线，只作行为定性样本、时间线锚点/快照兜底；Helius 免费档 10 RPS 为账号级配额，多进程互抢反拖慢（5 进程实测单笔 decode 0.6-1.2s），正解=`--out` 分组并行+总并发贴限速
+- **pump.fun→Raydium 官方毕业迁移钱包入 address-book**（`39azUYFW…jUJjg`）：毕业储备 2.069 亿枚 ≈20.7% 供应协议常数、Withdraw 指令数十秒过手——**发射窗重放峰值榜必剔**（GOAT 初稿误判"狙击集团 20.69%"被复核 REFUTED 的直接教训；§8.6 成本侧"迁移笔剔除"的实体识别侧补全）
+- **编造地址第五六犯（base58 侧首发）**：funder 截断补全+基础设施地址拼写——evidence-wording 第 10 条适用范围明确为"一切链的完整地址字面量"，real_addr 反查纪律对 Solana 同样强制
+
+**方法 candidate 2 组**：
+- **【候选·单案】CEX 间库存调度商指纹**（state-anomaly 新 §9c）：零 DEX 交互（数百笔抽样解码）/精确定额轮发一所一线/凌晨日结节奏/多币种枢纽+闲置质押理财/双向大流量只报净向——P0 大仓的备择定性五判据，破"吸筹—拉盘—出货"框架硬套；配套"同类前例结局对照法"（锚点峰值普查出历史大仓名单→按画像匹配已离场同类作情景参照）
+- **【候选·单案】锚点复用两扫描**（§11.3 + easy-workflow E3）：全 owner 峰值普查（≥1.5% 档，含已离场者）+ 全史前三涨跌日×锚点对照，零边际成本——GOAT 案完整性复核 4 条 must_add 有 3 条半源于缺这步
+
+**脚本**：`whale_deep.py` --rpc/--proxy/--out 三参数收编（3.14.0 注记的他会话悬账，本条入库）；`scan_token_accounts.py` --compressed/--timeout；GOAT 案 `compose_evolution.py`（混合重建合成器）按红线 5 判标的专属件留工作目录存档，§11.1 注明"非复用件"
+
+**easy 成本基准**：GOAT 行追加——Solana 长币龄混合重建与 BSC 亿级刷量盘同落 2-3h 档，单币基准初步稳定
+
+**遗留**：①window_fetch gap 补拉替换/dedup 逻辑脚本化（本次仅入文档纪律）②Helius 300s 大扫描通道单案实证，下个大盘子 Solana 币复验③compose_evolution 通用化抽象④标的专属 TODO 4 条留 GOAT findings.md（E7 转正式时继承，不占 skill 条目）
+**成本指标**：192 回合 / 139 Bash / 报告交付 2h06m（09:08→11:14，全程含 E6 素材沉淀 ~3h）
+**质量指标**：初稿关键结论 ~16（判定块 4 直答+硬结论 12）；复核 4 路=1 CONFIRMED 加强 / 1 WEAKENED 定性改写 / 1 REFUTED 实体作废 + 审计 5 PASS·2 FAIL·3 WARN + 完整性 4 must_add 全采；漏检实体 3（离场庄三仓扩容、峰值 8.80% 历史大仓、4.73% 波段仓）；传播级数字错误 6（含发射窗统计重复合并 bug 修正）
 
 ## [3.16.0] - 2026-07-22 — B 档五项收官（非复盘专项，@CX 方案第二批）
 
