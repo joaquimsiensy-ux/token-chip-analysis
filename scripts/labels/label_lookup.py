@@ -19,11 +19,16 @@
   [PRIVACY]        Tornado 使用记录——陈述事实不定性；"庄家资金源头自 Tornado 提取"是必写信号
 非 sol/eth/filecoin 链自动对 eth 表做 EVM 同址联查（cross_chain 提示级：EOA=同私钥可信，
 CREATE2 canonical=同部署流程，普通合约同址≠同实体需现场核验；自动决策不采信）。
+
+惯犯层延迟揭盲（A5 2026-07-22）：聚类期加 --blind-serial（或 CHIP_BLIND_SERIAL=1）——
+[SERIAL] 命中不进主输出（等同未命中），完整详情封存 sealed_serial_hits.jsonl，防先入之见；
+实体冻结后复核期 --unseal 揭盲作定向复核线索。设施类（cex/infra/bridge…）输出不受影响。
 """
 import argparse, json, os, sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from labels_resolver import LabelResolver, KNOWN_CHAINS, norm_addr, SERIAL_CATEGORY
+from labels_resolver import (LabelResolver, KNOWN_CHAINS, norm_addr, SERIAL_CATEGORY,
+                             blind_serial_env, seal_serial_hits, blind_notice, read_sealed)
 
 SECTIONS = ('serial', 'risk', 'candidate', 'unknown', 'exclude', 'identity', 'privacy')
 SECTION_HEAD = {
@@ -85,9 +90,37 @@ def main():
     ap.add_argument('--no-evm-common', action='store_true', help='关闭对 eth 表的 EVM 同址联查')
     ap.add_argument('--misses', action='store_true', help='额外列出未命中的地址')
     ap.add_argument('--json', action='store_true', help='JSONL 输出（每地址一行，机器可读）')
+    ap.add_argument('--blind-serial', action='store_true',
+                    help='聚类期盲化（A5）：serial 惯犯命中不进主输出（含 --json），完整详情'
+                         '追加封存 sealed_serial_hits.jsonl；等价环境变量 CHIP_BLIND_SERIAL=1')
+    ap.add_argument('--sealed-dir', default='.', help='封存文件目录（默认当前目录=案目录）')
+    ap.add_argument('--unseal', action='store_true',
+                    help='复核期揭盲：打印封存的 serial 命中详情（不需要地址输入）')
+    ap.add_argument('--context', default='', help='封存记录的场景标注（默认取 cwd 目录名）')
     ap.add_argument('addrs', nargs='*')
     args = ap.parse_args()
 
+    if args.unseal:
+        recs = read_sealed(args.sealed_dir)
+        if not recs:
+            print(f'封存为空：{os.path.join(args.sealed_dir, "sealed_serial_hits.jsonl")} '
+                  f'不存在或无记录（盲化期无 serial 命中，或从未开盲化）')
+            return
+        print(f'== 揭盲：封存 serial 惯犯命中 {len(recs)} 条（定向复核线索——逐条调案源比对手法）==')
+        seen = set()
+        for r in recs:
+            key = (r.get('chain'), r.get('address'))
+            dup = '（重复命中）' if key in seen else ''
+            seen.add(key)
+            print(f"  [{r.get('chain')}] {r.get('address')}{dup}")
+            print(f"      {str(r.get('name'))[:60]}  <{r.get('category')}>"
+                  f"  封存于 {r.get('sealed_at', '?')} context={r.get('context', '')}")
+            if r.get('evidence'):
+                print(f"      证据: {str(r.get('evidence'))[:160]}")
+        print(f'\n共 {len(seen)} 个去重地址。复核动作：比对案源存档手法 → 与本案实体划分互证/互斥。')
+        return
+
+    blind = args.blind_serial or blind_serial_env()
     raw = read_addrs(args)
     if not raw:
         ap.error('没有输入地址（位置参数 / --file / stdin 三选一）')
@@ -109,6 +142,23 @@ def main():
                 hits.append((chain, na, row))
             elif args.chain != 'all':
                 misses.append((chain, na))
+
+    if blind:
+        # A5 盲化：serial 行整行剥离（其 risk_flags=serial-offender 会经 RISK 段泄露，
+        # 故不能只隐 [SERIAL] 段）；主输出中该地址等同未命中，真相进封存文件。
+        sealed, kept = [], []
+        for chain, na, row in hits:
+            if row.get('serial'):
+                sealed.append({'chain': chain, 'address': na,
+                               **{k: v for k, v in row.items() if k != 'row'}})
+                if args.chain != 'all':
+                    misses.append((chain, na))
+            else:
+                kept.append((chain, na, row))
+        hits = kept
+        ctx = args.context or os.path.basename(os.getcwd())
+        sealed_path = seal_serial_hits(sealed, args.sealed_dir, f'{ctx} label_lookup')
+        blind_notice(sealed_path)
 
     if args.json:
         seen = set()

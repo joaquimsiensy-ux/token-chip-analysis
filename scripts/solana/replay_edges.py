@@ -39,15 +39,37 @@ except Exception:
 RESV = None
 
 
+try:
+    from labels_resolver import blind_serial_env, seal_serial_hits, blind_notice   # A5 惯犯延迟揭盲
+except Exception:
+    blind_serial_env = lambda: False
+    seal_serial_hits = blind_notice = None
+_BLIND_SEALED = {}   # A5 盲化期收集的 serial 命中（进程尾封存）
+
+
 def lbl(addr):
-    """输出行标注：命中标签库时返回 '  ⟨名字<类目>⟩'（serial 惯犯加🚨），未命中返回 ''。"""
+    """输出行标注：命中标签库时返回 '  ⟨名字<类目>⟩'（serial 惯犯加🚨），未命中返回 ''。
+    CHIP_BLIND_SERIAL=1（A5 盲化）时 serial 命中返回 ''（等同未命中），详情进封存文件。"""
     if RESV is None:
         return ""
     r = RESV.get(addr)
     if not r:
         return ""
-    mark = "🚨惯犯:" if r.get("serial") else ""
-    return f"  ⟨{mark}{r['name'][:36]}<{r['category']}>⟩"
+    if r.get("serial"):
+        if blind_serial_env():
+            if addr not in _BLIND_SEALED:
+                _BLIND_SEALED[addr] = {"chain": "sol", "address": addr,
+                                       **{k: v for k, v in r.items()}}
+            return ""
+        return f"  ⟨🚨惯犯:{r['name'][:36]}<{r['category']}>⟩"
+    return f"  ⟨{r['name'][:36]}<{r['category']}>⟩"
+
+
+def _flush_sealed():
+    """A5：盲化期收集的 serial 命中统一封存 + 恒定提示（有无命中输出相同）。"""
+    if blind_serial_env() and seal_serial_hits is not None:
+        p = seal_serial_hits(list(_BLIND_SEALED.values()), ".", "sol replay_edges")
+        blind_notice(p)
 
 ZERO = "0x" + "0" * 40
 
@@ -296,6 +318,9 @@ def main():
     if LabelResolver is not None and "--no-labels" not in sys.argv:
         RESV = LabelResolver("sol")
         RESV.warn_if_degraded()     # 降级=显式 stderr 警告（"没命中"≠"没加载"，v4）
+        if blind_serial_env():
+            import atexit
+            atexit.register(_flush_sealed)   # A5：盲化期 serial 命中在进程尾统一封存
     elif LabelResolver is None:
         print("[labels][degraded_mode] labels_resolver 导入失败——本次运行无标签兜底", file=sys.stderr)
     mint = resolve_mint(args.mint)

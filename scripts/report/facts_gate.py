@@ -12,13 +12,25 @@ facts.json schema（每案一份，阶段 3 结束时从落盘数据构建；数
     "e_big1": {"label": "大庄#1(bot体系)", "tier": "P0",
                "addresses": ["0x完整地址", ...],
                "current_raw": "278400...", "peak_raw": "687000...",
-               "peak_date": "2026-05-01", "role_notes": {"0x地址": "角色备注(可选)"}}
+               "peak_date": "2026-05-01", "role_notes": {"0x地址": "角色备注(可选)"},
+               "merge_evidence_earliest": "2026-05-03",   # 多地址实体必填(3.19)：
+               "merge_evidence_note": "gas同源+同分钟批量"  # 实体合并证据的最早可见时间
   },
   "metrics": {
     "m_alpha": {"num_raw": "376...", "den": "total_supply", "desc": "币安Alpha托管"},
     "m_price_x": {"value": "9.4", "unit": "倍", "desc": "峰值涨幅"}   # 自由值型
   }
 }
+
+实体主键（3.19 起）：entities 的字典键（如 e_big1）就是该实体的稳定 entity_id——
+analysis-state.json 的 whale_groups[].entity_id 必须写同一个值。G1 对账**优先按
+entity_id 匹配**，label 只是展示文案（改措辞不再断链路）；旧 state 无 entity_id 时
+回退 label 匹配（向后兼容）。
+
+时间因果轻量口径（3.19，A1）：merge_evidence_earliest = 该实体各地址被归并为同一
+实体的证据**最早出现时间**。报告叙述早期共同行为时必须用"以最终归并口径回看"限定
+或标注该时间（宏 {{e_x.merged_since}}）；禁写"当时已可确认同一实体"——后期归集/
+后期 gas 同源不能倒灌证明早期已可见（措辞细则见 playbook-evidence-wording.md）。
 
 报告 md 宏语法（渲染后无残留 {{...}}，否则 gate 拒绝——宏名打错不许静默漏渲染）：
   {{e_big1.label}}            → 大庄#1(bot体系)
@@ -27,16 +39,21 @@ facts.json schema（每案一份，阶段 3 结束时从落盘数据构建；数
   {{e_big1.amount}}           → 2.78亿枚
   {{e_big1.amount_share}}     → 2.78亿枚【总量27.84%】（最常用组合，报告纪律格式）
   {{e_big1.naddr}}            → 215（成员地址数）
+  {{e_big1.merged_since}}     → 2026-05-03（merge_evidence_earliest，A1 时间因果）
   {{m:m_alpha}}               → 37.60%（num/den 型）或 value+unit（自由值型）
   {{appendix_b}}              → 附录 B 标签↔地址对照表整块（md 表格，与 entities 同源）
 
 语义 gate（--state 给了 analysis-state.json 时全部启用）：
-  G1 实体成员集合：facts.entities[*].addresses 与 state.whale_groups 同 label 组逐组相等
+  G1 实体成员集合：facts.entities[*].addresses 与 state.whale_groups 逐组相等
+     （匹配键优先 entity_id==facts 实体键，旧 state 无 entity_id 回退 label）
   G2 供给上界：Σ entities.current_raw ≤ total_supply_raw
   G3 内部一致：current_raw ≤ peak_raw（每实体）
   G4 渲染完备：渲染后正文无残留 {{...}}
   G5 手写数字检测：正文所有 NN.NN% 中不来自宏渲染的列成清单（NOTE 级人工过目；
      百分比一律该走宏——这是新写作纪律，见 report-template.md）
+  G6 合并时点提示（NOTE 级）：多地址实体缺 merge_evidence_earliest 时提醒补
+  G7 血缘提示（NOTE 级）：state 缺 provenance（schema_version/skill_commit/
+     data_sources 薄版血缘，3.19 起新案必带）时提醒补
 
 用法（库 + CLI 双形态；build_html.py --facts 参数内部调用）：
   python3 facts_gate.py --facts facts.json --state analysis-state.json   # 纯校验
@@ -100,6 +117,11 @@ class Facts:
             return str(len(ent.get("addresses") or []))
         if field == "peak_date":
             return str(ent.get("peak_date", "?"))
+        if field == "merged_since":
+            v = ent.get("merge_evidence_earliest")
+            if not v:
+                raise KeyError("宏 merged_since 但实体缺 merge_evidence_earliest 字段")
+            return str(v)
         raise KeyError(f"实体宏字段不认识: {field}")
 
     def _metric_value(self, mid):
@@ -166,21 +188,45 @@ def gate_check(facts, state=None, rendered_md=None):
         return v.lower() if v.startswith("0x") else v
 
     if state is not None:
-        by_label = {}
+        by_id, by_label = {}, {}
         for g in state.get("whale_groups") or []:
-            by_label[(g.get("label") or "").strip()] = {
-                _norm(a) for a in (g.get("addresses") or [])}
+            members = {_norm(a) for a in (g.get("addresses") or [])}
+            gid = (g.get("entity_id") or "").strip()
+            if gid:
+                by_id[gid] = members
+            by_label[(g.get("label") or "").strip()] = members
         for eid, ent in facts.entities.items():
             lbl = (ent.get("label") or "").strip()
-            if lbl not in by_label:
-                errors.append(f"G1 state.whale_groups 缺组「{lbl}」（facts {eid}）")
+            # 3.19：主键优先 entity_id（facts 实体键==state.entity_id），label 只是展示；
+            # 旧 state 无 entity_id 时回退 label 匹配（向后兼容）
+            if eid in by_id:
+                sa, keydesc = by_id[eid], f"entity_id={eid}"
+            elif lbl in by_label:
+                sa, keydesc = by_label[lbl], f"label「{lbl}」"
+            else:
+                errors.append(f"G1 state.whale_groups 缺组（facts {eid}「{lbl}」——"
+                              f"按 entity_id 与 label 均未匹配）")
                 continue
             fa = {_norm(a) for a in ent.get("addresses") or []}
-            sa = by_label[lbl]
             if fa != sa:
                 miss, extra = sorted(sa - fa)[:3], sorted(fa - sa)[:3]
-                errors.append(f"G1 「{lbl}」成员集合不一致：state 独有 {len(sa-fa)} 个"
+                errors.append(f"G1 {keydesc} 成员集合不一致：state 独有 {len(sa-fa)} 个"
                               f"（样例 {miss}），facts 独有 {len(fa-sa)} 个（样例 {extra}）")
+        # G7 薄版血缘提示（3.19）：新案 state 顶层应带 provenance
+        prov = state.get("provenance") or {}
+        missing = [k for k in ("schema_version", "skill_commit", "data_sources")
+                   if not prov.get(k)]
+        if missing:
+            notes.append(f"G7 state.provenance 缺 {missing}（薄版血缘，3.19 起新案必带："
+                         "schema_version/skill_commit/data_sources）")
+    # G6 合并时点提示（3.19，A1 时间因果）：多地址实体应记录归并证据最早时间
+    no_merge_ts = [eid for eid, ent in facts.entities.items()
+                   if len(ent.get("addresses") or []) >= 2
+                   and not ent.get("merge_evidence_earliest")]
+    if no_merge_ts:
+        notes.append(f"G6 多地址实体缺 merge_evidence_earliest: {no_merge_ts[:8]}"
+                     "（A1 时间因果：记录归并证据最早时间，报告叙述早期共同行为须"
+                     "标注归并口径）")
     # G4 渲染完备 + G5 手写数字
     if rendered_md is not None:
         left = MACRO_RE.findall(rendered_md)

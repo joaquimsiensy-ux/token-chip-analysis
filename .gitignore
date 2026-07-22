@@ -1,5 +1,6 @@
 # 系统与缓存垃圾
 .DS_Store
+scratch-3.19/
 __pycache__/
 *.pyc
 *.prev

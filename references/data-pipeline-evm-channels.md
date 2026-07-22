@@ -108,6 +108,15 @@ solana 走 fetch_sqd_transfers_v2；manifest 原子记账、残缺 run 改名 pa
 - 纪律：先用 2 个地址小样本打印原始 RPC 响应验证编解码再放量；异常必须落日志绝不吞（曾因"地址文件混入余额尾巴 + 返回值动态偏移解码错 + 吞异常"三连 bug 三轮 990/990 全失败）。（来源：SIREN(BSC) 分析，2026-07）
 - 地址清单文件须纯地址一行一个，任何附加字段都会污染 calldata。（来源：SIREN(BSC) 分析，2026-07）
 
+### 3.6 记账模型 gate 的通道实测（accounting_gate.py，3.19）
+
+- **BSC dataseed**：eth_call 历史 state 窗口 **~128 块且节点池深浅抖动**（150 块探测过、边缘偶发 missing trie node——gate 的 rebase 两时点已收缩到 64 块保命中）；支持 **eth_simulateV1**（模拟转账读实收的兜底路）；getLogs 拒(-32005)。bsc/eth publicnode 全 archive 墙（128 块内也拒）；dRPC 免费层限速凶只配兜底。
+- **Alchemy ETH 免费层：eth_call 全历史 archive**（100 万块前实测通）→ ETH 侧 gate 事件窗口自动放大到 1 万块、rebase 窗口 7200 块，检测强度远超 BSC；但 getLogs 限 10 块——事件一律走 HyperSync。`.g.alchemy.com` 走 clash 代理（脚本内置）。
+- **fee-on-transfer 双路互补是实测教训**：BabyDoge 型"只对 DEX pair 收税"钱包互转免税——**模拟法测不出，只有真实事件差值（覆盖过池路径）能抓**；反之低活跃币近程无事件时靠 eth_simulateV1 兜底。事件差值用"单侧干净样本"制（地址在该块仅现身一次），给 bot 刷量币（一笔多跳、双侧同块多现身）留活路。
+- **PAXG 链上转账费现役为 0**（曾经 0.02% 是老黄历）——勿再当税币验收样本；**HOGE 2% 税硬编码在合约里，是稳定的 BLOCK 回归样本**。
+- Helius getAccountInfo(jsonParsed) 对 Token-2022 扩展解析完整（BERN transferFeeConfig 全字段直出），无需手动解 TLV。
+- BSC 非 archive 下 rebase 属弱检测（64 块≈3 分钟窗口抓不到 24h 周期 rebase，脚本 warnings 自我声明）——BSC 币强怀疑 rebase 时用 HyperSync 拉单地址全史微重放核对。
+
 ## 6. BSC 专属坑表
 
 | 坑 | 识别/处理 | 来源 |

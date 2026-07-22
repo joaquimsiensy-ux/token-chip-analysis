@@ -18,14 +18,136 @@
 语义（labels_resolver 已内置）：tier=identity、不剔除、不禁边（惯犯地址间本就
   同实体，正常聚类）、risk_flags=serial-offender、lookup/analyze 命中即高亮。
 
-用法：python3 accumulate_offenders.py [分析根目录] [--apply]   # 产物 sources/serial_actors.csv
+跨案身份冲突检测（A7 2026-07-22，每次运行自动做）：候选地址逐一对照主标签库——
+  同址在主库当前是基础设施类身份（cex/suspected-cex/infra/bridge/dex/bundler/paymaster/mev）
+  而本工具要标它"庄家实体成员"→ 写 conflicts 报告（sources/serial_conflicts_<日期>.json+.md，
+  含两侧证据），**不阻塞入库**，人工裁决。危险场景：add_labels 对 serial 源按高置信覆盖，
+  误收的 CEX 热钱包会把主库设施身份覆盖成 serial-actor → 聚类拦截失效（假聚类回归）。
+  不带 --apply 跑一次 = 存量扫描（候选全集=惯犯库全量,逐址对照主库）。
+
+用法：python3 accumulate_offenders.py [分析根目录] [--apply] [--labels-dir DIR]
 手动入库：cd sources && python3 ../add_labels.py serial_actors.csv
 """
 import csv, datetime, glob, json, os, re, subprocess, sys
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from labels_resolver import LabelResolver
+
 _HERE = os.path.dirname(os.path.abspath(__file__))
 DEFAULT_ROOT = os.path.expanduser('~/Desktop/老公用/fable筹码分析')
 OUT = os.path.join(_HERE, 'sources', 'serial_actors.csv')
+
+# A7：基础设施类身份清单（主档冲突）；其余 tier=exclude / no_merge 类目作次档提示
+INFRA_CATS = {'cex', 'suspected-cex', 'infra', 'bridge', 'dex', 'bundler', 'paymaster', 'mev'}
+
+
+def load_goldset_infra(labels_dir=None):
+    """benchmark 金标里的设施地址集 {(chain, addr)}——检测"已被 serial 覆盖的设施"
+    （高置信覆盖发生后主库只剩 serial-actor 行，resolver 查不出原设施身份；金标是
+    独立真相源。实案：QUQ 惯犯层曾把 PancakeSwap Infinity Vault 覆盖成 serial-actor）。"""
+    from labels_resolver import DEFAULT_LABELS_DIR
+    p = os.path.join(labels_dir or DEFAULT_LABELS_DIR, 'benchmark', 'goldset.csv')
+    out = set()
+    if os.path.exists(p):
+        with open(p, newline='') as f:
+            for r in csv.DictReader(f):
+                if (r.get('expected') or '').strip() == 'infrastructure':
+                    out.add(((r.get('chain') or '').strip(), (r.get('address') or '').strip().lower()))
+    return out
+
+
+def detect_conflicts(rows, labels_dir=None):
+    """候选 {(chain,addr): row} 逐址查主标签库，返回冲突列表（不修改任何库）。
+    severity: primary   = 主库当前 category ∈ INFRA_CATS（设施身份 vs 庄家成员，最危险）
+              goldset-infra = benchmark 设施金标命中（含已被 serial 覆盖的历史冲突，primary 级）
+              secondary = 主库 tier=exclude 或 merge_policy=no_merge 的其他类目（protocol/locker…）
+              cross_chain = EVM 跨链 fallback 在 eth 表是设施（提示级，不计主数）"""
+    conflicts = []
+    resolvers = {}
+    gold_infra = load_goldset_infra(labels_dir)
+    for (chain, na), cand in sorted(rows.items()):
+        if chain not in resolvers:
+            resolvers[chain] = LabelResolver(chain, labels_dir)
+        resv = resolvers[chain]
+        r = resv.get(na)
+        if (chain, na) in gold_infra:
+            # 金标说它是设施——无论主库当前是什么（含已被高置信覆盖成 serial-actor 的行）
+            conflicts.append({
+                'severity': 'goldset-infra', 'chain': chain, 'address': na,
+                'serial_side': {'name': cand['name'], 'evidence': cand['evidence'],
+                                'source': cand['source']},
+                'label_side': {'name': (r or {}).get('name', '(主库无行)'),
+                               'category': (r or {}).get('category', ''),
+                               'tier': (r or {}).get('tier', ''),
+                               'merge_policy': (r or {}).get('merge_policy', ''),
+                               'balance_policy': (r or {}).get('balance_policy', ''),
+                               'source': (r or {}).get('source', ''),
+                               'evidence': 'benchmark goldset expected=infrastructure（manual 层设施金标）',
+                               'verified_at': (r or {}).get('verified_at', ''),
+                               'cross_chain': bool(r and r['cross_chain'])},
+            })
+            continue
+        if r is None:
+            continue
+        main_cat = (r.get('category') or '').strip()
+        if main_cat == 'serial-actor':
+            continue   # 主库已是惯犯身份（本工具此前入库）——一致，无冲突
+        sev = None
+        if not r['cross_chain']:
+            if main_cat in INFRA_CATS:
+                sev = 'primary'
+            elif (r.get('tier') or '').strip() == 'exclude' or r.get('merge_policy') == 'no_merge':
+                sev = 'secondary'
+        elif main_cat in INFRA_CATS:
+            sev = 'cross_chain'
+        if sev is None:
+            continue
+        conflicts.append({
+            'severity': sev, 'chain': chain, 'address': na,
+            'serial_side': {'name': cand['name'], 'evidence': cand['evidence'],
+                            'source': cand['source']},
+            'label_side': {'name': r.get('name', ''), 'category': main_cat,
+                           'tier': r.get('tier', ''), 'merge_policy': r.get('merge_policy', ''),
+                           'balance_policy': r.get('balance_policy', ''),
+                           'source': r.get('source', ''), 'evidence': r.get('evidence', ''),
+                           'verified_at': r.get('verified_at', ''),
+                           'cross_chain': r['cross_chain']},
+        })
+    return conflicts
+
+
+def write_conflict_report(conflicts, out_dir):
+    """conflicts 报告落惯犯库同目录（json+md，命名带日期）；空冲突不落文件。"""
+    if not conflicts:
+        return None
+    today = datetime.date.today().isoformat()
+    jp = os.path.join(out_dir, f'serial_conflicts_{today}.json')
+    mp = os.path.join(out_dir, f'serial_conflicts_{today}.md')
+    order = {'primary': 0, 'goldset-infra': 0, 'secondary': 1, 'cross_chain': 2}
+    conflicts = sorted(conflicts, key=lambda c: (order.get(c['severity'], 9), c['chain'], c['address']))
+    n_pri = sum(1 for c in conflicts if c['severity'] in ('primary', 'goldset-infra'))
+    json.dump({'generated': today, 'total': len(conflicts), 'primary': n_pri,
+               'note': '同址双身份=设施(主标签库) vs 庄家实体成员(惯犯候选)。不阻塞入库,人工裁决:'
+                       '①案源实体划分误吸设施→修 whale_groups 并重跑本工具 ②主库标签错→修主库'
+                       '(curation override) ③确属庄家自建设施→保留 serial 并在 evidence 注明。'
+                       '裁决前勿 --apply 入库 primary 冲突地址(高置信覆盖会抹掉设施身份)。',
+               'conflicts': conflicts}, open(jp, 'w'), ensure_ascii=False, indent=1)
+    with open(mp, 'w') as f:
+        f.write(f'# 惯犯库 × 主标签库 身份冲突报告（{today}）\n\n')
+        f.write(f'共 {len(conflicts)} 条（primary {n_pri}）。primary=主库设施身份 vs 庄家成员,'
+                f'误入库会被高置信覆盖抹掉设施标签→聚类拦截失效。**不阻塞入库,逐条人工裁决。**\n\n')
+        for c in conflicts:
+            f.write(f"## [{c['severity']}] {c['chain']} `{c['address']}`\n"
+                    f"- 惯犯侧: {c['serial_side']['name']}\n"
+                    f"  - 证据: {c['serial_side']['evidence'][:200]}\n"
+                    f"- 主库侧: {c['label_side']['name']} <{c['label_side']['category']}"
+                    f"|tier={c['label_side']['tier']}|merge={c['label_side']['merge_policy']}>"
+                    f" 来源:{c['label_side']['source']}"
+                    f"{' (eth 表跨链联查,提示级)' if c['label_side']['cross_chain'] else ''}\n")
+            if c['label_side']['evidence']:
+                f.write(f"  - 证据: {c['label_side']['evidence'][:200]}\n")
+            f.write('\n')
+    return jp
 
 CHAIN_MAP = {'solana': 'sol', 'ethereum': 'eth', 'bnb': 'bsc', 'binance': 'bsc'}
 INCLUDE_RE = re.compile(r'(庄\s*#?\d|^庄|小庄|离场庄|狙击集团|工作室|收割)')
@@ -68,8 +190,22 @@ def case_files(root):
 
 
 def main():
-    args = [a for a in sys.argv[1:] if a != '--apply']
-    apply_mode = '--apply' in sys.argv[1:]
+    argv = sys.argv[1:]
+    labels_dir, out_path, args, skip = None, OUT, [], False
+    for i, a in enumerate(argv):
+        if skip:
+            skip = False
+            continue
+        if a.startswith('--labels-dir='):
+            labels_dir = a.split('=', 1)[1]
+        elif a == '--labels-dir':
+            labels_dir = argv[i + 1] if i + 1 < len(argv) else None
+            skip = True
+        elif a.startswith('--out='):
+            out_path = a.split('=', 1)[1]   # 测试/沙盘用；正式流程用默认 sources/serial_actors.csv
+        elif not a.startswith('--'):
+            args.append(a)
+    apply_mode = '--apply' in argv
     root = args[0] if args else DEFAULT_ROOT
     today = datetime.date.today().isoformat()
     rows = {}          # (chain, addr) -> row（跨案命中合并 evidence——跨案=超强信号）
@@ -118,9 +254,9 @@ def main():
                     'source_snapshot_at': cutoff, 'verified_at': today,
                     'status': '', 'raw_labels': '',
                 }
-    os.makedirs(os.path.dirname(OUT), exist_ok=True)
+    os.makedirs(os.path.dirname(out_path) or '.', exist_ok=True)
     out_rows = sorted(rows.values(), key=lambda r: (r['chain'], r['address']))
-    with open(OUT, 'w', newline='') as f:
+    with open(out_path, 'w', newline='') as f:
         w = csv.DictWriter(f, fieldnames=list(out_rows[0].keys()) if out_rows else
                            ['address', 'chain'])
         w.writeheader(); w.writerows(out_rows)
@@ -132,8 +268,22 @@ def main():
         print(f'🚨 跨案命中 {len(multi)} 址（同一惯犯出现在多个案子——最高优先级）:')
         for r in multi[:10]:
             print(f'   {r["address"][:16]} {r["evidence"][:90]}')
+
+    # A7 跨案身份冲突检测（每次运行都做；不阻塞入库，人工裁决）
+    conflicts = detect_conflicts(rows, labels_dir)
+    if conflicts:
+        rp = write_conflict_report(conflicts, os.path.dirname(out_path) or '.')
+        n_pri = sum(1 for c in conflicts if c['severity'] in ('primary', 'goldset-infra'))
+        print(f'⚠️ 身份冲突 {len(conflicts)} 条（primary {n_pri}=主库设施身份 vs 庄家成员）——'
+              f'报告已落 {rp}（+同名 .md），入库不阻塞但 primary 地址裁决前勿 --apply 覆盖')
+        for c in conflicts[:6]:
+            print(f"   [{c['severity']}] {c['chain']} {c['address'][:16]}… "
+                  f"主库={c['label_side']['name'][:28]}<{c['label_side']['category']}> "
+                  f"vs 惯犯候选={c['serial_side']['name'][:28]}")
+    else:
+        print('身份冲突检测: 0 条（候选与主标签库无设施类身份重叠）')
     if apply_mode and out_rows:
-        r = subprocess.run([sys.executable, os.path.join(_HERE, 'add_labels.py'), OUT],
+        r = subprocess.run([sys.executable, os.path.join(_HERE, 'add_labels.py'), out_path],
                            capture_output=True, text=True)
         tail = (r.stdout.strip().splitlines() or ['(无输出)'])[-1]
         print(f'--apply 入库: {"OK" if r.returncode == 0 else "FAIL"} | {tail}')

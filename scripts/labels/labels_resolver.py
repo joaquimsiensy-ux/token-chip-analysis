@@ -288,6 +288,62 @@ class LabelResolver:
         return s
 
 
+# ---- 惯犯层延迟揭盲（A5 2026-07-22）：聚类阶段盲化 serial 命中，防先入之见 ----
+# 流程：聚类/持仓分析期开 CHIP_BLIND_SERIAL=1（或 label_lookup --blind-serial）——
+# serial 命中不进任何主输出，完整详情追加封存 sealed_serial_hits.jsonl；
+# 实体冻结后复核期 label_lookup.py --unseal 揭盲，作定向复核线索。
+# 注意：盲化只隐藏"输出"，不改变聚类决策本身（cluster.py 的 gatekeeper 豁免照旧）。
+SEALED_BASENAME = 'sealed_serial_hits.jsonl'
+
+
+def blind_serial_env():
+    """CHIP_BLIND_SERIAL=1 时聚类路径各出口统一盲化 serial 层输出。"""
+    return os.environ.get('CHIP_BLIND_SERIAL', '') == '1'
+
+
+def seal_serial_hits(records, sealed_dir='.', context=''):
+    """把 serial 命中完整详情追加封存（每行一 JSON）；records=[{chain,address,...row字段}]。
+    返回封存文件路径（records 为空也返回路径但不写入——调用方可据此提示位置）。"""
+    import json as _json
+    path = os.path.join(sealed_dir or '.', SEALED_BASENAME)
+    if not records:
+        return path
+    ts = datetime.datetime.now().isoformat(timespec='seconds')
+    with open(path, 'a') as f:
+        for r in records:
+            rec = {'sealed_at': ts, 'context': context}
+            for k, v in r.items():
+                if isinstance(v, (str, int, float, bool, list, dict)) or v is None:
+                    rec[k] = v
+            f.write(_json.dumps(rec, ensure_ascii=False) + '\n')
+    return path
+
+
+def blind_notice(sealed_path, stream=None):
+    """盲化固定提示行：无论有无命中都打印同一句（有无命中本身也是需要盲化的信息）。"""
+    print(f'[blind-serial] serial 惯犯层已盲化：本输出不含惯犯命中信息（无论有无命中）；'
+          f'实体冻结后复核期揭盲：python3 label_lookup.py --unseal --sealed-dir '
+          f'{os.path.dirname(sealed_path) or "."}', file=stream or sys.stderr)
+
+
+def read_sealed(sealed_dir='.'):
+    """读取封存的 serial 命中；文件不存在返回 []。"""
+    import json as _json
+    path = os.path.join(sealed_dir or '.', SEALED_BASENAME)
+    if not os.path.exists(path):
+        return []
+    out = []
+    with open(path) as f:
+        for line in f:
+            line = line.strip()
+            if line:
+                try:
+                    out.append(_json.loads(line))
+                except ValueError:
+                    continue
+    return out
+
+
 def resolve_file(chain, path, labels_dir=None):
     """便利函数：对一个地址清单文件逐行 resolve，返回 [(addr, row|None)]。"""
     resv = LabelResolver(chain, labels_dir)

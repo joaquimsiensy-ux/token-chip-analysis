@@ -61,7 +61,8 @@
 - **hex 字符串 cast 有位宽限制**：`'0xff'::UBIGINT` 可用，64-hex 全串 cast 任何整数型都报错——32 字节 value 用**两段法**：`('0x'||substr(data,35,16))::UBIGINT::HUGEINT * 2^64 + ('0x'||substr(data,51,16))::UBIGINT::HUGEINT`（前提高 32 hex 全零，物化前必探测，QUQ 28 位安全）。
 - `make_timestamp()` 不吃 UBIGINT，参数先 `::BIGINT`；`day` 是保留字，列别名必须 `"day"`。
 - **temp 磁盘是亿级聚合的真瓶颈**（非内存）：`SET max_temp_directory_size` 按十进制解析（40GB=37.2GiB）；(tx,li) 全局去重 shuffle 1 亿行需 >37GB temp——**v2 输入用块界感知去重**（per-run min/max 元数据秒查→仅重叠区间 GROUP BY，非重叠直通零 shuffle；QUQ 4 段零重叠 19.5s 完成）；派生表一律从 edges_agg 算（(f,t) 聚合保和），禁止对原始行做 (a,p) 双向 2 亿行聚合（首跑 46.5GB 爆仓教训）。
-- 块末峰值窗口（PARTITION BY addr ORDER BY block 亿级）是最重一环（QUQ 432s）——峰值非必需的场景（easy 初筛）可跳；后续优化方向=先按 0.1% 终态/流量粗筛候选再窗口。
+- 块末峰值窗口（PARTITION BY addr ORDER BY block 亿级）是最重一环——**3.19 已上两级候选预筛**（replay_duck 内置默认开）：一级=累计流入恒等上界（峰值≤Σ入账，不达 `peak_min×0.8` 者必不进 peaks），二级=正块净增更紧上界（峰值≤Σmax(dd,0)，同块进出抵消地址被精准滤掉）；两级全整数恒等推理只多收不漏收，精确窗口 SQL 逐字未动只缩输入集合，QUQ/ASTEROID 逐键全等实证。实测：QUQ 峰值段 657s→~330s（**2.0x**；刷量盘是最不利盘型——真达标 21,826 址刚性占 ab 45%，收益天花板 ~2.5x）；ASTEROID 常规盘型筛除 92.8% 地址。⚠**终态余额预筛不完备**（峰值高后清仓者终态=0 会漏），只有流量口径上界可用；HUGEINT SUM 溢出自动回退 VARINT 重算。新参数 `--no-merged`（亿级基准跑省盘）；`[peak]` 分段计时打印。峰值非必需场景（easy 初筛）仍可跳。
+- **build_events 亿级全局宽键去重是当前真瓶颈（3.19 顺带发现，待修）**：QUQ v2 直读 1.03 亿行 temp 需求 >114.5GiB 本机三跑三败——而 v2 五 run 块段实测**零重叠**，全局去重对其是纯开销恒等映射（上表 QUQ "7.8min/8.1GB" 实为 events 层起算）。修复方向=build_events 引入块界感知去重（重叠区间才 GROUP BY，非重叠直通，同 cluster_prep_duck 既有做法）；巨分区（单址 1,443 万行）窗口 DuckDB 疑似串行，是预筛后剩余耗时大头。
 
 **fail-closed 强化（新引擎内建，比旧引擎严）**：坏行 reject 记账（n_source_rows/n_bad_fields/n_out_of_segment/n_dedup_removed 进 stats）；同去重键不同事件内容=数据损坏硬退（旧引擎静默 keep-last）；空 ts 硬退（旧引擎归上一有效日的未定义行为）；供给闭合 gate 挂 → exit 4。同批修复旧引擎三缺口：replay_pass1 坏行计数+`--allow-bad-rows`（默认 0 即退）、cluster R1/准入阈值整数交叉乘法（曾浮点累计）、transfers_lib dedup 重组冲突检测（同 (block,tx,li) 双 hash 硬退,曾双计）。cluster 输出排序加确定性 tiebreaker（并列余额曾致同数据两跑输出不同）。
 

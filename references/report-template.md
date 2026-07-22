@@ -184,7 +184,9 @@ python3 scripts/report/build_html.py --md 报告.md --out 报告.html
 
 **为什么**：v3.2 砍掉默认 appendix.json 后，未买入标的日后做 /token-update 时实体表只能从附录 B 的**文字反抄**——手抄地址正是本 skill 多条铁律防的头号错误源。本文件以近零成本堵上该缺口：交付时顺手从落盘数据落一份**纯机器状态**，不进报告、不算监控包。
 
-- **schema = appendix.json 的机器子集**（键名与 monitoring-package.md 完全同构，日后买入直接在其上扩展成 appendix）：`token`（含 data_cutoff/skill_version 必填）、`whale_groups`（label/tier/type/status/addresses/current_share_pct/peak_share_pct）、`vault_addresses`、`addresses`（仅 address/chain/role/balance_est/group 五字段——**不含** sentinel/watch/why 等监控字段）、`camp_share_series`（≤500 点，重绘图 1 基线）。**不含** monitoring_advice、观察哨等一切人工监控文案。
+- **schema = appendix.json 的机器子集**（键名与 monitoring-package.md 完全同构，日后买入直接在其上扩展成 appendix）：`token`（含 data_cutoff/skill_version 必填）、`whale_groups`（**entity_id**/label/tier/type/status/addresses/current_share_pct/peak_share_pct）、`vault_addresses`、`addresses`（仅 address/chain/role/balance_est/group 五字段——**不含** sentinel/watch/why 等监控字段）、`camp_share_series`（≤500 点，重绘图 1 基线）。**不含** monitoring_advice、观察哨等一切人工监控文案。
+- **entity_id 稳定主键（3.19 起 whale_groups 必填）**：值与 facts.json entities 的字典键一致（如 `e_big1`），一次分配终身不改；label 只是展示文案，改措辞不影响对账与 /token-update 续跑。facts_gate G1 优先按 entity_id 匹配，旧 state 无此字段回退 label 匹配（向后兼容）。
+- **provenance 薄版血缘（3.19 起顶层必填）**：`{"schema_version": "2", "skill_commit": "<git rev-parse --short HEAD>", "data_sources": ["hypersync_v2", ...]}`——回答"这份结论由哪版流程+哪些数据源算出"；缺失时 facts_gate 出 G7 提示。完整计算血缘链（逐阶段输入输出哈希）评估后暂缓不做。
 - 地址一律从落盘数据文件复制（完整地址纪律同 JSON 附录）；与附录 B 名单一致。
 - 生成不做通用脚本（同 build_appendix 先例：结构简单、每案数据文件位置不同），交付时手写 15 行 python 从实体表+余额快照拼出即可；rebuild 范式（整块重写勿打补丁）。
 - 消费方：/token-update 的 `verify_balances.py`/`analyze_inc.py` 在 appendix.json 缺失时自动读它（v3.3 已内置）；买入后补监控包时它就是 appendix 的底稿。
@@ -194,11 +196,13 @@ python3 scripts/report/build_html.py --md 报告.md --out 报告.html
 
 **为什么**：数字/地址手抄进报告已第四犯——纪律拦不住的交给架构拦。正文结论数字、附录 B、analysis-state.json 三处由**同一份 facts.json 编译生成**，改一处数据其余处必然跟着变，对不上编译直接失败。
 
-- **facts.json**（阶段 3 结束、写报告前构建；schema 与宏语法全集见 `scripts/report/facts_gate.py` docstring）：token 总量/decimals + entities（每实体 label/addresses/current_raw/peak_raw，数值一律**原始整数字符串**从落盘数据复制）+ metrics（自定义分子分母）。
+- **facts.json**（阶段 3 结束、写报告前构建；schema 与宏语法全集见 `scripts/report/facts_gate.py` docstring）：token 总量/decimals + entities（每实体 label/addresses/current_raw/peak_raw，数值一律**原始整数字符串**从落盘数据复制；**多地址实体另填 merge_evidence_earliest**=归并证据最早时间，3.19 A1）+ metrics（自定义分子分母）。entities 字典键即 entity_id 稳定主键，与 analysis-state whale_groups[].entity_id 一致。
+- **合并时点措辞（3.19）**：叙述多地址实体在归并证据出现之前的共同行为，用宏 `{{e_x.merged_since}}` 标注时间或写"以最终归并口径回看"——禁写"当时已可确认同一实体"（细则 playbook-evidence-wording.md §11，facts_gate G6 自动提示）。
 - **写作纪律**：报告 md 中实体的持仓枚数/占比/峰值/成员数一律写宏——`{{e1.amount_share}}` → "2.78亿枚【总量27.84%】"（自动满足带【总量%】纪律）、`{{e1.share}}`、`{{e1.peak_share}}`、`{{e1.naddr}}`、`{{m:指标id}}`；附录 B 整块写 `{{appendix_b}}` 自动生成（**手打地址在架构上被消灭**）。禁止手打这些数字；价格/涨跌幅等非实体结论数字暂可手写（G5 会列清单供人工过目）。
 - **编译**：`python3 scripts/report/build_html.py --md 报告.md --out 报告.html --facts facts.json --state analysis-state.json`——语义 gate：G1 实体成员集合与 state 逐组相等（checklist 4b 的自动化）/G2 供给上界/G3 current≤peak/G4 宏名打错必炸（无静默漏渲染）/G5 手写百分比差集清单。gate 未过=WARN=不许交付。
 - 纯校验（不出 HTML）：`python3 scripts/report/facts_gate.py --facts facts.json --state analysis-state.json --md 报告.md`。
-- 渐进接入：**新报告必用**；旧报告重编译不强制回填。easy 模式两件套同样适用（快照表数字走宏）。
+- **图层同源（3.19，`scripts/report/figures_from_facts.py`）**：编译化延伸到图——①图 1 直接 `figures_from_facts.py fig1 --state analysis-state.json --out charts/fig1.png [--price-csv 价格.csv]` 从 state 的 camp_share_series 直出，禁止再现场手写装配脚本；②每张流转图写 spec JSON（nodes/edges 结构同 lifecycle_flow docstring），**卡片与边标签里的持仓/份额数字一律写 facts 宏**（`{{e_x.amount_share}}` 等），`figures_from_facts.py flow --facts facts.json --spec flow_x.json --out ...` 渲染出图（残留宏必炸，同 G4）；③图 2 装配数据落 whale_series.json 后必跑 `figures_from_facts.py check --facts facts.json --series whale_series.json` 终值对账（各实体线末点 vs facts 当前持仓，超 0.05pp 拒绝）——checklist 4b"图表脚本喂的名单与 facts 同源仍须人工确认"中数值部分就此自动化。
+- 渐进接入：**新报告必用**；旧报告重编译不强制回填。easy 模式两件套同样适用（快照表数字走宏；easy 图 1 同样走 fig1 直出）。
 
 ## JSON 附录与买入后监控包（v3.3 起独立成册）
 
@@ -260,6 +264,7 @@ schema 全部细节（report-extract 四键与 `id="report-extract"` 硬约定�
 1. 四问在 TL;DR 逐条直答了吗（问 1 必须按 P0/P1 标签体系分级计数）；第 5 条"本次特有发现"写了吗（无则明写"无"）
 1b. 多链部署代币：TL;DR 首行分析范围声明（覆盖链 + 合计占全局总供应%）写了吗；元信息行把各链合约地址都列了吗（v2.16）
 2. 图 1 + 图 2 放在 TL;DR 顶部（问 1 直答上方）了吗；图 3 在价格事件章吗；图 1 含锁仓/销毁阵营了吗（如有）
+2b. **价格双源抽查过了吗（3.19）**：`python3 scripts/prices/price_check.py --price-file <价格文件> --source <主源> --chain <链> --addr <合约>`——首/中/尾 3 点对第二源（DefiLlama/币安现货互补），>5% WARN 过目、>15% FAIL 价格文件禁入报告先换源（QUQ 实测尾点 9.49% WARN 属日线时点差正常）；双源都无该币（Robinhood 链类）exit 3 回退人工对 Dexscreener 图
 3. **每个 P0 级实体都有全周期流转路径图吗**（项目方/每个大庄/P0 狙击集团各一张）；**图自解释验收过了吗**：只看图能复述实体全部操作、卡片全带【总量%】、分/合方式在边标签、归属证据有落点、账目行加法配平（期初−期末=Σ去向）
 4. 标签体系判级复查：大庄/小庄按**当前**持仓、离场庄按**峰值**；狙击集团单独标签未混入"庄"；刷量地址单独标签（关联的用复合标签）；其他大户与散户只出现在图 1
 4b. **单一成员集合对账**：图 1/图 2 曲线、verdict 汇总数、附录逐址表、JSON whale_groups 四处的实体成员集合必须由同一份名单驱动并交叉对一遍账——"逐址表 vs 汇总曲线"两套手工产出各自维护会互相打架（实锤案例：曲线成员表漏编一个 1.2% 成员，verdict 摘曲线端数字把在场庄合计低估 1.21pct，逐址表反而是对的；增量更新的旧账抽验才抓到）（来源：GME(Robinhood) 增量更新怀疑者复核，2026-07-15）。**3.18.0 起本条中"报告↔state"一段由 facts 语义 gate G1 自动执行**（build_html --facts --state），图表脚本喂的名单与 facts 同源仍须人工确认
@@ -274,4 +279,4 @@ schema 全部细节（report-extract 四键与 `id="report-extract"` 硬约定�
 12. `build_html.py` 退出码 0（有 [WARN] 缺图不许交付）；阵营图 `id="chart-camps"` 自动嵌入目检存在
 13. **【买入后监控包交付时追加】**：观察哨与两档监控建议齐且逐条有原因、与 JSON monitoring_advice 的 mode/alert_threshold_pct 一一对应；JSON 顶层四键齐、addresses 与附录 B 一致且完整地址、sentinel 纪律复查（周期性会动的地址必须 false）、round_target/watch_return 该填的填了；重跑 build_html 零 WARN、`id="report-extract"` 目检存在
 14. 浏览器打开 HTML 目检：图片全显示、表格无错位、蓝红框正常、（带监控包时）JSON 折叠块可展开
-15. **交付后固定动作（3.18.0）**：`python3 scripts/labels/accumulate_offenders.py --apply`——把本案实锤庄回灌惯犯库（含 manifest 自动落印；state 文件案子也扫，买不买入都要跑）
+15. **交付后固定动作（3.18.0）**：`python3 scripts/labels/accumulate_offenders.py --apply`——把本案实锤庄回灌惯犯库（含 manifest 自动落印；state 文件案子也扫，买不买入都要跑）。**3.19 起自动带跨案身份冲突检测**：`sources/serial_conflicts_*.md` 非空=有设施身份地址混进庄家成员表，先按 labels/README 三选一裁决再 --apply 该地址（设施被覆盖成 serial-actor 会让聚类禁边失效）

@@ -10,14 +10,21 @@
    第三水位（默认盯 --out-dir 所在卷，DuckDB temp 在别的卷时用 --disk-path 指定），
    越线同样先 TERM 后 KILL——磁盘满会拖死整机，杀任务是两害相权。
 
-状态文件 <name>.status.json 原子写（.tmp+rename），字段：
-  pid/cmd/started/ended/exit_code/peak_rss_gb/min_disk_free_gb/killed_by_guard/reason
+状态文件 <name>.<run_id>.status.json 原子写（.tmp+rename），字段：
+  run_id/pid/cmd/started/ended/exit_code/peak_rss_gb/min_disk_free_gb/killed_by_guard/reason
 进程存活检测用 psutil（macOS 无 /proc——不可用 [ -d /proc/pid ]，environment.md 坑）。
+
+run_id（C2，2026-07-22）：--run-id 显式给（nightly_collect.sh 会给），缺省生成
+  时间戳p<pid>。日志/状态文件名都带 run_id——同 --name 的两次运行互不覆盖产物；
+  并通过环境变量 CHIP_RUN_ID 传给被守护命令（collect_queue 以之为默认 run_id，
+  一次夜采全链路同一 id 可对账）。
+退出码（同日修正）：透传被守护命令的退出码（旧版折叠为 0/1，collect_queue 的
+  2=有缺口 / 3=锁被占 语义会丢）；被水位守护击杀时退出码 1。
 
 用法：
   python3 run_guarded.py --name quq_prep --mem-ceiling-gb 12 --min-free-gb 2 \
-      [--detach] -- python3 heavy_script.py args...
-  查状态：cat <name>.status.json；看日志：tail -f <name>.log
+      [--run-id ID] [--detach] -- python3 heavy_script.py args...
+  查状态：cat <name>.<run_id>.status.json；看日志：tail -f <name>.<run_id>.log
   （多任务串行队列场景用 pueue：`pueued -d` 起守护进程后 `pueue add -- <命令>`）
 """
 import argparse, datetime, json, os, shutil, signal, subprocess, sys, time
@@ -68,21 +75,27 @@ def main():
                     help="磁盘水位监控路径（默认 --out-dir；DuckDB temp 在别的卷时显式指定）")
     ap.add_argument("--interval", type=float, default=5.0, help="巡检间隔秒")
     ap.add_argument("--out-dir", default=".", help="日志与状态文件目录")
+    ap.add_argument("--run-id", default=None,
+                    help="运行标识（默认 时间戳p<pid>）；进日志/状态文件名+CHIP_RUN_ID 环境变量")
     ap.add_argument("--detach", action="store_true", help="监督器自守护（立刻返回，后台巡检）")
     ap.add_argument("cmd", nargs=argparse.REMAINDER, help="-- 后接被守护命令")
     a = ap.parse_args()
     cmd = a.cmd[1:] if a.cmd and a.cmd[0] == "--" else a.cmd
     if not cmd:
         raise SystemExit("用法：run_guarded.py --name X [选项] -- <命令...>")
+    run_id = a.run_id or \
+        f"{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}p{os.getpid()}"
 
     os.makedirs(a.out_dir, exist_ok=True)
-    log_path = os.path.join(a.out_dir, f"{a.name}.log")
-    st_path = os.path.join(a.out_dir, f"{a.name}.status.json")
+    log_path = os.path.join(a.out_dir, f"{a.name}.{run_id}.log")
+    st_path = os.path.join(a.out_dir, f"{a.name}.{run_id}.status.json")
 
     if a.detach:
         # 自守护：fork 出独立会话的监督器副本，父进程立刻返回
+        # --run-id 必须显式转发——保证父进程打印的状态/日志路径与副本实际写的一致
         args = [sys.executable, os.path.abspath(__file__),
-                "--name", a.name, "--mem-ceiling-gb", str(a.mem_ceiling_gb),
+                "--name", a.name, "--run-id", run_id,
+                "--mem-ceiling-gb", str(a.mem_ceiling_gb),
                 "--min-free-gb", str(a.min_free_gb), "--interval", str(a.interval),
                 "--min-free-disk-gb", str(a.min_free_disk_gb)]
         if a.disk_path:
@@ -90,14 +103,17 @@ def main():
         args += ["--out-dir", os.path.abspath(a.out_dir), "--"] + cmd
         sup = subprocess.Popen(args, stdout=subprocess.DEVNULL,
                                stderr=subprocess.DEVNULL, start_new_session=True)
-        print(f"[run_guarded] 监督器已脱管 pid={sup.pid}；状态 {st_path}；日志 {log_path}")
+        print(f"[run_guarded] 监督器已脱管 pid={sup.pid} run_id={run_id}；"
+              f"状态 {st_path}；日志 {log_path}")
         return 0
 
     log_f = open(log_path, "a")
     child = subprocess.Popen(cmd, stdout=log_f, stderr=log_f,
-                             start_new_session=True)
+                             start_new_session=True,
+                             env={**os.environ, "CHIP_RUN_ID": run_id})
     disk_path = os.path.abspath(a.disk_path or a.out_dir)
-    st = {"name": a.name, "pid": child.pid, "cmd": cmd, "started": now(),
+    st = {"name": a.name, "run_id": run_id, "pid": child.pid, "cmd": cmd,
+          "started": now(),
           "ended": None, "exit_code": None, "peak_rss_gb": 0.0,
           "min_disk_free_gb": None, "killed_by_guard": False, "reason": None,
           "mem_ceiling_gb": a.mem_ceiling_gb, "min_free_gb": a.min_free_gb,
@@ -153,7 +169,10 @@ def main():
     tag = "被水位守护终止" if st["killed_by_guard"] else "完成"
     print(f"[run_guarded] {a.name} {tag}：exit={child.returncode} "
           f"峰值 {st['peak_rss_gb']}GB（{st_path}）")
-    return 0 if child.returncode == 0 and not st["killed_by_guard"] else 1
+    # 透传子进程退出码（collect_queue 的 2=缺口 / 3=锁占 语义要到 nightly_collect.sh）
+    if st["killed_by_guard"]:
+        return 1
+    return child.returncode
 
 
 if __name__ == "__main__":

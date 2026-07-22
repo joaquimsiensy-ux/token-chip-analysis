@@ -40,16 +40,22 @@ def main():
     import os as _os, sys as _sys
     _sys.path.insert(0, _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), '..', 'labels'))
     try:
-        from labels_resolver import LabelResolver
+        from labels_resolver import LabelResolver, blind_serial_env, seal_serial_hits, blind_notice
         _resv = LabelResolver('sol')
         if not _resv.warn_if_degraded():
-            _bad = []
+            _bad, _sealed = [], []
             for _a, _camp in camps.items():
                 _r = _resv.get(_a)
                 if _r and _r['tier'] == 'exclude' and _camp not in ('流动性池', '散户'):
                     _bad.append((_a, _camp, _r['name'], _r['category']))
                 elif _r and _r.get('serial'):
-                    print(f"🚨 阵营体检: {_a[:16]}…({_camp}) 命中惯犯层 {_r['name'][:40]}——立即调案源比对")
+                    if blind_serial_env():   # A5 盲化：惯犯命中封存不打印（复核期 --unseal 揭盲）
+                        _sealed.append({'chain': 'sol', 'address': _a, 'camp': _camp,
+                                        **{k: v for k, v in _r.items()}})
+                    else:
+                        print(f"🚨 阵营体检: {_a[:16]}…({_camp}) 命中惯犯层 {_r['name'][:40]}——立即调案源比对")
+            if blind_serial_env():
+                blind_notice(seal_serial_hits(_sealed, '.', 'sol build_evolution 阵营体检'))
             if _bad:
                 print('⚠️ 阵营体检: 以下地址是已知公共设施，混在实体阵营会让占比失真（核实后剔除或改归池子桶）:')
                 for _a, _camp, _n, _c in _bad:

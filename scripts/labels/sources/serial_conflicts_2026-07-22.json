@@ -1,0 +1,29 @@
+{
+ "generated": "2026-07-22",
+ "total": 1,
+ "primary": 1,
+ "note": "同址双身份=设施(主标签库) vs 庄家实体成员(惯犯候选)。不阻塞入库,人工裁决:①案源实体划分误吸设施→修 whale_groups 并重跑本工具 ②主库标签错→修主库(curation override) ③确属庄家自建设施→保留 serial 并在 evidence 注明。裁决前勿 --apply 入库 primary 冲突地址(高置信覆盖会抹掉设施身份)。",
+ "conflicts": [
+  {
+   "severity": "goldset-infra",
+   "chain": "bsc",
+   "address": "0x238a358808379702088667322f80ac48bad5e6c4",
+   "serial_side": {
+    "name": "惯犯庄家（QUQ案·大庄#1(刷量bot合约+EOA接力库存体系)）",
+    "evidence": "QUQ分析 appendix whale_group「大庄#1(刷量bot合约+EOA接力库存体系)」",
+    "source": "serial-offenders"
+   },
+   "label_side": {
+    "name": "惯犯庄家（QUQ案·大庄#1(刷量bot合约+EOA接力库存体系)）",
+    "category": "serial-actor",
+    "tier": "identity",
+    "merge_policy": "allow",
+    "balance_policy": "count",
+    "source": "manual-addressbook+serial-offenders",
+    "evidence": "benchmark goldset expected=infrastructure（manual 层设施金标）",
+    "verified_at": "2026-07-22",
+    "cross_chain": false
+   }
+  }
+ ]
+}

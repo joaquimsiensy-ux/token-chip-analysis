@@ -29,16 +29,26 @@ plan.json 格式:
   - 泳道调度（3.18.0）：EVM 泳道与 Solana 泳道**并行**，各泳道内部串行——
     HyperSync 限流是 key 级共享（EVM 币间互抢），SQD 是单 IP 带宽整形（Solana 币间
     互抢），但两者资源池互不相干，跨泳道并行纯赚墙钟；--serial 回退全串行
-  - 单项失败不阻塞后续；结束码 0=全部完成 2=有缺口(Solana gaps) 1=有失败
+  - 单项失败不阻塞后续；结束码 0=全部完成 2=有缺口(Solana gaps) 1=有失败/有 skipped_locked
+    3=队列单实例锁被占（本次什么都没跑，plan 保留）
   - manifest（collect_manifest.json，plan 同目录）逐项原子更新；--resume 跳过 done 项
     （不带 --resume 重跑也安全：底层采集器自动续拉，幂等）
   - EVM 残缺 run（无 done.json）开跑前自动改名 partial_run_*_<ts> 隔离——只改名不删除，
     防 partial parquet 污染下游 run_*/ glob
   - 只做采集侧完整性校验（done.json/行数/块范围）；对账三查是分析会话 E2 的事
+跨进程锁（C2，3.19——launchd 夜采与白天手动会话并发防护，语义见 proclock.py）:
+  - 队列单实例锁 <base_dir>/collect_plans/queue.lock：抢不到立即退出码 3 并报持有者；
+    持有进程死亡（含 SIGKILL）flock 自动释放，残留元数据下次接管并记日志
+  - 每币写锁 <币目录>/data/.collect.lock：抢不到**跳过该币**记 manifest
+    skipped_locked（不崩队列，退出码归入 1，--resume 重跑会重试）
+  - 锁文件带 pid/run_id/心跳（60s 刷新）；心跳超时判挂死只报不强抢
+  - --run-id 标识本次运行（默认取环境变量 CHIP_RUN_ID，再默认 时间戳p<pid>）
+密钥治理（C3）: HyperSync token 不再进子进程 argv——只把 --token-file 路径传给
+  fetch_hypersync_v2，token 由子进程自己读文件（ps 视角无明文）
 夜间脱管跑法（推荐）:
   python3 <skill>/scripts/run_guarded.py --detach --mem-ceiling-gb 6 --name collect \
       -- python3 <skill>/scripts/collect/collect_queue.py plan.json
-（来源：B12 批量预采集，2026-07-22）"""
+（来源：B12 批量预采集，2026-07-22；C2/C3 加固同日）"""
 import argparse
 import datetime
 import glob
@@ -54,7 +64,10 @@ import requests
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(SCRIPT_DIR, "..", "evm"))
+sys.path.insert(0, SCRIPT_DIR)
 from transfers_lib import get_deploy_block  # noqa: E402
+
+from proclock import ProcLock  # noqa: E402
 
 TRANSFER = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
 EVM_CHAINS = {"bsc", "eth", "base", "arbitrum", "robinhood"}
@@ -176,7 +189,7 @@ def evm_stats(v2dir):
             "max_block": int(r[2]) if r[2] is not None else None}
 
 
-def collect_evm(it, workdir, token, logf):
+def collect_evm(it, workdir, token, token_file, logf):
     chain, addr = it["chain"], it["address"].lower()
     v2dir = os.path.join(workdir, "data", "v2")
     os.makedirs(v2dir, exist_ok=True)
@@ -187,7 +200,9 @@ def collect_evm(it, workdir, token, logf):
     if fb is None:
         return {"status": "failed",
                 "error": f"{chain} 链上未发现该合约的任何 Transfer——检查链路由/地址是否匹配"}
-    cmd = [sys.executable, FETCH_V2, token, str(fb), "--url", url,
+    # C3：token 不进 argv（ps 可见）——传 --token-file 路径，子进程自己读
+    cmd = [sys.executable, FETCH_V2, str(fb), "--url", url,
+           "--token-file", token_file,
            "--token-addr", addr, "--outdir", v2dir,
            "--concurrency", str(it.get("concurrency", 10))]
     if it.get("to_block"):
@@ -239,6 +254,11 @@ def collect_solana(it, workdir, logf):
 
 # ---------------- main ----------------
 
+def default_run_id():
+    return os.environ.get("CHIP_RUN_ID") or \
+        f"{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}p{os.getpid()}"
+
+
 def main():
     ap = argparse.ArgumentParser(description="批量预采集队列（只采集不分析）")
     ap.add_argument("plan")
@@ -246,7 +266,10 @@ def main():
     ap.add_argument("--serial", action="store_true", help="关闭泳道并行，回退全串行")
     ap.add_argument("--dry-run", action="store_true", help="只打印路由计划不执行")
     ap.add_argument("--token-file", default=os.path.expanduser("~/.config/hypersync/token"))
+    ap.add_argument("--run-id", default=None,
+                    help="本次运行标识（默认 $CHIP_RUN_ID，再默认 时间戳p<pid>）")
     a = ap.parse_args()
+    run_id = a.run_id or default_run_id()
 
     plan = load_plan(a.plan)
     base = plan["base_dir"]
@@ -271,6 +294,30 @@ def main():
                 + (f"  [manifest: {prev}]" if prev else ""))
         return
 
+    # ---- C2 队列单实例锁：同一工作根只允许一个队列在跑 ----
+    qlock = ProcLock(os.path.join(base, "collect_plans", "queue.lock"),
+                     run_id=run_id, role="queue")
+    ok, note = qlock.acquire()
+    if not ok:
+        log(f"[fatal] 队列单实例锁被占（{note}）——本次不跑，plan 保留原样")
+        sys.exit(3)
+    if note:
+        log(f"[lock] {note}")
+    log(f"[lock] 队列锁已持有 run_id={run_id}")
+
+    # 心跳线程：60s 刷新队列锁 + 当前活跃的币锁（daemon，随主进程退出）
+    active_locks = [qlock]
+    alock = threading.Lock()
+
+    def _beat():
+        while True:
+            time.sleep(60)
+            with alock:
+                for lk in active_locks:
+                    lk.heartbeat()
+
+    threading.Thread(target=_beat, daemon=True).start()
+
     t_all = time.time()
     mlock = threading.Lock()   # manifest 读改写竞态保护（save 本身已原子改名）
 
@@ -283,23 +330,46 @@ def main():
             return
         workdir = os.path.join(base, f"{it['name']}分析")
         os.makedirs(os.path.join(workdir, "data"), exist_ok=True)
+        # ---- C2 每币目录写锁：别的进程（或本进程另一泳道）在写就跳过 ----
+        clock = ProcLock(os.path.join(workdir, "data", ".collect.lock"),
+                         run_id=run_id, role=f"collect:{it['name']}")
+        got, cnote = clock.acquire()
+        if not got:
+            log(f"[{tag}]({i}/{n}) {it['name']} 目录被占，跳过（{cnote}）")
+            with mlock:
+                m["items"][key] = {**it, "status": "skipped_locked",
+                                   "error": f"币目录写锁被占：{cnote}",
+                                   "finished": now_iso()}
+                save_manifest(mpath, m)
+            return
+        if cnote:
+            log(f"[{tag}] {it['name']} {cnote}")
+        with alock:
+            active_locks.append(clock)
         log(f"[{tag}]({i}/{n}) {it['name']} [{it['chain']}] 开始 -> {workdir}")
         with mlock:
-            m["items"][key] = {**it, "status": "running", "started": now_iso()}
+            m["items"][key] = {**it, "status": "running", "started": now_iso(),
+                               "run_id": run_id}
             save_manifest(mpath, m)
         logpath = os.path.join(workdir, "data", "collect.log")
-        with open(logpath, "a") as logf:
-            logf.write(f"\n===== collect_queue {now_iso()} {it['name']} {it['chain']} =====\n")
-            logf.flush()
-            try:
-                if it["chain"] in EVM_CHAINS:
-                    res = collect_evm(it, workdir, token, logf)
-                else:
-                    res = collect_solana(it, workdir, logf)
-            except Exception as e:  # 单项异常不塌整个队列
-                res = {"status": "failed", "error": f"{type(e).__name__}: {e}"}
+        try:
+            with open(logpath, "a") as logf:
+                logf.write(f"\n===== collect_queue {now_iso()} {it['name']} "
+                           f"{it['chain']} run_id={run_id} =====\n")
+                logf.flush()
+                try:
+                    if it["chain"] in EVM_CHAINS:
+                        res = collect_evm(it, workdir, token, a.token_file, logf)
+                    else:
+                        res = collect_solana(it, workdir, logf)
+                except Exception as e:  # 单项异常不塌整个队列
+                    res = {"status": "failed", "error": f"{type(e).__name__}: {e}"}
+        finally:
+            with alock:
+                active_locks.remove(clock)
+            clock.release()
         with mlock:
-            m["items"][key] = {**it, **res, "finished": now_iso()}
+            m["items"][key] = {**it, **res, "finished": now_iso(), "run_id": run_id}
             save_manifest(mpath, m)
         log(f"[{tag}] {it['name']} -> {res['status']}"
             + (f" rows={res.get('rows'):,}" if res.get("rows") else "")
@@ -339,8 +409,9 @@ def main():
         if s == "done_with_gaps":
             has_gap = True
         elif s != "done":
-            has_fail = True
+            has_fail = True   # failed / skipped_locked / 意外状态都算未完成
     log(f"manifest: {mpath}")
+    qlock.release()
     sys.exit(1 if has_fail else (2 if has_gap else 0))
 
 

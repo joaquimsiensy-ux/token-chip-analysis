@@ -19,6 +19,11 @@ try:
 except Exception:
     LabelResolver = None
     append_misses = None
+try:
+    from labels_resolver import blind_serial_env, seal_serial_hits, blind_notice   # A5 惯犯延迟揭盲
+except Exception:
+    blind_serial_env = lambda: False
+    seal_serial_hits = blind_notice = None
 
 DIR = os.getcwd()
 CFG = json.load(open(os.path.join(DIR, "config.json")))
@@ -184,6 +189,7 @@ def main(chain, eth_csv):
     #      + 设施/桶类（balance_policy）提示 + 实战 miss 队列 + labels_meta 落盘 ----
     if resv is not None and resv.table:
         top = [(a, b) for a, b in sorted(bal.items(), key=lambda x: -x[1])[:200] if b > 0]
+        blind = blind_serial_env()   # A5：聚类期 CHIP_BLIND_SERIAL=1 盲化惯犯层输出
         serials, warns, cands, unknowns, infra = [], [], [], [], []
         for a, b in top:
             r = resv.get(a)
@@ -191,6 +197,8 @@ def main(chain, eth_csv):
             rp = resv.risk_partition(r)
             if r["serial"]:
                 serials.append((a, b, r))
+                if blind:
+                    continue   # 盲化：serial 行不进任何段（其 serial-offender 旗标会经 RISK 段泄露）
             if rp["definitive"]:
                 warns.append((a, b, r, rp))
             if rp["candidate"]:
@@ -199,7 +207,14 @@ def main(chain, eth_csv):
                 unknowns.append((a, b, r, rp))
             if r["balance_policy"] in ("exclude", "bucket") and not rp["definitive"]:
                 infra.append((a, b, r))
-        if serials:
+        if blind and seal_serial_hits is not None:
+            # A5 盲化：命中详情（如有）封存案目录，主输出恒定一行提示（有无命中不可区分）
+            sealed_path = seal_serial_hits(
+                [{'chain': chain, 'address': a, 'balance_M': round(b / DEC / 1e6, 3),
+                  **{k: v for k, v in r.items()}} for a, b, r in serials],
+                DIR, f"{CFG.get('symbol') or os.path.basename(DIR)} analyze_holdings")
+            blind_notice(sealed_path)
+        elif serials:
             print("\n=== 🚨 惯犯庄家命中（SERIAL 级——历史分析实锤收割集团，立即调案源比对手法）===")
             for a, b, r in serials:
                 print(f"{a}  持 {b/DEC/1e6:.3f}M  {r['name'][:60]} | {r.get('evidence','')[:60]}")

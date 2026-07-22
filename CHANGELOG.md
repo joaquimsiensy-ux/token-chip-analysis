@@ -13,6 +13,7 @@
 - **2.24.0/2.25.0 曾物理倒排**（同日并行会话插入位置错位）——2026-07-18 稳定化时仅调整排列顺序，两条内容一字未动
 
 ## 版本索引（活跃窗口，新在上）
+- **3.19.0 2026-07-22 质量/速度/稳定性专项第三批（非复盘专项，@CX 三轮 18 项）**：记账模型准入 gate 双链硬闸（HOGE/BERN 税币实测 BLOCK）/entity_id 稳定主键+provenance 薄版血缘+时间因果轻量口径（merged_since 宏+合并时点措辞纪律）/图层同源 figures_from_facts 三模式/惯犯层延迟揭盲四出口+跨案身份冲突检测（首战抓 QUQ 误吸 PancakeSwap Vault 实锤待裁决）/聚类扰动敏感度进复核材料/采集跨进程锁+run_id+token 出 argv/probe_keys 12 项周巡检 launchd/峰值窗口两级预筛 657→330s/时间抽查分层计划制/价格双源抽查/P0 素材外包模板点名 opus/复盘草稿生成器/脚本分叉盘点首轮 439 份/时间封存测试两件/断点恢复节；全家桶 12 项
 - **3.18.1 2026-07-22 HyperSync Solana 混合分段提议评估否决存档+验收对账器收编（文档小修）**：recon2.py 从会话 scratchpad 收编为 scripts/solana/hypersync_recon.py（GA 重验收资产防清理丢失）；§13d 增"近期段 HS+历史段 SQD"否决硬结论（@CX 复核：196 天=覆盖范围非准确范围、干净区仅前沿 ~20h 单次抽样、静默洞→证完整=SQD 重拉、供给对账兜不住成对缺行、双引擎不缩短认证关键路径）
 - **3.18.0 2026-07-22 质量/速度/稳定性专项第二批（非复盘专项，@CX 方案 18 项）**：报告编译化 facts 事实源+宏+语义 gate（手抄数字架构级消灭）/故障注入盲测六用例（QUQ 快照缺块盲区固定化）/D3 三大文档拆 8 分册兑现/惯犯库双源回灌 217→1741 址/标签时效语义切分/Solana 双引擎整合+完备性验收**不通过禁用**（历史区缺行 3.6-22% 链上终审实锤）/collect_queue 泳道化/磁盘水位三件/launchd 夜间自动采集/监控两段制 schema 三字段/外部代币名自查自动化/HyperSync overage 831rpm 实测已生效/pre-commit 三检/git 历史 key 清洗
 - **3.17.0 2026-07-22 GOAT(Solana) easy 二战复盘：长币龄混合重建工程加固+CEX 间调度商指纹**：Helius 大扫描 300s+gzip 通道（24.7 万账户 67MB 一次拉全，分片器降末位）/window_fetch gap 合并重复坑+负余额指纹/whale_deep cap 截断语义+10RPS 并发纪律/pump.fun 毕业迁移钱包入 address-book（发射窗峰值榜必剔）/编造地址 base58 侧五六犯；candidate 2 组（CEX 间库存调度商指纹 state-anomaly §9c+锚点复用两扫描 §11.3）；whale_deep 三参数悬账收编+scan_token_accounts --compressed/--timeout；easy 成本基准 GOAT 行（2-3h 档初步稳定）
@@ -31,6 +32,31 @@
 - 3.4.0 VIRTUAL(Base+ETH) 多链 | 3.3.0 体检修复 | 3.2.0 监控包按需化 | 3.1.0 成本三刀 | 3.0.0 稳定化
 - 2.29.0 jesse(Base) | 2.28.0 哈基米(BSC)
 - （3.9.0 及更早正文共 61 条 → CHANGELOG-archive.md，含 3.6.0 补档）
+
+## [3.19.0] - 2026-07-22 — 质量/速度/稳定性专项第三批（非复盘专项，@CX 三轮 18 项）
+
+> 用户三问"筹码分析还有什么优化"。@CX 交叉复核（codex 读库判定：短板已转到"结论是否被时间检验/记账模型是否选对/数据资产与自动化任务是否生产级"），融合清单 26 项用户逐条批复：**批 18 项**（A1 只做轻量版、C6 只取薄版、B2 外包模型点名 opus4.8）；**否决/自留 8 项**（A3 判定后验回测、B1 黑箱关卡批量化=用户自留、B4 资源感知调度、C1 备份、C4 夜间摘要推送、C8 标签库刷新提醒、C9 BSC 兜底演练、D1 研报索引看板——勿再主动重提）。主线+5 子代理并行交付。
+
+**记账模型准入 gate（A2，开工硬闸）**：新件 `scripts/evm/accounting_gate.py`+`scripts/solana/accounting_gate_sol.py`——fee-on-transfer/rebase/Token-2022 转账语义扩展会让 Transfer 流水重建**整体算错且供给对账闭合发现不了**（模型错但自洽）；链路由定型后必跑，exit 0=standard/WARN（可升级代理等）放行、2=BLOCK 硬停人工定制、1=检测失败禁当 standard。EVM 双路 fee 检测互补是实测教训（BabyDoge 型"只对 pair 收税"钱包互转免税、模拟法测不出，只有真实事件差值能抓；单侧干净样本制给 bot 刷量币留活路）；验收：QUQ standard 8/8 精确、HOGE 2% 合约税双路 BLOCK（稳定回归样本；**PAXG 现役 0 费勿再当税币样本**）、GOAT/USELESS standard、BERN Token-2022 现役 269bps BLOCK。通道坑入 channels §3.6（BSC dataseed state 窗口 ~128 块支持 eth_simulateV1/Alchemy ETH 免费层全历史 archive 但 getLogs 限 10 块）。
+
+**entity_id 稳定主键 + 薄版血缘 + 时间因果轻量口径（C5/C6/A1，schema 组）**：analysis-state whale_groups 必带 entity_id（=facts entities 字典键，终身不改；label 只是展示，改措辞不断 gate/update 链路）+顶层 provenance{schema_version/skill_commit/data_sources}；facts 实体加 merge_evidence_earliest（多地址实体的归并证据最早时间）+宏 `{{e.merged_since}}`；facts_gate G1 改 id 优先 label 回退，新增 G6（缺归并时点提示）/G7（缺血缘提示），七契约测试。**合并时点措辞纪律**（evidence-wording §11 新★条+对照表行）：全历史证据聚类会把后期归集/gas 同源倒灌回早期——禁写"当时已可确认同一实体"，叙述归并证据之前的共同行为必须"以最终归并口径回看"限定或标注 merged_since；回看口径 vs 当时可见口径两种曲线回答不同问题不许混写（codex 本轮最有分量的结构性洞察，完整版时间切片重聚类未立项）。
+
+**图层同源（A8）**：新件 `scripts/report/figures_from_facts.py` 三模式——fig1 从 state camp_share_series 直出（QUQ 489 点×8 阵营实测与交付版形态一致，禁止再现场手写装配）；flow 流转图 spec JSON 里数字一律写 facts 宏渲染出图（残留宏必炸同 G4）；check 图 2 装配数据与 facts 终值对账（末点 vs current 超 0.05pp 拒绝）——手抄数字在图层的通道就此关闭；四契约测试进全家桶；report-template 编译化节+checklist 4b 同步。
+
+**惯犯层延迟揭盲 + 跨案身份冲突检测（A5/A7）**：聚类期 `CHIP_BLIND_SERIAL=1` 全程盲化（serial 命中不进主输出、封存案目录 sealed_serial_hits.jsonl；label_lookup/analyze_holdings/replay_edges/build_evolution 四出口接线，"有无命中"这个事实本身也盲化；设施标签照常不影响拦截），实体冻结后 `--unseal` 揭盲作定向复核线索——防确认偏差更贴合结论独立性；cluster.py 的 is_serial 仅 gatekeeper 豁免不改。accumulate_offenders 每次运行自动查四档冲突（primary 设施身份/goldset-infra 金标/secondary/cross_chain），**存量首扫 1741 址抓 1 条实锤**：PancakeSwap Infinity Vault（bsc）被 QUQ 大庄#1 成员表误吸并经 --apply 高置信覆盖成 serial-actor→聚类禁边失效、benchmark"manual 167/168"告警根因——**待用户裁决**（三选一路径入 labels/README；裁决前勿再 --apply 该地址）。检出经金标独立真相源，"覆盖已发生"的历史冲突也能抓。
+
+**聚类扰动敏感度（A4）**：新件 `scripts/evm/cluster_sensitivity.py`——对 P0/P1 重建机械证据图施四类扰动（单源边逐删/stale 标签放开/门槛±10%/割边逐删），输出脆弱性清单**只进阶段 4 复核材料**（行内置信度已取消，STABLE/FRAGILE 字样禁入正文）；QUQ 实测 36.7M 边 17s：大庄#1 机械证据仅覆盖主分量 155/215、其余靠人工证据=复核最优先对象，门槛扰动判级稳定。诚实边界：机械证据≠全部证据，分裂≠结论错误；余额源必用 balances 快照（key_edges 抽取集重放净额虚高 409 倍实测坑）。Solana 边产物形态暂不适配。
+
+**采集跨进程锁 + 密钥治理 + 周巡检（C2/C3）**：新件 proclock.py（flock 内核级：持有者死亡自动放锁=天然接管；心跳超 600s 挂死保守拒绝附 kill 建议不强抢；心跳原地刷新**禁 rename**——换 inode 甩锁）；collect_queue 队列单实例锁（exit 3）+每币 data/.collect.lock（抢不到 skipped_locked 跳过不崩队列）；run_id 贯通 nightly→run_guarded（日志/状态文件名带 run_id 不互覆盖+退出码透传修正）→队列 manifest；HyperSync token 全链路出 argv（--token-file/env，ps 与全部产物 grep 零泄露实测）。新件 probe_keys.py：12 项 key 免额度探测五分类（实跑 10 ok+sqd/vybe skipped），全输出 sanitize 脱敏，--feishu 仅异常推送；launchd `com.chip-analysis.weekly-probe` 每周一 10:00 在役——key 失效从"用时才发现"变提前一周暴露。test_collect_lanes 扩七用例（真两进程对抢）。
+
+**峰值窗口两级预筛（B3，3.14.0 遗留 432s 收官）**：replay_duck 峰值段先做数学恒等上界预筛（一级=累计流入≥门槛才候选：峰值≤Σ入账；二级=正块净增更紧上界：前缀和≤正项和），只缩精确窗口输入集合、精确 SQL 逐字未动，只可能多收不漏收；QUQ 1.03 亿行 peaks/balances/stats **逐键全等**+ASTEROID golden_baseline 7 项全等；耗时 657s→~330s（2.0x；刷量盘为最不利盘型——真达标 21,826 址刚性占 ab 45%，常规盘型 ASTEROID 筛除 92.8%）。⚠终态余额预筛不完备（清仓者漏），只有流量口径可用；HUGEINT 溢出自动回退 VARINT。新参数 --no-merged（亿级基准跑省盘）。**顺带发现（待修）**：build_events 亿级全局宽键去重 temp >114.5GiB 三跑三败且 QUQ v2 五 run 零重叠=纯开销——修复方向块界感知去重（recon §12 已记）。
+
+**E 组五小件**：①anchor_plan.py 时间抽查分层计划制（3 时段×3 余额档+四类强制点：最大单笔/最大日净变动/交界块/门槛±10% 边缘；QUQ 1.03 亿行 5.5 分钟出计划；测完备性与浏览器一致性、不替代供给闭合；Solana 仍走 anchor_sampler）入 SKILL 阶段 2；②price_check.py 价格双源 3 点抽查（DefiLlama/币安现货互补，>5% WARN >15% FAIL 禁入报告；QUQ 尾点 9.49% WARN=日线时点差正常形态；双源均无覆盖 exit 3 回退人工）入 checklist 2b；③retro_draft.py 复盘草稿生成器（五类关键词启发式+文件:行号出处，GOAT 71 行→35 候选；**不许原样当复盘交差**）入 retrospective 首步；④scan_script_forks.py 分叉盘点：首轮 439 份 py/358 组/多份组 32——make_charts.py ×21 份 21 种指纹居首、"已有通用件仍存私版"6 组；收编节奏仍守"≥3 次重现"用户纪律，盘点只供发现排序；⑤truncate_dataset.py+holdout_diff.py 时间封存测试（截 75% 历史重跑聚类判级、封存尾段验证协同延续=后见拟合体检；衍生 json 必须从副本重生成防穿帮）——④⑤组成 retrospective 新"季度质检节拍"节。
+
+**主线三件**：P0 实体素材装配外包模板（research-workflows §二b，**模型点名 opus**=用户定例外档，判定禁外包不变）；断点恢复五步固定序（SKILL 新节：盘点资产→定位断点→数据不重采→结论不重derive→重读版本号）；消费方文档同步（update-workflow 实体跟踪按 entity_id 对齐+旧 state 顺手补 id、easy E0/E5、collect-data 7b/9）。
+
+**遗留**：①0x238a PancakeSwap Vault 冲突待用户裁决 ②盲化开关靠会话纪律（已写 SKILL 阶段 3，未做强制 hook）③cluster_sensitivity 的 Solana 适配 ④build_events 块界感知去重 ⑤holdout_diff 只比 whale_groups 层（曲线对比待日期对齐方案）⑥巨分区窗口串行是峰值段剩余大头 ⑦分析会话尚未接入 .collect.lock（协议已定）⑧A6 交界块依赖 run 目录名（v1 产物无此信息时少一类强制点）
+**成本指标**：主线 ~45 轮 / 5 子代理并行（91 万 tokens、348 工具调用、最长单路 80 分钟）/ 全程约 3h；全家桶 12/12 全绿（新增 test_figures_from_facts、test_cluster_quality）
 
 ## [3.18.1] - 2026-07-22 — HyperSync Solana 混合分段提议评估否决存档 + 验收对账器收编（文档小修）
 

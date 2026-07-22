@@ -23,12 +23,17 @@ uint256 策略（防浮点退化——UHUGEINT 的 SUM 会静默退化 DOUBLE，
   扩展字段（不影响与旧 stats 的对表键）；空 ts 行 >0 时硬退出（旧引擎会把这类行
   归入"上一个有效日"，属未定义行为，新引擎要求先修数据）。
 
+峰值窗口预筛（2026-07-22 优化）：以"累计流入 ≥ 峰值门槛×0.8"先筛候选地址，仅候选
+  进入逐窗精确计算——累计流入是峰值的数学恒等上界（详见 replay_pass1 内注释），
+  预筛只多收不漏收，peaks.json 与全量逐窗版逐键逐值等价；QUQ 1.03 亿行实测
+  峰值段 432s 级 → 秒级~十秒级。诊断打印 [peak] 预筛候选数与分段耗时。
+
 用法：
   python3 replay_duck.py --channels channels.json --out-dir out \
-      [--camps camps.json] [--emit-csv] [--merged-parquet] \
+      [--camps camps.json] [--emit-csv] [--merged-parquet] [--no-merged] \
       [--mem-limit 8GB] [--threads 6]
 """
-import argparse, csv, glob, json, os, sys
+import argparse, csv, glob, json, os, sys, time
 
 import duckdb
 
@@ -188,7 +193,73 @@ def replay_pass1(con, out_dir, vt):
 
     # 峰值：块末口径 cumsum 窗口；VARINT 窗口不可用时回退 Python 流式（输入已聚合）
     peak_min = mint_total // 1000
-    con.execute("CREATE TABLE ab AS SELECT a, b, SUM(d) dd FROM deltas GROUP BY a, b")
+    _tp0 = time.time()
+    # ── 候选预筛（2026-07-22 峰值窗口优化；QUQ 1.03 亿行窗口段 432s 的降本关卡）──
+    # 数学完备性论证（恒等上界，全整数、无浮点参与）：
+    #   地址 a 在任意块 B 的块末余额 cum(B) = Σ_{b≤B} dd(b) = Σ_{b≤B}[in(b) − out(b)]
+    #     ≤ Σ_{b≤B} in(b) ≤ Σ_全程 in(b) = 累计流入      （in(b) ≥ 0 恒成立）
+    #   即 峰值 ≤ 累计流入；逆否：累计流入 < 门槛 ⟹ 峰值 < 门槛，必不进 peaks.json。
+    #   故按"累计流入 ≥ 门槛下界"预筛只可能多收候选、绝不漏掉任何真实达标地址；
+    #   候选集内的精确逐窗计算 SQL/回退流式逻辑与全量版逐字相同 ⟹ 输出逐键逐值等价。
+    #   ⚠禁用终态余额预筛：峰值高但后来清仓者终态=0，会漏（§12"终态/流量"中只有流量完备）。
+    # 门槛下界 = peak_min×0.8 整数向下取整：上界本身已数学完备，0.8 是防御带（防未来
+    #   峰值口径/门槛语义漂移时阈值附近仍兜住，宁多勿漏）；peak_min=0（mint<1000 微型盘）
+    #   时下界=0，SUM(v)≥0 恒真 → 候选=全部收方地址，退化为全量语义。纯付方地址（从未
+    #   收币）不进候选：其 cum 恒 ≤ 0，被下方 HAVING MAX(c)>0 过滤，与全量版输出一致。
+    # 类型安全（data-pipeline-evm-recon §12 坑对照）：累计流入是流量、无供给守恒上界，
+    #   HUGEINT SUM 理论可超 ±1.7e38（DuckDB 溢出=硬报错不静默环绕）——捕获后回退
+    #   VARINT 任意精度重算（VARINT 的 SUM 精确；乘法才退化 DOUBLE，此处无乘法）。
+    prescreen = (peak_min * 8) // 10
+
+    def _mk_cand(t):
+        con.execute("DROP TABLE IF EXISTS peak_cand")
+        con.execute(f"""
+            CREATE TABLE peak_cand AS
+            SELECT t2 AS a FROM events GROUP BY t2
+            HAVING SUM(CAST(v AS {t})) >= '{prescreen}'::{t}""")
+
+    try:
+        _mk_cand(vt)
+    except duckdb.Error as e:
+        print(f"[peak] 预筛 {vt} 流入聚合溢出（{str(e)[:60]}），回退 VARINT 重算", flush=True)
+        _mk_cand("VARINT")
+    n_cand = con.execute("SELECT COUNT(*) FROM peak_cand").fetchone()[0]
+    _tp1 = time.time()
+    print(f"[peak] 一级预筛（累计流入）候选 {n_cand}/{uniq} 址（门槛下界 {prescreen}）"
+          f"{_tp1 - _tp0:.1f}s", flush=True)
+    con.execute("""
+        CREATE TABLE ab_pre AS
+        SELECT a, b, SUM(d) dd FROM deltas
+        WHERE a IN (SELECT a FROM peak_cand) GROUP BY a, b""")
+    _tp2 = time.time()
+    # ── 二级预筛（更紧的完备上界，逐块粒度）───────────────────────────────
+    # 块末峰值 = max_B Σ_{b≤B} dd(b) ≤ Σ_b max(dd(b), 0) =「正块净增之和」
+    #   （任意前缀和 ≤ 其正项之和；整数恒等，与一级同理只多收不漏收）。
+    #   一级（累计流入=Σ in(b)）对同块进出抵消的刷量/路由/接力地址无筛选力
+    #   （QUQ 刷量盘实测一级只筛掉 39% 地址、窗口耗时几乎不降）；二级在块级
+    #   聚合后的 dd 上求正项和，同块对倒地址 dd≈0 被精准滤掉，而真实建仓地址
+    #   （峰值达标者）必然正块净增达标。ab_pre 含一级候选的**全部** (a,b) 行
+    #   （一级按地址整体保留，无行缺失），故该和是真上界。
+    #   溢出兜底同一级：正项和 ≤ 累计流入，HUGEINT 理论可溢 → 回退 VARINT。
+    def _mk_cand2(t):
+        con.execute("DROP TABLE IF EXISTS peak_cand2")
+        con.execute(f"""
+            CREATE TABLE peak_cand2 AS
+            SELECT a FROM ab_pre GROUP BY a
+            HAVING SUM(GREATEST(CAST(dd AS {t}), '0'::{t})) >= '{prescreen}'::{t}""")
+
+    try:
+        _mk_cand2(vt)
+    except duckdb.Error as e:
+        print(f"[peak] 二级预筛 {vt} 聚合溢出（{str(e)[:60]}），回退 VARINT 重算", flush=True)
+        _mk_cand2("VARINT")
+    con.execute("CREATE TABLE ab AS SELECT * FROM ab_pre WHERE a IN (SELECT a FROM peak_cand2)")
+    con.execute("DROP TABLE ab_pre")
+    n_cand2, n_ab = con.execute(
+        "SELECT (SELECT COUNT(*) FROM peak_cand2), COUNT(*) FROM ab").fetchone()
+    _tp3 = time.time()
+    print(f"[peak] 二级预筛（正块净增）候选 {n_cand2} 址、ab {n_ab} 行 {_tp3 - _tp2:.1f}s",
+          flush=True)
     try:
         con.execute("""
             CREATE TABLE peaks AS
@@ -201,6 +272,8 @@ def replay_pass1(con, out_dir, vt):
     except duckdb.Error as e:
         print(f"[peak] SQL 窗口不可用（{str(e)[:80]}），回退 Python 流式", flush=True)
         peak_rows = _peaks_python(con, peak_min)
+    print(f"[peak] 窗口+取数 {time.time() - _tp3:.1f}s；峰值段合计 {time.time() - _tp0:.1f}s",
+          flush=True)
 
     first_seen = dict(con.execute(f"""
         SELECT a, MIN(b) FROM (
@@ -378,6 +451,8 @@ def main():
     ap.add_argument("--camps", help="camps.json；给了就顺跑 pass2")
     ap.add_argument("--emit-csv", action="store_true", help="流式写旧格式 merged.csv（对表/未迁移下游用）")
     ap.add_argument("--merged-parquet", action="store_true", help="强制同时写 merged.parquet")
+    ap.add_argument("--no-merged", action="store_true",
+                    help="不写任何 merged 产物（亿级基准/对表跑省盘省时；默认关=行为不变）")
     ap.add_argument("--mem-limit", default="8GB")
     ap.add_argument("--threads", type=int, default=6)
     ap.add_argument("--force-varint", action="store_true",
@@ -412,7 +487,8 @@ def main():
     stats.update(rej)
     json.dump(stats, open(f"{a.out_dir}/replay_stats.json", "w"), indent=1)
     print("stats:", json.dumps(stats, indent=1), flush=True)
-    emit_merged(con, a.out_dir, a.emit_csv, a.merged_parquet)
+    if not a.no_merged:
+        emit_merged(con, a.out_dir, a.emit_csv, a.merged_parquet)
     if a.camps:
         replay_pass2(con, a.camps, a.out_dir, mint_total, vt)
     print("[gate]", "PASS" if stats["gate_pass"] else "FAIL——禁止进入下游分析")

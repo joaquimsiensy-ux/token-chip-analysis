@@ -69,7 +69,8 @@ def main():
     f4 = facts_obj()
     out4 = f4.render("{{e1.share}} 而某处手写了 99.99% 的数字")
     _, notes = fg.gate_check(f4, None, out4)
-    assert notes and "99.99%" in notes[0] and "27.84%" not in notes[0], f"G5 差集错误: {notes}"
+    g5 = [n for n in notes if "G5" in n]
+    assert g5 and "99.99%" in g5[0] and "27.84%" not in g5[0], f"G5 差集错误: {notes}"
 
     # 5) G2 供给上界：实体持仓超总供应必炸
     over = json.loads(json.dumps(FACTS))
@@ -78,7 +79,41 @@ def main():
     errs, _ = fg.gate_check(fg.Facts(over))
     assert any("G2" in e for e in errs), f"应报 G2: {errs}"
 
-    print("PASS: facts 宏渲染/附录B同源/G1集合gate/G4宏名gate/G5手写检出/G2上界，五契约全过")
+    # 6) G1 entity_id 主键优先（3.19）：state 组 label 改了措辞但 entity_id 匹配 → 不报 G1
+    f6 = facts_obj()
+    state_id = {"whale_groups": [
+        {"entity_id": "e1", "label": "大庄#1（改了措辞）",
+         "addresses": ["0xaa00000000000000000000000000000000000001",
+                       "0xaa00000000000000000000000000000000000002"]}],
+        "provenance": {"schema_version": "2", "skill_commit": "abc1234",
+                       "data_sources": ["hypersync_v2"]}}
+    errs, notes6 = fg.gate_check(f6, state_id)
+    assert not errs, f"entity_id 匹配时改 label 不应报 G1: {errs}"
+    assert not any("G7" in n for n in notes6), f"带 provenance 不应报 G7: {notes6}"
+    # entity_id 匹配但成员不一致仍必炸
+    state_id_bad = json.loads(json.dumps(state_id))
+    state_id_bad["whale_groups"][0]["addresses"].pop()
+    errs, _ = fg.gate_check(facts_obj(), state_id_bad)
+    assert any("G1" in e and "entity_id=e1" in e for e in errs), f"应按 id 键报 G1: {errs}"
+
+    # 7) A1 时间因果：merged_since 宏渲染；多地址实体缺字段出 G6 NOTE；旧 state 出 G7 NOTE
+    with_ts = json.loads(json.dumps(FACTS))
+    with_ts["entities"]["e1"]["merge_evidence_earliest"] = "2026-05-03"
+    f7 = fg.Facts(with_ts)
+    assert f7.render("自 {{e1.merged_since}} 起") == "自 2026-05-03 起"
+    _, notes7 = fg.gate_check(f7, STATE_OK)
+    assert not any("G6" in n for n in notes7), f"有归并时间不应报 G6: {notes7}"
+    assert any("G7" in n for n in notes7), f"旧 state 无 provenance 应出 G7 NOTE: {notes7}"
+    _, notes7b = fg.gate_check(facts_obj(), None)
+    assert any("G6" in n and "e1" in n for n in notes7b), f"缺归并时间应出 G6 NOTE: {notes7b}"
+    try:
+        facts_obj().render("{{e1.merged_since}}")
+        raise AssertionError("缺 merge_evidence_earliest 时 merged_since 宏应抛 KeyError")
+    except KeyError:
+        pass
+
+    print("PASS: facts 宏渲染/附录B同源/G1集合gate(含entity_id主键)/G4宏名gate/"
+          "G5手写检出/G2上界/G6归并时点/G7血缘提示，七契约全过")
     return 0
 
 
