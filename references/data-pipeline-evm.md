@@ -15,6 +15,8 @@
 │       ② v1 手写轮询【兜底】（fetch_hypersync.py，无 pip 环境/逐字段调试用）
 ├─ < 300 万条且 ≤60 天新盘（手头无任何 key 的冷启动）→ bloXroute getLogs 扫块（scan_transfers.py）
 ├─ HyperSync 平台级故障 / 数仓切源准入对照 → SQD Portal 薄采集器（fetch_sqd_evm.py，免 key，~280 条/s）
+├─ HyperSync 结果可疑 / 对账 gate 挂了后的独立复核【仅 ETH 主网】→ BigQuery goog 官方公共数据集
+│     （fetch_bigquery.py,定向日期查询 ~12GiB/次,免费 1TiB/月;定位=备用+复核,不用于常态采集,详见 §11）
 ├─ 跨链代币的 ETH 主网侧补充 → Etherscan V2 免费 key（仅 chainid=1，fetch_etherscan.py）
 └─ 任何情况下都别碰 ──→ §2 死亡名单端点（禁止重探）
 
@@ -34,6 +36,7 @@
 | **HyperSync 官方客户端 v2（Starter 付费档,现役首选）** | Starter $70/月（key 见 api-keys.md 第 1 节;100rpm 基础+overage 5x=500rpm 超量按请求计费,单币 <$1） | concurrency=10 全程 429=0；付费限速解除后瓶颈=RTT×串行,官方客户端自动并发正是解药 | **10,080 条/s**（CAKE 90,719 行/9s,BSC）；三源对账与 v1/SQD 逐行一致 | run_*/done.json 记 next_block,重跑自动续 | fetch_hypersync_v2.py（pip install hypersync） | （v3.11.2 POC,2026-07-21） |
 | envio HyperSync v1 手写轮询（兜底） | 同上 key 通用 | 免费层:0.5s 间隔基本无 429（2026-07-18 收紧后实测）;**Starter 付费档:0.12s 间隔 429=0**,但单进程吞吐仅 552-792 条/s（RTT 主导,ETH RTT~0.2s/BSC~0.6s）——付费买到的是高峰稳定性,大标的提速必须换 v2 | 免费层 ~1000-1300 logs/2s,1568 万条约 5.2h;付费单进程 ETH 792 条/s、BSC 552 条/s | from_block 起点 + 增量写 CSV（v3.11.2 起新文件 8 列含 block_hash,老 7 列续拉自动兼容） | fetch_hypersync.py | （来源：SIREN(BSC) 2026-07；哈基米(BSC) 429 实测 2026-07-18；v3.11.2 付费实测 2026-07-21） |
 | SQD Portal 薄采集器（故障预案+对照源） | 免 key 免注册（portal.sqd.dev 公共端点;注册 gateway key 免费可选更稳） | 公共限流 20 请求/10s,sleep 0.5 保守;无自助付费档（官网 pricing coming soon,2026-07-21 核实） | ~280 条/s（CAKE 21,857 行/79s）——平时不跑,HyperSync 平台级故障或数仓切源准入对照时才上 | CSV 末行块+1 | fetch_sqd_evm.py | （v3.11.2,2026-07-21） |
+| BigQuery goog 官方公共数据集（备用+复核,**仅 ETH**） | Google 账号 OAuth 一次(凭据缓存后免弹窗)+GCP sandbox 项目(免绑卡,见 api-keys.md 第 16 节) | 免费 1 TiB/月查询量;熔断线 config max_scan_gib(默认 200GiB) | 服务端过滤只回传命中行,13 万行 ~1 分钟;定向日期查询 ~12GiB/次≈月额度可复核 85 次 | 无需(按日期范围幂等重查) | fetch_bigquery.py | （v3.12.1 准入实证,2026-07-21） |
 | Alchemy getAssetTransfers | 免费 key（dashboard.alchemy.com 国内直连） | 平台级 429 全局限流，高峰期可整夜不可用 | ~46 万条/10 分钟，1000 条/页 | 读 CSV 末行区块置 fromBlock（勿依赖 pageKey） | fetch_alchemy.py | （来源：SIREN(BSC) 分析，2026-07） |
 | bloXroute getLogs | 免注册 | ⚠**并发承受力已变**（2026-07-19 SIREN 实测）：8 并发 curl 线程池整体挂死零产出、requests 3 线程 0.5s 间隔稳定；历史窗口比 07-18 更宽（下界块 100.1M~101.5M ≈55-60 天，二分探测）——**窗口是动态的，用前必二分**。降级为"近期段快扫" | requests 3 线程 万块段 ~50 段/4 分钟（SIREN 396 万条约 30 分钟）；旧 8 并发数字已不可复现 | done-segments 清单 + 失败段补扫 | scan_transfers.py（curl 线程池版本机挂死，改用 requests.Session） | （来源：OPN(BSC) 2026-07；哈基米(BSC) 窗口实测 2026-07-18；SIREN(BSC) 并发/窗口实测 2026-07-19） |
 | Etherscan V2（仅 ETH 主网） | 用户免费 key | 免费层限速未成瓶颈 | tokentx 每页 10000 条，7 万余行顺利拉完 | 按返回末行 block 续页 | fetch_etherscan.py | （来源：OPN(BSC) 分析，2026-07） |
@@ -122,6 +125,8 @@
 | 官方 subgraph 免 key 白嫖 | 项目 explorer 前端 bundle 里 grep `gateway.thegraph` 附近的压缩变量赋值 | 前端直连 The Graph gateway 的项目会把 API key 以 NEXT_PUBLIC_ 环境变量内联进公开打包 JS（每个访问者浏览器都在用）——提取即得免 key 通道，**对任何"前端直连 subgraph"的项目通用**；LPT 案 10 次查询拿到质押账本快照/全轮次历史，与链上重放双源互验。批量分页快照落盘模板：LPT 工作目录 fetch_subgraph.py（专属存档，非复用件；skip 分页有 5000+1000 上限） | （来源：LPT(ETH+Arbitrum) 分析，2026-07-21） |
 | 事件签名 topic0 正算/反查 | 正算：`web3_sha3` RPC（publicnode 支持）；反查：`api.openchain.xyz/signature-database/v1/lookup?event=0x...,0x...&filter=true` | 本机无 keccak 库时 web3_sha3 直接算事件签名 topic0（比装包/在线工具快）；openchain 批量逗号分隔一次全解（LPT 案 BondingManager 12 种 topic0 一次解完）——⚠参数名是 `event` 不是 `topic`，用错返回全空**不报错** | （来源：LPT(ETH+Arbitrum) 分析，2026-07-21） |
 | 更老币（2021 前上所）早期价格 | Poloniex candles API（2021-01 起可用，limit 500） | 2018-2021 段老币价格免费源全谱系实测：CoinGecko `/coins/{id}/history` 免费层对老币历史**全 no-price**（月度快照 41 连败）、CryptoCompare histoday 无数据（已入死亡名单）、币安月度包仅覆盖上所后——2021 前只剩 Poloniex candles；更早段报告声明截断 | （来源：LPT(ETH+Arbitrum) 分析，2026-07-21） |
+| 币安 Alpha **场内** K 线 | `www.binance.com/bapi/defi/v1/public/alpha-trade/klines?symbol=ALPHA_{alphaId}USDT&interval=1d`（走 clash 代理） | Alpha 在架币**场内盘口**的日级量价（标准币安 12 列 K 线含 trades 笔数字段，bapi 信封 `data` 数组）——Alpha 黑箱唯一的场内价格/量能直查通道，与链上池价对照可检场内外价差、场内成交笔数配合 Router 托管差分解读净压力；alphaId 从 token/list 全量表（上方端点）取。⚠单次实测返回 374 天且首行晚于上架日（窗口/limit 上限，翻页未测）——**非全史**，更早段配 CMC 全史日线补 | （来源：QUQ(BSC) 筛查，2026-07-22） |
+| 全史日线（跨链通用兜底） | `api.coinmarketcap.com/data-api/v3/cryptocurrency/detail/chart?id={cmc_id}&range=ALL` | CMC 网页版内部 data-api，一次拿发射日起全史日级量价——破 CoinGecko 365 天墙/GT 181 天墙的正解（与 data-pipeline-solana §4 同条目，USELESS(Solana) 首测 437 点；QUQ(BSC) 二案复用 488 点全覆盖）；cmc_id 从币页 URL/search 端点拿 | （来源：USELESS(Solana) 2026-07-21；QUQ(BSC) 筛查 2026-07-22） |
 
 gmgn-cli 使用坑（fetch_gmgn.sh 已内置处理）：
 - 命令用全路径 `~/.npm-global/bin/gmgn-cli`（不在 PATH；报 command not found 时别去重装）。（来源：SIREN(BSC) 分析，2026-07）
@@ -171,6 +176,8 @@ gmgn-cli 使用坑（fetch_gmgn.sh 已内置处理）：
 | **CEX 归集批次节奏≠行为指纹（对抗复核 REFUTED 源）** | "两地址同分钟末笔充值 Gate=同一操作者"被硬证据推翻：交易所归集是**批次节奏**，同一分钟窗常有数十个互不相关用户地址同批入账（AKE 案 7-18 17:40-49 共 71 个不同地址同批充 Gate1）。凡"充值时间对齐"类指纹，**必须先拉同窗口全量充值做对照组**——同窗地址数 >10 即该"同分钟"零区分力。与 §6 同秒买入矩阵三要素法同理（先造对照组测误报率） | （来源：AKE(BSC) 分析对抗复核，2026-07-19） |
 | **投毒者 dust 伪装 gas 种子 + 幽灵地址反污染** | 职业投毒团伙给"即将活跃的新地址"发 0.001 BNB 级 dust，gas 溯源会误当"同源强边"（AKE 案双雄的"同额 gas 种子"实为投毒者所发）。判据：该 funder 流水含大量 $0 vanity 仿冒转账+盯梢真实转账=职业投毒者，其一切转账不作聚类边。**衍生坑**：从 trace/BFS 截断打印转述地址时会手补出"幽灵地址"（全史 0 笔的仿冒体）混入实体表——凡进 camps/实体表的地址必须回 merged.csv 验证存在性+走量匹配（AKE 案完整性复核抓出 2 个幽灵，替换为同前缀真实节点） | （来源：AKE(BSC) 分析，2026-07-19） |
 | **币安 Alpha Box 空投标的三件套时序指纹** | 项目方系统=空投币源提供方时：①公告前数天向 Alpha Router 集中充值（AKE 案 7-04~07 充 76 亿）②同期向粉尘分发器注资（随后数万笔粉尘化发放=空投投放通道）③公告后砸底卖压主力的**更优备择=领取人即领即抛**（非项目方场内出货，后者是黑箱不可证）。**Router 充值构成必拆"托管系新币 vs 场内库存回充"**——AKE 案 76 亿中 58 亿是 4 月已提出库存的原额回充（44 址静默 3 个月+dust 试提指纹），不拆会把注入规模高估 4 倍 | （来源：AKE(BSC) 分析对抗复核，2026-07-19） |
+| **key_edges 提取排除设施边 → 来源拆解选择偏差** | 亿级转账为控量提取"关键边"流水时，若把池/枢纽/路由的设施边排除在外，事后拿 key_edges 做某仓"币从哪来/去哪"的来源拆解会**系统性漏掉经设施走的流量**（选择偏差——刷量盘的大头恰恰经池/枢纽走）。兜底=**daily_delta 缺口法**：该仓按日全量净变动（daily_delta）与 key_edges 汇总的差值=未入选边的缺口量，缺口显著就回全量数据补拉该仓该窗口的完整边再下结论 | （来源：QUQ(BSC) 筛查，2026-07-22） |
+| **亿级 edges 提取禁止攒内存** | 1 亿条级转账逐行提边时 list 攒内存会 OOM/假死——一律边读边流式 append 落盘（QUQ 案 key_edges.csv 7.3GB 逐行流式写出），聚合统计另做二遍 pass；产物文件在交接包标注"勿整读" | （来源：QUQ(BSC) 筛查，2026-07-22） |
 
 ## 7. 零门槛免注册通道（外部会话考古 2026-07 补充）
 
@@ -288,5 +295,25 @@ Arbitrum One（chainid 42161）待遇比 BSC/Base 好：Etherscan V2 免费层�
 4. **非 Transfer 换手事件审计（TransferBond 类）**：质押权益可不经 ERC20 Transfer 直接换主（LPT 案 1,774 万枚/1.1 万笔）——实体溯源与"庄不成立"阴性排查必须扫这类场外换手暗道。定性纪律：大额几乎全是跨链迁移中继批量落账（单中继服务 99-478 人=公共通道，按 §6 公共服务规则不作关联边），真定向转让极少但每笔都值得看。（来源：LPT(ETH+Arbitrum) 分析，2026-07-21）
 5. **跨链迁移衔接的双计坑**：L1→L2 迁移常走 Migrator 特殊流程**不发 L1 Unbond 事件**——L1 账本"迁移后残留"+ L2 账本新记录在衔接月双计（LPT 案实体峰值虚增近一倍：19.4%→修复后 12.4%）。对策：L1 账本截断在迁移前最后一个完整月，衔接毛刺量化后写进报告局限性。（来源：LPT(ETH+Arbitrum) 分析，2026-07-21）
 6. **月度粒度的峰值口径**：月末快照天然 sig 原子化，但月内脉冲被平滑——峰值口径纪律见 playbook-entity-cluster §6a。双链 ERC20+质押账本合并月度权益引擎（跟踪集+retail 聚合+质押前向填充）结构参考：LPT 工作目录 build_evolution.py / rebuild_stake_ledger.py（专属存档，非复用件）。（来源：LPT(ETH+Arbitrum) 分析，2026-07-21）
+
+## 11. 公共数仓准入实证与分工定稿（ASTEROID(ETH) 三源对账,2026-07-21）
+
+**准入实证**：ASTEROID(ETH,22 个月史) 抽 5 代表日——部署日(14,447)/低活日(47)/极稀日(全天 1 条)/峰值日(Musk 事件 114,010)/近期日(3,966)——合计 132,471 行,AWS 公共数据湖 v1.0/eth 与 BigQuery goog 官方版**双双与 HyperSync 基准逐行字节级等价**（键 (block,tx,log_index) 零差集、值 (from,to,value) 零不一致）。"HyperSync vs 公共数仓谁的质量高"在 ETH 段的实证答案：三源等价。
+
+**分工定稿（用户 2026-07-21 拍板）**：
+- **采集主力=HyperSync Starter + v2 官方客户端**（不变,见 §1 首选）。
+- **BigQuery=备用+出错复核源**（`fetch_bigquery.py`,仅 ETH——goog 数据集无 BSC/Base）：HyperSync 结果可疑、对账 gate 挂了、或平台级故障时上。**成本实测推翻旧估**：按币活跃日限定日期分区后单次只扫 ~12GiB（旧悲观估算 200-500GiB 是无日期限定的全表扫）,免费 1TiB/月≈85 次复核。
+- **AWS 数据湖=已验证等价但 pass 掉**（用户拍板：太慢）：S3 无服务端过滤,单币复核也必须整分区下载（99%+ 流量是无关合约数据）,宽带 1.7MB/s 实测 5 分区 4.9GB/60 分钟。**不做采集器**;仅当需要"与 Google/Envio 都无利益关系的第三独立源"或前两家全挂时手工走。
+- BSC 的独立对照源仍只有 SQD Portal（AWS bnb 无 logs 表、BigQuery 无 BSC——格局未变）;Base 的 sonarx 表(T+7)未做准入测试。
+
+**BigQuery 操作要点**（细节见 fetch_bigquery.py docstring）：
+- 表 `bigquery-public-data.goog_blockchain_ethereum_mainnet_us.logs`（列含 topics REPEATED/block_hash/removed）,raw logs 自解码,**禁用现成 token_transfers 解码表**（AWS 侧同名表有浮点精度事故公开前科,规则跨仓通用）。
+- 查询必带日期条件（脚本强制,防全史扫爆额度）+ dry run 熔断（config `max_scan_gib`）。
+- 一次性前置已完成态：GCP sandbox 项目+OAuth 凭据缓存见 api-keys.md 第 16 节;**新 Google 账号首次用 GCP 必须网页接受 ToS**,否则 API 建项目 403 `Callers must accept Terms of Service`（2026-07-21 实测,console.cloud.google.com 勾一次即解）。
+- 产物=标准 8 列 CSV(与 fetch_sqd_evm 同款),对账走 `transfers_lib.py merge`（fail-closed）。
+
+**AWS 手工方法留档**（pass 但方法保号,应急可复活）：匿名公开桶 `aws-public-blockchain.s3.us-east-2.amazonaws.com`（免账号,list-type=2 列目录）,`v1.0/eth/logs/date=YYYY-MM-DD/` 每日单 parquet 0.5-1.15GB;**新鲜度实测 T+1~T+2**（优于 sonarx base/arbitrum 的 T+7）;逐 row-group 读+address/topic0 过滤自解码（本次验证脚本逻辑存 CHANGELOG v3.12.1 条目所述会话,核心=pyarrow read_row_group 选列+topics array 解 from/to/value）。
+
+**新源准入通用纪律**（本次定型,适用任何未来数据源）：抽代表日分区（部署/极稀/峰值/近期四型必含）→ 与主通道按 (block,tx,log_index) 键+(from,to,value) 值集合对账 → 全等才准入该链该历史段;禁止拿"品牌可信"替代逐行对账。
 
 通用环境坑（macOS SSL 证书、reportlab 中文字体、前台 sleep 被 Block 等）不在本文重复，见 skill 其他参考文档与 memory（mac-python-pdf-environment.md、onchain-data-accounts.md）。

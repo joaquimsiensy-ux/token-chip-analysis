@@ -13,6 +13,9 @@
 - **2.24.0/2.25.0 曾物理倒排**（同日并行会话插入位置错位）——2026-07-18 稳定化时仅调整排列顺序，两条内容一字未动
 
 ## 版本索引（活跃窗口，新在上）
+- **3.13.0 2026-07-22 QUQ(BSC) easy 模式首战复盘**：币安 Alpha 场内 K 线端点（bapi alpha-trade/klines，374 天窗口**非全史**）+CMC 全史日线 EVM 侧二案复用；「接力库存仓」盘型入 state-anomaly §9b（主仓多代交棒直转·数十倍总量/净持≈0 执行枢纽网/「自持↔池↔CEX 场内」三态日轮转 30-50% 锯齿/量能市值数十倍倒挂——体系判定靠直转边不靠 gas，「独立做市商」备择每案独立走）；单 tick V3 NFT 头寸=零滑点自转刷量设施指纹；枢纽三段处理法（度>200 不作扩散桥/种子枢纽保留成员资格/NPM·EntryPoint·1inch 事后卫生检查强制收尾）；key_edges 设施边排除→来源拆解选择偏差（daily_delta 缺口法兜底）+亿级 edges 流式写；easy 首战成本基准单币 ~2.5h（采集 67min）
+- **3.12.1 2026-07-21 公共数仓准入验证+BigQuery 复核通道正式化（非复盘专项）**：ASTEROID(ETH) 5 代表日 132,471 行三源对账——AWS v1.0/eth 与 BigQuery goog 官方版均与 HyperSync **逐行字节级等价**（键零差集/值零不一致）,"数仓质量≤HyperSync"疑虑在 ETH 段实证解除；分工定稿（用户拍板）：主力=HyperSync 不变、BigQuery=备用+出错复核源（新件 fetch_bigquery.py,仅 ETH,定向日期查询实测 12GiB/次推翻旧估 200-500GiB,免费 1TiB/月≈85 次复核）、AWS=等价但 pass（S3 无服务端过滤整分区下载 60 分钟,手工方法留档 §11 应急可复活,新鲜度实测 T+1~T+2 优于 sonarx T+7）；GCP 资产一次性开通（sandbox 项目+OAuth 缓存,api-keys.md 第 16 节;新账号 ToS 403 坑实测）；新源准入通用纪律定型（四型代表日+键值集合对账,禁品牌信任替代逐行对账）；data-pipeline-evm 新增 §11
+- **3.12.0 2026-07-21 简化筛查模式 /token-easy-analysis + 图 1 价格右轴（非复盘专项）**：新命令+新分册 easy-workflow.md（E0–E7）——引擎与完整版同强度（采集/对账三查/深度关联全套/复核路数一分不减），砍背调（问 4 整路）与完整报告，交付两件套单页 HTML（图 1+按实体结构细分的阵营快照表+判定块含 Alpha 黑箱占比）+analysis-state.json 必落盘；绝不自动转正式，人工决策后 /token-analyze 同目录衔接（E7 继承清单+隔日增量拼接）；E6 复盘按需触发（有工具性增量才走全套）；场景=币安 Alpha/现货初筛 60+ 候选批量找高控盘标的，档 A 预估单币省 30-40%。standard_charts.plot_camp_evolution 新增 price_series 参数（右轴黑线白描边/量程>30x 自动对数/图例并轴单位/裁剪到阵营时间范围，demo+AKE 真数据双验证），完整版图 1 同步升级为必传，旧调用兼容
 - **3.11.3 2026-07-21 Solana 采集加速工程（非复盘专项，@CX 三轮交叉复核）**：SQD 传输层真相实测（gzip=21 倍·明文是 §8"1.5-4x 实时"的真凶/限流 20req10s 长流碰不到·真瓶颈=单 IP 带宽整形 1MB/s·多 key 无意义/单响应解压 32MB 上限）；新件 2（fetch_sqd_transfers_v2 全程采集器：requests+自适应区域并发+全局令牌桶+gaps 重试,BONK 实测 639 slots/s=255 倍实时、三跑缺口自动收敛,2-6 个月币全程重放复活、§11 混合重建降级为 1 年+币龄专用 / decode_txs_v2 溯源：JSON-RPC batch+跨地址 sig 缓存+429 收回重试,mainnet-beta 方法级限流 ~10 笔窗实测,Helius 就位即切）；新通道 Solana HyperSync（隐藏 mint 服务端过滤实测——文档未载,`token_balances` 收 `mint` 键;单通道 623 打平 SQD 未达 3600 验收线,双引擎并行聚合 1211 有效叠加;fee_payer 指纹查询独有;滚动窗 196 天）；SQD gateway key 登记（公共端点不认证,专属端点待用户后台抄回）；data-pipeline-solana 新增 §13；成本：44 轮/约 60 Bash/2.5h；遗留 5 项见 §13 尾
 - **3.11.2 2026-07-21 采集加速工程（非复盘专项）：HyperSync Starter 付费档+官方客户端 v2+多源对账闸门**：全量采集小时级→分钟级（SIREN 全史 21,689,815 条 18.8 分钟=19,265 条/s，vs 免费层当年 1568 万条 5.2h，同口径 23 倍）；新件 3（fetch_hypersync_v2 官方客户端 1 万条/s=18 倍付费单进程 / fetch_sqd_evm 免 key 对照源·SQD 无自助付费档 / transfers_lib 多源集合对账 fail-closed+block_hash 防重组去重键+部署块·锚点跨币缓存）；v1/par 付费参数化+8 列兼容；§1 决策树重写（v2 首选）；数仓 D/E 评估结论存档待准入（AWS bnb 无 logs·sonarx T+7 / BigQuery 无聚簇老币单查 200-500GiB / Dune 按 MB 计费大币不成立 / Solana HyperSync 滚动窗 ~196 天）
 - **3.11.1 2026-07-21 销户账户覆盖审计（SQD 对账盲区加固，非复盘专项）**：data-pipeline-solana 新增 §12（GPA 快照只见存活账户→已 closeAccount 者的中间路径是"重放 vs 快照"对账天然盲区；mint 初始化史+tokenBalances=独立账户目录；sigs/blocks 双模式选路；slot+owner 判定粒度；undetermined 诚实纪律；退出码 gate 语义）+ 脚本收编 audit_closed_accounts.py（PUB 全程 93/93、USELESS 定向段 7/7 双案冒烟，SQD 销户覆盖首获专项验证）。来源：Helius vs SQD 采集通道 @CX 交叉复核，codex 反向审计法提议的工程化
@@ -31,6 +34,58 @@
 - **3.0.0 2026-07-18 稳定化大版本**：git 基线/标签库双真相收敛/复盘机制升级(质量指标+candidate+整编+预测追踪)/playbook 重组/守护三件套/瘦身 287→97MB
 - 2.29.0 2026-07-18 jesse(Base) 全量复盘 | 2.28.0 哈基米(BSC)
 - （2.27.0 及更早共 48 条 → CHANGELOG-archive.md）
+
+## [3.13.0] - 2026-07-22 — QUQ(BSC) easy 模式首战复盘
+
+> easy 模式（/token-easy-analysis，v3.12.0 新增）首个实战标的：four.meme 发射、币安 Alpha 在架的亿级转账刷量盘（1.03 亿条 Transfer，HyperSync v2 付费档 67 分钟采完，对账三查全过）。E0–E6 全流程走通，两件套交付。复盘在轻上下文新会话执行（成本纪律刀 2 第 6 条）。
+
+**新数据源 2（数据工程，直接正式）→ data-pipeline-evm §4**：
+- **币安 Alpha 场内 K 线**：`www.binance.com/bapi/defi/v1/public/alpha-trade/klines?symbol=ALPHA_{alphaId}USDT&interval=1d`——Alpha 黑箱唯一的场内量价直查通道（标准币安 12 列 K 线含 trades 笔数，bapi 信封）；⚠实测单次返回 374 天且首行晚于上架日（窗口/limit 上限，翻页未测）——**非全史**，更早段配 CMC 全史日线补。
+- **CMC data-api 全史日线 EVM 侧二案复用**：USELESS(Solana) 首测（437 点）后 QUQ(BSC) 复用 488 点全覆盖——跨链通用兜底地位确认，EVM §4 补行与 solana §4 互引。
+
+**新盘型 1（候选·单案）→ state-anomaly 新 §9b「接力库存仓（Alpha 刷量盘）」**：库存=做量原料非待派发筹码，按吸筹/派发框架解读会错判。四指纹：①主仓多代接力+交棒直转（换代互转达总量数十倍、单笔数十% 整仓移交）②净持≈0 执行枢纽网（与主仓百万笔级互转）③「自持↔DEX 池↔CEX 场内托管」三态日轮转 30-50% 总量（日度曲线同步锯齿=真实倒仓非毛刺）④量能/市值数十倍倒挂。纪律：体系判定靠交棒直转边**不靠 gas**（各代 funder 独立=钱包卫生干净不构成反证）；「独立第三方做市商」备择每案必须独立走；CEX 托管曲线大幅波动属此盘型常规操作，单独看会误报"进所出货"。
+
+**新指纹 1（候选·单案）→ state-anomaly §9**：**单 tick V3 NFT 头寸=零滑点自转刷量设施**——最窄 tick 区间（tickLower/tickUpper 差一个 tickSpacing）的集中流动性=自转特制场地；NonfungiblePositionManager positions() 查区间宽度；GoPlus lp_holders 报单址 99.9%+ 时先辨池版本（V3/V4 LP 是 NFT 非 ERC20）。
+
+**聚类方法 1（候选·单案）→ entity-cluster §6**：**枢纽三段处理法**——①度>200 不作扩散桥（既有剔除规则的 BFS 执行形态）②种子枢纽保留成员资格（剔边不剔身份；为 LPT"高扇出≠公共服务商"三判据的第二案方向印证，整编时合并裁决）③事后公共合约卫生检查强制收尾（NPM/EntryPoint/1inch 等；QUQ 案复核剥离 34 址执行通道、现仓影响仅 0.04%）。
+
+**工程坑 2 → data-pipeline-evm §6**：①key_edges 提取排除设施边→来源拆解**选择偏差**（刷量盘大头恰经池/枢纽走），daily_delta 缺口法兜底；②亿级 edges 提取禁攒内存，流式 append 落盘（7.3GB 实证）。
+
+**easy 首战成本基准 → easy-workflow.md 新节**：单币全程 ~2.5h（采集 67min 占大头），亿级刷量盘属重型样本、普通量级预期显著更短。
+
+成本指标：交付 ~2.5h（采集 67min）；轮次/Bash 计数未导出（分析会话与复盘会话分离，原会话未记录）。质量指标：初稿关键结论 9；对抗复核 4 路=3 CONFIRMED + 1 备择解释 REFUTED（主结论存活），实质修正 5（1 归属翻案：首日大买家独立大户→项目方关联分配仓 / 1 证据降档 / 1 成员剥离 34 址 / 2 措辞补证）；复核翻出漏检 P0/P1 实体 0；传播级数字错误 0。
+
+另：本次 git 收口 3.12.0/3.12.1 两会话的未提交悬账（先补 commit 纯 3.12.x 文件，共享文件随本条 commit 进库——见 git log）。
+
+## [3.12.1] - 2026-07-21 — 公共数仓准入验证 + BigQuery 复核通道正式化（非复盘专项）
+
+> 起因：v3.11.2 数仓 D/E 评估后用户挂起待验证（"找已分析币看数据是否完全一致,检验过后再决定"）。本次用 ASTEROID(ETH,22 个月史,140 万条) 抽 5 代表日执行分区级准入,验证全过后用户拍板分工。全程未动采集主力选型。
+
+**准入实证（当日实测）**：
+- **抽样设计**：部署日 2024-09-10(创世+发射窗 14,447)/低活日 2025-01-03(47)/极稀日 2025-03-01(全天 1 条,阴性边界)/峰值日 2026-04-19(Musk 事件 114,010,压力面)/近期日 2026-07-17(3,966,新鲜度面),合计 132,471 行。
+- **双仓皆 PASS**：AWS v1.0/eth raw logs 自解码与 BigQuery goog 官方版 raw logs 自解码,均与本地 HyperSync 基准**逐行字节级等价**——键 (block,tx,log_index) 零差集、值 (from,to,value) 零不一致。传递性下 AWS=BigQuery 亦等价。
+- **成本实测**：BigQuery 定向查询(按币活跃日限日期分区)仅扫 12.0 GiB——**推翻 v3.11.2 存档的"老币单查 200-500GiB"悲观估算**(那是无日期限定的全表扫口径),免费 1TiB/月≈85 次复核;AWS 侧 4.9GB/60 分钟(瓶颈=用户宽带 1.7MB/s;S3 无服务端过滤,单币复核也须整分区下载,99%+ 流量为无关合约数据)。
+- **AWS 新鲜度实测 T+1~T+2**(07-21 已见 07-19 分区),优于 sonarx base/arbitrum 的 T+7——修正 v3.11.2"官方宣称日更不成立"仅适用 sonarx 表的边界。
+
+**分工定稿（用户 2026-07-21 拍板）**：采集主力=HyperSync Starter+v2 不变;**BigQuery=备用+出错复核源**;**AWS=已验证等价但 pass**(太慢),不做采集器、手工方法留档应急。BSC 对照源仍只有 SQD(两仓均不覆盖 BSC,格局未变);Base sonarx 未做准入。
+
+**新件与文档**：
+- **fetch_bigquery.py**(scripts/evm 第 12 件)：goog 官方数据集薄采集器——参数化(config bigquery 节+--dates/--from-date)、强制日期条件(防全史扫爆额度)、dry run 熔断(max_scan_gib 默认 200GiB)、输出与 fetch_sqd_evm 同款标准 8 列、对账走 transfers_lib merge;冒烟=2 日 48 行与基准六字段全等、凭据缓存零弹窗。
+- **data-pipeline-evm §11 新节**：准入实证数字/分工定稿/BigQuery 操作要点(raw logs 自解码禁 token_transfers 表-跨仓通用/ToS 403 坑:新 Google 账号必须网页接受条款否则 API 建项目 403 `Callers must accept Terms of Service`)/AWS 手工方法留档(匿名桶列目录+逐 row-group 选列过滤)/**新源准入通用纪律**(四型代表日+键值集合对账全等才准入,禁止品牌信任替代逐行对账);§1 决策树+通道表各加 BigQuery 行。
+- **GCP 资产开通并登记 api-keys.md 第 16 节**：sandbox 项目 chip-recon-77201(免绑卡)+OAuth 凭据缓存 ~/.cache/pydata_google_auth/(scope=cloud-platform,复用免弹窗)。
+
+成本指标：轮次 ~12 / Bash 调用 ~20 / 交付约 2h(含 60 分钟 AWS 下载挂机与用户 OAuth/ToS 两次搭手)。质量指标：非复盘条目按修号+1(3.12.0→3.12.1,并行会话已占 3.11.3/3.12.0,写前重读索引防撞号);冒烟发现 0 缺陷;本次验证脚本自身的负面路径(ToS 403/项目创建假成功)均实测记档。
+
+## [3.12.0] - 2026-07-21 — 简化筛查模式 /token-easy-analysis + 图 1 价格右轴（非复盘专项）
+
+> 起因：用户从 SIREN 受启发做"币安系高流通候选"初筛（60+ 币），逐个完整分析成本不可行，需要筛查档位。方案讨论三轮定档 A：深度关联与对抗复核用户点名不可省（怕漏伪装分散庄），砍背调与完整报告（省 30-40%）；HyperSync Starter 付费后采集退出瓶颈位。开工时 skill v3.11.3。
+
+**新增**：
+- **命令 `/token-easy-analysis`** + 分册 `references/easy-workflow.md`（E0–E7）：E0=完整版阶段 0 原样（初筛清单地址可采信但多链硬关卡不可跳）；E1 三路采集砍背调路（不碰 Firecrawl/推特，问 4 以局限声明代之）；E2 三查原样；E3 引擎同强度（阵营表按实体结构细分粒度不降；Alpha 在架必算黑箱占比进判定块）；E4 复核路数不减、复核面自然缩；E5 两件套单页 HTML（图 1 必传价格+阵营快照表+判定块 3–5 行+局限声明）+ analysis-state.json 必落盘 + 工作目录沿用 `<代币>分析/` 转正式零搬迁；E6 复盘按需（有工具性增量走全套，无增量一行收）；E7 转正式衔接（同次产物直接继承免"沿用须检验"，隔日以上先按 U1 增量拼接；已 CONFIRMED 项不重跑复核）
+- **standard_charts.plot_camp_evolution 新增 `price_series` 可选参数**（2026-07-21 用户定"价格+筹码对照"）：右轴价格黑线（白描边，堆叠色块上唯一不撞色组合）；默认线性对齐图 2 直觉，量程 max/min > PRICE_LOG_SWITCH_RATIO(30) 自动切对数；单位并入图例条目（右轴 ylabel 与外置图例同位会重叠，实测踩过）；图例 x 锚 1.01→1.075 给右轴刻度让位（线性轴多位小数刻度会被压住，实测踩过）；价格序列自动裁剪到阵营时间范围防 x 轴撑出堆叠区。demo 合成数据 + AKE 真实数据（13.6x 线性档）双验证通过。**完整版图 1 同步升级为必传**（report-template 三张标准图表格已改），不传保持纯占比图（旧报告基线重绘兼容）
+- SKILL.md 新增「简化筛查模式」节 + 分册清单行；build_html.py 零改动（质检本就是"md 引用什么检什么"，单图天然兼容）
+
+**纪律边界**：一币一会话铁律不变，跨币汇总矩阵不进分析会话（用户在独立轻会话用各币 analysis-state.json 纯机械拼表）；判定块只给参考意见绝不自动转正式。
 
 ## [3.11.3] - 2026-07-21 — Solana 采集加速工程：SQD v2 采集器 + 溯源批量化 + Solana HyperSync 通道（非复盘专项）
 
