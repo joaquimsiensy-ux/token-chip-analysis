@@ -146,9 +146,14 @@ def t2_conflict_positive():
         assert c["label_side"]["category"] == "cex" and c["serial_side"]["evidence"], "两侧证据必须在场"
         cg = by_sev["goldset-infra"]
         assert cg["address"] == gold_addr, "goldset 设施金标冲突未检出（QUQ 覆盖实案形态）"
-        # 不阻塞：候选 CSV 照常产出且含冲突地址（入库与否由人工裁决）
+        # 3.19.1 硬闸：primary/goldset-infra 级冲突地址必须被拦在 CSV 外
+        #（--apply 与手动 add_labels 两条入库路径一并挡住；QUQ 0x238a 覆盖事故的防线），
+        # 且拦截是外科手术式——干净地址（PLAIN_ADDR）照常产出，不误伤。
         cand = list(csv.DictReader(open(out_csv)))
-        assert any(r["address"] == CEX_ADDR for r in cand), "冲突不得阻塞候选产出"
+        assert all(r["address"] != CEX_ADDR for r in cand), "primary 冲突地址必须被硬闸拦在 CSV 外"
+        assert all(r["address"] != gold_addr for r in cand), "goldset-infra 冲突地址必须被硬闸拦在 CSV 外"
+        assert any(r["address"] == PLAIN_ADDR for r in cand), "干净地址不得被拦截误伤"
+        assert "拦截" in p.stdout, "stdout 必须明示硬闸拦截"
         # 干净地址（PLAIN_ADDR 未在主库）不产生冲突
         assert all(cc["address"] != PLAIN_ADDR for cc in rep["conflicts"])
     print("T2 conflict-positive: PASS")

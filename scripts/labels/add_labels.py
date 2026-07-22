@@ -21,7 +21,10 @@ sys.path.insert(0, _HERE)
 from labels_resolver import DEFAULT_LABELS_DIR, norm_addr, BASE_FIELDS, V4_OPTIONAL_FIELDS
 
 FIELDS = BASE_FIELDS + V4_OPTIONAL_FIELDS
-HIGH_TRUST_PREFIX = ('manual', 'registry', 'serial', 'official')
+# curation 必须在列（3.19.1 修）：它是 build_labels SRC_PRIORITY 的最高层(-1)，此前缺席导致
+# curation override 增量入库压不掉已存在的 serial/manual 行（只补空字段）——QUQ 0x238a
+# 设施身份恢复实测踩中；增量与全量重建的覆盖语义自此一致。
+HIGH_TRUST_PREFIX = ('curation', 'manual', 'registry', 'serial', 'official')
 
 
 def load_chain(chain):

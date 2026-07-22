@@ -5704,7 +5704,7 @@ address,chain,name,category,tier,source,added_date,evidence,risk_flags,merge_pol
 0x233d91a0713155003fc4dce0afa871b508b3b715,bsc,Ditto (DITTO),protocol,exclude,brianleect,2023-10,,,,,2023-10,,,yield-farming
 0x234c7a1da64bdf44e1b8a25c94af53ff2a199de0,bsc,Chainlink: ARKK/USD Price Feed,protocol,exclude,dawsbot+brianleect,,,,,,2026-07-17,,,chainlink
 0x23825b2d4ca8733c2a709d67a1bbe38bf7e3d771,bsc,BSCswap: BSWAP-DEGEN,protocol,exclude,dawsbot+brianleect,,,,,,2026-07-17,,,bscswap
-0x238a358808379702088667322f80ac48bad5e6c4,bsc,惯犯庄家（QUQ案·大庄#1(刷量bot合约+EOA接力库存体系)）,serial-actor,identity,manual-addressbook+serial-offenders,2026-07-22,QUQ分析 appendix whale_group「大庄#1(刷量bot合约+EOA接力库存体系)」,serial-offender,,,2026-07-22,2026-07-22,,
+0x238a358808379702088667322f80ac48bad5e6c4,bsc,PancakeSwap Infinity Vault（LP 基础设施）,protocol,exclude,manual-addressbook+serial-offenders+curation,2026-07-22,"goldset 设施金标（manual 层）；2026-07-22 serial 回灌覆盖事故后用户裁决恢复：QUQ 案大庄#1 聚类误吸本址（体系 V4 刷量资金大量流经 Vault 被机械关联，其 QUQ 终态余额仅 15,228 枚），--apply 高置信覆盖曾抹掉设施身份致聚类禁边失效；QUQ 案侧已同步摘出成员表（215→214），accumulate_offenders 已加设施冲突硬闸；与 Uniswap V4 PoolManager 同构的单例托管，no_merge+exclude 语义固化",serial-offender,no_merge,exclude,2026-07-22,2026-07-22,,
 0x23b4404e4e5ec5ff5a6ffb70b7d14e3fabf237b0,bsc,Venus: Tron Comptroller,protocol,exclude,dawsbot,,,,,,2026-07-17,,,venus-protocol
 0x23b8683ff98f9e4781552dfe6f12aa32814924e8,bsc,Jarvis Network: jEUR Token,protocol,exclude,dawsbot+tokens+brianleect,,,,,,2026-07-17,,,jarvis-network|stablecoin
 0x23cc17de40f6c1fff3c9e278d7948a1d9e284bc0,bsc,BurgerSwap: bELON,protocol,exclude,dawsbot+brianleect,,,,,,2026-07-17,,,burgerswap

@@ -13,6 +13,7 @@
 - **2.24.0/2.25.0 曾物理倒排**（同日并行会话插入位置错位）——2026-07-18 稳定化时仅调整排列顺序，两条内容一字未动
 
 ## 版本索引（活跃窗口，新在上）
+- **3.19.1 2026-07-22 serial 回灌设施冲突硬闸+curation 增量覆盖修复（0x238a 裁决执行，文档小修级）**：A7 首战冲突（QUQ 大庄#1 误吸 PancakeSwap Infinity Vault）用户裁决三条组合拳落地——curation override 恢复主库设施身份/QUQ 案侧摘出成员表 215→214（曲线注记下次更新重算）/accumulate_offenders 设施级冲突硬闸（primary+goldset-infra 拦在 CSV 外，绕闸须人工显式动作无 --force）；顺修 add_labels HIGH_TRUST_PREFIX 缺 curation 真缺陷（此前 curation 增量入库压不掉现行、与 build_labels SRC_PRIORITY=-1 语义不一致）；T2 契约翻转（拦截+不误伤）；全家桶 12/12
 - **3.19.0 2026-07-22 质量/速度/稳定性专项第三批（非复盘专项，@CX 三轮 18 项）**：记账模型准入 gate 双链硬闸（HOGE/BERN 税币实测 BLOCK）/entity_id 稳定主键+provenance 薄版血缘+时间因果轻量口径（merged_since 宏+合并时点措辞纪律）/图层同源 figures_from_facts 三模式/惯犯层延迟揭盲四出口+跨案身份冲突检测（首战抓 QUQ 误吸 PancakeSwap Vault 实锤待裁决）/聚类扰动敏感度进复核材料/采集跨进程锁+run_id+token 出 argv/probe_keys 12 项周巡检 launchd/峰值窗口两级预筛 657→330s/时间抽查分层计划制/价格双源抽查/P0 素材外包模板点名 opus/复盘草稿生成器/脚本分叉盘点首轮 439 份/时间封存测试两件/断点恢复节；全家桶 12 项
 - **3.18.1 2026-07-22 HyperSync Solana 混合分段提议评估否决存档+验收对账器收编（文档小修）**：recon2.py 从会话 scratchpad 收编为 scripts/solana/hypersync_recon.py（GA 重验收资产防清理丢失）；§13d 增"近期段 HS+历史段 SQD"否决硬结论（@CX 复核：196 天=覆盖范围非准确范围、干净区仅前沿 ~20h 单次抽样、静默洞→证完整=SQD 重拉、供给对账兜不住成对缺行、双引擎不缩短认证关键路径）
 - **3.18.0 2026-07-22 质量/速度/稳定性专项第二批（非复盘专项，@CX 方案 18 项）**：报告编译化 facts 事实源+宏+语义 gate（手抄数字架构级消灭）/故障注入盲测六用例（QUQ 快照缺块盲区固定化）/D3 三大文档拆 8 分册兑现/惯犯库双源回灌 217→1741 址/标签时效语义切分/Solana 双引擎整合+完备性验收**不通过禁用**（历史区缺行 3.6-22% 链上终审实锤）/collect_queue 泳道化/磁盘水位三件/launchd 夜间自动采集/监控两段制 schema 三字段/外部代币名自查自动化/HyperSync overage 831rpm 实测已生效/pre-commit 三检/git 历史 key 清洗
@@ -32,6 +33,16 @@
 - 3.4.0 VIRTUAL(Base+ETH) 多链 | 3.3.0 体检修复 | 3.2.0 监控包按需化 | 3.1.0 成本三刀 | 3.0.0 稳定化
 - 2.29.0 jesse(Base) | 2.28.0 哈基米(BSC)
 - （3.9.0 及更早正文共 61 条 → CHANGELOG-archive.md，含 3.6.0 补档）
+
+## [3.19.1] - 2026-07-22 — serial 回灌设施冲突硬闸+curation 增量覆盖修复（0x238a 裁决执行）
+
+> 3.19.0 A7 冲突检测首战抓到的 QUQ 误吸 PancakeSwap Infinity Vault（`0x238a…bad5e6c4` bsc）覆盖事故，用户裁决三条组合拳，当日执行完毕。
+
+**裁决执行（三条）**：①主库恢复设施身份——`sources/additions/curation_overrides_20260722.csv` 入库（protocol/exclude/no_merge/exclude，与 Uniswap V4 PoolManager 同构语义固化），发布行 serial-actor→protocol，benchmark bsc manual 召回恢复 168/168；②QUQ 案侧 state+appendix 双档摘出成员表 215→214、组 note 追加裁决注记（该址终态余额 1.5 万枚占总供给 <0.00001=纯流经关联误吸指纹，份额口径影响可忽略；camp_share_series 与份额数字注记"下次 /token-update 重放校正"）、findings.md 落裁决记录、additions 归档同步净版；③`accumulate_offenders.py` 设施级硬闸——detect 前移至写 CSV 前，primary/goldset-infra 级冲突地址拦在 serial_actors.csv 外（--apply 与手动 add_labels 两条入库路径一并挡住），secondary/cross_chain 仅提示；裁决三路径固化 docstring/README/冲突报告 note（①修案源重跑 ②curation override ③确属庄家自建设施→手工编辑 CSV 单独入库，绕闸必须人工显式动作，无 --force 参数）。
+
+**顺修真缺陷（curation 增量覆盖失效）**：`add_labels.py` HIGH_TRUST_PREFIX 原为 (manual, registry, serial, official)——**缺 curation**，导致最高层（build_labels SRC_PRIORITY=-1）的 curation override 走增量入库时只补空字段、压不掉已存在的 serial/manual 行，增量与全量重建覆盖语义不一致（0x238a 恢复实测踩中）。已加入并注明成因；今后 curation 精修一律可增量生效，无需全量重建。
+
+**测试契约翻转**：test_cluster_quality T2 由"冲突不得阻塞候选产出"改为硬闸语义三断言——primary/goldset-infra 必须不在 CSV、干净地址必须在（不误伤）、stdout 必须明示拦截。全家桶 12/12。
 
 ## [3.19.0] - 2026-07-22 — 质量/速度/稳定性专项第三批（非复盘专项，@CX 三轮 18 项）
 

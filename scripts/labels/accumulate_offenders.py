@@ -18,11 +18,16 @@
 语义（labels_resolver 已内置）：tier=identity、不剔除、不禁边（惯犯地址间本就
   同实体，正常聚类）、risk_flags=serial-offender、lookup/analyze 命中即高亮。
 
-跨案身份冲突检测（A7 2026-07-22，每次运行自动做）：候选地址逐一对照主标签库——
+跨案身份冲突检测（A7 2026-07-22；3.19.1 起设施级硬闸）：候选地址逐一对照主标签库——
   同址在主库当前是基础设施类身份（cex/suspected-cex/infra/bridge/dex/bundler/paymaster/mev）
-  而本工具要标它"庄家实体成员"→ 写 conflicts 报告（sources/serial_conflicts_<日期>.json+.md，
-  含两侧证据），**不阻塞入库**，人工裁决。危险场景：add_labels 对 serial 源按高置信覆盖，
-  误收的 CEX 热钱包会把主库设施身份覆盖成 serial-actor → 聚类拦截失效（假聚类回归）。
+  或命中 benchmark 设施金标，而本工具要标它"庄家实体成员"→ 写 conflicts 报告
+  （sources/serial_conflicts_<日期>.json+.md，含两侧证据），且 **primary/goldset-infra 级
+  冲突地址被硬闸拦截、不写入 serial_actors.csv**（--apply 与手动 add_labels 两条入库路径
+  一并挡住）；secondary/cross_chain 仅提示。危险场景实案：QUQ 案大庄#1 误吸 PancakeSwap
+  Infinity Vault，2026-07-22 --apply 高置信覆盖抹掉主库设施身份 → 聚类禁边失效（用户裁决
+  后以 curation override 恢复，本硬闸即该事故的防线）。被拦地址裁决后的入库路径：
+  ①案源误吸→修 whale_groups 重跑 ②主库错→curation override ③确属庄家自建设施→
+  手工编辑 CSV 单独 add_labels（绕闸需人工显式动作，无 --force 参数）。
   不带 --apply 跑一次 = 存量扫描（候选全集=惯犯库全量,逐址对照主库）。
 
 用法：python3 accumulate_offenders.py [分析根目录] [--apply] [--labels-dir DIR]
@@ -127,15 +132,18 @@ def write_conflict_report(conflicts, out_dir):
     conflicts = sorted(conflicts, key=lambda c: (order.get(c['severity'], 9), c['chain'], c['address']))
     n_pri = sum(1 for c in conflicts if c['severity'] in ('primary', 'goldset-infra'))
     json.dump({'generated': today, 'total': len(conflicts), 'primary': n_pri,
-               'note': '同址双身份=设施(主标签库) vs 庄家实体成员(惯犯候选)。不阻塞入库,人工裁决:'
+               'note': '同址双身份=设施(主标签库) vs 庄家实体成员(惯犯候选)。primary/goldset-infra'
+                       ' 级已被硬闸拦截在 serial_actors.csv 外(3.19.1),不会入库;逐条人工裁决:'
                        '①案源实体划分误吸设施→修 whale_groups 并重跑本工具 ②主库标签错→修主库'
-                       '(curation override) ③确属庄家自建设施→保留 serial 并在 evidence 注明。'
-                       '裁决前勿 --apply 入库 primary 冲突地址(高置信覆盖会抹掉设施身份)。',
+                       '(curation override) ③确属庄家自建设施→手工编辑 CSV 单独 add_labels'
+                       '(绕闸需人工显式动作)。实案:QUQ 大庄#1 误吸 PancakeSwap Infinity Vault,'
+                       '2026-07-22 覆盖事故后用户裁决①+②并加本硬闸。',
                'conflicts': conflicts}, open(jp, 'w'), ensure_ascii=False, indent=1)
     with open(mp, 'w') as f:
         f.write(f'# 惯犯库 × 主标签库 身份冲突报告（{today}）\n\n')
         f.write(f'共 {len(conflicts)} 条（primary {n_pri}）。primary=主库设施身份 vs 庄家成员,'
-                f'误入库会被高置信覆盖抹掉设施标签→聚类拦截失效。**不阻塞入库,逐条人工裁决。**\n\n')
+                f'误入库会被高置信覆盖抹掉设施标签→聚类拦截失效。**设施级已硬闸拦截不入库,'
+                f'逐条人工裁决**（三路径见脚本 docstring）。\n\n')
         for c in conflicts:
             f.write(f"## [{c['severity']}] {c['chain']} `{c['address']}`\n"
                     f"- 惯犯侧: {c['serial_side']['name']}\n"
@@ -254,6 +262,15 @@ def main():
                     'source_snapshot_at': cutoff, 'verified_at': today,
                     'status': '', 'raw_labels': '',
                 }
+    # A7 跨案身份冲突检测——写 CSV 前做（3.19.1 硬闸）：primary/goldset-infra 级冲突地址
+    # 直接拦在 CSV 外，--apply 与"手动 add_labels serial_actors.csv"两条路径一并挡住；
+    # 全部冲突（含被拦项）仍完整落 conflicts 报告供裁决。
+    conflicts = detect_conflicts(rows, labels_dir)
+    blocked = [(c['chain'], c['address']) for c in conflicts
+               if c['severity'] in ('primary', 'goldset-infra')]
+    for key in blocked:
+        rows.pop(key, None)
+
     os.makedirs(os.path.dirname(out_path) or '.', exist_ok=True)
     out_rows = sorted(rows.values(), key=lambda r: (r['chain'], r['address']))
     with open(out_path, 'w', newline='') as f:
@@ -269,15 +286,14 @@ def main():
         for r in multi[:10]:
             print(f'   {r["address"][:16]} {r["evidence"][:90]}')
 
-    # A7 跨案身份冲突检测（每次运行都做；不阻塞入库，人工裁决）
-    conflicts = detect_conflicts(rows, labels_dir)
+    # A7 冲突报告与拦截提示（检测已在写 CSV 前完成）
     if conflicts:
         rp = write_conflict_report(conflicts, os.path.dirname(out_path) or '.')
-        n_pri = sum(1 for c in conflicts if c['severity'] in ('primary', 'goldset-infra'))
-        print(f'⚠️ 身份冲突 {len(conflicts)} 条（primary {n_pri}=主库设施身份 vs 庄家成员）——'
-              f'报告已落 {rp}（+同名 .md），入库不阻塞但 primary 地址裁决前勿 --apply 覆盖')
+        print(f'⚠️ 身份冲突 {len(conflicts)} 条，其中设施级 {len(blocked)} 址已硬闸拦截'
+              f'（未写入 CSV，不会入库）——报告已落 {rp}（+同名 .md），逐条裁决后按 docstring 三路径处理')
         for c in conflicts[:6]:
-            print(f"   [{c['severity']}] {c['chain']} {c['address'][:16]}… "
+            tag = '🚫已拦截' if c['severity'] in ('primary', 'goldset-infra') else '提示'
+            print(f"   [{c['severity']}|{tag}] {c['chain']} {c['address'][:16]}… "
                   f"主库={c['label_side']['name'][:28]}<{c['label_side']['category']}> "
                   f"vs 惯犯候选={c['serial_side']['name'][:28]}")
     else:
