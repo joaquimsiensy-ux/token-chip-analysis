@@ -13,6 +13,7 @@
 - **2.24.0/2.25.0 曾物理倒排**（同日并行会话插入位置错位）——2026-07-18 稳定化时仅调整排列顺序，两条内容一字未动
 
 ## 版本索引（活跃窗口，新在上）
+- **3.21.0 2026-07-22 PENGUIN(Solana) easy 四战 E0b 关卡中止复盘：币安 Alpha 链上托管体系首次实锤+Alpha 集齐率判别法**：E0b 固化当天首次复用即中止案（严格口径 35.69%/宽口径 46.36% 超线，用户两轮问询制——初判报数→令深挖"高度疑似"档→升格后终裁中止）；最大沉淀=币安 Alpha 的 Solana 链上托管三层体系接近确证（库存仓 9ZPsR 集齐 66/70 Alpha 币+执行仓 6ZaWyb 直连三 DEX 池对倒+BN111 vanity 批量程序 fee payer 4 址轮换），address-book +4 址+1 程序；"Alpha 集齐率判别法"入 pipeline-solana-scan §3（全持仓×Alpha bapi 表交集一次调用分四档 94%/3-8%/≤2%）；E0b 三通道认所补④Alpha 对撞步（Alpha 托管仓常为第一大持仓，漏认即把最大黑箱当神秘巨鲸）
 - **3.20.0 2026-07-22 Fartcoin(Solana) easy 三战黑箱关卡中止复盘：前置 CEX 黑箱关卡固化 E0b+Solana CEX 地址资产 3 条**：连续三案用户手写要求后固化——easy-workflow 新增 E0b（top榜快照→三通道认所(本地库/Vybe top-holders/历史cex_map)→行为画像分层补认(热钱包=百余币种+万级SOL+大流水；冷储分仓群 trace 调度枢纽)→确证/疑似两档分层报数→超线 AskUserQuestion 停等，中止則存档不交付）；address-book Solana CEX 节 +3 高复用热钱包（Hyperunit 桥/Coinbase 热3 含冷储分仓调度指纹/Kraken 双源）；执行侧教训两条重申（开工未读当链 pipeline §4 重复试错已固化端点、截断地址手工补全再犯致 7 址查空返工）
 - **3.19.1 2026-07-22 serial 回灌设施冲突硬闸+curation 增量覆盖修复（0x238a 裁决执行，文档小修级）**：A7 首战冲突（QUQ 大庄#1 误吸 PancakeSwap Infinity Vault）用户裁决三条组合拳落地——curation override 恢复主库设施身份/QUQ 案侧摘出成员表 215→214（曲线注记下次更新重算）/accumulate_offenders 设施级冲突硬闸（primary+goldset-infra 拦在 CSV 外，绕闸须人工显式动作无 --force）；顺修 add_labels HIGH_TRUST_PREFIX 缺 curation 真缺陷（此前 curation 增量入库压不掉现行、与 build_labels SRC_PRIORITY=-1 语义不一致）；T2 契约翻转（拦截+不误伤）；全家桶 12/12
 - **3.19.0 2026-07-22 质量/速度/稳定性专项第三批（非复盘专项，@CX 三轮 18 项）**：记账模型准入 gate 双链硬闸（HOGE/BERN 税币实测 BLOCK）/entity_id 稳定主键+provenance 薄版血缘+时间因果轻量口径（merged_since 宏+合并时点措辞纪律）/图层同源 figures_from_facts 三模式/惯犯层延迟揭盲四出口+跨案身份冲突检测（首战抓 QUQ 误吸 PancakeSwap Vault 实锤待裁决）/聚类扰动敏感度进复核材料/采集跨进程锁+run_id+token 出 argv/probe_keys 12 项周巡检 launchd/峰值窗口两级预筛 657→330s/时间抽查分层计划制/价格双源抽查/P0 素材外包模板点名 opus/复盘草稿生成器/脚本分叉盘点首轮 439 份/时间封存测试两件/断点恢复节；全家桶 12 项
@@ -34,6 +35,18 @@
 - 3.4.0 VIRTUAL(Base+ETH) 多链 | 3.3.0 体检修复 | 3.2.0 监控包按需化 | 3.1.0 成本三刀 | 3.0.0 稳定化
 - 2.29.0 jesse(Base) | 2.28.0 哈基米(BSC)
 - （3.9.0 及更早正文共 61 条 → CHANGELOG-archive.md，含 3.6.0 补档）
+
+## [3.21.0] - 2026-07-22 — PENGUIN(Solana) easy 四战 E0b 关卡中止复盘：币安 Alpha 链上托管体系首次实锤 + Alpha 集齐率判别法
+
+> easy 模式第四战、E0b 固化（3.20.0）当天的首次实战复用，第三例关卡中止案（先例序列：QUQ 过关/GOAT 过关/Fartcoin ~48% 中止/CLANKER 37.6% 中止/本案严格 35.69%）。全程 ~55 分钟、~35 轮次、零付费 credits（Helius+Vybe+GMGN+GoPlus+bapi+WebSearch 全免费通道）。用户创新**两轮问询制**：初判报数（确证 15.03%+高度疑似 32.06%）→ 用户不直接裁决、令先深挖"高度疑似"档 → 升格核查（1 升格接近确证/1 改判剔除/2 维持）→ 终裁中止。质量指标：关卡实体判定 10、深挖修正 2、漏检 0 已知、传播级数字错误 0。
+
+**币安 Alpha 的 Solana 链上托管体系（本案最大发现，接近确证，address-book +4 址+1 程序）**：三层结构=库存仓（`9ZPsR…`，PENGUIN 20.66% 第一大持仓，381 种持仓集齐 66/70 个币安 Alpha Solana 币=94%，另为 HAT/PYTHIA 等多 Alpha 币第一大持仓，SOL≈0 gas 全代付）↔ 执行仓（`6ZaWyb…`，124 币种余额常态≈0，与库存仓单进单出高频对倒）↔ DEX 池（执行仓直连 PumpSwap/Orca/Meteora 双向买卖）＝币安 Alpha「App 内下单、链上 DEX 执行」机制的链上形态；专用结算走 `BN111…` vanity 可升级批量程序（2025-03 部署持续维护，fee payer 4 址轮换代付）；旁证=币安主热钱包/双冷钱包 PENGUIN 持仓全零（敞口全走 Alpha 体系，与 listingCex=false 一致）。**含义**：Alpha 在架 Solana 币的"最大神秘巨鲸"优先怀疑此体系——它不是庄，是场内黑箱（真实持有人在币安 Alpha 账本内不可穿透）。
+
+**Alpha 集齐率判别法（pipeline-solana-scan §3 新条目）**：对多币种高频大仓，getTokenAccountsByOwner 全持仓 × 币安 Alpha bapi 全量表取交集一次分档——~94%=Alpha 专属托管；3-8%=通用热钱包；≤2%（仅标的自身）=做市/bot。本案四仓实测 94%/3%/8%/2% 四档分野清晰无重叠，比"多热门币最大持仓者"老判据多一层归属定性能力。
+
+**E0b 条文迭代（easy-workflow）**：三通道认所补第④步——币安 Alpha 在架的 Solana 标的先对撞 address-book 已知 Alpha 托管体系地址，未命中再对未认大仓跑集齐率判别；冷储分仓 trace 调度枢纽打法二连验证（本案 Bybit 冷储分仓 0.90% 由已认 Bybit 热钱包 authority 供币实锤，与 Fartcoin 案 Coinbase 热3 调度同构）。
+
+**执行侧记录**：gmgn-cli 实际装于 `~/.npm-global/bin/gmgn-cli`（登记文件写 gmgn 系笔误）且 holders 参数为 `--chain sol --address <mint>`（位置参数不认）；Vybe top-holders 正确路径 `/v4/tokens/<mint>/top-holders`（`/token/...` 404）；solscan 页 WebFetch 403+内置浏览器 preview 超时双失效，公开标注检索改走 WebSearch 地址串反查（本案借此发现 9ZPsR 是 HAT/PYTHIA 第一大持仓）。
 
 ## [3.20.0] - 2026-07-22 — Fartcoin(Solana) easy 三战黑箱关卡中止复盘：前置 CEX 黑箱关卡固化 E0b + Solana CEX 地址资产
 

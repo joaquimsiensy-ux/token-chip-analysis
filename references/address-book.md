@@ -117,6 +117,10 @@
 | `D89hHJT5Aqyx1trP6EnGY9jJUB3whgnq3aUvvCqedvzf` | Coinbase 热钱包 3 | Vybe 标注+行为核验（404 币种/4.7 万 SOL/分钟级高频）；**冷储分仓调度指纹**：统一向多个「SOL=0+个位数币种+纯转入+金额相近」的分仓供币，见此形态先查调度方是否为它（Fartcoin 实测 11 分仓 13% 供应，2026-07-22） |
 | `6LY1JzAFVZsP2a2xKrtU6znQMQ5h4i7tocWdgrkZzkzF` | Kraken 热钱包 | Vybe+GOAT 案 cex_map 双源（行为：274 币种/38.7 万 SOL）（2026-07-22） |
 | `8Mm46CsqxiyAputDUp2cXHg41HE3BfynTeMBDwzrMZQH` | 疑似 OKX/Bitget 归集 | 未免费确证；特征=同时是多个热门币最大持仓者。**v4.2 起标 suspected-cex/identity+no_merge（禁边不剔仓）**——未确证设施不得 exclude，防真大户持仓被静默剔除；确证后升 cex/exclude |
+| `9ZPsRWGkukYeWg2Z7eZ8NaTBZ1DSuBUVzLcGQWZgE4Y4` | 币安 Alpha 托管库存仓（接近确证） | 行为学七重闭环（PENGUIN 关卡实测 2026-07-22）：集齐 66/70 个币安 Alpha Solana 币（94%）、多 Alpha 币第一大持仓（HAT/PYTHIA/PENGUIN）、流水全走 BN111 批量程序、gas 全代付（SOL≈0+408 币种+日千级签名）。凡币安 Alpha 在架 Solana 币必遇；其份额=Alpha 场内黑箱不可穿透 |
+| `6ZaWyb9PKP1ZGVsQcE9vjnGPCH6KiWE5XLUY7HdNEJ77` | 币安 Alpha DEX 执行仓（接近确证） | 与库存仓 9ZPsR 单进单出高频对倒、余额常态≈0、直连 PumpSwap/Orca/Meteora 三池双向买卖=Alpha「App 内下单、链上 DEX 执行」的执行端（PENGUIN 实测 2026-07-22） |
+| `2Ejnns2Fd5gsZdFJbnkZmQEwbrgoiMc2ikKcS2z2Ps3e` | 疑似 CEX/跨所调度热钱包 | 未免费确证归属；868 币种+5.4 万 SOL+日千级签名，从 Gate/Bitget 大额收币，下游提币后销户。**suspected-cex/identity+no_merge**（PENGUIN 关卡实测 2026-07-22） |
+| `8Czzjeh2igeE7gSsbuuXVZUmZZ42yZTCNUZoZcCGRKdr` | 疑似 CEX/服务型热钱包 | 未免费确证归属；247 币种+2060 SOL+日千级签名。**suspected-cex/identity+no_merge**（PENGUIN 关卡实测 2026-07-22） |
 
 ### 识别用程序 ID（跨代币通用；完整 ID 2026-07-12 自找回的 IO 会话实录回填）
 
@@ -127,6 +131,7 @@
 | `TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA` | SPL Token 程序 | getProgramAccounts 大扫描的目标程序 |
 | `pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA` | PumpSwap AMM | 大钱包签名列表里高频出现它 = 投毒/垃圾交易污染（见 data-pipeline-solana §3a），非本尊活动 |
 | `6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P` | pump.fun bonding curve 程序 | 债券曲线账户 owner；毕业后仍可持 20%+ 被 GT 收录为"池"，勿当个人鲸鱼（用前核验完整 ID） |
+| `BN111JnbLtbmQqqiCh7h2pDKhAhMx4wi77Mj7jJFbyp8` | 币安 Alpha 批量转账程序（vanity BN111，接近确证） | 2025-03-13 部署、持续升级维护的可升级 BPF；Alpha 托管体系（9ZPsR/6ZaWyb）的专用结算程序，fee payer 4 址轮换代付；programdata `Df3ssK1ni8GzEoFuQyn4cQfC5mGZykebTERTT6EGQcFc`、upgrade_authority `FYtWDy1MfASNVWsqwC2CSu4xRbVcrd8RSC8Ts8qYJawB`（PENGUIN 关卡实测 2026-07-22）。大仓流水频繁走此程序=币安 Alpha 托管仓强指纹 |
 
 ### Solana 平台 / 路由 / 锁仓基础设施（外部 CLAW/FyedK/SGL 分析考古 2026-07）
 
