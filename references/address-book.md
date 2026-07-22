@@ -113,6 +113,9 @@
 | `BmFdpraQhkiDQE6SnfG5omcA1VwzqfXrwtNYBwWTymy6` | KuCoin | 公开标签 |
 | `H8sMJSCQxfKiFTCfDR3DUMLPwcRbM61LGFJ8N4dK3WjS` | Coinbase（含 Prime 托管） | 公开标签；Prime=机构托管通道，提币含义与散户不同 |
 | `AobVSwdW9BbpMdJvTqeCN4hPAmh4rHm7vwLnQ5ATSyrS` | Crypto.com | 公开标签 |
+| `9SLPTL41SPsYkgdsMzdfJsxymEANKr5bYoBsQzJyKpKS` | Hyperunit 热钱包（Hyperliquid 现货桥托管） | Vybe 标注+行为核验（200 币种/28 万 SOL）；凡 HL 上架的 Solana 币都会遇到；其份额理论可跨 HL 链侧再穿透（Fartcoin 关卡实测 2026-07-22） |
+| `D89hHJT5Aqyx1trP6EnGY9jJUB3whgnq3aUvvCqedvzf` | Coinbase 热钱包 3 | Vybe 标注+行为核验（404 币种/4.7 万 SOL/分钟级高频）；**冷储分仓调度指纹**：统一向多个「SOL=0+个位数币种+纯转入+金额相近」的分仓供币，见此形态先查调度方是否为它（Fartcoin 实测 11 分仓 13% 供应，2026-07-22） |
+| `6LY1JzAFVZsP2a2xKrtU6znQMQ5h4i7tocWdgrkZzkzF` | Kraken 热钱包 | Vybe+GOAT 案 cex_map 双源（行为：274 币种/38.7 万 SOL）（2026-07-22） |
 | `8Mm46CsqxiyAputDUp2cXHg41HE3BfynTeMBDwzrMZQH` | 疑似 OKX/Bitget 归集 | 未免费确证；特征=同时是多个热门币最大持仓者。**v4.2 起标 suspected-cex/identity+no_merge（禁边不剔仓）**——未确证设施不得 exclude，防真大户持仓被静默剔除；确证后升 cex/exclude |
 
 ### 识别用程序 ID（跨代币通用；完整 ID 2026-07-12 自找回的 IO 会话实录回填）

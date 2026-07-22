@@ -13,6 +13,7 @@
 - **2.24.0/2.25.0 曾物理倒排**（同日并行会话插入位置错位）——2026-07-18 稳定化时仅调整排列顺序，两条内容一字未动
 
 ## 版本索引（活跃窗口，新在上）
+- **3.20.0 2026-07-22 Fartcoin(Solana) easy 三战黑箱关卡中止复盘：前置 CEX 黑箱关卡固化 E0b+Solana CEX 地址资产 3 条**：连续三案用户手写要求后固化——easy-workflow 新增 E0b（top榜快照→三通道认所(本地库/Vybe top-holders/历史cex_map)→行为画像分层补认(热钱包=百余币种+万级SOL+大流水；冷储分仓群 trace 调度枢纽)→确证/疑似两档分层报数→超线 AskUserQuestion 停等，中止則存档不交付）；address-book Solana CEX 节 +3 高复用热钱包（Hyperunit 桥/Coinbase 热3 含冷储分仓调度指纹/Kraken 双源）；执行侧教训两条重申（开工未读当链 pipeline §4 重复试错已固化端点、截断地址手工补全再犯致 7 址查空返工）
 - **3.19.1 2026-07-22 serial 回灌设施冲突硬闸+curation 增量覆盖修复（0x238a 裁决执行，文档小修级）**：A7 首战冲突（QUQ 大庄#1 误吸 PancakeSwap Infinity Vault）用户裁决三条组合拳落地——curation override 恢复主库设施身份/QUQ 案侧摘出成员表 215→214（曲线注记下次更新重算）/accumulate_offenders 设施级冲突硬闸（primary+goldset-infra 拦在 CSV 外，绕闸须人工显式动作无 --force）；顺修 add_labels HIGH_TRUST_PREFIX 缺 curation 真缺陷（此前 curation 增量入库压不掉现行、与 build_labels SRC_PRIORITY=-1 语义不一致）；T2 契约翻转（拦截+不误伤）；全家桶 12/12
 - **3.19.0 2026-07-22 质量/速度/稳定性专项第三批（非复盘专项，@CX 三轮 18 项）**：记账模型准入 gate 双链硬闸（HOGE/BERN 税币实测 BLOCK）/entity_id 稳定主键+provenance 薄版血缘+时间因果轻量口径（merged_since 宏+合并时点措辞纪律）/图层同源 figures_from_facts 三模式/惯犯层延迟揭盲四出口+跨案身份冲突检测（首战抓 QUQ 误吸 PancakeSwap Vault 实锤待裁决）/聚类扰动敏感度进复核材料/采集跨进程锁+run_id+token 出 argv/probe_keys 12 项周巡检 launchd/峰值窗口两级预筛 657→330s/时间抽查分层计划制/价格双源抽查/P0 素材外包模板点名 opus/复盘草稿生成器/脚本分叉盘点首轮 439 份/时间封存测试两件/断点恢复节；全家桶 12 项
 - **3.18.1 2026-07-22 HyperSync Solana 混合分段提议评估否决存档+验收对账器收编（文档小修）**：recon2.py 从会话 scratchpad 收编为 scripts/solana/hypersync_recon.py（GA 重验收资产防清理丢失）；§13d 增"近期段 HS+历史段 SQD"否决硬结论（@CX 复核：196 天=覆盖范围非准确范围、干净区仅前沿 ~20h 单次抽样、静默洞→证完整=SQD 重拉、供给对账兜不住成对缺行、双引擎不缩短认证关键路径）
@@ -33,6 +34,18 @@
 - 3.4.0 VIRTUAL(Base+ETH) 多链 | 3.3.0 体检修复 | 3.2.0 监控包按需化 | 3.1.0 成本三刀 | 3.0.0 稳定化
 - 2.29.0 jesse(Base) | 2.28.0 哈基米(BSC)
 - （3.9.0 及更早正文共 61 条 → CHANGELOG-archive.md，含 3.6.0 补档）
+
+## [3.20.0] - 2026-07-22 — Fartcoin(Solana) easy 三战黑箱关卡中止复盘：前置 CEX 黑箱关卡固化 E0b + Solana CEX 地址资产
+
+> easy 模式第三战，首例在前置关卡即中止的案子（先例 CLANKER 为 E0 后中止）：用户附加「CEX 托管黑箱 >20% 流通须问询」，实测确证 36.97%+高度疑似 11.15%≈48%，用户裁决中止，未进入采集。全程 ~40 分钟、零付费 credits，落盘数据资产八件备重启。
+
+**流程固化（easy-workflow 新增 E0b「前置 CEX 黑箱关卡」）**：连续三案（GOAT 两轮问询过关/CLANKER 37.6% 中止/本案 48% 中止）用户在命令里手写同一要求→固化为用户点名时的标准步。五动作：①GMGN top100 --raw（native_balance/流水字段即行为画像原料）+RPC top20 owner 映射互验 ②三通道认所=本地标签库(盲化)+Vybe v4 top-holders ownerName+历史案 cex_map/address-book 合并表 ③行为画像分层补认——热钱包画像（百余币种+万级 SOL+大额双向流水）与冷储分仓形态（SOL=0+个位数币种+纯转入+金额相近），后者 trace 对手方找统一调度枢纽，命中已知热钱包即实锤归属（本案 11 分仓×Coinbase 热3 调度=13.02% 一锅端）④确证/高度疑似两档分层报数+桥型托管单列（Hyperunit 可跨 HL 穿透）+Solana CEX 标签缺口纪律注记 ⑤超线 AskUserQuestion 引先例停等；中止则 findings.md 存档+数据留 data/，不交付两件套。
+
+**地址资产（address-book Solana CEX 节 +3，均 2026-07-22 行为核验）**：`9SLPTL41…`=Hyperunit 热钱包（HL 现货桥托管，凡 HL 上架 Solana 币必遇；200 币种/28 万 SOL）；`D89hHJT5…`=Coinbase 热钱包 3（404 币种/4.7 万 SOL/分钟级高频；**冷储分仓调度指纹**入备注）；`6LY1JzAF…`=Kraken 热钱包（Vybe+GOAT cex_map 双源；274 币种/38.7 万 SOL）。
+
+**执行侧教训（均为已在库规则的再犯，不新增规则）**：①前置关卡开工未先读当链 pipeline §4 辅助数据面→Vybe top-holders 端点（3.11.0 已固化含虚高坑）重复试错重新发现，白烧 2 轮；②「关键字符串从打印输出复制」坑第 N 犯——GMGN 输出截断地址手工补全致 7 地址查空，返工一轮后改从落盘 JSON 取全（E0b 文本已带此警句）。
+
+成本：~25 轮 / ~20 Bash / ~40 分钟 / 付费 credits 0（Vybe 1 调用免费层）。质量：中止案无分析结论；关卡产出=确证 11 所 36.97%+疑似 8 仓 11.15%，Coinbase 分仓网实锤为本案唯一深挖发现。
 
 ## [3.19.1] - 2026-07-22 — serial 回灌设施冲突硬闸+curation 增量覆盖修复（0x238a 裁决执行）
 
