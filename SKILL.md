@@ -61,6 +61,8 @@ description: 对任意链上代币（EVM/Solana/Hyperliquid/Filecoin 及新链�
 
 纪律：优先跑 `scripts/` 固化脚本，禁止现场重写已有能力的脚本；不满足需求先改参数再改脚本，改动记入阶段 6。长任务运维：最长任务最先启动、等待期填满下游脚本编写、零进展要告警、预估偏差超 2 倍主动汇报、废弃通道同步停掉观察哨。
 
+**预采集衔接**（/collect-data，v3.16.0）：开工先查工作目录是否已有预采集产物（EVM=`data/v2/run_*/done.json`，Solana=`data/soltx-*.jsonl.gz`+meta）——有则**直接复用并断点续拉增量到最新**（底层采集器天然幂等），禁止无视既有产物从零重采；产物完整性以其 collect_manifest（工作根目录 `collect_plans/`）与 done.json 为准，`done_with_gaps` 项必须先补齐缺口再进对账。批量候选的采集等待应尽量前移到 /collect-data 夜间队列（`scripts/collect/collect_queue.py`），分析会话只付增量成本。
+
 ## 阶段 2：对账关卡（硬性）
 
 三查全过才进分析：**余额对账**（重建结果 vs 独立数据源精确对表）、**供给闭合**（总量恒等式 / mint−burn 配平）、**时间抽查**（锚点插值随机对照浏览器）。各链具体形态见对应 pipeline 文档。对不上=数据有洞=回去补，不许"差不多就行"。

@@ -13,6 +13,7 @@
 - **2.24.0/2.25.0 曾物理倒排**（同日并行会话插入位置错位）——2026-07-18 稳定化时仅调整排列顺序，两条内容一字未动
 
 ## 版本索引（活跃窗口，新在上）
+- **3.16.0 2026-07-22 B 档五项收官：/collect-data 批量预采集+网络层异步化+复核 workflow 固化+Sourcify/DefiLlama 双通道+文件守卫 hook（非复盘专项）**：@CX 方案 B 档全部落地——新命令 /collect-data（collect_queue.py 多币串行队列，EVM 五链+Solana，manifest 记账/残缺 run 隔离/断点幂等，CAKE 296 万行+wSOL 缺口态+错址 fail-closed 三路实测）；net.py+rpc_batch.py 进程内异步替代 curl 子进程树（httpx+tenacity+msgspec，40 址与 curl 逐项等价）；adversarial-review 固化 workflow（schema 强制裁决 JSON+同批并行 fan-out，冒烟 2 路 100s）；Sourcify 合约身份批查（sourcify_check.py，v2 直连免 key，代理实现名一次拿到）；DefiLlama 老币历史价格主兜底（llama_price.py，CAKE 2020 起 2117 点全史实测）；guard_file_ops hook（Read 巨文件拦截+原始采集产物写保护，热加载实证）+PostCompact 提醒；HyperSync key 固化 ~/.config/hypersync/token
 - **3.15.0 2026-07-22 QUQ(BSC) 完整版复盘+逢5轻整编**：公共基础设施先验三测（部署早于代币=强公共信号+同模板 code size 指纹——449e 大翻案教训）/寄存仓移仓指纹（监管点名对齐+3天原路等额往返）/净成本病态敏感双口径（正式：净额<毛额1%禁点估计,+剔自控镜像流第三口径）/bot 营运峰≠EOA 囤仓峰入 §9b 排代际/R2 备择解释路对结构性定性必设；快照缺块坑（供给闭合对缺整行免疫,done.json 前置第5查+负余额指纹）/手写地址第四犯工具化 real_addr/bscscan WebFetch 截断地址禁入产物/HyperSync v2 增量 4s+补丁段核验；整编：高扇出三判据两案转正、CEX 事件驱动做市纪律降档存档、5 条标疑、归档滚动 12+1 条（3.6.0 缺失正文补档）；D3 三大文档拆分推迟单独会话
 - **3.14.0 2026-07-22 DuckDB 重放/缩图引擎三阶段落地（非复盘专项，@CX 交叉复核方案执行）**：亿级样本主路径换列式引擎——新件 7（replay_duck 合一引擎 v1CSV+v2parquet 双输入/cluster_prep_duck 缩图件+cluster --prep/golden_baseline 回归门禁/test_engine_equivalence hypothesis 性质测试/env_check 版本锁/run_guarded 长跑监督器/pyproject+requirements.lock 依赖锁）；等价实证=ASTEROID+SIREN 七项全等（含 merged.csv 逐字节）+QUQ 1.03 亿行三件逐键全等+聚类四类判定全等；性能=QUQ 核心重放 31s（原数十分钟）/缩图 19.5s 出 76 万聚合边/SIREN 7.1GB 守限（旧外推 19GB）；DuckDB 数字安全坑 6 条实测入 data-pipeline-evm §12（UHUGEINT SUM 退化 DOUBLE/VARINT 乘法退化/hex cast 位宽/temp 磁盘 GB-GiB/块界感知去重/窗口成本）；三缺口修复（pass1 坏行记账/cluster 阈值整数化/dedup 重组冲突检测）+排序确定化；changelog_lint 自动 hook 进 settings.json
 - **3.13.0 2026-07-22 QUQ(BSC) easy 模式首战复盘**：币安 Alpha 场内 K 线端点（bapi alpha-trade/klines，374 天窗口**非全史**）+CMC 全史日线 EVM 侧二案复用；「接力库存仓」盘型入 state-anomaly §9b（主仓多代交棒直转·数十倍总量/净持≈0 执行枢纽网/「自持↔池↔CEX 场内」三态日轮转 30-50% 锯齿/量能市值数十倍倒挂——体系判定靠直转边不靠 gas，「独立做市商」备择每案独立走）；单 tick V3 NFT 头寸=零滑点自转刷量设施指纹；枢纽三段处理法（度>200 不作扩散桥/种子枢纽保留成员资格/NPM·EntryPoint·1inch 事后卫生检查强制收尾）；key_edges 设施边排除→来源拆解选择偏差（daily_delta 缺口法兜底）+亿级 edges 流式写；easy 首战成本基准单币 ~2.5h（采集 67min）
@@ -27,6 +28,30 @@
 - 3.4.0 VIRTUAL(Base+ETH) 多链 | 3.3.0 体检修复 | 3.2.0 监控包按需化 | 3.1.0 成本三刀 | 3.0.0 稳定化
 - 2.29.0 jesse(Base) | 2.28.0 哈基米(BSC)
 - （3.9.0 及更早正文共 61 条 → CHANGELOG-archive.md，含 3.6.0 补档）
+
+## [3.16.0] - 2026-07-22 — B 档五项收官（非复盘专项，@CX 方案第二批）
+
+> 3.14.0 三阶段（A 档+B6/B7/B9）交付后用户批"B 档也全部做"，其中 B12 附加三条需求：一个会话采集多币、专门命令 /collect-data、只采集不自动分析。本条为 B5/B8/B10/B11/B12 全部落地 + B7 补遗。
+
+**B12 /collect-data 批量预采集（重头戏，用户三需求全兑现）**：
+- 新件 `scripts/collect/collect_queue.py`：多币串行队列（HyperSync 限流 key 级共享+SQD 单 IP 带宽整形，串行是正解）——EVM 五链（bsc/eth/base/arbitrum/robinhood 走 fetch_hypersync_v2，部署块自动探测进全局缓存 deploy_blocks.json）+ Solana（fetch_sqd_transfers_v2，launch_ts 建议必给否则仅回看 90 天）；产物直接落 `<币名>分析/data/` 标准布局，分析会话零搬迁复用+断点续拉增量
+- 行为契约：manifest（collect_manifest.json）逐项原子记账；残缺 run（无 done.json）改名 partial_run_* 隔离不删除（防污染下游 glob，遵守删除纪律）；单项失败不阻塞后续；退出码 0/2/1=全成/有缺口/有失败（按严重度 failed>gaps）；--resume 跳 done 项，不带也幂等
+- 实测三路全过：CAKE(BSC) 早期 130 万块段 296 万行 220s（部署块 694452 自动探测）+ 幂等重跑 1.6s；wSOL 保险丝断开走 done_with_gaps 缺口注记；错误地址探测扫全链零命中 fail-closed 报"检查链路由"
+- 新命令 `~/.claude/commands/collect-data.md`：解析多币清单→Solana 顺手查发射时间→生成 plan→run_guarded 脱管跑→只报采集事实不给结论；SKILL.md 阶段 1 + easy-workflow E1 加"预采集衔接"段（开工先查既有产物，禁从零重采）
+- HyperSync Starter key 固化 `~/.config/hypersync/token`（chmod 600，长跑不挂进程列表；api-keys.md 第 1 节登记）
+
+**B5 网络层进程内异步（买稳定性不是速度）**：新件 `scripts/lib/net.py`（httpx AsyncClient+异步令牌桶贴配额+tenacity 统一重试+msgspec 解析回退 stdlib；RpcPool 逐笔并发兼容 Helius 禁 batch）+首个消费者 `scripts/lib/rpc_batch.py`（批量 getCode 判 EOA/收据/任意方法 CLI，--browser-ua 治 robinhood WAF）；BSC publicnode 40 址实测与 curl 单发逐项等价、零失败（对照期 curl 裸发正好被瞬时抖动打中一次=重试价值的反证）；边界=CF/指纹敏感站点仍走 curl、在役老脚本不强改；三库进 pyproject+requirements.lock+env_check（14 关键依赖）；environment.md 沙箱节追加根治通道
+
+**B8 对抗复核并行 fan-out 固化**：新件 `~/.claude/workflows/adversarial-review.js`（怀疑者×N+完整性批评同批并行、prompt 骨架内置、VERDICT schema 强制 JSON 输出根治坑表 #2、args 字符串化兼容层治坑表 #3——冒烟首跑就撞上该坑，兼容层实证必要）；冒烟 2 agent 100s：CONFIRMED 重算零偏差+完整性批评自发识破合成数据指纹；research-workflows §2 新增执行规范（同批并行=独立性正确形态/missing 非空必补跑/分歧以硬重算证据为准不投票）
+
+**B10 Sourcify 合约身份批查（聚类前设施识别第三通道）**：新件 `scripts/labels/sourcify_check.py`——v2 API 国内直连免 key（0.2s 间隔 10 连发无 429），verified 合约名+代理实现名一次拿到（FiatTokenProxy→FiatTokenV2_2）；404=无源码≠EOA（判 EOA 仍用 getCode）；标的合约通用模板名（如 QUQ="Token"）本身即分析信号；⚠v1 批量端点 brownout 弃用至 2027-01 只走 v2 逐址；evm §4 入表+api-keys 免注册通道登记
+
+**B11 DefiLlama 老币历史价格主兜底**：新件 `scripts/prices/llama_price.py`（series 分段拉 chart 端点全史日线单段 500 点上限自动分段/spot 批量单时点；输出与 CG market_chart 同构下游零改动；未收录 exit=3 别拿空当零价）；CAKE 2020-09 起 2117 点全史+2021-04 峰值 $42.46 抽查实测；CG 免费层 365 天墙的正解，Poloniex candles 降为其后备；evm §4 入表
+
+**B7 补遗（守卫 hooks）**：新件 `scripts/hooks/guard_file_ops.py` 挂 settings.json PreToolUse——①Read 整读巨型数据文件拦截（二进制>1MB/文本>5MB，导向 duckdb 定向抽取）②Write/Edit 覆盖原始采集产物拦截（run_*/logs.parquet、soltx-* 只许采集器写）；pipe-test 四用例+本会话热加载实证（258MB parquet 当场被拦，顺带证明 settings watcher 对既有文件生效=3.14.0 遗留⑦翻篇）；PostCompact hook 注入"压缩后先重读落盘状态"提醒
+
+**遗留**：①workflow 按名调用（Workflow({name})）不认 ~/.claude/workflows/ 用户全局目录（实测只列内置），须用 scriptPath 绝对路径——但 Skill 列表已识别其 meta，是否为加载时序问题下次会话验证 ②collect_queue 未覆盖 Hyperliquid/Filecoin（管道特殊用得少，遇到走原管道）③Solana 发射时间探测未自动化（命令层由 Claude 查填）④rpc_batch 尚无 nonce/traces 模式（按需加）
+**成本指标**：~35 轮 / ~30 Bash / 约 1.5h；冒烟 workflow 2 agent 110k tokens；HyperSync 测试消耗 ~300 万行请求（Starter 档 <$0.5）
 
 ## [3.15.0] - 2026-07-22 — QUQ(BSC) 完整版复盘 + 逢5轻整编
 

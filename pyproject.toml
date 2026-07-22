@@ -12,7 +12,7 @@
 
 [project]
 name = "token-chip-analysis"
-version = "3.14.0"
+version = "3.16.0"
 description = "链上代币筹码分析工作流（数据引擎与工具脚本）"
 requires-python = ">=3.14"
 dependencies = [
@@ -25,6 +25,10 @@ dependencies = [
     "hypersync>=1.2.0",
     "requests>=2.34.2",
     "certifi>=2026.6.17",
+    # 网络层（B5：进程内异步+统一重试+快速 JSON，scripts/lib/net.py）
+    "httpx>=0.28.1",
+    "tenacity>=9.1.4",
+    "msgspec>=0.21.1",
     # 图/聚类
     "networkx>=3.6.1",
     "rustworkx>=0.18.0",

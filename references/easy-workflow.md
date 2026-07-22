@@ -23,7 +23,7 @@
 ## E1 采集（砍背调路，余三路原样）
 
 三路并行：
-1. **全量链上转账**（按链走对应 `data-pipeline-*.md`；EVM 首选 HyperSync Starter 付费 key + 官方客户端 v2，见 pipeline-evm §1 决策树）
+1. **全量链上转账**（按链走对应 `data-pipeline-*.md`；EVM 首选 HyperSync Starter 付费 key + 官方客户端 v2，见 pipeline-evm §1 决策树）。**先查预采集**：工作目录已有 /collect-data 产物（`data/v2/` 或 `data/soltx-*`）时直接复用+断点续拉增量，只付增量成本（SKILL.md 阶段 1 预采集衔接段）
 2. **标签与安全面**（标签库 lookup + GMGN + 浏览器标签页）
 3. **价格序列**（CoinGecko / binance.vision / GT OHLCV——图 1 右轴与判定进场窗口都要用，日线粒度即可）
 

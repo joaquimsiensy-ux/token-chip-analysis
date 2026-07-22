@@ -25,6 +25,11 @@
 标准 8 列含 block_hash，去重键 (block_hash,tx,log_index) 防链重组。
 ```
 
+批量预采集（v3.16.0，/collect-data 命令）：多币串行队列 `scripts/collect/collect_queue.py`
+——EVM 五链(bsc/eth/base/arbitrum/robinhood)走 fetch_hypersync_v2（部署块自动探测进全局缓存）、
+solana 走 fetch_sqd_transfers_v2；manifest 原子记账、残缺 run 改名 partial_ 隔离不删除、
+单项失败不阻塞；HyperSync key 读 `~/.config/hypersync/token`。夜间队列先行，分析会话只付增量。
+
 分叉依据：bloXroute 8 并发扫 249.6 万行约 80 分钟，量级再大耗时不可控且免注册通道无 SLA；HyperSync 免费层拉 1568 万条约 5.2 小时（来源：OPN/SIREN(BSC) 分析，2026-07）；**Starter 付费档（$70/月,100rpm+overage 5x=500rpm）+官方客户端后，同类量级压至半小时内**（v3.11.2 POC，2026-07-21，详见下表）。
 
 配套缓存（transfers_lib.py，存 `~/.cache/chip-analysis/`，跨币跨会话复用）：
@@ -109,13 +114,15 @@
 | 用途 | 端点/命令 | 要点 | 来源 |
 |---|---|---|---|
 | 起手定位 | `curl https://api.dexscreener.com/latest/dex/tokens/{token}` | 零注册；返回链/主池/DEX/流动性/创建时间/社媒；多池列表可分主池与尘埃池 | （来源：SIREN(BSC) 分析，2026-07） |
+| 合约身份批查（聚类前设施识别第三通道） | `scripts/labels/sourcify_check.py <chain> <地址文件>` | Sourcify v2 免 key 直连；verified 合约名直接暴露身份（PancakeRouter/GnosisSafeProxy/池），代理连实现名一并返回；聚类前对候选地址群跑一遍防设施混入实体集群；404=Sourcify 无源码≠EOA（判 EOA 仍用 getCode）；标的合约用通用模板名（如"Token"）本身即分析信号；⚠v1 批量端点 brownout 弃用（→2027-01），只走 v2 逐地址（0.25s 间隔实测无 429）；支持 eth/bsc/base/arbitrum/polygon，无 robinhood 等小众链 | （来源：B10 Sourcify 接入实测，2026-07-22） |
 | 合约安全 | `curl https://api.gopluslabs.io/api/v1/token_security/56?contract_addresses={token}` | 免费无 key；LP 持有人字段可能对应尘埃池而非主池，须与工厂合约 getPair 核对 | （来源：SIREN(BSC) 分析，2026-07） |
 | 貔貅模拟 | `curl 'https://api.honeypot.is/v2/IsHoneypot?address={token}&chainID=56'` | 已知误报机制：模拟器对无代码地址发起调用失败被记成 sellTax=100（V3 池代币易中）；必须 GoPlus + 链上真实卖出成交笔数 + 直接 RPC 模拟大户卖出三角验证后才可定性 | （来源：SIREN(BSC) 分析，2026-07） |
 | 日 K（近期） | `api.geckoterminal.com/api/v2/networks/bsc/pools/{pool}/ohlcv/day?aggregate=1&limit=1000` | 免费但实际只返回 181 天，老币历史不完整需补源；hour/minute 端点对上线较久的池可能直接返回 0 条（day 正常时 hour 也空，实测），别当采集失败重试；hour 加 before_timestamp 翻页对 >41 天前历史段同样返回 0 条（免费层窗口硬限）——历史行情窗只有日线，小时级须链上池储备重建 | （来源：SIREN(BSC) 2026-07；哈基米(BSC)/ASTEROID(ETH) 2026-07-18） |
 | 全量 K 线 | `data.binance.vision/data/futures/um/monthly/klines/{SYM}USDT/1d/{SYM}USDT-1d-YYYY-MM.zip`（另有 daily/） | 若代币上了币安永续则免费无 key 拿全史；月度包+当月每日包拼接去重，几秒完成 | （来源：SIREN(BSC) 分析，2026-07） |
 | 地址标签 | WebFetch `https://bscscan.com/address/{addr}` 及 `/txs?a={addr}&ps=100` | 拿 Public Name Tag/合约创建者/首笔注资来源；大户定性必须查浏览器官方标签，不能只看链上行为猜——曾有多个"疑似庄家"地址查标签后证实为 CEX 储备/热钱包 | （来源：SIREN(BSC) 分析，2026-07） |
 | top100 持仓/交易者/K线 | scripts/evm/fetch_gmgn.sh（gmgn-cli 批量） | 坑见下方列表 | （来源：OPN/SIREN(BSC) 分析，2026-07） |
-| 日线价格全史 | `api.coingecko.com/api/v3/coins/{id}/market_chart?vs_currency=usd&days=365&interval=daily` | 无 key 免费；币页 WebFetch 另可拿合约地址/流通量/FDV，合约地址须双源一致才采用；⚠`days=max` 免费层已死（error 10012 限 365 天，2026-07-18 实测）——老币更早价格无第三方源，报告声明截断或链上池储备重建 | （来源：OPN(BSC) 2026-07；ASTEROID(ETH) 2026-07-18） |
+| 日线价格全史 | `api.coingecko.com/api/v3/coins/{id}/market_chart?vs_currency=usd&days=365&interval=daily` | 无 key 免费；币页 WebFetch 另可拿合约地址/流通量/FDV，合约地址须双源一致才采用；⚠`days=max` 免费层已死（error 10012 限 365 天，2026-07-18 实测）——**更早历史改用下行 DefiLlama** | （来源：OPN(BSC) 2026-07；ASTEROID(ETH) 2026-07-18） |
+| **老币历史价格主兜底** | `scripts/prices/llama_price.py series <chain> <addr> --start <日期> --out p.json` | DefiLlama coins.llama.fi 免 key 直连限速宽；按合约地址直查免找 CG id；chart 端点分段拉全史日线（单段 500 点上限脚本自动分段，CAKE 2020-09 起 2117 点实测无缝）、输出与 CG market_chart 同构下游零改动；spot 子命令批量单时点；聚合价带 confidence——发射窗口精确配价仍用链上主池重建；未收录 exit=3 别拿空当零价；链名用 ethereum 不是 eth（脚本容错）；此前 Poloniex candles 兜底降为其后备 | （来源：B11 DefiLlama 接入实测，2026-07-22） |
 | 部署 tx 一步拿模板指纹 | Etherscan V2 `module=contract&action=getcontractcreation` | 返回 creator/txHash/blockNumber/**creationBytecode**——constructor 特征函数名（如 atInversebrah 类乱名）即合约模板指纹，连环发币人识别：同 dev 多次 CREATE 的字节码指纹比对，一次调用免扫块 | （来源：ASTEROID(ETH) 分析，2026-07-18） |
 | 是否上过币安 Alpha | `curl https://www.binance.com/bapi/defi/v1/public/wallet-direct/buw/wallet/cex/alpha/all/token/list` | 官方全量表（600+ 币）**含 fullyDelisted/offline 全历史存档**——可排除"曾上架后移出"；canTransfer 字段实证 Alpha 代币不可提币。**Alpha 2.0 Router Proxy 持仓性质判定的关键一步**：未上架代币的 Router 持仓=外部单方面打入（ERC20 转账无需接收方同意），是营销道具/变相冻结，不是托管买盘。上架时间的链上锚点=Router 首次收该币块（与公告新闻互证）；**Router 托管量月度差分=币安场内净买卖压力曲线（Alpha 在架币标配分析件）**，净流出月归因必查"经场内结算引擎回吐（场内净卖出）vs 直接提现"两分量占比，勿直接猜跨所搬砖 | （来源：bibi(BSC) 2026-07-12；哈基米(BSC) 2026-07-18） |
 | four.meme 发射参数 | `curl https://four.meme/meme-api/v1/private/token/get/v2?address={token}` | ✅2026-07-19 SIREN 实测**复活可用**（此前"全路径 404"过时）：返回 totalAmount/saleAmount（曲线售罄量，SIREN=8 亿/80%）/raisedAmount（毕业募集 BNB）/launchTime/userAddress（=creator）/tokenPrice.marketCap；与链上 mint 块时间戳互验；bundle 成本=买入 tx 实付 value + raisedAmount + 毕业注池额三方闭环 | （来源：bibi(BSC) 2026-07-12；SIREN(BSC) API 复活实测 2026-07-19） |

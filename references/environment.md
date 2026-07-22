@@ -45,6 +45,7 @@
 - 对策（实测有效）：长跑采集脚本**脱管启动**——`nohup python3 … > data/xx.log 2>&1 & disown`，且 Bash 调用参数 `dangerouslyDisableSandbox: true`；之后稳定跑完。
 - 附带发现：被杀时**残留的其他会话同类进程也同时消失**——疑沙箱/系统层对进程组的连带清理；重要长跑一律 nohup 脱管，与 Claude 任务管理解耦。
 - （来源：PUB(Solana) 分析，2026-07-14）
+- **根治通道（B5，2026-07-22）**：新脚本的批量 HTTP/RPC 调用一律用 `scripts/lib/net.py`（httpx 进程内异步+令牌桶限速+tenacity 统一重试+msgspec 解析）——没有可被连带清理的 curl 子进程树，限速贴配额（如 Helius 10 RPS）。现成 CLI：`scripts/lib/rpc_batch.py`（批量 getCode 判 EOA/收据/任意方法，`--browser-ua` 开关对付 robinhood WAF；40 址实测与 curl 单发逐项等价、零失败）。**边界**：CF/指纹敏感站点（bscscan 网页、GT）仍走 curl；在役老脚本不强改（改动须走等价对表）。定位=买稳定性不是买速度。
 
 ## 脚本 stdout 与实际行为不一致的误判坑（操作纪律）
 

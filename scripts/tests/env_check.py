@@ -15,7 +15,8 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 LOCK = os.path.join(HERE, "..", "..", "requirements.lock")
 
 KEY_PKGS = ["duckdb", "pyarrow", "pandas", "numpy", "hypersync", "requests",
-            "networkx", "rustworkx", "hypothesis", "psutil", "matplotlib"]
+            "networkx", "rustworkx", "hypothesis", "psutil", "matplotlib",
+            "httpx", "tenacity", "msgspec"]
 
 
 def main():
