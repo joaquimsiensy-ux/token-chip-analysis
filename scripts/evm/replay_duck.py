@@ -28,7 +28,7 @@ uint256 策略（防浮点退化——UHUGEINT 的 SUM 会静默退化 DOUBLE，
       [--camps camps.json] [--emit-csv] [--merged-parquet] \
       [--mem-limit 8GB] [--threads 6]
 """
-import argparse, csv, json, os, sys
+import argparse, csv, glob, json, os, sys
 
 import duckdb
 
@@ -344,6 +344,33 @@ def replay_pass2(con, camps_path, out_dir, mint_total, vt):
     print(f"天数={len(dates)} 阵营={[k for k in series]} 实体={ents_order}", flush=True)
 
 
+def _disk_precheck(tmp_path, chans=None, min_free_gb=10.0):
+    """起跑前磁盘预检（QUQ 亿级 temp 两次爆仓教训；run_guarded 的事中水位是第二道）。
+    输入文件总体积 ×4 作 temp 需求粗估（parquet 展开系数保守值），只警告不硬拒；
+    盘余量 < min_free_gb 硬拒。"""
+    import shutil as _sh
+    free_gb = _sh.disk_usage(tmp_path).free / 2**30
+    if free_gb < min_free_gb:
+        raise SystemExit(f"[disk] {tmp_path} 所在卷仅剩 {free_gb:.1f}GB（<{min_free_gb}GB 预检线）"
+                         "——先清盘再跑（旧分析 data/v2/run_*、.duck_tmp、旧 CSV 是常见大户）")
+    if chans:
+        in_bytes = 0
+        for c in chans:
+            p = c.get("path", "")
+            for f in (glob.glob(os.path.join(p, "run_*", "logs.parquet")) if os.path.isdir(p)
+                      else glob.glob(p)):
+                try:
+                    in_bytes += os.path.getsize(f)
+                except OSError:
+                    pass
+        need_gb = in_bytes / 2**30 * 4
+        if need_gb > free_gb:
+            print(f"[disk][警告] 输入 {in_bytes/2**30:.1f}GB×4≈{need_gb:.0f}GB temp 粗估 > "
+                  f"盘余 {free_gb:.0f}GB——建议 run_guarded --min-free-disk-gb 陪跑或先清盘",
+                  flush=True)
+    return free_gb
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--channels", required=True)
@@ -365,10 +392,13 @@ def main():
 
     tmp = os.path.join(a.out_dir, ".duck_tmp")
     os.makedirs(tmp, exist_ok=True)
+    free_gb = _disk_precheck(tmp, chans)
     con = duckdb.connect()
     con.execute(f"SET memory_limit='{a.mem_limit}'")
     con.execute(f"SET threads={a.threads}")
     con.execute(f"SET temp_directory='{tmp}'")
+    # temp 上限=盘余量-5GB 安全边（DuckDB 撞上限报错可控；撞盘满拖死整机不可控）
+    con.execute(f"SET max_temp_directory_size='{max(int(free_gb) - 5, 5)}GB'")
     con.execute("SET preserve_insertion_order=false")
 
     rej = build_events(con, chans)

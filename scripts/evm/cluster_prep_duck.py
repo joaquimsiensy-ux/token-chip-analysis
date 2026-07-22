@@ -42,11 +42,16 @@ def main():
     tmp = os.path.join(out, ".duck_tmp")
     os.makedirs(tmp, exist_ok=True)
 
+    import shutil as _sh
+    free_gb = _sh.disk_usage(tmp).free / 2**30
+    if free_gb < 10.0:
+        raise SystemExit(f"[disk] {tmp} 所在卷仅剩 {free_gb:.1f}GB（<10GB 预检线）——先清盘再跑")
     con = duckdb.connect()
     con.execute(f"SET memory_limit='{a.mem_limit}'")
     con.execute(f"SET threads={a.threads}")
     con.execute(f"SET temp_directory='{tmp}'")
-    con.execute("SET max_temp_directory_size='40GB'")   # QUQ 首跑 temp 爆 46.5GB 的护栏
+    # 护栏取 min(40GB 经验值, 盘余量-5GB)：QUQ 首跑 temp 爆 46.5GB；撞上限报错可控，撞盘满不可控
+    con.execute(f"SET max_temp_directory_size='{min(40, max(int(free_gb) - 5, 5))}GB'")
     con.execute("SET preserve_insertion_order=false")
 
     if a.v2:

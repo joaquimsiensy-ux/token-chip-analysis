@@ -91,7 +91,7 @@
 
 **并行 fan-out 执行规范（B8 固化，2026-07-22）**：
 - **全部怀疑者 + 完整性批评一次性同批并行发出**，不逐路串行——每路独立上下文互不知晓彼此存在，这不只是省墙钟，本身就是「独立复核」方法论的正确形态（互不污染）。裁决汇总与仲裁只在主会话做。
-- **首选固化 workflow**：`Workflow({name: "adversarial-review", args: {...}})`（按名不可用时 `scriptPath: "~/.claude/workflows/adversarial-review.js"`）——上面的 prompt 骨架与 verdict schema 已内置，**schema 强制输出**让 agent 裁决直接返回验证过的 JSON 对象（根治坑表 #2 的包装结构解析连败）；args 见脚本头注释（claims/data_note/integrity_files/workdir），脚本已带坑表 #3 的字符串化兼容层。冒烟实证：2 路 100 秒返回，完整性批评连测试数据的合成指纹都抓了出来（2026-07-22）。
+- **首选固化 workflow**：`Workflow({name: "adversarial-review", args: {...}})`（按名不可用时 `scriptPath: "~/.claude/workflows/adversarial-review.js"`；已实证按名解析认 `~/.claude/workflows/` 用户全局目录，但**注册表在会话启动时快照一次**——本会话中途新建/改名的 workflow 认不到，须用 scriptPath 或下个会话再按名调，2026-07-22 探针实测）——上面的 prompt 骨架与 verdict schema 已内置，**schema 强制输出**让 agent 裁决直接返回验证过的 JSON 对象（根治坑表 #2 的包装结构解析连败）；args 见脚本头注释（claims/data_note/integrity_files/workdir），脚本已带坑表 #3 的字符串化兼容层。冒烟实证：2 路 100 秒返回，完整性批评连测试数据的合成指纹都抓了出来（2026-07-22）。
 - 返回的 `missing` 数组非空=有路次被跳过/失败，主会话必须补跑或人工核，禁止当零发现处理。
 - 汇总仲裁规则：多路对同一结论分歧时，以**有硬重算证据**的一方为准（不投票）；REFUTED 的地址/哈希按下方 ★ 条先行为还原再吸收。
 

@@ -190,6 +190,16 @@ python3 scripts/report/build_html.py --md 报告.md --out 报告.html
 - 消费方：/token-update 的 `verify_balances.py`/`analyze_inc.py` 在 appendix.json 缺失时自动读它（v3.3 已内置）；买入后补监控包时它就是 appendix 的底稿。
 - checklist 挂钩：交付前第 11 条附录检查同时确认本文件已落盘。
 
+## 报告编译化：facts.json 事实源与宏引用（3.18.0 新写作纪律）
+
+**为什么**：数字/地址手抄进报告已第四犯——纪律拦不住的交给架构拦。正文结论数字、附录 B、analysis-state.json 三处由**同一份 facts.json 编译生成**，改一处数据其余处必然跟着变，对不上编译直接失败。
+
+- **facts.json**（阶段 3 结束、写报告前构建；schema 与宏语法全集见 `scripts/report/facts_gate.py` docstring）：token 总量/decimals + entities（每实体 label/addresses/current_raw/peak_raw，数值一律**原始整数字符串**从落盘数据复制）+ metrics（自定义分子分母）。
+- **写作纪律**：报告 md 中实体的持仓枚数/占比/峰值/成员数一律写宏——`{{e1.amount_share}}` → "2.78亿枚【总量27.84%】"（自动满足带【总量%】纪律）、`{{e1.share}}`、`{{e1.peak_share}}`、`{{e1.naddr}}`、`{{m:指标id}}`；附录 B 整块写 `{{appendix_b}}` 自动生成（**手打地址在架构上被消灭**）。禁止手打这些数字；价格/涨跌幅等非实体结论数字暂可手写（G5 会列清单供人工过目）。
+- **编译**：`python3 scripts/report/build_html.py --md 报告.md --out 报告.html --facts facts.json --state analysis-state.json`——语义 gate：G1 实体成员集合与 state 逐组相等（checklist 4b 的自动化）/G2 供给上界/G3 current≤peak/G4 宏名打错必炸（无静默漏渲染）/G5 手写百分比差集清单。gate 未过=WARN=不许交付。
+- 纯校验（不出 HTML）：`python3 scripts/report/facts_gate.py --facts facts.json --state analysis-state.json --md 报告.md`。
+- 渐进接入：**新报告必用**；旧报告重编译不强制回填。easy 模式两件套同样适用（快照表数字走宏）。
+
 ## JSON 附录与买入后监控包（v3.3 起独立成册）
 
 schema 全部细节（report-extract 四键与 `id="report-extract"` 硬约定、完整数据键、addresses/sentinel/monitoring_advice 字段纪律）与「买入后监控包」三件产出流程，全在 **`monitoring-package.md`**——默认分析会话不读它；用户确认买入或 /token-update 滚动 JSON 时再读。默认报告只需记住：**附录 B 任何情况不可省**（正文零地址的可验证性支点+日后补 JSON 的原料）+ 末尾固定句"如决定买入，回复一声即可补生成监控包（观察哨清单＋监控建议＋JSON 附录），可直接喂给投后监控看板。"
@@ -252,15 +262,16 @@ schema 全部细节（report-extract 四键与 `id="report-extract"` 硬约定�
 2. 图 1 + 图 2 放在 TL;DR 顶部（问 1 直答上方）了吗；图 3 在价格事件章吗；图 1 含锁仓/销毁阵营了吗（如有）
 3. **每个 P0 级实体都有全周期流转路径图吗**（项目方/每个大庄/P0 狙击集团各一张）；**图自解释验收过了吗**：只看图能复述实体全部操作、卡片全带【总量%】、分/合方式在边标签、归属证据有落点、账目行加法配平（期初−期末=Σ去向）
 4. 标签体系判级复查：大庄/小庄按**当前**持仓、离场庄按**峰值**；狙击集团单独标签未混入"庄"；刷量地址单独标签（关联的用复合标签）；其他大户与散户只出现在图 1
-4b. **单一成员集合对账**：图 1/图 2 曲线、verdict 汇总数、附录逐址表、JSON whale_groups 四处的实体成员集合必须由同一份名单驱动并交叉对一遍账——"逐址表 vs 汇总曲线"两套手工产出各自维护会互相打架（实锤案例：曲线成员表漏编一个 1.2% 成员，verdict 摘曲线端数字把在场庄合计低估 1.21pct，逐址表反而是对的；增量更新的旧账抽验才抓到）（来源：GME(Robinhood) 增量更新怀疑者复核，2026-07-15）
+4b. **单一成员集合对账**：图 1/图 2 曲线、verdict 汇总数、附录逐址表、JSON whale_groups 四处的实体成员集合必须由同一份名单驱动并交叉对一遍账——"逐址表 vs 汇总曲线"两套手工产出各自维护会互相打架（实锤案例：曲线成员表漏编一个 1.2% 成员，verdict 摘曲线端数字把在场庄合计低估 1.21pct，逐址表反而是对的；增量更新的旧账抽验才抓到）（来源：GME(Robinhood) 增量更新怀疑者复核，2026-07-15）。**3.18.0 起本条中"报告↔state"一段由 facts 语义 gate G1 自动执行**（build_html --facts --state），图表脚本喂的名单与 facts 同源仍须人工确认
 5. **全文所有代币数量都带【总量X%】换算了吗**
 6. **正文零地址**（一律钱包标签）；附录 B 标签↔地址对照表齐全完整（默认交付的可验证性支点）
 7. 无任何行内置信度 tag；证据强度用自然语言分级用词；意图判定并列写；类型③措辞不超"高度疑似"
 7b. **术语可读性自检**（v3.8）：全文专名/自造绰号/机制短语首现处都有大白话解释吗；自造绰号 ≥5 个时角色速查卡放了吗——标准：读者不提问就能读懂，每个未解释的词=读者未来的一个提问
 8. 第七章状态评估齐了吗；结论自带的检验点（下个解锁日/待验证关联对）正文点到了吗；**默认交付无观察哨/监控建议章节、末尾带"买入可补监控包"固定句**（v3.2）
 9. 特有发现有正文章节承载吗；vesting 标的的问 3 含"未来 6–12 个月解锁日程与量级"小节吗
-10. **外部代币名自查**：全文除标的与生态 gas 币外无其他代币名（铁律 1）
+10. **外部代币名自查**：全文除标的与生态 gas 币外无其他代币名（铁律 1）——build_html 已自动扫（3.18.0）：`--token-whitelist "标的符号,用户点名对比项"` 传白名单，$cashtag 命中即 WARN 拒交付，全大写词 [NOTE] 人工扫一眼确认即可
 11. 附录四件套齐了吗（验证步骤/标签地址对照/修正记录/来源）；默认不含 JSON（买入后按需）；**analysis-state.json 已落盘**且地址与附录 B 一致（v3.3）
 12. `build_html.py` 退出码 0（有 [WARN] 缺图不许交付）；阵营图 `id="chart-camps"` 自动嵌入目检存在
 13. **【买入后监控包交付时追加】**：观察哨与两档监控建议齐且逐条有原因、与 JSON monitoring_advice 的 mode/alert_threshold_pct 一一对应；JSON 顶层四键齐、addresses 与附录 B 一致且完整地址、sentinel 纪律复查（周期性会动的地址必须 false）、round_target/watch_return 该填的填了；重跑 build_html 零 WARN、`id="report-extract"` 目检存在
 14. 浏览器打开 HTML 目检：图片全显示、表格无错位、蓝红框正常、（带监控包时）JSON 折叠块可展开
+15. **交付后固定动作（3.18.0）**：`python3 scripts/labels/accumulate_offenders.py --apply`——把本案实锤庄回灌惯犯库（含 manifest 自动落印；state 文件案子也扫，买不买入都要跑）

@@ -36,15 +36,18 @@ def ft(ts):
     return datetime.fromtimestamp(ts, tz=timezone.utc).strftime("%m-%d %H:%M") if ts else "?"
 
 
-def oldest_sigs(addr, want=3):
+def oldest_sigs(addr, want=3, max_pages=2):
+    # 翻页上限：高频中转数千签名会翻到天荒地老（LAYOFF 实测 20 址 15 分钟卡死）
+    # 达上限时最老笔可能未触达，结果标 approx（gas_fast.py 同款语义）
     sigs, before = [], None
-    while True:
+    approx = False
+    for _ in range(max_pages):
         params = [addr, {"limit": 1000}]
         if before:
             params[1]["before"] = before
         res = rpc("getSignaturesForAddress", params)
         if res is None:
-            return None
+            return None, False
         if not res:
             break
         sigs.extend(res)
@@ -52,8 +55,10 @@ def oldest_sigs(addr, want=3):
         time.sleep(0.15)
         if len(res) < 1000:
             break
+    else:
+        approx = True
     sigs = [s for s in sigs if s.get("err") is None]
-    return sigs[-want:] if sigs else []
+    return (sigs[-want:] if sigs else []), approx
 
 
 def main():
@@ -67,11 +72,11 @@ def main():
         if a in out:
             print(f"{a} 已有，跳过")
             continue
-        olds = oldest_sigs(a)
+        olds, approx = oldest_sigs(a)
         if olds is None:
             print(f"{a} 签名拉取失败")
             continue
-        rec = {"first_txs": []}
+        rec = {"first_txs": [], "approx": approx}
         for s in reversed(olds):  # 最老在前
             tx = rpc("getTransaction", [s["signature"], {"encoding": "jsonParsed",
                                                          "maxSupportedTransactionVersion": 0}])
@@ -101,7 +106,8 @@ def main():
         out[a] = rec
         out_f.write_text(json.dumps(out, ensure_ascii=False))
         f0 = rec["first_txs"][0] if rec["first_txs"] else {}
-        print(f"{a}  最早笔 {ft(f0.get('ts'))}  SOLΔ={f0.get('my_sol_delta')}  funder={f0.get('funder')}")
+        print(f"{a}  最早笔 {ft(f0.get('ts'))}  SOLΔ={f0.get('my_sol_delta')}  funder={f0.get('funder')}"
+              f"{'  [approx:翻页达上限,最老笔可能未触达]' if approx else ''}")
 
 
 if __name__ == "__main__":

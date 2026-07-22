@@ -13,6 +13,7 @@
 - **2.24.0/2.25.0 曾物理倒排**（同日并行会话插入位置错位）——2026-07-18 稳定化时仅调整排列顺序，两条内容一字未动
 
 ## 版本索引（活跃窗口，新在上）
+- **3.18.0 2026-07-22 质量/速度/稳定性专项第二批（非复盘专项，@CX 方案 18 项）**：报告编译化 facts 事实源+宏+语义 gate（手抄数字架构级消灭）/故障注入盲测六用例（QUQ 快照缺块盲区固定化）/D3 三大文档拆 8 分册兑现/惯犯库双源回灌 217→1741 址/标签时效语义切分/Solana 双引擎整合+完备性验收**不通过禁用**（历史区缺行 3.6-22% 链上终审实锤）/collect_queue 泳道化/磁盘水位三件/launchd 夜间自动采集/监控两段制 schema 三字段/外部代币名自查自动化/HyperSync overage 831rpm 实测已生效/pre-commit 三检/git 历史 key 清洗
 - **3.17.0 2026-07-22 GOAT(Solana) easy 二战复盘：长币龄混合重建工程加固+CEX 间调度商指纹**：Helius 大扫描 300s+gzip 通道（24.7 万账户 67MB 一次拉全，分片器降末位）/window_fetch gap 合并重复坑+负余额指纹/whale_deep cap 截断语义+10RPS 并发纪律/pump.fun 毕业迁移钱包入 address-book（发射窗峰值榜必剔）/编造地址 base58 侧五六犯；candidate 2 组（CEX 间库存调度商指纹 state-anomaly §9c+锚点复用两扫描 §11.3）；whale_deep 三参数悬账收编+scan_token_accounts --compressed/--timeout；easy 成本基准 GOAT 行（2-3h 档初步稳定）
 - **3.16.0 2026-07-22 B 档五项收官：/collect-data 批量预采集+网络层异步化+复核 workflow 固化+Sourcify/DefiLlama 双通道+文件守卫 hook（非复盘专项）**：@CX 方案 B 档全部落地——新命令 /collect-data（collect_queue.py 多币串行队列，EVM 五链+Solana，manifest 记账/残缺 run 隔离/断点幂等，CAKE 296 万行+wSOL 缺口态+错址 fail-closed 三路实测）；net.py+rpc_batch.py 进程内异步替代 curl 子进程树（httpx+tenacity+msgspec，40 址与 curl 逐项等价）；adversarial-review 固化 workflow（schema 强制裁决 JSON+同批并行 fan-out，冒烟 2 路 100s）；Sourcify 合约身份批查（sourcify_check.py，v2 直连免 key，代理实现名一次拿到）；DefiLlama 老币历史价格主兜底（llama_price.py，CAKE 2020 起 2117 点全史实测）；guard_file_ops hook（Read 巨文件拦截+原始采集产物写保护，热加载实证）+PostCompact 提醒；HyperSync key 固化 ~/.config/hypersync/token
 - **3.15.0 2026-07-22 QUQ(BSC) 完整版复盘+逢5轻整编**：公共基础设施先验三测（部署早于代币=强公共信号+同模板 code size 指纹——449e 大翻案教训）/寄存仓移仓指纹（监管点名对齐+3天原路等额往返）/净成本病态敏感双口径（正式：净额<毛额1%禁点估计,+剔自控镜像流第三口径）/bot 营运峰≠EOA 囤仓峰入 §9b 排代际/R2 备择解释路对结构性定性必设；快照缺块坑（供给闭合对缺整行免疫,done.json 前置第5查+负余额指纹）/手写地址第四犯工具化 real_addr/bscscan WebFetch 截断地址禁入产物/HyperSync v2 增量 4s+补丁段核验；整编：高扇出三判据两案转正、CEX 事件驱动做市纪律降档存档、5 条标疑、归档滚动 12+1 条（3.6.0 缺失正文补档）；D3 三大文档拆分推迟单独会话
@@ -29,6 +30,37 @@
 - 3.4.0 VIRTUAL(Base+ETH) 多链 | 3.3.0 体检修复 | 3.2.0 监控包按需化 | 3.1.0 成本三刀 | 3.0.0 稳定化
 - 2.29.0 jesse(Base) | 2.28.0 哈基米(BSC)
 - （3.9.0 及更早正文共 61 条 → CHANGELOG-archive.md，含 3.6.0 补档）
+
+## [3.18.0] - 2026-07-22 — 质量/速度/稳定性专项第二批（非复盘专项，@CX 方案 18 项）
+
+> 用户二问"筹码分析还有什么优化"。@CX 交叉复核（codex 读库后判定：**引擎已不是瓶颈**，短板=①"计算结果→报告"最后一公里手工作坊 ②质量只有复核补救指标、没有漏检率分母），融合清单用户批 18 项（**easy 三级级联筛查被否决**——与"复核一分不减"需求冲突，shadow mode 亦不启动）。主线+2 子代理并行交付；两条与用户已批方向冲突的实现细节按保守侧裁定（见惯犯库/标签时效两段）。
+
+**大件① 报告编译化（facts 事实源+宏引用+语义 gate）**：新件 `scripts/report/facts_gate.py`——facts.json 每案唯一事实源（实体/指标数值一律原始整数字符串）+宏渲染（`{{e.amount_share}}`→"2.78亿枚【总量27.84%】"等 9 种；`{{appendix_b}}` 附录 B 整块自动生成=**手打地址架构级消灭**）+语义 gate 五条（G1 实体成员集合与 analysis-state 逐组相等=checklist 4b 自动化/G2 供给上界/G3 current≤peak/G4 宏名打错必炸无静默漏渲染/G5 手写百分比差集清单）；build_html 加 `--facts/--state`（不给则旧行为不变）；report-template 新节+新写作纪律（结论数字一律宏引用，新报告必用）；test_report_facts 五契约进全家桶。手抄数字第四犯的架构级回应；claims 结论账本+覆盖证书为后续第 3 步。
+
+**大件② 故障注入盲测烟雾集**：新件 `scripts/tests/test_fault_injection.py` 六用例——F0 合法账本基准全绿/F1 中段缺块必须被负余额暴露/F2 同键异值必须硬退/F3 无 mint 必须 gate 失败/**F4 尾部截断=盲区固定化**（断言供给闭合对 QUQ 快照缺块形态"抓不到"且 gate 照过——把已知盲区钉进测试防未来误信，真防线=done.json 前置查）/F5 通道段重叠启动即拒；进全家桶。纪律：新故障形态实战出现一次加一个 F 用例。golden_baseline 证"新旧一致"、本集证"行为本身对"——留一外测/召回率账本需产物指纹积累，下批。
+
+**D3 文档拆分兑现（3.15.0 遗留，子代理执行+主线抽查）**：三大文档→8 分册+3 薄路由页（evm→channels/sources/recon；entity-cluster→methods/tiering/cost；solana→scan/capture，全部 <45KB）；inventory 逐条核对 268/205/242 全命中+verify_bytes 母文档 740 非空行零缺失双保险；docs_lint 33 文档 PASS；SKILL.md 深入阅读清单同步；§N 引用沿母文档节号经路由页对照表定位（analysis-playbook v3.5 先例模式）。
+
+**惯犯库双源回灌闭环**：accumulate_offenders 扫描源加 analysis-state.json（**修真缺口：v3.2 后 state-only 案子的实锤庄全漏**——AKE/ASTEROID/GOAT/LPT/SIREN/SQD/USELESS 等 8 案此前未入库）+`--apply` 一键入库+labels_manifest 自动落印+日期动态化（added=当天/snapshot=案 data_cutoff）+addresses 元素 dict 形态兼容（Pointless 形态）；217→**1741 址/52 实锤组/跨案命中 11**；交付后固定动作挂 report-template checklist 15 与 easy E5。⚠组级收纳语义沿旧（实锤组全组进库）——QUQ 215 址 bot 体系/SIREN 散仓网含一次性执行地址，README 加"命中远端成员提示不定罪"注记，收窄规则待用户定夺。
+
+**标签时效（提示不定罪+语义切分）**：resolver get() 附 stale_days/stale_hint（cex/suspected-cex/infra/bridge/bundler/paymaster/mev 超 90 天提示复核）；status∈{deprecated,rotated,historical,stale} 人工失效标记按**语义切分**生效——余额侧回退（is_exclude=False/balance=count，退役设施当前持仓不再自动剔）、**聚类禁边保留**（全历史重放里退役桥/轮换热钱包活跃期的边仍是公共边，放开=聚类污染回归——codex 原方案"过期即失效"被此裁定否决）；自动决策不因库龄变老而失效；benchmark 金标门禁 PASS；README 纪律 4 条（含单源标签禁独自驱动合并/剔除）。
+
+**Solana 双引擎整合+完备性验收（子代理，结论=验收不通过→禁用）**：fetch_sqd_transfers_v2 新增 HyperSyncFetcher（schema 五轮实测定案）+SegPool 双引擎段池（SQD 偷段带礼让）+`--hypersync` 系列参数（默认关）；BONK 三区对账+Helius getTransaction 链上终审：摄取前沿附近零差集且**关户行语义与 SQD 逐字一致**（§13d 旧"pre/post 未验收"翻篇）、近端 head-13~33 万乱序回填暂态洞（静默吞 81 条边）、**历史区持久缺行越老越糟（head-450 万缺 3.6%/head-1450 万缺 22%）——禁止正式采集**（脚本四处硬警示），仅吞吐实验（双引擎实测 1,175 slots/s=纯 SQD 2.2-2.8 倍）与前沿对照/fee_payer 指纹查询，GA 后重验收（对账件 recon2.py 留 scratchpad）；默认路径 500 slot 回归**逐字节一致**；§13d 已更新（洞与窗外均静默快进 next_slot=响应判断完备性不可行/tb 索引前沿滞后 /height 13-27 万且乱序回填/tx_index 含投票 tx 跨源对账须去键）。
+
+**collect_queue 泳道化**：EVM 泳道与 Solana 泳道**并行**、各泳道内串行（HyperSync key 级限流与 SQD 单 IP 带宽互不相干，跨泳道纯赚墙钟）+`--serial` 回退+manifest 读改写锁；test_collect_lanes 三用例（并行实证 1s vs 串行 2s/失败传播/回退）进全家桶；顺修 collect-data.md 与脚本头 `--mem-gb`→`--mem-ceiling-gb` 参数名 bug（照抄会当场报错）。
+
+**磁盘水位三件（QUQ temp 两次爆仓回应）**：run_guarded 第三水位 `--min-free-disk-gb`（默认 5GB；触发实测正确）+min_disk_free_gb 状态记账+`--disk-path` 指定卷；replay_duck `_disk_precheck`（<10GB 硬拒+输入体积×4 粗估警告+max_temp_directory_size=盘余-5GB 动态化）；cluster_prep_duck 同款预检+护栏 min(40GB,盘余-5)。
+
+**夜间自动采集（launchd）**：`com.chip-analysis.nightly-collect`（每天 02:30，合盖睡过点唤醒补跑）+`scripts/collect/nightly_collect.sh`——`collect_plans/pending_plan.json` 存在即 run_guarded 守护开采，按退出码归档 done/gaps/failed_plan_*；用法与卸载命令入 collect-data.md 第 8 步。
+
+**监控报警两段制 schema**：monitoring_advice 新增必填三字段——confirm（数值型阈值类默认 `next_round`：首轮候选、下轮**同源同口径**复现才红卡；仅沉睡地址转出类强信号 `immediate`）/denominator（分母口径声明）/source_pin（数据源钉死+LP ×2÷2 口径跳变指纹注记）——投后三起误报事故（SOL 池子吸入/Bitget 热钱包/GMGN LP 口径互跳）的设计层预防；**posthold 执行器侧未动**（2859 行生产脚本架构改动，单列建议另会话做）。
+
+**外部代币名自查自动化（铁律 1/checklist 10 自动化）**：build_html `token_name_scan`——$cashtag 非白名单即 WARN 拒交付、孤立全大写词 NOTE 供人工扫一眼；`--token-whitelist` 传标的+用户点名对比项；内置通用缩写/工具名/链 gas/稳定币/CEX 名白名单；QUQ 真报告实测零误 WARN。
+
+**小件与实测**：HyperSync overage **实测已生效**（100 请求 7.2s 全 200≈831rpm 短爆发，api-keys 第 1 节更新、旧注"建议设 5x"作废兑现）；gas_origin.py max_pages=2+approx 回填（清 solana §8.3 挂账，gas_fast 同款语义）；skill 仓库 pre-commit hook（changelog_lint+docs_lint+env_check 三秒级检，`--no-verify` 应急）；SKILL.md 成本纪律刀 2 第 7 条加 1h 缓存 TTL 注记（降软约束，超量降级 5min TTL 时恢复）；**Workflow 按名调用结论落定**：认 ~/.claude/workflows/ 用户全局目录，但注册表**会话启动时快照一次**——会话中途新建的 workflow 认不到须用 scriptPath（3.16.0 遗留①翻篇，research-workflows §2 注记）；git 历史旧 key 清洗（全历史扫描确认仅 dRPC 一 key 一文件，Exa 命中为地址子串巧合；备份后 filter-repo 替换）。
+
+**遗留**：①claims 结论账本+覆盖证书（编译化第 3 步）②留一外测与召回率/误报率账本（需历史案例产物指纹积累）③posthold 执行侧通用两段制（单独会话）④HyperSync Solana GA 后重验收 ⑤惯犯库大组收纳是否收窄待用户定夺 ⑥easy 级联筛查含 shadow mode 整体不启动（用户否决存档，异日需求变再议）
+**成本指标**：主线 ~80 轮 / 子代理 2 路（26.6 万+20.7 万 tokens，共 106 工具调用）/ 全程约 3.5h；全家桶 10/10 全绿（新增 3 测试）
 
 ## [3.17.0] - 2026-07-22 — GOAT(Solana) easy 二战复盘：长币龄混合重建工程加固 + CEX 间调度商指纹
 

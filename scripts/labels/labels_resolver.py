@@ -23,8 +23,15 @@ v4 2026-07-16（codex 交叉复核第二轮融合：policy 三维拆分 / risk �
    多项目锁同一 locker、多人打款同一 ICO/慈善地址、一工具分发万人，合并全是假连。
 6. serial-actor（惯犯庄家层，v4 新增）：历史分析实锤的收割集团地址。
    不剔除、不禁边（惯犯地址间本就是同实体，正常聚类），命中即高亮"XX 案实锤惯犯"。
+7. 标签时效（3.18.0，提示不定罪）：get() 附 stale_days（距最近核验/快照/入库天数）；
+   时效敏感类目（CEX 热钱包/bundler 等会轮换的设施）超 STALE_DAYS 只提示"须复核"，
+   **自动决策不因库龄变老而失效**（若过期即失效，建库 N 月后设施剔除会整体瓦解=更大事故）；
+   status ∈ INACTIVE_STATUS（人工显式标记 deprecated/rotated/historical/stale）的行按
+   **语义切分**处理：余额侧回退（is_exclude=False、balance_policy=count——退役设施的
+   "当前持仓"不再自动剔）；聚类禁边**保留**（no_merge 不放开——重放全历史时退役桥/轮换
+   热钱包在其活跃期的边依然是公共边，放开=聚类污染回归）。
 """
-import csv, os, sys
+import csv, datetime, os, sys
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 DEFAULT_LABELS_DIR = os.path.normpath(os.path.join(_HERE, '..', '..', 'references', 'labels'))
@@ -56,6 +63,30 @@ NO_MERGE_CATEGORIES = {'locker', 'airdrop-distributor', 'token-sale', 'charity',
 # identity 层持仓单列桶（不混入实体持仓，也不无视）的类目
 BUCKET_CATEGORIES = {'locker', 'airdrop-distributor', 'launchpad'}
 SERIAL_CATEGORY = 'serial-actor'
+
+# ---- 标签时效（3.18.0）----
+STALE_DAYS = 90
+# 会轮换/迁移的设施类目：过期命中要提示复核（CEX 热钱包轮换、bundler EOA 轮换实测都有）
+TIME_SENSITIVE_CATEGORIES = {'cex', 'suspected-cex', 'infra', 'bridge', 'bundler',
+                             'paymaster', 'mev'}
+# 人工显式标记的失效状态：自动决策回退保守值（历史标签只提示不驱动决策）
+INACTIVE_STATUS = {'deprecated', 'rotated', 'historical', 'stale'}
+
+
+def staleness(row, today=None):
+    """距最近一次 verified_at/source_snapshot_at/added_date 的天数；三列都解析不出返回 None。"""
+    best = None
+    for k in ('verified_at', 'source_snapshot_at', 'added_date'):
+        v = (row.get(k) or '').strip()[:10]
+        try:
+            d = datetime.date.fromisoformat(v)
+        except ValueError:
+            continue
+        if best is None or d > best:
+            best = d
+    if best is None:
+        return None
+    return ((today or datetime.date.today()) - best).days
 
 _B58 = set('123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz')
 _B58_ALPHA = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz'
@@ -177,23 +208,33 @@ class LabelResolver:
         out = dict(row)
         out['cross_chain'] = cross
         out.update(derive_policy(row))
+        out['stale_days'] = staleness(row)
+        out['status_inactive'] = (row.get('status') or '').strip().lower() in INACTIVE_STATUS
+        out['stale_hint'] = bool(
+            out['stale_days'] is not None and out['stale_days'] > STALE_DAYS
+            and (row.get('category') or '').strip() in TIME_SENSITIVE_CATEGORIES)
         return out
 
     # ---- 自动决策接口：只认目标链直接命中（cross_chain 命中一律不触发） ----
     def is_exclude(self, addr):
-        """该地址是否为基础设施（禁止计入实体持仓/大户榜）。等价 balance_policy=exclude。"""
+        """该地址是否为基础设施（禁止计入实体持仓/大户榜）。等价 balance_policy=exclude。
+        status_inactive（人工标记失效）时不自动决策（3.18.0 纪律 7）。"""
         r = self.get(addr)
-        return bool(r) and not r['cross_chain'] and r['balance_policy'] == 'exclude'
+        return (bool(r) and not r['cross_chain'] and not r['status_inactive']
+                and r['balance_policy'] == 'exclude')
 
     def no_merge(self, addr):
-        """该地址是否禁止作聚类合并边（exclude 设施 + locker/分发/募集类公共通道）。"""
+        """该地址是否禁止作聚类合并边（exclude 设施 + locker/分发/募集类公共通道）。
+        注意：status_inactive **不**放开禁边——重放的是全历史，退役桥/轮换热钱包在其
+        活跃期的转账边依然是公共边，放开=聚类污染回归（3.18.0 语义切分：
+        聚类边规则跟历史走，余额规则跟当下走）。"""
         r = self.get(addr)
         return bool(r) and not r['cross_chain'] and r['merge_policy'] == 'no_merge'
 
     def balance_policy(self, addr):
-        """count | bucket | exclude；未命中/跨链命中返回 'count'（不自动决策）。"""
+        """count | bucket | exclude；未命中/跨链命中/人工标记失效返回 'count'（不自动决策）。"""
         r = self.get(addr)
-        if not r or r['cross_chain']:
+        if not r or r['cross_chain'] or r['status_inactive']:
             return 'count'
         return r['balance_policy']
 
@@ -204,17 +245,23 @@ class LabelResolver:
         return bool(r) and r.get('serial', False)
 
     def policy(self, addr):
-        """完整决策视图；未命中返回 None。自动决策字段在 cross_chain=True 时一律回退保守值。"""
+        """完整决策视图；未命中返回 None。自动决策字段在 cross_chain=True 或
+        status_inactive=True（人工标记失效）时一律回退保守值。"""
         r = self.get(addr)
         if not r:
             return None
-        if r['cross_chain']:
-            return {'hit': True, 'cross_chain': True, 'merge_policy': 'allow',
+        if r['cross_chain'] or r['status_inactive']:
+            # cross_chain：全部回退保守。status_inactive：仅余额侧回退（merge 禁边跟历史走）
+            return {'hit': True, 'cross_chain': r['cross_chain'],
+                    'status_inactive': r['status_inactive'],
+                    'merge_policy': 'allow' if r['cross_chain'] else r['merge_policy'],
                     'balance_policy': 'count', 'serial': r['serial'],
+                    'stale_days': r['stale_days'], 'stale_hint': r['stale_hint'],
                     'risk': self.risk_partition(r), 'row': r}
-        return {'hit': True, 'cross_chain': False, 'merge_policy': r['merge_policy'],
-                'balance_policy': r['balance_policy'], 'serial': r['serial'],
-                'risk': self.risk_partition(r), 'row': r}
+        return {'hit': True, 'cross_chain': False, 'status_inactive': False,
+                'merge_policy': r['merge_policy'], 'balance_policy': r['balance_policy'],
+                'serial': r['serial'], 'stale_days': r['stale_days'],
+                'stale_hint': r['stale_hint'], 'risk': self.risk_partition(r), 'row': r}
 
     # ---- 风险分区（v4 白名单制，四档） ----
     @staticmethod

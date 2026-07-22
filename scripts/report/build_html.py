@@ -29,6 +29,38 @@ JSON 附录（--json）：文件校验可解析后，双轨嵌入报告末尾—
   2) 浏览器打开目检：图片全部显示、表格无错位、蓝红框渲染正常、JSON 折叠块可展开
 """
 import argparse, base64, html, json, mimetypes, os, re, sys
+from collections import Counter
+
+# ---- 外部代币名自查（铁律 1 报告红线的自动化，3.18.0）----
+# 通用缩写/工具名/链与 gas 币/稳定币/CEX 名——这些全大写词不是"外部代币名"
+_SCAN_COMMON = set("""
+API CEX DEX URL HTML JSON CSV RPC UTC GMT OK GB KB MB TB TLDR TL DR NFT LP AMM KOL FUD
+FOMO ATH ATL TVL OTC IDO ICO IEO APY APR CTO DEV BOT ID TX CA PDF PNG JPG WAF UA IP RSS
+SQL CPU RAM OS AI OG PR KYC AML VIP MEV EOA ERC BEP SPL USD CNY RMB EUR JPY KRW VC DAO
+DD PVP PVE ROI PNL P0 P1 P2 GAS WETH WBNB WSOL WBTC OTC CEXS DEXS
+GMGN CMC CG COINGECKO GOPLUS HYPERSYNC SQD DUNE OKLINK SOLSCAN BSCSCAN ETHERSCAN
+BLOCKSCOUT DEXSCREENER GECKOTERMINAL DEFILLAMA SOURCIFY HELIUS ALCHEMY BIGQUERY AWS GCP
+BINANCE OKX HTX MEXC GATE KUCOIN BYBIT BITGET COINBASE KRAKEN UPBIT BITHUMB ALPHA
+ETH BNB BSC SOL BTC POL ARB OP AVAX TRX TON SUI BASE MATIC FTM CRO HYPE FIL HL
+USDT USDC DAI BUSD FDUSD TUSD PYUSD USD1 USDE
+PANCAKESWAP UNISWAP RAYDIUM JUPITER ORCA METEORA PUMP PANCAKE V2 V3 V4 NPM
+CONFIRMED REFUTED WEAKENED PLAUSIBLE
+""".split())
+
+
+def token_name_scan(md_text, whitelist):
+    """扫描报告中的疑似外部代币名。返回 (warn 列表, note 列表)。
+    $XXX cashtag=强信号(非白名单即 WARN)；孤立全大写词=弱信号(NOTE 供人工扫一眼)。"""
+    wl = _SCAN_COMMON | {w.strip().upper() for w in whitelist if w.strip()}
+    cash = Counter(m.group(1).upper()
+                   for m in re.finditer(r"\$([A-Za-z][A-Za-z0-9]{1,9})\b", md_text))
+    caps = Counter(m.group(0)
+                   for m in re.finditer(r"(?<![A-Za-z0-9$_./-])[A-Z][A-Z0-9]{2,9}(?![A-Za-z0-9_./-])",
+                                        md_text))
+    warns = [f"[WARN] 疑似外部代币名 ${t}×{c}（铁律 1：除标的与生态 gas 币外禁现其他代币名；"
+             f"误报则加 --token-whitelist）" for t, c in cash.most_common() if t not in wl]
+    notes = [f"{t}×{c}" for t, c in caps.most_common() if t.upper() not in wl]
+    return warns, notes
 
 CSS = """
 :root{color-scheme:light}
@@ -217,12 +249,35 @@ def main():
     ap.add_argument("--out", required=True)
     ap.add_argument("--json", help="机器可读 JSON 附录文件（schema 见 monitoring-package.md）")
     ap.add_argument("--title", default=None)
+    ap.add_argument("--token-whitelist", default="",
+                    help="逗号分隔：标的符号+用户点名对比项等合法代币名（外部代币名自查白名单）")
+    ap.add_argument("--facts", help="facts.json 事实源（3.18.0 报告编译化：渲染宏+语义 gate，"
+                                    "见 facts_gate.py docstring；不给则旧行为不变）")
+    ap.add_argument("--state", help="analysis-state.json（与 --facts 同给时做 G1 成员集合对账）")
     a = ap.parse_args()
 
     md_text = open(a.md, encoding="utf-8").read()
     mddir = os.path.dirname(os.path.abspath(a.md))
     warns = []
+    if a.facts:
+        import facts_gate
+        try:
+            rendered, gate_errs, gate_notes = facts_gate.load_and_check(
+                a.facts, a.state, md_text)
+            md_text = rendered
+        except (KeyError, ValueError) as e:
+            print(f"[FAIL] facts 宏渲染失败: {e}")
+            sys.exit(1)
+        warns += [f"[WARN] {e}" for e in gate_errs]
+        for nt in gate_notes:
+            print(f"[NOTE] {nt}")
     body = md_to_html(md_text, mddir, warns)
+
+    tk_warns, tk_notes = token_name_scan(md_text, a.token_whitelist.split(","))
+    warns += tk_warns
+    if tk_notes:
+        print("[NOTE] 全大写词人工扫一眼（checklist 第 10 条；确认非代币名可交付）: "
+              + " ".join(tk_notes[:20]) + (" …" if len(tk_notes) > 20 else ""))
 
     title = a.title
     if not title:

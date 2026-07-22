@@ -30,7 +30,8 @@ CSV 字段（基础 9 列 + 6 扩展列）：`address, chain, name, category, ti
 - **balance_policy**（实体持仓怎么算）：`exclude`（设施，不计持仓/大户榜）| `bucket`（locker/分发器，锁仓量单列桶）| `count`（正常计入）。
 - **exclude ≠ 从资金图删除**："经 XX 桥入金"的路径叙事保留，它们是边界节点不是空气。cluster.py 被拦地址落 `label_excluded_nodes` 供对账。
 - **risk_flags 四档分区（白名单制）**：**definitive**（白名单精确命中或 `*-exploit` 后缀：大户命中=必写进报告的重大信号）| **candidate**（scam-candidate 等社区单源：降权提示，不作定性依据）| **privacy**（tornado-user：只陈述"有 Tornado 使用记录"，不定性脏钱）| **unknown**（白名单外：提示人工核验，不自动定性）。
-- **serial-actor（惯犯庄家层）**：历史分析实锤收割集团地址（196 址）。**不剔除、不禁边**（惯犯地址间本就同实体，正常聚类），命中即高亮"XX 案实锤惯犯"；跨案命中是最高优先级信号。
+- **serial-actor（惯犯庄家层）**：历史分析实锤收割集团地址（3.18.0 起 1741 址，双源自动回灌——appendix.json + analysis-state.json，不买入的筛查案也进）。**不剔除、不禁边**（惯犯地址间本就同实体，正常聚类），命中即高亮"XX 案实锤惯犯"；跨案命中是最高优先级信号。**每次分析交付后固定动作**：`accumulate_offenders.py --apply`（含 manifest 落印）。⚠收纳是组级的（实锤组全组地址进库）——大组（如 QUQ 215 址 bot 体系、SIREN 散仓网）含一次性执行地址，命中远端成员时按"提示不定罪"复核，别直接当工作室核心。
+- **标签时效（3.18.0，提示不定罪）**：resolver 输出附 `stale_days`（距最近核验/快照/入库天数）与 `stale_hint`（时效敏感类目 cex/suspected-cex/infra/bridge/bundler/paymaster/mev 超 90 天）。纪律：①stale_hint 命中且该标签**驱动了剔除/合并决策**时，交付前对该地址浏览器/RPC 复核一次，不得裸信过期设施标签（Bitget 热钱包误判、Base bundler 轮换两案教训）；②自动决策**不因库龄变老而失效**（防设施剔除整体瓦解）；③人工确认已失效的行标 `status=deprecated/rotated/historical`——余额侧自动回退（不剔仓），**聚类禁边保留**（全历史重放里退役设施活跃期的边仍是公共边）；④单源标签（source 单一且非 manual/registry）不得独自驱动实体合并或剔除，须第二证据。
 
 ## 用法（分析流程标准前置步骤，playbook §3 第零步）
 

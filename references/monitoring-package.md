@@ -78,7 +78,10 @@
      "trigger": "any_out=任何转出即预警 / threshold=累计减持超阈值(默认1%总供应)预警",
      "meaning": "触发意味着什么（如：大庄#1 开始出货）",
      "reason": "为什么选这一档（理应沉睡 / 会正常活动怕误报）",
-     "check_hint": "浏览器地址页/RPC 余额轮询"}
+     "check_hint": "浏览器地址页/RPC 余额轮询",
+     "confirm": "immediate|next_round",
+     "denominator": "分母口径声明（如：总供应10亿枚）",
+     "source_pin": "数值来源钉死（如：链上RPC余额；禁跨源环比）"}
   ]
 }
 ```
@@ -86,6 +89,7 @@
 - token.skill_version（**v2.1.0 起必填**）：写交付时 CHANGELOG 最新版本号——/token-update 增量更新靠它识别旧报告的框架版本；旧 JSON 缺失此字段视为未知旧版，全部实体按现行标准重判（见 update-workflow.md 铁律节）
 - whale_groups：`label` 用 v2.0 标签（大庄#1/小庄#2/离场庄#1/狙击集团/项目方），`tier` 填 P0/P1；成本三字段（est_cost_usd/avg_cost_price/cost_method）改为**可选**——报告里按需算过才填，没算就整组省略
 - monitoring_advice：`mode` 两档与第七章监控建议两清单一一对应；`alert_threshold_pct` 仅 threshold 档必填（默认 1.0=总供应 1%）
+- **报警两段制三字段（3.18.0，投后三起误报事故的设计层预防——SOL 池子吸入/Bitget 热钱包/GMGN LP 口径互跳，教训详见项目记忆）**：`confirm` 档位——**数值型阈值类默认 `next_round`**（首轮只记候选事件，下一轮**同源同口径**复现才发红卡；跨源数值禁止直接环比），仅"理应沉睡地址的任何转出"这类强结构信号给 `immediate`；`denominator` 必写分母口径（报警数值与分母不同源=历史事故根因）；`source_pin` 钉死数据源与口径（如 V4 池单边/双边——LP 恰 ×2 或 ÷2 且价未动即口径跳变指纹，不是真事件）。三字段为**新监控包必填**；消费端（posthold 执行器）未实现 confirm 逻辑前，该字段至少让人工核警时有据可依。
 - camp_share_series：阵营键用 v2.0 标签体系名（缺的阵营省略）
 
 序列采样密度：`camp_share_series` 全历史 ≤500 个点（等距或事件驱动采样），够重绘图 1 即可，别把逐笔快照全塞进去。

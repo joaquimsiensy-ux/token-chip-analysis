@@ -26,7 +26,9 @@ plan.json 格式:
     concurrency(EVM,默认 10)
 
 行为契约:
-  - 串行执行（HyperSync 限流 key 级共享 + SQD 单 IP 带宽整形，并行只会互抢）
+  - 泳道调度（3.18.0）：EVM 泳道与 Solana 泳道**并行**，各泳道内部串行——
+    HyperSync 限流是 key 级共享（EVM 币间互抢），SQD 是单 IP 带宽整形（Solana 币间
+    互抢），但两者资源池互不相干，跨泳道并行纯赚墙钟；--serial 回退全串行
   - 单项失败不阻塞后续；结束码 0=全部完成 2=有缺口(Solana gaps) 1=有失败
   - manifest（collect_manifest.json，plan 同目录）逐项原子更新；--resume 跳过 done 项
     （不带 --resume 重跑也安全：底层采集器自动续拉，幂等）
@@ -34,7 +36,7 @@ plan.json 格式:
     防 partial parquet 污染下游 run_*/ glob
   - 只做采集侧完整性校验（done.json/行数/块范围）；对账三查是分析会话 E2 的事
 夜间脱管跑法（推荐）:
-  python3 <skill>/scripts/run_guarded.py --detach --mem-gb 6 --name collect \
+  python3 <skill>/scripts/run_guarded.py --detach --mem-ceiling-gb 6 --name collect \
       -- python3 <skill>/scripts/collect/collect_queue.py plan.json
 （来源：B12 批量预采集，2026-07-22）"""
 import argparse
@@ -45,6 +47,7 @@ import os
 import re
 import subprocess
 import sys
+import threading
 import time
 
 import requests
@@ -240,6 +243,7 @@ def main():
     ap = argparse.ArgumentParser(description="批量预采集队列（只采集不分析）")
     ap.add_argument("plan")
     ap.add_argument("--resume", action="store_true", help="跳过 manifest 里已 done 的项")
+    ap.add_argument("--serial", action="store_true", help="关闭泳道并行，回退全串行")
     ap.add_argument("--dry-run", action="store_true", help="只打印路由计划不执行")
     ap.add_argument("--token-file", default=os.path.expanduser("~/.config/hypersync/token"))
     a = ap.parse_args()
@@ -268,17 +272,21 @@ def main():
         return
 
     t_all = time.time()
-    for i, it in enumerate(plan["items"], 1):
+    mlock = threading.Lock()   # manifest 读改写竞态保护（save 本身已原子改名）
+
+    def run_one(it, tag, i, n):
         key = item_key(it)
-        prev = m["items"].get(key, {})
+        with mlock:
+            prev = dict(m["items"].get(key, {}))
         if a.resume and prev.get("status") == "done":
-            log(f"({i}/{len(plan['items'])}) {it['name']} 已完成，跳过")
-            continue
+            log(f"[{tag}]({i}/{n}) {it['name']} 已完成，跳过")
+            return
         workdir = os.path.join(base, f"{it['name']}分析")
         os.makedirs(os.path.join(workdir, "data"), exist_ok=True)
-        log(f"({i}/{len(plan['items'])}) {it['name']} [{it['chain']}] 开始 -> {workdir}")
-        m["items"][key] = {**it, "status": "running", "started": now_iso()}
-        save_manifest(mpath, m)
+        log(f"[{tag}]({i}/{n}) {it['name']} [{it['chain']}] 开始 -> {workdir}")
+        with mlock:
+            m["items"][key] = {**it, "status": "running", "started": now_iso()}
+            save_manifest(mpath, m)
         logpath = os.path.join(workdir, "data", "collect.log")
         with open(logpath, "a") as logf:
             logf.write(f"\n===== collect_queue {now_iso()} {it['name']} {it['chain']} =====\n")
@@ -290,12 +298,29 @@ def main():
                     res = collect_solana(it, workdir, logf)
             except Exception as e:  # 单项异常不塌整个队列
                 res = {"status": "failed", "error": f"{type(e).__name__}: {e}"}
-        m["items"][key] = {**it, **res, "finished": now_iso()}
-        save_manifest(mpath, m)
-        log(f"  -> {res['status']}"
+        with mlock:
+            m["items"][key] = {**it, **res, "finished": now_iso()}
+            save_manifest(mpath, m)
+        log(f"[{tag}] {it['name']} -> {res['status']}"
             + (f" rows={res.get('rows'):,}" if res.get("rows") else "")
             + (f" 用时 {res.get('elapsed_s')}s" if res.get("elapsed_s") else "")
             + (f" | {res.get('error')}" if res.get("error") else ""))
+
+    def run_lane(tag, lane_items):
+        for i, it in enumerate(lane_items, 1):
+            run_one(it, tag, i, len(lane_items))
+
+    evm_items = [it for it in plan["items"] if it["chain"] in EVM_CHAINS]
+    sol_items = [it for it in plan["items"] if it["chain"] == "solana"]
+    if a.serial or not (evm_items and sol_items):
+        run_lane("all", plan["items"])          # 单泳道场景/显式回退：原串行行为
+    else:
+        lanes = [threading.Thread(target=run_lane, args=("evm", evm_items), daemon=True),
+                 threading.Thread(target=run_lane, args=("sol", sol_items), daemon=True)]
+        for t in lanes:
+            t.start()
+        for t in lanes:
+            t.join()
 
     # 汇总（严重度：failed > gaps > done；退出码 1=有失败 2=仅有缺口 0=全完成）
     log(f"全部结束，总用时 {time.time() - t_all:.0f}s。汇总：")

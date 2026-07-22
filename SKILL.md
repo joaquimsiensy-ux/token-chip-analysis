@@ -104,7 +104,7 @@ description: 对任意链上代币（EVM/Solana/Hyperliquid/Filecoin 及新链�
 4. 读大文件必带 limit/offset；**playbook 分册/中间稿/旧报告禁止整读**——先看 analysis-playbook.md 路由索引定位节，再区间读对应分册（v3.5 四分册：供给对账/实体聚类/状态异常/复核措辞）；分析开局只全读 SKILL.md + 当链 pipeline，其余文档按阶段按需读
 5. 阶段边界写**交接包**：阶段 3 结束把关键结论写入 `findings.md`（结论+数字+tx哈希+图表路径+数据口径+已排除假设）——这是断点资产不只是好习惯；**上下文超 30 万后**，在下个阶段边界主动建议用户 /compact 或新开会话续跑（交接包在盘，断点无损）
 6. 复盘（阶段 6）与 /token-update 在轻上下文里做：报告刚交付且上下文已超 30 万时，建议用户新开会话跑复盘（只读 CHANGELOG 头部+复盘清单，成本约 1/5）
-7. 后台长任务运行期主会话不做零散小交互（缓存 >5min 空窗会整体重写）
+7. 后台长任务运行期主会话不做零散小交互（缓存 >5min 空窗会整体重写；2026-07-22 注：会话为 1 小时缓存 TTL 时该前提放宽、本条降为软约束——但账号超量降级 5 分钟 TTL 时恢复硬执行，以当期账单实测为准）
 
 **刀 3——省轮次（既有纪律，继续执行）**：
 8. 跑固化脚本替代现场试错（历史 Bash 试错 56-103 次/会话，多为重新发现已知坑）；独立工具调用同一轮并行发出；进度管理类调用合并
@@ -131,14 +131,22 @@ description: 对任意链上代币（EVM/Solana/Hyperliquid/Filecoin 及新链�
 
 ## 深入阅读（references/）
 
-- `data-pipeline-evm.md` — BSC/ETH 通道决策树、死亡名单、HyperSync/Alchemy/扫块用法
-- `data-pipeline-solana.md` — 全量扫描与托管判别（IO 实录核验版：双 RPC 互补矩阵、死亡名单、签名投毒坑）
+- `data-pipeline-evm.md` — BSC/Base/Arbitrum 数据管道**路由索引**（节→分册对照表；2026-07-22 拆三分册）
+- `data-pipeline-evm-channels.md` — evm 分册1 采集通道（§1 决策树含通道表/§2 死亡名单/§3 通道操作细节/§6 BSC 专属坑表/§7 免注册通道）
+- `data-pipeline-evm-sources.md` — evm 分册2 数据面与链专节（§4 辅助数据面速查表/§8 Base 专节含 V4 与 Zora 范式/§9 Arbitrum 专节/§10 质押型标的范式）
+- `data-pipeline-evm-recon.md` — evm 分册3 对账与重放（§5 对账 gate 四件套/§11 公共数仓准入与分工/§12 DuckDB 亿级重放缩图引擎）
+- `data-pipeline-solana.md` — Solana 数据管线**路由索引**（IO 实录核验版；节→分册对照表；2026-07-22 拆两分册）
+- `data-pipeline-solana-scan.md` — solana 分册1 扫描与判别（§0a 双 RPC 互补矩阵/§0b 死亡名单/§1 全量扫描/§2a 托管判别五步法/§3a 签名投毒坑/§4 辅助数据面/§5 观测边界）
+- `data-pipeline-solana-capture.md` — solana 分册2 采集与重建（§8 SQD 通道/§9 锚点法/§10 快照对比增量/§11 长币龄混合重建/§12 销户覆盖审计/§13 采集加速工程）
 - `data-pipeline-hyperliquid.md` — 官方 API/Hypurrscan 端点与口径坑
 - `data-pipeline-filecoin.md` — Filfox 管道、创世 ID 段标签、multisig 直读
 - `data-pipeline-robinhood.md` — Blockscout/RPC 双通道（都要浏览器 UA）、gas 溯源、发射台指纹、方法论坑
 - `analysis-playbook.md` — 链无关方法学**路由索引**（四问总纲+节→分册对照表；v3.5 拆四分册）
 - `playbook-supply-recon.md` — 分册1 供给与对账（§1 分母口径/§2 对账 gate/§8 cohort 留存质押）
-- `playbook-entity-cluster.md` — 分册2 实体识别与聚类（§3 标注/§4 归因/§6 聚类含半枢纽与代买枢纽裁决/§6a 标签体系与世代阵营法/§6b 成本工具）
+- `playbook-entity-cluster.md` — 分册2 实体识别与聚类**路由索引**（节→分册对照表；2026-07-22 二次拆三分册）
+- `playbook-entity-cluster-methods.md` — 实体分册1 标注/归因/聚类（§3 标注三级兜底/§4 逐笔归因/§6 聚类硬规则含半枢纽与代买枢纽裁决）
+- `playbook-entity-cluster-tiering.md` — 实体分册2 标签体系与判级（§6a P0/P1 门槛与类型三分类/峰值与分母口径/合并指纹库/场景范式/世代阵营法）
+- `playbook-entity-cluster-cost.md` — 实体分册3 成本工具（§6b 配价方法优先级/流量存量双口径/染色分摊/退出深度比/出货美元核算优先级）
 - `playbook-state-anomaly.md` — 分册3 状态评估与市场异常（§5 CEX 净流/§7 状态评估/§9 刷量克制/§9a 死币复活盘两亚型）
 - `playbook-evidence-wording.md` — 分册4 证据复核与措辞（§10 对抗复核/§11 措辞纪律）
 - `research-workflows.md` — 调研 fan-out（含项目方背景调查标配路线）与对抗复核的 prompt 模板、任务编排纪律
