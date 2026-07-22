@@ -37,7 +37,7 @@
 
 > **EVM 通用件（v2.10 收编，六次实战抽象）**：U1–U5 的采集/重放/对表/分析/序列五个环节有现成脚本 `scripts/update/`（pull_inc / replay_inc / verify_balances / analyze_inc / camp_series_inc / getcode_recheck / v3_positions），步骤映射与输入输出约定见该目录 README——先用现成的，别再手写；Solana 不走该目录（见 README 跨链路由）。
 
-- **同一条链、同一套管道**（data-pipeline-<chain>.md + scripts/），只把起始参数换成 U0 增量起点；采集标配纪律不变（限速实测/退避重试/断点续传/冒烟小样先行）。EVM 直接 `scripts/update/pull_inc.py`：起点自动=旧数据末行块（含重叠窗），拉完自动做重叠窗一致性校验（FAIL 即退出，不许带伤进 U2）。
+- **同一条链、同一套管道**（data-pipeline-<chain>.md + scripts/），只把起始参数换成 U0 增量起点；采集标配纪律不变（限速实测/退避重试/断点续传/冒烟小样先行）。EVM 直接 `scripts/update/pull_inc.py`：起点自动=旧数据末行块（含重叠窗），拉完自动做重叠窗一致性校验（FAIL 即退出，不许带伤进 U2）。**v2 parquet 资产例外**：旧数据是 fetch_hypersync_v2 的 parquet run 目录时不走 pull_inc.py（它面向 v1 CSV）——直接用 fetch_hypersync_v2 新起 run（from_block=上次 done.json 的 next_block，付费档 7 万块 2.3 万条实测 4s），重叠核验改为补拉重叠段落盘 patch 目录、按 (tx,log_index) 键对比零差即接（来源：QUQ(BSC) 完整版增量，2026-07-22）。
 - **Solana 且旧研报为锚点法（无全量流水）时**：走快照对比法（data-pipeline-solana §10，snapshot_diff.py + probe_window_moves.py 五步）——不补拉全量转账,大额变动地址 100% 覆盖定性替代重放。
 - **重叠窗去重**：从末行区块 N（含）开始拉，比对 N 块内容与旧数据一致后再拼接去重——防 off-by-one 漏块/重块（增量特有坑）。
 - **报价币侧定向流水**：旧观察哨含报价币侧条目（稳定币余额基线、USDG/WETH 挂单撤单、创始人资金分发）时，U1 必须同步补拉对应报价币在增量窗口的定向 Transfer（涉哨兵地址双向即可，不用全量）——只拉标的代币会让这类哨兵不可核查（来源：VEX(Robinhood) 增量更新，2026-07-15：哨兵 8 条中 2 条依赖 USDG 侧数据）。

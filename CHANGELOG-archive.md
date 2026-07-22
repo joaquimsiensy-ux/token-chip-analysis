@@ -1,6 +1,190 @@
-# CHANGELOG 归档 — token-chip-analysis（2.19.0 及更早）
+# CHANGELOG 归档 — token-chip-analysis（3.9.0 及更早）
 
 活跃窗口在 `CHANGELOG.md`（最近 ~10 版，整编时滚动追加到本文件）。本文件保存完整早期迭代史——考古某条规则的来源与完整案例上下文时先 grep 这里。头部版本规则以活跃文件为准。
+
+## [3.9.0] - 2026-07-21 — SQD(Arbitrum) 全量复盘：Arbitrum 首战 + VC 币 vesting 取证
+
+> Arbitrum One 首战（此前无该链专属 pipeline，EVM 通用管道实测全通，新增 data-pipeline-evm §9 专节）。83.2 万条 Transfer 全量重放；正经 VC 币标的（TGE 老币、vesting 体系 257 合约），与 meme 盘方法面互补。
+
+**通道/坑（数据工程类，直接正式）**：
+- data-pipeline-evm §9 Arbitrum 专节：HyperSync `arbitrum.hypersync.xyz`（83.2 万条 56 分钟）；Etherscan V2 免费层对 chainid=42161 全可用（与 BSC/Base 相反）；`arb1.arbitrum.io/rpc` 直连免代理；Blockscout Arbitrum 结构可用；0 值投毒+仿冒地址贴脸 Arbitrum 再验证；labels 用 eth 库跨链复用命中 17 CEX
+- §4 辅助面两行：**Gate 现货日K（limit=1000 一次拿全史）= 上过 Gate 的 TGE 老币全史价格正解**（GT 181 根墙/CoinGecko 365 天墙的解法）；第三方富豪榜快照（CoinCarp 类）只当历史线索绝不当现状（SQD 案榜前 8 有 6 个现持已清零）
+- 死亡名单+1：CryptoCompare histoday 已并入 CoinDesk 强制 key
+- §3.1 HyperSync 多会话共享 key 限速冲突：开工前 `ps aux | grep fetch_hypersync` 查撞车，撞车靠 429 退避共存
+- playbook-entity-cluster §3：**交易所 PoR 审计文件=CEX 地址归属实锤正解**（Bybit PoR PDF 命中 3 址直接翻案一实体；权威度高于一切行为推定；清单未列的周边仓用资金源+调度指纹补充判定）；§6a：**CEX 回旋地址剔除**（提出≈充回+现余 0+等额分片=纯过手，SQD 案 201 址 7.82 亿枚把两窗净提币 top15 打成半榜虚影——窗口净流榜必做）
+- environment.md：监视器进程存活检测——macOS 无 /proc，`[ ! -d /proc/<pid> ]` 恒真秒退误报，一律 `ps -p`
+- address-book：Bybit Arbitrum 三址入库（9d27 双证/7da0 PoR+仿冒警示/b9de 行为学储备仓）+ f89d 多链同址补注
+
+**方法（candidate 级，单案待复现转正）**：
+- vesting 工厂枚举法（supply-recon §1）：工厂创建事件一次拿全子合约+受益人+额度+期限，精度比第三方解锁表高一个量级；声明额度 vs 实际注入两口径分开
+- 官方桶金额精确对表归属法（entity-cluster §4）：创世分发金额与 tokenomics 桶百分比逐桶对表，分毫不差=归属铁证
+- 可回收 MM 贷款指纹（entity-cluster §4）：vesting 受益人+官方 revoker 回收再锁=官方出借库存做市的账本实锤
+- 公告前夜大额充值取证范式（evidence-wording §11）：公告时刻锁定+dust→大额充值序列+金额归集闭环三件套="预知公告时点"链上铁证级；意图仍两解并列
+- 质押押金内部人构成分解（supply-recon §8）：押金按官方自营/vesting 直押/受益人直押/真外部四层拆，区间呈现（SQD 案 2.395 亿押金真外部仅 3,940 万）
+- research-workflows §一：官方 GitHub 合约仓库 README 抓全套地址表（正经项目标配动作）
+
+**脚本**：
+- **replay_pass2.py 烧毁落散户桶 bug 修复**：原 `apply()` 对 0x0 直接 return，烧入 0x0 的量不进"销毁"阵营、残留散户残差（SQD 案散户虚高 2.65pp）——修复后烧入自动计入"销毁"阵营（合成数据自测配平），全程无烧毁时不输出该曲线
+- standard_charts.plot_price_events 增 `granularity` 参数（默认"小时线"）——老币日线数据不再硬扛错误标题
+
+**Known Gaps（SQD 遗留，增量更新时核）**：①HTX 在 Arbitrum 的热钱包全程未识别（HTX 是 SQD 报告量约 75% 的所，CEX 托管 12.84% 为下限）——下次 HTX 主力标的先试 HTX PoR 文件；②labels 库无 arbitrum 链表（Dune labels 有 arbitrum 段，扩容候选）；③0x96973f7b 上游 0xc2478177（33.3M）未定性+三个 0.2-0.4pp 边界地址未入册；④BSC/Base 桥出分支内部分布未穿透（合计 3.9%，供给背书已闭合）；⑤两组高吞吐疑似 CEX 冷热对未具名
+
+**质量指标**：初稿关键结论 6 条；复核判定 CONFIRMED 4 / WEAKENED 2 / REFUTED 0；漏检实体 0（Bybit 系为误归因翻案、非漏检）；传播级数字错误 2（散户/销毁口径、mint−burn 文字口径，均交付前修正）；修正记录 12 条全部印入报告附录 C。
+**成本指标**：主线约 95 轮（<150 达标）；上下文峰值约 30 万（贴线，报告成文靠交接包护航）；Workflow 子代理：背调 5 agent 69.6 万 tokens + 复核 6 agent 84 万 tokens（判断环节主模型未降级）；交付约 6 小时（含与并行会话抢 HyperSync 配额等待）；Bash 调用数未单独计数。
+
+## [3.8.1] - 2026-07-20 — 文档小修：时间戳时区纪律
+
+- report-template「md 排版约定」新增：链上/交易所数据原生 UTC、用户行情软件显示北京时间（UTC+8）——报告与问答分钟级时间一律双标"UTC hh:mm（北京 hh:mm）"，跨日敏感处注明口径。实锤：SIREN 回测"UTC 凌晨 00:00~03:39 场内先崩"被用户对照 GMGN 图质疑"明明早上 9-10 点才崩"——同一场崩盘两个钟（UTC 01:45=北京 09:45 起崩），裸 UTC 表述让读者以为存在两个事件。
+
+## [3.8.0] - 2026-07-20 — SIREN 交付后问答复盘：报告可读性两条用户验收硬性
+
+> 非分析复盘。用户逐段审阅 SIREN 报告后直接指定的呈现规范升级（同 v2.0 九条性质，免 candidate 分级）。实测背景：用户为读懂初版报告连问约 10 个术语/机制问题、流转图返工 4 版、并用一个加法（65.9−49.3−1.44≠0）抓出净出漏算四仓 15.2pp——用户原话"每个报告都要问 7-10 个问题才能理解的话，就说明报告不合格了"。
+
+- **术语与角色可读性硬性**（report-template 新节+checklist 7b）：验收标准=非币圈读者从头读完不需要提问。三类词首现处就地治理：行业专有名词带大白话比喻（比喻库沉淀：V4=商场中央金库/执行器=收银台/聚合器=比价中介/结算桥=运钞车/BFS=顺藤摸瓜查 N 步/可达域=能摸到的钱包范围）；自造角色绰号交代"是绰号+指什么+为何这么叫"；机制短语写成现象白话。自造绰号 ≥5 个的报告 TL;DR 后配角色速查卡（绰号|身份|干什么）。
+- **流转图自解释验收**（report-template 流转图节重写+lifecycle_flow.py docstring）：图存在目的=不看正文只看图，实体全部操作（怎么关联/怎么分仓/怎么合并）一眼看完。硬性五条：体系全构成入图、每卡片带持币量【总量%】、分/合动作写边标签（几址→几址/等额原路/碎单/时点）、归属证据有落点（gas 同源 N/M/同日/等额指纹/合流）、footnote 账目行加法自检（期初−期末=Σ各去向）。
+- lifecycle_flow footnote 坑：半角 $ 成对会触发 matplotlib 数学模式、中文渲染成乱码方块——footnote 金额一律全角＄（SIREN 获利行实测）。
+- 关联沉淀（同日已先行 commit a735909）：playbook §10.7 修正传播配平自检（复核补入新实体后下游汇总必须重算，"三处一致"检查抓不住三处一致地错）。
+
+## [3.7.0] - 2026-07-19 — AKE(Akedo·BSC) 全量复盘：币安 Alpha 高控盘游戏币
+
+> BSC 920.6 万条全量重放。项目方系统控盘 62.54%（六桶可升级代理+3/4 多签）、真实链上散户仅 4.42%；7 月十倍暴涨=币安 Alpha Box 空投+永续轧空驱动、项目方宣发缺位但金库高频调度。四路对抗复核修正 14 处。
+
+**通道/坑（data-pipeline-evm §6，直接正式）**：
+- 币安 Alpha"场内↔链上结算引擎桥"识别：超大吞吐+净持≈0+对手方全为 Alpha Router/币安 Web3 入口/路由/池子=场内买卖对冲执行器，归 CEX 基础设施桶，绝不当大户
+- CEX 归集批次节奏≠行为指纹：交易所同分钟窗常有数十个无关用户同批入账（AKE 案 71 址）——"充值时间对齐"类指纹必须先拉同窗全量充值做对照组（C3 REFUTED 根因）
+- 投毒者 dust 伪 gas 种子（0.001 BNB 级）会误当同源强边；衍生"幽灵地址反污染"——凡进实体表地址必回 merged.csv 验存在性+走量（完整性复核抓出 2 个幽灵）
+- 币安 Alpha Box 空投标的三件套时序指纹（公告前 Router 集中充值+分发器注资+公告后领取人即领即抛）；Router 充值必拆"托管系新币 vs 场内库存回充"（AKE 案 76 亿含 58 亿回充，不拆高估 4 倍）
+
+**方法（candidate 级，单案待复现转正）**：
+- 「多头拥挤 vs 轧空回补」OI 方向法（playbook-state-anomaly §5）：OI 与价同涨=拥挤、OI 降+价涨=真轧空——杠杆驱动暴涨必分段，勿笼统写"轧空"
+- 社区分发桶女巫化回收识别（playbook-entity-cluster §4）：claim 桶必做接收人归集收敛检验，收敛+同款 SOP 充所=系统内回收变现（漏检=项目方出货错算社区流通）
+- 可升级代理托管盘锁仓硬度必查升级历史（playbook-state-anomaly §7）：比对实现 vs 代理部署时间，不一致=升级已行使；"锁仓"写成"硬度取决于多签意愿非合约不可变"
+
+**脚本收编（scripts/evm/）**：trace_network.py（传仓网络 BFS 追踪，终点自动分类 CEX/池子/持仓/粉尘化）；merge_parts.py（fetch_hypersync_par 多段 CSV 合并转 replay_pass1 格式）。standard_charts.py 增「CEX托管」标准阵营键（tab:olive，多所标的必备）。
+
+**质量指标**：初稿主结论约 14 条；复核判定 CONFIRMED 7 / WEAKENED 3 / REFUTED 1 / 完整性新增 3；漏检 3（女巫管道 7.19%、ATH 兑现主体、新面孔#3 双重计入）全部复核补齐；数字错误 4（散户 5.83→4.42、投资人释放 4.6→6.65、bundler2 池扫 13.4→13.08、汇聚节点 4→5）全部修正入报告。
+**成本指标**：主线约 90 轮；子代理 9（5 调研+4 复核）；上下文峰值 ~15 万（未超 30 万线）；墙钟 ~6.5h（采集后台 4.2h 与下游并行）。
+
+## [3.6.0] - 2026-07-19 — SIREN(BSC) 全量复盘（正文条目历史缺失，3.15.0 整编时以索引行存档）
+
+> 并行会话时期该版只写了索引区详细行、正文条目缺失（活跃文件与 archive 均无）。为保版本序完整，索引行原文如下：
+
+- **3.6.0 2026-07-19 SIREN(BSC) 全量复盘**：单一庄家体系全生命周期（两轮吸筹 51%→归集单仓→曝光日 903/903 wei 级等额原路散仓换代→rug 三日出货 49pp）。方法 5 条正式（平线≠没出货必做美元级流出核查/V4 通道穿透两步法/大集群后平行静置仓网补扫/公共尘埃网络剔除/N-N 等额原路返还=最强协同指纹）+ 复核措辞纪律扩展（截断地址含自己脑补补全一律行为还原，机制三见）；通道实测 3 条（four.meme API 复活/bloXroute 并发降级 requests+窗口动态/Pancake V3 Swap topic 坑/CEX 封闭盘识别三角）；脚本收编 2（scan_bloxroute_seg.py requests 版替 curl 线程池/fetch_pool_swaps.py 池 Swap 价格重建）。对抗复核 5 路全 CONFIRMED、REFUTED=0、17 处实质修正全部加重结论（控盘 47.8%→65.9%、挖出高位偷卖 $3000 万与回购销毁机）
+
+## [3.5.0] - 2026-07-18 — ASTEROID太空狗(ETH) 全量复盘 + 逢5整编：playbook 四分册拆分
+
+> ETH 主网 140 万条全量重放的"死币复活盘"全周期分析（发射→归零→事件驱动 9000 倍→换手）；四路对抗复核修正 12 处；本条含 v3.5 逢 5 触发的整编模式执行记录。
+
+**复盘入库（数据工程，直接正式）**：
+- data-pipeline-evm.md：HyperSync eth 子域基准（139.9 万条 33 分钟单进程、0.25s 间隔 429 仅 11 次）；CoinGecko days=max 免费层已死（限 365 天）；GT hour before_timestamp 翻页对 >41 天历史段返 0；Etherscan getcontractcreation 的 creationBytecode=合约模板指纹（连环发币人识别）；**ETH V4 PoolManager（0x…04444c）被 dawsbot 错标 Sandwich Attacker**（vanity 全零前缀命中 bot 类标签必先行为核验；labels 已 curation 修正+manifest 重落印）；"高入度低出度"在 ETH 多为 swap 中转腿、判 CEX 库须看下游身份
+- environment.md：zsh 变量存 curl 选项不分词（exit 5 假死，${=P} 或数组）
+- playbook（拆分后分册）：§6 行为半枢纽剔除**正式**（对手≥30 且净留<流入 2% 不作合并边，机制解释=漏斗必然形态；3367 假簇→136 实测）；§10 第 10 条**转正**（怀疑者地址/衍生定性采纳前必行为还原，TRASH+ASTEROID 两见）；§6b 出货美元核算优先级**正式**（internal 实收>恒定乘积推算，实测推算高估近 2 倍）；【候选·单案】×3：世代阵营划分法（§6a）、公共代买枢纽裁决法（§6）、死币复活盘事件驱动亚型分流（§9a）
+- 脚本收编：fetch_hypersync.py 参数化重写（--url/--token-addr/--out/断点续传，去 SIREN 硬编码）；新增 verify_recon.py（balanceOf 硬对账+GMGN 对表）、prep_cluster_inputs.py（merged→cluster.py 输入适配，gmgn 顶层 list 转换防 R2 静默失效）
+- Known Gap：cluster.py 宜直读 merged.csv（当前需 prep 转换）；dev 第三个币未深挖（独立性纪律）；窄带 1% 分仓疑云链上已穷尽
+
+**整编执行（v3.5 逢 5 触发）**：
+- **playbook 四分册拆分**：analysis-playbook.md（470 行/103KB/14 节）→ supply-recon(6.5KB)+entity-cluster(62.7KB)+state-anomaly(22.4KB)+evidence-wording(9.9KB)+路由索引(5KB)；**迁移对账：14 节、336 条规则行零缺失**（脚本机械搬运零改写）；SKILL.md 引用与成本纪律定点读指引同步更新
+- 候选规则清点：6 条候选全部为 2026-07-18 当日入库（VIRTUAL 3+本次 3），零转正零降档
+- 归档滚动：2.27.0~2.20.0 共 9 条移入 CHANGELOG-archive.md，活跃窗口 10 条
+- 整编待办：entity-cluster 62.7KB 微超 60KB 线（§6a 最大节，下次整编再拆）
+
+**成本指标**：主会话轮次 ~90、Bash ~60 次、交付 ~4.5h（采集 33min 全程后台，等待期填满预分析）；上下文峰值 ~40 万（超 30 万线：高信息密度+四路复核吸收，未砍复核）
+**质量指标**：初稿关键结论 14；复核判定 CONFIRMED 6 / WEAKENED 4 / 数字级 REFUTED 3（+完整性补充 6、审计衍生说法被行为还原否决 1）；复核翻出漏检 3（实体A 世代错分、1 月双址实为一实体、wash 占比未量化）；传播级数字错误 3（dev 落袋高估 ~2 倍、实体A 成本低估 10 倍、最大私人实体排序错）；重犯已录坑 1（matplotlib 文本 $ 触发 mathtext——HAN 案已录，作业时未过环境坑清单）
+
+
+## [3.4.0] - 2026-07-18 — VIRTUAL(Base+ETH) 多链全量复盘：亿级双通道采集工程+多链全局合并范式
+
+> 单币 1.263 亿条（Base）+76.4 万条（ETH）全量重放的多链分析，采集规模为 skill 历史最大；双通道跨天无人值守+对抗复核 4 路。会话断点接力实录：主会话恰断在"报告 build 成功+质检返回"的瞬间（未发最终总结、未做复盘），收尾会话凭 findings.md+落盘产物+transcript 尾部三件重建全景后补完质检复验/复核数字修正/复盘——交接包断点资产（v3.1 刀 2）首次跨会话实战验证可用。
+
+- **data-pipeline-evm.md §8.1 +5 条**（数据工程，直接正式）：亿级规模基准（1.263 亿条/双通道墙钟 ~30h/HyperSync 高峰段单 key 硬顶 750-820 条/s）、抽样估总量"二轮高峰"坑（先高估一倍再低估一半——生态币活动密度与价格周期脱钩，密度探测必须覆盖最近月份）、双通道再平衡禁忌（plan.json 段边界固化后禁跨通道切分，唯一安全接力=同段 .prog 断点续采）、亿级拼接重放必做丢弃行审计（去重丢行数=重复键数，乱序误杀甄别补放，实测 607+607）、watchdog 守护+Monitor 事件观察哨标准件
+- **analysis-playbook.md +5 条**：【候选·单案】CEX 上线事件驱动做市商身份判定纪律（时间强相关≠受托实锤，必查与该 CEX 全部标注地址直接往来，零往来降级"事件驱动做市实体"并列备择）；【候选·单案】非关联组触达庄级门槛的双口径披露；CEX 冷热调仓伪波动剔除（机制两见转正，与 posthold Bitget 热钱包事故同机制）；【候选·单案】锁仓池数字动态性复核（RPC 现值+30 天流速，防漏"迁移进行时"结构信号）；桥接范式多链全量版（全局恒定分母+分链重放合并、桥锁↔桥铸 wei 级闭合、CCIP 背书池所在链必须实查——实测分支背书锁在 Base 侧而非原生链 ETH、未展开分支双处登记）
+- **脚本收编 2 个（scripts/evm/，--config 参数化，key 不落 skill 目录）**：fetch_hypersync_par.py（HyperSync 多段并行：plan.json 段计划固化+.prog 断点+指数退避+.aldone 跨通道认领标记）、watchdog_dual.py（双通道守护：第二通道探测自启/死亡重启/段回收兜底/ALL_DONE 退出；通用化自 VIRTUAL 会话产物，py_compile 过）
+- **报告层小修（收尾会话）**：附录 C 判定数改如实口径（原始 20 项=10C/6W/4R，合并同类项后净修正 9 条——原稿"9/5/3"易误读为判定分布）；appendix.json review_summary 同步
+- **Known Gaps（VIRTUAL 下次 /token-update 验收点）**：Solana 分支 2.65% 未做实体分析；Sablier 流锁受益人未穿透；做市实体A 资金源终极身份（全流水走链上中转仓）；ETH 侧散布 11.7% 仅 top 级识别；官方建池手历史 LP 仓（峰值 4.92%）未入官方系历史曲线（末态结论不受影响）
+- 成本：主会话 539 轮次/127 Bash/墙钟 ~44h（含 ~30h 采集挂机，双通道比单通道省 ~12h）+收尾会话轻量接力；质量：初稿 TL;DR 级硬结论 ~15 条，复核 4 路原始 20 判定=10 CONFIRMED/6 WEAKENED/4 REFUTED，复核翻出漏检观察级仓位 1 个（官方建池手 Base LP 峰值 4.92%），传播级数字错误 1 个（金库"9 笔流水"实为 7 笔）
+
+## [3.3.0] - 2026-07-18 — 体检修复八项：一致性收口+硬关卡机器化+监控分册（自查+codex 交叉复核融合，用户批 1-8 全做）
+
+> 触发：v3.2 交付后用户要求全面体检 skill 找优化空间（@CX）。自查+codex 双向复核、每条声明亲手验证后定 13 项清单，用户批 1-8。核心判断（双方一致）：方法本身扎实，真问题是三层失同步——v3.2 按需化没改干净、文档间重复条目开始漂移、文档承诺的"硬关卡"在脚本层不硬。
+
+- **①密钥去硬编码**：probe_codetype.py 内置 dRPC key 明文违反铁律 5（全库扫描仅此 1 处）——改为 ETH_RPC 环境变量必填、缺失报错指路 api-keys.md。key 已随 git 化进历史：仓库纯本机无远程暂不清洗，**分享 skill 目录前必须先处理 git 历史**；轮换 key 受阻于 dRPC 账号未登记（见 api-keys.md 第 3 节⚠）。
+- **②v3.2 漏改五处收口**：SKILL.md 工作流总览"JSON 附录"残留、report-template checklist 两个第 13 条撞号、骨架元信息行/JSON 节"必须"措辞未条件化、update-workflow U5 骨架与 checklist 无"无监控包"分支标注、playbook §7 标题与 §11 观察哨机制+retrospective"appendix 即登记处"未跟 v3.2——全部按"监控包 关/开 两分支"统一收口（codex 方案：收口分支而非到处打补丁）。顺带成本纪律条 3 补 `| head` 流式风险限定（SIGPIPE 会提前杀上游进程，流式长任务先落文件再 head）。
+- **③三对重复条目消除**：playbook"注资证据分级"+"gas funder 公共性体检"双份（已现措辞分叉——漂移现场证据）、§6a"计数分级+离场庄亚型"双份、update-workflow U3a 巨型段（4585 字符单行）与 playbook §6 跨文档双份——各留一处主本+指针；U3a 独有的"≥1% 候选资金对手方无条件展开"深挖线条款并入 playbook §6 主本后再压缩，零语义丢失。
+- **④导航反向检查**：SKILL.md 深入阅读清单补漏列的 data-pipeline-robinhood.md；docs_lint 新增反向漏列检查（references 下存在但 SKILL.md 未列 → FAIL）——正向断链查不出"存在但没列"。
+- **★⑤analysis-state.json（默认交付的机器状态文件，codex 提出）**：v3.2 砍 appendix 的连锁缺口——未买入标的做 /token-update 时实体表只能从附录 B 文字反抄地址。新增默认交付物 analysis-state.json=appendix 机器子集（token/whale_groups/vault_addresses/addresses 五字段版/camp_share_series，无一切监控文案），schema 定义在 report-template 新节；verify_balances/analyze_inc 已内置缺 appendix 自动读它；U0 资产表/U5 滚动/checklist 11 条同步。
+- **★⑥对账关卡退出码硬化+离线契约测试**：replay_inc 非零地址负余额=exit 1、含 ZERO 快照恒等式不闭合=exit 1（实证两种快照格式并存：GME/BEGGAR 含 ZERO 负项、COMPUTE 正余额型——后者恒等式不适用打 NOTE 降级，防误拦）；verify_balances 归档块口径 MISMATCH=exit 1、latest 口径差异=exit 2 INCONCLUSIVE 不再假 PASS。新增 test_replay_inc.py（四路径 fixture）+ test_build_html.py（WARN 拒交付与 report-extract 四键契约）+ **run_all.py 一键全家桶**（3 lint+2 测试），retrospective 步骤 3 改跑全家桶——"文档说硬"首次变成"退出码硬"。
+- **⑦monitoring-package.md 拆册**：JSON schema+买入后监控包节（占 report-template 29%、默认分析用不到）独立成册，report-template 留指针（31.1K→22.8K）；SKILL.md/update-workflow/playbook/build_html 全部引用改指向；SKILL.md 成本纪律砍历史基线数字段（数字在本 CHANGELOG v3.1.0 可考古）。
+- **⑧整编 60KB 线绑定动作**：v3.0 整编后 playbook 仍 96KB、触发器永久为真形同虚设——线不动，绑定明确动作：超线整编=四分册主题拆分+路由索引（供给对账/实体聚类/状态异常/证据复核），v3.5 兑现；拆分纪律=先冻结规则清单逐条迁移核对。
+- 未做项（用户未批或双方共识不做）：背景调研路线精简（旧案不重开）、"观察哨"双义改名、脚本成熟度元数据、版本号重定义（用户 7-14 规则不翻案）、playbook 立即大拆分（v3.5）、砍复核/换 sonnet 判断环节（B 档否决维持）。
+- 守护全家桶 5/5 PASS（docs_lint 20 文档含新册+反向检查）。**验证纪律实录**：codex 两条声明按验证打了折扣——verify_balances"返回 0"是刻意设计（latest 口径天然微差）非 bug，精细化而非推翻；恒等式硬化若按 codex 原方案无条件 FAIL 会误拦 COMPUTE 型快照，实证三个实战产物后才定条件版。
+
+## [3.2.0] - 2026-07-18 — 监控包按需化：观察哨/监控建议/JSON 附录从标配改为买入后生成（用户定）
+
+> 触发：用户复盘"分析了 40 个币，可能不到 10 个买入需要监控"——约 3/4 的监控产物（观察哨清单+两档监控建议+appendix.json）为不买入的标的白做。用户决策：默认报告不带监控包，看完报告确认买入再补生成；**格式标准一律不动**。
+
+- **★交付物两段式**：默认交付=报告 HTML（四问+三图+P0 流转图+附录四件套：验证步骤/标签↔地址对照/复核修正记录/来源），`build_html.py` 不带 `--json`（该参数本就可选，脚本零改动）；报告末尾固定句"如决定买入，回复一声即可补生成监控包"。**附录 B 标签↔完整地址对照升为任何情况不可省**——正文零地址设计的可验证性唯一支点+补生成 JSON 的原料。
+- **★新增「买入后监控包」流程（report-template.md 新节）**：触发=用户确认买入/点名监控（可跨会话，材料全在落盘产物：附录 B+data/+第七章状态评估）；产出三件=第七章补写观察哨与两档监控建议、appendix.json（四键/sentinel/monitoring_advice 全按既有 schema）、重跑 build_html --json 出监控版 HTML 覆盖原文件；质检=零 WARN+sentinel 纪律复查+哨与状态评估对齐；新会话执行禁止整读旧报告（成本纪律刀 2）。
+- **report-template.md 第七章重构**：状态评估（分析结论本体）保留必做；结论天然检验点正文一句话点出；观察哨清单+两档监控建议标注默认不写；checklist 第 8/11/12 条改默认版+新增第 13 条"买入后监控包交付时追加"检查组。
+- **update-workflow.md U0 新增 4c 无监控包兜底**：未买入标的旧报告无 appendix/观察哨不算资产缺失——实体表从附录 B+data/ 重建、U3c 如实写"无观察哨基线"、U5 滚动 JSON 免做；更新时用户表示买入的顺手补包（基线从本次更新起算）。
+- **SKILL.md**：frontmatter 与阶段 5 同步（appendix.json 从必做产物中移除、监控包按需引用）。
+- 影响与不变项：投后看板衔接不变（买入的币走补包流程后照常喂看板，report-extract 四键/id 约定原样）；/token-update 主流程不变（更新对象基本是已买入币，自带监控包）；预计再省每次分析约 $3-6+对应轮次（观察哨排查与 JSON 编制是逐条人工研判活）。
+
+## [3.1.0] - 2026-07-18 — 成本纪律三刀版：全量账单解剖后的降本机制（用户批 A 档全部、A1 模型定为 sonnet、否决 B/C 档；codex 交叉复核融合）
+
+> 触发：用户 ccusage 统计发现"用了 skill 之后单次分析仍然很贵，和不用 skill 时几乎没区别"。全量拆账（65 会话、逐条 usage 直读+ccusage 内置单价）：**63% 是缓存读**（每轮重读全部会话历史）、19% 缓存写、18% 输出、普通输入≈0；按轮归因执行类轮次占 55%；单次完整分析 $60-160。结论：skill 砍掉了摸索轮次（-75% 有实证）但上下文同步膨胀（实测峰值 40-75 万 tokens，1M 窗口是隐形放大器），成本 ≈ 轮次×平均上下文×单价 的积分没变。codex 定调："真正该优化的是模型反复读取多少东西，以及模型亲自写了多少机器本可生成的字节"。
+
+- **★SKILL.md 成本纪律节重写为三刀结构**（原 8 条全部保留归位）：刀 1 机械活换便宜模型——机械阶段（脚本跑批/对账执行侧/标签 lookup/图表脚本/完整性验证）一律 `model: sonnet` 子代理（单价约主模型 3/10 且不背主线上下文；Workflow 用 opts.model，纯跑批加 effort:'low'），判断环节（聚类/定性/复核裁决/报告撰写）禁止外包；外包 prompt 四要素（目标/脚本与参数/产物路径/≤30 行回报格式）。刀 2 控上下文——playbook/中间稿/旧报告禁止整读（Grep 定位+区间读）、存量脚本输出加 `| head -30` 兜底、**上下文预警线 200k→30 万**（超线在阶段边界建议 /compact 或断点续会话，findings.md 交接包为断点资产）、复盘与更新在轻上下文做（新会话成本约 1/5）。刀 3 省轮次（既有纪律照旧）。参考预算新增"上下文峰值 <30 万"。
+- **research-workflows.md 模型选择规则**：机械执行型代理（schema 批量抓取/脚本重试循环/批量余额核查）用 sonnet；判断型代理（调研综合评估/怀疑者复核/完整性批评）保持主模型——B1"复核子代理化"用户已否决，复核维持主线主模型不动。
+- **update-workflow.md U6 补引用**：更新会话同执行三刀；更新任务上下文失控多半=违反"U0 只读附录 JSON 与实体表、不整读旧报告正文"。
+- **决策存档**：B 档（复核改证据包子代理/复核轮次封顶）、C 档（砍复核/砍覆盖/换弱模型）用户明确否决不做——成本目标让位于准确性（铁律 6）再确认。skill 维护类会话（标签库审计/整编）建议攒批做、不在分析会话 50 万上下文尾部做复盘。
+- **量化预期（下次分析验收）**：单次全量分析 $60-100 → $30-50（-40~50%）；分账单验证法=ccusage 看该会话 cacheReadTokens 与 totalCost。此为流程机制类变更，不适用 candidate 分级（数据工程/流程类豁免）。
+- 成本：本次为排查+机制写入会话（非分析复盘），拆账脚本 3 个（scratchpad，一次性不入库）、codex 交叉复核 1 路、改动 4 文件（SKILL/research-workflows/update-workflow/CHANGELOG）。
+
+## [3.0.0] - 2026-07-18 — 稳定化大版本：50 版加法之后的第一次系统性减法与校准基建（用户批 A/B/C 全档 + codex 交叉复核共识）
+
+> 触发：用户问"迭代 40+ 次后整体效果如何"。审计结论：成本效率有实证（轮次 266-480→60-95，-75%），但初稿准确率无度量、工程卫生恶化（无版本控制/标签库双真相/文档追加式膨胀）。本版本不加任何分析规则，全部投入是基建与机制。
+
+- **★git 化（A1）**：skill 目录 git init，基线快照原样入库；此后每次复盘一个 commit（retrospective 步骤 3 已挂）。手工 tar.gz 备份时代结束；并行会话版本竞态有了案底可查。
+- **★标签库双真相收敛（A2）**：①根因确诊——add_labels（同级覆盖）与 build_labels（同级先到保留）冲突语义不一致，v4.2 期间直改发布库的 12 行精修在全量重建时被泛化行回退（列级 diff 抓出）；②机制修复——SRC_PRIORITY 新增 `curation=-1` 最高层（additions/curation_overrides_*.csv 专用 source），upsert 高优先级源同步覆盖 evidence/verified_at/status（此前只补空）；③12 行精修救回 curation_overrides_20260718.csv；④roundtrip_check.py 进发布流程（发布版 ⊆ 新构建行级门禁，七链 PASS）；⑤benchmark --labels-dir fail-fast（堵住 cwd 错→空表→假 PASS）；⑥发布库 sha256 manifest 落印/验印。发布版与 staging md5 全一致，benchmark 回归 PASS 存档。
+- **★复盘机制升级（retrospective v3.0）**：①质量 4 指标（初稿关键结论数/复核判定分布/漏检实体数/传播级数字错误数）与成本 3 指标并列强制——"复核每次都有修正"是初稿缺陷率的反面指标不是胜率，质量指标是"初稿是否在进步"的唯一证据源；②分析方法类新规则 candidate 分级（单案【候选】→两独立案例复现或机制解释才转正；数据工程类豁免）——治事后拟合；③整编模式（版本尾数逢 0/5 或 playbook>60KB 或 docs_lint 漂移 ≥3 处触发，只做减法）——迭代引擎补上减法半边；④预测追踪（观察哨兑现率挂 /token-update U3c，事实归因/行为预测/价格结果三维分开评分，整编时汇总累计兑现率）——分析质量的外部校准。
+- **★版本号两维制**：skill 版本（流程+方法）与 labels 数据版本分离，标签库扩容不再占 skill 次版本号；写 CHANGELOG 前必跑 changelog_lint（2.21.0 撞号 ×2 与 2.24/2.25 倒排的历史事故已白名单存档，不改写历史）。
+- **★守护三件套（scripts/tests/）**：changelog_lint（版本唯一性+顺序）、docs_lint（引用断链+残缺粗体+SKILL 清单齐全，首跑即抓出 playbook 截断残行与重复条目对）、labels_manifest（发布库指纹落印/验印）；挂进复盘步骤 3/4 与 MAINTENANCE 发布流程。
+- **playbook 三区节内重组（B1）**：§6 36 条散点→6 主题组、§6a 25 条→4 组、§7 追加区→3 组；合并 2 处重复条目对、删截断残行、2 条错位条目归位。子代理语义清点（git 旧版逐条对比）：37 关键阈值全在场，抓出 2 条丢失+3 处削弱全部补回。净效果：结构化优先（-4% 字符），检索从线性扫描变主题定位。
+- **CHANGELOG 拆分**：活跃窗口 11 条 44KB + CHANGELOG-archive.md 39 条 120KB，头部版本索引一览。
+- **labels 文档拆分**：README.md 使用篇 9KB（分析时读）+ MAINTENANCE.md 维护篇 13KB（重建/审计/扩容时读）——分析会话卸掉 2/3 维护内容；serial-actor 纪律明文划界与铁律 1 的张力（惯犯命中=提示线索≠本案定罪，本案独立证据链必备）。
+- **SKILL.md**：description 精简 1/3（触发词全保留）；labels 引用漂移修正（v4→v4.2+/47.1 万条）。
+- **清理归档（A3，用户照单批准）**：删可重建大文件与缓存垃圾 ~190MB、backup 两项+robinhood 候选池移出至桌面 `skill-archive-20260718/`；工作树 287MB→97MB。sources 大文件按 MAINTENANCE 下载命令随时可重建（dune 两表本地留 .gz）。
+- **Known Gaps（v3.0 遗留）**：①留出评测集盲跑（codex C5 建议：冻结 8-12 旧案数据、删案例细节后盲跑对比）——准备成本数十小时，暂缓，若日后要严格验证"规则泛化能力"再启动；②robinhood_verified_contracts.csv 候选池已移出桌面归档，首轮人工审仍待做（P1 余款照旧）；③质量 4 指标与预测追踪从下一次分析/更新开始积累，前 50 版无此数据；④sources/out 已删，下次重建自动再生（roundtrip_check 只在重建时用）。
+- 成本：稳定化会话全程约 60 轮、Bash 约 55 次；标签库全量重建 ×3（含修复迭代）+ benchmark ×3；子代理 2 路（codex 交叉复核 + playbook 语义清点 12.7 万 tokens）；A/B/C 三档 14 项全落地。
+
+## [2.29.0] - 2026-07-18 — jesse(Base) 全量分析复盘：Zora CreatorCoin 范式 + 假 wash bot（池子）翻案 + ERC-4626 金库双盲区 + 窗口净额口径原则
+
+- **★Zora CreatorCoin 标的范式（pipeline-evm 新 §8.4a）**：识别（impl 名=CreatorCoin）、50/50 结构（vesting 5 亿锁在**代币合约自身**=锁仓桶单列，5 年纯线性无 cliff、claimVesting→payoutRecipient 可变更）、配对 ZORA 非 ETH、99% 防狙击税仅挡 10 秒（Flashblocks 同块狙击生态照收 20%+）、创作者费以 ZORA 结算不构成本币卖压、退出深度专项（ZORA 计价池 90%+ 集中→账面市值/承接比+双重贬值链）。
+- **★"毛流量巨大+净0"指纹先排除池子（playbook §9）**：WETH/本币池吞吐形态与 wash bot 完全同貌，实测 5 个"刷量bot"4 个是池子合约（RPC token0/token1 排除法）；短命池是做量场地证据但操盘者是池中 EOA，识别不出如实写。
+- **★ERC-4626 杠杆金库双盲区（playbook §7）**：Deposit+份额未动=保留赎回权的生息仓（非赠与非卖出），但金库币被交易池借出直接卖 DEX——"本人没卖"与"库存成卖压弹药"并列写；最低水位法给流出下限；监控必须加金库份额 token 事件层（只盯本币 Transfer 看不到赎回）。
+- **★窗口净额口径原则（playbook §7）**：净额榜=余额变化≠买卖；脉冲归因"事件后24h窗+全窗"双口径（实锤：全窗最大净卖=24h最大净买，卖在崩塌段=止损非派发）；卖方榜逐条实体级检验（移仓剔除）；"借新闻出货"正主看卖出时点价位（公告后135秒闪电清仓的沉睡仓才最像收到风声）。
+- **同型协同结构≠同一实体 + 合计数重算义务（playbook §6a）**：狙击生态"买手→卖手"同型是标准作业模式不是合并证据（执行栈指纹互斥可证独立）；"N 组合计 X%"在实体表每次变更后必须重算（18.4%→20.19% 被两路复核同时抓出的教训）。
+- **Base 通道补充（pipeline-evm §8.1/8.2）**：HyperSync base 非高峰单通道 213 万条 94 分钟零 429（时段依赖，与 PING 高峰期经验互补）、主采集期间并发探测会 429；分时段密度探测法（发射月密度可为稳态 15 倍）；Blockscout v1 API sort=asc 一次拿最早注资 tx；CoinbaseSmartWallet(4337) txlist 溯源失效改 token 层；Coinbase Bundler=Base App 发射 tx.from（非发行主体，Blockscout is_scam 误标）；7702 的 Blockscout"无名合约"特征。
+- **地址入库**：MEXC 15 (Base) 0x4e3ae00e…31b60（address-book；三路复核定性冲突靠 Basescan 官方标签裁决的教学案例——热钱包持币榜形态酷似大户）。
+- 本次实战验证（未新增条目）：地址截断补全被数据反查抓获 3 次（自己犯 2 次+消费复核转述拦截 1 次）——"地址一律从落盘文件取"纪律再验证；开工版本自查首次实际派上用场（会话期间 CHANGELOG 被并行会话推进 2.25→2.28，写入前重读避免了重复覆盖 PING 的 Base 条目与 replay 脚本）；5 路对抗复核 1 重大定性纠错+2 传播级数字校正+1 实体表返工——投入产出比最高环节七连验。
+- Known Gaps（jesse 案遗留）：①狙击惯犯入标签库 serial-actor 层待办（#2 组 b102/9572+私有合约 0x625c…4150、#4 组 EEe3/8466/b10caf05+新工具 0x1c548dc 同 selector 0x1bfd2ed3——2026-04~07 仍活跃）②数据管道缺 tx.from 字段（transferFrom 模式扫描不可执行，HyperSync transactions 字段补采方案待验）③短命池对倒操盘 EOA 未识别 ④防狙击税负核算未做（hook 事件日志）。
+- 成本：全量首战约 5 小时（含 4 路调研+5 路对抗复核 agent），Bash 约 75 次，主上下文一次未断；HyperSync 单通道全量 213 万条 94 分钟。
+
+## [2.28.0] - 2026-07-18 — 哈基米(BSC) 全量分析复盘：HyperSync 限流分段多进程 + blxrbdn 窗口收缩 + 币安Web3路由假实体 + V4 刷量检查 + 换仓检测义务
+
+> 用户 2026-07-18 确认"全部写入"——以下条目已全部落地对应 references/scripts。BSC Alpha 在架币首个 v2.0 框架全量案（436 万条、对账 10/10、四路复核 1 实锤修正+2 WEAKENED）。
+
+- **★HyperSync 免费层 429 收紧（pipeline-evm 通道表+§3.1）**：0.15s 间隔高峰期 429 频发（173 次/时级、吞吐腰斩），0.5s 间隔基本消失；**同 key 2-3 进程按块段分兵并行可行**（互扰有限）——大标的提速正解=分段多进程+断点续拉+事后 (tx,log_index) 去重合并。与 v2.27.0 的"429→RPC getLogs 备选"互补（本案 BSC 公共 RPC 无全史 getLogs 可切，分段自救更通用）。transactions 端点做 BNB 注资溯源：单址全链 ~2.3s（批量×全链会超时，姿势=单址逐查/发射窗小段批量）。
+- **★blxrbdn 历史窗口收缩（pipeline-evm §1/§2）**：105M 前块 header not found（二分 100M✗/105M✓ ≈保留 1 个月），"可扫全史"过时——降级为近期段快扫通道（550 万块 7 分钟）；scan_transfers 的 `<chain>_scan_meta.json` 缓存起点坑（改 config 须删）同步记档。
+- **★币安 Web3 钱包 DEX Router 串假实体（pipeline-evm §6 坑表）**：`0xb300000b…`（vanity）作"共同首币来源"边把互不相识的币安钱包用户串成 421 址大簇——E3 共源边源地址必须先过标签库；与 LI.FI/对倒 bot 代理同为"度数几十"漏网半枢纽。
+- **★Uniswap V4 PoolManager 必入池子清单（pipeline-evm §6 坑表）**：单例合约不在常规 pair 发现流程，漏掉即错过其上 bot 刷量（实测脉冲日占全网笔数 49-88%/毛量 40-76%、池深仅数千美元、与拉升起点精准同步）——量能真实性检查加"V4 毛量占比"维度+四日脉冲定量法。
+- **★换仓检测义务（playbook §7）**："完整离场"结论前必对清仓 tx 接收方做两跳内等额沉淀扫描（实测内盘最大买家清仓 7 个月后两跳等额 813.7 万枚续持，初判被复核推翻）——"归零"与"离场"之间隔一次换仓检测。
+- **黑箱主导盘"0 庄"量化措辞（playbook §11）**：托管黑箱占比大时结论句必须量化可见范围（"外部可见盘约占 X% 内 0 庄"），单写"链上可证范围内"会让读者高估覆盖面。
+- **E2 同块共现参数补强（playbook §6）**：2-buyer 块纳入+wei 同额检测，防漏强指纹对。
+- **Alpha Router 月度净流分析件（pipeline-evm §4 Alpha 条）**：托管量月度差分=场内净买卖压力曲线（Alpha 在架币标配）；净流出月归因必查"结算引擎回吐 vs 直接提现"分量。上架时间链上锚点=Router 首收币块。
+- **脚本收编**：fetch_fundedby.py（bscscan Funded By 批量抓取器，单线程 0.8s+磁盘缓存，147 址 8 分钟实测）入 scripts/evm/。
+- **Known Gaps**：①哈基米待证关联对（第二大外部单址↔0xHeme 系）待 /token-update 验收；②cluster.py miss-queue 新记 89 个高权重未命中地址待回填；③V4 量能哨（单日毛量占比>20%）待实装投后监控。
+- 成本指标：约 95 轮 / Bash 约 80 次 / 交付 ~13h（采集长跑 ~10h 含 429 与通道切换 ~1.5h）；复核 4 路 ~70 万 subagent tokens，翻出 1 实锤修正+2 措辞降级——投入产出比再验证。
 
 ## [2.27.0] - 2026-07-18 — Index(Robinhood) 全量分析复盘：HyperSync 429→RPC getLogs 备选通道 + 第5类发射结构(外部资产分红盘) + EIP-7702 做市钱包费流陷阱 + 染色闭合口径
 

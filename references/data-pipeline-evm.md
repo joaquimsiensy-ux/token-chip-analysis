@@ -31,6 +31,8 @@
 - **部署块缓存** `get_deploy_block(chain, token, fetch_fn)`——每币首次定位后永存，免每次从 0 扫空段；
 - **时间戳锚点库** `add_anchors(chain, pairs)` / `estimate_ts`——按链累积复用，v2 产物的 blocks.parquet (number,timestamp) 直接喂入，新币插值免重复采锚点（⚠发射窗口精确配价仍禁用插值，恒定偏差坑见 §6）。
 
+**增量拉取（研报更新/补尾场景）**：v2 对增量天然友好——同一 run 根目录下新起 run（from_block=上次 done.json 的 next_block）即可，付费档实测 7 万块 2.3 万条仅 4s；**补丁段重叠核验法**：对怀疑有洞的区间补拉一段落盘独立 patch 目录，按 (tx,log_index) 键与主数据对比，零差即证该段完整、有差即用 patch 覆盖（来源：QUQ(BSC) 完整版增量，2026-07-22）。
+
 | 通道 | 注册要求 | 限速实测 | 吞吐实测 | 断点续传 | 脚本 | 来源 |
 |---|---|---|---|---|---|---|
 | **HyperSync 官方客户端 v2（Starter 付费档,现役首选）** | Starter $70/月（key 见 api-keys.md 第 1 节;100rpm 基础+overage 5x=500rpm 超量按请求计费,单币 <$1） | concurrency=10 全程 429=0；付费限速解除后瓶颈=RTT×串行,官方客户端自动并发正是解药 | **10,080 条/s**（CAKE 90,719 行/9s,BSC）；三源对账与 v1/SQD 逐行一致 | run_*/done.json 记 next_block,重跑自动续 | fetch_hypersync_v2.py（pip install hypersync） | （v3.11.2 POC,2026-07-21） |
@@ -141,6 +143,7 @@ gmgn-cli 使用坑（fetch_gmgn.sh 已内置处理）：
 2. **全网余额和=0**：所有地址重建余额求和应为零（mint/burn 计入），不为零即漏了转账段。（来源：SIREN(BSC) 分析，2026-07）
 3. **总量恒等式 wei 级闭合**：跨链代币各链余量之和 ≈ 总供应，精确到 wei。（来源：OPN(BSC) 分析，2026-07）
 4. **时间戳锚点插值抽查**：锚点表（每隔固定块距，或每 100 万块一个）bisect 线性插值出的日期，抽几笔与浏览器页面核对。（来源：OPN/SIREN(BSC) 分析，2026-07）
+5. **重放前置完整性检查（快照缺块防护，重放开跑前做）**：核对全部采集 run 的 done.json——next_block 全部达到目标块、mtime 晚于最后一次采集启动，才允许重放（实锤：重放跑在尾部 run 拉完前 13 分钟，快照缺尾部 ~980 块/682 条）。**机制警示：供给闭合恒等式（上面第 2/3 查）对"缺整行"免疫**——整行缺失时借贷两边同时缺、sum 恒等于 TOTAL 照样通过，此类洞只有 RPC 抽查负余额能暴露；增量重放出现"期初为 0 的地址转出变负"=上游快照有洞的指纹，见到即停下补数据。（来源：QUQ(BSC) 完整版分析，2026-07-22）
 
 **对账差额排查步骤（供给恒等式不闭合时按序查）——查完常规漏段后必查 Burn/Mint 独立事件**：2017 老版 OpenZeppelin `burn()` 只发 `Burn(address,uint256)` **不发 Transfer**——只采 Transfer topic 重放会出现"重放净供给 > 链上 totalSupply"的幽灵差额（LPT 案 604 枚，burner 主力=治理合约每次投票烧 100）。排查法：web3_sha3 算 Burn/Mint topic0 后 HyperSync 定向拉（几秒）；注意新链侧可能是"Burn 事件+Transfer(to=0x0) 双发"路径（此时 Burn 事件是 Transfer 的子集，不另计，勿双扣）。链无关坑，凡 2018 前老合约必查。（来源：LPT(ETH+Arbitrum) 分析，2026-07-21）
 
@@ -192,7 +195,7 @@ gmgn-cli 使用坑（fetch_gmgn.sh 已内置处理）：
 服务端渲染、**普通 Chrome UA 的 fetch 即可过 Cloudflare**（无需 firecrawl/浏览器），是"无 key 时逐个大户深度溯源"的主通道：
 - 单地址转账史：`bscscan.com/tokentxns?a=<addr>&p=<N>&ps=100`（硬上限 ~10 页×100 行/地址；超活跃 bot 会被截断——**别据截断数据推"钱包年龄/建仓时间"**，翻不完必须在报告标注"建仓可能更早"）
 - 持有人榜：`bscscan.com/token/generic-tokenholders2?m=normal&a=<token>&p=<N>&ps=100`（ps 被强制 50、最多 20 页=前 1000 名，meme 币通常覆盖 99%+ 供应；行内自带公共标签如 MEXC/Null）
-- 地址概览：`bscscan.com/address/<addr>` 拿 Public Name Tag / Contract Creator / "Funded By"（href 用单引号，正则要 `["']?` 容单双引号）
+- 地址概览：`bscscan.com/address/<addr>` 拿 Public Name Tag / Contract Creator / "Funded By"（href 用单引号，正则要 `["']?` 容单双引号）。⚠ WebFetch 抓此类页面返回的地址常是省略号截断形态（`0xe096774F...BD5E2f603`），截断地址禁止进任何产物——一律回本地落盘数据前缀反查完整地址（evidence-wording 落盘取值纪律）（来源：QUQ(BSC) 2026-07-22）
 - **并发 >1 必触发限流返回空页**（3 线程实测 16/43 失败）→ **必须单线程 0.6–1s 间隔**；失败地址单线程重试即 100% 成功。
 - 行级解析坑（血泪）：①时间戳在 `class='showLocalDate'` 的 span **文本**里（不是 data-timestamp 属性）；②方向靠 `>IN</span>`/`>OUT</span>` badge（tokentxns 行不把自身地址渲染成链接，只有对手方在 `data-highlight-target`——只存对手方会丢方向）；③数量在 `td_showAmount` 的 `data-bs-title`（全精度｜$价）；④**持有人榜百分比列常年显示 0.0000%（BscScan 自身坏的），持仓数量要取百分比单元格的前一格**——"取行内第一个大数"的偷懒解析会把排名数字（第 101 名起 >100）当持仓。
 - 已死端点：`token/generic-tokentxns2`（按币种过滤单地址史）返回 "unexpected error"；`advanced-filter` 页被 Cloudflare 403。替代=全局 tokentxns 抓回后按行内 `/token/<ca>` 链接过滤目标币。
