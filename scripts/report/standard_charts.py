@@ -7,6 +7,8 @@ P0/P1 标签体系阵营，图 1/图 2 移到报告开头（TL;DR 问 1 直答�
 
 三张图（函数一一对应）：
   图1 plot_camp_evolution   各阵营持仓占比演变（100% 堆叠面积图，占总供应量）→ 放报告开头
+                            v3.12 起支持 price_series 右轴价格黑线（价格+筹码对照，
+                            2026-07-21 用户定；完整版与 easy 筛查版均默认传入）
   图2 plot_whale_vs_price   庄级实体持仓变动 vs 价格（双轴：左=占比%，右=价格USD线性）→ 放报告开头
   图3 plot_price_events     全历史价格与关键事件（上=价格对数+事件竖线编号，下=成交额柱状）
                             返回事件清单文本行，报告 md 里紧跟图片贴出
@@ -21,6 +23,9 @@ P0/P1 标签体系阵营，图 1/图 2 移到报告开头（TL;DR 问 1 直答�
   线色按标签前缀自动取语义色（与图1 阵营同色系），同前缀多实体自动变浅区分
 - 图2 价格轴用线性（均匀）刻度，贴近 K 线软件直觉（2026-07-15 用户定，勿改回对数）；
   图3 价格/成交额保留对数刻度——全历史常跨 2~3 个数量级，线性会把早期行情压成贴零平线
+- 图1 价格右轴（v3.12）：黑色细线+白描边（堆叠色块上唯一不撞色的组合）；默认线性对齐
+  图2 直觉，仅当量程 max/min > PRICE_LOG_SWITCH_RATIO 自动切对数（SIREN 型几百倍量程
+  线性会把早期压成地板线），切换后轴标签自动带"(对数)"注明
 - 中文字体与负号由 chart_style.setup() 处理
 - 图表标题写事实不写结论（结论放报告正文的蓝框里）
 
@@ -111,13 +116,20 @@ def _timeaxis(ax, ts, day_only=False):
         lb.set_ha("right")
 
 
-def plot_camp_evolution(series, out_png, token, note_supply="占总供应量"):
+PRICE_LOG_SWITCH_RATIO = 30  # 图1 价格右轴：max/min 超此倍数自动切对数轴（防早期行情压成地板线）
+
+
+def plot_camp_evolution(series, out_png, token, note_supply="占总供应量", price_series=None):
     """图1：各阵营持仓占比演变（全量转账重放后的快照序列）。
 
     series: {"ts": [datetime,...], "<阵营名>": [pct,...], ...}
             阵营名用 CAMP_ORDER 标准名；缺的阵营不画；锁仓/销毁如有必须传入。
             pct 为占总供应量的百分数（0-100）。多个庄家组自行先合并成
             「庄家TOP1」+「庄家其他组」两条（TOP1=现仓最大的庄家组）。
+    price_series: 可选 {"ts": [...], "usd": [...]}——传入则右轴叠加价格黑线（白描边），
+            价格+筹码分布对照（v3.12，2026-07-21 用户定，完整版与 easy 版均默认传入）。
+            量程 max/min > PRICE_LOG_SWITCH_RATIO 自动切对数轴并在轴标签注明；
+            序列自动裁剪到阵营时间范围。不传则保持纯占比图（旧调用/基线重绘兼容）。
     """
     setup()
     ts = series["ts"]
@@ -131,7 +143,32 @@ def plot_camp_evolution(series, out_png, token, note_supply="占总供应量"):
     ax.set_title(f"{token} 各阵营持仓占比演变（全量转账重放）")
     ax.margins(x=0)
     _timeaxis(ax, ts)
-    ax.legend(loc="center left", bbox_to_anchor=(1.01, 0.5), framealpha=0.95)
+    handles, labels = ax.get_legend_handles_labels()
+    legend_x = 1.01
+
+    if price_series and price_series.get("ts"):
+        # 裁剪到阵营时间范围，防价格序列更长把 x 轴撑出堆叠区
+        pairs = [(t, v) for t, v in zip(price_series["ts"], price_series["usd"])
+                 if ts[0] <= t <= ts[-1]]
+        if pairs:
+            import matplotlib.patheffects as pe
+            pts, pusd = zip(*pairs)
+            ax2 = ax.twinx()
+            ln = ax2.plot(pts, pusd, color="black", lw=1.5, alpha=0.9, zorder=5,
+                          path_effects=[pe.withStroke(linewidth=3.0, foreground="white")])
+            pos = [v for v in pusd if v > 0]
+            use_log = bool(pos) and max(pos) / min(pos) > PRICE_LOG_SWITCH_RATIO
+            if use_log:
+                _log_price_axis(ax2)
+            else:
+                _linear_price_axis(ax2)
+            # 单位注在图例条目里，不用右轴 ylabel——外置图例与 ylabel 在同一位置会重叠
+            handles += ln
+            labels += ["价格 USD(对数,右轴)" if use_log else "价格 USD(右轴)"]
+            # 图例右移给右轴刻度数字让位（1.01 会压住线性轴的多位小数刻度）
+            legend_x = 1.075
+
+    ax.legend(handles, labels, loc="center left", bbox_to_anchor=(legend_x, 0.5), framealpha=0.95)
     fig.tight_layout()
     fig.savefig(out_png, dpi=150)
     plt.close(fig)
@@ -239,16 +276,18 @@ def _demo(outdir):
     whale_rest = [2.5 for _ in range(n)]
     rest = [max(0, 100 - a - b - c - d - e - f)
             for a, b, c, d, e, f in zip(proj, big, small, pool, snip, whale_rest)]
-    plot_camp_evolution({"ts": ts, "项目方": proj, "大庄": big, "小庄": small,
-                         "狙击集团": snip, "流动性池": pool,
-                         "其他大户": whale_rest, "散户": rest},
-                        os.path.join(outdir, "demo_fig1_camp_evolution.png"), "DEMO")
 
     # 价格合成：1.5e-4 → 冲高 1.5e-2 → 回落 6e-3
     price = []
     for i in range(n):
         base = 1.5e-4 * math.exp(i / 9) if i < 30 else 1.5e-2 * math.exp(-(i - 30) / 90)
         price.append(min(base, 1.5e-2) * (1 + 0.18 * math.sin(i / 3.3)))
+
+    plot_camp_evolution({"ts": ts, "项目方": proj, "大庄": big, "小庄": small,
+                         "狙击集团": snip, "流动性池": pool,
+                         "其他大户": whale_rest, "散户": rest},
+                        os.path.join(outdir, "demo_fig1_camp_evolution.png"), "DEMO",
+                        price_series={"ts": ts, "usd": price})
     plot_whale_vs_price(
         [{"label": "项目方", "ts": ts, "pct": proj},
          {"label": "大庄#1", "ts": ts, "pct": big},

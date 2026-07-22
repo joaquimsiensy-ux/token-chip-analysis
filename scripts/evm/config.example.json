@@ -35,6 +35,12 @@
     "chain": "bsc",
     "sleep": 0.5
   },
+  "bigquery": {
+    "_comment": "BigQuery goog 官方公共数据集（fetch_bigquery.py,仅 ETH;定位=备用+出错复核源,不用于常态采集,v3.12.1）。project=GCP 项目 ID,登记在 ~/.claude/api-keys.md 第 16 节;查询必带 --dates 或 --from-date/--to-date",
+    "project": "填 api-keys.md 第 16 节的 GCP 项目 ID",
+    "max_scan_gib": 200,
+    "out": "data/bq_recheck.csv"
+  },
   "alchemy": {
     "_comment": "alchemy_getAssetTransfers 备用通道（fetch_alchemy.py，带时间戳）。key 留空：从 ~/.claude/api-keys.md 登记文件取用，不写死进 skill 目录。换链改前缀，如 eth-mainnet",
     "url": "https://bnb-mainnet.g.alchemy.com/v2/",

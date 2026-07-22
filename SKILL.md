@@ -85,6 +85,10 @@ description: 对任意链上代币（EVM/Solana/Hyperliquid/Filecoin 及新链�
 
 对本 skill 产出过的研报做增量更新：复用旧研报的实体表与本地原始数据，只拉上次 data_cutoff 之后的增量数据，回答"有无新庄（含从其他大户升级者）/ 旧庄增减持 / 观察哨触发情况 / 旧结论修正"，交付**轻量更新简报**而非重做全量报告。全流程与纪律见 `references/update-workflow.md`（U0–U6）；**EVM 标的的采集/重放/对表/分析/序列五环节先用现成通用件 `scripts/update/`**（v2.10 六战抽象收编，README 有步骤映射），别再手写。两条核心纪律：①**一切判定标准与呈现规范以当前 skill 版本为准**（阈值/标签/命名/措辞/schema），旧研报只提供数据资产与对比基线，判级变化须区分"持仓变动 vs 标准迁移"；②新庄扫描在"旧余额快照+增量重放"的最新全量持仓榜上做，禁止只扫增量流水。
 
+## 简化筛查模式（/token-easy-analysis，批量候选找高控盘标的）
+
+对新标的做**筛查级**筹码分析（v3.12 新增，场景=币安 Alpha/现货初筛候选批量过一遍找类庄家盘）：分析引擎与完整版同强度——全量采集、对账三查、深度关联全套（金库归因/gas 溯源/行为指纹/女巫深挖/P0P1 判级）、对抗复核路数**一分不减**；砍掉的只有背景调研（问 4 整路）与完整报告，交付缩为**两件套单页 HTML**（图 1 含价格右轴 + 按实体结构细分的阵营快照表 + 3–5 行判定块）+ analysis-state.json。判定块只给"是否值得跑完整版"的参考意见，**绝不自动升级**——用户人工决策后新会话跑 /token-analyze 同目录衔接（数据/聚类/判级直接继承，只补背调+完整报告+扩面复核）。全流程见 `references/easy-workflow.md`（E0–E7）。一币一会话铁律不变，跨币汇总不进分析会话。
+
 ## 成本纪律（v3.1 三刀版，2026-07-18 全量账单解剖后重订）
 
 **实证结论（65 会话账单拆解，2026-07-18）**：63% 的钱是缓存读——每轮工具调用都要重读全部会话历史；输出只占 18%（HTML 由脚本拼装几乎免费）。恒等式：**成本 ≈ 轮次 × 平均上下文 × 单价**，三个因子三把刀（历史基线数字在 CHANGELOG v3.1.0 条目可考古）。参考预算：轮次 <150、缓存读 <4000 万、**上下文峰值 <30 万**（新链首战可放宽；超了如实报告原因即可，不许为达标偷工减料）。
@@ -139,6 +143,7 @@ description: 对任意链上代币（EVM/Solana/Hyperliquid/Filecoin 及新链�
 - `report-template.md` — 四问报告结构与 P0/P1 标签体系、三张标准图+全周期流转路径图规范、analysis-state.json（默认交付的机器状态文件）、措辞对照表、HTML 排版约定、交付 checklist
 - `monitoring-package.md` — 监控包分册（v3.3 拆分）：appendix.json schema 与 report-extract 四键硬标准、sentinel/监控建议两档字段纪律、「买入后监控包」三件产出流程——默认分析不读，买入后/滚动 JSON 时读
 - `update-workflow.md` — /token-update 增量更新六阶段（旧研报资产盘点与兜底、增量起点与重叠窗去重、新庄扫描口径、滚动 JSON、何时该回全量）
+- `easy-workflow.md` — /token-easy-analysis 简化筛查（E0–E7：引擎全保留砍背调与报告、两件套交付规范、判定块要素、转正式衔接与继承清单）
 - `address-book.md` — 跨分析累积的基础设施地址标签库（手工实战核验层）
 - `labels/README.md` — 批量地址标签库**使用篇**（七链 ~47.1 万条 CSV + labels_resolver.py 共享内核，v4.2+ 2026-07-18）：**聚类前把全部候选地址先过一遍 label_lookup.py**（七段输出，`--json` 出 JSONL）；EVM/SOL/HL/FIL 主力脚本已内置 resolver 自动兜底（`--no-labels` 关闭，缺表显式报 degraded_mode）；决策三维、惯犯 serial-actor 层（提示不定罪纪律）、codehash 指纹、行为守门员、miss 队列——用法/纪律/盲区全在该 README
 - `labels/MAINTENANCE.md` — 标签库**维护篇**（重建/发布流程含 roundtrip+manifest 门禁、curation 层语义、数据源清单、注入清洗纪律、benchmark、扩容路线）——只在维护标签库时读，分析会话不用碰
