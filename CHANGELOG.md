@@ -13,6 +13,7 @@
 - **2.24.0/2.25.0 曾物理倒排**（同日并行会话插入位置错位）——2026-07-18 稳定化时仅调整排列顺序，两条内容一字未动
 
 ## 版本索引（活跃窗口，新在上）
+- **3.18.1 2026-07-22 HyperSync Solana 混合分段提议评估否决存档+验收对账器收编（文档小修）**：recon2.py 从会话 scratchpad 收编为 scripts/solana/hypersync_recon.py（GA 重验收资产防清理丢失）；§13d 增"近期段 HS+历史段 SQD"否决硬结论（@CX 复核：196 天=覆盖范围非准确范围、干净区仅前沿 ~20h 单次抽样、静默洞→证完整=SQD 重拉、供给对账兜不住成对缺行、双引擎不缩短认证关键路径）
 - **3.18.0 2026-07-22 质量/速度/稳定性专项第二批（非复盘专项，@CX 方案 18 项）**：报告编译化 facts 事实源+宏+语义 gate（手抄数字架构级消灭）/故障注入盲测六用例（QUQ 快照缺块盲区固定化）/D3 三大文档拆 8 分册兑现/惯犯库双源回灌 217→1741 址/标签时效语义切分/Solana 双引擎整合+完备性验收**不通过禁用**（历史区缺行 3.6-22% 链上终审实锤）/collect_queue 泳道化/磁盘水位三件/launchd 夜间自动采集/监控两段制 schema 三字段/外部代币名自查自动化/HyperSync overage 831rpm 实测已生效/pre-commit 三检/git 历史 key 清洗
 - **3.17.0 2026-07-22 GOAT(Solana) easy 二战复盘：长币龄混合重建工程加固+CEX 间调度商指纹**：Helius 大扫描 300s+gzip 通道（24.7 万账户 67MB 一次拉全，分片器降末位）/window_fetch gap 合并重复坑+负余额指纹/whale_deep cap 截断语义+10RPS 并发纪律/pump.fun 毕业迁移钱包入 address-book（发射窗峰值榜必剔）/编造地址 base58 侧五六犯；candidate 2 组（CEX 间库存调度商指纹 state-anomaly §9c+锚点复用两扫描 §11.3）；whale_deep 三参数悬账收编+scan_token_accounts --compressed/--timeout；easy 成本基准 GOAT 行（2-3h 档初步稳定）
 - **3.16.0 2026-07-22 B 档五项收官：/collect-data 批量预采集+网络层异步化+复核 workflow 固化+Sourcify/DefiLlama 双通道+文件守卫 hook（非复盘专项）**：@CX 方案 B 档全部落地——新命令 /collect-data（collect_queue.py 多币串行队列，EVM 五链+Solana，manifest 记账/残缺 run 隔离/断点幂等，CAKE 296 万行+wSOL 缺口态+错址 fail-closed 三路实测）；net.py+rpc_batch.py 进程内异步替代 curl 子进程树（httpx+tenacity+msgspec，40 址与 curl 逐项等价）；adversarial-review 固化 workflow（schema 强制裁决 JSON+同批并行 fan-out，冒烟 2 路 100s）；Sourcify 合约身份批查（sourcify_check.py，v2 直连免 key，代理实现名一次拿到）；DefiLlama 老币历史价格主兜底（llama_price.py，CAKE 2020 起 2117 点全史实测）；guard_file_ops hook（Read 巨文件拦截+原始采集产物写保护，热加载实证）+PostCompact 提醒；HyperSync key 固化 ~/.config/hypersync/token
@@ -30,6 +31,17 @@
 - 3.4.0 VIRTUAL(Base+ETH) 多链 | 3.3.0 体检修复 | 3.2.0 监控包按需化 | 3.1.0 成本三刀 | 3.0.0 稳定化
 - 2.29.0 jesse(Base) | 2.28.0 哈基米(BSC)
 - （3.9.0 及更早正文共 61 条 → CHANGELOG-archive.md，含 3.6.0 补档）
+
+## [3.18.1] - 2026-07-22 — HyperSync Solana 混合分段提议评估否决存档 + 验收对账器收编（文档小修）
+
+用户提议"HyperSync 有近半年数据,近期段用 HS+历史段用 SQD"，@CX 交叉复核后**否决并存档**（防日后重议）：
+
+- **前提辨析**：滚动窗口 196 天是**数据覆盖范围不是准确范围**——实测干净区仅摄取前沿约 20h（head-18 万 slot,且属单次抽样非服务承诺）,head-13 万 slot（≈14h）外即见静默暂态洞,21 天前缺 3.6%、67 天前缺 22%,渐变无干净分界线。
+- **结构性否决理由**：洞静默（空响应+next_slot 照常推进,单跑 HS 无法自知缺数据）→证明某段完整的唯一办法=SQD 重拉该段对账,HS 白跑；增量更新窗口（数天-数周）恰好落在暂态洞区。
+- **codex 独立补充两条硬论点**（标注来源:codex 第二意见）：①**供给对账兜不住成对缺行**——一笔转账借贷双侧同缺时供给仍守恒,完备性验收必须落到边集合一致,不能只看供给/余额/行数闭合；②**认证完成时间账**:T_hybrid≥max(S_SQD,H)+差集修复,SQD 全量扫描恒为关键路径,双引擎不缩短"经完备性认证的数据"产出时间,只可能提前"未认证预览"（对夜间自动采集无决策价值,不立项）。唯一理论净收益架构（SQD 只出键清单+HS 出载荷）依赖 SQD 服务端摘要能力,现实不存在。
+- **工件**：验收对账器收编 `scripts/solana/hypersync_recon.py`（原 scratchpad recon2.py,逻辑未动,docstring 补 GA 重验收用法:改 MINT/FRM/TO 三区各跑一轮+Helius 终审定责）——修复 3.18.0 把 GA 重验收资产留在会清理的临时目录的隐患；§13d 路径引用同步+否决结论入档。
+
+成本：单轮对话内完成（含 codex 交叉复核一次）。
 
 ## [3.18.0] - 2026-07-22 — 质量/速度/稳定性专项第二批（非复盘专项，@CX 方案 18 项）
 
