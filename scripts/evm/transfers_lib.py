@@ -101,16 +101,32 @@ def iter_transfers(path):
 
 
 def dedup_key(row):
-    return (row["block_hash"] or row["block"], row["tx"], row["log_index"])
+    return (row["block"], row["tx"], row["log_index"])
 
 
 def dedup_iter(rows):
-    seen = set()
+    """按 (block,tx,log_index) 去重 + 重组冲突检测（fail-closed 修复 2026-07-22）。
+
+    修复前主键含 block_hash：同一事件出现两个不同 hash（链重组）或"一源带 hash
+    一源不带"（混合源）时键不同 → 两个版本都保留=静默双计。修复后：同键重复
+    正常跳过；同键出现两个**非空且不同**的 block_hash = 重组冲突，exit(3) 先仲裁
+    （与 merge_sources 重叠区对账同级的防线）。"""
+    seen = {}   # (block,tx,log_index) -> 首见 block_hash（可空）
     for r in rows:
         k = dedup_key(r)
+        h = r.get("block_hash") or ""
         if k in seen:
+            prev = seen[k]
+            if prev and h and prev != h:
+                print(f"[FAIL-CLOSED] 重组冲突：{k} 出现两个 block_hash "
+                      f"{prev[:18]}… / {h[:18]}…", flush=True)
+                print("[FAIL-CLOSED] 禁止继续——同一 (block,tx,log_index) 两个版本，"
+                      "先用独立 archive RPC 仲裁哪个是 final 链", flush=True)
+                sys.exit(3)
+            if not prev and h:
+                seen[k] = h   # 补录 hash，后续第三源再来才有比对基准
             continue
-        seen.add(k)
+        seen[k] = h
         yield r
 
 

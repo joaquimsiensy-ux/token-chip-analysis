@@ -99,6 +99,36 @@ def classify(p):
     return None
 
 
+def scan_profiles(agg_rows, exempt=None):
+    """cluster_prep_duck.py 聚合底数 → 判定（DuckDB 缩图路径，2026-07-22）。
+
+    agg_rows: iterable of dict（addr/fan_in/fan_out/tx_in/tx_out/inflow/outflow/
+    max_peer_flow 整数或十进制串）。retention/top_peer_share 在此按 funnel_profile
+    同构表达式计算（聚合件只存整数，防 SQL/Python 舍入口径差）。"""
+    exempt = exempt or set()
+    verdicts = {}
+    for r in agg_rows:
+        a = r["addr"]
+        if a in exempt:
+            continue
+        inf, ouf = int(r["inflow"]), int(r["outflow"])
+        total_flow = inf + ouf
+        if not total_flow:
+            continue
+        retention = max(0, inf - ouf) / inf if inf else 1.0
+        mpf = int(r["max_peer_flow"])
+        p = {"fan_in": int(r["fan_in"]), "fan_out": int(r["fan_out"]),
+             "tx_in": int(r["tx_in"]), "tx_out": int(r["tx_out"]),
+             "inflow": inf, "outflow": ouf,
+             "retention": round(retention, 4),
+             "top_peer_share": round(mpf / total_flow if mpf else 0.0, 4)}
+        v = classify(p)
+        if v:
+            p["verdict"] = v
+            verdicts[a] = p
+    return verdicts
+
+
 def funnel_scan(rows, addr_filter=None, exempt=None):
     """一步到位：指纹 + 判定。exempt: 已知实体地址集合（惯犯/团队等，永不判 FUNNEL——
     它们的形状由案源证据定性，不由本模块）。返回只含命中地址的 dict。"""

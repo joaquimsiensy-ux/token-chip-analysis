@@ -13,6 +13,7 @@
 - **2.24.0/2.25.0 曾物理倒排**（同日并行会话插入位置错位）——2026-07-18 稳定化时仅调整排列顺序，两条内容一字未动
 
 ## 版本索引（活跃窗口，新在上）
+- **3.14.0 2026-07-22 DuckDB 重放/缩图引擎三阶段落地（非复盘专项，@CX 交叉复核方案执行）**：亿级样本主路径换列式引擎——新件 7（replay_duck 合一引擎 v1CSV+v2parquet 双输入/cluster_prep_duck 缩图件+cluster --prep/golden_baseline 回归门禁/test_engine_equivalence hypothesis 性质测试/env_check 版本锁/run_guarded 长跑监督器/pyproject+requirements.lock 依赖锁）；等价实证=ASTEROID+SIREN 七项全等（含 merged.csv 逐字节）+QUQ 1.03 亿行三件逐键全等+聚类四类判定全等；性能=QUQ 核心重放 31s（原数十分钟）/缩图 19.5s 出 76 万聚合边/SIREN 7.1GB 守限（旧外推 19GB）；DuckDB 数字安全坑 6 条实测入 data-pipeline-evm §12（UHUGEINT SUM 退化 DOUBLE/VARINT 乘法退化/hex cast 位宽/temp 磁盘 GB-GiB/块界感知去重/窗口成本）；三缺口修复（pass1 坏行记账/cluster 阈值整数化/dedup 重组冲突检测）+排序确定化；changelog_lint 自动 hook 进 settings.json
 - **3.13.0 2026-07-22 QUQ(BSC) easy 模式首战复盘**：币安 Alpha 场内 K 线端点（bapi alpha-trade/klines，374 天窗口**非全史**）+CMC 全史日线 EVM 侧二案复用；「接力库存仓」盘型入 state-anomaly §9b（主仓多代交棒直转·数十倍总量/净持≈0 执行枢纽网/「自持↔池↔CEX 场内」三态日轮转 30-50% 锯齿/量能市值数十倍倒挂——体系判定靠直转边不靠 gas，「独立做市商」备择每案独立走）；单 tick V3 NFT 头寸=零滑点自转刷量设施指纹；枢纽三段处理法（度>200 不作扩散桥/种子枢纽保留成员资格/NPM·EntryPoint·1inch 事后卫生检查强制收尾）；key_edges 设施边排除→来源拆解选择偏差（daily_delta 缺口法兜底）+亿级 edges 流式写；easy 首战成本基准单币 ~2.5h（采集 67min）
 - **3.12.1 2026-07-21 公共数仓准入验证+BigQuery 复核通道正式化（非复盘专项）**：ASTEROID(ETH) 5 代表日 132,471 行三源对账——AWS v1.0/eth 与 BigQuery goog 官方版均与 HyperSync **逐行字节级等价**（键零差集/值零不一致）,"数仓质量≤HyperSync"疑虑在 ETH 段实证解除；分工定稿（用户拍板）：主力=HyperSync 不变、BigQuery=备用+出错复核源（新件 fetch_bigquery.py,仅 ETH,定向日期查询实测 12GiB/次推翻旧估 200-500GiB,免费 1TiB/月≈85 次复核）、AWS=等价但 pass（S3 无服务端过滤整分区下载 60 分钟,手工方法留档 §11 应急可复活,新鲜度实测 T+1~T+2 优于 sonarx T+7）；GCP 资产一次性开通（sandbox 项目+OAuth 缓存,api-keys.md 第 16 节;新账号 ToS 403 坑实测）；新源准入通用纪律定型（四型代表日+键值集合对账,禁品牌信任替代逐行对账）；data-pipeline-evm 新增 §11
 - **3.12.0 2026-07-21 简化筛查模式 /token-easy-analysis + 图 1 价格右轴（非复盘专项）**：新命令+新分册 easy-workflow.md（E0–E7）——引擎与完整版同强度（采集/对账三查/深度关联全套/复核路数一分不减），砍背调（问 4 整路）与完整报告，交付两件套单页 HTML（图 1+按实体结构细分的阵营快照表+判定块含 Alpha 黑箱占比）+analysis-state.json 必落盘；绝不自动转正式，人工决策后 /token-analyze 同目录衔接（E7 继承清单+隔日增量拼接）；E6 复盘按需触发（有工具性增量才走全套）；场景=币安 Alpha/现货初筛 60+ 候选批量找高控盘标的，档 A 预估单币省 30-40%。standard_charts.plot_camp_evolution 新增 price_series 参数（右轴黑线白描边/量程>30x 自动对数/图例并轴单位/裁剪到阵营时间范围，demo+AKE 真数据双验证），完整版图 1 同步升级为必传，旧调用兼容
@@ -34,6 +35,31 @@
 - **3.0.0 2026-07-18 稳定化大版本**：git 基线/标签库双真相收敛/复盘机制升级(质量指标+candidate+整编+预测追踪)/playbook 重组/守护三件套/瘦身 287→97MB
 - 2.29.0 2026-07-18 jesse(Base) 全量复盘 | 2.28.0 哈基米(BSC)
 - （2.27.0 及更早共 48 条 → CHANGELOG-archive.md）
+
+## [3.14.0] - 2026-07-22 — DuckDB 重放/缩图引擎三阶段落地（非复盘专项）
+
+> 起因：用户问"筹码分析有什么优化建议"，@CX 交叉复核（codex 读代码后指出真瓶颈=亿级数据反复装进 Python 对象层，非采集/网络），融合方案获批后按"基线→改造→对表→亿级实测→监督器/依赖锁/hooks"三阶段执行。全程纪律：先建可证明等价的基线，再做任何优化——"快了但数字错了"是本工作流最贵的事故。
+
+**新工程件 7**：
+- **replay_duck.py**（scripts/evm）：pass1+pass2 合一列式引擎，v1 7列 CSV 与 v2 parquet 目录双输入自适应；`--emit-csv` 逐字节复刻旧 merged.csv；uint256 策略=≤37 位 HUGEINT 快路径/超界 VARINT 慢路径全程无浮点；reject 记账+同键异值硬退+空 ts 硬退（比旧引擎严）。
+- **cluster_prep_duck.py**（scripts/evm）：亿级明细→edges_agg/bal/profile 三件全整数聚合 parquet；v2 输入块界感知去重（per-run 元数据定重叠区间，仅重叠段 shuffle）；派生表全部从 edges_agg 算（(f,t) 聚合保和）。
+- **cluster.py --prep 模式**：四容器内存装载改读缩图件，判定语义零变化（ASTEROID 沙盘四类判定产物全等）；gatekeeper 新增 scan_profiles 聚合底数入口（浮点派生表达式与 funnel_profile 逐条同构）。
+- **golden_baseline.py**（scripts/bench 新目录）：产物规范化指纹 snapshot/compare，stats 按 8 契约键判等（引擎扩展字段忽略）。
+- **test_engine_equivalence.py**：hypothesis 随机边角数据（mint/burn/自转/同块多事件/零值/38+ 位大值/负余额盘）双引擎对表，进 run_all 全家桶。
+- **env_check.py + pyproject.toml + requirements.lock**（A4 依赖锁）：关键 11 依赖版本冻结+全家桶内校验；刻意不用 venv（保住"系统 python3 直接跑"的全部既有入口），升级流程=先全家桶+基线对表再更新 lock。
+- **run_guarded.py**（scripts/）：长跑监督器——脱管+任务树 RSS 上限+系统可用内存下限双水位+状态 JSON 原子写；替代裸 nohup。
+
+**等价实证与性能**（细节与验收口径=data-pipeline-evm 新 §12）：ASTEROID 140 万行/SIREN 2169 万行三通道与旧引擎七项全等（含 merged.csv 逐字节哈希）；QUQ 1.03 亿行与 replay_pass1_quq 原产物 stats 11 键+balances 51,871 址+daily_delta 196 万键逐键逐值全等，peaks 两口径不变量零违例；性能=QUQ 核心重放 31s、缩图 19.5s/1.35GB 出 76.2 万聚合边（rustworkx 连通分量 0.35s——"先缩图再换库"实证：缩图后图算法不再是瓶颈，纯 UF 亦亚秒）、SIREN 峰值 7.1GB 守 8GB 限（旧引擎外推 ~19GB 不可行）。
+
+**旧引擎三缺口修复（fail-closed）**：①replay_pass1 解析异常静默 continue→坏行计数+样本+默认即退（--allow-bad-rows 显式放行）；②cluster R1 边阈值/集群准入浮点累计→整数交叉乘法（0.005%=1/20000、0.01%=1/10000 精确等价）；③transfers_lib dedup 主键统一 (block,tx,log_index)+重组冲突（同键双 hash）硬退——曾双计。另修 cluster 输出排序非确定性（并列余额+set 迭代序→加 addr tiebreaker）。修复后 ASTEROID 重跑与基线 7 项全等（合法输入行为不变实证）。
+
+**DuckDB 1.5.4 数字安全坑 6 条（全部实测踩出,§12 详表）**：UHUGEINT SUM 静默退化 DOUBLE / VARINT 乘法退化 DOUBLE（仅加法/SUM 精确）/ hex cast 位宽限制（32 字节 value 两段 HUGEINT 法）/ make_timestamp 不吃 UBIGINT+day 保留字 / temp 磁盘为亿级真瓶颈（max_temp_directory_size 十进制解析,全局 (tx,li) 去重 1 亿行需 >37GB→块界感知去重）/ 亿级窗口峰值 432s 为最重一环（easy 场景可跳）。
+
+**自动化**：~/.claude/settings.json 新增 PostToolUse hook——Edit/Write 命中本仓库 CHANGELOG.md 后自动跑 changelog_lint，FAIL 时 exit 2 阻断反馈（撞号/倒排两次实际事故的制度化防线；若配置当次会话未热加载,重启后生效）。
+
+**遗留（下次验收/优化点）**：①块末峰值窗口 432s 待优化（先按终态/流量粗筛候选再窗口）；②v2 输入超 127bit value 的 UDF 十进制慢路径未实现（触发即硬退提示,常规币不会触发）；③data-pipeline-evm 69.8KB→本条后更超 60KB 整编线（下次整编拆分）；④equivalence 测试未覆盖多通道段拼接（SIREN 实数据已覆盖）；⑤pueue 队列工具未装（夜间批量采集队列场景按需 brew install pueue,run_guarded 已覆盖单任务守护）。
+
+成本指标：轮次 ~70 / Bash 调用 ~55 / 交付约 3.5h（含 QUQ 亿级三跑与两次 temp 爆仓排障）。质量指标：对表 FAIL 后翻案 0（全部一次通过或定位为口径/展示差异）；hypothesis 10 例边角全过；性能回归门禁（run_all 6/6 + env_check）全绿。
 
 ## [3.13.0] - 2026-07-22 — QUQ(BSC) easy 模式首战复盘
 

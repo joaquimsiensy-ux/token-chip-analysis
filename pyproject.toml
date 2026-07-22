@@ -1,0 +1,43 @@
+# token-chip-analysis 依赖声明（A4 依赖锁，2026-07-22 DuckDB 引擎改造工程配套）
+#
+# 本仓库不是安装包——此文件只作依赖的"事实源声明"：
+#   精确冻结版本在 requirements.lock（pip freeze 快照）；
+#   环境一致性校验：python3 scripts/tests/env_check.py（已进 run_all 全家桶）。
+# 刻意不用 uv/venv 隔离：分析工作流是"系统 python3 直接跑"（各分析目录/文档/
+# 历史命令均如此），虚拟环境会让全部既有入口失效。将来若需多机复现或强隔离，
+# 再升级 uv sync 方案（届时本文件即 uv 的输入，零改写）。
+#
+# 升级纪律：改任何库版本前先跑 run_all 全家桶 + golden_baseline 对表（ASTEROID
+# 样本），过了再更新 requirements.lock——防"库升级悄改行为"（A1 回归门禁覆盖）。
+
+[project]
+name = "token-chip-analysis"
+version = "3.14.0"
+description = "链上代币筹码分析工作流（数据引擎与工具脚本）"
+requires-python = ">=3.14"
+dependencies = [
+    # 数据引擎（DuckDB 主路径 + Arrow 互通）
+    "duckdb>=1.5.4",
+    "pyarrow>=25.0.0",
+    "pandas>=3.0.3",
+    "numpy>=2.5.0",
+    # 采集
+    "hypersync>=1.2.0",
+    "requests>=2.34.2",
+    "certifi>=2026.6.17",
+    # 图/聚类
+    "networkx>=3.6.1",
+    "rustworkx>=0.18.0",
+    # 测试与守护
+    "hypothesis>=6.158.1",
+    "psutil>=7.2.2",
+    # 报告
+    "matplotlib>=3.11.0",
+    "reportlab>=5.0.0",
+    "pypdf>=6.14.2",
+    "PyMuPDF>=1.27.2",
+    "openpyxl>=3.1.5",
+    # BigQuery 复核通道
+    "google-cloud-bigquery>=3.42.2",
+    "pydata-google-auth>=1.9.1",
+]

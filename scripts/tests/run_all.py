@@ -7,8 +7,8 @@
 import os, subprocess, sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-SUITE = ['changelog_lint.py', 'docs_lint.py', 'labels_manifest.py',
-         'test_replay_inc.py', 'test_build_html.py']
+SUITE = ['changelog_lint.py', 'docs_lint.py', 'labels_manifest.py', 'env_check.py',
+         'test_replay_inc.py', 'test_build_html.py', 'test_engine_equivalence.py']
 
 
 def main():

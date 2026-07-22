@@ -316,4 +316,34 @@ Arbitrum One（chainid 42161）待遇比 BSC/Base 好：Etherscan V2 免费层�
 
 **新源准入通用纪律**（本次定型,适用任何未来数据源）：抽代表日分区（部署/极稀/峰值/近期四型必含）→ 与主通道按 (block,tx,log_index) 键+(from,to,value) 值集合对账 → 全等才准入该链该历史段;禁止拿"品牌可信"替代逐行对账。
 
+## 12. DuckDB 重放/缩图引擎（亿级样本主路径，2026-07-22 三样本对表定版）
+
+**定位（选型决策）**：`replay_duck.py`（pass1+pass2 合一）与 `cluster_prep_duck.py`+`cluster.py --prep` 是**千万行以上样本的重放与聚类主路径**；旧引擎（replay_pass1/2 纯 Python 逐事件）保留为小样本快速路径与黄金基准。动机=旧引擎内存随事件数线性涨（140 万行实测 1.22GB → 亿级外推 ~90GB，16GB 机器不可行）；DuckDB 路径内存设上限、超限落盘外排。
+
+**等价性实证（改任何引擎前先读这段的验收口径）**：三样本七项全等——ASTEROID(ETH,140 万行,v1 CSV 单通道)、SIREN(BSC,2169 万行,三通道段拼接)与旧引擎产物 **7 项逐字段全等**（replay_stats 契约 8 键 / merged.csv 逐字节哈希含 \r\n / balances_final / peaks / mint_ledger / camp_series / entity_series）；QUQ(BSC,1.03 亿行,v2 parquet) 与 replay_pass1_quq 原产物 **stats 11 键 + balances 51,871 址 + daily_delta 1,959,664 键逐键逐值全等**（peaks 口径不同：QUQ=事件级、标准=块末级，弱验证"事件级≥块末"零违例、98.3% 相等）。聚类侧 ASTEROID 沙盘老路 vs --prep **四类判定产物全等**（clusters/gatekeeper_blocked/label_excluded_nodes/team_downstream）。
+
+**性能基准（M3/16GB 实测）**：
+| 样本 | 旧引擎 | DuckDB 路径 |
+|---|---|---|
+| ASTEROID 140 万行 | pass1 6.7s/1.22GB + pass2 2.1s | 合一 6.1s/1.4GB（小样本无优势,CSV 解析占大头） |
+| SIREN 2169 万行 | 外推 ~19GB 内存（不可行边缘） | 167s / 峰值 7.1GB（守 8GB 限） |
+| QUQ 1.03 亿行 | 纯 Python 专用变体数十分钟级 | 核心重放(余额+daily) **31s**；含块末峰值窗口 7.8min/8.1GB |
+| QUQ 缩图 | cluster 老路四容器不可行 | **19.5s/1.35GB** → 76.2 万聚合边；rustworkx 连通分量 0.35s |
+
+**用法**：
+- 重放：`python3 replay_duck.py --channels channels.json --out-dir data [--camps camps.json] [--emit-csv] [--mem-limit 8GB]`。通道 path 为**目录即自动走 v2 parquet**（run_*/logs.parquet+blocks join），文件走 v1 7 列 CSV；`--emit-csv` 产旧格式 merged.csv（对表/未迁移下游）。
+- 缩图：`python3 cluster_prep_duck.py <chain> [--dir 工作目录 | --v2 <v2目录>]` → data/cluster_prep/ 三件（edges_agg/bal/profile 全整数 parquet）→ `python3 cluster.py <chain> --prep`。千万行以下 cluster.py 老路照旧。
+- 长跑守护：`python3 scripts/run_guarded.py --name X --mem-ceiling-gb 12 --detach -- <命令>`（脱管+双内存水位+状态 JSON 原子写；替代裸 nohup，防沙箱连带清理与 OOM 假死）。
+- **回归门禁（A1 纪律，硬性）**：动引擎/换库版本后必跑 ①`scripts/tests/run_all.py`（含 hypothesis 等价性测试+env_check 版本锁）②`scripts/bench/golden_baseline.py snapshot+compare` 对 ASTEROID 重跑对表。基线快照与对比口径见该脚本 docstring。
+
+**DuckDB 1.5.4 实测坑清单（数字正确性级，逐条都踩过）**：
+- **UHUGEINT 的 SUM 静默退化 DOUBLE**（返回 1e+32 的 float）——无符号 128 位不可用于聚合；用 **HUGEINT**（SUM 精确返 int，溢出硬报错不环绕，窗口 SUM 同）。
+- **VARINT（=BIGNUM）乘法退化 DOUBLE**（`'2'::VARINT*'3'::VARINT` → DOUBLE）；加法/SUM 精确。VARINT 只作超 37 位十进制的 SUM 慢路径（~5x 慢），**任何乘法场景禁用**。
+- **hex 字符串 cast 有位宽限制**：`'0xff'::UBIGINT` 可用，64-hex 全串 cast 任何整数型都报错——32 字节 value 用**两段法**：`('0x'||substr(data,35,16))::UBIGINT::HUGEINT * 2^64 + ('0x'||substr(data,51,16))::UBIGINT::HUGEINT`（前提高 32 hex 全零，物化前必探测，QUQ 28 位安全）。
+- `make_timestamp()` 不吃 UBIGINT，参数先 `::BIGINT`；`day` 是保留字，列别名必须 `"day"`。
+- **temp 磁盘是亿级聚合的真瓶颈**（非内存）：`SET max_temp_directory_size` 按十进制解析（40GB=37.2GiB）；(tx,li) 全局去重 shuffle 1 亿行需 >37GB temp——**v2 输入用块界感知去重**（per-run min/max 元数据秒查→仅重叠区间 GROUP BY，非重叠直通零 shuffle；QUQ 4 段零重叠 19.5s 完成）；派生表一律从 edges_agg 算（(f,t) 聚合保和），禁止对原始行做 (a,p) 双向 2 亿行聚合（首跑 46.5GB 爆仓教训）。
+- 块末峰值窗口（PARTITION BY addr ORDER BY block 亿级）是最重一环（QUQ 432s）——峰值非必需的场景（easy 初筛）可跳；后续优化方向=先按 0.1% 终态/流量粗筛候选再窗口。
+
+**fail-closed 强化（新引擎内建，比旧引擎严）**：坏行 reject 记账（n_source_rows/n_bad_fields/n_out_of_segment/n_dedup_removed 进 stats）；同去重键不同事件内容=数据损坏硬退（旧引擎静默 keep-last）；空 ts 硬退（旧引擎归上一有效日的未定义行为）；供给闭合 gate 挂 → exit 4。同批修复旧引擎三缺口：replay_pass1 坏行计数+`--allow-bad-rows`（默认 0 即退）、cluster R1/准入阈值整数交叉乘法（曾浮点累计）、transfers_lib dedup 重组冲突检测（同 (block,tx,li) 双 hash 硬退,曾双计）。cluster 输出排序加确定性 tiebreaker（并列余额曾致同数据两跑输出不同）。
+
 通用环境坑（macOS SSL 证书、reportlab 中文字体、前台 sleep 被 Block 等）不在本文重复，见 skill 其他参考文档与 memory（mac-python-pdf-environment.md、onchain-data-accounts.md）。

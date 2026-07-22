@@ -29,6 +29,8 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--channels", required=True, help="channels.json（通道路径+互斥块段+tag）")
     ap.add_argument("--out-dir", default="data")
+    ap.add_argument("--allow-bad-rows", type=int, default=0,
+                    help="允许的坏行上限（默认 0=任何坏行即退出；显式放行须先核明原因）")
     a = ap.parse_args()
     chans = json.load(open(a.channels))["channels"]
 
@@ -39,6 +41,10 @@ def main():
             raise SystemExit(f"块段重叠：{t1}=[{l1},{h1}) 与 {t2}=[{l2},{h2}) ——通道归属必须互斥")
 
     rows = {}  # (tag,tx,uid尾号) -> (block, ts, from, to, value)；段互斥保证全局无重
+    # 坏行记账（fail-closed 修复 2026-07-22）：结构坏（列数≠7）与字段坏（数字解析失败）
+    # 一律计数+留样本，默认存在坏行即退出（--allow-bad-rows N 显式放行上限）。
+    # 修复前 except: continue 静默丢行——坏行数从不可见，与对账三查精神冲突。
+    bad_rows, bad_samples = 0, []
     for c in chans:
         n = 0
         try:
@@ -49,21 +55,40 @@ def main():
         r = csv.reader(f)
         next(r, None)
         for row in r:
+            if not row:
+                continue          # 空行不算数据损坏
             if len(row) != 7:
+                bad_rows += 1
+                if len(bad_samples) < 5:
+                    bad_samples.append((c["tag"], "列数≠7", row[:3]))
                 continue
             blk, ts, tx, frm, to, val, uid = row
             try:
                 b = int(blk)
-                if not (c["lo"] <= b < c["hi"]):
-                    continue
-                li = int(uid.rsplit(':', 1)[-1])
-                rows[(c["tag"], tx.lower(), li)] = (b, ts, frm.lower(), (to or Z).lower(), int(val))
-                n += 1
-            except Exception:
+            except ValueError:
+                bad_rows += 1
+                if len(bad_samples) < 5:
+                    bad_samples.append((c["tag"], "block 非数字", row[:3]))
                 continue
+            if not (c["lo"] <= b < c["hi"]):
+                continue          # 段外行属通道路由，不算坏行
+            try:
+                li = int(uid.rsplit(':', 1)[-1])
+                v = int(val)
+            except ValueError:
+                bad_rows += 1
+                if len(bad_samples) < 5:
+                    bad_samples.append((c["tag"], "li/value 非数字", row[:3]))
+                continue
+            rows[(c["tag"], tx.lower(), li)] = (b, ts, frm.lower(), (to or Z).lower(), v)
+            n += 1
         f.close()
         print(f"{c['tag']}=[{c['lo']},{c['hi']}) 收 {n} 条")
-    print(f"合计事件 {len(rows)}")
+    print(f"合计事件 {len(rows)}（坏行 {bad_rows}）")
+    if bad_rows > a.allow_bad_rows:
+        print(f"[fail-closed] 坏行 {bad_rows} 条 > 允许上限 {a.allow_bad_rows}，样本：{bad_samples}")
+        print("[fail-closed] 先核数据来源；确属可解释的格式例外再用 --allow-bad-rows 显式放行")
+        raise SystemExit(5)
 
     events = sorted(rows.items(), key=lambda kv: (kv[1][0], kv[0][2]))
     bal = defaultdict(int)
@@ -112,7 +137,8 @@ def main():
     stats = {"events": len(rows), "mint_total_wei": str(mint_total), "burn_total_wei": str(burn_total),
              "sum_balances_wei": str(su), "supply_check_ok": su == mint_total,
              "neg_balance_addrs": len(neg), "unique_addrs": len(bal),
-             "gate_pass": su == mint_total and len(neg) == 0}
+             "gate_pass": su == mint_total and len(neg) == 0,
+             "n_bad_rows": bad_rows}
     json.dump(stats, open(f"{a.out_dir}/replay_stats.json", "w"), indent=1)
     json.dump({ad: str(v) for ad, v in bal.items() if v != 0}, open(f"{a.out_dir}/balances_final.json", "w"))
     json.dump({ad: {"peak": str(v), "peak_blk": peak_blk.get(ad), "first_blk": first_seen.get(ad), "last_blk": last_active.get(ad)}

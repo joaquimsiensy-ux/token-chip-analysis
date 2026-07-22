@@ -24,9 +24,10 @@ except Exception:
     LabelResolver = None
     append_misses = None
 try:
-    from gatekeeper import funnel_scan   # v4.2 行为守门员：漏斗形状拦截（--no-gatekeeper 关闭）
+    from gatekeeper import funnel_scan, scan_profiles   # v4.2 行为守门员（--no-gatekeeper 关闭）
 except Exception:
     funnel_scan = None
+    scan_profiles = None
 
 DIR = os.getcwd()
 CFG = json.load(open(os.path.join(DIR, "config.json")))
@@ -72,20 +73,47 @@ def main(chain):
             return True
         return False
 
-    rows, seen = [], set()
-    for p in glob.glob(os.path.join(DIR, f"{chain}_part_*.csv")):
-        for line in open(p):
-            parts = line.strip().split(",")
-            if len(parts) == 6 and parts[0] != "block":
-                k = (parts[1], parts[2])
-                if k in seen: continue
-                seen.add(k)
-                rows.append((parts[3].lower(), parts[4].lower(), int(parts[5])))
-    bal = defaultdict(int); edge = defaultdict(float); deg = defaultdict(set)
-    for f, t, v in rows:
-        bal[f] -= v; bal[t] += v
-        edge[(f, t)] += v / DEC / 1e6
-        deg[f].add(t); deg[t].add(f)
+    # --prep <dir>：读 cluster_prep_duck.py 的 DuckDB 缩图件（亿级样本必用——老路四容器
+    # 内存不可行）；不带 --prep 走老路全量装载。两路语义等价（ASTEROID 沙盘 diff 验证）。
+    prep_dir = None
+    if "--prep" in sys.argv:
+        i = sys.argv.index("--prep")
+        prep_dir = (sys.argv[i + 1] if i + 1 < len(sys.argv)
+                    and not sys.argv[i + 1].startswith("--")
+                    else os.path.join(DIR, "data", "cluster_prep"))
+    rows, profiles = None, None
+    if prep_dir:
+        import pyarrow.parquet as pq
+        _ea = pq.read_table(os.path.join(prep_dir, "edges_agg.parquet"))
+        edge = {(f, t): int(v) for f, t, v in zip(_ea.column("f").to_pylist(),
+                                                  _ea.column("t").to_pylist(),
+                                                  _ea.column("v").to_pylist())}
+        _bt = pq.read_table(os.path.join(prep_dir, "bal.parquet"))
+        bal = defaultdict(int, {a: int(b) for a, b in
+                                zip(_bt.column("addr").to_pylist(), _bt.column("bal").to_pylist())})
+        _pt = pq.read_table(os.path.join(prep_dir, "profile.parquet"))
+        profiles = [dict(zip(_pt.column_names, r))
+                    for r in zip(*(_pt.column(c).to_pylist() for c in _pt.column_names))]
+        deg_n = {p["addr"]: int(p["peers"]) for p in profiles}
+        print(f"[prep] DuckDB 缩图件：edges {len(edge):,} / addrs {len(deg_n):,}（{prep_dir}）")
+    else:
+        rows, seen = [], set()
+        for p in glob.glob(os.path.join(DIR, f"{chain}_part_*.csv")):
+            for line in open(p):
+                parts = line.strip().split(",")
+                if len(parts) == 6 and parts[0] != "block":
+                    k = (parts[1], parts[2])
+                    if k in seen: continue
+                    seen.add(k)
+                    rows.append((parts[3].lower(), parts[4].lower(), int(parts[5])))
+        # edge 存原始 wei 整数累计（fail-closed 修复 2026-07-22）：修复前 v/DEC/1e6 浮点
+        # 累计后与浮点阈值比较——违反 SKILL.md 阈值整数运算纪律，边界值判定受舍入影响。
+        bal = defaultdict(int); edge = defaultdict(int); deg = defaultdict(set)
+        for f, t, v in rows:
+            bal[f] -= v; bal[t] += v
+            edge[(f, t)] += v
+            deg[f].add(t); deg[t].add(f)
+        deg_n = {a: len(s) for a, s in deg.items()}
 
     # v4.2 行为守门员：漏斗形状（多进多出+过手不留存）的地址一律禁作合并边——
     # 静态库兜"已知设施"，这里兜"没见过的"（新桥/新所钱包/新 bot 每天在增长，库永远追不全）。
@@ -94,8 +122,9 @@ def main(chain):
     if funnel_scan is not None and "--no-gatekeeper" not in sys.argv:
         exempt = set(TEAM)
         if resv is not None:
-            exempt |= {a for a in deg if resv.is_serial(a)}
-        funnel_hits = funnel_scan(rows, exempt=exempt)
+            exempt |= {a for a in deg_n if resv.is_serial(a)}
+        funnel_hits = (scan_profiles(profiles, exempt=exempt) if profiles is not None
+                       else funnel_scan(rows, exempt=exempt))
         n_strong = sum(1 for p in funnel_hits.values() if p["verdict"] == "FUNNEL")
         print(f"行为守门员: FUNNEL {n_strong} | CANDIDATE {len(funnel_hits) - n_strong}"
               f"（明细落 clusters.json gatekeeper_blocked；--no-gatekeeper 关闭）")
@@ -105,14 +134,15 @@ def main(chain):
         return bool(v) and v["verdict"] == "FUNNEL"
 
     uf = UF()
-    thresh_m = CFG.get("total_supply_m", 1000) * 0.00005  # 0.005% 总量（单位:百万枚）
+    # 判定层一律整数交叉乘法（供给 wei 口径）：R1 边阈值 0.005%=1/20000
+    supply_raw = int(round(CFG.get("total_supply_m", 1000) * 1e6)) * DEC
     # R1
     for (f, t), m in edge.items():
-        if m < thresh_m: continue
+        if m * 20000 < supply_raw: continue
         if f in CEX or t in CEX or f == Z or t == Z or f in TEAM or t in TEAM: continue
         if no_merge(f) or no_merge(t): continue   # 标签库设施/locker 不作合并边
         if funnel_block(f) or funnel_block(t): continue   # 守门员：漏斗形状不作合并边（v4.2）
-        if len(deg[f]) > 200 or len(deg[t]) > 200: continue
+        if deg_n.get(f, 0) > 200 or deg_n.get(t, 0) > 200: continue
         uf.union(f, t)
     # R2
     gas_src = defaultdict(set)
@@ -126,31 +156,36 @@ def main(chain):
                 # 标签库/守门员命中的公共 funder（Relay solver/提款热钱包等）不作 gas 同源种子——历史假聚类头号来源
                 gas_src[nf.lower()].add(h["address"].lower())
     for src, addrs in gas_src.items():
-        addrs = {a for a in addrs if a not in CEX and a not in TEAM and len(deg[a]) <= 200
+        addrs = {a for a in addrs if a not in CEX and a not in TEAM and deg_n.get(a, 0) <= 200
                  and not no_merge(a) and not funnel_block(a)}
         base = None
         for a in addrs:
             if base is None: base = a
             else: uf.union(base, a)
-    # R3：金库一跳（单独标记）
-    downstream = defaultdict(float)
-    for f, t, v in rows:
-        if f in TEAM and t not in CEX and t not in TEAM and t != Z and len(deg[t]) <= 200:
-            downstream[t] += v / DEC / 1e6
+    # R3：金库一跳（单独标记）。从聚合边扫（条件只依赖 (f,t) 对，逐行=聚合等价；
+    # 整数累计，展示层再除——两路共用，2026-07-22 与 --prep 一并统一）
+    downstream = defaultdict(int)
+    for (f, t), v in edge.items():
+        if f in TEAM and t not in CEX and t not in TEAM and t != Z and deg_n.get(t, 0) <= 200:
+            downstream[t] += v
 
     clusters = defaultdict(set)
     for a in list(uf.p):
         clusters[uf.find(a)].add(a)
     out = []
     for root, members in clusters.items():
-        tot = sum(bal.get(a, 0) for a in members) / DEC / 1e6
-        if tot < thresh_m * 2 and len(members) < 3: continue
-        mb = sorted(members, key=lambda a: -bal.get(a, 0))
+        tot_raw = sum(bal.get(a, 0) for a in members)
+        tot = tot_raw / DEC / 1e6
+        # 集群准入 0.01%=1/10000（整数判定；tot 浮点仅展示）
+        if tot_raw * 10000 < supply_raw and len(members) < 3: continue
+        # addr 二级键保证确定性输出（并列余额时 set 迭代序不定，2026-07-22 修）
+        mb = sorted(members, key=lambda a: (-bal.get(a, 0), a))
         out.append({"size": len(members), "total_M": round(tot, 3),
                     "pct_supply": round(tot / CFG.get("total_supply_m", 1000) * 100, 3),
                     "has_team_source": any(m in downstream for m in members),
                     "members": [{"addr": a, "bal_M": round(bal.get(a, 0)/DEC/1e6, 3)} for a in mb[:12]]})
-    out.sort(key=lambda c: -c["total_M"])
+    out.sort(key=lambda c: (-c["total_M"], -c["size"],
+                            c["members"][0]["addr"] if c["members"] else ""))
     def _lbl(a):
         r = resv.get(a) if resv else None
         return r["name"] if (r and not r["cross_chain"]) else ""
@@ -159,9 +194,9 @@ def main(chain):
     n_miss = 0
     if resv is not None and append_misses is not None:
         miss = []
-        for a, peers in deg.items():
-            if len(peers) > 200 and resv.get(a) is None and a not in CEX and a != Z:
-                miss.append((a, len(peers), f"高度数节点 deg={len(peers)}（疑似路由/分发设施）"))
+        for a, pn in deg_n.items():
+            if pn > 200 and resv.get(a) is None and a not in CEX and a != Z:
+                miss.append((a, pn, f"高度数节点 deg={pn}（疑似路由/分发设施）"))
         for src, addrs in gas_src.items():
             if len(addrs) >= 3 and resv.get(src) is None and src not in TEAM:
                 miss.append((src, len(addrs), f"共同 gas funder 服务 {len(addrs)} 地址（疑似热钱包/代付服务）"))
@@ -185,7 +220,7 @@ def main(chain):
                                                               "retention", "top_peer_share")}}
                                       for a, p in sorted(funnel_hits.items())],
                "label_excluded_nodes": [{"addr": a, **info} for a, info in sorted(excluded.items())],
-               "team_downstream": [{"addr": a, "received_M": round(v, 3), "bal_M": round(bal.get(a, 0)/DEC/1e6, 3),
+               "team_downstream": [{"addr": a, "received_M": round(v/DEC/1e6, 3), "bal_M": round(bal.get(a, 0)/DEC/1e6, 3),
                                     "label": _lbl(a)}
                                    for a, v in sorted(downstream.items(), key=lambda x: -x[1])[:40]]},
               open(os.path.join(DIR, f"{chain}_clusters.json"), "w"), ensure_ascii=False, indent=1)
@@ -200,7 +235,7 @@ def main(chain):
         print(f"size={c['size']:<4} bal={c['total_M']:>9.3f}M ({c['pct_supply']:.2f}%){team}  {heads}")
     print(f"\n金库一跳接收者 top15（区分'官方控制'与'来源官方'！）:")
     for d in sorted(downstream.items(), key=lambda x: -x[1])[:15]:
-        print(f"{d[0]}  收 {d[1]:.3f}M  现持 {bal.get(d[0],0)/DEC/1e6:.3f}M")
+        print(f"{d[0]}  收 {d[1]/DEC/1e6:.3f}M  现持 {bal.get(d[0],0)/DEC/1e6:.3f}M")
 
 if __name__ == "__main__":
     main(sys.argv[1])
