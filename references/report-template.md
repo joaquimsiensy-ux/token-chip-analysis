@@ -184,7 +184,7 @@ python3 scripts/report/build_html.py --md 报告.md --out 报告.html
 
 **为什么**：v3.2 砍掉默认 appendix.json 后，未买入标的日后做 /token-update 时实体表只能从附录 B 的**文字反抄**——手抄地址正是本 skill 多条铁律防的头号错误源。本文件以近零成本堵上该缺口：交付时顺手从落盘数据落一份**纯机器状态**，不进报告、不算监控包。
 
-- **schema = appendix.json 的机器子集**（键名与 monitoring-package.md 完全同构，日后买入直接在其上扩展成 appendix）：`token`（含 data_cutoff/skill_version 必填）、`whale_groups`（**entity_id**/label/tier/type/status/addresses/current_share_pct/peak_share_pct）、`vault_addresses`、`addresses`（仅 address/chain/role/balance_est/group 五字段——**不含** sentinel/watch/why 等监控字段）、`camp_share_series`（≤500 点，重绘图 1 基线）。**不含** monitoring_advice、观察哨等一切人工监控文案。
+- **schema = appendix.json 的机器子集**（键名与 monitoring-package.md 完全同构，日后买入直接在其上扩展成 appendix）：`token`（含 data_cutoff/skill_version 必填；**total_supply 等供给字段一律 human 单位**——曾把 wei 值又除一次 decimals 双重计，BANANAS31(BSC) 2026-07-22）、`whale_groups`（**entity_id**/label/tier/type/status/addresses/current_share_pct/peak_share_pct）、`vault_addresses`、`addresses`（仅 address/chain/role/balance_est/group 五字段——**不含** sentinel/watch/why 等监控字段）、`camp_share_series`（≤500 点，重绘图 1 基线）。**不含** monitoring_advice、观察哨等一切人工监控文案。
 - **entity_id 稳定主键（3.19 起 whale_groups 必填）**：值与 facts.json entities 的字典键一致（如 `e_big1`），一次分配终身不改；label 只是展示文案，改措辞不影响对账与 /token-update 续跑。facts_gate G1 优先按 entity_id 匹配，旧 state 无此字段回退 label 匹配（向后兼容）。
 - **provenance 薄版血缘（3.19 起顶层必填）**：`{"schema_version": "2", "skill_commit": "<git rev-parse --short HEAD>", "data_sources": ["hypersync_v2", ...]}`——回答"这份结论由哪版流程+哪些数据源算出"；缺失时 facts_gate 出 G7 提示。完整计算血缘链（逐阶段输入输出哈希）评估后暂缓不做。
 - 地址一律从落盘数据文件复制（完整地址纪律同 JSON 附录）；与附录 B 名单一致。

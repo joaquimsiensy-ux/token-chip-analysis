@@ -110,6 +110,7 @@ def main(chain):
         # 累计后与浮点阈值比较——违反 SKILL.md 阈值整数运算纪律，边界值判定受舍入影响。
         bal = defaultdict(int); edge = defaultdict(int); deg = defaultdict(set)
         for f, t, v in rows:
+            if v == 0: continue   # zero-value transferFrom 投毒边不进账（与 prep 路同口径，v3.25）
             bal[f] -= v; bal[t] += v
             edge[(f, t)] += v
             deg[f].add(t); deg[t].add(f)

@@ -127,15 +127,18 @@ def main():
     # 唯一全量重活 = (f,t) 边聚合（不物化去重中间表——QUQ 亿级两次 temp 爆的教训：
     # 首跑 (a,p) 双向 2 亿行 46.5GB、二跑 (tx,li) 全局去重 shuffle 37GB）。
     # bal/profile 全部从 edges_agg 派生（(f,t) 聚合保和，逐行=聚合数学等价）。
+    # zero-value transferFrom 投毒边过滤（v3.25，与 cluster.py 老路同口径）：0 额伪造
+    # Transfer 会把投毒对手方串进簇并虚增 profile 度数；bal 不受影响（±0）。v 为十进制串无前导零。
     if a.v2:
         con.execute(f"CREATE TABLE ea AS SELECT f, t, SUM(CAST(v AS {vt})) v, COUNT(*) cnt "
-                    f"FROM raw GROUP BY f, t")
+                    f"FROM raw WHERE v <> '0' GROUP BY f, t")
     else:
         con.execute(f"""
             CREATE TABLE ea AS
             SELECT f, t, SUM(v) v, COUNT(*) cnt FROM (
               SELECT ANY_VALUE(f) f, ANY_VALUE(t) t, CAST(ANY_VALUE(v) AS {vt}) v
               FROM raw GROUP BY tx, li)
+            WHERE v <> 0
             GROUP BY f, t""")
     n = con.execute("SELECT SUM(cnt) FROM ea").fetchone()[0]
     print(f"去重后事件 {n:,}", flush=True)
