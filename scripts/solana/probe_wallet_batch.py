@@ -131,7 +131,7 @@ def main():
         out[addr] = rec
         out_f.write_text(json.dumps(out))
         first_sell = next((m for m in rec["moves"] if m["delta"] < 0), None)
-        print(f"{addr[:8]}… sigs={rec['sig_total']} decoded={rec['decoded']} "
+        print(f"{addr} sigs={rec['sig_total']} decoded={rec['decoded']} "
               f"moves={len(rec['moves'])} 首笔卖出 ts={first_sell['ts'] if first_sell else 'n/a'}", flush=True)
 
     # defAh PDA：7kfV 的 CLUDE token account 归属主与 PDA data

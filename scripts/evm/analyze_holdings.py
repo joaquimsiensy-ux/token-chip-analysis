@@ -134,7 +134,7 @@ def main(chain, eth_csv):
         if t != "team_treasury": continue
         tin = sum(r[5] for r in rows if r[4] == tb) / DEC / 1e6
         tout = sum(r[5] for r in rows if r[3] == tb) / DEC / 1e6
-        print(f"\n=== 金库 {name} {tb[:12]}: 流入 {tin:.2f}M 流出 {tout:.2f}M 余 {bal.get(tb,0)/DEC/1e6:.2f}M ===")
+        print(f"\n=== 金库 {name} {tb}: 流入 {tin:.2f}M 流出 {tout:.2f}M 余 {bal.get(tb,0)/DEC/1e6:.2f}M ===")
         for r in rows:
             if r[3] == tb and r[5] > 0.05 * DEC * 1e6:
                 lbl = LABELS.get(r[4], (r[4][:16], ""))[0]

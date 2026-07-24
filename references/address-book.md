@@ -31,6 +31,7 @@
 | `0x2b5634c42055806a59e9107ed44d43c426e58258` | KuCoin 1 (ETH) | |
 | `0xdc76cd25977e0a5ae17155770273ad58648900d3` | HTX 56 (ETH) | |
 | `0x6cc5f688a315f3dc28a7781717a9a798a59fda7b` | OKX (ETH) | |
+| `0xa86309988947559b6e72ef716c5058f479386c0f` | Coinbase Prime Custody Gas Supplier 1 (ETH) | 标签库多源＋创世资金来自 Coinbase 4；**机构托管分仓群识别锚**——分仓群 gas 全由它精确滴灌＝Prime 托管实锤（指纹三件套见 playbook-entity-cluster-methods「CEX 提币囤仓反转通道」条）；⚠托管≠自营，Prime 托管是客户/机构资产，风险语义与所自营仓不同（SPX6900 分析核验 2026-07-25） |
 
 ### 币安 BSC 二级提币热钱包（外部 BSC 分析考古 2026-07：TCC/人生K线/bibi；funded-by 聚类头号假阳性源）
 

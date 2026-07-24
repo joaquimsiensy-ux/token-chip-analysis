@@ -22,6 +22,10 @@
 落盘与合并纪律（v3.11.2 起）：多源产物一律经 transfers_lib.py merge 合并——重叠块区
 集合级对账，不等即 exit(3) fail-closed（PING 案 uniqueId 双计 5485 负余额的制度化防线）；
 标准 8 列含 block_hash，去重键 (block_hash,tx,log_index) 防链重组。
+channels.json 的 path 字段语义（2026-07-25 SPX6900 实测坑）：hypersync_v2 通道的 path
+指向 **v2 采集根目录**（如 data/v2，内含分段 parquet 全集），**不是单次 run 子目录**——
+分段采集/断点续拉的币该目录下有多段产物，把某段 run 目录填进 path 会静默漏段；
+续拉与重放引用 channels.json 时按根目录读全段。
 ```
 
 批量预采集（v3.16.0，/collect-data 命令）：多币串行队列 `scripts/collect/collect_queue.py`

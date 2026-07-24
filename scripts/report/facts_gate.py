@@ -93,6 +93,9 @@ class Facts:
         self.token = facts_dict.get("token") or {}
         self.decimals = int(self.token.get("decimals", 18))
         self.total_raw = _int(self.token.get("total_supply_raw", "0"))
+        if self.total_raw <= 0:
+            # 键名必须 total_supply_raw（raw 整数）；human 版键名会让分母为 0、全部 share 宏静默算出 0.00%（SPX6900 2026-07-25 实踩）
+            raise ValueError("token.total_supply_raw 缺失或为 0——检查键名（不认 total_supply 等 human 版键）与取值（raw 整数字符串）")
         self.entities = facts_dict.get("entities") or {}
         self.metrics = facts_dict.get("metrics") or {}
         self.rendered_values = set()   # 渲染产出的字符串（G5 手写数字差集用）
