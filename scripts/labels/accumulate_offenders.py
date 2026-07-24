@@ -43,7 +43,7 @@ DEFAULT_ROOT = os.path.expanduser('~/Desktop/老公用/fable筹码分析')
 OUT = os.path.join(_HERE, 'sources', 'serial_actors.csv')
 
 # A7：基础设施类身份清单（主档冲突）；其余 tier=exclude / no_merge 类目作次档提示
-INFRA_CATS = {'cex', 'suspected-cex', 'infra', 'bridge', 'dex', 'bundler', 'paymaster', 'mev'}
+INFRA_CATS = {'cex', 'suspected-cex', 'infra', 'bridge', 'dex', 'bundler', 'paymaster', 'mev', 'locker'}
 
 
 def load_goldset_infra(labels_dir=None):

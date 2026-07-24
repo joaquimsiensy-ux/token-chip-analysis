@@ -143,6 +143,8 @@
 | `jitodontfrontB1111111TradeWithAxiomDotTrade` | Axiom 防抢跑标记账户 | 与 FLASHX 路由伴随出现 |
 | `strmRqUCoQUgGUan5YhzUZa6KqdzwX5L6FpUxfmKg5m` | Streamflow 锁仓程序 | escrow token 账户 authority=账户自身；stream 元数据账户 owner=它，可 raw 解码锁仓参数（见 data-pipeline-solana §2） |
 | `wdrwhnCv4pzW8beKsbPa4S2UDZrXenjg16KJdKSpb5u` | Streamflow 自动提取服务 feePayer | 多笔提取共用它作 feePayer = 同批操作；"即建即提" stream 洗筹一跳中转的识别锚点 |
+| `86KSdCfcqnJo9TCLFi3zxsJAJzvx9QU7oEPd6Fn5ZPom` | Jupiter DCA keeper（自动执行代付方，公共设施） | DCA/limit-order 自动执行 tx 的 fee payer，服务海量互不相关的定投用户；gas 溯源产物里目标 `my_sol_delta=0`+funder=它 ⇒ 仅代付非注资，**禁作合并边**（GOAT 案曾据它把三个独立 DCA 用户合并成 5.24% 假小庄，外部复核撤销）。已退役清空≠私人钱包（keeper 轮换常态）（GOAT(Solana) 外部复核实锤 2026-07-24） |
+| `CTaDZW2LhvHPRnA9JWcZF8R5y2mpkV2RcHAXyEoKLbzp` | Jupiter DCA keeper（同上，轮换第二址） | 同案与 86KSd 交替出现在同批 DCA 用户的执行 tx；识别与禁用规则同上行（GOAT(Solana) 外部复核实锤 2026-07-24） |
 | `pfeeUxB6jkeY1Hxd7CsFCAjcbHA9rWtchMGdZ6VojVZ` | pump.fun fee 程序 | **RugCheck 的 creator 字段可能标成此程序派生的费金库 PDA**（与 pump.fun API 的真 creator 不冲突）——两源分歧先查所标地址的 owner 是否为它再下结论（CLUDE(Solana) 实测 2026-07-13） |
 | `pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA` | PumpSwap AMM 程序 | 毕业池程序；其 creator-vault-authority PDA 是 dev 币本位创作者费的领取来源——dev"从池子收币"多半是**领费不是交易**，勿误判为买入（CLUDE(Solana) 实测 2026-07-13） |
 | `39azUYFWPz3VHgKCf3VChUwbpURdCHRxjWVowf5jUJjg` | pump.fun→Raydium 官方毕业迁移钱包（Raydium Migrator） | 毕业时以 Withdraw 指令自 bonding curve 提出毕业储备注入 Raydium 池，过手约 2.069 亿枚 ≈20.7% 供应（**协议常数，pump.fun 毕业币同级**）、数十秒内完成过手。**发射窗重放的瞬时峰值榜必剔此址**——GOAT 案初稿曾把它误判"狙击集团 20.69% 瞬时峰"（复核 REFUTED 实体作废）；§8.6 成本重建的"迁移笔剔除"同源坑。走 PumpSwap 毕业的新币无此址过手（见上 pAMMBay 行）（GOAT(Solana) 实测 2026-07-22） |
