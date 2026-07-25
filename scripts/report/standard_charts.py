@@ -124,8 +124,13 @@ def _timeaxis(ax, ts, day_only=False):
 
 PRICE_LOG_SWITCH_RATIO = 30  # 图1 价格右轴：max/min 超此倍数自动切对数轴（防早期行情压成地板线）
 
+# 图1 overlay 合并口径线的配色：深紫/深品红/深青——与阵营堆叠色和价格黑线均不撞
+# （虚线+白描边，与价格线的"黑色实线"在形状与颜色两个维度都区分开）
+OVERLAY_COLORS = ["#4A148C", "#880E4F", "#004D40"]
 
-def plot_camp_evolution(series, out_png, token, note_supply="占总供应量", price_series=None):
+
+def plot_camp_evolution(series, out_png, token, note_supply="占总供应量", price_series=None,
+                        overlay=None):
     """图1：各阵营持仓占比演变（全量转账重放后的快照序列）。
 
     series: {"ts": [datetime,...], "<阵营名>": [pct,...], ...}
@@ -136,6 +141,18 @@ def plot_camp_evolution(series, out_png, token, note_supply="占总供应量", p
             价格+筹码分布对照（v3.12，2026-07-21 用户定，完整版与 easy 版均默认传入）。
             量程 max/min > PRICE_LOG_SWITCH_RATIO 自动切对数轴并在轴标签注明；
             序列自动裁剪到阵营时间范围。不传则保持纯占比图（旧调用/基线重绘兼容）。
+    overlay: 可选 [{"label": str, "pct": [...], "color": str（可选）}]——在堆叠图上叠加
+            **跨阵营合并口径**的占比虚线（与阵营同左轴，长度须与 ts 对齐）。
+
+            **什么时候必须加**：当某实体的筹码会在两个并列阵营之间来回搬家时，分列的堆叠
+            图会让读者把"搬家"误读成"增减持"。最典型的是项目方自挂 LP——币从项目方钱包
+            挂进池子，"项目方"色块掉、"流动性池"色块涨，一枚都没买卖，图形却大变。
+            KOGE(BSC) 实测：2026-04-22 撤墙日项目方 2,185,639 枚，43 天后的 06-04 挂墙日
+            只剩 1,426,049 枚（账面 −76 万），同期池子 +83 万，**两者合计几乎不动**；
+            用户正是据分列图问出"项目方在吸筹还是卖币"。加一条"项目方＋流动性池"的合计线，
+            歧义当场消失。同类场景：金库↔质押合约、金库↔CEX 托管。
+            口径诚实：池中可能混有他方 LP，故该线是**上界**，题注须写明。
+            （v3.33 新增，KOGE(BSC) 用户追问驱动，2026-07-25；不传则行为与旧版逐像素一致）
     """
     setup()
     ts = series["ts"]
@@ -151,6 +168,15 @@ def plot_camp_evolution(series, out_png, token, note_supply="占总供应量", p
     _timeaxis(ax, ts)
     handles, labels = ax.get_legend_handles_labels()
     legend_x = 1.01
+
+    if overlay:
+        import matplotlib.patheffects as pe
+        for i, ov in enumerate(overlay):
+            ln = ax.plot(ts, ov["pct"], color=ov.get("color", OVERLAY_COLORS[i % len(OVERLAY_COLORS)]),
+                         lw=2.0, ls=(0, (6, 2.5)), zorder=6,
+                         path_effects=[pe.withStroke(linewidth=3.6, foreground="white")])
+            handles += ln
+            labels += [ov["label"]]
 
     if price_series and price_series.get("ts"):
         # 裁剪到阵营时间范围，防价格序列更长把 x 轴撑出堆叠区

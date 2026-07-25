@@ -103,10 +103,24 @@ def mode_fig1(a):
             raise SystemExit(f"FAIL: 阵营「{camp}」长度 {len(vals)} ≠ dates {n}")
         series[camp] = vals
     price = _read_price_csv(a.price_csv, a.price_cols) if a.price_csv else None
+    overlay = None
+    if a.overlay:
+        overlay = []
+        for spec in a.overlay:
+            label, sep, expr = spec.partition("=")
+            if not sep:
+                raise SystemExit(f'FAIL: --overlay 格式应为 "标签=阵营A+阵营B"，收到 {spec!r}')
+            names = [c.strip() for c in expr.split("+") if c.strip()]
+            missing = [c for c in names if c not in series_by_camp]
+            if missing:
+                raise SystemExit(f"FAIL: --overlay 引用了不存在的阵营 {missing}；"
+                                 f"可用阵营：{list(series_by_camp)}")
+            overlay.append({"label": label.strip(),
+                            "pct": [sum(series_by_camp[c][i] for c in names) for i in range(n)]})
     from standard_charts import plot_camp_evolution
     plot_camp_evolution(series, a.out, a.token or
                         (state.get("token") or {}).get("symbol", "?"),
-                        price_series=price)
+                        price_series=price, overlay=overlay)
     print(f"OK fig1: {len(series['ts'])} 点 × {len(series_by_camp)} 阵营 → {a.out}"
           + (f"（价格 {len(price['ts'])} 点）" if price else "（无价格轴）"))
     return 0
@@ -193,6 +207,11 @@ def main():
     p1.add_argument("--out", required=True)
     p1.add_argument("--price-csv")
     p1.add_argument("--price-cols", help="日期列,价格列（默认自动探测）")
+    p1.add_argument("--overlay", action="append", metavar="标签=阵营A+阵营B",
+                    help="合并口径虚线（可重复）。凡实体筹码会在两个并列阵营间搬家"
+                         "（项目方自挂 LP／金库↔质押／金库↔CEX），分列堆叠图会把搬家画成增减持，"
+                         "必须加此线；阵营名须存在于 camp_share_series，否则报错。"
+                         '例：--overlay "项目方＋池中自挂LP（合计·上界）=项目方+流动性池"')
     p1.set_defaults(fn=mode_fig1)
     p2 = sub.add_parser("flow", help="流转图 spec 宏渲染出图")
     p2.add_argument("--facts", required=True)

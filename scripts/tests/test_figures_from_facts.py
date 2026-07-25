@@ -89,7 +89,25 @@ def main():
         r = run(["check", "--facts", fp, "--series", ser_p])
         assert r.returncode != 0 and "不同源" in r.stdout, f"偏 0.5pp 应挂: {r.stdout}"
 
-    print("PASS: figures_from_facts fig1直出/flow宏同源/宏错必炸/check终值对账，四契约全过")
+        # 5) fig1 --overlay 合并口径线（v3.33）：正常出图 + 两条 fail-closed
+        out5 = os.path.join(td, "fig1_ov.png")
+        r = run(["fig1", "--state", sp, "--token", "TT", "--out", out5,
+                 "--overlay", "合并=大庄+散户"])
+        assert r.returncode == 0 and os.path.getsize(out5) > 10_000, \
+            f"overlay 出图失败: {r.stdout} {r.stderr}"
+        assert os.path.getsize(out5) != os.path.getsize(out1), "带 overlay 的图应与不带的不同"
+        # SystemExit 的消息走 stderr（与 mode_fig1 内其他 fail 一致），两路都收
+        r = run(["fig1", "--state", sp, "--out", os.path.join(td, "x.png"),
+                 "--overlay", "X=大庄+查无此阵营"])
+        assert r.returncode != 0 and "不存在的阵营" in (r.stdout + r.stderr), \
+            f"引用不存在阵营应 fail-closed: {r.stdout} {r.stderr}"
+        r = run(["fig1", "--state", sp, "--out", os.path.join(td, "y.png"),
+                 "--overlay", "缺等号"])
+        assert r.returncode != 0 and "格式应为" in (r.stdout + r.stderr), \
+            f"格式错应 fail-closed: {r.stdout} {r.stderr}"
+
+    print("PASS: figures_from_facts fig1直出/flow宏同源/宏错必炸/check终值对账/"
+          "overlay合并线(含双fail-closed)，五契约全过")
     return 0
 
 
