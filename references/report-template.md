@@ -286,3 +286,11 @@ schema 全部细节（report-extract 四键与 `id="report-extract"` 硬约定�
 13. **【买入后监控包交付时追加】**：观察哨与两档监控建议齐且逐条有原因、与 JSON monitoring_advice 的 mode/alert_threshold_pct 一一对应；JSON 顶层四键齐、addresses 与附录 B 一致且完整地址、sentinel 纪律复查（周期性会动的地址必须 false）、round_target/watch_return 该填的填了；重跑 build_html 零 WARN、`id="report-extract"` 目检存在
 14. 浏览器打开 HTML 目检：图片全显示、表格无错位、蓝红框正常、（带监控包时）JSON 折叠块可展开
 15. **交付后固定动作（3.18.0）**：`python3 scripts/labels/accumulate_offenders.py --apply`——把本案实锤庄回灌惯犯库（含 manifest 自动落印；state 文件案子也扫，买不买入都要跑）。**3.19 起自动带跨案身份冲突检测**：`sources/serial_conflicts_*.md` 非空=有设施身份地址混进庄家成员表，先按 labels/README 三选一裁决再 --apply 该地址（设施被覆盖成 serial-actor 会让聚类禁边失效）
+
+**阵营归属 ↔ 正文叙事交叉自检（交付前机械检查，2026-07-25）**：
+KOGE 案出现过一处自相矛盾——一个 2.867% 的账户，其动作被正文算进"项目方三钱包注入 856,636 枚"，
+阵营表却把它归入散户；完整性批评一眼抓出。**纪律**：交付前逐条核——凡在正文被点名参与某实体动作
+的地址，必须在阵营表里有明确归属且两处措辞一致；发现互斥时二选一（并入该实体，或单列为独立实体
+并改写正文措辞），**不能两处并存**。该账户最终单列为"其他大户#1"，连带把真散户从 4.86% 修正到 1.83%
+——一个 2.87% 的错分，能让散户份额虚高 2.6 倍。
+（来源：KOGE(BSC) 分析对抗复核，2026-07-25）

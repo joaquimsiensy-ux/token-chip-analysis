@@ -15,6 +15,10 @@
 - **`read_csv` 把 wei 值推断成 DOUBLE → 制造全量假差集**：独立源 CSV 与主数据做六元组比对时，`read_csv`/`read_csv_auto` 会把 20+ 位的 wei 十进制串推断为 DOUBLE，精度丢失导致**每一行都对不上**（看起来像"数据源完全不一致"的灾难性结论）。对账读 CSV 一律 `all_varchar=true` 后显式 `CAST(... AS HUGEINT)`。
 - **`others` 是保留字，不可作列别名**：`SUM(...) AS others` 直接语法错误（`Parser Error: syntax error at or near "others"`）。聚合列命名避开 `others`/`day`/`filter` 等保留字。
 （来源：BUILDon(BSC) 分析，2026-07-25）
+- **区块号区间不可用于估算时间分布（传播级错误源）**：据"96% 的转账落在块 50M–72M"推出"96% 发生在
+  2025 上半年"，实测**只有 32.78%**（H2 反而占 61.64%）——BSC 2025 年把出块时间从 3 秒压到 0.75 秒，
+  **同样块跨度对应的真实时长差 4 倍**。任何"某时期占比"类结论一律 join 区块时间戳按日/月归集后再统计，
+  禁止块号线性外推。对所有近年提速过的链（BSC/Arbitrum/opBNB…）都成立。（来源：KOGE(BSC) 分析，2026-07-25）
 
 **对账差额排查步骤（供给恒等式不闭合时按序查）——查完常规漏段后必查 Burn/Mint 独立事件**：2017 老版 OpenZeppelin `burn()` 只发 `Burn(address,uint256)` **不发 Transfer**——只采 Transfer topic 重放会出现"重放净供给 > 链上 totalSupply"的幽灵差额（LPT 案 604 枚，burner 主力=治理合约每次投票烧 100）。排查法：web3_sha3 算 Burn/Mint topic0 后 HyperSync 定向拉（几秒）；注意新链侧可能是"Burn 事件+Transfer(to=0x0) 双发"路径（此时 Burn 事件是 Transfer 的子集，不另计，勿双扣）。链无关坑，凡 2018 前老合约必查。（来源：LPT(ETH+Arbitrum) 分析，2026-07-21）
 
@@ -68,6 +72,34 @@
 - **temp 磁盘是亿级聚合的真瓶颈**（非内存）：`SET max_temp_directory_size` 按十进制解析（40GB=37.2GiB）；(tx,li) 全局去重 shuffle 1 亿行需 >37GB temp——**v2 输入用块界感知去重**（per-run min/max 元数据秒查→仅重叠区间 GROUP BY，非重叠直通零 shuffle；QUQ 4 段零重叠 19.5s 完成）；派生表一律从 edges_agg 算（(f,t) 聚合保和），禁止对原始行做 (a,p) 双向 2 亿行聚合（首跑 46.5GB 爆仓教训）。
 - 块末峰值窗口（PARTITION BY addr ORDER BY block 亿级）是最重一环——**3.19 已上两级候选预筛**（replay_duck 内置默认开）：一级=累计流入恒等上界（峰值≤Σ入账，不达 `peak_min×0.8` 者必不进 peaks），二级=正块净增更紧上界（峰值≤Σmax(dd,0)，同块进出抵消地址被精准滤掉）；两级全整数恒等推理只多收不漏收，精确窗口 SQL 逐字未动只缩输入集合，QUQ/ASTEROID 逐键全等实证。实测：QUQ 峰值段 657s→~330s（**2.0x**；刷量盘是最不利盘型——真达标 21,826 址刚性占 ab 45%，收益天花板 ~2.5x）；ASTEROID 常规盘型筛除 92.8% 地址。⚠**终态余额预筛不完备**（峰值高后清仓者终态=0 会漏），只有流量口径上界可用；HUGEINT SUM 溢出自动回退 VARINT 重算。新参数 `--no-merged`（亿级基准跑省盘）；`[peak]` 分段计时打印。峰值非必需场景（easy 初筛）仍可跳。
 - **build_events 亿级全局宽键去重是当前真瓶颈（3.19 顺带发现，待修）**：QUQ v2 直读 1.03 亿行 temp 需求 >114.5GiB 本机三跑三败——而 v2 五 run 块段实测**零重叠**，全局去重对其是纯开销恒等映射（上表 QUQ "7.8min/8.1GB" 实为 events 层起算）。修复方向=build_events 引入块界感知去重（重叠区间才 GROUP BY，非重叠直通，同 cluster_prep_duck 既有做法）；巨分区（单址 1,443 万行）窗口 DuckDB 疑似串行，是预筛后剩余耗时大头。
+
+**§12b 亿级流式重放（`replay_stream.py`，2026-07-25 收编）——上条"待修瓶颈"的现成出路**：
+样本达**亿级、或可用磁盘不足样本体积 4 倍**时，replay_duck 的两次物化不可行，改走
+`scripts/evm/replay_stream.py`：字段解码与产物口径逐字对齐 replay_duck，但**不物化任何中间表**，
+直接对 parquet 流式聚合——hash aggregate 内存需求由"行数级"降到"唯一地址数级"。
+实测 KOGE(BSC) **3.595 亿行 185 秒**完成（bal 55s/supply 20s/meta+inflow 63s/落盘 28s），
+峰值内存 2.4GB、**temp 全程 0 字节**；同机 replay_duck 无法完成。
+- **合法性前提＝去重可跳过，必须先验证**：`(block,tx,log_index)` 的 block 分量决定分段 →
+  跨段不可能重复，故"把全块空间切 N 段逐段 GROUP BY 查重"**等价于全局查重但零 shuffle**
+  （8 段扫 3.6 亿行 87 秒）。脚本内置 `--verify-dedup`（默认开），发现重复即 fail-closed 退回 replay_duck；
+  通道块区间重叠同样直接拒跑。单 run 采集通常零重复，多 run 拼接/断点续拉过的必须验。
+- 用法同 replay_duck：`--channels channels.json --out-dir data`；产物同名同格式（balances_final/
+  mint_ledger/replay_stats/inflow/addr_meta/blockts.parquet），供给闭合挂同样 exit 4。
+- ⚠**等价性回归待补**：尚未与 replay_duck 做黄金基准对表（KOGE 案无小样本基准）。首次用于新标的时，
+  取一个 ≤200 万行块区间两引擎各跑一次、比对 balances_final/mint_ledger/supply 三键后再放量。
+- **峰值不由它产**（亿级块末窗口同样爆盘）——配套 `peaks_daily.py`，见 §12c。
+（来源：KOGE(BSC) 分析，2026-07-25）
+
+**§12c 峰值日级两级口径（`peaks_daily.py`）——刷量盘块末窗口的替代件**：
+块级 `(addr,block)` 聚合 + `PARTITION BY addr ORDER BY block` 窗口在刷量盘上是灾难：
+KOGE 一级 inflow 预筛（≥0.1% 供应）后**仍剩 157,459 个候选**，块级 dd 表 3 分钟吃 19GB temp 直奔爆盘。
+改日级后 6,217 候选 / 734,079 行 / **164 秒**完成。两级口径保证判级不失真：
+`L1 日末峰值`（主口径）+ `L2 日内恒等上界 Σmax(day_delta,0)`（≥ 任意时刻真实峰值，全整数恒等）；
+凡 L1 未达门槛但 L2 达标者落 `needs_block_precision.json`，对这批（通常个位数）再补块级精确值——**只多查不漏查**。
+- **候选门槛按"判级需求"定，别照抄 0.1%**：恒等式保证峰值 ≥pct 的地址必在 `inflow ≥pct` 内，
+  而判级实际只需 ≥1%（其他大户线）。KOGE 实测 ≥0.1% 有 131,833 址、**≥1% 只有 6,217 址，差 21 倍**。
+- **附带收获**：产出的 daily_delta 同时就是阵营/实体日序列的原料，一举两得。
+（来源：KOGE(BSC) 分析，2026-07-25）
 
 **fail-closed 强化（新引擎内建，比旧引擎严）**：坏行 reject 记账（n_source_rows/n_bad_fields/n_out_of_segment/n_dedup_removed 进 stats）；同去重键不同事件内容=数据损坏硬退（旧引擎静默 keep-last）；空 ts 硬退（旧引擎归上一有效日的未定义行为）；供给闭合 gate 挂 → exit 4。同批修复旧引擎三缺口：replay_pass1 坏行计数+`--allow-bad-rows`（默认 0 即退）、cluster R1/准入阈值整数交叉乘法（曾浮点累计）、transfers_lib dedup 重组冲突检测（同 (block,tx,li) 双 hash 硬退,曾双计）。cluster 输出排序加确定性 tiebreaker（并列余额曾致同数据两跑输出不同）。
 
