@@ -14,7 +14,7 @@
 前置(一次性,已完成可跳过):
   pip3 install google-cloud-bigquery pydata-google-auth
   首跑会弹浏览器 OAuth(之后凭据缓存 ~/.cache/pydata_google_auth/ 不再弹);
-  GCP 项目须已建且账号已接受 ToS(现役项目见 ~/.claude/api-keys.md 第 16 节)。
+  GCP 项目须已建且账号已接受 ToS(现役项目见 ~/.claude/api-keys.md 第 17 节「Google Cloud / BigQuery」)。
 
 用法:
   python3 fetch_bigquery.py --config config.json --from-date 2026-04-01 --to-date 2026-04-30
@@ -45,7 +45,7 @@ def main():
     bq_cfg = c.get("bigquery", {})
     project = bq_cfg.get("project") or ""
     if not project:
-        sys.exit("config.json 缺 bigquery.project(GCP 项目 ID,登记在 ~/.claude/api-keys.md 第 16 节)")
+        sys.exit("config.json 缺 bigquery.project(GCP 项目 ID,登记在 ~/.claude/api-keys.md 第 17 节「Google Cloud / BigQuery」)")
     max_gib = float(bq_cfg.get("max_scan_gib", 200))
     out = a.out or bq_cfg.get("out") or "bq_recheck.csv"
 

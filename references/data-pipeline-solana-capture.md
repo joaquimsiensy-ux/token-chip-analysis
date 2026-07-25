@@ -115,7 +115,7 @@ IO 当时全程用会话内联 Python 完成、未沉淀成脚本文件；但找
 - **gzip 压缩 = 21 倍**：同段对照实测明文 4.65 slots/s vs `--compressed` 98 slots/s（wSOL 高密度压测,压缩比 ~40x；普通 mint 预计 5-15x）。requests.Session 默认协商 gzip——**新脚本一律 requests,遗留 curl 件必须补 `--compressed`**。
 - **限流真相**：文档标称 20 请求/10 秒,长流模式实测**碰不到**（串行 30 请求 0 个 429、8 路长流并发全 200）;真实瓶颈=**单 IP 总带宽整形 ~1MB/s**（3 路与 8 路聚合吞吐相同——加流数不加总量,多注册 key 无意义）。
 - **服务端单响应上限**：解压后 ~32MB 自动截断,客户端按最后 slot 续拉即可（v1 的 50K 段超时死循环是明文时代 150 秒传不完一个响应所致,压缩后自愈）。
-- **SQD gateway key**（api-keys.md 第 14 节,存 `~/.config/sqd/api-key`）：公共 datasets 路径实测**完全不认证**（真/假 key 全 200）,key 专属端点 URL 待用户从 portal.sqd.dev/app 后台 key 详情页抄回后启用（v2 采集器 `--url` 直接换）。
+- **SQD gateway key**（api-keys.md 第 15 节「SQD Portal」,存 `~/.config/sqd/api-key`）：公共 datasets 路径实测**完全不认证**（真/假 key 全 200）——**直接匿名调用即可,不需要配 key**。该 key 实为旧版 SDK 网关用途,Portal 正式 key 体系官方尚未上线,**不存在"专属端点 URL",无需再等用户抄回**（2026-07-21 定论,2026-07-25 复核确认）。
 
 ### 13b. 全程采集器 v2（`fetch_sqd_transfers_v2.py`,取代 v1 做全程重放）
 
@@ -124,7 +124,7 @@ IO 当时全程用会话内联 Python 完成、未沉淀成脚本文件；但找
 
 ### 13c. 溯源解码 v2（`decode_txs_v2.py`,三板斧落地）
 
-JSON-RPC batch + 跨地址共享 sig 缓存（`--cache-dir`,按 sig 前 2 字符 256 片）+ `--rpc` 端点可换。**mainnet-beta 实测硬墙**：batch 内子请求被**按方法逐个限流**（"Too many requests for a specific RPC call",20 笔只放行 ~9 笔）——batch 默认 8,429 子请求自动收回重试（绝不能记 decode_fail,首测 22/40 假失败的教训）。公共节点净速度收益约 1.5 倍;**真价值=①缓存**（关联地址重复交易第二址起零请求,实测 18/40 命中）**②Helius 就位即切**（`--rpc https://mainnet.helius-rpc.com/?api-key=<key>` 免代理 50 RPS,batch 可调大）。**Helius 已就位**（2026-07-21 用户 Google OAuth 注册,key 存 ~/.config/helius/api-key,api-keys.md 第 15 节）：端点国内直连免代理;**免费层不支持 batch**（403 码 -32403,单元素数组同拒）——正解=`--workers 6 --interval 0.12` 单笔并发贴满 10RPS,实测 40 笔 5.3s=7.5 笔/s（公共节点约 7 倍;45 址溯源老基准 4 分钟→约 35 秒）;archival 10 credits/笔,免费月额≈10 万笔。
+JSON-RPC batch + 跨地址共享 sig 缓存（`--cache-dir`,按 sig 前 2 字符 256 片）+ `--rpc` 端点可换。**mainnet-beta 实测硬墙**：batch 内子请求被**按方法逐个限流**（"Too many requests for a specific RPC call",20 笔只放行 ~9 笔）——batch 默认 8,429 子请求自动收回重试（绝不能记 decode_fail,首测 22/40 假失败的教训）。公共节点净速度收益约 1.5 倍;**真价值=①缓存**（关联地址重复交易第二址起零请求,实测 18/40 命中）**②Helius 就位即切**（`--rpc https://mainnet.helius-rpc.com/?api-key=<key>` 免代理 50 RPS,batch 可调大）。**Helius 已就位**（2026-07-21 用户 Google OAuth 注册,key 存 ~/.config/helius/api-key,api-keys.md 第 16 节「Helius」）：端点国内直连免代理;**免费层不支持 batch**（403 码 -32403,单元素数组同拒）——正解=`--workers 6 --interval 0.12` 单笔并发贴满 10RPS,实测 40 笔 5.3s=7.5 笔/s（公共节点约 7 倍;45 址溯源老基准 4 分钟→约 35 秒）;archival 10 credits/笔,免费月额≈10 万笔。
 
 ### 13d. Solana HyperSync 通道（solana.hypersync.xyz,early access——第二引擎/指纹查询,非主力）
 

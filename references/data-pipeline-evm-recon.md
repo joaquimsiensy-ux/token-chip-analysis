@@ -11,6 +11,11 @@
 4. **时间戳锚点插值抽查**：锚点表（每隔固定块距，或每 100 万块一个）bisect 线性插值出的日期，抽几笔与浏览器页面核对。（来源：OPN/SIREN(BSC) 分析，2026-07）
 5. **重放前置完整性检查（快照缺块防护，重放开跑前做）**：核对全部采集 run 的 done.json——next_block 全部达到目标块、mtime 晚于最后一次采集启动，才允许重放（实锤：重放跑在尾部 run 拉完前 13 分钟，快照缺尾部 ~980 块/682 条）。**机制警示：供给闭合恒等式（上面第 2/3 查）对"缺整行"免疫**——整行缺失时借贷两边同时缺、sum 恒等于 TOTAL 照样通过，此类洞只有 RPC 抽查负余额能暴露；增量重放出现"期初为 0 的地址转出变负"=上游快照有洞的指纹，见到即停下补数据。（来源：QUQ(BSC) 完整版分析，2026-07-22）
 
+**对账比对的 DuckDB 两坑（2026-07-25 实测，两个都会静默产生错误结论）**：
+- **`read_csv` 把 wei 值推断成 DOUBLE → 制造全量假差集**：独立源 CSV 与主数据做六元组比对时，`read_csv`/`read_csv_auto` 会把 20+ 位的 wei 十进制串推断为 DOUBLE，精度丢失导致**每一行都对不上**（看起来像"数据源完全不一致"的灾难性结论）。对账读 CSV 一律 `all_varchar=true` 后显式 `CAST(... AS HUGEINT)`。
+- **`others` 是保留字，不可作列别名**：`SUM(...) AS others` 直接语法错误（`Parser Error: syntax error at or near "others"`）。聚合列命名避开 `others`/`day`/`filter` 等保留字。
+（来源：BUILDon(BSC) 分析，2026-07-25）
+
 **对账差额排查步骤（供给恒等式不闭合时按序查）——查完常规漏段后必查 Burn/Mint 独立事件**：2017 老版 OpenZeppelin `burn()` 只发 `Burn(address,uint256)` **不发 Transfer**——只采 Transfer topic 重放会出现"重放净供给 > 链上 totalSupply"的幽灵差额（LPT 案 604 枚，burner 主力=治理合约每次投票烧 100）。排查法：web3_sha3 算 Burn/Mint topic0 后 HyperSync 定向拉（几秒）；注意新链侧可能是"Burn 事件+Transfer(to=0x0) 双发"路径（此时 Burn 事件是 Transfer 的子集，不另计，勿双扣）。链无关坑，凡 2018 前老合约必查。（来源：LPT(ETH+Arbitrum) 分析，2026-07-21）
 
 加分项：重建结果与第三方链上分析师独立披露的同口径数字对表，独立吻合是结论可信度的最强背书（具体数字属于当次报告，不进本手册）。（来源：SIREN(BSC) 分析，2026-07）
@@ -28,7 +33,7 @@
 **BigQuery 操作要点**（细节见 fetch_bigquery.py docstring）：
 - 表 `bigquery-public-data.goog_blockchain_ethereum_mainnet_us.logs`（列含 topics REPEATED/block_hash/removed）,raw logs 自解码,**禁用现成 token_transfers 解码表**（AWS 侧同名表有浮点精度事故公开前科,规则跨仓通用）。
 - 查询必带日期条件（脚本强制,防全史扫爆额度）+ dry run 熔断（config `max_scan_gib`）。
-- 一次性前置已完成态：GCP sandbox 项目+OAuth 凭据缓存见 api-keys.md 第 16 节;**新 Google 账号首次用 GCP 必须网页接受 ToS**,否则 API 建项目 403 `Callers must accept Terms of Service`（2026-07-21 实测,console.cloud.google.com 勾一次即解）。
+- 一次性前置已完成态：GCP sandbox 项目+OAuth 凭据缓存见 api-keys.md 第 17 节「Google Cloud / BigQuery」;**新 Google 账号首次用 GCP 必须网页接受 ToS**,否则 API 建项目 403 `Callers must accept Terms of Service`（2026-07-21 实测,console.cloud.google.com 勾一次即解）。
 - 产物=标准 8 列 CSV(与 fetch_sqd_evm 同款),对账走 `transfers_lib.py merge`（fail-closed）。
 
 **AWS 手工方法留档**（pass 但方法保号,应急可复活）：匿名公开桶 `aws-public-blockchain.s3.us-east-2.amazonaws.com`（免账号,list-type=2 列目录）,`v1.0/eth/logs/date=YYYY-MM-DD/` 每日单 parquet 0.5-1.15GB;**新鲜度实测 T+1~T+2**（优于 sonarx base/arbitrum 的 T+7）;逐 row-group 读+address/topic0 过滤自解码（本次验证脚本逻辑存 CHANGELOG v3.12.1 条目所述会话,核心=pyarrow read_row_group 选列+topics array 解 from/to/value）。
