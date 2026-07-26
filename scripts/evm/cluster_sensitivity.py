@@ -528,7 +528,7 @@ def main():
                 L.append(f"    - …共 {len(mg['mechanical_excluded'])} 个（详见 JSON）")
         if mg["isolated_members"]:
             L.append(f"- 机械孤立成员 {mg['isolated_members']} 个（无任何 R1/R2 边，示例 "
-                     f"{', '.join('`'+a[:12]+'…`' for a in mg['isolated_sample'][:4])}）")
+                     f"{', '.join('`'+a+'`' for a in mg['isolated_sample'][:4])}）")
         L.append(f"- 门槛±10% 判级：{e['grades_under_jitter']['threshold_-10%']} / "
                  f"{e['grades_under_jitter']['base']} / {e['grades_under_jitter']['threshold_+10%']}"
                  f"（门槛-10% / 基线 / +10%）")
@@ -539,15 +539,15 @@ def main():
             for f_ in e["findings"]:
                 head = f_["perturbation"]
                 if "edge" in f_:
-                    head += f" `{f_['edge'][0][:12]}…—{f_['edge'][1][:12]}…`"
+                    head += f" `{f_['edge'][0]}—{f_['edge'][1]}`"
                 if "gas_funder" in f_:
-                    head += f" funder=`{f_['gas_funder'][:14]}…`(组{f_['group_size']})"
+                    head += f" funder=`{f_['gas_funder']}`(组{f_['group_size']})"
                 if "infra" in f_:
-                    head += f" `{f_['infra'][:14]}…` {f_['name']} stale={f_['stale_days']}d"
+                    head += f" `{f_['infra']}` {f_['name']} stale={f_['stale_days']}d"
                 L.append(f"    - {head}")
                 for d in f_.get("split_off", [])[:3]:
                     L.append(f"        - 脱落 {d['n']} 成员 / 实体持仓 {d['bal_frac_of_entity']*100:.1f}%："
-                             f"{', '.join('`'+m[:12]+'…`' for m in d['members'][:3])}")
+                             f"{', '.join('`'+m+'`' for m in d['members'][:3])}")
                 if "effect" in f_:
                     L.append(f"        - {f_['effect']}")
                 if "grades" in f_:

@@ -17,7 +17,11 @@
 import json, glob, os, sys
 from collections import defaultdict
 
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "labels"))
+_LABELS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "labels")
+if not os.path.isdir(_LABELS_DIR):
+    # 脚本被拷贝到案目录跑时相对路径断裂（SPX6900 2026-07-25 实踩），回落 skill 安装位
+    _LABELS_DIR = os.path.expanduser("~/.claude/skills/token-chip-analysis/scripts/labels")
+sys.path.insert(0, _LABELS_DIR)
 try:
     from labels_resolver import LabelResolver, append_misses   # 批量标签库共享内核（默认启用，--no-labels 关闭）
 except Exception:
@@ -135,11 +139,17 @@ def main(chain):
         return bool(v) and v["verdict"] == "FUNNEL"
 
     uf = UF()
-    # 判定层一律整数交叉乘法（供给 wei 口径）：R1 边阈值 0.005%=1/20000
+    # 判定层一律整数交叉乘法（供给 wei 口径）：R1 边阈值默认 0.005%=1/20000；
+    # 百倍换手老 meme 用 --r1-denom 2000（=0.05%）上调一档，见 playbook-entity-cluster-methods 阈值校准条
+    r1_denom = 20000
+    if "--r1-denom" in sys.argv:
+        _i = sys.argv.index("--r1-denom")
+        if _i + 1 < len(sys.argv):
+            r1_denom = int(sys.argv[_i + 1])
     supply_raw = int(round(CFG.get("total_supply_m", 1000) * 1e6)) * DEC
     # R1
     for (f, t), m in edge.items():
-        if m * 20000 < supply_raw: continue
+        if m * r1_denom < supply_raw: continue
         if f in CEX or t in CEX or f == Z or t == Z or f in TEAM or t in TEAM: continue
         if no_merge(f) or no_merge(t): continue   # 标签库设施/locker 不作合并边
         if funnel_block(f) or funnel_block(t): continue   # 守门员：漏斗形状不作合并边（v4.2）
@@ -231,7 +241,7 @@ def main(chain):
         for a, info in list(sorted(excluded.items()))[:10]:
             print(f"  {a[:18]} {info['name'][:44]} <{info['category']}>")
     for c in out[:15]:
-        heads = ", ".join(m["addr"][:12] + f"({m['bal_M']}M)" for m in c["members"][:4])
+        heads = ", ".join(m["addr"] + f"({m['bal_M']}M)" for m in c["members"][:4])   # 结果行打全址（截断屏显=补全事故诱因）
         team = " [含金库下游]" if c["has_team_source"] else ""
         print(f"size={c['size']:<4} bal={c['total_M']:>9.3f}M ({c['pct_supply']:.2f}%){team}  {heads}")
     print(f"\n金库一跳接收者 top15（区分'官方控制'与'来源官方'！）:")

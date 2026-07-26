@@ -14,7 +14,8 @@
                              [--remap remap.json] [--residual 散户] [--max-points 500]
                              [--out data/camp_share_series_new.json]
 camps.json：{阵营名: [完整地址,...]}——本次更新后的阵营映射，键名用 standard_charts
-  CAMP_ORDER 标准名（项目方/大庄/小庄/离场庄/狙击集团/其他大户/流动性池/锁仓销毁等）。
+  CAMP_ORDER 标准名（项目方/大庄/小庄/离场庄/狙击集团/CEX托管/疑似CEX托管/其他大户/
+  历史大户/流动性池/桥锁仓/锁仓销毁等；2026-07-25 扩三键，互斥优先级见 standard_charts 注释）。
 remap.json（可选）：{旧序列键名: 新阵营键名}，多对一相加——旧研报阵营命名与当前标准
   不一致（标准迁移）时必给，否则旧段与新段键不齐、图1 会断层（脚本会 WARN）。
 残差阵营（--residual，默认"散户"）＝100−已映射阵营合计，自动计算不进 camps.json。

@@ -97,7 +97,7 @@ python3 ../accumulate_offenders.py && cd sources && python3 ../add_labels.py ser
 ```
 - add_labels 成功后补录 CSV 自动归档进 additions/（round-trip 保证）；**人工精修（改 name/evidence/category 级别）不要走 add_labels 常规层——写成 curation override 文件**（source=curation），否则重建时会被 manual 同级"先到保留"规则回退。
 
-**Dune 月度刷新**（credits 消耗大，按需执行）：①网页登录 dune.com 跑 query 7999252（免费层 API 不能 execute）→ ②`python3 dune_fetch_results.py ~/.config/dune/api-key 7999252 dune_labels_v2.csv` → ③tornado 版按 api-keys.md 第 13 节 SQL 临时替换再跑（29 万行 ≈500+ credits，非必要不刷）→ ④重跑重建流程。坑：labels.addresses 语义键是 model_name 不是 category；SOL 地址 varbinary hex 须转 base58（构建器内置）。**B8 审计结论（2026-07-17）**：BSC tornado-user 来自 spellbook `tornado_cash_bnb` 解码事件模型（四面额合约 join transactions 取 from），链上抽验 9/10 命中——数据为真，语义正确；用户经 proxy `0x0d5550d5…` 调用（查交互勿直接 filter to=面额合约）。
+**Dune 月度刷新**（credits 消耗大，按需执行）：①网页登录 dune.com 跑 query 7999252（免费层 API 不能 execute）→ ②`python3 dune_fetch_results.py ~/.config/dune/api-key 7999252 dune_labels_v2.csv` → ③tornado 版按 api-keys.md 第 14 节「Dune」 SQL 临时替换再跑（29 万行 ≈500+ credits，非必要不刷）→ ④重跑重建流程。坑：labels.addresses 语义键是 model_name 不是 category；SOL 地址 varbinary hex 须转 base58（构建器内置）。**B8 审计结论（2026-07-17）**：BSC tornado-user 来自 spellbook `tornado_cash_bnb` 解码事件模型（四面额合约 join transactions 取 from），链上抽验 9/10 命中——数据为真，语义正确；用户经 proxy `0x0d5550d5…` 调用（查交互勿直接 filter to=面额合约）。
 
 ## 回归基准（扩容/重建后必跑）
 
@@ -122,6 +122,7 @@ python3 ../accumulate_offenders.py && cd sources && python3 ../add_labels.py ser
 - **P1 余款** Base bundler/paymaster 快照定期刷新（HyperSync 聚合法已沉淀；2026-07-17 快照，≥1000 笔/≥900 UserOp 阈值，bundler EOA 会轮换）；韩所 SOL 正式标签持续物色（当前守门员兜底）。
 - **P1 余款** △ 协议官方 deployment registry 持续扩容（Safe deployments / Hyperlane 合约页——机制已建：official_registry.csv + add_labels.py，逐案补）。
 - **P1 余款** Robinhood 工厂事件回放（PoolCreated/ProxyCreation）+ verified-contracts 候选池首轮人工审（`pull_verified_contracts.py` 定期增量拉，同名家族=克隆工厂线索，**只产候选不自动入库**）。
+- **P1 余款** ETH/BSC/Base 主流 DEX V3/V4 池按 factory 事件批量入库（SPX6900 案 2 个 UniswapV3Pool 不在库、以"18 址归集点"面目误导一轮狙击集团分析——pool-probe 四测能证伪但要多付一轮；标签库前置拦截＝零轮成本。方法同上条 Robinhood 工厂回放线：HyperSync 按 factory 地址过滤 PoolCreated（V4 加 PoolManager Initialize）一次拉全链池地址表，dex 类目 tier=exclude 入库后 cluster resolver 直接拦截；topic0 实施时经 openchain.xyz lookup 核验，勿凭记忆写）（2026-07-25）。
 - **P1 余款** HL 系统地址族随新 spot 资产增量刷新（重跑 spotMeta 快照+build_hyperliquid_labels.py，机制已建）。
 - **P2** 做市商 taxonomy 彻底归一（多值 roles；raw_labels 列已铺路）+ manual 层单一真源改造（check_manual_sync 已装牙齿，重构缓行）。
 - **P2** SOL 风险层数据源物色（社区 drainer 库多为 EVM；SolanaFM/Solscan 标签 API 付费墙，待再评估）。

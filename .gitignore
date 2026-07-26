@@ -17,3 +17,4 @@ scripts/labels/sources/brianleect_bsc.json
 scripts/labels/sources/dune_tornado.csv
 scripts/labels/sources/dune_labels_v2.csv
 scripts/labels/sources/robinhood_verified_contracts.csv
+*.bak_*
