@@ -393,15 +393,47 @@ def replay_pass2(con, camps_path, out_dir, mint_total, vt):
           FROM events e JOIN ent_map m ON e.frm = m.addr WHERE e.frm <> '{Z}'
         ) GROUP BY d, ent""").fetchall()}
 
-    total = mint_total
-    series = {c: [] for c in camps_order}
+    # 每日净供应变动（mint − burn）——当期供应口径分母的数据来源（3.36 修复）
+    supply_delta = {d: int(v) for d, v in con.execute(f"""
+        SELECT substr(ts,1,10) d,
+               SUM(CASE WHEN frm = '{Z}' THEN CAST(v AS {vt}) ELSE 0 END)
+             - SUM(CASE WHEN t2  = '{Z}' THEN CAST(v AS {vt}) ELSE 0 END)
+        FROM events GROUP BY 1""").fetchall()}
+
+    # 【3.36 分母口径修复】旧版固定用 mint_total（全史铸造总量）作分母，会把**尚未铸造**的
+    # 代币提前计入残差桶「散户」——标的后期一旦大额增发，早期散户占比被系统性虚高，且图形
+    # 看上去完全正常（各阵营加总仍是 100%），属静默的传播级错误。
+    # 实证：IQ(ETH) 2026-07-26，2025-09 单月增发 181%，2025-09-25 的散户被算成 55.6%，
+    #       真值 11.28%（虚高 44pp）；该日实际总供应仅 68.8 亿，而分母用的是全史 310.8 亿。
+    # 修复=分母改用**当期净供应**（累计 mint − 累计 burn）。销毁的币已从分母扣除，故销毁
+    # 不再作为阵营参与堆叠，改单列 burn_cum_pct（累计销毁 ÷ 当期供应，可能 >100%，仅供参考，
+    # 绘图时勿并入堆叠）。旧口径可用 CHIP_LEGACY_CAMP_DENOM=1 取回（黄金基准回归对比用）。
+    legacy = os.environ.get("CHIP_LEGACY_CAMP_DENOM") == "1"
+    stack_camps = camps_order if legacy else [c for c in camps_order if c != "销毁"]
+
+    series = {c: [] for c in stack_camps}
     series["散户"] = []
     eseries = {e: [] for e in ents_order}
     camp_cum = {c: 0 for c in camps_order}
     ent_cum = {e: 0 for e in ents_order}
+    burn_pct, supply = [], 0
     for day in dates:
+        supply += supply_delta.get(day, 0)
+        camp_cum["销毁"] = camp_cum.get("销毁", 0) + (
+            0 if "销毁" in stack_camps else camp_delta.get((day, "销毁"), 0))
+        total = mint_total if legacy else supply
+        if total <= 0:                      # 供应尚未产生（理论上仅可能出现在首日之前）
+            for c in stack_camps:
+                camp_cum[c] += camp_delta.get((day, c), 0)
+                series[c].append(0.0)
+            series["散户"].append(0.0)
+            for e in ents_order:
+                ent_cum[e] += ent_delta.get((day, e), 0)
+                eseries[e].append(0.0)
+            burn_pct.append(0.0)
+            continue
         known = 0
-        for c in camps_order:
+        for c in stack_camps:
             camp_cum[c] += camp_delta.get((day, c), 0)
             v = camp_cum[c] / total * 100
             series[c].append(round(v, 4))
@@ -410,11 +442,18 @@ def replay_pass2(con, camps_path, out_dir, mint_total, vt):
         for e in ents_order:
             ent_cum[e] += ent_delta.get((day, e), 0)
             eseries[e].append(round(ent_cum[e] / total * 100, 4))
+        burn_pct.append(round(camp_cum.get("销毁", 0) / total * 100, 4))
     if "销毁" in series and all(v == 0 for v in series["销毁"]):
         del series["销毁"]
-    json.dump({"dates": dates, **series}, open(f"{out_dir}/camp_series.json", "w"))
+    out = {"dates": dates, **series}
+    if not legacy:
+        out["_meta"] = {"denominator": "current_net_supply",
+                        "note": "分母=当期净供应(累计mint−累计burn)；burn_cum_pct 不参与堆叠"}
+        out["burn_cum_pct"] = burn_pct
+    json.dump(out, open(f"{out_dir}/camp_series.json", "w"))
     json.dump({"dates": dates, **eseries}, open(f"{out_dir}/entity_series.json", "w"))
-    print(f"天数={len(dates)} 阵营={[k for k in series]} 实体={ents_order}", flush=True)
+    print(f"天数={len(dates)} 分母={'mint_total(legacy)' if legacy else '当期净供应'} "
+          f"阵营={[k for k in series]} 实体={ents_order}", flush=True)
 
 
 def _disk_precheck(tmp_path, chans=None, min_free_gb=10.0):

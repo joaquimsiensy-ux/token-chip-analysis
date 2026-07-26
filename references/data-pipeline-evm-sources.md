@@ -36,6 +36,17 @@ gmgn-cli 使用坑（fetch_gmgn.sh 已内置处理）：
 - holders top100 稳定且信息量最大（tags、start_holding_at、history_transfer_in/out、native_transfer.from 可做 gas 来源聚类）；traders 按 profit 排序可能只回约 9 行、按 amount_percentage/sell_volume/buy_volume 排序可能 0 行、部分 --tag 组合 0 行；kline 只回 100 条只能兜底。（来源：OPN/SIREN(BSC) 分析，2026-07）
 - holders/traders 接口权重 5，有 leaky-bucket 限速，批量采集脚本必须加节流间隔。（来源：OPN(BSC) 分析，2026-07）
 
+### 非 EVM 链的供给对账通道（多链标的用，2026-07-26 IQ(ETH) 补）
+
+多链标的的分支链可能不在 EVM 上（老项目尤其常见：EOS/Tron/Cosmos 系原生发行史）。只查 EVM 侧会漏掉整份独立供应，判定法见 `playbook-supply-recon.md §1b`。已实测可用的免 key 通道：
+
+| 链 | 端点与调用 | 实测 |
+|---|---|---|
+| EOS | `POST https://eos.greymass.com/v1/chain/get_currency_stats`，body `{"code":"<代币合约账户名>","symbol":"<符号>"}` | ✅ 国内直连免 key；返回 `supply` / `max_supply` / `issuer` 三字段，秒级 |
+| EOS（备用节点） | `api.eosn.io` / `eos.eosphere.io` 同路径 | 主节点故障时轮换 |
+
+EOS 侧持有人榜可用 `POST /v1/chain/get_table_by_scope`（`code`=代币合约、`table`=accounts）枚举持币账户名，但**返回的是 scope 名不含余额**，逐账户余额要再打 `get_currency_balance`；账户名是人类可读字符串（非 0x 地址），标签库无法复用，做深度分析需另建管道——**仅做供给对账时不必走到这一步**。
+
 ## 8. Base 链专节（PING 全量实测，2026-07-17）
 
 ### 8.1 全量转账双通道拓扑（与 BSC 经验相反：高峰期 Alchemy 是主力）
