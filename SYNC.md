@@ -13,22 +13,33 @@
 
 ## 日常怎么用
 
-### 1）在 codex 侧改了东西 → 提交
-
-改完随手提交，别攒着（攒着会挡住下次同步）：
-
-```bash
-cd ~/.codex/skills/token-chip-analysis && git add -A && git commit -m "改了什么"
-```
-
-### 2）想把 Claude Code 侧的新迭代拿过来 → 一条命令
+### 0）跑任何筹码分析之前 —— 硬性前置，先同步
 
 ```bash
 bash ~/.codex/skills/token-chip-analysis/sync-from-cc.sh
 ```
 
-脚本会依次：检查有没有没提交的改动 → 合并 main → 跑全部测试 → 报告结果。
-没有冲突时全自动完成；有冲突会停下来列出文件，交给 Claude 或 codex 解。
+这条已写进 codex 版 `SKILL.md` 的「Codex 运行适配 → 第 0 步」，codex 每次加载 skill 都会读到，
+所以正常情况下它会自己执行，你不用记。
+
+脚本依次做四件事：检查工作区 → 列出 CC 侧的新提交 → 合并 → 跑全部测试。
+退出码 0 正常开工；1 是有未提交改动挡路；2 是有冲突（**先解冲突再开工**）；3 是测试没过（必须停）。
+
+**为什么是硬性**：CC 侧的迭代里有引擎级缺陷修复（比如 3.34.0 修 Solana 采集器、3.35.0 揭露锚点法
+"三查全过但中段数值全错"）。用旧版本跑出来的结论可能整篇是错的，而同步通常只要几十秒。
+
+### 1）在 codex 侧改了东西 → 立刻提交
+
+别攒着，未提交的改动会挡住下次同步：
+
+```bash
+cd ~/.codex/skills/token-chip-analysis
+python3 scripts/tests/run_all.py                  # 全过才提交
+git add -A && git commit -m "c1.1.0 改了什么"
+```
+
+版本号用 `c` 前缀（见下方约定 1），CHANGELOG 写 `CHANGELOG-codex.md`（见约定 2）。
+提交时 pre-commit 钩子会自动跑三检，不过关会拦下来。
 
 ---
 

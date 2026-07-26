@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # 把 Claude Code 侧（main 分支）的迭代同步到 codex 侧（codex 分支）。
-# 用法：bash ~/.codex/skills/token-chip-analysis/sync-from-cc.sh
+# 用法：bash "${CODEX_HOME:-$HOME/.codex}/skills/token-chip-analysis/sync-from-cc.sh"
 # 说明见同目录 SYNC.md
 set -uo pipefail
 
-WT="$HOME/.codex/skills/token-chip-analysis"
+WT="${CODEX_HOME:-$HOME/.codex}/skills/token-chip-analysis"
 cd "$WT" || { echo "❌ 找不到 codex 侧 skill 目录：$WT"; exit 1; }
 
 echo "═══ 1/4 检查当前状态 ═══"
