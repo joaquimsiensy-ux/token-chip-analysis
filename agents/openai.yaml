@@ -1,0 +1,4 @@
+interface:
+  display_name: "代币筹码分析"
+  short_description: "全量链上筹码分析与既有报告独立复核工作流"
+  default_prompt: "使用 $token-chip-analysis 从原始链上数据分析这个代币；若提供既有报告，则把报告作为被审对象做净室独立复核。"

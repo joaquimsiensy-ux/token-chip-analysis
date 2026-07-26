@@ -12,7 +12,7 @@ BASE="/Users/uravvv/Desktop/老公用/fable筹码分析"
 PLANS="$BASE/collect_plans"
 PENDING="$PLANS/pending_plan.json"
 PY=/usr/local/bin/python3
-SKILL="$HOME/.claude/skills/token-chip-analysis"
+SKILL="${CODEX_HOME:-$HOME/.codex}/skills/token-chip-analysis"
 LOG="$PLANS/nightly.log"
 
 [ -f "$PENDING" ] || exit 0

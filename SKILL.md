@@ -1,9 +1,17 @@
 ---
 name: token-chip-analysis
-description: 对任意链上代币（EVM/Solana/Hyperliquid/Filecoin 及新链）做机构级庄家链上行为分析——全量数据采集重放、庄级实体识别与 P0/P1 标签分级（项目方/大庄/小庄/离场庄/狙击集团/刷量地址）、各阵营持仓演变、P0 流转路径图、项目方背景调查、对抗复核、自包含 HTML 报告（用户确认买入后可补生成观察哨与监控 JSON 附录）。当用户问"某代币的筹码分析/筹码结构/庄家行为分析"、"有几个庄/庄家什么类型"、"庄家/项目方/做市商在吸筹还是砸盘"、"有没有关联地址/老鼠仓/单一实体控盘"、"庄家是不是跑了/弃盘了"、"该不该买/该不该卖/解锁抛压大不大"、"看看某代币的链上持仓/大户动向"，或提到 holder analysis、鲸鱼追踪、代币尽调时使用。与 gmgn-token 的区别：gmgn-token 是快速单项查询；本 skill 是数小时深度分析工程。只查价格/K线/热榜/新币列表不要用本 skill。
+description: 对任意链上代币（EVM/Solana/Hyperliquid/Filecoin 及新链）做机构级庄家链上行为分析与既有报告独立复核——全量数据采集重放、庄级实体识别与 P0/P1 标签分级（项目方/大庄/小庄/离场庄/狙击集团/刷量地址）、各阵营持仓演变、P0 流转路径图、项目方背景调查、V3/V4 流动性与庄家 LP 手续费归因、对抗复核、自包含 HTML 报告（用户确认买入后可补生成观察哨与监控 JSON 附录）。当用户问"某代币的筹码分析/筹码结构/庄家行为分析"、"复核/审计已有筹码报告或Fable报告"、"有几个庄/庄家什么类型"、"庄家/项目方/做市商在吸筹还是砸盘"、"有没有关联地址/老鼠仓/单一实体控盘"、"庄家是不是跑了/弃盘了"、"该不该买/该不该卖/解锁抛压大不大"、"看看某代币的链上持仓/大户动向"、"庄家做 LP 赚了多少/V3 还是 V4/LP 手续费怎么计算"，或提到 holder analysis、鲸鱼追踪、代币尽调时使用。与 gmgn-token 的区别：gmgn-token 是快速单项查询；本 skill 是数小时深度分析工程。只查价格/K线/热榜/新币列表不要用本 skill。
 ---
 
 # 代币筹码分析（Token Chip Analysis）
+
+## Codex 运行适配
+
+- Skill 根目录固定为 `${CODEX_HOME:-$HOME/.codex}/skills/token-chip-analysis`；执行脚本时优先从该目录解析相对路径。
+- API key 继续以 `~/.claude/api-keys.md` 为唯一登记源，并复用其中指向的 `~/.config/*` 凭据文件。不要复制密钥登记文件，不要把 key 写进 skill 目录、日志、报告或命令行参数；案目录临时配置须设为 `600`。
+- 文中旧工具名按 Codex 能力映射：`AskUserQuestion` 表示在确有关键决策点时直接向用户提一个简短问题；`WebSearch` / `WebFetch` 表示使用当前可用的联网检索、浏览器或 fetch 工具；`Agent` / `Workflow` 表示把具体、独立、可并行的任务交给 Codex 子代理；`Monitor` 表示使用当前环境提供的 wait/monitor 机制。不要调用不存在的 Claude 专用工具名。
+- Claude 的 `sonnet` / `opus` 是历史模型别名，不是 Codex 模型名。机械任务优先使用当前可用的均衡/低成本代理，P0 实体素材装配使用当前可用的高推理代理；没有模型覆盖能力时继承当前模型，不得臆造别名。
+- 此安装副本默认不含 `.git`。阶段 6 仍须落盘复盘和运行测试，但只有 skill 目录处于真实 Git 工作树时才执行 commit；否则报告改动文件，不要伪造提交。
 
 对一个代币的项目方/庄家/做市商回答四个固定命题（v2.0 四问框架，2026-07-14 取代五问）：**①有几个庄？（按 P0/P1 标签体系分级：项目方 / 大庄 / 小庄 / 离场庄 / 狙击集团 / 刷量地址，见 playbook §6a）②每个庄什么类型（单地址明牌/多地址互转·gas同源/伪装分散·指纹一致）？③各阵营全历史持仓占比如何演变（占总供应量，锁仓/销毁单列；建仓后动没动、拉升期有没有出货）？④项目方背景调查（创始人/项目历史含黑历史、社媒运营、大V关注、互动与热度、水军嫌疑；无项目方看 dev）？** 交付一份每条结论可独立验证的**自包含 HTML 报告**（图 1/图 2 前置于 TL;DR 顶部 + 每个 P0 实体一张全周期流转路径图）。建仓成本不再是固定命题（§6b 降为按需工具）。**监控包（观察哨+两档监控建议+JSON 附录）v3.2 起默认不随报告生成——用户看完报告确认买入后按需补生成**（monitoring-package.md「买入后监控包」节；用户实测约 3/4 标的不买入，监控产物只为持仓服务）。
 
@@ -19,6 +27,8 @@ description: 对任意链上代币（EVM/Solana/Hyperliquid/Filecoin 及新链�
 4. **对抗复核必做**：历次实战中凡执行复核，每次都实质改写了结论（修正 6/10、推翻 2/5、删除整条指标、翻出漏检集群各有发生）——这是投入产出比最高的环节，不可跳过。
 5. **免费数据源优先**；API key 从 `~/.claude/api-keys.md` 登记文件直接取用（全局自动加载；缺了才向用户索取或走 auto-register-api），运行时只写工作目录 config.json，永不写死进 skill 目录。
 6. **成本纪律**（见下节）：成本目标永远让位于准确性——为省 token 砍复核路数/数据源属于违反铁律。
+7. **控盘看最终经济控制，不看币停在哪个地址**：回答“庄控制多少”时，主口径必须是实体的**可证经济控制量**，即钱包自持加上其在 LP、CEX 子账户、桥、质押/锁仓、vault、托管等设施中仍拥有可证明赎回权或受益权的代币等价权益。公共设施不得并入实体成员表，但其可归属份额必须穿透回实体；“设施不是成员”绝不等于“设施内权益不算控盘”。直接钱包余额只能作为位置拆分项，禁止在存在重大可归属设施仓位时把它写成实体控盘结论。完整门槛、证据等级和防双计规则见 `references/economic-control-accounting.md`。
+8. **既有报告复核必须净室重建并经过发布硬闸**：原报告是被审对象，不是证据；只把其文字拆成待审命题，禁止把原实体桶、阵营分类、图或衍生 JSON 当作事实输入。必须冻结输入清单、重建全量大额地址分类、分开成员/位置/经济控制三账、登记逐条命题与备择解释，并运行 `scripts/report/audit_release_gate.py`。硬闸不通过时，统一输出“本轮无法裁决”，禁止为了交付完整叙事另造 P0/P1、历史峰值、历史图或“全盘零庄”。完整协议见 `references/independent-audit-protocol.md`。
 
 ## 工作流总览
 
@@ -27,12 +37,25 @@ description: 对任意链上代币（EVM/Solana/Hyperliquid/Filecoin 及新链�
   → 计划落盘 + 用户决策点前置（口径/注册/key 用 AskUserQuestion 给选项）
 阶段1 并行采集：全量链上数据(后台) + 标签 + 价格 + 背景调研 workflow
 阶段2 对账关卡（硬性，不过不进分析）
-阶段3 分析：地址标注 / 金库归因 / 庄级实体识别与 P0/P1 标签分级 / 演变重放 / 项目方背景调查
+阶段3 分析：地址标注 / 金库归因 / 初步聚类 / 历史静置仓反向扫描硬闸 / 实体冻结与 P0/P1 标签分级 / 演变重放 / 项目方背景调查
 阶段4 对抗复核（必做）
 阶段5 HTML 报告（三张标准图 + 附录四件套 + analysis-state.json）+ 质检
   （监控包默认不做，买入后补——v3.2）
 阶段6 复盘沉淀（固定最后一步，见 references/retrospective.md）
 ```
+
+## 既有报告独立复核模式
+
+凡用户要求“复核、审计、重新检查、为什么另一模型推翻旧结论”，在阶段0先切换净室复核模式：
+
+1. 原报告只进入 `claim_registry.json`，不得导入原 `entity_camps`、阵营桶或实体判级作为计算起点；
+2. 立即生成 `audit_input_manifest.json`，冻结开工时文件哈希与数据截止时间，后补数据单列；
+3. 从原始 Transfer 与独立快照重建当前所有≥0.5% owner、历史峰值/归零/静置候选，重新做地址类型和实体聚类；
+4. 落盘 `membership_ledger.json`、`position_ledger.json`、`economic_control_ledger.json`，禁止用算术闭合替代身份和受益权证明；
+5. 证据只够推翻旧结论时停在 `unverified`，不得把“运营控制”“流向CEX”“零DEX”自动升级为“庄家”或“必然非庄”；
+6. 报告发布前运行 `python3 scripts/report/audit_release_gate.py <案目录> --report <报告.md>`；退出码非0即停止肯定性判级和历史图交付。
+
+逐项 schema、阴性结论门槛、CEX通道纪律和必需资产清单见 `references/independent-audit-protocol.md`。
 
 ## 阶段 0：标的画像与链路由
 
@@ -73,15 +96,17 @@ description: 对任意链上代币（EVM/Solana/Hyperliquid/Filecoin 及新链�
 
 **惯犯层盲化（3.19，阶段 2-3 全程）**：开工即 `export CHIP_BLIND_SERIAL=1`——标签查询的 serial-actor（惯犯）命中不进任何主输出、完整详情自动封存案目录 `sealed_serial_hits.jsonl`（label_lookup/analyze_holdings/replay_edges/build_evolution 四出口均已接线；设施类标签照常输出，聚类拦截不受影响）。动机：提前看到"这是 XX 案惯犯"会造成合并判定的先入之见；实体冻结后在阶段 4 揭盲作定向复核线索，更贴合结论独立性铁律。
 
-方法学全部在 `references/analysis-playbook.md`，按序做：地址身份标注（官方标签→外部证据→行为特征三级兜底）→ 金库与核心实体逐笔归因 → 关联聚类（多证据边+服务枢纽剔除）→ **庄级实体识别、P0/P1 标签分级与类型三分类**（§6a：项目方无论份额皆 P0；大庄=当前 ≥20% 总供应或 ≥20% 流通（P0）；小庄=当前 ≥5% 总供应或 ≥10% 流通（P1）；离场庄=峰值 ≥10% 总供应或 ≥15% 流通且当前非庄（P1）；狙击集团单独标签（当前 ≥20%/≥20% 为 P0 否则 P1）；刷量地址单独标签；合并口径含全部疑似关联地址；未达标者不深挖，其他大户与散户只进图 1）→ 全量转账重放出各阵营占比演变序列（阵营划分标准见 §6a）→ 庄家当前状态评估（§7）→ 质押/留存修正；建仓成本仅按需算（§6b 降为工具）；CEX 净流×价格作为演变解读工具按需用（防内部调仓伪影）。项目方背景调查与背景调研并行走（research-workflows §1 路线5）。数据先验结构再分析（榜单唯一性断言、多档抽查），批量脚本先 2 个样本验证编解码再放量、绝不吞异常。
+方法学全部在 `references/analysis-playbook.md`，按序做：地址身份标注（官方标签→外部证据→行为特征三级兜底）→ 金库与核心实体逐笔归因 → 关联聚类（多证据边+服务枢纽剔除）→ **庄级实体识别、P0/P1 标签分级与类型三分类**（§6a：项目方无论份额皆 P0；大庄=当前 ≥20% 总供应或 ≥20% 流通（P0）；小庄=当前 ≥5% 总供应或 ≥10% 流通（P1）；离场庄=峰值 ≥10% 总供应或 ≥15% 流通且当前非庄（P1）；狙击集团单独标签；刷量地址单独标签）→ **建立经济控制账本并据此判级**（`economic_control_ledger.json`：钱包自持 + 可证 LP/CEX/桥/质押/锁仓/vault/托管权益，见 `references/economic-control-accounting.md`）→ 全量转账重放出各阵营占比演变序列 → 庄家当前状态评估（§7）→ 质押/留存修正；建仓成本仅按需算（§6b 降为工具）；CEX 净流×价格作为演变解读工具按需用。**强制三账分离：成员表回答“哪些地址由该实体控制”，位置账回答“币在链上哪里”，经济控制账回答“最终受益权属于谁”。公共设施不进永久成员表；但能以 LP 头寸所有权、份额凭证、受益人账本、CEX 子账户证明或闭合赎回链证明的份额，必须在经济控制账继续计入原实体。设施总余额不得整池归庄；归属不清部分单列未决，不得猜。** 项目方背景调查与背景调研并行走（research-workflows §1 路线5）。数据先验结构再分析（榜单唯一性断言、多档抽查），批量脚本先 2 个样本验证编解码再放量、绝不吞异常。
+
+**历史静置仓反向扫描硬闸（3.29.2，任何代币都必须做）**：初步聚类完成后、实体名单冻结和峰值判级之前，必须从全量逐事件重放得到的历史峰值榜、当前已归零/大幅回落地址、长期静置地址及关键退出日前突然激活地址反向追查，寻找不在主链正向 BFS 可达域内的平行库存仓、尾仓和前代仓；同时从核心实体的关键执行/归集网络向上游币源与边界外一圈自签名地址回扫。结果必须落盘为 `dormant_warehouse_audit.json`，逐候选记录币源路径、静置区间、关键日动作、公共设施排除、证据等级及 strict/expanded/excluded 裁决。**没有该文件，或仍有未裁决候选，就不允许冻结实体、不允许发布历史峰值、不允许画图 1/图 2。** 严格实体与强关联扩展体系分别计算“严格下限/扩展上限”；公共路由、CEX 热钱包、协议设施和单纯同日动作不能把地址确权为同一主体。完整候选集、证据门槛与同一交易末快照重放规则见 `references/playbook-entity-cluster-methods.md` 与 `references/playbook-entity-cluster-tiering.md`。
 
 ## 阶段 4：对抗复核（必做）
 
-流程：**扰动敏感度前置（3.19，EVM 案）**——`python3 scripts/evm/cluster_sensitivity.py --dir <案目录>` 对每个 P0/P1 重建机械证据图做四类扰动（单源边移除/stale 标签放开/门槛±10%/割边移除），sensitivity_report.md 直接作复核输入：FRAGILE 项逐条问"该边若不成立叙事还立得住吗"，机械孤立成员=完全靠人工证据绑定的复核最优先对象（**只进复核材料，禁止把 STABLE/FRAGILE 字样带进报告正文**——行内置信度已取消；机械证据≠全部证据，分裂≠结论错误）→ **惯犯揭盲（3.19）**——实体冻结后 `label_lookup.py --unseal` 取封存命中，逐条与实体划分互证/互斥 → 本地反例自查脚本前置 → N 路怀疑者 agent（给数据文件路径让它**自己重算**，不是审阅文字；强制构造备择解释）+ 1 个完整性批评角色查报告缺口 → 判定三档 CONFIRMED/WEAKENED/REFUTED（**必须实际核查，"理论上可能"不算推翻**）→ 修订顺序先修数据管线再修文案，图表措辞同步改 → 修正记录印进报告附录。prompt 骨架见 `references/research-workflows.md` §2。
+流程：**扰动敏感度前置（3.19，EVM 案）**——`python3 scripts/evm/cluster_sensitivity.py --dir <案目录>` 对每个 P0/P1 重建机械证据图做四类扰动（单源边移除/stale 标签放开/门槛±10%/割边移除），sensitivity_report.md 直接作复核输入：FRAGILE 项逐条问"该边若不成立叙事还立得住吗"，机械孤立成员=完全靠人工证据绑定的复核最优先对象（**只进复核材料，禁止把 STABLE/FRAGILE 字样带进报告正文**——行内置信度已取消；机械证据≠全部证据，分裂≠结论错误）→ **惯犯揭盲（3.19）**——实体冻结后 `label_lookup.py --unseal` 取封存命中，逐条与实体划分互证/互斥 → 本地反例自查脚本前置 → N 路怀疑者 agent（给数据文件路径让它**自己重算**，不是审阅文字；强制构造备择解释）+ 1 个完整性批评角色查报告缺口；完整性角色必须独立检查 `dormant_warehouse_audit.json`，从历史峰值榜和关键退出窗重新抽样，专门挑战“是否漏掉静置旁支仓、前代仓或已归零仓” → 判定三档 CONFIRMED/WEAKENED/REFUTED（**必须实际核查，"理论上可能"不算推翻**）→ 修订顺序先修数据管线再修文案，图表措辞同步改 → 修正记录印进报告附录。**复核拥有发布否决权**：运营控制≠受益权、公共设施/CEX误并、候选集不完整、图表不闭合、样本外依赖或未排除合理备择解释，任一命中就写入 `adversarial_review.json.blocking_findings`；未关闭前主模型不得保留 CONFIRMED 结论。prompt 骨架见 `references/research-workflows.md` §2。
 
 ## 阶段 5：报告
 
-报告本体先写 `报告.md` + `charts/*.png`。**三张标准图必配**（阵营占比演变/庄级实体vs价格/价格与关键事件），直接调 `scripts/report/standard_charts.py` 的三个函数——规格与配色已固化，不要每次重新设计；**图 1/图 2 放 TL;DR 顶部（问 1 直答上方）**。**每个 P0 级实体必配一张全周期流转路径图**（`scripts/report/lifecycle_flow.py`，样图 references/examples/lifecycle-flow-sample.png）。结构与措辞纪律见 `references/report-template.md`（四问逐条直答 + 标签体系 + 代币数量带【总量X%】 + 正文零地址 + 局限性独立成章）。然后 `python3 scripts/report/build_html.py --md 报告.md --out 报告.html` 出自包含 HTML（PDF 仅当用户点名，用 md2pdf.py）。质检：build_html 退出码 0（缺图会打 WARN 拒绝交付）+ 浏览器目检（图全显/表格无错位）。**附录四件套**（验证步骤/标签↔地址对照/复核修正记录/来源）——附录 B 地址对照任何情况下不可省（正文零地址的可验证性支点）。**监控包默认不做（v3.2）**：观察哨/两档监控建议/appendix.json 在用户确认买入后按 monitoring-package.md「买入后监控包」节补生成（新会话可执行，材料全在落盘产物；report-extract 四键/sentinel 纪律等格式标准原样不变），报告末尾带固定句"如决定买入，回复一声即可补生成监控包"。**默认交付另落一份 `analysis-state.json`**（appendix 的机器子集：token/whale_groups/vault_addresses/addresses 骨架+camp_share_series，无监控文案——/token-update 的实体表原料，防日后从报告文字反抄地址；schema 见 report-template「默认交付的机器状态文件」节）。交付前 checklist 见 report-template.md 末节。
+报告本体先写 `报告.md` + `charts/*.png`。**三张标准图必配**（阵营占比演变/庄级实体vs价格/价格与关键事件），直接调 `scripts/report/standard_charts.py` 的三个函数——规格与配色已固化，不要每次重新设计；**图 1/图 2 放 TL;DR 顶部（问 1 直答上方）**。**每个 P0 级实体必配一张全周期流转路径图**（`scripts/report/lifecycle_flow.py`，样图 references/examples/lifecycle-flow-sample.png）；生产图必须经 `figures_from_facts.py flow --strict-text-numbers`，让 subtitle/卡片/边标签/footnote 的案情数字也走 facts 宏。`economic_control_ledger.json` 是报告必需件：TL;DR 的控盘比例、P0/P1 判级、图 2 与实体表必须从该账本同源生成；图 1保留链上位置账。凡存在设施权益，正文必须给“钱包自持 / 可证设施权益 / 强关联扩展 / 未决”拆分，不能用钱包自持冒充控盘总量。图 2 若存在已闭合的设施归属区间，`whale_series.json` 必填 `temporary_custody_checks`，并由 `figures_from_facts.py check` 拒绝区间内错误归零。历史静置仓反向扫描若产出 expanded 成员，正文、图注与附录必须并列披露严格实体下限和强关联体系上限，不能把 expanded 上限写成单一主体确权。结构与措辞纪律见 `references/report-template.md`（四问逐条直答 + 标签体系 + 代币数量带【总量X%】 + 正文零地址 + 局限性独立成章）。然后 `python3 scripts/report/build_html.py --md 报告.md --out 报告.html` 出自包含 HTML（PDF 仅当用户点名，用 md2pdf.py）。质检：build_html 退出码 0（缺图会打 WARN 拒绝交付）+ 浏览器目检（图全显/表格无错位）+ 每张图放大核对图内实体名/成员数/日期/金额/份额与 facts/state。**独立复核另加总门禁**：`python3 scripts/report/audit_release_gate.py <案目录> --report <报告.md>`，退出码2时禁止交付肯定性判级、完整阴性结论和历史图。**附录四件套**（验证步骤/标签↔地址对照/复核修正记录/来源）——附录 B 地址对照任何情况下不可省（正文零地址的可验证性支点）。**监控包默认不做（v3.2）**：观察哨/两档监控建议/appendix.json 在用户确认买入后按 monitoring-package.md「买入后监控包」节补生成（新会话可执行，材料全在落盘产物；report-extract 四键/sentinel 纪律等格式标准原样不变），报告末尾带固定句"如决定买入，回复一声即可补生成监控包"。**默认交付另落一份 `analysis-state.json`**（appendix 的机器子集：token/whale_groups/vault_addresses/addresses 骨架+camp_share_series，无监控文案——/token-update 的实体表原料，防日后从报告文字反抄地址；schema 见 report-template「默认交付的机器状态文件」节）。交付前 checklist 见 report-template.md 末节。
 
 ## 阶段 6：复盘与迭代（固定最后一步，不可省略）
 
@@ -109,7 +134,7 @@ description: 对任意链上代币（EVM/Solana/Hyperliquid/Filecoin 及新链�
 **实证结论（65 会话账单拆解，2026-07-18）**：63% 的钱是缓存读——每轮工具调用都要重读全部会话历史；输出只占 18%（HTML 由脚本拼装几乎免费）。恒等式：**成本 ≈ 轮次 × 平均上下文 × 单价**，三个因子三把刀（历史基线数字在 CHANGELOG v3.1.0 条目可考古）。参考预算：轮次 <150、缓存读 <4000 万、**上下文峰值 <30 万**（新链首战可放宽；超了如实报告原因即可，不许为达标偷工减料）。
 
 **刀 1——机械活换便宜模型（执行类轮次占成本 55%）**：
-1. 机械阶段一律派 `model: sonnet` 子代理执行（Agent 工具的 model 参数；Workflow 的 agent() 用 opts.model='sonnet'，纯跑批可再加 effort:'low'）——单价约主模型 3/10，且子代理不背主线几十万上下文。**外包清单**：标准脚本跑批与重试循环（采集/余额扫描/CSV 加工）、对账三查的执行侧、标签库批量 lookup、图表脚本执行、数据完整性验证。**例外档（3.19）：P0 实体素材装配外包点名 `model: opus`**（用户 2026-07-22 定——含整理+初步归纳比纯跑批高一档；每 P0 一路并行，模板见 research-workflows.md §二b）。**禁止外包**：聚类判定、实体定性、对抗复核裁决、报告撰写——一切需要"判断"的环节留在主模型（质量底线，铁律 6）。
+1. 机械阶段优先派 Codex 子代理执行；有模型覆盖能力时选当前可用的均衡/低成本模型并降低机械任务推理档，不能覆盖时继承当前模型。**外包清单**：标准脚本跑批与重试循环（采集/余额扫描/CSV 加工）、对账三查的执行侧、标签库批量 lookup、图表脚本执行、数据完整性验证。**例外档（3.19）：P0 实体素材装配使用当前可用的高推理代理**（含整理+初步归纳比纯跑批高一档；每 P0 一路并行，模板见 research-workflows.md §二b）。**禁止外包**：聚类判定、实体定性、对抗复核裁决、报告撰写——一切需要"判断"的环节留在主模型（质量底线，铁律 6）。
 2. 外包 prompt 四要素：目标 + 脚本路径与参数 + 期望产物落盘路径 + 回报格式（≤30 行摘要：行数/区间/异常计数/文件路径，禁止贴原始数据）。prompt 必须自包含（链名/合约地址/输出目录写死），子代理看不到主线对话。
 
 **刀 2——控上下文（缓存读占成本 63%）**：
@@ -139,7 +164,7 @@ description: 对任意链上代币（EVM/Solana/Hyperliquid/Filecoin 及新链�
 | 长跑预估跳票被用户催问（3 次） | 抽样外推报保守上限；零进展告警；最长任务最先启动 |
 | 关键字符串从打印输出复制 | 地址/哈希一律从落盘文件取，截断补全=编造 |
 | 份额阈值过滤用浮点比较漏"恰好整数枚"地址 | `int(v) >= TOTAL*0.01` 的 float 1e25 不精确（实测把恰持 1000 万枚整=1.000000% 的大户判为 False 漏出阵营与监控网）——阈值一律整数运算 `TOTAL//100`；"恰好整数枚"本身还是橱窗仓指纹，漏它双重损失（来源：meow(Robinhood) 分析，2026-07-15） |
-| 前台 sleep 被环境禁止 | until 循环 / Monitor / run_in_background；**until 前台等待同样受 Bash 超时上限（最长 10 分钟）约束**——实测 10 分钟被杀（exit 143），预计等待超 10 分钟必须 run_in_background 或 Monitor（外部 CLAW 考古，2026-07） |
+| 前台 sleep 被环境禁止 | until 循环 / Codex wait/monitor 机制 / 后台任务；**until 前台等待同样受 Bash 超时上限（最长 10 分钟）约束**——实测 10 分钟被杀（exit 143），预计等待超 10 分钟必须转后台或使用 wait/monitor（外部 CLAW 考古，2026-07） |
 | zsh 通配符无匹配报错中断 | `rm -f xx_* 2>/dev/null \|\| true` |
 
 ## 深入阅读（references/）
@@ -148,6 +173,7 @@ description: 对任意链上代币（EVM/Solana/Hyperliquid/Filecoin 及新链�
 - `data-pipeline-evm-channels.md` — evm 分册1 采集通道（§1 决策树含通道表/§2 死亡名单/§3 通道操作细节/§6 BSC 专属坑表/§7 免注册通道）
 - `data-pipeline-evm-sources.md` — evm 分册2 数据面与链专节（§4 辅助数据面速查表/§8 Base 专节含 V4 与 Zora 范式/§9 Arbitrum 专节/§10 质押型标的范式）
 - `data-pipeline-evm-recon.md` — evm 分册3 对账与重放（§5 对账 gate 四件套/§11 公共数仓准入与分工/§12 DuckDB 亿级重放缩图引擎）
+- `lp-fee-accounting.md` — EVM V3/V4 LP 手续费专项口径：池子产生/仓位应得/当前未结算/历史已结算四分法、V4 逐 Swap×逐 tick 重放、`feeGrowthInside` 快照与可说/不可说边界；凡回答“庄家做 LP 赚了多少”或比较 V3/V4 收入时必读
 - `data-pipeline-solana.md` — Solana 数据管线**路由索引**（IO 实录核验版；节→分册对照表；2026-07-22 拆两分册）
 - `data-pipeline-solana-scan.md` — solana 分册1 扫描与判别（§0a 双 RPC 互补矩阵/§0b 死亡名单/§1 全量扫描/§2a 托管判别五步法/§3a 签名投毒坑/§4 辅助数据面/§5 观测边界）
 - `data-pipeline-solana-capture.md` — solana 分册2 采集与重建（§8 SQD 通道/§9 锚点法/§10 快照对比增量/§11 长币龄混合重建/§12 销户覆盖审计/§13 采集加速工程）
@@ -155,6 +181,8 @@ description: 对任意链上代币（EVM/Solana/Hyperliquid/Filecoin 及新链�
 - `data-pipeline-filecoin.md` — Filfox 管道、创世 ID 段标签、multisig 直读
 - `data-pipeline-robinhood.md` — Blockscout/RPC 双通道（都要浏览器 UA）、gas 溯源、发射台指纹、方法论坑
 - `analysis-playbook.md` — 链无关方法学**路由索引**（四问总纲+节→分册对照表；v3.5 拆四分册）
+- `economic-control-accounting.md` — 控盘比例主口径：成员表/链上位置账/经济控制账三分离，LP/CEX/桥/质押/vault/托管权益穿透、P0/P1 判级、防双计与报告硬闸；凡回答“庄控制多少”必读
+- `independent-audit-protocol.md` — 既有/Fable筹码报告独立复核净室协议：输入冻结、全量地址重标、三账、命题表、CEX边界、历史图门禁、对抗否决权与 `audit_release_gate.py` 必需资产；凡做“复核/审计/重新检查”必读
 - `playbook-supply-recon.md` — 分册1 供给与对账（§1 分母口径/§2 对账 gate/§8 cohort 留存质押）
 - `playbook-entity-cluster.md` — 分册2 实体识别与聚类**路由索引**（节→分册对照表；2026-07-22 二次拆三分册）
 - `playbook-entity-cluster-methods.md` — 实体分册1 标注/归因/聚类（§3 标注三级兜底/§4 逐笔归因/§6 聚类硬规则含半枢纽与代买枢纽裁决）

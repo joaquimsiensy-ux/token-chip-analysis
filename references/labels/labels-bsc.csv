@@ -16620,3 +16620,4 @@ address,chain,name,category,tier,source,added_date,evidence,risk_flags,merge_pol
 0xf9dc4f7238587f7c023e3ff31130d09886c808d2,bsc,"惯犯庄家（BANANAS31案·狙击集团(已离场,残尾仓)）",serial-actor,identity,serial-offenders,2026-07-22,"BANANAS31分析 appendix whale_group「狙击集团(已离场,残尾仓)」",serial-offender,,,2026-07-22,2026-07-22,,
 0xfddb9780b9b9dec856b3055a1df4de72a0721338,bsc,惯犯庄家（BANANAS31案·小庄S·Bitget库存循环体系）,serial-actor,identity,serial-offenders,2026-07-22,BANANAS31分析 appendix whale_group「小庄S·Bitget库存循环体系」,serial-offender,,,2026-07-22,2026-07-22,,
 0xffcd5a1fa11a789c748d6e3a723a7383aa4e0278,bsc,"惯犯庄家（BANANAS31案·狙击集团(已离场,残尾仓)）",serial-actor,identity,serial-offenders,2026-07-22,"BANANAS31分析 appendix whale_group「狙击集团(已离场,残尾仓)」",serial-offender,,,2026-07-22,2026-07-22,,
+0x21e57ec478073903f1bc4ec3e6f5b8e47b98a052,bsc,惯犯庄家（FROGGIE案·离场庄#1（集中卖出地址））,serial-actor,identity,serial-offenders,2026-07-23,FROGGIE分析 appendix whale_group「离场庄#1（集中卖出地址）」,serial-offender,,,2026-07-23,2026-07-23,,

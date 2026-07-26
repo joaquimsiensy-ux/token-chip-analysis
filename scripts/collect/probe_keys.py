@@ -36,7 +36,9 @@ import sys
 import requests
 
 PROXY = {"http": "http://127.0.0.1:7897", "https": "http://127.0.0.1:7897"}
-MD_PATH = os.path.expanduser("~/.claude/api-keys.md")
+MD_PATH = os.path.expanduser(
+    os.environ.get("CHIP_API_KEYS_FILE", "~/.claude/api-keys.md")
+)
 REPORT_DIR = os.path.expanduser("~/.cache/chip-analysis")
 GMGN_CLI = os.path.expanduser("~/.npm-global/bin/gmgn-cli")
 WBNB = "0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c"  # gmgn 探测用的常青标的

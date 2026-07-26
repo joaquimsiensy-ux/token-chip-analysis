@@ -1,6 +1,8 @@
 # 多代理编排模板（research-workflows）
 
-> 读者：下次执行代币筹码分析的 Claude。本文只讲「怎么派代理、怎么编排任务」，数据通道细节见同目录其他参考文档。
+> **Codex 适配**：本文保留的 `Workflow` / `Agent` / `WebSearch` / `WebFetch` 是 Claude 版历史名称。在 Codex 中分别映射为当前可用的子代理编排、联网检索、浏览器或 fetch 能力；只有具体、独立、可并行的任务才交给子代理。Claude 的 `sonnet` / `opus` 别名不得原样使用，模型选择按 `SKILL.md` 的 Codex 运行适配执行。`~/.claude/workflows/*.js` 不是 Codex 可执行入口；复用其中 prompt/schema 时读取其内容并改写为 Codex 子任务，不得声称已调用该 Workflow。
+>
+> 读者：下次执行代币筹码分析的 Codex。本文只讲「怎么派代理、怎么编排任务」，数据通道细节见同目录其他参考文档。
 > 来源会话对照：OPN=BSC ①、SIREN=BSC ②、HYPE=Hyperliquid、FIL=Filecoin、IO=Solana。行尾括号即来源会话。
 > 红线：本文只沉淀方法，不含任何对具体代币的分析结论。
 
@@ -91,6 +93,7 @@
 
 **并行 fan-out 执行规范（B8 固化，2026-07-22）**：
 - **全部怀疑者 + 完整性批评一次性同批并行发出**，不逐路串行——每路独立上下文互不知晓彼此存在，这不只是省墙钟，本身就是「独立复核」方法论的正确形态（互不污染）。裁决汇总与仲裁只在主会话做。
+- **复核结论具有发布否决权，不是咨询意见**：统一落盘 `adversarial_review.json`。若任何一路实证发现运营控制被升级为受益权、CEX/公共设施误并、候选集或历史流不完整、图表不闭合、结论依赖样本外事实、或合理备择解释尚未排除，则写入 `blocking_findings`；主会话只有在逐条重算并标记 `resolved=true` 后才能把 `release_decision` 设为 PASS。不得在正文写“证据不足”，同时在汇总表保留 CONFIRMED。
 - **首选固化 workflow**：`Workflow({name: "adversarial-review", args: {...}})`（按名不可用时 `scriptPath: "~/.claude/workflows/adversarial-review.js"`；已实证按名解析认 `~/.claude/workflows/` 用户全局目录，但**注册表在会话启动时快照一次**——本会话中途新建/改名的 workflow 认不到，须用 scriptPath 或下个会话再按名调，2026-07-22 探针实测）——上面的 prompt 骨架与 verdict schema 已内置，**schema 强制输出**让 agent 裁决直接返回验证过的 JSON 对象（根治坑表 #2 的包装结构解析连败）；args 见脚本头注释（claims/data_note/integrity_files/workdir），脚本已带坑表 #3 的字符串化兼容层。冒烟实证：2 路 100 秒返回，完整性批评连测试数据的合成指纹都抓了出来（2026-07-22）。
 - 返回的 `missing` 数组非空=有路次被跳过/失败，主会话必须补跑或人工核，禁止当零发现处理。
 - 汇总仲裁规则：多路对同一结论分歧时，以**有硬重算证据**的一方为准（不投票）；REFUTED 的地址/哈希按下方 ★ 条先行为还原再吸收。

@@ -6,7 +6,9 @@
       环境变量 CHIP_BLIND_SERIAL=1 与参数等价；设施类输出不受盲化影响。
   T2  accumulate_offenders 冲突检测阳性构造：候选庄家地址在主库是 cex →
       conflicts 报告（json+md）生成、severity=primary、两侧证据在场、不阻塞候选产出。
-  T3  cluster_sensitivity 迷你账本冒烟：单源边移除报敏感 + 门槛±10% 判级翻转报敏感。
+  T3  accumulate_offenders 单案目录可直接扫描；空目录 fail-closed 且不改写输出。
+  T4  accumulate_offenders --help 纯只读；行为 cohort 不得进入惯犯库。
+  T5  cluster_sensitivity 迷你账本冒烟：单源边移除报敏感 + 门槛±10% 判级翻转报敏感。
 
 全部在临时目录构造数据，不触碰真实标签库/案目录。
 """
@@ -203,11 +205,72 @@ def t3_sensitivity_smoke():
     print("T3 sensitivity-smoke: PASS")
 
 
+def t3_single_case_and_fail_closed():
+    with tempfile.TemporaryDirectory() as tmp:
+        ld = make_labels_dir(tmp)
+        case = os.path.join(tmp, "单案分析")
+        os.makedirs(case)
+        json.dump({
+            "token": {"symbol": "ONE", "chain": "bsc",
+                      "data_cutoff": {"utc": "2026-07-23T00:00:00Z"}},
+            "whale_groups": [
+                {"label": "离场庄#1", "tier": "P1", "addresses": [PLAIN_ADDR]},
+            ],
+        }, open(os.path.join(case, "analysis-state.json"), "w"), ensure_ascii=False)
+        out_csv = os.path.join(tmp, "single.csv")
+        p = run([ACCUM, case, f"--labels-dir={ld}", f"--out={out_csv}"])
+        assert p.returncode == 0, p.stderr + p.stdout
+        rows = list(csv.DictReader(open(out_csv)))
+        assert len(rows) == 1 and rows[0]["address"] == PLAIN_ADDR, \
+            "单案目录应直接扫描出实锤组"
+
+        empty = os.path.join(tmp, "空目录")
+        os.makedirs(empty)
+        guard = os.path.join(tmp, "guard.csv")
+        with open(guard, "w") as f:
+            f.write("KEEP\n")
+        p = run([ACCUM, empty, f"--labels-dir={ld}", f"--out={guard}"])
+        assert p.returncode != 0 and "输出 CSV 未改写" in (p.stdout + p.stderr), \
+            "空目录必须 fail-closed"
+        assert open(guard).read() == "KEEP\n", "fail-closed 不得改写既有输出"
+    print("T3 single-case/fail-closed: PASS")
+
+
+def t4_help_and_behavior_cohort_exclusion():
+    with tempfile.TemporaryDirectory() as tmp:
+        # --help 必须在解析默认根目录/创建输出前直接返回。
+        p = run([ACCUM, "--help"], cwd=tmp)
+        assert p.returncode == 0 and "用法：" in p.stdout, p.stderr + p.stdout
+        assert os.listdir(tmp) == [], "--help 不得产生任何文件"
+
+        ld = make_labels_dir(tmp)
+        case = os.path.join(tmp, "行为组分析")
+        os.makedirs(case)
+        json.dump({
+            "token": {"symbol": "COHORT", "chain": "bsc",
+                      "data_cutoff": {"utc": "2026-07-24T00:00:00Z"}},
+            "whale_groups": [
+                {"label": "狙击集团（行为 cohort·非同一主体确权）",
+                 "tier": "P1", "addresses": [PLAIN_ADDR]},
+            ],
+        }, open(os.path.join(case, "analysis-state.json"), "w"), ensure_ascii=False)
+        guard = os.path.join(tmp, "guard.csv")
+        with open(guard, "w") as f:
+            f.write("KEEP\n")
+        p = run([ACCUM, case, f"--labels-dir={ld}", f"--out={guard}"])
+        assert p.returncode != 0 and "未筛出实锤庄组" in (p.stdout + p.stderr), \
+            "行为 cohort 必须被 fail-closed 排除"
+        assert open(guard).read() == "KEEP\n", "行为 cohort 排除时不得改写既有输出"
+    print("T4 help/behavior-cohort exclusion: PASS")
+
+
 def main():
     t1_blind_serial()
     t2_conflict_positive()
+    t3_single_case_and_fail_closed()
+    t4_help_and_behavior_cohort_exclusion()
     t3_sensitivity_smoke()
-    print("PASS: test_cluster_quality 3/3（盲化/冲突阳性/敏感度冒烟）")
+    print("PASS: test_cluster_quality 5/5（盲化/冲突阳性/单案保护/行为组隔离/敏感度冒烟）")
 
 
 if __name__ == "__main__":

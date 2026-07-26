@@ -33,6 +33,7 @@
 | §4 金库与核心实体逐笔归因 | 实体识别与聚类 | `playbook-entity-cluster.md` |
 | §6 关联地址聚类规则（含行为半枢纽/代买枢纽裁决） | 实体识别与聚类 | `playbook-entity-cluster.md` |
 | §6a 标签体系、类型三分类与阵营划分（问1/问2 操作定义；含世代阵营法） | 实体识别与聚类 | `playbook-entity-cluster.md` |
+| 经济控制账本（钱包自持 + LP/CEX/桥/质押/vault/托管权益；P0/P1 数字主口径） | 经济归属与控盘计量 | `economic-control-accounting.md` |
 | §6b 建仓成本估算（按需工具；含出货美元核算优先级） | 实体识别与聚类 | `playbook-entity-cluster.md` |
 | §5 CEX 充提净流 × 价格 | 状态评估与市场异常 | `playbook-state-anomaly.md` |
 | §7 庄家当前状态评估 | 状态评估与市场异常 | `playbook-state-anomaly.md` |
@@ -41,6 +42,6 @@
 | §10 对抗性复核制度 | 证据复核与措辞 | `playbook-evidence-wording.md` |
 | §11 措辞纪律与证据强度 | 证据复核与措辞 | `playbook-evidence-wording.md` |
 
-分析工序 → 分册速查：阶段 2 对账=分册 1；阶段 3 标注/聚类/分级=分册 2；演变解读与状态=分册 3；阶段 4 复核与报告措辞=分册 4。
+分析工序 → 分册速查：阶段 2 对账=分册 1；阶段 3 先做标注/聚类，再按 `economic-control-accounting.md` 建经济控制账并据此分级；演变解读与状态=分册 3；阶段 4 复核与报告措辞=分册 4。
 
 （上一条"entity-cluster 微超 60KB 待拆"整编待办已于 2026-07-22 D3 兑现：methods/tiering/cost 三分册，母文件转路由页。）

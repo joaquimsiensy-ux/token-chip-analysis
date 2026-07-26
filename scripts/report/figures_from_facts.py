@@ -19,11 +19,17 @@
          （{{e_x.amount_share}} 等，语法同 facts_gate）——流转图卡片数字与正文
          同源；渲染后任何残留 {{...}} 即失败（同 G4，宏名打错不许静默）：
          python3 figures_from_facts.py flow --facts facts.json \
-             --spec flow_e_big1.json --out charts/flow_e_big1.png
-         新写作纪律：spec 里的持仓/份额/成员数数字一律写宏，禁止手打。
+             --spec flow_e_big1.json --out charts/flow_e_big1.png \
+             --strict-text-numbers
+         新写作纪律：spec 用户可见文字里的持仓/份额/成员数/日期/层数等案情数字
+         一律写宏，禁止手打；strict 模式会拒绝残留硬编码数字。
 
   check  图 2 装配数据与 facts 终值对账：whale_series JSON 各实体线的 pct 末点
-         vs facts entities 的 current share，偏差 > 容差（默认 0.05pp）报错：
+         vs facts entities 的 current share，偏差 > 容差（默认 0.05pp）报错。
+         若实体资金曾进入临时托管/锁仓设施，line 可带
+         temporary_custody_checks=[{label,start_date,end_date,minimum_raw}]；
+         check 会验证区间内经济归属线不低于该可归属本金，防止把“转入设施”
+         误画成“实体清仓”：
          python3 figures_from_facts.py check --facts facts.json \
              --series charts/whale_series.json [--tol-pp 0.05]
          series 条目带 entity_id 的按 id 对 facts 实体；否则按 label 匹配。
@@ -37,6 +43,7 @@ import csv
 import datetime as dt
 import json
 import os
+import re
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -93,8 +100,13 @@ def _read_price_csv(path, cols=None):
 def mode_fig1(a):
     state = _load(a.state)
     css = state.get("camp_share_series") or {}
+    if not isinstance(css, dict):
+        raise SystemExit(
+            "FAIL: state.camp_share_series 必须是 "
+            '{"dates":[...],"series":{"阵营":[...]}} 对象，不能是逐日对象列表'
+        )
     dates, series_by_camp = css.get("dates"), css.get("series")
-    if not dates or not series_by_camp:
+    if not dates or not isinstance(series_by_camp, dict) or not series_by_camp:
         raise SystemExit("FAIL: state 缺 camp_share_series.dates/series，无法直出图 1")
     series = {"ts": [_parse_date(d) for d in dates]}
     n = len(series["ts"])
@@ -123,9 +135,41 @@ def _render_deep(obj, facts):
     return obj
 
 
+_STATIC_NUMERIC_TOKEN_RE = re.compile(r"\b(?:V[234]|P[01]|R[1-4])\b|#\d+")
+_DIGIT_RE = re.compile(r"\d")
+
+
+def _strict_text_number_violations(obj, path="$"):
+    """找用户可见字符串里未走 facts 宏的案情数字；结构字段与固定类型号除外。"""
+    errs = []
+    if isinstance(obj, dict):
+        for k, v in obj.items():
+            if k in {"id", "src", "dst", "kind", "color"}:
+                continue
+            errs.extend(_strict_text_number_violations(v, f"{path}.{k}"))
+    elif isinstance(obj, list):
+        for i, v in enumerate(obj):
+            errs.extend(_strict_text_number_violations(v, f"{path}[{i}]"))
+    elif isinstance(obj, str):
+        masked = MACRO_RE.sub("", obj)
+        masked = _STATIC_NUMERIC_TOKEN_RE.sub("", masked)
+        if _DIGIT_RE.search(masked):
+            errs.append((path, obj))
+    return errs
+
+
 def mode_flow(a):
     facts = Facts(_load(a.facts))
     spec = _load(a.spec)
+    if a.strict_text_numbers:
+        violations = _strict_text_number_violations(spec)
+        if violations:
+            for path, value in violations[:10]:
+                print(f"[FLOW-NUM-FAIL] {path}: {value!r}")
+            raise SystemExit(
+                "FAIL: flow spec 用户可见文字含未走 facts 宏的数字；"
+                "成员数/日期/金额/份额/层数等均改用 {{e.naddr}} 或 {{m:id}}。"
+            )
     try:
         spec = _render_deep(spec, facts)
     except KeyError as e:
@@ -149,7 +193,7 @@ def mode_check(a):
         raise SystemExit("FAIL: --series 应为图 2 whale_series JSON（list of lines）")
     by_label = {(e.get("label") or "").strip(): (eid, e)
                 for eid, e in facts.entities.items()}
-    errs, okc = [], 0
+    errs, okc, custody_okc = [], 0, 0
     for line in series:
         eid = (line.get("entity_id") or "").strip()
         lbl = (line.get("label") or "").strip()
@@ -163,8 +207,12 @@ def mode_check(a):
                         "（加 entity_id 字段或对齐 label）")
             continue
         pct = line.get("pct") or []
+        ts = line.get("ts") or []
         if not pct:
             errs.append(f"{key} 线无 pct 数据")
+            continue
+        if len(ts) != len(pct):
+            errs.append(f"{key} ts 长度 {len(ts)} ≠ pct 长度 {len(pct)}")
             continue
         last = float(pct[-1])
         cur = int(str(ent.get("current_raw", "0")))
@@ -174,13 +222,46 @@ def mode_check(a):
                         f"（差 {abs(last-want):.4f}pp > 容差 {a.tol_pp}pp）")
         else:
             okc += 1
+        for check in line.get("temporary_custody_checks") or []:
+            cname = str(check.get("label") or "临时托管区间")
+            start_s = check.get("start_date")
+            end_s = check.get("end_date")
+            minimum_raw = check.get("minimum_raw")
+            if not start_s or not end_s or minimum_raw in (None, ""):
+                errs.append(
+                    f"{key} 的 {cname} 缺 start_date/end_date/minimum_raw"
+                )
+                continue
+            try:
+                start, end = _parse_date(start_s), _parse_date(end_s)
+                minimum_pct = int(str(minimum_raw)) / facts.total_raw * 100
+                points = [
+                    float(value)
+                    for day, value in zip(ts, pct)
+                    if start <= _parse_date(day) <= end
+                ]
+            except (TypeError, ValueError):
+                errs.append(f"{key} 的 {cname} 日期或 minimum_raw 无法解析")
+                continue
+            if not points:
+                errs.append(f"{key} 的 {cname} 在 {start_s}~{end_s} 无序列点")
+                continue
+            observed_min = min(points)
+            if observed_min + a.tol_pp < minimum_pct:
+                errs.append(
+                    f"{key} 的 {cname} 区间最低 {observed_min:.4f}% "
+                    f"< 可归属本金 {minimum_pct:.4f}%"
+                    f"（容差 {a.tol_pp}pp；疑似把临时托管误画成清仓）"
+                )
+            else:
+                custody_okc += 1
     if errs:
         for e in errs:
             print(f"[CHECK-FAIL] {e}")
         print(f"FAIL: 图 2 装配数据与 facts 终值 {len(errs)} 处不同源")
         return 1
     print(f"PASS: 图 2 全部 {okc} 条实体线末点与 facts 当前持仓同源"
-          f"（容差 {a.tol_pp}pp）")
+          f"（容差 {a.tol_pp}pp）；临时托管连续性检查 {custody_okc} 条通过")
     return 0
 
 
@@ -198,6 +279,11 @@ def main():
     p2.add_argument("--facts", required=True)
     p2.add_argument("--spec", required=True)
     p2.add_argument("--out", required=True)
+    p2.add_argument(
+        "--strict-text-numbers",
+        action="store_true",
+        help="拒绝 title/subtitle/nodes/edges/footnote 中未走 facts 宏的案情数字",
+    )
     p2.set_defaults(fn=mode_flow)
     p3 = sub.add_parser("check", help="图2 装配数据与 facts 终值对账")
     p3.add_argument("--facts", required=True)

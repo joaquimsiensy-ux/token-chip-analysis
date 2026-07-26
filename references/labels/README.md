@@ -37,7 +37,7 @@ CSV 字段（基础 9 列 + 6 扩展列）：`address, chain, name, category, ti
 
 ```bash
 # 聚类前把全部候选大户/关联地址过一遍
-python3 ~/.claude/skills/token-chip-analysis/scripts/labels/label_lookup.py --chain sol ADDR1 ADDR2 ...
+python3 ~/.codex/skills/token-chip-analysis/scripts/labels/label_lookup.py --chain sol ADDR1 ADDR2 ...
 python3 .../label_lookup.py --chain robinhood --file candidates.txt   # 文件每行一地址
 cat addrs.txt | python3 .../label_lookup.py --chain bsc --misses      # --misses 列出未命中
 python3 .../label_lookup.py --chain hyperliquid --json --file a.txt   # JSONL 机器可读（脚本管道）

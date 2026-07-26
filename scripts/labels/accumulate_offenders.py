@@ -12,7 +12,8 @@
 
 收纳纪律（宁缺毋滥，误标惯犯比漏标伤害大）：
   自动收：组 label 匹配 庄#N/小庄/离场庄/狙击集团#N/工作室 且定性词干净
-  自动排：疑似/高度疑似/边界/观察/未达标签/不计庄家数/PLAUSIBLE/未证实/候选
+  自动排：疑似/高度疑似/边界/观察/未达标签/不计庄家数/PLAUSIBLE/未证实/候选；
+          以及明确声明“行为 cohort / 非同一主体确权 / 共同控制未能确证”的展示组
   纯"项目方"组不收（项目方身份是标的专属；金库/vesting 地址跨盘无意义）——
   例外走 MANUAL_INCLUDE 白名单（如 meow 案"项目方"实为连环发币工作室，记忆存档实锤）
 语义（labels_resolver 已内置）：tier=identity、不剔除、不禁边（惯犯地址间本就
@@ -30,7 +31,11 @@
   手工编辑 CSV 单独 add_labels（绕闸需人工显式动作，无 --force 参数）。
   不带 --apply 跑一次 = 存量扫描（候选全集=惯犯库全量,逐址对照主库）。
 
-用法：python3 accumulate_offenders.py [分析根目录] [--apply] [--labels-dir DIR]
+用法：python3 accumulate_offenders.py [分析根目录或单案目录] [--apply] [--labels-dir DIR]
+  - 分析根目录：扫描其下一层各案目录；
+  - 单案目录：目录本身含 analysis-state.json/appendix.json 时直接扫描该案。若写默认
+    serial_actors.csv，会先合并现有惯犯库，禁止用单案结果覆盖全库；
+  - 未发现状态文件或筛出 0 个实锤组时 fail-closed，绝不重写输出 CSV。
 手动入库：cd sources && python3 ../add_labels.py serial_actors.csv
 """
 import csv, datetime, glob, json, os, re, subprocess, sys
@@ -159,7 +164,11 @@ def write_conflict_report(conflicts, out_dir):
 
 CHAIN_MAP = {'solana': 'sol', 'ethereum': 'eth', 'bnb': 'bsc', 'binance': 'bsc'}
 INCLUDE_RE = re.compile(r'(庄\s*#?\d|^庄|小庄|离场庄|狙击集团|工作室|收割)')
-EXCLUDE_RE = re.compile(r'(疑似|边界|观察|未达标签|不计庄家|PLAUSIBLE|未证实|候选|行为学披露)')
+EXCLUDE_RE = re.compile(
+    r'(疑似|边界|观察|未达标签|不计庄家|PLAUSIBLE|未证实|候选|行为学披露|'
+    r'行为\s*(?:cohort|组)|behavior\s*cohort|非同一主体|共同控制未能确证)',
+    re.IGNORECASE,
+)
 
 # 人工白名单：label 上看不出、但记忆/报告存档实锤的组（案目录名, 组label 前缀）
 MANUAL_INCLUDE = {
@@ -189,16 +198,43 @@ def valid_addr(a, chain):
 
 
 def case_files(root):
-    """每个案目录取一个状态文件：appendix.json 优先（监控包语境更全），缺则 analysis-state.json。"""
+    """返回 (状态文件列表, 是否为单案模式)。
+
+    单案目录本身含状态文件时直接采用；否则扫描下一层。每案 appendix 优先。
+    """
     by_case = {}
+    root = os.path.abspath(root)
+    for fname in ('analysis-state.json', 'appendix.json'):   # appendix 后写入=优先
+        path = os.path.join(root, fname)
+        if os.path.isfile(path):
+            by_case[root] = path
+    if by_case:
+        return [by_case[root]], True
     for fname in ('analysis-state.json', 'appendix.json'):   # appendix 后写入=优先
         for path in glob.glob(os.path.join(root, '*', fname)):
             by_case[os.path.dirname(path)] = path
-    return [by_case[k] for k in sorted(by_case)]
+    return [by_case[k] for k in sorted(by_case)], False
+
+
+def load_existing_rows(path):
+    """单案模式写默认库前读取现有 CSV，防止单案扫描把全库截成一个案。"""
+    rows = {}
+    if not os.path.isfile(path):
+        return rows
+    with open(path, newline='') as f:
+        for r in csv.DictReader(f):
+            chain = norm_chain(r.get('chain'))
+            addr = valid_addr(r.get('address'), chain)
+            if chain and addr:
+                rows[(chain, addr)] = r
+    return rows
 
 
 def main():
     argv = sys.argv[1:]
+    if '-h' in argv or '--help' in argv:
+        print(__doc__.strip())
+        return
     labels_dir, out_path, args, skip = None, OUT, [], False
     for i, a in enumerate(argv):
         if skip:
@@ -216,9 +252,17 @@ def main():
     apply_mode = '--apply' in argv
     root = args[0] if args else DEFAULT_ROOT
     today = datetime.date.today().isoformat()
-    rows = {}          # (chain, addr) -> row（跨案命中合并 evidence——跨案=超强信号）
+    paths, single_case = case_files(root)
+    if not paths:
+        raise SystemExit(
+            f'FAIL: {root} 既不是含 analysis-state.json/appendix.json 的单案目录，'
+            '也没有下一层案目录；输出 CSV 未改写'
+        )
+    merge_existing = single_case and os.path.abspath(out_path) == os.path.abspath(OUT)
+    rows = load_existing_rows(out_path) if merge_existing else {}
+    # (chain, addr) -> row（跨案命中合并 evidence——跨案=超强信号）
     n_groups = 0
-    for path in case_files(root):
+    for path in paths:
         case = os.path.basename(os.path.dirname(path))
         try:
             d = json.load(open(path))
@@ -262,6 +306,12 @@ def main():
                     'source_snapshot_at': cutoff, 'verified_at': today,
                     'status': '', 'raw_labels': '',
                 }
+    if n_groups == 0:
+        raise SystemExit(
+            f'FAIL: 扫描到 {len(paths)} 个状态文件，但未筛出实锤庄组；输出 CSV 未改写'
+        )
+    if merge_existing:
+        print(f'单案模式: 已加载现有惯犯库并增量合并，禁止单案覆盖全库')
     # A7 跨案身份冲突检测——写 CSV 前做（3.19.1 硬闸）：primary/goldset-infra 级冲突地址
     # 直接拦在 CSV 外，--apply 与"手动 add_labels serial_actors.csv"两条路径一并挡住；
     # 全部冲突（含被拦项）仍完整落 conflicts 报告供裁决。

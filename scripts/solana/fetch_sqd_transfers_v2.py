@@ -24,6 +24,17 @@
 - gaps 非空时 stdout 明确声明缺口区间——禁止无声吞洞
 - key：公共端点 2026-07 实测不认证（key 无效也无害地带上）；拿到专属端点后 --url 换掉即生效
 
+2026-07-26 两处缺陷修复（BONK 全史采集实测暴露，详见 data-pipeline-solana-capture.md §13b）：
+  1. 伪 scan-fail：SQD 对"区间内一个块都没有"（Solana skipped slot 串）正确返回 200+0 字节，
+     旧版把零行并进失败重试、6 次后记 gaps['scan-fail'] → 以 gaps==[] 为完成判据的调度器
+     永不收敛（BONK 六分片 365 段、watchdog 每 20 分钟重启一次、S00R 被重启 59 次空转约 24h）。
+     现按"HTTP 200 + 流完整读完 + 零行"判真空：跨度 ≤ EMPTY_MAX 直接放行，更宽的区间用
+     轻量块探针实证无块才放行（探针 = 只要 block.number 不带过滤器，实测封顶 640 字节）。
+  2. 收尾 OOM：旧版收尾把旧缓存 + 全部 parts 载入内存做 sorted(set(...))，BONK 单分片
+     3900-5900 万行峰值 13-19GB，16GB 机器必炸；且 OOM 落在写 gz 中途会留下损坏缓存、
+     下次启动触发"重新全量"。现改为规模超限（MERGE_INMEM_MAX_ROWS）自动降级 DuckDB 磁盘
+     外排，且两条路径一律"临时文件写完再原子 rename"——中途死也不会留下半截 gz。
+
 HyperSync 第二引擎（--hypersync，默认关）：
 ⚠⚠ 完备性验收不通过（2026-07-22 BONK 三区实测）——**禁止用于正式采集，仅限吞吐实验/对照**：
   - 历史区持久缺行且越老越糟：head-450万 段缺 3.6%、head-1450万 段缺 22%（成功交易的
@@ -43,7 +54,7 @@ HyperSync 第二引擎（--hypersync，默认关）：
   SQD worker 在 HS 全忙时可接管 HS 未领段（带礼让条件防抢跑饿死；反向不行——HS 有窗口限制）
 - 两引擎输出行格式/落盘/gaps 语义完全一致；失败交易两边同样剔除（HS 按 success 字段）
 """
-import argparse, gzip, json, os, sys, threading, time
+import argparse, gzip, json, os, shutil, sys, threading, time
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -53,6 +64,11 @@ try:
 except ImportError:
     sys.exit("[fatal] 需要 requests（本机既有环境应自带；没有则 pip3 install requests）")
 
+try:
+    import duckdb            # 仅收尾外排用；缺失时自动退回全内存收尾（小样本无影响）
+except ImportError:
+    duckdb = None
+
 DEF_URL = "https://portal.sqd.dev/datasets/solana-mainnet"
 SQD_SLOT_RATE = 2.51          # slot/秒近似斜率（仅起点估算用，回补环兜底精度）
 SQD_LAUNCH_PAD = 150_000      # 发射点前置缓冲（约 16.6 小时）
@@ -60,6 +76,18 @@ ZERO = "0x" + "0" * 40
 AREA_INIT = 100_000           # 初始区域大小（slot）；按耗时自适应
 AREA_MIN, AREA_MAX = 10_000, 1_000_000
 AREA_T_FAST, AREA_T_SLOW = 30, 180   # 区域耗时 <30s 翻倍 / >180s 减半
+
+# ---- 零行响应判真空的闸门（2026-07-26 修伪 scan-fail）----
+# BONK 现场 365 段空洞实测跨度 1-13 slot（中位 2）＝典型 skipped slot 串；500 是保守上限。
+# 超过闸门的零行区间不直接放行——走块探针实证（probe_blocks），探不出块才判完成。
+EMPTY_MAX = 500
+
+# ---- 收尾合并的内存闸门（2026-07-26 修 OOM）----
+# 全内存 sorted(set(...)) 每条边实测约 350 字节（5 元组 + 2 个 base58 字符串 + set 哈希表开销），
+# 800 万行 ≈ 2.8GB 峰值；超过即降级 DuckDB 磁盘外排（实测 1.55 亿行 / memory_limit 4GB / 约 11 分钟）。
+MERGE_INMEM_MAX_ROWS = 8_000_000
+MERGE_MEM_LIMIT = "4GB"
+MERGE_THREADS = 4
 
 # ---- HyperSync 第二引擎常量（schema 实测 2026-07-22，见 data-pipeline-solana.md §13d）----
 HS_DEF_URL = "https://solana.hypersync.xyz/query"
@@ -133,11 +161,14 @@ def pair_tx(delta):
 
 
 class Fetcher:
-    def __init__(self, base_url, mint, key, bucket, conc):
+    def __init__(self, base_url, mint, key, bucket, conc, empty_max=EMPTY_MAX):
         self.stream_url = base_url.rstrip("/") + "/stream"
         self.head_url = base_url.rstrip("/") + "/head"
         self.mint = mint
         self.bucket = bucket
+        self.empty_max = empty_max
+        # 判定为"区间内无块"的空区间审计清单（list.append 在 GIL 下原子，多 worker 共享安全）
+        self.empty_hits = []
         # 每 worker 一个 Session（requests.Session 非线程安全）；均默认 gzip 协商+连接复用
         self.local = threading.local()
         self.headers = {"Content-Type": "application/json"}
@@ -158,6 +189,45 @@ class Fetcher:
         except Exception:
             return None
 
+    def probe_blocks(self, frm, to):
+        """轻量块探针：[frm, to] 内是否存在任何块 → True=有 / False=确无 / None=探针自身失败。
+
+        只要 block.number、不带任何 tokenBalance 过滤器——服务端扫描上限自动截断在 20 行，
+        实测封顶 640 字节 / 0.4-0.8 秒（2026-07-26）。用途是把"零行响应"的两种成因分开：
+        Solana skipped slot 串（真无块，可判完成）vs 服务端在过滤路径上异常（必须重试）。
+        ⚠ 204=区间超出服务端已索引范围，此时判完成会漏数据——归 None 按失败处理。"""
+        try:
+            self.bucket.take()
+            r = self._sess().post(self.stream_url, timeout=(15, 60),
+                                  json={"type": "solana", "fromBlock": frm, "toBlock": to,
+                                        "fields": {"block": {"number": True}}})
+            if r.status_code != 200:
+                return None
+            return any(ln.strip() for ln in r.text.splitlines())
+        except Exception:
+            return None
+
+    def _empty_ok(self, cur, to):
+        """零行响应能否判定为"区间内真的没有块"（判完成而非失败重试）。
+
+        实证（2026-07-26，BONK 现场四段复验）：这些区间去掉 mint 过滤依然零行，而包围 ±60
+        有 103-112 个块——即 Solana skipped slot 串。SQD 对"有块但该 mint 无数据"的区间会
+        回稀疏 header 行标记进度（实测 100 万 slot 空区间回 20 行），故零行只对应"无块"。"""
+        span = to - cur + 1
+        if span <= self.empty_max:
+            self.empty_hits.append([cur, to, "span"])
+            log(f"空区间 [{cur},{to}]（{span} slot ≤ EMPTY_MAX={self.empty_max}，区间内无块）"
+                f"——判完成，不计 scan-fail")
+            return True
+        got = self.probe_blocks(cur, to)
+        if got is False:
+            self.empty_hits.append([cur, to, "probe"])
+            log(f"空区间 [{cur},{to}]（{span} slot > EMPTY_MAX，块探针实证无块）——判完成")
+            return True
+        if got is True:
+            log(f"⚠ [{cur},{to}] 主查询零行但块探针查到块——服务端过滤路径异常，按失败重试")
+        return False
+
     def scan_area(self, frm, to, deadline):
         """扫 [frm, to]，服务端响应上限自动截断、客户端按最后 slot 续拉。
         → (edges, done_to, finished)。edges=[(ts, slot, from, to, amt)]。"""
@@ -174,19 +244,23 @@ class Fetcher:
             body = {"type": "solana", "fromBlock": cur, "toBlock": to,
                     "fields": body_fields, "tokenBalances": filt}
             last = None
+            complete = False     # HTTP 200 且响应流完整读完（无截断行、无连接层异常）
+            truncated = False
             try:
                 self.bucket.take()
                 # timeout=(连接, 字节间隔)——流式响应逐行到达，字节间隔 60s 足够
                 with self._sess().post(self.stream_url, json=body, stream=True,
                                        timeout=(15, 60)) as r:
                     if r.status_code != 200:
-                        raise RuntimeError(f"http {r.status_code}")
+                        raise RuntimeError("http 204（区间超出服务端已索引范围）"
+                                           if r.status_code == 204 else f"http {r.status_code}")
                     for ln in r.iter_lines(decode_unicode=True):
                         if not ln:
                             continue
                         try:
                             b = json.loads(ln)
                         except ValueError:
+                            truncated = True
                             break   # 截断行：按已解析部分推进（window_fetch 同款处理）
                         hdr = b.get("header", {})
                         last = hdr.get("number", last)
@@ -213,10 +287,16 @@ class Fetcher:
                         for ti, delta in by_tx.items():
                             for f, t, amt in pair_tx(delta):
                                 edges.append((ts, hdr["number"], f, t, amt))
+                    complete = not truncated
             except Exception as e:
                 last = None
                 err = str(e)[:80]
             if last is None:
+                # 零行 ≠ 失败：complete 为真说明服务端 200 正常应答且流完整读完，
+                # 此时零行的唯一成因是"区间内没有块"（见 _empty_ok 的实证注释）。
+                # 旧版无差别并进重试→6 次后记 gaps['scan-fail']→gaps 永不清零。
+                if complete and self._empty_ok(cur, to):
+                    return edges, to, True
                 fails += 1
                 if fails > 5:
                     return edges, cur - 1, False
@@ -474,9 +554,243 @@ def plan_areas(meta, span_from, head):
     return holes
 
 
+# ============ 收尾合并（2026-07-26 OOM 修复：超限自动降级 DuckDB 磁盘外排）============
+
+def _sort_key(e):
+    """(slot, ts) 主序 + (from, to, amt 文本) 末位定序——与外排的 ORDER BY 同口径。
+
+    历史版只用 (slot, ts)，同键行序取决于 set() 的哈希迭代顺序＝同一份数据两次跑可能不同；
+    补齐末位键后行序确定化，两条收尾路径也才能逐字节对拍（test_sqd_merge_equiv.py）。
+    amt 按**文本**比较（不是数值）：外排侧金额可超 int64 只能以 VARCHAR 取用，
+    两边必须同口径，且这只是末位 tie-breaker，不影响 (slot, ts) 主序。"""
+    return (e[1], e[0], e[2], e[3], str(e[4]))
+
+
+def probe_cache(cache_fp):
+    """旧缓存流式体检 → (行数, 是否完好)。
+
+    块读计数、不建列表——旧版开局就把整份缓存 load 成 list，本身就是 OOM 点之一
+    （BONK 单分片 3900-5900 万行）。读到末尾时 gzip 自动校验 CRC＝完整性检查仍在，
+    另抽验前几行 JSON 可解析防"能解压但内容不是边"。"""
+    n, head = 0, []
+    try:
+        with gzip.open(cache_fp, "rb") as f:
+            first = f.read(1 << 16)
+            head = first.split(b"\n")[:5]
+            n += first.count(b"\n")
+            for chunk in iter(lambda: f.read(1 << 22), b""):
+                n += chunk.count(b"\n")
+        for ln in head:
+            if ln.strip():
+                json.loads(ln)
+    except Exception as e:
+        log(f"缓存体检失败（{str(e)[:80]}）")
+        return 0, False
+    return n, True
+
+
+def _part_rows_estimate(files):
+    """parts 行数估算：总字节 / 采样均行长。只用于选收尾路径，不需要精确。"""
+    total = sum(p.stat().st_size for p in files)
+    if not total:
+        return 0
+    with open(files[0], "rb") as f:
+        sample = f.read(1 << 18)
+    lines = sample.count(b"\n")
+    return int(total / max((len(sample) / lines) if lines else 165.0, 1.0))
+
+
+def _atomic_gz(cache_fp, lines):
+    """临时文件写完再 os.replace ——中途 OOM/断电也不会留下半截 gz。
+
+    旧版直接 gzip.open(cache_fp) 边算边写，OOM 落在写入中途会留下损坏缓存，
+    下次启动触发"缓存损坏——重新全量"，几小时工作作废（BONK 实测风险点）。"""
+    tmp = cache_fp.parent / (cache_fp.name + ".tmp")
+    try:
+        with gzip.open(tmp, "wt") as f:
+            for ln in lines:
+                f.write(ln + "\n")
+        os.replace(tmp, cache_fp)
+    except BaseException:
+        tmp.unlink(missing_ok=True)
+        raise
+
+
+class MemMerger:
+    """全内存收尾（小样本路径，与历史行为同构，仅补了确定性末位排序键）。"""
+    mode = "inmem"
+
+    def __init__(self, cache_fp, parts_dir, part_files, old_ok):
+        self.cache_fp = cache_fp
+        self.edges = set()
+        if old_ok and cache_fp.exists():
+            with gzip.open(cache_fp, "rt") as f:
+                self.edges.update(tuple(json.loads(ln)) for ln in f if ln.strip())
+        for pf in part_files:
+            with open(pf) as f:
+                self.edges.update(tuple(json.loads(ln)) for ln in f if ln.strip())
+
+    def rows(self):
+        return len(self.edges)
+
+    def stats(self):
+        return (any(e[2] == ZERO for e in self.edges),
+                min((e[0] for e in self.edges if e[0]), default=None))
+
+    def absorb(self, edges):
+        self.edges.update(edges)
+
+    def finalize(self):
+        has_mint, min_ts = self.stats()
+        rows = sorted(self.edges, key=_sort_key)
+        if not rows:
+            return {"rows": 0, "has_mint": False, "min_ts": None}   # 零边不动缓存（同旧版语义）
+        _atomic_gz(self.cache_fp, (json.dumps(list(e)) for e in rows))
+        return {"rows": len(rows), "has_mint": has_mint, "min_ts": min_ts}
+
+
+class ExtMerger:
+    """DuckDB 磁盘外排收尾（大样本路径）：内存恒定在 memory_limit，排序落 temp_directory。
+
+    三条与全内存路径的口径对齐（BONK 1.55 亿行实测定案，2026-07-25）：
+    · **金额可超 int64**（BONK 创世铸造边 amt=10^19）——全程 VARCHAR 取用（`x->>'$[i]'`），
+      只有 slot / ts 才 CAST 成 BIGINT 用于排序；对 amt 做任何数值 CAST 都会溢出或失真
+    · **两种写法必须按字段去重**：part 文件是紧凑格式 `separators=(",",":")`、旧缓存 gz 是
+      json.dumps 默认格式（带空格），同一条边的整行字符串不同——按整行 DISTINCT 去不掉，
+      故先 `x->>'$[i]'` 拆字段再 DISTINCT，输出时按 gz 的默认格式逐字段重建
+    · 排序键与 _sort_key 同口径（amt 按文本比较）
+    """
+    mode = "duckdb-external"
+    FIELDS = ("x->>'$[0]' AS ts, x->>'$[1]' AS slot, x->>'$[2]' AS f, "
+              "x->>'$[3]' AS t, x->>'$[4]' AS amt")
+    RC = "columns={'x':'VARCHAR'}, header=false, quote='', delim=e'\\x07'"
+
+    def __init__(self, cache_fp, parts_dir, part_files, old_ok):
+        self.cache_fp = cache_fp
+        self.parts_dir = parts_dir
+        self.parts = list(part_files)
+        self.old = cache_fp if (old_ok and cache_fp.exists()) else None
+        self.tmpdir = parts_dir.parent / "_merge_tmp"
+        self.tmpdir.mkdir(parents=True, exist_ok=True)
+        self._cache, self._n_bf = None, 0
+
+    def _con(self):
+        con = duckdb.connect()
+        con.execute(f"SET memory_limit='{MERGE_MEM_LIMIT}'")
+        con.execute(f"SET threads={MERGE_THREADS}")
+        con.execute(f"SET temp_directory='{self.tmpdir}'")
+        con.execute("SET preserve_insertion_order=false")
+        return con
+
+    def _src(self):
+        segs = []
+        if self.parts:
+            segs.append(f"SELECT x FROM read_csv({[str(p) for p in self.parts]!r}, {self.RC})")
+        if self.old:
+            segs.append(f"SELECT x FROM read_csv(['{self.old}'], {self.RC}, compression='gzip')")
+        return " UNION ALL ".join(segs)
+
+    def rows(self):
+        return None      # 精确行数要全扫，收尾 COPY 时自然得到
+
+    def stats(self):
+        if self._cache is not None:
+            return self._cache
+        src = self._src()
+        if not src:
+            self._cache = (False, None)
+            return self._cache
+        con = self._con()
+        try:
+            row = con.execute(
+                f"SELECT max(CASE WHEN f = ? THEN 1 ELSE 0 END), "
+                f"       min(CASE WHEN ts <> '0' THEN CAST(ts AS BIGINT) END) "
+                f"FROM (SELECT {self.FIELDS} FROM ({src}))", [ZERO]).fetchone()
+        finally:
+            con.close()
+        self._cache = (bool(row[0]), row[1])
+        return self._cache
+
+    def absorb(self, edges):
+        """回补边落成新 part 文件参与最终外排（外排路径不把边留在内存里）。"""
+        if not edges:
+            return
+        self._n_bf += 1
+        fp = self.parts_dir / f"backfill_{self._n_bf}.jsonl"
+        with open(fp, "w") as f:
+            for e in edges:
+                f.write(json.dumps(list(e), separators=(",", ":")) + "\n")
+        self.parts.append(fp)
+        self._cache = None      # 数据变了，回补判据缓存失效
+
+    def finalize(self):
+        src = self._src()
+        if not src:
+            return {"rows": 0, "has_mint": False, "min_ts": None}
+        has_mint, min_ts = self.stats()
+        tmp = self.cache_fp.parent / (self.cache_fp.name + ".tmp")
+        con = self._con()
+        try:
+            n = con.execute(f"""
+                COPY (
+                  SELECT '[' || ts || ', ' || slot || ', "' || f || '", "' || t
+                              || '", ' || amt || ']' AS line
+                  FROM (SELECT DISTINCT {self.FIELDS} FROM ({src}))
+                  ORDER BY CAST(slot AS BIGINT), CAST(ts AS BIGINT), f, t, amt
+                ) TO '{tmp}' (FORMAT csv, HEADER false, QUOTE '', DELIMITER e'\\x07',
+                              COMPRESSION gzip)
+            """).fetchone()[0]
+        except BaseException:
+            tmp.unlink(missing_ok=True)
+            raise
+        finally:
+            con.close()
+            for leftover in self.tmpdir.glob("*"):
+                leftover.unlink(missing_ok=True)
+        if not n:
+            tmp.unlink(missing_ok=True)                             # 零边不动缓存（同旧版语义）
+            return {"rows": 0, "has_mint": False, "min_ts": None}
+        os.replace(tmp, self.cache_fp)
+        return {"rows": int(n), "has_mint": has_mint, "min_ts": min_ts}
+
+
+class EdgeCount:
+    """run() 的返回占位：只承载最终边数。
+
+    外排路径下全量边不在内存里（这正是修复要点），故两条路径统一只回计数——
+    调用方（main / collect_queue）本来也只用 len() 与 is None 判断。"""
+    __slots__ = ("n",)
+
+    def __init__(self, n):
+        self.n = n
+
+    def __len__(self):
+        return self.n
+
+
+def make_merger(cache_fp, parts_dir, part_files, old_ok, old_rows, max_rows):
+    """按预估规模选收尾路径：超阈值走 DuckDB 外排，否则全内存（历史行为）。"""
+    est = old_rows + _part_rows_estimate(part_files)
+    if est <= max_rows:
+        return MemMerger(cache_fp, parts_dir, part_files, old_ok), est
+    if duckdb is None:
+        log(f"⚠ 预估 {est:,} 行超全内存阈值 {max_rows:,}，但本机没有 duckdb——"
+            f"只能退回全内存收尾，有 OOM 风险（pip3 install duckdb 后重跑即走外排）")
+        return MemMerger(cache_fp, parts_dir, part_files, old_ok), est
+    free_gb = shutil.disk_usage(parts_dir.parent).free / 1e9
+    need_gb = est * 165 * 2 / 1e9      # 外排 temp + 输出的粗估
+    log(f"收尾降级 DuckDB 磁盘外排：预估 {est:,} 行 > 阈值 {max_rows:,}"
+        f"（memory_limit={MERGE_MEM_LIMIT} threads={MERGE_THREADS}，"
+        f"可用磁盘 {free_gb:.0f}GB / 粗估需 {need_gb:.0f}GB）")
+    if free_gb < need_gb:
+        log("⚠ 可用磁盘低于粗估需求——外排若失败，parts 与 meta 均保留，清盘后重跑即可续")
+    return ExtMerger(cache_fp, parts_dir, part_files, old_ok), est
+
+
 def run(mint, launch_ts, wall_min, conc, rps, base_url, key,
-        hs_cfg=None, from_slot_cli=None, to_slot_cli=None):
-    fx = Fetcher(base_url, mint, key, TokenBucket(rps), conc)
+        hs_cfg=None, from_slot_cli=None, to_slot_cli=None,
+        empty_max=EMPTY_MAX, merge_max_rows=MERGE_INMEM_MAX_ROWS):
+    fx = Fetcher(base_url, mint, key, TokenBucket(rps), conc, empty_max=empty_max)
     head = fx.head()
     if not head:
         return None, "SQD portal head 不可达"
@@ -485,15 +799,15 @@ def run(mint, launch_ts, wall_min, conc, rps, base_url, key,
     cache_fp, meta_fp, parts_dir = cache_paths(mint)
     parts_dir.mkdir(parents=True, exist_ok=True)
     meta = load_meta(meta_fp)
-    old_edges = []
+    # 旧缓存只做流式体检拿行数（不载入内存——收尾阶段才按规模选路径读它）
+    old_rows, old_ok = 0, False
     if cache_fp.exists() and meta:
-        try:
-            with gzip.open(cache_fp, "rt") as f:
-                old_edges = [tuple(json.loads(ln)) for ln in f if ln.strip()]
-            log(f"缓存命中：{len(old_edges)} 条边，已完成区域 {len(meta.get('areas', []))} 个")
-        except Exception as e:
-            log(f"缓存损坏（{e}）——重新全量")
-            old_edges, meta = [], {}
+        old_rows, old_ok = probe_cache(cache_fp)
+        if old_ok:
+            log(f"缓存命中：{old_rows:,} 条边，已完成区域 {len(meta.get('areas', []))} 个")
+        else:
+            log("缓存损坏——重新全量")
+            meta = {}
 
     now = int(time.time())
     if meta.get("from_slot"):
@@ -659,20 +973,19 @@ def run(mint, launch_ts, wall_min, conc, rps, base_url, key,
     for sg in pool.drain():
         gaps.append([sg[0], sg[1], "wall-clock"])
 
-    # 合并：旧缓存边 + 全部分区文件 → 排序去重整写
-    all_edges = list(old_edges)
-    for pf in sorted(parts_dir.glob("*.jsonl")):
-        with open(pf) as f:
-            all_edges.extend(tuple(json.loads(ln)) for ln in f if ln.strip())
-    if not all_edges:
+    # 合并：旧缓存边 + 全部分区文件 → 排序去重整写。
+    # 规模超阈值自动降级 DuckDB 磁盘外排——旧版无条件全内存 sorted(set(...))，
+    # BONK 单分片 3900-5900 万行峰值 13-19GB，16GB 机器必 OOM。
+    part_files = sorted(parts_dir.glob("*.jsonl"))
+    merger, est_rows = make_merger(cache_fp, parts_dir, part_files, old_ok,
+                                   old_rows, merge_max_rows)
+    if merger.rows() == 0 and not part_files and not old_ok:
         return None, "SQD 拉取无数据（含缓存为空）"
-    all_edges = sorted(set(all_edges), key=lambda x: (x[1], x[0]))
 
     # 回补验证：起点没盖住发射 → 前移重扫（沿用 v1 语义，最多 2 次）
     if not meta.get("launch_covered"):
         for _ in range(2):
-            has_mint = any(f == ZERO for _, _, f, _, _ in all_edges)
-            min_ts = min((e[0] for e in all_edges if e[0]), default=None)
+            has_mint, min_ts = merger.stats()
             if has_mint or not launch_ts or min_ts is None or min_ts <= launch_ts + 900:
                 break
             if time.time() > deadline - 60:
@@ -684,18 +997,19 @@ def run(mint, launch_ts, wall_min, conc, rps, base_url, key,
             if not b_fin:
                 gaps.append([new_from, from_slot - 1, "backfill-fail"])
                 break
-            all_edges = sorted(set(all_edges) | set(b_edges), key=lambda x: (x[1], x[0]))
+            merger.absorb(b_edges)
             with meta_lock:
                 meta["areas"].append({"s": new_from, "e": from_slot - 1, "done": True})
                 meta["from_slot"] = from_slot = new_from
             persist_meta()
 
-    # 落盘：整写 jsonl.gz（v1 同构），meta 记 launch_covered 与 gaps，分区文件清空
+    # 落盘：整写 jsonl.gz（v1 同构，临时文件+原子 rename），meta 记 launch_covered 与 gaps
+    final = {"rows": 0, "has_mint": False, "min_ts": None}
     try:
-        with gzip.open(cache_fp, "wt") as f:
-            for e_ in all_edges:
-                f.write(json.dumps(list(e_)) + "\n")
-        has_mint = any(f_ == ZERO for _, _, f_, _, _ in all_edges)
+        final = merger.finalize()
+        if not final["rows"]:
+            return None, "SQD 拉取无数据（含缓存为空）"
+        has_mint = final["has_mint"]
         covered = sorted(((a["s"], a["e"]) for a in meta["areas"] if a.get("done")),
                          key=lambda x: x[0])
         # 连续覆盖前沿（供增量续拉与 v1 兼容语义）
@@ -703,23 +1017,31 @@ def run(mint, launch_ts, wall_min, conc, rps, base_url, key,
         for s, e in covered:
             if s <= front + 1:
                 front = max(front, e)
+        # empty_ok = 判定为"区间内无块"的空区间审计清单（伪 scan-fail 修复的留痕，
+        # 便于事后复验：任取一段做 ±60 包围请求，应能拿到前后块且不含该段本身）
         meta.update({"launch_covered": bool(meta.get("launch_covered")) or has_mint,
                      "next_slot": front + 1, "gaps": gaps,
+                     "empty_ok": {"n": len(fx.empty_hits), "max": empty_max,
+                                  "intervals": fx.empty_hits[:2000]},
+                     "merge_mode": merger.mode,
                      "updated": time.strftime("%Y-%m-%d %H:%M")})
         persist_meta()
         for pf in parts_dir.glob("*.jsonl"):
             pf.unlink()
+        shutil.rmtree(parts_dir.parent / "_merge_tmp", ignore_errors=True)
     except Exception as e:
-        log(f"缓存写入失败（不阻塞）：{e}")
+        # 收尾失败＝数据没落盘，必须让退出码非 0（否则"完成 0 条边"会被当成正常空结果）；
+        # parts 与 meta 都保留，重跑即从 parts 续合并
+        log(f"缓存写入失败：{e}——parts 与 meta 已保留，重跑可续")
+        gaps.append([from_slot, head, "merge-fail"])
 
     gap_msg = None
     if gaps:
         seg_s = "; ".join(f"[{g[0]},{g[1]}]({g[2]})" for g in gaps[:6])
         more = f" 等共{len(gaps)}段" if len(gaps) > 6 else ""
         gap_msg = f"存在未覆盖区间：{seg_s}{more}——重跑自动补扫，gaps 清零前不得进重放"
-    min_ts = min((e[0] for e in all_edges if e[0]), default=0)
-    if launch_ts and min_ts and min_ts > launch_ts + 6 * 3600 and not any(
-            f == ZERO for _, _, f, _, _ in all_edges):
+    min_ts = final["min_ts"] or 0
+    if launch_ts and min_ts and min_ts > launch_ts + 6 * 3600 and not final["has_mint"]:
         g2 = f"重放起点晚于发射约 {(min_ts - launch_ts) / 3600:.0f} 小时——最早期建仓缺失"
         gap_msg = f"{gap_msg}；{g2}" if gap_msg else g2
     el = time.time() - t0
@@ -727,10 +1049,12 @@ def run(mint, launch_ts, wall_min, conc, rps, base_url, key,
     if stats["slots_hs"]:
         hs_note = (f"；其中 HyperSync 采 {stats['slots_hs']:,} slots"
                    f"——⚠该部分存在完备性风险（服务端洞静默），正式使用前需 SQD 复核")
-    log(f"完成：{len(all_edges):,} 条边，{stats['slots']:,} slots / {el:.0f}s "
+    empty_note = (f"；空区间判完成 {len(fx.empty_hits)} 段（无块，非缺口，见 meta.empty_ok）"
+                  if fx.empty_hits else "")
+    log(f"完成：{final['rows']:,} 条边（收尾 {merger.mode}），{stats['slots']:,} slots / {el:.0f}s "
         f"= {stats['slots'] / el if el else 0:,.0f} slots/s"
-        + (f"；缺口：{gap_msg}" if gap_msg else "（无缺口）") + hs_note)
-    return all_edges, gap_msg
+        + (f"；缺口：{gap_msg}" if gap_msg else "（无缺口）") + hs_note + empty_note)
+    return EdgeCount(final["rows"]), gap_msg
 
 
 def main():
@@ -756,6 +1080,12 @@ def main():
                     help="调试/定段采集：直接指定起点 slot（仅首采无 meta 时生效）")
     ap.add_argument("--to-slot", type=int, default=0,
                     help="调试/定段采集：采集上界 slot（默认链头）")
+    ap.add_argument("--empty-max", type=int, default=EMPTY_MAX,
+                    help=f"零行响应判「区间内无块」的免探针跨度闸门（默认 {EMPTY_MAX} slot；"
+                         "超过闸门的零行区间改用轻量块探针实证，探不出块才判完成）")
+    ap.add_argument("--merge-max-rows", type=int, default=MERGE_INMEM_MAX_ROWS,
+                    help=f"收尾全内存合并的行数上限（默认 {MERGE_INMEM_MAX_ROWS:,}，"
+                         "超过自动降级 DuckDB 磁盘外排防 OOM）")
     a = ap.parse_args()
     key = None
     try:
@@ -773,7 +1103,8 @@ def main():
         hs_cfg = {"url": a.hs_url, "token": hs_token, "conc": a.hs_conc, "rps": a.hs_rps}
     edges, gap = run(a.mint, a.launch_ts or None, a.wall_min, a.conc, a.rps, a.url, key,
                      hs_cfg=hs_cfg, from_slot_cli=a.from_slot or None,
-                     to_slot_cli=a.to_slot or None)
+                     to_slot_cli=a.to_slot or None, empty_max=a.empty_max,
+                     merge_max_rows=a.merge_max_rows)
     if edges is None:
         print(f"失败：{gap}", flush=True)
         sys.exit(1)

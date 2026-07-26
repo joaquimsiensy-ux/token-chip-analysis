@@ -47,6 +47,14 @@ def tree_rss(proc):
         procs = [proc] + proc.children(recursive=True)
         return sum(p.memory_info().rss for p in procs
                    if p.is_running()), len(procs)
+    except PermissionError:
+        # Codex 的 macOS 沙箱可能禁止 psutil 通过 sysctl() 枚举全机 PID。
+        # 退化为只监控直接子进程，仍保留主任务 RSS 水位；不能因观测受限
+        # 让监督器自身崩溃并遗留 ended/exit_code=null 的假运行状态。
+        try:
+            return proc.memory_info().rss, 1
+        except (psutil.Error, PermissionError):
+            return 0, 0
     except psutil.Error:
         return 0, 0
 
@@ -131,7 +139,11 @@ def main():
         if proc is not None:
             rss, nprocs = tree_rss(proc)
             st["peak_rss_gb"] = max(st["peak_rss_gb"], round(rss / 2**30, 2))
-            avail = psutil.virtual_memory().available
+            try:
+                avail = psutil.virtual_memory().available
+            except PermissionError:
+                # 同上：沙箱不提供系统级内存视图时，只执行任务 RSS 和磁盘水位。
+                avail = sys.maxsize
             try:
                 disk_free = shutil.disk_usage(disk_path).free
             except OSError:

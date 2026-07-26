@@ -6,6 +6,7 @@ labels README 曾宣称 filecoin 接入 resolver 与事实不符）。本脚本�
 1. md 里引用的本仓库文件路径必须存在（references/*.md、scripts/**.py、labels/*.csv|md）
 2. 每行 ** 配对（奇数个 ** 的行=残缺粗体，渲染会烂）
 3. SKILL.md「深入阅读」列出的文件必须齐全
+4. 关键方法硬闸必须同时出现在工作流、方法、判级和报告验收四层，防规则只写在角落而实际被跳过
 复盘写入后必跑（retrospective 步骤 3）；整编触发条件之一=本脚本抓出漂移 ≥3 处。
 
 用法：python3 scripts/tests/docs_lint.py    退出码：0=PASS；1=FAIL。
@@ -66,6 +67,33 @@ def main():
         base = os.path.relpath(p, os.path.join(ROOT, 'references'))  # 如 labels/README.md
         if base not in skill and os.path.basename(p) not in skill:
             fails.append(f'SKILL.md 深入阅读清单漏列: references/{base}')
+
+    # 5) 历史静置仓反向扫描是实体冻结前硬闸；四层任一缺失都视为方法回退。
+    method_contracts = {
+        'SKILL.md': ['历史静置仓反向扫描硬闸', 'dormant_warehouse_audit.json', '不允许冻结实体'],
+        'references/playbook-entity-cluster-methods.md': ['候选全集至少取四者并集', 'strict ∪ expanded', '同一交易末快照'],
+        'references/playbook-entity-cluster-tiering.md': ['历史静置仓反向扫描后的双边界峰值', '严格下限', '扩展上限'],
+        'references/report-template.md': ['历史静置仓反向扫描硬闸', 'dormant_warehouse_audit.json', 'strict/expanded/excluded'],
+    }
+    for rel, needles in method_contracts.items():
+        text = open(os.path.join(ROOT, rel), encoding='utf-8').read()
+        for needle in needles:
+            if needle not in text:
+                fails.append(f'方法硬闸回退 {rel}: 缺少 {needle}')
+
+    # 6) 控盘主口径必须跨工作流、判级、报告和专册四层一致：成员表排除设施，
+    #    不等于设施内可证权益不计入实体经济控制。
+    control_contracts = {
+        'SKILL.md': ['控盘看最终经济控制', 'economic_control_ledger.json', '公共设施不进永久成员表'],
+        'references/economic-control-accounting.md': ['实体成员表', '链上位置账', '经济控制账', 'unresolved_facility_exposure'],
+        'references/playbook-entity-cluster-tiering.md': ['P0/P1 的“持仓”强制解释为可证经济控制量', '严格/扩展是确权边界'],
+        'references/report-template.md': ['经济控制穿透硬闸', 'economic_control_ledger.json', '不得拿钱包自持替代'],
+    }
+    for rel, needles in control_contracts.items():
+        text = open(os.path.join(ROOT, rel), encoding='utf-8').read()
+        for needle in needles:
+            if needle not in text:
+                fails.append(f'经济控制口径回退 {rel}: 缺少 {needle}')
 
     if fails:
         for f in fails[:30]:
