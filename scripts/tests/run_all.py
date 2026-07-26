@@ -10,7 +10,8 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 SUITE = ['changelog_lint.py', 'docs_lint.py', 'labels_manifest.py', 'env_check.py',
          'test_replay_inc.py', 'test_build_html.py', 'test_engine_equivalence.py',
          'test_collect_lanes.py', 'test_report_facts.py', 'test_fault_injection.py',
-         'test_figures_from_facts.py', 'test_cluster_quality.py']
+         'test_figures_from_facts.py', 'test_cluster_quality.py',
+         'test_sqd_merge_equiv.py']
 
 
 def main():
