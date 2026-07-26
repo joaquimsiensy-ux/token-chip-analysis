@@ -157,7 +157,15 @@ def write_conflict_report(conflicts, out_dir):
             f.write('\n')
     return jp
 
-CHAIN_MAP = {'solana': 'sol', 'ethereum': 'eth', 'bnb': 'bsc', 'binance': 'bsc'}
+# 侧链/L2 一律折进 eth 表：标签库只有 7 条链的分表，而 EVM 的 EOA 是同私钥跨链同一人，
+# resolver 对非 eth 的 EVM 链本就做 eth 表同址联查（KNOWN_CHAINS 之外的链原先会被
+# 下面的白名单直接 continue 掉 → Arbitrum/Avalanche 等案的实锤庄永远进不了惯犯库，
+# GMX(Arbitrum) 2026-07-26 实测暴露）。合约地址同址≠同实体，resolver 命中时已附提示。
+CHAIN_MAP = {'solana': 'sol', 'ethereum': 'eth', 'bnb': 'bsc', 'binance': 'bsc',
+             'arbitrum': 'eth', 'arbitrum one': 'eth', 'arbitrum-one': 'eth', 'arb': 'eth',
+             'avalanche': 'eth', 'avax': 'eth', 'avalanche c-chain': 'eth',
+             'polygon': 'eth', 'matic': 'eth', 'optimism': 'eth', 'op': 'eth',
+             'linea': 'eth', 'scroll': 'eth', 'blast': 'eth', 'mantle': 'eth'}
 INCLUDE_RE = re.compile(r'(庄\s*#?\d|^庄|小庄|离场庄|狙击集团|工作室|收割)')
 EXCLUDE_RE = re.compile(r'(疑似|边界|观察|未达标签|不计庄家|PLAUSIBLE|未证实|候选|行为学披露)')
 
@@ -228,8 +236,15 @@ def main():
         if isinstance(dc, dict):
             dc = dc.get('utc')
         cutoff = str(dc or '')[:10] or today
-        chain = norm_chain((d.get('token') or {}).get('chain'))
-        token = (d.get('token') or {}).get('symbol') or case
+        tok = d.get('token') or {}
+        raw_chain = tok.get('chain')
+        if not raw_chain:                       # 多链 state（token.chains 数组）：取 native 链
+            chs = tok.get('chains') or []
+            if chs:
+                nat = next((c for c in chs if (c.get('role') or '') == 'native'), chs[0])
+                raw_chain = nat.get('chain')
+        chain = norm_chain(raw_chain)
+        token = tok.get('symbol') or case
         if chain not in ('eth', 'bsc', 'base', 'sol', 'robinhood', 'hyperliquid', 'filecoin'):
             continue
         for g in d.get('whale_groups') or []:
