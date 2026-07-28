@@ -652,3 +652,6 @@ address,chain,reason,weight,context,seen_date
 0x0f95572a4130904b2ddedbaedede4b28448d14c7,bsc,守门员FUNNEL in55/out77 ret=0.000（漏斗形状，判明身份后回填标签库）,1486,EGL1 cluster,2026-07-26
 0xa7ca2c8673bcfa5a26d8ceec2887f2cc2b0db22a,bsc,守门员FUNNEL in105/out289 ret=0.000（漏斗形状，判明身份后回填标签库）,1261,EGL1 cluster,2026-07-26
 0xdf3b105cfbb37417b3a0bfd70cab1516dca50a1d,bsc,守门员FUNNEL in64/out88 ret=0.015（漏斗形状，判明身份后回填标签库）,10940,EGL1 cluster,2026-07-26
+0xe27395dc1093964b724699772f1efcc94c54682c,bsc,共同 gas funder 服务 3 地址（疑似热钱包/代付服务）,3,EGL1 cluster,2026-07-27
+0x055a3b37957bfbd3345bed9968e7e8dd56d67066,bsc,共同 gas funder 服务 3 地址（疑似热钱包/代付服务）,3,EGL1 cluster,2026-07-27
+0x613af17c8516f358226ce72bd034a99ccf77caf7,bsc,共同 gas funder 服务 3 地址（疑似热钱包/代付服务）,3,EGL1 cluster,2026-07-27
