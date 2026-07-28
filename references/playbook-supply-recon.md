@@ -1,6 +1,6 @@
 # 分析方法学 Playbook · 供给与对账（分册 1/4）
 
-> v3.5.0 整编由 analysis-playbook.md 主题拆分而来（2026-07-18，ASTEROID(ETH) 复盘会话）；**规则逐条原样迁移、零改写**，来源注记均在原行尾。四问框架总纲与分册路由见 `analysis-playbook.md`（索引）。
+> analysis-playbook 主题分册之一，覆盖 §1/§1b/§2/§8/§8b；四问框架总纲与分册路由见 `analysis-playbook.md`（索引）。规则行尾标注来源会话。
 
 ## 1. 供给基线核定（一切百分比的分母）
 
