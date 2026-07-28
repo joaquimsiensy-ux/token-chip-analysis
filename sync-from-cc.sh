@@ -7,6 +7,18 @@ set -uo pipefail
 WT="${CODEX_HOME:-$HOME/.codex}/skills/token-chip-analysis"
 cd "$WT" || { echo "❌ 找不到 codex 侧 skill 目录：$WT"; exit 1; }
 
+standalone_snapshot() {
+  echo "ℹ️  当前是独立分享包安装，没有双线 Git worktree/main 分支。"
+  echo "   使用包内已通过测试的固定快照；跳过 Claude Code 自动同步。"
+  exit 0
+}
+
+# 分享 ZIP 会有完整 skill 文件，但不会携带维护者本机的 .git/worktree 历史。
+# 这种安装必须可直接使用，不能把“没有上游仓库”误报成分析故障。
+[ -e "$WT/.git" ] || standalone_snapshot
+git rev-parse --is-inside-work-tree >/dev/null 2>&1 || standalone_snapshot
+git show-ref --verify --quiet refs/heads/main || standalone_snapshot
+
 echo "═══ 1/4 检查当前状态 ═══"
 BR=$(git rev-parse --abbrev-ref HEAD)
 if [ "$BR" != "codex" ]; then

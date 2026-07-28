@@ -11,7 +11,7 @@ description: 对任意链上代币（EVM/Solana/Hyperliquid/Filecoin 及新链�
 - API key 继续以 `~/.claude/api-keys.md` 为唯一登记源，并复用其中指向的 `~/.config/*` 凭据文件。不要复制密钥登记文件，不要把 key 写进 skill 目录、日志、报告或命令行参数；案目录临时配置须设为 `600`。
 - 文中旧工具名按 Codex 能力映射：`AskUserQuestion` 表示在确有关键决策点时直接向用户提一个简短问题；`WebSearch` / `WebFetch` 表示使用当前可用的联网检索、浏览器或 fetch 工具；`Agent` / `Workflow` 表示把具体、独立、可并行的任务交给 Codex 子代理；`Monitor` 表示使用当前环境提供的 wait/monitor 机制。不要调用不存在的 Claude 专用工具名。
 - Claude 的 `sonnet` / `opus` 是历史模型别名，不是 Codex 模型名。机械任务优先使用当前可用的均衡/低成本代理，P0 实体素材装配使用当前可用的高推理代理；没有模型覆盖能力时继承当前模型，不得臆造别名。
-- 本副本自 2026-07-26 起是 Claude Code 版 skill 仓库的 **git worktree**（`codex` 分支，与 `~/.claude/skills/token-chip-analysis` 共用同一个 `.git`）。阶段 6 复盘照常落盘、跑测试并 commit，规则见下方「codex 侧迭代本 skill 的规则」。旧说明"此安装副本默认不含 .git、不要伪造提交"已作废。
+- 维护者本机的副本自 2026-07-26 起是 Claude Code 版 skill 仓库的 **git worktree**（`codex` 分支，与 `~/.claude/skills/token-chip-analysis` 共用同一个 `.git`）。独立分享 ZIP 不携带 `.git`：同步脚本会识别为固定快照并正常返回，不要求收件人拥有维护仓库。阶段 6 复盘照常落盘；仅双线 worktree 安装按下方规则 commit。
 
 ### 第 0 步（硬性前置）：跑任何分析前，先同步 Claude Code 侧的迭代
 
@@ -21,11 +21,13 @@ description: 对任意链上代币（EVM/Solana/Hyperliquid/Filecoin 及新链�
 bash "${CODEX_HOME:-$HOME/.codex}/skills/token-chip-analysis/sync-from-cc.sh"
 ```
 
+维护者的双线 worktree 会检查并合并 `main`；独立分享包没有 `.git` 或本地 `main` 分支时，脚本明确提示“使用包内固定快照”并返回 0，不把缺少维护仓库误报为分析故障。分享包不会自动获得后续 CC 更新，需要重新分发新快照。
+
 按退出码处置：
 
 | 退出码 | 含义 | 怎么做 |
 |---|---|---|
-| 0 | 已是最新，或同步成功且测试全过 | 正常开工 |
+| 0 | 已是最新、同步成功且测试全过，或正在使用独立分享快照 | 正常开工 |
 | 1 | 前置检查没过（不在 codex 分支，或有未提交改动）| 按脚本给的提示处理——通常是先提交，再重跑同步 |
 | 2 | 合并有冲突 | **停下来先解冲突再开工**——冲突意味着两边对同一处规则有分歧，带着分歧跑几小时的分析，风险远大于花几分钟解冲突。解法规矩见 `SYNC.md` |
 | 3 | 合并后测试没过 | 必须停。`git reset --hard HEAD~1` 回退后向用户报告 |
