@@ -219,3 +219,17 @@ solana 走 fetch_sqd_transfers_v2；manifest 原子记账、残缺 run 改名 pa
 - 图表叙事技巧：大户建仓时间线图上"创世期区域完全空白"= 没有任何创世钱包还留在前排的可视化证明（老庄已清仓的直观证法）。
 
 （本节来源：外部电脑 BSC/ETH 分析考古，2026-07；原始会话见 `windows虚拟机cc会话记录/`）
+
+
+### 7.6 Blockscout v2 持有人榜与地址画像（ETH / Base / Arbitrum，免 key）
+端点 `https://<eth|base|arbitrum>.blockscout.com/api/v2/...`，普通 Chrome UA 直连，无需 key。三件套：
+- 持有人榜 `/tokens/{addr}/holders`——**不支持 `limit` 参数**（传了返 422 `Unexpected field: limit`），只能用响应里的 `next_page_params` 逐页翻，50 条/页；items 带 `address.name` 公共标签（RewardTracker / UniswapV2Pair / GnosisSafeProxy / 交易所名等），是免费认所的第一道。
+- 代币元信息 `/tokens/{addr}`——`total_supply`（raw）/`decimals`/`holders_count`。
+- 地址画像 `/addresses/{a}`（`coin_balance` 原生币余额、`is_contract`）+ `/addresses/{a}/tokens?type=ERC-20`（持币种类）+ `/addresses/{a}/counters`（`transactions_count` = 主动发起交易数）+ `/addresses/{a}/token-transfers?type=ERC-20&token=<币>`（按币种过滤的单地址流水，分页同上）。
+- **⚠ 持有人榜有滞后与遗漏，禁止作为余额权威源**（TOSHI(Base) 实测，2026-07-26）：与全量 Transfer 重放 + 链上 `balanceOf` 三方对账发现——`0x8752a799…` 榜单报 16.17 亿而实际 121.37 亿（**少报 105 亿**）；`0x5d657592…`（180.47 亿枚，占流通 4.29%）与 `0xe810e8b2…`（64.22 亿枚）**在 top500 榜里完全不出现**。重放与链上实查逐笔相等，榜单错。**纪律：Blockscout 榜只用于"快速找候选 + 拿公共标签"，任何进入结论的余额数字必须经全量重放或 `balanceOf` 复核**；E0b 快照若只靠榜单，覆盖率与占比都会系统性偏低（该案初值 36.62% → 重放后 43.96%）。
+- 同源提示：`transactions_count` 与 `eth_getTransactionCount`（nonce）不是一回事但同向；判"从未主动签发交易"以 **nonce 为准**（见 playbook-entity-cluster-methods §6 nonce 基准率法）。
+
+### 7.7 Avalanche：Routescan API（免 key，snowtrace 已 403）
+`https://api.routescan.io/v2/network/mainnet/evm/43114/erc20/{token}/holders?limit=100`，免 key 直连、`link.nextToken` 翻页，返回 `address`/`balance`(raw)/`percentage`（**小数形态，0.300574 即 30.06%**）。
+- 死路记录（2026-07-26 实测）：`snowtrace.io/api/v2/...` 返 **403**；`avalanche.blockscout.com` **不存在**（404 default backend）；`bsc.blockscout.com` 同样 404——**BSC 无 Blockscout 实例，持有人榜只能走 §7.2 BscScan 网页**。
+- 用途：多链标的的分支链快照（GMX 的 Avalanche 侧占其全局链上量 5.46%，看板口径未覆盖，实查该侧另有 22.73% 在 CEX）。

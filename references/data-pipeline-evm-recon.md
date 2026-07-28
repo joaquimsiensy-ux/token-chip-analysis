@@ -68,6 +68,8 @@
 - **UHUGEINT 的 SUM 静默退化 DOUBLE**（返回 1e+32 的 float）——无符号 128 位不可用于聚合；用 **HUGEINT**（SUM 精确返 int，溢出硬报错不环绕，窗口 SUM 同）。
 - **VARINT（=BIGNUM）乘法退化 DOUBLE**（`'2'::VARINT*'3'::VARINT` → DOUBLE）；加法/SUM 精确。VARINT 只作超 37 位十进制的 SUM 慢路径（~5x 慢），**任何乘法场景禁用**。
 - **hex 字符串 cast 有位宽限制**：`'0xff'::UBIGINT` 可用，64-hex 全串 cast 任何整数型都报错——32 字节 value 用**两段法**：`('0x'||substr(data,35,16))::UBIGINT::HUGEINT * 2^64 + ('0x'||substr(data,51,16))::UBIGINT::HUGEINT`（前提高 32 hex 全零，物化前必探测，QUQ 28 位安全）。
+- **hex cast 的位宽限制按目标类型而定，`HUGEINT` 比 `UBIGINT` 更严**（TOSHI 案补测，2026-07-26）：上条说的 `'0xff'::UBIGINT` 可用，但 **`'0x…'::HUGEINT` 一律报错**（`Could not convert string '0x00000046d1…' to INT128`），**截短到 24 hex 仍报错**——即"带 `0x` 前缀转 HUGEINT"这条路根本不通，别浪费时间试截长度。中等规模（≤ 千万行级）的省事解法：**DuckDB 只做过滤/投影，把 `data` 原样取回 Python 侧用 `int(d,16)` 转**（TOSHI 1660 万行 fetchmany(1e6) 分批处理，分钟级完成，内存可控）；亿级仍走上条两段 UBIGINT 法。
+- **余额重放禁用浮点：float 累加会造出假的供给闭合残差**（TOSHI 案，2026-07-26）：以 `int(d,16)/1e18` 逐条累加 1660.9 万条后，重放正余额合计比 `totalSupply` 多 **181,938.49 枚**，一度被当成"漏采/重复事件"排查（外部复核也据此质疑重放逻辑有系统性缺陷）；改用**整数 raw units** 累加、最后一步才除 1e18，**全部余额代数和精确 = 0、非零地址代数和与 totalSupply 差 0.000000**。纪律：①对账口径一律用整数 raw；②报"闭合"时必须报**含负余额的代数和**而不是"正余额合计"——只报正余额会把负余额地址的缺口藏起来（该案确有一址重放 −181,938.49 而链上实查 +13.12，即约 18.2 万枚转入未被事件捕获，占供应 0.000043%，是真实数据缺口，需单列而非被浮点残差掩盖）。
 - `make_timestamp()` 不吃 UBIGINT，参数先 `::BIGINT`；`day` 是保留字，列别名必须 `"day"`。
 - **temp 磁盘是亿级聚合的真瓶颈**（非内存）：`SET max_temp_directory_size` 按十进制解析（40GB=37.2GiB）；(tx,li) 全局去重 shuffle 1 亿行需 >37GB temp——**v2 输入用块界感知去重**（per-run min/max 元数据秒查→仅重叠区间 GROUP BY，非重叠直通零 shuffle；QUQ 4 段零重叠 19.5s 完成）；派生表一律从 edges_agg 算（(f,t) 聚合保和），禁止对原始行做 (a,p) 双向 2 亿行聚合（首跑 46.5GB 爆仓教训）。
 - 块末峰值窗口（PARTITION BY addr ORDER BY block 亿级）是最重一环——**3.19 已上两级候选预筛**（replay_duck 内置默认开）：一级=累计流入恒等上界（峰值≤Σ入账，不达 `peak_min×0.8` 者必不进 peaks），二级=正块净增更紧上界（峰值≤Σmax(dd,0)，同块进出抵消地址被精准滤掉）；两级全整数恒等推理只多收不漏收，精确窗口 SQL 逐字未动只缩输入集合，QUQ/ASTEROID 逐键全等实证。实测：QUQ 峰值段 657s→~330s（**2.0x**；刷量盘是最不利盘型——真达标 21,826 址刚性占 ab 45%，收益天花板 ~2.5x）；ASTEROID 常规盘型筛除 92.8% 地址。⚠**终态余额预筛不完备**（峰值高后清仓者终态=0 会漏），只有流量口径上界可用；HUGEINT SUM 溢出自动回退 VARINT 重算。新参数 `--no-merged`（亿级基准跑省盘）；`[peak]` 分段计时打印。峰值非必需场景（easy 初筛）仍可跳。
@@ -104,3 +106,40 @@ KOGE 一级 inflow 预筛（≥0.1% 供应）后**仍剩 157,459 个候选**，�
 **fail-closed 强化（新引擎内建，比旧引擎严）**：坏行 reject 记账（n_source_rows/n_bad_fields/n_out_of_segment/n_dedup_removed 进 stats）；同去重键不同事件内容=数据损坏硬退（旧引擎静默 keep-last）；空 ts 硬退（旧引擎归上一有效日的未定义行为）；供给闭合 gate 挂 → exit 4。同批修复旧引擎三缺口：replay_pass1 坏行计数+`--allow-bad-rows`（默认 0 即退）、cluster R1/准入阈值整数交叉乘法（曾浮点累计）、transfers_lib dedup 重组冲突检测（同 (block,tx,li) 双 hash 硬退,曾双计）。cluster 输出排序加确定性 tiebreaker（并列余额曾致同数据两跑输出不同）。
 
 通用环境坑（macOS SSL 证书、reportlab 中文字体、前台 sleep 被 Block 等）不在本文重复，见 skill 其他参考文档与 memory（mac-python-pdf-environment.md、onchain-data-accounts.md）。
+
+---
+
+## 13. 时间抽查的第二源选型：改用 SQD Portal，不要用区块浏览器 API（GMX(Arbitrum) 2026-07-26 定）
+
+**背景**：对账三查的"时间抽查"需要一个**独立于主采集通道**的第二源来重算锚点余额。此前默认走 Etherscan 系 API 的 `tokentx`，GMX 案实测该路对**大地址**根本不可用。
+
+**Etherscan V2 免费层的两个实测缺陷（都会静默给出错误答案）**：
+1. **`tokentx` 不返回 `logIndex`** → 去重键退化为 `(hash,from,to,value)`，同一 tx 内多笔相同金额的转账会被误并（少算）。
+2. **对超万笔地址的滚动分页会中途返回不满页而提前终止** → 实测某地址 `endblock=414,173,883`，滚动 119 轮后在第 996 条短页处停止，**最大块只到 329,620,841＝块覆盖率 79.59%**，且无任何错误提示。少掉的多为后段流出记录，**结果是余额虚高**（该地址实测虚高 17.9 万枚）。
+   - 另一个必须绕开的硬限制：不滚动 `startblock` 时 `PageNo × Offset ≤ 10000`，超过报 `Result window is too large`；滚动可绕过窗口上限但绕不过上面这个提前终止。
+
+⇒ **纪律：Etherscan 系 API 只适合查"某地址最早一笔入账"（gas 溯源，只需首条记录，安全）与小地址核对；禁止用它单方面推翻本地重建的大地址余额。**
+
+**正解：SQD Portal 作对账第三源**（免 key、独立于 HyperSync）
+```bash
+python3 scripts/evm/fetch_sqd_evm.py arbitrum <from_block>   --token-addr 0x标的 --out data/sqd_recheck.csv --to-block <to_block> --sleep 0.5
+```
+- GMX 实测：`[320000000, 420000000]` 区间 **1,644,700 行 / 622 秒**（约 2,600 行/秒），全程无 429。
+- 比对口径（DuckDB）：按 `(tx, log_index)` 做双向 `EXCEPT` 取键差集，再对共有键逐字段比 `from/to/value`，最后比金额总和。
+  GMX 实测结果：前段 832,944 行 + 后段 794,029 行，**键差集 0/0、字段不一致 0、金额总和精确相同**。此前 Etherscan 复核失败的那个锚点，由 SQD 独立算出的区间净变动与本地重建**精确到 9 位小数一致**。
+- ⚠ **读 SQD 的 CSV 必须显式指定列类型**（见下条），否则 wei 值被推断成 DOUBLE，会造出几十万行假差异。
+
+**★DuckDB 读 wei 列的类型陷阱（GMX 实测，极具误导性）**
+```python
+# 错：AUTO_DETECT 把 value_raw 推断为 DOUBLE，53 位有效位装不下 1e18~1e24 的 wei
+con.execute("... from read_csv('sqd.csv', header=true, AUTO_DETECT=true)")
+# 对：显式全 VARCHAR，取值时再 CAST(... AS HUGEINT)
+COLS={'block':'VARCHAR','ts':'VARCHAR','tx':'VARCHAR','log_index':'VARCHAR',
+      'from':'VARCHAR','to':'VARCHAR','value_raw':'VARCHAR','block_hash':'VARCHAR'}
+con.execute(f"... from read_csv('sqd.csv', header=true, columns={COLS})")
+```
+症状很像"双源真的不一致"：**文本比较 `s.v <> h.v` 返回 0 条，而 `CAST(s.v AS HUGEINT) <> CAST(h.v AS HUGEINT)` 返回 51.4 万条**。见到这种"文本一致而数值不等"的组合，先怀疑类型推断而不是数据。
+
+**anchor_plan 下游校验的两个注意点**
+- `anchor_plan.json` 的键名是 **`matrix_points` / `forced_points`**（不是 `matrix` / `forced`）；写错会静默取到空列表。
+- 任何抽查校验脚本必须在"抽查点数为 0"时 `assert` 硬失败——否则 0 个点循环零次、`bad==0`，直接打印 PASS（GMX 案实际发生过一次假 PASS）。

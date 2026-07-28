@@ -74,7 +74,11 @@ CAMP_COLORS = {
 }
 # 图2 实体线条：标签前缀 → 语义色（与图1 同色系）；匹配不到按轮换色
 ENTITY_COLOR_HINT = [("项目方", "tab:red"), ("大庄", "tab:orange"), ("小庄", "#d4a017"),
-                     ("离场庄", "tab:brown"), ("狙击集团", "tab:purple"), ("刷量", "#e377c2")]
+                     ("离场庄", "tab:brown"), ("狙击集团", "tab:purple"), ("刷量", "#e377c2"),
+                     # 与图1 CAMP_COLORS["CEX资金通道"] 同色；3.35.0 加阵营色时漏同步本表，
+                     # 致通道类实体落回轮换色首位 tab:red 与「项目方」撞色（IQ(ETH) 2026-07-26 实测）
+                     ("CEX资金通道", "#8c6d1f"), ("CEX托管", "tab:olive"),
+                     ("HiIQ", "tab:gray"), ("质押", "tab:gray"), ("锁仓", "tab:gray")]
 WHALE_LINE_COLORS = ["tab:red", "tab:orange", "tab:brown", "#c44e9d", "#8c564b"]
 
 
