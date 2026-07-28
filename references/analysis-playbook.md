@@ -20,32 +20,33 @@
 
 ---
 
----
+## 分册路由（主题四分册，本文件只保总纲与索引；4.0 整编核对全表）
 
-## 分册路由（v3.5.0 整编：主题四分册，本文件只保总纲与索引）
-
-> 读法：开局不整读任何分册；按阶段/按问题定位到节，再区间读对应分册。分册内规则逐条原样迁移自 v3.4 单文件（2026-07-18 拆分，零改写；git 历史可考古）。
+> 读法：开局不整读任何分册；按阶段/按问题定位到节，再区间读对应分册。**新增章节必须同步回填本表与 SKILL.md 深入阅读行**（3.x 期曾漂移 6 节，4.0 补齐）。
 
 | 节 | 主题 | 分册文件 |
 |---|---|---|
 | §1 供给基线核定（分母口径） | 供给与对账 | `playbook-supply-recon.md` |
+| §1b 多链标的：先判"能不能相加"再谈分母（含混合形态/自由流通口径） | 供给与对账 | `playbook-supply-recon.md` |
 | §2 对账关卡（硬性 gate） | 供给与对账 | `playbook-supply-recon.md` |
 | §8 创世/空投 cohort 留存+质押修正 | 供给与对账 | `playbook-supply-recon.md` |
+| §8b 嵌套质押的穿透法（份额代币余额恒为 0 型） | 供给与对账 | `playbook-supply-recon.md` |
 | §3 地址身份标注（标签库前置+三级兜底） | 实体识别与聚类 | `playbook-entity-cluster.md` |
 | §4 金库与核心实体逐笔归因 | 实体识别与聚类 | `playbook-entity-cluster.md` |
 | §6 关联地址聚类规则（含行为半枢纽/代买枢纽裁决） | 实体识别与聚类 | `playbook-entity-cluster.md` |
-| §6a 标签体系、类型三分类与阵营划分（问1/问2 操作定义；含世代阵营法） | 实体识别与聚类 | `playbook-entity-cluster.md` |
+| §6.5 买入序列节拍指纹（聚类三规则失效时的破局判据，含秩相关修正） | 实体识别与聚类 | `playbook-entity-cluster.md` |
+| §6.6 gas 同源与 vanity 指纹的否证检验 | 实体识别与聚类 | `playbook-entity-cluster.md` |
+| §6a 标签体系、类型三分类与阵营划分（问1/问2 操作定义；含资金通道判据/世代阵营法） | 实体识别与聚类 | `playbook-entity-cluster.md` |
 | 经济控制账本（钱包自持 + LP/CEX/桥/质押/vault/托管权益；P0/P1 数字主口径） | 经济归属与控盘计量 | `economic-control-accounting.md` |
 | §6b 建仓成本估算（按需工具；含出货美元核算优先级） | 实体识别与聚类 | `playbook-entity-cluster.md` |
-| §5 CEX 充提净流 × 价格 | 状态评估与市场异常 | `playbook-state-anomaly.md` |
-| §7 庄家当前状态评估 | 状态评估与市场异常 | `playbook-state-anomaly.md` |
+| §5 CEX 充提净流 × 价格（含 §5a rug 后封闭盘定价结构） | 状态评估与市场异常 | `playbook-state-anomaly.md` |
+| §7 庄家当前状态评估（含行为归因纪律/观察窗起点/出货形态/离场判定） | 状态评估与市场异常 | `playbook-state-anomaly.md` |
 | §9 机器人/刷量识别克制原则 | 状态评估与市场异常 | `playbook-state-anomaly.md` |
-| §9a 死币复活盘识别（操盘型五阶段+事件驱动亚型分流） | 状态评估与市场异常 | `playbook-state-anomaly.md` |
-| §9e 挂墙钉价盘识别（单边窄档 LP 锁价） | 状态评估与市场异常 | `playbook-state-anomaly.md` |
+| §9a–9e 盘型库（死币复活/接力库存仓/CEX 间调度商/叙事开关/挂墙钉价盘） | 状态评估与市场异常 | `playbook-state-anomaly.md` |
 | §12 流动性形态取证（"注入流动性"≠"提供流动性"） | 状态评估与市场异常 | `playbook-state-anomaly.md` |
-| §10 对抗性复核制度 | 证据复核与措辞 | `playbook-evidence-wording.md` |
+| §13 协议收入回购链的识别 | 状态评估与市场异常 | `playbook-state-anomaly.md` |
+| §14 净持仓曲线会掩盖双向操作（逐点差分义务） | 状态评估与市场异常 | `playbook-state-anomaly.md` |
+| §10 对抗性复核制度（含 §10b 交付前第一性五问） | 证据复核与措辞 | `playbook-evidence-wording.md` |
 | §11 措辞纪律与证据强度 | 证据复核与措辞 | `playbook-evidence-wording.md` |
 
 分析工序 → 分册速查：阶段 2 对账=分册 1；阶段 3 先做标注/聚类，再按 `economic-control-accounting.md` 建经济控制账并据此分级；演变解读与状态=分册 3；阶段 4 复核与报告措辞=分册 4。
-
-（上一条"entity-cluster 微超 60KB 待拆"整编待办已于 2026-07-22 D3 兑现：methods/tiering/cost 三分册，母文件转路由页。）

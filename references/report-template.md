@@ -1,10 +1,8 @@
 # 报告结构与写作纪律（庄家行为分析版）
 
-> 框架版本：v2.0（2026-07-14，用户指定九条修改定型；由 v1.1 五问版迭代而来）。
-> 本版核心变化：五问改四问（删建仓成本命题、官推改项目方背景调查）；庄级实体改
-> P0/P1 标签体系（取代旧"庄#N"扁平计数）；图 1/图 2 前置到 TL;DR 顶部；P0 实体
-> 必配全周期流转路径图；正文钱包一律标签制、代币数量一律带【总量X%】；取消行内
-> 置信度 tag；观察哨后必须给两档监控建议。
+> 框架版本：v2.0 四问框架（2026-07-14 用户定稿）。核心硬性：P0/P1 标签体系计数；
+> 图 1/图 2 前置 TL;DR 顶部；P0 实体必配全周期流转路径图；正文钱包一律标签制、
+> 代币数量一律带【总量X%】；无行内置信度 tag。
 
 **交付物：自包含单文件 HTML**（图 base64 内嵌），输出到用户工作目录。
 管道：先写 `报告.md` + `charts/*.png`（标准图用 `scripts/report/standard_charts.py`，流转图用 `scripts/report/lifecycle_flow.py`），复核修正全部落定后：
@@ -32,7 +30,7 @@ python3 scripts/report/build_html.py --md 报告.md --out 报告.html
 
 ## 标签体系与重要度分级（v2.0 核心，问 1 的呈现标准）
 
-操作定义（认定规则、峰值取法、合并口径细则）见 analysis-playbook §6a；本节管报告怎么写。
+下表是**速查副本**——认定规则、峰值取法、合并口径细则的唯一权威源=playbook-entity-cluster-tiering §6a（改门槛须三处同步：tiering/本表/SKILL.md 阶段 3）；本节管报告怎么写。
 
 **“持仓”在本节一律指可证经济控制量**，不是成员钱包余额和。成员表、链上位置账、经济控制账必须分开；公共设施不进成员表，但其可证明归属该实体的可赎回份额必须计入。报告必须生成 `economic_control_ledger.json`，并以它同源驱动 TL;DR 控盘比例、P0/P1 判级、实体表和图 2。直接钱包余额只在拆分表中展示。详细规则见 `economic-control-accounting.md`。
 
@@ -218,6 +216,8 @@ python3 scripts/report/build_html.py --md 报告.md --out 报告.html
 - **facts.json**（阶段 3 结束、写报告前构建；schema 与宏语法全集见 `scripts/report/facts_gate.py` docstring）：token 总量/decimals + entities（每实体 label/addresses/current_raw/peak_raw，数值一律**原始整数字符串**从落盘数据复制；**多地址实体另填 merge_evidence_earliest**=归并证据最早时间，3.19 A1）+ metrics（自定义分子分母）。entities 字典键即 entity_id 稳定主键，与 analysis-state whale_groups[].entity_id 一致。
 - **合并时点措辞（3.19）**：叙述多地址实体在归并证据出现之前的共同行为，用宏 `{{e_x.merged_since}}` 标注时间或写"以最终归并口径回看"——禁写"当时已可确认同一实体"（细则 playbook-evidence-wording.md §11，facts_gate G6 自动提示）。
 - **写作纪律**：报告 md 中实体的持仓枚数/占比/峰值/成员数一律写宏——`{{e1.amount_share}}` → "2.78亿枚【总量27.84%】"（自动满足带【总量%】纪律）、`{{e1.share}}`、`{{e1.peak_share}}`、`{{e1.naddr}}`、`{{m:指标id}}`；附录 B 整块写 `{{appendix_b}}` 自动生成（**手打地址在架构上被消灭**）。禁止手打这些数字；价格/涨跌幅等非实体结论数字暂可手写（G5 会列清单供人工过目）。
+- **宏口径边界：`{{e.peak_share}}`=日末序列峰值，日内事件占比禁用宏**：peak_raw 来自日末快照序列，闪电过手型实体（单笔吃下→当日部分回吐）的**日内峰值高于日末峰值**（EGL1 案狙击集团单笔买入 47.11% vs 日末峰值宏 40.21%，TL;DR 与正文两处误用宏被外部异构复核抓出）。规则：单笔买入/日内持有语境的占比一律手写并标注"单笔/日内"口径；报告含此型实体时，日末峰值与日内峰值两口径并列写清（另见流转图 footnote 块级峰值声明纪律）（来源：EGL1(BSC) redo2 @CX 复核，2026-07-28）
+- **序列类指标引用必须钉时点、程序化取尾**：正文引用 camp_share_series 等时间序列的"当前值"，必须从序列**末点**程序化取数并写明"截至 <数据截止日>"——凭目视/记忆取数会拿到中段值（EGL1 案散户残差手写 10.75%，实为序列 2026-01 中段值，末点真值 10.37%，@CX 复核抓出）。互斥阵营残差桶另做一次"100−Σ各阵营末点"的算术复核（来源：EGL1(BSC) redo2 @CX 复核，2026-07-28）
 - **编译**：`python3 scripts/report/build_html.py --md 报告.md --out 报告.html --facts facts.json --state analysis-state.json`——语义 gate：G1 实体成员集合与 state 逐组相等（checklist 4b 的自动化）/G2 供给上界/G3 current≤peak/G4 宏名打错必炸（无静默漏渲染）/G5 手写百分比差集清单。gate 未过=WARN=不许交付。
 - 纯校验（不出 HTML）：`python3 scripts/report/facts_gate.py --facts facts.json --state analysis-state.json --md 报告.md`。
 - **图层同源（3.19，`scripts/report/figures_from_facts.py`）**：编译化延伸到图——①图 1 直接 `figures_from_facts.py fig1 --state analysis-state.json --out charts/fig1.png [--price-csv 价格.csv]` 从 state 的 camp_share_series 直出，禁止再现场手写装配脚本；②每张流转图写 spec JSON（nodes/edges 结构同 lifecycle_flow docstring），**title/subtitle/卡片/边标签/footnote 里的成员数、日期、层数、金额、份额等案情数字一律写 facts 宏**（`{{e_x.naddr}}`、`{{e_x.amount_share}}`、`{{m:id}}` 等），新报告用 `figures_from_facts.py flow --facts facts.json --spec flow_x.json --out ... --strict-text-numbers` 渲染出图；残留宏或硬编码案情数字均失败。③图 2 装配数据落 whale_series.json 后必跑 `figures_from_facts.py check --facts facts.json --series whale_series.json` 终值对账（各实体线末点 vs facts 当前持仓，超 0.05pp 拒绝）。若有可逐笔闭合的临时托管/锁仓区间，对应 line 必填 `temporary_custody_checks=[{"label":"...","start_date":"YYYY-MM-DD","end_date":"YYYY-MM-DD","minimum_raw":"原始整数"}]`；check 会验证区间内经济归属线不低于可归属本金，防止终值虽对、途中却把托管误画成清仓。——checklist 4b"图表脚本喂的名单与 facts 同源仍须人工确认"中数值部分就此自动化。
@@ -245,17 +245,14 @@ schema 全部细节（report-extract 四键与 `id="report-extract"` 硬约定�
 
 **交付前自检**：过一遍全文列出所有专名/绰号/机制短语，逐个检查首现处是否已解释——每个未解释的词就是读者未来的一个提问。
 
-## 措辞纪律对照表（本质区别，非咬文嚼字）
+## 报告格式对照表（呈现层专属行；措辞纪律全表的唯一权威源=playbook-evidence-wording §11，写作与复核后改写以它为准）
 
 | 禁止的说法 | 正确的说法 | 原因 |
 |---|---|---|
-| "已经砸盘卖出" | "充入交易所=进入可售状态" | 进所后卖没卖链上看不见 |
-| "没有人在吸筹" | "链上可观测范围内无吸筹迹象" | 所内买入完全不可见 |
 | "散户只持有 3%" | "链上自持 3%，所内散户实际更高" | CEX 托管币大部分是用户的 |
 | "这些大户是项目方的" | "币源 100% 来自金库；官方自留还是 OTC 交割无法区分" | 静置地址可能是 OTC |
 | "3 个庄" 直接断言 | "P0：项目方+大庄#1；P1：小庄#1、离场庄#1（其中伪装分散型为高度疑似）" | 按标签体系分级计数，类型③上限"高度疑似" |
 | "亏钱刷量" | "量能 X 成由机器人贡献" | buy≈sell 余额 0 是原子机器人结构必然 |
-| "他们在出货" | 出货与做市备货两种解释并列写 | 意图链上不可区分 |
 | "净增持 2200 万" | "净流入 2200 万~3649 万枚【总量 2.2%~3.6%】（区间）" | 数据截断时点估计改区间 |
 | "转移了 2000 万枚" | "转移 2000 万枚【总量 2.0%】" | **所有代币数量必须带总量换算**（v2.0 硬性） |
 | "0x3f8a…c21b 卖出…" | "大庄#1钱包#2 卖出…" | **正文一律钱包标签，地址只在附录 B/JSON**（v2.0 硬性） |

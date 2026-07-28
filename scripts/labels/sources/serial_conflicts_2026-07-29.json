@@ -1,0 +1,50 @@
+{
+ "generated": "2026-07-29",
+ "total": 2,
+ "primary": 2,
+ "note": "同址双身份=设施(主标签库) vs 庄家实体成员(惯犯候选)。primary/goldset-infra 级已被硬闸拦截在 serial_actors.csv 外(3.19.1),不会入库;逐条人工裁决:①案源实体划分误吸设施→修 whale_groups 并重跑本工具 ②主库标签错→修主库(curation override) ③确属庄家自建设施→手工编辑 CSV 单独 add_labels(绕闸需人工显式动作)。实案:QUQ 大庄#1 误吸 PancakeSwap Infinity Vault,2026-07-22 覆盖事故后用户裁决①+②并加本硬闸。",
+ "conflicts": [
+  {
+   "severity": "primary",
+   "chain": "bsc",
+   "address": "0x2aa5d15eb36e5960d056e8fea6e7bb3e2a06a351",
+   "serial_side": {
+    "name": "惯犯庄家（SIREN案·离场庄#1·核心链）",
+    "evidence": "SIREN分析2026-07-19 appendix whale_group「离场庄#1·核心链」",
+    "source": "serial-offenders"
+   },
+   "label_side": {
+    "name": "Hedgey TokenLockup/NFT 锁仓协议（公共设施）",
+    "category": "locker",
+    "tier": "exclude",
+    "merge_policy": "no_merge",
+    "balance_policy": "exclude",
+    "source": "serial-offenders+curation",
+    "evidence": "Sourcify v2 exact_match 验证名 'Hedgeys'（chainId 56）；SIREN 案 2026-07-19 误判为'离场庄#1·归集主仓（庄家的单一大钱包）'收进核心成员表并随 serial 回灌标成'惯犯庄家'，GPT5.6 外部复核 REFUTED 后 Sourcify 复验裁决恢复设施身份（skill v3.27.0）——905 份 SIREN 锁仓计划的'归集→wei级等额原路返还'实为批量锁仓→到期机械赎回，非洗仓避踪；锁仓协议持仓按受益权穿透计回受益地址（report-template 三账本），协议地址永不入实体成员表；locker 类身份受 accumulate_offenders 设施硬闸保护（v3.27.0 起 INFRA_CATS 含 locker）",
+    "verified_at": "2026-07-24",
+    "cross_chain": false
+   }
+  },
+  {
+   "severity": "primary",
+   "chain": "bsc",
+   "address": "0xb1c5b2ca2f0af1424897ab7377cbeda4ab9a6699",
+   "serial_side": {
+    "name": "惯犯庄家（SIREN案·离场庄#1·核心链）",
+    "evidence": "SIREN分析2026-07-19 appendix whale_group「离场庄#1·核心链」",
+    "source": "serial-offenders"
+   },
+   "label_side": {
+    "name": "Hedgey BatchNFTMinter（公共设施）",
+    "category": "infra",
+    "tier": "exclude",
+    "merge_policy": "no_merge",
+    "balance_policy": "exclude",
+    "source": "serial-offenders+curation",
+    "evidence": "Sourcify v2 match 验证名 'BatchNFTMinter'（chainId 56）；SIREN 案 2026-07-19 误判为'离场庄#1·专用原子转发合约（私人通道反成归属铁证）'收进核心成员表并随 serial 回灌标成'惯犯庄家'，GPT5.6 外部复核 REFUTED 后 Sourcify 复验裁决恢复设施身份（skill v3.27.0）——'即收即转 905 笔/生命周期仅两日'系币种内视角选择偏差（该合约为 Hedgey 生态公共批量铸锁工具，跨币种服务）；infra 类身份受 accumulate_offenders 设施硬闸保护",
+    "verified_at": "2026-07-24",
+    "cross_chain": false
+   }
+  }
+ ]
+}
