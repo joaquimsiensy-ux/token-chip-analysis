@@ -138,6 +138,61 @@ def _load_csv(labels_dir, chain):
     return table
 
 
+# ---- address-book.md 手工核验层（v4.2 2026-07-30）----
+# 血案背景：PYTHIA 案币安 Alpha 库存仓 9ZPsR… 早已录入 address-book.md 并点名 PYTHIA
+# 第一大持仓，但 label_lookup 只读 CSV 库 → 零命中 → 该仓被误判"小庄#1 私人庄家"。
+# 同族错误第三次复发（IQ 案 Upbit 托管判大庄、LPT 案 Bitvavo 质押判巨鲸）。
+# 根治：address-book.md 永久并入解析器数据源——任何一次标签查询自动覆盖手工层，
+# "跑过 label_lookup"从此等价于"查过地址簿"。CSV 主库同址覆盖本层（主库信息更全）。
+_BOOK_CATEGORY_RULES = (
+    ('做市商', 'market-maker', 'identity'),
+    ('锁仓', 'locker', 'identity'),
+    ('CEX', 'cex', 'exclude'),
+    ('提币热钱包', 'cex', 'exclude'),
+    ('桥', 'bridge', 'exclude'),
+    ('聚合器', 'bridge', 'exclude'),
+    ('程序', 'program', 'exclude'),
+)
+
+
+def _load_address_book(labels_dir, chain):
+    """解析 references/address-book.md 的 markdown 表格为标签行（按链形态过滤）。
+    文件缺失/无命中返回 {}，绝不抛错（地址簿是增强层不是依赖）。"""
+    path = os.path.normpath(os.path.join(labels_dir, '..', 'address-book.md'))
+    if not os.path.exists(path):
+        return {}
+    import re
+    table = {}
+    section = ''
+    row_re = re.compile(r'^\|\s*`([^`]+)`\s*\|([^|]*)\|([^|]*)\|')
+    for line in open(path, encoding='utf-8'):
+        if line.startswith('#'):
+            section = line.lstrip('#').strip()
+            continue
+        m = row_re.match(line)
+        if not m:
+            continue
+        addr = norm_addr(m.group(1), chain)
+        if addr is None:          # 形态不符=非本链地址，跳过
+            continue
+        name = m.group(2).strip()
+        note = m.group(3).strip()
+        category, tier = 'infra', 'exclude'
+        for kw, cat, t in _BOOK_CATEGORY_RULES:
+            if kw in section:
+                category, tier = cat, t
+                break
+        table[addr] = {
+            'address': addr, 'chain': chain, 'name': name,
+            'category': category, 'tier': tier, 'source': 'address-book',
+            'added_date': '', 'evidence': f'[{section}] {note}'.strip(),
+            'risk_flags': '', 'merge_policy': '', 'balance_policy': '',
+            'source_snapshot_at': '', 'verified_at': '', 'status': '',
+            'raw_labels': '',
+        }
+    return table
+
+
 def _classify_flag(f):
     if f in PRIVACY_FLAGS:
         return 'privacy'
@@ -173,15 +228,21 @@ class LabelResolver:
     def __init__(self, chain, labels_dir=None, evm_fallback=True):
         self.chain = chain
         self.labels_dir = labels_dir or DEFAULT_LABELS_DIR
-        self.table = _load_csv(self.labels_dir, chain)
+        csv_table = _load_csv(self.labels_dir, chain)
+        # v4.2：address-book.md 手工核验层永久并源（PYTHIA 9ZPsR 血案根治）；
+        # CSV 主库同址覆盖手工层
+        self.table = _load_address_book(self.labels_dir, chain)
+        self.book_rows = len(self.table)
+        self.table.update(csv_table)
         self.fallback = {}
         # HL/Robinhood/BSC/Base 等 EVM 地址体系链：对 eth 表同址联查（仅提示不决策）
         if evm_fallback and chain not in ('sol', 'eth', 'filecoin') and chain in KNOWN_CHAINS:
             self.fallback = _load_csv(self.labels_dir, 'eth')
         self._hits = {'direct': 0, 'cross': 0}
-        # 降级模式：链在支持名单里却一行都没加载到 → 表缺失/路径错/文件损坏。
+        # 降级模式：CSV 主库一行都没加载到 → 表缺失/路径错/文件损坏。
+        # 判定只看 CSV（地址簿加载成功不得掩盖主库缺失警告）。
         # "没命中"与"库根本没加载"必须可区分（codex 复核 2026-07-16）。
-        self.degraded = chain in KNOWN_CHAINS and not self.table
+        self.degraded = chain in KNOWN_CHAINS and not csv_table
 
     def warn_if_degraded(self, stream=None):
         """降级时向 stderr 打一行显式警告；返回是否降级。调用方（cluster 等）启动时必调。"""

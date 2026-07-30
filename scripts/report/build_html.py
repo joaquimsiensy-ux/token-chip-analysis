@@ -254,11 +254,43 @@ def main():
     ap.add_argument("--facts", help="facts.json 事实源（3.18.0 报告编译化：渲染宏+语义 gate，"
                                     "见 facts_gate.py docstring；不给则旧行为不变）")
     ap.add_argument("--state", help="analysis-state.json（与 --facts 同给时做 G1 成员集合对账）")
+    ap.add_argument("--skip-identity-gate", action="store_true",
+                    help="显式跳过 G8 实体身份闸（仅限历史报告重编译等无 gate 场景；跳过会打 NOTE 留痕）")
     a = ap.parse_args()
 
     md_text = open(a.md, encoding="utf-8").read()
     mddir = os.path.dirname(os.path.abspath(a.md))
     warns = []
+
+    # ---- G8 实体身份闸（v4.2 2026-07-30，IQ/LPT/PYTHIA 托管误判三案根治）----
+    # --state 给出时强制：state 同目录必须有 identity_gate.json，实体地址全覆盖、
+    # flag 全解决，否则 WARN（有 WARN 不许交付）。生成/填写见 entity_identity_gate.py。
+    if a.state and not a.skip_identity_gate:
+        gate_path = os.path.join(os.path.dirname(os.path.abspath(a.state)), "identity_gate.json")
+        if not os.path.exists(gate_path):
+            warns.append("[WARN] G8 实体身份闸缺失：未找到 identity_gate.json——实体判级前必须跑 "
+                         "entity_identity_gate.py（标签双源+曲线判定+托管假设四查）；"
+                         "历史报告重编译可用 --skip-identity-gate 显式跳过")
+        else:
+            try:
+                _gate = json.load(open(gate_path, encoding="utf-8"))
+                _gaddrs = {r.get("address") for r in _gate.get("rows", [])}
+                _sd = json.load(open(a.state, encoding="utf-8"))
+                _missing = [x for g in _sd.get("whale_groups", [])
+                            for x in g.get("addresses", []) if x not in _gaddrs]
+                if _missing:
+                    warns.append(f"[WARN] G8 实体地址未全入闸：{len(_missing)} 址无 gate 记录"
+                                 f"（如 {_missing[0][:14]}…）——重跑 entity_identity_gate.py")
+                _unres = [r for r in _gate.get("rows", [])
+                          if r.get("flag") and not str(r.get("resolution", "")).strip()]
+                if _unres:
+                    warns.append(f"[WARN] G8 有 {len(_unres)} 个身份疑点未解决"
+                                 f"（{'/'.join(sorted({r['flag'] for r in _unres}))}）——"
+                                 "逐条填写 resolution（查了什么、结论是什么）后重编译")
+            except (ValueError, KeyError) as e:
+                warns.append(f"[WARN] G8 identity_gate.json 解析失败: {e}")
+    elif a.state and a.skip_identity_gate:
+        print("[NOTE] G8 实体身份闸已显式跳过（--skip-identity-gate）——仅限历史重编译场景")
     if a.facts:
         import facts_gate
         try:

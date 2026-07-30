@@ -21,13 +21,20 @@ GOOD_JSON = {"chip_summary": {"zhuang_count": 1, "total_share_pct": 5.0,
              "unlock_events": [], "source_line": "测试口径"}
 
 
-def run_case(tag, md_text, json_obj, expect_exit, expect_html_has=None, expect_out=None):
+def run_case(tag, md_text, json_obj, expect_exit, expect_html_has=None, expect_out=None,
+             state_obj=None, gate_obj=None, extra_args=None):
     with tempfile.TemporaryDirectory() as d:
         open(os.path.join(d, 'r.md'), 'w').write(md_text)
         cmd = [sys.executable, SCRIPT, '--md', 'r.md', '--out', 'r.html']
         if json_obj is not None:
             json.dump(json_obj, open(os.path.join(d, 'a.json'), 'w'), ensure_ascii=False)
             cmd += ['--json', 'a.json']
+        if state_obj is not None:
+            json.dump(state_obj, open(os.path.join(d, 's.json'), 'w'), ensure_ascii=False)
+            cmd += ['--state', 's.json']
+        if gate_obj is not None:
+            json.dump(gate_obj, open(os.path.join(d, 'identity_gate.json'), 'w'), ensure_ascii=False)
+        cmd += (extra_args or [])
         p = subprocess.run(cmd, cwd=d, capture_output=True, text=True)
         fails = []
         if p.returncode != expect_exit:
@@ -55,7 +62,20 @@ def main():
                    expect_html_has='id="report-extract"')
     bad = {k: v for k, v in GOOD_JSON.items() if k != 'chip_summary'}
     ok &= run_case('缺四键=WARN 拒交付', MD, bad, 1, expect_out='[WARN]')
-    print('PASS: build_html 四条契约全过' if ok else 'FAIL: 见上')
+    # G8 实体身份闸（v4.2：IQ/LPT/PYTHIA 托管误判三案根治）
+    STATE = {"whale_groups": [{"entity_id": "e_t", "addresses": ["0x" + "b" * 40]}]}
+    GATE_OK = {"schema": "identity_gate_v1", "rows": [
+        {"address": "0x" + "b" * 40, "entity": "e_t", "flag": "", "resolution": ""}]}
+    GATE_BAD = {"schema": "identity_gate_v1", "rows": [
+        {"address": "0x" + "b" * 40, "entity": "e_t", "flag": "BIG_UNLABELED", "resolution": ""}]}
+    ok &= run_case('G8 无gate文件=WARN 拒交付', MD, None, 1, expect_out='G8 实体身份闸缺失',
+                   state_obj=STATE)
+    ok &= run_case('G8 flag未解决=WARN 拒交付', MD, None, 1, expect_out='身份疑点未解决',
+                   state_obj=STATE, gate_obj=GATE_BAD)
+    ok &= run_case('G8 全解决=过闸', MD, None, 0, state_obj=STATE, gate_obj=GATE_OK)
+    ok &= run_case('G8 显式跳过=NOTE 留痕', MD, None, 0, expect_out='已显式跳过',
+                   state_obj=STATE, extra_args=['--skip-identity-gate'])
+    print('PASS: build_html 八条契约全过（含 G8 身份闸四条）' if ok else 'FAIL: 见上')
     return 0 if ok else 1
 
 
