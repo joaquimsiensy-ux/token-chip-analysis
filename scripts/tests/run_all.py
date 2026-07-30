@@ -12,7 +12,8 @@ SUITE = ['changelog_lint.py', 'docs_lint.py', 'labels_manifest.py', 'env_check.p
          'test_replay_inc.py', 'test_build_html.py', 'test_engine_equivalence.py',
          'test_collect_lanes.py', 'test_report_facts.py', 'test_fault_injection.py',
          'test_figures_from_facts.py', 'test_cluster_quality.py',
-         'test_sqd_merge_equiv.py', 'test_supply_truth_gate.py']
+         'test_sqd_merge_equiv.py', 'test_supply_truth_gate.py',
+         'test_handoff_manifest.py']
 
 
 def main():

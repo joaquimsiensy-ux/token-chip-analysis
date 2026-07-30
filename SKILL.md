@@ -29,10 +29,12 @@ description: 对任意链上代币（EVM/Solana/Hyperliquid/Filecoin 及新链�
 | A5 报告 | 三标准图＋流转图＋HTML＋质检 | A5＋report-template | build_html 退出码 0（缺图/G8 拒交付） | 报告.html、analysis-state.json |
 | A6 复盘 | 教训分流入库（分流决策树） | retrospective.md | run_all 全 PASS＋git commit | CHANGELOG |
 
-## 四入口（一行路由）
+## 六入口（一行路由）
 
 - **/token-analyze**＝完整版：上表 A0–A6 全程。
 - **/token-easy-analysis**＝批量筛查档：`easy-workflow.md` E0–E7——引擎与复核同强度，砍完整报告，交付两件套；**绝不自动转正式**，用户人工决策后同目录衔接。
+- **/token-analyze-1**＝分段·机械段（−1）：A0–A2 全部＋A3 机械子层，产交接契约后**完成即停**；执行者 GPT-5.6（codex 主轨）或 Opus（CC 备轨）——唯一权威源 `split-run.md`。
+- **/token-analyze-2**＝分段·判断段（−2）：`handoff_manifest.py verify` fail-closed 通过后接 A3 判断层＋A4–A6；档位（easy|full）必选——同上 `split-run.md`。
 - **/token-update**＝增量更新：`update-workflow.md` U0–U6——复用旧实体表只拉增量；**判定标准一律以当前 skill 版本为准**，判级变化须区分"持仓变动 vs 标准迁移"。
 - **/collect-data**＝预采集队列：`collect-workflow.md`——只采集零结论；产物以 collect_manifest 与 done.json 为准，分析会话直接复用续增量，禁止从零重采。
 
@@ -60,6 +62,7 @@ description: 对任意链上代币（EVM/Solana/Hyperliquid/Filecoin 及新链�
 - `easy-workflow.md` — 简化筛查 E0–E7
 - `update-workflow.md` — 增量更新 U0–U6
 - `collect-workflow.md` — 批量预采集（队列/锁/夜间模式/key 巡检）
+- `split-run.md` — 分段执行手册（−1/−2 边界、交接契约、两段开工序唯一权威源）
 - `monitoring-package.md` — 监控包分册（买入后才读）
 - `research-workflows.md` — 解锁情报路线与复核 prompt 模板
 - `data-pipeline-evm.md` — EVM 路由索引；分册：`data-pipeline-evm-channels.md`（通道决策树/死亡名单）、`data-pipeline-evm-sources.md`（数据面/Base/Arbitrum 专节）、`data-pipeline-evm-recon.md`（对账/DuckDB 重放引擎）

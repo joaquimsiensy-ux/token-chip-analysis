@@ -15,6 +15,7 @@
 
 ## 版本索引（活跃窗口，新在上；每版一行，详情见下方对应条目）
 
+- **6.1.0** 2026-07-30 分段执行（split-run）落地：新增 references/split-run.md（−1 机械段/−2 判断段唯一权威源）+ handoff_manifest.py 四子命令与 19 项契约测试 + /token-analyze-1、/token-analyze-2 两入口（四→六）——−1 交 GPT-5.6/Opus，−2 交 Fable 冷启动，防长上下文注意力稀释；旧单会话命令原样保留为回退路径
 - **6.0.0** 2026-07-30 架构级重构（薄骨架+判例库+评测）：SKILL.md 37KB→8.6KB 纯路由层 + analyze-workflow/context-discipline 两手册 + casebook 3 册 12 条判例 + evals 9 题 + 供给真值闸与 casebook_lint（唯一两项代码例外）+ commands 暂存重写 + 教训分流决策树——规则语义零变更
 - **5.0.0** 2026-07-30 框架级用户修订：四问→三问（问 4 背景调查整体删除）+ 取消 P0/P1 重要度分级 + 废止"狙击集团"标签 + 其他大户线降至 0.1%/0.2% 并立排查前置双闸 + 流转图/素材装配对象收窄为 ≥20% 大庄/项目方
 - **4.2.0** 2026-07-30 TROLL(Solana) 完整版复盘 + PYTHIA 复盘补遗：托管判定反向闸（0.002246=建 ATA 物理常数）+ SQD 同 slot 同额去重丢边缺陷 + pump.fun 长内盘期签名史双索引重建法 + 揭盲式独立重做转正（两案）+ Squads 解析脚本收编 + scan 扫描器 auto 判程序
@@ -30,6 +31,17 @@
 - **3.36.0** 2026-07-26 EVM 五币 E0b 黑箱关卡批量 + TOSHI 外部复核与归属判别（持有人榜不可信的流程级修正 + 两条托管判据 + 一条自有判据被证伪）
 - **3.36.0** 2026-07-26 EGL1(BSC) 复盘：cluster.py 的设计盲区被实证 + 「买入序列节拍指纹」新方法固化 + fetch_fundedby 静默错误修复（一次核心结论被复核推翻的完整案例）
 - 更早版本（3.35.1 及以前）→ `CHANGELOG-archive.md`
+
+## [6.1.0] - 2026-07-30 — 分段执行（split-run）落地：−1 机械段 / −2 判断段跨会话拆分
+
+背景：用户提出把分析拆两个会话——机械段交便宜/额度充足模型，判断段交 Fable 5 同目录冷启动，防长上下文注意力稀释（主动机）＋省主力模型额度（次动机）。GPT-5.6 定为 −1 主轨的实证：codex 侧 `~/Documents/5.6筹码分析/` 十余案机械段战绩（KOGE 3.6 亿条逐 wei 对平、BULLA 五查 PASS、gate BLOCK 即停），其翻案史 REFUTED 全集中在判断层——凡出现在翻案史的环节全部划入 −1 停止线。计划经 codex @CX 复核吸收 20 项意见（entity_identity_gate 因依赖实体表移回 −2 系真 bug 修正；manifest 升级语义收据；sealed 防锚定密封；候选覆盖自检防锚定等），计划文件 plans/opus5-gpt5-6-1-1-fable5-2-fable5-fable5-splendid-shannon.md。
+
+- **references/split-run.md（新建，唯一权威源）**：−1＝A0–A2 全部＋A3 机械子层（标注批量层只写 observed_type/conflict_flags、大户排查批量层跑满防候选海、聚类只出候选簇含拒绝边孤立点、identity_preflight 代正式 gate、序列命名禁"阵营"）；−2＝A3 判断层＋A4–A6（开工序八步：verify fail-closed→保鲜 >72h 弹警报停等用户绝不自动拉→候选覆盖自检→sealed 禁读令；冻结序列：临时实体→无下限成员扫描→反证→entity_freeze 物化→正式 gate）；停止线/盲化跨段（揭盲前置＝freeze 落盘）/断点 receipts/双轨 .stage1.lock 互斥/A4 外部异构路三条收紧（全新会话、不给 sealed、不复核自己 −1 产出）。适用范围 v1 仅新标的 easy/full。
+- **scripts/report/handoff_manifest.py（新建）**：generate/verify/receipt/freeze 四子命令，schema `handoff/v1` 内嵌。generate＝语义收据（gate 状态自动从产物 JSON 读 verdict/exit_code 防手报、产物 allowlist 哈希（>64MB 分片）、sealed 只记哈希、data_map 索引即白名单、READY 缺必备件即拒、supersede 归档制）；verify＝fail-closed（缺件/哈希漂移/gate 语义漂移/schema 不兼容/状态非 READY/blocking 异常未解决/candidate_universe 空壳一律 exit 2）；freeze --check-unseal 把关揭盲。exit 语义对齐现有 gate（0/2/1）。测试 19 项进 run_all（SUITE 15→16）。
+- **commands 六入口（四→六）**：token-analyze-1（模型自检提示不硬停/探针与锁/停止线/未档异常写 blocker 禁自创解法/完成即停）、token-analyze-2（档位必填/开工序八步写死）。staging 与 ~/.claude/commands 双处同步；旧四命令零改动＝回退路径。
+- SKILL.md 四入口→六入口＋深入阅读补 split-run.md；context-discipline 刀 1 补第 6 条指针（分段＝两档制会话级形态，−2 会话内两档制不变）。
+- 后续（计划 §四）：codex 侧 c2.0 迁移矩阵→v6 大同步→c2.1.0 −1 条文；冻结历史案 dry-run；首战试点合并验收（分段引入组 7 指标与 v6 骨架组分开归因）。
+- 守护：run_all 16/16 PASS。
 
 ## [6.0.0] - 2026-07-30 — 架构级重构：薄骨架 + 判例库 + 评测题库（规则语义零变更）
 
