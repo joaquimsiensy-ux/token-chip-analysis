@@ -47,9 +47,11 @@
 
 ✂️ **不做**：不碰 Firecrawl / 推特。（v5.0：背景调研已随问 4 从框架整体删除，完整版同样不做，此处不再是差异点；vesting 标的的解锁情报轻量路照完整版做。）
 
-## E2 对账关卡（硬性，三查原样）
+## E2 对账关卡（硬性，四查原样）
 
-余额对账 / 供给闭合 / 时间抽查，形态见各链 pipeline 文档。**不过关不进 E3**——图 1 与阵营表本身就是重放产物，重放有洞则筛查结论整体作废。
+余额对账 / 供给闭合 / **供给真值闸** / 时间抽查，形态见各链 pipeline 文档。**不过关不进 E3**——图 1 与阵营表本身就是重放产物，重放有洞则筛查结论整体作废。
+
+**供给真值闸（v6 起重放收尾必跑，与完整版 A2 同责）**：`python3 scripts/lib/supply_truth_gate.py --chain <链> --token 0x…|--mint <mint> --replay-stats <replay_stats.json> --out supply_truth.json`——重放净供给 vs 链上实查 totalSupply，治静默改账盲区（内部自检全 PASS 但余额虚高，casebook S-01）。exit 0 放行；exit 2＝余额禁用重放改链上实时直查；exit 1＝修通道重跑禁当 PASS。
 
 ## E3 深度分析（引擎与完整版同强度）
 
