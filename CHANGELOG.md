@@ -15,6 +15,7 @@
 
 ## 版本索引（活跃窗口，新在上；每版一行，详情见下方对应条目）
 
+- **4.2.0** 2026-07-30 TROLL(Solana) 完整版复盘 + PYTHIA 复盘补遗：托管判定反向闸（0.002246=建 ATA 物理常数）+ SQD 同 slot 同额去重丢边缺陷 + pump.fun 长内盘期签名史双索引重建法 + 揭盲式独立重做转正（两案）+ Squads 解析脚本收编 + scan 扫描器 auto 判程序
 - **4.1.0** 2026-07-30 PYTHIA 双报告交叉核实复盘：实体身份防复发三闸（label_lookup 并源 address-book / entity_identity_gate+G8 编译门 / 复核 prompt 翻案四问固化）+ 复盘元规则（身份类教训必须以代码收尾）
 - **4.0.0** 2026-07-28 大整编（用户点名）：3.0→3.41 四十余版增量迭代的结构清理——路由索引补齐 9 节、结构错位归位 3 处、消重立权威源制 6 组、CHANGELOG 重整归档 29 条；只减不加，规则语义未动
 - **3.41.0** 2026-07-28 EGL1(BSC) redo2 独立重做版复盘：@CX 外部异构复核交付后实战战果（3 传播级硬错误）+ 完整性批评「全史极值清单」两案转正 + 宏口径边界等 12 条入册
@@ -27,6 +28,31 @@
 - **3.36.0** 2026-07-26 EVM 五币 E0b 黑箱关卡批量 + TOSHI 外部复核与归属判别（持有人榜不可信的流程级修正 + 两条托管判据 + 一条自有判据被证伪）
 - **3.36.0** 2026-07-26 EGL1(BSC) 复盘：cluster.py 的设计盲区被实证 + 「买入序列节拍指纹」新方法固化 + fetch_fundedby 静默错误修复（一次核心结论被复核推翻的完整案例）
 - 更早版本（3.35.1 及以前）→ `CHANGELOG-archive.md`
+
+## [4.2.0] - 2026-07-30 — TROLL(Solana) 完整版复盘 + PYTHIA 复盘补遗
+
+背景：TROLL 07-29 Fable5 从零独立重做（揭盲式，不读 07-28 会话结论文件）交付完整版；与 PYTHIA 双报告交叉核实同期构成一对镜像案——PYTHIA 把币安 Alpha 托管仓判成小庄（4.1.0 已治），TROLL 中期把私人四钱包组判成"Coinbase 托管体系"（方向相反同罪），本版补上反向的闸。
+
+**方法类（转正，机制解释明确）：**
+1. **托管判定反向闸**（playbook-entity-cluster-methods 托管判据段）：判"托管"与判"庄家"同样要硬证据——TROLL 中期三条"托管判据"逐条入册为反例：**0.002246 SOL 到账额=Solana 建 ATA 物理常数**（免租金 2,039,280+fee 206,500 lamports，对照组散户提币完全同值，零区分力）；"托管仓只囤不动"是行为假设不是证据；中间判定标签不作证据。判托管正证据清单（标签库/Vybe 链根/PoR/gas supplier 体系/批次伪影+集齐率）+ **跨所作业一票排除**（币安 gas 养 Coinbase 提币仓≠任何单所托管）。同步进 entity_identity_gate docstring（BIG_UNLABELED resolution 纪律）。
+2. **Solana 1-raw 级粉尘投毒**（投毒段第三场景）：非零值 dust（1 raw~0.1 枚）使 `value>0` 过滤失效，污染 last_ts/共现统计造伪实体指纹（TROLL 39,705 条边、"2026-05 群同分钟共现"被证伪为投毒伪像）——活动性/共现统计过滤收紧为 `amount≤1 raw` 剔除。
+3. **时点净库存差 ≠ 累计流出**（playbook-supply-recon §2）："缺口期净差仅 8.54% 藏不下达标实体"被推翻——期间换手可任意多轮，正解=回补数据（curve ATA postTokenBalances 直读）或如实声明不可排除。
+4. **截断地址禁补全升为全链硬规则**（§6 硬规则；FIL+TROLL 两案、TROLL 主分析与复核 agent 同案双踩）；**中间判定产物不作标签源**（§3：cex_map.json 类派生文件里的判定条目≠标签，跨会话只信主库+address-book）。
+5. **揭盲式独立重做流程转正（两案）**（playbook-evidence-wording §10）：盲做（复用数据不读结论）→揭盲（只给分歧位置）→分歧点链上硬证据定向裁决——PYTHIA 两版各对一半、TROLL 重做反向犯错被揭盲复核钉死，独立重做的价值在"两版错误不相关，分歧点即高危区坐标"。
+6. **极值清单第三维：日内瞬时峰值**（research-workflows 完整性批评）：日末口径对"当日买卖回"整体失明（TROLL 内盘 7 轮做量脉冲峰值和最高 113.7%/日，日末恒零）——与 4.1.0"全期 max 仓位重放"构成日级+日内双层口径盲区检查。
+
+**方法类（候选·单案，playbook-entity-cluster-methods 手法库）：** 高换手日峰值和重复计算陷阱（累计买入≫峰值=换手指纹，峰值和 252% 不等于 N 个囤仓实体）；LP 费复投仓识别（四池同刻领费归集零卖出=隐身大额 LP 的唯一暴露面）；整额自转倒仓链=反追踪指纹（净额账本不可见，逐边流水定位压盘方）；按美元面额开票=场外交割指纹（PYTHIA 补遗：枚数各异美元档窄聚 ±2%+测试笔，裁决"自我分仓 vs 对外交割"）。
+
+**数据工程类（正式）：**
+7. **SQD「同 slot 同额多笔去重丢边」系统性缺陷**（capture.md §13b 新子节）：边无 sig 字段，同 slot 同两方同金额多笔只剩一条（TROLL 真值账本逐 slot 对表实锤：不一致 slot 主边集恰=真值一半；对账 |diff| 8.127% 供应的主因）。与 GOAT gap 合并坑成对偶（dedup 既是解药也是毒药）。检测指纹（差异正负成对+集中高频地址）+修复 SOP（差异地址 ATA 全史 decode 替换式合并，锚点 1760/1760 验证）入册；丢失层定位（服务端 or 本地 set()）列 Known Gaps。
+8. **pump.fun 长内盘期全量重建=签名史双索引法**（capture.md 新 §15）：curve PDA 签名史∪mint 签名史 decode+差异地址 ATA 迭代补边（2 轮收敛），比 SQD 扫 8 千万 slot 快两个量级、decode 零失败；配套：大空洞单 worker 最快（并发单位=空洞段）、高频 ATA 翻页 CAP、ATA PDA 纯 Python 推导。
+9. **RugCheck detectedAt=索引器首见≠发射时间**（scan.md）：TROLL 差 145 天，据此定发射窗漏掉整段早期史——发射时点唯一正解=curve/mint ATA 最早签名核实到秒。
+10. decode_txs_v2 urllib 对 Helius sock_connect 挂死坑（capture.md §13c）：http.client keep-alive 绕行（TROLL 存档待二案收编），根治=lib/net.py。
+
+**脚本：** `scripts/solana/squads_members.py` 新收编（Squads v4 multisig borsh 手解，成员/阈值/跨仓共享密钥矩阵——identity_gate PDA_UNRESOLVED 的标准 resolution 工具；PYTHIA 单案成熟度已标注）；`scan_token_accounts.py` --program 默认改 **auto**（getAccountInfo 判 mint owner，根治"token2022 默认对标准 SPL 币空扫"）+ 零账户对账 FATAL exit 2（防"合法空 result"当无持有人）；retrospective.md/entity_identity_gate.py 的"v4.2"版本号笔误统一为 v4.1.0。
+
+成本指标（TROLL 重做会话，文件时间戳口径）：07-28 23:12 开工 → 07-29 17:49 交付，墙钟 ≈18.6h（含夜间采集挂机与 1,079 万边修复重放）；轮次/Bash 数未采（复盘于独立会话执行）。
+质量指标（TROLL）：初稿关键结论 8 条（TL;DR 五问+三件事）；复核判定 CONFIRMED 5 / WEAKENED 7 / REFUTED 2（4 内部+codex 外部 5 条全同向零新增推翻）；复核翻出漏检实体/观察组 4（毕业日幸存仓 0.58%、同人对 B 换仓源头前推、压盘真身四跳倒仓链、LP 费复投仓 1.18%）；传播级数字错误：终版 0（中期稿 3 处大翻案——发射时点/缺口期上限/托管 20.19%→6.13%——均在揭盲定向复核阶段修正，未出交付门）。
 
 ## [4.1.0] - 2026-07-30 — PYTHIA 双报告交叉核实复盘：实体身份防复发三闸 + 复盘元规则
 

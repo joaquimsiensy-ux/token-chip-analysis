@@ -1,7 +1,10 @@
 #!/usr/bin/env python3
 """SPL / Token-2022 全量持仓扫描（getProgramAccounts + dataSlice{32,40}）。
 
-用法：python3 scan_token_accounts.py <mint> [--program token2022|spl] [--rpc URL] [--timeout 秒]
+用法：python3 scan_token_accounts.py <mint> [--program auto|token2022|spl] [--rpc URL] [--timeout 秒]
+--program 默认 auto：先 getAccountInfo(mint) 看 owner 自动判定 SPL / Token-2022——
+  旧默认 token2022 对标准 SPL 老币会扫出 0 账户且不报错（TROLL 实战踩坑：叠加代理返回
+  "合法空 result"被当缓存，两层坑连环；2026-07-29 改 auto 根治）
 大盘子 mint（20万+ 账户）：publicnode 恒 504、Helius 默认 120s 也断——
   --rpc <helius端点> --timeout 300 一次拉全（curl 已内置 --compressed，gzip 对 60MB+ 响应是成败关键；
   GOAT 24.7万账户 67MB 实测，2026-07-22）
@@ -62,7 +65,8 @@ def rpc_call(url: str, payload: dict, out_file: Path, timeout: int = 120):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("mint")
-    ap.add_argument("--program", choices=["token2022", "spl"], default="token2022")
+    ap.add_argument("--program", choices=["auto", "token2022", "spl"], default="auto",
+                    help="auto=getAccountInfo(mint) 查 owner 自动判定（默认，防标准 SPL 币被 token2022 空扫）")
     ap.add_argument("--rpc", default="https://solana-rpc.publicnode.com")
     ap.add_argument("--datasizes", default="165,170",
                     help="逗号分隔的 dataSize 列表，或 'all'=无 dataSize 过滤单发全扫"
@@ -71,8 +75,26 @@ def main():
                     help="GPA 请求超时秒（大盘子 mint 配 Helius 用 300，2026-07-22 GOAT 实测）")
     args = ap.parse_args()
 
-    prog = T22 if args.program == "token2022" else SPL
     data_dir = Path("data"); data_dir.mkdir(exist_ok=True)
+
+    if args.program == "auto":
+        info_f = data_dir / "_mint_info.json"
+        ok = rpc_call(args.rpc, {"jsonrpc": "2.0", "id": 1, "method": "getAccountInfo",
+                                 "params": [args.mint, {"encoding": "base64"}]}, info_f, 30)
+        if not ok:
+            print("FATAL: getAccountInfo(mint) 失败，无法自动判定 program——用 --program 显式指定", file=sys.stderr)
+            sys.exit(1)
+        mint_owner = (json.loads(info_f.read_text())["result"]["value"] or {}).get("owner")
+        if mint_owner == T22:
+            prog = T22
+        elif mint_owner == SPL:
+            prog = SPL
+        else:
+            print(f"FATAL: mint owner={mint_owner} 不是 SPL/Token-2022 程序", file=sys.stderr)
+            sys.exit(1)
+        print(f"program=auto → mint owner 判定为 {'Token-2022' if prog == T22 else '标准 SPL'}")
+    else:
+        prog = T22 if args.program == "token2022" else SPL
 
     # 冒烟：supply
     sup_f = data_dir / "_supply.json"
@@ -140,6 +162,11 @@ def main():
     total = sum(owners.values())
     print(f"nonzero token accounts={len(rows)}  unique owners={len(owners)}")
     print(f"对账: 扫描加总={total} vs getTokenSupply={supply_raw}  diff={supply_raw-total}")
+    if total == 0 and supply_raw > 0:
+        print("FATAL: 扫描 0 账户但 supply>0——两个高发原因：①program 参数与 mint 实际程序不符"
+              "（用 --program auto）②代理/端点返回了'合法空 result'（换端点或直连重试）。"
+              "此结果绝不能当'无持有人'使用", file=sys.stderr)
+        sys.exit(2)
 
     ui = lambda x: x / 10**decimals
     tiers = [(1e6, ">=100万"), (1e5, "10-100万"), (1e4, "1-10万"), (1e3, "1千-1万"), (0, "<1千")]
