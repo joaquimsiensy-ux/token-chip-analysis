@@ -49,6 +49,7 @@
 1. **增量重放**：旧期末余额快照 + 增量转账 → 最新全量余额表。EVM 用 `scripts/update/replay_inc.py`（全局 (tx,logi) 去重+供给闭合+每地址窗口统计一次算好；旧全量在场时加 `--full` 双路径互验）。
 2. **抽样对表**：名单=全部旧标签实体地址 + 最新 top20 + 随机 5 个中小户，重放余额 vs 链上实查精确对表。EVM 用 `scripts/update/verify_balances.py`（名单自动构建=实体表∪观察哨∪top20∪随机5；归档块探测对齐时点，wei 级精确口径）。
 3. **供给闭合**：增量窗口 mint−burn 配平，总量恒等式复验（replay_inc 已内置）。
+4. **供给真值闸（v6 起必跑）**：`python3 scripts/lib/supply_truth_gate.py --chain <链> --token 0x…|--mint <mint> --replay-net-raw <重放最新净供给wei> --out supply_truth.json`——重放净供给 vs 链上实查 totalSupply（治静默改账盲区，casebook S-01；老币增量更新尤其要防旧快照时代就带着的虚高）。exit 2＝余额禁用重放改链上实时直查；exit 1＝修通道重跑禁当 PASS。
 4. 对不上=增量数据有洞（最常见：重叠窗处理错、窗口内漏段）=回 U1 补，不许"差不多"。
 
 ## U3 增量分析（方法全部引用当前 analysis-playbook）
