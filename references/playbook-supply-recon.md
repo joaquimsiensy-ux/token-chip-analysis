@@ -1,6 +1,6 @@
 # 分析方法学 Playbook · 供给与对账（分册 1/4）
 
-> analysis-playbook 主题分册之一，覆盖 §1/§1b/§2/§8/§8b；四问框架总纲与分册路由见 `analysis-playbook.md`（索引）。规则行尾标注来源会话。
+> analysis-playbook 主题分册之一，覆盖 §1/§1b/§2/§8/§8b；三问框架总纲与分册路由见 `analysis-playbook.md`（索引）。规则行尾标注来源会话。
 
 ## 1. 供给基线核定（一切百分比的分母）
 

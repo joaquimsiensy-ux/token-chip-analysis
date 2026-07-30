@@ -98,7 +98,7 @@ def main():
     # 阵营列表
     all_camps = sorted(set(camps.values()))
     series = []
-    whale_series = {}  # 每个 P0/P1 实体单独一条线（图2）
+    whale_series = {}  # 每个标签实体单独一条线（图2）
 
     for ts in times:
         row = {"ts": datetime.fromtimestamp(ts, timezone.utc).isoformat()}

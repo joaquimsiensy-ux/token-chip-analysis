@@ -125,7 +125,7 @@ def t2_conflict_positive():
             "token": {"symbol": "TT", "chain": "bsc",
                       "data_cutoff": {"utc": "2026-07-20T00:00:00Z"}},
             "whale_groups": [
-                {"label": "大庄#1", "tier": "P0",
+                {"label": "大庄#1",
                  "addresses": [CEX_ADDR, PLAIN_ADDR, gold_addr]},   # CEX/goldset 双阳性
             ],
         }, open(os.path.join(case, "analysis-state.json"), "w"), ensure_ascii=False)
@@ -170,8 +170,8 @@ def t3_sensitivity_smoke():
         json.dump({
             "token": {"symbol": "MINI", "chain": "bsc", "decimals": 0, "total_supply": "1000"},
             "whale_groups": [
-                # share 5.2% 贴 P1=5% 线：门槛+10%→5.5% 翻"未达标"；-10%→4.5% 仍 P1
-                {"label": "小庄#1", "tier": "P1", "current_share_pct": 5.2,
+                # share 5.2% 贴小庄=5% 线：门槛+10%→5.5% 翻"未达标"；-10%→4.5% 仍小庄
+                {"label": "小庄#1", "current_share_pct": 5.2,
                  "addresses": [A, B, C]},
             ],
         }, open(os.path.join(case, "analysis-state.json"), "w"), ensure_ascii=False)
@@ -194,7 +194,7 @@ def t3_sensitivity_smoke():
         assert any(k.startswith("①") for k in kinds), f"单源边敏感未检出: {kinds}"
         assert any(k.startswith("③") for k in kinds), f"门槛翻转未检出: {kinds}"
         g = e["grades_under_jitter"]
-        assert g["base"] == "P1" and g["threshold_+10%"] == "未达标", g
+        assert g["base"] == "小庄" and g["threshold_+10%"] == "未达标", g
         assert "FRAGILE" in e["verdict"]
         # B-C 是双源边（R1+gas）：不应作为①单源边报告
         for f_ in e["findings"]:

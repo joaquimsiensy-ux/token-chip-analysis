@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """聚类扰动敏感度测试（A4 2026-07-22）——阶段 4 复核材料，不进报告行内。
 
-对已冻结的 P0/P1 实体（analysis-state.json whale_groups）重建其【机械证据图】
+对已冻结的标签实体（analysis-state.json whale_groups：项目方/大庄/小庄/离场庄/刷量）重建其【机械证据图】
 （R1 达标直转边 + R2 gas 同源边，口径与 cluster.py 一致），施加四类扰动，输出每个
 实体的"脆弱性清单"：哪个扰动导致成员集合变化超阈值或判级翻转；全稳实体明写稳定。
 
@@ -9,7 +9,7 @@
   ①单源边逐一移除    仅一种证据类型支撑的边（R1 无 gas 同源补充 / gas 组无 R1 补充）
   ②stale 设施标签放开  labels_resolver stale_hint（时效敏感类目>90天未核验）的 no_merge
                         拦截若失效，实体会经该设施吸入哪些外部地址（提示级模拟）
-  ③判级门槛 ±10%      P0=20%总供应、P1=5%总供应或10%流通（可参数化）上下浮动重算判级
+  ③判级门槛 ±10%      大庄=20%总供应、小庄=5%总供应或10%流通（可参数化）上下浮动重算判级
   ④桥接边逐一移除    证据图割边（Tarjan）移除后实体分裂的块与持仓占比
 
 诚实边界（读报告前必知）：
@@ -44,8 +44,12 @@ def load_state(path):
     s = json.load(open(path))
     tok = s.get("token") or {}
     ents = []
+    LABEL_PREFIX = ("项目方", "大庄", "小庄", "离场庄", "刷量")
     for g in s.get("whale_groups") or []:
-        if (g.get("tier") or "").upper() not in ("P0", "P1"):
+        label = g.get("label") or ""
+        legacy_tier = (g.get("tier") or "").upper()   # v5.0 前旧 state 兼容
+        if not (label.startswith(LABEL_PREFIX) or label.startswith("狙击集团")
+                or legacy_tier in ("P0", "P1")):
             continue
         members = []
         for a in g.get("addresses") or []:
@@ -54,7 +58,9 @@ def load_state(path):
             a = (a or "").strip().lower()
             if a.startswith("0x") and len(a) == 42 and a not in (ZERO, DEAD):
                 members.append(a)
-        ents.append({"label": g.get("label", "?"), "tier": g.get("tier").upper(),
+        declared = next((p for p in LABEL_PREFIX if label.startswith(p)),
+                        "狙击集团(legacy)" if label.startswith("狙击集团") else (legacy_tier or "?"))
+        ents.append({"label": label or "?", "grade": declared,
                      "share_pct": g.get("current_share_pct"),
                      "members": sorted(set(members))})
     return tok, ents
@@ -216,13 +222,14 @@ def split_stats(comps, main_set, bal, ent_bal_raw):
 
 # ---------------- 主流程 ----------------
 
-def grade(share_supply, share_circ, p0, p1, p1c):
+def grade(share_supply, share_circ, big, small, small_c):
+    """按当前占比重算判级（v5.0 标签制：大庄/小庄/未达标；离场庄按峰值另判不在此列）。"""
     if share_supply is None:
         return "?"
-    if share_supply >= p0:
-        return "P0"
-    if share_supply >= p1 or (share_circ is not None and share_circ >= p1c):
-        return "P1"
+    if share_supply >= big:
+        return "大庄"
+    if share_supply >= small or (share_circ is not None and share_circ >= small_c):
+        return "小庄"
     return "未达标"
 
 
@@ -232,9 +239,9 @@ def main():
     ap.add_argument("--state", default=None, help="analysis-state.json 路径")
     ap.add_argument("--edges", default=None, help="边表 CSV（可 glob；默认自动发现）")
     ap.add_argument("--chain", default=None)
-    ap.add_argument("--p0-pct", type=float, default=20.0, help="P0 门槛：%%总供应（默认20）")
-    ap.add_argument("--p1-pct", type=float, default=5.0, help="P1 门槛：%%总供应（默认5）")
-    ap.add_argument("--p1-circ-pct", type=float, default=10.0, help="P1 门槛：%%流通（默认10）")
+    ap.add_argument("--big-pct", dest="p0_pct", type=float, default=20.0, help="大庄门槛：%%总供应（默认20）")
+    ap.add_argument("--small-pct", dest="p1_pct", type=float, default=5.0, help="小庄门槛：%%总供应（默认5）")
+    ap.add_argument("--small-circ-pct", dest="p1_circ_pct", type=float, default=10.0, help="小庄门槛：%%流通（默认10）")
     ap.add_argument("--jitter", type=float, default=0.10, help="门槛扰动幅度（默认±10%%）")
     ap.add_argument("--r1-denom", type=int, default=20000, help="R1 边阈值=供给/denom（默认20000=0.005%%）")
     ap.add_argument("--deg-max", type=int, default=200, help="服务型地址度数拦截（默认200）")
@@ -250,7 +257,7 @@ def main():
     state_p = args.state or os.path.join(case_dir, "analysis-state.json")
     tok, ents = load_state(state_p)
     if not ents:
-        sys.exit("analysis-state.json 无 P0/P1 实体（whale_groups tier 过滤后为空）")
+        sys.exit("analysis-state.json 无标签实体（whale_groups label 过滤后为空）")
     chain = args.chain or {"bnb": "bsc", "binance": "bsc", "ethereum": "eth",
                            "solana": "sol"}.get((tok.get("chain") or "").lower(),
                                                 (tok.get("chain") or "bsc").lower())
@@ -307,15 +314,15 @@ def main():
             return f"度数 {deg.get(a, 0)}>{args.deg_max}(服务型)"
         return None
 
-    # 流通量（P1 流通口径）
+    # 流通量（小庄流通口径）
     circ_raw = (int(args.circulating_m * 1e6) * dec if args.circulating_m
                 else supply_raw - max(bal.get(DEAD, 0), 0))
 
     today = datetime.date.today().isoformat()
     report = {"generated": today, "case_dir": case_dir, "chain": chain,
               "symbol": tok.get("symbol"),
-              "params": {"p0_pct": args.p0_pct, "p1_pct": args.p1_pct,
-                         "p1_circ_pct": args.p1_circ_pct, "jitter": args.jitter,
+              "params": {"big_pct": args.p0_pct, "small_pct": args.p1_pct,
+                         "small_circ_pct": args.p1_circ_pct, "jitter": args.jitter,
                          "r1_denom": args.r1_denom, "deg_max": args.deg_max,
                          "split_frac": args.split_frac},
               "inputs": {"edge_files": files, "agg_pairs": n_agg,
@@ -331,7 +338,7 @@ def main():
         notes = []
         if not M:
             notes.append("state 中该实体 addresses 为占位/外部引用（如'(见data/xxx.json)'），"
-                         "无可扰动成员——群体型实体（狙击名单等）不适用图扰动")
+                         "无可扰动成员——群体型实体（行为群体名单等）不适用图扰动")
         exc = {m: mech_block(m) for m in M}
         ok_nodes = {m for m in M if exc[m] is None}
         excluded = {m: r for m, r in exc.items() if r}
@@ -446,9 +453,9 @@ def main():
         g_hi = grade(share, share_circ, args.p0_pct * (1 + j), args.p1_pct * (1 + j),
                      args.p1_circ_pct * (1 + j))
         grades = {"threshold_-10%": g_lo, "base": g_base, "threshold_+10%": g_hi}
-        if g_base != ent["tier"]:
-            notes.append(f"按当前占比 {share}% 的基线判级为「{g_base}」≠ 申报 tier {ent['tier']}"
-                         f"——常见于离场实体（tier 记录历史身份峰值口径）或占比口径差异，复核时核对口径")
+        if g_base != ent["grade"]:
+            notes.append(f"按当前占比 {share}% 的基线判级为「{g_base}」≠ 申报标签 {ent['grade']}"
+                         f"——常见于离场庄/项目方（标签按峰值或身份而非当前占比）或口径差异，复核时核对口径")
         if len({g_lo, g_base, g_hi}) > 1:
             findings.append({"perturbation": "③门槛±10%", "share_pct": share,
                              "share_circ_pct": round(share_circ, 3) if share_circ else None,
@@ -481,7 +488,7 @@ def main():
         else:
             verdict = f"FRAGILE（{len(findings)} 项敏感）"
         report["entities"].append({
-            "label": ent["label"], "tier": ent["tier"], "declared_share_pct": share,
+            "label": ent["label"], "grade": ent["grade"], "declared_share_pct": share,
             "replay_share_pct": round(replay_share, 3),
             "members_total": len(M),
             "mechanical_graph": {
@@ -516,7 +523,7 @@ def main():
          f"标签表 {report['inputs']['labels_meta'].get('table_rows', 0)} 行", ""]
     for e in report["entities"]:
         mg = e["mechanical_graph"]
-        L += [f"## {e['label']}  [{e['tier']}]  申报 {e['declared_share_pct']}% / 重放合计 {e['replay_share_pct']}%",
+        L += [f"## {e['label']}  [{e['grade']}]  申报 {e['declared_share_pct']}% / 重放合计 {e['replay_share_pct']}%",
               f"- 基线机械图：成员 {e['members_total']}（可并 {mg['mergeable_nodes']}，"
               f"机械拦截 {len(mg['mechanical_excluded'])}，孤立 {mg['isolated_members']}）| "
               f"R1 边 {mg['r1_edges']} | gas 组 {mg['gas_groups']} | 主分量 {mg['main_component_size']} 成员"]
@@ -559,7 +566,7 @@ def main():
     open(out_prefix + ".md", "w").write("\n".join(L))
     print(f"\n产物: {out_prefix}.json / .md")
     for e in report["entities"]:
-        print(f"  {e['tier']} {e['label'][:40]}: {e['verdict']}")
+        print(f"  {e['grade']} {e['label'][:40]}: {e['verdict']}")
 
 
 if __name__ == "__main__":

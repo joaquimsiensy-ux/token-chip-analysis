@@ -9,7 +9,7 @@ facts.json schema（每案一份，阶段 3 结束时从落盘数据构建；数
 {
   "token": {"symbol": "QUQ", "decimals": 18, "total_supply_raw": "1000...0"},
   "entities": {
-    "e_big1": {"label": "大庄#1(bot体系)", "tier": "P0",
+    "e_big1": {"label": "大庄#1(bot体系)",
                "addresses": ["0x完整地址", ...],
                "current_raw": "278400...", "peak_raw": "687000...",
                "peak_date": "2026-05-01", "role_notes": {"0x地址": "角色备注(可选)"},

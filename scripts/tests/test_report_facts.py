@@ -15,7 +15,7 @@ spec.loader.exec_module(fg)
 FACTS = {
     "token": {"symbol": "TT", "decimals": 18, "total_supply_raw": str(10**9 * 10**18)},
     "entities": {
-        "e1": {"label": "大庄#1", "tier": "P0",
+        "e1": {"label": "大庄#1",
                "addresses": ["0xAA00000000000000000000000000000000000001",
                              "0xAA00000000000000000000000000000000000002"],
                "current_raw": str(278_400_000 * 10**18),
