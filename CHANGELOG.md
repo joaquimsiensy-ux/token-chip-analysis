@@ -15,7 +15,7 @@
 
 ## 版本索引（活跃窗口，新在上；每版一行，详情见下方对应条目）
 
-- **6.0.0** 2026-07-30 架构级重构（薄骨架+判例库+评测）：SKILL.md 37KB→8.6KB 纯路由层 + analyze-workflow/context-discipline 两手册 + casebook 3 册 11 条判例 + evals 8 题 + 供给真值闸与 casebook_lint（唯一两项代码例外）+ commands 暂存重写 + 教训分流决策树——规则语义零变更
+- **6.0.0** 2026-07-30 架构级重构（薄骨架+判例库+评测）：SKILL.md 37KB→8.6KB 纯路由层 + analyze-workflow/context-discipline 两手册 + casebook 3 册 12 条判例 + evals 9 题 + 供给真值闸与 casebook_lint（唯一两项代码例外）+ commands 暂存重写 + 教训分流决策树——规则语义零变更
 - **5.0.0** 2026-07-30 框架级用户修订：四问→三问（问 4 背景调查整体删除）+ 取消 P0/P1 重要度分级 + 废止"狙击集团"标签 + 其他大户线降至 0.1%/0.2% 并立排查前置双闸 + 流转图/素材装配对象收窄为 ≥20% 大庄/项目方
 - **4.2.0** 2026-07-30 TROLL(Solana) 完整版复盘 + PYTHIA 复盘补遗：托管判定反向闸（0.002246=建 ATA 物理常数）+ SQD 同 slot 同额去重丢边缺陷 + pump.fun 长内盘期签名史双索引重建法 + 揭盲式独立重做转正（两案）+ Squads 解析脚本收编 + scan 扫描器 auto 判程序
 - **4.1.0** 2026-07-30 PYTHIA 双报告交叉核实复盘：实体身份防复发三闸（label_lookup 并源 address-book / entity_identity_gate+G8 编译门 / 复核 prompt 翻案四问固化）+ 复盘元规则（身份类教训必须以代码收尾）
@@ -38,8 +38,8 @@
 - **新 SKILL.md（8,574B，≤10KB 硬指标）**：使命三问＋铁律 7 条一行断言制（封顶：新进＝旧出或代码化）＋阶段路由表（必读/硬闸 exit/产物）＋四入口一行路由＋上下文预算；细节全部下沉。frontmatter description 原样保留。
 - **references/analyze-workflow.md（新建）**：完整版 A0–A6 唯一权威源，承接旧 SKILL.md 全部阶段细节；迁移三动作＝剥履历（留一行来源）、剥已代码化复述（gate 段→调用+exit 语义）、判定叙事改指 casebook。
 - **references/context-discipline.md（新建）**：成本三刀 13 条＋断点恢复五步原文重组，定位从"省钱"改为"质量机制"（干净上下文＝复核有效性）；外包两档制唯一权威源随迁。
-- **references/casebook/ 判例库（新建，例外②守护）**：按判定环节组织（不按币——四案复发的结构性根治），六字段结构（ID+成熟度/触发现象/禁止推断/必做区分检验/证据不足时/权威与出处）；首批 3 册 11 条全部来自已终裁翻案：cex-custody 5 条（Alpha 库存仓/ATA 常数反例/Upbit 跨链/Bitvavo 质押产品/Squads escrow）、entity-clustering 3 条（EIP-7702+通用实现/设施先验三测/循环论证）、supply-accounting 3 条（静默改账/镜像恒等式/分母恒等）。A3 实体冻结前全册过闸、A4 作备择解释弹药。单册 ≤25KB/25 条超限先合并。
-- **evals/ 评测题库（新建，references 外防污染）**：8 题＝历史确证翻案（PYTHIA 9Z/TROLL ATA/IQ Upbit/IQ 7702/QUQ 设施/GNT 静默迁移/GMX 镜像/IQ 分母），每题 A 节执行输入（零泄漏可投喂）＋B 节考官侧（当年确证错误/唯一失败原因/禁止输出/必做证据动作/缺证据结论上限/预期拦截点）。评测哲学：历史结论不可当金标准，唯一标尺＝被翻过案的错误确定是错的；验收只验拦住旧错误。
+- **references/casebook/ 判例库（新建，例外②守护）**：按判定环节组织（不按币——四案复发的结构性根治），六字段结构（ID+成熟度/触发现象/禁止推断/必做区分检验/证据不足时/权威与出处）；首批 3 册 12 条全部来自已终裁翻案：cex-custody 5 条（Alpha 库存仓/ATA 常数反例/Upbit 跨链/Bitvavo 质押产品/Squads escrow）、entity-clustering 3 条（EIP-7702+通用实现/设施先验三测/循环论证）、supply-accounting 4 条（静默改账/镜像恒等式/分母恒等/历史清零层全盲——S-04 为验收期用户挑错补录，PYTHIA W1 案）。A3 实体冻结前全册过闸、A4 作备择解释弹药。单册 ≤25KB/25 条超限先合并。
+- **evals/ 评测题库（新建，references 外防污染）**：9 题＝历史确证翻案（PYTHIA 9Z/TROLL ATA/IQ Upbit/IQ 7702/QUQ 设施/GNT 静默迁移/GMX 镜像/IQ 分母/PYTHIA W1 漏检——第 9 题为验收期用户挑错补录），每题 A 节执行输入（零泄漏可投喂）＋B 节考官侧（当年确证错误/唯一失败原因/禁止输出/必做证据动作/缺证据结论上限/预期拦截点）。评测哲学：历史结论不可当金标准，唯一标尺＝被翻过案的错误确定是错的；验收只验拦住旧错误。
 - **供给真值闸（例外①）**：`scripts/lib/supply_truth_gate.py`——重放净供给 vs 链上 totalSupply（EVM eth_call/Solana getTokenSupply），fail-closed exit 0/2/1；治 GNT 型静默改账盲区（重放虚高 10 倍全自检 PASS，2026-07-28 实测，机制成立直接转正）。挂载 A2 第 3 查/easy E2/update U2.4；离线契约测试 11 项进 run_all。
 - **casebook_lint（例外②）**：ID 唯一/六字段/成熟度标记/README 登记/单册上限，fail-closed（0 册 0 条不算过），进 run_all（SUITE 13→15 项）。
 - **commands-staging/ 四入口重写（merge 后安装）**：入口只做三件事（声明标的/指向 workflow/列用户拍板硬性）；token-analyze 从"五问/官推/JSON 附录"废止口径对齐三问；collect-data 操作细节全量迁入新建 `references/collect-workflow.md`（原细节只活在 git 外命令文件＝权威源不受保护的实证）。

@@ -58,8 +58,8 @@
 |---|---|
 | 供给真值闸（scripts/lib/supply_truth_gate.py；A2 第 3 查/easy E2/update U2.4 必跑；exit 0/2/1） | **批准代码例外①**（GNT replay-silent-burn-trap 2026-07-28，机制成立直接转正） |
 | casebook_lint.py 挂 run_all | **批准代码例外②** |
-| casebook 3 册 11 条＋A3.2 判例过闸＋A4 备择弹药挂载 | 计划第 2 步；判例内容全部来自已终裁翻案（PYTHIA/TROLL/IQ/QUQ/LPT/PENGUIN/GNT/GMX），零新判定规则 |
-| evals 8 题＋README | 计划第 1 步；不进分析流程（目录在 references 外），零分析义务 |
+| casebook 3 册 12 条＋A3.2 判例过闸＋A4 备择弹药挂载 | 计划第 2 步；判例内容全部来自已终裁翻案（PYTHIA/TROLL/IQ/QUQ/LPT/PENGUIN/GNT/GMX），零新判定规则；S-04 为验收期用户挑错补录（PYTHIA W1 漏检，2026-07-29 终裁在案） |
+| evals 9 题＋README | 计划第 1 步；不进分析流程（目录在 references 外），零分析义务；第 9 题为验收期用户挑错补录（首批题单遗漏 W1 漏检这一已终裁翻案，无撤下理由记录） |
 | retrospective 2c 分流决策树＋整编触发线 2 条＋evals 候选登记 | 计划第 5 步；元规则（v4.1.0）从身份类推广到达标教训 |
 | A3.6 阵营恒等自检 assert＝100%/反向断言 | IQ 案 2026-07-26 复盘教训（原记 memory"待写入 skill"未落地——本次借 casebook S-03 收编＋workflow 挂载，正是四案复发病灶的治法） |
 | A3.6 历史清零层检测（全期 max 仓位） | v4.2 已固化于复核 prompt（evidence-wording §10 完整性批评）；A3 明写＝把拦截点从复核前移到分析，非新规则 |
