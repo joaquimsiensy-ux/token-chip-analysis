@@ -171,7 +171,7 @@ CHAIN_MAP = {'solana': 'sol', 'ethereum': 'eth', 'bnb': 'bsc', 'binance': 'bsc',
              'avalanche': 'eth', 'avax': 'eth', 'avalanche c-chain': 'eth',
              'polygon': 'eth', 'matic': 'eth', 'optimism': 'eth', 'op': 'eth',
              'linea': 'eth', 'scroll': 'eth', 'blast': 'eth', 'mantle': 'eth'}
-INCLUDE_RE = re.compile(r'(庄\s*#?\d|^庄|小庄|离场庄|狙击集团|工作室|收割)')
+INCLUDE_RE = re.compile(r'(庄\s*#?\d|^庄|小庄|离场庄|狙击集团|工作室|收割)')  # "狙击集团"匹配旧 state 兼容（标签 v5.0 废止）
 EXCLUDE_RE = re.compile(
     r'(疑似|边界|观察|未达标签|不计庄家|PLAUSIBLE|未证实|候选|行为学披露|'
     r'行为\s*(?:cohort|组)|behavior\s*cohort|非同一主体|共同控制未能确证)',

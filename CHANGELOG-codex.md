@@ -16,6 +16,7 @@
 
 ## 版本索引（codex 侧，新在上）
 
+- **c2.0.0 2026-07-30 v6 大同步（main v4.2.0→6.1.1 十提交并入）+ 适配层通则化重构**：按 `c2-migration-matrix.md` 先行矩阵执行 merge；SKILL.md 重构为 main v6 薄骨架＋「Codex 运行适配」通则节（G1 路径/工具/模型映射、G2 禁自审、G3 独有资产、G4 经济控制硬闸、G5 静置仓反扫硬闸——原逐文件改字式平台适配全部收编为通则，未来同步冲突面大幅收缩）；三问框架/去分级/狙击集团废止随 main 生效，codex 独有资产 P0/P1 措辞全部迁移（economic-control-accounting 4 处＋tiering 判据节＋docs_lint needle）；codex 复盘判据与三账义务重挂为 tiering/report-template 尾部独有小节；camp_share_series schema 修正（c1.0.0 发现）与 BITCOIN 案 miss-queue 85 行已回灌 main（6.1.1）；run_all 融合为 17 项（main 16＋audit_release_gate）全 PASS；唯一存档分歧＝state-anomaly §9c（矩阵 §五留裁决）。
 - **c1.1.0 2026-07-29 删除 Codex 自审伪外审流程**：Codex 版不再调用 `codex exec`、Codex CLI 或同模型会话充当外部异构怀疑者；阶段 4 与 easy/update 模式统一改称内部对抗性自检，不宣称外部独立性。原始数据重算、机械对账、发布硬闸与内部反例自检保留。
 - **c1.0.0 2026-07-29 独立分享包可运行**：`sync-from-cc.sh` 区分维护者双线 worktree 与不含 Git 历史的分享快照；后者明确提示并返回 0，不再因缺少 `.git`/`main` 阻断分析。同步规则、SKILL 第 0 步与分享说明同源更新；本机双线合并和测试门禁不变。
 - **3.30.0 2026-07-26 既有报告独立复核净室协议+机器发布总闸+逢0轻整编**：把“报告是被审对象，不是证据”从措辞纪律升级为低自由度工程门禁。新增 `independent-audit-protocol.md`，强制输入哈希冻结、原报告只作命题清单、当前≥0.5%与历史/归零/静置候选重标、成员/位置/经济控制三账、逐命题证据与备择解释、历史图六查、对抗复核否决权；新增 `audit_release_gate.py` 与离线反例测试，缺任一必需资产、哈希漂移、受益权未证、阴性候选未闭合、末日封口/负钳零或未关闭否决项均 exit 2。修正旧“CEX间库存调度商=非庄”排他规则：只可确认强CEX连接通道，零DEX与流向CEX均不能证明最终受益人或必然非庄。逢0轻整编将散落的复核防线归位到一份直达协议，未删除仍有效规则。成本：交付后修正轮次数/终端调用数/用时未可靠自动计数，不补猜。质量：初稿关键结论2；复核裁决REFUTED 2（两个庄级标签）、WEAKENED 1（CEX身份）；漏检地址类型/私人层覆盖1类；传播级历史图错误1。
@@ -28,6 +29,19 @@
 - **3.26.0 2026-07-24 FROGGIE(BSC) easy 复盘：阵营序列 schema 契约修正+惯犯回灌单案安全模式+两条聚类边界候选**：monitoring/report 两册统一 `camp_share_series={dates,series}` 唯一形态，figures_from_facts 对旧列表可读 fail+契约测试；accumulate_offenders 支持直接传单案目录、默认库增量合并防截库、无状态/零实锤组 fail-closed 不改输出，离线测试覆盖；methods 新增【候选】短窗口多来源归集只证归集后统一控制、来源钱包证据不足进 associated_source_addresses；tiering 新增【候选】大额串联只证资金 campaign、必须先机械过 P0/P1 门槛再谈自动化/刷量例外
 
 ---
+
+## [c2.0.0] - 2026-07-30 — v6 大同步 + 适配层通则化重构（主版本：架构级）
+
+背景：codex 分支停在 v4.1.0 merge，落后 main 十提交（v4.2.0 复盘、v5.0.0 框架修订、v6.0.0 架构重构、v6.1.0 分段执行、v6.1.1 回灌修正）。分叉期 codex 在 16 个共有文件上有本地迭代（3.26.0–3.30.0/c1.x），直接 merge 必然大冲突且语义矛盾（如 codex 文档仍写 P0/P1 而 main v5.0 已废止分级）。按分段执行计划步 2 执行：迁移矩阵先行 → 回灌 → merge → 通则化重构。
+
+- **c2-migration-matrix.md（merge 前定稿）**：16 双改文件逐项解法/概念迁移/gate schema 核查/测试新预期/分歧存档五节；执行中 1 处初判被全文核查推翻并公开修正（枢纽两段版实为重组强化非分歧，已保留）。
+- **回灌 main 两件**（先于 merge，CC 侧 6.1.1）：camp_share_series schema 修正（文档-引擎漂移，c1.0.0/FROGGIE 发现）；BITCOIN 案 miss-queue 85 行（标签库 CC 真源约定）。
+- **SKILL.md 通则化重构**：main v6 薄骨架为体＋「Codex 运行适配」独有节——G1 路径/工具/模型映射、G2 禁自审（c1.1.0 通则化：下发文档中一切外审步骤一律读作不适用）、G3 独有资产清单、G4 经济控制硬闸（3.29.3 收编）、G5 静置仓反扫硬闸（3.29.2 收编）＋第 0 步同步/worktree/迭代规则。**逐文件改字式适配全部废止**：labels/README、research-workflows、update-workflow、easy-workflow、monitoring-package 等与 main 一字不差，映射靠通则——未来同步这些文件零冲突。
+- **概念迁移（P0/P1→庄级判定）**：economic-control-accounting.md 4 处、entity-cluster-methods 卫生审计段、analysis-playbook 登记行、test_cluster_quality 测试数据 2 处 tier 残留、docs_lint tiering needle——codex 独有资产内 P0/P1 全清零；audit_release_gate.py 的 whale_tier 维度名保留（协议内部枚举，语义=现行门槛判定）。
+- **codex 方法学资产重挂**：tiering 尾部"Codex 侧复盘判据"节（7 条，FROGGIE/ASTEROID 案，措辞已迁 v5）；report-template 尾部"Codex 版补充义务"节（经济控制账同源驱动＋checklist 附加 4c/4d）；entity-cluster-methods 的 dormant_warehouse_audit 段与"冻结后成员卫生审计"正式条随 merge 保留。
+- **测试融合**：run_all＝main 16 项＋test_audit_release_gate＝**17 项全 PASS**；test_cluster_quality T1–T5、test_figures_from_facts 双方增量并存。
+- **分歧存档（唯一）**：state-anomaly §9c——codex 弱化版（强 CEX 连接通道四命题拆开）vs main 正式条（调度商定性两案转正），`git show 639bfd0:references/playbook-state-anomaly.md` 考古，留用户/复盘裁决。
+- TODO（c2.x）：accumulate_offenders 单案模式增强回灌 main；枢纽两段重组+卫生审计正式条回灌 main 评估；−1 模式条文（c2.1.0，split-run 主轨执行者）。
 
 ## [c1.1.0] - 2026-07-29 — 删除 Codex 自审伪外审流程
 

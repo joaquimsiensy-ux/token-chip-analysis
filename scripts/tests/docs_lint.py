@@ -86,7 +86,7 @@ def main():
     control_contracts = {
         'SKILL.md': ['控盘看最终经济控制', 'economic_control_ledger.json', '公共设施不进永久成员表'],
         'references/economic-control-accounting.md': ['实体成员表', '链上位置账', '经济控制账', 'unresolved_facility_exposure'],
-        'references/playbook-entity-cluster-tiering.md': ['P0/P1 的“持仓”强制解释为可证经济控制量', '严格/扩展是确权边界'],
+        'references/playbook-entity-cluster-tiering.md': ['判级的"持仓"强制解释为可证经济控制量', '严格/扩展是确权边界'],  # c2.0：needle 随 v5 判级口径迁移（P0/P1 废止）
         'references/report-template.md': ['经济控制穿透硬闸', 'economic_control_ledger.json', '不得拿钱包自持替代'],
     }
     for rel, needles in control_contracts.items():

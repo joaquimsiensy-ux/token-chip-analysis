@@ -1,6 +1,6 @@
 # 分析方法学 Playbook · 实体识别与聚类 · 建仓成本工具（entity-cluster 分册 3/3）
 
-> 母路由页：`playbook-entity-cluster.md`。本册覆盖 **§6b 建仓成本估算（v2.0 起为按需工具）**；§3/§4/§6 见 `playbook-entity-cluster-methods.md`，§6a 见 `playbook-entity-cluster-tiering.md`；四问框架总纲见 `analysis-playbook.md`。规则行尾标注来源会话。
+> 母路由页：`playbook-entity-cluster.md`。本册覆盖 **§6b 建仓成本估算（v2.0 起为按需工具）**；§3/§4/§6 见 `playbook-entity-cluster-methods.md`，§6a 见 `playbook-entity-cluster-tiering.md`；三问框架总纲见 `analysis-playbook.md`。规则行尾标注来源会话。
 
 ## 6b. 建仓成本估算（v2.0 起为按需工具，不再是固定命题）
 

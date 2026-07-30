@@ -154,9 +154,19 @@ IO 当时全程用会话内联 Python 完成、未沉淀成脚本文件；但找
 
 **守护**：`scripts/tests/test_sqd_merge_equiv.py`（已进 run_all 全家桶）——六条契约：两路径逐字节一致（含跨格式去重/超 int64/同 (slot,ts) 多行/ts=0）、大数保真、路径选择、原子落盘、零行判定五分支、scan_area 尾段零行判完成而真失败仍失败。真实端到端另验：BONK 定段采集（含已知 skipped slot 尾段）退出码 0 且 `gaps=[]`（旧版此处必记 scan-fail）、增量续拉 183→230 边无重复、强制外排路径旧行全保留。
 
+#### ⚠ 同 slot 同额多笔边会被"去重"吃掉（TROLL 实测暴露，2026-07-29——检测与修复 SOP，根治待查）
+
+**机制**：SQD 边表无 sig 字段，边=(slot, ts, from, to, amt) 元组——**同一 slot 内同两方、同金额的多笔真实转账，在边集里只剩一条**（TROLL 案真值账本逐 slot 对表：每个不一致 slot 主边集恰=真值的一半，两笔同额买入剩一笔，机制 100% 确认；丢失发生层未定位——SQD 响应本身或本地 set()/DISTINCT 合并均有嫌疑，根治调查列 Known Gaps）。**与 GOAT gap 合并坑（§11.2）恰成对偶**：GOAT 是 cat 追加造出假重复→靠 dedup 修复；TROLL 是 dedup 无法区分"重复采集"与"真实同字段多笔"→误杀真边。两案合读：**边无 sig 字段是根因，dedup 既是解药也是毒药**。
+- **危害量化**：TROLL 案重放 vs 快照 |diff| 达 **8.127% 总供应**才收敛，受害者集中于"与池子同额多笔交互"的地址（高频往返 bot 为主，一日内两笔同额买入极常见）。
+- **检测指纹**：重放 vs 快照差异呈**正负成对**（丢一笔买入→该地址虚低、池子虚高）、集中于高频地址；确认法=抽一个大差异地址做 ATA 签名史真值账本，逐 slot 对表看"边集=真值一半"形态。
+- **修复 SOP（TROLL 验证收敛）**：差异地址（≥量级阈值，本案 ≥10 万枚）ATA 全史 decode（tx 级全边+sig 粒度）**替换式合并**进边集（按地址整体替换，不是追加）；池子/CEX 等设施侧差异由对手方 decode 附带修复；验证=受害地址全程锚点逐点吻合（本案 1760/1760）+末点阵营合计恰 100%。修不完的残差如实写局限性（本案残差 2.8% 声明为演变图中段 ≤±3pp 失真）。
+
+（来源：TROLL(Solana) 分析，2026-07-29）
+
 ### 13c. 溯源解码 v2（`decode_txs_v2.py`,三板斧落地）
 
 JSON-RPC batch + 跨地址共享 sig 缓存（`--cache-dir`,按 sig 前 2 字符 256 片）+ `--rpc` 端点可换。**mainnet-beta 实测硬墙**：batch 内子请求被**按方法逐个限流**（"Too many requests for a specific RPC call",20 笔只放行 ~9 笔）——batch 默认 8,429 子请求自动收回重试（绝不能记 decode_fail,首测 22/40 假失败的教训）。公共节点净速度收益约 1.5 倍;**真价值=①缓存**（关联地址重复交易第二址起零请求,实测 18/40 命中）**②Helius 就位即切**（`--rpc https://mainnet.helius-rpc.com/?api-key=<key>` 免代理 50 RPS,batch 可调大）。**Helius 已就位**（2026-07-21 用户 Google OAuth 注册,key 存 ~/.config/helius/api-key,api-keys.md 第 16 节「Helius」）：端点国内直连免代理;**免费层不支持 batch**（403 码 -32403,单元素数组同拒）——正解=`--workers 6 --interval 0.12` 单笔并发贴满 10RPS,实测 40 笔 5.3s=7.5 笔/s（公共节点约 7 倍;45 址溯源老基准 4 分钟→约 35 秒）;archival 10 credits/笔,免费月额≈10 万笔。
+**⚠ urllib 逐笔新建连接对 Helius 会 sock_connect 挂死（TROLL 实测，2026-07-29）**：decode_txs_v2 在部分本机网络环境下逐笔 urlopen 挂起（即使 `ProxyHandler({})` 强制直连也不稳）——症状是单笔卡住无超时推进。绕行=手写 `http.client.HTTPSConnection` **keep-alive 长连接**版（8 线程 ~7 笔/s 稳定，TROLL 工作目录存档，收编待第二案复现）；根治通道=environment.md B5 的 `scripts/lib/net.py`（httpx 连接池），新写解码脚本直接用它，别再走 urllib。（来源：TROLL(Solana) 分析，2026-07-29）
 
 ### 13d. Solana HyperSync 通道（solana.hypersync.xyz,early access——第二引擎/指纹查询,非主力）
 
@@ -204,3 +214,20 @@ JSON-RPC batch + 跨地址共享 sig 缓存（`--cache-dir`,按 sig 前 2 字符
 **验收标准**：重建末日值与 `getTokenAccountsByOwner` 实查逐地址对表，TOP12 须逐个吻合（本案唯一偏差是 CEX 地址在快照日之后的真实变动，属正常）。
 
 （来源：GOAT(Solana) 全量流水重建翻案，2026-07-26）
+
+## 15. pump.fun 长内盘期全量重建（签名史双索引法；TROLL 2026-07-29 实战）
+
+**适用场景**：老 pump.fun 币在内盘（bonding curve）滞留数月甚至一年以上才毕业——内盘期交易稀疏（TROLL 案 13 个月仅 ~1,600 笔），但**不能不采**：做量脉冲、早期集群、毕业前试盘仓全藏在这段。用 SQD 扫这段 slot 区间（TROLL 案 8 千万 slot）在死亡期每响应仅推进 ~3900 slot，工程上极不划算。与 §8 CLUDE"Plan B 混合架构"的分工：那是**高密度短币龄**的取舍方案；本节是**稀疏长内盘期**的全量精确解——稀疏恰恰使逐笔 decode 可行。
+
+**方法（双索引 ∪ 迭代补边，TROLL 案 decode 零失败、1,413 边）**：
+1. **curve PDA 签名史全翻**（getSignaturesForAddress 到最老）——内盘期所有对售货机的买卖必经它；
+2. **∪ mint 签名史**（before 锚定翻老）——补 curve 索引外的铸造/销毁/初始化事件；
+3. 两个索引合并 decode 全部 tx（tx 级全边，含 inner）；
+4. **差异地址 ATA 迭代补边法**收敛盲区：重放期末 vs 毕业时点持仓对表，差异地址拉其 ATA 签名史补 decode——**理论盲区=双方 ATA 都已存在的用户间直转**（不经 curve 不经 mint），迭代到差异清零（TROLL 案 2 轮收敛，其中一笔 6 边巨型归集 tx 一次解决 38.6pp 差异）。
+5. **独立通道抽验**：SQD 兜底扫一小段与 decode 结果逐边对表（TROLL 案创建窗 14/14 含笔数完全一致）。
+
+**产出与衔接**：内盘边集（如 `data/curve_pre_edges.jsonl`）与主段 SQD 边集拼接为全史边集；衔接缝（锚点 slot 前后几万 slot）注意 mint 签名史补齐，否则供给闭合差在缝里（TROLL 案 119 枚差即衔接缝内协议销毁）。报告局限性声明理论盲区（供给闭合零差时可写"盲区规模可忽略"）。
+
+**配套工程数字**：SQD 对"单一连续大空洞"**只有 1 个 worker 有效**——并发单位是空洞段，同段 4 进程分片互相拖慢（服务端时间片均分），单进程 ~3450 slots/s 反而最快，别对死亡期空洞开分片；高频 ATA（池子级）签名史翻页必须设 CAP（~20 页）防拖死；ATA 的 PDA 派生纯 Python 可推（ed25519 on-curve 检查 ~30 行，无需 solders 依赖——`entity_identity_gate.py` 已内置同款实现可抄）。
+
+（来源：TROLL(Solana) 分析，2026-07-29——创建时点 2024-03-10 至毕业 2025-04-20 共 13 个月内盘期全量重建，供给闭合差 1.19e-5%）

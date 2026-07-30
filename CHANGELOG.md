@@ -15,6 +15,11 @@
 
 ## 版本索引（活跃窗口，新在上；每版一行，详情见下方对应条目）
 
+- **6.1.1** 2026-07-30 camp_share_series schema 文档修正（codex 侧 c1.0.0 实战发现回灌）：monitoring-package.md 示例由"逐日对象列表"改为 `{dates:[],series:{}}`——引擎 figures_from_facts fig1 从不支持前者，属文档-代码漂移；另回灌 codex 侧 BITCOIN 案 miss-queue 85 行
+- **6.1.0** 2026-07-30 分段执行（split-run）落地：新增 references/split-run.md（−1 机械段/−2 判断段唯一权威源）+ handoff_manifest.py 四子命令与 19 项契约测试 + /token-analyze-1、/token-analyze-2 两入口（四→六）——−1 交 GPT-5.6/Opus，−2 交 Fable 冷启动，防长上下文注意力稀释；旧单会话命令原样保留为回退路径
+- **6.0.0** 2026-07-30 架构级重构（薄骨架+判例库+评测）：SKILL.md 37KB→8.6KB 纯路由层 + analyze-workflow/context-discipline 两手册 + casebook 3 册 12 条判例 + evals 9 题 + 供给真值闸与 casebook_lint（唯一两项代码例外）+ commands 暂存重写 + 教训分流决策树——规则语义零变更
+- **5.0.0** 2026-07-30 框架级用户修订：四问→三问（问 4 背景调查整体删除）+ 取消 P0/P1 重要度分级 + 废止"狙击集团"标签 + 其他大户线降至 0.1%/0.2% 并立排查前置双闸 + 流转图/素材装配对象收窄为 ≥20% 大庄/项目方
+- **4.2.0** 2026-07-30 TROLL(Solana) 完整版复盘 + PYTHIA 复盘补遗：托管判定反向闸（0.002246=建 ATA 物理常数）+ SQD 同 slot 同额去重丢边缺陷 + pump.fun 长内盘期签名史双索引重建法 + 揭盲式独立重做转正（两案）+ Squads 解析脚本收编 + scan 扫描器 auto 判程序
 - **4.1.0** 2026-07-30 PYTHIA 双报告交叉核实复盘：实体身份防复发三闸（label_lookup 并源 address-book / entity_identity_gate+G8 编译门 / 复核 prompt 翻案四问固化）+ 复盘元规则（身份类教训必须以代码收尾）
 - **4.0.0** 2026-07-28 大整编（用户点名）：3.0→3.41 四十余版增量迭代的结构清理——路由索引补齐 9 节、结构错位归位 3 处、消重立权威源制 6 组、CHANGELOG 重整归档 29 条；只减不加，规则语义未动
 - **3.41.0** 2026-07-28 EGL1(BSC) redo2 独立重做版复盘：@CX 外部异构复核交付后实战战果（3 传播级硬错误）+ 完整性批评「全史极值清单」两案转正 + 宏口径边界等 12 条入册
@@ -27,6 +32,80 @@
 - **3.36.0** 2026-07-26 EVM 五币 E0b 黑箱关卡批量 + TOSHI 外部复核与归属判别（持有人榜不可信的流程级修正 + 两条托管判据 + 一条自有判据被证伪）
 - **3.36.0** 2026-07-26 EGL1(BSC) 复盘：cluster.py 的设计盲区被实证 + 「买入序列节拍指纹」新方法固化 + fetch_fundedby 静默错误修复（一次核心结论被复核推翻的完整案例）
 - 更早版本（3.35.1 及以前）→ `CHANGELOG-archive.md`
+
+## [6.1.1] - 2026-07-30 — camp_share_series schema 文档修正（codex 回灌）
+
+- monitoring-package.md 两处：示例与约定行的 camp_share_series 由"逐日对象列表 `[{ts,阵营:值}]`"改为 `{"dates":[...],"series":{"阵营名":[...]}}`——figures_from_facts.py fig1 的实际输入契约从来是后者（main 侧 L98 报错文案可证），文档写法属笔误级漂移，codex 侧 c1.0.0 独立分享包实战撞出后修正，本次 v6 大同步前回灌。report-template"与 monitoring-package 同构"句自动随正。
+- labels: miss-queue/eth.csv 回灌 codex 侧 BITCOIN 案 85 行候选（高度数节点+守门员 FUNNEL，2026-07-28），标签库 CC 真源约定。
+
+## [6.1.0] - 2026-07-30 — 分段执行（split-run）落地：−1 机械段 / −2 判断段跨会话拆分
+
+背景：用户提出把分析拆两个会话——机械段交便宜/额度充足模型，判断段交 Fable 5 同目录冷启动，防长上下文注意力稀释（主动机）＋省主力模型额度（次动机）。GPT-5.6 定为 −1 主轨的实证：codex 侧 `~/Documents/5.6筹码分析/` 十余案机械段战绩（KOGE 3.6 亿条逐 wei 对平、BULLA 五查 PASS、gate BLOCK 即停），其翻案史 REFUTED 全集中在判断层——凡出现在翻案史的环节全部划入 −1 停止线。计划经 codex @CX 复核吸收 20 项意见（entity_identity_gate 因依赖实体表移回 −2 系真 bug 修正；manifest 升级语义收据；sealed 防锚定密封；候选覆盖自检防锚定等），计划文件 plans/opus5-gpt5-6-1-1-fable5-2-fable5-fable5-splendid-shannon.md。
+
+- **references/split-run.md（新建，唯一权威源）**：−1＝A0–A2 全部＋A3 机械子层（标注批量层只写 observed_type/conflict_flags、大户排查批量层跑满防候选海、聚类只出候选簇含拒绝边孤立点、identity_preflight 代正式 gate、序列命名禁"阵营"）；−2＝A3 判断层＋A4–A6（开工序八步：verify fail-closed→保鲜 >72h 弹警报停等用户绝不自动拉→候选覆盖自检→sealed 禁读令；冻结序列：临时实体→无下限成员扫描→反证→entity_freeze 物化→正式 gate）；停止线/盲化跨段（揭盲前置＝freeze 落盘）/断点 receipts/双轨 .stage1.lock 互斥/A4 外部异构路三条收紧（全新会话、不给 sealed、不复核自己 −1 产出）。适用范围 v1 仅新标的 easy/full。
+- **scripts/report/handoff_manifest.py（新建）**：generate/verify/receipt/freeze 四子命令，schema `handoff/v1` 内嵌。generate＝语义收据（gate 状态自动从产物 JSON 读 verdict/exit_code 防手报、产物 allowlist 哈希（>64MB 分片）、sealed 只记哈希、data_map 索引即白名单、READY 缺必备件即拒、supersede 归档制）；verify＝fail-closed（缺件/哈希漂移/gate 语义漂移/schema 不兼容/状态非 READY/blocking 异常未解决/candidate_universe 空壳一律 exit 2）；freeze --check-unseal 把关揭盲。exit 语义对齐现有 gate（0/2/1）。测试 19 项进 run_all（SUITE 15→16）。
+- **commands 六入口（四→六）**：token-analyze-1（模型自检提示不硬停/探针与锁/停止线/未档异常写 blocker 禁自创解法/完成即停）、token-analyze-2（档位必填/开工序八步写死）。staging 与 ~/.claude/commands 双处同步；旧四命令零改动＝回退路径。
+- SKILL.md 四入口→六入口＋深入阅读补 split-run.md；context-discipline 刀 1 补第 6 条指针（分段＝两档制会话级形态，−2 会话内两档制不变）。
+- 后续（计划 §四）：codex 侧 c2.0 迁移矩阵→v6 大同步→c2.1.0 −1 条文；冻结历史案 dry-run；首战试点合并验收（分段引入组 7 指标与 v6 骨架组分开归因）。
+- 守护：run_all 16/16 PASS。
+
+## [6.0.0] - 2026-07-30 — 架构级重构：薄骨架 + 判例库 + 评测题库（规则语义零变更）
+
+背景：40+ 版追加式迭代后 SKILL.md 37KB 规则/履历混写、单条规则遵守率被上下文稀释；4 个 commands 漂移到两代前口径（"五问/P0P1"现行实证）；判定类教训散在按币组织的 memory 导致 IQ/LPT/PENGUIN/PYTHIA 四案托管误判同族复发；质量不可测量。三轮讨论＋codex @CX 外部复核后用户批准白纸重构（计划 skill-bright-storm，worktree rebuild/v6 隔离施工）。**v5 终版基线＝087ccec；规则语义零变更＋两项批准代码例外。**
+
+- **新 SKILL.md（8,574B，≤10KB 硬指标）**：使命三问＋铁律 7 条一行断言制（封顶：新进＝旧出或代码化）＋阶段路由表（必读/硬闸 exit/产物）＋四入口一行路由＋上下文预算；细节全部下沉。frontmatter description 原样保留。
+- **references/analyze-workflow.md（新建）**：完整版 A0–A6 唯一权威源，承接旧 SKILL.md 全部阶段细节；迁移三动作＝剥履历（留一行来源）、剥已代码化复述（gate 段→调用+exit 语义）、判定叙事改指 casebook。
+- **references/context-discipline.md（新建）**：成本三刀 13 条＋断点恢复五步原文重组，定位从"省钱"改为"质量机制"（干净上下文＝复核有效性）；外包两档制唯一权威源随迁。
+- **references/casebook/ 判例库（新建，例外②守护）**：按判定环节组织（不按币——四案复发的结构性根治），六字段结构（ID+成熟度/触发现象/禁止推断/必做区分检验/证据不足时/权威与出处）；首批 3 册 12 条全部来自已终裁翻案：cex-custody 5 条（Alpha 库存仓/ATA 常数反例/Upbit 跨链/Bitvavo 质押产品/Squads escrow）、entity-clustering 3 条（EIP-7702+通用实现/设施先验三测/循环论证）、supply-accounting 4 条（静默改账/镜像恒等式/分母恒等/历史清零层全盲——S-04 为验收期用户挑错补录，PYTHIA W1 案）。A3 实体冻结前全册过闸、A4 作备择解释弹药。单册 ≤25KB/25 条超限先合并。
+- **evals/ 评测题库（新建，references 外防污染）**：9 题＝历史确证翻案（PYTHIA 9Z/TROLL ATA/IQ Upbit/IQ 7702/QUQ 设施/GNT 静默迁移/GMX 镜像/IQ 分母/PYTHIA W1 漏检——第 9 题为验收期用户挑错补录），每题 A 节执行输入（零泄漏可投喂）＋B 节考官侧（当年确证错误/唯一失败原因/禁止输出/必做证据动作/缺证据结论上限/预期拦截点）。评测哲学：历史结论不可当金标准，唯一标尺＝被翻过案的错误确定是错的；验收只验拦住旧错误。
+- **供给真值闸（例外①）**：`scripts/lib/supply_truth_gate.py`——重放净供给 vs 链上 totalSupply（EVM eth_call/Solana getTokenSupply），fail-closed exit 0/2/1；治 GNT 型静默改账盲区（重放虚高 10 倍全自检 PASS，2026-07-28 实测，机制成立直接转正）。挂载 A2 第 3 查/easy E2/update U2.4；离线契约测试 11 项进 run_all。
+- **casebook_lint（例外②）**：ID 唯一/六字段/成熟度标记/README 登记/单册上限，fail-closed（0 册 0 条不算过），进 run_all（SUITE 13→15 项）。
+- **commands-staging/ 四入口重写（merge 后安装）**：入口只做三件事（声明标的/指向 workflow/列用户拍板硬性）；token-analyze 从"五问/官推/JSON 附录"废止口径对齐三问；collect-data 操作细节全量迁入新建 `references/collect-workflow.md`（原细节只活在 git 外命令文件＝权威源不受保护的实证）。
+- **retrospective.md 增补**：2c 教训分流决策树（gate→casebook→pipeline/environment→workflow/checklist→SKILL.md 最后手段；元规则推广到一切达标教训）＋整编触发线 2 条（SKILL.md>10KB/casebook 单册超限）＋翻案默认登记 evals 候选题。
+- **坑表 18 条逐条分流**（汇总表不再保留）：environment 已有 5＋本次补 1（sleep/until）、pipeline 已有 2（Etherscan/DuckDB）、casebook 5、analyze-workflow 内嵌 5——分流表见 v6-migration-audit.md §二。
+- **冻结-核销双向审计**：`v6-migration-audit.md`——正向（旧义务→新位置）/反向（新义务→旧来源或例外）/gate exit 逐字比对；存疑清单逐项验证后清零，两条语义微增透明申报（A3.6 恒等自检＝IQ 教训收编、历史清零层＝v4.2 复核义务前移）。
+- 守护：run_all 15/15 PASS（含新增两测试）；docs_lint 40 文档零断链。
+
+## [5.0.0] - 2026-07-30 — 框架级用户修订：三问框架 / 去分级 / 狙击集团标签废止 / 大户排查前置双闸
+
+背景：用户 2026-07-30 对分析框架一次性修订七条＋大户线调整（全部用户拍板，非复盘迭代）。主版本号 +1（架构级：固定命题与标签体系双变更）。
+
+**框架变更（权威源 tiering §6a / report-template / SKILL.md 三处已同步）：**
+1. **四问 → 三问**：问 4 项目方背景调查整体删除（创始人黑历史/社媒运营/大V/水军整路退役；research-workflows §1 原路线 5 删除、官推回收账号侦测段删除）；解锁日程情报（原路线 1）保留服务问 3 的 vesting 小节；路线 2/3/4/6 降为按需分析工具。TL;DR 开放条款改"第 4 条特有发现"。报告章节：原第六章删除，状态评估/局限性前移为六/七章。
+2. **取消 P0/P1 重要度分级**：标签表删"重要度"列；TL;DR 问 1 按标签逐项计数（实锤/高度疑似仍分开）；第三章按标签顺序呈现（项目方→大庄→小庄→离场庄→刷量）。
+3. **"狙击集团"标签废止**：发射窗协同实体按普通门槛判入大庄/小庄/离场庄，不再单独打标签/单独分析；识别与合并方法全保留（bundle 三件套/拍卖型资金硬边/流量存量双口径改挂"发射窗/bundle 分析"）；同秒/同块全景纪律、行为 cohort P1 实体化门槛（QUQ 案 GPT5.6 条款）两条随体系删除。阵营表删该阵营；旧 state 该标签按 update 标准迁移条款重判。
+4. **其他大户排查前置双闸（取代"不单独分析、不逐个溯源"）**：门槛 1%/2% → **0.1% 总供应 / 0.2% 流通**（上所标的市值体量下旧线是几十万美元级盲区，分仓单址常压 0.3–0.5% 档躲线）；闸一=每个其他大户过完批量排查层（标签库+惯犯库+指纹扫描+funder 批量溯源）才准定性归阵营，报警者才人工深挖；闸二=每个已识别实体做不设持仓下限的成员完整性扫描（防分仓漏判的正确方向是从庄向外挖）。排查记录落盘、阴性小节报覆盖数。
+5. **流转路径图对象收窄**：原"每个 P0 必配"→ **当前持仓 ≥20% 总供应或 ≥20% 流通的大庄/项目方**（低于线的项目方不强制）；图 2 删"P0 逐个单线/P1 可合并"规则，改"标签实体各一线、超 8 条可合并较小实体并图注注明"。
+6. **素材装配外包对象**＝流转图门槛实体（research-workflows §二b 同步）。
+
+**机器件与脚本（全部向后兼容旧产物）：** analysis-state/appendix schema 的 whale_groups.tier 字段废止（新文件不写，读取端忽略旧值）；camp_share_series 删"狙击集团"键（旧序列重绘走 legacy 兼容色）；standard_charts CAMP_ORDER/CAMP_COLORS 该键降为旧体系兼容键；cluster_sensitivity 判级改 label 前缀制（大庄/小庄/未达标，CLI 参数 --big-pct/--small-pct/--small-circ-pct 取代 --p0-pct/--p1-pct/--p1-circ-pct，旧 tier state 仍可读）；holdout_diff 判级从 label 前缀推导；analyze_inc 四态表去 tier 透传；lifecycle_flow/facts_gate/camp_series_inc docstring 同步；test_cluster_quality/test_report_facts/test_figures_from_facts fixture 同步。守护测试 9/9 PASS、docs_lint PASS。
+
+成本指标：纯文档/脚本修订会话，无采集；轮次约 40。质量指标：不适用（非分析案）。
+
+## [4.2.0] - 2026-07-30 — TROLL(Solana) 完整版复盘 + PYTHIA 复盘补遗
+
+背景：TROLL 07-29 Fable5 从零独立重做（揭盲式，不读 07-28 会话结论文件）交付完整版；与 PYTHIA 双报告交叉核实同期构成一对镜像案——PYTHIA 把币安 Alpha 托管仓判成小庄（4.1.0 已治），TROLL 中期把私人四钱包组判成"Coinbase 托管体系"（方向相反同罪），本版补上反向的闸。
+
+**方法类（转正，机制解释明确）：**
+1. **托管判定反向闸**（playbook-entity-cluster-methods 托管判据段）：判"托管"与判"庄家"同样要硬证据——TROLL 中期三条"托管判据"逐条入册为反例：**0.002246 SOL 到账额=Solana 建 ATA 物理常数**（免租金 2,039,280+fee 206,500 lamports，对照组散户提币完全同值，零区分力）；"托管仓只囤不动"是行为假设不是证据；中间判定标签不作证据。判托管正证据清单（标签库/Vybe 链根/PoR/gas supplier 体系/批次伪影+集齐率）+ **跨所作业一票排除**（币安 gas 养 Coinbase 提币仓≠任何单所托管）。同步进 entity_identity_gate docstring（BIG_UNLABELED resolution 纪律）。
+2. **Solana 1-raw 级粉尘投毒**（投毒段第三场景）：非零值 dust（1 raw~0.1 枚）使 `value>0` 过滤失效，污染 last_ts/共现统计造伪实体指纹（TROLL 39,705 条边、"2026-05 群同分钟共现"被证伪为投毒伪像）——活动性/共现统计过滤收紧为 `amount≤1 raw` 剔除。
+3. **时点净库存差 ≠ 累计流出**（playbook-supply-recon §2）："缺口期净差仅 8.54% 藏不下达标实体"被推翻——期间换手可任意多轮，正解=回补数据（curve ATA postTokenBalances 直读）或如实声明不可排除。
+4. **截断地址禁补全升为全链硬规则**（§6 硬规则；FIL+TROLL 两案、TROLL 主分析与复核 agent 同案双踩）；**中间判定产物不作标签源**（§3：cex_map.json 类派生文件里的判定条目≠标签，跨会话只信主库+address-book）。
+5. **揭盲式独立重做流程转正（两案）**（playbook-evidence-wording §10）：盲做（复用数据不读结论）→揭盲（只给分歧位置）→分歧点链上硬证据定向裁决——PYTHIA 两版各对一半、TROLL 重做反向犯错被揭盲复核钉死，独立重做的价值在"两版错误不相关，分歧点即高危区坐标"。
+6. **极值清单第三维：日内瞬时峰值**（research-workflows 完整性批评）：日末口径对"当日买卖回"整体失明（TROLL 内盘 7 轮做量脉冲峰值和最高 113.7%/日，日末恒零）——与 4.1.0"全期 max 仓位重放"构成日级+日内双层口径盲区检查。
+
+**方法类（候选·单案，playbook-entity-cluster-methods 手法库）：** 高换手日峰值和重复计算陷阱（累计买入≫峰值=换手指纹，峰值和 252% 不等于 N 个囤仓实体）；LP 费复投仓识别（四池同刻领费归集零卖出=隐身大额 LP 的唯一暴露面）；整额自转倒仓链=反追踪指纹（净额账本不可见，逐边流水定位压盘方）；按美元面额开票=场外交割指纹（PYTHIA 补遗：枚数各异美元档窄聚 ±2%+测试笔，裁决"自我分仓 vs 对外交割"）。
+
+**数据工程类（正式）：**
+7. **SQD「同 slot 同额多笔去重丢边」系统性缺陷**（capture.md §13b 新子节）：边无 sig 字段，同 slot 同两方同金额多笔只剩一条（TROLL 真值账本逐 slot 对表实锤：不一致 slot 主边集恰=真值一半；对账 |diff| 8.127% 供应的主因）。与 GOAT gap 合并坑成对偶（dedup 既是解药也是毒药）。检测指纹（差异正负成对+集中高频地址）+修复 SOP（差异地址 ATA 全史 decode 替换式合并，锚点 1760/1760 验证）入册；丢失层定位（服务端 or 本地 set()）列 Known Gaps。
+8. **pump.fun 长内盘期全量重建=签名史双索引法**（capture.md 新 §15）：curve PDA 签名史∪mint 签名史 decode+差异地址 ATA 迭代补边（2 轮收敛），比 SQD 扫 8 千万 slot 快两个量级、decode 零失败；配套：大空洞单 worker 最快（并发单位=空洞段）、高频 ATA 翻页 CAP、ATA PDA 纯 Python 推导。
+9. **RugCheck detectedAt=索引器首见≠发射时间**（scan.md）：TROLL 差 145 天，据此定发射窗漏掉整段早期史——发射时点唯一正解=curve/mint ATA 最早签名核实到秒。
+10. decode_txs_v2 urllib 对 Helius sock_connect 挂死坑（capture.md §13c）：http.client keep-alive 绕行（TROLL 存档待二案收编），根治=lib/net.py。
+
+**脚本：** `scripts/solana/squads_members.py` 新收编（Squads v4 multisig borsh 手解，成员/阈值/跨仓共享密钥矩阵——identity_gate PDA_UNRESOLVED 的标准 resolution 工具；PYTHIA 单案成熟度已标注）；`scan_token_accounts.py` --program 默认改 **auto**（getAccountInfo 判 mint owner，根治"token2022 默认对标准 SPL 币空扫"）+ 零账户对账 FATAL exit 2（防"合法空 result"当无持有人）；retrospective.md/entity_identity_gate.py 的"v4.2"版本号笔误统一为 v4.1.0。
+
+成本指标（TROLL 重做会话，文件时间戳口径）：07-28 23:12 开工 → 07-29 17:49 交付，墙钟 ≈18.6h（含夜间采集挂机与 1,079 万边修复重放）；轮次/Bash 数未采（复盘于独立会话执行）。
+质量指标（TROLL）：初稿关键结论 8 条（TL;DR 五问+三件事）；复核判定 CONFIRMED 5 / WEAKENED 7 / REFUTED 2（4 内部+codex 外部 5 条全同向零新增推翻）；复核翻出漏检实体/观察组 4（毕业日幸存仓 0.58%、同人对 B 换仓源头前推、压盘真身四跳倒仓链、LP 费复投仓 1.18%）；传播级数字错误：终版 0（中期稿 3 处大翻案——发射时点/缺口期上限/托管 20.19%→6.13%——均在揭盲定向复核阶段修正，未出交付门）。
 
 ## [4.1.0] - 2026-07-30 — PYTHIA 双报告交叉核实复盘：实体身份防复发三闸 + 复盘元规则
 

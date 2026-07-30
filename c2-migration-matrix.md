@@ -22,7 +22,7 @@
 | 3 | easy-workflow.md | 禁自审改字（E4 外审路→内部自检） | **取 main**，差异升级为适配节通则 G2 |
 | 4 | labels/README.md | 路径 `~/.claude`→`~/.codex` | **取 main**，通则 G1 覆盖 |
 | 5 | monitoring-package.md | camp_share_series schema 修正 | 已回灌 main 6.1.1，**取 main**（冲突自动消解） |
-| 6 | playbook-entity-cluster-methods.md | 路径改字＋dormant_warehouse_audit 段（纯增量）＋枢纽三段→两段（替换性分歧） | 取 main＋加回 dormant_warehouse_audit 段；**枢纽改写不收**（分歧存档：codex@639bfd0 该文件"枢纽两段处理法"段，主张删③事后卫生检查步——与 main 正式条冲突，留用户/复盘裁决是否回灌） |
+| 6 | playbook-entity-cluster-methods.md | 路径改字＋dormant_warehouse_audit 段（纯增量）＋枢纽三段→两段重组 | 路径改回 main 措辞（G1 承担映射）；dormant 段保留；**枢纽两段版保留**——执行中查全文推翻矩阵初判：codex 并非删③事后卫生检查，而是把③重组扩强为独立正式条"冻结后实体成员卫生审计（三查，QUQ+SIREN 两案）"，内容超集非分歧（初判仅基于 diff 前 8 行，公开修正）；建议后续回灌 main（TODO） |
 | 7 | playbook-entity-cluster-tiering.md | ＋6 条复盘判据（FROGGIE/ASTEROID 案：串联边不自动确权/行为 cohort 分离/自报角色≠共同控制/日终≠事件峰值/双边界峰值/经济控制量释义） | 取 main＋判据以"codex 侧复盘判据"小节加回（P0/P1 措辞按 v5 迁移；"行为 cohort 分离"与 v5 废狙击集团同源，兼容） |
 | 8 | playbook-evidence-wording.md | 措辞对照表＋7 行（三账/LP 费配套） | 取 main＋加回（纯增量，无旧词） |
 | 9 | playbook-state-anomaly.md | 9c 正式条弱化重写（"调度商定性"→"强 CEX 连接通道四命题拆开"） | **取 main**（9c 是两案转正的正式条，弱化属方法学立场分歧；分歧存档：codex@639bfd0 该文件 §9c，留裁决） |
@@ -53,9 +53,8 @@
 
 ## 五、未收编分歧存档（不丢内容，留裁决）
 
-1. **state-anomaly §9c**：codex 弱化版（强 CEX 连接通道，四命题拆开审）vs main 正式条（调度商定性，两案转正）——`git show 639bfd0:references/playbook-state-anomaly.md` 可考古。
-2. **entity-cluster-methods 枢纽处理法**：codex 两段版（删除③事后公共合约卫生检查作为独立步）vs main 三段版——同上考古。
-3. 裁决路径：后续复盘或用户点名时对比两版，若 codex 立场胜出则走"回灌 CC"流程改 main。
+1. **state-anomaly §9c**：codex 弱化版（强 CEX 连接通道，四命题拆开审）vs main 正式条（调度商定性，两案转正）——`git show 639bfd0:references/playbook-state-anomaly.md` 可考古。**唯一存档分歧**（枢纽处理法经全文核查改判为重组强化，已保留，见 #6）。
+2. 裁决路径：后续复盘或用户点名时对比两版，若 codex 立场胜出则走"回灌 CC"流程改 main。
 
 ## 六、SKILL.md 适配节通则（c2.0 重构后的差异承载方式）
 

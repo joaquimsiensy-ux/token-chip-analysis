@@ -122,7 +122,7 @@ def main():
             state = "增持"
         else:
             state = "减持"
-        groups.append({"label": g.get("label"), "tier": g.get("tier"),
+        groups.append({"label": g.get("label"),
                        "old_share": round(pct(old_v), 3), "cur_share": round(pct(new_v), 3),
                        "win_net_pct": round(pct(net), 3),
                        "win_buy": round(buys / unit, 1), "win_sell": round(sells / unit, 1),

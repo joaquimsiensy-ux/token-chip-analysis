@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""实体身份硬闸（G8 数据源，v4.2 2026-07-30）——实体判级冻结前的强制身份四查。
+"""实体身份硬闸（G8 数据源，v4.1.0 2026-07-30）——实体判级冻结前的强制身份四查。
 
 血案背景（本闸的存在理由，三案同族复发）：
   IQ 2026-07-26   Upbit 交易所托管 58.5% → 误判"大庄#1"（还污染了惯犯库）
@@ -24,7 +24,16 @@ build_html G8 直接 WARN（有 WARN 不许交付），报告物理上编不出�
   resolution: 分析者对 flag 的显式回答（生成时为空；分析流程逐条填写后才可过闸）
 
 resolution 填写纪律：不是走过场——每条必须写"查了什么、结论是什么"
-（如"Alpha 集齐率 3/70 不是托管仓；gas 溯源独立"或"Squads 2-of-2 多签，成员 X+Y"）。
+（如"Alpha 集齐率 3/70 不是托管仓；gas 溯源独立"或"Squads 2-of-2 多签，成员 X+Y"，
+Squads 解析工具＝scripts/solana/squads_members.py）。
+
+⚠ 误判是双向的（TROLL 2026-07-29 镜像案）：本闸防"托管判成庄家"，但反向
+"庄家判成托管"同样发生过——TROLL 案私人四钱包组曾被判"Coinbase 托管体系"，
+依据的 0.002246 SOL"所方代建指纹"实为 Solana 建 ATA 物理常数（免租金+fee）。
+填 BIG_UNLABELED 的 resolution 判"托管"时必须给正证据（标签库/Vybe 链根/PoR/
+gas supplier 体系/批次伪影+集齐率），行为假设与金额常数不算；
+"跨所作业"（gas 来自 A 所、筹码来自 B 所）一票排除单所托管解释。
+判据细则见 playbook-entity-cluster-methods「托管判定的反向闸」。
 """
 import argparse, json, os, sys
 

@@ -36,6 +36,7 @@
 ## Shell 坑
 
 - zsh 通配符无匹配时整条命令报错中断：删除类命令写 `rm -f xx_* 2>/dev/null || true`
+- 前台 `sleep` 被环境禁止：等待用 until 循环 / Monitor / run_in_background；**until 前台等待同样受 Bash 超时上限（最长 10 分钟）约束**——实测 10 分钟被杀（exit 143），预计等待超 10 分钟必须 run_in_background 或 Monitor（外部 CLAW 考古，2026-07）
 - 长任务日志轮询：`tail -5 log` 而不是 `cat log`（防大输出进上下文）
 - **heredoc 内联 Python 对中文文本做 str.replace：全角标点必须逐字符对准**——目标串里的中文全角标点（，、（）、：）在 heredoc 里敲成半角时 replace 静默不生效（无报错、无变更，肉眼极难察觉）；对含中文的文件做精确替换一律用 Edit 工具，不走 heredoc+str.replace（来源：USELESS(Solana) 分析，2026-07-21）
 

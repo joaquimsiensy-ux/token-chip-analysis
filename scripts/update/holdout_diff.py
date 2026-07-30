@@ -23,12 +23,20 @@ import json
 import sys
 
 
+def grade_of(label, legacy_tier):
+    """v5.0 判级=标签前缀（大庄/小庄/离场庄/项目方/刷量）；旧 state 兜底 tier 字段。"""
+    for pfx in ("大庄", "小庄", "离场庄", "项目方", "刷量", "狙击集团"):
+        if str(label).startswith(pfx):
+            return pfx
+    return legacy_tier or "?"
+
+
 def load_groups(path):
     d = json.load(open(path))
     out = []
     for g in d.get("whale_groups") or []:
         out.append({"label": g.get("label", "?"),
-                    "tier": g.get("tier", "?"),
+                    "tier": grade_of(g.get("label", ""), g.get("tier")),
                     "status": g.get("status", ""),
                     "addrs": {str(x).lower() for x in (g.get("addresses") or [])},
                     "cur": g.get("current_share_pct"),

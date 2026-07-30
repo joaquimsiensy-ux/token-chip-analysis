@@ -37,7 +37,7 @@ CSV 字段（基础 9 列 + 6 扩展列）：`address, chain, name, category, ti
 
 ```bash
 # 聚类前把全部候选大户/关联地址过一遍
-python3 ~/.codex/skills/token-chip-analysis/scripts/labels/label_lookup.py --chain sol ADDR1 ADDR2 ...
+python3 ~/.claude/skills/token-chip-analysis/scripts/labels/label_lookup.py --chain sol ADDR1 ADDR2 ...
 python3 .../label_lookup.py --chain robinhood --file candidates.txt   # 文件每行一地址
 cat addrs.txt | python3 .../label_lookup.py --chain bsc --misses      # --misses 列出未命中
 python3 .../label_lookup.py --chain hyperliquid --json --file a.txt   # JSONL 机器可读（脚本管道）
@@ -68,7 +68,7 @@ python3 .../fingerprint_check.py --chain robinhood ADDR1 ADDR2
 5. **身份不随转账传播**：KOL 旧钱包给新钱包打过钱≠新钱包是 KOL。新钱包归属要独立证据。
 6. 钱包被盗/转让后按事件时间切分：事件后的交易不归因原主。
 7. CEX 热钱包照旧纪律：**全体用户共享，不可作地址关联依据**（见 address-book.md 头部）。
-8. mev-bot 标签=Etherscan 认定的夹子/套利 bot；**发射狙击集团不在此列**，仍会正常进聚类——勿以为"跑过标签库=庄家已排除"。
+8. mev-bot 标签=Etherscan 认定的夹子/套利 bot；**发射窗协同狙击 bot 不在此列**，仍会正常进聚类——勿以为"跑过标签库=庄家已排除"。
 9. **tornado-user 旗标的措辞纪律**：用过 Tornado ≠ 脏钱——报告写"该地址有 Tornado Cash 使用记录"陈述事实即可；但"庄家资金源头是 Tornado 提取"是必写的重大风险信号。name 区分 Depositor/Recipient（后者资金来源不可溯，信号更强）。
 10. **serial-actor 纪律（与铁律 1 的张力，明文划界）**：惯犯层保存的是**历史案的实锤定性**，与铁律 1"结论不复用"存在张力——划界如下：惯犯命中=**改变搜索优先级的提示线索**（触发深查、跨案命中必须写进报告），**不=本案定罪**——地址可能被转卖/弃用，写进报告前必须有**本案独立证据链**（当前行为+案源证据并列呈现）；措辞固定为"该地址在 XX 案中被实锤为 YY 集团成员，本案中其行为 ZZ"。警惕确认偏差：命中惯犯后对其"有罪推定"式取证是被禁止的——阴性排查照做，查完独立成立才写。
 11. **codehash 指纹纪律**：指纹命中=candidate 级（同模板 hash 不同可能是 immutable 差异，同 hash 也可能是代理壳）——**行为复核后才升 exclude**；指纹只缩小排查范围不下定论。
