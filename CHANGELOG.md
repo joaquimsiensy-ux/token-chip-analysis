@@ -15,6 +15,7 @@
 
 ## 版本索引（活跃窗口，新在上；每版一行，详情见下方对应条目）
 
+- **6.1.1** 2026-07-30 camp_share_series schema 文档修正（codex 侧 c1.0.0 实战发现回灌）：monitoring-package.md 示例由"逐日对象列表"改为 `{dates:[],series:{}}`——引擎 figures_from_facts fig1 从不支持前者，属文档-代码漂移；另回灌 codex 侧 BITCOIN 案 miss-queue 85 行
 - **6.1.0** 2026-07-30 分段执行（split-run）落地：新增 references/split-run.md（−1 机械段/−2 判断段唯一权威源）+ handoff_manifest.py 四子命令与 19 项契约测试 + /token-analyze-1、/token-analyze-2 两入口（四→六）——−1 交 GPT-5.6/Opus，−2 交 Fable 冷启动，防长上下文注意力稀释；旧单会话命令原样保留为回退路径
 - **6.0.0** 2026-07-30 架构级重构（薄骨架+判例库+评测）：SKILL.md 37KB→8.6KB 纯路由层 + analyze-workflow/context-discipline 两手册 + casebook 3 册 12 条判例 + evals 9 题 + 供给真值闸与 casebook_lint（唯一两项代码例外）+ commands 暂存重写 + 教训分流决策树——规则语义零变更
 - **5.0.0** 2026-07-30 框架级用户修订：四问→三问（问 4 背景调查整体删除）+ 取消 P0/P1 重要度分级 + 废止"狙击集团"标签 + 其他大户线降至 0.1%/0.2% 并立排查前置双闸 + 流转图/素材装配对象收窄为 ≥20% 大庄/项目方
@@ -31,6 +32,11 @@
 - **3.36.0** 2026-07-26 EVM 五币 E0b 黑箱关卡批量 + TOSHI 外部复核与归属判别（持有人榜不可信的流程级修正 + 两条托管判据 + 一条自有判据被证伪）
 - **3.36.0** 2026-07-26 EGL1(BSC) 复盘：cluster.py 的设计盲区被实证 + 「买入序列节拍指纹」新方法固化 + fetch_fundedby 静默错误修复（一次核心结论被复核推翻的完整案例）
 - 更早版本（3.35.1 及以前）→ `CHANGELOG-archive.md`
+
+## [6.1.1] - 2026-07-30 — camp_share_series schema 文档修正（codex 回灌）
+
+- monitoring-package.md 两处：示例与约定行的 camp_share_series 由"逐日对象列表 `[{ts,阵营:值}]`"改为 `{"dates":[...],"series":{"阵营名":[...]}}`——figures_from_facts.py fig1 的实际输入契约从来是后者（main 侧 L98 报错文案可证），文档写法属笔误级漂移，codex 侧 c1.0.0 独立分享包实战撞出后修正，本次 v6 大同步前回灌。report-template"与 monitoring-package 同构"句自动随正。
+- labels: miss-queue/eth.csv 回灌 codex 侧 BITCOIN 案 85 行候选（高度数节点+守门员 FUNNEL，2026-07-28），标签库 CC 真源约定。
 
 ## [6.1.0] - 2026-07-30 — 分段执行（split-run）落地：−1 机械段 / −2 判断段跨会话拆分
 
