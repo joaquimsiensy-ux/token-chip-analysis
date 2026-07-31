@@ -83,7 +83,7 @@
 - **口径**：链范围、合约、冻结块/slot、UTC cutoff、三种分母（总供应/调整后/流通）及来源。
 - **gate 记录**：每个 gate 的命令＋exit＋语义状态（accounting_mode/supply_truth 由脚本从产物 JSON 自动读 `verdict/exit_code`，防手报；四查等其他 gate 由 −1 执行者 `--gate` 显式声明并绑定产物文件）。
 - **产物 allowlist**：逐件登记路径/字节/sha256（大文件分片哈希＋复用采集侧行数/区间校验，不收尾全盘重哈希）/行数/schema/依赖。排除日志/临时库/含密钥文件（config.json 不入清单内容）。
-- **状态机**：`READY | BLOCKED | PARTIAL | SUPERSEDED | BLOCKED_E0B`——只有 READY 可被 −2 消费。
+- **状态机**：`READY | BLOCKED | PARTIAL | SUPERSEDED | BLOCKED_E0B`——只有 READY 可被 −2 消费；READY 前置＝五件契约 JSON＋accounting_mode.json＋supply_truth.json 齐全（A0/A2 必产件，缺任一 generate 即拒）。
 - **生成纪律**：原子生成（tmp+rename）、不含自身哈希；generate 后新增产物走 `late_additions`（重跑 generate 产 superseding manifest，旧件自动归档带 run_id 后缀）。
 
 ### 2.3 sealed 密封纪律（防锚定）

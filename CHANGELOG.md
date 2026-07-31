@@ -15,6 +15,7 @@
 
 ## 版本索引（活跃窗口，新在上；每版一行，详情见下方对应条目）
 
+- **6.1.2** 2026-07-30 split-run 契约收紧（PYTHIA 历史案 dry-run 步 3.5 产出）：READY 前置补 accounting_mode+supply_truth 两 gate 产物（A0/A2 必产件，缺任一 generate 即拒）；dry-run 九步全链路（真实 90MB 分片哈希/真实实体表 freeze/漂移检测/supersede）全过；测试 19→20 项
 - **6.1.1** 2026-07-30 camp_share_series schema 文档修正（codex 侧 c1.0.0 实战发现回灌）：monitoring-package.md 示例由"逐日对象列表"改为 `{dates:[],series:{}}`——引擎 figures_from_facts fig1 从不支持前者，属文档-代码漂移；另回灌 codex 侧 BITCOIN 案 miss-queue 85 行
 - **6.1.0** 2026-07-30 分段执行（split-run）落地：新增 references/split-run.md（−1 机械段/−2 判断段唯一权威源）+ handoff_manifest.py 四子命令与 19 项契约测试 + /token-analyze-1、/token-analyze-2 两入口（四→六）——−1 交 GPT-5.6/Opus，−2 交 Fable 冷启动，防长上下文注意力稀释；旧单会话命令原样保留为回退路径
 - **6.0.0** 2026-07-30 架构级重构（薄骨架+判例库+评测）：SKILL.md 37KB→8.6KB 纯路由层 + analyze-workflow/context-discipline 两手册 + casebook 3 册 12 条判例 + evals 9 题 + 供给真值闸与 casebook_lint（唯一两项代码例外）+ commands 暂存重写 + 教训分流决策树——规则语义零变更
@@ -32,6 +33,13 @@
 - **3.36.0** 2026-07-26 EVM 五币 E0b 黑箱关卡批量 + TOSHI 外部复核与归属判别（持有人榜不可信的流程级修正 + 两条托管判据 + 一条自有判据被证伪）
 - **3.36.0** 2026-07-26 EGL1(BSC) 复盘：cluster.py 的设计盲区被实证 + 「买入序列节拍指纹」新方法固化 + fetch_fundedby 静默错误修复（一次核心结论被复核推翻的完整案例）
 - 更早版本（3.35.1 及以前）→ `CHANGELOG-archive.md`
+
+## [6.1.2] - 2026-07-30 — split-run 契约收紧（历史案 dry-run 产出）
+
+计划步 3.5 执行记录：以 PYTHIA 案真实产物在 scratchpad 建 dry-run 目录（零采集零污染），走 handoff 九步全链路——generate READY（真实 accounting_mode 自动适配）→ 90MB 大文件 sha256-sparse 分片哈希（不全盘重哈希实证）→ verify PASS → receipt 盲化字段跟随环境 → freeze 前揭盲拒绝 exit 2 → freeze 真实 72KB 实体表 → 揭盲放行 → 哈希漂移检测 exit 2 → supersede 归档旧 manifest 后新 verify PASS＋receipts 断点可读。全部符合预期。
+
+- **唯一收紧**：dry-run 暴露 v6 前旧案（无 supply_truth.json）也能出 READY——新流程 A0/A2 必产 accounting_mode/supply_truth，两件并入 REQUIRED_FOR_READY（缺任一 generate 即拒，fail-closed 补全）；split-run.md §2.2 状态机行同步；测试补反例 19→20 项。
+- 服从性维度（GPT-5.6 对停止线/契约的遵守）不在管线 dry-run 覆盖内，按计划留步 4 首战检验（easy 小标的风险可控）。
 
 ## [6.1.1] - 2026-07-30 — camp_share_series schema 文档修正（codex 回灌）
 

@@ -42,7 +42,9 @@ CONTRACT_FILES = [
     "accounting_mode.json", "supply_truth.json",
 ]
 REQUIRED_FOR_READY = ["candidate_universe.json", "candidate_screening.json",
-                      "identity_preflight.json", "anomalies.json", "data_map.json"]
+                      "identity_preflight.json", "anomalies.json", "data_map.json",
+                      # A0/A2 必产的两个 gate 产物——READY 缺任一＝流程没跑完（dry-run 步 3.5 收紧）
+                      "accounting_mode.json", "supply_truth.json"]
 # 自动 gate 适配：从产物 JSON 读 verdict/exit_code（防手报）；verify 时重读比对
 AUTO_GATES = {"accounting_gate": "accounting_mode.json", "supply_truth_gate": "supply_truth.json"}
 EXCLUDE_SUFFIXES = (".log", ".duckdb", ".duckdb.wal", ".lock", ".tmp", ".bak")
