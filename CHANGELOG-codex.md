@@ -16,6 +16,7 @@
 
 ## 版本索引（codex 侧，新在上）
 
+- **c2.1.0 2026-07-30 split-run −1 模式执行条款（G6）**：本副本正式接任 −1 机械段主轨执行者。SKILL.md 适配节新增 G6：触发语/开工探针与案级锁/范围＝A0–A2＋A3 机械子层/停止线八项（明确 G4/G5 冻结前硬闸在 −1 不执行由 −2 承担，停止线优先）/未档异常写 blocker 禁自创解法/全程盲化＋receipt/收工 generate 如实报状态完成即停/audit_input_manifest 与 handoff 契约互不替代/与 G2 禁自审兼容（A4 外部异构在 CC 侧按 split-run §3.3 收紧执行）。唯一权威源＝下发的 `references/split-run.md`。
 - **c2.0.0 2026-07-30 v6 大同步（main v4.2.0→6.1.1 十提交并入）+ 适配层通则化重构**：按 `c2-migration-matrix.md` 先行矩阵执行 merge；SKILL.md 重构为 main v6 薄骨架＋「Codex 运行适配」通则节（G1 路径/工具/模型映射、G2 禁自审、G3 独有资产、G4 经济控制硬闸、G5 静置仓反扫硬闸——原逐文件改字式平台适配全部收编为通则，未来同步冲突面大幅收缩）；三问框架/去分级/狙击集团废止随 main 生效，codex 独有资产 P0/P1 措辞全部迁移（economic-control-accounting 4 处＋tiering 判据节＋docs_lint needle）；codex 复盘判据与三账义务重挂为 tiering/report-template 尾部独有小节；camp_share_series schema 修正（c1.0.0 发现）与 BITCOIN 案 miss-queue 85 行已回灌 main（6.1.1）；run_all 融合为 17 项（main 16＋audit_release_gate）全 PASS；唯一存档分歧＝state-anomaly §9c（矩阵 §五留裁决）。
 - **c1.1.0 2026-07-29 删除 Codex 自审伪外审流程**：Codex 版不再调用 `codex exec`、Codex CLI 或同模型会话充当外部异构怀疑者；阶段 4 与 easy/update 模式统一改称内部对抗性自检，不宣称外部独立性。原始数据重算、机械对账、发布硬闸与内部反例自检保留。
 - **c1.0.0 2026-07-29 独立分享包可运行**：`sync-from-cc.sh` 区分维护者双线 worktree 与不含 Git 历史的分享快照；后者明确提示并返回 0，不再因缺少 `.git`/`main` 阻断分析。同步规则、SKILL 第 0 步与分享说明同源更新；本机双线合并和测试门禁不变。
@@ -29,6 +30,10 @@
 - **3.26.0 2026-07-24 FROGGIE(BSC) easy 复盘：阵营序列 schema 契约修正+惯犯回灌单案安全模式+两条聚类边界候选**：monitoring/report 两册统一 `camp_share_series={dates,series}` 唯一形态，figures_from_facts 对旧列表可读 fail+契约测试；accumulate_offenders 支持直接传单案目录、默认库增量合并防截库、无状态/零实锤组 fail-closed 不改输出，离线测试覆盖；methods 新增【候选】短窗口多来源归集只证归集后统一控制、来源钱包证据不足进 associated_source_addresses；tiering 新增【候选】大额串联只证资金 campaign、必须先机械过 P0/P1 门槛再谈自动化/刷量例外
 
 ---
+
+## [c2.1.0] - 2026-07-30 — split-run −1 模式执行条款（G6）
+
+分段执行计划步 3。CC 侧 v6.1.0 已落 split-run.md（−1/−2 边界、交接契约、handoff_manifest.py 四子命令）并经 c2.0.0 同步下发；本条把"codex＝−1 主轨执行者"落成 SKILL.md 适配节 G6 正式条款，要点：触发语（"对 <币> 跑 −1/机械段"）；探针＋案级 `.stage1.lock` 双前置；停止线八项与 G4/G5 的优先级关系写死（−1 不冻结实体，冻结前硬闸由 −2 承担，不矛盾）；初步定性只落 `sealed/`；未档异常写 blocker；全程盲化＋逐步 receipt；收工 generate 如实报状态、提示用户开 CC −2 会话、完成即停；三账审计件与 handoff 契约互不替代；与 G2 禁自审兼容。验收走计划步 3.5 dry-run 与步 4 首战。
 
 ## [c2.0.0] - 2026-07-30 — v6 大同步 + 适配层通则化重构（主版本：架构级）
 
