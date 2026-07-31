@@ -52,7 +52,6 @@ description: 对任意链上代币（EVM/Solana/Hyperliquid/Filecoin 及新链�
 - `casebook/README.md` — 判例库总纲（六字段结构与使用纪律；C 托管/E 聚类/S 供给三册）
 - `analysis-playbook.md` — 链无关方法学路由索引
 - `playbook-supply-recon.md` — 供给与对账（§1 分母口径/§1b 多链判据/§2 对账 gate/§8 留存质押）
-- `playbook-entity-cluster.md` — 实体识别与聚类路由索引
 - `playbook-entity-cluster-methods.md` — 标注/归因/聚类（§3 三级兜底/§4 逐笔归因/§6 聚类硬规则）
 - `playbook-entity-cluster-tiering.md` — 标签体系与判级（§6a 门槛与三分类/大户排查双闸/合并指纹库）
 - `playbook-entity-cluster-cost.md` — 成本工具（§6b 配价方法/双口径/退出深度比）
@@ -67,7 +66,8 @@ description: 对任意链上代币（EVM/Solana/Hyperliquid/Filecoin 及新链�
 - `research-workflows.md` — 解锁情报路线与复核 prompt 模板
 - `data-pipeline-evm.md` — EVM 路由索引；分册：`data-pipeline-evm-channels.md`（通道决策树/死亡名单）、`data-pipeline-evm-sources.md`（数据面/Base/Arbitrum 专节）、`data-pipeline-evm-recon.md`（对账/DuckDB 重放引擎）
 - `data-pipeline-solana.md` — Solana 路由索引；分册：`data-pipeline-solana-scan.md`（双 RPC/托管判别五步法）、`data-pipeline-solana-capture.md`（SQD/锚点法/采集加速）
-- `data-pipeline-hyperliquid.md` / `data-pipeline-filecoin.md` / `data-pipeline-robinhood.md` — 各链管道
+- `data-pipeline-robinhood.md` — Robinhood 路由索引；分册：`data-pipeline-robinhood-channels.md`（通道决策表/脚本/修正记录）、`data-pipeline-robinhood-traps.md`（五类发射台/平台设施坑 1–17）、`data-pipeline-robinhood-methods.md`（本链绑定方法论坑）
+- `data-pipeline-hyperliquid.md` / `data-pipeline-filecoin.md` — 各链管道
 - `address-book.md` — 基础设施地址标签库（手工核验层；label_lookup 已自动并源）
 - `labels/README.md` — 批量标签库使用篇（七链 CSV＋resolver；聚类前全量候选先过 label_lookup）
 - `labels/MAINTENANCE.md` — 标签库维护篇（维护会话才读）

@@ -1,6 +1,6 @@
 # EVM 链数据管道实测手册（BSC/Base/Arbitrum，2026-07 实测版）
 
-> 本文合并两次 BSC 实战的通道结论。两份结论不矛盾：SIREN 会话因"从零分析"未复测 bloXroute，其免费端点死亡名单不含 blxrbdn；OPN 实测 blxrbdn 可用。两表合并即为下方决策树。（来源：OPN/SIREN(BSC) 分析，2026-07）
+> 本文合并两次 BSC 实战的通道结论。两份结论不矛盾：SIREN 会话因"从零分析"未复测 bloXroute，其免费端点死亡名单不含 blxrbdn；OPN 实测 blxrbdn 可用。两表合并即为下方决策树。（OPN/SIREN，07）
 > 所有限速/吞吐数字为当时实测，节点政策随时会变；复用任何通道前先按 §6 做 1 分钟能力探测。
 
 ---

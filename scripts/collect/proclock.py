@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """跨进程文件锁（C2，3.19）——fcntl.flock 主锁 + 锁文件元数据（pid/run_id/心跳）诊断。
 
-设计要点（与 O_EXCL 方案的取舍，详见 scratch-3.19/B-collect-hardening-notes.md）：
+设计要点（与 O_EXCL 方案的取舍权衡，草稿已随 scratch-3.19 清理，2026-07-31）：
   - 真锁是 flock(LOCK_EX|LOCK_NB)：内核级原子，持有进程死亡（含 SIGKILL、
     run_guarded 水位击杀）即自动释放——"PID 不存在 → 可接管"由内核天然保证，
     无 O_EXCL 方案的残留锁/接管竞态问题。
