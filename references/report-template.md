@@ -24,7 +24,7 @@ python3 scripts/report/build_html.py --md 报告.md --out 报告.html
 
 **问 4 项目方背景调查已删除（v5.0，2026-07-30 用户定）**：创始人黑历史/社媒运营/大V关注/水军判定整路不再做，报告不设背景调查章节。解锁日程情报（原背调路线 1）保留——它服务问 3 的 vesting 小节，见下方附加要求。
 
-**建仓成本不再是固定命题**（v2.0 删除旧问③）：不再设独立章节；仅当某实体的出货获利、浮盈状态等结论需要成本参照时，按 playbook §6b 方法按需计算并就地引用。
+**建仓成本＝按需工具，不设独立章节**：仅当某实体的出货获利、浮盈状态等结论需要成本参照时，按 playbook §6b 方法按需计算并就地引用。
 
 **开放条款——三问之外必答第 4 条"本次特有发现"**：TL;DR 在三问直答后必须带第 4 条——链上任何不属于三问的显著结构性异常（暴跌/暴涨归因、假量对倒矩阵、流动性池异动、治理/权限异动、跨链桥异常等）在此给一句话结论，并单列正文章节展开；确无特有发现时明写"无"（这也是结论，防读者误以为没查）。禁止因"框架未覆盖"而略去。
 
@@ -34,7 +34,7 @@ python3 scripts/report/build_html.py --md 报告.md --out 报告.html
 
 标签定义、门槛数字、峰值取法、合并口径、其他大户排查前置双闸的**唯一权威源=playbook-entity-cluster-tiering §6a**（A3 判级时已读；本节不设速查副本，改门槛只改 tiering 一处）。本节只管报告怎么写：
 
-- 五标签＝项目方/大庄/小庄/离场庄/刷量地址；狙击集团标签已废止（v5.0）——协同实体按普通门槛判级，协同建仓行为写进该实体小节。
+- 五标签＝项目方/大庄/小庄/离场庄/刷量地址；发射窗协同实体按普通门槛判级，协同建仓行为写进该实体小节（tiering §6a）。
 - **报告只对标签实体展开分析**。其他大户（当前 ≥0.1% 总供应或 ≥0.2% 流通、未入任何标签；v5.0 门槛下调）必须先过排查前置双闸（tiering §6a）才准归阵营；排查后仍独立者与散户只作为阵营出现在标准图 1 中，正文不逐个开小节，阴性排查小节汇总交代排查覆盖数。
 - 编号规则：大庄/小庄按当前持仓降序编号（大庄#1、小庄#1…），离场庄按历史峰值降序；项目方不编号（内部钱包编号区分）。
 - **钱包标签制（正文与图例的唯一写法）**：`项目方钱包#1`、`大庄#1钱包#2`、`小庄#2钱包#1`、`离场庄#1钱包#1`。**报告正文（含表格、图、题注）一律用标签，不出现任何形式的地址（截断的也不行）**；标签 ↔ 完整地址对照只放附录 B 与 JSON 附录。类型三分类（问 2）作为实体属性写在小节标题与 JSON，如"大庄#1（类型②·多地址互转）"。
@@ -176,7 +176,7 @@ python3 scripts/report/build_html.py --md 报告.md --out 报告.html
 
 **为什么**：v3.2 砍掉默认 appendix.json 后，未买入标的日后做 /token-update 时实体表只能从附录 B 的**文字反抄**——手抄地址正是本 skill 多条铁律防的头号错误源。本文件以近零成本堵上该缺口：交付时顺手从落盘数据落一份**纯机器状态**，不进报告、不算监控包。
 
-- **schema = appendix.json 的机器子集**（键名与 monitoring-package.md 完全同构，日后买入直接在其上扩展成 appendix）：`token`（含 data_cutoff/skill_version 必填；**total_supply 等供给字段一律 human 单位**——曾把 wei 值又除一次 decimals 双重计，BANANAS31(BSC) 2026-07-22）、`whale_groups`（**entity_id**/label/type/status/addresses/current_share_pct/peak_share_pct；**tier 字段 v5.0 废止不再写入**，读取端遇旧文件忽略）、`vault_addresses`、`addresses`（仅 address/chain/role/balance_est/group 五字段——**不含** sentinel/watch/why 等监控字段）、`camp_share_series`（≤500 点，重绘图 1 基线）。**不含** monitoring_advice、观察哨等一切人工监控文案。
+- **schema = appendix.json 的机器子集**（键名与 monitoring-package.md 完全同构，日后买入直接在其上扩展成 appendix）：`token`（含 data_cutoff/skill_version 必填；**total_supply 等供给字段一律 human 单位**——曾把 wei 值又除一次 decimals 双重计，BANANAS31(BSC) 2026-07-22）、`whale_groups`（**entity_id**/label/type/status/addresses/current_share_pct/peak_share_pct；**不含 tier 字段**，读取端遇旧文件忽略）、`vault_addresses`、`addresses`（仅 address/chain/role/balance_est/group 五字段——**不含** sentinel/watch/why 等监控字段）、`camp_share_series`（≤500 点，重绘图 1 基线）。**不含** monitoring_advice、观察哨等一切人工监控文案。
 - **entity_id 稳定主键（3.19 起 whale_groups 必填）**：值与 facts.json entities 的字典键一致（如 `e_big1`），一次分配终身不改；label 只是展示文案，改措辞不影响对账与 /token-update 续跑。facts_gate G1 优先按 entity_id 匹配，旧 state 无此字段回退 label 匹配（向后兼容）。
 - **provenance 薄版血缘（3.19 起顶层必填）**：`{"schema_version": "2", "skill_commit": "<git rev-parse --short HEAD>", "data_sources": ["hypersync_v2", ...]}`——回答"这份结论由哪版流程+哪些数据源算出"；缺失时 facts_gate 出 G7 提示。完整计算血缘链（逐阶段输入输出哈希）评估后暂缓不做。
 - 地址一律从落盘数据文件复制（完整地址纪律同 JSON 附录）；与附录 B 名单一致。
@@ -245,7 +245,7 @@ schema 全部细节（report-extract 四键与 `id="report-extract"` 硬约定�
 - `> i 文字` → 蓝色信息框（TL;DR/图下结论解读）；`> ! 文字` → 红色警示框（风险提示/"该图未绘制"说明）；`> 文字` → 普通灰引用
 - `![题注](charts/fig1.png)` 独立成行，后紧跟一行 `*斜体题注*` → 图与题注绑定
 - 表格列数不限但超 6 列考虑拆分（HTML 可横滚，PDF 会裁切）
-- **正文（含表格）不出现地址**——一律钱包标签；完整地址只在附录 B 与 JSON 附录（v2.0，取代旧"表格可截断为前6…后4"规则）
+- **正文（含表格）不出现地址**——一律钱包标签；完整地址只在附录 B 与 JSON 附录
 - 事件清单行首用 ①②③（`plot_price_events` 返回值已带）
 - 关键数字（地址/哈希/金额）一律从落盘数据文件复制，禁止凭记忆敲
 - **时间戳时区纪律（v3.8.1）**：链上/交易所 API 数据原生 UTC，但用户的行情软件（GMGN/币安 App）显示本地时间（北京 UTC+8）——报告与问答中**分钟级时间一律双标**"UTC hh:mm（北京 hh:mm）"；日期级在跨日敏感处（UTC 16:00 后＝北京次日）注明口径（实锤：SIREN 回测"凌晨 00:00~03:39 场内先崩"被用户对照 GMGN 图质疑"明明早上 9-10 点才崩"——同一场崩盘两个钟，裸 UTC 让用户以为存在两个事件，2026-07-20）
@@ -265,7 +265,7 @@ schema 全部细节（report-extract 四键与 `id="report-extract"` 硬约定�
 7b. **术语可读性自检**（v3.8）：全文专名/自造绰号/机制短语首现处都有大白话解释吗；自造绰号 ≥5 个时角色速查卡放了吗——标准：读者不提问就能读懂，每个未解释的词=读者未来的一个提问
 8. 第六章状态评估齐了吗；结论自带的检验点（下个解锁日/待验证关联对）正文点到了吗；**默认交付无观察哨/监控建议章节、末尾带"买入可补监控包"固定句**（v3.2）
 9. 特有发现有正文章节承载吗；vesting 标的的问 3 含"未来 6–12 个月解锁日程与量级"小节吗
-10. ~~外部代币名自查~~ **已废止（v6.4.2，用户裁定）**：不再禁止正文出现其他代币名——铁律 1 管的是"不复用历史标的的结论"，提及代币名本身不构成违规。build_html 的 cashtag 扫描同步降级为信息性 [NOTE]（不再 WARN 拒交付），提示仅用于自查是否引用了历史案结论。交付时本条无动作。
+10. **cashtag 扫描 [NOTE] 处置**：build_html 对正文出现的其他代币名输出信息性 [NOTE]（不拒交付）——仅用于自查是否复用了历史案结论（铁律 1；提及代币名本身不违规，v6.4.2 用户裁定）；确认未复用即可交付。
 11. 附录四件套齐了吗（验证步骤/标签地址对照/修正记录/来源）；默认不含 JSON（买入后按需）；**analysis-state.json 已落盘**且地址与附录 B 一致（v3.3）
 12. `build_html.py` 退出码 0（有 [WARN] 缺图不许交付）；阵营图 `id="chart-camps"` 自动嵌入目检存在
 13. **【买入后监控包交付时追加】**：观察哨与两档监控建议齐且逐条有原因、与 JSON monitoring_advice 的 mode/alert_threshold_pct 一一对应；JSON 顶层四键齐、addresses 与附录 B 一致且完整地址、sentinel 纪律复查（周期性会动的地址必须 false）、round_target/watch_return 该填的填了；重跑 build_html 零 WARN、`id="report-extract"` 目检存在

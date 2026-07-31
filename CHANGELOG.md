@@ -15,6 +15,7 @@
 
 ## 版本索引（活跃窗口，新在上；每版一行，详情见下方对应条目）
 
+- **6.4.3** 2026-07-31 变更叙事全库清理（用户人工复核发现＋@CX 双路扫描，三分类口径用户拍板）：一类·纯变更叙事约 45 处清除（"取代旧条款/vX 曾取代/已废止/原条款/历史沿革/拆册搬家史/labels 拆分史/取代 v1"等，机制依据与授权戳保留）+ 二类·狙击集团废止段瘦身归位（tiering 收缩为现行规则+update-workflow 指针，阵营 legacy 行删除）+ 顺修 solana-scan 头部删字残渣与 tiering 粘连行 + 新整编规则入 retrospective 2b（变更叙事进 CHANGELOG、正文只留现行规则+依据、迁移桥唯一归宿 update-workflow）；codex 建议中 6 处活兼容规则（report-template/monitoring/analyze-workflow 的旧文件读取端行为）经裁决保留不搬
 - **6.4.2** 2026-07-31 SKILL.md 手工瘦身后 @CX 全库一致性修复（codex 通读 47 文档出 15 项、逐条核裁后用户拍板全修）：残损 2（铁律 1 残字/铁律 7 悬空分号）+ **"零外部代币名"红线全链废止**（用户裁定铁律 1 本意=结论不复用，不禁提代币名；6 文档清理 + build_html cashtag WARN→NOTE 不再拦交付）+ 存量漂移 7（六条铁律、split-run A4–A6、supply-recon 对齐四查、HIGH tag 措辞、"查3"编号、整编触发器、E6 引 E5）+ 低危 4（判级数值副本收归 tiering、casebook C-01/C-05 指针、§7.5 免 key 路线补合同边界、5 处粘连行拆分）
 - **6.4.1** 2026-07-31 惯犯库回灌随复盘（6.4.0 挂账项用户裁决落地）：accumulate_offenders --apply 从 E5/checklist 15 交付后固定动作改挂 retrospective 步骤 3——结论未经用户复核不入惯犯库，不复盘不回灌；4 文档同步，脚本与冲突检测机制零变更
 - **6.4.0** 2026-07-31 复盘触发机制改制（用户拍板）：A6/E6/U6 复盘从工作流固定末步改为**仅用户明确要求时执行**——分析会话交付即收工，候选教训随手记案目录 retro_notes.md 不动 skill 文件，用户复核确认结论后下令复盘再走 retrospective.md 入库；split-run sealed 自查申报改挂 −2 交付；9 文件 21 处＋命令三份双处同步
@@ -30,6 +31,22 @@
 - **4.1.0** 2026-07-30 PYTHIA 双报告交叉核实复盘：实体身份防复发三闸（label_lookup 并源 address-book / entity_identity_gate+G8 编译门 / 复核 prompt 翻案四问固化）+ 复盘元规则（身份类教训必须以代码收尾）
 - **4.0.0** 2026-07-28 大整编（用户点名）：3.0→3.41 四十余版增量迭代的结构清理——路由索引补齐 9 节、结构错位归位 3 处、消重立权威源制 6 组、CHANGELOG 重整归档 29 条；只减不加，规则语义未动
 - 更早版本（3.41.0 及以前）→ `CHANGELOG-archive.md`
+
+## [6.4.3] - 2026-07-31 — 变更叙事全库清理（用户人工复核开题，@CX 双路扫描后用户拍板口径）
+
+背景：用户人工复核 skill 规则文件，在 playbook-entity-cluster-tiering.md 首先发现正文堆积"修改历史/已作废内容"，追问"不会污染上下文吗"。经三分类辨析后用户拍板通用口径并下令全库清理（@CX：codex 只读扫描出清单，我方独立扫描后融合，执行全部由我方完成）。
+
+**三分类口径（用户 2026-07-31 拍板，已沉淀进 retrospective.md 2b 整编模式动作 2b 条）**：
+- **一类·纯变更叙事→清除**："取代了什么旧条款/哪版删了什么/原条款是什么"类历史进 CHANGELOG，正文只留现行规则；紧跟的机制依据（门槛数字为什么是这个值）与授权戳（YYYY-MM-DD 用户定）必须保留。
+- **二类·新旧桥→归位瘦身**：废止标签的存量数据迁移细节唯一归宿=update-workflow 标准迁移条款，其他文件只留一行指针。
+- **三类·保留不动**：行尾来源标注（存留审计追溯锚）、机制依据、翻案实证数字。
+
+**执行明细**：
+- 一类清除约 45 处，涉及 22 个文件：SKILL.md（狙击集团废止字样）；analysis-playbook（三问框架版本沿革/P0P1/建仓成本"不再是"句式/历史沿革整段）；tiering（标签体系修订史/双闸"取代旧条款"/门槛"自旧版下调"改"门槛依据"/媒体驱动 v5.0 改写注/首30分钟 cohort"不再是"句式）；report-template（建仓成本/狙击集团/地址截断旧规则/checklist 10 废止公告改正面 cashtag 处置规则/tier 字段）；easy-workflow（问 4 删除史 ×2/E5"移入复盘"史）；cost 标题；hyperliquid（tag 已废止）；methods（翻案改写标题注/3.15.0 转正史 ×2/"本条新增的是"改分工表述）；supply-recon（v6.4.2 对齐戳）；state-anomaly（3.33.0 版本引用）；evidence-wording（tag"全部取消"改禁用/观察哨 v3.2 时机史）；retrospective（废止旧文 ×2）；labels/README（稳定化拆分史/红线废止叙事改正面）；labels/MAINTENANCE（拆分史/补丁标题改维护纪律/补空史）；address-book（v4.2 补录史）；casebook/README（建于 v6.0.0）；attic（v6.2.0 起句式改静态定义）；data-pipeline 十文件（evm 合并调和史+整编戳、solana 来源声明反转史压缩、robinhood 合并时刻史+拆册戳+上移台账整段删、六个分册头部"已拆/原样迁移/最后整编"、solana-capture 整编收拢/取代 v1×2/整编压缩/取代锚点法）。
+- 二类归位 2 处：tiering 狙击集团段改写为现行判级规则+一行 update-workflow 指针（迁移细节 update-workflow L11 原已有，未新增内容）；tiering"阵营已废止"行删除（legacy 键权威=CAMP_ORDER 声明已在）。
+- 顺修残损 2 处：solana-scan 头部"来源声明与 等标注图例"删字残渣；tiering L101 来源标注与"---"粘连行。
+- **裁决与 codex 分歧（6 处否决其清理建议）**：analyze-workflow CAMP_ORDER legacy 注、report-template 图 1 紫色 legacy 注与 price_series 旧基线例外、facts_gate 旧 state 回退、"旧报告重编译不强制回填"、monitoring skill_version 旧版 fallback 与 CAMP_ORDER legacy 注——均为读取端现行兼容行为且已是最小指针形态，非变更叙事；MAINTENANCE 变更史表与扩容路线台账保留（维护会话专用工作资料，不进分析上下文）。
+- 明确不动：update-workflow L11（桥的唯一归宿）；split-run（首战前冻结）；easy-workflow L83 案例原始术语注（审计锚）；labels/README L24 CSV 兼容；solana-capture v1 meta 自动迁移与 gaps 机制依据注。
 
 ## [6.4.2] - 2026-07-31 — SKILL.md 手工瘦身后 @CX 全库一致性修复
 

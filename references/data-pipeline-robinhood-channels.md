@@ -1,6 +1,6 @@
 # Robinhood Chain 数据管道 · 采集通道与可复用脚本（data-pipeline-robinhood 分册 1/3）
 
-> 母文档：`data-pipeline-robinhood.md`（已拆为薄路由索引页；链概况与合并来源声明见索引页）。本册覆盖原「通道决策（实测）」＋「可复用脚本」＋「修正记录」三段；「链特有的坑」（坑 1–17）见 `data-pipeline-robinhood-traps.md`，「方法论坑」（Robinhood 绑定条目）见 `data-pipeline-robinhood-methods.md`。规则逐条原样迁移、零改写；拆册整编 2026-07-31（v6.3.0）。
+> 母文档：`data-pipeline-robinhood.md`（薄路由索引页；链概况与合并来源声明见索引页）。本册覆盖「通道决策（实测）」＋「可复用脚本」＋「修正记录」三段；「链特有的坑」（坑 1–17）见 `data-pipeline-robinhood-traps.md`，「方法论坑」（Robinhood 绑定条目）见 `data-pipeline-robinhood-methods.md`。
 
 ## 通道决策（实测）
 

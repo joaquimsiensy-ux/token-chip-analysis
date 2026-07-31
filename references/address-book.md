@@ -206,7 +206,7 @@
 | `0x32487287c65f11d53bbca89c2472171eb09bf337` | **Virtuals 平台回购机器（TWAP buyback bot）**（HAN 分析实证+对抗复核 2026-07-16） | EOA；对 Virtuals 系 agent 币做 TWAP 机械买入（中位 13 秒/笔、单向零卖出），跨 **150+ 种** agent 币系统性积累，弹药 VIRTUAL；gas 来自平台部署管理员 0xe4a001…与 keeper 0x81f7ca…。**出现在任何 Virtuals 币的买家榜=平台系统组件，勿判外部庄家/吸筹方**；其处置模式=keeper 对新合约三连初始化后数秒内整仓 transfer 转入封存（非卖出）——监控其转出时先核对接收方 creator 是否平台合约+有无 keeper 初始化前奏，命中=平台拨付勿报"庄家出货" |
 | `0xe4a0015b4c12f84bf9b8b9db56b7ef0bc539d88f` | **Virtuals 平台部署管理员**（HAN 分析实证+对抗复核 2026-07-16） | EOA；掌握工厂/ACF 执行器/USDG 分发合约的 ownership 与 role 管理权（grantRole/transferOwnership 实测），权限高于 keeper；曾同秒向 6 个系统地址批量注资 0.01E 初始化（受益者含 keeper/金库2/回购机器）。**作为 funder 出现=收款方为平台系统组件的强证据**；坑：Blockscout `/transactions?filter=from` 对它稳定 500，去掉 filter 正常 |
 | `0x0000000071727de22e5e9d8baf0edac6f37da032` | ERC-4337 EntryPoint v0.7（跨链同址） | AA 钱包交易的 txto 都是它，由多家 bundler 代发（txfrom 常见 0x4337 前缀），勿作关联证据 |
-| `0x5ff137d4b0fdcd49dca30c7cf57e578a026d2789` | ERC-4337 EntryPoint v0.6（跨链同址） | 存量流量仍大；四链 getCode 亲验 2026-07-17（v4.2 补录，此前只有 v0.7 是覆盖漏洞） |
+| `0x5ff137d4b0fdcd49dca30c7cf57e578a026d2789` | ERC-4337 EntryPoint v0.6（跨链同址） | 存量流量仍大；四链 getCode 亲验 2026-07-17 |
 | `0xd29c85f15df544ba632c9e25829fd29d767d7978` | Across 桥 Universal_SpokePool（跨链入金通道之三；标签库已有，Pointless 二次增量行为面补注 2026-07-17） | 12.2 万+笔 ERC1967Proxy；跨链 fill 以 internal 转账给用户地址交付——**经它 internal 入金=跨链断头**，不构成私人金主边（实测一个 1.6% 大户的注资来自它，据此排除私人关联） |
 | `0x3f43479c8536f7ee8180d0f67a050980dc5bc8c8` | batchTransferNative 批量转账工具（disperse 类半公共，125 用户；标签库已有，Pointless 二次增量穿透用法补注 2026-07-17） | **穿透用法：每一笔调用批次归属单一操作者**——同批次接收方=同一操作者的马甲组（wei 级等额分发是附加指纹，实测据此并出九址协同工作室）；但跨批次用户互不相干，"都用过它"不构成关联 |
 | `0x243a17063102c29fb60aa930db199d4b73ab8a37` | 公共热钱包/托管结算设施（Pointless 二次增量核验 2026-07-17） | 8 万+笔高频；大户"分仓转给它"实为经它卖出/托管过手，勿判私人分仓地址 |

@@ -1,6 +1,6 @@
 # Robinhood Chain 数据管道 · 链特有的坑（发射台结构与平台设施）（data-pipeline-robinhood 分册 2/3）
 
-> 母文档：`data-pipeline-robinhood.md`（已拆为薄路由索引页；链概况与合并来源声明见索引页）。本册覆盖原「链特有的坑（重要）」全段（坑 1–17，编号原样保留，坑 4a/4b 与两组重号 8/9 亦按原编号不动）；通道表与脚本见 `data-pipeline-robinhood-channels.md`，方法论坑见 `data-pipeline-robinhood-methods.md`。规则逐条原样迁移、零改写；拆册整编 2026-07-31（v6.3.0）。
+> 母文档：`data-pipeline-robinhood.md`（薄路由索引页；链概况与合并来源声明见索引页）。本册覆盖「链特有的坑（重要）」全段（坑 1–17，编号沿用原体系，坑 4a/4b 与两组重号 8/9 按原编号不动）；通道表与脚本见 `data-pipeline-robinhood-channels.md`，方法论坑见 `data-pipeline-robinhood-methods.md`。
 
 ## 链特有的坑（重要）
 

@@ -1,6 +1,6 @@
 # EVM 链数据管道 · 对账与重放引擎（data-pipeline-evm 分册 3/3）
 
-> 母文档：`data-pipeline-evm.md`（已拆为薄路由索引页，文档级引言与时效纪律见索引页）。本册覆盖原 **§5 对账 gate / §11 公共数仓准入实证与分工定稿 / §12 DuckDB 重放/缩图引擎**；§1/§2/§3/§6/§7 见 `data-pipeline-evm-channels.md`，§4/§8/§9/§10 见 `data-pipeline-evm-sources.md`。正文 §N 交叉引用一律为母文档节号。规则逐条原样迁移、零改写；最后整编 2026-07-22。
+> 母文档：`data-pipeline-evm.md`（薄路由索引页，文档级引言与时效纪律见索引页）。本册覆盖 **§5 对账 gate / §11 公共数仓准入实证与分工定稿 / §12 DuckDB 重放/缩图引擎**；§1/§2/§3/§6/§7 见 `data-pipeline-evm-channels.md`，§4/§8/§9/§10 见 `data-pipeline-evm-sources.md`。正文 §N 交叉引用一律为母文档节号。
 
 ## 5. 对账 gate（数据不闭合不进分析）
 

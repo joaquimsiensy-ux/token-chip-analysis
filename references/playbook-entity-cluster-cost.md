@@ -2,7 +2,7 @@
 
 > 母路由：`analysis-playbook.md` 全局路由表直达本册。本册覆盖 **§6b 建仓成本估算（v2.0 起为按需工具）**；§3/§4/§6 见 `playbook-entity-cluster-methods.md`，§6a 见 `playbook-entity-cluster-tiering.md`。规则行尾标注来源会话。
 
-## 6b. 建仓成本估算（v2.0 起为按需工具，不再是固定命题）
+## 6b. 建仓成本估算（按需工具）
 
 **定位变化（2026-07-14 用户定）**：建仓成本已从固定命题中删除——不再单设报告章节、不强制每实体估算。仅当某实体的**出货获利额、浮盈状态、砸盘动机**等结论需要成本参照时，按本节方法就地计算并在正文引用；JSON 附录 whale_groups 的成本三字段（est_cost_usd/avg_cost_price/cost_method）相应改为可选（算过才填）。
 

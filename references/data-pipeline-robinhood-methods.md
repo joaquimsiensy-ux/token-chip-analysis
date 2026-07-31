@@ -1,8 +1,6 @@
 # Robinhood Chain 数据管道 · 方法论坑（Robinhood 绑定条目）（data-pipeline-robinhood 分册 3/3）
 
-> 母文档：`data-pipeline-robinhood.md`（已拆为薄路由索引页；链概况与合并来源声明见索引页）。本册覆盖原「方法论坑（对抗复核实锤，通用性强）」段中**与本链通道/平台/脚本绑定**的条目；通道表与脚本见 `data-pipeline-robinhood-channels.md`，坑 1–17 见 `data-pipeline-robinhood-traps.md`。拆册整编 2026-07-31（v6.3.0）。
->
-> **上移声明（一字未删，只搬家）**：原段 18 条链无关通用条目已上移至链无关 playbook——`playbook-entity-cluster-methods.md` 13 条（原子中转设施识别法／transit 二次分层／漏斗地址检测／"归集出货 hub"查出账签名／"漏斗/对倒环"getCode／relayer txfrom 用户数判据／"同分钟同金额转出"≠洗仓／面额指纹独占性检验／gas 同源边查时序／发射前预注资时序证据／Safe 多签两坑；另"两跳体检+假桥排查"与"尘埃投毒出纳三查"并入该册既有同主题条目补差异）、`playbook-state-anomaly.md` 3 条（池子"储备骤降"哨币本位／V3 挂单监控 tick 级重建；"毛/净卖出分开报"并入既有条）、`playbook-evidence-wording.md` 2 条（口径变更后全文重核／小时中位价格序列抹平极值）。
+> 母文档：`data-pipeline-robinhood.md`（薄路由索引页；链概况与合并来源声明见索引页）。本册只存**与本链通道/平台/脚本绑定**的方法论条目；链无关通用条目一律在 playbook 三册（entity-cluster-methods / state-anomaly / evidence-wording）。通道表与脚本见 `data-pipeline-robinhood-channels.md`，坑 1–17 见 `data-pipeline-robinhood-traps.md`。
 
 ## 方法论坑（Robinhood 绑定条目）
 

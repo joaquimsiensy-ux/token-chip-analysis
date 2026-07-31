@@ -1,6 +1,6 @@
 # EVM 链数据管道 · 辅助数据面与链专节（data-pipeline-evm 分册 2/3）
 
-> 母文档：`data-pipeline-evm.md`（已拆为薄路由索引页，文档级引言与时效纪律见索引页）。本册覆盖原 **§4 辅助数据面速查表 / §8 Base 链专节 / §9 Arbitrum 链专节 / §10 质押型代币标的范式**；§1/§2/§3/§6/§7 见 `data-pipeline-evm-channels.md`，§5/§11/§12 见 `data-pipeline-evm-recon.md`。正文 §N 交叉引用一律为母文档节号。规则逐条原样迁移、零改写；最后整编 2026-07-22。
+> 母文档：`data-pipeline-evm.md`（薄路由索引页，文档级引言与时效纪律见索引页）。本册覆盖 **§4 辅助数据面速查表 / §8 Base 链专节 / §9 Arbitrum 链专节 / §10 质押型代币标的范式**；§1/§2/§3/§6/§7 见 `data-pipeline-evm-channels.md`，§5/§11/§12 见 `data-pipeline-evm-recon.md`。正文 §N 交叉引用一律为母文档节号。
 
 ## 4. 辅助数据面速查表
 

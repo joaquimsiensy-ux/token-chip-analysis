@@ -1,10 +1,10 @@
 # Solana 数据管线 · 采集与重建工程（data-pipeline-solana 分册 2/2）
 
-> 母文档：`data-pipeline-solana.md`（已拆为薄路由索引页；来源声明与标注图例见索引页）。本册覆盖 **§6 脚本资产 / §7 验证清单 / §8 SQD 实测补充 / §9 锚点法演变重建 / §10 快照对比法增量更新 / §11 长币龄混合重建 / §12 销户账户覆盖审计 / §13 采集加速工程（13a–13d，13d 已禁用） / §14 日级快照重建 / §15 pump.fun 长内盘重建**；§0–§5 见 `data-pipeline-solana-scan.md`。正文 §N 交叉引用一律为母文档节号。最后整编 2026-07-31（层积岩清理：§6 收拢/§8 旧吞吐翻案层压缩/13b 症状压缩/13d 死亡名单化）。
+> 母文档：`data-pipeline-solana.md`（薄路由索引页；来源声明与标注图例见索引页）。本册覆盖 **§6 脚本资产 / §7 验证清单 / §8 SQD 实测补充 / §9 锚点法演变重建 / §10 快照对比法增量更新 / §11 长币龄混合重建 / §12 销户账户覆盖审计 / §13 采集加速工程（13a–13d，13d 已禁用） / §14 日级快照重建 / §15 pump.fun 长内盘重建**；§0–§5 见 `data-pipeline-solana-scan.md`。正文 §N 交叉引用一律为母文档节号。
 
-## 6. 脚本资产（原"待重建脚本清单"，2026-07-31 整编收拢——核心重建目标已建成；README 另存 3 项低优先待建项，两批清单勿混）
+## 6. 脚本资产（README 另存 3 项低优先待建项，两批清单勿混）
 
-原清单的核心重建目标已完成收编（`scan_token_accounts.py`/`fast_probe_tops.py`/`fetch_sqd_transfers[_v2].py`/`decode_txs_v2.py` 等——原清单点名的"classify_top_holders"未独立成脚本，其功能由 scan_token_accounts 的 owner 聚合＋fast_probe_tops 画像覆盖；现役全清单见 `scripts/solana/README.md`）；getSignaturesForAddress 按 token account 索引、tokenBalances owner 映射等实现坑的完整版在 §3a（scan 分册）。IO 原始会话实录存档：`~/Desktop/老公用/fable筹码分析/windows IO筹码分析会话记录/26a24d6c-*.jsonl`。
+核心脚本已收编（`scan_token_accounts.py`/`fast_probe_tops.py`/`fetch_sqd_transfers[_v2].py`/`decode_txs_v2.py` 等；"classify_top_holders"未独立成脚本，其功能由 scan_token_accounts 的 owner 聚合＋fast_probe_tops 画像覆盖；现役全清单见 `scripts/solana/README.md`）；getSignaturesForAddress 按 token account 索引、tokenBalances owner 映射等实现坑的完整版在 §3a（scan 分册）。IO 原始会话实录存档：`~/Desktop/老公用/fable筹码分析/windows IO筹码分析会话记录/26a24d6c-*.jsonl`。
 
 - 工程纪律（保留，来自前次报告硬伤）：同一地址在正文/附录多处引用时，必须由脚本从落盘数据统一生成，交付前做全文地址一致性自查；关键字符串（地址/哈希）一律取自落盘文件，禁止从终端打印输出复制补全。
 
@@ -23,7 +23,7 @@
 
 以下通道已在真实分析中跑通，标注 [实测·他场景]，直接可用：
 
-1. **全量转账＝SQD portal**（portal.sqd.dev，免 key 免代理）——采集器现役 **v2**（§13b，已取代 v1 做全程重放，断点/输出同构自动迁移）。转账边=同 tx 内 owner 级净变动贪心配对，from/to 为 ZERO 哨兵即铸造/销毁；断点续拉增量无缝无重叠（meta next_slot"连续完成前缀"天然防 off-by-one，PUB 07-15 实测续拉后重放 vs 链上快照逐地址零差异）。
+1. **全量转账＝SQD portal**（portal.sqd.dev，免 key 免代理）——采集器现役 **v2**（§13b；v1 断点/输出同构自动迁移）。转账边=同 tx 内 owner 级净变动贪心配对，from/to 为 ZERO 哨兵即铸造/销毁；断点续拉增量无缝无重叠（meta next_slot"连续完成前缀"天然防 off-by-one，PUB 07-15 实测续拉后重放 vs 链上快照逐地址零差异）。
    **吞吐与架构选择**：v2 稳态约 255 倍实时（§13a 传输层翻案了旧的 1.5-4x 数字）——2-6 个月币龄全程重放数小时级；§11 混合重建（发射窗精确+核心实体流水+CPMM 重建+快照封口）降级为超长币龄（1 年+）专用。CPMM 数学重建中段端点偏差实测可达 35~49%，报告必须声明"仅供形状参考"（CLUDE 07-13）。
 2. **发射期精确定价**：GeckoTerminal 分钟 K `/ohlcv/minute?aggregate=1&limit=1000&before_timestamp=`（池创建起就有）；小时 K 翻页可拿全历史。pump.fun"发射即迁移"币无内盘 K 线，内盘成本用 GMGN dev avg_cost 近似。
 3. **资金同源（gas 溯源）**：公共 RPC `getSignaturesForAddress`（翻到最老）+ `getTransaction(jsonParsed)` 找首笔 system transfer 入金 source；0.25s 间隔+走 clash 代理，45 地址约 4 分钟。识别马甲网络最有效的一招（母钱包收敛即实锤）。
@@ -96,7 +96,7 @@
 - **服务端单响应上限**：解压后 ~32MB 自动截断,客户端按最后 slot 续拉即可（v1 的 50K 段超时死循环是明文时代 150 秒传不完一个响应所致,压缩后自愈）。
 - **SQD gateway key**（api-keys.md 第 15 节「SQD Portal」,存 `~/.config/sqd/api-key`）：公共 datasets 路径实测**完全不认证**（真/假 key 全 200）——**直接匿名调用即可,不需要配 key**。该 key 实为旧版 SDK 网关用途,Portal 正式 key 体系官方尚未上线,**不存在"专属端点 URL",无需再等用户抄回**（2026-07-21 定论,2026-07-25 复核确认）。
 
-### 13b. 全程采集器 v2（`fetch_sqd_transfers_v2.py`,取代 v1 做全程重放）
+### 13b. 全程采集器 v2（`fetch_sqd_transfers_v2.py`，全程重放主力）
 
 三刀：requests.Session（连接复用+自动 gzip）/ 自适应区域并发（全局段队列动态领取,区域大小按耗时自动伸缩 1 万-100 万 slot,发射窗自动缩、死亡期自动放大）/ 全局令牌桶（默认 4 rps 防雪崩护栏——高密度段 1.6 会顶死请求数,实测教训）。失败区域重试 2 轮后进 gaps 继续别的段（修 v1"第一个未完段之后整体丢弃"缺陷）,gaps 非空退出码 2、清零前不得进重放。输出/断点与 v1 完全同构（v1 meta 自动迁移）。
 **实测（BONK,全网顶级密度）**：40 万 slot（≈28 链上小时）+22.3 万边,三跑累计 ~11 分钟、缺口全自动补扫收敛,稳态 639 slots/s ≈ **255 倍实时**（vs v1 的 1.5-4 倍）;同类任务对照 window_fetch 82 分钟 → **约 7 倍**。普通密度币自适应放大区域后更快——**2-6 个月币龄全程重放=数小时级,夜间挂机稳稳可行**;§11 混合重建降级为超长币龄（1 年+）专用。
@@ -147,7 +147,7 @@
 JSON-RPC batch + 跨地址共享 sig 缓存（`--cache-dir`,按 sig 前 2 字符 256 片）+ `--rpc` 端点可换。**mainnet-beta 实测硬墙**：batch 内子请求被**按方法逐个限流**（"Too many requests for a specific RPC call",20 笔只放行 ~9 笔）——batch 默认 8,429 子请求自动收回重试（绝不能记 decode_fail,首测 22/40 假失败的教训）。公共节点净速度收益约 1.5 倍;**真价值=①缓存**（关联地址重复交易第二址起零请求,实测 18/40 命中）**②Helius 就位即切**（`--rpc https://mainnet.helius-rpc.com/?api-key=<key>` 免代理 50 RPS,batch 可调大）。**Helius 已就位**（2026-07-21 用户 Google OAuth 注册,key 存 ~/.config/helius/api-key,api-keys.md 第 16 节「Helius」）：端点国内直连免代理;**免费层不支持 batch**（403 码 -32403,单元素数组同拒）——正解=`--workers 6 --interval 0.12` 单笔并发贴满 10RPS,实测 40 笔 5.3s=7.5 笔/s（公共节点约 7 倍;45 址溯源老基准 4 分钟→约 35 秒）;archival 10 credits/笔,免费月额≈10 万笔。
 **⚠ urllib 逐笔新建连接对 Helius 会 sock_connect 挂死（TROLL 实测，2026-07-29）**：decode_txs_v2 在部分本机网络环境下逐笔 urlopen 挂起（即使 `ProxyHandler({})` 强制直连也不稳）——症状是单笔卡住无超时推进。绕行=手写 `http.client.HTTPSConnection` **keep-alive 长连接**版（8 线程 ~7 笔/s 稳定，TROLL 工作目录存档，收编待第二案复现）；根治通道=environment.md B5 的 `scripts/lib/net.py`（httpx 连接池），新写解码脚本直接用它，别再走 urllib。（TROLL，07-29）
 
-### 13d. Solana HyperSync 通道（**已禁用**——完备性验收不通过，GA 后重验；2026-07-31 整编压缩，全量细节见 git 3.18.x 条目）
+### 13d. Solana HyperSync 通道（**已禁用**——完备性验收不通过，GA 后重验；全量细节见 git 3.18.x 条目）
 
 - **判决（3.18.0，BONK 三区实测+Helius 链上终审，07-22）**：历史区持久缺行越老越糟（head-450 万缺 3.6%、head-1450 万缺 22%）、近端乱序回填暂态洞且**静默快进 next_slot**（单跑无法自知缺数据）——❌全程采集第二引擎**禁用**（fetch_sqd_transfers_v2 `--hypersync` 开关已带硬警示，仅限吞吐实验）；✅摄取前沿附近（约 20h 内）作对照源/指纹查询（fee_payer 服务端过滤是 SQD 没有的能力）仍可用。
 - **GA 后重验路径**：对账脚本 `scripts/solana/hypersync_recon.py`（三区各跑一轮+Helius 终审定责）；mint 过滤隐藏能力、跨源对账三工程坑、双引擎吞吐 POC 细节从 git 考古（3.18.x）。
@@ -159,7 +159,7 @@ JSON-RPC batch + 跨地址共享 sig 缓存（`--cache-dir`,按 sig 前 2 字符
 
 ---
 
-## 14. ★日级余额快照重建法（取代锚点法做长币龄演变；GOAT 2026-07-26 翻案驱动）
+## 14. ★日级余额快照重建法（长币龄演变默认方法；GOAT 2026-07-26 翻案驱动）
 
 ### 14a. 先说清楚：§9 锚点法有一个会静默出错的缺陷
 

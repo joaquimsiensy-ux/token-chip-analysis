@@ -2,13 +2,13 @@
 
 Robinhood Chain = Arbitrum Orbit L2（chainid 4663），原生 gas 币 ETH，Uniswap V2/V4 双栈。已知发射台五类：Virtuals Protocol（agent 币，BONDING_V5，坑 3）、NOXA（无 bonding curve，坑 4/4a/9）、Flap（flap.sh，坑 4b）、Uniswap 官方 Liquidity Launchpad（CCA 拍卖，坑 10）、ReflectionToken 外部资产分红盘（坑 15）。
 
-> 本文由同日两次独立分析（GME 18:37 交付、RAXOL 19:09 交付）的通道结论合并而成——两会话互不知情，曾产生互相矛盾的记录（见 channels 分册修正记录），合并后为当前权威版本。此后 CASHCAT/Pointless/TRASH/meow/VEX/HAN/BEGGAR/DUMBMONEY/VIRTUAL/COMPUTE/Index 等案持续增补。
+> 通道结论由 GME/RAXOL 两次独立分析合并（曾互相矛盾的记录见 channels 分册修正记录），此后 CASHCAT/Pointless/TRASH/meow/VEX/HAN/BEGGAR/DUMBMONEY/VIRTUAL/COMPUTE/Index 等案持续增补。
 
 ---
 
-## 分册路由（主题三分册，本文件只保索引；2026-07-31 v6.3.0 拆册）
+## 分册路由（主题三分册，本文件只保索引）
 
-> 读法：开局不整读任何分册；按工序/按问题定位到段，再区间读对应分册。原文无 §N 节号，按"段名＋坑编号"定位（坑 1–17 编号在 traps 分册原样保留）。**新增条目必须回填对应分册并同步本表**。原「方法论坑」段的 18 条链无关通用条目已上移至 playbook-entity-cluster-methods / playbook-state-anomaly / playbook-evidence-wording（明细见 methods 分册头部上移声明）。
+> 读法：开局不整读任何分册；按工序/按问题定位到段，再区间读对应分册。原文无 §N 节号，按"段名＋坑编号"定位（坑 1–17 编号在 traps 分册原样保留）。**新增条目必须回填对应分册并同步本表**。链无关通用条目一律在 playbook 三册（entity-cluster-methods / state-anomaly / evidence-wording），本链分册只存 Robinhood 绑定条目。
 
 | 段 | 主题 | 分册文件 |
 |---|---|---|
