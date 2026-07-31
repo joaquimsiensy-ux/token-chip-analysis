@@ -4,7 +4,7 @@
 
 | | 路径 | 分支 | 规则 |
 |---|---|---|---|
-| **Claude Code 版** | `~/.claude/skills/token-chip-analysis` | `main` | 只管自己迭代，**永不合并 codex 的东西** |
+| **Claude Code 版** | `~/.claude/skills/token-chip-analysis` | `main` | 只管自己迭代；**禁止 git 整分支反向合并 codex**，但经用户裁定的平台无关方法可**定向回灌**（CC 侧以正常版本迭代方式吸收，先例：标签库回灌条款、6.1.1 两项、6.5.0 三分册转正） |
 | **codex 版（本目录）** | `~/.codex/skills/token-chip-analysis` | `codex` | 自己迭代 **＋** 定期吸收 main 的迭代 |
 
 两个目录共用同一个 git 仓库（本目录是 main 目录的 git worktree），所以同步不需要拷贝文件。

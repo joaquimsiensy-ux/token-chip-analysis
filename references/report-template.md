@@ -286,8 +286,3 @@ schema 全部细节（report-extract 四键与 `id="report-extract"` 硬约定�
 实锤：一个 2.867% 账户正文算进项目方注入、阵营表却归散户——错分连带散户份额虚高 2.6 倍，
 完整性批评一眼抓出（KOGE 复核 07-25）。
 
-## Codex 版补充义务（c 系列独有小节，非 main 下发；merge 时整节保留）
-
-- **经济控制账同源驱动**：Codex 版完整报告必须生成 `economic_control_ledger.json`，并以它同源驱动 TL;DR 控盘比例、庄级判定、实体表与图 2；"持仓"主数字＝可证经济控制量（钱包自持＋可证 LP/CEX/桥/质押/锁仓/vault/托管权益），表头与 TL;DR 明写主结论采用"可证经济控制下限"，**不得拿钱包自持替代**，直接钱包余额只在拆分表展示。规则唯一权威源＝`economic-control-accounting.md`；LP 手续费归因＝`lp-fee-accounting.md`；发布门禁＝`independent-audit-protocol.md`＋`scripts/report/audit_release_gate.py`。
-- **交付 checklist 附加 4c·经济控制穿透硬闸**：`economic_control_ledger.json` 已生成并逐实体覆盖钱包自持及各设施权益了吗？权利归属和目标时点可兑换数量可复算、`double_count_key` 全局唯一吗？TL;DR 控盘比例、庄级判定、实体表和图 2 是否从该账本同源生成？图 1 按位置、图 2 按经济控制，设施地址不进永久成员表但可归属份额必须穿透；任何"转入设施当日实体线断崖归零、赎回日原数跳回"先按记账错误处理。强关联扩展与未决设施暴露单列，不混入可证下限；仅有 CEX 充值不得假定所内权益仍归原实体。
-- **交付 checklist 附加 4d·历史静置仓反向扫描硬闸**：`dormant_warehouse_audit.json` 已落盘且覆盖历史峰值榜、已归零/大幅回落仓、长期静置仓、关键退出窗上游及执行网络边界外一圈吗？每个候选都有 strict/expanded/excluded 裁决与公共设施排除证据吗？若存在 expanded 成员，正文、图 2 和附录是否并列给出严格下限/扩展上限，并按同一交易末快照重放而非个人峰值相加？没有 expanded 也必须在审计文件显式记录空数组。
