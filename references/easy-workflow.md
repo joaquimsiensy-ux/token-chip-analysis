@@ -84,7 +84,7 @@ N 路怀疑者（给数据文件路径让其**自己重算**，强制构造备�
 
 措辞纪律沿用完整版：【总量X%】/ 正文零地址 / 证据强度分级用词 / 零外部代币名。
 
-**E5 交付后固定动作（3.18.0）**：`python3 scripts/labels/accumulate_offenders.py --apply`——本案实锤庄回灌惯犯库（analysis-state.json 就是扫描源，筛查不买入的案子也要跑；含 manifest 自动落印）。
+**E5 惯犯库回灌（v6.4.1 起移入复盘，不再是交付动作）**：`accumulate_offenders.py --apply` 改挂 retrospective.md 步骤 3，用户下令复盘时才跑——结论未经用户复核不入惯犯库，不复盘不回灌。交付即收工，本步在交付流程中无动作。
 
 ## E6 复盘（仅用户明确要求时执行，不自动触发）
 

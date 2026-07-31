@@ -94,6 +94,7 @@ v3.0（2026-07-18 稳定化）新增四件：质量指标、新规则 candidate 
 - 条目写入对应 references 文件的对应小节，行尾注明来源：`（<代币名>(<链>)，YYYY-MM-DD）`
 - 脚本变更同步到 `scripts/<chain>/`，必须 `python3 -m py_compile` 通过
 - 新的基础设施地址（CEX/MM/程序ID）→ `address-book.md`，附来源与核验日期
+- **惯犯库回灌（v6.4.1 起挂此处，原为交付后固定动作）**：`python3 scripts/labels/accumulate_offenders.py --apply`——本案庄家实体回灌惯犯库（appendix.json / analysis-state.json 为扫描源，筛查不买入的案子复盘时同样回灌；含 manifest 自动落印）；`sources/serial_conflicts_*.md` 非空时先按 labels/README 三选一裁决再 apply。挪进复盘的原因：结论未经用户复核就入库，错判地址会污染惯犯层——不复盘不回灌
 - **写入后跑守护全家桶**（v3.3：`python3 scripts/tests/run_all.py` 一键=三件套 lint + replay_inc/build_html 离线契约测试；改过账本类脚本必跑）——FAIL 先修再收工
 - **git 提交**：本次复盘的全部文件变更一个 commit（skill 目录已是 git 仓库，2026-07-18 起）；commit message 首行 = CHANGELOG 条目标题
 

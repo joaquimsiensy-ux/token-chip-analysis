@@ -270,7 +270,7 @@ schema 全部细节（report-extract 四键与 `id="report-extract"` 硬约定�
 12. `build_html.py` 退出码 0（有 [WARN] 缺图不许交付）；阵营图 `id="chart-camps"` 自动嵌入目检存在
 13. **【买入后监控包交付时追加】**：观察哨与两档监控建议齐且逐条有原因、与 JSON monitoring_advice 的 mode/alert_threshold_pct 一一对应；JSON 顶层四键齐、addresses 与附录 B 一致且完整地址、sentinel 纪律复查（周期性会动的地址必须 false）、round_target/watch_return 该填的填了；重跑 build_html 零 WARN、`id="report-extract"` 目检存在
 14. 浏览器打开 HTML 目检：图片全显示、表格无错位、蓝红框正常、（带监控包时）JSON 折叠块可展开
-15. **交付后固定动作（3.18.0）**：`python3 scripts/labels/accumulate_offenders.py --apply`——把本案实锤庄回灌惯犯库（含 manifest 自动落印；state 文件案子也扫，买不买入都要跑）。**3.19 起自动带跨案身份冲突检测**：`sources/serial_conflicts_*.md` 非空=有设施身份地址混进庄家成员表，先按 labels/README 三选一裁决再 --apply 该地址（设施被覆盖成 serial-actor 会让聚类禁边失效）
+15. ~~交付后固定动作（3.18.0）~~ **已移入复盘（v6.4.1）**：惯犯库回灌（`accumulate_offenders.py --apply` 及跨案身份冲突检测裁决）不再随交付执行——用户下令复盘时按 retrospective.md 步骤 3 做，结论未经用户复核不入库。交付时本条无动作。
 
 **图 1 出图后必须目检"图例条数 == 传入阵营数"（GMX 2026-07-26 定）**：
 `standard_charts.plot_camp_evolution` 按 `CAMP_ORDER` 白名单过滤 series 键，**传入非标准阵营名会被静默跳过、不报错也不 WARN**。GMX 案用自定义名（"项目方·官方系""质押池（用户筹码）"等）传入 8 个阵营，图上只画出命中标准名的 2 个（CEX托管／散户），且 `build_html` 退出码仍为 0——**纯靠目检才发现**。阵营名一律用标准名；出图后数一遍图例。
