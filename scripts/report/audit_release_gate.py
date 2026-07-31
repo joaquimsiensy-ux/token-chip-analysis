@@ -28,7 +28,8 @@ REQUIRED = (
     "adversarial_review.json",
     "reproduce_audit.py",
 )
-PASS_WORDS = {"pass", "passed", "ok", "standard", "warn"}
+PASS_WORDS = {"pass", "passed", "ok"}
+ACCOUNTING_EXTRA = frozenset({"standard"})
 DECISIVE_TYPES = {
     "entity_attribution", "economic_control", "whale_tier", "cex_identity",
     "cex_channel", "historical_peak", "historical_chart", "negative_exhaustive",
@@ -43,10 +44,10 @@ def load_json(path: Path, errors: list[str]):
         return {}
 
 
-def status_pass(value) -> bool:
+def status_pass(value, extra=frozenset()) -> bool:
     if isinstance(value, bool):
         return value
-    return str(value or "").strip().lower() in PASS_WORDS
+    return str(value or "").strip().lower() in (PASS_WORDS | extra)
 
 
 def sha256_file(path: Path) -> str:
@@ -109,7 +110,7 @@ def check_manifest(case_dir: Path, d: dict, errors: list[str]):
 
 def check_accounting(d: dict, errors: list[str]):
     verdict = d.get("status", d.get("verdict", d.get("mode")))
-    if not status_pass(verdict):
+    if not status_pass(verdict, ACCOUNTING_EXTRA):
         errors.append(f"记账模型未放行: {verdict!r}")
 
 
@@ -118,6 +119,7 @@ def check_reconciliation(d: dict, errors: list[str]):
     aliases = {
         "balance": ("balance", "balance_reconciliation"),
         "supply": ("supply", "supply_closure"),
+        "supply_truth": ("supply_truth", "supply_truth_gate"),
         "time": ("time", "time_anchors", "temporal"),
     }
     for label, keys in aliases.items():
@@ -125,7 +127,7 @@ def check_reconciliation(d: dict, errors: list[str]):
         if isinstance(value, dict):
             value = value.get("status", value.get("passed"))
         if not status_pass(value):
-            errors.append(f"三项对账未通过: {label}")
+            errors.append(f"四查对账未通过: {label}")
 
 
 def unresolved_count(d: dict) -> int:
@@ -138,8 +140,11 @@ def unresolved_count(d: dict) -> int:
 
 def check_classification(d: dict, errors: list[str]):
     threshold = d.get("current_owner_threshold_pct")
-    if threshold is None or float(threshold) > 0.5:
-        errors.append("地址分类未覆盖全部当前≥0.5% owner")
+    if threshold is None or float(threshold) > 0.1:
+        errors.append("地址分类未覆盖全部当前≥0.1%总供应 owner（0.1%/0.2% 双线，tiering §6a）")
+    float_threshold = d.get("current_owner_float_threshold_pct")
+    if float_threshold is not None and float(float_threshold) > 0.2:
+        errors.append("地址分类流通线阈值超 0.2%（tiering §6a 双线）")
     if not d.get("historical_peak_candidates_included"):
         errors.append("地址分类未覆盖历史峰值候选")
     if unresolved_count(d):
@@ -147,13 +152,21 @@ def check_classification(d: dict, errors: list[str]):
 
 
 def check_ledger(name: str, d: dict, errors: list[str]):
-    if not isinstance(d.get("entries", d.get("entities")), list):
+    entries = d.get("entries", d.get("entities"))
+    if not isinstance(entries, list):
         errors.append(f"{name} 缺 entries/entities 数组")
+        entries = []
     if name == "economic_control_ledger.json":
+        if not entries and not d.get("empty_reason"):
+            errors.append("经济控制账实体为空且缺 empty_reason 说明（无达标实体也须显式声明）")
         if not d.get("double_count_check_passed"):
             errors.append("经济控制账防双计未通过")
         if unresolved_count(d):
             errors.append(f"经济控制账仍有 {unresolved_count(d)} 项未决暴露")
+        nested = sum(len(e.get("unresolved_facility_exposure") or [])
+                     for e in entries if isinstance(e, dict))
+        if nested:
+            errors.append(f"经济控制账实体内共有 {nested} 项 unresolved_facility_exposure 未裁决")
 
 
 def check_dormant(d: dict, errors: list[str]):

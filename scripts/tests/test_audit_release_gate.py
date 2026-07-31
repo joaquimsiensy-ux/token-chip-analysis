@@ -38,16 +38,19 @@ def build_case(root, historical=True):
     })
     write_json(root, "accounting_mode.json", {"status": "PASS", "mode": "standard"})
     write_json(root, "reconciliation_report.json", {
-        "checks": {"balance": "PASS", "supply": "PASS", "time": "PASS"}})
+        "checks": {"balance": "PASS", "supply": "PASS",
+                   "supply_truth": "PASS", "time": "PASS"}})
     write_json(root, "address_classification.json", {
-        "current_owner_threshold_pct": 0.5,
+        "current_owner_threshold_pct": 0.1,
+        "current_owner_float_threshold_pct": 0.2,
         "historical_peak_candidates_included": True,
         "unresolved_count": 0,
     })
     write_json(root, "membership_ledger.json", {"entries": []})
     write_json(root, "position_ledger.json", {"entries": []})
     write_json(root, "economic_control_ledger.json", {
-        "entries": [], "double_count_check_passed": True, "unresolved_count": 0})
+        "entries": [], "empty_reason": "夹具案例无达标庄级实体",
+        "double_count_check_passed": True, "unresolved_count": 0})
     write_json(root, "dormant_warehouse_audit.json", {
         "full_history_event_replay": True,
         "coverage": {
@@ -145,8 +148,44 @@ def main():
         errors = gate.run(root, report)
         assert any("发布否决项" in x for x in errors), errors
 
+    # 6.5.0 修复反例：WARN 不再当 PASS；缺 supply_truth 阻断。
+    with tempfile.TemporaryDirectory() as td:
+        root = Path(td)
+        report = build_case(root, historical=False)
+        write_json(root, "reconciliation_report.json", {
+            "checks": {"balance": "WARN", "supply": "PASS", "time": "PASS"}})
+        errors = gate.run(root, report)
+        assert any("balance" in x for x in errors), errors
+        assert any("supply_truth" in x for x in errors), errors
+
+    # 6.5.0 修复反例：0.5% 旧线不再放行（现行 0.1%/0.2% 双线）。
+    with tempfile.TemporaryDirectory() as td:
+        root = Path(td)
+        report = build_case(root, historical=False)
+        cls = json.loads((root / "address_classification.json").read_text())
+        cls["current_owner_threshold_pct"] = 0.5
+        write_json(root, "address_classification.json", cls)
+        errors = gate.run(root, report)
+        assert any("0.1%" in x for x in errors), errors
+
+    # 6.5.0 修复反例：实体内嵌套未决设施暴露必须阻断；空账本须 empty_reason。
+    with tempfile.TemporaryDirectory() as td:
+        root = Path(td)
+        report = build_case(root, historical=False)
+        write_json(root, "economic_control_ledger.json", {
+            "entries": [{"entity_id": "e1",
+                         "unresolved_facility_exposure": [{"facility": "cex"}]}],
+            "double_count_check_passed": True, "unresolved_count": 0})
+        errors = gate.run(root, report)
+        assert any("unresolved_facility_exposure" in x for x in errors), errors
+        write_json(root, "economic_control_ledger.json", {
+            "entries": [], "double_count_check_passed": True, "unresolved_count": 0})
+        errors = gate.run(root, report)
+        assert any("empty_reason" in x for x in errors), errors
+
     print("PASS: audit_release_gate 净室资产/哈希/CEX受益权/阴性结论/"
-          "图表封口与负钳零/对抗复核否决六类契约全过")
+          "图表封口与负钳零/对抗复核否决/四查WARN拦截/双线阈值/"
+          "嵌套未决暴露九类契约全过")
     return 0
 
 

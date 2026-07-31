@@ -15,6 +15,7 @@
 
 ## 版本索引（活跃窗口，新在上；每版一行，详情见下方对应条目）
 
+- **6.5.0** 2026-07-31 codex 独有资产审计后回灌转正（@CX 交叉复核 + 用户三项拍板）：经济控制账与静置仓反扫双硬闸候选转正式（SKILL 新增"实体冻结前双硬闸"节、report-template 三账段【候选】转正＋checklist 收编 4c/4d）+ 收编 codex 侧方法学：economic-control-accounting/lp-fee-accounting/independent-audit-protocol 三分册（协议限定"复核既有报告"作用域、0.5% 线修订为 0.1%/0.2% 双线）+ audit_release_gate 四处修复（WARN 不再当 PASS、补 supply_truth 四查、双线阈值、空账本与嵌套未决暴露阻断）与九类契约测试 + tiering 判级确权边界节/methods 静置仓硬闸版与枢纽两段法/evidence-wording 受益权分离与 LP 四分法等禁写措辞/sources 价格覆盖审计与 Blockscout 完备性/channels LP 增强版 + docs_lint 四层守卫（硬闸关键词跨 SKILL/methods/tiering/report-template 缺一即 FAIL）+ description 补"复核既有报告/LP 手续费"触发词；SUITE 16→17 项
 - **6.4.4** 2026-07-31 attic 首批复核裁决落地（用户逐条人工复核）：A-01 社区分发桶女巫化回收识别、A-02 镜像执行扫描法恢复 methods 正文（保留候选身份＋用户复核授权戳），A-03～A-06 维持存档
 - **6.4.3** 2026-07-31 变更叙事全库清理（用户人工复核发现＋@CX 双路扫描，三分类口径用户拍板）：一类·纯变更叙事约 45 处清除（"取代旧条款/vX 曾取代/已废止/原条款/历史沿革/拆册搬家史/labels 拆分史/取代 v1"等，机制依据与授权戳保留）+ 二类·狙击集团废止段瘦身归位（tiering 收缩为现行规则+update-workflow 指针，阵营 legacy 行删除）+ 顺修 solana-scan 头部删字残渣与 tiering 粘连行 + 新整编规则入 retrospective 2b（变更叙事进 CHANGELOG、正文只留现行规则+依据、迁移桥唯一归宿 update-workflow）；codex 建议中 6 处活兼容规则（report-template/monitoring/analyze-workflow 的旧文件读取端行为）经裁决保留不搬
 - **6.4.2** 2026-07-31 SKILL.md 手工瘦身后 @CX 全库一致性修复（codex 通读 47 文档出 15 项、逐条核裁后用户拍板全修）：残损 2（铁律 1 残字/铁律 7 悬空分号）+ **"零外部代币名"红线全链废止**（用户裁定铁律 1 本意=结论不复用，不禁提代币名；6 文档清理 + build_html cashtag WARN→NOTE 不再拦交付）+ 存量漂移 7（六条铁律、split-run A4–A6、supply-recon 对齐四查、HIGH tag 措辞、"查3"编号、整编触发器、E6 引 E5）+ 低危 4（判级数值副本收归 tiering、casebook C-01/C-05 指针、§7.5 免 key 路线补合同边界、5 处粘连行拆分）
@@ -32,6 +33,18 @@
 - **4.1.0** 2026-07-30 PYTHIA 双报告交叉核实复盘：实体身份防复发三闸（label_lookup 并源 address-book / entity_identity_gate+G8 编译门 / 复核 prompt 翻案四问固化）+ 复盘元规则（身份类教训必须以代码收尾）
 - **4.0.0** 2026-07-28 大整编（用户点名）：3.0→3.41 四十余版增量迭代的结构清理——路由索引补齐 9 节、结构错位归位 3 处、消重立权威源制 6 组、CHANGELOG 重整归档 29 条；只减不加，规则语义未动
 - 更早版本（3.41.0 及以前）→ `CHANGELOG-archive.md`
+
+## [6.5.0] - 2026-07-31 — codex 独有资产审计后回灌转正（@CX 交叉复核 + 用户三项拍板）
+
+背景：6.4.4 大同步后对 codex 分支独有资产做 @CX 交叉审计，抓到"独有=没人维护"的滞后漂移实锤（0.5% 排查线落后于 07-30 拍板的 0.1%/0.2% 双线、P0/P1 旧措辞残留），codex 立论"平台无关的方法学长期双线必漂移"成立。用户三项拍板：①经济控制账＋静置仓硬闸候选转正式并回灌 main；②删除过期一次性迁移矩阵（codex 侧执行）；③SYNC.md"永不合并"措辞改"禁整分支合并、许定向回灌"（codex 侧执行）。本版为 main 侧回灌工程。
+
+- **双硬闸转正**：SKILL.md 新增"实体冻结前双硬闸"节（经济控制主口径＋静置仓反扫，A3 判级环节强制；分段执行时归 −2 承担）；report-template 三账段"产物【候选】"转"必须交付"、主结论明写"不得拿钱包自持替代"；交付 checklist 收编 4c 经济控制穿透硬闸、4d 历史静置仓反向扫描硬闸。
+- **三分册收编**：`economic-control-accounting.md`（三账口径/8 类设施纳入门槛/防双计/economic_control_ledger.json schema）、`lp-fee-accounting.md`（V3/V4 四层口径/逐 tick 分摊/8 项对账 gate）、`independent-audit-protocol.md`（净室复核协议；6.5.0 修订：作用域限定"复核既有报告"任务——净室专用资产以被审报告存在为前提，全新分析走 checklist 4c/4d；0.5% 候选线废止，对齐 tiering §6a 0.1%/0.2% 双线）。
+- **audit_release_gate.py 四处修复**（此前更像资产存在性 lint，撑不起 fail-closed 裁决）：①PASS_WORDS 收紧 {pass,passed,ok}，WARN 不再当 PASS（standard 仅记账模型合法）；②对账检查补 supply_truth 成四查；③地址分类阈值 0.5→0.1 总供应＋0.2 流通双线；④经济控制账空账本须 empty_reason、实体内嵌套 unresolved_facility_exposure 未裁决即阻断。test_audit_release_gate 夹具同步＋新增四反例，九类契约全过；run_all SUITE 16→17 项。
+- **方法学条目收编**（codex 侧 07-23~26 复盘产物，随分册配套）：tiering"判级确权边界与经济控制口径"节（判级持仓=可证经济控制量/严格·扩展是确权边界/串联边只证 campaign/行为 cohort 分离/官方自报只证角色/日终不能替代事件峰值/静置仓双边界峰值——顺带补上 evidence-wording §口径措辞三件套早已引用但 main 一直缺失的"行为 cohort"条目）；methods 静置仓硬闸版（dormant_warehouse_audit.json 落盘＋候选四并集＋strict/expanded/excluded 裁决，替换 SIREN 案例版）、枢纽两段处理法＋冻结后实体成员卫生审计、FROGGIE 归集边界候选条；evidence-wording ★受益权分离/★证据只够否定停止肯定/★完整阴性高门槛/★LP 收入四分法＋6 行禁写措辞；sources 价格覆盖审计＋Blockscout internal-transactions 完备性纪律；channels LP 费口径鸿沟增强版（tokensOwed 前提/动态费禁静态假设/ownerOf 归属优先级）。
+- **防回退自动化**：docs_lint 收编四层守卫——静置仓硬闸与经济控制口径的关键词必须同时出现在 SKILL/methods/tiering/report-template 四层，缺一即 FAIL。
+- **触发面**：description 补"复核/审计已有筹码报告""庄家做 LP 赚了多少/LP 手续费怎么计算"。
+- 版本轴说明：codex 侧同日 c2.1.1 已先行修复其独有文件内 P0/P1 残留措辞与 SYNC 版本轴描述；本版落地后 codex 侧走同步合入并做 c2.2.0 瘦身（独有清单缩减为平台适配件，方法学重复尾节删除留指针）。
 
 ## [6.4.4] - 2026-07-31 — attic 首批复核裁决落地（用户逐条人工复核）
 
