@@ -27,15 +27,15 @@ description: 对任意链上代币（EVM/Solana/Hyperliquid/Filecoin 及新链�
 | A3 分析 | 标注→归因→聚类→判级→大户双闸→演变重放 | A3＋**casebook C/E 册全过一遍**＋playbook 按需 | entity_identity_gate→build_html G8：flag 未解决报告物理编不出 | findings.md、identity_gate.json |
 | A4 对抗复核 | 扰动前置→揭盲→N 路怀疑者→三档裁决 | A4＋evidence-wording §10；casebook 三册作备择弹药 | 三档必须实际核查，"理论上可能"不算推翻 | 复核修正记录 |
 | A5 报告 | 三标准图＋流转图＋HTML＋质检 | A5＋report-template | build_html 退出码 0（缺图/G8 拒交付） | 报告.html、analysis-state.json |
-| A6 复盘 | 教训分流入库（分流决策树） | retrospective.md | run_all 全 PASS＋git commit | CHANGELOG |
+| A6 复盘 | **仅用户明确要求时执行，不自动触发**：教训分流入库（分流决策树） | retrospective.md | run_all 全 PASS＋git commit | CHANGELOG |
 
 ## 六入口（一行路由）
 
-- **/token-analyze**＝完整版：上表 A0–A6 全程。
+- **/token-analyze**＝完整版：上表 A0–A5 全程；A6 复盘不自动执行，仅用户要求时跑（候选教训随手记案目录 retro_notes.md）。
 - **/token-easy-analysis**＝批量筛查档：`easy-workflow.md` E0–E7——引擎与复核同强度，砍完整报告，交付两件套；**绝不自动转正式**，用户人工决策后同目录衔接。
 - **/token-analyze-1**＝分段·机械段（−1）：A0–A2 全部＋A3 机械子层，产交接契约后**完成即停**；执行者 GPT-5.6（codex 主轨）或 Opus（CC 备轨）——唯一权威源 `split-run.md`。
-- **/token-analyze-2**＝分段·判断段（−2）：`handoff_manifest.py verify` fail-closed 通过后接 A3 判断层＋A4–A6；档位（easy|full）必选——同上 `split-run.md`。
-- **/token-update**＝增量更新：`update-workflow.md` U0–U6——复用旧实体表只拉增量；**判定标准一律以当前 skill 版本为准**，判级变化须区分"持仓变动 vs 标准迁移"。
+- **/token-analyze-2**＝分段·判断段（−2）：`handoff_manifest.py verify` fail-closed 通过后接 A3 判断层＋A4–A5（A6 仅用户要求时）；档位（easy|full）必选——同上 `split-run.md`。
+- **/token-update**＝增量更新：`update-workflow.md` U0–U5（U6 复盘仅用户要求时）——复用旧实体表只拉增量；**判定标准一律以当前 skill 版本为准**，判级变化须区分"持仓变动 vs 标准迁移"。
 - **/collect-data**＝预采集队列：`collect-workflow.md`——只采集零结论；产物以 collect_manifest 与 done.json 为准，分析会话直接复用续增量，禁止从零重采。
 
 ## 上下文预算（细则与断点恢复＝context-discipline.md）
@@ -72,5 +72,5 @@ description: 对任意链上代币（EVM/Solana/Hyperliquid/Filecoin 及新链�
 - `labels/README.md` — 批量标签库使用篇（七链 CSV＋resolver；聚类前全量候选先过 label_lookup）
 - `labels/MAINTENANCE.md` — 标签库维护篇（维护会话才读）
 - `environment.md` — 本机环境坑速查
-- `retrospective.md` — 复盘与教训分流决策树（阶段 6 唯一权威源）
+- `retrospective.md` — 复盘与教训分流决策树（**仅用户明确要求复盘时执行**；阶段 6 唯一权威源）
 - `attic.md` — 三判据未过条目存档（**分析会话禁读**——对工作流程等于不存在；仅存留审计/整编会话可动）

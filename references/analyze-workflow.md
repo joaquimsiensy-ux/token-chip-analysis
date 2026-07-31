@@ -90,6 +90,6 @@
 
 **附录四件套**（验证步骤/标签↔地址对照/复核修正记录/来源）——附录 B 地址对照任何情况下不可省（正文零地址的可验证性支点）。**监控包默认不做**：观察哨/两档监控建议/appendix.json 在用户确认买入后按 monitoring-package.md「买入后监控包」节补生成（新会话可执行，材料全在落盘产物），报告末尾带固定句"如决定买入，回复一声即可补生成监控包"。**默认交付另落一份 `analysis-state.json`**（appendix 的机器子集：token/whale_groups/vault_addresses/addresses 骨架＋camp_share_series，无监控文案——/token-update 的实体表原料；schema 见 report-template「默认交付的机器状态文件」节）。交付前 checklist 见 report-template.md 末节；**外部代币名自查**（铁律 1）。
 
-## A6 复盘与迭代（固定最后一步，不可省略）
+## A6 复盘与迭代（仅用户明确要求时执行，不自动触发）
 
-按 `retrospective.md` 执行：五类复盘清单 → AskUserQuestion 确认 → **教训分流决策树**定归宿（gate 代码/casebook/pipeline/workflow/SKILL.md 最后手段）→ 写入对应文件＋CHANGELOG 次版本＋1 → 跑 `scripts/tests/run_all.py` 全 PASS → git commit。质量 4 指标＋成本 3 指标、candidate 分级、逢 0/5 整编——细则全在 retrospective.md。
+**默认交付 A5 报告即收工，不进入本阶段**——结论未经用户复核就自动沉淀教训，会把可能错误的经验固化进 skill（2026-07-31 用户定）。会话中发现的候选教训随手记案目录 `retro_notes.md`（只动案目录，不动 skill 文件）。用户复核确认结论没问题、明确下令复盘后，按 `retrospective.md` 执行：五类复盘清单 → AskUserQuestion 确认 → **教训分流决策树**定归宿（gate 代码/casebook/pipeline/workflow/SKILL.md 最后手段）→ 写入对应文件＋CHANGELOG 次版本＋1 → 跑 `scripts/tests/run_all.py` 全 PASS → git commit。质量 4 指标＋成本 3 指标、candidate 分级、逢 0/5 整编——细则全在 retrospective.md。
