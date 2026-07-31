@@ -172,6 +172,14 @@ def main():
         check("READY 缺必备件 generate 即拒 exit 2", p.returncode == 2)
         p = run(["generate", "--case-dir", d8, "--status", "PARTIAL"] + GEN)
         check("同目录报 PARTIAL 可出 manifest", p.returncode == 0)
+
+        # 11. READY 缺 gate 产物（supply_truth）即拒——A2 没跑完不得 READY
+        d11 = os.path.join(root, "case_nogate")
+        os.makedirs(d11)
+        make_case(d11)
+        os.unlink(os.path.join(d11, "supply_truth.json"))
+        p = run(["generate", "--case-dir", d11, "--status", "READY"] + GEN)
+        check("READY 缺 supply_truth gate 即拒 exit 2", p.returncode == 2)
     finally:
         shutil.rmtree(root, ignore_errors=True)
 
@@ -179,7 +187,7 @@ def main():
     if FAILS:
         print(f"{len(FAILS)} 项失败: {FAILS}")
         return 1
-    print("handoff_manifest 契约测试全部通过（19 项）")
+    print("handoff_manifest 契约测试全部通过（20 项）")
     return 0
 
 
