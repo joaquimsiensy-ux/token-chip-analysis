@@ -30,6 +30,10 @@
 | 币安 Alpha **场内** K 线 | `www.binance.com/bapi/defi/v1/public/alpha-trade/klines?symbol=ALPHA_{alphaId}USDT&interval=1d`（走 clash 代理） | Alpha 在架币**场内盘口**的日级量价（标准币安 12 列 K 线含 trades 笔数字段，bapi 信封 `data` 数组）——Alpha 黑箱唯一的场内价格/量能直查通道，与链上池价对照可检场内外价差、场内成交笔数配合 Router 托管差分解读净压力；alphaId 从 token/list 全量表（上方端点）取。⚠单次实测返回 374 天且首行晚于上架日（窗口/limit 上限，翻页未测）——**非全史**，更早段配 CMC 全史日线补 | （QUQ，07-22） |
 | 全史日线（跨链通用兜底） | `api.coinmarketcap.com/data-api/v3/cryptocurrency/detail/chart?id={cmc_id}&range=ALL` | CMC 网页版内部 data-api，一次拿发射日起全史日级量价——破 CoinGecko 365 天墙/GT 181 天墙的正解（与 data-pipeline-solana §4 同条目，USELESS(Solana) 首测 437 点；QUQ(BSC) 二案复用 488 点全覆盖）；cmc_id 从币页 URL/search 端点拿 | （USELESS 07-21；QUQ 07-22） |
 
+**价格序列覆盖审计（链无关正式门槛）**：任何日线/小时线进入图表前，先落 `source/start/end/points/max_gap/has_volume/second_source_status`；发射日至首点的空窗、序列内部缺日和末端滞后分别列出。端点“成功返回数组”不等于覆盖完整；有缺口就画断线并降级事件回报措辞，禁止插值补成连续真值。DefiLlama 等聚合源尤其要逐段检查首尾与最大间隔，完整性不能从接口名推定（来源：ASTEROID(ETH) 完整分析复盘，2026-07-24）。
+
+**Blockscout internal-transactions 完备性纪律**：调用地址内部交易端点时必须逐页拉到分页终点，并保存响应里的分页/不完整提示；若服务端明确返回 incomplete、截断或仍有 next page，当前汇总只能写“已返回记录的下限”，不得当作该地址全史 ETH/native 流。关键 P0/P1 的内部价值流须再用交易回执/trace 或另一通道复核（来源：ASTEROID(ETH) 完整分析复盘，2026-07-24）。
+
 gmgn-cli 使用坑（fetch_gmgn.sh 已内置处理）：
 - 命令用全路径 `~/.npm-global/bin/gmgn-cli`（不在 PATH；报 command not found 时别去重装）。（SIREN，07）
 - `--raw` 输出顶层结构不一致：有的是 `{"list":[...]}`，有的是 `{"data":{"list":[...]}}`；解析统一用 `(j.get('data') or {}).get('list') or j.get('list') or []`，否则筛选会假阴性得 0 行。（SIREN，07）
