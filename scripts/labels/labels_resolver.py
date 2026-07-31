@@ -21,8 +21,9 @@ v4 2026-07-16（codex 交叉复核第二轮融合：policy 三维拆分 / risk �
 5. locker / airdrop-distributor / token-sale / charity 等公共多对一·一对多通道：
    不剔除（其持仓可能有经济含义→bucket 或 count），但禁止作聚类合并边——
    多项目锁同一 locker、多人打款同一 ICO/慈善地址、一工具分发万人，合并全是假连。
-6. serial-actor（惯犯庄家层，v4 新增）：历史分析实锤的收割集团地址。
-   不剔除、不禁边（惯犯地址间本就是同实体，正常聚类），命中即高亮"XX 案实锤惯犯"。
+6. serial-actor（惯犯庄家层，v4 新增）：历史案标记的收割集团地址（案内定性、
+   多数案源未经用户复核，消费按线索级——见 labels/README serial-actor 段）。
+   不剔除、不禁边（惯犯地址间本就是同实体，正常聚类），命中即高亮"XX 案标记惯犯"。
 7. 标签时效（3.18.0，提示不定罪）：get() 附 stale_days（距最近核验/快照/入库天数）；
    时效敏感类目（CEX 热钱包/bundler 等会轮换的设施）超 STALE_DAYS 只提示"须复核"，
    **自动决策不因库龄变老而失效**（若过期即失效，建库 N 月后设施剔除会整体瓦解=更大事故）；
@@ -300,7 +301,7 @@ class LabelResolver:
         return r['balance_policy']
 
     def is_serial(self, addr):
-        """是否历史实锤惯犯（serial-actor）。跨链命中也提示（EOA 同私钥，惯犯跨链常见），
+        """是否历史案标记惯犯（serial-actor，案内定性线索级）。跨链命中也提示（EOA 同私钥，惯犯跨链常见），
         但输出方须标注 cross_chain 让人工复核。"""
         r = self.get(addr)
         return bool(r) and r.get('serial', False)

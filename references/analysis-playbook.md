@@ -35,7 +35,7 @@
 | §6 关联地址聚类规则（含行为半枢纽/代买枢纽裁决） | 实体识别与聚类 | `playbook-entity-cluster.md` |
 | §6.5 买入序列节拍指纹（聚类三规则失效时的破局判据，含秩相关修正） | 实体识别与聚类 | `playbook-entity-cluster.md` |
 | §6.6 gas 同源与 vanity 指纹的否证检验 | 实体识别与聚类 | `playbook-entity-cluster.md` |
-| §6a 标签体系、类型三分类与阵营划分（问1/问2 操作定义；含资金通道判据/世代阵营法） | 实体识别与聚类 | `playbook-entity-cluster.md` |
+| §6a 标签体系、类型三分类与阵营划分（问1/问2 操作定义；含资金通道判据） | 实体识别与聚类 | `playbook-entity-cluster.md` |
 | §6b 建仓成本估算（按需工具；含出货美元核算优先级） | 实体识别与聚类 | `playbook-entity-cluster.md` |
 | §5 CEX 充提净流 × 价格（含 §5a rug 后封闭盘定价结构） | 状态评估与市场异常 | `playbook-state-anomaly.md` |
 | §7 庄家当前状态评估（含行为归因纪律/观察窗起点/出货形态/离场判定） | 状态评估与市场异常 | `playbook-state-anomaly.md` |

@@ -73,3 +73,4 @@ description: 对任意链上代币（EVM/Solana/Hyperliquid/Filecoin 及新链�
 - `labels/MAINTENANCE.md` — 标签库维护篇（维护会话才读）
 - `environment.md` — 本机环境坑速查
 - `retrospective.md` — 复盘与教训分流决策树（阶段 6 唯一权威源）
+- `attic.md` — 三判据未过条目存档（**分析会话禁读**——对工作流程等于不存在；仅存留审计/整编会话可动）
