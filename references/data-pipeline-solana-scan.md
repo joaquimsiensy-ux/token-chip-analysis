@@ -79,7 +79,7 @@ Solana 特有优势：program-owned PDA 让托管类型可以直接从账户归�
     **固定偏移速查（data_len=1104 版布局，CLUDE 实战三处互验）**`[VERIFIED·CLUDE实战]`：offset 9=创建时间、**33=end_time（到期）**、409=start、417=net_deposited、441=cliff 时间（33/409/441 对一次性 cliff 流三处同值互验）；**cancelable_by_sender/recipient、transferable_by_sender/recipient、automatic_withdrawal 标志位必读**——`period=1s+cliff_amount=全额`=一次性 cliff 到期全解，transferable=0 直接反证"受益权可场外转让"风险提示（写"锁仓可转让"之前必查此位）；automatic_withdrawal=0 则到期后币不自动离开 escrow，观察哨要按"历史到期→处置最长空窗"设过渡期防误报。解码脚本 `scripts/solana/probe_escrows.py`。（CLUDE，07-13）
     - **"即建即提"洗筹指纹（CLAW 实测）**：操盘方用即建即提 stream 做一跳中转，切断"老仓→新仓"的直接转账链路伪装成独立成本；识别锚点 = 提取 tx 的 **feePayer = Streamflow 自动提取服务 `wdrwhnCv4pzW8beKsbPa4S2UDZrXenjg16KJdKSpb5u`**，多笔提取共用此 feePayer = 同一批操作，据此把散落的"新钱包"归回原实体。
     - **recipient 激活状态检测**（外部 CLAW 考古，2026-07）：对 stream 的 recipient 地址查账户存在性——账户不存在（fresh keypair 从未注资）= 收款人从未动过，锁仓休眠中；配套受益人时序画像：发射后分钟级首买 = 先验知情，发射前数天新建并注资 = 预谋配置。
-    - **措辞纪律：锁仓流不可撤销但可由受益人转让**（外部 CLAW 考古，2026-07）——解锁权可私下转售且不在代币转账留痕，"锁仓至 2030"≠"当前受益人持有至 2030"，涉及锁仓的结论措辞必须带此提示。
+    - **措辞纪律：锁仓流的可转让性以该 stream 实例的 transferable_by_* 标志位为唯一裁决**（外部 CLAW 考古，2026-07；与上方"标志位必读"条呼应）——transferable=1 时解锁权可私下转售且不在代币转账留痕，"锁仓至 2030"≠"当前受益人持有至 2030"，结论措辞必须带此提示；transferable=0 则直接反证该风险，禁写"可转让"。
 - 官方金库确认后必须追下游：高频（数小时一轮）向数十个地址小额发放 = 排放/奖励发放行为指纹，据此把"金库流出"与"抛售"区分开。
 
 ### 2a. 自建质押/托管合约判别五步法（transfer_in 大户 → 官方质押池的完整判定链）`[VERIFIED·PUB实战]`

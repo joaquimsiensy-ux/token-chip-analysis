@@ -88,7 +88,7 @@ ABI 从 Sourcify v2 `?fields=abi` 取，selector 用 pycryptodome `Crypto.Hash.k
 
 ## 1b. 多链标的：先判"能不能相加"，再谈分母（GMX 三链案 2026-07-26 定，补多链关卡的量化判据）
 
-SKILL.md 的多链硬关卡要求"各链 RPC 实查该链供给"，但**没说清实查完之后能否相加**。GMX 案给出了判据：**镜像型跨链桥下，各链 `totalSupply` 相加是重复计数**。
+analyze-workflow A0 的多链硬关卡要求"各链 RPC 实查该链供给"，但**没说清实查完之后能否相加**。GMX 案给出了判据：**镜像型跨链桥下，各链 `totalSupply` 相加是重复计数**。
 
 **恒等式验证法（一次 RPC 就能定性）**
 ```

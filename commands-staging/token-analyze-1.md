@@ -1,6 +1,6 @@
 ---
 description: 分段执行·机械段（−1）：A0–A2 全部＋A3 机械子层，产交接契约后完成即停（适配 GPT-5.6/Opus 执行）
-argument-hint: <代币名或合约地址> [链名等补充信息]
+argument-hint: <代币名或合约地址> <easy|full> [链名等补充信息]
 ---
 
 调用 token-chip-analysis skill 的**分段执行·机械段（−1）**，标的：**$ARGUMENTS**
@@ -13,4 +13,4 @@ argument-hint: <代币名或合约地址> [链名等补充信息]
 4. **停止线（越线＝流程事故）**：聚类合并裁决/实体冻结/判级/casebook 过闸/大户报警深挖/正式 entity_identity_gate/状态评估定性/A4/A5 一律禁做（split-run §1.4）。初步定性只准写 `sealed/stage1_hypotheses.sealed.md`。
 5. **未档异常 → 停下写 blocker 进 anomalies.json，禁自创解法。**
 6. **全程盲化**：`export CHIP_BLIND_SERIAL=1`；每步跑 `handoff_manifest.py receipt` 记收据。
-7. **收工**：跑 `scripts/report/handoff_manifest.py generate`（状态如实报 READY/PARTIAL/BLOCKED/BLOCKED_E0B），打印交接摘要＋提示我"新开 Fable 会话跑 /token-analyze-2 <币> <easy|full>"，**完成即停，不多做一步**。
+7. **收工**：跑 `scripts/report/handoff_manifest.py generate --mode <档位>`——`--mode` 必填，值＝本命令第二个参数（easy|full）；我没给档位时开工前先问我，禁猜禁缺省。状态如实报 READY/PARTIAL/BLOCKED/BLOCKED_E0B，打印交接摘要＋提示我"新开 Fable 会话跑 /token-analyze-2 <币> <同档位>"，**完成即停，不多做一步**。

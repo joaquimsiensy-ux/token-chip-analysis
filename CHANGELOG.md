@@ -15,6 +15,7 @@
 
 ## 版本索引（活跃窗口，新在上；每版一行，详情见下方对应条目）
 
+- **6.3.1** 2026-07-31 搬迁前全量一致性修复（@CX 交叉审查产出，用户批准 19 项全修）：高危 5（evm-recon 峰值预筛旧 1% 线→现行 0.1%/0.2%、阵营键全集收归 CAMP_ORDER 唯一权威、惯犯库"实锤"残留降级、solana 脚本资产声明整修+README 补登 v2 主线 5 脚本、/token-analyze-1 补 easy|full 档位）+ 中低 14（三查→四查残留 4 处、"SKILL.md 阶段 N"死指针 6 处、铁律 1 两例外成文划界、docs_lint --all 全量模式等）；3 项 Linux 迁移项按用户裁决不修（目标改 Mac mini 云）
 - **6.3.0** 2026-07-31 减法整编（服务器搬迁前瘦身，用户逐档批准）：纠错 7 处漂移/已证伪规则（methods 等额归集反向教条改写为"先测中枢身份"、三查→四查、平线示例、外包档位权威源 ×2 等）+ robinhood 拆册（51KB→2.9KB 路由页+三分册）与 18 条通用规则上移 playbook + 来源标注全库治理 −20.5KB + solana-capture 层积岩清理 + report-template 门槛速查副本删除（唯一权威源收归 tiering）+ CHANGELOG 归档 9 条 + entity-cluster 跳转页删除——真减分析会话读入约 55KB
 - **6.2.0** 2026-07-31 经验存留审计第一批（用户拍板"没核实的经验删掉"）：候选运行权限收紧（只当查证提示，废止"按正式规则对待"）+ attic.md 存档制落地 + 48 处显式候选三判据快筛（删 6 留 42）+ 惯犯库"实锤"措辞整体降级为案源分层线索级
 - **6.1.2** 2026-07-30 split-run 契约收紧（PYTHIA 历史案 dry-run 步 3.5 产出）：READY 前置补 accounting_mode+supply_truth 两 gate 产物（A0/A2 必产件，缺任一 generate 即拒）；dry-run 九步全链路（真实 90MB 分片哈希/真实实体表 freeze/漂移检测/supersede）全过；测试 19→20 项
@@ -26,6 +27,16 @@
 - **4.1.0** 2026-07-30 PYTHIA 双报告交叉核实复盘：实体身份防复发三闸（label_lookup 并源 address-book / entity_identity_gate+G8 编译门 / 复核 prompt 翻案四问固化）+ 复盘元规则（身份类教训必须以代码收尾）
 - **4.0.0** 2026-07-28 大整编（用户点名）：3.0→3.41 四十余版增量迭代的结构清理——路由索引补齐 9 节、结构错位归位 3 处、消重立权威源制 6 组、CHANGELOG 重整归档 29 条；只减不加，规则语义未动
 - 更早版本（3.41.0 及以前）→ `CHANGELOG-archive.md`
+
+## [6.3.1] - 2026-07-31 — 搬迁前全量一致性修复（@CX 交叉审查产出，19 项全修）
+
+背景：服务器搬迁前用户点名 codex 完整审查全 skill 前后一致性（66 文档全读+45 脚本接口静态抽核），我方（Fable 5）并行独立通读后对 codex 每条发现逐一回原文核实、合并裁决为"该修 19 项"（codex 两条被核实推翻：Helius"无法自动注册 vs 已就位"实为获取方式说明与现状的时间线自洽；"CHANGELOG 声称三查漂移已全库纠正"原文无此声称）。用户全量批准 19 项；审查另列的 **3 项 Linux 阻断项按用户裁决不修**——迁移目标已改为 Mac mini 云，launchd/本机路径/codex 路径继续有效。
+
+- **高危 5 项**：①evm-recon §12c 峰值候选预筛"判级实际只需 ≥1%"旧线改为现行其他大户线 0.1%/0.2%（v5.0 降线时漏同步；照旧文预筛会把 0.1%–1% 候选不可逆滤掉，恰是降线要堵的盲区），预筛门槛与判级门槛分开表述；②阵营键全集收归 `standard_charts.py` CAMP_ORDER 唯一权威——tiering §6a 表补齐 14 现行键（新增 CEX资金通道/CEX托管/疑似CEX托管/历史大户/桥锁仓 五行释义）+权威指针行，analyze-workflow A5"锁仓销毁"改"锁仓/销毁"并补漏键，report-template 章节骨架与图 1 配色要点、monitoring-package camp_share_series 各加"以 CAMP_ORDER 为准勿手抄全集"指针（GMX 静默漏图事故温床拔除；tiering 同文件"资金通道判据要求单列阵营而阵营表没有该阵营"的自相矛盾一并闭合）；③惯犯库"实锤"降级（v6.2.0）漏网清理：labels/MAINTENANCE 数据源表"196 址/最高（实锤定性）"改"随案滚动约 1,740 址/线索级（案内定性、消费纪律见 labels/README）"，accumulate_offenders.py docstring"抽【实锤定性】"与 print"N 个实锤组"中性化为"历史案标记"；④solana 脚本资产声明整修：capture §6 删除不存在的 `classify_top_holders.py` 点名（功能由 scan_token_accounts owner 聚合＋fast_probe_tops 覆盖）、标题改"核心目标已建成+README 另存待建项两批勿混"，scripts/solana/README 条目 1 改 v2 主选化＋文末补登**现役 v2 主线 5 脚本**（fetch_sqd_transfers_v2/decode_txs_v2/accounting_gate_sol/squads_members/hypersync_recon——此前全部漏列，搬迁最依赖的清单文件与仓库实体对齐）＋待建清单口径分节说明；⑤split-run 冻结区解冻修 bug（循 6.1.2"暴露即收紧"先例）：/token-analyze-1 argument-hint 补 `<easy|full>` 必填档位（staging＋装机双处同步），收工条写死 `generate --mode` 取值来源（值＝命令第二参数，未给档位开工前先问禁猜），split-run §2 manifest 身份行同步注明——修复前 −1 收工 generate 必卡（--mode 为 required 却无输入源）。
+- **中优先 9 项**："三查→四查"残留 4 处修正（easy 头部"不省"句/solana-capture §12 例行句/evm-recon §13 背景句/solana README 条目 22）＋evals 题 1 场景句顺手中性化为"对账关卡已过"（历史案战报里的"三查"按不改写历史保留）；"SKILL.md 阶段 N"死指针 6 处统一改指 analyze-workflow A0/A1（easy×3/update-workflow/playbook-supply-recon/casebook S-02——docs_lint 只查文件级断链抓不到此类章节级死指针，成因记录在案）；CHANGELOG 6.3.0 验收数字"run_all 14 项"更正为 16 项；/token-update 交付条"滚动 appendix.json"绝对化改双形态（带监控包＝appendix.json，无＝analysis-state.json，staging＋装机双处）；robinhood-channels DS 行 pairCreatedAt 删绝对化、归一到 GT 行"两说并列、以链上主池首笔 Transfer 为准"口径；solana-scan Streamflow"可由受益人转让"无条件句改条件句（transferable_by_* 标志位为唯一裁决，与同段"必查此位"条呼应）；铁律 1"零外部代币名"两个未声明例外成文划界（惯犯案源案名＝受控例外，labels/README 纪律 10 补边界＋report-template checklist 10 白名单机制衔接，除用户点名对比项外零其他例外）；evm-recon §5"标准四件套"实列五项改"四件套＋1 项重放前置检查"并写明与 A2 现行四查的对应关系；easy E5 补"两件套（页面内容两大件）vs 产物三件（落盘文件）"口径注。
+- **低优先＋工具 5 项**：attic 头部自述与 SKILL.md 登记关系措辞精化（"不作为分析规则输入"）；update U2 编号重复（两个"4."）修正；report-template 死币复活盘模板句补"观察哨买入后才写"限定；evm-recon §12 DuckDB 用法示例补 `scripts/evm/` 路径前缀（replay_duck/cluster_prep_duck/cluster 三处）；**docs_lint 新增 `--all` 全量模式**——commands-staging 6 份＋evals 10 份纳入引用与格式检查（44→60 文档），run_all 守护调用同步升级为 `--all`（SUITE 条目支持带参数），本轮修的两类漂移的存活盲区永久关闭。
+- 裁决驳回不修（防误改）：Helius scan/capture 两条（时间线自洽非矛盾）；channels/capture 历史案战报"三查"（不改写历史）；CHANGELOG 6.1.0 计划文件引用（历史条目保留原貌）；"analysis-playbook §6a"式引用（§ 编号全局体系合法二跳）；solana README"编号跳跃"（核实 1–27 连续，codex 误报）。
+- 验收：run_all 16 项全 PASS（docs_lint 已为 --all 60 文档口径）。
 
 ## [6.3.0] - 2026-07-31 — 减法整编：搬迁服务器前瘦身（四方审查后执行，用户逐档批准）
 
@@ -40,7 +51,7 @@
 - **CHANGELOG 归档 9 条**（3.36.0×2–3.41.0 移入 archive，活跃窗口 75.7→33.5KB，含本条恰 10 版合规）。
 - **仓库清理**：evals 三份验收记录（walkthrough+两份 PYTHIA 双跑对照）与 v6-migration-audit.md git rm（git 永存）；labels-eth.csv 21MB 过期备份、07-31 备份目录、scratch-3.19 草稿（proclock.py 头注断链同步修复）、.hypothesis、commands 四个 .bak 移入废纸篓。72MB preclean tar 在仓库外不随迁，删除另批。
 - 明确不动：casebook/evals 题库/attic/split-run（首战前冻结）/analyze/collect-workflow/tiering 门槛表/死亡名单与静默出错坑/commands-staging/address-book 机制注释。codex 激进重构方案（report-template 41→15-20KB 等）列为 v6 转正后第二轮候选未采纳。
-- 验收：run_all 14 项全 PASS；docs_lint 44 文档无断链；references 文本总量净减约 55KB（真减分析会话读入），robinhood 开局刚性读入 51KB→2.9KB 路由页+按需分册。
+- 验收：run_all 16 项全 PASS；docs_lint 44 文档无断链；references 文本总量净减约 55KB（真减分析会话读入），robinhood 开局刚性读入 51KB→2.9KB 路由页+按需分册。
 
 ## [6.2.0] - 2026-07-31 — 经验存留审计第一批（未核实经验清出正文）
 

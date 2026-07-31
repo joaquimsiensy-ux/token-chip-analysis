@@ -2,9 +2,9 @@
 
 > 母文档：`data-pipeline-solana.md`（已拆为薄路由索引页；来源声明与标注图例见索引页）。本册覆盖 **§6 脚本资产 / §7 验证清单 / §8 SQD 实测补充 / §9 锚点法演变重建 / §10 快照对比法增量更新 / §11 长币龄混合重建 / §12 销户账户覆盖审计 / §13 采集加速工程（13a–13d，13d 已禁用） / §14 日级快照重建 / §15 pump.fun 长内盘重建**；§0–§5 见 `data-pipeline-solana-scan.md`。正文 §N 交叉引用一律为母文档节号。最后整编 2026-07-31（层积岩清理：§6 收拢/§8 旧吞吐翻案层压缩/13b 症状压缩/13d 死亡名单化）。
 
-## 6. 脚本资产（原"待重建脚本清单"，2026-07-31 整编收拢——所列脚本已全部建成）
+## 6. 脚本资产（原"待重建脚本清单"，2026-07-31 整编收拢——核心重建目标已建成；README 另存 3 项低优先待建项，两批清单勿混）
 
-原清单的重建目标已完成收编（`scan_token_accounts.py`/`classify_top_holders.py`/`fetch_sqd_transfers[_v2].py`/`decode_txs_v2.py` 等，清单见 `scripts/solana/README.md`）；getSignaturesForAddress 按 token account 索引、tokenBalances owner 映射等实现坑的完整版在 §3a（scan 分册）。IO 原始会话实录存档：`~/Desktop/老公用/fable筹码分析/windows IO筹码分析会话记录/26a24d6c-*.jsonl`。
+原清单的核心重建目标已完成收编（`scan_token_accounts.py`/`fast_probe_tops.py`/`fetch_sqd_transfers[_v2].py`/`decode_txs_v2.py` 等——原清单点名的"classify_top_holders"未独立成脚本，其功能由 scan_token_accounts 的 owner 聚合＋fast_probe_tops 画像覆盖；现役全清单见 `scripts/solana/README.md`）；getSignaturesForAddress 按 token account 索引、tokenBalances owner 映射等实现坑的完整版在 §3a（scan 分册）。IO 原始会话实录存档：`~/Desktop/老公用/fable筹码分析/windows IO筹码分析会话记录/26a24d6c-*.jsonl`。
 
 - 工程纪律（保留，来自前次报告硬伤）：同一地址在正文/附录多处引用时，必须由脚本从落盘数据统一生成，交付前做全文地址一致性自查；关键字符串（地址/哈希）一律取自落盘文件，禁止从终端打印输出复制补全。
 
@@ -81,7 +81,7 @@
 - **判定粒度声明**：覆盖=边集存在 slot 相同且 from/to 含该 owner 的边。SQD 边是 owner 级同 tx 净变动聚合、无 sig 字段，slot+owner 是可用最细粒度（同 slot 同 owner 多笔时有极低概率误判为覆盖，审计是抽查性质，接受）。边集区间外事件计 out_of_range 不算漏。
 - **undetermined 语义（诚实纪律）**：深挖账户按结果分类 events_found / all_zero_delta / fetch_failed——后两类是"没查出来"不是"没事件"（高频中转户 delta 笔可能在 --deep-sigs 窗口外），不构成"无漏"证据；过半 undetermined 时脚本自动告警。
 - **退出码**：0=抽样零漏边；2=发现漏边（对账 gate 语义，报告 missing_detail 带 tx 级证据）；1=运行失败/样本无效。
-- **定位**：SQD 全量重放路线的对账**补充抽查项**（非硬 gate）——阶段 2 三查过后例行跑一次，发现 missing 才升级为堵漏行动（用 window_fetch 补拉缺口段）。首轮实证：PUB 全程边集 93/93 全覆盖（sigs 模式）、USELESS 定向段区间内 7/7 全覆盖（blocks 模式）——SQD 通道销户覆盖首次获得专项验证。
+- **定位**：SQD 全量重放路线的对账**补充抽查项**（非硬 gate）——阶段 2 四查过后例行跑一次，发现 missing 才升级为堵漏行动（用 window_fetch 补拉缺口段）。首轮实证：PUB 全程边集 93/93 全覆盖（sigs 模式）、USELESS 定向段区间内 7/7 全覆盖（blocks 模式）——SQD 通道销户覆盖首次获得专项验证。
 
 （Helius vs SQD 采集通道交叉复核——codex 第二意见提议"用 mint 初始化历史反向审计数据湖"，本脚本为其工程化落地并经 PUB/USELESS 双案冒烟；07-21）
 

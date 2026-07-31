@@ -26,7 +26,7 @@
 |---|---|---|
 | curation | 人工精修固化（additions/curation_overrides_*.csv） | 最高（压过一切，v4.2+ 稳定化设立） |
 | manual/addressbook | 实战核验条目（含全部 Robinhood 独家）| 最高，优先级压过一切 |
-| serial-offenders | 惯犯层（appendix 聚合+人工白名单，196 址）| 最高（实锤定性） |
+| serial-offenders | 惯犯层（appendix/state 双源自动回灌+人工白名单，随案滚动，07-31 时点约 1,740 址）| **线索级**（案内定性、多数案源未经用户复核，v6.2.0 降级定调——消费纪律见 labels/README serial-actor 段，禁当最高置信源用） |
 | registry-official | 官方 deployment registry（Aerodrome/Clanker/Zora/Uniswap/Virtuals 官方仓库·npm 包·docs 亲验，Base 54 条首建）| 高（官方源） |
 | manual-chainverify | 链上事件/RPC 亲验条目（Tornado BSC 合约、WHYPE）| 高（链上实测） |
 | hypurrscan-aliases | Hyperliquid 463 实体 | 高（浏览器官方标签） |

@@ -4,7 +4,7 @@
 
 ## 5. 对账 gate（数据不闭合不进分析）
 
-标准四件套，全过才允许跑下游分析：
+对账清单＝**标准四件套＋1 项重放前置检查**（下列 1–4 为对表查，5 为采集完整性前置），全过才允许跑下游分析。与 analyze-workflow A2 现行"四查"的对应：本节 1＝余额对账、2/3＝供给闭合、4＝时间抽查；A2 第 3 查**供给真值闸**挂 `scripts/lib/supply_truth_gate.py`，不在本清单内：
 1. **重建余额 vs GMGN top10 精确对表**：全量转账逐笔累加重建每地址余额，与 GMGN top10 逐个对到个位数。曾在扫块进度 97% 时 4/10 MISMATCH、补扫 remaining=0 后 10/10 全 OK——证明该 gate 能兜住数据缺口；预跑一次有提前暴露口径问题的价值，但通过判定只认补扫完成之后。（OPN，07）
 2. **全网余额和=0**：所有地址重建余额求和应为零（mint/burn 计入），不为零即漏了转账段。（SIREN，07）
 3. **总量恒等式 wei 级闭合**：跨链代币各链余量之和 ≈ 总供应，精确到 wei。（OPN，07）
@@ -59,8 +59,8 @@
 | QUQ 缩图 | cluster 老路四容器不可行 | **19.5s/1.35GB** → 76.2 万聚合边；rustworkx 连通分量 0.35s |
 
 **用法**：
-- 重放：`python3 replay_duck.py --channels channels.json --out-dir data [--camps camps.json] [--emit-csv] [--mem-limit 8GB]`。通道 path 为**目录即自动走 v2 parquet**（run_*/logs.parquet+blocks join），文件走 v1 7 列 CSV；`--emit-csv` 产旧格式 merged.csv（对表/未迁移下游）。
-- 缩图：`python3 cluster_prep_duck.py <chain> [--dir 工作目录 | --v2 <v2目录>]` → data/cluster_prep/ 三件（edges_agg/bal/profile 全整数 parquet）→ `python3 cluster.py <chain> --prep`。千万行以下 cluster.py 老路照旧。
+- 重放：`python3 scripts/evm/replay_duck.py --channels channels.json --out-dir data [--camps camps.json] [--emit-csv] [--mem-limit 8GB]`。通道 path 为**目录即自动走 v2 parquet**（run_*/logs.parquet+blocks join），文件走 v1 7 列 CSV；`--emit-csv` 产旧格式 merged.csv（对表/未迁移下游）。
+- 缩图：`python3 scripts/evm/cluster_prep_duck.py <chain> [--dir 工作目录 | --v2 <v2目录>]` → data/cluster_prep/ 三件（edges_agg/bal/profile 全整数 parquet）→ `python3 scripts/evm/cluster.py <chain> --prep`。千万行以下 cluster.py 老路照旧。
 - 长跑守护：`python3 scripts/run_guarded.py --name X --mem-ceiling-gb 12 --detach -- <命令>`（脱管+双内存水位+状态 JSON 原子写；替代裸 nohup，防沙箱连带清理与 OOM 假死）。
 - **回归门禁（A1 纪律，硬性）**：动引擎/换库版本后必跑 ①`scripts/tests/run_all.py`（含 hypothesis 等价性测试+env_check 版本锁）②`scripts/bench/golden_baseline.py snapshot+compare` 对 ASTEROID 重跑对表。基线快照与对比口径见该脚本 docstring。
 
@@ -98,8 +98,8 @@ KOGE 一级 inflow 预筛（≥0.1% 供应）后**仍剩 157,459 个候选**，�
 改日级后 6,217 候选 / 734,079 行 / **164 秒**完成。两级口径保证判级不失真：
 `L1 日末峰值`（主口径）+ `L2 日内恒等上界 Σmax(day_delta,0)`（≥ 任意时刻真实峰值，全整数恒等）；
 凡 L1 未达门槛但 L2 达标者落 `needs_block_precision.json`，对这批（通常个位数）再补块级精确值——**只多查不漏查**。
-- **候选门槛按"判级需求"定，别照抄 0.1%**：恒等式保证峰值 ≥pct 的地址必在 `inflow ≥pct` 内，
-  而判级实际只需 ≥1%（其他大户线）。KOGE 实测 ≥0.1% 有 131,833 址、**≥1% 只有 6,217 址，差 21 倍**。
+- **候选门槛跟现行判级线走，禁止照抄历史案数字**：恒等式保证峰值 ≥pct 的地址必在 `inflow ≥pct` 内，
+  故预筛线取**现行判级体系的最低线＝其他大户线（0.1% 总供应 / 0.2% 流通，权威见 tiering §6a，两口径换算后取更低枚数）**——预筛门槛与判级门槛分开：预筛只保证"达线者必在候选内"，判级仍按 §6a 各档阈值走，两级口径只多查不漏查。KOGE 实测（07-25，当时其他大户线尚为 1%）：≥0.1% 有 131,833 址、≥1% 只有 6,217 址，差 21 倍——量级规律仍可参考，但 v5.0 已降线，**今按 1% 预筛会把 0.1%–1% 区间候选不可逆滤掉**。
 - **附带收获**：产出的 daily_delta 同时就是阵营/实体日序列的原料，一举两得。
 （KOGE，07-25）
 
@@ -111,7 +111,7 @@ KOGE 一级 inflow 预筛（≥0.1% 供应）后**仍剩 157,459 个候选**，�
 
 ## 13. 时间抽查的第二源选型：改用 SQD Portal，不要用区块浏览器 API（GMX(Arbitrum) 2026-07-26 定）
 
-**背景**：对账三查的"时间抽查"需要一个**独立于主采集通道**的第二源来重算锚点余额。此前默认走 Etherscan 系 API 的 `tokentx`，GMX 案实测该路对**大地址**根本不可用。
+**背景**：对账关卡四查的"时间抽查"需要一个**独立于主采集通道**的第二源来重算锚点余额。此前默认走 Etherscan 系 API 的 `tokentx`，GMX 案实测该路对**大地址**根本不可用。
 
 **Etherscan V2 免费层的两个实测缺陷（都会静默给出错误答案）**：
 1. **`tokentx` 不返回 `logIndex`** → 去重键退化为 `(hash,from,to,value)`，同一 tx 内多笔相同金额的转账会被误并（少算）。

@@ -9,4 +9,4 @@ argument-hint: <代币名或旧研报目录路径> [补充信息]
 
 1. 按 `references/update-workflow.md` U0–U6 执行；铁律 7 条与"判定标准一律以当前 skill 版本为准（判级变化须区分持仓变动 vs 标准迁移）"以 SKILL.md 为准。
 2. 找不到旧研报或不满足增量前提时按 U0 兜底分级处理，明确建议 /token-analyze 全量重做，不硬凑。
-3. 交付到旧研报目录：轻量更新简报 HTML ＋ 滚动更新的 appendix.json（细则按 U5，build_html WARN=0）。
+3. 交付到旧研报目录：轻量更新简报 HTML ＋ 滚动更新的机器状态文件（带监控包的旧研报＝appendix.json；无监控包＝analysis-state.json，appendix 不存在是正常态，细则按 U5；build_html WARN=0）。

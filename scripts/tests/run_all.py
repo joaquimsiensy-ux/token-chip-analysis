@@ -7,7 +7,7 @@
 import os, subprocess, sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-SUITE = ['changelog_lint.py', 'docs_lint.py', 'labels_manifest.py', 'env_check.py',
+SUITE = ['changelog_lint.py', ['docs_lint.py', '--all'], 'labels_manifest.py', 'env_check.py',
          'casebook_lint.py',
          'test_replay_inc.py', 'test_build_html.py', 'test_engine_equivalence.py',
          'test_collect_lanes.py', 'test_report_facts.py', 'test_fault_injection.py',
@@ -18,8 +18,10 @@ SUITE = ['changelog_lint.py', 'docs_lint.py', 'labels_manifest.py', 'env_check.p
 
 def main():
     results = []
-    for name in SUITE:
-        p = subprocess.run([sys.executable, os.path.join(HERE, name)],
+    for item in SUITE:
+        args = item if isinstance(item, list) else [item]
+        name = ' '.join(args)
+        p = subprocess.run([sys.executable, os.path.join(HERE, args[0])] + args[1:],
                            capture_output=True, text=True)
         tail = (p.stdout.strip().splitlines() or ['(无输出)'])[-1]
         results.append((name, p.returncode, tail))
