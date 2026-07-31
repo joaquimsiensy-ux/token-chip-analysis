@@ -15,6 +15,7 @@
 
 ## 版本索引（活跃窗口，新在上；每版一行，详情见下方对应条目）
 
+- **6.4.2** 2026-07-31 SKILL.md 手工瘦身后 @CX 全库一致性修复（codex 通读 47 文档出 15 项、逐条核裁后用户拍板全修）：残损 2（铁律 1 残字/铁律 7 悬空分号）+ **"零外部代币名"红线全链废止**（用户裁定铁律 1 本意=结论不复用，不禁提代币名；6 文档清理 + build_html cashtag WARN→NOTE 不再拦交付）+ 存量漂移 7（六条铁律、split-run A4–A6、supply-recon 对齐四查、HIGH tag 措辞、"查3"编号、整编触发器、E6 引 E5）+ 低危 4（判级数值副本收归 tiering、casebook C-01/C-05 指针、§7.5 免 key 路线补合同边界、5 处粘连行拆分）
 - **6.4.1** 2026-07-31 惯犯库回灌随复盘（6.4.0 挂账项用户裁决落地）：accumulate_offenders --apply 从 E5/checklist 15 交付后固定动作改挂 retrospective 步骤 3——结论未经用户复核不入惯犯库，不复盘不回灌；4 文档同步，脚本与冲突检测机制零变更
 - **6.4.0** 2026-07-31 复盘触发机制改制（用户拍板）：A6/E6/U6 复盘从工作流固定末步改为**仅用户明确要求时执行**——分析会话交付即收工，候选教训随手记案目录 retro_notes.md 不动 skill 文件，用户复核确认结论后下令复盘再走 retrospective.md 入库；split-run sealed 自查申报改挂 −2 交付；9 文件 21 处＋命令三份双处同步
 - **6.3.1** 2026-07-31 搬迁前全量一致性修复（@CX 交叉审查产出，用户批准 19 项全修）：高危 5（evm-recon 峰值预筛旧 1% 线→现行 0.1%/0.2%、阵营键全集收归 CAMP_ORDER 唯一权威、惯犯库"实锤"残留降级、solana 脚本资产声明整修+README 补登 v2 主线 5 脚本、/token-analyze-1 补 easy|full 档位）+ 中低 14（三查→四查残留 4 处、"SKILL.md 阶段 N"死指针 6 处、铁律 1 两例外成文划界、docs_lint --all 全量模式等）；3 项 Linux 迁移项按用户裁决不修（目标改 Mac mini 云）
@@ -29,6 +30,17 @@
 - **4.1.0** 2026-07-30 PYTHIA 双报告交叉核实复盘：实体身份防复发三闸（label_lookup 并源 address-book / entity_identity_gate+G8 编译门 / 复核 prompt 翻案四问固化）+ 复盘元规则（身份类教训必须以代码收尾）
 - **4.0.0** 2026-07-28 大整编（用户点名）：3.0→3.41 四十余版增量迭代的结构清理——路由索引补齐 9 节、结构错位归位 3 处、消重立权威源制 6 组、CHANGELOG 重整归档 29 条；只减不加，规则语义未动
 - 更早版本（3.41.0 及以前）→ `CHANGELOG-archive.md`
+
+## [6.4.2] - 2026-07-31 — SKILL.md 手工瘦身后 @CX 全库一致性修复
+
+背景：用户手工删减 SKILL.md 5 处（description 链名/触发句、铁律 1/3/5/7 各一段）后发起 @CX 完整审查——codex 通读全部 47 个规范文档（约 780KB，禁抽查）出 15 项发现，Fable 逐条独立取证核裁（11 项完全属实、3 项降级、1 项按意图判），用户逐项拍板。
+
+- **残损修复 2**：铁律 1 删句残留孤字"报"清除；铁律 7 句尾悬空分号改句号。
+- **"零外部代币名"红线全链废止**（用户裁定：该条本意="不复用历史标的的结论"，禁止提及其他代币名本身无意义）：analyze-workflow/update-workflow 的 checklist 引用删除、report-template checklist 条 10 废止注记（沿条 15 惯例）、easy-workflow 措辞纪律行删除、casebook/README"红线不变"句删除、labels/README serial-actor 纪律条改写（案名引用不再受限，但**禁止借机展开该案行情或结论**的取证语境约束保留）；**build_html.py token_name_scan 降级**：cashtag 从 WARN（影响退出码拒交付）降为信息性 NOTE，--token-whitelist 保留作降噪参数。铁律 1 的"结论不复用"本体不动。
+- **铁律 3/5 删减核验**：分册"无行内置信度 tag"规则保持现状（report-template 为权威源，总纲不再复述——用户确认瘦身非废止）；"免费优先"全库零残留、research-workflows"调研代理只用免费手段"属局部资源约束可并存，均无需处理。
+- **存量漂移 7**（与本次手编无关的历史漏改）：easy-workflow"六条铁律"→"全部铁律"；split-run:16 "−2＝A4–A6"→"A4–A5（A6 仅用户要求时）"（6.4.0 漏改）；supply-recon §2 对齐 A2 四查权威分类（EVM"三重校验"标注为查1/查2 细化、Solana"轻量形态"标过时降级——SQD 全量重放后走标准四查）；hyperliquid"给 HIGH 置信度"→"按最高证据级措辞呈现"；evm-channels"对账关卡查3"编号引用→"余额对账/时间抽查"去编号描述；retrospective 整编触发器从盯 analysis-playbook（已拆成 7KB 路由页永不触发）改"任一 playbook 分册 >60KB"（methods 84KB 已超线待整编）；easy-workflow E6"＋E5 固定动作"→"E5 无动作"（6.4.1 漏改）。
+- **低危 4**：analyze-workflow A3 步 4 判级门槛数值副本删除（唯一权威源收归 tiering §6a，防漂移）；casebook C-01 指针补 solana-scan §3 集齐率判别法（原指 §2a 不对口）、C-05 改指 §2 托管类型判别；evm-channels §7.5 免 key 三段拼接路线补"不满足完整/easy 交付合同，仅预检用"边界声明；tiering:40/61/66 与 methods:69/88 共 5 处两条目粘连行拆分。
+- 验收：run_all 16 项全 PASS（docs_lint --all 60 文档无断链；test_build_html 八条契约全过）。
 
 ## [6.4.1] - 2026-07-31 — 惯犯库回灌随复盘（6.4.0 挂账项用户裁决落地）
 

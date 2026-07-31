@@ -45,7 +45,7 @@ solana 走 fetch_sqd_transfers_v2；manifest 原子记账、残缺 run 改名 pa
 |---|---|---|---|---|---|---|
 | **HyperSync 官方客户端 v2（Starter 付费档,现役首选）** | Starter $70/月（key 见 api-keys.md 第 1 节;100rpm 基础+overage 5x=500rpm 超量按请求计费,单币 <$1） | concurrency=10 全程 429=0；付费限速解除后瓶颈=RTT×串行,官方客户端自动并发正是解药 | **10,080 条/s**（CAKE 90,719 行/9s,BSC）；三源对账与 v1/SQD 逐行一致 | run_*/done.json 记 next_block,重跑自动续 | fetch_hypersync_v2.py（pip install hypersync） | （v3.11.2 POC,2026-07-21） |
 | envio HyperSync v1 手写轮询（兜底） | 同上 key 通用 | 免费层:0.5s 间隔基本无 429（2026-07-18 收紧后实测）;**Starter 付费档:0.12s 间隔 429=0**,但单进程吞吐仅 552-792 条/s（RTT 主导,ETH RTT~0.2s/BSC~0.6s）——付费买到的是高峰稳定性,大标的提速必须换 v2 | 免费层 ~1000-1300 logs/2s,1568 万条约 5.2h;付费单进程 ETH 792 条/s、BSC 552 条/s | from_block 起点 + 增量写 CSV（v3.11.2 起新文件 8 列含 block_hash,老 7 列续拉自动兼容） | fetch_hypersync.py | （SIREN 07；哈基米 429 实测 07-18；v3.11.2 付费实测 07-21） |
-| SQD Portal 薄采集器（故障预案+对照源） | 免 key 免注册（portal.sqd.dev 公共端点;注册 gateway key 免费可选更稳） | 公共限流 20 请求/10s,sleep 0.5 保守;无自助付费档（官网 pricing coming soon,2026-07-21 核实） | ~280 条/s（CAKE 21,857 行/79s）——平时不跑,HyperSync 平台级故障或数仓切源准入对照时才上;**对账关卡查3 的代表日双源对照亦用它**（独立索引商,BANANAS31(BSC) 四代表日 67,731 行 (block,tx,li,from,to,value) 六元组与 HyperSync 零差集全等,2026-07-22） | CSV 末行块+1 | fetch_sqd_evm.py | （v3.11.2,2026-07-21） |
+| SQD Portal 薄采集器（故障预案+对照源） | 免 key 免注册（portal.sqd.dev 公共端点;注册 gateway key 免费可选更稳） | 公共限流 20 请求/10s,sleep 0.5 保守;无自助付费档（官网 pricing coming soon,2026-07-21 核实） | ~280 条/s（CAKE 21,857 行/79s）——平时不跑,HyperSync 平台级故障或数仓切源准入对照时才上;**对账关卡（余额对账/时间抽查）的代表日双源对照亦用它**（独立索引商,BANANAS31(BSC) 四代表日 67,731 行 (block,tx,li,from,to,value) 六元组与 HyperSync 零差集全等,2026-07-22） | CSV 末行块+1 | fetch_sqd_evm.py | （v3.11.2,2026-07-21） |
 | BigQuery goog 官方公共数据集（备用+复核,**仅 ETH**） | Google 账号 OAuth 一次(凭据缓存后免弹窗)+GCP sandbox 项目(免绑卡,见 api-keys.md 第 17 节「Google Cloud / BigQuery」) | 免费 1 TiB/月查询量;熔断线 config max_scan_gib(默认 200GiB) | 服务端过滤只回传命中行,13 万行 ~1 分钟;定向日期查询 ~12GiB/次≈月额度可复核 85 次 | 无需(按日期范围幂等重查) | fetch_bigquery.py | （v3.12.1 准入实证,2026-07-21） |
 | Alchemy getAssetTransfers | 免费 key（dashboard.alchemy.com 国内直连） | 平台级 429 全局限流，高峰期可整夜不可用 | ~46 万条/10 分钟，1000 条/页 | 读 CSV 末行区块置 fromBlock（勿依赖 pageKey） | fetch_alchemy.py | （SIREN，07） |
 | bloXroute getLogs | 免注册 | ⚠**并发承受力已变**（2026-07-19 SIREN 实测）：8 并发 curl 线程池整体挂死零产出、requests 3 线程 0.5s 间隔稳定；历史窗口比 07-18 更宽（下界块 100.1M~101.5M ≈55-60 天，二分探测）——**窗口是动态的，用前必二分**。降级为"近期段快扫" | requests 3 线程 万块段 ~50 段/4 分钟（SIREN 396 万条约 30 分钟）；旧 8 并发数字已不可复现 | done-segments 清单 + 失败段补扫 | scan_transfers.py（curl 线程池版本机挂死，改用 requests.Session） | （OPN 07；哈基米 窗口实测 07-18；SIREN 并发/窗口实测 07-19） |
@@ -215,7 +215,7 @@ solana 走 fetch_sqd_transfers_v2；manifest 原子记账、残缺 run 改名 pa
 2. **BscScan 网页直抓深历史**（§7.2）→ 创世取证（token 页 Contract Creator 段）+ 前排大户 `tokentxns?a=` 建仓史（≤10页×100 上限，翻不完标注"建仓可能更早"）+ generic-tokenholders2 持有人榜；
 3. **GT 日线价格轴**（只留 ~180 天，§4）+ 关键放量日与链下事件（上所/Alpha 公告等）对齐。
 
-- **输出形态随之改变**（全史演变曲线在此拓扑下不可得，报告口径必须声明）：**结构快照**（当前各阵营占比）+ **6 天净变动表** + **大户建仓时间线**。
+- **输出形态随之改变**（全史演变曲线在此拓扑下不可得，报告口径必须声明）：**结构快照**（当前各阵营占比）+ **6 天净变动表** + **大户建仓时间线**。⚠️ **边界：此路线不满足 /token-analyze 与 /token-easy-analysis 的交付合同**（两者都要求全史演变），只能作预检/受限快照用；正式分析必须补全史（拿 key 走 HyperSync 等全量通道）或明确告知用户后中止。
 - **fresh/old 大户分层**：用 6 天窗口把前排大户分为"本窗口进场新大户 vs 更早老持仓"两层，直答"这波爆量谁在买"。
 - 图表叙事技巧：大户建仓时间线图上"创世期区域完全空白"= 没有任何创世钱包还留在前排的可视化证明（老庄已清仓的直观证法）。
 

@@ -63,7 +63,7 @@
 1. **地址身份标注**（官方标签→外部证据→行为特征三级兜底，playbook §3）→ **金库与核心实体逐笔归因**（§4）→ **关联聚类**（多证据边＋服务枢纽剔除，§6；合并只认专属性证据——通用实现/通用服务共用不算，见 casebook E-01）。
 2. **判例库过闸（实体表冻结前必做）**：把 `casebook/cex-custody.md` 与 `casebook/entity-clustering.md` 全册触发现象过一遍，命中的逐条做"必做区分检验"。
 3. **实体身份硬闸**：实体表冻结前跑 `scripts/report/entity_identity_gate.py --state … --chain … --snapshot …` 产出 `identity_gate.json`——对每个实体地址＋≥1% 大仓做标签双源（CSV 主库＋address-book 手工层，label_lookup 已自动并源）、Solana ed25519 曲线判定、托管假设三查；INFRA_IN_ENTITY／PDA_UNRESOLVED／BIG_UNLABELED 三类 flag 逐条填 resolution（查了什么、结论是什么）——**build_html G8 会校验此闸，flag 未解决报告物理上编不出来**。币安 Alpha 在架的 Solana 标的同时做 Alpha 集齐率判别（casebook C-01；easy 版 E0b 步骤④同款，完整版同责）。
-4. **庄级实体识别、标签划分与类型三分类**：门槛与细则的唯一权威源＝playbook-entity-cluster-tiering §6a（v5.0 要点：不分级；项目方无论份额；大庄＝当前 ≥20% 总供应或 ≥20% 流通；小庄＝≥5% 或 ≥10% 流通；离场庄＝峰值 ≥10% 或 ≥15% 流通且当前非庄；刷量地址单独标签；狙击集团标签已废止，发射窗协同实体按普通门槛判级；合并口径含全部疑似关联地址）。
+4. **庄级实体识别、标签划分与类型三分类**：门槛数值与细则的唯一权威源＝playbook-entity-cluster-tiering §6a（本处不设数值副本防漂移，v6.4.2 定；结构要点：不分级；项目方无论份额；大庄/小庄按当前持仓、离场庄按峰值判；刷量地址单独标签；狙击集团标签已废止，发射窗协同实体按普通门槛判级；合并口径含全部疑似关联地址）。
 5. **其他大户排查前置双闸**（§6a）：其他大户线＝当前 ≥0.1% 总供应或 ≥0.2% 流通，逐个过批量排查层（标签库/惯犯库/指纹/funder 溯源）才准归阵营，报警才人工深挖；每个已识别实体做不设持仓下限的成员完整性扫描（防分仓漏判）。
 6. **全量转账重放出各阵营占比演变序列**（阵营划分见 §6a）：分母＝当期净供应序列，**逐时点 assert Σ阵营＝100%±容差**，改过名册跑反向断言（casebook S-03）；**历史清零层检测**——重放全期 max 仓位而非只看现仓（track set 按现仓筛会漏整个历史波次，casebook S-04）。
 7. **庄家当前状态评估**（§7）→ 质押/留存修正（§8）；建仓成本仅按需算（§6b 降为工具）；CEX 净流×价格作为演变解读工具按需用（防内部调仓伪影，§5）。
@@ -88,7 +88,7 @@
 
 结构与措辞纪律见 `report-template.md`（三问逐条直答＋标签体系＋代币数量带【总量X%】＋正文零地址＋局限性独立成章；CEX 黑箱表述红线——充入≠卖出、"链上可观测范围内"限定、净流剔除同 CEX 内部对倒、给单一实体份额上限——权威源 playbook-evidence-wording §11）。然后 `python3 scripts/report/build_html.py --md 报告.md --out 报告.html` 出自包含 HTML（PDF 仅用户点名，用 md2pdf.py，质检双轨见 environment.md）。质检：build_html 退出码 0（缺图会 WARN 拒绝交付）＋浏览器目检（图全显/表格无错位）。
 
-**附录四件套**（验证步骤/标签↔地址对照/复核修正记录/来源）——附录 B 地址对照任何情况下不可省（正文零地址的可验证性支点）。**监控包默认不做**：观察哨/两档监控建议/appendix.json 在用户确认买入后按 monitoring-package.md「买入后监控包」节补生成（新会话可执行，材料全在落盘产物），报告末尾带固定句"如决定买入，回复一声即可补生成监控包"。**默认交付另落一份 `analysis-state.json`**（appendix 的机器子集：token/whale_groups/vault_addresses/addresses 骨架＋camp_share_series，无监控文案——/token-update 的实体表原料；schema 见 report-template「默认交付的机器状态文件」节）。交付前 checklist 见 report-template.md 末节；**外部代币名自查**（铁律 1）。
+**附录四件套**（验证步骤/标签↔地址对照/复核修正记录/来源）——附录 B 地址对照任何情况下不可省（正文零地址的可验证性支点）。**监控包默认不做**：观察哨/两档监控建议/appendix.json 在用户确认买入后按 monitoring-package.md「买入后监控包」节补生成（新会话可执行，材料全在落盘产物），报告末尾带固定句"如决定买入，回复一声即可补生成监控包"。**默认交付另落一份 `analysis-state.json`**（appendix 的机器子集：token/whale_groups/vault_addresses/addresses 骨架＋camp_share_series，无监控文案——/token-update 的实体表原料；schema 见 report-template「默认交付的机器状态文件」节）。交付前 checklist 见 report-template.md 末节。
 
 ## A6 复盘与迭代（仅用户明确要求时执行，不自动触发）
 

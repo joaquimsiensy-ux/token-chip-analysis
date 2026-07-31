@@ -62,7 +62,7 @@ Base：`https://api.hypurrscan.io`，Swagger UI 在 `/ui/`。
 
 - `GET https://api-data.asxn.xyz/api/data/hl-buybacks`：AF 逐日回购（字段 sz/ntl/average_price，一次拿到 471 天全量）。
 - 同族端点：`hl-auctions`、`hl-dex-metrics`、`hype-price`。
-- 用法：与链上快照差分互为独立源对表——HYPE 一例两源偏差仅 0.7%。规矩：偏差 <1% 才允许给 HIGH 置信度；这是低成本高置信度的标配动作。
+- 用法：与链上快照差分互为独立源对表——HYPE 一例两源偏差仅 0.7%。规矩：偏差 <1% 才允许按最高证据级措辞呈现（行内置信度 tag 已废止，用自然语言分级）；这是低成本高可信度的标配动作。
 
 ## 5. HyperEVM 侧（半盲区）
 

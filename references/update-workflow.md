@@ -126,7 +126,7 @@
 
 **滚动 JSON**（带监控包的旧研报；schema 见 monitoring-package.md）：同 schema 完整产出——`token.data_cutoff` 更新、**`token.skill_version`=当前版本号**、addresses/whale_groups 按最新判级**全量重写**（不是只写增量）、camp_share_series 追加后重采样、monitoring_advice 更新版、四键照旧。无监控包旧研报改滚动 analysis-state.json（同法：全量重写+存档旧版）。**build_appendix 刻意不做通用脚本**（六战证据一致：主体 80–90% 是人工研判文案），每次手写但守骨架四则：①rebuild 范式（整块重写勿在旧 JSON 上打补丁——TRASH 用过 mutate 式，可复现性差）②存档幂等（`appendix_<旧cutoff日期>.json` 已存在则不覆盖）③版本一致性自查（脚本内 skill_version 常量与写进 token 块的值要同一处定义——CLUDE 案两处写了 2.9.0/2.5.0 不一致）④camp_share_series 直接用 camp_series_inc.py 的输出（已含重采样）。**report-extract 四键与 id 约定不动，看板衔接零影响**。build_html.py 质检与图数量无关（2026-07-14 实测确认：只查引用图存在性+四键+地址完整），简报正常走管道，**WARN=0 才交付**。
 
-**简报 checklist（短版）**：①五条直答齐、阴性结论明写 ②对比表两级（阵营+实体）齐且有 Δ 列 ③新实体达 ≥20% 门槛的有流转图 ④标准迁移该标的都标了 ⑤观察哨逐条有着落（无监控包旧研报：改为"无基线"声明句）⑥JSON 滚动更新且 skill_version 已写、旧版已存档（无监控包旧研报：改为滚动更新 analysis-state.json）⑦正文零地址+数量带【总量X%】 ⑧外部代币名自查（铁律 1）。
+**简报 checklist（短版）**：①五条直答齐、阴性结论明写 ②对比表两级（阵营+实体）齐且有 Δ 列 ③新实体达 ≥20% 门槛的有流转图 ④标准迁移该标的都标了 ⑤观察哨逐条有着落（无监控包旧研报：改为"无基线"声明句）⑥JSON 滚动更新且 skill_version 已写、旧版已存档（无监控包旧研报：改为滚动更新 analysis-state.json）⑦正文零地址+数量带【总量X%】。
 
 ## U6 复盘沉淀（仅用户明确要求时执行，不自动触发）
 
