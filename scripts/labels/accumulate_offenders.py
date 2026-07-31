@@ -2,9 +2,10 @@
 """惯犯庄家层（serial-actor）聚合器（v4 2026-07-17 首建）
 
 从历史分析 appendix.json **与 analysis-state.json**（3.18.0 起双源——监控包 v3.2 后
-默认只交付 state 文件，只扫 appendix 会漏掉全部"没买入"案子的实锤庄）的 whale_groups
-抽【实锤定性】的庄家/收割集团地址，生成 sources/serial_actors.csv——同一工作室换币
-再开盘是行业惯例，命中即高亮"此地址是 XX 案实锤惯犯"，新分析开局即知对手是谁。
+默认只交付 state 文件，只扫 appendix 会漏掉全部"没买入"案子的达标庄）的 whale_groups
+抽【历史案标记】的庄家/收割集团地址，生成 sources/serial_actors.csv——同一工作室换币
+再开盘是行业惯例，命中即高亮"此地址是 XX 案标记惯犯"（案内定性、多数案源未经用户
+复核，消费按线索级——见 labels/README serial-actor 段），新分析开局即知该优先查谁。
 
 固定动作（3.18.0）：每次分析交付后（完整版阶段5 / easy E5 落盘 state 后）跑一次
   python3 accumulate_offenders.py --apply     # 生成+直接入库（add_labels 内置校验，FAIL 自动还原）
@@ -345,7 +346,7 @@ def main():
     from collections import Counter
     cc = Counter(r['chain'] for r in out_rows)
     multi = [r for r in out_rows if '；' in r['evidence']]
-    print(f'serial_actors.csv: {len(out_rows)} 址（{n_groups} 个实锤组）| 分链 {dict(cc)}')
+    print(f'serial_actors.csv: {len(out_rows)} 址（{n_groups} 个历史案标记组）| 分链 {dict(cc)}')
     if multi:
         print(f'🚨 跨案命中 {len(multi)} 址（同一惯犯出现在多个案子——最高优先级）:')
         for r in multi[:10]:

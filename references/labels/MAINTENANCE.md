@@ -1,6 +1,6 @@
 # 标签库维护手册（MAINTENANCE.md）
 
-> **本文件只在维护标签库时读**（重建/扩容/审计/发布）；分析时只读 `README.md`（使用篇）。拆分于 v3.0 稳定化（2026-07-18）：此前使用与维护混在一个 README，每次分析多背 2/3 的维护内容。
+> **本文件只在维护标签库时读**（重建/扩容/审计/发布）；分析时只读 `README.md`（使用篇）。
 
 ## 版本与变更史（labels 数据版本独立于 skill 版本，见 retrospective「版本号约定」）
 
@@ -14,9 +14,9 @@
 | labels-hyperliquid | v4.1：+HyperCore 系统转移地址族 472（spotMeta 确定性生成）+CEX 词典修 8 条+entity 二审 19 条；赌池 no_merge 覆盖进金标作 round-trip 活体断言 |
 | labels-filecoin | v4 首建：filfox 官方标签 f00–f0126 低位段；v4.2 起 filecoin/cluster.py 真正接入 resolver（此前 README 宣称接入与事实不符——文档漂移实例，引以为戒） |
 
-**v4.2+ 稳定化补丁（2026-07-18，skill v3.0 稳定化会话）**：
+**发布库维护纪律（v4.2+ 稳定化定，2026-07-18）**：
 - **curation 层（SRC_PRIORITY = -1，高于 manual/addressbook）**：`additions/curation_overrides_*.csv` 的 source 一律写 `curation`。根因：add_labels.py 对同级采用"新条目覆盖"、build_labels.py 采用"先到保留"——两语义不一致曾致 12 行 v4.2 精修（Relay solver 官方 API 亲验等）在全量重建时被 gen_manual 泛化行回退（列级 diff 实测抓出，已救回 `curation_overrides_20260718.csv`）。**今后凡"直改发布库"级别的精修，必须同步固化为 curation override 文件**，否则下次重建即回退。
-- **高优先级源覆盖语义补全**：upsert 的 evidence/verified_at/status 三列此前只走"补空"，现随优先级覆盖（有值才覆盖）——curation/manual 层的权威证据出处才能真正生效。
+- **高优先级源覆盖语义**：upsert 的 evidence/verified_at/status 三列随优先级覆盖（有值才覆盖）——curation/manual 层的权威证据出处才能真正生效。
 - **benchmark fail-fast**：`--labels-dir` 找不到任何 labels-*.csv 时 FAIL 退出（此前路径错→空表→"错误 exclude=0"恒真假 PASS，预检门禁可被 cwd 错误静默绕过；README 预检命令须在 `scripts/labels/` 下运行）。
 - **roundtrip_check.py 进发布流程**（见下方重建步骤）。
 
@@ -26,7 +26,7 @@
 |---|---|---|
 | curation | 人工精修固化（additions/curation_overrides_*.csv） | 最高（压过一切，v4.2+ 稳定化设立） |
 | manual/addressbook | 实战核验条目（含全部 Robinhood 独家）| 最高，优先级压过一切 |
-| serial-offenders | 惯犯层（appendix 聚合+人工白名单，196 址）| 最高（实锤定性） |
+| serial-offenders | 惯犯层（appendix/state 双源自动回灌+人工白名单，随案滚动，07-31 时点约 1,740 址）| **线索级**（案内定性、多数案源未经用户复核，v6.2.0 降级定调——消费纪律见 labels/README serial-actor 段，禁当最高置信源用） |
 | registry-official | 官方 deployment registry（Aerodrome/Clanker/Zora/Uniswap/Virtuals 官方仓库·npm 包·docs 亲验，Base 54 条首建）| 高（官方源） |
 | manual-chainverify | 链上事件/RPC 亲验条目（Tornado BSC 合约、WHYPE）| 高（链上实测） |
 | hypurrscan-aliases | Hyperliquid 463 实体 | 高（浏览器官方标签） |

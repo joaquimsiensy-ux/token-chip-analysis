@@ -9,7 +9,9 @@ labels README 曾宣称 filecoin 接入 resolver 与事实不符）。本脚本�
 4. 关键方法硬闸必须同时出现在工作流、方法、判级和报告验收四层，防规则只写在角落而实际被跳过
 复盘写入后必跑（retrospective 步骤 3）；整编触发条件之一=本脚本抓出漂移 ≥3 处。
 
-用法：python3 scripts/tests/docs_lint.py    退出码：0=PASS；1=FAIL。
+用法：python3 scripts/tests/docs_lint.py [--all]    退出码：0=PASS；1=FAIL。
+  --all＝全量模式（v6.3.1）：额外纳入 commands-staging/*.md 与 evals/**/*.md——
+  此前 44/66 文档的覆盖盲区（"三查→四查""SKILL.md 阶段 N"类漂移在这两处存活过）。
 """
 import glob, os, re, sys
 
@@ -19,10 +21,13 @@ ROOT = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)),
 REF_RE = re.compile(r'(?<![\w/~])(?:references/[\w./-]+\.(?:md|csv|png)|scripts/[\w./-]+\.(?:py|sh)|labels/[\w.-]+\.(?:md|csv))')
 # 负向后顾排除长路径尾段（如 ~/Desktop/xx/scripts/chip_analysis.py 的历史出处说明——那不是仓库内引用）
 
-def md_files():
+def md_files(all_mode=False):
     out = [os.path.join(ROOT, 'SKILL.md'), os.path.join(ROOT, 'CHANGELOG.md')]
     out += sorted(glob.glob(os.path.join(ROOT, 'references', '**', '*.md'), recursive=True))
     out += sorted(glob.glob(os.path.join(ROOT, 'scripts', '**', 'README.md'), recursive=True))
+    if all_mode:
+        out += sorted(glob.glob(os.path.join(ROOT, 'commands-staging', '*.md')))
+        out += sorted(glob.glob(os.path.join(ROOT, 'evals', '**', '*.md'), recursive=True))
     return [p for p in out if os.path.exists(p)]
 
 def resolve(ref, src_path):
@@ -32,10 +37,10 @@ def resolve(ref, src_path):
              os.path.join(os.path.dirname(src_path), ref)]
     return any(os.path.exists(c) for c in cands)
 
-def main():
+def main(all_mode=False):
     fails = []
     warn_broken = 0
-    for path in md_files():
+    for path in md_files(all_mode):
         rel = os.path.relpath(path, ROOT)
         in_code = False
         for i, line in enumerate(open(path, encoding='utf-8'), 1):
@@ -103,8 +108,9 @@ def main():
         if warn_broken >= 3:
             print(f'⚠ 断链 ≥3 处——按 retrospective 2b 触发整编条件')
         return 1
-    print(f'PASS: {len(md_files())} 个文档，引用无断链、粗体配对完整')
+    print(f'PASS: {len(md_files(all_mode))} 个文档，引用无断链、粗体配对完整'
+          + ('（--all 全量模式）' if all_mode else ''))
     return 0
 
 if __name__ == '__main__':
-    sys.exit(main())
+    sys.exit(main('--all' in sys.argv[1:]))

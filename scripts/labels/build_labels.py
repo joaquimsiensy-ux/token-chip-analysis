@@ -415,7 +415,7 @@ for _fn in _EXTRA_SOURCES + _ADDITION_FILES:
     print(f'{_fn} merged:', n)
 
 # ---------- 7c) 惯犯庄家层（serial-actor；accumulate_offenders.py 产出，v4 新增） ----------
-# 历史分析 appendix 实锤收割集团地址：不剔除、不禁边，命中即高亮"XX 案实锤惯犯"
+# 历史案标记收割集团地址（案内定性、多数案源未经复核，线索级）：不剔除、不禁边，命中即高亮"XX 案标记惯犯"
 if os.path.exists('serial_actors.csv'):
     n = 0
     for r in csv.DictReader(open('serial_actors.csv')):

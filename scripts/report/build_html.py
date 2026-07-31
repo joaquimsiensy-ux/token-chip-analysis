@@ -31,7 +31,7 @@ JSON 附录（--json）：文件校验可解析后，双轨嵌入报告末尾—
 import argparse, base64, html, json, mimetypes, os, re, sys
 from collections import Counter
 
-# ---- 外部代币名自查（铁律 1 报告红线的自动化，3.18.0）----
+# ---- 外部代币名扫描（信息性提示；v6.4.2 起"零外部代币名"红线废止，不再拦交付）----
 # 通用缩写/工具名/链与 gas 币/稳定币/CEX 名——这些全大写词不是"外部代币名"
 _SCAN_COMMON = set("""
 API CEX DEX URL HTML JSON CSV RPC UTC GMT OK GB KB MB TB TLDR TL DR NFT LP AMM KOL FUD
@@ -49,18 +49,18 @@ CONFIRMED REFUTED WEAKENED PLAUSIBLE
 
 
 def token_name_scan(md_text, whitelist):
-    """扫描报告中的疑似外部代币名。返回 (warn 列表, note 列表)。
-    $XXX cashtag=强信号(非白名单即 WARN)；孤立全大写词=弱信号(NOTE 供人工扫一眼)。"""
+    """扫描报告中出现的外部代币名。返回 (cashtag note 列表, 全大写词 note 列表)。
+    v6.4.2 起两类都只是信息性提示（"零外部代币名"红线已废止，用户裁定）——
+    提示仅供自查是否复用了历史标的的结论（铁律 1），不再 WARN、不影响退出码。"""
     wl = _SCAN_COMMON | {w.strip().upper() for w in whitelist if w.strip()}
     cash = Counter(m.group(1).upper()
                    for m in re.finditer(r"\$([A-Za-z][A-Za-z0-9]{1,9})\b", md_text))
     caps = Counter(m.group(0)
                    for m in re.finditer(r"(?<![A-Za-z0-9$_./-])[A-Z][A-Z0-9]{2,9}(?![A-Za-z0-9_./-])",
                                         md_text))
-    warns = [f"[WARN] 疑似外部代币名 ${t}×{c}（铁律 1：除标的与生态 gas 币外禁现其他代币名；"
-             f"误报则加 --token-whitelist）" for t, c in cash.most_common() if t not in wl]
+    cash_notes = [f"${t}×{c}" for t, c in cash.most_common() if t not in wl]
     notes = [f"{t}×{c}" for t, c in caps.most_common() if t.upper() not in wl]
-    return warns, notes
+    return cash_notes, notes
 
 CSS = """
 :root{color-scheme:light}
@@ -250,7 +250,8 @@ def main():
     ap.add_argument("--json", help="机器可读 JSON 附录文件（schema 见 monitoring-package.md）")
     ap.add_argument("--title", default=None)
     ap.add_argument("--token-whitelist", default="",
-                    help="逗号分隔：标的符号+用户点名对比项等合法代币名（外部代币名自查白名单）")
+                    help="逗号分隔：标的符号等已知代币名，用于减少外部代币名提示噪音"
+                         "（v6.4.2 起扫描仅信息性 NOTE，不再拦交付）")
     ap.add_argument("--facts", help="facts.json 事实源（3.18.0 报告编译化：渲染宏+语义 gate，"
                                     "见 facts_gate.py docstring；不给则旧行为不变）")
     ap.add_argument("--state", help="analysis-state.json（与 --facts 同给时做 G1 成员集合对账）")
@@ -305,10 +306,12 @@ def main():
             print(f"[NOTE] {nt}")
     body = md_to_html(md_text, mddir, warns)
 
-    tk_warns, tk_notes = token_name_scan(md_text, a.token_whitelist.split(","))
-    warns += tk_warns
+    tk_cash, tk_notes = token_name_scan(md_text, a.token_whitelist.split(","))
+    if tk_cash:
+        print("[NOTE] 报告出现外部代币名（信息性提示，不拦交付；自查未复用历史案结论即可）: "
+              + " ".join(tk_cash[:20]) + (" …" if len(tk_cash) > 20 else ""))
     if tk_notes:
-        print("[NOTE] 全大写词人工扫一眼（checklist 第 10 条；确认非代币名可交付）: "
+        print("[NOTE] 全大写词人工扫一眼（确认非误写即可）: "
               + " ".join(tk_notes[:20]) + (" …" if len(tk_notes) > 20 else ""))
 
     title = a.title

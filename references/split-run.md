@@ -13,7 +13,7 @@
 用户手动新开 Fable 5 会话（CC），同目录跑 /token-analyze-2 <币> <easy|full>
 ```
 
-- 拆分线对齐 context-discipline 刀 1 既有机械/判断划分（会话级升级，规则语义零变更）：−1＝A0–A2 全部＋A3 机械子层；−2＝A3 判断层＋A4–A6。
+- 拆分线对齐 context-discipline 刀 1 既有机械/判断划分（会话级升级，规则语义零变更）：−1＝A0–A2 全部＋A3 机械子层；−2＝A3 判断层＋A4–A5（A6 复盘仅用户明确要求时）。
 - 动机排序：①判断段在干净上下文里执行（防长上下文注意力稀释——质量收益）②机械段不烧主力判断模型额度（成本收益）。
 - 分工依据（实证）：GPT-5.6 机械段强（逐 wei 对平、gate BLOCK 即停、写什么做什么），判断段弱（其翻案史 REFUTED 全集中在托管定性/实体冻结/口径外推）——**凡出现在其翻案史的环节一律进 −1 停止线**。
 
@@ -79,7 +79,7 @@
 
 ### 2.2 handoff_manifest.json 语义（schema `handoff/v1`）
 
-- **身份**：schema_version、case_id、run_id、mode（easy/full）、producer_model、CC/codex 两侧 git SHA、consumer_min_schema。
+- **身份**：schema_version、case_id、run_id、mode（easy/full；**值来源＝/token-analyze-1 命令的档位参数，−1 收工 `generate --mode` 必填传入**，用户未给档位时 −1 开工前先问、禁猜）、producer_model、CC/codex 两侧 git SHA、consumer_min_schema。
 - **口径**：链范围、合约、冻结块/slot、UTC cutoff、三种分母（总供应/调整后/流通）及来源。
 - **gate 记录**：每个 gate 的命令＋exit＋语义状态（accounting_mode/supply_truth 由脚本从产物 JSON 自动读 `verdict/exit_code`，防手报；四查等其他 gate 由 −1 执行者 `--gate` 显式声明并绑定产物文件）。
 - **产物 allowlist**：逐件登记路径/字节/sha256（大文件分片哈希＋复用采集侧行数/区间校验，不收尾全盘重哈希）/行数/schema/依赖。排除日志/临时库/含密钥文件（config.json 不入清单内容）。
@@ -91,9 +91,9 @@
 - 位置：案目录 `sealed/` 子目录＋`.sealed` 后缀＋文件头警示行（"−2 实体冻结前禁读"）；manifest 只记哈希不记内容。
 - **−2 禁读令**：entity_freeze.json 落盘前，−2 禁止读取 sealed/ 下任何文件（`--check-unseal` exit 0 才准读）。
 - 冻结后读取的用途＝**差异靶单**：sealed 观察与 −2 独立结论的分歧点进 A4 复核靶单——**它只是靶单不是证据、不算复核路数**。
-- 隔离非技术强制（macOS 无可靠文件访问审计），靠命名警示＋条文＋复盘自查申报三层；残余风险如实承认。
+- 隔离非技术强制（macOS 无可靠文件访问审计），靠命名警示＋条文＋−2 交付时自查申报三层（复盘已改为仅用户要求时跑，自查申报不再挂复盘，改挂 A5 交付）；残余风险如实承认。
 
-## §3 −2 判断段（A3 判断层 ＋ A4–A6）
+## §3 −2 判断段（A3 判断层 ＋ A4–A5；A6 复盘仅用户要求时）
 
 ### 3.1 开工序（八步，顺序执行，写死进 /token-analyze-2）
 
@@ -108,7 +108,7 @@
 
 ### 3.2 判断主序
 
-casebook C/E 册过闸 → 聚类合并裁决（只认专属性证据）→ 临时实体 → **无下限成员完整性扫描** → 反证检查 → **`handoff_manifest.py freeze` 落 entity_freeze.json**（成员表哈希/时间/未决项/casebook 结果；此后变更走 revision 追加）→ 正式 entity_identity_gate（逐 flag 填 resolution，G8 编译门照常）→ 判级 → needs_adjudication 逐项裁决（量大按 context-discipline 刀 1 现行外包制度 fan-out）→ 阵营演变重放（派机械子代理）→ 状态评估 → **冻结后读 sealed 观察作差异对照**（分歧点进 A4 靶单）→ A4 对抗复核 → A5（easy 两件套 / full 完整报告）→ A6 复盘。
+casebook C/E 册过闸 → 聚类合并裁决（只认专属性证据）→ 临时实体 → **无下限成员完整性扫描** → 反证检查 → **`handoff_manifest.py freeze` 落 entity_freeze.json**（成员表哈希/时间/未决项/casebook 结果；此后变更走 revision 追加）→ 正式 entity_identity_gate（逐 flag 填 resolution，G8 编译门照常）→ 判级 → needs_adjudication 逐项裁决（量大按 context-discipline 刀 1 现行外包制度 fan-out）→ 阵营演变重放（派机械子代理）→ 状态评估 → **冻结后读 sealed 观察作差异对照**（分歧点进 A4 靶单）→ A4 对抗复核 → A5（easy 两件套 / full 完整报告；交付时一并申报 sealed 自查）。A6 复盘不自动执行，仅用户要求时按 retrospective.md 走。
 
 ### 3.3 A4 外部异构路收紧条款（分段模式专属，兼容 codex 侧 c1.1.0 禁自审令）
 
@@ -120,5 +120,5 @@ casebook C/E 册过闸 → 聚类合并裁决（只认专属性证据）→ 临�
 
 ## §4 验收与回退
 
-- **首战合并验收指标（分段引入组）**：①verify 一次通过 ②−2 缺件回头补采次数（目标 0）③needs_adjudication 规模实测 ④−2 峰值上下文（目标 <20 万）⑤sealed 违规读取（目标 0，复盘自查申报）⑥保鲜警报触发与用户裁决记录是否顺畅 ⑦候选覆盖自检缺漏数（目标 0）。与 v6 骨架组四指标分开归因。
+- **首战合并验收指标（分段引入组）**：①verify 一次通过 ②−2 缺件回头补采次数（目标 0）③needs_adjudication 规模实测 ④−2 峰值上下文（目标 <20 万）⑤sealed 违规读取（目标 0，−2 交付时自查申报）⑥保鲜警报触发与用户裁决记录是否顺畅 ⑦候选覆盖自检缺漏数（目标 0）。与 v6 骨架组四指标分开归因。
 - **回退**：CC 侧 revert 6.1.0＋删两个命令分发文件即可，单会话命令原样在。**数据零浪费**：−1 产物即标准采集/对账产物，弃用分段时旧命令按"预采集衔接"直接复用——最坏结果＝一次加强版 /collect-data。

@@ -2,6 +2,8 @@
 
 来源：五次分析会话实测（2026-07）。每次分析开工前扫一眼，避免重蹈环境坑。
 
+> **平台适用性（搬迁服务器必读，2026-07-31 标注）**：本册是 macOS 本机坑册。迁 Linux 服务器时：字体（STHeiti/Hiragino）、qlmanage 质检、TCC 权限、「macOS 无 /proc」等条目全部失效或反转，服务器首战后须重建服务器版；SSL/certifi、zsh 词分割（服务器若用 zsh）、Claude Code 工具层坑（沙箱杀并发/Bash 超时/前台 sleep 禁令）与 OS 无关，照用。
+
 ## Python
 
 - Python 3.14 官方安装版（`/Library/Frameworks/Python.framework`），命令 `python3`
@@ -38,46 +40,41 @@
 - zsh 通配符无匹配时整条命令报错中断：删除类命令写 `rm -f xx_* 2>/dev/null || true`
 - 前台 `sleep` 被环境禁止：等待用 until 循环 / Monitor / run_in_background；**until 前台等待同样受 Bash 超时上限（最长 10 分钟）约束**——实测 10 分钟被杀（exit 143），预计等待超 10 分钟必须 run_in_background 或 Monitor（外部 CLAW 考古，2026-07）
 - 长任务日志轮询：`tail -5 log` 而不是 `cat log`（防大输出进上下文）
-- **heredoc 内联 Python 对中文文本做 str.replace：全角标点必须逐字符对准**——目标串里的中文全角标点（，、（）、：）在 heredoc 里敲成半角时 replace 静默不生效（无报错、无变更，肉眼极难察觉）；对含中文的文件做精确替换一律用 Edit 工具，不走 heredoc+str.replace（来源：USELESS(Solana) 分析，2026-07-21）
+- **heredoc 内联 Python 对中文文本做 str.replace：全角标点必须逐字符对准**——目标串里的中文全角标点（，、（）、：）在 heredoc 里敲成半角时 replace 静默不生效（无报错、无变更，肉眼极难察觉）；对含中文的文件做精确替换一律用 Edit 工具，不走 heredoc+str.replace（USELESS，07-21）
 
-## Bash 工具沙箱杀多进程并发脚本（★大坑，PUB 实测损失约 50 分钟）
+## Bash 工具沙箱杀多进程并发脚本（★大坑）
 
-- 现象：**ThreadPoolExecutor 多并发 curl 子进程的采集脚本**（如 fetch_sqd_transfers.py 16 并发）在 Claude Code Bash 工具的沙箱下被杀，**exit code 144、日志零输出**；同环境串行 curl 的脚本全程无恙。两次复现。
-- 对策（实测有效）：长跑采集脚本**脱管启动**——`nohup python3 … > data/xx.log 2>&1 & disown`，且 Bash 调用参数 `dangerouslyDisableSandbox: true`；之后稳定跑完。
-- 附带发现：被杀时**残留的其他会话同类进程也同时消失**——疑沙箱/系统层对进程组的连带清理；重要长跑一律 nohup 脱管，与 Claude 任务管理解耦。
-- （来源：PUB(Solana) 分析，2026-07-14）
-- **根治通道（B5，2026-07-22）**：新脚本的批量 HTTP/RPC 调用一律用 `scripts/lib/net.py`（httpx 进程内异步+令牌桶限速+tenacity 统一重试+msgspec 解析）——没有可被连带清理的 curl 子进程树，限速贴配额（如 Helius 10 RPS）。现成 CLI：`scripts/lib/rpc_batch.py`（批量 getCode 判 EOA/收据/任意方法，`--browser-ua` 开关对付 robinhood WAF；40 址实测与 curl 单发逐项等价、零失败）。**边界**：CF/指纹敏感站点（bscscan 网页、GT）仍走 curl；在役老脚本不强改（改动须走等价对表）。定位=买稳定性不是买速度。
+- **ThreadPoolExecutor 多并发 curl 子进程**的采集脚本在 Claude Code Bash 沙箱下被杀（exit 144、日志零输出，两次复现；被杀时其他会话同类进程连带消失）；同环境串行 curl 无恙（PUB 07-14）。
+- 对策：长跑采集**脱管启动**——`nohup python3 … > data/xx.log 2>&1 & disown` ＋ Bash 参数 `dangerouslyDisableSandbox: true`；重要长跑一律与 Claude 任务管理解耦。
+- **根治通道（B5）**：新脚本批量 HTTP/RPC 一律用 `scripts/lib/net.py`（httpx 进程内异步+令牌桶限速+tenacity 重试——没有可被连带清理的子进程树）；现成 CLI `scripts/lib/rpc_batch.py`（批量 getCode/收据/任意方法，`--browser-ua` 开关对付 WAF）。**边界**：CF/指纹敏感站点（bscscan 网页、GT）仍走 curl；在役老脚本不强改（改动须走等价对表）。定位=买稳定性不是买速度。
 
 ## 脚本 stdout 与实际行为不一致的误判坑（操作纪律）
 
-- 现象：改造既有脚本时用字符串 replace 换了 `json.dump` 的目标文件名，但脚本 `print` 里硬编码的旧文件名没换——stdout 显示"已写 data/camp_share_series.json"，实际写的是 `_v2` 新文件。凭 stdout 误判"旧文件被覆盖"，执行"恢复"（把未受损的旧文件 move 去覆盖新文件）反而人为制造了覆盖事故（好在均可确定性重算，零损失）。
-- 纪律：①判定脚本产出以 `grep` 代码里的写入语句 + `ls -la` 文件时间戳为准，stdout 的文件名叙述不可信；②"危机处置"（恢复/回滚/删除）动手前先验证事故是否真的发生；③改造脚本后先跑 `grep -n "json.dump\|open(" 改后脚本` 核对全部写入目标。
-- （来源：PUB(Solana) 增量更新，2026-07-15）
+- stdout 打印的文件名可能是硬编码旧串、与实际写入目标不一致——曾据此误判"文件被覆盖"并执行"恢复"，反而人为制造覆盖事故（PUB 07-15）。
+- 纪律：①判定脚本产出以 `grep` 写入语句 + `ls -la` 时间戳为准，stdout 的文件名叙述不可信；②危机处置（恢复/回滚/删除）动手前先验证事故是否真的发生；③改造脚本后 `grep -n "json.dump\|open("` 核对全部写入目标。
 
 ## matplotlib 文本中 $ 符号触发 mathtext 解析崩溃
 
 - 现象：lifecycle_flow footnote / 图表任意文本含成对 `$`（如"已收 $27.4万…($3.4万)"）时，matplotlib 把 `$...$` 段当 LaTeX mathtext 解析，遇中文/特殊字符直接 `ParseException` 崩溃 savefig；单个 `$` 也会告警。
 - 对策：图表文本里金额一律写"27.4万U/30.8万美元"或转义 `\$`；报告 md 正文不受影响（只有 matplotlib 渲染的字符串有此坑）。
-- （来源：HAN(Robinhood) 分析，2026-07-16）
+- （HAN，07-16）
 
 ## zsh 变量存 curl 选项不分词（exit 5 假死）
 
 - 现象：`P="-x http://127.0.0.1:7897"; curl $P …` 在 zsh 下 `$P` 不做词分割（zsh 默认 SH_WORD_SPLIT 关闭），整串被当**一个**参数传给 curl，报 exit 5（CURLE_COULDNT_RESOLVE_PROXY）；同一命令在 bash 正常，极易误判为代理挂了。
 - 对策：代理/多段选项要么直接写死在命令里，要么用 `${=P}` 强制分词，要么数组 `P=(-x http://127.0.0.1:7897); curl $P[@]`。
-- （来源：ASTEROID(ETH) 分析，2026-07-18）
+- （ASTEROID，07-18）
 
 ## 监视器脚本的进程存活检测（macOS 无 /proc）
 
-- 现象：看护采集进程的监视器脚本用 `[ ! -d /proc/<pid> ]` 判断"进程已退出"——macOS 没有 /proc 文件系统，该条件恒真，监视器启动即误报进程死亡秒退（SQD 案实测）。
-- 对策：进程存活检测一律 `ps -p <pid> >/dev/null`；不用 /proc（Linux 专属），也不依赖 `kill -0`（跨用户有权限差异）。
-- （来源：SQD(Arbitrum) 分析，2026-07-20）
+- `[ ! -d /proc/<pid> ]` 判"进程已退出"在 macOS 恒真（无 /proc 文件系统），监视器启动即误报秒退（SQD 07-20）。
+- 对策：存活检测一律 `ps -p <pid> >/dev/null`——跨平台通用（Linux 服务器虽有 /proc，仍用 ps 写法，脚本免改）；不依赖 `kill -0`（跨用户有权限差异）。
 
-## 案目录自包含原则（2026-07-25 权限事故后立规）
+## 案目录自包含原则（TCC 权限事故后立规，2026-07-25）
 
-**事故**：分析进行到对抗复核阶段时，macOS 对 `~/Documents` 的访问权限（TCC）被系统撤销，导致跨卷符号链接指向的 1.2GB 采集产物与价格文件**全部失读**（`Operation not permitted`），分析被迫中途重新采集全量数据（1,063 万条，分段约 20 分钟）恢复。
+**起因**：macOS TCC 中途撤销 `~/Documents` 访问权，跨卷 symlink 指向的 1.2GB 采集产物全部失读，被迫中途重采恢复（诱因 macOS 专属，原则跨平台适用）。
 
 **新规**：
-1. 案目录内的数据产物一律**实体文件**，禁止跨卷/跨用户目录的 symlink 依赖——复用其他案目录的采集产物时用 `cp` 而非 `ln -s`（磁盘成本远低于中途失读的返工成本）。
-2. 外部数据（价格序列、标签快照等）同样落本案目录，不引用其他案目录的路径。
-3. 复用既有采集产物前先做一次读取探针（`duckdb` 读一行），确认可读再规划工序。
-4. 附带收获：重采集的 10,638,696 条与原产物**逐条一致**（行数、块区间、供给闭合全等），可作为"采集幂等性"的实证——重采集不是损失，是一次免费的数据可重现性验证。
+1. 案目录内数据产物一律**实体文件**，禁止跨卷/跨用户目录 symlink——复用其他案目录产物用 `cp` 不用 `ln -s`（磁盘成本远低于中途失读的返工）。
+2. 外部数据（价格序列、标签快照等）同样落本案目录，不引用其他案目录路径。
+3. 复用既有产物前先做读取探针（`duckdb` 读一行）确认可读，再规划工序。

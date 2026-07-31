@@ -1,28 +1,28 @@
 # EVM 链数据管道 · 对账与重放引擎（data-pipeline-evm 分册 3/3）
 
-> 母文档：`data-pipeline-evm.md`（已拆为薄路由索引页，文档级引言与时效纪律见索引页）。本册覆盖原 **§5 对账 gate / §11 公共数仓准入实证与分工定稿 / §12 DuckDB 重放/缩图引擎**；§1/§2/§3/§6/§7 见 `data-pipeline-evm-channels.md`，§4/§8/§9/§10 见 `data-pipeline-evm-sources.md`。正文 §N 交叉引用一律为母文档节号。规则逐条原样迁移、零改写；最后整编 2026-07-22。
+> 母文档：`data-pipeline-evm.md`（薄路由索引页，文档级引言与时效纪律见索引页）。本册覆盖 **§5 对账 gate / §11 公共数仓准入实证与分工定稿 / §12 DuckDB 重放/缩图引擎**；§1/§2/§3/§6/§7 见 `data-pipeline-evm-channels.md`，§4/§8/§9/§10 见 `data-pipeline-evm-sources.md`。正文 §N 交叉引用一律为母文档节号。
 
 ## 5. 对账 gate（数据不闭合不进分析）
 
-标准四件套，全过才允许跑下游分析：
-1. **重建余额 vs GMGN top10 精确对表**：全量转账逐笔累加重建每地址余额，与 GMGN top10 逐个对到个位数。曾在扫块进度 97% 时 4/10 MISMATCH、补扫 remaining=0 后 10/10 全 OK——证明该 gate 能兜住数据缺口；预跑一次有提前暴露口径问题的价值，但通过判定只认补扫完成之后。（来源：OPN(BSC) 分析，2026-07）
-2. **全网余额和=0**：所有地址重建余额求和应为零（mint/burn 计入），不为零即漏了转账段。（来源：SIREN(BSC) 分析，2026-07）
-3. **总量恒等式 wei 级闭合**：跨链代币各链余量之和 ≈ 总供应，精确到 wei。（来源：OPN(BSC) 分析，2026-07）
-4. **时间戳锚点插值抽查**：锚点表（每隔固定块距，或每 100 万块一个）bisect 线性插值出的日期，抽几笔与浏览器页面核对。（来源：OPN/SIREN(BSC) 分析，2026-07）
-5. **重放前置完整性检查（快照缺块防护，重放开跑前做）**：核对全部采集 run 的 done.json——next_block 全部达到目标块、mtime 晚于最后一次采集启动，才允许重放（实锤：重放跑在尾部 run 拉完前 13 分钟，快照缺尾部 ~980 块/682 条）。**机制警示：供给闭合恒等式（上面第 2/3 查）对"缺整行"免疫**——整行缺失时借贷两边同时缺、sum 恒等于 TOTAL 照样通过，此类洞只有 RPC 抽查负余额能暴露；增量重放出现"期初为 0 的地址转出变负"=上游快照有洞的指纹，见到即停下补数据。（来源：QUQ(BSC) 完整版分析，2026-07-22）
+对账清单＝**标准四件套＋1 项重放前置检查**（下列 1–4 为对表查，5 为采集完整性前置），全过才允许跑下游分析。与 analyze-workflow A2 现行"四查"的对应：本节 1＝余额对账、2/3＝供给闭合、4＝时间抽查；A2 第 3 查**供给真值闸**挂 `scripts/lib/supply_truth_gate.py`，不在本清单内：
+1. **重建余额 vs GMGN top10 精确对表**：全量转账逐笔累加重建每地址余额，与 GMGN top10 逐个对到个位数。曾在扫块进度 97% 时 4/10 MISMATCH、补扫 remaining=0 后 10/10 全 OK——证明该 gate 能兜住数据缺口；预跑一次有提前暴露口径问题的价值，但通过判定只认补扫完成之后。（OPN，07）
+2. **全网余额和=0**：所有地址重建余额求和应为零（mint/burn 计入），不为零即漏了转账段。（SIREN，07）
+3. **总量恒等式 wei 级闭合**：跨链代币各链余量之和 ≈ 总供应，精确到 wei。（OPN，07）
+4. **时间戳锚点插值抽查**：锚点表（每隔固定块距，或每 100 万块一个）bisect 线性插值出的日期，抽几笔与浏览器页面核对。（OPN/SIREN，07）
+5. **重放前置完整性检查（快照缺块防护，重放开跑前做）**：核对全部采集 run 的 done.json——next_block 全部达到目标块、mtime 晚于最后一次采集启动，才允许重放（实锤：重放跑在尾部 run 拉完前 13 分钟，快照缺尾部 ~980 块/682 条）。**机制警示：供给闭合恒等式（上面第 2/3 查）对"缺整行"免疫**——整行缺失时借贷两边同时缺、sum 恒等于 TOTAL 照样通过，此类洞只有 RPC 抽查负余额能暴露；增量重放出现"期初为 0 的地址转出变负"=上游快照有洞的指纹，见到即停下补数据。（QUQ 完整版分析，07-22）
 
 **对账比对的 DuckDB 两坑（2026-07-25 实测，两个都会静默产生错误结论）**：
 - **`read_csv` 把 wei 值推断成 DOUBLE → 制造全量假差集**：独立源 CSV 与主数据做六元组比对时，`read_csv`/`read_csv_auto` 会把 20+ 位的 wei 十进制串推断为 DOUBLE，精度丢失导致**每一行都对不上**（看起来像"数据源完全不一致"的灾难性结论）。对账读 CSV 一律 `all_varchar=true` 后显式 `CAST(... AS HUGEINT)`。
 - **`others` 是保留字，不可作列别名**：`SUM(...) AS others` 直接语法错误（`Parser Error: syntax error at or near "others"`）。聚合列命名避开 `others`/`day`/`filter` 等保留字。
-（来源：BUILDon(BSC) 分析，2026-07-25）
+（BUILDon，07-25）
 - **区块号区间不可用于估算时间分布（传播级错误源）**：据"96% 的转账落在块 50M–72M"推出"96% 发生在
   2025 上半年"，实测**只有 32.78%**（H2 反而占 61.64%）——BSC 2025 年把出块时间从 3 秒压到 0.75 秒，
   **同样块跨度对应的真实时长差 4 倍**。任何"某时期占比"类结论一律 join 区块时间戳按日/月归集后再统计，
-  禁止块号线性外推。对所有近年提速过的链（BSC/Arbitrum/opBNB…）都成立。（来源：KOGE(BSC) 分析，2026-07-25）
+  禁止块号线性外推。对所有近年提速过的链（BSC/Arbitrum/opBNB…）都成立。（KOGE，07-25）
 
-**对账差额排查步骤（供给恒等式不闭合时按序查）——查完常规漏段后必查 Burn/Mint 独立事件**：2017 老版 OpenZeppelin `burn()` 只发 `Burn(address,uint256)` **不发 Transfer**——只采 Transfer topic 重放会出现"重放净供给 > 链上 totalSupply"的幽灵差额（LPT 案 604 枚，burner 主力=治理合约每次投票烧 100）。排查法：web3_sha3 算 Burn/Mint topic0 后 HyperSync 定向拉（几秒）；注意新链侧可能是"Burn 事件+Transfer(to=0x0) 双发"路径（此时 Burn 事件是 Transfer 的子集，不另计，勿双扣）。链无关坑，凡 2018 前老合约必查。（来源：LPT(ETH+Arbitrum) 分析，2026-07-21）
+**对账差额排查步骤（供给恒等式不闭合时按序查）——查完常规漏段后必查 Burn/Mint 独立事件**：2017 老版 OpenZeppelin `burn()` 只发 `Burn(address,uint256)` **不发 Transfer**——只采 Transfer topic 重放会出现"重放净供给 > 链上 totalSupply"的幽灵差额（LPT 案 604 枚，burner 主力=治理合约每次投票烧 100）。排查法：web3_sha3 算 Burn/Mint topic0 后 HyperSync 定向拉（几秒）；注意新链侧可能是"Burn 事件+Transfer(to=0x0) 双发"路径（此时 Burn 事件是 Transfer 的子集，不另计，勿双扣）。链无关坑，凡 2018 前老合约必查。（LPT，07-21）
 
-加分项：重建结果与第三方链上分析师独立披露的同口径数字对表，独立吻合是结论可信度的最强背书（具体数字属于当次报告，不进本手册）。（来源：SIREN(BSC) 分析，2026-07）
+加分项：重建结果与第三方链上分析师独立披露的同口径数字对表，独立吻合是结论可信度的最强背书（具体数字属于当次报告，不进本手册）。（SIREN，07）
 
 ## 11. 公共数仓准入实证与分工定稿（ASTEROID(ETH) 三源对账,2026-07-21）
 
@@ -59,8 +59,8 @@
 | QUQ 缩图 | cluster 老路四容器不可行 | **19.5s/1.35GB** → 76.2 万聚合边；rustworkx 连通分量 0.35s |
 
 **用法**：
-- 重放：`python3 replay_duck.py --channels channels.json --out-dir data [--camps camps.json] [--emit-csv] [--mem-limit 8GB]`。通道 path 为**目录即自动走 v2 parquet**（run_*/logs.parquet+blocks join），文件走 v1 7 列 CSV；`--emit-csv` 产旧格式 merged.csv（对表/未迁移下游）。
-- 缩图：`python3 cluster_prep_duck.py <chain> [--dir 工作目录 | --v2 <v2目录>]` → data/cluster_prep/ 三件（edges_agg/bal/profile 全整数 parquet）→ `python3 cluster.py <chain> --prep`。千万行以下 cluster.py 老路照旧。
+- 重放：`python3 scripts/evm/replay_duck.py --channels channels.json --out-dir data [--camps camps.json] [--emit-csv] [--mem-limit 8GB]`。通道 path 为**目录即自动走 v2 parquet**（run_*/logs.parquet+blocks join），文件走 v1 7 列 CSV；`--emit-csv` 产旧格式 merged.csv（对表/未迁移下游）。
+- 缩图：`python3 scripts/evm/cluster_prep_duck.py <chain> [--dir 工作目录 | --v2 <v2目录>]` → data/cluster_prep/ 三件（edges_agg/bal/profile 全整数 parquet）→ `python3 scripts/evm/cluster.py <chain> --prep`。千万行以下 cluster.py 老路照旧。
 - 长跑守护：`python3 scripts/run_guarded.py --name X --mem-ceiling-gb 12 --detach -- <命令>`（脱管+双内存水位+状态 JSON 原子写；替代裸 nohup，防沙箱连带清理与 OOM 假死）。
 - **回归门禁（A1 纪律，硬性）**：动引擎/换库版本后必跑 ①`scripts/tests/run_all.py`（含 hypothesis 等价性测试+env_check 版本锁）②`scripts/bench/golden_baseline.py snapshot+compare` 对 ASTEROID 重跑对表。基线快照与对比口径见该脚本 docstring。
 
@@ -90,7 +90,7 @@
 - ⚠**等价性回归待补**：尚未与 replay_duck 做黄金基准对表（KOGE 案无小样本基准）。首次用于新标的时，
   取一个 ≤200 万行块区间两引擎各跑一次、比对 balances_final/mint_ledger/supply 三键后再放量。
 - **峰值不由它产**（亿级块末窗口同样爆盘）——配套 `peaks_daily.py`，见 §12c。
-（来源：KOGE(BSC) 分析，2026-07-25）
+（KOGE，07-25）
 
 **§12c 峰值日级两级口径（`peaks_daily.py`）——刷量盘块末窗口的替代件**：
 块级 `(addr,block)` 聚合 + `PARTITION BY addr ORDER BY block` 窗口在刷量盘上是灾难：
@@ -98,10 +98,10 @@ KOGE 一级 inflow 预筛（≥0.1% 供应）后**仍剩 157,459 个候选**，�
 改日级后 6,217 候选 / 734,079 行 / **164 秒**完成。两级口径保证判级不失真：
 `L1 日末峰值`（主口径）+ `L2 日内恒等上界 Σmax(day_delta,0)`（≥ 任意时刻真实峰值，全整数恒等）；
 凡 L1 未达门槛但 L2 达标者落 `needs_block_precision.json`，对这批（通常个位数）再补块级精确值——**只多查不漏查**。
-- **候选门槛按"判级需求"定，别照抄 0.1%**：恒等式保证峰值 ≥pct 的地址必在 `inflow ≥pct` 内，
-  而判级实际只需 ≥1%（其他大户线）。KOGE 实测 ≥0.1% 有 131,833 址、**≥1% 只有 6,217 址，差 21 倍**。
+- **候选门槛跟现行判级线走，禁止照抄历史案数字**：恒等式保证峰值 ≥pct 的地址必在 `inflow ≥pct` 内，
+  故预筛线取**现行判级体系的最低线＝其他大户线（0.1% 总供应 / 0.2% 流通，权威见 tiering §6a，两口径换算后取更低枚数）**——预筛门槛与判级门槛分开：预筛只保证"达线者必在候选内"，判级仍按 §6a 各档阈值走，两级口径只多查不漏查。KOGE 实测（07-25，当时其他大户线尚为 1%）：≥0.1% 有 131,833 址、≥1% 只有 6,217 址，差 21 倍——量级规律仍可参考，但 v5.0 已降线，**今按 1% 预筛会把 0.1%–1% 区间候选不可逆滤掉**。
 - **附带收获**：产出的 daily_delta 同时就是阵营/实体日序列的原料，一举两得。
-（来源：KOGE(BSC) 分析，2026-07-25）
+（KOGE，07-25）
 
 **fail-closed 强化（新引擎内建，比旧引擎严）**：坏行 reject 记账（n_source_rows/n_bad_fields/n_out_of_segment/n_dedup_removed 进 stats）；同去重键不同事件内容=数据损坏硬退（旧引擎静默 keep-last）；空 ts 硬退（旧引擎归上一有效日的未定义行为）；供给闭合 gate 挂 → exit 4。同批修复旧引擎三缺口：replay_pass1 坏行计数+`--allow-bad-rows`（默认 0 即退）、cluster R1/准入阈值整数交叉乘法（曾浮点累计）、transfers_lib dedup 重组冲突检测（同 (block,tx,li) 双 hash 硬退,曾双计）。cluster 输出排序加确定性 tiebreaker（并列余额曾致同数据两跑输出不同）。
 
@@ -111,7 +111,7 @@ KOGE 一级 inflow 预筛（≥0.1% 供应）后**仍剩 157,459 个候选**，�
 
 ## 13. 时间抽查的第二源选型：改用 SQD Portal，不要用区块浏览器 API（GMX(Arbitrum) 2026-07-26 定）
 
-**背景**：对账三查的"时间抽查"需要一个**独立于主采集通道**的第二源来重算锚点余额。此前默认走 Etherscan 系 API 的 `tokentx`，GMX 案实测该路对**大地址**根本不可用。
+**背景**：对账关卡四查的"时间抽查"需要一个**独立于主采集通道**的第二源来重算锚点余额。此前默认走 Etherscan 系 API 的 `tokentx`，GMX 案实测该路对**大地址**根本不可用。
 
 **Etherscan V2 免费层的两个实测缺陷（都会静默给出错误答案）**：
 1. **`tokentx` 不返回 `logIndex`** → 去重键退化为 `(hash,from,to,value)`，同一 tx 内多笔相同金额的转账会被误并（少算）。

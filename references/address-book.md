@@ -182,7 +182,7 @@
 | `0xabb2acd3be814a80e502575d6c1dc5f789e9cd10` | 公共 relayer（Pointless 实测 2026-07-14） | 797 条转账/273 地址代发交易，与 0x56c2…/0xa67d… 同类 |
 | `0xb477751b76cf82d00a686a1232f5fcd772414af3` | LiFiDiamond（Robinhood 链部署，已验证） | 跨链聚合路由，原子过手；币进它=卖出或跨链撤离（同 tx logi 链可判：进池=卖出） |
 | `0xcaf681a66d020601342297493863e78c959e5cb2` | Uniswap SwapRouter02 | 聚类先 getCode 甄别，别把 router 串成假簇 |
-| `0xd9ec2db5f3d1b236843925949fe5bd8a3836fccb` | 主流 meme 发射台工厂（NOXA 类） | mint 10 亿→全额建 V3 池 1%，同 tx 创建者可自狙。**手续费分成两次分析不一致，工厂疑似 per-launch 可配置**：GME 侧记 57%销毁/33%平台/10%创建者；Pointless 侧实测=本币侧 fee 80%烧/20%平台、WETH 侧 fee 65%平台金库/35%创建者（来源：Pointless 分析 2026-07-13）；CASHCAT 侧独立实测与 Pointless 读数一致（本币 fee 经 feeRouter `0x9efdc1a8…` 烧 80%/20% 卖回池变现；feeRouter protocolShare=65 链上实读）——**遇到时按标的现场实测 fee 流向，勿套用任一历史比例**（第三点：该标的 7/1 起创建者本币侧份额被置零，份额参数确认 per-launch 动态可变，来源：CASHCAT 分析 2026-07-13）。NOXA 案又一数据点：本币侧 feeRouter 吞吐拆分实测=烧 86.26%/平台 treasury 13.74%、创建者本币份额≈0；且 LaunchLocker 在创作者领费的同 tx 会给平台 treasury 一笔机制分成——treasury 的"持仓"是纯被动费留成，勿当建仓（来源：NOXA 分析 2026-07-15） |
+| `0xd9ec2db5f3d1b236843925949fe5bd8a3836fccb` | 主流 meme 发射台工厂（NOXA 类） | mint 10 亿→全额建 V3 池 1%，同 tx 创建者可自狙。**手续费分成两次分析不一致，工厂疑似 per-launch 可配置**：GME 侧记 57%销毁/33%平台/10%创建者；Pointless 侧实测=本币侧 fee 80%烧/20%平台、WETH 侧 fee 65%平台金库/35%创建者（Pointless 07-13）；CASHCAT 侧独立实测与 Pointless 读数一致（本币 fee 经 feeRouter `0x9efdc1a8…` 烧 80%/20% 卖回池变现；feeRouter protocolShare=65 链上实读）——**遇到时按标的现场实测 fee 流向，勿套用任一历史比例**（第三点：该标的 7/1 起创建者本币侧份额被置零，份额参数确认 per-launch 动态可变，来源：CASHCAT 分析 2026-07-13）。NOXA 案又一数据点：本币侧 feeRouter 吞吐拆分实测=烧 86.26%/平台 treasury 13.74%、创建者本币份额≈0；且 LaunchLocker 在创作者领费的同 tx 会给平台 treasury 一笔机制分成——treasury 的"持仓"是纯被动费留成，勿当建仓（NOXA 07-15） |
 | `0x7e035fb048a31e0481b88074557415b1c187242b` | 发射台基建部署者·**dev.noxa.eth**（BEGGAR 核验 2026-07-17） | 上述工厂的部署者 EOA；ENS=dev.noxa.eth（创始人推文自认官方地址）；代发平台金库的领费交易（零仓操作手形态） |
 | `0x71f2f1c2dc94cdabfe29cb355119f8683ae0969b` | **NOXA 平台金库 treasury.noxa.eth**（BEGGAR 核验 2026-07-17） | ENS 双向解析+创始人推文自认；全平台数十币的协议费归集金库（千 WETH 级）+亲手发射平台自营币；其从 feeRouter 收的 WETH 是**多币混合口径**，单币归因须按该币主池 Collect 拆分上限；作为 deployer 出现=平台自营盘 |
 | `0x69957a4b1b97adb44742bb2f0f736f196960a83a` | **NOXA 平台出纳机器人**（BEGGAR 核验 2026-07-17） | 万笔级 EOA，约每 5 分钟自动 collect feeRouter+withdraw；**其 ETH 自动分发名单=官方关联仓发现通道**（名单极短，非金库收款人是运营侧隐性关联仓候选，见 playbook §4）；作为 funder 的 gas 边不可作私有聚类 |
@@ -191,7 +191,7 @@
 | `0xa58bdd0ab5ebbb8dc425090fea8fd0ba969c1668` | 公共卖币执行合约（BEGGAR 核验 2026-07-17） | 63 独立 txfrom，同上语义 |
 | `0x243a17063102c29fb60aa930db199d4b73ab8a37` | 公共卖币执行合约（BEGGAR 核验 2026-07-17） | 66 独立 txfrom，同上语义 |
 | `0x2a7f3d7486641c77600b9b9256132755c8aebb4f` | 公共卖币执行合约/原子代卖路由（BEGGAR 核验 2026-07-17） | 238 独立 txfrom、过手可达供应 39%、唯一出方=池；同上语义 |
-| `0x26605f322f7ff986f381bb9a6e3f5dab0beaeb09` | **Flap（flap.sh）Portal v5.14+**（COMPUTE 核验 2026-07-12） | 第三家发射台，日发币约千个。机制见 data-pipeline-robinhood.md Flap 段 |
+| `0x26605f322f7ff986f381bb9a6e3f5dab0beaeb09` | **Flap（flap.sh）Portal v5.14+**（COMPUTE 核验 2026-07-12） | 第三家发射台，日发币约千个。机制见 data-pipeline-robinhood-traps.md 坑 4b（Flap 段） |
 | `0xb477751b76cf82d00a686a1232f5fcd772414af3` | LiFiDiamond（LI.FI 跨链聚合协议） | 已验证合约。经手枚数可达供应量级但为公共通道，**勿判为对倒枢纽**（COMPUTE 复核 REFUTED 实例） |
 | `0x09ad820aac5779683b481c4674208a4e1b024afa` | DexAggregatorCore（已验证，部署者 0x9f2eFccb…） | 与下行同栈。买入归集+卖出形态酷似漏斗出货，实为聚合器路由——**先 getCode+验证合约名再定性** |
 | `0x20f6ee51340adeed01a59b0e65cb3703f3dc860c` | DexAggregator（同上同栈） | 单进单出中转形态是其正常设计，非对倒证据 |
@@ -201,52 +201,52 @@
 | `0x2e9b3fc5e73221e8ac0da2a1d836bda0273eab7f` | App 交易路径中转（TRASH 核验 2026-07-17） | 1,550 条流水、同秒入出、上游主要为 RobinHoodSettler(0xe726);经它"转入"的仓位=App 内市场买入交付,**共同上游≠关联** |
 | `0x8f10b468b06c6fd214b65f87778827f7d113f996` | 套利/路由 bot 原子中转（TRASH 核验 2026-07-17） | 319 条,同秒对倒于 PoolManager 与 0xb92fe925 之间,零驻留;勿当仓位地址 |
 | `0xa67d7eb4dc68fa6ce8e34ef8cadaf075b9893fbb` | bot relayer（同上，354 笔/币对级） | 同上 |
-| `0xe72688f7d25d7318b9a81f21edda640ca948c83b` | RobinHoodSettler（交易产品清算枢纽，Blockscout 实名） | 34 进/94 出，用户托管提币模式。CASHCAT 会话教训：其过账曾以"大额转账边"混进庄家聚类当假桥——**与它的转账是产品过账，勿作关联边**（来源：CASHCAT 分析 2026-07-13） |
+| `0xe72688f7d25d7318b9a81f21edda640ca948c83b` | RobinHoodSettler（交易产品清算枢纽，Blockscout 实名） | 34 进/94 出，用户托管提币模式。CASHCAT 会话教训：其过账曾以"大额转账边"混进庄家聚类当假桥——**与它的转账是产品过账，勿作关联边**（CASHCAT 07-13） |
 | `0x91604f590d66ace8975eed6bd16cf55647d1c499` | **尘埃 gas 出纳服务**（Robinhood 第三种 gas 断头/伪关联形态，与 Relay 桥、0x1887 提款热钱包并列）（CASHCAT 增量更新实证 2026-07-15） | 8,787 笔、抽样 111+ 个不同收款地址、模式="发尘埃级 gas → 收款者 1-3 秒内交易"（对照组接收者含与标的零关联的做市 bot）——**"共享此 funder"与"注 gas 后秒级交易"均为服务普遍机制，不构成同实体证据**；据它建的 gas 边一律降级为辅助证据，同实体认定须币流闭环独立支撑 |
 | `0x32487287c65f11d53bbca89c2472171eb09bf337` | **Virtuals 平台回购机器（TWAP buyback bot）**（HAN 分析实证+对抗复核 2026-07-16） | EOA；对 Virtuals 系 agent 币做 TWAP 机械买入（中位 13 秒/笔、单向零卖出），跨 **150+ 种** agent 币系统性积累，弹药 VIRTUAL；gas 来自平台部署管理员 0xe4a001…与 keeper 0x81f7ca…。**出现在任何 Virtuals 币的买家榜=平台系统组件，勿判外部庄家/吸筹方**；其处置模式=keeper 对新合约三连初始化后数秒内整仓 transfer 转入封存（非卖出）——监控其转出时先核对接收方 creator 是否平台合约+有无 keeper 初始化前奏，命中=平台拨付勿报"庄家出货" |
 | `0xe4a0015b4c12f84bf9b8b9db56b7ef0bc539d88f` | **Virtuals 平台部署管理员**（HAN 分析实证+对抗复核 2026-07-16） | EOA；掌握工厂/ACF 执行器/USDG 分发合约的 ownership 与 role 管理权（grantRole/transferOwnership 实测），权限高于 keeper；曾同秒向 6 个系统地址批量注资 0.01E 初始化（受益者含 keeper/金库2/回购机器）。**作为 funder 出现=收款方为平台系统组件的强证据**；坑：Blockscout `/transactions?filter=from` 对它稳定 500，去掉 filter 正常 |
 | `0x0000000071727de22e5e9d8baf0edac6f37da032` | ERC-4337 EntryPoint v0.7（跨链同址） | AA 钱包交易的 txto 都是它，由多家 bundler 代发（txfrom 常见 0x4337 前缀），勿作关联证据 |
-| `0x5ff137d4b0fdcd49dca30c7cf57e578a026d2789` | ERC-4337 EntryPoint v0.6（跨链同址） | 存量流量仍大；四链 getCode 亲验 2026-07-17（v4.2 补录，此前只有 v0.7 是覆盖漏洞） |
+| `0x5ff137d4b0fdcd49dca30c7cf57e578a026d2789` | ERC-4337 EntryPoint v0.6（跨链同址） | 存量流量仍大；四链 getCode 亲验 2026-07-17 |
 | `0xd29c85f15df544ba632c9e25829fd29d767d7978` | Across 桥 Universal_SpokePool（跨链入金通道之三；标签库已有，Pointless 二次增量行为面补注 2026-07-17） | 12.2 万+笔 ERC1967Proxy；跨链 fill 以 internal 转账给用户地址交付——**经它 internal 入金=跨链断头**，不构成私人金主边（实测一个 1.6% 大户的注资来自它，据此排除私人关联） |
 | `0x3f43479c8536f7ee8180d0f67a050980dc5bc8c8` | batchTransferNative 批量转账工具（disperse 类半公共，125 用户；标签库已有，Pointless 二次增量穿透用法补注 2026-07-17） | **穿透用法：每一笔调用批次归属单一操作者**——同批次接收方=同一操作者的马甲组（wei 级等额分发是附加指纹，实测据此并出九址协同工作室）；但跨批次用户互不相干，"都用过它"不构成关联 |
 | `0x243a17063102c29fb60aa930db199d4b73ab8a37` | 公共热钱包/托管结算设施（Pointless 二次增量核验 2026-07-17） | 8 万+笔高频；大户"分仓转给它"实为经它卖出/托管过手，勿判私人分仓地址 |
-| `0x65050a9b7e5075a2ba5ced7b1b64ee66262c40dc` | 公共狙击 bot 执行代理（已验证 Proxy，1500+ 独立 txfrom 用户）（来源：Pointless 分析 2026-07-13） | 多个狙击组同用它下单——**"共用此合约"不能当私有关联/同一实体证据**（复核 REFUTED 一次"两组同实体"推断的元凶）。判据同 relayer：txfrom 用户数上千即公共设施 |
-| `0x8876789976decbfcbbbe364623c63652db8c0904` | Uniswap UniversalRouter（CREATE2 公共路由） | 92 万+笔。CASHCAT 案曾以转账边混进 96 址庄家聚类当假桥并把全市场用户买卖算进庄家账本（虚增 $28M 买入额）——聚类与账本一律剔除（来源：CASHCAT 分析 2026-07-13） |
-| `0x73991a25c818bf1f1128deaab1492d45638de0d3` | Uniswap V3 NonfungiblePositionManager | LP 头寸 mint/collect/burn 通道。**从它收到大额代币 = LP 提取，不是买入**；LP 做市行为者的"池卖"含流动性撤出，买卖口径须单独声明（来源：CASHCAT 分析 2026-07-13） |
+| `0x65050a9b7e5075a2ba5ced7b1b64ee66262c40dc` | 公共狙击 bot 执行代理（已验证 Proxy，1500+ 独立 txfrom 用户）（Pointless 07-13） | 多个狙击组同用它下单——**"共用此合约"不能当私有关联/同一实体证据**（复核 REFUTED 一次"两组同实体"推断的元凶）。判据同 relayer：txfrom 用户数上千即公共设施 |
+| `0x8876789976decbfcbbbe364623c63652db8c0904` | Uniswap UniversalRouter（CREATE2 公共路由） | 92 万+笔。CASHCAT 案曾以转账边混进 96 址庄家聚类当假桥并把全市场用户买卖算进庄家账本（虚增 $28M 买入额）——聚类与账本一律剔除（CASHCAT 07-13） |
+| `0x73991a25c818bf1f1128deaab1492d45638de0d3` | Uniswap V3 NonfungiblePositionManager | LP 头寸 mint/collect/burn 通道。**从它收到大额代币 = LP 提取，不是买入**；LP 做市行为者的"池卖"含流动性撤出，买卖口径须单独声明（CASHCAT 07-13） |
 | `0x81f7ca6af86d1ca6335e44a2c28bc88807491415` | Virtuals 跨项目 keeper EOA（VEX(Robinhood) 分析实测 2026-07-13） | 每个 agent 币发射时充当"50% 锁仓分配器"（拆两金库 25%+25%），并为多项目执行 ACF 分账（实测至少 5 个项目）。**平台运营 EOA 非项目方私钱包**，勿据它建关联边 |
-| `0x3eb3394f5d89465a77f73a83d3675b0ed051f852` | Virtuals 平台批量执行合约（Blockscout 验证名 Multicall3 变体，7665B）（来源：VEX 分析 2026-07-13） | ACF 阶梯挂单执行器：收各项目金库2 的币→V3 USDG 池挂纯单边卖单→collect 本金直付各创始人（多项目共用，早于单个项目存在）。其吞吐是机制变现，单列勿混"庄家手动出货" |
-| `0x8a19963649b2fc3d50c951953f89bcbfbd5f0b51` | Virtuals 内盘 bonding router（Robinhood）（来源：VEX 分析 2026-07-13） | 内盘期与毕业后平台前端交易均经它（过手可超总量 100%、中转率 100%）。真实买卖家=同 tx 的下游/上游终端 |
+| `0x3eb3394f5d89465a77f73a83d3675b0ed051f852` | Virtuals 平台批量执行合约（Blockscout 验证名 Multicall3 变体，7665B）（VEX 07-13） | ACF 阶梯挂单执行器：收各项目金库2 的币→V3 USDG 池挂纯单边卖单→collect 本金直付各创始人（多项目共用，早于单个项目存在）。其吞吐是机制变现，单列勿混"庄家手动出货" |
+| `0x8a19963649b2fc3d50c951953f89bcbfbd5f0b51` | Virtuals 内盘 bonding router（Robinhood）（VEX 07-13） | 内盘期与毕业后平台前端交易均经它（过手可超总量 100%、中转率 100%）。真实买卖家=同 tx 的下游/上游终端 |
 | `0xd4ccbfa37e2f35611b3042e4096ad7a3459bd007` | Virtuals TokenFactory/铸币分发（VEX 案实测；是否全平台同址待多标的验证） | 铸 1B→50% 内盘+50% 分配器；毕业 tx 内回收内盘库存→注 V2 主池+拨"拨付仓"EOA（疑似内盘反狙击税回收，白皮书条款 3 个月 cliff+9 个月线性归创始人） |
-| `0xe4a0015b4c12f84bf9b8b9db56b7ef0bc539d88f` | Virtuals 平台部署 funder（来源：VEX 分析 2026-07-13） | 批量预生成金库2/keeper 等设施钱包并同秒注 gas。金库2 类 EOA 与它 gas 同源=平台设施证据，**不是**项目方私钱包证据 |
+| `0xe4a0015b4c12f84bf9b8b9db56b7ef0bc539d88f` | Virtuals 平台部署 funder（VEX 07-13） | 批量预生成金库2/keeper 等设施钱包并同秒注 gas。金库2 类 EOA 与它 gas 同源=平台设施证据，**不是**项目方私钱包证据 |
 | `0x6d80b81d9fc56a7a839b1af9006eb49151961ce7` | Virtuals AgentTaxV2 税合约（TransparentUpgradeableProxy 已验证） | 1% 买卖税 projectTaxRecipient 指向它；分成 70% creator/30% 平台 treasury——创始人真实收入通道之一 |
-| `0xf36f0dd7b6b1730d0a59d1f3fd0e494c4d5c66e8` | Virtuals 税 swapper（来源：VEX 分析 2026-07-13） | 税池代币→池子机械卖回执行腿（中转率 100%）。机械卖压单列，勿算庄家出货 |
-| `0x000000e200088d55c39a11f609e5f667729ad49b` | Uniswap 官方 UERC20Factory（跨链 canonical，Blockscout 已验证；来源：TRASH 分析 2026-07-14） | 第 4 类发射台=Uniswap Liquidity Launchpad。代币模板名 UERC20。机制见 data-pipeline-robinhood 坑 10 |
+| `0xf36f0dd7b6b1730d0a59d1f3fd0e494c4d5c66e8` | Virtuals 税 swapper（VEX 07-13） | 税池代币→池子机械卖回执行腿（中转率 100%）。机械卖压单列，勿算庄家出货 |
+| `0x000000e200088d55c39a11f609e5f667729ad49b` | Uniswap 官方 UERC20Factory（跨链 canonical，Blockscout 已验证；来源：TRASH 分析 2026-07-14） | 第 4 类发射台=Uniswap Liquidity Launchpad。代币模板名 UERC20。机制见 data-pipeline-robinhood-traps.md 坑 10 |
 | `0x00004c4ccc709ef590f7c81102c0689f0263d4e9` | Uniswap 官方 LiquidityLauncher（跨链 canonical，来源：TRASH 分析 2026-07-14） | 发射入口合约；铸 10 亿→拆 CCA 拍卖+LP 储备 |
-| `0x000000001f26a0044baa66024e7b6599c61963f8` | Uniswap 官方 CCA 工厂 v2.1.0（来源：TRASH 分析 2026-07-14） | 每次发射 CREATE2 部署一个 auction 实例（=内盘 bonding 合约）；实例是 per-launch 地址非固定 |
-| `0x05d552391067389ee44fec3924157ed33f976000` | Uniswap 官方 LBPStrategy v3.1.0 单例（来源：TRASH 分析 2026-07-14） | 毕业时初始化 V4 池+迁移流动性；亦是合法 V4 hook。**过手全部发射盘的币，勿当大户/庄** |
-| `0x9be3cc594a47d90148b9f65466c57600018d237c` | 公共 bot 卖币执行合约（未验证，23.4KB；全链 61.7 万 tx/204 万代币转账/15+ 币种；创建于 2026-07-11）（来源：RAXOL 增量更新复核 2026-07-14） | 用户调用它同 tx 内把币卖进池子（100% 原子、出账全部由调用者签名）。**曾被整体误判为"39 上游归集出货协同网络"**——"经同一合约出货"永不构成协同证据；其入账流量只是"有人用工具卖币"的信号，勿作实体监控 |
-| `0x2a7f3d7486641c77600b9b9256132755c8aebb4f` | 公共 bot 卖币执行合约（同 0x9be3cc59 形态；Pointless 单币即见 246 独立 txfrom、655 笔原子入→卖、过手 4.87 亿枚、余额恒 0）（来源：Pointless D14 告警甄别 2026-07-15） | 入→同 tx 卖进池，全程不留仓。单窗口"净卖 1.16 亿枚"实为数百用户流水总和——按 txfrom 穿透到真实卖家，勿当单一砸盘大户 |
-| `0x68be5163fdd75ecad02aee1c9242e8afc8e95c8d` | 公共 bot 卖币执行合约第三部署（同 0x9be3cc59 模板，23.6KB 未验证）（来源：GME(Robinhood) 增量更新 2026-07-15） | 与 0x9be3cc/0xb01ca2 同款；曾被旧报告误判"归集器（隐藏库存枢纽）"——该模板设施剔除名单三个部署都要含 |
-| `0x09ad820aac5779683b481c4674208a4e1b024afa` | DexAggregatorCore（已验证；全链 117 万 token 转账、直接 tx 仅 1 笔=全部被内部调用）（来源：GME 增量更新 2026-07-15） | 聚合器执行核心：从池买入→分发用户/转 DexAggregator，同窗吞吐可达供应 10%+ 而存量零。与 20f6ee51/b477751b 构成的"池买→内部转→卖回池"三角流量是**全市场用户聚合，不是对倒洗币环**（本次"洗币环"假设被 getCode+counters 证伪，COMPUTE 案同款教训第二次验证） |
-| `0x20f6ee51340adeed01a59b0e65cb3703f3dc860c` | DexAggregator（已验证；全链 36 万 token 转账）（来源：GME 增量更新 2026-07-15） | 同上，聚合器外层；与 Core 互转是内部结构不是实体关联边 |
-| `0xb300000b72deaeb607a12d5f54773d1c19c7028d` | Diamond 聚合器入口（已验证，180B proxy；vanity 地址 b300000b）（来源：GME 增量更新 2026-07-15） | 多小上游汇入→转 LiFiDiamond 的公共汇聚腿，勿当"归集器" |
-| `0xd29c85f15df544ba632c9e25829fd29d767d7978` | 公共合约出金通道（11.5 万 tx/25.5 万 token 转账、余额恒 0）（来源：GME 增量更新 2026-07-15） | 大额 ETH 内部转账出金方（实测单址收 47.5E 后 1 分钟买币）——**曾被误当"私人金主注资"**；从它收 ETH=经某公共服务出金，不构成金主关联边，性质同 Relay 断头 |
-| `0xb01ca24bd01be40ee950a8746cf7546134442049` | 公共 swap bot 合约（双向：买入币直达用户、卖出经它原子入→卖；2026-07-13 部署，两天即 92 独立 txfrom）（来源：Pointless D14 告警甄别 2026-07-15） | 有默认参数指纹：多个用户单笔买入恰为 0.99 ETH——"同金额+同合约"可能只是工具默认值，不足以单独判同一运营者 |
-| `0x2ca37ff95caf25366ef16fc2e655b78a165d125f`、`0x5d6395cde0e26aa97fcf3a8004439f29a9124d5c` | 公共工具合约（12.5KB / 21.6KB，未验证）（来源：RAXOL 增量更新复核 2026-07-14） | 旧报告曾误归"即收即卖漏斗地址"；实为工具合约。"漏斗"定性前先 getCode |
-| `0x3da66157309794822c1506702a9c966fd9612773` | 原子中转小合约（1.5KB，进出同 tx 同额转发）（来源：RAXOL 增量更新复核 2026-07-14） | 曾以"共同上游"形态把多个独立买家虚接成假集群——聚类剔除 |
-| `0xa58bdd0ab5ebbb8dc425090fea8fd0ba969c1668`、`0x7b021ceb65edaf40ed73c51e78cf44ad4edf99a4`、`0x48a097df16c7844a33b1c3d11ab353457846e13f`、`0x50ad1c820290c9cc694dd47b0a61323f4d163e7e`、`0x4e5ffb3bd801d9db9a98daee7d4293afd46da677` | 路由/中转合约组（100% 同 tx 进出、txfrom 高度分散、余额归零）（来源：RAXOL 增量更新对抗复核 2026-07-14） | 怀疑者以"共同上游"聚类曾拼出 63 址假大集群（2.26% 总量），穿透后全系此类设施——增量新庄扫描前先把它们剔干净 |
+| `0x000000001f26a0044baa66024e7b6599c61963f8` | Uniswap 官方 CCA 工厂 v2.1.0（TRASH 07-14） | 每次发射 CREATE2 部署一个 auction 实例（=内盘 bonding 合约）；实例是 per-launch 地址非固定 |
+| `0x05d552391067389ee44fec3924157ed33f976000` | Uniswap 官方 LBPStrategy v3.1.0 单例（TRASH 07-14） | 毕业时初始化 V4 池+迁移流动性；亦是合法 V4 hook。**过手全部发射盘的币，勿当大户/庄** |
+| `0x9be3cc594a47d90148b9f65466c57600018d237c` | 公共 bot 卖币执行合约（未验证，23.4KB；全链 61.7 万 tx/204 万代币转账/15+ 币种；创建于 2026-07-11）（RAXOL 增量更新复核 07-14） | 用户调用它同 tx 内把币卖进池子（100% 原子、出账全部由调用者签名）。**曾被整体误判为"39 上游归集出货协同网络"**——"经同一合约出货"永不构成协同证据；其入账流量只是"有人用工具卖币"的信号，勿作实体监控 |
+| `0x2a7f3d7486641c77600b9b9256132755c8aebb4f` | 公共 bot 卖币执行合约（同 0x9be3cc59 形态；Pointless 单币即见 246 独立 txfrom、655 笔原子入→卖、过手 4.87 亿枚、余额恒 0）（Pointless D14 告警甄别 07-15） | 入→同 tx 卖进池，全程不留仓。单窗口"净卖 1.16 亿枚"实为数百用户流水总和——按 txfrom 穿透到真实卖家，勿当单一砸盘大户 |
+| `0x68be5163fdd75ecad02aee1c9242e8afc8e95c8d` | 公共 bot 卖币执行合约第三部署（同 0x9be3cc59 模板，23.6KB 未验证）（GME 更新 07-15） | 与 0x9be3cc/0xb01ca2 同款；曾被旧报告误判"归集器（隐藏库存枢纽）"——该模板设施剔除名单三个部署都要含 |
+| `0x09ad820aac5779683b481c4674208a4e1b024afa` | DexAggregatorCore（已验证；全链 117 万 token 转账、直接 tx 仅 1 笔=全部被内部调用）（GME 更新 07-15） | 聚合器执行核心：从池买入→分发用户/转 DexAggregator，同窗吞吐可达供应 10%+ 而存量零。与 20f6ee51/b477751b 构成的"池买→内部转→卖回池"三角流量是**全市场用户聚合，不是对倒洗币环**（本次"洗币环"假设被 getCode+counters 证伪，COMPUTE 案同款教训第二次验证） |
+| `0x20f6ee51340adeed01a59b0e65cb3703f3dc860c` | DexAggregator（已验证；全链 36 万 token 转账）（GME 更新 07-15） | 同上，聚合器外层；与 Core 互转是内部结构不是实体关联边 |
+| `0xb300000b72deaeb607a12d5f54773d1c19c7028d` | Diamond 聚合器入口（已验证，180B proxy；vanity 地址 b300000b）（GME 更新 07-15） | 多小上游汇入→转 LiFiDiamond 的公共汇聚腿，勿当"归集器" |
+| `0xd29c85f15df544ba632c9e25829fd29d767d7978` | 公共合约出金通道（11.5 万 tx/25.5 万 token 转账、余额恒 0）（GME 更新 07-15） | 大额 ETH 内部转账出金方（实测单址收 47.5E 后 1 分钟买币）——**曾被误当"私人金主注资"**；从它收 ETH=经某公共服务出金，不构成金主关联边，性质同 Relay 断头 |
+| `0xb01ca24bd01be40ee950a8746cf7546134442049` | 公共 swap bot 合约（双向：买入币直达用户、卖出经它原子入→卖；2026-07-13 部署，两天即 92 独立 txfrom）（Pointless D14 告警甄别 07-15） | 有默认参数指纹：多个用户单笔买入恰为 0.99 ETH——"同金额+同合约"可能只是工具默认值，不足以单独判同一运营者 |
+| `0x2ca37ff95caf25366ef16fc2e655b78a165d125f`、`0x5d6395cde0e26aa97fcf3a8004439f29a9124d5c` | 公共工具合约（12.5KB / 21.6KB，未验证）（RAXOL 增量更新复核 07-14） | 旧报告曾误归"即收即卖漏斗地址"；实为工具合约。"漏斗"定性前先 getCode |
+| `0x3da66157309794822c1506702a9c966fd9612773` | 原子中转小合约（1.5KB，进出同 tx 同额转发）（RAXOL 增量更新复核 07-14） | 曾以"共同上游"形态把多个独立买家虚接成假集群——聚类剔除 |
+| `0xa58bdd0ab5ebbb8dc425090fea8fd0ba969c1668`、`0x7b021ceb65edaf40ed73c51e78cf44ad4edf99a4`、`0x48a097df16c7844a33b1c3d11ab353457846e13f`、`0x50ad1c820290c9cc694dd47b0a61323f4d163e7e`、`0x4e5ffb3bd801d9db9a98daee7d4293afd46da677` | 路由/中转合约组（100% 同 tx 进出、txfrom 高度分散、余额归零）（RAXOL 更新复核 07-14） | 怀疑者以"共同上游"聚类曾拼出 63 址假大集群（2.26% 总量），穿透后全系此类设施——增量新庄扫描前先把它们剔干净 |
 | `0x58daec3116aae6d93017baaea7749052e8a04fa7` | Uniswap V4 PositionManager（Robinhood；来源：TRASH 分析 2026-07-14） | 96,061 笔平台 keeper EOA 形态，替所有 launchpad 币建池、铸 LP NFT。gas/币流勿据它聚类 |
-| `0xe6cae83bde06e4c305530e199d7217f42808555b` | Robinhood 钱包 EIP-7702 标准实现之一（来源：TRASH 分析 2026-07-14） | 海量 App 散户 7702 户共用（TRASH top30 大户 12/14 指向它）。**同实现≠同实体**，勿聚类 |
-| `0x53bf6b0684ec7ef91e1387da3d1a1769bc5a6f77` | Uniswap UniversalRouter **第二部署**（已验证，全链 24.7 万 tx）（来源：TRASH 增量更新 2026-07-14） | 与 `0x8876…0904` 并存的另一 UniversalRouter——设施剔除两个都要含。曾被误判"庄#1 私有漏斗"纳入实体表（早期单币用户少造成"只服务 2 上游"假象，后期 68 个流入方）；**单币早期用户数少≠私有** |
-| `0xe492912f37c2a4eca45d42dc67548f4c6cd7ce2b` | 买入代理合约（2,265 笔 IN 全部来自 PoolManager、OUT 分发 300+ 地址）（来源：TRASH 增量更新对抗复核 2026-07-14） | 公共买入执行设施：多个独立买家经它从池收币——以它为"共同上游"的聚类一律作废（曾拼出 3.33% 假组） |
-| `0x3f43479c8536F7eE8180d0f67a050980dC5Bc8C8` | batchTransferNative 批量转账工具（5,012 tx 公共 multisend）（来源：TRASH 增量更新对抗复核 2026-07-14） | 批量平分 ETH 的公共工具。**"同用它分钱"不构成关联**；但其单笔调用内的收款人列表（一次把 X ETH 平分给 N 址）是**该次调用者自己的钱包组**——判关联看单笔调用的 payload，不看工具本身 |
-| `0xd29c85f15df544ba632c9e25829fd29d767d7978` | Across 桥 Universal_SpokePool（ERC1967Proxy 已验证，11 万+笔；internal 交付 ETH、≥100 收款址）（来源：NOXA+VEX 两会话同日独立核验 2026-07-15） | 跨链入金通道之三（与 Relay 桥/App 零地址充值并列）：以 internal 转账给用户发 ETH。**"共同上游是它"="同用 Relay 桥"同级弱信号，不构成关联**（NOXA 案一条实体关联假设、VEX 案一个弱信号对均据此作废） |
-| `0xb0999731f7c2581844658a9d2ced1be0077b7397` | 公共 bot 服务费收集地址（23,998 笔、发送者高度分散）（来源：NOXA 分析对抗复核 2026-07-15） | 用户经该 bot 交易时向它付小额 ETH 费。**"共同下游是它"不构成关联**（复核剔除了一条据它建的实体边）；两地址同秒向它付费只说明用同一公共 bot 服务 |
-| `0xb01ca24bd01be40ee950a8746cf7546134442049` | 公共 bot 卖币执行合约第二部署（未验证 23.4KB，与 `0x9be3cc…237c` 同模板；140 txfrom 用户、期初期末零库存）（来源：VEX 增量更新 2026-07-15） | 与 0x9be3 同款"用户调用同 tx 代卖进池"设施——**设施剔除名单两个部署都要含**（同 UniversalRouter 双部署之理）；表观大额卖出=散户合计透传 |
+| `0xe6cae83bde06e4c305530e199d7217f42808555b` | Robinhood 钱包 EIP-7702 标准实现之一（TRASH 07-14） | 海量 App 散户 7702 户共用（TRASH top30 大户 12/14 指向它）。**同实现≠同实体**，勿聚类 |
+| `0x53bf6b0684ec7ef91e1387da3d1a1769bc5a6f77` | Uniswap UniversalRouter **第二部署**（已验证，全链 24.7 万 tx）（TRASH 更新 07-14） | 与 `0x8876…0904` 并存的另一 UniversalRouter——设施剔除两个都要含。曾被误判"庄#1 私有漏斗"纳入实体表（早期单币用户少造成"只服务 2 上游"假象，后期 68 个流入方）；**单币早期用户数少≠私有** |
+| `0xe492912f37c2a4eca45d42dc67548f4c6cd7ce2b` | 买入代理合约（2,265 笔 IN 全部来自 PoolManager、OUT 分发 300+ 地址）（TRASH 更新复核 07-14） | 公共买入执行设施：多个独立买家经它从池收币——以它为"共同上游"的聚类一律作废（曾拼出 3.33% 假组） |
+| `0x3f43479c8536F7eE8180d0f67a050980dC5Bc8C8` | batchTransferNative 批量转账工具（5,012 tx 公共 multisend）（TRASH 更新复核 07-14） | 批量平分 ETH 的公共工具。**"同用它分钱"不构成关联**；但其单笔调用内的收款人列表（一次把 X ETH 平分给 N 址）是**该次调用者自己的钱包组**——判关联看单笔调用的 payload，不看工具本身 |
+| `0xd29c85f15df544ba632c9e25829fd29d767d7978` | Across 桥 Universal_SpokePool（ERC1967Proxy 已验证，11 万+笔；internal 交付 ETH、≥100 收款址）（NOXA+VEX 两会话同日独立核验 07-15） | 跨链入金通道之三（与 Relay 桥/App 零地址充值并列）：以 internal 转账给用户发 ETH。**"共同上游是它"="同用 Relay 桥"同级弱信号，不构成关联**（NOXA 案一条实体关联假设、VEX 案一个弱信号对均据此作废） |
+| `0xb0999731f7c2581844658a9d2ced1be0077b7397` | 公共 bot 服务费收集地址（23,998 笔、发送者高度分散）（NOXA 复核 07-15） | 用户经该 bot 交易时向它付小额 ETH 费。**"共同下游是它"不构成关联**（复核剔除了一条据它建的实体边）；两地址同秒向它付费只说明用同一公共 bot 服务 |
+| `0xb01ca24bd01be40ee950a8746cf7546134442049` | 公共 bot 卖币执行合约第二部署（未验证 23.4KB，与 `0x9be3cc…237c` 同模板；140 txfrom 用户、期初期末零库存）（VEX 更新 07-15） | 与 0x9be3 同款"用户调用同 tx 代卖进池"设施——**设施剔除名单两个部署都要含**（同 UniversalRouter 双部署之理）；表观大额卖出=散户合计透传 |
 
-| `0xcdca5d374e46a6dddab50bd2d9acb8c796ec35c3` | Chainlink CCIP OffRamp（已验证）（来源：VIRTUAL 分析 2026-07-16） | CCIP 跨链 mint 的统一 txto——桥入代币（如 VIRTUAL）的入口执行合约；"txto=它"的 mint 即官方 CCIP 桥入 |
-| `0x78680385fcb8187ac1b28e0d6b1e0acf5e0d0992` | CCIP 桥出收集通道（来源：VIRTUAL 分析 2026-07-16） | 全部 burn 的前置收款方（收币→同链 burn，净 0 设施）——**"转给它"=桥出回主链**，勿判卖出/私下转移 |
-| `0x43e4c17b15365596caae8e7d00e42bc8e988c2d4` | Virtuals TokenFactory 直连分发代理（TransparentUpgradeableProxy 已验证）（来源：VIRTUAL 分析 2026-07-16） | 96% 入金来自 TokenFactory，持续过手报价币净 0——平台常设分发枢纽；曾被误判"短命高频设施"，定性前先看首笔时间与入金构成 |
+| `0xcdca5d374e46a6dddab50bd2d9acb8c796ec35c3` | Chainlink CCIP OffRamp（已验证）（VIRTUAL 07-16） | CCIP 跨链 mint 的统一 txto——桥入代币（如 VIRTUAL）的入口执行合约；"txto=它"的 mint 即官方 CCIP 桥入 |
+| `0x78680385fcb8187ac1b28e0d6b1e0acf5e0d0992` | CCIP 桥出收集通道（VIRTUAL 07-16） | 全部 burn 的前置收款方（收币→同链 burn，净 0 设施）——**"转给它"=桥出回主链**，勿判卖出/私下转移 |
+| `0x43e4c17b15365596caae8e7d00e42bc8e988c2d4` | Virtuals TokenFactory 直连分发代理（TransparentUpgradeableProxy 已验证）（VIRTUAL 07-16） | 96% 入金来自 TokenFactory，持续过手报价币净 0——平台常设分发枢纽；曾被误判"短命高频设施"，定性前先看首笔时间与入金构成 |
 
 > `0x6d80b81d…`（上表 Virtuals AgentTaxV2）补充语义（VIRTUAL 分析 2026-07-16）：对报价币 VIRTUAL 本体而言它是**机械税变现通道**——归集生态税收（VIRTUAL 计价）经 USDG 池 swap 换稳定币并 70/30 分账；其持续"卖出"是机制流水（规模跟随生态交易量），勿当实体出货，监控应反向盯"税流断流"。
 

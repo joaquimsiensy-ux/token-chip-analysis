@@ -5,7 +5,7 @@ description: 对任意链上代币（EVM/Solana/Hyperliquid/Filecoin 及新链�
 
 # 代币筹码分析（Token Chip Analysis）
 
-对标的回答三个固定命题（v5.0 三问框架）：**①有几个庄**（按标签体系计数：项目方/大庄/小庄/离场庄/刷量地址，不分级，狙击集团标签已废止）**②每个庄什么类型**（单地址明牌/多地址互转·gas同源/伪装分散·指纹一致）**③各阵营全历史持仓占比如何演变**（占总供应，锁仓/销毁单列；建仓后动没动、拉升期有没有出货）。**开放条款：三问是下限不是上限**——任何显著结构性异常必须单列章节，TL;DR 设"本次特有发现"（确无发现明写"无"）。交付自包含 HTML 报告；**监控包默认不生成，用户确认买入后补**。核心信条：**不对账的分析是猜测，未经反驳的结论是自嗨。**
+对标的回答三个固定命题（v5.0 三问框架）：**①有几个庄**（按标签体系计数：项目方/大庄/小庄/离场庄/刷量地址）**②每个庄什么类型**（单地址明牌/多地址互转·gas同源/伪装分散·指纹一致）**③各阵营全历史持仓占比如何演变**（占总供应，锁仓/销毁单列；建仓后动没动、拉升期有没有出货）。**开放条款：三问是下限不是上限**——任何显著结构性异常必须单列章节，TL;DR 设"本次特有发现"（确无发现明写"无"）。交付自包含 HTML 报告；**监控包默认不生成，用户确认买入后补**。核心信条：**不对账的分析是猜测，未经反驳的结论是自嗨。**
 
 ## Codex 运行适配（本副本独有节；解同步冲突时整节保留）
 
@@ -22,13 +22,13 @@ description: 对任意链上代币（EVM/Solana/Hyperliquid/Filecoin 及新链�
 
 ## 铁律（7 条封顶：新进＝旧出或代码化。任何阶段不可越过）
 
-1. **结论独立性**：只沉淀方法，禁止复用任何历史标的的结论/数字/判定与"上次也是这样"式类比；报告正文除标的及其 gas 币外零外部代币名（交付前自查）；同会话不连做两币。判例库是方法级失败模式，不是结论先验（casebook/README.md）。
+1. **结论独立性**：只沉淀方法，禁止复用任何历史标的的结论/数字/判定与"上次也是这样"式类比；同会话不连做两币。判例库是方法级失败模式，不是结论先验（casebook/README.md）。
 2. **对账关卡**：阶段 2 四查（余额对账/供给闭合/供给真值闸/时间抽查）不过关不进分析。
-3. **证据强度纪律**：无行内置信度 tag；证据强度用自然语言分级（链上铁证/高度疑似/疑似/未能确证）；意图不可区分时并列写（report-template「证据强度呈现」）。
+3. **证据强度纪律**：证据强度用自然语言分级（链上铁证/高度疑似/疑似/未能确证）；意图不可区分时并列写（report-template「证据强度呈现」）。
 4. **对抗复核必做**：历次执行每次都实质改写结论，投入产出比最高的环节，不可跳过（本副本按 G2 通则执行内部对抗性自检）。
-5. **数据源取用**：key 从 `~/.claude/api-keys.md` 登记文件直接取用；新增数据源免费优先；运行时只写工作目录 config.json，永不写死进 skill 目录。
+5. **数据源取用**：key 从 `~/.claude/api-keys.md` 登记文件直接取用；运行时只写工作目录 config.json，永不写死进 skill 目录。
 6. **成本纪律**：成本目标永远让位于准确性——为省 token 砍复核路数/数据源属于违反铁律；上下文纪律见 context-discipline.md。
-7. **交付边界**：输出结构事实与风险判定，买卖裁决由用户做出；风险该说死就说死，不加免责声明式模糊话。
+7. **交付边界**：输出结构事实与风险判定，买卖裁决由用户做出。
 
 ## 全流程路由（完整版；每阶段细节的唯一权威源＝`analyze-workflow.md` A0–A6）
 
@@ -40,15 +40,15 @@ description: 对任意链上代币（EVM/Solana/Hyperliquid/Filecoin 及新链�
 | A3 分析 | 标注→归因→聚类→判级→大户双闸→演变重放 | A3＋**casebook C/E 册全过一遍**＋playbook 按需 | entity_identity_gate→build_html G8：flag 未解决报告物理编不出 | findings.md、identity_gate.json |
 | A4 对抗复核 | 扰动前置→揭盲→N 路怀疑者→三档裁决 | A4＋evidence-wording §10；casebook 三册作备择弹药 | 三档必须实际核查，"理论上可能"不算推翻 | 复核修正记录 |
 | A5 报告 | 三标准图＋流转图＋HTML＋质检 | A5＋report-template | build_html 退出码 0（缺图/G8 拒交付） | 报告.html、analysis-state.json |
-| A6 复盘 | 教训分流入库（分流决策树） | retrospective.md | run_all 全 PASS＋git commit | CHANGELOG-codex |
+| A6 复盘 | **仅用户明确要求时执行，不自动触发**：教训分流入库（分流决策树） | retrospective.md | run_all 全 PASS＋git commit | CHANGELOG-codex |
 
 ## 六入口（一行路由）
 
-- **/token-analyze**＝完整版：上表 A0–A6 全程（本副本另执行经济控制账与发布门禁，见 G3）。
+- **/token-analyze**＝完整版：上表 A0–A5 全程；A6 复盘不自动执行，仅用户要求时跑（候选教训随手记案目录 retro_notes.md）；本副本另执行经济控制账与发布门禁（见 G3）。
 - **/token-easy-analysis**＝批量筛查档：`easy-workflow.md` E0–E7——引擎与复核同强度，砍完整报告，交付两件套；**绝不自动转正式**，用户人工决策后同目录衔接。
-- **/token-analyze-1**＝分段·机械段（−1）：A0–A2 全部＋A3 机械子层，产交接契约后**完成即停**；**本副本＝−1 主轨执行者**——唯一权威源 `split-run.md`。
-- **/token-analyze-2**＝分段·判断段（−2）：主力判断模型在 CC 侧执行，不属本副本职责；−1 收工时提示用户去 CC 开 −2 会话。
-- **/token-update**＝增量更新：`update-workflow.md` U0–U6——复用旧实体表只拉增量；**判定标准一律以当前 skill 版本为准**，判级变化须区分"持仓变动 vs 标准迁移"。
+- **/token-analyze-1**＝分段·机械段（−1）：A0–A2 全部＋A3 机械子层，产交接契约后**完成即停**；**本副本＝−1 主轨执行者**（执行者 GPT-5.6 codex 主轨 / Opus CC 备轨）——唯一权威源 `split-run.md`。
+- **/token-analyze-2**＝分段·判断段（−2）：`handoff_manifest.py verify` fail-closed 通过后接 A3 判断层＋A4–A5（A6 仅用户要求时），档位（easy|full）必选——同上 `split-run.md`；主力判断模型在 CC 侧执行，不属本副本职责，−1 收工时提示用户去 CC 开 −2 会话。
+- **/token-update**＝增量更新：`update-workflow.md` U0–U5（U6 复盘仅用户要求时）——复用旧实体表只拉增量；**判定标准一律以当前 skill 版本为准**，判级变化须区分"持仓变动 vs 标准迁移"。
 - **/collect-data**＝预采集队列：`collect-workflow.md`——只采集零结论；产物以 collect_manifest 与 done.json 为准，分析会话直接复用续增量，禁止从零重采。
 
 ## 上下文预算（细则与断点恢复＝context-discipline.md）
@@ -65,7 +65,6 @@ description: 对任意链上代币（EVM/Solana/Hyperliquid/Filecoin 及新链�
 - `casebook/README.md` — 判例库总纲（六字段结构与使用纪律；C 托管/E 聚类/S 供给三册）
 - `analysis-playbook.md` — 链无关方法学路由索引
 - `playbook-supply-recon.md` — 供给与对账（§1 分母口径/§1b 多链判据/§2 对账 gate/§8 留存质押）
-- `playbook-entity-cluster.md` — 实体识别与聚类路由索引
 - `playbook-entity-cluster-methods.md` — 标注/归因/聚类（§3 三级兜底/§4 逐笔归因/§6 聚类硬规则）
 - `playbook-entity-cluster-tiering.md` — 标签体系与判级（§6a 门槛与三分类/大户排查双闸/合并指纹库；尾部 Codex 复盘判据节）
 - `playbook-entity-cluster-cost.md` — 成本工具（§6b 配价方法/双口径/退出深度比）
@@ -80,12 +79,14 @@ description: 对任意链上代币（EVM/Solana/Hyperliquid/Filecoin 及新链�
 - `research-workflows.md` — 解锁情报路线与复核 prompt 模板（按 G1/G2 通则映射后使用）
 - `data-pipeline-evm.md` — EVM 路由索引；分册：`data-pipeline-evm-channels.md`（通道决策树/死亡名单）、`data-pipeline-evm-sources.md`（数据面/Base/Arbitrum 专节）、`data-pipeline-evm-recon.md`（对账/DuckDB 重放引擎）
 - `data-pipeline-solana.md` — Solana 路由索引；分册：`data-pipeline-solana-scan.md`（双 RPC/托管判别五步法）、`data-pipeline-solana-capture.md`（SQD/锚点法/采集加速）
-- `data-pipeline-hyperliquid.md` / `data-pipeline-filecoin.md` / `data-pipeline-robinhood.md` — 各链管道
+- `data-pipeline-robinhood.md` — Robinhood 路由索引；分册：`data-pipeline-robinhood-channels.md`（通道决策表/脚本/修正记录）、`data-pipeline-robinhood-traps.md`（五类发射台/平台设施坑 1–17）、`data-pipeline-robinhood-methods.md`（本链绑定方法论坑）
+- `data-pipeline-hyperliquid.md` / `data-pipeline-filecoin.md` — 各链管道
 - `address-book.md` — 基础设施地址标签库（手工核验层；label_lookup 已自动并源）
 - `labels/README.md` — 批量标签库使用篇（七链 CSV＋resolver；聚类前全量候选先过 label_lookup）
 - `labels/MAINTENANCE.md` — 标签库维护篇（维护会话才读）
 - `environment.md` — 本机环境坑速查
-- `retrospective.md` — 复盘与教训分流决策树（阶段 6 唯一权威源）
+- `retrospective.md` — 复盘与教训分流决策树（**仅用户明确要求复盘时执行**；阶段 6 唯一权威源）
+- `attic.md` — 三判据未过条目存档（**分析会话禁读**——对工作流程等于不存在；仅存留审计/整编会话可动）
 - `economic-control-accounting.md` — 经济控制账（Codex 独有：三账口径/防双计/economic_control_ledger.json）
 - `lp-fee-accounting.md` — LP 手续费归因（Codex 独有：V3/V4 本金与费拆分）
 - `independent-audit-protocol.md` — 独立审计协议（Codex 独有：三账 schema/输入哈希冻结/发布门禁）

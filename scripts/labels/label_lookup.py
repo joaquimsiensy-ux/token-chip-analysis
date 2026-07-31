@@ -9,7 +9,7 @@
   python3 label_lookup.py --chain bsc --json --file a.txt          # JSONL 机器可读输出（脚本管道用）
 
 文本输出七段（v4 2026-07-16，codex 交叉复核第二轮融合）：
-  [SERIAL]         历史分析实锤惯犯庄家——命中=高优先级信号，立即比对案源背景
+  [SERIAL]         历史案标记惯犯庄家（案内定性、多数案源未经用户复核）——优先深查线索，先比对案源成色
   [RISK]           定性风险（制裁/黑客/赌博）——大户命中=重大信号，必须写进报告
   [RISK-CANDIDATE] 社区候选（ScamSniffer 等单源上报）——降权提示，不作定性依据
   [RISK-UNKNOWN]   白名单外未识别旗标——人工核验后扩白名单或修数据，不自动定性
@@ -32,7 +32,7 @@ from labels_resolver import (LabelResolver, KNOWN_CHAINS, norm_addr, SERIAL_CATE
 
 SECTIONS = ('serial', 'risk', 'candidate', 'unknown', 'exclude', 'identity', 'privacy')
 SECTION_HEAD = {
-    'serial': '[SERIAL] 历史实锤惯犯庄家——高优先级信号，立即调案源核对（换币再开盘是其惯例）',
+    'serial': '[SERIAL] 历史案标记惯犯庄家（案内定性、多数案源未经复核）——优先深查线索，调案源判成色（换币再开盘是其惯例）',
     'risk': '[RISK] 定性风险（制裁/黑客/赌博）——大户命中必须写进报告',
     'candidate': '[RISK-CANDIDATE] 社区候选（单源上报，延迟约 7 天）——降权提示，不作定性',
     'unknown': '[RISK-UNKNOWN] 白名单外旗标——人工核验后扩白名单或修数据，不自动定性',

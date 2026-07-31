@@ -8,7 +8,7 @@
 - **禁止推断**：直接按"大仓+高频调度"定性为私人庄家/做市庄；把托管仓出金描述为"向集团供币"。
 - **必做区分检验**：①label_lookup（已并源 address-book 手工层——工具零命中≠没有记录，闸内已治）；②Solana 必跑 ed25519 on-curve 判定，off-curve＝无私钥＝托管/PDA 路线；③**Alpha 集齐率判别**：getTokenAccountsByOwner 全持仓 × 币安 Alpha bapi 全量表求交集，集齐率 >90%≈库存仓、低集齐率+高频双向执行≈执行仓/做市 bot（PENGUIN 案实测 94%/8%/3%/2% 四档分野清晰）。库存仓↔执行仓↔vanity 代付程序是 Alpha 的三层标准结构。
 - **证据不足时**：最强只能写"大额高频枢纽仓，托管假设未排除，不计入任何私人实体"；禁止判庄。
-- **权威与出处**：entity_identity_gate.py BIG_UNLABELED 托管假设三查；data-pipeline-solana-scan §2a 托管判别五步法。翻案：PYTHIA 2026-07-29 终裁（9Z 判"小庄#1"推翻，address-book 里本有记录）；判别法源出 PENGUIN 2026-07-22。
+- **权威与出处**：entity_identity_gate.py BIG_UNLABELED 托管假设三查；data-pipeline-solana-scan §3「币安 Alpha 集齐率判别法」（§2a 自建质押/托管合约五步法作辅路）。翻案：PYTHIA 2026-07-29 终裁（9Z 判"小庄#1"推翻，address-book 里本有记录）；判别法源出 PENGUIN 2026-07-22。
 
 ## C-02 通用物理常数被当成交易所托管指纹 【机制成立】
 
@@ -40,4 +40,4 @@
 - **禁止推断**：把 off-curve 仓当普通个人钱包；把"互不相同的落仓地址"直接当"互不相同的独立第三方"。
 - **必做区分检验**：①off-curve→查 Squads 多签成员（getMultipleAccounts+borsh 手解，PYTHIA `redo/verify_ms_members.py` 可复用；vault=ms 的 index0 派生可反推）；②**共享托管密钥检验**：多个多签若共享同一成员密钥＝同一中介组织的交割网（PYTHIA 15 个 multisig 全部 2-of-2 且共享 2FLpNeST）；③灌仓开票模式（美元整档面额、测试笔）＝escrow 场外交割指纹；④退回通道核查（PYTHIA 11 仓原数退回上游 ATA＝"独立买家"半崩）。
 - **证据不足时**：写"多签托管交割结构，最终受益人不可确证"；禁止判"独立散户买盘"或"个人冷储"。
-- **权威与出处**：entity_identity_gate PDA_UNRESOLVED flag；data-pipeline-solana-scan §2a。翻案：PYTHIA 2026-07-29 终裁（"集团空壳落仓 17%"→Squads v4 escrow 交割仓 16.33%）。
+- **权威与出处**：entity_identity_gate PDA_UNRESOLVED flag；data-pipeline-solana-scan §2 托管类型判别（off-curve/Squads/PDA 归属）。翻案：PYTHIA 2026-07-29 终裁（"集团空壳落仓 17%"→Squads v4 escrow 交割仓 16.33%）。

@@ -16,7 +16,7 @@
 
 先核定：合约/mint 地址（多源交叉，确认用户持有的到底是哪个）、部署在哪几条链、**总量与流通量多口径分开标注**（链上实查/第三方流通/名义已解锁——口径混淆是历次实战最高频的结论级错误源，见 casebook S 册）、DEX 真实流动性（<$50k 则定价权在 CEX，分析重心＝托管流＋金库＋充提）。
 
-**多链代币硬关卡（不过关不开工）**："部署在哪几条链"不是登记项，是分流关卡。CoinGecko `coins/{id}` platforms 字段＋GMGN/Dexscreener＋官方文档多源核查；凡部署 ≥2 条链，必须先做**链分布盘点**——各链 RPC 实查该链供给（桥接分支按 mint−burn 口径；**镜像关系先做锁仓适配器配平**，见 casebook S-02），产出链分布表（链/合约地址/该链供给及占全局总供应%/主 DEX 流动性/预估转账量级与采集耗时），连成本预估一起用 AskUserQuestion 让用户选定分析范围（推荐项＝供给占比最大的主链；选项：仅主链/主链＋指定分支/全部链）。**禁止拿到地址就按其所在链直接开工**——用户给的地址可能只是小分支链（来源：VIRTUAL 案范围性返工，2026-07-16）。占全局 <5% 的分支默认不单独立项（用户点名除外）；选多链时各链分别过 A2 对账再合并口径。报告 TL;DR 首行必须声明分析范围（覆盖哪几条链、合计占全局总供应%），规范见 report-template.md。
+**多链代币硬关卡（不过关不开工）**："部署在哪几条链"不是登记项，是分流关卡。CoinGecko `coins/{id}` platforms 字段＋GMGN/Dexscreener＋官方文档多源核查；凡部署 ≥2 条链，必须先做**链分布盘点**——各链 RPC 实查该链供给（桥接分支按 mint−burn 口径；**镜像关系先做锁仓适配器配平**，见 casebook S-02），产出链分布表（链/合约地址/该链供给及占全局总供应%/主 DEX 流动性/预估转账量级与采集耗时），连成本预估一起用 AskUserQuestion 让用户选定分析范围（推荐项＝供给占比最大的主链；选项：仅主链/主链＋指定分支/全部链）。**禁止拿到地址就按其所在链直接开工**——用户给的地址可能只是小分支链（VIRTUAL 案范围性返工，07-16）。占全局 <5% 的分支默认不单独立项（用户点名除外）；选多链时各链分别过 A2 对账再合并口径。报告 TL;DR 首行必须声明分析范围（覆盖哪几条链、合计占全局总供应%），规范见 report-template.md。
 
 另核定两件事：①**标的是否带解锁表/vesting**（tokenomist/dropstab 有记录，或链上有锁仓合约/多签托管）——有则问 3 必须包含"未来 6–12 个月解锁日程与量级"小节（要求见 report-template.md）；②**开工版本自查**：读 CHANGELOG 首个版本号并在计划里注明，交付前重读一次——版本号变了说明 skill 被并行会话更新过，向用户提示框架可能已迭代。
 
@@ -63,7 +63,7 @@
 1. **地址身份标注**（官方标签→外部证据→行为特征三级兜底，playbook §3）→ **金库与核心实体逐笔归因**（§4）→ **关联聚类**（多证据边＋服务枢纽剔除，§6；合并只认专属性证据——通用实现/通用服务共用不算，见 casebook E-01）。
 2. **判例库过闸（实体表冻结前必做）**：把 `casebook/cex-custody.md` 与 `casebook/entity-clustering.md` 全册触发现象过一遍，命中的逐条做"必做区分检验"。
 3. **实体身份硬闸**：实体表冻结前跑 `scripts/report/entity_identity_gate.py --state … --chain … --snapshot …` 产出 `identity_gate.json`——对每个实体地址＋≥1% 大仓做标签双源（CSV 主库＋address-book 手工层，label_lookup 已自动并源）、Solana ed25519 曲线判定、托管假设三查；INFRA_IN_ENTITY／PDA_UNRESOLVED／BIG_UNLABELED 三类 flag 逐条填 resolution（查了什么、结论是什么）——**build_html G8 会校验此闸，flag 未解决报告物理上编不出来**。币安 Alpha 在架的 Solana 标的同时做 Alpha 集齐率判别（casebook C-01；easy 版 E0b 步骤④同款，完整版同责）。
-4. **庄级实体识别、标签划分与类型三分类**：门槛与细则的唯一权威源＝playbook-entity-cluster-tiering §6a（v5.0 要点：不分级；项目方无论份额；大庄＝当前 ≥20% 总供应或 ≥20% 流通；小庄＝≥5% 或 ≥10% 流通；离场庄＝峰值 ≥10% 或 ≥15% 流通且当前非庄；刷量地址单独标签；狙击集团标签已废止，发射窗协同实体按普通门槛判级；合并口径含全部疑似关联地址）。
+4. **庄级实体识别、标签划分与类型三分类**：门槛数值与细则的唯一权威源＝playbook-entity-cluster-tiering §6a（本处不设数值副本防漂移，v6.4.2 定；结构要点：不分级；项目方无论份额；大庄/小庄按当前持仓、离场庄按峰值判；刷量地址单独标签；发射窗协同实体按普通门槛判级；合并口径含全部疑似关联地址）。
 5. **其他大户排查前置双闸**（§6a）：其他大户线＝当前 ≥0.1% 总供应或 ≥0.2% 流通，逐个过批量排查层（标签库/惯犯库/指纹/funder 溯源）才准归阵营，报警才人工深挖；每个已识别实体做不设持仓下限的成员完整性扫描（防分仓漏判）。
 6. **全量转账重放出各阵营占比演变序列**（阵营划分见 §6a）：分母＝当期净供应序列，**逐时点 assert Σ阵营＝100%±容差**，改过名册跑反向断言（casebook S-03）；**历史清零层检测**——重放全期 max 仓位而非只看现仓（track set 按现仓筛会漏整个历史波次，casebook S-04）。
 7. **庄家当前状态评估**（§7）→ 质押/留存修正（§8）；建仓成本仅按需算（§6b 降为工具）；CEX 净流×价格作为演变解读工具按需用（防内部调仓伪影，§5）。
@@ -84,12 +84,12 @@
 
 报告本体先写 `报告.md`＋`charts/*.png`。**三张标准图必配**（阵营占比演变/庄级实体 vs 价格/价格与关键事件），直接调 `scripts/report/standard_charts.py` 三个函数——规格与配色已固化，不要每次重新设计；**图 1/图 2 放 TL;DR 顶部（问 1 直答上方）**。**每个当前持仓 ≥20% 总供应或 ≥20% 流通的大庄/项目方必配一张全周期流转路径图**（`scripts/report/lifecycle_flow.py`，样图 references/examples/lifecycle-flow-sample.png）。
 
-出图纪律：`standard_charts.plot_camp_evolution` 按 CAMP_ORDER 白名单过滤 series 键，非标准阵营名**静默跳过不报错**——阵营名必须用标准名（项目方/大庄/小庄/离场庄/刷量地址/CEX托管/流动性池/其他大户/散户/桥锁仓/锁仓销毁；"狙击集团"仅旧数据重绘 legacy）；**出图后必须目检图例条数 == 传入阵营数**。
+出图纪律：`standard_charts.plot_camp_evolution` 按 CAMP_ORDER 白名单过滤 series 键，非标准阵营名**静默跳过不报错**——阵营名必须逐字取自 `standard_charts.py` 的 `CAMP_ORDER`（唯一权威；现行 14 键：项目方、大庄、小庄、离场庄、刷量地址、CEX资金通道、CEX托管、疑似CEX托管、流动性池、其他大户、历史大户、散户、桥锁仓、锁仓/销毁；"狙击集团"等仅旧数据重绘 legacy）；**出图后必须目检图例条数 == 传入阵营数**。
 
 结构与措辞纪律见 `report-template.md`（三问逐条直答＋标签体系＋代币数量带【总量X%】＋正文零地址＋局限性独立成章；CEX 黑箱表述红线——充入≠卖出、"链上可观测范围内"限定、净流剔除同 CEX 内部对倒、给单一实体份额上限——权威源 playbook-evidence-wording §11）。然后 `python3 scripts/report/build_html.py --md 报告.md --out 报告.html` 出自包含 HTML（PDF 仅用户点名，用 md2pdf.py，质检双轨见 environment.md）。质检：build_html 退出码 0（缺图会 WARN 拒绝交付）＋浏览器目检（图全显/表格无错位）。
 
-**附录四件套**（验证步骤/标签↔地址对照/复核修正记录/来源）——附录 B 地址对照任何情况下不可省（正文零地址的可验证性支点）。**监控包默认不做**：观察哨/两档监控建议/appendix.json 在用户确认买入后按 monitoring-package.md「买入后监控包」节补生成（新会话可执行，材料全在落盘产物），报告末尾带固定句"如决定买入，回复一声即可补生成监控包"。**默认交付另落一份 `analysis-state.json`**（appendix 的机器子集：token/whale_groups/vault_addresses/addresses 骨架＋camp_share_series，无监控文案——/token-update 的实体表原料；schema 见 report-template「默认交付的机器状态文件」节）。交付前 checklist 见 report-template.md 末节；**外部代币名自查**（铁律 1）。
+**附录四件套**（验证步骤/标签↔地址对照/复核修正记录/来源）——附录 B 地址对照任何情况下不可省（正文零地址的可验证性支点）。**监控包默认不做**：观察哨/两档监控建议/appendix.json 在用户确认买入后按 monitoring-package.md「买入后监控包」节补生成（新会话可执行，材料全在落盘产物），报告末尾带固定句"如决定买入，回复一声即可补生成监控包"。**默认交付另落一份 `analysis-state.json`**（appendix 的机器子集：token/whale_groups/vault_addresses/addresses 骨架＋camp_share_series，无监控文案——/token-update 的实体表原料；schema 见 report-template「默认交付的机器状态文件」节）。交付前 checklist 见 report-template.md 末节。
 
-## A6 复盘与迭代（固定最后一步，不可省略）
+## A6 复盘与迭代（仅用户明确要求时执行，不自动触发）
 
-按 `retrospective.md` 执行：五类复盘清单 → AskUserQuestion 确认 → **教训分流决策树**定归宿（gate 代码/casebook/pipeline/workflow/SKILL.md 最后手段）→ 写入对应文件＋CHANGELOG 次版本＋1 → 跑 `scripts/tests/run_all.py` 全 PASS → git commit。质量 4 指标＋成本 3 指标、candidate 分级、逢 0/5 整编——细则全在 retrospective.md。
+**默认交付 A5 报告即收工，不进入本阶段**——结论未经用户复核就自动沉淀教训，会把可能错误的经验固化进 skill（2026-07-31 用户定）。会话中发现的候选教训随手记案目录 `retro_notes.md`（只动案目录，不动 skill 文件）。用户复核确认结论没问题、明确下令复盘后，按 `retrospective.md` 执行：五类复盘清单 → AskUserQuestion 确认 → **教训分流决策树**定归宿（gate 代码/casebook/pipeline/workflow/SKILL.md 最后手段）→ 写入对应文件＋CHANGELOG 次版本＋1 → 跑 `scripts/tests/run_all.py` 全 PASS → git commit。质量 4 指标＋成本 3 指标、candidate 分级、逢 0/5 整编——细则全在 retrospective.md。
