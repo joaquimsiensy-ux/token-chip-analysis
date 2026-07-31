@@ -16,6 +16,7 @@
 
 ## 版本索引（codex 侧，新在上）
 
+- **c2.1.1 2026-07-31 独有资产审计小修（@CX 交叉复核发现）**：修复 `playbook-evidence-wording.md` ★受益权分离条残留的"P0/P1 判级"旧措辞（→"庄级判定（大庄/小庄门槛，tiering §6a）"，系 c2.0.0 措辞迁移的漏网条目）；`SYNC.md` 约定 1 版本轴描述更新（CC 侧 `3.x.x` → 注明现已迭代至 `6.x.x`）。同轮审计的其余发现（audit 协议/gate 的 0.5% 排查线落后于 v5.0 的 0.1%/0.2% 双线、gate PASS_WORDS 宽松语义与空账本可过、G3 发布门禁对全新分析的作用域错配、c2-migration-matrix 归档、方法学分册回灌 main）属结构性裁决，待用户拍板后处理。
 - **c2.1.0 2026-07-30 split-run −1 模式执行条款（G6）**：本副本正式接任 −1 机械段主轨执行者。SKILL.md 适配节新增 G6：触发语/开工探针与案级锁/范围＝A0–A2＋A3 机械子层/停止线八项（明确 G4/G5 冻结前硬闸在 −1 不执行由 −2 承担，停止线优先）/未档异常写 blocker 禁自创解法/全程盲化＋receipt/收工 generate 如实报状态完成即停/audit_input_manifest 与 handoff 契约互不替代/与 G2 禁自审兼容（A4 外部异构在 CC 侧按 split-run §3.3 收紧执行）。唯一权威源＝下发的 `references/split-run.md`。
 - **c2.0.0 2026-07-30 v6 大同步（main v4.2.0→6.1.1 十提交并入）+ 适配层通则化重构**：按 `c2-migration-matrix.md` 先行矩阵执行 merge；SKILL.md 重构为 main v6 薄骨架＋「Codex 运行适配」通则节（G1 路径/工具/模型映射、G2 禁自审、G3 独有资产、G4 经济控制硬闸、G5 静置仓反扫硬闸——原逐文件改字式平台适配全部收编为通则，未来同步冲突面大幅收缩）；三问框架/去分级/狙击集团废止随 main 生效，codex 独有资产 P0/P1 措辞全部迁移（economic-control-accounting 4 处＋tiering 判据节＋docs_lint needle）；codex 复盘判据与三账义务重挂为 tiering/report-template 尾部独有小节；camp_share_series schema 修正（c1.0.0 发现）与 BITCOIN 案 miss-queue 85 行已回灌 main（6.1.1）；run_all 融合为 17 项（main 16＋audit_release_gate）全 PASS；唯一存档分歧＝state-anomaly §9c（矩阵 §五留裁决）。
 - **c1.1.0 2026-07-29 删除 Codex 自审伪外审流程**：Codex 版不再调用 `codex exec`、Codex CLI 或同模型会话充当外部异构怀疑者；阶段 4 与 easy/update 模式统一改称内部对抗性自检，不宣称外部独立性。原始数据重算、机械对账、发布硬闸与内部反例自检保留。
