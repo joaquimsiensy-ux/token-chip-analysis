@@ -26,11 +26,16 @@ import sys
 import tempfile
 from datetime import datetime, timezone
 
-SCHEMA_VERSION = "handoff/v1"
-SUPPORTED_SCHEMAS = {"handoff/v1"}  # verify 端支持集；consumer_min_schema 不在集内即拒收
+SCHEMA_VERSION = "handoff/v2"
+# verify 端支持集；consumer_min_schema 不在集内即拒收。
+# v1（6.7.x 及以前）默认拒——fail-open 修复（2026-08-01 codex 复核）：漏跑新生产器的旧格式
+# 不得静默过闸；已冻结旧案只能走 verify --legacy-read-only 显式降级（不得生成新正式报告）。
+SUPPORTED_SCHEMAS = {"handoff/v2"}
+LEGACY_SCHEMAS = {"handoff/v1"}
 MANIFEST_NAME = "handoff_manifest.json"
 RECEIPTS_NAME = "stage1_receipts.json"
 FREEZE_NAME = "entity_freeze.json"
+ADJUDICATIONS_NAME = "candidate_adjudications.json"
 STATUSES = {"READY", "BLOCKED", "PARTIAL", "SUPERSEDED", "BLOCKED_E0B"}
 SPARSE_THRESHOLD = 64 * 1024 * 1024  # >64MB 用分片哈希（split-run §2.2：不收尾全盘重哈希）
 CHUNK = 4 * 1024 * 1024
@@ -40,15 +45,18 @@ CONTRACT_FILES = [
     "candidate_universe.json", "candidate_screening.json", "identity_preflight.json",
     "anomalies.json", "data_map.json", "unlock_evidence.json", RECEIPTS_NAME,
     "accounting_mode.json", "supply_truth.json", "wave_scan_report.json",
+    "flow_anomaly_report.json", ADJUDICATIONS_NAME, "provenance_ledger.json",
     "time_spotcheck.json",
 ]
 REQUIRED_FOR_READY = ["candidate_universe.json", "candidate_screening.json",
                       "identity_preflight.json", "anomalies.json", "data_map.json",
                       # A0/A2 必产的两个 gate 产物——READY 缺任一＝流程没跑完（dry-run 步 3.5 收紧）
                       "accounting_mode.json", "supply_truth.json",
-                      # 历史清零层波次扫描（W1 漏检复盘 2026-08-01）——未跑 wave_scan 不得 READY；
-                      # 旧案目录复用须补跑 wave_scan.py 后重新 generate，回退路径=旧单会话命令
-                      "wave_scan_report.json"]
+                      # 波次扫描＋资金流异常扫描（W1 二次漏检复盘 v6.8.0）——两扫描器任一未跑
+                      # 不得 READY；旧案目录复用须补跑后重新 generate，回退路径=旧单会话命令。
+                      # candidate_adjudications.json 是 −2 判断层产物，不在 −1 READY 清单——
+                      # 它的强制在 freeze 端（validator 全候选校验，缺漏即 exit 2）
+                      "wave_scan_report.json", "flow_anomaly_report.json"]
 # EVM 家族链另加时间抽查产物为 READY 必备（6.7.0，APU SQD 全史重拉冗余复盘）——
 # time_spotcheck.py 固化后，锚点级第二源直查是 A2 第 4 查的机器凭证，缺件＝时间抽查没跑
 # 或又走了自由发挥老路。Solana（anchor_sampler 通道）/hyperliquid/filecoin 等非 EVM 链
@@ -250,8 +258,9 @@ def cmd_generate(a):
 
 # ---------------- verify ----------------
 
-def _verify_light_schema(case_dir, fails):
-    """轻量 schema 检查：防 −1 交空壳（split-run §3.1 步 2 的语义验证部分）。"""
+def _verify_light_schema(case_dir, fails, legacy=False):
+    """轻量 schema 检查：防 −1 交空壳（split-run §3.1 步 2 的语义验证部分）。
+    legacy=True（--legacy-read-only）时跳过两扫描器新版检查——旧案产物是旧格式，只验哈希与公共件。"""
     try:
         cu = load_json(os.path.join(case_dir, "candidate_universe.json"))
         cands = cu.get("candidates")
@@ -274,15 +283,29 @@ def _verify_light_schema(case_dir, fails):
             fails.append(f"blocking 异常未解决却报 READY: {blocking_open}")
     except Exception as e:
         fails.append(f"anomalies.json 读取失败: {e}")
+    if legacy:
+        return
     try:
         ws = load_json(os.path.join(case_dir, "wave_scan_report.json"))
-        if ws.get("schema") != "wave-scan/v1":
+        if ws.get("schema") == "wave-scan/v1":
+            fails.append("wave_scan_report.json 是 v6.6.1 旧版（wave-scan/v1）——重跑 wave_scan.py（v2）"
+                         "后重 generate；已冻结旧案走 verify --legacy-read-only")
+        elif ws.get("schema") != "wave-scan/v2":
             fails.append(f"wave_scan_report.json schema 异常: {ws.get('schema')}")
         elif not isinstance(ws.get("waves"), list) or not isinstance(ws.get("equal_amount_groups"), list) \
                 or not isinstance(ws.get("requires_adjudication"), bool):
             fails.append("wave_scan_report.json 缺 waves/equal_amount_groups/requires_adjudication——空壳拒收")
     except Exception as e:
-        fails.append(f"wave_scan_report.json 读取失败（历史清零层波次扫描未跑？补跑 wave_scan.py 后重 generate）: {e}")
+        fails.append(f"wave_scan_report.json 读取失败（波次扫描未跑？补跑 wave_scan.py 后重 generate）: {e}")
+    try:
+        fa = load_json(os.path.join(case_dir, "flow_anomaly_report.json"))
+        if fa.get("schema") != "flow-anomaly/v1":
+            fails.append(f"flow_anomaly_report.json schema 异常: {fa.get('schema')}")
+        elif not isinstance(fa.get("sinks"), list) or not isinstance(fa.get("sprays"), list) \
+                or not isinstance(fa.get("requires_adjudication"), bool):
+            fails.append("flow_anomaly_report.json 缺 sinks/sprays/requires_adjudication——空壳拒收")
+    except Exception as e:
+        fails.append(f"flow_anomaly_report.json 读取失败（资金流异常扫描未跑？补跑 flow_anomaly_scan.py 后重 generate）: {e}")
 
 
 def cmd_verify(a):
@@ -298,8 +321,16 @@ def cmd_verify(a):
         return 2
 
     fails = []
-    if m.get("consumer_min_schema") not in SUPPORTED_SCHEMAS:
-        fails.append(f"schema 不兼容: 需要 {m.get('consumer_min_schema')}，本端支持 {sorted(SUPPORTED_SCHEMAS)}")
+    schema = m.get("consumer_min_schema")
+    if schema not in SUPPORTED_SCHEMAS:
+        if schema in LEGACY_SCHEMAS and a.legacy_read_only:
+            print(f"[verify] ⚠ LEGACY READ-ONLY：{schema} 旧格式仅供读取既有冻结结论，"
+                  "不得据此生成新正式报告、不得重新判级（fail-open 修复条款）")
+        elif schema in LEGACY_SCHEMAS:
+            fails.append(f"schema {schema} 是旧版——新运行必须重跑 v6.8.0 生产器"
+                         "（wave_scan v2/flow_anomaly）后重 generate；只读旧案加 --legacy-read-only")
+        else:
+            fails.append(f"schema 不兼容: 需要 {schema}，本端支持 {sorted(SUPPORTED_SCHEMAS)}")
     status = m.get("status")
     if status != "READY":
         fails.append(f"状态 {status} ≠ READY，拒绝消费（原因: {m.get('status_reason')}）")
@@ -327,7 +358,7 @@ def cmd_verify(a):
             else:
                 if str(g.get("verdict", "")).upper() not in ("PASS", "OK"):
                     fails.append(f"gate {gname}（declared）非 PASS 却报 READY: {g.get('verdict')}")
-        _verify_light_schema(case_dir, fails)
+        _verify_light_schema(case_dir, fails, legacy=bool(a.legacy_read_only and schema in LEGACY_SCHEMAS))
 
     if fails:
         print("[verify] FAIL（fail-closed，逐条修复或退回 −1）:")
@@ -386,6 +417,40 @@ def cmd_freeze(a):
     if not os.path.isfile(mp):
         print(f"[freeze] 成员表不存在: {mp}", file=sys.stderr)
         return 2
+    # 裁决闭环前置（v6.8.0，无跳过通道）：wave/flow 全部候选必须已按
+    # candidate-adjudications/v1 成员级裁决并通过校验，否则禁止冻结实体——
+    # "报警器响了没人管照样冻结"（W1 二次漏检的裁决未闭环缺口）从此机器堵死。
+    # 旧案 revision 追加同样过此闸：改成员表＝新结论，必须先重跑 v2 扫描器补裁决。
+    validator = os.path.join(os.path.dirname(os.path.abspath(__file__)), "adjudication_validator.py")
+    pv = subprocess.run([sys.executable, validator, "validate", "--case-dir", case_dir],
+                        capture_output=True, text=True)
+    if pv.returncode != 0:
+        print("[freeze] 候选裁决闭环未通过——禁止冻结（validator 输出如下）:", file=sys.stderr)
+        sys.stderr.write(pv.stdout + pv.stderr)
+        return 2
+    # 溯源闸前置（v6.8.0 时序硬规则：临时实体表→溯源→补候选→重跑→最终冻结，
+    # 不得先冻结再让溯源发现遗漏）：provenance_ledger.json 必须在场且闭合
+    pl_path = os.path.join(case_dir, "provenance_ledger.json")
+    if not os.path.isfile(pl_path):
+        print("[freeze] 缺 provenance_ledger.json——先对临时实体表跑 entity_source_trace.py"
+              "（溯源闸），新支路补候选回裁决环后再冻结", file=sys.stderr)
+        return 2
+    try:
+        pl = load_json(pl_path)
+        if pl.get("schema") != "provenance-ledger/v1" or not pl.get("entities"):
+            print(f"[freeze] provenance_ledger.json schema/内容异常: {pl.get('schema')}，"
+                  f"entities={len(pl.get('entities') or [])}", file=sys.stderr)
+            return 2
+        for ent in pl["entities"]:
+            for anchor_name in ("current", "peak"):
+                stock = int(ent["anchors"][anchor_name]["stock_raw"])
+                s = ent["closure_check"][f"{anchor_name}_sum_pct"]
+                if stock > 0 and abs(s - 100.0) > 0.5:
+                    print(f"[freeze] 溯源闭合失败: {ent['entity_id']} {anchor_name} Σ={s}%", file=sys.stderr)
+                    return 2
+    except (KeyError, ValueError, TypeError) as e:
+        print(f"[freeze] provenance_ledger.json 结构异常: {e}", file=sys.stderr)
+        return 2
     algo, digest, size = sha256_file(mp)
     now = utcnow()
     entry = {"members_source": os.path.relpath(mp, case_dir), "members_sha256": digest,
@@ -431,6 +496,8 @@ def main():
 
     v = sub.add_parser("verify", help="−2 开工 fail-closed 校验")
     v.add_argument("--case-dir", required=True)
+    v.add_argument("--legacy-read-only", action="store_true",
+                   help="显式降级：允许 handoff/v1 旧案只读（不得生成新正式报告）")
 
     r = sub.add_parser("receipt", help="−1 追加执行收据")
     r.add_argument("--case-dir", required=True)

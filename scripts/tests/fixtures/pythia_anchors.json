@@ -1,0 +1,64 @@
+{
+  "_doc": "PYTHIA 原案回测锚点（v6.8.0，2026-08-01 实测冻结）。装闸必附原案回测——改 wave_scan/flow_anomaly/entity_source_trace 的阈值或算法后，必须对 PYTHIA 真库重跑并与本文件比对；A/D 义务抓不到＝闸坏了禁止发版。回测仅 PYTHIA 单案（用户拍板），flow 参数初值缺第二币对照校准。",
+  "case": "PYTHIA",
+  "duckdb": "/Users/uravvv/Documents/5.6筹码分析/PYTHIA分析/s2_work.duckdb",
+  "total_supply_raw": "998158041739995",
+  "wave_scan_v2": {
+    "scan_universe_count": 5365,
+    "retention_buckets": {"cleared": 4711, "partial_exit": 37, "retained": 617},
+    "negative_balance_addrs": 0,
+    "wave_count": 5,
+    "w1_wave": {
+      "id": "wave-046b6bf76699",
+      "member_count": 721,
+      "combined_peak_pct": 74.229,
+      "combined_peak_date": "2025-07-01",
+      "seed_window": {"start": "2025-05-21", "end": "2025-05-27", "member_count": 158, "combined_peak_pct": 37.064},
+      "w1_coverage": "339/341",
+      "w1_coverage_min_ratio": 0.85,
+      "B_feeder_exclusive": {"members": 302, "rate": 0.419, "hit": false},
+      "C_peak_to_30pct": {"days": 37, "hit": false},
+      "_note_B": "算法保持 v6.6.1 原样；数值与 v6.6.1 清零层版（rate 0.403/293 员）不同——扫描对象扩为全体峰值≥0.02% 后成员集从清零层扩大，属预期，以本值为 v2 基线",
+      "_note_C": "纯 W1 341 址口径峰→30% 实测 72 天；本候选 721 员混入版 37 天——均 >30 不触发＝预期（C 为未来快速清仓设，非为 W1 专设；回测义务主体是 A 与 D）"
+    },
+    "escrow_rediscovery": {
+      "id": "wave-8c3c94a7f04a",
+      "member_count": 43,
+      "combined_peak_pct": 17.777,
+      "_note": "2026-06-11~23 开仓潮——A 指纹零先验独立重发现终裁 escrow 交割网（16.33%）＋退回中转仓，机械闸旁证"
+    },
+    "equal_amount_groups": {
+      "count": 7,
+      "top": {
+        "id": "eqg-1000000000000-3c390472",
+        "amount_raw": "1000000000000",
+        "group_total_pct": 33.662,
+        "densest_7d_recipients": 39,
+        "top_sender_global_out_degree": 41
+      },
+      "facility_noise_groups": 6,
+      "facility_top_sender_out_degree": 72207,
+      "_note": "44 分仓（Q1 亲发）置顶；其余 6 组主发送方全为场内设施 5Q544fKr（出度 72,207）整数面额撞衫——裁决查出度一次定性批量关闭。参数四条合一：单笔≥0.001% + 7日窗≥20收方 + 组合计≥1%（用户 2026-08-01 定稿；曲线 0→1014 组、0.0001%→478、0.001%→9、0.02%→2）"
+    }
+  },
+  "flow_anomaly_v1": {
+    "sink_count": 25,
+    "spray_count": 20,
+    "q1_sink": {"id_prefix": "sink-Q1Ac6Y", "best_window": {"start": "2025-06-05", "end": "2025-06-18", "inflow_pct": 19.8528, "source_count": 12}},
+    "3ymk_sink": {"id_prefix": "sink-3yMkB8oc", "hit": true},
+    "dispatchers_spray": {"mode": "slow_spray", "prefixes": ["spray-DWVGbsn7", "spray-8WwVTK51", "spray-5GpctXbe"],
+      "_note": "三派发器＝慢速批发（5.98/3.57/3.91% 分数月匀速派给 5546/4951/1306 收方，任何 14 日窗 <0.2%）——滑窗抓不到是口径不适配非参数问题，双模式由此回测校准而来"},
+    "q1_pulse_spray_bonus": {"id_prefix": "spray-Q1Ac6Y", "mode": "pulse", "_note": "Q1 亲发 44 分仓被脉冲模式独立抓到（2025-08-13 窗 3.6%/36 新收方）"},
+    "_calibration_note": "滑窗判定修正在案：达标窗＝同窗同时满足两条（Q1 金额最大窗 22.2%/4 来源被拒、14 来源/18.8% 双达标窗存在——先取金额最大再验来源数是实现 bug）"
+  },
+  "provenance_v1": {
+    "q1_peak_anchor": {"date": "2025-10-24", "stock_pct_of_supply": 7.941,
+      "direct_upstream_count": 20, "w1_upstream_count": 9, "w1_upstream_pct_of_anchor": 9.43},
+    "3ymk_peak_anchor": {"date": "2025-08-03", "stock_pct_of_supply": 4.374,
+      "direct_upstream_count": 11, "w1_upstream_count": 10,
+      "ewuu_branch_stop": {"kind": "BOUNDARY", "subkind": "facility_confirmed", "pct_of_anchor": 66.7533, "path_len": 1},
+      "w1_branch_penetrated_max_path_len": 3},
+    "closure": {"peak_sum_pct": 100.0},
+    "_note": "验尸数字逐一复现：Q1 的 20 上家 9 藤、3yMk 的 11 上家 10 藤全部在 direct_upstream（进货单）现形——终点构成里 W1 是中间层不可见，进货单字段即为此而设。剪枝残差 21-24%（341 址资金链尾部分散小支路，prune-pct 0.2% of anchor 下的预期行为）显式入账，−2 可降线重跑。回测 labels：EwUU8oi/5Q544fKr=facility、9Z=cex"
+  }
+}

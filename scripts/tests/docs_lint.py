@@ -100,19 +100,25 @@ def main(all_mode=False):
             if needle not in text:
                 fails.append(f'经济控制口径回退 {rel}: 缺少 {needle}')
 
-    # 7) 历史清零层波次扫描是名册定稿前硬闸（W1 两度漏检 2026-08-01）；
+    # 7) 三道互补防线是名册定稿前硬闸（W1 两度漏检 2026-08-01，v6.8.0 三防线版）；
     #    路由/工作流/契约/判例四层任一缺失＝方法回退。
     wave_contracts = {
-        'SKILL.md': ['历史清零层波次扫描硬闸', 'wave_scan_report.json'],
-        'references/analyze-workflow.md': ['wave_scan.py', '兜底桶不准关闸', 'camp_jump_audit.py'],
-        'references/split-run.md': ['wave_scan_report.json', 'wave_scan 候选逐条裁决'],
+        'SKILL.md': ['三道互补防线硬闸', 'wave_scan_report.json', 'flow_anomaly_report.json',
+                     'entity_source_trace.py', '成员级裁决闭环'],
+        'references/analyze-workflow.md': ['wave_scan.py', 'flow_anomaly_scan.py',
+                                           'entity_source_trace.py', 'adjudication_validator.py',
+                                           '兜底桶不准关闸', '覆盖真空声明'],
+        'references/split-run.md': ['wave_scan_report.json', 'flow_anomaly_report.json',
+                                    '候选裁决闭环', '溯源闸', 'provenance_ledger.json'],
         'references/casebook/supply-accounting.md': ['wave_scan.py', '桶存在≠桶内被检验过'],
+        'references/scan-schemas.md': ['wave-scan/v2', 'flow-anomaly/v1',
+                                       'candidate-adjudications/v1', 'provenance-ledger/v1'],
     }
     for rel, needles in wave_contracts.items():
         text = open(os.path.join(ROOT, rel), encoding='utf-8').read()
         for needle in needles:
             if needle not in text:
-                fails.append(f'波次扫描硬闸回退 {rel}: 缺少 {needle}')
+                fails.append(f'三道防线硬闸回退 {rel}: 缺少 {needle}')
 
     if fails:
         for f in fails[:30]:

@@ -66,9 +66,14 @@ def make_case(d):
         f.write("a,b\n1,2\n")
     write_json(d, "accounting_mode.json", {"schema": "accounting-gate/v1", "verdict": "PASS", "exit_code": 0})
     write_json(d, "supply_truth.json", {"verdict": "PASS", "exit_code": 0})
-    write_json(d, "wave_scan_report.json", {"schema": "wave-scan/v1", "cleared_layer_count": 0,
+    write_json(d, "wave_scan_report.json", {"schema": "wave-scan/v2", "scan_universe_count": 0,
+                                            "retention_buckets": {"cleared": 0, "partial_exit": 0, "retained": 0},
+                                            "negative_balance_addrs": 0,
                                             "waves": [], "equal_amount_groups": [],
                                             "requires_adjudication": False})
+    write_json(d, "flow_anomaly_report.json", {"schema": "flow-anomaly/v1", "eligible_universe_count": 0,
+                                               "sinks": [], "sprays": [],
+                                               "requires_adjudication": False})
     write_json(d, "time_spotcheck.json", {"gate": "time_spotcheck", "schema": "time-spotcheck/v1",
                                           "points": 2, "exact_match": 2, "mismatch": 0,
                                           "rpc_err": 0, "verdict": "PASS", "exit_code": 0})
@@ -120,6 +125,17 @@ def main():
         p = run(["freeze", "--case-dir", d, "--check-unseal"])
         check("freeze 前揭盲拒绝 exit 2", p.returncode == 2)
         write_json(d, "analysis-state.json", {"whale_groups": [{"id": "E1", "members": ["0xabc"]}]})
+        # v6.8.0：freeze 前置裁决闭环——先出裁决台账（候选为空 → 空台账即闭环）
+        p = run(["freeze", "--case-dir", d, "--members", "analysis-state.json", "--pending", "c2 待裁决"])
+        check("无裁决台账 freeze 拒 exit 2", p.returncode == 2)
+        validator = os.path.join(HERE, "..", "report", "adjudication_validator.py")
+        subprocess.run([sys.executable, validator, "template", "--case-dir", d], capture_output=True)
+        write_json(d, "provenance_ledger.json", {
+            "schema": "provenance-ledger/v1",
+            "entities": [{"entity_id": "E1", "member_count": 1,
+                          "anchors": {"current": {"stock_raw": "10", "composition": []},
+                                      "peak": {"stock_raw": "10", "composition": []}},
+                          "closure_check": {"current_sum_pct": 100.0, "peak_sum_pct": 100.0}}]})
         p = run(["freeze", "--case-dir", d, "--members", "analysis-state.json", "--pending", "c2 待裁决"])
         check("freeze 初次 exit 0", p.returncode == 0)
         p = run(["freeze", "--case-dir", d, "--check-unseal"])
@@ -215,10 +231,45 @@ def main():
         d13 = os.path.join(root, "case_wavehollow")
         os.makedirs(d13)
         make_case(d13)
-        write_json(d13, "wave_scan_report.json", {"schema": "wave-scan/v1"})
+        write_json(d13, "wave_scan_report.json", {"schema": "wave-scan/v2"})
         run(["generate", "--case-dir", d13, "--status", "READY"] + GEN)
         p = run(["verify", "--case-dir", d13])
         check("wave_scan_report 空壳 verify 拒收 exit 2", p.returncode == 2 and "wave_scan_report" in p.stdout)
+
+        # 15. READY 缺 flow_anomaly_report 即拒（v6.8.0 资金流异常扫描必产件）
+        d15 = os.path.join(root, "case_noflow")
+        os.makedirs(d15)
+        make_case(d15)
+        os.unlink(os.path.join(d15, "flow_anomaly_report.json"))
+        p = run(["generate", "--case-dir", d15, "--status", "READY"] + GEN)
+        check("READY 缺 flow_anomaly_report 即拒 exit 2", p.returncode == 2)
+
+        # 16. wave-scan/v1 旧版产物 → verify 拒收并提示重跑（fail-open 修复）
+        d16 = os.path.join(root, "case_wavev1")
+        os.makedirs(d16)
+        make_case(d16)
+        write_json(d16, "wave_scan_report.json", {"schema": "wave-scan/v1", "cleared_layer_count": 0,
+                                                  "waves": [], "equal_amount_groups": [],
+                                                  "requires_adjudication": False})
+        run(["generate", "--case-dir", d16, "--status", "READY"] + GEN)
+        p = run(["verify", "--case-dir", d16])
+        check("wave-scan/v1 旧版产物 verify 拒收 exit 2", p.returncode == 2 and "v6.6.1" in p.stdout)
+
+        # 17. handoff/v1 旧 manifest：默认拒；--legacy-read-only 显式降级放行（只读警告）
+        d17 = os.path.join(root, "case_legacy")
+        os.makedirs(d17)
+        make_case(d17)
+        run(["generate", "--case-dir", d17, "--status", "READY"] + GEN)
+        mp17 = os.path.join(d17, "handoff_manifest.json")
+        m17 = json.load(open(mp17))
+        m17["consumer_min_schema"] = "handoff/v1"
+        json.dump(m17, open(mp17, "w"))
+        # manifest 内容变了但其不在 artifacts 自身清单（EXCLUDE_NAMES），哈希不受影响
+        p = run(["verify", "--case-dir", d17])
+        check("handoff/v1 默认拒收 exit 2", p.returncode == 2 and "legacy-read-only" in p.stdout)
+        p = run(["verify", "--case-dir", d17, "--legacy-read-only"])
+        check("handoff/v1 --legacy-read-only 放行且带只读警告",
+              p.returncode == 0 and "LEGACY READ-ONLY" in p.stdout)
     finally:
         shutil.rmtree(root, ignore_errors=True)
 

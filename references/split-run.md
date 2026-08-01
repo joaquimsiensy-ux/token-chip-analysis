@@ -40,7 +40,8 @@
   4. 聚类准备（主序第 1 项后半的算法侧）：cluster_prep ＋聚类算法**候选簇**——含拒绝边与孤立点**全量保留**，不只交"算法觉得相关"的簇；合并裁决权在 −2。
   5. `identity_preflight.json`：候选与大仓地址的原始事实层（标签/on-curve/getCode/托管疑点）。**正式 entity_identity_gate 属 −2**——该脚本依赖含实体表的 analysis-state.json，−1 无实体表跑它只会产出假 gate。
   6. 基础序列：`address_bucket_series`（标签桶序列）＋价格序列。**命名禁用"阵营/camp"**——真 camp_share_series 只能 −2 实体冻结后生成。
-  7. **历史清零层波次扫描**：`scripts/report/wave_scan.py`（原始边表直读，四指纹合并口径机械扫描）产 `wave_scan_report.json`——**READY 必产件，缺件 generate 即拒**；候选只报警不定性，裁决权在 −2；已知公共设施可经 `--exclude-file` 剔除（取 candidate_screening 的 auto_excluded_candidate）。
+  7. **全体持仓波次扫描（v2）**：`scripts/report/wave_scan.py`（原始边表直读，扫描对象＝全体历史峰值 ≥0.02% 地址不限清零层，A 种子窗/B 喂币专属/C 快速清仓/D 等额面额四指纹合并口径）产 `wave_scan_report.json`（wave-scan/v2）——**READY 必产件，缺件 generate 即拒**；候选只报警不定性，裁决权在 −2；已知公共设施可经 `--exclude-file` 剔除（取 candidate_screening 的 auto_excluded_candidate）。
+  8. **资金流异常扫描**：`scripts/report/flow_anomaly_scan.py`（汇集点＋分发点双模式）产 `flow_anomaly_report.json`（flow-anomaly/v1）——**READY 必产件**；Q1/3yMk 型进货枢纽与 H9 派发器型出货器由此现形，候选裁决权在 −2。
 - **初步观察（可选但鼓励）**：−1 执行者的初步定性/怀疑**只准写进 `sealed/stage1_hypotheses.sealed.md`**（密封纪律见 §2.3），主产物区零定性词。
 
 ### 1.4 停止线（禁做清单，越线＝流程事故）
@@ -72,7 +73,10 @@
 | `anomalies.json` | −1 | 每条 `id/severity/blocking/stage/status/evidence/resolution`——WARN/勉强 PASS/绕过/未档 blocker/缺口处置全在此，**血泪权威源，−2 必读件** |
 | `data_map.json` | −1 | 数据索引：路径/schema/行数/块与时间范围/来源/生成命令/哈希＋DuckDB 查询示例 |
 | `unlock_evidence.json` | −1 | vesting 事实（按需） |
-| `wave_scan_report.json` | −1 | 历史清零层四指纹波次扫描（wave_scan.py）候选波次＋等额组；READY 必产件，−2 逐条裁决完毕前历史大户兜底桶不准关闸 |
+| `wave_scan_report.json` | −1 | 全体持仓四指纹波次扫描（wave_scan.py，wave-scan/v2）候选波次＋等额组；READY 必产件，−2 逐条裁决完毕前历史大户兜底桶不准关闸 |
+| `flow_anomaly_report.json` | −1 | 资金流异常扫描（flow_anomaly_scan.py，flow-anomaly/v1）汇集点＋分发点候选；READY 必产件 |
+| `candidate_adjudications.json` | −2 | wave/flow 全候选成员级裁决台账（candidate-adjudications/v1；`adjudication_validator.py template` 起草、`validate` 校验）——freeze 机器前置，缺漏即拒 |
+| `provenance_ledger.json` | −2 | 已知实体币源溯源台账（entity_source_trace.py，provenance-ledger/v1，两锚点构成＋进货单）——freeze 机器前置 |
 | `sealed/stage1_hypotheses.sealed.md` | −1 | 初步定性密封件，见 §2.3 |
 | `entity_freeze.json` | −2 | 冻结事件物化：成员表哈希/时间/未决项/casebook 检验结果；变更走 revision 追加，不许静默覆盖 |
 | 既有产物 | −1 | accounting_mode、collect_manifest＋done.json、四查产物、cluster_prep、address_bucket_series、价格序列——**格式零改动** |
@@ -110,7 +114,7 @@
 
 ### 3.2 判断主序
 
-casebook C/E 册过闸 → 聚类合并裁决（只认专属性证据）→ 临时实体 → **无下限成员完整性扫描** → **wave_scan 候选逐条裁决**（wave_scan_report.json 的候选波次与等额组；裁决完毕前历史大户兜底桶不准关闸，被裁定为协同实体的进名册）→ 反证检查 → **`handoff_manifest.py freeze` 落 entity_freeze.json**（成员表哈希/时间/未决项/casebook 结果；此后变更走 revision 追加）→ 正式 entity_identity_gate（逐 flag 填 resolution，G8 编译门照常）→ 判级 → needs_adjudication 逐项裁决（量大按 context-discipline 刀 1 现行外包制度 fan-out）→ 阵营演变重放（派机械子代理；序列产出后跑 `camp_jump_audit.py`，逐骤变点归因写 facts，无法归因的进报告局限性）→ 状态评估 → **冻结后读 sealed 观察作差异对照**（分歧点进 A4 靶单）→ A4 对抗复核（开工 `a4_gate.py register` 登记 claims、收尾 `finalize` 封口产 a4_seal.json——**封口前禁进 A5**，6.7.0 顺序硬闸）→ A5（easy 两件套 / full 完整报告；报告图一律 charts/final/、build_html `--a4-seal` 必传走 G9；交付时一并申报 sealed 自查）。A6 复盘不自动执行，仅用户要求时按 retrospective.md 走。
+casebook C/E 册过闸 → 聚类合并裁决（只认专属性证据）→ 临时实体 → **无下限成员完整性扫描** → **候选裁决闭环**（wave_scan＋flow_anomaly 全部候选：`adjudication_validator.py template` 起草台账 → 逐条**成员级**裁决〔等额组必查 top_sender_global_out_degree 识设施撞衫〕→ `validate` 校验六类拒绝；裁决完毕前历史大户兜底桶不准关闸，被裁定为协同实体的进名册）→ **溯源闸**（对临时实体表跑 `entity_source_trace.py`——每实体两锚点构成＋direct_upstream 进货单；进货单/终点构成发现新支路 → 补候选/修成员 → **回裁决环重跑**；时序硬规则：不得先冻结再让溯源发现遗漏）→ 反证检查 → **`handoff_manifest.py freeze` 落 entity_freeze.json**（机器三重前置：裁决闭环 validate 过＋provenance_ledger 在场且闭合＋成员表哈希；此后变更走 revision 追加）→ 正式 entity_identity_gate（逐 flag 填 resolution，G8 编译门照常）→ 判级 → needs_adjudication 逐项裁决（量大按 context-discipline 刀 1 现行外包制度 fan-out）→ 阵营演变重放（派机械子代理；v6.8.0 起无输出侧骤变归因闸——camp_jump_audit 已删，无法归因的骤变按判断层义务写进报告局限性）→ 状态评估 → **冻结后读 sealed 观察作差异对照**（分歧点进 A4 靶单）→ A4 对抗复核（开工 `a4_gate.py register` 登记 claims、收尾 `finalize` 封口产 a4_seal.json——**封口前禁进 A5**，6.7.0 顺序硬闸）→ A5（easy 两件套 / full 完整报告；报告图一律 charts/final/、build_html `--a4-seal` 必传走 G9；交付时一并申报 sealed 自查）。A6 复盘不自动执行，仅用户要求时按 retrospective.md 走。
 
 ### 3.3 A4 外部异构路收紧条款（分段模式专属，兼容 codex 侧 c1.1.0 禁自审令）
 
