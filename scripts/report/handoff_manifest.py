@@ -39,12 +39,15 @@ CHUNK = 4 * 1024 * 1024
 CONTRACT_FILES = [
     "candidate_universe.json", "candidate_screening.json", "identity_preflight.json",
     "anomalies.json", "data_map.json", "unlock_evidence.json", RECEIPTS_NAME,
-    "accounting_mode.json", "supply_truth.json",
+    "accounting_mode.json", "supply_truth.json", "wave_scan_report.json",
 ]
 REQUIRED_FOR_READY = ["candidate_universe.json", "candidate_screening.json",
                       "identity_preflight.json", "anomalies.json", "data_map.json",
                       # A0/A2 必产的两个 gate 产物——READY 缺任一＝流程没跑完（dry-run 步 3.5 收紧）
-                      "accounting_mode.json", "supply_truth.json"]
+                      "accounting_mode.json", "supply_truth.json",
+                      # 历史清零层波次扫描（W1 漏检复盘 2026-08-01）——未跑 wave_scan 不得 READY；
+                      # 旧案目录复用须补跑 wave_scan.py 后重新 generate，回退路径=旧单会话命令
+                      "wave_scan_report.json"]
 # 自动 gate 适配：从产物 JSON 读 verdict/exit_code（防手报）；verify 时重读比对
 AUTO_GATES = {"accounting_gate": "accounting_mode.json", "supply_truth_gate": "supply_truth.json"}
 EXCLUDE_SUFFIXES = (".log", ".duckdb", ".duckdb.wal", ".lock", ".tmp", ".bak")
@@ -256,6 +259,15 @@ def _verify_light_schema(case_dir, fails):
             fails.append(f"blocking 异常未解决却报 READY: {blocking_open}")
     except Exception as e:
         fails.append(f"anomalies.json 读取失败: {e}")
+    try:
+        ws = load_json(os.path.join(case_dir, "wave_scan_report.json"))
+        if ws.get("schema") != "wave-scan/v1":
+            fails.append(f"wave_scan_report.json schema 异常: {ws.get('schema')}")
+        elif not isinstance(ws.get("waves"), list) or not isinstance(ws.get("equal_amount_groups"), list) \
+                or not isinstance(ws.get("requires_adjudication"), bool):
+            fails.append("wave_scan_report.json 缺 waves/equal_amount_groups/requires_adjudication——空壳拒收")
+    except Exception as e:
+        fails.append(f"wave_scan_report.json 读取失败（历史清零层波次扫描未跑？补跑 wave_scan.py 后重 generate）: {e}")
 
 
 def cmd_verify(a):
