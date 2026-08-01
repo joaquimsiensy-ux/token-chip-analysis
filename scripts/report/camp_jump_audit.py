@@ -15,6 +15,7 @@
 退出码：0=跑完（有无骤变都算，requires_attribution 字段表达）；1=输入解析失败。
 """
 import argparse
+import datetime
 import json
 import sys
 
@@ -33,7 +34,21 @@ def load_points(path):
         raise ValueError("无法识别的序列 schema（需 points / dates+series / 裸 list）")
     if not rows:
         raise ValueError("序列为空")
+    if any("date" not in r or not r["date"] for r in rows):
+        raise ValueError("存在缺 date 的点，无法建立时间序")
+    # 输入不保证有序（2026-08-01 @CX 复核指出）：不排序则乱序输入的 Δ 全是噪声
+    rows.sort(key=lambda r: str(r["date"]))
     return rows
+
+
+def _gap_days(d0, d1):
+    """相邻点日期差（天）。ISO 前 10 位解析；解析不了返回 None（Δ 归属天数未知）。"""
+    try:
+        a = datetime.date.fromisoformat(str(d0)[:10])
+        b = datetime.date.fromisoformat(str(d1)[:10])
+        return (b - a).days
+    except ValueError:
+        return None
 
 
 def main():
@@ -51,26 +66,36 @@ def main():
 
     camps = [k for k in rows[0] if k != "date"]
     jumps = []
+    non_daily_pairs = 0
     for prev, cur in zip(rows, rows[1:]):
+        gap = _gap_days(prev["date"], cur["date"])
+        if gap is not None and gap != 1:
+            non_daily_pairs += 1
         for c in camps:
             v0, v1 = prev.get(c), cur.get(c)
             if v0 is None or v1 is None:
                 continue
             delta = float(v1) - float(v0)
             if abs(delta) >= a.threshold:
-                jumps.append({"date": cur["date"], "camp": c, "delta_pp": round(delta, 2),
-                              "from_pct": round(float(v0), 2), "to_pct": round(float(v1), 2),
-                              "attribution": None})
+                j = {"date": cur["date"], "camp": c, "delta_pp": round(delta, 2),
+                     "from_pct": round(float(v0), 2), "to_pct": round(float(v1), 2),
+                     "attribution": None}
+                # 序列非日频时 Δ 跨多天，"单日骤变"的说法不成立——把跨度带给判断层
+                if gap != 1:
+                    j["gap_days"] = gap
+                jumps.append(j)
     jumps.sort(key=lambda j: -abs(j["delta_pp"]))
     report = {
         "schema": "camp-jump-audit/v1",
         "source": a.series,
         "threshold_pp": a.threshold,
         "points": len(rows),
+        "non_daily_pairs": non_daily_pairs,
         "jumps": jumps,
         "requires_attribution": bool(jumps),
         "note": "每条骤变必须归因到具体实体/地址群（attribution 由判断层回填进 facts）；"
-                "无法归因的点必须在报告局限性显式列出（2026-08-01 W1 复盘措施 3）。",
+                "无法归因的点必须在报告局限性显式列出（2026-08-01 W1 复盘措施 3）。"
+                "带 gap_days 的条目 Δ 跨多天而非单日；non_daily_pairs>0 说明序列非纯日频。",
     }
     with open(a.out, "w", encoding="utf-8") as fh:
         json.dump(report, fh, ensure_ascii=False, indent=1)

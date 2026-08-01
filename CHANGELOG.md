@@ -15,6 +15,7 @@
 
 ## 版本索引（活跃窗口，新在上；每版一行，详情见下方对应条目）
 
+- **6.6.1** 2026-08-01 @CX 第二意见复核后两处 bug 修复：camp_jump_audit 输入排序缺失＋非日频序列误称"单日"（PYTHIA 500 点序列实测 83 对相邻点跨 2 天、-12.06pp 断崖实为两天 Δ——新增排序、缺 date 拒收、gap_days/non_daily_pairs 标注）；wave_scan 负余额哨兵（final_bal<0＝数据缺失指纹却恰满足清零条件混入扫描全集，现 stderr 报警＋negative_balance_addrs 落盘）；PYTHIA 基线重跑一致。codex 结构性建议（裁决闭环契约/可执行回归基线/多尺度扫描等）另立清单待用户拍板
 - **6.6.0** 2026-08-01 W1 波次二次漏检复盘落地：历史清零层波次扫描机械闸（用户批准迭代清单 9 项全落地）——新建 wave_scan.py 四指纹扫描器（同窗建仓聚类×喂币专属度×集中清仓窗×等额面额，合并口径；PYTHIA 回测 W1 覆盖 339/341=99.4%＋44 分仓等额组置顶命中，QUQ 1.03 亿边独立重发现库存层/接力交棒）＋camp_jump_audit.py 骤变归因义务＋wave_scan_report.json 进 READY 必产件（契约测试 21→23 项）＋SKILL 双硬闸升三硬闸＋A3.6 硬步骤＋split-run 三处＋S-04 复发记录＋retrospective 元规则第二条"装闸必附原案回测"＋adversarial-review L50/L71 单址阈值 bug 修复＋evals 09 升机械闸回测题＋docs_lint 守卫 7
 - **6.5.0** 2026-07-31 codex 独有资产审计后回灌转正（@CX 交叉复核 + 用户三项拍板）：经济控制账与静置仓反扫双硬闸候选转正式（SKILL 新增"实体冻结前双硬闸"节、report-template 三账段【候选】转正＋checklist 收编 4c/4d）+ 收编 codex 侧方法学：economic-control-accounting/lp-fee-accounting/independent-audit-protocol 三分册（协议限定"复核既有报告"作用域、0.5% 线修订为 0.1%/0.2% 双线）+ audit_release_gate 四处修复（WARN 不再当 PASS、补 supply_truth 四查、双线阈值、空账本与嵌套未决暴露阻断）与九类契约测试 + tiering 判级确权边界节/methods 静置仓硬闸版与枢纽两段法/evidence-wording 受益权分离与 LP 四分法等禁写措辞/sources 价格覆盖审计与 Blockscout 完备性/channels LP 增强版 + docs_lint 四层守卫（硬闸关键词跨 SKILL/methods/tiering/report-template 缺一即 FAIL）+ description 补"复核既有报告/LP 手续费"触发词；SUITE 16→17 项
 - **6.4.4** 2026-07-31 attic 首批复核裁决落地（用户逐条人工复核）：A-01 社区分发桶女巫化回收识别、A-02 镜像执行扫描法恢复 methods 正文（保留候选身份＋用户复核授权戳），A-03～A-06 维持存档
@@ -34,6 +35,13 @@
 - **4.1.0** 2026-07-30 PYTHIA 双报告交叉核实复盘：实体身份防复发三闸（label_lookup 并源 address-book / entity_identity_gate+G8 编译门 / 复核 prompt 翻案四问固化）+ 复盘元规则（身份类教训必须以代码收尾）
 - **4.0.0** 2026-07-28 大整编（用户点名）：3.0→3.41 四十余版增量迭代的结构清理——路由索引补齐 9 节、结构错位归位 3 处、消重立权威源制 6 组、CHANGELOG 重整归档 29 条；只减不加，规则语义未动
 - 更早版本（3.41.0 及以前）→ `CHANGELOG-archive.md`
+
+## [6.6.1] - 2026-08-01 — @CX 第二意见复核后两处 bug 修复
+
+背景：6.6.0 落地当日走 @CX 交叉复核（codex 只读逐行核对 wave_scan/camp_jump/handoff/docs_lint 与测试结构），其指控经本侧逐条核实全部属实。当场修复核实为 bug 的两处；结构性建议（候选裁决端到端契约、基线升可执行回归、多尺度扫描替代单组魔法数字、B 命中线未被正例验证等）不属 bug 属设计升级，另立清单待用户拍板后进下一版。
+
+- **camp_jump_audit.py**：①输入不保证有序却直接 zip 相邻点算 Δ——乱序输入全是噪声，现 load 后按 date 排序＋缺 date 拒收；②序列非日频时把相邻点 Δ 一律称"单日"——PYTHIA 500 点序列实测 83 对相邻点跨 2 天，28 条骤变中 9 条实为两天 Δ（含 top1 的历史大户 -12.06pp，07-28→07-30；+7.21pp 为真单日），现逐条标 gap_days、报告级计 non_daily_pairs，note 注明。复跑 PYTHIA 序列 top 骤变排序与数值不变，仅时间跨度措辞得到修正。
+- **wave_scan.py**：负余额哨兵——final_bal<0 只可能来自数据缺失/重放不平，却恰好满足"≤峰值×ratio"混入清零层产生伪候选；现扫描前 COUNT 报警（stderr ⚠＋negative_balance_addrs 落盘字段），只报警不修数据（数据问题归采集侧）。改闸重跑 PYTHIA 基线：W1 覆盖/合并峰/等额组置顶逐位一致，negative_balance_addrs=0。
 
 ## [6.6.0] - 2026-08-01 — W1 波次二次漏检复盘落地：历史清零层波次扫描机械闸
 

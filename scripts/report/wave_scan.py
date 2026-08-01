@@ -448,6 +448,12 @@ def main():
     n_addr = build_addr_summary(con, exclude)
     log(f"地址概要 {n_addr:,} 址（逐日末余额峰值口径）")
 
+    # 负余额哨兵（2026-08-01 @CX 复核指出）：final_bal<0 只可能来自数据缺失/重放不平，
+    # 却恰好满足 "≤峰值×ratio" 而混进清零层产生伪候选——这里只报警不修数据，数据问题回采集侧解决
+    neg_bal = con.execute("SELECT COUNT(*), COALESCE(SUM(final_bal), 0) FROM addr WHERE final_bal < 0").fetchone()
+    if neg_bal[0]:
+        log(f"⚠ 负余额地址 {neg_bal[0]:,} 个（合计 {int(neg_bal[1]):,} raw）——数据完整性存疑，波次候选可能被污染")
+
     min_peak_raw = total * a.min_peak_pct / 100.0
     cleared = con.execute(f"""
         SELECT owner, first_in_day, peak, final_bal FROM addr
@@ -508,6 +514,7 @@ def main():
         "params": {k: v for k, v in vars(a).items() if k not in ("out",)},
         "total_supply_raw": str(total),
         "edges": n_edges,
+        "negative_balance_addrs": int(neg_bal[0]),
         "cleared_layer_count": len(members),
         "waves": waves_out,
         "equal_amount_groups": eq_groups,
