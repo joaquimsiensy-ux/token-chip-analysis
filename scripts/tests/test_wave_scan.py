@@ -11,6 +11,9 @@ fixtures/pythia_anchors.json，须真库在位时手动回测比对）：
   6. 零截断闭合：members 长度 == member_count / recipients
   7. 稳定 ID：同输入两跑 ID 逐字相同（内容派生）
   8. 负余额达实质线 → exit 2（fail-closed）
+  9. D 二轮复收（v6.8.1 codex 复核修复的回归）：同批收方先零散收过该面额、后同窗
+     集中复收 → 必须命中（旧实现按"每收方首收时间"去重会把第二轮全部吞掉）
+ 10. 负余额"先负后回正"（v6.8.1）：期末余额为正但历史最低点为负 → 仍 exit 2
 用法：python3 scripts/tests/test_wave_scan.py   退出码 0=PASS / 1=FAIL
 """
 import json
@@ -129,6 +132,30 @@ def main():
                  (day(1), "GhostAddr", "SomeAddr", 5 * 10 ** 10)]  # Ghost 无来源 → final=-5%
     p3 = run(neg_edges, os.path.join(d2, "r.json"))
     check("负余额达实质线 → exit 2", p3.returncode == 2)
+
+    # ---- 10. 负余额"先负后回正"：期末正但历史最低点负 → 仍 exit 2 ----
+    d3 = tempfile.mkdtemp(prefix="wave_scan_negheal_")
+    heal_edges = [(day(0), Z, "SomeAddr", 10 ** 11),
+                  (day(1), "Ghost2", "SomeAddr", 5 * 10 ** 10),   # 先凭空转出（min=-5%）
+                  (day(2), "SomeAddr", "Ghost2", 6 * 10 ** 10)]   # 后收币回正（final=+1%）
+    p4 = run(heal_edges, os.path.join(d3, "r.json"))
+    check("先负后回正（数据缺失自愈假象）→ 仍 exit 2", p4.returncode == 2)
+
+    # ---- 9. D 二轮复收：同批收方先零散收过、后同窗集中复收 → 必须命中 ----
+    d4 = tempfile.mkdtemp(prefix="wave_scan_recoll_")
+    re_edges = [(day(0), Z, "F3", 2 * 10 ** 11)]
+    RR = [f"ReRecv{i:02d}" for i in range(20)]
+    for i, rr in enumerate(RR):
+        re_edges.append((day(100 + 2 * i), "F3", rr, 2 * 10 ** 9))   # 第一轮：38 天零散
+    for rr in RR:
+        re_edges.append((day(150), "F3", rr, 2 * 10 ** 9))           # 第二轮：同日集中复收
+    p5 = run(re_edges, os.path.join(d4, "r.json"))
+    r5 = json.load(open(os.path.join(d4, "r.json")))
+    hit = [g for g in r5["equal_amount_groups"] if g["amount_raw"] == str(2 * 10 ** 9)]
+    check("D 二轮复收命中（旧实现按首收去重必漏）", p5.returncode == 0 and len(hit) == 1)
+    if hit:
+        check("D 二轮复收：tx_count=40 且 densest 窗 ≥20",
+              hit[0]["tx_count"] == 40 and hit[0]["densest_7d_window"]["recipients"] >= 20)
 
     return finish()
 

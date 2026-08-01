@@ -1,17 +1,21 @@
 #!/usr/bin/env python3
-"""adjudication_validator 契约测试（离线合成，六类拒绝全覆盖 + freeze 接入）。
+"""adjudication_validator 契约测试（离线合成，八类拒绝全覆盖 + freeze 接入）。
 
-覆盖（schema references/scan-schemas.md §3）：
+覆盖（schema references/scan-schemas.md §3；v6.8.1 codex 复核后加固）：
   0. template 生成：sha256/成员全集/机器 tier_impact 预填；已存在防覆盖
-  1. 正例：全候选成员级填毕 → validate exit 0 → freeze 放行
+  1. 正例：全候选成员级填毕 → validate exit 0；freeze 全链路（完整 READY 案）放行
   2. ①缺文件（无裁决台账）→ freeze exit 2
-  3. ②少裁/未知 ID → exit 2
+  3. ②少裁/未知 ID → exit 2；源报告 schema 错版 → exit 2
   4. ③重复 ID → exit 2
   5. ④candidate_sha256 不符（源报告候选内容变）→ exit 2
   6. ⑤部分成员未裁 → exit 2
-  7. ⑥tier_impact 伪造（could_change_tiering 人工改假）→ exit 2
+  7. ⑥tier_impact 伪造（could_change_tiering / nearest_tier_line 人工改）→ exit 2
   8. unresolved 且可达规模 ≥5% → exit 2；unresolved 且 <5% → 放行
   9. 源报告重跑（整册哈希不符）→ exit 2
+ 10. ⑦语义交叉约束：confirmed 全员 excluded / excluded 却收编成员 / excluded 缺
+     reason / confirmed 无 evidence / adjudicated_at 未填 / candidate_kind 错 → 全拒
+ 11. ⑧实体名册绑定：confirmed 未传名册 / linked_entity 不在名册 / accepted 未落名册
+     → 全拒；名册齐备的 confirmed 正例放行
 用法：python3 scripts/tests/test_adjudication_validator.py   退出码 0=PASS / 1=FAIL
 """
 import copy
@@ -22,6 +26,9 @@ import sys
 import tempfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, HERE)
+from test_handoff_manifest import make_case, setup_freezeable, FRZ, GEN  # noqa: E402
+
 VALIDATOR = os.path.join(HERE, "..", "report", "adjudication_validator.py")
 HANDOFF = os.path.join(HERE, "..", "report", "handoff_manifest.py")
 FAILS = []
@@ -100,36 +107,34 @@ def main():
     p = run(VALIDATOR, ["validate", "--case-dir", d])
     check("正例 validate exit 0", p.returncode == 0)
 
-    # freeze 接入：裁决闭环但缺溯源台账 → 拒；补台账 → 放行（v6.8.0 三重门禁）
-    wj(d, "analysis-state.json", {"entities": []})
-    p = run(HANDOFF, ["freeze", "--case-dir", d, "--members", "analysis-state.json"])
+    # freeze 全链路（v6.8.1：freeze 前置 0 是内联 verify——接入测试须用完整 READY 案）
+    from test_handoff_manifest import make_provenance
+    dfz = os.path.join(root, "ok_freeze")
+    os.makedirs(dfz)
+    make_case(dfz)
+    make_reports(dfz)          # 覆盖为有候选版本（3 候选）
+    run(HANDOFF, ["generate", "--case-dir", dfz, "--status", "READY"] + GEN)
+    fill_all(dfz)
+    emap = {"E1": ["0xabc"]}
+    wj(dfz, "s2_entity_members.json", emap)
+    wj(dfz, "analysis-state.json", {"whale_groups": []})
+    p = run(HANDOFF, ["freeze", "--case-dir", dfz] + FRZ)
     check("裁决闭环但缺溯源台账 freeze exit 2",
           p.returncode == 2 and "provenance" in (p.stderr + p.stdout))
-    wj(d, "provenance_ledger.json", {
-        "schema": "provenance-ledger/v1",
-        "entities": [{"entity_id": "e_test", "member_count": 1,
-                      "anchors": {"current": {"stock_raw": "0", "composition": []},
-                                  "peak": {"stock_raw": "100", "composition": []}},
-                      "closure_check": {"current_sum_pct": 0, "peak_sum_pct": 100.0}}]})
-    p = run(HANDOFF, ["freeze", "--case-dir", d, "--members", "analysis-state.json"])
+    wj(dfz, "provenance_ledger.json", make_provenance(emap))
+    p = run(HANDOFF, ["freeze", "--case-dir", dfz] + FRZ)
     check("裁决＋溯源双闭环后 freeze 放行 exit 0", p.returncode == 0)
-    # 溯源闭合破坏 → freeze 拒
-    wj(d, "provenance_ledger.json", {
-        "schema": "provenance-ledger/v1",
-        "entities": [{"entity_id": "e_test", "member_count": 1,
-                      "anchors": {"current": {"stock_raw": "0", "composition": []},
-                                  "peak": {"stock_raw": "100", "composition": []}},
-                      "closure_check": {"current_sum_pct": 0, "peak_sum_pct": 63.0}}]})
-    wj(d, "analysis-state.json", {"entities": ["changed"]})
-    p = run(HANDOFF, ["freeze", "--case-dir", d, "--members", "analysis-state.json"])
-    check("溯源闭合失败 freeze exit 2", p.returncode == 2 and "闭合" in (p.stderr + p.stdout))
 
-    # 2. ①缺台账 → freeze 拒
+    # 2. ①缺台账 → freeze 拒（完整 READY 案，其余台账齐备，只缺裁决）
     d2 = os.path.join(root, "nofile")
     os.makedirs(d2)
+    make_case(d2)
     make_reports(d2)
+    run(HANDOFF, ["generate", "--case-dir", d2, "--status", "READY"] + GEN)
+    wj(d2, "s2_entity_members.json", emap)
     wj(d2, "analysis-state.json", {"entities": []})
-    p = run(HANDOFF, ["freeze", "--case-dir", d2, "--members", "analysis-state.json"])
+    wj(d2, "provenance_ledger.json", make_provenance(emap))
+    p = run(HANDOFF, ["freeze", "--case-dir", d2] + FRZ)
     check("缺裁决台账 freeze exit 2", p.returncode == 2 and "裁决闭环" in (p.stderr + p.stdout))
 
     # 3. ②少裁
@@ -213,6 +218,98 @@ def main():
     make_reports(d9, eqg_pct=3.5)  # 重跑源报告，台账未更新
     p = run(VALIDATOR, ["validate", "--case-dir", d9])
     check("源报告重跑整册过期 exit 2", p.returncode == 2 and "source_reports" in p.stdout)
+
+    # 10. ⑦语义交叉约束（v6.8.1：形式全覆盖但语义自相矛盾的敷衍裁决全拒）
+    WMEM = ["W1a", "W1b", "W1c"]
+
+    def set_confirm(dx, accepted, excluded, eid="EW", evidence=None, mutate=None):
+        adj, _ = fill_all(dx)
+        for r in adj["adjudications"]:
+            if r["candidate_id"].startswith("wave-"):
+                r["candidate_verdict"] = "pattern_confirmed"
+                r["accepted_members"] = accepted
+                r["excluded_members"] = excluded
+                r["linked_entity_id"] = eid
+                r["evidence"] = ["边证据: 定向喂币"] if evidence is None else evidence
+                if mutate:
+                    mutate(r)
+        wj(dx, "candidate_adjudications.json", adj)
+        wj(dx, "ents.json", {"EW": WMEM})
+        return adj
+
+    d10 = os.path.join(root, "semantic")
+    os.makedirs(d10)
+    make_reports(d10)
+    set_confirm(d10, [], [{"addr": m, "reason": "查无协同"} for m in WMEM])
+    p = run(VALIDATOR, ["validate", "--case-dir", d10, "--entity-file", "ents.json"])
+    check("confirmed 但全员 excluded（矛盾裁决）exit 2",
+          p.returncode == 2 and "自相矛盾" in p.stdout)
+    set_confirm(d10, WMEM, [], evidence=[])
+    p = run(VALIDATOR, ["validate", "--case-dir", d10, "--entity-file", "ents.json"])
+    check("confirmed 但 evidence 空 exit 2", p.returncode == 2 and "证据" in p.stdout)
+    adj, _ = fill_all(d10)
+    for r in adj["adjudications"]:
+        if r["candidate_id"].startswith("wave-"):
+            r["accepted_members"] = ["W1a"]          # excluded verdict 却收编成员
+            r["excluded_members"] = [{"addr": m, "reason": "独立"} for m in WMEM[1:]]
+    wj(d10, "candidate_adjudications.json", adj)
+    p = run(VALIDATOR, ["validate", "--case-dir", d10])
+    check("excluded 却收编成员 exit 2", p.returncode == 2 and "收编" in p.stdout)
+    adj, _ = fill_all(d10)
+    for r in adj["adjudications"]:
+        if r["candidate_id"].startswith("wave-"):
+            r["excluded_members"] = [{"addr": m} for m in WMEM]   # 缺 reason
+    wj(d10, "candidate_adjudications.json", adj)
+    p = run(VALIDATOR, ["validate", "--case-dir", d10])
+    check("excluded 成员缺排除理由 exit 2", p.returncode == 2 and "理由" in p.stdout)
+    adj, _ = fill_all(d10)
+    adj["adjudicated_at"] = None
+    wj(d10, "candidate_adjudications.json", adj)
+    p = run(VALIDATOR, ["validate", "--case-dir", d10])
+    check("adjudicated_at 未填 exit 2", p.returncode == 2 and "adjudicated_at" in p.stdout)
+    adj, _ = fill_all(d10)
+    for r in adj["adjudications"]:
+        if r["candidate_id"].startswith("wave-"):
+            r["candidate_kind"] = "spray"
+    wj(d10, "candidate_adjudications.json", adj)
+    p = run(VALIDATOR, ["validate", "--case-dir", d10])
+    check("candidate_kind 与机器不符 exit 2", p.returncode == 2 and "candidate_kind" in p.stdout)
+    adj, _ = fill_all(d10)
+    for r in adj["adjudications"]:
+        if r["candidate_id"].startswith("wave-"):
+            r["tier_impact"]["max_possible_impact"]["nearest_tier_line"] = "50%"
+    wj(d10, "candidate_adjudications.json", adj)
+    p = run(VALIDATOR, ["validate", "--case-dir", d10])
+    check("nearest_tier_line 伪造 exit 2", p.returncode == 2 and "机器重算" in p.stdout)
+
+    # 11. ⑧实体名册绑定
+    d11 = os.path.join(root, "binding")
+    os.makedirs(d11)
+    make_reports(d11)
+    set_confirm(d11, WMEM, [])
+    p = run(VALIDATOR, ["validate", "--case-dir", d11])
+    check("confirmed 未传 --entity-file exit 2", p.returncode == 2 and "entity-file" in p.stdout)
+    set_confirm(d11, WMEM, [], eid="E_nonexist")
+    p = run(VALIDATOR, ["validate", "--case-dir", d11, "--entity-file", "ents.json"])
+    check("linked_entity 不在名册 exit 2", p.returncode == 2 and "不存在于实体名册" in p.stdout)
+    set_confirm(d11, WMEM, [])
+    wj(d11, "ents.json", {"EW": ["W1a", "W1b"]})    # 名册少 W1c
+    p = run(VALIDATOR, ["validate", "--case-dir", d11, "--entity-file", "ents.json"])
+    check("accepted 成员未落名册 exit 2", p.returncode == 2 and "没真并" in p.stdout)
+    set_confirm(d11, WMEM, [])
+    p = run(VALIDATOR, ["validate", "--case-dir", d11, "--entity-file", "ents.json"])
+    check("confirmed＋名册齐备正例 exit 0", p.returncode == 0)
+
+    # 3b. 源报告 schema 错版 → 拒（空壳/旧版不得形成"零候选已闭环"）
+    d3b = os.path.join(root, "srcschema")
+    os.makedirs(d3b)
+    make_reports(d3b)
+    fill_all(d3b)
+    ws = json.load(open(os.path.join(d3b, "wave_scan_report.json")))
+    ws["schema"] = "wave-scan/v1"
+    wj(d3b, "wave_scan_report.json", ws)
+    p = run(VALIDATOR, ["validate", "--case-dir", d3b])
+    check("源报告 schema 错版 exit 2", p.returncode == 2 and "schema" in p.stdout)
 
     print(f"\n{'PASS' if not FAILS else 'FAIL'}：{len(FAILS)} 项失败")
     return 1 if FAILS else 0

@@ -76,20 +76,20 @@
 | `wave_scan_report.json` | −1 | 全体持仓四指纹波次扫描（wave_scan.py，wave-scan/v2）候选波次＋等额组；READY 必产件，−2 逐条裁决完毕前历史大户兜底桶不准关闸 |
 | `flow_anomaly_report.json` | −1 | 资金流异常扫描（flow_anomaly_scan.py，flow-anomaly/v1）汇集点＋分发点候选；READY 必产件 |
 | `candidate_adjudications.json` | −2 | wave/flow 全候选成员级裁决台账（candidate-adjudications/v1；`adjudication_validator.py template` 起草、`validate` 校验）——freeze 机器前置，缺漏即拒 |
-| `provenance_ledger.json` | −2 | 已知实体币源溯源台账（entity_source_trace.py，provenance-ledger/v1，两锚点构成＋进货单）——freeze 机器前置 |
+| `provenance_ledger.json` | −2 | 已知实体币源溯源台账（entity_source_trace.py，provenance-ledger/v2 正向模拟版，两锚点构成＋进货单＋FIFO/LIFO 敏感性）——freeze 机器前置；v1 是 pro-rata 数学错误版一律重跑 |
 | `sealed/stage1_hypotheses.sealed.md` | −1 | 初步定性密封件，见 §2.3 |
 | `entity_freeze.json` | −2 | 冻结事件物化：成员表哈希/时间/未决项/casebook 检验结果；变更走 revision 追加，不许静默覆盖 |
 | 既有产物 | −1 | accounting_mode、collect_manifest＋done.json、四查产物、cluster_prep、address_bucket_series、价格序列——**格式零改动** |
 
 **findings.md 双义处理**：−1 不写 findings.md（它是 A3 交接包，归 −2 按 context-discipline 现行制度写）；easy 版 E0b 中止存档语义不变，且限定为 `BLOCKED_E0B` 恢复资产。
 
-### 2.2 handoff_manifest.json 语义（schema `handoff/v1`）
+### 2.2 handoff_manifest.json 语义（schema `handoff/v2`；v1 只可 `verify --legacy-read-only` 只读降级，机器 receipt 落盘、不得生成新正式报告）
 
 - **身份**：schema_version、case_id、run_id、mode（easy/full；**值来源＝/token-analyze-1 命令的档位参数，−1 收工 `generate --mode` 必填传入**，用户未给档位时 −1 开工前先问、禁猜）、producer_model、CC/codex 两侧 git SHA、consumer_min_schema。
 - **口径**：链范围、合约、冻结块/slot、UTC cutoff、三种分母（总供应/调整后/流通）及来源。
 - **gate 记录**：每个 gate 的命令＋exit＋语义状态（accounting_mode/supply_truth 由脚本从产物 JSON 自动读 `verdict/exit_code`，防手报；四查等其他 gate 由 −1 执行者 `--gate` 显式声明并绑定产物文件）。
 - **产物 allowlist**：逐件登记路径/字节/sha256（大文件分片哈希＋复用采集侧行数/区间校验，不收尾全盘重哈希）/行数/schema/依赖。排除日志/临时库/含密钥文件（config.json 不入清单内容）。
-- **状态机**：`READY | BLOCKED | PARTIAL | SUPERSEDED | BLOCKED_E0B`——只有 READY 可被 −2 消费；READY 前置＝五件契约 JSON＋accounting_mode.json＋supply_truth.json 齐全（A0/A2 必产件，缺任一 generate 即拒）。
+- **状态机**：`READY | BLOCKED | PARTIAL | SUPERSEDED | BLOCKED_E0B`——只有 READY 可被 −2 消费；READY 前置＝五件契约 JSON＋accounting_mode.json＋supply_truth.json＋wave_scan_report.json＋flow_anomaly_report.json 齐全（EVM 家族链另加 time_spotcheck.json；缺任一 generate 即拒，verify 端独立重算这份清单——手改 manifest 摘条目同样过不了）。
 - **生成纪律**：原子生成（tmp+rename）、不含自身哈希；generate 后新增产物走 `late_additions`（重跑 generate 产 superseding manifest，旧件自动归档带 run_id 后缀）。
 
 ### 2.3 sealed 密封纪律（防锚定）
@@ -114,7 +114,7 @@
 
 ### 3.2 判断主序
 
-casebook C/E 册过闸 → 聚类合并裁决（只认专属性证据）→ 临时实体 → **无下限成员完整性扫描** → **候选裁决闭环**（wave_scan＋flow_anomaly 全部候选：`adjudication_validator.py template` 起草台账 → 逐条**成员级**裁决〔等额组必查 top_sender_global_out_degree 识设施撞衫〕→ `validate` 校验六类拒绝；裁决完毕前历史大户兜底桶不准关闸，被裁定为协同实体的进名册）→ **溯源闸**（对临时实体表跑 `entity_source_trace.py`——每实体两锚点构成＋direct_upstream 进货单；进货单/终点构成发现新支路 → 补候选/修成员 → **回裁决环重跑**；时序硬规则：不得先冻结再让溯源发现遗漏）→ 反证检查 → **`handoff_manifest.py freeze` 落 entity_freeze.json**（机器三重前置：裁决闭环 validate 过＋provenance_ledger 在场且闭合＋成员表哈希；此后变更走 revision 追加）→ 正式 entity_identity_gate（逐 flag 填 resolution，G8 编译门照常）→ 判级 → needs_adjudication 逐项裁决（量大按 context-discipline 刀 1 现行外包制度 fan-out）→ 阵营演变重放（派机械子代理；v6.8.0 起无输出侧骤变归因闸——camp_jump_audit 已删，无法归因的骤变按判断层义务写进报告局限性）→ 状态评估 → **冻结后读 sealed 观察作差异对照**（分歧点进 A4 靶单）→ A4 对抗复核（开工 `a4_gate.py register` 登记 claims、收尾 `finalize` 封口产 a4_seal.json——**封口前禁进 A5**，6.7.0 顺序硬闸）→ A5（easy 两件套 / full 完整报告；报告图一律 charts/final/、build_html `--a4-seal` 必传走 G9；交付时一并申报 sealed 自查）。A6 复盘不自动执行，仅用户要求时按 retrospective.md 走。
+casebook C/E 册过闸 → 聚类合并裁决（只认专属性证据）→ 临时实体 → **无下限成员完整性扫描** → **候选裁决闭环**（wave_scan＋flow_anomaly 全部候选：`adjudication_validator.py template` 起草台账 → 逐条**成员级**裁决〔等额组必查 top_sender_global_out_degree 识设施撞衫〕→ `validate --entity-file` 校验八类拒绝〔含 verdict 语义交叉约束与 linked_entity 名册绑定——confirmed 必须真收编、excluded 逐员给理由〕；裁决完毕前历史大户兜底桶不准关闸，被裁定为协同实体的进名册）→ **溯源闸**（对临时实体表跑 `entity_source_trace.py`——祖先子图正向模拟，每实体两锚点构成＋direct_upstream 进货单＋FIFO/LIFO 敏感性；进货单/终点构成发现新支路 → 补候选/修成员 → **回裁决环重跑**；敏感性翻转即 exit 2 阻断；时序硬规则：不得先冻结再让溯源发现遗漏）→ 反证检查 → **`handoff_manifest.py freeze --members … --entity-file …` 落 entity_freeze.json**（机器四重前置：同进程严格 verify＋裁决闭环带名册绑定＋溯源台账内容级重查〔逐实体成员哈希、closure 按构成明细重算、敏感性 stable〕＋三份哈希入冻结记录；此后变更走 revision 追加——名册一变旧溯源台账自动失效必须重跑）→ 正式 entity_identity_gate（逐 flag 填 resolution，G8 编译门照常）→ 判级 → needs_adjudication 逐项裁决（量大按 context-discipline 刀 1 现行外包制度 fan-out）→ 阵营演变重放（派机械子代理；v6.8.0 起无输出侧骤变归因闸——camp_jump_audit 已删，无法归因的骤变按判断层义务写进报告局限性）→ 状态评估 → **冻结后读 sealed 观察作差异对照**（分歧点进 A4 靶单）→ A4 对抗复核（开工 `a4_gate.py register` 登记 claims、收尾 `finalize` 封口产 a4_seal.json——**封口前禁进 A5**，6.7.0 顺序硬闸）→ A5（easy 两件套 / full 完整报告；报告图一律 charts/final/、build_html `--a4-seal` 必传走 G9；交付时一并申报 sealed 自查）。A6 复盘不自动执行，仅用户要求时按 retrospective.md 走。
 
 ### 3.3 A4 外部异构路收紧条款（分段模式专属，兼容 codex 侧 c1.1.0 禁自审令）
 

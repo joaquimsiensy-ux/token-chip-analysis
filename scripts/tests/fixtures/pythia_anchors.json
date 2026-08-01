@@ -1,64 +1,72 @@
 {
-  "_doc": "PYTHIA 原案回测锚点（v6.8.0，2026-08-01 实测冻结）。装闸必附原案回测——改 wave_scan/flow_anomaly/entity_source_trace 的阈值或算法后，必须对 PYTHIA 真库重跑并与本文件比对；A/D 义务抓不到＝闸坏了禁止发版。回测仅 PYTHIA 单案（用户拍板），flow 参数初值缺第二币对照校准。",
-  "case": "PYTHIA",
-  "duckdb": "/Users/uravvv/Documents/5.6筹码分析/PYTHIA分析/s2_work.duckdb",
-  "total_supply_raw": "998158041739995",
-  "wave_scan_v2": {
-    "scan_universe_count": 5365,
-    "retention_buckets": {"cleared": 4711, "partial_exit": 37, "retained": 617},
-    "negative_balance_addrs": 0,
-    "wave_count": 5,
-    "w1_wave": {
-      "id": "wave-046b6bf76699",
-      "member_count": 721,
-      "combined_peak_pct": 74.229,
-      "combined_peak_date": "2025-07-01",
-      "seed_window": {"start": "2025-05-21", "end": "2025-05-27", "member_count": 158, "combined_peak_pct": 37.064},
-      "w1_coverage": "339/341",
-      "w1_coverage_min_ratio": 0.85,
-      "B_feeder_exclusive": {"members": 302, "rate": 0.419, "hit": false},
-      "C_peak_to_30pct": {"days": 37, "hit": false},
-      "_note_B": "算法保持 v6.6.1 原样；数值与 v6.6.1 清零层版（rate 0.403/293 员）不同——扫描对象扩为全体峰值≥0.02% 后成员集从清零层扩大，属预期，以本值为 v2 基线",
-      "_note_C": "纯 W1 341 址口径峰→30% 实测 72 天；本候选 721 员混入版 37 天——均 >30 不触发＝预期（C 为未来快速清仓设，非为 W1 专设；回测义务主体是 A 与 D）"
-    },
-    "escrow_rediscovery": {
-      "id": "wave-8c3c94a7f04a",
-      "member_count": 43,
-      "combined_peak_pct": 17.777,
-      "_note": "2026-06-11~23 开仓潮——A 指纹零先验独立重发现终裁 escrow 交割网（16.33%）＋退回中转仓，机械闸旁证"
-    },
-    "equal_amount_groups": {
-      "count": 7,
-      "top": {
-        "id": "eqg-1000000000000-3c390472",
-        "amount_raw": "1000000000000",
-        "group_total_pct": 33.662,
-        "densest_7d_recipients": 39,
-        "top_sender_global_out_degree": 41
-      },
-      "facility_noise_groups": 6,
-      "facility_top_sender_out_degree": 72207,
-      "_note": "44 分仓（Q1 亲发）置顶；其余 6 组主发送方全为场内设施 5Q544fKr（出度 72,207）整数面额撞衫——裁决查出度一次定性批量关闭。参数四条合一：单笔≥0.001% + 7日窗≥20收方 + 组合计≥1%（用户 2026-08-01 定稿；曲线 0→1014 组、0.0001%→478、0.001%→9、0.02%→2）"
-    }
+ "_doc": "PYTHIA 原案回测锚点（v6.8.1，2026-08-01 codex 验收返工后实测冻结）。装闸必附原案回测——改 wave_scan/flow_anomaly/entity_source_trace 的阈值或算法后，必须对 PYTHIA 真库重跑并与本文件比对；A/D/溯源义务抓不到＝闸坏了禁止发版。结构由 fixtures_lint.py 守护；数值权威＝本文件（重跑后人工更新）。回测仅 PYTHIA 单案（用户拍板），flow 参数初值缺第二币对照校准。",
+ "case": "PYTHIA",
+ "duckdb": "/Users/uravvv/Documents/5.6筹码分析/PYTHIA分析/s2_work.duckdb",
+ "total_supply_raw": "998158041739995",
+ "wave_scan_v2": {
+  "scan_universe_count": 5365,
+  "retention_buckets": {"cleared": 4711, "partial_exit": 37, "retained": 617},
+  "negative_balance_addrs": 1,
+  "_note_neg": "v6.8.1 历史最低点口径新抓到 1 址（最深缺口 -1,244,065,567 raw ≈ 1.2e-6% 供应，期末已回正——正是'先负后回正'数据缺失形态的真实实例）；远低于 0.01% 实质线且不在任何候选成员中，警告不拦截。v6.8.0 期末口径下此值为 0。",
+  "wave_count": 5,
+  "w1_wave": {
+   "id": "wave-046b6bf76699",
+   "member_count": 721,
+   "combined_peak_pct": 74.229,
+   "combined_peak_date": "2025-07-01",
+   "seed_window": {"start": "2025-05-21", "end": "2025-05-27", "member_count": 158, "combined_peak_pct": 37.064},
+   "w1_coverage": "339/341",
+   "w1_coverage_min_ratio": 0.85,
+   "B_feeder_exclusive": {"members": 302, "rate": 0.419, "hit": false},
+   "C_peak_to_30pct": {"days": 37, "hit": false},
+   "_note_B": "算法保持 v6.6.1 原样；数值与 v6.6.1 清零层版（rate 0.403/293 员）不同——扫描对象扩为全体峰值≥0.02% 后成员集从清零层扩大，属预期，以本值为 v2 基线",
+   "_note_C": "纯 W1 341 址口径峰→30% 实测 72 天；本候选 721 员混入版 37 天——均 >30 不触发＝预期（C 为未来快速清仓设，非为 W1 专设；回测义务主体是 A 与 D）",
+   "_note_v681": "v6.8.1 全部字段与 v6.8.0 逐位零漂移（纯流出 UNION 修复/min_bal 加列/D 全事件滑窗均未扰动波次结果）"
   },
-  "flow_anomaly_v1": {
-    "sink_count": 25,
-    "spray_count": 20,
-    "q1_sink": {"id_prefix": "sink-Q1Ac6Y", "best_window": {"start": "2025-06-05", "end": "2025-06-18", "inflow_pct": 19.8528, "source_count": 12}},
-    "3ymk_sink": {"id_prefix": "sink-3yMkB8oc", "hit": true},
-    "dispatchers_spray": {"mode": "slow_spray", "prefixes": ["spray-DWVGbsn7", "spray-8WwVTK51", "spray-5GpctXbe"],
-      "_note": "三派发器＝慢速批发（5.98/3.57/3.91% 分数月匀速派给 5546/4951/1306 收方，任何 14 日窗 <0.2%）——滑窗抓不到是口径不适配非参数问题，双模式由此回测校准而来"},
-    "q1_pulse_spray_bonus": {"id_prefix": "spray-Q1Ac6Y", "mode": "pulse", "_note": "Q1 亲发 44 分仓被脉冲模式独立抓到（2025-08-13 窗 3.6%/36 新收方）"},
-    "_calibration_note": "滑窗判定修正在案：达标窗＝同窗同时满足两条（Q1 金额最大窗 22.2%/4 来源被拒、14 来源/18.8% 双达标窗存在——先取金额最大再验来源数是实现 bug）"
+  "escrow_rediscovery": {
+   "id": "wave-8c3c94a7f04a",
+   "member_count": 43,
+   "combined_peak_pct": 17.777,
+   "_note": "2026-06-11~23 开仓潮——A 指纹零先验独立重发现终裁 escrow 交割网（16.33%）＋退回中转仓，机械闸旁证"
   },
-  "provenance_v1": {
-    "q1_peak_anchor": {"date": "2025-10-24", "stock_pct_of_supply": 7.941,
-      "direct_upstream_count": 20, "w1_upstream_count": 9, "w1_upstream_pct_of_anchor": 9.43},
-    "3ymk_peak_anchor": {"date": "2025-08-03", "stock_pct_of_supply": 4.374,
-      "direct_upstream_count": 11, "w1_upstream_count": 10,
-      "ewuu_branch_stop": {"kind": "BOUNDARY", "subkind": "facility_confirmed", "pct_of_anchor": 66.7533, "path_len": 1},
-      "w1_branch_penetrated_max_path_len": 3},
-    "closure": {"peak_sum_pct": 100.0},
-    "_note": "验尸数字逐一复现：Q1 的 20 上家 9 藤、3yMk 的 11 上家 10 藤全部在 direct_upstream（进货单）现形——终点构成里 W1 是中间层不可见，进货单字段即为此而设。剪枝残差 21-24%（341 址资金链尾部分散小支路，prune-pct 0.2% of anchor 下的预期行为）显式入账，−2 可降线重跑。回测 labels：EwUU8oi/5Q544fKr=facility、9Z=cex"
+  "equal_amount_groups": {
+   "count": 7,
+   "top": {
+    "id": "eqg-1000000000000-3c390472",
+    "amount_raw": "1000000000000",
+    "recipients": 168,
+    "tx_count": 336,
+    "group_total_pct": 33.662,
+    "densest_7d_recipients": 39,
+    "top_sender_global_out_degree": 41
+   },
+   "facility_noise_groups": 6,
+   "facility_top_sender_out_degree": 72207,
+   "_note": "置顶组＝1e12（100 万枚）面额全史 168 收方（其中 Q1 亲发的 44 分仓是核心特征，densest 39 即其灌仓窗），top_sender 出度 41＝定向信号；其余 6 组 top_sender 全为场内设施 5Q544fKr（出度 72,207）整数面额撞衫——裁决查出度一次定性批量关闭。7 组 ID 与 v6.8.0 逐字一致（全事件滑窗改造零扰动）。top_sender 口径 v6.8.1 定稿＝触达 distinct 收方最多者（按事件数选会被'对同一收方反复发'绑架——3e11 组实测教训）。参数四条合一：单笔≥0.001% + 7日窗≥20收方 + 组合计≥1%（用户 2026-08-01 定稿；曲线 0→1014 组、0.0001%→478、0.001%→9、0.02%→2）"
   }
+ },
+ "flow_anomaly_v1": {
+  "sink_count": 25,
+  "spray_count": 20,
+  "q1_sink": {"id_prefix": "sink-Q1Ac6Y", "best_window": {"start": "2025-06-05", "end": "2025-06-18", "inflow_pct": 19.8528, "source_count": 12}},
+  "3ymk_sink": {"id_prefix": "sink-3yMkB8oc", "hit": true},
+  "dispatchers_spray": {"mode": "slow_spray", "prefixes": ["spray-DWVGbsn7", "spray-8WwVTK51", "spray-5GpctXbe"],
+   "_note": "三派发器＝慢速批发（5.98/3.57/3.91% 分数月匀速派给 5546/4951/1306 收方，任何 14 日窗 <0.2%）——滑窗抓不到是口径不适配非参数问题，双模式由此回测校准而来"},
+  "q1_pulse_spray_bonus": {"id_prefix": "spray-Q1Ac6Y", "mode": "pulse", "_note": "Q1 亲发 44 分仓被脉冲模式独立抓到（2025-08-13 窗 3.6%/36 新收方）"},
+  "_calibration_note": "滑窗判定修正在案：达标窗＝同窗同时满足两条（Q1 金额最大窗 22.2%/4 来源被拒、14 来源/18.8% 双达标窗存在——先取金额最大再验来源数是实现 bug）。v6.8.1 实体抵消改 entity_id 分组后（回测未传 entity-file）25+20 个候选 ID 集合与 v6.8.0 完全一致。"
+ },
+ "provenance_v2": {
+  "_note_v2": "v6.8.1 正向模拟版实测（v1 数字出自 pro-rata 数学错误算法——累计流入归一化不扣流出——全部作废，禁止引用）。composition 语义＝锚点现存库存终点构成（Q1 峰值 EwUU 100%＝那批库存全经场内设施进货，与终裁'Q1 经 EwUU 调度'一致）；W1 进货史义务由 direct_upstream 毛流入清单承担（周转枢纽的现存构成会把早期藤蔓等比消耗殆尽——v6.8.1 回测首跑实测教训，进货单因此定为毛口径）。",
+  "q1_peak_anchor": {"date": "2025-10-24", "stock_pct_of_supply": 7.941,
+   "direct_upstream_count": 20, "w1_upstream_count": 9, "w1_upstream_pct_of_gross_in": 9.43,
+   "composition_top": {"kind": "BOUNDARY", "subkind": "facility_confirmed", "via_prefix": "EwUU8oi", "pct_of_anchor": 100.0},
+   "simulation": {"ancestors": 26853, "edges_simulated": 3929612, "same_ts_cycle_groups": 3194, "data_gap_events": 2191, "_gap_note": "gap 事件全为粉尘级短缺，聚合占比 <0.005% 未进构成表"}},
+  "3ymk_peak_anchor": {"date": "2025-08-03", "stock_pct_of_supply": 4.374,
+   "direct_upstream_count": 11, "w1_upstream_count": 10, "w1_upstream_pct_of_gross_in": 33.25,
+   "ewuu_branch_stop": {"kind": "BOUNDARY", "subkind": "facility_confirmed", "pct_of_gross_in": 66.7533, "path_len": 1},
+   "w1_penetrated_composition_entries_path_ge2": 4},
+  "closure": {"peak_sum_pct": 100.0, "_note": "正向模拟构造性守恒，closure 为实现自检"},
+  "sensitivity_stable": true,
+  "run_params": {"edge_budget": 5000000, "_note": "Q1 祖先子图 393 万边超默认 3M 预算——fail-closed 生效后按 --edge-budget 5000000 重跑；labels 三址：EwUU8oi/5Q544fKr=facility、9Z=cex"}
+ }
 }

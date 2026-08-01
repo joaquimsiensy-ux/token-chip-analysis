@@ -127,6 +127,24 @@ def main():
     check("实体内部流转抵消后 SinkA 不报",
           p2.returncode == 0 and "SinkA" not in {s["addr"] for s in r2["sinks"]})
 
+    # 8. 跨实体转账保留（v6.8.1 codex 复核修复的回归）：SinkA 归实体 eA、6 来源归实体 eB
+    #    ——不同实体间的真实转账不得被抵消，SinkA 必须仍命中
+    ef2 = os.path.join(d, "entity2.json")
+    with open(ef2, "w") as f:
+        json.dump({"eA": ["SinkA"], "eB": SRC[:6]}, f)
+    out3 = os.path.join(d, "r3.json")
+    p3 = run(edges, out3, ["--entity-file", ef2])
+    r3 = json.load(open(out3))
+    check("跨实体转账保留：SinkA 仍命中（拍平抵消是旧 bug）",
+          p3.returncode == 0 and "SinkA" in {s["addr"] for s in r3["sinks"]})
+
+    # 9. 同址跨实体名册冲突 → exit 2
+    ef3 = os.path.join(d, "entity3.json")
+    with open(ef3, "w") as f:
+        json.dump({"eA": ["SinkA"], "eB": ["SinkA"]}, f)
+    p4 = run(edges, os.path.join(d, "r4.json"), ["--entity-file", ef3])
+    check("同址跨实体名册冲突 exit 2", p4.returncode == 2)
+
     return finish()
 
 

@@ -11,9 +11,10 @@
 首个新案实战时如实标注此局限。
 
 口径纪律（与 wave_scan 完全一致）：分母＝--total-supply 冻结值；边表同源；mint/burn
-哨兵排除；f==t 自转排除；known-entity 内部流转可经 --entity-file 抵消（−1 阶段无实体
-表时不传）；"新地址/首次有意义建仓"复用 wave_scan 的 first_meaningful_day 抗 dust 定义
-（首日末余额 ≥自身峰值×first-meaningful-ratio）。
+哨兵排除；f==t 自转排除；--entity-file 抵消只对**同一实体**内部流转生效（按 entity_id
+分组，跨实体转账保留——v6.8.1 codex 复核修复：拍平成单一集合会把实体间真实转账当
+内部边删掉；−1 阶段无实体表时不传）；"新地址/首次有意义建仓"复用 wave_scan 的
+first_meaningful_day 抗 dust 定义（首日末余额 ≥自身峰值×first-meaningful-ratio）。
 
 输入三选一（同 wave_scan）：--edges-sol / --edges-evm-v2 / --duckdb。
 输出：--out flow_anomaly_report.json（schema flow-anomaly/v1，来源/收方数组全量零截断，
@@ -43,21 +44,37 @@ def log(msg):
     print(f"[flow_anomaly] {msg}", flush=True)
 
 
-def load_entity_members(path):
-    """--entity-file：json（{entity_id:[addr…]} 或 [[addr…]…] 或 addr 数组）→ 全部成员集合。"""
+def load_entity_groups(path):
+    """--entity-file：json（{entity_id:[addr…]} 或 [[addr…]…] 或 addr 数组）→ {addr: entity_id}。
+    v6.8.1（codex 复核修复）：保留分组而非拍平成一个大集合——抵消只对**同一实体**内部
+    流转生效，实体 A → 实体 B 的真实跨实体转账必须保留（拍平会把它当内部边删掉，
+    可能漏掉 sink/spray）。同址跨实体即拒（名册冲突先并册）。"""
     with open(path, encoding="utf-8") as fh:
         obj = json.load(fh)
-    members = set()
+    mapping = {}
+
+    def put(addr, eid):
+        if not isinstance(addr, str) or not addr:
+            log(f"参数错误：--entity-file 成员必须是非空字符串: {addr!r}")
+            sys.exit(2)
+        if addr in mapping and mapping[addr] != eid:
+            log(f"参数错误：地址 {addr} 同时属于实体 {mapping[addr]} 与 {eid}——先并册再扫描")
+            sys.exit(2)
+        mapping[addr] = eid
+
     if isinstance(obj, dict):
-        for v in obj.values():
-            members |= set(v) if isinstance(v, list) else set()
-    elif isinstance(obj, list):
-        for v in obj:
+        for eid, v in obj.items():
             if isinstance(v, list):
-                members |= set(v)
+                for x in v:
+                    put(x, str(eid))
+    elif isinstance(obj, list):
+        for i, v in enumerate(obj):
+            if isinstance(v, list):
+                for x in v:
+                    put(x, f"e{i}")
             elif isinstance(v, str):
-                members.add(v)
-    return members
+                put(v, "e0")
+    return mapping
 
 
 def best_window_scan(rows, win_sec, min_val, min_keys):
@@ -127,7 +144,7 @@ def main():
                 exclude = set(json.loads(txt))
             except json.JSONDecodeError:
                 exclude = {x.strip() for x in txt.splitlines() if x.strip()}
-    entity_members = load_entity_members(a.entity_file) if a.entity_file else set()
+    entity_groups = load_entity_groups(a.entity_file) if a.entity_file else {}
 
     con = duckdb.connect()
     con.execute(f"SET memory_limit='{a.mem_limit}'")
@@ -150,8 +167,20 @@ def main():
         f"SELECT owner, peak, final_bal, first_meaningful_day FROM addr").fetchall()}
 
     sentinels = {Z, DEAD} | exclude
-    ent_ph = "', '".join(sorted(entity_members)) if entity_members else ""
-    ent_filter = f"AND NOT (f IN ('{ent_ph}') AND t IN ('{ent_ph}'))" if entity_members else ""
+    # 实体内部流转抵消视图：仅两端属于**同一实体**的边被剔除（跨实体转账保留）；
+    # 无实体表时 eflow 直通 edges。sink/spray 一切扫描查询走 eflow；
+    # 地址概要（addr）仍按全量 edges——持仓史不做抵消。
+    if entity_groups:
+        con.execute("CREATE TEMP TABLE entmap(addr VARCHAR, eid VARCHAR)")
+        con.executemany("INSERT INTO entmap VALUES (?, ?)", sorted(entity_groups.items()))
+        con.execute("""
+            CREATE VIEW eflow AS
+            SELECT e.ts, e.f, e.t, e.amt FROM edges e
+            LEFT JOIN entmap mf ON mf.addr = e.f
+            LEFT JOIN entmap mt ON mt.addr = e.t
+            WHERE mf.eid IS NULL OR mt.eid IS NULL OR mf.eid <> mt.eid""")
+    else:
+        con.execute("CREATE VIEW eflow AS SELECT ts, f, t, amt FROM edges")
     sent_ph = "', '".join(sorted(sentinels))
     data_first_day = con.execute("SELECT MIN(ts) // 86400 FROM edges").fetchone()[0] or 0
 
@@ -159,16 +188,16 @@ def main():
     sink_min_raw = total * a.sink_min_inflow_pct / 100.0
     elig_ph = "', '".join(sorted(eligible - sentinels))
     pre_sinks = [r[0] for r in con.execute(f"""
-        SELECT t FROM edges
-        WHERE f IN ('{elig_ph}') AND t NOT IN ('{sent_ph}') AND f <> t {ent_filter}
+        SELECT t FROM eflow
+        WHERE f IN ('{elig_ph}') AND t NOT IN ('{sent_ph}') AND f <> t
         GROUP BY t HAVING SUM(amt) >= {sink_min_raw}""").fetchall()]
     log(f"汇集点预筛 {len(pre_sinks)} 个（合格来源总流入 ≥{a.sink_min_inflow_pct}%）")
     win_sec = a.sink_window_days * 86400
     sinks = []
     for t in pre_sinks:
         rows = con.execute(f"""
-            SELECT ts, f, amt FROM edges
-            WHERE t = '{t}' AND f IN ('{elig_ph}') AND f <> t {ent_filter}
+            SELECT ts, f, amt FROM eflow
+            WHERE t = '{t}' AND f IN ('{elig_ph}') AND f <> t
             ORDER BY ts""").fetchall()
         best_sum, best_srcs, w0, w1 = best_window_scan(
             [(int(ts), f, int(v)) for ts, f, v in rows], win_sec,
@@ -196,16 +225,16 @@ def main():
     # ---------------- ② 分发点 ----------------
     spray_min_raw = total * a.spray_min_outflow_pct / 100.0
     pre_sprays = [r[0] for r in con.execute(f"""
-        SELECT f FROM edges
-        WHERE t NOT IN ('{sent_ph}') AND f NOT IN ('{sent_ph}') AND f <> t {ent_filter}
+        SELECT f FROM eflow
+        WHERE t NOT IN ('{sent_ph}') AND f NOT IN ('{sent_ph}') AND f <> t
         GROUP BY f HAVING SUM(amt) >= {spray_min_raw}""").fetchall()]
     log(f"分发点预筛 {len(pre_sprays)} 个（总流出 ≥{a.spray_min_outflow_pct}%）")
     win_sec2 = a.spray_window_days * 86400
     sprays = []
     for f in pre_sprays:
         rows = con.execute(f"""
-            SELECT ts, t, amt FROM edges
-            WHERE f = '{f}' AND t NOT IN ('{sent_ph}') AND f <> t {ent_filter}
+            SELECT ts, t, amt FROM eflow
+            WHERE f = '{f}' AND t NOT IN ('{sent_ph}') AND f <> t
             ORDER BY ts""").fetchall()
         all_recv = {t for _, t, _ in rows}
         all_out = sum(int(v) for _, _, v in rows)
@@ -244,8 +273,8 @@ def main():
             entry["best_window"] = None
             # 慢速模式收方列 top（按累计收量）——显式摘要非静默截断，全量数在 all_time.recipient_count
             top = con.execute(f"""
-                SELECT t, SUM(amt) AS v FROM edges
-                WHERE f = '{f}' AND t NOT IN ('{sent_ph}') AND f <> t {ent_filter}
+                SELECT t, SUM(amt) AS v FROM eflow
+                WHERE f = '{f}' AND t NOT IN ('{sent_ph}') AND f <> t
                 GROUP BY t ORDER BY v DESC LIMIT 500""").fetchall()
             entry["recipients_top"] = [r[0] for r in top]
         sprays.append(entry)

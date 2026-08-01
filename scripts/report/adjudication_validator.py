@@ -12,16 +12,26 @@
             预填，verdict 留空待 −2 逐条填写——candidate_sha256 不必手算）
   validate  校验裁决台账（freeze 前置；六类拒绝全 exit 2）
 
-六类拒绝（schema 权威定义 references/scan-schemas.md §3）：
+拒绝规则（schema 权威定义 references/scan-schemas.md §3；v6.8.1 codex 复核后加固）：
   ①缺文件（wave/flow 报告或裁决台账任一缺）——fail-open 修复：漏跑生产器不得静默过闸
-  ②源报告候选 ID 集 ≠ 裁决 ID 集（少裁/多裁/未知 ID）
+  ②源报告候选 ID 集 ≠ 裁决 ID 集（少裁/多裁/未知 ID）；源报告 schema 错版/重复候选 ID 同拒
   ③重复裁决 ID
   ④candidate_sha256 与当前源报告候选不符（候选内容已变，旧裁决自动失效）
   ⑤accepted_members ∪ excluded_members ≠ 候选成员全集或有交集（部分成员未裁/重复处置）
      ——wave 候选按 members[].addr、eqg 按收方 members[]、sink/spray 按 {addr} 单元素集
-  ⑥tier_impact 伪造：could_change_tiering / combined_peak_pct 与机器重算不符；
+  ⑥tier_impact 伪造：max_possible_impact 三字段（combined_peak_pct/nearest_tier_line/
+     could_change_tiering）逐一与机器重算比对，任一不符即拒；
      另：verdict=unresolved 且机器判 could_change_tiering=true → 拒（未决但可能改判级，
      不许带病冻结）
+  ⑦verdict 语义交叉约束（防"形式全覆盖、语义自相矛盾"的敷衍裁决）：
+     pattern_confirmed → accepted_members 非空 ＋ linked_entity_id 必填 ＋ evidence 非空；
+     excluded / unresolved → accepted_members 必须为空（没定性/已排除不得收编成员）；
+     excluded_members 逐条必须有非空 reason；candidate_kind 必须与机器一致；
+     adjudicated_at 必须已填
+  ⑧实体名册绑定（--entity-file {entity_id:[addr…]}，freeze 调用时强制传入）：
+     linked_entity_id 必须存在于名册；accepted_members 必须全部属于该实体名册——
+     "裁决说并入实体 X"却没真并，或乱填实体 ID，全部机器拒。
+     未传 --entity-file 时：存在任何 pattern_confirmed 裁决即拒（绑定校验不可跳过）。
 
 退出码：0=闭环完成；2=校验不通过（硬停）；1=脚本自身错误。
 """
@@ -60,28 +70,67 @@ def file_sha(path):
     return h.hexdigest()
 
 
+WAVE_SCHEMA = "wave-scan/v2"
+FLOW_SCHEMA = "flow-anomaly/v1"
+
+
+def check_source_schemas(wave, flow):
+    """源报告 schema 检查（v6.8.1：错版/空壳报告不得形成"零候选已闭环"）。"""
+    fails = []
+    if wave.get("schema") != WAVE_SCHEMA:
+        fails.append(f"wave_scan_report schema 异常: {wave.get('schema')}（需要 {WAVE_SCHEMA}——旧版重跑 v2）")
+    if flow.get("schema") != FLOW_SCHEMA:
+        fails.append(f"flow_anomaly_report schema 异常: {flow.get('schema')}（需要 {FLOW_SCHEMA}）")
+    return fails
+
+
 def collect_candidates(wave, flow):
-    """全部候选 → {id: {"obj", "members", "kind", "scale_pct"}}。
+    """全部候选 → ({id: {"obj", "members", "kind", "scale_pct"}}, dup_source_ids)。
     成员全集口径：wave=members[].addr；eqg=members[]；sink/spray={addr}。
-    scale_pct＝机器算 max_possible_impact 用的可达规模。"""
-    out = {}
+    scale_pct＝机器算 max_possible_impact 用的可达规模。
+    源报告内重复候选 ID 不得静默覆盖（v6.8.1）——返回 dup 集由调用方拒。"""
+    out, dups = {}, set()
+
+    def put(cid, entry):
+        if cid in out:
+            dups.add(cid)
+        out[cid] = entry
+
     for w in wave.get("waves", []):
-        out[w["id"]] = {"obj": w, "kind": "wave",
-                        "members": {m["addr"] for m in w.get("members", [])},
-                        "scale_pct": float(w.get("combined_peak_pct", 0))}
+        put(w["id"], {"obj": w, "kind": "wave",
+                      "members": {m["addr"] for m in w.get("members", [])},
+                      "scale_pct": float(w.get("combined_peak_pct", 0))})
     for g in wave.get("equal_amount_groups", []):
-        out[g["id"]] = {"obj": g, "kind": "eqg",
-                        "members": set(g.get("members", [])),
-                        "scale_pct": float(g.get("group_total_pct", 0))}
+        put(g["id"], {"obj": g, "kind": "eqg",
+                      "members": set(g.get("members", [])),
+                      "scale_pct": float(g.get("group_total_pct", 0))})
     for s in flow.get("sinks", []):
-        out[s["id"]] = {"obj": s, "kind": "sink", "members": {s["addr"]},
-                        "scale_pct": float(s.get("best_window", {}).get("inflow_pct", 0))}
+        put(s["id"], {"obj": s, "kind": "sink", "members": {s["addr"]},
+                      "scale_pct": float(s.get("best_window", {}).get("inflow_pct", 0))})
     for s in flow.get("sprays", []):
         bw = s.get("best_window") or {}
         scale = max(float(bw.get("outflow_pct", 0) or 0),
                     float(s.get("all_time", {}).get("outflow_pct", 0) or 0))
-        out[s["id"]] = {"obj": s, "kind": "spray", "members": {s["addr"]}, "scale_pct": scale}
-    return out
+        put(s["id"], {"obj": s, "kind": "spray", "members": {s["addr"]}, "scale_pct": scale})
+    return out, dups
+
+
+def load_entity_map_strict(path):
+    """--entity-file {entity_id:[addr…]}（与 entity_source_trace/flow 同格式）。格式坏→None＋报错文本。"""
+    try:
+        with open(path, encoding="utf-8") as fh:
+            obj = json.load(fh)
+    except Exception as e:
+        return None, f"--entity-file 读取失败: {e}"
+    if not isinstance(obj, dict) or not obj:
+        return None, "--entity-file 需为非空 {entity_id:[addr…]}"
+    out = {}
+    for eid, addrs in obj.items():
+        if (not isinstance(eid, str) or not eid or not isinstance(addrs, list)
+                or not all(isinstance(x, str) and x for x in addrs)):
+            return None, f"--entity-file 实体 {eid!r} 格式错误（成员必须是非空字符串数组）"
+        out[eid] = set(addrs)
+    return out, None
 
 
 def machine_tier_impact(scale_pct):
@@ -101,7 +150,12 @@ def cmd_template(a):
             log(f"缺 {os.path.basename(p)}——先跑对应扫描器")
             return 2
     wave, flow = load_json(wp), load_json(fp)
-    cands = collect_candidates(wave, flow)
+    schema_fails = check_source_schemas(wave, flow)
+    if schema_fails:
+        return _report(schema_fails)
+    cands, dups = collect_candidates(wave, flow)
+    if dups:
+        return _report([f"源报告含重复候选 ID: {sorted(dups)[:5]}——扫描器产物异常，先排查"])
     out_path = os.path.join(case_dir, a.out)
     if os.path.isfile(out_path) and not a.force:
         log(f"{a.out} 已存在（防覆盖已填裁决；确要重生成加 --force）")
@@ -153,14 +207,31 @@ def cmd_validate(a):
     if adj.get("schema") != SCHEMA:
         fails.append(f"裁决台账 schema 异常: {adj.get('schema')}（需要 {SCHEMA}）")
         return _report(fails)
+    # ② 源报告 schema（错版/空壳不得形成"零候选已闭环"）
+    fails.extend(check_source_schemas(wave, flow))
+    if fails:
+        return _report(fails)
     # 源报告整册哈希（报告重跑后整册裁决过期）
     srcs = adj.get("source_reports") or {}
     for name, p in (("wave_scan_report.json", wp), ("flow_anomaly_report.json", fp)):
         if srcs.get(name) != file_sha(p):
             fails.append(f"source_reports.{name} 哈希不符——源报告已重跑，裁决台账整册过期，重出 template 再裁")
 
-    cands = collect_candidates(wave, flow)
+    # ⑧ 实体名册（linked_entity 绑定校验；freeze 强制传入）
+    entity_map = None
+    if a.entity_file:
+        entity_map, err = load_entity_map_strict(
+            a.entity_file if os.path.isabs(a.entity_file) else os.path.join(case_dir, a.entity_file))
+        if err:
+            fails.append(err)
+            return _report(fails)
+
+    cands, dup_src = collect_candidates(wave, flow)
+    if dup_src:
+        fails.append(f"源报告含重复候选 ID: {sorted(dup_src)[:5]}——扫描器产物异常，先排查")
     rows = adj.get("adjudications") or []
+    if not isinstance(adj.get("adjudicated_at"), str) or not adj.get("adjudicated_at"):
+        fails.append("adjudicated_at 未填——裁决完成时间必须落账")
     ids = [r.get("candidate_id") for r in rows]
     # ③ 重复
     dup = {x for x in ids if ids.count(x) > 1}
@@ -189,9 +260,12 @@ def cmd_validate(a):
         if verdict not in VERDICTS:
             fails.append(f"{cid}: candidate_verdict 非法: {verdict}（需 {sorted(VERDICTS)}）")
             continue
+        if r.get("candidate_kind") != c["kind"]:
+            fails.append(f"{cid}: candidate_kind {r.get('candidate_kind')!r} 与机器判定 {c['kind']!r} 不符")
         # ⑤ 成员全覆盖且不相交
         acc = set(r.get("accepted_members") or [])
-        exc = {e.get("addr") for e in (r.get("excluded_members") or [])}
+        exc_rows = r.get("excluded_members") or []
+        exc = {e.get("addr") for e in exc_rows}
         if acc & exc:
             fails.append(f"{cid}: 成员同时出现在 accepted 与 excluded: {sorted(acc & exc)[:3]}")
         uncovered = c["members"] - acc - exc
@@ -201,13 +275,41 @@ def cmd_validate(a):
                          f"{sorted(uncovered)[:3]}{'…' if len(uncovered) > 3 else ''}")
         if alien:
             fails.append(f"{cid}: accepted/excluded 含非本候选成员: {sorted(alien)[:3]}")
-        if verdict == "pattern_confirmed" and not r.get("linked_entity_id"):
-            fails.append(f"{cid}: pattern_confirmed 但缺 linked_entity_id（判入哪个实体？）")
-        # ⑥ tier_impact 机器重算
+        # ⑦ verdict 语义交叉约束（防敷衍裁决：形式全覆盖但语义自相矛盾）
+        no_reason = [e.get("addr") for e in exc_rows
+                     if not isinstance(e.get("reason"), str) or not e.get("reason").strip()]
+        if no_reason:
+            fails.append(f"{cid}: {len(no_reason)} 个 excluded 成员缺排除理由: {no_reason[:3]}")
+        if verdict == "pattern_confirmed":
+            if not acc:
+                fails.append(f"{cid}: pattern_confirmed 但 accepted_members 为空——确认了协同却不收编任何成员，自相矛盾")
+            if not r.get("linked_entity_id"):
+                fails.append(f"{cid}: pattern_confirmed 但缺 linked_entity_id（判入哪个实体？）")
+            ev = r.get("evidence")
+            if not isinstance(ev, list) or not [x for x in ev if isinstance(x, str) and x.strip()]:
+                fails.append(f"{cid}: pattern_confirmed 但 evidence 为空——确认必须给证据引用")
+            # ⑧ 实体名册绑定
+            if entity_map is None:
+                fails.append(f"{cid}: pattern_confirmed 但本次校验未传 --entity-file——"
+                             "linked_entity 绑定校验不可跳过（freeze 会强制传入实体名册）")
+            elif r.get("linked_entity_id"):
+                lid = r["linked_entity_id"]
+                if lid not in entity_map:
+                    fails.append(f"{cid}: linked_entity_id={lid} 不存在于实体名册——乱填实体或名册没更新")
+                else:
+                    stray = acc - entity_map[lid]
+                    if stray:
+                        fails.append(f"{cid}: {len(stray)} 个 accepted 成员未落入实体 {lid} 名册: "
+                                     f"{sorted(stray)[:3]}——裁决说并入却没真并")
+        elif acc:
+            fails.append(f"{cid}: verdict={verdict} 但 accepted_members 非空——未确认/已排除的候选不得收编成员")
+        # ⑥ tier_impact 机器重算（三字段逐一比对，nearest_tier_line 同样不得伪造）
         mi = machine_tier_impact(c["scale_pct"])
         got = ((r.get("tier_impact") or {}).get("max_possible_impact")) or {}
-        if (got.get("could_change_tiering") != mi["could_change_tiering"]
-                or abs(float(got.get("combined_peak_pct", -1)) - mi["combined_peak_pct"]) > 1e-6):
+        mismatch = (got.get("could_change_tiering") != mi["could_change_tiering"]
+                    or got.get("nearest_tier_line") != mi["nearest_tier_line"]
+                    or abs(float(got.get("combined_peak_pct", -1)) - mi["combined_peak_pct"]) > 1e-6)
+        if mismatch:
             fails.append(f"{cid}: tier_impact 与机器重算不符（机器 {mi}，台账 {got}）——数值不得人工覆盖")
         elif verdict == "unresolved" and mi["could_change_tiering"]:
             fails.append(f"{cid}: unresolved 且可达规模 {mi['combined_peak_pct']}% ≥{TIER_MIN_LINE_PCT}% "
@@ -236,9 +338,12 @@ def main():
     t.add_argument("--case-dir", required=True)
     t.add_argument("--out", default="candidate_adjudications.json")
     t.add_argument("--force", action="store_true")
-    v = sub.add_parser("validate", help="校验裁决台账（freeze 前置，六类拒绝）")
+    v = sub.add_parser("validate", help="校验裁决台账（freeze 前置，八类拒绝）")
     v.add_argument("--case-dir", required=True)
     v.add_argument("--adjudications", default="candidate_adjudications.json")
+    v.add_argument("--entity-file", default=None,
+                   help="实体名册 {entity_id:[addr…]}——linked_entity 绑定校验；"
+                        "存在 pattern_confirmed 裁决时必传（freeze 强制传入）")
     a = ap.parse_args()
     try:
         return {"template": cmd_template, "validate": cmd_validate}[a.subcmd](a)

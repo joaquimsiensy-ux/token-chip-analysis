@@ -38,13 +38,14 @@ v2（2026-08-01 用户四轮拍板）：扫描对象从"清零层"扩为全体�
 负余额地址污染（fail-closed）；1=脚本自身错误。
 
 回测基线（装闸必附原案回测——retrospective.md 元规则第二条；改本脚本阈值/算法后必须重跑）：
-  PYTHIA（Solana 485 万边，默认参数，2026-08-01 v2 实测锚点）：
+  PYTHIA（Solana 485 万边，默认参数，2026-08-01 v6.8.1 实测锚点）：
     - A：存在 7 日种子窗 ≥20 员且合并峰 ≥10%（W1 金标窗），expanded_wave 覆盖旧终裁
       W1 名单 341 址 ≥85%；
-    - D：恰报 7 组、44 分仓（面额 1e12=100 万枚）置顶（组过手 33.66% 供应）；
-    - C 负例：W1 峰→30% 实测 72 天不触发＝预期。
-  A/D 任一抓不到＝闸坏了，禁止发版。B 数值锚点见 tests fixture（扫描对象扩大后与
-  v6.6.1 清零层版数字不同，以 v2 实测为准）。
+    - D：恰报 7 组、1e12 面额组置顶（168 收方含 Q1 亲发 44 分仓，组过手 33.66% 供应，
+      top_sender 出度 41）；其余 6 组主发送方全为场内设施（出度 72,207）撞衫；
+    - C 负例：W1 峰→30% 实测 72 天不触发＝预期；
+    - 负余额：历史最低点口径实抓 1 址（1.2e-6% 粉尘级，不达实质线警告不拦截）。
+  A/D 任一抓不到＝闸坏了，禁止发版。数值锚点唯一权威＝tests/fixtures/pythia_anchors.json。
 """
 import argparse
 import gzip
@@ -191,7 +192,10 @@ def build_addr_summary(con, exclude, meaningful_ratio):
                    SUM(delta) OVER (PARTITION BY owner ORDER BY day) AS bal
             FROM daily
         ), agg AS (
-            SELECT owner, MAX(bal) AS peak, SUM(delta) AS final_bal FROM run GROUP BY 1
+            -- min_bal＝历史逐日末余额最低点：负余额哨兵按它判（v6.8.1 codex 复核修复——
+            -- 只看 final_bal 会漏"先负后回正"的数据缺失自愈假象）
+            SELECT owner, MAX(bal) AS peak, MIN(bal) AS min_bal, SUM(delta) AS final_bal
+            FROM run GROUP BY 1
         ), fi AS (
             -- 两侧并集：纯流出地址（只在 f 侧出现＝数据缺失指纹）不得被内连接静默丢弃，
             -- 否则负余额哨兵对其失明（v2 修复；此类地址 first_in_day 取首次活动日）
@@ -207,7 +211,7 @@ def build_addr_summary(con, exclude, meaningful_ratio):
             WHERE a.peak > 0 AND r.bal >= a.peak * {meaningful_ratio}
             GROUP BY r.owner
         )
-        SELECT a.owner, a.peak, a.final_bal, fi.first_in_day,
+        SELECT a.owner, a.peak, a.min_bal, a.final_bal, fi.first_in_day,
                COALESCE(fm.first_meaningful_day, fi.first_in_day) AS first_meaningful_day
         FROM agg a JOIN fi ON fi.owner = a.owner
         LEFT JOIN fm ON fm.owner = a.owner""")
@@ -379,42 +383,55 @@ def recycle_targets(con, addrs, d0, d1):
 
 def equal_amount_groups(con, total, min_amt_raw, win_days, min_win_recv, min_group_pct):
     """四条合一（2026-08-01 用户定稿）：同精确面额 ＋ 单笔 ≥min_amt_raw ＋ 任意 win_days 日
-    滑窗内 ≥min_win_recv 个不同收方（按各收方首次收该面额时间） ＋ 组合计过手（该面额
-    全部转账，排哨兵）≥min_group_pct% 总供应。不切子组、零截断。"""
+    滑窗内 ≥min_win_recv 个不同收方 ＋ 组合计过手（该面额全部转账，排哨兵）≥min_group_pct%
+    总供应。不切子组、零截断。
+
+    滑窗扫**全部转账事件**而非各收方首收事件（v6.8.1 codex 复核修复）：按"每收方首次
+    收到该面额"去重会吞掉复收事件——同一批收方分两轮收同面额时第二轮全盲，与"任意
+    win_days 日滑窗内 ≥N 个不同收方"的定义不等价。"""
     from collections import Counter, defaultdict
     win_sec = win_days * 86400
+    # 预筛：全史 distinct 收方 <N 的面额物理不可能达标，SQL 端先砍
     rows = con.execute(f"""
-        SELECT amt, t, MIN(ts) AS first_ts, arg_min(f, ts) AS first_sender
-        FROM edges
-        WHERE amt >= {min_amt_raw} AND f NOT IN ('{Z}', '{DEAD}') AND t NOT IN ('{Z}', '{DEAD}')
-        GROUP BY amt, t""").fetchall()
+        WITH ev AS (
+            SELECT amt, ts, t, f FROM edges
+            WHERE amt >= {min_amt_raw} AND f NOT IN ('{Z}', '{DEAD}') AND t NOT IN ('{Z}', '{DEAD}')
+        )
+        SELECT amt, ts, t, f FROM ev
+        WHERE amt IN (SELECT amt FROM ev GROUP BY amt HAVING COUNT(DISTINCT t) >= {min_win_recv})
+        ORDER BY amt, ts, t, f""").fetchall()
     by_amt = defaultdict(list)
-    for amt, t, first_ts, first_sender in rows:
-        by_amt[int(amt)].append((int(first_ts), t, first_sender))
-    stats = {int(r[0]): (int(r[1]), int(r[2])) for r in con.execute(f"""
-        SELECT amt, COUNT(*), SUM(amt) FROM edges
-        WHERE amt >= {min_amt_raw} AND f NOT IN ('{Z}', '{DEAD}') AND t NOT IN ('{Z}', '{DEAD}')
-        GROUP BY amt""").fetchall()}
+    for amt, ts, t, f in rows:
+        by_amt[int(amt)].append((int(ts), t, f))
     out = []
-    for amt, recv_rows in by_amt.items():
-        if len(recv_rows) < min_win_recv:
-            continue
-        recv_rows.sort()
+    for amt, evs in by_amt.items():
+        # 滑窗内 distinct 收方数（全事件双指针＋计数器；复收正确计入窗口）
         best, best_j = 0, 0
+        cnt = Counter()
         j = 0
-        for i in range(len(recv_rows)):
-            while recv_rows[i][0] - recv_rows[j][0] > win_sec:
+        for i in range(len(evs)):
+            cnt[evs[i][1]] += 1
+            while evs[i][0] - evs[j][0] > win_sec:
+                cnt[evs[j][1]] -= 1
+                if not cnt[evs[j][1]]:
+                    del cnt[evs[j][1]]
                 j += 1
-            if i - j + 1 > best:
-                best, best_j = i - j + 1, j
+            if len(cnt) > best:
+                best, best_j = len(cnt), j
         if best < min_win_recv:
             continue
-        n_tx, group_total = stats[amt]
+        group_total = sum(amt for _ in evs)
         pct = group_total * 100.0 / total
         if pct < min_group_pct:
             continue
-        recv = sorted(t for _, t, _ in recv_rows)
-        top_sender, top_cnt = Counter(s for _, _, s in recv_rows).most_common(1)[0]
+        recv = sorted({t for _, t, _ in evs})
+        # top_sender＝触达 distinct 收方最多的发送方（裁决问的是"这组收方主要是谁喂的"——
+        # 按事件数选会被"对同一收方反复发"绑架；平手按地址字典序定序保证稳定输出）
+        send_touch = {}
+        for _, t, f in evs:
+            send_touch.setdefault(f, set()).add(t)
+        top_sender = max(send_touch.items(), key=lambda kv: (len(kv[1]), kv[0]))[0]
+        top_touched = send_touch[top_sender]
         out_deg = con.execute(f"""
             SELECT COUNT(DISTINCT t) FROM edges
             WHERE f = '{top_sender}' AND t NOT IN ('{Z}', '{DEAD}')""").fetchone()[0]
@@ -422,20 +439,20 @@ def equal_amount_groups(con, total, min_amt_raw, win_days, min_win_recv, min_gro
         fin = con.execute(
             f"SELECT COALESCE(SUM(final_bal), 0) FROM addr WHERE owner IN ('{phr}')").fetchone()[0]
         retention = min(int(fin), group_total) / group_total if group_total else 0.0
-        first_ts, last_ts = recv_rows[0][0], recv_rows[-1][0]
+        first_ts, last_ts = evs[0][0], evs[-1][0]
         out.append({
             "id": content_id(f"eqg-{amt}", recv, 8),
             "amount_raw": str(amt),
-            "recipients": len(recv), "tx_count": n_tx,
+            "recipients": len(recv), "tx_count": len(evs),
             "group_total_pct": round(pct, 4),
             "densest_7d_window": {
-                "start": datetime.fromtimestamp(recv_rows[best_j][0], timezone.utc).strftime("%Y-%m-%d"),
+                "start": datetime.fromtimestamp(evs[best_j][0], timezone.utc).strftime("%Y-%m-%d"),
                 "recipients": best},
             "window": [datetime.fromtimestamp(first_ts, timezone.utc).strftime("%Y-%m-%d"),
                        datetime.fromtimestamp(last_ts, timezone.utc).strftime("%Y-%m-%d")],
             "window_days": round((last_ts - first_ts) / 86400.0, 1),
             "top_sender": top_sender,
-            "top_sender_recv_share": round(top_cnt / len(recv), 2),
+            "top_sender_recv_share": round(len(top_touched) / len(recv), 2),
             "top_sender_global_out_degree": int(out_deg),
             "retention": round(retention, 3),
             "members": recv,
@@ -515,23 +532,23 @@ def main():
     n_addr = build_addr_summary(con, exclude, a.first_meaningful_ratio)
     log(f"地址概要 {n_addr:,} 址（逐日末余额峰值口径＋抗 dust 首建日）")
 
-    # 负余额闸（v2 升级：@CX 复核指出 final_bal<0 只可能来自数据缺失/重放不平——
-    # 达实质线或污染候选即 exit 2，数据问题回采集侧解决）
+    # 负余额闸（v6.8.1：按历史最低点 min_bal 判，不只看期末——"先负后回正"是数据缺失
+    # 的自愈假象，峰值/首建日早已被污染；达实质线或污染候选即 exit 2，数据问题回采集侧解决）
     neg_cnt, neg_sum = con.execute(
-        "SELECT COUNT(*), COALESCE(SUM(-final_bal), 0) FROM addr WHERE final_bal < 0").fetchone()
+        "SELECT COUNT(*), COALESCE(SUM(-min_bal), 0) FROM addr WHERE min_bal < 0").fetchone()
     neg_cnt, neg_sum = int(neg_cnt), int(neg_sum)
     if neg_cnt:
-        log(f"⚠ 负余额地址 {neg_cnt:,} 个（合计 -{neg_sum:,} raw）——数据完整性存疑")
+        log(f"⚠ 历史负余额地址 {neg_cnt:,} 个（最深缺口合计 -{neg_sum:,} raw）——数据完整性存疑")
         if neg_sum >= total * a.neg_bal_limit_pct / 100.0:
-            log(f"负余额合计达实质线（≥{a.neg_bal_limit_pct}% 总供应）——数据不可信，exit 2")
+            log(f"负缺口合计达实质线（≥{a.neg_bal_limit_pct}% 总供应）——数据不可信，exit 2")
             sys.exit(2)
-    neg_set = {r[0] for r in con.execute("SELECT owner FROM addr WHERE final_bal < 0").fetchall()}
+    neg_set = {r[0] for r in con.execute("SELECT owner FROM addr WHERE min_bal < 0").fetchall()}
 
     min_peak_raw = total * a.min_peak_pct / 100.0
     universe = con.execute(f"""
         SELECT owner, first_meaningful_day, peak, final_bal, first_in_day FROM addr
         WHERE peak >= {min_peak_raw}
-        ORDER BY first_meaningful_day""").fetchall()
+        ORDER BY first_meaningful_day, owner""").fetchall()
     members = [(o, int(d), int(p), int(f), int(fi)) for o, d, p, f, fi in universe]
     buckets = {"cleared": 0, "partial_exit": 0, "retained": 0}
     for m in members:

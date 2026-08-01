@@ -14,8 +14,15 @@
       --gate "recon_four_checks:PASS:0:transfer_reconciliation.json"
   python3 handoff_manifest.py verify --case-dir <案目录>
   python3 handoff_manifest.py receipt --case-dir <案目录> --step A1-collect --cmd "..." --exit 0 --artifacts a.json,b.csv
-  python3 handoff_manifest.py freeze --case-dir <案目录> --members analysis-state.json
+  python3 handoff_manifest.py freeze --case-dir <案目录> --members analysis-state.json --entity-file s2_entity_members.json
   python3 handoff_manifest.py freeze --case-dir <案目录> --check-unseal
+
+freeze 四重机器前置（v6.8.1，全部 fail-closed 无跳过通道）：
+  0. 同进程严格 v2 verify（manifest 缺失/BLOCKED/漂移/legacy 一律拒）
+  1. 裁决闭环 validator validate --entity-file（全候选成员级裁决＋linked_entity 名册绑定）
+  2. 溯源台账内容级绑定（schema=v2＋实体集双向一致＋逐实体成员哈希＋closure 按
+     composition 明细重算＋敏感性 stable=true——自报值一概不作数）
+  3. 成员表/实体名册/溯源台账三份哈希入冻结记录
 """
 import argparse
 import hashlib
@@ -36,6 +43,8 @@ MANIFEST_NAME = "handoff_manifest.json"
 RECEIPTS_NAME = "stage1_receipts.json"
 FREEZE_NAME = "entity_freeze.json"
 ADJUDICATIONS_NAME = "candidate_adjudications.json"
+LEGACY_RECEIPT_NAME = "legacy_readonly_receipt.json"
+PROVENANCE_SCHEMA = "provenance-ledger/v2"  # v1 是 pro-rata 数学错误版（2026-08-01 codex 复核），一律拒
 STATUSES = {"READY", "BLOCKED", "PARTIAL", "SUPERSEDED", "BLOCKED_E0B"}
 SPARSE_THRESHOLD = 64 * 1024 * 1024  # >64MB 用分片哈希（split-run §2.2：不收尾全盘重哈希）
 CHUNK = 4 * 1024 * 1024
@@ -308,24 +317,24 @@ def _verify_light_schema(case_dir, fails, legacy=False):
         fails.append(f"flow_anomaly_report.json 读取失败（资金流异常扫描未跑？补跑 flow_anomaly_scan.py 后重 generate）: {e}")
 
 
-def cmd_verify(a):
-    case_dir = os.path.abspath(a.case_dir)
+def verify_case(case_dir, legacy_read_only=False):
+    """verify 核心（cmd_verify 与 cmd_freeze 共用——freeze 内联同进程 verify，
+    v6.8.1 codex 复核修复：manifest 缺失/BLOCKED/哈希漂移时不得冻结）。
+    返回 (fails, manifest|None, legacy_mode)。"""
     manifest_path = os.path.join(case_dir, MANIFEST_NAME)
     if not os.path.isfile(manifest_path):
-        print(f"[verify] 缺 {MANIFEST_NAME}——−1 未收工或目录不对", file=sys.stderr)
-        return 2
+        return ([f"缺 {MANIFEST_NAME}——−1 未收工或目录不对"], None, False)
     try:
         m = load_json(manifest_path)
     except Exception as e:
-        print(f"[verify] manifest 解析失败: {e}", file=sys.stderr)
-        return 2
+        return ([f"manifest 解析失败: {e}"], None, False)
 
     fails = []
+    legacy_mode = False
     schema = m.get("consumer_min_schema")
     if schema not in SUPPORTED_SCHEMAS:
-        if schema in LEGACY_SCHEMAS and a.legacy_read_only:
-            print(f"[verify] ⚠ LEGACY READ-ONLY：{schema} 旧格式仅供读取既有冻结结论，"
-                  "不得据此生成新正式报告、不得重新判级（fail-open 修复条款）")
+        if schema in LEGACY_SCHEMAS and legacy_read_only:
+            legacy_mode = True
         elif schema in LEGACY_SCHEMAS:
             fails.append(f"schema {schema} 是旧版——新运行必须重跑 v6.8.0 生产器"
                          "（wave_scan v2/flow_anomaly）后重 generate；只读旧案加 --legacy-read-only")
@@ -336,6 +345,21 @@ def cmd_verify(a):
         fails.append(f"状态 {status} ≠ READY，拒绝消费（原因: {m.get('status_reason')}）")
 
     if not fails:  # schema/状态硬伤先报，避免在坏 manifest 上白跑哈希
+        art_paths = {ent.get("path") for ent in m.get("artifacts", [])}
+        # READY 必备件独立重算（v6.8.1：不信 generate 曾正确执行——手改 manifest 的
+        # artifacts/gates 列表同样过不了这道重查）
+        if not legacy_mode:
+            required = list(REQUIRED_FOR_READY)
+            chains = {str(c).strip().lower() for c in (m.get("scope", {}) or {}).get("chains") or []}
+            if chains & EVM_CHAINS:
+                required += REQUIRED_FOR_READY_EVM
+            miss = [n for n in required if n not in art_paths]
+            if miss:
+                fails.append(f"READY 必备件不在 artifact 清单: {miss}（manifest 被手改或 generate 版本过旧）")
+            gates_m = m.get("gates") or {}
+            for gname, rel in AUTO_GATES.items():
+                if rel in art_paths and gname not in gates_m:
+                    fails.append(f"gate {gname} 缺失（产物 {rel} 在场却无对应 gate 记录）")
         for ent in m.get("artifacts", []):
             p = os.path.join(case_dir, ent["path"])
             if not os.path.isfile(p):
@@ -358,13 +382,33 @@ def cmd_verify(a):
             else:
                 if str(g.get("verdict", "")).upper() not in ("PASS", "OK"):
                     fails.append(f"gate {gname}（declared）非 PASS 却报 READY: {g.get('verdict')}")
-        _verify_light_schema(case_dir, fails, legacy=bool(a.legacy_read_only and schema in LEGACY_SCHEMAS))
+        _verify_light_schema(case_dir, fails, legacy=legacy_mode)
+    return (fails, m, legacy_mode)
 
+
+def cmd_verify(a):
+    case_dir = os.path.abspath(a.case_dir)
+    fails, m, legacy_mode = verify_case(case_dir, legacy_read_only=bool(a.legacy_read_only))
     if fails:
         print("[verify] FAIL（fail-closed，逐条修复或退回 −1）:")
         for x in fails:
             print(f"  ✗ {x}")
         return 2
+    if legacy_mode:
+        # 机器只读收据（v6.8.1 codex 复核修复：降级不能只是一句口头警告——落盘 receipt，
+        # freeze 靠严格 v2 verify 拒 legacy，正式报告入口按本 receipt 统一拒绝）
+        _, mdigest, _ = sha256_file(os.path.join(case_dir, MANIFEST_NAME))
+        atomic_write_json(os.path.join(case_dir, LEGACY_RECEIPT_NAME), {
+            "schema": "legacy-readonly-receipt/v1",
+            "verified_at": utcnow(),
+            "manifest_schema": m.get("consumer_min_schema"),
+            "manifest_sha256": mdigest,
+            "note": "旧契约只读降级：仅供读取既有冻结结论；不得据此生成新正式报告、"
+                    "不得重新判级、不得冻结实体（freeze 端严格 v2 verify 必拒）",
+        })
+        print(f"[verify] ⚠ LEGACY READ-ONLY：{m.get('consumer_min_schema')} 旧格式仅供读取既有冻结结论，"
+              f"不得据此生成新正式报告、不得重新判级——机器收据已落 {LEGACY_RECEIPT_NAME}")
+        return 0
     print(f"[verify] PASS  {len(m.get('artifacts', []))} 件产物哈希一致，{len(m.get('gates') or {})} 个 gate 重查通过，"
           f"状态 READY（run {m.get('run_id')}，producer={m.get('producer_model')}）")
     return 0
@@ -413,23 +457,53 @@ def cmd_freeze(a):
     if not a.members:
         print("[freeze] 需要 --members <成员表文件>（如 analysis-state.json）", file=sys.stderr)
         return 1
+    if not a.entity_file:
+        print("[freeze] 需要 --entity-file <实体名册 {entity_id:[addr…]}>——裁决 linked_entity 绑定"
+              "与溯源台账逐实体比对都以它为准（v6.8.1 无跳过通道）", file=sys.stderr)
+        return 1
     mp = os.path.join(case_dir, a.members) if not os.path.isabs(a.members) else a.members
+    ep = os.path.join(case_dir, a.entity_file) if not os.path.isabs(a.entity_file) else a.entity_file
     if not os.path.isfile(mp):
         print(f"[freeze] 成员表不存在: {mp}", file=sys.stderr)
         return 2
-    # 裁决闭环前置（v6.8.0，无跳过通道）：wave/flow 全部候选必须已按
-    # candidate-adjudications/v1 成员级裁决并通过校验，否则禁止冻结实体——
-    # "报警器响了没人管照样冻结"（W1 二次漏检的裁决未闭环缺口）从此机器堵死。
+    if not os.path.isfile(ep):
+        print(f"[freeze] 实体名册不存在: {ep}", file=sys.stderr)
+        return 2
+    try:
+        entity_map = load_json(ep)
+        assert isinstance(entity_map, dict) and entity_map
+        assert all(isinstance(k, str) and isinstance(v, list)
+                   and all(isinstance(x, str) and x for x in v) for k, v in entity_map.items())
+    except Exception:
+        print(f"[freeze] 实体名册格式错误（需非空 {{entity_id:[addr…]}}）: {ep}", file=sys.stderr)
+        return 2
+
+    # ── 前置 0：同进程严格 v2 verify（v6.8.1 codex 复核修复——manifest 缺失/BLOCKED/
+    # 哈希漂移/legacy 契约时一律禁止冻结；不存在绕过 verify 的冻结路径）
+    vfails, _, _ = verify_case(case_dir, legacy_read_only=False)
+    if vfails:
+        print("[freeze] handoff verify 未通过——禁止冻结（fail-closed）:", file=sys.stderr)
+        for x in vfails:
+            print(f"  ✗ {x}", file=sys.stderr)
+        return 2
+
+    # ── 前置 1：裁决闭环（v6.8.0；v6.8.1 起把实体名册传给 validator——
+    # linked_entity 绑定校验不可跳过）："报警器响了没人管照样冻结"从此机器堵死。
     # 旧案 revision 追加同样过此闸：改成员表＝新结论，必须先重跑 v2 扫描器补裁决。
     validator = os.path.join(os.path.dirname(os.path.abspath(__file__)), "adjudication_validator.py")
-    pv = subprocess.run([sys.executable, validator, "validate", "--case-dir", case_dir],
+    pv = subprocess.run([sys.executable, validator, "validate", "--case-dir", case_dir,
+                         "--entity-file", ep],
                         capture_output=True, text=True)
     if pv.returncode != 0:
         print("[freeze] 候选裁决闭环未通过——禁止冻结（validator 输出如下）:", file=sys.stderr)
         sys.stderr.write(pv.stdout + pv.stderr)
         return 2
-    # 溯源闸前置（v6.8.0 时序硬规则：临时实体表→溯源→补候选→重跑→最终冻结，
-    # 不得先冻结再让溯源发现遗漏）：provenance_ledger.json 必须在场且闭合
+
+    # ── 前置 2：溯源闸内容级绑定（v6.8.1 codex 复核修复——不再信文件自报：
+    # ①schema 必须 v2（v1 是 pro-rata 数学错误版）；②台账实体 ID 集与本次名册双向一致；
+    # ③逐实体 members_sha256 与名册成员集哈希一致（改过名册的旧台账自动失效）；
+    # ④closure 从 composition[].raw 重算，不读自报 closure_check；
+    # ⑤stock>0 而 composition 为空＝空壳台账，拒；⑥敏感性 stable 必须 true）
     pl_path = os.path.join(case_dir, "provenance_ledger.json")
     if not os.path.isfile(pl_path):
         print("[freeze] 缺 provenance_ledger.json——先对临时实体表跑 entity_source_trace.py"
@@ -437,40 +511,77 @@ def cmd_freeze(a):
         return 2
     try:
         pl = load_json(pl_path)
-        if pl.get("schema") != "provenance-ledger/v1" or not pl.get("entities"):
-            print(f"[freeze] provenance_ledger.json schema/内容异常: {pl.get('schema')}，"
-                  f"entities={len(pl.get('entities') or [])}", file=sys.stderr)
+        if pl.get("schema") != PROVENANCE_SCHEMA:
+            print(f"[freeze] provenance_ledger schema {pl.get('schema')!r} ≠ {PROVENANCE_SCHEMA}——"
+                  "v1 算法有数学错误（累计流入归一化不扣流出），一律重跑 v2 溯源", file=sys.stderr)
             return 2
-        for ent in pl["entities"]:
+        ents = pl.get("entities") or []
+        if not ents:
+            print("[freeze] provenance_ledger 无实体条目——空壳台账拒收", file=sys.stderr)
+            return 2
+        led_ids = {e.get("entity_id") for e in ents}
+        map_ids = set(entity_map)
+        if led_ids != map_ids:
+            print(f"[freeze] 溯源台账实体集与名册不一致: 台账多 {sorted(led_ids - map_ids)}，"
+                  f"名册多 {sorted(map_ids - led_ids)}——名册改动后必须重跑溯源", file=sys.stderr)
+            return 2
+        for ent in ents:
+            eid = ent["entity_id"]
+            want = hashlib.sha256(",".join(sorted(set(entity_map[eid]))).encode()).hexdigest()
+            if ent.get("members_sha256") != want:
+                print(f"[freeze] {eid} 成员集哈希不符（台账 {str(ent.get('members_sha256'))[:12]}… ≠ "
+                      f"名册 {want[:12]}…）——成员改动后的旧台账不得复用", file=sys.stderr)
+                return 2
             for anchor_name in ("current", "peak"):
-                stock = int(ent["anchors"][anchor_name]["stock_raw"])
-                s = ent["closure_check"][f"{anchor_name}_sum_pct"]
-                if stock > 0 and abs(s - 100.0) > 0.5:
-                    print(f"[freeze] 溯源闭合失败: {ent['entity_id']} {anchor_name} Σ={s}%", file=sys.stderr)
+                anchor = ent["anchors"][anchor_name]
+                stock = int(anchor["stock_raw"])
+                comp = anchor.get("composition")
+                if stock <= 0:
+                    continue
+                if not comp:
+                    print(f"[freeze] {eid} {anchor_name} 锚点库存 {stock} > 0 但 composition 为空"
+                          "——空壳台账拒收", file=sys.stderr)
                     return 2
+                s_raw = sum(int(c["raw"]) for c in comp)
+                if abs(s_raw - stock) > stock * 0.005:
+                    print(f"[freeze] 溯源闭合重算失败: {eid} {anchor_name} Σraw={s_raw} vs "
+                          f"stock={stock}（偏差 {abs(s_raw-stock)*100.0/stock:.2f}% > 0.5%——"
+                          "closure 按构成明细重算，自报值不作数）", file=sys.stderr)
+                    return 2
+        bs = pl.get("bounds_sensitivity") or {}
+        if bs.get("conservative_vs_aggressive_verdict_stable") is not True:
+            print("[freeze] 溯源敏感性不稳（FIFO/LIFO/pro-rata 主导终点翻转）——结论依赖消耗假设，"
+                  "禁止冻结；先解决未决量/标签覆盖再重跑溯源", file=sys.stderr)
+            return 2
     except (KeyError, ValueError, TypeError) as e:
         print(f"[freeze] provenance_ledger.json 结构异常: {e}", file=sys.stderr)
         return 2
+
     algo, digest, size = sha256_file(mp)
+    _, ent_digest, _ = sha256_file(ep)
+    _, pl_digest, _ = sha256_file(pl_path)
     now = utcnow()
     entry = {"members_source": os.path.relpath(mp, case_dir), "members_sha256": digest,
+             "entity_file": os.path.relpath(ep, case_dir), "entity_file_sha256": ent_digest,
+             "provenance_ledger_sha256": pl_digest,
              "frozen_at_utc": now, "pending_items": [x for x in (a.pending or "").split(";") if x],
              "casebook_note": a.casebook_note}
+    rev_keys = ("members_source", "members_sha256", "entity_file", "entity_file_sha256",
+                "provenance_ledger_sha256", "frozen_at_utc", "pending_items", "casebook_note")
     if os.path.isfile(path):
         fz = load_json(path)
-        if fz.get("members_sha256") == digest:
-            print("[freeze] 成员表未变化，无需新 revision")
+        if fz.get("members_sha256") == digest and fz.get("entity_file_sha256") == ent_digest:
+            print("[freeze] 成员表与实体名册均未变化，无需新 revision")
             return 0
-        fz.setdefault("revisions", []).append(
-            {k: fz[k] for k in ("members_source", "members_sha256", "frozen_at_utc", "pending_items", "casebook_note")
-             if k in fz})
+        fz.setdefault("revisions", []).append({k: fz[k] for k in rev_keys if k in fz})
         fz.update(entry)
         atomic_write_json(path, fz)
         print(f"[freeze] revision #{len(fz['revisions'])} 追加（不覆盖历史）——新成员表 {digest[:12]}…")
         return 0
     fz = {"schema": "entity-freeze/v1", **entry, "revisions": []}
     atomic_write_json(path, fz)
-    print(f"[freeze] 初次冻结 → {path}（成员表 {digest[:12]}…，未决项 {len(entry['pending_items'])}）")
+    print(f"[freeze] 初次冻结 → {path}（成员表 {digest[:12]}…，实体名册 {ent_digest[:12]}…，"
+          f"未决项 {len(entry['pending_items'])}）")
     return 0
 
 
@@ -509,7 +620,10 @@ def main():
 
     f = sub.add_parser("freeze", help="−2 实体冻结 / --check-unseal 揭盲把关")
     f.add_argument("--case-dir", required=True)
-    f.add_argument("--members", default=None, help="成员表文件（含实体成员名册）")
+    f.add_argument("--members", default=None, help="成员表文件（含实体成员名册，快照哈希入冻结记录）")
+    f.add_argument("--entity-file", default=None,
+                   help="规范实体名册 {entity_id:[addr…]}——裁决 linked_entity 绑定＋溯源台账"
+                        "逐实体哈希比对以它为准（v6.8.1 必填）")
     f.add_argument("--pending", default=None, help="未决项，分号分隔")
     f.add_argument("--casebook-note", default=None)
     f.add_argument("--check-unseal", action="store_true")
