@@ -23,6 +23,6 @@
 | §5 对账 gate（四件套+重放前置完整性+差额排查 Burn/Mint） | 对账与重放 | `data-pipeline-evm-recon.md` |
 | §11 公共数仓准入实证与分工定稿（BigQuery/AWS/新源准入纪律） | 对账与重放 | `data-pipeline-evm-recon.md` |
 | §12 DuckDB 重放/缩图引擎（亿级样本主路径） | 对账与重放 | `data-pipeline-evm-recon.md` |
-| §13 时间抽查的第二源选型（SQD Portal，勿用区块浏览器 API） | 对账与重放 | `data-pipeline-evm-recon.md` |
+| §13 时间抽查第二源分层选型（默认 time_spotcheck.py 锚点直查；全史重拉仅例外且先 pilot 报 ETA；勿用区块浏览器 API） | 对账与重放 | `data-pipeline-evm-recon.md` |
 
 工序速查：选通道拉数据、踩坑排障=分册 1（channels）；分析期查辅助数据源、Base/Arbitrum/质押型标的=分册 2（sources）；采集完对账、出错复核切源、亿级重放缩图=分册 3（recon）。

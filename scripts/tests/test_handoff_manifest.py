@@ -12,6 +12,8 @@
   8. generate READY 缺必备契约件 → exit 2
   9. receipt 追加两条且 blind_mode 跟随环境变量
  10. supersede：二次 generate 归档旧 manifest
+ 12. READY 缺 wave_scan_report.json 即拒（W1 漏检复盘 2026-08-01：波次扫描是 READY 必产件）
+ 13. wave_scan_report.json 空壳（缺 requires_adjudication 等字段）→ verify exit 2
 用法：python3 scripts/tests/test_handoff_manifest.py   退出码 0=PASS / 1=FAIL
 """
 import json
@@ -24,9 +26,11 @@ import tempfile
 HERE = os.path.dirname(os.path.abspath(__file__))
 SCRIPT = os.path.join(HERE, "..", "report", "handoff_manifest.py")
 FAILS = []
+CHECKS = []
 
 
 def check(name, cond):
+    CHECKS.append(name)
     if not cond:
         FAILS.append(name)
         print(f"FAIL  {name}")
@@ -62,6 +66,12 @@ def make_case(d):
         f.write("a,b\n1,2\n")
     write_json(d, "accounting_mode.json", {"schema": "accounting-gate/v1", "verdict": "PASS", "exit_code": 0})
     write_json(d, "supply_truth.json", {"verdict": "PASS", "exit_code": 0})
+    write_json(d, "wave_scan_report.json", {"schema": "wave-scan/v1", "cleared_layer_count": 0,
+                                            "waves": [], "equal_amount_groups": [],
+                                            "requires_adjudication": False})
+    write_json(d, "time_spotcheck.json", {"gate": "time_spotcheck", "schema": "time-spotcheck/v1",
+                                          "points": 2, "exact_match": 2, "mismatch": 0,
+                                          "rpc_err": 0, "verdict": "PASS", "exit_code": 0})
     os.makedirs(os.path.join(d, "sealed"), exist_ok=True)
     with open(os.path.join(d, "sealed", "stage1_hypotheses.sealed.md"), "w") as f:
         f.write("> −2 实体冻结前禁读\n假说：无\n")
@@ -82,9 +92,21 @@ def main():
         m = json.load(open(os.path.join(d, "handoff_manifest.json")))
         check("manifest 收录 data_map 索引文件", any(a["path"] == "data/transfers.csv" for a in m["artifacts"]))
         check("manifest sealed 只记哈希", m["sealed"] and "sha256" in m["sealed"][0])
-        check("manifest 自动 gate 两个", set(m["gates"]) == {"accounting_gate", "supply_truth_gate"})
+        check("manifest 自动 gate 三个", set(m["gates"]) == {"accounting_gate", "supply_truth_gate",
+                                                            "time_spotcheck"})
         p = run(["verify", "--case-dir", d])
         check("verify READY exit 0", p.returncode == 0)
+
+        # 14. EVM 链缺 time_spotcheck.json 拒 READY；solana 链豁免（6.7.0 时间抽查收编）
+        d14 = os.path.join(root, "case_no_spotcheck")
+        os.makedirs(d14)
+        make_case(d14)
+        os.unlink(os.path.join(d14, "time_spotcheck.json"))
+        p = run(["generate", "--case-dir", d14, "--status", "READY"] + GEN)
+        check("EVM 链缺 time_spotcheck 拒 READY exit 2", p.returncode == 2)
+        p = run(["generate", "--case-dir", d14, "--status", "READY", "--mode", "easy",
+                 "--producer-model", "test-model", "--chain", "solana", "--contract", "0x0"])
+        check("solana 链无 time_spotcheck 豁免 exit 0", p.returncode == 0)
 
         # 9. receipt（在正例目录顺手验）
         p = run(["receipt", "--case-dir", d, "--step", "A1", "--cmd", "collect", "--exit", "0",
@@ -180,6 +202,23 @@ def main():
         os.unlink(os.path.join(d11, "supply_truth.json"))
         p = run(["generate", "--case-dir", d11, "--status", "READY"] + GEN)
         check("READY 缺 supply_truth gate 即拒 exit 2", p.returncode == 2)
+
+        # 12. READY 缺 wave_scan_report 即拒（历史清零层波次扫描必产件）
+        d12 = os.path.join(root, "case_nowave")
+        os.makedirs(d12)
+        make_case(d12)
+        os.unlink(os.path.join(d12, "wave_scan_report.json"))
+        p = run(["generate", "--case-dir", d12, "--status", "READY"] + GEN)
+        check("READY 缺 wave_scan_report 即拒 exit 2", p.returncode == 2)
+
+        # 13. wave_scan_report 空壳 → verify 拒收
+        d13 = os.path.join(root, "case_wavehollow")
+        os.makedirs(d13)
+        make_case(d13)
+        write_json(d13, "wave_scan_report.json", {"schema": "wave-scan/v1"})
+        run(["generate", "--case-dir", d13, "--status", "READY"] + GEN)
+        p = run(["verify", "--case-dir", d13])
+        check("wave_scan_report 空壳 verify 拒收 exit 2", p.returncode == 2 and "wave_scan_report" in p.stdout)
     finally:
         shutil.rmtree(root, ignore_errors=True)
 
@@ -187,7 +226,7 @@ def main():
     if FAILS:
         print(f"{len(FAILS)} 项失败: {FAILS}")
         return 1
-    print("handoff_manifest 契约测试全部通过（20 项）")
+    print(f"handoff_manifest 契约测试全部通过（{len(CHECKS)} 项）")
     return 0
 
 

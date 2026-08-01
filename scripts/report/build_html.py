@@ -257,11 +257,65 @@ def main():
     ap.add_argument("--state", help="analysis-state.json（与 --facts 同给时做 G1 成员集合对账）")
     ap.add_argument("--skip-identity-gate", action="store_true",
                     help="显式跳过 G8 实体身份闸（仅限历史报告重编译等无 gate 场景；跳过会打 NOTE 留痕）")
+    ap.add_argument("--a4-seal", help="a4_seal.json（A4 封口凭证，触发 G9：封口哈希重验+报告图必须"
+                                      "全在封口 charts_dir 下；分析流程 A5/E5 编译必传，update 流程不传）")
+    ap.add_argument("--skip-a4-gate-reason", default=None,
+                    help="跳过 G9 的文字理由（仅限历史报告重编译等无 seal 场景）——理由会写入 HTML "
+                         "注释持久留痕，不是裸开关")
     a = ap.parse_args()
 
     md_text = open(a.md, encoding="utf-8").read()
     mddir = os.path.dirname(os.path.abspath(a.md))
     warns = []
+
+    # ---- G9 A4 封口闸（6.7.0 2026-08-01，A4 前提前做 A5 七案返工根治）----
+    # --a4-seal 给出时强制：seal 必须 PASS、封口文件哈希与当前一致（封口后改结论不重封
+    # ＝报告编不出来）、md 引用的全部图片位于封口 charts_dir 下；mtime 仅 NOTE 不裁决。
+    skip_note_html = ""
+    if a.skip_a4_gate_reason:
+        print(f"[NOTE] G9 A4 封口闸已显式跳过，理由: {a.skip_a4_gate_reason}（写入 HTML 注释留痕）")
+        skip_note_html = f"<!-- G9 a4-gate skipped: {html.escape(a.skip_a4_gate_reason)} -->\n"
+    elif a.a4_seal:
+        try:
+            _seal = json.load(open(a.a4_seal, encoding="utf-8"))
+            _sdir = os.path.dirname(os.path.abspath(a.a4_seal))
+            if _seal.get("schema") != "a4-seal/v1" or _seal.get("verdict") != "PASS" \
+                    or not _seal.get("claims"):
+                warns.append("[WARN] G9 a4_seal.json 无效（schema/verdict/claims 缺失）——"
+                             "A4 收尾必须 a4_gate.py finalize 封口成功后才编报告")
+            else:
+                import hashlib as _hl
+                for ent in _seal.get("sealed_files", []):
+                    _p = os.path.join(_sdir, ent["path"]) if not os.path.isabs(ent["path"]) else ent["path"]
+                    if not os.path.isfile(_p):
+                        warns.append(f"[WARN] G9 封口文件已不存在: {ent['path']}")
+                        continue
+                    _h = _hl.sha256(open(_p, "rb").read()).hexdigest()
+                    if _h != ent.get("sha256"):
+                        warns.append(f"[WARN] G9 封口后被改动: {ent['path']}——结论文件变更必须"
+                                     "改完重跑 a4_gate.py finalize 重新封口，再编报告")
+                _cdir = (_seal.get("charts_dir") or "charts/final").rstrip("/")
+                _seal_ts = _seal.get("sealed_at_utc", "")
+                for m_img in re.finditer(r"^!\[[^\]]*\]\(([^)]+)\)\s*$", md_text, re.M):
+                    _ipath = m_img.group(1).strip()
+                    if os.path.isabs(_ipath):
+                        warns.append(f"[WARN] G9 报告禁用绝对路径图: {_ipath}")
+                    elif not _ipath.startswith(_cdir + "/"):
+                        warns.append(f"[WARN] G9 报告图不在封口目录 {_cdir}/ 下: {_ipath}——"
+                                     "A5 出图一律落该目录（封口时它为空，目录内即封口后产物）")
+                    else:
+                        _iabs = os.path.join(mddir, _ipath)
+                        if os.path.isfile(_iabs) and _seal_ts:
+                            _mt = os.path.getmtime(_iabs)
+                            import calendar as _cal, time as _time
+                            try:
+                                _st = _cal.timegm(_time.strptime(_seal_ts, "%Y-%m-%dT%H:%M:%SZ"))
+                                if _mt < _st:
+                                    print(f"[NOTE] G9 图片 mtime 早于封口时间（仅提示，mtime 不作裁决）: {_ipath}")
+                            except ValueError:
+                                pass
+        except Exception as e:
+            warns.append(f"[WARN] G9 a4_seal.json 解析失败: {e}")
 
     # ---- G8 实体身份闸（v4.2 2026-07-30，IQ/LPT/PYTHIA 托管误判三案根治）----
     # --state 给出时强制：state 同目录必须有 identity_gate.json，实体地址全覆盖、
@@ -348,18 +402,31 @@ def main():
 
     doc = f"""<!DOCTYPE html>
 <html lang="zh-CN"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
+{skip_note_html}<meta name="viewport" content="width=device-width,initial-scale=1">
 <title>{html.escape(title)}</title><style>{CSS}</style></head>
 <body><div class="wrap">
 {body}
 {appendix}
 </div></body></html>"""
-    open(a.out, "w", encoding="utf-8").write(doc)
-    for w in warns:
-        print(w)
-    print(f"[{'FAIL' if warns else 'OK'}] {a.out} ({os.path.getsize(a.out)//1024} KB)"
-          + (f"，{len(warns)} 条告警——修复后重跑，有 WARN 不许交付" if warns else ""))
-    sys.exit(1 if warns else 0)
+    # gate 前置语义（6.7.0 codex 复核修正）：有 WARN 不写出任何文件——旧行为先落盘再
+    # exit 1，"物理编不出"名不副实（带 WARN 的 HTML 已经在盘上可被交付）。
+    if warns:
+        for w in warns:
+            print(w)
+        print(f"[FAIL] 未写出 {a.out}——{len(warns)} 条告警，修复后重跑（有 WARN 不许交付）")
+        sys.exit(1)
+    import tempfile
+    fd, tmp = tempfile.mkstemp(dir=os.path.dirname(os.path.abspath(a.out)) or ".", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(doc)
+        os.replace(tmp, a.out)
+    except BaseException:
+        if os.path.exists(tmp):
+            os.unlink(tmp)
+        raise
+    print(f"[OK] {a.out} ({os.path.getsize(a.out)//1024} KB)")
+    sys.exit(0)
 
 
 if __name__ == "__main__":

@@ -50,7 +50,7 @@
 1. **余额对账**：重建结果 vs 独立数据源精确对表（形态见各链 pipeline recon 分册）。
 2. **供给闭合**：总量恒等式/mint−burn 配平（内部自洽检验）。
 3. **供给真值闸（v6 新增，重放收尾必跑）**：`python3 scripts/lib/supply_truth_gate.py --chain <链> --token 0x…|--mint <mint> --replay-stats <replay_stats.json> --out supply_truth.json`——重放净供给对链上实查 totalSupply()，治静默改账盲区（老合约 migrate() 改账不发事件、全部内部自检 PASS 而余额虚高，见 casebook S-01）。**exit 0 PASS／exit 2 FAIL＝该币余额禁用重放结果改 Multicall3/RPC 实时直查（地址全集与转账历史仍可用重放，重放余额仅作 ≥阈值超集筛选）／exit 1 检测自身失败修通道重跑，禁当 PASS**。
-4. **时间抽查**：EVM 走分层计划制——先跑 `scripts/lib/anchor_plan.py` 出抽样计划（3 时段×3 余额档矩阵点＋四类强制覆盖点：全史最大单笔/最大单日净变动/数据源交界块/门槛±10% 边缘地址），再照单对照浏览器；纯随机锚点容易全抽在平静期、高风险位置反而漏掉。Solana 案走 anchor_sampler.py。注意本查测的是数据完备性与浏览器一致性，不替代供给闭合对 mint/burn 口径的把关。
+4. **时间抽查**：EVM 走分层计划制——先跑 `scripts/lib/anchor_plan.py` 出抽样计划（3 时段×3 余额档矩阵点＋四类强制覆盖点：全史最大单笔/最大单日净变动/数据源交界块/门槛±10% 边缘地址），再跑 `scripts/lib/time_spotcheck.py` 对独立第二源逐锚点核对（balance 型 archive balanceOf 直查＋tx 型收据五元组，产 `time_spotcheck.json`，verdict=PASS 才过；第二源分层选型与"全史双源重拉仅例外、做前 pilot 报 ETA"条款见 evm-recon §13——**默认锚点级即闭环，禁止把全史第二源重拉当标准动作**，APU 案 103 分钟冗余教训）；纯随机锚点容易全抽在平静期、高风险位置反而漏掉。Solana 案走 anchor_sampler.py。注意本查测的是数据完备性与第二源一致性，不替代供给闭合对 mint/burn 口径的把关。
 
 对不上＝数据有洞＝回去补，不许"差不多就行"。
 
@@ -65,28 +65,34 @@
 3. **实体身份硬闸**：实体表冻结前跑 `scripts/report/entity_identity_gate.py --state … --chain … --snapshot …` 产出 `identity_gate.json`——对每个实体地址＋≥1% 大仓做标签双源（CSV 主库＋address-book 手工层，label_lookup 已自动并源）、Solana ed25519 曲线判定、托管假设三查；INFRA_IN_ENTITY／PDA_UNRESOLVED／BIG_UNLABELED 三类 flag 逐条填 resolution（查了什么、结论是什么）——**build_html G8 会校验此闸，flag 未解决报告物理上编不出来**。币安 Alpha 在架的 Solana 标的同时做 Alpha 集齐率判别（casebook C-01；easy 版 E0b 步骤④同款，完整版同责）。
 4. **庄级实体识别、标签划分与类型三分类**：门槛数值与细则的唯一权威源＝playbook-entity-cluster-tiering §6a（本处不设数值副本防漂移，v6.4.2 定；结构要点：不分级；项目方无论份额；大庄/小庄按当前持仓、离场庄按峰值判；刷量地址单独标签；发射窗协同实体按普通门槛判级；合并口径含全部疑似关联地址）。
 5. **其他大户排查前置双闸**（§6a）：其他大户线＝当前 ≥0.1% 总供应或 ≥0.2% 流通，逐个过批量排查层（标签库/惯犯库/指纹/funder 溯源）才准归阵营，报警才人工深挖；每个已识别实体做不设持仓下限的成员完整性扫描（防分仓漏判）。
-6. **全量转账重放出各阵营占比演变序列**（阵营划分见 §6a）：分母＝当期净供应序列，**逐时点 assert Σ阵营＝100%±容差**，改过名册跑反向断言（casebook S-03）；**历史清零层检测**——重放全期 max 仓位而非只看现仓（track set 按现仓筛会漏整个历史波次，casebook S-04）。
+6. **全量转账重放出各阵营占比演变序列**（阵营划分见 §6a）：分母＝当期净供应序列，**逐时点 assert Σ阵营＝100%±容差**，改过名册跑反向断言（casebook S-03）。两道配套硬闸：
+   - **历史清零层波次扫描（硬闸）**：名册定稿前必跑 `python3 scripts/report/wave_scan.py`（四指纹机械扫描：同窗建仓聚类×喂币专属度×集中清仓窗×等额面额组，阈值全用合并口径、与 0.1% 单址线脱钩；已知公共设施经 `--exclude-file` 剔除），产 `wave_scan_report.json`；候选波次与等额组**逐条裁决完毕前，历史大户兜底桶不准关闸**——"有兜底桶"≠"桶内被检验过"（casebook S-04；分段执行时跑批归 −1、裁决归 −2，split-run §1.3/§3.2）。
+   - **骤变归因义务（硬闸）**：序列产出后必跑 `python3 scripts/report/camp_jump_audit.py <序列.json>`，对每个单日 |Δ|≥3pp 骤变点归因到具体实体/地址群写入 facts；无法归因的点必须在报告"局限性"显式列出（PYTHIA 案 -12pp/+7.2pp 两个强信号皆到过眼前、皆无处置义务兜住，W1 因此漏检——2026-08-01 复盘）。
 7. **庄家当前状态评估**（§7）→ 质押/留存修正（§8）；建仓成本仅按需算（§6b 降为工具）；CEX 净流×价格作为演变解读工具按需用（防内部调仓伪影，§5）。
 
 数据先验结构再分析（榜单唯一性断言、多档抽查），批量脚本先 2 个样本验证编解码再放量、绝不吞异常。**份额阈值一律整数运算**（`TOTAL//100`，浮点比较会把"恰好整数枚"大户判漏——那本身还是橱窗仓指纹，漏它双重损失；来源：meow 案 2026-07-15）。
 
 ## A4 对抗复核（必做）
 
+**A4→A5 顺序硬闸（6.7.0，2026-08-01 定）：本阶段全部裁决落定并 `a4_gate.py finalize` 封口前，禁止进入 A5——不画报告图、不写 `报告.md`、不编 HTML。复核对象＝findings.md/结论清单＋落盘数据文件，不是排版后的报告。**（历史核查：16 个时间戳可判定案 12 案图表/报告先于复核落盘，7 案因翻案实际返工——APU 报告写 3 遍、GOAT 阵营图 4 代、TROLL easy 版 HTML 作废；另 5 案结论翻了图没跟着改成错误残留。翻案率极高是本环节的固有属性，提前做 A5＝无用功＋上下文污染。）
+
 执行序（细则与 prompt 骨架的唯一权威源＝playbook-evidence-wording §10＋research-workflows §2，此处只列主干）：
 
-1. **扰动敏感度前置**（EVM 案，`cluster_sensitivity.py --dir <案目录>`，sensitivity_report.md 作复核输入；FRAGILE/STABLE 字样只进复核材料禁进报告正文）。
-2. **惯犯揭盲**（实体冻结后 `label_lookup.py --unseal` 取封存命中，与实体划分互证/互斥）。
-3. 本地反例自查脚本前置。
-4. **N 路怀疑者 agent**（给数据文件路径让它**自己重算**，不是审阅文字；强制构造备择解释——casebook 三册就是现成的备择解释清单，组 prompt 时按题材摘触发现象）＋1 完整性批评角色查报告缺口（必查全史极值清单）＋1 路**外部异构怀疑者**（codex/GPT 单进程横扫全部结论）。
-5. 判定三档 CONFIRMED/WEAKENED/REFUTED（**必须实际核查，"理论上可能"不算推翻**）→ 修订顺序先修数据管线再修文案，图表措辞同步改 → 修正记录印进报告附录。
+1. **claim 注册表登记**：`python3 scripts/report/a4_gate.py register --case-dir . --claims-file <claims.json>`——把 A3 全部核心结论写成稳定 id 的 claims 清单（与 adversarial-review skill 的 args.claims 及 split-run §3.3 外部异构路输入同构），产 `a4_claims.json`。没登记的结论＝复核覆盖不到＝finalize 会拒。
+2. **扰动敏感度前置**（EVM 案，`cluster_sensitivity.py --dir <案目录>`，sensitivity_report.md 作复核输入；FRAGILE/STABLE 字样只进复核材料禁进报告正文）。
+3. **惯犯揭盲**（实体冻结后 `label_lookup.py --unseal` 取封存命中，与实体划分互证/互斥）。
+4. 本地反例自查脚本前置。
+5. **N 路怀疑者 agent**（给数据文件路径让它**自己重算**，不是审阅文字；强制构造备择解释——casebook 三册就是现成的备择解释清单，组 prompt 时按题材摘触发现象）＋1 完整性批评角色查 findings/结论清单缺口（必查全史极值清单）＋1 路**外部异构怀疑者**（codex/GPT 单进程横扫全部结论）。
+6. 判定三档 CONFIRMED/WEAKENED/REFUTED（**必须实际核查，"理论上可能"不算推翻**）→ 修订顺序先修数据管线再修文案 → 修正记录印进报告附录。
+7. **封口收尾**：`python3 scripts/report/a4_gate.py finalize --case-dir . --verdicts-file <verdicts.json> --seal-files findings.md,analysis-state.json`——裁决 id 集合与注册表**完全相等**、WEAKENED/REFUTED 必带修订摘要、终版结论文件哈希封口、`charts/final/` 为空校验，产 `a4_seal.json`（exit 0 才准进 A5）。封口后再改结论文件必须改完重跑 finalize 重新封口——build_html G9 会重算哈希，不重封报告物理上编不出来。
 
 ## A5 报告
 
-报告本体先写 `报告.md`＋`charts/*.png`。**三张标准图必配**（阵营占比演变/庄级实体 vs 价格/价格与关键事件），直接调 `scripts/report/standard_charts.py` 三个函数——规格与配色已固化，不要每次重新设计；**图 1/图 2 放 TL;DR 顶部（问 1 直答上方）**。**每个当前持仓 ≥20% 总供应或 ≥20% 流通的大庄/项目方必配一张全周期流转路径图**（`scripts/report/lifecycle_flow.py`，样图 references/examples/lifecycle-flow-sample.png）。
+**进入本阶段的前置＝`a4_seal.json` 已由 A4 第 7 步产出（build_html `--a4-seal` 编译校验，G9）。** 报告本体先写 `报告.md`＋`charts/final/*.png`——**报告图一律输出到 `charts/final/`**（封口时该目录为空，目录内即封口后产物，G9 只认此目录；复核过程草稿图放 charts/ 根或别处，不进报告）。**三张标准图必配**（阵营占比演变/庄级实体 vs 价格/价格与关键事件），直接调 `scripts/report/standard_charts.py` 三个函数——规格与配色已固化，不要每次重新设计；**图 1/图 2 放 TL;DR 顶部（问 1 直答上方）**。**每个当前持仓 ≥20% 总供应或 ≥20% 流通的大庄/项目方必配一张全周期流转路径图**（`scripts/report/lifecycle_flow.py`，样图 references/examples/lifecycle-flow-sample.png）。
 
 出图纪律：`standard_charts.plot_camp_evolution` 按 CAMP_ORDER 白名单过滤 series 键，非标准阵营名**静默跳过不报错**——阵营名必须逐字取自 `standard_charts.py` 的 `CAMP_ORDER`（唯一权威；现行 14 键：项目方、大庄、小庄、离场庄、刷量地址、CEX资金通道、CEX托管、疑似CEX托管、流动性池、其他大户、历史大户、散户、桥锁仓、锁仓/销毁；"狙击集团"等仅旧数据重绘 legacy）；**出图后必须目检图例条数 == 传入阵营数**。
 
-结构与措辞纪律见 `report-template.md`（三问逐条直答＋标签体系＋代币数量带【总量X%】＋正文零地址＋局限性独立成章；CEX 黑箱表述红线——充入≠卖出、"链上可观测范围内"限定、净流剔除同 CEX 内部对倒、给单一实体份额上限——权威源 playbook-evidence-wording §11）。然后 `python3 scripts/report/build_html.py --md 报告.md --out 报告.html` 出自包含 HTML（PDF 仅用户点名，用 md2pdf.py，质检双轨见 environment.md）。质检：build_html 退出码 0（缺图会 WARN 拒绝交付）＋浏览器目检（图全显/表格无错位）。
+结构与措辞纪律见 `report-template.md`（三问逐条直答＋标签体系＋代币数量带【总量X%】＋正文零地址＋局限性独立成章；CEX 黑箱表述红线——充入≠卖出、"链上可观测范围内"限定、净流剔除同 CEX 内部对倒、给单一实体份额上限——权威源 playbook-evidence-wording §11）。然后 `python3 scripts/report/build_html.py --md 报告.md --out 报告.html --a4-seal a4_seal.json` 出自包含 HTML（`--a4-seal` 为分析流程必传——G9 校验封口与图目录；历史报告重编译无 seal 时用 `--skip-a4-gate-reason "<理由>"` 显式跳过，理由写入 HTML 注释留痕。PDF 仅用户点名，用 md2pdf.py，质检双轨见 environment.md）。质检：build_html 退出码 0（有 WARN 时不写出文件、直接拒绝交付——6.7.0 起 gate 前置）＋浏览器目检（图全显/表格无错位）。
 
 **附录四件套**（验证步骤/标签↔地址对照/复核修正记录/来源）——附录 B 地址对照任何情况下不可省（正文零地址的可验证性支点）。**监控包默认不做**：观察哨/两档监控建议/appendix.json 在用户确认买入后按 monitoring-package.md「买入后监控包」节补生成（新会话可执行，材料全在落盘产物），报告末尾带固定句"如决定买入，回复一声即可补生成监控包"。**默认交付另落一份 `analysis-state.json`**（appendix 的机器子集：token/whale_groups/vault_addresses/addresses 骨架＋camp_share_series，无监控文案——/token-update 的实体表原料；schema 见 report-template「默认交付的机器状态文件」节）。交付前 checklist 见 report-template.md 末节。
 

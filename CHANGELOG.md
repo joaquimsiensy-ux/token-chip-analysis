@@ -15,6 +15,8 @@
 
 ## 版本索引（活跃窗口，新在上；每版一行，详情见下方对应条目）
 
+- **6.7.0** 2026-08-01 双闸落地（用户批准两方案＋@CX codex 复核融合）：①A2 时间抽查第二源分层制——新建 time_spotcheck.py（balance 型 archive balanceOf 直查＋tx 型收据五元组，两型都查；EVM 案进 READY 必备件＋AUTO_GATES），全史 SQD 重拉降为例外动作（触发三条件＋pilot 报 ETA；APU 案 103 分钟冗余教训）；②A4→A5 顺序硬闸——新建 a4_gate.py（claims 注册表全覆盖裁决＋终版文件哈希封口＋charts/final 空检查），build_html 加 G9（封口哈希重验＋报告图必须全在 charts/final/；--skip-a4-gate-reason 带理由跳过留痕）＋WARN 不再先落盘（gate 前置原子写）；历史核查 16 案 12 案倒置 7 案返工是本闸依据。测试 +25 项（a4_gate 18＋spotcheck 5＋handoff 2）；原事故回测用户裁定免做、待实战验收
+- **6.6.0** 2026-08-01 W1 波次二次漏检复盘落地：历史清零层波次扫描机械闸（用户批准迭代清单 9 项全落地）——新建 wave_scan.py 四指纹扫描器（同窗建仓聚类×喂币专属度×集中清仓窗×等额面额，合并口径；PYTHIA 回测 W1 覆盖 339/341=99.4%＋44 分仓等额组置顶命中，QUQ 1.03 亿边独立重发现库存层/接力交棒）＋camp_jump_audit.py 骤变归因义务＋wave_scan_report.json 进 READY 必产件（契约测试 21→23 项）＋SKILL 双硬闸升三硬闸＋A3.6 硬步骤＋split-run 三处＋S-04 复发记录＋retrospective 元规则第二条"装闸必附原案回测"＋adversarial-review L50/L71 单址阈值 bug 修复＋evals 09 升机械闸回测题＋docs_lint 守卫 7
 - **6.5.0** 2026-07-31 codex 独有资产审计后回灌转正（@CX 交叉复核 + 用户三项拍板）：经济控制账与静置仓反扫双硬闸候选转正式（SKILL 新增"实体冻结前双硬闸"节、report-template 三账段【候选】转正＋checklist 收编 4c/4d）+ 收编 codex 侧方法学：economic-control-accounting/lp-fee-accounting/independent-audit-protocol 三分册（协议限定"复核既有报告"作用域、0.5% 线修订为 0.1%/0.2% 双线）+ audit_release_gate 四处修复（WARN 不再当 PASS、补 supply_truth 四查、双线阈值、空账本与嵌套未决暴露阻断）与九类契约测试 + tiering 判级确权边界节/methods 静置仓硬闸版与枢纽两段法/evidence-wording 受益权分离与 LP 四分法等禁写措辞/sources 价格覆盖审计与 Blockscout 完备性/channels LP 增强版 + docs_lint 四层守卫（硬闸关键词跨 SKILL/methods/tiering/report-template 缺一即 FAIL）+ description 补"复核既有报告/LP 手续费"触发词；SUITE 16→17 项
 - **6.4.4** 2026-07-31 attic 首批复核裁决落地（用户逐条人工复核）：A-01 社区分发桶女巫化回收识别、A-02 镜像执行扫描法恢复 methods 正文（保留候选身份＋用户复核授权戳），A-03～A-06 维持存档
 - **6.4.3** 2026-07-31 变更叙事全库清理（用户人工复核发现＋@CX 双路扫描，三分类口径用户拍板）：一类·纯变更叙事约 45 处清除（"取代旧条款/vX 曾取代/已废止/原条款/历史沿革/拆册搬家史/labels 拆分史/取代 v1"等，机制依据与授权戳保留）+ 二类·狙击集团废止段瘦身归位（tiering 收缩为现行规则+update-workflow 指针，阵营 legacy 行删除）+ 顺修 solana-scan 头部删字残渣与 tiering 粘连行 + 新整编规则入 retrospective 2b（变更叙事进 CHANGELOG、正文只留现行规则+依据、迁移桥唯一归宿 update-workflow）；codex 建议中 6 处活兼容规则（report-template/monitoring/analyze-workflow 的旧文件读取端行为）经裁决保留不搬
@@ -33,6 +35,39 @@
 - **4.1.0** 2026-07-30 PYTHIA 双报告交叉核实复盘：实体身份防复发三闸（label_lookup 并源 address-book / entity_identity_gate+G8 编译门 / 复核 prompt 翻案四问固化）+ 复盘元规则（身份类教训必须以代码收尾）
 - **4.0.0** 2026-07-28 大整编（用户点名）：3.0→3.41 四十余版增量迭代的结构清理——路由索引补齐 9 节、结构错位归位 3 处、消重立权威源制 6 组、CHANGELOG 重整归档 29 条；只减不加，规则语义未动
 - 更早版本（3.41.0 及以前）→ `CHANGELOG-archive.md`
+
+## [6.7.0] - 2026-08-01 — 双闸落地：时间抽查第二源分层制 + A4→A5 顺序硬闸
+
+背景：用户两问触发核查（本条目即答案存档）。**问 1**：双源比对是否强制？——核查结论：A2 时间抽查（锚点级第二源核对）是强制的，但"全史第二源重采"从来不是任何文件的明文要求。APU(ETH) 案 −1 段照抄 evm-recon §13 的 GMX 全史区间示范命令，SQD 重拉 91.7 万行/244MB——ETH 实测 169 行/s（Arbitrum 的 1/15），103 分钟仍未拉全（sqd_full_coverage=false），而 Alchemy archive balanceOf 锚点直查早已 15/15 PASS 闭环，A3 机械层干完后纯等 SQD 空转 76 分钟；`dual_source_crosscheck` 不在 CHANGELOG/split-run 契约/handoff 收据任何一处＝执行者临场按模板自发加码。**问 2**：A4 完成前提前做 A5 是否浪费？——历史核查 16 个时间戳可判定案：12 案图表/报告先于复核落盘，其中 7 案因翻案实际返工（APU 报告写 3 遍＋4 图重画＋2 图作废；GOAT 阵营图 4 代＋easy 版回炉；PYTHIA/EGL1/IQ/TROLL/KOGE 各有重画作废明细），另 5 案（QUQ/VEX/TRASH/AKE/GMX）结论翻了图没跟着改成错误残留；retrospective/attic 中"返工/重画/白做"零命中——七次返工从未沉淀成规则。制度根源：A4 只有"必做"没有 A2 式准入措辞与 exit-code 硬闸；A4 文本自身预设报告已存在（"查报告缺口""图表措辞同步改"）。两方案经 @CX codex 只读复核融合后用户批准；**原事故回测用户裁定本次免做（成本高），待下一实战验收**。
+
+- **time_spotcheck.py 新建**（scripts/lib/，A2 时间抽查执行器）：读 anchor_plan.json 分两型逐锚点对独立第二源核对——balance 型（矩阵/最大单日净变动/门槛边缘，有 expected_balance_raw）archive `eth_call balanceOf` 历史块直查；tx 型（最大单笔/数据源交界，只有交易记录）`eth_getTransactionReceipt` 核 (token,from,to,value,block) 五元组。**两型都查**（codex 抓出：anchor_plan 强制点两型混布，只查 balance 型＝四类强制覆盖漏验两类）。fail-closed 全集：0 锚点 assert 硬失败（GMX 假 PASS 教训内置）、格式漂移锚点硬退、边缘点缺块必须 --final-block 禁静默跳点、rpc_err>0 exit 1 禁当 PASS。产物 time-spotcheck/v1 带 verdict+exit_code。独立性措辞纪律：状态直查对"余额结果"更直接，**不能替代事件集合完整性验证**（等额抵消/零余额中转层/元数据错误验不出——那些归层 3）。
+- **evm-recon §13 重写为分层制**：层 1 默认＝time_spotcheck 锚点直查（有 archive 通道的链）；层 2 BSC 等无 archive 链＝SQD 只拉锚点代表日/窄块窗（BANANAS31 先例；覆盖规则化不固定天数），禁止默认全史；层 3 全史双源重拉＝例外动作，仅限 ①对账他查挂了/主通道可疑 ②翻案排查需事件明细 ③结论依赖精确事件拓扑/逐笔归因/零余额中转层且现异常信号（codex 补充），做前 pilot 1–2 分钟实测当前速率再外推 ETA（禁历史速率常数调度），预计 >30 分钟摆给用户选（交互阈值非豁免阈值）。Etherscan tokentx 禁令与 DuckDB HUGEINT 陷阱原样保留。§5 第 4 查同步现行形态（旧"插值抽几笔对浏览器"表述取代）。
+- **handoff 契约收编**（codex：不进 READY 必备件＝新脚本只是"建议运行"关不掉执行漂移）：time_spotcheck.json 进 CONTRACT_FILES＋AUTO_GATES＋**EVM 链 READY 必备**（EVM_CHAINS 白名单法分链：Solana 走 anchor_sampler 通道、hyperliquid/filecoin 形态不同，均不误伤；缺件 generate 即拒）。
+- **a4_gate.py 新建**（scripts/report/，A4 封口闸）：`register` 登记稳定 id 的 claims 注册表（与 adversarial-review args.claims 及 split-run §3.3 外部异构路输入同构）；`finalize` 封口校验——裁决 id 集合与注册表**完全相等**（缺=有结论没复核、多=复核了没登记的，都拒）＋三档枚举＋WEAKENED/REFUTED 必带修订摘要＋终版结论文件 sha256 封口＋charts/final/ 为空检查（A5 未开始的物证）→ 产 a4-seal/v1。翻案重封流程：旧图作废清空→改完重跑 finalize。**mtime 不作裁决依据**（codex 否决原 mtime 方案：cp -p 误伤/touch 绕过/管不到报告.md）；哈希封口＋目录切换取代（全套图表血缘 sidecar 记二期可选）。
+- **build_html.py G9 ＋写盘语义修复**：`--a4-seal` 触发 G9（显式参数制，不绑 --state——codex：update U4→U5 也用 state 会误伤）——seal 必须 PASS＋sealed_files 逐个重算哈希一致（封口后改结论不重封＝报告物理编不出）＋md 引用图必须全在封口 charts_dir 下＋图 mtime 早于封口仅 NOTE；`--skip-a4-gate-reason` 必填文字理由并写入 HTML 注释持久留痕（非裸开关）。**WARN 时不再写出文件**（codex 读源码抓出既有缺陷：旧行为先落盘再 exit 1，"物理编不出"名不副实）——gate 前置，全过才 tempfile+os.replace 原子写。
+- **流程文档六处**：analyze-workflow A2 第 4 查改 time_spotcheck 形态＋A4 节首顺序硬闸措辞（16 案核查数据入文）＋A4 执行序七步（claims 登记开工/finalize 封口收尾）＋A5 前置与 charts/final 约定＋编译行 --a4-seal；easy-workflow E4 同款顺序闸＋state 骨架正名"E4 前置件"（仅限骨架禁连带提前出判定块/图/HTML）＋E5 编译行；split-run §1.3 A2 行＋§3.2 判断主序两处；token-analyze-2 第 8 条（顺补 6.6.0 漏改的 wave_scan 裁决步）；SKILL.md 阶段表 A2/A4/A5 三行；report-template 编译行 G9＋图层同源路径＋checklist 新增 11b。
+- **测试**：test_a4_gate.py 新建 18 项（register/finalize 反例集＋G9 联动＋翻案重封流程＋skip 留痕＋update 场景不触发）；test_time_spotcheck.py 新建 5 项（dry-run 分型/0 点硬失败/漂移拒收/fail-closed 全集）；test_handoff_manifest +2 项（EVM 缺件拒 READY/solana 豁免）＝25 项；SUITE 17→19 支。
+- 兼容声明：揭盲式独立重做（TROLL/PYTHIA 方法论）盲做版不编 HTML 不受 G9 影响；KOGE 型非 A4 触发的返工不在本闸射程；旧案目录历史重编译走 --skip-a4-gate-reason 留痕通道。
+
+## [6.6.1] - 2026-08-01 — @CX 第二意见复核后两处 bug 修复
+
+背景：6.6.0 落地当日走 @CX 交叉复核（codex 只读逐行核对 wave_scan/camp_jump/handoff/docs_lint 与测试结构），其指控经本侧逐条核实全部属实。当场修复核实为 bug 的两处；结构性建议（候选裁决端到端契约、基线升可执行回归、多尺度扫描替代单组魔法数字、B 命中线未被正例验证等）不属 bug 属设计升级，另立清单待用户拍板后进下一版。
+
+- **camp_jump_audit.py**：①输入不保证有序却直接 zip 相邻点算 Δ——乱序输入全是噪声，现 load 后按 date 排序＋缺 date 拒收；②序列非日频时把相邻点 Δ 一律称"单日"——PYTHIA 500 点序列实测 83 对相邻点跨 2 天，28 条骤变中 9 条实为两天 Δ（含 top1 的历史大户 -12.06pp，07-28→07-30；+7.21pp 为真单日），现逐条标 gap_days、报告级计 non_daily_pairs，note 注明。复跑 PYTHIA 序列 top 骤变排序与数值不变，仅时间跨度措辞得到修正。
+- **wave_scan.py**：负余额哨兵——final_bal<0 只可能来自数据缺失/重放不平，却恰好满足"≤峰值×ratio"混入清零层产生伪候选；现扫描前 COUNT 报警（stderr ⚠＋negative_balance_addrs 落盘字段），只报警不修数据（数据问题归采集侧）。改闸重跑 PYTHIA 基线：W1 覆盖/合并峰/等额组置顶逐位一致，negative_balance_addrs=0。
+
+## [6.6.0] - 2026-08-01 — W1 波次二次漏检复盘落地：历史清零层波次扫描机械闸
+
+背景：PYTHIA split-run 首战（v6.1 首战案）交付后，用户追问"历史大户是什么"并凭记忆质疑与旧报告矛盾，触发与旧终裁交叉复验——W1 协同波次（341 址、单址峰值仅 0.05~0.3%、合并峰 63.438%@2025-05-26＝全案史上最大庄）**在判例入库（07-29 S-04）＋三道文字闸装好（07-30 v4.1.0）之后 48 小时，被新 skill 原地二次漏检**（341 址打散进历史兜底桶 246＋散户桶 94＋Q1 系 1；"断崖一无主角集体离场""两代离场庄接力"两处核心定性因此翻案为"W1 组织清仓""三代 W1→Q1→H9"）。复盘定性（复盘_W1波次漏检_2026-08-01.md，用户批准迭代清单后执行）：**文字闸对"单址全在雷达线下的批量协同"结构性无效**——casebook S-04 检验②③内容正确但从未代码化；A4 翻案四问④粒度不够（"兜底桶存在"就算过，问不到桶内）；完整性批评 prompt 点名 W1 却把合并峰值误写成"单址峰值 ≥5%"门槛（物理抓不到单址 0.05~0.3% 的 W1），装闸时无原案回测、阈值 bug 潜伏至复发。
+
+- **wave_scan.py 新建**（scripts/report/，533 行）：对清零层全体（逐日峰值 ≥0.02% 且现仓 ≤峰值×0.1）四指纹机械扫描——A 同窗建仓锚窗生长聚类（7 日窗 ≥20 员，段峰值证据驱动的相邻段合并试探，防波次被段长上限切碎）；B 喂币专属度（主源 ≥90% 且全局喂币对象 ≤2，成员逐条标 feeder_exclusive 供判断层提纯）；C 集中清仓窗（≤14 日净降 ≥50% 峰值——原复盘草案"峰值→10% 峰值 ≤45 日"口径经原案回测证明抓不到 W1 本尊〔实测 81 天〕，当场修正，元规则第二条的首个实践）；D 等额面额时间连通子分组（同精确 raw 面额 ≥5 收方＋组 ≥0.5% 供应；不切时间子组时 44 分仓被全史同面额稀释成 478 天大组失分——回测实证）。三种输入（Solana jsonl.gz／EVM v2 parquet 直读〔hex→HUGEINT 同 replay_duck 口径，run 区间互斥走 VIEW 轻路径免临时盘——1.03 亿行物化去重实测 29.7GB temp OOM〕／已物化 duckdb）。输出 wave_scan_report.json（wave-scan/v1），候选非空即 requires_adjudication；cohort_hint 提示外部驱动用户潮（B≈0 且成员 >500）。
+- **回测（装闸必附原案回测）**：PYTHIA 485 万边——候选波次覆盖旧终裁 W1 名单 339/341=99.4%、C 指纹 0.807 命中、exclusive 293 员（232 属 W1）；等额组 100 万枚 ×57 仓 score=2 置顶（命中 Q1 系 35+）；发射窗正确打标。QUQ 1.03 亿边（误报率对照）——4 个波次候选全对应真实批量行为（发射窗＋三波刷分潮，B 全 ≈0 可秒排）、纯噪声 0；12 个等额组**独立重发现**本案已知庄家体系（库存层批量灌仓 286 仓＋015C→2A5A→16F1 接力交棒/寄存原数轮转）。候选数超复盘预设"≤2"字面线但全部有真实结构对应＋可快速排除明细——按报警器宁多勿漏原则不调参压制。TROLL 原始数据缺失（soltx 待重拉）未测。
+- **camp_jump_audit.py 新建**（86 行）：阵营序列骤变点机械清单（单日 |Δ|≥3pp），兼容 points/dates+series/裸 list 三 schema；逐条归因到实体/地址群写 facts、无法归因进报告局限性。PYTHIA 序列实测：top 骤变正是本案两个被放过的强信号（07-30 历史大户 -12.06pp＝W1 清仓断崖、04-28 +7.21pp＝W1 建仓首两日）。
+- **契约收紧**：wave_scan_report.json 进 CONTRACT_FILES＋REQUIRED_FOR_READY（缺件 generate 即拒；verify 轻校验空壳拒收）；test_handoff_manifest 21→23 项（新增缺件/空壳两反例），检查计数改动态。旧案目录复用须补跑 wave_scan 后重 generate；回退路径＝旧单会话命令。
+- **文档与 prompt 六处**：SKILL.md"双硬闸"升"**三硬闸**"（波次扫描与静置仓反扫互补定位：反扫从已知实体摸藤、本闸对清零层全体无藤自摸；分段时跑批归 −1 裁决归 −2）；analyze-workflow A3.6 升双硬闸步骤（wave_scan＋骤变归因）；split-run §1.3 第 7 项/§2.1 产物表/§3.2 判断主序（wave_scan 候选裁决插实体冻结前、camp_jump_audit 挂阵营重放后）；casebook S-04 补"桶存在≠桶内被检验过"禁止推断＋08-01 复发记录＋已装闸状态；retrospective 元规则第二条"**装闸必附原案回测——抓不到原案本尊的闸不算装了**，回测基线随闸落盘（写进闸脚本头注），改闸必重跑"；evals 09 升机械闸回测题（通过标准＝wave_scan 报出候选并完成裁决，人工看榜发现不算）。
+- **adversarial-review.js 两处修复**（~/.claude/workflows/，随本版同步）：L71 完整性批评自查②由"重放全期逐址 max 仓位、列单址峰值 ≥5%"改为"读 wave_scan_report.json 逐候选对账、无文件本身即发现"，并写入禁用单址口径的教训；L50 翻案四问④补"桶存在≠桶内被检验过"粒度。
+- **防回退**：docs_lint 守卫 7（波次扫描硬闸关键词跨 SKILL/analyze-workflow/split-run/S-04 四层缺一即 FAIL）。SKILL.md 12.5KB 超 10KB 线状态延续（6.5.0 起既存），下次整编统一处理。
+- 顺带：miss-queue eth.csv +56 行（他会话 ETH 案 label 查询自动累积，随库提交）。案目录 retro_notes.md 第 3/7 条标注已入库消费；其余 5 条候选仍待用户复核。
 
 ## [6.5.0] - 2026-07-31 — codex 独有资产审计后回灌转正（@CX 交叉复核 + 用户三项拍板）
 

@@ -14,8 +14,8 @@ description: 对任意链上代币（EVM/Solana/Hyperliquid/Filecoin 及新链�
 - **G1 路径/工具/模型映射（通则）**：文中 `~/.claude/skills/token-chip-analysis` 一律读作 `${CODEX_HOME:-$HOME/.codex}/skills/token-chip-analysis`；`AskUserQuestion`＝确有关键决策点时向用户提一个简短问题；`WebSearch`/`WebFetch`＝当前可用的联网检索/浏览器/fetch；`Agent`/`Workflow`＝Codex 子代理（只交具体、独立、可并行的任务）；`Monitor`＝当前 wait/monitor 机制；Claude 的 `sonnet`/`opus` 是历史别名不得原样使用——机械任务用当前可用的均衡/低成本代理，判断任务继承当前模型，无模型覆盖能力时不臆造别名。`~/.claude/workflows/*.js` 不是 Codex 可执行入口，复用其中 prompt/schema 时读取内容改写为 Codex 子任务。
 - **G2 禁自审（c1.1.0 条款，通则）**：下发文档中一切"外部异构怀疑者/codex 外审/GPT-5.6 复核"步骤在本副本一律**不适用**——禁止执行 `codex exec`、另开 Codex CLI 或调用同一 Codex 模型充当"外部独立复核"；同体系多代理只能称"内部对抗性自检"，用于降低遗漏，不能宣称外部独立性。真正外审须由用户把冻结输入交给不同模型或人工审计方。
 - **G3 独有资产（永不随同步删除）**：`agents/openai.yaml`、`SYNC.md`、`CHANGELOG-codex.md`。原独有的方法学资产（economic-control-accounting / lp-fee-accounting / independent-audit-protocol 三分册＋audit_release_gate.py 及其测试、tiering 判级确权边界节）已于 6.5.0 经用户裁决回灌 main 转正，此后为两边共有、main 权威、同步单向下发——本副本不再单独维护这些文件。完整版交付前经济控制账与发布门禁照常执行（report-template 交付 checklist 4c/4d，main 正文）。
-- **G4 硬闸（6.5.0 起与 main"实体冻结前双硬闸"节同文，本副本载体）·控盘看最终经济控制，不看币停在哪个地址**：回答"庄控制多少"时主口径必须是实体的**可证经济控制量**（钱包自持＋在 LP/CEX 子账户/桥/质押锁仓/vault/托管等设施中可证明赎回权或受益权的等价权益），账本落盘 `economic_control_ledger.json` 并同源驱动 TL;DR/判级/实体表/图 2。三账分离：成员表答"哪些地址受控"、位置账答"币在哪"、经济控制账答"受益权归谁"；**公共设施不进永久成员表**，但可归属份额必须穿透回实体；设施总余额不得整池归庄，归属不清单列未决不得猜。细则唯一权威源＝`economic-control-accounting.md`。
-- **G5 硬闸（6.5.0 起与 main 同文，本副本载体）·历史静置仓反向扫描硬闸**：初步聚类后、实体名单冻结与峰值判级前，必须从历史峰值榜/已归零回落仓/长期静置仓/关键日激活仓反向追查平行库存与尾仓，并从核心网络向上游币源与边界外一圈回扫；结果落盘 `dormant_warehouse_audit.json`（逐候选记币源路径/静置区间/关键日动作/设施排除/证据等级/strict·expanded·excluded 裁决）。**没有该文件或仍有未裁决候选，就不允许冻结实体、不允许发布历史峰值、不允许画图 1/图 2。**严格下限与扩展上限分别按同一交易末快照重放，禁止个人峰值相加（tiering 判级确权边界节）。
+- **G4 硬闸（指针）·经济控制账**：内容＝正文「实体冻结前三硬闸」节第 1 闸（6.6.1 同步起该节随 main 下发进驻本文件，G4 同文载体职责终结，此处只留指针防漂移）；细则唯一权威源＝`economic-control-accounting.md`。
+- **G5 硬闸（指针）·历史静置仓反向扫描**：内容＝正文「实体冻结前三硬闸」节第 2 闸（载体职责同上终结）；第 3 闸波次扫描的 −1/−2 分工见该节末行与 split-run。
 - **G6 split-run −1 执行条款（c2.1.0；本副本＝−1 主轨执行者）**：用户说"对 <币> 跑 −1 / 机械段 / token-analyze-1"即触发，唯一权威源＝`references/split-run.md` §1（范围）＋§2（交接契约），逐条照做：①开工探针（split-run §1.1）不过不启动全量采集，先抢案级 `.stage1.lock`（§1.2），抢不到即退出报告在跑者；②范围＝A0–A2 全部＋A3 机械子层（§1.3），E0b 黑箱关卡维持点名制；③**停止线（§1.4，越线＝流程事故）**：聚类合并裁决/实体冻结/判级/casebook 过闸/大户报警深挖/正式 entity_identity_gate/状态评估定性/A4/A5 一律禁做——G4/G5 硬闸属实体冻结环节，在 −1 模式下**不执行、由 −2 承担**（G6 停止线优先于 G4/G5 的"必须做"，二者不矛盾：G4/G5 管"冻结前必须做完"，−1 根本不冻结）；初步定性只准写 `sealed/stage1_hypotheses.sealed.md`；④未档异常→停下写 blocker 进 anomalies.json，禁自创解法；⑤全程 `export CHIP_BLIND_SERIAL=1`，每步跑 `handoff_manifest.py receipt` 记收据；⑥收工跑 `handoff_manifest.py generate`（状态如实报 READY/PARTIAL/BLOCKED/BLOCKED_E0B），打印交接摘要并提示用户去 CC 开 Fable 会话跑 /token-analyze-2，**完成即停不多做一步**；⑦`audit_input_manifest` 等三账审计件仍是独立审计协议（G3）内部件，与 handoff 契约互不替代；⑧本条款与 G2 兼容：−1 模式产物之后由 CC 侧 −2 消费，A4 外部异构复核按 split-run §3.3 收紧条款在 CC 侧进行，本副本不自调任何复核。
 - **API key**：以 `~/.claude/api-keys.md` 为唯一登记源（复用其指向的 `~/.config/*` 凭据文件）；不复制登记文件，不把 key 写进 skill 目录/日志/报告/命令行参数；案目录临时配置权限 600。
 - **迭代规则**：codex 侧版本号一律 `c` 前缀（三维含义同 CC：主=架构级/次=复盘迭代/修=文档小修）；条目只写 `CHANGELOG-codex.md`；`CHANGELOG.md` 由 CC 单向下发一字不改；改完立刻 commit（run_all 全过才提交，别攒着挡同步）。
@@ -36,11 +36,18 @@ description: 对任意链上代币（EVM/Solana/Hyperliquid/Filecoin 及新链�
 |---|---|---|---|---|
 | A0 画像与路由 | 合约核定/多链硬关卡/分母口径/链路由 | A0＋当链 pipeline；多链读 casebook S 册 | accounting_gate：0 放行/2 硬停人工定制/1 修通道重跑禁当放行 | 计划、accounting_mode.json |
 | A1 并行采集 | 全量数据＋标签＋价格（后台先行） | A1＋当链 pipeline | — | data/、collect_manifest |
-| A2 对账关卡 | 四查：余额/供给闭合/**供给真值闸**/时间抽查 | A2＋当链 recon 分册 | 四查不过不进分析；supply_truth_gate：0 PASS/2 FAIL 余额改实时直查/1 修通道重跑 | supply_truth.json、anchor_plan.json |
+| A2 对账关卡 | 四查：余额/供给闭合/**供给真值闸**/时间抽查 | A2＋当链 recon 分册 | 四查不过不进分析；supply_truth_gate：0 PASS/2 FAIL 余额改实时直查/1 修通道重跑；time_spotcheck 同语义（默认锚点直查，全史重拉仅例外） | supply_truth.json、anchor_plan.json、time_spotcheck.json |
 | A3 分析 | 标注→归因→聚类→判级→大户双闸→演变重放 | A3＋**casebook C/E 册全过一遍**＋playbook 按需 | entity_identity_gate→build_html G8：flag 未解决报告物理编不出 | findings.md、identity_gate.json |
-| A4 对抗复核 | 扰动前置→揭盲→N 路怀疑者→三档裁决 | A4＋evidence-wording §10；casebook 三册作备择弹药 | 三档必须实际核查，"理论上可能"不算推翻 | 复核修正记录 |
-| A5 报告 | 三标准图＋流转图＋HTML＋质检 | A5＋report-template | build_html 退出码 0（缺图/G8 拒交付） | 报告.html、analysis-state.json |
+| A4 对抗复核 | claims 登记→扰动前置→揭盲→N 路怀疑者→三档裁决→**finalize 封口** | A4＋evidence-wording §10；casebook 三册作备择弹药 | 三档必须实际核查，"理论上可能"不算推翻；**a4_gate finalize 封口前禁进 A5（0 封口/2 未决拒封）** | a4_claims.json、a4_seal.json、复核修正记录 |
+| A5 报告 | 三标准图＋流转图＋HTML＋质检（图一律 charts/final/） | A5＋report-template | build_html 退出码 0（缺图/G8/**G9 封口哈希**拒交付；--a4-seal 必传；有 WARN 不写出文件） | 报告.html、analysis-state.json |
 | A6 复盘 | **仅用户明确要求时执行，不自动触发**：教训分流入库（分流决策树） | retrospective.md | run_all 全 PASS＋git commit | CHANGELOG-codex |
+
+## 实体冻结前三硬闸（A3 判级环节强制；前两闸 6.5.0 回灌转正，第三闸 6.6.0 W1 复盘）
+
+- **控盘看最终经济控制，不看币停在哪个地址**：回答"庄控制多少"时主口径必须是实体的**可证经济控制量**（钱包自持＋在 LP/CEX 子账户/桥/质押锁仓/vault/托管等设施中可证明赎回权或受益权的等价权益），账本落盘 `economic_control_ledger.json` 并同源驱动 TL;DR/判级/实体表/图 2。三账分离：成员表答"哪些地址受控"、位置账答"币在哪"、经济控制账答"受益权归谁"；**公共设施不进永久成员表**，但可归属份额必须穿透回实体；设施总余额不得整池归庄，归属不清单列未决不得猜。细则唯一权威源＝`economic-control-accounting.md`。
+- **历史静置仓反向扫描硬闸**：初步聚类后、实体名单冻结与峰值判级前，必须从历史峰值榜/已归零回落仓/长期静置仓/关键日激活仓反向追查平行库存与尾仓，并从核心网络向上游币源与边界外一圈回扫；结果落盘 `dormant_warehouse_audit.json`（逐候选记币源路径/静置区间/关键日动作/设施排除/证据等级/strict·expanded·excluded 裁决）。**没有该文件或仍有未裁决候选，就不允许冻结实体、不允许发布历史峰值、不允许画图 1/图 2。**严格下限与扩展上限分别按同一交易末快照重放，禁止个人峰值相加（tiering 判级确权边界节）。
+- **历史清零层波次扫描硬闸**：名册定稿前必跑 `scripts/report/wave_scan.py`（同窗建仓聚类×喂币专属度×集中清仓窗×等额面额四指纹，阈值全用**合并口径**、与单址线脱钩），产 `wave_scan_report.json`；候选波次与等额组**逐条裁决完毕前，历史大户兜底桶不准关闸**。与静置仓反扫互补：反扫从已知实体向外摸藤，本闸对清零层全体无藤自摸——单址全在雷达线下的批量协同只有全体视角机械扫描能命中（PYTHIA W1 波次 341 址合并峰 63.44% 两度漏检，2026-08-01 复盘）。
+- 分段执行（split-run）时：前两闸由 −2 判断段承担（−1 停止线覆盖）；波次扫描跑批归 −1（wave_scan_report.json 为 READY 必产件，缺件 generate 即拒）、候选裁决归 −2。
 
 ## 六入口（一行路由）
 

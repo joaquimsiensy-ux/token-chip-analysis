@@ -32,7 +32,7 @@
 - **A0 全部**：合约核定、多链硬关卡（AskUserQuestion 选链范围）、分母口径、链路由、accounting_gate——**exit 2 → −1 停工写 blocker 进 anomalies，禁套标准管线**；vesting 标的产 `unlock_evidence.json`（仅事实：来源/日期/数量/口径/冲突，零质量判断）。
 - **E0b 黑箱关卡**（维持点名制，用户命令附加要求时才做）：按 easy-workflow E0b 执行；结论落盘必须含同块分母＋confirmed/suspected/ambiguous 三档分列＋保守上限口径＋用户裁决与时间戳；超线中止 → manifest 状态 `BLOCKED_E0B`，−2 拒绝消费。
 - **A1 全部**：并行采集＋预采集衔接（断点续拉，禁从零重采）；`done_with_gaps` 必须补齐才准出 READY。
-- **A2 全部**：四查对账 fail-closed，产物照常落盘。
+- **A2 全部**：四查对账 fail-closed，产物照常落盘；时间抽查跑 `scripts/lib/time_spotcheck.py`（EVM 案 `time_spotcheck.json` 为 READY 必备件＋AUTO_GATES，6.7.0）——**默认锚点级直查即闭环，全史第二源重拉是例外动作**（触发条件与 pilot 报 ETA 纪律见 evm-recon §13；APU 案照旧模板全史重拉 103 分钟纯冗余教训）。
 - **A3 机械子层**（对照 analyze-workflow A3 主序编号）：
   1. 地址身份标注**批量层**（主序第 1 项前半）：标签库/getCode/Sourcify/外部证据批查。**输出只写观察事实**：`observed_type`＋`source`＋`source_timestamp`＋`conflict_flags`；仅多源无冲突的公共设施可标 `auto_excluded_candidate`，最终排除权在 −2。
   2. 金库与核心实体逐笔归因**跑批**（主序第 1 项中段的脚本执行侧）：产出流水，不定性。
@@ -40,6 +40,7 @@
   4. 聚类准备（主序第 1 项后半的算法侧）：cluster_prep ＋聚类算法**候选簇**——含拒绝边与孤立点**全量保留**，不只交"算法觉得相关"的簇；合并裁决权在 −2。
   5. `identity_preflight.json`：候选与大仓地址的原始事实层（标签/on-curve/getCode/托管疑点）。**正式 entity_identity_gate 属 −2**——该脚本依赖含实体表的 analysis-state.json，−1 无实体表跑它只会产出假 gate。
   6. 基础序列：`address_bucket_series`（标签桶序列）＋价格序列。**命名禁用"阵营/camp"**——真 camp_share_series 只能 −2 实体冻结后生成。
+  7. **历史清零层波次扫描**：`scripts/report/wave_scan.py`（原始边表直读，四指纹合并口径机械扫描）产 `wave_scan_report.json`——**READY 必产件，缺件 generate 即拒**；候选只报警不定性，裁决权在 −2；已知公共设施可经 `--exclude-file` 剔除（取 candidate_screening 的 auto_excluded_candidate）。
 - **初步观察（可选但鼓励）**：−1 执行者的初步定性/怀疑**只准写进 `sealed/stage1_hypotheses.sealed.md`**（密封纪律见 §2.3），主产物区零定性词。
 
 ### 1.4 停止线（禁做清单，越线＝流程事故）
@@ -71,6 +72,7 @@
 | `anomalies.json` | −1 | 每条 `id/severity/blocking/stage/status/evidence/resolution`——WARN/勉强 PASS/绕过/未档 blocker/缺口处置全在此，**血泪权威源，−2 必读件** |
 | `data_map.json` | −1 | 数据索引：路径/schema/行数/块与时间范围/来源/生成命令/哈希＋DuckDB 查询示例 |
 | `unlock_evidence.json` | −1 | vesting 事实（按需） |
+| `wave_scan_report.json` | −1 | 历史清零层四指纹波次扫描（wave_scan.py）候选波次＋等额组；READY 必产件，−2 逐条裁决完毕前历史大户兜底桶不准关闸 |
 | `sealed/stage1_hypotheses.sealed.md` | −1 | 初步定性密封件，见 §2.3 |
 | `entity_freeze.json` | −2 | 冻结事件物化：成员表哈希/时间/未决项/casebook 检验结果；变更走 revision 追加，不许静默覆盖 |
 | 既有产物 | −1 | accounting_mode、collect_manifest＋done.json、四查产物、cluster_prep、address_bucket_series、价格序列——**格式零改动** |
@@ -108,7 +110,7 @@
 
 ### 3.2 判断主序
 
-casebook C/E 册过闸 → 聚类合并裁决（只认专属性证据）→ 临时实体 → **无下限成员完整性扫描** → 反证检查 → **`handoff_manifest.py freeze` 落 entity_freeze.json**（成员表哈希/时间/未决项/casebook 结果；此后变更走 revision 追加）→ 正式 entity_identity_gate（逐 flag 填 resolution，G8 编译门照常）→ 判级 → needs_adjudication 逐项裁决（量大按 context-discipline 刀 1 现行外包制度 fan-out）→ 阵营演变重放（派机械子代理）→ 状态评估 → **冻结后读 sealed 观察作差异对照**（分歧点进 A4 靶单）→ A4 对抗复核 → A5（easy 两件套 / full 完整报告；交付时一并申报 sealed 自查）。A6 复盘不自动执行，仅用户要求时按 retrospective.md 走。
+casebook C/E 册过闸 → 聚类合并裁决（只认专属性证据）→ 临时实体 → **无下限成员完整性扫描** → **wave_scan 候选逐条裁决**（wave_scan_report.json 的候选波次与等额组；裁决完毕前历史大户兜底桶不准关闸，被裁定为协同实体的进名册）→ 反证检查 → **`handoff_manifest.py freeze` 落 entity_freeze.json**（成员表哈希/时间/未决项/casebook 结果；此后变更走 revision 追加）→ 正式 entity_identity_gate（逐 flag 填 resolution，G8 编译门照常）→ 判级 → needs_adjudication 逐项裁决（量大按 context-discipline 刀 1 现行外包制度 fan-out）→ 阵营演变重放（派机械子代理；序列产出后跑 `camp_jump_audit.py`，逐骤变点归因写 facts，无法归因的进报告局限性）→ 状态评估 → **冻结后读 sealed 观察作差异对照**（分歧点进 A4 靶单）→ A4 对抗复核（开工 `a4_gate.py register` 登记 claims、收尾 `finalize` 封口产 a4_seal.json——**封口前禁进 A5**，6.7.0 顺序硬闸）→ A5（easy 两件套 / full 完整报告；报告图一律 charts/final/、build_html `--a4-seal` 必传走 G9；交付时一并申报 sealed 自查）。A6 复盘不自动执行，仅用户要求时按 retrospective.md 走。
 
 ### 3.3 A4 外部异构路收紧条款（分段模式专属，兼容 codex 侧 c1.1.0 禁自审令）
 
