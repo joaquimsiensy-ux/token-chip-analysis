@@ -8,7 +8,7 @@
 1. **重建余额 vs GMGN top10 精确对表**：全量转账逐笔累加重建每地址余额，与 GMGN top10 逐个对到个位数。曾在扫块进度 97% 时 4/10 MISMATCH、补扫 remaining=0 后 10/10 全 OK——证明该 gate 能兜住数据缺口；预跑一次有提前暴露口径问题的价值，但通过判定只认补扫完成之后。（OPN，07）
 2. **全网余额和=0**：所有地址重建余额求和应为零（mint/burn 计入），不为零即漏了转账段。（SIREN，07）
 3. **总量恒等式 wei 级闭合**：跨链代币各链余量之和 ≈ 总供应，精确到 wei。（OPN，07）
-4. **时间戳锚点插值抽查**：锚点表（每隔固定块距，或每 100 万块一个）bisect 线性插值出的日期，抽几笔与浏览器页面核对。（OPN/SIREN，07）
+4. **时间抽查（分层计划制）**：`anchor_plan.py` 出分层抽样计划（矩阵点＋四类强制覆盖点），`scripts/lib/time_spotcheck.py` 对独立第二源逐锚点核对（balance 型 archive balanceOf 直查＋tx 型收据五元组，产 time_spotcheck.json）；第二源分层选型与全史重拉例外条款见 §13。（旧"固定块距插值抽几笔对浏览器"形态已由本制取代；OPN/SIREN 07 → 2026-08-01 改版）
 5. **重放前置完整性检查（快照缺块防护，重放开跑前做）**：核对全部采集 run 的 done.json——next_block 全部达到目标块、mtime 晚于最后一次采集启动，才允许重放（实锤：重放跑在尾部 run 拉完前 13 分钟，快照缺尾部 ~980 块/682 条）。**机制警示：供给闭合恒等式（上面第 2/3 查）对"缺整行"免疫**——整行缺失时借贷两边同时缺、sum 恒等于 TOTAL 照样通过，此类洞只有 RPC 抽查负余额能暴露；增量重放出现"期初为 0 的地址转出变负"=上游快照有洞的指纹，见到即停下补数据。（QUQ 完整版分析，07-22）
 
 **对账比对的 DuckDB 两坑（2026-07-25 实测，两个都会静默产生错误结论）**：
@@ -109,25 +109,35 @@ KOGE 一级 inflow 预筛（≥0.1% 供应）后**仍剩 157,459 个候选**，�
 
 ---
 
-## 13. 时间抽查的第二源选型：改用 SQD Portal，不要用区块浏览器 API（GMX(Arbitrum) 2026-07-26 定）
+## 13. 时间抽查的第二源：分层选型——默认锚点直查，全史重拉仅例外（2026-08-01 改版；原 GMX 版 2026-07-26）
 
-**背景**：对账关卡四查的"时间抽查"需要一个**独立于主采集通道**的第二源来重算锚点余额。此前默认走 Etherscan 系 API 的 `tokentx`，GMX 案实测该路对**大地址**根本不可用。
+**背景**：对账关卡四查的"时间抽查"需要一个**独立于主采集通道**的第二源核对锚点。两代教训：①GMX 案实测 Etherscan `tokentx` 对大地址静默给错误答案（下述禁令仍有效）；②APU(ETH) 案照抄本节旧版的全史区间示范命令，SQD 全史重拉 94 万行——ETH 链实测仅 169 行/s（Arbitrum 的 1/15），103 分钟仍未拉全（末段 503 频发、覆盖不完整），而锚点直查早已 15/15 PASS 闭环——**全史重拉是纯冗余，大币按此速率要十几小时完全不可行**。故改分层制：
 
-**Etherscan V2 免费层的两个实测缺陷（都会静默给出错误答案）**：
+**层 1（默认，有 archive 通道的链：ETH/Base/Arbitrum/Polygon 等）——锚点直查，跑固化脚本**：
+```bash
+python3 scripts/lib/time_spotcheck.py --plan anchor_plan.json --rpc <独立archive节点> \
+    --token 0x标的 --out time_spotcheck.json [--final-block <数据截止块>]
+```
+- balance 型锚点走 archive `eth_call balanceOf`（历史块状态直查），tx 型锚点（最大单笔/交界块）走 `eth_getTransactionReceipt` 核五元组——**两型都查**，只查 balance 型等于四类强制覆盖点漏验两类。O(锚点数) 秒级完成，APU 案 Alchemy archive 15/15 精确一致实证。
+- 独立性口径（措辞纪律）：状态直查对"余额结果"的验证比换一家事件索引商更直接；但**不能替代事件集合完整性验证**——等额进出抵消、零余额中转层、tx/logIndex/时间戳元数据错误它天然验不出（这些去层 3）。
+- 产物 `time_spotcheck.json`（verdict/exit_code，0 PASS/2 FAIL/1 检测自身失败禁当 PASS）；split-run 案是 READY 必备件＋AUTO_GATES（handoff_manifest 重读防手报）。
+
+**层 2（BSC 等无免费 archive balanceOf 通道的链）——SQD 只拉锚点窄窗，禁止默认全史**：SQD Portal 仍是 BSC 唯一独立对照源（§11 格局未变），但只拉**锚点所在代表日/窄块窗**（BANANAS31 先例：4 代表日 67,731 行零差集）。窗口覆盖规则：所有锚点日＋早/中/晚三段＋峰值日＋数据源交界＋门槛边缘各至少一窗；逐窗断点续传；逐事件比键 `(block,tx,log_index)` 与值 `(from,to,value)`。主通道本身是 SQD 时它不算独立第二源（换 BigQuery 等，见 §11）。
+
+**层 3（全史双源重拉＝例外动作，做前必报）**——仅限三种情形：①A2 其他查项挂了/主通道数据被怀疑有洞；②翻案排查需独立重建**事件明细**；③结论依赖精确事件拓扑、逐笔归因、零余额中转层（层 1 天然验不出的维度）且出现异常信号。做前**先跑 1–2 分钟 pilot 实测当前链当前时段速率**再外推 ETA（禁用历史速率常数调度——Arbitrum 2,600 行/s vs ETH 169 行/s 差 15 倍，仅作量级示例留档），预计超 30 分钟摆给用户选（30 分钟是交互阈值，不是"允许降正确性"的豁免阈值）。命令模板：
+```bash
+python3 scripts/evm/fetch_sqd_evm.py <链> <from_block>   --token-addr 0x标的 --out data/sqd_recheck.csv --to-block <to_block> --sleep 0.5
+```
+- GMX 实测（例外场景样例）：Arbitrum `[320000000, 420000000]` 区间 1,644,700 行 / 622 秒，键差集 0/0、字段不一致 0、金额总和精确相同。
+- 比对口径（DuckDB）：按 `(tx, log_index)` 双向 `EXCEPT` 取键差集，再对共有键逐字段比 `from/to/value`，最后比金额总和。
+- ⚠ **读 SQD 的 CSV 必须显式指定列类型**（见下条），否则 wei 值被推断成 DOUBLE，会造出几十万行假差异。
+
+**Etherscan V2 免费层的两个实测缺陷（禁令不变，都会静默给出错误答案）**：
 1. **`tokentx` 不返回 `logIndex`** → 去重键退化为 `(hash,from,to,value)`，同一 tx 内多笔相同金额的转账会被误并（少算）。
 2. **对超万笔地址的滚动分页会中途返回不满页而提前终止** → 实测某地址 `endblock=414,173,883`，滚动 119 轮后在第 996 条短页处停止，**最大块只到 329,620,841＝块覆盖率 79.59%**，且无任何错误提示。少掉的多为后段流出记录，**结果是余额虚高**（该地址实测虚高 17.9 万枚）。
    - 另一个必须绕开的硬限制：不滚动 `startblock` 时 `PageNo × Offset ≤ 10000`，超过报 `Result window is too large`；滚动可绕过窗口上限但绕不过上面这个提前终止。
 
 ⇒ **纪律：Etherscan 系 API 只适合查"某地址最早一笔入账"（gas 溯源，只需首条记录，安全）与小地址核对；禁止用它单方面推翻本地重建的大地址余额。**
-
-**正解：SQD Portal 作对账第三源**（免 key、独立于 HyperSync）
-```bash
-python3 scripts/evm/fetch_sqd_evm.py arbitrum <from_block>   --token-addr 0x标的 --out data/sqd_recheck.csv --to-block <to_block> --sleep 0.5
-```
-- GMX 实测：`[320000000, 420000000]` 区间 **1,644,700 行 / 622 秒**（约 2,600 行/秒），全程无 429。
-- 比对口径（DuckDB）：按 `(tx, log_index)` 做双向 `EXCEPT` 取键差集，再对共有键逐字段比 `from/to/value`，最后比金额总和。
-  GMX 实测结果：前段 832,944 行 + 后段 794,029 行，**键差集 0/0、字段不一致 0、金额总和精确相同**。此前 Etherscan 复核失败的那个锚点，由 SQD 独立算出的区间净变动与本地重建**精确到 9 位小数一致**。
-- ⚠ **读 SQD 的 CSV 必须显式指定列类型**（见下条），否则 wei 值被推断成 DOUBLE，会造出几十万行假差异。
 
 **★DuckDB 读 wei 列的类型陷阱（GMX 实测，极具误导性）**
 ```python
@@ -142,4 +152,4 @@ con.execute(f"... from read_csv('sqd.csv', header=true, columns={COLS})")
 
 **anchor_plan 下游校验的两个注意点**
 - `anchor_plan.json` 的键名是 **`matrix_points` / `forced_points`**（不是 `matrix` / `forced`）；写错会静默取到空列表。
-- 任何抽查校验脚本必须在"抽查点数为 0"时 `assert` 硬失败——否则 0 个点循环零次、`bad==0`，直接打印 PASS（GMX 案实际发生过一次假 PASS）。
+- 任何抽查校验脚本必须在"抽查点数为 0"时 `assert` 硬失败——否则 0 个点循环零次、`bad==0`，直接打印 PASS（GMX 案实际发生过一次假 PASS）。**time_spotcheck.py 已内置本 assert 与两型分类硬校验**（两型都不匹配的锚点、缺 --final-block 的边缘点均 fail-closed）；自写临时校验脚本时本条仍适用。

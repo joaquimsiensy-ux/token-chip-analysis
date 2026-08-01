@@ -40,6 +40,7 @@ CONTRACT_FILES = [
     "candidate_universe.json", "candidate_screening.json", "identity_preflight.json",
     "anomalies.json", "data_map.json", "unlock_evidence.json", RECEIPTS_NAME,
     "accounting_mode.json", "supply_truth.json", "wave_scan_report.json",
+    "time_spotcheck.json",
 ]
 REQUIRED_FOR_READY = ["candidate_universe.json", "candidate_screening.json",
                       "identity_preflight.json", "anomalies.json", "data_map.json",
@@ -48,8 +49,17 @@ REQUIRED_FOR_READY = ["candidate_universe.json", "candidate_screening.json",
                       # 历史清零层波次扫描（W1 漏检复盘 2026-08-01）——未跑 wave_scan 不得 READY；
                       # 旧案目录复用须补跑 wave_scan.py 后重新 generate，回退路径=旧单会话命令
                       "wave_scan_report.json"]
+# EVM 家族链另加时间抽查产物为 READY 必备（6.7.0，APU SQD 全史重拉冗余复盘）——
+# time_spotcheck.py 固化后，锚点级第二源直查是 A2 第 4 查的机器凭证，缺件＝时间抽查没跑
+# 或又走了自由发挥老路。Solana（anchor_sampler 通道）/hyperliquid/filecoin 等非 EVM 链
+# 时间抽查形态不同，不进本硬闸（白名单法：链名命中才强制，未知新链不误伤）。
+EVM_CHAINS = {"eth", "ethereum", "bsc", "base", "arbitrum", "polygon", "optimism",
+              "robinhood", "opbnb", "avalanche", "fantom", "cronos", "linea",
+              "scroll", "blast", "zksync"}
+REQUIRED_FOR_READY_EVM = ["time_spotcheck.json"]
 # 自动 gate 适配：从产物 JSON 读 verdict/exit_code（防手报）；verify 时重读比对
-AUTO_GATES = {"accounting_gate": "accounting_mode.json", "supply_truth_gate": "supply_truth.json"}
+AUTO_GATES = {"accounting_gate": "accounting_mode.json", "supply_truth_gate": "supply_truth.json",
+              "time_spotcheck": "time_spotcheck.json"}
 EXCLUDE_SUFFIXES = (".log", ".duckdb", ".duckdb.wal", ".lock", ".tmp", ".bak")
 EXCLUDE_NAMES = {"config.json", MANIFEST_NAME}  # manifest 不含自身；config 可能含运行时 key 路径
 
@@ -165,9 +175,14 @@ def cmd_generate(a):
                 sealed.append({"path": f"sealed/{name}", "bytes": size, "hash_algo": algo, "sha256": digest})
 
     if a.status == "READY":
-        missing_required = [n for n in REQUIRED_FOR_READY if n not in seen]
+        required = list(REQUIRED_FOR_READY)
+        chains = {c.strip().lower() for c in (a.chain or "").split(",") if c.strip()}
+        if chains & EVM_CHAINS:
+            required += REQUIRED_FOR_READY_EVM
+        missing_required = [n for n in required if n not in seen]
         if missing_required:
-            print(f"[generate] status=READY 但缺必备契约件: {missing_required}（改报 PARTIAL 或补齐）", file=sys.stderr)
+            print(f"[generate] status=READY 但缺必备契约件: {missing_required}（改报 PARTIAL 或补齐；"
+                  "time_spotcheck.json 由 scripts/lib/time_spotcheck.py 产出）", file=sys.stderr)
             return 2
 
     gates = {}

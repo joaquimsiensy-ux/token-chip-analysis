@@ -23,10 +23,10 @@ description: 对任意链上代币做机构级庄家链上行为分析与既有�
 |---|---|---|---|---|
 | A0 画像与路由 | 合约核定/多链硬关卡/分母口径/链路由 | A0＋当链 pipeline；多链读 casebook S 册 | accounting_gate：0 放行/2 硬停人工定制/1 修通道重跑禁当放行 | 计划、accounting_mode.json |
 | A1 并行采集 | 全量数据＋标签＋价格（后台先行） | A1＋当链 pipeline | — | data/、collect_manifest |
-| A2 对账关卡 | 四查：余额/供给闭合/**供给真值闸**/时间抽查 | A2＋当链 recon 分册 | 四查不过不进分析；supply_truth_gate：0 PASS/2 FAIL 余额改实时直查/1 修通道重跑 | supply_truth.json、anchor_plan.json |
+| A2 对账关卡 | 四查：余额/供给闭合/**供给真值闸**/时间抽查 | A2＋当链 recon 分册 | 四查不过不进分析；supply_truth_gate：0 PASS/2 FAIL 余额改实时直查/1 修通道重跑；time_spotcheck 同语义（默认锚点直查，全史重拉仅例外） | supply_truth.json、anchor_plan.json、time_spotcheck.json |
 | A3 分析 | 标注→归因→聚类→判级→大户双闸→演变重放 | A3＋**casebook C/E 册全过一遍**＋playbook 按需 | entity_identity_gate→build_html G8：flag 未解决报告物理编不出 | findings.md、identity_gate.json |
-| A4 对抗复核 | 扰动前置→揭盲→N 路怀疑者→三档裁决 | A4＋evidence-wording §10；casebook 三册作备择弹药 | 三档必须实际核查，"理论上可能"不算推翻 | 复核修正记录 |
-| A5 报告 | 三标准图＋流转图＋HTML＋质检 | A5＋report-template | build_html 退出码 0（缺图/G8 拒交付） | 报告.html、analysis-state.json |
+| A4 对抗复核 | claims 登记→扰动前置→揭盲→N 路怀疑者→三档裁决→**finalize 封口** | A4＋evidence-wording §10；casebook 三册作备择弹药 | 三档必须实际核查，"理论上可能"不算推翻；**a4_gate finalize 封口前禁进 A5（0 封口/2 未决拒封）** | a4_claims.json、a4_seal.json、复核修正记录 |
+| A5 报告 | 三标准图＋流转图＋HTML＋质检（图一律 charts/final/） | A5＋report-template | build_html 退出码 0（缺图/G8/**G9 封口哈希**拒交付；--a4-seal 必传；有 WARN 不写出文件） | 报告.html、analysis-state.json |
 | A6 复盘 | **仅用户明确要求时执行，不自动触发**：教训分流入库（分流决策树） | retrospective.md | run_all 全 PASS＋git commit | CHANGELOG |
 
 ## 实体冻结前三硬闸（A3 判级环节强制；前两闸 6.5.0 回灌转正，第三闸 6.6.0 W1 复盘）

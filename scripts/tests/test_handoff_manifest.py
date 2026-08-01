@@ -69,6 +69,9 @@ def make_case(d):
     write_json(d, "wave_scan_report.json", {"schema": "wave-scan/v1", "cleared_layer_count": 0,
                                             "waves": [], "equal_amount_groups": [],
                                             "requires_adjudication": False})
+    write_json(d, "time_spotcheck.json", {"gate": "time_spotcheck", "schema": "time-spotcheck/v1",
+                                          "points": 2, "exact_match": 2, "mismatch": 0,
+                                          "rpc_err": 0, "verdict": "PASS", "exit_code": 0})
     os.makedirs(os.path.join(d, "sealed"), exist_ok=True)
     with open(os.path.join(d, "sealed", "stage1_hypotheses.sealed.md"), "w") as f:
         f.write("> −2 实体冻结前禁读\n假说：无\n")
@@ -89,9 +92,21 @@ def main():
         m = json.load(open(os.path.join(d, "handoff_manifest.json")))
         check("manifest 收录 data_map 索引文件", any(a["path"] == "data/transfers.csv" for a in m["artifacts"]))
         check("manifest sealed 只记哈希", m["sealed"] and "sha256" in m["sealed"][0])
-        check("manifest 自动 gate 两个", set(m["gates"]) == {"accounting_gate", "supply_truth_gate"})
+        check("manifest 自动 gate 三个", set(m["gates"]) == {"accounting_gate", "supply_truth_gate",
+                                                            "time_spotcheck"})
         p = run(["verify", "--case-dir", d])
         check("verify READY exit 0", p.returncode == 0)
+
+        # 14. EVM 链缺 time_spotcheck.json 拒 READY；solana 链豁免（6.7.0 时间抽查收编）
+        d14 = os.path.join(root, "case_no_spotcheck")
+        os.makedirs(d14)
+        make_case(d14)
+        os.unlink(os.path.join(d14, "time_spotcheck.json"))
+        p = run(["generate", "--case-dir", d14, "--status", "READY"] + GEN)
+        check("EVM 链缺 time_spotcheck 拒 READY exit 2", p.returncode == 2)
+        p = run(["generate", "--case-dir", d14, "--status", "READY", "--mode", "easy",
+                 "--producer-model", "test-model", "--chain", "solana", "--contract", "0x0"])
+        check("solana 链无 time_spotcheck 豁免 exit 0", p.returncode == 0)
 
         # 9. receipt（在正例目录顺手验）
         p = run(["receipt", "--case-dir", d, "--step", "A1", "--cmd", "collect", "--exit", "0",

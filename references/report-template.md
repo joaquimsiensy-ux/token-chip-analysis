@@ -193,9 +193,9 @@ python3 scripts/report/build_html.py --md 报告.md --out 报告.html
 - **写作纪律**：报告 md 中实体的持仓枚数/占比/峰值/成员数一律写宏——`{{e1.amount_share}}` → "2.78亿枚【总量27.84%】"（自动满足带【总量%】纪律）、`{{e1.share}}`、`{{e1.peak_share}}`、`{{e1.naddr}}`、`{{m:指标id}}`；附录 B 整块写 `{{appendix_b}}` 自动生成（**手打地址在架构上被消灭**）。禁止手打这些数字；价格/涨跌幅等非实体结论数字暂可手写（G5 会列清单供人工过目）。
 - **宏口径边界：`{{e.peak_share}}`=日末序列峰值，日内事件占比禁用宏**：peak_raw 来自日末快照序列，闪电过手型实体（单笔吃下→当日部分回吐）的**日内峰值高于日末峰值**（EGL1 案发射窗协同实体单笔买入 47.11% vs 日末峰值宏 40.21%，TL;DR 与正文两处误用宏被外部异构复核抓出）。规则：单笔买入/日内持有语境的占比一律手写并标注"单笔/日内"口径；报告含此型实体时，日末峰值与日内峰值两口径并列写清（另见流转图 footnote 块级峰值声明纪律）（EGL1 redo2 @CX 复核，07-28）
 - **序列类指标引用必须钉时点、程序化取尾**：正文引用 camp_share_series 等时间序列的"当前值"，必须从序列**末点**程序化取数并写明"截至 <数据截止日>"——凭目视/记忆取数会拿到中段值（EGL1 案散户残差手写 10.75%，实为序列 2026-01 中段值，末点真值 10.37%，@CX 复核抓出）。互斥阵营残差桶另做一次"100−Σ各阵营末点"的算术复核（EGL1 redo2 @CX 复核，07-28）
-- **编译**：`python3 scripts/report/build_html.py --md 报告.md --out 报告.html --facts facts.json --state analysis-state.json`——语义 gate：G1 实体成员集合与 state 逐组相等（checklist 4b 的自动化）/G2 供给上界/G3 current≤peak/G4 宏名打错必炸（无静默漏渲染）/G5 手写百分比差集清单。gate 未过=WARN=不许交付。
+- **编译**：`python3 scripts/report/build_html.py --md 报告.md --out 报告.html --facts facts.json --state analysis-state.json --a4-seal a4_seal.json`——语义 gate：G1 实体成员集合与 state 逐组相等（checklist 4b 的自动化）/G2 供给上界/G3 current≤peak/G4 宏名打错必炸（无静默漏渲染）/G5 手写百分比差集清单/**G9 A4 封口闸（6.7.0）：seal 必须 PASS＋封口文件哈希与当前一致（封口后改结论不重封＝编不出）＋报告图全在 charts/final/**。gate 未过=WARN=不写出文件不许交付（6.7.0 起 gate 前置，不再"先落盘再报错"）；历史报告重编译无 seal 用 `--skip-a4-gate-reason "<理由>"`，理由写入 HTML 注释留痕。
 - 纯校验（不出 HTML）：`python3 scripts/report/facts_gate.py --facts facts.json --state analysis-state.json --md 报告.md`。
-- **图层同源（3.19，`scripts/report/figures_from_facts.py`）**：编译化延伸到图——①图 1 直接 `figures_from_facts.py fig1 --state analysis-state.json --out charts/fig1.png [--price-csv 价格.csv]` 从 state 的 camp_share_series 直出，禁止再现场手写装配脚本；②每张流转图写 spec JSON（nodes/edges 结构同 lifecycle_flow docstring），**卡片与边标签里的持仓/份额数字一律写 facts 宏**（`{{e_x.amount_share}}` 等），`figures_from_facts.py flow --facts facts.json --spec flow_x.json --out ...` 渲染出图（残留宏必炸，同 G4）；③图 2 装配数据落 whale_series.json 后必跑 `figures_from_facts.py check --facts facts.json --series whale_series.json` 终值对账（各实体线末点 vs facts 当前持仓，超 0.05pp 拒绝）——checklist 4b"图表脚本喂的名单与 facts 同源仍须人工确认"中数值部分就此自动化。
+- **图层同源（3.19，`scripts/report/figures_from_facts.py`）**：编译化延伸到图——①图 1 直接 `figures_from_facts.py fig1 --state analysis-state.json --out charts/final/fig1.png [--price-csv 价格.csv]` 从 state 的 camp_share_series 直出（6.7.0 起报告图一律输出 charts/final/，G9 只认此目录），禁止再现场手写装配脚本；②每张流转图写 spec JSON（nodes/edges 结构同 lifecycle_flow docstring），**卡片与边标签里的持仓/份额数字一律写 facts 宏**（`{{e_x.amount_share}}` 等），`figures_from_facts.py flow --facts facts.json --spec flow_x.json --out ...` 渲染出图（残留宏必炸，同 G4）；③图 2 装配数据落 whale_series.json 后必跑 `figures_from_facts.py check --facts facts.json --series whale_series.json` 终值对账（各实体线末点 vs facts 当前持仓，超 0.05pp 拒绝）——checklist 4b"图表脚本喂的名单与 facts 同源仍须人工确认"中数值部分就此自动化。
 - 渐进接入：**新报告必用**；旧报告重编译不强制回填。easy 模式两件套同样适用（快照表数字走宏；easy 图 1 同样走 fig1 直出）。
 
 ## JSON 附录与买入后监控包（v3.3 起独立成册）
@@ -269,7 +269,8 @@ schema 全部细节（report-extract 四键与 `id="report-extract"` 硬约定�
 9. 特有发现有正文章节承载吗；vesting 标的的问 3 含"未来 6–12 个月解锁日程与量级"小节吗
 10. **cashtag 扫描 [NOTE] 处置**：build_html 对正文出现的其他代币名输出信息性 [NOTE]（不拒交付）——仅用于自查是否复用了历史案结论（铁律 1；提及代币名本身不违规，v6.4.2 用户裁定）；确认未复用即可交付。
 11. 附录四件套齐了吗（验证步骤/标签地址对照/修正记录/来源）；默认不含 JSON（买入后按需）；**analysis-state.json 已落盘**且地址与附录 B 一致（v3.3）
-12. `build_html.py` 退出码 0（有 [WARN] 缺图不许交付）；阵营图 `id="chart-camps"` 自动嵌入目检存在
+11b. **A4 封口闸（G9，6.7.0）**：`a4_seal.json` 已由 `a4_gate.py finalize` 产出吗（裁决集合与 claims 注册表全等＋修订摘要齐）；全部报告图位于 `charts/final/` 吗；封口后有没有再改 findings/analysis-state（改了必须重新 finalize 再编译）——build_html `--a4-seal` 自动校验，历史重编译用 `--skip-a4-gate-reason` 带理由跳过（理由入 HTML 注释留痕）
+12. `build_html.py` 退出码 0（6.7.0 起有 [WARN] 直接不写出文件）；阵营图 `id="chart-camps"` 自动嵌入目检存在
 13. **【买入后监控包交付时追加】**：观察哨与两档监控建议齐且逐条有原因、与 JSON monitoring_advice 的 mode/alert_threshold_pct 一一对应；JSON 顶层四键齐、addresses 与附录 B 一致且完整地址、sentinel 纪律复查（周期性会动的地址必须 false）、round_target/watch_return 该填的填了；重跑 build_html 零 WARN、`id="report-extract"` 目检存在
 14. 浏览器打开 HTML 目检：图片全显示、表格无错位、蓝红框正常、（带监控包时）JSON 折叠块可展开
 15. ~~交付后固定动作（3.18.0）~~ **已移入复盘（v6.4.1）**：惯犯库回灌（`accumulate_offenders.py --apply` 及跨案身份冲突检测裁决）不再随交付执行——用户下令复盘时按 retrospective.md 步骤 3 做，结论未经用户复核不入库。交付时本条无动作。
