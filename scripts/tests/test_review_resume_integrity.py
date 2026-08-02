@@ -12,6 +12,7 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 EVM = HERE.parent / "evm"
 SOL = HERE.parent / "solana"
+FETCH_V2 = EVM / "fetch_hypersync_v2.py"
 sys.path.insert(0, str(EVM))
 sys.path.insert(0, str(SOL))
 
@@ -79,6 +80,21 @@ def make_done(out, mutate=None):
     return run_dir, done
 
 
+def make_legacy_done(out, mutate=None):
+    run_dir = make_parquet(out, [10, 19], "run_10")
+    done = {"schema": "hypersync-v2-done/v2", "query_schema": QUERY_SCHEMA,
+            "capture_from": 10, "from_block": 10, "to_block": 20, "next_block": 20,
+            "token": A_EVM, "url": "https://bsc.hypersync.xyz",
+            "client_version": "legacy-fixture"}
+    done_path = run_dir / "done.json"
+    done_path.write_text(json.dumps(done))
+    if mutate == "missing":
+        (run_dir / "logs.parquet").unlink()
+    elif mutate == "truncated":
+        (run_dir / "logs.parquet").write_bytes(b"truncated")
+    return run_dir, done
+
+
 def channel_receipt(tmp, tag, data_path, lo, hi, rows):
     p = Path(tmp) / f"{tag}.receipt.json"
     data_path = Path(data_path)
@@ -139,6 +155,38 @@ def test_h03(tmp):
     assert p.returncode != 0 and "FATAL" in p.stdout + p.stderr
 
 
+def test_r2_refresh_manifests(tmp):
+    good_out = Path(tmp) / "legacy_good"
+    _, old = make_legacy_done(good_out)
+    try:
+        find_resume_block(str(good_out), 10, 30, A_EVM, old["url"])
+    except SystemExit:
+        pass
+    else:
+        raise AssertionError("R2 旧 manifest 未迁移前必须 BLOCK")
+    p = run([FETCH_V2, "--refresh-manifests", "--outdir", good_out], tmp)
+    assert p.returncode == 0, p.stdout + p.stderr
+    upgraded = json.loads((good_out / "run_10" / "done.json").read_text())
+    assert upgraded["schema"] == "hypersync-v2-done/v3"
+    assert set(upgraded["files"]) == {"logs.parquet", "blocks.parquet"}
+    assert find_resume_block(str(good_out), 10, 30, A_EVM, old["url"]) == 20
+
+    for mutation in ("missing", "truncated"):
+        bad_out = Path(tmp) / f"legacy_{mutation}"
+        _, old = make_legacy_done(bad_out, mutation)
+        before = (bad_out / "run_10" / "done.json").read_bytes()
+        p = run([FETCH_V2, "--refresh-manifests", "--outdir", bad_out], tmp)
+        after = (bad_out / "run_10" / "done.json").read_bytes()
+        assert p.returncode != 0 and before == after, p.stdout + p.stderr
+        assert "run_10" in p.stdout + p.stderr
+        try:
+            find_resume_block(str(bad_out), 10, 30, A_EVM, old["url"])
+        except SystemExit:
+            pass
+        else:
+            raise AssertionError(f"R2 {mutation} 迁移失败后续拉仍必须 BLOCK")
+
+
 def test_h04(tmp):
     src = Path(tmp) / "standard8.csv"
     with src.open("w", newline="") as f:
@@ -196,11 +244,13 @@ def main():
     with tempfile.TemporaryDirectory() as tmp:
         test_h03(tmp)
     with tempfile.TemporaryDirectory() as tmp:
+        test_r2_refresh_manifests(tmp)
+    with tempfile.TemporaryDirectory() as tmp:
         test_h04(tmp)
     test_h05()
     with tempfile.TemporaryDirectory() as tmp:
         test_h06(tmp)
-    print("PASS: H-02 channel bounds, H-03 resume identity, H-04 CSV8, H-05 case cache, H-06 reconcile/denominator")
+    print("PASS: H-02/H-03 + R2 legacy manifest refresh + H-04/H-05/H-06")
     return 0
 
 

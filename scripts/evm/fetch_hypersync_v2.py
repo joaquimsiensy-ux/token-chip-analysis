@@ -12,6 +12,7 @@
   - --url 注意是裸域名（官方客户端自己拼路径，不要带 /query）
   - --concurrency 官方默认 10；高密度合约建议 20 起调；免费层别超 4（限流）
   - 断点续传：--outdir 已有 run_*/ 时自动从最大 next_block 续拉，新数据落新 run_<from>/ 子目录
+  - 存量 v2 done 迁移：python3 fetch_hypersync_v2.py --refresh-manifests --outdir data/v2
 输出: <outdir>/run_<from>/logs.parquet + blocks.parquet
   下游用 transfers_lib.py 的 read_transfers() 合成标准 8 列表（自动 join 时间戳）。
 （来源：v3.11.2 采集加速工程，2026-07-21）"""
@@ -24,6 +25,7 @@ from hypersync import (BlockField, ClientConfig, FieldSelection, HexOutput,
 
 TRANSFER = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
 MANIFEST_SCHEMA = "hypersync-v2-done/v3"
+LEGACY_MANIFEST_SCHEMAS = {"hypersync-v2-done/v2"}
 QUERY_SCHEMA = "erc20-transfer-fields/v2"
 
 
@@ -145,6 +147,67 @@ def find_resume_block(outdir, default_from, to_block, token_addr, url):
     return best
 
 
+def _manifest_refresh_candidate(done_path):
+    """重验单个旧 run，返回待原子写入的 v3 payload。"""
+    path = Path(done_path)
+    try:
+        d = json.loads(path.read_text(encoding="utf-8"))
+    except Exception as exc:
+        raise ValueError(f"done manifest 不可读: {exc}") from exc
+    schema = d.get("schema")
+    if schema == MANIFEST_SCHEMA:
+        try:
+            frm, end = int(d["from_block"]), int(d["to_block"])
+        except (KeyError, TypeError, ValueError) as exc:
+            raise ValueError("v3 done manifest 边界缺失/非整数") from exc
+        actual = inspect_run_files(path.parent, frm, end)
+        if d.get("files") != actual:
+            raise ValueError("v3 done manifest files 与当前 Parquet 不一致")
+        return None
+    if schema not in LEGACY_MANIFEST_SCHEMAS:
+        raise ValueError(f"不支持迁移的旧 schema: {schema!r}")
+    if d.get("query_schema") != QUERY_SCHEMA:
+        raise ValueError(f"query_schema 不是 {QUERY_SCHEMA}")
+    token = str(d.get("token", "")).strip().lower()
+    url = re.sub(r"/query/?$", "", str(d.get("url", "")).strip().rstrip("/"))
+    if not token or not url:
+        raise ValueError("token/url 身份字段缺失")
+    try:
+        capture = int(d["capture_from"])
+        frm, end, nb = (int(d[k]) for k in ("from_block", "to_block", "next_block"))
+    except (KeyError, TypeError, ValueError) as exc:
+        raise ValueError("旧 manifest 边界缺失/非整数") from exc
+    if not (capture <= frm < end == nb):
+        raise ValueError(
+            f"旧 manifest 边界非法: capture={capture} run=[{frm},{end}) next={nb}")
+    files = inspect_run_files(path.parent, frm, end)
+    return {**d, "schema": MANIFEST_SCHEMA, "token": token, "url": url,
+            "files": files, "refreshed_from_schema": schema}
+
+
+def refresh_manifests(outdir):
+    """Two-phase refresh: validate every run first; write none if any run is bad."""
+    root = Path(outdir).resolve()
+    done_paths = sorted(root.glob("run_*/done.json"))
+    if not done_paths:
+        raise ValueError(f"outdir 下没有 run_*/done.json: {root}")
+    pending, failures = [], []
+    for path in done_paths:
+        try:
+            payload = _manifest_refresh_candidate(path)
+            if payload is not None:
+                pending.append((path, payload))
+        except (OSError, ValueError) as exc:
+            failures.append(f"{path.parent.name}: {exc}")
+    if failures:
+        raise ValueError("存量 manifest 迁移拒绝（未改写任何 done.json）:\n  - "
+                         + "\n  - ".join(failures))
+    for path, payload in pending:
+        atomic_write_json(path, payload)
+    return {"checked": len(done_paths), "upgraded": len(pending),
+            "already_v3": len(done_paths) - len(pending)}
+
+
 def resolve_token(a):
     """C3：token 优先级 位置参数(旧兼容) > $HYPERSYNC_TOKEN > --token-file 文件。"""
     if a.api_token:
@@ -241,7 +304,25 @@ def verify_done_cli(argv):
     return 0
 
 
+def refresh_manifests_cli(argv):
+    ap = argparse.ArgumentParser(
+        description="Revalidate legacy HyperSync Parquets and atomically upgrade done manifests")
+    ap.add_argument("--refresh-manifests", action="store_true", required=True)
+    ap.add_argument("--outdir", required=True)
+    a = ap.parse_args(argv)
+    try:
+        result = refresh_manifests(a.outdir)
+    except ValueError as exc:
+        print(f"[fail-closed] {exc}", file=sys.stderr)
+        return 2
+    print(f"[refreshed] checked={result['checked']} upgraded={result['upgraded']} "
+          f"already_v3={result['already_v3']}")
+    return 0
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1 and sys.argv[1] == "verify-done":
         sys.exit(verify_done_cli(sys.argv[2:]))
+    if "--refresh-manifests" in sys.argv[1:]:
+        sys.exit(refresh_manifests_cli(sys.argv[1:]))
     asyncio.run(main())
