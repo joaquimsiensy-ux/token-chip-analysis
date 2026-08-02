@@ -21,6 +21,9 @@ cluster.py                    ⑤ 关联聚类：E1 共同 funder / E2 互转边
                                  三类独立证据 + 置信度分级，产物 analysis/clusters.json
 ```
 
+官方扫描仅在 `official_scan_receipt.json` 四桶闭合且 `failed=0` 时写正式结果；
+`collection_manifest.json` 必须以 SHA-256 引用该子阶段 receipt。失败 ID 保留在 progress 中供重跑补查。
+
 ## 路径约定
 
 脚本按**自身所在目录**定位 `data/` 与 `analysis/`（`HERE = dirname(__file__)`）——实战时把这 4 个脚本拷到工作目录（scratchpad）再跑，不要在 skill 目录内直接运行。

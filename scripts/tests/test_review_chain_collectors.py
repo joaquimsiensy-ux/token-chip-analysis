@@ -82,6 +82,38 @@ def test_h09(tmp):
         raise AssertionError("Filecoin page failure must propagate")
     assert not (Path(mod.ADDR_DIR) / "f1test" / "transfers_recent.json").exists()
 
+    # P1-04：161 个官方 ID 任一网络失败都不得落 complete/PASS，重跑须补查失败项。
+    Path(mod.OFFICIAL_DIR).mkdir(parents=True, exist_ok=True)
+    calls = []
+
+    def official_fail(url, retries=5):
+        aid = url.rsplit("/", 1)[-1]
+        calls.append(aid)
+        if aid == "f042":
+            return {"_error": url}
+        return {"address": aid}
+
+    mod.get_json = official_fail
+    try:
+        mod.fetch_official_scan()
+    except RuntimeError:
+        pass
+    else:
+        raise AssertionError("official scan network failure must block")
+    receipt_path = Path(mod.DATA) / "official_scan_receipt.json"
+    receipt = json.loads(receipt_path.read_text())
+    assert receipt["status"] == "BLOCK" and receipt["counts"]["failed"] == 1
+    assert not (Path(mod.DATA) / "official_scan.json").exists()
+
+    calls.clear()
+    mod.get_json = lambda url, retries=5: (calls.append(url.rsplit("/", 1)[-1])
+                                           or {"address": url.rsplit("/", 1)[-1]})
+    receipt = mod.fetch_official_scan()
+    assert receipt["status"] == "PASS" and calls == ["f042"], calls
+    manifest = mod.write_collection_manifest(200, receipt)
+    ref = manifest["substage_receipts"]["official_scan"]
+    assert ref["path"] == "official_scan_receipt.json" and len(ref["sha256"]) == 64
+
 
 def test_h10(tmp):
     out = str(Path(tmp) / "events.jsonl.gz")
@@ -113,7 +145,7 @@ def main():
         test_h09(tmp)
     with tempfile.TemporaryDirectory() as tmp:
         test_h10(tmp)
-    print("PASS: H-07 HL identity/worklist, H-08 non-HYPE config, H-09 FIL failure, H-10 overlap/failure states")
+    print("PASS: H-07/H-08/H-09/H-10 + P1-04 Filecoin official-scan retry receipt")
     return 0
 
 

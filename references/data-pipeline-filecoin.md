@@ -5,7 +5,7 @@
 
 > 来源声明：本册规则除特别标注外，均源自 FIL(Filecoin) 分析实测（2026-07），不再逐条标注。
 
-> 发布边界：现有 `fetch_data.py` 只能产 `restricted/top-200-windowed` 数据（富豪榜前 200、近 6 个月、每地址最多 3000 笔），不得称“Filecoin 全量重放”。每页必须有连续完成原因；网络失败不落正式缓存，最终 `collection_manifest.json` 显式记录 restricted scope 与限制。
+> 发布边界：现有 `fetch_data.py` 只能产 `restricted/top-200-windowed` 数据（富豪榜前 200、近 6 个月、每地址最多 3000 笔），不得称“Filecoin 全量重放”。每页必须有连续完成原因；网络失败不落正式缓存，最终 `collection_manifest.json` 显式记录 restricted scope 与限制，并以哈希引用官方 ID 扫描子阶段 receipt。
 
 ## 0. 开工检查清单（每条都有对应踩坑记录，别跳）
 
@@ -102,6 +102,7 @@ curl -s 'https://filfox.info/api/v1/address/f0121/transfers?pageSize=100&page=0'
 执行顺序：`fetch_data.py --smoke 10` → 冒烟自检通过 → 全量后台跑 → `analyze_base.py` → `cluster.py`；中途冒出新地址用 `fetch_extra.py` 补抓。
 
 - `fetch_data.py` — 主抓取：富豪榜前 200（pageSize 口径）→ 每地址详情 + 近 6 月流水 + 最早流水 → 创世 ID 段官方标签扫描 → CoinGecko 180 天价格。要点：
+  - 官方 ID `f00–f0160` 扫描以 `requested/succeeded/not_found/failed` 四桶落 `official_scan_receipt.json`；404 进 not_found，网络/API 错误进 failed。任一 failed 都 BLOCK 且非零退出，不写正式 `official_scan.json`。`official_scan_progress.json` 保留已成功与待重试 ID，重跑只补查 failed；旧版孤立 `official_scan.json` 不再能短路。
   - 全部请求走 subprocess 调系统 curl，规避本机 Python SSL 证书坑（另一条路是 certifi，本管线选了 curl）。
   - `--smoke N`：先抓前 N 名冒烟（建议 N=10），冒烟必须包含第 4 节坑 ① 的唯一性断言与跨页自洽校验。
   - 每地址落盘独立 JSON 作断点文件；修口径后重跑只补抓新增地址，不重抓已有的。
