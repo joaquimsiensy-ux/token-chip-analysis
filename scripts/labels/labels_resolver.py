@@ -119,7 +119,8 @@ def norm_addr(addr, chain):
         # f0 actor-ID / f1 secp / f2 actor / f3 BLS / f4 委托（含 f410 EVM 映射）；t 前缀为测试网同构
         return a if len(a) >= 3 and a[0] in 'ft' and a[1] in '01234' else None
     a = a.lower()
-    return a if a.startswith('0x') and len(a) == 42 else None
+    return a if (a.startswith('0x') and len(a) == 42
+                 and all(c in '0123456789abcdef' for c in a[2:])) else None
 
 
 def _read_rows(path):
@@ -157,40 +158,28 @@ _BOOK_CATEGORY_RULES = (
 
 
 def _load_address_book(labels_dir, chain):
-    """解析 references/address-book.md 的 markdown 表格为标签行（按链形态过滤）。
-    文件缺失/无命中返回 {}，绝不抛错（地址簿是增强层不是依赖）。"""
-    path = os.path.normpath(os.path.join(labels_dir, '..', 'address-book.md'))
+    """Load the generated address-book layer with an explicit per-row chain.
+
+    Address shape is not chain evidence: the same 0x address can mean unrelated
+    contracts on ETH/BSC/Base.  The human markdown is therefore never parsed
+    directly at runtime; its chain-qualified generated table is the executable
+    schema and check_manual_sync keeps the two sources aligned.
+    """
+    path = os.path.join(_HERE, 'sources', 'manual_labels.csv')
     if not os.path.exists(path):
         return {}
-    import re
     table = {}
-    section = ''
-    row_re = re.compile(r'^\|\s*`([^`]+)`\s*\|([^|]*)\|([^|]*)\|')
-    for line in open(path, encoding='utf-8'):
-        if line.startswith('#'):
-            section = line.lstrip('#').strip()
+    for raw in _read_rows(path):
+        if (raw.get('chain') or '').strip() != chain:
             continue
-        m = row_re.match(line)
-        if not m:
+        addr = norm_addr(raw.get('address'), chain)
+        if addr is None:
             continue
-        addr = norm_addr(m.group(1), chain)
-        if addr is None:          # 形态不符=非本链地址，跳过
-            continue
-        name = m.group(2).strip()
-        note = m.group(3).strip()
-        category, tier = 'infra', 'exclude'
-        for kw, cat, t in _BOOK_CATEGORY_RULES:
-            if kw in section:
-                category, tier = cat, t
-                break
-        table[addr] = {
-            'address': addr, 'chain': chain, 'name': name,
-            'category': category, 'tier': tier, 'source': 'address-book',
-            'added_date': '', 'evidence': f'[{section}] {note}'.strip(),
-            'risk_flags': '', 'merge_policy': '', 'balance_policy': '',
-            'source_snapshot_at': '', 'verified_at': '', 'status': '',
-            'raw_labels': '',
-        }
+        row = {k: (raw.get(k) or '') for k in BASE_FIELDS + V4_OPTIONAL_FIELDS}
+        row['address'] = addr
+        row['chain'] = chain
+        row['source'] = row['source'] or 'address-book'
+        table[addr] = row
     return table
 
 
