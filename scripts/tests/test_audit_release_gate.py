@@ -30,13 +30,23 @@ def sha(path):
 def build_case(root, historical=True):
     raw = root / "raw_transfers.jsonl"
     raw.write_text('{"from":"a","to":"b","raw":"1"}\n', encoding="utf-8")
+    write_json(root, "balances_snapshot.json", {
+        "schema": "address-balance-snapshot/v1", "as_of_block": 123,
+        "entries": [{"address": "0xabc", "balance_raw": "100"}],
+    })
     report = root / "report.md"
     report.write_text("# 审计报告\n", encoding="utf-8")
     write_json(root, "audit_input_manifest.json", {
         "frozen_at": "2026-07-26T00:00:00Z",
         "data_cutoff": "2026-07-25T23:59:59Z",
-        "files": [{"path": raw.name, "size": raw.stat().st_size, "sha256": sha(raw),
-                   "evidence_layer": "raw", "available_at_audit_start": True}],
+        "files": [
+            {"path": raw.name, "size": raw.stat().st_size, "sha256": sha(raw),
+             "evidence_layer": "raw", "available_at_audit_start": True},
+            {"path": "balances_snapshot.json",
+             "size": (root / "balances_snapshot.json").stat().st_size,
+             "sha256": sha(root / "balances_snapshot.json"),
+             "evidence_layer": "derived", "available_at_audit_start": True},
+        ],
         "late_additions": [],
     })
     write_json(root, "accounting_mode.json", {"status": "PASS", "mode": "standard"})
@@ -50,7 +60,11 @@ def build_case(root, historical=True):
         "unresolved_count": 0, "unresolved_candidates": [],
     })
     write_json(root, "membership_ledger.json", {"entries": [
-        {"entity_id": "e1", "address": "0xabc", "membership": "strict"}]})
+        {"entity_id": "e1", "address": "0xabc", "membership": "strict",
+         "as_of_balance_raw": "100",
+         "balance_source": {"path": "balances_snapshot.json",
+                            "sha256": sha(root / "balances_snapshot.json"),
+                            "as_of_block": 123}}]})
     write_json(root, "position_ledger.json", {"entries": [
         {"entity_id": "e1", "address": "0xabc", "location_id": "wallet:0xabc",
          "amount_raw": "100"}]})
@@ -172,6 +186,79 @@ def main():
         write_json(root, "position_ledger.json", pos)
         errors = gate.run(root, report)
         assert any("位置账重复" in x for x in errors), errors
+
+    # P2-01：实体集合相同不代表逐地址余额闭合。
+    with tempfile.TemporaryDirectory() as td:
+        root = Path(td)
+        report = build_case(root, historical=False)
+        write_json(root, "balances_snapshot.json", {
+            "schema": "address-balance-snapshot/v1", "as_of_block": 123,
+            "entries": [
+                {"address": "0xabc", "balance_raw": "100"},
+                {"address": "0xdef", "balance_raw": "5"},
+            ],
+        })
+        members = json.loads((root / "membership_ledger.json").read_text())
+        for row in members["entries"]:
+            row["balance_source"]["sha256"] = sha(root / "balances_snapshot.json")
+        members["entries"].append({
+            "entity_id": "e1", "address": "0xdef", "membership": "expanded",
+            "as_of_balance_raw": "5",
+            "balance_source": {"path": "balances_snapshot.json",
+                               "sha256": sha(root / "balances_snapshot.json"),
+                               "as_of_block": 123},
+        })
+        write_json(root, "membership_ledger.json", members)
+        manifest = json.loads((root / "audit_input_manifest.json").read_text())
+        balance_item = next(x for x in manifest["files"]
+                            if x["path"] == "balances_snapshot.json")
+        balance_item.update({"size": (root / "balances_snapshot.json").stat().st_size,
+                             "sha256": sha(root / "balances_snapshot.json")})
+        write_json(root, "audit_input_manifest.json", manifest)
+        receipt = json.loads((root / "reproduce_receipt.json").read_text())
+        receipt["input_manifest"]["sha256"] = sha(root / "audit_input_manifest.json")
+        write_json(root, "reproduce_receipt.json", receipt)
+        errors = gate.run(root, report)
+        assert any("逐地址余额" in x for x in errors), errors
+
+        # 来源哈希不能由成员账自报漂移。
+        members["entries"][0]["balance_source"]["sha256"] = "0" * 64
+        write_json(root, "membership_ledger.json", members)
+        errors = gate.run(root, report)
+        assert any("balance_source sha256" in x for x in errors), errors
+
+    # P2-01：零余额成员可用显式 zero_balance_proof，位置账缺行按 0 闭合。
+    with tempfile.TemporaryDirectory() as td:
+        root = Path(td)
+        report = build_case(root, historical=False)
+        write_json(root, "balances_snapshot.json", {
+            "schema": "address-balance-snapshot/v1", "as_of_block": 123,
+            "entries": [
+                {"address": "0xabc", "balance_raw": "100"},
+                {"address": "0xzero", "balance_raw": "0"},
+            ],
+        })
+        members = json.loads((root / "membership_ledger.json").read_text())
+        for row in members["entries"]:
+            row["balance_source"]["sha256"] = sha(root / "balances_snapshot.json")
+        members["entries"].append({
+            "entity_id": "e1", "address": "0xzero", "membership": "strict",
+            "zero_balance_proof": {"method": "bound_snapshot_zero"},
+            "balance_source": {"path": "balances_snapshot.json",
+                               "sha256": sha(root / "balances_snapshot.json"),
+                               "as_of_block": 123},
+        })
+        write_json(root, "membership_ledger.json", members)
+        manifest = json.loads((root / "audit_input_manifest.json").read_text())
+        balance_item = next(x for x in manifest["files"]
+                            if x["path"] == "balances_snapshot.json")
+        balance_item.update({"size": (root / "balances_snapshot.json").stat().st_size,
+                             "sha256": sha(root / "balances_snapshot.json")})
+        write_json(root, "audit_input_manifest.json", manifest)
+        receipt = json.loads((root / "reproduce_receipt.json").read_text())
+        receipt["input_manifest"]["sha256"] = sha(root / "audit_input_manifest.json")
+        write_json(root, "reproduce_receipt.json", receipt)
+        assert not gate.run(root, report), gate.run(root, report)
 
     with tempfile.TemporaryDirectory() as td:
         root = Path(td)

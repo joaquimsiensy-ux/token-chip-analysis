@@ -196,7 +196,7 @@ def raw_int(value, label, errors):
     return n
 
 
-def check_three_ledgers(data: dict, errors: list[str]):
+def check_three_ledgers(case_dir: Path, data: dict, errors: list[str]):
     """Recompute membership -> position -> economic control closure from details."""
     md = data.get("membership_ledger.json", {})
     pd = data.get("position_ledger.json", {})
@@ -208,6 +208,55 @@ def check_three_ledgers(data: dict, errors: list[str]):
         return
 
     member_map = {}
+    snapshot_cache = {}
+
+    def load_balance_snapshot(source: dict, label: str):
+        if not isinstance(source, dict):
+            errors.append(f"{label} 缺 balance_source 来源绑定")
+            return None
+        rel = str(source.get("path", "")).strip()
+        expected_sha = str(source.get("sha256", "")).strip().lower()
+        as_of_block = source.get("as_of_block")
+        if not rel or len(expected_sha) != 64 or as_of_block is None:
+            errors.append(f"{label}.balance_source 缺 path/sha256/as_of_block")
+            return None
+        p = safe_case_path(case_dir, rel)
+        if p is None or not p.is_file() or p.is_symlink():
+            errors.append(f"{label}.balance_source 文件不存在或越界: {rel}")
+            return None
+        cache_key = (str(p), expected_sha, str(as_of_block))
+        if cache_key in snapshot_cache:
+            return snapshot_cache[cache_key]
+        if sha256_file(p).lower() != expected_sha:
+            errors.append(f"{label}.balance_source sha256 与当前快照不一致")
+            snapshot_cache[cache_key] = None
+            return None
+        snapshot = load_json(p, errors)
+        if snapshot.get("schema") != "address-balance-snapshot/v1" \
+                or snapshot.get("as_of_block") != as_of_block:
+            errors.append(f"{label}.balance_source schema/as_of_block 不一致")
+            snapshot_cache[cache_key] = None
+            return None
+        rows = snapshot.get("entries")
+        if not isinstance(rows, list):
+            errors.append(f"{label}.balance_source entries 非数组")
+            snapshot_cache[cache_key] = None
+            return None
+        balances = {}
+        for j, item in enumerate(rows):
+            if not isinstance(item, dict) or not str(item.get("address", "")).strip():
+                errors.append(f"{label}.balance_source.entries[{j}] 缺地址")
+                continue
+            addr = str(item["address"]).strip()
+            key = addr.lower() if addr.lower().startswith("0x") else addr
+            if key in balances:
+                errors.append(f"{label}.balance_source 地址重复: {addr}")
+            balances[key] = raw_int(item.get("balance_raw"),
+                                    f"{label}.balance_source.entries[{j}].balance_raw",
+                                    errors)
+        snapshot_cache[cache_key] = balances
+        return balances
+
     for i, row in enumerate(members):
         if not isinstance(row, dict):
             errors.append(f"membership[{i}] 不是对象")
@@ -220,9 +269,26 @@ def check_three_ledgers(data: dict, errors: list[str]):
         key = address.lower() if address.lower().startswith("0x") else address
         if key in member_map:
             errors.append(f"成员地址重复: {address}")
-        member_map[key] = (entity, status)
+        balance = None
+        if status != "excluded":
+            if row.get("as_of_balance_raw") is None:
+                proof = row.get("zero_balance_proof")
+                if not isinstance(proof, dict) or not proof:
+                    errors.append(f"membership[{i}] 缺 as_of_balance_raw 或 zero_balance_proof")
+                else:
+                    balance = 0
+            else:
+                balance = raw_int(row.get("as_of_balance_raw"),
+                                  f"membership[{i}].as_of_balance_raw", errors)
+            balances = load_balance_snapshot(row.get("balance_source"), f"membership[{i}]")
+            if balances is not None and balance is not None:
+                if key not in balances:
+                    errors.append(f"membership[{i}] 地址不在绑定的余额快照: {address}")
+                elif balances[key] != balance:
+                    errors.append(f"membership[{i}] as_of_balance_raw 与绑定快照不一致")
+        member_map[key] = (entity, status, balance)
 
-    pos_seen, wallet_by_entity = set(), {}
+    pos_seen, wallet_by_entity, position_by_address = set(), {}, {}
     for i, row in enumerate(positions):
         if not isinstance(row, dict):
             errors.append(f"position[{i}] 不是对象")
@@ -243,6 +309,15 @@ def check_three_ledgers(data: dict, errors: list[str]):
         pos_seen.add(key)
         amt = raw_int(row.get("amount_raw"), f"position[{i}].amount_raw", errors)
         wallet_by_entity[entity] = wallet_by_entity.get(entity, 0) + amt
+        position_by_address[addr_key] = position_by_address.get(addr_key, 0) + amt
+
+    for address, (entity, status, balance) in member_map.items():
+        if status == "excluded" or balance is None:
+            continue
+        positioned = position_by_address.get(address, 0)
+        if positioned != balance:
+            errors.append(f"实体 {entity} 地址 {address} 逐地址余额与位置账不闭合: "
+                          f"{positioned} != {balance}")
 
     econ_ids, dc_keys = set(), set()
     for i, row in enumerate(economics):
@@ -282,7 +357,8 @@ def check_three_ledgers(data: dict, errors: list[str]):
         if confirmed != wallet + facility_sum:
             errors.append(f"实体 {entity} 经济控制算术不闭合: {confirmed} != {wallet}+{facility_sum}")
 
-    active_entities = {entity for entity, status in member_map.values() if status != "excluded"}
+    active_entities = {entity for entity, status, _ in member_map.values()
+                       if status != "excluded"}
     if active_entities != econ_ids or set(wallet_by_entity) != econ_ids:
         errors.append("三账实体集合不闭合（成员→位置→经济控制存在漏记或多记）")
 
@@ -548,7 +624,7 @@ def run(case_dir: Path, report: Path | None):
                  "economic_control_ledger.json"):
         if name in data:
             check_ledger(name, data[name], errors)
-    check_three_ledgers(data, errors)
+    check_three_ledgers(case_dir, data, errors)
     if "dormant_warehouse_audit.json" in data:
         check_dormant(case_dir, data["dormant_warehouse_audit.json"], errors)
     check_daily_peaks(case_dir, errors)
