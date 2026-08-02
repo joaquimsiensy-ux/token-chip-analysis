@@ -24,7 +24,8 @@ build_html G8 直接 WARN（有 WARN 不许交付），报告物理上编不出�
   resolution: 分析者对 flag 的显式回答（生成时为空；分析流程逐条填写后才可过闸）
 
 resolution 填写纪律：不是走过场——每条必须写"查了什么、结论是什么"
-（如"Alpha 集齐率 3/70 不是托管仓；gas 溯源独立"或"Squads 2-of-2 多签，成员 X+Y"，
+（如"Alpha 集齐率 65/70>90% 判库存仓"或"集齐率低不足以正判托管、另查 gas 溯源独立"
+或"Squads 2-of-2 多签，成员 X+Y"，
 Squads 解析工具＝scripts/solana/squads_members.py）。
 
 ⚠ 误判是双向的（TROLL 2026-07-29 镜像案）：本闸防"托管判成庄家"，但反向

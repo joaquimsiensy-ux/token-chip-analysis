@@ -6,7 +6,7 @@
 
 - **触发现象**：币安 Alpha 在架（或刚上架）标的，链上出现大额高频枢纽仓（常为全盘前几名），对手方极多、进出频繁。
 - **禁止推断**：直接按"大仓+高频调度"定性为私人庄家/做市庄；把托管仓出金描述为"向集团供币"。
-- **必做区分检验**：①label_lookup（已并源 address-book 手工层——工具零命中≠没有记录，闸内已治）；②Solana 必跑 ed25519 on-curve 判定，off-curve＝无私钥＝托管/PDA 路线；③**Alpha 集齐率判别**：getTokenAccountsByOwner 全持仓 × 币安 Alpha bapi 全量表求交集，集齐率 >90%≈库存仓、低集齐率+高频双向执行≈执行仓/做市 bot（PENGUIN 案实测 94%/8%/3%/2% 四档分野清晰）。库存仓↔执行仓↔vanity 代付程序是 Alpha 的三层标准结构。
+- **必做区分检验**：①label_lookup（已并源 address-book 手工层——工具零命中≠没有记录，闸内已治）；②Solana 必跑 ed25519 on-curve 判定，off-curve＝无私钥＝托管/PDA 路线；③**Alpha 集齐率判别**：getTokenAccountsByOwner 全持仓 × 币安 Alpha bapi 全量表求交集，集齐率 >90%（几乎集齐 Alpha 名单）≈库存仓可正判；低集齐率不足以正判托管、也不能反向认定非托管，身份另找正向证据（2026-08-02 规则修订；PENGUIN 案实测 94% 库存仓实证）。库存仓↔执行仓↔vanity 代付程序是 Alpha 的三层标准结构。
 - **证据不足时**：最强只能写"大额高频枢纽仓，托管假设未排除，不计入任何私人实体"；禁止判庄。
 - **权威与出处**：entity_identity_gate.py BIG_UNLABELED 托管假设三查；data-pipeline-solana-scan §3「币安 Alpha 集齐率判别法」（§2a 自建质押/托管合约五步法作辅路）。翻案：PYTHIA 2026-07-29 终裁（9Z 判"小庄#1"推翻，address-book 里本有记录）；判别法源出 PENGUIN 2026-07-22。
 
