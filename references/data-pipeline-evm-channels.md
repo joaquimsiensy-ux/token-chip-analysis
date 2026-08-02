@@ -62,7 +62,7 @@ solana 走 fetch_sqd_transfers_v2；manifest 原子记账、残缺 run 改名 pa
 
 | 通道 | 注册要求 | 限速实测 | 吞吐实测 | 断点续传 | 脚本 | 来源 |
 |---|---|---|---|---|---|---|
-| **HyperSync 官方客户端 v2（Starter 付费档,现役首选）** | Starter $70/月 | 官方客户端并发 | **10,080 条/s**（CAKE 实测） | done manifest v2 绑定 token/url/capture bounds/query/client；不一致或 start>=to 非零退出 | fetch_hypersync_v2.py | （2026-08-02 加固） |
+| **HyperSync 官方客户端 v2（Starter 付费档,现役首选）** | Starter $70/月 | 官方客户端并发 | **10,080 条/s**（CAKE 实测） | done manifest v3 绑定 token/url/capture bounds/query/client，并对 logs/blocks Parquet 分别记 size/rows/min/max/sha256；续传与 staged skip 都重验可读性/schema/范围/哈希 | fetch_hypersync_v2.py | （2026-08-02 加固） |
 | envio HyperSync v1 手写轮询（兜底） | 同上 key 通用 | 免费层:0.5s 间隔基本无 429（2026-07-18 收紧后实测）;**Starter 付费档:0.12s 间隔 429=0**,但单进程吞吐仅 552-792 条/s（RTT 主导,ETH RTT~0.2s/BSC~0.6s）——付费买到的是高峰稳定性,大标的提速必须换 v2 | 免费层 ~1000-1300 logs/2s,1568 万条约 5.2h;付费单进程 ETH 792 条/s、BSC 552 条/s | from_block 起点 + 增量写 CSV（v3.11.2 起新文件 8 列含 block_hash,老 7 列续拉自动兼容） | fetch_hypersync.py | （SIREN 07；哈基米 429 实测 07-18；v3.11.2 付费实测 07-21） |
 | SQD Portal 薄采集器（故障预案+对照源） | 免 key 免注册（portal.sqd.dev 公共端点;注册 gateway key 免费可选更稳） | 公共限流 20 请求/10s,sleep 0.5 保守;无自助付费档（官网 pricing coming soon,2026-07-21 核实） | ~280 条/s（CAKE 21,857 行/79s）——平时不跑,HyperSync 平台级故障或数仓切源准入对照时才上;**对账关卡（余额对账/时间抽查）的代表日双源对照亦用它**（独立索引商,BANANAS31(BSC) 四代表日 67,731 行 (block,tx,li,from,to,value) 六元组与 HyperSync 零差集全等,2026-07-22） | CSV 末行块+1 | fetch_sqd_evm.py | （v3.11.2,2026-07-21） |
 | BigQuery goog 官方公共数据集（备用+复核,**仅 ETH**） | Google 账号 OAuth 一次(凭据缓存后免弹窗)+GCP sandbox 项目(免绑卡,见 api-keys.md 第 17 节「Google Cloud / BigQuery」) | 免费 1 TiB/月查询量;熔断线 config max_scan_gib(默认 200GiB) | 服务端过滤只回传命中行,13 万行 ~1 分钟;定向日期查询 ~12GiB/次≈月额度可复核 85 次 | 无需(按日期范围幂等重查) | fetch_bigquery.py | （v3.12.1 准入实证,2026-07-21） |
@@ -112,7 +112,7 @@ solana 走 fetch_sqd_transfers_v2；manifest 原子记账、残缺 run 改名 pa
 - **★稀疏事件（单池单 topic）别用 HyperSync 全链扫，改「已有 Transfer 反查 tx → 打回执」**：HyperSync 按"扫过的块量"分批返回，对稀疏匹配（如某一个池的 `Mint` 事件）实测每次只推进 **~5,400 块 / 12 秒**——扫 1.1 亿块要几十小时，且中途看不出异常（进程活着、只是慢）。**正解**：从已落盘的全量 Transfer 里筛出"该合约 ↔ 任意地址、金额 ≥ 门槛"的交易去重得 tx 列表，再并发 `eth_getTransactionReceipt` 逐个解析（KOGE 案 82 个交易几十秒拿到全部 81 次 LP 操作，对比 HyperSync 全链扫的几十小时）。**反过来**：块区间已知的小范围精确查询（如追某个 tokenId 的 ERC721 Transfer）用 HyperSync **一次返回**，比公共 RPC 的 `eth_getLogs` 省事——后者在 BSC 公共节点超 5,000 块即 `-32005 limit exceeded`。选型口诀：**大范围稀疏→反查回执；小范围精确→HyperSync**。（KOGE 第二轮追加取证，07-25）
 - **v2 响应里的 log 字段是 `topic0/topic1/topic2/topic3` 分列，不是 `topics` 数组**：按 `l['topics'][0]` 取会直接 `KeyError`（与 `eth_getLogs` 的 RPC 返回结构不同，混用两套代码时高发）；`field_selection.log` 里也要逐个列名申请。同理 `transaction`/`block` 的字段名各自独立申请。（KOGE 第二轮追加取证，07-25）
 
-- **v2 resume 语义**：只消费同 `capture_from` 且身份完全一致的 manifests；边界必须满足 `capture_from<=from<to=next<=本次to`。跨标的、跨端点、坏边界、`start>=to` 全部 fail-closed，禁止“空完成”。
+- **v2 resume 语义**：只消费同 `capture_from` 且身份完全一致的 manifests；边界必须满足 `capture_from<=from<to=next<=本次to`。`hypersync-v2-done/v3` 将 `logs.parquet` 与 `blocks.parquet` 的 size/rows/min_block/max_block/sha256 分别落盘，done 经临时文件、fsync、rename 原子发布；`find_resume_block` 与 `staged_capture.sh` skip 前重读两个 Parquet 并重算全部字段。跨标的、跨端点、坏边界、缺文件、截断或 hash 漂移、`start>=to` 全部 fail-closed，禁止“空完成”。
 
 ### 3.2 Alchemy getAssetTransfers（scripts/evm/fetch_alchemy.py）
 - POST `https://bnb-mainnet.g.alchemy.com/v2/{KEY}`，method=`alchemy_getAssetTransfers`，params 含 `contractAddresses`、`category:["erc20"]`、`maxCount:"0x3e8"`、`pageKey` 分页；返回自带时间戳。（SIREN，07）

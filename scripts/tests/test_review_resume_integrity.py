@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """2026-08-02 review regressions: H-02 through H-06."""
 import csv
+import hashlib
 import json
 import os
 import subprocess
@@ -14,7 +15,7 @@ SOL = HERE.parent / "solana"
 sys.path.insert(0, str(EVM))
 sys.path.insert(0, str(SOL))
 
-from fetch_hypersync_v2 import MANIFEST_SCHEMA, QUERY_SCHEMA, find_resume_block
+from fetch_hypersync_v2 import QUERY_SCHEMA, find_resume_block
 from fetch_sqd_transfers_v2 import cache_identity_matches, cache_paths
 from replay_edges import cmd_evolution, cmd_reconcile
 
@@ -28,9 +29,9 @@ def run(cmd, cwd):
                           capture_output=True, text=True)
 
 
-def make_parquet(root, blocks):
+def make_parquet(root, blocks, run_name="run_0"):
     import duckdb
-    run_dir = Path(root) / "run_0"
+    run_dir = Path(root) / run_name
     run_dir.mkdir(parents=True)
     con = duckdb.connect()
     con.execute("CREATE TABLE logs(block_number BIGINT, block_hash VARCHAR, log_index BIGINT, "
@@ -44,6 +45,37 @@ def make_parquet(root, blocks):
     for b in blocks:
         con.execute("INSERT INTO bl VALUES (?,?)", [b, 1700000000 + b])
     con.execute(f"COPY bl TO '{run_dir / 'blocks.parquet'}' (FORMAT parquet)")
+    con.close()
+    return run_dir
+
+
+def file_meta(path, block_col):
+    import duckdb
+    con = duckdb.connect()
+    rows, lo, hi = con.execute(
+        f"SELECT COUNT(*), MIN({block_col}), MAX({block_col}) FROM read_parquet(?)",
+        [str(path)]).fetchone()
+    con.close()
+    return {"size": path.stat().st_size, "rows": rows, "min_block": lo,
+            "max_block": hi, "sha256": hashlib.sha256(path.read_bytes()).hexdigest()}
+
+
+def make_done(out, mutate=None):
+    run_dir = make_parquet(out, [10, 19], "run_10")
+    done = {"schema": "hypersync-v2-done/v3", "query_schema": QUERY_SCHEMA,
+            "capture_from": 10, "from_block": 10, "to_block": 20, "next_block": 20,
+            "token": A_EVM, "url": "https://bsc.hypersync.xyz",
+            "files": {"logs.parquet": file_meta(run_dir / "logs.parquet", "block_number"),
+                      "blocks.parquet": file_meta(run_dir / "blocks.parquet", "number")}}
+    (run_dir / "done.json").write_text(json.dumps(done))
+    if mutate == "missing":
+        (run_dir / "logs.parquet").unlink()
+    elif mutate == "truncated":
+        (run_dir / "logs.parquet").write_bytes(b"truncated")
+    elif mutate == "hash":
+        done["files"]["logs.parquet"]["sha256"] = "0" * 64
+        (run_dir / "done.json").write_text(json.dumps(done))
+    return run_dir, done
 
 
 def channel_receipt(tmp, tag, data_path, lo, hi, rows):
@@ -72,13 +104,8 @@ def test_h02(tmp):
 
 
 def test_h03(tmp):
-    out = Path(tmp) / "resume"
-    run_dir = out / "run_10"
-    run_dir.mkdir(parents=True)
-    done = {"schema": MANIFEST_SCHEMA, "query_schema": QUERY_SCHEMA,
-            "capture_from": 10, "from_block": 10, "to_block": 20, "next_block": 20,
-            "token": A_EVM, "url": "https://bsc.hypersync.xyz"}
-    (run_dir / "done.json").write_text(json.dumps(done))
+    out = Path(tmp) / "resume_ok"
+    _, done = make_done(out)
     assert find_resume_block(str(out), 10, 30, A_EVM, done["url"]) == 20
     try:
         find_resume_block(str(out), 10, 30, "0x" + "b" * 40, done["url"])
@@ -86,6 +113,23 @@ def test_h03(tmp):
         pass
     else:
         raise AssertionError("cross-token done manifest must reject")
+
+    for mutation in ("missing", "truncated", "hash"):
+        bad_out = Path(tmp) / f"resume_{mutation}"
+        make_done(bad_out, mutation)
+        try:
+            find_resume_block(str(bad_out), 10, 30, A_EVM, done["url"])
+        except SystemExit:
+            pass
+        else:
+            raise AssertionError(f"done exists but parquet {mutation} must reject")
+
+    # staged_capture.sh 的 skip 路径也必须复用实体验证，不得只看 JSON。
+    staged_out = Path(tmp) / "staged_missing"
+    make_done(staged_out, "missing")
+    p = subprocess.run([str(EVM / "staged_capture.sh"), A_EVM, done["url"],
+                        str(staged_out), "10", "20"], capture_output=True, text=True)
+    assert p.returncode != 0 and "FATAL" in p.stdout + p.stderr
 
 
 def test_h04(tmp):
