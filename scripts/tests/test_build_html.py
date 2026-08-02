@@ -22,10 +22,12 @@ GOOD_JSON = {"chip_summary": {"zhuang_count": 1, "total_share_pct": 5.0,
 
 
 def run_case(tag, md_text, json_obj, expect_exit, expect_html_has=None, expect_out=None,
-             state_obj=None, gate_obj=None, extra_args=None):
+             state_obj=None, gate_obj=None, extra_args=None, mode='legacy-recompile'):
     with tempfile.TemporaryDirectory() as d:
         open(os.path.join(d, 'r.md'), 'w').write(md_text)
-        cmd = [sys.executable, SCRIPT, '--md', 'r.md', '--out', 'r.html']
+        cmd = [sys.executable, SCRIPT, '--mode', mode, '--md', 'r.md', '--out', 'r.html']
+        if mode != 'analysis':
+            cmd += ['--degrade-reason', '离线渲染契约测试']
         if json_obj is not None:
             json.dump(json_obj, open(os.path.join(d, 'a.json'), 'w'), ensure_ascii=False)
             cmd += ['--json', 'a.json']
@@ -73,9 +75,10 @@ def main():
     ok &= run_case('G8 flag未解决=WARN 拒交付', MD, None, 1, expect_out='身份疑点未解决',
                    state_obj=STATE, gate_obj=GATE_BAD)
     ok &= run_case('G8 全解决=过闸', MD, None, 0, state_obj=STATE, gate_obj=GATE_OK)
-    ok &= run_case('G8 显式跳过=NOTE 留痕', MD, None, 0, expect_out='已显式跳过',
-                   state_obj=STATE, extra_args=['--skip-identity-gate'])
-    print('PASS: build_html 八条契约全过（含 G8 身份闸四条）' if ok else 'FAIL: 见上')
+    ok &= run_case('analysis 缺正式 gate 资产拒绝', MD, None, 2, mode='analysis')
+    ok &= run_case('降级模式必须带可见水印', MD, None, 0,
+                   expect_html_has='非正式分析交付物')
+    print('PASS: build_html 九条契约全过（含 analysis/legacy 模式边界）' if ok else 'FAIL: 见上')
     return 0 if ok else 1
 
 

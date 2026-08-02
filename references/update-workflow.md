@@ -74,7 +74,7 @@
 ## U5 交付：更新简报 + 滚动 JSON
 
 **文件约定**（全部放旧研报目录内）：
-- `更新简报_YYYY-MM-DD.md` → build_html.py → `<代币>更新简报_YYYY-MM-DD.html`
+- `更新简报_YYYY-MM-DD.md` → `build_html.py --mode update --degrade-reason "增量更新：未重跑完整 A4 封口" ...` → `<代币>更新简报_YYYY-MM-DD.html`。update 是合法无 seal 场景，但 HTML 必带可见降级水印；不得冒充 analysis 正式全量报告。
 - **appendix.json 滚动更新**：旧版先重命名存档 `appendix_<旧data_cutoff日期>.json`，新版写回 `appendix.json`——保持"最新版永远在惯例位置"，看板与下次更新都读它。
 - 旧报告 HTML 不动。
 

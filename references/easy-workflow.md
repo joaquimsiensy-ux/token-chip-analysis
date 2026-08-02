@@ -65,7 +65,7 @@
 
 ## E4 对抗复核（路数不减，面自然缩）
 
-**E4→E5 顺序硬闸（6.7.0，与完整版 A4 同款）：全部裁决落定并 `a4_gate.py finalize` 封口（产 a4_seal.json）前禁止进入 E5——不画图 1、不写 HTML。** 开工先 `a4_gate.py register` 登记 claims（核心结论清单），收尾 finalize 封口（--seal-files 至少含 analysis-state.json；charts/final/ 为空校验）。
+**E4→E5 顺序硬闸：全部裁决落定并 `a4_gate.py finalize` 产 `a4-seal/v2` 前禁止进入 E5。** 开工 register，收尾封口 registry、verdicts、findings、analysis-state、facts、identity gate 和 claim 文件；charts/final 为空校验。
 
 N 路怀疑者（给数据文件路径让其**自己重算**，强制构造备择解释）+ 1 完整性批评 + 1 路外部异构怀疑者（codex/GPT-5.6-sol 横扫全部结论，3.40.0，见 research-workflows §2），三档判定 CONFIRMED/WEAKENED/REFUTED，纪律同完整版（research-workflows §2）。复核对象=筹码结构结论（实体判级/关联边/阵营划分/重放序列）；无长报告文案可核。修正顺序同完整版：先数据管线后文案；修正要点并入判定块下方一行（无附录可印）。**E4 前置件（不是 E5 提前做）**：cluster_sensitivity 扰动脚本依赖 analysis-state.json——跑 E4 前先落盘 state **骨架**（实体表定稿即可生成，不必等判定块），否则扰动敏感度报告做不出来（BANANAS31，07-22）；仅限骨架本身，**禁止连带提前出判定块/图 1/HTML**（那些是 E5 交付物，封口后才做）。
 
@@ -73,7 +73,7 @@ N 路怀疑者（给数据文件路径让其**自己重算**，强制构造备�
 
 工作目录沿用完整版习惯（`<代币>分析/`，含 data/ charts/），转正式零搬迁。口径注：**"两件套"指 HTML 页面的两大内容件（图 1＋阵营划分快照表）；落盘产物为三件**：
 
-1. **`<代币>筹码筛查_<日期>.html`**（build_html.py 管道，`--a4-seal a4_seal.json` 必传——G9 校验 E4 封口与图目录；6.7.0 起有 WARN 不写出文件）。md 骨架自含，不套 report-template 全模板；图 1 输出到 `charts/final/`（G9 只认此目录）：
+1. **`<代币>筹码筛查_<日期>.html`**：`build_html.py --mode analysis --md ... --out ... --facts facts.json --state analysis-state.json --a4-seal a4_seal.json`，同样重跑发布闸；筛查档只缩展示，不降门禁。图 1 输出到 `charts/final/`。
    - 标题 + 元信息行（数据截止 / 覆盖链与占全局供给% / 供给口径一句）
    - **图 1**：`plot_camp_evolution(..., price_series=...)` 必传价格（右轴黑线，v3.12 规格）+ 斜体题注
    - **阵营划分快照表**：阵营 | 地址数 | 现仓（枚 +【总量X%】）| 定义（实体状态与关键行为融入描述）

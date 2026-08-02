@@ -9,7 +9,7 @@ HTML 作废……2026-08-01 核查）。本闸把"A4 全部裁决落定"变成�
             args.claims 及 split-run §3.3 外部异构路输入的 claim registry 同构）
   finalize  A4 收尾封口：裁决 id 集合与注册表**完全相等**（缺一条=有结论没复核，
             多一条=复核了没登记的结论，都拒）＋三档枚举合法＋WEAKENED/REFUTED 必带
-            修订摘要＋终版分析文件（findings.md/analysis-state.json…）逐个 sha256
+            修订摘要＋registry/verdicts/findings/state/facts/identity/claim 引用文件逐个 sha256
             封口＋charts/final/ 必须为空（A5 尚未开始的物证）→ 产 a4_seal.json。
             build_html --a4-seal 编译时重算哈希校验（G9）：封口后再改结论不重封，
             报告物理上编不出来。翻案后重新修订＝改完再跑一次 finalize 重新封口。
@@ -20,7 +20,7 @@ mtime 不作裁决依据（cp -p 误伤 / touch 绕过，codex 复核否决）�
   python3 a4_gate.py register --case-dir <案目录> --claims-file <claims.json>
       # claims.json: [{"id": "C1", "text": "……", "files": [...]}, ...]
   python3 a4_gate.py finalize --case-dir <案目录> --verdicts-file <verdicts.json> \
-      --seal-files findings.md,analysis-state.json [--charts-dir charts/final]
+      --seal-files findings.md,analysis-state.json,facts.json,identity_gate.json [--charts-dir charts/final]
       # verdicts.json: [{"id": "C1", "verdict": "CONFIRMED|WEAKENED|REFUTED",
       #                  "revision_note": "WEAKENED/REFUTED 必填"}, ...]
 
@@ -32,10 +32,12 @@ import json
 import os
 import sys
 from datetime import datetime, timezone
+from pathlib import Path
 
 CLAIMS_NAME = "a4_claims.json"
 SEAL_NAME = "a4_seal.json"
 VERDICTS = {"CONFIRMED", "WEAKENED", "REFUTED"}
+MANDATORY_SEAL_FILES = {"findings.md", "analysis-state.json", "facts.json", "identity_gate.json"}
 
 
 def utcnow():
@@ -48,6 +50,27 @@ def sha256_file(path):
         for blk in iter(lambda: f.read(4 * 1024 * 1024), b""):
             h.update(blk)
     return h.hexdigest()
+
+
+def safe_case_file(case_dir, rel, must_exist=True):
+    """Resolve a relative regular file inside case_dir; reject abs/.. and symlink escape."""
+    if not isinstance(rel, str) or not rel.strip() or os.path.isabs(rel):
+        raise ValueError(f"路径必须是案目录内相对路径: {rel!r}")
+    raw = Path(rel)
+    if ".." in raw.parts:
+        raise ValueError(f"路径含 ..: {rel}")
+    root = Path(case_dir).resolve()
+    unresolved = root / raw
+    if unresolved.is_symlink():
+        raise ValueError(f"拒绝符号链接文件: {rel}")
+    p = unresolved.resolve()
+    try:
+        p.relative_to(root)
+    except ValueError:
+        raise ValueError(f"路径越出案目录: {rel}")
+    if must_exist and not p.is_file():
+        raise ValueError(f"文件不存在、非普通文件或为符号链接: {rel}")
+    return p
 
 
 def cmd_register(a):
@@ -71,9 +94,20 @@ def cmd_register(a):
     if any(not str(c.get("text", "")).strip() for c in claims):
         print("[register] 存在空 text 的 claim", file=sys.stderr)
         return 2
+    normalized = []
+    try:
+        for c in claims:
+            files = []
+            for rel in c.get("files") or []:
+                safe_case_file(case_dir, rel)
+                files.append(rel)
+            normalized.append({"id": str(c["id"]).strip(), "text": str(c["text"]).strip(),
+                               "files": files})
+    except ValueError as e:
+        print(f"[register] claim 引用文件非法: {e}", file=sys.stderr)
+        return 2
     reg = {"schema": "a4-claims/v1", "registered_at_utc": utcnow(),
-           "claims": [{"id": str(c["id"]).strip(), "text": str(c["text"]).strip(),
-                       "files": c.get("files") or []} for c in claims]}
+           "claims": normalized}
     path = os.path.join(case_dir, CLAIMS_NAME)
     with open(path, "w", encoding="utf-8") as f:
         json.dump(reg, f, ensure_ascii=False, indent=1)
@@ -116,19 +150,34 @@ def cmd_finalize(a):
         elif vd in ("WEAKENED", "REFUTED") and not str(v.get("revision_note", "")).strip():
             fails.append(f"claim {v.get('id')} 判 {vd} 但无 revision_note——翻案必须写修订摘要（改了什么、改后结论）")
 
-    seal_files = [x.strip() for x in (a.seal_files or "").split(",") if x.strip()]
-    if not seal_files:
-        fails.append("--seal-files 为空——至少封 findings.md（终版结论文件不封口＝封了个寂寞）")
+    seal_files = {x.strip() for x in (a.seal_files or "").split(",") if x.strip()}
+    seal_files |= MANDATORY_SEAL_FILES
+    claim_files = {str(rel) for c in reg.get("claims", []) for rel in (c.get("files") or [])}
+    seal_files |= claim_files
     sealed = []
-    for rel in seal_files:
-        p = os.path.join(case_dir, rel) if not os.path.isabs(rel) else rel
-        if not os.path.isfile(p):
-            fails.append(f"待封口文件不存在: {rel}")
+    for rel in sorted(seal_files):
+        try:
+            p = safe_case_file(case_dir, rel)
+        except ValueError as e:
+            fails.append(f"待封口文件非法: {e}")
             continue
         sealed.append({"path": rel, "sha256": sha256_file(p)})
 
+    try:
+        verdict_path = safe_case_file(case_dir, os.path.relpath(a.verdicts_file, case_dir))
+        verdict_rel = str(verdict_path.relative_to(Path(case_dir).resolve()))
+    except ValueError as e:
+        fails.append(f"verdicts 文件非法: {e}")
+        verdict_rel = None
+
     charts_dir = a.charts_dir
-    cd_abs = os.path.join(case_dir, charts_dir)
+    try:
+        cd_abs = safe_case_file(case_dir, charts_dir, must_exist=False)
+        if cd_abs.exists() and (not cd_abs.is_dir() or cd_abs.is_symlink()):
+            raise ValueError(f"charts_dir 非普通目录或为符号链接: {charts_dir}")
+    except ValueError as e:
+        fails.append(str(e))
+        cd_abs = Path(case_dir) / "__invalid_charts__"
     if os.path.isdir(cd_abs):
         residue = [x for x in os.listdir(cd_abs) if not x.startswith(".")]
         if residue:
@@ -146,14 +195,16 @@ def cmd_finalize(a):
     for v in verdicts:
         vd = str(v["verdict"]).strip().upper()
         counts[vd] = counts.get(vd, 0) + 1
-    seal = {"schema": "a4-seal/v1", "gate": "a4_gate", "verdict": "PASS", "exit_code": 0,
+    seal = {"schema": "a4-seal/v2", "gate": "a4_gate", "verdict": "PASS", "exit_code": 0,
             "sealed_at_utc": utcnow(),
-            "registry_sha256": sha256_file(reg_path),
+            "registry": {"path": CLAIMS_NAME, "sha256": sha256_file(reg_path)},
+            "verdicts": {"path": verdict_rel, "sha256": sha256_file(verdict_path)},
             "claims": [{"id": str(v["id"]).strip(),
                         "verdict": str(v["verdict"]).strip().upper(),
                         "revision_note": str(v.get("revision_note", "")).strip() or None}
                        for v in verdicts],
-            "counts": counts, "sealed_files": sealed, "charts_dir": charts_dir}
+            "counts": counts, "sealed_files": sealed, "claim_files": sorted(claim_files),
+            "charts_dir": charts_dir}
     path = os.path.join(case_dir, SEAL_NAME)
     with open(path, "w", encoding="utf-8") as f:
         json.dump(seal, f, ensure_ascii=False, indent=1)

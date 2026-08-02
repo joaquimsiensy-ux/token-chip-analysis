@@ -109,7 +109,7 @@ HTML 内嵌后监控脚本提取方式已写在 build_html.py docstring。**JSON
 **产出三件**（格式标准全按本文既有各节，一条不改）：
 1. 第六章补写观察哨信号清单＋两档监控建议（含逐条原因），Edit 进 `报告.md`
 2. `appendix.json`（四键＋完整数据键、sentinel 纪律、monitoring_advice 与两档清单一一对应）
-3. 重跑 `build_html.py --md 报告.md --out 报告.html --json appendix.json`——出带 `id="report-extract"` 的监控版 HTML，覆盖原文件（原版无独立价值，不必留档）
+3. 重跑 `build_html.py --mode legacy-recompile --degrade-reason "买入后补嵌监控 JSON，未改分析结论" --md 报告.md --out 报告.html --json appendix.json`——这是合法重编译但带显式水印；若要求维持正式 analysis 身份，须重新走 A4 finalize 与全套发布闸。
 
 **质检**：build_html 退出码 0 且零 WARN（四键齐/地址完整）；sentinel 纪律复查（周期性会动的地址必须 false）；观察哨条目与状态评估结论对齐（正文说"理应沉睡"的地址必须进转出即预警清单）。新会话执行时：只读附录 B＋data/ 目录＋第六章，**禁止整读旧报告**（成本纪律刀 2）。若为 /token-update 场景顺带补包，观察哨基线从本次更新数据起算。
 
