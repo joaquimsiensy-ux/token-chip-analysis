@@ -99,9 +99,10 @@ curl -s 'https://filfox.info/api/v1/address/f0121/transfers?pageSize=100&page=0'
 
 ## 5. 采集与分析脚本用法（scripts/filecoin/）
 
-执行顺序：`fetch_data.py --smoke 10` → 冒烟自检通过 → 全量后台跑 → `analyze_base.py` → `cluster.py`；中途冒出新地址用 `fetch_extra.py` 补抓。
+执行顺序：`fetch_data.py --data-dir <案目录/data> --smoke 10` → 冒烟自检通过 → `fetch_data.py --data-dir <案目录/data>` 全量后台跑 → `analyze_base.py` → `cluster.py`；中途冒出新地址用 `fetch_extra.py --data-dir <案目录/data> extra_addrs.txt` 补抓。
 
 - `fetch_data.py` — 主抓取：富豪榜前 200（pageSize 口径）→ 每地址详情 + 近 6 月流水 + 最早流水 → 创世 ID 段官方标签扫描 → CoinGecko 180 天价格。要点：
+  - `--data-dir` 必填；模块 import 零写盘副作，数据目录只通过 CLI/配置注入，`addr/` 和 `official/` 仅在 `main()` 开始后创建。
   - 官方 ID `f00–f0160` 扫描以 `requested/succeeded/not_found/failed` 四桶落 `official_scan_receipt.json`；404 进 not_found，网络/API 错误进 failed。任一 failed 都 BLOCK 且非零退出，不写正式 `official_scan.json`。`official_scan_progress.json` 保留已成功与待重试 ID，重跑只补查 failed；旧版孤立 `official_scan.json` 不再能短路。
   - 全部请求走 subprocess 调系统 curl，规避本机 Python SSL 证书坑（另一条路是 certifi，本管线选了 curl）。
   - `--smoke N`：先抓前 N 名冒烟（建议 N=10），冒烟必须包含第 4 节坑 ① 的唯一性断言与跨页自洽校验。

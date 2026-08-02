@@ -5,23 +5,37 @@
 只做只读 GET 请求(Filfox / CoinGecko 免费 API),结果存本目录 data/ 下 JSON。
 节流 ~3 req/s,带重试,断点续抓(已存在文件直接跳过)。
 用法:
-  python3 fetch_data.py --smoke 10   # 冒烟测试:只抓富豪榜前10名
-  python3 fetch_data.py              # 全量:前200名
+  python3 fetch_data.py --data-dir <案目录/data> --smoke 10
+  python3 fetch_data.py --data-dir <案目录/data>
 """
-import hashlib, json, os, subprocess, sys, time
+import argparse, hashlib, json, os, subprocess, sys, time
 
 BASE = "https://filfox.info/api/v1"
 HERE = os.path.dirname(os.path.abspath(__file__))
-DATA = os.path.join(HERE, "data")
-ADDR_DIR = os.path.join(DATA, "addr")
-OFFICIAL_DIR = os.path.join(DATA, "official")
+DATA = None
+ADDR_DIR = None
+OFFICIAL_DIR = None
 CUTOFF = 1767225600  # 2026-01-01 00:00 UTC,近6个月窗口起点
 MAX_RECENT_PAGES = 30  # 每地址近6个月流水最多30页(3000笔),超出记 truncated
 THROTTLE = 0.1  # curl 每次新建 TLS 连接自带 ~0.3-0.5s 开销,实际约 2-3 req/s
 UA = {"User-Agent": "Mozilla/5.0 (chip-analysis research script)"}
 
-os.makedirs(ADDR_DIR, exist_ok=True)
-os.makedirs(OFFICIAL_DIR, exist_ok=True)
+
+def configure_data_dir(data_dir):
+    """注入本次案例数据目录；只更新配置，不写磁盘。"""
+    global DATA, ADDR_DIR, OFFICIAL_DIR
+    DATA = os.path.realpath(os.path.abspath(os.fspath(data_dir)))
+    ADDR_DIR = os.path.join(DATA, "addr")
+    OFFICIAL_DIR = os.path.join(DATA, "official")
+    return DATA
+
+
+def initialize_data_dirs():
+    """进入正式执行后才创建输出目录。"""
+    if not DATA or not ADDR_DIR or not OFFICIAL_DIR:
+        raise RuntimeError("data directory is not configured; pass --data-dir")
+    os.makedirs(ADDR_DIR, exist_ok=True)
+    os.makedirs(OFFICIAL_DIR, exist_ok=True)
 
 _last = [0.0]
 def get_json(url, retries=5):
@@ -273,10 +287,18 @@ def write_collection_manifest(n, official_receipt=None):
     save(os.path.join(DATA, "collection_manifest.json"), manifest)
     return manifest
 
-def main():
-    n = 200
-    if "--smoke" in sys.argv:
-        n = int(sys.argv[sys.argv.index("--smoke") + 1])
+def main(argv=None):
+    parser = argparse.ArgumentParser(description="Filecoin restricted collector")
+    parser.add_argument("--data-dir", required=True,
+                        help="案目录的数据目录（禁止默认写 skill 目录）")
+    parser.add_argument("--smoke", type=int, metavar="N",
+                        help="只抓富豪榜前 N 名")
+    args = parser.parse_args(argv)
+    configure_data_dir(args.data_dir)
+    initialize_data_dirs()
+    n = args.smoke if args.smoke is not None else 200
+    if n <= 0 or n > 200:
+        parser.error("--smoke N 必须在 1..200")
     t0 = time.time()
     fetch_overview()
     fetch_price()
@@ -284,7 +306,7 @@ def main():
     for idx, item in enumerate(rl):
         fetch_address(item["address"], idx + 1)
     official_receipt = None
-    if n >= 200 or "--smoke" not in sys.argv:
+    if n >= 200 or args.smoke is None:
         official_receipt = fetch_official_scan()
         fetch_official_transfers()
     manifest = write_collection_manifest(n, official_receipt)

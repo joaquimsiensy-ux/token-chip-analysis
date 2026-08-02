@@ -4,6 +4,7 @@ import gzip
 import importlib.util
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -64,9 +65,8 @@ def test_h09(tmp):
     spec = importlib.util.spec_from_file_location("filecoin_fetch", FIL / "fetch_data.py")
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
-    mod.DATA = str(Path(tmp) / "data")
-    mod.ADDR_DIR = str(Path(tmp) / "data" / "addr")
-    Path(mod.ADDR_DIR).mkdir(parents=True)
+    mod.configure_data_dir(Path(tmp) / "data")
+    mod.initialize_data_dirs()
 
     def fake(url, retries=5):
         if "/transfers" in url:
@@ -83,7 +83,6 @@ def test_h09(tmp):
     assert not (Path(mod.ADDR_DIR) / "f1test" / "transfers_recent.json").exists()
 
     # P1-04：161 个官方 ID 任一网络失败都不得落 complete/PASS，重跑须补查失败项。
-    Path(mod.OFFICIAL_DIR).mkdir(parents=True, exist_ok=True)
     calls = []
 
     def official_fail(url, retries=5):
@@ -115,6 +114,32 @@ def test_h09(tmp):
     assert ref["path"] == "official_scan_receipt.json" and len(ref["sha256"]) == 64
 
 
+def test_p202_import_and_data_dir(tmp):
+    probe = Path(tmp) / "import_probe"
+    probe.mkdir()
+    copied = probe / "fetch_data.py"
+    shutil.copy2(FIL / "fetch_data.py", copied)
+    p = subprocess.run(
+        [sys.executable, "-c",
+         "import importlib.util; "
+         "s=importlib.util.spec_from_file_location('probe_fetch', 'fetch_data.py'); "
+         "m=importlib.util.module_from_spec(s); s.loader.exec_module(m)"],
+        cwd=probe, capture_output=True, text=True)
+    assert p.returncode == 0, p.stdout + p.stderr
+    assert not (probe / "data").exists(), "import 不得创建 data 目录"
+
+    spec = importlib.util.spec_from_file_location("filecoin_fetch_injected",
+                                                  FIL / "fetch_data.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    target = Path(tmp) / "injected_data"
+    mod.configure_data_dir(target)
+    assert Path(mod.DATA) == target.resolve()
+    assert not target.exists(), "配置注入本身不得写盘"
+    mod.initialize_data_dirs()
+    assert (target / "addr").is_dir() and (target / "official").is_dir()
+
+
 def test_h10(tmp):
     out = str(Path(tmp) / "events.jsonl.gz")
     identity = {"collector": "fixture", "token": "0x1", "query_schema": "q"}
@@ -144,8 +169,10 @@ def main():
     with tempfile.TemporaryDirectory() as tmp:
         test_h09(tmp)
     with tempfile.TemporaryDirectory() as tmp:
+        test_p202_import_and_data_dir(tmp)
+    with tempfile.TemporaryDirectory() as tmp:
         test_h10(tmp)
-    print("PASS: H-07/H-08/H-09/H-10 + P1-04 Filecoin official-scan retry receipt")
+    print("PASS: H-07/H-08/H-09/H-10 + P1-04 official-scan + P2-02 import side effects")
     return 0
 
 
