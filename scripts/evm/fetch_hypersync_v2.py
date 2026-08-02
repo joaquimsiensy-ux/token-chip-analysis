@@ -22,17 +22,28 @@ from hypersync import (BlockField, ClientConfig, FieldSelection, HexOutput,
                        LogField, LogSelection, Query, StreamConfig)
 
 TRANSFER = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
+MANIFEST_SCHEMA = "hypersync-v2-done/v2"
+QUERY_SCHEMA = "erc20-transfer-fields/v2"
 
 
-def find_resume_block(outdir, default_from):
-    """扫描已有 run_*/done.json 取最大 next_block 作为续拉起点。"""
+def find_resume_block(outdir, default_from, to_block, token_addr, url):
+    """Resume only manifests bound to the same capture identity and bounds."""
     best = default_from
     for f in glob.glob(os.path.join(outdir, "run_*", "done.json")):
         try:
-            nb = json.load(open(f)).get("next_block", 0)
-            best = max(best, nb)
-        except Exception:
-            pass
+            d = json.load(open(f))
+        except Exception as exc:
+            raise SystemExit(f"[fail-closed] unreadable done manifest {f}: {exc}")
+        if int(d.get("capture_from", -1)) != int(default_from):
+            continue
+        expected = {"schema": MANIFEST_SCHEMA, "query_schema": QUERY_SCHEMA,
+                    "token": token_addr.lower(), "url": url}
+        if any(d.get(k) != v for k, v in expected.items()):
+            raise SystemExit(f"[fail-closed] done manifest identity mismatch: {f}")
+        frm, end, nb = int(d.get("from_block", -1)), int(d.get("to_block", -1)), int(d.get("next_block", -1))
+        if not (default_from <= frm < end == nb <= to_block):
+            raise SystemExit(f"[fail-closed] done manifest bounds invalid/outside request: {f}")
+        best = max(best, nb)
     return best
 
 
@@ -70,13 +81,16 @@ async def main():
     a = ap.parse_args()
     token = resolve_token(a)
     url = re.sub(r"/query/?$", "", a.url.rstrip("/"))  # 容错：v1 习惯带 /query
-    os.makedirs(a.outdir, exist_ok=True)
-    start = find_resume_block(a.outdir, a.from_block)
-    if start > a.from_block:
-        print(f"[resume] 从上次 next_block {start} 续拉", flush=True)
     client = hypersync.HypersyncClient(ClientConfig(url=url, bearer_token=token))
     height = await client.get_height()
     to_block = a.to_block or height
+    os.makedirs(a.outdir, exist_ok=True)
+    start = find_resume_block(a.outdir, a.from_block, to_block, a.token_addr, url)
+    if start > a.from_block:
+        print(f"[resume] 从已验证 manifest 的 next_block {start} 续拉", flush=True)
+    if start >= to_block:
+        sys.exit(f"[fail-closed] resume start {start} >= to_block {to_block}; "
+                 "请求为空或已完成，拒绝写空完成记录")
     run_dir = os.path.join(a.outdir, f"run_{start}")
     os.makedirs(run_dir, exist_ok=True)
     query = Query(
@@ -94,8 +108,11 @@ async def main():
     t0 = time.time()
     await client.collect_parquet(run_dir, query, cfg)
     el = time.time() - t0
-    json.dump({"next_block": to_block, "from_block": start, "elapsed_s": round(el, 1),
-               "token": a.token_addr.lower(), "url": url},
+    json.dump({"schema": MANIFEST_SCHEMA, "query_schema": QUERY_SCHEMA,
+               "capture_from": a.from_block, "next_block": to_block,
+               "from_block": start, "to_block": to_block, "elapsed_s": round(el, 1),
+               "token": a.token_addr.lower(), "url": url,
+               "client_version": getattr(hypersync, "__version__", "unknown")},
               open(os.path.join(run_dir, "done.json"), "w"))
     print(f"[COMPLETE] [{start},{to_block}) -> {run_dir} 用时 {el:.0f}s", flush=True)
 

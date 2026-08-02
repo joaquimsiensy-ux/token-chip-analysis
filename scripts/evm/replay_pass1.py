@@ -52,33 +52,35 @@ def main():
         except FileNotFoundError:
             print(f"[warn] 缺文件 {c['path']}（tag={c['tag']}），跳过")
             continue
-        r = csv.reader(f)
-        next(r, None)
+        r = csv.DictReader(f)
+        header = set(r.fieldnames or [])
+        legacy = {"block", "ts", "tx", "from", "to", "uniqueId"} <= header \
+            and ("value" in header or "value_raw" in header)
+        standard8 = {"block", "ts", "tx", "log_index", "from", "to", "value_raw", "block_hash"} <= header
+        if not (legacy or standard8):
+            raise SystemExit(f"[fail-closed] {c['path']} CSV header 非 legacy7/standard8: {sorted(header)}")
         for row in r:
-            if not row:
+            if not row or not any(row.values()):
                 continue          # 空行不算数据损坏
-            if len(row) != 7:
-                bad_rows += 1
-                if len(bad_samples) < 5:
-                    bad_samples.append((c["tag"], "列数≠7", row[:3]))
-                continue
-            blk, ts, tx, frm, to, val, uid = row
+            blk, ts, tx, frm, to = (row.get(k) for k in ("block", "ts", "tx", "from", "to"))
+            val = row.get("value_raw", row.get("value"))
+            uid = row.get("uniqueId")
             try:
                 b = int(blk)
-            except ValueError:
+            except (TypeError, ValueError):
                 bad_rows += 1
                 if len(bad_samples) < 5:
-                    bad_samples.append((c["tag"], "block 非数字", row[:3]))
+                    bad_samples.append((c["tag"], "block 非数字", [blk, tx]))
                 continue
             if not (c["lo"] <= b < c["hi"]):
                 continue          # 段外行属通道路由，不算坏行
             try:
-                li = int(uid.rsplit(':', 1)[-1])
+                li = int(row["log_index"]) if standard8 else int(uid.rsplit(':', 1)[-1])
                 v = int(val)
-            except ValueError:
+            except (TypeError, ValueError):
                 bad_rows += 1
                 if len(bad_samples) < 5:
-                    bad_samples.append((c["tag"], "li/value 非数字", row[:3]))
+                    bad_samples.append((c["tag"], "li/value 非数字", [blk, tx]))
                 continue
             rows[(c["tag"], tx.lower(), li)] = (b, ts, frm.lower(), (to or Z).lower(), v)
             n += 1

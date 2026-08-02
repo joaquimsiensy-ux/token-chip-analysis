@@ -9,7 +9,7 @@
 5. **probe_escrows.py** — escrow 最老交易探查 + Streamflow stream 元数据 raw 解码（sender/recipient/到期三处互验/cancelable/transferable 标志位，data_len=1104 布局速查见 pipeline §2 Streamflow 条）。来源：CLUDE(Solana) 2026-07-13。
 6. **probe_wallet_batch.py** — 批量钱包全流水画像（目标 mint 变动+SOL 流向+最大对手方；隐鲸群/中转网排查用）。目标地址列表按标的替换。来源：CLUDE(Solana) 2026-07-13。
 7. **probe_token_account_history.py** — **ATA 级签名史解码**（高频钱包 owner 级签名被稀释时的正解；ATA 已销户时从已知 tx 的 tokenBalances 反查 account 地址，见 pipeline §3a 坑 4）。来源：CLUDE(Solana) 2026-07-13。
-8. **replay_edges.py** — **SQD 边重放引擎（全量重放路线的下游标准件）**：reconcile（供给闭合+快照 top50 对账，阶段 2 关卡）/ trace / top / sniper（狙击窗）/ **mints（铸造边全清单——pump.fun 币第一优先检查项，见 pipeline §8）** / evolution（小时级阵营占比序列，`--stake-pool` 质押修正：有效持仓=现货+质押）。阵营定义读 camps.json。来源：PUB(Solana) 2026-07-14 收编。
+8. **replay_edges.py** — SQD 边重放硬闸：reconcile 要求无负余额、holder snapshot meta 闭合、全 owner 与重放末态完全一致，写 `reconcile_receipt.json`，失败 exit 2；evolution 每个小时用当时累计 mint-burn 作为分母，不再用终态供应回填历史。
 9. **stake_decode.py** — 质押/托管池账本解码器：池 ATA 签名史 → 逐用户存/取账本 → **净额合计 vs 池链上余额自动闭合验证**；"取回>存入"用户单列（排除归集仓伪装的证据）。配套 pipeline §2 自建质押合约判别五步法。来源：PUB(Solana) 2026-07-14 收编。
 10. **gas_origin.py** — 批量地址 gas/资金溯源（最早 3 笔签名 → SOL 入金 funder，累积落盘）。与 mint 无关纯 SOL 层。来源：PUB(Solana) 2026-07-14 收编。
 11. **whale_deep.py** — 大户 ATA 级**全量 decode 深挖**（逐笔对手方/程序/SOL 变动，累积落盘；ATA 发现三级含销户反查+`--known-sig` 手动入口）。与 probe_token_account_history 分工：那个是轻量探查，这个是全量流水落盘供下游脚本消费。来源：PUB(Solana) 2026-07-14 收编。

@@ -59,7 +59,7 @@
 | QUQ 缩图 | cluster 老路四容器不可行 | **19.5s/1.35GB** → 76.2 万聚合边；rustworkx 连通分量 0.35s |
 
 **用法**：
-- 重放：`python3 scripts/evm/replay_duck.py --channels channels.json --out-dir data [--camps camps.json] [--emit-csv] [--mem-limit 8GB]`。通道 path 为**目录即自动走 v2 parquet**（run_*/logs.parquet+blocks join），文件走 v1 7 列 CSV；`--emit-csv` 产旧格式 merged.csv（对表/未迁移下游）。
+- 重放：`python3 scripts/evm/replay_duck.py --channels channels.json --out-dir data [--camps camps.json] [--emit-csv] [--mem-limit 8GB]`。目录走 v2 parquet，CSV 以 header 区分 legacy7 与标准 8 列；collector→replay 契约测试覆盖两者。
 - 缩图：`python3 scripts/evm/cluster_prep_duck.py <chain> [--dir 工作目录 | --v2 <v2目录>]` → data/cluster_prep/ 三件（edges_agg/bal/profile 全整数 parquet）→ `python3 scripts/evm/cluster.py <chain> --prep`。千万行以下 cluster.py 老路照旧。
 - 长跑守护：`python3 scripts/run_guarded.py --name X --mem-ceiling-gb 12 --detach -- <命令>`（脱管+双内存水位+状态 JSON 原子写；替代裸 nohup，防沙箱连带清理与 OOM 假死）。
 - **回归门禁（A1 纪律，硬性）**：动引擎/换库版本后必跑 ①`scripts/tests/run_all.py`（含 hypothesis 等价性测试+env_check 版本锁）②`scripts/bench/golden_baseline.py snapshot+compare` 对 ASTEROID 重跑对表。基线快照与对比口径见该脚本 docstring。
@@ -78,6 +78,7 @@
 **§12b 亿级流式重放（`replay_stream.py`，2026-07-25 收编）——上条"待修瓶颈"的现成出路**：
 样本达**亿级、或可用磁盘不足样本体积 4 倍**时，replay_duck 的两次物化不可行，改走
 `scripts/evm/replay_stream.py`：字段解码与产物口径逐字对齐 replay_duck，但**不物化任何中间表**，
+每个 channel 先在自己的 `[lo,hi)` 内过滤再 UNION；目录中落入其他通道责任区的额外行计入 `n_out_of_segment` 并 fail-closed，不能再按全局 min/max 混入。
 直接对 parquet 流式聚合——hash aggregate 内存需求由"行数级"降到"唯一地址数级"。
 实测 KOGE(BSC) **3.595 亿行 185 秒**完成（bal 55s/supply 20s/meta+inflow 63s/落盘 28s），
 峰值内存 2.4GB、**temp 全程 0 字节**；同机 replay_duck 无法完成。

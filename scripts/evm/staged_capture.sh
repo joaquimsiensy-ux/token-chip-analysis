@@ -21,11 +21,32 @@ n=${#BOUNDS[@]}
 for ((i=0; i<n-1; i++)); do
   FROM=${BOUNDS[$i]}; TO=${BOUNDS[$((i+1))]}
   if [ -f "$OUTDIR/run_${FROM}/done.json" ]; then
-    echo "[skip] segment ${FROM} done"
-    continue
+    if python3 - "$OUTDIR/run_${FROM}/done.json" "$TOK" "$URL" "$FROM" "$TO" <<'PY'
+import json, re, sys
+p, tok, url, start, end = sys.argv[1:]
+d = json.load(open(p))
+url = re.sub(r"/query/?$", "", url.rstrip("/"))
+ok = (d.get("schema") == "hypersync-v2-done/v2"
+      and d.get("query_schema") == "erc20-transfer-fields/v2"
+      and d.get("token") == tok.lower() and d.get("url") == url
+      and int(d.get("capture_from", -1)) == int(start)
+      and int(d.get("from_block", -1)) >= int(start)
+      and int(d.get("to_block", -1)) == int(end)
+      and int(d.get("next_block", -1)) == int(end))
+raise SystemExit(0 if ok else 2)
+PY
+    then
+      echo "[skip] segment ${FROM} manifest verified"
+      continue
+    fi
+    echo "[FATAL] segment ${FROM} done.json identity/bounds mismatch" >&2
+    exit 2
   fi
-  # 无 done.json 的 parquet 无 footer 不可读：清残迹重跑
-  rm -rf "$OUTDIR/run_${FROM}"
+  # 无 done.json 的残段不删除，移入隔离区保留诊断现场。
+  if [ -d "$OUTDIR/run_${FROM}" ]; then
+    mkdir -p "$OUTDIR/quarantine"
+    mv "$OUTDIR/run_${FROM}" "$OUTDIR/quarantine/run_${FROM}.$(date +%Y%m%d%H%M%S).$RANDOM"
+  fi
   echo "[start] segment ${FROM} -> ${TO} $(date +%H:%M:%S)"
   python3 "$V2" --url "$URL" --token-addr "$TOK" \
     --outdir "$OUTDIR" --concurrency "$CONCURRENCY" --to-block "$TO" "$FROM"
@@ -33,7 +54,10 @@ for ((i=0; i<n-1; i++)); do
   echo "[end] segment ${FROM} rc=${rc} $(date +%H:%M:%S)"
   if [ $rc -ne 0 ]; then
     echo "[retry-once] segment ${FROM}"
-    rm -rf "$OUTDIR/run_${FROM}"
+    if [ -d "$OUTDIR/run_${FROM}" ]; then
+      mkdir -p "$OUTDIR/quarantine"
+      mv "$OUTDIR/run_${FROM}" "$OUTDIR/quarantine/run_${FROM}.$(date +%Y%m%d%H%M%S).$RANDOM"
+    fi
     python3 "$V2" --url "$URL" --token-addr "$TOK" \
       --outdir "$OUTDIR" --concurrency "$CONCURRENCY" --to-block "$TO" "$FROM" || {
         echo "[FATAL] segment ${FROM} failed twice"; exit 1; }
