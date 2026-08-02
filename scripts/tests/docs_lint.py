@@ -126,6 +126,30 @@ def main(all_mode=False):
             if needle not in text:
                 fails.append(f'三道防线硬闸回退 {rel}: 缺少 {needle}')
 
+    # 8) 同时性家族合并与"恒定滞后"判据删除（2026-08-02 用户裁决，v6.12.0）：
+    #    在场检查=家族三档、②降级措辞、持仓画像旁证与 update-workflow 新指称不得回退；
+    #    不在场检查=已删的"恒定滞后=跟单"伪判据（庄程序按序遍历同样产生该形态，两可无判别力）
+    #    不得从旧案考古回捡进活跃规则（CHANGELOG 记录删除理由，不在禁扫范围）。
+    simult_contracts = {
+        'references/playbook-entity-cluster-methods.md': ['同时性共现（同秒/同块）家族', '① 候选发现档',
+                                                          '② 单币强指纹档', '③ 跨币强证据档',
+                                                          '高度疑似同一执行端', '持仓画像旁证'],
+        'references/update-workflow.md': ['同时性共现家族①候选发现档'],
+    }
+    for rel, needles in simult_contracts.items():
+        text = open(os.path.join(ROOT, rel), encoding='utf-8').read()
+        for needle in needles:
+            if needle not in text:
+                fails.append(f'同时性家族回退 {rel}: 缺少 {needle}')
+    simult_banned = {
+        'references/playbook-entity-cluster-methods.md': ['程序化跟单不是同一人'],
+    }
+    for rel, needles in simult_banned.items():
+        text = open(os.path.join(ROOT, rel), encoding='utf-8').read()
+        for needle in needles:
+            if needle in text:
+                fails.append(f'已删判据回捡 {rel}: 出现 {needle}')
+
     if fails:
         for f in fails[:30]:
             print('FAIL:', f)
