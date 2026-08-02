@@ -11,6 +11,7 @@
 输出: data/camp_series.json (camp_share_series 格式), data/whale_series.json (图2 各实体线)
 """
 import json, sys
+from decimal import Decimal
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -79,7 +80,10 @@ def main():
         d = json.loads(l)
         if d.get('decode_fail') or d.get('pool_balance') is None or not d.get('ts'): continue
         # pool_balance 是主池；其他池子小，近似只用主池
-        pool_pts.append((d['ts'], d['pool_balance'] * DECIMALS))
+        raw = d.get('pool_balance_raw')
+        if raw is None:  # legacy decoder output
+            raw = int(Decimal(str(d['pool_balance'])) * DECIMALS)
+        pool_pts.append((d['ts'], int(raw)))
     pool_pts.sort()
 
     def interp(pts, ts):

@@ -3,7 +3,7 @@
 ## 已有脚本
 
 1. **fetch_sqd_transfers.py** — SQD portal 全量转账边拉取（免 key 免代理，断点缓存+回补验证+墙钟保险丝）。来源：CLAW(Solana) 分析 2026-07-12，v1.3 收编。**全量重放路线现行主选＝fetch_sqd_transfers_v2.py（条目 23），本 v1 版保留作兜底与对照**；吞吐与选型以 pipeline-solana-capture §13 为准（旧"1.5x/4x"吞吐预期已被 v2 实测更新）。
-2. **scan_token_accounts.py** — getProgramAccounts 全量扫描器（SPL 与 Token-2022 双分支；Token-2022 走 api.mainnet-beta 无 dataSize 全扫 `--datasizes all`，SPL 走 publicnode dataSize:165，见 pipeline §0a/§1）；owner 聚合双口径输出。来源：CLUDE(Solana) 2026-07-13 实战重建（原 IO 待重建清单第 1+2 项）。
+2. **scan_token_accounts.py** — getProgramAccounts 全量扫描器（默认 `--datasizes auto`；Token-2022 强制无 dataSize 全扫并要求账户加总与 supply 精确闭合，SPL 用 dataSize:165）；缓存 meta 绑定 mint/program/RPC/slot/filters。owner 聚合双口径输出。
 3. **trace_wallet.py** — 单钱包全签名流水解码（`--mint` 必填按 mint 过滤 pre/postTokenBalances，0.13s 限速+重试，counterparties 记录）。来源：CLUDE(Solana) 2026-07-13。
 4. **fast_probe_tops.py** — top 大户快速画像（首笔时间+来源+签名分布，每 owner 4-8 个 RPC 调用，比全量 decode 快一个数量级）。来源：CLUDE(Solana) 2026-07-13。
 5. **probe_escrows.py** — escrow 最老交易探查 + Streamflow stream 元数据 raw 解码（sender/recipient/到期三处互验/cancelable/transferable 标志位，data_len=1104 布局速查见 pipeline §2 Streamflow 条）。来源：CLUDE(Solana) 2026-07-13。
@@ -51,7 +51,7 @@ MINT 来源约定：脚本读 `MINT` 环境变量或工作目录 `config.json` �
 ## 现役 v2 主线（Solana 采集加速工程 2026-07-21 起收编；本节为 v6.3.1 补登，此前漏列）
 
 23. **fetch_sqd_transfers_v2.py** — SQD 全量转账边拉取 v2（gzip 压缩传输+自适应区域并发+全局令牌桶，实测较 v1 明文快约 21 倍）——**全量重放路线现行主选**；v1（条目 1）保留作兜底与对照。选型与实测见 pipeline-solana-capture §13。
-24. **decode_txs_v2.py** — 溯源解码 v2（JSON-RPC 批量+全局签名去重缓存+端点可换）：Helius key 就位即 `--rpc` 直切；Helius 免费层不支持 batch 时走单笔并发（`--workers 6 --interval 0.12`，实测 7.5 笔/s）。v1（decode_txs.py，条目 14）保留。
+24. **decode_txs_v2.py** — 溯源解码 v2（JSON-RPC 批量+身份绑定缓存+端点可换）：金额只用 raw integer，失败行可重试；Helius 不支持 batch 时走单笔并发。v1 共用同一精确解码器。
 25. **accounting_gate_sol.py** — 记账模型准入 gate（Solana 版，A0/E0 硬闸）：采集/对账之前检测 mint 是否适用标准重放（Token-2022 TransferFee/TransferHook 等危险扩展硬拦），BLOCK=硬停报用户。
 26. **squads_members.py** — Squads v4 multisig 配置成员解析（borsh 手解，零第三方依赖）：off-curve 静置仓控制权判别标准件（entity_identity_gate PDA_UNRESOLVED 的 resolution 工具；PYTHIA 案 15 金库 2-of-2 共享托管密钥裁决用）。
 27. **hypersync_recon.py** — HyperSync Solana ↔ SQD 完备性对账器（**GA 后重验收专用，平时不用**）：HyperSync Solana 2026-07-22 验收未过、双引擎已禁用，官方 GA 后用本脚本三区四轮全零差才可解禁 `--hypersync`（见 pipeline-solana-capture §13d）。

@@ -8,6 +8,7 @@
 import argparse, json, sys, time
 from pathlib import Path
 import requests
+from decode_txs_v2 import decode_result
 
 RPC = "https://api.mainnet-beta.solana.com"
 
@@ -76,24 +77,7 @@ def main():
             n_fail += 1
             f.write(json.dumps({"sig": sig, "decode_fail": True}) + "\n")
         else:
-            meta = res.get("meta") or {}
-            pre = {}; post = {}
-            for tb in (meta.get("preTokenBalances") or []):
-                if tb.get("mint") != mint: continue
-                o = tb.get("owner"); amt = float((tb.get("uiTokenAmount") or {}).get("uiAmount") or 0)
-                pre[o] = pre.get(o, 0.0) + amt
-            for tb in (meta.get("postTokenBalances") or []):
-                if tb.get("mint") != mint: continue
-                o = tb.get("owner"); amt = float((tb.get("uiTokenAmount") or {}).get("uiAmount") or 0)
-                post[o] = post.get(o, 0.0) + amt
-            deltas = {}
-            for o in set(pre) | set(post):
-                dl = post.get(o, 0.0) - pre.get(o, 0.0)
-                if abs(dl) > 1e-9:
-                    deltas[o] = round(dl, 6)
-            row = {"sig": sig, "slot": res.get("slot"), "ts": res.get("blockTime"), "deltas": deltas}
-            if args.pool and args.pool in post:
-                row["pool_balance"] = round(post[args.pool], 6)
+            row = decode_result(sig, res, mint, args.pool)
             f.write(json.dumps(row) + "\n")
             n_ok += 1
         if (i + 1) % 200 == 0:
