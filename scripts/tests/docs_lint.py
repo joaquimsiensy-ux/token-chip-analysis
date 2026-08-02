@@ -76,7 +76,7 @@ def main(all_mode=False):
     # 5) 历史静置仓反向扫描是实体冻结前硬闸；四层任一缺失都视为方法回退。
     method_contracts = {
         'SKILL.md': ['历史静置仓反向扫描硬闸', 'dormant_warehouse_audit.json', '不允许冻结实体'],
-        'references/playbook-entity-cluster-methods.md': ['候选全集至少取四者并集', 'strict ∪ expanded', '同一交易末快照'],
+        'references/playbook-entity-cluster-methods.md': ['候选全集从三条现役机械通道取齐', 'strict ∪ expanded', '同一交易末快照'],
         'references/playbook-entity-cluster-tiering.md': ['历史静置仓反向扫描后的双边界峰值', '严格下限', '扩展上限'],
         'references/report-template.md': ['历史静置仓反向扫描硬闸', 'dormant_warehouse_audit.json', 'strict/expanded/excluded'],
     }
