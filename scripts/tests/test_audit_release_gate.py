@@ -300,6 +300,16 @@ def main():
         write_json(root, "dormant_warehouse_audit.json", da)
         errors = gate.run(root, report)
         assert any("地址重复" in x for x in errors), errors
+        # n) 6.9.4：同址用尾随空格＋EVM 大小写变体伪装成两条 → 规范化后仍判重复
+        da["candidates"] = [
+            {"candidate_address": "0xMUSTADDR ", "boundary_decision": "strict",
+             "decision_reason": "夹具：变体一"},
+            {"candidate_address": "0xmustaddr", "boundary_decision": "excluded",
+             "decision_reason": "夹具：变体二"},
+        ]
+        write_json(root, "dormant_warehouse_audit.json", da)
+        errors = gate.run(root, report)
+        assert any("地址重复" in x for x in errors), errors
         # m) 6.9.3：裁决字段齐全但没有地址 → 无名裁决记录拒
         da["candidates"] = [
             {"candidate_address": "0xmustaddr", "boundary_decision": "excluded",

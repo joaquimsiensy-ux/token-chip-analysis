@@ -367,6 +367,21 @@ def main():
         check("v3 标签缺 scan_universe 全集 verify 拒收 exit 2",
               p.returncode == 2 and "全集不完整" in p.stdout)
 
+        # 16d. v3 count 与逐条标记矛盾（6.9.4：count=0 配 must=true 自相矛盾拒收）
+        d16d = os.path.join(root, "case_wavev3contra")
+        os.makedirs(d16d)
+        make_case(d16d)
+        write_json(d16d, "wave_scan_report.json", {
+            "schema": "wave-scan/v3", "scan_universe_count": 1,
+            "scan_universe": [{"addr": "DormantW", "must_adjudicate": True,
+                               "must_reasons": ["dormant_ge_30d"]}],
+            "must_adjudicate_count": 0,
+            "waves": [], "equal_amount_groups": [], "requires_adjudication": False})
+        run(["generate", "--case-dir", d16d, "--status", "READY"] + GEN)
+        p = run(["verify", "--case-dir", d16d])
+        check("v3 count 与逐条 must 标记矛盾 verify 拒收 exit 2",
+              p.returncode == 2 and "内部矛盾" in p.stdout)
+
         # 17. handoff/v1 旧 manifest：默认拒；--legacy-read-only 显式降级放行（只读警告）
         d17 = os.path.join(root, "case_legacy")
         os.makedirs(d17)

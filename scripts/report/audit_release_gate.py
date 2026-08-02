@@ -202,17 +202,24 @@ def check_dormant(case_dir: Path, d: dict, errors: list[str]):
     cands = d.get("candidates", [])
     if not isinstance(cands, list):
         cands = []
-    addr_list = [str(c["candidate_address"]) for c in cands
+
+    def canon_addr(v) -> str:
+        # v6.9.4（codex 验收 P1）：尾随空格/EVM 大小写变体可绕重复检测与对账——
+        # 一律 strip；EVM(0x) 地址再统一小写（Solana base58 大小写敏感，不动大小写）。
+        s = str(v or "").strip()
+        return s.lower() if s.lower().startswith("0x") else s
+
+    addr_list = [canon_addr(c["candidate_address"]) for c in cands
                  if isinstance(c, dict) and str(c.get("candidate_address") or "").strip()]
     cand_addrs = set(addr_list)
     # v6.9.3（codex 验收 P1）：同一地址多行冲突裁决会被 set 静默吞并——重复即拒。
     if len(addr_list) != len(cand_addrs):
         dup = sorted({a for a in addr_list if addr_list.count(a) > 1})
         errors.append(f"静置仓候选地址重复 {len(dup)} 个（示例 {dup[:3]}）"
-                      "——同址多行裁决可互相矛盾，候选地址必须唯一")
+                      "——同址多行裁决可互相矛盾，候选地址必须唯一（规范化后判重）")
     missing = [str(u.get("addr")) for u in universe
                if isinstance(u, dict) and u.get("must_adjudicate")
-               and str(u.get("addr")) not in cand_addrs]
+               and canon_addr(u.get("addr")) not in cand_addrs]
     if missing:
         errors.append(f"候选全集对账失败: {len(missing)} 个必裁决地址不在审计候选内"
                       f"（示例 {missing[:3]}）——coverage 自报通过不作数")

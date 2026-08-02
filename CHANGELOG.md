@@ -15,6 +15,7 @@
 
 ## 版本索引（活跃窗口，新在上；每版一行，详情见下方对应条目）
 
+- **6.9.4** 2026-08-02 6.9.3 三轮验收两项收口（codex 出 2 P1）：①handoff v3 全集内部一致性——must_adjudicate_count 必须等于逐条 true 重算值（count=0 配 must=true 自相矛盾拒收），每条 universe 须有 addr＋布尔标记 ②发布闸候选地址规范化——strip 一律做、EVM(0x) 统一小写后再判重复与对账（尾随空格/大小写变体伪装两条的绕闸封死；Solana base58 大小写敏感不动）；SUITE 25 项全绿。四轮验收链止于此，是否续验由用户裁决
 - **6.9.3** 2026-08-02 6.9.2 二轮验收四项收口（codex 再出 2 P1＋2 P2，全是新闸自身 fail-open 边角）：①handoff v3 空壳检查补全——贴 v3 标签不带 scan_universe/must_adjudicate_count/计数闭合同属空壳拒收 ②发布闸候选地址唯一性——同址多行冲突裁决（strict vs excluded）被 set 静默吞并的洞封死 ③候选必须有地址——裁决字段齐全的无名记录拒 ④validator 报错提示"重跑 v2"改指 v3（自己拒收的版本不能再叫人跑）；SUITE 25 项全绿
 - **6.9.2** 2026-08-02 6.9.1 验收 review 四项返工（codex 出 2 P1＋2 P2 全认账）：①wave-scan/v3 下游断链修复——adjudication_validator/handoff_manifest 只认 v3、v1/v2 一律旧版拒收（升 schema 漏查下游消费者，测试没抓住恰因下游 fixture 也是 v2 自造自洽——"自己的 fixture 顺自己实现走"再实证）②发布闸候选"挂名≠裁决"——每条候选机器重验三类裁决＋理由非空，自报 unresolved_count 不作数 ③触发日产物哈希咬合——summary 登记 trigger_days_sha256，未带 --trigger-days 或目录残留陈旧产物一律拒 ④wave_scan last_day 只认非零金额转账——0 值 Transfer 任何人可发，能把静置仓"摸活"洗掉必裁决标记；SUITE 25 项全绿——详见下方对应条目
 - **6.9.1** 2026-08-02 /codex:review 对 6.9.0 判"不应发布"（3 high＋1 medium）后三高危全修（Fable 逐条独立复核确认后按自给修法执行；medium"官方公告并入经济控制"用户裁决不修——多签挪用/监守自盗实例遍地，"治理独立"是纸面约束，维持 6.9.0 拍板）：①峰值上界公式修正＋触发日机器闭环 ②48h 试转边补 OTC 排除检验 ③wave_scan v3 候选全集逐址落盘＋发布闸集合对账——详见下方对应条目
@@ -42,6 +43,10 @@
 - **4.1.0** 2026-07-30 PYTHIA 双报告交叉核实复盘：实体身份防复发三闸（label_lookup 并源 address-book / entity_identity_gate+G8 编译门 / 复核 prompt 翻案四问固化）+ 复盘元规则（身份类教训必须以代码收尾）
 - **4.0.0** 2026-07-28 大整编（用户点名）：3.0→3.41 四十余版增量迭代的结构清理——路由索引补齐 9 节、结构错位归位 3 处、消重立权威源制 6 组、CHANGELOG 重整归档 29 条；只减不加，规则语义未动
 - 更早版本（3.41.0 及以前）→ `CHANGELOG-archive.md`
+
+## [6.9.4] - 2026-08-02 — 6.9.3 三轮验收两项收口（count 闭合重算/地址规范化判重）
+
+背景：6.9.3 验收 review（base=9daf28e）出 2 P1，仍是新闸边角：①handoff v3 空壳检查只验了 must_adjudicate_count 是整数——count=0 但 universe 里挂着 must=true 条目的自相矛盾报告照过 verify；补逐条结构校验（每条 dict＋addr 非空＋must_adjudicate 布尔）＋count 与逐条 true 计数重算闭合，16d 反例。②发布闸候选判重在 strip 前取值——"0xabc "与"0xabc"、"0xABC"与"0xabc"被当两个地址，冲突裁决可借变体绕过唯一性检查、对账比较同病；上 canon_addr 规范化（一律 strip；EVM 0x 地址统一小写；**Solana base58 大小写敏感不动大小写**），判重与 universe 对账两侧同过，n 反例（空格＋大小写变体伪装仍判重复）。SUITE 25 项全绿。四轮验收链（6.9.0 三高危→6.9.1 修复回归→6.9.2/6.9.3 新闸边角→本轮边角的边角）severity 持续收敛，止损停手，是否第五轮续验由用户裁决。
 
 ## [6.9.3] - 2026-08-02 — 6.9.2 二轮验收四项收口（v3 空壳/重复候选/无名候选/提示错版）
 

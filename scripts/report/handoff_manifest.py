@@ -315,6 +315,14 @@ def _verify_light_schema(case_dir, fails, legacy=False):
             fails.append("wave_scan_report.json v3 全集不完整（scan_universe 须为数组、"
                          "must_adjudicate_count 须为整数、len(scan_universe)==scan_universe_count）"
                          "——贴 v3 标签不带逐址全集同属空壳，拒收")
+        elif any(not isinstance(u, dict) or not str(u.get("addr") or "").strip()
+                 or not isinstance(u.get("must_adjudicate"), bool)
+                 for u in ws["scan_universe"]) \
+                or sum(1 for u in ws["scan_universe"] if u.get("must_adjudicate")) \
+                != ws["must_adjudicate_count"]:
+            fails.append("wave_scan_report.json v3 全集内部矛盾（每条须有 addr 且 "
+                         "must_adjudicate 为布尔；must_adjudicate_count 必须等于逐条 true 计数"
+                         "——count=0 配 must=true 条目这类自相矛盾拒收，v6.9.4）")
     except Exception as e:
         fails.append(f"wave_scan_report.json 读取失败（波次扫描未跑？补跑 wave_scan.py 后重 generate）: {e}")
     try:
