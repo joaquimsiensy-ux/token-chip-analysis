@@ -6,7 +6,7 @@
 产物：<chain>_clusters.json + stdout 摘要
 
 三条规则（互相独立，命中任一即合并）：
-  R1 非交易所地址间累计直转 > 总量 0.005%（默认）
+  R1 非交易所地址间累计直转 ≥ 总量 0.005%（默认；代码为等号纳入，头注 2026-08-02 勘误对齐）
   R2 ≥2 地址共享同一非 CEX 的 gas 资金来源（GMGN native_transfer.from）
      —— CEX 热钱包绝不可作关联依据：从交易所提币的所有用户共享热钱包
   R3 从 team_treasury 一跳收币（标记 team_downstream，单独报告，不与外部集群混合）

@@ -60,7 +60,7 @@
 
 方法学全部在 `analysis-playbook.md` 路由索引（先定位节再区间读分册），按序做：
 
-1. **地址身份标注**（官方标签→外部证据→行为特征三级兜底，playbook §3）→ **金库与核心实体逐笔归因**（§4）→ **关联聚类**（多证据边＋服务枢纽剔除，§6；合并只认专属性证据——通用实现/通用服务共用不算，见 casebook E-01）。
+1. **地址身份标注**（官方标签→外部证据→行为特征三级兜底，playbook §3）→ **金库与核心实体逐笔归因**（§4）→ **关联聚类**（多证据边＋中间节点三段式检验，§6；合并只认专属性证据——通用实现/通用服务共用不算，见 casebook E-01）。
 2. **判例库过闸（实体表冻结前必做）**：把 `casebook/cex-custody.md` 与 `casebook/entity-clustering.md` 全册触发现象过一遍，命中的逐条做"必做区分检验"。
 3. **实体身份硬闸**：实体表冻结前跑 `scripts/report/entity_identity_gate.py --state … --chain … --snapshot …` 产出 `identity_gate.json`——对每个实体地址＋≥1% 大仓做标签双源（CSV 主库＋address-book 手工层，label_lookup 已自动并源）、Solana ed25519 曲线判定、托管假设三查；INFRA_IN_ENTITY／PDA_UNRESOLVED／BIG_UNLABELED 三类 flag 逐条填 resolution（查了什么、结论是什么）——**build_html G8 会校验此闸，flag 未解决报告物理上编不出来**。币安 Alpha 在架的 Solana 标的同时做 Alpha 集齐率判别（casebook C-01；easy 版 E0b 步骤④同款，完整版同责）。
 4. **庄级实体识别、标签划分与类型三分类**：门槛数值与细则的唯一权威源＝playbook-entity-cluster-tiering §6a（本处不设数值副本防漂移，v6.4.2 定；结构要点：不分级；项目方无论份额；大庄/小庄按当前持仓、离场庄按峰值判；刷量地址单独标签；发射窗协同实体按普通门槛判级；合并口径含全部疑似关联地址）。
