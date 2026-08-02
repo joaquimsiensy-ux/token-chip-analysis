@@ -85,7 +85,7 @@ def make_case(d):
                                             "negative_balance_addrs": 0,
                                             "waves": [], "equal_amount_groups": [],
                                             "requires_adjudication": False})
-    write_json(d, "flow_anomaly_report.json", {"schema": "flow-anomaly/v1", "eligible_universe_count": 0,
+    write_json(d, "flow_anomaly_report.json", {"schema": "flow-anomaly/v2", "eligible_universe_count": 0,
                                                "sinks": [], "sprays": [],
                                                "requires_adjudication": False})
     write_json(d, "time_spotcheck.json", {"gate": "time_spotcheck", "schema": "time-spotcheck/v1",

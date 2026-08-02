@@ -1,13 +1,33 @@
 #!/usr/bin/env python3
-"""flow_anomaly_scan.py — 资金流异常扫描器：汇集点＋分发点（v6.8.0 新增）。
+"""flow_anomaly_scan.py — 资金流异常扫描器：汇集点＋分发点（v6.8.0 新增；v2 schema 2026-08-02）。
 
 背景：W1 波次二次漏检复盘（2026-08-01）的第三道防线——wave_scan 抓"同窗建仓的群"，
 本脚本抓"资金拓扑上的枢纽"：①汇集点（sink）＝滚动窗内从多个合格来源收币的地址
 （Q1/3yMk 型进货枢纽——19 根 W1 藤裸露在它们的进货单上却无人看）；②分发点（spray）＝
-滚动窗内向大批"首次有意义建仓"新地址批量派发的地址（H9 三派发器型出货器）。
+向大批地址批量派发的地址（H9 三派发器型出货器）。
 两类候选只报警不定性，按 candidate-adjudications/v1 成员级裁决归 −2 判断层。
 
-⚠ 参数全部为待回测初值（PYTHIA 单案校准），非用户拍板值；缺第二币对照校准，
+v2（2026-08-02 用户拍板补缝＋codex 交叉复核重构，schema flow-anomaly/v2）：
+  两条覆盖缝——缝1：慢速批发线 500 过宽（PYTHIA H9 单案 6,503 收方校准），收方 20~499
+  且控节奏避开脉冲窗的慢速分发双模式全漏 → 慢速线降 100（用户设定的高召回初值）；
+  缝2：脉冲只数"首建当日来自此源"的 fresh 新收方，向已建仓老地址补货的分发完全隐形
+  （先占位建仓再灌大货，脉冲计数为零）→ 新增 pulse_all 广义脉冲口径。
+  三口径判据（金额线全部整数运算，meow 案纪律）：
+    pulse＝14 日滑窗内 fresh 边流出 ≥2% 且窗内 fresh 新收方 ≥20（escrow 灌新仓型）；
+    pulse_all＝14 日滑窗内全部出边流出 ≥2% 且窗内 distinct 收方（不限新老）≥20；
+    slow_spray＝全史 distinct 收方 ≥100 且全史流出 ≥2%（匀速出货滑窗不突出的兜底）。
+  pulse ⊂ pulse_all（fresh 达标窗必然全体达标）——故产物为多命中结构：一址一条 entry
+  （ID 规则 spray-<addr> 不变，validator 拒重复 ID），mode_hits 记三口径各自命中与窗口，
+  顶层 mode＝主定性标签（取序 pulse > pulse_all > slow_spray，fresh 灌新仓语义最尖），
+  不得以顶层 mode 当作"未命中其他口径"的证据。
+  同步修复：出边零值转账过滤（amt>0，零值可凑收方数）；窗口浓度字段
+  top1_recipient_share_pct＋meaningful_recipient_count（窗内收 ≥0.001% 供应的收方数，
+  线与 wave_scan D 指纹一致）——"1 笔大额＋19 粉尘收方"可伪命中双线，浓度只报不拒，
+  供裁决识别伪分发；pulse_all 命中时 launch_window 用其窗口起点（旧逻辑回退首出账日）。
+  残余缝（诚实声明，写入 analyze-workflow 覆盖真空段）：收方 20~99 且窗口不达标的慢速
+  分发／<20 收方拆分／全史 <2%／一实体轮换多址各 <2%／多跳二级分发，本闸均不可见。
+
+⚠ 参数出身：PYTHIA 单案回测＋用户设定初值（2026-08-02），非多案校准；
 首个新案实战时如实标注此局限。
 
 口径纪律（与 wave_scan 完全一致）：分母＝--total-supply 冻结值；边表同源；mint/burn
@@ -17,16 +37,20 @@
 first_meaningful_day 抗 dust 定义（首日末余额 ≥自身峰值×first-meaningful-ratio）。
 
 输入三选一（同 wave_scan）：--edges-sol / --edges-evm-v2 / --duckdb。
-输出：--out flow_anomaly_report.json（schema flow-anomaly/v1，来源/收方数组全量零截断；
+输出：--out flow_anomaly_report.json（schema flow-anomaly/v2，来源/收方数组全量零截断；
 sink 另含历史峰值、当前余额、全史净流入，供 validator 防多窗口累计低估；权威定义
 references/scan-schemas.md）。
 
 退出码：0=扫描完成；2=数据探测失败/参数错误（fail-closed）；1=脚本自身错误。
 
-回测基线（装闸必附原案回测；改阈值/算法后必须重跑 PYTHIA 并比对 fixtures/pythia_anchors.json）：
+回测基线（装闸必附原案回测；改阈值/算法后必须重跑 PYTHIA 并比对 fixtures/pythia_anchors.json，
+数值锚点唯一权威＝该 fixture 文件）：
   - 汇集点义务：Q1Ac6Y…（进货 83.27% 的调度枢纽）与 3yMkB8oc…（Alpha 场内 8.77% 过手）
-    以稳定 ID 过阈值（排名仅参考）；
-  - 分发点义务：H9 三派发器 DWVGbsn7/8WwVTK51/5GpctXbe（合计 13.47% 派 6,503 收方）命中。
+    以稳定 ID 过阈值（排名仅参考）；sink 判据 v2 未变，稳定 ID 集合零扰动。
+  - 分发点义务：H9 三派发器 DWVGbsn7/8WwVTK51/5GpctXbe 全部命中；mode 按实测记录——
+    旧备注"匀速出货任何 14 日窗 <0.2%"仅对 fresh 口径成立（v2 订正），全收方口径下
+    其中派发器存在双达标窗者归 pulse_all 属预期迁移，不是回归。
+  - Q1Ac6Y 的 spray 候选保持 mode=pulse（2025-08-13 窗灌新仓）。
 """
 import argparse
 import json
@@ -38,11 +62,17 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from wave_scan import (Z, DEAD, load_sol, load_evm_v2, attach_duckdb,  # noqa: E402
                        build_addr_summary, retention_bucket, day_str)
 
-SCHEMA = "flow-anomaly/v1"
+SCHEMA = "flow-anomaly/v2"
 
 
 def log(msg):
     print(f"[flow_anomaly] {msg}", flush=True)
+
+
+def pct_to_raw(total, pct):
+    """百分比阈值 → raw 整数线（份额阈值一律整数运算——浮点比较会漏"恰好整数枚"边界，
+    meow 案 2026-07-15 纪律）。精度 0.0001 个百分点，覆盖本脚本全部参数粒度。"""
+    return total * int(round(pct * 10000)) // 1000000
 
 
 def load_entity_groups(path):
@@ -121,15 +151,16 @@ def main():
     ap.add_argument("--sink-window-days", type=int, default=14)
     ap.add_argument("--sink-min-inflow-pct", type=float, default=2.0)
     ap.add_argument("--sink-min-sources", type=int, default=5)
-    # 分发点（初值；双模式——PYTHIA 回测校准：H9 三派发器是"慢速批发"（5.98% 分数月
-    # 匀速派给 5,546 收方，任何 14 日窗 <0.2%）滑窗天然抓不到，而 escrow 灌仓是"脉冲式"
-    # 滑窗完美适配，两种真实模式各配一套判据）
+    # 分发点（v2 三口径——pulse：escrow 灌新仓型脉冲；pulse_all：不限新老收方的广义脉冲
+    # （堵"向已建仓老地址补货"口径盲区，2026-08-02）；slow_spray：匀速出货滑窗不突出的
+    # 全史兜底（H9 型；慢速线 500→100，500 系 PYTHIA 单案 6,503 收方校准的过宽初值））
     ap.add_argument("--spray-window-days", type=int, default=14)
     ap.add_argument("--spray-min-outflow-pct", type=float, default=2.0,
-                    help="脉冲模式：窗内流出 ≥此%%；慢速模式：全史流出 ≥此%%")
-    ap.add_argument("--spray-min-recipients", type=int, default=20, help="脉冲模式：窗内新收方 ≥此数")
-    ap.add_argument("--spray-slow-min-recipients", type=int, default=500,
-                    help="慢速批发模式：全史 distinct 收方 ≥此数")
+                    help="pulse/pulse_all：窗内流出 ≥此%%；slow_spray：全史流出 ≥此%%")
+    ap.add_argument("--spray-min-recipients", type=int, default=20,
+                    help="pulse：窗内 fresh 新收方 ≥此数；pulse_all：窗内收方（不限新老）≥此数")
+    ap.add_argument("--spray-slow-min-recipients", type=int, default=100,
+                    help="慢速批发模式：全史 distinct 收方 ≥此数（高召回初值，用户 2026-08-02 定）")
     a = ap.parse_args()
 
     import duckdb
@@ -160,7 +191,7 @@ def main():
     log(f"边表就绪 {n_edges:,} 条")
 
     build_addr_summary(con, exclude, a.first_meaningful_ratio)
-    min_peak_raw = total * a.min_peak_pct / 100.0
+    min_peak_raw = pct_to_raw(total, a.min_peak_pct)
     eligible = {r[0] for r in con.execute(
         f"SELECT owner FROM addr WHERE peak >= {min_peak_raw}").fetchall()}
     log(f"合格地址（峰值≥{a.min_peak_pct}%）{len(eligible):,} 个")
@@ -186,11 +217,12 @@ def main():
     data_first_day = con.execute("SELECT MIN(ts) // 86400 FROM edges").fetchone()[0] or 0
 
     # ---------------- ① 汇集点 ----------------
-    sink_min_raw = total * a.sink_min_inflow_pct / 100.0
+    sink_min_raw = pct_to_raw(total, a.sink_min_inflow_pct)
     elig_ph = "', '".join(sorted(eligible - sentinels))
+    # amt > 0：零值转账既凑不了金额也不许凑来源/收方数（v2，spray 同款）
     pre_sinks = [r[0] for r in con.execute(f"""
         SELECT t FROM eflow
-        WHERE f IN ('{elig_ph}') AND t NOT IN ('{sent_ph}') AND f <> t
+        WHERE f IN ('{elig_ph}') AND t NOT IN ('{sent_ph}') AND f <> t AND amt > 0
         GROUP BY t HAVING SUM(amt) >= {sink_min_raw}""").fetchall()]
     log(f"汇集点预筛 {len(pre_sinks)} 个（合格来源总流入 ≥{a.sink_min_inflow_pct}%）")
     win_sec = a.sink_window_days * 86400
@@ -198,7 +230,7 @@ def main():
     for t in pre_sinks:
         rows = con.execute(f"""
             SELECT ts, f, amt FROM eflow
-            WHERE t = '{t}' AND f IN ('{elig_ph}') AND f <> t
+            WHERE t = '{t}' AND f IN ('{elig_ph}') AND f <> t AND amt > 0
             ORDER BY ts""").fetchall()
         best_sum, best_srcs, w0, w1 = best_window_scan(
             [(int(ts), f, int(v)) for ts, f, v in rows], win_sec,
@@ -235,59 +267,102 @@ def main():
         })
     sinks.sort(key=lambda s: -s["best_window"]["inflow_pct"])
 
-    # ---------------- ② 分发点 ----------------
-    spray_min_raw = total * a.spray_min_outflow_pct / 100.0
+    # ---------------- ② 分发点（v2 三口径多命中） ----------------
+    spray_min_raw = pct_to_raw(total, a.spray_min_outflow_pct)
+    # 浓度线：窗内"有意义收方"＝单收方窗内累计 ≥0.001% 总供应（与 wave_scan D 指纹同线）
+    meaningful_recv_raw = pct_to_raw(total, 0.001)
     pre_sprays = [r[0] for r in con.execute(f"""
         SELECT f FROM eflow
-        WHERE t NOT IN ('{sent_ph}') AND f NOT IN ('{sent_ph}') AND f <> t
+        WHERE t NOT IN ('{sent_ph}') AND f NOT IN ('{sent_ph}') AND f <> t AND amt > 0
         GROUP BY f HAVING SUM(amt) >= {spray_min_raw}""").fetchall()]
     log(f"分发点预筛 {len(pre_sprays)} 个（总流出 ≥{a.spray_min_outflow_pct}%）")
     win_sec2 = a.spray_window_days * 86400
     sprays = []
     for f in pre_sprays:
-        rows = con.execute(f"""
+        rows = [(int(ts), t, int(v)) for ts, t, v in con.execute(f"""
             SELECT ts, t, amt FROM eflow
-            WHERE f = '{f}' AND t NOT IN ('{sent_ph}') AND f <> t
-            ORDER BY ts""").fetchall()
+            WHERE f = '{f}' AND t NOT IN ('{sent_ph}') AND f <> t AND amt > 0
+            ORDER BY ts""").fetchall()]
         all_recv = {t for _, t, _ in rows}
-        all_out = sum(int(v) for _, _, v in rows)
+        all_out = sum(v for _, _, v in rows)
         # "喂新地址"的边：该笔发生日 == 收方 first_meaningful_day（首建即来自此来源）
-        fresh = [(int(ts), t, int(v)) for ts, t, v in rows
-                 if t in info and int(ts) // 86400 == info[t][2]]
+        fresh = [(ts, t, v) for ts, t, v in rows
+                 if t in info and ts // 86400 == info[t][2]]
         fresh_recv = {t for _, t, _ in fresh}
-        # 脉冲模式：滑窗内新收方 ≥N 且流出 ≥X%（escrow 灌仓型）
-        best_sum, best_recv, w0, w1 = (0, None, None, None)
-        if fresh:
-            best_sum, best_recv, w0, w1 = best_window_scan(
-                fresh, win_sec2, spray_min_raw, a.spray_min_recipients)
-        pulse_hit = best_recv is not None
-        # 慢速批发模式：全史 distinct 收方 ≥N 且全史流出 ≥X%（H9 三派发器型——
-        # 匀速出货任何滑窗都不突出，只有全史口径能抓）
+
+        def window_summary(w0, w1, wsum):
+            """选定窗的统一摘要（v2 统一键：不按 mode 换键名，消费者无须分支）。
+            recipient_count＝窗内全体 distinct 收方；fresh_recipient_count＝窗内首建
+            当日收方；浓度两键识别"1 笔大额＋N 粉尘"伪分发（只报不拒，供裁决）。"""
+            recv_tot = {}
+            fresh_in_win = set()
+            for ts, t, v in rows:
+                if w0 <= ts <= w1:
+                    recv_tot[t] = recv_tot.get(t, 0) + v
+                    if t in info and ts // 86400 == info[t][2]:
+                        fresh_in_win.add(t)
+            top1 = max(recv_tot.values()) if recv_tot else 0
+            return {"start": day_str(w0 // 86400), "end": day_str(w1 // 86400),
+                    "outflow_pct": round(wsum * 100.0 / total, 4),
+                    "recipient_count": len(recv_tot),
+                    "fresh_recipient_count": len(fresh_in_win),
+                    "top1_recipient_share_pct": round(top1 * 100.0 / total, 4),
+                    "meaningful_recipient_count": sum(
+                        1 for v in recv_tot.values() if v >= meaningful_recv_raw)}
+
+        # pulse：fresh 边滑窗双达标（escrow 灌新仓型）
+        p_sum, p_recv, p_w0, p_w1 = best_window_scan(
+            fresh, win_sec2, spray_min_raw, a.spray_min_recipients)
+        pulse_hit = p_recv is not None
+        # pulse_all：全部出边滑窗双达标（不限新老——堵"向已建仓老地址补货"盲区）。
+        # pulse ⊂ pulse_all：fresh 达标窗必然全体达标，故 pulse 命中者此处必命中。
+        a_sum, a_recv, a_w0, a_w1 = best_window_scan(
+            rows, win_sec2, spray_min_raw, a.spray_min_recipients)
+        pulse_all_hit = a_recv is not None
+        # slow_spray：全史 distinct 收方 ≥N 且全史流出 ≥X%（匀速出货任何滑窗都不突出，
+        # 只有全史口径能抓——H9 三派发器型）
         slow_hit = len(all_recv) >= a.spray_slow_min_recipients and all_out >= spray_min_raw
-        if not pulse_hit and not slow_hit:
+        if not (pulse_hit or pulse_all_hit or slow_hit):
             continue
-        mode = "pulse" if pulse_hit else "slow_spray"
-        first_day = int(rows[0][0]) // 86400
+        # 一址一条 entry（validator 拒重复 ID）；顶层 mode＝主定性标签，
+        # mode_hits 保全三口径命中事实——顶层 mode 不是"未命中其他口径"的证据。
+        mode = "pulse" if pulse_hit else ("pulse_all" if pulse_all_hit else "slow_spray")
+        mode_hits = {
+            "pulse": {"hit": pulse_hit},
+            "pulse_all": {"hit": pulse_all_hit},
+            "slow_spray": {"hit": slow_hit},
+        }
+        if pulse_hit:
+            mode_hits["pulse"]["best_window"] = window_summary(p_w0, p_w1, p_sum)
+        if pulse_all_hit:
+            mode_hits["pulse_all"]["best_window"] = window_summary(a_w0, a_w1, a_sum)
+        first_day = rows[0][0] // 86400
+        # launch_window：主模式窗起点（pulse_all 也用其 w0——旧逻辑对非 pulse 一律回退
+        # 首出账日，v2 修正）；slow_spray 无窗仍用首出账日
+        launch_day = (p_w0 // 86400 if pulse_hit
+                      else a_w0 // 86400 if pulse_all_hit else first_day)
         entry = {
             "id": f"spray-{f}",
             "addr": f,
             "mode": mode,
+            "mode_hits": mode_hits,
             "all_time": {"outflow_pct": round(all_out * 100.0 / total, 4),
                          "recipient_count": len(all_recv),
                          "fresh_recipient_count": len(fresh_recv)},
-            "launch_window": (w0 // 86400 if pulse_hit else first_day) <= data_first_day + 3,
+            "best_window": mode_hits.get(mode, {}).get("best_window"),
+            "launch_window": launch_day <= data_first_day + 3,
         }
-        if pulse_hit:
-            entry["best_window"] = {"start": day_str(w0 // 86400), "end": day_str(w1 // 86400),
-                                    "outflow_pct": round(best_sum * 100.0 / total, 4),
-                                    "new_recipient_count": len(best_recv)}
-            entry["recipients"] = sorted(best_recv)   # 全量，闭合 best_window.new_recipient_count
+        if mode == "pulse":
+            # 判据收方全量：pulse＝主窗 fresh 收方，len == best_window.fresh_recipient_count
+            entry["recipients"] = sorted(p_recv)
+        elif mode == "pulse_all":
+            # pulse_all＝主窗全体收方，len == best_window.recipient_count
+            entry["recipients"] = sorted(a_recv)
         else:
-            entry["best_window"] = None
             # 慢速模式收方列 top（按累计收量）——显式摘要非静默截断，全量数在 all_time.recipient_count
             top = con.execute(f"""
                 SELECT t, SUM(amt) AS v FROM eflow
-                WHERE f = '{f}' AND t NOT IN ('{sent_ph}') AND f <> t
+                WHERE f = '{f}' AND t NOT IN ('{sent_ph}') AND f <> t AND amt > 0
                 GROUP BY t ORDER BY v DESC LIMIT 500""").fetchall()
             entry["recipients_top"] = [r[0] for r in top]
         sprays.append(entry)
@@ -305,7 +380,9 @@ def main():
         "requires_adjudication": bool(sinks or sprays),
         "note": "候选≠结论：汇集点可能是 CEX 充值地址/DEX 路由、分发点可能是空投器/设施——"
                 "按 candidate-adjudications/v1 成员级逐条裁决归 −2/A3 判断层；launch_window "
-                "打标不过滤。参数为 PYTHIA 单案校准初值，缺第二币对照。",
+                "打标不过滤。spray 为多命中结构：顶层 mode 是主定性标签（pulse>pulse_all>"
+                "slow_spray），mode_hits 保全三口径命中事实；浓度字段识别伪分发只报不拒。"
+                "参数出身＝PYTHIA 单案回测＋用户设定初值（2026-08-02），非多案校准。",
     }
     with open(a.out, "w", encoding="utf-8") as fh:
         json.dump(report, fh, ensure_ascii=False, indent=1)
@@ -315,9 +392,15 @@ def main():
             f"流入{s['best_window']['inflow_pct']}% 来源{s['best_window']['source_count']} | "
             f"历史峰值{s['balance']['historical_peak_pct']}% 净流入{s['all_time']['net_inflow_pct']}%")
     for s in sprays[:10]:
+        bw = s.get("best_window") or {}
         if s["mode"] == "pulse":
-            log(f"  spray[脉冲] {s['addr'][:14]}… 窗{s['best_window']['start']}起 "
-                f"流出{s['best_window']['outflow_pct']}% 新收方{s['best_window']['new_recipient_count']}")
+            log(f"  spray[脉冲] {s['addr'][:14]}… 窗{bw['start']}起 流出{bw['outflow_pct']}% "
+                f"新收方{bw['fresh_recipient_count']}（全收方{bw['recipient_count']}，"
+                f"有效{bw['meaningful_recipient_count']}）")
+        elif s["mode"] == "pulse_all":
+            log(f"  spray[广脉冲] {s['addr'][:14]}… 窗{bw['start']}起 流出{bw['outflow_pct']}% "
+                f"收方{bw['recipient_count']}（fresh {bw['fresh_recipient_count']}，"
+                f"有效{bw['meaningful_recipient_count']}）")
         else:
             log(f"  spray[慢速] {s['addr'][:14]}… 全史流出{s['all_time']['outflow_pct']}% "
                 f"收方{s['all_time']['recipient_count']}（fresh {s['all_time']['fresh_recipient_count']}）")

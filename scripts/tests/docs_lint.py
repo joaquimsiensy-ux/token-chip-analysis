@@ -115,7 +115,7 @@ def main(all_mode=False):
                                     '四重前置', '--entity-file'],
         'references/casebook/supply-accounting.md': ['wave_scan.py', '桶存在≠桶内被检验过',
                                                      '闸外的人来试着绕它'],
-        'references/scan-schemas.md': ['wave-scan/v3', 'flow-anomaly/v1',
+        'references/scan-schemas.md': ['wave-scan/v3', 'flow-anomaly/v2',
                                        'candidate-adjudications/v1', 'provenance-ledger/v2',
                                        '正向模拟', 'members_sha256', '完整字段登记',
                                        'scan_universe', 'must_adjudicate'],

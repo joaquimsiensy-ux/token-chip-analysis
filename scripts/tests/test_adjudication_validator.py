@@ -69,7 +69,7 @@ def make_reports(d, wave_peak=12.0, eqg_pct=3.0, sink_window=2.5,
                                  "members": ["Ea", "Eb"]}],
         "requires_adjudication": True})
     wj(d, "flow_anomaly_report.json", {
-        "schema": "flow-anomaly/v1", "eligible_universe_count": 5,
+        "schema": "flow-anomaly/v2", "eligible_universe_count": 5,
         "sinks": [{"id": "sink-HubX", "addr": "HubX",
                    "best_window": {"inflow_pct": sink_window, "source_count": 6},
                    "balance": {"historical_peak_pct": sink_peak,
@@ -77,7 +77,15 @@ def make_reports(d, wave_peak=12.0, eqg_pct=3.0, sink_window=2.5,
                    "all_time": {"net_inflow_pct": sink_net,
                                 "qualified_inflow_pct": sink_peak},
                    "sources": []}],
-        "sprays": [], "requires_adjudication": True})
+        # v2 起 spray 有对称校验（mode/mode_hits/闭合）——补一个合法 slow_spray 保正向覆盖
+        "sprays": [{"id": "spray-SprayY", "addr": "SprayY", "mode": "slow_spray",
+                    "mode_hits": {"pulse": {"hit": False}, "pulse_all": {"hit": False},
+                                  "slow_spray": {"hit": True}},
+                    "all_time": {"outflow_pct": 2.5, "recipient_count": 150,
+                                 "fresh_recipient_count": 30},
+                    "best_window": None, "recipients_top": ["R1", "R2"],
+                    "launch_window": False}],
+        "requires_adjudication": True})
 
 
 def fill_all(d, unresolved_ids=None):
@@ -106,7 +114,8 @@ def main():
     os.makedirs(d)
     make_reports(d)
     adj, pt = fill_all(d)
-    check("template 生成 exit 0 且 3 条候选", pt.returncode == 0 and len(adj["adjudications"]) == 3)
+    check("template 生成 exit 0 且 4 条候选（wave+eqg+sink+spray）",
+          pt.returncode == 0 and len(adj["adjudications"]) == 4)
     check("template 预填 sha256 与机器 tier_impact",
           all(r["candidate_sha256"] and "max_possible_impact" in r["tier_impact"]
               for r in adj["adjudications"]))

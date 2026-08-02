@@ -71,7 +71,8 @@ def file_sha(path):
 
 
 WAVE_SCHEMA = "wave-scan/v3"
-FLOW_SCHEMA = "flow-anomaly/v1"
+FLOW_SCHEMA = "flow-anomaly/v2"
+SPRAY_MODES = ("pulse", "pulse_all", "slow_spray")
 
 
 def check_source_schemas(wave, flow):
@@ -80,10 +81,11 @@ def check_source_schemas(wave, flow):
     if wave.get("schema") != WAVE_SCHEMA:
         fails.append(f"wave_scan_report schema 异常: {wave.get('schema')}（需要 {WAVE_SCHEMA}——旧版重跑 wave_scan.py v3）")
     if flow.get("schema") != FLOW_SCHEMA:
-        fails.append(f"flow_anomaly_report schema 异常: {flow.get('schema')}（需要 {FLOW_SCHEMA}）")
+        fails.append(f"flow_anomaly_report schema 异常: {flow.get('schema')}"
+                     f"（需要 {FLOW_SCHEMA}——旧 v1 产物重跑 flow_anomaly_scan.py v2）")
     else:
-        # high-3：旧 flow/v1 sink 只有 best_window，会系统性低估多窗口累计影响。
-        # 保持 schema 名兼容，但缺历史峰值/当前余额/全史净流入的新产物一律拒绝重跑。
+        # high-3：sink 只看单一最佳窗会系统性低估多窗口累计影响——
+        # 缺历史峰值/当前余额/全史净流入的产物一律拒绝重跑。
         for s in flow.get("sinks", []):
             required = ((s.get("balance") or {}).get("historical_peak_pct"),
                         (s.get("balance") or {}).get("current_balance_pct"),
@@ -91,6 +93,33 @@ def check_source_schemas(wave, flow):
             if any(not isinstance(v, (int, float)) for v in required):
                 fails.append(f"flow sink {s.get('id')} 缺 historical_peak/current_balance/"
                              "all_time.net_inflow——旧产物必须重跑")
+        # v2：spray 对称校验（v1 时代 spray 零字段检查——mode 写错/结构空壳照样过闸）。
+        for s in flow.get("sprays", []):
+            sid = s.get("id")
+            if s.get("id") != f"spray-{s.get('addr')}":
+                fails.append(f"flow spray {sid} 的 id 与 addr 不对应——扫描器产物异常")
+            mode = s.get("mode")
+            hits = s.get("mode_hits")
+            if mode not in SPRAY_MODES or not isinstance(hits, dict) \
+                    or set(hits) != set(SPRAY_MODES):
+                fails.append(f"flow spray {sid} 缺 mode/mode_hits 三口径结构"
+                             f"（v2 必备；mode={mode!r}）——旧产物必须重跑")
+                continue
+            if not (hits.get(mode) or {}).get("hit"):
+                fails.append(f"flow spray {sid} 顶层 mode={mode} 但 mode_hits 中未命中——自相矛盾")
+            bw = s.get("best_window")
+            if mode == "slow_spray":
+                if bw is not None:
+                    fails.append(f"flow spray {sid} slow_spray 主模式不应带 best_window")
+            else:
+                need_key = "fresh_recipient_count" if mode == "pulse" else "recipient_count"
+                n_recv = (bw or {}).get(need_key)
+                recips = s.get("recipients")
+                if not isinstance(bw, dict) or not isinstance(recips, list) \
+                        or not isinstance(n_recv, int) or len(recips) != n_recv \
+                        or len(set(recips)) != len(recips):
+                    fails.append(f"flow spray {sid} {mode} 的 recipients 与 "
+                                 f"best_window.{need_key} 不闭合或含重复——零截断纪律，旧产物必须重跑")
     return fails
 
 

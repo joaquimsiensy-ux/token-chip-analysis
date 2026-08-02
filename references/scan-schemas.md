@@ -1,7 +1,7 @@
 # scan-schemas — 机械扫描产物 schema 冻结（v6.8.1）
 
 四个扫描/溯源产物的**唯一权威字段定义**。实现脚本与契约测试对本文件写；改字段先改这里再改代码。
-适用脚本：`wave_scan.py`（wave-scan/v3）、`flow_anomaly_scan.py`（flow-anomaly/v1）、
+适用脚本：`wave_scan.py`（wave-scan/v3）、`flow_anomaly_scan.py`（flow-anomaly/v2）、
 `entity_source_trace.py`（provenance-ledger/v2）、裁决台账（candidate-adjudications/v1，−2 判断层手工产出、validator 机器校验）。
 
 ## 0. 四条公共纪律
@@ -83,13 +83,18 @@ v3 与 v2 的差异（2026-08-02 codex 复核补闸）：**候选全集逐址落
 
 **D 裁决纪律**（写给 −2）：每个等额组必查 `top_sender_global_out_degree`——上千＝场内设施整数面额"撞衫"（用户买整数金额自然撞面额），可批量定性关闭；个位数＝定向分仓信号。**字段口径澄清（2026-08-02）**：该字段名带 "global" 但实际口径是**本币种全史边表的 distinct 收方数**（工程实现口径），不是跨币种全历史出度——它只是裁决参考；枢纽终裁按 methods §6 硬规则块"中间节点三段式检验"的全历史口径（普通＋内部交易）人工核查。
 
-## 2. flow-anomaly/v1（flow_anomaly_scan.py）
+## 2. flow-anomaly/v2（flow_anomaly_scan.py）
 
-汇集点＋分发点两类候选（codex 第三路①②；参数全部为待回测初值，不是拍板值）。
+汇集点＋分发点两类候选。v1→v2（2026-08-02 用户拍板补两缝＋codex 交叉复核重构）：
+缝1＝慢速线 500（H9 单案 6,503 收方校准）过宽，降 100；缝2＝pulse 只数 fresh 新收方，
+"向已建仓老地址补货"完全隐形，新增 pulse_all 广义口径；spray 改**多命中结构**（pulse ⊂
+pulse_all，单一 mode＋优先级只是选标签会丢证据）；出边零值过滤（amt>0，零值不许凑收方/
+来源数）；金额阈值整数运算（meow 案纪律）；窗口浓度两键识别伪分发。参数出身＝PYTHIA
+单案回测＋用户设定高召回初值，非多案校准。
 
 ```
 {
-  "schema": "flow-anomaly/v1",
+  "schema": "flow-anomaly/v2",
   "generated_at": ISO8601, "params": {…}, "total_supply_raw": str, "edges": int,
   "eligible_universe_count": int,      # 合格地址（历史峰值≥0.02%）数——来源/收方均不限清零层
   "sinks": [{                          # 汇集点：滚动窗内从多来源收币
@@ -102,26 +107,43 @@ v3 与 v2 的差异（2026-08-02 codex 复核补闸）：**候选全集逐址落
     "sources": [{"addr", "pct", "retention_bucket"}],   # 全量，len == best_window.source_count
     "launch_window": bool
   }],
-  "sprays": [{                         # 分发点：双模式（PYTHIA 回测校准）
+  "sprays": [{                         # 分发点：三口径多命中（v2；一址一条 entry）
     "id": "spray-<addr>",
     "addr": addr,
-    "mode": "pulse|slow_spray",
-    #   pulse＝脉冲式：滑窗内向新地址群集中灌仓（escrow 型）——窗内新收方 ≥20 且流出 ≥2%
-    #   slow_spray＝慢速批发：匀速出货任何滑窗都不突出（H9 三派发器型）——
-    #     全史 distinct 收方 ≥500 且全史流出 ≥2%
+    "mode": "pulse|pulse_all|slow_spray",
+    #   主定性标签，取序 pulse > pulse_all > slow_spray（fresh 灌新仓语义最尖）；
+    #   pulse＝fresh 脉冲：14 日滑窗内 fresh 边（该笔发生日==收方 first_meaningful_day）
+    #     流出 ≥2% 且窗内 fresh 新收方 ≥20（escrow 灌新仓型）
+    #   pulse_all＝广义脉冲（v2 新增，堵"向已建仓老地址补货"盲区）：14 日滑窗内全部出边
+    #     流出 ≥2% 且窗内 distinct 收方（不限新老）≥20；数学上 pulse ⊂ pulse_all
+    #   slow_spray＝慢速批发：全史 distinct 收方 ≥100 且全史流出 ≥2%（匀速出货任何
+    #     滑窗都不突出，H9 派发器型兜底；旧线 500 系单案过宽初值，v2 降 100）
+    "mode_hits": {                     # 三口径命中事实全记录——顶层 mode 只是主标签，
+      "pulse":      {"hit": bool, "best_window": {…}},   # 不得当作"未命中其他口径"的
+      "pulse_all":  {"hit": bool, "best_window": {…}},   # 证据；未命中口径无 best_window
+      "slow_spray": {"hit": bool}                        # 键；slow_spray 永不带窗
+    },
     "all_time": {"outflow_pct": float, "recipient_count": int, "fresh_recipient_count": int},
-    "best_window": {…}|null,           # pulse 时非空
-    "recipients": [addr…],             # pulse：全量，len == best_window.new_recipient_count
-    "recipients_top": [addr…],         # slow_spray：按累计收量 top ≤500（显式摘要非静默截断，
-                                       #   全量数在 all_time.recipient_count）
-    "launch_window": bool              # 发射窗打标不滤
+    "best_window": {…}|null,           # 主模式的窗（slow_spray 主模式＝null）。统一键，
+    #   不按 mode 换名：start/end/outflow_pct/recipient_count（窗内全体 distinct 收方）/
+    #   fresh_recipient_count（窗内首建当日收方）＋浓度两键 top1_recipient_share_pct/
+    #   meaningful_recipient_count（窗内收 ≥0.001% 供应的收方数，线与 wave D 指纹一致）
+    #   ——浓度识别"1 笔大额＋N 粉尘凑双线"伪分发，只报不拒，裁决时必看
+    "recipients": [addr…],             # pulse 主模式＝主窗 fresh 收方全量（len ==
+    #   best_window.fresh_recipient_count）；pulse_all 主模式＝主窗全体收方全量（len ==
+    #   best_window.recipient_count）——validator 做闭合校验
+    "recipients_top": [addr…],         # slow_spray 主模式：按累计收量 top ≤500（显式摘要
+    #   非静默截断，全量数在 all_time.recipient_count）
+    "launch_window": bool              # 主模式窗起点（slow_spray 用首出账日）是否落在
+                                       #   数据首日+3 内；打标不滤
   }],
   "requires_adjudication": bool,
   "note": str
 }
 ```
 
-公共纪律：mint/burn 排除；`--entity-file` 抵消只对**同一实体**内部流转生效（按 entity_id 分组，跨实体转账保留——v6.8.1：拍平成单一集合会把实体间真实转账当内部边删掉；同址跨实体名册即拒）；分母与 cutoff 与 wave_scan 完全一致；输入唯一性由采集管线保证（§0.4）。"新地址"判定复用 wave-scan 的 `first_meaningful_day` 抗 dust 定义。
+公共纪律：mint/burn 排除；`--entity-file` 抵消只对**同一实体**内部流转生效（按 entity_id 分组，跨实体转账保留——v6.8.1：拍平成单一集合会把实体间真实转账当内部边删掉；同址跨实体名册即拒）；分母与 cutoff 与 wave_scan 完全一致；输入唯一性由采集管线保证（§0.4）。"新地址"判定复用 wave-scan 的 `first_meaningful_day` 抗 dust 定义。v2 两条：sink/spray 扫描一律过滤零值边（`amt > 0`——零值转账不许凑来源/收方数）；金额阈值全部整数运算（`pct_to_raw`，浮点比较漏"恰好整数枚"边界）。
+v2 残余缝（诚实声明，验收时如实转告）：收方 20~99 且任何 14 日窗不达双线的慢速分发／<20 收方的集中拆分／全史流出 <2%／一实体轮换多个发送地址各 <2%（entity-file 只抵消内部边，不按实体聚合外发）／先发少数中间仓再二跳分散的多跳分发——本闸均不可见，归 analyze-workflow 覆盖真空声明。
 滑窗判定纪律：达标窗＝**同一窗内同时**满足金额线与数量线（在全部达标窗中取金额最大者展示）——不得先取金额最大窗再验数量（PYTHIA 回测实证：Q1 金额最大窗 22.2% 恰好来源仅 4 个被拒，而另存在 14 来源/18.8% 的双达标窗）。
 
 **sink/spray 的裁决对象**：枢纽地址本身（sources/recipients 是证据不是裁决对象）——candidate-adjudications 对此两类候选的成员全集＝`{addr}` 单元素集（§3 validator 按候选类型区分校验）。
@@ -262,7 +284,7 @@ TERMINAL = {
 | B | W1 候选 B rate / exclusive 数与实现后实测基线一致（算法保持 v6.6.1；扫描对象扩大后数值允许与 v6.6.1 清零层版不同，以新实测为准并记录两版数字） |
 | C | W1 峰→30% 实测 72 天不触发＝预期（负例）；头注注记 |
 | D | 四条合一下 44 分仓（1e12 面额）置顶且 ID 稳定（v6.8.1 全事件滑窗后组数/densest 以 fixture 新实测为准） |
-| flow | 汇集点 Q1 与 3yMk 过阈值；分发点 H9 三派发器（合计 13.47% 派 6,503 收方）命中 |
+| flow | 汇集点 Q1 与 3yMk 过阈值（v2 实测 sink ID 集合零漂移）；分发点 H9 三派发器全部命中，mode 按实测——DWVG/8WwV＝pulse_all（全收方口径有双达标窗；旧备注"任何 14 日窗 <0.2%"仅 fresh 口径成立，v2 订正）、5Gpc＝slow_spray；Q1 spray 保持 pulse；spray 20→28（缝修复预期增量：4 slow→pulse_all＋净新增 6 pulse_all/2 slow）；pulse_all 最大候选 6bh2zL8 入锚 |
 | 溯源 | Q1 峰值锚点 direct_upstream 中 ≥9 个 W1 直接上家现形；3yMk 支路停 EwUU8oi 而 W1 支路穿透（path_len ≥2）；敏感性 stable（v2 正向模拟实测值以 fixture 为准，v1 数字作废） |
 
 回测仅 PYTHIA 单案（用户拍板）；flow 参数初值与误报水平缺第二币对照校准——未来首个新案实战时如实标注此局限。

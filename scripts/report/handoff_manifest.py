@@ -327,8 +327,9 @@ def _verify_light_schema(case_dir, fails, legacy=False):
         fails.append(f"wave_scan_report.json 读取失败（波次扫描未跑？补跑 wave_scan.py 后重 generate）: {e}")
     try:
         fa = load_json(os.path.join(case_dir, "flow_anomaly_report.json"))
-        if fa.get("schema") != "flow-anomaly/v1":
-            fails.append(f"flow_anomaly_report.json schema 异常: {fa.get('schema')}")
+        if fa.get("schema") != "flow-anomaly/v2":
+            fails.append(f"flow_anomaly_report.json schema 异常: {fa.get('schema')}"
+                         "（需要 flow-anomaly/v2——旧 v1 产物重跑 flow_anomaly_scan.py）")
         elif not isinstance(fa.get("sinks"), list) or not isinstance(fa.get("sprays"), list) \
                 or not isinstance(fa.get("requires_adjudication"), bool):
             fails.append("flow_anomaly_report.json 缺 sinks/sprays/requires_adjudication——空壳拒收")

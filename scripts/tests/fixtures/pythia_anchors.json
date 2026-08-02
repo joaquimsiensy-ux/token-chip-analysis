@@ -45,15 +45,20 @@
    "_note": "置顶组＝1e12（100 万枚）面额全史 168 收方（其中 Q1 亲发的 44 分仓是核心特征，densest 39 即其灌仓窗），top_sender 出度 41＝定向信号；其余 6 组 top_sender 全为场内设施 5Q544fKr（出度 72,207）整数面额撞衫——裁决查出度一次定性批量关闭。7 组 ID 与 v6.8.0 逐字一致（全事件滑窗改造零扰动）。top_sender 口径 v6.8.1 定稿＝触达 distinct 收方最多者（按事件数选会被'对同一收方反复发'绑架——3e11 组实测教训）。参数四条合一：单笔≥0.001% + 7日窗≥20收方 + 组合计≥1%（用户 2026-08-01 定稿；曲线 0→1014 组、0.0001%→478、0.001%→9、0.02%→2）"
   }
  },
- "flow_anomaly_v1": {
+ "flow_anomaly_v2": {
   "sink_count": 25,
-  "spray_count": 20,
+  "spray_count": 28,
+  "spray_mode_split": {"pulse": 12, "pulse_all": 10, "slow_spray": 6},
   "q1_sink": {"id_prefix": "sink-Q1Ac6Y", "best_window": {"start": "2025-06-05", "end": "2025-06-18", "inflow_pct": 19.8528, "source_count": 12}},
   "3ymk_sink": {"id_prefix": "sink-3yMkB8oc", "hit": true},
-  "dispatchers_spray": {"mode": "slow_spray", "prefixes": ["spray-DWVGbsn7", "spray-8WwVTK51", "spray-5GpctXbe"],
-   "_note": "三派发器＝慢速批发（5.98/3.57/3.91% 分数月匀速派给 5546/4951/1306 收方，任何 14 日窗 <0.2%）——滑窗抓不到是口径不适配非参数问题，双模式由此回测校准而来"},
-  "q1_pulse_spray_bonus": {"id_prefix": "spray-Q1Ac6Y", "mode": "pulse", "_note": "Q1 亲发 44 分仓被脉冲模式独立抓到（2025-08-13 窗 3.6%/36 新收方）"},
-  "_calibration_note": "滑窗判定修正在案：达标窗＝同窗同时满足两条（Q1 金额最大窗 22.2%/4 来源被拒、14 来源/18.8% 双达标窗存在——先取金额最大再验来源数是实现 bug）。v6.8.1 实体抵消改 entity_id 分组后（回测未传 entity-file）25+20 个候选 ID 集合与 v6.8.0 完全一致。"
+  "dispatchers_spray": {"prefixes": ["spray-DWVGbsn7", "spray-8WwVTK51", "spray-5GpctXbe"],
+   "modes": ["pulse_all", "pulse_all", "slow_spray"],
+   "_note": "三派发器全史 5.98/3.57/3.91% 派给 5546/4951/1306 收方。v2 订正：旧备注'任何 14 日窗 <0.2%'仅对 fresh（新收方）口径成立——全收方口径下 DWVG 有 2026-05-04 窗 3.6294%/5008 收方（fresh 仅 1354，73% 是老收方补货）、8WwV 有 2026-05-18 窗 3.1712%/4761 收方，两者归 pulse_all 属缝2修复的预期迁移非回归；5Gpc 无双达标窗仍 slow_spray。三者 slow_spray hit 均 true（多命中结构保全事实）。"},
+  "q1_pulse_spray": {"id_prefix": "spray-Q1Ac6Y", "mode": "pulse", "_note": "Q1 亲发 44 分仓被脉冲模式独立抓到（2025-08-13 窗 3.6066%/36 新收方）——pulse 主标签优先级回归锚"},
+  "pulse_all_anchor": {"id_prefix": "spray-6bh2zL8", "mode": "pulse_all",
+   "best_window": {"start": "2026-04-22", "outflow_pct": 22.9052, "recipient_count": 81, "fresh_recipient_count": 15, "meaningful_recipient_count": 45},
+   "_note": "pulse_all 主模式最大候选（Meteora DLMM 池设施——候选≠结论，此锚只锁扫描行为不做定性）；fresh 仅 15/81 正是旧口径盲区形态"},
+  "_calibration_note": "滑窗判定修正在案：达标窗＝同窗同时满足两条（Q1 金额最大窗 22.2%/4 来源被拒、14 来源/18.8% 双达标窗存在——先取金额最大再验来源数是实现 bug）。v2（2026-08-02 两缝修复）：慢速线 500→100＋pulse_all 广义口径＋amt>0＋阈值整数化后实测 25 sink（ID 集合与 v6.8.1 零漂移，sink 判据未动）＋28 spray（旧 20：12 pulse 全保持、4 slow→pulse_all（含 DWVG/8WwV）、4 slow 保持、净新增 8＝6 pulse_all＋2 slow_spray）。参数出身＝PYTHIA 单案回测＋用户设定高召回初值，非多案校准。"
  },
  "provenance_v2": {
   "_note_v2": "v6.8.1 历史正向模拟实测；2026-08-01 adversarial high-1 修复后，该旧基线因 Solana 5 元组缺 tx/instruction 精确顺序而失去发布资格，仅保留作历史诊断，禁止引用为当前稳定结论。必须用扩展 7 元组重采并重跑后才能恢复 stable=true。",

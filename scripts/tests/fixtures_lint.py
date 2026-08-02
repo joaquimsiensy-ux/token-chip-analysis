@@ -69,12 +69,21 @@ def main():
     need(r, "wave_scan_v2.equal_amount_groups.top.group_total_pct", float)
     need(r, "wave_scan_v2.equal_amount_groups.top.recipients", int)
     need(r, "wave_scan_v2.equal_amount_groups.top.top_sender_global_out_degree", int)
-    # flow_anomaly_v1 段
-    need(r, "flow_anomaly_v1.sink_count", int)
-    need(r, "flow_anomaly_v1.spray_count", int)
-    need(r, "flow_anomaly_v1.q1_sink.best_window.inflow_pct", float)
-    need(r, "flow_anomaly_v1.q1_sink.best_window.source_count", int)
-    need(r, "flow_anomaly_v1.dispatchers_spray.prefixes", list)
+    # flow_anomaly_v2 段（v1→v2 2026-08-02：三口径多命中；v2 补强——三派发器/Q1 的 mode
+    # 也入锚，旧版锚点 mode 写错 run_all 照样全绿的盲区堵上）
+    need(r, "flow_anomaly_v2.sink_count", int)
+    need(r, "flow_anomaly_v2.spray_count", int)
+    need(r, "flow_anomaly_v2.q1_sink.best_window.inflow_pct", float)
+    need(r, "flow_anomaly_v2.q1_sink.best_window.source_count", int)
+    disp_pfx = need(r, "flow_anomaly_v2.dispatchers_spray.prefixes", list)
+    disp_modes = need(r, "flow_anomaly_v2.dispatchers_spray.modes", list)
+    SPRAY_MODES = {"pulse", "pulse_all", "slow_spray"}
+    check("dispatchers_spray.modes 与 prefixes 等长且值合法",
+          isinstance(disp_pfx, list) and isinstance(disp_modes, list)
+          and len(disp_modes) == len(disp_pfx) and all(m in SPRAY_MODES for m in disp_modes))
+    q1s_mode = need(r, "flow_anomaly_v2.q1_pulse_spray.mode", str)
+    check("q1_pulse_spray.mode == pulse（灌新仓锚）", q1s_mode == "pulse")
+    need(r, "flow_anomaly_v2.pulse_all_anchor", dict)
     # 溯源段必须 v2（正向模拟）——v1 数字出自数学错误算法，引用即事故
     check("溯源段必须为 provenance_v2（v1=pro-rata 数学错误版，禁止引用）",
           "provenance_v2" in r and "provenance_v1" not in r)
