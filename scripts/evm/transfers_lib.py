@@ -14,8 +14,9 @@
   —— 老数据无 block_hash 时退化为 (block, tx, log_index)，重组风险窗仅存在于
      已 final 的历史段之外，尾部新数据一律带 block_hash。
 
-多源合并对账（merge_sources）: 重叠块区间内各源 (tx,log_index) 集合必须完全相等，
+多源合并对账（merge_sources，小样本专用）: 重叠块区间内各源 (tx,log_index) 集合必须完全相等，
   不等即打印差集样本并 exit(3)（fail-closed——PING 案 uniqueId 双计 5485 负余额事故的制度化防线）。
+  默认最多 1,000,000 行；正式亿级入口用 replay_stream.py / DuckDB，不允许本函数全量排序。
 
 缓存（~/.cache/chip-analysis/）:
   deploy_blocks.json         # chain:token -> 部署块（首拉后永存,免每次从 0 扫）
@@ -25,6 +26,7 @@ import bisect, csv, datetime, glob, hashlib, json, os, sys
 
 CACHE_DIR = os.path.expanduser("~/.cache/chip-analysis")
 ZERO = "0x0000000000000000000000000000000000000000"
+DEFAULT_SMALL_SAMPLE_MAX_ROWS = 1_000_000
 
 
 def _iso(ts):
@@ -69,25 +71,32 @@ def _iter_parquet_dir(path):
         bts = {}
         bp = os.path.join(run, "blocks.parquet")
         if os.path.exists(bp):
-            bt = pq.read_table(bp, columns=["number", "timestamp"])
-            for n, t in zip(bt.column("number").to_pylist(), bt.column("timestamp").to_pylist()):
-                if n is not None:
-                    bts[int(n)] = int(t, 16) if isinstance(t, str) else int(t)
-        t = pq.read_table(lp)
-        cols = {c: t.column(c).to_pylist() for c in
-                ("block_number", "block_hash", "log_index", "transaction_hash",
-                 "topic1", "topic2", "data") if c in t.column_names}
-        n = t.num_rows
-        for i in range(n):
-            bn = int(cols["block_number"][i])
-            data = cols.get("data", [None] * n)[i]
-            yield {"block": bn, "ts": _iso(bts.get(bn)),
-                   "tx": cols["transaction_hash"][i],
-                   "log_index": int(cols["log_index"][i]),
-                   "from": "0x" + (cols["topic1"][i] or "0x" + "0" * 64)[-40:].lower(),
-                   "to": "0x" + (cols["topic2"][i] or "0x" + "0" * 64)[-40:].lower(),
-                   "value_raw": int(data, 16) if data not in (None, "", "0x") else 0,
-                   "block_hash": cols.get("block_hash", [""] * n)[i] or ""}
+            pf = pq.ParquetFile(bp)
+            for batch in pf.iter_batches(batch_size=100_000, columns=["number", "timestamp"]):
+                cols = batch.to_pydict()
+                for n, t in zip(cols["number"], cols["timestamp"]):
+                    if n is not None:
+                        bts[int(n)] = int(t, 16) if isinstance(t, str) else int(t)
+        pf = pq.ParquetFile(lp)
+        wanted = ("block_number", "block_hash", "log_index", "transaction_hash",
+                  "topic1", "topic2", "data")
+        available = [c for c in wanted if c in pf.schema_arrow.names]
+        required = {"block_number", "log_index", "transaction_hash", "topic1", "topic2"}
+        if not required.issubset(available):
+            raise ValueError(f"parquet missing columns: {sorted(required - set(available))}")
+        for batch in pf.iter_batches(batch_size=100_000, columns=available):
+            cols = batch.to_pydict()
+            n = batch.num_rows
+            for i in range(n):
+                bn = int(cols["block_number"][i])
+                data = cols.get("data", [None] * n)[i]
+                yield {"block": bn, "ts": _iso(bts.get(bn)),
+                       "tx": cols["transaction_hash"][i],
+                       "log_index": int(cols["log_index"][i]),
+                       "from": "0x" + (cols["topic1"][i] or "0x" + "0" * 64)[-40:].lower(),
+                       "to": "0x" + (cols["topic2"][i] or "0x" + "0" * 64)[-40:].lower(),
+                       "value_raw": int(data, 16) if data not in (None, "", "0x") else 0,
+                       "block_hash": cols.get("block_hash", [""] * n)[i] or ""}
 
 
 def iter_transfers(path):
@@ -201,19 +210,58 @@ def write_parquet(rows, out):
 
 # ---------------- 多源合并 + 重叠区对账（fail-closed） ----------------
 
-def merge_sources(paths, out, legacy7=False):
+def _small_sample_rows(path, remaining):
+    rows = []
+    for row in iter_transfers(path):
+        if len(rows) >= remaining:
+            raise RuntimeError(f"small-sample row limit exceeded while reading {path}")
+        rows.append(row)
+    return rows
+
+
+def _write_input_manifest(out, *, mode, max_rows, sources, output_rows, overlap_checks=0):
+    manifest = {
+        "schema": "transfers-small-sample-inputs/v1",
+        "mode": mode,
+        "small_sample_only": True,
+        "max_rows": max_rows,
+        "inputs": [{"path": os.path.realpath(s["path"]), "sha256": _source_sha256(s["path"]),
+                    "rows": len(s["rows"]), "lo": s.get("lo"), "hi": s.get("hi")}
+                   for s in sources],
+        "output": {"path": os.path.realpath(out), "sha256": _source_sha256(out),
+                   "rows": output_rows},
+        "overlap_checks": overlap_checks,
+    }
+    with open(out + ".input_manifest.json", "w", encoding="utf-8") as f:
+        json.dump(manifest, f, ensure_ascii=False, indent=2, sort_keys=True)
+        f.write("\n")
+
+
+def merge_sources(paths, out, legacy7=False, max_rows=DEFAULT_SMALL_SAMPLE_MAX_ROWS):
     """按块序合并多来源;两两重叠块区间内 (tx,log_index) 集合必须完全相等,否则 exit(3)。
+    小样本专用，超过 max_rows 拒绝；正式大数据走 replay_stream.py/DuckDB。
     out 以 .parquet 结尾走 parquet,否则 CSV。返回 (总行数, 重叠检查数)。"""
+    if isinstance(max_rows, bool) or not isinstance(max_rows, int) or max_rows <= 0:
+        raise ValueError("max_rows must be a positive integer")
     srcs = []
+    loaded = 0
     for p in paths:
-        rows = sorted(iter_transfers(p), key=lambda r: (r["block"], r["log_index"]))
-        if rows:
-            srcs.append({"path": p, "rows": rows,
-                         "lo": rows[0]["block"], "hi": rows[-1]["block"]})
+        try:
+            rows = _small_sample_rows(p, max_rows - loaded)
+        except RuntimeError as e:
+            print(f"[FAIL-CLOSED] {e}; 正式大数据请用 replay_stream.py/DuckDB", flush=True)
+            sys.exit(4)
+        loaded += len(rows)
+        rows.sort(key=lambda r: (r["block"], r["log_index"]))
+        srcs.append({"path": p, "rows": rows,
+                     "lo": rows[0]["block"] if rows else None,
+                     "hi": rows[-1]["block"] if rows else None})
     checks = 0
     for i in range(len(srcs)):
         for j in range(i + 1, len(srcs)):
             a, b = srcs[i], srcs[j]
+            if not a["rows"] or not b["rows"]:
+                continue
             all_a = {(r["tx"], r["log_index"]): canonical_payload(r) for r in a["rows"]}
             all_b = {(r["tx"], r["log_index"]): canonical_payload(r) for r in b["rows"]}
             global_mismatch = [k for k in set(all_a) & set(all_b) if all_a[k] != all_b[k]]
@@ -250,6 +298,8 @@ def merge_sources(paths, out, legacy7=False):
                         sorted((x for x in s["rows"]), key=lambda r: (r["block"], r["log_index"])))
     merged = sorted(merged, key=lambda r: (r["block"], r["log_index"]))
     n = write_parquet(merged, out) if out.endswith(".parquet") else write_csv(merged, out, legacy7)
+    _write_input_manifest(out, mode="merge", max_rows=max_rows, sources=srcs,
+                          output_rows=n, overlap_checks=checks)
     return n, checks
 
 
@@ -332,16 +382,27 @@ if __name__ == "__main__":
     s1 = sub.add_parser("count"); s1.add_argument("path")
     s2 = sub.add_parser("convert"); s2.add_argument("src"); s2.add_argument("dst")
     s2.add_argument("--legacy7", action="store_true")
+    s2.add_argument("--max-rows", type=int, default=DEFAULT_SMALL_SAMPLE_MAX_ROWS)
     s3 = sub.add_parser("merge"); s3.add_argument("srcs", nargs="+"); s3.add_argument("--out", required=True)
     s3.add_argument("--legacy7", action="store_true")
+    s3.add_argument("--max-rows", type=int, default=DEFAULT_SMALL_SAMPLE_MAX_ROWS)
     a = ap.parse_args()
     if a.cmd == "count":
         n = sum(1 for _ in iter_transfers(a.path))
         print(n)
     elif a.cmd == "convert":
-        rows = sorted(dedup_iter(iter_transfers(a.src)), key=lambda r: (r["block"], r["log_index"]))
+        try:
+            source_rows = _small_sample_rows(a.src, a.max_rows)
+        except RuntimeError as e:
+            sys.exit(f"[FAIL-CLOSED] {e}; 正式大数据请用 replay_stream.py/DuckDB")
+        rows = sorted(dedup_iter(source_rows), key=lambda r: (r["block"], r["log_index"]))
         n = write_parquet(rows, a.dst) if a.dst.endswith(".parquet") else write_csv(rows, a.dst, a.legacy7)
+        _write_input_manifest(a.dst, mode="convert", max_rows=a.max_rows,
+                              sources=[{"path": a.src, "rows": source_rows,
+                                        "lo": min((r["block"] for r in source_rows), default=None),
+                                        "hi": max((r["block"] for r in source_rows), default=None)}],
+                              output_rows=n)
         print(f"converted {n} rows -> {a.dst}")
     elif a.cmd == "merge":
-        n, ck = merge_sources(a.srcs, a.out, a.legacy7)
+        n, ck = merge_sources(a.srcs, a.out, a.legacy7, a.max_rows)
         print(f"merged {n} rows ({ck} overlap checks passed) -> {a.out}")

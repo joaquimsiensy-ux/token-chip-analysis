@@ -18,6 +18,8 @@ SUITE = ['changelog_lint.py', ['docs_lint.py', '--all'], 'labels_manifest.py', '
          'test_review_resume_integrity.py',
          'test_review_chain_collectors.py',
          'test_review_medium_guards.py',
+         'test_version_consistency.py',
+         'test_review_scale_guards.py',
          'test_figures_from_facts.py', 'test_cluster_quality.py',
          'test_sqd_merge_equiv.py', 'test_supply_truth_gate.py',
          'test_handoff_manifest.py', 'test_audit_release_gate.py',

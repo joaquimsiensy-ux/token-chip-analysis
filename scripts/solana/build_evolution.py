@@ -8,38 +8,90 @@
 - 在 N 个等距时间点采样，每个实体持仓取该时点前最后一笔累积值
 
 输入: data/whale_deep.json, data/decoded_anchors.jsonl, data/entity_camps.json(阵营归属)
-输出: data/camp_series.json (camp_share_series 格式), data/whale_series.json (图2 各实体线)
+输出: data/camp_series.json (camp_share_series 格式)
+      + data/camp_series.input_manifest.json（配置与全部输入身份）
+
+本脚本是锚点小样本辅助入口，默认最多 5,000 个实体、200,000 条锚点；亿级正式
+Transfer 重放必须走 replay_edges.py/DuckDB，不得在这里全量装内存。
 """
-import json, sys
+import hashlib, json, os, sys
 from decimal import Decimal
 from datetime import datetime, timezone
 from pathlib import Path
 
-import json as _json
-from pathlib import Path as _Path
 # 标的参数从工作目录 config.json 读（铁律5：不写死进 skill）
 # config.json 需含：total_supply, decimals, launch_ts, data_cutoff_ts, burn_amount(可选,单列锁仓/销毁)
-_cfg = _json.loads(_Path("config.json").read_text()) if _Path("config.json").exists() else {}
-TOT = _cfg.get("total_supply", 0)
-DECIMALS = 10 ** _cfg.get("decimals", 6)
-LAUNCH = _cfg.get("launch_ts", 0)
-NOW = _cfg.get("data_cutoff_ts", 0)
-BURN_AMOUNT = _cfg.get("burn_amount", 0)  # dev/团队烧毁量(raw)，单列锁仓/销毁阵营
+CONFIG_PATH = Path("config.json")
+if not CONFIG_PATH.is_file():
+    sys.exit("缺 config.json：total_supply/decimals/launch_ts/data_cutoff_ts 均为必填")
+_cfg = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
 
-POOLS = {'731zVBbXuXvrom3XNGw8bUAgETBbVvzYzDUqSnqpRspM','HdTXiwhqPTFFriGDndoaFAaPNGSERXSFUDirxj1m8N42',
-         '33ENUgyS4SzJDQy3ttPXryXS1zv31QX5odjankhFhdqx','9owQTEx4W6fZY1ZBgDZ5ipAnWjkBS6jhvMoTcRuVZCoe',
-         'BLEqaWU9PT7jxosX5JKiEZhRYUs3FhXtDh57y8QmAUZk','Edmun6LKgFbwk4YLwabCr41MSG54b4zBz3APSDaXfmkE',
-         'DNhZ4DVr6DEu64MeRj4de92syU3qyJrs63iavrr4fzrx','6xsbqrKH7capCokhVyrMfe1Civdykzizvf7pL69tgwSr',
-         'GGDhBnUtfemzcAEBZkBk49bH2C7eoN7Dbs6SQiV56oGS'}
+
+def required_int(name, *, minimum=0, maximum=None):
+    value = _cfg.get(name)
+    if isinstance(value, bool) or not isinstance(value, int) or value < minimum:
+        sys.exit(f"config.{name} 必须是 >= {minimum} 的整数")
+    if maximum is not None and value > maximum:
+        sys.exit(f"config.{name} 必须 <= {maximum}")
+    return value
+
+
+TOT = required_int("total_supply", minimum=1)
+DECIMAL_PLACES = required_int("decimals", minimum=0, maximum=30)
+DECIMALS = 10 ** DECIMAL_PLACES
+LAUNCH = required_int("launch_ts", minimum=1)
+NOW = required_int("data_cutoff_ts", minimum=1)
+if NOW <= LAUNCH:
+    sys.exit("config.data_cutoff_ts 必须晚于 launch_ts")
+BURN_AMOUNT = _cfg.get("burn_amount", 0)
+if isinstance(BURN_AMOUNT, bool) or not isinstance(BURN_AMOUNT, int) or not 0 <= BURN_AMOUNT <= TOT:
+    sys.exit("config.burn_amount 必须是 0..total_supply 的整数 raw amount")
+MAX_ENTITIES = _cfg.get("max_entities", 5_000)
+MAX_ANCHORS = _cfg.get("max_anchor_rows", 200_000)
+MAX_DEEP_ROWS = _cfg.get("max_deep_rows", 2_000_000)
+MAX_INPUT_BYTES = _cfg.get("max_input_bytes", 512 * 1024 * 1024)
+for _name, _value in (("max_entities", MAX_ENTITIES), ("max_anchor_rows", MAX_ANCHORS),
+                      ("max_deep_rows", MAX_DEEP_ROWS), ("max_input_bytes", MAX_INPUT_BYTES)):
+    if isinstance(_value, bool) or not isinstance(_value, int) or _value <= 0:
+        sys.exit(f"config.{_name} 必须是正整数")
+
+
+def sha256_file(path):
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(1024 * 1024), b""):
+            h.update(chunk)
+    return h.hexdigest()
 
 def main():
-    deep = json.load(open('data/whale_deep.json'))
-    camps = json.load(open('data/entity_camps.json'))  # {addr: camp_name}
+    input_paths = [Path('data/whale_deep.json'), Path('data/decoded_anchors.jsonl'),
+                   Path('data/entity_camps.json')]
+    missing = [str(p) for p in input_paths if not p.is_file()]
+    if missing:
+        sys.exit(f"缺输入文件: {missing}")
+    oversized = [str(p) for p in input_paths if p.stat().st_size > MAX_INPUT_BYTES]
+    if oversized:
+        sys.exit(f"小样本输入文件超过 {MAX_INPUT_BYTES} bytes: {oversized}")
+    deep = json.load(open(input_paths[0]))
+    camps = json.load(open(input_paths[2]))  # {addr: camp_name}
+    if not isinstance(deep, dict) or not deep:
+        sys.exit("data/whale_deep.json 必须是非空对象")
+    if not isinstance(camps, dict) or not camps:
+        sys.exit("data/entity_camps.json 必须是非空对象")
+    if len(deep) > MAX_ENTITIES:
+        sys.exit(f"小样本上限：实体 {len(deep)} > {MAX_ENTITIES}；正式重放请用 replay_edges.py/DuckDB")
+    deep_rows = 0
+    for addr, value in deep.items():
+        if not isinstance(value, dict) or not isinstance(value.get('rows'), list):
+            sys.exit(f"whale_deep 条目缺 rows 列表: {addr}")
+        deep_rows += len(value['rows'])
+        if deep_rows > MAX_DEEP_ROWS:
+            sys.exit(f"小样本上限：实体流水 > {MAX_DEEP_ROWS}；正式重放请用 replay_edges.py/DuckDB")
 
     # 阵营定义标签体检（v4 2026-07-17）：人工归属的实体阵营里若混进已知设施
     # （CEX/桥/程序/locker），阵营占比会整体失真——启动即拦截提示，比出图后返工省一轮
-    import os as _os, sys as _sys
-    _sys.path.insert(0, _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), '..', 'labels'))
+    import sys as _sys
+    _sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'labels'))
     try:
         from labels_resolver import LabelResolver, blind_serial_env, seal_serial_hits, blind_notice
         _resv = LabelResolver('sol')
@@ -76,7 +128,11 @@ def main():
 
     # 池子余额锚点序列
     pool_pts = []
-    for l in open('data/decoded_anchors.jsonl'):
+    anchor_rows = 0
+    for l in open(input_paths[1]):
+        anchor_rows += 1
+        if anchor_rows > MAX_ANCHORS:
+            sys.exit(f"小样本上限：锚点 > {MAX_ANCHORS}；请改用 streaming/DuckDB 正式入口")
         d = json.loads(l)
         if d.get('decode_fail') or d.get('pool_balance') is None or not d.get('ts'): continue
         # pool_balance 是主池；其他池子小，近似只用主池
@@ -85,10 +141,11 @@ def main():
             raw = int(Decimal(str(d['pool_balance'])) * DECIMALS)
         pool_pts.append((d['ts'], int(raw)))
     pool_pts.sort()
+    if not pool_pts:
+        sys.exit("decoded_anchors 没有可用的非 decode_fail 池余额锚点")
 
     def interp(pts, ts):
         """取 ts 前最后一个点的值（阶梯插值）。"""
-        lo, hi = 0, len(pts)
         val = pts[0][1]
         for t, v in pts:
             if t <= ts: val = v
@@ -102,8 +159,6 @@ def main():
     # 阵营列表
     all_camps = sorted(set(camps.values()))
     series = []
-    whale_series = {}  # 每个标签实体单独一条线（图2）
-
     for ts in times:
         row = {"ts": datetime.fromtimestamp(ts, timezone.utc).isoformat()}
         camp_raw = {c: 0 for c in all_camps}
@@ -122,7 +177,27 @@ def main():
             row[c] = round(raw / TOT * 100, 4)
         series.append(row)
 
-    json.dump(series, open('data/camp_series.json', 'w'), ensure_ascii=False, indent=1)
+    result_path = Path('data/camp_series.json')
+    with result_path.open('w', encoding='utf-8') as f:
+        json.dump(series, f, ensure_ascii=False, indent=1)
+        f.write('\n')
+    manifest = {
+        "schema": "solana-camp-series-inputs/v1",
+        "small_sample_only": True,
+        "limits": {"max_entities": MAX_ENTITIES, "max_anchor_rows": MAX_ANCHORS,
+                   "max_deep_rows": MAX_DEEP_ROWS, "max_input_bytes": MAX_INPUT_BYTES},
+        "config": {"path": str(CONFIG_PATH.resolve()), "sha256": sha256_file(CONFIG_PATH),
+                   "total_supply": TOT, "decimals": DECIMAL_PLACES,
+                   "launch_ts": LAUNCH, "data_cutoff_ts": NOW},
+        "inputs": [{"path": str(p.resolve()), "sha256": sha256_file(p)} for p in input_paths],
+        "counts": {"entities": len(deep), "deep_rows": deep_rows, "camps": len(camps),
+                   "anchor_rows": anchor_rows, "usable_pool_anchors": len(pool_pts)},
+        "output": {"path": str(result_path.resolve()), "sha256": sha256_file(result_path),
+                   "rows": len(series)},
+    }
+    with open('data/camp_series.input_manifest.json', 'w', encoding='utf-8') as f:
+        json.dump(manifest, f, ensure_ascii=False, indent=2, sort_keys=True)
+        f.write('\n')
     print(f"演变序列 {len(series)} 点，阵营: {all_camps}")
     # 末点各阵营占比
     last = series[-1]

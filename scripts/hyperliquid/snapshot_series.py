@@ -9,9 +9,10 @@
 输入: <data_dir>/snapshots/top1000_*.json（collect.py snapshots 子命令产物；
       某档 holders 为空时自动用同时间戳 top100_<ts>.json 补采文件替代）
 输出: <out_dir>/snapshot_series.json（字段 = ts/date/holdersCount/top10/top50/top100/top1000 + watch 各键）
+      + snapshot_series.input_manifest.json（配置与逐档输入哈希）
       + stdout 摘要（列由 config.summary_cols 驱动；近90天斜率实体由 config.summary_fund 指定）
 """
-import json, os, sys, glob
+import glob, hashlib, json, os, sys
 from datetime import datetime, timezone
 
 def _load_config():
@@ -27,27 +28,61 @@ def _load_config():
     if not os.path.exists(path):
         sys.exit(f"缺配置 {path}：复制 config.example.json 为 config.json 按标的填写，或用 --config 指定")
     with open(path) as f:
-        return json.load(f)
+        return json.load(f), os.path.realpath(path)
 
-CFG = _load_config()
+CFG, CONFIG_PATH = _load_config()
 BASE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DATA = CFG.get("data_dir") or os.path.join(BASE, "data")
 OUT = CFG.get("out_dir") or os.path.join(BASE, "analysis", "out")
 os.makedirs(OUT, exist_ok=True)
 
 SYMBOL = CFG.get("token_symbol", "")
+if not isinstance(CFG.get("watch"), dict) or not CFG["watch"]:
+    sys.exit("config.watch 必须是非空对象")
 WATCH = {k: v.lower() for k, v in CFG["watch"].items()}
 SUMMARY_FUND = CFG.get("summary_fund") or next(iter(WATCH))
 SUMMARY_COLS = CFG.get("summary_cols") or {}
+MAX_SNAPSHOTS = CFG.get("max_snapshots", 10_000)
+MAX_HOLDERS = CFG.get("max_holders_per_snapshot", 5_000)
+MAX_SNAPSHOT_BYTES = CFG.get("max_snapshot_bytes", 64 * 1024 * 1024)
+for name, value in (("max_snapshots", MAX_SNAPSHOTS),
+                    ("max_holders_per_snapshot", MAX_HOLDERS),
+                    ("max_snapshot_bytes", MAX_SNAPSHOT_BYTES)):
+    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+        sys.exit(f"config.{name} 必须是正整数")
+
+def sha256_file(path):
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(1024 * 1024), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
 
 rows = []
-for path in sorted(glob.glob(os.path.join(DATA, "snapshots", "top1000_*.json"))):
+used_inputs = []
+paths = sorted(glob.glob(os.path.join(DATA, "snapshots", "top1000_*.json")))
+if not paths:
+    sys.exit(f"未找到快照：{os.path.join(DATA, 'snapshots', 'top1000_*.json')}")
+if len(paths) > MAX_SNAPSHOTS:
+    sys.exit(f"小样本上限：快照 {len(paths)} > {MAX_SNAPSHOTS}")
+for path in paths:
+    if os.path.getsize(path) > MAX_SNAPSHOT_BYTES:
+        sys.exit(f"小样本上限：快照文件过大 {path}")
     ts = int(os.path.basename(path).split("_")[1].split(".")[0])
     snap = json.load(open(path))
+    used_inputs.append(path)
     if not snap.get("holders"):  # 中段空档 → 用 top100 补采文件
         alt = os.path.join(DATA, "snapshots", f"top100_{ts}.json")
         if os.path.exists(alt):
+            if os.path.getsize(alt) > MAX_SNAPSHOT_BYTES:
+                sys.exit(f"小样本上限：补采快照文件过大 {alt}")
             snap = json.load(open(alt))
+            used_inputs.append(alt)
+    if not isinstance(snap.get("holders"), dict) or not snap["holders"]:
+        sys.exit(f"快照 holders 为空且无有效补采文件：{path}")
+    if len(snap["holders"]) > MAX_HOLDERS:
+        sys.exit(f"小样本上限：{path} holders {len(snap['holders'])} > {MAX_HOLDERS}")
     holders = {k.lower(): float(v) for k, v in snap.get("holders", {}).items()}
     vals = sorted(holders.values(), reverse=True)
     row = {
@@ -63,7 +98,24 @@ for path in sorted(glob.glob(os.path.join(DATA, "snapshots", "top1000_*.json")))
         row[name] = holders.get(addr, 0.0)
     rows.append(row)
 
-json.dump(rows, open(os.path.join(OUT, "snapshot_series.json"), "w"))
+result_path = os.path.join(OUT, "snapshot_series.json")
+with open(result_path, "w", encoding="utf-8") as f:
+    json.dump(rows, f, ensure_ascii=False)
+    f.write("\n")
+manifest = {
+    "schema": "hyperliquid-snapshot-series-inputs/v1",
+    "small_sample_only": True,
+    "limits": {"max_snapshots": MAX_SNAPSHOTS, "max_holders_per_snapshot": MAX_HOLDERS,
+               "max_snapshot_bytes": MAX_SNAPSHOT_BYTES},
+    "config": {"path": CONFIG_PATH, "sha256": sha256_file(CONFIG_PATH)},
+    "inputs": [{"path": os.path.realpath(p), "sha256": sha256_file(p)}
+               for p in used_inputs],
+    "output": {"path": os.path.realpath(result_path), "sha256": sha256_file(result_path),
+               "rows": len(rows)},
+}
+with open(os.path.join(OUT, "snapshot_series.input_manifest.json"), "w", encoding="utf-8") as f:
+    json.dump(manifest, f, ensure_ascii=False, indent=2, sort_keys=True)
+    f.write("\n")
 
 # 摘要打印（列由 config.summary_cols 驱动，仅影响 stdout，不影响输出 JSON）
 first, last = rows[0], rows[-1]

@@ -19,7 +19,9 @@
 ├─ 跨链代币的 ETH 主网侧补充 → Etherscan V2 免费 key（仅 chainid=1，fetch_etherscan.py）
 └─ 任何情况下都别碰 ──→ §2 死亡名单端点（禁止重探）
 
-落盘与合并纪律（v3.11.2 起）：多源产物一律经 transfers_lib.py merge 合并——重叠块区
+落盘与合并纪律（v3.11.2 起）：小样本多源产物经 `transfers_lib.py merge` 合并（默认最多
+100 万行，超过即拒）；正式大数据统一走 `replay_stream.py` 的 DuckDB 流式入口，禁止把
+亿级事件交给内存排序。两种入口都必须保留 input manifest。重叠块区
 集合级对账，不等即 exit(3) fail-closed（PING 案 uniqueId 双计 5485 负余额的制度化防线）；
 标准 8 列含 block_hash，去重键 (block_hash,tx,log_index) 防链重组。
 channels.json 的 path 字段语义（2026-07-25 SPX6900 实测坑）：hypersync_v2 通道的 path
