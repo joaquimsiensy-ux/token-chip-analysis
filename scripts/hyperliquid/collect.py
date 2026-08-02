@@ -13,7 +13,7 @@
   addresses  T4 长跑：按工作清单逐地址拉 ledger + delegatorSummary
   vesting    T3：团队分发接收地址的二级追踪
 """
-import json, os, ssl, sys, time, urllib.request, urllib.error
+import hashlib, json, os, ssl, sys, time, urllib.request, urllib.error
 
 try:
     import certifi
@@ -52,6 +52,27 @@ TEAM_ENTITY = CFG.get("team_entity") or ""           # worklist/vesting 用的�
 FILLS_ENTITY = CFG.get("fills_recent_entity") or ""  # 补拉近30天 fills 的实体键名，空则跳过
 # EVM 桥流水量过大（所有跨链转账中转），不拉 ledger，只在排除集中使用
 EVM_BRIDGE = CFG["evm_bridge"].lower()
+
+
+def _identity():
+    return {"schema": "hyperliquid-collection/v2", "token_symbol": SYMBOL,
+            "token_id": TOKEN_ID, "candle_coin": CANDLE_COIN, "tge_ms": TGE_MS,
+            "snapshot_start_s": SNAPSHOT_START_S, "entities": ENTITIES,
+            "info_endpoint": INFO_URL, "hypurrscan_endpoint": HPS_URL}
+
+
+def ensure_run_identity():
+    os.makedirs(DATA, exist_ok=True)
+    p = os.path.join(DATA, "collection_manifest.json")
+    ident = _identity()
+    if os.path.exists(p):
+        old = json.load(open(p))
+        if any(old.get(k) != v for k, v in ident.items()):
+            sys.exit("[fail-closed] data_dir collection_manifest 与 token/config/endpoints 不一致")
+    else:
+        with open(p, "w") as f:
+            json.dump({**ident, "created_at": int(time.time()), "status": "IN_PROGRESS"}, f, indent=2)
+    return p
 
 _last_call = {"info": 0.0, "hps": 0.0}
 
@@ -247,11 +268,18 @@ def cmd_addresses():
     print("== addresses (T4 长跑) ==", flush=True)
     wl = json.load(open(os.path.join(DATA, "worklist.json")))["addresses"]
     done = fail = 0
+    failures = []
     for i, addr in enumerate(wl):
         rel = f"addresses/{addr}.json"
         if exists(rel):
-            done += 1
-            continue
+            try:
+                cached = json.load(open(os.path.join(DATA, rel)))
+                if cached.get("addr") == addr and isinstance(cached.get("ledger"), list):
+                    done += 1
+                    continue
+            except Exception:
+                pass
+            print(f"  {addr} 缓存身份/结构无效，重新抓取", flush=True)
         try:
             ledger = fetch_ledger_full(addr)
             deleg = info({"type": "delegatorSummary", "user": addr})
@@ -259,10 +287,22 @@ def cmd_addresses():
             done += 1
         except Exception as e:
             fail += 1
+            failures.append({"address": addr, "error": str(e)})
             print(f"  {addr} 失败: {e}", flush=True)
         if (i + 1) % 50 == 0:
             print(f"T4进度 {i+1}/{len(wl)} 完成={done} 失败={fail}", flush=True)
     print(f"T4完成 total={len(wl)} 完成={done} 失败={fail}", flush=True)
+    wl_path = os.path.join(DATA, "worklist.json")
+    receipt = {"schema": "hyperliquid-address-worklist/v2", "token_symbol": SYMBOL,
+               "token_id": TOKEN_ID, "tge_ms": TGE_MS,
+               "worklist_sha256": hashlib.sha256(open(wl_path, "rb").read()).hexdigest(),
+               "total": len(wl), "passed": done, "failed": fail,
+               "status": "PASS" if fail == 0 and done == len(wl) else "BLOCK",
+               "failures": failures}
+    save_quiet("addresses_receipt.json", receipt)
+    save_quiet("addresses_retry_queue.json", failures)
+    if receipt["status"] != "PASS":
+        sys.exit(2)
 
 def save_quiet(relpath, obj):
     p = os.path.join(DATA, relpath)
@@ -283,7 +323,11 @@ def cmd_vesting():
     print("vesting trace 完成", flush=True)
 
 if __name__ == "__main__":
+    manifest_path = ensure_run_identity()
     cmd = sys.argv[1] if len(sys.argv) > 1 else ""
-    {"static": cmd_static, "entities": cmd_entities, "snapshots": cmd_snapshots,
-     "worklist": cmd_worklist, "addresses": cmd_addresses, "vesting": cmd_vesting,
-     }.get(cmd, lambda: print(__doc__))()
+    fn = {"static": cmd_static, "entities": cmd_entities, "snapshots": cmd_snapshots,
+          "worklist": cmd_worklist, "addresses": cmd_addresses, "vesting": cmd_vesting}.get(cmd)
+    if fn is None:
+        print(__doc__)
+        sys.exit(2)
+    fn()

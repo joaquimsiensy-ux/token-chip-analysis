@@ -21,13 +21,12 @@
 
 ## 可复用脚本（scripts/robinhood/，v1.3 已收编进 skill）
 
-- `pull_transfers.py`：HyperSync 全量 Transfer 断点续传（certifi SSL；token/key 从工作目录 config.json 读）
+- `pull_transfers.py`：HyperSync Transfer；缓存 meta 绑定 token/url/query，断点从末块本身重叠回拉并按 `(block,tx,log_index)` 去重，避免 mid-block crash 漏尾；next_block 缺失/停滞非零退出，完成写链高与输出哈希 receipt。
 - `gas_trace.py`：候选地址原生币入金批量溯源（HyperSync transactions，50 址/批；基础设施剔除名单从 config.json 读）。⚠️ **COMPUTE 会话实测（链高 789 万时）走 HyperSync transactions 25 分钟无产出并连败退出**——链增高后此路已不可行，改用下面的 gas_trace_bs.py
-- `gas_trace_bs.py`：**Blockscout 版 gas 溯源（现主力，v1.4.1 收编进 skill）**（Pointless 2026-07-13 参数化收编，替换原 COMPUTE 项目目录里的样例）——逐地址 `/addresses/{a}/transactions?filter=to` 查最早入金 + funder→目标数汇总；断点续传；须浏览器 UA；候选阈值/extra_targets 从 config.gas_trace 读（34 址约 3-4 分钟；180 址约 20 分钟）。**消费输出时必读 `self_alias` 字段**——脚本已内置 L1 桥别名自检并正确标记，但汇总脚本只打印 funder 会把"本人 L1 自充值"当独立金主展示（NOXA 分析 2026-07-15 实翻：漏读该字段后靠最长公共子串复查才殊途同归，浪费一轮）。**反向坑：SELF_ALIAS ≠ 独立性证据**——alias 自桥的语义是"资金关系断在 L1 侧（本链数据不可见）"，是**不可分辨**而非"已证无外部金主"；把它当独立户论据会漏掉 L1 侧同源的协同群（CASHCAT 增量案：对抗复核据此翻出 7 址同一小时窗 alias 自桥+机器节奏建仓的观察组，主分析曾以 SELF_ALIAS 误判"独立大户"）（CASHCAT 更新，07-15）。**★per_addr_limit=8 采样截断坑：每址只取最早 8 笔入金，高频双向 funder 关系会被系统性漏采**——实测漏掉"creator↔关联人 9 笔双向往来"（截断后只见 3/7 笔）与"埋伏对建仓前 9 小时的 5 ETH 直转"（它是该址第 2 笔入金、恰在 limit 内但按'最早一笔'分组被跳过）两类关键边，复核靠 Blockscout 全量双向拉取才翻案。纪律：①funder 收敛分析不得只按"每址最早一笔"分组，须全笔按 funder 分组；②重点实体地址一律再用 Blockscout `/addresses/{a}/transactions`（双向不带 filter）+ internal-transactions 全量兜底（DUMBMONEY 复核，07-17）
+- `gas_trace_bs.py`：Blockscout gas 溯源。成功空结果写 `status=EMPTY/no_native_in`；四次网络失败进入 retry queue、exit 2 且不进入 done，二者不再混成同一记录。消费时仍须处理 `self_alias`，重点实体补 internal-transactions。
 - `pull_weth_pool.py`：**主池报价币侧 Transfer**（Pointless 2026-07-13 收编）——cost_engine 的输入；config.pool + 可选 quote_token（默认 WETH）
 - `cost_engine.py`：**tx 级 swap 对价重建**——本币和报价币分别使用 config 的 `decimals` / `quote_decimals`，不得再写死 18；逐 tx 配对出每实体成本/已实现盈亏。需 data/weth_pool.jsonl + data/quote_usd_hour.json + transit_contracts.json；config 可选 fee_distributor。
-- `pull_swaps.py`：**V3 池全量 Swap 事件**（CASHCAT 2026-07-13 收编）——HyperSync logs 按池过滤，输出 a0/a1/sqrtPriceX96；断点续传；池子写 config.swap_pools 数组（86.8 万条 Transfer 链约 30 分钟含 429 退避、23.2 万条 swap 约 9 分钟，量级参考）
-- `pull_swaps_v4.py`：**V4 PoolManager 全量 Swap+ModifyLiquidity 事件**（TRASH 2026-07-14 收编，补 V4 盲区 Known Gap）——HyperSync logs 按 `topic1=poolId` 过滤单例 PoolManager，输出 swap 行(a0/a1/sqrtp/liq/tick/fee)与 modliq 行(tickl/ticku/liqdelta)；断点续传+解码失败计数上报；config 填 `swap_pools_v4`(poolId 数组)+`pool_manager`。实测 4.7 万条约 4 分钟。topic0 常量见 traps 分册坑 12
+- `pull_swaps.py` / `pull_swaps_v4.py`：与 Transfer 同样采用身份绑定、末块重叠续拉和事件键去重；V4 有任何解码失败不写完成 receipt。
 - `build_price.py`：**全历史 USD 价格重建**——方向由 token/quote 地址排序判定，V3 raw ratio 再乘 `10^(token_decimals-quote_decimals)` 校正单位；GT 分钟 K 没有任何重叠样本时 fail-closed，不得发布无交叉验证的价格序列。输入仍为 `data/ethusdt_1h.json` 与 `data/ohlcv_minute.json`。
 - `pull_lp_events.py` **用法与输出坑（2026-07-17 实测）**：①与其他脚本不同，**不读 config.json 的池子配置**，必须命令行传参 `--from-block N --pools 0x主池 --out data/lp_events.jsonl`（漏传 --from-block 直接 usage 报错、串行链会被短路）；②输出是**格式化 JSON 数组**（非 JSONL，逐行 json.loads 会炸）；③Mint/Burn/Collect 的 `amount0/amount1` 是**已解码浮点**（WETH 枚/本币枚），不是 wei——按 wei 再除 1e18 会把费流水全算成 0（本次 Collect 62 笔 4.33 WETH 首轮统计因此归零，重读字段才修正）（DUMBMONEY，07-17）
   ⚠️ 依赖 `data/ethusdt_1h.json` 为 **list 格式** [[ts_ms,close]...]，而 cost_engine 的 quote_usd_hour.json 是 dict——两文件格式不同需各自生成（一行转换即可），首跑 FileNotFoundError 属预期（BEGGAR，07-17）

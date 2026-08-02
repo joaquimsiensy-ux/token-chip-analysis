@@ -90,7 +90,7 @@ Base：`https://api.hypurrscan.io`，Swagger UI 在 `/ui/`。
 
 单文件采集器，官方 info API + Hypurrscan 双封装。设计要点（照用别改）：
 - 纯标准库 + certifi SSL 上下文（macOS python.org 版 Python 的 urllib 默认无 CA 链，裸 urllib 必报 CERTIFICATE_VERIFY_FAILED——此坑曾整跑报废一次后台任务；certifi 缺失时回退 `/etc/ssl/cert.pem`）。
-- 429/5xx 指数退避重试（2s→60s 封顶）+ 按端点分级限速 + **断点续传**（已存在的输出文件直接跳过）——长跑中途停/重启不丢进度，调限速参数时也靠它保住已采数据。
+- 429/5xx 指数退避重试 + 按端点分级限速 + 身份绑定断点续传。`collection_manifest.json` 绑定 token_symbol/token_id/TGE/entities/API endpoints；同 data_dir 换标的或配置即 fail-closed。`addresses` 必须逐地址 PASS，失败写 retry queue 与 BLOCK receipt 并 exit 2，不能把部分地址当完整数据。
 
 六个子命令（按此顺序跑，`addresses` 依赖 `worklist`，`worklist` 依赖 `static`+`entities`）：
 
@@ -105,11 +105,12 @@ Base：`https://api.hypurrscan.io`，Swagger UI 在 `/ui/`。
 
 注意：`snapshots` 只按 limit=1000 采集，**不内置空档降级**——跑完必须按第 3 节规程抽查空档并另行补采 top100。
 
-config 字段（原 HYPE 版为脚本内常量，换代币时改这四项）：
+config 同时驱动 collect 与 main_metrics；main_metrics 拒绝未知/缺失字段，不再手改 HYPE 常量：
 - `token_id`：HyperCore 16 字节 token ID（tokenDetails 用）。
 - `entities`：实体名→地址映射表（按第 6 节方法重建）。
 - `tge_ms`：TGE 毫秒时间戳，ledger/fills/K 线的 startTime 与快照序列起点。
 - `throttle`：请求间隔秒数。实测常数：官方 API 地址级 3.0、轻量 0.3；Hypurrscan 见第 3 节分级值。
+- `asset_type/system_addresses/cex_keywords/min_transfer_amount/genesis_*`：资产类型、系统排除、CEX 词表及聚类阈值；非 HYPE fixture 已进入回归测试。
 
 长跑运维：地址级采集 1000+ 地址 × 3s ≈ 2 小时量级（HYPE 一次 1189 地址实跑约 2.1 小时），必须**最先启动**（放任务 DAG 关键路径最前），run_in_background 跑、按输出文件数轮询进度，等待期并行写下游分析脚本和报告骨架（占位符先行）。等待条件用 until-loop，前台裸 `sleep` 会被执行环境 Block。
 

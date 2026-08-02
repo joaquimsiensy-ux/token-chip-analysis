@@ -61,6 +61,8 @@ def valid_file(path):
     return True
 
 def save(path, obj):
+    if obj is None or (isinstance(obj, dict) and "_error" in obj):
+        raise RuntimeError(f"refuse to save incomplete/error response: {path}")
     tmp = path + ".tmp"
     with open(tmp, "w") as f:
         json.dump(obj, f, ensure_ascii=False)
@@ -102,24 +104,29 @@ def fetch_address(addr, rank):
     # 1) 详情
     pd = os.path.join(adir, "detail.json")
     if not done(pd):
-        save(pd, get_json(f"{BASE}/address/{addr}"))
+        detail = get_json(f"{BASE}/address/{addr}")
+        save(pd, detail)
     # 2) 近6个月流水
     pr = os.path.join(adir, "transfers_recent.json")
     if not done(pr):
-        transfers, truncated, total = [], False, None
+        transfers, truncated, total, complete_reason = [], False, None, None
         for page in range(MAX_RECENT_PAGES):
             d = get_json(f"{BASE}/address/{addr}/transfers?pageSize=100&page={page}")
             if not d or "_error" in d:
-                break
+                raise RuntimeError(f"address {addr} transfers page {page} network/API failure")
             total = d.get("totalCount", 0)
             batch = d.get("transfers", [])
             transfers.extend(batch)
             if not batch or batch[-1]["timestamp"] < CUTOFF:
+                complete_reason = "empty_page" if not batch else "reached_window_cutoff"
                 break
         else:
             truncated = True
+            complete_reason = "restricted_page_cap"
         transfers = [t for t in transfers if t["timestamp"] >= CUTOFF]
-        save(pr, {"totalCount": total, "truncated": truncated, "transfers": transfers})
+        save(pr, {"scope": "restricted-6m-max3000", "totalCount": total,
+                  "complete": True, "complete_reason": complete_reason,
+                  "truncated": truncated, "transfers": transfers})
     # 3) 最早流水(首笔资金来源)
     pe = os.path.join(adir, "transfers_earliest.json")
     if not done(pe):
@@ -130,9 +137,11 @@ def fetch_address(addr, rank):
             last_page = max(0, (total - 1) // 100)
             for page in {last_page, max(0, last_page - 1)}:
                 d = get_json(f"{BASE}/address/{addr}/transfers?pageSize=100&page={page}")
-                if d and "_error" not in d:
-                    earliest.extend(d.get("transfers", []))
-        save(pe, {"transfers": earliest})
+                if not d or "_error" in d:
+                    raise RuntimeError(f"address {addr} earliest page {page} network/API failure")
+                earliest.extend(d.get("transfers", []))
+        save(pe, {"complete": True, "pages": sorted({last_page, max(0, last_page - 1)})
+                  if total else [], "transfers": earliest})
     print(f"[{rank}] {addr} 完成", flush=True)
 
 def fetch_official_scan():
@@ -166,12 +175,12 @@ def fetch_official_transfers():
         for page in range(50):
             r = get_json(f"{BASE}/address/{aid}/transfers?pageSize=100&page={page}")
             if not r or "_error" in r:
-                break
+                raise RuntimeError(f"official {aid} page {page} network/API failure")
             batch = r.get("transfers", [])
             transfers.extend(batch)
             if len(batch) < 100:
                 break
-        save(po, {"transfers": transfers})
+        save(po, {"complete": True, "transfers": transfers})
         print(f"官方地址 {aid} ({d['tag'].get('name')}) 流水 {len(transfers)} 笔", flush=True)
 
 def fetch_price():
@@ -194,7 +203,13 @@ def main():
     if n >= 200 or "--smoke" not in sys.argv:
         fetch_official_scan()
         fetch_official_transfers()
-    print(f"全部完成,耗时 {time.time()-t0:.0f}s", flush=True)
+    manifest = {"schema": "filecoin-collection/v2", "status": "PASS",
+                "mode": "restricted/top-200-windowed", "top_n": n,
+                "window_start": CUTOFF, "max_transfers_per_address": MAX_RECENT_PAGES * 100,
+                "complete": True, "limitations": ["not full actor universe", "six-month window",
+                                                     "per-address page cap"]}
+    save(os.path.join(DATA, "collection_manifest.json"), manifest)
+    print(f"受限采集完成(mode={manifest['mode']}),耗时 {time.time()-t0:.0f}s", flush=True)
 
 if __name__ == "__main__":
     main()

@@ -10,6 +10,7 @@ a0=CASHCAT(token0) 池子视角变化量, a1=WETH(token1); 均为带符号十进
 import json, gzip, os, sys, time
 import urllib.request
 import ssl, certifi
+from resume_guard import bind_output, overlap_state, require_progress, write_receipt
 
 SSL_CTX = ssl.create_default_context(cafile=certifi.where())
 SWAP_V3 = "0xc42079f94a6350d7e6235f29174924f928cc2ac818eb64fed8004e115fbcca67"
@@ -61,16 +62,11 @@ def query(from_block):
 
 
 def main():
-    start = 0
-    n_have = 0
-    if os.path.exists(OUT):
-        with gzip.open(OUT, "rt") as f:
-            for line in f:
-                n_have += 1
-                last = line
-        if n_have:
-            start = json.loads(last)["block"] + 1
-        print(f"断点续传: 已有 {n_have} 条, 从 block {start} 续", flush=True)
+    identity = {"collector": "pull_swaps_v3/v2", "token": (CFG.get("token") or "").lower(),
+                "pools": sorted(POOLS), "url": URL, "query_schema": "uniswap-v3-swap/v2"}
+    bind_output(OUT, identity)
+    start, overlap_keys, n_have = overlap_state(OUT, ("block", "tx", "logi"))
+    print(f"断点续传: 已有 {n_have} 条, 重叠回拉 block {start}", flush=True)
     fo = gzip.open(OUT, "at")
     total = n_have
     t0 = time.time()
@@ -80,6 +76,9 @@ def main():
         for batch in res.get("data", []):
             blocks = {b["number"]: b.get("timestamp") for b in batch.get("blocks", [])}
             for lg in batch.get("logs", []):
+                event_key = (lg["block_number"], lg.get("transaction_hash"), lg.get("log_index"))
+                if event_key in overlap_keys:
+                    continue
                 data = lg.get("data") or "0x"
                 raw = data[2:]
                 if len(raw) < 64 * 5:
@@ -106,11 +105,13 @@ def main():
             fo.flush()
         el = time.time() - t0
         print(f"block→{nb} 共 {total} 条 swap ({el:.0f}s)", flush=True)
-        if not nb or (arch and nb >= arch):
+        reached = require_progress(start, nb, arch)
+        if reached:
             break
         start = nb
         time.sleep(0.3)
     fo.close()
+    write_receipt(OUT, identity, arch, nb, total)
     print(f"完成: {total} 条 → {OUT}", flush=True)
 
 
