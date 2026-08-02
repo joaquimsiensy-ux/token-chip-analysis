@@ -16,6 +16,64 @@ config.json 对应节（见 config.example.json）:
 import requests, json, csv, os, sys, time, datetime, threading, queue, argparse
 
 TRANSFER = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
+PROGRESS_SCHEMA = "hypersync-par-progress/v2"
+
+
+def _fsync_dir(path):
+    fd = os.open(path or ".", os.O_RDONLY)
+    try:
+        os.fsync(fd)
+    finally:
+        os.close(fd)
+
+
+def atomic_json(path, obj):
+    """Publish metadata only after its bytes are durable on the same filesystem."""
+    tmp = path + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(obj, f, sort_keys=True)
+        f.write("\n")
+        f.flush()
+        os.fsync(f.fileno())
+    os.replace(tmp, path)
+    _fsync_dir(os.path.dirname(path))
+
+
+def _progress_identity(token, url, segment):
+    i, s0, s1 = segment
+    return {"schema": PROGRESS_SCHEMA, "token": token, "endpoint": url,
+            "segment": i, "from_block": s0, "to_block": s1}
+
+
+def load_progress(path, csv_path, identity):
+    """Resume only from a bound checkpoint whose exact CSV extent is present."""
+    try:
+        saved = json.load(open(path, encoding="utf-8"))
+    except (OSError, ValueError) as e:
+        raise RuntimeError(f"unsafe/unreadable progress {path}: {e}") from e
+    for key, expected in identity.items():
+        if saved.get(key) != expected:
+            raise RuntimeError(f"progress identity mismatch {key}: {saved.get(key)!r} != {expected!r}")
+    if not os.path.isfile(csv_path):
+        raise RuntimeError("progress exists but segment CSV is missing")
+    actual_size = os.path.getsize(csv_path)
+    if saved.get("csv_size") != actual_size:
+        raise RuntimeError(f"segment CSV extent mismatch: {actual_size} != {saved.get('csv_size')}")
+    nxt = saved.get("next_block")
+    if isinstance(nxt, bool) or not isinstance(nxt, int):
+        raise RuntimeError("progress next_block must be an integer")
+    if not (identity["from_block"] <= nxt <= identity["to_block"]):
+        raise RuntimeError(f"progress next_block outside segment: {nxt}")
+    return nxt
+
+
+def require_next_block(payload, cur, segment_end):
+    nxt = payload.get("next_block")
+    if isinstance(nxt, bool) or not isinstance(nxt, int):
+        raise RuntimeError(f"missing/non-integer next_block at {cur}")
+    if not (cur < nxt <= segment_end):
+        raise RuntimeError(f"stalled/out-of-segment next_block {nxt} at {cur}")
+    return nxt
 
 
 def get_height(url, key):
@@ -34,74 +92,79 @@ def worker(url, key, token, seg_q, outdir, stats, lock, sleep_s):
         i, s0, s1 = seg  # [s0, s1)
         prog_f = os.path.join(outdir, f"part_{i:02d}.prog")
         csv_f = os.path.join(outdir, f"part_{i:02d}.csv")
+        identity = _progress_identity(token, url, seg)
         cur = s0
         mode = "w"
         with_bh = True
-        if os.path.exists(prog_f):
-            saved = int(open(prog_f).read().strip() or s0)
-            if saved >= s1:
-                with lock:
-                    stats["done_segs"] += 1
-                continue
-            cur = saved
-            mode = "a"
-            if os.path.exists(csv_f):
-                with open(csv_f) as fh:
+        try:
+            if os.path.exists(prog_f):
+                cur = load_progress(prog_f, csv_f, identity)
+                if cur >= s1:
+                    with lock:
+                        stats["done_segs"] += 1
+                    continue
+                mode = "a"
+                with open(csv_f, encoding="utf-8") as fh:
                     with_bh = "block_hash" in fh.readline()  # 老 7 列 part 续拉维持老格式
-        f = open(csv_f, mode, newline="")
-        w = csv.writer(f)
-        if mode == "w":
-            w.writerow(["block", "ts", "tx", "log_index", "from", "to", "value_raw", "block_hash"])
-        while cur < s1:
-            q = {"from_block": cur, "to_block": s1,
+            f = open(csv_f, mode, newline="")
+            w = csv.writer(f)
+            if mode == "w":
+                w.writerow(["block", "ts", "tx", "log_index", "from", "to", "value_raw", "block_hash"])
+            while cur < s1:
+                q = {"from_block": cur, "to_block": s1,
                  "logs": [{"address": [token], "topics": [[TRANSFER]]}],
                  "field_selection": {
                      "log": ["block_number", "block_hash", "log_index", "transaction_hash", "topic1", "topic2", "data"],
                      "block": ["number", "timestamp"]}}
-            j = None
-            for attempt in range(12):
-                try:
-                    r = requests.post(url, json=q, headers=headers, timeout=120)
-                    if r.status_code == 200:
-                        j = r.json()
-                        break
-                    time.sleep(min(3 * 2 ** attempt, 300))
-                except Exception:
-                    time.sleep(min(3 * 2 ** attempt, 300))
-            if j is None:
+                j = None
+                for attempt in range(12):
+                    try:
+                        r = requests.post(url, json=q, headers=headers, timeout=120)
+                        if r.status_code == 200:
+                            j = r.json()
+                            break
+                        time.sleep(min(3 * 2 ** attempt, 300))
+                    except Exception:
+                        time.sleep(min(3 * 2 ** attempt, 300))
+                if j is None:
+                    raise RuntimeError(f"request retries exhausted at block {cur}")
+                bts = {}
+                n = 0
+                for batch in j.get("data", []):
+                    for b in batch.get("blocks", []):
+                        ts = b.get("timestamp")
+                        bts[int(b["number"])] = int(ts, 16) if isinstance(ts, str) else int(ts)
+                    for lg in batch.get("logs", []):
+                        bn = int(lg["block_number"])
+                        ts = bts.get(bn)
+                        iso = datetime.datetime.fromtimestamp(ts, datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%S") if ts else ""
+                        row = [bn, iso, lg["transaction_hash"], int(lg["log_index"]),
+                               "0x" + lg["topic1"][-40:], "0x" + lg["topic2"][-40:],
+                               int(lg.get("data") or "0x0", 16) if lg.get("data") not in ("0x", "", None) else 0]
+                        if with_bh:
+                            row.append(lg.get("block_hash") or "")
+                        w.writerow(row)
+                        n += 1
+                nxt = require_next_block(j, cur, s1)
+                f.flush()
+                os.fsync(f.fileno())
+                atomic_json(prog_f, {**identity, "next_block": nxt,
+                                      "csv_size": os.path.getsize(csv_f)})
+                cur = nxt
                 with lock:
-                    stats["errors"] += 1
-                time.sleep(60)
-                continue  # 段内死磕，进度文件保底
-            bts = {}
-            n = 0
-            for batch in j.get("data", []):
-                for b in batch.get("blocks", []):
-                    ts = b.get("timestamp")
-                    bts[int(b["number"])] = int(ts, 16) if isinstance(ts, str) else int(ts)
-                for lg in batch.get("logs", []):
-                    bn = int(lg["block_number"])
-                    ts = bts.get(bn)
-                    iso = datetime.datetime.fromtimestamp(ts, datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%S") if ts else ""
-                    row = [bn, iso, lg["transaction_hash"], int(lg["log_index"]),
-                           "0x" + lg["topic1"][-40:], "0x" + lg["topic2"][-40:],
-                           int(lg.get("data") or "0x0", 16) if lg.get("data") not in ("0x", "", None) else 0]
-                    if with_bh:
-                        row.append(lg.get("block_hash") or "")
-                    w.writerow(row)
-                    n += 1
-            nxt = j.get("next_block")
-            if not nxt or nxt <= cur:
-                nxt = cur + 1
-            cur = min(nxt, s1)
-            f.flush()
-            open(prog_f, "w").write(str(cur))
+                    stats["rows"] += n
+                time.sleep(sleep_s)
+            f.close()
             with lock:
-                stats["rows"] += n
-            time.sleep(sleep_s)
-        f.close()
-        with lock:
-            stats["done_segs"] += 1
+                stats["done_segs"] += 1
+        except Exception as e:
+            try:
+                f.close()
+            except (NameError, UnboundLocalError):
+                pass
+            with lock:
+                stats["errors"] += 1
+                stats["fatal"].append(f"segment {i}: {e}")
 
 
 def main():
@@ -137,12 +200,12 @@ def main():
             s1 = min(s0 + seg_size, height)
             if s0 < s1:
                 segs.append((i, s0, s1))
-        json.dump({"height": height, "segments": segs}, open(plan_f, "w"))
+        atomic_json(plan_f, {"height": height, "segments": segs})
     print(f"[plan] height={height} segments={len(segs)} workers={c.get('workers', 4)}", flush=True)
     seg_q = queue.Queue()
     for s in segs:
         seg_q.put(s)
-    stats = {"rows": 0, "done_segs": 0, "errors": 0}
+    stats = {"rows": 0, "done_segs": 0, "errors": 0, "fatal": []}
     lock = threading.Lock()
     sleep_s = c.get("sleep", 0.1)
     threads = [threading.Thread(target=worker, args=(url, key, token, seg_q, outdir, stats, lock, sleep_s), daemon=True)
@@ -156,6 +219,10 @@ def main():
         rate = stats["rows"] / el if el else 0
         print(f"[prog] rows={stats['rows']:,} segs_done={stats['done_segs']}/{len(segs)} "
               f"rate={rate:.0f}/s errors={stats['errors']} elapsed={el/3600:.2f}h", flush=True)
+    if stats["fatal"]:
+        for msg in stats["fatal"]:
+            print(f"[FATAL] {msg}", file=sys.stderr)
+        sys.exit(2)
     print(f"[COMPLETE] rows={stats['rows']:,} elapsed={(time.time()-t0)/3600:.2f}h", flush=True)
 
 

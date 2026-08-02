@@ -63,9 +63,12 @@ def validate_file(path):
     ctrl = len(re.findall(r'[\x01-\x08\x0b\x0c\x0e-\x1f\x7f]', text))
     if ctrl:
         errs.append(f'含 {ctrl} 个控制字符')
-    rows = list(csv.DictReader(text.splitlines()))
-    if rows and not _valid_header(list(rows[0].keys())):
-        errs.append(f'表头异常: {list(rows[0].keys())}')
+    reader = csv.DictReader(text.splitlines())
+    header = reader.fieldnames or []
+    rows = list(reader)
+    # 空文件/只有表头的文件也必须经过 schema gate，不能靠“没有数据行”绕过。
+    if not _valid_header(header):
+        errs.append(f'表头异常: {header}')
     seen = set()
     for i, r in enumerate(rows, 2):
         a = r.get('address') or ''
