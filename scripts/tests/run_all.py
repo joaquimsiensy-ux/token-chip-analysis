@@ -14,6 +14,7 @@ SUITE = ['changelog_lint.py', ['docs_lint.py', '--all'], 'labels_manifest.py', '
          'test_review_evm_integrity.py',
          'test_review_solana_integrity.py',
          'test_review_labels.py',
+         'test_review_robinhood_integrity.py',
          'test_figures_from_facts.py', 'test_cluster_quality.py',
          'test_sqd_merge_equiv.py', 'test_supply_truth_gate.py',
          'test_handoff_manifest.py', 'test_audit_release_gate.py',
