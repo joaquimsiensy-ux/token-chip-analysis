@@ -8,18 +8,17 @@ Alchemy uniqueId 尾号=类别内序号——语义不同，跨通道按 (tx,尾
 段内用自家 (tag,tx,尾号) 键去重；负余额地址数=0 才算过对账 gate。
 
 用法：python3 replay_pass1.py --channels channels.json [--out-dir data]
-channels.json 示例（lo<=block<hi 才收，各段必须互斥，重叠即报错退出）：
-  {"channels": [
-     {"path": "data/transfers_full.csv",          "lo": 0,        "hi": 37284486, "tag": "hs"},
-     {"path": "data_alchemy3/transfers_full.csv", "lo": 37284486, "hi": 38000000, "tag": "a3"},
-     {"path": "data_alchemy2/transfers_full.csv", "lo": 38000000, "hi": 43000000, "tag": "a2"},
-     {"path": "data_alchemy/transfers_full.csv",  "lo": 43000000, "hi": 99999999999, "tag": "a1"}]}
+channels.json 必须用 evm-channels/v2：顶层声明 token/expected_from/expected_to，每段
+声明 format 与 receipt；相邻段必须 next.lo == prev.hi，每个路径及 receipt 必须可重验。
+完整 schema 见 data-pipeline-evm-channels.md。
 输入 CSV 列：block,ts,tx,from,to,value,uniqueId（fetch_hypersync/fetch_alchemy 输出格式）
 输出（--out-dir 下）：merged.csv、balances_final.json、peaks.json（峰值≥总铸量 0.1%，含 peak_blk/first_blk/last_blk）、
   mint_ledger.json（from=0x0 按接收地址记，x402/批量代执行 mint 必须按接收方不按 tx.from）、replay_stats.json
 """
 import csv, json, argparse
 from collections import defaultdict
+
+from channels_preflight import preflight_channels
 
 Z = '0x0000000000000000000000000000000000000000'
 DEAD = '0x000000000000000000000000000000000000dead'
@@ -32,13 +31,7 @@ def main():
     ap.add_argument("--allow-bad-rows", type=int, default=0,
                     help="允许的坏行上限（默认 0=任何坏行即退出；显式放行须先核明原因）")
     a = ap.parse_args()
-    chans = json.load(open(a.channels))["channels"]
-
-    # 块段互斥校验：排序后相邻段不得重叠
-    segs = sorted((c["lo"], c["hi"], c["tag"]) for c in chans)
-    for (l1, h1, t1), (l2, h2, t2) in zip(segs, segs[1:]):
-        if l2 < h1:
-            raise SystemExit(f"块段重叠：{t1}=[{l1},{h1}) 与 {t2}=[{l2},{h2}) ——通道归属必须互斥")
+    chans = preflight_channels(a.channels, a.out_dir)
 
     rows = {}  # (tag,tx,uid尾号) -> (block, ts, from, to, value)；段互斥保证全局无重
     # 坏行记账（fail-closed 修复 2026-07-22）：结构坏（列数≠7）与字段坏（数字解析失败）

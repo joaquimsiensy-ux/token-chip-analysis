@@ -58,6 +58,8 @@ import time
 
 import duckdb
 
+from channels_preflight import preflight_channels
+
 Z = "0x" + "0" * 40
 DEAD = "0x000000000000000000000000000000000000dead"
 
@@ -87,15 +89,11 @@ def main():
     ap.add_argument("--dedup-segments", type=int, default=8)
     a = ap.parse_args()
 
-    chans = json.load(open(a.channels))["channels"]
+    chans = preflight_channels(a.channels, a.out_dir)
+    if any(c["format"] != "v2" for c in chans):
+        sys.exit("[fail-closed] replay_stream 只支持 format=v2；CSV 请用 replay_duck/replay_pass1")
     lo = min(c["lo"] for c in chans)
     hi = max(c["hi"] for c in chans)
-    # 通道块区间重叠 → 需要去重 → 本脚本不适用
-    spans = sorted((c["lo"], c["hi"]) for c in chans)
-    for (a1, b1), (a2, b2) in zip(spans, spans[1:]):
-        if a2 < b1:
-            sys.exit(f"[fail-closed] 通道块区间重叠 [{a1},{b1}) vs [{a2},{b2})——"
-                     f"存在去重需求，请改用 replay_duck.py 或先做块界感知合并")
 
     os.makedirs(a.out_dir, exist_ok=True)
     tmp = a.temp_dir or os.path.join(a.out_dir, ".duck_tmp")

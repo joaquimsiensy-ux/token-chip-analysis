@@ -46,14 +46,25 @@ def make_parquet(root, blocks):
     con.execute(f"COPY bl TO '{run_dir / 'blocks.parquet'}' (FORMAT parquet)")
 
 
+def channel_receipt(tmp, tag, data_path, lo, hi, rows):
+    p = Path(tmp) / f"{tag}.receipt.json"
+    p.write_text(json.dumps({"schema": "evm-channel-receipt/v1", "status": "PASS",
+                             "tag": tag, "token": A_EVM, "lo": lo, "hi": hi,
+                             "data_path": str(data_path), "rows": rows}))
+    return str(p)
+
+
 def test_h02(tmp):
     d1, d2 = Path(tmp) / "d1", Path(tmp) / "d2"
     make_parquet(d1, [1, 15])  # block 15 is pollution outside d1 responsibility [0,10)
     make_parquet(d2, [11])
     channels = Path(tmp) / "channels.json"
-    channels.write_text(json.dumps({"channels": [
-        {"path": str(d1), "lo": 0, "hi": 10, "tag": "a"},
-        {"path": str(d2), "lo": 10, "hi": 20, "tag": "b"}]}))
+    channels.write_text(json.dumps({"schema": "evm-channels/v2", "token": A_EVM,
+        "expected_from": 0, "expected_to": 20, "channels": [
+        {"path": str(d1), "lo": 0, "hi": 10, "tag": "a", "format": "v2",
+         "receipt": channel_receipt(tmp, "a", d1, 0, 10, 2)},
+        {"path": str(d2), "lo": 10, "hi": 20, "tag": "b", "format": "v2",
+         "receipt": channel_receipt(tmp, "b", d2, 10, 20, 1)}]}))
     out = Path(tmp) / "out"
     p = run([EVM / "replay_stream.py", "--channels", channels, "--out-dir", out], tmp)
     stats = json.loads((out / "replay_stats.json").read_text())
@@ -84,7 +95,10 @@ def test_h04(tmp):
         w.writerow(["block", "ts", "tx", "log_index", "from", "to", "value_raw", "block_hash"])
         w.writerow([1, "2026-01-01", "0xtx", 0, ZERO_EVM, A_EVM, 100, "0xhash"])
     ch = Path(tmp) / "csv_channels.json"
-    ch.write_text(json.dumps({"channels": [{"path": str(src), "lo": 0, "hi": 2, "tag": "x"}]}))
+    ch.write_text(json.dumps({"schema": "evm-channels/v2", "token": A_EVM,
+                              "expected_from": 0, "expected_to": 2, "channels": [
+        {"path": str(src), "lo": 0, "hi": 2, "tag": "x", "format": "v1csv",
+         "receipt": channel_receipt(tmp, "x", src, 0, 2, 1)}]}))
     for script in ("replay_pass1.py", "replay_duck.py"):
         out = Path(tmp) / script
         out.mkdir()

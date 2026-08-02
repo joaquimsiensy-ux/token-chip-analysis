@@ -28,6 +28,23 @@ channels.json 的 path 字段语义（2026-07-25 SPX6900 实测坑）：hypersyn
 指向 **v2 采集根目录**（如 data/v2，内含分段 parquet 全集），**不是单次 run 子目录**——
 分段采集/断点续拉的币该目录下有多段产物，把某段 run 目录填进 path 会静默漏段；
 续拉与重放引用 channels.json 时按根目录读全段。
+
+**channels.json v2 完整性契约（P0 硬闸）**：三个 replay 入口在读取任何事件前共用
+`channels_preflight.py`。顶层必须有 `schema=evm-channels/v2`、`token`、
+`expected_from`、`expected_to`；每段必须有 `path/format/lo/hi/tag/receipt`。排序后首尾
+必须等于全局边界，相邻段必须 `next.lo == prev.hi`。receipt schema 为
+`evm-channel-receipt/v1`，必须以 `status=PASS` 绑定同一 `token/tag/lo/hi/data_path/rows`；
+实体行数为 0 时还必须有非空 `empty_proof`。预检成功或阻断都落
+`<out-dir>/channels_preflight.json`，BLOCK 必须非零退出。
+
+```json
+{"schema":"evm-channels/v2","token":"0x...","expected_from":0,"expected_to":200,
+ "channels":[
+   {"path":"data/part0.csv","format":"v1csv","lo":0,"hi":100,"tag":"p0",
+    "receipt":"data/part0.receipt.json"},
+   {"path":"data/v2","format":"v2","lo":100,"hi":200,"tag":"p1",
+    "receipt":"data/part1.receipt.json"}]}
+```
 ```
 
 批量预采集（v3.16.0，/collect-data 命令）：多币串行队列 `scripts/collect/collect_queue.py`

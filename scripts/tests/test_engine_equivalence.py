@@ -50,8 +50,15 @@ def _write_inputs(tmp, events):
         f.write("block,ts,tx,from,to,value,uniqueId\n")
         for r in rows:
             f.write(",".join(str(x) for x in r) + "\n")
-    json.dump({"channels": [{"path": "transfers.csv", "lo": 0,
-                             "hi": 99999999999, "tag": "t"}]},
+    receipt = {"schema": "evm-channel-receipt/v1", "status": "PASS", "tag": "t",
+               "token": ADDRS[0], "lo": 0, "hi": 99999999999,
+               "data_path": "transfers.csv", "rows": len(rows)}
+    json.dump(receipt, open(os.path.join(tmp, "transfers.receipt.json"), "w"))
+    json.dump({"schema": "evm-channels/v2", "token": ADDRS[0],
+               "expected_from": 0, "expected_to": 99999999999,
+               "channels": [{"path": "transfers.csv", "lo": 0,
+                             "hi": 99999999999, "tag": "t", "format": "v1csv",
+                             "receipt": "transfers.receipt.json"}]},
               open(os.path.join(tmp, "channels.json"), "w"))
     json.dump({"camps": {"阵营A": [ADDRS[0], ADDRS[1]], "阵营B": [ADDRS[2]],
                          "销毁": [DEAD]},
