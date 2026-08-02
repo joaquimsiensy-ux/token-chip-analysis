@@ -5,12 +5,15 @@ import hashlib
 import importlib.util
 import json
 import os
+import subprocess
+import sys
 import tempfile
 from pathlib import Path
 
 
 HERE = Path(__file__).resolve().parent
 GATE = HERE.parent / "report" / "audit_release_gate.py"
+REPRODUCE = HERE.parent / "report" / "reproduce_receipt.py"
 spec = importlib.util.spec_from_file_location("audit_release_gate", GATE)
 gate = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(gate)
@@ -82,6 +85,24 @@ def build_case(root, historical=True):
                         "boundary_decision": "excluded",
                         "decision_reason": "夹具：静置巨仓已裁决"}],
     })
+    (root / "reproduce_audit.py").write_text(
+        "import json\njson.dump({'summary': {'claim': 'C1', 'value': 1}}, "
+        "open('reproduce_output.json','w'))\n", encoding="utf-8")
+    write_json(root, "reproduce_output.json", {"summary": {"claim": "C1", "value": 1}})
+    summary = {"claim": "C1", "value": 1}
+    write_json(root, "reproduce_receipt.json", {
+        "schema": "reproduce-receipt/v1", "status": "PASS", "exit_code": 0,
+        "entrypoint": {"path": "reproduce_audit.py", "sha256": sha(root / "reproduce_audit.py")},
+        "input_manifest": {"path": "audit_input_manifest.json",
+                           "sha256": sha(root / "audit_input_manifest.json")},
+        "args": [],
+        "output": {"path": "reproduce_output.json",
+                   "size": (root / "reproduce_output.json").stat().st_size,
+                   "sha256": sha(root / "reproduce_output.json")},
+        "summary_sha256": hashlib.sha256(
+            json.dumps(summary, sort_keys=True, separators=(",", ":")).encode()).hexdigest(),
+        "run_at_utc": "2026-08-02T00:00:00Z",
+    })
     ctype = "historical_chart" if historical else "snapshot_balance"
     write_json(root, "claim_registry.json", {
         "report_sha256": sha(report),
@@ -89,7 +110,8 @@ def build_case(root, historical=True):
             "claim_id": "C1", "statement": "重算命题",
             "claim_type": ctype, "report_locations": ["report.md:1"],
             "verdict": "confirmed", "evidence_files": [raw.name],
-            "reproduce_command": "python3 reproduce_audit.py",
+            "reproduce_command": "python3 reproduce_audit.py  # 仅说明",
+            "reproduce_receipt": "reproduce_receipt.json",
             "counter_hypotheses": ["数据缺口"],
             "blocking_unresolved": False,
         }],
@@ -102,7 +124,6 @@ def build_case(root, historical=True):
         "blocking_findings": [],
         "release_decision": "PASS",
     })
-    (root / "reproduce_audit.py").write_text("print('ok')\n", encoding="utf-8")
     if historical:
         write_json(root, "chart_reconciliation.json", {
             "series_method": "full_event_replay",
@@ -213,6 +234,46 @@ def main():
         write_json(root, "address_classification.json", cls)
         errors = gate.run(root, report)
         assert any("0.1%" in x for x in errors), errors
+
+    with tempfile.TemporaryDirectory() as td:
+        root = Path(td)
+        report = build_case(root, historical=False)
+        (root / "reproduce_output.json").unlink()
+        (root / "reproduce_receipt.json").unlink()
+        p = subprocess.run([sys.executable, str(REPRODUCE), str(root)],
+                           capture_output=True, text=True)
+        assert p.returncode == 0 and not gate.run(root, report), p.stdout + p.stderr
+
+    # P1-05：命令文本不是证据；只认受控 reproduce receipt 及当前文件重验。
+    with tempfile.TemporaryDirectory() as td:
+        root = Path(td)
+        report = build_case(root, historical=False)
+        claims = json.loads((root / "claim_registry.json").read_text())
+        claims["claims"][0]["reproduce_command"] = ""
+        claims["claims"][0].pop("reproduce_receipt")
+        write_json(root, "claim_registry.json", claims)
+        errors = gate.run(root, report)
+        assert any("reproduce receipt" in x for x in errors), errors
+
+        report = build_case(root, historical=False)
+        receipt = json.loads((root / "reproduce_receipt.json").read_text())
+        (root / "fake.py").write_text("print('fake')\n")
+        receipt["entrypoint"] = {"path": "fake.py", "sha256": sha(root / "fake.py")}
+        write_json(root, "reproduce_receipt.json", receipt)
+        errors = gate.run(root, report)
+        assert any("固定入口" in x for x in errors), errors
+
+        report = build_case(root, historical=False)
+        (root / "reproduce_audit.py").write_text("print('drift')\n")
+        errors = gate.run(root, report)
+        assert any("入口脚本哈希" in x for x in errors), errors
+
+        report = build_case(root, historical=False)
+        receipt = json.loads((root / "reproduce_receipt.json").read_text())
+        receipt["summary_sha256"] = "0" * 64
+        write_json(root, "reproduce_receipt.json", receipt)
+        errors = gate.run(root, report)
+        assert any("输出摘要" in x for x in errors), errors
 
     # 6.5.0 修复反例：实体内嵌套未决设施暴露必须阻断；空账本须 empty_reason。
     with tempfile.TemporaryDirectory() as td:

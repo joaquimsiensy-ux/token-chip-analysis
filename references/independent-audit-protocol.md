@@ -76,11 +76,15 @@
 
 - `claim_id`、原命题、命题类型和报告位置；
 - `verdict`：`confirmed` / `weakened` / `refuted` / `unverified`；
-- 原始证据文件、复算命令、反例和备择解释；
+- 原始证据文件、受控复算 receipt、反例和备择解释；命令文本只作说明，不作放行证据；
 - 未解决事项及其是否阻断发布；
 - 对下游结论的依赖关系。
 
-`confirmed` 命题必须有原始证据和可运行复算命令。完整阴性命题还必须证明候选集完整、未决候选为零、黑箱边界已量化。证据只够否定旧结论时，必须停在 `unverified`，不得为了交付完整叙事另造一个肯定结论。
+`confirmed` 命题必须有原始证据和 `reproduce_receipt`。用
+`scripts/report/reproduce_receipt.py <案目录>` 运行案内固定入口 `reproduce_audit.py`；
+receipt 绑定入口脚本哈希、`audit_input_manifest.json` 哈希、参数、exit code 0、
+输出文件大小/哈希与关键摘要哈希。发布闸只重验 receipt 与当前文件，绝不执行
+claim 里的 `reproduce_command`。完整阴性命题还必须证明候选集完整、未决候选为零、黑箱边界已量化。证据只够否定旧结论时，必须停在 `unverified`，不得为了交付完整叙事另造一个肯定结论。
 
 ## 8. 对抗复核否决权
 
@@ -111,6 +115,8 @@ dormant_warehouse_audit.json
 claim_registry.json
 adversarial_review.json
 reproduce_audit.py
+reproduce_receipt.json
+reproduce_output.json
 ```
 
 三账正式 schema（空数组不构成审计证据，正式发布一律拒绝空壳）：

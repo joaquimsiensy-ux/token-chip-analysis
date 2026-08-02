@@ -61,6 +61,12 @@ def sha256_file(path: Path) -> str:
     return h.hexdigest()
 
 
+def canonical_json_sha(value) -> str:
+    raw = json.dumps(value, sort_keys=True, separators=(",", ":"),
+                     ensure_ascii=False).encode("utf-8")
+    return hashlib.sha256(raw).hexdigest()
+
+
 def safe_case_path(case_dir: Path, rel: str) -> Path | None:
     try:
         p = (case_dir / rel).resolve()
@@ -384,6 +390,58 @@ def check_daily_peaks(case_dir: Path, errors: list[str]):
         errors.append("trigger_days.json 触发日为空且无 empty_reason 显式声明")
 
 
+def check_reproduce_receipt(case_dir: Path, rel, cid, errors: list[str]):
+    """Revalidate a controlled receipt; never execute command text from a claim."""
+    if not isinstance(rel, str) or not rel.strip():
+        errors.append(f"confirmed 命题 {cid} 缺 reproduce receipt")
+        return
+    receipt_path = safe_case_path(case_dir, rel)
+    raw_receipt = case_dir / rel
+    if receipt_path is None or raw_receipt.is_symlink() or not receipt_path.is_file():
+        errors.append(f"命题 {cid} reproduce receipt 路径非法或不存在: {rel}")
+        return
+    receipt = load_json(receipt_path, errors)
+    if receipt.get("schema") != "reproduce-receipt/v1" or receipt.get("status") != "PASS" \
+            or receipt.get("exit_code") != 0:
+        errors.append(f"命题 {cid} reproduce receipt 非 PASS/exit 0")
+    entry = receipt.get("entrypoint")
+    if not isinstance(entry, dict) or entry.get("path") != "reproduce_audit.py":
+        errors.append(f"命题 {cid} reproduce receipt 非受控固定入口 reproduce_audit.py")
+    else:
+        entry_path = case_dir / "reproduce_audit.py"
+        if entry_path.is_symlink() or not entry_path.is_file():
+            errors.append(f"命题 {cid} 固定入口脚本不存在或为符号链接")
+        elif entry.get("sha256") != sha256_file(entry_path):
+            errors.append(f"命题 {cid} 入口脚本哈希漂移")
+    manifest = receipt.get("input_manifest")
+    manifest_path = case_dir / "audit_input_manifest.json"
+    if not isinstance(manifest, dict) or manifest.get("path") != "audit_input_manifest.json" \
+            or manifest.get("sha256") != sha256_file(manifest_path):
+        errors.append(f"命题 {cid} reproduce receipt 输入 manifest 未绑定当前冻结输入")
+    args = receipt.get("args")
+    if not isinstance(args, list) or not all(isinstance(x, str) for x in args):
+        errors.append(f"命题 {cid} reproduce receipt args 非字符串数组")
+    output = receipt.get("output")
+    if not isinstance(output, dict):
+        errors.append(f"命题 {cid} reproduce receipt 缺输出摘要")
+        return
+    out_rel = output.get("path")
+    out_path = safe_case_path(case_dir, str(out_rel or ""))
+    if out_path is None or (case_dir / str(out_rel or "")).is_symlink() or not out_path.is_file():
+        errors.append(f"命题 {cid} reproduce 输出不存在或路径非法")
+        return
+    if output.get("size") != out_path.stat().st_size or output.get("sha256") != sha256_file(out_path):
+        errors.append(f"命题 {cid} reproduce 输出大小/哈希漂移")
+    try:
+        out_json = json.loads(out_path.read_text(encoding="utf-8"))
+        summary = out_json.get("summary") if isinstance(out_json, dict) and "summary" in out_json \
+            else out_json
+        if receipt.get("summary_sha256") != canonical_json_sha(summary):
+            errors.append(f"命题 {cid} reproduce 输出摘要不一致")
+    except Exception as exc:
+        errors.append(f"命题 {cid} reproduce 输出摘要不可读: {exc}")
+
+
 def check_claims(case_dir: Path, d: dict, report: Path | None, errors: list[str]):
     claims = d.get("claims")
     if not isinstance(claims, list) or not claims:
@@ -414,12 +472,13 @@ def check_claims(case_dir: Path, d: dict, report: Path | None, errors: list[str]
             errors.append(f"命题 {cid} verdict 非法")
         if verdict == "confirmed":
             evidence = claim.get("evidence_files") or []
-            if not evidence or not claim.get("reproduce_command"):
-                errors.append(f"confirmed 命题 {cid} 缺原始证据或复算命令")
+            if not evidence:
+                errors.append(f"confirmed 命题 {cid} 缺原始证据")
             for rel in evidence:
                 p = safe_case_path(case_dir, str(rel))
                 if p is None or not p.is_file():
                     errors.append(f"命题 {cid} 证据文件不存在: {rel}")
+            check_reproduce_receipt(case_dir, claim.get("reproduce_receipt"), cid, errors)
             if claim.get("blocking_unresolved"):
                 errors.append(f"命题 {cid} 尚有阻断项却标 confirmed")
         if ctype in DECISIVE_TYPES and verdict == "confirmed":
