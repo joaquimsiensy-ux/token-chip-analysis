@@ -70,7 +70,7 @@ def file_sha(path):
     return h.hexdigest()
 
 
-WAVE_SCHEMA = "wave-scan/v2"
+WAVE_SCHEMA = "wave-scan/v3"
 FLOW_SCHEMA = "flow-anomaly/v1"
 
 

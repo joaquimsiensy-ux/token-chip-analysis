@@ -55,7 +55,7 @@ def make_reports(d, wave_peak=12.0, eqg_pct=3.0, sink_window=2.5,
                  sink_peak=2.5, sink_current=2.5, sink_net=2.5):
     """两候选：1 个 wave（3 成员、峰 wave_peak%）+ 1 个 eqg（2 收方、组 eqg_pct%）。"""
     wj(d, "wave_scan_report.json", {
-        "schema": "wave-scan/v2", "scan_universe_count": 5,
+        "schema": "wave-scan/v3", "scan_universe_count": 5,
         "retention_buckets": {"cleared": 3, "partial_exit": 1, "retained": 1},
         "negative_balance_addrs": 0,
         "waves": [{"id": "wave-abc123def456", "member_count": 3,

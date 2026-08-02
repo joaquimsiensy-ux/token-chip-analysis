@@ -253,8 +253,7 @@ def build_addr_summary(con, exclude, meaningful_ratio):
         ), agg AS (
             -- min_bal＝历史逐日末余额最低点：负余额哨兵按它判（v6.8.1 codex 复核修复——
             -- 只看 final_bal 会漏"先负后回正"的数据缺失自愈假象）
-            SELECT owner, MAX(bal) AS peak, MIN(bal) AS min_bal, SUM(delta) AS final_bal,
-                   MAX(day) AS last_day
+            SELECT owner, MAX(bal) AS peak, MIN(bal) AS min_bal, SUM(delta) AS final_bal
             FROM run GROUP BY 1
         ), fi AS (
             -- 两侧并集：纯流出地址（只在 f 侧出现＝数据缺失指纹）不得被内连接静默丢弃，
@@ -270,12 +269,21 @@ def build_addr_summary(con, exclude, meaningful_ratio):
             FROM run r JOIN agg a ON a.owner = r.owner
             WHERE a.peak > 0 AND r.bal >= a.peak * {meaningful_ratio}
             GROUP BY r.owner
+        ), la AS (
+            -- last_day 只认非零金额转账：0 值 Transfer 任何人都能对任意地址发，
+            -- 能把静置仓"摸活"洗掉 dormant_ge_30d 必裁决标记（codex 验收 P2，2026-08-02）
+            SELECT owner, MAX(day) AS last_day FROM (
+                SELECT t AS owner, ts // 86400 AS day FROM edges WHERE amt > 0
+                UNION ALL
+                SELECT f, ts // 86400 FROM edges WHERE amt > 0
+            ) GROUP BY 1
         )
         SELECT a.owner, a.peak, a.min_bal, a.final_bal, fi.first_in_day,
                COALESCE(fm.first_meaningful_day, fi.first_in_day) AS first_meaningful_day,
-               a.last_day
+               COALESCE(la.last_day, fi.first_in_day) AS last_day
         FROM agg a JOIN fi ON fi.owner = a.owner
-        LEFT JOIN fm ON fm.owner = a.owner""")
+        LEFT JOIN fm ON fm.owner = a.owner
+        LEFT JOIN la ON la.owner = a.owner""")
     return con.execute("SELECT COUNT(*) FROM addr").fetchone()[0]
 
 

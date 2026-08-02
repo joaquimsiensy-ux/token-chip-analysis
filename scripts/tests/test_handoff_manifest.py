@@ -79,7 +79,7 @@ def make_case(d):
         f.write(json.dumps([86400, 1, 1, 0, Z, "0xdef", 100]) + "\n")
     write_json(d, "accounting_mode.json", {"schema": "accounting-gate/v1", "verdict": "PASS", "exit_code": 0})
     write_json(d, "supply_truth.json", {"verdict": "PASS", "exit_code": 0})
-    write_json(d, "wave_scan_report.json", {"schema": "wave-scan/v2", "scan_universe_count": 0,
+    write_json(d, "wave_scan_report.json", {"schema": "wave-scan/v3", "scan_universe_count": 0,
                                             "retention_buckets": {"cleared": 0, "partial_exit": 0, "retained": 0},
                                             "negative_balance_addrs": 0,
                                             "waves": [], "equal_amount_groups": [],
@@ -317,7 +317,7 @@ def main():
         d13 = os.path.join(root, "case_wavehollow")
         os.makedirs(d13)
         make_case(d13)
-        write_json(d13, "wave_scan_report.json", {"schema": "wave-scan/v2"})
+        write_json(d13, "wave_scan_report.json", {"schema": "wave-scan/v3"})
         run(["generate", "--case-dir", d13, "--status", "READY"] + GEN)
         p = run(["verify", "--case-dir", d13])
         check("wave_scan_report 空壳 verify 拒收 exit 2", p.returncode == 2 and "wave_scan_report" in p.stdout)
@@ -339,7 +339,20 @@ def main():
                                                   "requires_adjudication": False})
         run(["generate", "--case-dir", d16, "--status", "READY"] + GEN)
         p = run(["verify", "--case-dir", d16])
-        check("wave-scan/v1 旧版产物 verify 拒收 exit 2", p.returncode == 2 and "v6.6.1" in p.stdout)
+        check("wave-scan/v1 旧版产物 verify 拒收 exit 2",
+              p.returncode == 2 and "旧版" in p.stdout and "v3" in p.stdout)
+
+        # 16b. wave-scan/v2 旧版产物（缺 scan_universe 逐址全集）→ verify 同拒（6.9.2）
+        d16b = os.path.join(root, "case_wavev2")
+        os.makedirs(d16b)
+        make_case(d16b)
+        write_json(d16b, "wave_scan_report.json", {"schema": "wave-scan/v2", "scan_universe_count": 0,
+                                                   "waves": [], "equal_amount_groups": [],
+                                                   "requires_adjudication": False})
+        run(["generate", "--case-dir", d16b, "--status", "READY"] + GEN)
+        p = run(["verify", "--case-dir", d16b])
+        check("wave-scan/v2 旧版产物 verify 拒收 exit 2",
+              p.returncode == 2 and "旧版" in p.stdout and "scan_universe" in p.stdout)
 
         # 17. handoff/v1 旧 manifest：默认拒；--legacy-read-only 显式降级放行（只读警告）
         d17 = os.path.join(root, "case_legacy")

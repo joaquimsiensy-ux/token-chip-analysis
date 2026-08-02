@@ -105,6 +105,12 @@ def main():
     summary = json.load(open(os.path.join(out1, "peaks_summary.json")))
     check("summary 带新公式标记 ub_formula=prev_close_plus_gross_in/v2",
           summary.get("ub_formula") == "prev_close_plus_gross_in/v2")
+    import hashlib
+    real_sha = hashlib.sha256(
+        open(os.path.join(out1, "trigger_days.json"), "rb").read()).hexdigest()
+    check("summary 触发日哈希与产物咬合（发布闸拒陈旧产物的依据）",
+          summary.get("trigger_days_file") is True
+          and summary.get("trigger_days_sha256") == real_sha)
 
     tdj = json.load(open(os.path.join(out1, "trigger_days.json")))
     check("trigger_days schema", tdj.get("schema") == "trigger-days-replay/v1")

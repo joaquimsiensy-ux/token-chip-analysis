@@ -59,11 +59,13 @@ trigger_days.json（逐触发日列出当日活跃候选地址名单，供块级
     <out>/peaks_daily.json           {addr: {peak_daily, peak_day, upper_bound, ub_day, last_bal}}
     <out>/needs_block_precision.json {门槛: [需补块级精确值的地址]}
     <out>/trigger_days.json          触发日→当日活跃候选名单（仅 --trigger-days 时产出）
-    <out>/peaks_summary.json         含 ub_formula 口径标记
+    <out>/peaks_summary.json         含 ub_formula 口径标记＋trigger_days_file/
+                                     trigger_days_sha256（发布闸靠哈希咬合拒目录残留的陈旧触发日产物）
 
 （来源：KOGE(BSC) 3.595 亿行分析，2026-07-25；上界公式修正 2026-08-02）
 """
 import argparse
+import hashlib
 import json
 import os
 import sys
@@ -196,13 +198,19 @@ def main():
                 "days": days_out, "empty_reason": empty_reason}
         json.dump(trig, open(f"{a.out_dir}/trigger_days.json", "w"),
                   ensure_ascii=False, indent=1)
+        # summary 登记产物哈希——发布闸靠它拒目录复用残留的陈旧 trigger_days.json
+        trig_sha = hashlib.sha256(
+            open(f"{a.out_dir}/trigger_days.json", "rb").read()).hexdigest()
         print(f"[trigger] 触发日 {len(days_out)} 天 → trigger_days.json", flush=True)
+    else:
+        trig_sha = None
 
     summary = {"engine": "peaks_daily.py", "ub_formula": UB_FORMULA,
                "cand_pct": a.pct, "cand_threshold_wei": str(th),
                "candidates": n, "daily_rows": ndd, "peaks_recorded": len(res),
                "levels_checked": a.levels,
                "trigger_days_file": bool(a.trigger_days),
+               "trigger_days_sha256": trig_sha,
                "elapsed_s": round(time.time() - t0, 1)}
     json.dump(summary, open(f"{a.out_dir}/peaks_summary.json", "w"), indent=1)
     print(json.dumps(summary, indent=1))

@@ -15,6 +15,7 @@
 
 ## 版本索引（活跃窗口，新在上；每版一行，详情见下方对应条目）
 
+- **6.9.2** 2026-08-02 6.9.1 验收 review 四项返工（codex 出 2 P1＋2 P2 全认账）：①wave-scan/v3 下游断链修复——adjudication_validator/handoff_manifest 只认 v3、v1/v2 一律旧版拒收（升 schema 漏查下游消费者，测试没抓住恰因下游 fixture 也是 v2 自造自洽——"自己的 fixture 顺自己实现走"再实证）②发布闸候选"挂名≠裁决"——每条候选机器重验三类裁决＋理由非空，自报 unresolved_count 不作数 ③触发日产物哈希咬合——summary 登记 trigger_days_sha256，未带 --trigger-days 或目录残留陈旧产物一律拒 ④wave_scan last_day 只认非零金额转账——0 值 Transfer 任何人可发，能把静置仓"摸活"洗掉必裁决标记；SUITE 25 项全绿——详见下方对应条目
 - **6.9.1** 2026-08-02 /codex:review 对 6.9.0 判"不应发布"（3 high＋1 medium）后三高危全修（Fable 逐条独立复核确认后按自给修法执行；medium"官方公告并入经济控制"用户裁决不修——多签挪用/监守自盗实例遍地，"治理独立"是纸面约束，维持 6.9.0 拍板）：①峰值上界公式修正＋触发日机器闭环 ②48h 试转边补 OTC 排除检验 ③wave_scan v3 候选全集逐址落盘＋发布闸集合对账——详见下方对应条目
 - **6.9.0** 2026-08-02 实体判定规则 17 项用户拍板修订＋大白话化（用户逐段审阅交付文档逐条辩论定案；@CX codex 复核 plan 融合后批准执行；四主题 commit：A 行为指纹与强弱证据体系、B 实体合并角色与枢纽统编、C 峰值与静置仓、D Alpha 收窄）——详见下方对应条目
 - **6.8.2** 2026-08-01 adversarial-review 三高危全修（/codex:review 对 6.8.0+6.8.1 判"不应发布"出 3 high＋1 medium；codex rescue 执行修复、Fable 逐文件审核通过后代提交）：①**同秒拓扑重排废除**——entity_source_trace 改按可证链上位置 (ts, slot/block, tx_index, log/instruction_index) 逐笔重演（EVM block+log_index 天然精确；Solana 扩展 7 元组 [ts,slot,tx,ix,f,t,amt] 才精确，旧 5 元组只有 slot 不可证），缺精确序号时禁止臆造顺序：同一最细粒度桶内"既收又发"节点的流出整笔记 UNRESOLVED/order_ambiguous，>0.5% 锚点库存由**独立顺序敏感性维度** exit 2——与 FIFO/LIFO 消耗维度正交互不掩盖（codex 反例：真序 X→实体后 DEX→X，旧拓扑排序反向执行错报 DEX 32.9% 且三策略同报 mint 假稳定）；handoff scope 的 cutoff/frozen_block 真实应用于边表过滤（不再只把值写进台账）；top_entry 平局确定性 tie-break。②**freeze 升原始数据真实重放制**——溯源台账新增 input_binding（原始边/标签/实体/manifest/data_map/算法文件全量**完整** SHA-256＋total_supply＋参数），freeze 前置 3 逐项校验绑定（source.files 须同时在 verified manifest.artifacts 与 data_map、分母须与 manifest.scope.denominators 冻结值一致、无 cutoff/block 冻结即拒、算法哈希变即拒）后**以当前代码从原始边 subprocess 重放并比对语义摘要哈希**——伪造台账须与真实重放语义一致才能过＝必须是真的；重放命令从白名单字段重建、不执行台账自报 command（防注入）；敏感性从三策略 policy_details 明细机器重算（闭合 0.5% 容差＋主导终点＋顺序未决占比），汇总布尔与重算不一致即拒。③**sink 判级四口径 max**——flow 报告 sink 新增 balance.historical_peak_pct/current_balance_pct＋all_time.net_inflow_pct/qualified_inflow_pct，validator 取历史峰值/现仓/全史净流入/最佳合格窗四者最大值算影响（多个不重叠 4% 窗累计 12% 不再漏判），旧 flow 产物缺新字段一律拒并要求重跑。④medium 并修：freeze no-op 判断扩至全部绑定字段（provenance/input_binding/manifest/run_id/scope/data_map 哈希任一变化必追 revision）；check-unseal 从"只看 members_sha256"升为逐项复核冻结记录五份哈希＋台账内绑定的原始边/标签/算法文件（堵"台账未动、raw 已换"揭盲绕过）。⑤配套：wave_scan 三通道装载统一九列契约（chain_pos1..3/order_exact/ingest_seq；attach_duckdb 按可用列智能判级、缺列诚实降级）；manifest EXCLUDE 不再排除 .duckdb（data_map 登记的正式重放源须进绑定）；run_guarded 兼容 macOS 沙箱 psutil 原生 PermissionError（监督器不再先于子进程崩溃）。⑥测试：顺序反例**双向验证**（5 元组同桶因果→UNRESOLVED 100%＋exit 2；同序列 7 元组→mint 100%＋exit 0）＋脱离边表的"合法"人工台账拒冻（旧测试把它当正例的翻转）＋明细翻转 stable=true 拒＋内容自洽但重放不一致拒＋仅 provenance 变化触发 revision＋check-unseal 漂移/恢复双向；handoff 契约 30→53 项，SUITE 24 项全绿。⑦**PYTHIA 溯源旧基线诚实降级**：fixtures sensitivity_stable true→false——旧 Solana 5 元组 slot 内顺序不可证，v6.8.1 溯源锚点仅留历史诊断、禁引用为稳定结论，7 元组重采后方可恢复（**实务影响：存量 Solana 采集数据重跑溯源前须按 7 元组重采**）。审核方非阻断记录：duckdb 通道 ingest_seq 用 row_number 无 ORDER BY，非 exact 表同桶观察序理论可漂移致重放误拒（fail-closed 方向，sol/evm_v2 主通道不受影响）；freeze 重放＋完整哈希使大案冻结耗时显著上升（安全闸代价，接受）
@@ -40,6 +41,16 @@
 - **4.1.0** 2026-07-30 PYTHIA 双报告交叉核实复盘：实体身份防复发三闸（label_lookup 并源 address-book / entity_identity_gate+G8 编译门 / 复核 prompt 翻案四问固化）+ 复盘元规则（身份类教训必须以代码收尾）
 - **4.0.0** 2026-07-28 大整编（用户点名）：3.0→3.41 四十余版增量迭代的结构清理——路由索引补齐 9 节、结构错位归位 3 处、消重立权威源制 6 组、CHANGELOG 重整归档 29 条；只减不加，规则语义未动
 - 更早版本（3.41.0 及以前）→ `CHANGELOG-archive.md`
+
+## [6.9.2] - 2026-08-02 — 6.9.1 验收 review 四项返工（v3 下游断链/挂名≠裁决/触发日咬合/零值摸活）
+
+背景：6.9.1 提交后跑验收 /codex:review（base=57251d7），三高危确认修掉，但 codex 对修复本身出 2 P1＋2 P2，Fable 逐条核实全部认账。P1-1 是阻断性回归：升 wave-scan/v3 时只查了 wave_scan.py 自身与 scan-schemas，漏 grep 下游消费者——adjudication_validator 硬编码只认 v2、handoff verify 同样只认 v2，新产物会被裁决/冻结链路整体拒收；SUITE 全绿没抓住，恰因下游测试 fixture 也是 v2 自造自洽（6.8.1"自己的 fixture 顺着自己的实现走"元规则再实证）。
+
+- **①v3 下游断链修复（P1）**：adjudication_validator WAVE_SCHEMA 升 v3；handoff_manifest verify 把 v1/v2 合并进旧版拒收分支（提示"v2 及更早缺 scan_universe 逐址全集，重跑 v3"），只认 v3；test_adjudication_validator/test_handoff_manifest fixture 同步 v3，handoff 加 16b v2 拒收用例。**元规则**：升任何产物 schema 版本，必须 `rg` 全仓库旧版本串把每个消费者一起升，且给"下游拒收旧版"配用例。
+- **②挂名≠裁决（P1）**：audit_release_gate 候选对账从"必裁决地址在候选列表里"升级为逐条机器重验——每条列出的候选 boundary_decision 必须 ∈ strict/expanded/excluded 且 decision_reason 非空，缺任一按未裁决拒；顶层自报 unresolved_count=0 不作数。堵"把 must 地址空壳挂进 candidates 绕闸"。
+- **③触发日产物哈希咬合（P2）**：peaks_daily summary 新增 trigger_days_file/trigger_days_sha256（产出触发日文件即登记其哈希）；发布闸三段拒——summary 无 flag（本次运行没带 --trigger-days，目录残留旧文件不作数）／声称产出但文件缺失／文件哈希与登记不符（陈旧或换包）。堵"目录复用时旧 trigger_days.json 蒙混过闸"。
+- **④零值摸活（P2）**：wave_scan last_day 改为只认 amt>0 的转账（独立 la CTE，agg 的 MAX(day) 删除）——0 值 Transfer 任何人都能对任意地址发，一笔就能把静置仓 last_day 刷新、洗掉 dormant_ge_30d 必裁决标记（峰值 0.05–0.1% 且不进 top200 的仓会因此彻底失去 must 标记）。test_wave_scan 加"ZeroToucher 摸活"反例边：给孤仓发 0 值转账后 dormant 标记必须保留。
+- 测试：SUITE 25 项全绿（gate 新增挂名未裁决/未带触发日/换包不咬合三反例，f/g/h 用例适配咬合前置；peaks 正常路径加哈希咬合断言）。
 
 ## [6.9.1] - 2026-08-02 — 6.9.0 adversarial 复核三高危全修（峰值上界公式/试转 OTC 检验/候选全集落盘对账）
 

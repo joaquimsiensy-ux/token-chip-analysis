@@ -67,6 +67,9 @@ def main():
     # 但必须出现在 scan_universe 且 must_adjudicate=true）
     LONE = "LoneWhale"
     edges.append((day(0), Z, LONE, 3 * 10 ** 10))
+    # 12. 零值"摸活"反例（codex 验收 P2）：任何人都能给静置仓发 0 值转账——
+    # last_day 只认非零金额，这笔不得洗掉 LONE 的 dormant_ge_30d 标记
+    edges.append((day(65), "ZeroToucher", LONE, 0))
     # A 正例：25 址 3 天内各建 ~0.5%（合并峰 ~12.5% ≥10%、25 员 ≥20）；
     # 金额逐址微差——防止 25 笔同面额自己构成合法等额组干扰 D 断言
     W = [f"WaveAddr{i:02d}" for i in range(25)]
@@ -137,6 +140,8 @@ def main():
               lone["must_adjudicate"] is True
               and "peak_ge_0.1pct" in lone["must_reasons"]
               and "dormant_ge_30d" in lone["must_reasons"])
+        check("12. 零值转账洗不掉静置标记（last_day 只认非零金额）",
+              lone["last_active_day"] == "1970-01-01")
         check("11. 孤仓 retained 桶且峰值 3%",
               lone["retention_bucket"] == "retained"
               and abs(lone["peak_pct"] - 3.0) < 0.01)

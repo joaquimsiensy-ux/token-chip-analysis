@@ -300,10 +300,11 @@ def _verify_light_schema(case_dir, fails, legacy=False):
         return
     try:
         ws = load_json(os.path.join(case_dir, "wave_scan_report.json"))
-        if ws.get("schema") == "wave-scan/v1":
-            fails.append("wave_scan_report.json 是 v6.6.1 旧版（wave-scan/v1）——重跑 wave_scan.py（v2）"
-                         "后重 generate；已冻结旧案走 verify --legacy-read-only")
-        elif ws.get("schema") != "wave-scan/v2":
+        if ws.get("schema") in ("wave-scan/v1", "wave-scan/v2"):
+            fails.append(f"wave_scan_report.json 是旧版（{ws.get('schema')}）——v2 及更早缺 scan_universe "
+                         "逐址全集（候选对账没账可对），重跑 wave_scan.py（v3）后重 generate；"
+                         "已冻结旧案走 verify --legacy-read-only")
+        elif ws.get("schema") != "wave-scan/v3":
             fails.append(f"wave_scan_report.json schema 异常: {ws.get('schema')}")
         elif not isinstance(ws.get("waves"), list) or not isinstance(ws.get("equal_amount_groups"), list) \
                 or not isinstance(ws.get("requires_adjudication"), bool):

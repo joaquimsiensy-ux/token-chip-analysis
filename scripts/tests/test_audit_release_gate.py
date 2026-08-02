@@ -232,7 +232,7 @@ def main():
         errors = gate.run(root, report)
         assert any("scan_universe" in x for x in errors), errors
 
-    # 6.9.1 修复反例（codex 复核）：日级峰值口径闭环。
+    # 6.9.1 修复反例（codex 复核）：日级峰值口径闭环；6.9.2 补咬合（codex 验收 P2）。
     with tempfile.TemporaryDirectory() as td:
         root = Path(td)
         report = build_case(root, historical=False)
@@ -240,24 +240,56 @@ def main():
         write_json(root, "peaks_summary.json", {"engine": "peaks_daily.py"})
         errors = gate.run(root, report)
         assert any("旧上界公式" in x for x in errors), errors
-        # f) 新公式但四类触发日无产物 → BLOCK
+        # f) 本次运行未带 --trigger-days、目录残留旧 trigger_days.json → BLOCK（陈旧不作数）
+        write_json(root, "trigger_days.json",
+                   {"schema": "trigger-days-replay/v1", "days": {},
+                    "empty_reason": "上一轮运行的残留产物"})
         write_json(root, "peaks_summary.json",
                    {"engine": "peaks_daily.py",
-                    "ub_formula": "prev_close_plus_gross_in/v2"})
+                    "ub_formula": "prev_close_plus_gross_in/v2",
+                    "trigger_days_file": False, "trigger_days_sha256": None})
         errors = gate.run(root, report)
-        assert any("trigger_days.json" in x for x in errors), errors
-        # g) 触发日空且无显式声明 → BLOCK
+        assert any("未带 --trigger-days" in x for x in errors), errors
+        # k) 带了触发日但产物被换包（sha 不咬合）→ BLOCK
+        write_json(root, "peaks_summary.json",
+                   {"engine": "peaks_daily.py",
+                    "ub_formula": "prev_close_plus_gross_in/v2",
+                    "trigger_days_file": True,
+                    "trigger_days_sha256": "0" * 64})
+        errors = gate.run(root, report)
+        assert any("不咬合" in x for x in errors), errors
+        # g) 咬合正确但触发日空且无显式声明 → BLOCK
         write_json(root, "trigger_days.json",
                    {"schema": "trigger-days-replay/v1", "days": {},
                     "empty_reason": None})
+        write_json(root, "peaks_summary.json",
+                   {"engine": "peaks_daily.py",
+                    "ub_formula": "prev_close_plus_gross_in/v2",
+                    "trigger_days_file": True,
+                    "trigger_days_sha256": sha(root / "trigger_days.json")})
         errors = gate.run(root, report)
         assert any("empty_reason" in x for x in errors), errors
-        # h) 显式空声明 → 峰值/触发日检查放行
+        # h) 显式空声明＋哈希咬合 → 峰值/触发日检查放行
         write_json(root, "trigger_days.json",
                    {"schema": "trigger-days-replay/v1", "days": {},
                     "empty_reason": "夹具案：窗内无四类触发日"})
+        write_json(root, "peaks_summary.json",
+                   {"engine": "peaks_daily.py",
+                    "ub_formula": "prev_close_plus_gross_in/v2",
+                    "trigger_days_file": True,
+                    "trigger_days_sha256": sha(root / "trigger_days.json")})
         errors = gate.run(root, report)
         assert not any(("trigger" in x or "上界" in x) for x in errors), errors
+
+    # 6.9.2 修复反例（codex 验收 P1）：挂名≠裁决——空壳候选拒。
+    with tempfile.TemporaryDirectory() as td:
+        root = Path(td)
+        report = build_case(root, historical=False)
+        da = json.loads((root / "dormant_warehouse_audit.json").read_text())
+        da["candidates"] = [{"candidate_address": "0xmustaddr"}]  # 挂名但零裁决字段
+        write_json(root, "dormant_warehouse_audit.json", da)
+        errors = gate.run(root, report)
+        assert any("缺合法裁决" in x for x in errors), errors
 
     print("PASS: audit_release_gate 净室资产/哈希/CEX受益权/阴性结论/"
           "图表封口与负钳零/对抗复核否决/四查WARN拦截/双线阈值/"

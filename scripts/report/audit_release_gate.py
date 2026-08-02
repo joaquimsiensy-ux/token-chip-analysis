@@ -199,18 +199,29 @@ def check_dormant(case_dir: Path, d: dict, errors: list[str]):
         errors.append("wave_scan 报告缺 scan_universe 逐址全集（schema 须 wave-scan/v3，"
                       "旧 v2 产物只有计数无法对账——重跑 wave_scan）")
         return
-    cand_addrs = set()
     cands = d.get("candidates", [])
-    if isinstance(cands, list):
-        for c in cands:
-            if isinstance(c, dict) and c.get("candidate_address"):
-                cand_addrs.add(str(c["candidate_address"]))
+    if not isinstance(cands, list):
+        cands = []
+    cand_addrs = {str(c["candidate_address"]) for c in cands
+                  if isinstance(c, dict) and c.get("candidate_address")}
     missing = [str(u.get("addr")) for u in universe
                if isinstance(u, dict) and u.get("must_adjudicate")
                and str(u.get("addr")) not in cand_addrs]
     if missing:
         errors.append(f"候选全集对账失败: {len(missing)} 个必裁决地址不在审计候选内"
                       f"（示例 {missing[:3]}）——coverage 自报通过不作数")
+    # v6.9.2（codex 验收 P1）：挂名≠裁决——每条列出的候选必须有合法三类裁决＋理由，
+    # 机器逐条重验，自报 unresolved_count=0 不作数。
+    valid_decisions = {"strict", "expanded", "excluded"}
+    bad = [str(c.get("candidate_address") or f"candidates[{i}]")
+           for i, c in enumerate(cands)
+           if not isinstance(c, dict)
+           or str(c.get("boundary_decision", "")).lower() not in valid_decisions
+           or not str(c.get("decision_reason", "")).strip()]
+    if bad:
+        errors.append(f"静置仓候选 {len(bad)} 条缺合法裁决"
+                      f"（boundary_decision 须 strict/expanded/excluded 且 decision_reason 非空；"
+                      f"示例 {bad[:3]}）——仅把地址挂进名单不算裁决")
 
 
 def check_daily_peaks(case_dir: Path, errors: list[str]):
@@ -224,11 +235,20 @@ def check_daily_peaks(case_dir: Path, errors: list[str]):
     if str(ps.get("ub_formula")) != "prev_close_plus_gross_in/v2":
         errors.append("peaks_daily 产物是旧上界公式（缺 ub_formula=prev_close_plus_gross_in/v2）"
                       "——同日等额进出会被对冲漏检，升级脚本重跑")
+    # v6.9.2（codex 验收 P2）：目录复用时残留的旧 trigger_days.json 不作数——
+    # 本次运行必须真带 --trigger-days，且产物哈希与 summary 登记咬合。
+    if not ps.get("trigger_days_file"):
+        errors.append("peaks_daily 本次运行未带 --trigger-days（四类触发日义务未履行）"
+                      "——目录里残留的旧 trigger_days.json 不作数，带触发日清单重跑")
+        return
     tp = case_dir / "trigger_days.json"
     if not tp.is_file():
-        errors.append("用了日级峰值口径但缺 trigger_days.json"
-                      "（四类触发日须机器产物，一个都没有也要 empty_reason 显式声明）")
+        errors.append("peaks_summary 声称产出触发日但 trigger_days.json 缺失")
         return
+    expected = str(ps.get("trigger_days_sha256", "")).lower()
+    if not expected or sha256_file(tp).lower() != expected:
+        errors.append("trigger_days.json 与本次 peaks_daily 运行不咬合"
+                      "（sha256 不匹配或 summary 未登记）——陈旧/换包产物拒收")
     td = load_json(tp, errors)
     if str(td.get("schema")) != "trigger-days-replay/v1":
         errors.append("trigger_days.json schema 非法（须 trigger-days-replay/v1）")
