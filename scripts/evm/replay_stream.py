@@ -126,6 +126,15 @@ def main():
         FROM {READ}""").fetchone()
     print(f"[probe] rows={n_src:,} bad_fields={n_bad} hi32_nonzero={n_hi} "
           f"hi64_overflow={n_of} out_of_segment={n_seg}  {time.time()-t0:.1f}s", flush=True)
+    if n_bad or n_seg:
+        receipt = {"engine": "replay_stream.py (no-materialize variant)",
+                   "n_source_rows": n_src, "n_bad_fields": n_bad,
+                   "n_out_of_segment": n_seg, "gate_pass": False,
+                   "failure": "rejected_input_rows",
+                   "policy": "n_bad_fields == 0 and n_out_of_segment == 0"}
+        json.dump(receipt, open(f"{a.out_dir}/replay_stats.json", "w"), indent=1)
+        sys.exit(f"[fail-closed] 输入含 rejected rows: bad_fields={n_bad} "
+                 f"out_of_segment={n_seg}——修复或重新采集后再重放")
     if n_hi or n_of:
         sys.exit("[fail-closed] value 超两段 HUGEINT 安全域，需切 VARINT 路径")
 

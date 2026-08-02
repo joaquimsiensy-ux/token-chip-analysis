@@ -516,6 +516,14 @@ def main():
     con.execute("SET preserve_insertion_order=false")
 
     rej = build_events(con, chans)
+    if rej["n_bad_fields"] or rej["n_out_of_segment"]:
+        receipt = {**rej, "gate_pass": False,
+                   "failure": "rejected_input_rows",
+                   "policy": "n_bad_fields == 0 and n_out_of_segment == 0"}
+        json.dump(receipt, open(f"{a.out_dir}/replay_stats.json", "w"), indent=1)
+        raise SystemExit(
+            f"[fail-closed] 输入含 rejected rows: bad_fields={rej['n_bad_fields']} "
+            f"out_of_segment={rej['n_out_of_segment']}——修复或重新采集后再重放")
     # uint256 策略：events.v 统一为十进制字符串，探最大位数（≤37 走 HUGEINT，超界
     # VARINT——注意 VARINT 仅可加/SUM，乘法退化 DOUBLE）；HUGEINT 聚合若仍溢出
     # DuckDB 会硬报错（实测 fail-loud 不静默环绕），届时 --force-varint 重跑

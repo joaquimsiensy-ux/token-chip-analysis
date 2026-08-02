@@ -21,7 +21,7 @@
   deploy_blocks.json         # chain:token -> 部署块（首拉后永存,免每次从 0 扫）
   anchors/<chain>.csv        # block,ts 锚点库,跨币复用,bisect 插值
 （来源：v3.11.2 采集加速工程,2026-07-21）"""
-import bisect, csv, datetime, glob, json, os, sys
+import bisect, csv, datetime, glob, hashlib, json, os, sys
 
 CACHE_DIR = os.path.expanduser("~/.cache/chip-analysis")
 ZERO = "0x0000000000000000000000000000000000000000"
@@ -104,6 +104,35 @@ def dedup_key(row):
     return (row["block"], row["tx"], row["log_index"])
 
 
+def canonical_payload(row):
+    """Return the consensus-critical event payload for duplicate/source checks."""
+    return (
+        int(row["block"]),
+        str(row["tx"]).lower(),
+        int(row["log_index"]),
+        str(row["from"]).lower(),
+        str(row["to"]).lower(),
+        int(row["value_raw"]),
+        str(row.get("block_hash") or "").lower(),
+    )
+
+
+def _source_sha256(path):
+    """Stable hash for either a file or a directory of input files."""
+    h = hashlib.sha256()
+    files = [path] if os.path.isfile(path) else sorted(
+        p for p in glob.glob(os.path.join(path, "**", "*"), recursive=True)
+        if os.path.isfile(p)
+    )
+    for item in files:
+        rel = os.path.relpath(item, path) if os.path.isdir(path) else os.path.basename(item)
+        h.update(rel.encode("utf-8") + b"\0")
+        with open(item, "rb") as f:
+            for chunk in iter(lambda: f.read(1024 * 1024), b""):
+                h.update(chunk)
+    return h.hexdigest()
+
+
 def dedup_iter(rows):
     """按 (block,tx,log_index) 去重 + 重组冲突检测（fail-closed 修复 2026-07-22）。
 
@@ -111,22 +140,19 @@ def dedup_iter(rows):
     一源不带"（混合源）时键不同 → 两个版本都保留=静默双计。修复后：同键重复
     正常跳过；同键出现两个**非空且不同**的 block_hash = 重组冲突，exit(3) 先仲裁
     （与 merge_sources 重叠区对账同级的防线）。"""
-    seen = {}   # (block,tx,log_index) -> 首见 block_hash（可空）
+    seen = {}   # (block,tx,log_index) -> 首见规范 payload
     for r in rows:
         k = dedup_key(r)
-        h = r.get("block_hash") or ""
         if k in seen:
-            prev = seen[k]
-            if prev and h and prev != h:
-                print(f"[FAIL-CLOSED] 重组冲突：{k} 出现两个 block_hash "
-                      f"{prev[:18]}… / {h[:18]}…", flush=True)
-                print("[FAIL-CLOSED] 禁止继续——同一 (block,tx,log_index) 两个版本，"
-                      "先用独立 archive RPC 仲裁哪个是 final 链", flush=True)
+            payload = canonical_payload(r)
+            if seen[k] != payload:
+                print(f"[FAIL-CLOSED] 重复键 payload 冲突：{k}\n"
+                      f"  first={seen[k]}\n  next ={payload}", flush=True)
+                print("[FAIL-CLOSED] 禁止继续——同一事件主键的链上字段不一致，"
+                      "先用独立 archive RPC 仲裁", flush=True)
                 sys.exit(3)
-            if not prev and h:
-                seen[k] = h   # 补录 hash，后续第三源再来才有比对基准
             continue
-        seen[k] = h
+        seen[k] = canonical_payload(r)
         yield r
 
 
@@ -188,17 +214,36 @@ def merge_sources(paths, out, legacy7=False):
     for i in range(len(srcs)):
         for j in range(i + 1, len(srcs)):
             a, b = srcs[i], srcs[j]
+            all_a = {(r["tx"], r["log_index"]): canonical_payload(r) for r in a["rows"]}
+            all_b = {(r["tx"], r["log_index"]): canonical_payload(r) for r in b["rows"]}
+            global_mismatch = [k for k in set(all_a) & set(all_b) if all_a[k] != all_b[k]]
+            if global_mismatch:
+                sample = [{"key": k, "a": all_a[k], "b": all_b[k]}
+                          for k in global_mismatch[:3]]
+                print(f"[FAIL-CLOSED] 跨源同 (tx,log_index) payload 冲突 "
+                      f"{len(global_mismatch)} 条(样本 {sample})", flush=True)
+                print(f"[inputs] sha256 {a['path']}={_source_sha256(a['path'])} "
+                      f"{b['path']}={_source_sha256(b['path'])}", flush=True)
+                sys.exit(3)
             lo, hi = max(a["lo"], b["lo"]), min(a["hi"], b["hi"])
             if lo > hi:
                 continue
-            sa = {(r["tx"], r["log_index"]) for r in a["rows"] if lo <= r["block"] <= hi}
-            sb = {(r["tx"], r["log_index"]) for r in b["rows"] if lo <= r["block"] <= hi}
+            sa = {(r["tx"], r["log_index"]): canonical_payload(r)
+                  for r in a["rows"] if lo <= r["block"] <= hi}
+            sb = {(r["tx"], r["log_index"]): canonical_payload(r)
+                  for r in b["rows"] if lo <= r["block"] <= hi}
             checks += 1
-            if sa != sb:
-                d1, d2 = list(sa - sb)[:5], list(sb - sa)[:5]
-                print(f"[FAIL-CLOSED] 重叠区 [{lo},{hi}] 集合不等: "
-                      f"{a['path']} 独有 {len(sa-sb)} 条(样本 {d1}); "
-                      f"{b['path']} 独有 {len(sb-sa)} 条(样本 {d2})", flush=True)
+            only_a = set(sa) - set(sb)
+            only_b = set(sb) - set(sa)
+            mismatch = [k for k in set(sa) & set(sb) if sa[k] != sb[k]]
+            if only_a or only_b or mismatch:
+                sample = [{"key": k, "a": sa[k], "b": sb[k]} for k in mismatch[:3]]
+                print(f"[FAIL-CLOSED] 重叠区 [{lo},{hi}] 事件不一致: "
+                      f"{a['path']} 独有 {len(only_a)} 条(样本 {list(only_a)[:5]}); "
+                      f"{b['path']} 独有 {len(only_b)} 条(样本 {list(only_b)[:5]}); "
+                      f"同键 payload 冲突 {len(mismatch)} 条(样本 {sample})", flush=True)
+                print(f"[inputs] sha256 {a['path']}={_source_sha256(a['path'])} "
+                      f"{b['path']}={_source_sha256(b['path'])}", flush=True)
                 print("[FAIL-CLOSED] 禁止继续——先仲裁差异(独立 archive RPC 查 receipt)再合并", flush=True)
                 sys.exit(3)
     merged = dedup_iter(r for s in srcs for r in
