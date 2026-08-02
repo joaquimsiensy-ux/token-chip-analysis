@@ -281,6 +281,22 @@ def main():
             ap.error("analysis 模式缺正式 gate 资产: " + ", ".join(missing))
         if a.skip_identity_gate or a.skip_a4_gate_reason:
             ap.error("analysis 模式禁止 skip gate；请修复资产或显式改用降级模式")
+        if a.json:
+            ap.error("analysis 模式禁止传入未封口 --json 附录；机器附录须先纳入 A4 seal")
+
+        # P0-01：正式编译的事实输入只能来自 seal 所在案目录的标准资产。
+        # CLI 参数保留是为了兼容显式调用和清晰报错，不是自由输入通道。
+        _formal_case = Path(a.a4_seal).resolve().parent
+        _formal_facts = (_formal_case / "facts.json").resolve()
+        _formal_state = (_formal_case / "analysis-state.json").resolve()
+        for _flag, _given, _expected in (
+                ("--facts", a.facts, _formal_facts),
+                ("--state", a.state, _formal_state)):
+            if Path(_given).resolve() != _expected:
+                ap.error(f"analysis 模式 {_flag} 必须等于 seal 案目录标准路径: {_expected}")
+        # 后续渲染不再使用 CLI 原始字符串，从 seal 案目录重建唯一输入。
+        a.facts = str(_formal_facts)
+        a.state = str(_formal_state)
     elif not str(a.degrade_reason or "").strip():
         ap.error(f"{a.mode} 模式必须提供 --degrade-reason")
     elif a.a4_seal or a.skip_a4_gate_reason or a.skip_identity_gate:

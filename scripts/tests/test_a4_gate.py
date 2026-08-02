@@ -14,6 +14,7 @@
  10. G9 报告图不在 charts/final/ → exit 1 不写出
  11. --skip-a4-gate-reason → exit 0 写出且 HTML 注释含理由
  12. 不传 --a4-seal（update 流程场景）→ G9 不触发照常编译
+ 13. P0-01：analysis 模式拒绝 seal 外 facts/state/JSON，且不落 HTML
 用法：python3 scripts/tests/test_a4_gate.py   退出码 0=PASS / 1=FAIL
 """
 import base64
@@ -151,6 +152,39 @@ def main():
     p = run(BUILD, analysis_args)
     check("G9 正例 exit 0 且 HTML 写出", p.returncode == 0 and os.path.isfile(out_html))
 
+    # P0-01：G9 验的必须就是渲染用的。案外 facts 即使结构正常也不得替换 seal 内事实。
+    external = os.path.join(root, "external")
+    os.makedirs(external)
+    external_facts = wj(external, "facts.json", {
+        "token": {"symbol": "TT", "decimals": 0, "total_supply_raw": "1000"},
+        "entities": {"e1": {"label": "实体1", "addresses": ["0xabc"],
+                              "current_raw": "900", "peak_raw": "900",
+                              "peak_date": "2026-01-01"}}, "metrics": {}})
+    p0_out = os.path.join(d, "p0_external_facts.html")
+    p = run(BUILD, ["--mode", "analysis", "--md", str(report_path), "--out", p0_out,
+                    "--facts", external_facts,
+                    "--state", os.path.join(d, "analysis-state.json"),
+                    "--a4-seal", seal_p])
+    check("P0-01 seal 外 facts 拒绝且不落 HTML",
+          p.returncode != 0 and not os.path.exists(p0_out))
+
+    external_state = wj(external, "analysis-state.json", state)
+    wj(external, "identity_gate.json", {"schema": "identity_gate_v1", "rows": [
+        {"address": "0xabc", "entity": "e1", "flag": "", "resolution": ""}]})
+    p0_state_out = os.path.join(d, "p0_external_state.html")
+    p = run(BUILD, ["--mode", "analysis", "--md", str(report_path), "--out", p0_state_out,
+                    "--facts", os.path.join(d, "facts.json"), "--state", external_state,
+                    "--a4-seal", seal_p])
+    check("P0-01 seal 外 state 拒绝且不落 HTML",
+          p.returncode != 0 and not os.path.exists(p0_state_out))
+
+    appendix = wj(d, "appendix.json", {"chip_summary": {}, "addresses": [],
+                                        "unlock_events": [], "source_line": "test"})
+    p0_json_out = os.path.join(d, "p0_unsealed_json.html")
+    p = run(BUILD, analysis_args + ["--json", appendix, "--out", p0_json_out])
+    check("P0-01 analysis 禁止未封口 JSON 附录",
+          p.returncode != 0 and not os.path.exists(p0_json_out))
+
     # B-04：registry / verdicts / claim 引用文件任一漂移都必须拒。
     for label, path in [("registry", os.path.join(d, "a4_claims.json")),
                         ("verdicts", good_verdicts),
@@ -233,7 +267,7 @@ def main():
     if FAILS:
         print(f"a4_gate 契约测试 {len(FAILS)} 项失败")
         return 1
-    print("a4_gate 契约测试全部通过（18 项）")
+    print("a4_gate 契约测试全部通过（21 项）")
     return 0
 
 
