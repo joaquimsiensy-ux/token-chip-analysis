@@ -15,12 +15,15 @@
       [--cache-dir data/txcache] [--rpc <url>]
 输出行与 v1 逐字段一致({sig, slot, ts, deltas} / {sig, decode_fail});断点续传兼容 v1 输出。
 """
-import argparse, hashlib, json, sys, time
+import argparse, hashlib, json, os, sys, time
+from datetime import datetime, timezone
 from decimal import Decimal
 from pathlib import Path
 import requests
 
 DEF_RPC = "https://api.mainnet-beta.solana.com"
+OUTPUT_SCHEMA = "solana-tx-decode-output-v2"
+RECEIPT_SCHEMA = "solana-tx-decode-receipt/v1"
 
 
 def log(msg):
@@ -131,6 +134,75 @@ def completed_sigs(outp, mint):
     return done
 
 
+def output_identity(mint, pool, rpc):
+    return {"schema": OUTPUT_SCHEMA, "chain_id": "solana-mainnet",
+            "mint": mint, "pool": pool or "", "rpc": rpc}
+
+
+def _atomic_json(path, obj):
+    path = Path(path)
+    tmp = path.with_name("." + path.name + ".tmp")
+    with tmp.open("w", encoding="utf-8") as f:
+        json.dump(obj, f, indent=2, sort_keys=True)
+        f.flush()
+        os.fsync(f.fileno())
+    os.replace(tmp, path)
+
+
+def prepare_output(outp, mint, pool, rpc):
+    """Bind append-only output to one mint/pool/RPC identity and return completed sigs."""
+    outp = Path(outp)
+    identity = output_identity(mint, pool, rpc)
+    meta = Path(str(outp) + ".meta.json")
+    if outp.exists() and outp.stat().st_size:
+        try:
+            existing = json.loads(meta.read_text())
+        except Exception:
+            raise SystemExit("[fail-closed] existing decode output has no readable identity meta")
+        if existing != identity:
+            raise SystemExit("[fail-closed] existing output is not bound to this mint/pool/rpc; "
+                             "use a new --out path")
+    else:
+        outp.parent.mkdir(parents=True, exist_ok=True)
+        _atomic_json(meta, identity)
+    return completed_sigs(outp, mint)
+
+
+def finalize_decode(outp, requested_sigs, mint, pool, rpc):
+    """Write a complete receipt and return nonzero while any requested sig is unresolved."""
+    outp = Path(outp)
+    latest = {}
+    if outp.exists():
+        with outp.open(encoding="utf-8") as f:
+            for line in f:
+                try:
+                    row = json.loads(line)
+                    sig = row.get("sig")
+                    if sig:
+                        latest[sig] = row
+                except Exception:
+                    continue
+    requested = list(dict.fromkeys(requested_sigs))
+    failed = [s for s in requested if s not in latest or latest[s].get("decode_fail")
+              or latest[s].get("mint", mint) != mint]
+    succeeded = [s for s in requested if s not in set(failed)]
+    failed_digest = hashlib.sha256("\n".join(sorted(failed)).encode()).hexdigest()
+    output_hash = hashlib.sha256(outp.read_bytes()).hexdigest() if outp.exists() else None
+    receipt = {"schema": RECEIPT_SCHEMA,
+               "status": "PASS" if not failed else "BLOCK",
+               "exit_code": 0 if not failed else 3,
+               "generated_at_utc": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+               "identity": output_identity(mint, pool, rpc),
+               "input_signature_count": len(requested),
+               "success_count": len(succeeded), "failure_count": len(failed),
+               "failed_signatures": failed, "failed_signatures_sha256": failed_digest,
+               "output": {"path": str(outp),
+                          "size": outp.stat().st_size if outp.exists() else 0,
+                          "sha256": output_hash}}
+    _atomic_json(str(outp) + ".receipt.json", receipt)
+    return receipt["exit_code"]
+
+
 def main():
     ap = argparse.ArgumentParser(description="Solana 溯源解码 v2(批量+去重缓存)")
     ap.add_argument("--sigs", required=True)
@@ -178,16 +250,7 @@ def main():
             sigs.append(s)
 
     outp = Path(a.out)
-    out_identity = {"schema": "solana-tx-decode-output-v2", "chain_id": "solana-mainnet",
-                    "mint": mint, "pool": a.pool or "", "rpc": a.rpc}
-    out_meta = Path(str(outp) + ".meta.json")
-    if outp.exists() and outp.stat().st_size:
-        if not out_meta.exists() or json.loads(out_meta.read_text()) != out_identity:
-            log("existing output is not bound to this mint/pool/rpc; use a new --out path")
-            sys.exit(2)
-    else:
-        out_meta.write_text(json.dumps(out_identity, indent=2, sort_keys=True))
-    done = completed_sigs(outp, mint)
+    done = prepare_output(outp, mint, a.pool, a.rpc)
     cache = SigCache(a.cache_dir or None, mint, a.pool, a.rpc)
     f = open(outp, "a")
     todo = []
@@ -258,7 +321,7 @@ def main():
                     log(f"{k+1}/{len(todo)} ok={n_ok} fail={n_fail} rate={rate:.1f}/s")
         f.close()
         log(f"DONE ok={n_ok} fail={n_fail} cache_hit={hit} 耗时{(time.time()-t0)/60:.1f}min")
-        return
+        return finalize_decode(outp, sigs, mint, a.pool, a.rpc)
 
     i = 0
     while i < len(todo):
@@ -332,7 +395,8 @@ def main():
     f.close()
     el = (time.time() - t0) / 60
     log(f"DONE ok={n_ok} fail={n_fail} cache_hit={hit} 耗时{el:.1f}min")
+    return finalize_decode(outp, sigs, mint, a.pool, a.rpc)
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
