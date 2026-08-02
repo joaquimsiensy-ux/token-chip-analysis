@@ -32,6 +32,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 GATE = os.path.join(HERE, "..", "report", "a4_gate.py")
 BUILD = os.path.join(HERE, "..", "report", "build_html.py")
 FAILS = []
+ENTITY_ADDR = "0x" + "a" * 40
 
 # 1x1 透明 png（最小合法图片，供 embed_img 读取）
 PNG = base64.b64decode(
@@ -85,16 +86,22 @@ def main():
     # 准备终版结论文件
     with open(os.path.join(d, "findings.md"), "w") as f:
         f.write("# findings\n复核后终版结论\n")
-    state = {"whale_groups": [{"entity_id": "e1", "label": "实体1", "addresses": ["0xabc"]}],
+    state = {"chain": "bsc", "whale_groups": [
+                 {"entity_id": "e1", "label": "实体1", "addresses": [ENTITY_ADDR]}],
              "provenance": {"schema_version": "2", "skill_commit": "test",
                             "data_sources": ["fixture"]}}
-    wj(d, "analysis-state.json", state)
+    state_path = wj(d, "analysis-state.json", state)
     wj(d, "facts.json", {"token": {"symbol": "TT", "decimals": 0, "total_supply_raw": "1000"},
-                          "entities": {"e1": {"label": "实体1", "addresses": ["0xabc"],
+                          "entities": {"e1": {"label": "实体1", "addresses": [ENTITY_ADDR],
                                                  "current_raw": "100", "peak_raw": "100",
                                                  "peak_date": "2026-01-01"}}, "metrics": {}})
-    wj(d, "identity_gate.json", {"schema": "identity_gate_v1", "rows": [
-        {"address": "0xabc", "entity": "e1", "flag": "", "resolution": ""}]})
+    wj(d, "identity_gate.json", {"schema": "identity_gate_v2", "chain": "bsc",
+        "state_file": "analysis-state.json",
+        "state_sha256": hashlib.sha256(Path(state_path).read_bytes()).hexdigest(),
+        "n_addresses": 1, "n_flags": 0, "rows": [
+        {"address": ENTITY_ADDR, "entity": "e1", "share_pct": None,
+         "label": {"name": "fixture", "category": "other", "tier": "identity", "source": "test"},
+         "on_curve": None, "flag": "", "resolution": ""}]})
 
     # 5/6. finalize 反例集
     p = run(GATE, ["finalize", "--case-dir", d, "--seal-files", "findings.md",
@@ -157,7 +164,7 @@ def main():
     os.makedirs(external)
     external_facts = wj(external, "facts.json", {
         "token": {"symbol": "TT", "decimals": 0, "total_supply_raw": "1000"},
-        "entities": {"e1": {"label": "实体1", "addresses": ["0xabc"],
+        "entities": {"e1": {"label": "实体1", "addresses": [ENTITY_ADDR],
                               "current_raw": "900", "peak_raw": "900",
                               "peak_date": "2026-01-01"}}, "metrics": {}})
     p0_out = os.path.join(d, "p0_external_facts.html")
@@ -169,8 +176,13 @@ def main():
           p.returncode != 0 and not os.path.exists(p0_out))
 
     external_state = wj(external, "analysis-state.json", state)
-    wj(external, "identity_gate.json", {"schema": "identity_gate_v1", "rows": [
-        {"address": "0xabc", "entity": "e1", "flag": "", "resolution": ""}]})
+    wj(external, "identity_gate.json", {"schema": "identity_gate_v2", "chain": "bsc",
+        "state_file": "analysis-state.json",
+        "state_sha256": hashlib.sha256(Path(external_state).read_bytes()).hexdigest(),
+        "n_addresses": 1, "n_flags": 0, "rows": [
+        {"address": ENTITY_ADDR, "entity": "e1", "share_pct": None,
+         "label": {"name": "fixture", "category": "other", "tier": "identity", "source": "test"},
+         "on_curve": None, "flag": "", "resolution": ""}]})
     p0_state_out = os.path.join(d, "p0_external_state.html")
     p = run(BUILD, ["--mode", "analysis", "--md", str(report_path), "--out", p0_state_out,
                     "--facts", os.path.join(d, "facts.json"), "--state", external_state,

@@ -412,21 +412,11 @@ def main():
                          "历史报告重编译可用 --skip-identity-gate 显式跳过")
         else:
             try:
-                _gate = json.load(open(gate_path, encoding="utf-8"))
-                _gaddrs = {r.get("address") for r in _gate.get("rows", [])}
-                _sd = json.load(open(a.state, encoding="utf-8"))
-                _missing = [x for g in _sd.get("whale_groups", [])
-                            for x in g.get("addresses", []) if x not in _gaddrs]
-                if _missing:
-                    warns.append(f"[WARN] G8 实体地址未全入闸：{len(_missing)} 址无 gate 记录"
-                                 f"（如 {_missing[0][:14]}…）——重跑 entity_identity_gate.py")
-                _unres = [r for r in _gate.get("rows", [])
-                          if r.get("flag") and not str(r.get("resolution", "")).strip()]
-                if _unres:
-                    warns.append(f"[WARN] G8 有 {len(_unres)} 个身份疑点未解决"
-                                 f"（{'/'.join(sorted({r['flag'] for r in _unres}))}）——"
-                                 "逐条填写 resolution（查了什么、结论是什么）后重编译")
-            except (ValueError, KeyError) as e:
+                import entity_identity_gate
+                _identity_errors = entity_identity_gate.validate_gate(gate_path, a.state)
+                warns += [f"[WARN] G8 identity_gate 严格校验: {e}"
+                          for e in _identity_errors]
+            except Exception as e:
                 warns.append(f"[WARN] G8 identity_gate.json 解析失败: {e}")
     elif a.state and a.skip_identity_gate:
         print("[NOTE] G8 实体身份闸已显式跳过（--skip-identity-gate）——仅限历史重编译场景")
