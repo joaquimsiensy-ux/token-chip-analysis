@@ -14,17 +14,19 @@
   —— 老数据无 block_hash 时退化为 (block, tx, log_index)，重组风险窗仅存在于
      已 final 的历史段之外，尾部新数据一律带 block_hash。
 
-多源合并对账（merge_sources）: 重叠块区间内各源 (tx,log_index) 集合必须完全相等，
+多源合并对账（merge_sources，小样本专用）: 重叠块区间内各源 (tx,log_index) 集合必须完全相等，
   不等即打印差集样本并 exit(3)（fail-closed——PING 案 uniqueId 双计 5485 负余额事故的制度化防线）。
+  默认最多 1,000,000 行；正式亿级入口用 replay_stream.py / DuckDB，不允许本函数全量排序。
 
 缓存（~/.cache/chip-analysis/）:
   deploy_blocks.json         # chain:token -> 部署块（首拉后永存,免每次从 0 扫）
   anchors/<chain>.csv        # block,ts 锚点库,跨币复用,bisect 插值
 （来源：v3.11.2 采集加速工程,2026-07-21）"""
-import bisect, csv, datetime, glob, json, os, sys
+import bisect, csv, datetime, glob, hashlib, json, os, sys
 
 CACHE_DIR = os.path.expanduser("~/.cache/chip-analysis")
 ZERO = "0x0000000000000000000000000000000000000000"
+DEFAULT_SMALL_SAMPLE_MAX_ROWS = 1_000_000
 
 
 def _iso(ts):
@@ -69,25 +71,32 @@ def _iter_parquet_dir(path):
         bts = {}
         bp = os.path.join(run, "blocks.parquet")
         if os.path.exists(bp):
-            bt = pq.read_table(bp, columns=["number", "timestamp"])
-            for n, t in zip(bt.column("number").to_pylist(), bt.column("timestamp").to_pylist()):
-                if n is not None:
-                    bts[int(n)] = int(t, 16) if isinstance(t, str) else int(t)
-        t = pq.read_table(lp)
-        cols = {c: t.column(c).to_pylist() for c in
-                ("block_number", "block_hash", "log_index", "transaction_hash",
-                 "topic1", "topic2", "data") if c in t.column_names}
-        n = t.num_rows
-        for i in range(n):
-            bn = int(cols["block_number"][i])
-            data = cols.get("data", [None] * n)[i]
-            yield {"block": bn, "ts": _iso(bts.get(bn)),
-                   "tx": cols["transaction_hash"][i],
-                   "log_index": int(cols["log_index"][i]),
-                   "from": "0x" + (cols["topic1"][i] or "0x" + "0" * 64)[-40:].lower(),
-                   "to": "0x" + (cols["topic2"][i] or "0x" + "0" * 64)[-40:].lower(),
-                   "value_raw": int(data, 16) if data not in (None, "", "0x") else 0,
-                   "block_hash": cols.get("block_hash", [""] * n)[i] or ""}
+            pf = pq.ParquetFile(bp)
+            for batch in pf.iter_batches(batch_size=100_000, columns=["number", "timestamp"]):
+                cols = batch.to_pydict()
+                for n, t in zip(cols["number"], cols["timestamp"]):
+                    if n is not None:
+                        bts[int(n)] = int(t, 16) if isinstance(t, str) else int(t)
+        pf = pq.ParquetFile(lp)
+        wanted = ("block_number", "block_hash", "log_index", "transaction_hash",
+                  "topic1", "topic2", "data")
+        available = [c for c in wanted if c in pf.schema_arrow.names]
+        required = {"block_number", "log_index", "transaction_hash", "topic1", "topic2"}
+        if not required.issubset(available):
+            raise ValueError(f"parquet missing columns: {sorted(required - set(available))}")
+        for batch in pf.iter_batches(batch_size=100_000, columns=available):
+            cols = batch.to_pydict()
+            n = batch.num_rows
+            for i in range(n):
+                bn = int(cols["block_number"][i])
+                data = cols.get("data", [None] * n)[i]
+                yield {"block": bn, "ts": _iso(bts.get(bn)),
+                       "tx": cols["transaction_hash"][i],
+                       "log_index": int(cols["log_index"][i]),
+                       "from": "0x" + (cols["topic1"][i] or "0x" + "0" * 64)[-40:].lower(),
+                       "to": "0x" + (cols["topic2"][i] or "0x" + "0" * 64)[-40:].lower(),
+                       "value_raw": int(data, 16) if data not in (None, "", "0x") else 0,
+                       "block_hash": cols.get("block_hash", [""] * n)[i] or ""}
 
 
 def iter_transfers(path):
@@ -104,6 +113,35 @@ def dedup_key(row):
     return (row["block"], row["tx"], row["log_index"])
 
 
+def canonical_payload(row):
+    """Return the consensus-critical event payload for duplicate/source checks."""
+    return (
+        int(row["block"]),
+        str(row["tx"]).lower(),
+        int(row["log_index"]),
+        str(row["from"]).lower(),
+        str(row["to"]).lower(),
+        int(row["value_raw"]),
+        str(row.get("block_hash") or "").lower(),
+    )
+
+
+def _source_sha256(path):
+    """Stable hash for either a file or a directory of input files."""
+    h = hashlib.sha256()
+    files = [path] if os.path.isfile(path) else sorted(
+        p for p in glob.glob(os.path.join(path, "**", "*"), recursive=True)
+        if os.path.isfile(p)
+    )
+    for item in files:
+        rel = os.path.relpath(item, path) if os.path.isdir(path) else os.path.basename(item)
+        h.update(rel.encode("utf-8") + b"\0")
+        with open(item, "rb") as f:
+            for chunk in iter(lambda: f.read(1024 * 1024), b""):
+                h.update(chunk)
+    return h.hexdigest()
+
+
 def dedup_iter(rows):
     """按 (block,tx,log_index) 去重 + 重组冲突检测（fail-closed 修复 2026-07-22）。
 
@@ -111,22 +149,19 @@ def dedup_iter(rows):
     一源不带"（混合源）时键不同 → 两个版本都保留=静默双计。修复后：同键重复
     正常跳过；同键出现两个**非空且不同**的 block_hash = 重组冲突，exit(3) 先仲裁
     （与 merge_sources 重叠区对账同级的防线）。"""
-    seen = {}   # (block,tx,log_index) -> 首见 block_hash（可空）
+    seen = {}   # (block,tx,log_index) -> 首见规范 payload
     for r in rows:
         k = dedup_key(r)
-        h = r.get("block_hash") or ""
         if k in seen:
-            prev = seen[k]
-            if prev and h and prev != h:
-                print(f"[FAIL-CLOSED] 重组冲突：{k} 出现两个 block_hash "
-                      f"{prev[:18]}… / {h[:18]}…", flush=True)
-                print("[FAIL-CLOSED] 禁止继续——同一 (block,tx,log_index) 两个版本，"
-                      "先用独立 archive RPC 仲裁哪个是 final 链", flush=True)
+            payload = canonical_payload(r)
+            if seen[k] != payload:
+                print(f"[FAIL-CLOSED] 重复键 payload 冲突：{k}\n"
+                      f"  first={seen[k]}\n  next ={payload}", flush=True)
+                print("[FAIL-CLOSED] 禁止继续——同一事件主键的链上字段不一致，"
+                      "先用独立 archive RPC 仲裁", flush=True)
                 sys.exit(3)
-            if not prev and h:
-                seen[k] = h   # 补录 hash，后续第三源再来才有比对基准
             continue
-        seen[k] = h
+        seen[k] = canonical_payload(r)
         yield r
 
 
@@ -175,36 +210,96 @@ def write_parquet(rows, out):
 
 # ---------------- 多源合并 + 重叠区对账（fail-closed） ----------------
 
-def merge_sources(paths, out, legacy7=False):
+def _small_sample_rows(path, remaining):
+    rows = []
+    for row in iter_transfers(path):
+        if len(rows) >= remaining:
+            raise RuntimeError(f"small-sample row limit exceeded while reading {path}")
+        rows.append(row)
+    return rows
+
+
+def _write_input_manifest(out, *, mode, max_rows, sources, output_rows, overlap_checks=0):
+    manifest = {
+        "schema": "transfers-small-sample-inputs/v1",
+        "mode": mode,
+        "small_sample_only": True,
+        "max_rows": max_rows,
+        "inputs": [{"path": os.path.realpath(s["path"]), "sha256": _source_sha256(s["path"]),
+                    "rows": len(s["rows"]), "lo": s.get("lo"), "hi": s.get("hi")}
+                   for s in sources],
+        "output": {"path": os.path.realpath(out), "sha256": _source_sha256(out),
+                   "rows": output_rows},
+        "overlap_checks": overlap_checks,
+    }
+    with open(out + ".input_manifest.json", "w", encoding="utf-8") as f:
+        json.dump(manifest, f, ensure_ascii=False, indent=2, sort_keys=True)
+        f.write("\n")
+
+
+def merge_sources(paths, out, legacy7=False, max_rows=DEFAULT_SMALL_SAMPLE_MAX_ROWS):
     """按块序合并多来源;两两重叠块区间内 (tx,log_index) 集合必须完全相等,否则 exit(3)。
+    小样本专用，超过 max_rows 拒绝；正式大数据走 replay_stream.py/DuckDB。
     out 以 .parquet 结尾走 parquet,否则 CSV。返回 (总行数, 重叠检查数)。"""
+    if isinstance(max_rows, bool) or not isinstance(max_rows, int) or max_rows <= 0:
+        raise ValueError("max_rows must be a positive integer")
     srcs = []
+    loaded = 0
     for p in paths:
-        rows = sorted(iter_transfers(p), key=lambda r: (r["block"], r["log_index"]))
-        if rows:
-            srcs.append({"path": p, "rows": rows,
-                         "lo": rows[0]["block"], "hi": rows[-1]["block"]})
+        try:
+            rows = _small_sample_rows(p, max_rows - loaded)
+        except RuntimeError as e:
+            print(f"[FAIL-CLOSED] {e}; 正式大数据请用 replay_stream.py/DuckDB", flush=True)
+            sys.exit(4)
+        loaded += len(rows)
+        rows.sort(key=lambda r: (r["block"], r["log_index"]))
+        srcs.append({"path": p, "rows": rows,
+                     "lo": rows[0]["block"] if rows else None,
+                     "hi": rows[-1]["block"] if rows else None})
     checks = 0
     for i in range(len(srcs)):
         for j in range(i + 1, len(srcs)):
             a, b = srcs[i], srcs[j]
+            if not a["rows"] or not b["rows"]:
+                continue
+            all_a = {(r["tx"], r["log_index"]): canonical_payload(r) for r in a["rows"]}
+            all_b = {(r["tx"], r["log_index"]): canonical_payload(r) for r in b["rows"]}
+            global_mismatch = [k for k in set(all_a) & set(all_b) if all_a[k] != all_b[k]]
+            if global_mismatch:
+                sample = [{"key": k, "a": all_a[k], "b": all_b[k]}
+                          for k in global_mismatch[:3]]
+                print(f"[FAIL-CLOSED] 跨源同 (tx,log_index) payload 冲突 "
+                      f"{len(global_mismatch)} 条(样本 {sample})", flush=True)
+                print(f"[inputs] sha256 {a['path']}={_source_sha256(a['path'])} "
+                      f"{b['path']}={_source_sha256(b['path'])}", flush=True)
+                sys.exit(3)
             lo, hi = max(a["lo"], b["lo"]), min(a["hi"], b["hi"])
             if lo > hi:
                 continue
-            sa = {(r["tx"], r["log_index"]) for r in a["rows"] if lo <= r["block"] <= hi}
-            sb = {(r["tx"], r["log_index"]) for r in b["rows"] if lo <= r["block"] <= hi}
+            sa = {(r["tx"], r["log_index"]): canonical_payload(r)
+                  for r in a["rows"] if lo <= r["block"] <= hi}
+            sb = {(r["tx"], r["log_index"]): canonical_payload(r)
+                  for r in b["rows"] if lo <= r["block"] <= hi}
             checks += 1
-            if sa != sb:
-                d1, d2 = list(sa - sb)[:5], list(sb - sa)[:5]
-                print(f"[FAIL-CLOSED] 重叠区 [{lo},{hi}] 集合不等: "
-                      f"{a['path']} 独有 {len(sa-sb)} 条(样本 {d1}); "
-                      f"{b['path']} 独有 {len(sb-sa)} 条(样本 {d2})", flush=True)
+            only_a = set(sa) - set(sb)
+            only_b = set(sb) - set(sa)
+            mismatch = [k for k in set(sa) & set(sb) if sa[k] != sb[k]]
+            if only_a or only_b or mismatch:
+                sample = [{"key": k, "a": sa[k], "b": sb[k]} for k in mismatch[:3]]
+                print(f"[FAIL-CLOSED] 重叠区 [{lo},{hi}] 事件不一致: "
+                      f"{a['path']} 独有 {len(only_a)} 条(样本 {list(only_a)[:5]}); "
+                      f"{b['path']} 独有 {len(only_b)} 条(样本 {list(only_b)[:5]}); "
+                      f"同键 payload 冲突 {len(mismatch)} 条(样本 {sample})", flush=True)
+                print(f"[inputs] sha256 {a['path']}={_source_sha256(a['path'])} "
+                      f"{b['path']}={_source_sha256(b['path'])}", flush=True)
                 print("[FAIL-CLOSED] 禁止继续——先仲裁差异(独立 archive RPC 查 receipt)再合并", flush=True)
                 sys.exit(3)
     merged = dedup_iter(r for s in srcs for r in
                         sorted((x for x in s["rows"]), key=lambda r: (r["block"], r["log_index"])))
     merged = sorted(merged, key=lambda r: (r["block"], r["log_index"]))
     n = write_parquet(merged, out) if out.endswith(".parquet") else write_csv(merged, out, legacy7)
+    _write_input_manifest(out, mode="merge", max_rows=max_rows, sources=srcs,
+                          output_rows=n, overlap_checks=checks)
     return n, checks
 
 
@@ -287,16 +382,27 @@ if __name__ == "__main__":
     s1 = sub.add_parser("count"); s1.add_argument("path")
     s2 = sub.add_parser("convert"); s2.add_argument("src"); s2.add_argument("dst")
     s2.add_argument("--legacy7", action="store_true")
+    s2.add_argument("--max-rows", type=int, default=DEFAULT_SMALL_SAMPLE_MAX_ROWS)
     s3 = sub.add_parser("merge"); s3.add_argument("srcs", nargs="+"); s3.add_argument("--out", required=True)
     s3.add_argument("--legacy7", action="store_true")
+    s3.add_argument("--max-rows", type=int, default=DEFAULT_SMALL_SAMPLE_MAX_ROWS)
     a = ap.parse_args()
     if a.cmd == "count":
         n = sum(1 for _ in iter_transfers(a.path))
         print(n)
     elif a.cmd == "convert":
-        rows = sorted(dedup_iter(iter_transfers(a.src)), key=lambda r: (r["block"], r["log_index"]))
+        try:
+            source_rows = _small_sample_rows(a.src, a.max_rows)
+        except RuntimeError as e:
+            sys.exit(f"[FAIL-CLOSED] {e}; 正式大数据请用 replay_stream.py/DuckDB")
+        rows = sorted(dedup_iter(source_rows), key=lambda r: (r["block"], r["log_index"]))
         n = write_parquet(rows, a.dst) if a.dst.endswith(".parquet") else write_csv(rows, a.dst, a.legacy7)
+        _write_input_manifest(a.dst, mode="convert", max_rows=a.max_rows,
+                              sources=[{"path": a.src, "rows": source_rows,
+                                        "lo": min((r["block"] for r in source_rows), default=None),
+                                        "hi": max((r["block"] for r in source_rows), default=None)}],
+                              output_rows=n)
         print(f"converted {n} rows -> {a.dst}")
     elif a.cmd == "merge":
-        n, ck = merge_sources(a.srcs, a.out, a.legacy7)
+        n, ck = merge_sources(a.srcs, a.out, a.legacy7, a.max_rows)
         print(f"merged {n} rows ({ck} overlap checks passed) -> {a.out}")

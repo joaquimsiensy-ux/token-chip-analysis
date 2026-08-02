@@ -1,22 +1,37 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""阶段2主计算：关联聚类 / 团队分发去向 / CEX 流向 / 创世留存（质押修正）。
-来源：HYPE(Hyperliquid) 分析会话实战产物, 2026-07。
-参考实现：与标的绑定较深，未做参数化——跑前按标的改写 CEX_KEY / SYS / TEAM / TGE_MS 等
-模块级常量（地址表与 collect.py 的 config 保持一致），再顺读全文确认口径。
+"""Hyperliquid 阶段2主计算：配置驱动的聚类/团队分发/CEX流向/创世留存。
 输入: data/addresses/*.json, data/entities/*, data/static/*
 输出: analysis/out/{clusters,vesting_trace,cex_flows,retention}.json
 用法: python3 main_metrics.py   (在 <BASE>/ 的子目录放置本脚本,BASE 下须有 data/)
 """
-import json, glob, os
+import argparse, json, glob, os
 from collections import defaultdict
 from datetime import datetime, timezone
 
+ap = argparse.ArgumentParser()
+ap.add_argument("--config", default=os.path.join(os.path.dirname(__file__), "config.json"))
+args, _ = ap.parse_known_args()
+CFG = json.load(open(args.config))
+allowed = {"token_symbol", "token_id", "candle_coin", "tge_ms", "snapshot_start_s",
+           "entities", "team_entity", "fills_recent_entity", "evm_bridge", "watch",
+           "summary_fund", "summary_cols", "data_dir", "out_dir", "system_addresses",
+           "cex_keywords", "min_transfer_amount", "genesis_min_amount", "genesis_window_days",
+           "asset_type"}
+unknown = {k for k in CFG if not k.startswith("_comment") and k not in allowed}
+required = {"token_symbol", "tge_ms", "entities", "team_entity", "system_addresses",
+            "asset_type"}
+if unknown or not required <= set(CFG):
+    raise SystemExit(f"config schema 非法 unknown={sorted(unknown)} missing={sorted(required-set(CFG))}")
+if CFG["asset_type"] not in {"spot", "native"}:
+    raise SystemExit("asset_type 只允许 spot|native")
 BASE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-OUT = os.path.join(BASE, "analysis", "out")
+DATA = CFG.get("data_dir") or os.path.join(BASE, "data")
+OUT = CFG.get("out_dir") or os.path.join(BASE, "analysis", "out")
 os.makedirs(OUT, exist_ok=True)
 
-def load(rel): return json.load(open(os.path.join(BASE, rel)))
+def load(rel):
+    return json.load(open(os.path.join(DATA, rel.removeprefix("data/"))))
 
 aliases = load("data/static/global_aliases.json")
 AMAP = {}
@@ -43,14 +58,16 @@ if "--no-labels" not in _sys.argv:
     except Exception as _e:
         print(f"[labels][degraded_mode] labels_resolver 不可用（{_e}）——本次运行无标签兜底", file=_sys.stderr)
 
-CEX_KEY = ("Binance", "OKX", "Bybit", "KuCoin", "Gate", "MEXC", "Kraken", "Coinbase", "HTX", "Bitget")
+CEX_KEY = tuple(CFG.get("cex_keywords") or ("Binance", "OKX", "Bybit", "KuCoin", "Gate", "MEXC"))
 CEX = {k for k, v in AMAP.items() if v and any(x in v for x in CEX_KEY)}
-SYS = {"0x2222222222222222222222222222222222222222", "0xfefefefefefefefefefefefefefefefefefefefe",
-       "0xdddddddddddddddddddddddddddddddddddddddd", "0xd57ecca444a9acb7208d286be439de12dd09de5d",
-       "0x43e9abea1910387c4292bca4b94de81462f8a251", "0xffffffffffffffffffffffffffffffffffffffff",
-       "0x0000000000000000000000000000000000000000", "0x000000000000000000000000000000000000dead",
-       "0xccd69f432ce1d8c9cdc31bd535dd11b37cbea4ea"}
-TEAM = "0x43e9abea1910387c4292bca4b94de81462f8a251"
+ENTITIES = {k: v.lower() for k, v in CFG["entities"].items()}
+SYS = {a.lower() for a in CFG["system_addresses"]}
+TEAM = ENTITIES[CFG["team_entity"]]
+ASSET = CFG["token_symbol"]
+TGE_MS = int(CFG["tge_ms"])
+MIN_TRANSFER = float(CFG.get("min_transfer_amount", 1000))
+GENESIS_MIN = float(CFG.get("genesis_min_amount", 100))
+GENESIS_DAYS = int(CFG.get("genesis_window_days", 60))
 
 holders = {k.lower(): float(v) for k, v in load("data/static/holders.json")["holders"].items()}
 td = load("data/static/token_details.json")
@@ -61,7 +78,7 @@ def month(ms): return datetime.fromtimestamp(ms/1000, tz=timezone.utc).strftime(
 
 # ---------- 读入所有地址级数据 ----------
 ADDR = {}
-for p in glob.glob(os.path.join(BASE, "data", "addresses", "*.json")):
+for p in glob.glob(os.path.join(DATA, "addresses", "*.json")):
     d = json.load(open(p))
     ADDR[d["addr"].lower()] = d
 
@@ -75,16 +92,15 @@ def total_holding(a):
 edges = defaultdict(set)          # (a,b)排序对 -> 证据类型集合
 transfer_amt = defaultdict(float)
 
-first_hype_in = {}                # addr -> (time, source) 首笔 HYPE 入账
+first_hype_in = {}                # addr -> (time, source) 首笔标的入账
 event_minutes = defaultdict(set)  # addr -> 分钟桶集合（转账行为时序指纹）
 genesis_sink = defaultdict(set)   # sink -> 来自哪些 genesis 地址（TGE 后 60 天内）
 
-TGE_MS = 1732838400000
 for a, d in ADDR.items():
     for ev in d["ledger"]:
         dl = ev.get("delta", {})
         t = dl.get("type")
-        if t in ("spotTransfer", "send") and dl.get("token") == "HYPE":
+        if t in ("spotTransfer", "send") and dl.get("token") == ASSET:
             amt = float(dl.get("amount", 0) or 0)
             src = (dl.get("user") or "").lower()
             dst = (dl.get("destination") or "").lower()
@@ -94,12 +110,13 @@ for a, d in ADDR.items():
             if dst == a and (a not in first_hype_in or ev["time"] < first_hype_in[a][0]):
                 first_hype_in[a] = (ev["time"], src)
             # 直接转账边（双方均非 CEX/系统）
-            if amt >= 1000 and src not in CEX | SYS and dst not in CEX | SYS:
+            if amt >= MIN_TRANSFER and src not in CEX | SYS and dst not in CEX | SYS:
                 key = tuple(sorted((src, dst)))
                 edges[key].add("transfer")
                 transfer_amt[key] += amt
             # genesis 归集：genesis 地址在 TGE 后 60 天内把 HYPE 汇出
-            if src in GEN and ev["time"] < TGE_MS + 60*86400_000 and amt >= 100 and dst not in CEX | SYS:
+            if src in GEN and ev["time"] < TGE_MS + GENESIS_DAYS*86400_000 \
+                    and amt >= GENESIS_MIN and dst not in CEX | SYS:
                 genesis_sink[dst].add(src)
             if src == a:
                 event_minutes[a].add(ev["time"] // 60000)
@@ -205,7 +222,7 @@ for a in team_recv:
     recv = out_cex = out_other = restake = 0.0
     for ev in d["ledger"]:
         dl = ev.get("delta", {})
-        if dl.get("token") != "HYPE": continue
+        if dl.get("token") != ASSET: continue
         t = dl.get("type"); amt = float(dl.get("amount", 0) or 0)
         src = (dl.get("user") or "").lower(); dst = (dl.get("destination") or "").lower()
         if t in ("spotTransfer", "send"):
@@ -229,7 +246,7 @@ cex_month = defaultdict(lambda: [0.0, 0.0])  # month -> [in_to_cex, out_from_cex
 for a, d in ADDR.items():
     for ev in d["ledger"]:
         dl = ev.get("delta", {})
-        if dl.get("type") in ("spotTransfer", "send") and dl.get("token") == "HYPE":
+        if dl.get("type") in ("spotTransfer", "send") and dl.get("token") == ASSET:
             amt = float(dl.get("amount", 0) or 0)
             src = (dl.get("user") or "").lower(); dst = (dl.get("destination") or "").lower()
             if dst in CEX and src == a: cex_month[month(ev["time"])][0] += amt

@@ -13,6 +13,7 @@ topic0 实测于链上（2026-07-14）：Swap=0x40e9cecb…, ModifyLiquidity=0xf
 import json, gzip, os, sys, time
 import urllib.request
 import ssl, certifi
+from resume_guard import bind_output, overlap_state, require_progress, write_receipt
 
 SSL_CTX = ssl.create_default_context(cafile=certifi.where())
 SWAP_V4 = "0x40e9cecb9f5f1f1c5b9c97dec2917b7ee92e57ba5563708daca94dd84ad7112f"
@@ -60,18 +61,11 @@ def query(from_block):
 
 
 def main():
-    start = 0
-    n_have = 0
-    if os.path.exists(OUT):
-        last = None
-        with gzip.open(OUT, "rt") as f:
-            for line in f:
-                if line.strip():
-                    n_have += 1
-                    last = line
-        if last:
-            start = json.loads(last)["block"] + 1
-        print(f"断点续传: 已有 {n_have} 条, 从 block {start} 续", flush=True)
+    identity = {"collector": "pull_swaps_v4/v2", "pool_manager": PM,
+                "pools": sorted(POOLS), "url": URL, "query_schema": "uniswap-v4-events/v2"}
+    bind_output(OUT, identity)
+    start, overlap_keys, n_have = overlap_state(OUT, ("block", "tx", "logi", "ev"))
+    print(f"断点续传: 已有 {n_have} 条, 重叠回拉 block {start}", flush=True)
     fo = gzip.open(OUT, "at")
     total = n_have
     bad = 0
@@ -118,19 +112,26 @@ def main():
                 else:
                     bad += 1
                     continue
+                event_key = (base["block"], base["tx"], base["logi"], base["ev"])
+                if event_key in overlap_keys:
+                    continue
                 fo.write(json.dumps(base, separators=(",", ":")) + "\n")
                 total += 1
         nb = res.get("next_block")
         arch = res.get("archive_height")
         fo.flush()
         print(f"block→{nb} 共 {total} 条 (解码失败 {bad}) ({time.time()-t0:.0f}s)", flush=True)
-        if not nb or (arch and nb >= arch):
+        reached = require_progress(start, nb, arch)
+        if reached:
             break
         start = nb
         time.sleep(0.3)
     fo.close()
     if bad:
         print(f"警告: {bad} 条 log 解码失败（长度不足），需人工核查", flush=True)
+    if bad:
+        raise SystemExit("[fail-closed] 存在无法解码的 V4 log，不写完成 receipt")
+    write_receipt(OUT, identity, arch, nb, total)
     print(f"完成: {total} 条 → {OUT}", flush=True)
 
 

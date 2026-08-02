@@ -130,12 +130,22 @@ def check_reconciliation(d: dict, errors: list[str]):
             errors.append(f"四查对账未通过: {label}")
 
 
-def unresolved_count(d: dict) -> int:
-    value = d.get("unresolved_count")
-    if value is not None:
-        return int(value)
-    value = d.get("unresolved_candidates", d.get("unresolved", []))
-    return len(value) if isinstance(value, list) else int(value or 0)
+def unresolved_count(d: dict, errors: list[str] | None = None, label="资产") -> int:
+    lists = [d.get(k) for k in ("unresolved_candidates", "unresolved", "unresolved_items")
+             if isinstance(d.get(k), list)]
+    actual = sum(len(x) for x in lists)
+    declared = d.get("unresolved_count")
+    if declared is not None:
+        try:
+            declared_n = int(declared)
+        except (TypeError, ValueError):
+            if errors is not None:
+                errors.append(f"{label} unresolved_count 非整数")
+            return actual or 1
+        if lists and declared_n != actual and errors is not None:
+            errors.append(f"{label} unresolved_count={declared_n} 与明细={actual} 不一致")
+        return actual if lists else declared_n
+    return actual
 
 
 def check_classification(d: dict, errors: list[str]):
@@ -147,8 +157,9 @@ def check_classification(d: dict, errors: list[str]):
         errors.append("地址分类流通线阈值超 0.2%（tiering §6a 双线）")
     if not d.get("historical_peak_candidates_included"):
         errors.append("地址分类未覆盖历史峰值候选")
-    if unresolved_count(d):
-        errors.append(f"地址分类仍有 {unresolved_count(d)} 个未决候选")
+    n_unresolved = unresolved_count(d, errors, "地址分类")
+    if n_unresolved:
+        errors.append(f"地址分类仍有 {n_unresolved} 个未决候选")
 
 
 def check_ledger(name: str, d: dict, errors: list[str]):
@@ -156,17 +167,118 @@ def check_ledger(name: str, d: dict, errors: list[str]):
     if not isinstance(entries, list):
         errors.append(f"{name} 缺 entries/entities 数组")
         entries = []
+    if not entries:
+        errors.append(f"{name} 明细为空——空壳账本不得通过正式发布闸")
     if name == "economic_control_ledger.json":
-        if not entries and not d.get("empty_reason"):
-            errors.append("经济控制账实体为空且缺 empty_reason 说明（无达标实体也须显式声明）")
-        if not d.get("double_count_check_passed"):
-            errors.append("经济控制账防双计未通过")
-        if unresolved_count(d):
-            errors.append(f"经济控制账仍有 {unresolved_count(d)} 项未决暴露")
+        n_top = unresolved_count(d, errors, "经济控制账")
+        if n_top:
+            errors.append(f"经济控制账仍有 {n_top} 项未决暴露")
         nested = sum(len(e.get("unresolved_facility_exposure") or [])
                      for e in entries if isinstance(e, dict))
         if nested:
             errors.append(f"经济控制账实体内共有 {nested} 项 unresolved_facility_exposure 未裁决")
+
+
+def raw_int(value, label, errors):
+    try:
+        n = int(value)
+    except (TypeError, ValueError):
+        errors.append(f"{label} 不是整数 raw amount")
+        return 0
+    if n < 0:
+        errors.append(f"{label} 为负数")
+    return n
+
+
+def check_three_ledgers(data: dict, errors: list[str]):
+    """Recompute membership -> position -> economic control closure from details."""
+    md = data.get("membership_ledger.json", {})
+    pd = data.get("position_ledger.json", {})
+    ed = data.get("economic_control_ledger.json", {})
+    members = md.get("entries", md.get("entities", []))
+    positions = pd.get("entries", pd.get("entities", []))
+    economics = ed.get("entries", ed.get("entities", []))
+    if not all(isinstance(x, list) and x for x in (members, positions, economics)):
+        return
+
+    member_map = {}
+    for i, row in enumerate(members):
+        if not isinstance(row, dict):
+            errors.append(f"membership[{i}] 不是对象")
+            continue
+        entity, address = str(row.get("entity_id", "")).strip(), str(row.get("address", "")).strip()
+        status = str(row.get("membership", "")).strip()
+        if not entity or not address or status not in {"strict", "expanded", "excluded"}:
+            errors.append(f"membership[{i}] 缺 entity_id/address 或 membership 非法")
+            continue
+        key = address.lower() if address.lower().startswith("0x") else address
+        if key in member_map:
+            errors.append(f"成员地址重复: {address}")
+        member_map[key] = (entity, status)
+
+    pos_seen, wallet_by_entity = set(), {}
+    for i, row in enumerate(positions):
+        if not isinstance(row, dict):
+            errors.append(f"position[{i}] 不是对象")
+            continue
+        entity = str(row.get("entity_id", "")).strip()
+        address = str(row.get("address", "")).strip()
+        location = str(row.get("location_id", "")).strip()
+        if not entity or not address or not location:
+            errors.append(f"position[{i}] 缺 entity_id/address/location_id")
+            continue
+        addr_key = address.lower() if address.lower().startswith("0x") else address
+        if addr_key not in member_map or member_map[addr_key][0] != entity \
+                or member_map[addr_key][1] == "excluded":
+            errors.append(f"position[{i}] 地址未映射到同实体有效成员: {address}")
+        key = (location, addr_key)
+        if key in pos_seen:
+            errors.append(f"位置账重复 location/address: {key}")
+        pos_seen.add(key)
+        amt = raw_int(row.get("amount_raw"), f"position[{i}].amount_raw", errors)
+        wallet_by_entity[entity] = wallet_by_entity.get(entity, 0) + amt
+
+    econ_ids, dc_keys = set(), set()
+    for i, row in enumerate(economics):
+        if not isinstance(row, dict):
+            errors.append(f"economic[{i}] 不是对象")
+            continue
+        entity = str(row.get("entity_id", "")).strip()
+        if not entity or entity in econ_ids:
+            errors.append(f"economic[{i}] entity_id 缺失或重复")
+            continue
+        econ_ids.add(entity)
+        wallet = raw_int(row.get("wallet_self_held_raw"),
+                         f"economic[{i}].wallet_self_held_raw", errors)
+        if wallet != wallet_by_entity.get(entity, 0):
+            errors.append(f"实体 {entity} 钱包自持与位置账不闭合: {wallet} != "
+                          f"{wallet_by_entity.get(entity, 0)}")
+        claims = row.get("confirmed_facility_claims") or []
+        if not isinstance(claims, list):
+            errors.append(f"economic[{i}].confirmed_facility_claims 非数组")
+            claims = []
+        facility_sum = 0
+        for j, claim in enumerate(claims):
+            if not isinstance(claim, dict):
+                errors.append(f"economic[{i}].claims[{j}] 非对象")
+                continue
+            facility_sum += raw_int(claim.get("token_raw"),
+                                    f"economic[{i}].claims[{j}].token_raw", errors)
+            key = str(claim.get("double_count_key", "")).strip()
+            if not key or key in dc_keys:
+                errors.append(f"economic[{i}].claims[{j}] double_count_key 缺失或重复")
+            dc_keys.add(key)
+            if not claim.get("ownership_evidence") or not claim.get("amount_method") \
+                    or claim.get("as_of_block") is None:
+                errors.append(f"economic[{i}].claims[{j}] 缺所有权/数量算法/目标块证据")
+        confirmed = raw_int(row.get("confirmed_economic_control_raw"),
+                            f"economic[{i}].confirmed_economic_control_raw", errors)
+        if confirmed != wallet + facility_sum:
+            errors.append(f"实体 {entity} 经济控制算术不闭合: {confirmed} != {wallet}+{facility_sum}")
+
+    active_entities = {entity for entity, status in member_map.values() if status != "excluded"}
+    if active_entities != econ_ids or set(wallet_by_entity) != econ_ids:
+        errors.append("三账实体集合不闭合（成员→位置→经济控制存在漏记或多记）")
 
 
 def check_dormant(case_dir: Path, d: dict, errors: list[str]):
@@ -178,8 +290,9 @@ def check_dormant(case_dir: Path, d: dict, errors: list[str]):
     for key in required:
         if not status_pass(coverage.get(key)):
             errors.append(f"静置仓审计覆盖未通过: {key}")
-    if unresolved_count(d):
-        errors.append(f"静置仓审计仍有 {unresolved_count(d)} 个未决候选")
+    n_unresolved = unresolved_count(d, errors, "静置仓审计")
+    if n_unresolved:
+        errors.append(f"静置仓审计仍有 {n_unresolved} 个未决候选")
     # v6.9.1 集合对账（codex 复核修复：coverage 五键是自报布尔，闸不住漏仓——
     # 必须绑定 wave_scan v3 落盘的候选全集并逐址对账；缺绑定/旧 schema 一律拒）。
     ref = d.get("universe_ref")
@@ -376,6 +489,7 @@ def run(case_dir: Path, report: Path | None):
                  "economic_control_ledger.json"):
         if name in data:
             check_ledger(name, data[name], errors)
+    check_three_ledgers(data, errors)
     if "dormant_warehouse_audit.json" in data:
         check_dormant(case_dir, data["dormant_warehouse_audit.json"], errors)
     check_daily_peaks(case_dir, errors)
@@ -422,4 +536,3 @@ def main(argv=None):
 
 if __name__ == "__main__":
     sys.exit(main())
-

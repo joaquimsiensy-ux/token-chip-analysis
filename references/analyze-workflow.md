@@ -86,7 +86,7 @@
 4. 本地反例自查脚本前置。
 5. **N 路怀疑者 agent**（给数据文件路径让它**自己重算**，不是审阅文字；强制构造备择解释——casebook 三册就是现成的备择解释清单，组 prompt 时按题材摘触发现象）＋1 完整性批评角色查 findings/结论清单缺口（必查全史极值清单）＋1 路**外部异构怀疑者**（codex/GPT 单进程横扫全部结论）。
 6. 判定三档 CONFIRMED/WEAKENED/REFUTED（**必须实际核查，"理论上可能"不算推翻**）→ 修订顺序先修数据管线再修文案 → 修正记录印进报告附录。
-7. **封口收尾**：`python3 scripts/report/a4_gate.py finalize --case-dir . --verdicts-file <verdicts.json> --seal-files findings.md,analysis-state.json`——裁决 id 集合与注册表**完全相等**、WEAKENED/REFUTED 必带修订摘要、终版结论文件哈希封口、`charts/final/` 为空校验，产 `a4_seal.json`（exit 0 才准进 A5）。封口后再改结论文件必须改完重跑 finalize 重新封口——build_html G9 会重算哈希，不重封报告物理上编不出来。
+7. **封口收尾**：`python3 scripts/report/a4_gate.py finalize --case-dir . --verdicts-file verdicts.json --seal-files findings.md,analysis-state.json,facts.json,identity_gate.json`——verdicts 必须位于案目录，registry、verdicts、四件核心资产及 claim 引用文件自动纳入 `a4-seal/v2`；路径经 resolve containment 校验，绝对路径、`..`、symlink 越界均拒绝。`charts/final/` 为空且 exit 0 才准进 A5。
 
 ## A5 报告
 
@@ -94,7 +94,7 @@
 
 出图纪律：`standard_charts.plot_camp_evolution` 按 CAMP_ORDER 白名单过滤 series 键，非标准阵营名**静默跳过不报错**——阵营名必须逐字取自 `standard_charts.py` 的 `CAMP_ORDER`（唯一权威；现行 14 键：项目方、大庄、小庄、离场庄、刷量地址、CEX资金通道、CEX托管、疑似CEX托管、流动性池、其他大户、历史大户、散户、桥锁仓、锁仓/销毁；"狙击集团"等仅旧数据重绘 legacy）；**出图后必须目检图例条数 == 传入阵营数**。
 
-结构与措辞纪律见 `report-template.md`（三问逐条直答＋标签体系＋代币数量带【总量X%】＋正文零地址＋局限性独立成章；CEX 黑箱表述红线——充入≠卖出、"链上可观测范围内"限定、净流剔除同 CEX 内部对倒、给单一实体份额上限——权威源 playbook-evidence-wording §11）。然后 `python3 scripts/report/build_html.py --md 报告.md --out 报告.html --a4-seal a4_seal.json` 出自包含 HTML（`--a4-seal` 为分析流程必传——G9 校验封口与图目录；历史报告重编译无 seal 时用 `--skip-a4-gate-reason "<理由>"` 显式跳过，理由写入 HTML 注释留痕。PDF 仅用户点名，用 md2pdf.py，质检双轨见 environment.md）。质检：build_html 退出码 0（有 WARN 时不写出文件、直接拒绝交付——6.7.0 起 gate 前置）＋浏览器目检（图全显/表格无错位）。
+结构与措辞纪律见 `report-template.md`。正式报告唯一入口：`python3 scripts/report/build_html.py --mode analysis --md 报告.md --out 报告.html --facts facts.json --state analysis-state.json --a4-seal a4_seal.json`；analysis 模式会在同一案目录重跑 identity、A4 seal 和 `audit_release_gate` 全套门禁，任一资产缺失或漂移均不写 HTML。历史重编译必须显式用 `--mode legacy-recompile --degrade-reason "<理由>"`，产物带可见非正式水印。PDF 仅用户点名。
 
 **附录四件套**（验证步骤/标签↔地址对照/复核修正记录/来源）——附录 B 地址对照任何情况下不可省（正文零地址的可验证性支点）。**监控包默认不做**：观察哨/两档监控建议/appendix.json 在用户确认买入后按 monitoring-package.md「买入后监控包」节补生成（新会话可执行，材料全在落盘产物），报告末尾带固定句"如决定买入，回复一声即可补生成监控包"。**默认交付另落一份 `analysis-state.json`**（appendix 的机器子集：token/whale_groups/vault_addresses/addresses 骨架＋camp_share_series，无监控文案——/token-update 的实体表原料；schema 见 report-template「默认交付的机器状态文件」节）。交付前 checklist 见 report-template.md 末节。
 

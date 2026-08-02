@@ -88,7 +88,6 @@ def main():
     a = ap.parse_args()
 
     chans = json.load(open(a.channels))["channels"]
-    dirs = sorted({c["path"] for c in chans})
     lo = min(c["lo"] for c in chans)
     hi = max(c["hi"] for c in chans)
     # 通道块区间重叠 → 需要去重 → 本脚本不适用
@@ -109,8 +108,12 @@ def main():
     con.execute("SET preserve_insertion_order=false")
     t0 = time.time()
 
-    src = "', '".join(_logs_glob(d) for d in dirs)
-    READ = f"read_parquet(['{src}'], union_by_name=true)"
+    raw_parts = [f"SELECT *, {int(c['lo'])}::BIGINT __lo, {int(c['hi'])}::BIGINT __hi, "
+                 f"'{c['tag']}' __tag FROM read_parquet('{_logs_glob(c['path'])}', union_by_name=true)"
+                 for c in chans]
+    RAW = "(" + " UNION ALL ".join(raw_parts) + ")"
+    READ = f"(SELECT * EXCLUDE (__lo,__hi,__tag) FROM {RAW} " \
+           "WHERE block_number >= __lo AND block_number < __hi)"
 
     # ── 0. fail-closed 前置探测（对齐 _v2_probe + build_events 的 reject 记账）──
     n_src, n_bad, n_hi, n_of, n_seg = con.execute(f"""
@@ -122,10 +125,19 @@ def main():
                COUNT(*) FILTER (WHERE data IS NOT NULL AND LENGTH(data)=66
                     AND ('0x'||substr(data,35,16))::UBIGINT >= 9223372036854775808),
                COUNT(*) FILTER (WHERE block_number IS NOT NULL
-                    AND (block_number < {lo} OR block_number >= {hi}))
-        FROM {READ}""").fetchone()
+                    AND (block_number < __lo OR block_number >= __hi))
+        FROM {RAW}""").fetchone()
     print(f"[probe] rows={n_src:,} bad_fields={n_bad} hi32_nonzero={n_hi} "
           f"hi64_overflow={n_of} out_of_segment={n_seg}  {time.time()-t0:.1f}s", flush=True)
+    if n_bad or n_seg:
+        receipt = {"engine": "replay_stream.py (no-materialize variant)",
+                   "n_source_rows": n_src, "n_bad_fields": n_bad,
+                   "n_out_of_segment": n_seg, "gate_pass": False,
+                   "failure": "rejected_input_rows",
+                   "policy": "n_bad_fields == 0 and n_out_of_segment == 0"}
+        json.dump(receipt, open(f"{a.out_dir}/replay_stats.json", "w"), indent=1)
+        sys.exit(f"[fail-closed] 输入含 rejected rows: bad_fields={n_bad} "
+                 f"out_of_segment={n_seg}——修复或重新采集后再重放")
     if n_hi or n_of:
         sys.exit("[fail-closed] value 超两段 HUGEINT 安全域，需切 VARINT 路径")
 
@@ -155,7 +167,7 @@ def main():
         FROM {READ}
         WHERE block_number IS NOT NULL AND log_index IS NOT NULL
           AND (data IS NULL OR data IN ('','0x') OR LENGTH(data)=66)
-          AND block_number >= {lo} AND block_number < {hi}""")
+          """)
 
     # ── 1. 余额（deltas 口径逐字对齐 replay_duck：to 侧 +v 含 mint；from 侧 -v 排除 0x0）──
     t = time.time()
@@ -188,10 +200,12 @@ def main():
 
     # ── 4. 块->时间戳映射（下游日序列/图表复用）──
     t = time.time()
-    bsrc = "', '".join(_blocks_glob(d) for d in dirs)
+    block_parts = [f"SELECT * FROM read_parquet('{_blocks_glob(c['path'])}', union_by_name=true) "
+                   f"WHERE number >= {int(c['lo'])} AND number < {int(c['hi'])}" for c in chans]
+    bsrc = "(" + " UNION ALL ".join(block_parts) + ")"
     con.execute(f"""COPY (SELECT number::BIGINT block_number,
                         TRY_CAST(ANY_VALUE(timestamp) AS UBIGINT)::BIGINT ts_i
-                    FROM read_parquet(['{bsrc}'], union_by_name=true)
+                    FROM {bsrc}
                     WHERE number IS NOT NULL GROUP BY number)
                   TO '{a.out_dir}/blockts.parquet' (FORMAT parquet)""")
     nb = con.execute(f"SELECT COUNT(*) FROM read_parquet('{a.out_dir}/blockts.parquet')").fetchone()[0]

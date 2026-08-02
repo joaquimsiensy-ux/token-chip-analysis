@@ -22,6 +22,10 @@ import os
 import subprocess
 import sys
 import tempfile
+import hashlib
+from pathlib import Path
+
+from test_audit_release_gate import build_case
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 GATE = os.path.join(HERE, "..", "report", "a4_gate.py")
@@ -56,8 +60,10 @@ def main():
     root = tempfile.mkdtemp(prefix="a4_gate_test_")
     d = os.path.join(root, "case")
     os.makedirs(d)
+    report_path = build_case(Path(d), historical=False)
 
-    claims = [{"id": "C1", "text": "大庄A控盘30%"}, {"id": "C2", "text": "项目方已弃盘"}]
+    claims = [{"id": "C1", "text": "大庄A控盘30%", "files": ["raw_transfers.jsonl"]},
+              {"id": "C2", "text": "项目方已弃盘"}]
     cf = wj(d, "claims_in.json", claims)
 
     # 1/2. register
@@ -78,7 +84,16 @@ def main():
     # 准备终版结论文件
     with open(os.path.join(d, "findings.md"), "w") as f:
         f.write("# findings\n复核后终版结论\n")
-    wj(d, "analysis-state.json", {"whale_groups": []})
+    state = {"whale_groups": [{"entity_id": "e1", "label": "实体1", "addresses": ["0xabc"]}],
+             "provenance": {"schema_version": "2", "skill_commit": "test",
+                            "data_sources": ["fixture"]}}
+    wj(d, "analysis-state.json", state)
+    wj(d, "facts.json", {"token": {"symbol": "TT", "decimals": 0, "total_supply_raw": "1000"},
+                          "entities": {"e1": {"label": "实体1", "addresses": ["0xabc"],
+                                                 "current_raw": "100", "peak_raw": "100",
+                                                 "peak_date": "2026-01-01"}}, "metrics": {}})
+    wj(d, "identity_gate.json", {"schema": "identity_gate_v1", "rows": [
+        {"address": "0xabc", "entity": "e1", "flag": "", "resolution": ""}]})
 
     # 5/6. finalize 反例集
     p = run(GATE, ["finalize", "--case-dir", d, "--seal-files", "findings.md",
@@ -124,17 +139,58 @@ def main():
     # 8. G9 正例：图在 charts/final/，编译过
     with open(os.path.join(d, "charts", "final", "fig1.png"), "wb") as f:
         f.write(PNG)
-    with open(os.path.join(d, "报告.md"), "w") as f:
+    with open(report_path, "w") as f:
         f.write("# 测试报告\n\n![阵营演变](charts/final/fig1.png)\n\n正文。\n")
+    registry = json.load(open(os.path.join(d, "claim_registry.json")))
+    registry["report_sha256"] = hashlib.sha256(Path(report_path).read_bytes()).hexdigest()
+    wj(d, "claim_registry.json", registry)
     out_html = os.path.join(d, "报告.html")
-    p = run(BUILD, ["--md", os.path.join(d, "报告.md"), "--out", out_html, "--a4-seal", seal_p])
+    analysis_args = ["--mode", "analysis", "--md", str(report_path), "--out", out_html,
+                     "--facts", os.path.join(d, "facts.json"), "--state", os.path.join(d, "analysis-state.json"),
+                     "--a4-seal", seal_p]
+    p = run(BUILD, analysis_args)
     check("G9 正例 exit 0 且 HTML 写出", p.returncode == 0 and os.path.isfile(out_html))
 
+    # B-04：registry / verdicts / claim 引用文件任一漂移都必须拒。
+    for label, path in [("registry", os.path.join(d, "a4_claims.json")),
+                        ("verdicts", good_verdicts),
+                        ("claim file", os.path.join(d, "raw_transfers.jsonl"))]:
+        original = Path(path).read_bytes()
+        Path(path).write_bytes(original + b"\n")
+        if os.path.exists(out_html):
+            os.unlink(out_html)
+        p = run(BUILD, analysis_args)
+        check(f"G9 {label} 封口后漂移拒绝", p.returncode == 1 and "封口后被改动" in p.stdout)
+        Path(path).write_bytes(original)
+
+    # B-04：字符串前缀不能替代 resolve containment；绝对路径和 symlink 同拒。
+    secret = os.path.join(d, "secret.png")
+    Path(secret).write_bytes(PNG)
+    escape_cases = [
+        ("dotdot", "charts/final/../../secret.png"),
+        ("absolute", secret),
+    ]
+    link = os.path.join(d, "charts", "final", "link.png")
+    os.symlink(secret, link)
+    escape_cases.append(("symlink", "charts/final/link.png"))
+    for label, image_path in escape_cases:
+        bad_md = os.path.join(d, f"escape_{label}.md")
+        Path(bad_md).write_text(f"# escape\n\n![x]({image_path})\n", encoding="utf-8")
+        bad_out = os.path.join(d, f"escape_{label}.html")
+        p = run(BUILD, ["--mode", "analysis", "--md", bad_md, "--out", bad_out,
+                        "--facts", os.path.join(d, "facts.json"),
+                        "--state", os.path.join(d, "analysis-state.json"),
+                        "--a4-seal", seal_p])
+        check(f"G9 {label} 图片越界拒绝", p.returncode == 1 and "路径非法或越界" in p.stdout
+              and not os.path.exists(bad_out))
+    os.unlink(link)
+
     # 9. 封口后改结论文件 → 编译拒且不写出
-    os.unlink(out_html)
+    if os.path.exists(out_html):
+        os.unlink(out_html)
     with open(os.path.join(d, "findings.md"), "a") as f:
         f.write("封口后偷偷改了一句结论\n")
-    p = run(BUILD, ["--md", os.path.join(d, "报告.md"), "--out", out_html, "--a4-seal", seal_p])
+    p = run(BUILD, analysis_args)
     check("G9 封口后改结论 exit 1", p.returncode == 1 and "封口后被改动" in p.stdout)
     check("G9 拒绝时 HTML 未写出（gate 前置）", not os.path.isfile(out_html))
     # 翻案重封的真实流程：旧图作废（基于被推翻的结论）→ 清空 charts/final → finalize → 重画
@@ -152,21 +208,26 @@ def main():
         f.write(PNG)
     with open(os.path.join(d, "报告bad.md"), "w") as f:
         f.write("# 测试\n\n![旧图](charts/draft/old.png)\n")
-    p = run(BUILD, ["--md", os.path.join(d, "报告bad.md"), "--out",
-                    os.path.join(d, "bad.html"), "--a4-seal", seal_p])
+    p = run(BUILD, ["--mode", "analysis", "--md", os.path.join(d, "报告bad.md"), "--out",
+                    os.path.join(d, "bad.html"), "--facts", os.path.join(d, "facts.json"),
+                    "--state", os.path.join(d, "analysis-state.json"), "--a4-seal", seal_p])
     check("G9 图不在封口目录 exit 1 不写出", p.returncode == 1
           and not os.path.isfile(os.path.join(d, "bad.html")))
 
-    # 11. skip reason 留痕
-    p = run(BUILD, ["--md", os.path.join(d, "报告bad.md"), "--out", os.path.join(d, "skip.html"),
-                    "--skip-a4-gate-reason", "历史报告重编译测试"])
+    # 11. legacy 显式降级留痕
+    p = run(BUILD, ["--mode", "legacy-recompile", "--degrade-reason", "历史报告重编译测试",
+                    "--md", os.path.join(d, "报告bad.md"), "--out", os.path.join(d, "skip.html")])
     html_txt = open(os.path.join(d, "skip.html"), encoding="utf-8").read() \
         if os.path.isfile(os.path.join(d, "skip.html")) else ""
     check("skip reason exit 0 且理由入 HTML 注释", p.returncode == 0 and "历史报告重编译测试" in html_txt)
 
-    # 12. 不传 --a4-seal 不触发 G9（update 流程）
-    p = run(BUILD, ["--md", os.path.join(d, "报告bad.md"), "--out", os.path.join(d, "noseal.html")])
-    check("无 --a4-seal 不触发 G9 照常编译", p.returncode == 0)
+    # 12. analysis 不带 seal 必须拒；update 模式可显式降级无 seal 编译
+    p = run(BUILD, ["--mode", "analysis", "--md", os.path.join(d, "报告bad.md"),
+                    "--out", os.path.join(d, "noseal.html")])
+    check("analysis 无 --a4-seal 拒绝", p.returncode != 0)
+    p = run(BUILD, ["--mode", "update", "--degrade-reason", "增量更新不重跑 A4",
+                    "--md", os.path.join(d, "报告bad.md"), "--out", os.path.join(d, "update.html")])
+    check("update 显式降级无 seal 可编译", p.returncode == 0)
 
     print("=" * 40)
     if FAILS:

@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """SQD 转账边重放引擎（所有 SQD 链分析的下游标准件）。
 
-读 fetch_sqd_transfers.py 落盘的 data/soltx-<小写mint>.jsonl.gz，边格式
+读 fetch_sqd_transfers_v2.py 落盘的 data/soltx-<sha256(原始mint)>.jsonl.gz，边格式
 [ts, slot, from_owner, to_owner, amount_raw]，ZERO(0x00…00)=铸造/销毁哨兵。
 
 子命令：
-  reconcile             全量重放 → 供给闭合 + 末态 vs 快照 top50 对账（阶段2关卡）
+  reconcile             全量重放 → 供给闭合 + 全 owner 快照对账（机器 receipt；阶段2硬关卡）
                         需 data/holders_owners.json（scan_token_accounts.py 产物）
   trace <addr> [n]      单地址全部进出边（时间序，默认显示 200 条）
   top [n]               重放末态 top n（默认 30）
@@ -23,7 +23,7 @@ evolution 的阵营定义读 --camps camps.json：{"阵营名": [完整地址...
 发射时刻默认取首条铸造边 ts，--launch-ts 可覆盖。
 来源：PUB(Solana) 分析 2026-07-14 收编（replay+camp_evolution 合并参数化）。
 """
-import argparse, gzip, json, os, sys
+import argparse, gzip, hashlib, json, os, sys
 from collections import defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
@@ -88,7 +88,15 @@ def resolve_mint(cli):
 
 
 def load_edges(mint):
-    f = Path(f"data/soltx-{mint.lower()}.jsonl.gz")
+    key = hashlib.sha256(mint.encode("utf-8")).hexdigest()
+    f = Path(f"data/soltx-{key}.jsonl.gz")
+    meta_f = Path(f"data/soltx-{key}.meta.json")
+    if not meta_f.exists():
+        sys.exit(f"缓存 meta 不存在：{meta_f}")
+    meta = json.loads(meta_f.read_text())
+    if meta.get("schema") != "sqd-solana-cache/v3" or meta.get("mint") != mint \
+            or meta.get("collection_upper_slot") is None:
+        sys.exit("SQD 缓存 meta 未绑定原始 mint/endpoint/采集上界，拒绝重放")
     if not f.exists():
         sys.exit(f"边文件不存在：{f}（先跑 fetch_sqd_transfers.py）")
     edges = []
@@ -132,27 +140,39 @@ def cmd_reconcile(edges, dec):
     bal, minted, burned = replay(edges)
     print(f"边数={len(edges):,}  时间范围 {fmt_ts(edges[0][0])} → {fmt_ts(edges[-1][0])}")
     print(f"铸造={minted:,}  销毁={burned:,}  净={minted-burned:,}")
-    neg = {a: v for a, v in bal.items() if v < -1}  # 负余额=数据洞
+    neg = {a: v for a, v in bal.items() if v < 0}  # 任意负余额=数据洞
     print(f"负余额地址数={len(neg)}" + (f"  最大负值={min(neg.values()):,}" if neg else ""))
     rb = {a: v for a, v in bal.items() if v > 0}
     snap_f = Path("data/holders_owners.json")
-    if snap_f.exists():
-        snap = json.loads(snap_f.read_text())
+    meta_f = Path("data/holders_snapshot_meta.json")
+    mismatch, snapshot_ok, supply = [], False, None
+    if snap_f.exists() and meta_f.exists():
+        snap = {a: int(v) for a, v in json.loads(snap_f.read_text()).items()}
+        snap_meta = json.loads(meta_f.read_text())
         supply = sum(snap.values())
-        print(f"快照 supply={supply:,}  重放净-快照差={minted-burned-supply:,}（快照晚于边末端会轻微漂移）")
-        mismatch, checked = [], 0
-        for a, v_snap in list(snap.items())[:50]:
-            checked += 1
-            if abs(rb.get(a, 0) - v_snap) > 2:
-                mismatch.append((a, v_snap, rb.get(a, 0)))
-        print(f"top50 对账：{checked-len(mismatch)}/{checked} 一致")
+        snapshot_ok = bool(snap_meta.get("closed")) and int(snap_meta.get("supply_raw", -1)) == supply
+        print(f"快照 supply={supply:,}  重放净-快照差={minted-burned-supply:,}")
+        for a in sorted(set(snap) | set(rb)):
+            if rb.get(a, 0) != snap.get(a, 0):
+                mismatch.append((a, snap.get(a, 0), rb.get(a, 0)))
+        print(f"全 owner 对账：{len(set(snap)|set(rb))-len(mismatch)}/{len(set(snap)|set(rb))} 一致")
         for a, s_, r_ in mismatch[:12]:
             print(f"  MISMATCH {a}  快照={s_:,}  重放={r_:,}  差={r_-s_:,}")
     else:
-        print("[提示] 无 data/holders_owners.json，跳过快照对账（关卡不完整）")
+        print("[FAIL] 缺 holders_owners.json 或 holders_snapshot_meta.json，快照关卡不完整")
+    gate_pass = (not neg and snapshot_ok and supply == minted - burned and not mismatch)
+    receipt = {"schema": "solana-reconcile/v2", "edge_count": len(edges),
+               "minted_raw": str(minted), "burned_raw": str(burned),
+               "net_supply_raw": str(minted - burned),
+               "negative_balance_count": len(neg), "snapshot_present": snap_f.exists(),
+               "snapshot_meta_present": meta_f.exists(), "snapshot_closed": snapshot_ok,
+               "snapshot_supply_raw": str(supply) if supply is not None else None,
+               "snapshot_mismatch_count": len(mismatch), "gate_pass": gate_pass}
+    json.dump(receipt, open("data/reconcile_receipt.json", "w"), indent=2)
     json.dump(dict(sorted(rb.items(), key=lambda kv: -kv[1])),
               open("data/replay_final_balances.json", "w"))
     print("重放末态已写 data/replay_final_balances.json")
+    return gate_pass
 
 
 def cmd_trace(edges, addr, dec, limit):
@@ -223,8 +243,6 @@ def cmd_evolution(edges, dec, camps_file, stake_pools):
             addr2camp[a] = camp
         if camp == "流动性池":
             pools |= set(addrs)
-    _, minted, burned0 = replay(edges)
-    total = minted - burned0
     launch_ts = launch_ts_of(edges, None)
 
     # 第一遍：首30分钟狙击者（未列入阵营定义的首买地址）
@@ -247,20 +265,21 @@ def cmd_evolution(edges, dec, camps_file, stake_pools):
 
     # 第二遍：重放（与质押池的边改写为 owner 质押子仓，有效持仓=现货+质押）
     spot, staked = defaultdict(int), defaultdict(int)
-    burned = 0
+    minted_cum = burned = 0
     series = []
     cur_hour = None
 
     def snapshot(h):
+        supply = minted_cum - burned
         agg = defaultdict(int)
         for bookmap in (spot, staked):
             for a, v in bookmap.items():
                 if v > 0:
                     agg[camp_of(a)] += v
-        row = {"ts": h}
+        row = {"ts": h, "_supply_raw": str(supply)}
         for c, v in agg.items():
-            row[c] = round(v / total * 100, 4)
-        row["锁仓/销毁"] = round(burned / total * 100, 4)
+            row[c] = round(v / supply * 100, 4) if supply > 0 else 0.0
+        row["锁仓/销毁"] = round(burned / supply * 100, 4) if supply > 0 else 0.0
         series.append(row)
 
     for ts, slot, src, dst, amt in edges:
@@ -268,6 +287,8 @@ def cmd_evolution(edges, dec, camps_file, stake_pools):
         if cur_hour is not None and h != cur_hour:
             snapshot(cur_hour)
         cur_hour = h
+        if src == ZERO:
+            minted_cum += amt
         if dst in stake_pools and src != ZERO:
             spot[src] -= amt
             staked[src] += amt
@@ -295,7 +316,9 @@ def cmd_evolution(edges, dec, camps_file, stake_pools):
             eff[a] += v
     print("\n质押修正后有效持仓 top15：")
     for a, v in sorted(((a, v) for a, v in eff.items() if v > 0), key=lambda kv: -kv[1])[:15]:
-        print(f"  {a}  {v/dec:>15,.0f}  {v/total*100:.3f}%  (现货{spot[a]/dec:,.0f}+质押{staked[a]/dec:,.0f})")
+        final_supply = minted_cum - burned
+        print(f"  {a}  {v/dec:>15,.0f}  {v/final_supply*100:.3f}%  "
+              f"(现货{spot[a]/dec:,.0f}+质押{staked[a]/dec:,.0f})")
     json.dump({a: v for a, v in sorted(eff.items(), key=lambda kv: -kv[1]) if v != 0},
               open("data/effective_balances.json", "w"))
     print("有效持仓末态已写 data/effective_balances.json")
@@ -332,7 +355,8 @@ def main():
         stake_pools |= set(json.loads(cfg.read_text()).get("stake_pools", []))
 
     if args.cmd == "reconcile":
-        cmd_reconcile(edges, dec)
+        if not cmd_reconcile(edges, dec):
+            sys.exit(2)
     elif args.cmd == "trace":
         if not args.arg:
             sys.exit("trace 需要地址参数")

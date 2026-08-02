@@ -5,6 +5,8 @@
 
 > 来源声明：本册规则除特别标注外，均源自 FIL(Filecoin) 分析实测（2026-07），不再逐条标注。
 
+> 发布边界：现有 `fetch_data.py` 只能产 `restricted/top-200-windowed` 数据（富豪榜前 200、近 6 个月、每地址最多 3000 笔），不得称“Filecoin 全量重放”。每页必须有连续完成原因；网络失败不落正式缓存，最终 `collection_manifest.json` 显式记录 restricted scope 与限制。
+
 ## 0. 开工检查清单（每条都有对应踩坑记录，别跳）
 
 - [ ] HTTP 客户端：用 `subprocess.run(['curl','-s',...])` 走系统证书链，禁止 urllib 裸连 HTTPS（本机 Python 缺 CA 链会 `SSL: CERTIFICATE_VERIFY_FAILED`，曾白跑一整轮冒烟约 5 分钟）。

@@ -9,10 +9,13 @@ config 读: pool, decimals, total_supply_tokens, 可选 fee_distributor(该地�
 方法说明见 data-pipeline-robinhood.md（swap.to 归因 + 原子中转剔除 + 分钟级报价币换算）。
 """
 import json, gzip, bisect, sys
+from decimal import Decimal
 from collections import defaultdict
+from amounts import raw_to_units
 
 cfg = json.load(open('config.json'))
 dec = int(cfg.get('decimals') or 18)
+quote_dec = int(cfg.get('quote_decimals') if cfg.get('quote_decimals') is not None else 18)
 TOTAL = int(cfg.get('total_supply_tokens') or 0) * 10 ** dec
 POOL = (cfg.get('pool') or '').lower()
 V4PM = "0x8366a39cc670b4001a1121b8f6a443a643e40951"
@@ -51,23 +54,29 @@ with open('data/weth_pool.jsonl') as f:
         elif e['from'].lower() == POOL: q_out[e['tx']] += amt
 
 swaps = []
-pnl = defaultdict(lambda: {"buy_tok": 0, "buy_usd": 0.0, "sell_tok": 0, "sell_usd": 0.0, "unpriced_tok": 0})
+pnl = defaultdict(lambda: {"buy_tok": 0, "buy_usd": Decimal(0), "sell_tok": 0,
+                           "sell_usd": Decimal(0), "unpriced_tok": 0})
 for tx, flows in tok_flow.items():
-    ts = tx_ts[tx]; qusd = quote_usd(ts)
-    win, wout = q_in.get(tx, 0) / 1e18, q_out.get(tx, 0) / 1e18
+    ts = tx_ts[tx]; qusd = Decimal(str(quote_usd(ts)))
+    win = raw_to_units(q_in.get(tx, 0), quote_dec)
+    wout = raw_to_units(q_out.get(tx, 0), quote_dec)
     buyers = {a: v for a, v in flows.items() if v > 0}
     sellers = {a: -v for a, v in flows.items() if v < 0}
     tb, ts_ = sum(buyers.values()), sum(sellers.values())
     if tb > 0 and win > 0:
         for a, v in buyers.items():
-            pnl[a]["buy_tok"] += v; pnl[a]["buy_usd"] += win * (v / tb) * qusd
-        swaps.append({"tx": tx, "ts": ts, "side": "buy", "tok": tb / 1e18, "quote": win})
+            pnl[a]["buy_tok"] += v
+            pnl[a]["buy_usd"] += win * (Decimal(v) / Decimal(tb)) * qusd
+        swaps.append({"tx": tx, "ts": ts, "side": "buy",
+                      "tok": float(raw_to_units(tb, dec)), "quote": float(win)})
     elif tb > 0:
         for a, v in buyers.items(): pnl[a]["unpriced_tok"] += v
     if ts_ > 0 and wout > 0:
         for a, v in sellers.items():
-            pnl[a]["sell_tok"] += v; pnl[a]["sell_usd"] += wout * (v / ts_) * qusd
-        swaps.append({"tx": tx, "ts": ts, "side": "sell", "tok": ts_ / 1e18, "quote": wout})
+            pnl[a]["sell_tok"] += v
+            pnl[a]["sell_usd"] += wout * (Decimal(v) / Decimal(ts_)) * qusd
+        swaps.append({"tx": tx, "ts": ts, "side": "sell",
+                      "tok": float(raw_to_units(ts_, dec)), "quote": float(wout)})
 
 json.dump(swaps, open('data/swaps.json', 'w'))
 out = {}
@@ -75,9 +84,11 @@ for a, p in pnl.items():
     if p["buy_tok"] + p["sell_tok"] >= TOTAL * MIN_SHARE:
         bt, st = p["buy_tok"], p["sell_tok"]
         realized = p["sell_usd"] - (p["buy_usd"] * (min(st, bt) / bt if bt else 0))
-        out[a] = {"buy_tok": bt / 1e18, "buy_usd": p["buy_usd"],
-                  "avg_buy_usd_per_m": (p["buy_usd"] / (bt / 1e18 / 1e6) if bt else 0),
-                  "sell_tok": st / 1e18, "sell_usd": p["sell_usd"],
-                  "realized_usd": realized, "unpriced_tok": p["unpriced_tok"] / 1e18}
+        bt_units, st_units = raw_to_units(bt, dec), raw_to_units(st, dec)
+        out[a] = {"buy_tok": float(bt_units), "buy_usd": float(p["buy_usd"]),
+                  "avg_buy_usd_per_m": float(p["buy_usd"] / (bt_units / 10**6)) if bt else 0,
+                  "sell_tok": float(st_units), "sell_usd": float(p["sell_usd"]),
+                  "realized_usd": float(realized),
+                  "unpriced_tok": float(raw_to_units(p["unpriced_tok"], dec))}
 json.dump(out, open('data/entity_pnl.json', 'w'), indent=1)
 print(f"swaps: {len(swaps)} 笔tx级对价, entity_pnl: {len(out)} 地址", flush=True)

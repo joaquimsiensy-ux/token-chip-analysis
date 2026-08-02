@@ -15,7 +15,8 @@
       [--cache-dir data/txcache] [--rpc <url>]
 输出行与 v1 逐字段一致({sig, slot, ts, deltas} / {sig, decode_fail});断点续传兼容 v1 输出。
 """
-import argparse, json, sys, time
+import argparse, hashlib, json, sys, time
+from decimal import Decimal
 from pathlib import Path
 import requests
 
@@ -27,12 +28,22 @@ def log(msg):
 
 
 class SigCache:
-    """按 sig 前 2 字符分片的追加式缓存:行 = 完整输出行(含 decode_fail 行)。"""
-    def __init__(self, root):
+    """Identity-bound signature cache; failed decodes are never cached."""
+    SCHEMA = "solana-tx-decode-cache-v2"
+
+    def __init__(self, root, mint, pool, rpc, chain_id="solana-mainnet"):
         self.root = Path(root) if root else None
         self.mem = {}
         if self.root:
+            identity = {"schema": self.SCHEMA, "chain_id": chain_id, "mint": mint,
+                        "pool": pool or "", "rpc": rpc}
+            digest = hashlib.sha256(json.dumps(identity, sort_keys=True).encode()).hexdigest()
+            self.root = self.root / digest
             self.root.mkdir(parents=True, exist_ok=True)
+            meta = self.root / "meta.json"
+            if meta.exists() and json.loads(meta.read_text()) != identity:
+                raise SystemExit("[fail-closed] decode cache identity mismatch")
+            meta.write_text(json.dumps(identity, indent=2, sort_keys=True))
             for fp in self.root.glob("*.jsonl"):
                 for ln in open(fp):
                     try:
@@ -54,31 +65,70 @@ class SigCache:
             f.write(json.dumps(row) + "\n")
 
 
+def _amount(tb):
+    ui = tb.get("uiTokenAmount") or {}
+    raw = ui.get("amount")
+    decimals = ui.get("decimals")
+    if not isinstance(raw, str) or not raw.isdigit() or not isinstance(decimals, int):
+        raise ValueError("token balance missing exact raw amount/decimals")
+    return int(raw), decimals
+
+
+def _display(raw, decimals):
+    return format(Decimal(raw).scaleb(-decimals), "f")
+
+
 def decode_result(sig, res, mint, pool):
-    """getTransaction result → 输出行(与 v1 逐字段同构:uiAmount owner 净额)。"""
+    """Decode owner deltas using raw integers; UI fields are exact strings only."""
     meta = res.get("meta") or {}
     pre, post = {}, {}
+    decimals_seen = set()
     for tb in (meta.get("preTokenBalances") or []):
         if tb.get("mint") != mint:
             continue
         o = tb.get("owner")
-        amt = float((tb.get("uiTokenAmount") or {}).get("uiAmount") or 0)
-        pre[o] = pre.get(o, 0.0) + amt
+        if not o:
+            continue
+        amt, decimals = _amount(tb)
+        decimals_seen.add(decimals)
+        pre[o] = pre.get(o, 0) + amt
     for tb in (meta.get("postTokenBalances") or []):
         if tb.get("mint") != mint:
             continue
         o = tb.get("owner")
-        amt = float((tb.get("uiTokenAmount") or {}).get("uiAmount") or 0)
-        post[o] = post.get(o, 0.0) + amt
-    deltas = {}
+        if not o:
+            continue
+        amt, decimals = _amount(tb)
+        decimals_seen.add(decimals)
+        post[o] = post.get(o, 0) + amt
+    if len(decimals_seen) > 1:
+        raise ValueError(f"inconsistent decimals for mint {mint}: {sorted(decimals_seen)}")
+    decimals = next(iter(decimals_seen), 0)
+    deltas_raw = {}
     for o in set(pre) | set(post):
-        dl = post.get(o, 0.0) - pre.get(o, 0.0)
-        if abs(dl) > 1e-9:
-            deltas[o] = round(dl, 6)
-    row = {"sig": sig, "slot": res.get("slot"), "ts": res.get("blockTime"), "deltas": deltas}
+        dl = post.get(o, 0) - pre.get(o, 0)
+        if dl:
+            deltas_raw[o] = dl
+    row = {"sig": sig, "slot": res.get("slot"), "ts": res.get("blockTime"),
+           "mint": mint, "decimals": decimals, "deltas_raw": deltas_raw,
+           "deltas": {o: _display(v, decimals) for o, v in deltas_raw.items()}}
     if pool and pool in post:
-        row["pool_balance"] = round(post[pool], 6)
+        row["pool_balance_raw"] = post[pool]
+        row["pool_balance"] = _display(post[pool], decimals)
     return row
+
+
+def completed_sigs(outp, mint):
+    done = set()
+    if Path(outp).exists():
+        for line in open(outp):
+            try:
+                row = json.loads(line)
+                if not row.get("decode_fail") and row.get("mint", mint) == mint:
+                    done.add(row["sig"])
+            except Exception:
+                pass
+    return done
 
 
 def main():
@@ -128,14 +178,17 @@ def main():
             sigs.append(s)
 
     outp = Path(a.out)
-    done = set()
-    if outp.exists():
-        for line in open(outp):
-            try:
-                done.add(json.loads(line)["sig"])
-            except Exception:
-                pass
-    cache = SigCache(a.cache_dir or None)
+    out_identity = {"schema": "solana-tx-decode-output-v2", "chain_id": "solana-mainnet",
+                    "mint": mint, "pool": a.pool or "", "rpc": a.rpc}
+    out_meta = Path(str(outp) + ".meta.json")
+    if outp.exists() and outp.stat().st_size:
+        if not out_meta.exists() or json.loads(out_meta.read_text()) != out_identity:
+            log("existing output is not bound to this mint/pool/rpc; use a new --out path")
+            sys.exit(2)
+    else:
+        out_meta.write_text(json.dumps(out_identity, indent=2, sort_keys=True))
+    done = completed_sigs(outp, mint)
+    cache = SigCache(a.cache_dir or None, mint, a.pool, a.rpc)
     f = open(outp, "a")
     todo = []
     hit = 0

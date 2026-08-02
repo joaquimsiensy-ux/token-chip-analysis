@@ -51,7 +51,7 @@ Base：`https://api.hypurrscan.io`，Swagger UI 在 `/ui/`。
 - `GET /holders/{token}`：全量持有人→现货余额快照（HYPE 返回 246,400 个地址）。**不含质押余额**，做任何指标前先看第 8 节。
 - `GET /holdersAtTimeWithLimit/{token}/{unix_ts}/{limit}`：历史 top-N 持仓快照，最早时间戳 1732991430（2024-11-30），6 小时粒度——免费历史持仓难题的解法，可重建任意大户/实体的持仓曲线。
   - **重大坑**：部分历史时间戳区间（HYPE 一例为 2025-08~2026-04 共 45 档）在 limit=1000/500/200 时 `holders` 返回空 `{}`，limit=100/50 才有数据。这是服务端行为，不是请求错误，HTTP 照样 200。
-  - 操作规程：下载后**立即抽查多档原始 JSON 结构**验证非空；发现空档就做 limit 降级探测（1000→500→200→100），对空档补采 top100 落成单独文件，分析脚本里合并 top1000/top100 两种文件（合并逻辑见原版 `analysis/snapshot_series.py`）。
+  - 操作规程：下载后**立即抽查多档原始 JSON 结构**验证非空；发现空档就做 limit 降级探测（1000→500→200→100），对空档补采 top100 落成单独文件，分析脚本里合并 top1000/top100 两种文件。`snapshot_series.py` 对无快照、补采后仍空及规模超线一律拒绝，并随结果写 `snapshot_series.input_manifest.json` 绑定配置和逐档哈希。
 - `GET /globalAliases`：463 条实体标签（AF/Foundation/Hyper Labs/13 个 CEX/烧毁地址）——关联实体识别的核心免费标签源。注意**没有币安主站和 Coinbase** 的标签。
 - `GET /fullUnstakingQueue`：解质押排队 = 准抛压，可用于扩充重点监控地址清单。注意它是**历史全量**记录而非仅当前排队，用前按时间过滤。
 - `GET /twap/{token}`：大户程序化买卖单（TWAP）。
@@ -90,7 +90,7 @@ Base：`https://api.hypurrscan.io`，Swagger UI 在 `/ui/`。
 
 单文件采集器，官方 info API + Hypurrscan 双封装。设计要点（照用别改）：
 - 纯标准库 + certifi SSL 上下文（macOS python.org 版 Python 的 urllib 默认无 CA 链，裸 urllib 必报 CERTIFICATE_VERIFY_FAILED——此坑曾整跑报废一次后台任务；certifi 缺失时回退 `/etc/ssl/cert.pem`）。
-- 429/5xx 指数退避重试（2s→60s 封顶）+ 按端点分级限速 + **断点续传**（已存在的输出文件直接跳过）——长跑中途停/重启不丢进度，调限速参数时也靠它保住已采数据。
+- 429/5xx 指数退避重试 + 按端点分级限速 + 身份绑定断点续传。`collection_manifest.json` 绑定 token_symbol/token_id/TGE/entities/API endpoints；同 data_dir 换标的或配置即 fail-closed。`addresses` 必须逐地址 PASS，失败写 retry queue 与 BLOCK receipt 并 exit 2，不能把部分地址当完整数据。
 
 六个子命令（按此顺序跑，`addresses` 依赖 `worklist`，`worklist` 依赖 `static`+`entities`）：
 
@@ -105,11 +105,12 @@ Base：`https://api.hypurrscan.io`，Swagger UI 在 `/ui/`。
 
 注意：`snapshots` 只按 limit=1000 采集，**不内置空档降级**——跑完必须按第 3 节规程抽查空档并另行补采 top100。
 
-config 字段（原 HYPE 版为脚本内常量，换代币时改这四项）：
+config 同时驱动 collect 与 main_metrics；main_metrics 拒绝未知/缺失字段，不再手改 HYPE 常量：
 - `token_id`：HyperCore 16 字节 token ID（tokenDetails 用）。
 - `entities`：实体名→地址映射表（按第 6 节方法重建）。
 - `tge_ms`：TGE 毫秒时间戳，ledger/fills/K 线的 startTime 与快照序列起点。
 - `throttle`：请求间隔秒数。实测常数：官方 API 地址级 3.0、轻量 0.3；Hypurrscan 见第 3 节分级值。
+- `asset_type/system_addresses/cex_keywords/min_transfer_amount/genesis_*`：资产类型、系统排除、CEX 词表及聚类阈值；非 HYPE fixture 已进入回归测试。
 
 长跑运维：地址级采集 1000+ 地址 × 3s ≈ 2 小时量级（HYPE 一次 1189 地址实跑约 2.1 小时），必须**最先启动**（放任务 DAG 关键路径最前），run_in_background 跑、按输出文件数轮询进度，等待期并行写下游分析脚本和报告骨架（占位符先行）。等待条件用 until-loop，前台裸 `sleep` 会被执行环境 Block。
 

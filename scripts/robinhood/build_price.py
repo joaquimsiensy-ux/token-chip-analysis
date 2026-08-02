@@ -8,6 +8,7 @@
   {"minute": [[ts, usd], ...], "hour": [[ts, usd], ...], "xcheck": {...}}
 """
 import json, gzip, bisect
+from amounts import v3_quote_per_token
 
 import json as _j
 _cfg = _j.load(open("config.json"))
@@ -18,7 +19,8 @@ MAIN_POOL = _cfg["pool"].lower()
 _TOKEN = (_cfg.get("token") or "").lower()
 _QUOTE = (_cfg.get("quote_token") or "0x0bd7d308f8e1639fab988df18a8011f41eacad73").lower()
 TOKEN_IS_T1 = _TOKEN > _QUOTE
-Q96 = 2 ** 96
+TOKEN_DECIMALS = int(_cfg.get("decimals") if _cfg.get("decimals") is not None else 18)
+QUOTE_DECIMALS = int(_cfg.get("quote_decimals") if _cfg.get("quote_decimals") is not None else 18)
 
 eth = json.load(open("data/ethusdt_1h.json"))  # [[ts, close], ...] 升序
 ETS = [r[0] for r in eth]
@@ -51,9 +53,8 @@ def main():
     minute = []
     for m in sorted(minute_last):
         _, sqrtp, ts = minute_last[m]
-        ratio = (sqrtp / Q96) ** 2      # token1/token0
-        weth_per = (1.0 / ratio) if TOKEN_IS_T1 else ratio   # quote per token
-        usd = weth_per * ethusd(ts)
+        quote_per = v3_quote_per_token(sqrtp, TOKEN_IS_T1, TOKEN_DECIMALS, QUOTE_DECIMALS)
+        usd = float(quote_per) * ethusd(ts)
         minute.append([m, usd])
     # 小时序列 = 每小时最后一分钟
     hour_last = {}
@@ -74,6 +75,8 @@ def main():
         if m in mine and c:
             diffs.append(abs(mine[m] - c) / c)
     diffs.sort()
+    if not diffs:
+        raise SystemExit("[fail-closed] GT 交叉验证无重叠样本——不得发布链上价格序列")
     xc = {"n_overlap": len(diffs),
           "median_rel_diff": diffs[len(diffs)//2] if diffs else None,
           "p90_rel_diff": diffs[int(len(diffs)*0.9)] if diffs else None}

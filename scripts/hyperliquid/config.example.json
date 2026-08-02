@@ -1,5 +1,6 @@
 {
-  "_comment": "来源：HYPE(Hyperliquid) 分析会话实战产物, 2026-07。collect.py / snapshot_series.py 的标的配置。复制为 config.json（同目录）或用 --config <path> 指定；示例值即 HYPE 实战原值，换标的逐项改。main_metrics.py 未读本文件（参考实现，跑前改脚本内常量）。",
+  "_comment": "collect.py / main_metrics.py / snapshot_series.py 的统一标的配置。",
+  "asset_type": "native",
   "_comment_token_symbol": "现货代币符号，拼进 Hypurrscan 路径 /holders/<symbol>、/twap/<symbol>、/holdersAtTimeWithLimit/<symbol>/…",
   "token_symbol": "HYPE",
   "_comment_token_id": "官方 info API tokenDetails 用的 tokenId（spotMeta 里查）",
@@ -24,6 +25,16 @@
   "fills_recent_entity": "assistance_fund",
   "_comment_evm_bridge": "HyperEVM 跨链桥系统地址（流水量过大不拉 ledger，只用于排除集）",
   "evm_bridge": "0x2222222222222222222222222222222222222222",
+  "system_addresses": [
+    "0x2222222222222222222222222222222222222222",
+    "0xffffffffffffffffffffffffffffffffffffffff",
+    "0x0000000000000000000000000000000000000000",
+    "0x000000000000000000000000000000000000dead"
+  ],
+  "cex_keywords": ["Binance", "OKX", "Bybit", "KuCoin", "Gate", "MEXC", "Kraken", "Coinbase", "HTX", "Bitget"],
+  "min_transfer_amount": 1000,
+  "genesis_min_amount": 100,
+  "genesis_window_days": 60,
   "_comment_watch": "snapshot_series.py 逐档快照要追踪持仓曲线的地址表（名称→地址），通常 = entities + 桥 + 烧毁地址；键名即输出 JSON 的字段名",
   "watch": {
     "assistance_fund": "0xfefefefefefefefefefefefefefefefefefefefe",

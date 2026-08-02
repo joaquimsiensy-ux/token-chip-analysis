@@ -12,6 +12,7 @@ Blockscout robinhoodchain.blockscout.com，见 references/data-pipeline-robinhoo
 import json, gzip, os, sys, time
 import urllib.request
 import ssl, certifi
+from resume_guard import bind_output, overlap_state, require_progress, write_receipt
 
 SSL_CTX = ssl.create_default_context(cafile=certifi.where())
 TRANSFER = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
@@ -59,20 +60,15 @@ def query(url, key, token, from_block):
 def main():
     token, url, key = load_cfg()
     os.makedirs("data", exist_ok=True)
-    start = 0
-    mode = "wb"
-    if os.path.exists(OUT):
-        last = None
-        with gzip.open(OUT, "rt") as f:
-            for line in f:
-                if line.strip():
-                    last = line
-        if last:
-            start = json.loads(last)["block"] + 1
-            mode = "ab"
-            print(f"断点续传: 从块 {start} 继续", flush=True)
+    identity = {"collector": "pull_transfers/v2", "token": token, "url": url,
+                "query_schema": "transfer+txfrom/v2"}
+    bind_output(OUT, identity)
+    start, overlap_keys, n_have = overlap_state(OUT, ("block", "tx", "logi"))
+    mode = "ab" if n_have else "wb"
+    if n_have:
+        print(f"断点续传: 重叠回拉末块 {start}（已有 {n_have} 行）", flush=True)
 
-    total = 0
+    total = n_have
     t0 = time.time()
     with gzip.open(OUT, mode) as out:
         fb = start
@@ -89,6 +85,9 @@ def main():
                     txfrom[t["hash"]] = (t.get("from") or "").lower()
                     txto[t["hash"]] = (t.get("to") or "").lower()
                 for lg in batch.get("logs", []):
+                    event_key = (lg["block_number"], lg["transaction_hash"], lg["log_index"])
+                    if event_key in overlap_keys:
+                        continue
                     amt = int(lg["data"], 16) if lg.get("data") and lg["data"] != "0x" else 0
                     row = {
                         "block": lg["block_number"],
@@ -103,16 +102,15 @@ def main():
                     }
                     out.write((json.dumps(row) + "\n").encode())
                     total += 1
-            if nb is None or nb <= fb:
-                print(f"next_block 停滞于 {fb}, 结束", flush=True)
-                break
+            reached = require_progress(fb, nb, ah)
             fb = nb
             if total and total % 50000 < 100:
                 print(f"  进度: 块 {fb}/{ah}, 已 {total} 条, {time.time()-t0:.0f}s", flush=True)
-            if fb >= ah:
+            if reached:
                 print(f"已达链高 {ah}", flush=True)
                 break
-    print(f"完成: 共 {total} 条新事件, 耗时 {time.time()-t0:.0f}s", flush=True)
+    write_receipt(OUT, identity, ah, fb, total)
+    print(f"完成: 共 {total} 条事件, 耗时 {time.time()-t0:.0f}s", flush=True)
 
 
 if __name__ == "__main__":

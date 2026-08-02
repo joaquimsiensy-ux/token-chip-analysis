@@ -19,7 +19,9 @@
 ├─ 跨链代币的 ETH 主网侧补充 → Etherscan V2 免费 key（仅 chainid=1，fetch_etherscan.py）
 └─ 任何情况下都别碰 ──→ §2 死亡名单端点（禁止重探）
 
-落盘与合并纪律（v3.11.2 起）：多源产物一律经 transfers_lib.py merge 合并——重叠块区
+落盘与合并纪律（v3.11.2 起）：小样本多源产物经 `transfers_lib.py merge` 合并（默认最多
+100 万行，超过即拒）；正式大数据统一走 `replay_stream.py` 的 DuckDB 流式入口，禁止把
+亿级事件交给内存排序。两种入口都必须保留 input manifest。重叠块区
 集合级对账，不等即 exit(3) fail-closed（PING 案 uniqueId 双计 5485 负余额的制度化防线）；
 标准 8 列含 block_hash，去重键 (block_hash,tx,log_index) 防链重组。
 channels.json 的 path 字段语义（2026-07-25 SPX6900 实测坑）：hypersync_v2 通道的 path
@@ -43,7 +45,7 @@ solana 走 fetch_sqd_transfers_v2；manifest 原子记账、残缺 run 改名 pa
 
 | 通道 | 注册要求 | 限速实测 | 吞吐实测 | 断点续传 | 脚本 | 来源 |
 |---|---|---|---|---|---|---|
-| **HyperSync 官方客户端 v2（Starter 付费档,现役首选）** | Starter $70/月（key 见 api-keys.md 第 1 节;100rpm 基础+overage 5x=500rpm 超量按请求计费,单币 <$1） | concurrency=10 全程 429=0；付费限速解除后瓶颈=RTT×串行,官方客户端自动并发正是解药 | **10,080 条/s**（CAKE 90,719 行/9s,BSC）；三源对账与 v1/SQD 逐行一致 | run_*/done.json 记 next_block,重跑自动续 | fetch_hypersync_v2.py（pip install hypersync） | （v3.11.2 POC,2026-07-21） |
+| **HyperSync 官方客户端 v2（Starter 付费档,现役首选）** | Starter $70/月 | 官方客户端并发 | **10,080 条/s**（CAKE 实测） | done manifest v2 绑定 token/url/capture bounds/query/client；不一致或 start>=to 非零退出 | fetch_hypersync_v2.py | （2026-08-02 加固） |
 | envio HyperSync v1 手写轮询（兜底） | 同上 key 通用 | 免费层:0.5s 间隔基本无 429（2026-07-18 收紧后实测）;**Starter 付费档:0.12s 间隔 429=0**,但单进程吞吐仅 552-792 条/s（RTT 主导,ETH RTT~0.2s/BSC~0.6s）——付费买到的是高峰稳定性,大标的提速必须换 v2 | 免费层 ~1000-1300 logs/2s,1568 万条约 5.2h;付费单进程 ETH 792 条/s、BSC 552 条/s | from_block 起点 + 增量写 CSV（v3.11.2 起新文件 8 列含 block_hash,老 7 列续拉自动兼容） | fetch_hypersync.py | （SIREN 07；哈基米 429 实测 07-18；v3.11.2 付费实测 07-21） |
 | SQD Portal 薄采集器（故障预案+对照源） | 免 key 免注册（portal.sqd.dev 公共端点;注册 gateway key 免费可选更稳） | 公共限流 20 请求/10s,sleep 0.5 保守;无自助付费档（官网 pricing coming soon,2026-07-21 核实） | ~280 条/s（CAKE 21,857 行/79s）——平时不跑,HyperSync 平台级故障或数仓切源准入对照时才上;**对账关卡（余额对账/时间抽查）的代表日双源对照亦用它**（独立索引商,BANANAS31(BSC) 四代表日 67,731 行 (block,tx,li,from,to,value) 六元组与 HyperSync 零差集全等,2026-07-22） | CSV 末行块+1 | fetch_sqd_evm.py | （v3.11.2,2026-07-21） |
 | BigQuery goog 官方公共数据集（备用+复核,**仅 ETH**） | Google 账号 OAuth 一次(凭据缓存后免弹窗)+GCP sandbox 项目(免绑卡,见 api-keys.md 第 17 节「Google Cloud / BigQuery」) | 免费 1 TiB/月查询量;熔断线 config max_scan_gib(默认 200GiB) | 服务端过滤只回传命中行,13 万行 ~1 分钟;定向日期查询 ~12GiB/次≈月额度可复核 85 次 | 无需(按日期范围幂等重查) | fetch_bigquery.py | （v3.12.1 准入实证,2026-07-21） |
@@ -88,12 +90,12 @@ solana 走 fetch_sqd_transfers_v2；manifest 原子记账、残缺 run 改名 pa
 - **transactions 端点做 BNB 注资溯源**：body `{"transactions":[{"to":[addr]}],"field_selection":{"transaction":["block_number","from","to","value"]}}`（value 为 hex）——单址全链入金一次查询 ~2.3s 到 tip，比逐块扫快几个量级；⚠25 址×全链批量会 10 分钟超时，可用姿势=关键地址单址逐查 / 发射窗小块段批量（from/to_block 圈定）。（哈基米，07-18）
 - 分段多进程姿势：复制脚本改 OUT 与 to_block 边界（`if nxt >= BOUND: break`）、sleep 提至 0.5s，各进程独立 CSV 事后按 (tx,log_index) 去重合并；改 config 后重启前删本地缓存的段清单文件。（哈基米，07-18）
 - **多会话共享 key 限速冲突**：并行分析会话同打一个 HyperSync key/端点会互相触发 429（SQD 案与另一标的采集会话撞车实测）——开工前 `ps aux | grep fetch_hypersync` 查有无在跑进程；撞车时不必停工，调低单会话吞吐预期、靠 429 退避共存（SQD 案 83.2 万条 56 分钟、429×20 次全部自愈）。（SQD，07-20）**限流是 key 级共享、不是端点独立**——同 key 打不同链子域（eth+arbitrum）并发同样互抢限额：LPT 案 eth+arbitrum 三进程并发时 arbitrum 端点 429 密集，串行后恢复；多链标的的分链采集按链串行或错峰，别指望换端点绕开限额。（LPT，07-21）
-- **官方客户端 v2 本机网络三态与分段采集解法**：本机（clash 环境）v2 官方客户端**直连必挂**——"error decoding response body / operation timed out"（Rust 客户端大响应被网络层掐断；同网络 curl 小请求可过，故探测通≠采集通）；**走 clash 代理可用但长连接偶发劣化 stall**（实测 168MB 处卡死 16 分钟、劣化后吞吐 0.009MB/s，无报错纯挂起）。解法=**分段采集驱动**（`scripts/evm/staged_capture.sh`）：按块边界拆 10-13 段串行，每段独立 `run_*/done.json`（幂等可续），失败段清残迹 retry-once 再 FATAL——段级几分钟短跑规避长连接劣化窗口；无 done.json 的 parquet 无 footer 不可读，重跑前必须 rm 整个 run 目录。**v1 轮询+代理为最稳兜底**（逐请求短连接，BANANAS31 案 91.2 万行 34 分钟零 429）。混通道后归一：v1 CSV 段转标准 v2 parquet run 段（uniqueId 拆出 log_index、value 转 64hex data、ts 转 unix hex 入 blocks.parquet、补 done.json），roundtrip 对读零差集验证后 replay_duck 按段界互斥合并（BANANAS31 案 12 段 v2+1 段 v1 混合，对账三查全 PASS）。（BANANAS31，07-22）
+- **分段采集**：`staged_capture.sh` 只在 done manifest 的 token/url/from/to/query 全字段一致时跳段；残段移入 `outdir/quarantine/` 保留诊断现场，不再递归删除。失败 retry-once 后仍失败即停。
 
 - **★稀疏事件（单池单 topic）别用 HyperSync 全链扫，改「已有 Transfer 反查 tx → 打回执」**：HyperSync 按"扫过的块量"分批返回，对稀疏匹配（如某一个池的 `Mint` 事件）实测每次只推进 **~5,400 块 / 12 秒**——扫 1.1 亿块要几十小时，且中途看不出异常（进程活着、只是慢）。**正解**：从已落盘的全量 Transfer 里筛出"该合约 ↔ 任意地址、金额 ≥ 门槛"的交易去重得 tx 列表，再并发 `eth_getTransactionReceipt` 逐个解析（KOGE 案 82 个交易几十秒拿到全部 81 次 LP 操作，对比 HyperSync 全链扫的几十小时）。**反过来**：块区间已知的小范围精确查询（如追某个 tokenId 的 ERC721 Transfer）用 HyperSync **一次返回**，比公共 RPC 的 `eth_getLogs` 省事——后者在 BSC 公共节点超 5,000 块即 `-32005 limit exceeded`。选型口诀：**大范围稀疏→反查回执；小范围精确→HyperSync**。（KOGE 第二轮追加取证，07-25）
 - **v2 响应里的 log 字段是 `topic0/topic1/topic2/topic3` 分列，不是 `topics` 数组**：按 `l['topics'][0]` 取会直接 `KeyError`（与 `eth_getLogs` 的 RPC 返回结构不同，混用两套代码时高发）；`field_selection.log` 里也要逐个列名申请。同理 `transaction`/`block` 的字段名各自独立申请。（KOGE 第二轮追加取证，07-25）
 
-- **v2 的 resume 语义坑（补采历史段必换 outdir）**：`fetch_hypersync_v2.py` 在同一 `--outdir` 下发现任何 `run_*/done.json` 时会**自动从最大 next_block 续拉**并忽略你给的起始块；此时若再传一个**小于** next_block 的 `--to-block`，脚本会立即"[COMPLETE] 空完成"且**不报错不提示**（实测：拉主体历史段时因 outdir 里已有增量段的 done.json，秒退且只产出 3,635 条）。补采历史段/回补缺段一律用**独立 outdir**，事后按段界合并进 channels.json。（BUILDon，07-25）
+- **v2 resume 语义**：只消费同 `capture_from` 且身份完全一致的 manifests；边界必须满足 `capture_from<=from<to=next<=本次to`。跨标的、跨端点、坏边界、`start>=to` 全部 fail-closed，禁止“空完成”。
 
 ### 3.2 Alchemy getAssetTransfers（scripts/evm/fetch_alchemy.py）
 - POST `https://bnb-mainnet.g.alchemy.com/v2/{KEY}`，method=`alchemy_getAssetTransfers`，params 含 `contractAddresses`、`category:["erc20"]`、`maxCount:"0x3e8"`、`pageKey` 分页；返回自带时间戳。（SIREN，07）

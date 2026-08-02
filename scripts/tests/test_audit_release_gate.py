@@ -44,13 +44,19 @@ def build_case(root, historical=True):
         "current_owner_threshold_pct": 0.1,
         "current_owner_float_threshold_pct": 0.2,
         "historical_peak_candidates_included": True,
-        "unresolved_count": 0,
+        "unresolved_count": 0, "unresolved_candidates": [],
     })
-    write_json(root, "membership_ledger.json", {"entries": []})
-    write_json(root, "position_ledger.json", {"entries": []})
+    write_json(root, "membership_ledger.json", {"entries": [
+        {"entity_id": "e1", "address": "0xabc", "membership": "strict"}]})
+    write_json(root, "position_ledger.json", {"entries": [
+        {"entity_id": "e1", "address": "0xabc", "location_id": "wallet:0xabc",
+         "amount_raw": "100"}]})
     write_json(root, "economic_control_ledger.json", {
-        "entries": [], "empty_reason": "夹具案例无达标庄级实体",
-        "double_count_check_passed": True, "unresolved_count": 0})
+        "entries": [{"entity_id": "e1", "wallet_self_held_raw": "100",
+                     "confirmed_facility_claims": [],
+                     "confirmed_economic_control_raw": "100",
+                     "unresolved_facility_exposure": []}],
+        "double_count_check_passed": True, "unresolved_count": 0, "unresolved": []})
     # v6.9.1：静置仓审计必须绑定 wave_scan v3 落盘全集并逐址对账（coverage 自报不作数）
     write_json(root, "wave_scan_report.json", {
         "schema": "wave-scan/v3",
@@ -121,6 +127,30 @@ def main():
         (root / "raw_transfers.jsonl").write_text("tampered\n", encoding="utf-8")
         errors = gate.run(root, report)
         assert any("大小变化" in x or "哈希变化" in x for x in errors), errors
+
+    # 2026-08-02 B-05：空三账、汇总 count 压明细、跨账漏记/重复均须拒绝。
+    with tempfile.TemporaryDirectory() as td:
+        root = Path(td)
+        report = build_case(root, historical=False)
+        write_json(root, "membership_ledger.json", {"entries": []})
+        write_json(root, "position_ledger.json", {"entries": []})
+        write_json(root, "economic_control_ledger.json", {"entries": [], "empty_reason": "自报空"})
+        errors = gate.run(root, report)
+        assert sum("明细为空" in x for x in errors) == 3, errors
+
+        report = build_case(root, historical=False)
+        cls = json.loads((root / "address_classification.json").read_text())
+        cls.update({"unresolved_count": 0, "unresolved_candidates": [{"address": "0xbad"}]})
+        write_json(root, "address_classification.json", cls)
+        errors = gate.run(root, report)
+        assert any("与明细=1 不一致" in x for x in errors), errors
+
+        report = build_case(root, historical=False)
+        pos = json.loads((root / "position_ledger.json").read_text())
+        pos["entries"].append(dict(pos["entries"][0]))
+        write_json(root, "position_ledger.json", pos)
+        errors = gate.run(root, report)
+        assert any("位置账重复" in x for x in errors), errors
 
     with tempfile.TemporaryDirectory() as td:
         root = Path(td)
@@ -197,7 +227,7 @@ def main():
         write_json(root, "economic_control_ledger.json", {
             "entries": [], "double_count_check_passed": True, "unresolved_count": 0})
         errors = gate.run(root, report)
-        assert any("empty_reason" in x for x in errors), errors
+        assert any("明细为空" in x for x in errors), errors
 
     # 6.9.1 修复反例（codex 复核）：静置仓候选全集对账——coverage 自报布尔不作数。
     with tempfile.TemporaryDirectory() as td:
@@ -328,4 +358,3 @@ def main():
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

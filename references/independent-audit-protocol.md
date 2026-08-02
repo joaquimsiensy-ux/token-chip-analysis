@@ -113,6 +113,12 @@ adversarial_review.json
 reproduce_audit.py
 ```
 
+三账正式 schema（空数组不构成审计证据，正式发布一律拒绝空壳）：
+
+- `membership_ledger.json.entries[]`：`entity_id,address,membership`，其中 membership 只能是 `strict|expanded|excluded`；地址规范化后全局唯一。
+- `position_ledger.json.entries[]`：`entity_id,address,location_id,amount_raw`；每条地址必须映射到同一实体的有效成员，`(location_id,address)` 唯一，金额为非负 raw integer。
+- `economic_control_ledger.json.entries[]`：按 `economic-control-accounting.md` §5；发布闸从明细重算 `wallet_self_held_raw == Σ position.amount_raw`、`confirmed_economic_control_raw == wallet_self_held_raw + Σ claim.token_raw`，并校验 `double_count_key` 全局唯一及所有权/数量算法/目标块证据齐全。任何 `unresolved_count` 都必须与实际 unresolved 明细一致，汇总布尔和自报 count 不作为放行证据。
+
 涉及历史图时另需 `chart_reconciliation.json`。发布前运行：
 
 ```bash
@@ -120,4 +126,3 @@ python3 scripts/report/audit_release_gate.py <案目录> --report <报告.md>
 ```
 
 退出码0才可交付。退出码2表示硬闸失败：保留已复算事实，但把实体判级、历史峰值、历史图和完整阴性结论统一降为“本轮无法裁决”。
-
