@@ -309,6 +309,12 @@ def _verify_light_schema(case_dir, fails, legacy=False):
         elif not isinstance(ws.get("waves"), list) or not isinstance(ws.get("equal_amount_groups"), list) \
                 or not isinstance(ws.get("requires_adjudication"), bool):
             fails.append("wave_scan_report.json 缺 waves/equal_amount_groups/requires_adjudication——空壳拒收")
+        elif not isinstance(ws.get("scan_universe"), list) \
+                or not isinstance(ws.get("must_adjudicate_count"), int) \
+                or len(ws["scan_universe"]) != ws.get("scan_universe_count"):
+            fails.append("wave_scan_report.json v3 全集不完整（scan_universe 须为数组、"
+                         "must_adjudicate_count 须为整数、len(scan_universe)==scan_universe_count）"
+                         "——贴 v3 标签不带逐址全集同属空壳，拒收")
     except Exception as e:
         fails.append(f"wave_scan_report.json 读取失败（波次扫描未跑？补跑 wave_scan.py 后重 generate）: {e}")
     try:

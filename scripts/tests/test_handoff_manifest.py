@@ -80,6 +80,7 @@ def make_case(d):
     write_json(d, "accounting_mode.json", {"schema": "accounting-gate/v1", "verdict": "PASS", "exit_code": 0})
     write_json(d, "supply_truth.json", {"verdict": "PASS", "exit_code": 0})
     write_json(d, "wave_scan_report.json", {"schema": "wave-scan/v3", "scan_universe_count": 0,
+                                            "scan_universe": [], "must_adjudicate_count": 0,
                                             "retention_buckets": {"cleared": 0, "partial_exit": 0, "retained": 0},
                                             "negative_balance_addrs": 0,
                                             "waves": [], "equal_amount_groups": [],
@@ -353,6 +354,18 @@ def main():
         p = run(["verify", "--case-dir", d16b])
         check("wave-scan/v2 旧版产物 verify 拒收 exit 2",
               p.returncode == 2 and "旧版" in p.stdout and "scan_universe" in p.stdout)
+
+        # 16c. v3 标签但缺 scan_universe 逐址全集（6.9.3：贴标签不带货同属空壳）
+        d16c = os.path.join(root, "case_wavev3hollow")
+        os.makedirs(d16c)
+        make_case(d16c)
+        write_json(d16c, "wave_scan_report.json", {"schema": "wave-scan/v3", "scan_universe_count": 3,
+                                                   "waves": [], "equal_amount_groups": [],
+                                                   "requires_adjudication": False})
+        run(["generate", "--case-dir", d16c, "--status", "READY"] + GEN)
+        p = run(["verify", "--case-dir", d16c])
+        check("v3 标签缺 scan_universe 全集 verify 拒收 exit 2",
+              p.returncode == 2 and "全集不完整" in p.stdout)
 
         # 17. handoff/v1 旧 manifest：默认拒；--legacy-read-only 显式降级放行（只读警告）
         d17 = os.path.join(root, "case_legacy")

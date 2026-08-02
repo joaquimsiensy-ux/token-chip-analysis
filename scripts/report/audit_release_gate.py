@@ -202,26 +202,34 @@ def check_dormant(case_dir: Path, d: dict, errors: list[str]):
     cands = d.get("candidates", [])
     if not isinstance(cands, list):
         cands = []
-    cand_addrs = {str(c["candidate_address"]) for c in cands
-                  if isinstance(c, dict) and c.get("candidate_address")}
+    addr_list = [str(c["candidate_address"]) for c in cands
+                 if isinstance(c, dict) and str(c.get("candidate_address") or "").strip()]
+    cand_addrs = set(addr_list)
+    # v6.9.3（codex 验收 P1）：同一地址多行冲突裁决会被 set 静默吞并——重复即拒。
+    if len(addr_list) != len(cand_addrs):
+        dup = sorted({a for a in addr_list if addr_list.count(a) > 1})
+        errors.append(f"静置仓候选地址重复 {len(dup)} 个（示例 {dup[:3]}）"
+                      "——同址多行裁决可互相矛盾，候选地址必须唯一")
     missing = [str(u.get("addr")) for u in universe
                if isinstance(u, dict) and u.get("must_adjudicate")
                and str(u.get("addr")) not in cand_addrs]
     if missing:
         errors.append(f"候选全集对账失败: {len(missing)} 个必裁决地址不在审计候选内"
                       f"（示例 {missing[:3]}）——coverage 自报通过不作数")
-    # v6.9.2（codex 验收 P1）：挂名≠裁决——每条列出的候选必须有合法三类裁决＋理由，
-    # 机器逐条重验，自报 unresolved_count=0 不作数。
+    # v6.9.2（codex 验收 P1）：挂名≠裁决——每条列出的候选必须有地址＋合法三类裁决＋理由，
+    # 机器逐条重验，自报 unresolved_count=0 不作数（v6.9.3 补：无地址的裁决记录同拒）。
     valid_decisions = {"strict", "expanded", "excluded"}
-    bad = [str(c.get("candidate_address") or f"candidates[{i}]")
+    bad = [str((c.get("candidate_address") if isinstance(c, dict) else None)
+               or f"candidates[{i}]")
            for i, c in enumerate(cands)
            if not isinstance(c, dict)
+           or not str(c.get("candidate_address") or "").strip()
            or str(c.get("boundary_decision", "")).lower() not in valid_decisions
            or not str(c.get("decision_reason", "")).strip()]
     if bad:
-        errors.append(f"静置仓候选 {len(bad)} 条缺合法裁决"
-                      f"（boundary_decision 须 strict/expanded/excluded 且 decision_reason 非空；"
-                      f"示例 {bad[:3]}）——仅把地址挂进名单不算裁决")
+        errors.append(f"静置仓候选 {len(bad)} 条缺地址或缺合法裁决"
+                      f"（candidate_address 非空＋boundary_decision 须 strict/expanded/excluded"
+                      f"＋decision_reason 非空；示例 {bad[:3]}）——仅把地址挂进名单不算裁决")
 
 
 def check_daily_peaks(case_dir: Path, errors: list[str]):

@@ -15,6 +15,7 @@
 
 ## 版本索引（活跃窗口，新在上；每版一行，详情见下方对应条目）
 
+- **6.9.3** 2026-08-02 6.9.2 二轮验收四项收口（codex 再出 2 P1＋2 P2，全是新闸自身 fail-open 边角）：①handoff v3 空壳检查补全——贴 v3 标签不带 scan_universe/must_adjudicate_count/计数闭合同属空壳拒收 ②发布闸候选地址唯一性——同址多行冲突裁决（strict vs excluded）被 set 静默吞并的洞封死 ③候选必须有地址——裁决字段齐全的无名记录拒 ④validator 报错提示"重跑 v2"改指 v3（自己拒收的版本不能再叫人跑）；SUITE 25 项全绿
 - **6.9.2** 2026-08-02 6.9.1 验收 review 四项返工（codex 出 2 P1＋2 P2 全认账）：①wave-scan/v3 下游断链修复——adjudication_validator/handoff_manifest 只认 v3、v1/v2 一律旧版拒收（升 schema 漏查下游消费者，测试没抓住恰因下游 fixture 也是 v2 自造自洽——"自己的 fixture 顺自己实现走"再实证）②发布闸候选"挂名≠裁决"——每条候选机器重验三类裁决＋理由非空，自报 unresolved_count 不作数 ③触发日产物哈希咬合——summary 登记 trigger_days_sha256，未带 --trigger-days 或目录残留陈旧产物一律拒 ④wave_scan last_day 只认非零金额转账——0 值 Transfer 任何人可发，能把静置仓"摸活"洗掉必裁决标记；SUITE 25 项全绿——详见下方对应条目
 - **6.9.1** 2026-08-02 /codex:review 对 6.9.0 判"不应发布"（3 high＋1 medium）后三高危全修（Fable 逐条独立复核确认后按自给修法执行；medium"官方公告并入经济控制"用户裁决不修——多签挪用/监守自盗实例遍地，"治理独立"是纸面约束，维持 6.9.0 拍板）：①峰值上界公式修正＋触发日机器闭环 ②48h 试转边补 OTC 排除检验 ③wave_scan v3 候选全集逐址落盘＋发布闸集合对账——详见下方对应条目
 - **6.9.0** 2026-08-02 实体判定规则 17 项用户拍板修订＋大白话化（用户逐段审阅交付文档逐条辩论定案；@CX codex 复核 plan 融合后批准执行；四主题 commit：A 行为指纹与强弱证据体系、B 实体合并角色与枢纽统编、C 峰值与静置仓、D Alpha 收窄）——详见下方对应条目
@@ -41,6 +42,10 @@
 - **4.1.0** 2026-07-30 PYTHIA 双报告交叉核实复盘：实体身份防复发三闸（label_lookup 并源 address-book / entity_identity_gate+G8 编译门 / 复核 prompt 翻案四问固化）+ 复盘元规则（身份类教训必须以代码收尾）
 - **4.0.0** 2026-07-28 大整编（用户点名）：3.0→3.41 四十余版增量迭代的结构清理——路由索引补齐 9 节、结构错位归位 3 处、消重立权威源制 6 组、CHANGELOG 重整归档 29 条；只减不加，规则语义未动
 - 更早版本（3.41.0 及以前）→ `CHANGELOG-archive.md`
+
+## [6.9.3] - 2026-08-02 — 6.9.2 二轮验收四项收口（v3 空壳/重复候选/无名候选/提示错版）
+
+背景：6.9.2 验收 review（base=9538cae）再出 2 P1＋2 P2，全部是 6.9.1/6.9.2 新装闸自身的 fail-open 边角，逐条核实全认账：①handoff 只查了 schema 值与 v2 时代三字段，"贴 v3 标签但不带 scan_universe"照样过 verify——补第四段空壳检查（scan_universe 须数组＋must_adjudicate_count 须整数＋len==scan_universe_count 闭合），16c 反例用例；②发布闸候选集合用 set 建、同一地址两行冲突裁决（strict 与 excluded）被静默吞并且逐条校验各自合法照过——候选地址唯一性前置，重复即拒，l 反例；③逐条裁决校验没要求 candidate_address 非空，裁决字段齐全的无名记录可过——补地址非空，m 反例；④adjudication_validator 拒收旧版的报错文本还在叫人"重跑 v2"（自己拒收的版本）——改指 v3。validator/handoff 两处 fixture 补 v3 全集字段（新空壳闸把旧最小 fixture 正确拦下，属闸在工作）。SUITE 25 项全绿。
 
 ## [6.9.2] - 2026-08-02 — 6.9.1 验收 review 四项返工（v3 下游断链/挂名≠裁决/触发日咬合/零值摸活）
 

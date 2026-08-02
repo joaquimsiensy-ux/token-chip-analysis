@@ -290,6 +290,25 @@ def main():
         write_json(root, "dormant_warehouse_audit.json", da)
         errors = gate.run(root, report)
         assert any("缺合法裁决" in x for x in errors), errors
+        # l) 6.9.3：同址两行冲突裁决（strict vs excluded）→ 重复即拒
+        da["candidates"] = [
+            {"candidate_address": "0xmustaddr", "boundary_decision": "strict",
+             "decision_reason": "夹具：闭环证据"},
+            {"candidate_address": "0xmustaddr", "boundary_decision": "excluded",
+             "decision_reason": "夹具：公共设施"},
+        ]
+        write_json(root, "dormant_warehouse_audit.json", da)
+        errors = gate.run(root, report)
+        assert any("地址重复" in x for x in errors), errors
+        # m) 6.9.3：裁决字段齐全但没有地址 → 无名裁决记录拒
+        da["candidates"] = [
+            {"candidate_address": "0xmustaddr", "boundary_decision": "excluded",
+             "decision_reason": "夹具：静置巨仓已裁决"},
+            {"boundary_decision": "excluded", "decision_reason": "夹具：无名记录"},
+        ]
+        write_json(root, "dormant_warehouse_audit.json", da)
+        errors = gate.run(root, report)
+        assert any("缺地址" in x for x in errors), errors
 
     print("PASS: audit_release_gate 净室资产/哈希/CEX受益权/阴性结论/"
           "图表封口与负钳零/对抗复核否决/四查WARN拦截/双线阈值/"

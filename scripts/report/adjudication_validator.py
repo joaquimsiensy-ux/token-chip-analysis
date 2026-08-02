@@ -78,7 +78,7 @@ def check_source_schemas(wave, flow):
     """源报告 schema 检查（v6.8.1：错版/空壳报告不得形成"零候选已闭环"）。"""
     fails = []
     if wave.get("schema") != WAVE_SCHEMA:
-        fails.append(f"wave_scan_report schema 异常: {wave.get('schema')}（需要 {WAVE_SCHEMA}——旧版重跑 v2）")
+        fails.append(f"wave_scan_report schema 异常: {wave.get('schema')}（需要 {WAVE_SCHEMA}——旧版重跑 wave_scan.py v3）")
     if flow.get("schema") != FLOW_SCHEMA:
         fails.append(f"flow_anomaly_report schema 异常: {flow.get('schema')}（需要 {FLOW_SCHEMA}）")
     else:
