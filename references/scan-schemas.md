@@ -88,6 +88,8 @@
     "addr": addr,
     "best_window": {"start": date, "end": date,
                      "inflow_pct": float, "source_count": int},
+    "balance": {"historical_peak_pct": float, "current_balance_pct": float},
+    "all_time": {"net_inflow_pct": float, "qualified_inflow_pct": float},
     "sources": [{"addr", "pct", "retention_bucket"}],   # 全量，len == best_window.source_count
     "launch_window": bool
   }],
@@ -114,6 +116,9 @@
 滑窗判定纪律：达标窗＝**同一窗内同时**满足金额线与数量线（在全部达标窗中取金额最大者展示）——不得先取金额最大窗再验数量（PYTHIA 回测实证：Q1 金额最大窗 22.2% 恰好来源仅 4 个被拒，而另存在 14 来源/18.8% 的双达标窗）。
 
 **sink/spray 的裁决对象**：枢纽地址本身（sources/recipients 是证据不是裁决对象）——candidate-adjudications 对此两类候选的成员全集＝`{addr}` 单元素集（§3 validator 按候选类型区分校验）。
+sink 的判级最大影响不得只取单一最佳窗：validator 取 `best_window.inflow_pct`、
+`balance.historical_peak_pct`、`balance.current_balance_pct`、`all_time.net_inflow_pct`
+四者最大值。旧产物缺后三项即拒重跑，防多个不重叠小窗累计跨过 5% 判级线。
 
 ## 3. candidate-adjudications/v1（−2 判断层产出，validator 校验）
 
@@ -154,16 +159,32 @@ wave/flow/eqg 全部候选的**成员级**裁决台账。freeze 前 validator �
 数学错误——比例守恒只在单次流出瞬间成立，流入流出交错时老来源被消耗的份额不会缩水
 （反例：先收 A 100→转出 90→再收 B 90，真实库存 A 10%/B 90%，v1 算成 52.6/47.4；
 2026-08-01 codex 验收 P0-1）。v2 改为**祖先子图正向模拟**：逆向 BFS 收集上游节点
-（遇 mint/标签/设施终点停，深度＝距实体最短跳数）→ 子图内全部 ≤T 转账按
-(ts, 同秒组内拓扑序) 逐笔重演，每节点维护来源构成账户（流入转移入账、流出等比扣减，
+（遇 mint/标签/设施终点停，深度＝距实体最短跳数）→ 子图内全部 ≤T 转账按可证链上位置
+`(ts, slot/block, transaction_index, log/instruction_index)` 逐笔重演，每节点维护来源构成账户（流入转移入账、流出等比扣减，
 实体成员收缩为单一超级账户）→ 锚点时刻账户向量＝库存终点构成。总量守恒由构造保证
 （closure 降为实现自检）；回环天然良定义（v1 的 `same_slot_scc` 终点类别**废除**）；
-同秒真序不可知按组内拓扑＋字典序确定化，环组计入 `simulation.same_ts_cycle_groups` 诚实标注。
+禁止按地址拓扑重排同秒边。缺精确位置时保留 ingest 观察序，但同一最细粒度桶内
+“既收又发”的流出来源整笔记 `UNRESOLVED/order_ambiguous`；占锚点库存 >0.5% 时
+独立顺序敏感性阻断。Solana 旧 5 元组只有 slot，扩展 7 元组
+`[ts,slot,tx_index,instruction_index,from,to,amt]` 才是精确序。
 
 ```
 {
   "schema": "provenance-ledger/v2",
   "generated_at": ISO8601, "case": str, "params": {…}, "total_supply_raw": str,
+  "input_binding": {
+    "algorithm": {"script_sha256": str,
+                  "files": {"entity_source_trace.py": {…}, "wave_scan.py": {…}},
+                  "policies": [str…], "order_material_pct": float},
+    "source": {"kind": "sol|evm_v2|duckdb", "argument": str, "edges_table": str|null,
+               "files": [{"path", "bytes", "sha256"}…]},
+    "entity_file": {"path", "bytes", "sha256"},
+    "labels_file": {"path", "bytes", "sha256"}|null,
+    "handoff_manifest": {"file": {…}, "run_id": str, "scope": object},
+    "data_map": {"file": {…}, "paths": [str…]},
+    "total_supply_raw": str,
+    "algorithm_params": {"depth_limit", "facility_min_degree", "node_budget", "edge_budget"}
+  },
   "entities": [{
     "entity_id": str,
     "member_count": int,
@@ -184,15 +205,21 @@ wave/flow/eqg 全部候选的**成员级**裁决台账。freeze 前 validator �
                                        #   freeze 端不读此自报值，按 composition[].raw 重算
     "simulation": {"ancestors": int, "terminals": int, "depth_truncated": int,
                     "budget_truncated": int, "edges_simulated": int,
-                    "same_ts_cycle_groups": int, "data_gap_events": int}   # 诊断块
+                    "order_ambiguous_groups": int, "order_ambiguous_events": int,
+                    "data_gap_events": int}   # 诊断块
   }],
   "unresolved_total_pct": float,
   "bounds_sensitivity": {
     "methods": ["pro_rata", "fifo", "lifo"],   # 同一模拟骨架三种消耗策略＝真上下界
-    "per_entity": {entity_id: {"stable": bool,
+    "per_entity": {entity_id: {"stable": bool, "consumption_stable": bool,
+                    "ordering_stable": bool,
                     "anchors": {anchor: {"top_by_policy": {policy: [kind, sub, via]|null},
-                                          "agree": bool}}}},
-    "conservative_vs_aggressive_verdict_stable": bool,   # 任一 stock>0 锚点第一大条目翻转 → false
+                      "policy_details": {policy: [{"terminal": [kind,sub,via], "raw": str}…]},
+                      "agree": bool,
+                      "ordering_sensitivity": {"status": "RESOLVED|UNRESOLVED",
+                        "order_ambiguous_raw": str, "order_ambiguous_pct": float,
+                        "materiality_pct": 0.5, "stable": bool}}}},
+    "conservative_vs_aggressive_verdict_stable": bool,
     "note": str
   }
 }
@@ -201,7 +228,7 @@ TERMINAL = {
   "kind": "PROVEN_ORIGIN|BOUNDARY|UNRESOLVED",
   "subkind":  # PROVEN_ORIGIN: mint|launch_alloc|proven_airdrop|proven_vesting
               # BOUNDARY: dex_pool|cex_confirmed|facility_confirmed|bridge
-              # UNRESOLVED: data_gap|depth_limit|budget_truncated|facility_candidate
+              # UNRESOLVED: data_gap|depth_limit|budget_truncated|facility_candidate|order_ambiguous
   "via": addr|null,                    # 边界地址；via=null 的未决聚合条目按 subkind 合并
   "pct_of_anchor": float, "raw": str,
   "evidence_level": "label_confirmed|onchain_pattern|heuristic",
@@ -215,7 +242,8 @@ TERMINAL = {
 - 设施认定：标签库确证＝`facility_confirmed`；启发式命中（对手方≥1000 且双向）只记 `facility_candidate` 归 UNRESOLVED。
 - 实体内部先收缩单一超级账户，内部互转不记账不重复计源；`--entity-file` 强制 {str: 非空 str 数组}、同址跨实体即拒。
 - 深度上限（默认 10 跳）记 `depth_limit`、BFS 节点预算超限记 `budget_truncated`、账户被取用时库存不足记 `data_gap`（短缺显式入账）——全部 UNRESOLVED **不静默丢弃**；子图边数超 `--edge-budget` 直接 exit 2（不静默采样）。
-- **敏感性阻断（v6.8.1 P0-5 落地）**：pro_rata 主法出数，fifo/lifo 上下界同跑；任一 stock>0 锚点的第一大终点条目在三策略间不一致 → `conservative_vs_aggressive_verdict_stable=false` → 脚本 exit 2 阻断（报告落盘供诊断），freeze 端独立复查此字段（双重防线）。
+- **双维敏感性阻断**：pro_rata 主法出数，fifo/lifo 上下界同跑；任一 stock>0 锚点的第一大终点条目在三策略间不一致，或 `order_ambiguous` >0.5% 锚点库存 → 汇总 false、脚本 exit 2。freeze 不读取 stable 自报作裁决，而从 `policy_details` 重算，并核验 `input_binding` 后以当前代码和当前原始边真实重放；语义摘要不一致即拒。
+- **freeze 可复现绑定**：source files 必须同时出现在已 verify 的 manifest artifacts 与 data_map；标签、实体文件、完整源边、total supply、manifest run/scope（cutoff/block/denominators）、算法脚本与参数逐项哈希绑定。任一变化都必须重跑 provenance 并追加 freeze revision；`check-unseal` 复核所有当前绑定文件哈希。
 
 ## 5. PYTHIA 回测锚点（fixture 权威值；实现落地时实测填入 tests/fixtures/pythia_anchors.json）
 

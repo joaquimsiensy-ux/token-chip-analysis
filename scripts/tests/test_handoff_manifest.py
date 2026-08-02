@@ -14,13 +14,16 @@
  10. supersede：二次 generate 归档旧 manifest
  12. READY 缺 wave_scan_report.json 即拒（W1 漏检复盘 2026-08-01：波次扫描是 READY 必产件）
  13. wave_scan_report.json 空壳（缺 requires_adjudication 等字段）→ verify exit 2
- 18+. freeze 溯源闸内容级反例集（v6.8.1 codex 复核 P0-2/P0-7 修复——旧版把空壳台账当
+  18+. freeze 溯源闸内容级反例集（v6.8.1 codex 复核 P0-2/P0-7 修复——旧版把空壳台账当
       正例是在给漏洞背书，本版全部翻成必拒）：v1 schema 拒／空 composition 拒／closure
       自报造假（按 composition 重算）拒／成员哈希错配拒／实体集不一致拒／敏感性不稳拒／
+      与边表脱离的人工台账拒／策略明细翻转但 stable=true 拒／重放语义漂移拒／
+      provenance-only 变化追加 revision／check-unseal 全绑定哈希复核／
       READY 必备件被手改出 manifest 拒／legacy receipt 机器落盘
 用法：python3 scripts/tests/test_handoff_manifest.py   退出码 0=PASS / 1=FAIL
 """
 import hashlib
+import copy
 import json
 import os
 import shutil
@@ -65,10 +68,15 @@ def make_case(d):
         {"id": "c2", "observed_type": None, "source": None, "conflict_flags": [], "needs_adjudication": True}]})
     write_json(d, "identity_preflight.json", {"addresses": [{"address": "0xabc", "labels": [], "code": True}]})
     write_json(d, "anomalies.json", [])
-    write_json(d, "data_map.json", {"files": [{"path": "data/transfers.csv", "rows": 2, "source": "test"}]})
+    write_json(d, "data_map.json", {"files": [
+        {"path": "data/transfers.csv", "rows": 2, "source": "test"},
+        {"path": "data/edges.jsonl", "rows": 2, "source": "test"}]})
     os.makedirs(os.path.join(d, "data"), exist_ok=True)
     with open(os.path.join(d, "data", "transfers.csv"), "w") as f:
         f.write("a,b\n1,2\n")
+    with open(os.path.join(d, "data", "edges.jsonl"), "w") as f:
+        f.write(json.dumps([86400, 1, 0, 0, Z, "0xabc", 100]) + "\n")
+        f.write(json.dumps([86400, 1, 1, 0, Z, "0xdef", 100]) + "\n")
     write_json(d, "accounting_mode.json", {"schema": "accounting-gate/v1", "verdict": "PASS", "exit_code": 0})
     write_json(d, "supply_truth.json", {"verdict": "PASS", "exit_code": 0})
     write_json(d, "wave_scan_report.json", {"schema": "wave-scan/v2", "scan_universe_count": 0,
@@ -87,40 +95,47 @@ def make_case(d):
         f.write("> −2 实体冻结前禁读\n假说：无\n")
 
 
-GEN = ["--mode", "easy", "--producer-model", "test-model", "--chain", "bsc", "--contract", "0x0"]
 Z = "0x0000000000000000000000000000000000000000"
+GEN = ["--mode", "easy", "--producer-model", "test-model", "--chain", "bsc", "--contract", "0x0",
+       "--cutoff", "2026-08-01T00:00:00Z", "--frozen-block", "999",
+       "--denominators", json.dumps({"total_supply_raw": str(10 ** 12)})]
 
 
 def members_sha(addrs):
     return hashlib.sha256(",".join(sorted(set(addrs))).encode()).hexdigest()
 
 
-def make_provenance(entity_map, stock=100, schema="provenance-ledger/v2", stable=True,
-                    hollow=False, bad_closure=False, wrong_sha=False):
-    """合法 v2 溯源台账 fixture（或按开关损坏成对应反例）。"""
-    ents = []
-    for eid, addrs in entity_map.items():
-        comp = [] if hollow else [
-            {"kind": "PROVEN_ORIGIN", "subkind": "mint", "via": Z,
-             "pct_of_anchor": 100.0, "raw": str(stock if not bad_closure else stock // 2),
-             "evidence_level": "onchain_pattern", "path_len": 1}]
-        ents.append({
-            "entity_id": eid, "member_count": len(addrs),
-            "members_sha256": ("0" * 64) if wrong_sha else members_sha(addrs),
-            "anchors": {
-                "current": {"stock_raw": str(stock), "composition": comp, "direct_upstream": []},
-                "peak": {"date": "2026-01-01", "stock_raw": str(stock),
-                         "composition": comp, "direct_upstream": []}},
-            "turnover": {"gross_in_raw": str(stock), "gross_out_raw": "0"},
-            # closure_check 故意恒填 100——freeze 必须按 composition 重算而不是信这个自报值
-            "closure_check": {"current_sum_pct": 100.0, "peak_sum_pct": 100.0},
-            "simulation": {"ancestors": 0, "terminals": 1, "depth_truncated": 0,
-                           "budget_truncated": 0, "edges_simulated": 1,
-                           "same_ts_cycle_groups": 0, "data_gap_events": 0},
-        })
-    return {"schema": schema, "entities": ents,
-            "bounds_sensitivity": {"methods": ["pro_rata", "fifo", "lifo"], "per_entity": {},
-                                   "conservative_vs_aggressive_verdict_stable": stable}}
+def make_provenance(d, entity_map, schema="provenance-ledger/v2", stable=True,
+                    hollow=False, bad_closure=False, wrong_sha=False, depth_limit=10):
+    """从 manifest 绑定的真实边重跑合法台账，再按开关损坏成对应反例。"""
+    entity_path = os.path.join(d, "s2_entity_members.json")
+    out = os.path.join(d, ".fixture_provenance.json")
+    prior = open(entity_path, "rb").read() if os.path.isfile(entity_path) else None
+    write_json(d, "s2_entity_members.json", entity_map)
+    trace = os.path.join(HERE, "..", "report", "entity_source_trace.py")
+    p = subprocess.run([sys.executable, trace, "--edges-sol", os.path.join(d, "data", "edges.jsonl"),
+                        "--total-supply", str(10 ** 12), "--entity-file", entity_path, "--out", out,
+                        "--depth-limit", str(depth_limit)],
+                       capture_output=True, text=True)
+    if p.returncode != 0:
+        raise RuntimeError(f"fixture provenance 生成失败: {p.stdout}{p.stderr}")
+    obj = json.load(open(out))
+    os.unlink(out)
+    if prior is not None:
+        with open(entity_path, "wb") as f:
+            f.write(prior)
+    obj["schema"] = schema
+    if not stable:
+        obj["bounds_sensitivity"]["conservative_vs_aggressive_verdict_stable"] = False
+    for ent in obj["entities"]:
+        if wrong_sha:
+            ent["members_sha256"] = "0" * 64
+        for anchor in ent["anchors"].values():
+            if hollow:
+                anchor["composition"] = []
+            elif bad_closure and anchor["composition"]:
+                anchor["composition"][0]["raw"] = str(max(0, int(anchor["stock_raw"]) // 2))
+    return obj
 
 
 def setup_freezeable(d, entity_map=None):
@@ -133,7 +148,7 @@ def setup_freezeable(d, entity_map=None):
     adj["adjudicated_at"] = "2026-08-01T00:00:00Z"
     write_json(d, "candidate_adjudications.json", adj)
     write_json(d, "s2_entity_members.json", entity_map)
-    write_json(d, "provenance_ledger.json", make_provenance(entity_map))
+    write_json(d, "provenance_ledger.json", make_provenance(d, entity_map))
     write_json(d, "analysis-state.json", {"whale_groups": [
         {"id": eid, "members": v} for eid, v in entity_map.items()]})
 
@@ -191,9 +206,10 @@ def main():
         p = run(["freeze", "--case-dir", d] + FRZ + ["--pending", "c2 待裁决"])
         check("四重前置齐备 freeze 初次 exit 0", p.returncode == 0)
         fz0 = json.load(open(os.path.join(d, "entity_freeze.json")))
-        check("冻结记录绑定三份哈希",
+        check("冻结记录绑定成员/名册/provenance/manifest/data_map 全套哈希",
               fz0.get("entity_file_sha256") and fz0.get("provenance_ledger_sha256")
-              and fz0.get("members_sha256"))
+              and fz0.get("members_sha256") and fz0.get("manifest_sha256")
+              and fz0.get("data_map_sha256") and fz0.get("provenance_input_binding_sha256"))
         p = run(["freeze", "--case-dir", d, "--check-unseal"])
         check("freeze 后揭盲放行 exit 0", p.returncode == 0)
         # 名册变更 → 溯源台账逐实体哈希失配 → 拒；重跑溯源（fixture 同步）后 revision 放行
@@ -202,7 +218,7 @@ def main():
         p = run(["freeze", "--case-dir", d] + FRZ)
         check("名册改动后复用旧溯源台账 freeze 拒 exit 2",
               p.returncode == 2 and "哈希不符" in (p.stderr + p.stdout))
-        write_json(d, "provenance_ledger.json", make_provenance({"E1": ["0xabc", "0xdef"]}))
+        write_json(d, "provenance_ledger.json", make_provenance(d, {"E1": ["0xabc", "0xdef"]}))
         p = run(["freeze", "--case-dir", d] + FRZ)
         fz = json.load(open(os.path.join(d, "entity_freeze.json")))
         check("重跑溯源后 freeze 变更走 revision 追加", p.returncode == 0 and len(fz["revisions"]) == 1)
@@ -355,32 +371,94 @@ def main():
         run(["generate", "--case-dir", d18, "--status", "READY"] + GEN)
         setup_freezeable(d18)
         emap = {"E1": ["0xabc"]}
-        write_json(d18, "provenance_ledger.json", make_provenance(emap, schema="provenance-ledger/v1"))
+        write_json(d18, "provenance_ledger.json", make_provenance(d18, emap, schema="provenance-ledger/v1"))
         p = run(["freeze", "--case-dir", d18] + FRZ)
         check("溯源台账 v1（数学错误版）freeze 拒 exit 2",
               p.returncode == 2 and "v2" in (p.stderr + p.stdout))
-        write_json(d18, "provenance_ledger.json", make_provenance(emap, hollow=True))
+        write_json(d18, "provenance_ledger.json", make_provenance(d18, emap, hollow=True))
         p = run(["freeze", "--case-dir", d18] + FRZ)
         check("stock>0 而 composition 空壳 freeze 拒 exit 2",
               p.returncode == 2 and "空壳" in (p.stderr + p.stdout))
-        write_json(d18, "provenance_ledger.json", make_provenance(emap, bad_closure=True))
+        write_json(d18, "provenance_ledger.json", make_provenance(d18, emap, bad_closure=True))
         p = run(["freeze", "--case-dir", d18] + FRZ)
         check("closure 自报 100 但按 composition 重算不闭合 freeze 拒 exit 2",
               p.returncode == 2 and "重算" in (p.stderr + p.stdout))
-        write_json(d18, "provenance_ledger.json", make_provenance(emap, wrong_sha=True))
+        write_json(d18, "provenance_ledger.json", make_provenance(d18, emap, wrong_sha=True))
         p = run(["freeze", "--case-dir", d18] + FRZ)
         check("成员集哈希错配 freeze 拒 exit 2", p.returncode == 2 and "哈希不符" in (p.stderr + p.stdout))
         write_json(d18, "provenance_ledger.json",
-                   make_provenance({"E1": ["0xabc"], "E_ghost": ["0xffff"]}))
+                   make_provenance(d18, {"E1": ["0xabc"], "E_ghost": ["0xdef"]}))
         p = run(["freeze", "--case-dir", d18] + FRZ)
         check("台账实体集与名册不一致 freeze 拒 exit 2",
               p.returncode == 2 and "实体集" in (p.stderr + p.stdout))
-        write_json(d18, "provenance_ledger.json", make_provenance(emap, stable=False))
+        write_json(d18, "provenance_ledger.json", make_provenance(d18, emap, stable=False))
         p = run(["freeze", "--case-dir", d18] + FRZ)
         check("敏感性不稳 freeze 拒 exit 2", p.returncode == 2 and "敏感性" in (p.stderr + p.stdout))
-        write_json(d18, "provenance_ledger.json", make_provenance(emap))
+
+        # high-2 核心反例：金额/成员/closure/stable 全合法、但完全没有原始数据绑定。
+        # 旧 freeze 会把这类人工台账当“合法正例”；修复后必须在重放前 fail-closed。
+        detached = make_provenance(d18, emap)
+        detached.pop("input_binding", None)
+        write_json(d18, "provenance_ledger.json", detached)
+        p = run(["freeze", "--case-dir", d18] + FRZ)
+        check("与边表脱离的人工合法台账 freeze 拒 exit 2",
+              p.returncode == 2 and "input_binding" in (p.stderr + p.stdout))
+
+        # stable 自报 true，但把 fifo 的策略明细主导终点改掉；freeze 必须从明细重算翻转。
+        fake_stable = make_provenance(d18, emap)
+        fa = fake_stable["bounds_sensitivity"]["per_entity"]["E1"]["anchors"]["current"]
+        fa["policy_details"]["fifo"][0]["terminal"] = ["BOUNDARY", "dex_pool", "0xpool"]
+        write_json(d18, "provenance_ledger.json", fake_stable)
+        p = run(["freeze", "--case-dir", d18] + FRZ)
+        check("策略明细翻转但 stable=true 仍由 freeze 重算拒绝",
+              p.returncode == 2 and "机器从明细重算" in (p.stderr + p.stdout))
+
+        # closure/敏感性都保持自洽，只篡改来源类别；唯有从当前原始边重放才能识别。
+        stale = make_provenance(d18, emap)
+        for anchor in stale["entities"][0]["anchors"].values():
+            anchor["composition"][0]["subkind"] = "proven_airdrop"
+        for anchor in stale["bounds_sensitivity"]["per_entity"]["E1"]["anchors"].values():
+            for rows in anchor["policy_details"].values():
+                rows[0]["terminal"] = ["PROVEN_ORIGIN", "proven_airdrop", Z]
+            anchor["top_by_policy"] = {p: ["PROVEN_ORIGIN", "proven_airdrop", Z]
+                                        for p in ("pro_rata", "fifo", "lifo")}
+        write_json(d18, "provenance_ledger.json", stale)
+        p = run(["freeze", "--case-dir", d18] + FRZ)
+        check("内容自洽但与当前原始边重放不一致 freeze 拒",
+              p.returncode == 2 and "重放语义摘要" in (p.stderr + p.stdout))
+
+        valid = make_provenance(d18, emap)
+        write_json(d18, "provenance_ledger.json", valid)
         p = run(["freeze", "--case-dir", d18] + FRZ)
         check("台账修复后 freeze 放行 exit 0", p.returncode == 0)
+
+        # medium-4 自然并修：成员不变，仅 provenance 参数/摘要变化也必须追加 revision。
+        valid2 = make_provenance(d18, emap, depth_limit=9)
+        write_json(d18, "provenance_ledger.json", valid2)
+        p = run(["freeze", "--case-dir", d18] + FRZ)
+        fz18 = json.load(open(os.path.join(d18, "entity_freeze.json")))
+        check("仅 provenance 变化也追加 freeze revision",
+              p.returncode == 0 and len(fz18["revisions"]) == 1
+              and fz18["provenance_ledger_sha256"] != fz18["revisions"][0]["provenance_ledger_sha256"])
+        # check-unseal 不能再只看 members_sha256：当前 provenance 任一漂移都应拒揭盲。
+        drifted = copy.deepcopy(valid2)
+        drifted["generated_at"] = "2099-01-01T00:00:00Z"
+        write_json(d18, "provenance_ledger.json", drifted)
+        p = run(["freeze", "--case-dir", d18, "--check-unseal"])
+        check("check-unseal 复核 provenance 当前哈希漂移并拒绝", p.returncode == 2)
+        write_json(d18, "provenance_ledger.json", valid2)
+        p = run(["freeze", "--case-dir", d18, "--check-unseal"])
+        check("check-unseal 全绑定恢复后放行", p.returncode == 0)
+        edge_path = os.path.join(d18, "data", "edges.jsonl")
+        edge_before = open(edge_path, "rb").read()
+        with open(edge_path, "ab") as f:
+            f.write((json.dumps([172800, 2, 0, 0, Z, "0xabc", 1]) + "\n").encode())
+        p = run(["freeze", "--case-dir", d18, "--check-unseal"])
+        check("check-unseal 直接复核原始边绑定漂移并拒绝", p.returncode == 2)
+        with open(edge_path, "wb") as f:
+            f.write(edge_before)
+        p = run(["freeze", "--case-dir", d18, "--check-unseal"])
+        check("原始边恢复后 check-unseal 放行", p.returncode == 0)
 
         # 19. manifest artifacts 清单被手改（删掉必备件条目）→ verify 独立重算拒
         d19 = os.path.join(root, "case_handedit")

@@ -73,14 +73,23 @@ def content_id(prefix, parts, n=12):
     return f"{prefix}-{hashlib.sha256(','.join(parts).encode()).hexdigest()[:n]}"
 
 
-# ---------------- 数据装载：统一成 edges(ts BIGINT, f VARCHAR, t VARCHAR, amt HUGEINT) ----------------
+# ---------------- 数据装载 ----------------
+#
+# edges 的前四列是所有扫描器的公共契约。后五列只供需要逐笔重演的
+# entity_source_trace 使用：不能再把 slot/block/log 顺序压扁成秒级 ts。
+# order_exact=true 表示 chain_pos1..3 足以唯一恢复链上执行顺序；否则 ingest_seq 只代表
+# 采集文件观察顺序，溯源器会把同一最细粒度桶内的因果流转记为 order_ambiguous，不能
+# 把观察顺序伪装成链上真序。
 
 def load_sol(con, pattern):
     files = sorted(glob.glob(pattern))
     if not files:
         log(f"探测失败：--edges-sol 无匹配文件: {pattern}")
         sys.exit(2)
-    con.execute("CREATE TABLE edges (ts BIGINT, f VARCHAR, t VARCHAR, amt HUGEINT)")
+    con.execute("""CREATE TABLE edges (
+        ts BIGINT, f VARCHAR, t VARCHAR, amt HUGEINT,
+        chain_pos1 BIGINT, chain_pos2 BIGINT, chain_pos3 BIGINT,
+        order_exact BOOLEAN, ingest_seq BIGINT)""")
     total = 0
     for fp in files:
         rows = []
@@ -91,14 +100,25 @@ def load_sol(con, pattern):
                 if not line:
                     continue
                 r = json.loads(line)
-                # [ts, slot, from_owner, to_owner, amount_raw]
-                rows.append((int(r[0]), r[2], r[3], int(r[4])))
+                # 兼容既有 5 元组 [ts,slot,from,to,amt]；它只有 slot、没有 tx/instruction
+                # 序号，slot 内顺序不可证。新 7 元组
+                # [ts,slot,transaction_index,instruction_index,from,to,amt] 才是精确顺序。
+                seq = total + len(rows)
+                if isinstance(r, list) and len(r) == 5:
+                    rows.append((int(r[0]), r[2], r[3], int(r[4]),
+                                 int(r[1]), None, None, False, seq))
+                elif isinstance(r, list) and len(r) == 7:
+                    rows.append((int(r[0]), r[4], r[5], int(r[6]),
+                                 int(r[1]), int(r[2]), int(r[3]), True, seq))
+                else:
+                    log(f"探测失败：Solana 边须为 5 元组或带 tx/instruction 序号的 7 元组，收到 {r!r}")
+                    sys.exit(2)
                 if len(rows) >= 200_000:
-                    con.executemany("INSERT INTO edges VALUES (?,?,?,?)", rows)
+                    con.executemany("INSERT INTO edges VALUES (?,?,?,?,?,?,?,?,?)", rows)
                     total += len(rows)
                     rows = []
         if rows:
-            con.executemany("INSERT INTO edges VALUES (?,?,?,?)", rows)
+            con.executemany("INSERT INTO edges VALUES (?,?,?,?,?,?,?,?,?)", rows)
             total += len(rows)
         log(f"  已装载 {os.path.basename(fp)} → 累计 {total:,} 边")
     if not total:
@@ -125,6 +145,7 @@ def load_evm_v2(con, dir_):
            " + ('0x'||substr(data,51,16))::UBIGINT::HUGEINT")
     body = f"""
         SELECT lower(l.transaction_hash) AS tx, l.log_index AS li,
+               l.block_number AS bn,
                bt.ts_i::BIGINT AS ts,
                '0x' || right(lower(COALESCE(l.topic1, repeat('0', 64))), 40) AS f,
                '0x' || right(lower(COALESCE(l.topic2, repeat('0', 64))), 40) AS t,
@@ -149,11 +170,17 @@ def load_evm_v2(con, dir_):
         log("run 块区间存在重叠——物化 (tx,li) 去重路径（需较大临时盘）")
         con.execute(f"""
             CREATE TABLE edges AS
-            SELECT ANY_VALUE(ts) AS ts, ANY_VALUE(f) AS f, ANY_VALUE(t) AS t, ANY_VALUE(amt) AS amt
+            SELECT ANY_VALUE(ts) AS ts, ANY_VALUE(f) AS f, ANY_VALUE(t) AS t, ANY_VALUE(amt) AS amt,
+                   ANY_VALUE(bn)::BIGINT AS chain_pos1, 0::BIGINT AS chain_pos2,
+                   ANY_VALUE(li)::BIGINT AS chain_pos3, true AS order_exact,
+                   ANY_VALUE(li)::BIGINT AS ingest_seq
             FROM ({body}) GROUP BY tx, li""")
     else:
         log(f"{len(spans)} 个 run 块区间互斥——VIEW 轻路径（每次查询流式重扫 parquet）")
-        con.execute(f"CREATE VIEW edges AS SELECT ts, f, t, amt FROM ({body})")
+        con.execute(f"""CREATE VIEW edges AS
+            SELECT ts, f, t, amt, bn::BIGINT AS chain_pos1, 0::BIGINT AS chain_pos2,
+                   li::BIGINT AS chain_pos3, true AS order_exact, li::BIGINT AS ingest_seq
+            FROM ({body})""")
     n = con.execute("SELECT COUNT(*) FROM edges").fetchone()[0]
     if not n:
         log("探测失败：v2 目录装载后边表为空")
@@ -171,7 +198,35 @@ def attach_duckdb(con, path, table):
     if not need <= cols:
         log(f"探测失败：src.{table} 缺列 {need - cols}")
         sys.exit(2)
-    con.execute(f"CREATE VIEW edges AS SELECT ts, f, t, CAST(amt AS HUGEINT) amt FROM src.{table}")
+    # 已物化库允许携带不同链的顺序列。只有完整 EVM(block+log) 或
+    # Solana(slot+tx+instruction) 序号才宣称 exact；其余最细已知桶内交给溯源器记未决。
+    def first(*names):
+        return next((n for n in names if n in cols), None)
+
+    slot = first("slot")
+    block = first("block_number", "block")
+    txi = first("transaction_index", "tx_index")
+    ins = first("instruction_index", "inner_instruction_index", "log_index")
+    logi = first("log_index")
+    if block and logi:
+        p1, p2, p3, exact = block, "0", logi, "true"
+    elif slot and txi and ins:
+        p1, p2, p3, exact = slot, txi, ins, "true"
+    elif slot:
+        p1, p2, p3, exact = slot, txi or "NULL", ins or "NULL", "false"
+    elif block:
+        p1, p2, p3, exact = block, txi or "NULL", logi or "NULL", "false"
+    else:
+        p1 = p2 = p3 = "NULL"
+        exact = "false"
+    con.execute(f"""CREATE VIEW edges AS
+        SELECT ts, f, t, CAST(amt AS HUGEINT) amt,
+               TRY_CAST({p1} AS BIGINT) AS chain_pos1,
+               TRY_CAST({p2} AS BIGINT) AS chain_pos2,
+               TRY_CAST({p3} AS BIGINT) AS chain_pos3,
+               {exact} AS order_exact,
+               row_number() OVER ()::BIGINT AS ingest_seq
+        FROM src.{table}""")
     return con.execute("SELECT COUNT(*) FROM edges").fetchone()[0]
 
 

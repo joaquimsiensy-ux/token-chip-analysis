@@ -17,12 +17,14 @@
   python3 handoff_manifest.py freeze --case-dir <案目录> --members analysis-state.json --entity-file s2_entity_members.json
   python3 handoff_manifest.py freeze --case-dir <案目录> --check-unseal
 
-freeze 四重机器前置（v6.8.1，全部 fail-closed 无跳过通道）：
+freeze 四重机器前置（全部 fail-closed 无跳过通道）：
   0. 同进程严格 v2 verify（manifest 缺失/BLOCKED/漂移/legacy 一律拒）
   1. 裁决闭环 validator validate --entity-file（全候选成员级裁决＋linked_entity 名册绑定）
   2. 溯源台账内容级绑定（schema=v2＋实体集双向一致＋逐实体成员哈希＋closure 按
-     composition 明细重算＋敏感性 stable=true——自报值一概不作数）
-  3. 成员表/实体名册/溯源台账三份哈希入冻结记录
+     composition 明细重算）
+  3. 原始边/标签/分母/cutoff/block/manifest/data_map/算法哈希全绑定，以当前代码真实重放；
+     从三策略完整明细重算消费与顺序敏感性，不信 stable 自报。全部绑定哈希入 revision，
+     check-unseal 逐项复核当前文件。
 """
 import argparse
 import hashlib
@@ -77,7 +79,9 @@ REQUIRED_FOR_READY_EVM = ["time_spotcheck.json"]
 # 自动 gate 适配：从产物 JSON 读 verdict/exit_code（防手报）；verify 时重读比对
 AUTO_GATES = {"accounting_gate": "accounting_mode.json", "supply_truth_gate": "supply_truth.json",
               "time_spotcheck": "time_spotcheck.json"}
-EXCLUDE_SUFFIXES = (".log", ".duckdb", ".duckdb.wal", ".lock", ".tmp", ".bak")
+# data_map 明确登记的 .duckdb 可能是 provenance 的正式重放源，必须进 manifest 绑定；
+# WAL/临时文件仍排除。大库由 sha256-sparse 做交接哈希，freeze 的 input_binding 另做完整哈希。
+EXCLUDE_SUFFIXES = (".log", ".duckdb.wal", ".lock", ".tmp", ".bak")
 EXCLUDE_NAMES = {"config.json", MANIFEST_NAME}  # manifest 不含自身；config 可能含运行时 key 路径
 
 
@@ -439,6 +443,235 @@ def cmd_receipt(a):
 
 # ---------------- freeze ----------------
 
+def full_sha256_file(path):
+    """provenance 输入绑定使用完整 SHA-256；不能拿 manifest 的大文件抽样哈希代替。"""
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for blk in iter(lambda: f.read(CHUNK), b""):
+            h.update(blk)
+    return h.hexdigest(), os.path.getsize(path)
+
+
+def resolve_bound_path(case_dir, shown):
+    if not isinstance(shown, str) or not shown:
+        raise ValueError("绑定 path 为空")
+    return os.path.normpath(shown if os.path.isabs(shown) else os.path.join(case_dir, shown))
+
+
+def check_bound_file(case_dir, rec, expected_path=None):
+    if not isinstance(rec, dict):
+        return None, "文件绑定不是对象"
+    try:
+        p = resolve_bound_path(case_dir, rec.get("path"))
+        if expected_path and os.path.realpath(p) != os.path.realpath(expected_path):
+            return p, f"绑定路径 {p} ≠ 当前要求路径 {expected_path}"
+        if not os.path.isfile(p):
+            return p, f"绑定文件不存在: {p}"
+        digest, size = full_sha256_file(p)
+        if digest != rec.get("sha256") or size != rec.get("bytes"):
+            return p, f"绑定文件哈希/大小漂移: {rec.get('path')}"
+        return p, None
+    except (OSError, ValueError, TypeError) as e:
+        return None, f"文件绑定校验失败: {e}"
+
+
+def provenance_semantic_payload(report):
+    return {k: report.get(k) for k in ("schema", "total_supply_raw", "input_binding",
+                                        "entities", "unresolved_total_pct", "bounds_sensitivity")}
+
+
+def provenance_semantic_sha(report):
+    return hashlib.sha256(json.dumps(provenance_semantic_payload(report), sort_keys=True,
+                                     ensure_ascii=False, separators=(",", ":")).encode()).hexdigest()
+
+
+def recompute_provenance_sensitivity(pl):
+    """只读各策略完整明细重算，不读取 stable/agree/top_by_policy 汇总布尔值作裁决。"""
+    fails = []
+    bs = pl.get("bounds_sensitivity") or {}
+    per = bs.get("per_entity")
+    if not isinstance(per, dict):
+        return ["bounds_sensitivity.per_entity 缺失"]
+    entity_ids = {e.get("entity_id") for e in pl.get("entities") or []}
+    if set(per) != entity_ids:
+        fails.append("敏感性实体集与 provenance entities 不一致")
+    all_stable = True
+    for eid in sorted(entity_ids):
+        ent_s = per.get(eid) or {}
+        anchors = ent_s.get("anchors") or {}
+        for anchor_name in ("current", "peak"):
+            # stock=0 的锚点允许没有敏感性明细；正库存必须三策略齐全。
+            ent = next((x for x in pl.get("entities", []) if x.get("entity_id") == eid), {})
+            stock = int(((ent.get("anchors") or {}).get(anchor_name) or {}).get("stock_raw", 0))
+            if stock <= 0:
+                continue
+            detail = anchors.get(anchor_name) or {}
+            pd = detail.get("policy_details")
+            if not isinstance(pd, dict) or set(pd) != {"pro_rata", "fifo", "lifo"}:
+                fails.append(f"{eid} {anchor_name} 缺三策略完整 policy_details")
+                all_stable = False
+                continue
+            tops = []
+            for policy in ("pro_rata", "fifo", "lifo"):
+                rows = pd.get(policy)
+                if not isinstance(rows, list) or not rows:
+                    fails.append(f"{eid} {anchor_name} {policy} 明细为空")
+                    tops.append(None)
+                    continue
+                try:
+                    parsed = [(tuple(r["terminal"]), int(r["raw"])) for r in rows]
+                    if any(v < 0 for _, v in parsed):
+                        raise ValueError("raw<0")
+                    total = sum(v for _, v in parsed)
+                    if abs(total - stock) > stock * 0.005:
+                        fails.append(f"{eid} {anchor_name} {policy} 明细不闭合: {total} vs {stock}")
+                    tops.append(sorted(parsed, key=lambda kv: (-kv[1], str(kv[0])))[0][0])
+                except (KeyError, TypeError, ValueError) as e:
+                    fails.append(f"{eid} {anchor_name} {policy} 明细结构异常: {e}")
+                    tops.append(None)
+            if len(set(tops)) != 1:
+                fails.append(f"{eid} {anchor_name} 三策略主导终点翻转（机器从明细重算）")
+                all_stable = False
+            order_rows = pd.get("pro_rata") or []
+            order_raw = sum(int(r.get("raw", 0)) for r in order_rows
+                            if r.get("terminal") == ["UNRESOLVED", "order_ambiguous", None])
+            threshold = float(((detail.get("ordering_sensitivity") or {}).get("materiality_pct", 0.5)))
+            if order_raw * 100.0 / stock > threshold:
+                fails.append(f"{eid} {anchor_name} 事件顺序未决 {order_raw*100.0/stock:.4f}% > {threshold}%")
+                all_stable = False
+    if bs.get("conservative_vs_aggressive_verdict_stable") is not all_stable:
+        fails.append("溯源敏感性 bounds_sensitivity 汇总布尔值与策略明细机器重算不一致")
+    return fails
+
+
+def validate_and_replay_provenance(case_dir, pl, pl_path, ep, manifest):
+    """完整输入绑定 + 当前代码真实重放。返回失败列表；空列表才允许 freeze。"""
+    fails = []
+    b = pl.get("input_binding")
+    if not isinstance(b, dict):
+        return ["provenance 缺 input_binding——旧/人工台账不可冻结，必须从原始边重跑"]
+
+    script = os.path.join(os.path.dirname(os.path.abspath(__file__)), "entity_source_trace.py")
+    algorithm = b.get("algorithm") or {}
+    algo = algorithm.get("script_sha256")
+    current_algo, _ = full_sha256_file(script)
+    if algo != current_algo:
+        fails.append("entity_source_trace.py 算法哈希已变化——必须用当前代码重跑 provenance")
+    algo_files = algorithm.get("files") or {}
+    loader = os.path.join(os.path.dirname(os.path.abspath(__file__)), "wave_scan.py")
+    for name, expected in (("entity_source_trace.py", script), ("wave_scan.py", loader)):
+        _, err = check_bound_file(case_dir, algo_files.get(name), expected_path=expected)
+        if err:
+            fails.append(f"算法依赖 {name} {err}")
+
+    _, err = check_bound_file(case_dir, b.get("entity_file"), expected_path=ep)
+    if err:
+        fails.append(f"entity_file {err}")
+    labels_path = None
+    if b.get("labels_file") is not None:
+        labels_path, err = check_bound_file(case_dir, b.get("labels_file"))
+        if err:
+            fails.append(f"labels_file {err}")
+
+    hb = b.get("handoff_manifest")
+    if not isinstance(hb, dict):
+        fails.append("provenance 未绑定 handoff_manifest")
+    else:
+        _, err = check_bound_file(case_dir, hb.get("file"),
+                                  expected_path=os.path.join(case_dir, MANIFEST_NAME))
+        if err:
+            fails.append(f"handoff_manifest {err}")
+        if hb.get("run_id") != manifest.get("run_id") or hb.get("scope") != manifest.get("scope"):
+            fails.append("provenance 绑定的 manifest run_id/scope(cutoff,block,denominators) 与当前不一致")
+
+    dm = b.get("data_map")
+    data_paths = set()
+    if not isinstance(dm, dict):
+        fails.append("provenance 未绑定 data_map.json")
+    else:
+        _, err = check_bound_file(case_dir, dm.get("file"),
+                                  expected_path=os.path.join(case_dir, "data_map.json"))
+        if err:
+            fails.append(f"data_map {err}")
+        data_paths = set(dm.get("paths") or [])
+
+    # 分母与边界必须来自同一已验证 manifest；没有冻结分母/边界本身就是不可复现。
+    scope = manifest.get("scope") or {}
+    den = scope.get("denominators")
+    supply = None
+    if isinstance(den, dict):
+        for key in ("total_supply_raw", "total_supply", "supply_raw"):
+            if den.get(key) is not None:
+                supply = str(den[key])
+                break
+    if supply is None or supply != str(pl.get("total_supply_raw")) \
+            or supply != str(b.get("total_supply_raw")):
+        fails.append("total_supply 未与 manifest.scope.denominators 的冻结值一致绑定")
+    if scope.get("cutoff_utc") in (None, "") and scope.get("frozen_block") in (None, ""):
+        fails.append("manifest 未冻结 cutoff_utc/frozen_block，provenance 不可复现")
+
+    source = b.get("source") or {}
+    source_files = source.get("files")
+    if not isinstance(source_files, list) or not source_files:
+        fails.append("provenance source.files 为空")
+    else:
+        art_paths = {x.get("path") for x in manifest.get("artifacts") or []}
+        for rec in source_files:
+            _, err = check_bound_file(case_dir, rec)
+            if err:
+                fails.append(f"source {err}")
+                continue
+            rel = rec.get("path")
+            if os.path.isabs(str(rel)) or rel not in data_paths or rel not in art_paths:
+                fails.append(f"source {rel} 未同时绑定 verified manifest.artifacts 与 data_map")
+
+    fails += recompute_provenance_sensitivity(pl)
+    if fails:
+        return fails
+
+    # 从允许字段重建命令，不执行 ledger 自报的自由文本 command。
+    kind = source.get("kind")
+    try:
+        arg = resolve_bound_path(case_dir, source.get("argument"))
+    except ValueError as e:
+        return [f"source argument 异常: {e}"]
+    fd, replay_path = tempfile.mkstemp(prefix=".provenance-replay-", suffix=".json", dir=case_dir)
+    os.close(fd)
+    try:
+        cmd = [sys.executable, script]
+        if kind == "sol":
+            cmd += ["--edges-sol", arg]
+        elif kind == "evm_v2":
+            cmd += ["--edges-evm-v2", arg]
+        elif kind == "duckdb":
+            cmd += ["--duckdb", arg, "--edges-table", str(source.get("edges_table") or "edges")]
+        else:
+            return [f"未知 provenance source kind: {kind!r}"]
+        params = b.get("algorithm_params") or {}
+        cmd += ["--total-supply", str(b.get("total_supply_raw")),
+                "--entity-file", ep, "--out", replay_path,
+                "--depth-limit", str(params["depth_limit"]),
+                "--facility-min-degree", str(params["facility_min_degree"]),
+                "--node-budget", str(params["node_budget"]),
+                "--edge-budget", str(params["edge_budget"])]
+        if labels_path:
+            cmd += ["--labels-file", labels_path]
+        env = dict(os.environ)
+        env["PYTHONDONTWRITEBYTECODE"] = "1"
+        p = subprocess.run(cmd, capture_output=True, text=True, env=env)
+        if p.returncode != 0:
+            return [f"provenance 原始数据重放失败 exit={p.returncode}: "
+                    f"{(p.stdout + p.stderr)[-1200:]}"]
+        fresh = load_json(replay_path)
+        if provenance_semantic_sha(fresh) != provenance_semantic_sha(pl):
+            return ["provenance 重放语义摘要与待冻结台账不一致——台账过期/人工构造/参数漂移"]
+    except (KeyError, OSError, ValueError, TypeError) as e:
+        return [f"provenance 重放参数/执行异常: {e}"]
+    finally:
+        if os.path.isfile(replay_path):
+            os.unlink(replay_path)
+    return []
+
 def cmd_freeze(a):
     case_dir = os.path.abspath(a.case_dir)
     path = os.path.join(case_dir, FREEZE_NAME)
@@ -446,9 +679,47 @@ def cmd_freeze(a):
         if os.path.isfile(path):
             try:
                 fz = load_json(path)
-                if fz.get("members_sha256"):
+                checks = ((fz.get("members_source"), fz.get("members_sha256")),
+                          (fz.get("entity_file"), fz.get("entity_file_sha256")),
+                          ("provenance_ledger.json", fz.get("provenance_ledger_sha256")),
+                          (MANIFEST_NAME, fz.get("manifest_sha256")),
+                          ("data_map.json", fz.get("data_map_sha256")))
+                drift = []
+                for rel, want in checks:
+                    if not rel or not want:
+                        drift.append(f"冻结记录缺绑定字段: {rel or 'unknown'}")
+                        continue
+                    p = resolve_bound_path(case_dir, rel)
+                    if not os.path.isfile(p):
+                        drift.append(f"冻结后缺文件: {rel}")
+                        continue
+                    _, got, _ = sha256_file(p)
+                    if got != want:
+                        drift.append(f"冻结后哈希漂移: {rel}")
+                # provenance ledger 内绑定的原始边、标签和算法依赖也必须仍是冻结时版本；
+                # 只验 ledger 自身哈希会漏掉“ledger 未动、raw/labels 已换”的揭盲绕过。
+                pl_now = load_json(os.path.join(case_dir, "provenance_ledger.json"))
+                binding = pl_now.get("input_binding") or {}
+                bound_records = []
+                bound_records += list(((binding.get("source") or {}).get("files") or []))
+                bound_records += list(((binding.get("algorithm") or {}).get("files") or {}).values())
+                for key in ("entity_file", "labels_file"):
+                    if binding.get(key) is not None:
+                        bound_records.append(binding.get(key))
+                for key in ("handoff_manifest", "data_map"):
+                    if isinstance(binding.get(key), dict) and binding[key].get("file"):
+                        bound_records.append(binding[key]["file"])
+                for rec in bound_records:
+                    _, err = check_bound_file(case_dir, rec)
+                    if err:
+                        drift.append(err)
+                if not drift:
                     print(f"[freeze] 已冻结（{fz.get('frozen_at_utc')}，成员表 {fz['members_sha256'][:12]}…）——允许揭盲/读 sealed")
                     return 0
+                print("[freeze] 冻结绑定已漂移——禁止揭盲:", file=sys.stderr)
+                for x in drift:
+                    print(f"  ✗ {x}", file=sys.stderr)
+                return 2
             except Exception:
                 pass
         print("[freeze] entity_freeze.json 不存在或无效——实体未冻结，禁止揭盲、禁止读 sealed/", file=sys.stderr)
@@ -480,7 +751,7 @@ def cmd_freeze(a):
 
     # ── 前置 0：同进程严格 v2 verify（v6.8.1 codex 复核修复——manifest 缺失/BLOCKED/
     # 哈希漂移/legacy 契约时一律禁止冻结；不存在绕过 verify 的冻结路径）
-    vfails, _, _ = verify_case(case_dir, legacy_read_only=False)
+    vfails, verified_manifest, _ = verify_case(case_dir, legacy_read_only=False)
     if vfails:
         print("[freeze] handoff verify 未通过——禁止冻结（fail-closed）:", file=sys.stderr)
         for x in vfails:
@@ -503,7 +774,7 @@ def cmd_freeze(a):
     # ①schema 必须 v2（v1 是 pro-rata 数学错误版）；②台账实体 ID 集与本次名册双向一致；
     # ③逐实体 members_sha256 与名册成员集哈希一致（改过名册的旧台账自动失效）；
     # ④closure 从 composition[].raw 重算，不读自报 closure_check；
-    # ⑤stock>0 而 composition 为空＝空壳台账，拒；⑥敏感性 stable 必须 true）
+    # ⑤stock>0 而 composition 为空＝空壳台账，拒。敏感性与原始数据真实性归前置 3 重算/重放。）
     pl_path = os.path.join(case_dir, "provenance_ledger.json")
     if not os.path.isfile(pl_path):
         print("[freeze] 缺 provenance_ledger.json——先对临时实体表跑 entity_source_trace.py"
@@ -548,30 +819,47 @@ def cmd_freeze(a):
                           f"stock={stock}（偏差 {abs(s_raw-stock)*100.0/stock:.2f}% > 0.5%——"
                           "closure 按构成明细重算，自报值不作数）", file=sys.stderr)
                     return 2
-        bs = pl.get("bounds_sensitivity") or {}
-        if bs.get("conservative_vs_aggressive_verdict_stable") is not True:
-            print("[freeze] 溯源敏感性不稳（FIFO/LIFO/pro-rata 主导终点翻转）——结论依赖消耗假设，"
-                  "禁止冻结；先解决未决量/标签覆盖再重跑溯源", file=sys.stderr)
-            return 2
     except (KeyError, ValueError, TypeError) as e:
         print(f"[freeze] provenance_ledger.json 结构异常: {e}", file=sys.stderr)
+        return 2
+
+    # ── 前置 3：完整输入绑定＋当前代码真实重放。此闸也从 policy_details 独立重算
+    # FIFO/LIFO/pro-rata 与顺序敏感性，不读取 ledger 自报 stable 布尔值作裁决。
+    replay_fails = validate_and_replay_provenance(
+        case_dir, pl, pl_path, ep, verified_manifest)
+    if replay_fails:
+        print("[freeze] provenance 原始数据绑定/重放未通过——禁止冻结:", file=sys.stderr)
+        for x in replay_fails:
+            print(f"  ✗ {x}", file=sys.stderr)
         return 2
 
     algo, digest, size = sha256_file(mp)
     _, ent_digest, _ = sha256_file(ep)
     _, pl_digest, _ = sha256_file(pl_path)
+    _, manifest_digest, _ = sha256_file(os.path.join(case_dir, MANIFEST_NAME))
+    _, data_map_digest, _ = sha256_file(os.path.join(case_dir, "data_map.json"))
+    binding_digest = hashlib.sha256(json.dumps(pl.get("input_binding"), sort_keys=True,
+                                               ensure_ascii=False).encode()).hexdigest()
     now = utcnow()
     entry = {"members_source": os.path.relpath(mp, case_dir), "members_sha256": digest,
              "entity_file": os.path.relpath(ep, case_dir), "entity_file_sha256": ent_digest,
              "provenance_ledger_sha256": pl_digest,
+             "provenance_input_binding_sha256": binding_digest,
+             "manifest_sha256": manifest_digest,
+             "manifest_run_id": verified_manifest.get("run_id"),
+             "manifest_scope": verified_manifest.get("scope"),
+             "data_map_sha256": data_map_digest,
              "frozen_at_utc": now, "pending_items": [x for x in (a.pending or "").split(";") if x],
              "casebook_note": a.casebook_note}
     rev_keys = ("members_source", "members_sha256", "entity_file", "entity_file_sha256",
-                "provenance_ledger_sha256", "frozen_at_utc", "pending_items", "casebook_note")
+                "provenance_ledger_sha256", "provenance_input_binding_sha256",
+                "manifest_sha256", "manifest_run_id", "manifest_scope", "data_map_sha256",
+                "frozen_at_utc", "pending_items", "casebook_note")
     if os.path.isfile(path):
         fz = load_json(path)
-        if fz.get("members_sha256") == digest and fz.get("entity_file_sha256") == ent_digest:
-            print("[freeze] 成员表与实体名册均未变化，无需新 revision")
+        no_op_keys = tuple(k for k in rev_keys if k != "frozen_at_utc")
+        if all(fz.get(k) == entry.get(k) for k in no_op_keys):
+            print("[freeze] 成员/名册/provenance/manifest/data_map 全部绑定未变化，无需新 revision")
             return 0
         fz.setdefault("revisions", []).append({k: fz[k] for k in rev_keys if k in fz})
         fz.update(entry)

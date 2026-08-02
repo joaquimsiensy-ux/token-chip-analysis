@@ -17,8 +17,9 @@
 first_meaningful_day 抗 dust 定义（首日末余额 ≥自身峰值×first-meaningful-ratio）。
 
 输入三选一（同 wave_scan）：--edges-sol / --edges-evm-v2 / --duckdb。
-输出：--out flow_anomaly_report.json（schema flow-anomaly/v1，来源/收方数组全量零截断，
-权威定义 references/scan-schemas.md）。
+输出：--out flow_anomaly_report.json（schema flow-anomaly/v1，来源/收方数组全量零截断；
+sink 另含历史峰值、当前余额、全史净流入，供 validator 防多窗口累计低估；权威定义
+references/scan-schemas.md）。
 
 退出码：0=扫描完成；2=数据探测失败/参数错误（fail-closed）；1=脚本自身错误。
 
@@ -208,12 +209,24 @@ def main():
         for ts, f, v in rows:
             if w0 <= int(ts) <= w1 and f in best_srcs:
                 src_pct[f] = src_pct.get(f, 0) + int(v)
+        qualified_in = sum(int(v) for _, _, v in rows)
+        net_in = con.execute(f"""
+            SELECT COALESCE(SUM(CASE WHEN t = '{t}' AND f <> t THEN amt
+                                     WHEN f = '{t}' AND t <> f THEN -amt ELSE 0 END), 0)
+            FROM eflow WHERE t = '{t}' OR f = '{t}'""").fetchone()[0]
+        hist_peak, current_bal = info.get(t, (0, 0, 0))[:2]
         sinks.append({
             "id": f"sink-{t}",
             "addr": t,
             "best_window": {"start": day_str(w0 // 86400), "end": day_str(w1 // 86400),
                             "inflow_pct": round(best_sum * 100.0 / total, 4),
                             "source_count": len(best_srcs)},
+            # 判级影响不能只看单个最佳窗：多段不重叠的 4% 流入可累计成 12% 历史库存。
+            # validator 以历史峰值/当前余额/全史净流入/合格最佳窗的最大值重算影响。
+            "balance": {"historical_peak_pct": round(int(hist_peak) * 100.0 / total, 4),
+                        "current_balance_pct": round(int(current_bal) * 100.0 / total, 4)},
+            "all_time": {"net_inflow_pct": round(int(net_in) * 100.0 / total, 4),
+                         "qualified_inflow_pct": round(qualified_in * 100.0 / total, 4)},
             "sources": sorted(({"addr": f, "pct": round(v * 100.0 / total, 4),
                                 "retention_bucket": retention_bucket(info[f][1], info[f][0])
                                 if f in info else None}
@@ -299,7 +312,8 @@ def main():
     log(f"汇集点 {len(sinks)} 个 / 分发点 {len(sprays)} 个 → {a.out}")
     for s in sinks[:10]:
         log(f"  sink {s['addr'][:14]}… 窗{s['best_window']['start']}起 "
-            f"流入{s['best_window']['inflow_pct']}% 来源{s['best_window']['source_count']}")
+            f"流入{s['best_window']['inflow_pct']}% 来源{s['best_window']['source_count']} | "
+            f"历史峰值{s['balance']['historical_peak_pct']}% 净流入{s['all_time']['net_inflow_pct']}%")
     for s in sprays[:10]:
         if s["mode"] == "pulse":
             log(f"  spray[脉冲] {s['addr'][:14]}… 窗{s['best_window']['start']}起 "

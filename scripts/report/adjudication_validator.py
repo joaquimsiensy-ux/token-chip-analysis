@@ -81,6 +81,16 @@ def check_source_schemas(wave, flow):
         fails.append(f"wave_scan_report schema 异常: {wave.get('schema')}（需要 {WAVE_SCHEMA}——旧版重跑 v2）")
     if flow.get("schema") != FLOW_SCHEMA:
         fails.append(f"flow_anomaly_report schema 异常: {flow.get('schema')}（需要 {FLOW_SCHEMA}）")
+    else:
+        # high-3：旧 flow/v1 sink 只有 best_window，会系统性低估多窗口累计影响。
+        # 保持 schema 名兼容，但缺历史峰值/当前余额/全史净流入的新产物一律拒绝重跑。
+        for s in flow.get("sinks", []):
+            required = ((s.get("balance") or {}).get("historical_peak_pct"),
+                        (s.get("balance") or {}).get("current_balance_pct"),
+                        (s.get("all_time") or {}).get("net_inflow_pct"))
+            if any(not isinstance(v, (int, float)) for v in required):
+                fails.append(f"flow sink {s.get('id')} 缺 historical_peak/current_balance/"
+                             "all_time.net_inflow——旧产物必须重跑")
     return fails
 
 
@@ -105,8 +115,12 @@ def collect_candidates(wave, flow):
                       "members": set(g.get("members", [])),
                       "scale_pct": float(g.get("group_total_pct", 0))})
     for s in flow.get("sinks", []):
+        scale = max(float(s.get("best_window", {}).get("inflow_pct", 0) or 0),
+                    float(s.get("balance", {}).get("historical_peak_pct", 0) or 0),
+                    float(s.get("balance", {}).get("current_balance_pct", 0) or 0),
+                    float(s.get("all_time", {}).get("net_inflow_pct", 0) or 0))
         put(s["id"], {"obj": s, "kind": "sink", "members": {s["addr"]},
-                      "scale_pct": float(s.get("best_window", {}).get("inflow_pct", 0))})
+                      "scale_pct": scale})
     for s in flow.get("sprays", []):
         bw = s.get("best_window") or {}
         scale = max(float(bw.get("outflow_pct", 0) or 0),

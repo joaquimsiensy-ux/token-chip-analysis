@@ -51,7 +51,8 @@ def wj(d, name, obj):
         json.dump(obj, f, ensure_ascii=False)
 
 
-def make_reports(d, wave_peak=12.0, eqg_pct=3.0):
+def make_reports(d, wave_peak=12.0, eqg_pct=3.0, sink_window=2.5,
+                 sink_peak=2.5, sink_current=2.5, sink_net=2.5):
     """两候选：1 个 wave（3 成员、峰 wave_peak%）+ 1 个 eqg（2 收方、组 eqg_pct%）。"""
     wj(d, "wave_scan_report.json", {
         "schema": "wave-scan/v2", "scan_universe_count": 5,
@@ -67,7 +68,11 @@ def make_reports(d, wave_peak=12.0, eqg_pct=3.0):
     wj(d, "flow_anomaly_report.json", {
         "schema": "flow-anomaly/v1", "eligible_universe_count": 5,
         "sinks": [{"id": "sink-HubX", "addr": "HubX",
-                   "best_window": {"inflow_pct": 2.5, "source_count": 6},
+                   "best_window": {"inflow_pct": sink_window, "source_count": 6},
+                   "balance": {"historical_peak_pct": sink_peak,
+                               "current_balance_pct": sink_current},
+                   "all_time": {"net_inflow_pct": sink_net,
+                                "qualified_inflow_pct": sink_peak},
                    "sources": []}],
         "sprays": [], "requires_adjudication": True})
 
@@ -121,7 +126,7 @@ def main():
     p = run(HANDOFF, ["freeze", "--case-dir", dfz] + FRZ)
     check("裁决闭环但缺溯源台账 freeze exit 2",
           p.returncode == 2 and "provenance" in (p.stderr + p.stdout))
-    wj(dfz, "provenance_ledger.json", make_provenance(emap))
+    wj(dfz, "provenance_ledger.json", make_provenance(dfz, emap))
     p = run(HANDOFF, ["freeze", "--case-dir", dfz] + FRZ)
     check("裁决＋溯源双闭环后 freeze 放行 exit 0", p.returncode == 0)
 
@@ -133,7 +138,7 @@ def main():
     run(HANDOFF, ["generate", "--case-dir", d2, "--status", "READY"] + GEN)
     wj(d2, "s2_entity_members.json", emap)
     wj(d2, "analysis-state.json", {"entities": []})
-    wj(d2, "provenance_ledger.json", make_provenance(emap))
+    wj(d2, "provenance_ledger.json", make_provenance(d2, emap))
     p = run(HANDOFF, ["freeze", "--case-dir", d2] + FRZ)
     check("缺裁决台账 freeze exit 2", p.returncode == 2 and "裁决闭环" in (p.stderr + p.stdout))
 
@@ -209,6 +214,16 @@ def main():
     fill_all(d8b, unresolved_ids={"eqg-1000-deadbeef"})
     p = run(VALIDATOR, ["validate", "--case-dir", d8b])
     check("unresolved 且 <5% 放行 exit 0", p.returncode == 0)
+
+    # high-3 反例：三个不重叠窗口各 4%，单个 best_window<5%，但累计库存历史峰值/现仓/净流入
+    # 已达 12%。旧 validator 只取 best_window=4% 会放行；修复后机器影响=12% 必须阻断。
+    d8c = os.path.join(root, "unres_sink_multiwindow")
+    os.makedirs(d8c)
+    make_reports(d8c, sink_window=4.0, sink_peak=12.0, sink_current=12.0, sink_net=12.0)
+    fill_all(d8c, unresolved_ids={"sink-HubX"})
+    p = run(VALIDATOR, ["validate", "--case-dir", d8c])
+    check("sink 多窗口累计 12%（单窗 4%）unresolved 必须 exit 2",
+          p.returncode == 2 and "unresolved" in p.stdout)
 
     # 9. 源报告重跑（整册哈希不符）
     d9 = os.path.join(root, "stale")

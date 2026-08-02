@@ -56,17 +56,17 @@
   "_calibration_note": "滑窗判定修正在案：达标窗＝同窗同时满足两条（Q1 金额最大窗 22.2%/4 来源被拒、14 来源/18.8% 双达标窗存在——先取金额最大再验来源数是实现 bug）。v6.8.1 实体抵消改 entity_id 分组后（回测未传 entity-file）25+20 个候选 ID 集合与 v6.8.0 完全一致。"
  },
  "provenance_v2": {
-  "_note_v2": "v6.8.1 正向模拟版实测（v1 数字出自 pro-rata 数学错误算法——累计流入归一化不扣流出——全部作废，禁止引用）。composition 语义＝锚点现存库存终点构成（Q1 峰值 EwUU 100%＝那批库存全经场内设施进货，与终裁'Q1 经 EwUU 调度'一致）；W1 进货史义务由 direct_upstream 毛流入清单承担（周转枢纽的现存构成会把早期藤蔓等比消耗殆尽——v6.8.1 回测首跑实测教训，进货单因此定为毛口径）。",
+  "_note_v2": "v6.8.1 历史正向模拟实测；2026-08-01 adversarial high-1 修复后，该旧基线因 Solana 5 元组缺 tx/instruction 精确顺序而失去发布资格，仅保留作历史诊断，禁止引用为当前稳定结论。必须用扩展 7 元组重采并重跑后才能恢复 stable=true。",
   "q1_peak_anchor": {"date": "2025-10-24", "stock_pct_of_supply": 7.941,
    "direct_upstream_count": 20, "w1_upstream_count": 9, "w1_upstream_pct_of_gross_in": 9.43,
    "composition_top": {"kind": "BOUNDARY", "subkind": "facility_confirmed", "via_prefix": "EwUU8oi", "pct_of_anchor": 100.0},
-   "simulation": {"ancestors": 26853, "edges_simulated": 3929612, "same_ts_cycle_groups": 3194, "data_gap_events": 2191, "_gap_note": "gap 事件全为粉尘级短缺，聚合占比 <0.005% 未进构成表"}},
+   "simulation": {"ancestors": 26853, "edges_simulated": 3929612, "legacy_same_ts_cycle_groups": 3194, "data_gap_events": 2191, "_gap_note": "v6.8.1 历史诊断字段；新算法不再拓扑排序同秒组，需补精确序号后重跑"}},
   "3ymk_peak_anchor": {"date": "2025-08-03", "stock_pct_of_supply": 4.374,
    "direct_upstream_count": 11, "w1_upstream_count": 10, "w1_upstream_pct_of_gross_in": 33.25,
    "ewuu_branch_stop": {"kind": "BOUNDARY", "subkind": "facility_confirmed", "pct_of_gross_in": 66.7533, "path_len": 1},
    "w1_penetrated_composition_entries_path_ge2": 4},
   "closure": {"peak_sum_pct": 100.0, "_note": "正向模拟构造性守恒，closure 为实现自检"},
-  "sensitivity_stable": true,
-  "run_params": {"edge_budget": 5000000, "_note": "Q1 祖先子图 393 万边超默认 3M 预算——fail-closed 生效后按 --edge-budget 5000000 重跑；labels 三址：EwUU8oi/5Q544fKr=facility、9Z=cex"}
+  "sensitivity_stable": false,
+  "run_params": {"edge_budget": 5000000, "_note": "历史参数记录。当前 fail-closed 原因是旧 Solana 边只有 slot、无 tx/instruction 序号；补齐扩展 7 元组后必须重新生成全部溯源锚点。"}
  }
 }

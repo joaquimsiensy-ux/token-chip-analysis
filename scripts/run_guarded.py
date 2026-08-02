@@ -47,7 +47,9 @@ def tree_rss(proc):
         procs = [proc] + proc.children(recursive=True)
         return sum(p.memory_info().rss for p in procs
                    if p.is_running()), len(procs)
-    except psutil.Error:
+    # macOS 受限/沙箱环境的 sysctl 可能从 psutil C 扩展直接抛原生 PermissionError，
+    # 不属于 psutil.Error。资源枚举不可读时本轮降级为 0，不得让监督器先于子进程退出码落盘崩溃。
+    except (psutil.Error, PermissionError, OSError):
         return 0, 0
 
 
@@ -58,7 +60,7 @@ def kill_tree(proc, sig):
                 p.send_signal(sig)
             except psutil.Error:
                 pass
-    except psutil.Error:
+    except (psutil.Error, PermissionError, OSError):
         pass
 
 

@@ -15,6 +15,8 @@
  10. 全实体两锚点 Σ=100% 闭合＋members_sha256 在场且可复算
  11. FIFO/LIFO 敏感性翻转 → exit 2 阻断（报告落盘 stable=false）
  12. --entity-file 类型硬检查：成员跨实体重复 / 非字符串成员 → exit 2
+ 13. 同秒真实顺序反例：X→实体先于 DEX→X；缺 tx/instruction 序号时不得拓扑反排，
+     必须记 UNRESOLVED/order_ambiguous 并 exit 2（旧实现会错报 dex 32.9% 且 stable=true）
 用法：python3 scripts/tests/test_entity_source_trace.py   退出码 0=PASS / 1=FAIL
 """
 import hashlib
@@ -43,11 +45,12 @@ def day(n):
     return n * 86400
 
 
-def write_edges(d, edges, name="edges.jsonl"):
+def write_edges(d, edges, name="edges.jsonl", exact=True):
     ep = os.path.join(d, name)
     with open(ep, "w", encoding="utf-8") as f:
-        for ts, frm, to, amt in edges:
-            f.write(json.dumps([ts, 0, frm, to, amt]) + "\n")
+        for i, (ts, frm, to, amt) in enumerate(edges):
+            row = [ts, 0, i, 0, frm, to, amt] if exact else [ts, 0, frm, to, amt]
+            f.write(json.dumps(row) + "\n")
     return ep
 
 
@@ -189,6 +192,35 @@ def main():
     check("成员非字符串 exit 2", p.returncode == 2)
     p = run_trace(d12, ep12, {"ea": []})
     check("成员空数组 exit 2", p.returncode == 2)
+
+    # 13. high-1 反例：真实观察顺序是 X→实体，然后 DEX→X。旧拓扑排序会反向执行成
+    # DEX→X→实体并把后到资金错归实体；且 FIFO/pro-rata/LIFO 仍可能同报 mint 为第一大，
+    # 因而旧 sensitivity 假稳定。5 元组只有 slot，没有 tx/instruction 序号，必须降级未决。
+    d13 = tempfile.mkdtemp(prefix="trace_order_ambiguous_")
+    E13 = [(day(1), Z, "X13", 100), (day(1), Z, "DEX13", 1000),
+           (day(2), "X13", "A13", 100), (day(2), "DEX13", "X13", 49)]
+    ep13 = write_edges(d13, E13, exact=False)
+    p = run_trace(d13, ep13, {"e13": ["A13"]}, labels={"DEX13": {"kind": "dex_pool"}})
+    check("同 slot 因果顺序缺失 exit 2 阻断", p.returncode == 2)
+    r13 = json.load(open(os.path.join(d13, "ledger.json")))
+    s13 = r13["bounds_sensitivity"]["per_entity"]["e13"]
+    check("顺序敏感性独立标 UNRESOLVED（不被 FIFO/LIFO 第一大一致掩盖）",
+          s13["ordering_stable"] is False
+          and s13["anchors"]["current"]["ordering_sensitivity"]["status"] == "UNRESOLVED")
+    c13 = {(c["kind"], c["subkind"]): c["pct_of_anchor"]
+           for c in r13["entities"][0]["anchors"]["current"]["composition"]}
+    check("歧义资金进入独立 order_ambiguous 桶", c13.get(("UNRESOLVED", "order_ambiguous")) == 100.0)
+
+    # 同一事件序列带 tx/instruction 精确索引时则应按真实顺序算出 mint 100%，不能再拓扑反排。
+    d13e = tempfile.mkdtemp(prefix="trace_order_exact_")
+    ep13e = write_edges(d13e, E13, exact=True)
+    p = run_trace(d13e, ep13e, {"e13": ["A13"]}, labels={"DEX13": {"kind": "dex_pool"}})
+    r13e = json.load(open(os.path.join(d13e, "ledger.json")))
+    c13e = {(c["kind"], c["subkind"]): c["pct_of_anchor"]
+            for c in r13e["entities"][0]["anchors"]["current"]["composition"]}
+    check("精确同秒序按 tx/instruction 执行：实体来源 mint 100%",
+          p.returncode == 0 and c13e.get(("PROVEN_ORIGIN", "mint")) == 100.0
+          and ("BOUNDARY", "dex_pool") not in c13e)
 
     return finish()
 

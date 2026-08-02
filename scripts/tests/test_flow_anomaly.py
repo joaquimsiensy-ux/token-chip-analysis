@@ -11,6 +11,7 @@ fixtures/pythia_anchors.json）：
   5. spray 慢速正例：全史 ≥500 收方 ≥2%、无突出滑窗 → mode=slow_spray
   6. 实体内部流转抵消：--entity-file 后内部边不计
   7. 零截断闭合：pulse recipients==count；sink sources==source_count
+  8. sink 多窗口累计反例：三个不重叠窗口各 4%，报告必须输出历史峰值/现仓/全史净流入 12%
 用法：python3 scripts/tests/test_flow_anomaly.py   退出码 0=PASS / 1=FAIL
 """
 import json
@@ -73,6 +74,11 @@ def main():
     for i in range(6):
         edges.append((day(90), SRC[i], "SinkD", 2 * 10 ** 9))
 
+    # 8. 三个互不重叠的 14 日窗各 4%，单个最佳窗仍只有 4%，但库存累计峰值/现仓为 12%。
+    for base in (200, 230, 260):
+        for i in range(5):
+            edges.append((day(base), SRC[i], "MultiWindowSink", 8 * 10 ** 9))
+
     # 4. spray 脉冲正例：PulseSpray 收 4%，day 100~102 向 22 个新地址各派 0.1%（2.2% ≥2%、22 ≥20）
     edges.append((day(99), Z, "PulseSpray", 4 * 10 ** 10))
     for i in range(22):
@@ -103,6 +109,13 @@ def main():
         bw = sids["SinkB"]["best_window"]
         check("SinkB 命中的是多来源窗（≥5 来源）", bw["source_count"] >= 5)
     check("sink 负例 SinkC/SinkD 未报", "SinkC" not in sids and "SinkD" not in sids)
+    mw = sids.get("MultiWindowSink")
+    check("多窗口 sink 命中且单窗仅 4%", mw is not None and mw["best_window"]["inflow_pct"] == 4.0)
+    if mw:
+        check("多窗口 sink 输出历史峰值/现仓/全史净流入 12%",
+              mw["balance"]["historical_peak_pct"] == 12.0
+              and mw["balance"]["current_balance_pct"] == 12.0
+              and mw["all_time"]["net_inflow_pct"] == 12.0)
     for s in r["sinks"]:
         check(f"sink {s['addr']} sources 闭合", len(s["sources"]) == s["best_window"]["source_count"])
 

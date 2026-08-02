@@ -14,7 +14,8 @@ v2 算法（2026-08-01 codex 验收 P0-1 翻案后重写）：
     1. 逆向 BFS：从实体成员出发沿入边收集全部上游节点，遇终点（mint/标签确证/设施
        启发式）停止展开；深度（距实体最短跳数）超 --depth-limit 或节点数超
        --node-budget 的节点记截断终点。
-    2. 正向重演：子图内全部 ≤T 转账按 (ts, 同秒组内拓扑序) 逐笔处理。每个节点维护
+    2. 正向重演：子图内全部 ≤T 转账按可证链上位置
+       (ts, slot/block, transaction_index, log/instruction_index) 逐笔处理。每个节点维护
        "来源构成账户"：流入按发送方账户当时构成转移入账（发送方是终点则记终点构成），
        流出等比扣减；实体成员集收缩为单一超级账户（内部互转不记账）。
     3. 锚点读数：处理完 ≤T 边后超级账户的向量＝库存终点构成；direct_upstream 进货单
@@ -23,9 +24,10 @@ v2 算法（2026-08-01 codex 验收 P0-1 翻案后重写）：
        EwUU 100%、W1 藤全部衰减不可见；而 W1 教训的本义是"从谁进过货"这个事实本身）。
   正向模拟下总量守恒是构造保证（每笔进出都过账），closure_check 降级为实现自检；
   回环（含跨时回环）天然良定义（构成随币流动，无需 SCC 概念——v1 的 same_slot_scc
-  终点类别废除）。同一 UTC 秒内多笔边先按组内拓扑排序（场内路由 A→B→C 常同秒），
-  有环组按 (f,t,amt) 字典序兜底并计入 simulation.same_ts_cycle_groups 诚实标注——
-  同秒真序不可知属数据粒度限制。
+  终点类别废除）。禁止按地址拓扑重排同秒事件：EVM 的 block+log_index、Solana 扩展
+  7 元组的 slot+tx+instruction 可恢复精确序；旧 Solana 5 元组只有 slot，或 DuckDB 缺
+  索引列时，同一最细粒度桶内“既收又发”的整笔来源记
+  UNRESOLVED/order_ambiguous，超过锚点库存 0.5% 即独立阻断。
 
 FIFO/LIFO 上下界（P0-5）：同一模拟骨架换消耗策略——pro_rata（主法，等比扣减）/
 fifo（先进先出，老币先耗）/lifo（后进先出，新币先耗）三遍模拟。任一 stock>0 锚点的
@@ -48,8 +50,9 @@ fifo（先进先出，老币先耗）/lifo（后进先出，新币先耗）三�
 输入：--entity-file {entity_id:[addr…]}（强制 {str: 非空 str 数组}，成员跨实体重复即拒）；
 --labels-file 可选 {addr:{"kind":"cex|dex_pool|facility|bridge|launch_alloc|airdrop|vesting",…}}；
 边表三通道同 wave_scan（--edges-sol/--edges-evm-v2/--duckdb）。
-输出：--out provenance_ledger.json。实体条目含 members_sha256（成员集规范化哈希，
-freeze 端与 --entity-file 逐实体绑定比对——台账不得复用于改过名册的冻结）。
+输出：--out provenance_ledger.json。实体条目含 members_sha256；台账另记录原始边/标签/
+实体文件完整哈希、total supply、manifest run/cutoff/block/denominators、算法哈希与参数。
+freeze 不仅比对绑定，还以当前代码从当前原始边真实重放并比较语义摘要。
 
 退出码：0=溯源完成且闭合且敏感性稳定；2=数据/参数错误、闭合自检失败或敏感性翻转
 （fail-closed）；1=脚本自身错误。
@@ -59,6 +62,7 @@ freeze 端与 --entity-file 逐实体绑定比对——台账不得复用于改�
   - 3yMk：EwUU8oi 设施支路停（facility_candidate/confirmed）而 W1 支路穿透（path_len ≥2）。
 """
 import argparse
+import glob
 import hashlib
 import json
 import os
@@ -78,7 +82,9 @@ LABEL_KIND_MAP = {
     "vesting": ("PROVEN_ORIGIN", "proven_vesting"),
 }
 ENTITY_NODE = "@ENTITY"
+ORDER_AMBIGUOUS_KEY = ("UNRESOLVED", "order_ambiguous", None)
 EPS = 1e-6
+ORDER_MATERIAL_PCT = 0.5
 
 
 def log(msg):
@@ -87,6 +93,83 @@ def log(msg):
 
 def members_sha256(addrs):
     return hashlib.sha256(",".join(sorted(addrs)).encode()).hexdigest()
+
+
+def full_file_record(path, case_dir):
+    """完整 SHA-256（不是大文件头尾抽样）；freeze 以此绑定当前原始输入。"""
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for blk in iter(lambda: f.read(4 * 1024 * 1024), b""):
+            h.update(blk)
+    ap = os.path.abspath(path)
+    try:
+        rel = os.path.relpath(ap, case_dir)
+        shown = rel if rel != ".." and not rel.startswith(".." + os.sep) else ap
+    except ValueError:
+        shown = ap
+    return {"path": shown, "bytes": os.path.getsize(ap), "sha256": h.hexdigest()}
+
+
+def bound_path(path, case_dir):
+    ap = os.path.abspath(path)
+    rel = os.path.relpath(ap, case_dir)
+    return rel if rel != ".." and not rel.startswith(".." + os.sep) else ap
+
+
+def source_binding(a, case_dir):
+    if a.edges_sol:
+        kind, argument = "sol", a.edges_sol
+        files = sorted(glob.glob(a.edges_sol))
+    elif a.edges_evm_v2:
+        kind, argument = "evm_v2", a.edges_evm_v2
+        files = sorted(glob.glob(os.path.join(a.edges_evm_v2, "run_*", "logs.parquet")))
+        files += sorted(glob.glob(os.path.join(a.edges_evm_v2, "run_*", "blocks.parquet")))
+    else:
+        kind, argument, files = "duckdb", a.duckdb, [a.duckdb]
+    manifest_path = os.path.join(case_dir, "handoff_manifest.json")
+    data_map_path = os.path.join(case_dir, "data_map.json")
+    manifest = None
+    if os.path.isfile(manifest_path):
+        m = json.load(open(manifest_path, encoding="utf-8"))
+        manifest = {"file": full_file_record(manifest_path, case_dir),
+                    "run_id": m.get("run_id"), "scope": m.get("scope")}
+    data_map = None
+    if os.path.isfile(data_map_path):
+        dm = json.load(open(data_map_path, encoding="utf-8"))
+        data_map = {"file": full_file_record(data_map_path, case_dir),
+                    "paths": sorted(x.get("path") for x in dm.get("files", [])
+                                    if isinstance(x, dict) and isinstance(x.get("path"), str))}
+    trace_rec = full_file_record(__file__, case_dir)
+    loader_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "wave_scan.py")
+    loader_rec = full_file_record(loader_path, case_dir)
+    return {
+        "algorithm": {"script_sha256": trace_rec["sha256"],
+                      "files": {"entity_source_trace.py": trace_rec,
+                                "wave_scan.py": loader_rec},
+                      "policies": list(POLICIES), "order_material_pct": ORDER_MATERIAL_PCT},
+        "source": {"kind": kind, "argument": bound_path(argument, case_dir),
+                   "edges_table": a.edges_table if kind == "duckdb" else None,
+                   "files": [full_file_record(p, case_dir) for p in files]},
+        "entity_file": full_file_record(a.entity_file, case_dir),
+        "labels_file": full_file_record(a.labels_file, case_dir) if a.labels_file else None,
+        "handoff_manifest": manifest,
+        "data_map": data_map,
+        "total_supply_raw": str(a.total_supply),
+        "algorithm_params": {"depth_limit": a.depth_limit,
+                             "facility_min_degree": a.facility_min_degree,
+                             "node_budget": a.node_budget, "edge_budget": a.edge_budget},
+    }
+
+
+def semantic_payload(report):
+    """重放比较唯一口径；排除 generated_at/case/展示 note 等非语义字段。"""
+    return {k: report.get(k) for k in ("schema", "total_supply_raw", "input_binding",
+                                        "entities", "unresolved_total_pct", "bounds_sensitivity")}
+
+
+def semantic_sha256(report):
+    return hashlib.sha256(json.dumps(semantic_payload(report), sort_keys=True,
+                                     ensure_ascii=False, separators=(",", ":")).encode()).hexdigest()
 
 
 def load_entity_map(path):
@@ -293,40 +376,19 @@ def build_ancestors(con, members, T, classifier, depth_limit, node_budget):
     return ancestors, term_key, term_plen, n_depth, n_budget
 
 
-# ---------------- 同秒组内拓扑排序 ----------------
-
-def order_same_ts(group):
-    """group=[(f,t,amt)] 同一 ts。Kahn 拓扑（场内路由 A→B→C 同秒链正确处理）；
-    有环组按 (f,t,amt) 字典序兜底。返回 (ordered, had_cycle)。"""
-    if len(group) <= 1:
-        return group, False
-    nodes = {x for e in group for x in (e[0], e[1])}
-    indeg = {n: 0 for n in nodes}
-    adj = {n: set() for n in nodes}
-    for f, t, _ in group:
-        if t not in adj[f]:
-            adj[f].add(t)
-            indeg[t] += 1
-    q = deque(sorted(n for n in nodes if indeg[n] == 0))
-    topo = {}
-    while q:
-        n = q.popleft()
-        topo[n] = len(topo)
-        for m in sorted(adj[n]):
-            indeg[m] -= 1
-            if indeg[m] == 0:
-                q.append(m)
-    if len(topo) < len(nodes):  # 有环
-        return sorted(group), True
-    return sorted(group, key=lambda e: (topo[e[0]], topo[e[1]], e[0], e[1], e[2])), False
-
-
 # ---------------- 正向模拟 ----------------
 
 def simulate(edges_iter, Mset, ancestors, term_key, term_plen, policy, T_peak):
-    """edges_iter: [(ts, f, t, amt)] 已按 ts 升序（同 ts 未排）。逐笔重演到数据末，
+    """edges_iter 带 chain_pos/order_exact/ingest_seq，按可证链上位置升序。
+    精确位置缺失时绝不再按地址拓扑改写真实顺序：保留采集观察顺序，但同一最细粒度桶内
+    若某节点既收又发，则该节点的流出来源无法证明，整笔记 UNRESOLVED/order_ambiguous。
+    这样后到资金不会被反向归给先发生的流出；未决量达到 0.5% 锚点库存时由独立顺序
+    敏感性维度阻断。
+
+    逐笔重演到数据末，
     跨过 T_peak 时拍峰值快照。返回 {"peak": vec, "current": vec,
-    "gap_events": int, "same_ts_cycles": int, "n_edges": int}。
+    "gap_events": int, "order_ambiguous_groups": int, "order_ambiguous_events": int,
+    "n_edges": int}。
     （direct_upstream 进货单不在模拟中维护——它是毛流入事实清单，见 gross_upstream。）"""
     acc = {}
 
@@ -337,20 +399,28 @@ def simulate(edges_iter, Mset, ancestors, term_key, term_plen, policy, T_peak):
         return a
 
     peak_snap = None
-    gap_events = same_ts_cycles = n_edges = 0
+    gap_events = ambiguous_groups = ambiguous_events = n_edges = 0
 
     def snap():
         ent = acc.get(ENTITY_NODE)
         return ent.snapshot() if ent else {}
 
-    def flush_group(ts, group):
-        nonlocal peak_snap, gap_events, same_ts_cycles, n_edges
+    def flush_group(bucket, group):
+        nonlocal peak_snap, gap_events, ambiguous_groups, ambiguous_events, n_edges
+        ts = bucket[0]
         if peak_snap is None and ts > T_peak:
             peak_snap = snap()
-        ordered, cyc = order_same_ts(group)
-        if cyc:
-            same_ts_cycles += 1
-        for f, t, amt in ordered:
+        # group=(order_exact, ingest_seq, f, t, amt)。精确桶按位置在 fetch 阶段已排好；
+        # 非精确桶只保留观察顺序，不能用地址拓扑臆造执行序。
+        ordered = sorted(group, key=lambda e: e[1])
+        exact = all(e[0] for e in ordered)
+        causal_senders = set()
+        if not exact and len(ordered) > 1:
+            receivers = {e[3] for e in ordered}
+            causal_senders = {e[2] for e in ordered if e[2] in receivers and e[2] not in term_key}
+            if causal_senders:
+                ambiguous_groups += 1
+        for _, _, f, t, amt in ordered:
             n_edges += 1
             src = ENTITY_NODE if f in Mset else f
             dst = ENTITY_NODE if t in Mset else t
@@ -362,7 +432,12 @@ def simulate(edges_iter, Mset, ancestors, term_key, term_plen, policy, T_peak):
                 comp, shortfall = account(src).take(float(amt))
             else:  # BFS 封闭性防御：不该到达
                 comp, shortfall = {}, float(amt)
-            if shortfall > EPS:
+            if f in causal_senders:
+                # 发送方同桶也有入账；现有字段不足以证明本笔花的是旧库存还是同桶后/先到资金。
+                # 账户仍按观察序扣减以维持数量账，但来源整笔降级为独立未决桶。
+                comp, shortfall = {ORDER_AMBIGUOUS_KEY: float(amt)}, 0.0
+                ambiguous_events += 1
+            elif shortfall > EPS:
                 gap_key = ("UNRESOLVED", "data_gap", None)
                 comp[gap_key] = comp.get(gap_key, 0.0) + shortfall
                 gap_events += 1
@@ -372,19 +447,21 @@ def simulate(edges_iter, Mset, ancestors, term_key, term_plen, policy, T_peak):
                 account(dst).add(comp)
             # else：流出子图/burn——发送方已扣减，构成随币离场
 
-    cur_ts, group = None, []
-    for ts, f, t, amt in edges_iter:
-        if ts != cur_ts:
+    cur_bucket, group = None, []
+    for ts, p1, p2, p3, exact, seq, f, t, amt in edges_iter:
+        bucket = (ts, p1, p2, p3)
+        if bucket != cur_bucket:
             if group:
-                flush_group(cur_ts, group)
-            cur_ts, group = ts, []
-        group.append((f, t, amt))
+                flush_group(cur_bucket, group)
+            cur_bucket, group = bucket, []
+        group.append((bool(exact), int(seq), f, t, amt))
     if group:
-        flush_group(cur_ts, group)
+        flush_group(cur_bucket, group)
     if peak_snap is None:
         peak_snap = snap()
     return {"peak": peak_snap, "current": snap(),
-            "gap_events": gap_events, "same_ts_cycles": same_ts_cycles, "n_edges": n_edges}
+            "gap_events": gap_events, "order_ambiguous_groups": ambiguous_groups,
+            "order_ambiguous_events": ambiguous_events, "n_edges": n_edges}
 
 
 def gross_upstream(con, ph, T):
@@ -421,7 +498,8 @@ def combined_series(con, addrs):
 
 
 def fetch_sim_edges(con, sim_nodes, T, edge_budget):
-    """子图相关边（流入或流出任一端在 sim_nodes）≤T，按 ts 升序。超边预算 exit 2。"""
+    """子图相关边（流入或流出任一端在 sim_nodes）≤T，按可证链上位置升序。
+    非精确桶末位只用 ingest_seq 保留采集观察顺序，不宣称它是链上真序。"""
     con.execute("DROP TABLE IF EXISTS simn")
     con.execute("CREATE TEMP TABLE simn(a VARCHAR)")
     con.executemany("INSERT INTO simn VALUES (?)", [(x,) for x in sorted(sim_nodes)])
@@ -433,17 +511,19 @@ def fetch_sim_edges(con, sim_nodes, T, edge_budget):
             "截断设施后重跑（fail-closed，不静默采样）")
         sys.exit(2)
     rows = con.execute(f"""
-        SELECT ts, f, t, amt FROM e
+        SELECT ts, chain_pos1, chain_pos2, chain_pos3, order_exact, ingest_seq, f, t, amt FROM e
         WHERE ts <= {T} AND (t IN (SELECT a FROM simn) OR f IN (SELECT a FROM simn))
-        ORDER BY ts""").fetchall()
-    return [(int(ts), f, t, int(v)) for ts, f, t, v in rows]
+        ORDER BY ts, chain_pos1 NULLS FIRST, chain_pos2 NULLS FIRST,
+                 chain_pos3 NULLS FIRST, ingest_seq""").fetchall()
+    return [(int(ts), p1, p2, p3, bool(exact), int(seq), f, t, int(v))
+            for ts, p1, p2, p3, exact, seq, f, t, v in rows]
 
 
 def comp_to_list(vec, term_plen, stock, labels):
     """向量 → composition 数组（按占比降序，全量零截断）。"""
     ev_map = {"mint": "onchain_pattern", "facility_candidate": "heuristic",
               "data_gap": "onchain_pattern", "depth_limit": "onchain_pattern",
-              "budget_truncated": "onchain_pattern"}
+              "budget_truncated": "onchain_pattern", "order_ambiguous": "onchain_pattern"}
     out = []
     for (kind, sub, via), amt in sorted(vec.items(), key=lambda kv: -kv[1]):
         if amt <= EPS:
@@ -461,11 +541,14 @@ def comp_to_list(vec, term_plen, stock, labels):
 
 def top_entry(vec):
     """敏感性比较对象：第一大构成条目的 (kind, sub, via)。空向量返回 None。"""
-    best_k, best_v = None, 0.0
-    for k, v in vec.items():
-        if v > best_v:
-            best_k, best_v = k, v
-    return best_k
+    rows = [(k, v) for k, v in vec.items() if v > EPS]
+    return sorted(rows, key=lambda kv: (-kv[1], str(kv[0])))[0][0] if rows else None
+
+
+def policy_detail(vec):
+    """freeze 可独立重算 top/stability 的策略明细；不能只留下自报 stable 布尔值。"""
+    return [{"terminal": list(k), "raw": str(int(v))}
+            for k, v in sorted(vec.items(), key=lambda kv: (-kv[1], str(kv[0]))) if v > EPS]
 
 
 def trace_entity(con, classifier, eid, members, total, a):
@@ -511,18 +594,32 @@ def trace_entity(con, classifier, eid, members, total, a):
     a_peak = build_anchor("peak", peak, T_peak, day_str(peak_day))
     a_cur = build_anchor("current", current, T_cur)
 
-    # 敏感性：stock>0 锚点的第一大条目三策略必须一致
-    sens = {"stable": True, "anchors": {}}
+    # 两个正交维度：①库存消耗策略；②输入事件顺序是否足够精确。
+    # 第二维不能再被 FIFO/LIFO 的“第一大来源一致”掩盖。
+    sens = {"stable": True, "consumption_stable": True, "ordering_stable": True,
+            "anchors": {}}
     for snap_key, stock in (("peak", peak), ("current", current)):
         if stock <= 0:
             continue
         tops = {p: top_entry(runs[p][snap_key]) for p in POLICIES}
         agree = len({t for t in tops.values()}) == 1
         if not agree:
-            sens["stable"] = False
+            sens["stable"] = sens["consumption_stable"] = False
+        order_raw = float(main[snap_key].get(ORDER_AMBIGUOUS_KEY, 0.0))
+        order_pct = order_raw * 100.0 / stock
+        order_ok = order_pct <= ORDER_MATERIAL_PCT
+        if not order_ok:
+            sens["stable"] = sens["ordering_stable"] = False
         sens["anchors"][snap_key] = {
             "top_by_policy": {p: (list(t) if t else None) for p, t in tops.items()},
-            "agree": agree}
+            "policy_details": {p: policy_detail(runs[p][snap_key]) for p in POLICIES},
+            "agree": agree,
+            "ordering_sensitivity": {
+                "status": "RESOLVED" if order_ok else "UNRESOLVED",
+                "order_ambiguous_raw": str(int(order_raw)),
+                "order_ambiguous_pct": round(order_pct, 4),
+                "materiality_pct": ORDER_MATERIAL_PCT,
+                "stable": order_ok}}
 
     ent = {
         "entity_id": eid, "member_count": len(members),
@@ -535,7 +632,8 @@ def trace_entity(con, classifier, eid, members, total, a):
         "simulation": {"ancestors": len(ancestors), "terminals": len(term_key),
                        "depth_truncated": n_depth, "budget_truncated": n_budget,
                        "edges_simulated": main["n_edges"],
-                       "same_ts_cycle_groups": main["same_ts_cycles"],
+                       "order_ambiguous_groups": main["order_ambiguous_groups"],
+                       "order_ambiguous_events": main["order_ambiguous_events"],
                        "data_gap_events": main["gap_events"]},
     }
     return ent, sens
@@ -566,6 +664,8 @@ def main():
         sys.exit(2)
     entity_map = load_entity_map(a.entity_file)
     labels = load_labels(a.labels_file) if a.labels_file else {}
+    case_dir = os.path.dirname(os.path.abspath(a.out))
+    binding = source_binding(a, case_dir)
 
     con = duckdb.connect()
     con.execute(f"SET memory_limit='{a.mem_limit}'")
@@ -576,8 +676,41 @@ def main():
         n_edges = load_evm_v2(con, a.edges_evm_v2)
     else:
         n_edges = attach_duckdb(con, a.duckdb, a.edges_table)
-    log(f"边表就绪 {n_edges:,} 条——物化索引表 e(t)…")
-    con.execute("CREATE TABLE e AS SELECT ts, f, t, amt FROM edges")
+    # handoff scope 若已冻结 cutoff/block，溯源必须实际应用同一边界；只把值写进台账不够。
+    where = []
+    hb = binding.get("handoff_manifest") or {}
+    scope = hb.get("scope") or {}
+    cutoff = scope.get("cutoff_utc")
+    frozen_pos = scope.get("frozen_block")
+    if cutoff:
+        try:
+            cutoff_ts = int(datetime.fromisoformat(str(cutoff).replace("Z", "+00:00")).timestamp())
+            where.append(f"ts <= {cutoff_ts}")
+        except (ValueError, TypeError):
+            log(f"handoff cutoff_utc 无法解析: {cutoff!r}")
+            sys.exit(2)
+    if frozen_pos not in (None, ""):
+        try:
+            fp = int(frozen_pos)
+            missing_pos = int(con.execute(
+                "SELECT COUNT(*) FROM edges WHERE chain_pos1 IS NULL").fetchone()[0])
+            if missing_pos:
+                log(f"handoff frozen_block={fp} 但 {missing_pos:,} 条边缺 slot/block 位置——"
+                    "不能声称已应用冻结区块")
+                sys.exit(2)
+            where.append(f"chain_pos1 <= {fp}")
+        except (ValueError, TypeError):
+            log(f"handoff frozen_block 不是整数: {frozen_pos!r}")
+            sys.exit(2)
+    wh = (" WHERE " + " AND ".join(where)) if where else ""
+    log(f"边表就绪 {n_edges:,} 条——按 handoff cutoff/block 物化索引表 e(t)…")
+    con.execute(f"""CREATE TABLE e AS
+        SELECT ts, f, t, amt, chain_pos1, chain_pos2, chain_pos3,
+               order_exact, ingest_seq FROM edges{wh}""")
+    kept = int(con.execute("SELECT COUNT(*) FROM e").fetchone()[0])
+    if not kept:
+        log("cutoff/block 过滤后边表为空——边界或输入错误")
+        sys.exit(2)
     con.execute("CREATE INDEX idx_e_t ON e(t)")
 
     classifier = Classifier(con, labels, a.facility_min_degree)
@@ -615,21 +748,24 @@ def main():
         "case": os.path.basename(os.path.dirname(os.path.abspath(a.out))) or None,
         "params": {k: v for k, v in vars(a).items() if k not in ("out",)},
         "total_supply_raw": str(total),
+        "input_binding": binding,
         "entities": entities,
         "unresolved_total_pct": round(unresolved_total * 100.0 / total, 4),
         "bounds_sensitivity": {
             "methods": list(POLICIES),
             "per_entity": {eid: s for eid, s in sens_all.items()},
             "conservative_vs_aggressive_verdict_stable": all_stable,
-            "note": "三策略（等比/先进先出/后进先出）对每个 stock>0 锚点的第一大终点条目"
-                    "逐一比对；任一翻转＝库存构成判断依赖消耗假设＝不稳，exit 2 阻断发布"},
+            "note": "两维独立敏感性：三种库存消耗策略逐锚点比对完整明细；缺精确链上位置时，"
+                    "同一最细粒度桶内既收又发的来源记 UNRESOLVED/order_ambiguous。任一消费"
+                    "主导翻转或顺序未决量 >0.5% 锚点库存，均 exit 2 阻断发布"},
     }
+    report["replay_semantic_sha256"] = semantic_sha256(report)
     with open(a.out, "w", encoding="utf-8") as fh:
         json.dump(report, fh, ensure_ascii=False, indent=1)
     log(f"{len(entities)} 实体溯源完成 → {a.out}")
     if not all_stable:
-        log("敏感性不稳：存在锚点的第一大终点条目随消耗策略翻转——结论不得发布（exit 2）；"
-            "报告已落盘供诊断，先解决未决量/标签覆盖再重跑")
+        log("敏感性不稳：消费策略主导翻转或事件顺序未决量达到实质线——结论不得发布"
+            "（exit 2）；补齐 block/slot + tx + log/instruction 序号或解决未决量后重跑")
         sys.exit(2)
     return 0
 
