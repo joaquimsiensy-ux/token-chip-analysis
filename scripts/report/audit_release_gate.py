@@ -169,7 +169,7 @@ def check_ledger(name: str, d: dict, errors: list[str]):
             errors.append(f"经济控制账实体内共有 {nested} 项 unresolved_facility_exposure 未裁决")
 
 
-def check_dormant(d: dict, errors: list[str]):
+def check_dormant(case_dir: Path, d: dict, errors: list[str]):
     if not d.get("full_history_event_replay"):
         errors.append("静置仓审计不是基于全量逐事件重放")
     required = ("historical_peaks", "zeroed_or_drawn_down",
@@ -180,6 +180,60 @@ def check_dormant(d: dict, errors: list[str]):
             errors.append(f"静置仓审计覆盖未通过: {key}")
     if unresolved_count(d):
         errors.append(f"静置仓审计仍有 {unresolved_count(d)} 个未决候选")
+    # v6.9.1 集合对账（codex 复核修复：coverage 五键是自报布尔，闸不住漏仓——
+    # 必须绑定 wave_scan v3 落盘的候选全集并逐址对账；缺绑定/旧 schema 一律拒）。
+    ref = d.get("universe_ref")
+    if not isinstance(ref, dict) or not ref.get("path") or not ref.get("sha256"):
+        errors.append("静置仓审计缺 universe_ref（须绑定 wave_scan v3 报告的 path+sha256）")
+        return
+    wp = safe_case_path(case_dir, str(ref["path"]))
+    if wp is None or not wp.is_file():
+        errors.append(f"universe_ref 指向的 wave_scan 报告不存在: {ref.get('path')}")
+        return
+    if sha256_file(wp).lower() != str(ref["sha256"]).lower():
+        errors.append("universe_ref sha256 与 wave_scan 报告实际内容不一致")
+        return
+    wr = load_json(wp, errors)
+    universe = wr.get("scan_universe")
+    if str(wr.get("schema")) != "wave-scan/v3" or not isinstance(universe, list):
+        errors.append("wave_scan 报告缺 scan_universe 逐址全集（schema 须 wave-scan/v3，"
+                      "旧 v2 产物只有计数无法对账——重跑 wave_scan）")
+        return
+    cand_addrs = set()
+    cands = d.get("candidates", [])
+    if isinstance(cands, list):
+        for c in cands:
+            if isinstance(c, dict) and c.get("candidate_address"):
+                cand_addrs.add(str(c["candidate_address"]))
+    missing = [str(u.get("addr")) for u in universe
+               if isinstance(u, dict) and u.get("must_adjudicate")
+               and str(u.get("addr")) not in cand_addrs]
+    if missing:
+        errors.append(f"候选全集对账失败: {len(missing)} 个必裁决地址不在审计候选内"
+                      f"（示例 {missing[:3]}）——coverage 自报通过不作数")
+
+
+def check_daily_peaks(case_dir: Path, errors: list[str]):
+    """日级峰值口径闭环（v6.9.1）：案目录出现 peaks_summary.json 即视为用了
+    peaks_daily 替代件——旧上界公式产物拒收（Σmax(day_delta,0) 非恒等上界，
+    同日等额进出会漏），且四类触发日必须有显式产物（空也要声明）。"""
+    ps_path = case_dir / "peaks_summary.json"
+    if not ps_path.is_file():
+        return
+    ps = load_json(ps_path, errors)
+    if str(ps.get("ub_formula")) != "prev_close_plus_gross_in/v2":
+        errors.append("peaks_daily 产物是旧上界公式（缺 ub_formula=prev_close_plus_gross_in/v2）"
+                      "——同日等额进出会被对冲漏检，升级脚本重跑")
+    tp = case_dir / "trigger_days.json"
+    if not tp.is_file():
+        errors.append("用了日级峰值口径但缺 trigger_days.json"
+                      "（四类触发日须机器产物，一个都没有也要 empty_reason 显式声明）")
+        return
+    td = load_json(tp, errors)
+    if str(td.get("schema")) != "trigger-days-replay/v1":
+        errors.append("trigger_days.json schema 非法（须 trigger-days-replay/v1）")
+    elif not td.get("days") and not td.get("empty_reason"):
+        errors.append("trigger_days.json 触发日为空且无 empty_reason 显式声明")
 
 
 def check_claims(case_dir: Path, d: dict, report: Path | None, errors: list[str]):
@@ -288,7 +342,8 @@ def run(case_dir: Path, report: Path | None):
         if name in data:
             check_ledger(name, data[name], errors)
     if "dormant_warehouse_audit.json" in data:
-        check_dormant(data["dormant_warehouse_audit.json"], errors)
+        check_dormant(case_dir, data["dormant_warehouse_audit.json"], errors)
+    check_daily_peaks(case_dir, errors)
     claim_types = set()
     if "claim_registry.json" in data:
         claim_types = check_claims(case_dir, data["claim_registry.json"], report, errors)

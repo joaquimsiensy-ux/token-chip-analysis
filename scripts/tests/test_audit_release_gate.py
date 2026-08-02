@@ -51,6 +51,17 @@ def build_case(root, historical=True):
     write_json(root, "economic_control_ledger.json", {
         "entries": [], "empty_reason": "夹具案例无达标庄级实体",
         "double_count_check_passed": True, "unresolved_count": 0})
+    # v6.9.1：静置仓审计必须绑定 wave_scan v3 落盘全集并逐址对账（coverage 自报不作数）
+    write_json(root, "wave_scan_report.json", {
+        "schema": "wave-scan/v3",
+        "scan_universe_count": 2,
+        "scan_universe": [
+            {"addr": "0xmustaddr", "peak_pct": 3.0, "must_adjudicate": True,
+             "must_reasons": ["peak_ge_0.1pct", "dormant_ge_30d"]},
+            {"addr": "0xminoraddr", "peak_pct": 0.03, "must_adjudicate": False,
+             "must_reasons": []},
+        ],
+    })
     write_json(root, "dormant_warehouse_audit.json", {
         "full_history_event_replay": True,
         "coverage": {
@@ -59,6 +70,11 @@ def build_case(root, historical=True):
             "boundary_ring": "PASS",
         },
         "unresolved_count": 0,
+        "universe_ref": {"path": "wave_scan_report.json",
+                         "sha256": sha(root / "wave_scan_report.json")},
+        "candidates": [{"candidate_address": "0xmustaddr",
+                        "boundary_decision": "excluded",
+                        "decision_reason": "夹具：静置巨仓已裁决"}],
     })
     ctype = "historical_chart" if historical else "snapshot_balance"
     write_json(root, "claim_registry.json", {
@@ -183,9 +199,69 @@ def main():
         errors = gate.run(root, report)
         assert any("empty_reason" in x for x in errors), errors
 
+    # 6.9.1 修复反例（codex 复核）：静置仓候选全集对账——coverage 自报布尔不作数。
+    with tempfile.TemporaryDirectory() as td:
+        root = Path(td)
+        report = build_case(root, historical=False)
+        da = json.loads((root / "dormant_warehouse_audit.json").read_text())
+        # a) 缺 universe_ref 绑定 → BLOCK
+        da_no_ref = {k: v for k, v in da.items() if k != "universe_ref"}
+        write_json(root, "dormant_warehouse_audit.json", da_no_ref)
+        errors = gate.run(root, report)
+        assert any("universe_ref" in x for x in errors), errors
+        # b) 必裁决地址不在审计候选 → BLOCK（孤仓漏检的机器拦截）
+        da_missing = dict(da)
+        da_missing["candidates"] = []
+        write_json(root, "dormant_warehouse_audit.json", da_missing)
+        errors = gate.run(root, report)
+        assert any("对账失败" in x for x in errors), errors
+        # c) wave_scan 报告扫描后被换（sha 不符）→ BLOCK
+        write_json(root, "dormant_warehouse_audit.json", da)
+        wr = json.loads((root / "wave_scan_report.json").read_text())
+        wr["scan_universe"] = []
+        write_json(root, "wave_scan_report.json", wr)
+        errors = gate.run(root, report)
+        assert any("不一致" in x for x in errors), errors
+        # d) 旧 v2 产物（只有计数、无逐址全集）→ BLOCK
+        write_json(root, "wave_scan_report.json",
+                   {"schema": "wave-scan/v2", "scan_universe_count": 2})
+        da_v2 = dict(da)
+        da_v2["universe_ref"] = {"path": "wave_scan_report.json",
+                                 "sha256": sha(root / "wave_scan_report.json")}
+        write_json(root, "dormant_warehouse_audit.json", da_v2)
+        errors = gate.run(root, report)
+        assert any("scan_universe" in x for x in errors), errors
+
+    # 6.9.1 修复反例（codex 复核）：日级峰值口径闭环。
+    with tempfile.TemporaryDirectory() as td:
+        root = Path(td)
+        report = build_case(root, historical=False)
+        # e) 旧上界公式产物 → BLOCK（Σmax(day_delta,0) 同日对冲漏检）
+        write_json(root, "peaks_summary.json", {"engine": "peaks_daily.py"})
+        errors = gate.run(root, report)
+        assert any("旧上界公式" in x for x in errors), errors
+        # f) 新公式但四类触发日无产物 → BLOCK
+        write_json(root, "peaks_summary.json",
+                   {"engine": "peaks_daily.py",
+                    "ub_formula": "prev_close_plus_gross_in/v2"})
+        errors = gate.run(root, report)
+        assert any("trigger_days.json" in x for x in errors), errors
+        # g) 触发日空且无显式声明 → BLOCK
+        write_json(root, "trigger_days.json",
+                   {"schema": "trigger-days-replay/v1", "days": {},
+                    "empty_reason": None})
+        errors = gate.run(root, report)
+        assert any("empty_reason" in x for x in errors), errors
+        # h) 显式空声明 → 峰值/触发日检查放行
+        write_json(root, "trigger_days.json",
+                   {"schema": "trigger-days-replay/v1", "days": {},
+                    "empty_reason": "夹具案：窗内无四类触发日"})
+        errors = gate.run(root, report)
+        assert not any(("trigger" in x or "上界" in x) for x in errors), errors
+
     print("PASS: audit_release_gate 净室资产/哈希/CEX受益权/阴性结论/"
           "图表封口与负钳零/对抗复核否决/四查WARN拦截/双线阈值/"
-          "嵌套未决暴露九类契约全过")
+          "嵌套未决暴露/静置仓全集对账/日级峰值口径闭环十一类契约全过")
     return 0
 
 

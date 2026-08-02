@@ -1,7 +1,7 @@
 # scan-schemas — 机械扫描产物 schema 冻结（v6.8.1）
 
 四个扫描/溯源产物的**唯一权威字段定义**。实现脚本与契约测试对本文件写；改字段先改这里再改代码。
-适用脚本：`wave_scan.py`（wave-scan/v2）、`flow_anomaly_scan.py`（flow-anomaly/v1）、
+适用脚本：`wave_scan.py`（wave-scan/v3）、`flow_anomaly_scan.py`（flow-anomaly/v1）、
 `entity_source_trace.py`（provenance-ledger/v2）、裁决台账（candidate-adjudications/v1，−2 判断层手工产出、validator 机器校验）。
 
 ## 0. 四条公共纪律
@@ -11,19 +11,28 @@
 3. **零静默截断**：所有成员/收方/来源数组全量落盘，数组长度必须等于对应 `*_count` 字段（闭合断言）；stdout 只显 top 不代表文件截断。
 4. **本文件＝完整字段登记**（v6.8.1，codex 复核 P2 采纳）：脚本实际输出的每个字段都必须在此登记——未登记字段不得输出，登记了的不得静默删除；公共通用字段（`schema/generated_at/params/total_supply_raw/edges/note`）各产物一律在场，下文不再逐一重复。输入边表的唯一性由采集管线（four-check 对账）保证，扫描器不去重——同五元组合法重复真实存在（同秒同额多笔），fail-closed 去重会误杀。
 
-## 1. wave-scan/v2（wave_scan.py）
+## 1. wave-scan/v3（wave_scan.py）
 
 与 v1 的语义差异（**不得冒充 v1**，handoff 校验按版本严格匹配）：
 扫描对象从"清零层"改为**全体历史峰值 ≥0.02% 地址**（三桶标签）；A 指纹两层（seed_window 触发→expanded_wave 生长）；C 口径改"峰值→30% 峰值耗时 ≤30 日"；D 参数四条合一；成员零截断；负余额升 exit 2；聚类时间轴用抗 dust 的 `first_meaningful_day`。
+v3 与 v2 的差异（2026-08-02 codex 复核补闸）：**候选全集逐址落盘**——v2 只落 `scan_universe_count` 一个计数，孤仓不成波次/等额组就从产物消失、发布闸无从对账；v3 新增 `scan_universe` 逐址清单＋`must_adjudicate` 四类机械标记＋`must_adjudicate_count`，`dormant_warehouse_audit.json` 以 `universe_ref{path,sha256}` 绑定本报告，audit_release_gate 做哈希＋集合包含对账。
 
 ```
 {
-  "schema": "wave-scan/v2",
+  "schema": "wave-scan/v3",
   "generated_at": ISO8601,
   "params": {…全部命令行参数…},
   "total_supply_raw": str,
   "edges": int,
   "scan_universe_count": int,          # 峰值≥门槛的地址总数（不做现仓过滤）
+  "scan_universe": [{                  # v3 新增：全集逐址落盘（len == scan_universe_count，零截断）
+    "addr": str, "peak_raw": str, "peak_pct": float, "final_raw": str,
+    "retention_bucket": "cleared|partial_exit|retained",
+    "first_meaningful_day": date, "last_active_day": date,
+    "must_adjudicate": bool,           # 四类机械命中任一即 true——静置仓审计候选必须全覆盖
+    "must_reasons": ["peak_top200"|"peak_ge_0.1pct"|"drawdown_ge_80pct"|"dormant_ge_30d"]
+  }],                                  #   （回落/静置两类带 ≥must-dormant-pct(默认0.05%) 历史大仓门槛）
+  "must_adjudicate_count": int,
   "retention_buckets": {"cleared": int, "partial_exit": int, "retained": int},
   "negative_balance_addrs": int,       # 历史逐日末余额**最低点**为负的地址数（v6.8.1：不只看期末——
                                        #   "先负后回正"是数据缺失自愈假象；达闸条件时脚本已 exit 2）

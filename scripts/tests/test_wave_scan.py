@@ -14,6 +14,9 @@ fixtures/pythia_anchors.json，须真库在位时手动回测比对）：
   9. D 二轮复收（v6.8.1 codex 复核修复的回归）：同批收方先零散收过该面额、后同窗
      集中复收 → 必须命中（旧实现按"每收方首收时间"去重会把第二轮全部吞掉）
  10. 负余额"先负后回正"（v6.8.1）：期末余额为正但历史最低点为负 → 仍 exit 2
+ 11. v3 孤仓反例（2026-08-02 codex 复核补闸的回归）：单个静置巨仓不成波次、不成
+     等额组——v2 产物里它彻底消失、发布闸无从对账；v3 必须在 scan_universe 逐址
+     落盘且 must_adjudicate=true（静置 ≥30 天＋越线 ≥0.1% 机械命中）
 用法：python3 scripts/tests/test_wave_scan.py   退出码 0=PASS / 1=FAIL
 """
 import json
@@ -60,6 +63,10 @@ def main():
     F, F2 = "FeederMain", "FeederD"
     edges.append((day(0), Z, F, 6 * 10 ** 11))          # Z→F 60%
     edges.append((day(0), Z, F2, 10 ** 11))             # Z→F2 10%
+    # 11. 孤仓反例：单址 day0 建 3% 后静置到数据末端（不成波次不成等额组，
+    # 但必须出现在 scan_universe 且 must_adjudicate=true）
+    LONE = "LoneWhale"
+    edges.append((day(0), Z, LONE, 3 * 10 ** 10))
     # A 正例：25 址 3 天内各建 ~0.5%（合并峰 ~12.5% ≥10%、25 员 ≥20）；
     # 金额逐址微差——防止 25 笔同面额自己构成合法等额组干扰 D 断言
     W = [f"WaveAddr{i:02d}" for i in range(25)]
@@ -91,13 +98,14 @@ def main():
         return finish()
     r = json.load(open(out1))
 
-    check("schema=wave-scan/v2", r.get("schema") == "wave-scan/v2")
+    check("schema=wave-scan/v3", r.get("schema") == "wave-scan/v3")
     waves = r["waves"]
     check("A 正例：恰报 1 个波次（负例窗未混入）", len(waves) == 1)
     if waves:
         w = waves[0]
         mem = {m["addr"] for m in w["members"]}
         check("A 波次成员=25 址 W 系", mem == set(W))
+        check("11. 孤仓不在波次内（v2 盲区场景成立）", LONE not in mem)
         check("A seed_window 员数 ≥20", w["seed_window"]["member_count"] >= 20)
         check("A seed_window 合并峰 ≥10%", w["seed_window"]["combined_peak_pct"] >= 10.0)
         check("C hit=true 且 days=10", w["fingerprints"]["C_peak_to_30pct"] == {"days": 10, "hit": True})
@@ -118,6 +126,24 @@ def main():
     check("requires_adjudication=true", r["requires_adjudication"] is True)
     check("负余额=0", r["negative_balance_addrs"] == 0)
 
+    # ---- 11. v3 候选全集逐址落盘＋孤仓必裁决 ----
+    uni = r.get("scan_universe")
+    check("11. scan_universe 落盘且长度==scan_universe_count",
+          isinstance(uni, list) and len(uni) == r["scan_universe_count"])
+    lone = next((u for u in (uni or []) if u["addr"] == LONE), None)
+    check("11. 孤仓在 scan_universe 内", lone is not None)
+    if lone:
+        check("11. 孤仓 must_adjudicate=true（越线+静置机械命中）",
+              lone["must_adjudicate"] is True
+              and "peak_ge_0.1pct" in lone["must_reasons"]
+              and "dormant_ge_30d" in lone["must_reasons"])
+        check("11. 孤仓 retained 桶且峰值 3%",
+              lone["retention_bucket"] == "retained"
+              and abs(lone["peak_pct"] - 3.0) < 0.01)
+    check("11. 孤仓不在任何等额组", all(LONE not in g["members"] for g in eqs))
+    check("11. must_adjudicate_count 与逐址标记闭合",
+          r.get("must_adjudicate_count") == sum(1 for u in (uni or []) if u["must_adjudicate"]))
+
     # ---- 稳定 ID：同输入重跑 ----
     out2 = os.path.join(d, "r2.json")
     p2 = run(edges, out2)
@@ -125,6 +151,8 @@ def main():
     check("稳定 ID：波次与等额组 ID 两跑一致",
           [w["id"] for w in r["waves"]] == [w["id"] for w in r2["waves"]]
           and [g["id"] for g in r["equal_amount_groups"]] == [g["id"] for g in r2["equal_amount_groups"]])
+    check("11. scan_universe 两跑逐字一致（确定性）",
+          r.get("scan_universe") == r2.get("scan_universe"))
 
     # ---- 负余额 exit 2 ----
     d2 = tempfile.mkdtemp(prefix="wave_scan_neg_")

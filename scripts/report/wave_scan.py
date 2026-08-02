@@ -1,11 +1,15 @@
 #!/usr/bin/env python3
-"""wave_scan.py — 全体持仓地址波次扫描器 v2（casebook S-04 检验②③的机械化收尾）。
+"""wave_scan.py — 全体持仓地址波次扫描器 v3（casebook S-04 检验②③的机械化收尾）。
 
 背景：PYTHIA 案 W1 波次（341 址、单址峰值 0.05~2.92%、合并峰值 63.44%）两次整体漏检——
 单址视角的任何门槛都物理抓不到"雷达线下批量协同"，只有全体视角的机械扫描能命中。
 v2（2026-08-01 用户四轮拍板）：扫描对象从"清零层"扩为全体历史峰值 ≥0.02% 地址（不做
 现仓过滤，退出强度由三桶标签与 C 表达）；A 升两层结构防"7 日窗"被生长稀释；C 改
 "峰值→30% 峰值耗时"口径；D 参数四条合一；成员零截断；负余额升 exit 2。
+v3（2026-08-02 codex 复核补闸）：候选全集逐址落盘 scan_universe＋must_adjudicate 四类
+机械标记（top200／越线 ≥0.1%／回落 ≥80%／静置 ≥30 天，后两类带 ≥0.05% 历史大仓门槛）——
+v2 只落一个计数，孤仓不成波次/等额组就从产物消失，发布闸想对账都没账可对；
+dormant_warehouse_audit.json 以 universe_ref{path,sha256} 绑定本报告做集合包含对账。
 
 四指纹（阈值全部用合并口径，与 0.1% 单址线彻底脱钩；schema 权威定义 references/scan-schemas.md）：
   A 同窗建仓（两层，必要条件）：seed_window——存在真实 7 日滑窗，窗内"首次有意义建仓"
@@ -30,7 +34,7 @@ v2（2026-08-01 用户四轮拍板）：扫描对象从"清零层"扩为全体�
                                         hex→HUGEINT 两段组合，高 32 hex 非零硬退 exit 2）
   --duckdb path [--edges-table edges]   已物化工作库（表含 f,t,ts,amt 四列）
 
-输出：--out wave_scan_report.json（schema wave-scan/v2，成员/收方数组全量零截断）。
+输出：--out wave_scan_report.json（schema wave-scan/v3，成员/收方/全集数组全量零截断）。
 候选非空时 requires_adjudication=true——−2 必须按 candidate-adjudications/v1 成员级
 逐条裁决（validator 校验），裁决完毕前历史大户兜底桶不准关闸（split-run §3.2）。
 
@@ -58,7 +62,7 @@ from datetime import datetime, timezone
 
 Z = "0x0000000000000000000000000000000000000000"
 DEAD = "0x000000000000000000000000000000000000dead"
-SCHEMA = "wave-scan/v2"
+SCHEMA = "wave-scan/v3"
 
 
 def log(msg):
@@ -249,7 +253,8 @@ def build_addr_summary(con, exclude, meaningful_ratio):
         ), agg AS (
             -- min_bal＝历史逐日末余额最低点：负余额哨兵按它判（v6.8.1 codex 复核修复——
             -- 只看 final_bal 会漏"先负后回正"的数据缺失自愈假象）
-            SELECT owner, MAX(bal) AS peak, MIN(bal) AS min_bal, SUM(delta) AS final_bal
+            SELECT owner, MAX(bal) AS peak, MIN(bal) AS min_bal, SUM(delta) AS final_bal,
+                   MAX(day) AS last_day
             FROM run GROUP BY 1
         ), fi AS (
             -- 两侧并集：纯流出地址（只在 f 侧出现＝数据缺失指纹）不得被内连接静默丢弃，
@@ -267,7 +272,8 @@ def build_addr_summary(con, exclude, meaningful_ratio):
             GROUP BY r.owner
         )
         SELECT a.owner, a.peak, a.min_bal, a.final_bal, fi.first_in_day,
-               COALESCE(fm.first_meaningful_day, fi.first_in_day) AS first_meaningful_day
+               COALESCE(fm.first_meaningful_day, fi.first_in_day) AS first_meaningful_day,
+               a.last_day
         FROM agg a JOIN fi ON fi.owner = a.owner
         LEFT JOIN fm ON fm.owner = a.owner""")
     return con.execute("SELECT COUNT(*) FROM addr").fetchone()[0]
@@ -536,6 +542,8 @@ def main():
                     help="抗 dust：首日末余额 ≥自身峰值×此比例才算有意义首建")
     ap.add_argument("--neg-bal-limit-pct", type=float, default=0.01,
                     help="负余额实质线：负余额合计 ≥此%%总供应即 exit 2")
+    ap.add_argument("--must-dormant-pct", type=float, default=0.05,
+                    help="必裁决线之'历史大仓'档：峰值 ≥此%%总供应且回落≥80%%或静置≥30天即标 must_adjudicate")
     # 指纹 A（两层）
     ap.add_argument("--window-days", type=int, default=7)
     ap.add_argument("--min-members", type=int, default=20)
@@ -601,15 +609,47 @@ def main():
 
     min_peak_raw = total * a.min_peak_pct / 100.0
     universe = con.execute(f"""
-        SELECT owner, first_meaningful_day, peak, final_bal, first_in_day FROM addr
+        SELECT owner, first_meaningful_day, peak, final_bal, first_in_day, last_day FROM addr
         WHERE peak >= {min_peak_raw}
         ORDER BY first_meaningful_day, owner""").fetchall()
-    members = [(o, int(d), int(p), int(f), int(fi)) for o, d, p, f, fi in universe]
+    members = [(o, int(d), int(p), int(f), int(fi), int(ld))
+               for o, d, p, f, fi, ld in universe]
     buckets = {"cleared": 0, "partial_exit": 0, "retained": 0}
     for m in members:
         buckets[retention_bucket(m[3], m[2])] += 1
     log(f"扫描全集 {len(members):,} 址（峰值≥{a.min_peak_pct}%，不做现仓过滤）"
         f" 三桶: cleared={buckets['cleared']} partial_exit={buckets['partial_exit']} retained={buckets['retained']}")
+
+    # ---- 候选全集逐址落盘＋必裁决标记（v3；2026-08-02 codex 复核补闸：只落
+    # scan_universe_count 一个计数，发布闸想对账都没账可对——孤仓不成波次/等额组
+    # 就从产物里消失，requires_adjudication 还是 false。四类机械命中即 must_adjudicate，
+    # 静置仓审计候选必须全覆盖，audit_release_gate 做集合包含校验）----
+    data_end_day = int(con.execute("SELECT MAX(ts) // 86400 FROM edges").fetchone()[0])
+    peak_rank = {m[0]: i + 1
+                 for i, m in enumerate(sorted(members, key=lambda m: -m[2]))}
+    must_raw = total * a.must_dormant_pct / 100.0
+    line01_raw = total * 0.1 / 100.0
+    universe_out = []
+    for o, fmd, p, f, fi, ld in members:
+        reasons = []
+        if peak_rank[o] <= 200:
+            reasons.append("peak_top200")
+        if p >= line01_raw:
+            reasons.append("peak_ge_0.1pct")
+        if p >= must_raw and p > 0 and f / p <= 0.20:
+            reasons.append("drawdown_ge_80pct")
+        if p >= must_raw and f > 0 and data_end_day - ld >= 30:
+            reasons.append("dormant_ge_30d")
+        universe_out.append({
+            "addr": o, "peak_raw": str(p),
+            "peak_pct": round(p * 100.0 / total, 4), "final_raw": str(f),
+            "retention_bucket": retention_bucket(f, p),
+            "first_meaningful_day": day_str(fmd), "last_active_day": day_str(ld),
+            "must_adjudicate": bool(reasons), "must_reasons": reasons,
+        })
+    must_cnt = sum(1 for u in universe_out if u["must_adjudicate"])
+    log(f"全集落盘 {len(universe_out):,} 址，其中必裁决 {must_cnt:,} 址"
+        f"（top200/≥0.1%/回落≥80%/静置≥30d 四类机械命中）")
 
     seed_peak_raw = total * a.seed_min_peak_pct / 100.0
     raw_segs = find_waves(con, [(m[0], m[1], m[2], m[3]) for m in members],
@@ -689,6 +729,8 @@ def main():
         "total_supply_raw": str(total),
         "edges": n_edges,
         "scan_universe_count": len(members),
+        "scan_universe": universe_out,
+        "must_adjudicate_count": must_cnt,
         "retention_buckets": buckets,
         "negative_balance_addrs": neg_cnt,
         "first_meaningful_ratio": a.first_meaningful_ratio,

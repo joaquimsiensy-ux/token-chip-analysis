@@ -76,8 +76,10 @@ def main(all_mode=False):
     # 5) 历史静置仓反向扫描是实体冻结前硬闸；四层任一缺失都视为方法回退。
     method_contracts = {
         'SKILL.md': ['历史静置仓反向扫描硬闸', 'dormant_warehouse_audit.json', '不允许冻结实体'],
-        'references/playbook-entity-cluster-methods.md': ['候选全集从三条现役机械通道取齐', 'strict ∪ expanded', '同一交易末快照'],
-        'references/playbook-entity-cluster-tiering.md': ['历史静置仓反向扫描后的双边界峰值', '严格下限', '扩展上限'],
+        'references/playbook-entity-cluster-methods.md': ['候选全集从三条现役机械通道取齐', 'strict ∪ expanded', '同一交易末快照',
+                                                          'universe_ref', 'must_adjudicate', 'OTC 排除检验'],
+        'references/playbook-entity-cluster-tiering.md': ['历史静置仓反向扫描后的双边界峰值', '严格下限', '扩展上限',
+                                                          'prev_close_plus_gross_in/v2', 'trigger_days.json'],
         'references/report-template.md': ['历史静置仓反向扫描硬闸', 'dormant_warehouse_audit.json', 'strict/expanded/excluded'],
     }
     for rel, needles in method_contracts.items():
@@ -113,9 +115,10 @@ def main(all_mode=False):
                                     '四重前置', '--entity-file'],
         'references/casebook/supply-accounting.md': ['wave_scan.py', '桶存在≠桶内被检验过',
                                                      '闸外的人来试着绕它'],
-        'references/scan-schemas.md': ['wave-scan/v2', 'flow-anomaly/v1',
+        'references/scan-schemas.md': ['wave-scan/v3', 'flow-anomaly/v1',
                                        'candidate-adjudications/v1', 'provenance-ledger/v2',
-                                       '正向模拟', 'members_sha256', '完整字段登记'],
+                                       '正向模拟', 'members_sha256', '完整字段登记',
+                                       'scan_universe', 'must_adjudicate'],
     }
     for rel, needles in wave_contracts.items():
         text = open(os.path.join(ROOT, rel), encoding='utf-8').read()
