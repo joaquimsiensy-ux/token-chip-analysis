@@ -13,10 +13,13 @@
 用法：python3 scripts/tests/test_engine_equivalence.py   （约 30-60 秒）
 """
 import datetime, json, os, subprocess, sys, tempfile
+from pathlib import Path
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 EVM = os.path.join(HERE, "..", "evm")
+sys.path.insert(0, EVM)
 sys.path.insert(0, os.path.join(HERE, "..", "bench"))
+from channels_preflight import _csv_stats, _file_fingerprints
 
 try:
     import duckdb  # noqa: F401
@@ -52,7 +55,10 @@ def _write_inputs(tmp, events):
             f.write(",".join(str(x) for x in r) + "\n")
     receipt = {"schema": "evm-channel-receipt/v1", "status": "PASS", "tag": "t",
                "token": ADDRS[0], "lo": 0, "hi": 99999999999,
-               "data_path": "transfers.csv", "rows": len(rows)}
+               "data_path": "transfers.csv", "format": "v1csv", "rows": len(rows)}
+    _, min_block, max_block = _csv_stats(Path(tmp) / "transfers.csv")
+    receipt.update({"min_block": min_block, "max_block": max_block,
+                    "files": _file_fingerprints(Path(tmp) / "transfers.csv", "v1csv")})
     json.dump(receipt, open(os.path.join(tmp, "transfers.receipt.json"), "w"))
     json.dump({"schema": "evm-channels/v2", "token": ADDRS[0],
                "expected_from": 0, "expected_to": 99999999999,

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import csv
 import glob
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -83,6 +84,33 @@ def _v2_stats(path: Path):
         raise ChannelsPreflightError(f"v2 parquet 不可读: {e}") from e
 
 
+def _sha256_file(path: Path):
+    h = hashlib.sha256()
+    with path.open("rb") as f:
+        for block in iter(lambda: f.read(8 * 1024 * 1024), b""):
+            h.update(block)
+    return h.hexdigest()
+
+
+def _file_fingerprints(path: Path, fmt: str):
+    """返回 receipt 绑定的精确文件集；v2 同时绑定 logs/blocks。"""
+    if fmt == "v1csv":
+        files = [path]
+        base = path.parent
+    elif fmt == "v2":
+        files = sorted(
+            [Path(x) for x in glob.glob(str(path / "run_*" / "logs.parquet"))]
+            + [Path(x) for x in glob.glob(str(path / "run_*" / "blocks.parquet"))]
+        )
+        base = path
+    else:
+        raise ChannelsPreflightError(f"format 必须是 v1csv|v2: {fmt}")
+    if not files:
+        raise ChannelsPreflightError(f"{fmt} 无可绑定数据文件: {path}")
+    return [{"path": str(p.relative_to(base)), "size": p.stat().st_size,
+             "sha256": _sha256_file(p)} for p in files]
+
+
 def _write_preflight(out_dir, payload):
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
@@ -140,6 +168,7 @@ def preflight_channels(manifest_path, out_dir, *, allowed_formats=None):
                 if not path.is_dir():
                     raise ChannelsPreflightError(f"{tag} 声明 v2 目录不存在或类型错误: {path}")
                 rows, min_block, max_block = _v2_stats(path)
+            files = _file_fingerprints(path, fmt)
 
             receipt_path = _resolve(base, channel.get("receipt"), f"{tag}.receipt")
             if not receipt_path.is_file():
@@ -151,11 +180,14 @@ def preflight_channels(manifest_path, out_dir, *, allowed_formats=None):
             bound_path = _resolve(base, receipt.get("data_path"), f"{tag}.receipt.data_path")
             expected = {"schema": RECEIPT_SCHEMA, "status": "PASS", "tag": tag,
                         "token": token, "lo": lo, "hi": hi, "data_path": path,
-                        "rows": rows}
+                        "format": fmt, "rows": rows, "min_block": min_block,
+                        "max_block": max_block, "files": files}
             actual = {"schema": receipt.get("schema"), "status": receipt.get("status"),
                       "tag": receipt.get("tag"), "token": str(receipt.get("token", "")).strip(),
                       "lo": receipt.get("lo"), "hi": receipt.get("hi"),
-                      "data_path": bound_path, "rows": receipt.get("rows")}
+                      "data_path": bound_path, "format": receipt.get("format"),
+                      "rows": receipt.get("rows"), "min_block": receipt.get("min_block"),
+                      "max_block": receipt.get("max_block"), "files": receipt.get("files")}
             if isinstance(expected["token"], str) and expected["token"].startswith("0x"):
                 expected["token"] = expected["token"].lower()
                 actual["token"] = actual["token"].lower()

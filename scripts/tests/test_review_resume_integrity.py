@@ -16,6 +16,7 @@ sys.path.insert(0, str(EVM))
 sys.path.insert(0, str(SOL))
 
 from fetch_hypersync_v2 import QUERY_SCHEMA, find_resume_block
+from channels_preflight import _csv_stats, _file_fingerprints, _v2_stats
 from fetch_sqd_transfers_v2 import cache_identity_matches, cache_paths
 from replay_edges import cmd_evolution, cmd_reconcile
 
@@ -80,9 +81,15 @@ def make_done(out, mutate=None):
 
 def channel_receipt(tmp, tag, data_path, lo, hi, rows):
     p = Path(tmp) / f"{tag}.receipt.json"
+    data_path = Path(data_path)
+    fmt = "v2" if data_path.is_dir() else "v1csv"
+    _, min_block, max_block = (_v2_stats(data_path) if fmt == "v2"
+                               else _csv_stats(data_path))
     p.write_text(json.dumps({"schema": "evm-channel-receipt/v1", "status": "PASS",
                              "tag": tag, "token": A_EVM, "lo": lo, "hi": hi,
-                             "data_path": str(data_path), "rows": rows}))
+                             "data_path": str(data_path), "format": fmt, "rows": rows,
+                             "min_block": min_block, "max_block": max_block,
+                             "files": _file_fingerprints(data_path, fmt)}))
     return str(p)
 
 

@@ -19,11 +19,15 @@ import os
 import subprocess
 import sys
 import tempfile
+from pathlib import Path
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPLAY = os.path.join(HERE, "..", "evm", "replay_duck.py")
 EVM = os.path.join(HERE, "..", "evm")
 ENGINES = ["replay_duck.py", "replay_pass1.py", "replay_stream.py"]
+MAKE_RECEIPT = os.path.join(EVM, "make_channel_receipt.py")
+sys.path.insert(0, EVM)
+from channels_preflight import _csv_stats, _file_fingerprints
 
 A, B, C, D = ("0x" + c * 40 for c in "abcd")
 ZERO = "0x" + "0" * 40
@@ -71,6 +75,11 @@ def case_dir():
 def _receipt(tmp, name, data_path, lo, hi, rows=1, empty_proof=None):
     obj = {"schema": "evm-channel-receipt/v1", "status": "PASS", "tag": name,
            "token": A, "lo": lo, "hi": hi, "data_path": data_path, "rows": rows}
+    p = Path(data_path)
+    if p.is_file():
+        _, min_block, max_block = _csv_stats(p)
+        obj.update({"format": "v1csv", "min_block": min_block,
+                    "max_block": max_block, "files": _file_fingerprints(p, "v1csv")})
     if empty_proof:
         obj["empty_proof"] = empty_proof
     rp = os.path.join(tmp, f"{name}.receipt.json")
@@ -151,6 +160,36 @@ def main():
     rc, _, out = run_replay(ch_p, os.path.join(t, "out"))
     assert rc != 0 and "重叠" in out, f"F5 通道重叠必须启动即拒: rc={rc}"
 
+    # R1：生产工具必须从数据实体生成 receipt；生成后改数据即失效。
+    t = case_dir()
+    data = os.path.join(t, "generated.csv")
+    open(data, "w").write(
+        HDR + "100,1700000000,0xt1," + ZERO + "," + A + ",1000,log_0\n")
+    receipt = os.path.join(t, "generated.receipt.json")
+    made = subprocess.run([
+        sys.executable, MAKE_RECEIPT, "--data", data, "--format", "v1csv",
+        "--token", A, "--lo", "0", "--hi", "200", "--tag", "generated",
+        "--out", receipt,
+    ], capture_output=True, text=True)
+    assert made.returncode == 0 and os.path.isfile(receipt), made.stdout + made.stderr
+    ch_p = _manifest(t, [{"lo": 0, "hi": 200, "tag": "generated", "path": data,
+                          "format": "v1csv", "receipt": receipt}])
+    rc, _, out = run_replay(ch_p, os.path.join(t, "out_generated"))
+    assert rc == 0, f"R1 生成 receipt 后 preflight 应通过: {out[-500:]}"
+    with open(data, "a") as f:
+        f.write("110,1700000001,0xt2," + A + "," + B + ",1,log_0\n")
+    rc, _, out = run_replay(ch_p, os.path.join(t, "out_tampered"))
+    assert rc != 0 and "receipt" in out, "R1 生成后数据被改必须由 preflight 拒绝"
+
+    empty = os.path.join(t, "generated_empty.csv")
+    open(empty, "w").write(HDR)
+    refused = subprocess.run([
+        sys.executable, MAKE_RECEIPT, "--data", empty, "--format", "v1csv",
+        "--token", A, "--lo", "0", "--hi", "200", "--tag", "empty",
+        "--out", os.path.join(t, "empty.receipt.json"),
+    ], capture_output=True, text=True)
+    assert refused.returncode != 0 and "empty-proof" in refused.stdout + refused.stderr
+
     # P0-02：四类反例必须在三个入口读取任何事件前由同一预检器拦截。
     t = case_dir()
     good = os.path.join(t, "good.csv")
@@ -187,7 +226,7 @@ def main():
          "receipt": _receipt(t, "mid", data, 50, 150)}], expected_from=0, expected_to=200),
         "首尾未覆盖")
 
-    print("PASS: 故障注入 F0–F5 + P0-02 四类通道完整性反例×三引擎全过")
+    print("PASS: 故障注入 F0–F5 + P0-02 四类通道完整性×三引擎 + R1 receipt 生成/漂移")
     return 0
 
 

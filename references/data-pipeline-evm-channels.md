@@ -33,9 +33,25 @@ channels.json 的 path 字段语义（2026-07-25 SPX6900 实测坑）：hypersyn
 `channels_preflight.py`。顶层必须有 `schema=evm-channels/v2`、`token`、
 `expected_from`、`expected_to`；每段必须有 `path/format/lo/hi/tag/receipt`。排序后首尾
 必须等于全局边界，相邻段必须 `next.lo == prev.hi`。receipt schema 为
-`evm-channel-receipt/v1`，必须以 `status=PASS` 绑定同一 `token/tag/lo/hi/data_path/rows`；
+`evm-channel-receipt/v1`，必须以 `status=PASS` 绑定同一
+`token/tag/lo/hi/data_path/format/rows/min_block/max_block`，并绑定当前 CSV 或
+v2 `run_*/{logs,blocks}.parquet` 文件集的 size/SHA-256；
 实体行数为 0 时还必须有非空 `empty_proof`。预检成功或阻断都落
 `<out-dir>/channels_preflight.json`，BLOCK 必须非零退出。
+
+receipt 禁止手工数行数/抄哈希，一律用生产工具实扫数据后原子生成：
+
+```bash
+python3 scripts/evm/make_channel_receipt.py \
+  --data <csv文件或v2采集根目录> --format <v1csv|v2> \
+  --token 0x... --lo <含> --hi <不含> --tag <通道唯一名> \
+  --out <tag.receipt.json>
+```
+
+工具直接复用 preflight 的 CSV/Parquet 统计器，实扫 rows 与最小/最大块，
+非空数据越过 `[lo,hi)` 会拒绝落回执。空段必须额外传
+`--empty-proof "<为什么该区间可证为空>"`，否则非零退出。生成后任一绑定文件的
+大小或哈希变化都会使三个 replay 入口在读取事件前 BLOCK；数据重拉/补段后必须重新生成 receipt。
 
 ```json
 {"schema":"evm-channels/v2","token":"0x...","expected_from":0,"expected_to":200,
