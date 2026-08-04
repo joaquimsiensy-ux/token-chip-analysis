@@ -12,9 +12,9 @@
   8. G9 正例：seal PASS + 图在 charts/final/ → build_html exit 0 且 HTML 写出
   9. G9 封口后改结论文件 → exit 1 且 HTML **未写出**（gate 前置，不再先落盘再报错）
  10. G9 报告图不在 charts/final/ → exit 1 不写出
- 11. --skip-a4-gate-reason → exit 0 写出且 HTML 注释含理由
+ 11. legacy-recompile 用 mode 水印说明降级，且不存在任何 skip gate CLI
  12. 不传 --a4-seal（update 流程场景）→ G9 不触发照常编译
- 13. P0-01：analysis 模式拒绝 seal 外 facts/state/JSON，且不落 HTML
+ 13. P0-01/D-06：analysis 拒绝 seal 外 facts/state/JSON，但允许已封口监控 JSON
 用法：python3 scripts/tests/test_a4_gate.py   退出码 0=PASS / 1=FAIL
 """
 import base64
@@ -163,6 +163,20 @@ def main():
     check("finalize 正例 exit 0 且 seal PASS", p.returncode == 0 and os.path.isfile(seal_p)
           and json.load(open(seal_p))["verdict"] == "PASS")
 
+    # D-06：用户确认买入后，监控附录进入 seal 即可维持正式报告身份。
+    sealed_appendix = wj(d, "appendix.json", {"chip_summary": {}, "addresses": [],
+                                                "unlock_events": [], "source_line": "test"})
+    p = run(GATE, ["finalize", "--case-dir", d,
+                   "--seal-files", "findings.md,analysis-state.json,appendix.json",
+                   "--verdicts-file", good_verdicts])
+    sealed_json_out = os.path.join(d, "sealed_json.html")
+    p_build = run(BUILD, ["--mode", "analysis-audit", "--md", str(report_path),
+                          "--out", sealed_json_out, "--facts", os.path.join(d, "facts.json"),
+                          "--state", os.path.join(d, "analysis-state.json"),
+                          "--a4-seal", seal_p, "--json", sealed_appendix])
+    check("D-06 已封口监控 JSON 可走正式构建",
+          p.returncode == 0 and p_build.returncode == 0 and os.path.isfile(sealed_json_out))
+
     # P1-05：全新分析走共享门禁，不伪造净室资产；seal 轨道不可互换。
     new_d = os.path.join(root, "case_new")
     shutil.copytree(d, new_d)
@@ -237,8 +251,8 @@ def main():
     check("P0-01 seal 外 state 拒绝且不落 HTML",
           p.returncode != 0 and not os.path.exists(p0_state_out))
 
-    appendix = wj(d, "appendix.json", {"chip_summary": {}, "addresses": [],
-                                        "unlock_events": [], "source_line": "test"})
+    appendix = wj(d, "unsealed_appendix.json", {"chip_summary": {}, "addresses": [],
+                                                 "unlock_events": [], "source_line": "test"})
     p0_json_out = os.path.join(d, "p0_unsealed_json.html")
     p = run(BUILD, analysis_args + ["--json", appendix, "--out", p0_json_out])
     check("P0-01 analysis 禁止未封口 JSON 附录",
@@ -312,7 +326,7 @@ def main():
                     "--md", os.path.join(d, "报告bad.md"), "--out", os.path.join(d, "skip.html")])
     html_txt = open(os.path.join(d, "skip.html"), encoding="utf-8").read() \
         if os.path.isfile(os.path.join(d, "skip.html")) else ""
-    check("skip reason exit 0 且理由入 HTML 注释", p.returncode == 0 and "历史报告重编译测试" in html_txt)
+    check("legacy 降级理由入 HTML 注释", p.returncode == 0 and "历史报告重编译测试" in html_txt)
 
     # 12. analysis 不带 seal 必须拒；update 模式可显式降级无 seal 编译
     p = run(BUILD, ["--mode", "analysis-audit", "--md", os.path.join(d, "报告bad.md"),
@@ -322,11 +336,15 @@ def main():
                     "--md", os.path.join(d, "报告bad.md"), "--out", os.path.join(d, "update.html")])
     check("update 显式降级无 seal 可编译", p.returncode == 0)
 
+    help_text = run(BUILD, ["--help"]).stdout
+    check("D-07 help 不再暴露不可达 skip gate 参数",
+          "--skip-identity-gate" not in help_text and "--skip-a4-gate-reason" not in help_text)
+
     print("=" * 40)
     if FAILS:
         print(f"a4_gate 契约测试 {len(FAILS)} 项失败")
         return 1
-    print("a4_gate 契约测试全部通过（21 项）")
+    print("a4_gate 契约测试全部通过（23 项）")
     return 0
 
 
