@@ -38,7 +38,7 @@ _HERE = os.path.dirname(os.path.abspath(__file__))
 DEFAULT_LABELS_DIR = os.path.normpath(os.path.join(_HERE, '..', '..', 'references', 'labels'))
 
 LABELS_SCHEMA_VERSION = 4
-KNOWN_CHAINS = ('eth', 'base', 'bsc', 'sol', 'robinhood', 'hyperliquid', 'filecoin')
+KNOWN_CHAINS = ('eth', 'base', 'bsc', 'arbitrum', 'sol', 'robinhood', 'hyperliquid', 'filecoin')
 
 # 基础 9 列（v3）+ v4 可选列（旧行空值合法，resolver 对空值走推导）
 BASE_FIELDS = ['address', 'chain', 'name', 'category', 'tier', 'source',

@@ -7,8 +7,10 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent / "report"))
+sys.path.insert(0, str(HERE))
 
 import entity_identity_gate as gate
+from identity_gate_fixture import write_binding
 
 
 ADDR = "0x1234567890abcdef1234567890abcdef12345678"
@@ -24,8 +26,12 @@ def main():
         state = {"chain": "bsc", "whale_groups": [
             {"entity_id": "e1", "addresses": [ADDR]}]}
         dump(state_path, state)
+        total, _ = write_binding(tmp, {ADDR: 100})
+        snapshot = Path(tmp) / "identity_holders.json"
+        receipt = Path(tmp) / "identity_holders_receipt.json"
         gate_path = Path(tmp) / "identity_gate.json"
-        built = gate.build(str(state_path), "bsc", out_path=str(gate_path))
+        built = gate.build(str(state_path), "bsc", str(snapshot), out_path=str(gate_path),
+                           total_supply_raw=total, snapshot_receipt_path=str(receipt))
         row = built["rows"][0]
         assert row["flag"] == "BIG_UNLABELED" and built["n_flags"] == 1, \
             "无标签实体成员必须入 BIG_UNLABELED，不得由 share 决定"

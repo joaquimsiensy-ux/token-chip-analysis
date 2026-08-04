@@ -28,6 +28,7 @@ import shutil
 from pathlib import Path
 
 from test_audit_release_gate import build_case
+from identity_gate_fixture import augment_gate
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 GATE = os.path.join(HERE, "..", "report", "a4_gate.py")
@@ -112,13 +113,14 @@ def main():
                           "entities": {"e1": {"label": "实体1", "addresses": [ENTITY_ADDR],
                                                  "current_raw": "100", "peak_raw": "100",
                                                  "peak_date": "2026-01-01"}}, "metrics": {}})
-    wj(d, "identity_gate.json", {"schema": "identity_gate_v2", "chain": "bsc",
+    identity = augment_gate(d, {"chain": "bsc",
         "state_file": "analysis-state.json",
         "state_sha256": hashlib.sha256(Path(state_path).read_bytes()).hexdigest(),
         "n_addresses": 1, "n_flags": 0, "rows": [
         {"address": ENTITY_ADDR, "entity": "e1", "share_pct": None,
          "label": {"name": "fixture", "category": "other", "tier": "identity", "source": "test"},
-         "on_curve": None, "flag": "", "resolution": ""}]})
+         "on_curve": None, "flag": "", "resolution": ""}]}, chain="bsc")
+    wj(d, "identity_gate.json", identity)
 
     # 5/6. finalize 反例集
     p = run(GATE, ["finalize", "--case-dir", d, "--seal-files", "findings.md",

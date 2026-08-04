@@ -9,6 +9,10 @@
 用法：python3 scripts/tests/test_build_html.py    退出码 0=PASS / 1=FAIL
 """
 import hashlib, json, os, subprocess, sys, tempfile
+from pathlib import Path
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from identity_gate_fixture import augment_gate
 
 ROOT = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..'))
 SCRIPT = os.path.join(ROOT, 'scripts', 'report', 'build_html.py')
@@ -36,8 +40,8 @@ def run_case(tag, md_text, json_obj, expect_exit, expect_html_has=None, expect_o
             json.dump(state_obj, open(state_path, 'w'), ensure_ascii=False)
             cmd += ['--state', 's.json']
         if gate_obj is not None:
-            gate_obj = dict(gate_obj)
-            gate_obj.update({'schema': 'identity_gate_v2', 'chain': 'bsc',
+            gate_obj = augment_gate(d, gate_obj, chain='bsc')
+            gate_obj.update({'chain': 'bsc',
                              'state_file': 's.json',
                              'state_sha256': hashlib.sha256(open(state_path, 'rb').read()).hexdigest(),
                              'n_addresses': len(gate_obj.get('rows', [])),

@@ -81,9 +81,9 @@ def is_on_curve(addr):
 
 
 BIG_SHARE = 0.01   # 快照单址 ≥1% 总供应即入闸
-GATE_SCHEMA = 'identity_gate_v2'
+GATE_SCHEMA = 'identity_gate_v3'
 FLAGS = {'', 'INFRA_IN_ENTITY', 'PDA_UNRESOLVED', 'BIG_UNLABELED'}
-CHAINS = {'eth', 'base', 'bsc', 'sol', 'robinhood', 'hyperliquid', 'filecoin'}
+CHAINS = {'eth', 'base', 'bsc', 'arbitrum', 'sol', 'robinhood', 'hyperliquid', 'filecoin'}
 
 
 def _sha256(path):
@@ -92,6 +92,60 @@ def _sha256(path):
         for block in iter(lambda: f.read(1024 * 1024), b''):
             h.update(block)
     return h.hexdigest()
+
+
+def _positive_raw(value, label):
+    if isinstance(value, bool):
+        raise ValueError(f'{label} 必须是正整数 raw amount')
+    if isinstance(value, int):
+        n = value
+    elif isinstance(value, str) and value.isdigit():
+        n = int(value)
+    else:
+        raise ValueError(f'{label} 必须是正整数 raw amount')
+    if n <= 0:
+        raise ValueError(f'{label} 必须大于 0')
+    return n
+
+
+def load_snapshot_binding(state_path, snapshot_path, receipt_path, total_supply_raw):
+    state_dir = os.path.dirname(os.path.abspath(state_path))
+    snapshot = os.path.abspath(snapshot_path)
+    receipt = os.path.abspath(receipt_path)
+    if os.path.dirname(snapshot) != state_dir or os.path.dirname(receipt) != state_dir:
+        raise ValueError('snapshot/receipt 必须与 analysis-state.json 同目录')
+    if os.path.islink(snapshot) or os.path.islink(receipt) \
+            or not os.path.isfile(snapshot) or not os.path.isfile(receipt):
+        raise ValueError('snapshot/receipt 不存在或为符号链接')
+    total = _positive_raw(total_supply_raw, 'total_supply_raw')
+    try:
+        snap = json.load(open(snapshot, encoding='utf-8'))
+        rec = json.load(open(receipt, encoding='utf-8'))
+    except Exception as exc:
+        raise ValueError(f'snapshot/receipt 不可读: {exc}') from exc
+    if not isinstance(snap, dict) or not snap:
+        raise ValueError('snapshot 必须是非空 owner->raw amount 对象')
+    if rec.get('schema') != 'identity-holder-snapshot/v1' or rec.get('status') != 'PASS' \
+            or rec.get('complete_owner_universe') is not True or rec.get('as_of_block') is None:
+        raise ValueError('snapshot receipt 非 PASS/完整 owner 全集')
+    bound = rec.get('snapshot')
+    if not isinstance(bound, dict) or bound.get('path') != os.path.basename(snapshot) \
+            or bound.get('sha256') != _sha256(snapshot):
+        raise ValueError('snapshot receipt 未绑定当前 snapshot')
+    if str(rec.get('total_supply_raw')) != str(total):
+        raise ValueError('snapshot receipt total_supply_raw 与显式分母不一致')
+    parsed = {}
+    for address, value in snap.items():
+        if isinstance(value, bool) or not isinstance(value, (int, str)) \
+                or not str(value).isdigit():
+            raise ValueError(f'snapshot {address} 余额非非负整数')
+        parsed[str(address)] = int(value)
+    if sum(parsed.values()) != total:
+        raise ValueError(f'snapshot owner 全集与 total supply 不闭合: {sum(parsed.values())} != {total}')
+    meta = {'snapshot_file': os.path.basename(snapshot), 'snapshot_sha256': _sha256(snapshot),
+            'receipt_file': os.path.basename(receipt), 'receipt_sha256': _sha256(receipt),
+            'as_of_block': rec['as_of_block'], 'complete_owner_universe': True}
+    return parsed, total, meta
 
 
 def validate_gate(gate_path, state_path=None, require_resolved=True):
@@ -126,6 +180,24 @@ def validate_gate(gate_path, state_path=None, require_resolved=True):
     state_chain = state.get('chain') or (state.get('token') or {}).get('chain')
     if state_chain != chain:
         errors.append(f'chain 与 state 不绑定: gate={chain!r} state={state_chain!r}')
+
+    binding = gate.get('snapshot_binding')
+    snapshot_values, total_supply = {}, None
+    if gate.get('share_basis') != 'total_supply':
+        errors.append('share_basis 必须为 total_supply')
+    if not isinstance(binding, dict):
+        errors.append('缺 snapshot_binding')
+    else:
+        try:
+            snapshot_values, total_supply, actual_binding = load_snapshot_binding(
+                bound_state,
+                os.path.join(os.path.dirname(bound_state), binding.get('snapshot_file', '')),
+                os.path.join(os.path.dirname(bound_state), binding.get('receipt_file', '')),
+                gate.get('total_supply_raw'))
+            if binding != actual_binding:
+                errors.append('snapshot_binding 与当前 snapshot/receipt 不一致')
+        except ValueError as exc:
+            errors.append(str(exc))
 
     expected_entities = {}
     for group in state.get('whale_groups') or []:
@@ -164,6 +236,13 @@ def validate_gate(gate_path, state_path=None, require_resolved=True):
         for required_field in ('share_pct', 'label', 'on_curve', 'flag', 'resolution'):
             if required_field not in row:
                 errors.append(f'{address} 缺字段 {required_field}')
+        if total_supply:
+            lookup = address if chain == 'sol' else str(address).lower()
+            snap_norm = snapshot_values if chain == 'sol' else {
+                str(k).lower(): v for k, v in snapshot_values.items()}
+            expected_share = round(snap_norm.get(lookup, 0) / total_supply * 100, 3)
+            if row.get('share_pct') != expected_share:
+                errors.append(f'{address} share_pct 与绑定总供应分母不一致')
         label = row.get('label')
         if label is not None and (not isinstance(label, dict)
                                   or not {'name', 'category', 'tier', 'source'} <= set(label)):
@@ -190,6 +269,15 @@ def validate_gate(gate_path, state_path=None, require_resolved=True):
     missing = sorted(set(expected_entities) - {r.get('address') for r in rows if isinstance(r, dict)})
     if missing:
         errors.append(f'{len(missing)} 个 state 实体地址未入闸')
+    if total_supply:
+        row_keys = {str(r.get('address')).lower() if chain != 'sol' else r.get('address')
+                    for r in rows if isinstance(r, dict)}
+        snap_norm = snapshot_values if chain == 'sol' else {
+            str(k).lower(): v for k, v in snapshot_values.items()}
+        omitted = [a for a, v in snap_norm.items()
+                   if v / total_supply >= BIG_SHARE and a not in row_keys]
+        if omitted:
+            errors.append(f'{len(omitted)} 个当前≥1% 总供应 owner 未入闸')
     if gate.get('n_addresses') != len(rows):
         errors.append(f'n_addresses 应为 {len(rows)}，实为 {gate.get("n_addresses")}')
     if gate.get('n_flags') != actual_flags:
@@ -197,24 +285,33 @@ def validate_gate(gate_path, state_path=None, require_resolved=True):
     return errors
 
 
-def build(state_path, chain, snapshot_path=None, out_path=None):
+def build(state_path, chain, snapshot_path=None, out_path=None, *,
+          total_supply_raw=None, snapshot_receipt_path=None):
     from labels_resolver import LabelResolver
     state = json.load(open(state_path))
     resolver = LabelResolver(chain)
     resolver.warn_if_degraded()
 
+    if chain not in CHAINS:
+        raise ValueError(f'chain 非法: {chain!r}')
+    if not snapshot_path or not snapshot_receipt_path or total_supply_raw is None:
+        raise ValueError('生成 identity gate 必须显式传 snapshot/snapshot-receipt/total-supply-raw')
+    snap, total, snapshot_meta = load_snapshot_binding(
+        state_path, snapshot_path, snapshot_receipt_path, total_supply_raw)
+    snap_norm = snap if chain == 'sol' else {str(k).lower(): v for k, v in snap.items()}
+
     targets = {}   # addr -> {entity, share}
     for g in state.get('whale_groups', []):
         for a in g.get('addresses', []):
-            targets[a] = {'entity': g.get('entity_id', '?'), 'share': None}
-    if snapshot_path:
-        snap = json.load(open(snapshot_path))
-        total = sum(snap.values())
-        if total > 0:
-            for a, v in snap.items():
-                if v / total >= BIG_SHARE and a not in targets:
-                    targets[a] = {'entity': '(non-entity big holder)',
-                                  'share': round(v / total * 100, 3)}
+            key = a if chain == 'sol' else str(a).lower()
+            targets[a] = {'entity': g.get('entity_id', '?'),
+                          'share': round(snap_norm.get(key, 0) / total * 100, 3)}
+    target_keys = {a if chain == 'sol' else str(a).lower() for a in targets}
+    for a, v in snap.items():
+        key = a if chain == 'sol' else str(a).lower()
+        if v / total >= BIG_SHARE and key not in target_keys:
+            targets[a] = {'entity': '(non-entity big holder)',
+                          'share': round(v / total * 100, 3)}
 
     rows = []
     for a, meta in sorted(targets.items()):
@@ -236,7 +333,8 @@ def build(state_path, chain, snapshot_path=None, out_path=None):
         rows.append({'address': a, 'entity': meta['entity'], 'share_pct': meta['share'],
                      'label': label, 'on_curve': oc, 'flag': flag, 'resolution': ''})
 
-    gate = {'schema': GATE_SCHEMA, 'chain': chain,
+    gate = {'schema': GATE_SCHEMA, 'chain': chain, 'share_basis': 'total_supply',
+            'total_supply_raw': str(total), 'snapshot_binding': snapshot_meta,
             'state_file': os.path.basename(state_path),
             'state_sha256': _sha256(state_path),
             'n_addresses': len(rows),
@@ -270,6 +368,8 @@ def main():
     ap.add_argument('--state')
     ap.add_argument('--chain')
     ap.add_argument('--snapshot')
+    ap.add_argument('--snapshot-receipt')
+    ap.add_argument('--total-supply-raw')
     ap.add_argument('--out')
     ap.add_argument('--check', help='校验模式：identity_gate.json 路径')
     a = ap.parse_args()
@@ -277,7 +377,9 @@ def main():
         sys.exit(check(a.check))
     if not (a.state and a.chain):
         ap.error('生成模式需要 --state 与 --chain')
-    build(a.state, a.chain, a.snapshot, a.out)
+    build(a.state, a.chain, a.snapshot, a.out,
+          total_supply_raw=a.total_supply_raw,
+          snapshot_receipt_path=a.snapshot_receipt)
 
 
 if __name__ == '__main__':
