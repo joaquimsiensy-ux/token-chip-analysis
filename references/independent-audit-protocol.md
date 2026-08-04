@@ -88,6 +88,24 @@ receipt 绑定入口脚本哈希、`audit_input_manifest.json` 哈希、参数�
 输出文件大小/哈希与关键摘要哈希。发布闸只重验 receipt 与当前文件，绝不执行
 claim 里的 `reproduce_command`。完整阴性命题还必须证明候选集完整、未决候选为零、黑箱边界已量化。证据只够否定旧结论时，必须停在 `unverified`，不得为了交付完整叙事另造一个肯定结论。
 
+### 存量 reproduce-receipt/v1 迁移
+
+`reproduce-receipt/v1` **不得原地升级**或补字段冒充 v2；旧 receipt 与旧输出先改名归档为
+`reproduce_receipt.v1.archived.json` / `reproduce_output.v1.archived.json`（保留审计链，不覆盖），
+再由唯一生产生成器 `scripts/report/reproduce_receipt.py` 重跑：
+
+```bash
+python3 scripts/report/reproduce_receipt.py <案目录> \
+  --output reproduce_output.json --receipt reproduce_receipt.json
+```
+
+controller 会先确认正式输出不存在，再独占创建 staging 文件、设置
+`CHIP_REPRODUCE_OUTPUT=<staging绝对路径>` 后执行案内固定入口。`reproduce_audit.py` 必须直接打开该
+环境变量指向的文件写入并保留 inode；禁止继续硬编码 `reproduce_output.json`，也禁止临时文件
+`os.replace`/rename 覆盖 staging。exit code 非零、未写 staging、inode 被替换、输出不是 JSON 或摘要
+无法计算均不产 PASS receipt。迁移成功后更新 claim registry 引用新 v2 receipt；旧 v1 只归档，
+不能进入发布闸。这样“存量怎么迁”由完整重跑回答，“谁生产新格式”由上述 controller 回答。
+
 ## 8. 对抗复核否决权
 
 至少设置实体归因怀疑者和完整性批评者两类独立复核。复核者直接读取原始数据，不审阅主报告叙事。任何以下发现均为发布否决项：
