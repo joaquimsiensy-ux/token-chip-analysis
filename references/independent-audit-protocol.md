@@ -134,6 +134,7 @@ economic_control_ledger.json
 dormant_warehouse_audit.json
 claim_registry.json
 adversarial_review.json
+shared_release_receipt.json
 reproduce_audit.py
 reproduce_receipt.json
 reproduce_output.json
@@ -144,6 +145,8 @@ reproduce_output.json
 - `membership_ledger.json.entries[]`：`entity_id,address,membership,as_of_balance_raw,balance_source`，其中 membership 只能是 `strict|expanded|excluded`；地址规范化后全局唯一。每个有效成员必须绑定 `address-balance-snapshot/v1` 的 `path,sha256,as_of_block`，快照 `entries[]` 的地址与 `balance_raw` 必须与成员账逐行一致。零余额必须显式写 `as_of_balance_raw: 0`，或写非空 `zero_balance_proof`并由同一绑定快照证明为 0。
 - `position_ledger.json.entries[]`：`entity_id,address,location_id,amount_raw`；每条地址必须映射到同一实体的有效成员，`(location_id,address)` 唯一，金额为非负 raw integer。发布闸会按地址汇总所有位置，并要求每个有效成员的 `Σ amount_raw == as_of_balance_raw`；无位置行只能与经证明的零余额闭合。
 - `economic_control_ledger.json.entries[]`：按 `economic-control-accounting.md` §5；发布闸从明细重算 `wallet_self_held_raw == Σ position.amount_raw`、`confirmed_economic_control_raw == wallet_self_held_raw + Σ claim.token_raw`，并校验 `double_count_key` 全局唯一及所有权/数量算法/目标块证据齐全。任何 `unresolved_count` 都必须与实际 unresolved 明细一致，汇总布尔和自报 count 不作为放行证据。
+
+`accounting_mode.json` 必须是 `accounting_gate.py` 的 `accounting-gate/v1` exit 0 产物；`reconciliation_report.json` 使用 v2 target，并给 balance/supply/supply_truth/time 每项绑定子工具脚本和 exit-0 receipt；`adversarial_review.json` 使用 v2 target，两个角色逐一绑定固定 runner 与非空 review artifact。三者完成后由唯一生产聚合器运行 `python3 scripts/report/shared_release_receipt.py <案目录>`，生成并哈希绑定三者的 `shared-release-receipt/v1`。存量裸布尔文件不得补字段迁移：必须重跑相应生产子工具/固定 reviewer，再运行聚合器；任何 receipt 后替换都会阻断。
 
 涉及历史图时另需 `chart_reconciliation.json`。发布前运行：
 
