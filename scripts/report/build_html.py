@@ -363,6 +363,8 @@ def main():
                         warns.append(f"[WARN] G9 封口条目非法: {e}")
                 required = {"findings.md", "analysis-state.json", "facts.json", "identity_gate.json",
                             "a4_claims.json"}
+                if _seal.get("workflow_type") == "independent-audit":
+                    required.add("claim_registry.json")
                 if not required <= sealed_paths:
                     warns.append(f"[WARN] G9 封口资产不全: {sorted(required - sealed_paths)}")
                 if not set(_seal.get("claim_files") or []) <= sealed_paths:

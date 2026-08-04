@@ -67,8 +67,22 @@ def main():
     os.makedirs(d)
     report_path = build_case(Path(d), historical=False)
 
-    claims = [{"id": "C1", "text": "大庄A控盘30%", "files": ["raw_transfers.jsonl"]},
-              {"id": "C2", "text": "项目方已弃盘"}]
+    registry = json.load(open(os.path.join(d, "claim_registry.json")))
+    registry["claims"] = [
+        {"claim_id": "C1", "statement": "大庄A控盘30%", "claim_type": "snapshot_balance",
+         "report_locations": ["report.md:1"], "verdict": "weakened",
+         "evidence_files": ["raw_transfers.jsonl"]},
+        {"claim_id": "C2", "statement": "项目方已弃盘", "claim_type": "snapshot_balance",
+         "report_locations": ["report.md:1"], "verdict": "confirmed",
+         "evidence_files": ["raw_transfers.jsonl"],
+         "reproduce_receipt": "reproduce_receipt.json",
+         "counter_hypotheses": ["暂时静置"], "blocking_unresolved": False},
+    ]
+    wj(d, "claim_registry.json", registry)
+    claims = [{"id": "C1", "text": "大庄A控盘30%", "files": ["raw_transfers.jsonl"],
+               "report_locations": ["report.md:1"]},
+              {"id": "C2", "text": "项目方已弃盘", "files": ["raw_transfers.jsonl"],
+               "report_locations": ["report.md:1"]}]
     cf = wj(d, "claims_in.json", claims)
 
     # 1/2. register
@@ -167,13 +181,17 @@ def main():
           p.returncode == 0 and p_build.returncode == 0 and os.path.isfile(new_out))
 
     # 8. G9 正例：图在 charts/final/，编译过
-    with open(os.path.join(d, "charts", "final", "fig1.png"), "wb") as f:
-        f.write(PNG)
     with open(report_path, "w") as f:
         f.write("# 测试报告\n\n![阵营演变](charts/final/fig1.png)\n\n正文。\n")
     registry = json.load(open(os.path.join(d, "claim_registry.json")))
     registry["report_sha256"] = hashlib.sha256(Path(report_path).read_bytes()).hexdigest()
     wj(d, "claim_registry.json", registry)
+    p = run(GATE, ["finalize", "--case-dir", d,
+                   "--seal-files", "findings.md,analysis-state.json",
+                   "--verdicts-file", good_verdicts])
+    check("P1-06 终版 claim registry 对账后重封口", p.returncode == 0)
+    with open(os.path.join(d, "charts", "final", "fig1.png"), "wb") as f:
+        f.write(PNG)
     out_html = os.path.join(d, "报告.html")
     analysis_args = ["--mode", "analysis-audit", "--md", str(report_path), "--out", out_html,
                      "--facts", os.path.join(d, "facts.json"), "--state", os.path.join(d, "analysis-state.json"),

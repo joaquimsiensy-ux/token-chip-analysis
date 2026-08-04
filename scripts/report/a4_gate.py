@@ -75,6 +75,53 @@ def safe_case_file(case_dir, rel, must_exist=True):
     return p
 
 
+def _norm_text(value):
+    return " ".join(str(value or "").split())
+
+
+def check_audit_registry_alignment(case_dir, reg, verdicts, fails):
+    """Bidirectionally align the A4 registry with the clean-room registry."""
+    try:
+        path = safe_case_file(case_dir, "claim_registry.json")
+        audit = json.loads(path.read_text(encoding="utf-8"))
+    except Exception as exc:
+        fails.append(f"净室 claim_registry.json 不可读: {exc}")
+        return None
+    audit_claims = audit.get("claims")
+    if not isinstance(audit_claims, list):
+        fails.append("净室 claim_registry.json claims 非数组")
+        return path
+    a4_claims = reg.get("claims") if isinstance(reg, dict) else None
+    if not isinstance(a4_claims, list):
+        fails.append("a4_claims.json claims 非数组")
+        return path
+    a4_map = {str(c.get("id", "")).strip(): c for c in a4_claims if isinstance(c, dict)}
+    audit_ids = [str(c.get("claim_id", "")).strip() for c in audit_claims
+                 if isinstance(c, dict)]
+    audit_map = {str(c.get("claim_id", "")).strip(): c
+                 for c in audit_claims if isinstance(c, dict)}
+    verdict_map = {str(v.get("id", "")).strip(): str(v.get("verdict", "")).upper()
+                   for v in verdicts if isinstance(v, dict)}
+    if len(audit_ids) != len(set(audit_ids)) or not all(audit_ids):
+        fails.append("净室 claim_registry claim_id 缺失或重复")
+    if set(a4_map) != set(audit_map):
+        fails.append(f"两套 claim id 集合不一致: "
+                     f"only_a4={sorted(set(a4_map)-set(audit_map))} "
+                     f"only_audit={sorted(set(audit_map)-set(a4_map))}")
+    for cid in sorted(set(a4_map) & set(audit_map)):
+        left, right = a4_map[cid], audit_map[cid]
+        if _norm_text(left.get("text")) != _norm_text(right.get("statement")):
+            fails.append(f"claim {cid} 命题文本不一致")
+        if set(map(str, left.get("files") or [])) != set(map(str, right.get("evidence_files") or [])):
+            fails.append(f"claim {cid} 证据文件集合不一致")
+        if set(map(str, left.get("report_locations") or [])) != \
+                set(map(str, right.get("report_locations") or [])):
+            fails.append(f"claim {cid} 报告位置集合不一致")
+        if str(right.get("verdict", "")).upper() != verdict_map.get(cid):
+            fails.append(f"claim {cid} 最终 verdict 不一致")
+    return path
+
+
 def cmd_register(a):
     case_dir = os.path.abspath(a.case_dir)
     try:
@@ -104,11 +151,13 @@ def cmd_register(a):
                 safe_case_file(case_dir, rel)
                 files.append(rel)
             normalized.append({"id": str(c["id"]).strip(), "text": str(c["text"]).strip(),
-                               "files": files})
+                               "files": files,
+                               "report_locations": list(c.get("report_locations") or []),
+                               "claim_type": c.get("claim_type")})
     except ValueError as e:
         print(f"[register] claim 引用文件非法: {e}", file=sys.stderr)
         return 2
-    reg = {"schema": "a4-claims/v1", "registered_at_utc": utcnow(),
+    reg = {"schema": "a4-claims/v2", "registered_at_utc": utcnow(),
            "claims": normalized}
     path = os.path.join(case_dir, CLAIMS_NAME)
     with open(path, "w", encoding="utf-8") as f:
@@ -152,8 +201,14 @@ def cmd_finalize(a):
         elif vd in ("WEAKENED", "REFUTED") and not str(v.get("revision_note", "")).strip():
             fails.append(f"claim {v.get('id')} 判 {vd} 但无 revision_note——翻案必须写修订摘要（改了什么、改后结论）")
 
+    audit_registry_path = None
+    if a.workflow_type == "independent-audit":
+        audit_registry_path = check_audit_registry_alignment(case_dir, reg, verdicts, fails)
+
     seal_files = {x.strip() for x in (a.seal_files or "").split(",") if x.strip()}
     seal_files |= MANDATORY_SEAL_FILES
+    if audit_registry_path is not None:
+        seal_files.add("claim_registry.json")
     claim_files = {str(rel) for c in reg.get("claims", []) for rel in (c.get("files") or [])}
     seal_files |= claim_files
     sealed = []
