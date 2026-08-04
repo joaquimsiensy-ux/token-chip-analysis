@@ -32,26 +32,30 @@ channels.json 的 path 字段语义（2026-07-25 SPX6900 实测坑）：hypersyn
 **channels.json v2 完整性契约（P0 硬闸）**：三个 replay 入口在读取任何事件前共用
 `channels_preflight.py`。顶层必须有 `schema=evm-channels/v2`、`token`、
 `expected_from`、`expected_to`；每段必须有 `path/format/lo/hi/tag/receipt`。排序后首尾
-必须等于全局边界，相邻段必须 `next.lo == prev.hi`。receipt schema 为
-`evm-channel-receipt/v1`，必须以 `status=PASS` 绑定同一
-`token/tag/lo/hi/data_path/format/rows/min_block/max_block`，并绑定当前 CSV 或
-v2 `run_*/{logs,blocks}.parquet` 文件集的 size/SHA-256；
-实体行数为 0 时还必须有非空 `empty_proof`。预检成功或阻断都落
-`<out-dir>/channels_preflight.json`，BLOCK 必须非零退出。
+必须等于全局边界，相邻段必须 `next.lo == prev.hi`。通道 receipt schema 为
+`evm-channel-receipt/v2`，必须绑定同一 token/tag/区间、数据统计及当前文件哈希。CSV 还必须
+引用 adapter 成功收尾时原生生成的 `evm-collector-run/v2`：collector 当前脚本哈希、provider、
+冻结块界、严格前进且到达目标的 cursor，以及连续 segment output-prefix hash chain 全部重验。
+空段不接受操作者文字证明；同一 native receipt chain 本身必须证明扫描到冻结上界。预检成功或
+阻断都落 `<out-dir>/channels_preflight.json`，BLOCK 必须非零退出。
 
-receipt 禁止手工数行数/抄哈希，一律用生产工具实扫数据后原子生成：
+正式 HyperSync CSV 首段必须是运行前不存在的新文件：
 
 ```bash
+python3 scripts/evm/fetch_hypersync.py "$TOKEN" <lo> --token-addr 0x... \
+  --to-block <hi排他> --out data/full.csv --receipt data/full.collector.json
 python3 scripts/evm/make_channel_receipt.py \
-  --data <csv文件或v2采集根目录> --format <v1csv|v2> \
-  --token 0x... --lo <含> --hi <不含> --tag <通道唯一名> \
-  --out <tag.receipt.json>
+  --data data/full.csv --format v1csv --token 0x... --lo <lo> --hi <hi> --tag primary \
+  --collector-receipt data/full.collector.json --out data/full.receipt.json
 ```
 
-工具直接复用 preflight 的 CSV/Parquet 统计器，实扫 rows 与最小/最大块，
-非空数据越过 `[lo,hi)` 会拒绝落回执。空段必须额外传
-`--empty-proof "<为什么该区间可证为空>"`，否则非零退出。生成后任一绑定文件的
-大小或哈希变化都会使三个 replay 入口在读取事件前 BLOCK；数据重拉/补段后必须重新生成 receipt。
+延长冻结上界时，collector 必须带 `--resume-receipt data/full.collector.json`；它先重验旧
+CSV 的每个历史 prefix，再从前一 `requested_to` 续采并发布加长 chain。没有前驱 receipt 的
+**存量 legacy CSV** 不可补签或手工迁移：另名归档，重新从冻结 `lo` 采到 `hi`。SQD/Alchemy
+的正式 fresh-output 命令同样带 `--receipt`；BigQuery/bloXroute/Etherscan 只作诊断或补充。
+数据变化后必须由生产 collector 重采/续采，再重跑 `make_channel_receipt.py`；测试 fixture 或
+手搓 JSON 不构成迁移工具。v2 Parquet 通道则继续由 native done v3 +
+`make_channel_receipt.py --format v2` 生成，无 `--collector-receipt` 参数。
 
 ```json
 {"schema":"evm-channels/v2","token":"0x...","expected_from":0,"expected_to":200,
