@@ -18,6 +18,23 @@ def load(name):
     return mod
 
 
+def make_formal_corpus(mod):
+    root = Path(mod.DATA)
+    mod.save(str(root / "overview.json"), {"ok": True})
+    mod.save(str(root / "price_180d.json"), {"prices": [[1, 1]]})
+    rich = [{"address": f"f1{i:03d}"} for i in range(200)]
+    mod.save(str(root / "richlist.json"), rich)
+    for row in rich:
+        d = root / "addr" / row["address"]
+        d.mkdir(parents=True)
+        mod.save(str(d / "detail.json"), {"address": row["address"]})
+        mod.save(str(d / "transfers_recent.json"),
+                 {"complete": True, "complete_reason": "empty_page",
+                  "truncated": False, "transfers": []})
+        mod.save(str(d / "transfers_earliest.json"), {"complete": True, "transfers": []})
+    return rich
+
+
 def smoke(n):
     td = tempfile.TemporaryDirectory()
     root = Path(td.name)
@@ -54,7 +71,51 @@ def main():
         else:
             raise AssertionError("top_n=200 without official receipts must BLOCK")
         assert not (Path(mod.DATA) / "collection_manifest.json").exists()
-    print("PASS: P1-03 smoke 1/10/199 isolated; formal 200 requires all substage receipts")
+    # Round4 P1-01：三张 PASS receipt 不能替代 top-200 主体文件。
+    with tempfile.TemporaryDirectory() as td:
+        mod = load("round4_unbound")
+        mod.configure_data_dir(Path(td) / "data")
+        mod.initialize_data_dirs()
+        pagination = {"schema": "filecoin-richlist-pagination/v1", "status": "PASS",
+                      "complete": True, "compared_count": 200}
+        official = {"schema": "filecoin-official-scan/v1", "status": "PASS", "complete": True}
+        transfers = {"schema": "filecoin-official-transfers/v1", "status": "PASS", "complete": True}
+        for name, obj in (("richlist_pagination_receipt.json", pagination),
+                          ("official_scan_receipt.json", official),
+                          ("official_transfers_receipt.json", transfers)):
+            mod.save(str(Path(mod.DATA) / name), obj)
+        try:
+            mod.write_collection_manifest(200, official, transfers)
+        except RuntimeError as exc:
+            assert "richlist.json" in str(exc) or "overview.json" in str(exc)
+        else:
+            raise AssertionError("missing formal top-200 corpus must BLOCK")
+        assert not (Path(mod.DATA) / "collection_manifest.json").exists()
+
+        # 同族变体：主体齐全后缺任一 top-200 文件也必须阻断。
+        make_formal_corpus(mod)
+        victim = Path(mod.DATA) / "addr" / "f1199" / "detail.json"
+        victim.unlink()
+        try:
+            mod.write_collection_manifest(200, official, transfers)
+        except RuntimeError as exc:
+            assert "addr/f1199/detail.json" in str(exc)
+        else:
+            raise AssertionError("one missing top-200 file must BLOCK")
+        mod.save(str(victim), {"address": "f1199"})
+
+        # 失败分支：完成/截断元数据必须是 collector 实际字段，不接受字符串布尔。
+        bad = Path(mod.DATA) / "addr" / "f1000" / "transfers_recent.json"
+        mod.save(str(bad), {"complete": True, "complete_reason": "page_cap",
+                            "truncated": "false", "transfers": []})
+        try:
+            mod.write_collection_manifest(200, official, transfers)
+        except RuntimeError as exc:
+            assert "completion fields invalid" in str(exc)
+        else:
+            raise AssertionError("invalid completion/truncation state must BLOCK")
+
+    print("PASS: Filecoin smoke isolation + top-200 corpus/hash/completion manifest closure")
     return 0
 
 

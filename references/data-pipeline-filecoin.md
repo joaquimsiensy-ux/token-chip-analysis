@@ -7,6 +7,8 @@
 
 > 发布边界：现有 `fetch_data.py` 只能产 `restricted/top-200-windowed` 数据（富豪榜前 200、默认 180 天窗口、每地址最多 3000 笔），不得称“Filecoin 全量重放”。每页必须有连续完成原因；网络失败不落正式缓存，最终 `collection_manifest.json` 显式记录 restricted scope 与限制，并以哈希引用官方 ID 扫描子阶段 receipt。
 
+`filecoin-collection/v4` 还逐文件绑定 overview、同窗口价格、richlist 和 top-200 每地址的 detail/recent/earliest 三件套，并重算完整/截断统计。存量 v3 不得手改升级：保留旧 manifest，使用原 `--analysis-time` 与 `--window-days` 重新运行生产工具 `python3 scripts/filecoin/fetch_data.py --data-dir <案目录/data> ...`；工具会复用有效缓存、补缺件并仅在 603 个主体 JSON 与三张子 receipt 全闭合后原子产 v4。
+
 ## 0. 开工检查清单（每条都有对应踩坑记录，别跳）
 
 - [ ] HTTP 客户端：用 `subprocess.run(['curl','-s',...])` 走系统证书链，禁止 urllib 裸连 HTTPS（本机 Python 缺 CA 链会 `SSL: CERTIFICATE_VERIFY_FAILED`，曾白跑一整轮冒烟约 5 分钟）。

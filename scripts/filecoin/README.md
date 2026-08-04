@@ -37,3 +37,8 @@ cluster.py                    ⑤ 关联聚类：E1 共同 funder / E2 互转边
 - 用 `--analysis-time <ISO-8601>` 与 `--window-days N` 设分析窗口（默认当前 UTC、180 天）；脚本由同一参数计算 `CUTOFF` 并请求同 N 天价格，写入 manifest。每地址仍最多 `MAX_RECENT_PAGES`（30 页=3000 笔），超出记 truncated。
 - 富豪榜若出现重复地址，`analyze_base.py` 会 assert 拦下——先重抓再算。
 - 聚类纪律：funder 为交易所/热钱包时 E1 证据作废（人人都从交易所提币）；互转边任一端为交易所则 E2 作废；vanity 尾缀只作弱证据不单独成簇。
+
+
+## collection manifest v4 迁移
+
+旧 `filecoin-collection/v3` 不得改字段冒充 v4。以原分析时点和窗口重跑本文件所示的 `fetch_data.py --data-dir ...` 生产命令；采集器复用可读缓存、补齐缺件，并从当前磁盘重算 top-200 603 个主体 JSON 的 size/SHA-256 与逐地址完成/截断状态后才发布 v4。
