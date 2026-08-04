@@ -153,15 +153,22 @@ def _csv_collector_provenance(receipt_path, data_path, token, lo, hi):
 def _v2_provenance(path, token, lo, hi):
     """Revalidate every native done receipt and exact contiguous requested coverage."""
     root = Path(path).resolve()
+    identity_path = root / "capture_identity.json"
+    if identity_path.is_symlink() or not identity_path.is_file():
+        raise ChannelsPreflightError("v2 采集根目录缺不可变 capture_identity.json")
+    try:
+        from fetch_hypersync_v2 import capture_identity, validate_done_manifest
+        identity_manifest = json.loads(identity_path.read_text(encoding="utf-8"))
+        first_url = identity_manifest.get("url") if isinstance(identity_manifest, dict) else None
+        if identity_manifest != capture_identity(token, first_url):
+            raise ValueError("capture_identity.json 与 token/url/query/collector 不一致")
+    except Exception as exc:
+        raise ChannelsPreflightError(f"v2 capture identity 校验失败: {exc}") from exc
     done_paths = sorted(root.glob("run_*/done.json"))
     run_dirs = {p.parent for p in root.glob("run_*/logs.parquet")} \
         | {p.parent for p in root.glob("run_*/blocks.parquet")}
     if not done_paths or run_dirs != {p.parent for p in done_paths}:
         raise ChannelsPreflightError("v2 采集根目录的 run 与 done.json 不完整对应")
-    try:
-        from fetch_hypersync_v2 import validate_done_manifest
-    except Exception as exc:
-        raise ChannelsPreflightError(f"无法加载 HyperSync done validator: {exc}") from exc
     intervals, receipts, identity = [], [], None
     for done_path in done_paths:
         try:
@@ -188,7 +195,9 @@ def _v2_provenance(path, token, lo, hi):
     for prev, nxt in zip(intervals, intervals[1:]):
         if prev[1] != nxt[0]:
             raise ChannelsPreflightError(f"v2 done 区间有洞或重叠: {prev} -> {nxt}")
-    return {"kind": "hypersync-v2-native", "identity": {
+    return {"kind": "hypersync-v2-native",
+            "identity_manifest": {"path": "capture_identity.json",
+                                  "sha256": _sha256_file(identity_path)}, "identity": {
                 "token": identity[0], "provider_url": identity[1], "query_schema": identity[2]},
             "completion": {"reason": "contiguous_done_receipts", "lo": lo, "hi": hi},
             "done_receipts": receipts}

@@ -173,6 +173,7 @@ def test_r2_refresh_manifests(tmp):
     upgraded = json.loads((good_out / "run_10" / "done.json").read_text())
     assert upgraded["schema"] == "hypersync-v2-done/v3"
     assert set(upgraded["files"]) == {"logs.parquet", "blocks.parquet"}
+    assert (good_out / "capture_identity.json").is_file()
     assert find_resume_block(str(good_out), 10, 30, A_EVM, old["url"]) == 20
 
     for mutation in ("missing", "truncated"):

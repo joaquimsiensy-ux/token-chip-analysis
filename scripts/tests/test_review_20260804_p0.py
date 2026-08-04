@@ -86,6 +86,9 @@ def _v2_run(root: Path, token=TOKEN_A, query_schema="erc20-transfer-fields/v2"):
 def test_p001_v2_done_identity_and_completion(root: Path):
     data = root / "v2"
     run_dir = _v2_run(data)
+    sys.path.insert(0, str(EVM))
+    from fetch_hypersync_v2 import ensure_outdir_identity
+    ensure_outdir_identity(data, TOKEN_A, "https://bsc.hypersync.xyz")
     out = root / "v2.receipt.json"
     p = run(MAKE_RECEIPT, "--data", data, "--format", "v2", "--token", TOKEN_A,
             "--lo", 0, "--hi", 100, "--tag", "v2", "--out", out)

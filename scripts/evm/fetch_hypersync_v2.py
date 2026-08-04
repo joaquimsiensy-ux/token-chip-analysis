@@ -27,6 +27,8 @@ TRANSFER = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
 MANIFEST_SCHEMA = "hypersync-v2-done/v3"
 LEGACY_MANIFEST_SCHEMAS = {"hypersync-v2-done/v2"}
 QUERY_SCHEMA = "erc20-transfer-fields/v2"
+IDENTITY_SCHEMA = "hypersync-capture-identity/v1"
+IDENTITY_NAME = "capture_identity.json"
 
 
 def sha256_file(path):
@@ -128,22 +130,72 @@ def atomic_write_json(path, obj):
         os.close(dir_fd)
 
 
+def capture_identity(token_addr, url):
+    host = re.sub(r"^https?://", "", url).split("/", 1)[0]
+    return {"schema": IDENTITY_SCHEMA, "token": token_addr.lower(), "url": url,
+            "query_schema": QUERY_SCHEMA, "network": host.split(".", 1)[0],
+            "collector": {"path": "fetch_hypersync_v2.py",
+                          "sha256": sha256_file(__file__)}}
+
+
+def ensure_outdir_identity(outdir, token_addr, url):
+    """Create once, then strictly validate the immutable outdir query identity."""
+    root = Path(outdir).resolve()
+    root.mkdir(parents=True, exist_ok=True)
+    expected = capture_identity(token_addr, url)
+    path = root / IDENTITY_NAME
+    if path.exists() or path.is_symlink():
+        if path.is_symlink() or not path.is_file():
+            raise ValueError(f"{IDENTITY_NAME} 不是普通文件")
+        try:
+            actual = json.loads(path.read_text(encoding="utf-8"))
+        except Exception as exc:
+            raise ValueError(f"{IDENTITY_NAME} 不可读: {exc}") from exc
+        if actual != expected:
+            raise ValueError(f"{IDENTITY_NAME} 与本次 token/url/query/collector 不一致")
+        return actual
+    # Migrating an existing root is allowed only when every native done has the same identity.
+    for done_path in sorted(root.glob("run_*/done.json")):
+        try:
+            d = json.loads(done_path.read_text(encoding="utf-8"))
+        except Exception as exc:
+            raise ValueError(f"done manifest 不可读 {done_path}: {exc}") from exc
+        observed = (str(d.get("token", "")).lower(), d.get("url"), d.get("query_schema"))
+        wanted = (expected["token"], expected["url"], expected["query_schema"])
+        if observed != wanted:
+            raise ValueError(f"旧 run capture identity 与本次请求不一致: {done_path}")
+    atomic_write_json(path, expected)
+    return expected
+
+
 def find_resume_block(outdir, default_from, to_block, token_addr, url):
     """Resume only manifests bound to the same capture identity and bounds."""
+    try:
+        ensure_outdir_identity(outdir, token_addr, url)
+    except ValueError as exc:
+        raise SystemExit(f"[fail-closed] {exc}") from exc
     best = default_from
+    intervals = []
     for f in glob.glob(os.path.join(outdir, "run_*", "done.json")):
         try:
             raw = json.load(open(f, encoding="utf-8"))
         except Exception as exc:
             raise SystemExit(f"[fail-closed] unreadable done manifest {f}: {exc}")
-        if int(raw.get("capture_from", -1)) != int(default_from):
-            continue
         try:
-            d = validate_done_manifest(f, default_from, to_block, token_addr, url)
+            capture = int(raw.get("capture_from", -1))
+            end = int(raw.get("to_block", -1))
+            bound = to_block if capture == int(default_from) else end
+            d = validate_done_manifest(f, capture, bound, token_addr, url)
         except ValueError as exc:
             raise SystemExit(f"[fail-closed] {exc}") from exc
-        nb = int(d["next_block"])
-        best = max(best, nb)
+        frm, end = int(d["from_block"]), int(d["to_block"])
+        intervals.append((frm, end, f))
+        if capture == int(default_from):
+            best = max(best, int(d["next_block"]))
+    intervals.sort()
+    for prev, nxt in zip(intervals, intervals[1:]):
+        if nxt[0] < prev[1]:
+            raise SystemExit(f"[fail-closed] outdir run 区间重叠: {prev[2]} -> {nxt[2]}")
     return best
 
 
@@ -191,17 +243,28 @@ def refresh_manifests(outdir):
     done_paths = sorted(root.glob("run_*/done.json"))
     if not done_paths:
         raise ValueError(f"outdir 下没有 run_*/done.json: {root}")
-    pending, failures = [], []
+    pending, failures, identities = [], [], set()
     for path in done_paths:
         try:
             payload = _manifest_refresh_candidate(path)
             if payload is not None:
                 pending.append((path, payload))
+                current = payload
+            else:
+                current = json.loads(path.read_text(encoding="utf-8"))
+            identities.add((str(current.get("token", "")).lower(), current.get("url"),
+                            current.get("query_schema")))
         except (OSError, ValueError) as exc:
             failures.append(f"{path.parent.name}: {exc}")
     if failures:
         raise ValueError("存量 manifest 迁移拒绝（未改写任何 done.json）:\n  - "
                          + "\n  - ".join(failures))
+    if len(identities) != 1:
+        raise ValueError(f"存量 run capture identity 不唯一: {sorted(identities)!r}")
+    token, url, query_schema = next(iter(identities))
+    if not token or not url or query_schema != QUERY_SCHEMA:
+        raise ValueError("存量 run 缺 token/url 或 query_schema 非现行版")
+    ensure_outdir_identity(root, token, url)
     for path, payload in pending:
         atomic_write_json(path, payload)
     return {"checked": len(done_paths), "upgraded": len(pending),
@@ -246,6 +309,10 @@ async def main():
     height = await client.get_height()
     to_block = a.to_block or height
     os.makedirs(a.outdir, exist_ok=True)
+    try:
+        ensure_outdir_identity(a.outdir, a.token_addr, url)
+    except ValueError as exc:
+        sys.exit(f"[fail-closed] {exc}")
     start = find_resume_block(a.outdir, a.from_block, to_block, a.token_addr, url)
     if start > a.from_block:
         print(f"[resume] 从已验证 manifest 的 next_block {start} 续拉", flush=True)
