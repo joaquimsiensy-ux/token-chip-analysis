@@ -3,15 +3,15 @@
 
 来源:Solana 采集加速工程 2026-07-21(@CX 交叉复核方案 2"三板斧")。v1(decode_txs.py)保留。
 相对 v1:
-  1. getTransaction 改 JSON-RPC batch(默认 20 笔/POST)——单笔串行 0.75s 间隔≈1.3 笔/s,
+  1. getTransaction 改 JSON-RPC batch(公共 mainnet-beta 默认 8 笔/POST)——单笔串行 0.75s 间隔≈1.3 笔/s,
      批量后同样限速礼貌下 10-20 倍
   2. 跨地址共享 sig 结果缓存(--cache-dir,按 sig 前 2 字符分 256 片)——庄家关联地址间
      重复交易极多,第二个地址起大量命中零请求
-  3. --rpc 可换端点:默认 api.mainnet-beta(须 --proxy);Helius key 就位后
-     --rpc https://mainnet.helius-rpc.com/?api-key=<key> 免代理且 50 RPS
+  3. --rpc 可换端点:默认 api.mainnet-beta(须 --proxy);Helius 免费层免代理但不支持
+     JSON-RPC batch，须改用 --workers 单笔并发并遵守账号级 10 RPS
 
 用法: python3 decode_txs_v2.py --sigs <jsonl> --out <jsonl> [--mint M] [--pool P]
-      [--batch 20] [--interval 0.8] [--proxy http://127.0.0.1:7897]
+      [--batch 8] [--interval 0.8] [--proxy http://127.0.0.1:7897]
       [--cache-dir data/txcache] [--rpc <url>]
 输出行与 v1 逐字段一致({sig, slot, ts, deltas} / {sig, decode_fail});断点续传兼容 v1 输出。
 """
@@ -210,7 +210,7 @@ def main():
     ap.add_argument("--mint", default=None)
     ap.add_argument("--pool", default=None)
     ap.add_argument("--batch", type=int, default=8,
-                    help="每 POST 笔数(mainnet-beta 实测方法级限流约 10 笔/窗,batch>10 多出部分吃 429;Helius 可调大)")
+                    help="每 POST 笔数(mainnet-beta 默认8；Helius免费层不支持batch，须用--workers单笔并发)")
     ap.add_argument("--interval", type=float, default=0.8, help="批间隔秒")
     ap.add_argument("--proxy", default=None)
     ap.add_argument("--cache-dir", default="data/txcache", help="跨地址共享缓存;空串禁用")
