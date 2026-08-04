@@ -26,13 +26,20 @@ def fixture(root, *, complete=True, receipt_supply="100"):
         {"entity_id": "e1", "addresses": [A]}]}))
     snapshot = root / "holders.json"
     snapshot.write_text(json.dumps({A: 50, B: 50}))
+    preflight = root / "channels_preflight.json"
+    preflight.write_text(json.dumps({"schema": "evm-channels-preflight/v1",
+        "status": "PASS", "token": "0xtoken", "expected_to": 124}))
+    stats = root / "replay_stats.json"
+    stats.write_text(json.dumps({"gate_pass": True, "supply_check_ok": True,
+                                 "sum_balances_wei": "100"}))
     receipt = root / "holders_receipt.json"
-    receipt.write_text(json.dumps({
-        "schema": "identity-holder-snapshot/v1", "status": "PASS",
-        "complete_owner_universe": complete, "as_of_block": 123,
-        "total_supply_raw": receipt_supply,
-        "snapshot": {"path": "holders.json", "sha256": sha(snapshot)},
-    }))
+    from identity_snapshot_receipt import emit_evm
+    emit_evm("arbitrum", "0xtoken", 123, snapshot, preflight, stats, 100, receipt)
+    if not complete or receipt_supply != "100":
+        obj = json.loads(receipt.read_text())
+        obj["complete_owner_universe"] = complete
+        obj["total_supply_raw"] = receipt_supply
+        receipt.write_text(json.dumps(obj))
     return state, snapshot, receipt
 
 

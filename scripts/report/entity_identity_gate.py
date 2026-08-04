@@ -85,7 +85,7 @@ def is_on_curve(addr):
 BIG_SHARE = 0.01   # 快照单址 ≥1% 总供应即入闸
 GATE_SCHEMA = 'identity_gate_v3'
 FLAGS = {'', 'INFRA_IN_ENTITY', 'PDA_UNRESOLVED', 'BIG_UNLABELED'}
-CHAINS = {'eth', 'base', 'bsc', 'arbitrum', 'sol', 'robinhood', 'hyperliquid', 'filecoin'}
+CHAINS = {'eth', 'base', 'bsc', 'arbitrum', 'sol', 'robinhood'}
 
 
 def _sha256(path):
@@ -110,7 +110,7 @@ def _positive_raw(value, label):
     return n
 
 
-def load_snapshot_binding(state_path, snapshot_path, receipt_path, total_supply_raw):
+def load_snapshot_binding(state_path, snapshot_path, receipt_path, total_supply_raw, chain=None):
     state_dir = os.path.dirname(os.path.abspath(state_path))
     snapshot = os.path.abspath(snapshot_path)
     receipt = os.path.abspath(receipt_path)
@@ -127,7 +127,7 @@ def load_snapshot_binding(state_path, snapshot_path, receipt_path, total_supply_
         raise ValueError(f'snapshot/receipt 不可读: {exc}') from exc
     if not isinstance(snap, dict) or not snap:
         raise ValueError('snapshot 必须是非空 owner->raw amount 对象')
-    if rec.get('schema') != 'identity-holder-snapshot/v1' or rec.get('status') != 'PASS' \
+    if rec.get('schema') != 'identity-holder-snapshot/v2' or rec.get('status') != 'PASS' \
             or rec.get('complete_owner_universe') is not True or rec.get('as_of_block') is None:
         raise ValueError('snapshot receipt 非 PASS/完整 owner 全集')
     bound = rec.get('snapshot')
@@ -136,6 +136,12 @@ def load_snapshot_binding(state_path, snapshot_path, receipt_path, total_supply_
         raise ValueError('snapshot receipt 未绑定当前 snapshot')
     if str(rec.get('total_supply_raw')) != str(total):
         raise ValueError('snapshot receipt total_supply_raw 与显式分母不一致')
+    if chain not in CHAINS or rec.get('adapter') != chain:
+        raise ValueError('snapshot receipt adapter 与支持链不一致')
+    from identity_snapshot_receipt import validate_receipt
+    provenance_errors = validate_receipt(receipt, snapshot, total, chain)
+    if provenance_errors:
+        raise ValueError('snapshot receipt 生产来源无效: ' + '; '.join(provenance_errors))
     parsed = {}
     for address, value in snap.items():
         if isinstance(value, bool) or not isinstance(value, (int, str)) \
@@ -146,7 +152,8 @@ def load_snapshot_binding(state_path, snapshot_path, receipt_path, total_supply_
         raise ValueError(f'snapshot owner 全集与 total supply 不闭合: {sum(parsed.values())} != {total}')
     meta = {'snapshot_file': os.path.basename(snapshot), 'snapshot_sha256': _sha256(snapshot),
             'receipt_file': os.path.basename(receipt), 'receipt_sha256': _sha256(receipt),
-            'as_of_block': rec['as_of_block'], 'complete_owner_universe': True}
+            'as_of_block': rec['as_of_block'], 'complete_owner_universe': True,
+            'receipt_schema': rec['schema'], 'adapter': rec['adapter']}
     return parsed, total, meta
 
 
@@ -195,7 +202,7 @@ def validate_gate(gate_path, state_path=None, require_resolved=True):
                 bound_state,
                 os.path.join(os.path.dirname(bound_state), binding.get('snapshot_file', '')),
                 os.path.join(os.path.dirname(bound_state), binding.get('receipt_file', '')),
-                gate.get('total_supply_raw'))
+                gate.get('total_supply_raw'), chain=chain)
             if binding != actual_binding:
                 errors.append('snapshot_binding 与当前 snapshot/receipt 不一致')
         except ValueError as exc:
@@ -299,7 +306,7 @@ def build(state_path, chain, snapshot_path=None, out_path=None, *,
     if not snapshot_path or not snapshot_receipt_path or total_supply_raw is None:
         raise ValueError('生成 identity gate 必须显式传 snapshot/snapshot-receipt/total-supply-raw')
     snap, total, snapshot_meta = load_snapshot_binding(
-        state_path, snapshot_path, snapshot_receipt_path, total_supply_raw)
+        state_path, snapshot_path, snapshot_receipt_path, total_supply_raw, chain=chain)
     snap_norm = snap if chain == 'sol' else {str(k).lower(): v for k, v in snap.items()}
 
     targets = {}   # addr -> {entity, share}
