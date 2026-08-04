@@ -95,6 +95,27 @@ def main():
                    wj(d, "dup.json", [{"id": "X", "text": "a"}, {"id": "X", "text": "b"}])])
     check("register 重复 id exit 2", p.returncode == 2)
 
+    # Round4 P1-02：register 后磁盘 registry 被篡改，finalize 必须重跑同一验证器。
+    reg_path = Path(d, "a4_claims.json")
+    original_reg = reg_path.read_text(encoding="utf-8")
+    tampered = json.loads(original_reg)
+    tampered["claims"].append({"id": "C1", "text": "第二条同 ID 命题", "files": []})
+    reg_path.write_text(json.dumps(tampered), encoding="utf-8")
+    p = run(GATE, ["finalize", "--case-dir", d, "--verdicts-file",
+                   wj(d, "v_dup_registry.json", [{"id": "C1", "verdict": "CONFIRMED"},
+                                                   {"id": "C2", "verdict": "CONFIRMED"}]),
+                   "--seal-files", "raw_transfers.jsonl"])
+    check("Round4 P1-02 finalize 重验重复 claim id", p.returncode == 2 and "id 重复" in p.stderr)
+    tampered = json.loads(original_reg)
+    tampered["claims"][0]["text"] = ""
+    reg_path.write_text(json.dumps(tampered), encoding="utf-8")
+    p = run(GATE, ["finalize", "--case-dir", d, "--verdicts-file",
+                   wj(d, "v_empty_registry.json", [{"id": "C1", "verdict": "CONFIRMED"},
+                                                     {"id": "C2", "verdict": "CONFIRMED"}]),
+                   "--seal-files", "raw_transfers.jsonl"])
+    check("Round4 P1-02 同族空文本失败分支", p.returncode == 2 and "空 text" in p.stderr)
+    reg_path.write_text(original_reg, encoding="utf-8")
+
     # 3. finalize 未 register（新目录）
     d3 = os.path.join(root, "case_noreg")
     os.makedirs(d3)
