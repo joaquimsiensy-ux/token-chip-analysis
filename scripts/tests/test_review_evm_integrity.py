@@ -6,11 +6,13 @@ import os
 import subprocess
 import sys
 import tempfile
+from pathlib import Path
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 EVM = os.path.join(HERE, "..", "evm")
 sys.path.insert(0, EVM)
 from transfers_lib import merge_sources
+from channels_preflight import _csv_stats, _file_fingerprints
 
 ZERO = "0x" + "0" * 40
 A = "0x" + "a" * 40
@@ -48,7 +50,18 @@ def replay_case(row, hi=200):
             f.write("block,ts,tx,from,to,value,uniqueId\n")
             f.write(row + "\n")
         ch = os.path.join(tmp, "channels.json")
-        json.dump({"channels": [{"path": src, "lo": 0, "hi": hi, "tag": "x"}]}, open(ch, "w"))
+        receipt = os.path.join(tmp, "receipt.json")
+        _, min_block, max_block = _csv_stats(Path(src))
+        json.dump({"schema": "evm-channel-receipt/v1", "status": "PASS", "tag": "x",
+                   "token": A, "lo": 0, "hi": hi, "data_path": src,
+                   "format": "v1csv", "rows": 1, "min_block": min_block,
+                   "max_block": max_block,
+                   "files": _file_fingerprints(Path(src), "v1csv")},
+                  open(receipt, "w"))
+        json.dump({"schema": "evm-channels/v2", "token": A, "expected_from": 0,
+                   "expected_to": hi, "channels": [
+                       {"path": src, "lo": 0, "hi": hi, "tag": "x",
+                        "format": "v1csv", "receipt": receipt}]}, open(ch, "w"))
         out = os.path.join(tmp, "out")
         p = subprocess.run([sys.executable, os.path.join(EVM, "replay_duck.py"),
                             "--channels", ch, "--out-dir", out], capture_output=True, text=True)

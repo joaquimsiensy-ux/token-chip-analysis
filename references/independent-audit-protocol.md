@@ -34,7 +34,7 @@
 
 独立复核必须生成：
 
-- `membership_ledger.json`：严格成员、扩展关联、排除地址及逐边证据；
+- `membership_ledger.json`：严格成员、扩展关联、排除地址、逐边证据及目标块逐地址余额绑定；
 - `position_ledger.json`：目标时点币停留的链上位置；
 - `economic_control_ledger.json`：钱包自持和可证设施权益，含防双计键与未决暴露；
 - `address_classification.json`：当前所有 ≥0.1% 总供应或 ≥0.2% 流通的 owner（与 tiering §6a 其他大户线同源，2026-07-30 用户定；6.5.0 修订，原 0.5% 线废止）、历史越过判级线的地址、已归零/大幅回落/长期静置地址的完整分类；
@@ -76,11 +76,15 @@
 
 - `claim_id`、原命题、命题类型和报告位置；
 - `verdict`：`confirmed` / `weakened` / `refuted` / `unverified`；
-- 原始证据文件、复算命令、反例和备择解释；
+- 原始证据文件、受控复算 receipt、反例和备择解释；命令文本只作说明，不作放行证据；
 - 未解决事项及其是否阻断发布；
 - 对下游结论的依赖关系。
 
-`confirmed` 命题必须有原始证据和可运行复算命令。完整阴性命题还必须证明候选集完整、未决候选为零、黑箱边界已量化。证据只够否定旧结论时，必须停在 `unverified`，不得为了交付完整叙事另造一个肯定结论。
+`confirmed` 命题必须有原始证据和 `reproduce_receipt`。用
+`scripts/report/reproduce_receipt.py <案目录>` 运行案内固定入口 `reproduce_audit.py`；
+receipt 绑定入口脚本哈希、`audit_input_manifest.json` 哈希、参数、exit code 0、
+输出文件大小/哈希与关键摘要哈希。发布闸只重验 receipt 与当前文件，绝不执行
+claim 里的 `reproduce_command`。完整阴性命题还必须证明候选集完整、未决候选为零、黑箱边界已量化。证据只够否定旧结论时，必须停在 `unverified`，不得为了交付完整叙事另造一个肯定结论。
 
 ## 8. 对抗复核否决权
 
@@ -111,12 +115,14 @@ dormant_warehouse_audit.json
 claim_registry.json
 adversarial_review.json
 reproduce_audit.py
+reproduce_receipt.json
+reproduce_output.json
 ```
 
 三账正式 schema（空数组不构成审计证据，正式发布一律拒绝空壳）：
 
-- `membership_ledger.json.entries[]`：`entity_id,address,membership`，其中 membership 只能是 `strict|expanded|excluded`；地址规范化后全局唯一。
-- `position_ledger.json.entries[]`：`entity_id,address,location_id,amount_raw`；每条地址必须映射到同一实体的有效成员，`(location_id,address)` 唯一，金额为非负 raw integer。
+- `membership_ledger.json.entries[]`：`entity_id,address,membership,as_of_balance_raw,balance_source`，其中 membership 只能是 `strict|expanded|excluded`；地址规范化后全局唯一。每个有效成员必须绑定 `address-balance-snapshot/v1` 的 `path,sha256,as_of_block`，快照 `entries[]` 的地址与 `balance_raw` 必须与成员账逐行一致。零余额必须显式写 `as_of_balance_raw: 0`，或写非空 `zero_balance_proof`并由同一绑定快照证明为 0。
+- `position_ledger.json.entries[]`：`entity_id,address,location_id,amount_raw`；每条地址必须映射到同一实体的有效成员，`(location_id,address)` 唯一，金额为非负 raw integer。发布闸会按地址汇总所有位置，并要求每个有效成员的 `Σ amount_raw == as_of_balance_raw`；无位置行只能与经证明的零余额闭合。
 - `economic_control_ledger.json.entries[]`：按 `economic-control-accounting.md` §5；发布闸从明细重算 `wallet_self_held_raw == Σ position.amount_raw`、`confirmed_economic_control_raw == wallet_self_held_raw + Σ claim.token_raw`，并校验 `double_count_key` 全局唯一及所有权/数量算法/目标块证据齐全。任何 `unresolved_count` 都必须与实际 unresolved 明细一致，汇总布尔和自报 count 不作为放行证据。
 
 涉及历史图时另需 `chart_reconciliation.json`。发布前运行：

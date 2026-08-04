@@ -5,12 +5,15 @@ import hashlib
 import importlib.util
 import json
 import os
+import subprocess
+import sys
 import tempfile
 from pathlib import Path
 
 
 HERE = Path(__file__).resolve().parent
 GATE = HERE.parent / "report" / "audit_release_gate.py"
+REPRODUCE = HERE.parent / "report" / "reproduce_receipt.py"
 spec = importlib.util.spec_from_file_location("audit_release_gate", GATE)
 gate = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(gate)
@@ -27,13 +30,23 @@ def sha(path):
 def build_case(root, historical=True):
     raw = root / "raw_transfers.jsonl"
     raw.write_text('{"from":"a","to":"b","raw":"1"}\n', encoding="utf-8")
+    write_json(root, "balances_snapshot.json", {
+        "schema": "address-balance-snapshot/v1", "as_of_block": 123,
+        "entries": [{"address": "0xabc", "balance_raw": "100"}],
+    })
     report = root / "report.md"
     report.write_text("# 审计报告\n", encoding="utf-8")
     write_json(root, "audit_input_manifest.json", {
         "frozen_at": "2026-07-26T00:00:00Z",
         "data_cutoff": "2026-07-25T23:59:59Z",
-        "files": [{"path": raw.name, "size": raw.stat().st_size, "sha256": sha(raw),
-                   "evidence_layer": "raw", "available_at_audit_start": True}],
+        "files": [
+            {"path": raw.name, "size": raw.stat().st_size, "sha256": sha(raw),
+             "evidence_layer": "raw", "available_at_audit_start": True},
+            {"path": "balances_snapshot.json",
+             "size": (root / "balances_snapshot.json").stat().st_size,
+             "sha256": sha(root / "balances_snapshot.json"),
+             "evidence_layer": "derived", "available_at_audit_start": True},
+        ],
         "late_additions": [],
     })
     write_json(root, "accounting_mode.json", {"status": "PASS", "mode": "standard"})
@@ -47,7 +60,11 @@ def build_case(root, historical=True):
         "unresolved_count": 0, "unresolved_candidates": [],
     })
     write_json(root, "membership_ledger.json", {"entries": [
-        {"entity_id": "e1", "address": "0xabc", "membership": "strict"}]})
+        {"entity_id": "e1", "address": "0xabc", "membership": "strict",
+         "as_of_balance_raw": "100",
+         "balance_source": {"path": "balances_snapshot.json",
+                            "sha256": sha(root / "balances_snapshot.json"),
+                            "as_of_block": 123}}]})
     write_json(root, "position_ledger.json", {"entries": [
         {"entity_id": "e1", "address": "0xabc", "location_id": "wallet:0xabc",
          "amount_raw": "100"}]})
@@ -82,6 +99,24 @@ def build_case(root, historical=True):
                         "boundary_decision": "excluded",
                         "decision_reason": "夹具：静置巨仓已裁决"}],
     })
+    (root / "reproduce_audit.py").write_text(
+        "import json\njson.dump({'summary': {'claim': 'C1', 'value': 1}}, "
+        "open('reproduce_output.json','w'))\n", encoding="utf-8")
+    write_json(root, "reproduce_output.json", {"summary": {"claim": "C1", "value": 1}})
+    summary = {"claim": "C1", "value": 1}
+    write_json(root, "reproduce_receipt.json", {
+        "schema": "reproduce-receipt/v1", "status": "PASS", "exit_code": 0,
+        "entrypoint": {"path": "reproduce_audit.py", "sha256": sha(root / "reproduce_audit.py")},
+        "input_manifest": {"path": "audit_input_manifest.json",
+                           "sha256": sha(root / "audit_input_manifest.json")},
+        "args": [],
+        "output": {"path": "reproduce_output.json",
+                   "size": (root / "reproduce_output.json").stat().st_size,
+                   "sha256": sha(root / "reproduce_output.json")},
+        "summary_sha256": hashlib.sha256(
+            json.dumps(summary, sort_keys=True, separators=(",", ":")).encode()).hexdigest(),
+        "run_at_utc": "2026-08-02T00:00:00Z",
+    })
     ctype = "historical_chart" if historical else "snapshot_balance"
     write_json(root, "claim_registry.json", {
         "report_sha256": sha(report),
@@ -89,7 +124,8 @@ def build_case(root, historical=True):
             "claim_id": "C1", "statement": "重算命题",
             "claim_type": ctype, "report_locations": ["report.md:1"],
             "verdict": "confirmed", "evidence_files": [raw.name],
-            "reproduce_command": "python3 reproduce_audit.py",
+            "reproduce_command": "python3 reproduce_audit.py  # 仅说明",
+            "reproduce_receipt": "reproduce_receipt.json",
             "counter_hypotheses": ["数据缺口"],
             "blocking_unresolved": False,
         }],
@@ -102,7 +138,6 @@ def build_case(root, historical=True):
         "blocking_findings": [],
         "release_decision": "PASS",
     })
-    (root / "reproduce_audit.py").write_text("print('ok')\n", encoding="utf-8")
     if historical:
         write_json(root, "chart_reconciliation.json", {
             "series_method": "full_event_replay",
@@ -151,6 +186,79 @@ def main():
         write_json(root, "position_ledger.json", pos)
         errors = gate.run(root, report)
         assert any("位置账重复" in x for x in errors), errors
+
+    # P2-01：实体集合相同不代表逐地址余额闭合。
+    with tempfile.TemporaryDirectory() as td:
+        root = Path(td)
+        report = build_case(root, historical=False)
+        write_json(root, "balances_snapshot.json", {
+            "schema": "address-balance-snapshot/v1", "as_of_block": 123,
+            "entries": [
+                {"address": "0xabc", "balance_raw": "100"},
+                {"address": "0xdef", "balance_raw": "5"},
+            ],
+        })
+        members = json.loads((root / "membership_ledger.json").read_text())
+        for row in members["entries"]:
+            row["balance_source"]["sha256"] = sha(root / "balances_snapshot.json")
+        members["entries"].append({
+            "entity_id": "e1", "address": "0xdef", "membership": "expanded",
+            "as_of_balance_raw": "5",
+            "balance_source": {"path": "balances_snapshot.json",
+                               "sha256": sha(root / "balances_snapshot.json"),
+                               "as_of_block": 123},
+        })
+        write_json(root, "membership_ledger.json", members)
+        manifest = json.loads((root / "audit_input_manifest.json").read_text())
+        balance_item = next(x for x in manifest["files"]
+                            if x["path"] == "balances_snapshot.json")
+        balance_item.update({"size": (root / "balances_snapshot.json").stat().st_size,
+                             "sha256": sha(root / "balances_snapshot.json")})
+        write_json(root, "audit_input_manifest.json", manifest)
+        receipt = json.loads((root / "reproduce_receipt.json").read_text())
+        receipt["input_manifest"]["sha256"] = sha(root / "audit_input_manifest.json")
+        write_json(root, "reproduce_receipt.json", receipt)
+        errors = gate.run(root, report)
+        assert any("逐地址余额" in x for x in errors), errors
+
+        # 来源哈希不能由成员账自报漂移。
+        members["entries"][0]["balance_source"]["sha256"] = "0" * 64
+        write_json(root, "membership_ledger.json", members)
+        errors = gate.run(root, report)
+        assert any("balance_source sha256" in x for x in errors), errors
+
+    # P2-01：零余额成员可用显式 zero_balance_proof，位置账缺行按 0 闭合。
+    with tempfile.TemporaryDirectory() as td:
+        root = Path(td)
+        report = build_case(root, historical=False)
+        write_json(root, "balances_snapshot.json", {
+            "schema": "address-balance-snapshot/v1", "as_of_block": 123,
+            "entries": [
+                {"address": "0xabc", "balance_raw": "100"},
+                {"address": "0xzero", "balance_raw": "0"},
+            ],
+        })
+        members = json.loads((root / "membership_ledger.json").read_text())
+        for row in members["entries"]:
+            row["balance_source"]["sha256"] = sha(root / "balances_snapshot.json")
+        members["entries"].append({
+            "entity_id": "e1", "address": "0xzero", "membership": "strict",
+            "zero_balance_proof": {"method": "bound_snapshot_zero"},
+            "balance_source": {"path": "balances_snapshot.json",
+                               "sha256": sha(root / "balances_snapshot.json"),
+                               "as_of_block": 123},
+        })
+        write_json(root, "membership_ledger.json", members)
+        manifest = json.loads((root / "audit_input_manifest.json").read_text())
+        balance_item = next(x for x in manifest["files"]
+                            if x["path"] == "balances_snapshot.json")
+        balance_item.update({"size": (root / "balances_snapshot.json").stat().st_size,
+                             "sha256": sha(root / "balances_snapshot.json")})
+        write_json(root, "audit_input_manifest.json", manifest)
+        receipt = json.loads((root / "reproduce_receipt.json").read_text())
+        receipt["input_manifest"]["sha256"] = sha(root / "audit_input_manifest.json")
+        write_json(root, "reproduce_receipt.json", receipt)
+        assert not gate.run(root, report), gate.run(root, report)
 
     with tempfile.TemporaryDirectory() as td:
         root = Path(td)
@@ -213,6 +321,46 @@ def main():
         write_json(root, "address_classification.json", cls)
         errors = gate.run(root, report)
         assert any("0.1%" in x for x in errors), errors
+
+    with tempfile.TemporaryDirectory() as td:
+        root = Path(td)
+        report = build_case(root, historical=False)
+        (root / "reproduce_output.json").unlink()
+        (root / "reproduce_receipt.json").unlink()
+        p = subprocess.run([sys.executable, str(REPRODUCE), str(root)],
+                           capture_output=True, text=True)
+        assert p.returncode == 0 and not gate.run(root, report), p.stdout + p.stderr
+
+    # P1-05：命令文本不是证据；只认受控 reproduce receipt 及当前文件重验。
+    with tempfile.TemporaryDirectory() as td:
+        root = Path(td)
+        report = build_case(root, historical=False)
+        claims = json.loads((root / "claim_registry.json").read_text())
+        claims["claims"][0]["reproduce_command"] = ""
+        claims["claims"][0].pop("reproduce_receipt")
+        write_json(root, "claim_registry.json", claims)
+        errors = gate.run(root, report)
+        assert any("reproduce receipt" in x for x in errors), errors
+
+        report = build_case(root, historical=False)
+        receipt = json.loads((root / "reproduce_receipt.json").read_text())
+        (root / "fake.py").write_text("print('fake')\n")
+        receipt["entrypoint"] = {"path": "fake.py", "sha256": sha(root / "fake.py")}
+        write_json(root, "reproduce_receipt.json", receipt)
+        errors = gate.run(root, report)
+        assert any("固定入口" in x for x in errors), errors
+
+        report = build_case(root, historical=False)
+        (root / "reproduce_audit.py").write_text("print('drift')\n")
+        errors = gate.run(root, report)
+        assert any("入口脚本哈希" in x for x in errors), errors
+
+        report = build_case(root, historical=False)
+        receipt = json.loads((root / "reproduce_receipt.json").read_text())
+        receipt["summary_sha256"] = "0" * 64
+        write_json(root, "reproduce_receipt.json", receipt)
+        errors = gate.run(root, report)
+        assert any("输出摘要" in x for x in errors), errors
 
     # 6.5.0 修复反例：实体内嵌套未决设施暴露必须阻断；空账本须 empty_reason。
     with tempfile.TemporaryDirectory() as td:

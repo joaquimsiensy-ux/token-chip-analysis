@@ -5,23 +5,37 @@
 只做只读 GET 请求(Filfox / CoinGecko 免费 API),结果存本目录 data/ 下 JSON。
 节流 ~3 req/s,带重试,断点续抓(已存在文件直接跳过)。
 用法:
-  python3 fetch_data.py --smoke 10   # 冒烟测试:只抓富豪榜前10名
-  python3 fetch_data.py              # 全量:前200名
+  python3 fetch_data.py --data-dir <案目录/data> --smoke 10
+  python3 fetch_data.py --data-dir <案目录/data>
 """
-import json, os, subprocess, sys, time
+import argparse, hashlib, json, os, subprocess, sys, time
 
 BASE = "https://filfox.info/api/v1"
 HERE = os.path.dirname(os.path.abspath(__file__))
-DATA = os.path.join(HERE, "data")
-ADDR_DIR = os.path.join(DATA, "addr")
-OFFICIAL_DIR = os.path.join(DATA, "official")
+DATA = None
+ADDR_DIR = None
+OFFICIAL_DIR = None
 CUTOFF = 1767225600  # 2026-01-01 00:00 UTC,近6个月窗口起点
 MAX_RECENT_PAGES = 30  # 每地址近6个月流水最多30页(3000笔),超出记 truncated
 THROTTLE = 0.1  # curl 每次新建 TLS 连接自带 ~0.3-0.5s 开销,实际约 2-3 req/s
 UA = {"User-Agent": "Mozilla/5.0 (chip-analysis research script)"}
 
-os.makedirs(ADDR_DIR, exist_ok=True)
-os.makedirs(OFFICIAL_DIR, exist_ok=True)
+
+def configure_data_dir(data_dir):
+    """注入本次案例数据目录；只更新配置，不写磁盘。"""
+    global DATA, ADDR_DIR, OFFICIAL_DIR
+    DATA = os.path.realpath(os.path.abspath(os.fspath(data_dir)))
+    ADDR_DIR = os.path.join(DATA, "addr")
+    OFFICIAL_DIR = os.path.join(DATA, "official")
+    return DATA
+
+
+def initialize_data_dirs():
+    """进入正式执行后才创建输出目录。"""
+    if not DATA or not ADDR_DIR or not OFFICIAL_DIR:
+        raise RuntimeError("data directory is not configured; pass --data-dir")
+    os.makedirs(ADDR_DIR, exist_ok=True)
+    os.makedirs(OFFICIAL_DIR, exist_ok=True)
 
 _last = [0.0]
 def get_json(url, retries=5):
@@ -70,6 +84,14 @@ def save(path, obj):
 
 def done(path):
     return valid_file(path)
+
+
+def sha256_file(path):
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for block in iter(lambda: f.read(1024 * 1024), b""):
+            h.update(block)
+    return h.hexdigest()
 
 def fetch_overview():
     p = os.path.join(DATA, "overview.json")
@@ -145,18 +167,76 @@ def fetch_address(addr, rank):
     print(f"[{rank}] {addr} 完成", flush=True)
 
 def fetch_official_scan():
-    """扫描创世 ID 段 f00-f0160,记录带官方标签或 multisig 的地址"""
+    """Scan f00-f0160 with four-bucket receipt and retry failed IDs on rerun."""
     p = os.path.join(DATA, "official_scan.json")
-    if done(p):
-        return
-    found = {}
-    for i in range(161):
-        aid = f"f0{i}"
+    receipt_path = os.path.join(DATA, "official_scan_receipt.json")
+    progress_path = os.path.join(DATA, "official_scan_progress.json")
+    requested = [f"f0{i}" for i in range(161)]
+
+    # 只有 PASS receipt 与当前 official_scan 哈希一致才能短路；旧版孤立
+    # official_scan.json 不再被当成完成证据。
+    if done(p) and done(receipt_path):
+        try:
+            receipt = json.load(open(receipt_path, encoding="utf-8"))
+            if (receipt.get("schema") == "filecoin-official-scan/v1"
+                    and receipt.get("status") == "PASS"
+                    and receipt.get("requested") == requested
+                    and receipt.get("output", {}).get("sha256") == sha256_file(p)):
+                return receipt
+        except Exception:
+            pass
+
+    progress = {"schema": "filecoin-official-scan-progress/v1",
+                "requested": requested, "succeeded": {}, "not_found": [], "failed": []}
+    if done(progress_path):
+        try:
+            previous = json.load(open(progress_path, encoding="utf-8"))
+            if (previous.get("schema") == progress["schema"]
+                    and previous.get("requested") == requested
+                    and isinstance(previous.get("succeeded"), dict)
+                    and isinstance(previous.get("not_found"), list)):
+                progress = previous
+        except Exception:
+            pass
+    completed = set(progress["succeeded"]) | set(progress["not_found"])
+    failed = []
+    for aid in requested:
+        if aid in completed:
+            continue
         d = get_json(f"{BASE}/address/{aid}")
-        if d and "_error" not in d and (d.get("tag") or d.get("actor") == "multisig"):
-            found[aid] = d
+        if d is None:
+            progress["not_found"].append(aid)
+        elif isinstance(d, dict) and "_error" in d:
+            failed.append({"address": aid, "error": d.get("_error")})
+        elif isinstance(d, dict):
+            progress["succeeded"][aid] = d
+        else:
+            failed.append({"address": aid, "error": "unexpected response type"})
+    progress["not_found"] = sorted(set(progress["not_found"]))
+    progress["failed"] = failed
+    save(progress_path, progress)
+
+    receipt = {"schema": "filecoin-official-scan/v1", "requested": requested,
+               "succeeded": sorted(progress["succeeded"]),
+               "not_found": progress["not_found"], "failed": failed,
+               "counts": {"requested": len(requested),
+                          "succeeded": len(progress["succeeded"]),
+                          "not_found": len(progress["not_found"]),
+                          "failed": len(failed)}}
+    if failed:
+        receipt.update({"status": "BLOCK", "complete": False,
+                        "retry_addresses": [x["address"] for x in failed]})
+        save(receipt_path, receipt)
+        raise RuntimeError(f"official scan {len(failed)} addresses failed; retry list preserved")
+
+    found = {aid: d for aid, d in progress["succeeded"].items()
+             if d.get("tag") or d.get("actor") == "multisig"}
     save(p, found)
+    receipt.update({"status": "PASS", "complete": True, "retry_addresses": [],
+                    "output": {"path": "official_scan.json", "sha256": sha256_file(p)}})
+    save(receipt_path, receipt)
     print(f"官方扫描完成,命中 {len(found)} 个", flush=True)
+    return receipt
 
 def fetch_official_transfers():
     """对官方扫描命中的、带标签的地址拉全历史流水(通常笔数很少)"""
@@ -190,25 +270,46 @@ def fetch_price():
         save(p, d)
         print("价格序列完成", flush=True)
 
-def main():
-    n = 200
-    if "--smoke" in sys.argv:
-        n = int(sys.argv[sys.argv.index("--smoke") + 1])
+
+def write_collection_manifest(n, official_receipt=None):
+    manifest = {"schema": "filecoin-collection/v3", "status": "PASS",
+                "mode": "restricted/top-200-windowed", "top_n": n,
+                "window_start": CUTOFF, "max_transfers_per_address": MAX_RECENT_PAGES * 100,
+                "complete": True, "limitations": ["not full actor universe", "six-month window",
+                                                     "per-address page cap"],
+                "substage_receipts": {}}
+    if official_receipt is not None:
+        if official_receipt.get("status") != "PASS" or not official_receipt.get("complete"):
+            raise RuntimeError("official scan receipt is not PASS/complete")
+        rp = os.path.join(DATA, "official_scan_receipt.json")
+        manifest["substage_receipts"]["official_scan"] = {
+            "path": "official_scan_receipt.json", "sha256": sha256_file(rp)}
+    save(os.path.join(DATA, "collection_manifest.json"), manifest)
+    return manifest
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(description="Filecoin restricted collector")
+    parser.add_argument("--data-dir", required=True,
+                        help="案目录的数据目录（禁止默认写 skill 目录）")
+    parser.add_argument("--smoke", type=int, metavar="N",
+                        help="只抓富豪榜前 N 名")
+    args = parser.parse_args(argv)
+    configure_data_dir(args.data_dir)
+    initialize_data_dirs()
+    n = args.smoke if args.smoke is not None else 200
+    if n <= 0 or n > 200:
+        parser.error("--smoke N 必须在 1..200")
     t0 = time.time()
     fetch_overview()
     fetch_price()
     rl = fetch_richlist(200)[:n]
     for idx, item in enumerate(rl):
         fetch_address(item["address"], idx + 1)
-    if n >= 200 or "--smoke" not in sys.argv:
-        fetch_official_scan()
+    official_receipt = None
+    if n >= 200 or args.smoke is None:
+        official_receipt = fetch_official_scan()
         fetch_official_transfers()
-    manifest = {"schema": "filecoin-collection/v2", "status": "PASS",
-                "mode": "restricted/top-200-windowed", "top_n": n,
-                "window_start": CUTOFF, "max_transfers_per_address": MAX_RECENT_PAGES * 100,
-                "complete": True, "limitations": ["not full actor universe", "six-month window",
-                                                     "per-address page cap"]}
-    save(os.path.join(DATA, "collection_manifest.json"), manifest)
+    manifest = write_collection_manifest(n, official_receipt)
     print(f"受限采集完成(mode={manifest['mode']}),耗时 {time.time()-t0:.0f}s", flush=True)
 
 if __name__ == "__main__":

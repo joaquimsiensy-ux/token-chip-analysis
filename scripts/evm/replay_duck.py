@@ -37,6 +37,8 @@ import argparse, csv, glob, json, os, sys, time
 
 import duckdb
 
+from channels_preflight import preflight_channels
+
 Z = '0x0000000000000000000000000000000000000000'
 DEAD = '0x000000000000000000000000000000000000dead'
 
@@ -506,12 +508,7 @@ def main():
     ap.add_argument("--force-varint", action="store_true",
                     help="强制任意精度 VARINT 路径（HUGEINT 聚合溢出报错时的显式出路；慢 ~5x 仍精确）")
     a = ap.parse_args()
-    os.makedirs(a.out_dir, exist_ok=True)
-    chans = json.load(open(a.channels))["channels"]
-    segs = sorted((c["lo"], c["hi"], c["tag"]) for c in chans)
-    for (l1, h1, t1), (l2, h2, t2) in zip(segs, segs[1:]):
-        if l2 < h1:
-            raise SystemExit(f"块段重叠：{t1}=[{l1},{h1}) 与 {t2}=[{l2},{h2}) ——通道归属必须互斥")
+    chans = preflight_channels(a.channels, a.out_dir)
 
     tmp = os.path.join(a.out_dir, ".duck_tmp")
     os.makedirs(tmp, exist_ok=True)

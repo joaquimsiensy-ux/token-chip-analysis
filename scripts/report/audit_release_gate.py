@@ -61,6 +61,12 @@ def sha256_file(path: Path) -> str:
     return h.hexdigest()
 
 
+def canonical_json_sha(value) -> str:
+    raw = json.dumps(value, sort_keys=True, separators=(",", ":"),
+                     ensure_ascii=False).encode("utf-8")
+    return hashlib.sha256(raw).hexdigest()
+
+
 def safe_case_path(case_dir: Path, rel: str) -> Path | None:
     try:
         p = (case_dir / rel).resolve()
@@ -190,7 +196,7 @@ def raw_int(value, label, errors):
     return n
 
 
-def check_three_ledgers(data: dict, errors: list[str]):
+def check_three_ledgers(case_dir: Path, data: dict, errors: list[str]):
     """Recompute membership -> position -> economic control closure from details."""
     md = data.get("membership_ledger.json", {})
     pd = data.get("position_ledger.json", {})
@@ -202,6 +208,55 @@ def check_three_ledgers(data: dict, errors: list[str]):
         return
 
     member_map = {}
+    snapshot_cache = {}
+
+    def load_balance_snapshot(source: dict, label: str):
+        if not isinstance(source, dict):
+            errors.append(f"{label} 缺 balance_source 来源绑定")
+            return None
+        rel = str(source.get("path", "")).strip()
+        expected_sha = str(source.get("sha256", "")).strip().lower()
+        as_of_block = source.get("as_of_block")
+        if not rel or len(expected_sha) != 64 or as_of_block is None:
+            errors.append(f"{label}.balance_source 缺 path/sha256/as_of_block")
+            return None
+        p = safe_case_path(case_dir, rel)
+        if p is None or not p.is_file() or p.is_symlink():
+            errors.append(f"{label}.balance_source 文件不存在或越界: {rel}")
+            return None
+        cache_key = (str(p), expected_sha, str(as_of_block))
+        if cache_key in snapshot_cache:
+            return snapshot_cache[cache_key]
+        if sha256_file(p).lower() != expected_sha:
+            errors.append(f"{label}.balance_source sha256 与当前快照不一致")
+            snapshot_cache[cache_key] = None
+            return None
+        snapshot = load_json(p, errors)
+        if snapshot.get("schema") != "address-balance-snapshot/v1" \
+                or snapshot.get("as_of_block") != as_of_block:
+            errors.append(f"{label}.balance_source schema/as_of_block 不一致")
+            snapshot_cache[cache_key] = None
+            return None
+        rows = snapshot.get("entries")
+        if not isinstance(rows, list):
+            errors.append(f"{label}.balance_source entries 非数组")
+            snapshot_cache[cache_key] = None
+            return None
+        balances = {}
+        for j, item in enumerate(rows):
+            if not isinstance(item, dict) or not str(item.get("address", "")).strip():
+                errors.append(f"{label}.balance_source.entries[{j}] 缺地址")
+                continue
+            addr = str(item["address"]).strip()
+            key = addr.lower() if addr.lower().startswith("0x") else addr
+            if key in balances:
+                errors.append(f"{label}.balance_source 地址重复: {addr}")
+            balances[key] = raw_int(item.get("balance_raw"),
+                                    f"{label}.balance_source.entries[{j}].balance_raw",
+                                    errors)
+        snapshot_cache[cache_key] = balances
+        return balances
+
     for i, row in enumerate(members):
         if not isinstance(row, dict):
             errors.append(f"membership[{i}] 不是对象")
@@ -214,9 +269,26 @@ def check_three_ledgers(data: dict, errors: list[str]):
         key = address.lower() if address.lower().startswith("0x") else address
         if key in member_map:
             errors.append(f"成员地址重复: {address}")
-        member_map[key] = (entity, status)
+        balance = None
+        if status != "excluded":
+            if row.get("as_of_balance_raw") is None:
+                proof = row.get("zero_balance_proof")
+                if not isinstance(proof, dict) or not proof:
+                    errors.append(f"membership[{i}] 缺 as_of_balance_raw 或 zero_balance_proof")
+                else:
+                    balance = 0
+            else:
+                balance = raw_int(row.get("as_of_balance_raw"),
+                                  f"membership[{i}].as_of_balance_raw", errors)
+            balances = load_balance_snapshot(row.get("balance_source"), f"membership[{i}]")
+            if balances is not None and balance is not None:
+                if key not in balances:
+                    errors.append(f"membership[{i}] 地址不在绑定的余额快照: {address}")
+                elif balances[key] != balance:
+                    errors.append(f"membership[{i}] as_of_balance_raw 与绑定快照不一致")
+        member_map[key] = (entity, status, balance)
 
-    pos_seen, wallet_by_entity = set(), {}
+    pos_seen, wallet_by_entity, position_by_address = set(), {}, {}
     for i, row in enumerate(positions):
         if not isinstance(row, dict):
             errors.append(f"position[{i}] 不是对象")
@@ -237,6 +309,15 @@ def check_three_ledgers(data: dict, errors: list[str]):
         pos_seen.add(key)
         amt = raw_int(row.get("amount_raw"), f"position[{i}].amount_raw", errors)
         wallet_by_entity[entity] = wallet_by_entity.get(entity, 0) + amt
+        position_by_address[addr_key] = position_by_address.get(addr_key, 0) + amt
+
+    for address, (entity, status, balance) in member_map.items():
+        if status == "excluded" or balance is None:
+            continue
+        positioned = position_by_address.get(address, 0)
+        if positioned != balance:
+            errors.append(f"实体 {entity} 地址 {address} 逐地址余额与位置账不闭合: "
+                          f"{positioned} != {balance}")
 
     econ_ids, dc_keys = set(), set()
     for i, row in enumerate(economics):
@@ -276,7 +357,8 @@ def check_three_ledgers(data: dict, errors: list[str]):
         if confirmed != wallet + facility_sum:
             errors.append(f"实体 {entity} 经济控制算术不闭合: {confirmed} != {wallet}+{facility_sum}")
 
-    active_entities = {entity for entity, status in member_map.values() if status != "excluded"}
+    active_entities = {entity for entity, status, _ in member_map.values()
+                       if status != "excluded"}
     if active_entities != econ_ids or set(wallet_by_entity) != econ_ids:
         errors.append("三账实体集合不闭合（成员→位置→经济控制存在漏记或多记）")
 
@@ -384,6 +466,58 @@ def check_daily_peaks(case_dir: Path, errors: list[str]):
         errors.append("trigger_days.json 触发日为空且无 empty_reason 显式声明")
 
 
+def check_reproduce_receipt(case_dir: Path, rel, cid, errors: list[str]):
+    """Revalidate a controlled receipt; never execute command text from a claim."""
+    if not isinstance(rel, str) or not rel.strip():
+        errors.append(f"confirmed 命题 {cid} 缺 reproduce receipt")
+        return
+    receipt_path = safe_case_path(case_dir, rel)
+    raw_receipt = case_dir / rel
+    if receipt_path is None or raw_receipt.is_symlink() or not receipt_path.is_file():
+        errors.append(f"命题 {cid} reproduce receipt 路径非法或不存在: {rel}")
+        return
+    receipt = load_json(receipt_path, errors)
+    if receipt.get("schema") != "reproduce-receipt/v1" or receipt.get("status") != "PASS" \
+            or receipt.get("exit_code") != 0:
+        errors.append(f"命题 {cid} reproduce receipt 非 PASS/exit 0")
+    entry = receipt.get("entrypoint")
+    if not isinstance(entry, dict) or entry.get("path") != "reproduce_audit.py":
+        errors.append(f"命题 {cid} reproduce receipt 非受控固定入口 reproduce_audit.py")
+    else:
+        entry_path = case_dir / "reproduce_audit.py"
+        if entry_path.is_symlink() or not entry_path.is_file():
+            errors.append(f"命题 {cid} 固定入口脚本不存在或为符号链接")
+        elif entry.get("sha256") != sha256_file(entry_path):
+            errors.append(f"命题 {cid} 入口脚本哈希漂移")
+    manifest = receipt.get("input_manifest")
+    manifest_path = case_dir / "audit_input_manifest.json"
+    if not isinstance(manifest, dict) or manifest.get("path") != "audit_input_manifest.json" \
+            or manifest.get("sha256") != sha256_file(manifest_path):
+        errors.append(f"命题 {cid} reproduce receipt 输入 manifest 未绑定当前冻结输入")
+    args = receipt.get("args")
+    if not isinstance(args, list) or not all(isinstance(x, str) for x in args):
+        errors.append(f"命题 {cid} reproduce receipt args 非字符串数组")
+    output = receipt.get("output")
+    if not isinstance(output, dict):
+        errors.append(f"命题 {cid} reproduce receipt 缺输出摘要")
+        return
+    out_rel = output.get("path")
+    out_path = safe_case_path(case_dir, str(out_rel or ""))
+    if out_path is None or (case_dir / str(out_rel or "")).is_symlink() or not out_path.is_file():
+        errors.append(f"命题 {cid} reproduce 输出不存在或路径非法")
+        return
+    if output.get("size") != out_path.stat().st_size or output.get("sha256") != sha256_file(out_path):
+        errors.append(f"命题 {cid} reproduce 输出大小/哈希漂移")
+    try:
+        out_json = json.loads(out_path.read_text(encoding="utf-8"))
+        summary = out_json.get("summary") if isinstance(out_json, dict) and "summary" in out_json \
+            else out_json
+        if receipt.get("summary_sha256") != canonical_json_sha(summary):
+            errors.append(f"命题 {cid} reproduce 输出摘要不一致")
+    except Exception as exc:
+        errors.append(f"命题 {cid} reproduce 输出摘要不可读: {exc}")
+
+
 def check_claims(case_dir: Path, d: dict, report: Path | None, errors: list[str]):
     claims = d.get("claims")
     if not isinstance(claims, list) or not claims:
@@ -414,12 +548,13 @@ def check_claims(case_dir: Path, d: dict, report: Path | None, errors: list[str]
             errors.append(f"命题 {cid} verdict 非法")
         if verdict == "confirmed":
             evidence = claim.get("evidence_files") or []
-            if not evidence or not claim.get("reproduce_command"):
-                errors.append(f"confirmed 命题 {cid} 缺原始证据或复算命令")
+            if not evidence:
+                errors.append(f"confirmed 命题 {cid} 缺原始证据")
             for rel in evidence:
                 p = safe_case_path(case_dir, str(rel))
                 if p is None or not p.is_file():
                     errors.append(f"命题 {cid} 证据文件不存在: {rel}")
+            check_reproduce_receipt(case_dir, claim.get("reproduce_receipt"), cid, errors)
             if claim.get("blocking_unresolved"):
                 errors.append(f"命题 {cid} 尚有阻断项却标 confirmed")
         if ctype in DECISIVE_TYPES and verdict == "confirmed":
@@ -489,7 +624,7 @@ def run(case_dir: Path, report: Path | None):
                  "economic_control_ledger.json"):
         if name in data:
             check_ledger(name, data[name], errors)
-    check_three_ledgers(data, errors)
+    check_three_ledgers(case_dir, data, errors)
     if "dormant_warehouse_audit.json" in data:
         check_dormant(case_dir, data["dormant_warehouse_audit.json"], errors)
     check_daily_peaks(case_dir, errors)

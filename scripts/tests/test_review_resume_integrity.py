@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """2026-08-02 review regressions: H-02 through H-06."""
 import csv
+import hashlib
 import json
 import os
 import subprocess
@@ -11,10 +12,12 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 EVM = HERE.parent / "evm"
 SOL = HERE.parent / "solana"
+FETCH_V2 = EVM / "fetch_hypersync_v2.py"
 sys.path.insert(0, str(EVM))
 sys.path.insert(0, str(SOL))
 
-from fetch_hypersync_v2 import MANIFEST_SCHEMA, QUERY_SCHEMA, find_resume_block
+from fetch_hypersync_v2 import QUERY_SCHEMA, find_resume_block
+from channels_preflight import _csv_stats, _file_fingerprints, _v2_stats
 from fetch_sqd_transfers_v2 import cache_identity_matches, cache_paths
 from replay_edges import cmd_evolution, cmd_reconcile
 
@@ -28,9 +31,9 @@ def run(cmd, cwd):
                           capture_output=True, text=True)
 
 
-def make_parquet(root, blocks):
+def make_parquet(root, blocks, run_name="run_0"):
     import duckdb
-    run_dir = Path(root) / "run_0"
+    run_dir = Path(root) / run_name
     run_dir.mkdir(parents=True)
     con = duckdb.connect()
     con.execute("CREATE TABLE logs(block_number BIGINT, block_hash VARCHAR, log_index BIGINT, "
@@ -44,6 +47,66 @@ def make_parquet(root, blocks):
     for b in blocks:
         con.execute("INSERT INTO bl VALUES (?,?)", [b, 1700000000 + b])
     con.execute(f"COPY bl TO '{run_dir / 'blocks.parquet'}' (FORMAT parquet)")
+    con.close()
+    return run_dir
+
+
+def file_meta(path, block_col):
+    import duckdb
+    con = duckdb.connect()
+    rows, lo, hi = con.execute(
+        f"SELECT COUNT(*), MIN({block_col}), MAX({block_col}) FROM read_parquet(?)",
+        [str(path)]).fetchone()
+    con.close()
+    return {"size": path.stat().st_size, "rows": rows, "min_block": lo,
+            "max_block": hi, "sha256": hashlib.sha256(path.read_bytes()).hexdigest()}
+
+
+def make_done(out, mutate=None):
+    run_dir = make_parquet(out, [10, 19], "run_10")
+    done = {"schema": "hypersync-v2-done/v3", "query_schema": QUERY_SCHEMA,
+            "capture_from": 10, "from_block": 10, "to_block": 20, "next_block": 20,
+            "token": A_EVM, "url": "https://bsc.hypersync.xyz",
+            "files": {"logs.parquet": file_meta(run_dir / "logs.parquet", "block_number"),
+                      "blocks.parquet": file_meta(run_dir / "blocks.parquet", "number")}}
+    (run_dir / "done.json").write_text(json.dumps(done))
+    if mutate == "missing":
+        (run_dir / "logs.parquet").unlink()
+    elif mutate == "truncated":
+        (run_dir / "logs.parquet").write_bytes(b"truncated")
+    elif mutate == "hash":
+        done["files"]["logs.parquet"]["sha256"] = "0" * 64
+        (run_dir / "done.json").write_text(json.dumps(done))
+    return run_dir, done
+
+
+def make_legacy_done(out, mutate=None):
+    run_dir = make_parquet(out, [10, 19], "run_10")
+    done = {"schema": "hypersync-v2-done/v2", "query_schema": QUERY_SCHEMA,
+            "capture_from": 10, "from_block": 10, "to_block": 20, "next_block": 20,
+            "token": A_EVM, "url": "https://bsc.hypersync.xyz",
+            "client_version": "legacy-fixture"}
+    done_path = run_dir / "done.json"
+    done_path.write_text(json.dumps(done))
+    if mutate == "missing":
+        (run_dir / "logs.parquet").unlink()
+    elif mutate == "truncated":
+        (run_dir / "logs.parquet").write_bytes(b"truncated")
+    return run_dir, done
+
+
+def channel_receipt(tmp, tag, data_path, lo, hi, rows):
+    p = Path(tmp) / f"{tag}.receipt.json"
+    data_path = Path(data_path)
+    fmt = "v2" if data_path.is_dir() else "v1csv"
+    _, min_block, max_block = (_v2_stats(data_path) if fmt == "v2"
+                               else _csv_stats(data_path))
+    p.write_text(json.dumps({"schema": "evm-channel-receipt/v1", "status": "PASS",
+                             "tag": tag, "token": A_EVM, "lo": lo, "hi": hi,
+                             "data_path": str(data_path), "format": fmt, "rows": rows,
+                             "min_block": min_block, "max_block": max_block,
+                             "files": _file_fingerprints(data_path, fmt)}))
+    return str(p)
 
 
 def test_h02(tmp):
@@ -51,9 +114,12 @@ def test_h02(tmp):
     make_parquet(d1, [1, 15])  # block 15 is pollution outside d1 responsibility [0,10)
     make_parquet(d2, [11])
     channels = Path(tmp) / "channels.json"
-    channels.write_text(json.dumps({"channels": [
-        {"path": str(d1), "lo": 0, "hi": 10, "tag": "a"},
-        {"path": str(d2), "lo": 10, "hi": 20, "tag": "b"}]}))
+    channels.write_text(json.dumps({"schema": "evm-channels/v2", "token": A_EVM,
+        "expected_from": 0, "expected_to": 20, "channels": [
+        {"path": str(d1), "lo": 0, "hi": 10, "tag": "a", "format": "v2",
+         "receipt": channel_receipt(tmp, "a", d1, 0, 10, 2)},
+        {"path": str(d2), "lo": 10, "hi": 20, "tag": "b", "format": "v2",
+         "receipt": channel_receipt(tmp, "b", d2, 10, 20, 1)}]}))
     out = Path(tmp) / "out"
     p = run([EVM / "replay_stream.py", "--channels", channels, "--out-dir", out], tmp)
     stats = json.loads((out / "replay_stats.json").read_text())
@@ -61,13 +127,8 @@ def test_h02(tmp):
 
 
 def test_h03(tmp):
-    out = Path(tmp) / "resume"
-    run_dir = out / "run_10"
-    run_dir.mkdir(parents=True)
-    done = {"schema": MANIFEST_SCHEMA, "query_schema": QUERY_SCHEMA,
-            "capture_from": 10, "from_block": 10, "to_block": 20, "next_block": 20,
-            "token": A_EVM, "url": "https://bsc.hypersync.xyz"}
-    (run_dir / "done.json").write_text(json.dumps(done))
+    out = Path(tmp) / "resume_ok"
+    _, done = make_done(out)
     assert find_resume_block(str(out), 10, 30, A_EVM, done["url"]) == 20
     try:
         find_resume_block(str(out), 10, 30, "0x" + "b" * 40, done["url"])
@@ -75,6 +136,55 @@ def test_h03(tmp):
         pass
     else:
         raise AssertionError("cross-token done manifest must reject")
+
+    for mutation in ("missing", "truncated", "hash"):
+        bad_out = Path(tmp) / f"resume_{mutation}"
+        make_done(bad_out, mutation)
+        try:
+            find_resume_block(str(bad_out), 10, 30, A_EVM, done["url"])
+        except SystemExit:
+            pass
+        else:
+            raise AssertionError(f"done exists but parquet {mutation} must reject")
+
+    # staged_capture.sh 的 skip 路径也必须复用实体验证，不得只看 JSON。
+    staged_out = Path(tmp) / "staged_missing"
+    make_done(staged_out, "missing")
+    p = subprocess.run([str(EVM / "staged_capture.sh"), A_EVM, done["url"],
+                        str(staged_out), "10", "20"], capture_output=True, text=True)
+    assert p.returncode != 0 and "FATAL" in p.stdout + p.stderr
+
+
+def test_r2_refresh_manifests(tmp):
+    good_out = Path(tmp) / "legacy_good"
+    _, old = make_legacy_done(good_out)
+    try:
+        find_resume_block(str(good_out), 10, 30, A_EVM, old["url"])
+    except SystemExit:
+        pass
+    else:
+        raise AssertionError("R2 旧 manifest 未迁移前必须 BLOCK")
+    p = run([FETCH_V2, "--refresh-manifests", "--outdir", good_out], tmp)
+    assert p.returncode == 0, p.stdout + p.stderr
+    upgraded = json.loads((good_out / "run_10" / "done.json").read_text())
+    assert upgraded["schema"] == "hypersync-v2-done/v3"
+    assert set(upgraded["files"]) == {"logs.parquet", "blocks.parquet"}
+    assert find_resume_block(str(good_out), 10, 30, A_EVM, old["url"]) == 20
+
+    for mutation in ("missing", "truncated"):
+        bad_out = Path(tmp) / f"legacy_{mutation}"
+        _, old = make_legacy_done(bad_out, mutation)
+        before = (bad_out / "run_10" / "done.json").read_bytes()
+        p = run([FETCH_V2, "--refresh-manifests", "--outdir", bad_out], tmp)
+        after = (bad_out / "run_10" / "done.json").read_bytes()
+        assert p.returncode != 0 and before == after, p.stdout + p.stderr
+        assert "run_10" in p.stdout + p.stderr
+        try:
+            find_resume_block(str(bad_out), 10, 30, A_EVM, old["url"])
+        except SystemExit:
+            pass
+        else:
+            raise AssertionError(f"R2 {mutation} 迁移失败后续拉仍必须 BLOCK")
 
 
 def test_h04(tmp):
@@ -84,7 +194,10 @@ def test_h04(tmp):
         w.writerow(["block", "ts", "tx", "log_index", "from", "to", "value_raw", "block_hash"])
         w.writerow([1, "2026-01-01", "0xtx", 0, ZERO_EVM, A_EVM, 100, "0xhash"])
     ch = Path(tmp) / "csv_channels.json"
-    ch.write_text(json.dumps({"channels": [{"path": str(src), "lo": 0, "hi": 2, "tag": "x"}]}))
+    ch.write_text(json.dumps({"schema": "evm-channels/v2", "token": A_EVM,
+                              "expected_from": 0, "expected_to": 2, "channels": [
+        {"path": str(src), "lo": 0, "hi": 2, "tag": "x", "format": "v1csv",
+         "receipt": channel_receipt(tmp, "x", src, 0, 2, 1)}]}))
     for script in ("replay_pass1.py", "replay_duck.py"):
         out = Path(tmp) / script
         out.mkdir()
@@ -131,11 +244,13 @@ def main():
     with tempfile.TemporaryDirectory() as tmp:
         test_h03(tmp)
     with tempfile.TemporaryDirectory() as tmp:
+        test_r2_refresh_manifests(tmp)
+    with tempfile.TemporaryDirectory() as tmp:
         test_h04(tmp)
     test_h05()
     with tempfile.TemporaryDirectory() as tmp:
         test_h06(tmp)
-    print("PASS: H-02 channel bounds, H-03 resume identity, H-04 CSV8, H-05 case cache, H-06 reconcile/denominator")
+    print("PASS: H-02/H-03 + R2 legacy manifest refresh + H-04/H-05/H-06")
     return 0
 
 

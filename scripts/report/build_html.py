@@ -281,6 +281,22 @@ def main():
             ap.error("analysis 模式缺正式 gate 资产: " + ", ".join(missing))
         if a.skip_identity_gate or a.skip_a4_gate_reason:
             ap.error("analysis 模式禁止 skip gate；请修复资产或显式改用降级模式")
+        if a.json:
+            ap.error("analysis 模式禁止传入未封口 --json 附录；机器附录须先纳入 A4 seal")
+
+        # P0-01：正式编译的事实输入只能来自 seal 所在案目录的标准资产。
+        # CLI 参数保留是为了兼容显式调用和清晰报错，不是自由输入通道。
+        _formal_case = Path(a.a4_seal).resolve().parent
+        _formal_facts = (_formal_case / "facts.json").resolve()
+        _formal_state = (_formal_case / "analysis-state.json").resolve()
+        for _flag, _given, _expected in (
+                ("--facts", a.facts, _formal_facts),
+                ("--state", a.state, _formal_state)):
+            if Path(_given).resolve() != _expected:
+                ap.error(f"analysis 模式 {_flag} 必须等于 seal 案目录标准路径: {_expected}")
+        # 后续渲染不再使用 CLI 原始字符串，从 seal 案目录重建唯一输入。
+        a.facts = str(_formal_facts)
+        a.state = str(_formal_state)
     elif not str(a.degrade_reason or "").strip():
         ap.error(f"{a.mode} 模式必须提供 --degrade-reason")
     elif a.a4_seal or a.skip_a4_gate_reason or a.skip_identity_gate:
@@ -396,21 +412,11 @@ def main():
                          "历史报告重编译可用 --skip-identity-gate 显式跳过")
         else:
             try:
-                _gate = json.load(open(gate_path, encoding="utf-8"))
-                _gaddrs = {r.get("address") for r in _gate.get("rows", [])}
-                _sd = json.load(open(a.state, encoding="utf-8"))
-                _missing = [x for g in _sd.get("whale_groups", [])
-                            for x in g.get("addresses", []) if x not in _gaddrs]
-                if _missing:
-                    warns.append(f"[WARN] G8 实体地址未全入闸：{len(_missing)} 址无 gate 记录"
-                                 f"（如 {_missing[0][:14]}…）——重跑 entity_identity_gate.py")
-                _unres = [r for r in _gate.get("rows", [])
-                          if r.get("flag") and not str(r.get("resolution", "")).strip()]
-                if _unres:
-                    warns.append(f"[WARN] G8 有 {len(_unres)} 个身份疑点未解决"
-                                 f"（{'/'.join(sorted({r['flag'] for r in _unres}))}）——"
-                                 "逐条填写 resolution（查了什么、结论是什么）后重编译")
-            except (ValueError, KeyError) as e:
+                import entity_identity_gate
+                _identity_errors = entity_identity_gate.validate_gate(gate_path, a.state)
+                warns += [f"[WARN] G8 identity_gate 严格校验: {e}"
+                          for e in _identity_errors]
+            except Exception as e:
                 warns.append(f"[WARN] G8 identity_gate.json 解析失败: {e}")
     elif a.state and a.skip_identity_gate:
         print("[NOTE] G8 实体身份闸已显式跳过（--skip-identity-gate）——仅限历史重编译场景")

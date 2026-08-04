@@ -9,8 +9,51 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 SOL = os.path.join(HERE, "..", "solana")
 sys.path.insert(0, SOL)
 
+import decode_txs as decode_v1
+import decode_txs_v2 as decode_v2
 from decode_txs_v2 import SigCache, completed_sigs, decode_result
 from scan_token_accounts import T22, cache_identity_matches, choose_datasizes, require_snapshot_closed
+
+
+class FakeResponse:
+    status_code = 200
+
+    def __init__(self, payload):
+        self.payload = payload
+
+    def json(self):
+        return self.payload
+
+
+class FakeSession:
+    def __init__(self, result):
+        self.result = result
+        self.proxies = {}
+
+    def post(self, url, json=None, timeout=None):
+        items = json if isinstance(json, list) else [json]
+        payload = [{"jsonrpc": "2.0", "id": item.get("id"), "result": self.result}
+                   for item in items]
+        return FakeResponse(payload if isinstance(json, list) else payload[0])
+
+
+def call_decoder(module, sigs, out, mint, result, extra=None):
+    argv = [module.__file__, "--sigs", sigs, "--out", out, "--mint", mint,
+            "--rpc", "fixture-rpc", "--interval", "0"] + (extra or [])
+    old_argv, old_session, old_sleep = sys.argv, module.requests.Session, module.time.sleep
+    sys.argv = argv
+    module.requests.Session = lambda: FakeSession(result)
+    module.time.sleep = lambda _: None
+    try:
+        try:
+            result_code = module.main()
+        except SystemExit as e:
+            return int(e.code or 0) if isinstance(e.code, int) else 1
+        return int(result_code or 0)
+    finally:
+        sys.argv = old_argv
+        module.requests.Session = old_session
+        module.time.sleep = old_sleep
 
 
 def balance(owner, mint, raw, decimals, ui=None):
@@ -44,6 +87,36 @@ def main():
             f.write(json.dumps({"sig": "done", "mint": mint, "deltas_raw": {}}) + "\n")
         assert completed_sigs(out, mint) == {"done"}
 
+        # P1-03：v1 失败行不算 done，下次必须重试并成功收口。
+        sigs = os.path.join(tmp, "sigs.txt")
+        open(sigs, "w").write("retry\n")
+        v1_out = os.path.join(tmp, "v1.jsonl")
+        open(v1_out, "w").write(json.dumps({"sig": "retry", "decode_fail": True}) + "\n")
+        open(v1_out + ".meta.json", "w").write(json.dumps(
+            decode_v2.output_identity(mint, None, "fixture-rpc"), indent=2, sort_keys=True))
+        rpc_result = {"slot": 9, "blockTime": 10, "meta": {
+            "preTokenBalances": [balance(owner, mint, 1, 0)],
+            "postTokenBalances": [balance(owner, mint, 2, 0)]}}
+        rc = call_decoder(decode_v1, sigs, v1_out, mint, rpc_result)
+        final_rows = [json.loads(x) for x in open(v1_out) if x.strip()]
+        receipt = json.load(open(v1_out + ".receipt.json")) if os.path.exists(v1_out + ".receipt.json") else {}
+        assert rc == 0 and not final_rows[-1].get("decode_fail") \
+            and receipt.get("status") == "PASS"
+
+        # v1 输出身份必须绑定 mint/pool/RPC，跨 mint 复用必须硬退。
+        rc = call_decoder(decode_v1, sigs, v1_out, "OtherMint", rpc_result)
+        assert rc != 0, "v1 cross-mint output must reject"
+
+        # v1/v2 本次最终仍有 decode_fail 时都必须非零且落 BLOCK receipt。
+        for module, extra in ((decode_v1, []),
+                              (decode_v2, ["--batch", "1", "--cache-dir", ""])):
+            failed_out = os.path.join(tmp, os.path.basename(module.__file__) + ".failed.jsonl")
+            rc = call_decoder(module, sigs, failed_out, mint, None, extra)
+            receipt_path = failed_out + ".receipt.json"
+            rec = json.load(open(receipt_path)) if os.path.exists(receipt_path) else {}
+            assert rc != 0 and rec.get("status") == "BLOCK" \
+                and rec.get("failure_count") == 1, f"{module.__name__}: rc={rc} {rec}"
+
     assert choose_datasizes(T22, "auto") == ["all"]
     try:
         choose_datasizes(T22, "165,170")
@@ -63,7 +136,7 @@ def main():
         else:
             raise AssertionError("partial/malformed holder snapshot must reject")
 
-    print("PASS: B-06 raw precision, B-07 cache/retry identity, B-08 Token-2022 closure")
+    print("PASS: B-06/B-07/B-08 + P1-03 v1/v2 decode retry, identity and failure receipts")
     return 0
 
 

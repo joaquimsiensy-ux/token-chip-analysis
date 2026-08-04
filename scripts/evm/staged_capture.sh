@@ -21,25 +21,13 @@ n=${#BOUNDS[@]}
 for ((i=0; i<n-1; i++)); do
   FROM=${BOUNDS[$i]}; TO=${BOUNDS[$((i+1))]}
   if [ -f "$OUTDIR/run_${FROM}/done.json" ]; then
-    if python3 - "$OUTDIR/run_${FROM}/done.json" "$TOK" "$URL" "$FROM" "$TO" <<'PY'
-import json, re, sys
-p, tok, url, start, end = sys.argv[1:]
-d = json.load(open(p))
-url = re.sub(r"/query/?$", "", url.rstrip("/"))
-ok = (d.get("schema") == "hypersync-v2-done/v2"
-      and d.get("query_schema") == "erc20-transfer-fields/v2"
-      and d.get("token") == tok.lower() and d.get("url") == url
-      and int(d.get("capture_from", -1)) == int(start)
-      and int(d.get("from_block", -1)) >= int(start)
-      and int(d.get("to_block", -1)) == int(end)
-      and int(d.get("next_block", -1)) == int(end))
-raise SystemExit(0 if ok else 2)
-PY
+    if python3 "$V2" verify-done --done "$OUTDIR/run_${FROM}/done.json" \
+      --token-addr "$TOK" --url "$URL" --capture-from "$FROM" --to-block "$TO"
     then
-      echo "[skip] segment ${FROM} manifest verified"
+      echo "[skip] segment ${FROM} manifest+Parquet verified"
       continue
     fi
-    echo "[FATAL] segment ${FROM} done.json identity/bounds mismatch" >&2
+    echo "[FATAL] segment ${FROM} done.json/Parquet validation failed" >&2
     exit 2
   fi
   # 无 done.json 的残段不删除，移入隔离区保留诊断现场。
