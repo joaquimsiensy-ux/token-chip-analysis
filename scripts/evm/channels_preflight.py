@@ -140,7 +140,9 @@ def _csv_collector_provenance(receipt_path, data_path, token, lo, hi):
     if not isinstance(collector, dict):
         raise ChannelsPreflightError("CSV 采集回执缺 collector")
     name = collector.get("path")
-    allowed = {x.name: x for x in (Path(__file__).with_name("fetch_hypersync.py"),)}
+    allowed = {x.name: x for x in (Path(__file__).with_name("fetch_hypersync.py"),
+                                      Path(__file__).with_name("fetch_sqd_evm.py"),
+                                      Path(__file__).with_name("fetch_alchemy.py"))}
     expected_script = allowed.get(name)
     if expected_script is None or collector.get("sha256") != _sha256_file(expected_script):
         raise ChannelsPreflightError("CSV 采集回执未绑定当前受支持采集器")

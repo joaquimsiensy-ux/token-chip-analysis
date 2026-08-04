@@ -26,6 +26,7 @@ def main():
     ap.add_argument("--out-dir", default=".", help="输出目录（transfers_full.csv 所在）")
     ap.add_argument("--from-block", type=int, default=0, help="起始块（含）；有已存 CSV 时取 max(末行块,此值)")
     ap.add_argument("--to-block", type=int, default=None, help="终止块（含）；缺省 latest")
+    ap.add_argument("--receipt", help="成功收尾后写正式 evm-collector-run/v2（须显式块界）")
     a = ap.parse_args()
 
     cfg = json.load(open(a.config))
@@ -35,6 +36,9 @@ def main():
     ep = f"https://{cfg.get('alchemy_network', 'base-mainnet')}.g.alchemy.com/v2/{key}"
     os.makedirs(a.out_dir, exist_ok=True)
     out = os.path.join(a.out_dir, "transfers_full.csv")
+    existed_before = os.path.exists(out) and os.path.getsize(out) > 0
+    if a.receipt and (a.to_block is None or existed_before):
+        ap.error("正式 Alchemy receipt 要求显式 --to-block 且输出运行前不存在")
     ckpt = os.path.join(a.out_dir, "alchemy_pagekey.json")
     proxies = {"http": cfg["proxy"], "https": cfg["proxy"]} if cfg.get("proxy") else None
 
@@ -107,6 +111,11 @@ def main():
             break
         time.sleep(1.5)
     f.close()
+    if a.receipt:
+        from csv_collector_receipt import emit_native_receipt
+        emit_native_receipt(out, a.receipt, __file__, token, ep.rsplit("/", 1)[0],
+                            a.from_block, a.to_block + 1, a.to_block + 1,
+                            fresh_output=not existed_before)
     print(f"[COMPLETE] {total} transfers this run, {page} pages, {time.time()-t0:.0f}s", flush=True)
 
 
