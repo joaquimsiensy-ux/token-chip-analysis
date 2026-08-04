@@ -11,10 +11,12 @@ build_html G8 直接 WARN（有 WARN 不许交付），报告物理上编不出�
 
 用法：
   生成：python3 entity_identity_gate.py --state analysis-state.json --chain sol \
-            [--snapshot holders_owners.json] [--out identity_gate.json]
+            --snapshot holders_owners.json --snapshot-receipt holders_receipt.json \
+            --total-supply-raw <raw整数> --out identity_gate.json
   校验：python3 entity_identity_gate.py --check identity_gate.json   # exit 1=有未解决 flag
 
-对每个实体地址（+快照现仓 ≥1% 的所有单址）产出四查记录：
+快照 receipt 必须证明同块 owner 全集、文件哈希与 total supply；owner 余额和必须闭合。
+对每个实体地址（+占绑定总供应 ≥1% 的所有单址）产出四查记录：
   label     : LabelResolver 双源查询（CSV 主库 + address-book.md 手工层）
   on_curve  : Solana 链 ed25519 曲线判定（EVM 为 null）
   flag      : 需要显式回答的身份疑点——

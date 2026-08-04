@@ -75,7 +75,7 @@ def main(all_mode=False):
 
     # 5) 历史静置仓反向扫描是实体冻结前硬闸；四层任一缺失都视为方法回退。
     method_contracts = {
-        'SKILL.md': ['历史静置仓反向扫描硬闸', 'dormant_warehouse_audit.json', '不允许冻结实体'],
+        'SKILL.md': ['EF-2 历史静置仓反扫', 'dormant_warehouse_audit.json', '不允许冻结实体'],
         'references/playbook-entity-cluster-methods.md': ['候选全集从三条现役机械通道取齐', 'strict ∪ expanded', '同一交易末快照',
                                                           'universe_ref', 'must_adjudicate', 'OTC 排除检验'],
         'references/playbook-entity-cluster-tiering.md': ['历史静置仓反向扫描后的双边界峰值', '严格下限', '扩展上限',
@@ -102,17 +102,17 @@ def main(all_mode=False):
             if needle not in text:
                 fails.append(f'经济控制口径回退 {rel}: 缺少 {needle}')
 
-    # 7) 三道互补防线是名册定稿前硬闸（W1 两度漏检 2026-08-01；v6.8.1 codex 验收返工版）；
-    #    路由/工作流/契约/判例四层任一缺失＝方法回退。
+    # 7) EF-3 覆盖发现闸是名册定稿前硬闸；稳定编号替代层级含混的
+    #    “三道防线/四重前置”口号，路由/工作流/契约/判例任一缺失＝回退。
     wave_contracts = {
-        'SKILL.md': ['三道互补防线硬闸', 'wave_scan_report.json', 'flow_anomaly_report.json',
-                     'entity_source_trace.py', '成员级裁决闭环', '四重前置'],
-        'references/analyze-workflow.md': ['wave_scan.py', 'flow_anomaly_scan.py',
-                                           'entity_source_trace.py', 'adjudication_validator.py',
-                                           '兜底桶不准关闸', '覆盖真空声明', '正向模拟'],
+        'SKILL.md': ['EF-3 覆盖发现闸', 'EF-3A 波次扫描', 'EF-3B 资金流异常扫描',
+                     'EF-3C 候选裁决与实体溯源', 'EF-3C-P1', 'P4 原始输入及算法绑定重放'],
+        'references/analyze-workflow.md': ['EF-3A 全体持仓波次扫描', 'EF-3B 资金流异常扫描',
+                                           'EF-3C 候选裁决与实体溯源', 'entity_source_trace.py',
+                                           'adjudication_validator.py', '覆盖真空声明', 'EF-3C-P1'],
         'references/split-run.md': ['wave_scan_report.json', 'flow_anomaly_report.json',
-                                    '候选裁决闭环', '溯源闸', 'provenance_ledger.json',
-                                    '四重前置', '--entity-file'],
+                                    'EF-3A/EF-3B', 'EF-3C', 'EF-3C-P1～P4',
+                                    'provenance_ledger.json'],
         'references/casebook/supply-accounting.md': ['wave_scan.py', '桶存在≠桶内被检验过',
                                                      '闸外的人来试着绕它'],
         'references/scan-schemas.md': ['wave-scan/v3', 'flow-anomaly/v2',
@@ -124,7 +124,7 @@ def main(all_mode=False):
         text = open(os.path.join(ROOT, rel), encoding='utf-8').read()
         for needle in needles:
             if needle not in text:
-                fails.append(f'三道防线硬闸回退 {rel}: 缺少 {needle}')
+                fails.append(f'EF-3 覆盖发现闸回退 {rel}: 缺少 {needle}')
 
     # 8) 同时性家族合并与"恒定滞后"判据删除（2026-08-02 用户裁决，v6.12.0）：
     #    在场检查=家族三档、②降级措辞、持仓画像旁证与 update-workflow 新指称不得回退；
@@ -149,6 +149,50 @@ def main(all_mode=False):
         for needle in needles:
             if needle in text:
                 fails.append(f'已删判据回捡 {rel}: 出现 {needle}')
+
+    # 9) 2026-08-04 一致性复核的语义守护。只扫活跃权威文档/代码，CHANGELOG
+    #    的历史原文不在禁扫范围。
+    semantic_contracts = {
+        'SKILL.md': ['restricted/top-200-windowed', 'Arbitrum', '三问一异常',
+                     'A3 实体冻结门禁编号', '队列层 collect_manifest',
+                     '链内 collection_manifest/receipt'],
+        'references/independent-audit-protocol.md': ['--profile new-analysis',
+                                                      '--profile independent-audit',
+                                                      'id、规范化文本、最终 verdict、证据文件集合和报告位置'],
+        'references/report-template.md': ['state_from_facts.py', '--mode analysis-new',
+                                           '--mode analysis-audit', 'a4-seal/v3', 'ET-1/ET-2'],
+        'references/analyze-workflow.md': ['identity_gate_v3', '--snapshot-receipt',
+                                           '--total-supply-raw', 'a4-seal/v3'],
+        'references/data-pipeline-filecoin.md': ['restricted/top-200-windowed', 'f00–f0160',
+                                                  'richlist_pagination_receipt.json'],
+        'references/data-pipeline-solana-capture.md': ['免费层不支持 batch', '10 RPS'],
+    }
+    for rel, needles in semantic_contracts.items():
+        text = open(os.path.join(ROOT, rel), encoding='utf-8').read()
+        for needle in needles:
+            if needle not in text:
+                fails.append(f'2026-08-04 语义口径回退 {rel}: 缺少 {needle}')
+
+    banned_contracts = {
+        'SKILL.md': ['对任意链上代币', 'v5.0 三问框架', '实体冻结前三硬闸'],
+        'references/report-template.md': ['手写 15 行', 'a4-seal/v2'],
+        'references/data-pipeline-filecoin.md': ['f00–f0126', '浏览器 API 准全量'],
+        'scripts/solana/decode_txs_v2.py': ['默认 20 笔/POST', '[--batch 20]', '免代理且 50 RPS'],
+    }
+    for rel, needles in banned_contracts.items():
+        text = open(os.path.join(ROOT, rel), encoding='utf-8').read()
+        for needle in needles:
+            if needle in text:
+                fails.append(f'2026-08-04 已删口径回捡 {rel}: 出现 {needle}')
+
+    active_workflows = ['SKILL.md', 'references/analyze-workflow.md',
+                        'references/easy-workflow.md', 'references/report-template.md',
+                        'references/split-run.md']
+    generic_mode = re.compile(r'--mode analysis(?=[\s`])')
+    for rel in active_workflows:
+        text = open(os.path.join(ROOT, rel), encoding='utf-8').read()
+        if generic_mode.search(text):
+            fails.append(f'2026-08-04 generic analysis 模式回退 {rel}')
 
     if fails:
         for f in fails[:30]:

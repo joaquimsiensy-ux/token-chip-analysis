@@ -2,7 +2,7 @@
 
 本协议用于复核任何既有筹码报告、第三方报告或旧版分析。目标不是”评价报告是否合理”，而是从原始链上数据重新建立可复算事实，再逐条裁决原报告命题。
 
-> **作用域（6.5.0 明确）**：本协议及其发布门禁 `audit_release_gate.py` 仅适用于”复核既有报告”任务——净室专用资产（`audit_input_manifest.json`、`claim_registry.json`、旧报告哈希等）以”存在一份被审报告”为前提，全新分析产不出也不需要。全新分析的发布要求走 report-template 交付 checklist（含 4c 经济控制穿透硬闸、4d 历史静置仓反向扫描硬闸），两者共用三账与静置仓审计的落盘件，但门禁入口不同。
+> **作用域与入口**：本协议仅适用于“复核既有报告”任务。`audit_release_gate.py` 的底层 validator 由两条流程共用，但入口强制分开：全新分析=`--profile new-analysis`（共享三账、对账、分类、静置仓与对抗复核资产），净室复核=`--profile independent-audit`（共享资产＋`audit_input_manifest.json`、`claim_registry.json`、`reproduce_audit.py`）。`build_html --mode analysis-new|analysis-audit` 与 `a4_seal.workflow_type` 机器匹配；不得拿净室专用资产要求卡死全新分析，也不得把净室复核降成共享 profile。
 
 ## 1. 净室原则
 
@@ -10,6 +10,8 @@
 2. 实体、地址类型和历史序列必须从原始 Transfer、owner余额、交易调用、原生币对价、mint/burn、LP/质押/桥/托管权益及独立标签源重建。
 3. 原报告附带的衍生 JSON、图表和分类表只可列入“被审资产”，不得与原始数据混为一层证据。
 4. 若必须复用原报告的脚本，先记录其输入血缘，并用独立脚本或独立数据源交叉验证；不得以“正文、图、JSON三处一致”证明正确，因为三者可能同源一致地错。
+
+`claim_registry.json` 是净室命题主表，A4 register 会生成执行态 `a4_claims.json`；两者不是可各自维护的两套结论。`a4_gate finalize --workflow-type independent-audit` 必须逐项对账 claim id、规范化文本、最终 verdict、证据文件集合和报告位置，任一缺失或分歧均 exit 2，seal 同时绑定两份表。
 
 ## 2. 输入冻结与时间线
 

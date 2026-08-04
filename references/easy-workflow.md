@@ -55,7 +55,7 @@
 
 ## E3 深度分析（引擎与完整版同强度）
 
-按 `analysis-playbook.md` 全序执行：地址身份标注三级兜底 → 金库与核心实体逐笔归因 → 关联聚类全套（playbook-entity-cluster：gas 同源/行为指纹/女巫归集/中间节点三段式检验）→ **庄级实体识别与标签判级**（§6a 阈值原样，v5.0 不分 P0/P1）→ **其他大户排查前置双闸**（§6a：≥0.1%/≥0.2% 逐个过批量排查层；实体成员完整性扫描不设持仓下限）→ 全量重放出阵营占比序列 → 庄家当前状态评估（§7 结论融入阵营表行描述与判定块，不单独成章）。
+按 `analysis-playbook.md` 全序执行：地址身份标注三级兜底 → 金库与核心实体逐笔归因 → 关联聚类全套 → **庄级实体识别与标签判级** → **ET-1 其他大户批量排查＋ET-2 实体成员完整性扫描** → 已声明范围内重放出阵营占比序列 → 庄家当前状态评估。EF-1～EF-3 顶层冻结门禁与完整版同强度，ET/EF 编号不得混称。
 
 - **重点实体素材装配照跑（3.39.1 补；v5.0 对象改为达到流转图门槛的实体=当前 ≥20% 总供应或 ≥20% 流通的大庄/项目方）**：判级冻结后按 research-workflows §二b 每实体一路并行外包，**`model:'opus'` + `effort:'high'`**。easy 模式下 §二b 的**第 3 节（flow spec 草稿）免做**（本模式不出流转路径图），第 1/2/4 节（逐址持仓时间线、内部转移矩阵、疑点清单）照做——它们正是下一条"阵营表按实体结构细分"的素材源，也是 E4 怀疑者的复核靶子。
 - 阵营表的行划分**按实际实体结构细分**（如项目方可拆托管桶/运营分发系/投资人系），粒度与完整版一致——这正是深挖不省的产出物。
@@ -65,7 +65,7 @@
 
 ## E4 对抗复核（路数不减，面自然缩）
 
-**E4→E5 顺序硬闸：全部裁决落定并 `a4_gate.py finalize` 产 `a4-seal/v2` 前禁止进入 E5。** 开工 register，收尾封口 registry、verdicts、findings、analysis-state、facts、identity gate 和 claim 文件；charts/final 为空校验。
+**E4→E5 顺序硬闸：全部裁决落定并 `a4_gate.py finalize --workflow-type new-analysis` 产 `a4-seal/v3` 前禁止进入 E5。** 开工 register，收尾封口 registry、verdicts、findings、analysis-state、facts、identity gate 和 claim 文件；charts/final 为空校验。
 
 N 路怀疑者（给数据文件路径让其**自己重算**，强制构造备择解释）+ 1 完整性批评 + 1 路外部异构怀疑者（codex/GPT-5.6-sol 横扫全部结论，3.40.0，见 research-workflows §2），三档判定 CONFIRMED/WEAKENED/REFUTED，纪律同完整版（research-workflows §2）。复核对象=筹码结构结论（实体判级/关联边/阵营划分/重放序列）；无长报告文案可核。修正顺序同完整版：先数据管线后文案；修正要点并入判定块下方一行（无附录可印）。**E4 前置件（不是 E5 提前做）**：cluster_sensitivity 扰动脚本依赖 analysis-state.json——跑 E4 前先落盘 state **骨架**（实体表定稿即可生成，不必等判定块），否则扰动敏感度报告做不出来（BANANAS31，07-22）；仅限骨架本身，**禁止连带提前出判定块/图 1/HTML**（那些是 E5 交付物，封口后才做）。
 
@@ -73,7 +73,7 @@ N 路怀疑者（给数据文件路径让其**自己重算**，强制构造备�
 
 工作目录沿用完整版习惯（`<代币>分析/`，含 data/ charts/），转正式零搬迁。口径注：**"两件套"指 HTML 页面的两大内容件（图 1＋阵营划分快照表）；落盘产物为三件**：
 
-1. **`<代币>筹码筛查_<日期>.html`**：`build_html.py --mode analysis --md ... --out ... --facts facts.json --state analysis-state.json --a4-seal a4_seal.json`，同样重跑发布闸；筛查档只缩展示，不降门禁。图 1 输出到 `charts/final/`。
+1. **`<代币>筹码筛查_<日期>.html`**：`build_html.py --mode analysis-new --md ... --out ... --facts facts.json --state analysis-state.json --a4-seal a4_seal.json`，同样重跑 new-analysis 发布闸；筛查档只缩展示，不降门禁。图 1 输出到 `charts/final/`。
    - 标题 + 元信息行（数据截止 / 覆盖链与占全局供给% / 供给口径一句）
    - **图 1**：`plot_camp_evolution(..., price_series=...)` 必传价格（右轴黑线，v3.12 规格）+ 斜体题注
    - **阵营划分快照表**：阵营 | 地址数 | 现仓（枚 +【总量X%】）| 定义（实体状态与关键行为融入描述）

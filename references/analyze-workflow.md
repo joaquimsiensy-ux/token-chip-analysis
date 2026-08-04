@@ -31,7 +31,7 @@
 | f0/f1 地址（Filecoin） | `data-pipeline-filecoin.md` ＋ `scripts/filecoin/` |
 | 0x 地址，Robinhood Chain（chainid 4663） | `data-pipeline-robinhood.md` ＋ `scripts/robinhood/` |
 | 跨链部署（OFT/CCIP 等） | 先过多链硬关卡选定范围 → 各链按其 pipeline 采集＋跨链 mint/burn 配平；桥接分支链范式见 playbook §6a |
-| 全新链 | 新链 SOP：先花 ~30 分钟实测免费数据面（浏览器 API/公共 RPC 能力/限速）形成临时管道笔记；分析完按 A6 沉淀为新的 data-pipeline-<chain>.md |
+| 全新链 | 新链 SOP：先实测数据面并实现采集 receipt、四查、标签 resolver 与 G8 chain 适配；这些正式门禁未齐前只能交付明确降级的探索结果，不得编译正式 analysis。适配完成后再按 A6 沉淀 data-pipeline-<chain>.md |
 
 **通道实测探路**：写任何采集脚本前，先用 1–2 分钟小请求逐个实测候选数据源（可用性/返回结构/分页/上限/限速）；拿到任何新 key 先做 1 分钟能力探测再承诺方案；禁止基于文档想象设计方案。
 
@@ -43,7 +43,7 @@
 
 长任务运维：最长任务最先启动、等待期填满下游脚本编写、零进展要告警、预估偏差超 2 倍主动汇报（抽样外推报保守上限）、废弃通道同步停掉观察哨。
 
-**预采集衔接（/collect-data）**：开工先查工作目录是否已有预采集产物（EVM＝`data/v2/run_*/done.json`，Solana＝`data/soltx-*.jsonl.gz`＋meta）——有则**直接复用并断点续拉增量到最新**（底层采集器天然幂等），禁止无视既有产物从零重采；完整性以 collect_manifest（工作根目录 `collect_plans/`）与 done.json 为准，`done_with_gaps` 项必须先补齐缺口再进对账。批量候选的采集等待尽量前移到 /collect-data 夜间队列（`scripts/collect/collect_queue.py`），分析会话只付增量成本。
+**预采集衔接（/collect-data）**：开工先查工作目录是否已有预采集产物（EVM＝`data/v2/run_*/done.json`，Solana＝`data/soltx-*.jsonl.gz`＋meta）——有则**直接复用并断点续拉增量到最新**（底层采集器天然幂等），禁止无视既有产物从零重采；完整性以队列总清单 `collect_plans/collect_manifest.json` 与各任务 done.json 为准，`done_with_gaps` 项必须先补齐缺口再进对账。链内采集器另产 `collection_manifest.json`/receipt，证明单链数据范围；两层文件不得都简称 manifest。批量候选的采集等待尽量前移到 /collect-data 夜间队列（`scripts/collect/collect_queue.py`），分析会话只付增量成本。
 
 ## A2 对账关卡（硬性，四查全过才进分析）
 
@@ -62,14 +62,14 @@
 
 1. **地址身份标注**（官方标签→外部证据→行为特征三级兜底，playbook §3）→ **金库与核心实体逐笔归因**（§4）→ **关联聚类**（多证据边＋中间节点三段式检验，§6；合并只认专属性证据——通用实现/通用服务共用不算，见 casebook E-01）。
 2. **判例库过闸（实体表冻结前必做）**：把 `casebook/cex-custody.md` 与 `casebook/entity-clustering.md` 全册触发现象过一遍，命中的逐条做"必做区分检验"。
-3. **实体身份硬闸**：实体表冻结前跑 `scripts/report/entity_identity_gate.py --state … --chain … --snapshot …` 产出 `identity_gate.json`——对每个实体地址＋≥1% 大仓做标签双源（CSV 主库＋address-book 手工层，label_lookup 已自动并源）、Solana ed25519 曲线判定、托管假设三查；**所有无标签实体成员一律 `BIG_UNLABELED`（Solana off-curve 则 `PDA_UNRESOLVED`），份额只用于展示，不决定是否入闸**。INFRA_IN_ENTITY／PDA_UNRESOLVED／BIG_UNLABELED 三类 flag 逐条填 resolution（查了什么、结论是什么）——CLI `--check` 与 build_html G8 共用 `identity_gate_v2` 严格 validator，重验 chain/state hash/计数/地址唯一性/实体绑定/flag 枚举；任一失败报告物理上编不出来。币安 Alpha 在架的 Solana 标的同时做 Alpha 集齐率判别（casebook C-01；easy 版 E0b 步骤④同款，完整版同责）。
-   **存量旧案迁移**：`identity_gate_v1` 可继续支撑不带 `--state` 的 update 简报，但不得用于正式 analysis 重编译。旧案重编译前必须用当前 `entity_identity_gate.py --state <analysis-state.json> --chain <chain> --snapshot <snapshot.json> --out identity_gate.json` 重新生成 `identity_gate_v2`，并对新增的每一条 `BIG_UNLABELED`/`PDA_UNRESOLVED`/`INFRA_IN_ENTITY` 补填可审计 resolution 后再编译。
+3. **实体身份硬闸（G8）**：实体表冻结前跑 `scripts/report/entity_identity_gate.py --state analysis-state.json --chain <chain> --snapshot <owner全集快照.json> --snapshot-receipt <快照receipt.json> --total-supply-raw <链上总供应raw> --out identity_gate.json`——快照 receipt 必须证明同块、owner 全集与文件哈希，owner 余额和必须等于绑定总供应；因此所有 `share_pct` 才具有“占总供应”语义。闸覆盖每个实体地址＋≥1% 总供应单址；**所有无标签实体成员一律 `BIG_UNLABELED`（Solana off-curve 则 `PDA_UNRESOLVED`），份额不决定实体成员是否入闸**。INFRA_IN_ENTITY／PDA_UNRESOLVED／BIG_UNLABELED 三类 flag 逐条填 resolution。CLI `--check` 与 build_html G8 共用 `identity_gate_v3` 严格 validator，重验 chain/state/snapshot/receipt/total supply、计数、地址唯一性、实体绑定、份额及 ≥1% 非实体 owner 完整性；支持链白名单含 Arbitrum，任一失败报告物理上编不出来。
+   **存量旧案迁移**：v1/v2 仅可作为历史线索，不得用于正式 analysis 重编译。旧案必须补同块 owner 全集快照、receipt 与 total supply，重新生成 `identity_gate_v3` 并逐条解决 flag 后再编译。
 4. **庄级实体识别、标签划分与类型三分类**：门槛数值与细则的唯一权威源＝playbook-entity-cluster-tiering §6a（本处不设数值副本防漂移，v6.4.2 定；结构要点：不分级；项目方无论份额；大庄/小庄按当前持仓、离场庄按峰值判；刷量地址单独标签；发射窗协同实体按普通门槛判级；合并口径含全部疑似关联地址）。
-5. **其他大户排查前置双闸**（§6a）：其他大户线＝当前 ≥0.1% 总供应或 ≥0.2% 流通，逐个过批量排查层（标签库/惯犯库/指纹/funder 溯源）才准归阵营，报警才人工深挖；每个已识别实体做不设持仓下限的成员完整性扫描（防分仓漏判）。
-6. **全量转账重放出各阵营占比演变序列**（阵营划分见 §6a）：分母＝当期净供应序列，**逐时点 assert Σ阵营＝100%±容差**，改过名册跑反向断言（casebook S-03）。三道配套硬闸（v6.8.0 三道互补防线，schema 权威定义 scan-schemas.md）：
-   - **全体持仓波次扫描（硬闸，v2）**：名册定稿前必跑 `python3 scripts/report/wave_scan.py`——扫描对象＝全体历史峰值 ≥0.02% 地址**不限清零层**（三桶留存标签），A 种子窗两层（真实 7 日窗 ≥20 员且合并峰 ≥10% 才触发生长）×B 喂币专属×C 快速清仓（峰→30% ≤30 日）×D 等额面额四条合一（同面额＋单笔 ≥0.001%＋7 日窗 ≥20 收方＋组合计 ≥1%），产 `wave_scan_report.json`（wave-scan/v2）。
-   - **资金流异常扫描（硬闸）**：`python3 scripts/report/flow_anomaly_scan.py` 产 `flow_anomaly_report.json`——汇集点（14 日窗多来源进货 ≥2% 且 ≥5 源，Q1/3yMk 型枢纽）＋分发点三口径多命中（v2，2026-08-02 补两缝：pulse＝14 日窗 fresh 新收方 ≥20 灌新仓／pulse_all＝窗内收方**不限新老** ≥20，堵"向已建仓老地址补货"盲区／slow_spray＝全史 ≥100 收方兜底，旧线 500 系单案过宽初值；浓度字段识别"1 大额＋N 粉尘"伪分发，裁决时必看）。
-   - **候选裁决闭环＋溯源闸（硬闸）**：两扫描器全部候选按 `adjudication_validator.py`（template 起草 → 成员级逐条裁决〔等额组必查 top_sender_global_out_degree 识设施撞衫〕→ `validate --entity-file` 八类拒绝〔含 verdict 语义交叉约束与 linked_entity 名册绑定〕）闭环，**裁决完毕前历史大户兜底桶不准关闸**——"有兜底桶"≠"桶内被检验过"（casebook S-04）；实体表冻结前对临时实体表跑 `entity_source_trace.py`（祖先子图正向模拟：两锚点构成＋direct_upstream 进货单——Q1 教训：19 根 W1 藤裸露在进货单上无人看——＋FIFO/LIFO 与事件顺序双维敏感性，翻转/顺序未决超线即 exit 2），新支路补候选回裁决环，`freeze` 机器强制四重前置（严格 verify＋裁决带名册＋溯源内容级重查＋原始边/标签/分母/cutoff/block/manifest/data_map/算法绑定后真实重放，策略明细机器重算，自报值一概不作数）。分段执行时跑批归 −1、裁决与溯源归 −2（split-run §1.3/§3.2）。
+5. **ET 双闸**（§6a）：ET-1＝其他大户线（当前 ≥0.1% 总供应或 ≥0.2% 流通）逐个过标签库/惯犯库/指纹/funder 批量排查，报警才人工深挖；ET-2＝每个已识别实体做不设持仓下限的成员完整性扫描。ET 是判级筛查层，不与 EF-1～EF-3 顶层冻结门禁混称。
+6. **已声明范围内的转账重放出各阵营占比演变序列**（阵营划分见 §6a）：分母＝当期净供应序列，**逐时点 assert Σ阵营＝100%±容差**，改过名册跑反向断言（casebook S-03）。随后执行 EF-3 覆盖发现闸（schema 权威定义 scan-schemas.md）：
+   - **EF-3A 全体持仓波次扫描**：名册定稿前必跑 `wave_scan.py`，产 `wave_scan_report.json`（wave-scan/v3）。
+   - **EF-3B 资金流异常扫描**：必跑 `flow_anomaly_scan.py`，产 `flow_anomaly_report.json`（flow-anomaly/v2）。
+   - **EF-3C 候选裁决与实体溯源**：两扫描器全部候选经 `adjudication_validator.py` 成员级裁决，再对临时实体表跑 `entity_source_trace.py`；新支路回裁决环。freeze 固定校验 EF-3C-P1 严格 verify、P2 裁决名册绑定、P3 溯源内容重查、P4 原始边/标签/分母/cutoff/block/manifest/data_map/算法绑定后真实重放。分段执行时 EF-3A/B 跑批归 −1，EF-3C 归 −2。
    - **覆盖真空声明（用户 2026-08-01 确认接受；2026-08-02 flow v2 补缝后边界更新）**：v6.8.0 删除 camp_jump_audit.py（阵营序列骤变归因闸）后，系统不再有"从最终阵营序列反向发现未解释大变化"的输出侧报警器——wave/flow 覆盖不了标签重分类、分母变化、慢速迁移类异常；无法归因的骤变按判断层义务写进报告"局限性"，本轮不做替代闸（不承诺永久）。flow 分发点侧 v2 补缝后仍不可见（真空收窄未消除）：收方 20~99 且任何 14 日窗不达双线的慢速分发／<20 收方拆分／全史流出 <2%／一实体轮换多址各 <2%（entity-file 只抵消内部边不聚合外发）／多跳二级分发。仅存的输出侧轻量信号＝阵营重放产出时标记"单日阵营变动 ≥10pp"的日子，作为峰值逐笔触发日之一（无归因义务，见 tiering"峰值判级口径"条，2026-08-02）。
 7. **庄家当前状态评估**（§7）→ 质押/留存修正（§8）；建仓成本仅按需算（§6b 降为工具）；CEX 净流×价格作为演变解读工具按需用（防内部调仓伪影，§5）。
 
@@ -87,7 +87,7 @@
 4. 本地反例自查脚本前置。
 5. **N 路怀疑者 agent**（给数据文件路径让它**自己重算**，不是审阅文字；强制构造备择解释——casebook 三册就是现成的备择解释清单，组 prompt 时按题材摘触发现象）＋1 完整性批评角色查 findings/结论清单缺口（必查全史极值清单）＋1 路**外部异构怀疑者**（codex/GPT 单进程横扫全部结论）。
 6. 判定三档 CONFIRMED/WEAKENED/REFUTED（**必须实际核查，"理论上可能"不算推翻**）→ 修订顺序先修数据管线再修文案 → 修正记录印进报告附录。
-7. **封口收尾**：`python3 scripts/report/a4_gate.py finalize --case-dir . --verdicts-file verdicts.json --seal-files findings.md,analysis-state.json,facts.json,identity_gate.json`——verdicts 必须位于案目录，registry、verdicts、四件核心资产及 claim 引用文件自动纳入 `a4-seal/v2`；路径经 resolve containment 校验，绝对路径、`..`、symlink 越界均拒绝。`charts/final/` 为空且 exit 0 才准进 A5。
+7. **封口收尾**：A3 已先落 `findings.md`、`facts.json`、`analysis-state.json`、`identity_gate.json`。运行 `a4_gate.py finalize ... --workflow-type new-analysis|independent-audit --seal-files findings.md,analysis-state.json,facts.json,identity_gate.json`，产 `a4-seal/v3`；净室复核还会机器对账 `a4_claims.json` 与 `claim_registry.json` 的 id/文本/裁决/证据/位置并封入两者。路径经 containment 校验，`charts/final/` 为空且 exit 0 才准进 A5。
 
 ## A5 报告
 
@@ -95,7 +95,7 @@
 
 出图纪律：`standard_charts.plot_camp_evolution` 按 CAMP_ORDER 白名单过滤 series 键，非标准阵营名**静默跳过不报错**——阵营名必须逐字取自 `standard_charts.py` 的 `CAMP_ORDER`（唯一权威；现行 14 键：项目方、大庄、小庄、离场庄、刷量地址、CEX资金通道、CEX托管、疑似CEX托管、流动性池、其他大户、历史大户、散户、桥锁仓、锁仓/销毁；"狙击集团"等仅旧数据重绘 legacy）；**出图后必须目检图例条数 == 传入阵营数**。
 
-结构与措辞纪律见 `report-template.md`。正式报告唯一入口：`python3 scripts/report/build_html.py --mode analysis --md 报告.md --out 报告.html --facts facts.json --state analysis-state.json --a4-seal a4_seal.json`；analysis 模式会在同一案目录重跑 identity、A4 seal 和 `audit_release_gate` 全套门禁，任一资产缺失或漂移均不写 HTML。历史重编译必须显式用 `--mode legacy-recompile --degrade-reason "<理由>"`，产物带可见非正式水印。PDF 仅用户点名。
+结构与措辞纪律见 `report-template.md`。正式报告只有两个入口：全新分析用 `build_html.py --mode analysis-new ...`，净室复核用 `--mode analysis-audit ...`；二者都会核对 seal.workflow_type，并分别强制 `audit_release_gate --profile new-analysis|independent-audit`。不存在 generic analysis 或 skip gate。历史重编译必须显式用 `--mode legacy-recompile --degrade-reason "<理由>"`，产物带可见非正式水印。PDF 仅用户点名。
 
 **附录四件套**（验证步骤/标签↔地址对照/复核修正记录/来源）——附录 B 地址对照任何情况下不可省（正文零地址的可验证性支点）。**监控包默认不做**：观察哨/两档监控建议/appendix.json 在用户确认买入后按 monitoring-package.md「买入后监控包」节补生成（新会话可执行，材料全在落盘产物），报告末尾带固定句"如决定买入，回复一声即可补生成监控包"。**默认交付另落一份 `analysis-state.json`**（appendix 的机器子集：token/whale_groups/vault_addresses/addresses 骨架＋camp_share_series，无监控文案——/token-update 的实体表原料；schema 见 report-template「默认交付的机器状态文件」节）。交付前 checklist 见 report-template.md 末节。
 
