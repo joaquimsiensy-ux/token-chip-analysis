@@ -15,11 +15,13 @@ SOL = HERE.parent / "solana"
 FETCH_V2 = EVM / "fetch_hypersync_v2.py"
 sys.path.insert(0, str(EVM))
 sys.path.insert(0, str(SOL))
+sys.path.insert(0, str(HERE))
 
 from fetch_hypersync_v2 import QUERY_SCHEMA, find_resume_block
 from channels_preflight import _csv_stats, _file_fingerprints, _v2_stats
 from fetch_sqd_transfers_v2 import cache_identity_matches, cache_paths
 from replay_edges import cmd_evolution, cmd_reconcile
+from evm_channel_fixture import write_csv_channel_receipt
 
 ZERO_EVM = "0x" + "0" * 40
 A_EVM = "0x" + "a" * 40
@@ -99,9 +101,11 @@ def channel_receipt(tmp, tag, data_path, lo, hi, rows):
     p = Path(tmp) / f"{tag}.receipt.json"
     data_path = Path(data_path)
     fmt = "v2" if data_path.is_dir() else "v1csv"
+    if fmt == "v1csv":
+        return write_csv_channel_receipt(tmp, tag, data_path, A_EVM, lo, hi)
     _, min_block, max_block = (_v2_stats(data_path) if fmt == "v2"
                                else _csv_stats(data_path))
-    p.write_text(json.dumps({"schema": "evm-channel-receipt/v1", "status": "PASS",
+    p.write_text(json.dumps({"schema": "evm-channel-receipt/v2", "status": "PASS",
                              "tag": tag, "token": A_EVM, "lo": lo, "hi": hi,
                              "data_path": str(data_path), "format": fmt, "rows": rows,
                              "min_block": min_block, "max_block": max_block,
@@ -122,8 +126,8 @@ def test_h02(tmp):
          "receipt": channel_receipt(tmp, "b", d2, 10, 20, 1)}]}))
     out = Path(tmp) / "out"
     p = run([EVM / "replay_stream.py", "--channels", channels, "--out-dir", out], tmp)
-    stats = json.loads((out / "replay_stats.json").read_text())
-    assert p.returncode != 0 and stats["n_out_of_segment"] == 1, p.stdout + p.stderr
+    preflight = json.loads((out / "channels_preflight.json").read_text())
+    assert p.returncode != 0 and preflight["status"] == "BLOCK", p.stdout + p.stderr
 
 
 def test_h03(tmp):

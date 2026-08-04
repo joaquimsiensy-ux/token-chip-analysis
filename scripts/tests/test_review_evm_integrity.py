@@ -11,8 +11,9 @@ from pathlib import Path
 HERE = os.path.dirname(os.path.abspath(__file__))
 EVM = os.path.join(HERE, "..", "evm")
 sys.path.insert(0, EVM)
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from transfers_lib import merge_sources
-from channels_preflight import _csv_stats, _file_fingerprints
+from evm_channel_fixture import write_csv_channel_receipt
 
 ZERO = "0x" + "0" * 40
 A = "0x" + "a" * 40
@@ -50,14 +51,7 @@ def replay_case(row, hi=200):
             f.write("block,ts,tx,from,to,value,uniqueId\n")
             f.write(row + "\n")
         ch = os.path.join(tmp, "channels.json")
-        receipt = os.path.join(tmp, "receipt.json")
-        _, min_block, max_block = _csv_stats(Path(src))
-        json.dump({"schema": "evm-channel-receipt/v1", "status": "PASS", "tag": "x",
-                   "token": A, "lo": 0, "hi": hi, "data_path": src,
-                   "format": "v1csv", "rows": 1, "min_block": min_block,
-                   "max_block": max_block,
-                   "files": _file_fingerprints(Path(src), "v1csv")},
-                  open(receipt, "w"))
+        receipt = write_csv_channel_receipt(tmp, "x", src, A, 0, hi)
         json.dump({"schema": "evm-channels/v2", "token": A, "expected_from": 0,
                    "expected_to": hi, "channels": [
                        {"path": src, "lo": 0, "hi": hi, "tag": "x",
@@ -67,6 +61,25 @@ def replay_case(row, hi=200):
                             "--channels", ch, "--out-dir", out], capture_output=True, text=True)
         stats = json.load(open(os.path.join(out, "replay_stats.json")))
         return p.returncode, stats, p.stdout + p.stderr
+
+
+def preflight_out_of_segment_case():
+    with tempfile.TemporaryDirectory() as tmp:
+        src = os.path.join(tmp, "in.csv")
+        good = f"100,2026-01-01,0xtx,{ZERO},{A},100,log_0\n"
+        open(src, "w").write("block,ts,tx,from,to,value,uniqueId\n" + good)
+        receipt = write_csv_channel_receipt(tmp, "x", src, A, 0, 200)
+        open(src, "w").write("block,ts,tx,from,to,value,uniqueId\n" +
+                              f"250,2026-01-01,0xtx,{ZERO},{A},100,log_0\n")
+        ch = os.path.join(tmp, "channels.json")
+        json.dump({"schema": "evm-channels/v2", "token": A, "expected_from": 0,
+                   "expected_to": 200, "channels": [{"path": src, "lo": 0, "hi": 200,
+                   "tag": "x", "format": "v1csv", "receipt": receipt}]}, open(ch, "w"))
+        out = os.path.join(tmp, "out")
+        p = subprocess.run([sys.executable, os.path.join(EVM, "replay_duck.py"),
+                            "--channels", ch, "--out-dir", out], capture_output=True, text=True)
+        preflight = json.load(open(os.path.join(out, "channels_preflight.json")))
+        return p.returncode, preflight, p.stdout + p.stderr
 
 
 def main():
@@ -83,8 +96,8 @@ def main():
 
     rc, st, out = replay_case(f"100,2026-01-01,0xtx,{ZERO},{A},not-an-int,log_0")
     assert rc != 0 and st["n_bad_fields"] == 1 and not st["gate_pass"], out
-    rc, st, out = replay_case(f"250,2026-01-01,0xtx,{ZERO},{A},100,log_0")
-    assert rc != 0 and st["n_out_of_segment"] == 1 and not st["gate_pass"], out
+    rc, st, out = preflight_out_of_segment_case()
+    assert rc != 0 and st["status"] == "BLOCK", out
     print("PASS: B-01 payload mismatches and B-02 rejected rows fail closed")
     return 0
 

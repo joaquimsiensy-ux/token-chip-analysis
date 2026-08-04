@@ -18,8 +18,9 @@ from pathlib import Path
 HERE = os.path.dirname(os.path.abspath(__file__))
 EVM = os.path.join(HERE, "..", "evm")
 sys.path.insert(0, EVM)
+sys.path.insert(0, HERE)
 sys.path.insert(0, os.path.join(HERE, "..", "bench"))
-from channels_preflight import _csv_stats, _file_fingerprints
+from evm_channel_fixture import write_csv_channel_receipt
 
 try:
     import duckdb  # noqa: F401
@@ -53,18 +54,13 @@ def _write_inputs(tmp, events):
         f.write("block,ts,tx,from,to,value,uniqueId\n")
         for r in rows:
             f.write(",".join(str(x) for x in r) + "\n")
-    receipt = {"schema": "evm-channel-receipt/v1", "status": "PASS", "tag": "t",
-               "token": ADDRS[0], "lo": 0, "hi": 99999999999,
-               "data_path": "transfers.csv", "format": "v1csv", "rows": len(rows)}
-    _, min_block, max_block = _csv_stats(Path(tmp) / "transfers.csv")
-    receipt.update({"min_block": min_block, "max_block": max_block,
-                    "files": _file_fingerprints(Path(tmp) / "transfers.csv", "v1csv")})
-    json.dump(receipt, open(os.path.join(tmp, "transfers.receipt.json"), "w"))
+    write_csv_channel_receipt(tmp, "t", Path(tmp) / "transfers.csv",
+                              ADDRS[0], 0, 99999999999)
     json.dump({"schema": "evm-channels/v2", "token": ADDRS[0],
                "expected_from": 0, "expected_to": 99999999999,
                "channels": [{"path": "transfers.csv", "lo": 0,
                              "hi": 99999999999, "tag": "t", "format": "v1csv",
-                             "receipt": "transfers.receipt.json"}]},
+                             "receipt": "t.receipt.json"}]},
               open(os.path.join(tmp, "channels.json"), "w"))
     json.dump({"camps": {"阵营A": [ADDRS[0], ADDRS[1]], "阵营B": [ADDRS[2]],
                          "销毁": [DEAD]},

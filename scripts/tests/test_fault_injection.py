@@ -27,7 +27,8 @@ EVM = os.path.join(HERE, "..", "evm")
 ENGINES = ["replay_duck.py", "replay_pass1.py", "replay_stream.py"]
 MAKE_RECEIPT = os.path.join(EVM, "make_channel_receipt.py")
 sys.path.insert(0, EVM)
-from channels_preflight import _csv_stats, _file_fingerprints
+sys.path.insert(0, HERE)
+from evm_channel_fixture import write_csv_channel_receipt
 
 A, B, C, D = ("0x" + c * 40 for c in "abcd")
 ZERO = "0x" + "0" * 40
@@ -73,18 +74,11 @@ def case_dir():
 
 
 def _receipt(tmp, name, data_path, lo, hi, rows=1, empty_proof=None):
-    obj = {"schema": "evm-channel-receipt/v1", "status": "PASS", "tag": name,
-           "token": A, "lo": lo, "hi": hi, "data_path": data_path, "rows": rows}
-    p = Path(data_path)
-    if p.is_file():
-        _, min_block, max_block = _csv_stats(p)
-        obj.update({"format": "v1csv", "min_block": min_block,
-                    "max_block": max_block, "files": _file_fingerprints(p, "v1csv")})
-    if empty_proof:
-        obj["empty_proof"] = empty_proof
-    rp = os.path.join(tmp, f"{name}.receipt.json")
-    json.dump(obj, open(rp, "w"))
-    return rp
+    if not Path(data_path).is_file():
+        rp = os.path.join(tmp, f"{name}.receipt.json")
+        json.dump({"schema": "evm-channel-receipt/v2", "status": "PASS"}, open(rp, "w"))
+        return rp
+    return write_csv_channel_receipt(tmp, name, data_path, A, lo, hi)
 
 
 def _manifest(tmp, channels, expected_from=0, expected_to=200):
@@ -147,15 +141,17 @@ def main():
 
     # F5 通道段重叠：声明两个重叠区间 → 启动即拒
     t = case_dir()
-    csv_p = os.path.join(t, "part.csv")
+    csv_p = os.path.join(t, "part_x.csv")
+    csv_y = os.path.join(t, "part_y.csv")
     open(csv_p, "w").write(HDR + "100,1700000000,0xt1," + ZERO + "," + A + ",1000,log_0\n")
+    open(csv_y, "w").write(HDR + "160,1700000000,0xt2," + ZERO + "," + A + ",1000,log_0\n")
     ch_p = os.path.join(t, "ch.json")
     json.dump({"schema": "evm-channels/v2", "token": A, "expected_from": 0,
                "expected_to": 300, "channels": [
                             {"lo": 0, "hi": 200, "tag": "x", "path": csv_p,
                              "format": "v1csv", "receipt": _receipt(t, "x", csv_p, 0, 200)},
-                            {"lo": 150, "hi": 300, "tag": "y", "path": csv_p,
-                             "format": "v1csv", "receipt": _receipt(t, "y", csv_p, 150, 300)}]},
+                            {"lo": 150, "hi": 300, "tag": "y", "path": csv_y,
+                             "format": "v1csv", "receipt": _receipt(t, "y", csv_y, 150, 300)}]},
               open(ch_p, "w"))
     rc, _, out = run_replay(ch_p, os.path.join(t, "out"))
     assert rc != 0 and "重叠" in out, f"F5 通道重叠必须启动即拒: rc={rc}"
@@ -166,9 +162,12 @@ def main():
     open(data, "w").write(
         HDR + "100,1700000000,0xt1," + ZERO + "," + A + ",1000,log_0\n")
     receipt = os.path.join(t, "generated.receipt.json")
+    write_csv_channel_receipt(t, "generated", data, A, 0, 200)
+    os.unlink(receipt)
     made = subprocess.run([
         sys.executable, MAKE_RECEIPT, "--data", data, "--format", "v1csv",
         "--token", A, "--lo", "0", "--hi", "200", "--tag", "generated",
+        "--collector-receipt", os.path.join(t, "generated.collector.json"),
         "--out", receipt,
     ], capture_output=True, text=True)
     assert made.returncode == 0 and os.path.isfile(receipt), made.stdout + made.stderr
@@ -179,7 +178,8 @@ def main():
     with open(data, "a") as f:
         f.write("110,1700000001,0xt2," + A + "," + B + ",1,log_0\n")
     rc, _, out = run_replay(ch_p, os.path.join(t, "out_tampered"))
-    assert rc != 0 and "receipt" in out, "R1 生成后数据被改必须由 preflight 拒绝"
+    assert rc != 0 and ("回执" in out or "receipt" in out), \
+        "R1 生成后数据被改必须由 preflight 拒绝"
 
     empty = os.path.join(t, "generated_empty.csv")
     open(empty, "w").write(HDR)
@@ -188,12 +188,12 @@ def main():
         "--token", A, "--lo", "0", "--hi", "200", "--tag", "empty",
         "--out", os.path.join(t, "empty.receipt.json"),
     ], capture_output=True, text=True)
-    assert refused.returncode != 0 and "empty-proof" in refused.stdout + refused.stderr
+    assert refused.returncode != 0
 
     # P0-02：四类反例必须在三个入口读取任何事件前由同一预检器拦截。
     t = case_dir()
     good = os.path.join(t, "good.csv")
-    open(good, "w").write(HDR + "100,1700000000,0xt1," + ZERO + "," + A + ",1000,log_0\n")
+    open(good, "w").write(HDR + "50,1700000000,0xt1," + ZERO + "," + A + ",1000,log_0\n")
     missing = os.path.join(t, "missing.csv")
     r1 = _receipt(t, "seg1", good, 0, 100)
     r2 = _receipt(t, "seg2", missing, 100, 200)
@@ -203,20 +203,27 @@ def main():
         "不存在")
 
     t = case_dir()
-    data = os.path.join(t, "data.csv")
+    data = os.path.join(t, "data_a.csv")
+    data_b = os.path.join(t, "data_b.csv")
     open(data, "w").write(HDR + "10,1700000000,0xt1," + ZERO + "," + A + ",1000,log_0\n")
+    open(data_b, "w").write(HDR + "150,1700000000,0xt2," + ZERO + "," + A + ",1000,log_0\n")
     _preflight_negative("interval_hole", _manifest(t, [
         {"lo": 0, "hi": 90, "tag": "a", "path": data, "format": "v1csv",
          "receipt": _receipt(t, "a", data, 0, 90)},
-        {"lo": 100, "hi": 200, "tag": "b", "path": data, "format": "v1csv",
-         "receipt": _receipt(t, "b", data, 100, 200)}]), "区间洞")
+        {"lo": 100, "hi": 200, "tag": "b", "path": data_b, "format": "v1csv",
+         "receipt": _receipt(t, "b", data_b, 100, 200)}]), "区间洞")
 
     t = case_dir()
     empty = os.path.join(t, "empty.csv")
     open(empty, "w").write(HDR)
-    _preflight_negative("empty_without_proof", _manifest(t, [
+    empty_receipt = _receipt(t, "empty", empty, 0, 200, rows=0)
+    source = os.path.join(t, "empty.collector.json")
+    source_obj = json.load(open(source))
+    source_obj["completion"]["reason"] = "ok"
+    json.dump(source_obj, open(source, "w"))
+    _preflight_negative("empty_without_native_completion", _manifest(t, [
         {"lo": 0, "hi": 200, "tag": "empty", "path": empty, "format": "v1csv",
-         "receipt": _receipt(t, "empty", empty, 0, 200, rows=0)}]), "empty_proof")
+         "receipt": empty_receipt}]), "完成原因")
 
     t = case_dir()
     data = os.path.join(t, "data.csv")

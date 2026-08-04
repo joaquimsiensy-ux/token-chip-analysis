@@ -100,12 +100,13 @@ def build_case(root, historical=True):
                         "decision_reason": "夹具：静置巨仓已裁决"}],
     })
     (root / "reproduce_audit.py").write_text(
-        "import json\njson.dump({'summary': {'claim': 'C1', 'value': 1}}, "
-        "open('reproduce_output.json','w'))\n", encoding="utf-8")
+        "import json, os\njson.dump({'summary': {'claim': 'C1', 'value': 1}}, "
+        "open(os.environ.get('CHIP_REPRODUCE_OUTPUT','reproduce_output.json'),'w'))\n",
+        encoding="utf-8")
     write_json(root, "reproduce_output.json", {"summary": {"claim": "C1", "value": 1}})
     summary = {"claim": "C1", "value": 1}
     write_json(root, "reproduce_receipt.json", {
-        "schema": "reproduce-receipt/v1", "status": "PASS", "exit_code": 0,
+        "schema": "reproduce-receipt/v2", "status": "PASS", "exit_code": 0,
         "entrypoint": {"path": "reproduce_audit.py", "sha256": sha(root / "reproduce_audit.py")},
         "input_manifest": {"path": "audit_input_manifest.json",
                            "sha256": sha(root / "audit_input_manifest.json")},
@@ -115,7 +116,10 @@ def build_case(root, historical=True):
                    "sha256": sha(root / "reproduce_output.json")},
         "summary_sha256": hashlib.sha256(
             json.dumps(summary, sort_keys=True, separators=(",", ":")).encode()).hexdigest(),
-        "run_at_utc": "2026-08-02T00:00:00Z",
+        "started_at_utc": "2026-08-02T00:00:00Z",
+        "finished_at_utc": "2026-08-02T00:00:01Z",
+        "freshness": {"nonce": "fixture", "staging_created_by_controller": True,
+                      "inode_preserved": True, "output_absent_before_run": True},
     })
     ctype = "historical_chart" if historical else "snapshot_balance"
     write_json(root, "claim_registry.json", {

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Inspect an EVM replay channel and atomically emit evm-channel-receipt/v1."""
+"""Validate collector-native provenance and atomically emit evm-channel-receipt/v2."""
 from __future__ import annotations
 
 import argparse
@@ -12,28 +12,36 @@ from channels_preflight import (
     ChannelsPreflightError,
     _csv_stats,
     _file_fingerprints,
+    _csv_collector_provenance,
     _v2_stats,
+    _v2_provenance,
 )
 
 
-def make_receipt(data, fmt, token, lo, hi, tag, *, empty_proof=None):
+def make_receipt(data, fmt, token, lo, hi, tag, *, collector_receipt=None,
+                 empty_proof=None):
     path = Path(data).resolve()
     if fmt == "v1csv":
         if not path.is_file():
             raise ChannelsPreflightError(f"v1csv 数据文件不存在: {path}")
         rows, min_block, max_block = _csv_stats(path)
+        if not collector_receipt:
+            raise ChannelsPreflightError(
+                "legacy CSV 不能从数据文件自证 token/区间完整性；缺 --collector-receipt")
+        provenance = _csv_collector_provenance(collector_receipt, path, token, lo, hi)
     elif fmt == "v2":
         if not path.is_dir():
             raise ChannelsPreflightError(f"v2 数据目录不存在: {path}")
         rows, min_block, max_block = _v2_stats(path)
+        provenance = _v2_provenance(path, token, lo, hi)
     else:
         raise ChannelsPreflightError("format 必须是 v1csv|v2")
     if not token.strip() or not tag.strip():
         raise ChannelsPreflightError("token/tag 不得为空")
     if lo >= hi:
         raise ChannelsPreflightError("lo 必须小于 hi")
-    if rows == 0 and not str(empty_proof or "").strip():
-        raise ChannelsPreflightError("rows=0 时必须显式传 --empty-proof 文字证明")
+    if empty_proof is not None:
+        raise ChannelsPreflightError("--empty-proof 自报文字已废止；空段必须由采集器完成回执证明")
     if rows and (min_block is None or max_block is None
                  or min_block < lo or max_block >= hi):
         raise ChannelsPreflightError(
@@ -52,9 +60,8 @@ def make_receipt(data, fmt, token, lo, hi, tag, *, empty_proof=None):
         "min_block": min_block,
         "max_block": max_block,
         "files": _file_fingerprints(path, fmt),
+        "provenance": provenance,
     }
-    if rows == 0:
-        payload["empty_proof"] = str(empty_proof).strip()
     return payload
 
 
@@ -92,10 +99,13 @@ def main(argv=None):
     parser.add_argument("--tag", required=True)
     parser.add_argument("--out", required=True)
     parser.add_argument("--empty-proof")
+    parser.add_argument("--collector-receipt",
+                        help="v1csv 必填：采集器成功收尾时直接产生的完成回执")
     args = parser.parse_args(argv)
     try:
         payload = make_receipt(args.data, args.format, args.token, args.lo, args.hi,
-                               args.tag, empty_proof=args.empty_proof)
+                               args.tag, collector_receipt=args.collector_receipt,
+                               empty_proof=args.empty_proof)
         atomic_write(args.out, payload)
     except (OSError, ChannelsPreflightError) as exc:
         parser.exit(2, f"BLOCK: {exc}\n")

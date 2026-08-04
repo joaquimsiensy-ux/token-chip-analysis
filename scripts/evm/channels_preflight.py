@@ -16,7 +16,8 @@ from pathlib import Path
 
 
 SCHEMA = "evm-channels/v2"
-RECEIPT_SCHEMA = "evm-channel-receipt/v1"
+RECEIPT_SCHEMA = "evm-channel-receipt/v2"
+COLLECTOR_RECEIPT_SCHEMA = "evm-collector-run/v1"
 PREFLIGHT_SCHEMA = "evm-channels-preflight/v1"
 
 
@@ -111,6 +112,88 @@ def _file_fingerprints(path: Path, fmt: str):
              "sha256": _sha256_file(p)} for p in files]
 
 
+def _csv_collector_provenance(receipt_path, data_path, token, lo, hi):
+    """Validate a collector-native CSV completion receipt; CLI assertions are not evidence."""
+    rp = Path(receipt_path).resolve()
+    if rp.is_symlink() or not rp.is_file():
+        raise ChannelsPreflightError(f"CSV 采集回执不存在或为符号链接: {rp}")
+    try:
+        d = json.loads(rp.read_text(encoding="utf-8"))
+    except Exception as exc:
+        raise ChannelsPreflightError(f"CSV 采集回执不可读: {exc}") from exc
+    if d.get("schema") != COLLECTOR_RECEIPT_SCHEMA or d.get("status") != "PASS":
+        raise ChannelsPreflightError("CSV 采集回执非 evm-collector-run/v1 PASS")
+    collector = d.get("collector")
+    expected_script = Path(__file__).with_name("fetch_hypersync.py")
+    if not isinstance(collector, dict) or collector.get("path") != "fetch_hypersync.py" \
+            or collector.get("sha256") != _sha256_file(expected_script):
+        raise ChannelsPreflightError("CSV 采集回执未绑定当前受支持采集器")
+    q = d.get("query")
+    if not isinstance(q, dict) or str(q.get("token", "")).lower() != str(token).lower() \
+            or q.get("query_schema") != "erc20-transfer-fields/v2" \
+            or q.get("requested_from") != lo or q.get("requested_to") != hi \
+            or not str(q.get("provider_url", "")).strip():
+        raise ChannelsPreflightError("CSV 采集回执的 token/query/bounds 与通道不绑定")
+    completion = d.get("completion")
+    if not isinstance(completion, dict) or completion.get("reason") not in {
+            "requested_bound_reached", "archive_height_reached"} \
+            or completion.get("next_block") != hi:
+        raise ChannelsPreflightError("CSV 采集回执缺可验的分页/区间完成原因")
+    rows, min_block, max_block = _csv_stats(Path(data_path))
+    output = d.get("output")
+    actual = {"path": str(Path(data_path).resolve()), "size": Path(data_path).stat().st_size,
+              "sha256": _sha256_file(Path(data_path)), "rows": rows,
+              "min_block": min_block, "max_block": max_block}
+    if output != actual:
+        raise ChannelsPreflightError("CSV 采集回执未绑定当前数据文件")
+    return {"kind": "collector-native-csv", "receipt_path": str(rp),
+            "receipt_sha256": _sha256_file(rp), "query": q, "completion": completion}
+
+
+def _v2_provenance(path, token, lo, hi):
+    """Revalidate every native done receipt and exact contiguous requested coverage."""
+    root = Path(path).resolve()
+    done_paths = sorted(root.glob("run_*/done.json"))
+    run_dirs = {p.parent for p in root.glob("run_*/logs.parquet")} \
+        | {p.parent for p in root.glob("run_*/blocks.parquet")}
+    if not done_paths or run_dirs != {p.parent for p in done_paths}:
+        raise ChannelsPreflightError("v2 采集根目录的 run 与 done.json 不完整对应")
+    try:
+        from fetch_hypersync_v2 import validate_done_manifest
+    except Exception as exc:
+        raise ChannelsPreflightError(f"无法加载 HyperSync done validator: {exc}") from exc
+    intervals, receipts, identity = [], [], None
+    for done_path in done_paths:
+        try:
+            raw = json.loads(done_path.read_text(encoding="utf-8"))
+            current_identity = (str(raw.get("token", "")).lower(), raw.get("url"),
+                                raw.get("query_schema"))
+            if identity is None:
+                identity = current_identity
+            if current_identity != identity or current_identity[0] != str(token).lower():
+                raise ValueError("done token/url/query_schema 混入不同 capture identity")
+            frm, end = int(raw["from_block"]), int(raw["to_block"])
+            validate_done_manifest(done_path, int(raw["capture_from"]), end,
+                                   token, raw["url"])
+        except (KeyError, TypeError, ValueError) as exc:
+            raise ChannelsPreflightError(f"v2 done 回执校验失败 {done_path}: {exc}") from exc
+        intervals.append((frm, end))
+        receipts.append({"path": str(done_path.relative_to(root)),
+                         "sha256": _sha256_file(done_path),
+                         "from_block": frm, "to_block": end})
+    intervals.sort()
+    if intervals[0][0] != lo or intervals[-1][1] != hi:
+        raise ChannelsPreflightError(
+            f"v2 done 区间未覆盖声明边界: {intervals[0][0]}..{intervals[-1][1]} != {lo}..{hi}")
+    for prev, nxt in zip(intervals, intervals[1:]):
+        if prev[1] != nxt[0]:
+            raise ChannelsPreflightError(f"v2 done 区间有洞或重叠: {prev} -> {nxt}")
+    return {"kind": "hypersync-v2-native", "identity": {
+                "token": identity[0], "provider_url": identity[1], "query_schema": identity[2]},
+            "completion": {"reason": "contiguous_done_receipts", "lo": lo, "hi": hi},
+            "done_receipts": receipts}
+
+
 def _write_preflight(out_dir, payload):
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
@@ -178,24 +261,28 @@ def preflight_channels(manifest_path, out_dir, *, allowed_formats=None):
             except Exception as e:
                 raise ChannelsPreflightError(f"{tag} receipt 不可读: {e}") from e
             bound_path = _resolve(base, receipt.get("data_path"), f"{tag}.receipt.data_path")
+            if fmt == "v1csv":
+                provenance_obj = receipt.get("provenance")
+                source_path = provenance_obj.get("receipt_path") if isinstance(provenance_obj, dict) else None
+                provenance = _csv_collector_provenance(source_path, path, token, lo, hi)
+            else:
+                provenance = _v2_provenance(path, token, lo, hi)
             expected = {"schema": RECEIPT_SCHEMA, "status": "PASS", "tag": tag,
                         "token": token, "lo": lo, "hi": hi, "data_path": path,
                         "format": fmt, "rows": rows, "min_block": min_block,
-                        "max_block": max_block, "files": files}
+                        "max_block": max_block, "files": files, "provenance": provenance}
             actual = {"schema": receipt.get("schema"), "status": receipt.get("status"),
                       "tag": receipt.get("tag"), "token": str(receipt.get("token", "")).strip(),
                       "lo": receipt.get("lo"), "hi": receipt.get("hi"),
                       "data_path": bound_path, "format": receipt.get("format"),
                       "rows": receipt.get("rows"), "min_block": receipt.get("min_block"),
-                      "max_block": receipt.get("max_block"), "files": receipt.get("files")}
+                      "max_block": receipt.get("max_block"), "files": receipt.get("files"),
+                      "provenance": receipt.get("provenance")}
             if isinstance(expected["token"], str) and expected["token"].startswith("0x"):
                 expected["token"] = expected["token"].lower()
                 actual["token"] = actual["token"].lower()
             if actual != expected:
                 raise ChannelsPreflightError(f"{tag} receipt 与当前 token/bounds/path/rows 不绑定")
-            if rows == 0 and not str(receipt.get("empty_proof", "")).strip():
-                raise ChannelsPreflightError(f"{tag} 为空段但 receipt 无 empty_proof")
-
             normalized.append({**channel, "tag": tag, "lo": lo, "hi": hi,
                                "format": fmt, "path": str(path), "receipt": str(receipt_path),
                                "rows": rows, "min_block": min_block, "max_block": max_block})

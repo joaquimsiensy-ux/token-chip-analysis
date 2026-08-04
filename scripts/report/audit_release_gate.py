@@ -477,9 +477,16 @@ def check_reproduce_receipt(case_dir: Path, rel, cid, errors: list[str]):
         errors.append(f"命题 {cid} reproduce receipt 路径非法或不存在: {rel}")
         return
     receipt = load_json(receipt_path, errors)
-    if receipt.get("schema") != "reproduce-receipt/v1" or receipt.get("status") != "PASS" \
+    if receipt.get("schema") != "reproduce-receipt/v2" or receipt.get("status") != "PASS" \
             or receipt.get("exit_code") != 0:
         errors.append(f"命题 {cid} reproduce receipt 非 PASS/exit 0")
+    freshness = receipt.get("freshness")
+    if not isinstance(freshness, dict) or not freshness.get("nonce") \
+            or freshness.get("staging_created_by_controller") is not True \
+            or freshness.get("inode_preserved") is not True \
+            or freshness.get("output_absent_before_run") is not True \
+            or not receipt.get("started_at_utc") or not receipt.get("finished_at_utc"):
+        errors.append(f"命题 {cid} reproduce receipt 缺本次运行新鲜性证明")
     entry = receipt.get("entrypoint")
     if not isinstance(entry, dict) or entry.get("path") != "reproduce_audit.py":
         errors.append(f"命题 {cid} reproduce receipt 非受控固定入口 reproduce_audit.py")
@@ -491,8 +498,10 @@ def check_reproduce_receipt(case_dir: Path, rel, cid, errors: list[str]):
             errors.append(f"命题 {cid} 入口脚本哈希漂移")
     manifest = receipt.get("input_manifest")
     manifest_path = case_dir / "audit_input_manifest.json"
+    manifest_ok = manifest_path.is_file() and not manifest_path.is_symlink()
+    actual_manifest_sha = sha256_file(manifest_path) if manifest_ok else None
     if not isinstance(manifest, dict) or manifest.get("path") != "audit_input_manifest.json" \
-            or manifest.get("sha256") != sha256_file(manifest_path):
+            or manifest.get("sha256") != actual_manifest_sha:
         errors.append(f"命题 {cid} reproduce receipt 输入 manifest 未绑定当前冻结输入")
     args = receipt.get("args")
     if not isinstance(args, list) or not all(isinstance(x, str) for x in args):

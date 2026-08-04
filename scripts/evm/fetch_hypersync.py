@@ -14,6 +14,7 @@
   老 7 列 CSV 续拉时自动维持 7 列，新文件起手为 8 列（尾列 block_hash，供防重组去重键）。
 """
 import requests, json, csv, os, sys, time, datetime, argparse
+from pathlib import Path
 
 TRANSFER = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
 
@@ -24,6 +25,10 @@ def main():
     ap.add_argument("--url", default="https://bsc.hypersync.xyz/query")
     ap.add_argument("--token-addr", required=True)
     ap.add_argument("--out", default="data/transfers_full.csv")
+    ap.add_argument("--to-block", type=int,
+                    help="可选排他上界；需生成正式 collector receipt 时建议显式给出")
+    ap.add_argument("--receipt",
+                    help="采集完成后原子写 evm-collector-run/v1；不给则 CSV 仅作 legacy-unverified")
     ap.add_argument("--sleep", type=float, default=0.25)
     a = ap.parse_args()
     headers = {"Authorization": f"Bearer {a.api_token}", "Content-Type": "application/json"}
@@ -52,6 +57,8 @@ def main():
              "field_selection": {
                  "log": ["block_number", "block_hash", "log_index", "transaction_hash", "topic1", "topic2", "data"],
                  "block": ["number", "timestamp"]}}
+        if a.to_block is not None:
+            q["to_block"] = a.to_block
         ok = False
         for attempt in range(12):
             try:
@@ -91,11 +98,39 @@ def main():
         nxt, ah = j.get("next_block"), j.get("archive_height")
         if total % 50000 < n or n == 0:
             print(f"[prog] +{n} total {total} next {nxt} height {ah} 429s {e429} {time.time()-t0:.0f}s", flush=True)
-        if not nxt or (ah and nxt >= ah):
+        target = a.to_block or ah
+        if not nxt or (target and nxt >= target):
             break
         cur = nxt
         time.sleep(a.sleep)
     f.close()
+    if a.receipt:
+        if not target:
+            sys.exit("[fatal] provider 未返回 archive_height，无法证明采集上界")
+        from channels_preflight import _csv_stats, _sha256_file
+        out = os.path.realpath(os.path.abspath(a.out))
+        rows, min_block, max_block = _csv_stats(Path(out))
+        collector = os.path.realpath(os.path.abspath(__file__))
+        payload = {"schema": "evm-collector-run/v1", "status": "PASS",
+                   "producer": "fetch_hypersync.py/v2",
+                   "collector": {"path": "fetch_hypersync.py",
+                                 "sha256": _sha256_file(Path(collector))},
+                   "query": {"token": a.token_addr.lower(),
+                             "query_schema": "erc20-transfer-fields/v2",
+                             "provider_url": a.url, "requested_from": a.from_block,
+                             "requested_to": int(target)},
+                   "completion": {"reason": "requested_bound_reached" if a.to_block is not None
+                                  else "archive_height_reached", "next_block": int(target)},
+                   "output": {"path": out, "size": os.path.getsize(out),
+                              "sha256": _sha256_file(Path(out)), "rows": rows,
+                              "min_block": min_block, "max_block": max_block}}
+        rp = Path(a.receipt).resolve()
+        rp.parent.mkdir(parents=True, exist_ok=True)
+        tmp = rp.with_name(f".{rp.name}.tmp.{os.getpid()}")
+        with tmp.open("x", encoding="utf-8") as rf:
+            json.dump(payload, rf, ensure_ascii=False, indent=2)
+            rf.flush(); os.fsync(rf.fileno())
+        os.replace(tmp, rp)
     print(f"[COMPLETE] {total} transfers this run, tip {ah}, 429s {e429}, {time.time()-t0:.0f}s", flush=True)
 
 if __name__ == "__main__":
