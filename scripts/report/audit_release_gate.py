@@ -121,6 +121,24 @@ def safe_case_path(case_dir: Path, rel: str) -> Path | None:
         return None
 
 
+def regular_case_path(case_dir: Path, rel: str) -> Path | None:
+    """Return a contained regular file and reject symlinks in every path component."""
+    rel_path = Path(rel)
+    if rel_path.is_absolute() or not rel_path.parts \
+            or any(part in {"", ".", ".."} for part in rel_path.parts):
+        return None
+    lexical = case_dir
+    try:
+        for part in rel_path.parts:
+            lexical = lexical / part
+            if lexical.is_symlink():
+                return None
+        resolved = safe_case_path(case_dir, rel)
+        return resolved if resolved is not None and resolved.is_file() else None
+    except OSError:
+        return None
+
+
 def check_manifest(case_dir: Path, d: dict, errors: list[str]):
     if not d.get("frozen_at") or not d.get("data_cutoff"):
         errors.append("输入清单缺 frozen_at 或 data_cutoff")
@@ -139,12 +157,9 @@ def check_manifest(case_dir: Path, d: dict, errors: list[str]):
         if not rel or not item.get("sha256") or item.get("size") is None:
             errors.append(f"输入清单 files[{i}] 缺 path/sha256/size")
             continue
-        p = safe_case_path(case_dir, str(rel))
+        p = regular_case_path(case_dir, str(rel))
         if p is None:
-            errors.append(f"输入文件越出案目录: {rel}")
-            continue
-        if not p.is_file():
-            errors.append(f"输入文件不存在: {rel}")
+            errors.append(f"输入文件不存在、越界或不是普通非符号链接文件: {rel}")
             continue
         declared_size = strict_int(item["size"], f"输入文件 {rel} size", errors)
         if declared_size is None:
@@ -263,8 +278,8 @@ def check_three_ledgers(case_dir: Path, data: dict, errors: list[str]):
         if not rel or len(expected_sha) != 64 or as_of_block is None:
             errors.append(f"{label}.balance_source 缺 path/sha256/as_of_block")
             return None
-        p = safe_case_path(case_dir, rel)
-        if p is None or not p.is_file() or p.is_symlink():
+        p = regular_case_path(case_dir, rel)
+        if p is None:
             errors.append(f"{label}.balance_source 文件不存在或越界: {rel}")
             return None
         cache_key = (str(p), expected_sha, str(as_of_block))
@@ -424,8 +439,8 @@ def check_dormant(case_dir: Path, d: dict, errors: list[str]):
     if not isinstance(ref, dict) or not ref.get("path") or not ref.get("sha256"):
         errors.append("静置仓审计缺 universe_ref（须绑定 wave_scan v3 报告的 path+sha256）")
         return
-    wp = safe_case_path(case_dir, str(ref["path"]))
-    if wp is None or not wp.is_file():
+    wp = regular_case_path(case_dir, str(ref["path"]))
+    if wp is None:
         errors.append(f"universe_ref 指向的 wave_scan 报告不存在: {ref.get('path')}")
         return
     if sha256_file(wp).lower() != str(ref["sha256"]).lower():
@@ -495,7 +510,7 @@ def check_daily_peaks(case_dir: Path, errors: list[str]):
                       "——目录里残留的旧 trigger_days.json 不作数，带触发日清单重跑")
         return
     tp = case_dir / "trigger_days.json"
-    if not tp.is_file():
+    if not tp.is_file() or tp.is_symlink():
         errors.append("peaks_summary 声称产出触发日但 trigger_days.json 缺失")
         return
     expected = str(ps.get("trigger_days_sha256", "")).lower()
@@ -514,9 +529,8 @@ def check_reproduce_receipt(case_dir: Path, rel, cid, errors: list[str]):
     if not isinstance(rel, str) or not rel.strip():
         errors.append(f"confirmed 命题 {cid} 缺 reproduce receipt")
         return
-    receipt_path = safe_case_path(case_dir, rel)
-    raw_receipt = case_dir / rel
-    if receipt_path is None or raw_receipt.is_symlink() or not receipt_path.is_file():
+    receipt_path = regular_case_path(case_dir, rel)
+    if receipt_path is None:
         errors.append(f"命题 {cid} reproduce receipt 路径非法或不存在: {rel}")
         return
     receipt = load_json(receipt_path, errors)
@@ -554,8 +568,8 @@ def check_reproduce_receipt(case_dir: Path, rel, cid, errors: list[str]):
         errors.append(f"命题 {cid} reproduce receipt 缺输出摘要")
         return
     out_rel = output.get("path")
-    out_path = safe_case_path(case_dir, str(out_rel or ""))
-    if out_path is None or (case_dir / str(out_rel or "")).is_symlink() or not out_path.is_file():
+    out_path = regular_case_path(case_dir, str(out_rel or ""))
+    if out_path is None:
         errors.append(f"命题 {cid} reproduce 输出不存在或路径非法")
         return
     if output.get("size") != out_path.stat().st_size or output.get("sha256") != sha256_file(out_path):
@@ -577,7 +591,9 @@ def check_claims(case_dir: Path, d: dict, report: Path | None, errors: list[str]
         return set()
     if report:
         expected = d.get("report_sha256")
-        if not expected:
+        if report.is_symlink() or not report.is_file():
+            errors.append("待发布报告不存在或为符号链接")
+        elif not expected:
             errors.append("命题表缺 report_sha256，无法证明覆盖当前报告版本")
         elif sha256_file(report) != str(expected).lower():
             errors.append("命题表 report_sha256 与待发布报告不一致")
@@ -603,8 +619,8 @@ def check_claims(case_dir: Path, d: dict, report: Path | None, errors: list[str]
             if not evidence:
                 errors.append(f"confirmed 命题 {cid} 缺原始证据")
             for rel in evidence:
-                p = safe_case_path(case_dir, str(rel))
-                if p is None or not p.is_file():
+                p = regular_case_path(case_dir, str(rel))
+                if p is None:
                     errors.append(f"命题 {cid} 证据文件不存在: {rel}")
             check_reproduce_receipt(case_dir, claim.get("reproduce_receipt"), cid, errors)
             if claim.get("blocking_unresolved"):
@@ -710,10 +726,11 @@ def main(argv=None):
     if not args.case_dir.is_dir():
         print(f"ERROR: 案目录不存在: {args.case_dir}", file=sys.stderr)
         return 1
-    report = args.report.resolve() if args.report else None
-    if report and not report.is_file():
-        print(f"ERROR: 报告不存在: {report}", file=sys.stderr)
+    report_arg = args.report
+    if report_arg and (not report_arg.is_file() or report_arg.is_symlink()):
+        print(f"ERROR: 报告不存在或为符号链接: {report_arg}", file=sys.stderr)
         return 1
+    report = report_arg.resolve() if report_arg else None
     errors = run(args.case_dir, report, profile=args.profile)
     result = {"status": "BLOCK" if errors else "PASS", "errors": errors}
     if args.json_out:
