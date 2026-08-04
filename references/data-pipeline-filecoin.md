@@ -5,7 +5,7 @@
 
 > 来源声明：本册规则除特别标注外，均源自 FIL(Filecoin) 分析实测（2026-07），不再逐条标注。
 
-> 发布边界：现有 `fetch_data.py` 只能产 `restricted/top-200-windowed` 数据（富豪榜前 200、近 6 个月、每地址最多 3000 笔），不得称“Filecoin 全量重放”。每页必须有连续完成原因；网络失败不落正式缓存，最终 `collection_manifest.json` 显式记录 restricted scope 与限制，并以哈希引用官方 ID 扫描子阶段 receipt。
+> 发布边界：现有 `fetch_data.py` 只能产 `restricted/top-200-windowed` 数据（富豪榜前 200、默认 180 天窗口、每地址最多 3000 笔），不得称“Filecoin 全量重放”。每页必须有连续完成原因；网络失败不落正式缓存，最终 `collection_manifest.json` 显式记录 restricted scope 与限制，并以哈希引用官方 ID 扫描子阶段 receipt。
 
 ## 0. 开工检查清单（每条都有对应踩坑记录，别跳）
 
@@ -14,7 +14,7 @@
 - [ ] 冒烟阶段必须同时验证「抓得到」和「口径对」：唯一性断言 + 跨页自洽校验。
 - [ ] 流水三坑修正内置进脚本：带符号求和、五元组去重、互转边 abs(value) 去重键（第 4 节坑 ②③）。
 - [ ] 地址字符串一律取自落盘 JSON，禁止从终端截断输出复制补全（第 6 节）。
-- [ ] 全量抓取放后台跑（单轮实耗 34–70 分钟），等待期间并行做地址考证等不依赖全量数据的工作。
+- [ ] restricted/top-200-windowed 正式采集放后台跑（单轮实耗 34–70 分钟），等待期间并行做地址考证等不依赖该受限批次的工作。
 
 ## 1. 数据面总览
 
@@ -23,13 +23,13 @@
 | 端点 | 拿什么 | 关键字段 |
 |---|---|---|
 | `GET /overview` | 全网供给与快照 | totalSupply / circulatingSupply / multisig 锁仓总量 / 活跃矿工数 / 价格 |
-| `GET /rich-list?pageSize=100&page=N` | 富豪榜（全量口径） | balance / availableBalance / createHeight / lastSeen / actor |
+| `GET /rich-list?pageSize=100&page=N` | 富豪榜（未按 actor 过滤的榜内口径，不等于全链 owner 全集） | balance / availableBalance / createHeight / lastSeen / actor |
 | `GET /address/<addr>` | 地址详情 | 官方标签 tag / multisig 锁仓明细 / ownedMiners / transferCount |
 | `GET /address/<addr>/transfers?pageSize=100&page=N` | 逐笔转账流水 | from / to / value / timestamp / message / type |
 
 要点：
 - 供给口径自检：拿到 overview 后先验证总量恒等式 `totalSupply = vested + mined + reserveDisbursed`（与 Lotus 官方口径一致）；不满足说明抓取或口径理解有误，先修管线再分析。
-- 富豪榜 actor 字段区分 account / storageminer / multisig / evm；全量榜前 200 约含 140 account + 40 storageminer + 14 multisig + 若干 evm，只有全量口径才能把「可流通筹码」和「锁定筹码」分开。
+- 富豪榜 actor 字段区分 account / storageminer / multisig / evm；未过滤榜前 200 约含 140 account + 40 storageminer + 14 multisig + 若干 evm。这里的“未过滤”只描述榜单端点内部口径，绝不代表全链 owner 全集或全历史重放。
 - 地址详情对不存在的地址返回 HTTP 404 + JSON（statusCode:404），不会中断批量扫描，按 statusCode 跳过即可，可放心扫段。
 - 转账流水单页上限 100 条，倒序返回（最新在前）。
 - 最早流水定位：先读 totalCount，直接跳最后 1–2 页，无需顺序翻完——首笔资金来源（funder）是聚类的核心输入。
@@ -46,17 +46,17 @@ curl -s 'https://filfox.info/api/v1/address/f0121/transfers?pageSize=100&page=0'
 ### 1.2 CoinGecko（元数据与价格，免费无 key）
 
 - 元数据：`GET https://api.coingecko.com/api/v3/coins/filecoin`。
-- 日线价格：`GET /coins/filecoin/market_chart?vs_currency=usd&days=180&interval=daily`，够做近 6 个月价格与链上净流量的叠加分析。
+- 日线价格：`GET /coins/filecoin/market_chart?vs_currency=usd&days=<window-days>&interval=daily`；`fetch_data.py --window-days` 同时驱动价格与地址流水窗口，默认 180 天，禁止两边各写一个日期。
 
 ### 1.3 限速与吞吐（实测）
 
 - Filfox 连发 8 次全部 HTTP 200，未观察到任何限速；脚本节流设 THROTTLE=0.1s 即可。
 - 每次 curl 新建 TLS 连接自带约 0.3–0.5s 开销，叠加节流后实际吞吐约 2–3 req/s——瓶颈在连接开销不在限速。
-- 规模参考：前 200 地址全量抓取（详情 + 多页流水）单轮后台任务实耗 34–70 分钟；三个后台任务（首轮抓取 / 并行考证 / 补抓）从发起到完成均超 30 分钟。
+- 规模参考：前 200 地址受限批次采集（详情 + 窗口内多页流水）单轮后台任务实耗 34–70 分钟；三个后台任务（首轮抓取 / 并行考证 / 补抓）从发起到完成均超 30 分钟。
 
 ## 2. 官方地址库：扫创世 actor ID 段（免费拿项目方地址库的关键一招）
 
-- 手法：对 f00–f0126 逐个调 `GET /address/f0<N>`，批量收集所有带官方 tag 的地址。
+- 手法：对 f00–f0160 逐个调 `GET /address/f0<N>`，批量收集该明确 ID 段内所有带官方 tag 的地址；边界唯一权威为代码 `range(161)` 与 receipt.requested。
 - 原理：Filecoin actor ID 按创建顺序递增，创世实体集中在低位 ID 段。EVM/Solana 地址是哈希/公钥派生，没有低位 ID 可扫——此招仅限 Filecoin。
 - 已确认官方标签：f0121 = Filecoin Foundation；f0117–f0120 = Protocol Labs 系列；f090 = 挖矿储备；段内另有 Faucet、Burn 等系统地址。
 - 不存在的 ID 返回 404 JSON，脚本按 statusCode 跳过，不影响扫描完整性。
@@ -78,8 +78,8 @@ curl -s 'https://filfox.info/api/v1/address/f0121/transfers?pageSize=100&page=0'
 - 解法：一律用 `pageSize` 分页（pageSize=100&page=0/1 取前 200）。
 - 自检两连（冒烟阶段就做，别等分析阶段才发现）：
   - 抓榜后立即 assert 无重复地址。
-  - 跨页自洽校验：`pageSize=100&page=1` 的第 51 条 == `pageSize=50&page=3` 的第 1 条。
-- 代价参考：冒烟只验「抓得到」没验「口径对」，曾导致一轮 34 分钟全量抓取整体作废、再花 70 分钟补抓约 150 个地址，合计浪费约 1.5 小时挂钟时间。
+  - 跨页自洽校验：分别用 pageSize=100 与 pageSize=50 取足目标 N 条，按完整地址逐位比较整个序列；任一位置不同即写 BLOCK receipt 并停止。
+- 代价参考：冒烟只验「抓得到」没验「口径对」，曾导致一轮 34 分钟受限批次整体作废、再花 70 分钟补抓约 150 个地址，合计浪费约 1.5 小时挂钟时间。
 
 ### 坑 ②：transfers 的 value 自带方向符号
 
@@ -99,17 +99,17 @@ curl -s 'https://filfox.info/api/v1/address/f0121/transfers?pageSize=100&page=0'
 
 ## 5. 采集与分析脚本用法（scripts/filecoin/）
 
-执行顺序：`fetch_data.py --data-dir <案目录/data> --smoke 10` → 冒烟自检通过 → `fetch_data.py --data-dir <案目录/data>` 全量后台跑 → `analyze_base.py` → `cluster.py`；中途冒出新地址用 `fetch_extra.py --data-dir <案目录/data> extra_addrs.txt` 补抓。
+执行顺序：`fetch_data.py --data-dir <案目录/data> --smoke 10` → 冒烟自检通过 → `fetch_data.py --data-dir <案目录/data>` 跑 restricted/top-200-windowed 正式批次 → `analyze_base.py` → `cluster.py`；中途冒出新地址用 `fetch_extra.py --data-dir <案目录/data> extra_addrs.txt` 补抓。
 
-- `fetch_data.py` — 主抓取：富豪榜前 200（pageSize 口径）→ 每地址详情 + 近 6 月流水 + 最早流水 → 创世 ID 段官方标签扫描 → CoinGecko 180 天价格。要点：
+- `fetch_data.py` — 主抓取：未过滤富豪榜前 200（pageSize 口径）→ 每地址详情 + 同一 `--window-days` 窗口流水（默认 180 天）+ 最早两页流水 → 创世 ID 段官方标签扫描 → CoinGecko 同天数价格。要点：
   - `--data-dir` 必填；模块 import 零写盘副作，数据目录只通过 CLI/配置注入，`addr/` 和 `official/` 仅在 `main()` 开始后创建。
   - 官方 ID `f00–f0160` 扫描以 `requested/succeeded/not_found/failed` 四桶落 `official_scan_receipt.json`；404 进 not_found，网络/API 错误进 failed。任一 failed 都 BLOCK 且非零退出，不写正式 `official_scan.json`。`official_scan_progress.json` 保留已成功与待重试 ID，重跑只补查 failed；旧版孤立 `official_scan.json` 不再能短路。
   - 全部请求走 subprocess 调系统 curl，规避本机 Python SSL 证书坑（另一条路是 certifi，本管线选了 curl）。
-  - `--smoke N`：先抓前 N 名冒烟（建议 N=10），冒烟必须包含第 4 节坑 ① 的唯一性断言与跨页自洽校验。
+  - `--smoke N`：先抓前 N 名冒烟（建议 N=10），冒烟必须产 `richlist_pagination_receipt.json`，包含第 4 节坑 ① 的唯一性断言与 pageSize=100/50 全序列自洽校验；正式 manifest 也哈希绑定该 receipt。
   - 每地址落盘独立 JSON 作断点文件；修口径后重跑只补抓新增地址，不重抓已有的。
   - 高频地址自动截断并打 truncated 标志，下游必须按补充 A 做余额复核补偿。
 - `fetch_extra.py` — 临时补抓个别地址的小脚本，分析中途新发现的对手方地址用它，不重跑主抓取。
-- `analyze_base.py` — 基础量化：每地址近 6 月净流量（带符号求和 + 五元组去重）、首笔资金来源 funder 分组、top200 互转边（abs(value) 去重键）、官方 multisig 统计；内置富豪榜唯一性断言。第 4 节全部口径修正已内含——改动前先读懂原有修正逻辑，别顺手删掉。
+- `analyze_base.py` — 基础量化：每地址 manifest 声明窗口内净流量（带符号求和 + 五元组去重）、首笔资金来源 funder 分组、top200 互转边（abs(value) 去重键）、官方 multisig 统计；内置富豪榜唯一性断言。第 4 节全部口径修正已内含——改动前先读懂原有修正逻辑，别顺手删掉。
 - `cluster.py` — 关联聚类：共同资金来源 + 直接互转等证据 → 连通分量 + 证据打分；输入依赖 analyze_base 的产物格式，两者要配套改。
 
 ## 6. FIL 特有坑

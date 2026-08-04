@@ -9,7 +9,7 @@ fetch_data.py --data-dir <案目录/data> --smoke 10
                               ① 冒烟：只抓富豪榜前 10 名，验证 Filfox 通道与产物格式
         ↓ 通过后
 fetch_data.py --data-dir <案目录/data>
-                              ② 全量：富豪榜前 200 名（detail + 近6个月流水 + 最早流水）
+                              ② 受限正式批次：富豪榜前 200 名（detail + 默认180天流水 + 最早两页）
                                  + 官方多签扫描（official_scan.json、official/<id>_transfers.json）
         ↓ 阶段二人工看数据，圈出 top200 的关键对手方地址
 fetch_extra.py --data-dir <案目录/data> extra_addrs.txt
@@ -34,6 +34,6 @@ cluster.py                    ⑤ 关联聚类：E1 共同 funder / E2 互转边
 ## 实战要点（原会话验证过的坑）
 
 - 本机 Python 缺 CA 证书链，HTTP 统一走 `subprocess` + 系统 `curl`（系统证书）。
-- 近 6 个月流水窗口起点 `CUTOFF` 与每地址翻页上限 `MAX_RECENT_PAGES`（30 页=3000 笔，超出记 truncated）按分析日期改。
+- 用 `--analysis-time <ISO-8601>` 与 `--window-days N` 设分析窗口（默认当前 UTC、180 天）；脚本由同一参数计算 `CUTOFF` 并请求同 N 天价格，写入 manifest。每地址仍最多 `MAX_RECENT_PAGES`（30 页=3000 笔），超出记 truncated。
 - 富豪榜若出现重复地址，`analyze_base.py` 会 assert 拦下——先重抓再算。
 - 聚类纪律：funder 为交易所/热钱包时 E1 证据作废（人人都从交易所提币）；互转边任一端为交易所则 E2 作废；vanity 尾缀只作弱证据不单独成簇。

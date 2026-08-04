@@ -9,17 +9,42 @@
   python3 fetch_data.py --data-dir <案目录/data>
 """
 import argparse, hashlib, json, os, subprocess, sys, time
+from datetime import datetime, timedelta, timezone
 
 BASE = "https://filfox.info/api/v1"
 HERE = os.path.dirname(os.path.abspath(__file__))
 DATA = None
 ADDR_DIR = None
 OFFICIAL_DIR = None
-CUTOFF = 1767225600  # 2026-01-01 00:00 UTC,近6个月窗口起点
-MAX_RECENT_PAGES = 30  # 每地址近6个月流水最多30页(3000笔),超出记 truncated
+WINDOW_DAYS = 180
+PRICE_DAYS = WINDOW_DAYS
+ANALYSIS_TIME_UTC = None
+CUTOFF = None
+MAX_RECENT_PAGES = 30  # 每地址窗口流水最多30页(3000笔),超出记 truncated
 MAX_OFFICIAL_PAGES = 1000  # 官方地址全史硬上限；命中必须 truncated+BLOCK
 THROTTLE = 0.1  # curl 每次新建 TLS 连接自带 ~0.3-0.5s 开销,实际约 2-3 req/s
 UA = {"User-Agent": "Mozilla/5.0 (chip-analysis research script)"}
+
+
+def configure_window(analysis_time, window_days=180):
+    """Bind transfer, price and manifest coverage to one UTC analysis window."""
+    global WINDOW_DAYS, PRICE_DAYS, ANALYSIS_TIME_UTC, CUTOFF
+    if isinstance(window_days, bool) or not isinstance(window_days, int) or window_days <= 0:
+        raise ValueError("window_days must be a positive integer")
+    if isinstance(analysis_time, str):
+        raw = analysis_time.strip().replace("Z", "+00:00")
+        analysis_time = datetime.fromisoformat(raw)
+    if not isinstance(analysis_time, datetime) or analysis_time.tzinfo is None:
+        raise ValueError("analysis_time must be a timezone-aware ISO-8601 datetime")
+    analysis_time = analysis_time.astimezone(timezone.utc)
+    WINDOW_DAYS = window_days
+    PRICE_DAYS = window_days
+    ANALYSIS_TIME_UTC = analysis_time.replace(microsecond=0)
+    CUTOFF = int((ANALYSIS_TIME_UTC - timedelta(days=window_days)).timestamp())
+    return CUTOFF
+
+
+configure_window(datetime.now(timezone.utc), WINDOW_DAYS)
 
 
 def configure_data_dir(data_dir):
@@ -101,25 +126,43 @@ def fetch_overview():
         print("overview 完成", flush=True)
 
 def fetch_richlist(n):
-    # 注意:count 参数已失效(返回过滤后的 account 榜),必须用 pageSize(全量榜,含 miner/multisig)
+    # count 参数已失效；pageSize=100 主抓与 pageSize=50 独立对照必须逐址一致。
     p = os.path.join(DATA, "richlist.json")
-    if done(p):
-        with open(p) as f:
-            rl = json.load(f)
-        addrs = [x["address"] for x in rl]
-        if len(rl) >= n and len(set(addrs)) == len(addrs):
-            return rl[:n]
-    items, seen = [], set()
-    for page in range((n + 99) // 100):
-        d = get_json(f"{BASE}/rich-list?pageSize=100&page={page}")
-        for x in d.get("richList", []):
-            if x["address"] not in seen:
-                seen.add(x["address"])
-                items.append(x)
-    assert len(items) >= n, f"富豪榜只拿到 {len(items)} 条"
-    save(p, items)
-    print(f"富豪榜 {len(items)} 条完成(唯一地址)", flush=True)
-    return items[:n]
+
+    def collect(page_size):
+        out = []
+        for page in range((n + page_size - 1) // page_size):
+            d = get_json(f"{BASE}/rich-list?pageSize={page_size}&page={page}")
+            if not isinstance(d, dict) or "_error" in d \
+                    or not isinstance(d.get("richList"), list):
+                raise RuntimeError(
+                    f"rich-list pagination request failed: pageSize={page_size} page={page}")
+            out.extend(d["richList"])
+        return out[:n]
+
+    primary = collect(100)
+    reference = collect(50)
+    primary_addresses = [str(x.get("address", "")) for x in primary]
+    reference_addresses = [str(x.get("address", "")) for x in reference]
+    errors = []
+    if len(primary) != n or len(reference) != n:
+        errors.append(f"count mismatch: 100={len(primary)} 50={len(reference)} expected={n}")
+    if len(set(primary_addresses)) != len(primary_addresses) or "" in primary_addresses:
+        errors.append("pageSize=100 result has empty/duplicate addresses")
+    if primary_addresses != reference_addresses:
+        first = next((i for i, pair in enumerate(zip(primary_addresses, reference_addresses))
+                      if pair[0] != pair[1]), None)
+        errors.append(f"pageSize=100/50 address order mismatch at index {first}")
+    receipt = {"schema": "filecoin-richlist-pagination/v1",
+               "status": "BLOCK" if errors else "PASS", "complete": not errors,
+               "compared_count": n, "primary_page_size": 100,
+               "reference_page_size": 50, "errors": errors}
+    save(os.path.join(DATA, "richlist_pagination_receipt.json"), receipt)
+    if errors:
+        raise RuntimeError("rich-list pagination consistency failed: " + "; ".join(errors))
+    save(p, primary)
+    print(f"富豪榜 {len(primary)} 条完成(pageSize 100/50逐址一致)", flush=True)
+    return primary
 
 def fetch_address(addr, rank):
     adir = os.path.join(ADDR_DIR, addr)
@@ -129,7 +172,7 @@ def fetch_address(addr, rank):
     if not done(pd):
         detail = get_json(f"{BASE}/address/{addr}")
         save(pd, detail)
-    # 2) 近6个月流水
+    # 2) 与价格同源窗口的流水
     pr = os.path.join(adir, "transfers_recent.json")
     if not done(pr):
         transfers, truncated, total, complete_reason = [], False, None, None
@@ -147,7 +190,7 @@ def fetch_address(addr, rank):
             truncated = True
             complete_reason = "restricted_page_cap"
         transfers = [t for t in transfers if t["timestamp"] >= CUTOFF]
-        save(pr, {"scope": "restricted-6m-max3000", "totalCount": total,
+        save(pr, {"scope": f"restricted-{WINDOW_DAYS}d-max3000", "totalCount": total,
                   "complete": True, "complete_reason": complete_reason,
                   "truncated": truncated, "transfers": transfers})
     # 3) 最早流水(首笔资金来源)
@@ -313,17 +356,26 @@ def fetch_official_transfers():
     return receipt
 
 def fetch_price():
-    p = os.path.join(DATA, "price_180d.json")
+    p = os.path.join(DATA, f"price_{PRICE_DAYS}d.json")
     if not done(p):
-        d = get_json("https://api.coingecko.com/api/v3/coins/filecoin/market_chart?vs_currency=usd&days=180&interval=daily")
+        d = get_json("https://api.coingecko.com/api/v3/coins/filecoin/market_chart"
+                     f"?vs_currency=usd&days={PRICE_DAYS}&interval=daily")
         save(p, d)
         print("价格序列完成", flush=True)
 
 
 def write_smoke_receipt(n):
+    pagination_path = os.path.join(DATA, "richlist_pagination_receipt.json")
+    pagination = json.load(open(pagination_path, encoding="utf-8")) \
+        if os.path.isfile(pagination_path) else {}
+    if pagination.get("status") != "PASS" or pagination.get("complete") is not True:
+        raise RuntimeError("smoke requires PASS richlist pagination receipt")
     receipt = {"schema": "filecoin-smoke/v1", "status": "SMOKE",
                "mode": "smoke/top-n", "top_n": n, "complete": False,
-               "formal_release_eligible": False}
+               "formal_release_eligible": False,
+               "richlist_pagination_receipt": {
+                   "path": "richlist_pagination_receipt.json",
+                   "sha256": sha256_file(pagination_path)}}
     save(os.path.join(DATA, "smoke_receipt.json"), receipt)
     return receipt
 
@@ -335,10 +387,22 @@ def write_collection_manifest(n, official_receipt=None, transfers_receipt=None):
         raise RuntimeError("formal Filecoin collection manifest requires both official receipts")
     manifest = {"schema": "filecoin-collection/v3", "status": "PASS",
                 "mode": "restricted/top-200-windowed", "top_n": n,
-                "window_start": CUTOFF, "max_transfers_per_address": MAX_RECENT_PAGES * 100,
-                "complete": True, "limitations": ["not full actor universe", "six-month window",
+                "analysis_time_utc": ANALYSIS_TIME_UTC.isoformat().replace("+00:00", "Z"),
+                "window_days": WINDOW_DAYS, "window_start": CUTOFF,
+                "price_days": PRICE_DAYS,
+                "max_transfers_per_address": MAX_RECENT_PAGES * 100,
+                "complete": True, "limitations": ["not full actor universe",
+                                                     f"{WINDOW_DAYS}-day window",
                                                      "per-address page cap"],
                 "substage_receipts": {}}
+    pagination_path = os.path.join(DATA, "richlist_pagination_receipt.json")
+    if not os.path.isfile(pagination_path):
+        raise RuntimeError("formal manifest requires richlist pagination receipt")
+    pagination = json.load(open(pagination_path, encoding="utf-8"))
+    if pagination.get("status") != "PASS" or pagination.get("complete") is not True:
+        raise RuntimeError("richlist pagination receipt is not PASS/complete")
+    manifest["substage_receipts"]["richlist_pagination"] = {
+        "path": "richlist_pagination_receipt.json", "sha256": sha256_file(pagination_path)}
     for key, receipt, filename in (
             ("official_scan", official_receipt, "official_scan_receipt.json"),
             ("official_transfers", transfers_receipt, "official_transfers_receipt.json")):
@@ -358,7 +422,16 @@ def main(argv=None):
                         help="案目录的数据目录（禁止默认写 skill 目录）")
     parser.add_argument("--smoke", type=int, metavar="N",
                         help="只抓富豪榜前 N 名")
+    parser.add_argument("--analysis-time",
+                        default=datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
+                        help="分析时点 ISO-8601（默认当前 UTC；写入 manifest）")
+    parser.add_argument("--window-days", type=int, default=180,
+                        help="流水与价格共用回看天数（默认 180）")
     args = parser.parse_args(argv)
+    try:
+        configure_window(args.analysis_time, args.window_days)
+    except ValueError as exc:
+        parser.error(str(exc))
     configure_data_dir(args.data_dir)
     initialize_data_dirs()
     n = args.smoke if args.smoke is not None else 200

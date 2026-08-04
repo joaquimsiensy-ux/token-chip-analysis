@@ -114,6 +114,10 @@ def test_h09(tmp):
                          "addresses": 0, "outputs": []}
     (Path(mod.DATA) / "official_transfers_receipt.json").write_text(
         json.dumps(transfers_receipt))
+    (Path(mod.DATA) / "richlist_pagination_receipt.json").write_text(json.dumps({
+        "schema": "filecoin-richlist-pagination/v1", "status": "PASS",
+        "complete": True, "compared_count": 200,
+    }))
     manifest = mod.write_collection_manifest(200, receipt, transfers_receipt)
     ref = manifest["substage_receipts"]["official_scan"]
     assert ref["path"] == "official_scan_receipt.json" and len(ref["sha256"]) == 64

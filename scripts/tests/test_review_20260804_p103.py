@@ -24,7 +24,12 @@ def smoke(n):
     mod = load(f"smoke_{n}")
     mod.fetch_overview = lambda: None
     mod.fetch_price = lambda: None
-    mod.fetch_richlist = lambda count: [{"address": f"f1{x}"} for x in range(count)]
+    def fake_richlist(count):
+        mod.save(str(Path(mod.DATA) / "richlist_pagination_receipt.json"),
+                 {"schema": "filecoin-richlist-pagination/v1", "status": "PASS",
+                  "complete": True, "compared_count": count})
+        return [{"address": f"f1{x}"} for x in range(count)]
+    mod.fetch_richlist = fake_richlist
     mod.fetch_address = lambda addr, rank: None
     mod.main(["--data-dir", str(root / "data"), "--smoke", str(n)])
     formal = root / "data" / "collection_manifest.json"
