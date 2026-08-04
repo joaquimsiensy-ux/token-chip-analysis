@@ -12,6 +12,7 @@ from pathlib import Path
 
 
 HERE = Path(__file__).resolve().parent
+REPO = HERE.parent.parent
 GATE = HERE.parent / "report" / "audit_release_gate.py"
 REPRODUCE = HERE.parent / "report" / "reproduce_receipt.py"
 spec = importlib.util.spec_from_file_location("audit_release_gate", GATE)
@@ -24,7 +25,12 @@ def write_json(root, name, value):
 
 
 def sha(path):
-    return hashlib.sha256(path.read_bytes()).hexdigest()
+    return hashlib.sha256(Path(path).read_bytes()).hexdigest()
+
+
+def repo_ref(rel):
+    path = REPO / rel
+    return {"path": rel, "sha256": sha(path)}
 
 
 def build_case(root, historical=True):
@@ -52,10 +58,13 @@ def build_case(root, historical=True):
     target = {"chain": "bsc", "token": "0xtoken", "as_of_block": 123}
     write_json(root, "accounting_mode.json", {"schema": "accounting-gate/v1",
         "chain": "bsc", "token": "0xtoken", "as_of_block": 123,
+        "producer": repo_ref("scripts/evm/accounting_gate.py"),
         "verdict": "PASS", "exit_code": 0, "mode": "standard",
         "checks": {"fot": {"status": "clean"}}})
-    producer = root / "recon_producer.py"
-    producer.write_text("# fixture production child\n", encoding="utf-8")
+    producers = {"balance": "scripts/evm/verify_recon.py",
+                 "supply": "scripts/evm/verify_recon.py",
+                 "supply_truth": "scripts/lib/supply_truth_gate.py",
+                 "time": "scripts/lib/time_spotcheck.py"}
     checks = {}
     for key in ("balance", "supply", "supply_truth", "time"):
         evidence = root / f"{key}_receipt.json"
@@ -63,7 +72,7 @@ def build_case(root, historical=True):
                                          "status": "PASS", "exit_code": 0})
         checks[key] = {"status": "PASS", "exit_code": 0,
                        "receipt": {"path": evidence.name, "sha256": sha(evidence)},
-                       "producer": {"path": producer.name, "sha256": sha(producer)}}
+                       "producer": repo_ref(producers[key])}
     write_json(root, "reconciliation_report.json", {
         "schema": "reconciliation-report/v2", "target": target, "checks": checks})
     write_json(root, "address_classification.json", {
@@ -147,15 +156,29 @@ def build_case(root, historical=True):
             "blocking_unresolved": False,
         }],
     })
-    reviewer = root / "reviewer.py"
-    reviewer.write_text("# fixed review runner fixture\n", encoding="utf-8")
     reviews = []
+    runner = REPO / "scripts/report/adversarial_review_runner.py"
     for role in ("entity_attribution_skeptic", "completeness_critic"):
+        entry = root / f"review_{role}.py"
+        entry.write_text("import os\nfrom pathlib import Path\n"
+                         "Path(os.environ['CHIP_REVIEW_OUTPUT']).write_text("
+                         "'review evidence for '+os.environ['CHIP_REVIEW_ROLE']+'\\n')\n",
+                         encoding="utf-8")
         artifact = root / f"review_{role}.md"
-        artifact.write_text(f"review evidence for {role}\n", encoding="utf-8")
+        execution = root / f"review_{role}_execution.json"
+        for stale in (artifact, execution):
+            if stale.exists():
+                stale.unlink()
+        proc = subprocess.run([sys.executable, str(runner), str(root), "--role", role,
+                               "--entrypoint", entry.name, "--artifact", artifact.name,
+                               "--receipt", execution.name], capture_output=True, text=True)
+        assert proc.returncode == 0, proc.stdout + proc.stderr
         reviews.append({"role": role, "exit_code": 0,
-                        "artifact": {"path": artifact.name, "sha256": sha(artifact)},
-                        "runner": {"path": reviewer.name, "sha256": sha(reviewer)}})
+                        "artifact": {"path": artifact.name, "size": artifact.stat().st_size,
+                                     "sha256": sha(artifact)},
+                        "runner": repo_ref("scripts/report/adversarial_review_runner.py"),
+                        "execution_receipt": {"path": execution.name,
+                                              "sha256": sha(execution)}})
     write_json(root, "adversarial_review.json", {
         "schema": "adversarial-review/v2", "target": target, "reviews": reviews,
         "blocking_findings": [], "release_decision": "PASS",

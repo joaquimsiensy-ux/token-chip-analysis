@@ -39,11 +39,13 @@
   - PAXG 链上转账费现役为 0（勿当税币样本）；HOGE(ETH) 2% 硬编码税是稳定 BLOCK 样本
 （来源：v3.19 A-记账模型准入 gate，2026-07-22）"""
 import argparse
+import hashlib
 import json
 import os
 import sys
 import time
 from datetime import datetime, timezone
+from pathlib import Path
 
 import requests
 
@@ -405,6 +407,8 @@ def main():
     rpc = Rpc(rpc_url, proxy=proxy)
 
     result = {"schema": "accounting-gate/v1", "chain": a.chain, "token": token,
+              "producer": {"path": "scripts/evm/accounting_gate.py",
+                           "sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest()},
               "checked_at": now_iso(), "rpc": rpc_url.split("/v2/")[0],
               "hypersync": hs_url, "checks": {}, "warnings": [], "reasons": []}
 

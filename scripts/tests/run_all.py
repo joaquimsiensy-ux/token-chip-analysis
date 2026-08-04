@@ -36,7 +36,7 @@ SUITE = ['changelog_lint.py', ['docs_lint.py', '--all'], 'labels_manifest.py', '
          'test_review_20260804_filecoin_drifts.py',
          'test_round4_csv_adapters.py',
          'test_round4_a5_seal.py',
-         'test_round4_identity_emitter.py',
+         'test_round4_identity_emitter.py', 'test_round4b_provenance.py',
          'test_state_from_facts.py',
          'test_a4_gate.py', 'test_time_spotcheck.py', 'test_peaks_daily.py',
          'test_wave_scan.py', 'test_flow_anomaly.py',
