@@ -83,6 +83,44 @@ def _v2_run(root: Path, token=TOKEN_A, query_schema="erc20-transfer-fields/v2"):
     return run_dir
 
 
+def test_round4_csv_prefix_and_cursor_fail_closed(root: Path):
+    sys.path.insert(0, str(EVM))
+    import fetch_hypersync as collector
+
+    class Response:
+        status_code = 200
+        text = ""
+        def __init__(self, nxt): self.nxt = nxt
+        def json(self):
+            return {"data": [], "next_block": self.nxt, "archive_height": 100}
+
+    def invoke(out, receipt, nxt, preexisting=False):
+        if preexisting:
+            write_csv(out)
+        collector.requests.post = lambda *a, **k: Response(nxt)
+        old = sys.argv
+        sys.argv = ["fetch_hypersync.py", "secret", "0", "--token-addr", TOKEN_A,
+                    "--url", "https://fixture/query", "--out", str(out),
+                    "--to-block", "100", "--receipt", str(receipt), "--sleep", "0"]
+        try:
+            collector.main()
+            return 0
+        except SystemExit as exc:
+            return int(exc.code) if isinstance(exc.code, int) else 2
+        finally:
+            sys.argv = old
+
+    out, receipt = root / "prefix.csv", root / "prefix.collector.json"
+    assert invoke(out, receipt, 100, preexisting=True) != 0 and not receipt.exists(), \
+        "unreceipted existing prefix must never receive formal PASS"
+    out2, receipt2 = root / "none.csv", root / "none.collector.json"
+    assert invoke(out2, receipt2, None) != 0 and not receipt2.exists(), \
+        "missing provider next_block must fail closed"
+    out3, receipt3 = root / "stalled.csv", root / "stalled.collector.json"
+    assert invoke(out3, receipt3, 0) != 0 and not receipt3.exists(), \
+        "non-progress cursor must fail closed"
+
+
 def test_p001_v2_done_identity_and_completion(root: Path):
     data = root / "v2"
     run_dir = _v2_run(data)
@@ -151,6 +189,8 @@ def test_p002_stale_noop_touch_symlink_replace(root: Path):
 def main():
     with tempfile.TemporaryDirectory() as td:
         test_p001_legacy_csv_cannot_self_attest(Path(td))
+    with tempfile.TemporaryDirectory() as td:
+        test_round4_csv_prefix_and_cursor_fail_closed(Path(td))
     with tempfile.TemporaryDirectory() as td:
         test_p001_v2_done_identity_and_completion(Path(td))
     with tempfile.TemporaryDirectory() as td:

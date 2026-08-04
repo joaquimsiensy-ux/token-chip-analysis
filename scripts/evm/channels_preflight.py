@@ -17,7 +17,7 @@ from pathlib import Path
 
 SCHEMA = "evm-channels/v2"
 RECEIPT_SCHEMA = "evm-channel-receipt/v2"
-COLLECTOR_RECEIPT_SCHEMA = "evm-collector-run/v1"
+COLLECTOR_RECEIPT_SCHEMA = "evm-collector-run/v2"
 PREFLIGHT_SCHEMA = "evm-channels-preflight/v1"
 
 
@@ -93,6 +93,19 @@ def _sha256_file(path: Path):
     return h.hexdigest()
 
 
+def _sha256_prefix(path: Path, size: int):
+    if isinstance(size, bool) or not isinstance(size, int) or size < 0 or size > path.stat().st_size:
+        raise ChannelsPreflightError("collector segment prefix size 非法")
+    h, left = hashlib.sha256(), size
+    with path.open("rb") as f:
+        while left:
+            block = f.read(min(left, 8 * 1024 * 1024))
+            if not block:
+                raise ChannelsPreflightError("collector segment prefix 提前 EOF")
+            h.update(block); left -= len(block)
+    return h.hexdigest()
+
+
 def _file_fingerprints(path: Path, fmt: str):
     """返回 receipt 绑定的精确文件集；v2 同时绑定 logs/blocks。"""
     if fmt == "v1csv":
@@ -113,8 +126,8 @@ def _file_fingerprints(path: Path, fmt: str):
 
 
 def _csv_collector_provenance(receipt_path, data_path, token, lo, hi):
-    """Validate a collector-native CSV completion receipt; CLI assertions are not evidence."""
-    rp = Path(receipt_path).resolve()
+    """Validate a chained native CSV receipt down to every historical file prefix."""
+    rp, data = Path(receipt_path).resolve(), Path(data_path).resolve()
     if rp.is_symlink() or not rp.is_file():
         raise ChannelsPreflightError(f"CSV 采集回执不存在或为符号链接: {rp}")
     try:
@@ -122,11 +135,14 @@ def _csv_collector_provenance(receipt_path, data_path, token, lo, hi):
     except Exception as exc:
         raise ChannelsPreflightError(f"CSV 采集回执不可读: {exc}") from exc
     if d.get("schema") != COLLECTOR_RECEIPT_SCHEMA or d.get("status") != "PASS":
-        raise ChannelsPreflightError("CSV 采集回执非 evm-collector-run/v1 PASS")
+        raise ChannelsPreflightError("CSV 采集回执非 evm-collector-run/v2 PASS")
     collector = d.get("collector")
-    expected_script = Path(__file__).with_name("fetch_hypersync.py")
-    if not isinstance(collector, dict) or collector.get("path") != "fetch_hypersync.py" \
-            or collector.get("sha256") != _sha256_file(expected_script):
+    if not isinstance(collector, dict):
+        raise ChannelsPreflightError("CSV 采集回执缺 collector")
+    name = collector.get("path")
+    allowed = {x.name: x for x in (Path(__file__).with_name("fetch_hypersync.py"),)}
+    expected_script = allowed.get(name)
+    if expected_script is None or collector.get("sha256") != _sha256_file(expected_script):
         raise ChannelsPreflightError("CSV 采集回执未绑定当前受支持采集器")
     q = d.get("query")
     if not isinstance(q, dict) or str(q.get("token", "")).lower() != str(token).lower() \
@@ -135,19 +151,42 @@ def _csv_collector_provenance(receipt_path, data_path, token, lo, hi):
             or not str(q.get("provider_url", "")).strip():
         raise ChannelsPreflightError("CSV 采集回执的 token/query/bounds 与通道不绑定")
     completion = d.get("completion")
-    if not isinstance(completion, dict) or completion.get("reason") not in {
-            "requested_bound_reached", "archive_height_reached"} \
-            or completion.get("next_block") != hi:
-        raise ChannelsPreflightError("CSV 采集回执缺可验的分页/区间完成原因")
-    rows, min_block, max_block = _csv_stats(Path(data_path))
+    if not isinstance(completion, dict) or completion.get("reason") != "requested_bound_reached" \
+            or isinstance(completion.get("next_block"), bool) \
+            or not isinstance(completion.get("next_block"), int) \
+            or completion.get("next_block") < hi:
+        raise ChannelsPreflightError("CSV 采集回执缺 provider 可验的完成原因/目标上界")
+    segments = d.get("segments")
+    if not isinstance(segments, list) or not segments:
+        raise ChannelsPreflightError("CSV 采集回执缺不可伪造的 segment chain")
+    cursor, prior_size = lo, -1
+    for i, seg in enumerate(segments):
+        if not isinstance(seg, dict) or seg.get("requested_from") != cursor \
+                or isinstance(seg.get("requested_to"), bool) \
+                or not isinstance(seg.get("requested_to"), int) \
+                or seg["requested_to"] <= cursor \
+                or isinstance(seg.get("provider_next_block"), bool) \
+                or not isinstance(seg.get("provider_next_block"), int) \
+                or seg["provider_next_block"] < seg["requested_to"]:
+            raise ChannelsPreflightError(f"CSV segment[{i}] coverage/cursor 非法")
+        prefix = seg.get("output_prefix")
+        if not isinstance(prefix, dict) or not isinstance(prefix.get("size"), int) \
+                or prefix["size"] <= prior_size \
+                or prefix.get("sha256") != _sha256_prefix(data, prefix["size"]):
+            raise ChannelsPreflightError(f"CSV segment[{i}] 历史前缀哈希不闭合")
+        cursor, prior_size = seg["requested_to"], prefix["size"]
+    if cursor != hi:
+        raise ChannelsPreflightError("CSV segment chain 未连续覆盖完整声明区间")
+    rows, min_block, max_block = _csv_stats(data)
     output = d.get("output")
-    actual = {"path": str(Path(data_path).resolve()), "size": Path(data_path).stat().st_size,
-              "sha256": _sha256_file(Path(data_path)), "rows": rows,
+    actual = {"path": str(data), "size": data.stat().st_size,
+              "sha256": _sha256_file(data), "rows": rows,
               "min_block": min_block, "max_block": max_block}
-    if output != actual:
+    if output != actual or prior_size != actual["size"]:
         raise ChannelsPreflightError("CSV 采集回执未绑定当前数据文件")
-    return {"kind": "collector-native-csv", "receipt_path": str(rp),
-            "receipt_sha256": _sha256_file(rp), "query": q, "completion": completion}
+    return {"kind": "collector-native-csv-chain", "receipt_path": str(rp),
+            "receipt_sha256": _sha256_file(rp), "query": q,
+            "completion": completion, "segments": segments}
 
 
 def _v2_provenance(path, token, lo, hi):

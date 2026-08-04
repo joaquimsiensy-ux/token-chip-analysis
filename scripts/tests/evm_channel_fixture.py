@@ -21,14 +21,18 @@ def write_csv_channel_receipt(root, tag, data_path, token, lo, hi):
     rows, min_block, max_block = _csv_stats(data)
     source = Path(root) / f"{tag}.collector.json"
     source.write_text(json.dumps({
-        "schema": "evm-collector-run/v1", "status": "PASS",
-        "producer": "fetch_hypersync.py/v2",
+        "schema": "evm-collector-run/v2", "status": "PASS",
+        "producer": "fetch_hypersync.py/v3",
         "collector": {"path": "fetch_hypersync.py",
                       "sha256": sha(EVM / "fetch_hypersync.py")},
         "query": {"token": token.lower(), "query_schema": "erc20-transfer-fields/v2",
                   "provider_url": "https://fixture.hypersync.xyz/query",
                   "requested_from": lo, "requested_to": hi},
         "completion": {"reason": "requested_bound_reached", "next_block": hi},
+        "segments": [{"requested_from": lo, "requested_to": hi,
+                      "provider_next_block": hi,
+                      "output_prefix": {"size": data.stat().st_size,
+                                        "sha256": sha(data)}}],
         "output": {"path": str(data), "size": data.stat().st_size,
                    "sha256": sha(data), "rows": rows,
                    "min_block": min_block, "max_block": max_block},
