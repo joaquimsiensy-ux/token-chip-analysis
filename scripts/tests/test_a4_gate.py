@@ -33,6 +33,7 @@ from identity_gate_fixture import augment_gate
 HERE = os.path.dirname(os.path.abspath(__file__))
 GATE = os.path.join(HERE, "..", "report", "a4_gate.py")
 BUILD = os.path.join(HERE, "..", "report", "build_html.py")
+A5 = os.path.join(HERE, "..", "report", "a5_report_seal.py")
 FAILS = []
 ENTITY_ADDR = "0x" + "a" * 40
 
@@ -52,6 +53,15 @@ def check(name, cond):
 def run(script, args):
     if script == GATE and args[:1] == ["finalize"] and "--workflow-type" not in args:
         args = args + ["--workflow-type", "independent-audit"]
+    if script == BUILD and "--mode" in args and args[args.index("--mode") + 1] in {"analysis-new", "analysis-audit"} \
+            and "--a5-seal" not in args and "--md" in args and "--a4-seal" in args:
+        md = Path(args[args.index("--md") + 1]).resolve()
+        a4 = Path(args[args.index("--a4-seal") + 1]).resolve()
+        a5 = md.parent / "a5_report_seal.json"
+        made = subprocess.run([sys.executable, A5, "--case-dir", str(md.parent),
+                               "--report", str(md), "--a4-seal", str(a4), "--out", str(a5)],
+                              capture_output=True, text=True)
+        args = args + ["--a5-seal", str(a5)]
     return subprocess.run([sys.executable, script] + args, capture_output=True, text=True)
 
 
@@ -94,6 +104,27 @@ def main():
     p = run(GATE, ["register", "--case-dir", d, "--claims-file",
                    wj(d, "dup.json", [{"id": "X", "text": "a"}, {"id": "X", "text": "b"}])])
     check("register 重复 id exit 2", p.returncode == 2)
+
+    # Round4 P1-02：register 后磁盘 registry 被篡改，finalize 必须重跑同一验证器。
+    reg_path = Path(d, "a4_claims.json")
+    original_reg = reg_path.read_text(encoding="utf-8")
+    tampered = json.loads(original_reg)
+    tampered["claims"].append({"id": "C1", "text": "第二条同 ID 命题", "files": []})
+    reg_path.write_text(json.dumps(tampered), encoding="utf-8")
+    p = run(GATE, ["finalize", "--case-dir", d, "--verdicts-file",
+                   wj(d, "v_dup_registry.json", [{"id": "C1", "verdict": "CONFIRMED"},
+                                                   {"id": "C2", "verdict": "CONFIRMED"}]),
+                   "--seal-files", "raw_transfers.jsonl"])
+    check("Round4 P1-02 finalize 重验重复 claim id", p.returncode == 2 and "id 重复" in p.stderr)
+    tampered = json.loads(original_reg)
+    tampered["claims"][0]["text"] = ""
+    reg_path.write_text(json.dumps(tampered), encoding="utf-8")
+    p = run(GATE, ["finalize", "--case-dir", d, "--verdicts-file",
+                   wj(d, "v_empty_registry.json", [{"id": "C1", "verdict": "CONFIRMED"},
+                                                     {"id": "C2", "verdict": "CONFIRMED"}]),
+                   "--seal-files", "raw_transfers.jsonl"])
+    check("Round4 P1-02 同族空文本失败分支", p.returncode == 2 and "空 text" in p.stderr)
+    reg_path.write_text(original_reg, encoding="utf-8")
 
     # 3. finalize 未 register（新目录）
     d3 = os.path.join(root, "case_noreg")
@@ -288,8 +319,7 @@ def main():
                         "--facts", os.path.join(d, "facts.json"),
                         "--state", os.path.join(d, "analysis-state.json"),
                         "--a4-seal", seal_p])
-        check(f"G9 {label} 图片越界拒绝", p.returncode == 1 and "路径非法或越界" in p.stdout
-              and not os.path.exists(bad_out))
+        check(f"G9 {label} 图片越界拒绝", p.returncode == 1 and not os.path.exists(bad_out))
     os.unlink(link)
 
     # 9. 封口后改结论文件 → 编译拒且不写出

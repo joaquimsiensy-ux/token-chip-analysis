@@ -380,12 +380,57 @@ def write_smoke_receipt(n):
     return receipt
 
 
+def _bind_formal_file(rel):
+    path = os.path.join(DATA, rel)
+    if not os.path.isfile(path) or os.path.islink(path) or not valid_file(path):
+        raise RuntimeError(f"formal corpus missing/invalid regular JSON: {rel}")
+    return {"path": rel, "size": os.path.getsize(path), "sha256": sha256_file(path)}
+
+
+def build_formal_inventory(n):
+    """Recompute the entire restricted corpus; caller assertions never create evidence."""
+    if n != 200:
+        raise RuntimeError("formal inventory requires exactly top 200")
+    outputs = [_bind_formal_file("overview.json"), _bind_formal_file(f"price_{PRICE_DAYS}d.json"),
+               _bind_formal_file("richlist.json")]
+    rich = json.load(open(os.path.join(DATA, "richlist.json"), encoding="utf-8"))
+    if not isinstance(rich, list) or len(rich) != 200:
+        raise RuntimeError("richlist.json must contain exactly 200 rows")
+    addresses = [str(row.get("address", "")).strip() for row in rich if isinstance(row, dict)]
+    if len(addresses) != 200 or any(not x for x in addresses) or len(set(addresses)) != 200:
+        raise RuntimeError("richlist.json addresses must be 200 unique non-empty values")
+    truncated_count = 0
+    per_address = []
+    for rank, address in enumerate(addresses, 1):
+        prefix = f"addr/{address}"
+        refs = {name: _bind_formal_file(f"{prefix}/{name}.json")
+                for name in ("detail", "transfers_recent", "transfers_earliest")}
+        recent = json.load(open(os.path.join(DATA, refs["transfers_recent"]["path"]), encoding="utf-8"))
+        earliest = json.load(open(os.path.join(DATA, refs["transfers_earliest"]["path"]), encoding="utf-8"))
+        if not isinstance(recent, dict) or recent.get("complete") is not True \
+                or not isinstance(recent.get("truncated"), bool) \
+                or not str(recent.get("complete_reason", "")).strip() \
+                or not isinstance(recent.get("transfers"), list):
+            raise RuntimeError(f"{prefix}/transfers_recent.json completion fields invalid")
+        if not isinstance(earliest, dict) or earliest.get("complete") is not True \
+                or not isinstance(earliest.get("transfers"), list):
+            raise RuntimeError(f"{prefix}/transfers_earliest.json incomplete")
+        truncated_count += int(recent["truncated"] is True)
+        per_address.append({"rank": rank, "address": address, "truncated": recent["truncated"],
+                            "complete_reason": recent["complete_reason"], "files": refs})
+        outputs.extend(refs.values())
+    return {"schema": "filecoin-formal-inventory/v1", "address_count": 200,
+            "file_count": len(outputs), "truncated_address_count": truncated_count,
+            "outputs": outputs, "addresses": per_address}
+
+
 def write_collection_manifest(n, official_receipt=None, transfers_receipt=None):
     if n != 200:
         raise RuntimeError("formal Filecoin collection manifest requires top_n == 200")
     if official_receipt is None or transfers_receipt is None:
         raise RuntimeError("formal Filecoin collection manifest requires both official receipts")
-    manifest = {"schema": "filecoin-collection/v3", "status": "PASS",
+    inventory = build_formal_inventory(n)
+    manifest = {"schema": "filecoin-collection/v4", "status": "PASS",
                 "mode": "restricted/top-200-windowed", "top_n": n,
                 "analysis_time_utc": ANALYSIS_TIME_UTC.isoformat().replace("+00:00", "Z"),
                 "window_days": WINDOW_DAYS, "window_start": CUTOFF,
@@ -394,7 +439,7 @@ def write_collection_manifest(n, official_receipt=None, transfers_receipt=None):
                 "complete": True, "limitations": ["not full actor universe",
                                                      f"{WINDOW_DAYS}-day window",
                                                      "per-address page cap"],
-                "substage_receipts": {}}
+                "inventory": inventory, "substage_receipts": {}}
     pagination_path = os.path.join(DATA, "richlist_pagination_receipt.json")
     if not os.path.isfile(pagination_path):
         raise RuntimeError("formal manifest requires richlist pagination receipt")

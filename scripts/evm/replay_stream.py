@@ -58,7 +58,7 @@ import time
 
 import duckdb
 
-from channels_preflight import preflight_channels
+from channels_preflight import preflight_channels, replay_provenance
 
 Z = "0x" + "0" * 40
 DEAD = "0x000000000000000000000000000000000000dead"
@@ -233,6 +233,7 @@ def main():
              "gate_pass": su == mint_total and neg == 0,
              "block_range": list(con.execute("SELECT MIN(b),MAX(b) FROM ev").fetchone()),
              "elapsed_s": round(time.time() - t0, 1)}
+    stats.update(replay_provenance(a.out_dir, __file__))
     json.dump(stats, open(f"{a.out_dir}/replay_stats.json", "w"), indent=1)
     print(f"[write] {time.time()-t:.1f}s", flush=True)
     print(json.dumps(stats, indent=1))

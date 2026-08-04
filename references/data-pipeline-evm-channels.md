@@ -13,10 +13,10 @@
 │          Rust 自动并发+Parquet 直写，实测 ~1 万条/s = 手写轮询 18 倍）
 │       ② v1 手写轮询【兜底】（fetch_hypersync.py，无 pip 环境/逐字段调试用）
 ├─ < 300 万条且 ≤60 天新盘（手头无任何 key 的冷启动）→ bloXroute getLogs 扫块（scan_transfers.py）
-├─ HyperSync 平台级故障 / 数仓切源准入对照 → SQD Portal 薄采集器（fetch_sqd_evm.py，免 key，~280 条/s）
-├─ HyperSync 结果可疑 / 对账 gate 挂了后的独立复核【仅 ETH 主网】→ BigQuery goog 官方公共数据集
+├─ HyperSync 平台级故障 / 数仓切源正式替代 → SQD Portal 薄采集器（须原生 v2 receipt）（fetch_sqd_evm.py，免 key，~280 条/s）
+├─ HyperSync 结果可疑 / 对账 gate 挂了后的独立诊断【仅 ETH 主网，非正式 channel】→ BigQuery goog 官方公共数据集
 │     （fetch_bigquery.py,定向日期查询 ~12GiB/次,免费 1TiB/月;定位=备用+复核,不用于常态采集,详见 §11）
-├─ 跨链代币的 ETH 主网侧补充 → Etherscan V2 免费 key（仅 chainid=1，fetch_etherscan.py）
+├─ 跨链代币的 ETH 主网侧补充【非正式 channel】→ Etherscan V2 免费 key（仅 chainid=1，fetch_etherscan.py）
 └─ 任何情况下都别碰 ──→ §2 死亡名单端点（禁止重探）
 
 落盘与合并纪律（v3.11.2 起）：小样本多源产物经 `transfers_lib.py merge` 合并（默认最多
@@ -32,26 +32,36 @@ channels.json 的 path 字段语义（2026-07-25 SPX6900 实测坑）：hypersyn
 **channels.json v2 完整性契约（P0 硬闸）**：三个 replay 入口在读取任何事件前共用
 `channels_preflight.py`。顶层必须有 `schema=evm-channels/v2`、`token`、
 `expected_from`、`expected_to`；每段必须有 `path/format/lo/hi/tag/receipt`。排序后首尾
-必须等于全局边界，相邻段必须 `next.lo == prev.hi`。receipt schema 为
-`evm-channel-receipt/v1`，必须以 `status=PASS` 绑定同一
-`token/tag/lo/hi/data_path/format/rows/min_block/max_block`，并绑定当前 CSV 或
-v2 `run_*/{logs,blocks}.parquet` 文件集的 size/SHA-256；
-实体行数为 0 时还必须有非空 `empty_proof`。预检成功或阻断都落
-`<out-dir>/channels_preflight.json`，BLOCK 必须非零退出。
+必须等于全局边界，相邻段必须 `next.lo == prev.hi`。通道 receipt schema 为
+`evm-channel-receipt/v2`，必须绑定同一 token/tag/区间、数据统计及当前文件哈希。CSV 还必须
+引用 adapter 成功收尾时原生生成的 `evm-collector-run/v2`：collector 当前脚本哈希、provider、
+冻结块界、严格前进且到达目标的 cursor，以及连续 segment output-prefix hash chain 全部重验。
+空段不接受操作者文字证明；同一 native receipt chain 本身必须证明扫描到冻结上界。预检成功或
+阻断都落 `<out-dir>/channels_preflight.json`，BLOCK 必须非零退出。PASS 产物还必须记录当前
+`channels_preflight.py` producer、manifest 哈希、每段 channel/native collector receipt 哈希以及
+实际 CSV/Parquet `inputs` 的 path/size/SHA-256；三个 replay 引擎在 `replay_stats.json` 记录当前
+引擎 producer，并绑定该 preflight、完全相同的 inputs 和 `balances_final.json` 输出。G8 emitter
+会从 manifest 重新运行同一个 preflight validator 并重验上述链，不能把两份互相咬合的 JSON
+当作采集/重放执行证明。旧 preflight/stats 不允许手工补 producer 或哈希：必须让对应生产 replay
+引擎从 `channels.json` 重新预检并完整重放，生成新 stats 后再 emit identity receipt。
 
-receipt 禁止手工数行数/抄哈希，一律用生产工具实扫数据后原子生成：
+正式 HyperSync CSV 首段必须是运行前不存在的新文件：
 
 ```bash
+python3 scripts/evm/fetch_hypersync.py "$TOKEN" <lo> --token-addr 0x... \
+  --to-block <hi排他> --out data/full.csv --receipt data/full.collector.json
 python3 scripts/evm/make_channel_receipt.py \
-  --data <csv文件或v2采集根目录> --format <v1csv|v2> \
-  --token 0x... --lo <含> --hi <不含> --tag <通道唯一名> \
-  --out <tag.receipt.json>
+  --data data/full.csv --format v1csv --token 0x... --lo <lo> --hi <hi> --tag primary \
+  --collector-receipt data/full.collector.json --out data/full.receipt.json
 ```
 
-工具直接复用 preflight 的 CSV/Parquet 统计器，实扫 rows 与最小/最大块，
-非空数据越过 `[lo,hi)` 会拒绝落回执。空段必须额外传
-`--empty-proof "<为什么该区间可证为空>"`，否则非零退出。生成后任一绑定文件的
-大小或哈希变化都会使三个 replay 入口在读取事件前 BLOCK；数据重拉/补段后必须重新生成 receipt。
+延长冻结上界时，collector 必须带 `--resume-receipt data/full.collector.json`；它先重验旧
+CSV 的每个历史 prefix，再从前一 `requested_to` 续采并发布加长 chain。没有前驱 receipt 的
+**存量 legacy CSV** 不可补签或手工迁移：另名归档，重新从冻结 `lo` 采到 `hi`。SQD/Alchemy
+的正式 fresh-output 命令同样带 `--receipt`；BigQuery/bloXroute/Etherscan 只作诊断或补充。
+数据变化后必须由生产 collector 重采/续采，再重跑 `make_channel_receipt.py`；测试 fixture 或
+手搓 JSON 不构成迁移工具。v2 Parquet 通道则继续由 native done v3 +
+`make_channel_receipt.py --format v2` 生成，无 `--collector-receipt` 参数。
 
 ```json
 {"schema":"evm-channels/v2","token":"0x...","expected_from":0,"expected_to":200,
@@ -97,12 +107,14 @@ size 与 SHA-256；全部通过后才原子将旧 done 升为 `hypersync-v2-done
 |---|---|---|---|---|---|---|
 | **HyperSync 官方客户端 v2（Starter 付费档,现役首选）** | Starter $70/月 | 官方客户端并发 | **10,080 条/s**（CAKE 实测） | done manifest v3 绑定 token/url/capture bounds/query/client，并对 logs/blocks Parquet 分别记 size/rows/min/max/sha256；续传与 staged skip 都重验可读性/schema/范围/哈希 | fetch_hypersync_v2.py | （2026-08-02 加固） |
 | envio HyperSync v1 手写轮询（兜底） | 同上 key 通用 | 免费层:0.5s 间隔基本无 429（2026-07-18 收紧后实测）;**Starter 付费档:0.12s 间隔 429=0**,但单进程吞吐仅 552-792 条/s（RTT 主导,ETH RTT~0.2s/BSC~0.6s）——付费买到的是高峰稳定性,大标的提速必须换 v2 | 免费层 ~1000-1300 logs/2s,1568 万条约 5.2h;付费单进程 ETH 792 条/s、BSC 552 条/s | from_block 起点 + 增量写 CSV（v3.11.2 起新文件 8 列含 block_hash,老 7 列续拉自动兼容） | fetch_hypersync.py | （SIREN 07；哈基米 429 实测 07-18；v3.11.2 付费实测 07-21） |
-| SQD Portal 薄采集器（故障预案+对照源） | 免 key 免注册（portal.sqd.dev 公共端点;注册 gateway key 免费可选更稳） | 公共限流 20 请求/10s,sleep 0.5 保守;无自助付费档（官网 pricing coming soon,2026-07-21 核实） | ~280 条/s（CAKE 21,857 行/79s）——平时不跑,HyperSync 平台级故障或数仓切源准入对照时才上;**对账关卡（余额对账/时间抽查）的代表日双源对照亦用它**（独立索引商,BANANAS31(BSC) 四代表日 67,731 行 (block,tx,li,from,to,value) 六元组与 HyperSync 零差集全等,2026-07-22） | CSV 末行块+1 | fetch_sqd_evm.py | （v3.11.2,2026-07-21） |
-| BigQuery goog 官方公共数据集（备用+复核,**仅 ETH**） | Google 账号 OAuth 一次(凭据缓存后免弹窗)+GCP sandbox 项目(免绑卡,见 api-keys.md 第 17 节「Google Cloud / BigQuery」) | 免费 1 TiB/月查询量;熔断线 config max_scan_gib(默认 200GiB) | 服务端过滤只回传命中行,13 万行 ~1 分钟;定向日期查询 ~12GiB/次≈月额度可复核 85 次 | 无需(按日期范围幂等重查) | fetch_bigquery.py | （v3.12.1 准入实证,2026-07-21） |
-| Alchemy getAssetTransfers | 免费 key（dashboard.alchemy.com 国内直连） | 平台级 429 全局限流，高峰期可整夜不可用 | ~46 万条/10 分钟，1000 条/页 | 读 CSV 末行区块置 fromBlock（勿依赖 pageKey） | fetch_alchemy.py | （SIREN，07） |
-| bloXroute getLogs | 免注册 | ⚠**并发承受力已变**（2026-07-19 SIREN 实测）：8 并发 curl 线程池整体挂死零产出、requests 3 线程 0.5s 间隔稳定；历史窗口比 07-18 更宽（下界块 100.1M~101.5M ≈55-60 天，二分探测）——**窗口是动态的，用前必二分**。降级为"近期段快扫" | requests 3 线程 万块段 ~50 段/4 分钟（SIREN 396 万条约 30 分钟）；旧 8 并发数字已不可复现 | done-segments 清单 + 失败段补扫 | scan_transfers.py（curl 线程池版本机挂死，改用 requests.Session） | （OPN 07；哈基米 窗口实测 07-18；SIREN 并发/窗口实测 07-19） |
-| Etherscan V2（仅 ETH 主网） | 用户免费 key | 免费层限速未成瓶颈 | tokentx 每页 10000 条，7 万余行顺利拉完 | 按返回末行 block 续页 | fetch_etherscan.py | （OPN，07） |
+| SQD Portal 薄采集器（故障预案+正式替代；须 `--receipt`） | 免 key 免注册（portal.sqd.dev 公共端点;注册 gateway key 免费可选更稳） | 公共限流 20 请求/10s,sleep 0.5 保守;无自助付费档（官网 pricing coming soon,2026-07-21 核实） | ~280 条/s（CAKE 21,857 行/79s）——平时不跑,HyperSync 平台级故障或数仓切源准入对照时才上;**对账关卡（余额对账/时间抽查）的代表日双源对照亦用它**（独立索引商,BANANAS31(BSC) 四代表日 67,731 行 (block,tx,li,from,to,value) 六元组与 HyperSync 零差集全等,2026-07-22） | CSV 末行块+1 | fetch_sqd_evm.py | （v3.11.2,2026-07-21） |
+| BigQuery goog 官方公共数据集（诊断复核、**非正式 channel，仅 ETH**） | Google 账号 OAuth 一次(凭据缓存后免弹窗)+GCP sandbox 项目(免绑卡,见 api-keys.md 第 17 节「Google Cloud / BigQuery」) | 免费 1 TiB/月查询量;熔断线 config max_scan_gib(默认 200GiB) | 服务端过滤只回传命中行,13 万行 ~1 分钟;定向日期查询 ~12GiB/次≈月额度可复核 85 次 | 无需(按日期范围幂等重查) | fetch_bigquery.py | （v3.12.1 准入实证,2026-07-21） |
+| Alchemy getAssetTransfers（正式使用须 fresh 输出 + `--receipt`） | 免费 key（dashboard.alchemy.com 国内直连） | 平台级 429 全局限流，高峰期可整夜不可用 | ~46 万条/10 分钟，1000 条/页 | 读 CSV 末行区块置 fromBlock（勿依赖 pageKey） | fetch_alchemy.py | （SIREN，07） |
+| bloXroute getLogs（近期原始分片，**非正式 channel**） | 免注册 | ⚠**并发承受力已变**（2026-07-19 SIREN 实测）：8 并发 curl 线程池整体挂死零产出、requests 3 线程 0.5s 间隔稳定；历史窗口比 07-18 更宽（下界块 100.1M~101.5M ≈55-60 天，二分探测）——**窗口是动态的，用前必二分**。降级为"近期段快扫" | requests 3 线程 万块段 ~50 段/4 分钟（SIREN 396 万条约 30 分钟）；旧 8 并发数字已不可复现 | done-segments 清单 + 失败段补扫 | scan_transfers.py（curl 线程池版本机挂死，改用 requests.Session） | （OPN 07；哈基米 窗口实测 07-18；SIREN 并发/窗口实测 07-19） |
+| Etherscan V2（补充证据、**非正式 channel，仅 ETH 主网**） | 用户免费 key | 免费层限速未成瓶颈 | tokentx 每页 10000 条，7 万余行顺利拉完 | 按返回末行 block 续页 | fetch_etherscan.py | （OPN，07） |
 | envio HyperSync **ETH 主网**（eth.hypersync.xyz） | 同上免费 token | 0.25s 间隔全程仅 11 次 429、全部退避成功 | 139.9 万条 33 分钟单进程拉完（~700 条/s 均速） | 同 BSC 版（fetch_hypersync 断点续传版） | fetch_hypersync.py | （ASTEROID，07-18） |
+
+**替代 CSV 正式资格**：只有 `fetch_sqd_evm.py` 与 `fetch_alchemy.py` 在显式冻结块界、输出运行前不存在并成功收尾时，可用 `--receipt` 产生 `evm-collector-run/v2`；preflight 会校验当前 adapter 脚本哈希。BigQuery 是日期切片复核，bloXroute 是近期分片，Etherscan 是补充 API，三者代码均声明 `FORMAL_CHANNEL_ELIGIBLE = False`，不得写入正式 `channels.json`。旧 CSV 无法升级：另名归档后由上述生产 adapter 从冻结下界重采。
 
 ## 2. 死亡名单（实测不可用，3 个月内禁止重探）
 

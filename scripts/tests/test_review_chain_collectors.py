@@ -118,6 +118,10 @@ def test_h09(tmp):
         "schema": "filecoin-richlist-pagination/v1", "status": "PASS",
         "complete": True, "compared_count": 200,
     }))
+    mod.build_formal_inventory = lambda n: {"schema": "filecoin-formal-inventory/v1",
+                                                "address_count": 200, "file_count": 603,
+                                                "truncated_address_count": 0,
+                                                "outputs": [], "addresses": []}
     manifest = mod.write_collection_manifest(200, receipt, transfers_receipt)
     ref = manifest["substage_receipts"]["official_scan"]
     assert ref["path"] == "official_scan_receipt.json" and len(ref["sha256"]) == 64

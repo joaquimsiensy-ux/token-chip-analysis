@@ -267,13 +267,14 @@ def main():
     ap.add_argument("--facts", help="facts.json 事实源（3.18.0 报告编译化：渲染宏+语义 gate，"
                                     "见 facts_gate.py docstring；不给则旧行为不变）")
     ap.add_argument("--state", help="analysis-state.json（与 --facts 同给时做 G1 成员集合对账）")
-    ap.add_argument("--a4-seal", help="a4_seal.json（A4 封口凭证，触发 G9：封口哈希重验+报告图必须"
-                                      "全在封口 charts_dir 下；分析流程 A5/E5 编译必传，update 流程不传）")
+    ap.add_argument("--a4-seal", help="a4_seal.json（A4 封口凭证）")
+    ap.add_argument("--a5-seal", help="a5_report_seal.json（绑定 A4、最终 Markdown 与全部报告图；正式模式必填）")
     a = ap.parse_args()
 
     if a.mode in formal_modes:
         missing = [flag for flag, value in (("--facts", a.facts), ("--state", a.state),
-                                             ("--a4-seal", a.a4_seal)) if not value]
+                                             ("--a4-seal", a.a4_seal),
+                                             ("--a5-seal", a.a5_seal)) if not value]
         if missing:
             ap.error(f"{a.mode} 模式缺正式 gate 资产: " + ", ".join(missing))
         # P0-01：正式编译的事实输入只能来自 seal 所在案目录的标准资产。
@@ -291,8 +292,16 @@ def main():
         a.state = str(_formal_state)
     elif not str(a.degrade_reason or "").strip():
         ap.error(f"{a.mode} 模式必须提供 --degrade-reason")
-    elif a.a4_seal:
+    elif a.a4_seal or a.a5_seal:
         ap.error("update/legacy-recompile 只用模式水印留痕，不接受正式 gate 参数")
+
+    if a.mode in formal_modes:
+        import a5_report_seal
+        _a5_errors = a5_report_seal.validate_seal(a.a5_seal, a.md, a.a4_seal)
+        if _a5_errors:
+            for _err in _a5_errors:
+                print(f"[FAIL] G10 {_err}")
+            sys.exit(1)
 
     md_text = open(a.md, encoding="utf-8").read()
     mddir = os.path.dirname(os.path.abspath(a.md))

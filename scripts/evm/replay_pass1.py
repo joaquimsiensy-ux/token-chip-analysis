@@ -18,7 +18,7 @@ channels.json 必须用 evm-channels/v2：顶层声明 token/expected_from/expec
 import csv, json, argparse
 from collections import defaultdict
 
-from channels_preflight import preflight_channels
+from channels_preflight import preflight_channels, replay_provenance
 
 Z = '0x0000000000000000000000000000000000000000'
 DEAD = '0x000000000000000000000000000000000000dead'
@@ -134,8 +134,9 @@ def main():
              "neg_balance_addrs": len(neg), "unique_addrs": len(bal),
              "gate_pass": su == mint_total and len(neg) == 0,
              "n_bad_rows": bad_rows}
-    json.dump(stats, open(f"{a.out_dir}/replay_stats.json", "w"), indent=1)
     json.dump({ad: str(v) for ad, v in bal.items() if v != 0}, open(f"{a.out_dir}/balances_final.json", "w"))
+    stats.update(replay_provenance(a.out_dir, __file__))
+    json.dump(stats, open(f"{a.out_dir}/replay_stats.json", "w"), indent=1)
     json.dump({ad: {"peak": str(v), "peak_blk": peak_blk.get(ad), "first_blk": first_seen.get(ad), "last_blk": last_active.get(ad)}
                for ad, v in peak.items() if v >= peak_min}, open(f"{a.out_dir}/peaks.json", "w"))
     json.dump({ad: str(v) for ad, v in mint_by_to.items()}, open(f"{a.out_dir}/mint_ledger.json", "w"))

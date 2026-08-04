@@ -12,6 +12,7 @@ from pathlib import Path
 
 
 HERE = Path(__file__).resolve().parent
+REPO = HERE.parent.parent
 GATE = HERE.parent / "report" / "audit_release_gate.py"
 REPRODUCE = HERE.parent / "report" / "reproduce_receipt.py"
 spec = importlib.util.spec_from_file_location("audit_release_gate", GATE)
@@ -24,7 +25,12 @@ def write_json(root, name, value):
 
 
 def sha(path):
-    return hashlib.sha256(path.read_bytes()).hexdigest()
+    return hashlib.sha256(Path(path).read_bytes()).hexdigest()
+
+
+def repo_ref(rel):
+    path = REPO / rel
+    return {"path": rel, "sha256": sha(path)}
 
 
 def build_case(root, historical=True):
@@ -49,10 +55,26 @@ def build_case(root, historical=True):
         ],
         "late_additions": [],
     })
-    write_json(root, "accounting_mode.json", {"status": "PASS", "mode": "standard"})
+    target = {"chain": "bsc", "token": "0xtoken", "as_of_block": 123}
+    write_json(root, "accounting_mode.json", {"schema": "accounting-gate/v1",
+        "chain": "bsc", "token": "0xtoken", "as_of_block": 123,
+        "producer": repo_ref("scripts/evm/accounting_gate.py"),
+        "verdict": "PASS", "exit_code": 0, "mode": "standard",
+        "checks": {"fot": {"status": "clean"}}})
+    producers = {"balance": "scripts/evm/verify_recon.py",
+                 "supply": "scripts/evm/verify_recon.py",
+                 "supply_truth": "scripts/lib/supply_truth_gate.py",
+                 "time": "scripts/lib/time_spotcheck.py"}
+    checks = {}
+    for key in ("balance", "supply", "supply_truth", "time"):
+        evidence = root / f"{key}_receipt.json"
+        write_json(root, evidence.name, {"schema": f"{key}-receipt/v1",
+                                         "status": "PASS", "exit_code": 0})
+        checks[key] = {"status": "PASS", "exit_code": 0,
+                       "receipt": {"path": evidence.name, "sha256": sha(evidence)},
+                       "producer": repo_ref(producers[key])}
     write_json(root, "reconciliation_report.json", {
-        "checks": {"balance": "PASS", "supply": "PASS",
-                   "supply_truth": "PASS", "time": "PASS"}})
+        "schema": "reconciliation-report/v2", "target": target, "checks": checks})
     write_json(root, "address_classification.json", {
         "current_owner_threshold_pct": 0.1,
         "current_owner_float_threshold_pct": 0.2,
@@ -134,13 +156,32 @@ def build_case(root, historical=True):
             "blocking_unresolved": False,
         }],
     })
+    reviews = []
+    runner = REPO / "scripts/report/adversarial_review_runner.py"
+    for role in ("entity_attribution_skeptic", "completeness_critic"):
+        entry = root / f"review_{role}.py"
+        entry.write_text("import os\nfrom pathlib import Path\n"
+                         "Path(os.environ['CHIP_REVIEW_OUTPUT']).write_text("
+                         "'review evidence for '+os.environ['CHIP_REVIEW_ROLE']+'\\n')\n",
+                         encoding="utf-8")
+        artifact = root / f"review_{role}.md"
+        execution = root / f"review_{role}_execution.json"
+        for stale in (artifact, execution):
+            if stale.exists():
+                stale.unlink()
+        proc = subprocess.run([sys.executable, str(runner), str(root), "--role", role,
+                               "--entrypoint", entry.name, "--artifact", artifact.name,
+                               "--receipt", execution.name], capture_output=True, text=True)
+        assert proc.returncode == 0, proc.stdout + proc.stderr
+        reviews.append({"role": role, "exit_code": 0,
+                        "artifact": {"path": artifact.name, "size": artifact.stat().st_size,
+                                     "sha256": sha(artifact)},
+                        "runner": repo_ref("scripts/report/adversarial_review_runner.py"),
+                        "execution_receipt": {"path": execution.name,
+                                              "sha256": sha(execution)}})
     write_json(root, "adversarial_review.json", {
-        "reviews": [
-            {"role": "entity_attribution_skeptic"},
-            {"role": "completeness_critic"},
-        ],
-        "blocking_findings": [],
-        "release_decision": "PASS",
+        "schema": "adversarial-review/v2", "target": target, "reviews": reviews,
+        "blocking_findings": [], "release_decision": "PASS",
     })
     if historical:
         write_json(root, "chart_reconciliation.json", {
@@ -153,6 +194,9 @@ def build_case(root, historical=True):
             "ledger_membership_match": True,
             "negative_clamp_used": False,
         })
+    sys.path.insert(0, str(HERE.parent / "report"))
+    from shared_release_receipt import create_bundle
+    create_bundle(root)
     return report
 
 
@@ -162,7 +206,34 @@ def main():
         report = build_case(root)
         assert not gate.run(root, report), "完整合格案例应 PASS"
 
-        # 输入冻结后变化必须阻断。
+        # Round4 P0-03：裸布尔不得替代生产 receipt。
+    with tempfile.TemporaryDirectory() as td:
+        root = Path(td); report = build_case(root, historical=False)
+        write_json(root, "accounting_mode.json", {"status": True})
+        write_json(root, "reconciliation_report.json",
+                   {"balance": True, "supply": True, "supply_truth": True, "time": True})
+        write_json(root, "adversarial_review.json", {"reviews": [
+            {"role": "entity_attribution_skeptic"}, {"role": "completeness_critic"}],
+            "blocking_findings": [], "release_decision": True})
+        errors = gate.run(root, report, profile="new-analysis")
+        assert errors, "caller booleans must not pass shared release gates"
+
+    with tempfile.TemporaryDirectory() as td:
+        root = Path(td); report = build_case(root, historical=False)
+        recon = json.loads((root / "reconciliation_report.json").read_text())
+        recon["checks"]["time"]["exit_code"] = 7
+        write_json(root, "reconciliation_report.json", recon)
+        errors = gate.run(root, report, profile="new-analysis")
+        assert any("time" in x or "共享发布" in x for x in errors), errors
+    with tempfile.TemporaryDirectory() as td:
+        root = Path(td); report = build_case(root, historical=False)
+        accounting = json.loads((root / "accounting_mode.json").read_text())
+        accounting["checks"]["fot"]["status"] = "tampered-after-receipt"
+        write_json(root, "accounting_mode.json", accounting)
+        errors = gate.run(root, report, profile="new-analysis")
+        assert any("input hashes changed" in x for x in errors), errors
+
+    # 输入冻结后变化必须阻断。
         (root / "raw_transfers.jsonl").write_text("tampered\n", encoding="utf-8")
         errors = gate.run(root, report)
         assert any("大小变化" in x or "哈希变化" in x for x in errors), errors

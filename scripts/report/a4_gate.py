@@ -122,6 +122,35 @@ def check_audit_registry_alignment(case_dir, reg, verdicts, fails):
     return path
 
 
+def validate_claim_rows(case_dir, claims):
+    """Canonical validator shared by register and finalize; never trust stale registration."""
+    if not isinstance(claims, list) or not claims:
+        raise ValueError("claims 必须是非空数组")
+    if any(not isinstance(c, dict) for c in claims):
+        raise ValueError("claim 每项必须是对象")
+    ids = [str(c.get("id", "")).strip() for c in claims]
+    if any(not i for i in ids):
+        raise ValueError("存在空 id 的 claim")
+    if len(set(ids)) != len(ids):
+        dup = sorted({i for i in ids if ids.count(i) > 1})
+        raise ValueError(f"id 重复: {dup}")
+    if any(not str(c.get("text", "")).strip() for c in claims):
+        raise ValueError("存在空 text 的 claim")
+    normalized = []
+    for c in claims:
+        files = []
+        for rel in c.get("files") or []:
+            safe_case_file(case_dir, rel)
+            files.append(rel)
+        locations = c.get("report_locations") or []
+        if not isinstance(locations, list) or any(not isinstance(x, str) or not x.strip() for x in locations):
+            raise ValueError(f"claim {c['id']} report_locations 必须是非空字符串数组")
+        normalized.append({"id": str(c["id"]).strip(), "text": str(c["text"]).strip(),
+                           "files": files, "report_locations": list(locations),
+                           "claim_type": c.get("claim_type")})
+    return normalized
+
+
 def cmd_register(a):
     case_dir = os.path.abspath(a.case_dir)
     try:
@@ -129,33 +158,10 @@ def cmd_register(a):
     except Exception as e:
         print(f"[register] claims 文件读取失败: {e}", file=sys.stderr)
         return 1
-    if not isinstance(claims, list) or not claims:
-        print("[register] claims 必须是非空数组——A4 没有结论可复核＝A3 没产出，先回 A3", file=sys.stderr)
-        return 2
-    ids = [str(c.get("id", "")).strip() for c in claims]
-    if any(not i for i in ids):
-        print("[register] 存在空 id 的 claim——每条结论必须有稳定 id", file=sys.stderr)
-        return 2
-    if len(set(ids)) != len(ids):
-        dup = sorted({i for i in ids if ids.count(i) > 1})
-        print(f"[register] id 重复: {dup}", file=sys.stderr)
-        return 2
-    if any(not str(c.get("text", "")).strip() for c in claims):
-        print("[register] 存在空 text 的 claim", file=sys.stderr)
-        return 2
-    normalized = []
     try:
-        for c in claims:
-            files = []
-            for rel in c.get("files") or []:
-                safe_case_file(case_dir, rel)
-                files.append(rel)
-            normalized.append({"id": str(c["id"]).strip(), "text": str(c["text"]).strip(),
-                               "files": files,
-                               "report_locations": list(c.get("report_locations") or []),
-                               "claim_type": c.get("claim_type")})
+        normalized = validate_claim_rows(case_dir, claims)
     except ValueError as e:
-        print(f"[register] claim 引用文件非法: {e}", file=sys.stderr)
+        print(f"[register] {e}", file=sys.stderr)
         return 2
     reg = {"schema": "a4-claims/v2", "registered_at_utc": utcnow(),
            "claims": normalized}
@@ -180,7 +186,17 @@ def cmd_finalize(a):
         return 1
 
     fails = []
-    reg_ids = {c["id"] for c in reg.get("claims", [])}
+    if not isinstance(reg, dict) or reg.get("schema") != "a4-claims/v2":
+        fails.append("a4_claims.json schema 必须为 a4-claims/v2")
+        claims = []
+    else:
+        try:
+            claims = validate_claim_rows(case_dir, reg.get("claims"))
+            reg["claims"] = claims
+        except ValueError as exc:
+            fails.append(str(exc))
+            claims = []
+    reg_ids = {c["id"] for c in claims}
     if not isinstance(verdicts, list):
         print("[finalize] verdicts 必须是数组", file=sys.stderr)
         return 2

@@ -25,6 +25,7 @@ SHARED_REQUIRED = (
     "economic_control_ledger.json",
     "dormant_warehouse_audit.json",
     "adversarial_review.json",
+    "shared_release_receipt.json",
 )
 AUDIT_ONLY_REQUIRED = (
     "audit_input_manifest.json",
@@ -178,12 +179,19 @@ def check_manifest(case_dir: Path, d: dict, errors: list[str]):
 
 
 def check_accounting(d: dict, errors: list[str]):
+    if d.get("schema") != "accounting-gate/v1" or d.get("exit_code") != 0 \
+            or not isinstance(d.get("checks"), dict) or not d.get("checks"):
+        errors.append("记账模型缺生产 gate schema/exit/checks receipt")
+        return
     verdict = d.get("status", d.get("verdict", d.get("mode")))
     if not status_pass(verdict, ACCOUNTING_EXTRA):
         errors.append(f"记账模型未放行: {verdict!r}")
 
 
 def check_reconciliation(d: dict, errors: list[str]):
+    if d.get("schema") != "reconciliation-report/v2" or not isinstance(d.get("target"), dict):
+        errors.append("四查对账缺 v2 target/子工具 receipts (balance/supply/supply_truth/time)")
+        return
     checks = d.get("checks", d)
     aliases = {
         "balance": ("balance", "balance_reconciliation"),
@@ -640,6 +648,9 @@ def check_claims(case_dir: Path, d: dict, report: Path | None, errors: list[str]
 
 
 def check_adversarial(d: dict, errors: list[str]):
+    if d.get("schema") != "adversarial-review/v2" or not isinstance(d.get("target"), dict):
+        errors.append("对抗复核缺 v2 target/runner receipts")
+        return
     reviews = d.get("reviews")
     if not isinstance(reviews, list):
         errors.append("对抗复核缺 reviews 数组")
@@ -687,6 +698,11 @@ def run(case_dir: Path, report: Path | None, *, profile="independent-audit"):
             data[name] = load_json(p, errors)
     if "audit_input_manifest.json" in data:
         check_manifest(case_dir, data["audit_input_manifest.json"], errors)
+    try:
+        import shared_release_receipt
+        errors.extend(f"共享发布 receipt: {x}" for x in shared_release_receipt.validate_bundle(case_dir))
+    except Exception as exc:
+        errors.append(f"共享发布 receipt validator 失败: {exc}")
     if "accounting_mode.json" in data:
         check_accounting(data["accounting_mode.json"], errors)
     if "reconciliation_report.json" in data:

@@ -25,6 +25,7 @@ config.json 增节:
   "bigquery": {"project": "<GCP项目ID>", "max_scan_gib": 200, "out": "data/bq_recheck.csv"}
 """
 import argparse, csv, json, os, sys
+FORMAL_CHANNEL_ELIGIBLE = False  # diagnostic/supplemental output; preflight must reject
 
 TRANSFER = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
 TABLE = "bigquery-public-data.goog_blockchain_ethereum_mainnet_us.logs"

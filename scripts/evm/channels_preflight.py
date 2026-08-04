@@ -12,12 +12,13 @@ import glob
 import hashlib
 import json
 import os
+import tempfile
 from pathlib import Path
 
 
 SCHEMA = "evm-channels/v2"
 RECEIPT_SCHEMA = "evm-channel-receipt/v2"
-COLLECTOR_RECEIPT_SCHEMA = "evm-collector-run/v1"
+COLLECTOR_RECEIPT_SCHEMA = "evm-collector-run/v2"
 PREFLIGHT_SCHEMA = "evm-channels-preflight/v1"
 
 
@@ -93,6 +94,19 @@ def _sha256_file(path: Path):
     return h.hexdigest()
 
 
+def _sha256_prefix(path: Path, size: int):
+    if isinstance(size, bool) or not isinstance(size, int) or size < 0 or size > path.stat().st_size:
+        raise ChannelsPreflightError("collector segment prefix size 非法")
+    h, left = hashlib.sha256(), size
+    with path.open("rb") as f:
+        while left:
+            block = f.read(min(left, 8 * 1024 * 1024))
+            if not block:
+                raise ChannelsPreflightError("collector segment prefix 提前 EOF")
+            h.update(block); left -= len(block)
+    return h.hexdigest()
+
+
 def _file_fingerprints(path: Path, fmt: str):
     """返回 receipt 绑定的精确文件集；v2 同时绑定 logs/blocks。"""
     if fmt == "v1csv":
@@ -113,8 +127,8 @@ def _file_fingerprints(path: Path, fmt: str):
 
 
 def _csv_collector_provenance(receipt_path, data_path, token, lo, hi):
-    """Validate a collector-native CSV completion receipt; CLI assertions are not evidence."""
-    rp = Path(receipt_path).resolve()
+    """Validate a chained native CSV receipt down to every historical file prefix."""
+    rp, data = Path(receipt_path).resolve(), Path(data_path).resolve()
     if rp.is_symlink() or not rp.is_file():
         raise ChannelsPreflightError(f"CSV 采集回执不存在或为符号链接: {rp}")
     try:
@@ -122,11 +136,16 @@ def _csv_collector_provenance(receipt_path, data_path, token, lo, hi):
     except Exception as exc:
         raise ChannelsPreflightError(f"CSV 采集回执不可读: {exc}") from exc
     if d.get("schema") != COLLECTOR_RECEIPT_SCHEMA or d.get("status") != "PASS":
-        raise ChannelsPreflightError("CSV 采集回执非 evm-collector-run/v1 PASS")
+        raise ChannelsPreflightError("CSV 采集回执非 evm-collector-run/v2 PASS")
     collector = d.get("collector")
-    expected_script = Path(__file__).with_name("fetch_hypersync.py")
-    if not isinstance(collector, dict) or collector.get("path") != "fetch_hypersync.py" \
-            or collector.get("sha256") != _sha256_file(expected_script):
+    if not isinstance(collector, dict):
+        raise ChannelsPreflightError("CSV 采集回执缺 collector")
+    name = collector.get("path")
+    allowed = {x.name: x for x in (Path(__file__).with_name("fetch_hypersync.py"),
+                                      Path(__file__).with_name("fetch_sqd_evm.py"),
+                                      Path(__file__).with_name("fetch_alchemy.py"))}
+    expected_script = allowed.get(name)
+    if expected_script is None or collector.get("sha256") != _sha256_file(expected_script):
         raise ChannelsPreflightError("CSV 采集回执未绑定当前受支持采集器")
     q = d.get("query")
     if not isinstance(q, dict) or str(q.get("token", "")).lower() != str(token).lower() \
@@ -135,19 +154,42 @@ def _csv_collector_provenance(receipt_path, data_path, token, lo, hi):
             or not str(q.get("provider_url", "")).strip():
         raise ChannelsPreflightError("CSV 采集回执的 token/query/bounds 与通道不绑定")
     completion = d.get("completion")
-    if not isinstance(completion, dict) or completion.get("reason") not in {
-            "requested_bound_reached", "archive_height_reached"} \
-            or completion.get("next_block") != hi:
-        raise ChannelsPreflightError("CSV 采集回执缺可验的分页/区间完成原因")
-    rows, min_block, max_block = _csv_stats(Path(data_path))
+    if not isinstance(completion, dict) or completion.get("reason") != "requested_bound_reached" \
+            or isinstance(completion.get("next_block"), bool) \
+            or not isinstance(completion.get("next_block"), int) \
+            or completion.get("next_block") < hi:
+        raise ChannelsPreflightError("CSV 采集回执缺 provider 可验的完成原因/目标上界")
+    segments = d.get("segments")
+    if not isinstance(segments, list) or not segments:
+        raise ChannelsPreflightError("CSV 采集回执缺不可伪造的 segment chain")
+    cursor, prior_size = lo, -1
+    for i, seg in enumerate(segments):
+        if not isinstance(seg, dict) or seg.get("requested_from") != cursor \
+                or isinstance(seg.get("requested_to"), bool) \
+                or not isinstance(seg.get("requested_to"), int) \
+                or seg["requested_to"] <= cursor \
+                or isinstance(seg.get("provider_next_block"), bool) \
+                or not isinstance(seg.get("provider_next_block"), int) \
+                or seg["provider_next_block"] < seg["requested_to"]:
+            raise ChannelsPreflightError(f"CSV segment[{i}] coverage/cursor 非法")
+        prefix = seg.get("output_prefix")
+        if not isinstance(prefix, dict) or not isinstance(prefix.get("size"), int) \
+                or prefix["size"] <= prior_size \
+                or prefix.get("sha256") != _sha256_prefix(data, prefix["size"]):
+            raise ChannelsPreflightError(f"CSV segment[{i}] 历史前缀哈希不闭合")
+        cursor, prior_size = seg["requested_to"], prefix["size"]
+    if cursor != hi:
+        raise ChannelsPreflightError("CSV segment chain 未连续覆盖完整声明区间")
+    rows, min_block, max_block = _csv_stats(data)
     output = d.get("output")
-    actual = {"path": str(Path(data_path).resolve()), "size": Path(data_path).stat().st_size,
-              "sha256": _sha256_file(Path(data_path)), "rows": rows,
+    actual = {"path": str(data), "size": data.stat().st_size,
+              "sha256": _sha256_file(data), "rows": rows,
               "min_block": min_block, "max_block": max_block}
-    if output != actual:
+    if output != actual or prior_size != actual["size"]:
         raise ChannelsPreflightError("CSV 采集回执未绑定当前数据文件")
-    return {"kind": "collector-native-csv", "receipt_path": str(rp),
-            "receipt_sha256": _sha256_file(rp), "query": q, "completion": completion}
+    return {"kind": "collector-native-csv-chain", "receipt_path": str(rp),
+            "receipt_sha256": _sha256_file(rp), "query": q,
+            "completion": completion, "segments": segments}
 
 
 def _v2_provenance(path, token, lo, hi):
@@ -213,6 +255,47 @@ def _write_preflight(out_dir, payload):
         f.flush()
         os.fsync(f.fileno())
     os.replace(tmp, target)
+
+
+def validate_preflight_artifact(path):
+    """Re-run the canonical preflight from its bound manifest and compare exact evidence."""
+    raw_artifact = Path(path)
+    if raw_artifact.is_symlink():
+        raise ChannelsPreflightError("preflight artifact 不得为符号链接")
+    artifact = raw_artifact.resolve()
+    try:
+        claimed = json.loads(artifact.read_text(encoding="utf-8"))
+        producer = claimed.get("producer") or {}
+        if producer != {"path": "channels_preflight.py",
+                        "sha256": _sha256_file(Path(__file__))}:
+            raise ChannelsPreflightError("preflight producer 不是当前生产脚本")
+        manifest_ref = claimed.get("manifest") or {}
+        manifest = Path(str(manifest_ref.get("path", ""))).resolve()
+        if not manifest.is_file() or manifest_ref.get("sha256") != _sha256_file(manifest):
+            raise ChannelsPreflightError("preflight manifest 绑定无效")
+        with tempfile.TemporaryDirectory(prefix="identity_preflight_recheck_") as td:
+            preflight_channels(manifest, td)
+            actual = json.loads((Path(td) / "channels_preflight.json").read_text(encoding="utf-8"))
+        if claimed != actual:
+            raise ChannelsPreflightError("preflight 与当前 manifest/collector receipts/数据实物不一致")
+        return claimed
+    except (OSError, json.JSONDecodeError, KeyError) as exc:
+        raise ChannelsPreflightError(f"preflight artifact 不可验证: {exc}") from exc
+
+
+def replay_provenance(out_dir, engine_path):
+    """Bind replay stats to the exact preflight and data inputs consumed by this run."""
+    preflight = Path(out_dir).resolve() / "channels_preflight.json"
+    obj = validate_preflight_artifact(preflight)
+    engine = Path(engine_path).resolve()
+    balances = Path(out_dir).resolve() / "balances_final.json"
+    if balances.is_symlink() or not balances.is_file():
+        raise ChannelsPreflightError("replay 尚未产出 balances_final.json，不能签 stats")
+    return {"producer": {"path": engine.name, "sha256": _sha256_file(engine)},
+            "preflight": {"path": preflight.name, "sha256": _sha256_file(preflight)},
+            "inputs": obj["inputs"],
+            "outputs": {"balances_final": {"path": balances.name,
+                         "size": balances.stat().st_size, "sha256": _sha256_file(balances)}}}
 
 
 def preflight_channels(manifest_path, out_dir, *, allowed_formats=None):
@@ -308,13 +391,32 @@ def preflight_channels(manifest_path, out_dir, *, allowed_formats=None):
                     f"{kind}: {prev['tag']}=[{prev['lo']},{prev['hi']}) -> "
                     f"{nxt['tag']}=[{nxt['lo']},{nxt['hi']})")
 
-        _write_preflight(out_dir, {"schema": PREFLIGHT_SCHEMA, "status": "PASS",
-                                   "manifest": str(manifest), "token": token,
-                                   "expected_from": expected_from, "expected_to": expected_to,
-                                   "channels": [{k: c[k] for k in
-                                                 ("tag", "path", "format", "lo", "hi", "rows",
-                                                  "min_block", "max_block", "receipt")}
-                                                for c in ordered]})
+        channel_rows, inputs = [], []
+        for c in ordered:
+            rp = Path(c["receipt"]).resolve()
+            receipt_obj = json.loads(rp.read_text(encoding="utf-8"))
+            row = {k: c[k] for k in ("tag", "path", "format", "lo", "hi", "rows",
+                                            "min_block", "max_block", "receipt")}
+            row["receipt_sha256"] = _sha256_file(rp)
+            if c["format"] == "v1csv":
+                native_path = Path(receipt_obj["provenance"]["receipt_path"]).resolve()
+                row["collector_receipt"] = {"path": str(native_path),
+                                              "sha256": _sha256_file(native_path)}
+                files = [Path(c["path"]).resolve()]
+            else:
+                files = sorted([Path(x) for x in glob.glob(str(Path(c["path"]) / "run_*" / "logs.parquet"))]
+                               + [Path(x) for x in glob.glob(str(Path(c["path"]) / "run_*" / "blocks.parquet"))])
+            for fp in files:
+                inputs.append({"path": str(fp), "size": fp.stat().st_size,
+                               "sha256": _sha256_file(fp)})
+            channel_rows.append(row)
+        payload = {"schema": PREFLIGHT_SCHEMA, "status": "PASS",
+                   "producer": {"path": "channels_preflight.py",
+                                "sha256": _sha256_file(Path(__file__))},
+                   "manifest": {"path": str(manifest), "sha256": _sha256_file(manifest)},
+                   "token": token, "expected_from": expected_from, "expected_to": expected_to,
+                   "channels": channel_rows, "inputs": sorted(inputs, key=lambda x: x["path"])}
+        _write_preflight(out_dir, payload)
         return ordered
     except (OSError, json.JSONDecodeError, ChannelsPreflightError) as e:
         _write_preflight(out_dir, {"schema": PREFLIGHT_SCHEMA, "status": "BLOCK",

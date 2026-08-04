@@ -24,15 +24,15 @@ def fixture(root, *, complete=True, receipt_supply="100"):
     state = root / "analysis-state.json"
     state.write_text(json.dumps({"chain": "arbitrum", "whale_groups": [
         {"entity_id": "e1", "addresses": [A]}]}))
-    snapshot = root / "holders.json"
-    snapshot.write_text(json.dumps({A: 50, B: 50}))
-    receipt = root / "holders_receipt.json"
-    receipt.write_text(json.dumps({
-        "schema": "identity-holder-snapshot/v1", "status": "PASS",
-        "complete_owner_universe": complete, "as_of_block": 123,
-        "total_supply_raw": receipt_supply,
-        "snapshot": {"path": "holders.json", "sha256": sha(snapshot)},
-    }))
+    from identity_gate_fixture import write_binding
+    total, binding = write_binding(root, {A: 50, B: 50}, chain="arbitrum")
+    snapshot = root / binding["snapshot_file"]
+    receipt = root / binding["receipt_file"]
+    if not complete or receipt_supply != "100":
+        obj = json.loads(receipt.read_text())
+        obj["complete_owner_universe"] = complete
+        obj["total_supply_raw"] = receipt_supply
+        receipt.write_text(json.dumps(obj))
     return state, snapshot, receipt
 
 

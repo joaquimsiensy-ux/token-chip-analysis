@@ -88,6 +88,24 @@ receipt 绑定入口脚本哈希、`audit_input_manifest.json` 哈希、参数�
 输出文件大小/哈希与关键摘要哈希。发布闸只重验 receipt 与当前文件，绝不执行
 claim 里的 `reproduce_command`。完整阴性命题还必须证明候选集完整、未决候选为零、黑箱边界已量化。证据只够否定旧结论时，必须停在 `unverified`，不得为了交付完整叙事另造一个肯定结论。
 
+### 存量 reproduce-receipt/v1 迁移
+
+`reproduce-receipt/v1` **不得原地升级**或补字段冒充 v2；旧 receipt 与旧输出先改名归档为
+`reproduce_receipt.v1.archived.json` / `reproduce_output.v1.archived.json`（保留审计链，不覆盖），
+再由唯一生产生成器 `scripts/report/reproduce_receipt.py` 重跑：
+
+```bash
+python3 scripts/report/reproduce_receipt.py <案目录> \
+  --output reproduce_output.json --receipt reproduce_receipt.json
+```
+
+controller 会先确认正式输出不存在，再独占创建 staging 文件、设置
+`CHIP_REPRODUCE_OUTPUT=<staging绝对路径>` 后执行案内固定入口。`reproduce_audit.py` 必须直接打开该
+环境变量指向的文件写入并保留 inode；禁止继续硬编码 `reproduce_output.json`，也禁止临时文件
+`os.replace`/rename 覆盖 staging。exit code 非零、未写 staging、inode 被替换、输出不是 JSON 或摘要
+无法计算均不产 PASS receipt。迁移成功后更新 claim registry 引用新 v2 receipt；旧 v1 只归档，
+不能进入发布闸。这样“存量怎么迁”由完整重跑回答，“谁生产新格式”由上述 controller 回答。
+
 ## 8. 对抗复核否决权
 
 至少设置实体归因怀疑者和完整性批评者两类独立复核。复核者直接读取原始数据，不审阅主报告叙事。任何以下发现均为发布否决项：
@@ -116,6 +134,7 @@ economic_control_ledger.json
 dormant_warehouse_audit.json
 claim_registry.json
 adversarial_review.json
+shared_release_receipt.json
 reproduce_audit.py
 reproduce_receipt.json
 reproduce_output.json
@@ -126,6 +145,8 @@ reproduce_output.json
 - `membership_ledger.json.entries[]`：`entity_id,address,membership,as_of_balance_raw,balance_source`，其中 membership 只能是 `strict|expanded|excluded`；地址规范化后全局唯一。每个有效成员必须绑定 `address-balance-snapshot/v1` 的 `path,sha256,as_of_block`，快照 `entries[]` 的地址与 `balance_raw` 必须与成员账逐行一致。零余额必须显式写 `as_of_balance_raw: 0`，或写非空 `zero_balance_proof`并由同一绑定快照证明为 0。
 - `position_ledger.json.entries[]`：`entity_id,address,location_id,amount_raw`；每条地址必须映射到同一实体的有效成员，`(location_id,address)` 唯一，金额为非负 raw integer。发布闸会按地址汇总所有位置，并要求每个有效成员的 `Σ amount_raw == as_of_balance_raw`；无位置行只能与经证明的零余额闭合。
 - `economic_control_ledger.json.entries[]`：按 `economic-control-accounting.md` §5；发布闸从明细重算 `wallet_self_held_raw == Σ position.amount_raw`、`confirmed_economic_control_raw == wallet_self_held_raw + Σ claim.token_raw`，并校验 `double_count_key` 全局唯一及所有权/数量算法/目标块证据齐全。任何 `unresolved_count` 都必须与实际 unresolved 明细一致，汇总布尔和自报 count 不作为放行证据。
+
+`accounting_mode.json` 必须是当前 `scripts/evm/accounting_gate.py`（Solana 为 `scripts/solana/accounting_gate_sol.py`）的 `accounting-gate/v1` exit 0 产物，并带脚本自身的 `producer.path/sha256`。`reconciliation_report.json` 使用 v2 target，并给四查逐项绑定 exit-0 receipt 与仓库当前白名单生产脚本：balance/supply=`scripts/evm/verify_recon.py`、supply_truth=`scripts/lib/supply_truth_gate.py`、time=`scripts/lib/time_spotcheck.py`（Solana 对应 balance/time=`scripts/solana/anchor_sampler.py`、supply=`scripts/solana/scan_token_accounts.py`）。案目录里的同名/复制脚本即使抄到正确 SHA-256 也不是生产者。`adversarial_review.json` 使用 v2 target；实体归因怀疑者与完整性批评者都必须通过当前 `scripts/report/adversarial_review_runner.py` 启动独立 entrypoint，绑定新鲜非空 artifact 与 `adversarial-review-execution/v1` execution receipt，聚合器同时重验 runner、entrypoint、artifact。示例：`python3 scripts/report/adversarial_review_runner.py <案目录> --role entity_attribution_skeptic --entrypoint review_entity.py --artifact review_entity.md --receipt review_entity_execution.json`（另一角色用 `completeness_critic`）。三者完成后由唯一生产聚合器运行 `python3 scripts/report/shared_release_receipt.py <案目录>`，生成并哈希绑定三者的 `shared-release-receipt/v1`。存量裸布尔、无 producer 的 accounting、任意 producer/runner 或无 execution receipt 的旧文件都不得手工补字段迁移：必须重跑当前 accounting/四查生产工具和两个固定 runner，再运行聚合器；任何 receipt 后替换都会阻断。
 
 涉及历史图时另需 `chart_reconciliation.json`。发布前运行：
 
