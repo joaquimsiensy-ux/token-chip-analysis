@@ -12,6 +12,7 @@ import hashlib
 import json
 import os
 import sys
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
 
@@ -48,6 +49,44 @@ def status_pass(value, extra=frozenset()) -> bool:
     if isinstance(value, bool):
         return value
     return str(value or "").strip().lower() in (PASS_WORDS | extra)
+
+
+def strict_int(value, label, errors, *, raw=False):
+    """Accept only non-boolean int or a base-10 integer string; never truncate floats."""
+    if isinstance(value, bool):
+        n = None
+    elif isinstance(value, int):
+        n = value
+    elif isinstance(value, str) and value.strip() == value \
+            and value not in {"", "+", "-"} \
+            and value.lstrip("+-").isdigit():
+        n = int(value, 10)
+    else:
+        n = None
+    if n is None:
+        errors.append(f"{label} 不是整数 raw amount" if raw else f"{label} 非整数")
+        return None
+    if n < 0:
+        errors.append(f"{label} 为负数")
+    return n
+
+
+def finite_decimal(value, label, errors):
+    if isinstance(value, bool) or not isinstance(value, (int, float, str)):
+        errors.append(f"{label} 必须是有限实数")
+        return None
+    try:
+        n = Decimal(str(value))
+    except (InvalidOperation, ValueError):
+        errors.append(f"{label} 必须是有限实数")
+        return None
+    if not n.is_finite():
+        errors.append(f"{label} 必须是有限实数")
+        return None
+    if n < 0:
+        errors.append(f"{label} 不得为负")
+        return None
+    return n
 
 
 def sha256_file(path: Path) -> str:
@@ -101,7 +140,10 @@ def check_manifest(case_dir: Path, d: dict, errors: list[str]):
         if not p.is_file():
             errors.append(f"输入文件不存在: {rel}")
             continue
-        if p.stat().st_size != int(item["size"]):
+        declared_size = strict_int(item["size"], f"输入文件 {rel} size", errors)
+        if declared_size is None:
+            continue
+        if p.stat().st_size != declared_size:
             errors.append(f"输入文件大小变化: {rel}")
             continue
         if sha256_file(p).lower() != str(item["sha256"]).lower():
@@ -142,11 +184,9 @@ def unresolved_count(d: dict, errors: list[str] | None = None, label="资产") -
     actual = sum(len(x) for x in lists)
     declared = d.get("unresolved_count")
     if declared is not None:
-        try:
-            declared_n = int(declared)
-        except (TypeError, ValueError):
-            if errors is not None:
-                errors.append(f"{label} unresolved_count 非整数")
+        local_errors = errors if errors is not None else []
+        declared_n = strict_int(declared, f"{label} unresolved_count", local_errors)
+        if declared_n is None:
             return actual or 1
         if lists and declared_n != actual and errors is not None:
             errors.append(f"{label} unresolved_count={declared_n} 与明细={actual} 不一致")
@@ -156,11 +196,14 @@ def unresolved_count(d: dict, errors: list[str] | None = None, label="资产") -
 
 def check_classification(d: dict, errors: list[str]):
     threshold = d.get("current_owner_threshold_pct")
-    if threshold is None or float(threshold) > 0.1:
+    threshold_n = finite_decimal(threshold, "current_owner_threshold_pct", errors)
+    if threshold_n is None or threshold_n > Decimal("0.1"):
         errors.append("地址分类未覆盖全部当前≥0.1%总供应 owner（0.1%/0.2% 双线，tiering §6a）")
     float_threshold = d.get("current_owner_float_threshold_pct")
-    if float_threshold is not None and float(float_threshold) > 0.2:
-        errors.append("地址分类流通线阈值超 0.2%（tiering §6a 双线）")
+    if float_threshold is not None:
+        float_n = finite_decimal(float_threshold, "current_owner_float_threshold_pct", errors)
+        if float_n is None or float_n > Decimal("0.2"):
+            errors.append("地址分类流通线阈值超 0.2%（tiering §6a 双线）")
     if not d.get("historical_peak_candidates_included"):
         errors.append("地址分类未覆盖历史峰值候选")
     n_unresolved = unresolved_count(d, errors, "地址分类")
@@ -186,14 +229,8 @@ def check_ledger(name: str, d: dict, errors: list[str]):
 
 
 def raw_int(value, label, errors):
-    try:
-        n = int(value)
-    except (TypeError, ValueError):
-        errors.append(f"{label} 不是整数 raw amount")
-        return 0
-    if n < 0:
-        errors.append(f"{label} 为负数")
-    return n
+    n = strict_int(value, label, errors, raw=True)
+    return 0 if n is None else n
 
 
 def check_three_ledgers(case_dir: Path, data: dict, errors: list[str]):
@@ -570,7 +607,9 @@ def check_claims(case_dir: Path, d: dict, report: Path | None, errors: list[str]
             if not claim.get("counter_hypotheses"):
                 errors.append(f"关键命题 {cid} 未记录备择解释")
         if ctype == "negative_exhaustive" and verdict == "confirmed":
-            if not claim.get("scope_complete") or int(claim.get("unresolved_candidates", 1)):
+            unresolved = strict_int(claim.get("unresolved_candidates", 1),
+                                    f"命题 {cid} unresolved_candidates", errors)
+            if not claim.get("scope_complete") or unresolved is None or unresolved:
                 errors.append(f"完整阴性命题 {cid} 未证明候选集完整且未决为零")
         if ctype in {"cex_identity", "cex_channel"} and verdict == "confirmed":
             if claim.get("beneficial_owner_proven") is not True:
