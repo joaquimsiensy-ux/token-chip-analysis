@@ -37,7 +37,7 @@ import argparse, csv, glob, json, os, sys, time
 
 import duckdb
 
-from channels_preflight import preflight_channels
+from channels_preflight import preflight_channels, replay_provenance
 
 Z = '0x0000000000000000000000000000000000000000'
 DEAD = '0x000000000000000000000000000000000000dead'
@@ -538,6 +538,7 @@ def main():
     print(f"value 最大位数={maxlen} -> {vt} 路径", flush=True)
     stats, mint_total = replay_pass1(con, a.out_dir, vt)
     stats.update(rej)
+    stats.update(replay_provenance(a.out_dir, __file__))
     json.dump(stats, open(f"{a.out_dir}/replay_stats.json", "w"), indent=1)
     print("stats:", json.dumps(stats, indent=1), flush=True)
     if not a.no_merged:

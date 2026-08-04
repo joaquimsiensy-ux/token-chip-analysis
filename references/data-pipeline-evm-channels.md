@@ -37,7 +37,13 @@ channels.json 的 path 字段语义（2026-07-25 SPX6900 实测坑）：hypersyn
 引用 adapter 成功收尾时原生生成的 `evm-collector-run/v2`：collector 当前脚本哈希、provider、
 冻结块界、严格前进且到达目标的 cursor，以及连续 segment output-prefix hash chain 全部重验。
 空段不接受操作者文字证明；同一 native receipt chain 本身必须证明扫描到冻结上界。预检成功或
-阻断都落 `<out-dir>/channels_preflight.json`，BLOCK 必须非零退出。
+阻断都落 `<out-dir>/channels_preflight.json`，BLOCK 必须非零退出。PASS 产物还必须记录当前
+`channels_preflight.py` producer、manifest 哈希、每段 channel/native collector receipt 哈希以及
+实际 CSV/Parquet `inputs` 的 path/size/SHA-256；三个 replay 引擎在 `replay_stats.json` 记录当前
+引擎 producer，并绑定该 preflight、完全相同的 inputs 和 `balances_final.json` 输出。G8 emitter
+会从 manifest 重新运行同一个 preflight validator 并重验上述链，不能把两份互相咬合的 JSON
+当作采集/重放执行证明。旧 preflight/stats 不允许手工补 producer 或哈希：必须让对应生产 replay
+引擎从 `channels.json` 重新预检并完整重放，生成新 stats 后再 emit identity receipt。
 
 正式 HyperSync CSV 首段必须是运行前不存在的新文件：
 

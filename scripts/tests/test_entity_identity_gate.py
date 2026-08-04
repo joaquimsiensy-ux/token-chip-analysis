@@ -27,7 +27,7 @@ def main():
             {"entity_id": "e1", "addresses": [ADDR]}]}
         dump(state_path, state)
         total, _ = write_binding(tmp, {ADDR: 100})
-        snapshot = Path(tmp) / "identity_holders.json"
+        snapshot = Path(tmp) / "balances_final.json"
         receipt = Path(tmp) / "identity_holders_receipt.json"
         gate_path = Path(tmp) / "identity_gate.json"
         built = gate.build(str(state_path), "bsc", str(snapshot), out_path=str(gate_path),

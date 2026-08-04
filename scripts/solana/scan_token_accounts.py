@@ -18,12 +18,20 @@
 - 基础布局不变：mint@0 owner@32 amount@64(u64 LE)，dataSlice{32,40} 一次带出 owner+amount
 - getProgramAccounts 无分页，一次全量返回；落盘后本地解析
 """
-import argparse, base64, json, subprocess, sys, time
+import argparse, base64, hashlib, json, subprocess, sys, time
 from pathlib import Path
 
 SPL = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
 T22 = "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
 ALPHA = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
+
+
+def sha256_file(path):
+    h = hashlib.sha256()
+    with Path(path).open("rb") as f:
+        for block in iter(lambda: f.read(4 * 1024 * 1024), b""):
+            h.update(block)
+    return h.hexdigest()
 
 
 def b58encode(b: bytes) -> str:
@@ -182,7 +190,11 @@ def main():
         elif json.loads(meta_f.read_text()) != meta:
             print(f"FATAL: 缓存 meta 与响应不闭合（ds={ds}）", file=sys.stderr)
             sys.exit(2)
-        scan_receipts.append(meta)
+        scan_receipts.append({**meta,
+            "raw_artifact": {"path": raw_f.name, "size": raw_f.stat().st_size,
+                             "sha256": sha256_file(raw_f)},
+            "meta_artifact": {"path": meta_f.name, "size": meta_f.stat().st_size,
+                              "sha256": sha256_file(meta_f)}})
         print(f"scan ds={ds}: {len(batch)} accounts, {raw_f.stat().st_size/1e6:.1f}MB, {time.time()-t0:.0f}s")
         accounts.extend(batch)
     seen_pk = set()
@@ -213,12 +225,23 @@ def main():
               "不得生成正式 holders 产物；换完整 RPC/检查过滤器后重跑。", file=sys.stderr)
         sys.exit(2)
     owners_sorted = dict(sorted(owners.items(), key=lambda kv: -kv[1]))
-    (data_dir / "holders_accounts.json").write_text(json.dumps(rows))
-    (data_dir / "holders_owners.json").write_text(json.dumps(owners_sorted))
+    accounts_out = data_dir / "holders_accounts.json"
+    owners_out = data_dir / "holders_owners.json"
+    accounts_out.write_text(json.dumps(rows))
+    owners_out.write_text(json.dumps(owners_sorted))
     (data_dir / "holders_snapshot_meta.json").write_text(json.dumps({
         "schema": "solana-holder-snapshot-v2", "mint": args.mint, "program": prog,
         "rpc": args.rpc, "supply_raw": str(supply_raw), "sum_accounts_raw": str(total),
-        "decimals": decimals, "closed": True, "scans": scan_receipts,
+        "decimals": decimals, "closed": True,
+        "producer": {"path": "scan_token_accounts.py", "sha256": sha256_file(__file__)},
+        "supply_receipt": {"path": sup_f.name, "size": sup_f.stat().st_size,
+                           "sha256": sha256_file(sup_f)},
+        "outputs": {
+            "holders_accounts": {"path": accounts_out.name, "size": accounts_out.stat().st_size,
+                                 "sha256": sha256_file(accounts_out)},
+            "holders_owners": {"path": owners_out.name, "size": owners_out.stat().st_size,
+                               "sha256": sha256_file(owners_out)}},
+        "scans": scan_receipts,
     }, indent=2, sort_keys=True))
 
     ui = lambda x: x / 10**decimals

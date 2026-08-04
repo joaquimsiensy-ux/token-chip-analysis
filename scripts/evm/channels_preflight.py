@@ -12,6 +12,7 @@ import glob
 import hashlib
 import json
 import os
+import tempfile
 from pathlib import Path
 
 
@@ -256,6 +257,44 @@ def _write_preflight(out_dir, payload):
     os.replace(tmp, target)
 
 
+def validate_preflight_artifact(path):
+    """Re-run the canonical preflight from its bound manifest and compare exact evidence."""
+    artifact = Path(path).resolve()
+    try:
+        claimed = json.loads(artifact.read_text(encoding="utf-8"))
+        producer = claimed.get("producer") or {}
+        if producer != {"path": "channels_preflight.py",
+                        "sha256": _sha256_file(Path(__file__))}:
+            raise ChannelsPreflightError("preflight producer 不是当前生产脚本")
+        manifest_ref = claimed.get("manifest") or {}
+        manifest = Path(str(manifest_ref.get("path", ""))).resolve()
+        if not manifest.is_file() or manifest_ref.get("sha256") != _sha256_file(manifest):
+            raise ChannelsPreflightError("preflight manifest 绑定无效")
+        with tempfile.TemporaryDirectory(prefix="identity_preflight_recheck_") as td:
+            preflight_channels(manifest, td)
+            actual = json.loads((Path(td) / "channels_preflight.json").read_text(encoding="utf-8"))
+        if claimed != actual:
+            raise ChannelsPreflightError("preflight 与当前 manifest/collector receipts/数据实物不一致")
+        return claimed
+    except (OSError, json.JSONDecodeError, KeyError) as exc:
+        raise ChannelsPreflightError(f"preflight artifact 不可验证: {exc}") from exc
+
+
+def replay_provenance(out_dir, engine_path):
+    """Bind replay stats to the exact preflight and data inputs consumed by this run."""
+    preflight = Path(out_dir).resolve() / "channels_preflight.json"
+    obj = validate_preflight_artifact(preflight)
+    engine = Path(engine_path).resolve()
+    balances = Path(out_dir).resolve() / "balances_final.json"
+    if balances.is_symlink() or not balances.is_file():
+        raise ChannelsPreflightError("replay 尚未产出 balances_final.json，不能签 stats")
+    return {"producer": {"path": engine.name, "sha256": _sha256_file(engine)},
+            "preflight": {"path": preflight.name, "sha256": _sha256_file(preflight)},
+            "inputs": obj["inputs"],
+            "outputs": {"balances_final": {"path": balances.name,
+                         "size": balances.stat().st_size, "sha256": _sha256_file(balances)}}}
+
+
 def preflight_channels(manifest_path, out_dir, *, allowed_formats=None):
     manifest = Path(manifest_path).resolve()
     base = manifest.parent
@@ -349,13 +388,32 @@ def preflight_channels(manifest_path, out_dir, *, allowed_formats=None):
                     f"{kind}: {prev['tag']}=[{prev['lo']},{prev['hi']}) -> "
                     f"{nxt['tag']}=[{nxt['lo']},{nxt['hi']})")
 
-        _write_preflight(out_dir, {"schema": PREFLIGHT_SCHEMA, "status": "PASS",
-                                   "manifest": str(manifest), "token": token,
-                                   "expected_from": expected_from, "expected_to": expected_to,
-                                   "channels": [{k: c[k] for k in
-                                                 ("tag", "path", "format", "lo", "hi", "rows",
-                                                  "min_block", "max_block", "receipt")}
-                                                for c in ordered]})
+        channel_rows, inputs = [], []
+        for c in ordered:
+            rp = Path(c["receipt"]).resolve()
+            receipt_obj = json.loads(rp.read_text(encoding="utf-8"))
+            row = {k: c[k] for k in ("tag", "path", "format", "lo", "hi", "rows",
+                                            "min_block", "max_block", "receipt")}
+            row["receipt_sha256"] = _sha256_file(rp)
+            if c["format"] == "v1csv":
+                native_path = Path(receipt_obj["provenance"]["receipt_path"]).resolve()
+                row["collector_receipt"] = {"path": str(native_path),
+                                              "sha256": _sha256_file(native_path)}
+                files = [Path(c["path"]).resolve()]
+            else:
+                files = sorted([Path(x) for x in glob.glob(str(Path(c["path"]) / "run_*" / "logs.parquet"))]
+                               + [Path(x) for x in glob.glob(str(Path(c["path"]) / "run_*" / "blocks.parquet"))])
+            for fp in files:
+                inputs.append({"path": str(fp), "size": fp.stat().st_size,
+                               "sha256": _sha256_file(fp)})
+            channel_rows.append(row)
+        payload = {"schema": PREFLIGHT_SCHEMA, "status": "PASS",
+                   "producer": {"path": "channels_preflight.py",
+                                "sha256": _sha256_file(Path(__file__))},
+                   "manifest": {"path": str(manifest), "sha256": _sha256_file(manifest)},
+                   "token": token, "expected_from": expected_from, "expected_to": expected_to,
+                   "channels": channel_rows, "inputs": sorted(inputs, key=lambda x: x["path"])}
+        _write_preflight(out_dir, payload)
         return ordered
     except (OSError, json.JSONDecodeError, ChannelsPreflightError) as e:
         _write_preflight(out_dir, {"schema": PREFLIGHT_SCHEMA, "status": "BLOCK",

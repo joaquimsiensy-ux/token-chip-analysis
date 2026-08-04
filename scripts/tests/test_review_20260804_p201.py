@@ -24,17 +24,10 @@ def fixture(root, *, complete=True, receipt_supply="100"):
     state = root / "analysis-state.json"
     state.write_text(json.dumps({"chain": "arbitrum", "whale_groups": [
         {"entity_id": "e1", "addresses": [A]}]}))
-    snapshot = root / "holders.json"
-    snapshot.write_text(json.dumps({A: 50, B: 50}))
-    preflight = root / "channels_preflight.json"
-    preflight.write_text(json.dumps({"schema": "evm-channels-preflight/v1",
-        "status": "PASS", "token": "0xtoken", "expected_to": 124}))
-    stats = root / "replay_stats.json"
-    stats.write_text(json.dumps({"gate_pass": True, "supply_check_ok": True,
-                                 "sum_balances_wei": "100"}))
-    receipt = root / "holders_receipt.json"
-    from identity_snapshot_receipt import emit_evm
-    emit_evm("arbitrum", "0xtoken", 123, snapshot, preflight, stats, 100, receipt)
+    from identity_gate_fixture import write_binding
+    total, binding = write_binding(root, {A: 50, B: 50}, chain="arbitrum")
+    snapshot = root / binding["snapshot_file"]
+    receipt = root / binding["receipt_file"]
     if not complete or receipt_supply != "100":
         obj = json.loads(receipt.read_text())
         obj["complete_owner_universe"] = complete

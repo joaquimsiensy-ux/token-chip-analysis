@@ -1,27 +1,62 @@
 #!/usr/bin/env python3
-import json,sys,tempfile
+"""Round4b F-01: identity receipts require real collector/replay or holder-scan chains."""
+import base64,hashlib,json,os,subprocess,sys,tempfile
 from pathlib import Path
-HERE=Path(__file__).resolve().parent; REPORT=HERE.parent/"report"; sys.path[:0]=[str(REPORT),str(HERE.parent/"evm")]
+HERE=Path(__file__).resolve().parent; EVM=HERE.parent/"evm"; SOL=HERE.parent/"solana"; REPORT=HERE.parent/"report"
+sys.path[:0]=[str(EVM),str(REPORT),str(SOL)]
+TOKEN="0x"+"a"*40; OWNER="0x"+"b"*40; ZERO="0x"+"0"*40
+def run_evm(root):
+ import fetch_hypersync as fetch
+ class R:
+  status_code=200; text=""
+  def json(self): return {"data":[{"blocks":[{"number":5,"timestamp":1}],"logs":[{
+   "block_number":5,"block_hash":"0xh","log_index":0,"transaction_hash":"0xt",
+   "topic1":"0x"+"0"*64,"topic2":"0x"+"0"*24+OWNER[2:],"data":hex(100)}]}],
+   "next_block":10,"archive_height":10}
+ fetch.requests.post=lambda *a,**k:R(); old=sys.argv
+ csv=root/"events.csv"; native=root/"collector.json"
+ sys.argv=["fetch_hypersync.py","secret","0","--url","https://fixture/query","--token-addr",TOKEN,
+           "--out",str(csv),"--to-block","10","--receipt",str(native),"--sleep","0"]
+ try: fetch.main()
+ finally: sys.argv=old
+ from make_channel_receipt import make_receipt
+ channel=root/"channel.json"; channel.write_text(json.dumps(make_receipt(csv,"v1csv",TOKEN,0,10,"p0",collector_receipt=native)))
+ manifest=root/"channels.json"; manifest.write_text(json.dumps({"schema":"evm-channels/v2","token":TOKEN,"expected_from":0,"expected_to":10,"channels":[{"tag":"p0","path":str(csv),"format":"v1csv","lo":0,"hi":10,"receipt":str(channel)}]}))
+ p=subprocess.run([sys.executable,str(EVM/"replay_pass1.py"),"--channels",str(manifest),"--out-dir",str(root)],capture_output=True,text=True)
+ assert p.returncode==0,p.stdout+p.stderr
+ return root/"balances_final.json",root/"channels_preflight.json",root/"replay_stats.json"
+def run_solana(root):
+ import scan_token_accounts as scan
+ owner_bytes=bytes(range(32)); account_data=base64.b64encode(owner_bytes+(100).to_bytes(8,"little")).decode()
+ def fake_rpc(url,payload,out,timeout):
+  method=payload["method"]
+  if method=="getAccountInfo": obj={"result":{"value":{"owner":scan.SPL}}}
+  elif method=="getTokenSupply": obj={"result":{"context":{"slot":123},"value":{"amount":"100","decimals":0}}}
+  else: obj={"result":{"context":{"slot":123},"value":[{"pubkey":"acct","account":{"data":[account_data,"base64"]}}]}}
+  Path(out).write_text(json.dumps(obj)); return True
+ scan.rpc_call=fake_rpc; old_argv,old_cwd=sys.argv,os.getcwd(); os.chdir(root)
+ sys.argv=["scan_token_accounts.py","mint","--program","spl","--rpc","https://fixture"]
+ try: scan.main()
+ finally: sys.argv=old_argv; os.chdir(old_cwd)
+ return root/"data"/"holders_owners.json",root/"data"/"holders_snapshot_meta.json"
 def main():
  from identity_snapshot_receipt import emit_evm,emit_solana
  import entity_identity_gate as gate
  with tempfile.TemporaryDirectory() as td:
-  d=Path(td); snap=d/"holders.json"; snap.write_text(json.dumps({"0xabc":"100"}))
-  pf=d/"channels_preflight.json"; pf.write_text(json.dumps({"schema":"evm-channels-preflight/v1","status":"PASS","token":"0xtoken","expected_to":124}))
-  stats=d/"replay_stats.json"; stats.write_text(json.dumps({"gate_pass":True,"supply_check_ok":True,"sum_balances_wei":"100"}))
-  out=d/"receipt.json"; emit_evm("bsc","0xtoken",123,snap,pf,stats,100,out)
+  d=Path(td); snap,pf,stats=run_evm(d); out=d/"identity.json"
+  emit_evm("bsc",TOKEN,9,snap,pf,stats,100,out,replay_engine="replay_pass1.py")
   assert gate.load_snapshot_binding(str(d/"analysis-state.json"),str(snap),str(out),100,chain="bsc")[1]==100
-  old=d/"old.json"; old.write_text(json.dumps({"schema":"identity-holder-snapshot/v1","status":"PASS","complete_owner_universe":True,"as_of_block":123,"total_supply_raw":"100","snapshot":{"path":"holders.json","sha256":"x"}}))
-  try: gate.load_snapshot_binding(str(d/"analysis-state.json"),str(snap),str(old),100,chain="bsc")
+  forged=d/"forged_pf.json"; forged.write_text(json.dumps({"schema":"evm-channels-preflight/v1","status":"PASS","token":TOKEN,"expected_to":10,"producer":{"path":"channels_preflight.py","sha256":hashlib.sha256((EVM/"channels_preflight.py").read_bytes()).hexdigest()}}))
+  try: emit_evm("bsc",TOKEN,9,snap,forged,stats,100,d/"bad.json",replay_engine="replay_pass1.py")
   except ValueError: pass
-  else: raise AssertionError("handwritten v1 must block")
+  else: raise AssertionError("isolated copied-hash preflight must block")
  with tempfile.TemporaryDirectory() as td:
-  d=Path(td); snap=d/"holders_owners.json"; snap.write_text(json.dumps({"owner":"100"}))
-  meta=d/"holders_snapshot_meta.json"; meta.write_text(json.dumps({"schema":"solana-holder-snapshot-v2","mint":"mint","supply_raw":"100","sum_accounts_raw":"100","closed":True,"scans":[]}))
-  emit_solana("mint",123,snap,meta,100,d/"receipt.json")
- try: emit_evm("filecoin","x",1,Path("x"),Path("x"),Path("x"),1,Path("x"))
- except ValueError: pass
- else: raise AssertionError("unsupported chain must fail")
- print("PASS: production EVM/Solana identity emitters; handwritten/unsupported blocked")
+  d=Path(td); snap,meta=run_solana(d); out=snap.parent/"identity.json"
+  emit_solana("mint",123,snap,meta,100,out)
+  m=json.loads(meta.read_text()); m["producer"]["sha256"]=hashlib.sha256((SOL/"scan_token_accounts.py").read_bytes()).hexdigest(); m["scans"]=[]; meta.write_text(json.dumps(m))
+  try: emit_solana("mint",123,snap,meta,100,snap.parent/"bad.json")
+  except ValueError: pass
+  else: raise AssertionError("isolated Solana meta without scan artifacts must block")
+ print("PASS: real EVM collector+preflight+replay and Solana scan chains; copied-hash self-reports blocked")
  return 0
 if __name__=="__main__": raise SystemExit(main())
