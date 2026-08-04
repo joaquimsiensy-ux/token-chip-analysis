@@ -26,7 +26,7 @@ def run_case(tag, md_text, json_obj, expect_exit, expect_html_has=None, expect_o
     with tempfile.TemporaryDirectory() as d:
         open(os.path.join(d, 'r.md'), 'w').write(md_text)
         cmd = [sys.executable, SCRIPT, '--mode', mode, '--md', 'r.md', '--out', 'r.html']
-        if mode != 'analysis':
+        if mode not in {'analysis-new', 'analysis-audit'}:
             cmd += ['--degrade-reason', '离线渲染契约测试']
         if json_obj is not None:
             json.dump(json_obj, open(os.path.join(d, 'a.json'), 'w'), ensure_ascii=False)
@@ -86,7 +86,8 @@ def main():
     ok &= run_case('G8 flag未解决=WARN 拒交付', MD, None, 1, expect_out='无 resolution',
                    state_obj=STATE, gate_obj=GATE_BAD)
     ok &= run_case('G8 全解决=过闸', MD, None, 0, state_obj=STATE, gate_obj=GATE_OK)
-    ok &= run_case('analysis 缺正式 gate 资产拒绝', MD, None, 2, mode='analysis')
+    ok &= run_case('analysis-new 缺正式 gate 资产拒绝', MD, None, 2,
+                   mode='analysis-new')
     ok &= run_case('降级模式必须带可见水印', MD, None, 0,
                    expect_html_has='非正式分析交付物')
     print('PASS: build_html 九条契约全过（含 analysis/legacy 模式边界）' if ok else 'FAIL: 见上')

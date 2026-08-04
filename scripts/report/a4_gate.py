@@ -20,6 +20,7 @@ mtime 不作裁决依据（cp -p 误伤 / touch 绕过，codex 复核否决）�
   python3 a4_gate.py register --case-dir <案目录> --claims-file <claims.json>
       # claims.json: [{"id": "C1", "text": "……", "files": [...]}, ...]
   python3 a4_gate.py finalize --case-dir <案目录> --verdicts-file <verdicts.json> \
+      --workflow-type <new-analysis|independent-audit> \
       --seal-files findings.md,analysis-state.json,facts.json,identity_gate.json [--charts-dir charts/final]
       # verdicts.json: [{"id": "C1", "verdict": "CONFIRMED|WEAKENED|REFUTED",
       #                  "revision_note": "WEAKENED/REFUTED 必填"}, ...]
@@ -37,6 +38,7 @@ from pathlib import Path
 CLAIMS_NAME = "a4_claims.json"
 SEAL_NAME = "a4_seal.json"
 VERDICTS = {"CONFIRMED", "WEAKENED", "REFUTED"}
+WORKFLOW_TYPES = {"new-analysis", "independent-audit"}
 MANDATORY_SEAL_FILES = {"findings.md", "analysis-state.json", "facts.json", "identity_gate.json"}
 
 
@@ -195,7 +197,8 @@ def cmd_finalize(a):
     for v in verdicts:
         vd = str(v["verdict"]).strip().upper()
         counts[vd] = counts.get(vd, 0) + 1
-    seal = {"schema": "a4-seal/v2", "gate": "a4_gate", "verdict": "PASS", "exit_code": 0,
+    seal = {"schema": "a4-seal/v3", "gate": "a4_gate", "verdict": "PASS", "exit_code": 0,
+            "workflow_type": a.workflow_type,
             "sealed_at_utc": utcnow(),
             "registry": {"path": CLAIMS_NAME, "sha256": sha256_file(reg_path)},
             "verdicts": {"path": verdict_rel, "sha256": sha256_file(verdict_path)},
@@ -229,6 +232,8 @@ def main():
                    help="逗号分隔终版分析文件（相对案目录），如 findings.md,analysis-state.json")
     f.add_argument("--charts-dir", default="charts/final",
                    help="A5 报告图专用目录（封口时必须为空；默认 charts/final）")
+    f.add_argument("--workflow-type", choices=sorted(WORKFLOW_TYPES), required=True,
+                   help="不可变发布轨道：全新分析或净室复核")
     a = ap.parse_args()
     try:
         return {"register": cmd_register, "finalize": cmd_finalize}[a.subcmd](a)

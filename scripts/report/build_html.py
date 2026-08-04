@@ -5,7 +5,7 @@
 （取代 PDF；md2pdf.py 保留，仅当用户点名要 PDF 时用）。
 
 用法：
-  python3 build_html.py --mode analysis --md 报告.md --out 报告.html \
+  python3 build_html.py --mode analysis-new --md 报告.md --out 报告.html \
     --facts facts.json --state analysis-state.json --a4-seal a4_seal.json
   python3 build_html.py --mode update|legacy-recompile --degrade-reason "理由" \
     --md 简报.md --out 简报.html
@@ -251,8 +251,10 @@ def md_to_html(md_text, mddir, warns):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--mode", choices=["analysis", "update", "legacy-recompile"], required=True,
-                    help="analysis=正式交付全闸；update/legacy-recompile=显式降级产物")
+    formal_modes = {"analysis-new": "new-analysis",
+                    "analysis-audit": "independent-audit"}
+    ap.add_argument("--mode", choices=[*formal_modes, "update", "legacy-recompile"], required=True,
+                    help="analysis-new/analysis-audit=两条必经正式门禁；其余为降级产物")
     ap.add_argument("--degrade-reason",
                     help="update/legacy-recompile 必填；写入可见水印与 HTML 注释")
     ap.add_argument("--md", required=True)
@@ -274,15 +276,15 @@ def main():
                          "注释持久留痕，不是裸开关")
     a = ap.parse_args()
 
-    if a.mode == "analysis":
+    if a.mode in formal_modes:
         missing = [flag for flag, value in (("--facts", a.facts), ("--state", a.state),
                                              ("--a4-seal", a.a4_seal)) if not value]
         if missing:
-            ap.error("analysis 模式缺正式 gate 资产: " + ", ".join(missing))
+            ap.error(f"{a.mode} 模式缺正式 gate 资产: " + ", ".join(missing))
         if a.skip_identity_gate or a.skip_a4_gate_reason:
-            ap.error("analysis 模式禁止 skip gate；请修复资产或显式改用降级模式")
+            ap.error(f"{a.mode} 模式禁止 skip gate；请修复资产或显式改用降级模式")
         if a.json:
-            ap.error("analysis 模式禁止传入未封口 --json 附录；机器附录须先纳入 A4 seal")
+            ap.error(f"{a.mode} 模式禁止传入未封口 --json 附录；机器附录须先纳入 A4 seal")
 
         # P0-01：正式编译的事实输入只能来自 seal 所在案目录的标准资产。
         # CLI 参数保留是为了兼容显式调用和清晰报错，不是自由输入通道。
@@ -293,7 +295,7 @@ def main():
                 ("--facts", a.facts, _formal_facts),
                 ("--state", a.state, _formal_state)):
             if Path(_given).resolve() != _expected:
-                ap.error(f"analysis 模式 {_flag} 必须等于 seal 案目录标准路径: {_expected}")
+                ap.error(f"{a.mode} 模式 {_flag} 必须等于 seal 案目录标准路径: {_expected}")
         # 后续渲染不再使用 CLI 原始字符串，从 seal 案目录重建唯一输入。
         a.facts = str(_formal_facts)
         a.state = str(_formal_state)
@@ -311,23 +313,26 @@ def main():
     # ＝报告编不出来）、md 引用的全部图片位于封口 charts_dir 下；mtime 仅 NOTE 不裁决。
     mode_note_html = ""
     degraded_banner = ""
-    if a.mode != "analysis":
+    if a.mode not in formal_modes:
         reason = str(a.degrade_reason).strip()
         print(f"[NOTE] {a.mode} 显式降级构建: {reason}")
         mode_note_html = f"<!-- build-mode={a.mode}; degraded: {html.escape(reason)} -->\n"
         degraded_banner = (f'<div class="degraded-banner">非正式分析交付物 · {html.escape(a.mode)}：'
                            f'{html.escape(reason)}</div>')
-    if a.mode == "analysis":
+    if a.mode in formal_modes:
         try:
             _seal = json.load(open(a.a4_seal, encoding="utf-8"))
             _sdir = Path(a.a4_seal).resolve().parent
             _case = Path(mddir).resolve()
             if _sdir != _case:
                 warns.append("[WARN] G9 seal 与报告不在同一案目录")
-            if _seal.get("schema") != "a4-seal/v2" or _seal.get("verdict") != "PASS" \
+            if _seal.get("schema") != "a4-seal/v3" or _seal.get("verdict") != "PASS" \
                     or not _seal.get("claims"):
                 warns.append("[WARN] G9 a4_seal.json 无效（schema/verdict/claims 缺失）——"
                              "A4 收尾必须 a4_gate.py finalize 封口成功后才编报告")
+            elif _seal.get("workflow_type") != formal_modes[a.mode]:
+                warns.append(f"[WARN] G9 workflow_type 与构建模式不匹配: "
+                             f"seal={_seal.get('workflow_type')} mode={a.mode}")
             else:
                 def checked(rel, label):
                     if not isinstance(rel, str) or os.path.isabs(rel) or ".." in Path(rel).parts:
@@ -432,9 +437,10 @@ def main():
         warns += [f"[WARN] {e}" for e in gate_errs]
         for nt in gate_notes:
             print(f"[NOTE] {nt}")
-    if a.mode == "analysis":
+    if a.mode in formal_modes:
         import audit_release_gate
-        audit_errors = audit_release_gate.run(Path(mddir), Path(a.md).resolve())
+        audit_errors = audit_release_gate.run(
+            Path(mddir), Path(a.md).resolve(), profile=formal_modes[a.mode])
         warns += [f"[WARN] audit release gate: {e}" for e in audit_errors]
     body = md_to_html(md_text, mddir, warns)
 

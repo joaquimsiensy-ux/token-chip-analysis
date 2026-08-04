@@ -16,8 +16,7 @@ from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
 
-REQUIRED = (
-    "audit_input_manifest.json",
+SHARED_REQUIRED = (
     "accounting_mode.json",
     "reconciliation_report.json",
     "address_classification.json",
@@ -25,10 +24,17 @@ REQUIRED = (
     "position_ledger.json",
     "economic_control_ledger.json",
     "dormant_warehouse_audit.json",
-    "claim_registry.json",
     "adversarial_review.json",
+)
+AUDIT_ONLY_REQUIRED = (
+    "audit_input_manifest.json",
+    "claim_registry.json",
     "reproduce_audit.py",
 )
+REQUIRED_BY_PROFILE = {
+    "new-analysis": SHARED_REQUIRED,
+    "independent-audit": SHARED_REQUIRED + AUDIT_ONLY_REQUIRED,
+}
 PASS_WORDS = {"pass", "passed", "ok"}
 ACCOUNTING_EXTRA = frozenset({"standard"})
 DECISIVE_TYPES = {
@@ -650,13 +656,16 @@ def check_chart(d: dict, errors: list[str]):
         errors.append("历史图使用混合插值或末日封口")
 
 
-def run(case_dir: Path, report: Path | None):
+def run(case_dir: Path, report: Path | None, *, profile="independent-audit"):
     errors = []
     case_dir = case_dir.resolve()
-    missing = [name for name in REQUIRED if not (case_dir / name).is_file()]
+    if profile not in REQUIRED_BY_PROFILE:
+        raise ValueError(f"未知发布 profile: {profile}")
+    required = REQUIRED_BY_PROFILE[profile]
+    missing = [name for name in required if not (case_dir / name).is_file()]
     errors.extend(f"缺必需资产: {name}" for name in missing)
     data = {}
-    for name in REQUIRED:
+    for name in required:
         p = case_dir / name
         if p.suffix == ".json" and p.is_file():
             data[name] = load_json(p, errors)
@@ -695,6 +704,8 @@ def main(argv=None):
     ap.add_argument("case_dir", type=Path)
     ap.add_argument("--report", type=Path)
     ap.add_argument("--json-out", type=Path)
+    ap.add_argument("--profile", choices=sorted(REQUIRED_BY_PROFILE),
+                    default="independent-audit")
     args = ap.parse_args(argv)
     if not args.case_dir.is_dir():
         print(f"ERROR: 案目录不存在: {args.case_dir}", file=sys.stderr)
@@ -703,7 +714,7 @@ def main(argv=None):
     if report and not report.is_file():
         print(f"ERROR: 报告不存在: {report}", file=sys.stderr)
         return 1
-    errors = run(args.case_dir, report)
+    errors = run(args.case_dir, report, profile=args.profile)
     result = {"status": "BLOCK" if errors else "PASS", "errors": errors}
     if args.json_out:
         args.json_out.write_text(json.dumps(result, ensure_ascii=False, indent=2) + "\n",
@@ -713,7 +724,7 @@ def main(argv=None):
         for item in errors:
             print(f"- {item}")
         return 2
-    print("PASS: 独立复核必需资产、证据链、否决项与图表门禁全部通过")
+    print(f"PASS: {args.profile} 必经发布门禁全部通过")
     return 0
 
 
