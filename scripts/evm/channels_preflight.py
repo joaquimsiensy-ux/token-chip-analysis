@@ -259,7 +259,10 @@ def _write_preflight(out_dir, payload):
 
 def validate_preflight_artifact(path):
     """Re-run the canonical preflight from its bound manifest and compare exact evidence."""
-    artifact = Path(path).resolve()
+    raw_artifact = Path(path)
+    if raw_artifact.is_symlink():
+        raise ChannelsPreflightError("preflight artifact 不得为符号链接")
+    artifact = raw_artifact.resolve()
     try:
         claimed = json.loads(artifact.read_text(encoding="utf-8"))
         producer = claimed.get("producer") or {}

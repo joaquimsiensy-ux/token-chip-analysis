@@ -46,13 +46,19 @@ def run_review(case_dir, role, entrypoint, artifact, receipt):
     if role not in ROLES:
         raise ValueError(f"unsupported adversarial role: {role}")
     entry = contained_regular(root, entrypoint, "review entrypoint")
-    final = (root / artifact).resolve()
+    final_raw = root / artifact
+    if final_raw.is_symlink():
+        raise ValueError("review artifact path must not be a symlink")
+    final = final_raw.resolve()
     final.relative_to(root)
-    if final.exists() or final.is_symlink():
+    if final.exists():
         raise ValueError("review artifact must be absent before controlled execution")
-    receipt_path = (root / receipt).resolve()
+    receipt_raw = root / receipt
+    if receipt_raw.is_symlink():
+        raise ValueError("review execution receipt path must not be a symlink")
+    receipt_path = receipt_raw.resolve()
     receipt_path.relative_to(root)
-    if receipt_path.exists() or receipt_path.is_symlink():
+    if receipt_path.exists():
         raise ValueError("review execution receipt must be absent before controlled execution")
     staging = root / f".review-{role}-{secrets.token_hex(12)}.staging"
     env = os.environ.copy()

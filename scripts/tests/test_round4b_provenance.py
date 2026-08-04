@@ -107,6 +107,15 @@ def test_adversarial_runner_failure_is_fail_closed():
             "--receipt", "execution.json"], capture_output=True, text=True)
         assert proc.returncode == 2 and not (root / "execution.json").exists()
         assert not (root / "review.md").exists()
+        good = root / "good_review.py"
+        good.write_text("import os\nfrom pathlib import Path\nPath(os.environ['CHIP_REVIEW_OUTPUT']).write_text('ok')\n")
+        linked = root / "linked_review.py"
+        linked.symlink_to(good)
+        proc = subprocess.run([
+            sys.executable, str(runner), str(root), "--role", "completeness_critic",
+            "--entrypoint", linked.name, "--artifact", "review.md",
+            "--receipt", "execution.json"], capture_output=True, text=True)
+        assert proc.returncode == 2 and not (root / "execution.json").exists()
 
 
 def main():

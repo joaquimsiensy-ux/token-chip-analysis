@@ -18,8 +18,10 @@ def total_snapshot(p):
   vals.append(int(v))
  return sum(vals)
 def ref(root,p):
- p=Path(p).resolve(); root=Path(root).resolve(); p.relative_to(root)
- if p.is_symlink() or not p.is_file(): raise ValueError("source must be regular case file")
+ raw=Path(p)
+ if raw.is_symlink(): raise ValueError("source must be regular case file")
+ p=raw.resolve(); root=Path(root).resolve(); p.relative_to(root)
+ if not p.is_file(): raise ValueError("source must be regular case file")
  return {"path":p.name,"sha256":sha(p)}
 def write(payload,out):
  out=Path(out).resolve(); tmp=out.with_name(f".{out.name}.tmp.{os.getpid()}")
@@ -34,6 +36,8 @@ def base(chain,token,block,snapshot,total,source):
   "adapter":chain,"token":str(token),"as_of_block":int(block),"total_supply_raw":str(total),
   "snapshot":{"path":snapshot.name,"sha256":sha(snapshot)},"source":source}
 def validate_evm_sources(snapshot,preflight,stats,total,replay_engine,token,block):
+ if any(Path(p).is_symlink() for p in (snapshot,preflight,stats)):
+  raise ValueError("EVM identity source must not be a symlink")
  root=Path(snapshot).resolve().parent
  if Path(preflight).resolve().parent!=root or Path(stats).resolve().parent!=root:
   raise ValueError("EVM snapshot/preflight/stats must share one case output directory")
@@ -66,6 +70,8 @@ def emit_evm(chain,token,block,snapshot,preflight,stats,total,out,replay_engine=
  return write(base(chain,token,block,snapshot,total,source),out)
 
 def validate_solana_source(mint,snapshot,meta,total):
+ if Path(snapshot).is_symlink() or Path(meta).is_symlink():
+  raise ValueError("Solana identity source must not be a symlink")
  root=Path(snapshot).resolve().parent; m=load(meta); collector=SOL/"scan_token_accounts.py"
  if Path(meta).resolve().parent!=root:
   raise ValueError("Solana snapshot/meta must share one collector output directory")
@@ -87,8 +93,10 @@ def validate_solana_source(mint,snapshot,meta,total):
 
 def ref_with_size(root,item,label):
  if not isinstance(item,dict): raise ValueError(f"{label} artifact missing")
- p=(Path(root)/str(item.get("path",""))).resolve(); p.relative_to(Path(root).resolve())
- if p.is_symlink() or not p.is_file() or item.get("size")!=p.stat().st_size or item.get("sha256")!=sha(p):
+ raw=Path(root)/str(item.get("path",""))
+ if raw.is_symlink(): raise ValueError(f"{label} artifact binding invalid")
+ p=raw.resolve(); p.relative_to(Path(root).resolve())
+ if not p.is_file() or item.get("size")!=p.stat().st_size or item.get("sha256")!=sha(p):
   raise ValueError(f"{label} artifact binding invalid")
  return p
 
@@ -115,8 +123,10 @@ def validate_receipt(receipt,snapshot,total,chain):
    stats=(root/str((src.get("replay_stats") or {}).get("path",""))).resolve()
    validate_evm_sources(snapshot,preflight,stats,total,(src.get("collector") or {}).get("path"),r.get("token"),r.get("as_of_block"))
   for key in (("snapshot_meta",) if chain=="sol" else ("preflight","replay_stats")):
-   item=src.get(key) or {}; path=(root/str(item.get("path",""))).resolve(); path.relative_to(root)
-   if path.is_symlink() or not path.is_file() or item.get("sha256")!=sha(path): raise ValueError(f"identity source {key} changed")
+   item=src.get(key) or {}; raw=root/str(item.get("path",""))
+   if raw.is_symlink(): raise ValueError(f"identity source {key} changed")
+   path=raw.resolve(); path.relative_to(root)
+   if not path.is_file() or item.get("sha256")!=sha(path): raise ValueError(f"identity source {key} changed")
  except Exception as exc: errors.append(str(exc))
  return errors
 
