@@ -28,7 +28,7 @@ description: 对已具备受支持数据管线的链上代币做机构级庄家�
 | A2 对账关卡 | 四查：余额/供给闭合/**供给真值闸**/时间抽查 | A2＋当链 recon 分册 | 四查不过不进分析；supply_truth_gate：0 PASS/2 FAIL 余额改实时直查/1 修通道重跑；time_spotcheck 同语义（默认锚点直查，全史重拉仅例外） | supply_truth.json、anchor_plan.json、time_spotcheck.json |
 | A3 分析 | 标注→归因→聚类→判级→ET 双闸→演变重放→事实/状态编译 | A3＋**casebook C/E 册全过一遍**＋playbook 按需 | EF-1～EF-3 与 G8：任一未闭合报告物理编不出 | findings.md、facts.json、analysis-state.json、identity_gate.json |
 | A4 对抗复核 | claims 登记→扰动前置→揭盲→N 路怀疑者→三档裁决→**finalize 封口** | A4＋evidence-wording §10；casebook 三册作备择弹药 | 三档必须实际核查，"理论上可能"不算推翻；**a4_gate finalize 封口前禁进 A5（0 封口/2 未决拒封）** | a4_claims.json、a4_seal.json、复核修正记录 |
-| A5 报告 | 三标准图＋流转图＋HTML＋质检（图一律 charts/final/） | A5＋report-template | build_html 退出码 0（缺图/G8/**G9 封口哈希**拒交付；--a4-seal 必传；有 WARN 不写出文件） | 报告.md、报告.html |
+| A5 报告 | 三标准图＋流转图＋HTML＋质检（图一律 charts/final/） | A5＋report-template | build_html 退出码 0（缺图/G8/**G9 A4 哈希/G10 A5 报告 seal**拒交付；--a4-seal/--a5-seal 必传；有 WARN 不写出文件） | 报告.md、a5_report_seal.json、报告.html |
 | A6 复盘 | **仅用户明确要求时执行，不自动触发**：教训分流入库（分流决策树） | retrospective.md | run_all 全 PASS＋git commit | CHANGELOG |
 
 ## A3 实体冻结门禁编号（唯一术语表）

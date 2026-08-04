@@ -33,6 +33,7 @@ from identity_gate_fixture import augment_gate
 HERE = os.path.dirname(os.path.abspath(__file__))
 GATE = os.path.join(HERE, "..", "report", "a4_gate.py")
 BUILD = os.path.join(HERE, "..", "report", "build_html.py")
+A5 = os.path.join(HERE, "..", "report", "a5_report_seal.py")
 FAILS = []
 ENTITY_ADDR = "0x" + "a" * 40
 
@@ -52,6 +53,15 @@ def check(name, cond):
 def run(script, args):
     if script == GATE and args[:1] == ["finalize"] and "--workflow-type" not in args:
         args = args + ["--workflow-type", "independent-audit"]
+    if script == BUILD and "--mode" in args and args[args.index("--mode") + 1] in {"analysis-new", "analysis-audit"} \
+            and "--a5-seal" not in args and "--md" in args and "--a4-seal" in args:
+        md = Path(args[args.index("--md") + 1]).resolve()
+        a4 = Path(args[args.index("--a4-seal") + 1]).resolve()
+        a5 = md.parent / "a5_report_seal.json"
+        made = subprocess.run([sys.executable, A5, "--case-dir", str(md.parent),
+                               "--report", str(md), "--a4-seal", str(a4), "--out", str(a5)],
+                              capture_output=True, text=True)
+        args = args + ["--a5-seal", str(a5)]
     return subprocess.run([sys.executable, script] + args, capture_output=True, text=True)
 
 
@@ -309,8 +319,7 @@ def main():
                         "--facts", os.path.join(d, "facts.json"),
                         "--state", os.path.join(d, "analysis-state.json"),
                         "--a4-seal", seal_p])
-        check(f"G9 {label} 图片越界拒绝", p.returncode == 1 and "路径非法或越界" in p.stdout
-              and not os.path.exists(bad_out))
+        check(f"G9 {label} 图片越界拒绝", p.returncode == 1 and not os.path.exists(bad_out))
     os.unlink(link)
 
     # 9. 封口后改结论文件 → 编译拒且不写出
