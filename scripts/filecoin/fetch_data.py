@@ -246,6 +246,7 @@ def fetch_official_transfers():
         return
     with open(p) as f:
         found = json.load(f)
+    outputs = []
     for aid, d in found.items():
         if not d.get("tag"):
             continue
@@ -254,6 +255,10 @@ def fetch_official_transfers():
             try:
                 cached = json.load(open(po, encoding="utf-8"))
                 if cached.get("complete") is True and cached.get("truncated") is False:
+                    outputs.append({"address": aid,
+                                    "path": os.path.relpath(po, DATA),
+                                    "sha256": sha256_file(po),
+                                    "count": len(cached.get("transfers") or [])})
                     continue
             except Exception:
                 pass
@@ -299,7 +304,13 @@ def fetch_official_transfers():
             raise RuntimeError(
                 f"official {aid} history incomplete: reason={complete_reason} "
                 f"unique={len(transfers)} totalCount={total}")
+        outputs.append({"address": aid, "path": os.path.relpath(po, DATA),
+                        "sha256": sha256_file(po), "count": len(transfers)})
         print(f"官方地址 {aid} ({d['tag'].get('name')}) 流水 {len(transfers)} 笔", flush=True)
+    receipt = {"schema": "filecoin-official-transfers/v1", "status": "PASS",
+               "complete": True, "addresses": len(outputs), "outputs": outputs}
+    save(os.path.join(DATA, "official_transfers_receipt.json"), receipt)
+    return receipt
 
 def fetch_price():
     p = os.path.join(DATA, "price_180d.json")
@@ -309,19 +320,35 @@ def fetch_price():
         print("价格序列完成", flush=True)
 
 
-def write_collection_manifest(n, official_receipt=None):
+def write_smoke_receipt(n):
+    receipt = {"schema": "filecoin-smoke/v1", "status": "SMOKE",
+               "mode": "smoke/top-n", "top_n": n, "complete": False,
+               "formal_release_eligible": False}
+    save(os.path.join(DATA, "smoke_receipt.json"), receipt)
+    return receipt
+
+
+def write_collection_manifest(n, official_receipt=None, transfers_receipt=None):
+    if n != 200:
+        raise RuntimeError("formal Filecoin collection manifest requires top_n == 200")
+    if official_receipt is None or transfers_receipt is None:
+        raise RuntimeError("formal Filecoin collection manifest requires both official receipts")
     manifest = {"schema": "filecoin-collection/v3", "status": "PASS",
                 "mode": "restricted/top-200-windowed", "top_n": n,
                 "window_start": CUTOFF, "max_transfers_per_address": MAX_RECENT_PAGES * 100,
                 "complete": True, "limitations": ["not full actor universe", "six-month window",
                                                      "per-address page cap"],
                 "substage_receipts": {}}
-    if official_receipt is not None:
-        if official_receipt.get("status") != "PASS" or not official_receipt.get("complete"):
-            raise RuntimeError("official scan receipt is not PASS/complete")
-        rp = os.path.join(DATA, "official_scan_receipt.json")
-        manifest["substage_receipts"]["official_scan"] = {
-            "path": "official_scan_receipt.json", "sha256": sha256_file(rp)}
+    for key, receipt, filename in (
+            ("official_scan", official_receipt, "official_scan_receipt.json"),
+            ("official_transfers", transfers_receipt, "official_transfers_receipt.json")):
+        if receipt.get("status") != "PASS" or receipt.get("complete") is not True:
+            raise RuntimeError(f"{key} receipt is not PASS/complete")
+        rp = os.path.join(DATA, filename)
+        if not os.path.isfile(rp):
+            raise RuntimeError(f"{key} receipt file missing: {filename}")
+        manifest["substage_receipts"][key] = {
+            "path": filename, "sha256": sha256_file(rp)}
     save(os.path.join(DATA, "collection_manifest.json"), manifest)
     return manifest
 
@@ -343,11 +370,13 @@ def main(argv=None):
     rl = fetch_richlist(200)[:n]
     for idx, item in enumerate(rl):
         fetch_address(item["address"], idx + 1)
-    official_receipt = None
-    if n >= 200 or args.smoke is None:
-        official_receipt = fetch_official_scan()
-        fetch_official_transfers()
-    manifest = write_collection_manifest(n, official_receipt)
+    if args.smoke is not None:
+        receipt = write_smoke_receipt(n)
+        print(f"smoke 采集完成(top_n={n}, formal=false),耗时 {time.time()-t0:.0f}s", flush=True)
+        return receipt
+    official_receipt = fetch_official_scan()
+    transfers_receipt = fetch_official_transfers()
+    manifest = write_collection_manifest(n, official_receipt, transfers_receipt)
     print(f"受限采集完成(mode={manifest['mode']}),耗时 {time.time()-t0:.0f}s", flush=True)
 
 if __name__ == "__main__":

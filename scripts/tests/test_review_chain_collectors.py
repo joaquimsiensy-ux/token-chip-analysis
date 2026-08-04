@@ -109,7 +109,12 @@ def test_h09(tmp):
                                            or {"address": url.rsplit("/", 1)[-1]})
     receipt = mod.fetch_official_scan()
     assert receipt["status"] == "PASS" and calls == ["f042"], calls
-    manifest = mod.write_collection_manifest(200, receipt)
+    transfers_receipt = {"schema": "filecoin-official-transfers/v1",
+                         "status": "PASS", "complete": True,
+                         "addresses": 0, "outputs": []}
+    (Path(mod.DATA) / "official_transfers_receipt.json").write_text(
+        json.dumps(transfers_receipt))
+    manifest = mod.write_collection_manifest(200, receipt, transfers_receipt)
     ref = manifest["substage_receipts"]["official_scan"]
     assert ref["path"] == "official_scan_receipt.json" and len(ref["sha256"]) == 64
 
