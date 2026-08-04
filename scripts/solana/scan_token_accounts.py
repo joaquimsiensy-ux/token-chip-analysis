@@ -89,6 +89,53 @@ def require_snapshot_closed(total, supply, malformed=0):
                          f"total={total} supply={supply}")
 
 
+def parse_supply_response(response):
+    """Parse the persisted getTokenSupply response used by both producer and receipt validator."""
+    result = response["result"]
+    value = result["value"]
+    supply_raw = int(value["amount"])
+    decimals = int(value["decimals"])
+    if supply_raw < 0 or decimals < 0:
+        raise ValueError("invalid negative token supply/decimals")
+    return (result.get("context") or {}).get("slot"), decimals, supply_raw
+
+
+def parse_gpa_response(response):
+    """Return one GPA response's account list and context slot, rejecting malformed RPC payloads."""
+    if not isinstance(response, dict) or "error" in response or "result" not in response:
+        raise ValueError("invalid getProgramAccounts response")
+    result = response["result"]
+    if isinstance(result, dict) and "value" in result:
+        batch = result["value"]
+        slot = (result.get("context") or {}).get("slot")
+    else:
+        batch = result
+        slot = None
+    if not isinstance(batch, list):
+        raise ValueError("getProgramAccounts result must be a list")
+    return batch, slot
+
+
+def parse_token_accounts(accounts):
+    """Canonical dataSlice{32,40} decoder and cross-scan pubkey deduplicator."""
+    seen_pk = set()
+    unique = [a for a in accounts
+              if not (a["pubkey"] in seen_pk or seen_pk.add(a["pubkey"]))]
+    rows, owners, malformed = [], {}, 0
+    for account in unique:
+        raw = base64.b64decode(account["account"]["data"][0])
+        if len(raw) < 40:
+            malformed += 1
+            continue
+        owner = b58encode(raw[0:32])
+        amount = int.from_bytes(raw[32:40], "little")
+        if amount == 0:
+            continue
+        rows.append({"account": account["pubkey"], "owner": owner, "amount_raw": amount})
+        owners[owner] = owners.get(owner, 0) + amount
+    return unique, rows, dict(sorted(owners.items(), key=lambda kv: -kv[1])), malformed
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("mint")
@@ -129,10 +176,7 @@ def main():
                              "params": [args.mint]}, sup_f, 30)
     if not ok:
         print("FATAL: getTokenSupply 失败", file=sys.stderr); sys.exit(1)
-    sup_result = json.loads(sup_f.read_text())["result"]
-    sup = sup_result["value"]
-    supply_slot = (sup_result.get("context") or {}).get("slot")
-    decimals, supply_raw = sup["decimals"], int(sup["amount"])
+    supply_slot, decimals, supply_raw = parse_supply_response(json.loads(sup_f.read_text()))
     print(f"supply={supply_raw} decimals={decimals} ui={supply_raw/10**decimals:,.2f}")
 
     # Token-2022 extension 账户长度不封顶，正式默认必须无 dataSize 全扫。
@@ -175,15 +219,10 @@ def main():
             if not ok:
                 print(f"FATAL: getProgramAccounts dataSize={ds} 失败", file=sys.stderr); sys.exit(1)
             resp = json.loads(raw_f.read_text())
-        if "error" in resp:
-            print(f"FATAL: RPC error (ds={ds}): {resp['error']}", file=sys.stderr); sys.exit(1)
-        result = resp["result"]
-        if isinstance(result, dict) and "value" in result:
-            batch = result["value"]
-            gpa_slot = (result.get("context") or {}).get("slot")
-        else:  # old RPC compatibility: still bind an unknown upper slot and refuse cache promotion
-            batch = result
-            gpa_slot = None
+        try:
+            batch, gpa_slot = parse_gpa_response(resp)
+        except ValueError as exc:
+            print(f"FATAL: RPC error (ds={ds}): {exc}", file=sys.stderr); sys.exit(1)
         meta = {**expected_identity, "gpa_response_slot": gpa_slot, "account_count": len(batch)}
         if not reused:
             meta_f.write_text(json.dumps(meta, indent=2, sort_keys=True))
@@ -197,22 +236,8 @@ def main():
                               "sha256": sha256_file(meta_f)}})
         print(f"scan ds={ds}: {len(batch)} accounts, {raw_f.stat().st_size/1e6:.1f}MB, {time.time()-t0:.0f}s")
         accounts.extend(batch)
-    seen_pk = set()
-    accounts = [a for a in accounts if not (a["pubkey"] in seen_pk or seen_pk.add(a["pubkey"]))]
+    accounts, rows, owners, malformed = parse_token_accounts(accounts)
     print(f"scan total: {len(accounts)} accounts (去重后)")
-
-    rows, owners, malformed = [], {}, 0
-    for a in accounts:
-        raw = base64.b64decode(a["account"]["data"][0])
-        if len(raw) < 40:
-            malformed += 1
-            continue
-        owner = b58encode(raw[0:32])
-        amount = int.from_bytes(raw[32:40], "little")
-        if amount == 0:
-            continue
-        rows.append({"account": a["pubkey"], "owner": owner, "amount_raw": amount})
-        owners[owner] = owners.get(owner, 0) + amount
 
     total = sum(owners.values())
     print(f"nonzero token accounts={len(rows)}  unique owners={len(owners)}")
@@ -224,7 +249,7 @@ def main():
               f"sum_accounts={total} supply={supply_raw} diff={supply_raw-total}。"
               "不得生成正式 holders 产物；换完整 RPC/检查过滤器后重跑。", file=sys.stderr)
         sys.exit(2)
-    owners_sorted = dict(sorted(owners.items(), key=lambda kv: -kv[1]))
+    owners_sorted = owners
     accounts_out = data_dir / "holders_accounts.json"
     owners_out = data_dir / "holders_owners.json"
     accounts_out.write_text(json.dumps(rows))

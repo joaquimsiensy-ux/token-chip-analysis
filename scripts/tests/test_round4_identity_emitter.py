@@ -27,12 +27,16 @@ def run_evm(root):
  return root/"balances_final.json",root/"channels_preflight.json",root/"replay_stats.json"
 def run_solana(root):
  import scan_token_accounts as scan
- owner_bytes=bytes(range(32)); account_data=base64.b64encode(owner_bytes+(100).to_bytes(8,"little")).decode()
+ owner_bytes=bytes(range(32)); owner_bytes_2=bytes(range(1,33))
+ account_data=base64.b64encode(owner_bytes+(60).to_bytes(8,"little")).decode()
+ account_data_2=base64.b64encode(owner_bytes_2+(40).to_bytes(8,"little")).decode()
  def fake_rpc(url,payload,out,timeout):
   method=payload["method"]
   if method=="getAccountInfo": obj={"result":{"value":{"owner":scan.SPL}}}
   elif method=="getTokenSupply": obj={"result":{"context":{"slot":123},"value":{"amount":"100","decimals":0}}}
-  else: obj={"result":{"context":{"slot":123},"value":[{"pubkey":"acct","account":{"data":[account_data,"base64"]}}]}}
+  else: obj={"result":{"context":{"slot":123},"value":[
+   {"pubkey":"acct1","account":{"data":[account_data,"base64"]}},
+   {"pubkey":"acct2","account":{"data":[account_data_2,"base64"]}}]}}
   Path(out).write_text(json.dumps(obj)); return True
  scan.rpc_call=fake_rpc; old_argv,old_cwd=sys.argv,os.getcwd(); os.chdir(root)
  sys.argv=["scan_token_accounts.py","mint","--program","spl","--rpc","https://fixture"]

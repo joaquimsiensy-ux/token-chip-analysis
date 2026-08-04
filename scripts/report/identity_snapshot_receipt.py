@@ -5,7 +5,9 @@ import argparse,hashlib,json,os,sys
 from pathlib import Path
 HERE=Path(__file__).resolve().parent; EVM=HERE.parent/"evm"; SOL=HERE.parent/"solana"
 sys.path.insert(0, str(EVM))
+sys.path.insert(0, str(SOL))
 from channels_preflight import validate_preflight_artifact
+from scan_token_accounts import parse_gpa_response, parse_supply_response, parse_token_accounts
 EVM_CHAINS={"eth","base","bsc","arbitrum","robinhood"}; SUPPORTED=EVM_CHAINS|{"sol"}
 def sha(p): return hashlib.sha256(Path(p).read_bytes()).hexdigest()
 def load(p): return json.loads(Path(p).read_text())
@@ -79,16 +81,52 @@ def validate_solana_source(mint,snapshot,meta,total):
   raise ValueError("Solana holder meta does not prove closed owner universe")
  if m.get("producer")!={"path":"scan_token_accounts.py","sha256":sha(collector)}:
   raise ValueError("Solana holder meta producer is not current scan_token_accounts.py")
- expected={"path":Path(snapshot).name,"size":Path(snapshot).stat().st_size,"sha256":sha(snapshot)}
- if (m.get("outputs") or {}).get("holders_owners")!=expected:
+ outputs=m.get("outputs") or {}
+ owners_path=ref_with_size(root,outputs.get("holders_owners"),"holders_owners")
+ accounts_path=ref_with_size(root,outputs.get("holders_accounts"),"holders_accounts")
+ if owners_path!=Path(snapshot).resolve():
   raise ValueError("Solana holder meta does not bind owner snapshot")
- for label,item in [("supply_receipt",m.get("supply_receipt"))]:
-  p=ref_with_size(root,item,label)
- for i,scan in enumerate(m.get("scans") or []):
-  ref_with_size(root,scan.get("raw_artifact"),f"scan[{i}].raw")
-  ref_with_size(root,scan.get("meta_artifact"),f"scan[{i}].meta")
- if not m.get("scans"):
+ supply_path=ref_with_size(root,m.get("supply_receipt"),"supply_receipt")
+ try:
+  supply_slot,decimals,supply_raw=parse_supply_response(load(supply_path))
+ except Exception as exc:
+  raise ValueError(f"Solana supply receipt content invalid: {exc}") from exc
+ if supply_raw!=int(total) or decimals!=m.get("decimals"):
+  raise ValueError("Solana supply receipt does not match snapshot supply/decimals")
+ scans=m.get("scans") or []
+ if not scans:
   raise ValueError("Solana holder meta lacks bound GPA scan artifacts")
+ raw_accounts=[]
+ for i,scan in enumerate(scans):
+  if not isinstance(scan,dict): raise ValueError(f"scan[{i}] must be an object")
+  raw_path=ref_with_size(root,scan.get("raw_artifact"),f"scan[{i}].raw")
+  scan_meta_path=ref_with_size(root,scan.get("meta_artifact"),f"scan[{i}].meta")
+  scan_claim={k:v for k,v in scan.items() if k not in {"raw_artifact","meta_artifact"}}
+  if load(scan_meta_path)!=scan_claim:
+   raise ValueError(f"scan[{i}] metadata artifact differs from snapshot claim")
+  try:
+   batch,gpa_slot=parse_gpa_response(load(raw_path))
+  except Exception as exc:
+   raise ValueError(f"scan[{i}] raw GPA response invalid: {exc}") from exc
+  if (scan_claim.get("mint")!=mint or scan_claim.get("program")!=m.get("program")
+      or scan_claim.get("account_count")!=len(batch)
+      or scan_claim.get("gpa_response_slot")!=gpa_slot
+      or scan_claim.get("supply_observed_slot")!=supply_slot):
+   raise ValueError(f"scan[{i}] metadata does not match raw GPA response/target")
+  raw_accounts.extend(batch)
+ try:
+  _,computed_rows,computed_owners,malformed=parse_token_accounts(raw_accounts)
+ except Exception as exc:
+  raise ValueError(f"Solana raw GPA account decode invalid: {exc}") from exc
+ if malformed:
+  raise ValueError(f"Solana raw GPA replay found {malformed} malformed accounts")
+ if load(accounts_path)!=computed_rows:
+  raise ValueError("holders_accounts does not match offline replay of raw GPA responses")
+ if load(owners_path)!=computed_owners:
+  raise ValueError("holders_owners does not match offline replay of raw GPA responses")
+ computed_total=sum(computed_owners.values())
+ if computed_total!=int(m["sum_accounts_raw"]) or computed_total!=supply_raw:
+  raise ValueError("offline replay total does not close to snapshot/supply receipt")
  return m,collector
 
 def ref_with_size(root,item,label):
