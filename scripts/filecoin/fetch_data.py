@@ -17,6 +17,7 @@ ADDR_DIR = None
 OFFICIAL_DIR = None
 CUTOFF = 1767225600  # 2026-01-01 00:00 UTC,近6个月窗口起点
 MAX_RECENT_PAGES = 30  # 每地址近6个月流水最多30页(3000笔),超出记 truncated
+MAX_OFFICIAL_PAGES = 1000  # 官方地址全史硬上限；命中必须 truncated+BLOCK
 THROTTLE = 0.1  # curl 每次新建 TLS 连接自带 ~0.3-0.5s 开销,实际约 2-3 req/s
 UA = {"User-Agent": "Mozilla/5.0 (chip-analysis research script)"}
 
@@ -250,17 +251,54 @@ def fetch_official_transfers():
             continue
         po = os.path.join(OFFICIAL_DIR, f"{aid}_transfers.json")
         if done(po):
-            continue
-        transfers = []
-        for page in range(50):
+            try:
+                cached = json.load(open(po, encoding="utf-8"))
+                if cached.get("complete") is True and cached.get("truncated") is False:
+                    continue
+            except Exception:
+                pass
+        transfers, seen = [], set()
+        duplicate_count, total, pages = 0, None, 0
+        truncated, complete_reason = False, None
+        for page in range(MAX_OFFICIAL_PAGES):
             r = get_json(f"{BASE}/address/{aid}/transfers?pageSize=100&page={page}")
             if not r or "_error" in r:
                 raise RuntimeError(f"official {aid} page {page} network/API failure")
+            reported = r.get("totalCount")
+            if isinstance(reported, bool) or not isinstance(reported, int) or reported < 0:
+                raise RuntimeError(f"official {aid} page {page} totalCount invalid")
+            total = reported if total is None else max(total, reported)
             batch = r.get("transfers", [])
-            transfers.extend(batch)
-            if len(batch) < 100:
+            if not isinstance(batch, list):
+                raise RuntimeError(f"official {aid} page {page} transfers is not a list")
+            pages = page + 1
+            for item in batch:
+                key = json.dumps(item, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+                if key in seen:
+                    duplicate_count += 1
+                    continue
+                seen.add(key)
+                transfers.append(item)
+            if len(transfers) >= total:
+                complete_reason = "total_count_reached"
                 break
-        save(po, {"complete": True, "transfers": transfers})
+            if not batch:
+                truncated = True
+                complete_reason = "empty_before_total_count"
+                break
+        else:
+            truncated = True
+            complete_reason = "official_page_cap"
+        complete = not truncated and total is not None and len(transfers) >= total
+        payload = {"scope": "official-address-full-history", "totalCount": total,
+                   "complete": complete, "complete_reason": complete_reason,
+                   "truncated": truncated, "pages_fetched": pages,
+                   "duplicate_count": duplicate_count, "transfers": transfers}
+        save(po, payload)
+        if not complete:
+            raise RuntimeError(
+                f"official {aid} history incomplete: reason={complete_reason} "
+                f"unique={len(transfers)} totalCount={total}")
         print(f"官方地址 {aid} ({d['tag'].get('name')}) 流水 {len(transfers)} 笔", flush=True)
 
 def fetch_price():
