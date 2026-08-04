@@ -12,7 +12,7 @@
 | labels-sol | +疑似 Upbit 热钱包 2（suspected-cex 禁边不剔仓）+Upbit 被黑攻击者 3（heist）；"疑似 OKX"改 suspected-cex |
 | labels-robinhood | +Safe 家族 24+Relay solver 第 5 个+EntryPoint v0.6/v0.7；TRASH 案 serial+21 等未归档增量固化进 additions/ |
 | labels-hyperliquid | v4.1：+HyperCore 系统转移地址族 472（spotMeta 确定性生成）+CEX 词典修 8 条+entity 二审 19 条；赌池 no_merge 覆盖进金标作 round-trip 活体断言 |
-| labels-filecoin | v4 首建：filfox 官方标签 f00–f0126 低位段；v4.2 起 filecoin/cluster.py 真正接入 resolver（此前 README 宣称接入与事实不符——文档漂移实例，引以为戒） |
+| labels-filecoin | v4 首建：filfox 官方标签 f00–f0160 低位段；v4.2 起 filecoin/cluster.py 真正接入 resolver（此前 README 宣称接入与事实不符——文档漂移实例，引以为戒） |
 
 **发布库维护纪律（v4.2+ 稳定化定，2026-07-18）**：
 - **curation 层（SRC_PRIORITY = -1，高于 manual/addressbook）**：`additions/curation_overrides_*.csv` 的 source 一律写 `curation`。根因：add_labels.py 对同级采用"新条目覆盖"、build_labels.py 采用"先到保留"——两语义不一致曾致 12 行 v4.2 精修（Relay solver 官方 API 亲验等）在全量重建时被 gen_manual 泛化行回退（列级 diff 实测抓出，已救回 `curation_overrides_20260718.csv`）。**今后凡"直改发布库"级别的精修，必须同步固化为 curation override 文件**，否则下次重建即回退。
@@ -30,7 +30,7 @@
 | registry-official | 官方 deployment registry（Aerodrome/Clanker/Zora/Uniswap/Virtuals 官方仓库·npm 包·docs 亲验，Base 54 条首建）| 高（官方源） |
 | manual-chainverify | 链上事件/RPC 亲验条目（Tornado BSC 合约、WHYPE）| 高（链上实测） |
 | hypurrscan-aliases | Hyperliquid 463 实体 | 高（浏览器官方标签） |
-| manual-filfox | Filecoin 官方 tag（f00–f0126）| 高（官方浏览器） |
+| manual-filfox | Filecoin 官方 tag（f00–f0160）| 高（官方浏览器） |
 | spellbook（Dune/hildobby）| EVM CEX 统一表 4957、SOL CEX 164、桥 177、基金 51 | 高（人工维护） |
 | manual-rhdocs | Robinhood 官方 docs 协议合约 | 高（官方） |
 | manual-ofac | OFAC SDN 制裁地址（v4 起 EOA 才三链注入，见下）| 高（权威原始源） |

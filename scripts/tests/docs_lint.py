@@ -166,6 +166,12 @@ def main(all_mode=False):
         'references/data-pipeline-filecoin.md': ['restricted/top-200-windowed', 'f00–f0160',
                                                   'richlist_pagination_receipt.json'],
         'references/data-pipeline-solana-capture.md': ['免费层不支持 batch', '10 RPS'],
+        'references/address-book.md': ['f00`–`f0160'],
+        'references/playbook-entity-cluster-methods.md': ['f00–f0160'],
+        'references/labels/MAINTENANCE.md': ['f00–f0160'],
+        'references/analysis-playbook.md': ['三问一异常'],
+        'commands-staging/token-analyze.md': ['三问一异常'],
+        'commands-staging/token-analyze-2.md': ['三问一异常'],
     }
     for rel, needles in semantic_contracts.items():
         text = open(os.path.join(ROOT, rel), encoding='utf-8').read()
@@ -177,6 +183,12 @@ def main(all_mode=False):
         'SKILL.md': ['对任意链上代币', 'v5.0 三问框架', '实体冻结前三硬闸'],
         'references/report-template.md': ['手写 15 行', 'a4-seal/v2'],
         'references/data-pipeline-filecoin.md': ['f00–f0126', '浏览器 API 准全量'],
+        'references/address-book.md': ['f0126'],
+        'references/playbook-entity-cluster-methods.md': ['f0126'],
+        'references/labels/MAINTENANCE.md': ['f0126'],
+        'references/analysis-playbook.md': ['三问框架'],
+        'commands-staging/token-analyze.md': ['三问框架'],
+        'commands-staging/token-analyze-2.md': ['三问框架'],
         'scripts/solana/decode_txs_v2.py': ['默认 20 笔/POST', '[--batch 20]', '免代理且 50 RPS'],
     }
     for rel, needles in banned_contracts.items():

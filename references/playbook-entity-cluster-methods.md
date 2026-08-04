@@ -14,7 +14,7 @@
 **第一级：官方/浏览器标签（最强）**
 - EVM：WebFetch 区块浏览器地址页取 Public Name Tag——曾靠它把"疑似老庄分仓""神秘大户"改判为 CEX 储备合约与热钱包，把占供应近四成的 Top1 识破为 CEX 场内托管路由。**大户定性必须查官方标签，不能只看链上行为猜**（SIREN，07）
 - GMGN holders 自带 tags / start_holding_at / native_transfer.from（gas 来源），是免费标签与聚类线索的复合来源（OPN，07）
-- Filecoin：扫描创世 actor ID 低位段（f00–f0126）批量取全部官方标签地址（基金会/PL/Faucet/Burn/挖矿储备）——免费获取项目方地址库的关键手法（FIL，07）
+- Filecoin：扫描创世 actor ID 低位段（f00–f0160）批量取全部官方标签地址（基金会/PL/Faucet/Burn/挖矿储备）——免费获取项目方地址库的关键手法（FIL，07）
 - Hyperliquid：Hypurrscan globalAliases 数百条实体标签 + 官方 API nonCirculatingUserBalances 直接点名团队/基金会地址（HYPE，07）
 - Solana：Solscan 公开标签；托管类型可从 token account 的 owner 程序直判（多签程序=官方金库、vesting 程序=解锁托管 PDA）（IO，07）
 - **标签冲突裁决：以区块浏览器官方标签为准**——聚类工具/子代理/第三方 tracer 转述的 CEX 标签与浏览器官方标签不一致时（曾有 tracer 报 MEXC、Etherscan 官方标签实为 Binance 20），一律以浏览器页面亲验为准，转述值不落库（外部 ASTEROID 考古，07）

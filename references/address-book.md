@@ -259,4 +259,4 @@
 | `f0121` | Filecoin Foundation |
 | `f0117`–`f0120` | Protocol Labs 系列 |
 | `f090` | 挖矿储备（Mining Reserve） |
-| `f00`–`f0126` 低位段 | 创世实体集中区（另含 Faucet、Burn 等系统地址）：逐个 `GET /address/f0<N>` 批量取全部官方标签，方法见 data-pipeline-filecoin.md §2 |
+| `f00`–`f0160` 低位段 | 创世实体集中区（另含 Faucet、Burn 等系统地址）：逐个 `GET /address/f0<N>` 批量取全部官方标签，方法见 data-pipeline-filecoin.md §2 |
