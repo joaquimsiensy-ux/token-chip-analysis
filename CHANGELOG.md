@@ -15,6 +15,7 @@
 
 ## 版本索引（活跃窗口，新在上；每版一行，详情见下方对应条目）
 
+- **6.20.1** 2026-08-05 修 5 处阻断级文档漂移（A4 前禁写报告冲突/easy 残留/惯犯回灌 docstring/批量预采集残留/旧 Par 路线历史降级）＋docs_lint 增中文禁词与 Python module docstring 扫描
 - **6.20.0** 2026-08-05 持仓分布形态硬闸：五桶分账、双分箱统计、头部集中度、小样本模式、A4 回流轮次链与 A5 报告封口全链落地
 - **6.19.0** 2026-08-05 删除 API key 周巡检：移除 probe_keys 实现与 split-run 死引用，精确防回捡守卫同步收口，仓库外 weekly-probe 定时器列为卸载待办
 - **6.18.0** 2026-08-05 整体删除 `/collect-data` 批量预采集：移除命令、手册、队列、夜采与专项测试，独立巡检/锁迁出 collect 目录，活跃引用与防回捡守卫同步收口
@@ -54,6 +55,14 @@
 - **4.1.0** 2026-07-30 PYTHIA 双报告交叉核实复盘：实体身份防复发三闸（label_lookup 并源 address-book / entity_identity_gate+G8 编译门 / 复核 prompt 翻案四问固化）+ 复盘元规则（身份类教训必须以代码收尾）
 - **4.0.0** 2026-07-28 大整编（用户点名）：3.0→3.41 四十余版增量迭代的结构清理——路由索引补齐 9 节、结构错位归位 3 处、消重立权威源制 6 组、CHANGELOG 重整归档 29 条；只减不加，规则语义未动
 - 更早版本（3.41.0 及以前）→ `CHANGELOG-archive.md`
+
+## [6.20.1] - 2026-08-05 — 修 5 处阻断级文档漂移＋docs_lint 中文禁词与 Python docstring 扫描
+
+全库瘦身与一致性审查（codex 2026-08-05 报告，Fable 逐条实证复核）第 1 步：先修误导执行的漂移，再做瘦身。codex 改文件、Fable 验收并 commit。
+
+- **漂移修复五处**：①`playbook-evidence-wording.md` 报告写作顺序段与 6.7.0 A4→A5 硬闸冲突——"框架与纯事实章节可先写"改为"A4 finalize 封口前禁止创建任何报告正文/图/HTML，并行可先写的只有 findings.md/facts 层"（SIREN 案源保留，叙述转为支持硬闸）；②easy（6.17.0 已删）执行性残留三处清除——`data-pipeline-evm-recon.md` "峰值非必需场景（easy 初筛）仍可跳"整句删、`data-pipeline-solana-capture.md` 锚点复用步"easy/混合重建"改"混合重建"、`evals/cases/06` 考官答案"analyze/easy/update 三条 workflow"改"analyze workflow"；③`accumulate_offenders.py` module docstring 旧"每次分析交付后固定跑 --apply"（含 easy E5 残词）改 v6.4.0/v6.4.1 现行规则——仅用户明确下令复盘时随 retrospective.md 步骤 3 执行、分析交付后不自动回灌（split-run 机械段模型读旧 docstring 会误跑 --apply 污染全局惯犯库，本条是第 1 步里危害最直接的一处）；④批量预采集（6.18.0 已删）残留两处——`data-pipeline-evm.md` 分册索引"批量预采集/增量拉取"改"断点续拉"、`split-run.md` A1"预采集衔接"改"存量产物复用"；⑤`data-pipeline-evm-sources.md` 旧 `fetch_hypersync_par` CSV 分片"跨天无人值守标准件"条标【历史降级·新案禁用】——与 `merge_parts.py` deprecated 口径对齐，主线=HyperSync v2 Parquet+done.json manifest，watchdog"守护巡检+断点续传+事件词叫醒"方法学与历史战报数字原样保留。
+- **docs_lint 守卫扩展**：REMOVED_FEATURE_TERMS 增中文禁词「批量预采集」「预采集衔接」「easy 初筛」「easy E5」（此前正则纯英文，中文语义残留全部漏检——本轮五处漂移长期全绿的根因）；新增 scripts 树递归全部 .py 的 module docstring 扫描（ast.get_docstring 提取，排除 scripts/tests/，语法解析失败容错跳过）；E0 正则未扩为 E[0-6]——`report-template.md:210` 合法实体宏 `{{e1.*}}` 在 re.I 下必误伤，按预案改精确禁词 easy E5 覆盖旧 docstring 场景。
+- **验收**：9 文件 diff 逐条对任务书口径核过；反例攻击两路均被拦（活跃 md 塞「批量预采集」FAIL、py module docstring 塞「easy E5」FAIL）——攻击测试中 git checkout 还原误回滚未提交修复一次，已按原 diff 重打并终验；`run_all.py` 49 项全 PASS。成本：codex 单会话 12 分钟；质量：判据阈值变更 0、代码逻辑变更 0（仅 docstring 与文档）、误伤保留概念 0。
 
 ## [6.20.0] - 2026-08-05 — 持仓分布形态硬闸
 
