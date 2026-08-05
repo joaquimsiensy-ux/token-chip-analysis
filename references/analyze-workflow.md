@@ -16,7 +16,9 @@
 
 先核定：合约/mint 地址（多源交叉，确认用户持有的到底是哪个）、部署在哪几条链、**总量与流通量多口径分开标注**（链上实查/第三方流通/名义已解锁——口径混淆是历次实战最高频的结论级错误源，见 casebook S 册）、DEX 真实流动性（<$50k 则定价权在 CEX，分析重心＝托管流＋金库＋充提）。
 
-**多链代币硬关卡（不过关不开工）**："部署在哪几条链"不是登记项，是分流关卡。CoinGecko `coins/{id}` platforms 字段＋GMGN/Dexscreener＋官方文档多源核查；凡部署 ≥2 条链，必须先做**链分布盘点**——各链 RPC 实查该链供给（桥接分支按 mint−burn 口径；**镜像关系先做锁仓适配器配平**，见 casebook S-02），产出链分布表（链/合约地址/该链供给及占全局总供应%/主 DEX 流动性/预估转账量级与采集耗时），连成本预估一起用 AskUserQuestion 让用户选定分析范围（推荐项＝供给占比最大的主链；选项：仅主链/主链＋指定分支/全部链）。**禁止拿到地址就按其所在链直接开工**——用户给的地址可能只是小分支链（VIRTUAL 案范围性返工，07-16）。占全局 <5% 的分支默认不单独立项（用户点名除外）；选多链时各链分别过 A2 对账再合并口径。报告 TL;DR 首行必须声明分析范围（覆盖哪几条链、合计占全局总供应%），规范见 report-template.md。
+**多链代币硬关卡（不过关不开工）**："部署在哪几条链"不是登记项，是分流关卡。CoinGecko `coins/{id}` platforms 字段＋GMGN/Dexscreener＋官方文档多源核查；凡部署 ≥2 条链，必须先做**链分布盘点**——各链 RPC 实查该链供给（桥接分支按 mint−burn 口径；
+  **镜像关系先做锁仓适配器配平**，见 casebook S-02），产出链分布表（链/合约地址/该链供给及占全局总供应%/主 DEX 流动性/预估转账量级与采集耗时），连成本预估一起用 AskUserQuestion 让用户选定分析范围（推荐项＝供给占比最大的主链；选项：仅主链/主链＋指定分支/全部链）。
+  **禁止拿到地址就按其所在链直接开工**——用户给的地址可能只是小分支链（VIRTUAL 案范围性返工，07-16）。占全局 <5% 的分支默认不单独立项（用户点名除外）；选多链时各链分别过 A2 对账再合并口径。报告 TL;DR 首行必须声明分析范围（覆盖哪几条链、合计占全局总供应%），规范见 report-template.md。
 
 另核定两件事：①**标的是否带解锁表/vesting**（tokenomist/dropstab 有记录，或链上有锁仓合约/多签托管）——有则问 3 必须包含"未来 6–12 个月解锁日程与量级"小节（要求见 report-template.md）；②**开工版本自查**：读 `VERSION` 文件并在计划里注明，交付前重读一次——版本号变了说明 skill 被并行会话更新过，向用户提示框架可能已迭代。
 
@@ -59,7 +61,11 @@
 
 1. **地址身份标注**（官方标签→外部证据→行为特征三级兜底，playbook §3）→ **金库与核心实体逐笔归因**（§4）→ **关联聚类**（多证据边＋中间节点三段式检验，§6；合并只认专属性证据——通用实现/通用服务共用不算，见 casebook E-01）。
 2. **判例库过闸（实体表冻结前必做）**：把 `casebook/cex-custody.md` 与 `casebook/entity-clustering.md` 全册触发现象过一遍，命中的逐条做"必做区分检验"。
-3. **实体身份硬闸（G8）**：先由生产 emitter 生成 `identity-holder-snapshot/v2`。EVM 五链（eth/base/bsc/arbitrum/robinhood）用 `identity_snapshot_receipt.py --chain ... --snapshot balances_final.json --source-receipt channels_preflight.json --replay-stats replay_stats.json`，Solana 用同工具 `--chain sol --snapshot holders_owners.json --source-receipt holders_snapshot_meta.json`。EVM 的 `channels_preflight.json` 必须由当前 `channels_preflight.py` 生成并绑定已验 collector receipt/segment chain 与确切 CSV/Parquet `inputs`，`replay_stats.json` 必须由所选当前 replay 引擎生成并绑定同一 inputs、preflight 与 `balances_final.json`；Solana meta 必须由当前 `scan_token_accounts.py` 生成并绑定 supply receipt、每个 GPA raw/meta 与 account/owner 输出；emitter 和 G8 check 会用 scanner 的同一套 base64→owner/amount＋跨 scan pubkey 去重函数离线重解析全部 raw GPA，逐条比对 `holders_accounts.json`/`holders_owners.json`，并重读 supply receipt 的 amount 后闭合总量。emitter 和 G8 check 都重验上述实物链，孤立手写或只抄 producer 哈希一律拒绝。再跑 `entity_identity_gate.py --state ... --snapshot-receipt ... --total-supply-raw ...`，产 `identity_gate_v3`。存量没有 `producer/inputs/outputs` 的 EVM preflight/stats 必须重跑对应 replay 引擎（其会重跑 preflight 与完整重放），Solana 旧 meta 必须重跑 `scan_token_accounts.py` 重新扫描，然后再跑 emitter；不得手工补字段或用测试 fixture 迁移。闸覆盖每个实体地址＋≥1% 总供应单址；所有无标签实体成员一律 `BIG_UNLABELED`（Solana off-curve 则 `PDA_UNRESOLVED`）。CLI `--check` 与 build_html G8 共用 validator，重验全部来源绑定。
+3. **实体身份硬闸（G8）**：先由生产 emitter 生成 `identity-holder-snapshot/v2`。EVM 五链（eth/base/bsc/arbitrum/robinhood）用 `identity_snapshot_receipt.py --chain ... --snapshot balances_final.json --source-receipt channels_preflight.json --replay-stats replay_stats.json`，Solana 用同工具 `--chain sol --snapshot holders_owners.json --source-receipt holders_snapshot_meta.json`。
+   EVM 的 `channels_preflight.json` 必须由当前 `channels_preflight.py` 生成并绑定已验 collector receipt/segment chain 与确切 CSV/Parquet `inputs`，`replay_stats.json` 必须由所选当前 replay 引擎生成并绑定同一 inputs、preflight 与 `balances_final.json`；Solana meta 必须由当前 `scan_token_accounts.py` 生成并绑定 supply receipt、每个 GPA raw/meta 与 account/owner 输出；emitter 和 G8 check 会用 scanner 的同一套 base64→
+   owner/amount＋跨 scan pubkey 去重函数离线重解析全部 raw GPA，逐条比对 `holders_accounts.json`/`holders_owners.json`，并重读 supply receipt 的 amount 后闭合总量。emitter 和 G8 check 都重验上述实物链，孤立手写或只抄 producer 哈希一律拒绝。再跑 `entity_identity_gate.py --state ... --snapshot-receipt ... --total-supply-raw ...`，产 `identity_gate_v3`。
+   存量没有 `producer/inputs/outputs` 的 EVM preflight/stats 必须重跑对应 replay 引擎（其会重跑 preflight 与完整重放），Solana 旧 meta 必须重跑 `scan_token_accounts.py` 重新扫描，然后再跑 emitter；不得手工补字段或用测试 fixture 迁移。闸覆盖每个实体地址＋≥1% 总供应单址；所有无标签实体成员一律 `BIG_UNLABELED`（Solana off-curve 则 `PDA_UNRESOLVED`）。
+   CLI `--check` 与 build_html G8 共用 validator，重验全部来源绑定。
 4. **庄级实体识别、标签划分与类型三分类**：门槛数值与细则的唯一权威源＝playbook-entity-cluster-tiering §6a（本处不设数值副本防漂移，v6.4.2 定；结构要点：不分级；项目方无论份额；大庄/小庄按当前持仓、离场庄按峰值判；刷量地址单独标签；发射窗协同实体按普通门槛判级；合并口径含全部疑似关联地址）。
 5. **ET 双闸**（§6a）：ET-1＝其他大户线（当前 ≥0.1% 总供应或 ≥0.2% 流通）逐个过标签库/惯犯库/指纹/funder 批量排查，报警才人工深挖；ET-2＝每个已识别实体做不设持仓下限的成员完整性扫描。ET 是判级筛查层，不与 EF-1～EF-3 顶层冻结门禁混称。
 6. **已声明范围内的转账重放出各阵营占比演变序列**（阵营划分见 §6a）：分母＝当期净供应序列，**逐时点 assert Σ阵营＝100%±容差**，改过名册跑反向断言（casebook S-03）。随后执行 EF-3 覆盖发现闸（schema 权威定义 scan-schemas.md）：

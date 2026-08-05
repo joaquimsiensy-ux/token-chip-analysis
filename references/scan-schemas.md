@@ -185,7 +185,9 @@ wave/flow/eqg 全部候选的**成员级**裁决台账。freeze 前 validator �
 }
 ```
 
-**validator 拒绝规则（八类契约测试全覆盖，v6.8.1 加固）**：①缺文件；②源报告候选 ID 集 ≠ 裁决 ID 集（少裁/多裁/未知 ID），源报告 schema 错版/重复候选 ID 同拒；③重复裁决 ID；④candidate_sha256 与当前源报告不符（候选内容已变）；⑤accepted+excluded ∪ ≠ 候选成员全集（部分成员未裁；eqg 候选按收方集）；⑥tier_impact 三字段任一与机器重算不符（伪造）；⑦verdict 语义交叉约束——pattern_confirmed 必须 accepted 非空＋linked_entity_id＋evidence 非空，excluded/unresolved 必须 accepted 为空，excluded_members 逐条必须有非空 reason，candidate_kind 必须与机器一致，adjudicated_at 必须已填；⑧实体名册绑定（`validate --entity-file`，freeze 强制传入）——linked_entity_id 必须存在于名册、accepted 成员必须已落入该实体名册，存在 pattern_confirmed 而未传名册即拒。unresolved 且机器判 could_change_tiering=true → freeze exit 2。
+**validator 拒绝规则（八类契约测试全覆盖，v6.8.1 加固）**：①缺文件；②源报告候选 ID 集 ≠ 裁决 ID 集（少裁/多裁/未知 ID），源报告 schema 错版/重复候选 ID 同拒；③重复裁决 ID；④candidate_sha256 与当前源报告不符（候选内容已变）；⑤accepted+excluded ∪ ≠ 候选成员全集（部分成员未裁；eqg 候选按收方集）；⑥tier_impact 三字段任一与机器重算不符（伪造）；
+  ⑦verdict 语义交叉约束——pattern_confirmed 必须 accepted 非空＋linked_entity_id＋evidence 非空，excluded/unresolved 必须 accepted 为空，excluded_members 逐条必须有非空 reason，candidate_kind 必须与机器一致，adjudicated_at 必须已填；⑧实体名册绑定（`validate --entity-file`，freeze 强制传入）——linked_entity_id 必须存在于名册、accepted 成员必须已落入该实体名册，存在 pattern_confirmed 而未传名册即拒。
+  unresolved 且机器判 could_change_tiering=true → freeze exit 2。
 
 ## 4. provenance-ledger/v2（entity_source_trace.py）
 

@@ -70,7 +70,9 @@ EOS 侧持有人榜可用 `POST /v1/chain/get_table_by_scope`（`code`=代币合
 - **抽样估总量的"二轮高峰"坑（与上条分时段探测法配套）**：12 段抽样窗踩中 2025 年初 ATH 段初估 1.32 亿（高一倍），按早期密度修正到 5-7 千万（低一半），实际 1.263 亿——祸根是 2025 年末存在此前未预料的第二轮活动高峰（段密度 12.5 笔/块 > ATH 期 7.4，价格却横盘）：生态型代币链上活动密度与价格周期脱钩，分时段密度探测必须覆盖到最近月份、禁止假设"ATH 段=密度峰值段"（VIRTUAL(Base+ETH) 多链分析，07-18）
 - **双通道运行中再平衡禁忌**：重放去重是文件内单调逻辑，兜不住跨文件重复——分段计划 plan.json 固化后段边界绝不能改，禁止把同一段切给两个通道（产生跨文件重叠区）；唯一安全的接力=停一边、另一边从该段 .prog 断点续采（两边 CSV 同构且按序写入的前提下）（VIRTUAL(Base+ETH) 多链分析，07-18）
 - **亿级多段拼接重放必做"丢弃行审计"（dropped-audit）**：去重丢弃行数应=重复键数，不等即有误杀；段间乱序写入造成的误杀行逐行甄别后补放（实测 607 键去重+607 行乱序误杀全部甄别补放，负余额地址 0 才放行）（VIRTUAL(Base+ETH) 多链分析，07-18）
-- **【历史降级·新案禁用】旧 `fetch_hypersync_par.py` CSV 分片路线的跨天无人值守采集件（watchdog 守护+事件观察哨）**：本条所述 `fetch_hypersync_par.py` CSV 分片路线已退役（`merge_parts.py` 同标 deprecated），现行正式主线为 HyperSync v2 Parquet + `done.json` manifest 体系；新案禁止启用旧 Par 路线采集。其“守护巡检+断点续传+事件词叫醒”方法模式仍通用可移植：nohup 守护进程每 60s 巡检——备用通道探测到可用即自启采集器、任一采集器死亡自动重启（断点续传保证不重不漏）、备用通道始终未启用则把其段归还主通道兜底、全段落定写 ALL_DONE 退出；会话侧用 Monitor tail -f 守护日志 grep 事件词（ALL_DONE/FALLBACK/HS_DEAD/ALCHEMY_DEAD）实现“完成即叫醒”。历史脚本：scripts/evm/watchdog_dual.py + fetch_hypersync_par.py（v3.4 参数化收编，含 plan.json 段计划固化/.prog 断点/.aldone 完成标记体系）（VIRTUAL(Base+ETH) 多链分析，07-18）
+- **【历史降级·新案禁用】旧 `fetch_hypersync_par.py` CSV 分片路线的跨天无人值守采集件（watchdog 守护+事件观察哨）**：本条所述 `fetch_hypersync_par.py` CSV 分片路线已退役（`merge_parts.py` 同标 deprecated），现行正式主线为 HyperSync v2 Parquet + `done.json` manifest 体系；新案禁止启用旧 Par 路线采集。
+  其“守护巡检+断点续传+事件词叫醒”方法模式仍通用可移植：nohup 守护进程每 60s 巡检——备用通道探测到可用即自启采集器、任一采集器死亡自动重启（断点续传保证不重不漏）、备用通道始终未启用则把其段归还主通道兜底、全段落定写 ALL_DONE 退出；会话侧用 Monitor tail -f 守护日志 grep 事件词（ALL_DONE/FALLBACK/HS_DEAD/ALCHEMY_DEAD）实现“完成即叫醒”。
+  历史脚本：scripts/evm/watchdog_dual.py + fetch_hypersync_par.py（v3.4 参数化收编，含 plan.json 段计划固化/.prog 断点/.aldone 完成标记体系）（VIRTUAL(Base+ETH) 多链分析，07-18）
 
 ### 8.2 Base 辅助数据面
 

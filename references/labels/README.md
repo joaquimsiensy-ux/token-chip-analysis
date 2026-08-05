@@ -28,7 +28,12 @@ CSV 字段（基础 9 列 + 6 扩展列）：`address, chain, name, category, ti
 - **balance_policy**（实体持仓怎么算）：`exclude`（设施，不计持仓/大户榜）| `bucket`（locker/分发器，锁仓量单列桶）| `count`（正常计入）。
 - **exclude ≠ 从资金图删除**："经 XX 桥入金"的路径叙事保留，它们是边界节点不是空气。cluster.py 被拦地址落 `label_excluded_nodes` 供对账。
 - **risk_flags 四档分区（白名单制）**：**definitive**（白名单精确命中或 `*-exploit` 后缀：大户命中=必写进报告的重大信号）| **candidate**（scam-candidate 等社区单源：降权提示，不作定性依据）| **privacy**（tornado-user：只陈述"有 Tornado 使用记录"，不定性脏钱）| **unknown**（白名单外：提示人工核验，不自动定性）。
-- **serial-actor（惯犯庄家层）**：历史案定性的收割集团地址（3.18.0 起 1741 址，双源回灌——appendix.json + analysis-state.json，不买入的筛查案也进）。**⚠案源可信度分层（v6.2.0 存留审计定）**：库内定性是各案报告的**案内自评，多数案源未经用户复核**——命中后第一件事是判案源成色（用户复核/翻案终裁过的案 vs 未经复核的筛查案）；未经复核案源的定性一律按**线索级**消费，报告引用禁用"实锤"措辞、改用"历史案标记"。**不剔除、不禁边**（惯犯地址间本就同实体，正常聚类），命中即高亮"XX 案标记惯犯"；跨案命中是最高优先级深查信号。**回灌时机（v6.4.1）**：`accumulate_offenders.py --apply` 随复盘执行（retrospective.md 步骤 3，用户下令复盘才跑；含 manifest 落印）——结论未经用户复核不入库，不复盘不回灌。⚠收纳是组级的（实锤组全组地址进库）——大组（如 QUQ 215 址 bot 体系、SIREN 散仓网）含一次性执行地址，命中远端成员时按"提示不定罪"复核，别直接当工作室核心。**跨案身份冲突检测（3.19 内置；3.19.1 起设施级硬闸）**：候选地址同时是主库设施身份（cex/infra/bridge/dex/bundler/paymaster/mev）或命中 benchmark 设施金标时，写 `sources/serial_conflicts_<日期>.json/.md` 报告，且 **primary/goldset-infra 级冲突地址被硬闸拦在 serial_actors.csv 外**（--apply 与手动 add_labels 两条入库路径一并挡住；secondary/cross_chain 仅提示）——设施被误收进庄家成员表入库会**高置信覆盖掉主库设施行、聚类禁边失效**（实案全程：QUQ 案大庄#1 误吸 PancakeSwap Infinity Vault（0x238a…，其 QUQ 余额仅 1.5 万枚纯属流经关联），2026-07-22 --apply 覆盖事故→用户裁决=curation 恢复主库设施身份+QUQ 案侧摘出成员表 215→214+加本硬闸）。**被拦地址逐条裁决**，三选一：①案源实体划分误吸设施→修该案 whale_groups 重跑（曲线/份额在案侧注记"下次更新重算"）②主库标签错→走 curation override（MAINTENANCE.md；add_labels 的 HIGH_TRUST_PREFIX 含 curation，增量入库即可压掉现行）③确属庄家自建专用设施→手工编辑 CSV 单独 add_labels 并在 evidence 注明裁决依据（绕闸必须人工显式动作，无 --force）。
+- **serial-actor（惯犯庄家层）**：历史案定性的收割集团地址（3.18.0 起 1741 址，双源回灌——appendix.json + analysis-state.json，不买入的筛查案也进）。**⚠案源可信度分层（v6.2.0 存留审计定）**：库内定性是各案报告的**案内自评，多数案源未经用户复核**——命中后第一件事是判案源成色（用户复核/翻案终裁过的案 vs 未经复核的筛查案）；
+  未经复核案源的定性一律按**线索级**消费，报告引用禁用"实锤"措辞、改用"历史案标记"。**不剔除、不禁边**（惯犯地址间本就同实体，正常聚类），命中即高亮"XX 案标记惯犯"；跨案命中是最高优先级深查信号。**回灌时机（v6.4.1）**：`accumulate_offenders.py --apply` 随复盘执行（retrospective.md 步骤 3，用户下令复盘才跑；
+  含 manifest 落印）——结论未经用户复核不入库，不复盘不回灌。⚠收纳是组级的（实锤组全组地址进库）——大组（如 QUQ 215 址 bot 体系、SIREN 散仓网）含一次性执行地址，命中远端成员时按"提示不定罪"复核，别直接当工作室核心。
+  **跨案身份冲突检测（3.19 内置；3.19.1 起设施级硬闸）**：候选地址同时是主库设施身份（cex/infra/bridge/dex/bundler/paymaster/mev）或命中 benchmark 设施金标时，写 `sources/serial_conflicts_<日期>.json/.md` 报告，且 **primary/goldset-infra 级冲突地址被硬闸拦在 serial_actors.csv 外**（--apply 与手动 add_labels 两条入库路径一并挡住；
+  secondary/cross_chain 仅提示）——设施被误收进庄家成员表入库会**高置信覆盖掉主库设施行、聚类禁边失效**（实案全程：QUQ 案大庄#1 误吸 PancakeSwap Infinity Vault（0x238a…，其 QUQ 余额仅 1.5 万枚纯属流经关联），2026-07-22 --apply 覆盖事故→用户裁决=curation 恢复主库设施身份+QUQ 案侧摘出成员表 215→214+加本硬闸）。**被拦地址逐条裁决**，三选一：①案源实体划分误吸设施→
+  修该案 whale_groups 重跑（曲线/份额在案侧注记"下次更新重算"）②主库标签错→走 curation override（MAINTENANCE.md；add_labels 的 HIGH_TRUST_PREFIX 含 curation，增量入库即可压掉现行）③确属庄家自建专用设施→手工编辑 CSV 单独 add_labels 并在 evidence 注明裁决依据（绕闸必须人工显式动作，无 --force）。
 - **标签时效（3.18.0，提示不定罪）**：resolver 输出附 `stale_days`（距最近核验/快照/入库天数）与 `stale_hint`（时效敏感类目 cex/suspected-cex/infra/bridge/bundler/paymaster/mev 超 90 天）。纪律：①stale_hint 命中且该标签**驱动了剔除/合并决策**时，交付前对该地址浏览器/RPC 复核一次，不得裸信过期设施标签（Bitget 热钱包误判、Base bundler 轮换两案教训）；②自动决策**不因库龄变老而失效**（防设施剔除整体瓦解）；③人工确认已失效的行标 `status=deprecated/rotated/historical`——余额侧自动回退（不剔仓），**聚类禁边保留**（全历史重放里退役设施活跃期的边仍是公共边）；④单源标签（source 单一且非 manual/registry）不得独自驱动实体合并或剔除，须第二证据。
 
 ## 用法（分析流程标准前置步骤，playbook §3 第零步）
@@ -68,7 +73,9 @@ python3 .../fingerprint_check.py --chain robinhood ADDR1 ADDR2
 7. CEX 热钱包照旧纪律：**全体用户共享，不可作地址关联依据**（见 address-book.md 头部）。
 8. mev-bot 标签=Etherscan 认定的夹子/套利 bot；**发射窗协同狙击 bot 不在此列**，仍会正常进聚类——勿以为"跑过标签库=庄家已排除"。
 9. **tornado-user 旗标的措辞纪律**：用过 Tornado ≠ 脏钱——报告写"该地址有 Tornado Cash 使用记录"陈述事实即可；但"庄家资金源头是 Tornado 提取"是必写的重大风险信号。name 区分 Depositor/Recipient（后者资金来源不可溯，信号更强）。
-10. **serial-actor 纪律（与铁律 1 的张力，明文划界）**：惯犯层保存的是**历史案的案内定性（多数案源未经用户复核，成色分层见上方 serial-actor 段）**，与铁律 1"结论不复用"存在张力——划界如下：惯犯命中=**改变搜索优先级的提示线索**（触发深查、跨案命中必须写进报告），**不=本案定罪**——案源定性本身可能就是错的（未经复核的案），地址也可能被转卖/弃用，写进报告前必须有**本案独立证据链**（当前行为+案源证据并列呈现）；措辞固定为"该地址在 XX 案中被标记为 YY 集团成员（案源经复核与否注明），本案中其行为 ZZ"。警惕确认偏差：命中惯犯后对其"有罪推定"式取证是被禁止的——阴性排查照做，查完独立成立才写。案名引用合法（铁律 1 管的是结论不复用，不禁提代币名——v6.4.2 用户裁定），但**禁止借机展开该案行情或结论**——引用惯犯案名仅限本条固定措辞的取证语境。
+10. **serial-actor 纪律（与铁律 1 的张力，明文划界）**：惯犯层保存的是**历史案的案内定性（多数案源未经用户复核，成色分层见上方 serial-actor 段）**，与铁律 1"结论不复用"存在张力——划界如下：惯犯命中=**改变搜索优先级的提示线索**（触发深查、跨案命中必须写进报告），**不=本案定罪**——案源定性本身可能就是错的（未经复核的案），地址也可能被转卖/弃用，
+    写进报告前必须有**本案独立证据链**（当前行为+案源证据并列呈现）；措辞固定为"该地址在 XX 案中被标记为 YY 集团成员（案源经复核与否注明），本案中其行为 ZZ"。警惕确认偏差：命中惯犯后对其"有罪推定"式取证是被禁止的——阴性排查照做，查完独立成立才写。
+    案名引用合法（铁律 1 管的是结论不复用，不禁提代币名——v6.4.2 用户裁定），但**禁止借机展开该案行情或结论**——引用惯犯案名仅限本条固定措辞的取证语境。
 11. **codehash 指纹纪律**：指纹命中=candidate 级（同模板 hash 不同可能是 immutable 差异，同 hash 也可能是代理壳）——**行为复核后才升 exclude**；指纹只缩小排查范围不下定论。
 
 ## 已知局限（分析时的盲区地图）
