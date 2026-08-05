@@ -19,6 +19,12 @@ ROOT = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)),
 # 引用模式：仓库内相对路径（含 ` 包裹或裸写两种）；排除占位符 <chain> 与缩写 ...
 REF_RE = re.compile(r'(?<![\w/~])(?:references/[\w./-]+\.(?:md|csv|png)|scripts/[\w./-]+\.(?:py|sh)|labels/[\w.-]+\.(?:md|csv))')
 # 负向后顾排除长路径尾段（如 ~/Desktop/xx/scripts/chip_analysis.py 的历史出处说明——那不是仓库内引用）
+REMOVED_FEATURE_TERMS = re.compile(
+    r'easy-workflow|update-workflow|token-easy-analysis|token-update|'
+    r'collect-data|collect-workflow|\bcollect_queue\b|\bnightly_collect\b|'
+    r'\bcollect_manifest\b|\bE0b?\b|\bU[0-6]\b',
+    re.I)
+RETAINED_COLLECTION_TERMS = ('collector', 'collection_manifest', 'csv_collector_receipt')
 
 def md_files(all_mode=False):
     out = [os.path.join(ROOT, 'SKILL.md'), os.path.join(ROOT, 'CHANGELOG.md')]
@@ -156,8 +162,7 @@ def main(all_mode=False):
     #    的历史原文不在禁扫范围。
     semantic_contracts = {
         'SKILL.md': ['Arbitrum', '三问一异常',
-                     'A3 实体冻结门禁编号', '队列层 collect_manifest',
-                     '链内 collection_manifest/receipt'],
+                     'A3 实体冻结门禁编号', '链内 collection_manifest/receipt'],
         'references/independent-audit-protocol.md': ['--profile new-analysis',
                                                       '--profile independent-audit',
                                                       'id、规范化文本、最终 verdict、证据文件集合和报告位置',
@@ -169,7 +174,10 @@ def main(all_mode=False):
                                            '--mode analysis-audit', 'a4-seal/v3', 'ET-1/ET-2'],
         'references/analyze-workflow.md': ['identity_gate_v3', '--snapshot-receipt',
                                            '--total-supply-raw', 'a4-seal/v3',
-                                           '不得手工补字段', 'GPA raw/meta', '跨 scan pubkey 去重函数'],
+                                           '不得手工补字段', 'GPA raw/meta', '跨 scan pubkey 去重函数',
+                                           '既有采集产物复用', 'data/v2/run_*/done.json',
+                                           'data/soltx-*.jsonl.gz', 'done_with_gaps',
+                                           'collection_manifest.json'],
         'references/data-pipeline-evm-channels.md': ['evm-channel-receipt/v2',
                                                       'evm-collector-run/v2',
                                                       '--collector-receipt',
@@ -217,17 +225,16 @@ def main(all_mode=False):
     version_instruction = re.compile(
         r'读[^。\n]{0,24}CHANGELOG[^。\n]{0,24}版本号|CHANGELOG[^。\n]{0,16}首(?:个)?版本号')
     execution_docs = ['SKILL.md', 'references/analyze-workflow.md',
-                      'references/collect-workflow.md', 'references/split-run.md',
-                      'references/context-discipline.md']
+                      'references/split-run.md', 'references/context-discipline.md']
     for rel in execution_docs:
         text = open(os.path.join(ROOT, rel), encoding='utf-8').read()
         if version_instruction.search(text):
             fails.append(f'版本读取回退 {rel}: 执行文档必须读 VERSION，不得读 CHANGELOG 首版本号')
 
-    # 11) 已下线的轻量筛查/增量更新功能不得重回现役文档。
-    removed_feature_terms = re.compile(
-        r'easy-workflow|update-workflow|token-easy-analysis|token-update|\bE0b?\b|\bU[0-6]\b',
-        re.I)
+    # 11) 已下线的轻量筛查/增量更新/批量预采集功能不得重回现役文档。
+    for retained_term in RETAINED_COLLECTION_TERMS:
+        if REMOVED_FEATURE_TERMS.search(retained_term):
+            fails.append(f'已删功能禁词误伤保留概念: {retained_term}')
     active_docs = [p for p in md_files(all_mode=True)
                    if os.path.basename(p) not in {'CHANGELOG.md', 'CHANGELOG-archive.md'}
                    and os.path.relpath(p, ROOT) != 'references/attic.md'
@@ -235,7 +242,7 @@ def main(all_mode=False):
     for path in active_docs:
         rel = os.path.relpath(path, ROOT)
         text = open(path, encoding='utf-8').read()
-        match = removed_feature_terms.search(text)
+        match = REMOVED_FEATURE_TERMS.search(text)
         if match:
             fails.append(f'已删功能回捡 {rel}: 出现 {match.group(0)}')
 

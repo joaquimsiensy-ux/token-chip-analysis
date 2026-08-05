@@ -12,13 +12,12 @@ ROOT = Path(__file__).resolve().parents[2]
 STAGING = ROOT / "commands-staging"
 DEPLOYED = Path.home() / ".claude" / "commands"
 EXPECTED = {
-    "collect-data.md",
     "token-analyze-1.md",
     "token-analyze-2.md",
     "token-analyze.md",
 }
-RETIRED = {"token-easy-analysis.md", "token-update.md"}
-MIGRATION_CHANGED = {"collect-data.md", "token-analyze-1.md", "token-analyze-2.md"}
+RETIRED = {"collect-data.md", "token-easy-analysis.md", "token-update.md"}
+MIGRATION_CHANGED: set[str] = set()
 
 
 def sha256(path: Path) -> str:
@@ -69,7 +68,7 @@ def main() -> int:
     if retired_present:
         print(
             f"PASS: {len(staging_files)} 份 staging 命令清单正确；"
-            f"部署侧待验收后删除 {retired_present} 并同步三份改动命令"
+            f"部署侧待验收后删除退役文件 {retired_present}"
         )
     else:
         print(f"PASS: {len(staging_files)} 份 staging/部署命令 SHA-256 逐文件一致")
