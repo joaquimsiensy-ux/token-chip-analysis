@@ -15,6 +15,7 @@
 
 ## 版本索引（活跃窗口，新在上；每版一行，详情见下方对应条目）
 
+- **6.16.0** 2026-08-04 受支持链矩阵收口与入口瘦身：下线 Hyperliquid/Filecoin，SKILL 压至 8192 bytes 内，部署/版本/链矩阵守卫入 suite
 - **6.15.0** 2026-08-04 第四轮全库审计修复＋round4b/round4c 同族残留返工：identity 双链锚定并离线重放原始采集，shared release 强制当前生产者/runner，SUITE 46→51 项
 - **6.14.0** 2026-08-04 GPT-5.6 代码与一致性 review 全量修复：10 项代码缺陷与 17 项口径漂移全部收口，11 项新增守护使 SUITE 35→46 项全绿
 - **6.13.0** 2026-08-02 GPT-5.6 复审 9 项修复合并＋验收返工 2 项工具链断口（复审对 6.11.0/bda613e 全库复审判 BLOCK：2 P0＋5 P1＋2 P2，Fable 逐条核实全部属实、2 项亲手反例复现坐实；独立分支 fix-rereview-candidate 11 commit，Fable 终验收发回一轮返工后并回 main）：**两条 P0 本质都是"证明链错位"**——①正式 HTML 编译时 G9 重验案目录 seal 里的 facts/state 哈希，渲染却吃 CLI 传入的任意路径（封口验 A、报告用 B，"封口后不可改结论"承诺被击穿）→ analysis 模式输入全部从 seal 案目录派生、CLI 路径必须 resolve() 等值、未封口 --json 附录正式模式禁传；②三个 replay 入口只拒区间重叠不拒区间洞，声明但缺失的文件仅 warning 跳过（缺一整段历史仍 gate_pass=true——"供给闭合"只证明读到的数据自洽、不证明该读的都读到了）→ 新建 channels_preflight.py 三引擎共用（channels 升 evm-channels/v2 带 token/expected_from/expected_to，每段带 receipt＝evm-channel-receipt/v1 绑定 token/bounds/path/rows，排序后首尾必须等于全局边界、相邻段必须 next.lo==prev.hi，空段须 empty_proof，BLOCK 落 receipt 非零退出）。**五项 P1**：③身份闸生成侧无标签实体成员 flag 恒空（snapshot 回填被 `a not in targets` 挡住致 share 恒 None——G8 网眼正对着 IQ/PYTHIA 五案核心场景）＋check 只看 resolution 不验 schema/计数（伪造 schema=garbage、n_addresses=999 的闸文件照样 PASS）→ 无标签实体成员一律 BIG_UNLABELED（份额只管展示不管入闸）、gate 升 identity_gate_v2 绑 state_sha256、抽出 validate_gate 严格校验器供 CLI 与 build_html G8 共用；④HyperSync done.json 只记 token/URL/块界不绑实际 Parquet（文件删了、拷贝中断、写盘不全，续传照样信 manifest 跳过整段）→ manifest 升 hypersync-v2-done/v3 记每文件 size/rows/min_block/max_block/sha256＋logs→blocks 关联完整性，原子落盘，staged_capture.sh 的 shell 副本校验改调 verify-done 子命令（schema 单一事实源，杜绝"升 schema 漏改 shell 副本"）；⑤Solana v1 decode_txs.py 把 decode_fail 当 done 永不重试（且 capture 文档第 40-41 行锚点流程点名 v1 却承诺"decode_fail 不算 done"＝文档与代码矛盾）、v1/v2 失败数 >0 均正常退出 0 → v1 复用 v2 的 output identity 与 completed_sigs，两版收尾写 receipt、n_fail>0 即 BLOCK 非零退出，文档同步；⑥Filecoin 官方 ID 扫描吞单点网络错误仍写 status=PASS/complete=true，且 official_scan.json 一旦落盘 done() 短路致失败地址永不补查（恰好失败的若是官方/多签地址会从身份排除集合消失）→ requested/succeeded/not_found/failed 四桶 receipt，failed>0 拒写 PASS 并保留可重试清单，重跑只补失败项；⑦发布闸 confirmed 命题只查 reproduce_command 字符串非空（"echo ok"与真实复算脚本等价）→ 改验受控生成的 reproduce-receipt/v1（固定入口 reproduce_audit.py 哈希＋输入 manifest 哈希＋exit 0＋输出摘要），永不执行 claim 内的命令文本。**两项 P2**：⑧三账只闭合到 entity 集合无逐地址义务（无法区分"合法零余额"与"漏记非零余额"）→ membership 绑 address-balance-snapshot/v1 逐地址 as_of_balance_raw＋来源哈希，position 逐地址等值，零余额须显式 0 或 zero_balance_proof；⑨filecoin/fetch_data.py 模块 import 即 makedirs 污染 skill 源目录（干净只读安装 PermissionError、测试非 hermetic）→ --data-dir/configure_data_dir() 注入、建目录移入执行阶段。**Fable 验收发回的 2 项返工（均属"升 schema 未连存量与生产通道一起交付"）**：R1 preflight 强制每通道带 receipt 却全库无生成工具（只有测试在手搓＝用户须手工数行数手写 JSON，且手写=自报值违背 receipt 本意）→ 新建 make_channel_receipt.py 实扫数据生成、统计逻辑复用 preflight 同一函数、空段须显式 --empty-proof；R2 存量采集目录旧 done.json 让断点续拉当场 SystemExit（/collect-data 对存量 outdir 自动补增量是核心能力，QUQ 等已买入活案首当其冲）→ 新增 --refresh-manifests 离线迁移（实读 Parquet 真实重验 schema/行数/块范围/关联/哈希后才升级，两阶段处理：任一 run 损坏则整批拒绝不改写任何 manifest）。新增 4 文件（channels_preflight.py／make_channel_receipt.py／reproduce_receipt.py／test_entity_identity_gate.py）；SUITE 34→35 项全绿
@@ -49,6 +50,15 @@
 - **4.1.0** 2026-07-30 PYTHIA 双报告交叉核实复盘：实体身份防复发三闸（label_lookup 并源 address-book / entity_identity_gate+G8 编译门 / 复核 prompt 翻案四问固化）+ 复盘元规则（身份类教训必须以代码收尾）
 - **4.0.0** 2026-07-28 大整编（用户点名）：3.0→3.41 四十余版增量迭代的结构清理——路由索引补齐 9 节、结构错位归位 3 处、消重立权威源制 6 组、CHANGELOG 重整归档 29 条；只减不加，规则语义未动
 - 更早版本（3.41.0 及以前）→ `CHANGELOG-archive.md`
+
+## [6.16.0] - 2026-08-04 — 受支持链收口与入口瘦身
+
+- **命令部署一致性**：新增 `test_commands_deploy_sync.py`，逐个 SHA-256 对比 `commands-staging/*.md` 与部署同名文件；异机无部署目录时 SKIP，缺失或不一致时 FAIL。
+- **支持面主动裁撤**：正式深度管线收口为 Ethereum/BSC/Base/Arbitrum/Robinhood EVM 与 Solana；删除 Hyperliquid/Filecoin 的采集器、标签构建器、已发布标签表、操作分册、路由及活跃脚本/测试枚举；方法学案源括号、CHANGELOG/attic/casebook 历史保留。**6.14.0 的 Filecoin restricted 措辞守卫及其测试随链支持下线一并移除，属主动裁撤非回归**。
+- **冲突与过时入口收口**：保留全新链正式门禁而删除 A6 沉淀指令；A0 EVM 路由收归通道决策树，冷启动改指 `scan_bloxroute_seg.py`，`scan_transfers.py` 降为历史/诊断用途；同步对抗复核、key 真源、E5 惯犯库挂复盘、轻量筛查档、Solana/PYTHIA 过时指针。
+- **版本与入口瘦身**：执行文档改读 `VERSION`，`docs_lint --all` 禁止从 CHANGELOG 首条取版本，并守卫 `SKILL.md` ≤8192 bytes；`SKILL.md` 保留原 frontmatter 触发句、7 条铁律、A0–A6/E/U 路由及 EF-1–EF-3 阻断语义，删除重复解释。
+- **卫生与防回胖**：删除修复检查单、零消费与一次性核验脚本；`merge_parts.py` 标注仅服务旧 HyperSync 分片格式。新增链支持矩阵测试，双向锁定 frontmatter、`identity_snapshot_receipt.py::SUPPORTED` 与 `entity_identity_gate.py::CHAINS`；G8/G9/G10/`a4_gate` 等门禁实现未改。
+- **验证**：每批语义改动后运行 `python3 scripts/tests/run_all.py`；新增部署同步与链矩阵两项守卫，删除三项随链下线的专项测试。成本：5 批语义改动；质量：新增分析结论 0，传播级数字错误 0，未决项 0。
 
 ## [6.15.0] - 2026-08-04 — 第四轮全库审计修复
 
