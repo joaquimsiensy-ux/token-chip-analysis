@@ -41,3 +41,11 @@
 - **必做区分检验**：①off-curve→用 `scripts/solana/squads_members.py` 查 Squads 多签成员（getMultipleAccounts+borsh 手解；vault=ms 的 index0 派生可反推）；②**共享托管密钥检验**：多个多签若共享同一成员密钥＝同一中介组织的交割网（PYTHIA 15 个 multisig 全部 2-of-2 且共享 2FLpNeST）；③灌仓开票模式（美元整档面额、测试笔）＝escrow 场外交割指纹；④退回通道核查（PYTHIA 11 仓原数退回上游 ATA＝"独立买家"半崩）。
 - **证据不足时**：写"多签托管交割结构，最终受益人不可确证"；禁止判"独立散户买盘"或"个人冷储"。
 - **权威与出处**：entity_identity_gate PDA_UNRESOLVED flag；data-pipeline-solana-scan §2 托管类型判别（off-curve/Squads/PDA 归属）。翻案：PYTHIA 2026-07-29 终裁（"集团空壳落仓 17%"→Squads v4 escrow 交割仓 16.33%）。
+
+## C-06 零 DEX 交互被误当 CEX 资金通道 【单案候选】
+
+- **触发现象**：高持仓实体与 DEX 全史双向零交互，被直接排除庄家身份。
+- **禁止推断**：CEX 内部买入不上链；零 DEX 买入不能推出零市场买入。
+- **必做区分检验**：对全部外部流入做第二跳溯源；任一 CEX 提现命中即撤销资金通道判据，回普通门槛判级。
+- **证据不足时**：没有二跳全量结果时，通道与 CEX 内买入建仓两解释并列，不得一票否决庄级。
+- **权威与出处**：playbook-entity-cluster-tiering“资金通道”前置闸。翻案：IQ 2026-07-26；通道正例 GOAT 2026-07-26。
