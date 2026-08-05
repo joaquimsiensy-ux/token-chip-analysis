@@ -77,11 +77,6 @@ CSV 的每个历史 prefix，再从前一 `requested_to` 续采并发布加长 c
 ```
 ```
 
-批量预采集（v3.16.0，/collect-data 命令）：多币串行队列 `scripts/collect/collect_queue.py`
-——EVM 五链(bsc/eth/base/arbitrum/robinhood)走 fetch_hypersync_v2（部署块自动探测进全局缓存）、
-solana 走 fetch_sqd_transfers_v2；manifest 原子记账、残缺 run 改名 partial_ 隔离不删除、
-单项失败不阻塞；HyperSync key 读 `~/.config/hypersync/token`。夜间队列先行，分析会话只付增量。
-
 分叉依据：bloXroute 8 并发扫 249.6 万行约 80 分钟，量级再大耗时不可控且免注册通道无 SLA；HyperSync 免费层拉 1568 万条约 5.2 小时（OPN/SIREN，07）；**Starter 付费档（$70/月,100rpm+overage 5x=500rpm）+官方客户端后，同类量级压至半小时内**（v3.11.2 POC，2026-07-21，详见下表）。
 
 配套缓存（transfers_lib.py，存 `~/.cache/chip-analysis/`，跨币跨会话复用）：
@@ -92,7 +87,7 @@ solana 走 fetch_sqd_transfers_v2；manifest 原子记账、残缺 run 改名 pa
 
 **存量 HyperSync v2 目录迁移（增量更新前置）**：2026-08-02 之前的
 `hypersync-v2-done/v2` 没有 `files` 实体回执，不得直接被新续拉器信任。QUQ、
-PYTHIA、TROLL 类存量币在下次 `/collect-data` 或投后更新前，先对该币的 v2
+PYTHIA、TROLL 类存量币在下次增量采集或投后更新前，先对该币的 v2
 采集根目录执行：
 
 ```bash
@@ -152,7 +147,7 @@ size 与 SHA-256；全部通过后才原子将旧 done 升为 `hypersync-v2-done
 - POST `https://bsc.hypersync.xyz/query`；header `Authorization: Bearer {TOKEN}`；body 含 `from_block`、`logs: [{address, topics}]`、`field_selection`。（SIREN，07）
 - 匿名（无 token）已不可用；token 让用户到 app.envio.dev 注册——控制台在用户（中国）网络打不开需 VPN，但 API 端点直连可用，"控制台打不开 ≠ API 不可用"。（SIREN，07）
 - archive_height 到最新块，全史无缺口；换 token 地址与链子域名即可用于其他 HyperSync 支持链。（SIREN，07）
-- token 从 `~/.config/hypersync/token` 自动读取（fetch_hypersync 与 /collect-data 内置）；换 key 时该文件与 `~/.claude/api-keys.md` §1 两处同步。
+- token 从 `~/.config/hypersync/token` 自动读取（fetch_hypersync 内置）；换 key 时该文件与 `~/.claude/api-keys.md` §1 两处同步。
 - **transactions 端点做 BNB 注资溯源**：body `{"transactions":[{"to":[addr]}],"field_selection":{"transaction":["block_number","from","to","value"]}}`（value 为 hex）——单址全链入金一次查询 ~2.3s 到 tip，比逐块扫快几个量级；⚠25 址×全链批量会 10 分钟超时，可用姿势=关键地址单址逐查 / 发射窗小块段批量（from/to_block 圈定）。（哈基米，07-18）
 - 分段多进程姿势：复制脚本改 OUT 与 to_block 边界（`if nxt >= BOUND: break`）、sleep 提至 0.5s，各进程独立 CSV 事后按 (tx,log_index) 去重合并；改 config 后重启前删本地缓存的段清单文件。（哈基米，07-18）
 - **多会话共享 key 限速冲突**：并行分析会话同打一个 HyperSync key/端点会互相触发 429（SQD 案与另一标的采集会话撞车实测）——开工前 `ps aux | grep fetch_hypersync` 查有无在跑进程；撞车时不必停工，调低单会话吞吐预期、靠 429 退避共存（SQD 案 83.2 万条 56 分钟、429×20 次全部自愈）。（SQD，07-20）**限流是 key 级共享、不是端点独立**——同 key 打不同链子域（eth+arbitrum）并发同样互抢限额：LPT 案 eth+arbitrum 三进程并发时 arbitrum 端点 429 密集，串行后恢复；多链标的的分链采集按链串行或错峰，别指望换端点绕开限额。（LPT，07-21）

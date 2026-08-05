@@ -40,7 +40,7 @@
 
 长任务运维：最长任务最先启动、等待期填满下游脚本编写、零进展要告警、预估偏差超 2 倍主动汇报（抽样外推报保守上限）、废弃通道同步停掉观察哨。
 
-**预采集衔接（/collect-data）**：开工先查工作目录是否已有预采集产物（EVM＝`data/v2/run_*/done.json`，Solana＝`data/soltx-*.jsonl.gz`＋meta）——有则**直接复用并断点续拉增量到最新**（底层采集器天然幂等），禁止无视既有产物从零重采；完整性以队列总清单 `collect_plans/collect_manifest.json` 与各任务 done.json 为准，`done_with_gaps` 项必须先补齐缺口再进对账。链内采集器另产 `collection_manifest.json`/receipt，证明单链数据范围；两层文件不得都简称 manifest。批量候选的采集等待尽量前移到 /collect-data 夜间队列（`scripts/collect/collect_queue.py`），分析会话只付增量成本。
+**既有采集产物复用**：开工先查工作目录是否已有采集产物（EVM＝`data/v2/run_*/done.json`，Solana＝`data/soltx-*.jsonl.gz`＋meta）——有则**直接复用并断点续拉增量到最新**（底层采集器天然幂等），禁止无视既有产物从零重采；完整性以当链 `done.json`、`collection_manifest.json`/receipt 为准，链内 manifest/receipt 证明单链数据范围。`done_with_gaps` 必须先补齐缺口再进对账。
 
 ## A2 对账关卡（硬性，四查全过才进分析）
 

@@ -83,7 +83,7 @@
 | `provenance_ledger.json` | −2 | 已知实体币源溯源台账（entity_source_trace.py，provenance-ledger/v2 正向模拟版，两锚点构成＋进货单＋FIFO/LIFO/事件顺序敏感性＋完整输入绑定）——freeze 从原始边真实重放；v1 是 pro-rata 数学错误版一律重跑 |
 | `sealed/stage1_hypotheses.sealed.md` | −1 | 初步定性密封件，见 §2.3 |
 | `entity_freeze.json` | −2 | 冻结事件物化：成员表哈希/时间/未决项/casebook 检验结果；变更走 revision 追加，不许静默覆盖 |
-| 既有产物 | −1 | accounting_mode、collect_manifest＋done.json、四查产物、cluster_prep、address_bucket_series、价格序列——**格式零改动** |
+| 既有产物 | −1 | accounting_mode、链内 done.json/collection_manifest/receipt、四查产物、cluster_prep、address_bucket_series、价格序列——**格式零改动** |
 
 **findings.md 双义处理**：−1 不写 findings.md（它是 A3 交接包，归 −2 按 context-discipline 现行制度写）；点名式 CEX 黑箱关卡中止时，其结论只作为 `BLOCKED_CEX_GATE` 恢复资产。
 
@@ -131,4 +131,4 @@ casebook C/E 册过闸 → 聚类合并裁决 → 临时实体 → **ET-2 无下
 ## §4 验收与回退
 
 - **首战合并验收指标（分段引入组）**：①verify 一次通过 ②−2 缺件回头补采次数（目标 0）③needs_adjudication 规模实测 ④−2 峰值上下文（目标 <20 万）⑤sealed 违规读取（目标 0，−2 交付时自查申报）⑥保鲜警报触发与用户裁决记录是否顺畅 ⑦候选覆盖自检缺漏数（目标 0）。与 v6 骨架组四指标分开归因。
-- **回退**：CC 侧 revert 6.1.0＋删两个命令分发文件即可，单会话命令原样在。**数据零浪费**：−1 产物即标准采集/对账产物，弃用分段时旧命令按"预采集衔接"直接复用——最坏结果＝一次加强版 /collect-data。
+- **回退**：CC 侧 revert 6.1.0＋删两个命令分发文件即可，单会话命令原样在。**数据零浪费**：−1 产物即标准采集/对账产物，弃用分段时单会话分析流程按"既有采集产物复用"直接接续——最坏结果也只是提前完成一轮标准采集/对账。

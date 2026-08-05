@@ -39,7 +39,7 @@
 
 主分析会话断在任何阶段，新会话按固定序恢复，不临场发挥：
 
-1. **盘点断点资产**：案目录 `findings.md`（阶段交接包）→ `analysis-state.json`/`facts.json`（实体表与事实源，有 entity_id 可直接续）→ `data/` 采集产物（done.json/collect_manifest 判完整性）→ `charts/` 与报告残稿。
+1. **盘点断点资产**：案目录 `findings.md`（阶段交接包）→ `analysis-state.json`/`facts.json`（实体表与事实源，有 entity_id 可直接续）→ `data/` 采集产物（链内 done.json/collection_manifest/receipt 判完整性）→ `charts/` 与报告残稿。
 2. **判定断点位置**：对照 SKILL.md 阶段路由表，findings.md 末段＋最新产物 mtime 定位断在哪个阶段边界内。
 3. **数据不重采**：采集产物幂等续拉增量即可；对账四查若断前已过、数据未增量则不重跑，增量后必重跑。
 4. **结论不重 derive**：findings.md 里已有的判定直接继承（含"已排除假设"——防止新会话把排除过的假设重新走一遍）；只补断点之后的活。

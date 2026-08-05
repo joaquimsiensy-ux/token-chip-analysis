@@ -24,7 +24,7 @@ description: 对已具备受支持数据管线的链上代币做机构级庄家�
 | 阶段 | 核心动作 | 必读/产物 | 阻断语义 |
 |---|---|---|---|
 | A0 画像与路由 | 合约、多链、分母、链路由 | A0＋当链 pipeline；accounting_mode.json | accounting_gate：0 放行/2 硬停/1 修通道重跑 |
-| A1 并行采集 | 完整数据＋标签＋价格 | A1＋当链 pipeline；data/、队列层 collect_manifest、链内 collection_manifest/receipt | — |
+| A1 并行采集 | 完整数据＋标签＋价格 | A1＋当链 pipeline；data/、链内 collection_manifest/receipt | — |
 | A2 对账关卡 | 余额/供给闭合/供给真值/时间抽查 | A2＋recon；supply_truth.json、anchor_plan.json、time_spotcheck.json | 四查不过不进 A3；gate 0 PASS/2 FAIL/1 修通道重跑 |
 | A3 分析 | 标注→归因→聚类→判级→ET→演变→facts/state | A3＋casebook C/E＋playbook；findings.md、facts.json、analysis-state.json、identity_gate.json | EF-1～EF-3 或 G8 未闭合即拒编译 |
 | A4 对抗复核 | claims→扰动→揭盲→N 路复核→裁决→finalize | A4＋evidence-wording；a4_claims.json、a4_seal.json | 实际核查三档；a4_gate 未封口（2）禁进 A5 |
@@ -37,12 +37,11 @@ description: 对已具备受支持数据管线的链上代币做机构级庄家�
 - 阻断：控盘看最终经济控制，EF-1 必须落 `economic_control_ledger.json` 且公共设施不进永久成员表；EF-2 必须落 `dormant_warehouse_audit.json`；任一门禁或候选未闭合，就不允许冻结实体、发布峰值或出图。
 - 权威定义：EF-1 见 `economic-control-accounting.md`；EF-2 与判级边界见 `playbook-entity-cluster-tiering.md`；EF-3、分段分工与 schema 见 `analyze-workflow.md`、`split-run.md`、`scan-schemas.md`。
 
-## 四入口
+## 三入口
 
 - **/token-analyze**：A0–A5 完整版；A6 仅用户要求。
 - **/token-analyze-1**：A0–A2＋A3 机械子层；按 `split-run.md` 交接后完成即停。
 - **/token-analyze-2**：handoff verify 后接 A3 判断层＋A4–A5；仅支持 full，A6 仍须用户要求。
-- **/collect-data**：`collect-workflow.md` 只采集零结论；以 collect_manifest/done.json 续增量，禁止从零重采。
 
 ## 上下文预算
 
@@ -51,7 +50,7 @@ description: 对已具备受支持数据管线的链上代币做机构级庄家�
 
 ## 深入阅读（references/）
 
-- 流程：`analyze-workflow.md`、`collect-workflow.md`、`split-run.md`、`retrospective.md`、`context-discipline.md`。
+- 流程：`analyze-workflow.md`、`split-run.md`、`retrospective.md`、`context-discipline.md`。
 - 方法：`analysis-playbook.md`、`playbook-supply-recon.md`、`playbook-entity-cluster-methods.md`、`playbook-entity-cluster-tiering.md`、`playbook-entity-cluster-cost.md`、`playbook-state-anomaly.md`、`playbook-evidence-wording.md`。
 - 门禁/交付：`report-template.md`、`scan-schemas.md`、`economic-control-accounting.md`、`lp-fee-accounting.md`、`independent-audit-protocol.md`、`casebook/README.md`。
 - EVM：`data-pipeline-evm.md`、`data-pipeline-evm-channels.md`、`data-pipeline-evm-sources.md`、`data-pipeline-evm-recon.md`。
