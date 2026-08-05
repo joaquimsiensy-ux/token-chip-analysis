@@ -39,6 +39,10 @@ def resolve(ref, src_path):
 def main(all_mode=False):
     fails = []
     warn_broken = 0
+    skill_path = os.path.join(ROOT, 'SKILL.md')
+    skill_bytes = os.path.getsize(skill_path)
+    if skill_bytes > 8192:
+        fails.append(f'SKILL.md 超过 8192 bytes：{skill_bytes}')
     for path in md_files(all_mode):
         rel = os.path.relpath(path, ROOT)
         in_code = False
@@ -59,7 +63,7 @@ def main(all_mode=False):
             if line.count('**') % 2 == 1:
                 fails.append(f'残缺粗体 {rel}:{i}: {line.strip()[:60]}')
     # 3) SKILL.md 深入阅读清单齐全性
-    skill = open(os.path.join(ROOT, 'SKILL.md'), encoding='utf-8').read()
+    skill = open(skill_path, encoding='utf-8').read()
     for name in re.findall(r'^- `([\w/.-]+\.md)`', skill, re.M):
         if not (os.path.exists(os.path.join(ROOT, 'references', name)) or os.path.exists(os.path.join(ROOT, name))):
             fails.append(f'SKILL.md 深入阅读清单断链: {name}')
@@ -210,6 +214,18 @@ def main(all_mode=False):
         text = open(os.path.join(ROOT, rel), encoding='utf-8').read()
         if generic_mode.search(text):
             fails.append(f'2026-08-04 generic analysis 模式回退 {rel}')
+
+    # 10) 执行文档只能从 VERSION 读取当前版本，禁止重新把大 CHANGELOG 拉回开工阅读链。
+    version_instruction = re.compile(
+        r'读[^。\n]{0,24}CHANGELOG[^。\n]{0,24}版本号|CHANGELOG[^。\n]{0,16}首(?:个)?版本号')
+    execution_docs = ['SKILL.md', 'references/analyze-workflow.md',
+                      'references/easy-workflow.md', 'references/update-workflow.md',
+                      'references/collect-workflow.md', 'references/split-run.md',
+                      'references/context-discipline.md']
+    for rel in execution_docs:
+        text = open(os.path.join(ROOT, rel), encoding='utf-8').read()
+        if version_instruction.search(text):
+            fails.append(f'版本读取回退 {rel}: 执行文档必须读 VERSION，不得读 CHANGELOG 首版本号')
 
     if fails:
         for f in fails[:30]:
