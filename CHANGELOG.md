@@ -15,6 +15,8 @@
 
 ## 版本索引（活跃窗口，新在上；每版一行，详情见下方对应条目）
 
+- **6.27.0** 2026-08-05 Arbitrum 降为探索支持：
+  正式编译全链拒绝，正式链声明/发布闸/标签能力三向闭合守卫
 - **6.26.0** 2026-08-05 三项 P0 活故障修复：手工标签唯一真源与 suite 守卫、A3 依赖序统一、既有报告净室复核入口补齐
 - **6.25.0** 2026-08-05 references 长行保序拆分（瘦身第 6 步）：30 条语义断行，3 条 Markdown 表格行按结构约束保留
 - **6.24.0** 2026-08-05 零引用脚本归档与 Solana gas 双实现合并（瘦身第 5 步）：gas_origin 单入口保留限页/全量双模式与字段闸
@@ -61,6 +63,24 @@
 - **4.1.0** 2026-07-30 PYTHIA 双报告交叉核实复盘：实体身份防复发三闸（label_lookup 并源 address-book / entity_identity_gate+G8 编译门 / 复核 prompt 翻案四问固化）+ 复盘元规则（身份类教训必须以代码收尾）
 - **4.0.0** 2026-07-28 大整编（用户点名）：3.0→3.41 四十余版增量迭代的结构清理——路由索引补齐 9 节、结构错位归位 3 处、消重立权威源制 6 组、CHANGELOG 重整归档 29 条；只减不加，规则语义未动
 - 更早版本（3.41.0 及以前）→ `archive/CHANGELOG-archive.md`
+
+## [6.27.0] - 2026-08-05 — 第二轮修复工程第 2 步：Arbitrum 降为探索支持
+
+- **支持矩阵纠偏**：正式深度管线移除 Arbitrum，现役路由与 EVM 手册明确其只保留探索档；
+  采集、对账、identity snapshot receipt 与 G8 生成/校验能力不删除。降级原因固定为
+  `labels-arbitrum.csv` 缺失，目标链设施剔除与合并拦截无法按正式口径闭合。
+- **正式轨 fail-closed**：`audit_release_gate` 统一正式链集合与错误语义；A4 finalize 绑定
+  state/G8 链并写入 seal，revision 链拒绝链漂移；A5 seal 绑定 A4 链；`build_html` 的
+  `analysis-new` / `analysis-audit` 在正式资产校验前拒绝 Arbitrum。探索档仍可重放存量数据，
+  但不得产 A4/A5 seal 或正式 analysis。
+- **三向闭合守卫**：`test_chain_support_matrix.py` 同时核对 SKILL frontmatter、release gate
+  `FORMAL_CHAINS`、`build_labels.py` 构建集合，并逐链要求目标 CSV 存在且含数据、
+  `LabelResolver` 非 degraded。受控回归把 Arbitrum 同时塞回三处旧声明后，守卫以
+  `labels-arbitrum.csv missing, empty, or header-only` 阻断；还原后通过。
+
+本次为工具工程，无代币分析轮次或结论质量指标；正式支持错配 1→0，
+新增正式链回归测试 1 项，
+全量 SUITE 50→51 项。
 
 ## [6.26.0] - 2026-08-05 — 第二轮修复工程第 1 步：三项 P0 活故障收口
 
