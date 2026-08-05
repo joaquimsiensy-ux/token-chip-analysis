@@ -16,7 +16,7 @@
     inode 会让 flock 绑在旧 inode 上、新路径可被第二个进程重复上锁（双持锁）。
     读方对半截 JSON 容错即可。
   - 同进程两线程对同一路径各自 open+flock 也互斥（flock 属 open file description）
-    ——collect_queue 双泳道并行时同名币（多链同 workdir）天然被挡。
+    ——分析任务并行时同一案目录的重复写入天然被挡。
   - 子进程不继承锁：Python3 的 subprocess 默认 close_fds=True。
 （来源：C2 采集侧并发加固，2026-07-22）"""
 import datetime
@@ -52,7 +52,7 @@ def _age_s(iso):
 
 class ProcLock:
     """一个锁文件一把锁。用法：
-        lk = ProcLock(path, run_id=..., role="queue")
+        lk = ProcLock(path, run_id=..., role="stage1")
         ok, note = lk.acquire()   # note 非空 = 接管陈死残留的说明（记日志）
         if not ok: ...拒绝，note 是持有者诊断串...
         lk.heartbeat()            # 运行中定期刷

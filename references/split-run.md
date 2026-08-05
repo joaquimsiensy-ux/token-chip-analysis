@@ -25,11 +25,11 @@
 
 ### 1.1 开工探针（capability preflight，全部复用现有件；探针不过不启动全量采集）
 
-`scripts/tests/env_check.py`（依赖）＋磁盘余量（`scripts/run_guarded.py` 既有阈值）＋关键端点连通（`scripts/collect/probe_keys.py` 单次模式）＋工作目录写权限＋detach 后台冒烟。
+`scripts/tests/env_check.py`（依赖）＋磁盘余量（`scripts/run_guarded.py` 既有阈值）＋关键端点连通（`scripts/probe_keys.py` 单次模式）＋工作目录写权限＋detach 后台冒烟。
 
 ### 1.2 双轨互斥锁
 
-开工先抢案级 `.stage1.lock`（复用 `scripts/collect/proclock.py` 机制，锁文件记 pid/run_id/心跳）＋生成本次 `run_id`。主轨（codex/GPT-5.6）与备轨（CC/Opus）**禁止同时写同一案目录**；抢不到锁即退出并报告在跑者信息。
+开工先抢案级 `.stage1.lock`（复用 `scripts/proclock.py` 机制，锁文件记 pid/run_id/心跳）＋生成本次 `run_id`。主轨（codex/GPT-5.6）与备轨（CC/Opus）**禁止同时写同一案目录**；抢不到锁即退出并报告在跑者信息。
 
 ### 1.3 范围（做什么）
 
