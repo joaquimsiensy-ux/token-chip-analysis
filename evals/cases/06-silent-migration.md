@@ -14,4 +14,4 @@
 4. **必做证据动作**：重放收尾必跑供给真值闸——`mint_total − burn_total` vs 链上 `totalSupply()`（EVM `eth_call totalSupply` / Solana `getTokenSupply`），超阈值即 FAIL。FAIL 后处置：余额改走 Multicall3 链上实时直查；地址全集与转账历史仍可用重放（迁移不改历史事件）；重放余额仅可作"≥阈值超集筛选"（migrate 只减不增，数学严格）。
 5. **缺证据时的结论上限**：totalSupply 查询临时不可用时**不允许交付持仓结论**——这是 fail-closed 闸，不是软提醒（本题没有"降级表述"出路，等通道恢复）。
 
-**预期拦截点**：**供给真值闸（v6 新增代码，本题是它的验收题）**——analyze/easy/update 三条 workflow 的重放收尾必跑项 + casebook/supply-accounting.md 静默改账条。
+**预期拦截点**：**供给真值闸（v6 新增代码，本题是它的验收题）**——analyze workflow 的重放收尾必跑项 + casebook/supply-accounting.md 静默改账条。

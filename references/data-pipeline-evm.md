@@ -11,7 +11,7 @@
 
 | 节 | 主题 | 分册文件 |
 |---|---|---|
-| §1 全量转账通道决策树（含通道表/批量预采集/增量拉取） | 采集通道 | `data-pipeline-evm-channels.md` |
+| §1 全量转账通道决策树（含通道表/断点续拉） | 采集通道 | `data-pipeline-evm-channels.md` |
 | §2 死亡名单（实测不可用，3 个月内禁止重探） | 采集通道 | `data-pipeline-evm-channels.md` |
 | §3 各通道操作细节（HyperSync/Alchemy/bloXroute/Etherscan/Multicall3） | 采集通道 | `data-pipeline-evm-channels.md` |
 | §6 BSC 专属坑表 | 采集通道 | `data-pipeline-evm-channels.md` |
