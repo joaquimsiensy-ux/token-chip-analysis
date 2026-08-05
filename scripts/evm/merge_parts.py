@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
-"""把 fetch_hypersync_par 的多段 part_XX.csv 合并转换成 replay_pass1 期望的 7 列格式。
+"""deprecated：仅服务旧 fetch_hypersync_par 分片格式，正式主线为 v2 Parquet。
+
+把 fetch_hypersync_par 的多段 part_XX.csv 合并转换成 replay_pass1 期望的 7 列格式。
 来源：AKE(BSC) 分析会话实战产物，2026-07-19（v3.7 收编）；920 万行 48 段合并零重复实测。
 part 列：block,ts,tx,log_index,from,to,value_raw
 输出列：block,ts,tx,from,to,value,uniqueId（uniqueId=hs:{tx}:{log_index}）
