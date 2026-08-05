@@ -3,7 +3,7 @@ name: token-chip-analysis
 description: 对已具备受支持数据管线的链上代币做机构级庄家行为分析与既有报告独立复核——在声明的数据范围内采集重放、识别庄级实体并划分标签（项目方/大庄/小庄/离场庄/刷量地址）、重建阵营持仓演变、绘制重点实体流转路径、核算 V3/V4 流动性与可证 LP 权益，并交付经对抗复核的自包含 HTML。正式深度管线覆盖 Ethereum/BSC/Base/Arbitrum/Robinhood EVM、Solana；全新链须先补齐采集、对账与身份门禁适配器才可正式发布。当用户问"某代币的筹码分析/筹码结构/庄家行为分析"、"复核/审计已有筹码报告"、"有几个庄/庄家什么类型"、"庄家/项目方/做市商在吸筹还是砸盘"、"有没有关联地址/老鼠仓/单一实体控盘"、"庄家是不是跑了/弃盘了"、"看看某代币的链上持仓/大户动向"、"庄家做 LP 赚了多少/LP 手续费怎么计算"，或提到 holder analysis、鲸鱼追踪、代币尽调时使用。与 gmgn-token 的区别：gmgn-token 是快速单项查询；本 skill 是数小时深度分析工程。只查价格/K线/热榜/新币列表不要用本 skill。
 ---
 
-<!-- skill-version-source: VERSION; skill-version: 6.25.0 -->
+<!-- skill-version-source: VERSION; skill-version: 6.26.0 -->
 
 # 代币筹码分析（Token Chip Analysis）
 
@@ -26,7 +26,7 @@ description: 对已具备受支持数据管线的链上代币做机构级庄家�
 | A0 画像与路由 | 合约、多链、分母、链路由 | A0＋当链 pipeline；accounting_mode.json | accounting_gate：0 放行/2 硬停/1 修通道重跑 |
 | A1 并行采集 | 完整数据＋标签＋价格 | A1＋当链 pipeline；data/、链内 collection_manifest/receipt | — |
 | A2 对账关卡 | 余额/供给闭合/供给真值/时间抽查 | A2＋recon；supply_truth.json、anchor_plan.json、time_spotcheck.json | 四查不过不进 A3；gate 0 PASS/2 FAIL/1 修通道重跑 |
-| A3 分析 | 标注→归因→聚类→判级→ET→演变→facts/state | A3＋casebook C/E＋playbook；findings.md、facts.json、analysis-state.json、identity_gate.json | EF-1～EF-3 或 G8 未闭合即拒编译 |
+| A3 分析 | 标注/归因→casebook→聚类裁决→临时实体→ET-2→EF/freeze→G8→判级/ET-1→演变→facts/state | A3＋casebook C/E＋playbook；findings.md、facts.json、analysis-state.json、identity_gate.json | EF-1～EF-3 或 G8 未闭合即拒编译 |
 | A4 对抗复核 | claims→扰动→揭盲→N 路复核→裁决→finalize | A4＋evidence-wording；a4_claims.json、a4_seal.json | 实际核查三档；a4_gate 未封口（2）禁进 A5 |
 | A5 报告 | 三图＋流转图＋MD/HTML＋质检 | A5＋report-template；报告.md、a5_report_seal.json、报告.html | build_html 必须 0；G8/G9 A4 哈希/G10 A5 seal 任缺拒交付 |
 | A6 复盘 | 仅用户明确要求时分流教训 | `retrospective.md`；CHANGELOG | run_all 全 PASS 后才 commit |
@@ -37,11 +37,13 @@ description: 对已具备受支持数据管线的链上代币做机构级庄家�
 - 阻断：控盘看最终经济控制，EF-1 必须落 `economic_control_ledger.json` 且公共设施不进永久成员表；EF-2 必须落 `dormant_warehouse_audit.json`；任一门禁或候选未闭合，就不允许冻结实体、发布峰值或出图。
 - 权威定义：EF-1 见 `economic-control-accounting.md`；EF-2 与判级边界见 `playbook-entity-cluster-tiering.md`；EF-3、分段分工与 schema 见 `analyze-workflow.md`、`split-run.md`、`scan-schemas.md`。
 
-## 三入口
+## 四入口
 
 - **/token-analyze**：A0–A5 完整版；A6 仅用户要求。
 - **/token-analyze-1**：A0–A2＋A3 机械子层；按 `split-run.md` 交接后完成即停。
 - **/token-analyze-2**：handoff verify 后接 A3 判断层＋A4–A5；仅支持 full，A6 仍须用户要求。
+- **自然语言复核既有报告**：读 `independent-audit-protocol.md` 走净室复核轨；旧报告只拆成
+  claim registry 待审命题，不作证据输入，不新增 slash command。
 
 ## 上下文预算
 
