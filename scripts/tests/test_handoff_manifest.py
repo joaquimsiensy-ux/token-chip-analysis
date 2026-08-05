@@ -33,6 +33,7 @@ import tempfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 SCRIPT = os.path.join(HERE, "..", "report", "handoff_manifest.py")
+DIST_SCAN = os.path.join(HERE, "..", "report", "holder_distribution_scan.py")
 FAILS = []
 CHECKS = []
 
@@ -68,17 +69,23 @@ def make_case(d):
         {"id": "c2", "observed_type": None, "source": None, "conflict_flags": [], "needs_adjudication": True}]})
     write_json(d, "identity_preflight.json", {"addresses": [{"address": "0xabc", "labels": [], "code": True}]})
     write_json(d, "anomalies.json", [])
+    os.makedirs(os.path.join(d, "data"), exist_ok=True)
+    balances = {f"owner-{i:03d}": max(1, int(2_000_000 / (1.035 ** i))) for i in range(240)}
+    total = sum(balances.values())
+    write_json(d, "data/holders_owners.json", balances)
+    snapshot_sha = hashlib.sha256(open(os.path.join(d, "data/holders_owners.json"), "rb").read()).hexdigest()
     write_json(d, "data_map.json", {"files": [
         {"path": "data/transfers.csv", "rows": 2, "source": "test"},
-        {"path": "data/edges.jsonl", "rows": 2, "source": "test"}]})
-    os.makedirs(os.path.join(d, "data"), exist_ok=True)
+        {"path": "data/edges.jsonl", "rows": 2, "source": "test"},
+        {"path": "data/holders_owners.json", "sha256": snapshot_sha, "source": "test"}]})
     with open(os.path.join(d, "data", "transfers.csv"), "w") as f:
         f.write("a,b\n1,2\n")
     with open(os.path.join(d, "data", "edges.jsonl"), "w") as f:
         f.write(json.dumps([86400, 1, 0, 0, Z, "0xabc", 100]) + "\n")
         f.write(json.dumps([86400, 1, 1, 0, Z, "0xdef", 100]) + "\n")
     write_json(d, "accounting_mode.json", {"schema": "accounting-gate/v1", "verdict": "PASS", "exit_code": 0})
-    write_json(d, "supply_truth.json", {"verdict": "PASS", "exit_code": 0})
+    write_json(d, "supply_truth.json", {"verdict": "PASS", "exit_code": 0,
+                                         "total_supply_raw": str(total), "net_supply_raw": str(total)})
     write_json(d, "wave_scan_report.json", {"schema": "wave-scan/v3", "scan_universe_count": 0,
                                             "scan_universe": [], "must_adjudicate_count": 0,
                                             "retention_buckets": {"cleared": 0, "partial_exit": 0, "retained": 0},
@@ -94,6 +101,10 @@ def make_case(d):
     os.makedirs(os.path.join(d, "sealed"), exist_ok=True)
     with open(os.path.join(d, "sealed", "stage1_hypotheses.sealed.md"), "w") as f:
         f.write("> −2 实体冻结前禁读\n假说：无\n")
+    p = subprocess.run([sys.executable, DIST_SCAN, "--case-dir", d, "--stage", "initial"],
+                       capture_output=True, text=True)
+    if p.returncode != 0:
+        raise RuntimeError(f"distribution fixture 生成失败: {p.stdout}{p.stderr}")
 
 
 Z = "0x0000000000000000000000000000000000000000"
@@ -389,6 +400,10 @@ def main():
         run(["generate", "--case-dir", d17, "--status", "READY"] + GEN)
         mp17 = os.path.join(d17, "handoff_manifest.json")
         m17 = json.load(open(mp17))
+        m17["consumer_min_schema"] = "handoff/v2"
+        json.dump(m17, open(mp17, "w"))
+        p = run(["verify", "--case-dir", d17])
+        check("handoff/v2 默认拒收 exit 2", p.returncode == 2 and "legacy-read-only" in p.stdout)
         m17["consumer_min_schema"] = "handoff/v1"
         json.dump(m17, open(mp17, "w"))
         # manifest 内容变了但其不在 artifacts 自身清单（EXCLUDE_NAMES），哈希不受影响

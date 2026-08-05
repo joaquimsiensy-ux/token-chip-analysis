@@ -17,7 +17,11 @@ EXPECTED = {
     "token-analyze.md",
 }
 RETIRED = {"collect-data.md", "token-easy-analysis.md", "token-update.md"}
-MIGRATION_CHANGED: set[str] = set()
+MIGRATION_CHANGED = {"token-analyze-1.md", "token-analyze-2.md"}
+MIGRATION_NEEDLES = {
+    "token-analyze-1.md": ("distribution_scan.json", "handoff/v3"),
+    "token-analyze-2.md": ("a4-seal/v4", "G11", "只支持 full"),
+}
 
 
 def sha256(path: Path) -> str:
@@ -52,12 +56,16 @@ def main() -> int:
             continue
         source_hash = sha256(source)
         deployed_hash = sha256(deployed)
-        if source_hash != deployed_hash and not (
-            retired_present and source.name in MIGRATION_CHANGED
-        ):
-            failures.append(
-                f"SHA-256 不一致：{source.name} staging={source_hash} deployed={deployed_hash}"
-            )
+        if source_hash != deployed_hash:
+            if source.name not in MIGRATION_CHANGED:
+                failures.append(
+                    f"SHA-256 不一致：{source.name} staging={source_hash} deployed={deployed_hash}"
+                )
+            else:
+                text = source.read_text(encoding="utf-8")
+                missing = [x for x in MIGRATION_NEEDLES[source.name] if x not in text]
+                if missing:
+                    failures.append(f"待部署迁移命令缺新契约 {source.name}: {missing}")
 
     if failures:
         print("FAIL: commands-staging 与已部署命令不一致")
@@ -65,7 +73,12 @@ def main() -> int:
             print(f"- {failure}")
         return 1
 
-    if retired_present:
+    pending = sorted(name for name in MIGRATION_CHANGED
+                     if (DEPLOYED / name).is_file()
+                     and sha256(STAGING / name) != sha256(DEPLOYED / name))
+    if pending:
+        print(f"PASS: staging 新契约已守护；待 Fable 部署同步 {pending}")
+    elif retired_present:
         print(
             f"PASS: {len(staging_files)} 份 staging 命令清单正确；"
             f"部署侧待验收后删除退役文件 {retired_present}"

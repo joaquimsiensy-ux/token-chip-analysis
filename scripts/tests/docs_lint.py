@@ -177,9 +177,9 @@ def main(all_mode=False):
                                                       '不得原地升级', 'adversarial-review-execution/v1',
                                                       '案目录里的同名/复制脚本', '无 producer 的 accounting'],
         'references/report-template.md': ['state_from_facts.py', '--mode analysis-new',
-                                           '--mode analysis-audit', 'a4-seal/v3', 'ET-1/ET-2'],
+                                           '--mode analysis-audit', 'a4-seal/v4', 'ET-1/ET-2'],
         'references/analyze-workflow.md': ['identity_gate_v3', '--snapshot-receipt',
-                                           '--total-supply-raw', 'a4-seal/v3',
+                                           '--total-supply-raw', 'a4-seal/v4',
                                            '不得手工补字段', 'GPA raw/meta', '跨 scan pubkey 去重函数',
                                            '既有采集产物复用', 'data/v2/run_*/done.json',
                                            'data/soltx-*.jsonl.gz', 'done_with_gaps',
@@ -202,6 +202,24 @@ def main(all_mode=False):
         for needle in needles:
             if needle not in text:
                 fails.append(f'2026-08-04 语义口径回退 {rel}: 缺少 {needle}')
+
+    distribution_contracts = {
+        'references/scan-schemas.md': ['distribution-scan/v1', 'distribution-explanation/v1',
+                                       'distribution-adjudications/v1', 'pattern-resolutions/v1',
+                                       'distribution-rounds/v1', 'distribution-exception-receipt/v1',
+                                       'Holm-Bonferroni', 'launch_covered=false'],
+        'references/analyze-workflow.md': ['当前持仓分布初判', '当前持仓分布终判环',
+                                           'a5-report-seal/v2', 'G11'],
+        'references/split-run.md': ['distribution_scan.json', 'handoff/v3',
+                                    'holder_distribution_current.png', 'a4-seal/v4'],
+        'references/report-template.md': ['holder_distribution_current.png',
+                                           '形态统计因样本不足未做', '分布发布闸（G11）'],
+    }
+    for rel, needles in distribution_contracts.items():
+        text = open(os.path.join(ROOT, rel), encoding='utf-8').read()
+        for needle in needles:
+            if needle not in text:
+                fails.append(f'持仓分布硬闸口径回退 {rel}: 缺少 {needle}')
 
     banned_contracts = {
         'SKILL.md': ['对任意链上代币', 'v5.0 三问框架', '实体冻结前三硬闸'],
