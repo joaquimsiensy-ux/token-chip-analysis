@@ -15,6 +15,7 @@
 
 ## 版本索引（活跃窗口，新在上；每版一行，详情见下方对应条目）
 
+- **6.23.0** 2026-08-05 深入阅读清单 manifest 化（瘦身第 4 步）：现役路由与维护文档双向对账，维护件不再被 lint 强迫进入口
 - **6.22.0** 2026-08-05 archive/ 考古区分层（瘦身第 3 步）：旧 CHANGELOG、评测题库与已闭环冲突审计快照退出执行路由
 - **6.21.0** 2026-08-05 数据管线两册案例史外移与重复合并（瘦身第 2 步）
 - **6.20.1** 2026-08-05 修 5 处阻断级文档漂移（A4 前禁写报告冲突/easy 残留/惯犯回灌 docstring/批量预采集残留/旧 Par 路线历史降级）＋docs_lint 增中文禁词与 Python module docstring 扫描
@@ -57,6 +58,14 @@
 - **4.1.0** 2026-07-30 PYTHIA 双报告交叉核实复盘：实体身份防复发三闸（label_lookup 并源 address-book / entity_identity_gate+G8 编译门 / 复核 prompt 翻案四问固化）+ 复盘元规则（身份类教训必须以代码收尾）
 - **4.0.0** 2026-07-28 大整编（用户点名）：3.0→3.41 四十余版增量迭代的结构清理——路由索引补齐 9 节、结构错位归位 3 处、消重立权威源制 6 组、CHANGELOG 重整归档 29 条；只减不加，规则语义未动
 - 更早版本（3.41.0 及以前）→ `archive/CHANGELOG-archive.md`
+
+## [6.23.0] - 2026-08-05 — 深入阅读清单 manifest 化（瘦身第 4 步）
+
+以 `scripts/tests/runtime_docs_manifest.json` 作为 SKILL.md 深入阅读清单的唯一事实源，落实 S-01 的仓库内解法：`references/*.md` 与 `references/labels/*.md` 每份文档必须先归入 `listed`（现役路由）或 `maintenance`（维护件），新增文档不再由旧反向漏列逻辑一律强迫进入 SKILL.md。
+
+`docs_lint.py` 检查 4 改为 fail-closed manifest 守卫：JSON 解析、schema、scope、必需字段和数组结构任一异常即失败；磁盘实际集合与 `listed ∪ maintenance` 双向对账，未归类文档、幽灵条目及两类交集分别失败；`listed` 仍须按相对路径或文件名出现在 SKILL.md。`maintenance` 反向禁列，其中 `labels/MAINTENANCE.md` 无例外，`attic.md` 只允许保留一条含“禁读”的负向边界声明。全部失败信息携带 manifest 路径并提示“新增文档须先在 manifest 归类”。
+
+当前闭合结果为磁盘 34 份 = listed 32 份 + maintenance 2 份，未归类/幽灵/交集均为 0。SKILL.md 的“标签/环境”入口移除 `labels/MAINTENANCE.md`，其余项目不动；`attic.md` 既有禁读声明原样保留。动机是让 SKILL.md 只路由现役文档，维护手册不再因 lint 反向检查被迫占用入口与上下文。判据、阈值与 fail-closed 分析语义零变更。
 
 ## [6.22.0] - 2026-08-05 — archive/ 考古区分层（瘦身第 3 步）
 

@@ -12,7 +12,7 @@
   --all＝全量模式（v6.3.1）：额外纳入 commands-staging/*.md 与 archive/evals/**/*.md——
   此前 44/66 文档的覆盖盲区（"三查→四查""SKILL.md 阶段 N"类漂移在这两处存活过）。
 """
-import ast, glob, os, re, sys
+import ast, glob, json, os, re, sys
 
 ROOT = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..'))
 
@@ -117,14 +117,90 @@ def main(all_mode=False):
     for name in re.findall(r'^- `([\w/.-]+\.md)`', skill, re.M):
         if not (os.path.exists(os.path.join(ROOT, 'references', name)) or os.path.exists(os.path.join(ROOT, name))):
             fails.append(f'SKILL.md 深入阅读清单断链: {name}')
-    # 4) 反向漏列：references/ 顶层与 labels/ 的 md 都必须出现在 SKILL.md（v3.3：robinhood 曾漏列，
-    #    正向断链检查抓不到"存在但没列"）
-    should_list = sorted(glob.glob(os.path.join(ROOT, 'references', '*.md'))) \
-                + sorted(glob.glob(os.path.join(ROOT, 'references', 'labels', '*.md')))
-    for p in should_list:
-        base = os.path.relpath(p, os.path.join(ROOT, 'references'))  # 如 labels/README.md
-        if base not in skill and os.path.basename(p) not in skill:
-            fails.append(f'SKILL.md 深入阅读清单漏列: references/{base}')
+    # 4) 运行时文档 manifest 是“必须列入/维护禁列”的唯一事实源。SKILL.md 只路由
+    #    现役文档，维护件不得再因为 lint 的反向漏列检查而被迫进入口。
+    manifest_rel = 'scripts/tests/runtime_docs_manifest.json'
+    manifest_path = os.path.join(ROOT, manifest_rel)
+    manifest_hint = f'{manifest_rel}；新增文档须先在 manifest 归类'
+
+    def manifest_failure(message):
+        fails.append(f'{message}（{manifest_hint}）')
+
+    try:
+        with open(manifest_path, encoding='utf-8') as f:
+            manifest = json.load(f)
+    except (OSError, json.JSONDecodeError) as exc:
+        manifest_failure(f'运行时文档 manifest 无法解析: {exc}')
+        manifest = None
+
+    required_manifest_fields = {'schema', 'scope', 'listed', 'maintenance'}
+    if manifest is not None:
+        if not isinstance(manifest, dict):
+            manifest_failure('运行时文档 manifest 顶层必须是对象')
+            manifest = None
+        else:
+            missing_fields = sorted(required_manifest_fields - set(manifest))
+            if missing_fields:
+                manifest_failure(f'运行时文档 manifest 缺字段: {missing_fields}')
+                manifest = None
+
+    if manifest is not None:
+        manifest_valid = True
+        expected_scope = ['references/*.md', 'references/labels/*.md']
+        if manifest['schema'] != 'runtime-docs-manifest/v1':
+            manifest_failure(f'运行时文档 manifest schema 非法: {manifest["schema"]!r}')
+            manifest_valid = False
+        if manifest['scope'] != expected_scope:
+            manifest_failure(f'运行时文档 manifest scope 非法: {manifest["scope"]!r}')
+            manifest_valid = False
+        for field in ('listed', 'maintenance'):
+            value = manifest[field]
+            if (not isinstance(value, list)
+                    or any(not isinstance(item, str) or not item for item in value)):
+                manifest_failure(f'运行时文档 manifest {field} 必须是非空字符串数组')
+                manifest_valid = False
+            elif len(value) != len(set(value)):
+                manifest_failure(f'运行时文档 manifest {field} 含重复条目')
+                manifest_valid = False
+
+        if manifest_valid:
+            refs_root = os.path.join(ROOT, 'references')
+            actual_docs = set()
+            for pattern in manifest['scope']:
+                for path in glob.glob(os.path.join(ROOT, pattern)):
+                    if os.path.isfile(path):
+                        actual_docs.add(os.path.relpath(path, refs_root))
+            listed_docs = set(manifest['listed'])
+            maintenance_docs = set(manifest['maintenance'])
+
+            for base in sorted(actual_docs - listed_docs - maintenance_docs):
+                manifest_failure(f'未归类文档: references/{base}')
+            for base in sorted((listed_docs | maintenance_docs) - actual_docs):
+                manifest_failure(f'幽灵条目: references/{base}')
+            for base in sorted(listed_docs & maintenance_docs):
+                manifest_failure(f'listed 与 maintenance 交集: references/{base}')
+
+            # listed 沿用旧判定：相对路径或文件名任一出现在 SKILL.md 即视为已列。
+            for base in sorted(listed_docs):
+                if base not in skill and os.path.basename(base) not in skill:
+                    manifest_failure(f'SKILL.md 深入阅读清单漏列: references/{base}')
+
+            # maintenance 反向禁列；attic.md 只允许一条含“禁读”的负向边界声明。
+            skill_lines = skill.splitlines()
+            for base in sorted(maintenance_docs):
+                name = os.path.basename(base)
+                occurrences = [(i, line) for i, line in enumerate(skill_lines, 1)
+                               if base in line or name in line]
+                if base == 'attic.md':
+                    legal = [(i, line) for i, line in occurrences if '禁读' in line]
+                    illegal = [(i, line) for i, line in occurrences if '禁读' not in line]
+                    for i, _ in illegal:
+                        manifest_failure(f'SKILL.md maintenance 禁列: references/{base} 出现在第 {i} 行')
+                    if len(legal) > 1:
+                        manifest_failure('SKILL.md attic.md 禁读边界声明只能出现一条')
+                else:
+                    for i, _ in occurrences:
+                        manifest_failure(f'SKILL.md maintenance 禁列: references/{base} 出现在第 {i} 行')
 
     # 5) 历史静置仓反向扫描是实体冻结前硬闸；四层任一缺失都视为方法回退。
     method_contracts = {
