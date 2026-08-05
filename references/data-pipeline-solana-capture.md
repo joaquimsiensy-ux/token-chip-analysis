@@ -2,6 +2,14 @@
 
 > 母文档：`data-pipeline-solana.md`（薄路由索引页；来源声明与标注图例见索引页）。本册覆盖 **§6 脚本资产 / §7 验证清单 / §8 SQD 实测补充 / §9 锚点法演变重建 / §10 快照对比法增量更新 / §11 长币龄混合重建 / §12 销户账户覆盖审计 / §13 采集加速工程（13a–13d，13d 已禁用） / §14 日级快照重建 / §15 pump.fun 长内盘重建**；§0–§5 见 `data-pipeline-solana-scan.md`。正文 §N 交叉引用一律为母文档节号。
 
+## 本册路由
+
+- [§6–§10 脚本与基础重建](#6-脚本资产readme-另存-3-项低优先待建项两批清单勿混)：资产、验证、实测补充、锚点与快照。
+- [§11 长币龄混合重建](#11-长币龄混合重建--高密度期定向采集uselesssolana-2026-07-21-实战)与[§12 销户覆盖](#12-销户账户覆盖审计sqd-边集对账盲区加固2026-07-21)。
+- [§13 SQD 加速工程](#13-solana-采集加速工程2026-07-21cx-交叉复核定案后实施)：stream、全程采集、解码与 HyperSync 边界。
+- [§14 日级余额快照](#14-日级余额快照重建法长币龄演变默认方法goat-2026-07-26-翻案驱动)。
+- [§15 pump.fun 长内盘](#15-pumpfun-长内盘期全量重建签名史双索引法troll-2026-07-29-实战)。
+
 ## 6. 脚本资产（README 另存 3 项低优先待建项，两批清单勿混）
 
 核心脚本已收编（`scan_token_accounts.py`/`fast_probe_tops.py`/`fetch_sqd_transfers[_v2].py`/`decode_txs_v2.py` 等；"classify_top_holders"未独立成脚本，其功能由 scan_token_accounts 的 owner 聚合＋fast_probe_tops 画像覆盖；现役全清单见 `scripts/solana/README.md`）；getSignaturesForAddress 按 token account 索引、tokenBalances owner 映射等实现坑的完整版在 §3a（scan 分册）。IO 原始会话实录存档：`~/Desktop/老公用/fable筹码分析/windows IO筹码分析会话记录/26a24d6c-*.jsonl`。
@@ -109,29 +117,23 @@
 - **HTTP 204 ＝ fromBlock 超出服务端已索引范围**（0 字节）。**绝不能判完成**——那是漏数据,只能按可重试失败处理。
 - **`/head` 给的是 unfinalized head**,响应头 `x-sqd-finalized-head-number` 比它小约 2,900 slot（实测）。采集上界取 `/head` 没问题（实测到 head 仍正常返回数据）,但别拿两者的差当异常。
 
-#### ⚠ 伪 scan-fail（3.34.0 修复,BONK 全史采集实测暴露）
+#### 空 slot 完成判定与 scan-fail 契约
 
-**症状**：旧版把"HTTP 200 流完整读完但零行"与真失败一起归 `last is None` 重试后记 `gaps['scan-fail']`——纯空 slot 段永远补不回，以 `gaps == []` 为完成判据的调度器永远判不到完成（BONK 实测 365 段空洞、watchdog 反复重启空转约 24h）。
+- **触发条件**：scan_area 收到 HTTP 200，但流中没有数据行。
+- **必做动作**：complete 仅在“HTTP 200 + 无截断行 + 无连接层异常”时为真。零行且 complete：跨度 ≤ EMPTY_MAX（默认 500 slot，可用 --empty-max 调整）直接完成；更宽区间必须调用 Fetcher.probe_blocks()，只请求 block.number、无 tokenBalance 过滤，服务端上限 20 行。探不出块才完成，探到块按过滤路径异常重试。每次裁决写日志与 meta.empty_ok {n,max,intervals}。
+- **阻断语义/失败码**：HTTP 204、流不完整、探针失败、或探到块但 mint 流零行，均不得判完成；继续重试，最终进入 gaps[scan-fail]，gaps 非空退出码 2。
+- **权威测试**：scripts/tests/test_sqd_merge_equiv.py 的零行五分支与 scan_area 尾段契约；端到端只要求退出码 0 且 gaps=[]。
 
-**修复**：`scan_area` 加 `complete` 标志（HTTP 200 + 无截断行 + 无连接层异常 = 流完整读完）,零行且 complete 时按两级判定——跨度 ≤ **`EMPTY_MAX`（默认 500 slot,`--empty-max` 可调）** 直接判完成；更宽的零行区间不放行,改用 **轻量块探针** `Fetcher.probe_blocks()` 实证（只要 `block.number`、不带任何 tokenBalance 过滤器,服务端扫描上限自动截断在 20 行——**实测封顶 640 字节 / 0.4-0.8 秒**）,探不出块才判完成,探到块＝服务端过滤路径异常仍按失败重试。每次判定 log 留痕并写入 `meta.empty_ok`（`{n, max, intervals}`）供事后审计：任取一段做 ±60 包围请求,应能拿到前后块且不含该段本身。
-- BONK 现场分布：跨度 **1-13 slot、中位 2**——闸门 500 已是很宽的保守值,正常币不会踩到探针路径。
-- **闸门的残余局限**：低活跃度币若真有 >500 slot 的连续无块段,会多花一次探针请求（不影响正确性,只是慢一点）；探针失败时仍按老路重试记 gap。
+#### 收尾合并与缓存原子性契约
 
-#### ⚠ 收尾全内存合并会 OOM 且可能留下损坏缓存（3.34.0 修复,同案暴露）
+- **触发条件**：旧缓存与本轮 parts 收尾合并。
+- **必做动作**：预估行数 > MERGE_INMEM_MAX_ROWS（默认 800 万，可用 --merge-max-rows 调整）走 DuckDB 外排，memory_limit=4GB、threads=4、临时目录 data/_merge_tmp；阈值内走内存。无 DuckDB 时明确告警后回退内存。旧缓存只做流式行数、gzip CRC 与前几行抽验，不全量载入。
+- **原子落盘**：内存/外排两条路径都先写临时文件再 os.replace；中断不得破坏旧缓存，零边不改缓存。
+- **等价口径**：amt 可超 int64，外排全程按 VARCHAR；只允许 slot/ts CAST BIGINT。按字段去重，不按序列化整行；排序固定为 (slot,ts,from,to,amt文本)，确保两路径逐字节一致。
+- **阻断语义/失败码**：临时文件未完整、gzip/JSON 体检失败或合并异常，不得替换旧缓存，命令非零退出。
+- **权威测试**：scripts/tests/test_sqd_merge_equiv.py；覆盖两路径等价、跨格式去重、超 int64、同 (slot,ts) 多行、ts=0、大数保真、路径选择、原子落盘与零行判定。
 
-**症状**：旧版收尾全内存合并（含开局全量 load 旧缓存），千万行级分片峰值 13-19GB 必 OOM；且边算边写 gz，OOM 落在写入中途留下损坏缓存→下次启动触发"重新全量"，几小时工作作废（BONK 实测暴露）。
-
-**修复三件**：
-1. **超限自动降级磁盘外排**：预估行数（旧缓存精确行数 + parts 按采样均行长估算）> **`MERGE_INMEM_MAX_ROWS`（默认 800 万,`--merge-max-rows` 可调,约 2.8GB 峰值）** 即走 DuckDB 外排（`memory_limit=4GB` / `threads=4` / temp 落 `data/_merge_tmp`,实测 1.55 亿行约 11 分钟）；阈值内保持全内存（历史行为）。**无 duckdb 时告警后退回全内存**,不硬依赖。
-2. **两条路径一律原子落盘**：临时文件写完再 `os.replace`,中途 OOM/断电既不毁旧缓存也不留残件；零边时不动缓存（同旧版语义）。
-3. **旧缓存不再全量载入内存**：开局只做流式体检拿行数（块读计数 + gzip CRC 校验 + 抽验前几行 JSON）。
-
-**外排与全内存的口径对齐三条（照抄,踩过）**：
-- **金额可超 int64**（BONK 创世铸造边 amt = 10^19）——全程以 VARCHAR 取用（`x->>'$[i]'`）,**只有 slot / ts 才可 CAST 成 BIGINT** 用于排序,对 amt 做任何数值 CAST 都会溢出或失真。
-- **必须按字段去重而非整行**：part 文件用紧凑格式 `separators=(",",":")` 写,而缓存 gz 用 `json.dumps` 默认格式（带空格）——同一条边两种写法的整行字符串不同,`SELECT DISTINCT x` 去不掉；先拆字段 DISTINCT,输出时再按 gz 的默认格式逐字段重建。
-- **排序确定化**：`(slot, ts)` 主序之后补 `(from, to, amt文本)` 末位键。历史版只用 `(slot, ts)`,同键行序取决于 `set()` 哈希迭代顺序＝**同一份数据两次跑可能不同**；补齐后两条路径可逐字节对拍。amt 按**文本**比较（外排侧只能 VARCHAR,两边必须同口径）。
-
-**守护**：`scripts/tests/test_sqd_merge_equiv.py`（已进 run_all 全家桶）——六条契约：两路径逐字节一致（含跨格式去重/超 int64/同 (slot,ts) 多行/ts=0）、大数保真、路径选择、原子落盘、零行判定五分支、scan_area 尾段零行判完成而真失败仍失败。真实端到端另验：BONK 定段采集（含已知 skipped slot 尾段）退出码 0 且 `gaps=[]`（旧版此处必记 scan-fail）、增量续拉 183→230 边无重复、强制外排路径旧行全保留。
+历史症状与修复经过已由 3.34.0 CHANGELOG 记录，不进入现役执行页。
 
 #### ⚠ 同 slot 同额多笔边会被"去重"吃掉（TROLL 实测暴露，2026-07-29——检测与修复 SOP，根治待查）
 
