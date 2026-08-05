@@ -2,7 +2,7 @@
 
 > v6.1.0 新增。**本文件是分段执行的唯一权威源**：−1/−2 边界、交接契约、两段开工序全在此，其他文档只指针不重复。
 > 命名纪律：展示层叫 **−1 / −2**；schema 与内部枚举一律 ASCII（`stage1_mechanical` / `stage2_judgment`）。不叫"两段制"（该词已被 monitoring-package 报警两段制占用）。
-> **适用范围（v1）**：仅新标的 easy/full 分析。/token-update 与既有报告净室复核暂不支持（三账契约接好后再开放）。旧单会话命令（/token-analyze、/token-easy-analysis）原样保留，是小盘币一口气跑与分段故障的回退路径。
+> **适用范围（v1）**：仅新标的 full 分析；既有报告净室复核暂不支持（三账契约接好后再开放）。单会话 `/token-analyze` 作为小盘币一口气跑与分段故障的回退路径。
 
 ## §0 会话流与设计原理
 
@@ -10,7 +10,7 @@
 用户在 codex CLI（主轨 GPT-5.6）："对 <币> 跑 −1（机械段）"
   或 CC 开 Opus 会话（备轨）跑 /token-analyze-1 <币> [链]
         ↓ 产物全部落 <币>分析/ 工作目录，完成即停
-用户手动新开 Fable 5 会话（CC），同目录跑 /token-analyze-2 <币> <easy|full>
+用户手动新开 Fable 5 会话（CC），同目录跑 /token-analyze-2 <币> full
 ```
 
 - 拆分线对齐 context-discipline 刀 1 既有机械/判断划分（会话级升级，规则语义零变更）：−1＝A0–A2 全部＋A3 机械子层；−2＝A3 判断层＋A4–A5（A6 复盘仅用户明确要求时）。
@@ -30,7 +30,7 @@
 ### 1.3 范围（做什么）
 
 - **A0 全部**：合约核定、多链硬关卡（AskUserQuestion 选链范围）、分母口径、链路由、accounting_gate——**exit 2 → −1 停工写 blocker 进 anomalies，禁套标准管线**；vesting 标的产 `unlock_evidence.json`（仅事实：来源/日期/数量/口径/冲突，零质量判断）。
-- **E0b 黑箱关卡**（维持点名制，用户命令附加要求时才做）：按 easy-workflow E0b 执行；结论落盘必须含同块分母＋confirmed/suspected/ambiguous 三档分列＋保守上限口径＋用户裁决与时间戳；超线中止 → manifest 状态 `BLOCKED_E0B`，−2 拒绝消费。
+- **CEX 黑箱关卡**（维持点名制，用户命令附加要求时才做）：结论落盘必须含同块分母＋confirmed/suspected/ambiguous 三档分列＋保守上限口径＋用户裁决与时间戳；超线中止 → manifest 状态 `BLOCKED_CEX_GATE`，−2 拒绝消费。
 - **A1 全部**：并行采集＋预采集衔接（断点续拉，禁从零重采）；`done_with_gaps` 必须补齐才准出 READY。
 - **A2 全部**：四查对账 fail-closed，产物照常落盘；时间抽查跑 `scripts/lib/time_spotcheck.py`（EVM 案 `time_spotcheck.json` 为 READY 必备件＋AUTO_GATES，6.7.0）——**默认锚点级直查即闭环，全史第二源重拉是例外动作**（触发条件与 pilot 报 ETA 纪律见 evm-recon §13；APU 案照旧模板全史重拉 103 分钟纯冗余教训）。
 - **A3 机械子层**（对照 analyze-workflow A3 主序编号）：
@@ -81,15 +81,15 @@
 | `entity_freeze.json` | −2 | 冻结事件物化：成员表哈希/时间/未决项/casebook 检验结果；变更走 revision 追加，不许静默覆盖 |
 | 既有产物 | −1 | accounting_mode、collect_manifest＋done.json、四查产物、cluster_prep、address_bucket_series、价格序列——**格式零改动** |
 
-**findings.md 双义处理**：−1 不写 findings.md（它是 A3 交接包，归 −2 按 context-discipline 现行制度写）；easy 版 E0b 中止存档语义不变，且限定为 `BLOCKED_E0B` 恢复资产。
+**findings.md 双义处理**：−1 不写 findings.md（它是 A3 交接包，归 −2 按 context-discipline 现行制度写）；点名式 CEX 黑箱关卡中止时，其结论只作为 `BLOCKED_CEX_GATE` 恢复资产。
 
 ### 2.2 handoff_manifest.json 语义（schema `handoff/v2`；v1 只可 `verify --legacy-read-only` 只读降级，机器 receipt 落盘、不得生成新正式报告）
 
-- **身份**：schema_version、case_id、run_id、mode（easy/full；**值来源＝/token-analyze-1 命令的档位参数，−1 收工 `generate --mode` 必填传入**，用户未给档位时 −1 开工前先问、禁猜）、producer_model、CC/codex 两侧 git SHA、consumer_min_schema。
+- **身份**：schema_version、case_id、run_id、mode（仅 `full`；**值来源＝/token-analyze-1 命令的档位参数，−1 收工 `generate --mode full` 必填传入**，用户未给档位时 −1 开工前先问、禁猜）、producer_model、CC/codex 两侧 git SHA、consumer_min_schema。
 - **口径**：链范围、合约、冻结块/slot、UTC cutoff、三种分母（总供应/调整后/流通）及来源。
 - **gate 记录**：每个 gate 的命令＋exit＋语义状态（accounting_mode/supply_truth 由脚本从产物 JSON 自动读 `verdict/exit_code`，防手报；四查等其他 gate 由 −1 执行者 `--gate` 显式声明并绑定产物文件）。
 - **产物 allowlist**：逐件登记路径/字节/sha256（大文件分片哈希＋复用采集侧行数/区间校验，不收尾全盘重哈希）/行数/schema/依赖。排除日志/临时库/含密钥文件（config.json 不入清单内容）。
-- **状态机**：`READY | BLOCKED | PARTIAL | SUPERSEDED | BLOCKED_E0B`——只有 READY 可被 −2 消费；READY 前置＝五件契约 JSON＋accounting_mode.json＋supply_truth.json＋wave_scan_report.json＋flow_anomaly_report.json 齐全（EVM 家族链另加 time_spotcheck.json；缺任一 generate 即拒，verify 端独立重算这份清单——手改 manifest 摘条目同样过不了）。
+- **状态机**：`READY | BLOCKED | PARTIAL | SUPERSEDED | BLOCKED_CEX_GATE`——只有 READY 可被 −2 消费；READY 前置＝五件契约 JSON＋accounting_mode.json＋supply_truth.json＋wave_scan_report.json＋flow_anomaly_report.json 齐全（EVM 家族链另加 time_spotcheck.json；缺任一 generate 即拒，verify 端独立重算这份清单——手改 manifest 摘条目同样过不了）。
 - **生成纪律**：原子生成（tmp+rename）、不含自身哈希；generate 后新增产物走 `late_additions`（重跑 generate 产 superseding manifest，旧件自动归档带 run_id 后缀）。
 
 ### 2.3 sealed 密封纪律（防锚定）
@@ -104,9 +104,9 @@
 ### 3.1 开工序（八步，顺序执行，写死进 /token-analyze-2）
 
 1. **模型自检**：非 Fable/主力判断模型 → 警告（不硬停）。
-2. **`handoff_manifest.py verify` fail-closed**：文件齐＋哈希对＋语义验证（gate exit 码与状态重查、schema 版本兼容、状态必须 READY——BLOCKED/PARTIAL/BLOCKED_E0B 一律 exit 2 拒收）。
+2. **`handoff_manifest.py verify` fail-closed**：文件齐＋哈希对＋语义验证（gate exit 码与状态重查、schema 版本兼容、状态必须 READY——BLOCKED/PARTIAL/BLOCKED_CEX_GATE 一律 exit 2 拒收）。
 3. **数据保鲜检查（用户定稿口径）**：默认按已有数据跑（cutoff 即分析截止点，报告如实标注数据时点）；仅当 cutoff 距今缺口 **>72h** 才弹警报，AskUserQuestion 停等用户确认是否拉取缺口段——确认拉取则增量拼接、重跑受影响 gate 与候选门槛、产 superseding manifest；用户选按原数据继续则裁决记入 anomalies 后照跑。**绝不自动拉取。**
-4. **必读件**：anomalies.json、四查结论、accounting_mode、E0b 结论（若有）。
+4. **必读件**：anomalies.json、四查结论、accounting_mode、点名式 CEX 黑箱关卡结论（若有）。
 5. **候选覆盖自检（防 candidates 锚定）**：用重放产物独立重算阈值榜单/历史越线/归零/静置清单，比对 candidate_universe 无缺漏才继续；发现缺漏记 anomalies 并补入。
 6. **data_map 当索引按需读盘**（禁整读大产物）；candidate_screening 当裁决工作台。
 7. **sealed 禁读令生效**（§2.3）。

@@ -9,7 +9,7 @@
 
 退出码语义（对齐 skill 现有 gate）：0=放行；2=验证不通过/前置未满足（硬停）；1=脚本自身错误（修完重跑）。
 用法示例：
-  python3 handoff_manifest.py generate --case-dir <案目录> --mode easy --status READY \
+  python3 handoff_manifest.py generate --case-dir <案目录> --mode full --status READY \
       --producer-model gpt-5.6 --case-id QUQ-bsc --chain bsc --contract 0x... --cutoff 2026-07-30T00:00:00Z \
       --gate "recon_four_checks:PASS:0:transfer_reconciliation.json"
   python3 handoff_manifest.py verify --case-dir <案目录>
@@ -47,7 +47,7 @@ FREEZE_NAME = "entity_freeze.json"
 ADJUDICATIONS_NAME = "candidate_adjudications.json"
 LEGACY_RECEIPT_NAME = "legacy_readonly_receipt.json"
 PROVENANCE_SCHEMA = "provenance-ledger/v2"  # v1 是 pro-rata 数学错误版（2026-08-01 codex 复核），一律拒
-STATUSES = {"READY", "BLOCKED", "PARTIAL", "SUPERSEDED", "BLOCKED_E0B"}
+STATUSES = {"READY", "BLOCKED", "PARTIAL", "SUPERSEDED", "BLOCKED_CEX_GATE"}
 SPARSE_THRESHOLD = 64 * 1024 * 1024  # >64MB 用分片哈希（split-run §2.2：不收尾全盘重哈希）
 CHUNK = 4 * 1024 * 1024
 
@@ -895,7 +895,7 @@ def main():
 
     g = sub.add_parser("generate", help="−1 收工产 manifest")
     g.add_argument("--case-dir", required=True)
-    g.add_argument("--mode", required=True, choices=["easy", "full"])
+    g.add_argument("--mode", required=True, choices=["full"])
     g.add_argument("--status", required=True)
     g.add_argument("--status-reason", default=None)
     g.add_argument("--producer-model", required=True)

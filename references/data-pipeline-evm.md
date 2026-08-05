@@ -15,7 +15,7 @@
 | §2 死亡名单（实测不可用，3 个月内禁止重探） | 采集通道 | `data-pipeline-evm-channels.md` |
 | §3 各通道操作细节（HyperSync/Alchemy/bloXroute/Etherscan/Multicall3） | 采集通道 | `data-pipeline-evm-channels.md` |
 | §6 BSC 专属坑表 | 采集通道 | `data-pipeline-evm-channels.md` |
-| §7 零门槛免注册通道（48club/BscScan 直抓/mevblocker/省请求取证/三段拼接/§7.6-7.7 E0b 通道） | 采集通道 | `data-pipeline-evm-channels.md` |
+| §7 零门槛免注册通道（48club/BscScan 直抓/mevblocker/省请求取证/三段拼接/CEX 黑箱通道） | 采集通道 | `data-pipeline-evm-channels.md` |
 | §4 辅助数据面速查表（价格/K线/标签/安全审计/gmgn-cli 坑） | 数据面与链专节 | `data-pipeline-evm-sources.md` |
 | §8 Base 链专节（8.1 双通道拓扑/8.2 辅助面/8.3 V4/8.4a Zora/8.4 x402） | 数据面与链专节 | `data-pipeline-evm-sources.md` |
 | §9 Arbitrum 链专节 | 数据面与链专节 | `data-pipeline-evm-sources.md` |

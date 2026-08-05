@@ -37,13 +37,11 @@ description: 对已具备受支持数据管线的链上代币做机构级庄家�
 - 阻断：控盘看最终经济控制，EF-1 必须落 `economic_control_ledger.json` 且公共设施不进永久成员表；EF-2 必须落 `dormant_warehouse_audit.json`；任一门禁或候选未闭合，就不允许冻结实体、发布峰值或出图。
 - 权威定义：EF-1 见 `economic-control-accounting.md`；EF-2 与判级边界见 `playbook-entity-cluster-tiering.md`；EF-3、分段分工与 schema 见 `analyze-workflow.md`、`split-run.md`、`scan-schemas.md`。
 
-## 六入口
+## 四入口
 
 - **/token-analyze**：A0–A5 完整版；A6 仅用户要求。
-- **/token-easy-analysis**：`easy-workflow.md` E0–E7 轻量筛查档；同强度引擎/复核，砍完整报告，绝不自动转正式。
 - **/token-analyze-1**：A0–A2＋A3 机械子层；按 `split-run.md` 交接后完成即停。
-- **/token-analyze-2**：handoff verify 后接 A3 判断层＋A4–A5；easy/full 必选，A6 仍须用户要求。
-- **/token-update**：`update-workflow.md` U0–U5（U6 仅用户要求）；复用旧实体表、只拉增量，按当前版本重判并区分持仓变动/标准迁移。
+- **/token-analyze-2**：handoff verify 后接 A3 判断层＋A4–A5；仅支持 full，A6 仍须用户要求。
 - **/collect-data**：`collect-workflow.md` 只采集零结论；以 collect_manifest/done.json 续增量，禁止从零重采。
 
 ## 上下文预算
@@ -53,7 +51,7 @@ description: 对已具备受支持数据管线的链上代币做机构级庄家�
 
 ## 深入阅读（references/）
 
-- 流程：`analyze-workflow.md`、`easy-workflow.md`、`update-workflow.md`、`collect-workflow.md`、`split-run.md`、`retrospective.md`、`context-discipline.md`。
+- 流程：`analyze-workflow.md`、`collect-workflow.md`、`split-run.md`、`retrospective.md`、`context-discipline.md`。
 - 方法：`analysis-playbook.md`、`playbook-supply-recon.md`、`playbook-entity-cluster-methods.md`、`playbook-entity-cluster-tiering.md`、`playbook-entity-cluster-cost.md`、`playbook-state-anomaly.md`、`playbook-evidence-wording.md`。
 - 门禁/交付：`report-template.md`、`scan-schemas.md`、`economic-control-accounting.md`、`lp-fee-accounting.md`、`independent-audit-protocol.md`、`casebook/README.md`。
 - EVM：`data-pipeline-evm.md`、`data-pipeline-evm-channels.md`、`data-pipeline-evm-sources.md`、`data-pipeline-evm-recon.md`。

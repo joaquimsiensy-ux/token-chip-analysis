@@ -93,7 +93,7 @@
 
 结构与措辞纪律见 `report-template.md`。正式报告只有两个入口：全新分析用 `build_html.py --mode analysis-new ... --a5-seal a5_report_seal.json`，净室复核用 `--mode analysis-audit ...`；二者都会核对 seal.workflow_type，并分别强制 `audit_release_gate --profile new-analysis|independent-audit`。不存在 generic analysis 或 skip gate。历史重编译必须显式用 `--mode legacy-recompile --degrade-reason "<理由>"`，产物带可见非正式水印。PDF 仅用户点名。
 
-**附录四件套**（验证步骤/标签↔地址对照/复核修正记录/来源）——附录 B 地址对照任何情况下不可省（正文零地址的可验证性支点）。**监控包默认不做**：观察哨/两档监控建议/appendix.json 在用户确认买入后按 monitoring-package.md「买入后监控包」节补生成（新会话可执行，材料全在落盘产物），报告末尾带固定句"如决定买入，回复一声即可补生成监控包"。**默认交付另落一份 `analysis-state.json`**（appendix 的机器子集：token/whale_groups/vault_addresses/addresses 骨架＋camp_share_series，无监控文案——/token-update 的实体表原料；schema 见 report-template「默认交付的机器状态文件」节）。交付前 checklist 见 report-template.md 末节。
+**附录四件套**（验证步骤/标签↔地址对照/复核修正记录/来源）——附录 B 地址对照任何情况下不可省（正文零地址的可验证性支点）。**监控包默认不做**：观察哨/两档监控建议/appendix.json 在用户确认买入后按 monitoring-package.md「买入后监控包」节补生成（新会话可执行，材料全在落盘产物），报告末尾带固定句"如决定买入，回复一声即可补生成监控包"。**默认交付另落一份 `analysis-state.json`**（appendix 的机器子集：token/whale_groups/vault_addresses/addresses 骨架＋camp_share_series，无监控文案；schema 见 report-template「默认交付的机器状态文件」节）。交付前 checklist 见 report-template.md 末节。
 
 ## A6 复盘与迭代（仅用户明确要求时执行，不自动触发）
 

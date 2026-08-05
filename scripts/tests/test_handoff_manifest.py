@@ -97,7 +97,7 @@ def make_case(d):
 
 
 Z = "0x0000000000000000000000000000000000000000"
-GEN = ["--mode", "easy", "--producer-model", "test-model", "--chain", "bsc", "--contract", "0x0",
+GEN = ["--mode", "full", "--producer-model", "test-model", "--chain", "bsc", "--contract", "0x0",
        "--cutoff", "2026-08-01T00:00:00Z", "--frozen-block", "999",
        "--denominators", json.dumps({"total_supply_raw": str(10 ** 12)})]
 
@@ -181,7 +181,7 @@ def main():
         os.unlink(os.path.join(d14, "time_spotcheck.json"))
         p = run(["generate", "--case-dir", d14, "--status", "READY"] + GEN)
         check("EVM 链缺 time_spotcheck 拒 READY exit 2", p.returncode == 2)
-        p = run(["generate", "--case-dir", d14, "--status", "READY", "--mode", "easy",
+        p = run(["generate", "--case-dir", d14, "--status", "READY", "--mode", "full",
                  "--producer-model", "test-model", "--chain", "solana", "--contract", "0x0"])
         check("solana 链无 time_spotcheck 豁免 exit 0", p.returncode == 0)
 
@@ -233,9 +233,9 @@ def main():
         d2 = os.path.join(root, "case_blocked")
         os.makedirs(d2)
         make_case(d2)
-        p = run(["generate", "--case-dir", d2, "--status", "BLOCKED_E0B",
+        p = run(["generate", "--case-dir", d2, "--status", "BLOCKED_CEX_GATE",
                  "--status-reason", "CEX 黑箱超线用户中止"] + GEN)
-        check("generate BLOCKED_E0B exit 0", p.returncode == 0)
+        check("generate BLOCKED_CEX_GATE exit 0", p.returncode == 0)
         p = run(["verify", "--case-dir", d2])
         check("verify BLOCKED 拒收 exit 2", p.returncode == 2 and "READY" in p.stdout)
         # freeze 前置 0（内联 verify）：BLOCKED 案带齐全部台账也不得冻结

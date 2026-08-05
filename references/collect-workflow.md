@@ -7,7 +7,7 @@
 ## 1. 清单解析（name/chain/address 结构化）
 
 - 支持链：bsc / eth / base / arbitrum / robinhood（HyperSync v2）＋ solana（SQD v2）。
-- 来自初筛清单的地址可直接采信（同 easy-workflow E0 特例）；用户只给币名没给地址时，多源核定地址与链并 AskUserQuestion 确认后再入队。
+- 来自初筛清单且已明确给出链与合约的地址可直接入队；用户只给币名没给地址时，多源核定地址与链并 AskUserQuestion 确认后再入队。
 - **Solana 币必须顺手查发射时间**（GMGN/GeckoTerminal/Dexscreener 任一，取值再往前减 1 天做保守 launch_ts）——缺省只回看 90 天，老币会缺早期数据。
 - 多链币按用户给定的链采；链范围核定是分析会话的多链硬关卡，届时若需补链再补采（本命令不做链分布盘点）。
 
@@ -28,7 +28,7 @@ python3 ~/.claude/skills/token-chip-analysis/scripts/run_guarded.py --detach --m
 
 - 脱管后向用户交代：预计总时长（按量级粗估）、manifest 路径（plan 同目录 collect_manifest.json）、查看进度的命令。用户睡前排队场景不必等完成；用户在等则用 run_guarded 状态文件轮询到结束后汇报。
 - 结束汇报只给采集事实：每币 状态/行数/块范围/耗时/落盘路径＋失败与缺口原因；`done_with_gaps`（Solana 缺口）与 `failed` 项单独点名。**不给任何筹码结论**。
-- 衔接（写给用户一句话）：对任一已采集币跑 /token-easy-analysis 或 /token-analyze 时，分析会话在同一工作目录开工自动发现已有数据并断点续拉增量——采集成本不重复发生。
+- 衔接（写给用户一句话）：对任一已采集币跑 /token-analyze 时，分析会话在同一工作目录开工自动发现已有数据并断点续拉增量——采集成本不重复发生。
 
 ## 4. 夜间自动模式（可选）
 

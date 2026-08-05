@@ -1,5 +1,5 @@
 ---
-description: 批量预采集多个代币的全量转账事件——只采集不分析，产物落各币标准工作目录，后续 /token-easy-analysis 或 /token-analyze 直接复用（断点续拉增量）
+description: 批量预采集多个代币的全量转账事件——只采集不分析，产物落各币标准工作目录，后续 /token-analyze 直接复用（断点续拉增量）
 argument-hint: <币1 链 地址> <币2 链 地址> …（或初筛清单文件路径 / 自然语言列表）
 ---
 

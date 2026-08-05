@@ -11,6 +11,12 @@ import sys
 ROOT = Path(__file__).resolve().parents[2]
 STAGING = ROOT / "commands-staging"
 DEPLOYED = Path.home() / ".claude" / "commands"
+EXPECTED = {
+    "collect-data.md",
+    "token-analyze-1.md",
+    "token-analyze-2.md",
+    "token-analyze.md",
+}
 
 
 def sha256(path: Path) -> str:
@@ -30,6 +36,12 @@ def main() -> int:
     staging_files = sorted(STAGING.glob("*.md"))
     if not staging_files:
         failures.append(f"staging 中没有命令文件：{STAGING}")
+    actual = {path.name for path in staging_files}
+    if actual != EXPECTED:
+        failures.append(
+            "staging 命令清单不符："
+            f"expected={sorted(EXPECTED)} actual={sorted(actual)}"
+        )
 
     for source in staging_files:
         deployed = DEPLOYED / source.name

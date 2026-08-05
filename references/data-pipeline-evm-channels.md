@@ -198,7 +198,7 @@ size 与 SHA-256；全部通过后才原子将旧 done 升为 `hypersync-v2-done
 | 坑 | 识别/处理 | 来源 |
 |---|---|---|
 | Binance Alpha 2.0 Router 托管黑箱 | BSC meme 生态特有：单一 Alpha 托管合约可能就是 top1 holder 且份额巨大，绝不能当成"庄家地址"分析。识别=WebFetch bscscan 官方标签 + 工厂合约 getPair 分清主池/尘埃池；处理=与 CEX 热钱包一并归入"不可穿透黑箱"，报告显式给黑箱占比与单一实体份额上限，措辞一律带"链上可证范围内"限定 | （SIREN，07） |
-| **Alpha 转正币安现货后 Router 黑箱消失** | bapi 全量表 `listingCex=True`（Alpha 转正现货）的币：Alpha 端 offline=True/canTransfer=False，**Alpha 2.0 Router 托管随转正清空迁移**（BANANAS31 实测 Router 余额仅剩 ≈101 枚）——转正币无 Alpha Router 黑箱，币安黑箱=常规充提托管热钱包体系，E0b/黑箱盘点按普通 CEX 口径做即可，勿再找 Router 大仓 | （BANANAS31，07-22） |
+| **Alpha 转正币安现货后 Router 黑箱消失** | bapi 全量表 `listingCex=True`（Alpha 转正现货）的币：Alpha 端 offline=True/canTransfer=False，**Alpha 2.0 Router 托管随转正清空迁移**（BANANAS31 实测 Router 余额仅剩 ≈101 枚）——转正币无 Alpha Router 黑箱，币安黑箱=常规充提托管热钱包体系，黑箱盘点按普通 CEX 口径做即可，勿再找 Router 大仓 | （BANANAS31，07-22） |
 | **BSC 历史段块时长折算坑** | BSC 块时长随硬分叉多次变更（2024-11 实测 3s/块，≠现值亚秒级）——"发射后 N 分钟"类时间叙述**必须用区块时间戳差**，禁止块数×固定块时长折算（BANANAS31 案复核抓出 27→81 分钟传播级错误，狙击峰值时点差 3 倍） | （BANANAS31 复核，07-22） |
 | **four.meme TokenManager 毛口径虚高** | bonding curve 买卖双向都过 TokenManager，其**毛流出可远超总供应**（BANANAS31 案毛流出 153.5 亿 > 总量 100 亿）——发射窗 bundle/狙击/份额判定禁止用 TokenManager 毛流出，必须重放净口径+毕业时点存量（流量存量双口径纪律的 four.meme 场景） | （BANANAS31，07-22） |
 | 新 key 不探测就承诺方案 | 任何新 key 到手先做 1 分钟能力探测：eth_blockNumber + 一次真实 getLogs（或一页 transfers），确认块范围上限/限速/链覆盖后再写进计划。反例：dRPC 免费 key 探测前就让用户注册，实测基本不可用，白费一次注册 | （SIREN，07） |
@@ -213,7 +213,7 @@ size 与 SHA-256；全部通过后才原子将旧 done 升为 `hypersync-v2-done
 | GoPlus is_contract 误报 EIP-7702 | 委托型 EOA（7702）被 GoPlus 标 is_contract=1（曾致 top10 中 4 个被误当合约）。甄别：bscscan 地址页看"委托对象"字段，或 eth_getCode 前缀 0xef0100 | （bibi，07-12） |
 | GMGN 卖出榜 EOA 口径新形态 | 卖出榜"纯转入零买入、卖出数十万美元"地址可能在 Transfer 事件里**完全不出现**（智能钱包/路由的操作者 EOA），不能当"内部钱包变现"指认；需 tx 层核实 msg.sender 与事件主体的关系 | （bibi，07-12） |
 | WebFetch 读代理合约页误报合约名 | bscscan 代理合约页经 WebFetch 提取可能拿到错误合约名（曾把某实现合约误读成别的标签名）。代理合约身份认定必须：EIP-1967 implementation slot 读实现地址 + 字节码 PUSH4 选择器提取（openchain 签名库解析）——WebFetch 文本不作为代理合约功能的最终证据 | （bibi，07-12） |
-| 币安 Web3 钱包 DEX Router 串假实体 | `0xb300000b72deaeb607a12d5f54773d1c19c7028d`（vanity 前缀）是币安 Web3 钱包 app 的 DEX 交易入口：数十个用户的"首笔代币来源"都是它、与用户双向大额往来——作"共同首币来源/直转"边会把互不相识的币安钱包用户串成数百址假实体（实测 421 址大簇根因）。**E3 类共源边的源地址必须先过标签库**；它与 LI.FI Diamond、高频对倒 bot 代理同为漏网"半枢纽"（度数几十、不到出度>200 剔除线） | （哈基米，07-18） |
+| 币安 Web3 钱包 DEX Router 串假实体 | `0xb300000b72deaeb607a12d5f54773d1c19c7028d`（vanity 前缀）是币安 Web3 钱包 app 的 DEX 交易入口：数十个用户的"首笔代币来源"都是它、与用户双向大额往来——作"共同首币来源/直转"边会把互不相识的币安钱包用户串成数百址假实体（实测 421 址大簇根因）。**共源边的源地址必须先过标签库**；它与 LI.FI Diamond、高频对倒 bot 代理同为漏网"半枢纽"（度数几十、不到出度>200 剔除线） | （哈基米，07-18） |
 | Uniswap V4 PoolManager 漏出池子清单 | V4 是单例合约（bsc: `0x28e2ea090877bf75740558f6bfb36a5ffee9e9df`），不在常规 pair 发现流程（factory getPair/Dexscreener pairs）内——漏掉会错过其上的 bot 刷量：实测四个脉冲日占全网转账笔数 49-88%、毛量 40-76%（单日毛量 4.7 亿枚 vs 池深仅 24.7 万枚），且与拉升起点精准同步，"放量上涨"表观数据严重失真。**量能真实性检查加"V4 毛量占比"维度**；四日脉冲定量法=占笔数/占毛量/池深对照/与拉升同步性 | （哈基米，07-18） |
 | **ETH V4 PoolManager 被公共标签库错标** | ETH 主网 V4 单例=`0x000000000004444c5dc75cb358380d2e3de08a90`（vanity 全零前缀），dawsbot 源把它标成 "Sandwich Attacker"——差点把 V4 池仓当 MEV bot 个人仓写进报告。**vanity 全零前缀地址命中"bot/攻击者"类标签时必先 getCode+行为核验**；本库已 curation 修正。各链 V4 单例地址不同（Base=`0x498581fF718922c3f8e6A244956aF099B2652b2b`），新链先查官方部署表 | （ASTEROID，07-18） |
 | **V4/Infinity 单例合约余额禁止直接归池、归庄** | PoolManager/Vault 类单例是**所有池共用的中央金库**：`balanceOf(单例)` = 该币在全部 V4 池＋未结清余额的总和，既不等于某一个池、更不等于某一个庄的头寸。把单例总余额直接写成"庄的 V4 池仓"是方法越界——哪怕该币恰好只有一个 V4 主池、数量级碰巧对上（QUQ 案 V4 17.6% 即此错法，外部复核判 WEAKENED：口径方向对、精确值未闭合）。**归属唯一正解=逐头寸闭合**：按 `poolId＋position(tickLower,tickUpper,salt)＋owner` 重放 ModifyLiquidity 全史，算出各 owner 头寸在目标区块可赎回的本币数量，再穿透回实体（经济控制账，见 report-template 三账本分离）；单例总余额只可用作池级监控哨与上界锚。 | （GPT5.6 外部复核采纳，07-24） |
@@ -281,7 +281,7 @@ size 与 SHA-256；全部通过后才原子将旧 done 升为 `hypersync-v2-done
 2. **BscScan 网页直抓深历史**（§7.2）→ 创世取证（token 页 Contract Creator 段）+ 前排大户 `tokentxns?a=` 建仓史（≤10页×100 上限，翻不完标注"建仓可能更早"）+ generic-tokenholders2 持有人榜；
 3. **GT 日线价格轴**（只留 ~180 天，§4）+ 关键放量日与链下事件（上所/Alpha 公告等）对齐。
 
-- **输出形态随之改变**（全史演变曲线在此拓扑下不可得，报告口径必须声明）：**结构快照**（当前各阵营占比）+ **6 天净变动表** + **大户建仓时间线**。⚠️ **边界：此路线不满足 /token-analyze 与 /token-easy-analysis 的交付合同**（两者都要求全史演变），只能作预检/受限快照用；正式分析必须补全史（拿 key 走 HyperSync 等全量通道）或明确告知用户后中止。
+- **输出形态随之改变**（全史演变曲线在此拓扑下不可得，报告口径必须声明）：**结构快照**（当前各阵营占比）+ **6 天净变动表** + **大户建仓时间线**。⚠️ **边界：此路线不满足 /token-analyze 的交付合同**（正式分析要求全史演变），只能作预检/受限快照用；正式分析必须补全史（拿 key 走 HyperSync 等全量通道）或明确告知用户后中止。
 - **fresh/old 大户分层**：用 6 天窗口把前排大户分为"本窗口进场新大户 vs 更早老持仓"两层，直答"这波爆量谁在买"。
 - 图表叙事技巧：大户建仓时间线图上"创世期区域完全空白"= 没有任何创世钱包还留在前排的可视化证明（老庄已清仓的直观证法）。
 
@@ -293,7 +293,7 @@ size 与 SHA-256；全部通过后才原子将旧 done 升为 `hypersync-v2-done
 - 持有人榜 `/tokens/{addr}/holders`——**不支持 `limit` 参数**（传了返 422 `Unexpected field: limit`），只能用响应里的 `next_page_params` 逐页翻，50 条/页；items 带 `address.name` 公共标签（RewardTracker / UniswapV2Pair / GnosisSafeProxy / 交易所名等），是免费认所的第一道。
 - 代币元信息 `/tokens/{addr}`——`total_supply`（raw）/`decimals`/`holders_count`。
 - 地址画像 `/addresses/{a}`（`coin_balance` 原生币余额、`is_contract`）+ `/addresses/{a}/tokens?type=ERC-20`（持币种类）+ `/addresses/{a}/counters`（`transactions_count` = 主动发起交易数）+ `/addresses/{a}/token-transfers?type=ERC-20&token=<币>`（按币种过滤的单地址流水，分页同上）。
-- **⚠ 持有人榜有滞后与遗漏，禁止作为余额权威源**（TOSHI(Base) 实测，2026-07-26）：与全量 Transfer 重放 + 链上 `balanceOf` 三方对账发现——`0x8752a799…` 榜单报 16.17 亿而实际 121.37 亿（**少报 105 亿**）；`0x5d657592…`（180.47 亿枚，占流通 4.29%）与 `0xe810e8b2…`（64.22 亿枚）**在 top500 榜里完全不出现**。重放与链上实查逐笔相等，榜单错。**纪律：Blockscout 榜只用于"快速找候选 + 拿公共标签"，任何进入结论的余额数字必须经全量重放或 `balanceOf` 复核**；E0b 快照若只靠榜单，覆盖率与占比都会系统性偏低（该案初值 36.62% → 重放后 43.96%）。
+- **⚠ 持有人榜有滞后与遗漏，禁止作为余额权威源**（TOSHI(Base) 实测，2026-07-26）：与全量 Transfer 重放 + 链上 `balanceOf` 三方对账发现——`0x8752a799…` 榜单报 16.17 亿而实际 121.37 亿（**少报 105 亿**）；`0x5d657592…`（180.47 亿枚，占流通 4.29%）与 `0xe810e8b2…`（64.22 亿枚）**在 top500 榜里完全不出现**。重放与链上实查逐笔相等，榜单错。**纪律：Blockscout 榜只用于"快速找候选 + 拿公共标签"，任何进入结论的余额数字必须经全量重放或 `balanceOf` 复核**；CEX 黑箱快照若只靠榜单，覆盖率与占比都会系统性偏低（该案初值 36.62% → 重放后 43.96%）。
 - 同源提示：`transactions_count` 与 `eth_getTransactionCount`（nonce）不是一回事但同向；判"从未主动签发交易"以 **nonce 为准**（见 playbook-entity-cluster-methods §6 nonce 基准率法）。
 
 ### 7.7 Avalanche：Routescan API（免 key，snowtrace 已 403）
