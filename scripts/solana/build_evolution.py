@@ -102,7 +102,7 @@ def main():
                 if _r and _r['tier'] == 'exclude' and _camp not in ('流动性池', '散户'):
                     _bad.append((_a, _camp, _r['name'], _r['category']))
                 elif _r and _r.get('serial'):
-                    if blind_serial_env():   # A5 盲化：惯犯命中封存不打印（复核期 --unseal 揭盲）
+                    if blind_serial_env():   # A2–A3 盲化：命中封存；A4 --unseal 揭盲
                         _sealed.append({'chain': 'sol', 'address': _a, 'camp': _camp,
                                         **{k: v for k, v in _r.items()}})
                     else:

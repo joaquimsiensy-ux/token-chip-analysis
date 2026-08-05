@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""wave_scan v2 契约测试（离线合成数据，不依赖真库）。
+"""wave-scan/v3 契约测试（离线合成数据，不依赖真库）。
 
 覆盖（schema 权威定义 references/scan-schemas.md；PYTHIA 真库锚点另见
 fixtures/pythia_anchors.json，须真库在位时手动回测比对）：

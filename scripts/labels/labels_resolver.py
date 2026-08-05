@@ -337,7 +337,7 @@ class LabelResolver:
         return s
 
 
-# ---- 惯犯层延迟揭盲（A5 2026-07-22）：聚类阶段盲化 serial 命中，防先入之见 ----
+# ---- 惯犯层延迟揭盲（A2–A3 盲化、A4 揭盲）：隐藏 serial 命中，防先入之见 ----
 # 流程：聚类/持仓分析期开 CHIP_BLIND_SERIAL=1（或 label_lookup --blind-serial）——
 # serial 命中不进任何主输出，完整详情追加封存 sealed_serial_hits.jsonl；
 # 实体冻结后复核期 label_lookup.py --unseal 揭盲，作定向复核线索。

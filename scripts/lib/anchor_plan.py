@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""A6 分层抽查计划器——对账三查"时间抽查"的锚点选取升级（纯随机 → 分层矩阵+强制覆盖）。
+"""A2 分层抽查计划器——对账四查“时间抽查”的锚点选取（纯随机 → 分层矩阵+强制覆盖）。
 
 痛点定位：旧流程时间抽查是纯随机锚点，容易全抽在平静期（转账稀疏、余额不动），
 抽了等于没抽。本脚本按「时间三段（早/中/晚）× 余额档（大/中/小户）」分层随机抽
@@ -23,7 +23,7 @@
       [--per-cell 1] [--edge-max 5] [--seed 42] [--mem-limit 6GB] --out-dir plan_out
 
 输出：out-dir/anchor_plan.json（结构化）+ anchor_plan.md（人工核对清单）。
-（来源：A6 小工程件，2026-07-22；QUQ v2 1.03 亿行实测通过）"""
+（来源：A2 时间抽查工程件，2026-07-22；QUQ v2 1.03 亿行实测通过）"""
 import argparse
 import datetime
 import json
@@ -120,7 +120,7 @@ def _detect_input(con, path):
 
 
 def main():
-    ap = argparse.ArgumentParser(description="A6 分层抽查计划器（时间三段×余额档+强制覆盖点）")
+    ap = argparse.ArgumentParser(description="A2 分层抽查计划器（时间三段×余额档+强制覆盖点）")
     ap.add_argument("--input", required=True, help="merged 转账数据：csv / parquet / v2 目录")
     ap.add_argument("--chain", required=True, help="bsc/eth/base/arbitrum/polygon/...")
     ap.add_argument("--token", default=None, help="代币合约地址（拼核对 URL 用，建议提供）")

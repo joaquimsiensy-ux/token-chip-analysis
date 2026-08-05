@@ -496,10 +496,10 @@ def check_dormant(case_dir: Path, d: dict, errors: list[str]):
     if n_unresolved:
         errors.append(f"静置仓审计仍有 {n_unresolved} 个未决候选")
     # v6.9.1 集合对账（codex 复核修复：coverage 五键是自报布尔，闸不住漏仓——
-    # 必须绑定 wave_scan v3 落盘的候选全集并逐址对账；缺绑定/旧 schema 一律拒）。
+    # 必须绑定 wave-scan/v3 落盘的候选全集并逐址对账；缺绑定/旧 schema 一律拒）。
     ref = d.get("universe_ref")
     if not isinstance(ref, dict) or not ref.get("path") or not ref.get("sha256"):
-        errors.append("静置仓审计缺 universe_ref（须绑定 wave_scan v3 报告的 path+sha256）")
+        errors.append("静置仓审计缺 universe_ref（须绑定 wave-scan/v3 报告的 path+sha256）")
         return
     wp = regular_case_path(case_dir, str(ref["path"]))
     if wp is None:

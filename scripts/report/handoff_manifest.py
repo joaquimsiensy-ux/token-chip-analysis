@@ -369,7 +369,7 @@ def verify_case(case_dir, legacy_read_only=False):
             legacy_mode = True
         elif schema in LEGACY_SCHEMAS:
             fails.append(f"schema {schema} 是旧版——新运行必须重跑 v6.8.0 生产器"
-                         "（wave_scan v2/flow_anomaly）后重 generate；只读旧案加 --legacy-read-only")
+                         "（wave-scan/v3、flow-anomaly/v2）后重 generate；只读旧案加 --legacy-read-only")
         else:
             fails.append(f"schema 不兼容: 需要 {schema}，本端支持 {sorted(SUPPORTED_SCHEMAS)}")
     status = m.get("status")

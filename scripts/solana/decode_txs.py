@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """requests.Session 连接复用版 decode（省 TLS 握手，比 curl 版快约 3 倍）。
 
-用法: python3 decode_txs_fast.py --sigs <jsonl> --out <jsonl> [--mint M] [--pool P]
+用法: python3 decode_txs.py --sigs <jsonl> --out <jsonl> [--mint M] [--pool P]
      [--interval 0.75] [--proxy http://...]
 输出行格式与 decode_txs.py 一致，断点续传兼容。
 """

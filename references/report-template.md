@@ -6,7 +6,9 @@
 > 标签制、代币数量一律带【总量X%】；无行内置信度 tag。
 
 **交付物：自包含单文件 HTML**（图 base64 内嵌），输出到用户工作目录。
-管道：先写 `报告.md` + `charts/*.png`（标准图用 `scripts/report/standard_charts.py`，流转图用 `scripts/report/lifecycle_flow.py`），复核修正全部落定后：
+**物化顺序（A4→A5）**：A4 finalize 前不得创建报告 Markdown、报告图片或 HTML；
+只允许维护 claims/findings/data/facts/state 等复核输入。A4 封口后进入 A5，
+一次生成 `报告.md`，并把标准图和流转图只物化到 `charts/final/`；随后 seal 并构建 HTML。
 
 ```bash
 python3 scripts/report/a5_report_seal.py --case-dir . --report 报告.md --a4-seal a4_seal.json --out a5_report_seal.json
@@ -16,7 +18,6 @@ python3 scripts/report/build_html.py --mode analysis-new --md 报告.md --out �
 
 **监控包按需生成（v3.2，2026-07-18 用户定）**：观察哨清单、两档监控建议、`appendix.json`（含 report-extract 四键）**默认不随报告生成**——用户实测约 3/4 的标的看完报告不买入，监控产物白做。分析报告交付后，**用户确认买入（或点名要监控）时**再按 `monitoring-package.md`「买入后监控包」节补生成并重出带 `--json` 的 HTML（schema 与流程 v3.3 起全在该分册）。观察哨/监控建议/JSON 附录的格式标准**原样有效**，只是执行时机改为按需。
 
-**先审 md 再出 HTML**——复核 agent 和用户都直接读 md，别拿 HTML 当第一稿。PDF 不再默认交付，仅当用户点名要 PDF 时用 `md2pdf.py`（语法兼容）。
 
 ## 本册路由
 
@@ -92,7 +93,8 @@ python3 scripts/report/build_html.py --mode analysis-new --md 报告.md --out �
   ①**实体成员表**：哪些 EOA/已证专属合约同控（公共池、路由、CEX 热钱包永不入成员，见 methods pool-probe 硬闸）；
   ②**链上位置账**：币停在钱包/池/CEX/销毁地址（按位置如实单列）；
   ③**经济控制账**：谁握有可证明的最终赎回权/受益权——**"庄控制多少"的主答案必须用这张账**＝钱包自持＋可证设施权益穿透（LP：V3 按 LP NFT 持有人份额、V4 按 poolId+position+owner 逐头寸重放，见 channels V4 条目；CEX 子账户/桥/质押锁仓/vault/托管：按 `economic-control-accounting.md` 纳入门槛——权利可归属且数量可复算），未决权益不猜、单列。主结论采用"可证经济控制下限"，**不得拿钱包自持替代**，直接钱包余额只在位置拆分表展示。
-  三个反向病例同一制度治：拿位置账当主答案（把庄自有池的币写成"已失去控制"）、拿设施总余额直接归庄（把公用金库当实体仓）、把锁仓协议收进成员表当"归集主仓"或正确剔除却漏受益权穿透（实体曲线在锁仓月错误归零）——反向错误夹出唯一正解＝**设施剔除出成员表＋按受益权穿透计回经济控制账**：锁仓/vesting 协议与 LP 同等适用，闭合锁仓计划的本金按受益地址计回，协议内计划外余额单列不并（QUQ 双报告病例 07-22；SIREN 复核 07-24）。产物（6.5.0 经用户裁决转正式）：完整版**必须**交付 `economic_control_ledger.json`（每项设施权益带所有权证据、目标块可赎回量、防双计 key；结构与发布前逐实体检查见 `economic-control-accounting.md` §5），日后复核同一报告时以它为控制口径基线。
+  三账冲突统一按“设施剔除出成员表＋可证受益权穿透计回经济控制账”处理；
+  未决设施权益单列，不得拿位置账或设施总余额替代。判例见 casebook S-07/E-02。
 
 ## 三、庄级实体识别与类型判定（问1+问2）
   按标签顺序呈现：项目方 → 大庄 → 小庄 → 离场庄 → 刷量地址
@@ -208,8 +210,9 @@ python3 scripts/report/build_html.py --mode analysis-new --md 报告.md --out �
 - **facts.json**（阶段 3 结束、写报告前构建；schema 与宏语法全集见 `scripts/report/facts_gate.py` docstring）：token 总量/decimals + entities（每实体 label/addresses/current_raw/peak_raw，数值一律**原始整数字符串**从落盘数据复制；**多地址实体另填 merge_evidence_earliest**=归并证据最早时间，3.19 A1）+ metrics（自定义分子分母）。entities 字典键即 entity_id 稳定主键，与 analysis-state whale_groups[].entity_id 一致。
 - **合并时点措辞（3.19）**：叙述多地址实体在归并证据出现之前的共同行为，用宏 `{{e_x.merged_since}}` 标注时间或写"以最终归并口径回看"——禁写"当时已可确认同一实体"（细则 playbook-evidence-wording.md §11，facts_gate G6 自动提示）。
 - **写作纪律**：报告 md 中实体的持仓枚数/占比/峰值/成员数一律写宏——`{{e1.amount_share}}` → "2.78亿枚【总量27.84%】"（自动满足带【总量%】纪律）、`{{e1.share}}`、`{{e1.peak_share}}`、`{{e1.naddr}}`、`{{m:指标id}}`；附录 B 整块写 `{{appendix_b}}` 自动生成（**手打地址在架构上被消灭**）。禁止手打这些数字；价格/涨跌幅等非实体结论数字暂可手写（G5 会列清单供人工过目）。
-- **宏口径边界：`{{e.peak_share}}`=日末序列峰值，日内事件占比禁用宏**：peak_raw 来自日末快照序列，闪电过手型实体（单笔吃下→当日部分回吐）的**日内峰值高于日末峰值**（EGL1 案两处误用宏被外部异构复核抓出）。规则：单笔买入/日内持有语境的占比一律手写并标注"单笔/日内"口径；报告含此型实体时，日末峰值与日内峰值两口径并列写清（另见流转图 footnote 块级峰值声明纪律）；判级流程侧的峰值口径（日终＋L2 上界兜底＋四触发日逐笔）权威见 tiering"峰值判级口径"条，两处口径一体（EGL1 redo2 @CX 复核，07-28）
-- **序列类指标引用必须钉时点、程序化取尾**：正文引用 camp_share_series 等时间序列的"当前值"，必须从序列**末点**程序化取数并写明"截至 <数据截止日>"——凭目视/记忆取数会拿到中段值（EGL1 案手写值实为中段值，@CX 复核抓出）。互斥阵营残差桶另做一次"100−Σ各阵营末点"的算术复核（EGL1 redo2 @CX 复核，07-28）
+- **宏口径边界**：`{{e.peak_share}}` 只代表日末序列峰值；日内事件占比禁用宏，
+  必须以逐事件重放值手写并标明“单笔/日内”，同时并列日末与日内口径。
+- **序列指标钉时点**：当前值必须程序化取终点并显式标注日期；不得手抄中间点或沿用旧序列。
 - **编译**：全新分析用 `build_html.py --mode analysis-new ...`，净室复核用 `--mode analysis-audit ...`；两者强制 facts/state/identity/A4 v4/A5 report seal v2，并分别走 new-analysis/independent-audit 发布 profile。全新分析的 G11 还会重验 initial scan、terminal final scan、rounds 台账、解释或 waiver 和唯一分布图。analysis-audit 在 v1 分布闸中明确豁免，等待 single-stage 语义单独立项。不存在 generic analysis 或 skip gate。历史重编译用 `--mode legacy-recompile --degrade-reason "<理由>"`，并带非正式水印。
 - 纯校验（不出 HTML）：`python3 scripts/report/facts_gate.py --facts facts.json --state analysis-state.json --md 报告.md`。
 - **图层同源（3.19，`scripts/report/figures_from_facts.py`）**：编译化延伸到图——①图 1 直接 `figures_from_facts.py fig1 --state analysis-state.json --out charts/final/fig1.png [--price-csv 价格.csv]` 从 state 的 camp_share_series 直出（6.7.0 起报告图一律输出 charts/final/，G9 只认此目录），禁止再现场手写装配脚本；
