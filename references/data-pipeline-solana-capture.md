@@ -47,7 +47,7 @@
 
 1. **锚点法演变重建（免全量 SQD，`scripts/solana/build_evolution.py`）**：不重放每一笔，而是——①`fetch_pool_sigs.py` 拉主池全史签名；②等距抽签名做**池子余额锚点**（`decode_txs_v2.py --pool <池owner>` 每笔落 `pool_balance`）；③核心实体（top 大户 + 离场盈利榜 + 上游中转）用 `whale_deep.py` 拉 ATA 级全流水；④`build_evolution.py` 在时间点插值：各实体持仓从其逐笔流水累积、流动性池用锚点曲线、散户=总供应−已知−池−销毁残差。产出图1/图2 数据。**精度声明**：中小散户是残差估算，量级正确、单点精度有限，报告局限性须写明。
 2. **decode 通道坑**：`getTransaction` 直连 `api.mainnet-beta` **恒 429**，必走 clash 代理（`decode_txs_v2.py --proxy http://127.0.0.1:7897`）。金额只用 raw integer，输出 `deltas_raw/pool_balance_raw + decimals`，UI 字段仅为精确十进制字符串；缓存及断点输出绑定 mint/pool/RPC，`decode_fail` 不算 done。v1 `decode_txs.py` 仅保留为逐笔兼容入口，已复用 v2 的输出身份、completed_sigs 和完整性 receipt；两版最终仍有失败签名都以非零退出。
-3. **gas 溯源翻页上限（`gas_fast.py`，gas_origin.py 的加固）**：原 `gas_origin.py` 的 `oldest_sigs` 翻到最老全部——加 `max_pages=2` 上限、超深标 approx；落仓户签名少一页到底、秒完成。**遗留 TODO：把 max_pages 回填进 skill 的 gas_origin.py。**
+3. **gas 溯源翻页上限（`gas_origin.py` 合并版）**：翻页上限已并入 `gas_origin.py`——默认 `max_pages=2`、超深地址标 `approx`，`--full` 恢复翻到最老的全量行为；落仓户签名少一页到底、秒完成。历史来源：gas_fast 加固，BONK 等案。
 4. **服务 funder 排除**：gas 聚类只取最早 SOL 入金；候选 funder 必查余额与近千签名时间跨度。（判例：casebook/entity-clustering.md E-05）
 5. **发射窗路由噪声**：owner delta 中的 AMM/路由瞬时余额不得直接判持仓。（判例：casebook/entity-clustering.md E-02）
 6. **creator 履历与变更**：拉 creator 全发币履历、RugCheck 风险并对比 `set_creator` 前后身份。（判例：casebook/entity-clustering.md E-12）

@@ -15,6 +15,7 @@
 
 ## 版本索引（活跃窗口，新在上；每版一行，详情见下方对应条目）
 
+- **6.24.0** 2026-08-05 零引用脚本归档与 Solana gas 双实现合并（瘦身第 5 步）：gas_origin 单入口保留限页/全量双模式与字段闸
 - **6.23.0** 2026-08-05 深入阅读清单 manifest 化（瘦身第 4 步）：现役路由与维护文档双向对账，维护件不再被 lint 强迫进入口
 - **6.22.0** 2026-08-05 archive/ 考古区分层（瘦身第 3 步）：旧 CHANGELOG、评测题库与已闭环冲突审计快照退出执行路由
 - **6.21.0** 2026-08-05 数据管线两册案例史外移与重复合并（瘦身第 2 步）
@@ -58,6 +59,16 @@
 - **4.1.0** 2026-07-30 PYTHIA 双报告交叉核实复盘：实体身份防复发三闸（label_lookup 并源 address-book / entity_identity_gate+G8 编译门 / 复核 prompt 翻案四问固化）+ 复盘元规则（身份类教训必须以代码收尾）
 - **4.0.0** 2026-07-28 大整编（用户点名）：3.0→3.41 四十余版增量迭代的结构清理——路由索引补齐 9 节、结构错位归位 3 处、消重立权威源制 6 组、CHANGELOG 重整归档 29 条；只减不加，规则语义未动
 - 更早版本（3.41.0 及以前）→ `archive/CHANGELOG-archive.md`
+
+## [6.24.0] - 2026-08-05 — 零引用脚本归档与 Solana gas 双实现合并（瘦身第 5 步）
+
+B 组两个全库零现役引用脚本退出执行目录，普通移动且不删除：`scripts/evm/trace_network.py` → `archive/scripts/trace_network.py`，`scripts/evm/fetch_fundedby.py` → `archive/scripts/fetch_fundedby.py`。两者除自身外只在历史归档中出现，无现役文档需要同步。
+
+C 组 gas 双实现收敛为 `scripts/solana/gas_origin.py` 单入口，`scripts/solana/gas_fast.py` → `archive/scripts/gas_fast.py`。合并版保留 gas_origin 原有位置参数、`data/gas_origins.json` 累积格式、`first_txs` 与完整 `deltas`，并统一提供 gas_fast 的增强能力：`max_pages` 默认 2（沿用 gas_fast 实战校准值）、达到上限的超深地址标 `approx=true`、每笔继续输出 `sig/ts/my_sol_delta/funder`，目标 `my_sol_delta≈0` 时仍保留 fee payer funder 供先决字段闸裁决，RPC 429 显式退避；新增 `--full` 取消翻页上限，恢复 gas_origin 旧版一直翻到最老的全量行为，且会重查已有 `approx` 记录。实况核查发现 gas_origin 在本轮前已提前拥有默认 2 页、approx、my_sol_delta 与 deltas，本轮补齐剩余行为并正式移除双入口。
+
+文档同步三处：`scripts/solana/README.md` 条目 10 改为合并版说明、删除 gas_fast 条目并将后续脚本序号 17–27 顺移为 16–26；`references/data-pipeline-solana-capture.md` 删除遗留 TODO，改为默认 2 页/approx/`--full` 已回填口径并保留 gas_fast 加固历史来源；`references/playbook-entity-cluster-methods.md` 的 my_sol_delta 判据仅把 `gas_fast/gas_origins` 权威脚本名替换为 `gas_origin/gas_origins`，其余判据、阈值与阻断语义不动。
+
+审查后决定不动两项：①旧 Par 三件套 `fetch_hypersync_par.py`、`watchdog_dual.py`、`merge_parts.py` 原地保留，因为 `scripts/tests/test_review_medium_guards.py` 直接 import `fetch_hypersync_par.py` 的断点续传函数做守卫断言，移动会破坏现有防回退测试；②`scripts/solana/hypersync_recon.py` 原地保留，因为它是 HyperSync Solana 官方 GA 后的重验资产，且本就不在执行路由，移动没有上下文收益。
 
 ## [6.23.0] - 2026-08-05 — 深入阅读清单 manifest 化（瘦身第 4 步）
 
