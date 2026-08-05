@@ -14,10 +14,10 @@
 预估 Transfer 总条数？（先抽样发射首月外推，报保守上限）
 ├─ 任何量级【v3.11.2 起默认,Starter 付费 key 在役】
 │     → ① HyperSync 官方客户端 v2【首选】（scripts/evm/fetch_hypersync_v2.py，
-│          Rust 自动并发+Parquet 直写，实测 ~1 万条/s = 手写轮询 18 倍）
+│          Rust 自动并发+Parquet 直写）
 │       ② v1 手写轮询【兜底】（fetch_hypersync.py，无 pip 环境/逐字段调试用）
 ├─ < 300 万条且 ≤60 天新盘（手头无任何 key 的冷启动）→ bloXroute getLogs 分段扫描（scripts/evm/scan_bloxroute_seg.py）
-├─ HyperSync 平台级故障 / 数仓切源正式替代 → SQD Portal 薄采集器（须原生 v2 receipt）（fetch_sqd_evm.py，免 key，~280 条/s）
+├─ HyperSync 平台级故障 / 数仓切源正式替代 → SQD Portal 薄采集器（须原生 v2 receipt）（fetch_sqd_evm.py，免 key）
 ├─ HyperSync 结果可疑 / 对账 gate 挂了后的独立诊断【仅 ETH 主网，非正式 channel】→ BigQuery goog 官方公共数据集
 │     （fetch_bigquery.py,定向日期查询 ~12GiB/次,免费 1TiB/月;定位=备用+复核,不用于常态采集,详见 §11）
 ├─ 跨链代币的 ETH 主网侧补充【非正式 channel】→ Etherscan V2 免费 key（仅 chainid=1，fetch_etherscan.py）
@@ -26,7 +26,7 @@
 落盘与合并纪律（v3.11.2 起）：小样本多源产物经 `transfers_lib.py merge` 合并（默认最多
 100 万行，超过即拒）；正式大数据统一走 `replay_stream.py` 的 DuckDB 流式入口，禁止把
 亿级事件交给内存排序。两种入口都必须保留 input manifest。重叠块区
-集合级对账，不等即 exit(3) fail-closed（PING 案 uniqueId 双计 5485 负余额的制度化防线）；
+集合级对账，不等即 exit(3) fail-closed；
 标准 8 列含 block_hash，去重键 (block_hash,tx,log_index) 防链重组。
 channels.json 的 path 字段语义（2026-07-25 SPX6900 实测坑）：hypersync_v2 通道的 path
 指向 **v2 采集根目录**（如 data/v2，内含分段 parquet 全集），**不是单次 run 子目录**——
@@ -83,7 +83,7 @@ CSV 的每个历史 prefix，再从前一 `requested_to` 续采并发布加长 c
 - **部署块缓存** `get_deploy_block(chain, token, fetch_fn)`——每币首次定位后永存，免每次从 0 扫空段；
 - **时间戳锚点库** `add_anchors(chain, pairs)` / `estimate_ts`——按链累积复用，v2 产物的 blocks.parquet (number,timestamp) 直接喂入，新币插值免重复采锚点（⚠发射窗口精确配价仍禁用插值，恒定偏差坑见 §6）。
 
-**增量拉取（研报更新/补尾场景）**：v2 对增量天然友好——同一 run 根目录下新起 run（from_block=上次 done.json 的 next_block）即可，付费档实测 7 万块 2.3 万条仅 4s；**补丁段重叠核验法**：对怀疑有洞的区间补拉一段落盘独立 patch 目录，按 (tx,log_index) 键与主数据对比，零差即证该段完整、有差即用 patch 覆盖（QUQ 完整版增量，07-22）。
+**增量拉取（研报更新/补尾场景）**：v2 对增量天然友好——同一 run 根目录下新起 run（from_block=上次 done.json 的 next_block）即可；**补丁段重叠核验法**：对怀疑有洞的区间补拉一段落盘独立 patch 目录，按 (tx,log_index) 键与主数据对比，零差即证该段完整、有差即用 patch 覆盖。
 
 **存量 HyperSync v2 目录迁移（增量更新前置）**：2026-08-02 之前的
 `hypersync-v2-done/v2` 没有 `files` 实体回执，不得直接被新续拉器信任。QUQ、
@@ -104,14 +104,14 @@ size 与 SHA-256；全部通过后才原子将旧 done 升为 `hypersync-v2-done
 
 | 通道 | 注册要求 | 限速实测 | 吞吐实测 | 断点续传 | 脚本 | 来源 |
 |---|---|---|---|---|---|---|
-| **HyperSync 官方客户端 v2（Starter 付费档,现役首选）** | Starter $70/月 | 官方客户端并发 | **10,080 条/s**（CAKE 实测） | done manifest v3 绑定 token/url/capture bounds/query/client，并对 logs/blocks Parquet 分别记 size/rows/min/max/sha256；续传与 staged skip 都重验可读性/schema/范围/哈希 | fetch_hypersync_v2.py | （2026-08-02 加固） |
-| envio HyperSync v1 手写轮询（兜底） | 同上 key 通用 | 免费层:0.5s 间隔基本无 429（2026-07-18 收紧后实测）;**Starter 付费档:0.12s 间隔 429=0**,但单进程吞吐仅 552-792 条/s（RTT 主导,ETH RTT~0.2s/BSC~0.6s）——付费买到的是高峰稳定性,大标的提速必须换 v2 | 免费层 ~1000-1300 logs/2s,1568 万条约 5.2h;付费单进程 ETH 792 条/s、BSC 552 条/s | from_block 起点 + 增量写 CSV（v3.11.2 起新文件 8 列含 block_hash,老 7 列续拉自动兼容） | fetch_hypersync.py | （SIREN 07；哈基米 429 实测 07-18；v3.11.2 付费实测 07-21） |
-| SQD Portal 薄采集器（故障预案+正式替代；须 `--receipt`） | 免 key 免注册（portal.sqd.dev 公共端点;注册 gateway key 免费可选更稳） | 公共限流 20 请求/10s,sleep 0.5 保守;无自助付费档（官网 pricing coming soon,2026-07-21 核实） | ~280 条/s（CAKE 21,857 行/79s）——平时不跑,HyperSync 平台级故障或数仓切源准入对照时才上;**对账关卡（余额对账/时间抽查）的代表日双源对照亦用它**（独立索引商,BANANAS31(BSC) 四代表日 67,731 行 (block,tx,li,from,to,value) 六元组与 HyperSync 零差集全等,2026-07-22） | CSV 末行块+1 | fetch_sqd_evm.py | （v3.11.2,2026-07-21） |
+| **HyperSync 官方客户端 v2（Starter 付费档,现役首选）** | Starter $70/月 | 官方客户端并发 | — | done manifest v3 绑定 token/url/capture bounds/query/client，并对 logs/blocks Parquet 分别记 size/rows/min/max/sha256；续传与 staged skip 都重验可读性/schema/范围/哈希 | fetch_hypersync_v2.py | （2026-08-02 加固） |
+| envio HyperSync v1 手写轮询（兜底） | 同上 key 通用 | 付费买到的是高峰稳定性,大标的提速必须换 v2 | — | from_block 起点 + 增量写 CSV（v3.11.2 起新文件 8 列含 block_hash,老 7 列续拉自动兼容） | fetch_hypersync.py | （SIREN 07；哈基米 429 实测 07-18；v3.11.2 付费实测 07-21） |
+| SQD Portal 薄采集器（故障预案+正式替代；须 `--receipt`） | 免 key 免注册（portal.sqd.dev 公共端点;注册 gateway key 免费可选更稳） | 公共限流 20 请求/10s,sleep 0.5 保守;无自助付费档（官网 pricing coming soon,2026-07-21 核实） | ~280 条/s——平时不跑,HyperSync 平台级故障或数仓切源准入对照时才上;**对账关卡（余额对账/时间抽查）的代表日双源对照亦用它**（独立索引商） | CSV 末行块+1 | fetch_sqd_evm.py | （v3.11.2,2026-07-21） |
 | BigQuery goog 官方公共数据集（诊断复核、**非正式 channel，仅 ETH**） | Google 账号 OAuth 一次(凭据缓存后免弹窗)+GCP sandbox 项目(免绑卡,见 api-keys.md 第 17 节「Google Cloud / BigQuery」) | 免费 1 TiB/月查询量;熔断线 config max_scan_gib(默认 200GiB) | 服务端过滤只回传命中行,13 万行 ~1 分钟;定向日期查询 ~12GiB/次≈月额度可复核 85 次 | 无需(按日期范围幂等重查) | fetch_bigquery.py | （v3.12.1 准入实证,2026-07-21） |
-| Alchemy getAssetTransfers（正式使用须 fresh 输出 + `--receipt`） | 免费 key（dashboard.alchemy.com 国内直连） | 平台级 429 全局限流，高峰期可整夜不可用 | ~46 万条/10 分钟，1000 条/页 | 读 CSV 末行区块置 fromBlock（勿依赖 pageKey） | fetch_alchemy.py | （SIREN，07） |
+| Alchemy getAssetTransfers（正式使用须 fresh 输出 + `--receipt`） | 免费 key（dashboard.alchemy.com 国内直连） | 平台级 429 全局限流，高峰期可整夜不可用 | 1000 条/页 | 读 CSV 末行区块置 fromBlock（勿依赖 pageKey） | fetch_alchemy.py | （SIREN，07） |
 | bloXroute getLogs（近期原始分片，**非正式 channel**） | 免注册 | ⚠**并发承受力已变**（2026-07-19 SIREN 实测）：8 并发 curl 线程池整体挂死零产出、requests 3 线程 0.5s 间隔稳定；历史窗口比 07-18 更宽（下界块 100.1M~101.5M ≈55-60 天，二分探测）——**窗口是动态的，用前必二分**。降级为"近期段快扫" | requests 3 线程 万块段 ~50 段/4 分钟（SIREN 396 万条约 30 分钟）；旧 8 并发数字已不可复现 | done-segments 清单 + 失败段补扫 | scan_bloxroute_seg.py（requests.Session） | （OPN 07；哈基米 窗口实测 07-18；SIREN 并发/窗口实测 07-19） |
-| Etherscan V2（补充证据、**非正式 channel，仅 ETH 主网**） | 用户免费 key | 免费层限速未成瓶颈 | tokentx 每页 10000 条，7 万余行顺利拉完 | 按返回末行 block 续页 | fetch_etherscan.py | （OPN，07） |
-| envio HyperSync **ETH 主网**（eth.hypersync.xyz） | 同上免费 token | 0.25s 间隔全程仅 11 次 429、全部退避成功 | 139.9 万条 33 分钟单进程拉完（~700 条/s 均速） | 同 BSC 版（fetch_hypersync 断点续传版） | fetch_hypersync.py | （ASTEROID，07-18） |
+| Etherscan V2（补充证据、**非正式 channel，仅 ETH 主网**） | 用户免费 key | 免费层限速未成瓶颈 | tokentx 每页 10000 条 | 按返回末行 block 续页 | fetch_etherscan.py | （OPN，07） |
+| envio HyperSync **ETH 主网**（eth.hypersync.xyz） | 同上免费 token | — | — | 同 BSC 版（fetch_hypersync 断点续传版） | fetch_hypersync.py | — |
 
 **替代 CSV 正式资格**：只有 `fetch_sqd_evm.py` 与 `fetch_alchemy.py` 在显式冻结块界、输出运行前不存在并成功收尾时，可用 `--receipt` 产生 `evm-collector-run/v2`；preflight 会校验当前 adapter 脚本哈希。BigQuery 是日期切片复核，bloXroute 是近期分片，Etherscan 是补充 API，三者代码均声明 `FORMAL_CHANNEL_ELIGIBLE = False`，不得写入正式 `channels.json`。旧 CSV 无法升级：另名归档后由上述生产 adapter 从冻结下界重采。
 
@@ -149,11 +149,11 @@ size 与 SHA-256；全部通过后才原子将旧 done 升为 `hypersync-v2-done
 - archive_height 到最新块，全史无缺口；换 token 地址与链子域名即可用于其他 HyperSync 支持链。（SIREN，07）
 - token 从 `~/.config/hypersync/token` 自动读取（fetch_hypersync 内置）；换 key 时该文件与 `~/.claude/api-keys.md` §1 两处同步。
 - **transactions 端点做 BNB 注资溯源**：body `{"transactions":[{"to":[addr]}],"field_selection":{"transaction":["block_number","from","to","value"]}}`（value 为 hex）——单址全链入金一次查询 ~2.3s 到 tip，比逐块扫快几个量级；⚠25 址×全链批量会 10 分钟超时，可用姿势=关键地址单址逐查 / 发射窗小块段批量（from/to_block 圈定）。（哈基米，07-18）
-- 分段多进程姿势：复制脚本改 OUT 与 to_block 边界（`if nxt >= BOUND: break`）、sleep 提至 0.5s，各进程独立 CSV 事后按 (tx,log_index) 去重合并；改 config 后重启前删本地缓存的段清单文件。（哈基米，07-18）
-- **多会话共享 key 限速冲突**：并行分析会话同打一个 HyperSync key/端点会互相触发 429（SQD 案与另一标的采集会话撞车实测）——开工前 `ps aux | grep fetch_hypersync` 查有无在跑进程；撞车时不必停工，调低单会话吞吐预期、靠 429 退避共存（SQD 案 83.2 万条 56 分钟、429×20 次全部自愈）。（SQD，07-20）**限流是 key 级共享、不是端点独立**——同 key 打不同链子域（eth+arbitrum）并发同样互抢限额：LPT 案 eth+arbitrum 三进程并发时 arbitrum 端点 429 密集，串行后恢复；多链标的的分链采集按链串行或错峰，别指望换端点绕开限额。（LPT，07-21）
+- 【历史降级·新案禁用】分段多进程姿势：复制脚本改 OUT 与 to_block 边界（`if nxt >= BOUND: break`）、sleep 提至 0.5s，各进程独立 CSV 事后按 (tx,log_index) 去重合并；改 config 后重启前删本地缓存的段清单文件。（哈基米，07-18）现行主线为 v2 Parquet/done manifest。
+- **多会话共享 key 限速冲突**：并行分析会话同打一个 HyperSync key/端点会互相触发 429（SQD 案与另一标的采集会话撞车实测）——开工前 `ps aux | grep fetch_hypersync` 查有无在跑进程；撞车时不必停工，调低单会话吞吐预期、靠 429 退避共存。（SQD，07-20）**限流是 key 级共享、不是端点独立**——同 key 打不同链子域（eth+arbitrum）并发同样互抢限额；多链标的的分链采集按链串行或错峰，别指望换端点绕开限额。（LPT，07-21）
 - **分段采集**：`staged_capture.sh` 只在 done manifest 的 token/url/from/to/query 全字段一致时跳段；残段移入 `outdir/quarantine/` 保留诊断现场，不再递归删除。失败 retry-once 后仍失败即停。
 
-- **★稀疏事件（单池单 topic）别用 HyperSync 全链扫，改「已有 Transfer 反查 tx → 打回执」**：HyperSync 按"扫过的块量"分批返回，对稀疏匹配（如某一个池的 `Mint` 事件）实测每次只推进 **~5,400 块 / 12 秒**——扫 1.1 亿块要几十小时，且中途看不出异常（进程活着、只是慢）。**正解**：从已落盘的全量 Transfer 里筛出"该合约 ↔ 任意地址、金额 ≥ 门槛"的交易去重得 tx 列表，再并发 `eth_getTransactionReceipt` 逐个解析（KOGE 案 82 个交易几十秒拿到全部 81 次 LP 操作，对比 HyperSync 全链扫的几十小时）。**反过来**：块区间已知的小范围精确查询（如追某个 tokenId 的 ERC721 Transfer）用 HyperSync **一次返回**，比公共 RPC 的 `eth_getLogs` 省事——后者在 BSC 公共节点超 5,000 块即 `-32005 limit exceeded`。选型口诀：**大范围稀疏→反查回执；小范围精确→HyperSync**。（KOGE 第二轮追加取证，07-25）
+- **★稀疏事件（单池单 topic）别用 HyperSync 全链扫，改「已有 Transfer 反查 tx → 打回执」**：HyperSync 按"扫过的块量"分批返回，对稀疏匹配（如某一个池的 `Mint` 事件）实测每次只推进 **~5,400 块 / 12 秒**——扫 1.1 亿块要几十小时，且中途看不出异常（进程活着、只是慢）。**正解**：从已落盘的全量 Transfer 里筛出"该合约 ↔ 任意地址、金额 ≥ 门槛"的交易去重得 tx 列表，再并发 `eth_getTransactionReceipt` 逐个解析。**反过来**：块区间已知的小范围精确查询（如追某个 tokenId 的 ERC721 Transfer）用 HyperSync **一次返回**，比公共 RPC 的 `eth_getLogs` 省事——后者在 BSC 公共节点超 5,000 块即 `-32005 limit exceeded`。选型口诀：**大范围稀疏→反查回执；小范围精确→HyperSync**。（KOGE 第二轮追加取证，07-25）
 - **v2 响应里的 log 字段是 `topic0/topic1/topic2/topic3` 分列，不是 `topics` 数组**：按 `l['topics'][0]` 取会直接 `KeyError`（与 `eth_getLogs` 的 RPC 返回结构不同，混用两套代码时高发）；`field_selection.log` 里也要逐个列名申请。同理 `transaction`/`block` 的字段名各自独立申请。（KOGE 第二轮追加取证，07-25）
 
 - **v2 resume 语义**：只消费同 `capture_from` 且身份完全一致的 manifests；边界必须满足 `capture_from<=from<to=next<=本次to`。`hypersync-v2-done/v3` 将 `logs.parquet` 与 `blocks.parquet` 的 size/rows/min_block/max_block/sha256 分别落盘，done 经临时文件、fsync、rename 原子发布；`find_resume_block` 与 `staged_capture.sh` skip 前重读两个 Parquet 并重算全部字段。遇 v2 存量 done 先跑 `--refresh-manifests`，禁止手改 `files`。跨标的、跨端点、坏边界、缺文件、截断或 hash 漂移、`start>=to` 全部 fail-closed，禁止“空完成”。
@@ -161,13 +161,12 @@ size 与 SHA-256；全部通过后才原子将旧 done 升为 `hypersync-v2-done
 ### 3.2 Alchemy getAssetTransfers（scripts/evm/fetch_alchemy.py）
 - POST `https://bnb-mainnet.g.alchemy.com/v2/{KEY}`，method=`alchemy_getAssetTransfers`，params 含 `contractAddresses`、`category:["erc20"]`、`maxCount:"0x3e8"`、`pageKey` 分页；返回自带时间戳。（SIREN，07）
 - pageKey 有有效期，长任务中断后必过期：断点续拉一律读 CSV 末行区块号置 fromBlock 重开游标，容忍少量重复、下游按 tx hash 去重。（SIREN，07）
-- 会遇平台级 429（"global traffic"，与自身配额无关、恢复时间不可控），曾整夜零进展：脚本内置指数退避（最长 20 分钟）+ 外层 while 冷却重启；卡点超 1-2 小时必须并行准备第二通道并用 AskUserQuestion 摆路径，绝不单通道死等。（SIREN，07）
+- 会遇平台级 429（"global traffic"，与自身配额无关、恢复时间不可控）：脚本内置指数退避（最长 20 分钟）+ 外层 while 冷却重启；卡点超 1-2 小时必须并行准备第二通道并用 AskUserQuestion 摆路径，绝不单通道死等。（SIREN，07）
 
 ### 3.3 bloXroute getLogs 扫块
 
 正式操作入口为 `scripts/evm/scan_bloxroute_seg.py`。旧 `scan_transfers.py` 仅保留历史/诊断用途，不得作为正式或冷启动主线。
-- POST `https://bsc.rpc.blxrbdn.com`，eth_getLogs 按 Transfer topic 分段扫：10000 块/段、8 并发 worker、~2s/请求。（OPN，07）
-- 断点续传：done-segments 清单跳过已完成段；多线程必留失败段（某次 3392 段中 92 段失败），扫完自动列 remaining 并补扫，remaining=0 才算采集完成。（OPN，07）
+- 断点续传：done-segments 清单跳过已完成段；多线程必留失败段，扫完自动列 remaining 并补扫，remaining=0 才算采集完成。（OPN，07）
 - 起始块定位：勿用 eth_getCode 二分找部署块（免费节点历史状态请求被拒，会找错块导致空扫秒退）；改按"块时间戳 >= 已知安全起始日期"二分，起始日期用 GMGN start_holding_at 或跨链铸造日锚定，多扫无害。（OPN/SIREN，07）
 - 同脚本顺带采时间戳锚点：每隔固定块距 eth_getBlockByNumber 取块头时间戳（数百个锚点几分钟采完），分析期 bisect 线性插值，省数千次逐块 RPC。（OPN，07）
 - **起点缓存坑**：`<chain>_scan_meta.json` 缓存 start_block/head，改 config 的 start_time_utc 后必须删除该文件才会重新二分，否则沿用旧起点空跑。（哈基米，07-18）
@@ -180,7 +179,7 @@ size 与 SHA-256；全部通过后才原子将旧 done 升为 `hypersync-v2-done
 ### 3.5 Multicall3 批量余额（scripts/evm/multicall_balances.py）
 - eth_call 到 Multicall3（`0xca11bde05977b3631167028862be2a173976ca11`，各 EVM 链同地址）的 aggregate3，手工 ABI 编解码，≤200 地址/批；近千地址几十秒查完。（SIREN，07）
 - 反例：逐地址 eth_call 串行查 990 地址 10 分钟命令超时（exit 143），别走。（SIREN，07）
-- 纪律：先用 2 个地址小样本打印原始 RPC 响应验证编解码再放量；异常必须落日志绝不吞（曾因"地址文件混入余额尾巴 + 返回值动态偏移解码错 + 吞异常"三连 bug 三轮 990/990 全失败）。（SIREN，07）
+- 纪律：先用 2 个地址小样本打印原始 RPC 响应验证编解码再放量；异常必须落日志绝不吞。（SIREN，07）
 - 地址清单文件须纯地址一行一个，任何附加字段都会污染 calldata。（SIREN，07）
 
 ### 3.6 记账模型 gate 的通道实测（accounting_gate.py，3.19）
@@ -197,17 +196,16 @@ size 与 SHA-256；全部通过后才原子将旧 done 升为 `hypersync-v2-done
 | 坑 | 识别/处理 | 来源 |
 |---|---|---|
 | Binance Alpha 2.0 Router 托管黑箱 | BSC meme 生态特有：单一 Alpha 托管合约可能就是 top1 holder 且份额巨大，绝不能当成"庄家地址"分析。识别=WebFetch bscscan 官方标签 + 工厂合约 getPair 分清主池/尘埃池；处理=与 CEX 热钱包一并归入"不可穿透黑箱"，报告显式给黑箱占比与单一实体份额上限，措辞一律带"链上可证范围内"限定 | （SIREN，07） |
-| **Alpha 转正币安现货后 Router 黑箱消失** | bapi 全量表 `listingCex=True`（Alpha 转正现货）的币：Alpha 端 offline=True/canTransfer=False，**Alpha 2.0 Router 托管随转正清空迁移**（BANANAS31 实测 Router 余额仅剩 ≈101 枚）——转正币无 Alpha Router 黑箱，币安黑箱=常规充提托管热钱包体系，黑箱盘点按普通 CEX 口径做即可，勿再找 Router 大仓 | （BANANAS31，07-22） |
+| **Alpha 转正币安现货后 Router 黑箱消失** | bapi 全量表 `listingCex=True`（Alpha 转正现货）的币：Alpha 端 offline=True/canTransfer=False，**Alpha 2.0 Router 托管随转正清空迁移**——转正币无 Alpha Router 黑箱，币安黑箱=常规充提托管热钱包体系，黑箱盘点按普通 CEX 口径做即可，勿再找 Router 大仓 | （BANANAS31，07-22） |
 | **BSC 历史段块时长折算坑** | BSC 块时长随硬分叉多次变更（2024-11 实测 3s/块，≠现值亚秒级）——"发射后 N 分钟"类时间叙述**必须用区块时间戳差**，禁止块数×固定块时长折算（BANANAS31 案复核抓出 27→81 分钟传播级错误，狙击峰值时点差 3 倍） | （BANANAS31 复核，07-22） |
 | **four.meme TokenManager 毛口径虚高** | bonding curve 买卖双向都过 TokenManager，其**毛流出可远超总供应**（BANANAS31 案毛流出 153.5 亿 > 总量 100 亿）——发射窗 bundle/狙击/份额判定禁止用 TokenManager 毛流出，必须重放净口径+毕业时点存量（流量存量双口径纪律的 four.meme 场景） | （BANANAS31，07-22） |
-| 新 key 不探测就承诺方案 | 任何新 key 到手先做 1 分钟能力探测：eth_blockNumber + 一次真实 getLogs（或一页 transfers），确认块范围上限/限速/链覆盖后再写进计划。反例：dRPC 免费 key 探测前就让用户注册，实测基本不可用，白费一次注册 | （SIREN，07） |
-| 用户网络可达性 | 让用户注册任何站点前，先在用户机器上 `curl -s -o /dev/null -w '%{http_code}' {url}` 预检。实测（用户中国网络）：drpc/alchemy/getblock/bitquery 返回 200，app.envio.dev/nodereal 返回 000，dune 403；且"控制台打不开 ≠ API 端点不可用"（bsc.hypersync.xyz 直连通） | （SIREN，07） |
-| 数据量按市值臆测 | 曾按市值预估几十万条、实际 2150 万条（代币被高频机器人生态盘踞），耗时预估连环跳票：先拉发射首月抽样外推总量，向用户报保守上限；"转账笔数/市值异常比"本身可写进报告当信号 | （SIREN，07） |
+| 新 key 不探测就承诺方案 | 任何新 key 到手先做 1 分钟能力探测：eth_blockNumber + 一次真实 getLogs（或一页 transfers），确认块范围上限/限速/链覆盖后再写进计划 | （SIREN，07） |
+| 用户网络可达性 | 让用户注册任何站点前，先在用户机器上 `curl -s -o /dev/null -w '%{http_code}' {url}` 预检，且"控制台打不开 ≠ API 端点不可用" | （SIREN，07） |
+| 数据量按市值臆测 | 先拉发射首月抽样外推总量，向用户报保守上限；"转账笔数/市值异常比"本身可写进报告当信号 | （SIREN，07） |
 | dataseed 只能做轻查询 | eth_blockNumber / eth_getBlockByNumber / eth_call / eth_getCode（latest 状态）正常，可做时间戳锚点与工厂 getPair；getLogs 与历史状态一律被拒 | （OPN/SIREN，07） |
 | 部署块 getCode 二分失效 | 免费节点拒历史 eth_getCode（archive 请求），二分会找错块 → 改用块头时间戳二分定起始块（非 archive 请求） | （OPN/SIREN，07） |
-| 通道切换不清观察哨 | 废弃一条数据通道时，同步 TaskStop 与之绑定的 until-grep 观察哨/循环任务，否则空挂十几小时、用户来质问"任务还活着吗" | （SIREN，07） |
+| 通道切换不清观察哨 | 废弃一条数据通道时，同步 TaskStop 与之绑定的 until-grep 观察哨/循环任务 | （SIREN，07） |
 | zsh 裸 glob 杀命令链 | 后台命令 `rm -f part_*.csv && python3 ...` 在 glob 无匹配时报 "no matches found" 并中断整条链，扫块脚本被连带杀掉 → 用 `rm -f ... 2>/dev/null \|\| true` 或拆成两条命令 | （OPN，07） |
-| scan_transfers 毒段死循环 | 主扫 worker 对失败段无限放回重试：**段数长期不动 + CSV 行数停涨 = 毒段卡死**（发射高峰段数据量超节点上限）。处置：杀掉 scan 进程直接跑 fill 模式（1000 块子段减半递归）；已完成数据在磁盘不丢，fill 后按 done.json 续 | （bibi，07-12） |
 | 锚点插值发射窗口系统偏差 | 每 10 万块锚点线性插值在发射窗口可有 +100s 级恒定偏差（BSC 出块速率变化）。分钟 K 配价前必须 RPC 实查 2-3 个关键块定量偏差，发射窗口改用"精确锚定块 + 实测出块间隔外推"（如 ts=mint_ts+(blk-mint_blk)*0.45）；小时/日级分析不受影响 | （bibi，07-12） |
 | GoPlus is_contract 误报 EIP-7702 | 委托型 EOA（7702）被 GoPlus 标 is_contract=1（曾致 top10 中 4 个被误当合约）。甄别：bscscan 地址页看"委托对象"字段，或 eth_getCode 前缀 0xef0100 | （bibi，07-12） |
 | GMGN 卖出榜 EOA 口径新形态 | 卖出榜"纯转入零买入、卖出数十万美元"地址可能在 Transfer 事件里**完全不出现**（智能钱包/路由的操作者 EOA），不能当"内部钱包变现"指认；需 tx 层核实 msg.sender 与事件主体的关系 | （bibi，07-12） |
@@ -220,18 +218,17 @@ size 与 SHA-256；全部通过后才原子将旧 done 升为 `hypersync-v2-done
 | DexScreener dexId "uniswap" 无版本标注可能是 V3 池 | Swap topic：V3=`0xc42079f9…`、V2=`0xd78ad95f…`；dexId 只写 "uniswap" 不标版本时，先按 log topic 判池版本再解析，按错版本解析买卖归因全错 | （外部 bibi 考古，07） |
 | four.meme 内盘量化 / 克隆快判 | 内盘额度恰 8 亿/80%，dev-buy 同 tx 按 bonding curve 买断内盘凑满即秒毕业、创世后约 8 块（~4s）TokenManager2 注 20% 入 Pancake V2；"创世同秒单钱包拿走 ~80%"=dev buy。`7777` 后缀=另一发射台 CREATE2（与 4444 并列，平台特征非指纹）。meme-api 全路径已 404，正身改看创世 tx HTML 是否触及 TokenManager2/部署器（创建者从合约页 Contract Creator 取，href 单引号，正则 `["']?`） | （外部 TCC/bibi 考古，07） |
 | **PancakeSwap V3 Swap topic ≠ Uniswap V3** | Pancake V3 Swap=`0x19b47279256b2a23a1665c810c8d55a1758940ee09377d4f8d26497a3577dc83`（data 布局 7×32B：amount0,amount1,sqrtPriceX96,liquidity,tick,protocolFeesToken0,protocolFeesToken1），Uniswap V3=`0xc42079f9...`（5 字段）。**按 Uniswap topic 采 Pancake 池 Swap 会静默返回 0 行**（无报错）；反解价格 price=(sqrtPriceX96/2^96)^2 为 token1/token0，SIREN(token0)<WBNB(token1) 时该值=WBNB/SIREN，×BNB 价得 USD。发射期无 CEX K 线时用池 Swap 重建日中位价（SIREN 23.8 万条 Swap 重建 2025-02~03 吸筹成本） | （SIREN，07-19） |
-| **scan_transfers.py 本机 curl 线程池挂死** | 8 worker × subprocess(curl) 组合在本机零产出、无报错、进程活着但不写 CSV；同端点单请求 curl 通、requests 3 线程 0.4-0.5s 间隔稳定。现役 `scan_bloxroute_seg.py` 使用 `requests.Session`；旧脚本仅作历史/诊断，bloXroute 并发降到 3、间隔 ≥0.4s | （SIREN，07-19） |
 | four.meme 连环盘 / 致敬币指纹 | **连环盘**：同一创建者短时（十几小时）连发 ≥5 个币、每次创世秒买断 ~80% 并在 1 分钟内把大部分转给**同一收币钱包**——TOP1 大户的 tokentxns 里混着大量其他 4444 币即此线索。**致敬币变体**：收币钱包可能是被致敬 KOL 本人（印证行为=向官方慈善多签捐 1% + 向代币合约自转等效销毁），其约束只有公开声誉（软约束），报告按"收币实体"陈述、身份措辞按证据分级。另：GT 日线只留 ~180 天导致老币毕业价缺失时，可由 four.meme 曲线参数（saleAmount/raisedAmount）反解毕业价 | （外部 TCC/人生K线 考古，07） |
 | **币安 Alpha"场内↔链上结算引擎桥"识别** | Alpha 在架 BSC 标的会出现一个超大吞吐地址（AKE 案 0x6aba…1b90，累计吞吐 1218 亿枚=1.2 倍总供应、净持≈0）：对手方全是 Alpha Router / 币安 Web3 入口(0xb300000b72deaeb607a12d5f54773d1c19c7028d，vanity 前缀) / 公共聚合路由 / 各池子——它是**币安场内买卖↔链上 DEX 的双向对冲执行器**（把场内压力实时传导到链上池价），归 CEX 基础设施桶（no_merge/exclude），**绝不能当大户或庄**。识别=高吞吐+净持≈0+对手方全为交易所/路由/池子。Alpha 标的标配排查件 | （AKE，07-19） |
 | **CEX 归集批次节奏≠行为指纹（对抗复核 REFUTED 源）** | "两地址同分钟末笔充值 Gate=同一操作者"被硬证据推翻：交易所归集是**批次节奏**，同一分钟窗常有数十个互不相关用户地址同批入账（AKE 案 7-18 17:40-49 共 71 个不同地址同批充 Gate1）。凡"充值时间对齐"类指纹，**必须先拉同窗口全量充值做对照组**——同窗地址数 >10 即该"同分钟"零区分力。与 §6 同时性共现家族②档（同秒等额矩阵）同理（先造对照组测误报率） | （AKE 复核，07-19） |
 | **投毒者 dust 伪装 gas 种子 + 幽灵地址反污染** | 职业投毒团伙给"即将活跃的新地址"发 0.001 BNB 级 dust，gas 溯源会误当"同源强边"（AKE 案双雄的"同额 gas 种子"实为投毒者所发）。判据：该 funder 流水含大量 $0 vanity 仿冒转账+盯梢真实转账=职业投毒者，其一切转账不作聚类边。**衍生坑**：从 trace/BFS 截断打印转述地址时会手补出"幽灵地址"（全史 0 笔的仿冒体）混入实体表——凡进 camps/实体表的地址必须回 merged.csv 验证存在性+走量匹配（AKE 案完整性复核抓出 2 个幽灵，替换为同前缀真实节点） | （AKE，07-19） |
 | **币安 Alpha Box 空投标的三件套时序指纹** | 项目方系统=空投币源提供方时：①公告前数天向 Alpha Router 集中充值（AKE 案 7-04~07 充 76 亿）②同期向粉尘分发器注资（随后数万笔粉尘化发放=空投投放通道）③公告后砸底卖压主力的**更优备择=领取人即领即抛**（非项目方场内出货，后者是黑箱不可证）。**Router 充值构成必拆"托管系新币 vs 场内库存回充"**——AKE 案 76 亿中 58 亿是 4 月已提出库存的原额回充（44 址静默 3 个月+dust 试提指纹），不拆会把注入规模高估 4 倍 | （AKE 复核，07-19） |
 | **key_edges 提取排除设施边 → 来源拆解选择偏差** | 亿级转账为控量提取"关键边"流水时，若把池/枢纽/路由的设施边排除在外，事后拿 key_edges 做某仓"币从哪来/去哪"的来源拆解会**系统性漏掉经设施走的流量**（选择偏差——刷量盘的大头恰恰经池/枢纽走）。兜底=**daily_delta 缺口法**：该仓按日全量净变动（daily_delta）与 key_edges 汇总的差值=未入选边的缺口量，缺口显著就回全量数据补拉该仓该窗口的完整边再下结论 | （QUQ，07-22） |
-| **亿级 edges 提取禁止攒内存** | 1 亿条级转账逐行提边时 list 攒内存会 OOM/假死——一律边读边流式 append 落盘（QUQ 案 key_edges.csv 7.3GB 逐行流式写出），聚合统计另做二遍 pass；产物文件在交接包标注"勿整读" | （QUQ，07-22） |
-| **币安 Alpha 积分倍数 mulPoint 直查** | `www.binance.com/bapi/defi/v1/public/wallet-direct/buw/wallet/cex/alpha/all/token/list`（免 key 国内直连，~656 币）每币带 **`mulPoint`=当前积分倍数**及 listingTime/volume24h/count24h/holders/score。2026-07-22 实测分布：645 币=1x、11 币=4x（全是 30 天内新 TGE=Points Plus 加成）。Alpha 在架标的量能判读**第一步先查此字段**；⚠只有当前值无历史接口，历史轨迹靠政策线锚点+快讯/推特回溯 | （QUQ 投后，07-22） |
+| **亿级 edges 提取禁止攒内存** | 1 亿条级转账逐行提边时 list 攒内存会 OOM/假死——一律边读边流式 append 落盘，聚合统计另做二遍 pass；产物文件在交接包标注"勿整读" | （QUQ，07-22） |
+| **币安 Alpha 积分倍数 mulPoint 直查** | `www.binance.com/bapi/defi/v1/public/wallet-direct/buw/wallet/cex/alpha/all/token/list`（免 key 国内直连，~656 币）每币带 **`mulPoint`=当前积分倍数**及 listingTime/volume24h/count24h/holders/score。Alpha 在架标的量能判读**第一步先查此字段**；⚠只有当前值无历史接口，历史轨迹靠政策线锚点+快讯/推特回溯 | （QUQ 投后，07-22） |
 | **Alpha 积分政策时间线锚点 + 量能断崖三因鉴别** | 政策线：2025 年中 BSC 币全板块 2x → **2025-09-04 取消**（BSC 双倍与 Alpha 2.0 限价单双倍一并废止，改新 TGE 30 天 4x）→ **2026-07-22 Alpha CEX 限价单买 BSC 币 4x**（挽回板块流量新政）。Alpha 币量能台阶/断崖先对政策线，再三因鉴别：①个币处分（mulPoint 降档）②板块政策变化 ③**竞价性分流**（更高倍数/更低磨损的新载体抢走刷分大军——刷分量是"倍数×磨损成本"性价比的函数）。鉴别三件套=mulPoint 直查+**对照币实验**（同板块 2-3 币 GT 日 K 同窗看是否同跌，同跌=板块性非个币）+xapi `search_posts_all` 断崖窗口±3 天搜刷分社区实时讨论（⚠中文**带引号词组零命中**，拆开词搜）。QUQ 案：07-14 单日腰斩且随后 8 天窄带平稳（窄带新平台=新配额指纹），判③——美股代币 4x+磨损低 15 倍分流，对照币同窗 -93% 更狠、QUQ 仍全表量第一=分流非处分 | （QUQ 投后，07-22） |
 | **Alpha 场内↔链上量能迁移互斥 + 监控防误读** | 场内（Alpha CEX 限价单）有倍数/磨损优势时，**链上 DEX 量可整段归零而需求未死**：QUQ 案 2025-08 下旬~09-10 链上池成交连续 $0，恰为场内托管峰期；09-04 场内双倍取消后量才迁回链上。推论三条：①链上量崩先查同期币安页 24h 总量与政策线，勿直判需求死亡；②监控组"向 Alpha 托管/寄存仓大额转移"落在场内政策利好窗口（如 2026-07-22 限价单 4x 生效日）时，优先解读为"搬场内复业"而非出货——辅证=结算引擎桥（6aba 类）双向对冲仍活跃+托管后无 CEX 出金链；③上架头几个月成交可能全在场内，**全史链上口径系统性低估早期量，报告必须声明** | （QUQ 投后，07-22） |
-| **全史 DEX 成交量硬算（池腿法）** | 每笔 swap 必有一条代币进/出池的 Transfer 腿：POOLS={各直连池+V4 PoolManager 单例}，from/to 恰一侧在集合=计一腿（**单边口径**），池↔池转账（V3↔V4 摆深度）自动排除；**LP 加撤剔除**=lp_events 的 mint（进池）+collect（出池）amount 按日减（burn 只记账无 Transfer 勿剔，QUQ 案剔 2%）。价格三源拼接：CG（365d 窗）+DefiLlama historical 逐日（2025 起 BSC 小币覆盖好，发射数日内即有价）+GT day 线只留 ~181 天。**费反推独立交叉验证器**：V3 全史 collect−burn 双边费 ÷ 池费率 = 名义成交额，与池腿实算互验（QUQ 案吻合 103%=强自洽）；CG 聚合口径预期偏高（链上/CG≈83% 属正常带） | （QUQ 投后，07-22） |
+| **全史 DEX 成交量硬算（池腿法）** | 每笔 swap 必有一条代币进/出池的 Transfer 腿：POOLS={各直连池+V4 PoolManager 单例}，from/to 恰一侧在集合=计一腿（**单边口径**），池↔池转账（V3↔V4 摆深度）自动排除；**LP 加撤剔除**=lp_events 的 mint（进池）+collect（出池）amount 按日减（burn 只记账无 Transfer 勿剔）。价格三源拼接：CG（365d 窗）+DefiLlama historical 逐日（2025 起 BSC 小币覆盖好，发射数日内即有价）+GT day 线只留 ~181 天。**费反推独立交叉验证器**：V3 全史 collect−burn 双边费 ÷ 池费率 = 名义成交额，与池腿实算互验；CG 聚合口径预期偏高 | （QUQ 投后，07-22） |
 | **transfers_lib 整表读大 parquet 必 OOM** | `iter_transfers` 内部 `pq.read_table` 整表载入，logs.parquet 数 GB 级（QUQ 案 6.6GB/1.03 亿行）直接 SIGKILL（exit 137、输出全空）。亿级全史扫描自写 pyarrow `ParquetFile.iter_batches(batch_size=20万, columns=['block_number','topic1','topic2','data'])` 流式，峰值内存 <1GB、约 2 分钟/亿行；日期用 blocks.parquet number→timestamp 映射 + `ts//86400` 整数日聚合（避免逐行 strftime）；跨 run 去重用块边界法 `[from_block,next_block)`（亿级 (tx,log_index) set 去重内存不可行） | （QUQ 投后，07-22） |
 | **V3/V4 LP 费口径鸿沟 + swap 回执速查** | V3 费与本金分开记账：`collect−burn`=纯费，**但只有在同仓位、同边界且处理了期初 `tokensOwed`/跨窗结转之后才成立**；且**双边各收**（买单付 U 侧费、卖单付币侧费，平衡盘两侧近似对称——只算 U 侧会漏报一半）。V4 费并入头寸结算（`callerDelta=principalDelta+feesAccrued`），普通 `ModifyLiquidity` 事件不公开本金与费的拆分，但**核心调用分别返回 `principalDelta`/`feesAccrued`** ⇒ **单笔提现转账拆不出费 ≠ 费不可算**（旧结论"只有净现金流无硬数"被 GPT5.6 外部复核推翻，2026-07-24）：①全池费=Σ逐笔 Swap 实际输入×费率；②仓位应得=重放全部 ModifyLiquidity 史，按价格路径/tick 区间/活跃流动性占比分摊（每笔 Swap 事件的 liquidity 字段可对账重放正确性——QUQ 复核 24h 重放 20,610 笔 swap 0 次不匹配、核心加权份额 99.99998%）；③当前未结算=`feeGrowthInside` 公式 `liquidity×(feeGrowthInside−feeGrowthInsideLast)/2^128`；已结算部分只能称"晶化估算"、历史已提净利润还需处理本金混合与迁仓——分层措辞，参考实现 calc_v4_lp_fees_24h.py（QUQ 复核资产，Documents/5.6筹码分析/QUQ分析/scripts/）。**四层口径（池子产生/仓位应得/当前未结算/历史已结算）与公式、8 项对账 gate 统一见 `lp-fee-accounting.md`。**swap 回执速查三招：①V4 腿特征=代币对手方必是 PoolManager 单例，直连池合约收付=V3 系（Uni/PCS 再按 Swap topic 分家）；②池费率必须从池状态/Swap 事件读取（`fee()` selector `0xddca3f43` 直查，返回 pips/1e6，V3 最低档 0.01%=100），**动态费禁用静态假设**；③路由抽成验证=各拆腿输入之和 vs 用户付出额（b300 实测零抽成、拆单两腿成交价一致）；路由按笔实时比价，同一标的先后两笔可走完全不同的池组合 | （QUQ 投后，07-22；LP 复核修正 07-24） |
 | **GT 逐池 TVL 伪影 + V4 幽灵仓 + LP 归属定池属** | GT 的 V4 逐池 TVL 多处鬼影（近空池显示数十万美元 TVL）；V4 头寸可转移 ⇒ 按 `(pool,tx_from)` 聚合会出"幽灵仓"。**归属判定优先级**：官方 PositionManager 头寸优先按 `ownerOf(tokenId)` + NFT Transfer 历史 + `(owner,tickLower,tickUpper,salt)` 状态链确定归属；自定义 manager/复合金库再用 receipt 净现金流、内部 trace 与份额账本穿透。**receipt 净现金流只证明投入/提取，不等于手续费账本**（旧口径"V4 外部 LP 硬口径只有 receipt 净现金流"已收窄为兜底路径，2026-07-24）。**池子算不算体系自有，以目标时点可证 LP 归属为准**（V3 看 NFT tokenId 持有人份额）；"体系曾在此做过市"不算：体系 LP 连本带费撤离后的池=外部池，须从当前控制口径摘出（QUQ 案 Pancake 池摘出，67.4%→64.6%） | （QUQ LP 补查，07-22；归属口径修正 07-24） |
@@ -251,7 +248,7 @@ size 与 SHA-256；全部通过后才原子将旧 done 升为 `hypersync-v2-done
 服务端渲染、**普通 Chrome UA 的 fetch 即可过 Cloudflare**（无需 firecrawl/浏览器），是"无 key 时逐个大户深度溯源"的主通道：
 - 单地址转账史：`bscscan.com/tokentxns?a=<addr>&p=<N>&ps=100`（硬上限 ~10 页×100 行/地址；超活跃 bot 会被截断——**别据截断数据推"钱包年龄/建仓时间"**，翻不完必须在报告标注"建仓可能更早"）
 - 持有人榜：`bscscan.com/token/generic-tokenholders2?m=normal&a=<token>&p=<N>&ps=100`（ps 被强制 50、最多 20 页=前 1000 名，meme 币通常覆盖 99%+ 供应；行内自带公共标签如 MEXC/Null）
-- 地址概览：`bscscan.com/address/<addr>` 拿 Public Name Tag / Contract Creator / "Funded By"（href 用单引号，正则要 `["']?` 容单双引号）。⚠ WebFetch 抓此类页面返回的地址常是省略号截断形态（`0xe096774F...BD5E2f603`），截断地址禁止进任何产物——一律回本地落盘数据前缀反查完整地址（evidence-wording 落盘取值纪律）（QUQ 07-22）
+- 地址概览：`bscscan.com/address/<addr>` 拿 Public Name Tag / Contract Creator / "Funded By"（href 用单引号，正则要 `["']?` 容单双引号）。⚠ WebFetch 抓此类页面返回的地址常是省略号截断形态（`0xe096774F...BD5E2f603`），截断地址禁止进任何产物——一律回本地落盘数据前缀反查完整地址（evidence-wording 落盘取值纪律）
 - **并发 >1 必触发限流返回空页**（3 线程实测 16/43 失败）→ **必须单线程 0.6–1s 间隔**；失败地址单线程重试即 100% 成功。
 - 行级解析坑（血泪）：①时间戳在 `class='showLocalDate'` 的 span **文本**里（不是 data-timestamp 属性）；②方向靠 `>IN</span>`/`>OUT</span>` badge（tokentxns 行不把自身地址渲染成链接，只有对手方在 `data-highlight-target`——只存对手方会丢方向）；③数量在 `td_showAmount` 的 `data-bs-title`（全精度｜$价）；④**持有人榜百分比列常年显示 0.0000%（BscScan 自身坏的），持仓数量要取百分比单元格的前一格**——"取行内第一个大数"的偷懒解析会把排名数字（第 101 名起 >100）当持仓。
 - 已死端点：`token/generic-tokentxns2`（按币种过滤单地址史）返回 "unexpected error"；`advanced-filter` 页被 Cloudflare 403。替代=全局 tokentxns 抓回后按行内 `/token/<ca>` 链接过滤目标币。
@@ -282,7 +279,6 @@ size 与 SHA-256；全部通过后才原子将旧 done 升为 `hypersync-v2-done
 
 - **输出形态随之改变**（全史演变曲线在此拓扑下不可得，报告口径必须声明）：**结构快照**（当前各阵营占比）+ **6 天净变动表** + **大户建仓时间线**。⚠️ **边界：此路线不满足 /token-analyze 的交付合同**（正式分析要求全史演变），只能作预检/受限快照用；正式分析必须补全史（拿 key 走 HyperSync 等全量通道）或明确告知用户后中止。
 - **fresh/old 大户分层**：用 6 天窗口把前排大户分为"本窗口进场新大户 vs 更早老持仓"两层，直答"这波爆量谁在买"。
-- 图表叙事技巧：大户建仓时间线图上"创世期区域完全空白"= 没有任何创世钱包还留在前排的可视化证明（老庄已清仓的直观证法）。
 
 （本节来源：外部电脑 BSC/ETH 分析考古，2026-07；原始会话见 `windows虚拟机cc会话记录/`）
 

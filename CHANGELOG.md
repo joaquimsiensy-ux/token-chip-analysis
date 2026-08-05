@@ -15,6 +15,7 @@
 
 ## 版本索引（活跃窗口，新在上；每版一行，详情见下方对应条目）
 
+- **6.21.0** 2026-08-05 数据管线两册案例史外移与重复合并（瘦身第 2 步）
 - **6.20.1** 2026-08-05 修 5 处阻断级文档漂移（A4 前禁写报告冲突/easy 残留/惯犯回灌 docstring/批量预采集残留/旧 Par 路线历史降级）＋docs_lint 增中文禁词与 Python module docstring 扫描
 - **6.20.0** 2026-08-05 持仓分布形态硬闸：五桶分账、双分箱统计、头部集中度、小样本模式、A4 回流轮次链与 A5 报告封口全链落地
 - **6.19.0** 2026-08-05 删除 API key 周巡检：移除 probe_keys 实现与 split-run 死引用，精确防回捡守卫同步收口，仓库外 weekly-probe 定时器列为卸载待办
@@ -55,6 +56,65 @@
 - **4.1.0** 2026-07-30 PYTHIA 双报告交叉核实复盘：实体身份防复发三闸（label_lookup 并源 address-book / entity_identity_gate+G8 编译门 / 复核 prompt 翻案四问固化）+ 复盘元规则（身份类教训必须以代码收尾）
 - **4.0.0** 2026-07-28 大整编（用户点名）：3.0→3.41 四十余版增量迭代的结构清理——路由索引补齐 9 节、结构错位归位 3 处、消重立权威源制 6 组、CHANGELOG 重整归档 29 条；只减不加，规则语义未动
 - 更早版本（3.41.0 及以前）→ `CHANGELOG-archive.md`
+
+## [6.21.0] - 2026-08-05 — 数据管线两册案例史外移与重复合并（瘦身第 2 步）
+
+瘦身第 2 步（codex 按 Fable 验收通过的 111 条逐字引句盘点施工，Fable 逐项机器验收）：A4 复核强度配置与备择解释指引四处合一（analyze-workflow / evidence-wording / research-workflows 单一权威源化，40f88a0）；data-pipeline-evm-channels.md 与 data-pipeline-solana-capture.md 的 A 类战报子句与 C 类考古行外移至下方归档（两册净减 6,090 字节；现役参数/阈值/fail-closed/死亡名单/在役 fallback/守卫 needles 零变更；CH-53 Alpha 政策线与 CH-66 GMX 比例两条切出段含分析结论定性，按「CHANGELOG 禁记代币分析结论」红线停手留正文）。B 类判例入册见后续小节。
+
+### 战报与案史归档（自 data-pipeline-evm-channels.md / data-pipeline-solana-capture.md 外移）
+
+#### data-pipeline-evm-channels.md
+
+- (原 L17) HyperSync 官方客户端 v2 Rust 自动并发+Parquet 直写，实测 ~1 万条/s = 手写轮询 18 倍。
+- (原 L20) SQD Portal 薄采集器实测 ~280 条/s。
+- (原 L29) PING 案 uniqueId 双计 5485 负余额，促成集合级对账 fail-closed 防线。
+- (原 L86) QUQ 完整版增量（07-22）：付费档实测 7 万块、2.3 万条仅 4s。
+- (原 L107) HyperSync 官方客户端 v2 Starter 付费档 CAKE 实测 10,080 条/s。
+- (原 L108) HyperSync v1：免费层 0.5s 间隔基本无 429（2026-07-18）；Starter 付费档 0.12s 间隔 429=0，单进程 552-792 条/s（ETH RTT~0.2s/BSC~0.6s）；免费层约 1000-1300 logs/2s、1568 万条约 5.2h，付费单进程 ETH 792 条/s、BSC 552 条/s（SIREN 07；哈基米 07-18；v3.11.2 07-21）。
+- (原 L109) SQD Portal：CAKE 21,857 行/79s；BANANAS31(BSC) 四代表日 67,731 行六元组与 HyperSync 零差集全等（2026-07-22）。
+- (原 L111) Alchemy getAssetTransfers 实测 ~46 万条/10 分钟。
+- (原 L113) Etherscan V2 tokentx 7 万余行顺利拉完。
+- (原 L114) envio HyperSync ETH 主网 0.25s 间隔仅 11 次 429、全部退避成功；139.9 万条 33 分钟单进程拉完，均速 ~700 条/s（ASTEROID，07-18）。
+- (原 L153) 多会话共享 key 案史：SQD 案 83.2 万条 56 分钟、429×20 次全部自愈；LPT 案 eth+arbitrum 三进程并发时 arbitrum 429 密集，串行后恢复（SQD，07-20；LPT，07-21）。
+- (原 L156) KOGE 案 82 个交易几十秒取得全部 81 次 LP 操作，对比 HyperSync 全链扫需几十小时（KOGE 第二轮追加取证，07-25）。
+- (原 L164) Alchemy 平台级 429 曾整夜零进展（SIREN，07）。
+- (原 L170) bloXroute 某次 3392 段中 92 段失败，后以 remaining 补扫闭合（OPN，07）。
+- (原 L183) Multicall3 放量前未做小样本，因地址文件混入余额尾巴、动态偏移解码错、吞异常三连 bug，三轮 990/990 全失败（SIREN，07）。
+- (原 L200) BANANAS31 转正后 Alpha Router 余额仅剩 ≈101 枚（07-22），作为 Router 随转正清空迁移的实测记录。
+- (原 L203) dRPC 免费 key 未探测即让用户注册，实测基本不可用，白费一次注册（SIREN，07）。
+- (原 L204) 2026-07 用户中国网络快照：drpc/alchemy/getblock/bitquery=200，app.envio.dev/nodereal=000，dune=403；bsc.hypersync.xyz 直连通（SIREN，07）。
+- (原 L205) 数据量曾由几十万条误估至实际 2150 万条，造成耗时预估连环跳票（SIREN，07）。
+- (原 L208) 通道切换未清观察哨曾空挂十几小时，并触发用户追问任务存活状态（SIREN，07）。
+- (原 L210/L223) 旧 `scan_transfers.py` 毒段无限回队且 8 worker×curl 可零产出，后由 fill/现役 requests 扫描器取代（bibi，07-12；SIREN，07-19）。
+- (原 L230) QUQ 案 `key_edges.csv` 7.3GB，采用逐行流式写出（07-22）。
+- (原 L231) 2026-07-22 Alpha `mulPoint` 分布快照：645 币=1x、11 币=4x，后者均为 30 天内新 TGE Points Plus 加成（QUQ 投后，07-22）。
+- (原 L234) QUQ 池腿法互验：LP 加撤剔除 2%；费反推与池腿实算吻合 103%；链上/CG≈83% 属正常带（QUQ 投后，07-22）。
+- (原 L254) BscScan 省略号地址防错纪律源自 QUQ 07-22 案源记录。
+- (原 L285) 图表叙事技巧：大户建仓时间线图上"创世期区域完全空白"= 没有任何创世钱包还留在前排的可视化证明（老庄已清仓的直观证法）。
+
+#### data-pipeline-solana-capture.md
+
+- (原 L15) IO 原始会话实录曾存档于 `~/Desktop/老公用/fable筹码分析/windows IO筹码分析会话记录/26a24d6c-*.jsonl`。
+- (原 L19/L21) 验证清单在 2026-07-12 经 IO 实录考古大幅勾销；getProgramAccounts、组合过滤、Squads ID、Solscan 不可直读与情报源可达多数已回答，Token-2022 大扫描已实战收编（CLUDE 07-13）。
+- (原 L34/L35) PUB 07-15 续拉后重放与链上快照逐地址零差异；CLUDE 07-13 的 CPMM 数学重建中段端点偏差实测达 35~49%。
+- (原 L37) 公共 RPC gas 溯源 45 地址约 4 分钟。
+- (原 L48) LAYOFF 锚点法工程规模：138 万签名、失败率 33% 属 pump AMM 正常、只用成功笔；约 550 个池余额锚点、约 65 个核心实体、约 400 个插值时间点。
+- (原 L49) requests.Session 连接复用比 curl 逐发快约 3 倍；dRPC 免费层 Solana 返回 `chain is not available on freetier`，需付费。
+- (原 L50) `oldest_sigs` 遇高频中转（数千签名）会卡死；LAYOFF 20 地址运行 15 分钟仍卡死，促成 `max_pages=2`。
+- (原 L59) 快照对比法 1.8 天窗口全程数据成本 <1 小时。
+- (原 L73) GOAT 案 `compose_evolution.py` 与 `GOAT分析/` 为 07-22 专属存档，实体分组、发射日、价格文件名按案硬编码。
+- (原 L74) SQD 高密度期战报：大段 120 分钟只推进 3.4 链上小时；小段 29 秒拉完 1 万 slot，发射日 24h（16.5 万边）82 分钟；GOAT gap 追加产生 9,212 行重复，负余额账户 534 → dedup 后 1（GOAT，07-22）。
+- (原 L75) GOAT 完整性复核 4 条 must_add 有 3 条半源于缺两扫描：历史离场大仓×2、离场庄扩容、事件日调拨（GOAT，07-22）。
+- (原 L77) whale_deep 单案测速：USELESS（07-21）；5 进程时单笔 decode 拖到 0.6-1.2s（GOAT，07-22）。
+- (原 L92) 销户账户覆盖首轮实证：PUB 全程边集 93/93、USELESS 定向段 7/7 全覆盖（2026-07-21）。
+- (原 L98) v1/window_fetch 未开压缩导致错误判定 SQD 单流 1.5-4x 实时、全程重放不可行；13a–13b 启用 gzip/v2 后恢复可行。
+- (原 L110) BONK 顶级密度战报：40 万 slot（约 28 链上小时）+22.3 万边，三跑约 11 分钟，稳态 639 slots/s≈255 倍实时；对照 window_fetch 82 分钟，约 7 倍。
+- (原 L149) mainnet-beta batch 20 笔仅约 9 笔放行，首测 22/40 假失败；缓存 18/40 命中；Helius 于 2026-07-21 经 Google OAuth 注册，40 笔 5.3s=7.5 笔/s，45 地址溯源由旧 4 分钟约降至 35 秒。
+- (原 L150) TROLL 实测（2026-07-29）：Helius keep-alive 版 8 线程约 7 笔/s 稳定，工作目录存档，待第二案复现后收编。
+- (原 L181/L182) GOAT 拉签名实测 1,600 笔/秒，11.3 万笔池 ATA 仅 70 秒；45 万笔按日压缩为 8,302 个采样点（1.8%）。
+- (原 L197) TROLL 长内盘规模：13 个月仅约 1,600 笔，跨 8 千万 slot（2026-07-29）。
+- (原 L199/L203/L204) TROLL 双索引重建 decode 零失败、1,413 边；2 轮收敛，一笔 6 边归集 tx 解决 38.6pp 差异；创建窗独立抽验 14/14 一致（2026-07-29）。
+- (原 L206) TROLL 衔接缝曾有 119 枚差，定位为缝内协议销毁（2026-07-29）。
 
 ## [6.20.1] - 2026-08-05 — 修 5 处阻断级文档漂移＋docs_lint 中文禁词与 Python docstring 扫描
 
