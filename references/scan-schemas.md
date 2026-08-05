@@ -1,12 +1,13 @@
-# scan-schemas — 机械扫描产物 schema 冻结（v6.8.1）
+# scan-schemas — 机械扫描产物 schema 冻结（v6.20.0）
 
-四个扫描/溯源产物的**唯一权威字段定义**。实现脚本与契约测试对本文件写；改字段先改这里再改代码。
+扫描、溯源和分布形态产物的**唯一权威字段定义**。实现脚本与契约测试对本文件写；改字段先改这里再改代码。
 适用脚本：`wave_scan.py`（wave-scan/v3）、`flow_anomaly_scan.py`（flow-anomaly/v2）、
-`entity_source_trace.py`（provenance-ledger/v2）、裁决台账（candidate-adjudications/v1，−2 判断层手工产出、validator 机器校验）。
+`entity_source_trace.py`（provenance-ledger/v2）、`holder_distribution_scan.py`（distribution-scan/v1）、
+`distribution_explanation_check.py`（distribution-explanation/v1）和两类裁决台账。
 
 ## 本册路由
 
-- §0 公共纪律；§1 wave-scan；§2 flow-anomaly；§3 裁决台账；§4 provenance-ledger；§5 PYTHIA fixture。
+- §0 公共纪律；§1 wave-scan；§2 flow-anomaly；§3 裁决台账；§4 provenance-ledger；§5 PYTHIA fixture；§6 至 §11 是分布形态契约。
 
 ## 0. 四条公共纪律
 
@@ -292,3 +293,195 @@ TERMINAL = {
 | 溯源 | Q1 峰值锚点 direct_upstream 中 ≥9 个 W1 直接上家现形；3yMk 支路停 EwUU8oi 而 W1 支路穿透（path_len ≥2）；敏感性 stable（v2 正向模拟实测值以 fixture 为准，v1 数字作废） |
 
 回测仅 PYTHIA 单案（用户拍板）；flow 参数初值与误报水平缺第二币对照校准——未来首个新案实战时如实标注此局限。
+
+## 6. distribution-scan/v1
+
+本产物只计算冻结 cutoff 的当前 owner 快照。`initial` 绑定上游收据但不绑定 handoff manifest。`final` 绑定 READY `handoff/v3`、身份快照收据、当前 A4 seal、当前 entity freeze revision、三账、initial scan 和上一轮 final scan。
+
+固定阈值如下：分箱倍率为 `sqrt(2)`，范围为私人可入箱供应的 `0.000001%` 至 `100%`，dust 线等于最低分箱边界，经济门为净供应 `2%`，低计数档至少 `5` 个 owner，基础分箱与平移分箱成员 Jaccard 至少 `0.8`，样本线为 `100` 个私人主箱 owner，未识别合约披露线为净供应 `1%`。鼓包检验的族错误率为 `1%`。头部基线为 top-1 `20%`、top-3 `30%`、top-5 `40%`、top-10 `50%`、HHI `0.05` 和相邻质量比 `8`。
+
+鼓包检验的零假设是各档 owner 数服从均值为单调递减拟合值的独立 Poisson 分布。检验只取正偏离，使用单侧尾概率。所有可检档在同一轮按 Holm-Bonferroni 校正。少于 5 个 owner 的档不进入检验。基础分箱与平移半档复算都过统计门、经济门和 Jaccard 门后，簇才成立。多簇分别检验并全量落盘。
+
+```
+{
+  "schema": "distribution-scan/v1",
+  "stage": "initial|final",
+  "generated_at_utc": ISO8601,
+  "exit_code": 0|2,
+  "thresholds": {
+    "bin_ratio": "sqrt(2)", "bin_min_private_pct": 0.000001,
+    "bin_max_private_pct": 100.0, "dust_private_pct": 0.000001,
+    "economic_gate_net_pct": 2.0, "minimum_bin_owner_count": 5,
+    "shift_jaccard_min": 0.8, "sample_line": 100,
+    "unresolved_contract_disclosure_net_pct": 1.0,
+    "poisson_family_alpha": 0.01, "multiple_testing": "Holm-Bonferroni",
+    "low_count_rule": "observed_owner_count>=5",
+    "head_top_k_net_pct": {"1": 20.0, "3": 30.0, "5": 40.0, "10": 50.0},
+    "head_hhi": 0.05, "head_adjacent_mass_ratio": 8.0,
+    "explanation_member_coverage_min": 0.8,
+    "explanation_residual_cluster_pct_max": 1.0
+  },
+  "input_binding": {
+    "snapshot": {"path", "sha256", "size"},
+    "data_map": {"path", "sha256", "size"},
+    "supply_truth": {"path", "sha256", "size"},
+    "exclusion_sources": [{"path", "sha256", "size"}],
+    "exclusion_derivation_sha256": sha256,
+    "algorithm": {"name", "files": [{"path", "sha256", "size"}], "sha256"},
+    "thresholds_sha256": sha256,
+    "recognition_rules": {"version", "sha256"},
+    "labels_manifest": {"path", "sha256", "size"}|null,
+    "upstream_receipts": [{"path", "sha256", "size"}],
+    "handoff_manifest": null|{"path", "sha256", "size", "run_id"},
+    "final_bindings": {filename: {"path", "sha256", "size"}},
+    "entity_freeze_revision": int, "a4_seal_revision": int
+  },
+  "partition": {
+    "private_main": [{"owner", "raw"}], "private_dust": [{"owner", "raw"}],
+    "public_facility": [{"owner", "raw"}],
+    "unresolved_contract": [{"owner", "raw"}],
+    "burn_sentinel": [{"owner", "raw"}]
+  },
+  "partition_check": {"closed": true, "snapshot_total_raw": str,
+    "bucket_total_raw": str, "owner_count": int,
+    "bucket_owner_counts": {bucket: int}, "dust_cutoff_raw": str},
+  "verdict": "NORMAL_SHAPE|ABNORMAL_SHAPE|NOT_EVALUABLE",
+  "not_evaluable_reason": null|"low_sample|data_broken",
+  "errors": [str],
+  "denominators": {"total_supply_raw": str, "net_supply_raw": str,
+                     "private_boxable_supply_raw": str},
+  "bucket_coverage": {bucket: {"raw": str, "net_supply_pct": float}},
+  "owner_count_private_main": int,
+  "disclosure_required": bool,
+  "base_bins": [{"index", "upper_private_pct", "owner_count",
+                   "expected_owner_count", "raw_balance"}],
+  "shifted_bins": [{"index", "upper_private_pct", "owner_count",
+                      "expected_owner_count", "raw_balance"}],
+  "concentration": {"top_k_net_pct", "hhi", "top1_to_top2_ratio", "triggered_k"},
+  "abnormal_clusters": [{
+    "cluster_id": str, "trigger": "bin_count_bump|head_concentration",
+    "bin_start": int, "bin_end": int, "shift_bin_start": int,
+    "shift_bin_end": int, "shift_jaccard": float, "p_values": [float],
+    "owner_count": int, "raw_balance": str, "net_supply_pct": float,
+    "members": [{"owner", "raw"}], "metrics": object
+  }],
+  "small_sample_mode": null|{"complete": true,
+    "owner_classifications": [{"owner", "raw", "bucket"}],
+    "top_k": {"1": float, "3": float, "5": float, "10": float},
+    "hhi": float, "equal_amount_groups": [{"raw_each", "owners", "combined_raw"}],
+    "partition_closed": true},
+  "round": int, "previous_round": int|null, "previous_round_entry_sha256": sha256|null
+}
+```
+
+`data_broken` 产物只保留 schema、stage、时间、exit code、阈值、verdict、reason、errors 和空异常簇，脚本返回 2。`low_sample` 必须带完整逐址分类、top-k、HHI、等额组和分区闭合结果，脚本返回 0。validate 会从绑定文件重新派生五桶、重新计算全部统计量并比较语义字段。
+
+## 7. distribution-explanation/v1
+
+每个异常簇必须同时通过位置、成员、数量、证据和传播五项检查。成员覆盖率至少为 `0.8`。未解释余额不得超过该簇余额的 `1%`。证据必须在当前 A4 seal 的封口资产或 claim 引用文件内。传播检查绑定当前 `facts.json` 和 `analysis-state.json` 的哈希。
+
+```
+{
+  "schema": "distribution-explanation/v1", "generated_at_utc": ISO8601,
+  "verdict": "EXPLAINED|UNEXPLAINED",
+  "scan": {"path", "sha256"}, "a4_seal": {"path", "sha256"},
+  "thresholds": {"member_coverage_min": 0.8,
+                   "residual_cluster_pct_max": 1.0},
+  "cluster_results": [{"cluster_id", "claim_id",
+    "checks": {"position": bool, "members": bool, "quantity": bool,
+                "evidence": bool, "propagation": bool},
+    "member_coverage": float, "alien_members": [addr],
+    "explained_raw": str, "residual_raw": str,
+    "residual_cluster_pct": float,
+    "verdict": "EXPLAINED|UNEXPLAINED"}],
+  "errors": [str]
+}
+```
+
+## 8. distribution-adjudications/v1
+
+```
+{
+  "schema": "distribution-adjudications/v1", "case": str,
+  "adjudicated_at": ISO8601,
+  "source_scan": {"path", "sha256"},
+  "adjudications": [{
+    "candidate_id": "dist-<cluster_id>",
+    "candidate_kind": "distribution_bin_count_bump|distribution_head_concentration",
+    "candidate_sha256": sha256,
+    "candidate_verdict": "pattern_confirmed|excluded|unresolved",
+    "accepted_members": [addr], "excluded_members": [{"addr", "reason"}],
+    "linked_entity_id": str|null, "evidence": [str],
+    "raw_balance": str, "net_supply_pct": float,
+    "_members_total": [addr]
+  }]
+}
+```
+
+validator 对候选文件、schema、ID 集、重复 ID、候选哈希、成员全集、verdict 语义、实体名册和 raw 数值执行八类拒绝。全部 unresolved 候选的余额合计达到净供应 `2%` 时拒绝冻结。
+
+## 9. pattern-resolutions/v1
+
+```
+{
+  "schema": "pattern-resolutions/v1", "resolved_at_utc": ISO8601,
+  "source_scan": {"path", "sha256"},
+  "path_a_excluded_reason": str,
+  "resolutions": [{
+    "cluster_id": str,
+    "mechanism_code": "cex_occlusion|dust_poisoning|quota_airdrop|accounting_mechanism|unidentified_facility|other",
+    "verdict": "CONFIRMED|REFUTED|UNRESOLVED",
+    "affected_members": [addr], "raw_balance": str,
+    "evidence_refs": [str]
+  }]
+}
+```
+
+`other` 也必须填写 mechanism_code、affected_members、raw_balance 和 evidence_refs。任一 `UNRESOLVED` 会阻断“异常已解释”的发布结论。核查提取出明确成员名单时，成员必须转入 distribution-adjudications/v1。
+
+## 10. distribution-rounds/v1
+
+```
+{
+  "schema": "distribution-rounds/v1", "created_at_utc": ISO8601,
+  "rounds": [{"round_n": int, "snapshot_sha": sha256,
+    "exclusion_derivation_sha": sha256, "entity_freeze_revision": int,
+    "a4_seal_sha": sha256, "final_scan_path": str, "final_scan_sha": sha256,
+    "explanation_path": str|null, "explanation_sha": sha256|null,
+    "verdict": "NORMAL_SHAPE|ABNORMAL_SHAPE|NOT_EVALUABLE",
+    "status": "NORMAL|LOW_SAMPLE|EXPLAINED|UNEXPLAINED|REQUIRES_A4_REFLOW|WAIVED",
+    "new_clusters": [str], "ts_utc": ISO8601,
+    "previous_entry_sha256": sha256|null}],
+  "terminal": null|{"round_n": int,
+    "status": "NORMAL|LOW_SAMPLE|EXPLAINED|WAIVED",
+    "final_scan_path": str,
+    "final_chart_path": "charts/final/holder_distribution_current.png"}
+}
+```
+
+轮号必须从 1 严格递增。每轮绑定上一条完整记录哈希。到达 terminal 后不得追加。终态前不得在 `charts/final/` 物化分布图。final scan 声明非首轮但台账缺失时拒绝继续。
+
+## 11. distribution-exception-receipt/v1
+
+```
+{
+  "schema": "distribution-exception-receipt/v1",
+  "user_decided_at_utc": ISO8601, "round_n": int,
+  "unexplained_clusters": [str], "unexplained_raw": str,
+  "a4_seal_sha256": sha256, "final_scan_sha256": sha256,
+  "rounds_sha256": sha256
+}
+```
+
+收据只在两轮仍未终态后生效。A5 seal 绑定完整收据。报告必须披露未解释簇和余额。
+
+## 12. 分布形态定标锚点
+
+| 数据 | 结果 |
+|---|---|
+| QUQ 探索集 | 51,871 个非零地址。终裁库存层当前非零 58 址，合计占固定总供应 27.805299342960172%。最大成员占 27.63881821625497%，top-1 对下一名余额比 65.92115888828673，HHI 为 0.07644066964322206。头部集中度触发器命中。 |
+| PYTHIA 探索集 | 37,888 个 owner。46 址各持有 1,000,000 枚，合计占冻结供应 4.608488643331846%。基础分箱命中 33 至 35 档，平移分箱命中 32 至 34 档，成员 Jaccard 为 0.852。 |
+| TROLL 保留集 | `soltx` 元数据写明 `launch_covered=false`，本轮不作为完整保留集。 |
+| 合成盘 | 覆盖正常长尾、鼓包、等额组、头部集中、粉尘长尾、设施分桶、黑箱披露、经济门边界、99-owner 小样本、分箱平移和多簇。 |
+
+QUQ 与 PYTHIA 只用于算法层探索定标。防伪链测试使用合成 fixture。阈值出身是两案探索定标和合成盘，缺少完整保留集与多案校准。
