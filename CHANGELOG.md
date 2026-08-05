@@ -15,6 +15,7 @@
 
 ## 版本索引（活跃窗口，新在上；每版一行，详情见下方对应条目）
 
+- **6.19.0** 2026-08-05 删除 API key 周巡检：移除 probe_keys 实现与 split-run 死引用，精确防回捡守卫同步收口，仓库外 weekly-probe 定时器列为卸载待办
 - **6.18.0** 2026-08-05 整体删除 `/collect-data` 批量预采集：移除命令、手册、队列、夜采与专项测试，独立巡检/锁迁出 collect 目录，活跃引用与防回捡守卫同步收口
 - **6.17.0** 2026-08-05 删除 easy/update 功能并分离规则与案例史：入口收口为 4 命令，移除 update 脚本树；聚类/判级/措辞规则改四要素契约，判例入短册，报告措辞只留单一权威源
 - **6.16.0** 2026-08-04 受支持链矩阵收口与入口瘦身：下线 Hyperliquid/Filecoin，SKILL 压至 8192 bytes 内，部署/版本/链矩阵守卫入 suite
@@ -52,6 +53,13 @@
 - **4.1.0** 2026-07-30 PYTHIA 双报告交叉核实复盘：实体身份防复发三闸（label_lookup 并源 address-book / entity_identity_gate+G8 编译门 / 复核 prompt 翻案四问固化）+ 复盘元规则（身份类教训必须以代码收尾）
 - **4.0.0** 2026-07-28 大整编（用户点名）：3.0→3.41 四十余版增量迭代的结构清理——路由索引补齐 9 节、结构错位归位 3 处、消重立权威源制 6 组、CHANGELOG 重整归档 29 条；只减不加，规则语义未动
 - 更早版本（3.41.0 及以前）→ `CHANGELOG-archive.md`
+
+## [6.19.0] - 2026-08-05 — 删除 API key 周巡检功能
+
+- **删除与引用清理**：删除 `scripts/probe_keys.py`；`references/split-run.md` 的开工探针摘除该单次巡检引用，依赖、磁盘余量、工作目录写权限与后台冒烟检查继续保留。独立跨进程锁 `scripts/proclock.py`、采集器、receipt 哈希绑定件与全部 data-pipeline 分册不变。
+- **守卫**：`docs_lint.py` 的活跃文档防回捡词增加精确边界 `probe_keys` 与 `weekly-probe`；保留词自检增加泛词 `probe`，继续确保 `collector`、`collection_manifest`、`csv_collector_receipt` 等现役概念不被误伤。semantic contracts 及 analyze-workflow 既有产物复用纪律五针不变。
+- **仓库外 launchd 待办（Claude 侧执行）**：卸载并删除 `~/Library/LaunchAgents` 中的 `com.chip-analysis.weekly-probe` 定时器；本仓库不修改该 plist。
+- **验证**：`python3 scripts/tests/run_all.py` 48/48 PASS；禁词正例/保留词反例与文档断链检查通过。质量：判据阈值变更 0，采集/receipt/身份链改动 0，历史 CHANGELOG 改写 0。
 
 ## [6.18.0] - 2026-08-05 — 整体删除批量预采集功能
 
