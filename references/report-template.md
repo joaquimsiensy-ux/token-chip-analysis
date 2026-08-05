@@ -274,8 +274,8 @@ schema 全部细节（report-extract 四键与 `id="report-extract"` 硬约定�
 3. **每个 ≥20%（总供应或流通）的大庄/项目方都有全周期流转路径图吗**（v5.0 门槛）；**图自解释验收过了吗**：只看图能复述实体全部操作、卡片全带【总量%】、分/合方式在边标签、归属证据有落点、账目行加法配平（期初−期末=Σ去向）
 4. 标签体系判级复查：大庄/小庄按**当前**持仓、离场庄按**峰值**；刷量地址单独标签（关联的用复合标签）；其他大户（≥0.1%/≥0.2%）全部过完 ET-1/ET-2、排查覆盖数写进阴性排查小节；其他大户与散户只出现在图 1
 4b. **单一成员集合对账**：图 1/图 2 曲线、verdict 汇总数、附录逐址表、JSON whale_groups 四处的实体成员集合必须由同一份名单驱动并交叉对一遍账——"逐址表 vs 汇总曲线"两套手工产出各自维护会互相打架（实锤：GME 案曲线漏编一个 1.2% 成员致在场庄合计低估，逐址表反而是对的；GME 怀疑者复核，07-15）。**3.18.0 起本条中"报告↔state"一段由 facts 语义 gate G1 自动执行**（build_html --facts --state），图表脚本喂的名单与 facts 同源仍须人工确认
-4c. **经济控制穿透硬闸**（6.5.0 转正）：`economic_control_ledger.json` 已生成并逐实体覆盖钱包自持及各设施权益了吗？权利归属和目标时点可兑换数量可复算、`double_count_key` 全局唯一吗？TL;DR 控盘比例、庄级判定、实体表和图 2 是否从该账本同源生成？图 1 按位置、图 2 按经济控制，设施地址不进永久成员表但可归属份额必须穿透；任何"转入设施当日实体线断崖归零、赎回日原数跳回"先按记账错误处理。强关联扩展与未决设施暴露单列，不混入可证下限；仅有 CEX 充值不得假定所内权益仍归原实体
-4d. **历史静置仓反向扫描硬闸**（6.5.0 转正）：`dormant_warehouse_audit.json` 已落盘且覆盖历史峰值榜、已归零/大幅回落仓、长期静置仓、关键退出窗上游及执行网络边界外一圈吗？每个候选都有 strict/expanded/excluded 裁决与公共设施排除证据吗？若存在 expanded 成员，正文、图 2 和附录是否并列给出严格下限/扩展上限，并按同一交易末快照重放而非个人峰值相加？没有 expanded 也必须在审计文件显式记录空数组
+4c. **经济控制验收**：按契约 CT-CONTROL-04、CT-CONTROL-08、CT-CONTROL-09 核验三账、判级确权边界与同源产出；完整门槛只在权威册维护。
+4d. **历史静置仓验收**：按契约 CT-METHOD-04、CT-METHOD-10 核验候选覆盖与双边界峰值；完整裁决、重放和空集规则只在权威册维护。
 5. **全文所有代币数量都带【总量X%】换算了吗**
 6. **正文零地址**（一律钱包标签）；附录 B 标签↔地址对照表齐全完整（默认交付的可验证性支点）
 7. 无任何行内置信度 tag；证据强度用自然语言分级用词；意图判定并列写；类型③措辞不超"高度疑似"
@@ -286,7 +286,7 @@ schema 全部细节（report-extract 四键与 `id="report-extract"` 硬约定�
 11. 附录四件套齐了吗（验证步骤/标签地址对照/修正记录/来源）；默认不含 JSON（买入后按需）；**analysis-state.json 已落盘**且地址与附录 B 一致（v3.3）
 11b. **A4 封口闸（G9）**：`a4-seal/v4` 的 workflow_type 是否匹配，revision 链是否连续，new-analysis 的 `dist-*` claims 是否与当前分布 claim source 双向闭合，registry、verdicts、findings、analysis-state、facts、identity gate 与全部 claim 文件是否封口；净室复核是否同时绑定并对账 claim_registry。
 11c. **A5 报告闸（G10）**：`a5-report-seal/v2` 是否绑定当前 A4 seal、最终 Markdown、全部报告图、terminal rounds、final scan、解释或 waiver 和唯一分布图；正文或图变化先重跑 A5 seal。
-11d. **分布发布闸（G11）**：initial 与 terminal final 是否都通过独立重算；ABNORMAL 是否已 EXPLAINED 或带完整 waiver；low_sample 是否有完整集中度模式和强制披露句；报告是否只引用一张 `holder_distribution_current.png`；任何 data_broken、非终态、过期 seal 或缺字段收据都必须拒编。
+11d. **分布验收**：按契约 CT-DISTRIBUTION-09、CT-DISTRIBUTION-10、CT-DISTRIBUTION-12 核验初判、终判与发布门禁；产物、低样本披露和拒编条件只在权威册维护。
 12. `build_html.py` 退出码 0（6.7.0 起有 [WARN] 直接不写出文件）；阵营图 `id="chart-camps"` 自动嵌入目检存在
 13. **【买入后监控包交付时追加】**：观察哨与两档监控建议齐且逐条有原因、与 JSON monitoring_advice 的 mode/alert_threshold_pct 一一对应；JSON 顶层四键齐、addresses 与附录 B 一致且完整地址、sentinel 纪律复查（周期性会动的地址必须 false）、round_target/watch_return 该填的填了；重跑 build_html 零 WARN、`id="report-extract"` 目检存在
 14. 浏览器打开 HTML 目检：图片全显示、表格无错位、蓝红框正常、（带监控包时）JSON 折叠块可展开

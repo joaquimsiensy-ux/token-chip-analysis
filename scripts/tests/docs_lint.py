@@ -4,8 +4,8 @@
 背景：追加式迭代下文档互引会漂移。本脚本抓"结构可查"的那部分：
 1. md 里引用的本仓库文件路径必须存在（references/*.md、scripts/**.py、labels/*.csv|md）
 2. 每行 ** 配对（奇数个 ** 的行=残缺粗体，渲染会烂）
-3. SKILL.md「深入阅读」列出的文件必须齐全
-4. 关键方法硬闸必须同时出现在工作流、方法、判级和报告验收四层，防规则只写在角落而实际被跳过
+3. runtime docs manifest v2 的文档必须从 SKILL.md 经入口两跳可达
+4. canonical contract manifest 的权威 needle、路径与契约 ID 引用必须闭合
 复盘写入后必跑（retrospective 步骤 3）；整编触发条件之一=本脚本抓出漂移 ≥3 处。
 
 用法：python3 scripts/tests/docs_lint.py [--all]    退出码：0=PASS；1=FAIL。
@@ -27,6 +27,219 @@ REMOVED_FEATURE_TERMS = re.compile(
     r'\bE0b?\b|\bU[0-6]\b',
     re.I)
 RETAINED_FEATURE_TERMS = ('collector', 'collection_manifest', 'csv_collector_receipt', 'probe')
+CONTRACT_REF_RE = re.compile(r'契约\s+(CT-[A-Z][A-Z0-9-]*-\d{2,})')
+MD_NAME_RE = re.compile(r'(?<![\w/])(?:references/)?([\w./-]+\.md)')
+
+
+def _safe_repo_path(root, rel):
+    """只接受仓库内相对路径，避免 manifest 用绝对路径或 .. 逃逸。"""
+    if not isinstance(rel, str) or not rel or os.path.isabs(rel):
+        return None
+    path = os.path.normpath(os.path.join(root, rel))
+    try:
+        inside = os.path.commonpath([os.path.abspath(root), os.path.abspath(path)]) == os.path.abspath(root)
+    except ValueError:
+        inside = False
+    return path if inside else None
+
+
+def _markdown_targets(text):
+    """抽取文档引用并统一成 references/ 根下的相对路径。"""
+    out = set()
+    for target in MD_NAME_RE.findall(text):
+        target = target.removeprefix('references/')
+        out.add(os.path.normpath(target))
+    return out
+
+
+def validate_contract_manifest(root, manifest):
+    """R-02：校验权威 needle、权威路径和全库契约 ID 引用。"""
+    failures = []
+    if not isinstance(manifest, dict):
+        return ['契约注册表顶层必须是对象']
+    if manifest.get('schema') != 'contract-manifest/v1':
+        failures.append(f'契约注册表 schema 非法: {manifest.get("schema")!r}')
+    contracts = manifest.get('contracts')
+    if not isinstance(contracts, list) or not contracts:
+        failures.append('契约注册表 contracts 必须是非空数组')
+        return failures
+
+    known_ids = set()
+    authority_needles = set()
+    required = {'id', 'authority_file', 'needle', 'stages', 'summary'}
+    for index, contract in enumerate(contracts, 1):
+        label = f'contracts[{index}]'
+        if not isinstance(contract, dict):
+            failures.append(f'{label} 必须是对象')
+            continue
+        missing = sorted(required - set(contract))
+        if missing:
+            failures.append(f'{label} 缺字段: {missing}')
+            continue
+        contract_id = contract['id']
+        if not isinstance(contract_id, str) or not re.fullmatch(r'CT-[A-Z][A-Z0-9-]*-\d{2,}', contract_id):
+            failures.append(f'{label} 契约 ID 非法: {contract_id!r}')
+        elif contract_id in known_ids:
+            failures.append(f'重复契约 ID: {contract_id}')
+        else:
+            known_ids.add(contract_id)
+        stages = contract['stages']
+        if (not isinstance(stages, list) or not stages
+                or any(not isinstance(stage, str) or not stage for stage in stages)):
+            failures.append(f'{label} stages 必须是非空字符串数组')
+        summary = contract['summary']
+        if not isinstance(summary, str) or not summary.strip() or '\n' in summary:
+            failures.append(f'{label} summary 必须是一句非空单行语义')
+        needle = contract['needle']
+        if not isinstance(needle, str) or not needle:
+            failures.append(f'{label} needle 必须是非空字符串')
+            continue
+        authority = contract['authority_file']
+        authority_path = _safe_repo_path(root, authority)
+        if authority_path is None or not os.path.isfile(authority_path):
+            failures.append(f'权威文件不存在 {contract_id}: {authority}')
+            continue
+        pair = (os.path.normpath(authority), needle)
+        if pair in authority_needles:
+            failures.append(f'重复权威 needle {contract_id}: {authority} → {needle}')
+        authority_needles.add(pair)
+        with open(authority_path, encoding='utf-8') as f:
+            authority_text = f.read()
+        if needle not in authority_text:
+            failures.append(f'权威 needle 缺失 {contract_id}: {authority} → {needle}')
+
+    # 引用只在 Markdown 中具有契约语义；JSON 中的 ID 是定义，不算引用。
+    for path in sorted(glob.glob(os.path.join(root, '**', '*.md'), recursive=True)):
+        rel = os.path.relpath(path, root)
+        if rel.startswith(f'.git{os.sep}'):
+            continue
+        with open(path, encoding='utf-8') as f:
+            for line_no, line in enumerate(f, 1):
+                for contract_id in CONTRACT_REF_RE.findall(line):
+                    if contract_id not in known_ids:
+                        failures.append(f'悬空契约引用 {rel}:{line_no}: {contract_id}')
+    return failures
+
+
+def validate_runtime_docs_manifest(root, manifest):
+    """R-01：校验 v2 分类结构和 SKILL→入口→分册两跳可达性。"""
+    failures = []
+    if not isinstance(manifest, dict):
+        return ['运行时文档 manifest 顶层必须是对象']
+    required = {'schema', 'scope', 'listed', 'maintenance'}
+    missing = sorted(required - set(manifest))
+    if missing:
+        return [f'运行时文档 manifest 缺字段: {missing}']
+    if manifest['schema'] != 'runtime-docs-manifest/v2':
+        failures.append(f'运行时文档 manifest schema 非法: {manifest["schema"]!r}')
+    expected_scope = ['references/*.md', 'references/labels/*.md']
+    scope = manifest['scope']
+    if (not isinstance(scope, list)
+            or any(not isinstance(pattern, str) or not pattern for pattern in scope)):
+        failures.append('运行时文档 manifest scope 必须是非空字符串数组')
+        scope = []
+    elif scope != expected_scope:
+        failures.append(f'运行时文档 manifest scope 非法: {scope!r}')
+
+    listed = manifest['listed']
+    maintenance = manifest['maintenance']
+    if not isinstance(listed, list) or not listed:
+        failures.append('运行时文档 manifest listed 必须是非空对象数组')
+        listed = []
+    if (not isinstance(maintenance, list)
+            or any(not isinstance(item, str) or not item for item in maintenance)):
+        failures.append('运行时文档 manifest maintenance 必须是字符串数组')
+        maintenance = []
+    elif len(maintenance) != len(set(maintenance)):
+        failures.append('运行时文档 manifest maintenance 含重复条目')
+
+    entries = []
+    listed_paths = []
+    for index, item in enumerate(listed, 1):
+        if not isinstance(item, dict):
+            failures.append(f'listed[{index}] 必须是对象')
+            continue
+        item_missing = sorted({'path', 'entry', 'stages'} - set(item))
+        if item_missing:
+            failures.append(f'listed[{index}] 缺字段: {item_missing}')
+            continue
+        path, entry, stages = item['path'], item['entry'], item['stages']
+        if (not isinstance(path, str) or not path or path.startswith('references/')
+                or _safe_repo_path(os.path.join(root, 'references'), path) is None):
+            failures.append(f'listed[{index}] path 非法: {path!r}')
+            continue
+        if (not isinstance(entry, str) or not entry or entry.startswith('references/')
+                or _safe_repo_path(os.path.join(root, 'references'), entry) is None):
+            failures.append(f'listed[{index}] entry 非法: {entry!r}')
+            continue
+        if (not isinstance(stages, list) or not stages
+                or any(not isinstance(stage, str) or not stage for stage in stages)):
+            failures.append(f'listed[{index}] stages 必须是非空字符串数组')
+            continue
+        path = os.path.normpath(path)
+        entry = os.path.normpath(entry)
+        entries.append((path, entry))
+        listed_paths.append(path)
+    if len(listed_paths) != len(set(listed_paths)):
+        failures.append('运行时文档 manifest listed 含重复 path')
+
+    refs_root = os.path.join(root, 'references')
+    actual_docs = set()
+    for pattern in scope:
+        for path in glob.glob(os.path.join(root, pattern)):
+            if os.path.isfile(path):
+                actual_docs.add(os.path.relpath(path, refs_root))
+    listed_set = set(listed_paths)
+    maintenance_set = set(maintenance)
+    for base in sorted(actual_docs - listed_set - maintenance_set):
+        failures.append(f'未归类文档: references/{base}')
+    for base in sorted((listed_set | maintenance_set) - actual_docs):
+        failures.append(f'幽灵条目: references/{base}')
+    for base in sorted(listed_set & maintenance_set):
+        failures.append(f'listed 与 maintenance 交集: references/{base}')
+
+    skill_path = os.path.join(root, 'SKILL.md')
+    if not os.path.isfile(skill_path):
+        failures.append('SKILL.md 不存在，无法校验两跳路由')
+        skill = ''
+    else:
+        with open(skill_path, encoding='utf-8') as f:
+            skill = f.read()
+    skill_targets = _markdown_targets(skill)
+    entry_targets = {}
+    for path, entry in entries:
+        if entry not in listed_set:
+            failures.append(f'入口未登记: references/{path} → references/{entry}')
+        if entry not in skill_targets:
+            failures.append(f'入口未从 SKILL.md 路由: references/{entry}')
+        entry_path = os.path.join(refs_root, entry)
+        if entry not in entry_targets:
+            if os.path.isfile(entry_path):
+                with open(entry_path, encoding='utf-8') as f:
+                    entry_targets[entry] = _markdown_targets(f.read())
+            else:
+                entry_targets[entry] = set()
+        if path != entry and path not in entry_targets[entry]:
+            failures.append(
+                f'两跳内不可达: SKILL.md → references/{entry} → references/{path}')
+
+    # maintenance 反向禁列；attic.md 只允许一条含“禁读”的负向边界声明。
+    skill_lines = skill.splitlines()
+    for base in sorted(maintenance_set):
+        name = os.path.basename(base)
+        occurrences = [(i, line) for i, line in enumerate(skill_lines, 1)
+                       if base in line or name in line]
+        if base == 'attic.md':
+            legal = [(i, line) for i, line in occurrences if '禁读' in line]
+            illegal = [(i, line) for i, line in occurrences if '禁读' not in line]
+            for i, _ in illegal:
+                failures.append(f'SKILL.md maintenance 禁列: references/{base} 出现在第 {i} 行')
+            if len(legal) > 1:
+                failures.append('SKILL.md attic.md 禁读边界声明只能出现一条')
+        else:
+            for i, _ in occurrences:
+                failures.append(f'SKILL.md maintenance 禁列: references/{base} 出现在第 {i} 行')
+    return failures
 
 def md_files(all_mode=False):
     out = [os.path.join(ROOT, 'SKILL.md'), os.path.join(ROOT, 'CHANGELOG.md')]
@@ -112,13 +325,13 @@ def main(all_mode=False):
             fails.append(
                 f'考古区越界引用 {rel}:{i}: 现役执行文档不得引用 archive/，防止历史资产回流执行上下文')
 
-    # 3) SKILL.md 深入阅读清单齐全性
+    # 3) SKILL.md 显式 bullet 引用的遗留兼容断链检查；v2 两跳守卫在下方执行。
     skill = open(skill_path, encoding='utf-8').read()
     for name in re.findall(r'^- `([\w/.-]+\.md)`', skill, re.M):
         if not (os.path.exists(os.path.join(ROOT, 'references', name)) or os.path.exists(os.path.join(ROOT, name))):
             fails.append(f'SKILL.md 深入阅读清单断链: {name}')
-    # 4) 运行时文档 manifest 是“必须列入/维护禁列”的唯一事实源。SKILL.md 只路由
-    #    现役文档，维护件不得再因为 lint 的反向漏列检查而被迫进入口。
+    # 4) 运行时文档 manifest 是分类、入口归属和阶段语义的唯一事实源。SKILL.md
+    #    只列二级入口，分册由入口继续路由；维护件不得被反向漏列检查强迫进入口。
     manifest_rel = 'scripts/tests/runtime_docs_manifest.json'
     manifest_path = os.path.join(ROOT, manifest_rel)
     manifest_hint = f'{manifest_rel}；新增文档须先在 manifest 归类'
@@ -133,142 +346,23 @@ def main(all_mode=False):
         manifest_failure(f'运行时文档 manifest 无法解析: {exc}')
         manifest = None
 
-    required_manifest_fields = {'schema', 'scope', 'listed', 'maintenance'}
     if manifest is not None:
-        if not isinstance(manifest, dict):
-            manifest_failure('运行时文档 manifest 顶层必须是对象')
-            manifest = None
-        else:
-            missing_fields = sorted(required_manifest_fields - set(manifest))
-            if missing_fields:
-                manifest_failure(f'运行时文档 manifest 缺字段: {missing_fields}')
-                manifest = None
+        for failure in validate_runtime_docs_manifest(ROOT, manifest):
+            manifest_failure(failure)
 
-    if manifest is not None:
-        manifest_valid = True
-        expected_scope = ['references/*.md', 'references/labels/*.md']
-        if manifest['schema'] != 'runtime-docs-manifest/v1':
-            manifest_failure(f'运行时文档 manifest schema 非法: {manifest["schema"]!r}')
-            manifest_valid = False
-        if manifest['scope'] != expected_scope:
-            manifest_failure(f'运行时文档 manifest scope 非法: {manifest["scope"]!r}')
-            manifest_valid = False
-        for field in ('listed', 'maintenance'):
-            value = manifest[field]
-            if (not isinstance(value, list)
-                    or any(not isinstance(item, str) or not item for item in value)):
-                manifest_failure(f'运行时文档 manifest {field} 必须是非空字符串数组')
-                manifest_valid = False
-            elif len(value) != len(set(value)):
-                manifest_failure(f'运行时文档 manifest {field} 含重复条目')
-                manifest_valid = False
+    # 5) 五组正向契约由 canonical manifest 单点登记；复述层不再被 lint 强迫复制。
+    contract_manifest_rel = 'scripts/tests/contract_manifest.json'
+    contract_manifest_path = os.path.join(ROOT, contract_manifest_rel)
+    try:
+        with open(contract_manifest_path, encoding='utf-8') as f:
+            contract_manifest = json.load(f)
+    except (OSError, json.JSONDecodeError) as exc:
+        fails.append(f'契约注册表无法解析 {contract_manifest_rel}: {exc}')
+        contract_manifest = None
+    if contract_manifest is not None:
+        fails.extend(validate_contract_manifest(ROOT, contract_manifest))
 
-        if manifest_valid:
-            refs_root = os.path.join(ROOT, 'references')
-            actual_docs = set()
-            for pattern in manifest['scope']:
-                for path in glob.glob(os.path.join(ROOT, pattern)):
-                    if os.path.isfile(path):
-                        actual_docs.add(os.path.relpath(path, refs_root))
-            listed_docs = set(manifest['listed'])
-            maintenance_docs = set(manifest['maintenance'])
-
-            for base in sorted(actual_docs - listed_docs - maintenance_docs):
-                manifest_failure(f'未归类文档: references/{base}')
-            for base in sorted((listed_docs | maintenance_docs) - actual_docs):
-                manifest_failure(f'幽灵条目: references/{base}')
-            for base in sorted(listed_docs & maintenance_docs):
-                manifest_failure(f'listed 与 maintenance 交集: references/{base}')
-
-            # listed 沿用旧判定：相对路径或文件名任一出现在 SKILL.md 即视为已列。
-            for base in sorted(listed_docs):
-                if base not in skill and os.path.basename(base) not in skill:
-                    manifest_failure(f'SKILL.md 深入阅读清单漏列: references/{base}')
-
-            # maintenance 反向禁列；attic.md 只允许一条含“禁读”的负向边界声明。
-            skill_lines = skill.splitlines()
-            for base in sorted(maintenance_docs):
-                name = os.path.basename(base)
-                occurrences = [(i, line) for i, line in enumerate(skill_lines, 1)
-                               if base in line or name in line]
-                if base == 'attic.md':
-                    legal = [(i, line) for i, line in occurrences if '禁读' in line]
-                    illegal = [(i, line) for i, line in occurrences if '禁读' not in line]
-                    for i, _ in illegal:
-                        manifest_failure(f'SKILL.md maintenance 禁列: references/{base} 出现在第 {i} 行')
-                    if len(legal) > 1:
-                        manifest_failure('SKILL.md attic.md 禁读边界声明只能出现一条')
-                else:
-                    for i, _ in occurrences:
-                        manifest_failure(f'SKILL.md maintenance 禁列: references/{base} 出现在第 {i} 行')
-
-    # 5) 历史静置仓反向扫描是实体冻结前硬闸；四层任一缺失都视为方法回退。
-    method_contracts = {
-        'SKILL.md': ['EF-2 历史静置仓反扫', 'dormant_warehouse_audit.json', '不允许冻结实体'],
-        'references/playbook-entity-cluster-methods.md': ['候选全集从三条现役机械通道取齐', 'strict ∪ expanded', '同一交易末快照',
-                                                          'universe_ref', 'must_adjudicate', 'OTC 排除检验'],
-        'references/playbook-entity-cluster-tiering.md': ['历史静置仓反向扫描后的双边界峰值', '严格下限', '扩展上限',
-                                                          'prev_close_plus_gross_in/v2', 'trigger_days.json'],
-        'references/report-template.md': ['历史静置仓反向扫描硬闸', 'dormant_warehouse_audit.json', 'strict/expanded/excluded'],
-    }
-    for rel, needles in method_contracts.items():
-        text = open(os.path.join(ROOT, rel), encoding='utf-8').read()
-        for needle in needles:
-            if needle not in text:
-                fails.append(f'方法硬闸回退 {rel}: 缺少 {needle}')
-
-    # 6) 控盘主口径必须跨工作流、判级、报告和专册四层一致：成员表排除设施，
-    #    不等于设施内可证权益不计入实体经济控制。
-    control_contracts = {
-        'SKILL.md': ['控盘看最终经济控制', 'economic_control_ledger.json', '公共设施不进永久成员表'],
-        'references/economic-control-accounting.md': ['实体成员表', '链上位置账', '经济控制账', 'unresolved_facility_exposure'],
-        'references/playbook-entity-cluster-tiering.md': ['判级的"持仓"强制解释为可证经济控制量', '严格/扩展是确权边界'],  # c2.0：needle 随 v5 判级口径迁移（P0/P1 废止）
-        'references/report-template.md': ['经济控制穿透硬闸', 'economic_control_ledger.json', '不得拿钱包自持替代'],
-    }
-    for rel, needles in control_contracts.items():
-        text = open(os.path.join(ROOT, rel), encoding='utf-8').read()
-        for needle in needles:
-            if needle not in text:
-                fails.append(f'经济控制口径回退 {rel}: 缺少 {needle}')
-
-    # 7) EF-3 覆盖发现闸是名册定稿前硬闸；稳定编号替代层级含混的
-    #    “三道防线/四重前置”口号，路由/工作流/契约/判例任一缺失＝回退。
-    wave_contracts = {
-        'SKILL.md': ['EF-3 覆盖发现闸', 'EF-3A 波次扫描', 'EF-3B 资金流异常扫描',
-                     'EF-3C 候选裁决与实体溯源', 'EF-3C-P1', 'P4 原始输入及算法绑定重放'],
-        'references/analyze-workflow.md': ['EF-3A 全体持仓波次扫描', 'EF-3B 资金流异常扫描',
-                                           'EF-3C 候选裁决与实体溯源', 'entity_source_trace.py',
-                                           'adjudication_validator.py', '覆盖真空声明', 'EF-3C-P1'],
-        'references/split-run.md': ['wave_scan_report.json', 'flow_anomaly_report.json',
-                                    'EF-3A/EF-3B', 'EF-3C', 'EF-3C-P1～P4',
-                                    'provenance_ledger.json'],
-        'references/casebook/supply-accounting.md': ['wave_scan.py', '桶存在≠桶内被检验过',
-                                                     '闸外的人来试着绕它'],
-        'references/scan-schemas.md': ['wave-scan/v3', 'flow-anomaly/v2',
-                                       'candidate-adjudications/v1', 'provenance-ledger/v2',
-                                       '正向模拟', 'members_sha256', '完整字段登记',
-                                       'scan_universe', 'must_adjudicate'],
-    }
-    for rel, needles in wave_contracts.items():
-        text = open(os.path.join(ROOT, rel), encoding='utf-8').read()
-        for needle in needles:
-            if needle not in text:
-                fails.append(f'EF-3 覆盖发现闸回退 {rel}: 缺少 {needle}')
-
-    # 8) 同时性家族合并与"恒定滞后"判据删除（2026-08-02 用户裁决，v6.12.0）：
-    #    在场检查=家族三档、②降级措辞、持仓画像旁证与候选发现档不得回退；
-    #    不在场检查=已删的"恒定滞后=跟单"伪判据（庄程序按序遍历同样产生该形态，两可无判别力）
-    #    不得从旧案考古回捡进活跃规则（CHANGELOG 记录删除理由，不在禁扫范围）。
-    simult_contracts = {
-        'references/playbook-entity-cluster-methods.md': ['同时性共现（同秒/同块）家族', '① 候选发现档',
-                                                          '② 单币强指纹档', '③ 跨币强证据档',
-                                                          '高度疑似同一执行端', '持仓画像旁证'],
-    }
-    for rel, needles in simult_contracts.items():
-        text = open(os.path.join(ROOT, rel), encoding='utf-8').read()
-        for needle in needles:
-            if needle not in text:
-                fails.append(f'同时性家族回退 {rel}: 缺少 {needle}')
+    # 删除型契约仍保持独立禁扫；canonical manifest 只承载必须在场的正向规则。
     simult_banned = {
         'references/playbook-entity-cluster-methods.md': ['程序化跟单不是同一人'],
     }
@@ -316,24 +410,6 @@ def main(all_mode=False):
         for needle in needles:
             if needle not in text:
                 fails.append(f'2026-08-04 语义口径回退 {rel}: 缺少 {needle}')
-
-    distribution_contracts = {
-        'references/scan-schemas.md': ['distribution-scan/v1', 'distribution-explanation/v1',
-                                       'distribution-adjudications/v1', 'pattern-resolutions/v1',
-                                       'distribution-rounds/v1', 'distribution-exception-receipt/v1',
-                                       'Holm-Bonferroni', 'launch_covered=false'],
-        'references/analyze-workflow.md': ['当前持仓分布初判', '当前持仓分布终判环',
-                                           'a5-report-seal/v2', 'G11'],
-        'references/split-run.md': ['distribution_scan.json', 'handoff/v3',
-                                    'holder_distribution_current.png', 'a4-seal/v4'],
-        'references/report-template.md': ['holder_distribution_current.png',
-                                           '形态统计因样本不足未做', '分布发布闸（G11）'],
-    }
-    for rel, needles in distribution_contracts.items():
-        text = open(os.path.join(ROOT, rel), encoding='utf-8').read()
-        for needle in needles:
-            if needle not in text:
-                fails.append(f'持仓分布硬闸口径回退 {rel}: 缺少 {needle}')
 
     banned_contracts = {
         'SKILL.md': ['对任意链上代币', 'v5.0 三问框架', '实体冻结前三硬闸'],
