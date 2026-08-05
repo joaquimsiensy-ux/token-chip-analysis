@@ -491,7 +491,7 @@ methods **「CEX 提币囤仓反转」条转正**（USELESS Solana 冷储调度�
 
 **磁盘水位三件（QUQ temp 两次爆仓回应）**：run_guarded 第三水位 `--min-free-disk-gb`（默认 5GB；触发实测正确）+min_disk_free_gb 状态记账+`--disk-path` 指定卷；replay_duck `_disk_precheck`（<10GB 硬拒+输入体积×4 粗估警告+max_temp_directory_size=盘余-5GB 动态化）；cluster_prep_duck 同款预检+护栏 min(40GB,盘余-5)。
 
-**夜间自动采集（launchd）**：`com.chip-analysis.nightly-collect`（每天 02:30，合盖睡过点唤醒补跑）+`scripts/collect/nightly_collect.sh`——`collect_plans/pending_plan.json` 存在即 run_guarded 守护开采，按退出码归档 done/gaps/failed_plan_*；用法与卸载命令入 collect-data.md 第 8 步。
+**夜间自动采集（launchd）**：`com.chip-analysis.nightly-collect`（每天 02:30，合盖睡过点唤醒补跑）+旧 collect 子目录中的 `nightly_collect.sh`——`collect_plans/pending_plan.json` 存在即 run_guarded 守护开采，按退出码归档 done/gaps/failed_plan_*；用法与卸载命令入 collect-data.md 第 8 步。
 
 **监控报警两段制 schema**：monitoring_advice 新增必填三字段——confirm（数值型阈值类默认 `next_round`：首轮候选、下轮**同源同口径**复现才红卡；仅沉睡地址转出类强信号 `immediate`）/denominator（分母口径声明）/source_pin（数据源钉死+LP ×2÷2 口径跳变指纹注记）——投后三起误报事故（SOL 池子吸入/Bitget 热钱包/GMGN LP 口径互跳）的设计层预防；**posthold 执行器侧未动**（2859 行生产脚本架构改动，单列建议另会话做）。
 
@@ -530,7 +530,7 @@ methods **「CEX 提币囤仓反转」条转正**（USELESS Solana 冷储调度�
 > 3.14.0 三阶段（A 档+B6/B7/B9）交付后用户批"B 档也全部做"，其中 B12 附加三条需求：一个会话采集多币、专门命令 /collect-data、只采集不自动分析。本条为 B5/B8/B10/B11/B12 全部落地 + B7 补遗。
 
 **B12 /collect-data 批量预采集（重头戏，用户三需求全兑现）**：
-- 新件 `scripts/collect/collect_queue.py`：多币串行队列（HyperSync 限流 key 级共享+SQD 单 IP 带宽整形，串行是正解）——EVM 五链（bsc/eth/base/arbitrum/robinhood 走 fetch_hypersync_v2，部署块自动探测进全局缓存 deploy_blocks.json）+ Solana（fetch_sqd_transfers_v2，launch_ts 建议必给否则仅回看 90 天）；产物直接落 `<币名>分析/data/` 标准布局，分析会话零搬迁复用+断点续拉增量
+- 新件旧 collect 子目录中的 `collect_queue.py`：多币串行队列（HyperSync 限流 key 级共享+SQD 单 IP 带宽整形，串行是正解）——EVM 五链（bsc/eth/base/arbitrum/robinhood 走 fetch_hypersync_v2，部署块自动探测进全局缓存 deploy_blocks.json）+ Solana（fetch_sqd_transfers_v2，launch_ts 建议必给否则仅回看 90 天）；产物直接落 `<币名>分析/data/` 标准布局，分析会话零搬迁复用+断点续拉增量
 - 行为契约：manifest（collect_manifest.json）逐项原子记账；残缺 run（无 done.json）改名 partial_run_* 隔离不删除（防污染下游 glob，遵守删除纪律）；单项失败不阻塞后续；退出码 0/2/1=全成/有缺口/有失败（按严重度 failed>gaps）；--resume 跳 done 项，不带也幂等
 - 实测三路全过：CAKE(BSC) 早期 130 万块段 296 万行 220s（部署块 694452 自动探测）+ 幂等重跑 1.6s；wSOL 保险丝断开走 done_with_gaps 缺口注记；错误地址探测扫全链零命中 fail-closed 报"检查链路由"
 - 新命令 `~/.claude/commands/collect-data.md`：解析多币清单→Solana 顺手查发射时间→生成 plan→run_guarded 脱管跑→只报采集事实不给结论；SKILL.md 阶段 1 + easy-workflow E1 加"预采集衔接"段（开工先查既有产物，禁从零重采）

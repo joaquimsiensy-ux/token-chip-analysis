@@ -15,6 +15,7 @@
 
 ## 版本索引（活跃窗口，新在上；每版一行，详情见下方对应条目）
 
+- **6.18.0** 2026-08-05 整体删除 `/collect-data` 批量预采集：移除命令、手册、队列、夜采与专项测试，独立巡检/锁迁出 collect 目录，活跃引用与防回捡守卫同步收口
 - **6.17.0** 2026-08-05 删除 easy/update 功能并分离规则与案例史：入口收口为 4 命令，移除 update 脚本树；聚类/判级/措辞规则改四要素契约，判例入短册，报告措辞只留单一权威源
 - **6.16.0** 2026-08-04 受支持链矩阵收口与入口瘦身：下线 Hyperliquid/Filecoin，SKILL 压至 8192 bytes 内，部署/版本/链矩阵守卫入 suite
 - **6.15.0** 2026-08-04 第四轮全库审计修复＋round4b/round4c 同族残留返工：identity 双链锚定并离线重放原始采集，shared release 强制当前生产者/runner，SUITE 46→51 项
@@ -51,6 +52,15 @@
 - **4.1.0** 2026-07-30 PYTHIA 双报告交叉核实复盘：实体身份防复发三闸（label_lookup 并源 address-book / entity_identity_gate+G8 编译门 / 复核 prompt 翻案四问固化）+ 复盘元规则（身份类教训必须以代码收尾）
 - **4.0.0** 2026-07-28 大整编（用户点名）：3.0→3.41 四十余版增量迭代的结构清理——路由索引补齐 9 节、结构错位归位 3 处、消重立权威源制 6 组、CHANGELOG 重整归档 29 条；只减不加，规则语义未动
 - 更早版本（3.41.0 及以前）→ `CHANGELOG-archive.md`
+
+## [6.18.0] - 2026-08-05 — 整体删除批量预采集功能
+
+- **删除面**：删除 `commands-staging/collect-data.md`、批量采集手册、`collect_queue.py`、`nightly_collect.sh` 与 `test_collect_lanes.py`；旧 collect 子目录随最后一个文件迁出而消失。A1 分析流程内的并行采集能力、所有链内采集器与 G8/receipt 体系不变。
+- **迁移面**：API key 健康巡检迁至 `scripts/probe_keys.py`，跨进程锁迁至 `scripts/proclock.py`；`split-run.md` 改用新路径，巡检 `--help` 与锁 acquire/heartbeat/release 无副作用自检通过。
+- **引用清理**：SKILL 入口收口为 3 个；`analyze-workflow.md` 继续强制开工先查 EVM `data/v2/run_*/done.json` 与 Solana `data/soltx-*.jsonl.gz`＋meta，已有产物直接复用并断点续拉增量、禁止从零重采，`done_with_gaps` 先补缺口，完整性按链内 done/`collection_manifest.json`/receipt 判定。EVM 通道分册仅移除批量预采集交叉引用；`run_guarded.py` 仅清理退役调用方注释，功能逻辑不变。
+- **守卫与测试**：`docs_lint.py` 把 `collect-data`、`collect-workflow`、`collect_queue`、`nightly_collect`、`collect_manifest` 纳入活跃文档防回捡，并自检不得误伤 `collector`、`collection_manifest`、`csv_collector_receipt`；命令部署期望集改为 token-analyze 三文件，`collect-data.md` 纳入 RETIRED 两态；全套移除已删队列测试入口，receipt 链测试保留零改动。
+- **仓库外 launchd 待办（Claude 侧执行）**：weekly-probe 的 plist 必须把脚本参数改到 `scripts/probe_keys.py` 新路径；nightly-collect 定时器必须卸载并删除对应 plist。仓库内不修改 `~/Library/LaunchAgents`。
+- **验证**：`python3 scripts/tests/run_all.py` 49/49 PASS；删除功能禁词正例与保留 collector/collection_manifest/receipt 反例、命令部署退役文件在场/删除两态、迁移脚本自检均通过。成本：4 个逻辑组逐组提交；质量：判据阈值变更 0，分析结论 0，receipt/身份链改动 0。
 
 ## [6.17.0] - 2026-08-05 — 删除 easy/update 与规则/案例史分离
 
@@ -330,7 +340,7 @@
 - **evals/ 评测题库（新建，references 外防污染）**：9 题＝历史确证翻案（PYTHIA 9Z/TROLL ATA/IQ Upbit/IQ 7702/QUQ 设施/GNT 静默迁移/GMX 镜像/IQ 分母/PYTHIA W1 漏检——第 9 题为验收期用户挑错补录），每题 A 节执行输入（零泄漏可投喂）＋B 节考官侧（当年确证错误/唯一失败原因/禁止输出/必做证据动作/缺证据结论上限/预期拦截点）。评测哲学：历史结论不可当金标准，唯一标尺＝被翻过案的错误确定是错的；验收只验拦住旧错误。
 - **供给真值闸（例外①）**：`scripts/lib/supply_truth_gate.py`——重放净供给 vs 链上 totalSupply（EVM eth_call/Solana getTokenSupply），fail-closed exit 0/2/1；治 GNT 型静默改账盲区（重放虚高 10 倍全自检 PASS，2026-07-28 实测，机制成立直接转正）。挂载 A2 第 3 查/easy E2/update U2.4；离线契约测试 11 项进 run_all。
 - **casebook_lint（例外②）**：ID 唯一/六字段/成熟度标记/README 登记/单册上限，fail-closed（0 册 0 条不算过），进 run_all（SUITE 13→15 项）。
-- **commands-staging/ 四入口重写（merge 后安装）**：入口只做三件事（声明标的/指向 workflow/列用户拍板硬性）；token-analyze 从"五问/官推/JSON 附录"废止口径对齐三问；collect-data 操作细节全量迁入新建 `references/collect-workflow.md`（原细节只活在 git 外命令文件＝权威源不受保护的实证）。
+- **commands-staging/ 四入口重写（merge 后安装）**：入口只做三件事（声明标的/指向 workflow/列用户拍板硬性）；token-analyze 从"五问/官推/JSON 附录"废止口径对齐三问；collect-data 操作细节当时全量迁入新建的批量采集手册（该功能与手册已于 6.18.0 整体退役；原细节只活在 git 外命令文件＝权威源不受保护的实证）。
 - **retrospective.md 增补**：2c 教训分流决策树（gate→casebook→pipeline/environment→workflow/checklist→SKILL.md 最后手段；元规则推广到一切达标教训）＋整编触发线 2 条（SKILL.md>10KB/casebook 单册超限）＋翻案默认登记 evals 候选题。
 - **坑表 18 条逐条分流**（汇总表不再保留）：environment 已有 5＋本次补 1（sleep/until）、pipeline 已有 2（Etherscan/DuckDB）、casebook 5、analyze-workflow 内嵌 5——分流表见 v6-migration-audit.md §二。
 - **冻结-核销双向审计**：`v6-migration-audit.md`——正向（旧义务→新位置）/反向（新义务→旧来源或例外）/gate exit 逐字比对；存疑清单逐项验证后清零，两条语义微增透明申报（A3.6 恒等自检＝IQ 教训收编、历史清零层＝v4.2 复核义务前移）。
