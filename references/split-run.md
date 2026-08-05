@@ -46,6 +46,7 @@
   6. 基础序列：`address_bucket_series`（标签桶序列）＋价格序列。**命名禁用"阵营/camp"**——真 camp_share_series 只能 −2 实体冻结后生成。序列产出时顺手标记"价格单日 ±50%"与"单日桶间变动 ≥10pp"的日子清单（供 −2 定峰值逐笔触发日用，无归因义务，2026-08-02）。
   7. **全体持仓波次扫描（v3）**：`scripts/report/wave_scan.py`（原始边表直读，扫描对象＝全体历史峰值 ≥0.02% 地址不限清零层，A 种子窗/B 喂币专属/C 快速清仓/D 等额面额四指纹合并口径）产 `wave_scan_report.json`（wave-scan/v3，含 scan_universe 逐址全集＋must_adjudicate 标记）——**READY 必产件，缺件 generate 即拒**；候选只报警不定性，裁决权在 −2；已知公共设施可经 `--exclude-file` 剔除（取 candidate_screening 的 auto_excluded_candidate）。
   8. **资金流异常扫描**：`scripts/report/flow_anomaly_scan.py`（汇集点＋分发点三口径多命中 v2——pulse／pulse_all 不限新老收方／slow_spray 全史 ≥100）产 `flow_anomaly_report.json`（flow-anomaly/v2）——**READY 必产件**；Q1/3yMk 型进货枢纽与 H9 派发器型出货器由此现形，候选裁决权在 −2。
+  9. **当前持仓分布初判**：运行 `holder_distribution_scan.py --stage initial`，产 `distribution_scan.json` 和 `charts/distribution_stage1.png`。JSON 是 READY 必产件，工作图只供 −2 查看，不进 seal 或报告。initial 不绑定 handoff manifest。
 - **初步观察（可选但鼓励）**：−1 执行者的初步定性/怀疑**只准写进 `sealed/stage1_hypotheses.sealed.md`**（密封纪律见 §2.3），主产物区零定性词。
 
 ### 1.4 停止线（禁做清单，越线＝流程事故）
@@ -79,7 +80,11 @@
 | `unlock_evidence.json` | −1 | vesting 事实（按需） |
 | `wave_scan_report.json` | −1 | 全体持仓四指纹波次扫描（wave_scan.py，wave-scan/v3）候选波次＋等额组＋scan_universe 全集；READY 必产件，−2 逐条裁决完毕前历史大户兜底桶不准关闸 |
 | `flow_anomaly_report.json` | −1 | 资金流异常扫描（flow_anomaly_scan.py，flow-anomaly/v2 三口径多命中）汇集点＋分发点候选；READY 必产件 |
+| `distribution_scan.json` | −1 | 当前 cutoff 的 initial 分布扫描（distribution-scan/v1）；READY 必产件，verify 独立重算 |
 | `candidate_adjudications.json` | −2 | wave/flow 全候选成员级裁决台账（candidate-adjudications/v1；`adjudication_validator.py template` 起草、`validate` 校验）——freeze 机器前置，缺漏即拒 |
+| `distribution_adjudications.json` | −2 | final 异常簇成员级裁决台账；存在时 freeze 必须校验并绑定当前实体名册 |
+| `pattern_resolutions.json` | −2 | 盘面机制解释台账；路径 A 被书面排除后才使用，未决项阻断 |
+| `distribution_rounds.json` | −2 | final 轮次追加台账；terminal 前不物化终版图 |
 | `provenance_ledger.json` | −2 | 已知实体币源溯源台账（entity_source_trace.py，provenance-ledger/v2 正向模拟版，两锚点构成＋进货单＋FIFO/LIFO/事件顺序敏感性＋完整输入绑定）——freeze 从原始边真实重放；v1 是 pro-rata 数学错误版一律重跑 |
 | `sealed/stage1_hypotheses.sealed.md` | −1 | 初步定性密封件，见 §2.3 |
 | `entity_freeze.json` | −2 | 冻结事件物化：成员表哈希/时间/未决项/casebook 检验结果；变更走 revision 追加，不许静默覆盖 |
@@ -87,13 +92,13 @@
 
 **findings.md 双义处理**：−1 不写 findings.md（它是 A3 交接包，归 −2 按 context-discipline 现行制度写）；点名式 CEX 黑箱关卡中止时，其结论只作为 `BLOCKED_CEX_GATE` 恢复资产。
 
-### 2.2 handoff_manifest.json 语义（schema `handoff/v2`；v1 只可 `verify --legacy-read-only` 只读降级，机器 receipt 落盘、不得生成新正式报告）
+### 2.2 handoff_manifest.json 语义（schema `handoff/v3`；v1/v2 只可 `verify --legacy-read-only` 只读降级，机器 receipt 落盘、不得生成新正式报告）
 
 - **身份**：schema_version、case_id、run_id、mode（仅 `full`；**值来源＝/token-analyze-1 命令的档位参数，−1 收工 `generate --mode full` 必填传入**，用户未给档位时 −1 开工前先问、禁猜）、producer_model、CC/codex 两侧 git SHA、consumer_min_schema。
 - **口径**：链范围、合约、冻结块/slot、UTC cutoff、三种分母（总供应/调整后/流通）及来源。
 - **gate 记录**：每个 gate 的命令＋exit＋语义状态（accounting_mode/supply_truth 由脚本从产物 JSON 自动读 `verdict/exit_code`，防手报；四查等其他 gate 由 −1 执行者 `--gate` 显式声明并绑定产物文件）。
 - **产物 allowlist**：逐件登记路径/字节/sha256（大文件分片哈希＋复用采集侧行数/区间校验，不收尾全盘重哈希）/行数/schema/依赖。排除日志/临时库/含密钥文件（config.json 不入清单内容）。
-- **状态机**：`READY | BLOCKED | PARTIAL | SUPERSEDED | BLOCKED_CEX_GATE`——只有 READY 可被 −2 消费；READY 前置＝五件契约 JSON＋accounting_mode.json＋supply_truth.json＋wave_scan_report.json＋flow_anomaly_report.json 齐全（EVM 家族链另加 time_spotcheck.json；缺任一 generate 即拒，verify 端独立重算这份清单——手改 manifest 摘条目同样过不了）。
+- **状态机**：`READY | BLOCKED | PARTIAL | SUPERSEDED | BLOCKED_CEX_GATE`——只有 READY 可被 −2 消费；READY 前置＝五件契约 JSON＋accounting_mode.json＋supply_truth.json＋wave_scan_report.json＋flow_anomaly_report.json＋distribution_scan.json 齐全（EVM 家族链另加 time_spotcheck.json）。verify 会调用分布扫描器重算 initial 语义。手改 manifest、scan 或排除来源都不能通过。
 - **生成纪律**：原子生成（tmp+rename）、不含自身哈希；generate 后新增产物走 `late_additions`（重跑 generate 产 superseding manifest，旧件自动归档带 run_id 后缀）。
 
 ### 2.3 sealed 密封纪律（防锚定）
@@ -118,7 +123,7 @@
 
 ### 3.2 判断主序
 
-casebook C/E 册过闸 → 聚类合并裁决 → 临时实体 → **ET-2 无下限成员完整性扫描** → **EF-3A/EF-3B 候选进入 EF-3C 裁决与溯源闭环**（`adjudication_validator.py`＋`entity_source_trace.py`；新支路回裁决环）→ `handoff_manifest.py freeze` 校验 **EF-3C-P1～P4**（严格 verify／裁决名册／溯源内容／原始输入及算法绑定重放）→ G8 identity_gate_v3（绑定 owner 全集快照 receipt 与 total supply）→ 判级 → 阵营演变重放 → A3 落 findings/facts/analysis-state/identity → A4 register/finalize `--workflow-type new-analysis` 产 `a4-seal/v3` → A5 用 `build_html --mode analysis-new ...` 走正式全套发布闸。A6 仅用户要求时执行。
+casebook C/E 册过闸 → 聚类合并裁决 → 临时实体 → **ET-2 无下限成员完整性扫描** → **EF-3A/EF-3B 候选进入 EF-3C 裁决与溯源闭环** → `handoff_manifest.py freeze` 校验 **EF-3C-P1～P4**，并在存在 `distribution_adjudications.json` 时绑定当前分布裁决 → G8 identity_gate_v3 → 判级 → 阵营演变重放 → A3 落 findings/facts/analysis-state/identity → A4 register/finalize 产 `a4-seal/v4` → final 分布扫描写 `dist_rounds/round_N/` → 新簇回流 A4；已覆盖异常跑解释五判据，未解释进入成员或机制闭环后回流 A4 → 唯一终态物化 `charts/final/holder_distribution_current.png` → `a5-report-seal/v2` → G11 → A5。两轮仍未终态时必须让用户选择第三轮或标准 waiver。A6 仅用户要求时执行。
 
 ### 3.3 A4 外部异构路收紧条款（分段模式专属，兼容 codex 侧 c1.1.0 禁自审令）
 

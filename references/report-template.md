@@ -75,6 +75,12 @@ python3 scripts/report/build_html.py --mode analysis-new --md 报告.md --out �
 
 ## 二、供给基线与阵营划分
   总供应多口径表（链上实查/第三方流通/名义解锁，见 playbook §1）
+  【当前持仓分布终版图】只放一张：charts/final/holder_distribution_current.png
+  图注必须写 cutoff 与 UTC、总供应/净供应/私人可入箱供应、五桶占净供应比例和可见盘范围。
+  NORMAL 固定写："当前快照呈正常形态;这只表示本闸未检出结构性畸形,不等于没有庄。"
+  ABNORMAL 固定写："当前快照检出结构性畸形,集中在 X 档,涉及 N 个 owner、合计占当前净供应 Y%;解释见下文。"
+  low_sample 固定披露："形态统计因样本不足未做,以逐址集中度事实替代"，并列出 top-k、HHI 和等额组事实。
+  WAIVED 必须单列未解释簇、余额、用户裁决时间和轮次，不得写成异常已经解释。
   阵营划分表：按本案实际命中的标准阵营列行（键名与全集以 standard_charts.py
   CAMP_ORDER 为唯一权威，释义见 tiering §6a 阵营表；常见：项目方 / 大庄 / 小庄 /
   离场庄 / 刷量地址(有仓才列) / CEX资金通道 / CEX托管 / 疑似CEX托管 / 流动性池 /
@@ -204,7 +210,7 @@ python3 scripts/report/build_html.py --mode analysis-new --md 报告.md --out �
 - **写作纪律**：报告 md 中实体的持仓枚数/占比/峰值/成员数一律写宏——`{{e1.amount_share}}` → "2.78亿枚【总量27.84%】"（自动满足带【总量%】纪律）、`{{e1.share}}`、`{{e1.peak_share}}`、`{{e1.naddr}}`、`{{m:指标id}}`；附录 B 整块写 `{{appendix_b}}` 自动生成（**手打地址在架构上被消灭**）。禁止手打这些数字；价格/涨跌幅等非实体结论数字暂可手写（G5 会列清单供人工过目）。
 - **宏口径边界：`{{e.peak_share}}`=日末序列峰值，日内事件占比禁用宏**：peak_raw 来自日末快照序列，闪电过手型实体（单笔吃下→当日部分回吐）的**日内峰值高于日末峰值**（EGL1 案发射窗协同实体单笔买入 47.11% vs 日末峰值宏 40.21%，TL;DR 与正文两处误用宏被外部异构复核抓出）。规则：单笔买入/日内持有语境的占比一律手写并标注"单笔/日内"口径；报告含此型实体时，日末峰值与日内峰值两口径并列写清（另见流转图 footnote 块级峰值声明纪律）；判级流程侧的峰值口径（日终＋L2 上界兜底＋四触发日逐笔）权威见 tiering"峰值判级口径"条，两处口径一体（EGL1 redo2 @CX 复核，07-28）
 - **序列类指标引用必须钉时点、程序化取尾**：正文引用 camp_share_series 等时间序列的"当前值"，必须从序列**末点**程序化取数并写明"截至 <数据截止日>"——凭目视/记忆取数会拿到中段值（EGL1 案散户残差手写 10.75%，实为序列 2026-01 中段值，末点真值 10.37%，@CX 复核抓出）。互斥阵营残差桶另做一次"100−Σ各阵营末点"的算术复核（EGL1 redo2 @CX 复核，07-28）
-- **编译**：全新分析用 `build_html.py --mode analysis-new ...`，净室复核用 `--mode analysis-audit ...`；两者强制 facts/state/identity/A4 v3/A5 report seal，并分别走 new-analysis/independent-audit 发布 profile。不存在 generic analysis 或 skip gate。历史重编译用 `--mode legacy-recompile --degrade-reason "<理由>"`，并带非正式水印。
+- **编译**：全新分析用 `build_html.py --mode analysis-new ...`，净室复核用 `--mode analysis-audit ...`；两者强制 facts/state/identity/A4 v4/A5 report seal v2，并分别走 new-analysis/independent-audit 发布 profile。全新分析的 G11 还会重验 initial scan、terminal final scan、rounds 台账、解释或 waiver 和唯一分布图。analysis-audit 在 v1 分布闸中明确豁免，等待 single-stage 语义单独立项。不存在 generic analysis 或 skip gate。历史重编译用 `--mode legacy-recompile --degrade-reason "<理由>"`，并带非正式水印。
 - 纯校验（不出 HTML）：`python3 scripts/report/facts_gate.py --facts facts.json --state analysis-state.json --md 报告.md`。
 - **图层同源（3.19，`scripts/report/figures_from_facts.py`）**：编译化延伸到图——①图 1 直接 `figures_from_facts.py fig1 --state analysis-state.json --out charts/final/fig1.png [--price-csv 价格.csv]` 从 state 的 camp_share_series 直出（6.7.0 起报告图一律输出 charts/final/，G9 只认此目录），禁止再现场手写装配脚本；②每张流转图写 spec JSON（nodes/edges 结构同 lifecycle_flow docstring），**卡片与边标签里的持仓/份额数字一律写 facts 宏**（`{{e_x.amount_share}}` 等），`figures_from_facts.py flow --facts facts.json --spec flow_x.json --out ...` 渲染出图（残留宏必炸，同 G4）；③图 2 装配数据落 whale_series.json 后必跑 `figures_from_facts.py check --facts facts.json --series whale_series.json` 终值对账（各实体线末点 vs facts 当前持仓，超 0.05pp 拒绝）——checklist 4b"图表脚本喂的名单与 facts 同源仍须人工确认"中数值部分就此自动化。
 - 渐进接入：**新报告必用**；旧报告重编译不强制回填。
@@ -273,8 +279,9 @@ schema 全部细节（report-extract 四键与 `id="report-extract"` 硬约定�
 9. 特有发现有正文章节承载吗；vesting 标的的问 3 含"未来 6–12 个月解锁日程与量级"小节吗
 10. **cashtag 扫描 [NOTE] 处置**：build_html 对正文出现的其他代币名输出信息性 [NOTE]（不拒交付）——仅用于自查是否复用了历史案结论（铁律 1；提及代币名本身不违规，v6.4.2 用户裁定）；确认未复用即可交付。
 11. 附录四件套齐了吗（验证步骤/标签地址对照/修正记录/来源）；默认不含 JSON（买入后按需）；**analysis-state.json 已落盘**且地址与附录 B 一致（v3.3）
-11b. **A4 封口闸（G9）**：`a4-seal/v3` 的 workflow_type 是否与 analysis-new/analysis-audit 匹配，是否绑定 registry、verdicts、findings、analysis-state、facts、identity gate 与全部 claim 文件；净室复核是否同时绑定并对账 claim_registry；任一封口资产变化都必须重新 finalize。
-11c. **A5 报告闸（G10）**：最终 Markdown 与全部报告图必须由 `a5_report_seal.py` 绑定到当前 A4 seal；正文或图变化先重跑 A5 seal，再编译。存量报告迁移只能重新生成该生产 receipt，禁止手搓。
+11b. **A4 封口闸（G9）**：`a4-seal/v4` 的 workflow_type 是否匹配，revision 链是否连续，new-analysis 的 `dist-*` claims 是否与当前分布 claim source 双向闭合，registry、verdicts、findings、analysis-state、facts、identity gate 与全部 claim 文件是否封口；净室复核是否同时绑定并对账 claim_registry。
+11c. **A5 报告闸（G10）**：`a5-report-seal/v2` 是否绑定当前 A4 seal、最终 Markdown、全部报告图、terminal rounds、final scan、解释或 waiver 和唯一分布图；正文或图变化先重跑 A5 seal。
+11d. **分布发布闸（G11）**：initial 与 terminal final 是否都通过独立重算；ABNORMAL 是否已 EXPLAINED 或带完整 waiver；low_sample 是否有完整集中度模式和强制披露句；报告是否只引用一张 `holder_distribution_current.png`；任何 data_broken、非终态、过期 seal 或缺字段收据都必须拒编。
 12. `build_html.py` 退出码 0（6.7.0 起有 [WARN] 直接不写出文件）；阵营图 `id="chart-camps"` 自动嵌入目检存在
 13. **【买入后监控包交付时追加】**：观察哨与两档监控建议齐且逐条有原因、与 JSON monitoring_advice 的 mode/alert_threshold_pct 一一对应；JSON 顶层四键齐、addresses 与附录 B 一致且完整地址、sentinel 纪律复查（周期性会动的地址必须 false）、round_target/watch_return 该填的填了；重跑 build_html 零 WARN、`id="report-extract"` 目检存在
 14. 浏览器打开 HTML 目检：图片全显示、表格无错位、蓝红框正常、（带监控包时）JSON 折叠块可展开
