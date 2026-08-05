@@ -281,7 +281,7 @@ def main(all_mode=False):
     # 9) 2026-08-04 一致性复核的语义守护。只扫活跃权威文档/代码，CHANGELOG
     #    的历史原文不在禁扫范围。
     semantic_contracts = {
-        'SKILL.md': ['Arbitrum', '三问一异常',
+        'SKILL.md': ['Arbitrum 仅保留探索支持', '三问一异常',
                      'A3 实体冻结门禁编号', '链内 collection_manifest/receipt'],
         'references/independent-audit-protocol.md': ['--profile new-analysis',
                                                       '--profile independent-audit',
@@ -292,7 +292,7 @@ def main(all_mode=False):
                                                       '案目录里的同名/复制脚本', '无 producer 的 accounting'],
         'references/report-template.md': ['state_from_facts.py', '--mode analysis-new',
                                            '--mode analysis-audit', 'a4-seal/v4', 'ET-1/ET-2'],
-        'references/analyze-workflow.md': ['identity_gate_v3', '--snapshot-receipt',
+        'references/analyze-workflow.md': ['Arbitrum（探索）', 'identity_gate_v3', '--snapshot-receipt',
                                            '--total-supply-raw', 'a4-seal/v4',
                                            '不得手工补字段', 'GPA raw/meta', '跨 scan pubkey 去重函数',
                                            '既有采集产物复用', 'data/v2/run_*/done.json',

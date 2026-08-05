@@ -6,7 +6,7 @@ def main():
  from a5_report_seal import create_seal, validate_seal
  with tempfile.TemporaryDirectory() as td:
   d=Path(td); (d/"charts/final").mkdir(parents=True)
-  (d/"a4_seal.json").write_text(json.dumps({"schema":"a4-seal/v4","verdict":"PASS",
+  (d/"a4_seal.json").write_text(json.dumps({"schema":"a4-seal/v4","verdict":"PASS","chain":"bsc",
       "workflow_type":"independent-audit","revision":1,"previous_seal":None,
       "charts_dir":"charts/final","claims":[{"id":"C1"}]}))
   (d/"charts/final/x.png").write_bytes(b"png")

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
-"""Frontmatter chain claim and both production identity gates must be identical."""
+"""Formal chain claims must close across frontmatter, release gates and label capability."""
 import ast
+import csv
 import re
 import sys
 from pathlib import Path
@@ -16,12 +17,28 @@ ALIASES = {
 }
 
 
+def frontmatter_description():
+    lines = (ROOT / "SKILL.md").read_text(encoding="utf-8").split("---", 2)[1].splitlines()
+    for index, line in enumerate(lines):
+        match = re.match(r"^description:\s*(.*)$", line)
+        if not match:
+            continue
+        value = match.group(1).strip()
+        if value in {">", ">-", "|", "|-"}:
+            folded = []
+            for continuation in lines[index + 1:]:
+                if continuation.startswith((" ", "\t")):
+                    folded.append(continuation.strip())
+                else:
+                    break
+            return " ".join(folded)
+        return value
+    raise AssertionError("SKILL.md frontmatter lacks description")
+
+
 def frontmatter_chains():
-    text = (ROOT / "SKILL.md").read_text(encoding="utf-8")
-    frontmatter = text.split("---", 2)[1]
-    description = re.search(r"^description:\s*(.+)$", frontmatter, re.M)
-    assert description, "SKILL.md frontmatter lacks description"
-    claim = re.search(r"正式深度管线覆盖\s*([^\uff1b]+)；", description.group(1))
+    description = frontmatter_description()
+    claim = re.search(r"正式深度管线覆盖\s*([^；]+)；", description)
     assert claim, "frontmatter lacks the canonical supported-chain claim"
     names = []
     for group in claim.group(1).split("、"):
@@ -31,51 +48,55 @@ def frontmatter_chains():
     return {ALIASES[name] for name in names}
 
 
-def evaluated_sets(path):
+def named_set(path, name):
     tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
-    values = {}
-
-    def evaluate(node):
-        if isinstance(node, ast.Set):
-            return {ast.literal_eval(item) for item in node.elts}
-        if isinstance(node, ast.Name) and node.id in values:
-            return values[node.id]
-        if isinstance(node, ast.BinOp) and isinstance(node.op, ast.BitOr):
-            return evaluate(node.left) | evaluate(node.right)
-        raise ValueError(f"unsupported chain-set expression: {ast.dump(node)}")
-
     for statement in tree.body:
         if not isinstance(statement, ast.Assign):
             continue
-        value = evaluate(statement.value) if any(
-            isinstance(target, ast.Name) and target.id in {"EVM_CHAINS", "SUPPORTED", "CHAINS"}
-            for target in statement.targets
-        ) else None
-        if value is not None:
-            for target in statement.targets:
-                if isinstance(target, ast.Name):
-                    values[target.id] = value
-    return values
+        if any(isinstance(target, ast.Name) and target.id == name
+               for target in statement.targets):
+            return {ast.literal_eval(item) for item in statement.value.elts}
+    raise AssertionError(f"{path.relative_to(ROOT)} lacks literal {name}")
+
+
+def csv_has_rows(path):
+    if not path.is_file() or path.stat().st_size == 0:
+        return False
+    with path.open(newline="", encoding="utf-8") as handle:
+        return next(csv.DictReader(handle), None) is not None
 
 
 def main():
     declared = frontmatter_chains()
-    expected = {"eth", "bsc", "base", "arbitrum", "robinhood", "sol"}
-    assert declared == expected, f"frontmatter chains drifted: {sorted(declared)}"
+    formal = named_set(ROOT / "scripts/report/audit_release_gate.py", "FORMAL_CHAINS")
+    buildable = named_set(ROOT / "scripts/labels/build_labels.py", "BUILD_CHAINS")
+    assert formal == declared, (
+        f"release-gate FORMAL_CHAINS={sorted(formal)} != frontmatter={sorted(declared)}"
+    )
+    assert buildable == declared, (
+        f"build_labels BUILD_CHAINS={sorted(buildable)} != frontmatter={sorted(declared)}"
+    )
 
-    receipt = evaluated_sets(ROOT / "scripts/report/identity_snapshot_receipt.py")
-    gate = evaluated_sets(ROOT / "scripts/report/entity_identity_gate.py")
-    supported = receipt.get("SUPPORTED")
-    chains = gate.get("CHAINS")
-    assert supported == declared, (
-        f"identity_snapshot_receipt SUPPORTED={sorted(supported or [])} "
-        f"!= frontmatter={sorted(declared)}"
-    )
-    assert chains == declared, (
-        f"entity_identity_gate CHAINS={sorted(chains or [])} "
-        f"!= frontmatter={sorted(declared)}"
-    )
-    print(f"PASS: chain support matrix is bidirectionally closed: {sorted(declared)}")
+    sys.path.insert(0, str(ROOT / "scripts/labels"))
+    from labels_resolver import LabelResolver
+
+    failures = []
+    for chain in sorted(declared):
+        csv_path = ROOT / "references/labels" / f"labels-{chain}.csv"
+        if not csv_has_rows(csv_path):
+            failures.append(f"{chain}: {csv_path.name} missing, empty, or header-only")
+            continue
+        resolver = LabelResolver(chain)
+        if resolver.degraded or not resolver.table:
+            failures.append(f"{chain}: labels_resolver loaded in degraded mode or returned 0 rows")
+    assert not failures, "formal label capability is not closed:\n- " + "\n- ".join(failures)
+
+    known_gate = named_set(ROOT / "scripts/report/entity_identity_gate.py", "KNOWN_CHAINS")
+    known_receipt = named_set(ROOT / "scripts/report/identity_snapshot_receipt.py", "EVM_CHAINS")
+    assert declared <= known_gate and "arbitrum" in known_gate - declared
+    assert "arbitrum" in known_receipt, "exploratory Arbitrum identity receipt capability was removed"
+    print("PASS: formal chain matrix closes frontmatter + release gate + non-degraded labels: "
+          f"{sorted(declared)}; arbitrum remains exploratory-known")
     return 0
 
 

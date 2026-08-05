@@ -84,7 +84,7 @@ def file_entry(root: Path, rel: str) -> dict:
 
 def add_final_inputs(root: Path, claims: list[dict]) -> None:
     write_json(root / "facts.json", {"entities": {}, "metrics": {}})
-    write_json(root / "analysis-state.json", {"whale_groups": []})
+    write_json(root / "analysis-state.json", {"chain": "bsc", "whale_groups": []})
     write_json(root / "evidence.json", {"source": "fixture"})
     write_json(root / "a4_claims.json", {"schema": "a4-claims/v2", "claims": claims})
     write_json(root / "handoff_manifest.json", {"consumer_min_schema": "handoff/v3",
@@ -96,7 +96,7 @@ def add_final_inputs(root: Path, claims: list[dict]) -> None:
         write_json(root / name, {"rows": []})
     sealed = [file_entry(root, x) for x in ("a4_claims.json", "facts.json",
                                              "analysis-state.json", "evidence.json")]
-    write_json(root / "a4_seal.json", {"schema": "a4-seal/v4", "verdict": "PASS",
+    write_json(root / "a4_seal.json", {"schema": "a4-seal/v4", "verdict": "PASS", "chain": "bsc",
         "workflow_type": "new-analysis", "revision": 1, "charts_dir": "charts/final",
         "registry": {"path": "a4_claims.json", "sha256": sha(root / "a4_claims.json")},
         "claims": [{"id": x["id"], "verdict": "CONFIRMED"} for x in claims],

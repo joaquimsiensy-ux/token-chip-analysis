@@ -17,9 +17,10 @@ def dump(path, obj):
 
 
 def fixture(root):
-    for name in ("findings.md", "analysis-state.json", "facts.json", "identity_gate.json",
-                 "raw1.json", "raw2.json"):
+    for name in ("findings.md", "facts.json", "raw1.json", "raw2.json"):
         (root / name).write_text("{}\n", encoding="utf-8")
+    dump(root / "analysis-state.json", {"chain": "bsc"})
+    dump(root / "identity_gate.json", {"chain": "bsc"})
     (root / "charts" / "final").mkdir(parents=True)
     a4 = {"schema": "a4-claims/v2", "claims": [
         {"id": "C1", "text": "Entity A controls 10%", "files": ["raw1.json"],

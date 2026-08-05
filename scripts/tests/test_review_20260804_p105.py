@@ -49,12 +49,13 @@ def add_new_analysis_distribution(root: Path, report: Path) -> None:
         "handoff_manifest.json": {"consumer_min_schema": "handoff/v3", "status": "READY", "run_id": "fixture"},
         "identity_snapshot_receipt.json": {"schema": "identity-snapshot-receipt/v1"},
         "entity_freeze.json": {"schema": "entity-freeze/v1", "revisions": []},
-        "analysis-state.json": {"whale_groups": []}, "facts.json": {"entities": {}},
+        "analysis-state.json": {"chain": "bsc", "whale_groups": []},
+        "facts.json": {"entities": {}},
         "evidence.json": {"source": "fixture"},
         "a4_claims.json": {"schema": "a4-claims/v2", "claims": [{"id": "C1"}]},
     }.items():
         write_json(root / name, value)
-    write_json(root / "a4_seal.json", {"schema": "a4-seal/v4", "verdict": "PASS",
+    write_json(root / "a4_seal.json", {"schema": "a4-seal/v4", "verdict": "PASS", "chain": "bsc",
         "workflow_type": "new-analysis", "revision": 1, "previous_seal": None,
         "charts_dir": "charts/final", "claims": [{"id": "C1", "verdict": "CONFIRMED"}]})
     p = subprocess.run([sys.executable, str(dist), "--case-dir", str(root), "--stage", "final",
