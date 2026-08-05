@@ -1,7 +1,7 @@
 # 多代理编排模板（research-workflows）
 
 > 读者：下次执行代币筹码分析的 Claude。本文只讲「怎么派代理、怎么编排任务」，数据通道细节见同目录其他参考文档。
-> 来源会话对照：OPN=BSC ①、SIREN=BSC ②、HYPE=Hyperliquid、FIL=Filecoin、IO=Solana。行尾括号即来源会话。
+> 来源会话对照：OPN=BSC ①、SIREN=BSC ②、HYPE、FIL、IO=Solana。行尾括号即来源会话。
 > 红线：本文只沉淀方法，不含任何对具体代币的分析结论。
 
 ## 一、情报 fan-out 模板（v5.0 起默认只启动路线 1；其余按需）

@@ -42,14 +42,11 @@ def test_m01(tmp):
 
 def test_m02(tmp):
     assert norm_addr("0x" + "g" * 40, "eth") is None
-    assert norm_addr("f0abc", "filecoin") is None
-    assert norm_addr("f01234", "filecoin") == "f01234"
-    assert norm_addr("f1" + "a" * 39, "filecoin") == "f1" + "a" * 39
     bad = Path(tmp) / "labels-eth.csv"
     bad.write_text("address,chain\n", encoding="utf-8")
     errs, _, n = validate_file(str(bad))
     assert n == 0 and any("表头异常" in e for e in errs), errs
-    good = Path(tmp) / "labels-filecoin.csv"
+    good = Path(tmp) / "labels-eth.csv"
     with good.open("w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=BASE_FIELDS)
         writer.writeheader()

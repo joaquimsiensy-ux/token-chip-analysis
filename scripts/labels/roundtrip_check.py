@@ -16,7 +16,7 @@ import csv, os, sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 OUT = os.path.join(HERE, 'sources', 'out')
 PUB = os.path.normpath(os.path.join(HERE, '..', '..', 'references', 'labels'))
-CHAINS = ['eth', 'bsc', 'base', 'sol', 'robinhood', 'hyperliquid', 'filecoin']
+CHAINS = ['eth', 'bsc', 'base', 'sol', 'robinhood']
 
 def load_keys(path):
     keys = {}

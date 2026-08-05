@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """md2pdf.py — 中文筹码分析报告 Markdown → PDF 渲染器（通用版）
 
-来源：HYPE(Hyperliquid) 分析会话实战产物，通用化改造（参数化+提示框+图注不跨页）。
+来源：HYPE 分析会话实战产物，通用化改造（参数化+提示框+图注不跨页）。
 用法：
     python3 md2pdf.py --md 报告.md [--out 报告.pdf] [--figdir 图目录] \
                       [--title "PDF元数据标题"] [--footer "页脚左侧文字"]

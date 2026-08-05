@@ -1,6 +1,6 @@
 # 基础设施地址标签库（跨分析累积）
 
-> **先跑批量层**：本文件是手工实战核验层（含机制注释）；另有批量标签库 `labels/`（v4 2026-07-17 七链 ~46.9 万条：CEX/桥/路由/协议/OFAC 制裁/Tornado 用户与合约/KOL/惯犯庄家 serial-actor/Hyperliquid/Filecoin，来源与纪律见 `labels/README.md`）。**聚类前先用 `scripts/labels/label_lookup.py --chain <链> <地址...>` 把全部候选过一遍**（七段输出，SERIAL 惯犯命中=最高优先级），命中 EXCLUDE 的按纪律剔除、命中 risk_flags 的按四档分区处置；Robinhood 疑似公共 bot 合约加跑 `fingerprint_check.py`；批量层查不到再走本文件 grep 与现场判别。两层结论冲突时以现场核验为准（热钱包会轮换）。**改本文件地址条目后必须同步 `gen_manual_from_addressbook.py` 并重跑构建**——`check_manual_sync.py` 双向校验不过，构建直接失败（v4 起强制）。
+> **先跑批量层**：本文件是手工实战核验层（含机制注释）；另有批量标签库 `labels/`（CEX/桥/路由/协议/OFAC 制裁/Tornado 用户与合约/KOL/惯犯庄家 serial-actor，来源与纪律见 `labels/README.md`）。**聚类前先用 `scripts/labels/label_lookup.py --chain <链> <地址...>` 把全部候选过一遍**（七段输出，SERIAL 惯犯命中=最高优先级），命中 EXCLUDE 的按纪律剔除、命中 risk_flags 的按四档分区处置；Robinhood 疑似公共 bot 合约加跑 `fingerprint_check.py`；批量层查不到再走本文件 grep 与现场判别。两层结论冲突时以现场核验为准（热钱包会轮换）。**改本文件地址条目后必须同步 `gen_manual_from_addressbook.py` 并重跑构建**——`check_manual_sync.py` 双向校验不过，构建直接失败（v4 起强制）。
 
 **性质**：CEX 热/冷钱包、做市商、系统程序等基础设施地址属于工具性知识，可跨代币复用。
 **纪律**：①用前抽查核验（热钱包会轮换、标签会过期）——链上浏览器点开看最近行为是否仍符合标签；②**项目方实例地址（金库/vesting/团队钱包）不入此库**，它们属于单次分析的标的信息；③每条附来源与核验日期，新增条目走阶段 6 复盘流程。
@@ -114,7 +114,7 @@
 | `BmFdpraQhkiDQE6SnfG5omcA1VwzqfXrwtNYBwWTymy6` | KuCoin | 公开标签 |
 | `H8sMJSCQxfKiFTCfDR3DUMLPwcRbM61LGFJ8N4dK3WjS` | Coinbase（含 Prime 托管） | 公开标签；Prime=机构托管通道，提币含义与散户不同 |
 | `AobVSwdW9BbpMdJvTqeCN4hPAmh4rHm7vwLnQ5ATSyrS` | Crypto.com | 公开标签 |
-| `9SLPTL41SPsYkgdsMzdfJsxymEANKr5bYoBsQzJyKpKS` | Hyperunit 热钱包（Hyperliquid 现货桥托管） | Vybe 标注+行为核验（200 币种/28 万 SOL）；凡 HL 上架的 Solana 币都会遇到；其份额理论可跨 HL 链侧再穿透（Fartcoin 关卡实测 2026-07-22） |
+| `9SLPTL41SPsYkgdsMzdfJsxymEANKr5bYoBsQzJyKpKS` | Hyperunit 热钱包（现货桥托管） | Vybe 标注+行为核验（200 币种/28 万 SOL）；桥侧份额须按托管穿透规则单列（Fartcoin 关卡实测 2026-07-22） |
 | `D89hHJT5Aqyx1trP6EnGY9jJUB3whgnq3aUvvCqedvzf` | Coinbase 热钱包 3 | Vybe 标注+行为核验（404 币种/4.7 万 SOL/分钟级高频）；**冷储分仓调度指纹**：统一向多个「SOL=0+个位数币种+纯转入+金额相近」的分仓供币，见此形态先查调度方是否为它（Fartcoin 实测 11 分仓 13% 供应，2026-07-22） |
 | `6LY1JzAFVZsP2a2xKrtU6znQMQ5h4i7tocWdgrkZzkzF` | Kraken 热钱包 | Vybe+GOAT 案 cex_map 双源（行为：274 币种/38.7 万 SOL）（2026-07-22） |
 | `8Mm46CsqxiyAputDUp2cXHg41HE3BfynTeMBDwzrMZQH` | 疑似 OKX/Bitget 归集 | 未免费确证；特征=同时是多个热门币最大持仓者。**v4.2 起标 suspected-cex/identity+no_merge（禁边不剔仓）**——未确证设施不得 exclude，防真大户持仓被静默剔除；确证后升 cex/exclude |
@@ -152,20 +152,6 @@
 | `HNCne2FkVaNghhjKXapxJzPaBvAKDG1Ge3gqhZyfVWLM` | Base-Solana 官方桥 Bridge 程序（Coinbase/docs.base.org 确认） | Solana→Base 跨链桥主程序；某钱包大额代币转入它=跨链桥出。出现在做"代币转股权/ACE 轮"的项目（币桥到 Base 侧锁仓/股权化）（OPAL(Solana) 实测 2026-07-14） |
 | `g1et5VenhfJHJwsdJsDbxWZuotD5H4iELNG61kS4fb9` | Base-Solana 官方桥 Base Relayer 程序 | 上条桥的可选 relayer（Solana→Base 方向代付 Base gas），与 Bridge 程序伴随出现（OPAL(Solana) 实测 2026-07-14） |
 | （某项目专属桥托管仓，用 owner 程序判别） | 桥托管 token account（例 OPAL 的 `F8446Bh5…` 恰持 2.5% 整数=ACE 轮满额） | 由多个散户地址在几天内桥出汇入的整数配额托管仓＝股权轮/跨链募集，非市场买盘；判别=其入账 tx 涉及上面两个桥程序 |
-
-## Hyperliquid（HYPE 分析核验 2026-07）
-
-### 系统地址（链级基础设施）
-
-| 地址 | 标签 | 备注 |
-|---|---|---|
-| `0xfefe...fefe` | AF（Assistance Fund，回购基金） | 逐日回购数据见 ASXN 面板 |
-| `0xdddd...dddd` | 排放池 | |
-| `0x5555...5555` | WHYPE 合约 | HyperEVM 上的包装 HYPE |
-| `0x43e9abea1910387c4292bca4b94de81462f8a251` | Hyperliquid 团队地址 | 仅分析 HYPE 本身时相关 |
-| `0xd57ecca444a9acb7208d286be439de12dd09de5d` | Hyper Foundation | 同上 |
-
-（Hypurrscan `globalAliases` 端点有 463 个实体标签，可在线查询，无需在此穷举）
 
 ## Robinhood Chain（chainid 4663；GME/RAXOL 分析核验 2026-07-12）
 
@@ -251,12 +237,3 @@
 > `0x6d80b81d…`（上表 Virtuals AgentTaxV2）补充语义（VIRTUAL 分析 2026-07-16）：对报价币 VIRTUAL 本体而言它是**机械税变现通道**——归集生态税收（VIRTUAL 计价）经 USDG 池 swap 换稳定币并 70/30 分账；其持续"卖出"是机制流水（规模跟随生态交易量），勿当实体出货，监控应反向盯"税流断流"。
 
 > RelayRouterV3 完整地址见上方 EVM 聚合器基建段 `0xb92fe925…`（跨链同址；Robinhood 链上表现为 392 进/599 出的清算金库形态）。UniV3Factory、NonfungiblePositionManager、LP 费用合约等如遇到仍需 Blockscout 现场核验。
-
-## Filecoin（FIL 分析核验 2026-07；actor ID 由协议分配，不轮换）
-
-| 地址/段 | 标签 |
-|---|---|
-| `f0121` | Filecoin Foundation |
-| `f0117`–`f0120` | Protocol Labs 系列 |
-| `f090` | 挖矿储备（Mining Reserve） |
-| `f00`–`f0160` 低位段 | 创世实体集中区（另含 Faucet、Burn 等系统地址）：逐个 `GET /address/f0<N>` 批量取全部官方标签，方法见 data-pipeline-filecoin.md §2 |

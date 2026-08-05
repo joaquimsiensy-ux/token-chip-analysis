@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
 """文档守护：引用断链 + 粗体配对 + SKILL.md 引用漂移哨。
 
-背景：追加式迭代下文档互引会漂移（实证：SKILL.md 曾写 labels "v4 ~46.9 万条"而实际已 v4.2 ~47.1 万；
-labels README 曾宣称 filecoin 接入 resolver 与事实不符）。本脚本抓"结构可查"的那部分：
+背景：追加式迭代下文档互引会漂移。本脚本抓"结构可查"的那部分：
 1. md 里引用的本仓库文件路径必须存在（references/*.md、scripts/**.py、labels/*.csv|md）
 2. 每行 ** 配对（奇数个 ** 的行=残缺粗体，渲染会烂）
 3. SKILL.md「深入阅读」列出的文件必须齐全
@@ -153,7 +152,7 @@ def main(all_mode=False):
     # 9) 2026-08-04 一致性复核的语义守护。只扫活跃权威文档/代码，CHANGELOG
     #    的历史原文不在禁扫范围。
     semantic_contracts = {
-        'SKILL.md': ['restricted/top-200-windowed', 'Arbitrum', '三问一异常',
+        'SKILL.md': ['Arbitrum', '三问一异常',
                      'A3 实体冻结门禁编号', '队列层 collect_manifest',
                      '链内 collection_manifest/receipt'],
         'references/independent-audit-protocol.md': ['--profile new-analysis',
@@ -168,8 +167,6 @@ def main(all_mode=False):
         'references/analyze-workflow.md': ['identity_gate_v3', '--snapshot-receipt',
                                            '--total-supply-raw', 'a4-seal/v3',
                                            '不得手工补字段', 'GPA raw/meta', '跨 scan pubkey 去重函数'],
-        'references/data-pipeline-filecoin.md': ['restricted/top-200-windowed', 'f00–f0160',
-                                                  'richlist_pagination_receipt.json'],
         'references/data-pipeline-evm-channels.md': ['evm-channel-receipt/v2',
                                                       'evm-collector-run/v2',
                                                       '--collector-receipt',
@@ -179,9 +176,6 @@ def main(all_mode=False):
         'references/data-pipeline-solana-capture.md': ['免费层不支持 batch', '10 RPS'],
         'references/data-pipeline-solana-scan.md': ['G8 离线重放契约', 'parse_gpa_response',
                                                     'result.value.amount', '禁止手补 meta/hash'],
-        'references/address-book.md': ['f00`–`f0160'],
-        'references/playbook-entity-cluster-methods.md': ['f00–f0160'],
-        'references/labels/MAINTENANCE.md': ['f00–f0160'],
         'references/analysis-playbook.md': ['三问一异常'],
         'commands-staging/token-analyze.md': ['三问一异常'],
         'commands-staging/token-analyze-2.md': ['三问一异常'],
@@ -195,12 +189,8 @@ def main(all_mode=False):
     banned_contracts = {
         'SKILL.md': ['对任意链上代币', 'v5.0 三问框架', '实体冻结前三硬闸'],
         'references/report-template.md': ['手写 15 行', 'a4-seal/v2'],
-        'references/data-pipeline-filecoin.md': ['f00–f0126', '浏览器 API 准全量'],
         'references/data-pipeline-evm-channels.md': ['evm-channel-receipt/v1',
                                                       '--empty-proof'],
-        'references/address-book.md': ['f0126'],
-        'references/playbook-entity-cluster-methods.md': ['f0126'],
-        'references/labels/MAINTENANCE.md': ['f0126'],
         'references/analysis-playbook.md': ['三问框架'],
         'commands-staging/token-analyze.md': ['三问框架'],
         'commands-staging/token-analyze-2.md': ['三问框架'],

@@ -1,8 +1,8 @@
 # 分析方法学 Playbook（链无关）
 
-本文档是 token-chip-analysis skill 的核心方法文档：从"数据已到手"到"结论可发布"的全部分析规则。数据通道与采集工程见 `data-pipeline-evm.md` / `data-pipeline-filecoin.md` / `data-pipeline-hyperliquid.md`，环境坑见 `environment.md`，报告产线见 `report-template.md`。
+本文档是 token-chip-analysis skill 的核心方法文档：从"数据已到手"到"结论可发布"的全部分析规则。数据通道与采集工程见 `data-pipeline-evm.md` / `data-pipeline-solana.md` / `data-pipeline-robinhood.md`，环境坑见 `environment.md`，报告产线见 `report-template.md`。
 
-**来源会话代号**（正文行尾标注用）：SIREN(BSC)、OPN(BSC)、FIL(Filecoin)、HYPE(Hyperliquid)、IO(Solana)、bibi(BSC)、CLAW(Solana)、GME(Robinhood)、RAXOL(Robinhood)，均为 2026-07；后续新增来源按行尾全名+日期标注，不再回改本表。注：IO 会话原始记录（Windows jsonl）已于 2026-07-12 由用户找回并逐条比对，本文档所有 IO 来源条目均获实录确认，实证强度与其余各份等同。
+**来源会话代号**（正文行尾标注用）：SIREN(BSC)、OPN(BSC)、FIL、HYPE、IO(Solana)、bibi(BSC)、CLAW(Solana)、GME(Robinhood)、RAXOL(Robinhood)，均为 2026-07；后续新增来源按行尾全名+日期标注，不再回改本表。注：IO 会话原始记录（Windows jsonl）已于 2026-07-12 由用户找回并逐条比对，本文档所有 IO 来源条目均获实录确认，实证强度与其余各份等同。
 
 **三问一异常框架**（每次分析的固定命题，报告必须逐问直答；2026-07-30 用户定；不设项目方背景调查专章，解锁日程情报保留服务问 3）：
 1. **有几个庄**（按 §6a 标签体系识别计数：项目方/大庄/小庄/离场庄/刷量地址）？→ §3 §6 §6a

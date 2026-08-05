@@ -70,8 +70,8 @@ REQUIRED_FOR_READY = ["candidate_universe.json", "candidate_screening.json",
                       "wave_scan_report.json", "flow_anomaly_report.json"]
 # EVM 家族链另加时间抽查产物为 READY 必备（6.7.0，APU SQD 全史重拉冗余复盘）——
 # time_spotcheck.py 固化后，锚点级第二源直查是 A2 第 4 查的机器凭证，缺件＝时间抽查没跑
-# 或又走了自由发挥老路。Solana（anchor_sampler 通道）/hyperliquid/filecoin 等非 EVM 链
-# 时间抽查形态不同，不进本硬闸（白名单法：链名命中才强制，未知新链不误伤）。
+# 或又走了自由发挥老路。Solana（anchor_sampler 通道）等非 EVM 链时间抽查形态不同，
+# 不进本硬闸（白名单法：链名命中才强制，未知新链不误伤）。
 EVM_CHAINS = {"eth", "ethereum", "bsc", "base", "arbitrum", "polygon", "optimism",
               "robinhood", "opbnb", "avalanche", "fantom", "cronos", "linea",
               "scroll", "blast", "zksync"}

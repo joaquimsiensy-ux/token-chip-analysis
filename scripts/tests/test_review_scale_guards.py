@@ -50,26 +50,6 @@ def test_transfers(tmp):
     assert "iter_batches" in parquet_reader and "read_table" not in parquet_reader
 
 
-def test_snapshot_series(tmp):
-    tmp = Path(tmp)
-    data, out = tmp / "data", tmp / "out"
-    (data / "snapshots").mkdir(parents=True)
-    cfg = tmp / "hl.json"
-    cfg.write_text(json.dumps({"data_dir": str(data), "out_dir": str(out),
-                               "watch": {"fund": "0xabc"}, "max_snapshots": 1,
-                               "max_holders_per_snapshot": 1}))
-    script = ROOT / "scripts/hyperliquid/snapshot_series.py"
-    p = run(script, tmp, "--config", cfg)
-    assert p.returncode != 0 and not (out / "snapshot_series.json").exists()
-    snap = data / "snapshots/top1000_100.json"
-    snap.write_text(json.dumps({"holders": {"0xabc": 12}, "holdersCount": 1}))
-    p = run(script, tmp, "--config", cfg)
-    assert p.returncode == 0, p.stdout + p.stderr
-    manifest = json.loads((out / "snapshot_series.input_manifest.json").read_text())
-    assert manifest["small_sample_only"] is True and manifest["output"]["rows"] == 1
-    assert len(manifest["inputs"][0]["sha256"]) == 64
-
-
 def test_build_evolution(tmp):
     tmp = Path(tmp)
     script = ROOT / "scripts/solana/build_evolution.py"
@@ -101,8 +81,6 @@ def test_build_evolution(tmp):
 def main():
     with tempfile.TemporaryDirectory() as tmp:
         test_transfers(tmp)
-    with tempfile.TemporaryDirectory() as tmp:
-        test_snapshot_series(tmp)
     with tempfile.TemporaryDirectory() as tmp:
         test_build_evolution(tmp)
     print("PASS: M-04 bounded helpers, streaming parquet batches, and bound input manifests")

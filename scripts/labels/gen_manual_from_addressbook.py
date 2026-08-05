@@ -187,12 +187,6 @@ a('Ay9wnuZCRTceZJuRpGZnuwYZuWdsviM4cMiCwFoSQiPH', ('sol',), '冷静哥（中文�
 a('8deJ9xeUvXSJwicYptA9mHsU2rN2pDx37KWzkDkEXhU6', ('sol',), 'cooker（中文车头/打新 KOL）', 'kol', 'identity',
   date='2026-07-16', ev='社区标注 x.com/sol123eth/status/1922641254363582725（单源推文，用前核验）【置信:中】')
 
-# ===== Hyperliquid（地址簿 HL 段；v4 起 resolver 支持 hyperliquid 链，check_manual_sync 首跑抓出的漏同步） =====
-a('0x43e9abea1910387c4292bca4b94de81462f8a251', ('hyperliquid',), 'Hyperliquid 团队地址', 'fund', 'identity',
-  ev='address-book HL 段（HYPE 分析核验 2026-07）')
-a('0xd57ecca444a9acb7208d286be439de12dd09de5d', ('hyperliquid',), 'Hyper Foundation', 'fund', 'identity',
-  ev='address-book HL 段（HYPE 分析核验 2026-07）')
-
 # ===== 核心锁仓合约（locker 快速档 2026-07-16 亲验补录；锁仓量是有经济含义的供应——识别不剔除，
 # 聚类合并边禁用由 labels_resolver.no_merge 负责） =====
 a('0x407993575c91ce7643a4d4ccacc9a98c36ee1bbe', ('bsc',), 'Pinksale: PinkLock V2（合约名 PinkLock02，106万笔 Lock/Unlock；BSC meme 最高频锁仓设施）',

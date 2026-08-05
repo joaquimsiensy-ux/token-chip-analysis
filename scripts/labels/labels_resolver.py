@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""共享标签解析器（label_lookup CLI、cluster.py、analyze_holdings.py、SOL/HL 管线共用内核）
+"""共享标签解析器（label_lookup CLI、cluster.py、analyze_holdings.py、SOL 管线共用内核）
 v4 2026-07-16（codex 交叉复核第二轮融合：policy 三维拆分 / risk 白名单制 / 新链 / privacy 子表 / serial 层 / degraded_mode）。
 
 纪律（与 references/labels/README.md 对齐）：
@@ -32,13 +32,13 @@ v4 2026-07-16（codex 交叉复核第二轮融合：policy 三维拆分 / risk �
    "当前持仓"不再自动剔）；聚类禁边**保留**（no_merge 不放开——重放全历史时退役桥/轮换
    热钱包在其活跃期的边依然是公共边，放开=聚类污染回归）。
 """
-import csv, datetime, os, re, sys
+import csv, datetime, os, sys
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 DEFAULT_LABELS_DIR = os.path.normpath(os.path.join(_HERE, '..', '..', 'references', 'labels'))
 
 LABELS_SCHEMA_VERSION = 4
-KNOWN_CHAINS = ('eth', 'base', 'bsc', 'arbitrum', 'sol', 'robinhood', 'hyperliquid', 'filecoin')
+KNOWN_CHAINS = ('eth', 'base', 'bsc', 'arbitrum', 'sol', 'robinhood')
 
 # 基础 9 列（v3）+ v4 可选列（旧行空值合法，resolver 对空值走推导）
 BASE_FIELDS = ['address', 'chain', 'name', 'category', 'tier', 'source',
@@ -104,7 +104,7 @@ _BALANCE_VALUES = {'count', 'bucket', 'exclude'}
 
 
 def norm_addr(addr, chain):
-    """规范化地址；不合法返回 None。EVM/HL 一律小写 0x40；SOL base58；FIL f 地址小写。"""
+    """规范化地址；不合法返回 None。EVM 一律小写 0x40；SOL base58。"""
     a = (addr or '').strip().strip('"').strip("'")
     if not a:
         return None
@@ -114,13 +114,6 @@ def norm_addr(addr, chain):
         if not (32 <= len(a) <= 44 and set(a) <= _B58):
             return None
         return a if _b58_bytelen(a) == 32 else None
-    if chain == 'filecoin':
-        a = a.lower()
-        # Filecoin 文本协议：ID、secp/actor、BLS、delegated 分开验证。这里只做严格
-        # 语法门，不声称校验 payload checksum；宽松的“f + 协议号”会吞入任意垃圾。
-        patterns = (r'[ft]0[0-9]+', r'[ft][12][a-z2-7]{39}',
-                    r'[ft]3[a-z2-7]{84}', r'[ft]4[0-9]+f[a-z0-9]+')
-        return a if any(re.fullmatch(p, a) for p in patterns) else None
     a = a.lower()
     return a if (a.startswith('0x') and len(a) == 42
                  and all(c in '0123456789abcdef' for c in a[2:])) else None
@@ -228,8 +221,8 @@ class LabelResolver:
         self.book_rows = len(self.table)
         self.table.update(csv_table)
         self.fallback = {}
-        # HL/Robinhood/BSC/Base 等 EVM 地址体系链：对 eth 表同址联查（仅提示不决策）
-        if evm_fallback and chain not in ('sol', 'eth', 'filecoin') and chain in KNOWN_CHAINS:
+        # Robinhood/BSC/Base/Arbitrum 等 EVM 地址体系链：对 eth 表同址联查（仅提示不决策）
+        if evm_fallback and chain not in ('sol', 'eth') and chain in KNOWN_CHAINS:
             self.fallback = _load_csv(self.labels_dir, 'eth')
         self._hits = {'direct': 0, 'cross': 0}
         # 降级模式：CSV 主库一行都没加载到 → 表缺失/路径错/文件损坏。
