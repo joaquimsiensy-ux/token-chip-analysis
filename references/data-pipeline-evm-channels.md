@@ -12,7 +12,7 @@
 │     → ① HyperSync 官方客户端 v2【首选】（scripts/evm/fetch_hypersync_v2.py，
 │          Rust 自动并发+Parquet 直写，实测 ~1 万条/s = 手写轮询 18 倍）
 │       ② v1 手写轮询【兜底】（fetch_hypersync.py，无 pip 环境/逐字段调试用）
-├─ < 300 万条且 ≤60 天新盘（手头无任何 key 的冷启动）→ bloXroute getLogs 扫块（scan_transfers.py）
+├─ < 300 万条且 ≤60 天新盘（手头无任何 key 的冷启动）→ bloXroute getLogs 分段扫描（scripts/evm/scan_bloxroute_seg.py）
 ├─ HyperSync 平台级故障 / 数仓切源正式替代 → SQD Portal 薄采集器（须原生 v2 receipt）（fetch_sqd_evm.py，免 key，~280 条/s）
 ├─ HyperSync 结果可疑 / 对账 gate 挂了后的独立诊断【仅 ETH 主网，非正式 channel】→ BigQuery goog 官方公共数据集
 │     （fetch_bigquery.py,定向日期查询 ~12GiB/次,免费 1TiB/月;定位=备用+复核,不用于常态采集,详见 §11）
@@ -110,7 +110,7 @@ size 与 SHA-256；全部通过后才原子将旧 done 升为 `hypersync-v2-done
 | SQD Portal 薄采集器（故障预案+正式替代；须 `--receipt`） | 免 key 免注册（portal.sqd.dev 公共端点;注册 gateway key 免费可选更稳） | 公共限流 20 请求/10s,sleep 0.5 保守;无自助付费档（官网 pricing coming soon,2026-07-21 核实） | ~280 条/s（CAKE 21,857 行/79s）——平时不跑,HyperSync 平台级故障或数仓切源准入对照时才上;**对账关卡（余额对账/时间抽查）的代表日双源对照亦用它**（独立索引商,BANANAS31(BSC) 四代表日 67,731 行 (block,tx,li,from,to,value) 六元组与 HyperSync 零差集全等,2026-07-22） | CSV 末行块+1 | fetch_sqd_evm.py | （v3.11.2,2026-07-21） |
 | BigQuery goog 官方公共数据集（诊断复核、**非正式 channel，仅 ETH**） | Google 账号 OAuth 一次(凭据缓存后免弹窗)+GCP sandbox 项目(免绑卡,见 api-keys.md 第 17 节「Google Cloud / BigQuery」) | 免费 1 TiB/月查询量;熔断线 config max_scan_gib(默认 200GiB) | 服务端过滤只回传命中行,13 万行 ~1 分钟;定向日期查询 ~12GiB/次≈月额度可复核 85 次 | 无需(按日期范围幂等重查) | fetch_bigquery.py | （v3.12.1 准入实证,2026-07-21） |
 | Alchemy getAssetTransfers（正式使用须 fresh 输出 + `--receipt`） | 免费 key（dashboard.alchemy.com 国内直连） | 平台级 429 全局限流，高峰期可整夜不可用 | ~46 万条/10 分钟，1000 条/页 | 读 CSV 末行区块置 fromBlock（勿依赖 pageKey） | fetch_alchemy.py | （SIREN，07） |
-| bloXroute getLogs（近期原始分片，**非正式 channel**） | 免注册 | ⚠**并发承受力已变**（2026-07-19 SIREN 实测）：8 并发 curl 线程池整体挂死零产出、requests 3 线程 0.5s 间隔稳定；历史窗口比 07-18 更宽（下界块 100.1M~101.5M ≈55-60 天，二分探测）——**窗口是动态的，用前必二分**。降级为"近期段快扫" | requests 3 线程 万块段 ~50 段/4 分钟（SIREN 396 万条约 30 分钟）；旧 8 并发数字已不可复现 | done-segments 清单 + 失败段补扫 | scan_transfers.py（curl 线程池版本机挂死，改用 requests.Session） | （OPN 07；哈基米 窗口实测 07-18；SIREN 并发/窗口实测 07-19） |
+| bloXroute getLogs（近期原始分片，**非正式 channel**） | 免注册 | ⚠**并发承受力已变**（2026-07-19 SIREN 实测）：8 并发 curl 线程池整体挂死零产出、requests 3 线程 0.5s 间隔稳定；历史窗口比 07-18 更宽（下界块 100.1M~101.5M ≈55-60 天，二分探测）——**窗口是动态的，用前必二分**。降级为"近期段快扫" | requests 3 线程 万块段 ~50 段/4 分钟（SIREN 396 万条约 30 分钟）；旧 8 并发数字已不可复现 | done-segments 清单 + 失败段补扫 | scan_bloxroute_seg.py（requests.Session） | （OPN 07；哈基米 窗口实测 07-18；SIREN 并发/窗口实测 07-19） |
 | Etherscan V2（补充证据、**非正式 channel，仅 ETH 主网**） | 用户免费 key | 免费层限速未成瓶颈 | tokentx 每页 10000 条，7 万余行顺利拉完 | 按返回末行 block 续页 | fetch_etherscan.py | （OPN，07） |
 | envio HyperSync **ETH 主网**（eth.hypersync.xyz） | 同上免费 token | 0.25s 间隔全程仅 11 次 429、全部退避成功 | 139.9 万条 33 分钟单进程拉完（~700 条/s 均速） | 同 BSC 版（fetch_hypersync 断点续传版） | fetch_hypersync.py | （ASTEROID，07-18） |
 
@@ -164,7 +164,9 @@ size 与 SHA-256；全部通过后才原子将旧 done 升为 `hypersync-v2-done
 - pageKey 有有效期，长任务中断后必过期：断点续拉一律读 CSV 末行区块号置 fromBlock 重开游标，容忍少量重复、下游按 tx hash 去重。（SIREN，07）
 - 会遇平台级 429（"global traffic"，与自身配额无关、恢复时间不可控），曾整夜零进展：脚本内置指数退避（最长 20 分钟）+ 外层 while 冷却重启；卡点超 1-2 小时必须并行准备第二通道并用 AskUserQuestion 摆路径，绝不单通道死等。（SIREN，07）
 
-### 3.3 bloXroute getLogs 扫块（scripts/evm/scan_transfers.py）
+### 3.3 bloXroute getLogs 扫块
+
+正式操作入口为 `scripts/evm/scan_bloxroute_seg.py`。旧 `scan_transfers.py` 仅保留历史/诊断用途，不得作为正式或冷启动主线。
 - POST `https://bsc.rpc.blxrbdn.com`，eth_getLogs 按 Transfer topic 分段扫：10000 块/段、8 并发 worker、~2s/请求。（OPN，07）
 - 断点续传：done-segments 清单跳过已完成段；多线程必留失败段（某次 3392 段中 92 段失败），扫完自动列 remaining 并补扫，remaining=0 才算采集完成。（OPN，07）
 - 起始块定位：勿用 eth_getCode 二分找部署块（免费节点历史状态请求被拒，会找错块导致空扫秒退）；改按"块时间戳 >= 已知安全起始日期"二分，起始日期用 GMGN start_holding_at 或跨链铸造日锚定，多扫无害。（OPN/SIREN，07）
@@ -219,7 +221,7 @@ size 与 SHA-256；全部通过后才原子将旧 done 升为 `hypersync-v2-done
 | DexScreener dexId "uniswap" 无版本标注可能是 V3 池 | Swap topic：V3=`0xc42079f9…`、V2=`0xd78ad95f…`；dexId 只写 "uniswap" 不标版本时，先按 log topic 判池版本再解析，按错版本解析买卖归因全错 | （外部 bibi 考古，07） |
 | four.meme 内盘量化 / 克隆快判 | 内盘额度恰 8 亿/80%，dev-buy 同 tx 按 bonding curve 买断内盘凑满即秒毕业、创世后约 8 块（~4s）TokenManager2 注 20% 入 Pancake V2；"创世同秒单钱包拿走 ~80%"=dev buy。`7777` 后缀=另一发射台 CREATE2（与 4444 并列，平台特征非指纹）。meme-api 全路径已 404，正身改看创世 tx HTML 是否触及 TokenManager2/部署器（创建者从合约页 Contract Creator 取，href 单引号，正则 `["']?`） | （外部 TCC/bibi 考古，07） |
 | **PancakeSwap V3 Swap topic ≠ Uniswap V3** | Pancake V3 Swap=`0x19b47279256b2a23a1665c810c8d55a1758940ee09377d4f8d26497a3577dc83`（data 布局 7×32B：amount0,amount1,sqrtPriceX96,liquidity,tick,protocolFeesToken0,protocolFeesToken1），Uniswap V3=`0xc42079f9...`（5 字段）。**按 Uniswap topic 采 Pancake 池 Swap 会静默返回 0 行**（无报错）；反解价格 price=(sqrtPriceX96/2^96)^2 为 token1/token0，SIREN(token0)<WBNB(token1) 时该值=WBNB/SIREN，×BNB 价得 USD。发射期无 CEX K 线时用池 Swap 重建日中位价（SIREN 23.8 万条 Swap 重建 2025-02~03 吸筹成本） | （SIREN，07-19） |
-| **scan_transfers.py 本机 curl 线程池挂死** | 8 worker × subprocess(curl) 组合在本机零产出、无报错、进程活着但不写 CSV；同端点单请求 curl 通、requests 3 线程 0.4-0.5s 间隔稳定 → HTTP 客户端改 `requests.Session`（自写 scan_seg11.py 范式，已入 scripts_local 待收编）；bloXroute 并发降到 3、间隔 ≥0.4s | （SIREN，07-19） |
+| **scan_transfers.py 本机 curl 线程池挂死** | 8 worker × subprocess(curl) 组合在本机零产出、无报错、进程活着但不写 CSV；同端点单请求 curl 通、requests 3 线程 0.4-0.5s 间隔稳定。现役 `scan_bloxroute_seg.py` 使用 `requests.Session`；旧脚本仅作历史/诊断，bloXroute 并发降到 3、间隔 ≥0.4s | （SIREN，07-19） |
 | four.meme 连环盘 / 致敬币指纹 | **连环盘**：同一创建者短时（十几小时）连发 ≥5 个币、每次创世秒买断 ~80% 并在 1 分钟内把大部分转给**同一收币钱包**——TOP1 大户的 tokentxns 里混着大量其他 4444 币即此线索。**致敬币变体**：收币钱包可能是被致敬 KOL 本人（印证行为=向官方慈善多签捐 1% + 向代币合约自转等效销毁），其约束只有公开声誉（软约束），报告按"收币实体"陈述、身份措辞按证据分级。另：GT 日线只留 ~180 天导致老币毕业价缺失时，可由 four.meme 曲线参数（saleAmount/raisedAmount）反解毕业价 | （外部 TCC/人生K线 考古，07） |
 | **币安 Alpha"场内↔链上结算引擎桥"识别** | Alpha 在架 BSC 标的会出现一个超大吞吐地址（AKE 案 0x6aba…1b90，累计吞吐 1218 亿枚=1.2 倍总供应、净持≈0）：对手方全是 Alpha Router / 币安 Web3 入口(0xb300000b72deaeb607a12d5f54773d1c19c7028d，vanity 前缀) / 公共聚合路由 / 各池子——它是**币安场内买卖↔链上 DEX 的双向对冲执行器**（把场内压力实时传导到链上池价），归 CEX 基础设施桶（no_merge/exclude），**绝不能当大户或庄**。识别=高吞吐+净持≈0+对手方全为交易所/路由/池子。Alpha 标的标配排查件 | （AKE，07-19） |
 | **CEX 归集批次节奏≠行为指纹（对抗复核 REFUTED 源）** | "两地址同分钟末笔充值 Gate=同一操作者"被硬证据推翻：交易所归集是**批次节奏**，同一分钟窗常有数十个互不相关用户地址同批入账（AKE 案 7-18 17:40-49 共 71 个不同地址同批充 Gate1）。凡"充值时间对齐"类指纹，**必须先拉同窗口全量充值做对照组**——同窗地址数 >10 即该"同分钟"零区分力。与 §6 同时性共现家族②档（同秒等额矩阵）同理（先造对照组测误报率） | （AKE 复核，07-19） |

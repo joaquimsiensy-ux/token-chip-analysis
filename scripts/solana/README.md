@@ -23,7 +23,6 @@ MINT 来源约定：脚本读 `MINT` 环境变量或工作目录 `config.json` �
 
 1. **解锁款穿透追踪器 `trace_token_flow.py`**（通用）— 给定地址集拉时间窗 SPL 转账建图谱、共用中转检测、终点二分（CEX/囤币）。trace_wallet.py 已覆盖单钱包场景，多址图谱化未做。
 2. `market_snapshot.py` — CoinGecko 日线 + Coinglass OI/费率一键快照。
-3. `cex_label_book.json` — Solana CEX 钱包标签库（手工累积）。
 
 ## 验收标准
 

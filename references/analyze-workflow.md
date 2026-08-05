@@ -24,12 +24,11 @@
 
 | 标的形态 | 读哪份 pipeline / 跑哪套脚本 |
 |---|---|
-| 0x 地址，ETH 主网 | `data-pipeline-evm.md`（Etherscan 免费 key 路线）＋ `scripts/evm/` |
-| 0x 地址，BSC/Base 等 | 同上（预估转账量 <300 万条走扫块；更大走 HyperSync/Alchemy，先看通道决策树） |
+| 0x 地址，Ethereum/BSC/Base/Arbitrum | 进入 `data-pipeline-evm.md` 通道决策树＋ `scripts/evm/` |
 | base58 mint | `data-pipeline-solana.md`（双 RPC 按方法路由见其分册 §0a） |
 | 0x 地址，Robinhood Chain（chainid 4663） | `data-pipeline-robinhood.md` ＋ `scripts/robinhood/` |
 | 跨链部署（OFT/CCIP 等） | 先过多链硬关卡选定范围 → 各链按其 pipeline 采集＋跨链 mint/burn 配平；桥接分支链范式见 playbook §6a |
-| 全新链 | 新链 SOP：先实测数据面并实现采集 receipt、四查、标签 resolver 与 G8 chain 适配；这些正式门禁未齐前只能交付明确降级的探索结果，不得编译正式 analysis。适配完成后再按 A6 沉淀 data-pipeline-<chain>.md |
+| 全新链 | 新链 SOP：先实测数据面并实现采集 receipt、四查、标签 resolver 与 G8 chain 适配；这些正式门禁未齐前只能交付明确降级的探索结果，不得编译正式 analysis |
 
 **通道实测探路**：写任何采集脚本前，先用 1–2 分钟小请求逐个实测候选数据源（可用性/返回结构/分页/上限/限速）；拿到任何新 key 先做 1 分钟能力探测再承诺方案；禁止基于文档想象设计方案。
 

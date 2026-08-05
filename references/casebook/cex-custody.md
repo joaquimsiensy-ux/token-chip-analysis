@@ -38,6 +38,6 @@
 
 - **触发现象**：Solana 大批 off-curve 静置仓（各自持仓相近/按美元面额开票的灌仓额、先小额测试笔再灌真仓），初看像"一批独立买家的冷储"。
 - **禁止推断**：把 off-curve 仓当普通个人钱包；把"互不相同的落仓地址"直接当"互不相同的独立第三方"。
-- **必做区分检验**：①off-curve→查 Squads 多签成员（getMultipleAccounts+borsh 手解，PYTHIA `redo/verify_ms_members.py` 可复用；vault=ms 的 index0 派生可反推）；②**共享托管密钥检验**：多个多签若共享同一成员密钥＝同一中介组织的交割网（PYTHIA 15 个 multisig 全部 2-of-2 且共享 2FLpNeST）；③灌仓开票模式（美元整档面额、测试笔）＝escrow 场外交割指纹；④退回通道核查（PYTHIA 11 仓原数退回上游 ATA＝"独立买家"半崩）。
+- **必做区分检验**：①off-curve→用 `scripts/solana/squads_members.py` 查 Squads 多签成员（getMultipleAccounts+borsh 手解；vault=ms 的 index0 派生可反推）；②**共享托管密钥检验**：多个多签若共享同一成员密钥＝同一中介组织的交割网（PYTHIA 15 个 multisig 全部 2-of-2 且共享 2FLpNeST）；③灌仓开票模式（美元整档面额、测试笔）＝escrow 场外交割指纹；④退回通道核查（PYTHIA 11 仓原数退回上游 ATA＝"独立买家"半崩）。
 - **证据不足时**：写"多签托管交割结构，最终受益人不可确证"；禁止判"独立散户买盘"或"个人冷储"。
 - **权威与出处**：entity_identity_gate PDA_UNRESOLVED flag；data-pipeline-solana-scan §2 托管类型判别（off-curve/Squads/PDA 归属）。翻案：PYTHIA 2026-07-29 终裁（"集团空壳落仓 17%"→Squads v4 escrow 交割仓 16.33%）。
