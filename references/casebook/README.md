@@ -26,7 +26,7 @@
 
 ## 收录纪律
 
-- 入库门槛：翻案经用户终裁，或复盘经 candidate 流程确认。新判例默认同时登记为 evals 候选题（见 retrospective.md 分流决策树）。
+- 入库门槛：翻案经用户终裁，或复盘经 candidate 流程确认。新判例默认同时登记至 `archive/evals/README.md` 候选题单（见 retrospective.md 分流决策树）。
 - 单册上限 25KB 或 25 条，超限先合并同族模式，不拆新册。
 - 与 playbook/pipeline 重叠：判例只写指纹与区分检验，正确判法一行指向权威位置，不双写。
 

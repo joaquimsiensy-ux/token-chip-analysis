@@ -13,7 +13,7 @@ import os, re, sys
 
 ROOT = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..'))
 ACTIVE = os.path.join(ROOT, 'CHANGELOG.md')
-ARCHIVE = os.path.join(ROOT, 'CHANGELOG-archive.md')
+ARCHIVE = os.path.join(ROOT, 'archive', 'CHANGELOG-archive.md')
 
 # 历史事故白名单：已发生且按"不改写历史"原则保留原号的重复（新增撞号不豁免）
 KNOWN_DUP_OK = {('2.21.0', '2026-07-17'), ('3.36.0', '2026-07-26')}

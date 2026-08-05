@@ -9,7 +9,7 @@
 复盘写入后必跑（retrospective 步骤 3）；整编触发条件之一=本脚本抓出漂移 ≥3 处。
 
 用法：python3 scripts/tests/docs_lint.py [--all]    退出码：0=PASS；1=FAIL。
-  --all＝全量模式（v6.3.1）：额外纳入 commands-staging/*.md 与 evals/**/*.md——
+  --all＝全量模式（v6.3.1）：额外纳入 commands-staging/*.md 与 archive/evals/**/*.md——
   此前 44/66 文档的覆盖盲区（"三查→四查""SKILL.md 阶段 N"类漂移在这两处存活过）。
 """
 import ast, glob, os, re, sys
@@ -34,7 +34,7 @@ def md_files(all_mode=False):
     out += sorted(glob.glob(os.path.join(ROOT, 'scripts', '**', 'README.md'), recursive=True))
     if all_mode:
         out += sorted(glob.glob(os.path.join(ROOT, 'commands-staging', '*.md')))
-        out += sorted(glob.glob(os.path.join(ROOT, 'evals', '**', '*.md'), recursive=True))
+        out += sorted(glob.glob(os.path.join(ROOT, 'archive', 'evals', '**', '*.md'), recursive=True))
     return [p for p in out if os.path.exists(p)]
 
 def resolve(ref, src_path):
@@ -76,7 +76,7 @@ def main(all_mode=False):
                 continue
             # 1) 断链。CHANGELOG 历史条目引用当时存在的文件是历史记录，不是死链；
             #    每轮功能删除都会让旧条目变成“断链”，为守卫改史不可持续（6.17/6.18
-            #    两轮已实证）。CHANGELOG-archive 本就不在 md_files 扫描集；此处豁免
+            #    两轮已实证）。archive/CHANGELOG-archive.md 本就不在 md_files 扫描集；此处豁免
             #    CHANGELOG.md，使两份 CHANGELOG 口径一致，并与守卫 11 的禁词豁免对齐。
             #    只跳过断链检查，下面的粗体配对等其他检查仍照常执行。
             if rel != 'CHANGELOG.md':
@@ -89,6 +89,29 @@ def main(all_mode=False):
             # 2) 粗体配对（该行 ** 计数应为偶数）
             if line.count('**') % 2 == 1:
                 fails.append(f'残缺粗体 {rel}:{i}: {line.strip()[:60]}')
+
+    # 2b) 考古资料不得重新进入执行上下文。只允许维护记录、考古区自身、
+    #    明示的存留审计/判例/复盘文档，以及 SKILL.md 的单行禁读边界声明；
+    #    后者只声明不可读取，不是把 archive 资产路由回执行会话。
+    archive_guard_docs = [os.path.join(ROOT, 'SKILL.md'), os.path.join(ROOT, 'CHANGELOG.md')]
+    archive_guard_docs += sorted(glob.glob(os.path.join(ROOT, 'references', '**', '*.md'), recursive=True))
+    archive_guard_docs += sorted(glob.glob(os.path.join(ROOT, 'archive', '**', '*.md'), recursive=True))
+    archive_ref_exempt = {'CHANGELOG.md', 'references/attic.md', 'references/retrospective.md'}
+    skill_archive_boundary = ('archive/ = 考古区（旧 CHANGELOG 归档/评测题库/冲突审计历史），'
+                              '执行会话禁读。')
+    for path in archive_guard_docs:
+        rel = os.path.relpath(path, ROOT)
+        if (rel in archive_ref_exempt or rel.startswith(f'archive{os.sep}')
+                or rel.startswith(f'references{os.sep}casebook{os.sep}')):
+            continue
+        for i, line in enumerate(open(path, encoding='utf-8'), 1):
+            if 'archive/' not in line:
+                continue
+            if rel == 'SKILL.md' and line.strip() == skill_archive_boundary:
+                continue
+            fails.append(
+                f'考古区越界引用 {rel}:{i}: 现役执行文档不得引用 archive/，防止历史资产回流执行上下文')
+
     # 3) SKILL.md 深入阅读清单齐全性
     skill = open(skill_path, encoding='utf-8').read()
     for name in re.findall(r'^- `([\w/.-]+\.md)`', skill, re.M):
@@ -275,7 +298,7 @@ def main(all_mode=False):
         if REMOVED_FEATURE_TERMS.search(retained_term):
             fails.append(f'已删功能禁词误伤保留概念: {retained_term}')
     active_docs = [p for p in md_files(all_mode=True)
-                   if os.path.basename(p) not in {'CHANGELOG.md', 'CHANGELOG-archive.md'}
+                   if os.path.relpath(p, ROOT) not in {'CHANGELOG.md', 'archive/CHANGELOG-archive.md'}
                    and os.path.relpath(p, ROOT) != 'references/attic.md'
                    and not os.path.relpath(p, ROOT).startswith('references/casebook/')]
     for path in active_docs:

@@ -6,7 +6,7 @@
 红线：条目只记工具性知识（数据源/坑/方法/脚本），禁止记录任何代币的分析结论。
 每条迭代条目附成本指标（轮次数/Bash 调用数/交付用时）+ 质量指标（初稿关键结论数/复核判定分布/漏检实体数/传播级数字错误数，v3.0 起，见 retrospective 步骤 1）。
 **写入前必跑 `python3 scripts/tests/changelog_lint.py`**（防撞号/倒排——两者都实际发生过）。
-本文件只保留最近 ~10 版（整编时滚动）；更早的完整迭代史在 `CHANGELOG-archive.md`，考古规则来源先 grep 该文件。
+本文件只保留最近 ~10 版（整编时滚动）；更早的完整迭代史在 `archive/CHANGELOG-archive.md`，考古规则来源先 grep 该文件。
 
 已知版本事故存档（保留原貌，不改写历史）：
 - **2.21.0 重复 ×2**（2026-07-17 两个并行会话撞号：「标签库 v4.1」与「BEGGAR 复盘」各自 +1 —— git 化前无并发防护的实证；两条均保留原号，引用时注意区分）
@@ -15,6 +15,7 @@
 
 ## 版本索引（活跃窗口，新在上；每版一行，详情见下方对应条目）
 
+- **6.22.0** 2026-08-05 archive/ 考古区分层（瘦身第 3 步）：旧 CHANGELOG、评测题库与已闭环冲突审计快照退出执行路由
 - **6.21.0** 2026-08-05 数据管线两册案例史外移与重复合并（瘦身第 2 步）
 - **6.20.1** 2026-08-05 修 5 处阻断级文档漂移（A4 前禁写报告冲突/easy 残留/惯犯回灌 docstring/批量预采集残留/旧 Par 路线历史降级）＋docs_lint 增中文禁词与 Python module docstring 扫描
 - **6.20.0** 2026-08-05 持仓分布形态硬闸：五桶分账、双分箱统计、头部集中度、小样本模式、A4 回流轮次链与 A5 报告封口全链落地
@@ -55,7 +56,31 @@
 - **4.2.0** 2026-07-30 TROLL(Solana) 完整版复盘 + PYTHIA 复盘补遗：托管判定反向闸（0.002246=建 ATA 物理常数）+ SQD 同 slot 同额去重丢边缺陷 + pump.fun 长内盘期签名史双索引重建法 + 揭盲式独立重做转正（两案）+ Squads 解析脚本收编 + scan 扫描器 auto 判程序
 - **4.1.0** 2026-07-30 PYTHIA 双报告交叉核实复盘：实体身份防复发三闸（label_lookup 并源 address-book / entity_identity_gate+G8 编译门 / 复核 prompt 翻案四问固化）+ 复盘元规则（身份类教训必须以代码收尾）
 - **4.0.0** 2026-07-28 大整编（用户点名）：3.0→3.41 四十余版增量迭代的结构清理——路由索引补齐 9 节、结构错位归位 3 处、消重立权威源制 6 组、CHANGELOG 重整归档 29 条；只减不加，规则语义未动
-- 更早版本（3.41.0 及以前）→ `CHANGELOG-archive.md`
+- 更早版本（3.41.0 及以前）→ `archive/CHANGELOG-archive.md`
+
+## [6.22.0] - 2026-08-05 — archive/ 考古区分层（瘦身第 3 步）
+
+以仓库内 `archive/` 分区作为 S-02「拆两层包」的替代方案：历史资产仍随仓库保存、可维护和恢复，但不再参与执行路由；`archive/README.md` 明确执行会话与现役 references 文档禁读禁引用，资产恢复回现役必须留下 CHANGELOG 记录。判据、阈值与 fail-closed 语义零变更，评测题目内容零改动。
+
+三组资产移动清单（旧路径 → 新路径）：
+- `CHANGELOG-archive.md` → `archive/CHANGELOG-archive.md`
+- `evals/` → `archive/evals/`
+- `scripts/labels/sources/serial_conflicts_2026-07-22.json` → `archive/serial-conflicts/serial_conflicts_2026-07-22.json`
+- `scripts/labels/sources/serial_conflicts_2026-07-22.md` → `archive/serial-conflicts/serial_conflicts_2026-07-22.md`
+- `scripts/labels/sources/serial_conflicts_2026-07-25.json` → `archive/serial-conflicts/serial_conflicts_2026-07-25.json`
+- `scripts/labels/sources/serial_conflicts_2026-07-25.md` → `archive/serial-conflicts/serial_conflicts_2026-07-25.md`
+- `scripts/labels/sources/serial_conflicts_2026-07-26.json` → `archive/serial-conflicts/serial_conflicts_2026-07-26.json`
+- `scripts/labels/sources/serial_conflicts_2026-07-26.md` → `archive/serial-conflicts/serial_conflicts_2026-07-26.md`
+- `scripts/labels/sources/serial_conflicts_2026-07-28.json` → `archive/serial-conflicts/serial_conflicts_2026-07-28.json`
+- `scripts/labels/sources/serial_conflicts_2026-07-28.md` → `archive/serial-conflicts/serial_conflicts_2026-07-28.md`
+- `scripts/labels/sources/serial_conflicts_2026-07-29.json` → `archive/serial-conflicts/serial_conflicts_2026-07-29.json`
+- `scripts/labels/sources/serial_conflicts_2026-07-29.md` → `archive/serial-conflicts/serial_conflicts_2026-07-29.md`
+
+活引用同步：`CHANGELOG.md` 头部考古指针、`references/retrospective.md` 的 CHANGELOG 归档与题单维护路径、`references/casebook/README.md` 的候选题单路径、`scripts/tests/changelog_lint.py` 的 ARCHIVE 常量、`scripts/tests/docs_lint.py` 的全量评测扫描路径与归档豁免路径均指向新位置；`SKILL.md` 路由层新增考古区禁读边界。`scripts/labels/accumulate_offenders.py` 的活输出路径与 `references/labels/README.md` 规则保持不动，新冲突快照继续写入 `scripts/labels/sources/`。
+
+`docs_lint.py` 新增考古区防回流守卫：现役 `SKILL.md` 与 `references/` 文档出现 `archive/` 路由引用即失败；仅维护记录、archive 自身、`references/attic.md`、`references/casebook/`、`references/retrospective.md` 豁免，另只允许 `SKILL.md` 的单行“执行会话禁读”边界声明，防止未来把考古资料重新拉入执行上下文。
+
+6.21.0 遗留裁决闭环:methods 的 B 类 38 行判例,用户 2026-08-05 裁决放弃迁移 casebook、原地保留(S 册容量上限+必读到必读搬家净省有限)
 
 ## [6.21.0] - 2026-08-05 — 数据管线两册案例史外移与重复合并（瘦身第 2 步）
 
