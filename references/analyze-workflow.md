@@ -1,6 +1,6 @@
 # 完整版分析手册（/token-analyze，A0–A6）
 
-> v6.0.0 承接旧 SKILL.md 全部阶段细节（规则语义零变更）。本手册是各阶段执行细节的唯一权威源；判定类失败模式在 `casebook/`（只指不抄）；上下文与外包纪律在 `context-discipline.md`；链专属操作在各 data-pipeline 文档。
+> v6.0.0 承接旧 SKILL.md 全部阶段细节（规则语义零变更）。本手册是各阶段执行细节的唯一权威源；判定类失败模式在 `casebook/`（只指不抄）；上下文与外包纪律在 `context-discipline.md`；按需研究与异构复核在 `research-workflows.md`；链专属操作在各 data-pipeline 文档。
 
 ## 通用执行纪律（全阶段生效）
 

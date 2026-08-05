@@ -18,7 +18,7 @@ description: >-
   只查价格/K线/热榜/新币列表不要用本 skill。
 ---
 
-<!-- skill-version-source: VERSION; skill-version: 6.28.0 -->
+<!-- skill-version-source: VERSION; skill-version: 6.29.0 -->
 
 # 代币筹码分析（Token Chip Analysis）
 
@@ -67,13 +67,18 @@ description: >-
 
 ## 深入阅读（references/）
 
-- 流程：`analyze-workflow.md`、`split-run.md`、`retrospective.md`、`context-discipline.md`。
-- 方法：`analysis-playbook.md`、`playbook-supply-recon.md`、`playbook-entity-cluster-methods.md`、`playbook-entity-cluster-tiering.md`、`playbook-entity-cluster-cost.md`、`playbook-state-anomaly.md`、`playbook-evidence-wording.md`。
-- 门禁/交付：`report-template.md`、`scan-schemas.md`、`economic-control-accounting.md`、`lp-fee-accounting.md`、`independent-audit-protocol.md`、`casebook/README.md`。
-- EVM：`data-pipeline-evm.md`、`data-pipeline-evm-channels.md`、`data-pipeline-evm-sources.md`、`data-pipeline-evm-recon.md`。
-- Solana：`data-pipeline-solana.md`、`data-pipeline-solana-scan.md`、`data-pipeline-solana-capture.md`。
-- Robinhood：`data-pipeline-robinhood.md`、`data-pipeline-robinhood-channels.md`、`data-pipeline-robinhood-traps.md`、`data-pipeline-robinhood-methods.md`。
-- 标签/环境：`address-book.md`、`labels/README.md`、`environment.md`。
-- 按需：`monitoring-package.md`、`research-workflows.md`；`attic.md` 仅存留审计/整编会话可读，分析会话禁读。
+| 场景 | 只读入口；分册由入口继续路由 |
+|---|---|
+| 全流程 | `analyze-workflow.md` |
+| 分段执行 | `split-run.md` |
+| 既有报告复核 | `independent-audit-protocol.md` |
+| EVM / Solana / Robinhood 链路由 | 当链主册 `data-pipeline-evm.md` / `data-pipeline-solana.md` / `data-pipeline-robinhood.md` |
+| A3 方法 | `analysis-playbook.md` |
+| A5 交付 | `report-template.md` |
+| A6 复盘 | `retrospective.md` |
+| 标签 | `labels/README.md` |
+| 环境 | `environment.md` |
+
+`attic.md` 仅存留审计/整编会话可读，分析会话禁读。
 
 archive/ = 考古区（旧 CHANGELOG 归档/评测题库/冲突审计历史），执行会话禁读。
