@@ -1,88 +1,75 @@
 #!/usr/bin/env python3
-"""manual 层双份真源一致性校验（v4 2026-07-17，README「已知局限」欠账清偿）
+"""校验 address-book.md 唯一真源与运行时 manual_labels.csv 完全同步。"""
+import csv
+import os
+import re
+import subprocess
+import sys
 
-背景：references/address-book.md（人读文档）与 gen_manual_from_addressbook.py（硬编码）
-是两份手抄——历史上要求"改地址簿必须同步改脚本"，全凭自觉。本脚本给它装上牙齿：
-双向 diff，白名单外的不一致 = exit 1（build_labels.py 末尾强制调用）。
-
-方向 A  地址簿有、脚本没有 → 漏同步（新核验条目没入库）
-方向 B  脚本有、地址簿没有 → 幽灵条目（脚本手抄漂移，或地址簿删了脚本没删）
-
-白名单（ALLOW_*）：地址簿里"性质说明型"条目（7702 delegate 实现、截断示意地址等）
-本来就不入标签库；脚本里的协议常识地址（burn/系统程序）不要求地址簿收录。
-"""
-import os, re, sys
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 BOOK = os.path.normpath(os.path.join(_HERE, '..', '..', 'references', 'address-book.md'))
 GEN = os.path.join(_HERE, 'gen_manual_from_addressbook.py')
+RUNTIME = os.path.join(_HERE, 'sources', 'manual_labels.csv')
 
 EVM_RE = re.compile(r'0x[0-9a-fA-F]{40}(?![0-9a-fA-F])')
 B58_RE = re.compile(r'(?<![1-9A-HJ-NP-Za-km-z])[1-9A-HJ-NP-Za-km-z]{32,44}(?![1-9A-HJ-NP-Za-km-z])')
 
-# 地址簿有但按设计不入标签库的条目（每条必须带原因；新增前先想清楚是不是该入库）
+# 地址簿有但按设计不入运行时标签的条目（每条独立说明，禁止集合式豁免）。
 ALLOW_BOOK_ONLY = {
-    # EIP-7702 delegate 实现：海量用户共用的"实现指纹"，语义是判别知识不是地址标签
-    '0xcc0c946eecf01a4bc76bc333ea74ceb04756f17b',
-    '0x63c0c19a282a1b52b07dd5a65b58948a07dae32b',
-    '0xe6cae83bde06e4c305530e199d7217f42808555b',
-    # 金主/待溯源实例（单次分析标的信息，纪律②不入库）
-    '0x469cb5da5f46d9c16d9825e41d831377e167478f',
+    # BN111 的 ProgramData 账户：只用于绑定可升级程序实现，不是可查询的实体/设施标签。
+    'Df3ssK1ni8GzEoFuQyn4cQfC5mGZykebTERTT6EGQcFc',
+    # BN111 的 upgrade_authority：仅作当次程序治理溯源指纹，地址簿未把它定性为公共实体。
+    'FYtWDy1MfASNVWsqwC2CSu4xRbVcrd8RSC8Ts8qYJawB',
 }
-# 脚本有但地址簿不逐条罗列的（协议常识/批量层）
-ALLOW_GEN_ONLY = {
-    '0x0000000000000000000000000000000000000000', '0x000000000000000000000000000000000000dead',
-    '0x0000000000000000000000000000000000000001', '11111111111111111111111111111111',
-    '1nc1nerator11111111111111111111111111111111',
-    # KOL 公开地址（来源是推特考证不是地址簿；evidence 已带出处）
-    'HUpPyLU8KWisCAr3mzWy2FKT6uuxQ2qGgJQxyTpDoes5', 'G1pRtSyKuWSjTqRDcazzKBDzqEF96i1xSURpiXj3yFcc',
-    'Ay9wnuZCRTceZJuRpGZnuwYZuWdsviM4cMiCwFoSQiPH', '8deJ9xeUvXSJwicYptA9mHsU2rN2pDx37KWzkDkEXhU6',
-    # locker 快速档（bscscan/etherscan 亲验补录，地址簿只记纪律不逐条罗列）
-    '0x407993575c91ce7643a4d4ccacc9a98c36ee1bbe', '0xe2fe530c047f2d85298b07d9333c05737f1435fb',
-}
-# 已知非地址的 base58 误抓词（markdown 里的长驼峰词）
+ALLOW_GEN_ONLY = set()  # 唯一真源建立后，运行时禁止出现地址簿之外的地址。
 B58_STOPWORDS = {'NonfungiblePositionManager', 'TransparentUpgradeableProxy',
                  'AdminUpgradeabilityProxy', 'StatelessDeleGator'}
 
 
 def extract(text):
-    addrs = set()
-    for m in EVM_RE.findall(text):
-        addrs.add(m.lower())
-    # 先把 EVM 地址整体抹掉再提 base58，防止 0x 后的 hex 子串被误抓成 base58
+    addrs = {match.lower() for match in EVM_RE.findall(text)}
     text_wo_evm = EVM_RE.sub(' ', text)
-    for m in B58_RE.findall(text_wo_evm):
-        if m in B58_STOPWORDS:
-            continue
-        # base58 地址要求含数字的高熵形态，纯字母长词（驼峰名）跳过
-        if any(c.isdigit() for c in m):
-            addrs.add(m)
+    for match in B58_RE.findall(text_wo_evm):
+        if match not in B58_STOPWORDS and any(char.isdigit() for char in match):
+            addrs.add(match)
     return addrs
 
 
+def runtime_addresses():
+    with open(RUNTIME, newline='', encoding='utf-8') as f:
+        return {((row.get('address') or '').lower()
+                 if (row.get('address') or '').startswith('0x') else (row.get('address') or ''))
+                for row in csv.DictReader(f)}
+
+
 def main():
-    book_addrs = extract(open(BOOK).read())
-    gen_addrs = extract(open(GEN).read())
+    generated = subprocess.run([sys.executable, GEN, '--check'], capture_output=True, text=True)
+    book_addrs = extract(open(BOOK, encoding='utf-8').read())
+    csv_addrs = runtime_addresses()
+    allow_book = {item.lower() if item.startswith('0x') else item for item in ALLOW_BOOK_ONLY}
+    allow_gen = {item.lower() if item.startswith('0x') else item for item in ALLOW_GEN_ONLY}
+    only_book = sorted(book_addrs - csv_addrs - allow_book)
+    only_gen = sorted(csv_addrs - book_addrs - allow_gen)
 
-    only_book = sorted(a for a in book_addrs - gen_addrs
-                       if a not in {x.lower() for x in ALLOW_BOOK_ONLY} and a not in ALLOW_BOOK_ONLY)
-    only_gen = sorted(a for a in gen_addrs - book_addrs
-                      if a not in {x.lower() for x in ALLOW_GEN_ONLY} and a not in ALLOW_GEN_ONLY)
-
-    print(f'[check_manual_sync] 地址簿 {len(book_addrs)} 址 | 脚本 {len(gen_addrs)} 址 | '
+    print(f'[check_manual_sync] 地址簿 {len(book_addrs)} 址 | 运行时 {len(csv_addrs)} 址 | '
           f'漏同步 {len(only_book)} | 幽灵 {len(only_gen)}')
+    if generated.returncode:
+        print('  生成物逐行校验失败：')
+        print((generated.stdout + generated.stderr).strip())
     if only_book:
-        print('  方向A 地址簿有、gen_manual 没有（漏同步——新核验条目未入库，或加 ALLOW_BOOK_ONLY 并写原因）:')
-        for a in only_book:
-            print(f'    - {a}')
+        print('  方向A 地址簿有、运行时没有（漏同步——入规范区，或逐址加 ALLOW_BOOK_ONLY 原因）：')
+        for address in only_book:
+            print(f'    - {address}')
     if only_gen:
-        print('  方向B gen_manual 有、地址簿没有（幽灵条目——手抄漂移，或加 ALLOW_GEN_ONLY 并写原因）:')
-        for a in only_gen:
-            print(f'    - {a}')
-    if only_book or only_gen:
-        sys.exit(1)
+        print('  方向B 运行时有、地址簿没有（幽灵条目——唯一真源违规）：')
+        for address in only_gen:
+            print(f'    - {address}')
+    if generated.returncode or only_book or only_gen:
+        return 1
     print('  一致 ✓')
+    return 0
 
 
 if __name__ == '__main__':
-    main()
+    sys.exit(main())

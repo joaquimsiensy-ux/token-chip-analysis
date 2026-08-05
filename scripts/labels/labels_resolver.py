@@ -140,8 +140,9 @@ def _load_csv(labels_dir, chain):
 # 血案背景：PYTHIA 案币安 Alpha 库存仓 9ZPsR… 早已录入 address-book.md 并点名 PYTHIA
 # 第一大持仓，但 label_lookup 只读 CSV 库 → 零命中 → 该仓被误判"小庄#1 私人庄家"。
 # 同族错误第三次复发（IQ 案 Upbit 托管判大庄、LPT 案 Bitvavo 质押判巨鲸）。
-# 根治：address-book.md 永久并入解析器数据源——任何一次标签查询自动覆盖手工层，
-# "跑过 label_lookup"从此等价于"查过地址簿"。CSV 主库同址覆盖本层（主库信息更全）。
+# 运行时只读由 address-book.md 规范区确定性生成的 sources/manual_labels.csv；
+# gen_manual_from_addressbook.py 负责生成，check_manual_sync.py 逐行及双向对账并进入全量 suite。
+# CSV 主库同址覆盖本手工层（主库信息更全）。
 _BOOK_CATEGORY_RULES = (
     ('做市商', 'market-maker', 'identity'),
     ('锁仓', 'locker', 'identity'),
