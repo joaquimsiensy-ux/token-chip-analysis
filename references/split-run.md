@@ -25,7 +25,7 @@
 
 ### 1.1 开工探针（capability preflight，全部复用现有件；探针不过不启动全量采集）
 
-`scripts/tests/env_check.py`（依赖）＋磁盘余量（`scripts/run_guarded.py` 既有阈值）＋关键端点连通（`scripts/probe_keys.py` 单次模式）＋工作目录写权限＋detach 后台冒烟。
+`scripts/tests/env_check.py`（依赖）＋磁盘余量（`scripts/run_guarded.py` 既有阈值）＋工作目录写权限＋detach 后台冒烟。
 
 ### 1.2 双轨互斥锁
 
