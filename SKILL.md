@@ -3,7 +3,7 @@ name: token-chip-analysis
 description: 对已具备受支持数据管线的链上代币做机构级庄家行为分析与既有报告独立复核——在声明的数据范围内采集重放、识别庄级实体并划分标签（项目方/大庄/小庄/离场庄/刷量地址）、重建阵营持仓演变、绘制重点实体流转路径、核算 V3/V4 流动性与可证 LP 权益，并交付经对抗复核的自包含 HTML。正式深度管线覆盖 Ethereum/BSC/Base/Arbitrum/Robinhood EVM、Solana；全新链须先补齐采集、对账与身份门禁适配器才可正式发布。当用户问"某代币的筹码分析/筹码结构/庄家行为分析"、"复核/审计已有筹码报告"、"有几个庄/庄家什么类型"、"庄家/项目方/做市商在吸筹还是砸盘"、"有没有关联地址/老鼠仓/单一实体控盘"、"庄家是不是跑了/弃盘了"、"看看某代币的链上持仓/大户动向"、"庄家做 LP 赚了多少/LP 手续费怎么计算"，或提到 holder analysis、鲸鱼追踪、代币尽调时使用。与 gmgn-token 的区别：gmgn-token 是快速单项查询；本 skill 是数小时深度分析工程。只查价格/K线/热榜/新币列表不要用本 skill。
 ---
 
-<!-- skill-version-source: VERSION; skill-version: 6.19.0 -->
+<!-- skill-version-source: VERSION; skill-version: 6.20.0 -->
 
 # 代币筹码分析（Token Chip Analysis）
 
