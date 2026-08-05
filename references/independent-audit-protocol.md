@@ -4,6 +4,10 @@
 
 > **作用域与入口**：本协议仅适用于“复核既有报告”任务。`audit_release_gate.py` 的底层 validator 由两条流程共用，但入口强制分开：全新分析=`--profile new-analysis`（共享三账、对账、分类、静置仓与对抗复核资产），净室复核=`--profile independent-audit`（共享资产＋`audit_input_manifest.json`、`claim_registry.json`、`reproduce_audit.py`）。`build_html --mode analysis-new|analysis-audit` 与 `a4_seal.workflow_type` 机器匹配；不得拿净室专用资产要求卡死全新分析，也不得把净室复核降成共享 profile。
 
+## 本册路由
+
+- §1–§3 净室、冻结与正确性；§4–§6 三账/CEX/历史图；§7–§8 命题与否决；§9 交付资产。
+
 ## 1. 净室原则
 
 1. 开工时只把原报告拆成 `claim_registry.json` 的待审命题，不得把其实体表、阵营桶、标签、峰值或结论当作计算输入。

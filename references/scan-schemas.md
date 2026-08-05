@@ -4,6 +4,10 @@
 适用脚本：`wave_scan.py`（wave-scan/v3）、`flow_anomaly_scan.py`（flow-anomaly/v2）、
 `entity_source_trace.py`（provenance-ledger/v2）、裁决台账（candidate-adjudications/v1，−2 判断层手工产出、validator 机器校验）。
 
+## 本册路由
+
+- §0 公共纪律；§1 wave-scan；§2 flow-anomaly；§3 裁决台账；§4 provenance-ledger；§5 PYTHIA fixture。
+
 ## 0. 四条公共纪律
 
 1. **稳定 ID＝内容派生**：候选 ID 由其核心内容（成员集/面额/地址）哈希派生——内容变则 ID 变，旧裁决按 ID 对不上自动失效。
