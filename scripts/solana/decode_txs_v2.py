@@ -3,23 +3,27 @@
 
 来源:Solana 采集加速工程 2026-07-21(@CX 交叉复核方案 2"三板斧")。v1(decode_txs.py)保留。
 相对 v1:
-  1. getTransaction 改 JSON-RPC batch(默认 20 笔/POST)——单笔串行 0.75s 间隔≈1.3 笔/s,
+  1. getTransaction 改 JSON-RPC batch(公共 mainnet-beta 默认 8 笔/POST)——单笔串行 0.75s 间隔≈1.3 笔/s,
      批量后同样限速礼貌下 10-20 倍
   2. 跨地址共享 sig 结果缓存(--cache-dir,按 sig 前 2 字符分 256 片)——庄家关联地址间
      重复交易极多,第二个地址起大量命中零请求
-  3. --rpc 可换端点:默认 api.mainnet-beta(须 --proxy);Helius key 就位后
-     --rpc https://mainnet.helius-rpc.com/?api-key=<key> 免代理且 50 RPS
+  3. --rpc 可换端点:默认 api.mainnet-beta(须 --proxy);Helius 免费层免代理但不支持
+     JSON-RPC batch，须改用 --workers 单笔并发并遵守账号级 10 RPS
 
 用法: python3 decode_txs_v2.py --sigs <jsonl> --out <jsonl> [--mint M] [--pool P]
-      [--batch 20] [--interval 0.8] [--proxy http://127.0.0.1:7897]
+      [--batch 8] [--interval 0.8] [--proxy http://127.0.0.1:7897]
       [--cache-dir data/txcache] [--rpc <url>]
 输出行与 v1 逐字段一致({sig, slot, ts, deltas} / {sig, decode_fail});断点续传兼容 v1 输出。
 """
-import argparse, json, sys, time
+import argparse, hashlib, json, os, sys, time
+from datetime import datetime, timezone
+from decimal import Decimal
 from pathlib import Path
 import requests
 
 DEF_RPC = "https://api.mainnet-beta.solana.com"
+OUTPUT_SCHEMA = "solana-tx-decode-output-v2"
+RECEIPT_SCHEMA = "solana-tx-decode-receipt/v1"
 
 
 def log(msg):
@@ -27,12 +31,22 @@ def log(msg):
 
 
 class SigCache:
-    """按 sig 前 2 字符分片的追加式缓存:行 = 完整输出行(含 decode_fail 行)。"""
-    def __init__(self, root):
+    """Identity-bound signature cache; failed decodes are never cached."""
+    SCHEMA = "solana-tx-decode-cache-v2"
+
+    def __init__(self, root, mint, pool, rpc, chain_id="solana-mainnet"):
         self.root = Path(root) if root else None
         self.mem = {}
         if self.root:
+            identity = {"schema": self.SCHEMA, "chain_id": chain_id, "mint": mint,
+                        "pool": pool or "", "rpc": rpc}
+            digest = hashlib.sha256(json.dumps(identity, sort_keys=True).encode()).hexdigest()
+            self.root = self.root / digest
             self.root.mkdir(parents=True, exist_ok=True)
+            meta = self.root / "meta.json"
+            if meta.exists() and json.loads(meta.read_text()) != identity:
+                raise SystemExit("[fail-closed] decode cache identity mismatch")
+            meta.write_text(json.dumps(identity, indent=2, sort_keys=True))
             for fp in self.root.glob("*.jsonl"):
                 for ln in open(fp):
                     try:
@@ -54,31 +68,139 @@ class SigCache:
             f.write(json.dumps(row) + "\n")
 
 
+def _amount(tb):
+    ui = tb.get("uiTokenAmount") or {}
+    raw = ui.get("amount")
+    decimals = ui.get("decimals")
+    if not isinstance(raw, str) or not raw.isdigit() or not isinstance(decimals, int):
+        raise ValueError("token balance missing exact raw amount/decimals")
+    return int(raw), decimals
+
+
+def _display(raw, decimals):
+    return format(Decimal(raw).scaleb(-decimals), "f")
+
+
 def decode_result(sig, res, mint, pool):
-    """getTransaction result → 输出行(与 v1 逐字段同构:uiAmount owner 净额)。"""
+    """Decode owner deltas using raw integers; UI fields are exact strings only."""
     meta = res.get("meta") or {}
     pre, post = {}, {}
+    decimals_seen = set()
     for tb in (meta.get("preTokenBalances") or []):
         if tb.get("mint") != mint:
             continue
         o = tb.get("owner")
-        amt = float((tb.get("uiTokenAmount") or {}).get("uiAmount") or 0)
-        pre[o] = pre.get(o, 0.0) + amt
+        if not o:
+            continue
+        amt, decimals = _amount(tb)
+        decimals_seen.add(decimals)
+        pre[o] = pre.get(o, 0) + amt
     for tb in (meta.get("postTokenBalances") or []):
         if tb.get("mint") != mint:
             continue
         o = tb.get("owner")
-        amt = float((tb.get("uiTokenAmount") or {}).get("uiAmount") or 0)
-        post[o] = post.get(o, 0.0) + amt
-    deltas = {}
+        if not o:
+            continue
+        amt, decimals = _amount(tb)
+        decimals_seen.add(decimals)
+        post[o] = post.get(o, 0) + amt
+    if len(decimals_seen) > 1:
+        raise ValueError(f"inconsistent decimals for mint {mint}: {sorted(decimals_seen)}")
+    decimals = next(iter(decimals_seen), 0)
+    deltas_raw = {}
     for o in set(pre) | set(post):
-        dl = post.get(o, 0.0) - pre.get(o, 0.0)
-        if abs(dl) > 1e-9:
-            deltas[o] = round(dl, 6)
-    row = {"sig": sig, "slot": res.get("slot"), "ts": res.get("blockTime"), "deltas": deltas}
+        dl = post.get(o, 0) - pre.get(o, 0)
+        if dl:
+            deltas_raw[o] = dl
+    row = {"sig": sig, "slot": res.get("slot"), "ts": res.get("blockTime"),
+           "mint": mint, "decimals": decimals, "deltas_raw": deltas_raw,
+           "deltas": {o: _display(v, decimals) for o, v in deltas_raw.items()}}
     if pool and pool in post:
-        row["pool_balance"] = round(post[pool], 6)
+        row["pool_balance_raw"] = post[pool]
+        row["pool_balance"] = _display(post[pool], decimals)
     return row
+
+
+def completed_sigs(outp, mint):
+    done = set()
+    if Path(outp).exists():
+        for line in open(outp):
+            try:
+                row = json.loads(line)
+                if not row.get("decode_fail") and row.get("mint", mint) == mint:
+                    done.add(row["sig"])
+            except Exception:
+                pass
+    return done
+
+
+def output_identity(mint, pool, rpc):
+    return {"schema": OUTPUT_SCHEMA, "chain_id": "solana-mainnet",
+            "mint": mint, "pool": pool or "", "rpc": rpc}
+
+
+def _atomic_json(path, obj):
+    path = Path(path)
+    tmp = path.with_name("." + path.name + ".tmp")
+    with tmp.open("w", encoding="utf-8") as f:
+        json.dump(obj, f, indent=2, sort_keys=True)
+        f.flush()
+        os.fsync(f.fileno())
+    os.replace(tmp, path)
+
+
+def prepare_output(outp, mint, pool, rpc):
+    """Bind append-only output to one mint/pool/RPC identity and return completed sigs."""
+    outp = Path(outp)
+    identity = output_identity(mint, pool, rpc)
+    meta = Path(str(outp) + ".meta.json")
+    if outp.exists() and outp.stat().st_size:
+        try:
+            existing = json.loads(meta.read_text())
+        except Exception:
+            raise SystemExit("[fail-closed] existing decode output has no readable identity meta")
+        if existing != identity:
+            raise SystemExit("[fail-closed] existing output is not bound to this mint/pool/rpc; "
+                             "use a new --out path")
+    else:
+        outp.parent.mkdir(parents=True, exist_ok=True)
+        _atomic_json(meta, identity)
+    return completed_sigs(outp, mint)
+
+
+def finalize_decode(outp, requested_sigs, mint, pool, rpc):
+    """Write a complete receipt and return nonzero while any requested sig is unresolved."""
+    outp = Path(outp)
+    latest = {}
+    if outp.exists():
+        with outp.open(encoding="utf-8") as f:
+            for line in f:
+                try:
+                    row = json.loads(line)
+                    sig = row.get("sig")
+                    if sig:
+                        latest[sig] = row
+                except Exception:
+                    continue
+    requested = list(dict.fromkeys(requested_sigs))
+    failed = [s for s in requested if s not in latest or latest[s].get("decode_fail")
+              or latest[s].get("mint", mint) != mint]
+    succeeded = [s for s in requested if s not in set(failed)]
+    failed_digest = hashlib.sha256("\n".join(sorted(failed)).encode()).hexdigest()
+    output_hash = hashlib.sha256(outp.read_bytes()).hexdigest() if outp.exists() else None
+    receipt = {"schema": RECEIPT_SCHEMA,
+               "status": "PASS" if not failed else "BLOCK",
+               "exit_code": 0 if not failed else 3,
+               "generated_at_utc": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+               "identity": output_identity(mint, pool, rpc),
+               "input_signature_count": len(requested),
+               "success_count": len(succeeded), "failure_count": len(failed),
+               "failed_signatures": failed, "failed_signatures_sha256": failed_digest,
+               "output": {"path": str(outp),
+                          "size": outp.stat().st_size if outp.exists() else 0,
+                          "sha256": output_hash}}
+    _atomic_json(str(outp) + ".receipt.json", receipt)
+    return receipt["exit_code"]
 
 
 def main():
@@ -88,7 +210,7 @@ def main():
     ap.add_argument("--mint", default=None)
     ap.add_argument("--pool", default=None)
     ap.add_argument("--batch", type=int, default=8,
-                    help="每 POST 笔数(mainnet-beta 实测方法级限流约 10 笔/窗,batch>10 多出部分吃 429;Helius 可调大)")
+                    help="每 POST 笔数(mainnet-beta 默认8；Helius免费层不支持batch，须用--workers单笔并发)")
     ap.add_argument("--interval", type=float, default=0.8, help="批间隔秒")
     ap.add_argument("--proxy", default=None)
     ap.add_argument("--cache-dir", default="data/txcache", help="跨地址共享缓存;空串禁用")
@@ -128,14 +250,8 @@ def main():
             sigs.append(s)
 
     outp = Path(a.out)
-    done = set()
-    if outp.exists():
-        for line in open(outp):
-            try:
-                done.add(json.loads(line)["sig"])
-            except Exception:
-                pass
-    cache = SigCache(a.cache_dir or None)
+    done = prepare_output(outp, mint, a.pool, a.rpc)
+    cache = SigCache(a.cache_dir or None, mint, a.pool, a.rpc)
     f = open(outp, "a")
     todo = []
     hit = 0
@@ -205,7 +321,7 @@ def main():
                     log(f"{k+1}/{len(todo)} ok={n_ok} fail={n_fail} rate={rate:.1f}/s")
         f.close()
         log(f"DONE ok={n_ok} fail={n_fail} cache_hit={hit} 耗时{(time.time()-t0)/60:.1f}min")
-        return
+        return finalize_decode(outp, sigs, mint, a.pool, a.rpc)
 
     i = 0
     while i < len(todo):
@@ -279,7 +395,8 @@ def main():
     f.close()
     el = (time.time() - t0) / 60
     log(f"DONE ok={n_ok} fail={n_fail} cache_hit={hit} 耗时{el:.1f}min")
+    return finalize_decode(outp, sigs, mint, a.pool, a.rpc)
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

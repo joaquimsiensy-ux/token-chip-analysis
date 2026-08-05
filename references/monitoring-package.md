@@ -36,7 +36,7 @@
 
 **addresses 字段纪律（交付前逐条对照）**：
 - **address 必须完整**，绝对不要缩写省略——一律从落盘数据文件复制；build_html.py 见省略号/星号会 WARN
-- **chain** 小写枚举：bsc / eth / base / sol / robinhood；新链沿用小写简名扩展（如 hyperliquid、filecoin）
+- **chain** 小写枚举：bsc / eth / base / arbitrum / sol / robinhood；新链适配完成后沿用小写简名
 - **role 以钱包标签开头**（与正文、附录 B 一致），后接一句话角色——看板卡片直接显示，正文读者拿标签来这里反查地址
 - **group**：同一关联集群填相同组名（看板视组内互转为内部调仓、**不算流出**）；独立地址留空 `""`
 - **sentinel=true 只给「理应长期沉睡、任何转出都是重大事件」的地址**（锁仓合约、从未动过的金库、零卖出囤仓鲸）；会周期性正常动的地址（空投池、税池、做市、持续发放的奖励池）**必须 sentinel=false**，否则看板天天误报红卡——sentinel 布尔值与第六章"转出即预警清单"一一对应
@@ -109,7 +109,7 @@ HTML 内嵌后监控脚本提取方式已写在 build_html.py docstring。**JSON
 **产出三件**（格式标准全按本文既有各节，一条不改）：
 1. 第六章补写观察哨信号清单＋两档监控建议（含逐条原因），Edit 进 `报告.md`
 2. `appendix.json`（四键＋完整数据键、sentinel 纪律、monitoring_advice 与两档清单一一对应）
-3. 重跑 `build_html.py --md 报告.md --out 报告.html --json appendix.json`——出带 `id="report-extract"` 的监控版 HTML，覆盖原文件（原版无独立价值，不必留档）
+3. 默认重跑 `build_html.py --mode legacy-recompile --degrade-reason "买入后补嵌监控 JSON，未改分析结论" --md 报告.md --out 报告.html --json appendix.json`——这是合法重编译但带显式水印。若要维持正式身份，必须把 `appendix.json` 加入 `a4_gate.py finalize --seal-files ...` 重新封口，再按原工作流用 `build_html.py --mode analysis-new|analysis-audit ... --a4-seal a4_seal.json --json appendix.json` 走完整门禁；未进入 seal 的 JSON 一律 BLOCK，不存在 skip 开关。
 
 **质检**：build_html 退出码 0 且零 WARN（四键齐/地址完整）；sentinel 纪律复查（周期性会动的地址必须 false）；观察哨条目与状态评估结论对齐（正文说"理应沉睡"的地址必须进转出即预警清单）。新会话执行时：只读附录 B＋data/ 目录＋第六章，**禁止整读旧报告**（成本纪律刀 2）。若为 /token-update 场景顺带补包，观察哨基线从本次更新数据起算。
 

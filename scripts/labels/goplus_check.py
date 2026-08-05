@@ -10,7 +10,7 @@
   python3 goplus_check.py --chain bsc ADDR1 ADDR2 ...
   python3 goplus_check.py --chain eth --file candidates.txt [--json] [--all]
   --all  显示全部（含干净地址）；默认只列命中
-链参数：eth/bsc/base 走链 id；robinhood/hyperliquid/sol 不传 chain_id 查通用库
+链参数：eth/bsc/base 走链 id；robinhood/sol 不传 chain_id 查通用库
   （EVM 恶意 EOA 跨链通用，2026-07-17 实测不带 chain_id 可命中；
    ⚠️ Solana 覆盖未证实——OFAC SOL 制裁地址实测返回全 0，结果仅供参考勿当无风险）。
 额度：免费 30 次/分钟 → 2.2s 间隔；大列表自带断点缓存（--cache 路径，默认同目录 .goplus_cache.json）。
@@ -57,7 +57,7 @@ def main():
     p = argparse.ArgumentParser()
     p.add_argument('addrs', nargs='*')
     p.add_argument('--chain', required=True,
-                   choices=['eth', 'bsc', 'base', 'sol', 'robinhood', 'hyperliquid'])
+                   choices=['eth', 'bsc', 'base', 'sol', 'robinhood'])
     p.add_argument('--file')
     p.add_argument('--json', action='store_true')
     p.add_argument('--all', action='store_true')

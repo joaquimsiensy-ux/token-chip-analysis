@@ -12,6 +12,7 @@
 块游标分页：offset=10000 满页时去掉最后一个可能截断的块，从该块续拉。
 """
 import json, time, os, sys, csv, subprocess, urllib.parse
+FORMAL_CHANNEL_ELIGIBLE = False  # diagnostic/supplemental output; preflight must reject
 
 DIR = os.getcwd()
 CFG = json.load(open(os.path.join(DIR, "config.json")))

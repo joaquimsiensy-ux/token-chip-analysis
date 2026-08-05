@@ -2,10 +2,10 @@
 
 > **分析时读本文件即可**；重建/扩容/审计/发布看 `MAINTENANCE.md`（维护篇）。
 
-**定位**：与 `address-book.md`（手工实战核验层，~180 条）互补的**批量兜底层**（v4.2+ 2026-07-18，七链 ~47.1 万条）。目的：CEX/桥/路由/协议/发射台等基础设施地址在聚类前被系统性识别剔除，不再等踩坑后回填；惯犯庄家（serial-actor）命中即高亮。
+**定位**：与 `address-book.md`（手工实战核验层）互补的**批量兜底层**。目的：CEX/桥/路由/协议/发射台等基础设施地址在聚类前被系统性识别剔除，不再等踩坑后回填；惯犯庄家（serial-actor）命中即高亮。
 **防线定位**：静态库的目标是「**库里每条都对**」而非「全」——设施是开放集合永远追不全，"全"由**行为守门员**（`gatekeeper.py`，漏斗形状运行时判定）兜底，未知设施由守门员拦截→miss 队列→人工确认→回填本库，实战驱动闭环扩容。
 **分工三层**：①本库批量查询（静态已知标签）→ ②address-book.md（实战核验、含机制注释）→ ③分析时动态判别（守门员漏斗指纹 + getCode/owner/行为画像，见各链 data-pipeline）。**三层是递进关系：库无记录≠白户**，新链新设施仍靠动态判别，判明后回填 manual 层。
-**接入方式（v4）**：`labels_resolver.py` 共享内核——`label_lookup.py`（人工查询）、EVM `cluster.py`/`analyze_holdings.py`、SOL `replay_edges.py`/`build_evolution.py`（阵营体检）、HL `main_metrics.py`、FIL `cluster.py` 均已默认接入（`--no-labels` 关闭）；表缺失/加载失败显式报 **degraded_mode**（"没命中"与"没加载"可区分），分析产物落 `labels_meta`。
+**接入方式（v4）**：`labels_resolver.py` 共享内核——`label_lookup.py`（人工查询）、EVM `cluster.py`/`analyze_holdings.py`、SOL `replay_edges.py`/`build_evolution.py`（阵营体检）均已默认接入（`--no-labels` 关闭）；表缺失/加载失败显式报 **degraded_mode**（"没命中"与"没加载"可区分），分析产物落 `labels_meta`。
 
 ## 文件一览
 
@@ -16,8 +16,6 @@
 | labels-base.csv | 14,185 | 含 AA 层（bundler/paymaster 36 条——gas 溯源假金主盲区的解药） |
 | labels-sol.csv | 8,180 | validator/KOL/CEX/程序；韩所盲区见已知局限 |
 | labels-robinhood.csv | 293 | 含 serial-actor 177 条（惯犯层主战场） |
-| labels-hyperliquid.csv | 936 | 含 HyperCore 系统转移地址族 472 |
-| labels-filecoin.csv | 25 | filfox 官方标签低位段 |
 | codehash-robinhood.csv | 3 模板 | 字节码组合指纹（fingerprint_check.py） |
 | miss-queue/<chain>.csv | 滚动 | 分析时自动记录的未命中高权重地址，人工审后回填 |
 
@@ -40,13 +38,13 @@ CSV 字段（基础 9 列 + 6 扩展列）：`address, chain, name, category, ti
 python3 ~/.claude/skills/token-chip-analysis/scripts/labels/label_lookup.py --chain sol ADDR1 ADDR2 ...
 python3 .../label_lookup.py --chain robinhood --file candidates.txt   # 文件每行一地址
 cat addrs.txt | python3 .../label_lookup.py --chain bsc --misses      # --misses 列出未命中
-python3 .../label_lookup.py --chain hyperliquid --json --file a.txt   # JSONL 机器可读（脚本管道）
+python3 .../label_lookup.py --chain base --json --file a.txt          # JSONL 机器可读（脚本管道）
 
 # Robinhood 链疑似公共 bot 合约 → 查字节码模板指纹（新部署秒判）
 python3 .../fingerprint_check.py --chain robinhood ADDR1 ADDR2
 ```
 - lookup 输出七段：**SERIAL / RISK / RISK-CANDIDATE / RISK-UNKNOWN / EXCLUDE / IDENTITY / PRIVACY**，带来源、证据链与 policy 视图。
-- 非 sol/eth/filecoin 链自动对 eth 表做 **EVM 同址联查**（cross_chain 提示级：EOA=同私钥可信；CREATE2 canonical=同部署流程；普通合约同址≠同实体）。**自动决策只认目标链直接命中**。
+- 非 sol/eth 的受支持 EVM 链自动对 eth 表做 **EVM 同址联查**（cross_chain 提示级：EOA=同私钥可信；CREATE2 canonical=同部署流程；普通合约同址≠同实体）。**自动决策只认目标链直接命中**。
 - 脚本内嵌入用 `labels_resolver.LabelResolver(chain)`：`get()` / `is_exclude()` / `no_merge()` / `balance_policy()` / `is_serial()` / `policy()`（完整决策视图）/ `risk_partition()`（四档）/ `warn_if_degraded()`（启动必调）/ `meta()`（写产物）。`append_misses()` 记 miss 队列。
 - **miss 队列纪律**：cluster/analyze/replay-top 自动落盘"未命中的高度数节点/共同 funder/top 持仓"。定期人工审：跨 token 反复出现者优先核验（MM/基金/设施高概率），判明回填 manual 层——最省人力的扩容路径。
 - 入库/回填/重建 → 一律看 MAINTENANCE.md（`add_labels.py` 有 curation 层语义，别裸用）。

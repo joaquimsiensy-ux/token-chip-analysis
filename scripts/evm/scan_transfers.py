@@ -14,6 +14,7 @@
      扫完必须做余额对账（见 analyze_holdings.py），不对账的数据不可用。
 """
 import json, time, os, sys, subprocess, threading, queue
+FORMAL_CHANNEL_ELIGIBLE = False  # diagnostic/supplemental output; preflight must reject
 
 TOPIC = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
 DIR = os.getcwd()

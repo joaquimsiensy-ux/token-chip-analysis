@@ -84,15 +84,10 @@ def main():
             dropped += 1
             return
         addr = (addr or '').strip()
-        if chain not in ('eth', 'bsc', 'base', 'sol', 'robinhood', 'hyperliquid', 'filecoin') or not addr:
+        if chain not in ('eth', 'bsc', 'base', 'sol', 'robinhood') or not addr:
             dropped += 1
             return
-        if chain == 'filecoin':
-            addr = addr.lower()
-            if not (len(addr) >= 3 and addr[0] in 'ft' and addr[1] in '01234'):
-                dropped += 1
-                return
-        elif chain != 'sol':
+        if chain != 'sol':
             addr = addr.lower()
             if not re.fullmatch(r'0x[0-9a-f]{40}', addr):
                 dropped += 1
@@ -143,23 +138,20 @@ def main():
             if r['tier'] == 'exclude':
                 put(r['chain'], r['address'], 'infrastructure', r['name'], 'manual-layer')
 
-    # ---- 2b) 【v4.2】manual/registry 级补录源也进金标（HL/FIL 此前零金标=零门禁；
-    #          codex 第四轮复核：benchmark 只遍历 goldset 已有链，缺链静默 PASS）----
-    # 覆盖 policy 断言：merge_policy=no_merge 的覆盖行（如 HL 赌池）入金标后，
+    # ---- 2b) manual/registry 级补录源也进金标。----
+    # 覆盖 policy 断言：merge_policy=no_merge 的覆盖行入金标后，
     # 全量重建若丢 policy → no_merge 退化为 allow → benchmark 立刻 FAIL（round-trip 活体断言）。
     PER_SRC_CAP = 40
     extra_srcs = sorted(glob.glob(os.path.join(_HERE, 'sources', 'additions', '*.csv')))
     extra_srcs += [os.path.join(_HERE, 'sources', f) for f in
-                   ('hyperliquid_additions.csv', 'filecoin_additions.csv',
-                    'official_registry.csv', 'tornado_bsc_contracts.csv')]
+                   ('official_registry.csv', 'tornado_bsc_contracts.csv')]
     n_extra = 0
     for fn in extra_srcs:
         if not os.path.exists(fn):
             continue
         rows_f = [r for r in csv.DictReader(open(fn))
                   if r.get('source', '').split('-')[0].split('+')[0] in
-                     ('manual', 'registry', 'official', 'hypurrscan', 'addressbook')
-                  or fn.endswith(('filecoin_additions.csv', 'hyperliquid_additions.csv'))]
+                     ('manual', 'registry', 'official', 'addressbook')]
         picked = [r for r in rows_f if r.get('tier') == 'exclude'
                   or (r.get('merge_policy') or '').strip() == 'no_merge']
         picked.sort(key=lambda r: hashlib.sha256(r['address'].encode()).hexdigest())
@@ -171,7 +163,7 @@ def main():
                 'manual-layer')
             if len(gold) > before:
                 n_extra += 1
-    print(f'补录源设施金标（additions/HL/FIL/registry，每源上限 {PER_SRC_CAP}）: {n_extra} 条')
+    print(f'补录源设施金标（additions/registry，每源上限 {PER_SRC_CAP}）: {n_extra} 条')
 
     # ---- 3) random-eoa 负样本（v4：从历史 transfers/swaps 抽低频普通交易者） ----
     # 目的：给 entity 金标稀少的链补"不得 exclude"断言的地面真值。确定性抽样保证重跑稳定。

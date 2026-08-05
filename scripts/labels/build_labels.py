@@ -18,7 +18,7 @@ import csv, json, os, re, sys
 from collections import Counter
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from labels_resolver import norm_addr   # 全链统一地址规范化（v4：修复 filecoin f 地址被 upsert 静默丢弃）
+from labels_resolver import norm_addr   # 全链统一地址规范化
 
 CHAIN_BY_ID = {'1': 'eth', '8453': 'base', '56': 'bsc'}
 
@@ -38,7 +38,7 @@ CEX_LABELS = {
     'gate-io','gate','kucoin','htx','huobi','bitfinex','crypto-com','gemini','bitstamp','upbit',
     'bithumb','poloniex','bittrex','hotbit','exchange','bitmex','phemex','bingx','lbank','xt-com',
     'whitebit','latoken','probit','coinex','ascendex','bitmart','pionex','weex','coinw','hashkey',
-    'backpack','hyperliquid-bridge','nexo','celsius-network','voyager','blockfi','genesis-trading',
+    'backpack','nexo','celsius-network','voyager','blockfi','genesis-trading',
     'wazirx','bitrue','tokenize','coindcx','bitso','luno','paribu','btcturk','bitpanda','swissborg',
     'coincheck','bitflyer','liquid','zaif','korbit','coinone','gopax','indodax','bitkub','maicoin',
     'max-exchange','bitopro','hoo','aex','zb','bkex','digifinex','cointiger','bigone','fatbtc',
@@ -384,27 +384,26 @@ if os.path.exists('scamsniffer_address.json'):
 # ---------- 6b) 官方 deployment registry 层（v4 新增：协议官方仓库/npm 包/官方 docs 亲验的
 #              工厂/router/locker 部署表；Base 补录 2026-07-17 首建，Aerodrome/Clanker/Zora/
 #              Uniswap V4/Virtuals；增量走 add_labels.py，本文件保证重建不丢） ----------
-# 6c/6d) HL/FIL 加工产物源（分别由 build_hyperliquid_labels.py / build_filecoin_labels.py
-#        维护刷新——重建前若要更新先跑它们；缺文件时告警，防止 cp out/ 把现库两表覆盖退化）
-# 6e) 链上亲验补录（tornado_bsc_contracts.csv 等 manual-chainverify 层）
-# 6f) 【v4.2】sources/additions/ 目录整目录进重建流：add_labels.py 增量入库过的每份补录 CSV
+# 6c) 链上亲验补录（tornado_bsc_contracts.csv 等 manual-chainverify 层）
+# 6d) 【v4.2】sources/additions/ 目录整目录进重建流：add_labels.py 增量入库过的每份补录 CSV
 #     都归档于此（入库脚本自动归档）。此前 v4.1 的 7 份增量文件不在重建源里——全量重建会
 #     静默丢掉全部增量（codex 第四轮复核抓出的最大 round-trip 断环）。约定：进过现库的
 #     additions 文件永不删除；重建即全量回放。
 import glob as _glob
-_EXTRA_SOURCES = ['official_registry.csv', 'hyperliquid_additions.csv',
-                  'filecoin_additions.csv', 'tornado_bsc_contracts.csv', 'gmgn_additions.csv']
+_EXTRA_SOURCES = ['official_registry.csv', 'tornado_bsc_contracts.csv', 'gmgn_additions.csv']
 _ADDITION_FILES = sorted(_glob.glob('additions/*.csv'))
 if not _ADDITION_FILES:
-    print('!! sources/additions/ 目录为空——历史增量补录（v4.1 桥/router/locker/SOL CEX/HL 审计等）'
+    print('!! sources/additions/ 目录为空——历史增量补录（桥/router/locker/SOL CEX 等）'
           '本轮重建不含，产物将比现库缺百余条 registry 级设施标签', file=sys.stderr)
 for _fn in _EXTRA_SOURCES + _ADDITION_FILES:
     if not os.path.exists(_fn):
-        print(f'!! {_fn} 缺失——对应链/层本轮重建不含其数据（HL/FIL 表会退化，勿 cp 覆盖现库）',
+        print(f'!! {_fn} 缺失——对应层本轮重建不含其数据，勿 cp 覆盖现库',
               file=sys.stderr)
         continue
     n = 0
     for r in csv.DictReader(open(_fn)):
+        if r.get('chain') not in {'eth', 'bsc', 'base', 'sol', 'robinhood'}:
+            continue
         _rawl = [x for x in (r.get('raw_labels') or '').split('|') if x]
         upsert(r['chain'], r['address'], r['name'], r['category'], r['tier'],
                r['source'], r.get('added_date', ''), r.get('evidence', ''),

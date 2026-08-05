@@ -8,6 +8,7 @@
 import argparse, json, sys, time
 from pathlib import Path
 import requests
+from decode_txs_v2 import decode_result, finalize_decode, prepare_output
 
 RPC = "https://api.mainnet-beta.solana.com"
 
@@ -19,6 +20,7 @@ def main():
     ap.add_argument("--pool", default=None)
     ap.add_argument("--interval", type=float, default=0.75)
     ap.add_argument("--proxy", default=None)
+    ap.add_argument("--rpc", default=RPC)
     args = ap.parse_args()
 
     sess = requests.Session()
@@ -38,7 +40,7 @@ def main():
                                  "commitment": "confirmed"}]}
         for i in range(retries):
             try:
-                r = sess.post(RPC, json=body, timeout=35)
+                r = sess.post(args.rpc, json=body, timeout=35)
                 d = r.json()
                 if "result" in d:
                     return d["result"]
@@ -60,11 +62,7 @@ def main():
         else:
             sigs.append(line)
     outp = Path(args.out)
-    done = set()
-    if outp.exists():
-        for line in open(outp):
-            try: done.add(json.loads(line)["sig"])
-            except Exception: pass
+    done = prepare_output(outp, mint, args.pool, args.rpc)
     todo = [s for s in sigs if s not in done]
     print(f"[fast-decode] total={len(sigs)} done={len(done)} todo={len(todo)}", file=sys.stderr, flush=True)
 
@@ -76,24 +74,7 @@ def main():
             n_fail += 1
             f.write(json.dumps({"sig": sig, "decode_fail": True}) + "\n")
         else:
-            meta = res.get("meta") or {}
-            pre = {}; post = {}
-            for tb in (meta.get("preTokenBalances") or []):
-                if tb.get("mint") != mint: continue
-                o = tb.get("owner"); amt = float((tb.get("uiTokenAmount") or {}).get("uiAmount") or 0)
-                pre[o] = pre.get(o, 0.0) + amt
-            for tb in (meta.get("postTokenBalances") or []):
-                if tb.get("mint") != mint: continue
-                o = tb.get("owner"); amt = float((tb.get("uiTokenAmount") or {}).get("uiAmount") or 0)
-                post[o] = post.get(o, 0.0) + amt
-            deltas = {}
-            for o in set(pre) | set(post):
-                dl = post.get(o, 0.0) - pre.get(o, 0.0)
-                if abs(dl) > 1e-9:
-                    deltas[o] = round(dl, 6)
-            row = {"sig": sig, "slot": res.get("slot"), "ts": res.get("blockTime"), "deltas": deltas}
-            if args.pool and args.pool in post:
-                row["pool_balance"] = round(post[args.pool], 6)
+            row = decode_result(sig, res, mint, args.pool)
             f.write(json.dumps(row) + "\n")
             n_ok += 1
         if (i + 1) % 200 == 0:
@@ -105,6 +86,7 @@ def main():
         time.sleep(args.interval)
     f.close()
     print(f"[fast-decode] DONE ok={n_ok} fail={n_fail} 耗时{(time.time()-t0)/60:.1f}min", file=sys.stderr, flush=True)
+    return finalize_decode(outp, sigs, mint, args.pool, args.rpc)
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

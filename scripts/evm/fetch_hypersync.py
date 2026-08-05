@@ -14,6 +14,7 @@
   老 7 列 CSV 续拉时自动维持 7 列，新文件起手为 8 列（尾列 block_hash，供防重组去重键）。
 """
 import requests, json, csv, os, sys, time, datetime, argparse
+from pathlib import Path
 
 TRANSFER = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
 
@@ -24,27 +25,57 @@ def main():
     ap.add_argument("--url", default="https://bsc.hypersync.xyz/query")
     ap.add_argument("--token-addr", required=True)
     ap.add_argument("--out", default="data/transfers_full.csv")
+    ap.add_argument("--to-block", type=int,
+                    help="可选排他上界；需生成正式 collector receipt 时建议显式给出")
+    ap.add_argument("--receipt",
+                    help="采集完成后原子写 evm-collector-run/v2；正式采集必须显式给 --to-block")
+    ap.add_argument("--resume-receipt",
+                    help="正式续段必填：上一张 v2 receipt；先重验现有 CSV 全前缀再延伸")
     ap.add_argument("--sleep", type=float, default=0.25)
     a = ap.parse_args()
+    if a.receipt and a.to_block is None:
+        ap.error("正式 collector receipt 必须显式给 --to-block；动态 archive tip 不可作为冻结上界")
     headers = {"Authorization": f"Bearer {a.api_token}", "Content-Type": "application/json"}
-    resume, mode, with_bh = a.from_block, "w", True
-    if os.path.exists(a.out) and os.path.getsize(a.out) > 100:
+    resume, mode, with_bh, prior_segments = a.from_block, "w", True, []
+    out_path = Path(a.out).resolve()
+    exists_nonempty = out_path.exists() and out_path.stat().st_size > 0
+    if a.receipt and exists_nonempty:
+        if not a.resume_receipt:
+            ap.error("正式输出已有前缀但缺 --resume-receipt；存量 legacy CSV 必须另名归档后从冻结下界重采")
+        try:
+            from channels_preflight import _csv_collector_provenance
+            prev = json.loads(Path(a.resume_receipt).read_text(encoding="utf-8"))
+            pq = prev.get("query") or {}
+            if pq.get("requested_from") != a.from_block or pq.get("requested_to") >= a.to_block:
+                raise ValueError("前驱 receipt 起点不同或新上界未前移")
+            _csv_collector_provenance(a.resume_receipt, out_path, a.token_addr,
+                                      a.from_block, pq["requested_to"])
+            resume, mode = pq["requested_to"], "a"
+            prior_segments = list(prev["segments"])
+            with open(out_path, encoding="utf-8") as fh:
+                with_bh = "block_hash" in fh.readline()
+        except Exception as exc:
+            ap.error(f"正式续段前驱重验失败: {exc}")
+    elif a.receipt and a.resume_receipt:
+        ap.error("--resume-receipt 只能与现有非空正式 CSV 一起使用")
+    elif not a.receipt and exists_nonempty:
         with open(a.out) as fh:
-            with_bh = "block_hash" in fh.readline()  # 老 7 列文件续拉时维持老格式
+            with_bh = "block_hash" in fh.readline()
         with open(a.out, "rb") as fh:
-            try:
-                fh.seek(-4096, os.SEEK_END)
-            except OSError:
-                fh.seek(0)
+            try: fh.seek(-4096, os.SEEK_END)
+            except OSError: fh.seek(0)
             tail = fh.read().decode(errors="ignore").strip().splitlines()
             last = tail[-1].split(",")
             if last and last[0].isdigit():
                 resume, mode = int(last[0]), "a"
-                print(f"[resume] 从已有 CSV 末行块 {resume} 续拉（block_hash 列: {with_bh}）", flush=True)
-    f = open(a.out, mode, newline="")
+                print(f"[legacy resume] 从已有 CSV 末行块 {resume} 续拉；该文件不能取得正式 receipt", flush=True)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    f = open(out_path, mode, newline="")
     w = csv.writer(f)
     if mode == "w":
         w.writerow(["block", "ts", "tx", "from", "to", "value_raw", "uniqueId", "block_hash"])
+        f.flush(); os.fsync(f.fileno())
+    segment_from = resume
     total, cur, t0, e429 = 0, resume, time.time(), 0
     while True:
         q = {"from_block": cur,
@@ -52,6 +83,8 @@ def main():
              "field_selection": {
                  "log": ["block_number", "block_hash", "log_index", "transaction_hash", "topic1", "topic2", "data"],
                  "block": ["number", "timestamp"]}}
+        if a.to_block is not None:
+            q["to_block"] = a.to_block
         ok = False
         for attempt in range(12):
             try:
@@ -91,11 +124,48 @@ def main():
         nxt, ah = j.get("next_block"), j.get("archive_height")
         if total % 50000 < n or n == 0:
             print(f"[prog] +{n} total {total} next {nxt} height {ah} 429s {e429} {time.time()-t0:.0f}s", flush=True)
-        if not nxt or (ah and nxt >= ah):
+        target = a.to_block if a.to_block is not None else ah
+        if isinstance(nxt, bool) or not isinstance(nxt, int):
+            f.close(); sys.exit("[fatal] provider 缺整数 next_block，部分响应不得签完成")
+        if nxt <= cur:
+            f.close(); sys.exit(f"[fatal] provider cursor 未前进: current={cur} next={nxt}")
+        if target is None:
+            f.close(); sys.exit("[fatal] provider 未返回 archive_height，无法冻结采集上界")
+        if nxt >= target:
             break
         cur = nxt
         time.sleep(a.sleep)
     f.close()
+    if a.receipt:
+        from channels_preflight import _csv_stats, _sha256_file
+        out = os.path.realpath(os.path.abspath(a.out))
+        rows, min_block, max_block = _csv_stats(Path(out))
+        collector = os.path.realpath(os.path.abspath(__file__))
+        segment = {"requested_from": int(segment_from), "requested_to": int(a.to_block),
+                   "provider_next_block": int(nxt),
+                   "output_prefix": {"size": os.path.getsize(out),
+                                     "sha256": _sha256_file(Path(out))}}
+        payload = {"schema": "evm-collector-run/v2", "status": "PASS",
+                   "producer": "fetch_hypersync.py/v3",
+                   "collector": {"path": "fetch_hypersync.py",
+                                 "sha256": _sha256_file(Path(collector))},
+                   "query": {"token": a.token_addr.lower(),
+                             "query_schema": "erc20-transfer-fields/v2",
+                             "provider_url": a.url, "requested_from": a.from_block,
+                             "requested_to": int(a.to_block)},
+                   "completion": {"reason": "requested_bound_reached",
+                                  "next_block": int(nxt)},
+                   "segments": prior_segments + [segment],
+                   "output": {"path": out, "size": os.path.getsize(out),
+                              "sha256": _sha256_file(Path(out)), "rows": rows,
+                              "min_block": min_block, "max_block": max_block}}
+        rp = Path(a.receipt).resolve()
+        rp.parent.mkdir(parents=True, exist_ok=True)
+        tmp = rp.with_name(f".{rp.name}.tmp.{os.getpid()}")
+        with tmp.open("x", encoding="utf-8") as rf:
+            json.dump(payload, rf, ensure_ascii=False, indent=2)
+            rf.flush(); os.fsync(rf.fileno())
+        os.replace(tmp, rp)
     print(f"[COMPLETE] {total} transfers this run, tip {ah}, 429s {e429}, {time.time()-t0:.0f}s", flush=True)
 
 if __name__ == "__main__":

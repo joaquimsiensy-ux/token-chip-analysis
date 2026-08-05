@@ -11,6 +11,7 @@
 """
 import json, gzip, ssl, certifi, urllib.request, time, os, sys
 from collections import defaultdict
+from resume_guard import require_fetch_success
 
 SSL_CTX = ssl.create_default_context(cafile=certifi.where())
 UA = ('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 '
@@ -52,7 +53,9 @@ OUT = 'data/gas_in_bs.jsonl'
 if os.path.exists(OUT):
     with open(OUT) as f:
         for line in f:
-            done.add(json.loads(line)['addr'])
+            row = json.loads(line)
+            if row.get("status") in {"PASS", "EMPTY"} or row.get("funder"):
+                done.add(row['addr'])
     print(f"已完成 {len(done)} 个，续跑", flush=True)
 
 
@@ -61,19 +64,25 @@ def get(url):
     for i in range(4):
         try:
             with urllib.request.urlopen(url=req, timeout=30, context=SSL_CTX) as r:
-                return json.load(r)
+                return True, json.load(r)
         except Exception:
             time.sleep(2 * (i + 1))
-    return None
+    return False, None
 
 
 fout = open(OUT, 'a')
 n = 0
+failures = []
 for ad in targets:
     if ad in done:
         continue
-    d = get(f"{BS}/addresses/{ad}/transactions?filter=to")
+    ok, d = get(f"{BS}/addresses/{ad}/transactions?filter=to")
     n += 1
+    if not ok:
+        failures.append(ad)
+        print(f"  {ad} API 重试耗尽，进入 retry queue（不写 EMPTY/done）", flush=True)
+        continue
+    d = require_fetch_success(ok, d)
     rows = []
     if d:
         items = d.get('items', [])
@@ -90,11 +99,12 @@ for ad in targets:
             except ValueError:
                 pass
             rows.append({"addr": ad, "funder": fu, "self_alias": self_alias,
+                         "status": "PASS",
                          "value_eth": int(t['value']) / 1e18, "ts": t['timestamp'],
                          "hash": t['hash'], "method": t.get('method'),
                          "n_page_txs": len(items), "has_next": bool(d.get('next_page_params'))})
     if not rows:
-        rows = [{"addr": ad, "funder": None, "note": "no_native_in_or_fetch_fail"}]
+        rows = [{"addr": ad, "funder": None, "status": "EMPTY", "note": "no_native_in"}]
     for r in rows:
         fout.write(json.dumps(r) + "\n")
     fout.flush()
@@ -102,6 +112,11 @@ for ad in targets:
         print(f"  {n} done", flush=True)
     time.sleep(0.25)
 fout.close()
+json.dump({"schema": "gas-trace-retry/v2", "addresses": failures},
+          open("data/gas_in_bs.retry.json", "w"), indent=2)
+if failures:
+    print(f"BLOCK: {len(failures)} 地址网络失败，未进入 done", flush=True)
+    sys.exit(2)
 print("全部完成", flush=True)
 
 funders = defaultdict(set)

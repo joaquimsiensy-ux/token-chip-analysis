@@ -14,9 +14,9 @@
       [--conc 6] [--rps 1.6] [--url <端点>] [--key-file ~/.config/sqd/api-key]
       [--hypersync] [--hs-conc 2] [--hs-rps 4] [--hs-token-file ~/.config/hypersync/token]
 输出（与 v1 完全同构，下游无感）：
-  data/soltx-<小写mint>.jsonl.gz   每行 [ts, slot, from_owner, to_owner, amount_raw]
-  data/soltx-<小写mint>.meta.json  断点元数据 v2（自动迁移 v1 格式；重跑自动续拉）
-  data/soltx-<小写mint>.parts/     区域分片工作目录（合并成功后自动清空）
+  data/soltx-<sha256(原始mint)>.jsonl.gz   每行 [ts, slot, from_owner, to_owner, amount_raw]
+  data/soltx-<sha256>.meta.json  绑定原始 mint/endpoint/采集上界的 v3 元数据
+  data/soltx-<sha256>.parts/     区域分片工作目录（合并成功后自动清空）
 
 要点：
 - 转账边=同 tx 内 owner 级净变动贪心配对（与 v1/window_fetch 同一解析核，量级与关系正确够聚类用）
@@ -54,7 +54,7 @@ HyperSync 第二引擎（--hypersync，默认关）：
   SQD worker 在 HS 全忙时可接管 HS 未领段（带礼让条件防抢跑饿死；反向不行——HS 有窗口限制）
 - 两引擎输出行格式/落盘/gaps 语义完全一致；失败交易两边同样剔除（HS 按 success 字段）
 """
-import argparse, gzip, json, os, shutil, sys, threading, time
+import argparse, gzip, hashlib, json, os, shutil, sys, threading, time
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -512,7 +512,7 @@ def split_engine_plan(holes, hs_lo, hs_hi):
 
 def cache_paths(address):
     d = Path("data")
-    key = address.lower()
+    key = hashlib.sha256(address.encode("utf-8")).hexdigest()
     return (d / f"soltx-{key}.jsonl.gz", d / f"soltx-{key}.meta.json",
             d / f"soltx-{key}.parts")
 
@@ -525,7 +525,7 @@ def load_meta(meta_fp):
         m = json.loads(meta_fp.read_text())
     except Exception:
         return {}
-    if m.get("version") == 2:
+    if m.get("version") in (2, 3):
         return m
     # v1 迁移：连续前缀 [from_slot, next_slot) 视为一个已完成区域
     if m.get("next_slot"):
@@ -534,6 +534,13 @@ def load_meta(meta_fp):
                 "areas": [{"s": int(m.get("from_slot") or m["next_slot"]),
                            "e": int(m["next_slot"]) - 1, "done": True, "src": "v1"}]}
     return {}
+
+
+def cache_identity_matches(meta, mint, endpoint):
+    expected = {"schema": "sqd-solana-cache/v3", "mint": mint,
+                "endpoint": endpoint, "collector": "fetch_sqd_transfers_v2.py/v3"}
+    return bool(meta) and all(meta.get(k) == v for k, v in expected.items()) \
+        and meta.get("collection_upper_slot") is not None
 
 
 def plan_areas(meta, span_from, head):
@@ -799,6 +806,16 @@ def run(mint, launch_ts, wall_min, conc, rps, base_url, key,
     cache_fp, meta_fp, parts_dir = cache_paths(mint)
     parts_dir.mkdir(parents=True, exist_ok=True)
     meta = load_meta(meta_fp)
+    identity = {"schema": "sqd-solana-cache/v3", "mint": mint,
+                "endpoint": base_url, "collector": "fetch_sqd_transfers_v2.py/v3"}
+    if meta and not cache_identity_matches(meta, mint, base_url):
+        raise SystemExit("[fail-closed] SQD cache meta 与 mint/endpoint/采集器身份不一致；"
+                         "不得跨标的或跨端点复用，改用新的 data 目录")
+
+    def fresh_meta(start):
+        return {**identity, "version": 3, "from_slot": start,
+                "launch_covered": False, "areas": [],
+                "collection_upper_slot": head}
     # 旧缓存只做流式体检拿行数（不载入内存——收尾阶段才按规模选路径读它）
     old_rows, old_ok = 0, False
     if cache_fp.exists() and meta:
@@ -816,11 +833,11 @@ def run(mint, launch_ts, wall_min, conc, rps, base_url, key,
             log(f"已有 meta（from_slot={from_slot}）——忽略 --from-slot（增量语义优先）")
     elif from_slot_cli:
         span_from = from_slot = max(1, int(from_slot_cli))
-        meta = {"version": 2, "from_slot": from_slot, "launch_covered": False, "areas": []}
+        meta = fresh_meta(from_slot)
     else:
         back = int((now - (launch_ts or now - 90 * 86400)) * SQD_SLOT_RATE) + SQD_LAUNCH_PAD
         span_from = from_slot = max(1, head - back)
-        meta = {"version": 2, "from_slot": from_slot, "launch_covered": False, "areas": []}
+        meta = fresh_meta(from_slot)
 
     # ---- HyperSync 第二引擎初始化：探窗失败即降级纯 SQD（采集完备性优先）----
     fx_hs, hs_lo, hs_hi = None, None, None
@@ -1021,6 +1038,7 @@ def run(mint, launch_ts, wall_min, conc, rps, base_url, key,
         # 便于事后复验：任取一段做 ±60 包围请求，应能拿到前后块且不含该段本身）
         meta.update({"launch_covered": bool(meta.get("launch_covered")) or has_mint,
                      "next_slot": front + 1, "gaps": gaps,
+                     "collection_upper_slot": head,
                      "empty_ok": {"n": len(fx.empty_hits), "max": empty_max,
                                   "intervals": fx.empty_hits[:2000]},
                      "merge_mode": merger.mode,
@@ -1108,7 +1126,7 @@ def main():
     if edges is None:
         print(f"失败：{gap}", flush=True)
         sys.exit(1)
-    print(f"完成：{len(edges)} 条转账边 → data/soltx-{a.mint.lower()}.jsonl.gz"
+    print(f"完成：{len(edges)} 条转账边 → {cache_paths(a.mint)[0]}"
           + (f"\n缺口声明：{gap}" if gap else "（全量到链头，无缺口）"), flush=True)
     sys.exit(2 if gap else 0)
 

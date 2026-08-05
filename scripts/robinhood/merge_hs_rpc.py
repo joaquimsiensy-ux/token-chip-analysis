@@ -1,40 +1,109 @@
 #!/usr/bin/env python3
-"""合并 HyperSync gzip + RPC jsonl，填 ts，去重，输出 data/transfers.jsonl.gz（覆盖）"""
-import json, gzip, os
-seen=set(); rows=[]
-f=gzip.open('data/transfers.jsonl.gz','rt')
-try:
-    for line in f:
-        try: r=json.loads(line)
-        except Exception: continue
-        k=(r['block'], r['logi'])
-        if k in seen: continue
-        seen.add(k); rows.append(r)
-except EOFError:
-    print('gzip 截断，止于已读部分')
-f.close()
-hs_max=max(r['block'] for r in rows)
-from datetime import datetime, timezone
-anch=json.load(open('data/ts_anchors.json'))
-ab=sorted(int(k) for k in anch)
+"""Fail-closed merge of HyperSync gzip and RPC tail; source is read-only."""
+import argparse
 import bisect
-def interp(b):
-    i=bisect.bisect_left(ab,b)
-    if i==0: return anch[str(ab[0])]
-    if i>=len(ab): return anch[str(ab[-1])]
-    b0,b1=ab[i-1],ab[i]
-    t0,t1=anch[str(b0)],anch[str(b1)]
-    return t0+(t1-t0)*(b-b0)/(b1-b0) if b1>b0 else t0
-n_rpc=0
-for line in open('data/transfers_rpc.jsonl'):
-    r=json.loads(line)
-    k=(r['block'], r['logi'])
-    if k in seen: continue
-    r['ts']=datetime.fromtimestamp(interp(r['block']),timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
-    seen.add(k); rows.append(r); n_rpc+=1
-rows.sort(key=lambda r:(r['block'],r['logi']))
-miss_ts=sum(1 for r in rows if not r.get('ts'))
-with gzip.open('data/transfers_merged.jsonl.gz','wt') as f:
-    for r in rows: f.write(json.dumps(r)+'\n')
-os.replace('data/transfers_merged.jsonl.gz','data/transfers.jsonl.gz')
-print(f'HyperSync段最高块={hs_max} RPC新增={n_rpc} 合计={len(rows)} 缺ts={miss_ts}')
+import gzip
+import hashlib
+import json
+import os
+import sys
+from datetime import datetime, timezone
+
+
+def sha256(path):
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(1024 * 1024), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def load_gzip_complete(path):
+    rows = []
+    try:
+        with gzip.open(path, "rt") as f:
+            for n, line in enumerate(f, 1):
+                try:
+                    rows.append(json.loads(line))
+                except Exception as exc:
+                    raise SystemExit(f"[fail-closed] {path}:{n} invalid JSON: {exc}")
+    except (EOFError, gzip.BadGzipFile, OSError) as exc:
+        raise SystemExit(f"[fail-closed] gzip integrity failure; source preserved: {exc}")
+    return rows
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--input", default="data/transfers.jsonl.gz")
+    ap.add_argument("--rpc", default="data/transfers_rpc.jsonl")
+    ap.add_argument("--anchors", default="data/ts_anchors.json")
+    ap.add_argument("--output", default="data/transfers_merged.jsonl.gz")
+    ap.add_argument("--promote", action="store_true",
+                    help="after full verification, atomically replace --input with --output")
+    a = ap.parse_args()
+    if os.path.realpath(a.input) == os.path.realpath(a.output):
+        raise SystemExit("[fail-closed] --output must differ from read-only --input")
+
+    source_hash = sha256(a.input)
+    rows = load_gzip_complete(a.input)
+    seen = set()
+    for r in rows:
+        key = (r["block"], r["logi"])
+        if key in seen:
+            raise SystemExit(f"[fail-closed] duplicate key in HyperSync source: {key}")
+        seen.add(key)
+    hs_max = max((r["block"] for r in rows), default=None)
+
+    anchors = json.load(open(a.anchors))
+    blocks = sorted(int(k) for k in anchors)
+    if not blocks:
+        raise SystemExit("[fail-closed] empty timestamp anchors")
+
+    def interp(block):
+        i = bisect.bisect_left(blocks, block)
+        if i == 0:
+            return anchors[str(blocks[0])]
+        if i >= len(blocks):
+            return anchors[str(blocks[-1])]
+        b0, b1 = blocks[i - 1], blocks[i]
+        t0, t1 = anchors[str(b0)], anchors[str(b1)]
+        return t0 + (t1 - t0) * (block - b0) / (b1 - b0) if b1 > b0 else t0
+
+    n_rpc = 0
+    with open(a.rpc) as f:
+        for n, line in enumerate(f, 1):
+            try:
+                r = json.loads(line)
+            except Exception as exc:
+                raise SystemExit(f"[fail-closed] {a.rpc}:{n} invalid JSON: {exc}")
+            key = (r["block"], r["logi"])
+            if key in seen:
+                continue
+            r["ts"] = datetime.fromtimestamp(interp(r["block"]), timezone.utc).strftime(
+                "%Y-%m-%dT%H:%M:%SZ")
+            seen.add(key)
+            rows.append(r)
+            n_rpc += 1
+    rows.sort(key=lambda r: (r["block"], r["logi"]))
+    if any(not r.get("ts") for r in rows):
+        raise SystemExit("[fail-closed] merged rows contain missing timestamps")
+
+    tmp = a.output + ".tmp"
+    with gzip.open(tmp, "wt") as f:
+        for r in rows:
+            f.write(json.dumps(r) + "\n")
+    verified = load_gzip_complete(tmp)
+    if len(verified) != len(rows):
+        raise SystemExit("[fail-closed] output row-count verification failed")
+    os.replace(tmp, a.output)
+    out_hash = sha256(a.output)
+    if a.promote:
+        os.replace(a.output, a.input)
+    print(json.dumps({"source_sha256": source_hash, "output_sha256": out_hash,
+                      "hypersync_max_block": hs_max, "rpc_added": n_rpc,
+                      "rows": len(rows), "promoted": a.promote}, sort_keys=True))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

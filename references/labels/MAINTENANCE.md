@@ -11,8 +11,6 @@
 | labels-base | +活跃 bundler 24+paymaster 12（HyperSync 7 日 33 万 UserOp 链上聚合——此前 AA 层=0 是 gas 溯源假金主最大盲区）+Safe 家族 24+Relay 21 solver+Seaport/Banana Gun Router 错标修正 |
 | labels-sol | +疑似 Upbit 热钱包 2（suspected-cex 禁边不剔仓）+Upbit 被黑攻击者 3（heist）；"疑似 OKX"改 suspected-cex |
 | labels-robinhood | +Safe 家族 24+Relay solver 第 5 个+EntryPoint v0.6/v0.7；TRASH 案 serial+21 等未归档增量固化进 additions/ |
-| labels-hyperliquid | v4.1：+HyperCore 系统转移地址族 472（spotMeta 确定性生成）+CEX 词典修 8 条+entity 二审 19 条；赌池 no_merge 覆盖进金标作 round-trip 活体断言 |
-| labels-filecoin | v4 首建：filfox 官方标签 f00–f0126 低位段；v4.2 起 filecoin/cluster.py 真正接入 resolver（此前 README 宣称接入与事实不符——文档漂移实例，引以为戒） |
 
 **发布库维护纪律（v4.2+ 稳定化定，2026-07-18）**：
 - **curation 层（SRC_PRIORITY = -1，高于 manual/addressbook）**：`additions/curation_overrides_*.csv` 的 source 一律写 `curation`。根因：add_labels.py 对同级采用"新条目覆盖"、build_labels.py 采用"先到保留"——两语义不一致曾致 12 行 v4.2 精修（Relay solver 官方 API 亲验等）在全量重建时被 gen_manual 泛化行回退（列级 diff 实测抓出，已救回 `curation_overrides_20260718.csv`）。**今后凡"直改发布库"级别的精修，必须同步固化为 curation override 文件**，否则下次重建即回退。
@@ -28,9 +26,7 @@
 | manual/addressbook | 实战核验条目（含全部 Robinhood 独家）| 最高，优先级压过一切 |
 | serial-offenders | 惯犯层（appendix/state 双源自动回灌+人工白名单，随案滚动，07-31 时点约 1,740 址）| **线索级**（案内定性、多数案源未经用户复核，v6.2.0 降级定调——消费纪律见 labels/README serial-actor 段，禁当最高置信源用） |
 | registry-official | 官方 deployment registry（Aerodrome/Clanker/Zora/Uniswap/Virtuals 官方仓库·npm 包·docs 亲验，Base 54 条首建）| 高（官方源） |
-| manual-chainverify | 链上事件/RPC 亲验条目（Tornado BSC 合约、WHYPE）| 高（链上实测） |
-| hypurrscan-aliases | Hyperliquid 463 实体 | 高（浏览器官方标签） |
-| manual-filfox | Filecoin 官方 tag（f00–f0126）| 高（官方浏览器） |
+| manual-chainverify | 链上事件/RPC 亲验条目（如 Tornado BSC 合约）| 高（链上实测） |
 | spellbook（Dune/hildobby）| EVM CEX 统一表 4957、SOL CEX 164、桥 177、基金 51 | 高（人工维护） |
 | manual-rhdocs | Robinhood 官方 docs 协议合约 | 高（官方） |
 | manual-ofac | OFAC SDN 制裁地址（v4 起 EOA 才三链注入，见下）| 高（权威原始源） |
@@ -71,7 +67,6 @@ python3 ../tests/labels_manifest.py --write      # 发布落印（校验和 mani
 ```
 
 - 构建器输出 v4 全列并自动拆 privacy 子表。
-- **HL/FIL 两表由加工产物源直接进重建流**（`hyperliquid_additions.csv` / `filecoin_additions.csv`，分别由 `build_hyperliquid_labels.py` / `build_filecoin_labels.py` 维护——要刷新先跑它们再 build；这两个文件或 `official_registry.csv` 等 _EXTRA_SOURCES 缺失时构建器会告警，**此时勿 cp 覆盖现库**，否则 HL/FIL 表退化）。
 - 大文件源（accounts.csv/tokens.csv/brianleect）不在本地长存，重建前重下载：
 
 ```bash
@@ -83,7 +78,6 @@ curl -sL -x $P -o brianleect_bsc.json https://raw.githubusercontent.com/brianlee
 for A in ETH BSC SOL; do curl -sL -x $P -o ofac_$(echo $A|tr A-Z a-z).txt \
   https://raw.githubusercontent.com/0xB10C/ofac-sanctioned-digital-currency-addresses/lists/sanctioned_addresses_${A}.txt; done
 curl -sL -x $P -o scamsniffer_address.json https://raw.githubusercontent.com/scamsniffer/scam-database/main/blacklist/address.json
-curl -s -x $P https://api.hypurrscan.io/globalAliases -o hypurrscan_aliases.json
 # OFAC/ScamSniffer 更新后重跑 codetype（增量断点续跑）：
 ETH_RPC="https://ethereum-rpc.publicnode.com" python3 ../probe_codetype.py ofac_eth.txt ofac_eth_codetype.json
 ETH_RPC="https://ethereum-rpc.publicnode.com" python3 ../probe_codetype.py scamsniffer_address.json scamsniffer_codetype.json
@@ -115,15 +109,14 @@ python3 ../accumulate_offenders.py && cd sources && python3 ../add_labels.py ser
 
 ## 扩容路线（△=codex 建议；✅=已落地）
 
-- ✅ v4 P0/P1/P2 全批（决策语义三维/resolver 主流程/金标扩衡/Base 定向补录/miss 队列/serial 层/codehash 指纹/OFAC 分流/时态字段/Hypurrscan/BSC tornado 审计/Filecoin 表/privacy 拆分/manual 双真源校验）
-- ✅ v4.1（覆盖面专项，codex 第三轮）：spellbook 三链投影分流（删 531）；SOL 垃圾清洗 55+base58 硬校验；HL 词典/系统地址族/entity 二审；BSC 桥 30/router 18/locker 17/four.meme 11；SOL 四所 23+Jupiter Lock/Bonfida/Boop；GoPlus 通道；Robinhood verified-contracts 脚本
-- ✅ v4.2（闭环专项，codex 第四轮）：round-trip 三断环；ETH AA 17 条错标修正+归一规则；validate 不变量 11-14；benchmark 七链强制+预检；gatekeeper（两案校准误伤 0）+cluster 接入；Filecoin 接 resolver；Safe 家族 72；Relay 22 solver+聚合桥合约层 95；Base AA 36；EntryPoint 四链；SOL 韩所疑似+heist
+- ✅ v4 P0/P1/P2 全批（决策语义三维/resolver 主流程/金标扩衡/Base 定向补录/miss 队列/serial 层/codehash 指纹/OFAC 分流/时态字段/BSC tornado 审计/privacy 拆分/manual 双真源校验）
+- ✅ v4.1（覆盖面专项，codex 第三轮）：spellbook 三链投影分流（删 531）；SOL 垃圾清洗 55+base58 硬校验；BSC 桥 30/router 18/locker 17/four.meme 11；SOL 四所 23+Jupiter Lock/Bonfida/Boop；GoPlus 通道；Robinhood verified-contracts 脚本
+- ✅ v4.2（闭环专项，codex 第四轮）：round-trip 三断环；ETH AA 17 条错标修正+归一规则；validate 不变量 11-14；benchmark 五链强制+预检；gatekeeper（两案校准误伤 0）+cluster 接入；Safe 家族 72；Relay 22 solver+聚合桥合约层 95；Base AA 36；EntryPoint 四链；SOL 韩所疑似+heist
 - ✅ v4.2+ 稳定化（2026-07-18）：curation 层最高优先级+12 行精修救回；upsert 证据列覆盖语义；benchmark fail-fast；roundtrip_check 发布门禁；manifest 校验和（scripts/tests/）
 - **P1 余款** Base bundler/paymaster 快照定期刷新（HyperSync 聚合法已沉淀；2026-07-17 快照，≥1000 笔/≥900 UserOp 阈值，bundler EOA 会轮换）；韩所 SOL 正式标签持续物色（当前守门员兜底）。
 - **P1 余款** △ 协议官方 deployment registry 持续扩容（Safe deployments / Hyperlane 合约页——机制已建：official_registry.csv + add_labels.py，逐案补）。
 - **P1 余款** Robinhood 工厂事件回放（PoolCreated/ProxyCreation）+ verified-contracts 候选池首轮人工审（`pull_verified_contracts.py` 定期增量拉，同名家族=克隆工厂线索，**只产候选不自动入库**）。
 - **P1 余款** ETH/BSC/Base 主流 DEX V3/V4 池按 factory 事件批量入库（SPX6900 案 2 个 UniswapV3Pool 不在库、以"18 址归集点"面目误导一轮狙击集团分析——pool-probe 四测能证伪但要多付一轮；标签库前置拦截＝零轮成本。方法同上条 Robinhood 工厂回放线：HyperSync 按 factory 地址过滤 PoolCreated（V4 加 PoolManager Initialize）一次拉全链池地址表，dex 类目 tier=exclude 入库后 cluster resolver 直接拦截；topic0 实施时经 openchain.xyz lookup 核验，勿凭记忆写）（2026-07-25）。
-- **P1 余款** HL 系统地址族随新 spot 资产增量刷新（重跑 spotMeta 快照+build_hyperliquid_labels.py，机制已建）。
 - **P2** 做市商 taxonomy 彻底归一（多值 roles；raw_labels 列已铺路）+ manual 层单一真源改造（check_manual_sync 已装牙齿，重构缓行）。
 - **P2** SOL 风险层数据源物色（社区 drainer 库多为 EVM；SolanaFM/Solscan 标签 API 付费墙，待再评估）。
 - **P2** △ CryptoScamDB：2021 年后停更、误报风险大于价值——**评估后不接**（2026-07-17 决定）。

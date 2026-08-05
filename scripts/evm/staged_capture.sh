@@ -21,11 +21,20 @@ n=${#BOUNDS[@]}
 for ((i=0; i<n-1; i++)); do
   FROM=${BOUNDS[$i]}; TO=${BOUNDS[$((i+1))]}
   if [ -f "$OUTDIR/run_${FROM}/done.json" ]; then
-    echo "[skip] segment ${FROM} done"
-    continue
+    if python3 "$V2" verify-done --done "$OUTDIR/run_${FROM}/done.json" \
+      --token-addr "$TOK" --url "$URL" --capture-from "$FROM" --to-block "$TO"
+    then
+      echo "[skip] segment ${FROM} manifest+Parquet verified"
+      continue
+    fi
+    echo "[FATAL] segment ${FROM} done.json/Parquet validation failed" >&2
+    exit 2
   fi
-  # 无 done.json 的 parquet 无 footer 不可读：清残迹重跑
-  rm -rf "$OUTDIR/run_${FROM}"
+  # 无 done.json 的残段不删除，移入隔离区保留诊断现场。
+  if [ -d "$OUTDIR/run_${FROM}" ]; then
+    mkdir -p "$OUTDIR/quarantine"
+    mv "$OUTDIR/run_${FROM}" "$OUTDIR/quarantine/run_${FROM}.$(date +%Y%m%d%H%M%S).$RANDOM"
+  fi
   echo "[start] segment ${FROM} -> ${TO} $(date +%H:%M:%S)"
   python3 "$V2" --url "$URL" --token-addr "$TOK" \
     --outdir "$OUTDIR" --concurrency "$CONCURRENCY" --to-block "$TO" "$FROM"
@@ -33,7 +42,10 @@ for ((i=0; i<n-1; i++)); do
   echo "[end] segment ${FROM} rc=${rc} $(date +%H:%M:%S)"
   if [ $rc -ne 0 ]; then
     echo "[retry-once] segment ${FROM}"
-    rm -rf "$OUTDIR/run_${FROM}"
+    if [ -d "$OUTDIR/run_${FROM}" ]; then
+      mkdir -p "$OUTDIR/quarantine"
+      mv "$OUTDIR/run_${FROM}" "$OUTDIR/quarantine/run_${FROM}.$(date +%Y%m%d%H%M%S).$RANDOM"
+    fi
     python3 "$V2" --url "$URL" --token-addr "$TOK" \
       --outdir "$OUTDIR" --concurrency "$CONCURRENCY" --to-block "$TO" "$FROM" || {
         echo "[FATAL] segment ${FROM} failed twice"; exit 1; }

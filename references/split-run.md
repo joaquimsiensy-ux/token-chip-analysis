@@ -39,8 +39,9 @@
   3. 大户排查**批量层跑满**（主序第 5 项的批量侧）：当前 ≥0.1% 总供应或 ≥0.2% 流通全量＋历史越线＋归零/静置候选（`dormant_candidates` 并入 candidate_universe）× 标签库/惯犯库/指纹/funder 溯源四通道；无法机械定性者标 `needs_adjudication`（批量层跑满是防"候选海"倒灌 −2 的第一道闸）。
   4. 聚类准备（主序第 1 项后半的算法侧）：cluster_prep ＋聚类算法**候选簇**——含拒绝边与孤立点**全量保留**，不只交"算法觉得相关"的簇；合并裁决权在 −2。
   5. `identity_preflight.json`：候选与大仓地址的原始事实层（标签/on-curve/getCode/托管疑点）。**正式 entity_identity_gate 属 −2**——该脚本依赖含实体表的 analysis-state.json，−1 无实体表跑它只会产出假 gate。
-  6. 基础序列：`address_bucket_series`（标签桶序列）＋价格序列。**命名禁用"阵营/camp"**——真 camp_share_series 只能 −2 实体冻结后生成。
-  7. **历史清零层波次扫描**：`scripts/report/wave_scan.py`（原始边表直读，四指纹合并口径机械扫描）产 `wave_scan_report.json`——**READY 必产件，缺件 generate 即拒**；候选只报警不定性，裁决权在 −2；已知公共设施可经 `--exclude-file` 剔除（取 candidate_screening 的 auto_excluded_candidate）。
+  6. 基础序列：`address_bucket_series`（标签桶序列）＋价格序列。**命名禁用"阵营/camp"**——真 camp_share_series 只能 −2 实体冻结后生成。序列产出时顺手标记"价格单日 ±50%"与"单日桶间变动 ≥10pp"的日子清单（供 −2 定峰值逐笔触发日用，无归因义务，2026-08-02）。
+  7. **全体持仓波次扫描（v3）**：`scripts/report/wave_scan.py`（原始边表直读，扫描对象＝全体历史峰值 ≥0.02% 地址不限清零层，A 种子窗/B 喂币专属/C 快速清仓/D 等额面额四指纹合并口径）产 `wave_scan_report.json`（wave-scan/v3，含 scan_universe 逐址全集＋must_adjudicate 标记）——**READY 必产件，缺件 generate 即拒**；候选只报警不定性，裁决权在 −2；已知公共设施可经 `--exclude-file` 剔除（取 candidate_screening 的 auto_excluded_candidate）。
+  8. **资金流异常扫描**：`scripts/report/flow_anomaly_scan.py`（汇集点＋分发点三口径多命中 v2——pulse／pulse_all 不限新老收方／slow_spray 全史 ≥100）产 `flow_anomaly_report.json`（flow-anomaly/v2）——**READY 必产件**；Q1/3yMk 型进货枢纽与 H9 派发器型出货器由此现形，候选裁决权在 −2。
 - **初步观察（可选但鼓励）**：−1 执行者的初步定性/怀疑**只准写进 `sealed/stage1_hypotheses.sealed.md`**（密封纪律见 §2.3），主产物区零定性词。
 
 ### 1.4 停止线（禁做清单，越线＝流程事故）
@@ -72,20 +73,23 @@
 | `anomalies.json` | −1 | 每条 `id/severity/blocking/stage/status/evidence/resolution`——WARN/勉强 PASS/绕过/未档 blocker/缺口处置全在此，**血泪权威源，−2 必读件** |
 | `data_map.json` | −1 | 数据索引：路径/schema/行数/块与时间范围/来源/生成命令/哈希＋DuckDB 查询示例 |
 | `unlock_evidence.json` | −1 | vesting 事实（按需） |
-| `wave_scan_report.json` | −1 | 历史清零层四指纹波次扫描（wave_scan.py）候选波次＋等额组；READY 必产件，−2 逐条裁决完毕前历史大户兜底桶不准关闸 |
+| `wave_scan_report.json` | −1 | 全体持仓四指纹波次扫描（wave_scan.py，wave-scan/v3）候选波次＋等额组＋scan_universe 全集；READY 必产件，−2 逐条裁决完毕前历史大户兜底桶不准关闸 |
+| `flow_anomaly_report.json` | −1 | 资金流异常扫描（flow_anomaly_scan.py，flow-anomaly/v2 三口径多命中）汇集点＋分发点候选；READY 必产件 |
+| `candidate_adjudications.json` | −2 | wave/flow 全候选成员级裁决台账（candidate-adjudications/v1；`adjudication_validator.py template` 起草、`validate` 校验）——freeze 机器前置，缺漏即拒 |
+| `provenance_ledger.json` | −2 | 已知实体币源溯源台账（entity_source_trace.py，provenance-ledger/v2 正向模拟版，两锚点构成＋进货单＋FIFO/LIFO/事件顺序敏感性＋完整输入绑定）——freeze 从原始边真实重放；v1 是 pro-rata 数学错误版一律重跑 |
 | `sealed/stage1_hypotheses.sealed.md` | −1 | 初步定性密封件，见 §2.3 |
 | `entity_freeze.json` | −2 | 冻结事件物化：成员表哈希/时间/未决项/casebook 检验结果；变更走 revision 追加，不许静默覆盖 |
 | 既有产物 | −1 | accounting_mode、collect_manifest＋done.json、四查产物、cluster_prep、address_bucket_series、价格序列——**格式零改动** |
 
 **findings.md 双义处理**：−1 不写 findings.md（它是 A3 交接包，归 −2 按 context-discipline 现行制度写）；easy 版 E0b 中止存档语义不变，且限定为 `BLOCKED_E0B` 恢复资产。
 
-### 2.2 handoff_manifest.json 语义（schema `handoff/v1`）
+### 2.2 handoff_manifest.json 语义（schema `handoff/v2`；v1 只可 `verify --legacy-read-only` 只读降级，机器 receipt 落盘、不得生成新正式报告）
 
 - **身份**：schema_version、case_id、run_id、mode（easy/full；**值来源＝/token-analyze-1 命令的档位参数，−1 收工 `generate --mode` 必填传入**，用户未给档位时 −1 开工前先问、禁猜）、producer_model、CC/codex 两侧 git SHA、consumer_min_schema。
 - **口径**：链范围、合约、冻结块/slot、UTC cutoff、三种分母（总供应/调整后/流通）及来源。
 - **gate 记录**：每个 gate 的命令＋exit＋语义状态（accounting_mode/supply_truth 由脚本从产物 JSON 自动读 `verdict/exit_code`，防手报；四查等其他 gate 由 −1 执行者 `--gate` 显式声明并绑定产物文件）。
 - **产物 allowlist**：逐件登记路径/字节/sha256（大文件分片哈希＋复用采集侧行数/区间校验，不收尾全盘重哈希）/行数/schema/依赖。排除日志/临时库/含密钥文件（config.json 不入清单内容）。
-- **状态机**：`READY | BLOCKED | PARTIAL | SUPERSEDED | BLOCKED_E0B`——只有 READY 可被 −2 消费；READY 前置＝五件契约 JSON＋accounting_mode.json＋supply_truth.json 齐全（A0/A2 必产件，缺任一 generate 即拒）。
+- **状态机**：`READY | BLOCKED | PARTIAL | SUPERSEDED | BLOCKED_E0B`——只有 READY 可被 −2 消费；READY 前置＝五件契约 JSON＋accounting_mode.json＋supply_truth.json＋wave_scan_report.json＋flow_anomaly_report.json 齐全（EVM 家族链另加 time_spotcheck.json；缺任一 generate 即拒，verify 端独立重算这份清单——手改 manifest 摘条目同样过不了）。
 - **生成纪律**：原子生成（tmp+rename）、不含自身哈希；generate 后新增产物走 `late_additions`（重跑 generate 产 superseding manifest，旧件自动归档带 run_id 后缀）。
 
 ### 2.3 sealed 密封纪律（防锚定）
@@ -110,7 +114,7 @@
 
 ### 3.2 判断主序
 
-casebook C/E 册过闸 → 聚类合并裁决（只认专属性证据）→ 临时实体 → **无下限成员完整性扫描** → **wave_scan 候选逐条裁决**（wave_scan_report.json 的候选波次与等额组；裁决完毕前历史大户兜底桶不准关闸，被裁定为协同实体的进名册）→ 反证检查 → **`handoff_manifest.py freeze` 落 entity_freeze.json**（成员表哈希/时间/未决项/casebook 结果；此后变更走 revision 追加）→ 正式 entity_identity_gate（逐 flag 填 resolution，G8 编译门照常）→ 判级 → needs_adjudication 逐项裁决（量大按 context-discipline 刀 1 现行外包制度 fan-out）→ 阵营演变重放（派机械子代理；序列产出后跑 `camp_jump_audit.py`，逐骤变点归因写 facts，无法归因的进报告局限性）→ 状态评估 → **冻结后读 sealed 观察作差异对照**（分歧点进 A4 靶单）→ A4 对抗复核（开工 `a4_gate.py register` 登记 claims、收尾 `finalize` 封口产 a4_seal.json——**封口前禁进 A5**，6.7.0 顺序硬闸）→ A5（easy 两件套 / full 完整报告；报告图一律 charts/final/、build_html `--a4-seal` 必传走 G9；交付时一并申报 sealed 自查）。A6 复盘不自动执行，仅用户要求时按 retrospective.md 走。
+casebook C/E 册过闸 → 聚类合并裁决 → 临时实体 → **ET-2 无下限成员完整性扫描** → **EF-3A/EF-3B 候选进入 EF-3C 裁决与溯源闭环**（`adjudication_validator.py`＋`entity_source_trace.py`；新支路回裁决环）→ `handoff_manifest.py freeze` 校验 **EF-3C-P1～P4**（严格 verify／裁决名册／溯源内容／原始输入及算法绑定重放）→ G8 identity_gate_v3（绑定 owner 全集快照 receipt 与 total supply）→ 判级 → 阵营演变重放 → A3 落 findings/facts/analysis-state/identity → A4 register/finalize `--workflow-type new-analysis` 产 `a4-seal/v3` → A5 用 `build_html --mode analysis-new ...` 走正式全套发布闸。A6 仅用户要求时执行。
 
 ### 3.3 A4 外部异构路收紧条款（分段模式专属，兼容 codex 侧 c1.1.0 禁自审令）
 

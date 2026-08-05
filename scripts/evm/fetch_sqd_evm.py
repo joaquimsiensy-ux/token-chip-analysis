@@ -27,7 +27,12 @@ def main():
     ap.add_argument("--out", default="data/sqd.csv")
     ap.add_argument("--to-block", type=int, default=None)
     ap.add_argument("--sleep", type=float, default=0.5)
+    ap.add_argument("--receipt", help="成功收尾后写正式 evm-collector-run/v2（须显式 --to-block）")
     a = ap.parse_args()
+    explicit_to = a.to_block is not None
+    existed_before = os.path.exists(a.out) and os.path.getsize(a.out) > 0
+    if a.receipt and (not explicit_to or existed_before):
+        ap.error("正式 SQD receipt 要求显式 --to-block 且输出运行前不存在")
     ds = DATASETS.get(a.chain, a.chain)
     base = f"https://portal.sqd.dev/datasets/{ds}"
     token = a.token_addr.lower()
@@ -111,6 +116,10 @@ def main():
         cur = last_block + 1
         time.sleep(a.sleep)
     f.close()
+    if a.receipt:
+        from csv_collector_receipt import emit_native_receipt
+        emit_native_receipt(a.out, a.receipt, __file__, token, base, a.from_block,
+                            a.to_block + 1, a.to_block + 1, fresh_output=not existed_before)
     print(f"[COMPLETE] {total} rows -> {a.out}, [{resume},{a.to_block}] "
           f"{time.time()-t0:.0f}s", flush=True)
 

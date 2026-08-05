@@ -47,13 +47,12 @@ def tree_rss(proc):
         procs = [proc] + proc.children(recursive=True)
         return sum(p.memory_info().rss for p in procs
                    if p.is_running()), len(procs)
-    except PermissionError:
-        # Codex 的 macOS 沙箱可能禁止 psutil 通过 sysctl() 枚举全机 PID。
-        # 退化为只监控直接子进程，仍保留主任务 RSS 水位；不能因观测受限
-        # 让监督器自身崩溃并遗留 ended/exit_code=null 的假运行状态。
+    except (PermissionError, OSError):
+        # macOS 受限/沙箱环境的 sysctl 可能禁止枚举进程树。
+        # 退化为只监控直接子进程 RSS；观测受限不能让监督器先于任务崩溃。
         try:
             return proc.memory_info().rss, 1
-        except (psutil.Error, PermissionError):
+        except (psutil.Error, PermissionError, OSError):
             return 0, 0
     except psutil.Error:
         return 0, 0
@@ -66,7 +65,7 @@ def kill_tree(proc, sig):
                 p.send_signal(sig)
             except psutil.Error:
                 pass
-    except psutil.Error:
+    except (psutil.Error, PermissionError, OSError):
         pass
 
 
@@ -139,11 +138,7 @@ def main():
         if proc is not None:
             rss, nprocs = tree_rss(proc)
             st["peak_rss_gb"] = max(st["peak_rss_gb"], round(rss / 2**30, 2))
-            try:
-                avail = psutil.virtual_memory().available
-            except PermissionError:
-                # 同上：沙箱不提供系统级内存视图时，只执行任务 RSS 和磁盘水位。
-                avail = sys.maxsize
+            avail = psutil.virtual_memory().available
             try:
                 disk_free = shutil.disk_usage(disk_path).free
             except OSError:

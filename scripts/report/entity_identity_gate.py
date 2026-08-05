@@ -11,10 +11,12 @@ build_html G8 直接 WARN（有 WARN 不许交付），报告物理上编不出�
 
 用法：
   生成：python3 entity_identity_gate.py --state analysis-state.json --chain sol \
-            [--snapshot holders_owners.json] [--out identity_gate.json]
+            --snapshot holders_owners.json --snapshot-receipt holders_receipt.json \
+            --total-supply-raw <raw整数> --out identity_gate.json
   校验：python3 entity_identity_gate.py --check identity_gate.json   # exit 1=有未解决 flag
 
-对每个实体地址（+快照现仓 ≥1% 的所有单址）产出四查记录：
+快照 receipt 必须证明同块 owner 全集、文件哈希与 total supply；owner 余额和必须闭合。
+对每个实体地址（+占绑定总供应 ≥1% 的所有单址）产出四查记录：
   label     : LabelResolver 双源查询（CSV 主库 + address-book.md 手工层）
   on_curve  : Solana 链 ed25519 曲线判定（EVM 为 null）
   flag      : 需要显式回答的身份疑点——
@@ -24,7 +26,8 @@ build_html G8 直接 WARN（有 WARN 不许交付），报告物理上编不出�
   resolution: 分析者对 flag 的显式回答（生成时为空；分析流程逐条填写后才可过闸）
 
 resolution 填写纪律：不是走过场——每条必须写"查了什么、结论是什么"
-（如"Alpha 集齐率 3/70 不是托管仓；gas 溯源独立"或"Squads 2-of-2 多签，成员 X+Y"，
+（如"Alpha 集齐率 65/70>90% 判库存仓"或"集齐率低不足以正判托管、另查 gas 溯源独立"
+或"Squads 2-of-2 多签，成员 X+Y"，
 Squads 解析工具＝scripts/solana/squads_members.py）。
 
 ⚠ 误判是双向的（TROLL 2026-07-29 镜像案）：本闸防"托管判成庄家"，但反向
@@ -35,7 +38,7 @@ gas supplier 体系/批次伪影+集齐率），行为假设与金额常数不�
 "跨所作业"（gas 来自 A 所、筹码来自 B 所）一票排除单所托管解释。
 判据细则见 playbook-entity-cluster-methods「托管判定的反向闸」。
 """
-import argparse, json, os, sys
+import argparse, hashlib, json, os, sys
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.normpath(os.path.join(_HERE, '..', 'labels')))
@@ -80,26 +83,244 @@ def is_on_curve(addr):
 
 
 BIG_SHARE = 0.01   # 快照单址 ≥1% 总供应即入闸
+GATE_SCHEMA = 'identity_gate_v3'
+FLAGS = {'', 'INFRA_IN_ENTITY', 'PDA_UNRESOLVED', 'BIG_UNLABELED'}
+CHAINS = {'eth', 'base', 'bsc', 'arbitrum', 'sol', 'robinhood'}
 
 
-def build(state_path, chain, snapshot_path=None, out_path=None):
+def _sha256(path):
+    h = hashlib.sha256()
+    with open(path, 'rb') as f:
+        for block in iter(lambda: f.read(1024 * 1024), b''):
+            h.update(block)
+    return h.hexdigest()
+
+
+def _positive_raw(value, label):
+    if isinstance(value, bool):
+        raise ValueError(f'{label} 必须是正整数 raw amount')
+    if isinstance(value, int):
+        n = value
+    elif isinstance(value, str) and value.isdigit():
+        n = int(value)
+    else:
+        raise ValueError(f'{label} 必须是正整数 raw amount')
+    if n <= 0:
+        raise ValueError(f'{label} 必须大于 0')
+    return n
+
+
+def load_snapshot_binding(state_path, snapshot_path, receipt_path, total_supply_raw, chain=None):
+    state_dir = os.path.dirname(os.path.abspath(state_path))
+    snapshot = os.path.abspath(snapshot_path)
+    receipt = os.path.abspath(receipt_path)
+    if os.path.dirname(snapshot) != state_dir or os.path.dirname(receipt) != state_dir:
+        raise ValueError('snapshot/receipt 必须与 analysis-state.json 同目录')
+    if os.path.islink(snapshot) or os.path.islink(receipt) \
+            or not os.path.isfile(snapshot) or not os.path.isfile(receipt):
+        raise ValueError('snapshot/receipt 不存在或为符号链接')
+    total = _positive_raw(total_supply_raw, 'total_supply_raw')
+    try:
+        snap = json.load(open(snapshot, encoding='utf-8'))
+        rec = json.load(open(receipt, encoding='utf-8'))
+    except Exception as exc:
+        raise ValueError(f'snapshot/receipt 不可读: {exc}') from exc
+    if not isinstance(snap, dict) or not snap:
+        raise ValueError('snapshot 必须是非空 owner->raw amount 对象')
+    if rec.get('schema') != 'identity-holder-snapshot/v2' or rec.get('status') != 'PASS' \
+            or rec.get('complete_owner_universe') is not True or rec.get('as_of_block') is None:
+        raise ValueError('snapshot receipt 非 PASS/完整 owner 全集')
+    bound = rec.get('snapshot')
+    if not isinstance(bound, dict) or bound.get('path') != os.path.basename(snapshot) \
+            or bound.get('sha256') != _sha256(snapshot):
+        raise ValueError('snapshot receipt 未绑定当前 snapshot')
+    if str(rec.get('total_supply_raw')) != str(total):
+        raise ValueError('snapshot receipt total_supply_raw 与显式分母不一致')
+    if chain not in CHAINS or rec.get('adapter') != chain:
+        raise ValueError('snapshot receipt adapter 与支持链不一致')
+    from identity_snapshot_receipt import validate_receipt
+    provenance_errors = validate_receipt(receipt, snapshot, total, chain)
+    if provenance_errors:
+        raise ValueError('snapshot receipt 生产来源无效: ' + '; '.join(provenance_errors))
+    parsed = {}
+    for address, value in snap.items():
+        if isinstance(value, bool) or not isinstance(value, (int, str)) \
+                or not str(value).isdigit():
+            raise ValueError(f'snapshot {address} 余额非非负整数')
+        parsed[str(address)] = int(value)
+    if sum(parsed.values()) != total:
+        raise ValueError(f'snapshot owner 全集与 total supply 不闭合: {sum(parsed.values())} != {total}')
+    meta = {'snapshot_file': os.path.basename(snapshot), 'snapshot_sha256': _sha256(snapshot),
+            'receipt_file': os.path.basename(receipt), 'receipt_sha256': _sha256(receipt),
+            'as_of_block': rec['as_of_block'], 'complete_owner_universe': True,
+            'receipt_schema': rec['schema'], 'adapter': rec['adapter']}
+    return parsed, total, meta
+
+
+def validate_gate(gate_path, state_path=None, require_resolved=True):
+    """Return strict schema/binding/content errors shared by CLI and build_html G8."""
+    errors = []
+    try:
+        gate = json.load(open(gate_path, encoding='utf-8'))
+    except Exception as e:
+        return [f'identity_gate.json 不可读: {e}']
+    if not isinstance(gate, dict):
+        return ['identity_gate 顶层必须是对象']
+    if gate.get('schema') != GATE_SCHEMA:
+        errors.append(f'schema 必须为 {GATE_SCHEMA}')
+    chain = gate.get('chain')
+    if chain not in CHAINS:
+        errors.append(f'chain 非法: {chain!r}')
+
+    state_file = gate.get('state_file')
+    if not isinstance(state_file, str) or not state_file or os.path.basename(state_file) != state_file:
+        errors.append('state_file 必须是同目录 basename')
+    derived_state = os.path.join(os.path.dirname(os.path.abspath(gate_path)), state_file or '')
+    bound_state = os.path.abspath(state_path) if state_path else derived_state
+    if os.path.abspath(derived_state) != bound_state:
+        errors.append('state_file 与当前 analysis-state.json 路径不绑定')
+    try:
+        state = json.load(open(bound_state, encoding='utf-8'))
+        if gate.get('state_sha256') != _sha256(bound_state):
+            errors.append('state_sha256 与当前 analysis-state.json 不一致')
+    except Exception as e:
+        errors.append(f'analysis-state.json 不可读: {e}')
+        state = {}
+    state_chain = state.get('chain') or (state.get('token') or {}).get('chain')
+    if state_chain != chain:
+        errors.append(f'chain 与 state 不绑定: gate={chain!r} state={state_chain!r}')
+
+    binding = gate.get('snapshot_binding')
+    snapshot_values, total_supply = {}, None
+    if gate.get('share_basis') != 'total_supply':
+        errors.append('share_basis 必须为 total_supply')
+    if not isinstance(binding, dict):
+        errors.append('缺 snapshot_binding')
+    else:
+        try:
+            snapshot_values, total_supply, actual_binding = load_snapshot_binding(
+                bound_state,
+                os.path.join(os.path.dirname(bound_state), binding.get('snapshot_file', '')),
+                os.path.join(os.path.dirname(bound_state), binding.get('receipt_file', '')),
+                gate.get('total_supply_raw'), chain=chain)
+            if binding != actual_binding:
+                errors.append('snapshot_binding 与当前 snapshot/receipt 不一致')
+        except ValueError as exc:
+            errors.append(str(exc))
+
+    expected_entities = {}
+    for group in state.get('whale_groups') or []:
+        entity = group.get('entity_id')
+        if not isinstance(entity, str) or not entity.strip():
+            errors.append('state.whale_groups 存在空 entity_id')
+            continue
+        for address in group.get('addresses') or []:
+            if address in expected_entities and expected_entities[address] != entity:
+                errors.append(f'state 地址跨实体重复: {address}')
+            expected_entities[address] = entity
+
+    rows = gate.get('rows')
+    if not isinstance(rows, list):
+        errors.append('rows 必须是数组')
+        rows = []
+    seen = set()
+    actual_flags = 0
+    for i, row in enumerate(rows):
+        if not isinstance(row, dict):
+            errors.append(f'rows[{i}] 必须是对象')
+            continue
+        address = row.get('address')
+        key = address.lower() if isinstance(address, str) and chain != 'sol' else address
+        if not isinstance(address, str) or not address.strip():
+            errors.append(f'rows[{i}].address 为空')
+        elif key in seen:
+            errors.append(f'地址重复: {address}')
+        seen.add(key)
+        entity = row.get('entity')
+        if address in expected_entities:
+            if entity != expected_entities[address]:
+                errors.append(f'{address} entity 与 state 不一致')
+        elif entity != '(non-entity big holder)':
+            errors.append(f'{address} 不在 state 实体中且未标记 non-entity big holder')
+        for required_field in ('share_pct', 'label', 'on_curve', 'flag', 'resolution'):
+            if required_field not in row:
+                errors.append(f'{address} 缺字段 {required_field}')
+        if total_supply:
+            lookup = address if chain == 'sol' else str(address).lower()
+            snap_norm = snapshot_values if chain == 'sol' else {
+                str(k).lower(): v for k, v in snapshot_values.items()}
+            expected_share = round(snap_norm.get(lookup, 0) / total_supply * 100, 3)
+            if row.get('share_pct') != expected_share:
+                errors.append(f'{address} share_pct 与绑定总供应分母不一致')
+        label = row.get('label')
+        if label is not None and (not isinstance(label, dict)
+                                  or not {'name', 'category', 'tier', 'source'} <= set(label)):
+            errors.append(f'{address} label 必须为 null 或完整对象')
+        on_curve = row.get('on_curve')
+        if chain == 'sol':
+            if on_curve not in (True, False, None):
+                errors.append(f'{address} on_curve 类型非法')
+        elif on_curve is not None:
+            errors.append(f'{address} 非 Solana 但 on_curve 非 null')
+        flag = row.get('flag')
+        if flag not in FLAGS:
+            errors.append(f'{address} flag 非法: {flag!r}')
+            continue
+        actual_flags += bool(flag)
+        # 实体成员无标签时必须入闸；share 只用于展示，不是豁免条件。
+        if address in expected_entities and label is None:
+            required = 'PDA_UNRESOLVED' if chain == 'sol' and on_curve is False \
+                else 'BIG_UNLABELED'
+            if flag != required:
+                errors.append(f'{address} 无标签实体成员必须为 {required}')
+        if require_resolved and flag and not str(row.get('resolution', '')).strip():
+            errors.append(f'{address} {flag} 无 resolution')
+    missing = sorted(set(expected_entities) - {r.get('address') for r in rows if isinstance(r, dict)})
+    if missing:
+        errors.append(f'{len(missing)} 个 state 实体地址未入闸')
+    if total_supply:
+        row_keys = {str(r.get('address')).lower() if chain != 'sol' else r.get('address')
+                    for r in rows if isinstance(r, dict)}
+        snap_norm = snapshot_values if chain == 'sol' else {
+            str(k).lower(): v for k, v in snapshot_values.items()}
+        omitted = [a for a, v in snap_norm.items()
+                   if v / total_supply >= BIG_SHARE and a not in row_keys]
+        if omitted:
+            errors.append(f'{len(omitted)} 个当前≥1% 总供应 owner 未入闸')
+    if gate.get('n_addresses') != len(rows):
+        errors.append(f'n_addresses 应为 {len(rows)}，实为 {gate.get("n_addresses")}')
+    if gate.get('n_flags') != actual_flags:
+        errors.append(f'n_flags 应为 {actual_flags}，实为 {gate.get("n_flags")}')
+    return errors
+
+
+def build(state_path, chain, snapshot_path=None, out_path=None, *,
+          total_supply_raw=None, snapshot_receipt_path=None):
     from labels_resolver import LabelResolver
     state = json.load(open(state_path))
     resolver = LabelResolver(chain)
     resolver.warn_if_degraded()
 
+    if chain not in CHAINS:
+        raise ValueError(f'chain 非法: {chain!r}')
+    if not snapshot_path or not snapshot_receipt_path or total_supply_raw is None:
+        raise ValueError('生成 identity gate 必须显式传 snapshot/snapshot-receipt/total-supply-raw')
+    snap, total, snapshot_meta = load_snapshot_binding(
+        state_path, snapshot_path, snapshot_receipt_path, total_supply_raw, chain=chain)
+    snap_norm = snap if chain == 'sol' else {str(k).lower(): v for k, v in snap.items()}
+
     targets = {}   # addr -> {entity, share}
     for g in state.get('whale_groups', []):
         for a in g.get('addresses', []):
-            targets[a] = {'entity': g.get('entity_id', '?'), 'share': None}
-    if snapshot_path:
-        snap = json.load(open(snapshot_path))
-        total = sum(snap.values())
-        if total > 0:
-            for a, v in snap.items():
-                if v / total >= BIG_SHARE and a not in targets:
-                    targets[a] = {'entity': '(non-entity big holder)',
-                                  'share': round(v / total * 100, 3)}
+            key = a if chain == 'sol' else str(a).lower()
+            targets[a] = {'entity': g.get('entity_id', '?'),
+                          'share': round(snap_norm.get(key, 0) / total * 100, 3)}
+    target_keys = {a if chain == 'sol' else str(a).lower() for a in targets}
+    for a, v in snap.items():
+        key = a if chain == 'sol' else str(a).lower()
+        if v / total >= BIG_SHARE and key not in target_keys:
+            targets[a] = {'entity': '(non-entity big holder)',
+                          'share': round(v / total * 100, 3)}
 
     rows = []
     for a, meta in sorted(targets.items()):
@@ -117,12 +338,14 @@ def build(state_path, chain, snapshot_path=None, out_path=None):
                 flag = 'PDA_UNRESOLVED'
             elif meta['share'] is not None or meta['entity'] != '(non-entity big holder)':
                 # 实体成员或 ≥1% 大仓且无标签：必须显式过一遍托管/设施假设
-                flag = 'BIG_UNLABELED' if (meta['share'] or 0) >= 1 else ''
+                flag = 'BIG_UNLABELED'
         rows.append({'address': a, 'entity': meta['entity'], 'share_pct': meta['share'],
                      'label': label, 'on_curve': oc, 'flag': flag, 'resolution': ''})
 
-    gate = {'schema': 'identity_gate_v1', 'chain': chain,
+    gate = {'schema': GATE_SCHEMA, 'chain': chain, 'share_basis': 'total_supply',
+            'total_supply_raw': str(total), 'snapshot_binding': snapshot_meta,
             'state_file': os.path.basename(state_path),
+            'state_sha256': _sha256(state_path),
             'n_addresses': len(rows),
             'n_flags': sum(1 for r in rows if r['flag']),
             'rows': rows}
@@ -138,13 +361,13 @@ def build(state_path, chain, snapshot_path=None, out_path=None):
 
 
 def check(gate_path):
-    gate = json.load(open(gate_path))
-    unresolved = [r for r in gate.get('rows', []) if r.get('flag') and not str(r.get('resolution', '')).strip()]
-    if unresolved:
-        print(f"[identity_gate][FAIL] {len(unresolved)} 个身份疑点未解决：")
-        for r in unresolved:
-            print(f"  [{r['flag']}] {r['address']} entity={r['entity']}")
+    errors = validate_gate(gate_path)
+    if errors:
+        print(f"[identity_gate][FAIL] {len(errors)} 项严格校验错误：")
+        for error in errors:
+            print(f"  - {error}")
         return 1
+    gate = json.load(open(gate_path, encoding='utf-8'))
     print(f"[identity_gate][PASS] {gate.get('n_addresses', 0)} 址全部过闸")
     return 0
 
@@ -154,6 +377,8 @@ def main():
     ap.add_argument('--state')
     ap.add_argument('--chain')
     ap.add_argument('--snapshot')
+    ap.add_argument('--snapshot-receipt')
+    ap.add_argument('--total-supply-raw')
     ap.add_argument('--out')
     ap.add_argument('--check', help='校验模式：identity_gate.json 路径')
     a = ap.parse_args()
@@ -161,7 +386,9 @@ def main():
         sys.exit(check(a.check))
     if not (a.state and a.chain):
         ap.error('生成模式需要 --state 与 --chain')
-    build(a.state, a.chain, a.snapshot, a.out)
+    build(a.state, a.chain, a.snapshot, a.out,
+          total_supply_raw=a.total_supply_raw,
+          snapshot_receipt_path=a.snapshot_receipt)
 
 
 if __name__ == '__main__':

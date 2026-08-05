@@ -31,11 +31,13 @@ TransferFee / TransferHook / InterestBearing / PermanentDelegate 等扩展会让
 直接返回 extensions 数组（transferFeeConfig 现役 269bps 全字段），无需手动 TLV 解析。
 （来源：v3.19 A-记账模型准入 gate，2026-07-22）"""
 import argparse
+import hashlib
 import json
 import os
 import sys
 import time
 from datetime import datetime, timezone
+from pathlib import Path
 
 import requests
 
@@ -113,6 +115,8 @@ def main():
             rpc = PUBLIC_RPC
 
     result = {"schema": "accounting-gate/v1", "chain": "solana", "mint": a.mint,
+              "producer": {"path": "scripts/solana/accounting_gate_sol.py",
+                           "sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest()},
               "checked_at": now_iso(), "rpc": rpc.split("?")[0],
               "checks": {}, "warnings": [], "reasons": []}
 

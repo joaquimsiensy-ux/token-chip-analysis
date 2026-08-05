@@ -12,8 +12,9 @@
   8. G9 正例：seal PASS + 图在 charts/final/ → build_html exit 0 且 HTML 写出
   9. G9 封口后改结论文件 → exit 1 且 HTML **未写出**（gate 前置，不再先落盘再报错）
  10. G9 报告图不在 charts/final/ → exit 1 不写出
- 11. --skip-a4-gate-reason → exit 0 写出且 HTML 注释含理由
+ 11. legacy-recompile 用 mode 水印说明降级，且不存在任何 skip gate CLI
  12. 不传 --a4-seal（update 流程场景）→ G9 不触发照常编译
+ 13. P0-01/D-06：analysis 拒绝 seal 外 facts/state/JSON，但允许已封口监控 JSON
 用法：python3 scripts/tests/test_a4_gate.py   退出码 0=PASS / 1=FAIL
 """
 import base64
@@ -22,11 +23,19 @@ import os
 import subprocess
 import sys
 import tempfile
+import hashlib
+import shutil
+from pathlib import Path
+
+from test_audit_release_gate import build_case
+from identity_gate_fixture import augment_gate
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 GATE = os.path.join(HERE, "..", "report", "a4_gate.py")
 BUILD = os.path.join(HERE, "..", "report", "build_html.py")
+A5 = os.path.join(HERE, "..", "report", "a5_report_seal.py")
 FAILS = []
+ENTITY_ADDR = "0x" + "a" * 40
 
 # 1x1 透明 png（最小合法图片，供 embed_img 读取）
 PNG = base64.b64decode(
@@ -42,6 +51,17 @@ def check(name, cond):
 
 
 def run(script, args):
+    if script == GATE and args[:1] == ["finalize"] and "--workflow-type" not in args:
+        args = args + ["--workflow-type", "independent-audit"]
+    if script == BUILD and "--mode" in args and args[args.index("--mode") + 1] in {"analysis-new", "analysis-audit"} \
+            and "--a5-seal" not in args and "--md" in args and "--a4-seal" in args:
+        md = Path(args[args.index("--md") + 1]).resolve()
+        a4 = Path(args[args.index("--a4-seal") + 1]).resolve()
+        a5 = md.parent / "a5_report_seal.json"
+        made = subprocess.run([sys.executable, A5, "--case-dir", str(md.parent),
+                               "--report", str(md), "--a4-seal", str(a4), "--out", str(a5)],
+                              capture_output=True, text=True)
+        args = args + ["--a5-seal", str(a5)]
     return subprocess.run([sys.executable, script] + args, capture_output=True, text=True)
 
 
@@ -56,8 +76,24 @@ def main():
     root = tempfile.mkdtemp(prefix="a4_gate_test_")
     d = os.path.join(root, "case")
     os.makedirs(d)
+    report_path = build_case(Path(d), historical=False)
 
-    claims = [{"id": "C1", "text": "大庄A控盘30%"}, {"id": "C2", "text": "项目方已弃盘"}]
+    registry = json.load(open(os.path.join(d, "claim_registry.json")))
+    registry["claims"] = [
+        {"claim_id": "C1", "statement": "大庄A控盘30%", "claim_type": "snapshot_balance",
+         "report_locations": ["report.md:1"], "verdict": "weakened",
+         "evidence_files": ["raw_transfers.jsonl"]},
+        {"claim_id": "C2", "statement": "项目方已弃盘", "claim_type": "snapshot_balance",
+         "report_locations": ["report.md:1"], "verdict": "confirmed",
+         "evidence_files": ["raw_transfers.jsonl"],
+         "reproduce_receipt": "reproduce_receipt.json",
+         "counter_hypotheses": ["暂时静置"], "blocking_unresolved": False},
+    ]
+    wj(d, "claim_registry.json", registry)
+    claims = [{"id": "C1", "text": "大庄A控盘30%", "files": ["raw_transfers.jsonl"],
+               "report_locations": ["report.md:1"]},
+              {"id": "C2", "text": "项目方已弃盘", "files": ["raw_transfers.jsonl"],
+               "report_locations": ["report.md:1"]}]
     cf = wj(d, "claims_in.json", claims)
 
     # 1/2. register
@@ -69,6 +105,27 @@ def main():
                    wj(d, "dup.json", [{"id": "X", "text": "a"}, {"id": "X", "text": "b"}])])
     check("register 重复 id exit 2", p.returncode == 2)
 
+    # Round4 P1-02：register 后磁盘 registry 被篡改，finalize 必须重跑同一验证器。
+    reg_path = Path(d, "a4_claims.json")
+    original_reg = reg_path.read_text(encoding="utf-8")
+    tampered = json.loads(original_reg)
+    tampered["claims"].append({"id": "C1", "text": "第二条同 ID 命题", "files": []})
+    reg_path.write_text(json.dumps(tampered), encoding="utf-8")
+    p = run(GATE, ["finalize", "--case-dir", d, "--verdicts-file",
+                   wj(d, "v_dup_registry.json", [{"id": "C1", "verdict": "CONFIRMED"},
+                                                   {"id": "C2", "verdict": "CONFIRMED"}]),
+                   "--seal-files", "raw_transfers.jsonl"])
+    check("Round4 P1-02 finalize 重验重复 claim id", p.returncode == 2 and "id 重复" in p.stderr)
+    tampered = json.loads(original_reg)
+    tampered["claims"][0]["text"] = ""
+    reg_path.write_text(json.dumps(tampered), encoding="utf-8")
+    p = run(GATE, ["finalize", "--case-dir", d, "--verdicts-file",
+                   wj(d, "v_empty_registry.json", [{"id": "C1", "verdict": "CONFIRMED"},
+                                                     {"id": "C2", "verdict": "CONFIRMED"}]),
+                   "--seal-files", "raw_transfers.jsonl"])
+    check("Round4 P1-02 同族空文本失败分支", p.returncode == 2 and "空 text" in p.stderr)
+    reg_path.write_text(original_reg, encoding="utf-8")
+
     # 3. finalize 未 register（新目录）
     d3 = os.path.join(root, "case_noreg")
     os.makedirs(d3)
@@ -78,7 +135,23 @@ def main():
     # 准备终版结论文件
     with open(os.path.join(d, "findings.md"), "w") as f:
         f.write("# findings\n复核后终版结论\n")
-    wj(d, "analysis-state.json", {"whale_groups": []})
+    state = {"chain": "bsc", "whale_groups": [
+                 {"entity_id": "e1", "label": "实体1", "addresses": [ENTITY_ADDR]}],
+             "provenance": {"schema_version": "2", "skill_commit": "test",
+                            "data_sources": ["fixture"]}}
+    state_path = wj(d, "analysis-state.json", state)
+    wj(d, "facts.json", {"token": {"symbol": "TT", "decimals": 0, "total_supply_raw": "1000"},
+                          "entities": {"e1": {"label": "实体1", "addresses": [ENTITY_ADDR],
+                                                 "current_raw": "100", "peak_raw": "100",
+                                                 "peak_date": "2026-01-01"}}, "metrics": {}})
+    identity = augment_gate(d, {"chain": "bsc",
+        "state_file": "analysis-state.json",
+        "state_sha256": hashlib.sha256(Path(state_path).read_bytes()).hexdigest(),
+        "n_addresses": 1, "n_flags": 0, "rows": [
+        {"address": ENTITY_ADDR, "entity": "e1", "share_pct": None,
+         "label": {"name": "fixture", "category": "other", "tier": "identity", "source": "test"},
+         "on_curve": None, "flag": "", "resolution": ""}]}, chain="bsc")
+    wj(d, "identity_gate.json", identity)
 
     # 5/6. finalize 反例集
     p = run(GATE, ["finalize", "--case-dir", d, "--seal-files", "findings.md",
@@ -121,20 +194,140 @@ def main():
     check("finalize 正例 exit 0 且 seal PASS", p.returncode == 0 and os.path.isfile(seal_p)
           and json.load(open(seal_p))["verdict"] == "PASS")
 
+    # D-06：用户确认买入后，监控附录进入 seal 即可维持正式报告身份。
+    sealed_appendix = wj(d, "appendix.json", {"chip_summary": {}, "addresses": [],
+                                                "unlock_events": [], "source_line": "test"})
+    p = run(GATE, ["finalize", "--case-dir", d,
+                   "--seal-files", "findings.md,analysis-state.json,appendix.json",
+                   "--verdicts-file", good_verdicts])
+    sealed_json_out = os.path.join(d, "sealed_json.html")
+    p_build = run(BUILD, ["--mode", "analysis-audit", "--md", str(report_path),
+                          "--out", sealed_json_out, "--facts", os.path.join(d, "facts.json"),
+                          "--state", os.path.join(d, "analysis-state.json"),
+                          "--a4-seal", seal_p, "--json", sealed_appendix])
+    check("D-06 已封口监控 JSON 可走正式构建",
+          p.returncode == 0 and p_build.returncode == 0 and os.path.isfile(sealed_json_out))
+
+    # P1-05：全新分析走共享门禁，不伪造净室资产；seal 轨道不可互换。
+    new_d = os.path.join(root, "case_new")
+    shutil.copytree(d, new_d)
+    for name in ("audit_input_manifest.json", "claim_registry.json", "reproduce_audit.py",
+                 "reproduce_receipt.json", "reproduce_output.json"):
+        Path(new_d, name).unlink(missing_ok=True)
+    p = run(GATE, ["finalize", "--case-dir", new_d,
+                   "--seal-files", "findings.md,analysis-state.json",
+                   "--verdicts-file", os.path.join(new_d, "v_ok.json"),
+                   "--workflow-type", "new-analysis"])
+    new_seal = os.path.join(new_d, "a4_seal.json")
+    new_out = os.path.join(new_d, "new.html")
+    p_build = run(BUILD, ["--mode", "analysis-new", "--md", os.path.join(new_d, "report.md"),
+                          "--out", new_out, "--facts", os.path.join(new_d, "facts.json"),
+                          "--state", os.path.join(new_d, "analysis-state.json"),
+                          "--a4-seal", new_seal])
+    check("P1-05 全新分析无净室资产仍过必经共享门禁",
+          p.returncode == 0 and p_build.returncode == 0 and os.path.isfile(new_out))
+
     # 8. G9 正例：图在 charts/final/，编译过
+    with open(report_path, "w") as f:
+        f.write("# 测试报告\n\n![阵营演变](charts/final/fig1.png)\n\n正文。\n")
+    registry = json.load(open(os.path.join(d, "claim_registry.json")))
+    registry["report_sha256"] = hashlib.sha256(Path(report_path).read_bytes()).hexdigest()
+    wj(d, "claim_registry.json", registry)
+    p = run(GATE, ["finalize", "--case-dir", d,
+                   "--seal-files", "findings.md,analysis-state.json",
+                   "--verdicts-file", good_verdicts])
+    check("P1-06 终版 claim registry 对账后重封口", p.returncode == 0)
     with open(os.path.join(d, "charts", "final", "fig1.png"), "wb") as f:
         f.write(PNG)
-    with open(os.path.join(d, "报告.md"), "w") as f:
-        f.write("# 测试报告\n\n![阵营演变](charts/final/fig1.png)\n\n正文。\n")
     out_html = os.path.join(d, "报告.html")
-    p = run(BUILD, ["--md", os.path.join(d, "报告.md"), "--out", out_html, "--a4-seal", seal_p])
+    analysis_args = ["--mode", "analysis-audit", "--md", str(report_path), "--out", out_html,
+                     "--facts", os.path.join(d, "facts.json"), "--state", os.path.join(d, "analysis-state.json"),
+                     "--a4-seal", seal_p]
+    p = run(BUILD, analysis_args)
     check("G9 正例 exit 0 且 HTML 写出", p.returncode == 0 and os.path.isfile(out_html))
+    mismatch_out = os.path.join(d, "workflow_mismatch.html")
+    p = run(BUILD, [*analysis_args[:1], "analysis-new", *analysis_args[2:],
+                    "--out", mismatch_out])
+    check("P1-05 audit seal 不得降级当 new-analysis 构建",
+          p.returncode != 0 and "workflow_type" in p.stdout and not os.path.exists(mismatch_out))
+
+    # P0-01：G9 验的必须就是渲染用的。案外 facts 即使结构正常也不得替换 seal 内事实。
+    external = os.path.join(root, "external")
+    os.makedirs(external)
+    external_facts = wj(external, "facts.json", {
+        "token": {"symbol": "TT", "decimals": 0, "total_supply_raw": "1000"},
+        "entities": {"e1": {"label": "实体1", "addresses": [ENTITY_ADDR],
+                              "current_raw": "900", "peak_raw": "900",
+                              "peak_date": "2026-01-01"}}, "metrics": {}})
+    p0_out = os.path.join(d, "p0_external_facts.html")
+    p = run(BUILD, ["--mode", "analysis-audit", "--md", str(report_path), "--out", p0_out,
+                    "--facts", external_facts,
+                    "--state", os.path.join(d, "analysis-state.json"),
+                    "--a4-seal", seal_p])
+    check("P0-01 seal 外 facts 拒绝且不落 HTML",
+          p.returncode != 0 and not os.path.exists(p0_out))
+
+    external_state = wj(external, "analysis-state.json", state)
+    wj(external, "identity_gate.json", {"schema": "identity_gate_v2", "chain": "bsc",
+        "state_file": "analysis-state.json",
+        "state_sha256": hashlib.sha256(Path(external_state).read_bytes()).hexdigest(),
+        "n_addresses": 1, "n_flags": 0, "rows": [
+        {"address": ENTITY_ADDR, "entity": "e1", "share_pct": None,
+         "label": {"name": "fixture", "category": "other", "tier": "identity", "source": "test"},
+         "on_curve": None, "flag": "", "resolution": ""}]})
+    p0_state_out = os.path.join(d, "p0_external_state.html")
+    p = run(BUILD, ["--mode", "analysis-audit", "--md", str(report_path), "--out", p0_state_out,
+                    "--facts", os.path.join(d, "facts.json"), "--state", external_state,
+                    "--a4-seal", seal_p])
+    check("P0-01 seal 外 state 拒绝且不落 HTML",
+          p.returncode != 0 and not os.path.exists(p0_state_out))
+
+    appendix = wj(d, "unsealed_appendix.json", {"chip_summary": {}, "addresses": [],
+                                                 "unlock_events": [], "source_line": "test"})
+    p0_json_out = os.path.join(d, "p0_unsealed_json.html")
+    p = run(BUILD, analysis_args + ["--json", appendix, "--out", p0_json_out])
+    check("P0-01 analysis 禁止未封口 JSON 附录",
+          p.returncode != 0 and not os.path.exists(p0_json_out))
+
+    # B-04：registry / verdicts / claim 引用文件任一漂移都必须拒。
+    for label, path in [("registry", os.path.join(d, "a4_claims.json")),
+                        ("verdicts", good_verdicts),
+                        ("claim file", os.path.join(d, "raw_transfers.jsonl"))]:
+        original = Path(path).read_bytes()
+        Path(path).write_bytes(original + b"\n")
+        if os.path.exists(out_html):
+            os.unlink(out_html)
+        p = run(BUILD, analysis_args)
+        check(f"G9 {label} 封口后漂移拒绝", p.returncode == 1 and "封口后被改动" in p.stdout)
+        Path(path).write_bytes(original)
+
+    # B-04：字符串前缀不能替代 resolve containment；绝对路径和 symlink 同拒。
+    secret = os.path.join(d, "secret.png")
+    Path(secret).write_bytes(PNG)
+    escape_cases = [
+        ("dotdot", "charts/final/../../secret.png"),
+        ("absolute", secret),
+    ]
+    link = os.path.join(d, "charts", "final", "link.png")
+    os.symlink(secret, link)
+    escape_cases.append(("symlink", "charts/final/link.png"))
+    for label, image_path in escape_cases:
+        bad_md = os.path.join(d, f"escape_{label}.md")
+        Path(bad_md).write_text(f"# escape\n\n![x]({image_path})\n", encoding="utf-8")
+        bad_out = os.path.join(d, f"escape_{label}.html")
+        p = run(BUILD, ["--mode", "analysis-audit", "--md", bad_md, "--out", bad_out,
+                        "--facts", os.path.join(d, "facts.json"),
+                        "--state", os.path.join(d, "analysis-state.json"),
+                        "--a4-seal", seal_p])
+        check(f"G9 {label} 图片越界拒绝", p.returncode == 1 and not os.path.exists(bad_out))
+    os.unlink(link)
 
     # 9. 封口后改结论文件 → 编译拒且不写出
-    os.unlink(out_html)
+    if os.path.exists(out_html):
+        os.unlink(out_html)
     with open(os.path.join(d, "findings.md"), "a") as f:
         f.write("封口后偷偷改了一句结论\n")
-    p = run(BUILD, ["--md", os.path.join(d, "报告.md"), "--out", out_html, "--a4-seal", seal_p])
+    p = run(BUILD, analysis_args)
     check("G9 封口后改结论 exit 1", p.returncode == 1 and "封口后被改动" in p.stdout)
     check("G9 拒绝时 HTML 未写出（gate 前置）", not os.path.isfile(out_html))
     # 翻案重封的真实流程：旧图作废（基于被推翻的结论）→ 清空 charts/final → finalize → 重画
@@ -152,27 +345,36 @@ def main():
         f.write(PNG)
     with open(os.path.join(d, "报告bad.md"), "w") as f:
         f.write("# 测试\n\n![旧图](charts/draft/old.png)\n")
-    p = run(BUILD, ["--md", os.path.join(d, "报告bad.md"), "--out",
-                    os.path.join(d, "bad.html"), "--a4-seal", seal_p])
+    p = run(BUILD, ["--mode", "analysis-audit", "--md", os.path.join(d, "报告bad.md"), "--out",
+                    os.path.join(d, "bad.html"), "--facts", os.path.join(d, "facts.json"),
+                    "--state", os.path.join(d, "analysis-state.json"), "--a4-seal", seal_p])
     check("G9 图不在封口目录 exit 1 不写出", p.returncode == 1
           and not os.path.isfile(os.path.join(d, "bad.html")))
 
-    # 11. skip reason 留痕
-    p = run(BUILD, ["--md", os.path.join(d, "报告bad.md"), "--out", os.path.join(d, "skip.html"),
-                    "--skip-a4-gate-reason", "历史报告重编译测试"])
+    # 11. legacy 显式降级留痕
+    p = run(BUILD, ["--mode", "legacy-recompile", "--degrade-reason", "历史报告重编译测试",
+                    "--md", os.path.join(d, "报告bad.md"), "--out", os.path.join(d, "skip.html")])
     html_txt = open(os.path.join(d, "skip.html"), encoding="utf-8").read() \
         if os.path.isfile(os.path.join(d, "skip.html")) else ""
-    check("skip reason exit 0 且理由入 HTML 注释", p.returncode == 0 and "历史报告重编译测试" in html_txt)
+    check("legacy 降级理由入 HTML 注释", p.returncode == 0 and "历史报告重编译测试" in html_txt)
 
-    # 12. 不传 --a4-seal 不触发 G9（update 流程）
-    p = run(BUILD, ["--md", os.path.join(d, "报告bad.md"), "--out", os.path.join(d, "noseal.html")])
-    check("无 --a4-seal 不触发 G9 照常编译", p.returncode == 0)
+    # 12. analysis 不带 seal 必须拒；update 模式可显式降级无 seal 编译
+    p = run(BUILD, ["--mode", "analysis-audit", "--md", os.path.join(d, "报告bad.md"),
+                    "--out", os.path.join(d, "noseal.html")])
+    check("analysis 无 --a4-seal 拒绝", p.returncode != 0)
+    p = run(BUILD, ["--mode", "update", "--degrade-reason", "增量更新不重跑 A4",
+                    "--md", os.path.join(d, "报告bad.md"), "--out", os.path.join(d, "update.html")])
+    check("update 显式降级无 seal 可编译", p.returncode == 0)
+
+    help_text = run(BUILD, ["--help"]).stdout
+    check("D-07 help 不再暴露不可达 skip gate 参数",
+          "--skip-identity-gate" not in help_text and "--skip-a4-gate-reason" not in help_text)
 
     print("=" * 40)
     if FAILS:
         print(f"a4_gate 契约测试 {len(FAILS)} 项失败")
         return 1
-    print("a4_gate 契约测试全部通过（18 项）")
+    print("a4_gate 契约测试全部通过（23 项）")
     return 0
 
 

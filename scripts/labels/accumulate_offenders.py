@@ -290,7 +290,7 @@ def main():
                 raw_chain = nat.get('chain')
         chain = norm_chain(raw_chain)
         token = tok.get('symbol') or case
-        if chain not in ('eth', 'bsc', 'base', 'sol', 'robinhood', 'hyperliquid', 'filecoin'):
+        if chain not in ('eth', 'bsc', 'base', 'sol', 'robinhood'):
             continue
         for g in d.get('whale_groups') or []:
             label = (g.get('label') or '').strip()

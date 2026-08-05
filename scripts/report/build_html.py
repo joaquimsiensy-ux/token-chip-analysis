@@ -5,7 +5,10 @@
 （取代 PDF；md2pdf.py 保留，仅当用户点名要 PDF 时用）。
 
 用法：
-  python3 build_html.py --md 报告.md --out 报告.html [--json appendix.json] [--title 标题]
+  python3 build_html.py --mode analysis-new --md 报告.md --out 报告.html \
+    --facts facts.json --state analysis-state.json --a4-seal a4_seal.json
+  python3 build_html.py --mode update|legacy-recompile --degrade-reason "理由" \
+    --md 简报.md --out 简报.html
 
 支持的 md 子集（与 md2pdf.py 语法一致，报告写作按 references/report-template.md）：
   # ## ### #### 标题 | **粗体** *斜体* `代码` [链接](url) | - / 1. 列表 | 表格 | ``` 代码块
@@ -28,8 +31,9 @@ JSON 附录（--json）：文件校验可解析后，双轨嵌入报告末尾—
   1) 本脚本 stdout 的告警行（缺图/图读取失败会打 [WARN]，有 WARN 不许交付）
   2) 浏览器打开目检：图片全部显示、表格无错位、蓝红框渲染正常、JSON 折叠块可展开
 """
-import argparse, base64, html, json, mimetypes, os, re, sys
+import argparse, base64, hashlib, html, json, mimetypes, os, re, sys
 from collections import Counter
+from pathlib import Path
 
 # ---- 外部代币名扫描（信息性提示；v6.4.2 起"零外部代币名"红线废止，不再拦交付）----
 # 通用缩写/工具名/链与 gas 币/稳定币/CEX 名——这些全大写词不是"外部代币名"
@@ -98,6 +102,8 @@ details{background:#f6f8fa;border:1px solid #e3e6ea;border-radius:10px;padding:1
 summary{cursor:pointer;font-weight:600}
 details pre{background:#282c34;color:#d7dae0;border:none;font-size:12.5px;max-height:520px;overflow:auto}
 .meta{color:#57606a;font-size:13.5px;background:#f6f8fa;border-radius:8px;padding:8px 14px;margin:10px 0}
+.degraded-banner{background:#fff3cd;border:2px solid #d39e00;color:#5f4700;border-radius:10px;
+  padding:12px 16px;margin:0 0 22px;font-weight:700}
 @media(max-width:640px){.wrap{padding:22px 18px}body{padding:10px 4px}}
 """
 
@@ -245,6 +251,12 @@ def md_to_html(md_text, mddir, warns):
 
 def main():
     ap = argparse.ArgumentParser()
+    formal_modes = {"analysis-new": "new-analysis",
+                    "analysis-audit": "independent-audit"}
+    ap.add_argument("--mode", choices=[*formal_modes, "update", "legacy-recompile"], required=True,
+                    help="analysis-new/analysis-audit=两条必经正式门禁；其余为降级产物")
+    ap.add_argument("--degrade-reason",
+                    help="update/legacy-recompile 必填；写入可见水印与 HTML 注释")
     ap.add_argument("--md", required=True)
     ap.add_argument("--out", required=True)
     ap.add_argument("--json", help="机器可读 JSON 附录文件（schema 见 monitoring-package.md）")
@@ -255,14 +267,41 @@ def main():
     ap.add_argument("--facts", help="facts.json 事实源（3.18.0 报告编译化：渲染宏+语义 gate，"
                                     "见 facts_gate.py docstring；不给则旧行为不变）")
     ap.add_argument("--state", help="analysis-state.json（与 --facts 同给时做 G1 成员集合对账）")
-    ap.add_argument("--skip-identity-gate", action="store_true",
-                    help="显式跳过 G8 实体身份闸（仅限历史报告重编译等无 gate 场景；跳过会打 NOTE 留痕）")
-    ap.add_argument("--a4-seal", help="a4_seal.json（A4 封口凭证，触发 G9：封口哈希重验+报告图必须"
-                                      "全在封口 charts_dir 下；分析流程 A5/E5 编译必传，update 流程不传）")
-    ap.add_argument("--skip-a4-gate-reason", default=None,
-                    help="跳过 G9 的文字理由（仅限历史报告重编译等无 seal 场景）——理由会写入 HTML "
-                         "注释持久留痕，不是裸开关")
+    ap.add_argument("--a4-seal", help="a4_seal.json（A4 封口凭证）")
+    ap.add_argument("--a5-seal", help="a5_report_seal.json（绑定 A4、最终 Markdown 与全部报告图；正式模式必填）")
     a = ap.parse_args()
+
+    if a.mode in formal_modes:
+        missing = [flag for flag, value in (("--facts", a.facts), ("--state", a.state),
+                                             ("--a4-seal", a.a4_seal),
+                                             ("--a5-seal", a.a5_seal)) if not value]
+        if missing:
+            ap.error(f"{a.mode} 模式缺正式 gate 资产: " + ", ".join(missing))
+        # P0-01：正式编译的事实输入只能来自 seal 所在案目录的标准资产。
+        # CLI 参数保留是为了兼容显式调用和清晰报错，不是自由输入通道。
+        _formal_case = Path(a.a4_seal).resolve().parent
+        _formal_facts = (_formal_case / "facts.json").resolve()
+        _formal_state = (_formal_case / "analysis-state.json").resolve()
+        for _flag, _given, _expected in (
+                ("--facts", a.facts, _formal_facts),
+                ("--state", a.state, _formal_state)):
+            if Path(_given).resolve() != _expected:
+                ap.error(f"{a.mode} 模式 {_flag} 必须等于 seal 案目录标准路径: {_expected}")
+        # 后续渲染不再使用 CLI 原始字符串，从 seal 案目录重建唯一输入。
+        a.facts = str(_formal_facts)
+        a.state = str(_formal_state)
+    elif not str(a.degrade_reason or "").strip():
+        ap.error(f"{a.mode} 模式必须提供 --degrade-reason")
+    elif a.a4_seal or a.a5_seal:
+        ap.error("update/legacy-recompile 只用模式水印留痕，不接受正式 gate 参数")
+
+    if a.mode in formal_modes:
+        import a5_report_seal
+        _a5_errors = a5_report_seal.validate_seal(a.a5_seal, a.md, a.a4_seal)
+        if _a5_errors:
+            for _err in _a5_errors:
+                print(f"[FAIL] G10 {_err}")
+            sys.exit(1)
 
     md_text = open(a.md, encoding="utf-8").read()
     mddir = os.path.dirname(os.path.abspath(a.md))
@@ -271,41 +310,91 @@ def main():
     # ---- G9 A4 封口闸（6.7.0 2026-08-01，A4 前提前做 A5 七案返工根治）----
     # --a4-seal 给出时强制：seal 必须 PASS、封口文件哈希与当前一致（封口后改结论不重封
     # ＝报告编不出来）、md 引用的全部图片位于封口 charts_dir 下；mtime 仅 NOTE 不裁决。
-    skip_note_html = ""
-    if a.skip_a4_gate_reason:
-        print(f"[NOTE] G9 A4 封口闸已显式跳过，理由: {a.skip_a4_gate_reason}（写入 HTML 注释留痕）")
-        skip_note_html = f"<!-- G9 a4-gate skipped: {html.escape(a.skip_a4_gate_reason)} -->\n"
-    elif a.a4_seal:
+    mode_note_html = ""
+    degraded_banner = ""
+    _sealed_paths = set()
+    _formal_case = Path(a.a4_seal).resolve().parent if a.mode in formal_modes else None
+    if a.mode not in formal_modes:
+        reason = str(a.degrade_reason).strip()
+        print(f"[NOTE] {a.mode} 显式降级构建: {reason}")
+        mode_note_html = f"<!-- build-mode={a.mode}; degraded: {html.escape(reason)} -->\n"
+        degraded_banner = (f'<div class="degraded-banner">非正式分析交付物 · {html.escape(a.mode)}：'
+                           f'{html.escape(reason)}</div>')
+    if a.mode in formal_modes:
         try:
             _seal = json.load(open(a.a4_seal, encoding="utf-8"))
-            _sdir = os.path.dirname(os.path.abspath(a.a4_seal))
-            if _seal.get("schema") != "a4-seal/v1" or _seal.get("verdict") != "PASS" \
+            _sdir = Path(a.a4_seal).resolve().parent
+            _case = Path(mddir).resolve()
+            if _sdir != _case:
+                warns.append("[WARN] G9 seal 与报告不在同一案目录")
+            if _seal.get("schema") != "a4-seal/v3" or _seal.get("verdict") != "PASS" \
                     or not _seal.get("claims"):
                 warns.append("[WARN] G9 a4_seal.json 无效（schema/verdict/claims 缺失）——"
                              "A4 收尾必须 a4_gate.py finalize 封口成功后才编报告")
+            elif _seal.get("workflow_type") != formal_modes[a.mode]:
+                warns.append(f"[WARN] G9 workflow_type 与构建模式不匹配: "
+                             f"seal={_seal.get('workflow_type')} mode={a.mode}")
             else:
-                import hashlib as _hl
-                for ent in _seal.get("sealed_files", []):
-                    _p = os.path.join(_sdir, ent["path"]) if not os.path.isabs(ent["path"]) else ent["path"]
-                    if not os.path.isfile(_p):
-                        warns.append(f"[WARN] G9 封口文件已不存在: {ent['path']}")
-                        continue
-                    _h = _hl.sha256(open(_p, "rb").read()).hexdigest()
-                    if _h != ent.get("sha256"):
-                        warns.append(f"[WARN] G9 封口后被改动: {ent['path']}——结论文件变更必须"
-                                     "改完重跑 a4_gate.py finalize 重新封口，再编报告")
+                def checked(rel, label):
+                    if not isinstance(rel, str) or os.path.isabs(rel) or ".." in Path(rel).parts:
+                        raise ValueError(f"{label} 路径非法: {rel}")
+                    raw = _case / rel
+                    if raw.is_symlink():
+                        raise ValueError(f"{label} 拒绝符号链接: {rel}")
+                    resolved = raw.resolve()
+                    resolved.relative_to(_case)
+                    if not resolved.is_file():
+                        raise ValueError(f"{label} 不存在: {rel}")
+                    return resolved
+
+                all_entries = list(_seal.get("sealed_files", []))
+                all_entries += [_seal.get("registry") or {}, _seal.get("verdicts") or {}]
+                for ent in all_entries:
+                    try:
+                        rel = ent["path"]
+                        if rel in _sealed_paths:
+                            raise ValueError(f"封口路径重复: {rel}")
+                        _sealed_paths.add(rel)
+                        _p = checked(rel, "封口文件")
+                        _h = hashlib.sha256(_p.read_bytes()).hexdigest()
+                        if _h != ent.get("sha256"):
+                            warns.append(f"[WARN] G9 封口后被改动: {rel}")
+                    except Exception as e:
+                        warns.append(f"[WARN] G9 封口条目非法: {e}")
+                required = {"findings.md", "analysis-state.json", "facts.json", "identity_gate.json",
+                            "a4_claims.json"}
+                if _seal.get("workflow_type") == "independent-audit":
+                    required.add("claim_registry.json")
+                if not required <= _sealed_paths:
+                    warns.append(f"[WARN] G9 封口资产不全: {sorted(required - _sealed_paths)}")
+                if not set(_seal.get("claim_files") or []) <= _sealed_paths:
+                    warns.append("[WARN] G9 claim 引用文件未全部封口")
+
                 _cdir = (_seal.get("charts_dir") or "charts/final").rstrip("/")
+                try:
+                    if os.path.isabs(_cdir) or ".." in Path(_cdir).parts:
+                        raise ValueError(_cdir)
+                    _charts_abs = (_case / _cdir).resolve()
+                    _charts_abs.relative_to(_case)
+                    if (_case / _cdir).is_symlink():
+                        raise ValueError("charts_dir 是符号链接")
+                except Exception as e:
+                    warns.append(f"[WARN] G9 charts_dir 非法: {e}")
+                    _charts_abs = _case / "__invalid_charts__"
                 _seal_ts = _seal.get("sealed_at_utc", "")
                 for m_img in re.finditer(r"^!\[[^\]]*\]\(([^)]+)\)\s*$", md_text, re.M):
                     _ipath = m_img.group(1).strip()
-                    if os.path.isabs(_ipath):
-                        warns.append(f"[WARN] G9 报告禁用绝对路径图: {_ipath}")
-                    elif not _ipath.startswith(_cdir + "/"):
-                        warns.append(f"[WARN] G9 报告图不在封口目录 {_cdir}/ 下: {_ipath}——"
-                                     "A5 出图一律落该目录（封口时它为空，目录内即封口后产物）")
-                    else:
-                        _iabs = os.path.join(mddir, _ipath)
-                        if os.path.isfile(_iabs) and _seal_ts:
+                    try:
+                        if os.path.isabs(_ipath) or ".." in Path(_ipath).parts:
+                            raise ValueError("绝对路径或 ..")
+                        _raw_img = _case / _ipath
+                        if _raw_img.is_symlink():
+                            raise ValueError("符号链接")
+                        _iabs = _raw_img.resolve()
+                        _iabs.relative_to(_charts_abs)
+                        if not _iabs.is_file():
+                            raise ValueError("文件不存在")
+                        if _seal_ts:
                             _mt = os.path.getmtime(_iabs)
                             import calendar as _cal, time as _time
                             try:
@@ -314,38 +403,43 @@ def main():
                                     print(f"[NOTE] G9 图片 mtime 早于封口时间（仅提示，mtime 不作裁决）: {_ipath}")
                             except ValueError:
                                 pass
+                    except Exception as e:
+                        warns.append(f"[WARN] G9 报告图路径非法或越界: {_ipath} ({e})")
         except Exception as e:
             warns.append(f"[WARN] G9 a4_seal.json 解析失败: {e}")
+
+        if a.json:
+            try:
+                _json_raw = Path(a.json)
+                if _json_raw.is_symlink():
+                    raise ValueError("JSON 附录是符号链接")
+                _json_abs = _json_raw.resolve()
+                _json_abs.relative_to(_formal_case)
+                if not _json_abs.is_file():
+                    raise ValueError("JSON 附录不存在")
+                _json_rel = _json_abs.relative_to(_formal_case).as_posix()
+                if _json_rel not in _sealed_paths:
+                    raise ValueError(f"JSON 附录未进入 A4 seal: {_json_rel}")
+                a.json = str(_json_abs)
+            except Exception as e:
+                warns.append(f"[WARN] G9 正式监控 JSON 非封口资产: {e}")
 
     # ---- G8 实体身份闸（v4.2 2026-07-30，IQ/LPT/PYTHIA 托管误判三案根治）----
     # --state 给出时强制：state 同目录必须有 identity_gate.json，实体地址全覆盖、
     # flag 全解决，否则 WARN（有 WARN 不许交付）。生成/填写见 entity_identity_gate.py。
-    if a.state and not a.skip_identity_gate:
+    if a.state:
         gate_path = os.path.join(os.path.dirname(os.path.abspath(a.state)), "identity_gate.json")
         if not os.path.exists(gate_path):
             warns.append("[WARN] G8 实体身份闸缺失：未找到 identity_gate.json——实体判级前必须跑 "
-                         "entity_identity_gate.py（标签双源+曲线判定+托管假设四查）；"
-                         "历史报告重编译可用 --skip-identity-gate 显式跳过")
+                         "entity_identity_gate.py（标签双源+曲线判定+托管假设四查）")
         else:
             try:
-                _gate = json.load(open(gate_path, encoding="utf-8"))
-                _gaddrs = {r.get("address") for r in _gate.get("rows", [])}
-                _sd = json.load(open(a.state, encoding="utf-8"))
-                _missing = [x for g in _sd.get("whale_groups", [])
-                            for x in g.get("addresses", []) if x not in _gaddrs]
-                if _missing:
-                    warns.append(f"[WARN] G8 实体地址未全入闸：{len(_missing)} 址无 gate 记录"
-                                 f"（如 {_missing[0][:14]}…）——重跑 entity_identity_gate.py")
-                _unres = [r for r in _gate.get("rows", [])
-                          if r.get("flag") and not str(r.get("resolution", "")).strip()]
-                if _unres:
-                    warns.append(f"[WARN] G8 有 {len(_unres)} 个身份疑点未解决"
-                                 f"（{'/'.join(sorted({r['flag'] for r in _unres}))}）——"
-                                 "逐条填写 resolution（查了什么、结论是什么）后重编译")
-            except (ValueError, KeyError) as e:
+                import entity_identity_gate
+                _identity_errors = entity_identity_gate.validate_gate(gate_path, a.state)
+                warns += [f"[WARN] G8 identity_gate 严格校验: {e}"
+                          for e in _identity_errors]
+            except Exception as e:
                 warns.append(f"[WARN] G8 identity_gate.json 解析失败: {e}")
-    elif a.state and a.skip_identity_gate:
-        print("[NOTE] G8 实体身份闸已显式跳过（--skip-identity-gate）——仅限历史重编译场景")
     if a.facts:
         import facts_gate
         try:
@@ -358,6 +452,11 @@ def main():
         warns += [f"[WARN] {e}" for e in gate_errs]
         for nt in gate_notes:
             print(f"[NOTE] {nt}")
+    if a.mode in formal_modes:
+        import audit_release_gate
+        audit_errors = audit_release_gate.run(
+            Path(mddir), Path(a.md).resolve(), profile=formal_modes[a.mode])
+        warns += [f"[WARN] audit release gate: {e}" for e in audit_errors]
     body = md_to_html(md_text, mddir, warns)
 
     tk_cash, tk_notes = token_name_scan(md_text, a.token_whitelist.split(","))
@@ -402,9 +501,10 @@ def main():
 
     doc = f"""<!DOCTYPE html>
 <html lang="zh-CN"><head><meta charset="utf-8">
-{skip_note_html}<meta name="viewport" content="width=device-width,initial-scale=1">
+{mode_note_html}<meta name="viewport" content="width=device-width,initial-scale=1">
 <title>{html.escape(title)}</title><style>{CSS}</style></head>
 <body><div class="wrap">
+{degraded_banner}
 {body}
 {appendix}
 </div></body></html>"""

@@ -1,7 +1,7 @@
 {
  "date": "2026-07-17",
  "goldset": "goldset.csv",
- "total": 964,
+ "total": 892,
  "chains": {
   "base": {
    "entity": 0,
@@ -39,30 +39,6 @@
    "infra_field_hit": 1,
    "weak_gate": true
   },
-  "filecoin": {
-   "entity": 0,
-   "entity_wrong_exclude": 0,
-   "entity_identity_tagged": 0,
-   "random_eoa": 0,
-   "random_eoa_wrong_exclude": 0,
-   "infra_manual": 10,
-   "infra_manual_hit": 10,
-   "infra_field": 0,
-   "infra_field_hit": 0,
-   "weak_gate": true
-  },
-  "hyperliquid": {
-   "entity": 0,
-   "entity_wrong_exclude": 0,
-   "entity_identity_tagged": 0,
-   "random_eoa": 0,
-   "random_eoa_wrong_exclude": 0,
-   "infra_manual": 62,
-   "infra_manual_hit": 62,
-   "infra_field": 0,
-   "infra_field_hit": 0,
-   "weak_gate": true
-  },
   "robinhood": {
    "entity": 229,
    "entity_wrong_exclude": 0,
@@ -91,8 +67,6 @@
  "violations": [],
  "weak_gate_chains": [
   "base",
-  "eth",
-  "filecoin",
-  "hyperliquid"
+  "eth"
  ]
 }

@@ -59,7 +59,7 @@
 | QUQ 缩图 | cluster 老路四容器不可行 | **19.5s/1.35GB** → 76.2 万聚合边；rustworkx 连通分量 0.35s |
 
 **用法**：
-- 重放：`python3 scripts/evm/replay_duck.py --channels channels.json --out-dir data [--camps camps.json] [--emit-csv] [--mem-limit 8GB]`。通道 path 为**目录即自动走 v2 parquet**（run_*/logs.parquet+blocks join），文件走 v1 7 列 CSV；`--emit-csv` 产旧格式 merged.csv（对表/未迁移下游）。
+- 重放：`python3 scripts/evm/replay_duck.py --channels channels.json --out-dir data [--camps camps.json] [--emit-csv] [--mem-limit 8GB]`。目录走 v2 parquet，CSV 以 header 区分 legacy7 与标准 8 列；collector→replay 契约测试覆盖两者。
 - 缩图：`python3 scripts/evm/cluster_prep_duck.py <chain> [--dir 工作目录 | --v2 <v2目录>]` → data/cluster_prep/ 三件（edges_agg/bal/profile 全整数 parquet）→ `python3 scripts/evm/cluster.py <chain> --prep`。千万行以下 cluster.py 老路照旧。
 - 长跑守护：`python3 scripts/run_guarded.py --name X --mem-ceiling-gb 12 --detach -- <命令>`（脱管+双内存水位+状态 JSON 原子写；替代裸 nohup，防沙箱连带清理与 OOM 假死）。
 - **回归门禁（A1 纪律，硬性）**：动引擎/换库版本后必跑 ①`scripts/tests/run_all.py`（含 hypothesis 等价性测试+env_check 版本锁）②`scripts/bench/golden_baseline.py snapshot+compare` 对 ASTEROID 重跑对表。基线快照与对比口径见该脚本 docstring。
@@ -78,6 +78,7 @@
 **§12b 亿级流式重放（`replay_stream.py`，2026-07-25 收编）——上条"待修瓶颈"的现成出路**：
 样本达**亿级、或可用磁盘不足样本体积 4 倍**时，replay_duck 的两次物化不可行，改走
 `scripts/evm/replay_stream.py`：字段解码与产物口径逐字对齐 replay_duck，但**不物化任何中间表**，
+每个 channel 先在自己的 `[lo,hi)` 内过滤再 UNION；目录中落入其他通道责任区的额外行计入 `n_out_of_segment` 并 fail-closed，不能再按全局 min/max 混入。
 直接对 parquet 流式聚合——hash aggregate 内存需求由"行数级"降到"唯一地址数级"。
 实测 KOGE(BSC) **3.595 亿行 185 秒**完成（bal 55s/supply 20s/meta+inflow 63s/落盘 28s），
 峰值内存 2.4GB、**temp 全程 0 字节**；同机 replay_duck 无法完成。
@@ -96,8 +97,10 @@
 块级 `(addr,block)` 聚合 + `PARTITION BY addr ORDER BY block` 窗口在刷量盘上是灾难：
 KOGE 一级 inflow 预筛（≥0.1% 供应）后**仍剩 157,459 个候选**，块级 dd 表 3 分钟吃 19GB temp 直奔爆盘。
 改日级后 6,217 候选 / 734,079 行 / **164 秒**完成。两级口径保证判级不失真：
-`L1 日末峰值`（主口径）+ `L2 日内恒等上界 Σmax(day_delta,0)`（≥ 任意时刻真实峰值，全整数恒等）；
-凡 L1 未达门槛但 L2 达标者落 `needs_block_precision.json`，对这批（通常个位数）再补块级精确值——**只多查不漏查**。
+`L1 日末峰值`（主口径）+ `L2 日内上界＝昨日日终余额+当日毛流入`（恒等：日内任意时刻持仓 ≤ 昨收+当日全部进账）；
+凡 L1 未达门槛但 L2 达标者落 `needs_block_precision.json`，对这批再补块级精确值——**只多查不漏查**。
+⚠ 旧公式 `Σmax(day_delta,0)` 已废（2026-08-02 codex 复核反例：同日等额进出被日净对冲成 0，同日建仓又清仓的地址两级全盲）；产物 peaks_summary.json 带 `ub_formula=prev_close_plus_gross_in/v2` 标记，audit_release_gate 见旧公式产物即拒。新公式下快进快出的刷量地址会成批入名单（当日毛流入巨大），按 (addr,block) 聚合批量精查消化。
+- **四类触发日强制逐笔（2026-08-02 用户定；同日 codex 复核补机器闭环）**：发射日、毕业日、价格单日 ±50%、单日阵营变动 ≥10pp 的日子，无论 L2 是否报警都对当日活跃地址补块级逐笔回放。清单走机器产物：日期整理成 JSON 喂 `peaks_daily.py --trigger-days`，产出 `trigger_days.json`（逐触发日活跃候选名单；零触发日也须 empty_reason 显式声明）；阵营变动类触发日判级后才算得出——发现新触发日必须回头重跑并重验判级；发布闸对带 peaks_summary.json 的案子强制校验该产物在位。判级口径权威见 tiering"峰值判级口径"条。
 - **候选门槛跟现行判级线走，禁止照抄历史案数字**：恒等式保证峰值 ≥pct 的地址必在 `inflow ≥pct` 内，
   故预筛线取**现行判级体系的最低线＝其他大户线（0.1% 总供应 / 0.2% 流通，权威见 tiering §6a，两口径换算后取更低枚数）**——预筛门槛与判级门槛分开：预筛只保证"达线者必在候选内"，判级仍按 §6a 各档阈值走，两级口径只多查不漏查。KOGE 实测（07-25，当时其他大户线尚为 1%）：≥0.1% 有 131,833 址、≥1% 只有 6,217 址，差 21 倍——量级规律仍可参考，但 v5.0 已降线，**今按 1% 预筛会把 0.1%–1% 区间候选不可逆滤掉**。
 - **附带收获**：产出的 daily_delta 同时就是阵营/实体日序列的原料，一举两得。

@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
 """文档守护：引用断链 + 粗体配对 + SKILL.md 引用漂移哨。
 
-背景：追加式迭代下文档互引会漂移（实证：SKILL.md 曾写 labels "v4 ~46.9 万条"而实际已 v4.2 ~47.1 万；
-labels README 曾宣称 filecoin 接入 resolver 与事实不符）。本脚本抓"结构可查"的那部分：
+背景：追加式迭代下文档互引会漂移。本脚本抓"结构可查"的那部分：
 1. md 里引用的本仓库文件路径必须存在（references/*.md、scripts/**.py、labels/*.csv|md）
 2. 每行 ** 配对（奇数个 ** 的行=残缺粗体，渲染会烂）
 3. SKILL.md「深入阅读」列出的文件必须齐全
@@ -40,6 +39,10 @@ def resolve(ref, src_path):
 def main(all_mode=False):
     fails = []
     warn_broken = 0
+    skill_path = os.path.join(ROOT, 'SKILL.md')
+    skill_bytes = os.path.getsize(skill_path)
+    if skill_bytes > 8192:
+        fails.append(f'SKILL.md 超过 8192 bytes：{skill_bytes}')
     for path in md_files(all_mode):
         rel = os.path.relpath(path, ROOT)
         in_code = False
@@ -60,7 +63,7 @@ def main(all_mode=False):
             if line.count('**') % 2 == 1:
                 fails.append(f'残缺粗体 {rel}:{i}: {line.strip()[:60]}')
     # 3) SKILL.md 深入阅读清单齐全性
-    skill = open(os.path.join(ROOT, 'SKILL.md'), encoding='utf-8').read()
+    skill = open(skill_path, encoding='utf-8').read()
     for name in re.findall(r'^- `([\w/.-]+\.md)`', skill, re.M):
         if not (os.path.exists(os.path.join(ROOT, 'references', name)) or os.path.exists(os.path.join(ROOT, name))):
             fails.append(f'SKILL.md 深入阅读清单断链: {name}')
@@ -75,9 +78,11 @@ def main(all_mode=False):
 
     # 5) 历史静置仓反向扫描是实体冻结前硬闸；四层任一缺失都视为方法回退。
     method_contracts = {
-        'SKILL.md': ['历史静置仓反向扫描硬闸', 'dormant_warehouse_audit.json', '不允许冻结实体'],
-        'references/playbook-entity-cluster-methods.md': ['候选全集至少取四者并集', 'strict ∪ expanded', '同一交易末快照'],
-        'references/playbook-entity-cluster-tiering.md': ['历史静置仓反向扫描后的双边界峰值', '严格下限', '扩展上限'],
+        'SKILL.md': ['EF-2 历史静置仓反扫', 'dormant_warehouse_audit.json', '不允许冻结实体'],
+        'references/playbook-entity-cluster-methods.md': ['候选全集从三条现役机械通道取齐', 'strict ∪ expanded', '同一交易末快照',
+                                                          'universe_ref', 'must_adjudicate', 'OTC 排除检验'],
+        'references/playbook-entity-cluster-tiering.md': ['历史静置仓反向扫描后的双边界峰值', '严格下限', '扩展上限',
+                                                          'prev_close_plus_gross_in/v2', 'trigger_days.json'],
         'references/report-template.md': ['历史静置仓反向扫描硬闸', 'dormant_warehouse_audit.json', 'strict/expanded/excluded'],
     }
     for rel, needles in method_contracts.items():
@@ -100,19 +105,127 @@ def main(all_mode=False):
             if needle not in text:
                 fails.append(f'经济控制口径回退 {rel}: 缺少 {needle}')
 
-    # 7) 历史清零层波次扫描是名册定稿前硬闸（W1 两度漏检 2026-08-01）；
-    #    路由/工作流/契约/判例四层任一缺失＝方法回退。
+    # 7) EF-3 覆盖发现闸是名册定稿前硬闸；稳定编号替代层级含混的
+    #    “三道防线/四重前置”口号，路由/工作流/契约/判例任一缺失＝回退。
     wave_contracts = {
-        'SKILL.md': ['历史清零层波次扫描硬闸', 'wave_scan_report.json'],
-        'references/analyze-workflow.md': ['wave_scan.py', '兜底桶不准关闸', 'camp_jump_audit.py'],
-        'references/split-run.md': ['wave_scan_report.json', 'wave_scan 候选逐条裁决'],
-        'references/casebook/supply-accounting.md': ['wave_scan.py', '桶存在≠桶内被检验过'],
+        'SKILL.md': ['EF-3 覆盖发现闸', 'EF-3A 波次扫描', 'EF-3B 资金流异常扫描',
+                     'EF-3C 候选裁决与实体溯源', 'EF-3C-P1', 'P4 原始输入及算法绑定重放'],
+        'references/analyze-workflow.md': ['EF-3A 全体持仓波次扫描', 'EF-3B 资金流异常扫描',
+                                           'EF-3C 候选裁决与实体溯源', 'entity_source_trace.py',
+                                           'adjudication_validator.py', '覆盖真空声明', 'EF-3C-P1'],
+        'references/split-run.md': ['wave_scan_report.json', 'flow_anomaly_report.json',
+                                    'EF-3A/EF-3B', 'EF-3C', 'EF-3C-P1～P4',
+                                    'provenance_ledger.json'],
+        'references/casebook/supply-accounting.md': ['wave_scan.py', '桶存在≠桶内被检验过',
+                                                     '闸外的人来试着绕它'],
+        'references/scan-schemas.md': ['wave-scan/v3', 'flow-anomaly/v2',
+                                       'candidate-adjudications/v1', 'provenance-ledger/v2',
+                                       '正向模拟', 'members_sha256', '完整字段登记',
+                                       'scan_universe', 'must_adjudicate'],
     }
     for rel, needles in wave_contracts.items():
         text = open(os.path.join(ROOT, rel), encoding='utf-8').read()
         for needle in needles:
             if needle not in text:
-                fails.append(f'波次扫描硬闸回退 {rel}: 缺少 {needle}')
+                fails.append(f'EF-3 覆盖发现闸回退 {rel}: 缺少 {needle}')
+
+    # 8) 同时性家族合并与"恒定滞后"判据删除（2026-08-02 用户裁决，v6.12.0）：
+    #    在场检查=家族三档、②降级措辞、持仓画像旁证与 update-workflow 新指称不得回退；
+    #    不在场检查=已删的"恒定滞后=跟单"伪判据（庄程序按序遍历同样产生该形态，两可无判别力）
+    #    不得从旧案考古回捡进活跃规则（CHANGELOG 记录删除理由，不在禁扫范围）。
+    simult_contracts = {
+        'references/playbook-entity-cluster-methods.md': ['同时性共现（同秒/同块）家族', '① 候选发现档',
+                                                          '② 单币强指纹档', '③ 跨币强证据档',
+                                                          '高度疑似同一执行端', '持仓画像旁证'],
+        'references/update-workflow.md': ['同时性共现家族①候选发现档'],
+    }
+    for rel, needles in simult_contracts.items():
+        text = open(os.path.join(ROOT, rel), encoding='utf-8').read()
+        for needle in needles:
+            if needle not in text:
+                fails.append(f'同时性家族回退 {rel}: 缺少 {needle}')
+    simult_banned = {
+        'references/playbook-entity-cluster-methods.md': ['程序化跟单不是同一人'],
+    }
+    for rel, needles in simult_banned.items():
+        text = open(os.path.join(ROOT, rel), encoding='utf-8').read()
+        for needle in needles:
+            if needle in text:
+                fails.append(f'已删判据回捡 {rel}: 出现 {needle}')
+
+    # 9) 2026-08-04 一致性复核的语义守护。只扫活跃权威文档/代码，CHANGELOG
+    #    的历史原文不在禁扫范围。
+    semantic_contracts = {
+        'SKILL.md': ['Arbitrum', '三问一异常',
+                     'A3 实体冻结门禁编号', '队列层 collect_manifest',
+                     '链内 collection_manifest/receipt'],
+        'references/independent-audit-protocol.md': ['--profile new-analysis',
+                                                      '--profile independent-audit',
+                                                      'id、规范化文本、最终 verdict、证据文件集合和报告位置',
+                                                      'CHIP_REPRODUCE_OUTPUT',
+                                                      '存量 reproduce-receipt/v1 迁移',
+                                                      '不得原地升级', 'adversarial-review-execution/v1',
+                                                      '案目录里的同名/复制脚本', '无 producer 的 accounting'],
+        'references/report-template.md': ['state_from_facts.py', '--mode analysis-new',
+                                           '--mode analysis-audit', 'a4-seal/v3', 'ET-1/ET-2'],
+        'references/analyze-workflow.md': ['identity_gate_v3', '--snapshot-receipt',
+                                           '--total-supply-raw', 'a4-seal/v3',
+                                           '不得手工补字段', 'GPA raw/meta', '跨 scan pubkey 去重函数'],
+        'references/data-pipeline-evm-channels.md': ['evm-channel-receipt/v2',
+                                                      'evm-collector-run/v2',
+                                                      '--collector-receipt',
+                                                      '--resume-receipt',
+                                                      '存量 legacy CSV', 'channels_preflight.py` producer',
+                                                      '完全相同的 inputs', '不能把两份互相咬合的 JSON'],
+        'references/data-pipeline-solana-capture.md': ['免费层不支持 batch', '10 RPS'],
+        'references/data-pipeline-solana-scan.md': ['G8 离线重放契约', 'parse_gpa_response',
+                                                    'result.value.amount', '禁止手补 meta/hash'],
+        'references/analysis-playbook.md': ['三问一异常'],
+        'commands-staging/token-analyze.md': ['三问一异常'],
+        'commands-staging/token-analyze-2.md': ['三问一异常'],
+    }
+    for rel, needles in semantic_contracts.items():
+        text = open(os.path.join(ROOT, rel), encoding='utf-8').read()
+        for needle in needles:
+            if needle not in text:
+                fails.append(f'2026-08-04 语义口径回退 {rel}: 缺少 {needle}')
+
+    banned_contracts = {
+        'SKILL.md': ['对任意链上代币', 'v5.0 三问框架', '实体冻结前三硬闸'],
+        'references/report-template.md': ['手写 15 行', 'a4-seal/v2'],
+        'references/data-pipeline-evm-channels.md': ['evm-channel-receipt/v1',
+                                                      '--empty-proof'],
+        'references/analysis-playbook.md': ['三问框架'],
+        'commands-staging/token-analyze.md': ['三问框架'],
+        'commands-staging/token-analyze-2.md': ['三问框架'],
+        'scripts/solana/decode_txs_v2.py': ['默认 20 笔/POST', '[--batch 20]', '免代理且 50 RPS'],
+    }
+    for rel, needles in banned_contracts.items():
+        text = open(os.path.join(ROOT, rel), encoding='utf-8').read()
+        for needle in needles:
+            if needle in text:
+                fails.append(f'2026-08-04 已删口径回捡 {rel}: 出现 {needle}')
+
+    active_workflows = ['SKILL.md', 'references/analyze-workflow.md',
+                        'references/easy-workflow.md', 'references/report-template.md',
+                        'references/split-run.md']
+    generic_mode = re.compile(r'--mode analysis(?=[\s`])')
+    for rel in active_workflows:
+        text = open(os.path.join(ROOT, rel), encoding='utf-8').read()
+        if generic_mode.search(text):
+            fails.append(f'2026-08-04 generic analysis 模式回退 {rel}')
+
+    # 10) 执行文档只能从 VERSION 读取当前版本，禁止重新把大 CHANGELOG 拉回开工阅读链。
+    version_instruction = re.compile(
+        r'读[^。\n]{0,24}CHANGELOG[^。\n]{0,24}版本号|CHANGELOG[^。\n]{0,16}首(?:个)?版本号')
+    execution_docs = ['SKILL.md', 'references/analyze-workflow.md',
+                      'references/easy-workflow.md', 'references/update-workflow.md',
+                      'references/collect-workflow.md', 'references/split-run.md',
+                      'references/context-discipline.md']
+    for rel in execution_docs:
+        text = open(os.path.join(ROOT, rel), encoding='utf-8').read()
+        if version_instruction.search(text):
+            fails.append(f'版本读取回退 {rel}: 执行文档必须读 VERSION，不得读 CHANGELOG 首版本号')
 
     if fails:
         for f in fails[:30]:

@@ -37,6 +37,8 @@ import argparse, csv, glob, json, os, sys, time
 
 import duckdb
 
+from channels_preflight import preflight_channels, replay_provenance
+
 Z = '0x0000000000000000000000000000000000000000'
 DEAD = '0x000000000000000000000000000000000000dead'
 
@@ -112,13 +114,22 @@ def build_events(con, chans):
             n = con.execute(f"SELECT COUNT(*) FROM ({part})").fetchone()[0]
             print(f"{c['tag']}=[{c['lo']},{c['hi']}) v2 收 {n} 条", flush=True)
             continue
-        # names 强制按位置命名（复刻旧引擎位置解析——v1 文件表头 value/value_raw 两代并存）
-        src = (f"read_csv('{c['path']}', header=true, all_varchar=true, "
-               f"ignore_errors=true, names=['block','ts','tx','from','to','value','uniqueId'])")
+        with open(c["path"], newline="") as fh:
+            header = next(csv.reader(fh), [])
+        standard8 = set(("block", "ts", "tx", "log_index", "from", "to",
+                         "value_raw", "block_hash")) <= set(header)
+        legacy7 = set(("block", "ts", "tx", "from", "to", "uniqueId")) <= set(header) \
+            and ("value" in header or "value_raw" in header)
+        if not (standard8 or legacy7):
+            raise SystemExit(f"[fail-closed] {c['path']} CSV header 非 legacy7/standard8: {header}")
+        src = f"read_csv('{c['path']}', header=true, all_varchar=true, ignore_errors=true)"
+        value_col = "value_raw" if "value_raw" in header else "value"
+        li_expr = ("TRY_CAST(log_index AS BIGINT)" if standard8 else
+                   "TRY_CAST(regexp_extract(uniqueId, '(\\d+)$', 1) AS BIGINT)")
         raw, bad, seg = con.execute(f"""
             WITH r AS (SELECT TRY_CAST(block AS BIGINT) b,
-                              TRY_CAST(regexp_extract(uniqueId, '(\\d+)$', 1) AS BIGINT) li,
-                              value ~ '^\\d+$' AS okv
+                              {li_expr} li,
+                              {value_col} ~ '^\\d+$' AS okv
                        FROM {src})
             SELECT COUNT(*),
                    COUNT(*) FILTER (WHERE b IS NULL OR li IS NULL OR NOT okv),
@@ -130,14 +141,14 @@ def build_events(con, chans):
         acc["n_out_of_segment"] += seg
         parts.append(f"""
             SELECT TRY_CAST(block AS BIGINT) b, ts, lower(tx) tx,
-                   TRY_CAST(regexp_extract(uniqueId, '(\\d+)$', 1) AS BIGINT) li,
+                   {li_expr} li,
                    lower("from") frm,
                    COALESCE(NULLIF(lower("to"), ''), '{Z}') t2,
-                   value v, '{c['tag']}' tag
+                   {value_col} v, '{c['tag']}' tag
             FROM {src}
             WHERE TRY_CAST(block AS BIGINT) IS NOT NULL
-              AND TRY_CAST(regexp_extract(uniqueId, '(\\d+)$', 1) AS BIGINT) IS NOT NULL
-              AND value ~ '^\\d+$'
+              AND {li_expr} IS NOT NULL
+              AND {value_col} ~ '^\\d+$'
               AND TRY_CAST(block AS BIGINT) >= {c['lo']}
               AND TRY_CAST(block AS BIGINT) < {c['hi']}""")
         n = con.execute(f"SELECT COUNT(*) FROM ({parts[-1]})").fetchone()[0]
@@ -497,12 +508,7 @@ def main():
     ap.add_argument("--force-varint", action="store_true",
                     help="强制任意精度 VARINT 路径（HUGEINT 聚合溢出报错时的显式出路；慢 ~5x 仍精确）")
     a = ap.parse_args()
-    os.makedirs(a.out_dir, exist_ok=True)
-    chans = json.load(open(a.channels))["channels"]
-    segs = sorted((c["lo"], c["hi"], c["tag"]) for c in chans)
-    for (l1, h1, t1), (l2, h2, t2) in zip(segs, segs[1:]):
-        if l2 < h1:
-            raise SystemExit(f"块段重叠：{t1}=[{l1},{h1}) 与 {t2}=[{l2},{h2}) ——通道归属必须互斥")
+    chans = preflight_channels(a.channels, a.out_dir)
 
     tmp = os.path.join(a.out_dir, ".duck_tmp")
     os.makedirs(tmp, exist_ok=True)
@@ -516,6 +522,14 @@ def main():
     con.execute("SET preserve_insertion_order=false")
 
     rej = build_events(con, chans)
+    if rej["n_bad_fields"] or rej["n_out_of_segment"]:
+        receipt = {**rej, "gate_pass": False,
+                   "failure": "rejected_input_rows",
+                   "policy": "n_bad_fields == 0 and n_out_of_segment == 0"}
+        json.dump(receipt, open(f"{a.out_dir}/replay_stats.json", "w"), indent=1)
+        raise SystemExit(
+            f"[fail-closed] 输入含 rejected rows: bad_fields={rej['n_bad_fields']} "
+            f"out_of_segment={rej['n_out_of_segment']}——修复或重新采集后再重放")
     # uint256 策略：events.v 统一为十进制字符串，探最大位数（≤37 走 HUGEINT，超界
     # VARINT——注意 VARINT 仅可加/SUM，乘法退化 DOUBLE）；HUGEINT 聚合若仍溢出
     # DuckDB 会硬报错（实测 fail-loud 不静默环绕），届时 --force-varint 重跑
@@ -524,6 +538,7 @@ def main():
     print(f"value 最大位数={maxlen} -> {vt} 路径", flush=True)
     stats, mint_total = replay_pass1(con, a.out_dir, vt)
     stats.update(rej)
+    stats.update(replay_provenance(a.out_dir, __file__))
     json.dump(stats, open(f"{a.out_dir}/replay_stats.json", "w"), indent=1)
     print("stats:", json.dumps(stats, indent=1), flush=True)
     if not a.no_merged:

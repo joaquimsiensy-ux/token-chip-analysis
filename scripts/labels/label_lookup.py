@@ -17,7 +17,7 @@
   [IDENTITY]       KOL/基金/做市商/locker 等身份——不剔除，报告标注
                    （locker/airdrop-distributor/token-sale/charity 禁作聚类合并边）
   [PRIVACY]        Tornado 使用记录——陈述事实不定性；"庄家资金源头自 Tornado 提取"是必写信号
-非 sol/eth/filecoin 链自动对 eth 表做 EVM 同址联查（cross_chain 提示级：EOA=同私钥可信，
+非 sol/eth 的受支持 EVM 链自动对 eth 表做 EVM 同址联查（cross_chain 提示级：EOA=同私钥可信，
 CREATE2 canonical=同部署流程，普通合约同址≠同实体需现场核验；自动决策不采信）。
 
 惯犯层延迟揭盲（A5 2026-07-22）：聚类期加 --blind-serial（或 CHIP_BLIND_SERIAL=1）——

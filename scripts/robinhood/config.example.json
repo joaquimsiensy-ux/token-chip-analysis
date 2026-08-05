@@ -3,6 +3,7 @@
   "token": "0x标的合约地址（小写）",
   "pool": "0x主池地址（pull_ohlcv.py 拉 GeckoTerminal K线用；Dexscreener latest/dex/tokens/{token} 可查）",
   "decimals": 18,
+  "quote_decimals": 18,
   "total_supply_tokens": 1000000000,
   "hypersync": {
     "_comment": "envio HyperSync（Robinhood 链）。key 留空则读环境变量 HYPERSYNC_KEY；再没有则报错——从 ~/.claude/api-keys.md 登记文件取用（envio 条目），不写死进 skill 目录",

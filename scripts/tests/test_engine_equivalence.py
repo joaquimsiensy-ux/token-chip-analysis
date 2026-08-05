@@ -13,10 +13,14 @@
 用法：python3 scripts/tests/test_engine_equivalence.py   （约 30-60 秒）
 """
 import datetime, json, os, subprocess, sys, tempfile
+from pathlib import Path
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 EVM = os.path.join(HERE, "..", "evm")
+sys.path.insert(0, EVM)
+sys.path.insert(0, HERE)
 sys.path.insert(0, os.path.join(HERE, "..", "bench"))
+from evm_channel_fixture import write_csv_channel_receipt
 
 try:
     import duckdb  # noqa: F401
@@ -50,8 +54,13 @@ def _write_inputs(tmp, events):
         f.write("block,ts,tx,from,to,value,uniqueId\n")
         for r in rows:
             f.write(",".join(str(x) for x in r) + "\n")
-    json.dump({"channels": [{"path": "transfers.csv", "lo": 0,
-                             "hi": 99999999999, "tag": "t"}]},
+    write_csv_channel_receipt(tmp, "t", Path(tmp) / "transfers.csv",
+                              ADDRS[0], 0, 99999999999)
+    json.dump({"schema": "evm-channels/v2", "token": ADDRS[0],
+               "expected_from": 0, "expected_to": 99999999999,
+               "channels": [{"path": "transfers.csv", "lo": 0,
+                             "hi": 99999999999, "tag": "t", "format": "v1csv",
+                             "receipt": "t.receipt.json"}]},
               open(os.path.join(tmp, "channels.json"), "w"))
     json.dump({"camps": {"阵营A": [ADDRS[0], ADDRS[1]], "阵营B": [ADDRS[2]],
                          "销毁": [DEAD]},

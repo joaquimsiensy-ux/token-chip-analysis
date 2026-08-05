@@ -46,13 +46,11 @@ def main():
     for r in rows:
         by_chain.setdefault(r['chain'], []).append(r)
 
-    # 【v4.2】七链强制出现（codex 第四轮复核：此前只遍历 goldset 已有链——HL/FIL 无金标
-    # 即无门禁、静默 PASS，"benchmark PASS 才发布"对这两链是空承诺）
-    EXPECTED_CHAINS = {'eth', 'bsc', 'base', 'sol', 'robinhood', 'hyperliquid', 'filecoin'}
+    # 发布标签表覆盖的五链必须全部有金标；缺链不得静默 PASS。
+    EXPECTED_CHAINS = {'eth', 'bsc', 'base', 'sol', 'robinhood'}
     missing = EXPECTED_CHAINS - set(by_chain)
     if missing:
-        print(f'FAIL: goldset 缺链 {sorted(missing)}——该链零金标=零门禁，先重跑 build_goldset.py'
-              f'（v4.2 起补录源/HL/FIL 会自动抽设施金标）')
+        print(f'FAIL: goldset 缺链 {sorted(missing)}——该链零金标=零门禁，先重跑 build_goldset.py')
         sys.exit(1)
 
     result = {'date': datetime.date.today().isoformat(), 'goldset': os.path.basename(gs_path),

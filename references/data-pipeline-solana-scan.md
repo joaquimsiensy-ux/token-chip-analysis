@@ -57,9 +57,10 @@
 - SPL token account 定长 165 字节，布局：`mint` 在 offset 0（32B）、`owner` 在 offset 32（32B）、`amount` 在 offset 64（8B，u64 LE）。`memcmp offset=0` 按 mint 过滤；**dataSlice 第一次就切 `{32,40}` 把 owner+amount 一起带出**——IO 实录曾先切 `{64,8}` 只拿 amount，随即发现缺 owner 被迫整段重拉 117MB，白耗一轮。
 - **口径红线：token account 数 ≠ 持有人数。** Solana 特有：一个 owner 可开多个 token account（ATA + 辅助账户），必须按解析出的 owner 字段去重后才是独立持有人数（IO 实录：85,847 非零账户 → 去重 85,811 独立 owner）。两个数都要留存，分开报告。
 - 容量参考：8.5 万非零账户规模，`dataSlice{32,40}` 响应 117MB / `{64,8}` 响应 99MB，publicnode 均 HTTP 200 放行，耗时约 40–45s——curl `-m 90` 起步，落盘（`-o`）后本地解析，不要过管道。getProgramAccounts **无分页**，一次全量返回；被拒/超时的备选顺序：加 dataSlice 减负 → 换 Helius（**实测升级**：24.7 万账户 67MB 响应量级，publicnode 恒 504、Helius 默认 120s 超时同样断——正解 = Helius + curl `--compressed`(gzip) + 300s 长超时一次拉全，`scan_token_accounts.py --rpc <helius> --timeout 300` 已固化；来源：GOAT(Solana) 分析，2026-07-22）。
-- 坑预警（Token-2022 实测升级）`[VERIFIED·CLUDE实战]`：先 `getAccountInfo(<MINT>)` 看 mint 归属程序。若是 Token-2022（`TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb`）：①pump.fun 新币标准是 Token-2022，账户主流 dataSize=165 与 170 双形态并存，但**还有零星其他 dataSize**（CLUDE 实测 165/170 双扫漏 14 个账户 0.036% 供应，对账不闭合）——正解是 **api.mainnet-beta 无 dataSize 过滤全扫**（见 §0a Token-2022 行，publicnode 此路 504）+ `memcmp offset=0` 按 mint 过滤；②扫描器已固化 `scripts/solana/scan_token_accounts.py`（--datasizes all 或 165,170）。（CLUDE，07-13）
+- 坑预警（Token-2022 实测升级）`[VERIFIED·CLUDE实战]`：先 `getAccountInfo(<MINT>)` 看 mint 归属程序。若是 Token-2022（`TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb`）：①pump.fun 新币标准是 Token-2022，账户主流 dataSize=165 与 170 双形态并存，但**还有零星其他 dataSize**（CLUDE 实测 165/170 双扫漏 14 个账户 0.036% 供应，对账不闭合）——正解是 **api.mainnet-beta 无 dataSize 过滤全扫**（见 §0a Token-2022 行，publicnode 此路 504）+ `memcmp offset=0` 按 mint 过滤；②扫描器默认 `--datasizes auto`：Token-2022 强制 all，SPL 用 165；Token-2022 显式 165/170 会拒绝，账户加总不等于 `getTokenSupply` 也不会写正式 holders 产物。（CLUDE，07-13；2026-08-02 加固）
 - 冒烟与交叉校验：正式扫描前先 `getTokenSupply(<MINT>)`（链上总供应）+ `getTokenLargestAccounts(<MINT>)`（top 20 token account）各打一发，扫描结果的总和与 top 榜必须能对上（IO 实录：扫描加总 799,211,891 vs getTokenSupply 799,211,890.5，个位级吻合）。
 - 解码要点：dataSlice 返回 base64，解码后 `bytes[0:32]` = owner（base58 编码回地址串，可纯 Python 手写无外部依赖）、`bytes[32:40]` = amount（u64 LE 原始数）；UI 数量换算用 `getTokenSupply` 返回的 `decimals`，不要自己去 mint 账户抠字节。
+- **G8 离线重放契约**：`holders_snapshot_meta.json` 绑定的每个 GPA `raw_artifact` 不是“有文件有哈希”即算通过；identity emitter/check 必须调用 `scan_token_accounts.py` 的同一套 `parse_gpa_response`＋`parse_token_accounts`，从原始 RPC JSON 重做 base64 解码、跨 dataSlice/pubkey 去重、账户明细和 owner 聚合，并要求逐条等于 `holders_accounts.json`/`holders_owners.json`；同时解析 supply receipt 的 `result.value.amount` 与 `supply_raw` 闭合。round4b 格式存量若 raw/supply 实物完整可直接重新 emit；缺失或重放不一致则必须重跑 `scan_token_accounts.py`，禁止手补 meta/hash。
 - 供给基线双口径纪律：链上实查总供应（精确到个位）与 CMC/CoinGecko 流通量是两套数——流通量链上算不出来，必须借第三方口径。全文分开使用、分开标注来源，禁止混用。
 - 分层默认档位（按供应量级可调）：`≥100万 / 10–100万 / 1–10万 / 1千–1万 / <1千` 五档，产出集中度画像表——它是整份报告的定量地基。
 - 扫描副产品 = 老鼠仓排查输入：统计 Top N 每个 owner 的 token account 数量、余额分布、建仓时间同步性，排查蚂蚁搬家式多钱包暗仓；**阴性结论也写进报告**（防读者高估链上暗仓风险）。
@@ -103,7 +104,7 @@ Solana 特有优势：program-owned PDA 让托管类型可以直接从账户归�
 - **CEX 冷钱包动态指纹**：某大户向**已知 CEX 热钱包**调拨**多种不同代币**（一次性或数日内连续多币种）= 交易所冷→热内部补库存，据此可把"神秘大户"改判为该 CEX 冷钱包。静态指纹（整数余额）与动态指纹（多币种供热钱包）互补。
 - **同时是多个热门币的最大持仓者** = CEX 归集钱包特征。免费源确证不了归属哪家时，定性降级为"疑似 CEX"并在表格明写"未能免费确证"。
 - **钱包全持仓画像判托管**：`getTokenAccountsByOwner`（打 api.mainnet-beta，publicnode 屏蔽）列出钱包全部 SPL 持仓——数十个币种、多为大额圆整数、SOL 余额≈0 = 托管/金库/多签特征（正常交易钱包必须留 SOL 付 gas）。
-- **币安 Alpha 集齐率判别法** `[VERIFIED·PENGUIN关卡]`：对"多币种高频大仓"，getTokenAccountsByOwner 全持仓 × 币安 Alpha bapi 全量表（Solana 链 ~70 币）取交集，**一次调用即分档**：Alpha 覆盖率 ~94%（几乎集齐名单）=Alpha 专属托管库存仓；3-8%=通用型热钱包（多所生态服务）；≤2%（仅持标的自身）=做市/bot 型。配套强指纹：流水走 vanity 批量程序（如 BN111 前缀）+fee payer 多址轮换代付+与零余额执行仓对倒+执行仓直连多 DEX 池=所级托管执行体系；已确认地址见 address-book Solana 节（2026-07-22 实测：四档分野 94%/3%/8%/2% 清晰无重叠）。
+- **币安 Alpha 集齐率判别法** `[VERIFIED·PENGUIN关卡]`：对"多币种高频大仓"，getTokenAccountsByOwner 全持仓 × 币安 Alpha bapi 全量表（Solana 链 ~70 币）取交集——**覆盖率 ~90% 以上（几乎集齐 Alpha 名单）≈ Alpha 专属托管库存仓**：普通用户不会恰好持有交易所 Alpha 在架的几乎全部币种，集齐只有所方库存仓才会发生。**低集齐率不足以正判托管、也不能反向认定非托管**——巨鲸/庄家同样可以一个钱包放多种代币，身份另找正向证据（标签/链根/gas supplier 体系/批次伪影等）。配套强指纹：流水走 vanity 批量程序（如 BN111 前缀）+fee payer 多址轮换代付+与零余额执行仓对倒+执行仓直连多 DEX 池=所级托管执行体系；已确认地址见 address-book Solana 节（2026-07-22 实测 94% 库存仓实证；2026-08-02 用户修订只留高档正判）。
 - **高频小额、多收款人** = 运营/发薪钱包。
 - **从 Coinbase Prime 提币** = 机构托管专用通道（散户不会用），直接锚定该地址背后是机构实体——集群定性的关键旁证。
 - **解锁款穿透追踪的终点二分**：每笔解锁款穿透中转层追到终点——进 CEX 热钱包 = 进入可售状态（派发倾向）；进囤币钱包 = 被收走（吸筹倾向）。同一 vesting 源按月对比终点变化，可捕捉行为拐点（全案最强证据的产生方式）。
@@ -177,7 +178,7 @@ meme/微盘"庄"（多钱包控盘团伙）的关联硬证据（任一即可，�
   1. 当前全量快照（第 1 节）；
   2. 近 90 天逐笔交易追踪（`getSignaturesForAddress` + `getTransaction`）；
   3. 更早的筹码变迁依赖第三方图表平台口径。
-  **2026-07-12 起此限制已被 §8 的 SQD portal 全量转账通道解决**——三问框架的全历史演变重放（问 3）走 SQD；三段式仍是 SQD 不可用时的降级架构，届时第 3 段依赖必须写进局限声明。
+  **2026-07-12 起此限制已被 §8 的 SQD portal 全量转账通道解决**——三问一异常框架的全历史演变重放（问 3）走 SQD；三段式仍是 SQD 不可用时的降级架构，届时第 3 段依赖必须写进局限声明。
 - 公共 RPC 实测参数 `[实测·他场景]`：请求间隔 ≥0.12s、走 clash 代理；退避重试 + 断点续传是采集脚本标配（IO 实录：逐笔 decode 配 1.2–1.5s 间隔 + 每请求最多 4 次重试稳定跑通）。
 - **CEX 内部账本不上链**：所内换手、做市商行为完全不可见。只能靠量价结构 + 衍生品指标（OI/费率）间接推断，不对 CEX 内行为下强结论；措辞永远带"链上可观测范围内"限定。
 - **Solana CEX 标签覆盖缺口**：OKX/Bitget/Upbit 等所的 Solana 钱包免费源基本查不到 → CEX 托管总量可能被系统性低估，合计数旁必须注明。

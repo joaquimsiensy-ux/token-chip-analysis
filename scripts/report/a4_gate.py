@@ -9,7 +9,7 @@ HTML 作废……2026-08-01 核查）。本闸把"A4 全部裁决落定"变成�
             args.claims 及 split-run §3.3 外部异构路输入的 claim registry 同构）
   finalize  A4 收尾封口：裁决 id 集合与注册表**完全相等**（缺一条=有结论没复核，
             多一条=复核了没登记的结论，都拒）＋三档枚举合法＋WEAKENED/REFUTED 必带
-            修订摘要＋终版分析文件（findings.md/analysis-state.json…）逐个 sha256
+            修订摘要＋registry/verdicts/findings/state/facts/identity/claim 引用文件逐个 sha256
             封口＋charts/final/ 必须为空（A5 尚未开始的物证）→ 产 a4_seal.json。
             build_html --a4-seal 编译时重算哈希校验（G9）：封口后再改结论不重封，
             报告物理上编不出来。翻案后重新修订＝改完再跑一次 finalize 重新封口。
@@ -20,7 +20,8 @@ mtime 不作裁决依据（cp -p 误伤 / touch 绕过，codex 复核否决）�
   python3 a4_gate.py register --case-dir <案目录> --claims-file <claims.json>
       # claims.json: [{"id": "C1", "text": "……", "files": [...]}, ...]
   python3 a4_gate.py finalize --case-dir <案目录> --verdicts-file <verdicts.json> \
-      --seal-files findings.md,analysis-state.json [--charts-dir charts/final]
+      --workflow-type <new-analysis|independent-audit> \
+      --seal-files findings.md,analysis-state.json,facts.json,identity_gate.json [--charts-dir charts/final]
       # verdicts.json: [{"id": "C1", "verdict": "CONFIRMED|WEAKENED|REFUTED",
       #                  "revision_note": "WEAKENED/REFUTED 必填"}, ...]
 
@@ -32,10 +33,13 @@ import json
 import os
 import sys
 from datetime import datetime, timezone
+from pathlib import Path
 
 CLAIMS_NAME = "a4_claims.json"
 SEAL_NAME = "a4_seal.json"
 VERDICTS = {"CONFIRMED", "WEAKENED", "REFUTED"}
+WORKFLOW_TYPES = {"new-analysis", "independent-audit"}
+MANDATORY_SEAL_FILES = {"findings.md", "analysis-state.json", "facts.json", "identity_gate.json"}
 
 
 def utcnow():
@@ -50,6 +54,103 @@ def sha256_file(path):
     return h.hexdigest()
 
 
+def safe_case_file(case_dir, rel, must_exist=True):
+    """Resolve a relative regular file inside case_dir; reject abs/.. and symlink escape."""
+    if not isinstance(rel, str) or not rel.strip() or os.path.isabs(rel):
+        raise ValueError(f"路径必须是案目录内相对路径: {rel!r}")
+    raw = Path(rel)
+    if ".." in raw.parts:
+        raise ValueError(f"路径含 ..: {rel}")
+    root = Path(case_dir).resolve()
+    unresolved = root / raw
+    if unresolved.is_symlink():
+        raise ValueError(f"拒绝符号链接文件: {rel}")
+    p = unresolved.resolve()
+    try:
+        p.relative_to(root)
+    except ValueError:
+        raise ValueError(f"路径越出案目录: {rel}")
+    if must_exist and not p.is_file():
+        raise ValueError(f"文件不存在、非普通文件或为符号链接: {rel}")
+    return p
+
+
+def _norm_text(value):
+    return " ".join(str(value or "").split())
+
+
+def check_audit_registry_alignment(case_dir, reg, verdicts, fails):
+    """Bidirectionally align the A4 registry with the clean-room registry."""
+    try:
+        path = safe_case_file(case_dir, "claim_registry.json")
+        audit = json.loads(path.read_text(encoding="utf-8"))
+    except Exception as exc:
+        fails.append(f"净室 claim_registry.json 不可读: {exc}")
+        return None
+    audit_claims = audit.get("claims")
+    if not isinstance(audit_claims, list):
+        fails.append("净室 claim_registry.json claims 非数组")
+        return path
+    a4_claims = reg.get("claims") if isinstance(reg, dict) else None
+    if not isinstance(a4_claims, list):
+        fails.append("a4_claims.json claims 非数组")
+        return path
+    a4_map = {str(c.get("id", "")).strip(): c for c in a4_claims if isinstance(c, dict)}
+    audit_ids = [str(c.get("claim_id", "")).strip() for c in audit_claims
+                 if isinstance(c, dict)]
+    audit_map = {str(c.get("claim_id", "")).strip(): c
+                 for c in audit_claims if isinstance(c, dict)}
+    verdict_map = {str(v.get("id", "")).strip(): str(v.get("verdict", "")).upper()
+                   for v in verdicts if isinstance(v, dict)}
+    if len(audit_ids) != len(set(audit_ids)) or not all(audit_ids):
+        fails.append("净室 claim_registry claim_id 缺失或重复")
+    if set(a4_map) != set(audit_map):
+        fails.append(f"两套 claim id 集合不一致: "
+                     f"only_a4={sorted(set(a4_map)-set(audit_map))} "
+                     f"only_audit={sorted(set(audit_map)-set(a4_map))}")
+    for cid in sorted(set(a4_map) & set(audit_map)):
+        left, right = a4_map[cid], audit_map[cid]
+        if _norm_text(left.get("text")) != _norm_text(right.get("statement")):
+            fails.append(f"claim {cid} 命题文本不一致")
+        if set(map(str, left.get("files") or [])) != set(map(str, right.get("evidence_files") or [])):
+            fails.append(f"claim {cid} 证据文件集合不一致")
+        if set(map(str, left.get("report_locations") or [])) != \
+                set(map(str, right.get("report_locations") or [])):
+            fails.append(f"claim {cid} 报告位置集合不一致")
+        if str(right.get("verdict", "")).upper() != verdict_map.get(cid):
+            fails.append(f"claim {cid} 最终 verdict 不一致")
+    return path
+
+
+def validate_claim_rows(case_dir, claims):
+    """Canonical validator shared by register and finalize; never trust stale registration."""
+    if not isinstance(claims, list) or not claims:
+        raise ValueError("claims 必须是非空数组")
+    if any(not isinstance(c, dict) for c in claims):
+        raise ValueError("claim 每项必须是对象")
+    ids = [str(c.get("id", "")).strip() for c in claims]
+    if any(not i for i in ids):
+        raise ValueError("存在空 id 的 claim")
+    if len(set(ids)) != len(ids):
+        dup = sorted({i for i in ids if ids.count(i) > 1})
+        raise ValueError(f"id 重复: {dup}")
+    if any(not str(c.get("text", "")).strip() for c in claims):
+        raise ValueError("存在空 text 的 claim")
+    normalized = []
+    for c in claims:
+        files = []
+        for rel in c.get("files") or []:
+            safe_case_file(case_dir, rel)
+            files.append(rel)
+        locations = c.get("report_locations") or []
+        if not isinstance(locations, list) or any(not isinstance(x, str) or not x.strip() for x in locations):
+            raise ValueError(f"claim {c['id']} report_locations 必须是非空字符串数组")
+        normalized.append({"id": str(c["id"]).strip(), "text": str(c["text"]).strip(),
+                           "files": files, "report_locations": list(locations),
+                           "claim_type": c.get("claim_type")})
+    return normalized
+
+
 def cmd_register(a):
     case_dir = os.path.abspath(a.case_dir)
     try:
@@ -57,23 +158,13 @@ def cmd_register(a):
     except Exception as e:
         print(f"[register] claims 文件读取失败: {e}", file=sys.stderr)
         return 1
-    if not isinstance(claims, list) or not claims:
-        print("[register] claims 必须是非空数组——A4 没有结论可复核＝A3 没产出，先回 A3", file=sys.stderr)
+    try:
+        normalized = validate_claim_rows(case_dir, claims)
+    except ValueError as e:
+        print(f"[register] {e}", file=sys.stderr)
         return 2
-    ids = [str(c.get("id", "")).strip() for c in claims]
-    if any(not i for i in ids):
-        print("[register] 存在空 id 的 claim——每条结论必须有稳定 id", file=sys.stderr)
-        return 2
-    if len(set(ids)) != len(ids):
-        dup = sorted({i for i in ids if ids.count(i) > 1})
-        print(f"[register] id 重复: {dup}", file=sys.stderr)
-        return 2
-    if any(not str(c.get("text", "")).strip() for c in claims):
-        print("[register] 存在空 text 的 claim", file=sys.stderr)
-        return 2
-    reg = {"schema": "a4-claims/v1", "registered_at_utc": utcnow(),
-           "claims": [{"id": str(c["id"]).strip(), "text": str(c["text"]).strip(),
-                       "files": c.get("files") or []} for c in claims]}
+    reg = {"schema": "a4-claims/v2", "registered_at_utc": utcnow(),
+           "claims": normalized}
     path = os.path.join(case_dir, CLAIMS_NAME)
     with open(path, "w", encoding="utf-8") as f:
         json.dump(reg, f, ensure_ascii=False, indent=1)
@@ -95,7 +186,17 @@ def cmd_finalize(a):
         return 1
 
     fails = []
-    reg_ids = {c["id"] for c in reg.get("claims", [])}
+    if not isinstance(reg, dict) or reg.get("schema") != "a4-claims/v2":
+        fails.append("a4_claims.json schema 必须为 a4-claims/v2")
+        claims = []
+    else:
+        try:
+            claims = validate_claim_rows(case_dir, reg.get("claims"))
+            reg["claims"] = claims
+        except ValueError as exc:
+            fails.append(str(exc))
+            claims = []
+    reg_ids = {c["id"] for c in claims}
     if not isinstance(verdicts, list):
         print("[finalize] verdicts 必须是数组", file=sys.stderr)
         return 2
@@ -116,19 +217,40 @@ def cmd_finalize(a):
         elif vd in ("WEAKENED", "REFUTED") and not str(v.get("revision_note", "")).strip():
             fails.append(f"claim {v.get('id')} 判 {vd} 但无 revision_note——翻案必须写修订摘要（改了什么、改后结论）")
 
-    seal_files = [x.strip() for x in (a.seal_files or "").split(",") if x.strip()]
-    if not seal_files:
-        fails.append("--seal-files 为空——至少封 findings.md（终版结论文件不封口＝封了个寂寞）")
+    audit_registry_path = None
+    if a.workflow_type == "independent-audit":
+        audit_registry_path = check_audit_registry_alignment(case_dir, reg, verdicts, fails)
+
+    seal_files = {x.strip() for x in (a.seal_files or "").split(",") if x.strip()}
+    seal_files |= MANDATORY_SEAL_FILES
+    if audit_registry_path is not None:
+        seal_files.add("claim_registry.json")
+    claim_files = {str(rel) for c in reg.get("claims", []) for rel in (c.get("files") or [])}
+    seal_files |= claim_files
     sealed = []
-    for rel in seal_files:
-        p = os.path.join(case_dir, rel) if not os.path.isabs(rel) else rel
-        if not os.path.isfile(p):
-            fails.append(f"待封口文件不存在: {rel}")
+    for rel in sorted(seal_files):
+        try:
+            p = safe_case_file(case_dir, rel)
+        except ValueError as e:
+            fails.append(f"待封口文件非法: {e}")
             continue
         sealed.append({"path": rel, "sha256": sha256_file(p)})
 
+    try:
+        verdict_path = safe_case_file(case_dir, os.path.relpath(a.verdicts_file, case_dir))
+        verdict_rel = str(verdict_path.relative_to(Path(case_dir).resolve()))
+    except ValueError as e:
+        fails.append(f"verdicts 文件非法: {e}")
+        verdict_rel = None
+
     charts_dir = a.charts_dir
-    cd_abs = os.path.join(case_dir, charts_dir)
+    try:
+        cd_abs = safe_case_file(case_dir, charts_dir, must_exist=False)
+        if cd_abs.exists() and (not cd_abs.is_dir() or cd_abs.is_symlink()):
+            raise ValueError(f"charts_dir 非普通目录或为符号链接: {charts_dir}")
+    except ValueError as e:
+        fails.append(str(e))
+        cd_abs = Path(case_dir) / "__invalid_charts__"
     if os.path.isdir(cd_abs):
         residue = [x for x in os.listdir(cd_abs) if not x.startswith(".")]
         if residue:
@@ -146,14 +268,17 @@ def cmd_finalize(a):
     for v in verdicts:
         vd = str(v["verdict"]).strip().upper()
         counts[vd] = counts.get(vd, 0) + 1
-    seal = {"schema": "a4-seal/v1", "gate": "a4_gate", "verdict": "PASS", "exit_code": 0,
+    seal = {"schema": "a4-seal/v3", "gate": "a4_gate", "verdict": "PASS", "exit_code": 0,
+            "workflow_type": a.workflow_type,
             "sealed_at_utc": utcnow(),
-            "registry_sha256": sha256_file(reg_path),
+            "registry": {"path": CLAIMS_NAME, "sha256": sha256_file(reg_path)},
+            "verdicts": {"path": verdict_rel, "sha256": sha256_file(verdict_path)},
             "claims": [{"id": str(v["id"]).strip(),
                         "verdict": str(v["verdict"]).strip().upper(),
                         "revision_note": str(v.get("revision_note", "")).strip() or None}
                        for v in verdicts],
-            "counts": counts, "sealed_files": sealed, "charts_dir": charts_dir}
+            "counts": counts, "sealed_files": sealed, "claim_files": sorted(claim_files),
+            "charts_dir": charts_dir}
     path = os.path.join(case_dir, SEAL_NAME)
     with open(path, "w", encoding="utf-8") as f:
         json.dump(seal, f, ensure_ascii=False, indent=1)
@@ -178,6 +303,8 @@ def main():
                    help="逗号分隔终版分析文件（相对案目录），如 findings.md,analysis-state.json")
     f.add_argument("--charts-dir", default="charts/final",
                    help="A5 报告图专用目录（封口时必须为空；默认 charts/final）")
+    f.add_argument("--workflow-type", choices=sorted(WORKFLOW_TYPES), required=True,
+                   help="不可变发布轨道：全新分析或净室复核")
     a = ap.parse_args()
     try:
         return {"register": cmd_register, "finalize": cmd_finalize}[a.subcmd](a)

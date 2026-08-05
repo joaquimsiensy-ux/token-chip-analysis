@@ -8,18 +8,17 @@ Alchemy uniqueId 尾号=类别内序号——语义不同，跨通道按 (tx,尾
 段内用自家 (tag,tx,尾号) 键去重；负余额地址数=0 才算过对账 gate。
 
 用法：python3 replay_pass1.py --channels channels.json [--out-dir data]
-channels.json 示例（lo<=block<hi 才收，各段必须互斥，重叠即报错退出）：
-  {"channels": [
-     {"path": "data/transfers_full.csv",          "lo": 0,        "hi": 37284486, "tag": "hs"},
-     {"path": "data_alchemy3/transfers_full.csv", "lo": 37284486, "hi": 38000000, "tag": "a3"},
-     {"path": "data_alchemy2/transfers_full.csv", "lo": 38000000, "hi": 43000000, "tag": "a2"},
-     {"path": "data_alchemy/transfers_full.csv",  "lo": 43000000, "hi": 99999999999, "tag": "a1"}]}
+channels.json 必须用 evm-channels/v2：顶层声明 token/expected_from/expected_to，每段
+声明 format 与 receipt；相邻段必须 next.lo == prev.hi，每个路径及 receipt 必须可重验。
+完整 schema 见 data-pipeline-evm-channels.md。
 输入 CSV 列：block,ts,tx,from,to,value,uniqueId（fetch_hypersync/fetch_alchemy 输出格式）
 输出（--out-dir 下）：merged.csv、balances_final.json、peaks.json（峰值≥总铸量 0.1%，含 peak_blk/first_blk/last_blk）、
   mint_ledger.json（from=0x0 按接收地址记，x402/批量代执行 mint 必须按接收方不按 tx.from）、replay_stats.json
 """
 import csv, json, argparse
 from collections import defaultdict
+
+from channels_preflight import preflight_channels, replay_provenance
 
 Z = '0x0000000000000000000000000000000000000000'
 DEAD = '0x000000000000000000000000000000000000dead'
@@ -32,13 +31,7 @@ def main():
     ap.add_argument("--allow-bad-rows", type=int, default=0,
                     help="允许的坏行上限（默认 0=任何坏行即退出；显式放行须先核明原因）")
     a = ap.parse_args()
-    chans = json.load(open(a.channels))["channels"]
-
-    # 块段互斥校验：排序后相邻段不得重叠
-    segs = sorted((c["lo"], c["hi"], c["tag"]) for c in chans)
-    for (l1, h1, t1), (l2, h2, t2) in zip(segs, segs[1:]):
-        if l2 < h1:
-            raise SystemExit(f"块段重叠：{t1}=[{l1},{h1}) 与 {t2}=[{l2},{h2}) ——通道归属必须互斥")
+    chans = preflight_channels(a.channels, a.out_dir)
 
     rows = {}  # (tag,tx,uid尾号) -> (block, ts, from, to, value)；段互斥保证全局无重
     # 坏行记账（fail-closed 修复 2026-07-22）：结构坏（列数≠7）与字段坏（数字解析失败）
@@ -52,33 +45,35 @@ def main():
         except FileNotFoundError:
             print(f"[warn] 缺文件 {c['path']}（tag={c['tag']}），跳过")
             continue
-        r = csv.reader(f)
-        next(r, None)
+        r = csv.DictReader(f)
+        header = set(r.fieldnames or [])
+        legacy = {"block", "ts", "tx", "from", "to", "uniqueId"} <= header \
+            and ("value" in header or "value_raw" in header)
+        standard8 = {"block", "ts", "tx", "log_index", "from", "to", "value_raw", "block_hash"} <= header
+        if not (legacy or standard8):
+            raise SystemExit(f"[fail-closed] {c['path']} CSV header 非 legacy7/standard8: {sorted(header)}")
         for row in r:
-            if not row:
+            if not row or not any(row.values()):
                 continue          # 空行不算数据损坏
-            if len(row) != 7:
-                bad_rows += 1
-                if len(bad_samples) < 5:
-                    bad_samples.append((c["tag"], "列数≠7", row[:3]))
-                continue
-            blk, ts, tx, frm, to, val, uid = row
+            blk, ts, tx, frm, to = (row.get(k) for k in ("block", "ts", "tx", "from", "to"))
+            val = row.get("value_raw", row.get("value"))
+            uid = row.get("uniqueId")
             try:
                 b = int(blk)
-            except ValueError:
+            except (TypeError, ValueError):
                 bad_rows += 1
                 if len(bad_samples) < 5:
-                    bad_samples.append((c["tag"], "block 非数字", row[:3]))
+                    bad_samples.append((c["tag"], "block 非数字", [blk, tx]))
                 continue
             if not (c["lo"] <= b < c["hi"]):
                 continue          # 段外行属通道路由，不算坏行
             try:
-                li = int(uid.rsplit(':', 1)[-1])
+                li = int(row["log_index"]) if standard8 else int(uid.rsplit(':', 1)[-1])
                 v = int(val)
-            except ValueError:
+            except (TypeError, ValueError):
                 bad_rows += 1
                 if len(bad_samples) < 5:
-                    bad_samples.append((c["tag"], "li/value 非数字", row[:3]))
+                    bad_samples.append((c["tag"], "li/value 非数字", [blk, tx]))
                 continue
             rows[(c["tag"], tx.lower(), li)] = (b, ts, frm.lower(), (to or Z).lower(), v)
             n += 1
@@ -139,8 +134,9 @@ def main():
              "neg_balance_addrs": len(neg), "unique_addrs": len(bal),
              "gate_pass": su == mint_total and len(neg) == 0,
              "n_bad_rows": bad_rows}
-    json.dump(stats, open(f"{a.out_dir}/replay_stats.json", "w"), indent=1)
     json.dump({ad: str(v) for ad, v in bal.items() if v != 0}, open(f"{a.out_dir}/balances_final.json", "w"))
+    stats.update(replay_provenance(a.out_dir, __file__))
+    json.dump(stats, open(f"{a.out_dir}/replay_stats.json", "w"), indent=1)
     json.dump({ad: {"peak": str(v), "peak_blk": peak_blk.get(ad), "first_blk": first_seen.get(ad), "last_blk": last_active.get(ad)}
                for ad, v in peak.items() if v >= peak_min}, open(f"{a.out_dir}/peaks.json", "w"))
     json.dump({ad: str(v) for ad, v in mint_by_to.items()}, open(f"{a.out_dir}/mint_ledger.json", "w"))

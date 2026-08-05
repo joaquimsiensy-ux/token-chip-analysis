@@ -8,13 +8,39 @@ import os, subprocess, sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 SUITE = ['changelog_lint.py', ['docs_lint.py', '--all'], 'labels_manifest.py', 'env_check.py',
-         'casebook_lint.py',
+         'test_commands_deploy_sync.py',
+         'casebook_lint.py', 'fixtures_lint.py',
          'test_replay_inc.py', 'test_build_html.py', 'test_engine_equivalence.py',
          'test_collect_lanes.py', 'test_report_facts.py', 'test_fault_injection.py',
+         'test_review_evm_integrity.py',
+         'test_review_solana_integrity.py',
+         'test_review_labels.py',
+         'test_review_robinhood_integrity.py',
+         'test_review_resume_integrity.py',
+         'test_entity_identity_gate.py',
+         'test_review_chain_collectors.py',
+         'test_review_medium_guards.py',
+         'test_version_consistency.py',
+         'test_chain_support_matrix.py',
+         'test_review_scale_guards.py',
          'test_figures_from_facts.py', 'test_cluster_quality.py',
          'test_sqd_merge_equiv.py', 'test_supply_truth_gate.py',
          'test_handoff_manifest.py', 'test_audit_release_gate.py',
-         'test_a4_gate.py', 'test_time_spotcheck.py']
+         'test_review_20260804_p0.py',
+         'test_review_20260804_p101.py',
+         'test_review_20260804_p104.py',
+         'test_review_20260804_p105.py',
+         'test_review_20260804_p106.py',
+         'test_review_20260804_p201.py',
+         'test_review_20260804_p202.py',
+         'test_round4_csv_adapters.py',
+         'test_round4_a5_seal.py',
+         'test_round4_identity_emitter.py', 'test_round4b_provenance.py',
+         'test_round4c_solana_provenance.py',
+         'test_state_from_facts.py',
+         'test_a4_gate.py', 'test_time_spotcheck.py', 'test_peaks_daily.py',
+         'test_wave_scan.py', 'test_flow_anomaly.py',
+         'test_entity_source_trace.py', 'test_adjudication_validator.py']
 
 
 def main():
