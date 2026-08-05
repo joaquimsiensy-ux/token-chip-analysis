@@ -14,12 +14,11 @@
   run_id/pid/cmd/started/ended/exit_code/peak_rss_gb/min_disk_free_gb/killed_by_guard/reason
 进程存活检测用 psutil（macOS 无 /proc——不可用 [ -d /proc/pid ]，environment.md 坑）。
 
-run_id（C2，2026-07-22）：--run-id 显式给（nightly_collect.sh 会给），缺省生成
-  时间戳p<pid>。日志/状态文件名都带 run_id——同 --name 的两次运行互不覆盖产物；
-  并通过环境变量 CHIP_RUN_ID 传给被守护命令（collect_queue 以之为默认 run_id，
-  一次夜采全链路同一 id 可对账）。
-退出码（同日修正）：透传被守护命令的退出码（旧版折叠为 0/1，collect_queue 的
-  2=有缺口 / 3=锁被占 语义会丢）；被水位守护击杀时退出码 1。
+run_id（C2，2026-07-22）：--run-id 可显式给，缺省生成时间戳p<pid>。日志/状态
+  文件名都带 run_id——同 --name 的两次运行互不覆盖产物；并通过环境变量
+  CHIP_RUN_ID 传给被守护命令，供跨进程日志与产物对账。
+退出码（同日修正）：透传被守护命令的退出码，避免旧版折叠为 0/1 后丢失
+  子进程自定义语义；被水位守护击杀时退出码 1。
 
 用法：
   python3 run_guarded.py --name quq_prep --mem-ceiling-gb 12 --min-free-gb 2 \
@@ -176,7 +175,7 @@ def main():
     tag = "被水位守护终止" if st["killed_by_guard"] else "完成"
     print(f"[run_guarded] {a.name} {tag}：exit={child.returncode} "
           f"峰值 {st['peak_rss_gb']}GB（{st_path}）")
-    # 透传子进程退出码（collect_queue 的 2=缺口 / 3=锁占 语义要到 nightly_collect.sh）
+    # 透传子进程退出码，保留被守护任务自己的状态语义。
     if st["killed_by_guard"]:
         return 1
     return child.returncode

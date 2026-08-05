@@ -7,8 +7,8 @@
 用法：
   python3 build_html.py --mode analysis-new --md 报告.md --out 报告.html \
     --facts facts.json --state analysis-state.json --a4-seal a4_seal.json
-  python3 build_html.py --mode update|legacy-recompile --degrade-reason "理由" \
-    --md 简报.md --out 简报.html
+  python3 build_html.py --mode legacy-recompile --degrade-reason "理由" \
+    --md 历史报告.md --out 历史报告.html
 
 支持的 md 子集（与 md2pdf.py 语法一致，报告写作按 references/report-template.md）：
   # ## ### #### 标题 | **粗体** *斜体* `代码` [链接](url) | - / 1. 列表 | 表格 | ``` 代码块
@@ -253,10 +253,10 @@ def main():
     ap = argparse.ArgumentParser()
     formal_modes = {"analysis-new": "new-analysis",
                     "analysis-audit": "independent-audit"}
-    ap.add_argument("--mode", choices=[*formal_modes, "update", "legacy-recompile"], required=True,
+    ap.add_argument("--mode", choices=[*formal_modes, "legacy-recompile"], required=True,
                     help="analysis-new/analysis-audit=两条必经正式门禁；其余为降级产物")
     ap.add_argument("--degrade-reason",
-                    help="update/legacy-recompile 必填；写入可见水印与 HTML 注释")
+                    help="legacy-recompile 必填；写入可见水印与 HTML 注释")
     ap.add_argument("--md", required=True)
     ap.add_argument("--out", required=True)
     ap.add_argument("--json", help="机器可读 JSON 附录文件（schema 见 monitoring-package.md）")
@@ -293,14 +293,14 @@ def main():
     elif not str(a.degrade_reason or "").strip():
         ap.error(f"{a.mode} 模式必须提供 --degrade-reason")
     elif a.a4_seal or a.a5_seal:
-        ap.error("update/legacy-recompile 只用模式水印留痕，不接受正式 gate 参数")
+        ap.error("legacy-recompile 只用模式水印留痕，不接受正式 gate 参数")
 
     if a.mode in formal_modes:
         import a5_report_seal
         _a5_errors = a5_report_seal.validate_seal(a.a5_seal, a.md, a.a4_seal)
         if _a5_errors:
             for _err in _a5_errors:
-                print(f"[FAIL] G10 {_err}")
+                print(f"[FAIL] G10/G11 {_err}")
             sys.exit(1)
 
     md_text = open(a.md, encoding="utf-8").read()
@@ -327,14 +327,20 @@ def main():
             _case = Path(mddir).resolve()
             if _sdir != _case:
                 warns.append("[WARN] G9 seal 与报告不在同一案目录")
-            if _seal.get("schema") != "a4-seal/v3" or _seal.get("verdict") != "PASS" \
+            if _seal.get("schema") != "a4-seal/v4" or _seal.get("verdict") != "PASS" \
                     or not _seal.get("claims"):
                 warns.append("[WARN] G9 a4_seal.json 无效（schema/verdict/claims 缺失）——"
                              "A4 收尾必须 a4_gate.py finalize 封口成功后才编报告")
-            elif _seal.get("workflow_type") != formal_modes[a.mode]:
+            else:
+                import a4_gate
+                for _chain_error in a4_gate.validate_revision_chain(_case, _seal):
+                    warns.append(f"[WARN] G9 A4 revision 链无效: {_chain_error}")
+            if _seal.get("schema") == "a4-seal/v4" and _seal.get("verdict") == "PASS" \
+                    and _seal.get("claims") and _seal.get("workflow_type") != formal_modes[a.mode]:
                 warns.append(f"[WARN] G9 workflow_type 与构建模式不匹配: "
                              f"seal={_seal.get('workflow_type')} mode={a.mode}")
-            else:
+            elif _seal.get("schema") == "a4-seal/v4" and _seal.get("verdict") == "PASS" \
+                    and _seal.get("claims"):
                 def checked(rel, label):
                     if not isinstance(rel, str) or os.path.isabs(rel) or ".." in Path(rel).parts:
                         raise ValueError(f"{label} 路径非法: {rel}")
@@ -365,6 +371,10 @@ def main():
                             "a4_claims.json"}
                 if _seal.get("workflow_type") == "independent-audit":
                     required.add("claim_registry.json")
+                else:
+                    source = _seal.get("distribution_claim_source") or {}
+                    if source.get("path"):
+                        required.add(source["path"])
                 if not required <= _sealed_paths:
                     warns.append(f"[WARN] G9 封口资产不全: {sorted(required - _sealed_paths)}")
                 if not set(_seal.get("claim_files") or []) <= _sealed_paths:

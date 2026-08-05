@@ -9,16 +9,24 @@
 复盘写入后必跑（retrospective 步骤 3）；整编触发条件之一=本脚本抓出漂移 ≥3 处。
 
 用法：python3 scripts/tests/docs_lint.py [--all]    退出码：0=PASS；1=FAIL。
-  --all＝全量模式（v6.3.1）：额外纳入 commands-staging/*.md 与 evals/**/*.md——
+  --all＝全量模式（v6.3.1）：额外纳入 commands-staging/*.md 与 archive/evals/**/*.md——
   此前 44/66 文档的覆盖盲区（"三查→四查""SKILL.md 阶段 N"类漂移在这两处存活过）。
 """
-import glob, os, re, sys
+import ast, glob, json, os, re, sys
 
 ROOT = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..'))
 
 # 引用模式：仓库内相对路径（含 ` 包裹或裸写两种）；排除占位符 <chain> 与缩写 ...
 REF_RE = re.compile(r'(?<![\w/~])(?:references/[\w./-]+\.(?:md|csv|png)|scripts/[\w./-]+\.(?:py|sh)|labels/[\w.-]+\.(?:md|csv))')
 # 负向后顾排除长路径尾段（如 ~/Desktop/xx/scripts/chip_analysis.py 的历史出处说明——那不是仓库内引用）
+REMOVED_FEATURE_TERMS = re.compile(
+    r'easy-workflow|update-workflow|token-easy-analysis|token-update|'
+    r'collect-data|collect-workflow|\bcollect_queue\b|\bnightly_collect\b|'
+    r'\bcollect_manifest\b|\bprobe_keys\b|\bweekly-probe\b|'
+    r'批量预采集|预采集衔接|easy 初筛|easy E5|'
+    r'\bE0b?\b|\bU[0-6]\b',
+    re.I)
+RETAINED_FEATURE_TERMS = ('collector', 'collection_manifest', 'csv_collector_receipt', 'probe')
 
 def md_files(all_mode=False):
     out = [os.path.join(ROOT, 'SKILL.md'), os.path.join(ROOT, 'CHANGELOG.md')]
@@ -26,7 +34,7 @@ def md_files(all_mode=False):
     out += sorted(glob.glob(os.path.join(ROOT, 'scripts', '**', 'README.md'), recursive=True))
     if all_mode:
         out += sorted(glob.glob(os.path.join(ROOT, 'commands-staging', '*.md')))
-        out += sorted(glob.glob(os.path.join(ROOT, 'evals', '**', '*.md'), recursive=True))
+        out += sorted(glob.glob(os.path.join(ROOT, 'archive', 'evals', '**', '*.md'), recursive=True))
     return [p for p in out if os.path.exists(p)]
 
 def resolve(ref, src_path):
@@ -35,6 +43,20 @@ def resolve(ref, src_path):
              os.path.join(ROOT, 'references', ref),
              os.path.join(os.path.dirname(src_path), ref)]
     return any(os.path.exists(c) for c in cands)
+
+def removed_feature_in_module_docstring(source, rel):
+    """返回 module docstring 的已删功能命中；语法不可解析时容错跳过。"""
+    try:
+        tree = ast.parse(source, filename=rel)
+    except (SyntaxError, ValueError):
+        return None
+    docstring = ast.get_docstring(tree)
+    if not docstring:
+        return None
+    match = REMOVED_FEATURE_TERMS.search(docstring)
+    if match:
+        return f'已删功能回捡 {rel}: 出现 {match.group(0)}'
+    return None
 
 def main(all_mode=False):
     fails = []
@@ -52,29 +74,133 @@ def main(all_mode=False):
                 continue
             if in_code:
                 continue
-            # 1) 断链
-            for ref in REF_RE.findall(line):
-                if '<' in ref or '...' in ref or '*' in ref:
-                    continue
-                if not resolve(ref, path):
-                    fails.append(f'断链 {rel}:{i} → {ref}')
-                    warn_broken += 1
+            # 1) 断链。CHANGELOG 历史条目引用当时存在的文件是历史记录，不是死链；
+            #    每轮功能删除都会让旧条目变成“断链”，为守卫改史不可持续（6.17/6.18
+            #    两轮已实证）。archive/CHANGELOG-archive.md 本就不在 md_files 扫描集；此处豁免
+            #    CHANGELOG.md，使两份 CHANGELOG 口径一致，并与守卫 11 的禁词豁免对齐。
+            #    只跳过断链检查，下面的粗体配对等其他检查仍照常执行。
+            if rel != 'CHANGELOG.md':
+                for ref in REF_RE.findall(line):
+                    if '<' in ref or '...' in ref or '*' in ref:
+                        continue
+                    if not resolve(ref, path):
+                        fails.append(f'断链 {rel}:{i} → {ref}')
+                        warn_broken += 1
             # 2) 粗体配对（该行 ** 计数应为偶数）
             if line.count('**') % 2 == 1:
                 fails.append(f'残缺粗体 {rel}:{i}: {line.strip()[:60]}')
+
+    # 2b) 考古资料不得重新进入执行上下文。只允许维护记录、考古区自身、
+    #    明示的存留审计/判例/复盘文档，以及 SKILL.md 的单行禁读边界声明；
+    #    后者只声明不可读取，不是把 archive 资产路由回执行会话。
+    archive_guard_docs = [os.path.join(ROOT, 'SKILL.md'), os.path.join(ROOT, 'CHANGELOG.md')]
+    archive_guard_docs += sorted(glob.glob(os.path.join(ROOT, 'references', '**', '*.md'), recursive=True))
+    archive_guard_docs += sorted(glob.glob(os.path.join(ROOT, 'archive', '**', '*.md'), recursive=True))
+    archive_ref_exempt = {'CHANGELOG.md', 'references/attic.md', 'references/retrospective.md'}
+    skill_archive_boundary = ('archive/ = 考古区（旧 CHANGELOG 归档/评测题库/冲突审计历史），'
+                              '执行会话禁读。')
+    for path in archive_guard_docs:
+        rel = os.path.relpath(path, ROOT)
+        if (rel in archive_ref_exempt or rel.startswith(f'archive{os.sep}')
+                or rel.startswith(f'references{os.sep}casebook{os.sep}')):
+            continue
+        for i, line in enumerate(open(path, encoding='utf-8'), 1):
+            if 'archive/' not in line:
+                continue
+            if rel == 'SKILL.md' and line.strip() == skill_archive_boundary:
+                continue
+            fails.append(
+                f'考古区越界引用 {rel}:{i}: 现役执行文档不得引用 archive/，防止历史资产回流执行上下文')
+
     # 3) SKILL.md 深入阅读清单齐全性
     skill = open(skill_path, encoding='utf-8').read()
     for name in re.findall(r'^- `([\w/.-]+\.md)`', skill, re.M):
         if not (os.path.exists(os.path.join(ROOT, 'references', name)) or os.path.exists(os.path.join(ROOT, name))):
             fails.append(f'SKILL.md 深入阅读清单断链: {name}')
-    # 4) 反向漏列：references/ 顶层与 labels/ 的 md 都必须出现在 SKILL.md（v3.3：robinhood 曾漏列，
-    #    正向断链检查抓不到"存在但没列"）
-    should_list = sorted(glob.glob(os.path.join(ROOT, 'references', '*.md'))) \
-                + sorted(glob.glob(os.path.join(ROOT, 'references', 'labels', '*.md')))
-    for p in should_list:
-        base = os.path.relpath(p, os.path.join(ROOT, 'references'))  # 如 labels/README.md
-        if base not in skill and os.path.basename(p) not in skill:
-            fails.append(f'SKILL.md 深入阅读清单漏列: references/{base}')
+    # 4) 运行时文档 manifest 是“必须列入/维护禁列”的唯一事实源。SKILL.md 只路由
+    #    现役文档，维护件不得再因为 lint 的反向漏列检查而被迫进入口。
+    manifest_rel = 'scripts/tests/runtime_docs_manifest.json'
+    manifest_path = os.path.join(ROOT, manifest_rel)
+    manifest_hint = f'{manifest_rel}；新增文档须先在 manifest 归类'
+
+    def manifest_failure(message):
+        fails.append(f'{message}（{manifest_hint}）')
+
+    try:
+        with open(manifest_path, encoding='utf-8') as f:
+            manifest = json.load(f)
+    except (OSError, json.JSONDecodeError) as exc:
+        manifest_failure(f'运行时文档 manifest 无法解析: {exc}')
+        manifest = None
+
+    required_manifest_fields = {'schema', 'scope', 'listed', 'maintenance'}
+    if manifest is not None:
+        if not isinstance(manifest, dict):
+            manifest_failure('运行时文档 manifest 顶层必须是对象')
+            manifest = None
+        else:
+            missing_fields = sorted(required_manifest_fields - set(manifest))
+            if missing_fields:
+                manifest_failure(f'运行时文档 manifest 缺字段: {missing_fields}')
+                manifest = None
+
+    if manifest is not None:
+        manifest_valid = True
+        expected_scope = ['references/*.md', 'references/labels/*.md']
+        if manifest['schema'] != 'runtime-docs-manifest/v1':
+            manifest_failure(f'运行时文档 manifest schema 非法: {manifest["schema"]!r}')
+            manifest_valid = False
+        if manifest['scope'] != expected_scope:
+            manifest_failure(f'运行时文档 manifest scope 非法: {manifest["scope"]!r}')
+            manifest_valid = False
+        for field in ('listed', 'maintenance'):
+            value = manifest[field]
+            if (not isinstance(value, list)
+                    or any(not isinstance(item, str) or not item for item in value)):
+                manifest_failure(f'运行时文档 manifest {field} 必须是非空字符串数组')
+                manifest_valid = False
+            elif len(value) != len(set(value)):
+                manifest_failure(f'运行时文档 manifest {field} 含重复条目')
+                manifest_valid = False
+
+        if manifest_valid:
+            refs_root = os.path.join(ROOT, 'references')
+            actual_docs = set()
+            for pattern in manifest['scope']:
+                for path in glob.glob(os.path.join(ROOT, pattern)):
+                    if os.path.isfile(path):
+                        actual_docs.add(os.path.relpath(path, refs_root))
+            listed_docs = set(manifest['listed'])
+            maintenance_docs = set(manifest['maintenance'])
+
+            for base in sorted(actual_docs - listed_docs - maintenance_docs):
+                manifest_failure(f'未归类文档: references/{base}')
+            for base in sorted((listed_docs | maintenance_docs) - actual_docs):
+                manifest_failure(f'幽灵条目: references/{base}')
+            for base in sorted(listed_docs & maintenance_docs):
+                manifest_failure(f'listed 与 maintenance 交集: references/{base}')
+
+            # listed 沿用旧判定：相对路径或文件名任一出现在 SKILL.md 即视为已列。
+            for base in sorted(listed_docs):
+                if base not in skill and os.path.basename(base) not in skill:
+                    manifest_failure(f'SKILL.md 深入阅读清单漏列: references/{base}')
+
+            # maintenance 反向禁列；attic.md 只允许一条含“禁读”的负向边界声明。
+            skill_lines = skill.splitlines()
+            for base in sorted(maintenance_docs):
+                name = os.path.basename(base)
+                occurrences = [(i, line) for i, line in enumerate(skill_lines, 1)
+                               if base in line or name in line]
+                if base == 'attic.md':
+                    legal = [(i, line) for i, line in occurrences if '禁读' in line]
+                    illegal = [(i, line) for i, line in occurrences if '禁读' not in line]
+                    for i, _ in illegal:
+                        manifest_failure(f'SKILL.md maintenance 禁列: references/{base} 出现在第 {i} 行')
+                    if len(legal) > 1:
+                        manifest_failure('SKILL.md attic.md 禁读边界声明只能出现一条')
+                else:
+                    for i, _ in occurrences:
+                        manifest_failure(f'SKILL.md maintenance 禁列: references/{base} 出现在第 {i} 行')
 
     # 5) 历史静置仓反向扫描是实体冻结前硬闸；四层任一缺失都视为方法回退。
     method_contracts = {
@@ -130,14 +256,13 @@ def main(all_mode=False):
                 fails.append(f'EF-3 覆盖发现闸回退 {rel}: 缺少 {needle}')
 
     # 8) 同时性家族合并与"恒定滞后"判据删除（2026-08-02 用户裁决，v6.12.0）：
-    #    在场检查=家族三档、②降级措辞、持仓画像旁证与 update-workflow 新指称不得回退；
+    #    在场检查=家族三档、②降级措辞、持仓画像旁证与候选发现档不得回退；
     #    不在场检查=已删的"恒定滞后=跟单"伪判据（庄程序按序遍历同样产生该形态，两可无判别力）
     #    不得从旧案考古回捡进活跃规则（CHANGELOG 记录删除理由，不在禁扫范围）。
     simult_contracts = {
         'references/playbook-entity-cluster-methods.md': ['同时性共现（同秒/同块）家族', '① 候选发现档',
                                                           '② 单币强指纹档', '③ 跨币强证据档',
                                                           '高度疑似同一执行端', '持仓画像旁证'],
-        'references/update-workflow.md': ['同时性共现家族①候选发现档'],
     }
     for rel, needles in simult_contracts.items():
         text = open(os.path.join(ROOT, rel), encoding='utf-8').read()
@@ -157,8 +282,7 @@ def main(all_mode=False):
     #    的历史原文不在禁扫范围。
     semantic_contracts = {
         'SKILL.md': ['Arbitrum', '三问一异常',
-                     'A3 实体冻结门禁编号', '队列层 collect_manifest',
-                     '链内 collection_manifest/receipt'],
+                     'A3 实体冻结门禁编号', '链内 collection_manifest/receipt'],
         'references/independent-audit-protocol.md': ['--profile new-analysis',
                                                       '--profile independent-audit',
                                                       'id、规范化文本、最终 verdict、证据文件集合和报告位置',
@@ -167,10 +291,13 @@ def main(all_mode=False):
                                                       '不得原地升级', 'adversarial-review-execution/v1',
                                                       '案目录里的同名/复制脚本', '无 producer 的 accounting'],
         'references/report-template.md': ['state_from_facts.py', '--mode analysis-new',
-                                           '--mode analysis-audit', 'a4-seal/v3', 'ET-1/ET-2'],
+                                           '--mode analysis-audit', 'a4-seal/v4', 'ET-1/ET-2'],
         'references/analyze-workflow.md': ['identity_gate_v3', '--snapshot-receipt',
-                                           '--total-supply-raw', 'a4-seal/v3',
-                                           '不得手工补字段', 'GPA raw/meta', '跨 scan pubkey 去重函数'],
+                                           '--total-supply-raw', 'a4-seal/v4',
+                                           '不得手工补字段', 'GPA raw/meta', '跨 scan pubkey 去重函数',
+                                           '既有采集产物复用', 'data/v2/run_*/done.json',
+                                           'data/soltx-*.jsonl.gz', 'done_with_gaps',
+                                           'collection_manifest.json'],
         'references/data-pipeline-evm-channels.md': ['evm-channel-receipt/v2',
                                                       'evm-collector-run/v2',
                                                       '--collector-receipt',
@@ -190,6 +317,24 @@ def main(all_mode=False):
             if needle not in text:
                 fails.append(f'2026-08-04 语义口径回退 {rel}: 缺少 {needle}')
 
+    distribution_contracts = {
+        'references/scan-schemas.md': ['distribution-scan/v1', 'distribution-explanation/v1',
+                                       'distribution-adjudications/v1', 'pattern-resolutions/v1',
+                                       'distribution-rounds/v1', 'distribution-exception-receipt/v1',
+                                       'Holm-Bonferroni', 'launch_covered=false'],
+        'references/analyze-workflow.md': ['当前持仓分布初判', '当前持仓分布终判环',
+                                           'a5-report-seal/v2', 'G11'],
+        'references/split-run.md': ['distribution_scan.json', 'handoff/v3',
+                                    'holder_distribution_current.png', 'a4-seal/v4'],
+        'references/report-template.md': ['holder_distribution_current.png',
+                                           '形态统计因样本不足未做', '分布发布闸（G11）'],
+    }
+    for rel, needles in distribution_contracts.items():
+        text = open(os.path.join(ROOT, rel), encoding='utf-8').read()
+        for needle in needles:
+            if needle not in text:
+                fails.append(f'持仓分布硬闸口径回退 {rel}: 缺少 {needle}')
+
     banned_contracts = {
         'SKILL.md': ['对任意链上代币', 'v5.0 三问框架', '实体冻结前三硬闸'],
         'references/report-template.md': ['手写 15 行', 'a4-seal/v2'],
@@ -207,8 +352,7 @@ def main(all_mode=False):
                 fails.append(f'2026-08-04 已删口径回捡 {rel}: 出现 {needle}')
 
     active_workflows = ['SKILL.md', 'references/analyze-workflow.md',
-                        'references/easy-workflow.md', 'references/report-template.md',
-                        'references/split-run.md']
+                        'references/report-template.md', 'references/split-run.md']
     generic_mode = re.compile(r'--mode analysis(?=[\s`])')
     for rel in active_workflows:
         text = open(os.path.join(ROOT, rel), encoding='utf-8').read()
@@ -219,13 +363,34 @@ def main(all_mode=False):
     version_instruction = re.compile(
         r'读[^。\n]{0,24}CHANGELOG[^。\n]{0,24}版本号|CHANGELOG[^。\n]{0,16}首(?:个)?版本号')
     execution_docs = ['SKILL.md', 'references/analyze-workflow.md',
-                      'references/easy-workflow.md', 'references/update-workflow.md',
-                      'references/collect-workflow.md', 'references/split-run.md',
-                      'references/context-discipline.md']
+                      'references/split-run.md', 'references/context-discipline.md']
     for rel in execution_docs:
         text = open(os.path.join(ROOT, rel), encoding='utf-8').read()
         if version_instruction.search(text):
             fails.append(f'版本读取回退 {rel}: 执行文档必须读 VERSION，不得读 CHANGELOG 首版本号')
+
+    # 11) 已下线的轻量筛查/增量更新/批量预采集/API key 周巡检功能不得重回现役文档。
+    for retained_term in RETAINED_FEATURE_TERMS:
+        if REMOVED_FEATURE_TERMS.search(retained_term):
+            fails.append(f'已删功能禁词误伤保留概念: {retained_term}')
+    active_docs = [p for p in md_files(all_mode=True)
+                   if os.path.relpath(p, ROOT) not in {'CHANGELOG.md', 'archive/CHANGELOG-archive.md'}
+                   and os.path.relpath(p, ROOT) != 'references/attic.md'
+                   and not os.path.relpath(p, ROOT).startswith('references/casebook/')]
+    for path in active_docs:
+        rel = os.path.relpath(path, ROOT)
+        text = open(path, encoding='utf-8').read()
+        match = REMOVED_FEATURE_TERMS.search(text)
+        if match:
+            fails.append(f'已删功能回捡 {rel}: 出现 {match.group(0)}')
+    python_files = sorted(glob.glob(os.path.join(ROOT, 'scripts', '**', '*.py'), recursive=True))
+    for path in python_files:
+        rel = os.path.relpath(path, ROOT)
+        if rel.startswith(f'scripts{os.sep}tests{os.sep}'):
+            continue
+        failure = removed_feature_in_module_docstring(open(path, encoding='utf-8').read(), rel)
+        if failure:
+            fails.append(failure)
 
     if fails:
         for f in fails[:30]:

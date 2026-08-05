@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """address-book.md 实战核验条目 → manual_labels.csv（最高优先级源）
-地址逐条复制自 ~/.codex/skills/token-chip-analysis/references/address-book.md（2026-07-16 版）"""
+地址逐条复制自 /Users/uravvv/.claude/skills/token-chip-analysis/references/address-book.md（2026-07-16 版）"""
 import csv
 
 R = []

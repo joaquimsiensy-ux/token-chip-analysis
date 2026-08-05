@@ -3,7 +3,7 @@ name: token-chip-analysis
 description: 对已具备受支持数据管线的链上代币做机构级庄家行为分析与既有报告独立复核——在声明的数据范围内采集重放、识别庄级实体并划分标签（项目方/大庄/小庄/离场庄/刷量地址）、重建阵营持仓演变、绘制重点实体流转路径、核算 V3/V4 流动性与可证 LP 权益，并交付经对抗复核的自包含 HTML。正式深度管线覆盖 Ethereum/BSC/Base/Arbitrum/Robinhood EVM、Solana；全新链须先补齐采集、对账与身份门禁适配器才可正式发布。当用户问"某代币的筹码分析/筹码结构/庄家行为分析"、"复核/审计已有筹码报告"、"有几个庄/庄家什么类型"、"庄家/项目方/做市商在吸筹还是砸盘"、"有没有关联地址/老鼠仓/单一实体控盘"、"庄家是不是跑了/弃盘了"、"看看某代币的链上持仓/大户动向"、"庄家做 LP 赚了多少/LP 手续费怎么计算"，或提到 holder analysis、鲸鱼追踪、代币尽调时使用。与 gmgn-token 的区别：gmgn-token 是快速单项查询；本 skill 是数小时深度分析工程。只查价格/K线/热榜/新币列表不要用本 skill。
 ---
 
-<!-- skill-version-source: VERSION; skill-version: 6.16.0 -->
+<!-- skill-version-source: VERSION; skill-version: 6.25.0 -->
 
 # 代币筹码分析（Token Chip Analysis）
 
@@ -31,7 +31,7 @@ description: 对已具备受支持数据管线的链上代币做机构级庄家�
 | 阶段 | 核心动作 | 必读/产物 | 阻断语义 |
 |---|---|---|---|
 | A0 画像与路由 | 合约、多链、分母、链路由 | A0＋当链 pipeline；accounting_mode.json | accounting_gate：0 放行/2 硬停/1 修通道重跑 |
-| A1 并行采集 | 完整数据＋标签＋价格 | A1＋当链 pipeline；data/、队列层 collect_manifest、链内 collection_manifest/receipt | — |
+| A1 并行采集 | 完整数据＋标签＋价格 | A1＋当链 pipeline；data/、链内 collection_manifest/receipt | — |
 | A2 对账关卡 | 余额/供给闭合/供给真值/时间抽查 | A2＋recon；supply_truth.json、anchor_plan.json、time_spotcheck.json | 四查不过不进 A3；gate 0 PASS/2 FAIL/1 修通道重跑 |
 | A3 分析 | 标注→归因→聚类→判级→ET→演变→facts/state | A3＋casebook C/E＋playbook；findings.md、facts.json、analysis-state.json、identity_gate.json | EF-1～EF-3 或 G8 未闭合即拒编译 |
 | A4 对抗复核 | claims→扰动→揭盲→N 路复核→裁决→finalize | A4＋evidence-wording；a4_claims.json、a4_seal.json | 实际核查三档；a4_gate 未封口（2）禁进 A5 |
@@ -44,14 +44,11 @@ description: 对已具备受支持数据管线的链上代币做机构级庄家�
 - 阻断：控盘看最终经济控制，EF-1 必须落 `economic_control_ledger.json` 且公共设施不进永久成员表；EF-2 必须落 `dormant_warehouse_audit.json`；任一门禁或候选未闭合，就不允许冻结实体、发布峰值或出图。
 - 权威定义：EF-1 见 `economic-control-accounting.md`；EF-2 与判级边界见 `playbook-entity-cluster-tiering.md`；EF-3、分段分工与 schema 见 `analyze-workflow.md`、`split-run.md`、`scan-schemas.md`。
 
-## 六入口
+## 三入口
 
 - **/token-analyze**：A0–A5 完整版；A6 仅用户要求。
-- **/token-easy-analysis**：`easy-workflow.md` E0–E7 轻量筛查档；同强度引擎/复核，砍完整报告，绝不自动转正式。
 - **/token-analyze-1**：A0–A2＋A3 机械子层；按 `split-run.md` 交接后完成即停。
-- **/token-analyze-2**：handoff verify 后接 A3 判断层＋A4–A5；easy/full 必选，A6 仍须用户要求。
-- **/token-update**：`update-workflow.md` U0–U5（U6 仅用户要求）；复用旧实体表、只拉增量，按当前版本重判并区分持仓变动/标准迁移。
-- **/collect-data**：`collect-workflow.md` 只采集零结论；以 collect_manifest/done.json 续增量，禁止从零重采。
+- **/token-analyze-2**：handoff verify 后接 A3 判断层＋A4–A5；仅支持 full，A6 仍须用户要求。
 
 ## 上下文预算
 
@@ -60,11 +57,13 @@ description: 对已具备受支持数据管线的链上代币做机构级庄家�
 
 ## 深入阅读（references/）
 
-- 流程：`analyze-workflow.md`、`easy-workflow.md`、`update-workflow.md`、`collect-workflow.md`、`split-run.md`、`retrospective.md`、`context-discipline.md`。
+- 流程：`analyze-workflow.md`、`split-run.md`、`retrospective.md`、`context-discipline.md`。
 - 方法：`analysis-playbook.md`、`playbook-supply-recon.md`、`playbook-entity-cluster-methods.md`、`playbook-entity-cluster-tiering.md`、`playbook-entity-cluster-cost.md`、`playbook-state-anomaly.md`、`playbook-evidence-wording.md`。
 - 门禁/交付：`report-template.md`、`scan-schemas.md`、`economic-control-accounting.md`、`lp-fee-accounting.md`、`independent-audit-protocol.md`、`casebook/README.md`。
 - EVM：`data-pipeline-evm.md`、`data-pipeline-evm-channels.md`、`data-pipeline-evm-sources.md`、`data-pipeline-evm-recon.md`。
 - Solana：`data-pipeline-solana.md`、`data-pipeline-solana-scan.md`、`data-pipeline-solana-capture.md`。
 - Robinhood：`data-pipeline-robinhood.md`、`data-pipeline-robinhood-channels.md`、`data-pipeline-robinhood-traps.md`、`data-pipeline-robinhood-methods.md`。
-- 标签/环境：`address-book.md`、`labels/README.md`、`labels/MAINTENANCE.md`、`environment.md`。
+- 标签/环境：`address-book.md`、`labels/README.md`、`environment.md`。
 - 按需：`monitoring-package.md`、`research-workflows.md`；`attic.md` 仅存留审计/整编会话可读，分析会话禁读。
+
+archive/ = 考古区（旧 CHANGELOG 归档/评测题库/冲突审计历史），执行会话禁读。

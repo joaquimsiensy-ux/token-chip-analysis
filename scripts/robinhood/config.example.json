@@ -11,12 +11,12 @@
     "key": ""
   },
   "rpc": "https://rpc.mainnet.chain.robinhood.com",
-  "rpc_comment": "EVM RPC（scripts/update/ 的 verify_balances / getcode_recheck 用；Robinhood 链必须浏览器 UA，默认已带，可选 rpc_ua 覆盖）。v2.10 增量通用件收编时新增",
+  "rpc_comment": "EVM RPC（Robinhood 链必须浏览器 UA，默认已带，可选 rpc_ua 覆盖）",
   "pools": {
     "0x主池地址": "V2主池",
     "0x其他池地址…": "V3-USDG池"
   },
-  "pools_comment": "标的全部池 {地址:标签}（scripts/update/ 窗口买卖归因用；pool/pool_manager/v2_pairs 会自动并入，此处补其余池即可）",
+  "pools_comment": "标的全部池 {地址:标签}；pool/pool_manager/v2_pairs 会自动并入，此处补其余池即可",
   "infra_addresses_comment": "gas_trace.py 溯源时剔除的基础设施地址：链级三件套已预填（Relay solver / 聚合器执行器 / V4 PoolManager，见 references/address-book.md），零地址必留；按标的补充：主池、税 swapper、金库、发射台合约等",
   "infra_addresses": [
     "0x0000000000000000000000000000000000000000",

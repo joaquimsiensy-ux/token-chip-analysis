@@ -4,6 +4,10 @@
 
 > **作用域与入口**：本协议仅适用于“复核既有报告”任务。`audit_release_gate.py` 的底层 validator 由两条流程共用，但入口强制分开：全新分析=`--profile new-analysis`（共享三账、对账、分类、静置仓与对抗复核资产），净室复核=`--profile independent-audit`（共享资产＋`audit_input_manifest.json`、`claim_registry.json`、`reproduce_audit.py`）。`build_html --mode analysis-new|analysis-audit` 与 `a4_seal.workflow_type` 机器匹配；不得拿净室专用资产要求卡死全新分析，也不得把净室复核降成共享 profile。
 
+## 本册路由
+
+- §1–§3 净室、冻结与正确性；§4–§6 三账/CEX/历史图；§7–§8 命题与否决；§9 交付资产。
+
 ## 1. 净室原则
 
 1. 开工时只把原报告拆成 `claim_registry.json` 的待审命题，不得把其实体表、阵营桶、标签、峰值或结论当作计算输入。
@@ -146,7 +150,11 @@ reproduce_output.json
 - `position_ledger.json.entries[]`：`entity_id,address,location_id,amount_raw`；每条地址必须映射到同一实体的有效成员，`(location_id,address)` 唯一，金额为非负 raw integer。发布闸会按地址汇总所有位置，并要求每个有效成员的 `Σ amount_raw == as_of_balance_raw`；无位置行只能与经证明的零余额闭合。
 - `economic_control_ledger.json.entries[]`：按 `economic-control-accounting.md` §5；发布闸从明细重算 `wallet_self_held_raw == Σ position.amount_raw`、`confirmed_economic_control_raw == wallet_self_held_raw + Σ claim.token_raw`，并校验 `double_count_key` 全局唯一及所有权/数量算法/目标块证据齐全。任何 `unresolved_count` 都必须与实际 unresolved 明细一致，汇总布尔和自报 count 不作为放行证据。
 
-`accounting_mode.json` 必须是当前 `scripts/evm/accounting_gate.py`（Solana 为 `scripts/solana/accounting_gate_sol.py`）的 `accounting-gate/v1` exit 0 产物，并带脚本自身的 `producer.path/sha256`。`reconciliation_report.json` 使用 v2 target，并给四查逐项绑定 exit-0 receipt 与仓库当前白名单生产脚本：balance/supply=`scripts/evm/verify_recon.py`、supply_truth=`scripts/lib/supply_truth_gate.py`、time=`scripts/lib/time_spotcheck.py`（Solana 对应 balance/time=`scripts/solana/anchor_sampler.py`、supply=`scripts/solana/scan_token_accounts.py`）。案目录里的同名/复制脚本即使抄到正确 SHA-256 也不是生产者。`adversarial_review.json` 使用 v2 target；实体归因怀疑者与完整性批评者都必须通过当前 `scripts/report/adversarial_review_runner.py` 启动独立 entrypoint，绑定新鲜非空 artifact 与 `adversarial-review-execution/v1` execution receipt，聚合器同时重验 runner、entrypoint、artifact。示例：`python3 scripts/report/adversarial_review_runner.py <案目录> --role entity_attribution_skeptic --entrypoint review_entity.py --artifact review_entity.md --receipt review_entity_execution.json`（另一角色用 `completeness_critic`）。三者完成后由唯一生产聚合器运行 `python3 scripts/report/shared_release_receipt.py <案目录>`，生成并哈希绑定三者的 `shared-release-receipt/v1`。存量裸布尔、无 producer 的 accounting、任意 producer/runner 或无 execution receipt 的旧文件都不得手工补字段迁移：必须重跑当前 accounting/四查生产工具和两个固定 runner，再运行聚合器；任何 receipt 后替换都会阻断。
+`accounting_mode.json` 必须是当前 `scripts/evm/accounting_gate.py`（Solana 为 `scripts/solana/accounting_gate_sol.py`）的 `accounting-gate/v1` exit 0 产物，并带脚本自身的 `producer.path/sha256`。
+  `reconciliation_report.json` 使用 v2 target，并给四查逐项绑定 exit-0 receipt 与仓库当前白名单生产脚本：balance/supply=`scripts/evm/verify_recon.py`、supply_truth=`scripts/lib/supply_truth_gate.py`、time=`scripts/lib/time_spotcheck.py`（Solana 对应 balance/time=`scripts/solana/anchor_sampler.py`、supply=`scripts/solana/scan_token_accounts.py`）。案目录里的同名/复制脚本即使抄到正确 SHA-256 也不是生产者。
+  `adversarial_review.json` 使用 v2 target；实体归因怀疑者与完整性批评者都必须通过当前 `scripts/report/adversarial_review_runner.py` 启动独立 entrypoint，绑定新鲜非空 artifact 与 `adversarial-review-execution/v1` execution receipt，聚合器同时重验 runner、entrypoint、artifact。
+  示例：`python3 scripts/report/adversarial_review_runner.py <案目录> --role entity_attribution_skeptic --entrypoint review_entity.py --artifact review_entity.md --receipt review_entity_execution.json`（另一角色用 `completeness_critic`）。三者完成后由唯一生产聚合器运行 `python3 scripts/report/shared_release_receipt.py <案目录>`，生成并哈希绑定三者的 `shared-release-receipt/v1`。
+  存量裸布尔、无 producer 的 accounting、任意 producer/runner 或无 execution receipt 的旧文件都不得手工补字段迁移：必须重跑当前 accounting/四查生产工具和两个固定 runner，再运行聚合器；任何 receipt 后替换都会阻断。
 
 涉及历史图时另需 `chart_reconciliation.json`。发布前运行：
 

@@ -2,6 +2,10 @@
 
 > 母文档：`data-pipeline-solana.md`（薄路由索引页；来源声明与标注图例见索引页）。本册覆盖 **§0/0a/0b 通道速查·双 RPC 互补矩阵·死亡名单 / §1 全量持仓扫描 / §2/2a 托管类型判别 / §3/3a/3b 行为特征与流水坑 / §4 辅助数据面 / §5 架构约束与观测边界**；§6–§13 见 `data-pipeline-solana-capture.md`。正文 §N 交叉引用一律为母文档节号。
 
+## 本册路由
+
+- §0 通道与死亡名单；§1 持仓扫描；§2/§2a 托管判别；§3/§3a/§3b 行为与流水；§4 辅助面；§5 观测边界。
+
 ## 0. 通道速查
 
 | 用途 | 通道 | 要点 |
@@ -152,7 +156,10 @@ meme/微盘"庄"（多钱包控盘团伙）的关联硬证据（任一即可，�
   - `/defi/quotation/v1/tokens/kline/sol/<mint>?resolution=1d`：日 K
   - **口径坑**：GMGN holders 是**当前**持仓口径，与 RugCheck（账户总数口径）可差 2–20 倍，两者交叉验证不互替。GMGN 的 bundler/sniper 标签是线索不是定论，仍须落链上 §3b 指纹确认（二见实证：某 top 大户带 bundler 标签、链上实为毕业+6h 才进场的外盘买家——直接采信会把建仓时点/成本全判错；来源：USELESS(Solana) 分析，2026-07-21）。
 - **pump.fun coin API**：v1（frontend-api）已死（530）；**v3 可用**——`frontend-api-v3.pump.fun` 拿代币元数据/creator/description（外部 CLAW 考古，07）。**v3 的 creator 履历三端点**（走 clash 代理，dev 前科调查核心通道）：①`/coins?creator=<addr>&limit=100&includeNsfw=true` = creator 名下全部发币记录；②`/users/<addr>` = 平台账号画像（用户名/关注数/是否绑定 X）——**x_username=null 可证明"链上 creator 与官推无平台级绑定"**（官推侦查的链上侧交叉证据）；③`/balances/<addr>` = 站内持仓视角（不含毕业后链上 SPL 持仓，引用须注明口径）（PUB，07-14）。
-- **RugCheck `api.rugcheck.xyz/v1/tokens/<mint>/report`（免 key）**（外部 SGL/CLAW 分析实测，2026-07）：一次拿 topHolders（含 owner+pct+**insider 标记**）+ markets（LP 名单）+ **insiderNetworks**（转账关联的内幕簇，直接给出关联地址网络）+ launchpad——**是 `getTokenLargestAccounts` 恒 429 的最佳替代**（§0a），insider 关联比自建聚类省事，但仍按 analysis-playbook §6 硬规则复核。**坑：免费层 insiderNetworks 的 size 字段有值但 accounts 成员列表可为空**——只能当线索计数用，成员名单要自建聚类复现（PUB，07-14；USELESS 案 07-21 再确认免费层 accounts=None）。**knownAccounts 字段实测 388 条 AMM 池/基础设施标签，可直接作算集中度前的剔除表**（USELESS，07-21）。**坑：`detectedAt` 是 RugCheck 索引器首见时间，不是发射时间**——老币可差出几个月（TROLL 实测差 145 天：真实创建 2024-03-10，detectedAt 2024-08-02），据此定"发射窗"会漏掉整段早期历史（TROLL 案初稿因此漏了创建 tx 的 dev 闪电轮与 2024-08 做量集群所在的整个时段）。**发射时点唯一正解=curve/mint ATA 最早签名核实到秒**（getSignaturesForAddress 翻到最老；pump.fun frontend-api-v3 的 created_timestamp 可作秒级互证）（TROLL，07-29）。
+- **RugCheck `api.rugcheck.xyz/v1/tokens/<mint>/report`（免 key）**（外部 SGL/CLAW 分析实测，2026-07）：一次拿 topHolders（含 owner+pct+**insider 标记**）+ markets（LP 名单）+ **insiderNetworks**（转账关联的内幕簇，直接给出关联地址网络）+ launchpad——**是 `getTokenLargestAccounts` 恒 429 的最佳替代**（§0a），insider 关联比自建聚类省事，但仍按 analysis-playbook §6 硬规则复核。
+  **坑：免费层 insiderNetworks 的 size 字段有值但 accounts 成员列表可为空**——只能当线索计数用，成员名单要自建聚类复现（PUB，07-14；USELESS 案 07-21 再确认免费层 accounts=None）。**knownAccounts 字段实测 388 条 AMM 池/基础设施标签，可直接作算集中度前的剔除表**（USELESS，07-21）。
+  **坑：`detectedAt` 是 RugCheck 索引器首见时间，不是发射时间**——老币可差出几个月（TROLL 实测差 145 天：真实创建 2024-03-10，detectedAt 2024-08-02），据此定"发射窗"会漏掉整段早期历史（TROLL 案初稿因此漏了创建 tx 的 dev 闪电轮与 2024-08 做量集群所在的整个时段）。**发射时点唯一正解=curve/mint ATA 最早签名核实到秒**（getSignaturesForAddress 翻到最老；
+  pump.fun frontend-api-v3 的 created_timestamp 可作秒级互证）（TROLL，07-29）。
 - **GMGN 正规 key 通道 CLI 的两个高价值参数**（gmgn-* skills，Cloudflare 拦的是免 key 抓取，此通道不受影响）：`token holders --tag`（smart_degen/sniper/bundler/transfer_in 等 10 类标签过滤）与 `traders --order-by profit`（盈利榜）——transfer_in 过滤结果是 §2a 判别流程的候选入口（PUB，07-14）。
 - **Bags 平台盘专项**（外部 SGL/P0 分析，2026-07）：算集中度前必先剔平台基础设施——链上 creator 统一 `BAGSB9TpG…`（平台署名非项目方）、平台金库 `FhVo3mqL…` 恰持**每币 17% 整数配额**（单日 3000+ 签名高频机器钱包）；mint 后缀 BAGS；`bags.fm` 代币页可查创作者费累计领取额（=项目方还在乎的链上心跳）。整数配额（17.001%/20.001%）= 设计分配非市场吸筹。
 - **Solscan**：地址公开标签（CEX/项目方）、逐笔交易历史核验；RPC 侧等价物为 `getSignaturesForAddress` + `getTransaction`。报告页眉声明"所有关键地址均可在 Solscan 点击验证"作为可验证性背书（注意 WebFetch 抓不了 Solscan，背书是给人手点的）。

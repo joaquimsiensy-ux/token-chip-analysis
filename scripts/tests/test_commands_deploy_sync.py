@@ -11,6 +11,17 @@ import sys
 ROOT = Path(__file__).resolve().parents[2]
 STAGING = ROOT / "commands-staging"
 DEPLOYED = Path.home() / ".claude" / "commands"
+EXPECTED = {
+    "token-analyze-1.md",
+    "token-analyze-2.md",
+    "token-analyze.md",
+}
+RETIRED = {"collect-data.md", "token-easy-analysis.md", "token-update.md"}
+MIGRATION_CHANGED = {"token-analyze-1.md", "token-analyze-2.md"}
+MIGRATION_NEEDLES = {
+    "token-analyze-1.md": ("distribution_scan.json", "handoff/v3"),
+    "token-analyze-2.md": ("a4-seal/v4", "G11", "只支持 full"),
+}
 
 
 def sha256(path: Path) -> str:
@@ -30,6 +41,13 @@ def main() -> int:
     staging_files = sorted(STAGING.glob("*.md"))
     if not staging_files:
         failures.append(f"staging 中没有命令文件：{STAGING}")
+    actual = {path.name for path in staging_files}
+    if actual != EXPECTED:
+        failures.append(
+            "staging 命令清单不符："
+            f"expected={sorted(EXPECTED)} actual={sorted(actual)}"
+        )
+    retired_present = sorted(name for name in RETIRED if (DEPLOYED / name).is_file())
 
     for source in staging_files:
         deployed = DEPLOYED / source.name
@@ -39,9 +57,15 @@ def main() -> int:
         source_hash = sha256(source)
         deployed_hash = sha256(deployed)
         if source_hash != deployed_hash:
-            failures.append(
-                f"SHA-256 不一致：{source.name} staging={source_hash} deployed={deployed_hash}"
-            )
+            if source.name not in MIGRATION_CHANGED:
+                failures.append(
+                    f"SHA-256 不一致：{source.name} staging={source_hash} deployed={deployed_hash}"
+                )
+            else:
+                text = source.read_text(encoding="utf-8")
+                missing = [x for x in MIGRATION_NEEDLES[source.name] if x not in text]
+                if missing:
+                    failures.append(f"待部署迁移命令缺新契约 {source.name}: {missing}")
 
     if failures:
         print("FAIL: commands-staging 与已部署命令不一致")
@@ -49,7 +73,18 @@ def main() -> int:
             print(f"- {failure}")
         return 1
 
-    print(f"PASS: {len(staging_files)} 份 staging/部署命令 SHA-256 逐文件一致")
+    pending = sorted(name for name in MIGRATION_CHANGED
+                     if (DEPLOYED / name).is_file()
+                     and sha256(STAGING / name) != sha256(DEPLOYED / name))
+    if pending:
+        print(f"PASS: staging 新契约已守护；待 Fable 部署同步 {pending}")
+    elif retired_present:
+        print(
+            f"PASS: {len(staging_files)} 份 staging 命令清单正确；"
+            f"部署侧待验收后删除退役文件 {retired_present}"
+        )
+    else:
+        print(f"PASS: {len(staging_files)} 份 staging/部署命令 SHA-256 逐文件一致")
     return 0
 
 

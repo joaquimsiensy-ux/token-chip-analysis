@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""增量更新:新旧持仓快照 diff(/token-update 快照对比法核心件,data-pipeline-solana §10)。
+"""新旧持仓快照 diff（data-pipeline-solana §10 快照对比法核心件）。
 
 用法:
   python3 snapshot_diff.py --old data/holders_owners_旧日期.json --new data/holders_owners.json \

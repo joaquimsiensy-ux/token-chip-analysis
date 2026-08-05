@@ -4,7 +4,7 @@
 背景（GNT 实测，2026-07-28）：老合约 migrate() 直接改账本、不发任何 Transfer/Burn
 事件，全量重放余额虚高 10 倍，而 mint/burn 闭合、负余额、accounting_gate 全部检测项
 均 PASS（模型错但自洽）。唯一暴露手段：重放净供给 mint_total − burn_total 对比链上
-实查 totalSupply()。本闸在重放收尾必跑（analyze / easy / update 三条 workflow 同责），
+实查 totalSupply()。本闸在正式分析重放收尾必跑，
 成本一次 RPC 调用。
 
 判定（fail-closed）:

@@ -56,7 +56,7 @@
 **在 `scripts/labels/` 目录执行**（benchmark 的 --labels-dir 按 cwd 解析，在 sources/ 里跑会 fail-fast 拒绝）：
 
 ```bash
-cd ~/.codex/skills/token-chip-analysis/scripts/labels
+cd ~/.claude/skills/token-chip-analysis/scripts/labels
 ( cd sources && python3 ../gen_manual_from_addressbook.py && python3 ../build_labels.py )
 #    ↑ 构建末尾自动跑 validate_labels + check_manual_sync 双校验，任一 FAIL 拒绝发布
 python3 roundtrip_check.py                       # 发布版 ⊆ 新构建（行级收敛门禁，稳定化新增）

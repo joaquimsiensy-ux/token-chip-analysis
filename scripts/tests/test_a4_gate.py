@@ -13,7 +13,7 @@
   9. G9 封口后改结论文件 → exit 1 且 HTML **未写出**（gate 前置，不再先落盘再报错）
  10. G9 报告图不在 charts/final/ → exit 1 不写出
  11. legacy-recompile 用 mode 水印说明降级，且不存在任何 skip gate CLI
- 12. 不传 --a4-seal（update 流程场景）→ G9 不触发照常编译
+ 12. 不传 --a4-seal 的正式流程拒绝；已删除的非正式旁路同样拒绝
  13. P0-01/D-06：analysis 拒绝 seal 外 facts/state/JSON，但允许已封口监控 JSON
 用法：python3 scripts/tests/test_a4_gate.py   退出码 0=PASS / 1=FAIL
 """
@@ -34,6 +34,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 GATE = os.path.join(HERE, "..", "report", "a4_gate.py")
 BUILD = os.path.join(HERE, "..", "report", "build_html.py")
 A5 = os.path.join(HERE, "..", "report", "a5_report_seal.py")
+DIST = os.path.join(HERE, "..", "report", "holder_distribution_scan.py")
 FAILS = []
 ENTITY_ADDR = "0x" + "a" * 40
 
@@ -42,10 +43,12 @@ PNG = base64.b64decode(
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==")
 
 
-def check(name, cond):
+def check(name, cond, details=""):
     if not cond:
         FAILS.append(name)
         print(f"FAIL  {name}")
+        if details:
+            print(details)
     else:
         print(f"ok    {name}")
 
@@ -70,6 +73,46 @@ def wj(d, name, obj):
     with open(p, "w", encoding="utf-8") as f:
         json.dump(obj, f, ensure_ascii=False)
     return p
+
+
+def add_distribution_initial(d):
+    Path(d, "data").mkdir(exist_ok=True)
+    balances = {f"owner-{i:03d}": max(1, int(2_000_000 / (1.035 ** i))) for i in range(240)}
+    total = sum(balances.values())
+    snap = Path(d, "data/holders_owners.json")
+    snap.write_text(json.dumps(balances), encoding="utf-8")
+    wj(d, "candidate_screening.json", {"schema": "candidate-screening/v1",
+                                         "auto_excluded_candidate": []})
+    wj(d, "supply_truth.json", {"verdict": "PASS", "exit_code": 0,
+                                  "total_supply_raw": str(total), "net_supply_raw": str(total)})
+    wj(d, "data_map.json", {"files": [{"path": "data/holders_owners.json",
+                                          "sha256": hashlib.sha256(snap.read_bytes()).hexdigest()}]})
+    p = subprocess.run([sys.executable, DIST, "--case-dir", d, "--stage", "initial"],
+                       capture_output=True, text=True)
+    assert p.returncode == 0, p.stdout + p.stderr
+
+
+def finish_distribution_normal(d):
+    wj(d, "handoff_manifest.json", {"consumer_min_schema": "handoff/v3", "status": "READY",
+                                      "run_id": "fixture-ready"})
+    wj(d, "identity_snapshot_receipt.json", {"schema": "identity-snapshot-receipt/v1"})
+    wj(d, "entity_freeze.json", {"schema": "entity-freeze/v1", "revisions": []})
+    for name in ("membership_ledger.json", "position_ledger.json", "economic_control_ledger.json",
+                 "address_classification.json"):
+        if not Path(d, name).is_file():
+            wj(d, name, {"rows": []})
+    p = subprocess.run([sys.executable, DIST, "--case-dir", d, "--stage", "final", "--round", "1"],
+                       capture_output=True, text=True)
+    assert p.returncode == 0, p.stdout + p.stderr
+    p = subprocess.run([sys.executable, DIST, "record-round", "--case-dir", d,
+                        "--scan", "dist_rounds/round_1/distribution_scan.json"],
+                       capture_output=True, text=True)
+    assert p.returncode == 0, p.stdout + p.stderr
+    report = Path(d, "report.md")
+    report.write_text(report.read_text(encoding="utf-8")
+                      + "\n当前快照呈正常形态;这只表示本闸未检出结构性畸形,不等于没有庄。\n"
+                      + "\n![持仓分布](charts/final/holder_distribution_current.png)\n",
+                      encoding="utf-8")
 
 
 def main():
@@ -212,20 +255,23 @@ def main():
     new_d = os.path.join(root, "case_new")
     shutil.copytree(d, new_d)
     for name in ("audit_input_manifest.json", "claim_registry.json", "reproduce_audit.py",
-                 "reproduce_receipt.json", "reproduce_output.json"):
+                 "reproduce_receipt.json", "reproduce_output.json", "a5_report_seal.json"):
         Path(new_d, name).unlink(missing_ok=True)
+    add_distribution_initial(new_d)
     p = run(GATE, ["finalize", "--case-dir", new_d,
                    "--seal-files", "findings.md,analysis-state.json",
                    "--verdicts-file", os.path.join(new_d, "v_ok.json"),
                    "--workflow-type", "new-analysis"])
     new_seal = os.path.join(new_d, "a4_seal.json")
+    finish_distribution_normal(new_d)
     new_out = os.path.join(new_d, "new.html")
     p_build = run(BUILD, ["--mode", "analysis-new", "--md", os.path.join(new_d, "report.md"),
                           "--out", new_out, "--facts", os.path.join(new_d, "facts.json"),
                           "--state", os.path.join(new_d, "analysis-state.json"),
                           "--a4-seal", new_seal])
     check("P1-05 全新分析无净室资产仍过必经共享门禁",
-          p.returncode == 0 and p_build.returncode == 0 and os.path.isfile(new_out))
+          p.returncode == 0 and p_build.returncode == 0 and os.path.isfile(new_out),
+          p.stdout + p.stderr + p_build.stdout + p_build.stderr)
 
     # 8. G9 正例：图在 charts/final/，编译过
     with open(report_path, "w") as f:
@@ -358,13 +404,13 @@ def main():
         if os.path.isfile(os.path.join(d, "skip.html")) else ""
     check("legacy 降级理由入 HTML 注释", p.returncode == 0 and "历史报告重编译测试" in html_txt)
 
-    # 12. analysis 不带 seal 必须拒；update 模式可显式降级无 seal 编译
+    # 12. analysis 不带 seal 必须拒；已删除的 update 模式必须拒绝
     p = run(BUILD, ["--mode", "analysis-audit", "--md", os.path.join(d, "报告bad.md"),
                     "--out", os.path.join(d, "noseal.html")])
     check("analysis 无 --a4-seal 拒绝", p.returncode != 0)
-    p = run(BUILD, ["--mode", "update", "--degrade-reason", "增量更新不重跑 A4",
+    p = run(BUILD, ["--mode", "update", "--degrade-reason", "已删除模式",
                     "--md", os.path.join(d, "报告bad.md"), "--out", os.path.join(d, "update.html")])
-    check("update 显式降级无 seal 可编译", p.returncode == 0)
+    check("已删除的 update 模式被拒绝", p.returncode != 0)
 
     help_text = run(BUILD, ["--help"]).stdout
     check("D-07 help 不再暴露不可达 skip gate 参数",

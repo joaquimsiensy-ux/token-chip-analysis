@@ -32,8 +32,13 @@ AUDIT_ONLY_REQUIRED = (
     "claim_registry.json",
     "reproduce_audit.py",
 )
+NEW_ANALYSIS_REQUIRED = (
+    "distribution_scan.json",
+    "distribution_rounds.json",
+    "a5_report_seal.json",
+)
 REQUIRED_BY_PROFILE = {
-    "new-analysis": SHARED_REQUIRED,
+    "new-analysis": SHARED_REQUIRED + NEW_ANALYSIS_REQUIRED,
     "independent-audit": SHARED_REQUIRED + AUDIT_ONLY_REQUIRED,
 }
 PASS_WORDS = {"pass", "passed", "ok"}
@@ -722,6 +727,14 @@ def run(case_dir: Path, report: Path | None, *, profile="independent-audit"):
         claim_types = check_claims(case_dir, data["claim_registry.json"], report, errors)
     if "adversarial_review.json" in data:
         check_adversarial(data["adversarial_review.json"], errors)
+    if profile == "new-analysis" and "distribution_scan.json" in data:
+        try:
+            import holder_distribution_scan
+            errors.extend("持仓分布 initial scan: " + x for x in
+                          holder_distribution_scan.validate_scan(
+                              case_dir, "distribution_scan.json", "initial"))
+        except Exception as exc:
+            errors.append(f"持仓分布 initial scan validator 失败: {exc}")
     if "historical_chart" in claim_types:
         chart_path = case_dir / "chart_reconciliation.json"
         if not chart_path.is_file():

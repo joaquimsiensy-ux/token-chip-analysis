@@ -43,10 +43,12 @@ import sys
 from datetime import datetime, timezone
 
 SCHEMA = "candidate-adjudications/v1"
+DISTRIBUTION_SCHEMA = "distribution-adjudications/v1"
 VERDICTS = {"pattern_confirmed", "excluded", "unresolved"}
 # 判级相关线（%总供应）：最低档小庄 5%（tiering 权威值）——候选可达规模 ≥此线即
 # "可能改变庄数/判级"，机器判定人工不得覆盖
 TIER_MIN_LINE_PCT = 5.0
+DISTRIBUTION_UNRESOLVED_LINE_PCT = 2.0
 
 
 def log(msg):
@@ -180,6 +182,175 @@ def machine_tier_impact(scale_pct):
     return {"combined_peak_pct": round(scale_pct, 4),
             "nearest_tier_line": f"{TIER_MIN_LINE_PCT}%",
             "could_change_tiering": scale_pct >= TIER_MIN_LINE_PCT}
+
+
+def distribution_candidates(case_dir, scan_rel):
+    scan_path = os.path.join(case_dir, scan_rel)
+    if not os.path.isfile(scan_path):
+        raise ValueError(f"缺 {scan_rel}")
+    script = os.path.join(os.path.dirname(os.path.abspath(__file__)), "holder_distribution_scan.py")
+    import subprocess
+    pv = subprocess.run([sys.executable, script, "validate", "--case-dir", case_dir,
+                         "--scan", scan_rel, "--expected-stage", "final"],
+                        capture_output=True, text=True)
+    if pv.returncode != 0:
+        raise ValueError("final distribution scan 独立重算失败: " + (pv.stdout + pv.stderr)[-800:])
+    scan = load_json(scan_path)
+    out = {}
+    for row in scan.get("abnormal_clusters", []):
+        trigger = str(row.get("trigger"))
+        if trigger not in {"bin_count_bump", "head_concentration"}:
+            raise ValueError(f"未知 distribution candidate type: {trigger}")
+        cid = f"dist-{row.get('cluster_id')}"
+        members = {str(x.get("owner")) for x in row.get("members", []) if isinstance(x, dict)}
+        if not members or cid in out:
+            raise ValueError("distribution 候选成员为空或 ID 重复")
+        out[cid] = {"obj": row, "members": members,
+                    "kind": f"distribution_{trigger}",
+                    "raw": int(row.get("raw_balance", 0)),
+                    "scale_pct": float(row.get("net_supply_pct", 0))}
+    return scan_path, scan, out
+
+
+def cmd_distribution_template(a):
+    case_dir = os.path.abspath(a.case_dir)
+    try:
+        scan_path, _, cands = distribution_candidates(case_dir, a.scan)
+    except ValueError as exc:
+        return _report([str(exc)])
+    out_path = os.path.join(case_dir, a.out)
+    if os.path.isfile(out_path) and not a.force:
+        return _report([f"{a.out} 已存在，防止覆盖已填裁决"])
+    obj = {"schema": DISTRIBUTION_SCHEMA, "case": os.path.basename(case_dir),
+           "adjudicated_at": None,
+           "source_scan": {"path": a.scan, "sha256": file_sha(scan_path)},
+           "adjudications": [{"candidate_id": cid, "candidate_kind": row["kind"],
+              "candidate_sha256": canon_sha(row["obj"]), "candidate_verdict": None,
+              "accepted_members": [], "excluded_members": [], "linked_entity_id": None,
+              "evidence": [], "raw_balance": str(row["raw"]),
+              "net_supply_pct": row["scale_pct"], "_members_total": sorted(row["members"])}
+              for cid, row in sorted(cands.items())]}
+    with open(out_path, "w", encoding="utf-8") as fh:
+        json.dump(obj, fh, ensure_ascii=False, indent=1)
+    log(f"distribution 模板 {len(cands)} 条 → {out_path}")
+    return 0
+
+
+def cmd_distribution_validate(a):
+    case_dir = os.path.abspath(a.case_dir); fails = []
+    path = os.path.join(case_dir, a.adjudications)
+    if not os.path.isfile(path):
+        return _report([f"缺 {a.adjudications}"])
+    try:
+        obj = load_json(path)
+        if obj.get("schema") != DISTRIBUTION_SCHEMA:
+            return _report([f"distribution 裁决 schema 必须 {DISTRIBUTION_SCHEMA}"])
+        source = obj.get("source_scan") or {}; scan_rel = source.get("path")
+        scan_path, scan, cands = distribution_candidates(case_dir, scan_rel)
+        if source.get("sha256") != file_sha(scan_path):
+            fails.append("distribution source_scan 哈希漂移")
+    except Exception as exc:
+        return _report([str(exc)])
+    entity_map = None
+    if a.entity_file:
+        entity_map, err = load_entity_map_strict(
+            a.entity_file if os.path.isabs(a.entity_file) else os.path.join(case_dir, a.entity_file))
+        if err: fails.append(err)
+    rows = obj.get("adjudications")
+    if not isinstance(rows, list) or not isinstance(obj.get("adjudicated_at"), str) \
+            or not obj.get("adjudicated_at"):
+        fails.append("distribution adjudications 数组或 adjudicated_at 缺失")
+        rows = rows if isinstance(rows, list) else []
+    ids = [str(x.get("candidate_id")) for x in rows if isinstance(x, dict)]
+    if len(ids) != len(set(ids)):
+        fails.append("distribution 裁决 ID 重复")
+    if set(ids) != set(cands):
+        fails.append(f"distribution 候选 ID 不闭合: missing={sorted(set(cands)-set(ids))} "
+                     f"extra={sorted(set(ids)-set(cands))}")
+    unresolved_raw = 0
+    for row in rows:
+        if not isinstance(row, dict) or row.get("candidate_id") not in cands: continue
+        cid = row["candidate_id"]; cand = cands[cid]
+        if row.get("candidate_kind") != cand["kind"]:
+            fails.append(f"{cid}: candidate_kind 与机器类型不符")
+        if row.get("candidate_sha256") != canon_sha(cand["obj"]):
+            fails.append(f"{cid}: candidate_sha256 不符")
+        verdict = row.get("candidate_verdict")
+        if verdict not in VERDICTS:
+            fails.append(f"{cid}: verdict 非法"); continue
+        accepted = set(map(str, row.get("accepted_members") or []))
+        excluded_rows = row.get("excluded_members") or []
+        excluded = {str(x.get("addr")) for x in excluded_rows if isinstance(x, dict)}
+        if accepted & excluded or accepted | excluded != cand["members"]:
+            fails.append(f"{cid}: accepted/excluded 未零截断闭合")
+        if any(not str(x.get("reason", "")).strip() for x in excluded_rows if isinstance(x, dict)):
+            fails.append(f"{cid}: excluded member 缺 reason")
+        if verdict == "pattern_confirmed":
+            if not accepted or not row.get("linked_entity_id") or not row.get("evidence"):
+                fails.append(f"{cid}: confirmed 缺 accepted/entity/evidence")
+            elif entity_map is None:
+                fails.append(f"{cid}: confirmed 必须传 --entity-file")
+            elif row["linked_entity_id"] not in entity_map \
+                    or not accepted <= entity_map[row["linked_entity_id"]]:
+                fails.append(f"{cid}: linked entity 与名册不闭合")
+        elif accepted:
+            fails.append(f"{cid}: 非 confirmed 不得 accepted 成员")
+        if str(row.get("raw_balance")) != str(cand["raw"]):
+            fails.append(f"{cid}: raw_balance 自报不符")
+        if verdict == "unresolved":
+            unresolved_raw += cand["raw"]
+    net = int((scan.get("denominators") or {}).get("net_supply_raw", 0))
+    unresolved_pct = unresolved_raw * 100.0 / net if net else 100.0
+    if unresolved_pct + 1e-12 >= DISTRIBUTION_UNRESOLVED_LINE_PCT:
+        fails.append(f"distribution unresolved 合计 {unresolved_pct:.6f}% 达经济门 2%")
+    if fails: return _report(fails)
+    log(f"PASS distribution {len(rows)} 条，unresolved={unresolved_pct:.6f}%")
+    return 0
+
+
+def cmd_pattern_validate(a):
+    case_dir = os.path.abspath(a.case_dir); path = os.path.join(case_dir, a.resolutions); fails = []
+    if not os.path.isfile(path): return _report([f"缺 {a.resolutions}"])
+    obj = load_json(path)
+    if obj.get("schema") != "pattern-resolutions/v1":
+        return _report(["pattern resolutions schema 必须 pattern-resolutions/v1"])
+    if not str(obj.get("resolved_at_utc", "")).strip() \
+            or not str(obj.get("path_a_excluded_reason", "")).strip():
+        fails.append("pattern resolutions 缺完成时间或排除路径 A 的书面理由")
+    source = obj.get("source_scan") or {}
+    try:
+        scan_path, _, cands = distribution_candidates(case_dir, source.get("path"))
+        if source.get("sha256") != file_sha(scan_path): fails.append("pattern source_scan 哈希漂移")
+    except Exception as exc:
+        return _report([str(exc)])
+    allowed = {"cex_occlusion", "dust_poisoning", "quota_airdrop", "accounting_mechanism",
+               "unidentified_facility", "other"}
+    rows = obj.get("resolutions")
+    if not isinstance(rows, list): rows = []; fails.append("resolutions 必须是数组")
+    ids = [str(x.get("cluster_id")) for x in rows if isinstance(x, dict)]
+    expected = {cid.removeprefix("dist-") for cid in cands}
+    if len(ids) != len(set(ids)) or set(ids) != expected:
+        fails.append("pattern cluster ID 集不闭合或重复")
+    for row in rows:
+        if not isinstance(row, dict): continue
+        cid = str(row.get("cluster_id")); cand = cands.get(f"dist-{cid}")
+        if not cand: continue
+        code = row.get("mechanism_code"); verdict = row.get("verdict")
+        if code not in allowed or verdict not in {"CONFIRMED", "REFUTED", "UNRESOLVED"}:
+            fails.append(f"{cid}: mechanism_code 或 verdict 非法")
+        members = set(map(str, row.get("affected_members") or []))
+        if not members or not members <= cand["members"]:
+            fails.append(f"{cid}: affected_members 为空或越出异常簇")
+        raw_map = {str(x.get("owner")): int(x.get("raw")) for x in cand["obj"].get("members", [])}
+        if str(sum(raw_map[x] for x in members if x in raw_map)) != str(row.get("raw_balance")):
+            fails.append(f"{cid}: raw_balance 与成员重算不符")
+        refs = row.get("evidence_refs")
+        if not isinstance(refs, list) or not refs:
+            fails.append(f"{cid}: evidence_refs 为空")
+        elif any(not os.path.isfile(os.path.join(case_dir, str(rel))) for rel in refs):
+            fails.append(f"{cid}: evidence_refs 存在缺件")
+        if verdict == "UNRESOLVED": fails.append(f"{cid}: pattern mechanism 仍 UNRESOLVED")
+    return _report(fails) if fails else (log(f"PASS pattern resolutions {len(rows)} 条") or 0)
 
 
 # ---------------- template ----------------
@@ -387,9 +558,24 @@ def main():
     v.add_argument("--entity-file", default=None,
                    help="实体名册 {entity_id:[addr…]}——linked_entity 绑定校验；"
                         "存在 pattern_confirmed 裁决时必传（freeze 强制传入）")
+    dt = sub.add_parser("distribution-template", help="由 final scan 生成分布异常成员级裁决模板")
+    dt.add_argument("--case-dir", required=True)
+    dt.add_argument("--scan", required=True)
+    dt.add_argument("--out", default="distribution_adjudications.json")
+    dt.add_argument("--force", action="store_true")
+    dv = sub.add_parser("distribution-validate", help="校验分布异常成员级裁决与 2%% 未决线")
+    dv.add_argument("--case-dir", required=True)
+    dv.add_argument("--adjudications", default="distribution_adjudications.json")
+    dv.add_argument("--entity-file", default=None)
+    pr = sub.add_parser("pattern-validate", help="校验盘面级解释并拒绝未决机制")
+    pr.add_argument("--case-dir", required=True)
+    pr.add_argument("--resolutions", default="pattern_resolutions.json")
     a = ap.parse_args()
     try:
-        return {"template": cmd_template, "validate": cmd_validate}[a.subcmd](a)
+        return {"template": cmd_template, "validate": cmd_validate,
+                "distribution-template": cmd_distribution_template,
+                "distribution-validate": cmd_distribution_validate,
+                "pattern-validate": cmd_pattern_validate}[a.subcmd](a)
     except Exception as e:
         print(f"[adjudication] 脚本自身错误（exit 1，修完重跑）: {e}", file=sys.stderr)
         return 1

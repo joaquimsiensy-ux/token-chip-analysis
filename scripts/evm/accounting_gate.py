@@ -21,7 +21,7 @@
   python3 accounting_gate.py --token 0x... --chain eth --rpc https://eth-mainnet.g.alchemy.com/v2/<key> \
       --proxy http://127.0.0.1:7897
   --rpc      不给时用链默认免 key 端点（见 DEFAULT_RPC；eth/base 建议传 Alchemy=archive）
-  --hypersync / --hypersync-token-file  事件通道（默认 ~/.config/hypersync/token，与 /collect-data 同惯例）
+  --hypersync / --hypersync-token-file  事件通道（默认从 ~/.config/hypersync/token 读取）
   --proxy    只作用于 RPC（Alchemy *.g.alchemy.com 国内必须走 clash）；HyperSync/Sourcify 国内直连
   --samples  事件差值法样本数上限（默认 8）
 

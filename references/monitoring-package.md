@@ -1,6 +1,10 @@
 # 监控包分册：JSON 附录 schema 与买入后生成流程
 
-> **默认分析会话不读本文件**（v3.3 拆分自 report-template.md——本块占其近三成体量，而 v3.2 起默认交付不含监控包）。只在两个场景读：①用户确认买入/点名监控 → 按下方「买入后监控包」节补生成；②/token-update 更新**带监控包**的旧研报 → U5 滚动 JSON 按本文 schema。呈现纪律（标签制/【总量X%】/完整地址）仍以 report-template.md 为准。
+> **默认分析会话不读本文件**（v3.3 拆分自 report-template.md——本块占其近三成体量，而 v3.2 起默认交付不含监控包）。只在用户确认买入或点名监控时读，按下方「买入后监控包」节补生成。呈现纪律（标签制/【总量X%】/完整地址）仍以 report-template.md 为准。
+
+## 本册路由
+
+- “JSON 附录 schema”定义机器字段；“买入后监控包”规定生成；“投后运行纪律”规定报警与续跑。
 
 ## JSON 附录 schema（`appendix.json`，供后续监控脚本消费）
 
@@ -89,8 +93,8 @@
 }
 ```
 
-- token.skill_version（**v2.1.0 起必填**）：写交付时 CHANGELOG 最新版本号——/token-update 增量更新靠它识别旧报告的框架版本；旧 JSON 缺失此字段视为未知旧版，全部实体按现行标准重判（见 update-workflow.md 铁律节）
-- whale_groups：`label` 用当前标签（大庄#1/小庄#2/离场庄#1/项目方/刷量地址；v5.0 起"狙击集团"废止）；**tier 字段 v5.0 废止**——新 JSON 不再写入，读取端遇旧文件的 tier/"狙击集团" label 忽略/按 update-workflow 标准迁移重判；成本三字段（est_cost_usd/avg_cost_price/cost_method）改为**可选**——报告里按需算过才填，没算就整组省略
+- token.skill_version（**v2.1.0 起必填**）：写交付时从 `VERSION` 读取，用于标识生成该监控包的框架版本；旧 JSON 缺失此字段视为未知旧版。
+- whale_groups：`label` 用当前标签（大庄#1/小庄#2/离场庄#1/项目方/刷量地址；v5.0 起"狙击集团"废止）；**tier 字段 v5.0 废止**——新 JSON 不再写入，读取端遇旧文件的 tier/"狙击集团" label 时忽略历史展示字段并按现行判级规则重算；成本三字段（est_cost_usd/avg_cost_price/cost_method）改为**可选**——报告里按需算过才填，没算就整组省略
 - monitoring_advice：`mode` 两档与第六章监控建议两清单一一对应；`alert_threshold_pct` 仅 threshold 档必填（默认 1.0=总供应 1%）
 - **报警两段制三字段（3.18.0，投后三起误报事故的设计层预防——SOL 池子吸入/Bitget 热钱包/GMGN LP 口径互跳，教训详见项目记忆）**：`confirm` 档位——**数值型阈值类默认 `next_round`**（首轮只记候选事件，下一轮**同源同口径**复现才发红卡；跨源数值禁止直接环比），仅"理应沉睡地址的任何转出"这类强结构信号给 `immediate`；`denominator` 必写分母口径（报警数值与分母不同源=历史事故根因）；`source_pin` 钉死数据源与口径（如 V4 池单边/双边——LP 恰 ×2 或 ÷2 且价未动即口径跳变指纹，不是真事件）。三字段为**新监控包必填**；消费端（posthold 执行器）未实现 confirm 逻辑前，该字段至少让人工核警时有据可依。
 - camp_share_series：固定为 `{"dates":[...],"series":{"阵营名":[...]}}` 对象（**这是 figures_from_facts.py fig1 的直接输入契约**，逐日对象列表是旧文档笔误，引擎从不支持；每个阵营数组长度必须与 dates 完全相同）；阵营键用当前标签体系名——**全集以 `standard_charts.py` `CAMP_ORDER` 为唯一权威**（缺的阵营省略；旧文件里的"狙击集团"键仅旧数据重绘 legacy）
@@ -111,7 +115,7 @@ HTML 内嵌后监控脚本提取方式已写在 build_html.py docstring。**JSON
 2. `appendix.json`（四键＋完整数据键、sentinel 纪律、monitoring_advice 与两档清单一一对应）
 3. 默认重跑 `build_html.py --mode legacy-recompile --degrade-reason "买入后补嵌监控 JSON，未改分析结论" --md 报告.md --out 报告.html --json appendix.json`——这是合法重编译但带显式水印。若要维持正式身份，必须把 `appendix.json` 加入 `a4_gate.py finalize --seal-files ...` 重新封口，再按原工作流用 `build_html.py --mode analysis-new|analysis-audit ... --a4-seal a4_seal.json --json appendix.json` 走完整门禁；未进入 seal 的 JSON 一律 BLOCK，不存在 skip 开关。
 
-**质检**：build_html 退出码 0 且零 WARN（四键齐/地址完整）；sentinel 纪律复查（周期性会动的地址必须 false）；观察哨条目与状态评估结论对齐（正文说"理应沉睡"的地址必须进转出即预警清单）。新会话执行时：只读附录 B＋data/ 目录＋第六章，**禁止整读旧报告**（成本纪律刀 2）。若为 /token-update 场景顺带补包，观察哨基线从本次更新数据起算。
+**质检**：build_html 退出码 0 且零 WARN（四键齐/地址完整）；sentinel 纪律复查（周期性会动的地址必须 false）；观察哨条目与状态评估结论对齐（正文说"理应沉睡"的地址必须进转出即预警清单）。新会话执行时：只读附录 B＋data/ 目录＋第六章，**禁止整读旧报告**（成本纪律刀 2）。
 
 
 ## 投后运行纪律（2026-07-22 QUQ 投后新增）

@@ -9,7 +9,7 @@
 
 退出码语义（对齐 skill 现有 gate）：0=放行；2=验证不通过/前置未满足（硬停）；1=脚本自身错误（修完重跑）。
 用法示例：
-  python3 handoff_manifest.py generate --case-dir <案目录> --mode easy --status READY \
+  python3 handoff_manifest.py generate --case-dir <案目录> --mode full --status READY \
       --producer-model gpt-5.6 --case-id QUQ-bsc --chain bsc --contract 0x... --cutoff 2026-07-30T00:00:00Z \
       --gate "recon_four_checks:PASS:0:transfer_reconciliation.json"
   python3 handoff_manifest.py verify --case-dir <案目录>
@@ -35,19 +35,20 @@ import sys
 import tempfile
 from datetime import datetime, timezone
 
-SCHEMA_VERSION = "handoff/v2"
+SCHEMA_VERSION = "handoff/v3"
 # verify 端支持集；consumer_min_schema 不在集内即拒收。
 # v1（6.7.x 及以前）默认拒——fail-open 修复（2026-08-01 codex 复核）：漏跑新生产器的旧格式
 # 不得静默过闸；已冻结旧案只能走 verify --legacy-read-only 显式降级（不得生成新正式报告）。
-SUPPORTED_SCHEMAS = {"handoff/v2"}
-LEGACY_SCHEMAS = {"handoff/v1"}
+SUPPORTED_SCHEMAS = {"handoff/v3"}
+LEGACY_SCHEMAS = {"handoff/v1", "handoff/v2"}
 MANIFEST_NAME = "handoff_manifest.json"
 RECEIPTS_NAME = "stage1_receipts.json"
 FREEZE_NAME = "entity_freeze.json"
 ADJUDICATIONS_NAME = "candidate_adjudications.json"
+DISTRIBUTION_ADJUDICATIONS_NAME = "distribution_adjudications.json"
 LEGACY_RECEIPT_NAME = "legacy_readonly_receipt.json"
 PROVENANCE_SCHEMA = "provenance-ledger/v2"  # v1 是 pro-rata 数学错误版（2026-08-01 codex 复核），一律拒
-STATUSES = {"READY", "BLOCKED", "PARTIAL", "SUPERSEDED", "BLOCKED_E0B"}
+STATUSES = {"READY", "BLOCKED", "PARTIAL", "SUPERSEDED", "BLOCKED_CEX_GATE"}
 SPARSE_THRESHOLD = 64 * 1024 * 1024  # >64MB 用分片哈希（split-run §2.2：不收尾全盘重哈希）
 CHUNK = 4 * 1024 * 1024
 
@@ -57,7 +58,7 @@ CONTRACT_FILES = [
     "anomalies.json", "data_map.json", "unlock_evidence.json", RECEIPTS_NAME,
     "accounting_mode.json", "supply_truth.json", "wave_scan_report.json",
     "flow_anomaly_report.json", ADJUDICATIONS_NAME, "provenance_ledger.json",
-    "time_spotcheck.json",
+    "time_spotcheck.json", "distribution_scan.json", DISTRIBUTION_ADJUDICATIONS_NAME,
 ]
 REQUIRED_FOR_READY = ["candidate_universe.json", "candidate_screening.json",
                       "identity_preflight.json", "anomalies.json", "data_map.json",
@@ -67,7 +68,10 @@ REQUIRED_FOR_READY = ["candidate_universe.json", "candidate_screening.json",
                       # 不得 READY；旧案目录复用须补跑后重新 generate，回退路径=旧单会话命令。
                       # candidate_adjudications.json 是 −2 判断层产物，不在 −1 READY 清单——
                       # 它的强制在 freeze 端（validator 全候选校验，缺漏即 exit 2）
-                      "wave_scan_report.json", "flow_anomaly_report.json"]
+                      "wave_scan_report.json", "flow_anomaly_report.json",
+                      # A3 机械层第 9 项：initial 分布扫描。scan 不反绑 manifest；
+                      # READY manifest 单向绑定 scan，避免 B-01 哈希循环。
+                      "distribution_scan.json"]
 # EVM 家族链另加时间抽查产物为 READY 必备（6.7.0，APU SQD 全史重拉冗余复盘）——
 # time_spotcheck.py 固化后，锚点级第二源直查是 A2 第 4 查的机器凭证，缺件＝时间抽查没跑
 # 或又走了自由发挥老路。Solana（anchor_sampler 通道）等非 EVM 链时间抽查形态不同，
@@ -335,6 +339,14 @@ def _verify_light_schema(case_dir, fails, legacy=False):
             fails.append("flow_anomaly_report.json 缺 sinks/sprays/requires_adjudication——空壳拒收")
     except Exception as e:
         fails.append(f"flow_anomaly_report.json 读取失败（资金流异常扫描未跑？补跑 flow_anomaly_scan.py 后重 generate）: {e}")
+    scan_script = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                               "holder_distribution_scan.py")
+    pv = subprocess.run([sys.executable, scan_script, "validate", "--case-dir", case_dir,
+                         "--scan", "distribution_scan.json", "--expected-stage", "initial"],
+                        capture_output=True, text=True)
+    if pv.returncode != 0:
+        fails.append("distribution_scan.json 独立重算未通过（initial 产物缺失、被手改或上游漂移）: "
+                     + (pv.stdout + pv.stderr)[-800:])
 
 
 def verify_case(case_dir, legacy_read_only=False):
@@ -700,6 +712,9 @@ def cmd_freeze(a):
                           ("provenance_ledger.json", fz.get("provenance_ledger_sha256")),
                           (MANIFEST_NAME, fz.get("manifest_sha256")),
                           ("data_map.json", fz.get("data_map_sha256")))
+                if fz.get("distribution_adjudications_sha256"):
+                    checks += ((DISTRIBUTION_ADJUDICATIONS_NAME,
+                                fz.get("distribution_adjudications_sha256")),)
                 drift = []
                 for rel, want in checks:
                     if not rel or not want:
@@ -786,6 +801,18 @@ def cmd_freeze(a):
         sys.stderr.write(pv.stdout + pv.stderr)
         return 2
 
+    distribution_adj_path = os.path.join(case_dir, DISTRIBUTION_ADJUDICATIONS_NAME)
+    distribution_adj_digest = None
+    if os.path.isfile(distribution_adj_path):
+        pd = subprocess.run([sys.executable, validator, "distribution-validate",
+                             "--case-dir", case_dir, "--entity-file", ep],
+                            capture_output=True, text=True)
+        if pd.returncode != 0:
+            print("[freeze] 分布异常裁决闭环未通过——禁止冻结:", file=sys.stderr)
+            sys.stderr.write(pd.stdout + pd.stderr)
+            return 2
+        _, distribution_adj_digest, _ = sha256_file(distribution_adj_path)
+
     # ── 前置 2：溯源闸内容级绑定（v6.8.1 codex 复核修复——不再信文件自报：
     # ①schema 必须 v2（v1 是 pro-rata 数学错误版）；②台账实体 ID 集与本次名册双向一致；
     # ③逐实体 members_sha256 与名册成员集哈希一致（改过名册的旧台账自动失效）；
@@ -865,12 +892,13 @@ def cmd_freeze(a):
              "manifest_run_id": verified_manifest.get("run_id"),
              "manifest_scope": verified_manifest.get("scope"),
              "data_map_sha256": data_map_digest,
+             "distribution_adjudications_sha256": distribution_adj_digest,
              "frozen_at_utc": now, "pending_items": [x for x in (a.pending or "").split(";") if x],
              "casebook_note": a.casebook_note}
     rev_keys = ("members_source", "members_sha256", "entity_file", "entity_file_sha256",
                 "provenance_ledger_sha256", "provenance_input_binding_sha256",
                 "manifest_sha256", "manifest_run_id", "manifest_scope", "data_map_sha256",
-                "frozen_at_utc", "pending_items", "casebook_note")
+                "distribution_adjudications_sha256", "frozen_at_utc", "pending_items", "casebook_note")
     if os.path.isfile(path):
         fz = load_json(path)
         no_op_keys = tuple(k for k in rev_keys if k != "frozen_at_utc")
@@ -895,7 +923,7 @@ def main():
 
     g = sub.add_parser("generate", help="−1 收工产 manifest")
     g.add_argument("--case-dir", required=True)
-    g.add_argument("--mode", required=True, choices=["easy", "full"])
+    g.add_argument("--mode", required=True, choices=["full"])
     g.add_argument("--status", required=True)
     g.add_argument("--status-reason", default=None)
     g.add_argument("--producer-model", required=True)

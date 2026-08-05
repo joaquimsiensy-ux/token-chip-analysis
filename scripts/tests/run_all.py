@@ -10,8 +10,8 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 SUITE = ['changelog_lint.py', ['docs_lint.py', '--all'], 'labels_manifest.py', 'env_check.py',
          'test_commands_deploy_sync.py',
          'casebook_lint.py', 'fixtures_lint.py',
-         'test_replay_inc.py', 'test_build_html.py', 'test_engine_equivalence.py',
-         'test_collect_lanes.py', 'test_report_facts.py', 'test_fault_injection.py',
+         'test_build_html.py', 'test_engine_equivalence.py',
+         'test_report_facts.py', 'test_fault_injection.py',
          'test_review_evm_integrity.py',
          'test_review_solana_integrity.py',
          'test_review_labels.py',
@@ -41,6 +41,9 @@ SUITE = ['changelog_lint.py', ['docs_lint.py', '--all'], 'labels_manifest.py', '
          'test_a4_gate.py', 'test_time_spotcheck.py', 'test_peaks_daily.py',
          'test_wave_scan.py', 'test_flow_anomaly.py',
          'test_entity_source_trace.py', 'test_adjudication_validator.py']
+
+# v6.20.0 持仓分布形态硬闸。单列在扫描器与封口链测试之后，任何新绕过都会阻断全量 suite。
+SUITE += ['test_distribution_gate.py']
 
 
 def main():

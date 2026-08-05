@@ -67,7 +67,7 @@ def main():
         for pat in RAW_PATTERNS:
             if pat.search(fp):
                 deny("拦截覆盖原始采集产物：run_*/logs.parquet、soltx-*.jsonl.gz 只能由采集器"
-                     "（fetch_hypersync_v2 / fetch_sqd_transfers_v2 / collect_queue）写入。"
+                     "（fetch_hypersync_v2 / fetch_sqd_transfers_v2）写入。"
                      "分析层需要衍生数据时另存新文件，绝不改原始层。")
         sys.exit(0)
 
