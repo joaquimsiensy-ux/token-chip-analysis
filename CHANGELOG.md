@@ -59,7 +59,9 @@
 
 ## [6.21.0] - 2026-08-05 — 数据管线两册案例史外移与重复合并（瘦身第 2 步）
 
-瘦身第 2 步（codex 按 Fable 验收通过的 111 条逐字引句盘点施工，Fable 逐项机器验收）：A4 复核强度配置与备择解释指引四处合一（analyze-workflow / evidence-wording / research-workflows 单一权威源化，40f88a0）；data-pipeline-evm-channels.md 与 data-pipeline-solana-capture.md 的 A 类战报子句与 C 类考古行外移至下方归档（两册净减 6,090 字节；现役参数/阈值/fail-closed/死亡名单/在役 fallback/守卫 needles 零变更；CH-53 Alpha 政策线与 CH-66 GMX 比例两条切出段含分析结论定性，按「CHANGELOG 禁记代币分析结论」红线停手留正文）。B 类判例入册见后续小节。
+瘦身第 2 步（codex 按 Fable 验收通过的 111 条逐字引句盘点施工，Fable 逐项机器验收）：A4 复核强度配置与备择解释指引四处合一（analyze-workflow / evidence-wording / research-workflows 单一权威源化，40f88a0）；data-pipeline-evm-channels.md 与 data-pipeline-solana-capture.md 的 A 类战报子句与 C 类考古行外移至下方归档（两册净减 6,090 字节；现役参数/阈值/fail-closed/死亡名单/在役 fallback/守卫 needles 零变更；CH-53 Alpha 政策线与 CH-66 GMX 比例两条切出段含分析结论定性，按「CHANGELOG 禁记代币分析结论」红线停手留正文）。
+
+批次 2——B 类 39 条方法级失败模式入 casebook（两册再净减 19,330 字节，正文原位换「权威短规则＋判例指针」43 处零断链）：S 册 4→7 条（S-04 扩为 12 场景覆盖盲区族＋新增 S-05 税币/毛流/曲线成本、S-06 时间边界、S-07 LP/TVL 归属）；E 册扩写 E-01/E-02/E-04/E-05/E-10/E-12；C 册扩写 C-01/C-04/C-06。三册 25.1KB→38.0KB（casebook_lint 26 条六字段全过）；既有条目判据语义逐行验证只增未改（50 处重写行 48 处前缀保留、2 处为插入新案源的假阳性）。执行过程 codex 进程三次中断，按「cancel+resume-last 蚂蚁搬家」分四段续跑完成。
 
 ### 战报与案史归档（自 data-pipeline-evm-channels.md / data-pipeline-solana-capture.md 外移）
 
