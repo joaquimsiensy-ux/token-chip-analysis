@@ -105,6 +105,9 @@ EOS 侧持有人榜可用 `POST /v1/chain/get_table_by_scope`（`code`=代币合
 
 ## 9. Arbitrum 链专节（SQD 全量实测，2026-07-20）
 
+> **支持级别：探索。** 下述采集与对账能力继续保留；目标链标签主表尚未补齐，
+> G8 只能以 degraded_mode 运行，因此不得据此封口或编译正式 analysis。
+
 Arbitrum One（chainid 42161）待遇比 BSC/Base 好：Etherscan V2 免费层全开 + 官方公共 RPC 稳定直连，EVM 通用管道原样可用，无需专用脚本。
 
 - **全量转账主通道 = HyperSync `arbitrum.hypersync.xyz`**：fetch_hypersync.py 改 config 端点即用；SQD 实测 83.2 万条 Transfer 56 分钟拉完（sleep 0.25）。（SQD，07-20）二战数据点：LPT 案 129.4 万条 Transfer 97 分钟（含与 eth 端点同 key 争抢限流段，见 §3.1 key 级共享限流）；40.9 万条合约全事件（不筛 topic，fetch_hypersync_logs.py）26 分钟。（LPT，07-21）

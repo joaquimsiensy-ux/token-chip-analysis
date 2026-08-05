@@ -47,6 +47,55 @@ DECISIVE_TYPES = {
     "entity_attribution", "economic_control", "whale_tier", "cex_identity",
     "cex_channel", "historical_peak", "historical_chart", "negative_exhaustive",
 }
+KNOWN_CHAINS = {"eth", "bsc", "base", "arbitrum", "robinhood", "sol"}
+FORMAL_CHAINS = {"eth", "bsc", "base", "robinhood", "sol"}
+CHAIN_ALIASES = {"ethereum": "eth", "solana": "sol", "arbitrum one": "arbitrum",
+                 "arbitrum-one": "arbitrum", "arb": "arbitrum"}
+
+
+def normalize_chain(value):
+    chain = str(value or "").strip().lower()
+    return CHAIN_ALIASES.get(chain, chain)
+
+
+def formal_chain_error(value):
+    chain = normalize_chain(value)
+    if chain in FORMAL_CHAINS:
+        return None
+    if chain == "arbitrum":
+        return ("chain=arbitrum 为探索支持：缺少 references/labels/labels-arbitrum.csv "
+                "及完整目标链标签门禁；可保留采集、对账和 identity snapshot，"
+                "但不得编译正式 analysis")
+    if chain in KNOWN_CHAINS:
+        return f"chain={chain} 不是正式支持链，不得编译正式 analysis"
+    return f"chain={chain or '<missing>'} 未进入正式支持矩阵，不得编译正式 analysis"
+
+
+def check_formal_case_chain(data, errors):
+    """Bind formal release to one chain declared by both accounting and reconciliation."""
+    claims = []
+    accounting = data.get("accounting_mode.json")
+    if isinstance(accounting, dict):
+        claims.append(("accounting_mode.json", normalize_chain(accounting.get("chain"))))
+    reconciliation = data.get("reconciliation_report.json")
+    if isinstance(reconciliation, dict):
+        target = reconciliation.get("target") or {}
+        claims.append(("reconciliation_report.json", normalize_chain(target.get("chain"))))
+    missing = [name for name, chain in claims if not chain]
+    if missing:
+        errors.append("正式发布链声明缺失: " + ", ".join(missing))
+        return None
+    unique = {chain for _, chain in claims}
+    if len(unique) != 1:
+        errors.append("正式发布链声明不一致: "
+                      + ", ".join(f"{name}={chain}" for name, chain in claims))
+        return None
+    chain = next(iter(unique), "")
+    reason = formal_chain_error(chain)
+    if reason:
+        errors.append(reason)
+        return None
+    return chain
 
 
 def load_json(path: Path, errors: list[str]):
@@ -701,6 +750,7 @@ def run(case_dir: Path, report: Path | None, *, profile="independent-audit"):
         p = case_dir / name
         if p.suffix == ".json" and p.is_file():
             data[name] = load_json(p, errors)
+    check_formal_case_chain(data, errors)
     if "audit_input_manifest.json" in data:
         check_manifest(case_dir, data["audit_input_manifest.json"], errors)
     try:

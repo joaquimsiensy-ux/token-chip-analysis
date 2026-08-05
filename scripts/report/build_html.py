@@ -290,6 +290,16 @@ def main():
         # 后续渲染不再使用 CLI 原始字符串，从 seal 案目录重建唯一输入。
         a.facts = str(_formal_facts)
         a.state = str(_formal_state)
+        try:
+            _state_obj = json.loads(_formal_state.read_text(encoding="utf-8"))
+            _formal_chain = (_state_obj.get("chain")
+                             or (_state_obj.get("token") or {}).get("chain"))
+            import audit_release_gate
+            _chain_error = audit_release_gate.formal_chain_error(_formal_chain)
+            if _chain_error:
+                ap.error(f"{a.mode} 正式编译拒绝: {_chain_error}")
+        except (OSError, json.JSONDecodeError, AttributeError) as exc:
+            ap.error(f"{a.mode} 正式编译无法读取标准 analysis-state.json: {exc}")
     elif not str(a.degrade_reason or "").strip():
         ap.error(f"{a.mode} 模式必须提供 --degrade-reason")
     elif a.a4_seal or a.a5_seal:

@@ -38,7 +38,8 @@
 
 | 标的形态 | 读哪份 pipeline / 跑哪套脚本 |
 |---|---|
-| 0x 地址，Ethereum/BSC/Base/Arbitrum | 进入 `data-pipeline-evm.md` 通道决策树＋ `scripts/evm/` |
+| 0x 地址，Ethereum/BSC/Base（正式） | 进入 `data-pipeline-evm.md` 通道决策树＋ `scripts/evm/` |
+| 0x 地址，Arbitrum（探索） | 可跑 EVM 采集、对账与身份快照；标签主表缺失，禁止 A4/A5 seal 与正式 analysis 编译 |
 | base58 mint | `data-pipeline-solana.md`（双 RPC 按方法路由见其分册 §0a） |
 | 0x 地址，Robinhood Chain（chainid 4663） | `data-pipeline-robinhood.md` ＋ `scripts/robinhood/` |
 | 跨链部署（OFT/CCIP 等） | 先过多链硬关卡选定范围 → 各链按其 pipeline 采集＋跨链 mint/burn 配平；桥接分支链范式见 playbook §6a |
@@ -97,7 +98,8 @@
    P3 溯源内容重查、P4 原始边/标签/分母/cutoff/block/manifest/data_map/算法绑定后真实重放；
    存在 `distribution_adjudications.json` 时同时绑定当前分布裁决。
 9. **实体身份硬闸（G8）**：从冻结实体表生成 state 输入，再由生产 emitter 生成
-   `identity-holder-snapshot/v2`。EVM 五链（eth/base/bsc/arbitrum/robinhood）用
+   `identity-holder-snapshot/v2`。EVM 五链（eth/base/bsc/arbitrum/robinhood）均可生成
+   身份快照 receipt；其中 arbitrum 仅供探索档与存量数据重放，不构成正式发布资格。EVM 用
    `identity_snapshot_receipt.py --chain ... --snapshot balances_final.json --source-receipt channels_preflight.json --replay-stats replay_stats.json`，
    Solana 用同工具 `--chain sol --snapshot holders_owners.json --source-receipt holders_snapshot_meta.json`。
    EVM 的 `channels_preflight.json` 必须由当前 `channels_preflight.py` 生成并绑定已验 collector receipt/segment chain 与确切 CSV/Parquet `inputs`，`replay_stats.json` 必须由所选当前 replay 引擎生成并绑定同一 inputs、preflight 与 `balances_final.json`；Solana meta 必须由当前 `scan_token_accounts.py` 生成并绑定 supply receipt、每个 GPA raw/meta 与 account/owner 输出；emitter 和 G8 check 会用 scanner 的同一套 base64→

@@ -21,6 +21,8 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from labels_resolver import norm_addr   # 全链统一地址规范化
 
 CHAIN_BY_ID = {'1': 'eth', '8453': 'base', '56': 'bsc'}
+# 全量构建必须能产出每条正式链的目标链主表；探索链不得混入正式能力声明。
+BUILD_CHAINS = {'eth', 'bsc', 'base', 'sol', 'robinhood'}
 
 # 各上游源的快照时点（重建/换源时人工更新；写进 source_snapshot_at 列供时效审计）
 SOURCE_SNAPSHOT = {
@@ -402,7 +404,7 @@ for _fn in _EXTRA_SOURCES + _ADDITION_FILES:
         continue
     n = 0
     for r in csv.DictReader(open(_fn)):
-        if r.get('chain') not in {'eth', 'bsc', 'base', 'sol', 'robinhood'}:
+        if r.get('chain') not in BUILD_CHAINS:
             continue
         _rawl = [x for x in (r.get('raw_labels') or '').split('|') if x]
         upsert(r['chain'], r['address'], r['name'], r['category'], r['tier'],

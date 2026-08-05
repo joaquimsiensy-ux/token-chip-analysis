@@ -122,7 +122,8 @@ def create_seal(case_dir,report,a4_seal,out):
   except ValueError: raise ValueError(f"报告图不在 A4 charts_dir: {rel}")
   images.append(entry(root,img))
  payload={"schema":SCHEMA,"status":"PASS","producer":"a5_report_seal.py/v2",
-  "workflow_type":a4obj.get("workflow_type"),"a4_seal":entry(root,a4),
+  "chain":a4obj.get("chain"),"workflow_type":a4obj.get("workflow_type"),
+  "a4_seal":entry(root,a4),
   "report":entry(root,report),"images":images,
   "distribution":distribution_bundle(root,report,a4obj)}
  target=Path(out).resolve()
@@ -138,6 +139,7 @@ def validate_seal(seal_path,report_path,a4_path):
   seal=Path(seal_path).resolve(); root=seal.parent; d=json.loads(seal.read_text()); report=safe_file(root,report_path,"Markdown"); a4=safe_file(root,a4_path,"A4 seal")
   if d.get("schema")!=SCHEMA or d.get("status")!="PASS": return ["A5 report seal schema/status 非 PASS"]
   a4obj=json.loads(a4.read_text())
+  if d.get("chain")!=a4obj.get("chain"): errors.append("A5 seal chain 未绑定当前 A4 seal")
   if a4obj.get("schema")!="a4-seal/v4": errors.append("A5 seal 只接受 a4-seal/v4")
   else:
    import a4_gate

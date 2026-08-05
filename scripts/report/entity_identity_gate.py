@@ -85,7 +85,8 @@ def is_on_curve(addr):
 BIG_SHARE = 0.01   # 快照单址 ≥1% 总供应即入闸
 GATE_SCHEMA = 'identity_gate_v3'
 FLAGS = {'', 'INFRA_IN_ENTITY', 'PDA_UNRESOLVED', 'BIG_UNLABELED'}
-CHAINS = {'eth', 'base', 'bsc', 'arbitrum', 'sol', 'robinhood'}
+# G8 可在已知链上生成探索证据；正式发布资格由 A4/A5/release gate 单独裁决。
+KNOWN_CHAINS = {'eth', 'base', 'bsc', 'arbitrum', 'sol', 'robinhood'}
 
 
 def _sha256(path):
@@ -136,7 +137,7 @@ def load_snapshot_binding(state_path, snapshot_path, receipt_path, total_supply_
         raise ValueError('snapshot receipt 未绑定当前 snapshot')
     if str(rec.get('total_supply_raw')) != str(total):
         raise ValueError('snapshot receipt total_supply_raw 与显式分母不一致')
-    if chain not in CHAINS or rec.get('adapter') != chain:
+    if chain not in KNOWN_CHAINS or rec.get('adapter') != chain:
         raise ValueError('snapshot receipt adapter 与支持链不一致')
     from identity_snapshot_receipt import validate_receipt
     provenance_errors = validate_receipt(receipt, snapshot, total, chain)
@@ -169,7 +170,7 @@ def validate_gate(gate_path, state_path=None, require_resolved=True):
     if gate.get('schema') != GATE_SCHEMA:
         errors.append(f'schema 必须为 {GATE_SCHEMA}')
     chain = gate.get('chain')
-    if chain not in CHAINS:
+    if chain not in KNOWN_CHAINS:
         errors.append(f'chain 非法: {chain!r}')
 
     state_file = gate.get('state_file')
@@ -301,7 +302,7 @@ def build(state_path, chain, snapshot_path=None, out_path=None, *,
     resolver = LabelResolver(chain)
     resolver.warn_if_degraded()
 
-    if chain not in CHAINS:
+    if chain not in KNOWN_CHAINS:
         raise ValueError(f'chain 非法: {chain!r}')
     if not snapshot_path or not snapshot_receipt_path or total_supply_raw is None:
         raise ValueError('生成 identity gate 必须显式传 snapshot/snapshot-receipt/total-supply-raw')

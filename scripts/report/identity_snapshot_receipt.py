@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Production identity-holder-snapshot/v2 emitters for EVM replay and Solana owner scan."""
+"""Known-chain identity-holder-snapshot/v2 emitters for formal or exploratory replay."""
 from __future__ import annotations
 import argparse,hashlib,json,os,sys
 from pathlib import Path
@@ -8,7 +8,8 @@ sys.path.insert(0, str(EVM))
 sys.path.insert(0, str(SOL))
 from channels_preflight import validate_preflight_artifact
 from scan_token_accounts import parse_gpa_response, parse_supply_response, parse_token_accounts
-EVM_CHAINS={"eth","base","bsc","arbitrum","robinhood"}; SUPPORTED=EVM_CHAINS|{"sol"}
+EVM_CHAINS={"eth","base","bsc","arbitrum","robinhood"}
+KNOWN_CHAINS=EVM_CHAINS|{"sol"}
 def sha(p): return hashlib.sha256(Path(p).read_bytes()).hexdigest()
 def load(p): return json.loads(Path(p).read_text())
 def total_snapshot(p):
@@ -31,7 +32,7 @@ def write(payload,out):
  os.replace(tmp,out); return payload
 def base(chain,token,block,snapshot,total,source):
  snapshot=Path(snapshot).resolve(); total=int(total)
- if chain not in SUPPORTED: raise ValueError(f"chain {chain} has no production identity emitter")
+ if chain not in KNOWN_CHAINS: raise ValueError(f"chain {chain} has no known identity emitter")
  if total_snapshot(snapshot)!=total or total<=0: raise ValueError("snapshot does not close to total supply")
  return {"schema":"identity-holder-snapshot/v2","status":"PASS","complete_owner_universe":True,
   "producer":{"path":"identity_snapshot_receipt.py","sha256":sha(__file__)},
@@ -169,7 +170,17 @@ def validate_receipt(receipt,snapshot,total,chain):
  return errors
 
 def main(argv=None):
- ap=argparse.ArgumentParser(); ap.add_argument("--chain",required=True,choices=sorted(SUPPORTED)); ap.add_argument("--token",required=True); ap.add_argument("--as-of-block",required=True,type=int); ap.add_argument("--snapshot",required=True); ap.add_argument("--total-supply-raw",required=True); ap.add_argument("--source-receipt",required=True); ap.add_argument("--replay-stats"); ap.add_argument("--replay-engine",default="replay_stream.py"); ap.add_argument("--out",required=True); a=ap.parse_args(argv)
+ ap=argparse.ArgumentParser()
+ ap.add_argument("--chain",required=True,choices=sorted(KNOWN_CHAINS))
+ ap.add_argument("--token",required=True)
+ ap.add_argument("--as-of-block",required=True,type=int)
+ ap.add_argument("--snapshot",required=True)
+ ap.add_argument("--total-supply-raw",required=True)
+ ap.add_argument("--source-receipt",required=True)
+ ap.add_argument("--replay-stats")
+ ap.add_argument("--replay-engine",default="replay_stream.py")
+ ap.add_argument("--out",required=True)
+ a=ap.parse_args(argv)
  try:
   if a.chain=="sol": emit_solana(a.token,a.as_of_block,a.snapshot,a.source_receipt,a.total_supply_raw,a.out)
   elif not a.replay_stats: ap.error("EVM requires --replay-stats")
