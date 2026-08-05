@@ -58,13 +58,18 @@ def main(all_mode=False):
                 continue
             if in_code:
                 continue
-            # 1) 断链
-            for ref in REF_RE.findall(line):
-                if '<' in ref or '...' in ref or '*' in ref:
-                    continue
-                if not resolve(ref, path):
-                    fails.append(f'断链 {rel}:{i} → {ref}')
-                    warn_broken += 1
+            # 1) 断链。CHANGELOG 历史条目引用当时存在的文件是历史记录，不是死链；
+            #    每轮功能删除都会让旧条目变成“断链”，为守卫改史不可持续（6.17/6.18
+            #    两轮已实证）。CHANGELOG-archive 本就不在 md_files 扫描集；此处豁免
+            #    CHANGELOG.md，使两份 CHANGELOG 口径一致，并与守卫 11 的禁词豁免对齐。
+            #    只跳过断链检查，下面的粗体配对等其他检查仍照常执行。
+            if rel != 'CHANGELOG.md':
+                for ref in REF_RE.findall(line):
+                    if '<' in ref or '...' in ref or '*' in ref:
+                        continue
+                    if not resolve(ref, path):
+                        fails.append(f'断链 {rel}:{i} → {ref}')
+                        warn_broken += 1
             # 2) 粗体配对（该行 ** 计数应为偶数）
             if line.count('**') % 2 == 1:
                 fails.append(f'残缺粗体 {rel}:{i}: {line.strip()[:60]}')
