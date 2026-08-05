@@ -31,6 +31,8 @@ import argparse
 import hashlib
 import json
 import os
+import shutil
+import subprocess
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -73,6 +75,44 @@ def safe_case_file(case_dir, rel, must_exist=True):
     if must_exist and not p.is_file():
         raise ValueError(f"文件不存在、非普通文件或为符号链接: {rel}")
     return p
+
+
+def validate_revision_chain(case_dir, seal):
+    """逐级核对 A4 v4 归档链，旧版本或断链都拒收。"""
+    errors = []
+    seen = set()
+    current = seal
+    expected_revision = current.get("revision")
+    if not isinstance(expected_revision, int) or expected_revision < 1:
+        return ["A4 seal revision 非正整数"]
+    while True:
+        if current.get("schema") != "a4-seal/v4" or current.get("revision") != expected_revision:
+            errors.append("A4 revision 链 schema 或序号不连续")
+            break
+        previous = current.get("previous_seal")
+        if expected_revision == 1:
+            if previous is not None:
+                errors.append("A4 revision 1 不得带 previous_seal")
+            break
+        if not isinstance(previous, dict) or previous.get("revision") != expected_revision - 1:
+            errors.append("A4 revision 链缺上一版指针")
+            break
+        rel = previous.get("path")
+        if rel in seen:
+            errors.append("A4 revision 链出现循环")
+            break
+        seen.add(rel)
+        try:
+            path = safe_case_file(case_dir, rel)
+            if sha256_file(path) != previous.get("sha256"):
+                errors.append(f"A4 归档哈希漂移: {rel}")
+                break
+            current = json.loads(path.read_text(encoding="utf-8"))
+        except Exception as exc:
+            errors.append(f"A4 归档不可读: {exc}")
+            break
+        expected_revision -= 1
+    return errors
 
 
 def _norm_text(value):
@@ -147,8 +187,50 @@ def validate_claim_rows(case_dir, claims):
             raise ValueError(f"claim {c['id']} report_locations 必须是非空字符串数组")
         normalized.append({"id": str(c["id"]).strip(), "text": str(c["text"]).strip(),
                            "files": files, "report_locations": list(locations),
-                           "claim_type": c.get("claim_type")})
+                           "claim_type": c.get("claim_type"),
+                           "distribution_explanation": c.get("distribution_explanation")})
     return normalized
+
+
+def distribution_claim_source(case_dir, workflow_type, claims, fails):
+    """Return the current distribution claim source and close dist-* IDs bidirectionally."""
+    if workflow_type != "new-analysis":
+        return None
+    scan_rel = "distribution_scan.json"
+    expected_stage = "initial"
+    rounds_path = Path(case_dir) / "distribution_rounds.json"
+    if rounds_path.is_file():
+        try:
+            ledger = json.loads(rounds_path.read_text(encoding="utf-8"))
+            rounds = ledger.get("rounds") or []
+            if ledger.get("terminal") is not None:
+                fails.append("distribution rounds 已到 terminal，禁止再次 A4 finalize")
+                return None
+            if rounds and ledger.get("terminal") is None:
+                scan_rel = str(rounds[-1].get("final_scan_path"))
+                expected_stage = "final"
+        except Exception as exc:
+            fails.append(f"distribution_rounds.json 不可读: {exc}")
+    try:
+        scan_path = safe_case_file(case_dir, scan_rel)
+        scan_script = Path(__file__).with_name("holder_distribution_scan.py")
+        pv = subprocess.run([sys.executable, str(scan_script), "validate", "--case-dir", case_dir,
+                             "--scan", scan_rel, "--expected-stage", expected_stage],
+                            capture_output=True, text=True)
+        if pv.returncode != 0:
+            fails.append("distribution scan 独立重算未通过: " + (pv.stdout + pv.stderr)[-800:])
+            return None
+        scan = json.loads(scan_path.read_text(encoding="utf-8"))
+        expected = {f"dist-{x['cluster_id']}" for x in scan.get("abnormal_clusters", [])}
+        actual = {str(x.get("id")) for x in claims if str(x.get("id", "")).startswith("dist-")}
+        if expected != actual:
+            fails.append(f"dist-* claims 与分布异常簇不闭合: missing={sorted(expected-actual)} "
+                         f"extra={sorted(actual-expected)}")
+        return {"path": scan_rel, "sha256": sha256_file(scan_path),
+                "stage": expected_stage, "cluster_claim_ids": sorted(expected)}
+    except Exception as exc:
+        fails.append(f"distribution claim source 不可读: {exc}")
+        return None
 
 
 def cmd_register(a):
@@ -221,10 +303,14 @@ def cmd_finalize(a):
     if a.workflow_type == "independent-audit":
         audit_registry_path = check_audit_registry_alignment(case_dir, reg, verdicts, fails)
 
+    distribution_source = distribution_claim_source(case_dir, a.workflow_type, claims, fails)
+
     seal_files = {x.strip() for x in (a.seal_files or "").split(",") if x.strip()}
     seal_files |= MANDATORY_SEAL_FILES
     if audit_registry_path is not None:
         seal_files.add("claim_registry.json")
+    if distribution_source is not None:
+        seal_files.add(distribution_source["path"])
     claim_files = {str(rel) for c in reg.get("claims", []) for rel in (c.get("files") or [])}
     seal_files |= claim_files
     sealed = []
@@ -268,8 +354,32 @@ def cmd_finalize(a):
     for v in verdicts:
         vd = str(v["verdict"]).strip().upper()
         counts[vd] = counts.get(vd, 0) + 1
-    seal = {"schema": "a4-seal/v3", "gate": "a4_gate", "verdict": "PASS", "exit_code": 0,
+    old_path = Path(case_dir) / SEAL_NAME
+    revision = 1
+    previous = None
+    if old_path.is_file():
+        try:
+            old = json.loads(old_path.read_text(encoding="utf-8"))
+            if old.get("schema") == "a4-seal/v4":
+                chain_errors = validate_revision_chain(case_dir, old)
+                if chain_errors:
+                    raise ValueError("; ".join(chain_errors))
+                revision = int(old.get("revision", 0)) + 1
+                archive_rel = f"a4_seals/revision_{revision - 1}.json"
+                archive = Path(case_dir) / archive_rel
+                archive.parent.mkdir(parents=True, exist_ok=True)
+                if archive.exists() and sha256_file(archive) != sha256_file(old_path):
+                    raise ValueError("A4 revision 归档已存在但内容不同")
+                if not archive.exists():
+                    shutil.copyfile(old_path, archive)
+                previous = {"path": archive_rel, "sha256": sha256_file(archive),
+                            "revision": revision - 1}
+        except (ValueError, TypeError, json.JSONDecodeError) as exc:
+            print(f"[finalize] 旧 A4 seal revision 链不可用: {exc}", file=sys.stderr)
+            return 2
+    seal = {"schema": "a4-seal/v4", "gate": "a4_gate", "verdict": "PASS", "exit_code": 0,
             "workflow_type": a.workflow_type,
+            "revision": revision, "previous_seal": previous,
             "sealed_at_utc": utcnow(),
             "registry": {"path": CLAIMS_NAME, "sha256": sha256_file(reg_path)},
             "verdicts": {"path": verdict_rel, "sha256": sha256_file(verdict_path)},
@@ -278,7 +388,7 @@ def cmd_finalize(a):
                         "revision_note": str(v.get("revision_note", "")).strip() or None}
                        for v in verdicts],
             "counts": counts, "sealed_files": sealed, "claim_files": sorted(claim_files),
-            "charts_dir": charts_dir}
+            "charts_dir": charts_dir, "distribution_claim_source": distribution_source}
     path = os.path.join(case_dir, SEAL_NAME)
     with open(path, "w", encoding="utf-8") as f:
         json.dump(seal, f, ensure_ascii=False, indent=1)
