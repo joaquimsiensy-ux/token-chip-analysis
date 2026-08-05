@@ -35,7 +35,7 @@ plan.json 格式:
     （不带 --resume 重跑也安全：底层采集器自动续拉，幂等）
   - EVM 残缺 run（无 done.json）开跑前自动改名 partial_run_*_<ts> 隔离——只改名不删除，
     防 partial parquet 污染下游 run_*/ glob
-  - 只做采集侧完整性校验（done.json/行数/块范围）；对账三查是分析会话 E2 的事
+  - 只做采集侧完整性校验（done.json/行数/块范围）；对账四查是分析会话 A2 的事
 跨进程锁（C2，3.19——launchd 夜采与白天手动会话并发防护，语义见 proclock.py）:
   - 队列单实例锁 <base_dir>/collect_plans/queue.lock：抢不到立即退出码 3 并报持有者；
     持有进程死亡（含 SIGKILL）flock 自动释放，残留元数据下次接管并记日志

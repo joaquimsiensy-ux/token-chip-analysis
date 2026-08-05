@@ -77,7 +77,7 @@ python3 scripts/report/build_html.py --mode analysis-new --md 报告.md --out �
   ①**实体成员表**：哪些 EOA/已证专属合约同控（公共池、路由、CEX 热钱包永不入成员，见 methods pool-probe 硬闸）；
   ②**链上位置账**：币停在钱包/池/CEX/销毁地址（按位置如实单列）；
   ③**经济控制账**：谁握有可证明的最终赎回权/受益权——**"庄控制多少"的主答案必须用这张账**＝钱包自持＋可证设施权益穿透（LP：V3 按 LP NFT 持有人份额、V4 按 poolId+position+owner 逐头寸重放，见 channels V4 条目；CEX 子账户/桥/质押锁仓/vault/托管：按 `economic-control-accounting.md` 纳入门槛——权利可归属且数量可复算），未决权益不猜、单列。主结论采用"可证经济控制下限"，**不得拿钱包自持替代**，直接钱包余额只在位置拆分表展示。
-  三个反向病例同一制度治：拿位置账当主答案（把庄自有池的币写成"已失去控制"）、拿设施总余额直接归庄（把公用金库当实体仓）、把锁仓协议收进成员表当"归集主仓"或正确剔除却漏受益权穿透（实体曲线在锁仓月错误归零）——反向错误夹出唯一正解＝**设施剔除出成员表＋按受益权穿透计回经济控制账**：锁仓/vesting 协议与 LP 同等适用，闭合锁仓计划的本金按受益地址计回，协议内计划外余额单列不并（QUQ 双报告病例 07-22；SIREN 复核 07-24）。产物（6.5.0 经用户裁决转正式）：完整版**必须**交付 `economic_control_ledger.json`（每项设施权益带所有权证据、目标块可赎回量、防双计 key；结构与发布前逐实体检查见 `economic-control-accounting.md` §5），/token-update 续跑时以它为控制口径基线。
+  三个反向病例同一制度治：拿位置账当主答案（把庄自有池的币写成"已失去控制"）、拿设施总余额直接归庄（把公用金库当实体仓）、把锁仓协议收进成员表当"归集主仓"或正确剔除却漏受益权穿透（实体曲线在锁仓月错误归零）——反向错误夹出唯一正解＝**设施剔除出成员表＋按受益权穿透计回经济控制账**：锁仓/vesting 协议与 LP 同等适用，闭合锁仓计划的本金按受益地址计回，协议内计划外余额单列不并（QUQ 双报告病例 07-22；SIREN 复核 07-24）。产物（6.5.0 经用户裁决转正式）：完整版**必须**交付 `economic_control_ledger.json`（每项设施权益带所有权证据、目标块可赎回量、防双计 key；结构与发布前逐实体检查见 `economic-control-accounting.md` §5），日后复核同一报告时以它为控制口径基线。
 
 ## 三、庄级实体识别与类型判定（问1+问2）
   按标签顺序呈现：项目方 → 大庄 → 小庄 → 离场庄 → 刷量地址
@@ -140,7 +140,7 @@ python3 scripts/report/build_html.py --mode analysis-new --md 报告.md --out �
 
 | # | 图 | 函数 | 放置位置 | 要点 |
 |---|---|---|---|---|
-| 1 | 各阵营持仓占比演变（100% 堆叠面积）+ 价格右轴 | `plot_camp_evolution` | **一、TL;DR 顶部** | 阵营=标签体系固定配色顺序（键名/配色/堆叠顺序以 standard_charts.py CAMP_ORDER＋CAMP_COLORS 为唯一权威，勿手抄全集：红=项目方/橙=大庄/金=小庄/棕=离场庄/粉=刷量地址(有仓才列)/蓝=流动性池/青=其他大户/绿=散户/灰=锁仓/销毁，CEX 三键与历史大户、桥锁仓等见代码；紫=狙击集团仅旧数据重绘 legacy）；y=占总供应量%；数据=全量转账重放快照序列；其他大户与散户只在此图出现；**price_series 必传**（v3.12，2026-07-21 用户定：价格+筹码对照）——右轴黑线白描边，默认线性、量程>30 倍自动切对数（图例条目自带"(对数,右轴)"标注），完整版与 easy 筛查版都传；仅旧报告基线重绘可不传。**混合重建标的（锚点插值/截断流水+快照封口）加两条**：①末日封口造成任一桶跳变 ≥2pp 的，图注**逐桶**注明"±Xpp 为口径切换（稀疏观测→全量快照）非当日转账"——只解释其中一桶、放任更大跳变被读成末日大转账即违规（GOAT 案 -12/+13pp 跳变仅解释了主实体的 2.8pp，外部复核抓出）；②作图脚本输入必须是**修正后终版数据文件**——数据修 bug 出新版后旧文件当场改名失效（evidence-wording §10 第 12 条），防作图脚本静默读脏版（GOAT compose_evolution 读去重前发射窗致 LP 桶高估 0.83pp）（GOAT GPT5.6 外部复核采纳，07-24） |
+| 1 | 各阵营持仓占比演变（100% 堆叠面积）+ 价格右轴 | `plot_camp_evolution` | **一、TL;DR 顶部** | 阵营=标签体系固定配色顺序（键名/配色/堆叠顺序以 standard_charts.py CAMP_ORDER＋CAMP_COLORS 为唯一权威，勿手抄全集：红=项目方/橙=大庄/金=小庄/棕=离场庄/粉=刷量地址(有仓才列)/蓝=流动性池/青=其他大户/绿=散户/灰=锁仓/销毁，CEX 三键与历史大户、桥锁仓等见代码；紫=狙击集团仅旧数据重绘 legacy）；y=占总供应量%；数据=全量转账重放快照序列；其他大户与散户只在此图出现；**price_series 必传**（v3.12，2026-07-21 用户定：价格+筹码对照）——右轴黑线白描边，默认线性、量程>30 倍自动切对数（图例条目自带"(对数,右轴)"标注）；仅旧报告基线重绘可不传。**混合重建标的（锚点插值/截断流水+快照封口）加两条**：①末日封口造成任一桶跳变 ≥2pp 的，图注**逐桶**注明"±Xpp 为口径切换（稀疏观测→全量快照）非当日转账"——只解释其中一桶、放任更大跳变被读成末日大转账即违规（GOAT 案 -12/+13pp 跳变仅解释了主实体的 2.8pp，外部复核抓出）；②作图脚本输入必须是**修正后终版数据文件**——数据修 bug 出新版后旧文件当场改名失效（evidence-wording §10 第 12 条），防作图脚本静默读脏版（GOAT compose_evolution 读去重前发射窗致 LP 桶高估 0.83pp）（GOAT GPT5.6 外部复核采纳，07-24） |
 | 2 | 庄级实体持仓变动 vs 价格（双轴） | `plot_whale_vs_price` | **一、TL;DR 顶部（图1 之后）** | 左轴=各实体占比线（标签制命名，线色按前缀语义色），右轴=价格 USD **线性刻度**（蓝；2026-07-15 用户定，贴近 K 线直觉，勿用对数，图注别再写"对数"）；标签实体各画一线，线超 8 条时可将持仓较小的实体合并成一条（合并了谁在图注写明）；一眼看出建仓后是否平线、拉升期是否出货 |
 | 3 | 全历史价格与关键事件（双 panel） | `plot_price_events` | 五 | 上=价格对数+橙色虚线事件竖线（自动编号①②③）；下=成交额柱；函数返回事件清单文本行，图下原样贴出 |
 
@@ -177,13 +177,13 @@ python3 scripts/report/build_html.py --mode analysis-new --md 报告.md --out �
 
 ## 默认交付的机器状态文件（`analysis-state.json`，v3.3 新增）
 
-**为什么**：v3.2 砍掉默认 appendix.json 后，未买入标的日后做 /token-update 时实体表只能从附录 B 的**文字反抄**。本文件在 A3 结束、A4 封口前由编译器生成，不在 A5 手写，不算监控包。
+**为什么**：v3.2 砍掉默认 appendix.json 后，仍需一份可机器复算的实体表、序列和血缘，避免日后复核时从附录 B **文字反抄**。本文件在 A3 结束、A4 封口前由编译器生成，不在 A5 手写，不算监控包。
 
 - **schema = appendix.json 的机器子集**（键名与 monitoring-package.md 完全同构，日后买入直接在其上扩展成 appendix）：`token`（含 data_cutoff/skill_version 必填；**total_supply 等供给字段一律 human 单位**——曾把 wei 值又除一次 decimals 双重计，BANANAS31(BSC) 2026-07-22）、`whale_groups`（**entity_id**/label/type/status/addresses/current_share_pct/peak_share_pct；**不含 tier 字段**，读取端遇旧文件忽略）、`vault_addresses`、`addresses`（仅 address/chain/role/balance_est/group 五字段——**不含** sentinel/watch/why 等监控字段）、`camp_share_series`（≤500 点，重绘图 1 基线）。**不含** monitoring_advice、观察哨等一切人工监控文案。
-- **entity_id 稳定主键（3.19 起 whale_groups 必填）**：值与 facts.json entities 的字典键一致（如 `e_big1`），一次分配终身不改；label 只是展示文案，改措辞不影响对账与 /token-update 续跑。facts_gate G1 优先按 entity_id 匹配，旧 state 无此字段回退 label 匹配（向后兼容）。
+- **entity_id 稳定主键（3.19 起 whale_groups 必填）**：值与 facts.json entities 的字典键一致（如 `e_big1`），一次分配终身不改；label 只是展示文案，改措辞不影响对账与后续复算。facts_gate G1 优先按 entity_id 匹配，旧 state 无此字段回退 label 匹配（向后兼容）。
 - **provenance 薄版血缘（3.19 起顶层必填）**：`{"schema_version": "2", "skill_commit": "<git rev-parse --short HEAD>", "data_sources": ["hypersync_v2", ...]}`——回答"这份结论由哪版流程+哪些数据源算出"；缺失时 facts_gate 出 G7 提示。完整计算血缘链（逐阶段输入输出哈希）评估后暂缓不做。
 - **唯一生成入口**：`python3 scripts/report/state_from_facts.py --facts facts.json --source state_source.json --out analysis-state.json`。`facts.json` 唯一拥有 entity_id/label/成员/current_raw/peak_raw；`state_source.json` 只承载它没有的分析时点、实体 type/status、逐址快照余额、vault、阵营序列与 provenance。编译器要求两边地址集合精确相等并从 raw amount 计算份额，禁止手写 state 或在两份文件各维护一套成员/数值。
-- 消费方：/token-update 的 `verify_balances.py`/`analyze_inc.py` 在 appendix.json 缺失时自动读它（v3.3 已内置）；买入后补监控包时它就是 appendix 的底稿。
+- 消费方：买入后补监控包时它是 appendix 的底稿；报告复算与净室复核通过 facts/state gate 读取它。
 - checklist 挂钩：交付前第 11 条附录检查同时确认本文件已落盘。
 
 ## 报告编译化：facts.json 事实源与宏引用（3.18.0 新写作纪律）
@@ -195,14 +195,14 @@ python3 scripts/report/build_html.py --mode analysis-new --md 报告.md --out �
 - **写作纪律**：报告 md 中实体的持仓枚数/占比/峰值/成员数一律写宏——`{{e1.amount_share}}` → "2.78亿枚【总量27.84%】"（自动满足带【总量%】纪律）、`{{e1.share}}`、`{{e1.peak_share}}`、`{{e1.naddr}}`、`{{m:指标id}}`；附录 B 整块写 `{{appendix_b}}` 自动生成（**手打地址在架构上被消灭**）。禁止手打这些数字；价格/涨跌幅等非实体结论数字暂可手写（G5 会列清单供人工过目）。
 - **宏口径边界：`{{e.peak_share}}`=日末序列峰值，日内事件占比禁用宏**：peak_raw 来自日末快照序列，闪电过手型实体（单笔吃下→当日部分回吐）的**日内峰值高于日末峰值**（EGL1 案发射窗协同实体单笔买入 47.11% vs 日末峰值宏 40.21%，TL;DR 与正文两处误用宏被外部异构复核抓出）。规则：单笔买入/日内持有语境的占比一律手写并标注"单笔/日内"口径；报告含此型实体时，日末峰值与日内峰值两口径并列写清（另见流转图 footnote 块级峰值声明纪律）；判级流程侧的峰值口径（日终＋L2 上界兜底＋四触发日逐笔）权威见 tiering"峰值判级口径"条，两处口径一体（EGL1 redo2 @CX 复核，07-28）
 - **序列类指标引用必须钉时点、程序化取尾**：正文引用 camp_share_series 等时间序列的"当前值"，必须从序列**末点**程序化取数并写明"截至 <数据截止日>"——凭目视/记忆取数会拿到中段值（EGL1 案散户残差手写 10.75%，实为序列 2026-01 中段值，末点真值 10.37%，@CX 复核抓出）。互斥阵营残差桶另做一次"100−Σ各阵营末点"的算术复核（EGL1 redo2 @CX 复核，07-28）
-- **编译**：全新分析用 `build_html.py --mode analysis-new ...`，净室复核用 `--mode analysis-audit ...`；两者强制 facts/state/identity/A4 v3/A5 report seal，并分别走 new-analysis/independent-audit 发布 profile。不存在 generic analysis 或 skip gate。历史重编译用 `--mode legacy-recompile --degrade-reason "<理由>"`，增量简报用 `--mode update --degrade-reason "<理由>"`；两者带非正式水印。
+- **编译**：全新分析用 `build_html.py --mode analysis-new ...`，净室复核用 `--mode analysis-audit ...`；两者强制 facts/state/identity/A4 v3/A5 report seal，并分别走 new-analysis/independent-audit 发布 profile。不存在 generic analysis 或 skip gate。历史重编译用 `--mode legacy-recompile --degrade-reason "<理由>"`，并带非正式水印。
 - 纯校验（不出 HTML）：`python3 scripts/report/facts_gate.py --facts facts.json --state analysis-state.json --md 报告.md`。
 - **图层同源（3.19，`scripts/report/figures_from_facts.py`）**：编译化延伸到图——①图 1 直接 `figures_from_facts.py fig1 --state analysis-state.json --out charts/final/fig1.png [--price-csv 价格.csv]` 从 state 的 camp_share_series 直出（6.7.0 起报告图一律输出 charts/final/，G9 只认此目录），禁止再现场手写装配脚本；②每张流转图写 spec JSON（nodes/edges 结构同 lifecycle_flow docstring），**卡片与边标签里的持仓/份额数字一律写 facts 宏**（`{{e_x.amount_share}}` 等），`figures_from_facts.py flow --facts facts.json --spec flow_x.json --out ...` 渲染出图（残留宏必炸，同 G4）；③图 2 装配数据落 whale_series.json 后必跑 `figures_from_facts.py check --facts facts.json --series whale_series.json` 终值对账（各实体线末点 vs facts 当前持仓，超 0.05pp 拒绝）——checklist 4b"图表脚本喂的名单与 facts 同源仍须人工确认"中数值部分就此自动化。
-- 渐进接入：**新报告必用**；旧报告重编译不强制回填。easy 模式两件套同样适用（快照表数字走宏；easy 图 1 同样走 fig1 直出）。
+- 渐进接入：**新报告必用**；旧报告重编译不强制回填。
 
 ## JSON 附录与买入后监控包（v3.3 起独立成册）
 
-schema 全部细节（report-extract 四键与 `id="report-extract"` 硬约定、完整数据键、addresses/sentinel/monitoring_advice 字段纪律）与「买入后监控包」三件产出流程，全在 **`monitoring-package.md`**——默认分析会话不读它；用户确认买入或 /token-update 滚动 JSON 时再读。默认报告只需记住：**附录 B 任何情况不可省**（正文零地址的可验证性支点+日后补 JSON 的原料）+ 末尾固定句"如决定买入，回复一声即可补生成监控包（观察哨清单＋监控建议＋JSON 附录），可直接喂给投后监控看板。"
+schema 全部细节（report-extract 四键与 `id="report-extract"` 硬约定、完整数据键、addresses/sentinel/monitoring_advice 字段纪律）与「买入后监控包」三件产出流程，全在 **`monitoring-package.md`**——默认分析会话不读它；用户确认买入时再读。默认报告只需记住：**附录 B 任何情况不可省**（正文零地址的可验证性支点+日后补 JSON 的原料）+ 末尾固定句"如决定买入，回复一声即可补生成监控包（观察哨清单＋监控建议＋JSON 附录），可直接喂给投后监控看板。"
 
 ## 术语与角色可读性（v3.8 用户验收硬性，2026-07-20 定）
 

@@ -46,7 +46,7 @@
 7. **Streamflow feePayer 洗筹指纹实战命中**`[VERIFIED·LAYOFF实战]`：gas 溯源出某归集地址 funder=`wdrwhnCv4pzW8beKsbPa4S2UDZrXenjg16KJdKSpb5u`（Streamflow 自动提取服务）= 该地址通过 Streamflow 收币、切断资金溯源（pipeline §2 已记的指纹，本次首次实战命中）；穿透去向靠 whale_deep 找谁收了它的币（LAYOFF 终点是已识别的关联组成员）。（LAYOFF，07-15）
 8. **★scan_token_accounts.py 双坑（增量更新同目录二跑必踩）**`[VERIFIED·PUB增量实战]`：①Token-2022 `--datasizes all` 全扫**必须显式 `--rpc https://api.mainnet-beta.solana.com`**——脚本默认 rpc=publicnode 对 Token-2022 恒 504（§0a 已记，但默认参数会让人忘传）；②v2.8.0 前的 rpc_call 只查"文件存在且>0 字节"即判成功——**16 字节的 `error code: 504` 错误体被当有效缓存写入 `_gpa_raw_*.json`**，且缓存命中逻辑（>100B 即复用）会静默复用旧数据：PUB 增量实测"全扫成功"返回的实为 2 天前旧快照（质押池/creator 余额全是旧值），与重放对账假性炸出 24.6% 差异，靠**独立单查三点仲裁**（getTokenAccountsByOwner 逐个验关键地址）才定位真凶。对策：增量重扫前把旧 `_gpa_raw_*.json` 改名存档强制真扫；脚本已加固（返回体须为含 result 的合法 JSON 才落缓存+缓存命中打 mtime 告警，v2.8.0）。对账炸掉时的仲裁纪律：**先用第三通道单查 2-3 个关键地址定"谁是旧数据"，再决定修哪边**——别急着怀疑重放管道（PUB 更新，07-15）。
 
-## 10. 快照对比法增量更新（/token-update 的 Solana 特化形态，CLUDE 增量实战定型 2026-07-15）
+## 10. 快照对比法（已有快照之间的窗口流转复核）
 
 旧研报为锚点法（非全量流水重放）时，增量更新**不必补拉全量转账**，走快照对比五步（1.8 天窗口全程 <1 小时数据成本）：
 

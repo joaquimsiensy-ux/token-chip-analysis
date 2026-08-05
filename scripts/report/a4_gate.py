@@ -3,7 +3,7 @@
 
 痛点定位：A4→A5 之间此前无任何闸门（A2 有"四查全过才进分析"准入措辞与 exit-code
 硬闸，A4 只有"必做"两个字）——历史 16 个时间戳可判定案 12 案图表/报告在复核完成前
-落盘、其中 7 案因翻案实际返工（APU 报告写 3 遍、GOAT 阵营图 4 代、TROLL easy 版
+落盘、其中 7 案因翻案实际返工（APU 报告写 3 遍、GOAT 阵营图 4 代、TROLL 旧轻量版
 HTML 作废……2026-08-01 核查）。本闸把"A4 全部裁决落定"变成机器可验前置：
   register  A4 开工登记 claim 注册表（稳定 id；与 adversarial-review skill 的
             args.claims 及 split-run §3.3 外部异构路输入的 claim registry 同构）

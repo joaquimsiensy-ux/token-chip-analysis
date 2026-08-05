@@ -7,8 +7,8 @@
 用法：
   python3 build_html.py --mode analysis-new --md 报告.md --out 报告.html \
     --facts facts.json --state analysis-state.json --a4-seal a4_seal.json
-  python3 build_html.py --mode update|legacy-recompile --degrade-reason "理由" \
-    --md 简报.md --out 简报.html
+  python3 build_html.py --mode legacy-recompile --degrade-reason "理由" \
+    --md 历史报告.md --out 历史报告.html
 
 支持的 md 子集（与 md2pdf.py 语法一致，报告写作按 references/report-template.md）：
   # ## ### #### 标题 | **粗体** *斜体* `代码` [链接](url) | - / 1. 列表 | 表格 | ``` 代码块
@@ -253,10 +253,10 @@ def main():
     ap = argparse.ArgumentParser()
     formal_modes = {"analysis-new": "new-analysis",
                     "analysis-audit": "independent-audit"}
-    ap.add_argument("--mode", choices=[*formal_modes, "update", "legacy-recompile"], required=True,
+    ap.add_argument("--mode", choices=[*formal_modes, "legacy-recompile"], required=True,
                     help="analysis-new/analysis-audit=两条必经正式门禁；其余为降级产物")
     ap.add_argument("--degrade-reason",
-                    help="update/legacy-recompile 必填；写入可见水印与 HTML 注释")
+                    help="legacy-recompile 必填；写入可见水印与 HTML 注释")
     ap.add_argument("--md", required=True)
     ap.add_argument("--out", required=True)
     ap.add_argument("--json", help="机器可读 JSON 附录文件（schema 见 monitoring-package.md）")
@@ -293,7 +293,7 @@ def main():
     elif not str(a.degrade_reason or "").strip():
         ap.error(f"{a.mode} 模式必须提供 --degrade-reason")
     elif a.a4_seal or a.a5_seal:
-        ap.error("update/legacy-recompile 只用模式水印留痕，不接受正式 gate 参数")
+        ap.error("legacy-recompile 只用模式水印留痕，不接受正式 gate 参数")
 
     if a.mode in formal_modes:
         import a5_report_seal

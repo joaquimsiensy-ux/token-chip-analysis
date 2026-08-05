@@ -130,14 +130,13 @@ def main(all_mode=False):
                 fails.append(f'EF-3 覆盖发现闸回退 {rel}: 缺少 {needle}')
 
     # 8) 同时性家族合并与"恒定滞后"判据删除（2026-08-02 用户裁决，v6.12.0）：
-    #    在场检查=家族三档、②降级措辞、持仓画像旁证与 update-workflow 新指称不得回退；
+    #    在场检查=家族三档、②降级措辞、持仓画像旁证与候选发现档不得回退；
     #    不在场检查=已删的"恒定滞后=跟单"伪判据（庄程序按序遍历同样产生该形态，两可无判别力）
     #    不得从旧案考古回捡进活跃规则（CHANGELOG 记录删除理由，不在禁扫范围）。
     simult_contracts = {
         'references/playbook-entity-cluster-methods.md': ['同时性共现（同秒/同块）家族', '① 候选发现档',
                                                           '② 单币强指纹档', '③ 跨币强证据档',
                                                           '高度疑似同一执行端', '持仓画像旁证'],
-        'references/update-workflow.md': ['同时性共现家族①候选发现档'],
     }
     for rel, needles in simult_contracts.items():
         text = open(os.path.join(ROOT, rel), encoding='utf-8').read()
@@ -207,8 +206,7 @@ def main(all_mode=False):
                 fails.append(f'2026-08-04 已删口径回捡 {rel}: 出现 {needle}')
 
     active_workflows = ['SKILL.md', 'references/analyze-workflow.md',
-                        'references/easy-workflow.md', 'references/report-template.md',
-                        'references/split-run.md']
+                        'references/report-template.md', 'references/split-run.md']
     generic_mode = re.compile(r'--mode analysis(?=[\s`])')
     for rel in active_workflows:
         text = open(os.path.join(ROOT, rel), encoding='utf-8').read()
@@ -219,13 +217,27 @@ def main(all_mode=False):
     version_instruction = re.compile(
         r'读[^。\n]{0,24}CHANGELOG[^。\n]{0,24}版本号|CHANGELOG[^。\n]{0,16}首(?:个)?版本号')
     execution_docs = ['SKILL.md', 'references/analyze-workflow.md',
-                      'references/easy-workflow.md', 'references/update-workflow.md',
                       'references/collect-workflow.md', 'references/split-run.md',
                       'references/context-discipline.md']
     for rel in execution_docs:
         text = open(os.path.join(ROOT, rel), encoding='utf-8').read()
         if version_instruction.search(text):
             fails.append(f'版本读取回退 {rel}: 执行文档必须读 VERSION，不得读 CHANGELOG 首版本号')
+
+    # 11) 已下线的轻量筛查/增量更新功能不得重回现役文档。
+    removed_feature_terms = re.compile(
+        r'easy-workflow|update-workflow|token-easy-analysis|token-update|\bE0b?\b|\bU[0-6]\b',
+        re.I)
+    active_docs = [p for p in md_files(all_mode=True)
+                   if os.path.basename(p) not in {'CHANGELOG.md', 'CHANGELOG-archive.md'}
+                   and os.path.relpath(p, ROOT) != 'references/attic.md'
+                   and not os.path.relpath(p, ROOT).startswith('references/casebook/')]
+    for path in active_docs:
+        rel = os.path.relpath(path, ROOT)
+        text = open(path, encoding='utf-8').read()
+        match = removed_feature_terms.search(text)
+        if match:
+            fails.append(f'已删功能回捡 {rel}: 出现 {match.group(0)}')
 
     if fails:
         for f in fails[:30]:

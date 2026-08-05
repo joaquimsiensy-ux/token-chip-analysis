@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """增量更新:批量核实窗口内地址流转并分类(pool_buy/pool_sell/direct_transfer)。
 
-/token-update 快照对比法核心件(data-pipeline-solana §10):对 snapshot_diff 筛出的
+快照对比法核心件（data-pipeline-solana §10）：对 snapshot_diff 筛出的
 大额变动地址,拉 ATA 级签名史(api.mainnet-beta 全史),逐笔解析 pre/postTokenBalances,
 按对手方(池 vs 钱包)分类定性,并汇总"直转对"(换仓/洗仓/归集识别的核心输出)。
 

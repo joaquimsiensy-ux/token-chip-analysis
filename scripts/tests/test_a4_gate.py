@@ -13,7 +13,7 @@
   9. G9 封口后改结论文件 → exit 1 且 HTML **未写出**（gate 前置，不再先落盘再报错）
  10. G9 报告图不在 charts/final/ → exit 1 不写出
  11. legacy-recompile 用 mode 水印说明降级，且不存在任何 skip gate CLI
- 12. 不传 --a4-seal（update 流程场景）→ G9 不触发照常编译
+ 12. 不传 --a4-seal 的正式流程拒绝；已删除的非正式旁路同样拒绝
  13. P0-01/D-06：analysis 拒绝 seal 外 facts/state/JSON，但允许已封口监控 JSON
 用法：python3 scripts/tests/test_a4_gate.py   退出码 0=PASS / 1=FAIL
 """
@@ -358,13 +358,13 @@ def main():
         if os.path.isfile(os.path.join(d, "skip.html")) else ""
     check("legacy 降级理由入 HTML 注释", p.returncode == 0 and "历史报告重编译测试" in html_txt)
 
-    # 12. analysis 不带 seal 必须拒；update 模式可显式降级无 seal 编译
+    # 12. analysis 不带 seal 必须拒；已删除的 update 模式必须拒绝
     p = run(BUILD, ["--mode", "analysis-audit", "--md", os.path.join(d, "报告bad.md"),
                     "--out", os.path.join(d, "noseal.html")])
     check("analysis 无 --a4-seal 拒绝", p.returncode != 0)
-    p = run(BUILD, ["--mode", "update", "--degrade-reason", "增量更新不重跑 A4",
+    p = run(BUILD, ["--mode", "update", "--degrade-reason", "已删除模式",
                     "--md", os.path.join(d, "报告bad.md"), "--out", os.path.join(d, "update.html")])
-    check("update 显式降级无 seal 可编译", p.returncode == 0)
+    check("已删除的 update 模式被拒绝", p.returncode != 0)
 
     help_text = run(BUILD, ["--help"]).stdout
     check("D-07 help 不再暴露不可达 skip gate 参数",

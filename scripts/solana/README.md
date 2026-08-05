@@ -34,8 +34,8 @@ MINT 来源约定：脚本读 `MINT` 环境变量或工作目录 `config.json` �
 14. **decode_txs.py**（v1 兼容入口）— requests.Session 连接复用逐笔 decode（getTransaction jsonParsed），按 mint 过滤提取 owner 级净变动 + 池子余额锚点。与 v2 共用 mint/pool/RPC 输出身份、失败签名重试和 `.receipt.json` 完整性回执；有 `decode_fail` 时非零退出。新流程优先用 v2。
 15. **build_evolution.py** — 锚点法阵营演变重建（免全量 SQD）：核心实体逐笔流水累积 + 池子余额锚点插值 + 散户残差 → 图1/图2 数据源。标的参数（total_supply/decimals/launch_ts/data_cutoff_ts/burn_amount）从工作目录 config.json 读且不得缺省为 0。它是有规模上限的小样本辅助入口；正式大数据走 replay_edges.py/DuckDB。结果旁写 camp_series.input_manifest.json，绑定配置、三份输入哈希和规模计数。需先备好 entity_camps.json（阵营归属）。
 16. **gas_fast.py** — 翻页上限版 gas 溯源（gas_origin.py 的加固版）：`oldest_sigs` 加 max_pages=2 上限，超深高频地址标 approx，避免卡死；落仓户签名少秒完成。**取最早入金 funder 作聚类依据**（非任意交互，规避高频服务热钱包误合并）。
-17. **snapshot_diff.py** — /token-update 快照对比法第一步:新旧 holders_owners.json 全量 diff,输出实体逐址变动/大额变动榜(新面孔·清零标注)/新 top30 粗筛。`--entities` 传旧研报实体表 {addr:label}。（来源:CLUDE(Solana) 增量更新,2026-07-15）
-18. **probe_window_moves.py** — /token-update 快照对比法第二步:对大额变动地址批量拉窗口内 ATA 签名史,逐笔解析并按对手方分类(pool_buy/pool_sell/direct_transfer),汇总"直转对"识别换仓/洗仓/归集。`--cutoff` 只收 ISO 时间字符串(内部 datetime 解析,禁手算 unix——实战手算错 2 天首跑作废);直转对金额取对手方 |Δ| 口径(本址净额会虚高)。净额一律以快照 diff 为权威。（来源:CLUDE(Solana) 增量更新,2026-07-15）
+17. **snapshot_diff.py** — 快照对比法第一步:新旧 holders_owners.json 全量 diff,输出实体逐址变动/大额变动榜(新面孔·清零标注)/新 top30 粗筛。`--entities` 传已有实体表 {addr:label}。（案源:CLUDE(Solana),2026-07-15）
+18. **probe_window_moves.py** — 快照对比法第二步:对大额变动地址批量拉窗口内 ATA 签名史,逐笔解析并按对手方分类(pool_buy/pool_sell/direct_transfer),汇总"直转对"识别换仓/洗仓/归集。`--cutoff` 只收 ISO 时间字符串(内部 datetime 解析,禁手算 unix);直转对金额取对手方 |Δ| 口径(本址净额会虚高)。净额一律以快照 diff 为权威。（案源:CLUDE(Solana),2026-07-15）
 
 ## 新增脚本（USELESS(Solana) 2026-07-21 收编）
 
@@ -51,6 +51,6 @@ MINT 来源约定：脚本读 `MINT` 环境变量或工作目录 `config.json` �
 
 23. **fetch_sqd_transfers_v2.py** — SQD 全量转账边拉取 v2（gzip 压缩传输+自适应区域并发+全局令牌桶，实测较 v1 明文快约 21 倍）——**全量重放路线现行主选**；v1（条目 1）保留作兜底与对照。选型与实测见 pipeline-solana-capture §13。
 24. **decode_txs_v2.py** — 溯源解码 v2（JSON-RPC 批量+身份绑定缓存+端点可换）：金额只用 raw integer，失败行可重试；Helius 不支持 batch 时走单笔并发。每次写 `.receipt.json`（输入/成功/失败数、失败签名与哈希、mint/pool/RPC、输出哈希），只有失败数为 0 才 PASS。
-25. **accounting_gate_sol.py** — 记账模型准入 gate（Solana 版，A0/E0 硬闸）：采集/对账之前检测 mint 是否适用标准重放（Token-2022 TransferFee/TransferHook 等危险扩展硬拦），BLOCK=硬停报用户。
+25. **accounting_gate_sol.py** — 记账模型准入 gate（Solana 版，A0 硬闸）：采集/对账之前检测 mint 是否适用标准重放（Token-2022 TransferFee/TransferHook 等危险扩展硬拦），BLOCK=硬停报用户。
 26. **squads_members.py** — Squads v4 multisig 配置成员解析（borsh 手解，零第三方依赖）：off-curve 静置仓控制权判别标准件（entity_identity_gate PDA_UNRESOLVED 的 resolution 工具；PYTHIA 案 15 金库 2-of-2 共享托管密钥裁决用）。
 27. **hypersync_recon.py** — HyperSync Solana ↔ SQD 完备性对账器（**GA 后重验收专用，平时不用**）：HyperSync Solana 2026-07-22 验收未过、双引擎已禁用，官方 GA 后用本脚本三区四轮全零差才可解禁 `--hypersync`（见 pipeline-solana-capture §13d）。

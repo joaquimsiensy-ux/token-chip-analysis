@@ -23,7 +23,7 @@
 | §6 脚本资产（原待重建清单，已建成收拢） / §7 验证清单 | 采集与重建 | `data-pipeline-solana-capture.md` |
 | §8 后续实测补充（SQD 全量转账首选/铸造边全清单/curve 成本重建） | 采集与重建 | `data-pipeline-solana-capture.md` |
 | §9 锚点法演变重建 + gas 溯源加固 | 采集与重建 | `data-pipeline-solana-capture.md` |
-| §10 快照对比法增量更新（/token-update 的 Solana 特化） | 采集与重建 | `data-pipeline-solana-capture.md` |
+| §10 快照对比法（已有快照之间的窗口流转复核） | 采集与重建 | `data-pipeline-solana-capture.md` |
 | §11 长币龄混合重建 + 高密度期定向采集 | 采集与重建 | `data-pipeline-solana-capture.md` |
 | §12 销户账户覆盖审计 | 采集与重建 | `data-pipeline-solana-capture.md` |
 | §13 采集加速工程（13a 传输层/13b 采集器 v2/13c 解码 v2/13d Solana HyperSync 通道·已禁用） | 采集与重建 | `data-pipeline-solana-capture.md` |

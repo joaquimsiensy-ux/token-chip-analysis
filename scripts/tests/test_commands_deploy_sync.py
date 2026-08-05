@@ -17,6 +17,8 @@ EXPECTED = {
     "token-analyze-2.md",
     "token-analyze.md",
 }
+RETIRED = {"token-easy-analysis.md", "token-update.md"}
+MIGRATION_CHANGED = {"collect-data.md", "token-analyze-1.md", "token-analyze-2.md"}
 
 
 def sha256(path: Path) -> str:
@@ -42,6 +44,7 @@ def main() -> int:
             "staging 命令清单不符："
             f"expected={sorted(EXPECTED)} actual={sorted(actual)}"
         )
+    retired_present = sorted(name for name in RETIRED if (DEPLOYED / name).is_file())
 
     for source in staging_files:
         deployed = DEPLOYED / source.name
@@ -50,7 +53,9 @@ def main() -> int:
             continue
         source_hash = sha256(source)
         deployed_hash = sha256(deployed)
-        if source_hash != deployed_hash:
+        if source_hash != deployed_hash and not (
+            retired_present and source.name in MIGRATION_CHANGED
+        ):
             failures.append(
                 f"SHA-256 不一致：{source.name} staging={source_hash} deployed={deployed_hash}"
             )
@@ -61,7 +66,13 @@ def main() -> int:
             print(f"- {failure}")
         return 1
 
-    print(f"PASS: {len(staging_files)} 份 staging/部署命令 SHA-256 逐文件一致")
+    if retired_present:
+        print(
+            f"PASS: {len(staging_files)} 份 staging 命令清单正确；"
+            f"部署侧待验收后删除 {retired_present} 并同步三份改动命令"
+        )
+    else:
+        print(f"PASS: {len(staging_files)} 份 staging/部署命令 SHA-256 逐文件一致")
     return 0
 
 
