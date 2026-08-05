@@ -15,6 +15,7 @@
 
 ## 版本索引（活跃窗口，新在上；每版一行，详情见下方对应条目）
 
+- **6.17.0** 2026-08-05 删除 easy/update 功能并分离规则与案例史：入口收口为 4 命令，移除 update 脚本树；聚类/判级/措辞规则改四要素契约，判例入短册，报告措辞只留单一权威源
 - **6.16.0** 2026-08-04 受支持链矩阵收口与入口瘦身：下线 Hyperliquid/Filecoin，SKILL 压至 8192 bytes 内，部署/版本/链矩阵守卫入 suite
 - **6.15.0** 2026-08-04 第四轮全库审计修复＋round4b/round4c 同族残留返工：identity 双链锚定并离线重放原始采集，shared release 强制当前生产者/runner，SUITE 46→51 项
 - **6.14.0** 2026-08-04 GPT-5.6 代码与一致性 review 全量修复：10 项代码缺陷与 17 项口径漂移全部收口，11 项新增守护使 SUITE 35→46 项全绿
@@ -50,6 +51,14 @@
 - **4.1.0** 2026-07-30 PYTHIA 双报告交叉核实复盘：实体身份防复发三闸（label_lookup 并源 address-book / entity_identity_gate+G8 编译门 / 复核 prompt 翻案四问固化）+ 复盘元规则（身份类教训必须以代码收尾）
 - **4.0.0** 2026-07-28 大整编（用户点名）：3.0→3.41 四十余版增量迭代的结构清理——路由索引补齐 9 节、结构错位归位 3 处、消重立权威源制 6 组、CHANGELOG 重整归档 29 条；只减不加，规则语义未动
 - 更早版本（3.41.0 及以前）→ `CHANGELOG-archive.md`
+
+## [6.17.0] - 2026-08-05 — 删除 easy/update 与规则/案例史分离
+
+- **删除两个停用功能**：删除 easy/update 两份 workflow、两份 staging 命令、`scripts/update/` 全部实现与 `test_replay_inc.py`；入口和部署同步清单由 6 条收口为 4 条，`build_html` 删除 update mode，现役文档、脚本说明、测试与 docs_lint 同步清除 E0/E0b、U0–U6 及命令引用。`/collect-data`、监控包与 `analysis-state.json` 保持现役；CHANGELOG、attic、casebook 历史不改写。
+- **规则与案例史分离**：`playbook-entity-cluster-methods.md`、`playbook-entity-cluster-tiering.md`、`playbook-evidence-wording.md` 增加短路由与“触发条件/必做动作/阻断语义/权威脚本”契约；20/3/4 条【候选】数量和成熟度保持不变，阈值与 fail-closed 语义保持原样。E 册新增 E-04～E-13，C 册新增 C-06，承接 EGL1/GMX/QUQ/TROLL/BANANAS31/PUB/IQ 等翻案，casebook 由 12 条增至 23 条。
+- **唯一权威源收口**：`report-template.md` 删除措辞副本表与证据强度副本，只保留指向 `playbook-evidence-wording.md` §11 的指针及 4 条报告呈现增量；`data-pipeline-solana-capture.md` 删除旧伪 scan-fail/OOM 症状和修复经过，只保留 EMPTY_MAX、磁盘外排、原子落盘、失败码与 `test_sqd_merge_equiv.py` 契约。
+- **长文档路由**：为本轮涉及及其他超过 100 行的现役参考页补章节号短目录；`address-book.md` 因本轮明确排除 R-07 工作而未改。docs_lint needle 随规则保留在现役权威位置，未删除守卫。
+- **验证**：每个逻辑组均运行 `python3 scripts/tests/run_all.py` 全绿后立即提交；删除功能防回胖、4 命令部署同步、casebook 六字段/容量、版本五处一致、文档引用与全部既有代码契约均在最终 suite 覆盖。成本：7 个逻辑组；质量：新增分析结论 0，传播级数字错误 0，未决项 0。
 
 ## [6.16.0] - 2026-08-04 — 受支持链收口与入口瘦身
 
