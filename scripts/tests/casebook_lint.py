@@ -3,7 +3,8 @@
 
 判例条目约定（references/casebook/README.md 六字段结构）：
   标题行:  ## <册前缀>-<两位序号> <标题> 【单案候选|机制成立|跨案复现】
-  条目体:  必含五个粗体字段标记——触发现象/禁止推断/必做区分检验/证据不足时/权威与出处
+  条目体:  必含六个粗体字段标记——触发现象/失败原因（禁止推断）/必做区分检验/
+           证据要求（证据不足时的结论上限）/正确规则指针/案源
 用法：python3 scripts/tests/casebook_lint.py    退出码 0=PASS / 1=FAIL
 """
 import glob
@@ -14,7 +15,10 @@ import sys
 ROOT = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."))
 CASEBOOK = os.path.join(ROOT, "references", "casebook")
 TITLE_RE = re.compile(r"^## ([A-Z])-(\d{2}) .+【(单案候选|机制成立|跨案复现)】\s*$")
-REQUIRED_FIELDS = ["触发现象", "禁止推断", "必做区分检验", "证据不足时", "权威与出处"]
+REQUIRED_FIELDS = [
+    "触发现象", "失败原因（禁止推断）", "必做区分检验",
+    "证据要求（证据不足时的结论上限）", "正确规则指针", "案源",
+]
 MAX_BYTES = 25 * 1024
 MAX_ENTRIES = 25
 

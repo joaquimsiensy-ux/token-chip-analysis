@@ -45,7 +45,7 @@
 | `0xbd612a3f30dca67bf60a39fd0d35e39b7ab80774` | Binance BSC 二级提币热钱包 |
 | `0xeb2d2f1b8c558a40207669291fda468e50c8a0bb` | Binance BSC 二级提币热钱包 |
 
-> 另有一批 ETH 主网 CEX 热钱包（MEXC 16、Binance 14–20、Union Chain 代付、deBridge DlnDestination 等）在外部 ETH 分析（ASTEROID/OPN）中被识破为"共同注资方"假阳性，但 memory 仅存地址前缀截断值——**用前必须 etherscan 补全并核验完整地址，禁止凭前缀补全**（末段是校验和）。
+> **截断地址禁止补全**：只有前缀时视为未核验，不得写入标签库；完整值必须从链上或落盘真值取得（末段是校验和，补全即编造）。
 
 ### 聚合器 / 跨链桥基建（EVM 通用，聚类时整体剔除；外部 BSC/ETH 分析考古 2026-07）
 
