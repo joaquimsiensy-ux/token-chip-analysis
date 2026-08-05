@@ -22,9 +22,10 @@ REF_RE = re.compile(r'(?<![\w/~])(?:references/[\w./-]+\.(?:md|csv|png)|scripts/
 REMOVED_FEATURE_TERMS = re.compile(
     r'easy-workflow|update-workflow|token-easy-analysis|token-update|'
     r'collect-data|collect-workflow|\bcollect_queue\b|\bnightly_collect\b|'
-    r'\bcollect_manifest\b|\bE0b?\b|\bU[0-6]\b',
+    r'\bcollect_manifest\b|\bprobe_keys\b|\bweekly-probe\b|'
+    r'\bE0b?\b|\bU[0-6]\b',
     re.I)
-RETAINED_COLLECTION_TERMS = ('collector', 'collection_manifest', 'csv_collector_receipt')
+RETAINED_FEATURE_TERMS = ('collector', 'collection_manifest', 'csv_collector_receipt', 'probe')
 
 def md_files(all_mode=False):
     out = [os.path.join(ROOT, 'SKILL.md'), os.path.join(ROOT, 'CHANGELOG.md')]
@@ -236,8 +237,8 @@ def main(all_mode=False):
         if version_instruction.search(text):
             fails.append(f'版本读取回退 {rel}: 执行文档必须读 VERSION，不得读 CHANGELOG 首版本号')
 
-    # 11) 已下线的轻量筛查/增量更新/批量预采集功能不得重回现役文档。
-    for retained_term in RETAINED_COLLECTION_TERMS:
+    # 11) 已下线的轻量筛查/增量更新/批量预采集/API key 周巡检功能不得重回现役文档。
+    for retained_term in RETAINED_FEATURE_TERMS:
         if REMOVED_FEATURE_TERMS.search(retained_term):
             fails.append(f'已删功能禁词误伤保留概念: {retained_term}')
     active_docs = [p for p in md_files(all_mode=True)
