@@ -12,7 +12,7 @@
   --all＝全量模式（v6.3.1）：额外纳入 commands-staging/*.md 与 evals/**/*.md——
   此前 44/66 文档的覆盖盲区（"三查→四查""SKILL.md 阶段 N"类漂移在这两处存活过）。
 """
-import glob, os, re, sys
+import ast, glob, os, re, sys
 
 ROOT = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..'))
 
@@ -23,6 +23,7 @@ REMOVED_FEATURE_TERMS = re.compile(
     r'easy-workflow|update-workflow|token-easy-analysis|token-update|'
     r'collect-data|collect-workflow|\bcollect_queue\b|\bnightly_collect\b|'
     r'\bcollect_manifest\b|\bprobe_keys\b|\bweekly-probe\b|'
+    r'批量预采集|预采集衔接|easy 初筛|easy E5|'
     r'\bE0b?\b|\bU[0-6]\b',
     re.I)
 RETAINED_FEATURE_TERMS = ('collector', 'collection_manifest', 'csv_collector_receipt', 'probe')
@@ -42,6 +43,20 @@ def resolve(ref, src_path):
              os.path.join(ROOT, 'references', ref),
              os.path.join(os.path.dirname(src_path), ref)]
     return any(os.path.exists(c) for c in cands)
+
+def removed_feature_in_module_docstring(source, rel):
+    """返回 module docstring 的已删功能命中；语法不可解析时容错跳过。"""
+    try:
+        tree = ast.parse(source, filename=rel)
+    except (SyntaxError, ValueError):
+        return None
+    docstring = ast.get_docstring(tree)
+    if not docstring:
+        return None
+    match = REMOVED_FEATURE_TERMS.search(docstring)
+    if match:
+        return f'已删功能回捡 {rel}: 出现 {match.group(0)}'
+    return None
 
 def main(all_mode=False):
     fails = []
@@ -269,6 +284,14 @@ def main(all_mode=False):
         match = REMOVED_FEATURE_TERMS.search(text)
         if match:
             fails.append(f'已删功能回捡 {rel}: 出现 {match.group(0)}')
+    python_files = sorted(glob.glob(os.path.join(ROOT, 'scripts', '**', '*.py'), recursive=True))
+    for path in python_files:
+        rel = os.path.relpath(path, ROOT)
+        if rel.startswith(f'scripts{os.sep}tests{os.sep}'):
+            continue
+        failure = removed_feature_in_module_docstring(open(path, encoding='utf-8').read(), rel)
+        if failure:
+            fails.append(failure)
 
     if fails:
         for f in fails[:30]:
