@@ -223,7 +223,7 @@ tier=exclude 设施与 locker 禁作合并边，被拦地址写入 clusters.json
 - **触发条件**：cluster.py 的 R1 互转、R2 共享 gas、R3 金库血统均未触发，且出现任一信号：异常平坦中户带、短窗集中建仓、或集群覆盖率远低于大户持仓总量。
 - **必做动作**：至少取两个相隔较远的批次，对同一地址组的首笔动作排序；用 **Spearman ρ + 3000 次排列检验**，不得再以位置精确匹配为主判据。scripts/evm/cadence_rank.py（候选池细扫）与 scripts/evm/cadence_fingerprint.py（全库粗扫）必须配套跑。
 - **阻断语义**：只有一个批次、未剔零值事件、未做留存/换手分流、或未查网络对外流向时，不得以节拍合并或判庄。节拍完美只证明程序化协同，措辞上限按 playbook-evidence-wording.md。
-- **权威脚本**：scripts/evm/cadence_rank.py、scripts/evm/cadence_fingerprint.py。
+- **权威脚本**：scripts/evm/cadence_rank.py、scripts/evm/cadence_fingerprint.py。`cadence_rank.py` 调用时须显式传 `--pools`、`--tier-file`、`--parquet`、`--total-supply`、`--formation-cutoff`；池子、总供应与截止日必须由本案输入注入，禁止沿用他案数值。
 
 **判据与分流**
 

@@ -177,6 +177,7 @@ size 与 SHA-256；全部通过后才原子将旧 done 升为 `hypersync-v2-done
 - 免费 key 仅 chainid=1 可用；跨链代币的 ETH 侧全量转账、金库地址 txlist/txlistinternal（vesting 释放追踪）都走它。（OPN，07）
 
 ### 3.5 Multicall3 批量余额（scripts/evm/multicall_balances.py）
+- 参数化调用：`python3 scripts/evm/multicall_balances.py --token 0x... --input addresses.txt --out balances.json [--rpc URL ...]`。默认 4 个公共节点仅适用于 BSC；跨链必须显式传对应链的 `--rpc`，禁止改源码注入标的。
 - eth_call 到 Multicall3（`0xca11bde05977b3631167028862be2a173976ca11`，各 EVM 链同地址）的 aggregate3，手工 ABI 编解码，≤200 地址/批；近千地址几十秒查完。（SIREN，07）
 - 反例：逐地址 eth_call 串行查 990 地址 10 分钟命令超时（exit 143），别走。（SIREN，07）
 - 纪律：先用 2 个地址小样本打印原始 RPC 响应验证编解码再放量；异常必须落日志绝不吞。（SIREN，07）
