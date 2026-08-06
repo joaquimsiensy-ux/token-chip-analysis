@@ -5,7 +5,7 @@
     "references/labels/*.md"
   ],
   "listed": [
-    {"path": "address-book.md", "entry": "labels/README.md", "stages": ["A1", "A3"]},
+    {"path": "address-book.md", "entry": "labels/README.md", "stages": ["on-hit"]},
     {"path": "analysis-playbook.md", "entry": "analysis-playbook.md", "stages": ["A3", "A4"]},
     {"path": "analyze-workflow.md", "entry": "analyze-workflow.md", "stages": ["A0-A6"]},
     {"path": "context-discipline.md", "entry": "analyze-workflow.md", "stages": ["A0-A6"]},

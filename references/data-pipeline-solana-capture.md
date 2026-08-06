@@ -4,7 +4,7 @@
 
 ## 本册路由
 
-- [§6–§10 脚本与基础重建](#6-脚本资产readme-另存-3-项低优先待建项两批清单勿混)：资产、验证、实测补充、锚点与快照。
+- [§6–§10 脚本与基础重建](#6-脚本资产)：资产、验证、实测补充、锚点与快照。
 - [§11 长币龄混合重建](#11-长币龄混合重建--高密度期定向采集uselesssolana-2026-07-21-实战)与[§12 销户覆盖](#12-销户账户覆盖审计sqd-边集对账盲区加固2026-07-21)。
 - [§13 SQD 加速工程](#13-solana-采集加速工程2026-07-21cx-交叉复核定案后实施)：stream、全程采集、解码与 HyperSync 边界。
 - [§14 日级余额快照](#14-日级余额快照重建法长币龄演变默认方法goat-2026-07-26-翻案驱动)。
@@ -31,7 +31,7 @@
 
 以下通道已在真实分析中跑通，标注 [实测·他场景]，直接可用：
 
-1. **全量转账＝SQD portal**（portal.sqd.dev，免 key 免代理）——采集器现役 **v2**（§13b；缓存使用 sha256 路径与 `sqd-solana-cache/v3` meta；旧 v1 缓存不得直接续跑，恢复须先写一次性 importer）。转账边=同 tx 内 owner 级净变动贪心配对，from/to 为 ZERO 哨兵即铸造/销毁；断点续拉增量无缝无重叠（meta next_slot"连续完成前缀"天然防 off-by-one）。
+1. **全量转账＝SQD portal**（portal.sqd.dev，免 key 免代理）——采集器现役 **v2**（§13b；缓存使用 sha256 路径与 `sqd-solana-cache/v3` meta；旧 v1 缓存不得直接续跑，恢复须先写一次性 importer）。转账边=同 tx 内 owner 级净变动贪心配对，from/to 为 ZERO 哨兵即铸造/销毁；断点续拉增量无缝无重叠（meta 连续完成前缀天然防 off-by-one）。
    **吞吐与架构选择**：v2 稳态约 255 倍实时（§13a 传输层翻案了旧的 1.5-4x 数字）——2-6 个月币龄全程重放数小时级；§11 混合重建（发射窗精确+核心实体流水+CPMM 重建+快照封口）降级为超长币龄（1 年+）专用。
 2. **发射期精确定价**：GeckoTerminal 分钟 K `/ohlcv/minute?aggregate=1&limit=1000&before_timestamp=`（池创建起就有）；小时 K 翻页可拿全历史。pump.fun"发射即迁移"币无内盘 K 线，内盘成本用 GMGN dev avg_cost 近似。
 3. **资金同源（gas 溯源）**：公共 RPC `getSignaturesForAddress`（翻到最老）+ `getTransaction(jsonParsed)` 找首笔 system transfer 入金 source；0.25s 间隔+走 clash 代理。识别马甲网络最有效的一招（母钱包收敛即实锤）。
@@ -145,7 +145,7 @@
 
 ### 13c. 溯源解码 v2（`decode_txs_v2.py`,三板斧落地）
 
-JSON-RPC batch + 跨地址共享 sig 缓存（`--cache-dir`,按 sig 前 2 字符 256 片）+ `--rpc` 端点可换。**mainnet-beta 实测硬墙**：batch 内子请求被**按方法逐个限流**（"Too many requests for a specific RPC call"）——batch 默认 8,429 子请求自动收回重试，绝不能记 decode_fail。公共节点净速度收益约 1.5 倍；**真价值=①缓存**（关联地址重复交易第二址起零请求）**②Helius 就位即切**。**Helius 已就位**：端点国内直连免代理；**实测免费层不支持 batch**（403 码 -32403,单元素数组同拒），账号级上限 **10 RPS**——正解=`--rpc https://mainnet.helius-rpc.com/?api-key=<key> --workers 6 --interval 0.12` 单笔并发贴近上限；archival 10 credits/笔,免费月额≈10 万笔。更高套餐能力未经本管线实测，不得把 50 RPS 或可 batch 当通用口径。
+JSON-RPC batch + 跨地址共享 sig 缓存（`--cache-dir`,按 sig 前 2 字符 256 片）+ `--rpc` 端点可换。**mainnet-beta 实测硬墙**：batch 内子请求被**按方法逐个限流**（"Too many requests for a specific RPC call"）——batch 默认 8,429 子请求自动收回重试，绝不能记 decode_fail。公共节点净速度收益约 1.5 倍；**真价值=①缓存**（关联地址重复交易第二址起零请求）**②Helius key 存在即切**。**运行前检测 `~/.config/helius/api-key`**：存在则按下列 Helius 参数跑，缺失则降级公共 RPC（key 注册沿革见 CHANGELOG）；端点国内直连免代理；**实测免费层不支持 batch**（403 码 -32403,单元素数组同拒），账号级上限 **10 RPS**——正解=`--rpc https://mainnet.helius-rpc.com/?api-key=<key> --workers 6 --interval 0.12` 单笔并发贴近上限；archival 10 credits/笔,免费月额≈10 万笔。更高套餐能力未经本管线实测，不得把 50 RPS 或可 batch 当通用口径。
 **⚠ urllib 逐笔新建连接对 Helius 会 sock_connect 挂死**：decode_txs_v2 在部分本机网络环境下逐笔 urlopen 挂起（即使 `ProxyHandler({})` 强制直连也不稳）——症状是单笔卡住无超时推进。绕行=手写 `http.client.HTTPSConnection` **keep-alive 长连接**版；根治通道=environment.md B5 的 `scripts/lib/net.py`（httpx 连接池），新写解码脚本直接用它，别再走 urllib。
 
 ### 13d. Solana HyperSync 通道（**已禁用**——完备性验收不通过，GA 后重验；全量细节见 git 3.18.x 条目）
@@ -154,7 +154,7 @@ JSON-RPC batch + 跨地址共享 sig 缓存（`--cache-dir`,按 sig 前 2 字符
 - **GA 后重验路径**：对账脚本 `scripts/solana/hypersync_recon.py`（三区各跑一轮+Helius 终审定责）；mint 过滤隐藏能力、跨源对账三工程坑、双引擎吞吐 POC 细节从 git 考古（3.18.x）。
 - **⚠混合分段提议已否决，勿再重议（07-22 @CX）**：滚动窗口是覆盖范围不是准确范围；洞静默→证明某段完整的唯一办法=SQD 重拉对账，HS 等于白跑；供给对账兜不住成对缺行（借贷双缺仍守恒），完备性必须落到边集合一致；SQD 全量恒为关键路径，双引擎不缩短认证耗时。
 
-**遗留后续项**：①~~v2 整合 HyperSync 第二引擎~~ ②~~完备性验收~~（均 3.18.0 完成，验收不通过→禁用待 GA 重验）③Helius 注册（已就位,见 §13c）④SQD key 专属端点补录 ⑤实时 mint 档案（方案 4,用户暂缓）。
+**遗留后续项**：①~~v2 整合 HyperSync 第二引擎~~ ②~~完备性验收~~（均 3.18.0 完成，验收不通过→禁用待 GA 重验）③Helius key 运行时检测（见 §13c）④SQD key 专属端点补录 ⑤实时 mint 档案（方案 4,用户暂缓）。
 
 （Solana 采集加速工程,@CX 三轮交叉复核 + 本机四组实测,2026-07-21;完备性验收与双引擎整合,2026-07-22）
 

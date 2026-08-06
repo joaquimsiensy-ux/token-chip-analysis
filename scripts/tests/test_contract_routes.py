@@ -86,6 +86,11 @@ def main():
         rm = runtime_manifest()
         assert not DOCS_LINT.validate_runtime_docs_manifest(root, rm), '合法两跳路由应通过'
 
+        on_hit = copy.deepcopy(rm)
+        on_hit['listed'][1]['stages'] = ['on-hit']
+        assert not DOCS_LINT.validate_runtime_docs_manifest(root, on_hit), \
+            'on-hit 只改变加载时机，不应影响两跳可达性'
+
         ghost = copy.deepcopy(rm)
         ghost['listed'].append({'path': 'ghost.md', 'entry': 'entry.md', 'stages': ['A3']})
         failures = DOCS_LINT.validate_runtime_docs_manifest(root, ghost)

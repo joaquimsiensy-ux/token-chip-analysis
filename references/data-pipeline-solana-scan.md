@@ -14,7 +14,7 @@
 | 账户历史 / 钱包持仓画像 | 公共 RPC `https://api.mainnet-beta.solana.com` | 免 key；限速紧（间隔 ≥0.12s、退避重试），本机走 clash 代理 `[实测·他场景]` |
 | 单地址 / 单笔交易核验、公开标签 | Solscan 网页（`solscan.io/token/<MINT>`、`/account/<ADDR>`） | 免 key；浏览器可看，**WebFetch 直读被 Cloudflare 拦**（见死亡名单）；作报告可验证性背书 |
 | 全量历史转账（archive 回放） | SQD portal（见 §8，后续实战补入） | 免 key 免代理，补公共 RPC 无历史回放的洞 `[实测·他场景]` |
-| 深挖升级通道（增强 API） | Helius | 自动注册被后端 bot 检测拒绝（2026-07 两次实测），需用户手动注册后把 key 放 `~/.config/helius/api-key`（chmod 600） `[实测·他场景]` |
+| 深挖升级通道（增强 API） | Helius | 运行前检测 `~/.config/helius/api-key`：存在则按 Helius 参数跑，缺失则降级公共 RPC（key 注册沿革见 CHANGELOG） `[实测·他场景]` |
 | 量价 / 衍生品 / 解锁表 | CoinGecko / fapi.binance.com / Coinglass / DropsTab + Tokenomist | 见第 4 节 |
 
 ### 0a. 双公共 RPC 互补矩阵（关键工程事实）

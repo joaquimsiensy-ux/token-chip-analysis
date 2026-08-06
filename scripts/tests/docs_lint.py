@@ -30,7 +30,7 @@ RETAINED_FEATURE_TERMS = ('collector', 'collection_manifest', 'csv_collector_rec
 CONTRACT_REF_RE = re.compile(r'契约\s+(CT-[A-Z][A-Z0-9-]*-\d{2,})')
 MD_NAME_RE = re.compile(r'(?<![\w/])(?:references/)?([\w./-]+\.md)')
 RUNTIME_STAGES = {
-    'preflight', 'A0', 'A1', 'A2', 'A3', 'A4', 'A4.5', 'A5', 'A6', 'post-A5',
+    'preflight', 'on-hit', 'A0', 'A1', 'A2', 'A3', 'A4', 'A4.5', 'A5', 'A6', 'post-A5',
     'A0-A2', 'A0-A3', 'A0-A5', 'A0-A6',
 }
 

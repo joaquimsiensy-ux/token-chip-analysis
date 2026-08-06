@@ -3,7 +3,7 @@
 
 用法: python3 decode_txs.py --sigs <jsonl> --out <jsonl> [--mint M] [--pool P]
      [--interval 0.75] [--proxy http://...]
-输出行格式与 decode_txs.py 一致，断点续传兼容。
+输出行格式与 decode_txs_v2.py 一致，断点续传兼容。
 """
 import argparse, json, sys, time
 from pathlib import Path
