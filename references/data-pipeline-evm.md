@@ -1,4 +1,4 @@
-# EVM 链数据管道实测手册（BSC/Base 正式；Arbitrum 探索，2026-07 实测版）
+# EVM 链数据管道实测手册（Ethereum/BSC/Base 正式；Arbitrum 探索，2026-07 实测版）
 
 > Arbitrum 本册只保留采集、对账与存量重放方法；因缺 `labels-arbitrum.csv` 及完整标签门禁，
 > 只能产探索/降级结果，不得封 A4/A5 seal 或编译正式 analysis。
