@@ -20,13 +20,13 @@ def write(path, text):
 
 def contract_manifest(authority='references/authority.md'):
     return {
-        'schema': 'contract-manifest/v1',
+        'schema': 'contract-manifest/v2',
         'contracts': [{
             'id': 'CT-TEST-01',
+            'kind': 'required',
             'authority_file': authority,
             'needle': '完整权威规则',
             'stages': ['A3'],
-            'summary': '测试契约必须由权威文件完整承载。',
         }],
     }
 
@@ -68,6 +68,21 @@ def main():
         failures = DOCS_LINT.validate_contract_manifest(root, missing)
         assert any('权威文件不存在' in f for f in failures), failures
 
+        banned_missing = contract_manifest('references/banned-missing.md')
+        banned_missing['contracts'][0]['kind'] = 'banned'
+        failures = DOCS_LINT.validate_contract_manifest(root, banned_missing)
+        assert any('权威文件不存在' in f for f in failures), failures
+
+        banned = contract_manifest()
+        banned['contracts'][0]['kind'] = 'banned'
+        failures = DOCS_LINT.validate_contract_manifest(root, banned)
+        assert any('禁用 needle 回捡' in f for f in failures), failures
+
+        with_summary = contract_manifest()
+        with_summary['contracts'][0]['summary'] = 'v2 禁止回潜的人读复述。'
+        failures = DOCS_LINT.validate_contract_manifest(root, with_summary)
+        assert any('未知字段' in f and 'summary' in f for f in failures), failures
+
         rm = runtime_manifest()
         assert not DOCS_LINT.validate_runtime_docs_manifest(root, rm), '合法两跳路由应通过'
 
@@ -84,12 +99,12 @@ def main():
     # 权威在场"，不守表自身完整性。基线=总数下限+五组首根锚 ID，删条目/删整组立红。
     real = json.load(open(os.path.join(HERE, 'contract_manifest.json'), encoding='utf-8'))
     real_ids = {c['id'] for c in real['contracts']}
-    assert len(real_ids) >= 76, f'契约注册表条目数 {len(real_ids)} 低于 6.29.0 基线 76（删除契约须同步降基线并留 CHANGELOG 记录）'
+    assert len(real_ids) >= 138, f'契约注册表条目数 {len(real_ids)} 低于 6.30.0 基线 138（删除契约须同步降基线并留 CHANGELOG 记录）'
     anchors = {'CT-METHOD-01', 'CT-CONTROL-01', 'CT-WAVE-01', 'CT-SIMULT-01', 'CT-DISTRIBUTION-01'}
     lost = anchors - real_ids
     assert not lost, f'契约注册表缺五组锚 ID: {sorted(lost)}'
 
-    print('PASS: R-01/R-02 manifest 五类负向反证全部阻断＋真实注册表基线（≥76 条、五组锚在场）')
+    print('PASS: R-01/R-02 manifest required/banned 负向反证全部阻断＋真实注册表基线（≥138 条、五组锚在场）')
     return 0
 
 

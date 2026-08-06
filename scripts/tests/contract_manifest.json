@@ -1,744 +1,143 @@
 {
-  "schema": "contract-manifest/v1",
+  "schema": "contract-manifest/v2",
   "contracts": [
-    {
-      "id": "CT-METHOD-01",
-      "authority_file": "SKILL.md",
-      "needle": "EF-2 历史静置仓反扫",
-      "stages": [
-        "A3",
-        "A5"
-      ],
-      "summary": "历史静置仓与峰值方法的权威文档必须保留“EF-2 历史静置仓反扫”锚点。"
-    },
-    {
-      "id": "CT-METHOD-02",
-      "authority_file": "SKILL.md",
-      "needle": "dormant_warehouse_audit.json",
-      "stages": [
-        "A3",
-        "A5"
-      ],
-      "summary": "历史静置仓与峰值方法的权威文档必须保留“dormant_warehouse_audit.json”锚点。"
-    },
-    {
-      "id": "CT-METHOD-03",
-      "authority_file": "SKILL.md",
-      "needle": "不允许冻结实体",
-      "stages": [
-        "A3",
-        "A5"
-      ],
-      "summary": "历史静置仓与峰值方法的权威文档必须保留“不允许冻结实体”锚点。"
-    },
-    {
-      "id": "CT-METHOD-04",
-      "authority_file": "references/playbook-entity-cluster-methods.md",
-      "needle": "候选全集从三条现役机械通道取齐",
-      "stages": [
-        "A3",
-        "A5"
-      ],
-      "summary": "历史静置仓与峰值方法的权威文档必须保留“候选全集从三条现役机械通道取齐”锚点。"
-    },
-    {
-      "id": "CT-METHOD-05",
-      "authority_file": "references/playbook-entity-cluster-methods.md",
-      "needle": "strict ∪ expanded",
-      "stages": [
-        "A3",
-        "A5"
-      ],
-      "summary": "历史静置仓与峰值方法的权威文档必须保留“strict ∪ expanded”锚点。"
-    },
-    {
-      "id": "CT-METHOD-06",
-      "authority_file": "references/playbook-entity-cluster-methods.md",
-      "needle": "同一交易末快照",
-      "stages": [
-        "A3",
-        "A5"
-      ],
-      "summary": "历史静置仓与峰值方法的权威文档必须保留“同一交易末快照”锚点。"
-    },
-    {
-      "id": "CT-METHOD-07",
-      "authority_file": "references/playbook-entity-cluster-methods.md",
-      "needle": "universe_ref",
-      "stages": [
-        "A3",
-        "A5"
-      ],
-      "summary": "历史静置仓与峰值方法的权威文档必须保留“universe_ref”锚点。"
-    },
-    {
-      "id": "CT-METHOD-08",
-      "authority_file": "references/playbook-entity-cluster-methods.md",
-      "needle": "must_adjudicate",
-      "stages": [
-        "A3",
-        "A5"
-      ],
-      "summary": "历史静置仓与峰值方法的权威文档必须保留“must_adjudicate”锚点。"
-    },
-    {
-      "id": "CT-METHOD-09",
-      "authority_file": "references/playbook-entity-cluster-methods.md",
-      "needle": "OTC 排除检验",
-      "stages": [
-        "A3",
-        "A5"
-      ],
-      "summary": "历史静置仓与峰值方法的权威文档必须保留“OTC 排除检验”锚点。"
-    },
-    {
-      "id": "CT-METHOD-10",
-      "authority_file": "references/playbook-entity-cluster-tiering.md",
-      "needle": "历史静置仓反向扫描后的双边界峰值",
-      "stages": [
-        "A3",
-        "A5"
-      ],
-      "summary": "历史静置仓与峰值方法的权威文档必须保留“历史静置仓反向扫描后的双边界峰值”锚点。"
-    },
-    {
-      "id": "CT-METHOD-11",
-      "authority_file": "references/playbook-entity-cluster-tiering.md",
-      "needle": "严格下限",
-      "stages": [
-        "A3",
-        "A5"
-      ],
-      "summary": "历史静置仓与峰值方法的权威文档必须保留“严格下限”锚点。"
-    },
-    {
-      "id": "CT-METHOD-12",
-      "authority_file": "references/playbook-entity-cluster-tiering.md",
-      "needle": "扩展上限",
-      "stages": [
-        "A3",
-        "A5"
-      ],
-      "summary": "历史静置仓与峰值方法的权威文档必须保留“扩展上限”锚点。"
-    },
-    {
-      "id": "CT-METHOD-13",
-      "authority_file": "references/playbook-entity-cluster-tiering.md",
-      "needle": "prev_close_plus_gross_in/v2",
-      "stages": [
-        "A3",
-        "A5"
-      ],
-      "summary": "历史静置仓与峰值方法的权威文档必须保留“prev_close_plus_gross_in/v2”锚点。"
-    },
-    {
-      "id": "CT-METHOD-14",
-      "authority_file": "references/playbook-entity-cluster-tiering.md",
-      "needle": "trigger_days.json",
-      "stages": [
-        "A3",
-        "A5"
-      ],
-      "summary": "历史静置仓与峰值方法的权威文档必须保留“trigger_days.json”锚点。"
-    },
-    {
-      "id": "CT-CONTROL-01",
-      "authority_file": "SKILL.md",
-      "needle": "控盘看最终经济控制",
-      "stages": [
-        "A3",
-        "A5"
-      ],
-      "summary": "经济控制口径的权威文档必须保留“控盘看最终经济控制”锚点。"
-    },
-    {
-      "id": "CT-CONTROL-02",
-      "authority_file": "SKILL.md",
-      "needle": "economic_control_ledger.json",
-      "stages": [
-        "A3",
-        "A5"
-      ],
-      "summary": "经济控制口径的权威文档必须保留“economic_control_ledger.json”锚点。"
-    },
-    {
-      "id": "CT-CONTROL-03",
-      "authority_file": "SKILL.md",
-      "needle": "公共设施不进永久成员表",
-      "stages": [
-        "A3",
-        "A5"
-      ],
-      "summary": "经济控制口径的权威文档必须保留“公共设施不进永久成员表”锚点。"
-    },
-    {
-      "id": "CT-CONTROL-04",
-      "authority_file": "references/economic-control-accounting.md",
-      "needle": "实体成员表",
-      "stages": [
-        "A3",
-        "A5"
-      ],
-      "summary": "经济控制口径的权威文档必须保留“实体成员表”锚点。"
-    },
-    {
-      "id": "CT-CONTROL-05",
-      "authority_file": "references/economic-control-accounting.md",
-      "needle": "链上位置账",
-      "stages": [
-        "A3",
-        "A5"
-      ],
-      "summary": "经济控制口径的权威文档必须保留“链上位置账”锚点。"
-    },
-    {
-      "id": "CT-CONTROL-06",
-      "authority_file": "references/economic-control-accounting.md",
-      "needle": "经济控制账",
-      "stages": [
-        "A3",
-        "A5"
-      ],
-      "summary": "经济控制口径的权威文档必须保留“经济控制账”锚点。"
-    },
-    {
-      "id": "CT-CONTROL-07",
-      "authority_file": "references/economic-control-accounting.md",
-      "needle": "unresolved_facility_exposure",
-      "stages": [
-        "A3",
-        "A5"
-      ],
-      "summary": "经济控制口径的权威文档必须保留“unresolved_facility_exposure”锚点。"
-    },
-    {
-      "id": "CT-CONTROL-08",
-      "authority_file": "references/playbook-entity-cluster-tiering.md",
-      "needle": "判级的\"持仓\"强制解释为可证经济控制量",
-      "stages": [
-        "A3",
-        "A5"
-      ],
-      "summary": "经济控制口径的权威文档必须保留“判级的\"持仓\"强制解释为可证经济控制量”锚点。"
-    },
-    {
-      "id": "CT-CONTROL-09",
-      "authority_file": "references/playbook-entity-cluster-tiering.md",
-      "needle": "严格/扩展是确权边界",
-      "stages": [
-        "A3",
-        "A5"
-      ],
-      "summary": "经济控制口径的权威文档必须保留“严格/扩展是确权边界”锚点。"
-    },
-    {
-      "id": "CT-WAVE-01",
-      "authority_file": "SKILL.md",
-      "needle": "EF-3 覆盖发现闸",
-      "stages": [
-        "A3"
-      ],
-      "summary": "EF-3 覆盖发现的权威文档必须保留“EF-3 覆盖发现闸”锚点。"
-    },
-    {
-      "id": "CT-WAVE-02",
-      "authority_file": "SKILL.md",
-      "needle": "EF-3A 波次扫描",
-      "stages": [
-        "A3"
-      ],
-      "summary": "EF-3 覆盖发现的权威文档必须保留“EF-3A 波次扫描”锚点。"
-    },
-    {
-      "id": "CT-WAVE-03",
-      "authority_file": "SKILL.md",
-      "needle": "EF-3B 资金流异常扫描",
-      "stages": [
-        "A3"
-      ],
-      "summary": "EF-3 覆盖发现的权威文档必须保留“EF-3B 资金流异常扫描”锚点。"
-    },
-    {
-      "id": "CT-WAVE-04",
-      "authority_file": "SKILL.md",
-      "needle": "EF-3C 候选裁决与实体溯源",
-      "stages": [
-        "A3"
-      ],
-      "summary": "EF-3 覆盖发现的权威文档必须保留“EF-3C 候选裁决与实体溯源”锚点。"
-    },
-    {
-      "id": "CT-WAVE-05",
-      "authority_file": "SKILL.md",
-      "needle": "EF-3C-P1",
-      "stages": [
-        "A3"
-      ],
-      "summary": "EF-3 覆盖发现的权威文档必须保留“EF-3C-P1”锚点。"
-    },
-    {
-      "id": "CT-WAVE-06",
-      "authority_file": "SKILL.md",
-      "needle": "P4 原始输入及算法绑定重放",
-      "stages": [
-        "A3"
-      ],
-      "summary": "EF-3 覆盖发现的权威文档必须保留“P4 原始输入及算法绑定重放”锚点。"
-    },
-    {
-      "id": "CT-WAVE-07",
-      "authority_file": "references/analyze-workflow.md",
-      "needle": "EF-3A 全体持仓波次扫描",
-      "stages": [
-        "A3"
-      ],
-      "summary": "EF-3 覆盖发现的权威文档必须保留“EF-3A 全体持仓波次扫描”锚点。"
-    },
-    {
-      "id": "CT-WAVE-08",
-      "authority_file": "references/analyze-workflow.md",
-      "needle": "EF-3B 资金流异常扫描",
-      "stages": [
-        "A3"
-      ],
-      "summary": "EF-3 覆盖发现的权威文档必须保留“EF-3B 资金流异常扫描”锚点。"
-    },
-    {
-      "id": "CT-WAVE-09",
-      "authority_file": "references/analyze-workflow.md",
-      "needle": "EF-3C 候选裁决与实体溯源",
-      "stages": [
-        "A3"
-      ],
-      "summary": "EF-3 覆盖发现的权威文档必须保留“EF-3C 候选裁决与实体溯源”锚点。"
-    },
-    {
-      "id": "CT-WAVE-10",
-      "authority_file": "references/analyze-workflow.md",
-      "needle": "entity_source_trace.py",
-      "stages": [
-        "A3"
-      ],
-      "summary": "EF-3 覆盖发现的权威文档必须保留“entity_source_trace.py”锚点。"
-    },
-    {
-      "id": "CT-WAVE-11",
-      "authority_file": "references/analyze-workflow.md",
-      "needle": "adjudication_validator.py",
-      "stages": [
-        "A3"
-      ],
-      "summary": "EF-3 覆盖发现的权威文档必须保留“adjudication_validator.py”锚点。"
-    },
-    {
-      "id": "CT-WAVE-12",
-      "authority_file": "references/analyze-workflow.md",
-      "needle": "覆盖真空声明",
-      "stages": [
-        "A3"
-      ],
-      "summary": "EF-3 覆盖发现的权威文档必须保留“覆盖真空声明”锚点。"
-    },
-    {
-      "id": "CT-WAVE-13",
-      "authority_file": "references/analyze-workflow.md",
-      "needle": "EF-3C-P1",
-      "stages": [
-        "A3"
-      ],
-      "summary": "EF-3 覆盖发现的权威文档必须保留“EF-3C-P1”锚点。"
-    },
-    {
-      "id": "CT-WAVE-14",
-      "authority_file": "references/split-run.md",
-      "needle": "wave_scan_report.json",
-      "stages": [
-        "A3"
-      ],
-      "summary": "EF-3 覆盖发现的权威文档必须保留“wave_scan_report.json”锚点。"
-    },
-    {
-      "id": "CT-WAVE-15",
-      "authority_file": "references/split-run.md",
-      "needle": "flow_anomaly_report.json",
-      "stages": [
-        "A3"
-      ],
-      "summary": "EF-3 覆盖发现的权威文档必须保留“flow_anomaly_report.json”锚点。"
-    },
-    {
-      "id": "CT-WAVE-16",
-      "authority_file": "references/split-run.md",
-      "needle": "EF-3A/EF-3B",
-      "stages": [
-        "A3"
-      ],
-      "summary": "EF-3 覆盖发现的权威文档必须保留“EF-3A/EF-3B”锚点。"
-    },
-    {
-      "id": "CT-WAVE-17",
-      "authority_file": "references/split-run.md",
-      "needle": "EF-3C",
-      "stages": [
-        "A3"
-      ],
-      "summary": "EF-3 覆盖发现的权威文档必须保留“EF-3C”锚点。"
-    },
-    {
-      "id": "CT-WAVE-18",
-      "authority_file": "references/split-run.md",
-      "needle": "EF-3C-P1～P4",
-      "stages": [
-        "A3"
-      ],
-      "summary": "EF-3 覆盖发现的权威文档必须保留“EF-3C-P1～P4”锚点。"
-    },
-    {
-      "id": "CT-WAVE-19",
-      "authority_file": "references/split-run.md",
-      "needle": "provenance_ledger.json",
-      "stages": [
-        "A3"
-      ],
-      "summary": "EF-3 覆盖发现的权威文档必须保留“provenance_ledger.json”锚点。"
-    },
-    {
-      "id": "CT-WAVE-20",
-      "authority_file": "references/casebook/supply-accounting.md",
-      "needle": "wave_scan.py",
-      "stages": [
-        "A3"
-      ],
-      "summary": "EF-3 覆盖发现的权威文档必须保留“wave_scan.py”锚点。"
-    },
-    {
-      "id": "CT-WAVE-21",
-      "authority_file": "references/casebook/supply-accounting.md",
-      "needle": "桶存在≠桶内被检验过",
-      "stages": [
-        "A3"
-      ],
-      "summary": "EF-3 覆盖发现的权威文档必须保留“桶存在≠桶内被检验过”锚点。"
-    },
-    {
-      "id": "CT-WAVE-22",
-      "authority_file": "references/casebook/supply-accounting.md",
-      "needle": "闸外的人来试着绕它",
-      "stages": [
-        "A3"
-      ],
-      "summary": "EF-3 覆盖发现的权威文档必须保留“闸外的人来试着绕它”锚点。"
-    },
-    {
-      "id": "CT-WAVE-23",
-      "authority_file": "references/scan-schemas.md",
-      "needle": "wave-scan/v3",
-      "stages": [
-        "A3"
-      ],
-      "summary": "EF-3 覆盖发现的权威文档必须保留“wave-scan/v3”锚点。"
-    },
-    {
-      "id": "CT-WAVE-24",
-      "authority_file": "references/scan-schemas.md",
-      "needle": "flow-anomaly/v2",
-      "stages": [
-        "A3"
-      ],
-      "summary": "EF-3 覆盖发现的权威文档必须保留“flow-anomaly/v2”锚点。"
-    },
-    {
-      "id": "CT-WAVE-25",
-      "authority_file": "references/scan-schemas.md",
-      "needle": "candidate-adjudications/v1",
-      "stages": [
-        "A3"
-      ],
-      "summary": "EF-3 覆盖发现的权威文档必须保留“candidate-adjudications/v1”锚点。"
-    },
-    {
-      "id": "CT-WAVE-26",
-      "authority_file": "references/scan-schemas.md",
-      "needle": "provenance-ledger/v2",
-      "stages": [
-        "A3"
-      ],
-      "summary": "EF-3 覆盖发现的权威文档必须保留“provenance-ledger/v2”锚点。"
-    },
-    {
-      "id": "CT-WAVE-27",
-      "authority_file": "references/scan-schemas.md",
-      "needle": "正向模拟",
-      "stages": [
-        "A3"
-      ],
-      "summary": "EF-3 覆盖发现的权威文档必须保留“正向模拟”锚点。"
-    },
-    {
-      "id": "CT-WAVE-28",
-      "authority_file": "references/scan-schemas.md",
-      "needle": "members_sha256",
-      "stages": [
-        "A3"
-      ],
-      "summary": "EF-3 覆盖发现的权威文档必须保留“members_sha256”锚点。"
-    },
-    {
-      "id": "CT-WAVE-29",
-      "authority_file": "references/scan-schemas.md",
-      "needle": "完整字段登记",
-      "stages": [
-        "A3"
-      ],
-      "summary": "EF-3 覆盖发现的权威文档必须保留“完整字段登记”锚点。"
-    },
-    {
-      "id": "CT-WAVE-30",
-      "authority_file": "references/scan-schemas.md",
-      "needle": "scan_universe",
-      "stages": [
-        "A3"
-      ],
-      "summary": "EF-3 覆盖发现的权威文档必须保留“scan_universe”锚点。"
-    },
-    {
-      "id": "CT-WAVE-31",
-      "authority_file": "references/scan-schemas.md",
-      "needle": "must_adjudicate",
-      "stages": [
-        "A3"
-      ],
-      "summary": "EF-3 覆盖发现的权威文档必须保留“must_adjudicate”锚点。"
-    },
-    {
-      "id": "CT-SIMULT-01",
-      "authority_file": "references/playbook-entity-cluster-methods.md",
-      "needle": "同时性共现（同秒/同块）家族",
-      "stages": [
-        "A3"
-      ],
-      "summary": "同时性证据的权威文档必须保留“同时性共现（同秒/同块）家族”锚点。"
-    },
-    {
-      "id": "CT-SIMULT-02",
-      "authority_file": "references/playbook-entity-cluster-methods.md",
-      "needle": "① 候选发现档",
-      "stages": [
-        "A3"
-      ],
-      "summary": "同时性证据的权威文档必须保留“① 候选发现档”锚点。"
-    },
-    {
-      "id": "CT-SIMULT-03",
-      "authority_file": "references/playbook-entity-cluster-methods.md",
-      "needle": "② 单币强指纹档",
-      "stages": [
-        "A3"
-      ],
-      "summary": "同时性证据的权威文档必须保留“② 单币强指纹档”锚点。"
-    },
-    {
-      "id": "CT-SIMULT-04",
-      "authority_file": "references/playbook-entity-cluster-methods.md",
-      "needle": "③ 跨币强证据档",
-      "stages": [
-        "A3"
-      ],
-      "summary": "同时性证据的权威文档必须保留“③ 跨币强证据档”锚点。"
-    },
-    {
-      "id": "CT-SIMULT-05",
-      "authority_file": "references/playbook-entity-cluster-methods.md",
-      "needle": "高度疑似同一执行端",
-      "stages": [
-        "A3"
-      ],
-      "summary": "同时性证据的权威文档必须保留“高度疑似同一执行端”锚点。"
-    },
-    {
-      "id": "CT-SIMULT-06",
-      "authority_file": "references/playbook-entity-cluster-methods.md",
-      "needle": "持仓画像旁证",
-      "stages": [
-        "A3"
-      ],
-      "summary": "同时性证据的权威文档必须保留“持仓画像旁证”锚点。"
-    },
-    {
-      "id": "CT-DISTRIBUTION-01",
-      "authority_file": "references/scan-schemas.md",
-      "needle": "distribution-scan/v1",
-      "stages": [
-        "A3",
-        "A4.5",
-        "A5"
-      ],
-      "summary": "持仓分布发布的权威文档必须保留“distribution-scan/v1”锚点。"
-    },
-    {
-      "id": "CT-DISTRIBUTION-02",
-      "authority_file": "references/scan-schemas.md",
-      "needle": "distribution-explanation/v1",
-      "stages": [
-        "A3",
-        "A4.5",
-        "A5"
-      ],
-      "summary": "持仓分布发布的权威文档必须保留“distribution-explanation/v1”锚点。"
-    },
-    {
-      "id": "CT-DISTRIBUTION-03",
-      "authority_file": "references/scan-schemas.md",
-      "needle": "distribution-adjudications/v1",
-      "stages": [
-        "A3",
-        "A4.5",
-        "A5"
-      ],
-      "summary": "持仓分布发布的权威文档必须保留“distribution-adjudications/v1”锚点。"
-    },
-    {
-      "id": "CT-DISTRIBUTION-04",
-      "authority_file": "references/scan-schemas.md",
-      "needle": "pattern-resolutions/v1",
-      "stages": [
-        "A3",
-        "A4.5",
-        "A5"
-      ],
-      "summary": "持仓分布发布的权威文档必须保留“pattern-resolutions/v1”锚点。"
-    },
-    {
-      "id": "CT-DISTRIBUTION-05",
-      "authority_file": "references/scan-schemas.md",
-      "needle": "distribution-rounds/v1",
-      "stages": [
-        "A3",
-        "A4.5",
-        "A5"
-      ],
-      "summary": "持仓分布发布的权威文档必须保留“distribution-rounds/v1”锚点。"
-    },
-    {
-      "id": "CT-DISTRIBUTION-06",
-      "authority_file": "references/scan-schemas.md",
-      "needle": "distribution-exception-receipt/v1",
-      "stages": [
-        "A3",
-        "A4.5",
-        "A5"
-      ],
-      "summary": "持仓分布发布的权威文档必须保留“distribution-exception-receipt/v1”锚点。"
-    },
-    {
-      "id": "CT-DISTRIBUTION-07",
-      "authority_file": "references/scan-schemas.md",
-      "needle": "Holm-Bonferroni",
-      "stages": [
-        "A3",
-        "A4.5",
-        "A5"
-      ],
-      "summary": "持仓分布发布的权威文档必须保留“Holm-Bonferroni”锚点。"
-    },
-    {
-      "id": "CT-DISTRIBUTION-08",
-      "authority_file": "references/scan-schemas.md",
-      "needle": "launch_covered=false",
-      "stages": [
-        "A3",
-        "A4.5",
-        "A5"
-      ],
-      "summary": "持仓分布发布的权威文档必须保留“launch_covered=false”锚点。"
-    },
-    {
-      "id": "CT-DISTRIBUTION-09",
-      "authority_file": "references/analyze-workflow.md",
-      "needle": "当前持仓分布初判",
-      "stages": [
-        "A3",
-        "A4.5",
-        "A5"
-      ],
-      "summary": "持仓分布发布的权威文档必须保留“当前持仓分布初判”锚点。"
-    },
-    {
-      "id": "CT-DISTRIBUTION-10",
-      "authority_file": "references/analyze-workflow.md",
-      "needle": "当前持仓分布终判环",
-      "stages": [
-        "A3",
-        "A4.5",
-        "A5"
-      ],
-      "summary": "持仓分布发布的权威文档必须保留“当前持仓分布终判环”锚点。"
-    },
-    {
-      "id": "CT-DISTRIBUTION-11",
-      "authority_file": "references/analyze-workflow.md",
-      "needle": "a5-report-seal/v2",
-      "stages": [
-        "A3",
-        "A4.5",
-        "A5"
-      ],
-      "summary": "持仓分布发布的权威文档必须保留“a5-report-seal/v2”锚点。"
-    },
-    {
-      "id": "CT-DISTRIBUTION-12",
-      "authority_file": "references/analyze-workflow.md",
-      "needle": "G11",
-      "stages": [
-        "A3",
-        "A4.5",
-        "A5"
-      ],
-      "summary": "持仓分布发布的权威文档必须保留“G11”锚点。"
-    },
-    {
-      "id": "CT-DISTRIBUTION-13",
-      "authority_file": "references/split-run.md",
-      "needle": "distribution_scan.json",
-      "stages": [
-        "A3",
-        "A4.5",
-        "A5"
-      ],
-      "summary": "持仓分布发布的权威文档必须保留“distribution_scan.json”锚点。"
-    },
-    {
-      "id": "CT-DISTRIBUTION-14",
-      "authority_file": "references/split-run.md",
-      "needle": "handoff/v3",
-      "stages": [
-        "A3",
-        "A4.5",
-        "A5"
-      ],
-      "summary": "持仓分布发布的权威文档必须保留“handoff/v3”锚点。"
-    },
-    {
-      "id": "CT-DISTRIBUTION-15",
-      "authority_file": "references/split-run.md",
-      "needle": "holder_distribution_current.png",
-      "stages": [
-        "A3",
-        "A4.5",
-        "A5"
-      ],
-      "summary": "持仓分布发布的权威文档必须保留“holder_distribution_current.png”锚点。"
-    },
-    {
-      "id": "CT-DISTRIBUTION-16",
-      "authority_file": "references/split-run.md",
-      "needle": "a4-seal/v4",
-      "stages": [
-        "A3",
-        "A4.5",
-        "A5"
-      ],
-      "summary": "持仓分布发布的权威文档必须保留“a4-seal/v4”锚点。"
-    }
+    {"id":"CT-METHOD-01","authority_file":"SKILL.md","needle":"EF-2 历史静置仓反扫","stages":["A3","A5"],"kind":"required"},
+    {"id":"CT-METHOD-02","authority_file":"SKILL.md","needle":"dormant_warehouse_audit.json","stages":["A3","A5"],"kind":"required"},
+    {"id":"CT-METHOD-03","authority_file":"SKILL.md","needle":"不允许冻结实体","stages":["A3","A5"],"kind":"required"},
+    {"id":"CT-METHOD-04","authority_file":"references/playbook-entity-cluster-methods.md","needle":"候选全集从三条现役机械通道取齐","stages":["A3","A5"],"kind":"required"},
+    {"id":"CT-METHOD-05","authority_file":"references/playbook-entity-cluster-methods.md","needle":"strict ∪ expanded","stages":["A3","A5"],"kind":"required"},
+    {"id":"CT-METHOD-06","authority_file":"references/playbook-entity-cluster-methods.md","needle":"同一交易末快照","stages":["A3","A5"],"kind":"required"},
+    {"id":"CT-METHOD-07","authority_file":"references/playbook-entity-cluster-methods.md","needle":"universe_ref","stages":["A3","A5"],"kind":"required"},
+    {"id":"CT-METHOD-08","authority_file":"references/playbook-entity-cluster-methods.md","needle":"must_adjudicate","stages":["A3","A5"],"kind":"required"},
+    {"id":"CT-METHOD-09","authority_file":"references/playbook-entity-cluster-methods.md","needle":"OTC 排除检验","stages":["A3","A5"],"kind":"required"},
+    {"id":"CT-METHOD-10","authority_file":"references/playbook-entity-cluster-tiering.md","needle":"历史静置仓反向扫描后的双边界峰值","stages":["A3","A5"],"kind":"required"},
+    {"id":"CT-METHOD-11","authority_file":"references/playbook-entity-cluster-tiering.md","needle":"严格下限","stages":["A3","A5"],"kind":"required"},
+    {"id":"CT-METHOD-12","authority_file":"references/playbook-entity-cluster-tiering.md","needle":"扩展上限","stages":["A3","A5"],"kind":"required"},
+    {"id":"CT-METHOD-13","authority_file":"references/playbook-entity-cluster-tiering.md","needle":"prev_close_plus_gross_in/v2","stages":["A3","A5"],"kind":"required"},
+    {"id":"CT-METHOD-14","authority_file":"references/playbook-entity-cluster-tiering.md","needle":"trigger_days.json","stages":["A3","A5"],"kind":"required"},
+    {"id":"CT-CONTROL-01","authority_file":"SKILL.md","needle":"控盘看最终经济控制","stages":["A3","A5"],"kind":"required"},
+    {"id":"CT-CONTROL-02","authority_file":"SKILL.md","needle":"economic_control_ledger.json","stages":["A3","A5"],"kind":"required"},
+    {"id":"CT-CONTROL-03","authority_file":"SKILL.md","needle":"公共设施不进永久成员表","stages":["A3","A5"],"kind":"required"},
+    {"id":"CT-CONTROL-04","authority_file":"references/economic-control-accounting.md","needle":"实体成员表","stages":["A3","A5"],"kind":"required"},
+    {"id":"CT-CONTROL-05","authority_file":"references/economic-control-accounting.md","needle":"链上位置账","stages":["A3","A5"],"kind":"required"},
+    {"id":"CT-CONTROL-06","authority_file":"references/economic-control-accounting.md","needle":"经济控制账","stages":["A3","A5"],"kind":"required"},
+    {"id":"CT-CONTROL-07","authority_file":"references/economic-control-accounting.md","needle":"unresolved_facility_exposure","stages":["A3","A5"],"kind":"required"},
+    {"id":"CT-CONTROL-08","authority_file":"references/playbook-entity-cluster-tiering.md","needle":"判级的\"持仓\"强制解释为可证经济控制量","stages":["A3","A5"],"kind":"required"},
+    {"id":"CT-CONTROL-09","authority_file":"references/playbook-entity-cluster-tiering.md","needle":"严格/扩展是确权边界","stages":["A3","A5"],"kind":"required"},
+    {"id":"CT-WAVE-01","authority_file":"SKILL.md","needle":"EF-3 覆盖发现闸","stages":["A3"],"kind":"required"},
+    {"id":"CT-WAVE-02","authority_file":"SKILL.md","needle":"EF-3A 波次扫描","stages":["A3"],"kind":"required"},
+    {"id":"CT-WAVE-03","authority_file":"SKILL.md","needle":"EF-3B 资金流异常扫描","stages":["A3"],"kind":"required"},
+    {"id":"CT-WAVE-04","authority_file":"SKILL.md","needle":"EF-3C 候选裁决与实体溯源","stages":["A3"],"kind":"required"},
+    {"id":"CT-WAVE-05","authority_file":"SKILL.md","needle":"EF-3C-P1","stages":["A3"],"kind":"required"},
+    {"id":"CT-WAVE-06","authority_file":"SKILL.md","needle":"P4 原始输入及算法绑定重放","stages":["A3"],"kind":"required"},
+    {"id":"CT-WAVE-07","authority_file":"references/analyze-workflow.md","needle":"EF-3A 全体持仓波次扫描","stages":["A3"],"kind":"required"},
+    {"id":"CT-WAVE-08","authority_file":"references/analyze-workflow.md","needle":"EF-3B 资金流异常扫描","stages":["A3"],"kind":"required"},
+    {"id":"CT-WAVE-09","authority_file":"references/analyze-workflow.md","needle":"EF-3C 候选裁决与实体溯源","stages":["A3"],"kind":"required"},
+    {"id":"CT-WAVE-10","authority_file":"references/analyze-workflow.md","needle":"entity_source_trace.py","stages":["A3"],"kind":"required"},
+    {"id":"CT-WAVE-11","authority_file":"references/analyze-workflow.md","needle":"adjudication_validator.py","stages":["A3"],"kind":"required"},
+    {"id":"CT-WAVE-12","authority_file":"references/analyze-workflow.md","needle":"覆盖真空声明","stages":["A3"],"kind":"required"},
+    {"id":"CT-WAVE-13","authority_file":"references/analyze-workflow.md","needle":"EF-3C-P1","stages":["A3"],"kind":"required"},
+    {"id":"CT-WAVE-14","authority_file":"references/split-run.md","needle":"wave_scan_report.json","stages":["A3"],"kind":"required"},
+    {"id":"CT-WAVE-15","authority_file":"references/split-run.md","needle":"flow_anomaly_report.json","stages":["A3"],"kind":"required"},
+    {"id":"CT-WAVE-16","authority_file":"references/split-run.md","needle":"EF-3A/EF-3B","stages":["A3"],"kind":"required"},
+    {"id":"CT-WAVE-17","authority_file":"references/split-run.md","needle":"EF-3C","stages":["A3"],"kind":"required"},
+    {"id":"CT-WAVE-18","authority_file":"references/split-run.md","needle":"EF-3C-P1～P4","stages":["A3"],"kind":"required"},
+    {"id":"CT-WAVE-19","authority_file":"references/split-run.md","needle":"provenance_ledger.json","stages":["A3"],"kind":"required"},
+    {"id":"CT-WAVE-20","authority_file":"references/casebook/supply-accounting.md","needle":"wave_scan.py","stages":["A3"],"kind":"required"},
+    {"id":"CT-WAVE-21","authority_file":"references/casebook/supply-accounting.md","needle":"桶存在≠桶内被检验过","stages":["A3"],"kind":"required"},
+    {"id":"CT-WAVE-22","authority_file":"references/casebook/supply-accounting.md","needle":"闸外的人来试着绕它","stages":["A3"],"kind":"required"},
+    {"id":"CT-WAVE-23","authority_file":"references/scan-schemas.md","needle":"wave-scan/v3","stages":["A3"],"kind":"required"},
+    {"id":"CT-WAVE-24","authority_file":"references/scan-schemas.md","needle":"flow-anomaly/v2","stages":["A3"],"kind":"required"},
+    {"id":"CT-WAVE-25","authority_file":"references/scan-schemas.md","needle":"candidate-adjudications/v1","stages":["A3"],"kind":"required"},
+    {"id":"CT-WAVE-26","authority_file":"references/scan-schemas.md","needle":"provenance-ledger/v2","stages":["A3"],"kind":"required"},
+    {"id":"CT-WAVE-27","authority_file":"references/scan-schemas.md","needle":"正向模拟","stages":["A3"],"kind":"required"},
+    {"id":"CT-WAVE-28","authority_file":"references/scan-schemas.md","needle":"members_sha256","stages":["A3"],"kind":"required"},
+    {"id":"CT-WAVE-29","authority_file":"references/scan-schemas.md","needle":"完整字段登记","stages":["A3"],"kind":"required"},
+    {"id":"CT-WAVE-30","authority_file":"references/scan-schemas.md","needle":"scan_universe","stages":["A3"],"kind":"required"},
+    {"id":"CT-WAVE-31","authority_file":"references/scan-schemas.md","needle":"must_adjudicate","stages":["A3"],"kind":"required"},
+    {"id":"CT-SIMULT-01","authority_file":"references/playbook-entity-cluster-methods.md","needle":"同时性共现（同秒/同块）家族","stages":["A3"],"kind":"required"},
+    {"id":"CT-SIMULT-02","authority_file":"references/playbook-entity-cluster-methods.md","needle":"① 候选发现档","stages":["A3"],"kind":"required"},
+    {"id":"CT-SIMULT-03","authority_file":"references/playbook-entity-cluster-methods.md","needle":"② 单币强指纹档","stages":["A3"],"kind":"required"},
+    {"id":"CT-SIMULT-04","authority_file":"references/playbook-entity-cluster-methods.md","needle":"③ 跨币强证据档","stages":["A3"],"kind":"required"},
+    {"id":"CT-SIMULT-05","authority_file":"references/playbook-entity-cluster-methods.md","needle":"高度疑似同一执行端","stages":["A3"],"kind":"required"},
+    {"id":"CT-SIMULT-06","authority_file":"references/playbook-entity-cluster-methods.md","needle":"持仓画像旁证","stages":["A3"],"kind":"required"},
+    {"id":"CT-DISTRIBUTION-01","authority_file":"references/scan-schemas.md","needle":"distribution-scan/v1","stages":["A3","A4.5","A5"],"kind":"required"},
+    {"id":"CT-DISTRIBUTION-02","authority_file":"references/scan-schemas.md","needle":"distribution-explanation/v1","stages":["A3","A4.5","A5"],"kind":"required"},
+    {"id":"CT-DISTRIBUTION-03","authority_file":"references/scan-schemas.md","needle":"distribution-adjudications/v1","stages":["A3","A4.5","A5"],"kind":"required"},
+    {"id":"CT-DISTRIBUTION-04","authority_file":"references/scan-schemas.md","needle":"pattern-resolutions/v1","stages":["A3","A4.5","A5"],"kind":"required"},
+    {"id":"CT-DISTRIBUTION-05","authority_file":"references/scan-schemas.md","needle":"distribution-rounds/v1","stages":["A3","A4.5","A5"],"kind":"required"},
+    {"id":"CT-DISTRIBUTION-06","authority_file":"references/scan-schemas.md","needle":"distribution-exception-receipt/v1","stages":["A3","A4.5","A5"],"kind":"required"},
+    {"id":"CT-DISTRIBUTION-07","authority_file":"references/scan-schemas.md","needle":"Holm-Bonferroni","stages":["A3","A4.5","A5"],"kind":"required"},
+    {"id":"CT-DISTRIBUTION-08","authority_file":"references/scan-schemas.md","needle":"launch_covered=false","stages":["A3","A4.5","A5"],"kind":"required"},
+    {"id":"CT-DISTRIBUTION-09","authority_file":"references/analyze-workflow.md","needle":"当前持仓分布初判","stages":["A3","A4.5","A5"],"kind":"required"},
+    {"id":"CT-DISTRIBUTION-10","authority_file":"references/analyze-workflow.md","needle":"当前持仓分布终判环","stages":["A3","A4.5","A5"],"kind":"required"},
+    {"id":"CT-DISTRIBUTION-11","authority_file":"references/analyze-workflow.md","needle":"a5-report-seal/v2","stages":["A3","A4.5","A5"],"kind":"required"},
+    {"id":"CT-DISTRIBUTION-12","authority_file":"references/analyze-workflow.md","needle":"G11","stages":["A3","A4.5","A5"],"kind":"required"},
+    {"id":"CT-DISTRIBUTION-13","authority_file":"references/split-run.md","needle":"distribution_scan.json","stages":["A3","A4.5","A5"],"kind":"required"},
+    {"id":"CT-DISTRIBUTION-14","authority_file":"references/split-run.md","needle":"handoff/v3","stages":["A3","A4.5","A5"],"kind":"required"},
+    {"id":"CT-DISTRIBUTION-15","authority_file":"references/split-run.md","needle":"holder_distribution_current.png","stages":["A3","A4.5","A5"],"kind":"required"},
+    {"id":"CT-DISTRIBUTION-16","authority_file":"references/split-run.md","needle":"a4-seal/v4","stages":["A3","A4.5","A5"],"kind":"required"},
+    {"id":"CT-SEMANTIC-01","kind":"required","authority_file":"SKILL.md","needle":"Arbitrum 仅保留探索支持","stages":["A0-A5"]},
+    {"id":"CT-SEMANTIC-02","kind":"required","authority_file":"SKILL.md","needle":"三问一异常","stages":["A0-A5"]},
+    {"id":"CT-SEMANTIC-03","kind":"required","authority_file":"SKILL.md","needle":"A3 实体冻结门禁编号","stages":["A0-A5"]},
+    {"id":"CT-SEMANTIC-04","kind":"required","authority_file":"SKILL.md","needle":"链内 collection_manifest/receipt","stages":["A0-A5"]},
+    {"id":"CT-SEMANTIC-05","kind":"required","authority_file":"references/independent-audit-protocol.md","needle":"--profile new-analysis","stages":["audit"]},
+    {"id":"CT-SEMANTIC-06","kind":"required","authority_file":"references/independent-audit-protocol.md","needle":"--profile independent-audit","stages":["audit"]},
+    {"id":"CT-SEMANTIC-07","kind":"required","authority_file":"references/independent-audit-protocol.md","needle":"id、规范化文本、最终 verdict、证据文件集合和报告位置","stages":["audit"]},
+    {"id":"CT-SEMANTIC-08","kind":"required","authority_file":"references/independent-audit-protocol.md","needle":"CHIP_REPRODUCE_OUTPUT","stages":["audit"]},
+    {"id":"CT-SEMANTIC-09","kind":"required","authority_file":"references/independent-audit-protocol.md","needle":"存量 reproduce-receipt/v1 迁移","stages":["audit"]},
+    {"id":"CT-SEMANTIC-10","kind":"required","authority_file":"references/independent-audit-protocol.md","needle":"不得原地升级","stages":["audit"]},
+    {"id":"CT-SEMANTIC-11","kind":"required","authority_file":"references/independent-audit-protocol.md","needle":"adversarial-review-execution/v1","stages":["audit"]},
+    {"id":"CT-SEMANTIC-12","kind":"required","authority_file":"references/independent-audit-protocol.md","needle":"案目录里的同名/复制脚本","stages":["audit"]},
+    {"id":"CT-SEMANTIC-13","kind":"required","authority_file":"references/independent-audit-protocol.md","needle":"无 producer 的 accounting","stages":["audit"]},
+    {"id":"CT-SEMANTIC-14","kind":"required","authority_file":"references/report-template.md","needle":"state_from_facts.py","stages":["A5"]},
+    {"id":"CT-SEMANTIC-15","kind":"required","authority_file":"references/report-template.md","needle":"--mode analysis-new","stages":["A5"]},
+    {"id":"CT-SEMANTIC-16","kind":"required","authority_file":"references/report-template.md","needle":"--mode analysis-audit","stages":["A5"]},
+    {"id":"CT-SEMANTIC-17","kind":"required","authority_file":"references/report-template.md","needle":"a4-seal/v4","stages":["A5"]},
+    {"id":"CT-SEMANTIC-18","kind":"required","authority_file":"references/report-template.md","needle":"ET-1/ET-2","stages":["A5"]},
+    {"id":"CT-SEMANTIC-19","kind":"required","authority_file":"references/analyze-workflow.md","needle":"Arbitrum（探索）","stages":["A0-A5"]},
+    {"id":"CT-SEMANTIC-20","kind":"required","authority_file":"references/analyze-workflow.md","needle":"identity_gate_v3","stages":["A0-A5"]},
+    {"id":"CT-SEMANTIC-21","kind":"required","authority_file":"references/analyze-workflow.md","needle":"--snapshot-receipt","stages":["A0-A5"]},
+    {"id":"CT-SEMANTIC-22","kind":"required","authority_file":"references/analyze-workflow.md","needle":"--total-supply-raw","stages":["A0-A5"]},
+    {"id":"CT-SEMANTIC-23","kind":"required","authority_file":"references/analyze-workflow.md","needle":"a4-seal/v4","stages":["A0-A5"]},
+    {"id":"CT-SEMANTIC-24","kind":"required","authority_file":"references/analyze-workflow.md","needle":"不得手工补字段","stages":["A0-A5"]},
+    {"id":"CT-SEMANTIC-25","kind":"required","authority_file":"references/analyze-workflow.md","needle":"GPA raw/meta","stages":["A0-A5"]},
+    {"id":"CT-SEMANTIC-26","kind":"required","authority_file":"references/analyze-workflow.md","needle":"跨 scan pubkey 去重函数","stages":["A0-A5"]},
+    {"id":"CT-SEMANTIC-27","kind":"required","authority_file":"references/analyze-workflow.md","needle":"既有采集产物复用","stages":["A0-A5"]},
+    {"id":"CT-SEMANTIC-28","kind":"required","authority_file":"references/analyze-workflow.md","needle":"data/v2/run_*/done.json","stages":["A0-A5"]},
+    {"id":"CT-SEMANTIC-29","kind":"required","authority_file":"references/analyze-workflow.md","needle":"data/soltx-*.jsonl.gz","stages":["A0-A5"]},
+    {"id":"CT-SEMANTIC-30","kind":"required","authority_file":"references/analyze-workflow.md","needle":"done_with_gaps","stages":["A0-A5"]},
+    {"id":"CT-SEMANTIC-31","kind":"required","authority_file":"references/analyze-workflow.md","needle":"collection_manifest.json","stages":["A0-A5"]},
+    {"id":"CT-SEMANTIC-32","kind":"required","authority_file":"references/data-pipeline-evm-channels.md","needle":"evm-channel-receipt/v2","stages":["A1-A2"]},
+    {"id":"CT-SEMANTIC-33","kind":"required","authority_file":"references/data-pipeline-evm-channels.md","needle":"evm-collector-run/v2","stages":["A1-A2"]},
+    {"id":"CT-SEMANTIC-34","kind":"required","authority_file":"references/data-pipeline-evm-channels.md","needle":"--collector-receipt","stages":["A1-A2"]},
+    {"id":"CT-SEMANTIC-35","kind":"required","authority_file":"references/data-pipeline-evm-channels.md","needle":"--resume-receipt","stages":["A1-A2"]},
+    {"id":"CT-SEMANTIC-36","kind":"required","authority_file":"references/data-pipeline-evm-channels.md","needle":"存量 legacy CSV","stages":["A1-A2"]},
+    {"id":"CT-SEMANTIC-37","kind":"required","authority_file":"references/data-pipeline-evm-channels.md","needle":"channels_preflight.py` producer","stages":["A1-A2"]},
+    {"id":"CT-SEMANTIC-38","kind":"required","authority_file":"references/data-pipeline-evm-channels.md","needle":"完全相同的 inputs","stages":["A1-A2"]},
+    {"id":"CT-SEMANTIC-39","kind":"required","authority_file":"references/data-pipeline-evm-channels.md","needle":"不能把两份互相咬合的 JSON","stages":["A1-A2"]},
+    {"id":"CT-SEMANTIC-40","kind":"required","authority_file":"references/data-pipeline-solana-capture.md","needle":"免费层不支持 batch","stages":["A1-A2"]},
+    {"id":"CT-SEMANTIC-41","kind":"required","authority_file":"references/data-pipeline-solana-capture.md","needle":"10 RPS","stages":["A1-A2"]},
+    {"id":"CT-SEMANTIC-42","kind":"required","authority_file":"references/data-pipeline-solana-scan.md","needle":"G8 离线重放契约","stages":["A1-A3"]},
+    {"id":"CT-SEMANTIC-43","kind":"required","authority_file":"references/data-pipeline-solana-scan.md","needle":"parse_gpa_response","stages":["A1-A3"]},
+    {"id":"CT-SEMANTIC-44","kind":"required","authority_file":"references/data-pipeline-solana-scan.md","needle":"result.value.amount","stages":["A1-A3"]},
+    {"id":"CT-SEMANTIC-45","kind":"required","authority_file":"references/data-pipeline-solana-scan.md","needle":"禁止手补 meta/hash","stages":["A1-A3"]},
+    {"id":"CT-SEMANTIC-46","kind":"required","authority_file":"references/analysis-playbook.md","needle":"三问一异常","stages":["A3"]},
+    {"id":"CT-SEMANTIC-47","kind":"required","authority_file":"commands-staging/token-analyze.md","needle":"三问一异常","stages":["A0-A5"]},
+    {"id":"CT-SEMANTIC-48","kind":"required","authority_file":"commands-staging/token-analyze-2.md","needle":"三问一异常","stages":["A3-A5"]},
+    {"id":"CT-BANNED-01","kind":"banned","authority_file":"references/playbook-entity-cluster-methods.md","needle":"程序化跟单不是同一人","stages":["A3"]},
+    {"id":"CT-BANNED-02","kind":"banned","authority_file":"SKILL.md","needle":"对任意链上代币","stages":["A0-A5"]},
+    {"id":"CT-BANNED-03","kind":"banned","authority_file":"SKILL.md","needle":"v5.0 三问框架","stages":["A0-A5"]},
+    {"id":"CT-BANNED-04","kind":"banned","authority_file":"SKILL.md","needle":"实体冻结前三硬闸","stages":["A0-A5"]},
+    {"id":"CT-BANNED-05","kind":"banned","authority_file":"references/report-template.md","needle":"手写 15 行","stages":["A5"]},
+    {"id":"CT-BANNED-06","kind":"banned","authority_file":"references/report-template.md","needle":"a4-seal/v2","stages":["A5"]},
+    {"id":"CT-BANNED-07","kind":"banned","authority_file":"references/data-pipeline-evm-channels.md","needle":"evm-channel-receipt/v1","stages":["A1-A2"]},
+    {"id":"CT-BANNED-08","kind":"banned","authority_file":"references/data-pipeline-evm-channels.md","needle":"--empty-proof","stages":["A1-A2"]},
+    {"id":"CT-BANNED-09","kind":"banned","authority_file":"references/analysis-playbook.md","needle":"三问框架","stages":["A3"]},
+    {"id":"CT-BANNED-10","kind":"banned","authority_file":"commands-staging/token-analyze.md","needle":"三问框架","stages":["A0-A5"]},
+    {"id":"CT-BANNED-11","kind":"banned","authority_file":"commands-staging/token-analyze-2.md","needle":"三问框架","stages":["A3-A5"]},
+    {"id":"CT-BANNED-12","kind":"banned","authority_file":"scripts/solana/decode_txs_v2.py","needle":"默认 20 笔/POST","stages":["A1"]},
+    {"id":"CT-BANNED-13","kind":"banned","authority_file":"scripts/solana/decode_txs_v2.py","needle":"[--batch 20]","stages":["A1"]},
+    {"id":"CT-BANNED-14","kind":"banned","authority_file":"scripts/solana/decode_txs_v2.py","needle":"免代理且 50 RPS","stages":["A1"]}
   ]
 }

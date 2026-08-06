@@ -53,11 +53,18 @@ def _markdown_targets(text):
 
 
 def validate_contract_manifest(root, manifest):
-    """R-02：校验权威 needle、权威路径和全库契约 ID 引用。"""
+    """R-02：校验 required/banned needle、路径和全库契约 ID 引用。"""
     failures = []
     if not isinstance(manifest, dict):
         return ['契约注册表顶层必须是对象']
-    if manifest.get('schema') != 'contract-manifest/v1':
+    top_fields = {'schema', 'contracts'}
+    unknown_top = sorted(set(manifest) - top_fields)
+    missing_top = sorted(top_fields - set(manifest))
+    if missing_top:
+        failures.append(f'契约注册表缺字段: {missing_top}')
+    if unknown_top:
+        failures.append(f'契约注册表未知字段: {unknown_top}')
+    if manifest.get('schema') != 'contract-manifest/v2':
         failures.append(f'契约注册表 schema 非法: {manifest.get("schema")!r}')
     contracts = manifest.get('contracts')
     if not isinstance(contracts, list) or not contracts:
@@ -66,15 +73,19 @@ def validate_contract_manifest(root, manifest):
 
     known_ids = set()
     authority_needles = set()
-    required = {'id', 'authority_file', 'needle', 'stages', 'summary'}
+    required = {'id', 'kind', 'authority_file', 'needle', 'stages'}
     for index, contract in enumerate(contracts, 1):
         label = f'contracts[{index}]'
         if not isinstance(contract, dict):
             failures.append(f'{label} 必须是对象')
             continue
         missing = sorted(required - set(contract))
+        unknown = sorted(set(contract) - required)
         if missing:
             failures.append(f'{label} 缺字段: {missing}')
+            continue
+        if unknown:
+            failures.append(f'{label} 未知字段: {unknown}')
             continue
         contract_id = contract['id']
         if not isinstance(contract_id, str) or not re.fullmatch(r'CT-[A-Z][A-Z0-9-]*-\d{2,}', contract_id):
@@ -83,13 +94,13 @@ def validate_contract_manifest(root, manifest):
             failures.append(f'重复契约 ID: {contract_id}')
         else:
             known_ids.add(contract_id)
+        kind = contract['kind']
+        if kind not in {'required', 'banned'}:
+            failures.append(f'{label} kind 非法: {kind!r}')
         stages = contract['stages']
         if (not isinstance(stages, list) or not stages
                 or any(not isinstance(stage, str) or not stage for stage in stages)):
             failures.append(f'{label} stages 必须是非空字符串数组')
-        summary = contract['summary']
-        if not isinstance(summary, str) or not summary.strip() or '\n' in summary:
-            failures.append(f'{label} summary 必须是一句非空单行语义')
         needle = contract['needle']
         if not isinstance(needle, str) or not needle:
             failures.append(f'{label} needle 必须是非空字符串')
@@ -105,8 +116,10 @@ def validate_contract_manifest(root, manifest):
         authority_needles.add(pair)
         with open(authority_path, encoding='utf-8') as f:
             authority_text = f.read()
-        if needle not in authority_text:
+        if kind == 'required' and needle not in authority_text:
             failures.append(f'权威 needle 缺失 {contract_id}: {authority} → {needle}')
+        if kind == 'banned' and needle in authority_text:
+            failures.append(f'禁用 needle 回捡 {contract_id}: {authority} → {needle}')
 
     # 引用只在 Markdown 中具有契约语义；JSON 中的 ID 是定义，不算引用。
     for path in sorted(glob.glob(os.path.join(root, '**', '*.md'), recursive=True)):
@@ -350,7 +363,7 @@ def main(all_mode=False):
         for failure in validate_runtime_docs_manifest(ROOT, manifest):
             manifest_failure(failure)
 
-    # 5) 五组正向契约由 canonical manifest 单点登记；复述层不再被 lint 强迫复制。
+    # 5) required/banned 契约由 canonical manifest 单点登记；复述层不再被 lint 强迫复制。
     contract_manifest_rel = 'scripts/tests/contract_manifest.json'
     contract_manifest_path = os.path.join(ROOT, contract_manifest_rel)
     try:
@@ -362,71 +375,7 @@ def main(all_mode=False):
     if contract_manifest is not None:
         fails.extend(validate_contract_manifest(ROOT, contract_manifest))
 
-    # 删除型契约仍保持独立禁扫；canonical manifest 只承载必须在场的正向规则。
-    simult_banned = {
-        'references/playbook-entity-cluster-methods.md': ['程序化跟单不是同一人'],
-    }
-    for rel, needles in simult_banned.items():
-        text = open(os.path.join(ROOT, rel), encoding='utf-8').read()
-        for needle in needles:
-            if needle in text:
-                fails.append(f'已删判据回捡 {rel}: 出现 {needle}')
-
-    # 9) 2026-08-04 一致性复核的语义守护。只扫活跃权威文档/代码，CHANGELOG
-    #    的历史原文不在禁扫范围。
-    semantic_contracts = {
-        'SKILL.md': ['Arbitrum 仅保留探索支持', '三问一异常',
-                     'A3 实体冻结门禁编号', '链内 collection_manifest/receipt'],
-        'references/independent-audit-protocol.md': ['--profile new-analysis',
-                                                      '--profile independent-audit',
-                                                      'id、规范化文本、最终 verdict、证据文件集合和报告位置',
-                                                      'CHIP_REPRODUCE_OUTPUT',
-                                                      '存量 reproduce-receipt/v1 迁移',
-                                                      '不得原地升级', 'adversarial-review-execution/v1',
-                                                      '案目录里的同名/复制脚本', '无 producer 的 accounting'],
-        'references/report-template.md': ['state_from_facts.py', '--mode analysis-new',
-                                           '--mode analysis-audit', 'a4-seal/v4', 'ET-1/ET-2'],
-        'references/analyze-workflow.md': ['Arbitrum（探索）', 'identity_gate_v3', '--snapshot-receipt',
-                                           '--total-supply-raw', 'a4-seal/v4',
-                                           '不得手工补字段', 'GPA raw/meta', '跨 scan pubkey 去重函数',
-                                           '既有采集产物复用', 'data/v2/run_*/done.json',
-                                           'data/soltx-*.jsonl.gz', 'done_with_gaps',
-                                           'collection_manifest.json'],
-        'references/data-pipeline-evm-channels.md': ['evm-channel-receipt/v2',
-                                                      'evm-collector-run/v2',
-                                                      '--collector-receipt',
-                                                      '--resume-receipt',
-                                                      '存量 legacy CSV', 'channels_preflight.py` producer',
-                                                      '完全相同的 inputs', '不能把两份互相咬合的 JSON'],
-        'references/data-pipeline-solana-capture.md': ['免费层不支持 batch', '10 RPS'],
-        'references/data-pipeline-solana-scan.md': ['G8 离线重放契约', 'parse_gpa_response',
-                                                    'result.value.amount', '禁止手补 meta/hash'],
-        'references/analysis-playbook.md': ['三问一异常'],
-        'commands-staging/token-analyze.md': ['三问一异常'],
-        'commands-staging/token-analyze-2.md': ['三问一异常'],
-    }
-    for rel, needles in semantic_contracts.items():
-        text = open(os.path.join(ROOT, rel), encoding='utf-8').read()
-        for needle in needles:
-            if needle not in text:
-                fails.append(f'2026-08-04 语义口径回退 {rel}: 缺少 {needle}')
-
-    banned_contracts = {
-        'SKILL.md': ['对任意链上代币', 'v5.0 三问框架', '实体冻结前三硬闸'],
-        'references/report-template.md': ['手写 15 行', 'a4-seal/v2'],
-        'references/data-pipeline-evm-channels.md': ['evm-channel-receipt/v1',
-                                                      '--empty-proof'],
-        'references/analysis-playbook.md': ['三问框架'],
-        'commands-staging/token-analyze.md': ['三问框架'],
-        'commands-staging/token-analyze-2.md': ['三问框架'],
-        'scripts/solana/decode_txs_v2.py': ['默认 20 笔/POST', '[--batch 20]', '免代理且 50 RPS'],
-    }
-    for rel, needles in banned_contracts.items():
-        text = open(os.path.join(ROOT, rel), encoding='utf-8').read()
-        for needle in needles:
-            if needle in text:
-                fails.append(f'2026-08-04 已删口径回捡 {rel}: 出现 {needle}')
-
+    # 9) 2026-08-04 一致性复核的 required/banned 语义针脚已并入上方 manifest。
     active_workflows = ['SKILL.md', 'references/analyze-workflow.md',
                         'references/report-template.md', 'references/split-run.md']
     generic_mode = re.compile(r'--mode analysis(?=[\s`])')
