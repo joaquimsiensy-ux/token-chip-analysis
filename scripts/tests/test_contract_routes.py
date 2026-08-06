@@ -43,6 +43,15 @@ def runtime_manifest():
     }
 
 
+def assert_contract_ids_match(actual_ids, snapshot_ids):
+    missing = sorted(snapshot_ids - actual_ids)
+    extra = sorted(actual_ids - snapshot_ids)
+    assert not missing and not extra, (
+        f'契约 ID 快照漂移：快照有但 manifest 缺失={missing}；'
+        f'manifest 多出但快照未登记={extra}。'
+        '增删契约须同步更新 contract_ids_snapshot.json 并在 CHANGELOG 留记录')
+
+
 def main():
     with tempfile.TemporaryDirectory() as root:
         write(os.path.join(root, 'SKILL.md'), '路由：`entry.md`\n')
@@ -110,16 +119,42 @@ def main():
         failures = DOCS_LINT.validate_runtime_docs_manifest(root, rm)
         assert any('两跳内不可达' in f for f in failures), failures
 
-    # 第六类负向（6.29.0 验收加固）：真实注册表条目可被静默删除——lint 只查"在表契约的
-    # 权威在场"，不守表自身完整性。基线=总数下限+五组首根锚 ID，删条目/删整组立红。
+    # 第六类负向：真实注册表条目可被静默增删——完整 ID 集合快照双向闭合。
     real = json.load(open(os.path.join(HERE, 'contract_manifest.json'), encoding='utf-8'))
     real_ids = {c['id'] for c in real['contracts']}
-    assert len(real_ids) >= 138, f'契约注册表条目数 {len(real_ids)} 低于 6.30.0 基线 138（删除契约须同步降基线并留 CHANGELOG 记录）'
+    snapshot_list = json.load(open(os.path.join(HERE, 'contract_ids_snapshot.json'), encoding='utf-8'))
+    assert (isinstance(snapshot_list, list) and snapshot_list
+            and all(isinstance(contract_id, str) and contract_id for contract_id in snapshot_list)), \
+        'contract_ids_snapshot.json 必须是非空字符串数组'
+    assert snapshot_list == sorted(set(snapshot_list)), \
+        'contract_ids_snapshot.json 必须按 ID 排序且不得重复'
+    snapshot_ids = set(snapshot_list)
+    assert_contract_ids_match(real_ids, snapshot_ids)
+
+    # 内存反例：删一条与加一条必须分别落入 missing / extra，禁止仅守数量。
+    removed_id = snapshot_list[0]
+    without_one = set(snapshot_ids)
+    without_one.remove(removed_id)
+    try:
+        assert_contract_ids_match(without_one, snapshot_ids)
+    except AssertionError as exc:
+        assert removed_id in str(exc) and 'manifest 缺失' in str(exc), exc
+    else:
+        raise AssertionError('删除一条契约 ID 未被快照守卫捕获')
+    fake_id = 'CT-SNAPSHOT-FAKE-99'
+    with_extra = set(snapshot_ids) | {fake_id}
+    try:
+        assert_contract_ids_match(with_extra, snapshot_ids)
+    except AssertionError as exc:
+        assert fake_id in str(exc) and 'manifest 多出' in str(exc), exc
+    else:
+        raise AssertionError('新增一条假契约 ID 未被快照守卫捕获')
+
     anchors = {'CT-METHOD-01', 'CT-CONTROL-01', 'CT-WAVE-01', 'CT-SIMULT-01', 'CT-DISTRIBUTION-01'}
     lost = anchors - real_ids
     assert not lost, f'契约注册表缺五组锚 ID: {sorted(lost)}'
 
-    print('PASS: R-01/R-02 manifest required/banned 负向反证全部阻断＋真实注册表基线（≥138 条、五组锚在场）')
+    print('PASS: R-01/R-02 required/banned 阻断＋ID 集合快照双向删增反例＋五组锚在场')
     return 0
 
 

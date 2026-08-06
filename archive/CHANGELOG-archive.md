@@ -11,6 +11,14 @@
 - **2.24.0/2.25.0 曾物理倒排**（同日并行会话插入位置错位）——2026-07-18 稳定化时仅调整排列顺序，两条内容一字未动
 - **3.36.0 重复 ×2**（2026-07-26 并行会话撞号：「EVM 五币 E0b 批量」与「EGL1 复盘」各自 +1；3.37.0 条目的版本号顺延说明即因此而来——两条均保留原号，引用时注意区分）
 
+## [6.20.0] - 2026-08-05 — 持仓分布形态硬闸
+
+- **统计与分账**：新增 `holder_distribution_scan.py`。扫描器从当前 owner 快照重新派生私人主箱、私人 dust、公共设施、未识别合约和销毁哨兵五桶；基础分箱与半档平移分箱同时复算，局部鼓包采用单调 Poisson 零假设与 Holm-Bonferroni 校正，另行检查 top-1/3/5/10、HHI 和相邻质量跃迁。私人主箱少于 100 个 owner 时不作分箱结论，改为完整输出逐址分类、top-k、HHI 和等额组。
+- **冻结参数**：分箱覆盖私人可入箱供应的 0.000001% 至 100%，相邻边界为 `sqrt(2)`，单档至少 5 个 owner，基础与平移成员 Jaccard 至少 0.8，异常簇须达到净供应 2%，未识别合约达到净供应 1% 时强制披露，同轮族错误率固定为 1%。所有参数写入产物并绑定哈希，CLI 不提供覆盖入口。
+- **判断与回流**：新增 `distribution-explanation/v1`、`distribution-adjudications/v1`、`pattern-resolutions/v1`、`distribution-rounds/v1`、`distribution-exception-receipt/v1`。final scan 绑定 READY handoff、当前 A4、实体冻结和三账；异常解释必须同时闭合位置、成员、数量、证据封口和传播五项。新增异常簇必须回流 A4，轮次台账按前向哈希严格递增，唯一 terminal 之后禁止继续生成。
+- **封口链升版**：handoff 升 `handoff/v3`，A4 升 `a4-seal/v4` 并增加可逐级验哈希的 revision 归档链，A5 升 `a5-report-seal/v2` 并绑定唯一终态 final scan、唯一终版分布图和固定报告句式。默认消费者拒收 handoff/v1/v2、a4-seal/v3 和 a5-report-seal/v1。
+- **工作流与验证**：全新分析在 handoff 前生成 initial scan，A4 后按 final scan、解释检查、回流复封或终态封口循环；独立复核维持单阶段不适用状态。新增合成盘覆盖正常长尾、等额鼓包、头部集中、低于经济门、dust 假长尾、CEX 遮罩、未识别合约披露、小样本、输入漂移、重复 owner、台账删除、terminal 重开、伪解释和 waiver 缺字段。历史定标只沿用已留存探索值，不把旧案产物作为现役 fixture；保留集启动覆盖不完整时明确不纳入定标。
+
 ## [6.19.0] - 2026-08-05 — 删除 API key 周巡检功能
 
 - **删除与引用清理**：删除 `scripts/probe_keys.py`；`references/split-run.md` 的开工探针摘除该单次巡检引用，依赖、磁盘余量、工作目录写权限与后台冒烟检查继续保留。独立跨进程锁 `scripts/proclock.py`、采集器、receipt 哈希绑定件与全部 data-pipeline 分册不变。
