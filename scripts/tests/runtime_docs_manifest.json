@@ -48,6 +48,7 @@
   ],
   "maintenance": [
     "attic.md",
-    "labels/MAINTENANCE.md"
+    "labels/MAINTENANCE.md",
+    "maintenance-review-repair.md"
   ]
 }
