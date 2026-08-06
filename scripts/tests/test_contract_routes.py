@@ -4,6 +4,7 @@ import copy
 import importlib.util
 import json
 import os
+import re
 import tempfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -34,7 +35,7 @@ def contract_manifest(authority='references/authority.md'):
 def runtime_manifest():
     return {
         'schema': 'runtime-docs-manifest/v2',
-        'scope': ['references/*.md', 'references/labels/*.md'],
+        'scope': ['references/*.md', 'references/labels/*.md', 'references/casebook/*.md'],
         'listed': [
             {'path': 'entry.md', 'entry': 'entry.md', 'stages': ['A0-A6']},
             {'path': 'leaf.md', 'entry': 'entry.md', 'stages': ['A3']},
@@ -50,6 +51,25 @@ def assert_contract_ids_match(actual_ids, snapshot_ids):
         f'契约 ID 快照漂移：快照有但 manifest 缺失={missing}；'
         f'manifest 多出但快照未登记={extra}。'
         '增删契约须同步更新 contract_ids_snapshot.json 并在 CHANGELOG 留记录')
+
+
+def assert_skill_route_stages(skill_text):
+    """全流程路由表必须覆盖全部原子阶段，也不得私生未知阶段号。"""
+    start = skill_text.index('## 全流程路由')
+    end = skill_text.index('\n## ', start + 3)
+    table = skill_text[start:end]
+    routed = set()
+    for line in table.splitlines():
+        match = re.match(r'^\|\s*(A\d+(?:\.\d+)?(?:[–-]A\d+(?:\.\d+)?)?)\b', line)
+        if match:
+            routed.add(match.group(1))
+    atomic = {'A0', 'A1', 'A2', 'A3', 'A4', 'A4.5', 'A5', 'A6'}
+    missing = sorted(atomic - routed)
+    assert not missing, f'SKILL.md 全流程路由表缺原子阶段: {missing}'
+    unknown = sorted(stage for stage in routed
+                     if stage not in DOCS_LINT.RUNTIME_STAGES
+                     and not re.fullmatch(r'A\d+(?:\.\d+)?[–-]A\d+(?:\.\d+)?', stage))
+    assert not unknown, f'SKILL.md 全流程路由表出现未知阶段: {unknown}'
 
 
 def main():
@@ -154,7 +174,10 @@ def main():
     lost = anchors - real_ids
     assert not lost, f'契约注册表缺五组锚 ID: {sorted(lost)}'
 
-    print('PASS: R-01/R-02 required/banned 阻断＋ID 集合快照双向删增反例＋五组锚在场')
+    skill_text = open(os.path.join(HERE, '..', '..', 'SKILL.md'), encoding='utf-8').read()
+    assert_skill_route_stages(skill_text)
+
+    print('PASS: R-01/R-02 注册表、ID 快照、五组锚与 SKILL 原子阶段双向闭合')
     return 0
 
 

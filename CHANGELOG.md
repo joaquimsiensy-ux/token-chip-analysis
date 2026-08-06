@@ -10,6 +10,7 @@
 
 ## 版本索引（活跃窗口，新在上；每版一行，详情见下方对应条目）
 
+- **6.32.0** 2026-08-06 第五轮外部审查 13 项修复：标签发布与采集器 fail-open 关闭、密钥取用契约统一、SKILL/casebook 路由漂移收口
 - **6.31.0** 2026-08-06 第四轮瘦身修复：旧案硬编码清除、孤儿与 SQD v1 退役、运行时文档按需化、契约 ID 快照封口
 - **6.30.0** 2026-08-05 第三轮瘦身收口：入口按需路由、退役资产迁档、案例史外置、地址簿单源与 manifest 防线合一
 - **6.29.0** 2026-08-05 第二轮修复工程第 4 步：canonical 契约注册表与 SKILL 二级路由
@@ -25,6 +26,17 @@
 - **6.20.1** 2026-08-05 修 5 处阻断级文档漂移（A4 前禁写报告冲突/easy 残留/惯犯回灌 docstring/批量预采集残留/旧 Par 路线历史降级）＋docs_lint 增中文禁词与 Python module docstring 扫描
 
 更早版本（6.20.0 及以前）详见 `archive/CHANGELOG-archive.md`。
+
+## [6.32.0] - 2026-08-06 — 第五轮外部审查 13 项修复：发布门禁假成功关闭与路由漂移收口
+
+- **第一批｜标签发布安全（F-01/F-02/F-05）**：`roundtrip_check.py` 任一正式链缺表 exit 2（此前五链 staging 全缺仍打"可安全发布"exit 0，实测复现），同键行升级行级比对（category/tier/merge_policy/balance_policy/status/name 六决策字段，退化明细＋--dump 落盘）；`benchmark_labels.py` 五主表齐全且非空硬闸（默认与 --labels-dir 双模式，header-only 算空），manual 设施召回不足计入 total_violation（补齐 MAINTENANCE 已承诺未执行的硬断言）；`add_labels.py` 回滚区分原有/新建目标，validate FAIL 时新建坏表直接删除不再滞留发布目录。
+- **第二批｜采集器 fail-closed（F-03/F-04/F-06）**：`fetch_pool_swaps.py` 请求耗尽/游标缺失/停滞一律 exit 2，唯一正常出口＝游标到达 --to-block；`fetch_hypersync_logs.py` 缺 next_block 未达 tip、游标停滞（原为原地死循环）、非法类型均 exit 2，[COMPLETE] 收紧为确认到 tip；`fetch_gmgn.sh` 先写临时文件、JSON 校验通过才原子落名，失败聚合 exit 1 并输出成败清单（原固定 GMGN DONE exit 0 且留半截 JSON）。
+- **第三批｜密钥取用契约（F-07）**：三支 HyperSync v1 脚本移除 token 位置参数（进程参数/shell 历史可见），统一取用优先级＝显式 --token-file > HYPERSYNC_TOKEN > 默认 ~/.config/hypersync/token；`data-pipeline-evm-channels.md` §3.1"自动读取（fetch_hypersync 内置）"不实表述改为真实行为，正式命令示例与 config.example 注释同步；两个既有 collector 测试连带升级到新参数形态。
+- **第四批｜文档漂移（F-08/C-01～C-05）**：SKILL.md 路由表补 A4.5 行与 G11/终版分布图（此前停在 v6.20.0 前旧骨架）、Arbitrum 句改准确口径（G8 探索档已具备，真 blocker＝labels-arbitrum.csv 与正式标签门禁）；casebook 三续册进入 A3 过闸点名与 runtime manifest（scope 增 casebook glob＋7 文件入 listed），contract routes 增 SKILL 原子阶段双向对账；MAINTENANCE"七链强制出现"改五链 goldset 准确口径；retrospective 删 84KB 过期动态快照（实值 48KB）、10KB 死触发线改 7.5KB 预警线（先于 8192B 硬闸）；context-discipline 管道兜底 head -30 统一为 head -20。
+- **决策留痕**：外部审查三处论断经验收方复核修正后执行——C-02"三册未路由进 A4"减弱（research-workflows §2 原有该路由，实际缺口＝A3 过闸点名与 manifest 覆盖）；F-03 不新增上界参数（--to-block 原为 required，缺的是用它判完成）；F-04 补审查未发现的游标停滞死循环。验收方增补：casebook README supply 行同步续册名。
+- **验证**：六个新增反例测试先红后绿挂入 suite（roundtrip 缺表/退化、benchmark 缺链/空表/manual 注入、add_labels 双型回滚、fetch 三场景 fail-closed、gmgn 假 CLI 三场景、token 无位置参数）；验收方独立重放两项原始复现均转红、六项边界外攻击（pool 停滞与倒退、logs 双缺与非法类型 next_block、0 字节 staging 表、privacy 子表缺失）未击穿，另亲验半截 JSON 拒收与 token 优先级链；真实发布库默认 benchmark 绿例未误伤。全量 suite 全 PASS、docs_lint 57 文档 PASS、SKILL.md 7522B（8192B 硬闸内）。
+
+本次为工具工程，无代币分析轮次或结论质量指标；发布/采集侧可复现假成功路径 6→0，casebook 六分册全部进入执行路由，suite 新增 6 项反例测试。执行分工＝codex 改文件、Fable 验收代 commit（v6.20.0 模式）。
 
 ## [6.31.0] - 2026-08-06 — 第四轮瘦身修复：代码、文档与契约基线收口
 

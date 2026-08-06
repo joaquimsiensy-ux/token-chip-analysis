@@ -2,9 +2,9 @@
 """envio HyperSync 全量/补拉 ERC20 转账事件，输出 CSV 与 fetch_alchemy.py 的 transfers_full.csv 同构。
 来源：SIREN(BSC) 2026-07 实战产物；v3.5 参数化+断点续传（ASTEROID(ETH) 2026-07-18 收编）。
 
-用法：python3 fetch_hypersync.py <api_token> <from_block> \
+用法：python3 fetch_hypersync.py <from_block> --token-file ~/.config/hypersync/token \
         --url https://eth.hypersync.xyz/query --token-addr 0x标的 --out data/transfers_full.csv
-  - api_token：envio Bearer token（~/.claude/api-keys.md 取用，不写死进 skill）
+  - token：显式 --token-file > HYPERSYNC_TOKEN > ~/.config/hypersync/token；禁止位置参数明文传入
   - from_block：起始块（部署块起；断点续传时自动改用已有 CSV 末行块）
   - --url 换链改子域（bsc/eth/base…）；--sleep 请求间隔，按账号档位选：
       免费层 0.5s（2026-07-18 起限流收紧后的实测稳值；ETH 低峰可试 0.25s）
@@ -17,11 +17,30 @@ import requests, json, csv, os, sys, time, datetime, argparse
 from pathlib import Path
 
 TRANSFER = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
+DEFAULT_TOKEN_FILE = "~/.config/hypersync/token"
 
-def main():
+def _load_token(ap, token_file):
+    if token_file is not None:
+        path = os.path.expanduser(token_file)
+    else:
+        env_token = os.environ.get("HYPERSYNC_TOKEN", "").strip()
+        if env_token:
+            return env_token
+        path = os.path.expanduser(DEFAULT_TOKEN_FILE)
+    try:
+        token = Path(path).read_text(encoding="utf-8").strip()
+    except OSError:
+        token = ""
+    if not token:
+        ap.error(f"HyperSync token 文件缺失或为空：{path}；key 登记见 ~/.claude/api-keys.md §1")
+    return token
+
+
+def parse_args(argv=None):
     ap = argparse.ArgumentParser()
-    ap.add_argument("api_token")
     ap.add_argument("from_block", type=int)
+    ap.add_argument("--token-file", default=None,
+                    help="token 文件；显式给出时优先于 HYPERSYNC_TOKEN")
     ap.add_argument("--url", default="https://bsc.hypersync.xyz/query")
     ap.add_argument("--token-addr", required=True)
     ap.add_argument("--out", default="data/transfers_full.csv")
@@ -32,10 +51,18 @@ def main():
     ap.add_argument("--resume-receipt",
                     help="正式续段必填：上一张 v2 receipt；先重验现有 CSV 全前缀再延伸")
     ap.add_argument("--sleep", type=float, default=0.25)
-    a = ap.parse_args()
+    a = ap.parse_args(argv)
+    a.token = _load_token(ap, a.token_file)
+    a._parser = ap
     if a.receipt and a.to_block is None:
         ap.error("正式 collector receipt 必须显式给 --to-block；动态 archive tip 不可作为冻结上界")
-    headers = {"Authorization": f"Bearer {a.api_token}", "Content-Type": "application/json"}
+    return a
+
+
+def main():
+    a = parse_args()
+    ap = a._parser
+    headers = {"Authorization": f"Bearer {a.token}", "Content-Type": "application/json"}
     resume, mode, with_bh, prior_segments = a.from_block, "w", True, []
     out_path = Path(a.out).resolve()
     exists_nonempty = out_path.exists() and out_path.stat().st_size > 0

@@ -20,6 +20,30 @@ sys.path.insert(0, _HERE)
 from labels_resolver import LabelResolver
 
 BENCH_DIR = os.path.normpath(os.path.join(_HERE, '..', '..', 'references', 'labels', 'benchmark'))
+DEFAULT_LABELS_DIR = os.path.normpath(os.path.join(_HERE, '..', '..', 'references', 'labels'))
+EXPECTED_CHAINS = ('eth', 'bsc', 'base', 'sol', 'robinhood')
+
+
+def require_complete_labels(labels_dir):
+    """五张正式链主表必须存在且至少有一条数据行。"""
+    bad = []
+    for chain in EXPECTED_CHAINS:
+        path = os.path.join(labels_dir, f'labels-{chain}.csv')
+        if not os.path.isfile(path):
+            bad.append(f'{chain}:缺失')
+            continue
+        try:
+            with open(path, newline='', encoding='utf-8') as f:
+                reader = csv.DictReader(f)
+                has_row = next(reader, None) is not None
+        except (OSError, UnicodeError, csv.Error):
+            has_row = False
+        if not has_row:
+            bad.append(f'{chain}:空表')
+    if bad:
+        print(f'FAIL: 五条正式链标签主表必须齐全且非空：{"; ".join(bad)}')
+        return False
+    return True
 
 
 def main():
@@ -32,14 +56,9 @@ def main():
             gs_path = a
     if not os.path.exists(gs_path):
         print(f'FAIL: 金标集不存在 {gs_path}（先跑 build_goldset.py）'); sys.exit(1)
-    if labels_dir is not None:
-        # fail-fast（2026-07-18 稳定化修复）：--labels-dir 按 cwd 相对解析，在 sources/ 目录里跑
-        # README 的预检命令会解析到不存在的 sources/sources/out——此前表加载为空却照常输出
-        # "PASS: 错误 exclude = 0"（空表下恒真的假通过，门禁被路径错误静默绕过）。
-        import glob as _glob
-        if not _glob.glob(os.path.join(labels_dir, 'labels-*.csv')):
-            print(f'FAIL: --labels-dir={labels_dir} 下找不到任何 labels-*.csv（cwd={os.getcwd()}）——'
-                  f'相对路径按当前目录解析，请在 scripts/labels/ 下运行或改用绝对路径'); sys.exit(2)
+    effective_labels_dir = labels_dir if labels_dir is not None else DEFAULT_LABELS_DIR
+    if not require_complete_labels(effective_labels_dir):
+        sys.exit(2)
 
     rows = list(csv.DictReader(open(gs_path)))
     by_chain = {}
@@ -47,8 +66,7 @@ def main():
         by_chain.setdefault(r['chain'], []).append(r)
 
     # 发布标签表覆盖的五链必须全部有金标；缺链不得静默 PASS。
-    EXPECTED_CHAINS = {'eth', 'bsc', 'base', 'sol', 'robinhood'}
-    missing = EXPECTED_CHAINS - set(by_chain)
+    missing = set(EXPECTED_CHAINS) - set(by_chain)
     if missing:
         print(f'FAIL: goldset 缺链 {sorted(missing)}——该链零金标=零门禁，先重跑 build_goldset.py')
         sys.exit(1)
@@ -80,8 +98,11 @@ def main():
         hit_manual = [r for r in inf_manual if resv.no_merge(r['address'])]
         hit_field = [r for r in inf_field if resv.no_merge(r['address'])]
 
-        total_violation += len(viol) + len(viol_rnd)
+        manual_miss = [r for r in inf_manual if r not in hit_manual]
+        total_violation += len(viol) + len(viol_rnd) + len(manual_miss)
         result['violations'] += [{'chain': chain, **r} for r in viol + viol_rnd]
+        result['violations'] += [{'chain': chain, 'violation': 'manual-infra-miss', **r}
+                                 for r in manual_miss]
         weak = (len(ent) + len(rnd)) < WEAK_GATE_MIN
         if weak:
             result['weak_gate_chains'].append(chain)
@@ -101,8 +122,8 @@ def main():
             row = resv.get(r['address'])
             print(f'    !! 错误exclude: {r["address"]} 金标={r["note"][:40]}({r["source_analysis"]})'
                   f' 库标={row["name"][:40]}<{row["category"]}>')
-        for r in (set(x['address'] for x in inf_manual) - set(x['address'] for x in hit_manual)):
-            print(f'    !! manual 设施未命中(重建退化?): {r}')
+        for r in manual_miss:
+            print(f'    !! manual 设施未命中(重建退化?): {r["address"]}')
 
     if '--save' in sys.argv:
         os.makedirs(BENCH_DIR, exist_ok=True)
@@ -111,7 +132,8 @@ def main():
         print(f'\n结果已存 {out}')
 
     if total_violation:
-        print(f'\nFAIL: {total_violation} 条金标地址（实战庄家/随机负样本）被库错误标为 exclude——发布前必须修复')
+        print(f'\nFAIL: {total_violation} 条硬断言违例（错误 exclude 或 manual 设施未命中）——'
+              '发布前必须修复')
         sys.exit(1)
     weak = result['weak_gate_chains']
     print('\nPASS: 错误 exclude = 0'

@@ -61,6 +61,8 @@
 
 1. **余额对账**：重建结果 vs 独立数据源精确对表（形态见各链 pipeline recon 分册）。
 2. **供给闭合**：总量恒等式/mint−burn 配平（内部自洽检验）。
+   分母定夺与重放收尾先过 `casebook/supply-accounting.md` 和
+   `casebook/supply-accounting-methods.md` 的触发现象与区分检验。
 3. **供给真值闸（v6 新增，重放收尾必跑）**：`python3 scripts/lib/supply_truth_gate.py --chain <链> --token 0x…|--mint <mint> --replay-stats <replay_stats.json> --out supply_truth.json`——重放净供给对链上实查 totalSupply()，治静默改账盲区（老合约 migrate() 改账不发事件、全部内部自检 PASS 而余额虚高，见 casebook S-01）。**exit 0 PASS／exit 2 FAIL＝该币余额禁用重放结果改 Multicall3/RPC 实时直查（地址全集与转账历史仍可用重放，重放余额仅作 ≥阈值超集筛选）／exit 1 检测自身失败修通道重跑，禁当 PASS**。
 4. **时间抽查**：EVM 走分层计划制——先跑 `scripts/lib/anchor_plan.py` 出抽样计划（3 时段×3 余额档矩阵点＋四类强制覆盖点：全史最大单笔/最大单日净变动/数据源交界块/门槛±10% 边缘地址），再跑 `scripts/lib/time_spotcheck.py` 对独立第二源逐锚点核对（balance 型 archive balanceOf 直查＋tx 型收据五元组，产 `time_spotcheck.json`，verdict=PASS 才过；第二源分层选型与"全史双源重拉仅例外、做前 pilot 报 ETA"条款见 evm-recon §13——**默认锚点级即闭环，禁止把全史第二源重拉当标准动作**，APU 案 103 分钟冗余教训）；纯随机锚点容易全抽在平静期、高风险位置反而漏掉。Solana 案走 anchor_sampler.py。注意本查测的是数据完备性与第二源一致性，不替代供给闭合对 mint/burn 口径的把关。
 
@@ -75,8 +77,10 @@
 **金库与核心实体逐笔归因**（§4）；分段模式直接验收 −1 的同源产物。其后判断主序与
 `split-run.md` §3.2 一致，按下列顺序执行：
 
-1. **判例库过闸（实体表冻结前必做）**：把 `casebook/cex-custody.md` 与
-   `casebook/entity-clustering.md` 全册触发现象过一遍，命中的逐条做"必做区分检验"。
+1. **判例库过闸（实体表冻结前必做）**：按 `casebook/README.md` 的使用纪律，把
+   `casebook/cex-custody.md`、`casebook/cex-custody-methods.md`、
+   `casebook/entity-clustering.md`、`casebook/entity-clustering-methods.md`
+   全册触发现象过一遍，命中的逐条做"必做区分检验"。
 2. **聚类合并裁决→临时实体**：多证据边＋中间节点三段式检验（§6）；合并只认专属性证据，
    通用实现/通用服务共用不算（见 casebook E-01）。本步只落临时实体，不得提前冻结。
 3. **ET-2 无下限成员完整性扫描**：对每个临时实体做不设持仓下限的成员完整性扫描。

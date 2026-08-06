@@ -15,7 +15,8 @@ def run_evm(root):
    "next_block":10,"archive_height":10}
  fetch.requests.post=lambda *a,**k:R(); old=sys.argv
  csv=root/"events.csv"; native=root/"collector.json"
- sys.argv=["fetch_hypersync.py","secret","0","--url","https://fixture/query","--token-addr",TOKEN,
+ token_file=root/"hypersync.token"; token_file.write_text("secret\n")
+ sys.argv=["fetch_hypersync.py","0","--token-file",str(token_file),"--url","https://fixture/query","--token-addr",TOKEN,
            "--out",str(csv),"--to-block","10","--receipt",str(native),"--sleep","0"]
  try: fetch.main()
  finally: sys.argv=old

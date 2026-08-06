@@ -53,8 +53,10 @@ def main():
                 r.setdefault(k, '')
             adds.setdefault(ch, {})[na] = r
 
+    target_was_present = {}
     for ch, items in sorted(adds.items()):
         path, header, rows = load_chain(ch)
+        target_was_present[ch] = os.path.exists(path)
         # 主表可能还是 9 列旧头（新链首建则用全 15 列）
         out_fields = header if header and 'merge_policy' in header else FIELDS
         idx = {r['address']: r for r in rows}
@@ -106,12 +108,17 @@ def main():
         rc = subprocess.run([sys.executable, os.path.join(_HERE, 'validate_labels.py')]).returncode
         if rc != 0:
             restored = []
+            removed = []
             for ch in adds:
                 p = os.path.join(DEFAULT_LABELS_DIR, f'labels-{ch}.csv')
-                if os.path.exists(p + '.bak'):
+                if target_was_present.get(ch) and os.path.exists(p + '.bak'):
                     shutil.move(p + '.bak', p)
                     restored.append(ch)
-            print(f'!! 合并后校验 FAIL——已自动回滚 {restored or "（无备份可回滚!）"}，排查补录数据后重试',
+                elif not target_was_present.get(ch) and os.path.exists(p):
+                    os.remove(p)
+                    removed.append(ch)
+            print(f'!! 合并后校验 FAIL——已恢复原表 {restored or "[]"}；'
+                  f'已删除新建坏表 {removed or "[]"}。排查补录数据后重试',
                   file=sys.stderr)
             sys.exit(1)
         for ch in adds:

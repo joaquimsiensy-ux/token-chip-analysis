@@ -1,21 +1,49 @@
 #!/usr/bin/env python3
 """HyperSync 拉指定合约的【全部事件 logs】（不筛 topic0），保留 topic0-3+data。
 基于 skill scripts/evm/fetch_hypersync.py 改（Transfer 专用版→全事件版），用于 BondingManager 质押账本重建。
-用法：python3 fetch_hypersync_logs.py <api_token> <from_block> --url <endpoint> --addr <合约> --out <csv>
+用法：python3 fetch_hypersync_logs.py <from_block> [--token-file <文件>] --url <endpoint> --addr <合约> --out <csv>
+token 优先级：显式 --token-file > HYPERSYNC_TOKEN > ~/.config/hypersync/token；禁止位置参数明文传入。
 断点续传：--out 已存在且非空时自动从末行块续拉（重叠由下游按 uniqueId 去重）。
 """
 import requests, csv, os, sys, time, datetime, argparse
+from pathlib import Path
 
-def main():
+DEFAULT_TOKEN_FILE = "~/.config/hypersync/token"
+
+
+def _load_token(ap, token_file):
+    if token_file is not None:
+        path = os.path.expanduser(token_file)
+    else:
+        env_token = os.environ.get("HYPERSYNC_TOKEN", "").strip()
+        if env_token:
+            return env_token
+        path = os.path.expanduser(DEFAULT_TOKEN_FILE)
+    try:
+        token = Path(path).read_text(encoding="utf-8").strip()
+    except OSError:
+        token = ""
+    if not token:
+        ap.error(f"HyperSync token 文件缺失或为空：{path}；key 登记见 ~/.claude/api-keys.md §1")
+    return token
+
+def parse_args(argv=None):
     ap = argparse.ArgumentParser()
-    ap.add_argument("api_token")
     ap.add_argument("from_block", type=int)
+    ap.add_argument("--token-file", default=None,
+                    help="token 文件；显式给出时优先于 HYPERSYNC_TOKEN")
     ap.add_argument("--url", required=True)
     ap.add_argument("--addr", required=True)
     ap.add_argument("--out", required=True)
     ap.add_argument("--sleep", type=float, default=0.4)
-    a = ap.parse_args()
-    headers = {"Authorization": f"Bearer {a.api_token}", "Content-Type": "application/json"}
+    a = ap.parse_args(argv)
+    a.token = _load_token(ap, a.token_file)
+    return a
+
+
+def main():
+    a = parse_args()
+    headers = {"Authorization": f"Bearer {a.token}", "Content-Type": "application/json"}
     resume, mode = a.from_block, "w"
     if os.path.exists(a.out) and os.path.getsize(a.out) > 100:
         with open(a.out, "rb") as fh:
@@ -74,8 +102,25 @@ def main():
         nxt, ah = j.get("next_block"), j.get("archive_height")
         if total % 50000 < n or n == 0:
             print(f"[prog] +{n} total {total} next {nxt} height {ah} 429s {e429} {time.time()-t0:.0f}s", flush=True)
-        if not nxt or (ah and nxt >= ah):
+        valid_ah = isinstance(ah, int) and not isinstance(ah, bool)
+        if nxt is None:
+            if valid_ah and cur >= ah:
+                break
+            f.close()
+            print(f"[fatal] provider 缺 next_block 且未确认到达 tip：current={cur} "
+                  f"archive_height={ah}", flush=True)
+            sys.exit(2)
+        if isinstance(nxt, bool) or not isinstance(nxt, int):
+            f.close()
+            print(f"[fatal] provider 返回非法 next_block={nxt!r}", flush=True)
+            sys.exit(2)
+        if valid_ah and nxt >= ah:
             break
+        if nxt <= cur:
+            f.close()
+            print(f"[fatal] next_block 停滞且未到 tip：current={cur} next_block={nxt} "
+                  f"archive_height={ah}", flush=True)
+            sys.exit(2)
         cur = nxt
         time.sleep(a.sleep)
     f.close()

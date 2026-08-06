@@ -149,7 +149,8 @@ def validate_runtime_docs_manifest(root, manifest):
         return [f'运行时文档 manifest 缺字段: {missing}']
     if manifest['schema'] != 'runtime-docs-manifest/v2':
         failures.append(f'运行时文档 manifest schema 非法: {manifest["schema"]!r}')
-    expected_scope = ['references/*.md', 'references/labels/*.md']
+    expected_scope = ['references/*.md', 'references/labels/*.md',
+                      'references/casebook/*.md']
     scope = manifest['scope']
     if (not isinstance(scope, list)
             or any(not isinstance(pattern, str) or not pattern for pattern in scope)):

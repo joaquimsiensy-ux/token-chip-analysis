@@ -2,12 +2,20 @@
   "schema": "runtime-docs-manifest/v2",
   "scope": [
     "references/*.md",
-    "references/labels/*.md"
+    "references/labels/*.md",
+    "references/casebook/*.md"
   ],
   "listed": [
     {"path": "address-book.md", "entry": "labels/README.md", "stages": ["on-hit"]},
     {"path": "analysis-playbook.md", "entry": "analysis-playbook.md", "stages": ["A3", "A4"]},
     {"path": "analyze-workflow.md", "entry": "analyze-workflow.md", "stages": ["A0-A6"]},
+    {"path": "casebook/README.md", "entry": "analyze-workflow.md", "stages": ["A3", "A4"]},
+    {"path": "casebook/cex-custody.md", "entry": "analyze-workflow.md", "stages": ["A3", "A4"]},
+    {"path": "casebook/cex-custody-methods.md", "entry": "analyze-workflow.md", "stages": ["A3", "A4"]},
+    {"path": "casebook/entity-clustering.md", "entry": "analyze-workflow.md", "stages": ["A3", "A4"]},
+    {"path": "casebook/entity-clustering-methods.md", "entry": "analyze-workflow.md", "stages": ["A3", "A4"]},
+    {"path": "casebook/supply-accounting.md", "entry": "analyze-workflow.md", "stages": ["A0", "A2", "A4"]},
+    {"path": "casebook/supply-accounting-methods.md", "entry": "analyze-workflow.md", "stages": ["A0", "A2", "A4"]},
     {"path": "context-discipline.md", "entry": "analyze-workflow.md", "stages": ["A0-A6"]},
     {"path": "data-pipeline-evm-channels.md", "entry": "data-pipeline-evm.md", "stages": ["A0", "A1"]},
     {"path": "data-pipeline-evm-recon.md", "entry": "data-pipeline-evm.md", "stages": ["A2"]},

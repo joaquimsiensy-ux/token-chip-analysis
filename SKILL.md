@@ -7,8 +7,9 @@ description: >-
   重建阵营持仓演变、绘制重点实体流转路径、核算 V3/V4 流动性与可证 LP 权益，
   并交付经对抗复核的自包含 HTML。
   正式深度管线覆盖 Ethereum/BSC/Base/Robinhood EVM、Solana；Arbitrum 仅保留探索支持，
-  采集、对账与身份快照能力可用，但因缺少目标链标签表与完整身份门禁适配，
-  不得编译正式 analysis。全新链须先补齐采集、对账与身份门禁适配器才可正式发布。
+  采集、对账、身份快照与 G8 探索档能力已具备，但因缺少目标链标签表
+  （labels-arbitrum.csv）与正式标签门禁，不得编译正式 analysis。
+  全新链须先补齐采集、对账、身份门禁适配器与目标链标签表才可正式发布。
   当用户问"某代币的筹码分析/筹码结构/庄家行为分析"、"复核/审计已有筹码报告"、
   "有几个庄/庄家什么类型"、"庄家/项目方/做市商在吸筹还是砸盘"、
   "有没有关联地址/老鼠仓/单一实体控盘"、"庄家是不是跑了/弃盘了"、
@@ -18,7 +19,7 @@ description: >-
   只查价格/K线/热榜/新币列表不要用本 skill。
 ---
 
-<!-- skill-version-source: VERSION; skill-version: 6.31.0 -->
+<!-- skill-version-source: VERSION; skill-version: 6.32.0 -->
 
 # 代币筹码分析（Token Chip Analysis）
 
@@ -43,7 +44,8 @@ description: >-
 | A2 对账关卡 | 余额/供给闭合/供给真值/时间抽查 | A2＋recon；supply_truth.json、anchor_plan.json、time_spotcheck.json | 四查不过不进 A3；gate 0 PASS/2 FAIL/1 修通道重跑 |
 | A3 分析 | 标注/归因→casebook→聚类裁决→临时实体→ET-2→EF/freeze→G8→判级/ET-1→演变→facts/state | A3＋casebook C/E＋playbook；findings.md、facts.json、analysis-state.json、identity_gate.json | EF-1～EF-3 或 G8 未闭合即拒编译 |
 | A4 对抗复核 | claims→扰动→揭盲→N 路复核→裁决→finalize | A4＋evidence-wording；a4_claims.json、a4_seal.json | 实际核查三档；a4_gate 未封口（2）禁进 A5 |
-| A5 报告 | 三图＋流转图＋MD/HTML＋质检 | A5＋report-template；报告.md、a5_report_seal.json、报告.html | build_html 必须 0；G8/G9 A4 哈希/G10 A5 seal 任缺拒交付 |
+| A4.5 分布终判环 | final 分布扫描、新异常簇回流 A4、解释五判据 | dist_rounds 轮次台账 | 唯一终态才物化终版分布图；两轮未终态由用户选第三轮或 waiver |
+| A5 报告 | 三标准图＋终版分布图＋流转图＋MD/HTML＋质检 | A5＋report-template；报告.md、a5_report_seal.json、报告.html | build_html 必须 0；G8/G9 A4 哈希/G10 A5 seal/G11 任缺拒交付 |
 | A6 复盘 | 仅用户明确要求时分流教训 | `retrospective.md`；CHANGELOG | run_all 全 PASS 后才 commit |
 
 ## A3 实体冻结门禁编号

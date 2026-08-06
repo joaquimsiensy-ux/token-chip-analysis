@@ -22,9 +22,9 @@
 
 | 分析环节 | 必读册 |
 |---|---|
-| 阶段 3 实体表冻结前（跑 entity_identity_gate 之前） | cex-custody.md + entity-clustering.md 全册过一遍触发现象 |
-| 阶段 0 分母定夺 / 阶段 2 对账与重放收尾 | supply-accounting.md |
-| 阶段 4 对抗复核组装怀疑者 prompt | 三册全部（判例=现成的备择解释清单） |
+| 阶段 3 实体表冻结前（跑 entity_identity_gate 之前） | cex-custody.md＋cex-custody-methods.md＋entity-clustering.md＋entity-clustering-methods.md 全册过一遍触发现象 |
+| 阶段 0 分母定夺 / 阶段 2 对账与重放收尾 | supply-accounting.md＋supply-accounting-methods.md |
+| 阶段 4 对抗复核组装怀疑者 prompt | 全部六个分册（三主册＋三续册；判例=现成的备择解释清单） |
 
 ## 收录纪律
 

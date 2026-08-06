@@ -18,7 +18,7 @@
     }
   },
   "hypersync": {
-    "_comment": "envio HyperSync 通道（v3.11.2 起大标的首选 fetch_hypersync_v2.py 官方客户端版,v1 fetch_hypersync.py 兜底）。token 留空：从 ~/.claude/api-keys.md 登记文件取用（现役 Starter 付费档 key）,不写死进 skill 目录。换链改子域，如 eth.hypersync.xyz",
+    "_comment": "envio HyperSync 通道（v3.11.2 起大标的首选 fetch_hypersync_v2.py 官方客户端版,v1 fetch_hypersync.py 兜底）。token 留空：运行时按显式 --token-file、HYPERSYNC_TOKEN、默认 ~/.config/hypersync/token 的顺序取用；key 登记见 ~/.claude/api-keys.md §1。换链改子域，如 eth.hypersync.xyz",
     "_tier": "Starter 付费档: v1 用 sleep 0.12(429=0 实测);v2 用 concurrency 10。免费层: v1 sleep 0.5;v2 concurrency ≤4",
     "url": "https://bsc.hypersync.xyz/query",
     "token": ""

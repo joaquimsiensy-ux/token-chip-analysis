@@ -15,27 +15,54 @@
   标的与配对币按地址字典序定 token0/token1；标的是 token0 时该值=配对币/标的，
   ×配对币 USD 价得标的 USD 价。反解在下游脚本做（本件只落原始 data，不猜 token 顺序）。
 
-用法：python3 fetch_pool_swaps.py <envio_token> --pool 0x.. --from-block N --to-block M \
+用法：python3 fetch_pool_swaps.py [--token-file <文件>] --pool 0x.. --from-block N --to-block M \
         --out data/pool_swaps.csv [--topic <swap_topic0>] [--url https://bsc.hypersync.xyz/query]
-  envio_token 从 ~/.claude/api-keys.md 取用（铁律 5：不写死进脚本）。
+  token 优先级：显式 --token-file > HYPERSYNC_TOKEN > ~/.config/hypersync/token；禁止位置参数明文传入。
 （来源：SIREN(BSC) 分析实战产物，2026-07-19）"""
-import requests, json, csv, time, argparse
+import requests, json, csv, time, argparse, sys
+import os
+from pathlib import Path
 
 PANCAKE_V3 = "0x19b47279256b2a23a1665c810c8d55a1758940ee09377d4f8d26497a3577dc83"
+DEFAULT_TOKEN_FILE = "~/.config/hypersync/token"
+
+def _load_token(ap, token_file):
+    if token_file is not None:
+        path = os.path.expanduser(token_file)
+    else:
+        env_token = os.environ.get("HYPERSYNC_TOKEN", "").strip()
+        if env_token:
+            return env_token
+        path = os.path.expanduser(DEFAULT_TOKEN_FILE)
+    try:
+        token = Path(path).read_text(encoding="utf-8").strip()
+    except OSError:
+        token = ""
+    if not token:
+        ap.error(f"HyperSync token 文件缺失或为空：{path}；key 登记见 ~/.claude/api-keys.md §1")
+    return token
 
 
-def main():
+def parse_args(argv=None):
     ap = argparse.ArgumentParser()
-    ap.add_argument("api_token")
+    ap.add_argument("--token-file", default=None,
+                    help="token 文件；显式给出时优先于 HYPERSYNC_TOKEN")
     ap.add_argument("--pool", required=True)
     ap.add_argument("--from-block", type=int, required=True)
     ap.add_argument("--to-block", type=int, required=True)
     ap.add_argument("--out", required=True)
     ap.add_argument("--topic", default=PANCAKE_V3, help="Swap event topic0（默认 Pancake V3）")
     ap.add_argument("--url", default="https://bsc.hypersync.xyz/query")
-    a = ap.parse_args()
-    headers = {"Authorization": f"Bearer {a.api_token}", "Content-Type": "application/json"}
-    out = csv.writer(open(a.out, "w", newline=""))
+    a = ap.parse_args(argv)
+    a.token = _load_token(ap, a.token_file)
+    return a
+
+
+def main():
+    a = parse_args()
+    headers = {"Authorization": f"Bearer {a.token}", "Content-Type": "application/json"}
+    out_file = open(a.out, "w", newline="")
+    out = csv.writer(out_file)
     out.writerow(["block", "ts", "tx", "data"])
     cur, n, t0 = a.from_block, 0, time.time()
     s = requests.Session()
@@ -56,7 +83,8 @@ def main():
             time.sleep(3 * (att + 1))
         if j is None:
             print("[fatal] giving up", flush=True)
-            break
+            out_file.close()
+            sys.exit(2)
         bts = {}
         for batch in j.get("data", []):
             for b in batch.get("blocks", []):
@@ -67,10 +95,19 @@ def main():
                 out.writerow([bn, bts.get(bn, ""), lg["transaction_hash"], lg["data"]])
                 n += 1
         nxt = j.get("next_block")
-        if not nxt or nxt <= cur:
-            break
+        if isinstance(nxt, bool) or not isinstance(nxt, int):
+            print(f"[fatal] provider 缺整数 next_block，current={cur} to_block={a.to_block}",
+                  flush=True)
+            out_file.close()
+            sys.exit(2)
+        if nxt <= cur:
+            print(f"[fatal] next_block 停滞，current={cur} next_block={nxt} "
+                  f"to_block={a.to_block}", flush=True)
+            out_file.close()
+            sys.exit(2)
         cur = nxt
         time.sleep(0.5)
+    out_file.close()
     print(f"swaps {n} rows {time.time()-t0:.0f}s", flush=True)
 
 

@@ -99,7 +99,10 @@ def test_round4_csv_prefix_and_cursor_fail_closed(root: Path):
             write_csv(out)
         collector.requests.post = lambda *a, **k: Response(nxt)
         old = sys.argv
-        sys.argv = ["fetch_hypersync.py", "secret", "0", "--token-addr", TOKEN_A,
+        token_file = root / "hypersync.token"
+        token_file.write_text("secret\n", encoding="utf-8")
+        sys.argv = ["fetch_hypersync.py", "0", "--token-file", str(token_file),
+                    "--token-addr", TOKEN_A,
                     "--url", "https://fixture/query", "--out", str(out),
                     "--to-block", "100", "--receipt", str(receipt), "--sleep", "0"]
         try:

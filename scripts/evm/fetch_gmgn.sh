@@ -6,10 +6,31 @@
 set -u
 T=$1; shift
 mkdir -p gmgn
+SUCCESS_COUNT=0
+FAIL_COUNT=0
+SUCCESS_LIST=""
+FAIL_LIST=""
 
 run() { local out=$1; shift
   echo "== $out ==" >&2
-  gmgn-cli "$@" --raw > "gmgn/$out.json" 2>"gmgn/$out.err" || echo "FAIL $out" >&2
+  local tmp="gmgn/$out.json.tmp"
+  rm -f "$tmp"
+  if gmgn-cli "$@" --raw > "$tmp" 2>"gmgn/$out.err"; then
+    if python3 -c 'import json,sys;json.load(open(sys.argv[1]))' "$tmp" \
+        >/dev/null 2>>"gmgn/$out.err"; then
+      mv "$tmp" "gmgn/$out.json"
+      SUCCESS_COUNT=$((SUCCESS_COUNT + 1))
+      SUCCESS_LIST="${SUCCESS_LIST}${out}\n"
+      return 0
+    fi
+    echo "FAIL $out（输出不是合法 JSON）" >&2
+  else
+    echo "FAIL $out（gmgn-cli 非零退出）" >&2
+  fi
+  rm -f "$tmp"
+  FAIL_COUNT=$((FAIL_COUNT + 1))
+  FAIL_LIST="${FAIL_LIST}${out}\n"
+  return 0
 }
 
 for CH in "$@"; do
@@ -25,6 +46,11 @@ for CH in "$@"; do
     sleep 3
   done
 done
+printf 'GMGN 成功（%s）:\n%b' "$SUCCESS_COUNT" "$SUCCESS_LIST" >&2
+printf 'GMGN 失败（%s）:\n%b' "$FAIL_COUNT" "$FAIL_LIST" >&2
+if [ "$FAIL_COUNT" -gt 0 ]; then
+  exit 1
+fi
 echo "GMGN DONE" >&2
 # 提醒：holders 里的 native_transfer.from_address 是 gas 来源聚类的关键字段；
 # traders_sellvol 是"操作者EOA"口径，地址可能不在 Transfer 事件里，刷量定性要克制。
