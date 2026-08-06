@@ -1,7 +1,7 @@
 """SQD 定向窗口拉取:小段(2000 slot)+并发,专攻高密度期(发射窗/事件日)。
 
 用法: python3 window_fetch.py <from_slot> <to_slot> <out.jsonl> [--conc 8]
-输出: 每行 [ts, slot, from_owner, to_owner, amount_raw](与 fetch_sqd_transfers 兼容)
+输出: 每行 [ts, slot, from_owner, to_owner, amount_raw](与 fetch_sqd_transfers_v2.py 边格式兼容)
      失败段写入 <out>.gaps.json(必须为空才算完整)
 """
 import argparse, json, subprocess, sys, time

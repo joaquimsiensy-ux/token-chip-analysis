@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# 2026-08-06 第四轮退役入考古区；其缓存路径与 meta schema 均与 v2（sha256 路径＋sqd-solana-cache/v3）不兼容，恢复使用须先写一次性 importer。
 """SQD portal 全量拉取 Solana SPL 代币转账边（免 key 免代理）。
 
 来源：CLAW(Solana) 分析实战 2026-07-12；v1.3 自

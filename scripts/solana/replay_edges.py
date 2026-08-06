@@ -98,7 +98,7 @@ def load_edges(mint):
             or meta.get("collection_upper_slot") is None:
         sys.exit("SQD 缓存 meta 未绑定原始 mint/endpoint/采集上界，拒绝重放")
     if not f.exists():
-        sys.exit(f"边文件不存在：{f}（先跑 fetch_sqd_transfers.py）")
+        sys.exit(f"边文件不存在：{f}（先跑 fetch_sqd_transfers_v2.py）")
     edges = []
     with gzip.open(f, "rt") as fh:
         for line in fh:

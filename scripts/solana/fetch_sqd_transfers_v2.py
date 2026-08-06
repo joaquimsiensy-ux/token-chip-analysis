@@ -1,25 +1,25 @@
 #!/usr/bin/env python3
 """SQD portal 全量拉取 Solana SPL 代币转账边 v2——压缩传输+自适应区域并发+全局令牌桶。
 
-来源：Solana 采集加速工程 2026-07-21（@CX 交叉复核定案）。v1（fetch_sqd_transfers.py）保留不动。
-相对 v1 的三刀（实测依据见 data-pipeline-solana.md §13）：
+来源：Solana 采集加速工程 2026-07-21（@CX 交叉复核定案）。
+相对旧采集器的三刀（实测依据见 data-pipeline-solana.md §13）：
   1. requests.Session 替代逐请求 curl 子进程：连接复用 + 默认 gzip 协商
-     （明文传输是 v1 慢的主因：wSOL 压测明文 4.65 slots/s vs 压缩 98 slots/s ≈ 21 倍）
+     （明文传输是旧采集器慢的主因：wSOL 压测明文 4.65 slots/s vs 压缩 98 slots/s ≈ 21 倍）
   2. 自适应区域并发：区域大小按实测耗时自动伸缩（发射窗自动缩小、死亡期自动放大），
-     失败区域进 gaps 继续别的——不再像 v1 那样"第一个未完段之后整体丢弃"
+     失败区域进 gaps 继续别的——不再像旧采集器那样"第一个未完段之后整体丢弃"
   3. 全局令牌桶限速：默认 1.6 请求/秒（公共端点文档限 20 次/10 秒），并发共享一个桶
 
 用法（cd 到工作目录跑，缓存写入 ./data/）：
   python3 fetch_sqd_transfers_v2.py <mint> [--launch-ts <unix秒>] [--wall-min 100]
       [--conc 6] [--rps 1.6] [--url <端点>] [--key-file ~/.config/sqd/api-key]
       [--hypersync] [--hs-conc 2] [--hs-rps 4] [--hs-token-file ~/.config/hypersync/token]
-输出（与 v1 完全同构，下游无感）：
+输出（现役 v3 缓存格式）：
   data/soltx-<sha256(原始mint)>.jsonl.gz   每行 [ts, slot, from_owner, to_owner, amount_raw]
   data/soltx-<sha256>.meta.json  绑定原始 mint/endpoint/采集上界的 v3 元数据
   data/soltx-<sha256>.parts/     区域分片工作目录（合并成功后自动清空）
 
 要点：
-- 转账边=同 tx 内 owner 级净变动贪心配对（与 v1/window_fetch 同一解析核，量级与关系正确够聚类用）
+- 转账边=同 tx 内 owner 级净变动贪心配对（与 window_fetch 同一解析核，量级与关系正确够聚类用）
 - from/to 为 ZERO 哨兵（"0x"+40个0）即铸造/销毁；双过滤 postMint+preMint；失败交易剔除
 - gaps 非空时 stdout 明确声明缺口区间——禁止无声吞洞
 - key：公共端点 2026-07 实测不认证（key 无效也无害地带上）；拿到专属端点后 --url 换掉即生效
@@ -142,7 +142,7 @@ class AdaptiveArea:
 
 
 def pair_tx(delta):
-    """同一 tx 内 owner 级净变动 → 转账边（与 v1 逐字同构）。"""
+    """同一 tx 内 owner 级净变动 → 转账边。"""
     pos = sorted(([o, d] for o, d in delta.items() if d > 0), key=lambda x: -x[1])
     neg = sorted(([o, -d] for o, d in delta.items() if d < 0), key=lambda x: -x[1])
     edges, i, j = [], 0, 0
@@ -518,7 +518,7 @@ def cache_paths(address):
 
 
 def load_meta(meta_fp):
-    """读 meta，v1 格式（from_slot/next_slot）自动迁移为 v2 areas。"""
+    """读取已支持的 v2/v3 meta；其他格式不作为有效断点。"""
     if not meta_fp.exists():
         return {}
     try:
@@ -527,12 +527,6 @@ def load_meta(meta_fp):
         return {}
     if m.get("version") in (2, 3):
         return m
-    # v1 迁移：连续前缀 [from_slot, next_slot) 视为一个已完成区域
-    if m.get("next_slot"):
-        return {"version": 2, "from_slot": int(m.get("from_slot") or m["next_slot"]),
-                "launch_covered": bool(m.get("launch_covered")),
-                "areas": [{"s": int(m.get("from_slot") or m["next_slot"]),
-                           "e": int(m["next_slot"]) - 1, "done": True, "src": "v1"}]}
     return {}
 
 
@@ -1020,7 +1014,7 @@ def run(mint, launch_ts, wall_min, conc, rps, base_url, key,
                 meta["from_slot"] = from_slot = new_from
             persist_meta()
 
-    # 落盘：整写 jsonl.gz（v1 同构，临时文件+原子 rename），meta 记 launch_covered 与 gaps
+    # 落盘：整写 jsonl.gz（临时文件+原子 rename），meta 记 launch_covered 与 gaps
     final = {"rows": 0, "has_mint": False, "min_ts": None}
     try:
         final = merger.finalize()
@@ -1029,7 +1023,7 @@ def run(mint, launch_ts, wall_min, conc, rps, base_url, key,
         has_mint = final["has_mint"]
         covered = sorted(((a["s"], a["e"]) for a in meta["areas"] if a.get("done")),
                          key=lambda x: x[0])
-        # 连续覆盖前沿（供增量续拉与 v1 兼容语义）
+        # 连续覆盖前沿（供增量续拉）
         front = from_slot - 1
         for s, e in covered:
             if s <= front + 1:
