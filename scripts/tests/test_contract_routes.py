@@ -91,6 +91,16 @@ def main():
         failures = DOCS_LINT.validate_runtime_docs_manifest(root, ghost)
         assert any('幽灵条目' in f for f in failures), failures
 
+        unknown_stage = copy.deepcopy(rm)
+        unknown_stage['listed'][0]['stages'] = ['A7']
+        failures = DOCS_LINT.validate_runtime_docs_manifest(root, unknown_stage)
+        assert any('stages 含未知值' in f and 'A7' in f for f in failures), failures
+
+        legacy_all = copy.deepcopy(rm)
+        legacy_all['listed'][0]['stages'] = ['all']
+        failures = DOCS_LINT.validate_runtime_docs_manifest(root, legacy_all)
+        assert any('stages 含未知值' in f and 'all' in f for f in failures), failures
+
         write(os.path.join(root, 'references', 'entry.md'), '入口不再引用叶子。\n')
         failures = DOCS_LINT.validate_runtime_docs_manifest(root, rm)
         assert any('两跳内不可达' in f for f in failures), failures

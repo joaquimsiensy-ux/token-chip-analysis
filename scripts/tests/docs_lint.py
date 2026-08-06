@@ -29,6 +29,10 @@ REMOVED_FEATURE_TERMS = re.compile(
 RETAINED_FEATURE_TERMS = ('collector', 'collection_manifest', 'csv_collector_receipt', 'probe')
 CONTRACT_REF_RE = re.compile(r'契约\s+(CT-[A-Z][A-Z0-9-]*-\d{2,})')
 MD_NAME_RE = re.compile(r'(?<![\w/])(?:references/)?([\w./-]+\.md)')
+RUNTIME_STAGES = {
+    'preflight', 'A0', 'A1', 'A2', 'A3', 'A4', 'A4.5', 'A5', 'A6', 'post-A5',
+    'A0-A2', 'A0-A3', 'A0-A5', 'A0-A6',
+}
 
 
 def _safe_repo_path(root, rel):
@@ -188,6 +192,10 @@ def validate_runtime_docs_manifest(root, manifest):
         if (not isinstance(stages, list) or not stages
                 or any(not isinstance(stage, str) or not stage for stage in stages)):
             failures.append(f'listed[{index}] stages 必须是非空字符串数组')
+            continue
+        unknown_stages = sorted(set(stages) - RUNTIME_STAGES)
+        if unknown_stages:
+            failures.append(f'listed[{index}] stages 含未知值: {unknown_stages}')
             continue
         path = os.path.normpath(path)
         entry = os.path.normpath(entry)
