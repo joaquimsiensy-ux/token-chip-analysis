@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""从 address-book.md 的规范 CSV 区确定性生成运行时 manual_labels.csv。"""
+"""从 address-book.md 的单一规范区生成运行时 CSV 或按需人读视图。"""
 import argparse
 import csv
 import io
@@ -17,6 +17,7 @@ FIELDS = [
     'risk_flags', 'merge_policy', 'balance_policy', 'source_snapshot_at', 'verified_at',
     'status', 'raw_labels',
 ]
+SOURCE_FIELDS = FIELDS + ['human_section', 'human_note']
 CHAINS = {'eth', 'bsc', 'base', 'arbitrum', 'robinhood', 'sol'}
 
 
@@ -33,14 +34,14 @@ def _read_block():
     return '\n'.join(lines[start:ends[0]]) + '\n'
 
 
-def expected_rows():
+def source_rows():
     reader = csv.DictReader(io.StringIO(_read_block()))
-    if reader.fieldnames != FIELDS:
+    if reader.fieldnames != SOURCE_FIELDS:
         raise ValueError(f'规范区表头错误：{reader.fieldnames!r}')
     rows = []
     seen = set()
     for line_no, raw in enumerate(reader, start=2):
-        row = {field: (raw.get(field) or '').strip() for field in FIELDS}
+        row = {field: (raw.get(field) or '').strip() for field in SOURCE_FIELDS}
         missing = [field for field in ('address', 'chain', 'name', 'category', 'tier')
                    if not row[field]]
         if missing:
@@ -59,6 +60,23 @@ def expected_rows():
     return rows
 
 
+def expected_rows():
+    """只投影运行时字段；人读注释绝不进入发布 CSV。"""
+    return [{field: row[field] for field in FIELDS} for row in source_rows()]
+
+
+def render_view(rows):
+    """由单源即时渲染 Markdown；输出不回写 address-book。"""
+    lines = ['| chain | address | name | section | mechanism note |',
+             '|---|---|---|---|---|']
+    for row in rows:
+        cells = [row['chain'], f"`{row['address']}`", row['name'],
+                 row['human_section'], row['human_note'] or row['evidence']]
+        lines.append('| ' + ' | '.join(cell.replace('|', '\\|').replace('\n', ' ')
+                                        for cell in cells) + ' |')
+    return '\n'.join(lines)
+
+
 def _read_output_rows():
     if not os.path.exists(OUTPUT):
         return None, None
@@ -71,12 +89,19 @@ def _read_output_rows():
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--check', action='store_true', help='只校验生成物与地址簿规范区一致')
+    parser.add_argument('--render-view', action='store_true',
+                        help='从单源向 stdout 渲染人读 Markdown 表，不写文件')
     args = parser.parse_args()
     try:
-        rows = expected_rows()
+        source = source_rows()
+        rows = [{field: row[field] for field in FIELDS} for row in source]
     except (OSError, ValueError, csv.Error) as exc:
         print(f'[gen_manual] FAIL: {exc}', file=sys.stderr)
         return 1
+
+    if args.render_view:
+        print(render_view(source))
+        return 0
 
     if args.check:
         fields, current = _read_output_rows()

@@ -159,9 +159,9 @@ def _load_address_book(labels_dir, chain):
     """Load the generated address-book layer with an explicit per-row chain.
 
     Address shape is not chain evidence: the same 0x address can mean unrelated
-    contracts on ETH/BSC/Base.  The human markdown is therefore never parsed
-    directly at runtime; its chain-qualified generated table is the executable
-    schema and check_manual_sync keeps the two sources aligned.
+    contracts on ETH/BSC/Base.  Runtime therefore reads only the chain-qualified
+    generated table; check_manual_sync keeps that derived artifact aligned with
+    the single structured source in address-book.md.
     """
     path = os.path.join(_HERE, 'sources', 'manual_labels.csv')
     if not os.path.exists(path):
