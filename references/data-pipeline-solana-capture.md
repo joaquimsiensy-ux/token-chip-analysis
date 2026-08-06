@@ -10,9 +10,9 @@
 - [§14 日级余额快照](#14-日级余额快照重建法长币龄演变默认方法goat-2026-07-26-翻案驱动)。
 - [§15 pump.fun 长内盘](#15-pumpfun-长内盘期全量重建签名史双索引法troll-2026-07-29-实战)。
 
-## 6. 脚本资产（README 另存 3 项低优先待建项，两批清单勿混）
+## 6. 脚本资产
 
-核心脚本已收编（`scan_token_accounts.py`/`fast_probe_tops.py`/`fetch_sqd_transfers[_v2].py`/`decode_txs_v2.py` 等；"classify_top_holders"未独立成脚本，其功能由 scan_token_accounts 的 owner 聚合＋fast_probe_tops 画像覆盖；现役全清单见 `scripts/solana/README.md`）；getSignaturesForAddress 按 token account 索引、tokenBalances owner 映射等实现坑的完整版在 §3a（scan 分册）。
+核心脚本已收编（`scan_token_accounts.py`/`fast_probe_tops.py`/`fetch_sqd_transfers[_v2].py`/`decode_txs_v2.py` 等；"classify_top_holders"未独立成脚本，其功能由 scan_token_accounts 的 owner 聚合＋fast_probe_tops 画像覆盖；现役薄索引见 `scripts/solana/README.md`）；getSignaturesForAddress 按 token account 索引、tokenBalances owner 映射等实现坑的完整版在 §3a（scan 分册）。
 
 - 工程纪律（保留，来自前次报告硬伤）：同一地址在正文/附录多处引用时，必须由脚本从落盘数据统一生成，交付前做全文地址一致性自查；关键字符串（地址/哈希）一律取自落盘文件，禁止从终端打印输出复制补全。
 
@@ -37,7 +37,7 @@
 3. **资金同源（gas 溯源）**：公共 RPC `getSignaturesForAddress`（翻到最老）+ `getTransaction(jsonParsed)` 找首笔 system transfer 入金 source；0.25s 间隔+走 clash 代理。识别马甲网络最有效的一招（母钱包收敛即实锤）。
 4. **双跳换仓溯源**：老仓→一次性中转→新址的双跳必须重放溯源，禁止把前端 `transfer_in` 当独立新仓。（判例：casebook/entity-clustering.md E-04）
 5. **铸造受益人全清单**：创建 tx 的全部铸造受益地址都作为 creator 系起点。（判例：casebook/entity-clustering.md E-12）
-6. **bonding curve 成本校准**：关键笔用链上余额真值校准，批量值报告修正区间，并剔除毕业迁移笔。（判例：casebook/supply-accounting.md S-05）
+6. **bonding curve 成本校准**：枚数按 token 守恒重建；标准虚拟储备参数算出的 SOL 成本可能系统性低估约 10%，关键笔必须用 `getTransaction` 实付真值校准，批量值报告修正区间，并剔除毕业迁移笔。（判例：casebook/supply-accounting.md S-05）
 
 （CLAW，07-12，经 onchain-data-accounts 记忆转录；第 5/6 条为 PUB 07-14 补充）
 
