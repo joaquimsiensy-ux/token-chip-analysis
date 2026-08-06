@@ -2,15 +2,7 @@
 
 > **本文件只在维护标签库时读**（重建/扩容/审计/发布）；分析时只读 `README.md`（使用篇）。
 
-## 版本与变更史（labels 数据版本独立于 skill 版本，见 retrospective「版本号约定」）
-
-| 表 | v4.2 变更摘要（2026-07-17） |
-|---|---|
-| labels-eth | 17 条 Alchemy/Candide/Stackup bundler+paymaster 从 identity 修正为 exclude（长尾错标休眠炸弹）+EntryPoint v0.6+Relay 10 solver+Across/deBridge/LiFi/Socket 合约层 |
-| labels-bsc | +Safe 官方部署家族 24（getCode 亲验）+Relay 4 solver+deBridge DLN 5+LiFi 3+Socket 2+EntryPoint v0.6；DxLock status 错位行源头修复 |
-| labels-base | +活跃 bundler 24+paymaster 12（HyperSync 7 日 33 万 UserOp 链上聚合——此前 AA 层=0 是 gas 溯源假金主最大盲区）+Safe 家族 24+Relay 21 solver+Seaport/Banana Gun Router 错标修正 |
-| labels-sol | +疑似 Upbit 热钱包 2（suspected-cex 禁边不剔仓）+Upbit 被黑攻击者 3（heist）；"疑似 OKX"改 suspected-cex |
-| labels-robinhood | +Safe 家族 24+Relay solver 第 5 个+EntryPoint v0.6/v0.7；TRASH 案 serial+21 等未归档增量固化进 additions/ |
+labels 数据版本独立于 skill 版本；已发布版本与逐表变更见 CHANGELOG。
 
 **发布库维护纪律（v4.2+ 稳定化定，2026-07-18）**：
 - **curation 层（SRC_PRIORITY = -1，高于 manual/addressbook）**：`additions/curation_overrides_*.csv` 的 source 一律写 `curation`。根因：add_labels.py 对同级采用"新条目覆盖"、build_labels.py 采用"先到保留"——两语义不一致曾致 12 行 v4.2 精修（Relay solver 官方 API 亲验等）在全量重建时被 gen_manual 泛化行回退（列级 diff 实测抓出，已救回 `curation_overrides_20260718.csv`）。**今后凡"直改发布库"级别的精修，必须同步固化为 curation override 文件**，否则下次重建即回退。
@@ -107,12 +99,7 @@ python3 ../accumulate_offenders.py && cd sources && python3 ../add_labels.py ser
 - **校准基线**（2026-07-17，bibi BSC 20.5 万转账 + TRASH Robinhood 9.9 万转账）：47 个 appendix 实体地址误伤 0（连候选提示都 0）；已知设施交叉确认 10；净增益 8 个库外真漏斗。**阈值任何改动必须重跑两案校准**。
 - 扩容闭环：FUNNEL 命中且静态库无记录 → 自动进 miss 队列（最高优先级回填候选）→ 人工判明身份 → add_labels 回填。行为发现→人工确认→静态库成长，取代"审计轮脑补扩容"。
 
-## 扩容路线（△=codex 建议；✅=已落地）
-
-- ✅ v4 P0/P1/P2 全批（决策语义三维/resolver 主流程/金标扩衡/Base 定向补录/miss 队列/serial 层/codehash 指纹/OFAC 分流/时态字段/BSC tornado 审计/privacy 拆分/manual 双真源校验）
-- ✅ v4.1（覆盖面专项，codex 第三轮）：spellbook 三链投影分流（删 531）；SOL 垃圾清洗 55+base58 硬校验；BSC 桥 30/router 18/locker 17/four.meme 11；SOL 四所 23+Jupiter Lock/Bonfida/Boop；GoPlus 通道；Robinhood verified-contracts 脚本
-- ✅ v4.2（闭环专项，codex 第四轮）：round-trip 三断环；ETH AA 17 条错标修正+归一规则；validate 不变量 11-14；benchmark 五链强制+预检；gatekeeper（两案校准误伤 0）+cluster 接入；Safe 家族 72；Relay 22 solver+聚合桥合约层 95；Base AA 36；EntryPoint 四链；SOL 韩所疑似+heist
-- ✅ v4.2+ 稳定化（2026-07-18）：curation 层最高优先级+12 行精修救回；upsert 证据列覆盖语义；benchmark fail-fast；roundtrip_check 发布门禁；manifest 校验和（scripts/tests/）
+## 开放扩容路线
 - **P1 余款** Base bundler/paymaster 快照定期刷新（HyperSync 聚合法已沉淀；2026-07-17 快照，≥1000 笔/≥900 UserOp 阈值，bundler EOA 会轮换）；韩所 SOL 正式标签持续物色（当前守门员兜底）。
 - **P1 余款** △ 协议官方 deployment registry 持续扩容（Safe deployments / Hyperlane 合约页——机制已建：official_registry.csv + add_labels.py，逐案补）。
 - **P1 余款** Robinhood 工厂事件回放（PoolCreated/ProxyCreation）+ verified-contracts 候选池首轮人工审（`pull_verified_contracts.py` 定期增量拉，同名家族=克隆工厂线索，**只产候选不自动入库**）。

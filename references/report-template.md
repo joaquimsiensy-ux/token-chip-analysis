@@ -290,15 +290,6 @@ schema 全部细节（report-extract 四键与 `id="report-extract"` 硬约定�
 12. `build_html.py` 退出码 0（6.7.0 起有 [WARN] 直接不写出文件）；阵营图 `id="chart-camps"` 自动嵌入目检存在
 13. **【买入后监控包交付时追加】**：观察哨与两档监控建议齐且逐条有原因、与 JSON monitoring_advice 的 mode/alert_threshold_pct 一一对应；JSON 顶层四键齐、addresses 与附录 B 一致且完整地址、sentinel 纪律复查（周期性会动的地址必须 false）、round_target/watch_return 该填的填了；重跑 build_html 零 WARN、`id="report-extract"` 目检存在
 14. 浏览器打开 HTML 目检：图片全显示、表格无错位、蓝红框正常、（带监控包时）JSON 折叠块可展开
-15. ~~交付后固定动作（3.18.0）~~ **已移入复盘（v6.4.1）**：惯犯库回灌（`accumulate_offenders.py --apply` 及跨案身份冲突检测裁决）不再随交付执行——用户下令复盘时按 retrospective.md 步骤 3 做，结论未经用户复核不入库。交付时本条无动作。
-
-**图 1 出图后必须目检"图例条数 == 传入阵营数"（GMX 2026-07-26 定）**：
-`standard_charts.plot_camp_evolution` 按 `CAMP_ORDER` 白名单过滤 series 键，**传入非标准阵营名会被静默跳过、不报错也不 WARN**（GMX 案 8 阵营只画出 2 个、退出码仍为 0，纯靠目检才发现）。阵营名一律用标准名；出图后数一遍图例。
-
-**留存率类指标必须先剔除设施收款方（GMX 2026-07-26 定）**：
-算"某分发源的收款人留存率"时，收款方名单里往往混着质押合约、DEX 池、归属兑付池、桥等设施——它们本不是"人"，不剔除会把量级拉错、叙事拉反。同类指标（人均持仓、分发集中度）同样适用。（判例：casebook/supply-accounting.md S-05）
-
-**阵营归属 ↔ 正文叙事交叉自检（交付前机械检查，2026-07-25）**：
-**纪律**：交付前逐条核——凡在正文被点名参与某实体动作的地址，必须在阵营表里有明确归属且
-两处措辞一致；发现互斥时二选一（并入该实体，或单列为独立实体并改写正文措辞），**不能两处并存**。
-实锤：KOGE 案一个账户两处互斥归属、散户份额虚高 2.6 倍（KOGE 复核 07-25）。
+15. 图 1 的图例条数是否等于传入阵营数，且全部阵营名逐字取自 `CAMP_ORDER`；非标准名会静默漏图（判例：casebook/supply-accounting.md S-10）。
+16. 留存率、人均持仓和分发集中度是否先剔除质押合约、DEX 池、归属池、桥等设施收款方；否则口径与叙事可能反转（判例：casebook/supply-accounting.md S-05）。
+17. 正文点名参与实体动作的地址是否与阵营表逐址同归属；互斥时必须修归属或改叙事，否则实体与散户占比失真（判例：casebook/entity-clustering.md E-18）。
