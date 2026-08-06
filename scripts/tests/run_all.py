@@ -9,6 +9,7 @@ import os, subprocess, sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 SUITE = ['changelog_lint.py', ['docs_lint.py', '--all'], 'labels_manifest.py',
          'invariant_scan.py', 'test_r7_findings.py',
+         'test_net_result.py',
          'test_receipt_kernel.py',
          'test_reconciliation_runner.py', 'test_chain_registry.py',
          '../labels/check_manual_sync.py', 'env_check.py',

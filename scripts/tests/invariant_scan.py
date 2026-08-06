@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """v6.35 invariant manifest completeness guard.
 
-Stage 1 deliberately answers only one question: does the manifest still list the
-whole implementation surface?  It does not yet enforce use of the future
-receipt kernel, chain registry, atomic-write library, or net.py.
+The scanner answers one question: does the manifest still list the whole
+implementation surface?  It inventories kernel/registry/net adoption points but
+does not claim that every registered legacy point has already migrated.
 """
 from __future__ import annotations
 
@@ -183,6 +183,7 @@ def scan_python(path: Path):
             if isinstance(first, (ast.List, ast.Tuple)) and first.elts:
                 cmd = first.elts[0]
                 has_curl |= isinstance(cmd, ast.Constant) and cmd.value == "curl"
+    has_curl |= constants.get("REGISTERED_TRANSPORT_BACKEND") == "curl"
 
     atomic = AtomicVisitor()
     atomic.visit(tree)

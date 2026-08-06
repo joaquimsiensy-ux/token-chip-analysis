@@ -4,15 +4,22 @@
 输出: 每行 [ts, slot, from_owner, to_owner, amount_raw](与 fetch_sqd_transfers_v2.py 边格式兼容)
      失败段写入 <out>.gaps.json；gaps 非空只留 <out>.partial 并 exit 2。
 """
-import argparse, hashlib, json, os, subprocess, sys, time
+import argparse, json, os, sys, time
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime, timezone
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
+import net
+from receipt_kernel import (build_envelope, finalize_envelope, publish_error_receipt,
+                            publish_overwrite)
 
 SQD = "https://portal.sqd.dev/datasets/solana-mainnet/stream"
 MINT = json.loads(Path("config.json").read_text())["mint"]
 ZERO = "0x" + "0" * 40
 CHUNK = 2000
+SCHEMA = "solana-window-fetch-receipt/v2"
 
 
 def pair_tx(delta):
@@ -44,23 +51,32 @@ def scan_seg(frm, to):
                                             "postOwner": True, "preAmount": True, "postAmount": True}},
                 "tokenBalances": [{"postMint": [MINT], "transaction": True},
                                   {"preMint": [MINT], "transaction": True}]}
-        try:
-            p = subprocess.run(["curl", "-s", "-m", "60", "-X", "POST", SQD,
-                                "-H", "Content-Type: application/json", "-d", json.dumps(body)],
-                               capture_output=True, text=True, timeout=75)
-            raw = p.stdout
-        except Exception:
-            raw = ""
+        result = net.curl_json(SQD, post_json=body, timeout=60, attempts=1)
+        if not result.ok:
+            fails += 1
+            if fails > 5:
+                return edges, False
+            time.sleep(2 * fails)
+            continue
+        blocks = result.value
+        if isinstance(blocks, dict):
+            blocks = [blocks]
+        if not isinstance(blocks, list) or any(not isinstance(block, dict) for block in blocks):
+            fails += 1
+            if fails > 5:
+                return edges, False
+            time.sleep(2 * fails)
+            continue
         last = None
-        for ln in raw.strip().split("\n"):
-            if not ln:
-                continue
-            try:
-                b = json.loads(ln)
-            except ValueError:
-                break  # 截断行:按已解析部分推进
+        page_edges = []
+        page_valid = True
+        for b in blocks:
             hdr = b.get("header", {})
-            last = hdr.get("number", last)
+            number = hdr.get("number")
+            if not isinstance(number, int) or number < cur or number > to:
+                page_valid = False
+                break
+            last = number
             tbs = b.get("tokenBalances") or []
             if not tbs:
                 continue
@@ -82,36 +98,30 @@ def scan_seg(frm, to):
                     by_tx[ti][owner] = by_tx[ti].get(owner, 0) + dlt
             for ti, delta in by_tx.items():
                 for f, t, amt in pair_tx(delta):
-                    edges.append((ts, hdr["number"], f, t, amt))
-        if last is None:
+                    page_edges.append((ts, number, f, t, amt))
+        if not page_valid or last is None:
             fails += 1
             if fails > 5:
                 return edges, False
             time.sleep(2 * fails)
             continue
+        edges.extend(page_edges)
         fails = 0
         cur = last + 1
     return edges, True
 
 
-def _sha256(path):
-    h = hashlib.sha256()
-    with Path(path).open("rb") as f:
-        for chunk in iter(lambda: f.read(1 << 20), b""):
-            h.update(chunk)
-    return h.hexdigest()
+def _run_id():
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S.%fZ")
+    return f"{stamp}.{os.getpid()}"
 
 
-def _atomic_json(path, payload):
-    out = Path(path).resolve(); out.parent.mkdir(parents=True, exist_ok=True)
-    tmp = out.with_name(f".{out.name}.tmp.{os.getpid()}")
+def _publish_error(receipt_path, envelope, error, run_id):
     try:
-        with tmp.open("x", encoding="utf-8") as f:
-            json.dump(payload, f, ensure_ascii=False, indent=2)
-            f.write("\n"); f.flush(); os.fsync(f.fileno())
-        os.replace(tmp, out)
-    finally:
-        if tmp.exists(): tmp.unlink()
+        error_path = publish_error_receipt(receipt_path, envelope, error, run_id=run_id)
+        print(f"[window_fetch] ERROR → {error_path}", file=sys.stderr)
+    except Exception as exc:
+        print(f"[window_fetch] ERROR receipt 发布失败: {exc}", file=sys.stderr)
 
 
 def main(argv=None):
@@ -123,22 +133,38 @@ def main(argv=None):
     ap.add_argument("--receipt", required=True)
     args = ap.parse_args(argv)
 
+    run_id = _run_id()
+    out_path = Path(args.out).resolve()
+    if args.frm < 0 or args.frm > args.to or args.conc < 1:
+        if out_path.exists():
+            stale = out_path.with_name(f"{out_path.name}.stale.{run_id}")
+            if stale.exists():
+                raise RuntimeError(f"stale destination already exists: {stale}")
+            os.replace(out_path, stale)
+        print("[window_fetch] 正式窗口要求 0 <= from_slot <= to_slot 且 conc >= 1", file=sys.stderr)
+        return 2
+
     segs = []
     s = args.frm
     while s <= args.to:
         segs.append((s, min(s + CHUNK - 1, args.to)))
         s += CHUNK
+    if not segs:
+        print("[window_fetch] 计划 segment 为空，拒绝正式运行", file=sys.stderr)
+        return 2
     print(f"segments: {len(segs)} x {CHUNK} slots, conc={args.conc}", flush=True)
 
     t0 = time.time()
     done = [0]
     gaps = []
-    out_path = Path(args.out).resolve()
     out_path.parent.mkdir(parents=True, exist_ok=True)
     partial = Path(str(out_path) + ".partial")
     outf = partial.open("w", encoding="utf-8")
     backup = None
+    published_current = False
     lock = __import__("threading").Lock()
+    target = {"chain": "solana", "token": MINT, "as_of_block": args.to}
+    base_envelope = build_envelope(SCHEMA, target, __file__, "formal")
 
     def work(seg):
         e, ok = scan_seg(seg[0], seg[1])
@@ -156,30 +182,37 @@ def main(argv=None):
             list(ex.map(work, segs))
         outf.flush(); os.fsync(outf.fileno()); outf.close()
         gaps_path = Path(str(out_path) + ".gaps.json")
-        gaps_path.write_text(json.dumps(gaps), encoding="utf-8")
+        publish_overwrite(gaps_path, gaps)
         if gaps:
             verdict, exit_code = "FAIL", 2
-            published = None
+            if out_path.exists():
+                stale = out_path.with_name(f"{out_path.name}.stale.{run_id}")
+                if stale.exists():
+                    raise RuntimeError(f"stale destination already exists: {stale}")
+                os.replace(out_path, stale)
+            envelope = build_envelope(
+                SCHEMA, target, __file__, "formal", {"output": partial, "gaps": gaps_path})
+            published = envelope["inputs"]["output"]
         else:
             if out_path.exists():
-                backup = out_path.with_name(f".{out_path.name}.previous.{os.getpid()}")
+                backup = out_path.with_name(f".{out_path.name}.previous.{run_id}")
                 os.replace(out_path, backup)
             os.replace(partial, out_path)
+            published_current = True
             verdict, exit_code = "PASS", 0
-            published = {"path": str(out_path), "size": out_path.stat().st_size,
-                         "sha256": _sha256(out_path)}
-        receipt = {
-            "schema": "solana-window-fetch-receipt/v2",
-            "target": {"chain": "solana", "token": MINT, "as_of_block": args.to},
-            "range": {"from_slot": args.frm, "to_slot": args.to,
-                      "chunk_size": CHUNK, "segments": len(segs)},
-            "coverage": {"completed_segments": len(segs) - len(gaps),
-                         "gap_segments": len(gaps), "gaps": gaps},
-            "output": published or {"path": str(partial), "size": partial.stat().st_size,
-                                     "sha256": _sha256(partial), "partial": True},
-            "verdict": verdict, "exit_code": exit_code,
-        }
-        _atomic_json(args.receipt, receipt)
+            envelope = build_envelope(
+                SCHEMA, target, __file__, "formal", {"output": out_path, "gaps": gaps_path})
+            published = envelope["inputs"]["output"]
+        if gaps:
+            published = {**published, "partial": True}
+        receipt = finalize_envelope(
+            envelope, verdict, exit_code,
+            range={"from_slot": args.frm, "to_slot": args.to,
+                   "chunk_size": CHUNK, "segments": len(segs)},
+            coverage={"completed_segments": len(segs) - len(gaps),
+                      "gap_segments": len(gaps), "gaps": gaps},
+            output=published)
+        publish_overwrite(args.receipt, receipt)
         if backup and backup.exists():
             backup.unlink()
         print(f"{verdict} {len(segs)} segs ({len(gaps)} gaps) in {time.time()-t0:.0f}s"
@@ -189,10 +222,11 @@ def main(argv=None):
         if not outf.closed:
             outf.close()
         # 数据与完成 receipt 是一个发布事务：receipt 落盘失败时撤回本次正式文件。
-        if not gaps and out_path.exists():
+        if published_current and out_path.exists():
             os.replace(out_path, partial)
         if backup and backup.exists():
             os.replace(backup, out_path)
+        _publish_error(args.receipt, base_envelope, exc, run_id)
         print(f"[window_fetch] 检测/提交失败（exit 1）: {exc}", file=sys.stderr)
         return 1
 

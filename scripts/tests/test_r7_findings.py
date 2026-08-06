@@ -30,7 +30,7 @@ for rel in ("scripts/report", "scripts/evm", "scripts/solana", "scripts/lib",
             "scripts/labels", "scripts/tests"):
     sys.path.insert(0, str(ROOT / rel))
 
-EXPECTED_RED = {"R7-02", "R7-03", "R7-06"}
+EXPECTED_RED = set()
 FIELDS = ["address", "chain", "name", "category", "tier", "source", "added_date",
           "evidence", "risk_flags", "merge_policy", "balance_policy",
           "source_snapshot_at", "verified_at", "status", "raw_labels"]
@@ -98,8 +98,8 @@ def test_r7_02():
         write_json(Path("config.json"), {"mint": "mint-a"})
         mod = load(ROOT / "scripts/solana/anchor_sampler.py", "r7_anchor_transport")
         failed = subprocess.CompletedProcess(["curl"], 7, stdout="", stderr="connect failed")
-        with mock.patch.object(mod.subprocess, "run", return_value=failed), \
-                mock.patch.object(mod.time, "sleep"):
+        with mock.patch.object(mod.net.subprocess, "run", return_value=failed), \
+                mock.patch.object(mod.net.time, "sleep"):
             result = mod.fetch_window(1, 2)
         assert result is None, f"transport failure returned successful payload {result!r}"
 
@@ -198,7 +198,7 @@ def test_r7_06():
         gap_receipt = root / "gap_receipt.json"
         with mock.patch.object(mod, "scan_seg", return_value=([], False)):
             rc = mod.main(["0", "0", str(old), "--receipt", str(gap_receipt), "--conc", "1"])
-        stale = list(root.glob("old.jsonl*.stale")) + list(root.glob(".old.jsonl*.stale"))
+        stale = list(root.glob("old.jsonl.stale.*"))
         if rc != 2 or old.exists() or not stale:
             problems.append(f"gap run did not quarantine old formal output (rc={rc}, stale={stale})")
     assert not problems, "; ".join(problems)
@@ -450,7 +450,12 @@ def main(argv=None):
         for finding, raw in failures:
             print(f"--- {finding} ---\n{raw}")
         return 1
-    print(f"PASS R7 expected-red quarantine: {expected_count}/{len(selected)} observed red")
+    green_count = len(selected) - expected_count
+    if EXPECTED_RED:
+        print(f"PASS R7 expected-red quarantine: {expected_count}/{len(selected)} observed red")
+    else:
+        print(f"PASS R7 regression suite: {green_count}/{len(selected)} observed green; "
+              "EXPECTED_RED=0")
     return 0
 
 

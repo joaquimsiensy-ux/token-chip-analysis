@@ -10,6 +10,7 @@
 
 ## 版本索引（活跃窗口，新在上；每版一行，详情见下方对应条目）
 
+- **6.36.0** 2026-08-06 结构收敛工程阶段 3+4 收口：receipt kernel+独立 validator、EVM/Solana 五件垂直切片迁移、net.py Result+curl 后端；R7 十五项 15/15 全绿、四零机器复算达成（kernel 采用 5/35 逐版推进）
 - **6.35.0** 2026-08-06 结构收敛工程阶段 1+2：invariant manifest 实施面分母+R7 十五项先红测试防装死隔离；受控 runner 编排执行四查+聚合器只认 runner 绑定；链能力注册表单源（同名异义 KNOWN_CHAINS 消灭），R7-01/05/07 转绿
 - **6.34.0** 2026-08-06 六视角首战修复轮：13 项五批全修（发布证据链 receipt 化/采集器原子产物/标签门禁等深/正式输入必填/文档口径），验收返工 1 项 risk_flags 规范化
 - **6.33.0** 2026-08-06 维护方法论文档化：六视角 review 清单与修复工单模板沉淀为维护件 maintenance-review-repair.md（零判据变更）
@@ -29,6 +30,15 @@
 - **6.20.1** 2026-08-05 修 5 处阻断级文档漂移（A4 前禁写报告冲突/easy 残留/惯犯回灌 docstring/批量预采集残留/旧 Par 路线历史降级）＋docs_lint 增中文禁词与 Python module docstring 扫描
 
 更早版本（6.20.0 及以前）详见 `archive/CHANGELOG-archive.md`。
+
+## [6.36.0] - 2026-08-06 — 结构收敛工程阶段 3+4 收口：receipt kernel＋垂直切片迁移＋net.py 演进，15/15 全绿
+
+- **阶段 3（九项摘牌，commit 6a9204b）**：新建分层 `receipt_kernel.py`——envelope 层（target 三键必填/producer 自动绑当前哈希/inputs file_ref 含 symlink+逃逸防护/mode 必填/verdict-exit 一致表）+四型原子发布原语（exclusive 硬链接独占/overwrite 单文件/txn 双文件事务回滚/restore_on_fail 失败还原），ERROR 一律走 `<name>.error.<run_id>.json` side receipt 不覆盖既有 PASS；独立 `receipt_validate.py` 不 import kernel、哈希/路径/语义表全独立实现防"同错同过"；golden+故障注入测试（坏 target/文件改写/磁盘满/并发写/旧 PASS 保护/逃逸/双文件回滚）。EVM 三件垂直切片迁移（verify_recon/supply_truth_gate/time_spotcheck）换 kernel envelope，同 fixture 旧新对表业务字段零漂移；嵌 R7-12（eth_chainId 启动对表，错链 exit 2 不发 eth_call）、R7-04（--replay-net-raw 与 --exploration 互锁，EVM as-of-block 必填，Solana 如实记 observed_context_slot+"当前观测非冻结时点"语义声明，聚合器强校验）、R7-13（plan chain/token 与 CLI target 对照+plan file_ref）。个案修 R7-08（declared gate 硬查 exit 0，reconciliation_report.json 纳入 AUTO_GATES）/09（正式空标签双端 exit 2）/10（归档三闸前 staging+os.link 独占转正，绝不覆盖既有归档）/11（三日期字段方向性比较：staging 早于发布=FAIL）/14（risk_flags 去重+strip；非作者对抗审首例=codex 审 Fable 上轮亲修代码）/15（MAINTENANCE.md 七字段指向 DECISION_FIELDS+三闸事务描述）。
+- **阶段 3 验收返工（Fable 边界外攻击 4/4 得手）**：①`finalize_envelope` 业务字段 kwargs 可静默覆盖 producer/mode/inputs 全部身份绑定（疏忽即可绕）——修为七保留键冲突拒绝；②`publish_txn`/`publish_restore_on_fail` 回滚二次失败时 finally 连备份一起删（旧正式产物零残骸丢失）——修为 committed 标志分路+回滚失败保留 `.rollback.` 备份+异常带人工恢复路径；4 新反例先红后绿，攻击复跑 4/4 SAFE。
+- **阶段 4（最后三项摘牌）**：`net.py` 新增 frozen `Result`（`__bool__` 一律 raise 禁隐式真值）与登记式 `curl_json` 后端（`REGISTERED_TRANSPORT_BACKEND` 常量供 invariant_scan 识别；rc=22 归 http_status、其他非零归 transport、空 stdout/坏 JSON/NDJSON 任一行失败归 decode；重试耗尽返回 error 不伪装；"成功空数据是否可信"明确留给 adapter），旧 RpcPool/http_get_many 接口零改动。`anchor_sampler.py` 迁移（R7-02/03）：传输失败/空响应/不可解析绝不表达"无活动"（失败分型 fetch_fail/unproven_empty/observed_slot_beyond_cutoff/no_converge），任一日失败走 kernel ERROR side+exit 2；每行绑定 chain/mint/endpoint/as_of_slot，resume 逐行验身份+日期唯一+slot≤cutoff，旧格式（无身份列）一律拒绝复用提示重采（存量三币本在重采清单）。`window_fetch.py` 迁移（R7-06）：正式窗口必须 0≤from≤to 且 segments≥1，非法范围开文件前 exit 2；gap 时旧正式文件原子改名 `.stale.<run_id>` 防被下游消费；receipt 迁 kernel。R7-06 消费面评估裁决：不无条件扩 handoff（window_fetch 为按需补采件，强制槽位会误伤未调用案例），正确路线=collection plan 声明式条件消费，留独立切片。
+- **工程收口台账**：R7 15/15 全绿（EXPECTED_RED 清空，防装死终态验证）；五个零复算——手拼 wrapper=0/未登记 transport=0/重复链能力定义=0/无期限白名单=0 四项机器达成，手写 envelope 在已迁切片内=0、全库 35 个登记 producer 已迁 5（A2 三件+anchor/window），其余 30 个按垂直切片逐版推进（一次全迁=大改新代码成下轮缺陷源，正是本工程诊断要避免的）；invariant 44/51/36/37/54/0（transport +1=curl 后端登记，atomic 净减 2）；SUITE 67 入口全绿。成功判据第 4 条（连续两轮盲审新引入=0 且半修残留=0）待用户择期发起盲审裁决。
+
+本次为结构收敛工程（维护轮），无代币分析轮次或结论质量指标；15 项全部转绿，四阶段两 commit（6a9204b+本版）收口。
 
 ## [6.35.0] - 2026-08-06 — 结构收敛工程阶段 1+2：分母清单＋先红隔离＋受控 runner＋链能力单源
 

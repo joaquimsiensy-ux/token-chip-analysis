@@ -7,9 +7,13 @@
   - 统一重试：tenacity 指数退避+抖动，替代到处手写的 429/504 循环
   - msgspec 解析大 JSON 响应（比 stdlib 快数倍），失败自动回退 stdlib
 
-适用边界：JSON API / JSON-RPC 批量调用。**Cloudflare/浏览器指纹敏感的站点仍走 curl 通道**
-（bscscan 网页、GT 等），本库不替代它们。新脚本的批量 HTTP 一律 import 本库；
+适用边界：JSON API / JSON-RPC 批量调用。**Cloudflare/浏览器指纹敏感的站点仍走本库登记的
+curl_json 后端**（bscscan 网页、GT、SQD stream 等），不得由业务脚本私搭 subprocess curl。
+新脚本的批量 HTTP 一律 import 本库；
 在役老脚本不强改（改动须走等价对表）。
+
+curl_json 只判断传输、HTTP 状态与 JSON/NDJSON 解码是否成功；“成功响应里的空数据是否
+可信”属于 adapter 的分页终止/区间覆盖判断，本层绝不替业务层作 EMPTY_OK 裁决。
 
 用法（同步入口，内部起事件循环，调用方无需懂 async）:
     from net import RpcPool, http_get_many
@@ -21,8 +25,11 @@
 （来源：B5 网络层改造，2026-07-22）"""
 import asyncio
 import json as _stdjson
+import subprocess
 import sys
 import time
+from dataclasses import dataclass
+from typing import Any
 
 import httpx
 import msgspec
@@ -33,6 +40,96 @@ from tenacity import (AsyncRetrying, retry_if_exception, stop_after_attempt,
 RETRYABLE_STATUS = {429, 500, 502, 503, 504, 408}
 # JSON-RPC 错误码：限流/节点过载类可重试；其余（方法不存在/参数错）不重试
 RETRYABLE_RPC = {-32005, -32603, -32000}
+# Machine-readable registration consumed by invariant_scan.py.
+REGISTERED_TRANSPORT_BACKEND = "curl"
+
+
+@dataclass(frozen=True)
+class Result:
+    """Explicit transport result; callers must branch on ``.ok``."""
+
+    ok: bool
+    value: Any = None
+    error: Any = None
+
+    def __bool__(self):
+        raise TypeError("Result has no truth value; test result.ok explicitly")
+
+
+def _curl_error(category, message, *, returncode=None):
+    error = {"category": category, "message": str(message)[:500]}
+    if returncode is not None:
+        error["returncode"] = int(returncode)
+    return Result(ok=False, error=error)
+
+
+def _decode_curl_json(raw: str):
+    """Decode one JSON value or an all-valid newline-delimited JSON stream."""
+    try:
+        return _stdjson.loads(raw)
+    except (TypeError, ValueError) as single_error:
+        lines = [line for line in raw.splitlines() if line.strip()]
+        if len(lines) <= 1:
+            raise single_error
+        values = []
+        for line in lines:
+            values.append(_stdjson.loads(line))
+        return values
+
+
+def curl_json(url, *, post_json=None, headers=None, timeout=45.0, attempts=4) -> Result:
+    """Run the registered curl backend and return an explicit :class:`Result`.
+
+    ``curl --fail-with-body`` maps HTTP failures to return code 22.  Other non-zero
+    return codes are transport failures.  Empty, truncated, or otherwise invalid
+    JSON/NDJSON is a decode failure.  Business adapters remain responsible for
+    proving whether a successfully decoded empty value covers their requested range.
+    """
+    if not isinstance(attempts, int) or attempts < 1:
+        raise ValueError("attempts must be a positive integer")
+    if not isinstance(timeout, (int, float)) or timeout <= 0:
+        raise ValueError("timeout must be positive")
+    if headers is not None and not hasattr(headers, "items"):
+        raise TypeError("headers must be a mapping")
+
+    command = ["curl", "--silent", "--show-error", "--fail-with-body",
+               "--max-time", str(float(timeout))]
+    header_map = dict(headers or {})
+    if post_json is not None:
+        command.extend(["--request", "POST"])
+        if not any(str(key).lower() == "content-type" for key in header_map):
+            header_map["Content-Type"] = "application/json"
+    for key, value in header_map.items():
+        command.extend(["--header", f"{key}: {value}"])
+    if post_json is not None:
+        command.extend(["--data-binary", _stdjson.dumps(
+            post_json, ensure_ascii=False, separators=(",", ":"))])
+    command.append(str(url))
+
+    last = None
+    for attempt in range(attempts):
+        try:
+            completed = subprocess.run(
+                command, capture_output=True, text=True, timeout=float(timeout) + 10.0)
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            last = _curl_error("transport", f"{type(exc).__name__}: {exc}")
+        else:
+            if completed.returncode != 0:
+                category = "http_status" if completed.returncode == 22 else "transport"
+                detail = completed.stderr.strip() or f"curl exited {completed.returncode}"
+                last = _curl_error(category, detail, returncode=completed.returncode)
+            elif not completed.stdout.strip():
+                last = _curl_error("decode", "curl returned empty stdout")
+            else:
+                try:
+                    value = _decode_curl_json(completed.stdout)
+                except (TypeError, ValueError) as exc:
+                    last = _curl_error("decode", f"invalid JSON response: {exc}")
+                else:
+                    return Result(ok=True, value=value)
+        if attempt + 1 < attempts:
+            time.sleep(min(2 ** attempt, 8))
+    return last
 
 
 def _decode(raw: bytes):

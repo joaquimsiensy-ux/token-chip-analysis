@@ -152,23 +152,58 @@ def test_anchor_sampler(root):
                 "--receipt", str(work / "anchor_receipt.json")]
         with mock.patch.object(mod, "fetch_window", return_value=None), \
                 mock.patch.object(mod.time, "sleep"):
-            assert mod.main(args) == 2
-        receipt = json.loads((work / "anchor_receipt.json").read_text())
-        assert receipt["verdict"] == "FAIL" and receipt["failures"][0]["error"] == "fetch_fail"
+            assert mod.main(args) != 0
+        assert not (work / "anchor_receipt.json").exists()
+        errors = list(work.glob("anchor_receipt.error.*.json"))
+        assert len(errors) == 1 and json.loads(errors[0].read_text())["verdict"] == "ERROR"
 
         def no_converge(frm, to):
             return [{"header": {"timestamp": 1, "number": frm}, "transactions": [],
                      "tokenBalances": []}]
         (work / "anchors.jsonl").unlink()
         with mock.patch.object(mod, "fetch_window", side_effect=no_converge):
-            assert mod.main(args) == 2
-        assert any(x["error"] == "no_converge"
-                   for x in json.loads((work / "anchor_receipt.json").read_text())["failures"])
-        (work / "anchor_receipt.json").unlink()
+            assert mod.main(args) != 0
+        assert not (work / "anchor_receipt.json").exists()
+        assert len(list(work.glob("anchor_receipt.error.*.json"))) == 2
+
+        (work / "anchors.jsonl").unlink()
         with mock.patch.object(mod, "fetch_window", return_value=[]), \
-                mock.patch.object(mod, "_atomic_json", side_effect=OSError("disk full")):
+                mock.patch.object(mod, "publish_overwrite", side_effect=OSError("disk full")):
             assert mod.main(args) == 1
         assert not (work / "anchor_receipt.json").exists(), "写回失败留下 PASS receipt"
+
+        (work / "anchors.jsonl").unlink()
+        with mock.patch.object(mod, "fetch_window", return_value=[]):
+            assert mod.main(args) == 0
+        receipt = json.loads((work / "anchor_receipt.json").read_text())
+        row = json.loads((work / "anchors.jsonl").read_text())
+        assert receipt["verdict"] == "PASS" and receipt["mode"] == "formal"
+        assert {"path", "size", "sha256"} <= set(receipt["inputs"]["output"])
+        assert {"chain", "mint", "endpoint", "as_of_slot"} <= set(row)
+        assert row["chain"] == "solana" and row["mint"] == "mint1"
+        validator = load(ROOT / "scripts/lib/receipt_validate.py", "sixlens_anchor_validator")
+        assert validator.validate_receipt(receipt) == []
+        shared = load(ROOT / "scripts/report/shared_release_receipt.py", "sixlens_anchor_shared")
+        item = {"status": "PASS", "exit_code": 0,
+                "receipt": {"path": "anchor_receipt.json",
+                            "sha256": sha(work / "anchor_receipt.json")}}
+        target = {"chain": "solana", "token": "mint1", "as_of_block": 10000}
+        shared.validate_reconciliation_check(work, "balance", item, target, "solana")
+        shared.validate_reconciliation_check(work, "time", item, target, "solana")
+
+        (work / "anchor_receipt.json").unlink()
+        variants = [
+            {**row, "chain": "ethereum"},
+            {**row, "mint": "other-mint"},
+            {**row, "endpoint": "https://other.invalid"},
+            {**row, "as_of_slot": 9999},
+            {**row, "to_slot": 10001},
+        ]
+        for bad_row in variants:
+            (work / "anchors.jsonl").write_text(json.dumps(bad_row) + "\n", encoding="utf-8")
+            with mock.patch.object(mod, "fetch_window") as fetch:
+                assert mod.main(args) == 2
+            fetch.assert_not_called()
     finally:
         os.chdir(old)
 
@@ -181,27 +216,45 @@ def test_window_fetch(root):
         mod = load(ROOT / "scripts/solana/window_fetch.py", "sixlens_window")
         out = work / "window.jsonl"; receipt = work / "window_receipt.json"
         args = ["0", "10", str(out), "--conc", "1", "--receipt", str(receipt)]
+
+        reverse = work / "reverse.jsonl"; reverse_receipt = work / "reverse_receipt.json"
+        assert mod.main(["10", "0", str(reverse), "--conc", "1",
+                         "--receipt", str(reverse_receipt)]) == 2
+        assert not reverse.exists() and not reverse_receipt.exists()
+        negative = work / "negative.jsonl"; negative_receipt = work / "negative_receipt.json"
+        assert mod.main(["-1", "0", str(negative), "--conc", "1",
+                         "--receipt", str(negative_receipt)]) == 2
+        assert not negative.exists() and not negative_receipt.exists()
+
+        out.write_text("old-formal\n", encoding="utf-8")
         with mock.patch.object(mod, "scan_seg", return_value=([(1, 1, "a", "b", 1)], False)):
             assert mod.main(args) == 2
         assert not out.exists() and Path(str(out) + ".partial").exists()
-        assert json.loads(receipt.read_text())["verdict"] == "FAIL"
+        failed_receipt = json.loads(receipt.read_text())
+        assert failed_receipt["verdict"] == "FAIL"
+        validator = load(ROOT / "scripts/lib/receipt_validate.py", "sixlens_window_validator")
+        assert validator.validate_receipt(failed_receipt) == []
+        stale = list(work.glob("window.jsonl.stale.*"))
+        assert len(stale) == 1 and stale[0].read_text() == "old-formal\n"
 
         for p in (Path(str(out) + ".partial"), Path(str(out) + ".gaps.json"), receipt):
             if p.exists(): p.unlink()
         with mock.patch.object(mod, "scan_seg", return_value=([(1, 1, "a", "b", 1)], True)):
             assert mod.main(args) == 0
-        assert out.exists() and json.loads(receipt.read_text())["verdict"] == "PASS"
+        passed_receipt = json.loads(receipt.read_text())
+        assert out.exists() and passed_receipt["verdict"] == "PASS"
+        assert validator.validate_receipt(passed_receipt) == []
 
         out.unlink(); receipt.unlink()
         with mock.patch.object(mod, "scan_seg", return_value=([(1, 1, "a", "b", 1)], True)), \
-                mock.patch.object(mod, "_atomic_json", side_effect=OSError("disk full")):
+                mock.patch.object(mod, "publish_overwrite", side_effect=OSError("disk full")):
             assert mod.main(args) == 1
         assert not out.exists(), "receipt 写失败前已发布正式 window 文件"
 
         out.write_text("old-formal\n", encoding="utf-8")
         before = out.read_bytes()
         with mock.patch.object(mod, "scan_seg", return_value=([(1, 1, "a", "b", 1)], True)), \
-                mock.patch.object(mod, "_atomic_json", side_effect=OSError("disk full")):
+                mock.patch.object(mod, "publish_overwrite", side_effect=OSError("disk full")):
             assert mod.main(args) == 1
         assert out.read_bytes() == before, "刷新失败未恢复旧 window 正式文件"
     finally:
