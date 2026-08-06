@@ -126,7 +126,7 @@ def make_provenance(d, entity_map, schema="provenance-ledger/v2", stable=True,
     write_json(d, "s2_entity_members.json", entity_map)
     trace = os.path.join(HERE, "..", "report", "entity_source_trace.py")
     labels_path = os.path.join(d, "fixture_labels.json")
-    write_json(d, "fixture_labels.json", {})
+    write_json(d, "fixture_labels.json", {"0xfacility": {"kind": "facility", "name": "fixture"}})
     p = subprocess.run([sys.executable, trace, "--edges-sol", os.path.join(d, "data", "edges.jsonl"),
                         "--total-supply", str(10 ** 12), "--entity-file", entity_path,
                         "--labels-file", labels_path, "--out", out,

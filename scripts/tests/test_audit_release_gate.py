@@ -66,6 +66,8 @@ def build_case(root, historical=True):
                  "supply_truth": "scripts/lib/supply_truth_gate.py",
                  "time": "scripts/lib/time_spotcheck.py"}
     checks = {}
+    envelope_input = {"fixture": {"path": str(raw.resolve()), "size": raw.stat().st_size,
+                                    "sha256": sha(raw)}}
     for key in ("balance", "supply", "supply_truth", "time"):
         evidence = root / f"{key}_receipt.json"
         if key in {"balance", "supply"}:
@@ -84,6 +86,8 @@ def build_case(root, historical=True):
             receipt_doc = {"schema": "time-spotcheck/v2", "target": target,
                 "points": 1, "exact_match": 1, "mismatch": 0, "rpc_err": 0,
                 "verdict": "PASS", "exit_code": 0}
+        receipt_doc.update({"producer": repo_ref(producers[key]), "mode": "formal",
+                            "inputs": envelope_input})
         write_json(root, evidence.name, receipt_doc)
         checks[key] = {"status": "PASS", "exit_code": 0,
                        "receipt": {"path": evidence.name, "sha256": sha(evidence)},

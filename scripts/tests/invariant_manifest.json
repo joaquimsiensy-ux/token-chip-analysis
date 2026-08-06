@@ -558,11 +558,6 @@
       "semantics": "overwrite_single"
     },
     {
-      "locator": "atomic_json",
-      "script": "scripts/evm/verify_recon.py",
-      "semantics": "overwrite_single"
-    },
-    {
       "locator": "main",
       "script": "scripts/labels/add_labels.py",
       "semantics": "restore_on_fail"
@@ -581,6 +576,26 @@
       "locator": "main",
       "script": "scripts/lib/rpc_batch.py",
       "semantics": "overwrite_single"
+    },
+    {
+      "locator": "publish_exclusive",
+      "script": "scripts/lib/receipt_kernel.py",
+      "semantics": "exclusive_new"
+    },
+    {
+      "locator": "publish_overwrite",
+      "script": "scripts/lib/receipt_kernel.py",
+      "semantics": "overwrite_single"
+    },
+    {
+      "locator": "publish_restore_on_fail",
+      "script": "scripts/lib/receipt_kernel.py",
+      "semantics": "restore_on_fail"
+    },
+    {
+      "locator": "publish_txn",
+      "script": "scripts/lib/receipt_kernel.py",
+      "semantics": "dual_file_txn"
     },
     {
       "locator": "cmd_series",

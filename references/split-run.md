@@ -98,7 +98,7 @@
 
 - **身份**：schema_version、case_id、run_id、mode（仅 `full`；**值来源＝/token-analyze-1 命令的档位参数，−1 收工 `generate --mode full` 必填传入**，用户未给档位时 −1 开工前先问、禁猜）、producer_model、CC/codex 两侧 git SHA、consumer_min_schema。
 - **口径**：链范围、合约、冻结块/slot、UTC cutoff、三种分母（总供应/调整后/流通）及来源。
-- **gate 记录**：每个 gate 的命令＋exit＋语义状态（accounting_mode/supply_truth 由脚本从产物 JSON 自动读 `verdict/exit_code`，防手报；四查必须运行 `reconciliation_report.py`，由 runner 记录四个子进程 exit 并绑定 producer receipt；handoff 若另记 gate，只绑定该 runner 产物，不接受 −1 手报四查 wrapper）。
+- **gate 记录**：每个 gate 的命令＋exit＋语义状态。`accounting_mode.json`、`supply_truth.json`、`time_spotcheck.json` 与 `reconciliation_report.json` 均由 AUTO_GATES 从产物 JSON 自动读 `verdict/exit_code`，禁止 declared 覆盖；其余 declared gate 也必须同时满足 `verdict=PASS|OK` 且 `exit_code=0`，generate 后 verify 会重查。四查必须运行 `reconciliation_report.py`，由 runner 记录四个子进程 exit 并绑定 producer receipt，不接受 −1 手报四查 wrapper。
 - **产物 allowlist**：逐件登记路径/字节/sha256（大文件分片哈希＋复用采集侧行数/区间校验，不收尾全盘重哈希）/行数/schema/依赖。排除日志/临时库/含密钥文件（config.json 不入清单内容）。
 - **状态机**：`READY | BLOCKED | PARTIAL | SUPERSEDED | BLOCKED_CEX_GATE`——只有 READY 可被 −2 消费；READY 前置＝五件契约 JSON＋accounting_mode.json＋supply_truth.json＋wave_scan_report.json＋flow_anomaly_report.json＋distribution_scan.json 齐全（EVM 家族链另加 time_spotcheck.json）。verify 会调用分布扫描器重算 initial 语义。手改 manifest、scan 或排除来源都不能通过。
 - **生成纪律**：原子生成（tmp+rename）、不含自身哈希；generate 后新增产物走 `late_additions`（重跑 generate 产 superseding manifest，旧件自动归档带 run_id 后缀）。

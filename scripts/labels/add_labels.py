@@ -14,7 +14,7 @@ additions.csv 列（缺省列自动补空）：
     risk_flags 并集；tier/category 冲突时【manual/registry 级新条目覆盖，其他保留并警告】
   - 写回后强制 validate_labels.py，FAIL 则还原（写临时文件校验通过才落盘）
 """
-import csv, os, shutil, subprocess, sys, tempfile
+import csv, datetime, os, shutil, subprocess, sys, tempfile
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, _HERE)
@@ -26,6 +26,38 @@ FIELDS = BASE_FIELDS + V4_OPTIONAL_FIELDS
 # 设施身份恢复实测踩中；增量与全量重建的覆盖语义自此一致。
 HIGH_TRUST_PREFIX = ('curation', 'manual', 'registry', 'serial', 'official')
 ADDITIONS_DIR = os.path.join(_HERE, 'sources', 'additions')
+
+
+def archive_stamp():
+    return datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
+
+
+def stage_archive(src):
+    """Copy source to a private additions staging path and reserve a unique final name."""
+    add_dir = os.path.abspath(ADDITIONS_DIR)
+    src_abs = os.path.abspath(src)
+    os.makedirs(add_dir, exist_ok=True)
+    if os.path.dirname(src_abs) == add_dir:
+        return None, None
+    base = os.path.basename(src_abs)
+    target = os.path.join(add_dir, base)
+    if os.path.exists(target):
+        if os.path.samefile(src_abs, target):
+            return None, None
+        stem, ext = os.path.splitext(base)
+        target = os.path.join(add_dir, f'{stem}_{archive_stamp()}{ext}')
+        if os.path.exists(target):
+            raise FileExistsError(f'补录归档目标二次重名，拒绝覆盖: {target}')
+    fd, staging = tempfile.mkstemp(dir=add_dir, prefix=f'.{os.path.basename(target)}.staging-',
+                                   suffix='.tmp')
+    os.close(fd)
+    try:
+        shutil.copy(src_abs, staging)
+    except BaseException:
+        if os.path.exists(staging):
+            os.remove(staging)
+        raise
+    return staging, target
 
 
 def rollback(adds, target_was_present, manifest_path, manifest_backup, manifest_was_present):
@@ -65,23 +97,42 @@ def main():
             ch = r['chain'].strip()
             na = norm_addr(r['address'], ch)
             if not na:
-                print(f'!! 非法地址（chain={ch}）: {r["address"]}'); sys.exit(1)
+                print(f'!! 非法地址（chain={ch}）: {r["address"]}'); return 1
             r['address'] = na
             for k in FIELDS:
                 r.setdefault(k, '')
             adds.setdefault(ch, {})[na] = r
 
-    target_was_present = {}
+    archive_staging = archive_target = None
+    if not dry:
+        try:
+            archive_staging, archive_target = stage_archive(src)
+        except Exception as exc:
+            print(f'!! 补录归档 staging 失败，尚未修改发布库: {exc}', file=sys.stderr)
+            return 1
+
+    target_was_present = {
+        ch: os.path.exists(os.path.join(DEFAULT_LABELS_DIR, f'labels-{ch}.csv'))
+        for ch in adds
+    }
     manifest_path = os.path.join(DEFAULT_LABELS_DIR, 'manifest.json')
     manifest_was_present = os.path.exists(manifest_path)
     manifest_backup = None
-    if not dry and manifest_was_present:
-        mf = tempfile.NamedTemporaryFile(delete=False, dir=DEFAULT_LABELS_DIR,
-                                         prefix='.manifest-add-labels-', suffix='.bak')
-        mf.close(); shutil.copyfile(manifest_path, mf.name); manifest_backup = mf.name
-    for ch, items in sorted(adds.items()):
+    try:
+        if not dry and manifest_was_present:
+            mf = tempfile.NamedTemporaryFile(delete=False, dir=DEFAULT_LABELS_DIR,
+                                             prefix='.manifest-add-labels-', suffix='.bak')
+            mf.close(); shutil.copyfile(manifest_path, mf.name); manifest_backup = mf.name
+    except Exception as exc:
+        if archive_staging and os.path.exists(archive_staging):
+            os.remove(archive_staging)
+        print(f'!! manifest 备份失败，尚未修改发布库: {exc}', file=sys.stderr)
+        return 1
+    failed = None
+    archive_published = False
+    try:
+      for ch, items in sorted(adds.items()):
         path, header, rows = load_chain(ch)
-        target_was_present[ch] = os.path.exists(path)
         # 主表可能还是 9 列旧头（新链首建则用全 15 列）
         out_fields = header if header and 'merge_policy' in header else FIELDS
         idx = {r['address']: r for r in rows}
@@ -129,48 +180,49 @@ def main():
             shutil.copy(path, path + '.bak')
         shutil.move(tmp.name, path)
 
-    if not dry:
+      if not dry:
         gates = [
             ('validate', [sys.executable, os.path.join(_HERE, 'validate_labels.py')]),
             ('benchmark', [sys.executable, os.path.join(_HERE, 'benchmark_labels.py')]),
             ('manifest', [sys.executable, os.path.join(_HERE, '..', 'tests',
                                                         'labels_manifest.py'), '--write']),
         ]
-        failed = None
-        try:
-            for name, cmd in gates:
-                if subprocess.run(cmd).returncode != 0:
-                    failed = name; break
-        except Exception as exc:
-            failed = f'子进程异常: {exc}'
-        if failed:
+        for name, cmd in gates:
+            if subprocess.run(cmd).returncode != 0:
+                failed = name
+                raise RuntimeError(f'{name} 门禁 FAIL')
+        if archive_staging:
+            os.link(archive_staging, archive_target)
+            archive_published = True
+            os.remove(archive_staging)
+            archive_staging = None
+            print(f'已归档补录文件 → {archive_target}（重建流自动回放，请勿删除）')
+    except Exception as exc:
+        failed = failed or f'事务异常: {exc}'
+        if not dry:
+            if archive_published and archive_target and os.path.exists(archive_target):
+                os.remove(archive_target)
+            if archive_staging and os.path.exists(archive_staging):
+                os.remove(archive_staging)
             restored, removed = rollback(adds, target_was_present, manifest_path,
                                          manifest_backup, manifest_was_present)
-            print(f'!! 合并后 {failed} 门禁 FAIL——已恢复原表 {restored or "[]"}；'
-                  f'已删除新建坏表 {removed or "[]"}；manifest 已恢复。排查后重试',
-                  file=sys.stderr)
-            sys.exit(1)
+            print(f'!! 合并后 {failed}——已恢复原表 {restored or "[]"}；'
+                  f'已删除新建坏表 {removed or "[]"}；manifest 已恢复；归档 staging 已清理。'
+                  '排查后重试', file=sys.stderr)
+        return 1
+
+    if not dry:
+        if failed:
+            return 1
         for ch in adds:
             p = os.path.join(DEFAULT_LABELS_DIR, f'labels-{ch}.csv') + '.bak'
             if os.path.exists(p):
                 os.remove(p)
         if manifest_backup and os.path.exists(manifest_backup):
             os.remove(manifest_backup)
-        # v4.2：入库成功的补录文件自动归档进 sources/additions/——该目录整目录参与全量重建
-        # （build_labels.py 6f 段），否则下次重建会静默丢掉本次增量（v4.1 七份文件实测踩坑）。
-        add_dir = ADDITIONS_DIR
-        os.makedirs(add_dir, exist_ok=True)
-        src_abs = os.path.abspath(src)
-        if os.path.dirname(src_abs) != os.path.abspath(add_dir):
-            dst = os.path.join(add_dir, os.path.basename(src_abs))
-            if os.path.exists(dst) and not os.path.samefile(src_abs, dst):
-                stem, ext = os.path.splitext(os.path.basename(src_abs))
-                import datetime
-                dst = os.path.join(add_dir, f'{stem}_{datetime.date.today().isoformat()}{ext}')
-            shutil.copy(src_abs, dst)
-            print(f'已归档补录文件 → {dst}（重建流自动回放，请勿删除）')
         print('合并完成：validate + benchmark + manifest 三闸全部通过。')
+    return 0
 
 
 if __name__ == '__main__':
-    main()
+    sys.exit(main())

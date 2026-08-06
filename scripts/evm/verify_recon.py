@@ -14,36 +14,18 @@ import sys
 from decimal import Decimal
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
+from chain_registry import evm_chain_id_for
+from receipt_kernel import (build_envelope, finalize_envelope, publish_error_receipt,
+                            publish_overwrite)
+
 ZERO = "0x0000000000000000000000000000000000000000"
 DEAD = "0x000000000000000000000000000000000000dead"
 SCHEMA = "evm-reconciliation-receipt/v2"
 
 
-def sha256(path):
-    h = hashlib.sha256()
-    with Path(path).open("rb") as f:
-        for chunk in iter(lambda: f.read(1 << 20), b""):
-            h.update(chunk)
-    return h.hexdigest()
-
-
-def file_ref(path):
-    p = Path(path).resolve()
-    return {"path": str(p), "size": p.stat().st_size, "sha256": sha256(p)}
-
-
-def atomic_json(path, payload):
-    out = Path(path).resolve()
-    out.parent.mkdir(parents=True, exist_ok=True)
-    tmp = out.with_name(f".{out.name}.tmp.{os.getpid()}")
-    try:
-        with tmp.open("x", encoding="utf-8") as f:
-            json.dump(payload, f, ensure_ascii=False, indent=2)
-            f.write("\n"); f.flush(); os.fsync(f.fileno())
-        os.replace(tmp, out)
-    finally:
-        if tmp.exists():
-            tmp.unlink()
+class ReconFailure(ValueError):
+    """A completed hard check failed (exit 2), as distinct from producer ERROR."""
 
 
 def rpc_balance_of(url, token, address, block, proxy=None):
@@ -57,6 +39,19 @@ def rpc_balance_of(url, token, address, block, proxy=None):
     body = response.json()
     if body.get("error") or body.get("result") in (None, "0x"):
         raise ValueError(f"eth_call 无有效 result: {body.get('error') or body.get('result')!r}")
+    return int(body["result"], 16)
+
+
+def rpc_chain_id(url, proxy=None):
+    import requests
+    proxies = {"http": proxy, "https": proxy} if proxy else None
+    response = requests.post(
+        url, json={"jsonrpc": "2.0", "id": 1, "method": "eth_chainId", "params": []},
+        proxies=proxies, timeout=30)
+    response.raise_for_status()
+    body = response.json()
+    if body.get("error") or body.get("result") in (None, "0x"):
+        raise ValueError(f"eth_chainId 无有效 result: {body.get('error') or body.get('result')!r}")
     return int(body["result"], 16)
 
 
@@ -79,13 +74,16 @@ def parse_args(argv=None):
 def main(argv=None):
     a = parse_args(argv)
     target = {"chain": a.chain, "token": a.token.lower(), "as_of_block": a.end_block}
-    receipt = {"schema": SCHEMA, "target": target, "verdict": "ERROR", "exit_code": 1,
-               "inputs": {}, "observations": {}, "error": None}
+    base_envelope = build_envelope(SCHEMA, target, __file__, "formal")
+    envelope = base_envelope
     try:
         if a.end_block < 0 or a.top_n <= 0:
             raise ValueError("end-block 必须非负且 top-n 必须为正")
         config_path, balances_path = Path(a.config), Path(a.balances)
         stats_path, gmgn_path = Path(a.replay_stats), Path(a.gmgn)
+        envelope = build_envelope(SCHEMA, target, __file__, "formal", inputs={
+            "config": config_path, "balances": balances_path,
+            "replay_stats": stats_path, "gmgn": gmgn_path})
         cfg = json.loads(config_path.read_text(encoding="utf-8"))
         balances_raw = json.loads(balances_path.read_text(encoding="utf-8"))
         stats = json.loads(stats_path.read_text(encoding="utf-8"))
@@ -111,6 +109,13 @@ def main(argv=None):
         if not rpc:
             raise ValueError("缺 RPC：给 --rpc 或 config.alchemy.url/key")
         proxy = a.proxy if a.proxy is not None else cfg.get("proxy")
+        expected_chain_id = evm_chain_id_for(a.chain)
+        if expected_chain_id is None:
+            raise ValueError(f"chain_registry 未登记 {a.chain} 的 eth_chainId")
+        observed_chain_id = rpc_chain_id(rpc, proxy)
+        if observed_chain_id != expected_chain_id:
+            raise ReconFailure(
+                f"RPC eth_chainId={observed_chain_id} 与 {a.chain} 登记值 {expected_chain_id} 不符")
         rows, matched, mismatched, rpc_errors = [], 0, 0, 0
         top = sorted(balances.items(), key=lambda kv: -kv[1])[:a.top_n]
         for address, replay_raw in top:
@@ -143,10 +148,7 @@ def main(argv=None):
                                   "replay_pct": replay_pct, "diff_pp": diff_pp,
                                   "status": "OK" if diff_pp < 0.15 else "DIFF"})
 
-        receipt["inputs"] = {"config": file_ref(config_path),
-                             "balances": file_ref(balances_path),
-                             "replay_stats": file_ref(stats_path), "gmgn": file_ref(gmgn_path)}
-        receipt["observations"] = {
+        observations = {
             "supply_closure": {"mint_total_raw": str(mint), "burn_total_raw": str(burn),
                                "nominal_supply_raw": str(nominal),
                                "balance_sum_raw": str(balance_sum),
@@ -159,16 +161,24 @@ def main(argv=None):
                                 "tolerance_pp": 0.15, "rows": gmgn_rows},
         }
         if rpc_errors:
-            receipt.update(verdict="ERROR", exit_code=1,
-                           error=f"{rpc_errors} 个 RPC 观测失败")
+            raise ValueError(f"{rpc_errors} 个 RPC 观测失败")
         elif not supply_closed or mismatched:
-            receipt.update(verdict="FAIL", exit_code=2, error=None)
+            receipt = finalize_envelope(envelope, "FAIL", 2,
+                                        observations=observations, error=None)
         else:
-            receipt.update(verdict="PASS", exit_code=0, error=None)
+            receipt = finalize_envelope(envelope, "PASS", 0,
+                                        observations=observations, error=None)
+    except ReconFailure as exc:
+        receipt = finalize_envelope(envelope, "FAIL", 2, observations={}, error=str(exc))
     except Exception as exc:
-        receipt.update(verdict="ERROR", exit_code=1, error=str(exc))
+        try:
+            error_path = publish_error_receipt(a.out, envelope, exc)
+            print(f"[verify_recon] ERROR exit=1 → {error_path}")
+        except Exception as write_exc:
+            print(f"[verify_recon] ERROR receipt 写入失败: {write_exc}", file=sys.stderr)
+        return 1
     try:
-        atomic_json(a.out, receipt)
+        publish_overwrite(a.out, receipt)
     except Exception as exc:
         print(f"[verify_recon] receipt 写入失败: {exc}", file=sys.stderr)
         return 1

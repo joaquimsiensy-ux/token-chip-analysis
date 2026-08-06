@@ -675,6 +675,9 @@ def main():
         sys.exit(2)
     entity_map = load_entity_map(a.entity_file)
     labels = load_labels(a.labels_file) if a.labels_file else {}
+    if a.labels_file and not labels:
+        log("正式模式 --labels-file 有效标签数为 0——空标签快照禁止进入 provenance/freeze")
+        return 2
     case_dir = os.path.dirname(os.path.abspath(a.out))
     binding = source_binding(a, case_dir)
 

@@ -15,6 +15,7 @@ sys.path.insert(0, str(HERE.parent / "lib"))
 
 from adversarial_review_runner import validate_review_receipt
 from chain_registry import recon_adapter_for
+from receipt_validate import validate_receipt
 
 FILES = ("accounting_mode.json", "reconciliation_report.json", "adversarial_review.json")
 ACCOUNTING_PRODUCERS = {
@@ -99,6 +100,10 @@ def validate_reconciliation_check(root, key, item, target, family):
     except Exception as exc:
         raise ValueError(f"reconciliation {key} receipt JSON invalid: {exc}") from exc
     migration = "存量案例须重跑对应生产者获取 v2 回执"
+    envelope_errors = validate_receipt(receipt)
+    if envelope_errors:
+        raise ValueError(
+            f"reconciliation {key} receipt envelope invalid: {envelope_errors[0]}；{migration}")
     _require(receipt.get("target") == target,
              f"reconciliation {key} receipt target mismatch；{migration}")
     _require(receipt.get("verdict") == item.get("status")
@@ -146,6 +151,13 @@ def validate_reconciliation_check(root, key, item, target, family):
                  and receipt.get("onchain_total_supply") is not None
                  and receipt.get("diff") is not None,
                  "supply_truth receipt observations incomplete")
+        _require(receipt.get("mode") == "formal" and isinstance(receipt.get("inputs"), dict)
+                 and bool(receipt["inputs"]),
+                 "supply_truth receipt must be formal and bind replay_stats input")
+        if family == "solana":
+            _require(isinstance(receipt.get("observed_context_slot"), int)
+                     and receipt["observed_context_slot"] >= 0,
+                     "solana supply_truth lacks observed_context_slot current-observation evidence")
     elif family == "evm" and key == "time":
         _require(schema == "time-spotcheck/v2",
                  f"reconciliation time unknown schema {schema!r}；{migration}")

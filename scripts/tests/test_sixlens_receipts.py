@@ -34,8 +34,11 @@ def sha(path):
 
 def test_shared_receipt_semantics(root):
     shared = load(ROOT / "scripts/report/shared_release_receipt.py", "sixlens_shared")
+    root.mkdir(parents=True, exist_ok=True)
     target = {"chain": "bsc", "token": "0xtoken", "as_of_block": 123}
     fake = root / "fake.json"
+    source = root / "source.txt"
+    source.write_text("fixture\n", encoding="utf-8")
     write_json(fake, {"anything": True})
     item = {"status": "PASS", "exit_code": 0,
             "receipt": {"path": fake.name, "sha256": sha(fake)}}
@@ -46,7 +49,12 @@ def test_shared_receipt_semantics(root):
     else:
         raise AssertionError("任意 JSON 伪回执被接受")
 
+    producer = ROOT / "scripts/evm/verify_recon.py"
     good = {"schema": "evm-reconciliation-receipt/v2", "target": target,
+            "producer": {"path": "scripts/evm/verify_recon.py", "sha256": sha(producer)},
+            "mode": "formal",
+            "inputs": {"fixture": {"path": str(source.resolve()),
+                                      "size": source.stat().st_size, "sha256": sha(source)}},
             "verdict": "PASS", "exit_code": 0,
             "observations": {
                 "supply_closure": {"closed": True, "negative_count": 0},
@@ -103,7 +111,8 @@ def test_verify_recon(root):
     mod = load(ROOT / "scripts/evm/verify_recon.py", "sixlens_verify_recon")
     paths = recon_fixture(root / "closed", closed=True)
     out = root / "closed" / "receipt.json"
-    with mock.patch.object(mod, "rpc_balance_of", return_value=100):
+    with mock.patch.object(mod, "rpc_chain_id", return_value=56), \
+            mock.patch.object(mod, "rpc_balance_of", return_value=100):
         assert mod.main(recon_args(paths, out)) == 0
     receipt = json.loads(out.read_text())
     assert receipt["schema"] == "evm-reconciliation-receipt/v2"
@@ -111,20 +120,25 @@ def test_verify_recon(root):
 
     paths = recon_fixture(root / "supply-fail", closed=False)
     out = root / "supply-fail" / "receipt.json"
-    with mock.patch.object(mod, "rpc_balance_of", return_value=90):
+    with mock.patch.object(mod, "rpc_chain_id", return_value=56), \
+            mock.patch.object(mod, "rpc_balance_of", return_value=90):
         assert mod.main(recon_args(paths, out)) == 2
     assert json.loads(out.read_text())["verdict"] == "FAIL"
 
     paths = recon_fixture(root / "balance-fail", closed=True)
     out = root / "balance-fail" / "receipt.json"
-    with mock.patch.object(mod, "rpc_balance_of", return_value=99):
+    with mock.patch.object(mod, "rpc_chain_id", return_value=56), \
+            mock.patch.object(mod, "rpc_balance_of", return_value=99):
         assert mod.main(recon_args(paths, out)) == 2
 
     paths = recon_fixture(root / "rpc-fail", closed=True)
     out = root / "rpc-fail" / "receipt.json"
-    with mock.patch.object(mod, "rpc_balance_of", side_effect=RuntimeError("rpc down")):
+    with mock.patch.object(mod, "rpc_chain_id", return_value=56), \
+            mock.patch.object(mod, "rpc_balance_of", side_effect=RuntimeError("rpc down")):
         assert mod.main(recon_args(paths, out)) == 1
-    assert json.loads(out.read_text())["verdict"] == "ERROR"
+    assert not out.exists()
+    errors = list(out.parent.glob("receipt.error.*.json"))
+    assert len(errors) == 1 and json.loads(errors[0].read_text())["verdict"] == "ERROR"
 
 
 def test_anchor_sampler(root):

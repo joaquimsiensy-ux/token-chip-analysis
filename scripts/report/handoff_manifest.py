@@ -63,6 +63,7 @@ CONTRACT_FILES = [
     "accounting_mode.json", "supply_truth.json", "wave_scan_report.json",
     "flow_anomaly_report.json", ADJUDICATIONS_NAME, "provenance_ledger.json",
     "time_spotcheck.json", "distribution_scan.json", DISTRIBUTION_ADJUDICATIONS_NAME,
+    "reconciliation_report.json",
 ]
 REQUIRED_FOR_READY = ["candidate_universe.json", "candidate_screening.json",
                       "identity_preflight.json", "anomalies.json", "data_map.json",
@@ -84,7 +85,10 @@ READY_CHAINS = formal_chains()
 REQUIRED_FOR_READY_EVM = ["time_spotcheck.json"]
 # 自动 gate 适配：从产物 JSON 读 verdict/exit_code（防手报）；verify 时重读比对
 AUTO_GATES = {"accounting_gate": "accounting_mode.json", "supply_truth_gate": "supply_truth.json",
-              "time_spotcheck": "time_spotcheck.json"}
+              "time_spotcheck": "time_spotcheck.json",
+              "reconciliation_four_checks": "reconciliation_report.json"}
+PROVENANCE_LABEL_KINDS = {"cex", "dex_pool", "facility", "bridge", "launch_alloc",
+                          "airdrop", "vesting"}
 # data_map 明确登记的 .duckdb 可能是 provenance 的正式重放源，必须进 manifest 绑定；
 # WAL/临时文件仍排除。大库由 sha256-sparse 做交接哈希，freeze 的 input_binding 另做完整哈希。
 EXCLUDE_SUFFIXES = (".log", ".duckdb.wal", ".lock", ".tmp", ".bak")
@@ -234,6 +238,10 @@ def cmd_generate(a):
             print(f"[generate] --gate 格式应为 name:verdict:exit:artifact，收到: {spec}", file=sys.stderr)
             return 1
         gname, verdict, exit_code, rel = parts
+        if gname in AUTO_GATES:
+            print(f"[generate] --gate {gname} 已有 AUTO_GATES 适配，禁止 declared 覆盖机器读数",
+                  file=sys.stderr)
+            return 2
         add(rel)
         if rel not in seen:
             print(f"[generate] --gate {gname} 绑定的产物不存在: {rel}", file=sys.stderr)
@@ -435,6 +443,8 @@ def verify_case(case_dir, legacy_read_only=False):
             else:
                 if str(g.get("verdict", "")).upper() not in ("PASS", "OK"):
                     fails.append(f"gate {gname}（declared）非 PASS 却报 READY: {g.get('verdict')}")
+                if g.get("exit_code") != 0:
+                    fails.append(f"gate {gname}（declared）exit_code={g.get('exit_code')} ≠ 0 却报 READY")
         _verify_light_schema(case_dir, fails, legacy=legacy_mode)
     return (fails, m, legacy_mode)
 
@@ -623,6 +633,15 @@ def validate_and_replay_provenance(case_dir, pl, pl_path, ep, manifest):
     labels_path, err = check_bound_file(case_dir, b.get("labels_file"))
     if err:
         fails.append(f"labels_file {err}")
+    elif labels_path:
+        try:
+            labels_obj = load_json(labels_path)
+            valid_labels = [meta for meta in labels_obj.values()
+                            if isinstance(meta, dict) and meta.get("kind") in PROVENANCE_LABEL_KINDS]
+            if not valid_labels:
+                fails.append("labels_file 有效标签数为 0——正式 freeze 不接受空标签快照")
+        except (AttributeError, OSError, ValueError, TypeError) as exc:
+            fails.append(f"labels_file 内容校验失败: {exc}")
 
     hb = b.get("handoff_manifest")
     if not isinstance(hb, dict):

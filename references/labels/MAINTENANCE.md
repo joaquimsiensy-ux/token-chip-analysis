@@ -8,7 +8,7 @@ labels 数据版本独立于 skill 版本；已发布版本与逐表变更见 CH
 - **curation 层（SRC_PRIORITY = -1，高于 manual/addressbook）**：`additions/curation_overrides_*.csv` 的 source 一律写 `curation`。根因：add_labels.py 对同级采用"新条目覆盖"、build_labels.py 采用"先到保留"——两语义不一致曾致 12 行 v4.2 精修（Relay solver 官方 API 亲验等）在全量重建时被 gen_manual 泛化行回退（列级 diff 实测抓出，已救回 `curation_overrides_20260718.csv`）。**今后凡"直改发布库"级别的精修，必须同步固化为 curation override 文件**，否则下次重建即回退。
 - **高优先级源覆盖语义**：upsert 的 evidence/verified_at/status 三列随优先级覆盖（有值才覆盖）——curation/manual 层的权威证据出处才能真正生效。
 - **benchmark fail-fast**：默认发布库与 `--labels-dir` 预检都要求五张正式链主表齐全且非空；缺表或只有表头均 exit 2。
-- **roundtrip_check.py 进发布流程**（见下方重建步骤）：行级收敛门禁比较六个决策字段，缺表即 exit 2。
+- **roundtrip_check.py 进发布流程**（见下方重建步骤）：行级收敛门禁比较七个决策字段（以 `roundtrip_check.py::DECISION_FIELDS` 为准），缺表即 exit 2。
 
 ## 数据源清单
 
@@ -78,10 +78,11 @@ ETH_RPC="https://ethereum-rpc.publicnode.com" python3 ../probe_codetype.py scams
 **增量入库（免重建）与惯犯层刷新**：
 
 ```bash
-cd sources && python3 ../add_labels.py my_additions.csv        # 合并进现库 + 自动 validate（FAIL 还原）
+cd sources && python3 ../add_labels.py my_additions.csv        # 合并进现库 + 三闸事务（FAIL 还原）
 python3 ../accumulate_offenders.py && cd sources && python3 ../add_labels.py serial_actors.csv
 ```
 - add_labels 成功后补录 CSV 自动归档进 additions/（round-trip 保证）；**人工精修（改 name/evidence/category 级别）不要走 add_labels 常规层——写成 curation override 文件**（source=curation），否则重建时会被 manual 同级"先到保留"规则回退。
+- add_labels 在改发布表前先把补录源复制到 additions 临时 staging；随后依次跑 **validate + benchmark + manifest 三闸**，三闸与归档独占发布全部成功后 staging 才转正，之后才删除表/manifest 备份。任一失败恢复原表与旧 manifest，并清理 staging；重名只允许追加时分秒一次，二次重名直接拒绝，绝不覆盖既有归档。
 
 **Dune 月度刷新**（credits 消耗大，按需执行）：①网页登录 dune.com 跑 query 7999252（免费层 API 不能 execute）→ ②`python3 dune_fetch_results.py ~/.config/dune/api-key 7999252 dune_labels_v2.csv` → ③tornado 版按 api-keys.md 第 14 节「Dune」 SQL 临时替换再跑（29 万行 ≈500+ credits，非必要不刷）→ ④重跑重建流程。坑：labels.addresses 语义键是 model_name 不是 category；SOL 地址 varbinary hex 须转 base58（构建器内置）。**B8 审计结论（2026-07-17）**：BSC tornado-user 来自 spellbook `tornado_cash_bnb` 解码事件模型（四面额合约 join transactions 取 from），链上抽验 9/10 命中——数据为真，语义正确；用户经 proxy `0x0d5550d5…` 调用（查交互勿直接 filter to=面额合约）。
 

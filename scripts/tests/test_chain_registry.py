@@ -15,7 +15,7 @@ sys.path.insert(0, str(ROOT / "scripts/report"))
 
 from chain_registry import (CHAIN_REGISTRY, evm_family, formal_chains, identity_chains,
                             identity_evm_chains, known_chains_for_release,
-                            recon_adapter_for, resolve_alias)
+                            recon_adapter_for, resolve_alias, evm_chain_id_for)
 
 
 def load(path, name):
@@ -38,6 +38,7 @@ def main():
     expected_fields = {
         "canonical", "aliases", "formal", "exploration", "capture_evm_family",
         "has_labels_table", "recon_adapter", "identity_adapter",
+        "evm_chain_id",
     }
     assert CHAIN_REGISTRY and all(set(record) == expected_fields
                                   for record in CHAIN_REGISTRY.values())
@@ -52,6 +53,8 @@ def main():
     assert resolve_alias("Ethereum") == "eth"
     assert resolve_alias("solana") == "sol"
     assert resolve_alias("Arbitrum-One") == "arbitrum"
+    assert {chain: evm_chain_id_for(chain) for chain in ("eth", "bsc", "base", "arbitrum")} == {
+        "eth": 1, "bsc": 56, "base": 8453, "arbitrum": 42161}
 
     audit = load(ROOT / "scripts/report/audit_release_gate.py", "registry_audit")
     handoff = load(ROOT / "scripts/report/handoff_manifest.py", "registry_handoff")

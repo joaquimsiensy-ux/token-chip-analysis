@@ -8,98 +8,98 @@ CHAIN_REGISTRY = {
         "canonical": "eth", "aliases": ("ethereum",), "formal": True,
         "exploration": False, "capture_evm_family": True,
         "has_labels_table": True, "recon_adapter": "evm",
-        "identity_adapter": "evm",
+        "identity_adapter": "evm", "evm_chain_id": 1,
     },
     "bsc": {
         "canonical": "bsc", "aliases": (), "formal": True,
         "exploration": False, "capture_evm_family": True,
         "has_labels_table": True, "recon_adapter": "evm",
-        "identity_adapter": "evm",
+        "identity_adapter": "evm", "evm_chain_id": 56,
     },
     "base": {
         "canonical": "base", "aliases": (), "formal": True,
         "exploration": False, "capture_evm_family": True,
         "has_labels_table": True, "recon_adapter": "evm",
-        "identity_adapter": "evm",
+        "identity_adapter": "evm", "evm_chain_id": 8453,
     },
     "arbitrum": {
         "canonical": "arbitrum",
         "aliases": ("arbitrum one", "arbitrum-one", "arb"),
         "formal": False, "exploration": True, "capture_evm_family": True,
         "has_labels_table": False, "recon_adapter": "evm",
-        "identity_adapter": "evm",
+        "identity_adapter": "evm", "evm_chain_id": 42161,
     },
     "polygon": {
         "canonical": "polygon", "aliases": (), "formal": False,
         "exploration": False, "capture_evm_family": True,
         "has_labels_table": False, "recon_adapter": "evm",
-        "identity_adapter": None,
+        "identity_adapter": None, "evm_chain_id": None,
     },
     "optimism": {
         "canonical": "optimism", "aliases": (), "formal": False,
         "exploration": False, "capture_evm_family": True,
         "has_labels_table": False, "recon_adapter": "evm",
-        "identity_adapter": None,
+        "identity_adapter": None, "evm_chain_id": None,
     },
     "robinhood": {
         "canonical": "robinhood", "aliases": (), "formal": True,
         "exploration": False, "capture_evm_family": True,
         "has_labels_table": True, "recon_adapter": "evm",
-        "identity_adapter": "evm",
+        "identity_adapter": "evm", "evm_chain_id": None,
     },
     "opbnb": {
         "canonical": "opbnb", "aliases": (), "formal": False,
         "exploration": False, "capture_evm_family": True,
         "has_labels_table": False, "recon_adapter": "evm",
-        "identity_adapter": None,
+        "identity_adapter": None, "evm_chain_id": None,
     },
     "avalanche": {
         "canonical": "avalanche", "aliases": (), "formal": False,
         "exploration": False, "capture_evm_family": True,
         "has_labels_table": False, "recon_adapter": "evm",
-        "identity_adapter": None,
+        "identity_adapter": None, "evm_chain_id": None,
     },
     "fantom": {
         "canonical": "fantom", "aliases": (), "formal": False,
         "exploration": False, "capture_evm_family": True,
         "has_labels_table": False, "recon_adapter": "evm",
-        "identity_adapter": None,
+        "identity_adapter": None, "evm_chain_id": None,
     },
     "cronos": {
         "canonical": "cronos", "aliases": (), "formal": False,
         "exploration": False, "capture_evm_family": True,
         "has_labels_table": False, "recon_adapter": "evm",
-        "identity_adapter": None,
+        "identity_adapter": None, "evm_chain_id": None,
     },
     "linea": {
         "canonical": "linea", "aliases": (), "formal": False,
         "exploration": False, "capture_evm_family": True,
         "has_labels_table": False, "recon_adapter": "evm",
-        "identity_adapter": None,
+        "identity_adapter": None, "evm_chain_id": None,
     },
     "scroll": {
         "canonical": "scroll", "aliases": (), "formal": False,
         "exploration": False, "capture_evm_family": True,
         "has_labels_table": False, "recon_adapter": "evm",
-        "identity_adapter": None,
+        "identity_adapter": None, "evm_chain_id": None,
     },
     "blast": {
         "canonical": "blast", "aliases": (), "formal": False,
         "exploration": False, "capture_evm_family": True,
         "has_labels_table": False, "recon_adapter": "evm",
-        "identity_adapter": None,
+        "identity_adapter": None, "evm_chain_id": None,
     },
     "zksync": {
         "canonical": "zksync", "aliases": (), "formal": False,
         "exploration": False, "capture_evm_family": True,
         "has_labels_table": False, "recon_adapter": "evm",
-        "identity_adapter": None,
+        "identity_adapter": None, "evm_chain_id": None,
     },
     "sol": {
         "canonical": "sol", "aliases": ("solana",), "formal": True,
         "exploration": False, "capture_evm_family": False,
         "has_labels_table": True, "recon_adapter": "solana",
-        "identity_adapter": "solana",
+        "identity_adapter": "solana", "evm_chain_id": None,
     },
 }
 
@@ -109,6 +109,7 @@ def _alias_index():
     required = {
         "canonical", "aliases", "formal", "exploration", "capture_evm_family",
         "has_labels_table", "recon_adapter", "identity_adapter",
+        "evm_chain_id",
     }
     for key, record in CHAIN_REGISTRY.items():
         if set(record) != required or record["canonical"] != key:
@@ -164,3 +165,8 @@ def resolve_alias(value):
 def recon_adapter_for(value):
     record = CHAIN_REGISTRY.get(resolve_alias(value))
     return record.get("recon_adapter") if record else None
+
+
+def evm_chain_id_for(value):
+    record = CHAIN_REGISTRY.get(resolve_alias(value))
+    return record.get("evm_chain_id") if record else None

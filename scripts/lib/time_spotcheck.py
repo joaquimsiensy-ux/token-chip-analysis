@@ -37,9 +37,12 @@ import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from receipt_kernel import (build_envelope, finalize_envelope, publish_error_receipt,
+                            publish_overwrite)
 
 TRANSFER_TOPIC = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
 BALANCEOF_SELECTOR = "0x70a08231"
+SCHEMA = "time-spotcheck/v2"
 
 
 def classify(plan):
@@ -96,6 +99,12 @@ def main():
                  "必须传 --final-block <数据截止块>——静默跳点=覆盖缩水，fail-closed")
 
     if a.dry_run:
+        plan_chain = str(plan.get("chain") or "").lower()
+        plan_token = str(plan.get("token") or "").lower()
+        if not plan_chain or not plan_token or plan_token != a.token.lower() \
+                or (a.chain and plan_chain != a.chain):
+            print("[fatal] anchor_plan chain/token 与 CLI target 不一致或缺失", file=sys.stderr)
+            return 2
         print(json.dumps({"dry_run": True, "balance_points": len(bal_pts),
                           "tx_points": len(tx_pts), "total": total,
                           "need_final_block": len(need_final)}, ensure_ascii=False))
@@ -107,20 +116,48 @@ def main():
     if a.final_block is None:
         sys.exit("[fatal] 非 --dry-run 必须给 --final-block，receipt target 必须冻结截止块")
 
-    from net import RpcPool
-    pool = RpcPool(a.rpc, rps=a.rps, concurrency=min(a.rps, 8))
     token = a.token.lower()
+    target = {"chain": a.chain, "token": token, "as_of_block": a.final_block}
+    try:
+        envelope = build_envelope(SCHEMA, target, __file__, "formal",
+                                  inputs={"plan": a.plan})
+    except Exception as exc:
+        print(f"[fatal] receipt envelope 构建失败: {exc}", file=sys.stderr)
+        return 1
+    plan_chain = str(plan.get("chain") or "").lower()
+    plan_token = str(plan.get("token") or "").lower()
+    if plan_chain != a.chain or plan_token != token:
+        result = finalize_envelope(
+            envelope, "FAIL", 2, gate="time_spotcheck", error=(
+                f"anchor_plan target {plan_chain}/{plan_token} 与 CLI {a.chain}/{token} 不一致"))
+        try:
+            publish_overwrite(a.out, result)
+        except Exception as exc:
+            print(f"[time_spotcheck] FAIL receipt 写入失败: {exc}", file=sys.stderr)
+            return 1
+        return 2
 
-    calls = []
-    for p in bal_pts:
-        blk = p.get("day_end_block")
-        blk = int(blk) if blk is not None else a.final_block
-        calls.append(("eth_call", [{"to": token,
-                                    "data": BALANCEOF_SELECTOR + addr_word(p["addr"])},
-                                   hexblock(blk)]))
-    for p in tx_pts:
-        calls.append(("eth_getTransactionReceipt", [p["tx"]]))
-    results = pool.call_many(calls)
+    try:
+        from net import RpcPool
+        pool = RpcPool(a.rpc, rps=a.rps, concurrency=min(a.rps, 8))
+
+        calls = []
+        for p in bal_pts:
+            blk = p.get("day_end_block")
+            blk = int(blk) if blk is not None else a.final_block
+            calls.append(("eth_call", [{"to": token,
+                                        "data": BALANCEOF_SELECTOR + addr_word(p["addr"])},
+                                       hexblock(blk)]))
+        for p in tx_pts:
+            calls.append(("eth_getTransactionReceipt", [p["tx"]]))
+        results = pool.call_many(calls)
+    except Exception as exc:
+        try:
+            error_path = publish_error_receipt(a.out, envelope, exc)
+            print(f"[time_spotcheck] ERROR → {error_path}", file=sys.stderr)
+        except Exception as write_exc:
+            print(f"[time_spotcheck] ERROR receipt 写入失败: {write_exc}", file=sys.stderr)
+        return 1
 
     rows, exact, mism, rpc_err = [], 0, 0, 0
     for p, r in zip(bal_pts, results[:len(bal_pts)]):
@@ -179,17 +216,25 @@ def main():
         verdict, exit_code = "FAIL", 2
     else:
         verdict, exit_code = "PASS", 0
-    out = {"gate": "time_spotcheck", "schema": "time-spotcheck/v2",
-           "target": {"chain": a.chain, "token": token, "as_of_block": a.final_block},
-           "second_source": a.rpc, "token": token,
-           "points": total, "balance_points": len(bal_pts), "tx_points": len(tx_pts),
-           "exact_match": exact, "mismatch": mism, "rpc_err": rpc_err,
-           "verdict": verdict, "exit_code": exit_code,
-           "generated_at": datetime.datetime.now(datetime.timezone.utc)
-               .strftime("%Y-%m-%dT%H:%M:%SZ"),
-           "rows": rows}
-    with open(a.out, "w", encoding="utf-8") as f:
-        json.dump(out, f, ensure_ascii=False, indent=1)
+    fields = {"gate": "time_spotcheck", "second_source": a.rpc, "token": token,
+              "points": total, "balance_points": len(bal_pts), "tx_points": len(tx_pts),
+              "exact_match": exact, "mismatch": mism, "rpc_err": rpc_err,
+              "generated_at": datetime.datetime.now(datetime.timezone.utc)
+                  .strftime("%Y-%m-%dT%H:%M:%SZ"), "rows": rows}
+    if verdict == "ERROR":
+        try:
+            error_path = publish_error_receipt(a.out, envelope,
+                                               f"{rpc_err} 个 RPC 观测失败")
+            print(f"[time_spotcheck] ERROR → {error_path}", file=sys.stderr)
+        except Exception as exc:
+            print(f"[time_spotcheck] ERROR receipt 写入失败: {exc}", file=sys.stderr)
+        return 1
+    out = finalize_envelope(envelope, verdict, exit_code, **fields)
+    try:
+        publish_overwrite(a.out, out)
+    except Exception as exc:
+        print(f"[time_spotcheck] receipt 写入失败: {exc}", file=sys.stderr)
+        return 1
     print(f"[time_spotcheck] {verdict}  {exact}/{total} 一致"
           f"（balance {len(bal_pts)} + tx {len(tx_pts)}；mismatch {mism}，rpc_err {rpc_err}）→ {a.out}")
     if mism:

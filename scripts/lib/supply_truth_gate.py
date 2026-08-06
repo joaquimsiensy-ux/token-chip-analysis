@@ -32,8 +32,11 @@ replay-stats 字段识别（依次尝试，值可为 int 或十进制字符串�
 （来源：GNT replay-silent-burn-trap 2026-07-28；v6.0.0 唯一批准代码例外）"""
 import argparse
 import json
-import os
 import sys
+from pathlib import Path
+
+from receipt_kernel import (build_envelope, finalize_envelope, publish_error_receipt,
+                            publish_overwrite)
 
 SEL_TOTSUP = "0x18160ddd"  # totalSupply()
 
@@ -78,20 +81,21 @@ def _post(url, payload, proxy=None, timeout=30):
 
 
 def fetch_onchain_supply(chain, token=None, mint=None, rpc=None, proxy=None,
-                         as_of_block=None) -> int:
-    """链上实查当前总供给（最小单位整数）。失败抛异常（上层转 exit 1）。"""
+                         as_of_block=None):
+    """返回 (最小单位总供给, Solana observed context slot|None)。"""
     url = rpc or DEFAULT_RPC[chain]
     if chain == "solana":
         res = _post(url, {"jsonrpc": "2.0", "id": 1, "method": "getTokenSupply",
                           "params": [mint]}, proxy)
-        return int(res["result"]["value"]["amount"])
+        result = res["result"]
+        return int(result["value"]["amount"]), int(result["context"]["slot"])
     tag = hex(int(as_of_block)) if as_of_block is not None else "latest"
     res = _post(url, {"jsonrpc": "2.0", "id": 1, "method": "eth_call",
                       "params": [{"to": token, "data": SEL_TOTSUP}, tag]}, proxy)
     hexval = res["result"]
     if not hexval or hexval == "0x":
         raise ValueError(f"eth_call totalSupply 返回空（{hexval!r}）——地址/链是否正确？")
-    return int(hexval, 16)
+    return int(hexval, 16), None
 
 
 def main():
@@ -101,6 +105,8 @@ def main():
     ap.add_argument("--mint", help="Solana mint")
     ap.add_argument("--replay-stats", help="replay_stats.json 路径")
     ap.add_argument("--replay-net-raw", type=int, help="直接给重放净供给（最小单位）")
+    ap.add_argument("--exploration", action="store_true",
+                    help="探索模式；仅此模式允许 --replay-net-raw，正式聚合器拒收")
     ap.add_argument("--rpc")
     ap.add_argument("--proxy")
     ap.add_argument("--tolerance-bps", type=int, default=10)
@@ -109,7 +115,22 @@ def main():
     ap.add_argument("--out", default="supply_truth.json")
     a = ap.parse_args()
 
+    target = {"chain": a.chain, "token": (a.token or a.mint or "").lower(),
+              "as_of_block": a.as_of_block}
+    mode = "exploration" if a.exploration else "formal"
     try:
+        envelope = build_envelope(
+            "supply-truth-receipt/v2", target, __file__, mode,
+            inputs={"replay_stats": Path(a.replay_stats)} if a.replay_stats else None)
+    except Exception as exc:
+        print(f"检测自身失败（exit 1，修通道重跑）: {exc}", file=sys.stderr)
+        return 1
+
+    try:
+        if a.replay_net_raw is not None and not a.exploration:
+            raise ValueError("正式模式拒绝 --replay-net-raw；仅可显式加 --exploration 作探索运行")
+        if a.chain != "solana" and a.as_of_block is None:
+            raise ValueError("EVM 链必须给 --as-of-block，禁止 latest 冒充冻结时点")
         if a.replay_net_raw is not None:
             replay_net, mint_t, burn_t = a.replay_net_raw, None, None
         elif a.replay_stats:
@@ -117,37 +138,48 @@ def main():
                 mint_t, burn_t = parse_replay_stats(json.load(f))
             replay_net = mint_t - burn_t
         else:
-            print("必须给 --replay-stats 或 --replay-net-raw", file=sys.stderr)
-            return 1
+            raise ValueError("必须给 --replay-stats 或 --replay-net-raw")
         if a.chain == "solana" and not a.mint:
-            print("solana 链必须给 --mint", file=sys.stderr)
-            return 1
+            raise ValueError("solana 链必须给 --mint")
         if a.chain != "solana" and not a.token:
-            print("EVM 链必须给 --token", file=sys.stderr)
-            return 1
-        onchain = fetch_onchain_supply(a.chain, a.token, a.mint, a.rpc, a.proxy,
-                                       a.as_of_block)
+            raise ValueError("EVM 链必须给 --token")
+        observed = fetch_onchain_supply(a.chain, a.token, a.mint, a.rpc, a.proxy,
+                                        a.as_of_block)
+        if isinstance(observed, tuple):
+            onchain, observed_context_slot = observed
+        else:  # 兼容注入 mock；真实实现始终返回 tuple。
+            onchain, observed_context_slot = int(observed), None
+        if a.chain == "solana" and observed_context_slot is None:
+            raise ValueError("getTokenSupply 缺 result.context.slot，当前观测时点不可证")
     except Exception as e:  # 网络/字段/文件——检测自身失败，禁当 PASS
         print(f"检测自身失败（exit 1，修通道重跑）: {e}", file=sys.stderr)
+        try:
+            error_path = publish_error_receipt(a.out, envelope, e)
+            print(f"[supply_truth] ERROR → {error_path}", file=sys.stderr)
+        except Exception as write_exc:
+            print(f"[supply_truth] ERROR receipt 写入失败: {write_exc}", file=sys.stderr)
         return 1
 
     verdict, diff, diff_bps = decide(replay_net, onchain, a.tolerance_bps)
-    result = {
-        "gate": "supply_truth", "schema": "supply-truth-receipt/v2",
-        "target": {"chain": a.chain, "token": (a.token or a.mint).lower(),
-                   "as_of_block": a.as_of_block}, "chain": a.chain,
-        "token": a.token or a.mint,
-        "replay_net": str(replay_net), "mint_total": str(mint_t) if mint_t is not None else None,
-        "burn_total": str(burn_t) if burn_t is not None else None,
-        "onchain_total_supply": str(onchain),
-        "diff": str(diff), "diff_bps": round(diff_bps, 4) if diff_bps is not None else None,
-        "tolerance_bps": a.tolerance_bps, "verdict": verdict,
-        "exit_code": 0 if verdict == "PASS" else 2,
-        "on_fail": ("余额禁用重放结果改链上实时直查；地址全集/转账历史仍可用重放；"
-                    "重放余额仅可作≥阈值超集筛选" if verdict == "FAIL" else None),
-    }
-    with open(a.out, "w") as f:
-        json.dump(result, f, ensure_ascii=False, indent=2)
+    result = finalize_envelope(envelope, verdict, 0 if verdict == "PASS" else 2,
+        gate="supply_truth", chain=a.chain,
+        token=a.token or a.mint,
+        replay_net=str(replay_net), mint_total=str(mint_t) if mint_t is not None else None,
+        burn_total=str(burn_t) if burn_t is not None else None,
+        onchain_total_supply=str(onchain), diff=str(diff),
+        diff_bps=round(diff_bps, 4) if diff_bps is not None else None,
+        tolerance_bps=a.tolerance_bps,
+        observed_context_slot=observed_context_slot if a.chain == "solana" else None,
+        supply_observation_semantics=(
+            "current value observed at observed_context_slot; not a frozen as-of supply"
+            if a.chain == "solana" else "historical eth_call at target.as_of_block"),
+        on_fail=("余额禁用重放结果改链上实时直查；地址全集/转账历史仍可用重放；"
+                 "重放余额仅可作≥阈值超集筛选" if verdict == "FAIL" else None))
+    try:
+        publish_overwrite(a.out, result)
+    except Exception as exc:
+        print(f"[supply_truth] receipt 写入失败: {exc}", file=sys.stderr)
+        return 1
     ratio = f"{diff_bps:.1f}bps" if diff_bps is not None else "n/a"
     print(f"[supply_truth] {verdict}  重放净供给={replay_net}  链上={onchain}  差={diff}（{ratio}，容差 {a.tolerance_bps}bps）→ {a.out}")
     if verdict == "FAIL":

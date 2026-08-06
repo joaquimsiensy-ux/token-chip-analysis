@@ -81,6 +81,29 @@ def main():
         write_table(pub, "eth")
         write_table(out, "eth")
 
+        # 重复段与段内空白均属同一集合语义。
+        write_table(pub, "eth", risk_flags="a|b")
+        for equivalent in ("a|a|b", "a| b"):
+            write_table(out, "eth", risk_flags=equivalent)
+            p = run(pub, out)
+            assert p.returncode == 0 and "行内退化" not in p.stdout, p.stdout + p.stderr
+        write_table(pub, "eth")
+        write_table(out, "eth")
+
+        # 三个日期字段只允许 staging 向前刷新；倒退是数据丢失，向后刷新仍为 WARN。
+        for field in ("added_date", "verified_at", "source_snapshot_at"):
+            write_table(pub, "eth", **{field: "2026-01-02"})
+            write_table(out, "eth", **{field: "2026-01-01"})
+            p = run(pub, out)
+            assert p.returncode == 1 and "日期倒退" in p.stdout and field in p.stdout, \
+                p.stdout + p.stderr
+            write_table(out, "eth", **{field: "2026-01-03"})
+            p = run(pub, out)
+            assert p.returncode == 0 and "[WARN]" in p.stdout and field in p.stdout, \
+                p.stdout + p.stderr
+            write_table(pub, "eth")
+            write_table(out, "eth")
+
         for field in ("source", "evidence", "added_date", "verified_at",
                       "source_snapshot_at", "raw_labels"):
             write_table(out, "eth", **{field: "different"})

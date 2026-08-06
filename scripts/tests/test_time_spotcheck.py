@@ -42,10 +42,12 @@ def wj(d, name, obj):
 def main():
     d = tempfile.mkdtemp(prefix="spotcheck_test_")
     out = os.path.join(d, "out.json")
-    base = ["--token", "0x594daad7d77592a2b97b725a7ad59d7e188b5bfa", "--out", out]
+    token = "0x594daad7d77592a2b97b725a7ad59d7e188b5bfa"
+    base = ["--chain", "bsc", "--token", token, "--out", out]
 
     # 1. 两型分型（2 matrix balance + 1 净变动 balance + 1 边缘 balance + 2 tx 型）
     plan = wj(d, "plan.json", {
+        "chain": "bsc", "token": token,
         "matrix_points": [
             {"kind": "矩阵[早·大户]", "addr": "0xaa", "day": "2025-01-01",
              "day_end_block": 100, "expected_balance_raw": "123"},
@@ -68,12 +70,13 @@ def main():
     check("两型分型正确（balance 4 / tx 2 / 边缘缺块 1）", ok)
 
     # 2. 0 锚点硬失败
-    p = run(["--plan", wj(d, "empty.json", {"matrix_points": [], "forced_points": []}),
+    p = run(["--plan", wj(d, "empty.json", {"chain": "bsc", "token": token,
+                                              "matrix_points": [], "forced_points": []}),
              "--dry-run"] + base)
     check("0 锚点 assert 硬失败", p.returncode != 0)
 
     # 3. 格式漂移锚点（两型都不匹配）
-    p = run(["--plan", wj(d, "odd.json", {"matrix_points": [
+    p = run(["--plan", wj(d, "odd.json", {"chain": "bsc", "token": token, "matrix_points": [
         {"kind": "怪点", "addr": "0xee", "day": "2025-01-01"}], "forced_points": []}),
         "--dry-run"] + base)
     check("格式漂移锚点 exit 非 0", p.returncode != 0)

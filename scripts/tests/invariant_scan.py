@@ -112,7 +112,7 @@ class AtomicVisitor(ast.NodeVisitor):
     visit_AsyncFunctionDef = visit_FunctionDef
 
     def visit_Call(self, node):
-        if _call_name(node.func) == "os.replace":
+        if _call_name(node.func) in {"os.replace", "os.link"}:
             self.locators.add(self.stack[-1])
         self.generic_visit(node)
 
@@ -151,6 +151,11 @@ def scan_python(path: Path):
             for key, value in zip(node.keys, node.values):
                 if isinstance(key, ast.Constant) and key.value == "schema":
                     producers.update(_string_values(value, constants))
+        elif isinstance(node, ast.Call) and _call_name(node.func).endswith("build_envelope"):
+            schema_node = node.args[0] if node.args else next(
+                (kw.value for kw in node.keywords if kw.arg == "schema"), None)
+            if schema_node is not None:
+                producers.update(_string_values(schema_node, constants))
         elif isinstance(node, ast.Compare):
             sides = [node.left, *node.comparators]
             if any(_is_schema_access(side) or isinstance(side, ast.Name)

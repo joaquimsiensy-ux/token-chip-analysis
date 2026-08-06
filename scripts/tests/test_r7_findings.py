@@ -30,7 +30,7 @@ for rel in ("scripts/report", "scripts/evm", "scripts/solana", "scripts/lib",
             "scripts/labels", "scripts/tests"):
     sys.path.insert(0, str(ROOT / rel))
 
-EXPECTED_RED = {f"R7-{n:02d}" for n in range(1, 16)} - {"R7-01", "R7-05", "R7-07"}
+EXPECTED_RED = {"R7-02", "R7-03", "R7-06"}
 FIELDS = ["address", "chain", "name", "category", "tier", "source", "added_date",
           "evidence", "risk_flags", "merge_policy", "balance_policy",
           "source_snapshot_at", "verified_at", "status", "raw_labels"]
@@ -125,20 +125,52 @@ def test_r7_04():
     mod = load(ROOT / "scripts/lib/supply_truth_gate.py", "r7_supply")
     problems = []
     with tempfile.TemporaryDirectory() as td:
-        out = Path(td) / "receipt.json"
+        root = Path(td); out = root / "receipt.json"
         argv = ["supply_truth_gate.py", "--chain", "solana", "--mint", "MintA",
                 "--as-of-block", "123", "--replay-net-raw", "100", "--out", str(out)]
         with mock.patch.object(sys, "argv", argv), \
-                mock.patch.object(mod, "fetch_onchain_supply", return_value=100):
+                mock.patch.object(mod, "fetch_onchain_supply", return_value=(100, 321)):
             rc = mod.main()
-        if rc == 0:
+        if rc != 1 or out.exists() or not list(root.glob("receipt.error.*.json")):
             problems.append("formal --replay-net-raw was accepted without --exploration")
-        receipt = json.loads(out.read_text())
+
+        explore_out = root / "explore.json"
+        explore_argv = argv[:-1] + [str(explore_out), "--exploration"]
+        with mock.patch.object(sys, "argv", explore_argv), \
+                mock.patch.object(mod, "fetch_onchain_supply", return_value=(100, 321)):
+            rc = mod.main()
+        exploration = json.loads(explore_out.read_text()) if explore_out.exists() else {}
+        if rc != 0 or exploration.get("mode") != "exploration" \
+                or exploration.get("observed_context_slot") != 321:
+            problems.append("explicit exploration raw override lacks mode/context binding")
+        else:
+            shared = load(ROOT / "scripts/report/shared_release_receipt.py", "r7_supply_shared")
+            item = {"status": "PASS", "exit_code": 0,
+                    "receipt": {"path": explore_out.name, "sha256": hashlib.sha256(
+                        explore_out.read_bytes()).hexdigest()}}
+            try:
+                shared.validate_reconciliation_check(root, "supply_truth", item,
+                                                     exploration["target"], "solana")
+            except ValueError:
+                pass
+            else:
+                problems.append("formal aggregator accepted exploration receipt")
+
+        stats = root / "stats.json"
+        write_json(stats, {"mint_total_raw": 100, "burn_total_raw": 0})
+        formal_out = root / "formal.json"
+        formal_argv = ["supply_truth_gate.py", "--chain", "solana", "--mint", "MintA",
+                       "--as-of-block", "123", "--replay-stats", str(stats),
+                       "--out", str(formal_out)]
+        with mock.patch.object(sys, "argv", formal_argv), \
+                mock.patch.object(mod, "fetch_onchain_supply", return_value=(100, 321)):
+            rc = mod.main()
+        receipt = json.loads(formal_out.read_text()) if formal_out.exists() else {}
         inputs = receipt.get("inputs") or {}
         if not any(isinstance(v, dict) and {"path", "size", "sha256"} <= set(v)
                    for v in inputs.values()):
             problems.append("receipt has no inputs file_ref")
-        if "observed_context_slot" not in receipt:
+        if rc != 0 or receipt.get("mode") != "formal" or receipt.get("observed_context_slot") != 321:
             problems.append("Solana receipt omits observed_context_slot")
     assert not problems, "; ".join(problems)
 

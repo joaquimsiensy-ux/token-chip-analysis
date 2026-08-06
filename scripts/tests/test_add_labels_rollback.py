@@ -36,12 +36,10 @@ def invoke(mod, src, returncodes=(1,)):
     with mock.patch.object(sys, "argv", [str(SCRIPT), str(src)]), \
             mock.patch.object(subprocess, "run", side_effect=fake_run):
         try:
-            mod.main()
+            rc = mod.main()
         except SystemExit as exc:
-            assert exc.code == 1
-        else:
-            if any(returncodes):
-                raise AssertionError("门禁失败应退出 1")
+            rc = exc.code
+        assert rc == (1 if any(returncodes) else 0), (rc, returncodes)
     return calls
 
 
@@ -82,6 +80,41 @@ def main():
         calls = invoke(mod, adds, (0, 0, 1))
         assert old.read_bytes() == before and manifest.read_bytes() == manifest_before
         assert any("labels_manifest.py" in " ".join(c) and "--write" in c for c in calls)
+
+        # additions staging 复制失败：三闸前失败，发布表/manifest 均不动且无临时残留。
+        mod = load_module(); mod.DEFAULT_LABELS_DIR = str(labels); mod.ADDITIONS_DIR = str(additions_dir)
+        real_copy = mod.shutil.copy
+        def fail_stage(src_path, dst_path, *args, **kwargs):
+            if Path(dst_path).parent == additions_dir:
+                raise OSError("archive staging injected")
+            return real_copy(src_path, dst_path, *args, **kwargs)
+        with mock.patch.object(sys, "argv", [str(SCRIPT), str(adds)]), \
+                mock.patch.object(mod.shutil, "copy", side_effect=fail_stage):
+            assert mod.main() == 1
+        assert old.read_bytes() == before and manifest.read_bytes() == manifest_before
+        assert not list(additions_dir.glob(".*.staging-*.tmp"))
+
+        # 原名冲突后采用时分秒后缀；后缀仍冲突则拒绝，绝不覆盖两份既有归档。
+        additions_dir.mkdir(exist_ok=True)
+        archived = additions_dir / adds.name; archived.write_text("first\n", encoding="utf-8")
+        second = additions_dir / "existing_20260806_120000.csv"
+        second.write_text("second\n", encoding="utf-8")
+        mod = load_module(); mod.DEFAULT_LABELS_DIR = str(labels); mod.ADDITIONS_DIR = str(additions_dir)
+        with mock.patch.object(sys, "argv", [str(SCRIPT), str(adds)]), \
+                mock.patch.object(mod, "archive_stamp", return_value="20260806_120000"):
+            assert mod.main() == 1
+        assert archived.read_text() == "first\n" and second.read_text() == "second\n"
+        archived.unlink(); second.unlink()
+
+        # 三闸全绿但 staging 独占发布失败：主表/manifest 回滚，临时 staging 清理。
+        mod = load_module(); mod.DEFAULT_LABELS_DIR = str(labels); mod.ADDITIONS_DIR = str(additions_dir)
+        with mock.patch.object(sys, "argv", [str(SCRIPT), str(adds)]), \
+                mock.patch.object(mod.subprocess, "run",
+                                  return_value=subprocess.CompletedProcess([], 0)), \
+                mock.patch.object(mod.os, "link", side_effect=FileExistsError("race")):
+            assert mod.main() == 1
+        assert old.read_bytes() == before and manifest.read_bytes() == manifest_before
+        assert not list(additions_dir.glob(".*.staging-*.tmp"))
 
         # 三闸全 PASS 才保留新表并清理备份。
         mod = load_module(); mod.DEFAULT_LABELS_DIR = str(labels); mod.ADDITIONS_DIR = str(additions_dir)

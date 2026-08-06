@@ -14,7 +14,7 @@
 纯 provenance 字段允许差异但逐项输出 WARN，禁止静默吞掉。
 staging 比发布版多行是正常扩容。
 """
-import argparse, csv, os, sys
+import argparse, csv, datetime, os, sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 OUT = os.path.join(HERE, 'sources', 'out')
@@ -24,6 +24,7 @@ DECISION_FIELDS = ['category', 'tier', 'merge_policy', 'balance_policy', 'status
                    'risk_flags']
 PROVENANCE_FIELDS = ['source', 'evidence', 'added_date', 'verified_at',
                      'source_snapshot_at', 'raw_labels']
+DIRECTIONAL_DATE_FIELDS = {'added_date', 'verified_at', 'source_snapshot_at'}
 
 def load_keys(path):
     keys = {}
@@ -52,9 +53,19 @@ def _decision(row):
     for field in DECISION_FIELDS:
         value = (row.get(field) or '').strip()
         if field == 'risk_flags':
-            value = '|'.join(sorted(p for p in value.split('|') if p))
+            value = '|'.join(sorted({p.strip() for p in value.split('|') if p.strip()}))
         out[field] = value
     return out
+
+
+def _timestamp(value):
+    try:
+        parsed = datetime.datetime.fromisoformat(str(value).strip().replace('Z', '+00:00'))
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=datetime.timezone.utc)
+        return parsed.astimezone(datetime.timezone.utc)
+    except (TypeError, ValueError):
+        return None
 
 
 def _write_dump(path, missing, degraded, pub):
@@ -105,6 +116,7 @@ def main():
         missing = [k for k in pub if k not in new]
         degraded = []
         provenance_diffs = []
+        date_regressions = []
         for key in pub.keys() & new.keys():
             old_decision = _decision(pub[key])
             new_decision = _decision(new[key])
@@ -117,11 +129,19 @@ def main():
                             != (new[key].get(field) or '').strip()]
             if prov_changed:
                 provenance_diffs.append((key, prov_changed))
+            for field in DIRECTIONAL_DATE_FIELDS:
+                old_value = (pub[key].get(field) or '').strip()
+                new_value = (new[key].get(field) or '').strip()
+                if old_value == new_value:
+                    continue
+                old_ts, new_ts = _timestamp(old_value), _timestamp(new_value)
+                if old_ts is not None and new_ts is not None and new_ts < old_ts:
+                    date_regressions.append((key, field, old_value, new_value))
         extra = sum(1 for k in new if k not in pub)
-        if missing or degraded:
+        if missing or degraded or date_regressions:
             broken = True
             print(f'[FAIL] {ch}: 丢失增量 {len(missing)} 行；行内退化 {len(degraded)} 行；'
-                  f'新构建净增 {extra} 行')
+                  f'日期倒退 {len(date_regressions)} 项；新构建净增 {extra} 行')
             for key in missing[:5]:
                 print(f'       丢失例: {key[0][:20]}… ({pub[key].get("name", "")} / '
                       f'{pub[key].get("source", "")})')
@@ -132,6 +152,8 @@ def main():
                 print(f'       行内退化例: {key[0][:20]}… {detail}')
             if degraded:
                 print(f'       行内退化总数: {len(degraded)}')
+            for key, field, old_value, new_value in date_regressions[:5]:
+                print(f'       日期倒退例: {key[0][:20]}… {field}={old_value!r}→{new_value!r}')
             if args.dump:
                 dp = os.path.join(args.dump_dir, f'roundtrip_diff_{ch}.csv')
                 _write_dump(dp, missing, degraded, pub)
