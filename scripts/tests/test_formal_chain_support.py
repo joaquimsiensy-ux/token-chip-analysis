@@ -29,8 +29,8 @@ def write_json(path, value):
 def main():
     reason = audit_release_gate.formal_chain_error("arbitrum")
     assert reason and "探索支持" in reason and "labels-arbitrum.csv" in reason, reason
-    assert "arbitrum" in entity_identity_gate.KNOWN_CHAINS
-    assert "arbitrum" in identity_snapshot_receipt.EVM_CHAINS
+    assert "arbitrum" in entity_identity_gate.identity_chains()
+    assert "arbitrum" in identity_snapshot_receipt.identity_evm_chains()
 
     with tempfile.TemporaryDirectory() as td:
         root = Path(td)

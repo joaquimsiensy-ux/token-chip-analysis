@@ -6,12 +6,16 @@ import argparse
 import hashlib
 import json
 import os
+import sys
 from pathlib import Path
-
-from adversarial_review_runner import validate_review_receipt
 
 HERE = Path(__file__).resolve().parent
 REPO = HERE.parent.parent
+sys.path.insert(0, str(HERE.parent / "lib"))
+
+from adversarial_review_runner import validate_review_receipt
+from chain_registry import recon_adapter_for
+
 FILES = ("accounting_mode.json", "reconciliation_report.json", "adversarial_review.json")
 ACCOUNTING_PRODUCERS = {
     "evm": "scripts/evm/accounting_gate.py",
@@ -31,6 +35,7 @@ RECON_PRODUCERS = {
         "time": {"scripts/solana/anchor_sampler.py"},
     },
 }
+RECON_RUNNERS = {"scripts/report/reconciliation_report.py"}
 ADVERSARIAL_RUNNERS = {"scripts/report/adversarial_review_runner.py"}
 
 
@@ -73,7 +78,10 @@ def repo_ref_ok(ref, allowed, label):
 
 
 def chain_family(chain):
-    return "solana" if str(chain).lower() in {"sol", "solana"} else "evm"
+    family = recon_adapter_for(chain)
+    if family not in RECON_PRODUCERS:
+        raise ValueError(f"chain has no registered reconciliation adapter: {chain!r}")
+    return family
 
 
 def _require(condition, message):
@@ -166,8 +174,10 @@ def validate_sources(root):
     token = accounting.get("token") or accounting.get("mint")
     target = {"chain": accounting["chain"], "token": str(token).lower(),
               "as_of_block": accounting.get("as_of_block")}
-    if recon.get("schema") != "reconciliation-report/v2" or recon.get("target") != target:
+    if (recon.get("schema") != "reconciliation-report/v2" or recon.get("target") != target
+            or recon.get("verdict") != "PASS" or recon.get("exit_code") != 0):
         raise ValueError("reconciliation target/schema mismatch")
+    repo_ref_ok(recon.get("producer"), RECON_RUNNERS, "reconciliation wrapper")
     for key in ("balance", "supply", "supply_truth", "time"):
         item = (recon.get("checks") or {}).get(key)
         if (not isinstance(item, dict) or item.get("status") != "PASS"

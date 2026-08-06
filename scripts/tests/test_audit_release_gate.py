@@ -89,7 +89,9 @@ def build_case(root, historical=True):
                        "receipt": {"path": evidence.name, "sha256": sha(evidence)},
                        "producer": repo_ref(producers[key])}
     write_json(root, "reconciliation_report.json", {
-        "schema": "reconciliation-report/v2", "target": target, "checks": checks})
+        "schema": "reconciliation-report/v2", "target": target,
+        "producer": repo_ref("scripts/report/reconciliation_report.py"),
+        "verdict": "PASS", "exit_code": 0, "checks": checks})
     write_json(root, "address_classification.json", {
         "current_owner_threshold_pct": 0.1,
         "current_owner_float_threshold_pct": 0.2,

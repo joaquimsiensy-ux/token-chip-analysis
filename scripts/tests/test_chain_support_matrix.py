@@ -68,10 +68,12 @@ def csv_has_rows(path):
 
 def main():
     declared = frontmatter_chains()
-    formal = named_set(ROOT / "scripts/report/audit_release_gate.py", "FORMAL_CHAINS")
+    sys.path.insert(0, str(ROOT / "scripts/lib"))
+    from chain_registry import formal_chains, identity_chains, identity_evm_chains
+    formal = formal_chains()
     buildable = named_set(ROOT / "scripts/labels/build_labels.py", "BUILD_CHAINS")
     assert formal == declared, (
-        f"release-gate FORMAL_CHAINS={sorted(formal)} != frontmatter={sorted(declared)}"
+        f"chain registry formal={sorted(formal)} != frontmatter={sorted(declared)}"
     )
     assert buildable == declared, (
         f"build_labels BUILD_CHAINS={sorted(buildable)} != frontmatter={sorted(declared)}"
@@ -91,10 +93,9 @@ def main():
             failures.append(f"{chain}: labels_resolver loaded in degraded mode or returned 0 rows")
     assert not failures, "formal label capability is not closed:\n- " + "\n- ".join(failures)
 
-    known_gate = named_set(ROOT / "scripts/report/entity_identity_gate.py", "KNOWN_CHAINS")
-    known_receipt = named_set(ROOT / "scripts/report/identity_snapshot_receipt.py", "EVM_CHAINS")
-    assert declared <= known_gate and "arbitrum" in known_gate - declared
-    assert "arbitrum" in known_receipt, "exploratory Arbitrum identity receipt capability was removed"
+    assert declared <= identity_chains() and "arbitrum" in identity_chains() - declared
+    assert "arbitrum" in identity_evm_chains(), \
+        "exploratory Arbitrum identity receipt capability was removed"
     print("PASS: formal chain matrix closes frontmatter + release gate + non-degraded labels: "
           f"{sorted(declared)}; arbitrum remains exploratory-known")
     return 0

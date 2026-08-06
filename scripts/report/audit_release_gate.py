@@ -15,6 +15,10 @@ import sys
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
+LIB = Path(__file__).resolve().parents[1] / "lib"
+sys.path.insert(0, str(LIB))
+from chain_registry import formal_chains, known_chains_for_release, resolve_alias
+
 
 SHARED_REQUIRED = (
     "accounting_mode.json",
@@ -47,26 +51,19 @@ DECISIVE_TYPES = {
     "entity_attribution", "economic_control", "whale_tier", "cex_identity",
     "cex_channel", "historical_peak", "historical_chart", "negative_exhaustive",
 }
-KNOWN_CHAINS = {"eth", "bsc", "base", "arbitrum", "robinhood", "sol"}
-FORMAL_CHAINS = {"eth", "bsc", "base", "robinhood", "sol"}
-CHAIN_ALIASES = {"ethereum": "eth", "solana": "sol", "arbitrum one": "arbitrum",
-                 "arbitrum-one": "arbitrum", "arb": "arbitrum"}
-
-
 def normalize_chain(value):
-    chain = str(value or "").strip().lower()
-    return CHAIN_ALIASES.get(chain, chain)
+    return resolve_alias(value)
 
 
 def formal_chain_error(value):
     chain = normalize_chain(value)
-    if chain in FORMAL_CHAINS:
+    if chain in formal_chains():
         return None
     if chain == "arbitrum":
         return ("chain=arbitrum 为探索支持：缺少 references/labels/labels-arbitrum.csv "
                 "及完整目标链标签门禁；可保留采集、对账和 identity snapshot，"
                 "但不得编译正式 analysis")
-    if chain in KNOWN_CHAINS:
+    if chain in known_chains_for_release():
         return f"chain={chain} 不是正式支持链，不得编译正式 analysis"
     return f"chain={chain or '<missing>'} 未进入正式支持矩阵，不得编译正式 analysis"
 

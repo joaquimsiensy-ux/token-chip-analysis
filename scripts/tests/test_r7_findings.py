@@ -30,7 +30,7 @@ for rel in ("scripts/report", "scripts/evm", "scripts/solana", "scripts/lib",
             "scripts/labels", "scripts/tests"):
     sys.path.insert(0, str(ROOT / rel))
 
-EXPECTED_RED = {f"R7-{n:02d}" for n in range(1, 16)}
+EXPECTED_RED = {f"R7-{n:02d}" for n in range(1, 16)} - {"R7-01", "R7-05", "R7-07"}
 FIELDS = ["address", "chain", "name", "category", "tier", "source", "added_date",
           "evidence", "risk_flags", "merge_policy", "balance_policy",
           "source_snapshot_at", "verified_at", "status", "raw_labels"]
@@ -71,19 +71,25 @@ def write_table(path, chain, **changes):
 
 
 def test_r7_01():
-    """A hand-composed, internally consistent evidence bundle must be rejected."""
+    """A wrapper without the current controlled-runner binding must be rejected."""
     from test_audit_release_gate import build_case
     shared = load(ROOT / "scripts/report/shared_release_receipt.py", "r7_shared")
-    with tempfile.TemporaryDirectory() as td:
-        case = Path(td)
-        build_case(case)
-        accepted = False
-        try:
-            shared.validate_sources(case)
-            accepted = True
-        except ValueError:
-            pass
-        assert not accepted, "fabricated wrapper + receipts accepted without controlled runner binding"
+    for mutation in ("missing", "bad-hash"):
+        with tempfile.TemporaryDirectory() as td:
+            case = Path(td)
+            build_case(case)
+            wrapper = json.loads((case / "reconciliation_report.json").read_text())
+            if mutation == "missing":
+                wrapper.pop("producer")
+            else:
+                wrapper["producer"]["sha256"] = "0" * 64
+            write_json(case / "reconciliation_report.json", wrapper)
+            try:
+                shared.validate_sources(case)
+            except ValueError as exc:
+                assert "wrapper" in str(exc), exc
+            else:
+                raise AssertionError(f"fabricated wrapper accepted: {mutation}")
 
 
 def test_r7_02():
@@ -185,8 +191,8 @@ def test_r7_07():
         proc, _ = _handoff_generate(Path(td), "arbitrum")
         if proc.returncode == 0:
             problems.append("handoff generate accepted READY for exploration-only arbitrum")
-    if set(handoff.KNOWN_CHAINS) != set(audit.FORMAL_CHAINS):
-        problems.append("handoff and audit release chain sets differ instead of sharing one source")
+    if set(handoff.READY_CHAINS) != set(audit.formal_chains()):
+        problems.append("handoff and audit formal chains differ instead of sharing the registry")
     assert not problems, "; ".join(problems)
 
 

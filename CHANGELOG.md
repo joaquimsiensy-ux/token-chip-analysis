@@ -10,6 +10,7 @@
 
 ## 版本索引（活跃窗口，新在上；每版一行，详情见下方对应条目）
 
+- **6.35.0** 2026-08-06 结构收敛工程阶段 1+2：invariant manifest 实施面分母+R7 十五项先红测试防装死隔离；受控 runner 编排执行四查+聚合器只认 runner 绑定；链能力注册表单源（同名异义 KNOWN_CHAINS 消灭），R7-01/05/07 转绿
 - **6.34.0** 2026-08-06 六视角首战修复轮：13 项五批全修（发布证据链 receipt 化/采集器原子产物/标签门禁等深/正式输入必填/文档口径），验收返工 1 项 risk_flags 规范化
 - **6.33.0** 2026-08-06 维护方法论文档化：六视角 review 清单与修复工单模板沉淀为维护件 maintenance-review-repair.md（零判据变更）
 - **6.32.0** 2026-08-06 第五轮外部审查 13 项修复：标签发布与采集器 fail-open 关闭、密钥取用契约统一、SKILL/casebook 路由漂移收口
@@ -28,6 +29,16 @@
 - **6.20.1** 2026-08-05 修 5 处阻断级文档漂移（A4 前禁写报告冲突/easy 残留/惯犯回灌 docstring/批量预采集残留/旧 Par 路线历史降级）＋docs_lint 增中文禁词与 Python module docstring 扫描
 
 更早版本（6.20.0 及以前）详见 `archive/CHANGELOG-archive.md`。
+
+## [6.35.0] - 2026-08-06 — 结构收敛工程阶段 1+2：分母清单＋先红隔离＋受控 runner＋链能力单源
+
+- **背景**：第七轮六视角 review（codex 新线程审 main@d8bd3c5）出 15 项，Fable 复核 15/15 属实（修正 2 项定级、3 项归因、1 处 Solana 修法物理不可行），归因新引入 5/半修残留 7/历史漏检 3——用户判定逐点修复模式失效，要求彻底方案。诊断（@CX codex 交叉复核修正后）：病根=横切不变量的实施面分散（receipt/失败语义/原子写各 20-40 处手工实现）且**分母从未被机器证明完整**，同族 rg 半径随反例漂移；每轮修复自身又新增手工实现（本轮 5 项新引入全部长在上轮改写代码里）。codex 复核另贡献：否决新建 transport.py（库内已有 net.py，再建=第二套公共网络层）、runner 从"验刚落盘"升级为编排执行、三集合升级为能力注册表、白名单加清偿到期；Fable 坚持成功判据收窄（连续两轮"新引入=0 且半修残留=0"，历史漏检类不计入——探测器视角进化的产物不可达零）。方案四阶段，本版=阶段 1+2；15 项先红测试逐阶段转绿，全绿+五个零机器复算=工程收口（judged at 6.36.0）。
+- **阶段 1（零生产变更，commit 77dba73）**：`invariant_manifest.json`+`invariant_scan.py` AST 级双向对账守卫——receipt 生产/消费、transport、原子写（人工判定四类语义）、正式入口全量登记，删/加两路注入 self-test 常驻；分母从一次性 rg 变机器可复算。`test_r7_findings.py` 15 项按"修好后目标行为"写断言基线全红，expected-red 隔离三态（红+集合=计数、绿+集合=FAIL 强制摘牌、红+集合外=FAIL）防测试装死。验收返工 1：SCOPE 漏 labels（18 件）/prices/根部（任务书目录清单遗漏=Fable 责），补录后 transport 32→35、atomic 30→36、入口 46→54。
+- **阶段 2（R7-01/05/07 转绿摘牌）**：新建受控 runner `reconciliation_report.py`——读 job spec 在 case 目录编排执行四查 producer 子进程（producer 白名单+当前哈希、receipt 执行前必须不存在、argv 只作参数不可换执行体、路径逃逸/符号链接拒、输入与 receipt 前后双快照、失败也落 FAIL wrapper、落盘失败 exit 2 不留半成品），wrapper 顶层绑定 runner 自身 path+sha256；聚合器 `shared_release_receipt.py` 新增 RECON_RUNNERS 校验（无绑定/哈希不符拒）+wrapper 顶层 PASS/0 硬查。7 条拒绝反例测试全建（`test_reconciliation_runner.py`）。新建 `chain_registry.py` 单源：每链 canonical/aliases/formal/exploration/capture_evm_family/has_labels_table/recon_adapter/identity_adapter，派生函数供 audit_release_gate（本地 FORMAL_CHAINS/KNOWN_CHAINS/CHAIN_ALIASES 删除）、handoff_manifest（READY 只认 formal——arbitrum 等探索/采集链拒，R7-07 转绿；EVM 时间抽查家族判定改 evm_family）与身份闸两件派生；`test_chain_registry.py` 一致性+破坏性传导反证。split-run/independent-audit-protocol 同步"wrapper 禁止手拼、旧案重跑 runner"。
+- **验收（Fable，注入攻击制）**：阶段 1 四路注入全拦（摘牌未修/manifest kind 错位/schema 删项/semantics 非法）；阶段 2 别名大小写攻击全防（ethereum/ETH 解析 READY、Arbitrum/avalanche 拒）、runner 代码逐段审读。**边界外攻击战果两项返工**：①协议文档声称拒绝"手拼自报 wrapper"过强——实测填对 runner 哈希的手拼仍过（设计内诚实边界），措辞压回如实并明写"内容绑定非单机执行证明，防线=疏忽可绕升为必须显式造假+git 追踪"；②同族清单漏两处身份闸本地链集合（identity_snapshot_receipt/entity_identity_gate，5 链 EVM 快照与 6 链全链闸语义不同），按各自语义派生化+一致性断言补齐，全库残留复扫零命中。
+- 测试面：新增 invariant_scan self-test、test_r7_findings（15）、test_reconciliation_runner（7）、test_chain_registry；SUITE 全绿，r7 隔离剩 12 红。阶段 3（receipt kernel+个案修 R7-03/04/08/09/10/11/12/13/14/15）、阶段 4（net.py 演进+anchor_sampler/window_fetch 迁移=R7-02/06）待续。
+
+本次为结构收敛工程（维护轮），无代币分析轮次或结论质量指标；15 项中 3 项转绿、12 项在册待阶段 3/4。
 
 ## [6.34.0] - 2026-08-06 — 六视角首战修复轮：13 项五批全修＋验收返工 1 项
 

@@ -36,7 +36,9 @@
 - **A0 全部**：合约核定、多链硬关卡（AskUserQuestion 选链范围）、分母口径、链路由、accounting_gate——**exit 2 → −1 停工写 blocker 进 anomalies，禁套标准管线**；vesting 标的产 `unlock_evidence.json`（仅事实：来源/日期/数量/口径/冲突，零质量判断）。
 - **CEX 黑箱关卡**（维持点名制，用户命令附加要求时才做）：结论落盘必须含同块分母＋confirmed/suspected/ambiguous 三档分列＋保守上限口径＋用户裁决与时间戳；超线中止 → manifest 状态 `BLOCKED_CEX_GATE`，−2 拒绝消费。
 - **A1 全部**：并行采集＋存量产物复用（断点续拉，禁从零重采）；`done_with_gaps` 必须补齐才准出 READY。
-- **A2 全部**：四查对账 fail-closed，产物照常落盘；时间抽查跑 `scripts/lib/time_spotcheck.py`（EVM 案 `time_spotcheck.json` 为 READY 必备件＋AUTO_GATES，6.7.0）——**默认锚点级直查即闭环，全史第二源重拉是例外动作**（触发条件与 pilot 报 ETA 纪律见 evm-recon §13；APU 案照旧模板全史重拉 103 分钟纯冗余教训）。
+- **A2 全部**：四查对账 fail-closed，四个生产者必须由 `scripts/report/reconciliation_report.py` 接收 job spec 后受控启动；runner 校验新鲜 receipt、target、生产者和输入/receipt 哈希，再原子生成 `reconciliation_report.json`，禁止手拼 wrapper。时间抽查跑 `scripts/lib/time_spotcheck.py`（EVM 案 `time_spotcheck.json` 为 READY 必备件＋AUTO_GATES，6.7.0）——**默认锚点级直查即闭环，全史第二源重拉是例外动作**（触发条件与 pilot 报 ETA 纪律见 evm-recon §13；APU 案照旧模板全史重拉 103 分钟纯冗余教训）。
+
+  上述“禁止手拼”是执行纪律，不是聚合器具备单机执行证明：聚合器能拒绝缺 runner 绑定或绑定哈希不符的 wrapper，但无法识别蓄意填写正确 path/SHA-256 并编造自洽观测的 wrapper；内容绑定的作用是把无意漏跑变成必须显式造假的行为，并留下可由仓库 git 历史审计的代码哈希。
 - **A3 机械子层**（对照 analyze-workflow A3 主序编号）：
   1. 地址身份标注**批量层**（主序第 1 项前半）：标签库/getCode/Sourcify/外部证据批查。**输出只写观察事实**：`observed_type`＋`source`＋`source_timestamp`＋`conflict_flags`；仅多源无冲突的公共设施可标 `auto_excluded_candidate`，最终排除权在 −2。
   2. 金库与核心实体逐笔归因**跑批**（主序第 1 项中段的脚本执行侧）：产出流水，不定性。
@@ -88,7 +90,7 @@
 | `provenance_ledger.json` | −2 | 已知实体币源溯源台账（entity_source_trace.py，正式模式强制绑定 `--labels-file`；`--allow-no-labels` 仅探索且 freeze 必拒；provenance-ledger/v2 正向模拟＋完整输入绑定）——freeze 从原始边/标签真实重放；v1 一律重跑 |
 | `sealed/stage1_hypotheses.sealed.md` | −1 | 初步定性密封件，见 §2.3 |
 | `entity_freeze.json` | −2 | 冻结事件物化：成员表哈希/时间/未决项/casebook 检验结果；变更走 revision 追加，不许静默覆盖 |
-| 既有产物 | −1 | accounting_mode、链内 done.json/collection_manifest/receipt、四查产物、cluster_prep、address_bucket_series、价格序列——**格式零改动** |
+| 既有产物 | −1 | accounting_mode、链内 done.json/collection_manifest/receipt、四查 producer receipt、由 `reconciliation_report.py` 生成的 `reconciliation_report.json`、cluster_prep、address_bucket_series、价格序列；四查 receipt 格式零改动，wrapper 禁止手拼 |
 
 **findings.md 双义处理**：−1 不写 findings.md（它是 A3 交接包，归 −2 按 context-discipline 现行制度写）；点名式 CEX 黑箱关卡中止时，其结论只作为 `BLOCKED_CEX_GATE` 恢复资产。
 
@@ -96,7 +98,7 @@
 
 - **身份**：schema_version、case_id、run_id、mode（仅 `full`；**值来源＝/token-analyze-1 命令的档位参数，−1 收工 `generate --mode full` 必填传入**，用户未给档位时 −1 开工前先问、禁猜）、producer_model、CC/codex 两侧 git SHA、consumer_min_schema。
 - **口径**：链范围、合约、冻结块/slot、UTC cutoff、三种分母（总供应/调整后/流通）及来源。
-- **gate 记录**：每个 gate 的命令＋exit＋语义状态（accounting_mode/supply_truth 由脚本从产物 JSON 自动读 `verdict/exit_code`，防手报；四查等其他 gate 由 −1 执行者 `--gate` 显式声明并绑定产物文件）。
+- **gate 记录**：每个 gate 的命令＋exit＋语义状态（accounting_mode/supply_truth 由脚本从产物 JSON 自动读 `verdict/exit_code`，防手报；四查必须运行 `reconciliation_report.py`，由 runner 记录四个子进程 exit 并绑定 producer receipt；handoff 若另记 gate，只绑定该 runner 产物，不接受 −1 手报四查 wrapper）。
 - **产物 allowlist**：逐件登记路径/字节/sha256（大文件分片哈希＋复用采集侧行数/区间校验，不收尾全盘重哈希）/行数/schema/依赖。排除日志/临时库/含密钥文件（config.json 不入清单内容）。
 - **状态机**：`READY | BLOCKED | PARTIAL | SUPERSEDED | BLOCKED_CEX_GATE`——只有 READY 可被 −2 消费；READY 前置＝五件契约 JSON＋accounting_mode.json＋supply_truth.json＋wave_scan_report.json＋flow_anomaly_report.json＋distribution_scan.json 齐全（EVM 家族链另加 time_spotcheck.json）。verify 会调用分布扫描器重算 initial 语义。手改 manifest、scan 或排除来源都不能通过。
 - **生成纪律**：原子生成（tmp+rename）、不含自身哈希；generate 后新增产物走 `late_additions`（重跑 generate 产 superseding manifest，旧件自动归档带 run_id 后缀）。

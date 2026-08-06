@@ -151,10 +151,10 @@ reproduce_output.json
 - `economic_control_ledger.json.entries[]`：按 `economic-control-accounting.md` §5；发布闸从明细重算 `wallet_self_held_raw == Σ position.amount_raw`、`confirmed_economic_control_raw == wallet_self_held_raw + Σ claim.token_raw`，并校验 `double_count_key` 全局唯一及所有权/数量算法/目标块证据齐全。任何 `unresolved_count` 都必须与实际 unresolved 明细一致，汇总布尔和自报 count 不作为放行证据。
 
 `accounting_mode.json` 必须是当前 `scripts/evm/accounting_gate.py`（Solana 为 `scripts/solana/accounting_gate_sol.py`）的 `accounting-gate/v1` exit 0 产物，并带脚本自身的 `producer.path/sha256`。
-  `reconciliation_report.json` 使用 v2 target，并给四查逐项绑定生产者自出的 v2 receipt：balance/supply=`verify_recon.py`、supply_truth=`supply_truth_gate.py`、time=`time_spotcheck.py`（Solana 对应 anchor sampler 与 holder snapshot）。聚合器逐类解析 schema、target、观测和 verdict，不接受 wrapper 自报；旧案须重跑对应生产者。案目录里的同名/复制脚本即使 SHA-256 相同也不是生产者。
+  `reconciliation_report.json` 必须由当前 `scripts/report/reconciliation_report.py` 读取 job spec 后受控启动四查生产者生成：balance/supply=`verify_recon.py`、supply_truth=`supply_truth_gate.py`、time=`time_spotcheck.py`（Solana 对应 anchor sampler 与 holder snapshot）。runner 要求 receipt 执行前不存在，逐项记录子进程 exit，并绑定 v2 target、生产者与输入/receipt 哈希；wrapper 顶层绑定 runner 自身路径与当前 SHA-256。聚合器逐类解析 schema、target、观测和 verdict，并拒绝无 runner 绑定或绑定哈希不符的 wrapper；旧案须重跑对应生产者与 runner。这里是内容绑定，不是单机执行证明：蓄意手拼者若正确填写当前 runner path/SHA-256 并伪造相互自洽的观测，聚合器无法仅凭 wrapper 识别；防线的实际作用是把“疏忽即可绕过”提高为必须显式填哈希、编造观测的主动造假，并由仓库 git 历史追踪代码变更。案目录里的同名/复制脚本即使 SHA-256 相同也不是生产者。
   `adversarial_review.json` 使用 v2 target；实体归因怀疑者与完整性批评者都必须通过当前 `scripts/report/adversarial_review_runner.py` 启动独立 entrypoint，绑定新鲜非空 artifact 与 `adversarial-review-execution/v1` execution receipt，聚合器同时重验 runner、entrypoint、artifact。
   示例：`python3 scripts/report/adversarial_review_runner.py <案目录> --role entity_attribution_skeptic --entrypoint review_entity.py --artifact review_entity.md --receipt review_entity_execution.json`（另一角色用 `completeness_critic`）。三者完成后由唯一生产聚合器运行 `python3 scripts/report/shared_release_receipt.py <案目录>`，生成并哈希绑定三者的 `shared-release-receipt/v1`。
-  存量裸布尔、无 producer 的 accounting、任意 producer/runner 或无 execution receipt 的旧文件都不得手工补字段迁移：必须重跑当前 accounting/四查生产工具和两个固定 runner，再运行聚合器；任何 receipt 后替换都会阻断。
+  存量裸布尔、无 producer 的 accounting、任意 producer/runner 或无 execution receipt 的旧文件都不得手工补字段迁移：必须重跑当前 accounting、以 job spec 运行 `python3 scripts/report/reconciliation_report.py <job-spec.json>`、运行两个固定对抗复核 runner，再运行聚合器；任何 receipt 后替换都会阻断。
 
 涉及历史图时另需 `chart_reconciliation.json`。发布前运行：
 

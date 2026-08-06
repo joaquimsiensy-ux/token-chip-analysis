@@ -145,6 +145,12 @@
     },
     {
       "schemas": [
+        "reconciliation-report/v2"
+      ],
+      "script": "scripts/report/reconciliation_report.py"
+    },
+    {
+      "schemas": [
         "reproduce-receipt/v2"
       ],
       "script": "scripts/report/reproduce_receipt.py"
@@ -617,6 +623,11 @@
       "semantics": "overwrite_single"
     },
     {
+      "locator": "atomic_write_json",
+      "script": "scripts/report/reconciliation_report.py",
+      "semantics": "overwrite_single"
+    },
+    {
       "locator": "atomic_json",
       "script": "scripts/report/reproduce_receipt.py",
       "semantics": "overwrite_single"
@@ -722,6 +733,7 @@
     "scripts/report/handoff_manifest.py",
     "scripts/report/lifecycle_flow.py",
     "scripts/report/md2pdf.py",
+    "scripts/report/reconciliation_report.py",
     "scripts/report/reproduce_receipt.py",
     "scripts/report/retro_draft.py",
     "scripts/report/shared_release_receipt.py",

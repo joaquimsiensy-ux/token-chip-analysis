@@ -35,6 +35,10 @@ import sys
 import tempfile
 from datetime import datetime, timezone
 
+_LIB = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "lib"))
+sys.path.insert(0, _LIB)
+from chain_registry import evm_family, formal_chains, resolve_alias
+
 SCHEMA_VERSION = "handoff/v3"
 # verify 端支持集；consumer_min_schema 不在集内即拒收。
 # v1（6.7.x 及以前）默认拒——fail-open 修复（2026-08-01 codex 复核）：漏跑新生产器的旧格式
@@ -76,10 +80,7 @@ REQUIRED_FOR_READY = ["candidate_universe.json", "candidate_screening.json",
 # time_spotcheck.py 固化后，锚点级第二源直查是 A2 第 4 查的机器凭证，缺件＝时间抽查没跑
 # 或又走了自由发挥老路。Solana（anchor_sampler 通道）等非 EVM 链时间抽查形态不同，
 # 不进本硬闸（白名单法：链名命中才强制，未知新链不误伤）。
-EVM_CHAINS = {"eth", "ethereum", "bsc", "base", "arbitrum", "polygon", "optimism",
-              "robinhood", "opbnb", "avalanche", "fantom", "cronos", "linea",
-              "scroll", "blast", "zksync"}
-KNOWN_CHAINS = EVM_CHAINS | {"sol", "solana"}
+READY_CHAINS = formal_chains()
 REQUIRED_FOR_READY_EVM = ["time_spotcheck.json"]
 # 自动 gate 适配：从产物 JSON 读 verdict/exit_code（防手报）；verify 时重读比对
 AUTO_GATES = {"accounting_gate": "accounting_mode.json", "supply_truth_gate": "supply_truth.json",
@@ -159,14 +160,14 @@ def cmd_generate(a):
     if a.status not in STATUSES:
         print(f"[generate] status 必须是 {sorted(STATUSES)}", file=sys.stderr)
         return 1
-    chains = [c.strip().lower() for c in (a.chain or "").split(",") if c.strip()]
+    chains = [resolve_alias(c) for c in (a.chain or "").split(",") if c.strip()]
     if a.status == "READY":
         if not chains or not str(a.contract or "").strip():
             print("[generate] READY 必须显式给 --chain 与 --contract", file=sys.stderr)
             return 2
-        unknown = sorted(set(chains) - KNOWN_CHAINS)
+        unknown = sorted(set(chains) - READY_CHAINS)
         if unknown:
-            print(f"[generate] READY 含未知链 {unknown}；先补链支持再生成", file=sys.stderr)
+            print(f"[generate] READY 含非正式链 {unknown}；先补正式链能力再生成", file=sys.stderr)
             return 2
 
     artifacts, missing_required = [], []
@@ -211,7 +212,7 @@ def cmd_generate(a):
 
     if a.status == "READY":
         required = list(REQUIRED_FOR_READY)
-        if set(chains) & EVM_CHAINS:
+        if set(chains) & evm_family():
             required += REQUIRED_FOR_READY_EVM
         missing_required = [n for n in required if n not in seen]
         if missing_required:
@@ -387,12 +388,12 @@ def verify_case(case_dir, legacy_read_only=False):
         fails.append(f"状态 {status} ≠ READY，拒绝消费（原因: {m.get('status_reason')}）")
     if not legacy_mode and status == "READY":
         scope = m.get("scope") or {}
-        chains = {str(c).strip().lower() for c in scope.get("chains") or [] if str(c).strip()}
+        chains = {resolve_alias(c) for c in scope.get("chains") or [] if str(c).strip()}
         if not chains:
             fails.append("READY scope.chains 为空——缺正式链范围")
-        unknown = sorted(chains - KNOWN_CHAINS)
+        unknown = sorted(chains - READY_CHAINS)
         if unknown:
-            fails.append(f"READY scope 含未知链 {unknown}")
+            fails.append(f"READY scope 含非正式链 {unknown}")
         if not str(scope.get("contract") or "").strip():
             fails.append("READY scope.contract 为空")
 
@@ -402,8 +403,8 @@ def verify_case(case_dir, legacy_read_only=False):
         # artifacts/gates 列表同样过不了这道重查）
         if not legacy_mode:
             required = list(REQUIRED_FOR_READY)
-            chains = {str(c).strip().lower() for c in (m.get("scope", {}) or {}).get("chains") or []}
-            if chains & EVM_CHAINS:
+            chains = {resolve_alias(c) for c in (m.get("scope", {}) or {}).get("chains") or []}
+            if chains & evm_family():
                 required += REQUIRED_FOR_READY_EVM
             miss = [n for n in required if n not in art_paths]
             if miss:
