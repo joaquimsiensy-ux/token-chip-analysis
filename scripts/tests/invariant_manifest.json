@@ -1,0 +1,741 @@
+{
+  "schema": "invariant-manifest/v1",
+  "scope": [
+    "scripts/report",
+    "scripts/evm",
+    "scripts/solana",
+    "scripts/lib",
+    "scripts/robinhood",
+    "scripts/labels",
+    "scripts/prices",
+    "scripts/*.py"
+  ],
+  "receipt_producers": [
+    {
+      "schemas": [
+        "accounting-gate/v1"
+      ],
+      "script": "scripts/evm/accounting_gate.py"
+    },
+    {
+      "schemas": [
+        "evm-channel-receipt/v2",
+        "evm-channels-preflight/v1"
+      ],
+      "script": "scripts/evm/channels_preflight.py"
+    },
+    {
+      "schemas": [
+        "evm-collector-run/v2"
+      ],
+      "script": "scripts/evm/csv_collector_receipt.py"
+    },
+    {
+      "schemas": [
+        "evm-collector-run/v2"
+      ],
+      "script": "scripts/evm/fetch_hypersync.py"
+    },
+    {
+      "schemas": [
+        "hypersync-capture-identity/v1",
+        "hypersync-v2-done/v3"
+      ],
+      "script": "scripts/evm/fetch_hypersync_v2.py"
+    },
+    {
+      "schemas": [
+        "trigger-days-replay/v1"
+      ],
+      "script": "scripts/evm/peaks_daily.py"
+    },
+    {
+      "schemas": [
+        "transfers-small-sample-inputs/v1"
+      ],
+      "script": "scripts/evm/transfers_lib.py"
+    },
+    {
+      "schemas": [
+        "evm-reconciliation-receipt/v2"
+      ],
+      "script": "scripts/evm/verify_recon.py"
+    },
+    {
+      "schemas": [
+        "supply-truth-receipt/v2"
+      ],
+      "script": "scripts/lib/supply_truth_gate.py"
+    },
+    {
+      "schemas": [
+        "time-spotcheck/v2"
+      ],
+      "script": "scripts/lib/time_spotcheck.py"
+    },
+    {
+      "schemas": [
+        "a4-claims/v2",
+        "a4-seal/v4"
+      ],
+      "script": "scripts/report/a4_gate.py"
+    },
+    {
+      "schemas": [
+        "a5-report-seal/v2"
+      ],
+      "script": "scripts/report/a5_report_seal.py"
+    },
+    {
+      "schemas": [
+        "candidate-adjudications/v1",
+        "distribution-adjudications/v1"
+      ],
+      "script": "scripts/report/adjudication_validator.py"
+    },
+    {
+      "schemas": [
+        "adversarial-review-execution/v1"
+      ],
+      "script": "scripts/report/adversarial_review_runner.py"
+    },
+    {
+      "schemas": [
+        "distribution-explanation/v1"
+      ],
+      "script": "scripts/report/distribution_explanation_check.py"
+    },
+    {
+      "schemas": [
+        "identity_gate_v3"
+      ],
+      "script": "scripts/report/entity_identity_gate.py"
+    },
+    {
+      "schemas": [
+        "provenance-ledger/v2"
+      ],
+      "script": "scripts/report/entity_source_trace.py"
+    },
+    {
+      "schemas": [
+        "flow-anomaly/v2"
+      ],
+      "script": "scripts/report/flow_anomaly_scan.py"
+    },
+    {
+      "schemas": [
+        "entity-freeze/v1",
+        "legacy-readonly-receipt/v1"
+      ],
+      "script": "scripts/report/handoff_manifest.py"
+    },
+    {
+      "schemas": [
+        "distribution-rounds/v1",
+        "distribution-scan/v1"
+      ],
+      "script": "scripts/report/holder_distribution_scan.py"
+    },
+    {
+      "schemas": [
+        "identity-holder-snapshot/v2"
+      ],
+      "script": "scripts/report/identity_snapshot_receipt.py"
+    },
+    {
+      "schemas": [
+        "reproduce-receipt/v2"
+      ],
+      "script": "scripts/report/reproduce_receipt.py"
+    },
+    {
+      "schemas": [
+        "shared-release-receipt/v1"
+      ],
+      "script": "scripts/report/shared_release_receipt.py"
+    },
+    {
+      "schemas": [
+        "wave-scan/v3"
+      ],
+      "script": "scripts/report/wave_scan.py"
+    },
+    {
+      "schemas": [
+        "gas-trace-retry/v2"
+      ],
+      "script": "scripts/robinhood/gas_trace_bs.py"
+    },
+    {
+      "schemas": [
+        "robinhood-collector-cache/v2",
+        "robinhood-collector-done/v2"
+      ],
+      "script": "scripts/robinhood/resume_guard.py"
+    },
+    {
+      "schemas": [
+        "accounting-gate/v1"
+      ],
+      "script": "scripts/solana/accounting_gate_sol.py"
+    },
+    {
+      "schemas": [
+        "solana-anchor-sampler-receipt/v2"
+      ],
+      "script": "scripts/solana/anchor_sampler.py"
+    },
+    {
+      "schemas": [
+        "solana-camp-series-inputs/v1"
+      ],
+      "script": "scripts/solana/build_evolution.py"
+    },
+    {
+      "schemas": [
+        "solana-tx-decode-output-v2",
+        "solana-tx-decode-receipt/v1"
+      ],
+      "script": "scripts/solana/decode_txs_v2.py"
+    },
+    {
+      "schemas": [
+        "sqd-solana-cache/v3"
+      ],
+      "script": "scripts/solana/fetch_sqd_transfers_v2.py"
+    },
+    {
+      "schemas": [
+        "solana-reconcile/v2"
+      ],
+      "script": "scripts/solana/replay_edges.py"
+    },
+    {
+      "schemas": [
+        "solana-gpa-cache-v2",
+        "solana-holder-snapshot-v2"
+      ],
+      "script": "scripts/solana/scan_token_accounts.py"
+    },
+    {
+      "schemas": [
+        "solana-window-fetch-receipt/v2"
+      ],
+      "script": "scripts/solana/window_fetch.py"
+    }
+  ],
+  "receipt_consumers": [
+    {
+      "schemas": [
+        "evm-channel-receipt/v2",
+        "evm-channels/v2",
+        "evm-collector-run/v2"
+      ],
+      "script": "scripts/evm/channels_preflight.py"
+    },
+    {
+      "schemas": [
+        "hypersync-v2-done/v3"
+      ],
+      "script": "scripts/evm/fetch_hypersync_v2.py"
+    },
+    {
+      "schemas": [
+        "a4-claims/v2",
+        "a4-seal/v4"
+      ],
+      "script": "scripts/report/a4_gate.py"
+    },
+    {
+      "schemas": [
+        "a4-seal/v4",
+        "a5-report-seal/v2",
+        "distribution-exception-receipt/v1",
+        "distribution-rounds/v1"
+      ],
+      "script": "scripts/report/a5_report_seal.py"
+    },
+    {
+      "schemas": [
+        "candidate-adjudications/v1",
+        "distribution-adjudications/v1",
+        "flow-anomaly/v2",
+        "pattern-resolutions/v1",
+        "wave-scan/v3"
+      ],
+      "script": "scripts/report/adjudication_validator.py"
+    },
+    {
+      "schemas": [
+        "adversarial-review-execution/v1"
+      ],
+      "script": "scripts/report/adversarial_review_runner.py"
+    },
+    {
+      "schemas": [
+        "accounting-gate/v1",
+        "address-balance-snapshot/v1",
+        "adversarial-review/v2",
+        "reconciliation-report/v2",
+        "reproduce-receipt/v2"
+      ],
+      "script": "scripts/report/audit_release_gate.py"
+    },
+    {
+      "schemas": [
+        "a4-seal/v4"
+      ],
+      "script": "scripts/report/build_html.py"
+    },
+    {
+      "schemas": [
+        "a4-claims/v2",
+        "a4-seal/v4",
+        "distribution-explanation/v1"
+      ],
+      "script": "scripts/report/distribution_explanation_check.py"
+    },
+    {
+      "schemas": [
+        "identity-holder-snapshot/v2",
+        "identity_gate_v3"
+      ],
+      "script": "scripts/report/entity_identity_gate.py"
+    },
+    {
+      "schemas": [
+        "entity-freeze/v1",
+        "flow-anomaly/v2",
+        "provenance-ledger/v2",
+        "wave-scan/v1",
+        "wave-scan/v2",
+        "wave-scan/v3"
+      ],
+      "script": "scripts/report/handoff_manifest.py"
+    },
+    {
+      "schemas": [
+        "a4-seal/v4",
+        "distribution-exception-receipt/v1",
+        "distribution-rounds/v1",
+        "distribution-scan/v1"
+      ],
+      "script": "scripts/report/holder_distribution_scan.py"
+    },
+    {
+      "schemas": [
+        "identity-holder-snapshot/v2",
+        "solana-holder-snapshot-v2"
+      ],
+      "script": "scripts/report/identity_snapshot_receipt.py"
+    },
+    {
+      "schemas": [
+        "accounting-gate/v1",
+        "adversarial-review/v2",
+        "evm-reconciliation-receipt/v2",
+        "reconciliation-report/v2",
+        "shared-release-receipt/v1",
+        "solana-anchor-sampler-receipt/v2",
+        "solana-holder-snapshot-v2",
+        "supply-truth-receipt/v2",
+        "time-spotcheck/v2"
+      ],
+      "script": "scripts/report/shared_release_receipt.py"
+    },
+    {
+      "schemas": [
+        "analysis-state-source/v1"
+      ],
+      "script": "scripts/report/state_from_facts.py"
+    },
+    {
+      "schemas": [
+        "robinhood-collector-cache/v2"
+      ],
+      "script": "scripts/robinhood/resume_guard.py"
+    },
+    {
+      "schemas": [
+        "sqd-solana-cache/v3"
+      ],
+      "script": "scripts/solana/replay_edges.py"
+    }
+  ],
+  "transport_calls": [
+    {
+      "kind": "requests",
+      "script": "scripts/evm/accounting_gate.py"
+    },
+    {
+      "kind": "requests",
+      "script": "scripts/evm/fetch_alchemy.py"
+    },
+    {
+      "kind": "curl",
+      "script": "scripts/evm/fetch_etherscan.py"
+    },
+    {
+      "kind": "requests",
+      "script": "scripts/evm/fetch_hypersync.py"
+    },
+    {
+      "kind": "requests",
+      "script": "scripts/evm/fetch_hypersync_logs.py"
+    },
+    {
+      "kind": "requests",
+      "script": "scripts/evm/fetch_pool_swaps.py"
+    },
+    {
+      "kind": "requests",
+      "script": "scripts/evm/fetch_sqd_evm.py"
+    },
+    {
+      "kind": "requests",
+      "script": "scripts/evm/multicall_balances.py"
+    },
+    {
+      "kind": "requests",
+      "script": "scripts/evm/pierce_stake.py"
+    },
+    {
+      "kind": "requests",
+      "script": "scripts/evm/scan_bloxroute_seg.py"
+    },
+    {
+      "kind": "curl",
+      "script": "scripts/evm/scan_transfers.py"
+    },
+    {
+      "kind": "requests",
+      "script": "scripts/evm/verify_recon.py"
+    },
+    {
+      "kind": "requests",
+      "script": "scripts/labels/sourcify_check.py"
+    },
+    {
+      "kind": "net.py",
+      "script": "scripts/lib/rpc_batch.py"
+    },
+    {
+      "kind": "requests",
+      "script": "scripts/lib/supply_truth_gate.py"
+    },
+    {
+      "kind": "net.py",
+      "script": "scripts/lib/time_spotcheck.py"
+    },
+    {
+      "kind": "requests",
+      "script": "scripts/prices/llama_price.py"
+    },
+    {
+      "kind": "requests",
+      "script": "scripts/prices/price_check.py"
+    },
+    {
+      "kind": "curl",
+      "script": "scripts/robinhood/pull_block_ts_anchors.py"
+    },
+    {
+      "kind": "curl",
+      "script": "scripts/robinhood/pull_transfers_rpc.py"
+    },
+    {
+      "kind": "requests",
+      "script": "scripts/solana/accounting_gate_sol.py"
+    },
+    {
+      "kind": "curl",
+      "script": "scripts/solana/anchor_sampler.py"
+    },
+    {
+      "kind": "requests",
+      "script": "scripts/solana/decode_txs.py"
+    },
+    {
+      "kind": "requests",
+      "script": "scripts/solana/decode_txs_v2.py"
+    },
+    {
+      "kind": "curl",
+      "script": "scripts/solana/fast_probe_tops.py"
+    },
+    {
+      "kind": "curl",
+      "script": "scripts/solana/fetch_pool_sigs.py"
+    },
+    {
+      "kind": "requests",
+      "script": "scripts/solana/fetch_sqd_transfers_v2.py"
+    },
+    {
+      "kind": "curl",
+      "script": "scripts/solana/gas_origin.py"
+    },
+    {
+      "kind": "requests",
+      "script": "scripts/solana/hypersync_recon.py"
+    },
+    {
+      "kind": "curl",
+      "script": "scripts/solana/probe_escrows.py"
+    },
+    {
+      "kind": "curl",
+      "script": "scripts/solana/scan_sharded.py"
+    },
+    {
+      "kind": "curl",
+      "script": "scripts/solana/scan_token_accounts.py"
+    },
+    {
+      "kind": "curl",
+      "script": "scripts/solana/stake_decode.py"
+    },
+    {
+      "kind": "curl",
+      "script": "scripts/solana/trace_wallet.py"
+    },
+    {
+      "kind": "curl",
+      "script": "scripts/solana/window_fetch.py"
+    }
+  ],
+  "atomic_writes": [
+    {
+      "locator": "finish",
+      "script": "scripts/evm/accounting_gate.py",
+      "semantics": "overwrite_single"
+    },
+    {
+      "locator": "_write_preflight",
+      "script": "scripts/evm/channels_preflight.py",
+      "semantics": "overwrite_single"
+    },
+    {
+      "locator": "emit_native_receipt",
+      "script": "scripts/evm/csv_collector_receipt.py",
+      "semantics": "overwrite_single"
+    },
+    {
+      "locator": "<module>",
+      "script": "scripts/evm/fetch_gmgn.sh",
+      "semantics": "overwrite_single"
+    },
+    {
+      "locator": "main",
+      "script": "scripts/evm/fetch_hypersync.py",
+      "semantics": "restore_on_fail"
+    },
+    {
+      "locator": "main",
+      "script": "scripts/evm/fetch_hypersync_logs.py",
+      "semantics": "overwrite_single"
+    },
+    {
+      "locator": "atomic_write_json",
+      "script": "scripts/evm/fetch_hypersync_v2.py",
+      "semantics": "overwrite_single"
+    },
+    {
+      "locator": "main",
+      "script": "scripts/evm/fetch_pool_swaps.py",
+      "semantics": "overwrite_single"
+    },
+    {
+      "locator": "atomic_write",
+      "script": "scripts/evm/make_channel_receipt.py",
+      "semantics": "overwrite_single"
+    },
+    {
+      "locator": "atomic_json",
+      "script": "scripts/evm/verify_recon.py",
+      "semantics": "overwrite_single"
+    },
+    {
+      "locator": "main",
+      "script": "scripts/labels/add_labels.py",
+      "semantics": "restore_on_fail"
+    },
+    {
+      "locator": "main",
+      "script": "scripts/labels/pull_verified_contracts.py",
+      "semantics": "overwrite_single"
+    },
+    {
+      "locator": "main",
+      "script": "scripts/labels/sourcify_check.py",
+      "semantics": "overwrite_single"
+    },
+    {
+      "locator": "main",
+      "script": "scripts/lib/rpc_batch.py",
+      "semantics": "overwrite_single"
+    },
+    {
+      "locator": "cmd_series",
+      "script": "scripts/prices/llama_price.py",
+      "semantics": "overwrite_single"
+    },
+    {
+      "locator": "create_seal",
+      "script": "scripts/report/a5_report_seal.py",
+      "semantics": "overwrite_single"
+    },
+    {
+      "locator": "run_review",
+      "script": "scripts/report/adversarial_review_runner.py",
+      "semantics": "exclusive_new"
+    },
+    {
+      "locator": "main",
+      "script": "scripts/report/build_html.py",
+      "semantics": "overwrite_single"
+    },
+    {
+      "locator": "atomic_json",
+      "script": "scripts/report/distribution_explanation_check.py",
+      "semantics": "overwrite_single"
+    },
+    {
+      "locator": "atomic_write_json",
+      "script": "scripts/report/handoff_manifest.py",
+      "semantics": "overwrite_single"
+    },
+    {
+      "locator": "atomic_json",
+      "script": "scripts/report/holder_distribution_scan.py",
+      "semantics": "overwrite_single"
+    },
+    {
+      "locator": "write",
+      "script": "scripts/report/identity_snapshot_receipt.py",
+      "semantics": "overwrite_single"
+    },
+    {
+      "locator": "atomic_json",
+      "script": "scripts/report/reproduce_receipt.py",
+      "semantics": "overwrite_single"
+    },
+    {
+      "locator": "main",
+      "script": "scripts/report/reproduce_receipt.py",
+      "semantics": "exclusive_new"
+    },
+    {
+      "locator": "create_bundle",
+      "script": "scripts/report/shared_release_receipt.py",
+      "semantics": "overwrite_single"
+    },
+    {
+      "locator": "main",
+      "script": "scripts/report/state_from_facts.py",
+      "semantics": "overwrite_single"
+    },
+    {
+      "locator": "main",
+      "script": "scripts/robinhood/merge_hs_rpc.py",
+      "semantics": "overwrite_single"
+    },
+    {
+      "locator": "write_status",
+      "script": "scripts/run_guarded.py",
+      "semantics": "overwrite_single"
+    },
+    {
+      "locator": "finish",
+      "script": "scripts/solana/accounting_gate_sol.py",
+      "semantics": "overwrite_single"
+    },
+    {
+      "locator": "_atomic_json",
+      "script": "scripts/solana/anchor_sampler.py",
+      "semantics": "overwrite_single"
+    },
+    {
+      "locator": "_atomic_json",
+      "script": "scripts/solana/decode_txs_v2.py",
+      "semantics": "overwrite_single"
+    },
+    {
+      "locator": "_atomic_gz",
+      "script": "scripts/solana/fetch_sqd_transfers_v2.py",
+      "semantics": "overwrite_single"
+    },
+    {
+      "locator": "finalize",
+      "script": "scripts/solana/fetch_sqd_transfers_v2.py",
+      "semantics": "overwrite_single"
+    },
+    {
+      "locator": "_atomic_json",
+      "script": "scripts/solana/window_fetch.py",
+      "semantics": "overwrite_single"
+    },
+    {
+      "locator": "main",
+      "script": "scripts/solana/window_fetch.py",
+      "semantics": "restore_on_fail"
+    }
+  ],
+  "formal_entrypoints": [
+    "scripts/evm/accounting_gate.py",
+    "scripts/evm/cadence_fingerprint.py",
+    "scripts/evm/cluster.py",
+    "scripts/evm/cluster_prep_duck.py",
+    "scripts/evm/fetch_alchemy.py",
+    "scripts/evm/fetch_etherscan.py",
+    "scripts/evm/fetch_gmgn.sh",
+    "scripts/evm/fetch_hypersync.py",
+    "scripts/evm/fetch_hypersync_v2.py",
+    "scripts/evm/fetch_sqd_evm.py",
+    "scripts/evm/lp_positions.py",
+    "scripts/evm/make_channel_receipt.py",
+    "scripts/evm/multicall_balances.py",
+    "scripts/evm/pierce_stake.py",
+    "scripts/evm/replay_duck.py",
+    "scripts/evm/replay_pass1.py",
+    "scripts/evm/replay_stream.py",
+    "scripts/evm/scan_bloxroute_seg.py",
+    "scripts/labels/accumulate_offenders.py",
+    "scripts/labels/gen_manual_from_addressbook.py",
+    "scripts/labels/label_lookup.py",
+    "scripts/labels/sourcify_check.py",
+    "scripts/lib/anchor_plan.py",
+    "scripts/lib/rpc_batch.py",
+    "scripts/lib/supply_truth_gate.py",
+    "scripts/lib/time_spotcheck.py",
+    "scripts/prices/llama_price.py",
+    "scripts/prices/price_check.py",
+    "scripts/report/a4_gate.py",
+    "scripts/report/a5_report_seal.py",
+    "scripts/report/adversarial_review_runner.py",
+    "scripts/report/audit_release_gate.py",
+    "scripts/report/build_html.py",
+    "scripts/report/facts_gate.py",
+    "scripts/report/figures_from_facts.py",
+    "scripts/report/flow_anomaly_scan.py",
+    "scripts/report/handoff_manifest.py",
+    "scripts/report/lifecycle_flow.py",
+    "scripts/report/md2pdf.py",
+    "scripts/report/reproduce_receipt.py",
+    "scripts/report/retro_draft.py",
+    "scripts/report/shared_release_receipt.py",
+    "scripts/report/standard_charts.py",
+    "scripts/report/state_from_facts.py",
+    "scripts/report/wave_scan.py",
+    "scripts/robinhood/pull_lp_events.py",
+    "scripts/run_guarded.py",
+    "scripts/solana/accounting_gate_sol.py",
+    "scripts/solana/audit_closed_accounts.py",
+    "scripts/solana/build_evolution.py",
+    "scripts/solana/probe_escrows.py",
+    "scripts/solana/squads_members.py",
+    "scripts/solana/stake_decode.py"
+  ],
+  "exceptions": []
+}
