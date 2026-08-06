@@ -21,7 +21,7 @@
     {"path": "data-pipeline-solana-scan.md", "entry": "data-pipeline-solana.md", "stages": ["A0-A3"]},
     {"path": "data-pipeline-solana.md", "entry": "data-pipeline-solana.md", "stages": ["A0-A3"]},
     {"path": "economic-control-accounting.md", "entry": "analysis-playbook.md", "stages": ["A3", "A5"]},
-    {"path": "environment.md", "entry": "environment.md", "stages": ["all"]},
+    {"path": "environment.md", "entry": "environment.md", "stages": ["preflight"]},
     {"path": "independent-audit-protocol.md", "entry": "independent-audit-protocol.md", "stages": ["A0-A5"]},
     {"path": "labels/README.md", "entry": "labels/README.md", "stages": ["A1", "A3"]},
     {"path": "lp-fee-accounting.md", "entry": "analysis-playbook.md", "stages": ["A3", "A5"]},

@@ -62,7 +62,7 @@ description: >-
 
 ## 上下文预算
 
-- 峰值 <30 万 tokens（新链首战可放宽）；开局只读本文件＋当链 pipeline，其他按阶段读。大结果落盘，stdout ≤20 行，大文件分页，旧报告禁整读。
+- 峰值 <30 万 tokens（新链首战可放宽）；开局只读本文件＋与用户入口对应的入口页：完整版先读 `analyze-workflow.md`，标的链已明确时再读当链 pipeline（未明确则 A0 确认后再读）；split-run −1/−2 先读 `split-run.md`；净室复核先读 `independent-audit-protocol.md`。其余文档按阶段按需读。大结果落盘，stdout ≤20 行，大文件分页，旧报告禁整读。
 - 机械任务可外包，判断留主线；阶段边界写 findings.md，超预算在阶段边界压缩或新会话续跑。完整纪律见 `context-discipline.md`。
 
 ## 深入阅读（references/）
