@@ -10,6 +10,7 @@
 
 ## 版本索引（活跃窗口，新在上；每版一行，详情见下方对应条目）
 
+- **6.34.0** 2026-08-06 六视角首战修复轮：13 项五批全修（发布证据链 receipt 化/采集器原子产物/标签门禁等深/正式输入必填/文档口径），验收返工 1 项 risk_flags 规范化
 - **6.33.0** 2026-08-06 维护方法论文档化：六视角 review 清单与修复工单模板沉淀为维护件 maintenance-review-repair.md（零判据变更）
 - **6.32.0** 2026-08-06 第五轮外部审查 13 项修复：标签发布与采集器 fail-open 关闭、密钥取用契约统一、SKILL/casebook 路由漂移收口
 - **6.31.0** 2026-08-06 第四轮瘦身修复：旧案硬编码清除、孤儿与 SQD v1 退役、运行时文档按需化、契约 ID 快照封口
@@ -27,6 +28,20 @@
 - **6.20.1** 2026-08-05 修 5 处阻断级文档漂移（A4 前禁写报告冲突/easy 残留/惯犯回灌 docstring/批量预采集残留/旧 Par 路线历史降级）＋docs_lint 增中文禁词与 Python module docstring 扫描
 
 更早版本（6.20.0 及以前）详见 `archive/CHANGELOG-archive.md`。
+
+## [6.34.0] - 2026-08-06 — 六视角首战修复轮：13 项五批全修＋验收返工 1 项
+
+- **背景**：6.33.0 沉淀的六视角方法论当日首战——codex 按标准指令模板对 main@fca61ad 全库 review，出 13 项（7P0+4P1+2P2）判 BLOCK；Fable 逐项复核 13/13 全属实零否决（F-06 相等/反向区间假成功亲手复现坐实；F-10 补强证据=labels_resolver 确实消费 risk_flags 四档）。修复轮 codex 续 review 线程施工（首次发起经 companion --resume 掉"丢 --write 只读回退"已知坑，codex 零副作用停手报告，改 `codex exec resume <会话ID>` 显式 workspace-write 后单 turn 完成），工单纪律全程履约（每项五栏工单+RED/GREEN 记录，样本归档 `archive/fix-worklogs/fix_sixlens_20260806.md`）。
+- **批①发布证据链（F-02/03/04/05）**：`verify_recon.py` 从 70 行零退出码打印脚本重写为参数化 receipt 生产器（`evm-reconciliation-receipt/v2`：绑定 chain/token/end_block/四输入文件哈希/供给闭合+逐地址对账+GMGN 观测；不一致 exit 2、RPC/输入错误 exit 1、恒落盘 ERROR 回执）；`anchor_sampler.py` 失败日聚合 exit 2+receipt（绑定 mint/日期范围/覆盖/失败明细）；`window_fetch.py` gaps 非空只留 `.partial`+exit 2，空才原子发布正式文件+覆盖 receipt；`shared_release_receipt.py` 新增 `validate_reconciliation_check` 逐类 schema+语义验证（target 绑定、观测硬断言、wrapper 与 receipt verdict/exit 双向一致、未知 schema 拒），wrapper 自报降级为比较对象。
+- **批②采集器产物纪律（F-06/07/08）**：`fetch_pool_swaps.py` 区间前置校验（0<=from<to，违者 exit 2 零产物）+临时文件原子提交；同族等深覆盖 `fetch_hypersync.py`/`fetch_hypersync_logs.py`；`fetch_gmgn.sh` 失败时旧正式文件 mv `.stale`（标记失败也算 FAIL）。
+- **批③标签发布等深（F-09/10）**：`add_labels.py` 增量路径升为 validate+benchmark+manifest 三闸机器串联事务（任一 FAIL 全回滚含 manifest 备份恢复）；`roundtrip_check.py` 决策字段 6→7（risk_flags 硬比）+六 provenance 字段白名单 WARN 明细禁静默。
+- **批④正式输入必填（F-01/13）**：`entity_source_trace.py` 正式模式缺 `--labels-file` exit 2、`--allow-no-labels` 探索旗标与标签互斥、ledger 带 exploration 标记且 freeze 必拒；`handoff_manifest.py` READY 必须显式已知 `--chain`+非空 `--contract`，verify 侧空/未知 scope 拒；`commands-staging/token-analyze-1.md` 收工步同步新契约（已部署同步，SHA 一致）。
+- **批⑤文档（F-11/12）**：retrospective 10KB 双口径改"7.5KB 预警、8192B 硬上限"（rg 确认无第三处）；casebook README 回流文本改指复盘流程登记，分析会话不触 archive（Fable 小手术版）。
+- **验收（Fable，不采信自报）**：SUITE 亲跑全绿；F-06 两条原始反例+负数边界外变体亲手重放全拦；聚合器/verify_recon/anchor_sampler diff 逐段审读（字段来源=receipt 本体+RPC 实测、失败分支三级闭合）；**边界外攻击命中 1 项新引入返工**——risk_flags 为 `|` 拼接集合语义，现役 privacy 表实测 59 行历史未排序串,codex 版裸串比较会在增量 sorted 与存量原序相遇时误伤合法发布：`_decision` 增规范化（拆分/滤空/排序重拼），先红后绿闭环（stash 旧实现新测试 exit 1、修复版 exit 0，绿例+空段变体+真实子集差异红例三连）。
+- **同族裁决（8 项 default=None，全部维持现状）**：fetch_sqd_evm/fetch_alchemy/fetch_hypersync_v2(collect)/pull_lp_events/cluster_sensitivity/price_check/decode_txs/anchor_plan 均为采集或分析辅助件，不直接进入 READY/freeze/发布链，范围完整性由下游必经闸（finalize/receipt/preflight/entity_source_trace/handoff）锁死——上游保持灵活、闸装必经之路，不扩大改动面。
+- 测试：新增 `test_sixlens_receipts.py`（伪造回执/target 漂移/verdict 矛盾/recon 不闭合/anchor 失败日/window gaps）+`test_sixlens_docs.py`，扩展 9 个既有测试文件；33+2 文件改动。归因分布 1 新引入/6 半修残留/6 历史漏检+验收再抓 1 新引入——"修复代码是重灾区"两轮连证。
+
+本次为修复工程，无代币分析轮次或结论质量指标；review 发现 13/13 修复+验收返工 1/1 闭环，发布证据链自报字段清零。
 
 ## [6.33.0] - 2026-08-06 — 维护方法论文档化：六视角 review 清单与修复工单模板沉淀为维护件
 

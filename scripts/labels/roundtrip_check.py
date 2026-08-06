@@ -10,7 +10,8 @@
   python3 roundtrip_check.py --dump     # 差异行落盘 roundtrip_diff_<chain>.csv 供救回
 退出码：0=收敛（发布版被新构建完整覆盖，可安全发布）；1=断环或行内退化；
         2=任一正式链的发布表或 staging 表缺失。
-比对键：(address, chain)；除检查发布版地址是否仍在 staging，也逐行比较六个决策字段。
+比对键：(address, chain)；除检查发布版地址是否仍在 staging，也逐行比较全部行为字段。
+纯 provenance 字段允许差异但逐项输出 WARN，禁止静默吞掉。
 staging 比发布版多行是正常扩容。
 """
 import argparse, csv, os, sys
@@ -19,7 +20,10 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 OUT = os.path.join(HERE, 'sources', 'out')
 PUB = os.path.normpath(os.path.join(HERE, '..', '..', 'references', 'labels'))
 CHAINS = ['eth', 'bsc', 'base', 'sol', 'robinhood']
-DECISION_FIELDS = ['category', 'tier', 'merge_policy', 'balance_policy', 'status', 'name']
+DECISION_FIELDS = ['category', 'tier', 'merge_policy', 'balance_policy', 'status', 'name',
+                   'risk_flags']
+PROVENANCE_FIELDS = ['source', 'evidence', 'added_date', 'verified_at',
+                     'source_snapshot_at', 'raw_labels']
 
 def load_keys(path):
     keys = {}
@@ -42,7 +46,15 @@ def parse_args():
 
 
 def _decision(row):
-    return {field: (row.get(field) or '').strip() for field in DECISION_FIELDS}
+    # risk_flags 是 | 拼接的集合语义：历史存量存在未排序串（2026-08-06 实测
+    # privacy 表 59 行），比较前规范化为排序集合，防止"序不同语义同"误伤发布。
+    out = {}
+    for field in DECISION_FIELDS:
+        value = (row.get(field) or '').strip()
+        if field == 'risk_flags':
+            value = '|'.join(sorted(p for p in value.split('|') if p))
+        out[field] = value
+    return out
 
 
 def _write_dump(path, missing, degraded, pub):
@@ -92,6 +104,7 @@ def main():
                 store.update(pv)
         missing = [k for k in pub if k not in new]
         degraded = []
+        provenance_diffs = []
         for key in pub.keys() & new.keys():
             old_decision = _decision(pub[key])
             new_decision = _decision(new[key])
@@ -99,6 +112,11 @@ def main():
                        if old_decision[field] != new_decision[field]]
             if changed:
                 degraded.append((key, pub[key], new[key], changed))
+            prov_changed = [field for field in PROVENANCE_FIELDS
+                            if (pub[key].get(field) or '').strip()
+                            != (new[key].get(field) or '').strip()]
+            if prov_changed:
+                provenance_diffs.append((key, prov_changed))
         extra = sum(1 for k in new if k not in pub)
         if missing or degraded:
             broken = True
@@ -120,6 +138,10 @@ def main():
                 print(f'       差异已落盘 {dp}')
         else:
             print(f'[PASS] {ch}: 发布版 {len(pub)} 行全部被新构建覆盖（新构建净增 {extra} 行）')
+        if provenance_diffs:
+            fields = sorted({field for _, changed in provenance_diffs for field in changed})
+            print(f'[WARN] {ch}: {len(provenance_diffs)} 行 provenance 差异；字段={"|".join(fields)}'
+                  '（允许差异，需人工确认来源迁移）')
     if missing_table:
         print('\n结论：正式链标签表不完整——缺表属于发布前置条件失败，禁止发布。')
         return 2

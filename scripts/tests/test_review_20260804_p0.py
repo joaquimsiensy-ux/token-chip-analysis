@@ -106,8 +106,8 @@ def test_round4_csv_prefix_and_cursor_fail_closed(root: Path):
                     "--url", "https://fixture/query", "--out", str(out),
                     "--to-block", "100", "--receipt", str(receipt), "--sleep", "0"]
         try:
-            collector.main()
-            return 0
+            result = collector.main()
+            return int(result) if isinstance(result, int) else 0
         except SystemExit as exc:
             return int(exc.code) if isinstance(exc.code, int) else 2
         finally:

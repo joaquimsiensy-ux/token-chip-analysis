@@ -14,12 +14,13 @@
   重放余额仅可作"≥阈值超集"筛选（migrate 只减不增，数学严格）。
 
 用法:
-  EVM:    python3 supply_truth_gate.py --chain bsc --token 0x... --replay-stats replay_stats.json
-  Solana: python3 supply_truth_gate.py --chain solana --mint <mint> --replay-stats stats.json
+  EVM:    python3 supply_truth_gate.py --chain bsc --token 0x... --as-of-block N --replay-stats replay_stats.json
+  Solana: python3 supply_truth_gate.py --chain solana --mint <mint> --as-of-block <slot> --replay-stats stats.json
   绕过 stats 文件直接传数: --replay-net-raw <最小单位整数>
   --rpc URL          不给时用链默认免 key 端点（DEFAULT_RPC，与 accounting_gate 同表）
   --proxy URL        只作用于 RPC（Alchemy 国内走 clash 时传 http://127.0.0.1:7897）
   --tolerance-bps N  容差，默认 10（0.1%）
+  --as-of-block N    v2 receipt target 的冻结块/slot；正式发布必填
   --out PATH         结果 JSON 落盘（默认 supply_truth.json，写工作目录）
 
 replay-stats 字段识别（依次尝试，值可为 int 或十进制字符串）:
@@ -76,15 +77,17 @@ def _post(url, payload, proxy=None, timeout=30):
     return r.json()
 
 
-def fetch_onchain_supply(chain, token=None, mint=None, rpc=None, proxy=None) -> int:
+def fetch_onchain_supply(chain, token=None, mint=None, rpc=None, proxy=None,
+                         as_of_block=None) -> int:
     """链上实查当前总供给（最小单位整数）。失败抛异常（上层转 exit 1）。"""
     url = rpc or DEFAULT_RPC[chain]
     if chain == "solana":
         res = _post(url, {"jsonrpc": "2.0", "id": 1, "method": "getTokenSupply",
                           "params": [mint]}, proxy)
         return int(res["result"]["value"]["amount"])
+    tag = hex(int(as_of_block)) if as_of_block is not None else "latest"
     res = _post(url, {"jsonrpc": "2.0", "id": 1, "method": "eth_call",
-                      "params": [{"to": token, "data": SEL_TOTSUP}, "latest"]}, proxy)
+                      "params": [{"to": token, "data": SEL_TOTSUP}, tag]}, proxy)
     hexval = res["result"]
     if not hexval or hexval == "0x":
         raise ValueError(f"eth_call totalSupply 返回空（{hexval!r}）——地址/链是否正确？")
@@ -101,6 +104,8 @@ def main():
     ap.add_argument("--rpc")
     ap.add_argument("--proxy")
     ap.add_argument("--tolerance-bps", type=int, default=10)
+    ap.add_argument("--as-of-block", type=int, default=None,
+                    help="与 accounting target 对齐的冻结块/slot；正式发布必须提供")
     ap.add_argument("--out", default="supply_truth.json")
     a = ap.parse_args()
 
@@ -120,14 +125,17 @@ def main():
         if a.chain != "solana" and not a.token:
             print("EVM 链必须给 --token", file=sys.stderr)
             return 1
-        onchain = fetch_onchain_supply(a.chain, a.token, a.mint, a.rpc, a.proxy)
+        onchain = fetch_onchain_supply(a.chain, a.token, a.mint, a.rpc, a.proxy,
+                                       a.as_of_block)
     except Exception as e:  # 网络/字段/文件——检测自身失败，禁当 PASS
         print(f"检测自身失败（exit 1，修通道重跑）: {e}", file=sys.stderr)
         return 1
 
     verdict, diff, diff_bps = decide(replay_net, onchain, a.tolerance_bps)
     result = {
-        "gate": "supply_truth", "chain": a.chain,
+        "gate": "supply_truth", "schema": "supply-truth-receipt/v2",
+        "target": {"chain": a.chain, "token": (a.token or a.mint).lower(),
+                   "as_of_block": a.as_of_block}, "chain": a.chain,
         "token": a.token or a.mint,
         "replay_net": str(replay_net), "mint_total": str(mint_t) if mint_t is not None else None,
         "burn_total": str(burn_t) if burn_t is not None else None,

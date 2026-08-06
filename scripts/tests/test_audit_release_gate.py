@@ -68,8 +68,23 @@ def build_case(root, historical=True):
     checks = {}
     for key in ("balance", "supply", "supply_truth", "time"):
         evidence = root / f"{key}_receipt.json"
-        write_json(root, evidence.name, {"schema": f"{key}-receipt/v1",
-                                         "status": "PASS", "exit_code": 0})
+        if key in {"balance", "supply"}:
+            receipt_doc = {"schema": "evm-reconciliation-receipt/v2", "target": target,
+                "verdict": "PASS", "exit_code": 0, "observations": {
+                    "supply_closure": {"closed": True, "negative_count": 0},
+                    "balance_reconciliation": {"checked": 1, "matched": 1,
+                        "mismatched": 0, "rpc_errors": 0},
+                    "gmgn_comparison": {"checked": 1, "diff_count": 0}}}
+        elif key == "supply_truth":
+            receipt_doc = {"schema": "supply-truth-receipt/v2", "target": target,
+                "gate": "supply_truth", "replay_net": "100",
+                "onchain_total_supply": "100", "diff": "0",
+                "verdict": "PASS", "exit_code": 0}
+        else:
+            receipt_doc = {"schema": "time-spotcheck/v2", "target": target,
+                "points": 1, "exact_match": 1, "mismatch": 0, "rpc_err": 0,
+                "verdict": "PASS", "exit_code": 0}
+        write_json(root, evidence.name, receipt_doc)
         checks[key] = {"status": "PASS", "exit_code": 0,
                        "receipt": {"path": evidence.name, "sha256": sha(evidence)},
                        "producer": repo_ref(producers[key])}

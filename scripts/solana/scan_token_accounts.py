@@ -256,6 +256,9 @@ def main():
     owners_out.write_text(json.dumps(owners_sorted))
     (data_dir / "holders_snapshot_meta.json").write_text(json.dumps({
         "schema": "solana-holder-snapshot-v2", "mint": args.mint, "program": prog,
+        "target": {"chain": "solana", "token": args.mint.lower(),
+                   "as_of_block": supply_slot},
+        "verdict": "PASS", "exit_code": 0,
         "rpc": args.rpc, "supply_raw": str(supply_raw), "sum_accounts_raw": str(total),
         "decimals": decimals, "closed": True,
         "producer": {"path": "scan_token_accounts.py", "sha256": sha256_file(__file__)},

@@ -76,6 +76,80 @@ def chain_family(chain):
     return "solana" if str(chain).lower() in {"sol", "solana"} else "evm"
 
 
+def _require(condition, message):
+    if not condition:
+        raise ValueError(message)
+
+
+def validate_reconciliation_check(root, key, item, target, family):
+    """Validate one producer receipt semantically; wrapper fields are comparisons, not truth."""
+    if not isinstance(item, dict):
+        raise ValueError(f"reconciliation {key} item missing")
+    path = ref_ok(root, item.get("receipt"))
+    try:
+        receipt = json.loads(path.read_text(encoding="utf-8"))
+    except Exception as exc:
+        raise ValueError(f"reconciliation {key} receipt JSON invalid: {exc}") from exc
+    migration = "存量案例须重跑对应生产者获取 v2 回执"
+    _require(receipt.get("target") == target,
+             f"reconciliation {key} receipt target mismatch；{migration}")
+    _require(receipt.get("verdict") == item.get("status")
+             and receipt.get("exit_code") == item.get("exit_code"),
+             f"reconciliation {key} wrapper/receipt verdict mismatch")
+    _require(receipt.get("verdict") == "PASS" and receipt.get("exit_code") == 0,
+             f"reconciliation {key} receipt is not PASS/0")
+
+    schema = receipt.get("schema")
+    obs = receipt.get("observations") or {}
+    if family == "evm" and key in {"balance", "supply"}:
+        _require(schema == "evm-reconciliation-receipt/v2",
+                 f"reconciliation {key} unknown schema {schema!r}；{migration}")
+        if key == "balance":
+            bal = obs.get("balance_reconciliation") or {}
+            _require(isinstance(bal.get("checked"), int) and bal["checked"] > 0
+                     and bal.get("matched") == bal["checked"]
+                     and bal.get("mismatched") == 0 and bal.get("rpc_errors") == 0,
+                     "balance receipt observations incomplete or non-PASS")
+        else:
+            supply = obs.get("supply_closure") or {}
+            _require(supply.get("closed") is True and supply.get("negative_count") == 0,
+                     "supply receipt observations incomplete or non-closed")
+    elif family == "solana" and key in {"balance", "time"}:
+        _require(schema == "solana-anchor-sampler-receipt/v2",
+                 f"reconciliation {key} unknown schema {schema!r}；{migration}")
+        coverage = receipt.get("coverage") or {}
+        _require(isinstance(coverage.get("requested_days"), int)
+                 and coverage["requested_days"] > 0
+                 and coverage.get("covered_days") == coverage["requested_days"]
+                 and coverage.get("failed_days") == 0 and receipt.get("failures") == [],
+                 "anchor receipt coverage incomplete")
+    elif family == "solana" and key == "supply":
+        _require(schema == "solana-holder-snapshot-v2",
+                 f"reconciliation supply unknown schema {schema!r}；{migration}")
+        _require(receipt.get("closed") is True
+                 and str(receipt.get("supply_raw")) == str(receipt.get("sum_accounts_raw"))
+                 and isinstance(receipt.get("outputs"), dict) and receipt["outputs"],
+                 "solana supply receipt is not a closed snapshot")
+    elif key == "supply_truth":
+        _require(schema == "supply-truth-receipt/v2",
+                 f"reconciliation supply_truth unknown schema {schema!r}；{migration}")
+        _require(receipt.get("gate") == "supply_truth"
+                 and receipt.get("replay_net") is not None
+                 and receipt.get("onchain_total_supply") is not None
+                 and receipt.get("diff") is not None,
+                 "supply_truth receipt observations incomplete")
+    elif family == "evm" and key == "time":
+        _require(schema == "time-spotcheck/v2",
+                 f"reconciliation time unknown schema {schema!r}；{migration}")
+        _require(isinstance(receipt.get("points"), int) and receipt["points"] > 0
+                 and receipt.get("exact_match") == receipt["points"]
+                 and receipt.get("mismatch") == 0 and receipt.get("rpc_err") == 0,
+                 "time receipt observations incomplete or non-PASS")
+    else:
+        raise ValueError(f"reconciliation {key} has no validator for family={family}；{migration}")
+    return receipt
+
+
 def validate_sources(root):
     root = Path(root).resolve()
     accounting = json.loads(regular(root, "accounting_mode.json").read_text())
@@ -99,8 +173,8 @@ def validate_sources(root):
         if (not isinstance(item, dict) or item.get("status") != "PASS"
                 or item.get("exit_code") != 0):
             raise ValueError(f"reconciliation {key} lacks PASS execution receipt")
-        ref_ok(root, item.get("receipt"))
         repo_ref_ok(item.get("producer"), RECON_PRODUCERS[family][key], f"reconciliation {key}")
+        validate_reconciliation_check(root, key, item, target, family)
     if (adversarial.get("schema") != "adversarial-review/v2"
             or adversarial.get("target") != target
             or adversarial.get("release_decision") != "PASS"):

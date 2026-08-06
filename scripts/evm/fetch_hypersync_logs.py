@@ -5,7 +5,7 @@
 token 优先级：显式 --token-file > HYPERSYNC_TOKEN > ~/.config/hypersync/token；禁止位置参数明文传入。
 断点续传：--out 已存在且非空时自动从末行块续拉（重叠由下游按 uniqueId 去重）。
 """
-import requests, csv, os, sys, time, datetime, argparse
+import requests, csv, os, sys, time, datetime, argparse, shutil
 from pathlib import Path
 
 DEFAULT_TOKEN_FILE = "~/.config/hypersync/token"
@@ -37,6 +37,8 @@ def parse_args(argv=None):
     ap.add_argument("--out", required=True)
     ap.add_argument("--sleep", type=float, default=0.4)
     a = ap.parse_args(argv)
+    if a.from_block < 0:
+        ap.error("from_block 必须为非负整数")
     a.token = _load_token(ap, a.token_file)
     return a
 
@@ -56,7 +58,11 @@ def main():
             if last and last[0].isdigit():
                 resume, mode = int(last[0]), "a"
                 print(f"[resume] 从已有 CSV 末行块 {resume} 续拉", flush=True)
-    f = open(a.out, mode, newline="")
+    out_path = Path(a.out).resolve(); out_path.parent.mkdir(parents=True, exist_ok=True)
+    tmp_path = out_path.with_name(f".{out_path.name}.tmp.{os.getpid()}")
+    if mode == "a":
+        shutil.copyfile(out_path, tmp_path)
+    f = tmp_path.open("a" if mode == "a" else "x", newline="")
     w = csv.writer(f)
     if mode == "w":
         w.writerow(["block", "ts", "tx", "topic0", "topic1", "topic2", "topic3", "data", "uniqueId"])
@@ -81,7 +87,8 @@ def main():
                 print(f"[exc] {str(e)[:100]}", flush=True)
                 time.sleep(min(3 * (attempt + 1), 30))
         if not ok:
-            print("[fatal] giving up", flush=True); sys.exit(2)
+            print("[fatal] giving up", flush=True)
+            f.close(); tmp_path.unlink(missing_ok=True); return 2
         bts, n = {}, 0
         for batch in j.get("data", []):
             for b in batch.get("blocks", []):
@@ -109,22 +116,24 @@ def main():
             f.close()
             print(f"[fatal] provider 缺 next_block 且未确认到达 tip：current={cur} "
                   f"archive_height={ah}", flush=True)
-            sys.exit(2)
+            tmp_path.unlink(missing_ok=True); return 2
         if isinstance(nxt, bool) or not isinstance(nxt, int):
             f.close()
             print(f"[fatal] provider 返回非法 next_block={nxt!r}", flush=True)
-            sys.exit(2)
+            tmp_path.unlink(missing_ok=True); return 2
         if valid_ah and nxt >= ah:
             break
         if nxt <= cur:
             f.close()
             print(f"[fatal] next_block 停滞且未到 tip：current={cur} next_block={nxt} "
                   f"archive_height={ah}", flush=True)
-            sys.exit(2)
+            tmp_path.unlink(missing_ok=True); return 2
         cur = nxt
         time.sleep(a.sleep)
-    f.close()
+    f.flush(); os.fsync(f.fileno()); f.close()
+    os.replace(tmp_path, out_path)
     print(f"[COMPLETE] {total} logs this run, tip {ah}, 429s {e429}, {time.time()-t0:.0f}s", flush=True)
+    return 0
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

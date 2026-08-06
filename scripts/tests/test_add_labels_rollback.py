@@ -27,15 +27,22 @@ def write_csv(path, rows):
         w = csv.DictWriter(f, fieldnames=FIELDS); w.writeheader(); w.writerows(rows)
 
 
-def invoke(mod, src):
+def invoke(mod, src, returncodes=(1,)):
+    calls = []
+    def fake_run(args, **kwargs):
+        calls.append(args)
+        idx = min(len(calls) - 1, len(returncodes) - 1)
+        return subprocess.CompletedProcess(args, returncodes[idx])
     with mock.patch.object(sys, "argv", [str(SCRIPT), str(src)]), \
-            mock.patch.object(subprocess, "run", return_value=subprocess.CompletedProcess([], 1)):
+            mock.patch.object(subprocess, "run", side_effect=fake_run):
         try:
             mod.main()
         except SystemExit as exc:
             assert exc.code == 1
         else:
-            raise AssertionError("校验失败应退出 1")
+            if any(returncodes):
+                raise AssertionError("门禁失败应退出 1")
+    return calls
 
 
 def main():
@@ -49,17 +56,40 @@ def main():
         adds = root / "existing.csv"
         changed = dict(base, name="new", source="curation")
         write_csv(adds, [changed])
-        mod = load_module(); mod.DEFAULT_LABELS_DIR = str(labels)
+        additions_dir = root / "archived-additions"
+        mod = load_module(); mod.DEFAULT_LABELS_DIR = str(labels); mod.ADDITIONS_DIR = str(additions_dir)
         invoke(mod, adds)
         assert old.read_bytes() == before, "原表未字节级恢复"
 
         fresh = root / "fresh.csv"
         new_row = dict(base, address="0x" + "2" * 40, chain="arbitrum", name="bad")
         write_csv(fresh, [new_row])
-        mod = load_module(); mod.DEFAULT_LABELS_DIR = str(labels)
+        mod = load_module(); mod.DEFAULT_LABELS_DIR = str(labels); mod.ADDITIONS_DIR = str(additions_dir)
         invoke(mod, fresh)
         assert not (labels / "labels-arbitrum.csv").exists(), "新建坏表校验失败后仍残留"
-    print("PASS: add_labels 校验失败完整回滚")
+
+        # validate PASS、benchmark FAIL：必须恢复原表，且不能写 manifest。
+        mod = load_module(); mod.DEFAULT_LABELS_DIR = str(labels); mod.ADDITIONS_DIR = str(additions_dir)
+        calls = invoke(mod, adds, (0, 1))
+        assert old.read_bytes() == before, "benchmark FAIL 未恢复原表"
+        assert any("benchmark_labels.py" in " ".join(c) for c in calls), calls
+        assert not any("labels_manifest.py" in " ".join(c) for c in calls), calls
+
+        # manifest 写入失败：表和旧 manifest 都恢复。
+        manifest = labels / "manifest.json"; manifest.write_text('{"old":true}\n')
+        manifest_before = manifest.read_bytes()
+        mod = load_module(); mod.DEFAULT_LABELS_DIR = str(labels); mod.ADDITIONS_DIR = str(additions_dir)
+        calls = invoke(mod, adds, (0, 0, 1))
+        assert old.read_bytes() == before and manifest.read_bytes() == manifest_before
+        assert any("labels_manifest.py" in " ".join(c) and "--write" in c for c in calls)
+
+        # 三闸全 PASS 才保留新表并清理备份。
+        mod = load_module(); mod.DEFAULT_LABELS_DIR = str(labels); mod.ADDITIONS_DIR = str(additions_dir)
+        calls = invoke(mod, adds, (0, 0, 0))
+        assert old.read_bytes() != before and not Path(str(old) + ".bak").exists()
+        assert [Path(c[1]).name for c in calls] == [
+            "validate_labels.py", "benchmark_labels.py", "labels_manifest.py"]
+    print("PASS: add_labels validate/benchmark/manifest 三闸与失败回滚")
 
 
 if __name__ == "__main__":

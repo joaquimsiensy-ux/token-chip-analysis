@@ -79,6 +79,7 @@ REQUIRED_FOR_READY = ["candidate_universe.json", "candidate_screening.json",
 EVM_CHAINS = {"eth", "ethereum", "bsc", "base", "arbitrum", "polygon", "optimism",
               "robinhood", "opbnb", "avalanche", "fantom", "cronos", "linea",
               "scroll", "blast", "zksync"}
+KNOWN_CHAINS = EVM_CHAINS | {"sol", "solana"}
 REQUIRED_FOR_READY_EVM = ["time_spotcheck.json"]
 # 自动 gate 适配：从产物 JSON 读 verdict/exit_code（防手报）；verify 时重读比对
 AUTO_GATES = {"accounting_gate": "accounting_mode.json", "supply_truth_gate": "supply_truth.json",
@@ -158,6 +159,15 @@ def cmd_generate(a):
     if a.status not in STATUSES:
         print(f"[generate] status 必须是 {sorted(STATUSES)}", file=sys.stderr)
         return 1
+    chains = [c.strip().lower() for c in (a.chain or "").split(",") if c.strip()]
+    if a.status == "READY":
+        if not chains or not str(a.contract or "").strip():
+            print("[generate] READY 必须显式给 --chain 与 --contract", file=sys.stderr)
+            return 2
+        unknown = sorted(set(chains) - KNOWN_CHAINS)
+        if unknown:
+            print(f"[generate] READY 含未知链 {unknown}；先补链支持再生成", file=sys.stderr)
+            return 2
 
     artifacts, missing_required = [], []
     seen = set()
@@ -201,8 +211,7 @@ def cmd_generate(a):
 
     if a.status == "READY":
         required = list(REQUIRED_FOR_READY)
-        chains = {c.strip().lower() for c in (a.chain or "").split(",") if c.strip()}
-        if chains & EVM_CHAINS:
+        if set(chains) & EVM_CHAINS:
             required += REQUIRED_FOR_READY_EVM
         missing_required = [n for n in required if n not in seen]
         if missing_required:
@@ -257,8 +266,9 @@ def cmd_generate(a):
         "generated_at": utcnow(),
         "skill_git_sha": {"cc": git_sha("~/.claude/skills/token-chip-analysis"),
                           "codex": git_sha("~/.codex/skills/token-chip-analysis")},
-        "scope": {"chains": [c for c in (a.chain or "").split(",") if c] or None,
-                  "contract": a.contract, "cutoff_utc": a.cutoff,
+        "scope": {"chains": chains or None,
+                  "contract": str(a.contract).strip() if a.contract is not None else None,
+                  "cutoff_utc": a.cutoff,
                   "frozen_block": a.frozen_block,
                   "denominators": json.loads(a.denominators) if a.denominators else None},
         "gates": gates,
@@ -375,6 +385,16 @@ def verify_case(case_dir, legacy_read_only=False):
     status = m.get("status")
     if status != "READY":
         fails.append(f"状态 {status} ≠ READY，拒绝消费（原因: {m.get('status_reason')}）")
+    if not legacy_mode and status == "READY":
+        scope = m.get("scope") or {}
+        chains = {str(c).strip().lower() for c in scope.get("chains") or [] if str(c).strip()}
+        if not chains:
+            fails.append("READY scope.chains 为空——缺正式链范围")
+        unknown = sorted(chains - KNOWN_CHAINS)
+        if unknown:
+            fails.append(f"READY scope 含未知链 {unknown}")
+        if not str(scope.get("contract") or "").strip():
+            fails.append("READY scope.contract 为空")
 
     if not fails:  # schema/状态硬伤先报，避免在坏 manifest 上白跑哈希
         art_paths = {ent.get("path") for ent in m.get("artifacts", [])}
@@ -578,6 +598,10 @@ def validate_and_replay_provenance(case_dir, pl, pl_path, ep, manifest):
     b = pl.get("input_binding")
     if not isinstance(b, dict):
         return ["provenance 缺 input_binding——旧/人工台账不可冻结，必须从原始边重跑"]
+    if pl.get("exploration") is True or b.get("mode") == "exploration":
+        return ["provenance 是 allow-no-labels 探索产物，禁止进入正式 freeze"]
+    if b.get("labels_file") is None:
+        return ["provenance labels_file 为空——正式 freeze 必须绑定标签快照"]
 
     script = os.path.join(os.path.dirname(os.path.abspath(__file__)), "entity_source_trace.py")
     algorithm = b.get("algorithm") or {}
@@ -595,11 +619,9 @@ def validate_and_replay_provenance(case_dir, pl, pl_path, ep, manifest):
     _, err = check_bound_file(case_dir, b.get("entity_file"), expected_path=ep)
     if err:
         fails.append(f"entity_file {err}")
-    labels_path = None
-    if b.get("labels_file") is not None:
-        labels_path, err = check_bound_file(case_dir, b.get("labels_file"))
-        if err:
-            fails.append(f"labels_file {err}")
+    labels_path, err = check_bound_file(case_dir, b.get("labels_file"))
+    if err:
+        fails.append(f"labels_file {err}")
 
     hb = b.get("handoff_manifest")
     if not isinstance(hb, dict):

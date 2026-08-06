@@ -10,7 +10,8 @@ ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = ROOT / "scripts" / "labels" / "roundtrip_check.py"
 CHAINS = ("eth", "bsc", "base", "sol", "robinhood")
 FIELDS = ["address", "chain", "name", "category", "tier", "merge_policy",
-          "balance_policy", "status"]
+          "balance_policy", "status", "risk_flags", "source", "evidence", "added_date",
+          "verified_at", "source_snapshot_at", "raw_labels"]
 
 
 def address(chain):
@@ -20,7 +21,9 @@ def address(chain):
 def write_table(root, chain, **changes):
     row = {"address": address(chain), "chain": chain, "name": "设施", "category": "cex",
            "tier": "exclude", "merge_policy": "no_merge", "balance_policy": "exclude",
-           "status": ""}
+           "status": "", "risk_flags": "", "source": "manual", "evidence": "fixture",
+           "added_date": "2026-01-01", "verified_at": "2026-01-01",
+           "source_snapshot_at": "2026-01-01", "raw_labels": "fixture"}
     row.update(changes)
     path = root / f"labels-{chain}.csv"
     with path.open("w", newline="", encoding="utf-8") as f:
@@ -56,6 +59,34 @@ def main():
         write_table(out, "eth", tier="identity")
         p = run(pub, out)
         assert p.returncode != 0 and "行内退化" in p.stdout, p.stdout + p.stderr
+        write_table(out, "eth")
+
+        write_table(out, "eth", risk_flags="exploit")
+        p = run(pub, out)
+        assert p.returncode != 0 and "risk_flags" in p.stdout, p.stdout + p.stderr
+        write_table(out, "eth")
+
+        # 序不同语义同：规范化后必须放行（存量 privacy 表未排序串的真实场景）
+        write_table(pub, "eth", risk_flags="wazirx-exploit|tornado-user")
+        write_table(out, "eth", risk_flags="tornado-user|wazirx-exploit")
+        p = run(pub, out)
+        assert p.returncode == 0 and "行内退化" not in p.stdout, p.stdout + p.stderr
+        # 空段变体（"a||b"）同样规范化；真实子集差异仍必须 FAIL
+        write_table(out, "eth", risk_flags="tornado-user||wazirx-exploit")
+        p = run(pub, out)
+        assert p.returncode == 0 and "行内退化" not in p.stdout, p.stdout + p.stderr
+        write_table(out, "eth", risk_flags="tornado-user")
+        p = run(pub, out)
+        assert p.returncode != 0 and "risk_flags" in p.stdout, p.stdout + p.stderr
+        write_table(pub, "eth")
+        write_table(out, "eth")
+
+        for field in ("source", "evidence", "added_date", "verified_at",
+                      "source_snapshot_at", "raw_labels"):
+            write_table(out, "eth", **{field: "different"})
+            p = run(pub, out)
+            assert p.returncode == 0 and "[WARN]" in p.stdout and field in p.stdout, \
+                p.stdout + p.stderr
         write_table(out, "eth")
 
         write_table(out, "base", merge_policy="")

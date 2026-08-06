@@ -54,6 +54,8 @@ def parse_args(argv=None):
     ap.add_argument("--topic", default=PANCAKE_V3, help="Swap event topic0（默认 Pancake V3）")
     ap.add_argument("--url", default="https://bsc.hypersync.xyz/query")
     a = ap.parse_args(argv)
+    if a.from_block < 0 or a.to_block < 0 or a.from_block >= a.to_block:
+        ap.error("块区间必须满足 0 <= from-block < to-block")
     a.token = _load_token(ap, a.token_file)
     return a
 
@@ -61,7 +63,10 @@ def parse_args(argv=None):
 def main():
     a = parse_args()
     headers = {"Authorization": f"Bearer {a.token}", "Content-Type": "application/json"}
-    out_file = open(a.out, "w", newline="")
+    out_path = Path(a.out).resolve()
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    tmp_path = out_path.with_name(f".{out_path.name}.tmp.{os.getpid()}")
+    out_file = tmp_path.open("x", newline="")
     out = csv.writer(out_file)
     out.writerow(["block", "ts", "tx", "data"])
     cur, n, t0 = a.from_block, 0, time.time()
@@ -84,7 +89,8 @@ def main():
         if j is None:
             print("[fatal] giving up", flush=True)
             out_file.close()
-            sys.exit(2)
+            tmp_path.unlink(missing_ok=True)
+            return 2
         bts = {}
         for batch in j.get("data", []):
             for b in batch.get("blocks", []):
@@ -99,16 +105,20 @@ def main():
             print(f"[fatal] provider 缺整数 next_block，current={cur} to_block={a.to_block}",
                   flush=True)
             out_file.close()
-            sys.exit(2)
+            tmp_path.unlink(missing_ok=True)
+            return 2
         if nxt <= cur:
             print(f"[fatal] next_block 停滞，current={cur} next_block={nxt} "
                   f"to_block={a.to_block}", flush=True)
             out_file.close()
-            sys.exit(2)
+            tmp_path.unlink(missing_ok=True)
+            return 2
         cur = nxt
         time.sleep(0.5)
-    out_file.close()
+    out_file.flush(); os.fsync(out_file.fileno()); out_file.close()
+    os.replace(tmp_path, out_path)
     print(f"swaps {n} rows {time.time()-t0:.0f}s", flush=True)
+    return 0
 
 
 if __name__ == "__main__":

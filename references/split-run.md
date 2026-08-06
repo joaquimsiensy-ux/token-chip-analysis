@@ -85,7 +85,7 @@
 | `distribution_adjudications.json` | −2 | final 异常簇成员级裁决台账；存在时 freeze 必须校验并绑定当前实体名册 |
 | `pattern_resolutions.json` | −2 | 盘面机制解释台账；路径 A 被书面排除后才使用，未决项阻断 |
 | `distribution_rounds.json` | −2 | final 轮次追加台账；terminal 前不物化终版图 |
-| `provenance_ledger.json` | −2 | 已知实体币源溯源台账（entity_source_trace.py，provenance-ledger/v2 正向模拟版，两锚点构成＋进货单＋FIFO/LIFO/事件顺序敏感性＋完整输入绑定）——freeze 从原始边真实重放；v1 是 pro-rata 数学错误版一律重跑 |
+| `provenance_ledger.json` | −2 | 已知实体币源溯源台账（entity_source_trace.py，正式模式强制绑定 `--labels-file`；`--allow-no-labels` 仅探索且 freeze 必拒；provenance-ledger/v2 正向模拟＋完整输入绑定）——freeze 从原始边/标签真实重放；v1 一律重跑 |
 | `sealed/stage1_hypotheses.sealed.md` | −1 | 初步定性密封件，见 §2.3 |
 | `entity_freeze.json` | −2 | 冻结事件物化：成员表哈希/时间/未决项/casebook 检验结果；变更走 revision 追加，不许静默覆盖 |
 | 既有产物 | −1 | accounting_mode、链内 done.json/collection_manifest/receipt、四查产物、cluster_prep、address_bucket_series、价格序列——**格式零改动** |

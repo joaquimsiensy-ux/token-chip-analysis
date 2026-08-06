@@ -40,7 +40,7 @@ def main():
             "fetch_hypersync_logs": ["0", "--url", "http://fixture", "--addr",
                                      "0x" + "1" * 40, "--out", str(out)],
             "fetch_pool_swaps": ["--pool", "0x" + "1" * 40, "--from-block", "10",
-                                 "--to-block", "10", "--out", str(out)],
+                                 "--to-block", "11", "--out", str(out)],
         }
         for name, path in SCRIPTS.items():
             mod = load(name, path)

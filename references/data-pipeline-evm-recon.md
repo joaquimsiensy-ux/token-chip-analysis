@@ -123,11 +123,12 @@ KOGE 一级 inflow 预筛（≥0.1% 供应）后**仍剩 157,459 个候选**，�
 **层 1（默认，有 archive 通道的链：ETH/Base/Arbitrum/Polygon 等）——锚点直查，跑固化脚本**：
 ```bash
 python3 scripts/lib/time_spotcheck.py --plan anchor_plan.json --rpc <独立archive节点> \
-    --token 0x标的 --out time_spotcheck.json [--final-block <数据截止块>]
+    --chain <eth|bsc|base|arbitrum> --token 0x标的 --out time_spotcheck.json \
+    --final-block <数据截止块>
 ```
 - balance 型锚点走 archive `eth_call balanceOf`（历史块状态直查），tx 型锚点（最大单笔/交界块）走 `eth_getTransactionReceipt` 核五元组——**两型都查**，只查 balance 型等于四类强制覆盖点漏验两类。O(锚点数) 秒级完成，APU 案 Alchemy archive 15/15 精确一致实证。
 - 独立性口径（措辞纪律）：状态直查对"余额结果"的验证比换一家事件索引商更直接；但**不能替代事件集合完整性验证**——等额进出抵消、零余额中转层、tx/logIndex/时间戳元数据错误它天然验不出（这些去层 3）。
-- 产物 `time_spotcheck.json`（verdict/exit_code，0 PASS/2 FAIL/1 检测自身失败禁当 PASS）；split-run 案是 READY 必备件＋AUTO_GATES（handoff_manifest 重读防手报）。
+- 产物 `time_spotcheck.json`（`time-spotcheck/v2`，target 绑定 chain/token/final-block；verdict/exit_code 为 0 PASS/2 FAIL/1 检测自身失败禁当 PASS）；split-run 案是 READY 必备件＋AUTO_GATES（handoff_manifest 重读防手报）。
 
 **层 2（BSC 等无免费 archive balanceOf 通道的链）——SQD 只拉锚点窄窗，禁止默认全史**：SQD Portal 仍是 BSC 唯一独立对照源（§11 格局未变），但只拉**锚点所在代表日/窄块窗**（BANANAS31 先例：4 代表日 67,731 行零差集）。窗口覆盖规则：所有锚点日＋早/中/晚三段＋峰值日＋数据源交界＋门槛边缘各至少一窗；逐窗断点续传；逐事件比键 `(block,tx,log_index)` 与值 `(from,to,value)`。主通道本身是 SQD 时它不算独立第二源（换 BigQuery 等，见 §11）。
 

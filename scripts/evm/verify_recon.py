@@ -1,70 +1,180 @@
 #!/usr/bin/env python3
-"""对账三查：①重建余额 vs 链上 balanceOf（Alchemy，截止块口径）②供给闭合 ③GMGN top10 对表。
-用法：python3 scripts/verify_recon.py  （工作目录跑，读 data/balances_final.json + data/replay_stats.json）
+"""EVM 对账生产器：余额、供给闭合与 GMGN 对表，产绑定目标的 v2 回执。
+
+退出码：0=全部硬检查 PASS；2=供给/余额硬不一致；1=输入、RPC 或写入失败。
 """
-import json, csv, subprocess, sys
+from __future__ import annotations
 
-CFG = json.load(open('config.json'))
-TOT = CFG['total_supply_human'] * 10**CFG['decimals']
-KEY = CFG['alchemy']['key']
-EP = CFG['alchemy']['url'] + KEY
-PROXY = CFG['proxy']
-Z = '0x0000000000000000000000000000000000000000'
-DEAD = '0x000000000000000000000000000000000000dead'
+import argparse
+import csv
+import hashlib
+import json
+import os
+import sys
+from decimal import Decimal
+from pathlib import Path
 
-bal = json.load(open('data/balances_final.json'))
-stats = json.load(open('data/replay_stats.json'))
-print('replay_stats:', json.dumps(stats)[:400])
+ZERO = "0x0000000000000000000000000000000000000000"
+DEAD = "0x000000000000000000000000000000000000dead"
+SCHEMA = "evm-reconciliation-receipt/v2"
 
-# ---- 查2：供给闭合 ----
-mint = int(stats.get('mint_total_wei', 0))
-burn = int(stats.get('burn_total_wei', 0))
-ssum = sum(int(v) for v in bal.values())
-print(f'\n[查2 供给闭合] mint={mint} burn={burn} mint-burn={mint-burn}')
-print(f'  sum(balances)={ssum}  vs 名义总量 {TOT}')
-print(f'  mint==名义总量: {mint == TOT}   sum==mint-burn: {ssum == mint - burn}')
-neg = [(a, v) for a, v in bal.items() if int(v) < 0]
-print(f'  负余额地址数: {len(neg)}', neg[:3] if neg else '')
 
-# ---- 查1：重建余额 vs 链上 balanceOf（截止块）----
-end_block = stats.get('max_block') or stats.get('last_block')
-if not end_block:
-    # 从 merged.csv 末行拿
-    import subprocess as sp
-    last = sp.run(['tail', '-1', 'data/merged.csv'], capture_output=True, text=True).stdout
-    end_block = int(last.split(',')[0])
-tag = hex(int(end_block))
-top = sorted(bal.items(), key=lambda kv: -int(kv[1]))[:15]
-print(f'\n[查1 余额对账] 截止块 {end_block}，top15 重建 vs eth_call balanceOf:')
-ok = bad = 0
-for a, v in top:
-    if a in (Z, DEAD):
-        continue
-    data = '0x70a08231' + '0' * 24 + a[2:]
-    body = json.dumps({"jsonrpc": "2.0", "id": 1, "method": "eth_call",
-                       "params": [{"to": CFG['token'], "data": data}, tag]})
-    r = subprocess.run(['curl', '-s', '-x', PROXY, '--max-time', '20', '-X', 'POST',
-                        '-H', 'Content-Type: application/json', '-d', body, EP],
-                       capture_output=True, text=True)
+def sha256(path):
+    h = hashlib.sha256()
+    with Path(path).open("rb") as f:
+        for chunk in iter(lambda: f.read(1 << 20), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def file_ref(path):
+    p = Path(path).resolve()
+    return {"path": str(p), "size": p.stat().st_size, "sha256": sha256(p)}
+
+
+def atomic_json(path, payload):
+    out = Path(path).resolve()
+    out.parent.mkdir(parents=True, exist_ok=True)
+    tmp = out.with_name(f".{out.name}.tmp.{os.getpid()}")
     try:
-        chain = int(json.loads(r.stdout)['result'], 16)
-    except Exception:
-        print(f'  {a[:16]} RPC失败: {r.stdout[:80]}')
-        bad += 1
-        continue
-    match = chain == int(v)
-    ok += match
-    bad += (not match)
-    print(f'  {a[:16]} 重建 {int(v)/10**9/1e9:.4f}B vs 链上 {chain/10**9/1e9:.4f}B  {"OK" if match else "MISMATCH Δ=%d" % (chain-int(v))}')
-print(f'  结果: {ok} OK / {bad} MISMATCH-or-fail')
+        with tmp.open("x", encoding="utf-8") as f:
+            json.dump(payload, f, ensure_ascii=False, indent=2)
+            f.write("\n"); f.flush(); os.fsync(f.fileno())
+        os.replace(tmp, out)
+    finally:
+        if tmp.exists():
+            tmp.unlink()
 
-# ---- 查3：GMGN top10 对表（软对账，口径差异容忍 0.1pp）----
-print('\n[查3 GMGN对表] (软对账，GMGN 快照有延迟)')
-gm = list(csv.DictReader(open('data/gmgn_top100.csv')))[:10]
-for g in gm:
-    a = g['address']
-    p_g = float(g['pct'] or 0) * 100
-    p_r = int(bal.get(a, 0)) * 100 / TOT
-    flag = 'OK' if abs(p_g - p_r) < 0.15 else 'DIFF'
-    print(f'  {a[:16]} gmgn {p_g:.3f}% vs 重建 {p_r:.3f}%  {flag}')
-print('\n完成。查1 全 OK + 查2 闭合 = 硬关卡通过；查3 DIFF 需解释（GMGN 延迟/口径）。')
+
+def rpc_balance_of(url, token, address, block, proxy=None):
+    import requests
+    data = "0x70a08231" + "0" * 24 + address.lower().replace("0x", "")
+    payload = {"jsonrpc": "2.0", "id": 1, "method": "eth_call",
+               "params": [{"to": token, "data": data}, hex(int(block))]}
+    proxies = {"http": proxy, "https": proxy} if proxy else None
+    response = requests.post(url, json=payload, proxies=proxies, timeout=30)
+    response.raise_for_status()
+    body = response.json()
+    if body.get("error") or body.get("result") in (None, "0x"):
+        raise ValueError(f"eth_call 无有效 result: {body.get('error') or body.get('result')!r}")
+    return int(body["result"], 16)
+
+
+def parse_args(argv=None):
+    ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument("--config", required=True)
+    ap.add_argument("--balances", required=True)
+    ap.add_argument("--replay-stats", required=True)
+    ap.add_argument("--gmgn", required=True)
+    ap.add_argument("--chain", required=True, choices=["eth", "bsc", "base", "arbitrum"])
+    ap.add_argument("--token", required=True)
+    ap.add_argument("--end-block", required=True, type=int)
+    ap.add_argument("--out", required=True)
+    ap.add_argument("--rpc")
+    ap.add_argument("--proxy")
+    ap.add_argument("--top-n", type=int, default=15)
+    return ap.parse_args(argv)
+
+
+def main(argv=None):
+    a = parse_args(argv)
+    target = {"chain": a.chain, "token": a.token.lower(), "as_of_block": a.end_block}
+    receipt = {"schema": SCHEMA, "target": target, "verdict": "ERROR", "exit_code": 1,
+               "inputs": {}, "observations": {}, "error": None}
+    try:
+        if a.end_block < 0 or a.top_n <= 0:
+            raise ValueError("end-block 必须非负且 top-n 必须为正")
+        config_path, balances_path = Path(a.config), Path(a.balances)
+        stats_path, gmgn_path = Path(a.replay_stats), Path(a.gmgn)
+        cfg = json.loads(config_path.read_text(encoding="utf-8"))
+        balances_raw = json.loads(balances_path.read_text(encoding="utf-8"))
+        stats = json.loads(stats_path.read_text(encoding="utf-8"))
+        if not isinstance(balances_raw, dict) or not balances_raw:
+            raise ValueError("balances 必须是非空 address->raw 映射")
+        balances = {str(k).lower(): int(str(v)) for k, v in balances_raw.items()}
+        cfg_token = str(cfg.get("token") or "").lower()
+        if cfg_token and cfg_token != target["token"]:
+            raise ValueError("config token 与 --token 不一致")
+        stats_end = stats.get("max_block") or stats.get("last_block")
+        if stats_end is None or int(stats_end) != a.end_block:
+            raise ValueError("replay_stats 截止块与 --end-block 不一致")
+        decimals = int(cfg["decimals"])
+        nominal = int(Decimal(str(cfg["total_supply_human"])) * (Decimal(10) ** decimals))
+        mint = int(str(stats.get("mint_total_wei", stats.get("mint_total_raw", 0))))
+        burn = int(str(stats.get("burn_total_wei", stats.get("burn_total_raw", 0))))
+        balance_sum = sum(balances.values())
+        negatives = sorted(k for k, v in balances.items() if v < 0)
+        supply_closed = mint == nominal and balance_sum == mint - burn and not negatives
+
+        rpc = a.rpc or str((cfg.get("alchemy") or {}).get("url", "")) + str(
+            (cfg.get("alchemy") or {}).get("key", ""))
+        if not rpc:
+            raise ValueError("缺 RPC：给 --rpc 或 config.alchemy.url/key")
+        proxy = a.proxy if a.proxy is not None else cfg.get("proxy")
+        rows, matched, mismatched, rpc_errors = [], 0, 0, 0
+        top = sorted(balances.items(), key=lambda kv: -kv[1])[:a.top_n]
+        for address, replay_raw in top:
+            if address in {ZERO, DEAD}:
+                continue
+            try:
+                chain_raw = int(rpc_balance_of(rpc, target["token"], address,
+                                               a.end_block, proxy))
+                ok = chain_raw == replay_raw
+                matched += int(ok); mismatched += int(not ok)
+                rows.append({"address": address, "replay_raw": str(replay_raw),
+                             "chain_raw": str(chain_raw), "diff_raw": str(chain_raw - replay_raw),
+                             "status": "OK" if ok else "MISMATCH"})
+            except Exception as exc:
+                rpc_errors += 1
+                rows.append({"address": address, "replay_raw": str(replay_raw),
+                             "status": "RPC_ERROR", "error": str(exc)[:300]})
+
+        gmgn_rows, gmgn_diff = [], 0
+        with gmgn_path.open(newline="", encoding="utf-8") as f:
+            for row in list(csv.DictReader(f))[:10]:
+                address = str(row.get("address") or "").lower()
+                if not address:
+                    continue
+                gmgn_pct = float(row.get("pct") or 0) * 100
+                replay_pct = balances.get(address, 0) * 100 / nominal if nominal else 0.0
+                diff_pp = abs(gmgn_pct - replay_pct)
+                gmgn_diff += int(diff_pp >= 0.15)
+                gmgn_rows.append({"address": address, "gmgn_pct": gmgn_pct,
+                                  "replay_pct": replay_pct, "diff_pp": diff_pp,
+                                  "status": "OK" if diff_pp < 0.15 else "DIFF"})
+
+        receipt["inputs"] = {"config": file_ref(config_path),
+                             "balances": file_ref(balances_path),
+                             "replay_stats": file_ref(stats_path), "gmgn": file_ref(gmgn_path)}
+        receipt["observations"] = {
+            "supply_closure": {"mint_total_raw": str(mint), "burn_total_raw": str(burn),
+                               "nominal_supply_raw": str(nominal),
+                               "balance_sum_raw": str(balance_sum),
+                               "negative_count": len(negatives), "negative_addresses": negatives,
+                               "closed": supply_closed},
+            "balance_reconciliation": {"checked": len(rows), "matched": matched,
+                                       "mismatched": mismatched, "rpc_errors": rpc_errors,
+                                       "rows": rows},
+            "gmgn_comparison": {"checked": len(gmgn_rows), "diff_count": gmgn_diff,
+                                "tolerance_pp": 0.15, "rows": gmgn_rows},
+        }
+        if rpc_errors:
+            receipt.update(verdict="ERROR", exit_code=1,
+                           error=f"{rpc_errors} 个 RPC 观测失败")
+        elif not supply_closed or mismatched:
+            receipt.update(verdict="FAIL", exit_code=2, error=None)
+        else:
+            receipt.update(verdict="PASS", exit_code=0, error=None)
+    except Exception as exc:
+        receipt.update(verdict="ERROR", exit_code=1, error=str(exc))
+    try:
+        atomic_json(a.out, receipt)
+    except Exception as exc:
+        print(f"[verify_recon] receipt 写入失败: {exc}", file=sys.stderr)
+        return 1
+    print(f"[verify_recon] {receipt['verdict']} exit={receipt['exit_code']} → {a.out}")
+    return receipt["exit_code"]
+
+
+if __name__ == "__main__":
+    sys.exit(main())

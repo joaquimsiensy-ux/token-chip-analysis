@@ -29,6 +29,15 @@ def run_case(root, scenario):
                                 encoding="utf-8", errors="replace")
 
 
+def run_in_work(root, work, scenario):
+    env = os.environ.copy()
+    env["PATH"] = str(root / "bin") + os.pathsep + env["PATH"]
+    env["GMGN_FIXTURE"] = scenario
+    return subprocess.run(["bash", str(SCRIPT), "0x" + "1" * 40, "bsc"],
+                          cwd=work, env=env, capture_output=True, text=True,
+                          encoding="utf-8", errors="replace")
+
+
 def main():
     with tempfile.TemporaryDirectory() as td:
         root = Path(td); bindir = root / "bin"; bindir.mkdir()
@@ -46,6 +55,20 @@ def main():
         work, p = run_case(root, "invalid")
         assert p.returncode != 0 and "GMGN DONE" not in p.stderr, p.stdout + p.stderr
         assert not list((work / "gmgn").glob("*.json")), "非法 JSON 仍被正式发布"
+
+        same = root / "same-run"; same.mkdir()
+        p = run_in_work(root, same, "valid")
+        assert p.returncode == 0 and (same / "gmgn" / "bsc_info.json").exists()
+        p = run_in_work(root, same, "fail")
+        assert p.returncode != 0
+        assert not (same / "gmgn" / "bsc_info.json").exists(), \
+            f"失败后旧正式文件仍在；files={sorted(x.name for x in (same / 'gmgn').iterdir())}; stderr={p.stderr}"
+        assert (same / "gmgn" / "bsc_info.json.stale").exists(), "旧正式文件未标 stale"
+
+        p = run_in_work(root, same, "valid")
+        assert p.returncode == 0
+        p = run_in_work(root, same, "invalid")
+        assert p.returncode != 0 and (same / "gmgn" / "bsc_info.json.stale").exists()
     print("PASS: GMGN 临时文件、JSON 校验和失败聚合生效")
 
 

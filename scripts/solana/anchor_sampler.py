@@ -1,15 +1,16 @@
 """SQD 日级锚点采样器 v2:串行滚动校准(从新到旧,逐日外推,自建 slot<->ts 校准表)。
 
-用法: python3 anchor_sampler.py --start YYYY-MM-DD [--end YYYY-MM-DD]
+用法: python3 anchor_sampler.py --start YYYY-MM-DD [--end YYYY-MM-DD] --as-of-slot N \
+      --out data/anchors_daily.jsonl --receipt anchor_sampler_receipt.json
 参考锚定点(冷启动必需): 工作目录 config.json 的 ref_slot/ref_ts 字段,或 CLI --ref-slot/--ref-ts。
   取法:对当前时刻做一次 getSlot + getBlockTime 即得(任意近期 slot 与其时间戳的一对映射)。
-输出: data/anchors_daily.jsonl 每行 {date, from_slot, to_slot, ts_seen, n_rows, accounts:{acct:{owner,post}}}
+输出: anchors JSONL + solana-anchor-sampler-receipt/v2；任一失败日完整落明细后 exit 2。
 断点续传:已有日期跳过,且其 (slot,ts) 进校准表。
 
 ⚠观测边界(pipeline §11.3):名义 1h 窗在高活跃期因响应截断实际可能仅数分钟,且只记发生
 变动的账户——静止大户系统性漏观测,锚点单独不可作阴性依据,须快照/全流水兜底。
 """
-import argparse, json, subprocess, sys, time, datetime, bisect
+import argparse, hashlib, json, os, subprocess, sys, time, datetime, bisect
 from pathlib import Path
 
 SQD = "https://portal.sqd.dev/datasets/solana-mainnet/stream"
@@ -97,19 +98,43 @@ def parse_blocks(blocks):
     return accounts, ts_seen, n_rows, first_slot
 
 
-def main():
+def _sha256(path):
+    h = hashlib.sha256()
+    with Path(path).open("rb") as f:
+        for chunk in iter(lambda: f.read(1 << 20), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def _atomic_json(path, payload):
+    out = Path(path).resolve(); out.parent.mkdir(parents=True, exist_ok=True)
+    tmp = out.with_name(f".{out.name}.tmp.{os.getpid()}")
+    try:
+        with tmp.open("x", encoding="utf-8") as f:
+            json.dump(payload, f, ensure_ascii=False, indent=2)
+            f.write("\n"); f.flush(); os.fsync(f.fileno())
+        os.replace(tmp, out)
+    finally:
+        if tmp.exists(): tmp.unlink()
+
+
+def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("--start", required=True, help="采样起始日 YYYY-MM-DD(通常=发射日)")
     ap.add_argument("--end", default=None)
     ap.add_argument("--ref-slot", type=int, default=CFG.get("ref_slot"))
     ap.add_argument("--ref-ts", type=int, default=CFG.get("ref_ts"))
-    args = ap.parse_args()
+    ap.add_argument("--as-of-slot", type=int, required=True,
+                    help="与 accounting target 对齐的冻结 slot")
+    ap.add_argument("--out", default="data/anchors_daily.jsonl")
+    ap.add_argument("--receipt", required=True)
+    args = ap.parse_args(argv)
 
     if not args.ref_slot or not args.ref_ts:
         sys.exit("缺参考锚定点:config.json 加 ref_slot/ref_ts,或传 --ref-slot/--ref-ts"
                  "(取法:getSlot + getBlockTime 一对近期映射)")
 
-    out = Path("data/anchors_daily.jsonl")
+    out = Path(args.out)
     out.parent.mkdir(parents=True, exist_ok=True)
     calib = Calib(args.ref_ts, args.ref_slot)
     done = set()
@@ -170,7 +195,37 @@ def main():
         if (idx + 1) % 25 == 0:
             print(f"{idx+1}/{len(days)} days ({ds}), fails={fails}, elapsed={time.time()-t0:.0f}s", flush=True)
     print(f"DONE {len(days)} days, fails={fails}, {time.time()-t0:.0f}s", flush=True)
+    failures = []
+    covered = 0
+    try:
+        for line in out.read_text(encoding="utf-8").splitlines():
+            row = json.loads(line)
+            if args.start <= str(row.get("date", "")) <= end:
+                if row.get("error"):
+                    failures.append({"date": row.get("date"), "error": row.get("error"),
+                                     "from_slot": row.get("from_slot"),
+                                     "to_slot": row.get("to_slot")})
+                else:
+                    covered += 1
+        verdict = "FAIL" if failures else "PASS"
+        exit_code = 2 if failures else 0
+        receipt = {
+            "schema": "solana-anchor-sampler-receipt/v2",
+            "target": {"chain": "solana", "token": MINT,
+                       "as_of_block": args.as_of_slot},
+            "date_range": {"start": args.start, "end": end},
+            "output": {"path": str(out.resolve()), "size": out.stat().st_size,
+                       "sha256": _sha256(out)},
+            "coverage": {"requested_days": (d1 - d0).days + 1,
+                         "covered_days": covered, "failed_days": len(failures)},
+            "failures": failures, "verdict": verdict, "exit_code": exit_code,
+        }
+        _atomic_json(args.receipt, receipt)
+        return exit_code
+    except Exception as exc:
+        print(f"[anchor_sampler] receipt 生成失败（exit 1）: {exc}", file=sys.stderr)
+        return 1
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

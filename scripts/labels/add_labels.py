@@ -25,6 +25,24 @@ FIELDS = BASE_FIELDS + V4_OPTIONAL_FIELDS
 # curation override 增量入库压不掉已存在的 serial/manual 行（只补空字段）——QUQ 0x238a
 # 设施身份恢复实测踩中；增量与全量重建的覆盖语义自此一致。
 HIGH_TRUST_PREFIX = ('curation', 'manual', 'registry', 'serial', 'official')
+ADDITIONS_DIR = os.path.join(_HERE, 'sources', 'additions')
+
+
+def rollback(adds, target_was_present, manifest_path, manifest_backup, manifest_was_present):
+    restored, removed = [], []
+    for ch in adds:
+        p = os.path.join(DEFAULT_LABELS_DIR, f'labels-{ch}.csv')
+        if target_was_present.get(ch) and os.path.exists(p + '.bak'):
+            shutil.move(p + '.bak', p); restored.append(ch)
+        elif not target_was_present.get(ch) and os.path.exists(p):
+            os.remove(p); removed.append(ch)
+    if manifest_was_present and manifest_backup and os.path.exists(manifest_backup):
+        shutil.move(manifest_backup, manifest_path)
+    elif not manifest_was_present and os.path.exists(manifest_path):
+        os.remove(manifest_path)
+    if manifest_backup and os.path.exists(manifest_backup):
+        os.remove(manifest_backup)
+    return restored, removed
 
 
 def load_chain(chain):
@@ -54,6 +72,13 @@ def main():
             adds.setdefault(ch, {})[na] = r
 
     target_was_present = {}
+    manifest_path = os.path.join(DEFAULT_LABELS_DIR, 'manifest.json')
+    manifest_was_present = os.path.exists(manifest_path)
+    manifest_backup = None
+    if not dry and manifest_was_present:
+        mf = tempfile.NamedTemporaryFile(delete=False, dir=DEFAULT_LABELS_DIR,
+                                         prefix='.manifest-add-labels-', suffix='.bak')
+        mf.close(); shutil.copyfile(manifest_path, mf.name); manifest_backup = mf.name
     for ch, items in sorted(adds.items()):
         path, header, rows = load_chain(ch)
         target_was_present[ch] = os.path.exists(path)
@@ -105,29 +130,35 @@ def main():
         shutil.move(tmp.name, path)
 
     if not dry:
-        rc = subprocess.run([sys.executable, os.path.join(_HERE, 'validate_labels.py')]).returncode
-        if rc != 0:
-            restored = []
-            removed = []
-            for ch in adds:
-                p = os.path.join(DEFAULT_LABELS_DIR, f'labels-{ch}.csv')
-                if target_was_present.get(ch) and os.path.exists(p + '.bak'):
-                    shutil.move(p + '.bak', p)
-                    restored.append(ch)
-                elif not target_was_present.get(ch) and os.path.exists(p):
-                    os.remove(p)
-                    removed.append(ch)
-            print(f'!! 合并后校验 FAIL——已恢复原表 {restored or "[]"}；'
-                  f'已删除新建坏表 {removed or "[]"}。排查补录数据后重试',
+        gates = [
+            ('validate', [sys.executable, os.path.join(_HERE, 'validate_labels.py')]),
+            ('benchmark', [sys.executable, os.path.join(_HERE, 'benchmark_labels.py')]),
+            ('manifest', [sys.executable, os.path.join(_HERE, '..', 'tests',
+                                                        'labels_manifest.py'), '--write']),
+        ]
+        failed = None
+        try:
+            for name, cmd in gates:
+                if subprocess.run(cmd).returncode != 0:
+                    failed = name; break
+        except Exception as exc:
+            failed = f'子进程异常: {exc}'
+        if failed:
+            restored, removed = rollback(adds, target_was_present, manifest_path,
+                                         manifest_backup, manifest_was_present)
+            print(f'!! 合并后 {failed} 门禁 FAIL——已恢复原表 {restored or "[]"}；'
+                  f'已删除新建坏表 {removed or "[]"}；manifest 已恢复。排查后重试',
                   file=sys.stderr)
             sys.exit(1)
         for ch in adds:
             p = os.path.join(DEFAULT_LABELS_DIR, f'labels-{ch}.csv') + '.bak'
             if os.path.exists(p):
                 os.remove(p)
+        if manifest_backup and os.path.exists(manifest_backup):
+            os.remove(manifest_backup)
         # v4.2：入库成功的补录文件自动归档进 sources/additions/——该目录整目录参与全量重建
         # （build_labels.py 6f 段），否则下次重建会静默丢掉本次增量（v4.1 七份文件实测踩坑）。
-        add_dir = os.path.join(_HERE, 'sources', 'additions')
+        add_dir = ADDITIONS_DIR
         os.makedirs(add_dir, exist_ok=True)
         src_abs = os.path.abspath(src)
         if os.path.dirname(src_abs) != os.path.abspath(add_dir):
@@ -138,7 +169,7 @@ def main():
                 dst = os.path.join(add_dir, f'{stem}_{datetime.date.today().isoformat()}{ext}')
             shutil.copy(src_abs, dst)
             print(f'已归档补录文件 → {dst}（重建流自动回放，请勿删除）')
-        print('合并完成，校验通过。别忘了跑 benchmark_labels.py')
+        print('合并完成：validate + benchmark + manifest 三闸全部通过。')
 
 
 if __name__ == '__main__':

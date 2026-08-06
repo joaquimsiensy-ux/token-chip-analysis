@@ -1,10 +1,10 @@
 """SQD 定向窗口拉取:小段(2000 slot)+并发,专攻高密度期(发射窗/事件日)。
 
-用法: python3 window_fetch.py <from_slot> <to_slot> <out.jsonl> [--conc 8]
+用法: python3 window_fetch.py <from_slot> <to_slot> <out.jsonl> --receipt <receipt.json> [--conc 8]
 输出: 每行 [ts, slot, from_owner, to_owner, amount_raw](与 fetch_sqd_transfers_v2.py 边格式兼容)
-     失败段写入 <out>.gaps.json(必须为空才算完整)
+     失败段写入 <out>.gaps.json；gaps 非空只留 <out>.partial 并 exit 2。
 """
-import argparse, json, subprocess, sys, time
+import argparse, hashlib, json, os, subprocess, sys, time
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -94,13 +94,34 @@ def scan_seg(frm, to):
     return edges, True
 
 
-def main():
+def _sha256(path):
+    h = hashlib.sha256()
+    with Path(path).open("rb") as f:
+        for chunk in iter(lambda: f.read(1 << 20), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def _atomic_json(path, payload):
+    out = Path(path).resolve(); out.parent.mkdir(parents=True, exist_ok=True)
+    tmp = out.with_name(f".{out.name}.tmp.{os.getpid()}")
+    try:
+        with tmp.open("x", encoding="utf-8") as f:
+            json.dump(payload, f, ensure_ascii=False, indent=2)
+            f.write("\n"); f.flush(); os.fsync(f.fileno())
+        os.replace(tmp, out)
+    finally:
+        if tmp.exists(): tmp.unlink()
+
+
+def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("frm", type=int)
     ap.add_argument("to", type=int)
     ap.add_argument("out")
     ap.add_argument("--conc", type=int, default=8)
-    args = ap.parse_args()
+    ap.add_argument("--receipt", required=True)
+    args = ap.parse_args(argv)
 
     segs = []
     s = args.frm
@@ -112,7 +133,11 @@ def main():
     t0 = time.time()
     done = [0]
     gaps = []
-    outf = open(args.out, "w")
+    out_path = Path(args.out).resolve()
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    partial = Path(str(out_path) + ".partial")
+    outf = partial.open("w", encoding="utf-8")
+    backup = None
     lock = __import__("threading").Lock()
 
     def work(seg):
@@ -126,12 +151,51 @@ def main():
             if done[0] % 20 == 0:
                 print(f"{done[0]}/{len(segs)} segs, {time.time()-t0:.0f}s", flush=True)
 
-    with ThreadPoolExecutor(args.conc) as ex:
-        list(ex.map(work, segs))
-    outf.close()
-    Path(args.out + ".gaps.json").write_text(json.dumps(gaps))
-    print(f"DONE {len(segs)} segs ({len(gaps)} gaps) in {time.time()-t0:.0f}s -> {args.out}", flush=True)
+    try:
+        with ThreadPoolExecutor(args.conc) as ex:
+            list(ex.map(work, segs))
+        outf.flush(); os.fsync(outf.fileno()); outf.close()
+        gaps_path = Path(str(out_path) + ".gaps.json")
+        gaps_path.write_text(json.dumps(gaps), encoding="utf-8")
+        if gaps:
+            verdict, exit_code = "FAIL", 2
+            published = None
+        else:
+            if out_path.exists():
+                backup = out_path.with_name(f".{out_path.name}.previous.{os.getpid()}")
+                os.replace(out_path, backup)
+            os.replace(partial, out_path)
+            verdict, exit_code = "PASS", 0
+            published = {"path": str(out_path), "size": out_path.stat().st_size,
+                         "sha256": _sha256(out_path)}
+        receipt = {
+            "schema": "solana-window-fetch-receipt/v2",
+            "target": {"chain": "solana", "token": MINT, "as_of_block": args.to},
+            "range": {"from_slot": args.frm, "to_slot": args.to,
+                      "chunk_size": CHUNK, "segments": len(segs)},
+            "coverage": {"completed_segments": len(segs) - len(gaps),
+                         "gap_segments": len(gaps), "gaps": gaps},
+            "output": published or {"path": str(partial), "size": partial.stat().st_size,
+                                     "sha256": _sha256(partial), "partial": True},
+            "verdict": verdict, "exit_code": exit_code,
+        }
+        _atomic_json(args.receipt, receipt)
+        if backup and backup.exists():
+            backup.unlink()
+        print(f"{verdict} {len(segs)} segs ({len(gaps)} gaps) in {time.time()-t0:.0f}s"
+              f" -> {out_path if not gaps else partial}", flush=True)
+        return exit_code
+    except Exception as exc:
+        if not outf.closed:
+            outf.close()
+        # 数据与完成 receipt 是一个发布事务：receipt 落盘失败时撤回本次正式文件。
+        if not gaps and out_path.exists():
+            os.replace(out_path, partial)
+        if backup and backup.exists():
+            os.replace(backup, out_path)
+        print(f"[window_fetch] 检测/提交失败（exit 1）: {exc}", file=sys.stderr)
+        return 1
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

@@ -14,20 +14,27 @@ FAIL_LIST=""
 run() { local out=$1; shift
   echo "== $out ==" >&2
   local tmp="gmgn/$out.json.tmp"
+  local final="gmgn/$out.json"
+  local stale="gmgn/$out.json.stale"
   rm -f "$tmp"
   if gmgn-cli "$@" --raw > "$tmp" 2>"gmgn/$out.err"; then
     if python3 -c 'import json,sys;json.load(open(sys.argv[1]))' "$tmp" \
         >/dev/null 2>>"gmgn/$out.err"; then
-      mv "$tmp" "gmgn/$out.json"
+      mv "$tmp" "$final"
       SUCCESS_COUNT=$((SUCCESS_COUNT + 1))
       SUCCESS_LIST="${SUCCESS_LIST}${out}\n"
       return 0
     fi
-    echo "FAIL $out（输出不是合法 JSON）" >&2
+    echo "FAIL ${out}（输出不是合法 JSON）" >&2
   else
-    echo "FAIL $out（gmgn-cli 非零退出）" >&2
+    echo "FAIL ${out}（gmgn-cli 非零退出）" >&2
   fi
   rm -f "$tmp"
+  if [ -f "$final" ]; then
+    if ! mv -f "$final" "$stale"; then
+      echo "FAIL ${out}（旧正式文件无法标记为 .stale）" >&2
+    fi
+  fi
   FAIL_COUNT=$((FAIL_COUNT + 1))
   FAIL_LIST="${FAIL_LIST}${out}\n"
   return 0

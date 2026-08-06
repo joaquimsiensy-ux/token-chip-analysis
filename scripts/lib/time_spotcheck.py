@@ -20,10 +20,10 @@ Solana 案不适用本脚本（时间抽查走 solana/anchor_sampler.py 通道�
 
 用法:
   python3 time_spotcheck.py --plan anchor_plan.json --rpc <archive_rpc_url> \
-      --token 0x... --out time_spotcheck.json [--final-block N] [--rps 8] [--dry-run]
+      --chain bsc --token 0x... --out time_spotcheck.json --final-block N [--rps 8]
+  dry-run 可省 --chain/--final-block，仅解析计划且不生成正式 receipt。
 
-  --final-block  数据截止块。门槛边缘地址点无 day_end_block 字段，用它查最终余额；
-                 计划里存在此类点而未传本参数 → exit 1（fail-closed，禁静默跳点）。
+  --final-block  数据截止块，也是 v2 receipt target.as_of_block；正式运行必填。
   --dry-run      只解析计划分型统计（不打网），供预检与契约测试。
 
 退出码（对齐 skill gate 惯例）: 0=全点一致 PASS / 2=存在 mismatch FAIL /
@@ -68,6 +68,8 @@ def addr_word(addr):
 def main():
     ap = argparse.ArgumentParser(description="A2 时间抽查执行器（EVM 锚点级第二源直查）")
     ap.add_argument("--plan", required=True, help="anchor_plan.json（anchor_plan.py 产物）")
+    ap.add_argument("--chain", choices=["eth", "bsc", "base", "arbitrum"],
+                    help="正式回执目标链；非 dry-run 必填")
     ap.add_argument("--rpc", help="独立第二源 archive RPC（--dry-run 时可省）")
     ap.add_argument("--token", required=True, help="代币合约地址")
     ap.add_argument("--out", required=True, help="输出 time_spotcheck.json")
@@ -100,6 +102,10 @@ def main():
         return 0
     if not a.rpc:
         sys.exit("[fatal] 非 --dry-run 必须给 --rpc（独立第二源 archive 节点）")
+    if not a.chain:
+        sys.exit("[fatal] 非 --dry-run 必须给 --chain，receipt target 禁止自报空链")
+    if a.final_block is None:
+        sys.exit("[fatal] 非 --dry-run 必须给 --final-block，receipt target 必须冻结截止块")
 
     from net import RpcPool
     pool = RpcPool(a.rpc, rps=a.rps, concurrency=min(a.rps, 8))
@@ -173,7 +179,8 @@ def main():
         verdict, exit_code = "FAIL", 2
     else:
         verdict, exit_code = "PASS", 0
-    out = {"gate": "time_spotcheck", "schema": "time-spotcheck/v1",
+    out = {"gate": "time_spotcheck", "schema": "time-spotcheck/v2",
+           "target": {"chain": a.chain, "token": token, "as_of_block": a.final_block},
            "second_source": a.rpc, "token": token,
            "points": total, "balance_points": len(bal_pts), "tx_points": len(tx_pts),
            "exact_match": exact, "mismatch": mism, "rpc_err": rpc_err,

@@ -95,7 +95,7 @@ def make_case(d):
     write_json(d, "flow_anomaly_report.json", {"schema": "flow-anomaly/v2", "eligible_universe_count": 0,
                                                "sinks": [], "sprays": [],
                                                "requires_adjudication": False})
-    write_json(d, "time_spotcheck.json", {"gate": "time_spotcheck", "schema": "time-spotcheck/v1",
+    write_json(d, "time_spotcheck.json", {"gate": "time_spotcheck", "schema": "time-spotcheck/v2",
                                           "points": 2, "exact_match": 2, "mismatch": 0,
                                           "rpc_err": 0, "verdict": "PASS", "exit_code": 0})
     os.makedirs(os.path.join(d, "sealed"), exist_ok=True)
@@ -125,8 +125,11 @@ def make_provenance(d, entity_map, schema="provenance-ledger/v2", stable=True,
     prior = open(entity_path, "rb").read() if os.path.isfile(entity_path) else None
     write_json(d, "s2_entity_members.json", entity_map)
     trace = os.path.join(HERE, "..", "report", "entity_source_trace.py")
+    labels_path = os.path.join(d, "fixture_labels.json")
+    write_json(d, "fixture_labels.json", {})
     p = subprocess.run([sys.executable, trace, "--edges-sol", os.path.join(d, "data", "edges.jsonl"),
-                        "--total-supply", str(10 ** 12), "--entity-file", entity_path, "--out", out,
+                        "--total-supply", str(10 ** 12), "--entity-file", entity_path,
+                        "--labels-file", labels_path, "--out", out,
                         "--depth-limit", str(depth_limit)],
                        capture_output=True, text=True)
     if p.returncode != 0:
@@ -185,6 +188,27 @@ def main():
         p = run(["verify", "--case-dir", d])
         check("verify READY exit 0", p.returncode == 0)
 
+        dscope = os.path.join(root, "case_scope_required"); os.makedirs(dscope); make_case(dscope)
+        base_gen = ["generate", "--case-dir", dscope, "--status", "READY", "--mode", "full",
+                    "--producer-model", "test-model"]
+        p = run(base_gen + ["--contract", "0x0"])
+        check("READY 缺 chain generate 拒", p.returncode == 2)
+        p = run(base_gen + ["--chain", "bsc"])
+        check("READY 缺 contract generate 拒", p.returncode == 2)
+        p = run(base_gen + ["--chain", "unknown-chain", "--contract", "0x0"])
+        check("READY 未知 chain generate 拒", p.returncode == 2)
+        p = run(["generate", "--case-dir", dscope, "--status", "PARTIAL", "--mode", "full",
+                 "--producer-model", "test-model"])
+        check("PARTIAL 不强制正式 scope", p.returncode == 0)
+
+        p = run(["generate", "--case-dir", dscope, "--status", "READY"] + GEN)
+        check("scope 独立正例生成", p.returncode == 0)
+        broken_scope = json.load(open(os.path.join(dscope, "handoff_manifest.json")))
+        broken_scope["scope"]["chains"] = []
+        write_json(dscope, "handoff_manifest.json", broken_scope)
+        p = run(["verify", "--case-dir", dscope])
+        check("verify 空 chains scope 拒", p.returncode == 2)
+
         # 14. EVM 链缺 time_spotcheck.json 拒 READY；solana 链豁免（6.7.0 时间抽查收编）
         d14 = os.path.join(root, "case_no_spotcheck")
         os.makedirs(d14)
@@ -215,6 +239,14 @@ def main():
         p = run(["freeze", "--case-dir", d] + FRZ + ["--pending", "c2 待裁决"])
         check("无裁决台账 freeze 拒 exit 2", p.returncode == 2)
         setup_freezeable(d)
+        exploratory = json.load(open(os.path.join(d, "provenance_ledger.json")))
+        exploratory["exploration"] = True
+        exploratory["input_binding"]["mode"] = "exploration"
+        exploratory["input_binding"]["labels_file"] = None
+        write_json(d, "provenance_ledger.json", exploratory)
+        p = run(["freeze", "--case-dir", d] + FRZ)
+        check("exploration/null-label provenance freeze 拒", p.returncode == 2)
+        write_json(d, "provenance_ledger.json", make_provenance(d, {"E1": ["0xabc"]}))
         p = run(["freeze", "--case-dir", d] + FRZ + ["--pending", "c2 待裁决"])
         check("四重前置齐备 freeze 初次 exit 0", p.returncode == 0)
         fz0 = json.load(open(os.path.join(d, "entity_freeze.json")))
