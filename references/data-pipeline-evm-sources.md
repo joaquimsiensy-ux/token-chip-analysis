@@ -72,7 +72,7 @@ EOS 侧持有人榜可用 `POST /v1/chain/get_table_by_scope`（`code`=代币合
 - **亿级多段拼接重放必做"丢弃行审计"（dropped-audit）**：去重丢弃行数应=重复键数，不等即有误杀；段间乱序写入造成的误杀行逐行甄别后补放（实测 607 键去重+607 行乱序误杀全部甄别补放，负余额地址 0 才放行）（VIRTUAL(Base+ETH) 多链分析，07-18）
 - **【历史降级·新案禁用】旧 `fetch_hypersync_par.py` CSV 分片路线的跨天无人值守采集件（watchdog 守护+事件观察哨）**：本条所述 `fetch_hypersync_par.py` CSV 分片路线已退役（`merge_parts.py` 同标 deprecated），现行正式主线为 HyperSync v2 Parquet + `done.json` manifest 体系；新案禁止启用旧 Par 路线采集。
   其“守护巡检+断点续传+事件词叫醒”方法模式仍通用可移植：nohup 守护进程每 60s 巡检——备用通道探测到可用即自启采集器、任一采集器死亡自动重启（断点续传保证不重不漏）、备用通道始终未启用则把其段归还主通道兜底、全段落定写 ALL_DONE 退出；会话侧用 Monitor tail -f 守护日志 grep 事件词（ALL_DONE/FALLBACK/HS_DEAD/ALCHEMY_DEAD）实现“完成即叫醒”。
-  历史脚本：scripts/evm/watchdog_dual.py + fetch_hypersync_par.py（v3.4 参数化收编，含 plan.json 段计划固化/.prog 断点/.aldone 完成标记体系）（VIRTUAL(Base+ETH) 多链分析，07-18）
+  历史脚本：`watchdog_dual.py` + `fetch_hypersync_par.py` 已迁考古区 EVM Par route 族（执行会话禁读；v3.4 参数化收编，含 plan.json 段计划固化/.prog 断点/.aldone 完成标记体系）（VIRTUAL(Base+ETH) 多链分析，07-18）
 
 ### 8.2 Base 辅助数据面
 

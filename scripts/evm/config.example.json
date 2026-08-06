@@ -46,26 +46,6 @@
     "url": "https://bnb-mainnet.g.alchemy.com/v2/",
     "key": ""
   },
-  "hypersync_par": {
-    "_comment": "HyperSync 多段并行采集（fetch_hypersync_par.py，亿级标的主力）。key 留空：从 ~/.claude/api-keys.md 取用填入工作目录 config，不写死进 skill 目录。段计划固化在 outdir/plan.json，边界一经生成绝不能改（再平衡禁忌见 data-pipeline-evm.md §8.1）",
-    "url": "https://base.hypersync.xyz/query",
-    "key": "",
-    "token": "0x标的合约地址",
-    "from_block": 0,
-    "to_block": null,
-    "segments": 12,
-    "workers": 6,
-    "sleep": 0.1,
-    "_tier": "Starter 付费档全局请求率 workers×(1/sleep) ≤ 8/s;v3.11.2 起大标的优先用 fetch_hypersync_v2.py,本件转为无 pip 环境的并行兜底",
-    "outdir": "data/base"
-  },
-  "watchdog": {
-    "_comment": "双通道采集守护（watchdog_dual.py，nohup 常驻）。secondary 整节可省略=纯主通道守护；probe_url 含 key 只进工作目录 config",
-    "outdir": "data/base",
-    "plan": "data/base/plan.json",
-    "primary": {"cmd": ["python3", "fetch_hypersync_par.py", "--config", "config.json"], "pgrep": "fetch_hypersync_par", "seg_max": 6, "log": "data/base/collect.log"},
-    "secondary": {"cmd": ["python3", "fetch_alchemy_seg.py"], "pgrep": "fetch_alchemy_seg", "probe_url": "https://base-mainnet.g.alchemy.com/v2/<key>", "probe_proxy": "http://127.0.0.1:7897", "log": "data/base/alchemy.log"}
-  },
   "cex_wallets": {
     "_comment": "常用 CEX 热钱包标签底册见 references/address-book.md，按标的所在链筛选补充",
     "0xf977814e90da44bfa03b6295a0616a897441acec": "cex_binance|Binance HotWallet20",
