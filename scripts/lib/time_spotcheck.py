@@ -138,8 +138,9 @@ def main():
         return 2
 
     try:
-        from net import RpcPool
-        pool = RpcPool(a.rpc, rps=a.rps, concurrency=min(a.rps, 8))
+        from net import attested_rpc_pool
+        pool = attested_rpc_pool(
+            a.rpc, a.chain, formal=True, rps=a.rps, concurrency=min(a.rps, 8))
 
         calls = []
         for p in bal_pts:

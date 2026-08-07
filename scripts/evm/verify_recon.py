@@ -15,7 +15,7 @@ from decimal import Decimal
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
-from chain_registry import evm_chain_id_for
+from net import RpcChainMismatch, attested_rpc_pool
 from receipt_kernel import (build_envelope, finalize_envelope, publish_error_receipt,
                             publish_overwrite)
 
@@ -28,31 +28,12 @@ class ReconFailure(ValueError):
     """A completed hard check failed (exit 2), as distinct from producer ERROR."""
 
 
-def rpc_balance_of(url, token, address, block, proxy=None):
-    import requests
+def rpc_balance_of(pool, token, address, block):
     data = "0x70a08231" + "0" * 24 + address.lower().replace("0x", "")
-    payload = {"jsonrpc": "2.0", "id": 1, "method": "eth_call",
-               "params": [{"to": token, "data": data}, hex(int(block))]}
-    proxies = {"http": proxy, "https": proxy} if proxy else None
-    response = requests.post(url, json=payload, proxies=proxies, timeout=30)
-    response.raise_for_status()
-    body = response.json()
-    if body.get("error") or body.get("result") in (None, "0x"):
-        raise ValueError(f"eth_call 无有效 result: {body.get('error') or body.get('result')!r}")
-    return int(body["result"], 16)
-
-
-def rpc_chain_id(url, proxy=None):
-    import requests
-    proxies = {"http": proxy, "https": proxy} if proxy else None
-    response = requests.post(
-        url, json={"jsonrpc": "2.0", "id": 1, "method": "eth_chainId", "params": []},
-        proxies=proxies, timeout=30)
-    response.raise_for_status()
-    body = response.json()
-    if body.get("error") or body.get("result") in (None, "0x"):
-        raise ValueError(f"eth_chainId 无有效 result: {body.get('error') or body.get('result')!r}")
-    return int(body["result"], 16)
+    result = pool.call("eth_call", [{"to": token, "data": data}, hex(int(block))])
+    if not result.get("ok") or result.get("result") in (None, "0x"):
+        raise ValueError(f"eth_call 无有效 result: {result.get('error') or result.get('result')!r}")
+    return int(result["result"], 16)
 
 
 def parse_args(argv=None):
@@ -109,21 +90,20 @@ def main(argv=None):
         if not rpc:
             raise ValueError("缺 RPC：给 --rpc 或 config.alchemy.url/key")
         proxy = a.proxy if a.proxy is not None else cfg.get("proxy")
-        expected_chain_id = evm_chain_id_for(a.chain)
-        if expected_chain_id is None:
-            raise ValueError(f"chain_registry 未登记 {a.chain} 的 eth_chainId")
-        observed_chain_id = rpc_chain_id(rpc, proxy)
-        if observed_chain_id != expected_chain_id:
-            raise ReconFailure(
-                f"RPC eth_chainId={observed_chain_id} 与 {a.chain} 登记值 {expected_chain_id} 不符")
+        pool = attested_rpc_pool(rpc, a.chain, formal=True, proxy=proxy,
+                                 rps=8, concurrency=1)
+        try:
+            pool.attest()
+        except RpcChainMismatch as exc:
+            raise ReconFailure(str(exc)) from exc
         rows, matched, mismatched, rpc_errors = [], 0, 0, 0
         top = sorted(balances.items(), key=lambda kv: -kv[1])[:a.top_n]
         for address, replay_raw in top:
             if address in {ZERO, DEAD}:
                 continue
             try:
-                chain_raw = int(rpc_balance_of(rpc, target["token"], address,
-                                               a.end_block, proxy))
+                chain_raw = int(rpc_balance_of(pool, target["token"], address,
+                                               a.end_block))
                 ok = chain_raw == replay_raw
                 matched += int(ok); mismatched += int(not ok)
                 rows.append({"address": address, "replay_raw": str(replay_raw),

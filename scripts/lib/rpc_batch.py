@@ -6,11 +6,11 @@
 
 用法:
   # 批量判 EOA/合约（金库性质判定、聚类前设施筛查的标配动作）
-  python3 rpc_batch.py <rpc_url> getcode <地址文件|逗号串> [--out out.json]
+  python3 rpc_batch.py <rpc_url> getcode <地址文件|逗号串> --chain bsc [--out out.json]
   # 批量交易收据（对价重建/gas 溯源）
-  python3 rpc_batch.py <rpc_url> receipts <txhash文件|逗号串> [--out out.json]
+  python3 rpc_batch.py <rpc_url> receipts <txhash文件|逗号串> --chain bsc [--out out.json]
   # 任意方法（每行 JSON: {"method": "...", "params": [...], "key": "可选结果键"}）
-  python3 rpc_batch.py <rpc_url> raw <jsonl文件> [--out out.json]
+  python3 rpc_batch.py <rpc_url> raw <jsonl文件> --chain bsc [--out out.json]
 通用参数: --rps 8 --conc 8 --browser-ua(robinhood 链 WAF 必开) --attempts 6
 
 输出:
@@ -27,7 +27,7 @@ import re
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from net import RpcPool  # noqa: E402
+from net import RpcAttestationError, attested_rpc_pool  # noqa: E402
 
 
 def load_list(src, pattern, what):
@@ -53,6 +53,9 @@ def main():
     ap.add_argument("rpc_url")
     ap.add_argument("mode", choices=["getcode", "receipts", "raw"])
     ap.add_argument("src", help="文件路径或逗号分隔串（raw 模式必须是 jsonl 文件）")
+    ap.add_argument("--chain", required=True,
+                    choices=["eth", "bsc", "base", "arbitrum"],
+                    help="目标链；chain id 只读 chain_registry")
     ap.add_argument("--out", default=None)
     ap.add_argument("--rps", type=float, default=8.0)
     ap.add_argument("--conc", type=int, default=8)
@@ -61,8 +64,14 @@ def main():
                     help="带浏览器 UA（robinhood 链 RPC 的 WAF 必开）")
     a = ap.parse_args()
 
-    pool = RpcPool(a.rpc_url, rps=a.rps, concurrency=a.conc,
-                   attempts=a.attempts, browser_ua=a.browser_ua)
+    pool = attested_rpc_pool(
+        a.rpc_url, a.chain, formal=True, rps=a.rps, concurrency=a.conc,
+        attempts=a.attempts, browser_ua=a.browser_ua)
+    try:
+        pool.attest()
+    except RpcAttestationError as exc:
+        print(f"[fatal] RPC chain attestation failed: {exc}", file=sys.stderr)
+        return 1
 
     if a.mode == "getcode":
         addrs = load_list(a.src, r"0x[0-9a-fA-F]{40}", "EVM 地址")
@@ -112,8 +121,8 @@ def main():
 
     has_err = any(
         (isinstance(v, dict) and "error" in v) for v in out.values())
-    sys.exit(1 if has_err else 0)
+    return 1 if has_err else 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

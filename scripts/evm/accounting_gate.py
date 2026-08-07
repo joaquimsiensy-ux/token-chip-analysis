@@ -49,6 +49,10 @@ from pathlib import Path
 
 import requests
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
+from chain_registry import evm_chain_id_for
+from net import RpcAttestationError, attested_rpc_pool
+
 TRANSFER = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
 ZERO32 = "0x" + "0" * 64
 ZERO_ADDR = "0x" + "0" * 40
@@ -76,7 +80,6 @@ DEFAULT_HS = {
     "arbitrum": "https://arbitrum.hypersync.xyz",
     "polygon": "https://polygon.hypersync.xyz",
 }
-CHAIN_IDS = {"eth": 1, "bsc": 56, "base": 8453, "arbitrum": 42161, "polygon": 137}
 # 权限面扫描（Sourcify ABI 函数名，小写含匹配；只记录不定级）
 PERM_PATTERNS = ["mint", "pause", "blacklist", "blocklist", "freeze", "setfee", "settax",
                  "setmax", "excludefrom", "upgradeto", "burnfrom", "rescue", "setrate",
@@ -88,40 +91,29 @@ def now_iso():
 
 
 class Rpc:
-    """顺序小请求 JSON-RPC 封装（gate 全程 <100 调用，不走 lib/net 批量层——
-    需要 per-endpoint 代理且调用有先后依赖）。"""
+    """Accounting adapter over the sole chain-attested shared RPC session."""
 
-    def __init__(self, url, proxy=None, interval=0.12):
+    def __init__(self, url, chain, proxy=None, interval=0.12):
         self.url, self.interval = url, interval
-        self.sess = requests.Session()
-        self.proxies = {"http": proxy, "https": proxy} if proxy else None
+        self.pool = attested_rpc_pool(
+            url, chain, formal=True, proxy=proxy, rps=max(1.0, 1.0 / interval),
+            concurrency=1, attempts=5)
         self.n_calls = 0
 
     def call(self, method, params, attempts=5, quiet_errors=()):
-        last = None
-        for att in range(attempts):
-            self.n_calls += 1
-            try:
-                r = self.sess.post(self.url, json={"jsonrpc": "2.0", "id": 1,
-                                                   "method": method, "params": params},
-                                   timeout=30, proxies=self.proxies)
-                j = r.json()
-            except Exception as e:  # noqa: BLE001
-                last = f"{type(e).__name__}: {str(e)[:100]}"
-                time.sleep(1.5 * (att + 1))
-                continue
-            if "error" in j:
-                msg = str(j["error"].get("message", ""))
-                code = j["error"].get("code")
-                # 不可重试的语义错误（state 出窗/方法不存在）直接抛给调用方判断
-                if any(s in msg for s in quiet_errors) or code in (-32601, -32602):
-                    raise RpcSemanticError(msg)
-                last = f"rpc {code}: {msg[:100]}"
-                time.sleep(1.5 * (att + 1))
-                continue
-            time.sleep(self.interval)
-            return j.get("result")
-        raise RpcNetError(last or "重试耗尽")
+        try:
+            result = self.pool.call(method, params)
+        except RpcAttestationError as exc:
+            raise RpcNetError(str(exc)) from exc
+        self.n_calls += 1
+        if not result.get("ok"):
+            message = str(result.get("error") or "RPC call failed")
+            if any(item in message for item in quiet_errors) \
+                    or "rpc -32601:" in message or "rpc -32602:" in message:
+                raise RpcSemanticError(message)
+            raise RpcNetError(message)
+        time.sleep(self.interval)
+        return result.get("result")
 
 
 class RpcNetError(Exception):
@@ -362,7 +354,7 @@ def check_rebase(rpc, hs_url, bearer, token, tip, window, logs_in_window):
 
 def check_permissions(chain, token):
     """Sourcify v2 ABI 权限面扫描——只记录不定级；404=未验证不算失败。"""
-    cid = CHAIN_IDS.get(chain)
+    cid = evm_chain_id_for(chain)
     if not cid:
         return {"available": False, "note": "Sourcify 不支持该链"}
     try:
@@ -404,7 +396,7 @@ def main():
     bearer = None
     if os.path.exists(a.hypersync_token_file):
         bearer = open(a.hypersync_token_file).read().strip()
-    rpc = Rpc(rpc_url, proxy=proxy)
+    rpc = Rpc(rpc_url, a.chain, proxy=proxy)
 
     result = {"schema": "accounting-gate/v1", "chain": a.chain, "token": token,
               "producer": {"path": "scripts/evm/accounting_gate.py",

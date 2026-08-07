@@ -33,7 +33,7 @@ V3 头寸是 ERC721，**只有持有人能 burn**。所以"挂的人 ≠ 撤的�
 
 ## 用法
 
-    python3 lp_positions.py --logs <标的Transfer的parquet> --pool 0x.. \\
+    python3 lp_positions.py --chain bsc --logs <标的Transfer的parquet> --pool 0x.. \\
         --threshold 20000 --decimals 18 --out data/lp_positions.json [--rpc URL]
 
 `--threshold` 只用来**选取要查回执的交易**（挂墙级操作都是大额），不参与任何净额计算。
@@ -48,17 +48,17 @@ V3 头寸是 ERC721，**只有持有人能 burn**。所以"挂的人 ≠ 撤的�
 """
 import argparse
 import json
-import ssl
+import os
 import sys
 import time
-import urllib.request
 from collections import Counter, defaultdict
-from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
 
-import certifi
 import duckdb
 
-CTX = ssl.create_default_context(cafile=certifi.where())
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
+from net import RpcAttestationError, attested_rpc_pool
+
 MINT = '0x7a53080ba414158be7ec69b987b5fb7d07dee101fe85488f0853ae16239d0bde'
 BURN = '0x0c396cd989a39f4459b5fa1aed6a9a8dcdbc45908acfd67e028cd568da98982c'
 DEFAULT_RPCS = ['https://bsc-dataseed.binance.org/', 'https://bsc-dataseed1.defibit.io/',
@@ -86,12 +86,22 @@ def main():
     ap.add_argument("--decimals", type=int, default=18)
     ap.add_argument("--out", default="data/lp_positions.json")
     ap.add_argument("--rpc", action="append", help="可重复；默认 BSC 公共节点组")
+    ap.add_argument("--chain", default="bsc",
+                    choices=["eth", "bsc", "base", "arbitrum"],
+                    help="目标链（默认 bsc；chain id 只读 chain_registry）")
     ap.add_argument("--workers", type=int, default=8)
     ap.add_argument("--labels", help="JSON: {地址: 标签}，用于 stdout 可读化")
     a = ap.parse_args()
 
     pool = a.pool.lower()
     rpcs = a.rpc or DEFAULT_RPCS
+    rpc_pool = attested_rpc_pool(
+        rpcs, a.chain, formal=True, rps=max(1, a.workers), concurrency=a.workers)
+    try:
+        rpc_pool.attest()
+    except RpcAttestationError as exc:
+        print(f"[fatal] RPC chain attestation failed: {exc}", file=sys.stderr)
+        return 1
     E = 10 ** a.decimals
     lbl = json.load(open(a.labels)) if a.labels else {}
 
@@ -116,22 +126,9 @@ def main():
         WHERE (e.frm='{pool}' OR e.t2='{pool}') AND e.v >= {int(a.threshold * E)}""").fetchall()
     print(f"待查回执 {len(rows)} 笔（门槛 {a.threshold:g} 枚）", flush=True)
 
-    def rpc(m, p, i=0):
-        req = urllib.request.Request(
-            rpcs[i % len(rpcs)],
-            data=json.dumps({"jsonrpc": "2.0", "id": 1, "method": m, "params": p}).encode(),
-            headers={'Content-Type': 'application/json'})
-        for _ in range(3):
-            try:
-                with urllib.request.urlopen(req, timeout=30, context=CTX) as f:
-                    return json.loads(f.read()).get('result')
-            except Exception:
-                time.sleep(0.5)
-        return None
-
-    def work(x):
-        i, (tx, ts) = x
-        rc = rpc('eth_getTransactionReceipt', [tx], i)
+    def parse_receipt(row, response):
+        tx, ts = row
+        rc = response.get('result') if response.get('ok') else None
         if not rc:
             return []
         out = []
@@ -148,11 +145,12 @@ def main():
         return out
 
     res, t0 = [], time.time()
-    with ThreadPoolExecutor(max_workers=a.workers) as ex:
-        for i, r in enumerate(ex.map(work, enumerate(rows))):
-            res.extend(r)
-            if i and i % 200 == 0:
-                print(f"  {i}/{len(rows)}  解析 {len(res)} 个 LP 事件  {time.time()-t0:.0f}s", flush=True)
+    responses = rpc_pool.call_many(
+        [('eth_getTransactionReceipt', [tx]) for tx, _ in rows])
+    for i, (row, response) in enumerate(zip(rows, responses)):
+        res.extend(parse_receipt(row, response))
+        if i and i % 200 == 0:
+            print(f"  {i}/{len(rows)}  解析 {len(res)} 个 LP 事件  {time.time()-t0:.0f}s", flush=True)
     res.sort(key=lambda x: (x['block'], x['tx']))
     json.dump(res, open(a.out, 'w'), indent=1)
     if not res:
@@ -202,7 +200,8 @@ def main():
         print(f"\n（弱信号 {len(weak)} 个：区间内只见撤出不见挂入，多半是挂入额低于 --threshold 被漏选，"
               f"不是 NFT 转移；要排除就把门槛调低重跑）")
     print(f"\n[out] {len(res)} 条 → {a.out}")
+    return 0
 
 
 if __name__ == '__main__':
-    main()
+    raise SystemExit(main())

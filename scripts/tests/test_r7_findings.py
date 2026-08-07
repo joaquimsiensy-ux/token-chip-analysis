@@ -76,7 +76,7 @@ def test_r7_01():
     shared = load(ROOT / "scripts/report/shared_release_receipt.py", "r7_shared")
     for mutation in ("missing", "bad-hash"):
         with tempfile.TemporaryDirectory() as td:
-            case = Path(td)
+            case = Path(td).resolve()
             build_case(case)
             wrapper = json.loads((case / "reconciliation_report.json").read_text())
             if mutation == "missing":
@@ -107,7 +107,7 @@ def test_r7_02():
 def test_r7_03():
     """Resume rows without mint/cutoff/endpoint identity must not be reused."""
     with tempfile.TemporaryDirectory() as td, pushd(td):
-        root = Path(td)
+        root = Path(td).resolve()
         write_json(root / "config.json", {"mint": "mint-b", "ref_slot": 1000, "ref_ts": 1})
         out = root / "anchors.jsonl"
         out.write_text(json.dumps({"date": "2026-01-01", "from_slot": 10,
@@ -125,7 +125,7 @@ def test_r7_04():
     mod = load(ROOT / "scripts/lib/supply_truth_gate.py", "r7_supply")
     problems = []
     with tempfile.TemporaryDirectory() as td:
-        root = Path(td); out = root / "receipt.json"
+        root = Path(td).resolve(); out = root / "receipt.json"
         argv = ["supply_truth_gate.py", "--chain", "solana", "--mint", "MintA",
                 "--as-of-block", "123", "--replay-net-raw", "100", "--out", str(out)]
         with mock.patch.object(sys, "argv", argv), \
@@ -187,7 +187,7 @@ def test_r7_06():
     """Reverse windows fail without artifacts; gaps quarantine old formal output."""
     problems = []
     with tempfile.TemporaryDirectory() as td, pushd(td):
-        root = Path(td); write_json(root / "config.json", {"mint": "mint-a"})
+        root = Path(td).resolve(); write_json(root / "config.json", {"mint": "mint-a"})
         mod = load(ROOT / "scripts/solana/window_fetch.py", "r7_window")
         out = root / "reverse.jsonl"; receipt = root / "reverse_receipt.json"
         rc = mod.main(["10", "0", str(out), "--receipt", str(receipt), "--conc", "1"])
@@ -220,7 +220,7 @@ def test_r7_07():
     audit = load(ROOT / "scripts/report/audit_release_gate.py", "r7_audit_sets")
     problems = []
     with tempfile.TemporaryDirectory() as td:
-        proc, _ = _handoff_generate(Path(td), "arbitrum")
+        proc, _ = _handoff_generate(Path(td).resolve(), "arbitrum")
         if proc.returncode == 0:
             problems.append("handoff generate accepted READY for exploration-only arbitrum")
     if set(handoff.READY_CHAINS) != set(audit.formal_chains()):
@@ -231,7 +231,7 @@ def test_r7_07():
 def test_r7_08():
     """A declared PASS with nonzero exit code cannot contribute to READY."""
     with tempfile.TemporaryDirectory() as td:
-        case = Path(td)
+        case = Path(td).resolve()
         generated, fixture = _handoff_generate(
             case, "bsc", "--gate", "x:PASS:2:accounting_mode.json")
         verified = fixture.run(["verify", "--case-dir", str(case)]) \
@@ -243,7 +243,7 @@ def test_r7_08():
 def test_r7_09():
     """Formal entity trace requires at least one valid label."""
     with tempfile.TemporaryDirectory() as td:
-        root = Path(td)
+        root = Path(td).resolve()
         (root / "edges.jsonl").write_text(
             json.dumps([86400, 1, 0, 0,
                         "0x0000000000000000000000000000000000000000", "0xabc", 100]) + "\n")
@@ -263,7 +263,7 @@ def test_r7_10():
     """Archive-copy failure rolls labels and manifest back byte-for-byte."""
     mod = load(ROOT / "scripts/labels/add_labels.py", "r7_add_labels")
     with tempfile.TemporaryDirectory() as td:
-        root = Path(td); labels = root / "labels"; labels.mkdir()
+        root = Path(td).resolve(); labels = root / "labels"; labels.mkdir()
         additions = root / "additions"
         old = labels / "labels-eth.csv"
         write_table(old, "eth", name="old")
@@ -301,7 +301,7 @@ def test_r7_10():
 def test_r7_11():
     """A staging verified_at older than publication is directional data loss."""
     with tempfile.TemporaryDirectory() as td:
-        root = Path(td); pub = root / "pub"; out = root / "out"
+        root = Path(td).resolve(); pub = root / "pub"; out = root / "out"
         for chain in ("eth", "bsc", "base", "sol", "robinhood"):
             write_table(pub / f"labels-{chain}.csv", chain, verified_at="2026-08-06")
             write_table(out / f"labels-{chain}.csv", chain,
@@ -330,15 +330,16 @@ def test_r7_12():
     mod = load(ROOT / "scripts/evm/verify_recon.py", "r7_verify_chain")
     methods = []
 
-    def post(url, json=None, **kwargs):
-        method = json.get("method"); methods.append(method)
-        if method == "eth_chainId":
-            return _Response({"jsonrpc": "2.0", "id": 1, "result": "0x1"})
-        return _Response({"jsonrpc": "2.0", "id": 1, "result": hex(100)})
+    async def post(client, bucket, method, url, *, json_body=None, attempts=6):
+        rpc_method = json_body.get("method"); methods.append(rpc_method)
+        if rpc_method == "eth_chainId":
+            return {"jsonrpc": "2.0", "id": 1, "result": "0x1"}
+        return {"jsonrpc": "2.0", "id": 1, "result": hex(100)}
 
     with tempfile.TemporaryDirectory() as td:
-        root = Path(td); paths = recon_fixture(root, closed=True); receipt = root / "receipt.json"
-        with mock.patch("requests.post", side_effect=post):
+        root = Path(td).resolve(); paths = recon_fixture(root, closed=True); receipt = root / "receipt.json"
+        import net
+        with mock.patch.object(net, "_request_json", side_effect=post):
             rc = mod.main(recon_args(paths, receipt))
     assert rc != 0 and "eth_call" not in methods, \
         f"wrong-chain RPC reached balance comparison (rc={rc}, methods={methods})"
@@ -356,9 +357,9 @@ def test_r7_13():
     """Spotcheck binds plan target and a path/size/hash file_ref."""
     mod = load(ROOT / "scripts/lib/time_spotcheck.py", "r7_spotcheck")
     problems = []
-    fake_net = types.SimpleNamespace(RpcPool=_Pool)
+    fake_net = types.SimpleNamespace(attested_rpc_pool=lambda *args, **kwargs: _Pool())
     with tempfile.TemporaryDirectory() as td:
-        root = Path(td)
+        root = Path(td).resolve()
         point = {"kind": "fixture", "addr": "0x" + "1" * 40,
                  "day_end_block": 10, "expected_balance_raw": "100"}
         mismatch = root / "mismatch.json"

@@ -11,12 +11,12 @@
 用法:
   # 1) 先用份额排序产出候选清单（每行 "地址,份额" 或纯地址）
   # 2) 再穿透（默认 selector 即 depositBalances(address,address)）
-  python3 pierce_stake.py --tracker 0x质押合约 --token 0x标的 \
+  python3 pierce_stake.py --chain arbitrum --tracker 0x质押合约 --token 0x标的 \
       --addrs stakers_ranked.csv --topn 1500 --out pierce.json \
       [--rpc https://arb1.arbitrum.io/rpc] [--batch 150] [--selector 0xf5d9d63e]
 
   # 单参数函数（如 stakedAmounts(address)）用 --one-arg
-  python3 pierce_stake.py --tracker 0x... --addrs a.txt --out s.json \
+  python3 pierce_stake.py --chain arbitrum --tracker 0x... --addrs a.txt --out s.json \
       --selector 0x10c1c103 --one-arg
 
 输出: {地址: 原始 wei 字符串}，只收录 >0 的地址。stderr 打印批次失败告警。
@@ -28,9 +28,10 @@
 算法: from Crypto.Hash import keccak; k=keccak.new(digest_bits=256); k.update(b'sig'); k.hexdigest()[:8]
 （pycryptodome 本机可用；eth_hash/pysha3 未装。hashlib 的 sha3_256 是 NIST 版≠keccak，不能用）
 """
-import argparse, json, sys, time
+import argparse, json, os, sys, time
 
-import requests
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "lib"))
+from net import RpcAttestationError, attested_rpc_pool
 
 MC3 = "0xca11bde05977b3631167028862be2a173976ca11"
 DEFAULT_NODES = ["https://arb1.arbitrum.io/rpc",
@@ -84,18 +85,16 @@ def decode(res, n):
     return out
 
 
-def query(nodes, target, addrs, token, selector):
+def query(pool, target, addrs, token, selector):
     payload = encode_aggregate3(target, addrs, token, selector)
     err = "?"
     for attempt in range(6):
-        node = nodes[attempt % len(nodes)]
         try:
-            r = requests.post(node, json={"jsonrpc": "2.0", "id": 1, "method": "eth_call",
-                                          "params": [{"to": MC3, "data": payload}, "latest"]},
-                              timeout=60).json()
-            if r.get("result") and r["result"] != "0x":
-                return decode(r["result"], len(addrs))
-            err = str(r.get("error"))[:120]
+            result = pool.call("eth_call", [{"to": MC3, "data": payload}, "latest"])
+            raw = result.get("result") if result.get("ok") else None
+            if raw and raw != "0x":
+                return decode(raw, len(addrs))
+            err = str(result.get("error"))[:120]
         except Exception as e:
             err = str(e)[:120]
         time.sleep(1.5)
@@ -128,9 +127,18 @@ def main():
     ap.add_argument("--selector", default="0xf5d9d63e")
     ap.add_argument("--one-arg", action="store_true", help="单参数函数（忽略 --token）")
     ap.add_argument("--rpc", action="append", default=None, help="可多次传入，轮换")
+    ap.add_argument("--chain", default="arbitrum",
+                    choices=["eth", "bsc", "base", "arbitrum"],
+                    help="目标链（默认 arbitrum；chain id 只读 chain_registry）")
     a = ap.parse_args()
 
     nodes = a.rpc or DEFAULT_NODES
+    pool = attested_rpc_pool(nodes, a.chain, formal=True, rps=4, concurrency=1)
+    try:
+        pool.attest()
+    except RpcAttestationError as exc:
+        print(f"[fatal] RPC chain attestation failed: {exc}", file=sys.stderr)
+        return 1
     token = None if a.one_arg else a.token
     if not a.one_arg and not token:
         sys.exit("[fatal] 双参数调用必须给 --token（或加 --one-arg）")
@@ -143,7 +151,7 @@ def main():
     res, nfail = {}, 0
     for i in range(0, len(cand), a.batch):
         chunk = cand[i:i + a.batch]
-        vals = query(nodes, a.tracker, chunk, token, a.selector)
+        vals = query(pool, a.tracker, chunk, token, a.selector)
         for addr, v in zip(chunk, vals):
             if v is None:
                 nfail += 1
@@ -158,7 +166,8 @@ def main():
           f"{f'，{nfail} 个查询失败' if nfail else ''} -> {a.out}")
     if nfail:
         print("  [warn] 有查询失败，勿把结果当完整覆盖；对账时以覆盖率如实报告", file=sys.stderr)
+    return 1 if nfail else 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

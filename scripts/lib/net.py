@@ -16,8 +16,9 @@ curl_json 只判断传输、HTTP 状态与 JSON/NDJSON 解码是否成功；“�
 可信”属于 adapter 的分页终止/区间覆盖判断，本层绝不替业务层作 EMPTY_OK 裁决。
 
 用法（同步入口，内部起事件循环，调用方无需懂 async）:
-    from net import RpcPool, http_get_many
-    pool = RpcPool("https://rpc...", rps=10, concurrency=8, headers={...})
+    from net import attested_rpc_pool, http_get_many
+    pool = attested_rpc_pool("https://rpc...", "bsc", rps=10, concurrency=8,
+                             headers={...})
     results = pool.call_many([("eth_getCode", [addr, "latest"]), ...])
     # results[i] = {"ok": True, "result": ...} 或 {"ok": False, "error": "..."}
 
@@ -167,6 +168,14 @@ class _RetryableHTTP(Exception):
     pass
 
 
+class RpcAttestationError(RuntimeError):
+    """The endpoint's EVM chain identity could not be proven."""
+
+
+class RpcChainMismatch(RpcAttestationError):
+    """The endpoint proved a chain id other than the configured target."""
+
+
 def _should_retry(e: BaseException) -> bool:
     return isinstance(e, (_RetryableHTTP, httpx.TransportError, httpx.TimeoutException))
 
@@ -191,8 +200,28 @@ class RpcPool:
     Helius 免费层禁 batch(-32403)，逐笔并发是通用兼容形态）。"""
 
     def __init__(self, url, *, rps=8.0, concurrency=8, headers=None,
-                 timeout=45.0, attempts=6, browser_ua=False):
-        self.url = url
+                 timeout=45.0, attempts=6, browser_ua=False,
+                 expected_chain_id=None, proxy=None):
+        if isinstance(url, str):
+            endpoints = [url]
+        else:
+            endpoints = list(url)
+        if not endpoints or any(not isinstance(item, str) or not item.strip()
+                                for item in endpoints):
+            raise ValueError("RpcPool requires one or more non-empty endpoint URLs")
+        if len(endpoints) != len(set(endpoints)):
+            raise ValueError("RpcPool endpoint URLs must be distinct")
+        if expected_chain_id is not None and (
+                isinstance(expected_chain_id, bool)
+                or not isinstance(expected_chain_id, int)
+                or expected_chain_id <= 0):
+            raise ValueError("expected_chain_id must be a positive integer or None")
+        self.endpoints = endpoints
+        self.url = endpoints[0]
+        self._active_index = 0
+        self._attested_endpoint = None
+        self.expected_chain_id = expected_chain_id
+        self.proxy = proxy
         self.rps, self.concurrency = rps, concurrency
         self.timeout, self.attempts = timeout, attempts
         self.headers = dict(headers or {})
@@ -202,11 +231,11 @@ class RpcPool:
                 "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
                 "(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36")
 
-    async def _one(self, client, bucket, sem, i, method, params):
+    async def _one(self, client, bucket, sem, endpoint, i, method, params):
         async with sem:
             body = {"jsonrpc": "2.0", "id": i, "method": method, "params": params}
             try:
-                j = await _request_json(client, bucket, "POST", self.url,
+                j = await _request_json(client, bucket, "POST", endpoint,
                                         json_body=body, attempts=self.attempts)
             except Exception as e:
                 return {"ok": False, "error": f"{type(e).__name__}: {str(e)[:120]}"}
@@ -217,7 +246,7 @@ class RpcPool:
                     # RPC 层限流：温和等待后单次重打（tenacity 管不到成功 HTTP 里的错误对象）
                     await asyncio.sleep(2)
                     try:
-                        j = await _request_json(client, bucket, "POST", self.url,
+                        j = await _request_json(client, bucket, "POST", endpoint,
                                                 json_body=body, attempts=self.attempts)
                         err = j.get("error") if isinstance(j, dict) else None
                     except Exception as e:
@@ -226,17 +255,98 @@ class RpcPool:
                     return {"ok": False, "error": f"rpc {err.get('code')}: {str(err.get('message'))[:120]}"}
             return {"ok": True, "result": j.get("result")}
 
+    async def _attest_endpoint(self, client, bucket, endpoint):
+        if self.expected_chain_id is None:
+            return None
+        body = {"jsonrpc": "2.0", "id": "chain-attestation",
+                "method": "eth_chainId", "params": []}
+        try:
+            response = await _request_json(
+                client, bucket, "POST", endpoint, json_body=body,
+                attempts=self.attempts)
+        except Exception as exc:
+            raise RpcAttestationError(
+                f"eth_chainId failed for {endpoint}: {type(exc).__name__}: {exc}") from exc
+        if not isinstance(response, dict):
+            raise RpcAttestationError(
+                f"eth_chainId returned non-object for {endpoint}")
+        if response.get("error") is not None:
+            raise RpcAttestationError(
+                f"eth_chainId RPC error for {endpoint}: {response.get('error')}")
+        raw = response.get("result")
+        if not isinstance(raw, str) or not raw.startswith("0x") or raw == "0x":
+            raise RpcAttestationError(
+                f"eth_chainId returned invalid result for {endpoint}: {raw!r}")
+        try:
+            observed = int(raw, 16)
+        except ValueError as exc:
+            raise RpcAttestationError(
+                f"eth_chainId returned invalid hex for {endpoint}: {raw!r}") from exc
+        if observed <= 0:
+            raise RpcAttestationError(
+                f"eth_chainId returned non-positive id for {endpoint}: {raw!r}")
+        if observed != self.expected_chain_id:
+            raise RpcChainMismatch(
+                f"RPC eth_chainId={observed} does not match expected "
+                f"{self.expected_chain_id} for {endpoint}")
+        self._attested_endpoint = endpoint
+        return observed
+
+    def _client_kwargs(self):
+        kwargs = {"headers": self.headers, "timeout": self.timeout, "trust_env": False}
+        if self.proxy:
+            kwargs["proxy"] = self.proxy
+        return kwargs
+
     async def _run(self, calls, progress):
         bucket = _Bucket(self.rps)
         sem = asyncio.Semaphore(self.concurrency)
-        async with httpx.AsyncClient(headers=self.headers, timeout=self.timeout) as client:
-            tasks = [self._one(client, bucket, sem, i, m, p)
-                     for i, (m, p) in enumerate(calls)]
-            out = await asyncio.gather(*tasks)  # gather 保原序
-            if progress:
-                nb = sum(1 for r in out if not r["ok"])
-                print(f"[net] {len(out)} 调用完成, 失败 {nb}", file=sys.stderr, flush=True)
-            return list(out)
+        async with httpx.AsyncClient(**self._client_kwargs()) as client:
+            last = None
+            for offset in range(len(self.endpoints)):
+                index = (self._active_index + offset) % len(self.endpoints)
+                endpoint = self.endpoints[index]
+                if self.expected_chain_id is not None and self._attested_endpoint != endpoint:
+                    try:
+                        await self._attest_endpoint(client, bucket, endpoint)
+                    except RpcChainMismatch:
+                        raise
+                    except RpcAttestationError as exc:
+                        last = exc
+                        self._attested_endpoint = None
+                        if offset + 1 < len(self.endpoints):
+                            continue
+                        raise
+                tasks = [self._one(client, bucket, sem, endpoint, i, m, p)
+                         for i, (m, p) in enumerate(calls)]
+                out = list(await asyncio.gather(*tasks))  # gather 保原序
+                self.url = endpoint
+                self._active_index = index
+                if out and all(not item["ok"] for item in out) \
+                        and offset + 1 < len(self.endpoints):
+                    last = out
+                    self._attested_endpoint = None
+                    continue
+                if progress:
+                    nb = sum(1 for item in out if not item["ok"])
+                    print(f"[net] {len(out)} 调用完成, 失败 {nb}",
+                          file=sys.stderr, flush=True)
+                return out
+            if isinstance(last, RpcAttestationError):
+                raise last
+            return list(last or [])
+
+    async def _attest_only(self):
+        if self.expected_chain_id is None:
+            raise RpcAttestationError("RpcPool has no expected_chain_id")
+        bucket = _Bucket(self.rps)
+        endpoint = self.endpoints[self._active_index]
+        async with httpx.AsyncClient(**self._client_kwargs()) as client:
+            return await self._attest_endpoint(client, bucket, endpoint)
+
+    def attest(self):
+        """Prove the active endpoint identity without issuing a business call."""
+        return asyncio.run(self._attest_only())
 
     def call_many(self, calls, progress=True):
         """calls: [(method, params), ...] -> 同序 [{ok,result|error}, ...]"""
@@ -244,6 +354,23 @@ class RpcPool:
 
     def call(self, method, params):
         return self.call_many([(method, params)], progress=False)[0]
+
+
+def attested_rpc_pool(url, chain, *, formal=True, **kwargs):
+    """Build the sole EVM RPC session from chain_registry identity facts.
+
+    Formal callers may not supply or guess a chain id.  A registry record with
+    ``evm_chain_id=None`` is an explicit capability gap and is rejected before
+    any network request.  Exploration callers can opt out with ``formal=False``.
+    """
+    from chain_registry import evm_chain_id_for, resolve_alias
+
+    canonical = resolve_alias(chain)
+    expected = evm_chain_id_for(canonical)
+    if formal and expected is None:
+        raise RpcAttestationError(
+            f"chain_registry has no formal EVM chain identity for {canonical}")
+    return RpcPool(url, expected_chain_id=expected, **kwargs)
 
 
 def http_get_many(urls, *, rps=5.0, concurrency=6, headers=None,

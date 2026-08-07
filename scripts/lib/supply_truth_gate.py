@@ -37,6 +37,7 @@ from pathlib import Path
 
 from receipt_kernel import (build_envelope, finalize_envelope, publish_error_receipt,
                             publish_overwrite)
+from net import attested_rpc_pool
 
 SEL_TOTSUP = "0x18160ddd"  # totalSupply()
 
@@ -90,9 +91,12 @@ def fetch_onchain_supply(chain, token=None, mint=None, rpc=None, proxy=None,
         result = res["result"]
         return int(result["value"]["amount"]), int(result["context"]["slot"])
     tag = hex(int(as_of_block)) if as_of_block is not None else "latest"
-    res = _post(url, {"jsonrpc": "2.0", "id": 1, "method": "eth_call",
-                      "params": [{"to": token, "data": SEL_TOTSUP}, tag]}, proxy)
-    hexval = res["result"]
+    pool = attested_rpc_pool(url, chain, formal=True, proxy=proxy,
+                             rps=2, concurrency=1)
+    response = pool.call("eth_call", [{"to": token, "data": SEL_TOTSUP}, tag])
+    if not response.get("ok"):
+        raise ValueError(f"eth_call totalSupply RPC 失败: {response.get('error')}")
+    hexval = response.get("result")
     if not hexval or hexval == "0x":
         raise ValueError(f"eth_call totalSupply 返回空（{hexval!r}）——地址/链是否正确？")
     return int(hexval, 16), None

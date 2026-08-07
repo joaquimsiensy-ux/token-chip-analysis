@@ -1,16 +1,19 @@
 #!/usr/bin/env python3
-"""bloXroute 免注册 getLogs 段扫描器（requests 版，替代 scan_transfers.py 的 curl 线程池）。
+"""bloXroute 免注册 getLogs 段扫描器（共享 attested session，替代旧 curl 线程池）。
 
 为什么单独一件：scan_transfers.py 的 subprocess(curl)×8 线程池在本机实测挂死零产出；
-本件用 requests.Session + 低并发（默认 3 线程 0.4s 间隔）实测稳定。适用场景=近期段快扫
+本件用共享 net.py session + 低并发（默认 3 线程 0.4s 间隔）。适用场景=近期段快扫
 （bloXroute 历史窗口动态、约 55-60 天，用前先二分探测边界；旧段用 HyperSync）。
 输出 7 列与 replay_pass1 直用（ts 留空，后用锚点插值补）。
 
-用法：python3 scan_bloxroute_seg.py --token 0x.. --lo <块> --hi <块> --out data/seg.csv \
+用法：python3 scan_bloxroute_seg.py --chain bsc --token 0x.. --lo <块> --hi <块> --out data/seg.csv \
         [--workers 3] [--sleep 0.4] [--step 10000]
 断点续传：--out 存在且 <out>.done.json 有已完成段清单时自动跳过。
 （来源：SIREN(BSC) 分析实战产物，2026-07-19；bloXroute 并发/窗口实测见 data-pipeline-evm.md §1）"""
-import requests, json, csv, time, threading, queue, os, argparse
+import json, csv, time, threading, queue, os, argparse, sys
+
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "lib"))
+from net import RpcAttestationError, attested_rpc_pool
 
 TOPIC = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
 URL = "https://bsc.rpc.blxrbdn.com"
@@ -26,7 +29,17 @@ def main():
     ap.add_argument("--workers", type=int, default=3)
     ap.add_argument("--sleep", type=float, default=0.4)
     ap.add_argument("--step", type=int, default=10000)
+    ap.add_argument("--chain", default="bsc",
+                    choices=["eth", "bsc", "base", "arbitrum"],
+                    help="目标链（默认 bsc；chain id 只读 chain_registry）")
     a = ap.parse_args()
+    pool = attested_rpc_pool(a.url, a.chain, formal=True, rps=max(1, a.workers),
+                             concurrency=max(1, a.workers))
+    try:
+        pool.attest()
+    except RpcAttestationError as exc:
+        print(f"[fatal] RPC chain attestation failed: {exc}", file=sys.stderr)
+        return 1
     token = a.token.lower()
     done_f = a.out + ".done.json"
     done = set(json.load(open(done_f))) if os.path.exists(done_f) else set()
@@ -43,7 +56,6 @@ def main():
     fails = []
 
     def worker():
-        s = requests.Session()
         while True:
             try:
                 seg = q.get_nowait()
@@ -53,14 +65,14 @@ def main():
             ok = False
             for att in range(5):
                 try:
-                    r = s.post(a.url, json={"jsonrpc": "2.0", "id": 1, "method": "eth_getLogs",
-                                            "params": [{"fromBlock": hex(seg), "toBlock": hex(hi),
-                                                        "address": token, "topics": [[TOPIC]]}]},
-                               timeout=60)
-                    d = r.json()
-                    if isinstance(d.get("result"), list):
+                    result = pool.call("eth_getLogs", [{"fromBlock": hex(seg),
+                                                        "toBlock": hex(hi),
+                                                        "address": token,
+                                                        "topics": [[TOPIC]]}])
+                    logs = result.get("result") if result.get("ok") else None
+                    if isinstance(logs, list):
                         rows = []
-                        for lg in d["result"]:
+                        for lg in logs:
                             tx = lg["transactionHash"]
                             li = int(lg["logIndex"], 16)
                             data = lg.get("data") or "0x0"
@@ -93,7 +105,8 @@ def main():
     json.dump(sorted(done), open(done_f, "w"))
     f.close()
     print(f"DONE segs={len(done)} fails={fails[:20]}", flush=True)
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

@@ -109,9 +109,11 @@ def recon_args(paths, out):
 
 def test_verify_recon(root):
     mod = load(ROOT / "scripts/evm/verify_recon.py", "sixlens_verify_recon")
+    pool = mock.Mock()
+    pool.attest.return_value = 56
     paths = recon_fixture(root / "closed", closed=True)
     out = root / "closed" / "receipt.json"
-    with mock.patch.object(mod, "rpc_chain_id", return_value=56), \
+    with mock.patch.object(mod, "attested_rpc_pool", return_value=pool), \
             mock.patch.object(mod, "rpc_balance_of", return_value=100):
         assert mod.main(recon_args(paths, out)) == 0
     receipt = json.loads(out.read_text())
@@ -120,20 +122,20 @@ def test_verify_recon(root):
 
     paths = recon_fixture(root / "supply-fail", closed=False)
     out = root / "supply-fail" / "receipt.json"
-    with mock.patch.object(mod, "rpc_chain_id", return_value=56), \
+    with mock.patch.object(mod, "attested_rpc_pool", return_value=pool), \
             mock.patch.object(mod, "rpc_balance_of", return_value=90):
         assert mod.main(recon_args(paths, out)) == 2
     assert json.loads(out.read_text())["verdict"] == "FAIL"
 
     paths = recon_fixture(root / "balance-fail", closed=True)
     out = root / "balance-fail" / "receipt.json"
-    with mock.patch.object(mod, "rpc_chain_id", return_value=56), \
+    with mock.patch.object(mod, "attested_rpc_pool", return_value=pool), \
             mock.patch.object(mod, "rpc_balance_of", return_value=99):
         assert mod.main(recon_args(paths, out)) == 2
 
     paths = recon_fixture(root / "rpc-fail", closed=True)
     out = root / "rpc-fail" / "receipt.json"
-    with mock.patch.object(mod, "rpc_chain_id", return_value=56), \
+    with mock.patch.object(mod, "attested_rpc_pool", return_value=pool), \
             mock.patch.object(mod, "rpc_balance_of", side_effect=RuntimeError("rpc down")):
         assert mod.main(recon_args(paths, out)) == 1
     assert not out.exists()
@@ -263,7 +265,7 @@ def test_window_fetch(root):
 
 def main():
     with tempfile.TemporaryDirectory() as td:
-        root = Path(td)
+        root = Path(td).resolve()
         test_shared_receipt_semantics(root / "shared")
         test_verify_recon(root / "recon")
         test_anchor_sampler(root)

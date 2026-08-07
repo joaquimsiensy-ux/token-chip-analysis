@@ -3,7 +3,8 @@
 来源：SIREN(BSC) 会话实战产物 2026-07；v2.26 参数化+块段接力（PING(Base) 分析，2026-07-17）。
 
 用法（config 模式，key 不落 skill 目录）：
-  python3 fetch_alchemy.py --config config.json --out-dir data_alchemy [--from-block N --to-block M]
+  python3 fetch_alchemy.py --config config.json --chain <eth|bsc|base> \
+      --out-dir data_alchemy [--from-block N --to-block M]
   config.json 字段：
     alchemy_key      Alchemy API key（从 ~/.claude/api-keys.md 登记文件取用）
     alchemy_network  eth-mainnet / bnb-mainnet / base-mainnet 等（*.g.alchemy.com 国内须走 clash 代理）
@@ -17,7 +18,10 @@
 断点续传：不依赖会过期的 pageKey，按已有 CSV 末行区块重叠续拉、段内靠 uniqueId 去重；
 免费层高峰期可遇平台级 "global traffic" 限流（实测可整夜不可用），中断后重跑即续。
 """
-import requests, json, csv, os, sys, time, argparse
+import json, csv, os, sys, time, argparse
+
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "lib"))
+from net import RpcAttestationError, attested_rpc_pool
 
 
 def main():
@@ -27,6 +31,9 @@ def main():
     ap.add_argument("--from-block", type=int, default=0, help="起始块（含）；有已存 CSV 时取 max(末行块,此值)")
     ap.add_argument("--to-block", type=int, default=None, help="终止块（含）；缺省 latest")
     ap.add_argument("--receipt", help="成功收尾后写正式 evm-collector-run/v2（须显式块界）")
+    ap.add_argument("--chain", required=True,
+                    choices=["eth", "bsc", "base", "arbitrum"],
+                    help="目标链；chain id 只读 chain_registry")
     a = ap.parse_args()
 
     cfg = json.load(open(a.config))
@@ -34,14 +41,20 @@ def main():
     if not key or not token:
         sys.exit("config 缺 alchemy_key/token（key 从 ~/.claude/api-keys.md 取用，不写死进 skill 目录）")
     ep = f"https://{cfg.get('alchemy_network', 'base-mainnet')}.g.alchemy.com/v2/{key}"
+    proxy = cfg.get("proxy") or None
+    pool = attested_rpc_pool(ep, a.chain, formal=True, proxy=proxy,
+                             rps=4, concurrency=1, attempts=6)
+    try:
+        pool.attest()
+    except RpcAttestationError as exc:
+        print(f"[fatal] RPC chain attestation failed: {exc}", file=sys.stderr)
+        return 1
     os.makedirs(a.out_dir, exist_ok=True)
     out = os.path.join(a.out_dir, "transfers_full.csv")
     existed_before = os.path.exists(out) and os.path.getsize(out) > 0
     if a.receipt and (a.to_block is None or existed_before):
         ap.error("正式 Alchemy receipt 要求显式 --to-block 且输出运行前不存在")
     ckpt = os.path.join(a.out_dir, "alchemy_pagekey.json")
-    proxies = {"http": cfg["proxy"], "https": cfg["proxy"]} if cfg.get("proxy") else None
-
     pagekey = None
     mode = "w"
     start = a.from_block
@@ -61,7 +74,6 @@ def main():
     if mode == "w":
         w.writerow(["block", "ts", "tx", "from", "to", "value_raw", "uniqueId"])
     total, page, t0 = 0, 0, time.time()
-    sess = requests.Session()
     to_block_hex = hex(a.to_block) if a.to_block is not None else "latest"
     while True:
         params = {"fromBlock": hex(start), "toBlock": to_block_hex, "contractAddresses": [token],
@@ -71,13 +83,12 @@ def main():
         ok = False
         for attempt in range(14):
             try:
-                r = sess.post(ep, json={"jsonrpc": "2.0", "id": 1,
-                                        "method": "alchemy_getAssetTransfers",
-                                        "params": [params]}, timeout=90, proxies=proxies).json()
-                if "result" in r:
+                response = pool.call("alchemy_getAssetTransfers", [params])
+                if response.get("ok") and isinstance(response.get("result"), dict):
+                    r = {"result": response["result"]}
                     ok = True
                     break
-                err = str(r.get("error", ""))
+                err = str(response.get("error", ""))
                 if "429" in err or "rate" in err.lower() or "capacity" in err.lower() or "exceeded" in err.lower():
                     wait_s = min(1200, 20 * (attempt + 1) ** 1.5)
                     print(f"[429] attempt {attempt+1}, wait {wait_s:.0f}s", flush=True)
@@ -117,7 +128,8 @@ def main():
                             a.from_block, a.to_block + 1, a.to_block + 1,
                             fresh_output=not existed_before)
     print(f"[COMPLETE] {total} transfers this run, {page} pages, {time.time()-t0:.0f}s", flush=True)
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

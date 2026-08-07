@@ -1,23 +1,24 @@
 #!/usr/bin/env python3
 """用 Multicall3 批量查询一批地址的 ERC20 当前余额(每批 200 地址一次 eth_call,公共节点轮换)。
 
-用法：python3 scripts/evm/multicall_balances.py --token 0x... --input addresses.txt \
+用法：python3 scripts/evm/multicall_balances.py --chain bsc --token 0x... --input addresses.txt \
   --out balances.json [--rpc https://... --rpc https://...]
 输入文件须一行一个地址。默认节点均为 BSC 公共节点；查询其他 EVM 链必须显式传 --rpc。
 encode/decode 与 query() 为通用件；Multicall3 合约 0xca11bde0…76ca11 各链同地址。
 """
 import argparse
 import json
-import random
+import os
+import sys
 import time
 
-import requests
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "lib"))
+from net import RpcAttestationError, attested_rpc_pool
 
 TOKEN = None
 MC3 = "0xca11bde05977b3631167028862be2a173976ca11"
 DEFAULT_BSC_NODES = ["https://bsc-rpc.publicnode.com", "https://bsc.drpc.org",
                      "https://bsc-dataseed.bnbchain.org", "https://bsc-dataseed1.defibit.io"]
-NODES = DEFAULT_BSC_NODES
 
 def encode_aggregate3(addrs):
     n = len(addrs)
@@ -54,7 +55,7 @@ def decode_aggregate3(hexdata, n):
         out.append(val)
     return out
 
-def query(addrs_all, label):
+def query(pool, addrs_all, label):
     res = {}
     B = 200
     for i in range(0, len(addrs_all), B):
@@ -62,13 +63,11 @@ def query(addrs_all, label):
         data = encode_aggregate3(batch)
         ok = False
         for attempt in range(8):
-            n = random.choice(NODES)
             try:
-                r = requests.post(n, json={"jsonrpc": "2.0", "id": 1, "method": "eth_call",
-                                           "params": [{"to": MC3, "data": data}, "latest"]},
-                                  timeout=30).json()
-                if "result" in r and r["result"] and r["result"] != "0x":
-                    vals = decode_aggregate3(r["result"], len(batch))
+                result = pool.call("eth_call", [{"to": MC3, "data": data}, "latest"])
+                raw = result.get("result") if result.get("ok") else None
+                if raw and raw != "0x":
+                    vals = decode_aggregate3(raw, len(batch))
                     for a, v in zip(batch, vals):
                         res[a] = (v / 1e18) if v is not None else None
                     ok = True
@@ -87,6 +86,9 @@ def parse_args():
     parser.add_argument("--token", help="ERC20 token 合约地址")
     parser.add_argument("--input", help="地址清单文件，一行一个地址")
     parser.add_argument("--out", help="JSON 输出路径")
+    parser.add_argument("--chain", default="bsc",
+                        choices=["eth", "bsc", "base", "arbitrum"],
+                        help="目标链（默认 bsc；chain id 只读 chain_registry）")
     parser.add_argument("--rpc", action="append", help=(
         "RPC URL，可多次传入；默认使用 4 个 BSC 公共节点，跨链必须显式传 --rpc"))
     args = parser.parse_args()
@@ -97,23 +99,30 @@ def parse_args():
 
 
 def main():
-    global TOKEN, NODES
+    global TOKEN
     args = parse_args()
     TOKEN = args.token.lower()
-    NODES = args.rpc or DEFAULT_BSC_NODES
+    nodes = args.rpc or DEFAULT_BSC_NODES
+    pool = attested_rpc_pool(nodes, args.chain, formal=True, rps=4, concurrency=1)
+    try:
+        pool.attest()
+    except RpcAttestationError as exc:
+        print(f"[fatal] RPC chain attestation failed: {exc}", file=sys.stderr)
+        return 1
     addrs = []
     for line in open(args.input):
         address = line.strip().lower()
         if address:
             addrs.append(address)
     addrs = list(dict.fromkeys(addrs))
-    res = query(addrs, "余额")
+    res = query(pool, addrs, "余额")
     with open(args.out, "w") as f:
         json.dump(res, f, ensure_ascii=False, indent=1)
     fails = sum(1 for value in res.values() if value is None)
     print(f"\n地址总数 {len(addrs)}, 查询失败 {fails}")
     print(f"[done] -> {args.out}")
+    return 1 if fails else 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())
