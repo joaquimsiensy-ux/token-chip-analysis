@@ -375,7 +375,11 @@
       "script": "scripts/evm/accounting_gate.py"
     },
     {
-      "kind": "requests",
+      "kind": "net.py",
+      "script": "scripts/evm/accounting_gate.py"
+    },
+    {
+      "kind": "net.py",
       "script": "scripts/evm/fetch_alchemy.py"
     },
     {
@@ -399,15 +403,19 @@
       "script": "scripts/evm/fetch_sqd_evm.py"
     },
     {
-      "kind": "requests",
+      "kind": "net.py",
+      "script": "scripts/evm/lp_positions.py"
+    },
+    {
+      "kind": "net.py",
       "script": "scripts/evm/multicall_balances.py"
     },
     {
-      "kind": "requests",
+      "kind": "net.py",
       "script": "scripts/evm/pierce_stake.py"
     },
     {
-      "kind": "requests",
+      "kind": "net.py",
       "script": "scripts/evm/scan_bloxroute_seg.py"
     },
     {
@@ -415,7 +423,7 @@
       "script": "scripts/evm/scan_transfers.py"
     },
     {
-      "kind": "requests",
+      "kind": "net.py",
       "script": "scripts/evm/verify_recon.py"
     },
     {
@@ -429,6 +437,10 @@
     {
       "kind": "net.py",
       "script": "scripts/lib/rpc_batch.py"
+    },
+    {
+      "kind": "net.py",
+      "script": "scripts/lib/supply_truth_gate.py"
     },
     {
       "kind": "requests",

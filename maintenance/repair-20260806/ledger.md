@@ -47,14 +47,14 @@
 | `six-F-05` | six@`fca61ad` | P0 | 历史漏检 | INV-04 | INV-03, INV-06 | `window_fetch.py:127-231` | ① | 待施工 | FIXED_ON_BASELINE (`CMD-RECEIPT`: gap 只留 partial/stale，exit=2) |  |  |
 | `six-F-07` | six@`fca61ad` | P1 | 半修残留 | INV-04 | INV-03 | `fetch_pool_swaps.py:46-114` | ① | 待施工 | FIXED_ON_BASELINE (`CMD-FETCH`: 分页失败不提交正式 CSV) |  |  |
 | `six-F-08` | six@`fca61ad` | P1 | 新引入 | INV-04 | INV-03 | `fetch_gmgn.sh:18-49` | ① | 待施工 | FIXED_ON_BASELINE (`CMD-GMGN`: success→failure 旧文件转 `.stale`) |  |  |
-| `R8-04` | R8@`6e94348` | P1 | 新引入 | INV-05 | INV-04 | `receipt_kernel.py:192-220,268-273` | ③ | 待施工 | N/A-R8基线即当前 |  |  |
-| `R8-12` | R8@`6e94348` | P1 | 半修残留 | INV-05 | INV-02, INV-04 | `anchor_sampler.py:143-150,245-275`; `window_fetch.py:127-215` | ③ | 待施工 | N/A-R8基线即当前 |  |  |
+| `R8-04` | R8@`6e94348` | P1 | 新引入 | INV-05 | INV-04 | `receipt_kernel.py:192-220,268-273` | ③ | `B1-RK-01`～`B1-RK-06`；`test_batch1_receipt_paths.py` | N/A-R8基线即当前 |  |  |
+| `R8-12` | R8@`6e94348` | P1 | 半修残留 | INV-05 | INV-02, INV-04 | `anchor_sampler.py:143-150,245-275`; `window_fetch.py:127-215` | ③ | `B1-RK-01`～`B1-RK-06`（仅 kernel 能力；producer 迁移仍属批三） | N/A-R8基线即当前 |  |  |
 | `six-F-06` | six@`fca61ad` | P0 | 半修残留 | INV-06 | INV-03 | `fetch_pool_swaps.py:46-58` | ① | 待施工 | FIXED_ON_BASELINE (`CMD-FETCH`: 相等/反向/负区间开文件前拒) |  |  |
 | `R7-06` | R7@`d8bd3c5` | P1 | 半修残留 | INV-06 | INV-05, INV-10 | `window_fetch.py:127-215` | ③ | 待施工 | REPRODUCED（原反向窗已修；同族 data/receipt alias 仍 PASS，`CMD-R8-ALIAS`） |  |  |
 | `R8-08` | R8@`6e94348` | P1 | 半修残留 | INV-06 | INV-08 | `time_spotcheck.py:119-153,162-180` | ② | 待施工 | N/A-R8基线即当前 |  |  |
-| `R7-12` | R7@`d8bd3c5` | P1 | 新引入 | INV-07 | INV-11 | `verify_recon.py:49-54,114-119`; sibling `time_spotcheck.py:140-153` | ② | 待施工 | REPRODUCED（verify_recon 原入口已修；time sibling 无 `eth_chainId`，`CMD-R8-TARGET`） |  |  |
-| `R8-07` | R8@`6e94348` | P1 | 半修残留 | INV-07 | INV-08 | `time_spotcheck.py:140-153` | ② | 待施工 | N/A-R8基线即当前 |  |  |
-| `R8-09` | R8@`6e94348` | P1 | 历史漏检 | INV-07 | INV-02 | `supply_truth_gate.py:84-98` | ② | 待施工 | N/A-R8基线即当前 |  |  |
+| `R7-12` | R7@`d8bd3c5` | P1 | 新引入 | INV-07 | INV-11 | `verify_recon.py:49-54,114-119`; sibling `time_spotcheck.py:140-153` | ② | `B1-RPC-01`～`B1-RPC-06`；10 个正式调用点错链业务调用=0 | REPRODUCED（verify_recon 原入口已修；time sibling 无 `eth_chainId`，`CMD-R8-TARGET`） |  |  |
+| `R8-07` | R8@`6e94348` | P1 | 半修残留 | INV-07 | INV-08 | `time_spotcheck.py:140-153` | ② | `B1-RPC-CALLSITE-time`；错链仅 `eth_chainId` | N/A-R8基线即当前 |  |  |
+| `R8-09` | R8@`6e94348` | P1 | 历史漏检 | INV-07 | INV-02 | `supply_truth_gate.py:84-98` | ② | `B1-RPC-CALLSITE-supply`；错链仅 `eth_chainId` | N/A-R8基线即当前 |  |  |
 | `six-F-13` | six@`fca61ad` | P1 | 历史漏检 | INV-08 | INV-12 | `handoff_manifest.py:164-180,212-222,396-419,966-1010` | ① | 待施工 | FIXED_ON_BASELINE (`CMD-HANDOFF`: READY 缺 chain/contract/未知链均拒) |  |  |
 | `R7-13` | R7@`d8bd3c5` | P1 | 新引入 | INV-08 | INV-06 | `time_spotcheck.py:119-153`; `anchor_plan.py` target producer | ② | 待施工 | REPRODUCED（plan chain/token/file_ref 已修；final-block 未绑定且查询 cutoff+1，`CMD-R8-TARGET`） |  |  |
 | `R8-03` | R8@`6e94348` | P0 | 历史漏检 | INV-08 | INV-10 | `accounting_gate_sol.py:101-124`; `shared_release_receipt.py:173-190` | ② | 待施工 | N/A-R8基线即当前 |  |  |
@@ -71,8 +71,8 @@
 | `R7-10` | R7@`d8bd3c5` | P1 | 半修残留 | INV-14 | INV-18 | `add_labels.py:118-223`（archive staging 在三闸前、失败整体回滚） | ① | 待施工 | FIXED_ON_BASELINE (`CMD-LABEL-TXN`: staging/重名/竞态失败均回滚) |  |  |
 | `six-F-10` | six@`fca61ad` | P1 | 半修残留 | INV-15 | INV-18 | `roundtrip_check.py:22-57,127-144`; `labels_resolver.py:315-326` | ① | 待施工 | FIXED_ON_BASELINE (`CMD-ROUNDTRIP`: risk_flags 漂移阻断；日期倒退由 R7 test 阻断) |  |  |
 | `R7-11` | R7@`d8bd3c5` | P1 | 新引入 | INV-15 | INV-18 | `roundtrip_check.py:25-27,127-144` | ① | 待施工 | FIXED_ON_BASELINE (`CMD-R7`: verified_at 倒退非零) |  |  |
-| `R7-14` | R7@`d8bd3c5` | P2 | 新引入 | INV-15 | INV-18 | `roundtrip_check.py:50-57`; sibling add/validate/resolver | ③ | 待施工 | REPRODUCED（roundtrip 自身 trim/dedup 已修；validator/resolver 仍语义分裂，`CMD-R8-FLAGS`） |  |  |
-| `R8-10` | R8@`6e94348` | P2 | 半修残留 | INV-15 | INV-14 | `add_labels.py:151-153`; `validate_labels.py:86-98`; `labels_resolver.py:318-326` | ③ | 待施工 | N/A-R8基线即当前 |  |  |
+| `R7-14` | R7@`d8bd3c5` | P2 | 新引入 | INV-15 | INV-18 | `roundtrip_check.py:50-57`; sibling add/validate/resolver | ③ | `B1-RF-01`～`B1-RF-03`；canonical parser 四层/全现役表对表 | REPRODUCED（roundtrip 自身 trim/dedup 已修；validator/resolver 仍语义分裂，`CMD-R8-FLAGS`） |  |  |
+| `R8-10` | R8@`6e94348` | P2 | 半修残留 | INV-15 | INV-14 | `add_labels.py:151-153`; `validate_labels.py:86-98`; `labels_resolver.py:318-326` | ③ | `B1-RF-01`～`B1-RF-03`；`test_batch1_risk_flags.py` | N/A-R8基线即当前 |  |  |
 | `full-F-03` | full@`b0b7744` | P1 | 报告未判定 | INV-16 | INV-03, INV-07, INV-20 | `multicall_balances.py:31-35,57-83,85-115` | ④ | 待调用图与防回流证明、Fable 批准 | REPRODUCED (`CMD-MC`) |  |  |
 | `R8-05` | R8@`6e94348` | P1 | 新引入 | INV-17 | INV-18 | `invariant_scan.py:174-232,269-329`; `invariant_manifest.json` | ③ | 待施工 | N/A-R8基线即当前 |  |  |
 | `full-F-04` | full@`b0b7744` | P3 | 报告未判定 | INV-18 | INV-17 | `data-pipeline-robinhood.md:16`; `scripts/robinhood/` | ③ | 待施工 | REPRODUCED（文档仍“全14件”，当前普通文件 16） |  |  |
@@ -369,7 +369,7 @@
 - 报告基线/严重度/归因：R7@`d8bd3c5`；P1；新引入。
 - primary/secondary：INV-07；INV-11。
 - 当前路径与同族面：`verify_recon.py:49-54,114-119` 已 attested；`time_spotcheck.py:140-153` sibling 未 attested。
-- 覆盖初判：②；施工证据：待施工。
+- 覆盖初判：②；施工证据：`B1-RPC-01`～`B1-RPC-06`；10 个正式调用点均有错链零业务调用反例。
 - 基线回放：**REPRODUCED**。`CMD-R7` 证明 verify_recon 错链在 eth_call 前拒；`CMD-R8-TARGET` 的 time sibling 只有 `eth_call`、没有 `eth_chainId`，仍 PASS。
 - 最终结果：
 - 两轮盲审与 Fable 结论：
@@ -389,7 +389,7 @@
 - 报告基线/严重度/归因：R7@`d8bd3c5`；P2；新引入。
 - primary/secondary：INV-15；INV-18。
 - 当前路径与同族面：`roundtrip_check.py:50-57`; `add_labels.py:151-153`; `validate_labels.py:86-98`; `labels_resolver.py:318-326`。
-- 覆盖初判：③；施工证据：待施工。
+- 覆盖初判：③；施工证据：`B1-RF-01`～`B1-RF-03`；validator/resolver 同集合解释，写入 canonical，存量宽进。
 - 基线回放：**REPRODUCED**。roundtrip 自身 dedup/trim 已由 `CMD-R7` 转绿；但 `CMD-R8-FLAGS` 证明 canonical 集合语义未进入 add/validate/resolver 同族，前导空格绕过 validator 后被 resolver 激活。
 - 最终结果：
 - 两轮盲审与 Fable 结论：
@@ -439,7 +439,7 @@
 - 报告基线/严重度/归因：R8@`6e94348`；P1；新引入。
 - primary/secondary：INV-05；INV-04。
 - 当前路径与同族面：`receipt_kernel.py:192-220,268-273` 四类发布/恢复 primitive。
-- 覆盖初判：③；施工证据：待施工。
+- 覆盖初判：③；施工证据：`B1-RK-01`～`B1-RK-06` 仅证明 kernel primitive 已闭合；anchor/window producer 改用 txn 明确留待批三。
 - 基线回放：`N/A-R8基线即当前`。
 - 最终结果：
 - 两轮盲审与 Fable 结论：
@@ -469,7 +469,7 @@
 - 报告基线/严重度/归因：R8@`6e94348`；P1；半修残留。
 - primary/secondary：INV-07；INV-08。
 - 当前路径与同族面：`time_spotcheck.py:140-153`。
-- 覆盖初判：②；施工证据：待施工。
+- 覆盖初判：②；施工证据：`B1-RPC-CALLSITE-time`；fake wrong-chain 只记录 `eth_chainId`，无 `eth_call`。
 - 基线回放：`N/A-R8基线即当前`；补充 `CMD-R8-TARGET` 方法序列仅 `['eth_call']`，仍 PASS。
 - 最终结果：
 - 两轮盲审与 Fable 结论：
@@ -489,7 +489,7 @@
 - 报告基线/严重度/归因：R8@`6e94348`；P1；历史漏检。
 - primary/secondary：INV-07；INV-02。
 - 当前路径与同族面：`supply_truth_gate.py:84-98` 的 EVM `totalSupply()` 直接 eth_call。
-- 覆盖初判：②；施工证据：待施工。
+- 覆盖初判：②；施工证据：`B1-RPC-CALLSITE-supply`；fake wrong-chain 只记录 `eth_chainId`，无 totalSupply `eth_call`。
 - 基线回放：`N/A-R8基线即当前`。
 - 最终结果：
 - 两轮盲审与 Fable 结论：
@@ -499,7 +499,7 @@
 - 报告基线/严重度/归因：R8@`6e94348`；P2；半修残留。
 - primary/secondary：INV-15；INV-14。
 - 当前路径与同族面：`add_labels.py:151-153`; `validate_labels.py:86-98`; `roundtrip_check.py:50-57`; `labels_resolver.py:318-326`。
-- 覆盖初判：③；施工证据：待施工。
+- 覆盖初判：③；施工证据：`B1-RF-01`～`B1-RF-03`；四层共用 canonical parser，现役表全量对表。
 - 基线回放：`N/A-R8基线即当前`；补充 `CMD-R8-FLAGS` validator `errors=[]`、resolver 激活 privacy。
 - 最终结果：
 - 两轮盲审与 Fable 结论：
@@ -519,7 +519,7 @@
 - 报告基线/严重度/归因：R8@`6e94348`；P1；半修残留。
 - primary/secondary：INV-05；INV-02、INV-04。
 - 当前路径与同族面：`anchor_sampler.py:143-150,245-275`; `window_fetch.py:127-215`; `receipt_kernel.py:204-220`（producer 未用 txn 联合提交）。
-- 覆盖初判：③；施工证据：待施工。
+- 覆盖初判：③；施工证据：`B1-RK-01`～`B1-RK-06` 仅证明 kernel primitive 已闭合；anchor/window producer 改用 txn 明确留待批三。
 - 基线回放：`N/A-R8基线即当前`；补充 `CMD-R8-ALIAS` 两 producer 都 rc=0，最终路径只剩 receipt。
 - 最终结果：
 - 两轮盲审与 Fable 结论：
