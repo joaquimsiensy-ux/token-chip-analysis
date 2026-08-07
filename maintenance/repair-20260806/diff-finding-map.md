@@ -20,7 +20,16 @@
 | `B1-G3:scripts/labels/{risk_flags.py,add_labels.py,validate_labels.py,roundtrip_check.py,labels_resolver.py,build_labels.py}` | `INV-15` | `R7-14, R8-10` | 建立唯一 canonical parser；读取宽进、写入/验证严出，所有 policy 判断共用规范集合 | `B1-RF-01`～`B1-RF-03`; 现役 470879 行语义对表 |  |
 | `B1-G3:scripts/tests/{test_batch1_risk_flags.py,run_all.py}; maintenance/repair-20260806/{ledger.md,batch1-report.md}` | `INV-15` | `R7-14, R8-10` | 固化前导空格、重复/乱序/空段以及全部现役表兼容反例 | `B1-RF-01`～`B1-RF-03`; 全量 suite |  |
 
+## 分组 → commit SHA 对照（Fable 代 commit 后回填）
+
+| 分组 | commit SHA | 说明 |
+|---|---|---|
+| `B1-G1` | `8150385` | kernel+两测试文件；test_r7_findings/test_sixlens_receipts 的临时根解析 hunk 因文件级暂存并入 `5801350`（该 commit 信息已注记） |
+| `B1-G2` | `5801350` | net.py+10 调用点+RPC 测试 |
+| `B1-G3` | `38bc632` | risk_flags parser+五消费者 |
+| `B1-G4`（跨组维护件） | `8e9de5c` | run_all/invariant_manifest/transport-injections/maintenance 台账 |
+
 ## 未映射 hunk 计数
 
 - 准备阶段：`0`（本阶段没有生产/测试 hunk）。
-- 批一候选：`0`（按 `B1-G1`～`B1-G3` 分组；共享文件按 hunk 拆分，Fable 回填 SHA 后复算）。
+- 批一（`66d7ba7..8e9de5c`）：`0`（全部 hunk 归属上表四组；待批内审查复核）。
