@@ -34,14 +34,14 @@
 | `B1-G2` | `5801350` | net.py+10 调用点+RPC 测试 |
 | `B1-G3` | `38bc632` | risk_flags parser+五消费者 |
 | `B1-G4`（跨组维护件） | `8e9de5c` | run_all/invariant_manifest/transport-injections/maintenance 台账 |
-| `B2-G0` | 待 Fable 回填 | 批一 P3 收尾 |
-| `B2-G1` | 待 Fable 回填 | 不可变能力矩阵 + CLI choices |
-| `B2-G2` | 待 Fable 回填 | READY reconciliation 与下游派生 |
-| `B2-G3` | 待 Fable 回填 | Robinhood exploration 防回流 + 文档 |
-| `B2-G4` | 待 Fable 回填 | suite/台账/报告维护件 |
+| `B2-G0` | `8f3600c` | 批一 P3 收尾 |
+| `B2-G1` | `f6844bf` | 不可变能力矩阵 + CLI choices |
+| `B2-G2` | `2a9d5ed` | READY reconciliation 与下游派生（含 formal_ready_test_harness） |
+| `B2-G3` | `5ef3186` | Robinhood exploration 防回流 + 文档 |
+| `B2-G4` | `07fab90` | suite/台账/报告维护件 |
 
 ## 未映射 hunk 计数
 
 - 准备阶段：`0`（本阶段没有生产/测试 hunk）。
-- 批一（`66d7ba7..8e9de5c`）：`0`（全部 hunk 归属上表四组；待批内审查复核）。
-- 批二（待 Fable 代 commit）：`0` 候选（所有当前 hunk 已归属 `B2-G0`～`B2-G4`，待批内审查独立复算）。
+- 批一（`66d7ba7..e657732`）：`0`（全部 hunk 归属四组；opus 批内审查独立复算=0）。
+- 批二（`553806b..07fab90`）：`0` 候选（所有 hunk 已归属 `B2-G0`～`B2-G4`；待批内审查独立复算）。
