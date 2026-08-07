@@ -67,11 +67,11 @@ def rework_counterexamples(root, env):
     real_replace = kernel.os.replace
     restore_calls = {"n": 0}
 
-    def fail_restore_rollback(src, dst):
+    def fail_restore_rollback(src, dst, *args, **kwargs):
         restore_calls["n"] += 1
         if restore_calls["n"] == 3:
             raise OSError("restore rollback injected")
-        return real_replace(src, dst)
+        return real_replace(src, dst, *args, **kwargs)
 
     restore_exc = None
     with mock.patch.object(kernel.os, "replace", side_effect=fail_restore_rollback):
@@ -93,13 +93,13 @@ def rework_counterexamples(root, env):
     receipt.write_text('{"old":"receipt-precious"}\n', encoding="utf-8")
     txn_calls = {"n": 0}
 
-    def fail_txn_publish_and_rollback(src, dst):
+    def fail_txn_publish_and_rollback(src, dst, *args, **kwargs):
         txn_calls["n"] += 1
         if txn_calls["n"] == 4:
             raise OSError("second publish injected")
         if txn_calls["n"] == 5:
             raise OSError("first rollback injected")
-        return real_replace(src, dst)
+        return real_replace(src, dst, *args, **kwargs)
 
     txn_exc = None
     with mock.patch.object(kernel.os, "replace", side_effect=fail_txn_publish_and_rollback):
@@ -118,7 +118,7 @@ def rework_counterexamples(root, env):
 
 def main():
     with tempfile.TemporaryDirectory(prefix="receipt-kernel-") as td:
-        root = Path(td)
+        root = Path(td).resolve()
 
         # Golden fixture: emitter output must pass the separately implemented validator.
         env = envelope(root)
@@ -204,11 +204,12 @@ def main():
         old_data, old_receipt = data.read_bytes(), receipt.read_bytes()
         real_replace = kernel.os.replace
         state = {"failed": False}
-        def fail_second(src, dst):
-            if Path(dst).resolve() == receipt.resolve() and not state["failed"]:
+        def fail_second(src, dst, *args, **kwargs):
+            dst_path = (receipt.parent / dst) if kwargs.get("dst_dir_fd") is not None else Path(dst)
+            if dst_path.resolve() == receipt.resolve() and not state["failed"]:
                 state["failed"] = True
                 raise OSError("second replace injected")
-            return real_replace(src, dst)
+            return real_replace(src, dst, *args, **kwargs)
         with mock.patch.object(kernel.os, "replace", side_effect=fail_second):
             try:
                 kernel.publish_txn(data, {"new": "data"}, receipt, {"new": "receipt"})

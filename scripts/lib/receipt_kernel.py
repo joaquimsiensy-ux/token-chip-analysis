@@ -12,6 +12,9 @@ import copy
 import hashlib
 import json
 import os
+import stat
+from contextlib import contextmanager
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable, Mapping
@@ -160,164 +163,330 @@ def _run_id() -> str:
     return f"{stamp}.{os.getpid()}"
 
 
-def _stage(path: Path, payload) -> Path:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_name(f".{path.name}.tmp.{_run_id()}")
+@dataclass
+class _SecureTarget:
+    path: Path
+    parent_fd: int
+    name: str
+    parent_identity: tuple[int, int]
+
+
+def _lexical_path(raw_path) -> Path:
+    if not isinstance(raw_path, (str, os.PathLike)) or not str(raw_path):
+        raise ReceiptKernelError("output path must be a non-empty path")
+    shown = Path(raw_path).expanduser()
+    if ".." in shown.parts:
+        raise ReceiptKernelError(f"output path traversal rejected: {raw_path}")
+    absolute = Path(os.path.abspath(os.fspath(shown)))
+    if absolute == Path(absolute.anchor) or absolute.name in {"", ".", ".."}:
+        raise ReceiptKernelError(f"output path must name a file: {raw_path}")
+    return absolute
+
+
+def _checked_entry_stat(parent_fd: int, name: str, shown: Path):
     try:
-        with tmp.open("xb") as handle:
+        info = os.stat(name, dir_fd=parent_fd, follow_symlinks=False)
+    except FileNotFoundError:
+        return None
+    if stat.S_ISLNK(info.st_mode):
+        raise ReceiptKernelError(f"output path contains symlink: {shown}")
+    if not stat.S_ISREG(info.st_mode):
+        raise ReceiptKernelError(f"output destination is not a regular file: {shown}")
+    return info
+
+
+@contextmanager
+def _secure_target(raw_path, *, create_parents=True):
+    """Open a lexical parent chain with lstat/openat and never follow a symlink.
+
+    The returned directory fd pins the checked directory for staging, link,
+    replace and rollback operations.  Every component is lstat'ed before open;
+    fstat then proves the opened directory is the same object that was checked.
+    """
+    path = _lexical_path(raw_path)
+    flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)
+    nofollow = getattr(os, "O_NOFOLLOW", 0)
+    fd = os.open(path.anchor, flags | nofollow)
+    try:
+        for part in path.parent.parts[1:]:
+            try:
+                before = os.stat(part, dir_fd=fd, follow_symlinks=False)
+            except FileNotFoundError:
+                if not create_parents:
+                    raise ReceiptKernelError(f"output parent does not exist: {path.parent}")
+                try:
+                    os.mkdir(part, mode=0o755, dir_fd=fd)
+                except FileExistsError:
+                    pass
+                before = os.stat(part, dir_fd=fd, follow_symlinks=False)
+            if stat.S_ISLNK(before.st_mode):
+                raise ReceiptKernelError(f"output parent contains symlink: {path}")
+            if not stat.S_ISDIR(before.st_mode):
+                raise ReceiptKernelError(f"output parent component is not a directory: {path}")
+            try:
+                next_fd = os.open(part, flags | nofollow, dir_fd=fd)
+            except OSError as exc:
+                raise ReceiptKernelError(f"output parent cannot be opened safely: {path}") from exc
+            after = os.fstat(next_fd)
+            if (before.st_dev, before.st_ino) != (after.st_dev, after.st_ino):
+                os.close(next_fd)
+                raise ReceiptKernelError(f"output parent changed while opening: {path}")
+            os.close(fd)
+            fd = next_fd
+        _checked_entry_stat(fd, path.name, path)
+        parent_stat = os.fstat(fd)
+        target = _SecureTarget(
+            path=path, parent_fd=fd, name=path.name,
+            parent_identity=(parent_stat.st_dev, parent_stat.st_ino))
+        fd = -1
+        try:
+            yield target
+        finally:
+            os.close(target.parent_fd)
+    finally:
+        if fd >= 0:
+            os.close(fd)
+
+
+def _target_stat(target: _SecureTarget):
+    return _checked_entry_stat(target.parent_fd, target.name, target.path)
+
+
+def _assert_distinct(*targets: _SecureTarget):
+    # casefold is deliberately conservative: macOS deployments commonly use a
+    # case-insensitive filesystem even though POSIX normcase() is a no-op.
+    lexical = [os.path.normpath(str(target.path)).casefold() for target in targets]
+    if len(lexical) != len(set(lexical)):
+        raise ReceiptKernelError("publication paths must be lexically distinct")
+    physical = []
+    for target in targets:
+        info = _target_stat(target)
+        if info is not None:
+            physical.append((info.st_dev, info.st_ino))
+    if len(physical) != len(set(physical)):
+        raise ReceiptKernelError("publication paths alias the same physical file")
+
+
+def _unlink_at(target: _SecureTarget, name: str):
+    try:
+        os.unlink(name, dir_fd=target.parent_fd)
+    except FileNotFoundError:
+        pass
+
+
+def _existing_json(target: _SecureTarget):
+    if _target_stat(target) is None:
+        return None
+    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
+    fd = os.open(target.name, flags, dir_fd=target.parent_fd)
+    try:
+        with os.fdopen(fd, "rb", closefd=False) as handle:
+            try:
+                return json.load(handle)
+            except (TypeError, ValueError):
+                return None
+    finally:
+        os.close(fd)
+
+
+def _reject_pass_downgrade(target: _SecureTarget, payload):
+    old = _existing_json(target)
+    if (isinstance(old, Mapping) and old.get("verdict") == "PASS"
+            and isinstance(payload, Mapping) and payload.get("verdict") != "PASS"):
+        raise ReceiptKernelError(f"existing PASS artifact cannot be downgraded: {target.path}")
+
+
+def _stage(target: _SecureTarget, payload) -> str:
+    tmp_name = f".{target.name}.tmp.{_run_id()}"
+    flags = (os.O_WRONLY | os.O_CREAT | os.O_EXCL
+             | getattr(os, "O_NOFOLLOW", 0))
+    try:
+        fd = os.open(tmp_name, flags, 0o600, dir_fd=target.parent_fd)
+        with os.fdopen(fd, "wb") as handle:
             handle.write(_json_bytes(payload))
             handle.flush()
             os.fsync(handle.fileno())
-        return tmp
+        return tmp_name
     except BaseException:
-        if tmp.exists():
-            tmp.unlink()
+        _unlink_at(target, tmp_name)
         raise
 
 
 def publish_exclusive(path, payload) -> Path:
     """Publish a new file atomically; an existing destination is always an error."""
-    out = Path(path).resolve()
-    tmp = _stage(out, payload)
-    try:
-        os.link(tmp, out)
-    except FileExistsError as exc:
-        raise ReceiptKernelError(f"exclusive receipt already exists: {out}") from exc
-    finally:
-        if tmp.exists():
-            tmp.unlink()
-    return out
+    with _secure_target(path) as out:
+        tmp = _stage(out, payload)
+        try:
+            if _target_stat(out) is not None:
+                raise ReceiptKernelError(f"exclusive receipt already exists: {out.path}")
+            os.link(tmp, out.name, src_dir_fd=out.parent_fd,
+                    dst_dir_fd=out.parent_fd, follow_symlinks=False)
+        except FileExistsError as exc:
+            raise ReceiptKernelError(f"exclusive receipt already exists: {out.path}") from exc
+        finally:
+            _unlink_at(out, tmp)
+        return out.path
 
 
 def publish_overwrite(path, payload) -> Path:
     """Atomically replace one file; no multi-file guarantee is implied."""
-    out = Path(path).resolve()
-    tmp = _stage(out, payload)
-    try:
-        os.replace(tmp, out)
-    finally:
-        if tmp.exists():
-            tmp.unlink()
-    return out
+    with _secure_target(path) as out:
+        _reject_pass_downgrade(out, payload)
+        tmp = _stage(out, payload)
+        try:
+            _target_stat(out)
+            os.replace(tmp, out.name,
+                       src_dir_fd=out.parent_fd, dst_dir_fd=out.parent_fd)
+        finally:
+            _unlink_at(out, tmp)
+        return out.path
 
 
 def publish_txn(data_path, data_payload, receipt_path, receipt_payload) -> tuple[Path, Path]:
     """Publish data+receipt as one rollback unit; any failure restores both old files."""
-    data_out, receipt_out = Path(data_path).resolve(), Path(receipt_path).resolve()
-    if data_out == receipt_out:
-        raise ReceiptKernelError("transaction paths must be distinct")
-    staged = []
-    backups = {}
-    published = set()
-    committed = False
-    try:
-        data_tmp = _stage(data_out, data_payload); staged.append(data_tmp)
-        receipt_tmp = _stage(receipt_out, receipt_payload); staged.append(receipt_tmp)
-        for out in (data_out, receipt_out):
-            if out.is_symlink():
-                raise ReceiptKernelError(f"transaction destination is symlink: {out}")
-            if out.exists():
-                backup = out.with_name(f".{out.name}.rollback.{_run_id()}")
-                os.replace(out, backup)
-                backups[out] = backup
-        os.replace(data_tmp, data_out); published.add(data_out); staged.remove(data_tmp)
-        os.replace(receipt_tmp, receipt_out); published.add(receipt_out); staged.remove(receipt_tmp)
-        committed = True
-        for backup in backups.values():
-            if backup.exists():
+    with _secure_target(data_path) as data_out, _secure_target(receipt_path) as receipt_out:
+        _assert_distinct(data_out, receipt_out)
+        _reject_pass_downgrade(data_out, data_payload)
+        _reject_pass_downgrade(receipt_out, receipt_payload)
+        staged = []
+        backups = {}
+        published = set()
+        committed = False
+        try:
+            data_tmp = _stage(data_out, data_payload); staged.append((data_out, data_tmp))
+            receipt_tmp = _stage(receipt_out, receipt_payload); staged.append((receipt_out, receipt_tmp))
+            for out in (data_out, receipt_out):
+                if _target_stat(out) is not None:
+                    backup = f".{out.name}.rollback.{_run_id()}"
+                    os.replace(out.name, backup,
+                               src_dir_fd=out.parent_fd, dst_dir_fd=out.parent_fd)
+                    backups[id(out)] = (out, backup)
+            _target_stat(data_out)
+            os.replace(data_tmp, data_out.name,
+                       src_dir_fd=data_out.parent_fd, dst_dir_fd=data_out.parent_fd)
+            published.add(id(data_out)); staged.remove((data_out, data_tmp))
+            _target_stat(receipt_out)
+            os.replace(receipt_tmp, receipt_out.name,
+                       src_dir_fd=receipt_out.parent_fd, dst_dir_fd=receipt_out.parent_fd)
+            published.add(id(receipt_out)); staged.remove((receipt_out, receipt_tmp))
+            committed = True
+            for out, backup in backups.values():
                 try:
-                    backup.unlink()
+                    _unlink_at(out, backup)
                 except OSError as exc:
+                    backup_path = out.path.with_name(backup)
                     raise ReceiptKernelError(
                         f"transaction committed but backup cleanup failed; "
-                        f"backup preserved at {backup}: {exc}"
+                        f"backup preserved at {backup_path}: {exc}"
                     ) from exc
-        return data_out, receipt_out
-    except BaseException as primary:
-        if committed:
+            return data_out.path, receipt_out.path
+        except BaseException as primary:
+            if committed:
+                raise
+            rollback_failures = []
+            for out, backup in backups.values():
+                try:
+                    os.stat(backup, dir_fd=out.parent_fd, follow_symlinks=False)
+                except FileNotFoundError:
+                    continue
+                try:
+                    _target_stat(out)
+                    os.replace(backup, out.name,
+                               src_dir_fd=out.parent_fd, dst_dir_fd=out.parent_fd)
+                except BaseException as exc:
+                    rollback_failures.append((out, backup, exc))
+            for out in (data_out, receipt_out):
+                if id(out) in published and id(out) not in backups:
+                    try:
+                        _target_stat(out)
+                        _unlink_at(out, out.name)
+                    except BaseException as exc:
+                        rollback_failures.append((out, None, exc))
+            if rollback_failures:
+                preserved = [str(out.path.with_name(backup))
+                             for out, backup, _ in rollback_failures
+                             if backup is not None]
+                affected = [str(out.path) for out, _, _ in rollback_failures]
+                detail = ", ".join(str(exc) for _, _, exc in rollback_failures)
+                raise ReceiptKernelError(
+                    f"transaction publish failed ({primary}); rollback also failed for {affected}; "
+                    f"backups preserved at {preserved}: {detail}"
+                ) from rollback_failures[0][2]
             raise
-        rollback_failures = []
-        for out, backup in backups.items():
-            if backup.exists():
-                try:
-                    os.replace(backup, out)
-                except BaseException as exc:
-                    rollback_failures.append((backup, out, exc))
-        for out in published - set(backups):
-            if out.exists():
-                try:
-                    out.unlink()
-                except BaseException as exc:
-                    rollback_failures.append((None, out, exc))
-        if rollback_failures:
-            preserved = [str(backup) for backup, _, _ in rollback_failures
-                         if backup is not None and backup.exists()]
-            affected = [str(out) for _, out, _ in rollback_failures]
-            detail = ", ".join(str(exc) for _, _, exc in rollback_failures)
-            raise ReceiptKernelError(
-                f"transaction publish failed ({primary}); rollback also failed for {affected}; "
-                f"backups preserved at {preserved}: {detail}"
-            ) from rollback_failures[0][2]
-        raise
-    finally:
-        for tmp in staged:
-            if tmp.exists():
-                tmp.unlink()
+        finally:
+            for out, tmp in staged:
+                _unlink_at(out, tmp)
 
 
 def publish_restore_on_fail(path, payload, validate: Callable[[Path], bool] | None = None) -> Path:
     """Replace one formal artifact and restore its prior bytes if post-publish validation fails."""
-    out = Path(path).resolve()
-    if out.is_symlink():
-        raise ReceiptKernelError(f"restore destination is symlink: {out}")
-    tmp = _stage(out, payload)
-    backup = None
-    published = False
-    committed = False
-    try:
-        if out.exists():
-            backup = out.with_name(f".{out.name}.rollback.{_run_id()}")
-            os.replace(out, backup)
-        os.replace(tmp, out); published = True
-        if validate is not None and validate(out) is not True:
-            raise ReceiptKernelError("post-publish validation failed")
-        committed = True
-        if backup and backup.exists():
-            try:
-                backup.unlink()
-            except OSError as exc:
-                raise ReceiptKernelError(
-                    f"publish committed but backup cleanup failed; "
-                    f"backup preserved at {backup}: {exc}"
-                ) from exc
-        return out
-    except BaseException as primary:
-        if committed:
+    with _secure_target(path) as out:
+        _reject_pass_downgrade(out, payload)
+        tmp = _stage(out, payload)
+        backup = None
+        published = False
+        committed = False
+        try:
+            if _target_stat(out) is not None:
+                backup = f".{out.name}.rollback.{_run_id()}"
+                os.replace(out.name, backup,
+                           src_dir_fd=out.parent_fd, dst_dir_fd=out.parent_fd)
+            _target_stat(out)
+            os.replace(tmp, out.name,
+                       src_dir_fd=out.parent_fd, dst_dir_fd=out.parent_fd); published = True
+            if validate is not None and validate(out.path) is not True:
+                raise ReceiptKernelError("post-publish validation failed")
+            committed = True
+            if backup:
+                try:
+                    _unlink_at(out, backup)
+                except OSError as exc:
+                    backup_path = out.path.with_name(backup)
+                    raise ReceiptKernelError(
+                        f"publish committed but backup cleanup failed; "
+                        f"backup preserved at {backup_path}: {exc}"
+                    ) from exc
+            return out.path
+        except BaseException as primary:
+            if committed:
+                raise
+            if backup:
+                try:
+                    os.stat(backup, dir_fd=out.parent_fd, follow_symlinks=False)
+                except FileNotFoundError:
+                    backup_exists = False
+                else:
+                    backup_exists = True
+                if backup_exists:
+                    try:
+                        _target_stat(out)
+                        os.replace(backup, out.name,
+                                   src_dir_fd=out.parent_fd, dst_dir_fd=out.parent_fd)
+                    except BaseException as exc:
+                        backup_path = out.path.with_name(backup)
+                        raise ReceiptKernelError(
+                            f"publish failed ({primary}); rollback also failed; "
+                            f"backup preserved at {backup_path}: {exc}"
+                        ) from exc
+            elif published:
+                try:
+                    _target_stat(out)
+                    _unlink_at(out, out.name)
+                except BaseException as exc:
+                    raise ReceiptKernelError(
+                        f"publish failed ({primary}); rollback cleanup also failed for "
+                        f"{out.path}: {exc}"
+                    ) from exc
             raise
-        if backup and backup.exists():
-            try:
-                os.replace(backup, out)
-            except BaseException as exc:
-                raise ReceiptKernelError(
-                    f"publish failed ({primary}); rollback also failed; "
-                    f"backup preserved at {backup}: {exc}"
-                ) from exc
-        elif published and out.exists():
-            try:
-                out.unlink()
-            except BaseException as exc:
-                raise ReceiptKernelError(
-                    f"publish failed ({primary}); rollback cleanup also failed for {out}: {exc}"
-                ) from exc
-        raise
-    finally:
-        if tmp.exists():
-            tmp.unlink()
+        finally:
+            _unlink_at(out, tmp)
 
 
 def publish_error_receipt(receipt_path, envelope, error, *, run_id=None) -> Path:
     """Publish ERROR to a unique side path; never replace the canonical receipt."""
-    canonical = Path(receipt_path).resolve()
+    canonical = _lexical_path(receipt_path)
+    with _secure_target(canonical):
+        pass
     suffix = canonical.suffix or ".json"
     stem = canonical.name[:-len(suffix)] if canonical.name.endswith(suffix) else canonical.name
     unique = run_id or _run_id()
