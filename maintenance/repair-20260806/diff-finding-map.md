@@ -42,10 +42,13 @@
 | `B2-G2` | `2a9d5ed` | READY reconciliation 与下游派生（含 formal_ready_test_harness） |
 | `B2-G3` | `5ef3186` | Robinhood exploration 防回流 + 文档 |
 | `B2-G4` | `07fab90` | suite/台账/报告维护件 |
+| `B2F-G1` | `138b707` | legacy 旁路补闸(B2R-01+OB-A)+B2F-LG-01~04 |
+| `B2F-G2` | `ee7d4d5` | registry API 收严+harness 可逆化(B2R-02/03/04) |
+| `B2F-G3` | `af92a91` | 批内消化台账/门禁+opus 批二审查报告入库 |
 
 ## 未映射 hunk 计数
 
 - 准备阶段：`0`（本阶段没有生产/测试 hunk）。
 - 批一（`66d7ba7..e657732`）：`0`（全部 hunk 归属四组；opus 批内审查独立复算=0）。
 - 批二（`553806b..5924cd5`）：`0` 候选（所有 hunk 已归属 `B2-G0`～`B2-G4`；批内审查回填 commit 已包含）。
-- 批二批内消化（tip `5924cd5` 后待 Fable 代 commit）：`0` 候选（所有新 hunk 已归属 `B2F-G1`～`B2F-G3`）。
+- 批二批内消化（`5924cd5..af92a91`）：`0` 候选（所有新 hunk 已归属 `B2F-G1`～`B2F-G3`；待增量重审独立复算）。
