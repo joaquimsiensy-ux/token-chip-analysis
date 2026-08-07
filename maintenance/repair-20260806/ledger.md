@@ -572,3 +572,20 @@
   - `B1R-03` `parse_risk_flags` 对零宽空格/非字符串宽进产生畸形单 flag → **并入批二开头就地修**（本批新建代码不留已知瑕疵，成本极低）。
   - `B1R-04` `_producer_ref` 中间目录 symlink 未逐级检 → **并入批二开头就地修**（kernel 内加固收尾，producer 现为可信 `__file__`）。
 - 范围外观察（opus 报告 OB-1~OB-3）：OB-1 各命令 --chain choices 硬编码漂移=批二正题；OB-2 build_labels 本地拼接 risk_flags（有 canonical 兜底）=批二 B1R-03 一并核；OB-3 validate_labels strict 按目录字符串比较=批二能力矩阵顺带核。
+
+### 批二（能力矩阵）— 批内审查裁决：**PASS**（三循环收口：BLOCK→消化→BLOCK→消化二→PASS）
+
+- 候选 SHA：`db0b17d`（施工区间 `553806b..5924cd5` 五组+回填；消化一 `5924cd5..3ca824e` 三组+回填；消化二 `3ca824e..db0b17d` 单组+回填）。
+- 批内审查执行者：**opus 子代理**（同一代理跨三轮续跑，上下文连续故可精准复测自己的攻击变体）。三份报告入库 `maintenance/repair-20260806/reviews/`：`batch2-review.md`（首轮 BLOCK）、`batch2-rereview.md`（增量重审 BLOCK）、`batch2-review3.md`（三审 PASS）。
+- **首轮审查（BLOCK：P2=1 P3=4）**：核心不变量"formal-ready 由真实能力闭合导出"经最强攻击未击穿（三层 MappingProxyType 全 TypeError、生产零 harness import、READY 深验 C0-C10 十一变体全拒、RH 防回流八面守住、choices 10/10 单源派生）；但 B2R-01 legacy 旁路跳三重检查（P2 半修残留）、B2R-02 `_record_from` 自报 Mapping 后门、B2R-03 harness 无 teardown+自报表述不实、B2R-04 缺字节码防护、B2R-05 map 归组偏差（均 P3 新引入）。审查插曲：opus 曾凭印象虚构不存在的 tuple 版 chain_registry，自纠后重来（此后三轮"每论断先读磁盘"零复发）。
+- **消化一（B2F-G1~G3=`138b707`/`ee7d4d5`/`af92a91`+回填 `3ca824e`）**：legacy 改 registry release_tier 长期语义准入（Fable 工单预判并规避了 opus 原修复建议的 READY_CHAINS 恒空误伤陷阱）+在场深验+OB-A audit 消费点；readiness API 字符串-only；harness contextmanager 可逆+三层只读；字节码 setdefault；反例 B2F-LG-01~04。
+- **增量重审（BLOCK：P3=4，全新引入）**：上轮 5 项+2 观察全闭合、C0-C10 零回归、存量旧案不误伤（含大写别名）、入库报告逐字未篡改；但消化代码自身引入 B2FR-01 "在场"判据取 manifest 自报清单可摘登记绕深验（伪缺席第三态，新测试摘登记+unlink 绑死故不可达）、B2FR-02 generate set 去重/verify 列表长度口径漂移、B2FR-03 台账漏列+表述张力、B2FR-04 Fable 区间末端未取 tip（OB-D 同族重犯）。OB-E（formal_ready(None) 行为变化生产面安全）/OB-F（源码字符串弱断言）/OB-G（marker 子目录设计内）三观察记录不修。
+- **消化二（B2F2-G1=`9609655`+回填 `db0b17d`，最小改动面恰四文件+85/-6）**：wrapper_present 改"清单登记或磁盘 isfile"取或+B2F-LG-05 伪缺席反例；generate 判重后 `sorted(set(chains))`+duplicate-chain 反例；台账补列/区间修正；回填区间行改文字自指"至本回填 commit"（规避回填 commit 无法预知自身 SHA 的悖论——前两轮区间滞后的根因）。
+- **三审（PASS：全零，不触发止损线）**：四项 B2FR 闭合（伪缺席 rc=2/真缺席 rc=0/bsc,bsc 自产自验过）；新判据 `os.path.isfile` 四边界变体全守住（目录冒充退化为等价缺席且下游独立拒；案外/案内/严格路径 symlink 均被 `shared_release_receipt.regular()` 的 symlink+越界防护拦）；`sorted(set)` 单链路径零影响、handoff 65 项不回退；未映射 hunk 复算=0；suite 76/76 独立复跑；台账零自报不实；自指写法获裁决"满足通例意图且优于机械填 SHA"。三审为聚焦审查，全库扫描留两轮盲审。
+- Fable 读码复核（三轮均亲核后才发工单/代 commit）：首轮 5/5 属实（含抓出 opus 两个修复建议均会误伤旧案的陷阱）；重审 4/4 属实（含抽查 generate 侧代码坐实口径漂移）；消化二 diff 逐 hunk 核+亲测 76/76 绿（三轮各一次）。
+- 批二覆盖 finding 的批内状态：
+  - `R7-07`/`R8-02`（INV-11 能力矩阵+RH exploration）→ 批内已修，覆盖①③；RH 豁免 `RH-EX-01/02` 台账七要素齐备待总验收裁决；
+  - `R8-06`（INV-12 READY reconciliation 必经）→ 批内已修（含 legacy 通道补闸），覆盖①；纵切片证据接批三；
+  - `R7-08`（同族）→ 随 INV-12 闭合；
+  - 批一遗留 `B1R-03`/`B1R-04` → B2-G0 已就地修毕销账。
+- 工艺记录：批一 P3 收尾（B2-G0）与本批主体同批施工；三轮审查报告均分段落盘（opus 长会话写长报告流中断两次后的硬性要求）；消化二首次发射静默死（进程活/日志 31min 零输出），kill 重发即成。
