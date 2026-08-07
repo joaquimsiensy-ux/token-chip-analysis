@@ -352,13 +352,13 @@ def check_rebase(rpc, hs_url, bearer, token, tip, window, logs_in_window):
     return out
 
 
-def check_permissions(chain, token):
+def check_permissions(chain, token, sourcify_url="https://sourcify.dev/server"):
     """Sourcify v2 ABI 权限面扫描——只记录不定级；404=未验证不算失败。"""
     cid = evm_chain_id_for(chain)
     if not cid:
         return {"available": False, "note": "Sourcify 不支持该链"}
     try:
-        r = requests.get(f"https://sourcify.dev/server/v2/contract/{cid}/{token}",
+        r = requests.get(f"{sourcify_url.rstrip('/')}/v2/contract/{cid}/{token}",
                          params={"fields": "abi,compilation"}, timeout=25)
         if r.status_code == 404:
             return {"available": True, "verified": False}
@@ -385,6 +385,7 @@ def main():
                     default=os.path.expanduser("~/.config/hypersync/token"))
     ap.add_argument("--proxy", default=None, help="RPC 代理（Alchemy 国内必须 clash）")
     ap.add_argument("--samples", type=int, default=8)
+    ap.add_argument("--sourcify", default="https://sourcify.dev/server")
     ap.add_argument("--out", default="accounting_mode.json")
     a = ap.parse_args()
 
@@ -422,6 +423,7 @@ def main():
     # ---- 基础与代理 ----
     try:
         tip = int(rpc.call("eth_blockNumber", []), 16)
+        result["as_of_block"] = tip
         code_ = rpc.call("eth_getCode", [token, "latest"])
         if not code_ or code_ == "0x":
             result["reasons"].append("目标地址无合约代码（EOA/错链）")
@@ -483,7 +485,7 @@ def main():
         result["warnings"].append("rebase 子检测无有效样本（TS 读取失败且静默地址全无余额）——本项未证伪")
 
     # ---- 权限面（只记录）----
-    perms = check_permissions(a.chain, token)
+    perms = check_permissions(a.chain, token, a.sourcify)
     result["checks"]["permissions"] = perms
     if perms.get("flags"):
         result["warnings"].append("权限面（Sourcify ABI，只记录不定级）: " + ",".join(perms["flags"]))

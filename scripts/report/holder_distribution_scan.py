@@ -209,9 +209,11 @@ def load_supply(case_dir: Path) -> tuple[Path, int, int]:
     obj = load_json(path)
     if str(obj.get("verdict", "")).upper() != "PASS" or obj.get("exit_code") != 0:
         raise ValueError("supply_truth 非 PASS/exit 0")
-    total = strict_raw(obj.get("total_supply_raw", obj.get("frozen_total_supply_raw")),
+    total = strict_raw(obj.get("total_supply_raw", obj.get(
+        "frozen_total_supply_raw", obj.get("onchain_total_supply"))),
                        "total_supply_raw")
-    net = strict_raw(obj.get("net_supply_raw", total), "net_supply_raw")
+    net = strict_raw(obj.get("net_supply_raw", obj.get("replay_net", total)),
+                     "net_supply_raw")
     if not total or not net or net > total:
         raise ValueError("供给真值 total/net 非法")
     return path, total, net

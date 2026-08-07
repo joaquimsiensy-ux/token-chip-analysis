@@ -2,8 +2,7 @@
 """Immutable chain release tiers and executable capability facts.
 
 ``release_tier`` expresses policy intent.  It is not a readiness switch.
-``formal_ready`` is derived from the complete capability closure below; Batch 2
-deliberately leaves ``vertical_slice_verified`` false for every chain.
+``formal_ready`` is derived from the complete capability closure below.
 """
 from __future__ import annotations
 
@@ -69,6 +68,7 @@ _FORMAL_EVM = dict(
     time_producer=True, controlled_runner=True,
     reconciliation_consumer=True, identity_adapter="evm", labels_table=True,
     handoff=True, audit_release=True, chain_attestation="evm-chain-id",
+    vertical_slice_verified=True,
 )
 
 
@@ -135,6 +135,7 @@ CHAIN_REGISTRY = MappingProxyType({
         time_producer=True, controlled_runner=True,
         reconciliation_consumer=True, identity_adapter="solana", labels_table=True,
         handoff=True, audit_release=True, chain_attestation="solana-cluster",
+        vertical_slice_verified=True,
     ),
 })
 

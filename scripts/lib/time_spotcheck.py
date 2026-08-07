@@ -98,6 +98,18 @@ def main():
     if need_final and a.final_block is None:
         sys.exit(f"[fatal] {len(need_final)} 个 balance 锚点无 day_end_block（门槛边缘地址型），"
                  "必须传 --final-block <数据截止块>——静默跳点=覆盖缩水，fail-closed")
+    plan_final = plan.get("final_block")
+    if (isinstance(plan_final, bool) or not isinstance(plan_final, int)
+            or a.final_block is None or plan_final != a.final_block):
+        print("[fatal] anchor_plan final_block 必须与 CLI --final-block 精确一致", file=sys.stderr)
+        return 2
+    query_blocks = [p.get("day_end_block") for p in bal_pts
+                    if p.get("day_end_block") is not None]
+    query_blocks += [p.get("block") for p in tx_pts if p.get("block") is not None]
+    if any(isinstance(block, bool) or not isinstance(block, int)
+           or block < 0 or block > a.final_block for block in query_blocks):
+        print("[fatal] anchor_plan 查询块非法或越过 final_block", file=sys.stderr)
+        return 2
 
     if a.dry_run:
         plan_chain = str(plan.get("chain") or "").lower()
