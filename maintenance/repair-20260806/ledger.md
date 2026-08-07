@@ -602,6 +602,16 @@
 - 批三覆盖 finding 的批内状态：`R8-01`/`R8-03`/`R8-11`/`R8-12`/`R7-03`/`R7-06`（Solana producer 族）与 `R8-07`/`R8-08`/`R8-09`/`R7-13`（EVM 执行面）→ 批内已修+纵切片证据在案；`R8-06`/`R7-08` 纵切片验证必经性完成；`full-F-01`/`six-F-03`/`R7-01` 由"未运行 producer 无法通过 aggregator"真实编排承接；`full-C-02`/`full-C-03` Solana A2 闭环完成；`R7-05` runner 可执行 envelope 收口。批一 `R8-12` producer 迁移面本批销账。
 - 工艺记录：opus 首轮方法自纠（mktemp 根被批一 symlink 防护拦、换 realpath 根）反向印证批一防护真实生效；批三消化发射一次成功（无静默死）；重审 anchor 实测补齐是"同族关到同一深度"纪律的执行范例。
 
+### 批四（守卫/fixture/方法论）— 批内审查裁决：**PASS**（一循环：BLOCK(2 P3)→消化→重审全零）
+
+- 候选 SHA：`0f53b68`（施工 `f2a6e41..6b7ab8d` 三组+回填；消化 `B4F-G1`=`13d76c0`+回填 `0f53b68`）。
+- 批内审查执行者：**opus 子代理**（同一代理续跑）。两份报告入库 `reviews/`：`batch4-review.md`（首轮 BLOCK）、`batch4-rereview.md`（重审 PASS）。
+- **首轮审查（BLOCK：P3=2+2 观察，全新引入）**：批四主体质量高——九个边界变体七个守住（含批三"删测试+摘 SUITE"两步绕过被双条件堵死、分母整键删除比反例声称更强、SUITE 检查用 AST 非 grep）；8 注入反例真实且配绿例防误伤；fixture 零过时三面独立抽查通过（solana-holder-snapshot-v2 确认为与 v3 并存现役非过时）；六脚本"发布路径外"机器判据+消费链双验属实；方法论 41 行纯追加含对施工方不利的止损条款零美化；B3FR-01 修正核验闭合；零自报不实。缺陷：B4R-01 LABEL_CHAIN_SURFACES 七面遗漏第八同形态面 accumulate_offenders.py:249（对照注入实测：覆盖面红/未覆盖面静默；**opus 自我反证降级范例**——初判 P2 依据 archive 工单，按"archive 不得作为验收证据"改用 registered_formal_entrypoints() 机器判据确认发布路径外，下调 P3）；B4R-02 派生源缺键抛裸 KeyError 缺明确诊断（方向已 fail-closed，缺陷在可诊断性）。观察：OB-K 裸池守卫对 import-as 别名不可见（威胁模型内，措辞收窄）；OB-L 方法论缺"注入须自证到达目标分支"条（opus 批三两次踩坑教训）。
+- **消化（B4F-G1=`13d76c0`，恰五文件）**：第八面收编（membership:chain:1）+复列无第九面；派生源缺键/family 不同步/空 runner 抛 FormalEntrypointSourceError 带"两侧不同步"诊断；措辞收窄；方法论补条。
+- **重审（PASS 全零）**：修复深度超最低要求——labels 对表升级**双向**（注入 polygon 与摘 robinhood 都红且精确定位）、原七面不误伤、locator 判据泛化；派生源三类注入全出明确诊断零 Traceback，opus 另加测第四类（整键删除 ADVERSARIAL_RUNNERS）同样守住，正常路径 16 项不变；"无第九面"自报经同法独立复列核验通过（其余 rg 命中均为别名映射/外部服务能力表/业务子集，不构成声明面）；B4F-FORMAL-01 断言诊断文本而非仅非零退出=方法论新条自我践行；未映射=0 清单逐文件吻合；suite 80/80。
+- 批四覆盖 finding 的批内状态：`R8-05`（INV-17 scanner 分母）→ 销账；`full-F-04` 动态计数守卫补齐；`B1R-01`/`OB-B`/`B3R-Q1` 三守卫欠账全部落地收口；fixture 审计与六脚本判定入档。
+- 工艺记录：守卫本身作为被审对象过了独立可绕性检验；批四消化一次循环收口（全工程最快）。
+
 ## 八、批四自动守卫待办
 
 - `B1R-01`：已由 `B4-RPC-01` 落地；`invariant_scan` 扫生产文件，除 `net.py:attested_rpc_pool` 外任何直接 `RpcPool(` 构造即红，临时生产样本注入已验。
