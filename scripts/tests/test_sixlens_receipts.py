@@ -229,7 +229,7 @@ def test_window_fetch(root):
         assert not negative.exists() and not negative_receipt.exists()
 
         out.write_text("old-formal\n", encoding="utf-8")
-        with mock.patch.object(mod, "scan_seg", return_value=([(1, 1, "a", "b", 1)], False)):
+        with mock.patch.object(mod, "scan_seg", return_value=([(1, 1, "a", "b", 1)], False, [1])):
             assert mod.main(args) == 2
         assert not out.exists() and Path(str(out) + ".partial").exists()
         failed_receipt = json.loads(receipt.read_text())
@@ -241,21 +241,21 @@ def test_window_fetch(root):
 
         for p in (Path(str(out) + ".partial"), Path(str(out) + ".gaps.json"), receipt):
             if p.exists(): p.unlink()
-        with mock.patch.object(mod, "scan_seg", return_value=([(1, 1, "a", "b", 1)], True)):
+        with mock.patch.object(mod, "scan_seg", return_value=([(1, 1, "a", "b", 1)], True, [1])):
             assert mod.main(args) == 0
         passed_receipt = json.loads(receipt.read_text())
         assert out.exists() and passed_receipt["verdict"] == "PASS"
         assert validator.validate_receipt(passed_receipt) == []
 
         out.unlink(); receipt.unlink()
-        with mock.patch.object(mod, "scan_seg", return_value=([(1, 1, "a", "b", 1)], True)), \
+        with mock.patch.object(mod, "scan_seg", return_value=([(1, 1, "a", "b", 1)], True, [1])), \
                 mock.patch.object(mod, "publish_overwrite", side_effect=OSError("disk full")):
             assert mod.main(args) == 1
         assert not out.exists(), "receipt 写失败前已发布正式 window 文件"
 
         out.write_text("old-formal\n", encoding="utf-8")
         before = out.read_bytes()
-        with mock.patch.object(mod, "scan_seg", return_value=([(1, 1, "a", "b", 1)], True)), \
+        with mock.patch.object(mod, "scan_seg", return_value=([(1, 1, "a", "b", 1)], True, [1])), \
                 mock.patch.object(mod, "publish_overwrite", side_effect=OSError("disk full")):
             assert mod.main(args) == 1
         assert out.read_bytes() == before, "刷新失败未恢复旧 window 正式文件"

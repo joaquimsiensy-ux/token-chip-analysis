@@ -196,7 +196,7 @@ def test_r7_06():
 
         old = root / "old.jsonl"; old.write_text("old-formal\n", encoding="utf-8")
         gap_receipt = root / "gap_receipt.json"
-        with mock.patch.object(mod, "scan_seg", return_value=([], False)):
+        with mock.patch.object(mod, "scan_seg", return_value=([], False, [])):
             rc = mod.main(["0", "0", str(old), "--receipt", str(gap_receipt), "--conc", "1"])
         stale = list(root.glob("old.jsonl.stale.*"))
         if rc != 2 or old.exists() or not stale:
