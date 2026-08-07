@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "_schema": {
+    "description": "端到端测试只允许替换 transport；不得 mock producer main、RPC 业务函数、scan 业务函数、receipt builder、runner、aggregator 或 validator。",
+    "required_entry_fields": {
+      "production_callsite": "仓库相对路径加函数或行级 callsite",
+      "protocol": "例如 EVM JSON-RPC、Solana JSON-RPC、SQD HTTP/NDJSON",
+      "fake_backend": "fake backend 或 loopback server 的实现与地址",
+      "test_id": "唯一、稳定、可由 suite 直接运行的测试 ID",
+      "allowed_reason": "为什么该注入只替换 transport，且不绕过生产业务逻辑"
+    }
+  },
+  "entries": []
+}
