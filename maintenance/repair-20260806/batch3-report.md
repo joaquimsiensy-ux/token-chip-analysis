@@ -248,7 +248,7 @@ PASS R7 regression suite: 15/15 observed green; EXPECTED_RED=0
 | 分组 | 文件 / 目的 |
 |---|---|
 | `B3F-G1` | `window_fetch.py`、`anchor_sampler.py`、`test_batch3_solana_producers.py`：B3R-01 提交后自检失败撤回与 `B3F-TXN-01/02`。 |
-| `B3F-G2` | `window_fetch.py`、`test_batch3_solana_producers.py`、`test_sixlens_receipts.py`、`test_r7_findings.py`：B3R-02 生产 3 元组契约及 timestamps min/max 闭环。 |
+| `B3F-G2` | `test_sixlens_receipts.py`、`test_r7_findings.py`：B3R-02 历史 mock 改生产 3 元组契约。其生产侧 hunk（window_fetch 删 2 元组分支+timestamps min/max 闭环）与 `B3F-TS-01` 反例因文件级 commit 物理落于 B3F-G1=`75d112f`，本组为语义 owner（B3FR-01 修正，Fable）。 |
 | `B3F-G3` | 四份 maintenance 台账：B3R-03、OB-H/I/J、批四 `B3R-Q1`。 |
 
 ### 10.5 全量门禁与本轮改动文件
