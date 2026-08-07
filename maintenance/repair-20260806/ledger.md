@@ -589,3 +589,9 @@
   - `R7-08`（同族）→ 随 INV-12 闭合；
   - 批一遗留 `B1R-03`/`B1R-04` → B2-G0 已就地修毕销账。
 - 工艺记录：批一 P3 收尾（B2-G0）与本批主体同批施工；三轮审查报告均分段落盘（opus 长会话写长报告流中断两次后的硬性要求）；消化二首次发射静默死（进程活/日志 31min 零输出），kill 重发即成。
+
+## 八、批四自动守卫待办
+
+- `B1R-01`：`invariant_scan` 扫描生产文件直接构造裸 `RpcPool` 的旁路；除唯一 attested 工厂外，发现 `expected_chain_id=None` 或缺失即红。
+- `OB-B`：labels 链清单做 registry 双向对表，既防 labels 侧硬编码副本漏链，也防多出未登记链。
+- `B3R-Q1`：`invariant_scan` 遍历所有 `vertical_slice_verified=True` 的链；每链必须同时满足对应纵切片测试文件存在、且该文件在 `scripts/tests/run_all.py` 的 `SUITE` 内，双条件缺一即红。

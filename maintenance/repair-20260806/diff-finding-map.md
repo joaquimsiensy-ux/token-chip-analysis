@@ -31,8 +31,11 @@
 | `B2F2-G1:scripts/report/handoff_manifest.py; scripts/tests/test_batch2_legacy_hardening.py; maintenance/repair-20260806/{diff-finding-map.md,batch2-report.md}` | `INV-12, INV-11` | owner `B2FR-01, B2FR-02, B2FR-03, B2FR-04` | legacy wrapper 在场判据改为清单或磁盘；generate 单链去重规范化；补列审查报告并统一区间 tip 规则 | `B2F-LG-05`; `bsc,bsc` generate→verify；76 项全量 suite |  |
 | `B3-G1:scripts/{evm/accounting_gate.py,lib/time_spotcheck.py,report/holder_distribution_scan.py,lib/chain_registry.py}; scripts/tests/test_batch3_evm_vertical_slice.py` | `INV-06, INV-07, INV-11, INV-12` | `R8-07, R8-08, R8-09, R7-13, R8-06`; 纵切片承接 `full-F-01, six-F-03, R7-01` | eth/bsc/base 真实 accounting+四 producer runner+consumer+READY+release；plan/final-block 精确绑定；错链业务 RPC=0；能力闭合后 readiness 派生为真 | `B3-TIME-01/02`; `B3-EVM-E2E-ETH/BSC/BASE`; `B3-EVM-WRONG-ETH/BSC/BASE` |  |
 | `B3-G2:scripts/lib/{receipt_kernel.py,supply_truth_gate.py}; scripts/report/{reconciliation_report.py,shared_release_receipt.py}; scripts/solana/{accounting_gate_sol.py,anchor_sampler.py,scan_token_accounts.py,window_fetch.py}` | `INV-05, INV-08, INV-09, INV-10, INV-12` | `R7-03, R7-05, R7-06, R8-01, R8-03, R8-11, R8-12`; secondary `full-C-02/full-C-03` | 冻结 slot 单源；supply current envelope/runner 可执行；anchor/window data+receipt 联合事务；timestamp/alias/None target fail-closed；Solana target canonical 深验 | `B3-SOL-PROD-01`～`06`; `B3-SOL-E2E` |  |
-| `B3-G3:scripts/tests/{test_batch3_solana_producers.py,test_batch3_solana_vertical_slice.py,test_batch3_evm_vertical_slice.py,test_time_spotcheck.py,test_batch1_rpc_attestation.py,test_r7_findings.py,test_sixlens_receipts.py,test_round4_identity_emitter.py,test_batch2_capability_matrix.py,test_batch2_registry_harness_hardening.py,test_chain_registry.py,test_chain_support_matrix.py,formal_ready_test_harness.py,test_handoff_manifest.py,invariant_manifest.json,run_all.py}` | `INV-01, INV-05, INV-06, INV-07, INV-08, INV-09, INV-10, INV-11, INV-12` | 批三上述 findings | 挂载四链真实纵切片、生产者反例和历史 fixture 兼容；同步静态 schema 调用图与 harness 当前口径 | 全量 suite；`invariant_scan.py` |  |
+| `B3-G3:scripts/tests/{test_batch3_solana_producers.py,test_batch3_solana_vertical_slice.py,test_time_spotcheck.py,test_batch1_rpc_attestation.py,test_r7_findings.py,test_sixlens_receipts.py,test_round4_identity_emitter.py,test_batch2_capability_matrix.py,test_batch2_registry_harness_hardening.py,test_chain_registry.py,test_chain_support_matrix.py,formal_ready_test_harness.py,test_handoff_manifest.py,invariant_manifest.json,run_all.py}` | `INV-01, INV-05, INV-06, INV-07, INV-08, INV-09, INV-10, INV-11, INV-12` | 批三上述 findings | 挂载四链真实纵切片、生产者反例和历史 fixture 兼容；同步静态 schema 调用图与 harness 当前口径 | 全量 suite；`invariant_scan.py` |  |
 | `B3-G4:maintenance/repair-20260806/{ledger.md,diff-finding-map.md,transport-injections.json,batch3-report.md}` | `INV-01, INV-05, INV-06, INV-07, INV-08, INV-09, INV-10, INV-11, INV-12` | 批三上述 findings | 登记纵切片证据、transport-only fake 注入、红绿与逻辑分组 | `B3-EVM-*`; `B3-SOL-*`; 全量 suite |  |
+| `B3F-G1:scripts/solana/{window_fetch.py,anchor_sampler.py}; scripts/tests/test_batch3_solana_producers.py` | `INV-05`; secondary `INV-03, INV-04` | owner `B3R-01`; 同族 `R8-12, R7-03, R7-06` | 提交后独立自检失败先撤 canonical PASS receipt，再把 data 移出正式位；删除 window 恒假回滚状态 | `B3F-TXN-01/02` |  |
+| `B3F-G2:scripts/solana/window_fetch.py; scripts/tests/{test_batch3_solana_producers.py,test_sixlens_receipts.py,test_r7_findings.py}` | `INV-09`; secondary `INV-05` | owner `B3R-02`; 同族 `R8-11` | 删除生产 2 元组测试适配；complete segment 必须有 timestamp min/max；历史 mock 改为生产 3 元组契约 | `B3F-TS-01`; six-lens/R7 回归 |  |
+| `B3F-G3:maintenance/repair-20260806/{diff-finding-map.md,batch3-report.md,transport-injections.json,ledger.md}` | `INV-05, INV-07, INV-09, INV-17` | owner `B3R-03, OB-H, OB-I, OB-J`; batch4 `B3R-Q1` | 修正 B3-G3 文件 owner；如实记录 resume 权衡、错链证据边界与 `/query` 计数盲区；登记批四双条件纵切片守卫 | 台账对表；JSON parse；全量 suite |  |
 
 ## 分组 → commit SHA 对照（Fable 代 commit 后回填）
 
@@ -55,6 +58,9 @@
 | `B3-G2` | `d2e9409` | Solana producer envelope/txn/slot/timestamp + 纵切片 |
 | `B3-G3` | `73113ba` | 批三测试、兼容 fixture 与静态 manifest |
 | `B3-G4` | `5c41f05` | 批三台账、transport 注入与施工报告 |
+| `B3F-G1` | 待 Fable 回填 | B3R-01 提交后自检失败真实撤回 |
+| `B3F-G2` | 待 Fable 回填 | B3R-02 timestamps 证据闭环与测试契约收口 |
+| `B3F-G3` | 待 Fable 回填 | B3R-03 与 OB-H/I/J 台账 |
 
 ## 未映射 hunk 计数
 

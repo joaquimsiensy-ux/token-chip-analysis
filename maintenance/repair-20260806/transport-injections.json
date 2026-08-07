@@ -86,7 +86,7 @@
       "protocol": "EVM JSON-RPC over HTTP",
       "fake_backend": "scripts/tests/test_batch3_evm_vertical_slice.py ThreadingHTTPServer bound to 127.0.0.1:0",
       "test_id": "B3-EVM-E2E-ETH/BSC/BASE + B3-EVM-WRONG-ETH/BSC/BASE",
-      "allowed_reason": "Production CLIs, RpcPool attestation, receipt builders and controlled runner are unchanged; the loopback server replaces only HTTP responses and records that wrong-chain runs issue eth_chainId only."
+      "allowed_reason": "Production CLIs, RpcPool attestation, receipt builders and controlled runner are unchanged. The B3 wrong-chain loopback executes production time_spotcheck and records eth_chainId only; per-callsite zero-business coverage is supplied separately by Batch 1 test_each_formal_callsite_wrong_chain_zero_business."
     },
     {
       "production_callsite": "scripts/evm/accounting_gate.py:hs_logs -> requests.post",
