@@ -39,6 +39,7 @@
 | `B4-G1:scripts/tests/{invariant_scan.py,invariant_manifest.json,test_batch4_invariant_guards.py,run_all.py}` | `INV-17`; secondary `INV-07, INV-11, INV-15, INV-18` | `R8-05`; `B1R-01, OB-B, B3R-Q1`; secondary `full-F-04` | 以能力矩阵+producer registry 闭合 formal 分母；覆盖 urllib/httpx/变量 curl；阻断裸池、labels 双向漂移、纵切片脱挂、分母缩减与 RH 数字漂移 | `B4-RPC-01`; `B4-LABEL-01/02`; `B4-VS-01/02`; `B4-INV17-01/02`; `B4-RH-COUNT-01` |  |
 | `B4-G2:references/maintenance-review-repair.md` | `INV-18, INV-19` | 批四方法论写回；承接历轮新引入/半修残留 | 只追加闭环章节，固化分层收口、三循环止损、批内节拍、map 三通例、攻击式验收和 transport-only fake 五字段 | `docs_lint.py --all`; 内容逐项对表 |  |
 | `B4-G3:maintenance/repair-20260806/{ledger.md,diff-finding-map.md,batch4-report.md}` | `INV-17, INV-18, INV-19` | `R8-05, full-F-04`; 18 项 baseline-fixed finding 证据补齐；六 producer 判定 | 登记红绿、fixture 零过时审计、发布路径可达性、逻辑分组和剩余主账证据 | fixture rg/契约测试；全量 suite |  |
+| `B4F-G1:scripts/tests/{invariant_scan.py,test_batch4_invariant_guards.py}; maintenance/repair-20260806/{batch4-report.md,diff-finding-map.md}; references/maintenance-review-repair.md` | `INV-17, INV-19`; secondary `INV-15` | owner `B4R-01, B4R-02, OB-K, OB-L` | 补齐 labels 第八资产面；派生源失配改为明确 scanner 诊断；收窄裸池威胁模型并要求注入自证命中目标分支 | `B4F-LABEL-03`; `B4F-FORMAL-01`; 全量 suite |  |
 
 ## 分组 → commit SHA 对照（Fable 代 commit 后回填）
 

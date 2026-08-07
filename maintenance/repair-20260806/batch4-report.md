@@ -109,7 +109,7 @@ PASS invariant manifest: receipt_producers=46, receipt_consumers=51, transport_c
 
 ### ② 失败分支
 
-- 任一 AST/locator 数量不符、额外链、漏链、裸池、缺测试、脱 SUITE、正式 registry 漏登记、分母下降或 RH 数字漂移都会追加 scanner error 并使进程 exit 1。
+- 任一 AST/locator 数量不符、额外链、漏链、缺测试、脱 SUITE、正式 registry 漏登记、分母下降或 RH 数字漂移都会追加 scanner error 并使进程 exit 1。裸池守卫只抓 AST 中以 `RpcPool` 名或 `.RpcPool` 属性出现的直接构造；`import ... as` 别名和 `getattr` 动态取用不在可见范围，威胁模型是防误用、不是防恶意规避。
 - scanner 无跳过参数；测试注入全部在系统临时目录，不改生产/labels/references 资产。
 
 ## 7. 归因预判
@@ -165,3 +165,73 @@ EXIT=0（80/80）
 - `maintenance/repair-20260806/batch4-report.md`
 
 既有 fixture、生产业务代码、CHANGELOG 均零改动。
+
+## 10. 批内消化（B4R-01/02）
+
+### 10.1 B4R-01：labels 第八面
+
+红例：给 `accumulate_offenders.py` 的成员元组注入 `polygon`，冻结守卫返回
+`AssertionError: []`，证明该文件不在原七面分母内。修复是在
+`LABEL_CHAIN_SURFACES` 增加 `membership:chain:1`，归入 `table`：该脚本消费惯犯标签资产，
+与 release tier 无关。绿例：
+
+```text
+INJECT B4-LABEL-01/02 + B4F-LABEL-03 extra/missing/eighth surface -> RED
+```
+
+修后复列命令：
+
+```text
+rg -n --glob '*.py' "chain not in\\s*\\(|chain in\\s*\\(['\"]eth|in\\s*\\(['\"]eth" scripts/labels
+```
+
+复列共六处：`build_goldset.py:87/187` 由一个 `membership:chain:2` locator 覆盖；
+`accumulate_offenders.py:249` 由新增 locator 覆盖；`labels_resolver.py:229` 是受
+`KNOWN_CHAINS` 约束的 EVM fallback 排除条件，不是独立链全集；`build_labels.py:190`
+只列 spellbook codetype 的三条 EVM 来源，`:481` 只列 Permit2 已知部署面，均不是 labels
+资产构建全集。结论：无第九个同语义独立面。
+
+### 10.2 B4R-02：派生源诊断
+
+冻结审查红例把 `ACCOUNTING_PRODUCERS` 置空后得到裸
+`KeyError: 'solana'`。新增 `B4F-FORMAL-01` 同样置空派生源；修复前新测试尚无
+`shared_path` 注入入口而以 `TypeError` 转红，修后注入明确到达派生源检查并进入正常错误列表：
+
+```text
+formal entrypoint derived source ACCOUNTING_PRODUCERS missing families
+['evm', 'solana']; registry and shared_release_receipt are out of sync
+INJECT B4F-FORMAL-01 empty ACCOUNTING_PRODUCERS -> RED with diagnostic
+```
+
+缺 assignment 键、空 runner 集以及 registry family 在 accounting/recon 任一侧缺失也走
+同一 `FormalEntrypointSourceError` → `_scanner_errors` 通道，不再泄漏裸 traceback。
+
+### 10.3 两项观察
+
+- FIX-C：将裸池声明从“任一裸池”收窄为 AST 可见的直接名/属性构造，并明确别名与
+  `getattr` 不可见；守卫用于防误用，不声称抵抗恶意规避。
+- FIX-D：方法论 7.4 增加“注入须自证到达目标分支”，要求先命中目标错误文本或状态，
+  避免把前置闸的非零退出误算为目标分支已守住。
+
+### 10.4 分组与门禁
+
+本轮单组 `B4F-G1`，只涉及以下五个文件：
+
+- `scripts/tests/invariant_scan.py`
+- `scripts/tests/test_batch4_invariant_guards.py`
+- `maintenance/repair-20260806/batch4-report.md`
+- `references/maintenance-review-repair.md`
+- `maintenance/repair-20260806/diff-finding-map.md`
+
+全量 suite：
+
+```text
+PYTHONDONTWRITEBYTECODE=1 python3 scripts/tests/run_all.py
+PASS invariant_scan.py        PASS invariant manifest: receipt_producers=46,
+                              receipt_consumers=51, transport_calls=57,
+                              atomic_writes=37, formal_entrypoints=58, exceptions=0
+PASS test_batch4_invariant_guards.py PASS B4-G1: bare pool / labels /
+                                     vertical slice / denominator injections
+全部通过
+EXIT=0（80/80）
+```

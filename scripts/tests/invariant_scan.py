@@ -46,6 +46,8 @@ LABEL_CHAIN_SURFACES = (
     ("scripts/labels/roundtrip_check.py", "table", "assign:CHAINS"),
     ("scripts/labels/goplus_check.py", "table", "argparse:--chain"),
     ("scripts/labels/build_goldset.py", "table", "membership:chain:2"),
+    # serial-offender accumulation consumes the same labels-table asset surface.
+    ("scripts/labels/accumulate_offenders.py", "table", "membership:chain:1"),
 )
 VERTICAL_SLICE_TESTS = {
     "eth": "test_batch3_evm_vertical_slice.py",
@@ -149,13 +151,23 @@ def _literal_assignments(path: Path, names) -> dict:
     return found
 
 
-def registered_formal_entrypoints():
+class FormalEntrypointSourceError(ValueError):
+    pass
+
+
+def registered_formal_entrypoints(*, shared_path=None):
     registry = _load_chain_registry()
+    shared_path = Path(shared_path or ROOT / "scripts/report/shared_release_receipt.py")
+    required = {"ACCOUNTING_PRODUCERS", "RECON_PRODUCERS", "RECON_RUNNERS",
+                "ADVERSARIAL_RUNNERS"}
     shared = _literal_assignments(
-        ROOT / "scripts/report/shared_release_receipt.py",
-        {"ACCOUNTING_PRODUCERS", "RECON_PRODUCERS", "RECON_RUNNERS",
-         "ADVERSARIAL_RUNNERS"},
+        shared_path, required,
     )
+    missing_keys = sorted(required - set(shared))
+    if missing_keys:
+        raise FormalEntrypointSourceError(
+            "formal entrypoint derived source shared_release_receipt missing keys "
+            f"{missing_keys}; registry and shared_release_receipt are out of sync")
     families = {
         record["capabilities"]["accounting_adapter"]
         for chain, record in registry.CHAIN_REGISTRY.items()
@@ -164,6 +176,22 @@ def registered_formal_entrypoints():
     paths = set(FORMAL_RELEASE_ENTRYPOINTS)
     accounting = shared["ACCOUNTING_PRODUCERS"]
     producers = shared["RECON_PRODUCERS"]
+    missing_accounting = sorted(families - set(accounting))
+    missing_producers = sorted(families - set(producers))
+    if missing_accounting or missing_producers:
+        details = []
+        if missing_accounting:
+            details.append(f"ACCOUNTING_PRODUCERS missing families {missing_accounting}")
+        if missing_producers:
+            details.append(f"RECON_PRODUCERS missing families {missing_producers}")
+        raise FormalEntrypointSourceError(
+            "formal entrypoint derived source " + "; ".join(details)
+            + "; registry and shared_release_receipt are out of sync")
+    for name in ("RECON_RUNNERS", "ADVERSARIAL_RUNNERS"):
+        if not shared[name]:
+            raise FormalEntrypointSourceError(
+                f"formal entrypoint derived source {name} is empty; "
+                "registry and shared_release_receipt are out of sync")
     for family in families:
         paths.add(accounting[family])
         for allowed in producers[family].values():
@@ -235,7 +263,7 @@ def _surface_values(path: Path, locator: str):
                     value = ast.literal_eval(keyword.value)
                     found.append(set(value))
         return found
-    if locator == "membership:chain:2":
+    if locator.startswith("membership:chain:"):
         found = []
         for node in ast.walk(tree):
             if not isinstance(node, ast.Compare) or not isinstance(node.left, ast.Name) \
@@ -258,7 +286,8 @@ def label_chain_surface_errors(*, root=ROOT):
     errors = []
     for rel, kind, locator in LABEL_CHAIN_SURFACES:
         values = _surface_values(root / rel, locator)
-        expected_count = 2 if locator == "membership:chain:2" else 1
+        expected_count = int(locator.rsplit(":", 1)[1]) \
+            if locator.startswith("membership:chain:") else 1
         if len(values) != expected_count:
             errors.append(f"labels surface {rel}:{locator} expected {expected_count} list(s), got {len(values)}")
             continue
@@ -452,7 +481,7 @@ def scan_python(path: Path):
     return producers, consumers, transports, atomic.locators
 
 
-def scan_actual():
+def scan_actual(*, shared_path=None):
     producer_map = {}
     consumer_map = {}
     transports = []
@@ -473,7 +502,13 @@ def scan_actual():
             consumer_map[rel] = sorted(consumers)
         transports.extend({"script": rel, "kind": kind} for kind in sorted(kinds))
         atomic.extend({"script": rel, "locator": name} for name in sorted(locators))
-    return {
+    source_errors = []
+    try:
+        formal_entrypoints = registered_formal_entrypoints(shared_path=shared_path)
+    except FormalEntrypointSourceError as exc:
+        formal_entrypoints = []
+        source_errors.append(str(exc))
+    actual = {
         "receipt_producers": [
             {"script": script, "schemas": schemas}
             for script, schemas in sorted(producer_map.items())
@@ -484,8 +519,11 @@ def scan_actual():
         ],
         "transport_calls": sorted(transports, key=lambda x: (x["script"], x["kind"])),
         "atomic_writes": sorted(atomic, key=lambda x: (x["script"], x["locator"])),
-        "formal_entrypoints": registered_formal_entrypoints(),
+        "formal_entrypoints": formal_entrypoints,
     }
+    if source_errors:
+        actual["_scanner_errors"] = source_errors
+    return actual
 
 
 def _producer_key(item):
@@ -510,7 +548,7 @@ def _diff(label, expected, actual, key):
 
 
 def validate_manifest(manifest, actual):
-    errors = []
+    errors = list(actual.get("_scanner_errors", []))
     if manifest.get("schema") != "invariant-manifest/v1":
         errors.append("manifest schema must be invariant-manifest/v1")
     if tuple(manifest.get("scope") or ()) != SCOPE:

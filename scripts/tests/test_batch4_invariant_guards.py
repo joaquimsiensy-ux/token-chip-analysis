@@ -41,7 +41,7 @@ def _copy_label_surfaces(scan, root):
 
 
 def test_label_surface_injections(scan, root):
-    """B4-LABEL-01/02: labels surfaces reject extra and missing chains."""
+    """B4-LABEL-01/02 and B4F-LABEL-03: labels surfaces stay aligned."""
     _copy_label_surfaces(scan, root)
     resolver = root / "scripts/labels/labels_resolver.py"
     resolver.write_text(resolver.read_text().replace(
@@ -58,8 +58,35 @@ def test_label_surface_injections(scan, root):
     errors = scan.label_chain_surface_errors(root=root)
     assert any("missing labels_table chains" in error and "robinhood" in error
                for error in errors), errors
+
+    _copy_label_surfaces(scan, root)
+    offenders = root / "scripts/labels/accumulate_offenders.py"
+    offenders.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(ROOT / "scripts/labels/accumulate_offenders.py", offenders)
+    offenders.write_text(offenders.read_text().replace(
+        "('eth', 'bsc', 'base', 'sol', 'robinhood')",
+        "('eth', 'bsc', 'base', 'sol', 'robinhood', 'polygon')"))
+    errors = scan.label_chain_surface_errors(root=root)
+    assert any("accumulate_offenders.py" in error and "unregistered" in error
+               and "polygon" in error for error in errors), errors
     assert scan.label_chain_surface_errors() == []
-    print("INJECT B4-LABEL-01/02 extra ghost + missing robinhood -> RED")
+    print("INJECT B4-LABEL-01/02 + B4F-LABEL-03 extra/missing/eighth surface -> RED")
+
+
+def test_formal_entrypoint_source_diagnostic(scan, root):
+    """B4F-FORMAL-01: empty producer registry yields a scanner diagnostic."""
+    shared = root / "shared_release_receipt.py"
+    text = (ROOT / "scripts/report/shared_release_receipt.py").read_text()
+    start = text.index("ACCOUNTING_PRODUCERS = {")
+    end = text.index("\nRECON_PRODUCERS =", start)
+    shared.write_text(text[:start] + "ACCOUNTING_PRODUCERS = {}\n" + text[end + 1:])
+    actual = scan.scan_actual(shared_path=shared)
+    assert any("ACCOUNTING_PRODUCERS" in error for error in actual["_scanner_errors"])
+    manifest = json.loads(scan.DEFAULT_MANIFEST.read_text())
+    errors = scan.validate_manifest(manifest, actual)
+    assert any("ACCOUNTING_PRODUCERS" in error and "registry" in error
+               and "shared_release_receipt" in error for error in errors), errors
+    print("INJECT B4F-FORMAL-01 empty ACCOUNTING_PRODUCERS -> RED with diagnostic")
 
 
 def test_vertical_slice_double_binding_injections(scan, root):
@@ -121,6 +148,7 @@ def main():
         cases = (
             test_bare_rpc_pool_injection,
             test_label_surface_injections,
+            test_formal_entrypoint_source_diagnostic,
             test_vertical_slice_double_binding_injections,
             test_scanner_denominator_injections,
         )
