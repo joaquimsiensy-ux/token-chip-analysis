@@ -550,3 +550,25 @@
 | CHANGED | 0 | — |
 | N/A-R8基线即当前 | 12 | `R8-01`～`R8-12` |
 | **合计** | **44** |  |
+
+## 七、批次裁决记录
+
+> 主表"最终结果/两轮盲审"两栏留到总验收（两轮盲审后）统一回填；本节记每批批内审查这个中间里程碑，是批次级权威结论落点。
+
+### 批一（公共原语）— 批内审查裁决：**PASS**
+
+- 候选 SHA：`e657732`（区间 `66d7ba7..e657732`，含四施工 commit + 台账回填）。
+- 批内审查执行者：**opus 子代理**（不用 codex——codex 做对抗审查触发 OpenAI 网络安全风控，见 project 记忆）。审查报告存 `/Users/uravvv/Documents/5.6筹码分析/r8-closure-reviews/batch1/batch1-review.md`（独立于修复 worktree）。
+- 审查结论：无新引入、无半修残留、无历史 P0/P1；边界外一步 47 项守住 / 0 真实失效；④同族 rg 独立复列确认 10 个 EVM RPC 调用点全走 attested session、无第 11 个漏网、生产无裸 RpcPool；risk_flags `split("|")` 仅 `risk_flags.py:10` 一处；未映射 hunk 独立复算=0；suite 70/70。
+- Fable 读码复核样本（2 处，亲读坐实）：`finalize_envelope` 用 `RESERVED_FIELDS.intersection(fields)`+verdict/exit 一致性+"已 finalize 拒重入"三重堵死历史先例（kwargs 覆盖身份绑定）；生产侧唯一 `RpcPool()` 构造在 `attested_rpc_pool` 工厂内（`net.py:373`），`formal and expected is None` 拒。
+- 批一覆盖 finding 的批内状态：
+  - `R8-04`（INV-05 kernel 路径身份）→ 批内已修，覆盖①；
+  - `R7-12`/`R8-07`/`R8-09`（INV-07 attested session）→ 批内已修，覆盖②（纵切片证据接批三）；
+  - `R7-14`/`R8-10`（INV-15 canonical parser）→ 批内已修，覆盖③已补反例；
+  - `R8-12`（INV-05）→ **仅 kernel 能力闭合，producer 迁移留批三，本批不销账**。
+- 4 项 P3 处置（分层收口：历史 P2/P3 记录+修复+限定复核，不重置两轮）：
+  - `B1R-01` 裸 `RpcPool(expected_chain_id=None)` 无自动守卫、invariant_scan 不区分裸池/工厂 → **归批四**（scanner 加"生产文件直接构造 RpcPool 即告警"）；当前生产代码干净（无裸池），仅缺防未来回退守卫。
+  - `B1R-02` 同 endpoint 跨 call_many 复用首次 attestation → 设计权衡非缺陷，**记录不修**（endpoint 切换/failover 已重 attest）。
+  - `B1R-03` `parse_risk_flags` 对零宽空格/非字符串宽进产生畸形单 flag → **并入批二开头就地修**（本批新建代码不留已知瑕疵，成本极低）。
+  - `B1R-04` `_producer_ref` 中间目录 symlink 未逐级检 → **并入批二开头就地修**（kernel 内加固收尾，producer 现为可信 `__file__`）。
+- 范围外观察（opus 报告 OB-1~OB-3）：OB-1 各命令 --chain choices 硬编码漂移=批二正题；OB-2 build_labels 本地拼接 risk_flags（有 canonical 兜底）=批二 B1R-03 一并核；OB-3 validate_labels strict 按目录字符串比较=批二能力矩阵顺带核。
