@@ -36,6 +36,9 @@
 | `B3F-G1:scripts/solana/{window_fetch.py,anchor_sampler.py}; scripts/tests/test_batch3_solana_producers.py` | `INV-05`; secondary `INV-03, INV-04` | owner `B3R-01`; 同族 `R8-12, R7-03, R7-06`；物理兼含 `B3R-02` 的 window_fetch timestamps hunk 与 `B3F-TS-01` 反例（语义 owner 见 B3F-G2 行） | 提交后独立自检失败先撤 canonical PASS receipt，再把 data 移出正式位；删除 window 恒假回滚状态 | `B3F-TXN-01/02`; `B3F-TS-01` |  |
 | `B3F-G2:scripts/tests/{test_sixlens_receipts.py,test_r7_findings.py}` | `INV-09`; secondary `INV-05` | owner `B3R-02`; 同族 `R8-11`；其生产侧 hunk（window_fetch 删 2 元组分支+timestamps 闭环）与 `B3F-TS-01` 反例因文件级 commit 物理落于 `B3F-G1`=`75d112f`，本行为语义 owner | 历史 mock 改为生产 3 元组契约（B3R-02 测试面）；生产侧改动见 B3F-G1 注 | `B3F-TS-01`; six-lens/R7 回归 |  |
 | `B3F-G3:maintenance/repair-20260806/{diff-finding-map.md,batch3-report.md,transport-injections.json,ledger.md}` | `INV-05, INV-07, INV-09, INV-17` | owner `B3R-03, OB-H, OB-I, OB-J`; batch4 `B3R-Q1` | 修正 B3-G3 文件 owner；如实记录 resume 权衡、错链证据边界与 `/query` 计数盲区；登记批四双条件纵切片守卫 | 台账对表；JSON parse；全量 suite |  |
+| `B4-G1:scripts/tests/{invariant_scan.py,invariant_manifest.json,test_batch4_invariant_guards.py,run_all.py}` | `INV-17`; secondary `INV-07, INV-11, INV-15, INV-18` | `R8-05`; `B1R-01, OB-B, B3R-Q1`; secondary `full-F-04` | 以能力矩阵+producer registry 闭合 formal 分母；覆盖 urllib/httpx/变量 curl；阻断裸池、labels 双向漂移、纵切片脱挂、分母缩减与 RH 数字漂移 | `B4-RPC-01`; `B4-LABEL-01/02`; `B4-VS-01/02`; `B4-INV17-01/02`; `B4-RH-COUNT-01` |  |
+| `B4-G2:references/maintenance-review-repair.md` | `INV-18, INV-19` | 批四方法论写回；承接历轮新引入/半修残留 | 只追加闭环章节，固化分层收口、三循环止损、批内节拍、map 三通例、攻击式验收和 transport-only fake 五字段 | `docs_lint.py --all`; 内容逐项对表 |  |
+| `B4-G3:maintenance/repair-20260806/{ledger.md,diff-finding-map.md,batch4-report.md}` | `INV-17, INV-18, INV-19` | `R8-05, full-F-04`; 18 项 baseline-fixed finding 证据补齐；六 producer 判定 | 登记红绿、fixture 零过时审计、发布路径可达性、逻辑分组和剩余主账证据 | fixture rg/契约测试；全量 suite |  |
 
 ## 分组 → commit SHA 对照（Fable 代 commit 后回填）
 
@@ -61,6 +64,9 @@
 | `B3F-G1` | `75d112f` | B3R-01 提交后自检失败真实撤回 |
 | `B3F-G2` | `7c04b72` | B3R-02 timestamps 证据闭环与测试契约收口 |
 | `B3F-G3` | `a85974d` | B3R-03 与 OB-H/I/J 台账 |
+| `B4-G1` | 待 Fable 回填 | scanner 分母与三条自动守卫 |
+| `B4-G2` | 待 Fable 回填 | 维护方法论追加章节 |
+| `B4-G3` | 待 Fable 回填 | ledger/map/fixture 与路径判定报告 |
 
 ## 未映射 hunk 计数
 
