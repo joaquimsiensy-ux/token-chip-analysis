@@ -85,6 +85,10 @@
 | `B4-G2` | `1850205` | 维护方法论追加章节 |
 | `B4-G3` | `1e3d5a6` | ledger/map/fixture 与路径判定报告 |
 | `B4F-G1` | `13d76c0` | 批四消化：labels 第八面+派生源诊断+措辞收窄+方法论补条 |
+| `R9-B1-G2/G3` | `85753da` | R9 批一：六入口 SystemExit + pool/scan 启动隔离与 marker 先失效（commit message 前缀作 B1-G2/G3，属 R9 区间） |
+| `R9-B1-G5` | `2f197d2` | R9 批一：SolanaAttestedSession 原语+5 反例测试 |
+| `R9-B1-G1/G4` | `592b0c2` | R9 批一：anchor-plan/v2 producer/receipt/consumer + 真实 subprocess 边界测试 + run_all 挂载（run_all 的 G5 挂载行物理归此 commit，语义 owner 见上表） |
+| `R9-B1-G6/G7` | `35c94eb` | R9 批一：台账 49 项+归因规则回写+invariant census 同步 |
 
 ## 未映射 hunk 计数
 
@@ -98,6 +102,6 @@
 
 - 批四（`f2a6e41..6b7ab8d`，含 `B4-G1`=`ba6b98e`/`B4-G2`=`1850205`/`B4-G3`=`1e3d5a6` 与本表自身回填 `6b7ab8d`）：`0` 候选（批内审查独立复算=0，清单与 commit 边界逐文件吻合）。
 - 批四批内消化（`6b7ab8d..` 至本回填 commit 即候选 tip，含 `B4F-G1`=`13d76c0` 与本表自身回填）：`0` 候选（全部 hunk 归属 `B4F-G1`；回填 commit 按通例自指式计入；待重审独立复算）。
-- R9 批一（冻结基线 `63cf715` 至当前 worktree，禁止 git 写操作，尚无施工 commit）：`0` 候选（22 个改动/新增文件全部归属 `R9-B1-G1`～`R9-B1-G7`；多 owner 文件已按 hunk 显式拆分，本表和进度账按自指式维护件计入 `T1`）。
+- R9 批一（`63cf715..` 至本回填 commit 即候选 tip，含 `85753da`/`2f197d2`/`592b0c2`/`35c94eb` 与本表自身回填）：`0` 候选（22 个改动/新增文件全部归属 `R9-B1-G1`～`R9-B1-G7`；多 owner 文件已按 hunk 显式拆分；回填 commit 按通例自指式计入；待批内审查独立复算）。
 
 通例：区间末端恒取候选 tip；自指式 SHA 回填 commit 计入本区间。map 行文件清单以 Fable 实际 commit 分组为准；一文件含多 owner 的 hunk 时（文件级 commit 无法拆分），物理归属行与语义 owner 行互相注明，Fable 回填 SHA 时校正清单。
