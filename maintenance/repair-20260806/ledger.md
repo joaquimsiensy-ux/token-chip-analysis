@@ -35,36 +35,36 @@
 
 | canonical ID | 报告基线 | 严重度 | 原归因 | primary | secondary | 当前生产路径与同族面（6e94348） | 覆盖初判 | 测试/纵切片/豁免证据 | 基线回放 | 最终结果 | 两轮盲审 / Fable |
 |---|---|---:|---|---|---|---|---|---|---|---|---|
-| `full-F-01` | full@`b0b7744` | P0 | 报告未判定 | INV-01 | INV-10, INV-12 | `shared_release_receipt.py:93-149,173-209`; `reconciliation_report.py:143-229`; `handoff_manifest.py:68-89,218-249` | ② | 待施工 | REPRODUCED (`CMD-FORGE`) |  |  |
-| `six-F-03` | six@`fca61ad` | P0 | 历史漏检 | INV-01 | INV-02, INV-10 | 同上 | ② | 待施工 | REPRODUCED (`CMD-FORGE`) |  |  |
-| `R7-01` | R7@`d8bd3c5` | P0 | 新引入 | INV-01 | INV-10 | 同上；点名 test 只拒无/错 runner binding | ② | 待施工 | REPRODUCED (`CMD-FORGE`; `CMD-R7` 点名绿不构成执行证明) |  |  |
+| `full-F-01` | full@`b0b7744` | P0 | 报告未判定 | INV-01 | INV-10, INV-12 | `shared_release_receipt.py:93-149,173-209`; `reconciliation_report.py:143-229`; `handoff_manifest.py:68-89,218-249` | ② | `B3-RUNNER-FRESH-01`; `B3-EVM-E2E-ETH/BSC/BASE`; `B3-SOL-E2E` | REPRODUCED (`CMD-FORGE`) |  |  |
+| `six-F-03` | six@`fca61ad` | P0 | 历史漏检 | INV-01 | INV-02, INV-10 | 同上 | ② | `B3-RUNNER-FRESH-01`; 四链真实 controlled runner 纵切片 | REPRODUCED (`CMD-FORGE`) |  |  |
+| `R7-01` | R7@`d8bd3c5` | P0 | 新引入 | INV-01 | INV-10 | 同上；点名 test 只拒无/错 runner binding | ② | `B3-RUNNER-FRESH-01`; 未运行 producer/预置 receipt 不得通过 runner | REPRODUCED (`CMD-FORGE`; `CMD-R7` 点名绿不构成执行证明) |  |  |
 | `full-F-02` | full@`b0b7744` | P1 | 报告未判定 | INV-02 | INV-06, INV-16, INV-20 | `pull_transfers_rpc.py:13-62`; `pull_block_ts_anchors.py:5-24`; `merge_hs_rpc.py:47-104` | ④ | 待 Fable 批准；见 `robinhood-impact.md` | REPRODUCED (`CMD-RH`) |  |  |
-| `R7-03` | R7@`d8bd3c5` | P0 | 半修残留 | INV-02 | INV-05, INV-06 | `anchor_sampler.py:137-179,245-275`; sibling alias in `CMD-R8-ALIAS` | ③ | 待施工 | REPRODUCED（原 resume 反例被拒；同族 data/receipt alias 仍击穿） |  |  |
+| `R7-03` | R7@`d8bd3c5` | P0 | 半修残留 | INV-02 | INV-05, INV-06 | `anchor_sampler.py:137-179,245-275`; sibling alias in `CMD-R8-ALIAS` | ③ | `B3-SOL-PROD-03`; `B3-SOL-E2E` | REPRODUCED（原 resume 反例被拒；同族 data/receipt alias 仍击穿） |  |  |
 | `R7-04` | R7@`d8bd3c5` | P0 | 半修残留 | INV-02 | INV-06, INV-08 | `supply_truth_gate.py:103-175`; `shared_release_receipt.py:151-161` | ① | 待施工 | FIXED_ON_BASELINE (`CMD-R7`: formal raw override 拒、file_ref/context slot 在场) |  |  |
 | `six-F-02` | six@`fca61ad` | P0 | 历史漏检 | INV-03 | INV-07 | `verify_recon.py:58-144` | ① | 待施工 | FIXED_ON_BASELINE (`CMD-RECEIPT`: mismatch=2, RPC error=1) |  |  |
 | `six-F-04` | six@`fca61ad` | P0 | 历史漏检 | INV-03 | INV-09 | `anchor_sampler.py:196-279` | ① | 待施工 | FIXED_ON_BASELINE (`CMD-RECEIPT`: fetch/no-converge 非零且无 canonical PASS) |  |  |
-| `R7-08` | R7@`d8bd3c5` | P1 | 历史漏检 | INV-03 | INV-12 | `handoff_manifest.py:228-249,421-447` | ② | `B2-REC-01`；READY 四回执深验，缺 wrapper 拒绝 | REPRODUCED（declared PASS/2 已修；同族 reconciliation gate 可整项省略，`CMD-HANDOFF`） |  |  |
+| `R7-08` | R7@`d8bd3c5` | P1 | 历史漏检 | INV-03 | INV-12 | `handoff_manifest.py:228-249,421-447` | ② | `B2-REC-01`; `B3-EVM-E2E-ETH/BSC/BASE`; `B3-SOL-E2E` | REPRODUCED（declared PASS/2 已修；同族 reconciliation gate 可整项省略，`CMD-HANDOFF`） |  |  |
 | `six-F-05` | six@`fca61ad` | P0 | 历史漏检 | INV-04 | INV-03, INV-06 | `window_fetch.py:127-231` | ① | 待施工 | FIXED_ON_BASELINE (`CMD-RECEIPT`: gap 只留 partial/stale，exit=2) |  |  |
 | `six-F-07` | six@`fca61ad` | P1 | 半修残留 | INV-04 | INV-03 | `fetch_pool_swaps.py:46-114` | ① | 待施工 | FIXED_ON_BASELINE (`CMD-FETCH`: 分页失败不提交正式 CSV) |  |  |
 | `six-F-08` | six@`fca61ad` | P1 | 新引入 | INV-04 | INV-03 | `fetch_gmgn.sh:18-49` | ① | 待施工 | FIXED_ON_BASELINE (`CMD-GMGN`: success→failure 旧文件转 `.stale`) |  |  |
 | `R8-04` | R8@`6e94348` | P1 | 新引入 | INV-05 | INV-04 | `receipt_kernel.py:192-220,268-273` | ③ | `B1-RK-01`～`B1-RK-06`；`B2-P3-RK-01` producer 中间 symlink 拒绝 | N/A-R8基线即当前 |  |  |
-| `R8-12` | R8@`6e94348` | P1 | 半修残留 | INV-05 | INV-02, INV-04 | `anchor_sampler.py:143-150,245-275`; `window_fetch.py:127-215` | ③ | `B1-RK-01`～`B1-RK-06`（仅 kernel 能力；producer 迁移仍属批三） | N/A-R8基线即当前 |  |  |
+| `R8-12` | R8@`6e94348` | P1 | 半修残留 | INV-05 | INV-02, INV-04 | `anchor_sampler.py:143-150,245-275`; `window_fetch.py:127-215` | ③ | `B1-RK-01`～`B1-RK-06`; `B3-SOL-PROD-03`; `B3-SOL-E2E` 联合事务 | N/A-R8基线即当前 |  |  |
 | `six-F-06` | six@`fca61ad` | P0 | 半修残留 | INV-06 | INV-03 | `fetch_pool_swaps.py:46-58` | ① | 待施工 | FIXED_ON_BASELINE (`CMD-FETCH`: 相等/反向/负区间开文件前拒) |  |  |
-| `R7-06` | R7@`d8bd3c5` | P1 | 半修残留 | INV-06 | INV-05, INV-10 | `window_fetch.py:127-215` | ③ | 待施工 | REPRODUCED（原反向窗已修；同族 data/receipt alias 仍 PASS，`CMD-R8-ALIAS`） |  |  |
-| `R8-08` | R8@`6e94348` | P1 | 半修残留 | INV-06 | INV-08 | `time_spotcheck.py:119-153,162-180` | ② | 待施工 | N/A-R8基线即当前 |  |  |
-| `R7-12` | R7@`d8bd3c5` | P1 | 新引入 | INV-07 | INV-11 | `verify_recon.py:49-54,114-119`; sibling `time_spotcheck.py:140-153` | ② | `B1-RPC-01`～`B1-RPC-06`；10 个正式调用点错链业务调用=0 | REPRODUCED（verify_recon 原入口已修；time sibling 无 `eth_chainId`，`CMD-R8-TARGET`） |  |  |
-| `R8-07` | R8@`6e94348` | P1 | 半修残留 | INV-07 | INV-08 | `time_spotcheck.py:140-153` | ② | `B1-RPC-CALLSITE-time`；错链仅 `eth_chainId` | N/A-R8基线即当前 |  |  |
-| `R8-09` | R8@`6e94348` | P1 | 历史漏检 | INV-07 | INV-02 | `supply_truth_gate.py:84-98` | ② | `B1-RPC-CALLSITE-supply`；错链仅 `eth_chainId` | N/A-R8基线即当前 |  |  |
+| `R7-06` | R7@`d8bd3c5` | P1 | 半修残留 | INV-06 | INV-05, INV-10 | `window_fetch.py:127-215` | ③ | `B3-SOL-PROD-02/03`; `B3-SOL-E2E` | REPRODUCED（原反向窗已修；同族 data/receipt alias 仍 PASS，`CMD-R8-ALIAS`） |  |  |
+| `R8-08` | R8@`6e94348` | P1 | 半修残留 | INV-06 | INV-08 | `time_spotcheck.py:119-153,162-180` | ② | `B3-TIME-01/02`; `B3-EVM-E2E-ETH/BSC/BASE` | N/A-R8基线即当前 |  |  |
+| `R7-12` | R7@`d8bd3c5` | P1 | 新引入 | INV-07 | INV-11 | `verify_recon.py:49-54,114-119`; sibling `time_spotcheck.py:140-153` | ② | `B1-RPC-01`～`B1-RPC-06`; `B3-EVM-E2E/Wrong-ETH/BSC/BASE` | REPRODUCED（verify_recon 原入口已修；time sibling 无 `eth_chainId`，`CMD-R8-TARGET`） |  |  |
+| `R8-07` | R8@`6e94348` | P1 | 半修残留 | INV-07 | INV-08 | `time_spotcheck.py:140-153` | ② | `B1-RPC-CALLSITE-time`; `B3-EVM-WRONG-ETH/BSC/BASE` 业务 RPC=0 | N/A-R8基线即当前 |  |  |
+| `R8-09` | R8@`6e94348` | P1 | 历史漏检 | INV-07 | INV-02 | `supply_truth_gate.py:84-98` | ② | `B1-RPC-CALLSITE-supply`; `B3-EVM-E2E-ETH/BSC/BASE` totalSupply 复验 | N/A-R8基线即当前 |  |  |
 | `six-F-13` | six@`fca61ad` | P1 | 历史漏检 | INV-08 | INV-12 | `handoff_manifest.py:164-180,212-222,396-419,966-1010` | ① | 待施工 | FIXED_ON_BASELINE (`CMD-HANDOFF`: READY 缺 chain/contract/未知链均拒) |  |  |
-| `R7-13` | R7@`d8bd3c5` | P1 | 新引入 | INV-08 | INV-06 | `time_spotcheck.py:119-153`; `anchor_plan.py` target producer | ② | 待施工 | REPRODUCED（plan chain/token/file_ref 已修；final-block 未绑定且查询 cutoff+1，`CMD-R8-TARGET`） |  |  |
-| `R8-03` | R8@`6e94348` | P0 | 历史漏检 | INV-08 | INV-10 | `accounting_gate_sol.py:101-124`; `shared_release_receipt.py:173-190` | ② | 待施工 | N/A-R8基线即当前 |  |  |
+| `R7-13` | R7@`d8bd3c5` | P1 | 新引入 | INV-08 | INV-06 | `time_spotcheck.py:119-153`; `anchor_plan.py` target producer | ② | `B3-TIME-01/02`; plan↔CLI final-block 精确绑定 | REPRODUCED（plan chain/token/file_ref 已修；final-block 未绑定且查询 cutoff+1，`CMD-R8-TARGET`） |  |  |
+| `R8-03` | R8@`6e94348` | P0 | 历史漏检 | INV-08 | INV-10 | `accounting_gate_sol.py:101-124`; `shared_release_receipt.py:173-190` | ② | `B3-SOL-PROD-01/05/06`; `B3-SOL-E2E` slot=77 单源 | N/A-R8基线即当前 |  |  |
 | `R7-02` | R7@`d8bd3c5` | P0 | 半修残留 | INV-09 | INV-03 | `net.py` Result/curl backend；`anchor_sampler.py:208-223` | ① | 待施工 | FIXED_ON_BASELINE (`CMD-R7`/`CMD-RECEIPT`: curl rc=7 空 stdout → ERROR/nonzero) |  |  |
-| `R8-11` | R8@`6e94348` | P1 | 历史漏检 | INV-09 | INV-06, INV-16 | `window_fetch.py:43-111,208-215` | ③ | 待施工 | N/A-R8基线即当前 |  |  |
-| `R7-05` | R7@`d8bd3c5` | P1 | 新引入 | INV-10 | INV-01, INV-12 | `reconciliation_report.py:143-229`; `shared_release_receipt.py:25-37` | ② | 待施工 | REPRODUCED（wrapper producer 已有；Solana supply producer CLI/schema 无法被 runner 执行，见 R8-01 当前路径） |  |  |
-| `R8-01` | R8@`6e94348` | P0 | 新引入 | INV-10 | INV-01, INV-08 | `scan_token_accounts.py:139-150,253-273`; `reconciliation_report.py:143-169`; `shared_release_receipt.py:93-106` | ② | 待施工 | N/A-R8基线即当前 |  |  |
-| `R7-07` | R7@`d8bd3c5` | P1 | 新引入 | INV-11 | INV-20 | `chain_registry.py:6-49,128+`; `handoff_manifest.py:84,164-180`; mandatory CLIs | ② | `B2-CAP-01`～`B2-CAP-04`；手工开关灭迹、缺项逐项关闭、choices 四面对表 | REPRODUCED（Arbitrum 已正确降级；Robinhood formal=true 但四 CLI 全拒，`CMD-RH-CAP`） |  |  |
-| `R8-02` | R8@`6e94348` | P0 | 半修残留 | INV-11 | INV-07, INV-20 | `chain_registry.py:44-49`; four mandatory CLI choices | ④ | `B2-RH-01`；`RH-EX-01/02`；见 `robinhood-impact.md` | N/A-R8基线即当前 |  |  |
-| `R8-06` | R8@`6e94348` | P1 | 半修残留 | INV-12 | INV-01, INV-10 | `handoff_manifest.py:59-89,218-249,410-447` | ② | `B2-REC-01`；READY 无条件必含 reconciliation 并深验四回执 | N/A-R8基线即当前 |  |  |
+| `R8-11` | R8@`6e94348` | P1 | 历史漏检 | INV-09 | INV-06, INV-16 | `window_fetch.py:43-111,208-215` | ③ | `B3-SOL-PROD-02`; `B3-SOL-E2E` timestamp segment summary | N/A-R8基线即当前 |  |  |
+| `R7-05` | R7@`d8bd3c5` | P1 | 新引入 | INV-10 | INV-01, INV-12 | `reconciliation_report.py:143-229`; `shared_release_receipt.py:25-37` | ② | `B3-SOL-PROD-04`; `B3-SOL-E2E` 真实 runner 执行 supply | REPRODUCED（wrapper producer 已有；Solana supply producer CLI/schema 无法被 runner 执行，见 R8-01 当前路径） |  |  |
+| `R8-01` | R8@`6e94348` | P0 | 新引入 | INV-10 | INV-01, INV-08 | `scan_token_accounts.py:139-150,253-273`; `reconciliation_report.py:143-169`; `shared_release_receipt.py:93-106` | ② | `B3-SOL-PROD-04`; `B3-SOL-E2E` current envelope+consumer | N/A-R8基线即当前 |  |  |
+| `R7-07` | R7@`d8bd3c5` | P1 | 新引入 | INV-11 | INV-20 | `chain_registry.py:6-49,128+`; `handoff_manifest.py:84,164-180`; mandatory CLIs | ② | `B2-CAP-01`～`B2-CAP-04`; `B3-EVM-E2E-ETH/BSC/BASE`; `B3-SOL-E2E` | REPRODUCED（Arbitrum 已正确降级；Robinhood formal=true 但四 CLI 全拒，`CMD-RH-CAP`） |  |  |
+| `R8-02` | R8@`6e94348` | P0 | 半修残留 | INV-11 | INV-07, INV-20 | `chain_registry.py:44-49`; four mandatory CLI choices | ④ | `B2-RH-01`; `RH-EX-01/02`; `B3-EVM-E2E-*` + `B3-SOL-E2E` 证明仅四链 readiness 闭合 | N/A-R8基线即当前 |  |  |
+| `R8-06` | R8@`6e94348` | P1 | 半修残留 | INV-12 | INV-01, INV-10 | `handoff_manifest.py:59-89,218-249,410-447` | ② | `B2-REC-01`; `B3-EVM-E2E-ETH/BSC/BASE`; `B3-SOL-E2E` READY 必经 recon | N/A-R8基线即当前 |  |  |
 | `six-F-01` | six@`fca61ad` | P0 | 历史漏检 | INV-13 | INV-12, INV-20 | `entity_source_trace.py:206-222,653-679`; `handoff_manifest.py:606-728` | ① | 待施工 | FIXED_ON_BASELINE (`CMD-ENTITY`: 正式缺 labels 拒；探索 freeze 拒) |  |  |
 | `R7-09` | R7@`d8bd3c5` | P1 | 半修残留 | INV-13 | INV-15 | 同上，正式有效标签计数双端重算 | ① | 待施工 | FIXED_ON_BASELINE (`CMD-R7`: 空/未知 kind labels formal 拒) |  |  |
 | `six-F-09` | six@`fca61ad` | P0 | 半修残留 | INV-14 | INV-15 | `add_labels.py:118-223` | ① | 待施工 | FIXED_ON_BASELINE (`CMD-LABEL-TXN`: validate+benchmark+manifest 强制) |  |  |
@@ -529,8 +529,8 @@
 | ID | 原严重度/类型 | 链接主 finding / INV | 当前路径 | 准备阶段判断与证据 |
 |---|---|---|---|---|
 | `full-C-01` | P1 CONFLICT | `full-F-02`; INV-16 | `merge_hs_rpc.py:62-89`; `data-pipeline-robinhood-channels.md:16` | 仍成立；`CMD-RH` 输出 `int/str` 混合。随 Robinhood exploration 影响台账处理，不丢弃。 |
-| `full-C-02` | P0 CONFLICT/FAIL-OPEN | `full-F-01`, `six-F-04`; INV-03/INV-09 | `anchor_sampler.py:196-279` | 原反例已修；`CMD-RECEIPT` fetch/no-converge 非零。链接主账，不另增分母。 |
-| `full-C-03` | P1 AMBIGUOUS | `full-F-01`, `R7-05`, `R8-01`, `R8-03`; INV-10/INV-18 | Solana A2 docs、registry、runner、producer | 当前由 R8-01/R8-03 继续成立；纳入 Solana 纵切片。 |
+| `full-C-02` | P0 CONFLICT/FAIL-OPEN | `full-F-01`, `six-F-04`; INV-03/INV-09 | `anchor_sampler.py:196-279` | `B3-SOL-PROD-02/03` + `B3-SOL-E2E`；fail-closed 与联合发布已进真实纵切片。链接主账，不另增分母。 |
+| `full-C-03` | P1 AMBIGUOUS | `full-F-01`, `R7-05`, `R8-01`, `R8-03`; INV-10/INV-18 | Solana A2 docs、registry、runner、producer | `B3-SOL-E2E`；Solana A2 producer→runner→consumer→READY→release 已闭环。 |
 | `full-C-04` | P2 ROUTE CONFLICT | INV-18/INV-20 | `data-pipeline-evm-channels.md`; `scan_bloxroute_seg.py` | 未单列主 finding；批二能力矩阵需把 bloXroute 明确为 nonformal 并补防回流。 |
 | `full-C-05` | P2 AMBIGUOUS/DRIFT | `full-F-02`; INV-02/INV-20 | `merge_hs_rpc.py:91-104`; Robinhood channels 文档 | 仍只有 stdout 摘要，无持久 receipt；随 RH exploration 豁免台账处理。 |
 | `full-C-06` | P2 DRIFT | INV-19/INV-18 | `data-pipeline-solana-capture.md` 外部 GOAT 三脚本路由 | 准备阶段保留为 supplementary；批四方法论/路由守卫裁决，不改 44 分母。 |

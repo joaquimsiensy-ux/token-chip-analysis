@@ -80,6 +80,41 @@
       "fake_backend": "scripts/tests/test_batch1_rpc_attestation.py async _wrong_chain_backend patched only at net._request_json",
       "test_id": "B1-RPC-CALLSITE-alchemy",
       "allowed_reason": "Runs the formal-channel producer before output creation; only transport is fake and no alchemy_getAssetTransfers occurs on mismatch."
+    },
+    {
+      "production_callsite": "scripts/evm/accounting_gate.py:Rpc.call; scripts/evm/verify_recon.py:rpc_balance_of; scripts/lib/{supply_truth_gate.py,time_spotcheck.py} -> scripts/lib/net.py:RpcPool",
+      "protocol": "EVM JSON-RPC over HTTP",
+      "fake_backend": "scripts/tests/test_batch3_evm_vertical_slice.py ThreadingHTTPServer bound to 127.0.0.1:0",
+      "test_id": "B3-EVM-E2E-ETH/BSC/BASE + B3-EVM-WRONG-ETH/BSC/BASE",
+      "allowed_reason": "Production CLIs, RpcPool attestation, receipt builders and controlled runner are unchanged; the loopback server replaces only HTTP responses and records that wrong-chain runs issue eth_chainId only."
+    },
+    {
+      "production_callsite": "scripts/evm/accounting_gate.py:hs_logs -> requests.post",
+      "protocol": "HyperSync HTTP query",
+      "fake_backend": "scripts/tests/test_batch3_evm_vertical_slice.py loopback /query handler",
+      "test_id": "B3-EVM-E2E-ETH/BSC/BASE",
+      "allowed_reason": "The real accounting producer builds and parses the HyperSync query; loopback replaces only the remote transport response."
+    },
+    {
+      "production_callsite": "scripts/evm/accounting_gate.py:check_permissions -> requests.get",
+      "protocol": "Sourcify HTTP v2 contract lookup",
+      "fake_backend": "scripts/tests/test_batch3_evm_vertical_slice.py loopback GET handler returning HTTP 404",
+      "test_id": "B3-EVM-E2E-ETH/BSC/BASE",
+      "allowed_reason": "The production permission adapter handles an unverified contract through its documented 404 branch; no permission business function is mocked."
+    },
+    {
+      "production_callsite": "scripts/solana/accounting_gate_sol.py:requests.post; scripts/solana/scan_token_accounts.py:rpc_call; scripts/lib/supply_truth_gate.py:_post",
+      "protocol": "Solana JSON-RPC over HTTP",
+      "fake_backend": "scripts/tests/test_batch3_solana_vertical_slice.py ThreadingHTTPServer bound to 127.0.0.1:0",
+      "test_id": "B3-SOL-E2E",
+      "allowed_reason": "Real producer mains parse getAccountInfo/getTokenSupply/getProgramAccounts and publish production envelopes; only the RPC transport endpoint is loopback."
+    },
+    {
+      "production_callsite": "scripts/solana/{anchor_sampler.py,window_fetch.py} -> scripts/lib/net.py:curl_json",
+      "protocol": "SQD Solana stream HTTP/JSON",
+      "fake_backend": "scripts/tests/test_batch3_solana_vertical_slice.py loopback Solana stream handler selected by --endpoint",
+      "test_id": "B3-SOL-E2E",
+      "allowed_reason": "The real anchor/window scan, timestamp validation, joint transaction and receipt logic execute unchanged; only the remote SQD response is supplied locally."
     }
   ]
 }

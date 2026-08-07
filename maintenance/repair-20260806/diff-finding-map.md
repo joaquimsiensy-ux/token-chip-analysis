@@ -29,6 +29,10 @@
 | `B2F-G2:scripts/lib/chain_registry.py; scripts/tests/{formal_ready_test_harness.py,test_batch2_capability_matrix.py,test_chain_registry.py,test_audit_release_gate.py,test_round4_a5_seal.py,test_batch2_registry_harness_hardening.py}` | `INV-11`; secondary `INV-12` | `B2R-02, B2R-03, B2R-04` | readiness 公开 API 只接受链名；测试矩阵三层只读、作用域内激活且 finally 恢复；子进程默认禁字节码 | 伪造 Mapping 拒绝；字母序 import 无泄漏；三层赋值均 `TypeError`; `B2F-G2` 回归 |  |
 | `B2F-G3:scripts/tests/run_all.py; maintenance/repair-20260806/{diff-finding-map.md,batch2-report.md,reviews/batch2-review.md}` | `INV-11, INV-12` | `B2R-05, OB-D`; 记录 `OB-B, OB-C` | 回填 owner/批二区间，修正 harness 不实表述，登记批内消化红绿证据、分组和全量门禁 | 76/76 PASS；无 `.pyc`/`__pycache__` |  |
 | `B2F2-G1:scripts/report/handoff_manifest.py; scripts/tests/test_batch2_legacy_hardening.py; maintenance/repair-20260806/{diff-finding-map.md,batch2-report.md}` | `INV-12, INV-11` | owner `B2FR-01, B2FR-02, B2FR-03, B2FR-04` | legacy wrapper 在场判据改为清单或磁盘；generate 单链去重规范化；补列审查报告并统一区间 tip 规则 | `B2F-LG-05`; `bsc,bsc` generate→verify；76 项全量 suite |  |
+| `B3-G1:scripts/{evm/accounting_gate.py,lib/time_spotcheck.py,report/holder_distribution_scan.py,lib/chain_registry.py}; scripts/tests/test_batch3_evm_vertical_slice.py` | `INV-06, INV-07, INV-11, INV-12` | `R8-07, R8-08, R8-09, R7-13, R8-06`; 纵切片承接 `full-F-01, six-F-03, R7-01` | eth/bsc/base 真实 accounting+四 producer runner+consumer+READY+release；plan/final-block 精确绑定；错链业务 RPC=0；能力闭合后 readiness 派生为真 | `B3-TIME-01/02`; `B3-EVM-E2E-ETH/BSC/BASE`; `B3-EVM-WRONG-ETH/BSC/BASE` |  |
+| `B3-G2:scripts/lib/{receipt_kernel.py,supply_truth_gate.py}; scripts/report/{reconciliation_report.py,shared_release_receipt.py}; scripts/solana/{accounting_gate_sol.py,anchor_sampler.py,scan_token_accounts.py,window_fetch.py}` | `INV-05, INV-08, INV-09, INV-10, INV-12` | `R7-03, R7-05, R7-06, R8-01, R8-03, R8-11, R8-12`; secondary `full-C-02/full-C-03` | 冻结 slot 单源；supply current envelope/runner 可执行；anchor/window data+receipt 联合事务；timestamp/alias/None target fail-closed；Solana target canonical 深验 | `B3-SOL-PROD-01`～`06`; `B3-SOL-E2E` |  |
+| `B3-G3:scripts/tests/{test_batch3_solana_producers.py,test_batch3_solana_vertical_slice.py,test_batch3_evm_vertical_slice.py,test_time_spotcheck.py,test_batch1_rpc_attestation.py,test_r7_findings.py,test_sixlens_receipts.py,test_round4_identity_emitter.py,test_batch2_capability_matrix.py,test_batch2_registry_harness_hardening.py,test_chain_registry.py,test_chain_support_matrix.py,formal_ready_test_harness.py,test_handoff_manifest.py,invariant_manifest.json,run_all.py}` | `INV-01, INV-05, INV-06, INV-07, INV-08, INV-09, INV-10, INV-11, INV-12` | 批三上述 findings | 挂载四链真实纵切片、生产者反例和历史 fixture 兼容；同步静态 schema 调用图与 harness 当前口径 | 全量 suite；`invariant_scan.py` |  |
+| `B3-G4:maintenance/repair-20260806/{ledger.md,diff-finding-map.md,transport-injections.json,batch3-report.md}` | `INV-01, INV-05, INV-06, INV-07, INV-08, INV-09, INV-10, INV-11, INV-12` | 批三上述 findings | 登记纵切片证据、transport-only fake 注入、红绿与逻辑分组 | `B3-EVM-*`; `B3-SOL-*`; 全量 suite |  |
 
 ## 分组 → commit SHA 对照（Fable 代 commit 后回填）
 
@@ -47,6 +51,10 @@
 | `B2F-G2` | `ee7d4d5` | registry API 收严+harness 可逆化(B2R-02/03/04) |
 | `B2F-G3` | `af92a91` | 批内消化台账/门禁+opus 批二审查报告入库 |
 | `B2F2-G1` | `9609655` | 消化第二轮(B2FR-01~04):伪缺席补闸+generate 规范化+台账修正 |
+| `B3-G1` | 待 Fable 回填 | EVM 正式链纵切片 + final-block/readiness |
+| `B3-G2` | 待 Fable 回填 | Solana producer envelope/txn/slot/timestamp + 纵切片 |
+| `B3-G3` | 待 Fable 回填 | 批三测试、兼容 fixture 与静态 manifest |
+| `B3-G4` | 待 Fable 回填 | 批三台账、transport 注入与施工报告 |
 
 ## 未映射 hunk 计数
 
@@ -55,5 +63,6 @@
 - 批二（`553806b..5924cd5`）：`0` 候选（所有 hunk 已归属 `B2-G0`～`B2-G4`；批内审查回填 commit 已包含）。
 - 批二批内消化（`5924cd5..3ca824e`）：`0` 候选（所有新 hunk 已归属 `B2F-G1`～`B2F-G3`；增量重审独立复算=0，文档漏列项已由 B2F2-G1 修正）。
 - 批二批内消化第二轮（`3ca824e..` 至本回填 commit 即候选 tip，含 `B2F2-G1`=`9609655` 与本表自身回填）：`0` 候选（全部 hunk 归属 `B2F2-G1`；回填 commit 按通例自指式计入）。
+- 批三（`62efbf9..` 候选 tip）：`0` 候选（当前全部 hunk 归属 `B3-G1`～`B3-G4`；SHA 待 Fable 代 commit 后回填）。
 
 通例：区间末端恒取候选 tip；自指式 SHA 回填 commit 计入本区间。
