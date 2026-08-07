@@ -590,6 +590,18 @@
   - 批一遗留 `B1R-03`/`B1R-04` → B2-G0 已就地修毕销账。
 - 工艺记录：批一 P3 收尾（B2-G0）与本批主体同批施工；三轮审查报告均分段落盘（opus 长会话写长报告流中断两次后的硬性要求）；消化二首次发射静默死（进程活/日志 31min 零输出），kill 重发即成。
 
+### 批三（正式链纵切片）— 批内审查裁决：**代码侧收口 PASS**（两循环：BLOCK→消化→重审代码零发现；台账 P3 由 Fable 即时修正、核验交批四）
+
+- 候选 SHA：`d889e72`（施工 `62efbf9..3df1234` 四组+回填；消化一 `3df1234..a0481e2` 三组+回填；B3FR-01 台账修正 `d889e72`=Fable）。
+- 批内审查执行者：**opus 子代理**（同一代理续跑，跨批上下文连续）。两份报告入库 `reviews/`：`batch3-review.md`（首轮 BLOCK）、`batch3-rereview.md`（重审）。
+- **首轮审查（BLOCK：P2=1 P3=2，全新引入）**：批三主体质量好——三个纵切片测试验真（真实生产 CLI+loopback transport、零禁令 mock、无手写 PASS 正例、"先删后真造"排除 fixture 残留）、Solana slot 缺失三形态与 timestamp 四边界全 fail-closed、EVM 错链计数机制 server 端可信、八处既有测试适配全属必然无放松、"临时产物已清理"自报属实。缺陷：B3R-01（P2）window/anchor 联合事务**提交后**独立自检 raise 不撤回——`published_current` 死变量致撤回恒假（Fable 亲核零赋值坐实），坏数据+PASS receipt 双残留 exit=1 矛盾，违反 INV-03/04，坏边表会进正式分析链；B3R-02 生产代码留 2 元组 legacy test adapter+timestamps 证据零消费者可被清空；B3R-03 map B3-G3 行多列一文件。
+- **点名问题 B3R-Q1（vertical_slice_verified 落真绑定）判 P3 归批四，与 Fable 预判一致**：判非 R7-07 族病（12 项闭合之一、缺任一即假、不构成短路），但是 12 项中唯一动态事实（断言"测试跑通过"而非"代码存在"）最需第二道绑定；定 P3 决定性依据=纵切片测试已验真、声明有据，run_all 挂载一道防线非零、反向绑定（改 False 即红）已在。批四守卫形态已登记 §八。
+- **消化一（B3F-G1=`75d112f`/B3F-G2=`7c04b72`/B3F-G3=`a85974d`+回填 `a0481e2`，恰 9 文件）**：committed 显式标志+撤回顺序"先 unlink PASS receipt（消费者 fail-closed 优先）再移数据出正式位"+withdrawal_errors 如实拼入 exc+死变量清除+kernel 零改动；五处 scan_seg mock 改 3 元组+生产兼容分支删除+complete 段数与每段 min/max 齐备为 PASS 前置；OB-H resume 权衡论证/OB-I 登记措辞收窄/OB-J 计数盲区记录；反例 B3F-TXN-01/02+B3F-TS-01。
+- **增量重审（代码零发现；唯一 P3=B3FR-01 纯台账）**：上轮全部闭合且高于最低要求——window/anchor **双注入实测**四项终态全满足（exit≠0/数据不在正式位/receipt.json 不存在/error receipt 为 ERROR），anchor 补上首轮静态判定的实测证实同族等深；撤回中间态（receipt 已删、移数据失败）仍 fail-closed 且错误文本如实；timestamps append 在锁内、核对在 join 后，FAIL 路径未误伤；disk-full 两断言原样保留；suite 79/79。B3FR-01=map B3F-G2 行与真实 commit 边界错位（根源：一文件多 owner hunk vs 文件级 commit 的固有张力+Fable 回填未校正清单，与 B2R-05/B3R-03 同族第三犯）。
+- **Fable 裁决（止损计数口径）**：采纳"代码新引入"口径判批三代码侧收口。理由：止损线目的是防"代码修不干净的循环"，纯台账文字错位不构成该风险；opus 备齐两种口径事实依据并建议台账并入下批维护；B3FR-01 由 Fable 即时修正（`d889e72`：B3F-G1/G2 行物理/语义 owner 互注+通例补"回填时校正清单"规则防第四犯），修正核验交批四批内审查顺带核对（非自说自话闭环）。
+- 批三覆盖 finding 的批内状态：`R8-01`/`R8-03`/`R8-11`/`R8-12`/`R7-03`/`R7-06`（Solana producer 族）与 `R8-07`/`R8-08`/`R8-09`/`R7-13`（EVM 执行面）→ 批内已修+纵切片证据在案；`R8-06`/`R7-08` 纵切片验证必经性完成；`full-F-01`/`six-F-03`/`R7-01` 由"未运行 producer 无法通过 aggregator"真实编排承接；`full-C-02`/`full-C-03` Solana A2 闭环完成；`R7-05` runner 可执行 envelope 收口。批一 `R8-12` producer 迁移面本批销账。
+- 工艺记录：opus 首轮方法自纠（mktemp 根被批一 symlink 防护拦、换 realpath 根）反向印证批一防护真实生效；批三消化发射一次成功（无静默死）；重审 anchor 实测补齐是"同族关到同一深度"纪律的执行范例。
+
 ## 八、批四自动守卫待办
 
 - `B1R-01`：`invariant_scan` 扫描生产文件直接构造裸 `RpcPool` 的旁路；除唯一 attested 工厂外，发现 `expected_chain_id=None` 或缺失即红。
