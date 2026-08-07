@@ -170,10 +170,38 @@ def validate_reconciliation_check(root, key, item, target, family):
     return receipt
 
 
+def validate_reconciliation_report(root, expected_target=None):
+    """Deeply validate the controlled wrapper and all four bound receipts."""
+    root = Path(root).resolve()
+    recon = json.loads(regular(root, "reconciliation_report.json").read_text())
+    target = recon.get("target")
+    if (recon.get("schema") != "reconciliation-report/v2"
+            or not isinstance(target, dict)
+            or set(target) != {"chain", "token", "as_of_block"}
+            or not target.get("chain") or not target.get("token")
+            or recon.get("verdict") != "PASS" or recon.get("exit_code") != 0):
+        raise ValueError("reconciliation target/schema/verdict invalid")
+    if expected_target is not None and target != expected_target:
+        raise ValueError("reconciliation target/schema mismatch")
+    family = chain_family(target["chain"])
+    repo_ref_ok(recon.get("producer"), RECON_RUNNERS, "reconciliation wrapper")
+    checks = recon.get("checks")
+    if not isinstance(checks, dict) or set(checks) != {"balance", "supply", "supply_truth", "time"}:
+        raise ValueError("reconciliation wrapper must contain exactly four checks")
+    for key in ("balance", "supply", "supply_truth", "time"):
+        item = checks[key]
+        if (not isinstance(item, dict) or item.get("status") != "PASS"
+                or item.get("exit_code") != 0):
+            raise ValueError(f"reconciliation {key} lacks PASS execution receipt")
+        repo_ref_ok(item.get("producer"), RECON_PRODUCERS[family][key],
+                    f"reconciliation {key}")
+        validate_reconciliation_check(root, key, item, target, family)
+    return target
+
+
 def validate_sources(root):
     root = Path(root).resolve()
     accounting = json.loads(regular(root, "accounting_mode.json").read_text())
-    recon = json.loads(regular(root, "reconciliation_report.json").read_text())
     adversarial = json.loads(regular(root, "adversarial_review.json").read_text())
     if (accounting.get("schema") != "accounting-gate/v1" or accounting.get("exit_code") != 0
             or str(accounting.get("verdict", "")).upper() not in {"PASS", "WARN"}
@@ -186,17 +214,7 @@ def validate_sources(root):
     token = accounting.get("token") or accounting.get("mint")
     target = {"chain": accounting["chain"], "token": str(token).lower(),
               "as_of_block": accounting.get("as_of_block")}
-    if (recon.get("schema") != "reconciliation-report/v2" or recon.get("target") != target
-            or recon.get("verdict") != "PASS" or recon.get("exit_code") != 0):
-        raise ValueError("reconciliation target/schema mismatch")
-    repo_ref_ok(recon.get("producer"), RECON_RUNNERS, "reconciliation wrapper")
-    for key in ("balance", "supply", "supply_truth", "time"):
-        item = (recon.get("checks") or {}).get(key)
-        if (not isinstance(item, dict) or item.get("status") != "PASS"
-                or item.get("exit_code") != 0):
-            raise ValueError(f"reconciliation {key} lacks PASS execution receipt")
-        repo_ref_ok(item.get("producer"), RECON_PRODUCERS[family][key], f"reconciliation {key}")
-        validate_reconciliation_check(root, key, item, target, family)
+    validate_reconciliation_report(root, target)
     if (adversarial.get("schema") != "adversarial-review/v2"
             or adversarial.get("target") != target
             or adversarial.get("release_decision") != "PASS"):

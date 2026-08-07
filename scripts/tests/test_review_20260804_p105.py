@@ -15,6 +15,7 @@ BASE_TEST = HERE / "test_audit_release_gate.py"
 spec = importlib.util.spec_from_file_location("audit_fixture_profiles", BASE_TEST)
 fixture = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(fixture)
+from formal_ready_test_harness import run_formal_script
 
 AUDIT_ONLY = (
     "audit_input_manifest.json", "claim_registry.json",
@@ -42,8 +43,7 @@ def add_new_analysis_distribution(root: Path, report: Path) -> None:
                                                         "sha256": sha(snap)}]})
     write_json(root / "candidate_screening.json", {"auto_excluded_candidate": []})
     dist = HERE.parent / "report/holder_distribution_scan.py"
-    p = subprocess.run([sys.executable, str(dist), "--case-dir", str(root), "--stage", "initial"],
-                       capture_output=True, text=True)
+    p = run_formal_script(dist, ["--case-dir", str(root), "--stage", "initial"])
     assert p.returncode == 0, p.stdout + p.stderr
     for name, value in {
         "handoff_manifest.json": {"consumer_min_schema": "handoff/v3", "status": "READY", "run_id": "fixture"},
@@ -58,20 +58,18 @@ def add_new_analysis_distribution(root: Path, report: Path) -> None:
     write_json(root / "a4_seal.json", {"schema": "a4-seal/v4", "verdict": "PASS", "chain": "bsc",
         "workflow_type": "new-analysis", "revision": 1, "previous_seal": None,
         "charts_dir": "charts/final", "claims": [{"id": "C1", "verdict": "CONFIRMED"}]})
-    p = subprocess.run([sys.executable, str(dist), "--case-dir", str(root), "--stage", "final",
-                        "--round", "1"], capture_output=True, text=True)
+    p = run_formal_script(dist, ["--case-dir", str(root), "--stage", "final", "--round", "1"])
     assert p.returncode == 0, p.stdout + p.stderr
-    p = subprocess.run([sys.executable, str(dist), "record-round", "--case-dir", str(root),
-                        "--scan", "dist_rounds/round_1/distribution_scan.json"],
-                       capture_output=True, text=True)
+    p = run_formal_script(dist, ["record-round", "--case-dir", str(root),
+                                 "--scan", "dist_rounds/round_1/distribution_scan.json"])
     assert p.returncode == 0, p.stdout + p.stderr
     report.write_text(report.read_text(encoding="utf-8")
         + "\n当前快照呈正常形态;这只表示本闸未检出结构性畸形,不等于没有庄。\n"
         + "\n![持仓分布](charts/final/holder_distribution_current.png)\n", encoding="utf-8")
     a5 = HERE.parent / "report/a5_report_seal.py"
-    p = subprocess.run([sys.executable, str(a5), "--case-dir", str(root), "--report", str(report),
-                        "--a4-seal", str(root / "a4_seal.json"),
-                        "--out", str(root / "a5_report_seal.json")], capture_output=True, text=True)
+    p = run_formal_script(a5, ["--case-dir", str(root), "--report", str(report),
+                               "--a4-seal", str(root / "a4_seal.json"),
+                               "--out", str(root / "a5_report_seal.json")])
     assert p.returncode == 0, p.stdout + p.stderr
 
 

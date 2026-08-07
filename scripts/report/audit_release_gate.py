@@ -17,7 +17,8 @@ from pathlib import Path
 
 LIB = Path(__file__).resolve().parents[1] / "lib"
 sys.path.insert(0, str(LIB))
-from chain_registry import formal_chains, known_chains_for_release, resolve_alias
+from chain_registry import (formal_ready, known_chains_for_release,
+                            missing_formal_capabilities, release_tier_for, resolve_alias)
 
 
 SHARED_REQUIRED = (
@@ -57,14 +58,17 @@ def normalize_chain(value):
 
 def formal_chain_error(value):
     chain = normalize_chain(value)
-    if chain in formal_chains():
+    if formal_ready(chain):
         return None
     if chain == "arbitrum":
         return ("chain=arbitrum 为探索支持：缺少 references/labels/labels-arbitrum.csv "
                 "及完整目标链标签门禁；可保留采集、对账和 identity snapshot，"
                 "但不得编译正式 analysis")
+    if release_tier_for(chain) == "formal":
+        missing = ",".join(missing_formal_capabilities(chain))
+        return f"chain={chain} 尚未闭合正式发布能力（缺 {missing}），不得编译正式 analysis"
     if chain in known_chains_for_release():
-        return f"chain={chain} 不是正式支持链，不得编译正式 analysis"
+        return f"chain={chain} 为 exploration，不得编译正式 analysis"
     return f"chain={chain or '<missing>'} 未进入正式支持矩阵，不得编译正式 analysis"
 
 

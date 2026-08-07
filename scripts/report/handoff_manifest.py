@@ -37,7 +37,7 @@ from datetime import datetime, timezone
 
 _LIB = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "lib"))
 sys.path.insert(0, _LIB)
-from chain_registry import evm_family, formal_chains, resolve_alias
+from chain_registry import evm_family, formal_ready_chains, resolve_alias
 
 SCHEMA_VERSION = "handoff/v3"
 # verify 端支持集；consumer_min_schema 不在集内即拒收。
@@ -76,12 +76,14 @@ REQUIRED_FOR_READY = ["candidate_universe.json", "candidate_screening.json",
                       "wave_scan_report.json", "flow_anomaly_report.json",
                       # A3 机械层第 9 项：initial 分布扫描。scan 不反绑 manifest；
                       # READY manifest 单向绑定 scan，避免 B-01 哈希循环。
-                      "distribution_scan.json"]
+                      "distribution_scan.json",
+                      # INV-12：四查 wrapper 及其四份生产 receipt 是所有 READY 链的无条件必备件。
+                      "reconciliation_report.json"]
 # EVM 家族链另加时间抽查产物为 READY 必备（6.7.0，APU SQD 全史重拉冗余复盘）——
 # time_spotcheck.py 固化后，锚点级第二源直查是 A2 第 4 查的机器凭证，缺件＝时间抽查没跑
 # 或又走了自由发挥老路。Solana（anchor_sampler 通道）等非 EVM 链时间抽查形态不同，
 # 不进本硬闸（白名单法：链名命中才强制，未知新链不误伤）。
-READY_CHAINS = formal_chains()
+READY_CHAINS = formal_ready_chains()
 REQUIRED_FOR_READY_EVM = ["time_spotcheck.json"]
 # 自动 gate 适配：从产物 JSON 读 verdict/exit_code（防手报）；verify 时重读比对
 AUTO_GATES = {"accounting_gate": "accounting_mode.json", "supply_truth_gate": "supply_truth.json",
@@ -168,6 +170,9 @@ def cmd_generate(a):
     if a.status == "READY":
         if not chains or not str(a.contract or "").strip():
             print("[generate] READY 必须显式给 --chain 与 --contract", file=sys.stderr)
+            return 2
+        if len(set(chains)) != 1:
+            print("[generate] READY 当前只接受单链 scope；reconciliation target 必须唯一", file=sys.stderr)
             return 2
         unknown = sorted(set(chains) - READY_CHAINS)
         if unknown:
@@ -294,7 +299,7 @@ def cmd_generate(a):
 
 # ---------------- verify ----------------
 
-def _verify_light_schema(case_dir, fails, legacy=False):
+def _verify_light_schema(case_dir, fails, manifest, legacy=False):
     """轻量 schema 检查：防 −1 交空壳（split-run §3.1 步 2 的语义验证部分）。
     legacy=True（--legacy-read-only）时跳过两扫描器新版检查——旧案产物是旧格式，只验哈希与公共件。"""
     try:
@@ -321,6 +326,17 @@ def _verify_light_schema(case_dir, fails, legacy=False):
         fails.append(f"anomalies.json 读取失败: {e}")
     if legacy:
         return
+    try:
+        from shared_release_receipt import validate_reconciliation_report
+        target = validate_reconciliation_report(case_dir)
+        scope = manifest.get("scope") or {}
+        chains = {resolve_alias(chain) for chain in scope.get("chains") or []}
+        if len(chains) != 1 or resolve_alias(target.get("chain")) not in chains:
+            fails.append("reconciliation target.chain 未与唯一 READY scope 链绑定")
+        if str(target.get("token") or "").lower() != str(scope.get("contract") or "").lower():
+            fails.append("reconciliation target.token 未与 READY scope.contract 绑定")
+    except Exception as exc:
+        fails.append(f"reconciliation_report.json 深验失败: {exc}")
     try:
         ws = load_json(os.path.join(case_dir, "wave_scan_report.json"))
         if ws.get("schema") in ("wave-scan/v1", "wave-scan/v2"):
@@ -445,7 +461,7 @@ def verify_case(case_dir, legacy_read_only=False):
                     fails.append(f"gate {gname}（declared）非 PASS 却报 READY: {g.get('verdict')}")
                 if g.get("exit_code") != 0:
                     fails.append(f"gate {gname}（declared）exit_code={g.get('exit_code')} ≠ 0 却报 READY")
-        _verify_light_schema(case_dir, fails, legacy=legacy_mode)
+        _verify_light_schema(case_dir, fails, m, legacy=legacy_mode)
     return (fails, m, legacy_mode)
 
 

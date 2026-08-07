@@ -2,7 +2,9 @@
 import json,sys,tempfile
 from pathlib import Path
 HERE=Path(__file__).resolve().parent; sys.path.insert(0,str(HERE.parent/"report"))
+from formal_ready_test_harness import activate_test_vertical_slices
 def main():
+ activate_test_vertical_slices()
  from a5_report_seal import create_seal, validate_seal
  with tempfile.TemporaryDirectory() as td:
   d=Path(td); (d/"charts/final").mkdir(parents=True)

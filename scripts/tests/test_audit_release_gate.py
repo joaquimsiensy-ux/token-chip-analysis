@@ -15,6 +15,8 @@ HERE = Path(__file__).resolve().parent
 REPO = HERE.parent.parent
 GATE = HERE.parent / "report" / "audit_release_gate.py"
 REPRODUCE = HERE.parent / "report" / "reproduce_receipt.py"
+from formal_ready_test_harness import activate_test_vertical_slices
+activate_test_vertical_slices()
 spec = importlib.util.spec_from_file_location("audit_release_gate", GATE)
 gate = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(gate)
