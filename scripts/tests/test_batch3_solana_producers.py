@@ -78,6 +78,63 @@ def test_window_missing_timestamp_fails_without_pass(root):
         assert json.loads(receipt.read_text()).get("verdict") != "PASS"
 
 
+def _commit_mismatched_bytes(data_path, _data, receipt_path, receipt):
+    Path(data_path).write_bytes(b"committed-but-not-requested\n")
+    Path(receipt_path).write_text(json.dumps(receipt), encoding="utf-8")
+
+
+def _assert_committed_mismatch_was_withdrawn(root, out, receipt):
+    assert not out.exists(), "self-check failure left data in the formal location"
+    if receipt.exists():
+        assert json.loads(receipt.read_text()).get("verdict") != "PASS"
+    errors = list(root.glob(f"{receipt.stem}.error.*.json"))
+    assert errors and json.loads(errors[-1].read_text())["verdict"] == "ERROR"
+
+
+def test_window_post_commit_selfcheck_withdraws_formal_artifacts(root):
+    """B3F-TXN-01: post-commit mismatch cannot leave formal data plus PASS."""
+    module = _load_solana_module(root, "window_fetch.py", "b3_window_post_commit")
+    out = root / "window.jsonl"
+    receipt = root / "window.receipt.json"
+    with mock.patch.object(module, "scan_seg", return_value=([], True, [1735689600])), \
+            mock.patch.object(module, "publish_txn", side_effect=_commit_mismatched_bytes):
+        rc = module.main(["10", "10", str(out), "--receipt", str(receipt), "--conc", "1"])
+    assert rc != 0
+    _assert_committed_mismatch_was_withdrawn(root, out, receipt)
+
+
+def test_anchor_post_commit_selfcheck_withdraws_formal_artifacts(root):
+    """B3F-TXN-02: anchor matches window withdrawal depth after commit."""
+    module = _load_solana_module(root, "anchor_sampler.py", "b3_anchor_post_commit")
+    out = root / "anchors.jsonl"
+    receipt = root / "anchor.receipt.json"
+    old = Path.cwd()
+    os.chdir(root)
+    try:
+        with mock.patch.object(module, "fetch_window", return_value=[]), \
+                mock.patch.object(module, "publish_txn", side_effect=_commit_mismatched_bytes):
+            rc = module.main(["--start", "2025-01-01", "--end", "2025-01-01",
+                              "--ref-slot", "100", "--ref-ts", "1735689600",
+                              "--as-of-slot", "1000", "--out", str(out),
+                              "--receipt", str(receipt)])
+    finally:
+        os.chdir(old)
+    assert rc != 0
+    _assert_committed_mismatch_was_withdrawn(root, out, receipt)
+
+
+def test_window_complete_segment_requires_timestamp_evidence(root):
+    """B3F-TS-01: a complete segment with no timestamp evidence is not PASS."""
+    module = _load_solana_module(root, "window_fetch.py", "b3_window_empty_timestamps")
+    out = root / "window.jsonl"
+    receipt = root / "window.receipt.json"
+    with mock.patch.object(module, "scan_seg", return_value=([], True, [])):
+        rc = module.main(["10", "10", str(out), "--receipt", str(receipt), "--conc", "1"])
+    assert rc != 0
+    if receipt.exists():
+        assert json.loads(receipt.read_text()).get("verdict") != "PASS"
+
+
 def test_anchor_and_window_reject_same_or_alias_paths(root):
     anchor = _load_solana_module(root, "anchor_sampler.py", "b3_anchor_alias")
     shared = root / "same.json"
@@ -190,6 +247,9 @@ def main():
         tests = (
             test_accounting_requires_and_emits_frozen_slot,
             test_window_missing_timestamp_fails_without_pass,
+            test_window_post_commit_selfcheck_withdraws_formal_artifacts,
+            test_anchor_post_commit_selfcheck_withdraws_formal_artifacts,
+            test_window_complete_segment_requires_timestamp_evidence,
             test_anchor_and_window_reject_same_or_alias_paths,
             test_supply_cli_has_runner_bound_outputs,
             test_supply_truth_requires_exact_frozen_slot,

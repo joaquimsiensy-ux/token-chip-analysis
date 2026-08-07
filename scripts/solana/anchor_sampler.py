@@ -16,7 +16,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
 import net
 from receipt_kernel import (RawBytes, assert_distinct_paths, build_envelope,
-                            finalize_envelope, publish_error_receipt, publish_txn)
+                            finalize_envelope, publish_error_receipt, publish_overwrite,
+                            publish_txn)
 
 SQD = "https://portal.sqd.dev/datasets/solana-mainnet/stream"
 CFG = json.loads(Path("config.json").read_text())
@@ -155,9 +156,10 @@ def main(argv=None):
                  "(取法:getSlot + getBlockTime 一对近期映射)")
 
     out = Path(args.out)
+    partial = Path(str(out) + ".partial")
     out.parent.mkdir(parents=True, exist_ok=True)
     try:
-        assert_distinct_paths(out, args.receipt)
+        assert_distinct_paths(out, args.receipt, partial)
     except Exception as exc:
         print(f"[anchor_sampler] 发布路径冲突: {exc}", file=sys.stderr)
         return 2
@@ -261,6 +263,7 @@ def main(argv=None):
     print(f"DONE {len(days)} days, fails={fails}, {time.time()-t0:.0f}s", flush=True)
     failures = []
     covered = 0
+    committed = False
     try:
         for row in rows:
             if args.start <= str(row.get("date", "")) <= end:
@@ -286,10 +289,25 @@ def main(argv=None):
             envelope, "PASS", 0, date_range={"start": args.start, "end": end},
             output=output_ref, coverage=coverage, failures=[])
         publish_txn(out, RawBytes(data_bytes), args.receipt, receipt)
+        committed = True
         if __import__("hashlib").sha256(out.read_bytes()).hexdigest() != output_ref["sha256"]:
             raise RuntimeError("联合发布后独立读者哈希不一致")
         return 0
     except Exception as exc:
+        withdrawal_errors = []
+        if committed:
+            try:
+                Path(args.receipt).unlink(missing_ok=True)
+            except Exception as cleanup_exc:
+                withdrawal_errors.append(f"receipt: {cleanup_exc}")
+            try:
+                if out.exists():
+                    publish_overwrite(partial, RawBytes(out.read_bytes()))
+                    out.unlink()
+            except Exception as cleanup_exc:
+                withdrawal_errors.append(f"data: {cleanup_exc}")
+        if withdrawal_errors:
+            exc = RuntimeError(f"{exc}; 撤回失败: {'; '.join(withdrawal_errors)}")
         _error_receipt(args.receipt, base_envelope, exc)
         print(f"[anchor_sampler] receipt 生成失败（exit 1）: {exc}", file=sys.stderr)
         return 1

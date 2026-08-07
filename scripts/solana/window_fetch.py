@@ -174,19 +174,13 @@ def main(argv=None):
     segment_timestamps = []
     out_path.parent.mkdir(parents=True, exist_ok=True)
     outf = partial.open("w", encoding="utf-8")
-    backup = None
-    published_current = False
+    committed = False
     lock = __import__("threading").Lock()
     target = {"chain": "solana", "token": MINT.lower(), "as_of_block": args.to}
     base_envelope = build_envelope(SCHEMA, target, __file__, "formal")
 
     def work(seg):
-        result = scan_seg(seg[0], seg[1], args.endpoint)
-        if len(result) == 2:  # legacy test adapter; production returns bound timestamps.
-            e, ok = result
-            timestamps = []
-        else:
-            e, ok, timestamps = result
+        e, ok, timestamps = scan_seg(seg[0], seg[1], args.endpoint)
         with lock:
             for row in e:
                 outf.write(json.dumps(list(row), separators=(",", ":")) + "\n")
@@ -203,6 +197,10 @@ def main(argv=None):
         with ThreadPoolExecutor(args.conc) as ex:
             list(ex.map(work, segs))
         outf.flush(); os.fsync(outf.fileno()); outf.close()
+        if not gaps and (len(segment_timestamps) != len(segs) or any(
+                item["min"] is None or item["max"] is None
+                for item in segment_timestamps)):
+            raise RuntimeError("complete segment 缺少 timestamp min/max 证据")
         publish_overwrite(gaps_path, gaps)
         if gaps:
             verdict, exit_code = "FAIL", 2
@@ -236,23 +234,30 @@ def main(argv=None):
             publish_overwrite(args.receipt, receipt)
         else:
             publish_txn(out_path, RawBytes(data_bytes), args.receipt, receipt)
+            committed = True
             if partial.exists():
                 partial.unlink()
             if __import__("hashlib").sha256(out_path.read_bytes()).hexdigest() != published["sha256"]:
                 raise RuntimeError("联合发布后独立读者哈希不一致")
-        if backup and backup.exists():
-            backup.unlink()
         print(f"{verdict} {len(segs)} segs ({len(gaps)} gaps) in {time.time()-t0:.0f}s"
               f" -> {out_path if not gaps else partial}", flush=True)
         return exit_code
     except Exception as exc:
         if not outf.closed:
             outf.close()
-        # 数据与完成 receipt 是一个发布事务：receipt 落盘失败时撤回本次正式文件。
-        if published_current and out_path.exists():
-            os.replace(out_path, partial)
-        if backup and backup.exists():
-            os.replace(backup, out_path)
+        withdrawal_errors = []
+        if committed:
+            try:
+                Path(args.receipt).unlink(missing_ok=True)
+            except Exception as cleanup_exc:
+                withdrawal_errors.append(f"receipt: {cleanup_exc}")
+            try:
+                if out_path.exists():
+                    os.replace(out_path, partial)
+            except Exception as cleanup_exc:
+                withdrawal_errors.append(f"data: {cleanup_exc}")
+        if withdrawal_errors:
+            exc = RuntimeError(f"{exc}; 撤回失败: {'; '.join(withdrawal_errors)}")
         _publish_error(args.receipt, base_envelope, exc, run_id)
         print(f"[window_fetch] 检测/提交失败（exit 1）: {exc}", file=sys.stderr)
         return 1
