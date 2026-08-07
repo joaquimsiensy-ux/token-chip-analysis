@@ -10,6 +10,13 @@
     "scripts/prices",
     "scripts/*.py"
   ],
+  "minimum_counts": {
+    "receipt_producers": 46,
+    "receipt_consumers": 51,
+    "transport_calls": 57,
+    "atomic_writes": 37,
+    "formal_entrypoints": 58
+  },
   "receipt_producers": [
     {
       "schemas": [
@@ -429,11 +436,35 @@
       "script": "scripts/evm/verify_recon.py"
     },
     {
+      "kind": "urllib",
+      "script": "scripts/labels/dune_fetch_results.py"
+    },
+    {
+      "kind": "urllib",
+      "script": "scripts/labels/fingerprint_check.py"
+    },
+    {
+      "kind": "urllib",
+      "script": "scripts/labels/goplus_check.py"
+    },
+    {
+      "kind": "urllib",
+      "script": "scripts/labels/probe_codetype.py"
+    },
+    {
+      "kind": "urllib",
+      "script": "scripts/labels/pull_verified_contracts.py"
+    },
+    {
       "kind": "requests",
       "script": "scripts/labels/sourcify_check.py"
     },
     {
       "kind": "curl",
+      "script": "scripts/lib/net.py"
+    },
+    {
+      "kind": "httpx",
       "script": "scripts/lib/net.py"
     },
     {
@@ -461,12 +492,48 @@
       "script": "scripts/prices/price_check.py"
     },
     {
+      "kind": "urllib",
+      "script": "scripts/robinhood/gas_trace.py"
+    },
+    {
+      "kind": "urllib",
+      "script": "scripts/robinhood/gas_trace_bs.py"
+    },
+    {
       "kind": "curl",
       "script": "scripts/robinhood/pull_block_ts_anchors.py"
     },
     {
+      "kind": "urllib",
+      "script": "scripts/robinhood/pull_lp_events.py"
+    },
+    {
+      "kind": "urllib",
+      "script": "scripts/robinhood/pull_ohlcv.py"
+    },
+    {
+      "kind": "urllib",
+      "script": "scripts/robinhood/pull_swaps.py"
+    },
+    {
+      "kind": "urllib",
+      "script": "scripts/robinhood/pull_swaps_v4.py"
+    },
+    {
+      "kind": "urllib",
+      "script": "scripts/robinhood/pull_transfers.py"
+    },
+    {
       "kind": "curl",
       "script": "scripts/robinhood/pull_transfers_rpc.py"
+    },
+    {
+      "kind": "urllib",
+      "script": "scripts/robinhood/pull_weth_pool.py"
+    },
+    {
+      "kind": "curl",
+      "script": "scripts/solana/audit_closed_accounts.py"
     },
     {
       "kind": "requests",
@@ -510,11 +577,19 @@
     },
     {
       "kind": "curl",
+      "script": "scripts/solana/probe_window_moves.py"
+    },
+    {
+      "kind": "curl",
       "script": "scripts/solana/scan_sharded.py"
     },
     {
       "kind": "curl",
       "script": "scripts/solana/scan_token_accounts.py"
+    },
+    {
+      "kind": "urllib",
+      "script": "scripts/solana/squads_members.py"
     },
     {
       "kind": "curl",
@@ -523,6 +598,10 @@
     {
       "kind": "curl",
       "script": "scripts/solana/trace_wallet.py"
+    },
+    {
+      "kind": "curl",
+      "script": "scripts/solana/whale_deep.py"
     },
     {
       "kind": "net.py",
@@ -735,6 +814,7 @@
     "scripts/evm/replay_pass1.py",
     "scripts/evm/replay_stream.py",
     "scripts/evm/scan_bloxroute_seg.py",
+    "scripts/evm/verify_recon.py",
     "scripts/labels/accumulate_offenders.py",
     "scripts/labels/gen_manual_from_addressbook.py",
     "scripts/labels/label_lookup.py",
@@ -754,6 +834,7 @@
     "scripts/report/figures_from_facts.py",
     "scripts/report/flow_anomaly_scan.py",
     "scripts/report/handoff_manifest.py",
+    "scripts/report/identity_snapshot_receipt.py",
     "scripts/report/lifecycle_flow.py",
     "scripts/report/md2pdf.py",
     "scripts/report/reconciliation_report.py",
@@ -766,9 +847,11 @@
     "scripts/robinhood/pull_lp_events.py",
     "scripts/run_guarded.py",
     "scripts/solana/accounting_gate_sol.py",
+    "scripts/solana/anchor_sampler.py",
     "scripts/solana/audit_closed_accounts.py",
     "scripts/solana/build_evolution.py",
     "scripts/solana/probe_escrows.py",
+    "scripts/solana/scan_token_accounts.py",
     "scripts/solana/squads_members.py",
     "scripts/solana/stake_decode.py"
   ],

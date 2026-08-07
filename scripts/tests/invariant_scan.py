@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 import ast
 import copy
+import importlib.util
 import json
 import re
 import subprocess
@@ -32,6 +33,37 @@ SCOPE = (
 )
 ATOMIC_SEMANTICS = {
     "exclusive_new", "overwrite_single", "dual_file_txn", "restore_on_fail",
+}
+DENOMINATOR_KEYS = {
+    "receipt_producers", "receipt_consumers", "transport_calls",
+    "atomic_writes", "formal_entrypoints",
+}
+LABEL_CHAIN_SURFACES = (
+    ("scripts/labels/labels_resolver.py", "known", "assign:KNOWN_CHAINS"),
+    ("scripts/labels/gen_manual_from_addressbook.py", "known", "assign:CHAINS"),
+    ("scripts/labels/build_labels.py", "table", "assign:BUILD_CHAINS"),
+    ("scripts/labels/benchmark_labels.py", "table", "assign:EXPECTED_CHAINS"),
+    ("scripts/labels/roundtrip_check.py", "table", "assign:CHAINS"),
+    ("scripts/labels/goplus_check.py", "table", "argparse:--chain"),
+    ("scripts/labels/build_goldset.py", "table", "membership:chain:2"),
+)
+VERTICAL_SLICE_TESTS = {
+    "eth": "test_batch3_evm_vertical_slice.py",
+    "bsc": "test_batch3_evm_vertical_slice.py",
+    "base": "test_batch3_evm_vertical_slice.py",
+    "sol": "test_batch3_solana_vertical_slice.py",
+}
+CAPABILITY_ENTRYPOINTS = {
+    "controlled_runner": "scripts/report/reconciliation_report.py",
+    "reconciliation_consumer": "scripts/report/shared_release_receipt.py",
+    "identity_adapter": "scripts/report/identity_snapshot_receipt.py",
+    "handoff": "scripts/report/handoff_manifest.py",
+    "audit_release": "scripts/report/audit_release_gate.py",
+}
+FORMAL_RELEASE_ENTRYPOINTS = {
+    "scripts/report/a4_gate.py",
+    "scripts/report/a5_report_seal.py",
+    "scripts/report/build_html.py",
 }
 
 
@@ -95,6 +127,207 @@ def _call_name(node: ast.AST) -> str:
     return ""
 
 
+def _load_chain_registry():
+    path = ROOT / "scripts/lib/chain_registry.py"
+    spec = importlib.util.spec_from_file_location("invariant_chain_registry", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def _literal_assignments(path: Path, names) -> dict:
+    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    wanted = set(names)
+    found = {}
+    for node in tree.body:
+        if not isinstance(node, (ast.Assign, ast.AnnAssign)):
+            continue
+        targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+        for target in targets:
+            if isinstance(target, ast.Name) and target.id in wanted:
+                found[target.id] = ast.literal_eval(node.value)
+    return found
+
+
+def registered_formal_entrypoints():
+    registry = _load_chain_registry()
+    shared = _literal_assignments(
+        ROOT / "scripts/report/shared_release_receipt.py",
+        {"ACCOUNTING_PRODUCERS", "RECON_PRODUCERS", "RECON_RUNNERS",
+         "ADVERSARIAL_RUNNERS"},
+    )
+    families = {
+        record["capabilities"]["accounting_adapter"]
+        for chain, record in registry.CHAIN_REGISTRY.items()
+        if registry.formal_ready(chain)
+    }
+    paths = set(FORMAL_RELEASE_ENTRYPOINTS)
+    accounting = shared["ACCOUNTING_PRODUCERS"]
+    producers = shared["RECON_PRODUCERS"]
+    for family in families:
+        paths.add(accounting[family])
+        for allowed in producers[family].values():
+            paths.update(allowed)
+    paths.update(shared["RECON_RUNNERS"])
+    paths.update(shared["ADVERSARIAL_RUNNERS"])
+    for chain, record in registry.CHAIN_REGISTRY.items():
+        if not registry.formal_ready(chain):
+            continue
+        for fact, rel in CAPABILITY_ENTRYPOINTS.items():
+            if record["capabilities"].get(fact):
+                paths.add(rel)
+    return sorted(paths)
+
+
+class BareRpcPoolVisitor(ast.NodeVisitor):
+    def __init__(self):
+        self.stack = ["<module>"]
+        self.calls = []
+
+    def visit_FunctionDef(self, node):
+        self.stack.append(node.name)
+        self.generic_visit(node)
+        self.stack.pop()
+
+    visit_AsyncFunctionDef = visit_FunctionDef
+
+    def visit_Call(self, node):
+        name = _call_name(node.func)
+        if name == "RpcPool" or name.endswith(".RpcPool"):
+            self.calls.append((self.stack[-1], node.lineno))
+        self.generic_visit(node)
+
+
+def bare_rpc_pool_errors(*, files=None, root=ROOT):
+    errors = []
+    for path in files or production_files():
+        if path.suffix != ".py":
+            continue
+        try:
+            rel = path.relative_to(root).as_posix()
+        except ValueError:
+            rel = path.as_posix()
+        visitor = BareRpcPoolVisitor()
+        visitor.visit(ast.parse(path.read_text(encoding="utf-8"), filename=str(path)))
+        for locator, line in visitor.calls:
+            if rel == "scripts/lib/net.py" and locator == "attested_rpc_pool":
+                continue
+            errors.append(f"bare RpcPool construction: {rel}:{line} ({locator})")
+    return errors
+
+
+def _surface_values(path: Path, locator: str):
+    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    if locator.startswith("assign:"):
+        name = locator.split(":", 1)[1]
+        value = _literal_assignments(path, {name}).get(name)
+        return [set(value)] if isinstance(value, (list, tuple, set, frozenset)) else []
+    if locator == "argparse:--chain":
+        found = []
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call) or not _call_name(node.func).endswith("add_argument"):
+                continue
+            if not any(isinstance(arg, ast.Constant) and arg.value == "--chain"
+                       for arg in node.args):
+                continue
+            for keyword in node.keywords:
+                if keyword.arg == "choices":
+                    value = ast.literal_eval(keyword.value)
+                    found.append(set(value))
+        return found
+    if locator == "membership:chain:2":
+        found = []
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Compare) or not isinstance(node.left, ast.Name) \
+                    or node.left.id != "chain":
+                continue
+            for op, comparator in zip(node.ops, node.comparators):
+                if isinstance(op, (ast.In, ast.NotIn)) \
+                        and isinstance(comparator, (ast.Tuple, ast.List, ast.Set)):
+                    found.append(set(ast.literal_eval(comparator)))
+        return found
+    return []
+
+
+def label_chain_surface_errors(*, root=ROOT):
+    registry = _load_chain_registry()
+    expected = {
+        "known": set(registry.known_chains_for_release()),
+        "table": set(registry.capability_chains("labels_table")),
+    }
+    errors = []
+    for rel, kind, locator in LABEL_CHAIN_SURFACES:
+        values = _surface_values(root / rel, locator)
+        expected_count = 2 if locator == "membership:chain:2" else 1
+        if len(values) != expected_count:
+            errors.append(f"labels surface {rel}:{locator} expected {expected_count} list(s), got {len(values)}")
+            continue
+        for actual in values:
+            extra = actual - expected[kind]
+            missing = expected[kind] - actual
+            if extra:
+                errors.append(f"labels surface {rel}:{locator} has unregistered chains {sorted(extra)}")
+            if missing:
+                label = "labels_table chains" if kind == "table" else "known chains"
+                errors.append(f"labels surface {rel}:{locator} missing {label} {sorted(missing)}")
+    return errors
+
+
+def _suite_entries(path: Path):
+    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    entries = set()
+    for node in tree.body:
+        value = None
+        if isinstance(node, ast.Assign) and any(
+                isinstance(target, ast.Name) and target.id == "SUITE" for target in node.targets):
+            value = node.value
+        elif isinstance(node, ast.AugAssign) and isinstance(node.target, ast.Name) \
+                and node.target.id == "SUITE":
+            value = node.value
+        if value is not None:
+            entries.update(_string_values(value, {}))
+    return entries
+
+
+def vertical_slice_errors(*, mapping=None, suite_path=None):
+    registry = _load_chain_registry()
+    mapping = dict(mapping or VERTICAL_SLICE_TESTS)
+    suite_path = Path(suite_path or ROOT / "scripts/tests/run_all.py")
+    mounted = _suite_entries(suite_path)
+    verified = {
+        chain for chain, record in registry.CHAIN_REGISTRY.items()
+        if record["capabilities"].get("vertical_slice_verified") is True
+    }
+    errors = []
+    for chain in sorted(verified):
+        test_name = mapping.get(chain)
+        if not test_name:
+            errors.append(f"vertical slice mapping missing for {chain}")
+            continue
+        if not (ROOT / "scripts/tests" / test_name).is_file():
+            errors.append(f"vertical slice test file missing for {chain}: {test_name}")
+        if test_name not in mounted:
+            errors.append(f"vertical slice test for {chain} not mounted in run_all.SUITE: {test_name}")
+    for chain in sorted(set(mapping) - verified):
+        errors.append(f"vertical slice mapping has non-verified chain: {chain}")
+    return errors
+
+
+def robinhood_inventory_errors(*, doc_path=None):
+    doc_path = Path(doc_path or ROOT / "references/data-pipeline-robinhood.md")
+    text = doc_path.read_text(encoding="utf-8")
+    match = re.search(r"scripts/robinhood/` 当前 (\d+) 个普通文件：(\d+) 个 Python", text)
+    if not match:
+        return ["Robinhood inventory statement missing from active pipeline document"]
+    files = [path for path in (ROOT / "scripts/robinhood").iterdir() if path.is_file()]
+    python_files = [path for path in files if path.suffix == ".py"]
+    claimed = (int(match.group(1)), int(match.group(2)))
+    actual = (len(files), len(python_files))
+    if claimed != actual:
+        return [f"Robinhood inventory mismatch: documented={claimed}, actual={actual}"]
+    return []
+
+
 class AtomicVisitor(ast.NodeVisitor):
     def __init__(self):
         self.stack = ["<module>"]
@@ -126,6 +359,10 @@ def scan_python(path: Path):
     has_requests = False
     has_net = False
     has_curl = False
+    has_urllib = False
+    has_httpx = False
+    has_aiohttp = False
+    curl_vars = set()
     schema_vars = set()
     schema_dict_vars = {}
 
@@ -145,6 +382,9 @@ def scan_python(path: Path):
             for name in names:
                 if found:
                     schema_dict_vars[name] = found
+        if isinstance(value, (ast.List, ast.Tuple)) and value.elts \
+                and isinstance(value.elts[0], ast.Constant) and value.elts[0].value == "curl":
+            curl_vars.update(names)
 
     for node in ast.walk(tree):
         if isinstance(node, ast.Dict):
@@ -174,15 +414,24 @@ def scan_python(path: Path):
         elif isinstance(node, ast.Import):
             has_requests |= any(alias.name == "requests" for alias in node.names)
             has_net |= any(alias.name == "net" for alias in node.names)
+            has_httpx |= any(alias.name == "httpx" for alias in node.names)
+            has_aiohttp |= any(alias.name == "aiohttp" for alias in node.names)
         elif isinstance(node, ast.ImportFrom):
             has_requests |= node.module == "requests"
             has_net |= node.module == "net"
+            has_httpx |= node.module == "httpx"
+            has_aiohttp |= node.module == "aiohttp"
+        elif isinstance(node, ast.Call) and (
+                _call_name(node.func).endswith(".urlopen") or _call_name(node.func) == "urlopen"):
+            has_urllib = True
         elif isinstance(node, ast.Call) and _call_name(node.func) in {
                 "subprocess.run", "subprocess.Popen"} and node.args:
             first = node.args[0]
             if isinstance(first, (ast.List, ast.Tuple)) and first.elts:
                 cmd = first.elts[0]
                 has_curl |= isinstance(cmd, ast.Constant) and cmd.value == "curl"
+            elif isinstance(first, ast.Name):
+                has_curl |= first.id in curl_vars
     has_curl |= constants.get("REGISTERED_TRANSPORT_BACKEND") == "curl"
 
     atomic = AtomicVisitor()
@@ -194,6 +443,12 @@ def scan_python(path: Path):
         transports.add("net.py")
     if has_requests:
         transports.add("requests")
+    if has_urllib:
+        transports.add("urllib")
+    if has_httpx:
+        transports.add("httpx")
+    if has_aiohttp:
+        transports.add("aiohttp")
     return producers, consumers, transports, atomic.locators
 
 
@@ -218,18 +473,6 @@ def scan_actual():
             consumer_map[rel] = sorted(consumers)
         transports.extend({"script": rel, "kind": kind} for kind in sorted(kinds))
         atomic.extend({"script": rel, "locator": name} for name in sorted(locators))
-    docs = [ROOT / "SKILL.md"]
-    docs.extend(p for p in (ROOT / "references").rglob("*.md")
-                if "archive" not in p.parts and p.name != "attic.md")
-    documented = "\n".join(p.read_text(encoding="utf-8") for p in docs)
-    formal = []
-    for path in production_files():
-        rel = _rel(path)
-        if rel not in documented:
-            continue
-        text = path.read_text(encoding="utf-8")
-        if path.suffix == ".sh" or "__main__" in text:
-            formal.append(rel)
     return {
         "receipt_producers": [
             {"script": script, "schemas": schemas}
@@ -241,7 +484,7 @@ def scan_actual():
         ],
         "transport_calls": sorted(transports, key=lambda x: (x["script"], x["kind"])),
         "atomic_writes": sorted(atomic, key=lambda x: (x["script"], x["locator"])),
-        "formal_entrypoints": sorted(formal),
+        "formal_entrypoints": registered_formal_entrypoints(),
     }
 
 
@@ -280,10 +523,9 @@ def validate_manifest(manifest, actual):
                     actual["transport_calls"], _point_key)
     errors += _diff("atomic_writes", manifest.get("atomic_writes", []),
                     actual["atomic_writes"], _point_key)
-    errors += _diff("formal_entrypoints",
-                    [{"script": x} for x in manifest.get("formal_entrypoints", [])],
-                    [{"script": x} for x in actual["formal_entrypoints"]],
-                    lambda x: x.get("script"))
+    registered_formal = set(manifest.get("formal_entrypoints", []))
+    for rel in sorted(set(actual["formal_entrypoints"]) - registered_formal):
+        errors.append(f"formal_entrypoints: capability/producer registry point missing: {rel}")
 
     atomic_keys = {_point_key(x) for x in actual["atomic_writes"]}
     for item in manifest.get("atomic_writes", []):
@@ -304,6 +546,19 @@ def validate_manifest(manifest, actual):
         if path.suffix == ".py" and "__main__" not in text:
             errors.append(f"formal_entrypoints: no CLI entrypoint: {rel}")
 
+    floors = manifest.get("minimum_counts")
+    if not isinstance(floors, dict) or set(floors) != DENOMINATOR_KEYS:
+        errors.append("minimum_counts must contain the five scanner denominators")
+    else:
+        current = counts(manifest)
+        for key in sorted(DENOMINATOR_KEYS):
+            floor = floors.get(key)
+            if isinstance(floor, bool) or not isinstance(floor, int) or floor < 0:
+                errors.append(f"minimum_counts: invalid floor for {key}")
+            elif current[key] < floor:
+                errors.append(
+                    f"{key}: denominator shrank below floor {floor} -> {current[key]}")
+
     required_exception = {"id", "script", "reason", "formal_reachable", "expiry_version"}
     exceptions = manifest.get("exceptions", [])
     ids = set()
@@ -316,17 +571,21 @@ def validate_manifest(manifest, actual):
         ids.add(item.get("id"))
         if not re.fullmatch(r"\d+\.\d+\.\d+", str(item.get("expiry_version", ""))):
             errors.append(f"exceptions: invalid expiry_version for {item.get('id')}")
+    errors += bare_rpc_pool_errors()
+    errors += label_chain_surface_errors()
+    errors += vertical_slice_errors()
+    errors += robinhood_inventory_errors()
     return errors
 
 
 def counts(manifest):
     return {
-        "receipt_producers": sum(len(x["schemas"]) for x in manifest["receipt_producers"]),
-        "receipt_consumers": sum(len(x["schemas"]) for x in manifest["receipt_consumers"]),
-        "transport_calls": len(manifest["transport_calls"]),
-        "atomic_writes": len(manifest["atomic_writes"]),
-        "formal_entrypoints": len(manifest["formal_entrypoints"]),
-        "exceptions": len(manifest["exceptions"]),
+        "receipt_producers": sum(len(x["schemas"]) for x in manifest.get("receipt_producers", [])),
+        "receipt_consumers": sum(len(x["schemas"]) for x in manifest.get("receipt_consumers", [])),
+        "transport_calls": len(manifest.get("transport_calls", [])),
+        "atomic_writes": len(manifest.get("atomic_writes", [])),
+        "formal_entrypoints": len(manifest.get("formal_entrypoints", [])),
+        "exceptions": len(manifest.get("exceptions", [])),
     }
 
 
