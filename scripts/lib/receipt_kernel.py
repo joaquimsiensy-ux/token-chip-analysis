@@ -78,15 +78,16 @@ def _producer_ref(producer_file) -> dict:
     path = Path(producer_file).expanduser()
     if not path.is_absolute():
         path = REPO / path
-    if ".." in path.parts or path.is_symlink():
+    if ".." in path.parts:
         raise ReceiptKernelError(f"producer path invalid: {producer_file}")
-    path = path.resolve(strict=True)
+    with _secure_target(path, create_parents=False) as producer:
+        if _target_stat(producer) is None:
+            raise ReceiptKernelError(f"producer is not a file: {producer_file}")
+        path = producer.path.resolve(strict=True)
     try:
         rel = path.relative_to(REPO).as_posix()
     except ValueError as exc:
         raise ReceiptKernelError(f"producer escapes repository: {producer_file}") from exc
-    if not path.is_file():
-        raise ReceiptKernelError(f"producer is not a file: {producer_file}")
     return {"path": rel, "sha256": _digest(path)}
 
 
