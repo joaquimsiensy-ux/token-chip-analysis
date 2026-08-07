@@ -11,10 +11,10 @@
     "scripts/*.py"
   ],
   "minimum_counts": {
-    "receipt_producers": 46,
-    "receipt_consumers": 51,
-    "transport_calls": 57,
-    "atomic_writes": 37,
+    "receipt_producers": 49,
+    "receipt_consumers": 53,
+    "transport_calls": 58,
+    "atomic_writes": 39,
     "formal_entrypoints": 58
   },
   "receipt_producers": [
@@ -67,6 +67,14 @@
         "evm-reconciliation-receipt/v2"
       ],
       "script": "scripts/evm/verify_recon.py"
+    },
+    {
+      "schemas": [
+        "anchor-plan-input/v1",
+        "anchor-plan-receipt/v2",
+        "anchor-plan/v2"
+      ],
+      "script": "scripts/lib/anchor_plan.py"
     },
     {
       "schemas": [
@@ -241,6 +249,13 @@
     }
   ],
   "receipt_consumers": [
+    {
+      "schemas": [
+        "anchor-plan-receipt/v2",
+        "anchor-plan/v2"
+      ],
+      "script": "scripts/lib/time_spotcheck.py"
+    },
     {
       "schemas": [
         "evm-channel-receipt/v2",
@@ -472,6 +487,10 @@
       "script": "scripts/lib/rpc_batch.py"
     },
     {
+      "kind": "urllib",
+      "script": "scripts/lib/solana_attested_session.py"
+    },
+    {
       "kind": "net.py",
       "script": "scripts/lib/supply_truth_gate.py"
     },
@@ -650,6 +669,11 @@
       "semantics": "overwrite_single"
     },
     {
+      "locator": "quarantine_current",
+      "script": "scripts/evm/fetch_pool_swaps.py",
+      "semantics": "overwrite_single"
+    },
+    {
       "locator": "atomic_write",
       "script": "scripts/evm/make_channel_receipt.py",
       "semantics": "overwrite_single"
@@ -787,6 +811,11 @@
     {
       "locator": "finalize",
       "script": "scripts/solana/fetch_sqd_transfers_v2.py",
+      "semantics": "overwrite_single"
+    },
+    {
+      "locator": "quarantine_current",
+      "script": "scripts/solana/scan_token_accounts.py",
       "semantics": "overwrite_single"
     },
     {

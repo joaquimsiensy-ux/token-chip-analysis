@@ -1,7 +1,8 @@
-# R8 修复闭环主账（准备阶段）
+# R9 修复闭环主账（49 项）
 
-- 当前基线：`6e943486a9e4a6f2b673c7cd7a03093f463da233`（`main@6e94348`，v6.36.0）
-- 主账分母：44（full 4 + six-lens 13 + R7 15 + R8 12）。
+- R8 准备基线：`6e943486a9e4a6f2b673c7cd7a03093f463da233`（`main@6e94348`）。
+- 当前冻结基线：`63cf715cb6d11f6669f4370c77574930da655891`（`main@63cf715`，v6.36.0）。
+- 主账分母：49（full 4 + six-lens 13 + R7 15 + R8 12 + R9 5）。
 - supplementary：`full-C-01`～`full-C-08` 不计分母，见文末附表。
 - 归因纪律：第一次 full review 没有给 F-01～F-04 判“新引入/半修残留/历史漏检”，本账写“报告未判定”，不自行补造；其余照抄各报告。
 - 覆盖分类初判已由 Fable 复核冻结（2026-08-06）。四类：①已被新反例覆盖；②由纵切片覆盖；③需补独立反例；④正式发布路径外豁免。
@@ -31,7 +32,7 @@
 | `CMD-R8-FLAGS` | 临时 ETH labels CSV：`tier=exclude,risk_flags=" tornado-user"`；调用 `validate_file` 与 `LabelResolver.risk_partition` | validator `errors=[]`；resolver 激活 `privacy=['tornado-user']`。 |
 | `CMD-RH-CAP` | 对 accounting/verify_recon/supply_truth/time_spotcheck 执行最小 `--chain robinhood` CLI | 四个脚本均在业务调用前 argparse `exit=2`，而 registry 仍 `formal=True`。 |
 
-## 二、44 项主表（按 primary INV 行族排列）
+## 二、49 项主表（按 primary INV 行族排列）
 
 | canonical ID | 报告基线 | 严重度 | 原归因 | primary | secondary | 当前生产路径与同族面（6e94348） | 覆盖初判 | 测试/纵切片/豁免证据 | 基线回放 | 最终结果 | 两轮盲审 / Fable |
 |---|---|---:|---|---|---|---|---|---|---|---|---|
@@ -79,10 +80,15 @@
 | `six-F-11` | six@`fca61ad` | P2 | 半修残留 | INV-18 | — | `retrospective.md:68,91`; `docs_lint.py` 8192B 守卫 | ① | `docs_lint.py --all`; `test_sixlens_docs.py` | FIXED_ON_BASELINE (`CMD-DOC`: 7.5KB 预警/8192B 硬闸统一) |  |  |
 | `R7-15` | R7@`d8bd3c5` | P2 | 半修残留 | INV-18 | INV-15 | `references/labels/MAINTENANCE.md`; `roundtrip_check.py:22-27`; `add_labels.py:180-223` | ① | `test_roundtrip_check.py`; `test_add_labels_rollback.py`; docs lint | FIXED_ON_BASELINE (`CMD-R7`: 七字段/三闸文档一致) |  |  |
 | `six-F-12` | six@`fca61ad` | P2 | 历史漏检 | INV-19 | INV-18 | `casebook/README.md`; `retrospective.md:93-95`; docs archive guard | ① | `docs_lint.py --all`; `test_sixlens_docs.py` archive/runtime 路由 | FIXED_ON_BASELINE (`CMD-DOC`: casebook 执行路由不再回流 archive；A6 维护动作保留) |  |  |
+| `R9-01` | R9@`63cf715` | P0 | 老问题修复不全 | INV-08 | INV-02, INV-11 | `accounting_gate_sol.py`; `shared_release_receipt.py`；Solana observation/consumer 同族 | ② | 待批三 Solana 正式 observation bundle 纵切片；declared≠observed slot 进程负例 | REPRODUCED（R9 review：CLI slot=77、RPC context.slot=999 仍 PASS） |  |  |
+| `R9-02` | R9@`63cf715` | P1 | 修复中新引入 | INV-10 | INV-06, INV-08 | `anchor_plan.py`; `time_spotcheck.py`; EVM 正式纵切片 | ② | `B1-R9-02-PRODUCER-CONSUMER`; `test_batch3_evm_vertical_slice.py` 真实 producer | REPRODUCED（真实旧 producer 无 final_block，consumer rc=2） |  |  |
+| `R9-03` | R9@`63cf715` | P1 | 老问题修复不全 | INV-03 | INV-04, INV-06 | `fetch_pool_swaps.py` 进程入口、tmp/canonical/stale | ① | `B1-R9-03-PROCESS/STALE`; `test_fetch_failclosed.py` | REPRODUCED（缺 next_block fatal，但 subprocess rc=0 且旧 CSV current） |  |  |
+| `R9-04` | R9@`63cf715` | P1 | 老问题修复不全 | INV-03 | INV-01, INV-04, INV-10 | `scan_token_accounts.py` 四个 return 分支、snapshot/receipt marker 发布 | ① | `B1-R9-04-PROCESS/MARKER`; `test_batch3_solana_producers.py` | REPRODUCED（路径冲突 fatal，但 subprocess rc=0） |  |  |
+| `R9-05` | R9@`63cf715` | P1 | 修复中新引入 | INV-11 | INV-02, INV-08 | Solana capability 声明、正式 JSON-RPC callsite 与纵切片 | ② | 批一 `SolanaAttestedSession` 错 genesis 业务=0；待批二/三 callsite+正式纵切片 | REPRODUCED（formal-ready 无 getGenesisHash 仍通过） |  |  |
 
 ## 三、逐项详情
 
-以下小节补足主表中压缩的证据。每项“最终结果”和“两轮盲审/Fable”均故意留空，准备阶段不提前裁决。
+以下小节补足主表中压缩的证据。每项“最终结果”和“两轮盲审/Fable”均故意留空，最终验收前不提前裁决。
 
 ### full-F-01
 
@@ -524,7 +530,52 @@
 - 最终结果：
 - 两轮盲审与 Fable 结论：
 
-## 四、supplementary claims（不计 44 分母）
+### R9-01
+
+- 报告基线/严重度/归因：R9@`63cf715`；P0；老问题修复不全。
+- primary/secondary：INV-08；INV-02、INV-11。
+- 主覆盖类别：②正式链纵切片覆盖；完整 observation/callsite/consumer 闭合留批三，本批不销账。
+- 基线回放：**REPRODUCED**。RPC `context.slot=999`，CLI `--as-of-slot 77`，当前 receipt 仍以 77 PASS。
+- 最终结果：
+- 两轮盲审与 Fable 结论：
+
+### R9-02
+
+- 报告基线/严重度/归因：R9@`63cf715`；P1；修复中新引入。
+- primary/secondary：INV-10；INV-06、INV-08。
+- 主覆盖类别：②正式链纵切片覆盖；批一已把 EVM 正例改成现场运行 producer。
+- 基线回放：**REPRODUCED**。真实旧 producer rc=0，但 plan 无 final_block；consumer `--final-block 300` rc=2。
+- 最终结果：
+- 两轮盲审与 Fable 结论：
+
+### R9-03
+
+- 报告基线/严重度/归因：R9@`63cf715`；P1；老问题修复不全。
+- primary/secondary：INV-03；INV-04、INV-06。
+- 主覆盖类别：①新反例覆盖；`B1-R9-03-PROCESS/STALE`。
+- 基线回放：**REPRODUCED**。缺 next_block fatal，真实进程 rc=0，旧 canonical CSV 留在正式路径。
+- 最终结果：
+- 两轮盲审与 Fable 结论：
+
+### R9-04
+
+- 报告基线/严重度/归因：R9@`63cf715`；P1；老问题修复不全。
+- primary/secondary：INV-03；INV-01、INV-04、INV-10。
+- 主覆盖类别：①新反例覆盖；`B1-R9-04-PROCESS/MARKER`。
+- 基线回放：**REPRODUCED**。out/receipt 路径冲突在 main 返回 2，但真实进程 rc=0。
+- 最终结果：
+- 两轮盲审与 Fable 结论：
+
+### R9-05
+
+- 报告基线/严重度/归因：R9@`63cf715`；P1；修复中新引入。
+- primary/secondary：INV-11；INV-02、INV-08。
+- 主覆盖类别：②正式链纵切片覆盖；批一只建立公共 session 与独立反例，callsite/矩阵接入留批二/三，本批不销账。
+- 基线回放：**REPRODUCED**。Solana formal-ready 正例无任何 cluster identity 请求仍通过。
+- 最终结果：
+- 两轮盲审与 Fable 结论：
+
+## 四、supplementary claims（不计 49 分母）
 
 | ID | 原严重度/类型 | 链接主 finding / INV | 当前路径 | 准备阶段判断与证据 |
 |---|---|---|---|---|
@@ -533,7 +584,7 @@
 | `full-C-03` | P1 AMBIGUOUS | `full-F-01`, `R7-05`, `R8-01`, `R8-03`; INV-10/INV-18 | Solana A2 docs、registry、runner、producer | `B3-SOL-E2E`；Solana A2 producer→runner→consumer→READY→release 已闭环。 |
 | `full-C-04` | P2 ROUTE CONFLICT | INV-18/INV-20 | `data-pipeline-evm-channels.md`; `scan_bloxroute_seg.py` | 未单列主 finding；批二能力矩阵需把 bloXroute 明确为 nonformal 并补防回流。 |
 | `full-C-05` | P2 AMBIGUOUS/DRIFT | `full-F-02`; INV-02/INV-20 | `merge_hs_rpc.py:91-104`; Robinhood channels 文档 | 仍只有 stdout 摘要，无持久 receipt；随 RH exploration 豁免台账处理。 |
-| `full-C-06` | P2 DRIFT | INV-19/INV-18 | `data-pipeline-solana-capture.md` 外部 GOAT 三脚本路由 | 准备阶段保留为 supplementary；批四方法论/路由守卫裁决，不改 44 分母。 |
+| `full-C-06` | P2 DRIFT | INV-19/INV-18 | `data-pipeline-solana-capture.md` 外部 GOAT 三脚本路由 | 准备阶段保留为 supplementary；批四方法论/路由守卫裁决，不改 49 分母。 |
 | `full-C-07` | P3 DRIFT | `full-F-02`; INV-18/INV-19 | Robinhood 三采集器模块头、`resume_guard.py` | supplementary 保留；Robinhood 降级不改写历史，未来恢复 formal 前必须清理。 |
 | `full-C-08` | P3 DRIFT | `R8-05`; INV-17/INV-18 | `retrospective.md`; `run_all.py` | supplementary 保留；批四以 registry/自动清单消除手写测试数量。 |
 
@@ -545,11 +596,11 @@
 
 | 结果 | 数量 | finding |
 |---|---:|---|
-| REPRODUCED | 14 | `full-F-01`～`full-F-04`; `six-F-03`; `R7-01`,`R7-03`,`R7-05`,`R7-06`,`R7-07`,`R7-08`,`R7-12`,`R7-13`,`R7-14` |
+| REPRODUCED | 19 | `full-F-01`～`full-F-04`; `six-F-03`; `R7-01`,`R7-03`,`R7-05`,`R7-06`,`R7-07`,`R7-08`,`R7-12`,`R7-13`,`R7-14`; `R9-01`～`R9-05` |
 | FIXED_ON_BASELINE | 18 | `six-F-01`,`six-F-02`,`six-F-04`～`six-F-13`（不含 `six-F-03`）；`R7-02`,`R7-04`,`R7-09`,`R7-10`,`R7-11`,`R7-15` |
 | CHANGED | 0 | — |
 | N/A-R8基线即当前 | 12 | `R8-01`～`R8-12` |
-| **合计** | **44** |  |
+| **合计** | **49** |  |
 
 ## 七、批次裁决记录
 

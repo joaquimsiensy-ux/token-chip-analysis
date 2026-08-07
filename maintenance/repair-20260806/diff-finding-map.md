@@ -41,6 +41,22 @@
 | `B4-G3:maintenance/repair-20260806/{ledger.md,diff-finding-map.md,batch4-report.md}` | `INV-17, INV-18, INV-19` | `R8-05, full-F-04`; 18 项 baseline-fixed finding 证据补齐；六 producer 判定 | 登记红绿、fixture 零过时审计、发布路径可达性、逻辑分组和剩余主账证据 | fixture rg/契约测试；全量 suite |  |
 | `B4F-G1:scripts/tests/{invariant_scan.py,test_batch4_invariant_guards.py}; maintenance/repair-20260806/{batch4-report.md,diff-finding-map.md}; references/maintenance-review-repair.md` | `INV-17, INV-19`; secondary `INV-15` | owner `B4R-01, B4R-02, OB-K, OB-L` | 补齐 labels 第八资产面；派生源失配改为明确 scanner 诊断；收窄裸池威胁模型并要求注入自证命中目标分支 | `B4F-LABEL-03`; `B4F-FORMAL-01`; 全量 suite |  |
 
+## R9 批一：公共原语和真实边界
+
+| commit/hunk | primary invariant | finding 列表或配套任务 | 修改目的 | 测试/纵切片/守卫 | 审查结论 |
+|---|---|---|---|---|---|
+| `R9-B1-G1:scripts/tests/test_r9_batch1_boundaries.py`（同文件多 owner） | `INV-10`（anchor hunk）；`INV-03`（pool/scan hunk） | `R9-02, R9-03, R9-04` | 在未修基线用真实 subprocess 同时抓 producer/consumer 断契约、进程 rc=0 与旧 canonical/marker | `B1-R9-02-PRODUCER-CONSUMER`; `B1-R9-03-PROCESS/STALE`; `B1-R9-04-PROCESS/MARKER` |  |
+| `R9-B1-G1/G5:scripts/tests/run_all.py` | `INV-03, INV-10, INV-11` | `R9-02, R9-03, R9-04`; `R9-05` 批一原语；`T2,T5,T6` | 挂载 R9 进程边界与 Solana session 测试；同文件两个新增行分别归 G1/G5 | 全量 suite |  |
+| `R9-B1-G2:scripts/evm/fetch_pool_swaps.py` | `INV-03`; secondary `INV-04, INV-06` | `R9-03`; `T2,T3` | 传播 main 返回码；启动即隔离旧 CSV，失败无 current canonical，成功原子发布 | `B1-R9-03-PROCESS/STALE`; `test_fetch_failclosed.py` |  |
+| `R9-B1-G2:scripts/solana/scan_token_accounts.py` 的 `__main__` hunk | `INV-03` | `R9-04`; `T2` | 让四个显式 return 进入真实进程退出码 | `B1-R9-04-PROCESS/MARKER` 四 return 分支 |  |
+| `R9-B1-G2:scripts/{evm/accounting_gate.py,report/entity_identity_gate.py,evm/cadence_fingerprint.py,bench/golden_baseline.py}` | `INV-03` | `T2` CLI 同族闭合 | 裁定的正式 producer/gate 入口统一 `raise SystemExit(main())` | 六文件裸调用 rg=0；受影响 suite |  |
+| `R9-B1-G3:scripts/solana/scan_token_accounts.py` 的 quarantine hunk | `INV-03`; secondary `INV-04, INV-10` | `R9-04`; `T4` | marker 先失效、data 后失效；新 data 先发布、receipt marker 最后发布 | `B1-R9-04-PROCESS/MARKER`; `test_batch3_solana_producers.py` |  |
+| `R9-B1-G4:scripts/lib/{anchor_plan.py,time_spotcheck.py}` | `INV-10`; secondary `INV-06, INV-08` | `R9-02`; `T5` | 真实 producer 生成 v2 plan+receipt，绑定 final block/输入/producer/output；consumer 独立验 receipt 后消费 | `B1-R9-02-PRODUCER-CONSUMER`; `test_time_spotcheck.py` |  |
+| `R9-B1-G4:scripts/tests/{test_batch3_evm_vertical_slice.py,test_time_spotcheck.py,test_r9_batch1_boundaries.py,test_r7_findings.py,test_batch1_rpc_attestation.py}` 的 anchor hunk | `INV-10`; secondary `INV-06, INV-08` | `R9-02`; `T5` | EVM 正例与既有错链回归现场运行 anchor producer；补越界、篡改、缺 receipt 与 producer→consumer 反例，防 receipt 前置门制造假绿 | `B3-EVM-E2E-ETH/BSC/BASE`; time 契约 8 项；R7/RPC 回归 |  |
+| `R9-B1-G5:scripts/lib/solana_attested_session.py; scripts/tests/test_r9_solana_attested_session.py` | `INV-11`; secondary `INV-02, INV-08` | `R9-05` 批一部分；`T6` | 建立每 endpoint 首次业务前 genesis attestation 与 failover 重验原语；本批不接 callsite | 错 genesis 业务=0；failover 重验；5/5 |  |
+| `R9-B1-G6:maintenance/repair-20260806/{ledger.md,invariant-merge.md,diff-finding-map.md,b1_progress.md}; references/maintenance-review-repair.md` | `INV-18, INV-19` | `T1`; `R9-01`～`R9-05` 归因/归并/覆盖登记 | 49 项主账、primary INV、唯一覆盖类别、严格三分类与本批逐组证据/owner 单源落盘 | 表计数/ID/未映射 hunk 自查；docs lint |  |
+| `R9-B1-G7:scripts/tests/invariant_manifest.json; maintenance/repair-20260806/{diff-finding-map.md,b1_progress.md}` | `INV-17`; secondary `INV-03, INV-10, INV-11` | `T2,T5,T6`; `R9-02`～`R9-05` | 将 anchor producer/time consumer、Solana urllib transport 和两个 quarantine locator 纳入既有机器 census；同步最低分母 | `invariant_scan.py`; `--self-test`; 全量 suite |  |
+
 ## 分组 → commit SHA 对照（Fable 代 commit 后回填）
 
 | 分组 | commit SHA | 说明 |
@@ -82,5 +98,6 @@
 
 - 批四（`f2a6e41..6b7ab8d`，含 `B4-G1`=`ba6b98e`/`B4-G2`=`1850205`/`B4-G3`=`1e3d5a6` 与本表自身回填 `6b7ab8d`）：`0` 候选（批内审查独立复算=0，清单与 commit 边界逐文件吻合）。
 - 批四批内消化（`6b7ab8d..` 至本回填 commit 即候选 tip，含 `B4F-G1`=`13d76c0` 与本表自身回填）：`0` 候选（全部 hunk 归属 `B4F-G1`；回填 commit 按通例自指式计入；待重审独立复算）。
+- R9 批一（冻结基线 `63cf715` 至当前 worktree，禁止 git 写操作，尚无施工 commit）：`0` 候选（22 个改动/新增文件全部归属 `R9-B1-G1`～`R9-B1-G7`；多 owner 文件已按 hunk 显式拆分，本表和进度账按自指式维护件计入 `T1`）。
 
 通例：区间末端恒取候选 tip；自指式 SHA 回填 commit 计入本区间。map 行文件清单以 Fable 实际 commit 分组为准；一文件含多 owner 的 hunk 时（文件级 commit 无法拆分），物理归属行与语义 owner 行互相注明，Fable 回填 SHA 时校正清单。
