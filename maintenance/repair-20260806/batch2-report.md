@@ -305,7 +305,7 @@ test_child_bytecode_guard_is_explicit: AssertionError
 |---|---|---|
 | `B2F-G1` | `INV-12`; secondary `INV-20`; `B2R-01/OB-A` | `scripts/report/handoff_manifest.py`、`scripts/report/audit_release_gate.py`、`scripts/tests/test_batch2_legacy_hardening.py`；legacy scope/tier/在场 recon 补闸与 audit receipt 消费。 |
 | `B2F-G2` | `INV-11`; secondary `INV-12`; `B2R-02/03/04` | `scripts/lib/chain_registry.py`、`scripts/tests/formal_ready_test_harness.py`、`test_batch2_capability_matrix.py`、`test_chain_registry.py`、`test_audit_release_gate.py`、`test_round4_a5_seal.py`、`test_batch2_registry_harness_hardening.py`；公开 API 收口与可恢复三层只读夹具。 |
-| `B2F-G3` | `INV-11/INV-12`; `B2R-05/OB-D` | `scripts/tests/run_all.py`、`maintenance/repair-20260806/diff-finding-map.md`、`batch2-report.md`；挂载、owner/区间回填与批内消化证据。 |
+| `B2F-G3` | `INV-11/INV-12`; `B2R-05/OB-D` | `scripts/tests/run_all.py`、`maintenance/repair-20260806/diff-finding-map.md`、`batch2-report.md`、`reviews/batch2-review.md`；挂载、owner/区间回填、批内消化证据与审查报告入库。 |
 
 ### 8.5 最终门禁与改动文件
 
@@ -342,4 +342,35 @@ EXIT=0
 - `maintenance/repair-20260806/diff-finding-map.md`
 - `maintenance/repair-20260806/batch2-report.md`
 
-`reviews/` 零改动；本轮未改 ledger 的“最终结果”或 Fable 结论栏。
+`reviews/` 仅新增审查报告入库（`batch2-review.md`，+484 行，Fable 拷入），既有内容零改动；本轮未改 ledger 的“最终结果”或 Fable 结论栏。
+
+### 8.6 批内消化第二轮（B2FR-01～B2FR-04）
+
+`B2FR-01`：红例 `B2F-LG-05` 将 wrapper 从 artifacts/gates 摘除但保留并篡改磁盘文件，legacy verify 实际 `rc=0`；在场判据改为“清单登记或磁盘文件在场”后转为 `rc=2`。既有 `B2F-LG-03` 仍证明 wrapper 真缺席的合法 v1/v2 旧案 `rc=0`。
+
+`B2FR-02`：红例 `--chain bsc,bsc` 的 generate 虽 `rc=0`，但 manifest 实存 `['bsc', 'bsc']`并被自家 strict verify 拒绝；在 generate 的唯一性判定后补 `chains = sorted(set(chains))`，绿例实存 `['bsc']`，generate/verify 均 `rc=0`。
+
+`B2FR-03`：修正前 B2F-G3 主表与 §8.4 只列 3 文件，§8.5 写“`reviews/` 零改动”；修正后两表均补 `reviews/batch2-review.md`，表述改为“仅新增审查报告入库（+484 行，Fable 拷入），既有内容零改动”。
+
+`B2FR-04`：修正前消化区间为 `5924cd5..af92a91`；修正后以候选 tip 标为 `5924cd5..3ca824e`，并补通例“区间末端恒取候选 tip；自指式 SHA 回填 commit 计入本区间”。
+
+本轮单组 `B2F2-G1`，owner 为 `B2FR-01`～`B2FR-04`。OB-E/OB-F/OB-G 按工单零改动。
+
+最终门禁：
+
+```text
+$ PYTHONDONTWRITEBYTECODE=1 python3 scripts/tests/run_all.py
+PASS  test_batch2_legacy_hardening.py  PASS B2F2-G1: B2F-LG-01..05 + duplicate-chain canonicalization
+PASS  test_handoff_manifest.py        handoff_manifest 契约测试全部通过（65 项）
+========================================================
+全部通过
+76/76 PASS
+EXIT=0
+```
+
+改动文件仅为：
+
+- `scripts/report/handoff_manifest.py`
+- `scripts/tests/test_batch2_legacy_hardening.py`
+- `maintenance/repair-20260806/diff-finding-map.md`
+- `maintenance/repair-20260806/batch2-report.md`

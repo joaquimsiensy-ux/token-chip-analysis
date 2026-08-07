@@ -27,7 +27,8 @@
 | `B2-G4:scripts/tests/run_all.py; maintenance/repair-20260806/{ledger.md,diff-finding-map.md,batch2-report.md}` | `INV-05, INV-11, INV-12, INV-15, INV-20` | 批二上述 findings/豁免 | 挂载新测试、登记先红后绿与分组 owner，供 Fable 分组代 commit | 74 项全量 suite；未映射 hunk=0 待复核 |  |
 | `B2F-G1:scripts/report/{handoff_manifest.py,audit_release_gate.py}; scripts/tests/test_batch2_legacy_hardening.py` | `INV-12`; secondary `INV-20` | `B2R-01, OB-A`; 同族 `R8-06, R8-02` | legacy 只豁免缺席的批二新件；案内 scope/tier 必验，在场 reconciliation 深验并绑定；audit release 真实消费 legacy receipt 阻断新正式报告 | `B2F-LG-01`～`B2F-LG-04`; OB-A 消费点；handoff 65 项 |  |
 | `B2F-G2:scripts/lib/chain_registry.py; scripts/tests/{formal_ready_test_harness.py,test_batch2_capability_matrix.py,test_chain_registry.py,test_audit_release_gate.py,test_round4_a5_seal.py,test_batch2_registry_harness_hardening.py}` | `INV-11`; secondary `INV-12` | `B2R-02, B2R-03, B2R-04` | readiness 公开 API 只接受链名；测试矩阵三层只读、作用域内激活且 finally 恢复；子进程默认禁字节码 | 伪造 Mapping 拒绝；字母序 import 无泄漏；三层赋值均 `TypeError`; `B2F-G2` 回归 |  |
-| `B2F-G3:scripts/tests/run_all.py; maintenance/repair-20260806/{diff-finding-map.md,batch2-report.md}` | `INV-11, INV-12` | `B2R-05, OB-D`; 记录 `OB-B, OB-C` | 回填 owner/批二区间，修正 harness 不实表述，登记批内消化红绿证据、分组和全量门禁 | 76/76 PASS；无 `.pyc`/`__pycache__` |  |
+| `B2F-G3:scripts/tests/run_all.py; maintenance/repair-20260806/{diff-finding-map.md,batch2-report.md,reviews/batch2-review.md}` | `INV-11, INV-12` | `B2R-05, OB-D`; 记录 `OB-B, OB-C` | 回填 owner/批二区间，修正 harness 不实表述，登记批内消化红绿证据、分组和全量门禁 | 76/76 PASS；无 `.pyc`/`__pycache__` |  |
+| `B2F2-G1:scripts/report/handoff_manifest.py; scripts/tests/test_batch2_legacy_hardening.py; maintenance/repair-20260806/{diff-finding-map.md,batch2-report.md}` | `INV-12, INV-11` | owner `B2FR-01, B2FR-02, B2FR-03, B2FR-04` | legacy wrapper 在场判据改为清单或磁盘；generate 单链去重规范化；补列审查报告并统一区间 tip 规则 | `B2F-LG-05`; `bsc,bsc` generate→verify；76 项全量 suite |  |
 
 ## 分组 → commit SHA 对照（Fable 代 commit 后回填）
 
@@ -51,4 +52,6 @@
 - 准备阶段：`0`（本阶段没有生产/测试 hunk）。
 - 批一（`66d7ba7..e657732`）：`0`（全部 hunk 归属四组；opus 批内审查独立复算=0）。
 - 批二（`553806b..5924cd5`）：`0` 候选（所有 hunk 已归属 `B2-G0`～`B2-G4`；批内审查回填 commit 已包含）。
-- 批二批内消化（`5924cd5..af92a91`）：`0` 候选（所有新 hunk 已归属 `B2F-G1`～`B2F-G3`；待增量重审独立复算）。
+- 批二批内消化（`5924cd5..3ca824e`）：`0` 候选（所有新 hunk 已归属 `B2F-G1`～`B2F-G3`；待增量重审独立复算）。
+
+通例：区间末端恒取候选 tip；自指式 SHA 回填 commit 计入本区间。

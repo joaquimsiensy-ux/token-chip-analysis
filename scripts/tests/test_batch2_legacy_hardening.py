@@ -109,6 +109,44 @@ def test_b2f_lg_04_strict_paths_do_not_fall_back(root: Path):
     assert frozen.returncode != 0, "B2F-LG-04: freeze accepted legacy manifest"
 
 
+def test_b2f_lg_05_disk_wrapper_cannot_fake_absence(root: Path):
+    case_dir = root / "lg05"
+    case_dir.mkdir()
+    manifest = generate_case(case_dir)
+    manifest["consumer_min_schema"] = "handoff/v2"
+    manifest["artifacts"] = [
+        item for item in manifest["artifacts"]
+        if item.get("path") != "reconciliation_report.json"
+    ]
+    manifest["gates"].pop("reconciliation_four_checks", None)
+    (case_dir / "handoff_manifest.json").write_text(
+        json.dumps(manifest, ensure_ascii=False), encoding="utf-8")
+    wrapper_path = case_dir / "reconciliation_report.json"
+    wrapper = json.loads(wrapper_path.read_text(encoding="utf-8"))
+    wrapper["target"]["chain"] = "robinhood"
+    wrapper_path.write_text(json.dumps(wrapper, ensure_ascii=False), encoding="utf-8")
+    result = handoff_fixture.run([
+        "verify", "--case-dir", str(case_dir), "--legacy-read-only",
+    ])
+    assert result.returncode != 0, "B2F-LG-05: disk wrapper bypassed deep validation"
+
+
+def test_duplicate_generate_chain_is_canonical(root: Path):
+    case_dir = root / "duplicate-chain"
+    case_dir.mkdir()
+    handoff_fixture.make_case(str(case_dir))
+    args = list(handoff_fixture.GEN)
+    args[args.index("--chain") + 1] = "bsc,bsc"
+    generated = handoff_fixture.run([
+        "generate", "--case-dir", str(case_dir), "--status", "READY", *args,
+    ])
+    assert generated.returncode == 0, generated.stdout + generated.stderr
+    manifest = json.loads((case_dir / "handoff_manifest.json").read_text(encoding="utf-8"))
+    assert manifest["scope"]["chains"] == ["bsc"], manifest["scope"]
+    verified = handoff_fixture.run(["verify", "--case-dir", str(case_dir)])
+    assert verified.returncode == 0, verified.stdout + verified.stderr
+
+
 def test_oba_legacy_receipt_blocks_formal_audit(root: Path):
     audit_fixture = importlib.import_module("test_audit_release_gate")
     case_dir = root / "oba"
@@ -128,6 +166,8 @@ def main():
             test_b2f_lg_02_triple_mismatch_rejected,
             test_b2f_lg_03_valid_frozen_v1_v2_stay_readable,
             test_b2f_lg_04_strict_paths_do_not_fall_back,
+            test_b2f_lg_05_disk_wrapper_cannot_fake_absence,
+            test_duplicate_generate_chain_is_canonical,
             test_oba_legacy_receipt_blocks_formal_audit,
         )
         failures = []
@@ -138,7 +178,7 @@ def main():
                 failures.append(f"{test.__name__}: {exc}")
         if failures:
             raise AssertionError("\n".join(failures))
-    print("PASS B2F-G1: B2F-LG-01..04 + OB-A legacy formal-release guard")
+    print("PASS B2F2-G1: B2F-LG-01..05 + duplicate-chain canonicalization")
     return 0
 
 

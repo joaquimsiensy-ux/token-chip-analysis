@@ -175,6 +175,7 @@ def cmd_generate(a):
         if len(set(chains)) != 1:
             print("[generate] READY 当前只接受单链 scope；reconciliation target 必须唯一", file=sys.stderr)
             return 2
+        chains = sorted(set(chains))
         unknown = sorted(set(chains) - READY_CHAINS)
         if unknown:
             print(f"[generate] READY 含非正式链 {unknown}；先补正式链能力再生成", file=sys.stderr)
@@ -329,7 +330,9 @@ def _verify_light_schema(case_dir, fails, manifest, legacy=False):
                  if isinstance(item, dict)}
     # Legacy only waives absent Batch-2 artifacts.  If the wrapper is listed, it
     # is evidence and must pass the same current deep validator and scope bind.
-    if not legacy or "reconciliation_report.json" in art_paths:
+    wrapper_present = ("reconciliation_report.json" in art_paths
+                       or os.path.isfile(os.path.join(case_dir, "reconciliation_report.json")))
+    if not legacy or wrapper_present:
         try:
             from shared_release_receipt import validate_reconciliation_report
             target = validate_reconciliation_report(case_dir)
