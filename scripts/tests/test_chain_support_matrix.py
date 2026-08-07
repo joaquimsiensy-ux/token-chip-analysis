@@ -79,7 +79,7 @@ def main():
     )
     assert declared <= buildable
     assert "robinhood" in buildable and release_tier_for("robinhood") == "exploration"
-    assert formal_ready_chains() == set(), "Batch 3 前不得提前宣布 formal-ready"
+    assert formal_ready_chains() == {"eth", "bsc", "base", "sol"}
 
     sys.path.insert(0, str(ROOT / "scripts/labels"))
     from labels_resolver import LabelResolver

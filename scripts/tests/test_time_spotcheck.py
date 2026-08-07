@@ -47,7 +47,7 @@ def main():
 
     # 1. 两型分型（2 matrix balance + 1 净变动 balance + 1 边缘 balance + 2 tx 型）
     plan = wj(d, "plan.json", {
-        "chain": "bsc", "token": token,
+        "chain": "bsc", "token": token, "final_block": 300,
         "matrix_points": [
             {"kind": "矩阵[早·大户]", "addr": "0xaa", "day": "2025-01-01",
              "day_end_block": 100, "expected_balance_raw": "123"},
@@ -89,11 +89,27 @@ def main():
     p = run(["--plan", plan, "--final-block", "300"] + base)
     check("非 dry-run 缺 --rpc exit 非 0", p.returncode != 0)
 
+    # 6. plan 必须精确绑定 final block，且任一查询块不得越过冻结点。
+    mismatch = wj(d, "final-mismatch.json", {
+        "chain": "bsc", "token": token, "final_block": 301,
+        "matrix_points": [{"kind": "matrix", "addr": "0xaa",
+                           "day_end_block": 300, "expected_balance_raw": "1"}],
+        "forced_points": []})
+    p = run(["--plan", mismatch, "--dry-run", "--final-block", "300"] + base)
+    check("plan final_block 与 CLI 不精确一致拒绝", p.returncode != 0)
+    beyond = wj(d, "beyond-final.json", {
+        "chain": "bsc", "token": token, "final_block": 300,
+        "matrix_points": [{"kind": "matrix", "addr": "0xaa",
+                           "day_end_block": 301, "expected_balance_raw": "1"}],
+        "forced_points": []})
+    p = run(["--plan", beyond, "--dry-run", "--final-block", "300"] + base)
+    check("查询块越过 final_block 在 RPC 前拒绝", p.returncode != 0)
+
     print("=" * 40)
     if FAILS:
         print(f"time_spotcheck 契约测试 {len(FAILS)} 项失败")
         return 1
-    print("time_spotcheck 契约测试全部通过（5 项）")
+    print("time_spotcheck 契约测试全部通过（7 项）")
     return 0
 
 

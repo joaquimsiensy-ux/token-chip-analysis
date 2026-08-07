@@ -51,12 +51,7 @@ def check(name, cond):
 
 
 def run(args, env=None):
-    """Run handoff with a test-only copy whose vertical-slice fact is satisfied.
-
-    Production deliberately has no ready chain before Batch 3.  Contract tests
-    still need to exercise the READY branch, so the copied records are patched
-    before handoff_manifest is imported in this isolated child process.
-    """
+    """Run handoff inside the backward-compatible immutable registry context."""
     return run_formal_script(SCRIPT, args, env=env)
 
 

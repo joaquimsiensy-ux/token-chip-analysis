@@ -163,14 +163,14 @@ def test_r7_04():
                        "--as-of-block", "123", "--replay-stats", str(stats),
                        "--out", str(formal_out)]
         with mock.patch.object(sys, "argv", formal_argv), \
-                mock.patch.object(mod, "fetch_onchain_supply", return_value=(100, 321)):
+                mock.patch.object(mod, "fetch_onchain_supply", return_value=(100, 123)):
             rc = mod.main()
         receipt = json.loads(formal_out.read_text()) if formal_out.exists() else {}
         inputs = receipt.get("inputs") or {}
         if not any(isinstance(v, dict) and {"path", "size", "sha256"} <= set(v)
                    for v in inputs.values()):
             problems.append("receipt has no inputs file_ref")
-        if rc != 0 or receipt.get("mode") != "formal" or receipt.get("observed_context_slot") != 321:
+        if rc != 0 or receipt.get("mode") != "formal" or receipt.get("observed_context_slot") != 123:
             problems.append("Solana receipt omits observed_context_slot")
     assert not problems, "; ".join(problems)
 
@@ -365,6 +365,7 @@ def test_r7_13():
                  "day_end_block": 10, "expected_balance_raw": "100"}
         mismatch = root / "mismatch.json"
         write_json(mismatch, {"chain": "eth", "token": "0xaaa",
+                              "final_block": 10,
                               "matrix_points": [point], "forced_points": []})
         out_bad = root / "bad_receipt.json"
         args = ["time_spotcheck.py", "--plan", str(mismatch), "--chain", "bsc",
@@ -377,6 +378,7 @@ def test_r7_13():
 
         good = root / "good.json"
         write_json(good, {"chain": "bsc", "token": "0xbbb",
+                          "final_block": 10,
                           "matrix_points": [point], "forced_points": []})
         out_good = root / "good_receipt.json"
         args[2] = str(good); args[-1] = str(out_good)

@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Test-only activation of formal-tier vertical-slice facts.
+"""Backward-compatible immutable registry context for formal-path fixtures.
 
-Production has no override: Batch 3 must write real evidence before any chain is
-ready.  Older release-contract fixtures still need to exercise positive formal
-branches, so tests run against copied records inside a restoring context.
+Batch 3 production facts now make the four verified chains ready.  Older tests
+still enter this restoring context; it copies the registry without adding a
+production override and preserves the three read-only layers.
 """
 from __future__ import annotations
 

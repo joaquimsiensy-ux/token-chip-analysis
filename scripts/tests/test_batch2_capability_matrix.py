@@ -56,10 +56,11 @@ def test_each_missing_capability_blocks_readiness():
     assert "evm_chain_id" in fixture_missing_formal_capabilities(broken)
 
 
-def test_current_batch_has_no_ready_chain_and_choices_are_derived():
+def test_verified_formal_chains_and_choices_are_derived():
     assert formal_tier_chains() == {"eth", "bsc", "base", "sol"}
-    assert formal_ready_chains() == set()
-    assert all(not formal_ready(chain) for chain in CHAIN_REGISTRY)
+    assert formal_ready_chains() == {"eth", "bsc", "base", "sol"}
+    assert all(formal_ready(chain) == (chain in {"eth", "bsc", "base", "sol"})
+               for chain in CHAIN_REGISTRY)
     assert release_tier_for("robinhood") == "exploration"
     assert CHAIN_REGISTRY["robinhood"]["evm_chain_id"] is None
     assert formal_evm_chains("accounting_adapter") == {"eth", "bsc", "base"}
@@ -91,7 +92,7 @@ def test_cli_sources_use_matrix_choices():
 def main():
     test_no_manual_formal_switch()
     test_each_missing_capability_blocks_readiness()
-    test_current_batch_has_no_ready_chain_and_choices_are_derived()
+    test_verified_formal_chains_and_choices_are_derived()
     test_cli_sources_use_matrix_choices()
     print("PASS B2-D: immutable release tier + capability closure + derived CLI choices")
     return 0

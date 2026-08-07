@@ -190,6 +190,7 @@ def test_each_formal_callsite_wrong_chain_zero_business():
         # time_spotcheck.
         plan = root / "plan.json"
         _write_json(plan, {"chain": "bsc", "token": token,
+                           "final_block": 10,
                            "matrix_points": [{"kind": "fixture", "addr": address,
                                               "day_end_block": 10,
                                               "expected_balance_raw": "100"}],

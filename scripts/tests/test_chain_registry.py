@@ -46,7 +46,7 @@ def main():
     assert all(set(record["capabilities"]) == REQUIRED_FORMAL_CAPABILITIES
                for record in CHAIN_REGISTRY.values())
     assert formal_tier_chains() == {"eth", "bsc", "base", "sol"}
-    assert formal_ready_chains() == formal_chains() == set()
+    assert formal_ready_chains() == formal_chains() == {"eth", "bsc", "base", "sol"}
     assert known_chains_for_release() == formal_tier_chains() | {"arbitrum", "robinhood"}
     assert release_tier_for("arbitrum") == "exploration"
     assert release_tier_for("robinhood") == "exploration"
@@ -68,14 +68,14 @@ def main():
         ROOT / "scripts/report/entity_identity_gate.py", "registry_identity_gate")
     shared_receipt = load(
         ROOT / "scripts/report/shared_release_receipt.py", "registry_shared_receipt")
-    assert handoff.READY_CHAINS == formal_ready_chains() == set()
+    assert handoff.READY_CHAINS == formal_ready_chains() == {"eth", "bsc", "base", "sol"}
     assert identity_receipt.identity_evm_chains() == identity_evm_chains()
     assert identity_receipt.identity_chains() == identity_chains()
     assert identity_gate.identity_chains() == identity_chains()
     assert shared_receipt.chain_family("solana") == recon_adapter_for("sol") == "solana"
     assert shared_receipt.chain_family("arbitrum") == recon_adapter_for("arbitrum") == "evm"
 
-    assert audit.formal_chain_error("bsc") and "vertical_slice_verified" in audit.formal_chain_error("bsc")
+    assert audit.formal_chain_error("bsc") is None
     copied = {**CHAIN_REGISTRY["bsc"],
               "capabilities": dict(CHAIN_REGISTRY["bsc"]["capabilities"])}
     copied["capabilities"]["vertical_slice_verified"] = True
@@ -104,7 +104,7 @@ def main():
         assert not unknown, f"{rel} {name} has unregistered chains: {sorted(unknown)}"
 
     print("PASS: immutable capability registry drives release/identity consumers; "
-          "all production chains await Batch-3 vertical slices; DEFAULT_RPC keys registered")
+          "Batch-3 vertical slices enable four formal chains; DEFAULT_RPC keys registered")
     return 0
 
 

@@ -159,28 +159,28 @@ def test_anchor_sampler(root):
         errors = list(work.glob("anchor_receipt.error.*.json"))
         assert len(errors) == 1 and json.loads(errors[0].read_text())["verdict"] == "ERROR"
 
-        def no_converge(frm, to):
+        def no_converge(frm, to, endpoint):
             return [{"header": {"timestamp": 1, "number": frm}, "transactions": [],
                      "tokenBalances": []}]
-        (work / "anchors.jsonl").unlink()
+        (work / "anchors.jsonl").unlink(missing_ok=True)
         with mock.patch.object(mod, "fetch_window", side_effect=no_converge):
             assert mod.main(args) != 0
         assert not (work / "anchor_receipt.json").exists()
         assert len(list(work.glob("anchor_receipt.error.*.json"))) == 2
 
-        (work / "anchors.jsonl").unlink()
+        (work / "anchors.jsonl").unlink(missing_ok=True)
         with mock.patch.object(mod, "fetch_window", return_value=[]), \
-                mock.patch.object(mod, "publish_overwrite", side_effect=OSError("disk full")):
+                mock.patch.object(mod, "publish_txn", side_effect=OSError("disk full")):
             assert mod.main(args) == 1
         assert not (work / "anchor_receipt.json").exists(), "写回失败留下 PASS receipt"
 
-        (work / "anchors.jsonl").unlink()
+        (work / "anchors.jsonl").unlink(missing_ok=True)
         with mock.patch.object(mod, "fetch_window", return_value=[]):
             assert mod.main(args) == 0
         receipt = json.loads((work / "anchor_receipt.json").read_text())
         row = json.loads((work / "anchors.jsonl").read_text())
         assert receipt["verdict"] == "PASS" and receipt["mode"] == "formal"
-        assert {"path", "size", "sha256"} <= set(receipt["inputs"]["output"])
+        assert {"path", "size", "sha256"} <= set(receipt["output"])
         assert {"chain", "mint", "endpoint", "as_of_slot"} <= set(row)
         assert row["chain"] == "solana" and row["mint"] == "mint1"
         validator = load(ROOT / "scripts/lib/receipt_validate.py", "sixlens_anchor_validator")

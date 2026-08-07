@@ -40,7 +40,8 @@ def run_solana(root):
    {"pubkey":"acct2","account":{"data":[account_data_2,"base64"]}}]}}
   Path(out).write_text(json.dumps(obj)); return True
  scan.rpc_call=fake_rpc; old_argv,old_cwd=sys.argv,os.getcwd(); os.chdir(root)
- sys.argv=["scan_token_accounts.py","mint","--program","spl","--rpc","https://fixture"]
+ sys.argv=["scan_token_accounts.py","mint","--program","spl","--rpc","https://fixture",
+           "--as-of-slot","123","--out","snapshot.json","--receipt","snapshot_receipt.json"]
  try: scan.main()
  finally: sys.argv=old_argv; os.chdir(old_cwd)
  return root/"data"/"holders_owners.json",root/"data"/"holders_snapshot_meta.json"
