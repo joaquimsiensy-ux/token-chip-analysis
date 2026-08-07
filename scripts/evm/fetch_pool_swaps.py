@@ -60,11 +60,32 @@ def parse_args(argv=None):
     return a
 
 
+def quarantine_current(path: Path) -> Path | None:
+    """Move a prior canonical artifact out of the current formal location."""
+    if not os.path.lexists(path):
+        return None
+    if not path.is_file() and not path.is_symlink():
+        raise RuntimeError(f"旧 canonical 不是普通文件: {path}")
+    run_id = f"{time.time_ns()}.{os.getpid()}"
+    stale = path.with_name(f"{path.name}.stale.{run_id}")
+    if os.path.lexists(stale):
+        raise RuntimeError(f"stale destination already exists: {stale}")
+    os.replace(path, stale)
+    return stale
+
+
 def main():
     a = parse_args()
     headers = {"Authorization": f"Bearer {a.token}", "Content-Type": "application/json"}
-    out_path = Path(a.out).resolve()
+    out_path = Path(os.path.abspath(os.path.expanduser(a.out)))
     out_path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        stale = quarantine_current(out_path)
+    except Exception as exc:
+        print(f"[fatal] 旧 canonical 无法退出本次正式位置: {exc}", flush=True)
+        return 1
+    if stale is not None:
+        print(f"[stale] previous canonical moved to {stale}", flush=True)
     tmp_path = out_path.with_name(f".{out_path.name}.tmp.{os.getpid()}")
     out_file = tmp_path.open("x", newline="")
     out = csv.writer(out_file)
@@ -122,4 +143,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())
