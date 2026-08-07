@@ -19,6 +19,7 @@ from collections import Counter
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from labels_resolver import norm_addr   # 全链统一地址规范化
+from risk_flags import canonical_risk_flags, parse_risk_flags
 
 CHAIN_BY_ID = {'1': 'eth', '8453': 'base', '56': 'bsc'}
 # 全量构建必须能产出每条正式链的目标链主表；探索链不得混入正式能力声明。
@@ -567,10 +568,13 @@ for (chain, addr), row in book.items():
         if row['risk_flags']:
             row['risk_flags'] = ''; n_strip += 1
     elif row['tier'] == 'exclude' and row['risk_flags']:
-        kept = [f for f in row['risk_flags'].split('|') if f and f not in BEHAVIORAL_FLAGS]
-        if len(kept) != len([f for f in row['risk_flags'].split('|') if f]):
+        parsed = parse_risk_flags(row['risk_flags'])
+        kept = [f for f in parsed if f not in BEHAVIORAL_FLAGS]
+        if len(kept) != len(parsed):
             n_strip += 1
-        row['risk_flags'] = '|'.join(kept)
+        row['risk_flags'] = canonical_risk_flags('|'.join(kept))
+    else:
+        row['risk_flags'] = canonical_risk_flags(row['risk_flags'])
     if (row['category'] not in ('token-contract', 'kol', 'smart-money', 'tornado-user', 'scam-candidate')
             and LOCKER_NAME_RE.search(row['name'] or '')
             and not TOKEN_NAME_RE.search(row['name'] or '')):

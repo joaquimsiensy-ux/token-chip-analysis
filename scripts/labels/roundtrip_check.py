@@ -16,6 +16,9 @@ staging 比发布版多行是正常扩容。
 """
 import argparse, csv, datetime, os, sys
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from risk_flags import canonical_risk_flags
+
 HERE = os.path.dirname(os.path.abspath(__file__))
 OUT = os.path.join(HERE, 'sources', 'out')
 PUB = os.path.normpath(os.path.join(HERE, '..', '..', 'references', 'labels'))
@@ -53,7 +56,7 @@ def _decision(row):
     for field in DECISION_FIELDS:
         value = (row.get(field) or '').strip()
         if field == 'risk_flags':
-            value = '|'.join(sorted({p.strip() for p in value.split('|') if p.strip()}))
+            value = canonical_risk_flags(value)
         out[field] = value
     return out
 

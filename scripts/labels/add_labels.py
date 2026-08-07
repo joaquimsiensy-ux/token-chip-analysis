@@ -19,6 +19,7 @@ import csv, datetime, os, shutil, subprocess, sys, tempfile
 _HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, _HERE)
 from labels_resolver import DEFAULT_LABELS_DIR, norm_addr, BASE_FIELDS, V4_OPTIONAL_FIELDS
+from risk_flags import canonical_risk_flags, merge_risk_flags
 
 FIELDS = BASE_FIELDS + V4_OPTIONAL_FIELDS
 # curation 必须在列（3.19.1 修）：它是 build_labels SRC_PRIORITY 的最高层(-1)，此前缺席导致
@@ -101,6 +102,7 @@ def main():
             r['address'] = na
             for k in FIELDS:
                 r.setdefault(k, '')
+            r['risk_flags'] = canonical_risk_flags(r.get('risk_flags'))
             adds.setdefault(ch, {})[na] = r
 
     archive_staging = archive_target = None
@@ -148,9 +150,8 @@ def main():
             high = add['source'].split('-')[0] in HIGH_TRUST_PREFIX
             if add['source'] and add['source'] not in old.get('source', ''):
                 old['source'] = (old.get('source', '') + '+' + add['source']).strip('+')
-            flags = {f for f in (old.get('risk_flags') or '').split('|') if f}
-            flags |= {f for f in (add.get('risk_flags') or '').split('|') if f}
-            old['risk_flags'] = '|'.join(sorted(flags))
+            old['risk_flags'] = merge_risk_flags(
+                old.get('risk_flags'), add.get('risk_flags'))
             if high:
                 if (old.get('category'), old.get('tier')) != (add['category'], add['tier']):
                     print(f'  ~ {ch} {na[:14]} 分类覆盖: {old.get("category")}/{old.get("tier")}'
@@ -171,6 +172,8 @@ def main():
             continue
         tmp = tempfile.NamedTemporaryFile('w', delete=False, newline='',
                                           suffix=f'-labels-{ch}.csv')
+        for row in rows:
+            row['risk_flags'] = canonical_risk_flags(row.get('risk_flags'))
         w = csv.DictWriter(tmp, fieldnames=out_fields, extrasaction='ignore')
         w.writeheader(); w.writerows(rows)
         tmp.close()

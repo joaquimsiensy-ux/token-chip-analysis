@@ -34,6 +34,8 @@ v4 2026-07-16（codex 交叉复核第二轮融合：policy 三维拆分 / risk �
 """
 import csv, datetime, os, sys
 
+from risk_flags import parse_risk_flags
+
 _HERE = os.path.dirname(os.path.abspath(__file__))
 DEFAULT_LABELS_DIR = os.path.normpath(os.path.join(_HERE, '..', '..', 'references', 'labels'))
 
@@ -319,10 +321,8 @@ class LabelResolver:
         unknown=白名单外旗标：提示人工核验，不作自动定性（修复 v3"宁严勿松"把
         拼错/脏旗标放大成'必写报告重大信号'的副作用）。"""
         out = {'definitive': [], 'candidate': [], 'privacy': [], 'unknown': []}
-        for f in (row.get('risk_flags') or '').split('|'):
-            f = f.strip()
-            if f:
-                out[_classify_flag(f)].append(f)
+        for f in parse_risk_flags(row.get('risk_flags')):
+            out[_classify_flag(f)].append(f)
         return out
 
     def stats(self):
