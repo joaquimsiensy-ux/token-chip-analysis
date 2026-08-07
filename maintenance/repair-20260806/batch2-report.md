@@ -68,7 +68,7 @@ PASS B1-B RPC session: wrong-chain zero business/fail-closed/correct/failover
 | `B2-CAP-03` | 当前 formal tier 候选仅 eth/bsc/base/sol，但因 `vertical_slice_verified=false` 全链均不 ready |
 | `B2-CAP-04` | registry↔四 mandatory CLI↔handoff↔audit release 及六个其余 attested CLI choices 对表 |
 
-为保留旧契约的正式正例覆盖，`formal_ready_test_harness.py` 只在独立测试进程中复制矩阵并把 formal-tier 的 `vertical_slice_verified` 置真。生产代码无环境变量、CLI 参数或可写开关绕过。
+为保留旧契约的正式正例覆盖，`formal_ready_test_harness.py` 在独立子进程或同进程受控 `contextmanager` 作用域内复制矩阵，把 formal-tier 的 `vertical_slice_verified` 临时置真，并在 `finally` 恢复原三层只读矩阵。批内消化修正了此处原“只在独立测试进程”的不实表述；生产代码仍无环境变量、CLI 参数或可写开关绕过。
 
 ### B2-G2：INV-12 READY reconciliation
 
@@ -205,3 +205,141 @@ exit=0
 - `git diff --check`：PASS。
 - `transport-injections.json`：`json.load` PASS，本批未新增生产 transport 注入点。
 - 结束前已清理 4 个误生的 `.pyc` 及两个空 `__pycache__` 目录；未删除任何受版本控制文件。
+
+## 8. 批内消化（B2R-01～B2R-05）
+
+### 8.1 边界和设计取舍
+
+- 本轮以工单声明 tip `5924cd5` 为起点；按工单未执行任何 git 命令，`reviews/` 只读。
+- 对照 `robinhood-impact.md` 后结论是“拒绝 RH legacy READY”与 `RH-EX-01/02` 一致：豁免的核心正是 RH exploration 产物不得进入 formal 交接/对账/发布。未发现需升级给 Fable 的豁免冲突。
+- legacy 豁免粒度收紧为“新件缺席可豁免”，而非“旧 schema 全面免验”：旧 v1/v2 案可不含 `reconciliation_report.json`；一旦 artifacts 宣称该 wrapper 在场，必须经当前 validator 深验四回执、producer/runner/hash/envelope，并绑定唯一 scope chain 与 contract。
+- legacy 链准入不使用批三前为空的 `READY_CHAINS`；改读 registry 长期 `release_tier`。仅已登记 formal tier 的 eth/bsc/base/sol 可作合法旧案，exploration、unsupported 或伪造链均拒绝。
+- OB-A 选择“补真实消费点”：`audit_release_gate.py` 只要在 case 目录发现 `legacy_readonly_receipt.json`（含 symlink）就拒绝编译新正式 analysis。这与 receipt 现有注释承诺一致，比降级注释更少副作用。
+
+### 8.2 逐项先红后绿证据
+
+#### B2R-01 + OB-A（FIX-1）
+
+红：先新增 `test_batch2_legacy_hardening.py`，在未修代码上实跑：
+
+```text
+exit=1
+test_b2f_lg_01_robinhood_legacy_rejected: B2F-LG-01: Robinhood legacy READY bypassed admission
+test_b2f_lg_02_triple_mismatch_rejected: B2F-LG-02: chain/token/wrapper triple mismatch passed
+test_oba_legacy_receipt_blocks_formal_audit: []
+```
+
+修复：
+
+- `handoff_manifest.py` 对 READY scope 统一验唯一非空 chain 和非空 contract；legacy 改按 registry tier 准入。
+- legacy artifacts 内在场 reconciliation 必须有对应 auto gate，并经与严格路径同一个 `validate_reconciliation_report` 深验/绑定；缺席时仍保留旧案豁免。
+- `audit_release_gate.py` 消费 legacy receipt 并 fail-closed。
+
+绿：
+
+```text
+$ PYTHONDONTWRITEBYTECODE=1 python3 scripts/tests/test_batch2_legacy_hardening.py
+PASS B2F-G1: B2F-LG-01..04 + OB-A legacy formal-release guard
+exit=0
+
+$ PYTHONDONTWRITEBYTECODE=1 python3 scripts/tests/test_handoff_manifest.py
+handoff_manifest 契约测试全部通过（65 项）
+exit=0
+```
+
+`B2F-LG-03` 对 v1/v2 各回放一个 bsc 案：案内自洽、无批二 wrapper，legacy verify 仍 `rc=0`。`B2F-LG-04` 证明同案严格 verify 与 freeze 仍均拒绝。审查表 C0–C10 所在严格契约 65 项全绿，行为未回退。
+
+#### B2R-02（FIX-2）
+
+红：
+
+```text
+record_is_formal_ready accepted caller-supplied Mapping
+```
+
+修复：删除 `_record_from` Mapping 直通；`formal_ready` / `missing_formal_capabilities` / `record_is_formal_ready` 公开路径统一只接受 registry 链名字符串，非字符串抛 `TypeError`。需构造 record 的逐能力测试改用 `formal_ready_test_harness.fixture_missing_formal_capabilities`显式测试入口；生产 `audit_release_gate.py` 仍传链名。
+
+绿：伪造全 True Mapping 对三个公开 API 均抛 `TypeError`；`test_batch2_capability_matrix.py` 与 `test_chain_registry.py` 均 `exit=0`。
+
+#### B2R-03（FIX-3）
+
+红：
+
+```text
+missing reversible fixture context
+test_alphabetical_import_does_not_leak_readiness: AssertionError
+```
+
+修复：`test_vertical_slices()` 改为 `contextmanager`，用 `finally` 恢复原 `CHAIN_REGISTRY` 对象；patched registry 顶层、record、capabilities 三层全部 `MappingProxyType`。`test_audit_release_gate.py` 改为每次 `gate.run` 短作用域激活，`test_round4_a5_seal.py` 在 `main` 内受控激活，模块 import 不再泄漏 readiness。本报告 §2 原不实“只在独立测试进程”表述已就地修正。
+
+绿：同进程激活时 formal tier 四链 ready；退出后 `formal_ready_chains()==set()` 且恢复原对象；三层赋值均失败；按字母序 import 两测试模块后仍为空集。
+
+#### B2R-04（FIX-4）
+
+红：
+
+```text
+test_child_bytecode_guard_is_explicit: AssertionError
+```
+
+修复：`run_formal_script` 补 `child_env.setdefault("PYTHONDONTWRITEBYTECODE", "1")`。
+
+绿：`test_batch2_registry_harness_hardening.py` 通过；全量 suite 后 `find` 为空，仓库内无 `.pyc` / `__pycache__`。
+
+#### B2R-05 + OB-D（FIX-5）
+
+- `diff-finding-map.md` 的 `B2-G0` 补了 `build_labels.py` `BUILD_CHAINS` 注释 hunk owner，secondary 为 `INV-11`。
+- 批二区间由 `553806b..07fab90` 更正为含 Fable 回填的 `553806b..5924cd5`。
+- 新 hunk 全部登记为 `B2F-G1`～`B2F-G3`，未映射候选为 0。
+
+### 8.3 观察项与新代码自审
+
+- `OB-B`：labels 侧硬编码链清单副本仍留给批四 scanner 做 registry↔labels 双向守卫，本批不动。
+- `OB-C`：通过 `gc` 刻意穿透 `MappingProxyType` 属当前威胁模型外，不修。
+- ① 字段来源：legacy chain/contract 只取 manifest scope，tier 只取 registry，reconciliation 事实只取当前 wrapper/回执 validator；不信 legacy 标签、gate 自报或 caller 传入的 capability Mapping。
+- ② 失败分支：scope 空/多链、contract 空、未登记/exploration/unsupported 链、在场 wrapper 缺 gate/深验失败/绑定不符、legacy receipt 回流、非字符串 readiness 输入全部 fail-closed；harness 异常退出仍 finally 恢复。
+
+### 8.4 逻辑分组（Fable 代 commit）
+
+| 分组 | owner | 文件与目的 |
+|---|---|---|
+| `B2F-G1` | `INV-12`; secondary `INV-20`; `B2R-01/OB-A` | `scripts/report/handoff_manifest.py`、`scripts/report/audit_release_gate.py`、`scripts/tests/test_batch2_legacy_hardening.py`；legacy scope/tier/在场 recon 补闸与 audit receipt 消费。 |
+| `B2F-G2` | `INV-11`; secondary `INV-12`; `B2R-02/03/04` | `scripts/lib/chain_registry.py`、`scripts/tests/formal_ready_test_harness.py`、`test_batch2_capability_matrix.py`、`test_chain_registry.py`、`test_audit_release_gate.py`、`test_round4_a5_seal.py`、`test_batch2_registry_harness_hardening.py`；公开 API 收口与可恢复三层只读夹具。 |
+| `B2F-G3` | `INV-11/INV-12`; `B2R-05/OB-D` | `scripts/tests/run_all.py`、`maintenance/repair-20260806/diff-finding-map.md`、`batch2-report.md`；挂载、owner/区间回填与批内消化证据。 |
+
+### 8.5 最终门禁与改动文件
+
+```text
+$ PYTHONDONTWRITEBYTECODE=1 python3 scripts/tests/run_all.py
+...
+PASS test_batch2_legacy_hardening.py
+PASS test_batch2_registry_harness_hardening.py
+...
+全部通过
+76/76 PASS
+EXIT=0
+```
+
+生产代码：
+
+- `scripts/lib/chain_registry.py`
+- `scripts/report/handoff_manifest.py`
+- `scripts/report/audit_release_gate.py`
+
+测试：
+
+- `scripts/tests/formal_ready_test_harness.py`
+- `scripts/tests/test_batch2_capability_matrix.py`
+- `scripts/tests/test_chain_registry.py`
+- `scripts/tests/test_audit_release_gate.py`
+- `scripts/tests/test_round4_a5_seal.py`
+- `scripts/tests/test_batch2_legacy_hardening.py`
+- `scripts/tests/test_batch2_registry_harness_hardening.py`
+- `scripts/tests/run_all.py`
+
+台账/报告：
+
+- `maintenance/repair-20260806/diff-finding-map.md`
+- `maintenance/repair-20260806/batch2-report.md`
+
+`reviews/` 零改动；本轮未改 ledger 的“最终结果”或 Fable 结论栏。
