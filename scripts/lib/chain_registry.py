@@ -177,14 +177,8 @@ def release_tier_for(value):
     return record.get("release_tier") if record else None
 
 
-def _record_from(value):
-    if isinstance(value, Mapping):
-        return value
-    return get_chain_config(value)
-
-
-def missing_formal_capabilities(value):
-    record = _record_from(value)
+def _missing_formal_capabilities_from_record(record):
+    """Internal calculator; public readiness APIs accept registry chain names only."""
     if not isinstance(record, Mapping):
         return ("registry_record",)
     missing = []
@@ -200,12 +194,23 @@ def missing_formal_capabilities(value):
     return tuple(missing)
 
 
-def record_is_formal_ready(record):
-    return not missing_formal_capabilities(record)
+def _registered_record(value):
+    if not isinstance(value, str):
+        raise TypeError("formal readiness APIs require a registry chain name string")
+    return get_chain_config(value)
+
+
+def missing_formal_capabilities(value):
+    return _missing_formal_capabilities_from_record(_registered_record(value))
+
+
+def record_is_formal_ready(value):
+    """Backward-compatible public name; ``value`` must be a registry chain name."""
+    return not missing_formal_capabilities(value)
 
 
 def formal_ready(value):
-    return record_is_formal_ready(get_chain_config(value))
+    return record_is_formal_ready(value)
 
 
 def formal_tier_chains():

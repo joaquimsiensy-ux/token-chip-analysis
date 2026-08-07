@@ -14,8 +14,9 @@ from chain_registry import (  # noqa: E402
     CHAIN_REGISTRY, RELEASE_TIERS, REQUIRED_FORMAL_CAPABILITIES,
     attested_evm_chains, formal_evm_chains, formal_ready,
     formal_ready_chains, formal_reconciliation_chains, formal_tier_chains,
-    missing_formal_capabilities, record_is_formal_ready, release_tier_for,
+    missing_formal_capabilities, release_tier_for,
 )
+from formal_ready_test_harness import fixture_missing_formal_capabilities  # noqa: E402
 
 
 def mutable_record(chain):
@@ -42,17 +43,17 @@ def test_each_missing_capability_blocks_readiness():
               or key == "chain_attestation" else True)
         for key in REQUIRED_FORMAL_CAPABILITIES
     }
-    assert record_is_formal_ready(complete), missing_formal_capabilities(complete)
+    assert not fixture_missing_formal_capabilities(complete)
     for key in REQUIRED_FORMAL_CAPABILITIES:
         broken = copy.deepcopy(complete)
         broken["capabilities"][key] = None if isinstance(
             complete["capabilities"][key], str) else False
-        assert not record_is_formal_ready(broken), key
-        assert key in missing_formal_capabilities(broken), (key, broken)
+        assert fixture_missing_formal_capabilities(broken), key
+        assert key in fixture_missing_formal_capabilities(broken), (key, broken)
     broken = copy.deepcopy(complete)
     broken["evm_chain_id"] = None
-    assert not record_is_formal_ready(broken)
-    assert "evm_chain_id" in missing_formal_capabilities(broken)
+    assert fixture_missing_formal_capabilities(broken)
+    assert "evm_chain_id" in fixture_missing_formal_capabilities(broken)
 
 
 def test_current_batch_has_no_ready_chain_and_choices_are_derived():

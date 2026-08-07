@@ -16,7 +16,7 @@ sys.path.insert(0, str(ROOT / "scripts/report"))
 from chain_registry import (CHAIN_REGISTRY, REQUIRED_FORMAL_CAPABILITIES, evm_family,
                             formal_chains, formal_ready_chains, formal_tier_chains,
                             identity_chains, identity_evm_chains, known_chains_for_release,
-                            recon_adapter_for, record_is_formal_ready, release_tier_for,
+                            recon_adapter_for, release_tier_for,
                             resolve_alias, evm_chain_id_for)
 
 
@@ -79,7 +79,8 @@ def main():
     copied = {**CHAIN_REGISTRY["bsc"],
               "capabilities": dict(CHAIN_REGISTRY["bsc"]["capabilities"])}
     copied["capabilities"]["vertical_slice_verified"] = True
-    assert record_is_formal_ready(copied)
+    from formal_ready_test_harness import fixture_missing_formal_capabilities
+    assert not fixture_missing_formal_capabilities(copied)
     try:
         CHAIN_REGISTRY["polygon"] = copied
         raise AssertionError("registry accepted manual assignment")

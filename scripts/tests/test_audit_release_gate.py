@@ -15,11 +15,19 @@ HERE = Path(__file__).resolve().parent
 REPO = HERE.parent.parent
 GATE = HERE.parent / "report" / "audit_release_gate.py"
 REPRODUCE = HERE.parent / "report" / "reproduce_receipt.py"
-from formal_ready_test_harness import activate_test_vertical_slices
-activate_test_vertical_slices()
+from formal_ready_test_harness import test_vertical_slices
 spec = importlib.util.spec_from_file_location("audit_release_gate", GATE)
 gate = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(gate)
+_gate_run = gate.run
+
+
+def _run_with_test_vertical_slices(*args, **kwargs):
+    with test_vertical_slices():
+        return _gate_run(*args, **kwargs)
+
+
+gate.run = _run_with_test_vertical_slices
 
 
 def write_json(root, name, value):
