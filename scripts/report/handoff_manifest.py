@@ -37,7 +37,8 @@ from datetime import datetime, timezone
 
 _LIB = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "lib"))
 sys.path.insert(0, _LIB)
-from chain_registry import evm_family, formal_ready_chains, resolve_alias
+from chain_registry import (evm_family, formal_ready_chains, get_chain_config,
+                            release_tier_for, resolve_alias)
 
 SCHEMA_VERSION = "handoff/v3"
 # verify 端支持集；consumer_min_schema 不在集内即拒收。
@@ -324,19 +325,24 @@ def _verify_light_schema(case_dir, fails, manifest, legacy=False):
             fails.append(f"blocking 异常未解决却报 READY: {blocking_open}")
     except Exception as e:
         fails.append(f"anomalies.json 读取失败: {e}")
+    art_paths = {item.get("path") for item in manifest.get("artifacts") or []
+                 if isinstance(item, dict)}
+    # Legacy only waives absent Batch-2 artifacts.  If the wrapper is listed, it
+    # is evidence and must pass the same current deep validator and scope bind.
+    if not legacy or "reconciliation_report.json" in art_paths:
+        try:
+            from shared_release_receipt import validate_reconciliation_report
+            target = validate_reconciliation_report(case_dir)
+            scope = manifest.get("scope") or {}
+            chains = {resolve_alias(chain) for chain in scope.get("chains") or []}
+            if len(chains) != 1 or resolve_alias(target.get("chain")) not in chains:
+                fails.append("reconciliation target.chain 未与唯一 READY scope 链绑定")
+            if str(target.get("token") or "").lower() != str(scope.get("contract") or "").lower():
+                fails.append("reconciliation target.token 未与 READY scope.contract 绑定")
+        except Exception as exc:
+            fails.append(f"reconciliation_report.json 深验失败: {exc}")
     if legacy:
         return
-    try:
-        from shared_release_receipt import validate_reconciliation_report
-        target = validate_reconciliation_report(case_dir)
-        scope = manifest.get("scope") or {}
-        chains = {resolve_alias(chain) for chain in scope.get("chains") or []}
-        if len(chains) != 1 or resolve_alias(target.get("chain")) not in chains:
-            fails.append("reconciliation target.chain 未与唯一 READY scope 链绑定")
-        if str(target.get("token") or "").lower() != str(scope.get("contract") or "").lower():
-            fails.append("reconciliation target.token 未与 READY scope.contract 绑定")
-    except Exception as exc:
-        fails.append(f"reconciliation_report.json 深验失败: {exc}")
     try:
         ws = load_json(os.path.join(case_dir, "wave_scan_report.json"))
         if ws.get("schema") in ("wave-scan/v1", "wave-scan/v2"):
@@ -410,14 +416,29 @@ def verify_case(case_dir, legacy_read_only=False):
     status = m.get("status")
     if status != "READY":
         fails.append(f"状态 {status} ≠ READY，拒绝消费（原因: {m.get('status_reason')}）")
-    if not legacy_mode and status == "READY":
+    if status == "READY":
         scope = m.get("scope") or {}
-        chains = {resolve_alias(c) for c in scope.get("chains") or [] if str(c).strip()}
-        if not chains:
+        raw_chains = scope.get("chains")
+        if not isinstance(raw_chains, list) or len(raw_chains) != 1 \
+                or not isinstance(raw_chains[0], str) or not raw_chains[0].strip():
+            chains = set()
             fails.append("READY scope.chains 为空——缺正式链范围")
-        unknown = sorted(chains - READY_CHAINS)
-        if unknown:
-            fails.append(f"READY scope 含非正式链 {unknown}")
+            if isinstance(raw_chains, list) and raw_chains:
+                fails[-1] = "READY scope.chains 必须恰有一个非空字符串链名"
+        else:
+            chains = {resolve_alias(raw_chains[0])}
+        if len(chains) == 1 and legacy_mode:
+            chain = next(iter(chains))
+            if get_chain_config(chain) is None:
+                fails.append(f"legacy READY scope 链未登记: {chain}")
+            elif release_tier_for(chain) == "exploration":
+                fails.append(f"legacy READY scope 链为 exploration，拒绝正式回流: {chain}")
+            elif release_tier_for(chain) != "formal":
+                fails.append(f"legacy READY scope 链非 formal tier: {chain}")
+        elif len(chains) == 1:
+            unknown = sorted(chains - READY_CHAINS)
+            if unknown:
+                fails.append(f"READY scope 含非正式链 {unknown}")
         if not str(scope.get("contract") or "").strip():
             fails.append("READY scope.contract 为空")
 
@@ -437,6 +458,9 @@ def verify_case(case_dir, legacy_read_only=False):
             for gname, rel in AUTO_GATES.items():
                 if rel in art_paths and gname not in gates_m:
                     fails.append(f"gate {gname} 缺失（产物 {rel} 在场却无对应 gate 记录）")
+        elif "reconciliation_report.json" in art_paths \
+                and "reconciliation_four_checks" not in (m.get("gates") or {}):
+            fails.append("legacy 案在场 reconciliation_report.json 缺对应 gate 记录")
         for ent in m.get("artifacts", []):
             p = os.path.join(case_dir, ent["path"])
             if not os.path.isfile(p):

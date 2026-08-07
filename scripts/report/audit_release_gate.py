@@ -42,6 +42,7 @@ NEW_ANALYSIS_REQUIRED = (
     "distribution_rounds.json",
     "a5_report_seal.json",
 )
+LEGACY_READONLY_RECEIPT = "legacy_readonly_receipt.json"
 REQUIRED_BY_PROFILE = {
     "new-analysis": SHARED_REQUIRED + NEW_ANALYSIS_REQUIRED,
     "independent-audit": SHARED_REQUIRED + AUDIT_ONLY_REQUIRED,
@@ -743,6 +744,9 @@ def run(case_dir: Path, report: Path | None, *, profile="independent-audit"):
     case_dir = case_dir.resolve()
     if profile not in REQUIRED_BY_PROFILE:
         raise ValueError(f"未知发布 profile: {profile}")
+    legacy_marker = case_dir / LEGACY_READONLY_RECEIPT
+    if legacy_marker.exists() or legacy_marker.is_symlink():
+        errors.append("只读降级 legacy 案不得编译新正式 analysis")
     required = REQUIRED_BY_PROFILE[profile]
     missing = [name for name in required if not (case_dir / name).is_file()]
     errors.extend(f"缺必需资产: {name}" for name in missing)
