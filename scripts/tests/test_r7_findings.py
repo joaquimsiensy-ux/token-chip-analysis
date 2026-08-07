@@ -351,7 +351,24 @@ class _Pool:
         pass
 
     def call_many(self, calls):
-        return [{"ok": True, "result": hex(100)} for _ in calls]
+        results = []
+        for method, _params in calls:
+            if method == "eth_call":
+                result = hex(100)
+            elif method == "eth_getTransactionReceipt":
+                result = {"blockNumber": hex(10), "logs": [{
+                    "address": "0xbbb",
+                    "topics": [
+                        "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef",
+                        "0x" + "0" * 64,
+                        "0x" + "0" * 24 + "1" * 40,
+                    ],
+                    "data": hex(100),
+                }]}
+            else:
+                raise AssertionError(method)
+            results.append({"ok": True, "result": result})
+        return results
 
 
 def test_r7_13():
@@ -361,27 +378,31 @@ def test_r7_13():
     fake_net = types.SimpleNamespace(attested_rpc_pool=lambda *args, **kwargs: _Pool())
     with tempfile.TemporaryDirectory() as td:
         root = Path(td).resolve()
-        point = {"kind": "fixture", "addr": "0x" + "1" * 40,
-                 "day_end_block": 10, "expected_balance_raw": "100"}
-        mismatch = root / "mismatch.json"
-        write_json(mismatch, {"chain": "eth", "token": "0xaaa",
-                              "final_block": 10,
-                              "matrix_points": [point], "forced_points": []})
+        source = root / "transfers.csv"
+        source.write_text(
+            "block,ts,tx,from,to,value\n"
+            f"10,2025-01-01T00:00:00Z,0xt1,0x{'0' * 40},0x{'1' * 40},100\n")
+        produced = subprocess.run([
+            sys.executable, str(ROOT / "scripts/lib/anchor_plan.py"),
+            "--input", str(source), "--chain", "bsc", "--token", "0xbbb",
+            "--total-supply", "100", "--decimals", "0", "--min-pct", "0",
+            "--final-block", "10", "--out-dir", str(root)],
+            capture_output=True, text=True)
+        assert produced.returncode == 0, produced.stdout + produced.stderr
+        good = root / "anchor_plan.json"
         out_bad = root / "bad_receipt.json"
-        args = ["time_spotcheck.py", "--plan", str(mismatch), "--chain", "bsc",
-                "--rpc", "http://fixture", "--token", "0xbbb", "--final-block", "10",
+        args = ["time_spotcheck.py", "--plan", str(good), "--chain", "eth",
+                "--rpc", "http://fixture", "--token", "0xaaa", "--final-block", "10",
                 "--out", str(out_bad)]
         with mock.patch.object(sys, "argv", args), mock.patch.dict(sys.modules, {"net": fake_net}):
             rc = mod.main()
         if rc == 0:
             problems.append("plan chain/token mismatch accepted")
 
-        good = root / "good.json"
-        write_json(good, {"chain": "bsc", "token": "0xbbb",
-                          "final_block": 10,
-                          "matrix_points": [point], "forced_points": []})
         out_good = root / "good_receipt.json"
-        args[2] = str(good); args[-1] = str(out_good)
+        args[args.index("--chain") + 1] = "bsc"
+        args[args.index("--token") + 1] = "0xbbb"
+        args[-1] = str(out_good)
         with mock.patch.object(sys, "argv", args), mock.patch.dict(sys.modules, {"net": fake_net}):
             rc = mod.main()
         receipt = json.loads(out_good.read_text()) if out_good.exists() else {}

@@ -7,6 +7,7 @@ import csv
 import importlib.util
 import json
 import os
+import subprocess
 import sys
 import tempfile
 from pathlib import Path
@@ -188,13 +189,18 @@ def test_each_formal_callsite_wrong_chain_zero_business():
         assert rc != 0 and methods == ["eth_chainId"], ("verify_recon", rc, methods)
 
         # time_spotcheck.
-        plan = root / "plan.json"
-        _write_json(plan, {"chain": "bsc", "token": token,
-                           "final_block": 10,
-                           "matrix_points": [{"kind": "fixture", "addr": address,
-                                              "day_end_block": 10,
-                                              "expected_balance_raw": "100"}],
-                           "forced_points": []})
+        source = root / "transfers.csv"
+        source.write_text(
+            "block,ts,tx,from,to,value\n"
+            f"10,2025-01-01T00:00:00Z,0xt1,0x{'0' * 40},{address},100\n")
+        produced = subprocess.run([
+            sys.executable, str(ROOT / "scripts/lib/anchor_plan.py"),
+            "--input", str(source), "--chain", "bsc", "--token", token,
+            "--total-supply", "100", "--decimals", "0", "--min-pct", "0",
+            "--final-block", "10", "--out-dir", str(root)],
+            capture_output=True, text=True)
+        assert produced.returncode == 0, produced.stdout + produced.stderr
+        plan = root / "anchor_plan.json"
         spot = load("scripts/lib/time_spotcheck.py", "batch1_time_spotcheck")
         methods = []
         argv = ["time_spotcheck.py", "--plan", str(plan), "--chain", "bsc",

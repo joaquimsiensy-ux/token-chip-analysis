@@ -10,13 +10,16 @@
 用法：python3 scripts/tests/test_time_spotcheck.py   退出码 0=PASS / 1=FAIL
 """
 import json
+import hashlib
 import os
 import subprocess
 import sys
 import tempfile
+from pathlib import Path
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 SCRIPT = os.path.join(HERE, "..", "lib", "time_spotcheck.py")
+ANCHOR = os.path.join(HERE, "..", "lib", "anchor_plan.py")
 FAILS = []
 
 
@@ -39,77 +42,124 @@ def wj(d, name, obj):
     return p
 
 
+def sha(path):
+    return hashlib.sha256(Path(path).read_bytes()).hexdigest()
+
+
+def refresh_bundle(plan_path, mutate):
+    plan_file = Path(plan_path)
+    receipt_file = plan_file.with_name("anchor_plan.receipt.json")
+    plan = json.loads(plan_file.read_text(encoding="utf-8"))
+    mutate(plan)
+    plan_file.write_text(json.dumps(plan, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    receipt = json.loads(receipt_file.read_text(encoding="utf-8"))
+    receipt["output"]["size"] = plan_file.stat().st_size
+    receipt["output"]["sha256"] = sha(plan_file)
+    receipt["probe_count"] = sum(len(plan.get(key) or [])
+                                  for key in ("matrix_points", "forced_points"))
+    receipt_file.write_text(json.dumps(receipt, ensure_ascii=False, indent=2) + "\n",
+                            encoding="utf-8")
+    return str(plan_file)
+
+
+def produce_plan(d, token):
+    source = Path(d) / "transfers.csv"
+    source.write_text(
+        "block,ts,tx,from,to,value\n"
+        f"300,2025-01-01T00:00:00Z,0xt1,0x{'0' * 40},0x{'1' * 40},100\n",
+        encoding="utf-8")
+    p = subprocess.run([sys.executable, ANCHOR, "--input", str(source),
+                        "--chain", "bsc", "--token", token, "--total-supply", "100",
+                        "--decimals", "0", "--min-pct", "0", "--final-block", "300",
+                        "--out-dir", d], capture_output=True, text=True)
+    if p.returncode != 0:
+        raise AssertionError(p.stdout + p.stderr)
+    return str(Path(d) / "anchor_plan.json")
+
+
 def main():
-    d = tempfile.mkdtemp(prefix="spotcheck_test_")
-    out = os.path.join(d, "out.json")
-    token = "0x594daad7d77592a2b97b725a7ad59d7e188b5bfa"
-    base = ["--chain", "bsc", "--token", token, "--out", out]
+    with tempfile.TemporaryDirectory(prefix="spotcheck_test_") as d:
+        out = os.path.join(d, "out.json")
+        token = "0x594daad7d77592a2b97b725a7ad59d7e188b5bfa"
+        base = ["--chain", "bsc", "--token", token, "--out", out]
+        plan = produce_plan(d, token)
+        original_plan = Path(plan).read_bytes()
+        original_receipt = (Path(d) / "anchor_plan.receipt.json").read_bytes()
 
-    # 1. 两型分型（2 matrix balance + 1 净变动 balance + 1 边缘 balance + 2 tx 型）
-    plan = wj(d, "plan.json", {
-        "chain": "bsc", "token": token, "final_block": 300,
-        "matrix_points": [
-            {"kind": "矩阵[早·大户]", "addr": "0xaa", "day": "2025-01-01",
-             "day_end_block": 100, "expected_balance_raw": "123"},
-            {"kind": "矩阵[晚·小户]", "addr": "0xbb", "day": "2025-06-01",
-             "day_end_block": 200, "expected_balance_raw": "456"}],
-        "forced_points": [
-            {"kind": "最大单日净变动地址-日", "addr": "0xcc", "day": "2025-03-01",
-             "day_end_block": 150, "expected_balance_raw": "789"},
-            {"kind": "门槛±10% 边缘地址", "addr": "0xdd", "day": "2025-06-30",
-             "expected_balance_raw": "999"},
-            {"kind": "全史最大单笔转账", "tx": "0xt1", "from": "0xaa", "to": "0xbb",
-             "block": 120, "expected_value_raw": "111"},
-            {"kind": "交界块 130 前最近转账", "tx": "0xt2", "from": "0xcc", "to": "0xdd",
-             "block": 130, "expected_value_raw": "222"}]})
-    p = run(["--plan", plan, "--dry-run", "--final-block", "300"] + base)
-    ok = p.returncode == 0
-    if ok:
-        st = json.loads(p.stdout.strip().splitlines()[-1])
-        ok = st["balance_points"] == 4 and st["tx_points"] == 2 and st["need_final_block"] == 1
-    check("两型分型正确（balance 4 / tx 2 / 边缘缺块 1）", ok)
+        # 1. 正例必须来自真实 producer，receipt 验证后再做两型分型。
+        p = run(["--plan", plan, "--dry-run", "--final-block", "300"] + base)
+        expected = json.loads(Path(plan).read_text(encoding="utf-8"))
+        exp_bal = sum(1 for key in ("matrix_points", "forced_points")
+                      for point in expected.get(key, [])
+                      if point.get("expected_balance_raw") is not None and point.get("addr"))
+        exp_tx = sum(1 for key in ("matrix_points", "forced_points")
+                     for point in expected.get(key, [])
+                     if point.get("tx") and point.get("expected_value_raw") is not None)
+        ok = p.returncode == 0
+        if ok:
+            st = json.loads(p.stdout.strip().splitlines()[-1])
+            ok = st["balance_points"] == exp_bal and st["tx_points"] == exp_tx
+        check("真实 producer+receipt 的两型分型正确", ok)
 
-    # 2. 0 锚点硬失败
-    p = run(["--plan", wj(d, "empty.json", {"chain": "bsc", "token": token,
-                                              "matrix_points": [], "forced_points": []}),
-             "--dry-run"] + base)
-    check("0 锚点 assert 硬失败", p.returncode != 0)
+        def restore():
+            Path(plan).write_bytes(original_plan)
+            (Path(d) / "anchor_plan.receipt.json").write_bytes(original_receipt)
 
-    # 3. 格式漂移锚点（两型都不匹配）
-    p = run(["--plan", wj(d, "odd.json", {"chain": "bsc", "token": token, "matrix_points": [
-        {"kind": "怪点", "addr": "0xee", "day": "2025-01-01"}], "forced_points": []}),
-        "--dry-run"] + base)
-    check("格式漂移锚点 exit 非 0", p.returncode != 0)
+        # 2. 0 锚点硬失败（负例允许重签 fixture 以抵达业务分支）。
+        refresh_bundle(plan, lambda obj: (obj.__setitem__("matrix_points", []),
+                                          obj.__setitem__("forced_points", [])))
+        p = run(["--plan", plan, "--dry-run", "--final-block", "300"] + base)
+        check("0 锚点 assert 硬失败", p.returncode != 0)
+        restore()
 
-    # 4. 边缘点缺 day_end_block 且未传 --final-block
-    p = run(["--plan", plan, "--dry-run"] + base)
-    check("边缘点缺块未传 --final-block exit 非 0", p.returncode != 0)
+        # 3. 格式漂移锚点。
+        refresh_bundle(plan, lambda obj: (obj.__setitem__("matrix_points", [
+            {"kind": "怪点", "addr": "0xee", "day": "2025-01-01"}]),
+                                          obj.__setitem__("forced_points", [])))
+        p = run(["--plan", plan, "--dry-run", "--final-block", "300"] + base)
+        check("格式漂移锚点 exit 非 0", p.returncode != 0)
+        restore()
 
-    # 5. 非 dry-run 缺 --rpc
-    p = run(["--plan", plan, "--final-block", "300"] + base)
-    check("非 dry-run 缺 --rpc exit 非 0", p.returncode != 0)
+        # 4. final block 是 producer/consumer 双边必填。
+        p = run(["--plan", plan, "--dry-run"] + base)
+        check("未传 --final-block exit 非 0", p.returncode != 0)
 
-    # 6. plan 必须精确绑定 final block，且任一查询块不得越过冻结点。
-    mismatch = wj(d, "final-mismatch.json", {
-        "chain": "bsc", "token": token, "final_block": 301,
-        "matrix_points": [{"kind": "matrix", "addr": "0xaa",
-                           "day_end_block": 300, "expected_balance_raw": "1"}],
-        "forced_points": []})
-    p = run(["--plan", mismatch, "--dry-run", "--final-block", "300"] + base)
-    check("plan final_block 与 CLI 不精确一致拒绝", p.returncode != 0)
-    beyond = wj(d, "beyond-final.json", {
-        "chain": "bsc", "token": token, "final_block": 300,
-        "matrix_points": [{"kind": "matrix", "addr": "0xaa",
-                           "day_end_block": 301, "expected_balance_raw": "1"}],
-        "forced_points": []})
-    p = run(["--plan", beyond, "--dry-run", "--final-block", "300"] + base)
-    check("查询块越过 final_block 在 RPC 前拒绝", p.returncode != 0)
+        # 5. 非 dry-run 缺 --rpc。
+        p = run(["--plan", plan, "--final-block", "300"] + base)
+        check("非 dry-run 缺 --rpc exit 非 0", p.returncode != 0)
+
+        # 6. plan 必须精确绑定 final block，且任一查询块不得越过冻结点。
+        p = run(["--plan", plan, "--dry-run", "--final-block", "299"] + base)
+        check("plan final_block 与 CLI 不精确一致拒绝", p.returncode != 0)
+
+        def push_beyond(obj):
+            points = obj["matrix_points"] + obj["forced_points"]
+            point = next(item for item in points
+                         if item.get("day_end_block") is not None or item.get("block") is not None)
+            key = "day_end_block" if item_has(point, "day_end_block") else "block"
+            point[key] = 301
+
+        def item_has(point, key):
+            return point.get(key) is not None
+
+        refresh_bundle(plan, push_beyond)
+        p = run(["--plan", plan, "--dry-run", "--final-block", "300"] + base)
+        check("查询块越过 final_block 在 RPC 前拒绝", p.returncode != 0)
+        restore()
+
+        # 7. plan 字节被替换但 receipt 未同步时，先在 receipt 层拒绝。
+        changed = json.loads(Path(plan).read_text(encoding="utf-8"))
+        changed["seed"] += 1
+        Path(plan).write_text(json.dumps(changed, ensure_ascii=False, indent=2) + "\n",
+                              encoding="utf-8")
+        p = run(["--plan", plan, "--dry-run", "--final-block", "300"] + base)
+        check("plan/receipt 哈希不一致拒绝", p.returncode != 0)
 
     print("=" * 40)
     if FAILS:
         print(f"time_spotcheck 契约测试 {len(FAILS)} 项失败")
         return 1
-    print("time_spotcheck 契约测试全部通过（7 项）")
+    print("time_spotcheck 契约测试全部通过（8 项）")
     return 0
 
 

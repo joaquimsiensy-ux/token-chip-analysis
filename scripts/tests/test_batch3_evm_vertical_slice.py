@@ -65,6 +65,16 @@ class FixtureHandler(BaseHTTPRequestHandler):
                     else:
                         amount = type(self).supply
                 result = hex(amount)
+            elif method == "eth_getTransactionReceipt":
+                result = {"blockNumber": hex(123), "logs": [{
+                    "address": TOKEN,
+                    "topics": [
+                        "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef",
+                        "0x" + "0" * 64,
+                        "0x" + "0" * 24 + B[2:],
+                    ],
+                    "data": hex(type(self).supply),
+                }]}
             elif method == "eth_simulateV1":
                 sent = int(params[0]["blockStateCalls"][0]["calls"][0]["data"][-64:], 16)
                 result = [{"calls": [{"status": "0x1"}, {"returnData": hex(sent)}]}]
@@ -98,10 +108,13 @@ def prepare_inputs(case, chain, total):
     (case / "stats_evm.json").write_text(json.dumps(
         {"max_block": 123, "mint_total_raw": str(total), "burn_total_raw": "0"}))
     (case / "gmgn_evm.csv").write_text("address,pct\n")
-    (case / "plan_evm.json").write_text(json.dumps({
-        "chain": chain, "token": TOKEN, "final_block": 123,
-        "matrix_points": [{"kind": "fixture", "addr": B, "day_end_block": 123,
-                           "expected_balance_raw": str(total)}], "forced_points": []}))
+    (case / "transfers_evm.csv").write_text(
+        "block,ts,tx,from,to,value\n"
+        f"123,2025-01-01T00:00:00Z,0xt1,0x{'0' * 40},{B},{total}\n")
+    run([sys.executable, str(ROOT / "scripts/lib/anchor_plan.py"),
+         "--input", "transfers_evm.csv", "--chain", chain, "--token", TOKEN,
+         "--total-supply", str(total), "--decimals", "0", "--min-pct", "0",
+         "--final-block", "123", "--out-dir", "."], case)
 
 
 def spec(case, chain, endpoint):
@@ -113,7 +126,8 @@ def spec(case, chain, endpoint):
             "target": {"chain": chain, "token": TOKEN, "as_of_block": 123},
             "inputs": {name: name for name in
                        ("config_evm.json", "balances_evm.json", "stats_evm.json",
-                        "gmgn_evm.csv", "plan_evm.json")},
+                        "gmgn_evm.csv", "transfers_evm.csv", "anchor_plan.json",
+                        "anchor_plan.receipt.json")},
             "checks": {
                 "balance": {"producer": "scripts/evm/verify_recon.py",
                             "argv": [*common, "--out", "balance_receipt.json"],
@@ -128,7 +142,7 @@ def spec(case, chain, endpoint):
                                           "--out", "supply_truth.json"],
                                  "receipt": "supply_truth.json"},
                 "time": {"producer": "scripts/lib/time_spotcheck.py",
-                         "argv": ["--plan", "plan_evm.json", "--chain", chain,
+                         "argv": ["--plan", "anchor_plan.json", "--chain", chain,
                                   "--token", TOKEN, "--final-block", "123", "--rpc", endpoint,
                                   "--out", "time_spotcheck.json"],
                          "receipt": "time_spotcheck.json"}}}
@@ -152,7 +166,7 @@ def wrong_chain_zero_business(case, chain, endpoint):
     FixtureHandler.chain_id = 999
     FixtureHandler.methods.clear()
     proc = run([sys.executable, str(ROOT / "scripts/lib/time_spotcheck.py"),
-                "--plan", "plan_evm.json", "--chain", chain, "--token", TOKEN,
+                "--plan", "anchor_plan.json", "--chain", chain, "--token", TOKEN,
                 "--final-block", "123", "--rpc", endpoint,
                 "--out", "wrong_chain.json"], case, expect=1)
     assert proc.returncode != 0

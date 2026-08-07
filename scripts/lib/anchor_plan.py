@@ -26,11 +26,17 @@
 （来源：A2 时间抽查工程件，2026-07-22；QUQ v2 1.03 亿行实测通过）"""
 import argparse
 import datetime
+import hashlib
 import json
 import os
 import sys
+from pathlib import Path
 
 import duckdb
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from receipt_kernel import (RawBytes, build_envelope, finalize_envelope,
+                            publish_overwrite, publish_txn)
 
 Z = '0x0000000000000000000000000000000000000000'
 DEAD = '0x000000000000000000000000000000000000dead'
@@ -45,6 +51,9 @@ EXPLORER = {
     "polygon":  ("https://polygonscan.com", "evm"),
     "solana":   ("https://solscan.io", "sol"),
 }
+
+PLAN_SCHEMA = "anchor-plan/v2"
+RECEIPT_SCHEMA = "anchor-plan-receipt/v2"
 
 
 def urls(chain, token, addr=None, tx=None):
@@ -64,6 +73,56 @@ def urls(chain, token, addr=None, tx=None):
             u["tx"] = f"{base}/tx/{tx}"
         u["balance_tool"] = f"{base}/tokencheck-tool"  # 历史余额按块号查（填 token+addr+block）
     return u
+
+
+def _sha256(path):
+    digest = hashlib.sha256()
+    with Path(path).open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1 << 20), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _input_identity(raw_path):
+    shown = Path(raw_path).expanduser()
+    if shown.is_symlink():
+        raise ValueError(f"input symlink rejected: {raw_path}")
+    path = shown.resolve(strict=True)
+    if path.is_file():
+        size = path.stat().st_size
+        file_hash = _sha256(path)
+        files = [{"path": str(path), "size": size, "sha256": file_hash}]
+        return {"path": str(path), "kind": "file", "size": size,
+                "sha256": file_hash}, files
+    if not path.is_dir():
+        raise ValueError(f"input is not a file or directory: {raw_path}")
+    files = []
+    for item in sorted(path.rglob("*")):
+        if item.is_symlink():
+            raise ValueError(f"input directory contains symlink: {item}")
+        if item.is_file():
+            files.append({"path": item.relative_to(path).as_posix(),
+                          "size": item.stat().st_size, "sha256": _sha256(item)})
+    if not files:
+        raise ValueError(f"input directory contains no regular files: {raw_path}")
+    encoded = json.dumps(files, ensure_ascii=False, sort_keys=True,
+                         separators=(",", ":")).encode("utf-8")
+    return {"path": str(path), "kind": "directory",
+            "size": sum(item["size"] for item in files),
+            "sha256": hashlib.sha256(encoded).hexdigest()}, files
+
+
+def _validate_probe_blocks(plan, final_block):
+    for family in ("matrix_points", "forced_points"):
+        for index, point in enumerate(plan.get(family) or []):
+            for key in ("day_end_block", "block"):
+                value = point.get(key)
+                if value is None:
+                    continue
+                if (isinstance(value, bool) or not isinstance(value, int)
+                        or value < 0 or value > final_block):
+                    raise ValueError(
+                        f"{family}[{index}].{key}={value!r} outside final_block={final_block}")
 
 
 def _detect_input(con, path):
@@ -123,7 +182,9 @@ def main():
     ap = argparse.ArgumentParser(description="A2 分层抽查计划器（时间三段×余额档+强制覆盖点）")
     ap.add_argument("--input", required=True, help="merged 转账数据：csv / parquet / v2 目录")
     ap.add_argument("--chain", required=True, help="bsc/eth/base/arbitrum/polygon/...")
-    ap.add_argument("--token", default=None, help="代币合约地址（拼核对 URL 用，建议提供）")
+    ap.add_argument("--token", required=True, help="代币合约地址（正式 plan target 身份）")
+    ap.add_argument("--final-block", type=int, required=True,
+                    help="冻结截止块；全部探测块必须不高于此块")
     ap.add_argument("--total-supply", type=float, required=True, help="总供应（human 单位）")
     ap.add_argument("--decimals", type=int, required=True)
     ap.add_argument("--threshold-pct", type=float, default=1.0,
@@ -140,7 +201,17 @@ def main():
     ap.add_argument("--out-dir", required=True)
     a = ap.parse_args()
 
+    if a.final_block < 0:
+        ap.error("--final-block must be non-negative")
+    a.chain = a.chain.lower()
+    a.token = a.token.lower()
+    try:
+        input_identity, input_files = _input_identity(a.input)
+    except Exception as exc:
+        ap.error(f"input identity failed: {exc}")
+
     os.makedirs(a.out_dir, exist_ok=True)
+    a.out_dir = str(Path(a.out_dir).resolve())
     con = duckdb.connect()
     con.execute(f"SET memory_limit='{a.mem_limit}'; SET threads={a.threads}; "
                 f"SET preserve_insertion_order=false;")
@@ -281,17 +352,45 @@ def main():
     print("[5/5] 写出计划…", flush=True)
     stats = {r[0] + "·" + r[1]: r[2] for r in con.execute(
         "SELECT tseg, tier, COUNT(*) FROM cells GROUP BY tseg, tier").fetchall()}
-    plan = {"generated_at": datetime.datetime.now(datetime.timezone.utc)
-                .strftime("%Y-%m-%dT%H:%M:%SZ"),
-            "input": os.path.abspath(a.input), "chain": a.chain, "token": a.token,
+    generated_at = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    plan = {"schema": PLAN_SCHEMA, "generated_at": generated_at,
+            "target": {"chain": a.chain, "token": a.token,
+                       "as_of_block": a.final_block},
+            "input": input_identity, "chain": a.chain, "token": a.token,
+            "final_block": a.final_block,
             "total_supply": a.total_supply, "decimals": a.decimals,
             "threshold_pct": a.threshold_pct, "seed": a.seed,
             "date_range": [d0, d1], "time_cuts": [cut1, cut2],
             "cell_population": stats, "boundary_blocks": bounds,
             "matrix_points": matrix, "forced_points": forced}
-    jp = os.path.join(a.out_dir, "anchor_plan.json")
-    with open(jp, "w") as f:
-        json.dump(plan, f, ensure_ascii=False, indent=1)
+    try:
+        _validate_probe_blocks(plan, a.final_block)
+    except ValueError as exc:
+        print(f"[fatal] anchor plan probe boundary invalid: {exc}", file=sys.stderr)
+        return 2
+
+    jp = Path(a.out_dir) / "anchor_plan.json"
+    rp = Path(a.out_dir) / "anchor_plan.receipt.json"
+    ip = Path(a.out_dir) / "anchor_plan.input.json"
+    input_manifest = {"schema": "anchor-plan-input/v1", "input": input_identity,
+                      "files": input_files}
+    try:
+        publish_overwrite(ip, input_manifest)
+        envelope = build_envelope(
+            RECEIPT_SCHEMA, plan["target"], Path(__file__).resolve(), "formal",
+            inputs={"input_manifest": ip})
+        plan["producer"] = envelope["producer"]
+        plan["input_manifest"] = envelope["inputs"]["input_manifest"]
+        plan_bytes = (json.dumps(plan, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
+        receipt = finalize_envelope(
+            envelope, "PASS", 0, plan_schema=PLAN_SCHEMA,
+            generated_at=generated_at, input_identity=input_identity,
+            probe_count=len(matrix) + len(forced),
+            output={"path": str(jp.resolve()), "size": len(plan_bytes),
+                    "sha256": hashlib.sha256(plan_bytes).hexdigest()})
+    except Exception as exc:
+        print(f"[fatal] anchor plan receipt build failed: {exc}", file=sys.stderr)
+        return 1
 
     md = [f"# 分层抽查计划（{a.chain} · {a.token or '?'}）",
           f"数据 {d0} → {d1}；时段切点 {cut1} / {cut2}；门槛 {a.threshold_pct}%；seed={a.seed}",
@@ -321,11 +420,16 @@ def main():
            "- 地址-日锚点：EVM 用浏览器 tokencheck-tool（token+地址+上表『日终块』查历史余额），"
            "或在地址页翻该日交易核流水；tx 锚点：打开 tx 页核金额与双方。",
            "- 任何一点对不上 → 按对账三查流程回溯该地址全史重放，不许只改单点。"]
-    mp = os.path.join(a.out_dir, "anchor_plan.md")
-    with open(mp, "w") as f:
-        f.write("\n".join(md) + "\n")
-    print(f"[done] 矩阵点 {len(matrix)} + 强制点 {len(forced)} → {jp} / {mp}")
+    mp = Path(a.out_dir) / "anchor_plan.md"
+    try:
+        publish_overwrite(mp, RawBytes(("\n".join(md) + "\n").encode("utf-8")))
+        publish_txn(jp, plan, rp, receipt)
+    except Exception as exc:
+        print(f"[fatal] anchor plan publication failed: {exc}", file=sys.stderr)
+        return 1
+    print(f"[done] 矩阵点 {len(matrix)} + 强制点 {len(forced)} → {jp} / {mp} / {rp}")
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

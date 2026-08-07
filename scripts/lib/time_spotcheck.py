@@ -32,18 +32,83 @@ Solana 案不适用本脚本（时间抽查走 solana/anchor_sampler.py 通道�
 （来源：APU SQD 全史重拉冗余复盘 + codex 交叉复核，2026-08-01）"""
 import argparse
 import datetime
+import hashlib
 import json
 import os
 import sys
+from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from chain_registry import formal_evm_chains
+from receipt_validate import validate_receipt
 from receipt_kernel import (build_envelope, finalize_envelope, publish_error_receipt,
                             publish_overwrite)
 
 TRANSFER_TOPIC = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
 BALANCEOF_SELECTOR = "0x70a08231"
 SCHEMA = "time-spotcheck/v2"
+PLAN_SCHEMA = "anchor-plan/v2"
+PLAN_RECEIPT_SCHEMA = "anchor-plan-receipt/v2"
+
+
+def _sha256(path):
+    digest = hashlib.sha256()
+    with Path(path).open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1 << 20), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _default_plan_receipt(plan_path):
+    path = Path(plan_path)
+    suffix = path.suffix or ".json"
+    stem = path.name[:-len(suffix)] if path.name.endswith(suffix) else path.name
+    return path.with_name(f"{stem}.receipt{suffix}")
+
+
+def load_validated_plan(plan_path, receipt_path):
+    plan_file = Path(plan_path)
+    receipt_file = Path(receipt_path)
+    if plan_file.is_symlink() or receipt_file.is_symlink():
+        raise ValueError("plan/receipt symlink rejected")
+    plan = json.loads(plan_file.read_text(encoding="utf-8"))
+    receipt = json.loads(receipt_file.read_text(encoding="utf-8"))
+    errors = validate_receipt(receipt)
+    if errors:
+        raise ValueError("plan receipt invalid: " + "; ".join(errors))
+    if plan.get("schema") != PLAN_SCHEMA:
+        raise ValueError(f"plan schema must be {PLAN_SCHEMA}")
+    if receipt.get("schema") != PLAN_RECEIPT_SCHEMA or receipt.get("verdict") != "PASS":
+        raise ValueError("plan receipt schema/verdict invalid")
+    if plan.get("target") != receipt.get("target"):
+        raise ValueError("plan target differs from receipt target")
+    target = plan["target"]
+    if (plan.get("chain") != target.get("chain")
+            or plan.get("token") != target.get("token")
+            or plan.get("final_block") != target.get("as_of_block")):
+        raise ValueError("plan compatibility target fields diverge")
+    if plan.get("producer") != receipt.get("producer"):
+        raise ValueError("plan producer differs from receipt producer")
+    if plan.get("input") != receipt.get("input_identity"):
+        raise ValueError("plan input identity differs from receipt")
+    manifest = (receipt.get("inputs") or {}).get("input_manifest")
+    if not isinstance(manifest, dict) or plan.get("input_manifest") != manifest:
+        raise ValueError("plan input manifest differs from receipt binding")
+    output = receipt.get("output")
+    if not isinstance(output, dict):
+        raise ValueError("plan receipt output missing")
+    if Path(str(output.get("path", ""))).resolve() != plan_file.resolve():
+        raise ValueError("plan receipt output path mismatch")
+    if output.get("size") != plan_file.stat().st_size or output.get("sha256") != _sha256(plan_file):
+        raise ValueError("plan receipt output size/hash mismatch")
+    if receipt.get("plan_schema") != PLAN_SCHEMA:
+        raise ValueError("plan receipt plan_schema mismatch")
+    if receipt.get("generated_at") != plan.get("generated_at"):
+        raise ValueError("plan generated_at differs from receipt")
+    point_count = sum(len(plan.get(key) or []) for key in ("matrix_points", "forced_points"))
+    if receipt.get("probe_count") != point_count:
+        raise ValueError("plan receipt probe_count mismatch")
+    return plan
 
 
 def classify(plan):
@@ -72,6 +137,8 @@ def addr_word(addr):
 def main():
     ap = argparse.ArgumentParser(description="A2 时间抽查执行器（EVM 锚点级第二源直查）")
     ap.add_argument("--plan", required=True, help="anchor_plan.json（anchor_plan.py 产物）")
+    ap.add_argument("--plan-receipt",
+                    help="anchor plan receipt；默认取 plan 同目录的 anchor_plan.receipt.json")
     ap.add_argument("--chain", choices=sorted(formal_evm_chains("time_producer")),
                     help="正式回执目标链；非 dry-run 必填")
     ap.add_argument("--rpc", help="独立第二源 archive RPC（--dry-run 时可省）")
@@ -83,10 +150,12 @@ def main():
     ap.add_argument("--dry-run", action="store_true", help="只解析分型统计，不打网")
     a = ap.parse_args()
 
+    plan_receipt = a.plan_receipt or _default_plan_receipt(a.plan)
     try:
-        plan = json.load(open(a.plan, encoding="utf-8"))
+        plan = load_validated_plan(a.plan, plan_receipt)
     except Exception as e:
-        sys.exit(f"[fatal] anchor_plan 读取失败: {e}")
+        print(f"[fatal] anchor_plan/receipt 校验失败: {e}", file=sys.stderr)
+        return 2
     bal_pts, tx_pts, odd_pts = classify(plan)
     total = len(bal_pts) + len(tx_pts)
     # GMX 案实锤教训：0 个点循环零次 bad==0 直接打 PASS——必须硬失败
