@@ -15,8 +15,8 @@
 | labels-bsc.csv（含 privacy 子表） | BSC 主表与 tornado-user 隐私层 |
 | labels-base.csv | Base 主表，含 bundler/paymaster 等 AA 基础设施层 |
 | labels-sol.csv | Solana validator/KOL/CEX/程序标签 |
-| labels-robinhood.csv | Robinhood 主表与 serial-actor 惯犯层 |
-| codehash-robinhood.csv | Robinhood 字节码组合指纹，供 fingerprint_check.py 使用 |
+| labels-robinhood.csv | Robinhood exploration 主表与 serial-actor 惯犯层；表存在不授予 formal-ready |
+| codehash-robinhood.csv | Robinhood exploration 字节码组合指纹，供 fingerprint_check.py 使用 |
 | miss-queue/<chain>.csv | 运行时未命中高权重地址队列，人工审后回填 |
 
 各文件行数与 SHA-256 以同目录 `manifest.json` 为准；查询示例：`python3 -c 'import json; m=json.load(open("references/labels/manifest.json")); print("\n".join("{}\t{}".format(name, meta["rows"]) for name, meta in m["files"].items()))'`。

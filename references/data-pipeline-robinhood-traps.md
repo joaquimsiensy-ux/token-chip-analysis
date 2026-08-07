@@ -2,6 +2,8 @@
 
 > 母文档：`data-pipeline-robinhood.md`（薄路由索引页；链概况与合并来源声明见索引页）。本册覆盖「链特有的坑（重要）」全段（坑 1–17，编号沿用原体系，坑 4a/4b 与两组重号 8/9 按原编号不动）；通道表与脚本见 `data-pipeline-robinhood-channels.md`，方法论坑见 `data-pipeline-robinhood-methods.md`。
 
+> 准入边界：本册是 exploration/历史方法资产，不授予 Robinhood formal-ready 或重签资格。
+
 ## 链特有的坑（重要）
 
 > 编号注记：坑 8 与坑 9 历史上各有两条（V4 成交量/零地址直铸、NOXA 机制/EIP-7702 识别）——重复编号为原文遗留、拆册原样保留，引用时以内容名区分。

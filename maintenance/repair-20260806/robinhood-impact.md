@@ -1,8 +1,8 @@
-# Robinhood 降级影响与豁免台账（准备阶段）
+# Robinhood 降级影响与豁免台账
 
-## 一、拟定能力状态
+## 一、已实施能力状态（批二）
 
-Robinhood 将从当前错误的 formal 声明降为 **exploration/nonformal**：
+Robinhood 已从错误的 formal 声明降为 **exploration/nonformal**：
 
 - `release_tier=exploration`（最终字段名以批二能力矩阵为准）；
 - `formal_ready=false` 必须由能力闭合自然导出，不增设同义手工开关；
@@ -11,21 +11,20 @@ Robinhood 将从当前错误的 formal 声明降为 **exploration/nonformal**：
 - Robinhood 增量更新、A4/A5 重签、audit release 不得走 formal；
 - 恢复 formal 时，本文件全部 RH 豁免自动失效，必须先补 A0/A2/runner/consumer/identity/labels/handoff/release/chain-attestation 全闭合与纵切片。
 
-上述是 PLAN 的既定施工方向，不是本阶段已完成事实；当前基线仍为 `chain_registry.py:44-49 formal=True, recon_adapter=evm, evm_chain_id=None`。
+实施证据：`scripts/lib/chain_registry.py:95-99` 登记 `release_tier=exploration`、`evm_chain_id=None`，且仅有 labels/identity 等 exploration 事实；`formal_ready()` 依全能力闭合计算，不存在 RH 手工开关。
 
-## 二、R8-02 当前证据
+## 二、R8-02 批二证据
 
-当前权威 registry 与强制工具矛盾：
+权威 registry 与强制工具已改为单向防回流：
 
-| 面 | 当前证据（6e94348） | 结果 |
+| 面 | 当前证据 | 结果 |
 |---|---|---|
-| registry | `scripts/lib/chain_registry.py:44-49` | `formal=True`, `recon_adapter=evm`, `identity_adapter=evm`, `evm_chain_id=None` |
-| A0 accounting | `scripts/evm/accounting_gate.py:65-79` | `--chain robinhood` argparse exit 2 |
-| A2 balance/recon | `scripts/evm/verify_recon.py:58-65` | `--chain robinhood` argparse exit 2 |
-| A2 supply | `scripts/lib/supply_truth_gate.py:103-116` | `--chain robinhood` argparse exit 2 |
-| A2 time | `scripts/lib/time_spotcheck.py:71-80` | `--chain robinhood` argparse exit 2 |
+| registry | `scripts/lib/chain_registry.py:95-99,183-218` | exploration + `evm_chain_id=None`；`formal_ready(robinhood)=false` 由能力缺口导出 |
+| READY handoff | `scripts/report/handoff_manifest.py:68-91,166-181` | READY choices 只来自 `formal_ready_chains()`，RH 在读产物前拒绝 |
+| A4/A5/build/audit | `scripts/report/audit_release_gate.py:59-73` 及共享 `formal_chain_error` 消费者 | RH formal profile 统一以 exploration 拒绝 |
+| 防回流证据 | `scripts/tests/test_batch2_robinhood_exploration.py` | READY/A4/A5/build/audit、旧 seal、labels 不抬升、豁免失效哨兵全覆盖 |
 
-准备阶段实际执行四个最小 CLI，四者均在业务逻辑前 exit 2。故当前不是“Robinhood formal 能跑但缺测试”，而是正式纵切片物理不可执行。
+准备阶段的四 CLI 反例保留为历史基线；批二进一步从能力矩阵、handoff 和 release 层切断 formal 可达性。
 
 ## 三、存量 Robinhood 案例清单
 
@@ -103,13 +102,13 @@ Robinhood 将从当前错误的 formal 声明降为 **exploration/nonformal**：
 6. 增量 RH 案不得复用旧 A4/A5 seal 冒充重签；
 7. 任何新增 `evm_chain_id`、formal adapter 或调用图变化都触发豁免自动失效测试。
 
-## 六、豁免台账（准备阶段候选）
+## 六、豁免台账
 
 七要素按 PLAN 合并为七栏；“Fable/盲审”一栏同时记录批准与两轮反查。
 
 | 豁免 ID；finding / INV | 路径外理由与当前调用图 | 影响台账链接 | 能力矩阵 nonformal/exploration 证据 | formal 防回流负向测试 | Fable 批准 + 两轮盲审反查 | 自动失效条件 |
 |---|---|---|---|---|---|---|
-| `RH-EX-01`; `R8-02` / INV-11（沿革 `R7-07`） | 当前四件强制 CLI 均拒 RH；批二将 registry 降为 exploration，formal reachability 应为零 | 本文件 §2–§4 | 待批二 candidate：`release_tier=exploration`, `formal_ready=false`, `evm_chain_id=None` | 待施工：READY/A4/A5/audit release 四层拒收；labels/identity/旧案不能抬升 | Fable：待批准；Round A：待；Round B：待 | RH 变为 formal、`evm_chain_id` 非空、任一 formal adapter/入口可达或负测失败 |
-| `RH-EX-02`; `full-F-02` / INV-02（含 `full-C-01`,`full-C-05`） | RPC tail/anchor/merge 三件只保留 exploration；不修其业务正确性，不允许结果进 formal data map/receipt/handoff | 本文件 §4.1；ledger supplementary 表 | 待批二 candidate：三 producer 不在 formal producer registry | 待施工：即使伪造完整输出/摘要，formal runner/aggregator/handoff/release 全拒 | Fable：待批准；Round A：待；Round B：待 | 三件任一重新进入 formal registry/文档必跑、产物进入 formal data map，或 RH 恢复 formal |
+| `RH-EX-01`; `R8-02` / INV-11（沿革 `R7-07`） | 四件强制 CLI 不向 RH 开放 formal choices；registry/handoff/release 从矩阵切断 formal reachability | 本文件 §2–§4 | `chain_registry.py:95-99`：`release_tier=exploration`, `formal_ready=false`, `evm_chain_id=None` | `B2-RH-01` / `test_batch2_robinhood_exploration.py`：READY/A4/A5/build/audit、labels/旧 seal、失效哨兵 | Fable：待批准；Round A：待；Round B：待 | RH 变为 formal、`evm_chain_id` 非空、任一 formal adapter/入口可达或负测失败 |
+| `RH-EX-02`; `full-F-02` / INV-02（含 `full-C-01`,`full-C-05`） | RPC tail/anchor/merge 三件只保留 exploration；不修其业务正确性，不允许结果进 formal data map/receipt/handoff | 本文件 §4.1；ledger supplementary 表 | `chain_registry.py:95-99`：RH 无 controlled runner/reconciliation consumer/handoff/audit release 能力 | `B2-RH-01`：即使四回执 schema/哈希自洽，READY 仍在 formal scope 前拒 RH | Fable：待批准；Round A：待；Round B：待 | 三件任一重新进入 formal registry/文档必跑、产物进入 formal data map，或 RH 恢复 formal |
 
 `full-F-04` 不列豁免：它是现役文档计数漂移，应由 INV-18 守卫修正。`full-F-03` 是通用 Multicall 工具，若走第四类豁免，应另建非 Robinhood 影响台账，不混入 RH 台账。

@@ -2,6 +2,8 @@
 
 > 母文档：`data-pipeline-robinhood.md`（薄路由索引页；链概况与合并来源声明见索引页）。本册只存**与本链通道/平台/脚本绑定**的方法论条目；链无关通用条目一律在 playbook 三册（entity-cluster-methods / state-anomaly / evidence-wording）。通道表与脚本见 `data-pipeline-robinhood-channels.md`，坑 1–17 见 `data-pipeline-robinhood-traps.md`。
 
+> 准入边界：本册只供 exploration 和历史复核；其中方法、标签或旧案 PASS 都不能单独把 Robinhood 抬升为 formal-ready。
+
 ## 方法论坑（Robinhood 绑定条目）
 
 - **平台充值通道=溯源断头**：凡入金经平台通道（f70 类）的庄组，组间真实独立性链上不可判定——报告必须声明"N 组是链上可分辨的下限拆分"。

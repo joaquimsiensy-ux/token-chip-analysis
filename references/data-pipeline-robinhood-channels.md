@@ -2,6 +2,8 @@
 
 > 母文档：`data-pipeline-robinhood.md`（薄路由索引页；链概况与合并来源声明见索引页）。本册覆盖「通道决策（实测）」＋「可复用脚本」＋「修正记录」三段；「链特有的坑」（坑 1–17）见 `data-pipeline-robinhood-traps.md`，「方法论坑」（Robinhood 绑定条目）见 `data-pipeline-robinhood-methods.md`。
 
+> 准入边界：本册所有通道与脚本当前只能用于 exploration，不得作为 formal producer 或进入 READY data map / reconciliation wrapper。
+
 ## 通道决策（实测）
 
 | 通道 | 状态 | 说明 |

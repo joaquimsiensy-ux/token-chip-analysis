@@ -7,7 +7,7 @@ labels 数据版本独立于 skill 版本；已发布版本与逐表变更见 CH
 **发布库维护纪律（v4.2+ 稳定化定，2026-07-18）**：
 - **curation 层（SRC_PRIORITY = -1，高于 manual/addressbook）**：`additions/curation_overrides_*.csv` 的 source 一律写 `curation`。根因：add_labels.py 对同级采用"新条目覆盖"、build_labels.py 采用"先到保留"——两语义不一致曾致 12 行 v4.2 精修（Relay solver 官方 API 亲验等）在全量重建时被 gen_manual 泛化行回退（列级 diff 实测抓出，已救回 `curation_overrides_20260718.csv`）。**今后凡"直改发布库"级别的精修，必须同步固化为 curation override 文件**，否则下次重建即回退。
 - **高优先级源覆盖语义**：upsert 的 evidence/verified_at/status 三列随优先级覆盖（有值才覆盖）——curation/manual 层的权威证据出处才能真正生效。
-- **benchmark fail-fast**：默认发布库与 `--labels-dir` 预检都要求五张正式链主表齐全且非空；缺表或只有表头均 exit 2。
+- **benchmark fail-fast**：默认发布库与 `--labels-dir` 预检都要求五张登记链主表齐全且非空；缺表或只有表头均 exit 2。这是标签资产完整性，不是 release tier；Robinhood 仍为 exploration。
 - **roundtrip_check.py 进发布流程**（见下方重建步骤）：行级收敛门禁比较七个决策字段（以 `roundtrip_check.py::DECISION_FIELDS` 为准），缺表即 exit 2。
 
 ## 数据源清单
@@ -54,7 +54,7 @@ cd ~/.claude/skills/token-chip-analysis/scripts/labels
 python3 roundtrip_check.py                       # 发布版逐键逐行收敛；任一正式链缺表即 exit 2
 python3 benchmark_labels.py --labels-dir=sources/out   # 发布前预检（五表齐全且非空）
 cp sources/out/labels-*.csv ../../references/labels/   # 发布
-python3 benchmark_labels.py --save               # 回归 PASS 才算完；五条正式链金标强制出现（校验对象是 goldset，缺链即 FAIL）；发布表口径＝五张主表＋两张 privacy 子表
+python3 benchmark_labels.py --save               # 回归 PASS 才算完；五条登记链金标强制出现（校验对象是 goldset，缺链即 FAIL）；标签表口径＝五张主表＋两张 privacy 子表，不用于推导 formal-ready
 python3 ../tests/labels_manifest.py --write      # 发布落印（校验和 manifest；add_labels 增量入库后同样要 --write）
 ```
 
