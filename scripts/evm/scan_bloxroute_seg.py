@@ -13,6 +13,7 @@
 import json, csv, time, threading, queue, os, argparse, sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "lib"))
+from chain_registry import attested_evm_chains
 from net import RpcAttestationError, attested_rpc_pool
 
 TOPIC = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
@@ -30,7 +31,7 @@ def main():
     ap.add_argument("--sleep", type=float, default=0.4)
     ap.add_argument("--step", type=int, default=10000)
     ap.add_argument("--chain", default="bsc",
-                    choices=["eth", "bsc", "base", "arbitrum"],
+                    choices=sorted(attested_evm_chains()),
                     help="目标链（默认 bsc；chain id 只读 chain_registry）")
     a = ap.parse_args()
     pool = attested_rpc_pool(a.url, a.chain, formal=True, rps=max(1, a.workers),

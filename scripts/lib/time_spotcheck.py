@@ -37,6 +37,7 @@ import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from chain_registry import formal_evm_chains
 from receipt_kernel import (build_envelope, finalize_envelope, publish_error_receipt,
                             publish_overwrite)
 
@@ -71,7 +72,7 @@ def addr_word(addr):
 def main():
     ap = argparse.ArgumentParser(description="A2 时间抽查执行器（EVM 锚点级第二源直查）")
     ap.add_argument("--plan", required=True, help="anchor_plan.json（anchor_plan.py 产物）")
-    ap.add_argument("--chain", choices=["eth", "bsc", "base", "arbitrum"],
+    ap.add_argument("--chain", choices=sorted(formal_evm_chains("time_producer")),
                     help="正式回执目标链；非 dry-run 必填")
     ap.add_argument("--rpc", help="独立第二源 archive RPC（--dry-run 时可省）")
     ap.add_argument("--token", required=True, help="代币合约地址")

@@ -218,12 +218,13 @@ def test_r7_07():
     """READY only accepts formal chains and shares the release-chain source."""
     handoff = load(ROOT / "scripts/report/handoff_manifest.py", "r7_handoff_sets")
     audit = load(ROOT / "scripts/report/audit_release_gate.py", "r7_audit_sets")
+    from chain_registry import formal_ready_chains
     problems = []
     with tempfile.TemporaryDirectory() as td:
         proc, _ = _handoff_generate(Path(td).resolve(), "arbitrum")
         if proc.returncode == 0:
             problems.append("handoff generate accepted READY for exploration-only arbitrum")
-    if set(handoff.READY_CHAINS) != set(audit.formal_chains()):
+    if set(handoff.READY_CHAINS) != formal_ready_chains():
         problems.append("handoff and audit formal chains differ instead of sharing the registry")
     assert not problems, "; ".join(problems)
 

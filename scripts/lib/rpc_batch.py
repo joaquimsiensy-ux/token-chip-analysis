@@ -27,6 +27,7 @@ import re
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from chain_registry import attested_evm_chains  # noqa: E402
 from net import RpcAttestationError, attested_rpc_pool  # noqa: E402
 
 
@@ -54,7 +55,7 @@ def main():
     ap.add_argument("mode", choices=["getcode", "receipts", "raw"])
     ap.add_argument("src", help="文件路径或逗号分隔串（raw 模式必须是 jsonl 文件）")
     ap.add_argument("--chain", required=True,
-                    choices=["eth", "bsc", "base", "arbitrum"],
+                    choices=sorted(attested_evm_chains()),
                     help="目标链；chain id 只读 chain_registry")
     ap.add_argument("--out", default=None)
     ap.add_argument("--rps", type=float, default=8.0)

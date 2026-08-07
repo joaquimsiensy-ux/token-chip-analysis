@@ -50,7 +50,7 @@ from pathlib import Path
 import requests
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
-from chain_registry import evm_chain_id_for
+from chain_registry import evm_chain_id_for, formal_evm_chains
 from net import RpcAttestationError, attested_rpc_pool
 
 TRANSFER = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
@@ -377,7 +377,8 @@ def check_permissions(chain, token):
 def main():
     ap = argparse.ArgumentParser(description="EVM 记账模型准入 gate")
     ap.add_argument("--token", required=True)
-    ap.add_argument("--chain", required=True, choices=sorted(DEFAULT_RPC))
+    ap.add_argument("--chain", required=True,
+                    choices=sorted(formal_evm_chains("accounting_adapter")))
     ap.add_argument("--rpc", default=None, help="JSON-RPC 端点（默认见 DEFAULT_RPC）")
     ap.add_argument("--hypersync", default=None, help="HyperSync 裸域名（默认按链）")
     ap.add_argument("--hypersync-token-file",

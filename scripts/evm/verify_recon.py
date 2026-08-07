@@ -15,6 +15,7 @@ from decimal import Decimal
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
+from chain_registry import formal_evm_chains
 from net import RpcChainMismatch, attested_rpc_pool
 from receipt_kernel import (build_envelope, finalize_envelope, publish_error_receipt,
                             publish_overwrite)
@@ -42,7 +43,8 @@ def parse_args(argv=None):
     ap.add_argument("--balances", required=True)
     ap.add_argument("--replay-stats", required=True)
     ap.add_argument("--gmgn", required=True)
-    ap.add_argument("--chain", required=True, choices=["eth", "bsc", "base", "arbitrum"])
+    ap.add_argument("--chain", required=True,
+                    choices=sorted(formal_evm_chains("balance_producer")))
     ap.add_argument("--token", required=True)
     ap.add_argument("--end-block", required=True, type=int)
     ap.add_argument("--out", required=True)

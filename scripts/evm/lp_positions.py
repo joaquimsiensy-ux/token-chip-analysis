@@ -57,6 +57,7 @@ from pathlib import Path
 import duckdb
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
+from chain_registry import attested_evm_chains
 from net import RpcAttestationError, attested_rpc_pool
 
 MINT = '0x7a53080ba414158be7ec69b987b5fb7d07dee101fe85488f0853ae16239d0bde'
@@ -87,7 +88,7 @@ def main():
     ap.add_argument("--out", default="data/lp_positions.json")
     ap.add_argument("--rpc", action="append", help="可重复；默认 BSC 公共节点组")
     ap.add_argument("--chain", default="bsc",
-                    choices=["eth", "bsc", "base", "arbitrum"],
+                    choices=sorted(attested_evm_chains()),
                     help="目标链（默认 bsc；chain id 只读 chain_registry）")
     ap.add_argument("--workers", type=int, default=8)
     ap.add_argument("--labels", help="JSON: {地址: 标签}，用于 stdout 可读化")

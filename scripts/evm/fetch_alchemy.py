@@ -21,6 +21,7 @@
 import json, csv, os, sys, time, argparse
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "lib"))
+from chain_registry import attested_evm_chains
 from net import RpcAttestationError, attested_rpc_pool
 
 
@@ -32,7 +33,7 @@ def main():
     ap.add_argument("--to-block", type=int, default=None, help="终止块（含）；缺省 latest")
     ap.add_argument("--receipt", help="成功收尾后写正式 evm-collector-run/v2（须显式块界）")
     ap.add_argument("--chain", required=True,
-                    choices=["eth", "bsc", "base", "arbitrum"],
+                    choices=sorted(attested_evm_chains()),
                     help="目标链；chain id 只读 chain_registry")
     a = ap.parse_args()
 

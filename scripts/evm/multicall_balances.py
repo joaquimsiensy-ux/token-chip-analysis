@@ -13,6 +13,7 @@ import sys
 import time
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "lib"))
+from chain_registry import attested_evm_chains
 from net import RpcAttestationError, attested_rpc_pool
 
 TOKEN = None
@@ -87,7 +88,7 @@ def parse_args():
     parser.add_argument("--input", help="地址清单文件，一行一个地址")
     parser.add_argument("--out", help="JSON 输出路径")
     parser.add_argument("--chain", default="bsc",
-                        choices=["eth", "bsc", "base", "arbitrum"],
+                        choices=sorted(attested_evm_chains()),
                         help="目标链（默认 bsc；chain id 只读 chain_registry）")
     parser.add_argument("--rpc", action="append", help=(
         "RPC URL，可多次传入；默认使用 4 个 BSC 公共节点，跨链必须显式传 --rpc"))

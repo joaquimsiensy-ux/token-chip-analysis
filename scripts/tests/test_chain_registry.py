@@ -13,9 +13,11 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts/lib"))
 sys.path.insert(0, str(ROOT / "scripts/report"))
 
-from chain_registry import (CHAIN_REGISTRY, evm_family, formal_chains, identity_chains,
-                            identity_evm_chains, known_chains_for_release,
-                            recon_adapter_for, resolve_alias, evm_chain_id_for)
+from chain_registry import (CHAIN_REGISTRY, REQUIRED_FORMAL_CAPABILITIES, evm_family,
+                            formal_chains, formal_ready_chains, formal_tier_chains,
+                            identity_chains, identity_evm_chains, known_chains_for_release,
+                            recon_adapter_for, record_is_formal_ready, release_tier_for,
+                            resolve_alias, evm_chain_id_for)
 
 
 def load(path, name):
@@ -36,16 +38,18 @@ def literal_dict_keys(path, name):
 
 def main():
     expected_fields = {
-        "canonical", "aliases", "formal", "exploration", "capture_evm_family",
-        "has_labels_table", "recon_adapter", "identity_adapter",
-        "evm_chain_id",
+        "canonical", "aliases", "release_tier", "capture_evm_family",
+        "evm_chain_id", "capabilities",
     }
     assert CHAIN_REGISTRY and all(set(record) == expected_fields
                                   for record in CHAIN_REGISTRY.values())
-    assert formal_chains() == {"eth", "bsc", "base", "robinhood", "sol"}
-    assert known_chains_for_release() == formal_chains() | {"arbitrum"}
-    assert CHAIN_REGISTRY["arbitrum"]["exploration"] is True
-    assert CHAIN_REGISTRY["arbitrum"]["formal"] is False
+    assert all(set(record["capabilities"]) == REQUIRED_FORMAL_CAPABILITIES
+               for record in CHAIN_REGISTRY.values())
+    assert formal_tier_chains() == {"eth", "bsc", "base", "sol"}
+    assert formal_ready_chains() == formal_chains() == set()
+    assert known_chains_for_release() == formal_tier_chains() | {"arbitrum", "robinhood"}
+    assert release_tier_for("arbitrum") == "exploration"
+    assert release_tier_for("robinhood") == "exploration"
     assert {"eth", "bsc", "base", "arbitrum", "polygon", "robinhood"} <= evm_family()
     assert "sol" not in evm_family()
     assert identity_evm_chains() == {"eth", "bsc", "base", "arbitrum", "robinhood"}
@@ -64,31 +68,27 @@ def main():
         ROOT / "scripts/report/entity_identity_gate.py", "registry_identity_gate")
     shared_receipt = load(
         ROOT / "scripts/report/shared_release_receipt.py", "registry_shared_receipt")
-    assert audit.formal_chains() == formal_chains()
-    assert handoff.READY_CHAINS == formal_chains()
+    assert handoff.READY_CHAINS == formal_ready_chains() == set()
     assert identity_receipt.identity_evm_chains() == identity_evm_chains()
     assert identity_receipt.identity_chains() == identity_chains()
     assert identity_gate.identity_chains() == identity_chains()
     assert shared_receipt.chain_family("solana") == recon_adapter_for("sol") == "solana"
     assert shared_receipt.chain_family("arbitrum") == recon_adapter_for("arbitrum") == "evm"
 
-    original = CHAIN_REGISTRY["polygon"]["identity_adapter"]
+    assert audit.formal_chain_error("bsc") and "vertical_slice_verified" in audit.formal_chain_error("bsc")
+    copied = {**CHAIN_REGISTRY["bsc"],
+              "capabilities": dict(CHAIN_REGISTRY["bsc"]["capabilities"])}
+    copied["capabilities"]["vertical_slice_verified"] = True
+    assert record_is_formal_ready(copied)
     try:
-        CHAIN_REGISTRY["polygon"]["identity_adapter"] = "evm"
-        assert "polygon" in identity_receipt.identity_evm_chains()
-        assert "polygon" in identity_receipt.identity_chains()
-        assert "polygon" in identity_gate.identity_chains()
-    finally:
-        CHAIN_REGISTRY["polygon"]["identity_adapter"] = original
+        CHAIN_REGISTRY["polygon"] = copied
+        raise AssertionError("registry accepted manual assignment")
+    except TypeError:
+        pass
 
-    original_recon = CHAIN_REGISTRY["polygon"]["recon_adapter"]
-    try:
-        CHAIN_REGISTRY["polygon"]["recon_adapter"] = "solana"
-        assert shared_receipt.chain_family("polygon") == "solana"
-    finally:
-        CHAIN_REGISTRY["polygon"]["recon_adapter"] = original_recon
-
-    forbidden = re.compile(r"^(?:FORMAL_CHAINS|KNOWN_CHAINS|EVM_CHAINS|CHAIN_ALIASES)\s*=", re.M)
+    forbidden = re.compile(
+        r"^(?:FORMAL_CHAINS|KNOWN_CHAINS|EVM_CHAINS|CHAIN_ALIASES)\s*=|\bformal\s*=\s*(?:True|False)",
+        re.M)
     for rel in ("scripts/report/audit_release_gate.py", "scripts/report/handoff_manifest.py",
                 "scripts/report/identity_snapshot_receipt.py",
                 "scripts/report/entity_identity_gate.py"):
@@ -102,8 +102,8 @@ def main():
         unknown = {key for key in unknown if resolve_alias(key) not in CHAIN_REGISTRY}
         assert not unknown, f"{rel} {name} has unregistered chains: {sorted(unknown)}"
 
-    print("PASS: chain registry drives audit/handoff/identity consumers; mutation propagates; "
-          "DEFAULT_RPC keys registered")
+    print("PASS: immutable capability registry drives release/identity consumers; "
+          "all production chains await Batch-3 vertical slices; DEFAULT_RPC keys registered")
     return 0
 
 

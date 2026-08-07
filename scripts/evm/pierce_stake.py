@@ -31,6 +31,7 @@
 import argparse, json, os, sys, time
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "lib"))
+from chain_registry import attested_evm_chains
 from net import RpcAttestationError, attested_rpc_pool
 
 MC3 = "0xca11bde05977b3631167028862be2a173976ca11"
@@ -128,7 +129,7 @@ def main():
     ap.add_argument("--one-arg", action="store_true", help="单参数函数（忽略 --token）")
     ap.add_argument("--rpc", action="append", default=None, help="可多次传入，轮换")
     ap.add_argument("--chain", default="arbitrum",
-                    choices=["eth", "bsc", "base", "arbitrum"],
+                    choices=sorted(attested_evm_chains()),
                     help="目标链（默认 arbitrum；chain id 只读 chain_registry）")
     a = ap.parse_args()
 

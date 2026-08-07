@@ -38,7 +38,7 @@ def frontmatter_description():
 
 def frontmatter_chains():
     description = frontmatter_description()
-    claim = re.search(r"正式深度管线覆盖\s*([^；]+)；", description)
+    claim = re.search(r"正式候选链为\s*([^；]+)；", description)
     assert claim, "frontmatter lacks the canonical supported-chain claim"
     names = []
     for group in claim.group(1).split("、"):
@@ -69,15 +69,17 @@ def csv_has_rows(path):
 def main():
     declared = frontmatter_chains()
     sys.path.insert(0, str(ROOT / "scripts/lib"))
-    from chain_registry import formal_chains, identity_chains, identity_evm_chains
-    formal = formal_chains()
+    from chain_registry import (formal_ready_chains, formal_tier_chains,
+                                identity_chains, identity_evm_chains,
+                                release_tier_for)
+    formal = formal_tier_chains()
     buildable = named_set(ROOT / "scripts/labels/build_labels.py", "BUILD_CHAINS")
     assert formal == declared, (
         f"chain registry formal={sorted(formal)} != frontmatter={sorted(declared)}"
     )
-    assert buildable == declared, (
-        f"build_labels BUILD_CHAINS={sorted(buildable)} != frontmatter={sorted(declared)}"
-    )
+    assert declared <= buildable
+    assert "robinhood" in buildable and release_tier_for("robinhood") == "exploration"
+    assert formal_ready_chains() == set(), "Batch 3 前不得提前宣布 formal-ready"
 
     sys.path.insert(0, str(ROOT / "scripts/labels"))
     from labels_resolver import LabelResolver
@@ -96,8 +98,8 @@ def main():
     assert declared <= identity_chains() and "arbitrum" in identity_chains() - declared
     assert "arbitrum" in identity_evm_chains(), \
         "exploratory Arbitrum identity receipt capability was removed"
-    print("PASS: formal chain matrix closes frontmatter + release gate + non-degraded labels: "
-          f"{sorted(declared)}; arbitrum remains exploratory-known")
+    print("PASS: formal-candidate matrix closes frontmatter + labels capability: "
+          f"{sorted(declared)}; all await vertical slices; Robinhood/Arbitrum remain exploration")
     return 0
 
 

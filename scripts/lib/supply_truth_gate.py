@@ -37,6 +37,7 @@ from pathlib import Path
 
 from receipt_kernel import (build_envelope, finalize_envelope, publish_error_receipt,
                             publish_overwrite)
+from chain_registry import formal_reconciliation_chains
 from net import attested_rpc_pool
 
 SEL_TOTSUP = "0x18160ddd"  # totalSupply()
@@ -104,7 +105,9 @@ def fetch_onchain_supply(chain, token=None, mint=None, rpc=None, proxy=None,
 
 def main():
     ap = argparse.ArgumentParser(description="供给真值闸：重放净供给 vs 链上 totalSupply")
-    ap.add_argument("--chain", required=True, choices=sorted(DEFAULT_RPC))
+    supply_chains = formal_reconciliation_chains("supply")
+    supply_choices = sorted((supply_chains - {"sol"}) | ({"solana"} if "sol" in supply_chains else set()))
+    ap.add_argument("--chain", required=True, choices=supply_choices)
     ap.add_argument("--token", help="EVM 合约地址")
     ap.add_argument("--mint", help="Solana mint")
     ap.add_argument("--replay-stats", help="replay_stats.json 路径")
