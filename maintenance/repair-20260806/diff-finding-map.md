@@ -51,10 +51,10 @@
 | `B2F-G2` | `ee7d4d5` | registry API 收严+harness 可逆化(B2R-02/03/04) |
 | `B2F-G3` | `af92a91` | 批内消化台账/门禁+opus 批二审查报告入库 |
 | `B2F2-G1` | `9609655` | 消化第二轮(B2FR-01~04):伪缺席补闸+generate 规范化+台账修正 |
-| `B3-G1` | 待 Fable 回填 | EVM 正式链纵切片 + final-block/readiness |
-| `B3-G2` | 待 Fable 回填 | Solana producer envelope/txn/slot/timestamp + 纵切片 |
-| `B3-G3` | 待 Fable 回填 | 批三测试、兼容 fixture 与静态 manifest |
-| `B3-G4` | 待 Fable 回填 | 批三台账、transport 注入与施工报告 |
+| `B3-G1` | `4ac3d04` | EVM 正式链纵切片 + final-block/readiness |
+| `B3-G2` | `d2e9409` | Solana producer envelope/txn/slot/timestamp + 纵切片 |
+| `B3-G3` | `73113ba` | 批三测试、兼容 fixture 与静态 manifest |
+| `B3-G4` | `5c41f05` | 批三台账、transport 注入与施工报告 |
 
 ## 未映射 hunk 计数
 
@@ -63,6 +63,6 @@
 - 批二（`553806b..5924cd5`）：`0` 候选（所有 hunk 已归属 `B2-G0`～`B2-G4`；批内审查回填 commit 已包含）。
 - 批二批内消化（`5924cd5..3ca824e`）：`0` 候选（所有新 hunk 已归属 `B2F-G1`～`B2F-G3`；增量重审独立复算=0，文档漏列项已由 B2F2-G1 修正）。
 - 批二批内消化第二轮（`3ca824e..` 至本回填 commit 即候选 tip，含 `B2F2-G1`=`9609655` 与本表自身回填）：`0` 候选（全部 hunk 归属 `B2F2-G1`；回填 commit 按通例自指式计入）。
-- 批三（`62efbf9..` 候选 tip）：`0` 候选（当前全部 hunk 归属 `B3-G1`～`B3-G4`；SHA 待 Fable 代 commit 后回填）。
+- 批三（`62efbf9..` 至本回填 commit 即候选 tip，含 `B3-G1`=`4ac3d04`/`B3-G2`=`d2e9409`/`B3-G3`=`73113ba`/`B3-G4`=`5c41f05` 与本表自身回填）：`0` 候选（全部 hunk 归属 `B3-G1`～`B3-G4`；回填 commit 按通例自指式计入；待批内审查独立复算）。
 
 通例：区间末端恒取候选 tip；自指式 SHA 回填 commit 计入本区间。
