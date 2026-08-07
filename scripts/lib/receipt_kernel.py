@@ -13,7 +13,7 @@ import hashlib
 import json
 import os
 import stat
-from contextlib import contextmanager
+from contextlib import ExitStack, contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -30,6 +30,11 @@ RESERVED_FIELDS = {"schema", "target", "producer", "mode", "inputs",
 
 class ReceiptKernelError(ValueError):
     pass
+
+
+@dataclass(frozen=True)
+class RawBytes:
+    data: bytes
 
 
 def _digest(path: Path) -> str:
@@ -156,6 +161,8 @@ def finalize_envelope(envelope, verdict, exit_code, **fields) -> dict:
 
 
 def _json_bytes(payload) -> bytes:
+    if isinstance(payload, RawBytes):
+        return payload.data
     return (json.dumps(payload, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
 
 
@@ -341,6 +348,14 @@ def publish_overwrite(path, payload) -> Path:
         finally:
             _unlink_at(out, tmp)
         return out.path
+
+
+def assert_distinct_paths(*paths) -> None:
+    with ExitStack() as stack:
+        targets = [stack.enter_context(_secure_target(path)) for path in paths]
+        for index, left in enumerate(targets):
+            for right in targets[index + 1:]:
+                _assert_distinct(left, right)
 
 
 def publish_txn(data_path, data_payload, receipt_path, receipt_payload) -> tuple[Path, Path]:

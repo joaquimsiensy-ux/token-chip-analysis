@@ -12,8 +12,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
 import net
-from receipt_kernel import (build_envelope, finalize_envelope, publish_error_receipt,
-                            publish_overwrite)
+from receipt_kernel import (RawBytes, assert_distinct_paths, build_envelope,
+                            finalize_envelope, publish_error_receipt, publish_overwrite,
+                            publish_txn)
 
 SQD = "https://portal.sqd.dev/datasets/solana-mainnet/stream"
 MINT = json.loads(Path("config.json").read_text())["mint"]
@@ -40,9 +41,9 @@ def pair_tx(delta):
     return edges
 
 
-def scan_seg(frm, to):
+def scan_seg(frm, to, endpoint=SQD):
     """扫一段,返回 (edges, ok)。内部按 portal 游标推进,直到覆盖整段。"""
-    edges, cur, fails = [], frm, 0
+    edges, cur, fails, timestamps = [], frm, 0, []
     while cur <= to:
         body = {"type": "solana", "fromBlock": cur, "toBlock": to,
                 "fields": {"block": {"number": True, "timestamp": True},
@@ -51,11 +52,11 @@ def scan_seg(frm, to):
                                             "postOwner": True, "preAmount": True, "postAmount": True}},
                 "tokenBalances": [{"postMint": [MINT], "transaction": True},
                                   {"preMint": [MINT], "transaction": True}]}
-        result = net.curl_json(SQD, post_json=body, timeout=60, attempts=1)
+        result = net.curl_json(endpoint, post_json=body, timeout=60, attempts=1)
         if not result.ok:
             fails += 1
             if fails > 5:
-                return edges, False
+                return edges, False, timestamps
             time.sleep(2 * fails)
             continue
         blocks = result.value
@@ -64,7 +65,7 @@ def scan_seg(frm, to):
         if not isinstance(blocks, list) or any(not isinstance(block, dict) for block in blocks):
             fails += 1
             if fails > 5:
-                return edges, False
+                return edges, False, timestamps
             time.sleep(2 * fails)
             continue
         last = None
@@ -77,10 +78,15 @@ def scan_seg(frm, to):
                 page_valid = False
                 break
             last = number
+            ts = hdr.get("timestamp")
+            if (isinstance(ts, bool) or not isinstance(ts, int)
+                    or ts <= 0 or ts > 4102444800):
+                page_valid = False
+                break
+            timestamps.append(ts)
             tbs = b.get("tokenBalances") or []
             if not tbs:
                 continue
-            ts = hdr.get("timestamp") or 0
             errmap = {tx.get("transactionIndex"): tx.get("err") for tx in b.get("transactions") or []}
             by_tx = defaultdict(dict)
             for r in tbs:
@@ -102,13 +108,13 @@ def scan_seg(frm, to):
         if not page_valid or last is None:
             fails += 1
             if fails > 5:
-                return edges, False
+                return edges, False, timestamps
             time.sleep(2 * fails)
             continue
         edges.extend(page_edges)
         fails = 0
         cur = last + 1
-    return edges, True
+    return edges, True, timestamps
 
 
 def _run_id():
@@ -131,10 +137,18 @@ def main(argv=None):
     ap.add_argument("out")
     ap.add_argument("--conc", type=int, default=8)
     ap.add_argument("--receipt", required=True)
+    ap.add_argument("--endpoint", default=SQD)
     args = ap.parse_args(argv)
 
     run_id = _run_id()
     out_path = Path(args.out).resolve()
+    partial = Path(str(out_path) + ".partial")
+    gaps_path = Path(str(out_path) + ".gaps.json")
+    try:
+        assert_distinct_paths(out_path, args.receipt, partial, gaps_path)
+    except Exception as exc:
+        print(f"[window_fetch] 发布路径冲突: {exc}", file=sys.stderr)
+        return 2
     if args.frm < 0 or args.frm > args.to or args.conc < 1:
         if out_path.exists():
             stale = out_path.with_name(f"{out_path.name}.stale.{run_id}")
@@ -157,22 +171,30 @@ def main(argv=None):
     t0 = time.time()
     done = [0]
     gaps = []
+    segment_timestamps = []
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    partial = Path(str(out_path) + ".partial")
     outf = partial.open("w", encoding="utf-8")
     backup = None
     published_current = False
     lock = __import__("threading").Lock()
-    target = {"chain": "solana", "token": MINT, "as_of_block": args.to}
+    target = {"chain": "solana", "token": MINT.lower(), "as_of_block": args.to}
     base_envelope = build_envelope(SCHEMA, target, __file__, "formal")
 
     def work(seg):
-        e, ok = scan_seg(seg[0], seg[1])
+        result = scan_seg(seg[0], seg[1], args.endpoint)
+        if len(result) == 2:  # legacy test adapter; production returns bound timestamps.
+            e, ok = result
+            timestamps = []
+        else:
+            e, ok, timestamps = result
         with lock:
             for row in e:
                 outf.write(json.dumps(list(row), separators=(",", ":")) + "\n")
             if not ok:
                 gaps.append(seg)
+            segment_timestamps.append({"from_slot": seg[0], "to_slot": seg[1],
+                                       "min": min(timestamps) if timestamps else None,
+                                       "max": max(timestamps) if timestamps else None})
             done[0] += 1
             if done[0] % 20 == 0:
                 print(f"{done[0]}/{len(segs)} segs, {time.time()-t0:.0f}s", flush=True)
@@ -181,7 +203,6 @@ def main(argv=None):
         with ThreadPoolExecutor(args.conc) as ex:
             list(ex.map(work, segs))
         outf.flush(); os.fsync(outf.fileno()); outf.close()
-        gaps_path = Path(str(out_path) + ".gaps.json")
         publish_overwrite(gaps_path, gaps)
         if gaps:
             verdict, exit_code = "FAIL", 2
@@ -194,15 +215,12 @@ def main(argv=None):
                 SCHEMA, target, __file__, "formal", {"output": partial, "gaps": gaps_path})
             published = envelope["inputs"]["output"]
         else:
-            if out_path.exists():
-                backup = out_path.with_name(f".{out_path.name}.previous.{run_id}")
-                os.replace(out_path, backup)
-            os.replace(partial, out_path)
-            published_current = True
             verdict, exit_code = "PASS", 0
             envelope = build_envelope(
-                SCHEMA, target, __file__, "formal", {"output": out_path, "gaps": gaps_path})
-            published = envelope["inputs"]["output"]
+                SCHEMA, target, __file__, "formal", {"gaps": gaps_path})
+            data_bytes = partial.read_bytes()
+            published = {"path": str(out_path), "size": len(data_bytes),
+                         "sha256": __import__("hashlib").sha256(data_bytes).hexdigest()}
         if gaps:
             published = {**published, "partial": True}
         receipt = finalize_envelope(
@@ -211,8 +229,17 @@ def main(argv=None):
                    "chunk_size": CHUNK, "segments": len(segs)},
             coverage={"completed_segments": len(segs) - len(gaps),
                       "gap_segments": len(gaps), "gaps": gaps},
-            output=published)
-        publish_overwrite(args.receipt, receipt)
+            output=published,
+            timestamps={"segments": sorted(segment_timestamps,
+                                            key=lambda item: item["from_slot"])})
+        if gaps:
+            publish_overwrite(args.receipt, receipt)
+        else:
+            publish_txn(out_path, RawBytes(data_bytes), args.receipt, receipt)
+            if partial.exists():
+                partial.unlink()
+            if __import__("hashlib").sha256(out_path.read_bytes()).hexdigest() != published["sha256"]:
+                raise RuntimeError("联合发布后独立读者哈希不一致")
         if backup and backup.exists():
             backup.unlink()
         print(f"{verdict} {len(segs)} segs ({len(gaps)} gaps) in {time.time()-t0:.0f}s"

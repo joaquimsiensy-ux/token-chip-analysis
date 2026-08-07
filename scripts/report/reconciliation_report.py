@@ -145,7 +145,10 @@ def _validate_spec(spec, case_dir):
         raise RunnerError(f"family must be one of {sorted(RECON_PRODUCERS)}")
     target = spec.get("target")
     if not isinstance(target, dict) or set(target) != {"chain", "token", "as_of_block"} \
-            or not target.get("chain") or not target.get("token"):
+            or not target.get("chain") or not target.get("token") \
+            or isinstance(target.get("as_of_block"), bool) \
+            or not isinstance(target.get("as_of_block"), int) \
+            or target["as_of_block"] < 0:
         raise RunnerError("target must contain exactly chain/token/as_of_block")
     checks = spec.get("checks")
     if not isinstance(checks, dict) or set(checks) != set(CHECK_KEYS):

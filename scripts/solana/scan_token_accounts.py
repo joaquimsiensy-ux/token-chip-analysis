@@ -21,6 +21,10 @@
 import argparse, base64, hashlib, json, subprocess, sys, time
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
+from receipt_kernel import (assert_distinct_paths, build_envelope, finalize_envelope,
+                            publish_txn)
+
 SPL = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
 T22 = "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
 ALPHA = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
@@ -147,9 +151,20 @@ def main():
                          "（publicnode 会 504；api.mainnet-beta 实测放行，2026-07-13）")
     ap.add_argument("--timeout", type=int, default=150,
                     help="GPA 请求超时秒（大盘子 mint 配 Helius 用 300，2026-07-22 GOAT 实测）")
+    ap.add_argument("--as-of-slot", type=int, required=True)
+    ap.add_argument("--out", required=True)
+    ap.add_argument("--receipt", required=True)
+    ap.add_argument("--work-dir", default="data")
     args = ap.parse_args()
+    if args.as_of_slot < 0:
+        ap.error("--as-of-slot must be non-negative")
+    try:
+        assert_distinct_paths(args.out, args.receipt)
+    except Exception as exc:
+        print(f"FATAL: output/receipt path conflict: {exc}", file=sys.stderr)
+        return 2
 
-    data_dir = Path("data"); data_dir.mkdir(exist_ok=True)
+    data_dir = Path(args.work_dir); data_dir.mkdir(parents=True, exist_ok=True)
 
     if args.program == "auto":
         info_f = data_dir / "_mint_info.json"
@@ -177,6 +192,10 @@ def main():
     if not ok:
         print("FATAL: getTokenSupply 失败", file=sys.stderr); sys.exit(1)
     supply_slot, decimals, supply_raw = parse_supply_response(json.loads(sup_f.read_text()))
+    if supply_slot != args.as_of_slot:
+        print(f"FATAL: getTokenSupply slot={supply_slot} != frozen slot={args.as_of_slot}",
+              file=sys.stderr)
+        return 1
     print(f"supply={supply_raw} decimals={decimals} ui={supply_raw/10**decimals:,.2f}")
 
     # Token-2022 extension 账户长度不封顶，正式默认必须无 dataSize 全扫。
@@ -223,6 +242,10 @@ def main():
             batch, gpa_slot = parse_gpa_response(resp)
         except ValueError as exc:
             print(f"FATAL: RPC error (ds={ds}): {exc}", file=sys.stderr); sys.exit(1)
+        if gpa_slot != args.as_of_slot:
+            print(f"FATAL: GPA slot={gpa_slot} != frozen slot={args.as_of_slot}",
+                  file=sys.stderr)
+            return 1
         meta = {**expected_identity, "gpa_response_slot": gpa_slot, "account_count": len(batch)}
         if not reused:
             meta_f.write_text(json.dumps(meta, indent=2, sort_keys=True))
@@ -271,6 +294,40 @@ def main():
                                "sha256": sha256_file(owners_out)}},
         "scans": scan_receipts,
     }, indent=2, sort_keys=True))
+
+    snapshot = {
+        "schema": "solana-holder-snapshot/v3",
+        "target": {"chain": "solana", "token": args.mint.lower(),
+                   "as_of_block": args.as_of_slot},
+        "mint": args.mint,
+        "program": prog,
+        "rpc": args.rpc,
+        "decimals": decimals,
+        "supply_raw": str(supply_raw),
+        "sum_accounts_raw": str(total),
+        "closed": True,
+        "accounts": rows,
+        "owners": owners_sorted,
+    }
+    envelope = build_envelope(
+        "solana-holder-snapshot-receipt/v3",
+        snapshot["target"], __file__, "formal",
+        inputs={"supply_rpc": sup_f,
+                **{f"gpa_{i}": data_dir / scan["raw_artifact"]["path"]
+                   for i, scan in enumerate(scan_receipts)}})
+    data_bytes = (json.dumps(snapshot, ensure_ascii=False, indent=2) + "\n").encode()
+    receipt = finalize_envelope(
+        envelope, "PASS", 0, closed=True,
+        supply_raw=str(supply_raw), sum_accounts_raw=str(total),
+        observed_slots={"supply": supply_slot,
+                        "gpa": [scan["gpa_response_slot"] for scan in scan_receipts]},
+        output={"path": str(Path(args.out).resolve()), "size": len(data_bytes),
+                "sha256": hashlib.sha256(data_bytes).hexdigest()})
+    try:
+        publish_txn(args.out, snapshot, args.receipt, receipt)
+    except Exception as exc:
+        print(f"FATAL: snapshot transaction publish failed: {exc}", file=sys.stderr)
+        return 1
 
     ui = lambda x: x / 10**decimals
     tiers = [(1e6, ">=100万"), (1e5, "10-100万"), (1e4, "1-10万"), (1e3, "1千-1万"), (0, "<1千")]

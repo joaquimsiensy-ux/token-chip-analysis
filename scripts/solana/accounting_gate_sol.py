@@ -103,6 +103,7 @@ def main():
     ap.add_argument("--mint", required=True)
     ap.add_argument("--rpc", default=None,
                     help="默认读 ~/.config/helius/api-key 拼 Helius；无则公共 RPC")
+    ap.add_argument("--as-of-slot", type=int, required=True)
     ap.add_argument("--out", default="accounting_mode.json")
     a = ap.parse_args()
 
@@ -114,7 +115,10 @@ def main():
         else:
             rpc = PUBLIC_RPC
 
+    if a.as_of_slot < 0:
+        ap.error("--as-of-slot 必须是非负冻结 slot")
     result = {"schema": "accounting-gate/v1", "chain": "solana", "mint": a.mint,
+              "as_of_slot": a.as_of_slot, "as_of_block": a.as_of_slot,
               "producer": {"path": "scripts/solana/accounting_gate_sol.py",
                            "sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest()},
               "checked_at": now_iso(), "rpc": rpc.split("?")[0],

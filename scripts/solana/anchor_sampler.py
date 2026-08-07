@@ -15,8 +15,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
 import net
-from receipt_kernel import (build_envelope, finalize_envelope, publish_error_receipt,
-                            publish_overwrite)
+from receipt_kernel import (RawBytes, assert_distinct_paths, build_envelope,
+                            finalize_envelope, publish_error_receipt, publish_txn)
 
 SQD = "https://portal.sqd.dev/datasets/solana-mainnet/stream"
 CFG = json.loads(Path("config.json").read_text())
@@ -26,14 +26,14 @@ SCHEMA = "solana-anchor-sampler-receipt/v2"
 ROW_IDENTITY = {"chain": "solana", "mint": MINT, "endpoint": SQD}
 
 
-def fetch_window(frm, to):
+def fetch_window(frm, to, endpoint=SQD):
     body = {"type": "solana", "fromBlock": frm, "toBlock": to,
             "fields": {"block": {"number": True, "timestamp": True},
                        "transaction": {"transactionIndex": True, "err": True},
                        "tokenBalance": {"transactionIndex": True, "account": True,
                                         "postOwner": True, "postAmount": True}},
             "tokenBalances": [{"postMint": [MINT], "transaction": True}]}
-    result = net.curl_json(SQD, post_json=body, timeout=150, attempts=4)
+    result = net.curl_json(endpoint, post_json=body, timeout=150, attempts=4)
     if not result.ok:
         return None
     blocks = result.value
@@ -98,11 +98,11 @@ def parse_blocks(blocks):
     return accounts, ts_seen, n_rows, first_slot
 
 
-def _identity_error(row, cutoff, seen_dates):
+def _identity_error(row, cutoff, seen_dates, endpoint=SQD):
     missing = [key for key in (*ROW_IDENTITY, "as_of_slot") if key not in row]
     if missing:
         return f"旧格式缺身份列 {missing}，拒绝复用；请重采"
-    expected = {**ROW_IDENTITY, "as_of_slot": cutoff}
+    expected = {**ROW_IDENTITY, "endpoint": endpoint, "as_of_slot": cutoff}
     mismatched = [key for key, value in expected.items() if row.get(key) != value]
     if mismatched:
         return f"resume 身份不匹配 {mismatched}，拒绝复用；请重采"
@@ -122,8 +122,8 @@ def _identity_error(row, cutoff, seen_dates):
     return None
 
 
-def _with_identity(row, cutoff):
-    return {**row, **ROW_IDENTITY, "as_of_slot": cutoff}
+def _with_identity(row, cutoff, endpoint=SQD):
+    return {**row, **ROW_IDENTITY, "endpoint": endpoint, "as_of_slot": cutoff}
 
 
 def _error_receipt(receipt_path, envelope, message):
@@ -144,9 +144,10 @@ def main(argv=None):
                     help="与 accounting target 对齐的冻结 slot")
     ap.add_argument("--out", default="data/anchors_daily.jsonl")
     ap.add_argument("--receipt", required=True)
+    ap.add_argument("--endpoint", default=SQD)
     args = ap.parse_args(argv)
 
-    target = {"chain": "solana", "token": MINT, "as_of_block": args.as_of_slot}
+    target = {"chain": "solana", "token": MINT.lower(), "as_of_block": args.as_of_slot}
     base_envelope = build_envelope(SCHEMA, target, __file__, "formal")
 
     if not args.ref_slot or not args.ref_ts:
@@ -155,8 +156,14 @@ def main(argv=None):
 
     out = Path(args.out)
     out.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        assert_distinct_paths(out, args.receipt)
+    except Exception as exc:
+        print(f"[anchor_sampler] 发布路径冲突: {exc}", file=sys.stderr)
+        return 2
     calib = Calib(args.ref_ts, args.ref_slot)
     done = set()
+    rows = []
     if out.exists():
         resume_error = None
         for line_no, ln in enumerate(out.read_text(encoding="utf-8").splitlines(), 1):
@@ -165,11 +172,12 @@ def main(argv=None):
             except Exception as exc:
                 resume_error = f"resume 第 {line_no} 行不可解析: {exc}；请重采"
                 break
-            resume_error = _identity_error(r, args.as_of_slot, done)
+            resume_error = _identity_error(r, args.as_of_slot, done, args.endpoint)
             if resume_error:
                 resume_error = f"resume 第 {line_no} 行: {resume_error}"
                 break
             done.add(r["date"])
+            rows.append(r)
             if r.get("ts_seen") and r.get("from_slot") is not None:
                 calib.add(r["ts_seen"], r["from_slot"])
         if resume_error:
@@ -203,34 +211,38 @@ def main(argv=None):
             to = min(frm + WIN, args.as_of_slot)
             if frm < 0 or frm > to:
                 res = _with_identity({"date": ds, "error": "range_beyond_cutoff",
-                                      "from_slot": frm, "to_slot": to}, args.as_of_slot)
+                                      "from_slot": frm, "to_slot": to}, args.as_of_slot,
+                                     args.endpoint)
                 break
-            blocks = fetch_window(frm, to)
+            blocks = fetch_window(frm, to, args.endpoint)
             if blocks is None:
                 res = _with_identity({"date": ds, "error": "fetch_fail",
-                                      "from_slot": frm, "to_slot": to}, args.as_of_slot)
+                                      "from_slot": frm, "to_slot": to}, args.as_of_slot,
+                                     args.endpoint)
                 break
             accounts, ts_seen, n_rows, first_slot = parse_blocks(blocks)
             if ts_seen is None:
                 if blocks:
                     res = _with_identity({"date": ds, "error": "unproven_empty",
-                                          "from_slot": frm, "to_slot": to}, args.as_of_slot)
+                                          "from_slot": frm, "to_slot": to}, args.as_of_slot,
+                                         args.endpoint)
                     break
                 # 仅成功 RPC 的结构化空列表可证明该查询窗无该 mint 活动。
                 res = _with_identity({"date": ds, "from_slot": frm, "to_slot": to,
                                       "ts_seen": None, "n_rows": 0, "accounts": {}},
-                                     args.as_of_slot)
+                                     args.as_of_slot, args.endpoint)
                 break
             drift = ts_seen - want
             if abs(drift) <= 4 * 3600:
                 actual_from = first_slot if first_slot is not None else frm
                 if not isinstance(actual_from, int) or actual_from < 0 or actual_from > args.as_of_slot:
                     res = _with_identity({"date": ds, "error": "observed_slot_beyond_cutoff",
-                                          "from_slot": actual_from, "to_slot": to}, args.as_of_slot)
+                                          "from_slot": actual_from, "to_slot": to}, args.as_of_slot,
+                                         args.endpoint)
                     break
                 res = _with_identity({"date": ds, "from_slot": actual_from, "to_slot": to,
                                       "ts_seen": ts_seen, "n_rows": n_rows,
-                                      "accounts": accounts}, args.as_of_slot)
+                                      "accounts": accounts}, args.as_of_slot, args.endpoint)
                 calib.add(ts_seen, first_slot or frm)
                 break
             # 偏了:把这次观测加进校准表再重估
@@ -239,20 +251,18 @@ def main(argv=None):
         else:
             to = min(frm + WIN, args.as_of_slot)
             res = _with_identity({"date": ds, "error": "no_converge",
-                                  "from_slot": frm, "to_slot": to}, args.as_of_slot)
+                                  "from_slot": frm, "to_slot": to}, args.as_of_slot,
+                                 args.endpoint)
         if res.get("error"):
             fails += 1
-        with out.open("a", encoding="utf-8") as f:
-            f.write(json.dumps(res, separators=(",", ":")) + "\n")
-            f.flush(); os.fsync(f.fileno())
+        rows.append(res)
         if (idx + 1) % 25 == 0:
             print(f"{idx+1}/{len(days)} days ({ds}), fails={fails}, elapsed={time.time()-t0:.0f}s", flush=True)
     print(f"DONE {len(days)} days, fails={fails}, {time.time()-t0:.0f}s", flush=True)
     failures = []
     covered = 0
     try:
-        for line in out.read_text(encoding="utf-8").splitlines():
-            row = json.loads(line)
+        for row in rows:
             if args.start <= str(row.get("date", "")) <= end:
                 if row.get("error"):
                     failures.append({"date": row.get("date"), "error": row.get("error"),
@@ -260,7 +270,7 @@ def main(argv=None):
                                      "to_slot": row.get("to_slot")})
                 else:
                     covered += 1
-        envelope = build_envelope(SCHEMA, target, __file__, "formal", {"output": out})
+        envelope = build_envelope(SCHEMA, target, __file__, "formal", {"config": "config.json"})
         coverage = {"requested_days": (d1 - d0).days + 1,
                     "covered_days": covered, "failed_days": len(failures)}
         if failures:
@@ -268,10 +278,16 @@ def main(argv=None):
                 {"coverage": coverage, "failures": failures}, ensure_ascii=False,
                 separators=(",", ":")))
             return 2
+        data_bytes = b"".join((json.dumps(row, separators=(",", ":")) + "\n").encode()
+                              for row in rows)
+        output_ref = {"path": str(out), "size": len(data_bytes),
+                      "sha256": __import__("hashlib").sha256(data_bytes).hexdigest()}
         receipt = finalize_envelope(
             envelope, "PASS", 0, date_range={"start": args.start, "end": end},
-            output=envelope["inputs"]["output"], coverage=coverage, failures=[])
-        publish_overwrite(args.receipt, receipt)
+            output=output_ref, coverage=coverage, failures=[])
+        publish_txn(out, RawBytes(data_bytes), args.receipt, receipt)
+        if __import__("hashlib").sha256(out.read_bytes()).hexdigest() != output_ref["sha256"]:
+            raise RuntimeError("联合发布后独立读者哈希不一致")
         return 0
     except Exception as exc:
         _error_receipt(args.receipt, base_envelope, exc)

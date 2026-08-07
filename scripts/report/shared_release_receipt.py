@@ -14,7 +14,7 @@ REPO = HERE.parent.parent
 sys.path.insert(0, str(HERE.parent / "lib"))
 
 from adversarial_review_runner import validate_review_receipt
-from chain_registry import recon_adapter_for
+from chain_registry import recon_adapter_for, resolve_alias
 from receipt_validate import validate_receipt
 
 FILES = ("accounting_mode.json", "reconciliation_report.json", "adversarial_review.json")
@@ -90,6 +90,19 @@ def _require(condition, message):
         raise ValueError(message)
 
 
+def canonical_target(target):
+    if not isinstance(target, dict) or set(target) != {"chain", "token", "as_of_block"}:
+        raise ValueError("target must contain exactly chain/token/as_of_block")
+    slot = target.get("as_of_block")
+    if isinstance(slot, bool) or not isinstance(slot, int) or slot < 0:
+        raise ValueError("target as_of_block/slot must be a non-negative integer")
+    chain = resolve_alias(target.get("chain"))
+    token = str(target.get("token") or "").strip().lower()
+    if not chain or not token:
+        raise ValueError("target chain/token must be non-empty")
+    return {"chain": chain, "token": token, "as_of_block": slot}
+
+
 def validate_reconciliation_check(root, key, item, target, family):
     """Validate one producer receipt semantically; wrapper fields are comparisons, not truth."""
     if not isinstance(item, dict):
@@ -104,7 +117,7 @@ def validate_reconciliation_check(root, key, item, target, family):
     if envelope_errors:
         raise ValueError(
             f"reconciliation {key} receipt envelope invalid: {envelope_errors[0]}；{migration}")
-    _require(receipt.get("target") == target,
+    _require(canonical_target(receipt.get("target")) == canonical_target(target),
              f"reconciliation {key} receipt target mismatch；{migration}")
     _require(receipt.get("verdict") == item.get("status")
              and receipt.get("exit_code") == item.get("exit_code"),
@@ -137,12 +150,13 @@ def validate_reconciliation_check(root, key, item, target, family):
                  and coverage.get("failed_days") == 0 and receipt.get("failures") == [],
                  "anchor receipt coverage incomplete")
     elif family == "solana" and key == "supply":
-        _require(schema == "solana-holder-snapshot-v2",
+        _require(schema == "solana-holder-snapshot-receipt/v3",
                  f"reconciliation supply unknown schema {schema!r}；{migration}")
         _require(receipt.get("closed") is True
                  and str(receipt.get("supply_raw")) == str(receipt.get("sum_accounts_raw"))
-                 and isinstance(receipt.get("outputs"), dict) and receipt["outputs"],
+                 and isinstance(receipt.get("output"), dict),
                  "solana supply receipt is not a closed snapshot")
+        ref_ok(root, receipt["output"])
     elif key == "supply_truth":
         _require(schema == "supply-truth-receipt/v2",
                  f"reconciliation supply_truth unknown schema {schema!r}；{migration}")
@@ -156,8 +170,9 @@ def validate_reconciliation_check(root, key, item, target, family):
                  "supply_truth receipt must be formal and bind replay_stats input")
         if family == "solana":
             _require(isinstance(receipt.get("observed_context_slot"), int)
-                     and receipt["observed_context_slot"] >= 0,
-                     "solana supply_truth lacks observed_context_slot current-observation evidence")
+                     and receipt["observed_context_slot"]
+                     == canonical_target(target)["as_of_block"],
+                     "solana supply_truth is not bound to the frozen slot")
     elif family == "evm" and key == "time":
         _require(schema == "time-spotcheck/v2",
                  f"reconciliation time unknown schema {schema!r}；{migration}")
@@ -181,7 +196,7 @@ def validate_reconciliation_report(root, expected_target=None):
             or not target.get("chain") or not target.get("token")
             or recon.get("verdict") != "PASS" or recon.get("exit_code") != 0):
         raise ValueError("reconciliation target/schema/verdict invalid")
-    if expected_target is not None and target != expected_target:
+    if expected_target is not None and canonical_target(target) != canonical_target(expected_target):
         raise ValueError("reconciliation target/schema mismatch")
     family = chain_family(target["chain"])
     repo_ref_ok(recon.get("producer"), RECON_RUNNERS, "reconciliation wrapper")
@@ -216,7 +231,7 @@ def validate_sources(root):
               "as_of_block": accounting.get("as_of_block")}
     validate_reconciliation_report(root, target)
     if (adversarial.get("schema") != "adversarial-review/v2"
-            or adversarial.get("target") != target
+            or canonical_target(adversarial.get("target")) != canonical_target(target)
             or adversarial.get("release_decision") != "PASS"):
         raise ValueError("adversarial target/schema/decision invalid")
     roles = set()

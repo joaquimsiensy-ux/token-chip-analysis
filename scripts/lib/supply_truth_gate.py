@@ -158,6 +158,11 @@ def main():
             onchain, observed_context_slot = int(observed), None
         if a.chain == "solana" and observed_context_slot is None:
             raise ValueError("getTokenSupply 缺 result.context.slot，当前观测时点不可证")
+        if (mode == "formal" and a.chain == "solana"
+                and observed_context_slot != a.as_of_block):
+            raise ValueError(
+                f"getTokenSupply context.slot={observed_context_slot} "
+                f"!= frozen slot={a.as_of_block}")
     except Exception as e:  # 网络/字段/文件——检测自身失败，禁当 PASS
         print(f"检测自身失败（exit 1，修通道重跑）: {e}", file=sys.stderr)
         try:
