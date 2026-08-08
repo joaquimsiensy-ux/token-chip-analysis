@@ -257,3 +257,55 @@
 - 全量结果：`82/82 PASS`，`exit=0`，末行 `全部通过`。
 - invariant census：`receipt_producers=49, receipt_consumers=53, transport_calls=58, atomic_writes=38, formal_entrypoints=58, exceptions=0`；delete/add 两类自测破坏注入均稳定红。
 - 边界核对：`git diff --check` 通过；`VERSION` 零 diff，仍为 `6.36.0`；未执行任何 git 写操作。
+
+## B1F2-G1｜消化第二轮 B1R-01 REOPEN：consumer 语义重放
+
+- 目标 finding：`B1R-01` REOPEN（P1，老问题修复不全，止损循环 2/3）。定案方案是 consumer 使用真实 `--input` 与 plan 内完整生成参数，经 producer/consumer 共用的确定性核心重算；不再把 producer 自报路径或 SHA 当作执行事实。
+- 红测先行文件：`scripts/tests/test_time_spotcheck.py`、本进度文件；修复实现拟新增 `scripts/lib/anchor_selection.py` 并修改 `scripts/lib/anchor_plan.py`、`scripts/lib/time_spotcheck.py`。
+- 审查攻击原样复跑：
+  - `PYTHONDONTWRITEBYTECODE=1 python3 /private/tmp/r9b1r2/attack_b1r01_v2.py` → C2/C3 均 `dry-run rc=0`，正式路径越过 plan/receipt 闸后进入 RPC；真路径和真 SHA 仍可照抄穿透。
+  - 沙箱外仅用本机回环运行 `PYTHONDONTWRITEBYTECODE=1 python3 /private/tmp/r9b1r2/attack_b1r01_pass.py` → `consumer rc=0`，产出正式 `time-spotcheck/v2`，`verdict=PASS`、`exit_code=0`、`points=1`、`mismatch=0`，RPC 序列为 `eth_chainId, eth_call`。
+- 仓库红测复用同一攻击形态：真 `scripts/lib/anchor_plan.py` 路径+真 SHA、真实输入身份，但 plan/receipt 完全手写且把覆盖面自选为 1 点；另对真实 producer 产物逐一自洽重签 `expected_balance_raw`、删除锚点、seed、`cell_population`、缺 `per_cell` 五类变形，并要求 `--input` 成为必填。
+- 红色命令：`PYTHONDONTWRITEBYTECODE=1 python3 scripts/tests/test_time_spotcheck.py`。
+- 红色结果：`exit=1`，原 10 项仍绿；新增 8 项全部红，精确为手写 1 点 dry-run/正式路径 2 项、五类变形 5 项、`--input` 必填 1 项。旧实现仍接受这些自洽声明或根本没有真实输入参数。
+- 抽取前等价性基线：沙箱外本机回环运行 `PYTHONDONTWRITEBYTECODE=1 python3 scripts/tests/test_batch3_evm_vertical_slice.py` → `PASS B3-EVM-E2E: eth/bsc/base real slices; wrong chain has zero business RPC`；既有 `test_time_spotcheck.py` 修前版本为 `10/10 PASS`。
+- 实现：新增唯一共享模块 `scripts/lib/anchor_selection.py`，承载输入文件/目录身份哈希、输入嗅探、日频/余额/分格 SQL、DuckDB `hash()` 每格选点、最大单笔/最大单日净变动/边界两侧/门槛边缘四类强制点。`anchor_plan.py` 与 `time_spotcheck.py` 均调用该核心，无复制实现；plan 新增顶层 `min_pct/per_cell/edge_max`，与既有 `chain/token/final_block/total_supply/decimals/threshold_pct/seed/boundary_blocks` 一起构成完整重放参数。
+- consumer 语义门：`--input` 必填；共享身份算法先核实际输入 SHA256 与 `plan.input.sha256`，再全量重算 `date_range/time_cuts/cell_population/boundary_blocks`，并用完整 point object 的 canonical multiset 对比 `matrix_points/forced_points`。任一缺参或差异均以 `anchor_plan semantic replay failed` 非零退出；该门位于分型、receipt 构建和任何 RPC 之前，dry-run/正式路径共用。
+- 确定性补强：初次绿测在测试 fixture 的并列最大值上暴露旧 SQL 无二级排序，会使真 producer/consumer 偶发选到不同强制点；保留原 `hash/value/block` 主排序，并增加 `addr/day/tx/from/to` 稳定 tie-breaker。随后同一契约测试连续复跑均绿。
+- 绿色命令与结果：
+  - `PYTHONDONTWRITEBYTECODE=1 python3 scripts/tests/test_time_spotcheck.py` → `20/20 PASS`；手写 1 点双路径、五类自洽重签变形、错误输入 SHA256 及缺 `--input` 全部在重放/RPC 前拒绝；
+  - `PYTHONDONTWRITEBYTECODE=1 python3 scripts/tests/test_r9_batch1_boundaries.py --only anchor` → `PASS 1/1`；`test_r7_findings.py` → `15/15`；`test_batch1_rpc_attestation.py` → PASS；
+  - 抽取后沙箱外本机回环 `test_batch3_evm_vertical_slice.py` → 与抽取前相同：`PASS B3-EVM-E2E: eth/bsc/base real slices; wrong chain has zero business RPC`。
+- 百万行性能实测：DuckDB 生成 `1,000,000` 行、`119M` CSV（10,000 地址）；真实 `anchor_plan.py` 全量生成 `real 0.96s`，`time_spotcheck.py --dry-run` 全量重放 `real 0.91s`，均 `exit=0`，未采样、未降级。
+
+## B1F2-G2｜消化第二轮 B1R2-02：EXPECTED_PLAN_PRODUCER 单源化
+
+- 目标 finding：`B1R2-02`（P3，修复中新引入）。生产常量只定义在 `scripts/lib/anchor_selection.py`，`time_spotcheck.py` 通过 import 使用；manifest 继续作为机器 census，但由契约测试对账，避免生产代码倒置依赖测试件。
+- 基线红证据：对冻结基线 `0bb94ba:scripts/lib/time_spotcheck.py` 运行单源结构断言 → `exit=1`，`AssertionError: baseline has an unguarded local EXPECTED_PLAN_PRODUCER copy`。
+- 守卫：`test_time_spotcheck.py` 读取 `scripts/tests/invariant_manifest.json`，要求含 `anchor-plan/v2` 的 producer 登记恰好一项且 `script == anchor_selection.EXPECTED_PLAN_PRODUCER`；改常量或 manifest 任一处而漏同步都会红。
+- 绿色证据：`test_time_spotcheck.py` 的 `EXPECTED_PLAN_PRODUCER 与 invariant_manifest 单源对账` PASS；`rg -n EXPECTED_PLAN_PRODUCER scripts/lib scripts/tests` 显示唯一赋值位于 `anchor_selection.py`，consumer/test 只有 import/引用；`invariant_scan.py` PASS，计数仍为 `49/53/58/38/58`、exceptions=0。
+
+## B1F2-G3｜消化第二轮 B1R2-01：无主夹带清理与台账
+
+- 目标 finding：`B1R2-01`（P3，修复中新引入）；仅恢复 `scripts/lib/solana_attested_session.py` 被无主删除的文件末尾空行，不改任何语义。
+- 红色命令：`PYTHONDONTWRITEBYTECODE=1 python3 -c '<断言文件以两个换行字节结尾>'`。
+- 红色结果：`exit=1`，`AssertionError: B1R2-01 trailing blank line missing`。
+- 绿色结果：同一字节断言 PASS，文件现以 `b"\\n\\n"` 结尾。
+- 台账：`diff-finding-map.md` 的 R9 批一表、SHA 对照和未映射 hunk 计数按 B1F2 三组即时更新；SHA 留空待裁判回填。
+
+## B1F2 完成汇总
+
+### 三组红→绿
+
+- `B1R-01 REOPEN→终修`：修前原审查 C2/C3 穿透，loopback 可产 `PASS/exit=0/points=1` 正式 receipt；修后仓库同形用例携带真实 `--input`，手写 1 点在 dry-run/正式路径均由 semantic replay 于 RPC 前拒绝，五类自洽重签、错误输入 SHA256 和缺重放参数全部拒绝，真实 producer 正例通过。
+- `B1R2-02`：冻结基线的本地 `EXPECTED_PLAN_PRODUCER` 副本结构断言红；常量移入共享模块后，consumer import 与 invariant manifest 唯一 anchor producer 登记守卫绿。
+- `B1R2-01`：末尾双换行字节断言红；恢复无主空行后同一断言绿。历史 `144c652..0bb94ba` 未映射 hunk 复算如实由原自报 0 修正为 1，B1F2 当前区间候选 0。
+
+### 受影响集合、性能与全量门禁
+
+- 受影响测试全部通过：`test_time_spotcheck.py` `20/20`；R9 边界 `3/3`；Solana session `6/6`；R7 `15/15`；RPC attestation、fetch failclosed、Solana producers、docs lint、invariant scan 与 delete/add self-test 均 PASS。
+- eth/bsc/base 纵切片在抽取前后均为 `PASS B3-EVM-E2E: eth/bsc/base real slices; wrong chain has zero business RPC`；Solana 纵切片也在全量 suite 中 PASS。
+- 百万行 `119M` CSV 实测：producer 全量生成 `real 0.96s`，consumer 全量重放 `real 0.91s`，均无采样/降级。
+- 沙箱内首轮全量只有 Solana/EVM 两个 loopback 纵切片因 `bind(127.0.0.1)` 权限失败，其余 `80/82` PASS；获批在沙箱外运行同一命令后 `82/82 PASS`，末行 `全部通过`。
+- invariant census：`receipt_producers=49, receipt_consumers=53, transport_calls=58, atomic_writes=38, formal_entrypoints=58, exceptions=0`。
+- 边界：`VERSION` 未改；B1F2 三组 SHA 均留空待裁判回填；未执行任何 git 写操作。`solana_attested_session.py` 的任务指定末尾空行会被 `git diff --check` 报 `new blank line at EOF`，该字节正是 `B1R2-01` 要求恢复的内容，未擅自再次删除。

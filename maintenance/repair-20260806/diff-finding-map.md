@@ -60,6 +60,9 @@
 | `B1F-G2:scripts/lib/{artifact_quarantine.py,anchor_plan.py}; scripts/{evm/fetch_pool_swaps.py,solana/scan_token_accounts.py}; scripts/tests/{test_r9_batch1_boundaries.py,invariant_manifest.json}; maintenance/repair-20260806/b1_progress.md` 的 G2 消化 hunk | `INV-03`; secondary `INV-04, INV-17` | owner `B1R-02` | pool/scan/anchor 共用唯一启动隔离原语；anchor 先隔离 receipt 再隔离 plan，失败无 current 可消费对；同步 atomic locator | R9 边界 3/3；fetch failclosed；Solana producer；`invariant_scan.py --self-test` |  |
 | `B1F-G3:scripts/lib/solana_attested_session.py; scripts/tests/test_r9_solana_attested_session.py; maintenance/repair-20260806/b1_progress.md` 的 G3 消化 hunk | `INV-11`; secondary `INV-02, INV-08` | owner `B1R-03` | 删除调用方 `expected_genesis` 覆盖口，信任根只取 mainnet 库常量，docstring 与唯一 transport 注入边界对齐 | 原 5 条 transport 反例+构造口 TypeError，6/6 |  |
 | `B1F-G4:maintenance/repair-20260806/{invariant-merge.md,diff-finding-map.md,b1_progress.md}` 的 G4 消化 hunk | `INV-18, INV-19` | owner `B1R-04`; 登记 `B1R-01`～`B1R-03` 消化 owner | 恢复不变量拆分/合并须 Fable 批准且同步 ledger 双台账的治理条文；补齐四组 owner 和消化区间 | 精确 needle 守卫；`docs_lint.py --all`；未映射 hunk=0 |  |
+| `B1F2-G1:scripts/lib/{anchor_selection.py,anchor_plan.py,time_spotcheck.py}; scripts/tests/{test_time_spotcheck.py,test_batch3_evm_vertical_slice.py,test_r7_findings.py,test_batch1_rpc_attestation.py,test_r9_batch1_boundaries.py}; maintenance/repair-20260806/b1_progress.md` 的 G1 终修 hunk | `INV-10`; secondary `INV-02, INV-06, INV-08` | owner `B1R-01 REOPEN→终修` | 输入身份与确定性选点核心唯一抽取；plan 补齐重放参数；consumer 在 dry-run/正式路径任何 RPC 前全量重放统计与完整点集合 | 审查 C2/正式 PASS 攻击；五类变形；time 20 项；eth/bsc/base 纵切片；百万行性能 |  |
+| `B1F2-G2:scripts/lib/{anchor_selection.py,time_spotcheck.py}; scripts/tests/test_time_spotcheck.py; maintenance/repair-20260806/b1_progress.md` 的 G2 单源 hunk（与 G1 同文件时按语义 owner 拆分） | `INV-10`; secondary `INV-17` | owner `B1R2-02` | `EXPECTED_PLAN_PRODUCER` 只在共享模块赋值，consumer import；契约测试与 invariant manifest 唯一 anchor 登记对账 | baseline 单源断言红；manifest 对账守卫绿；`invariant_scan.py` |  |
+| `B1F2-G3:scripts/lib/solana_attested_session.py; maintenance/repair-20260806/{diff-finding-map.md,b1_progress.md}` 的 G3 清理/台账 hunk | `INV-11, INV-19`; secondary `INV-10` | owner `B1R2-01`; 登记 `B1R-01/B1R2-02` 终修 owner | 恢复被无主删除的末尾空行；补 B1F2 三组 owner、空 SHA 与真实未映射 hunk 复算 | 末尾双换行字节断言；docs lint；B1F2 未映射 hunk=0 |  |
 
 ## 分组 → commit SHA 对照（Fable 代 commit 后回填）
 
@@ -97,6 +100,9 @@
 | `B1F-G2` | `fa82b32` | 批一消化：B1R-02 公共 quarantine 与 anchor 启动隔离（同上） |
 | `B1F-G3` | `fa82b32` | 批一消化：B1R-03 Solana genesis 信任根收紧（同上） |
 | `B1F-G4` | `8477e04` | 批一消化：B1R-04 治理条文与 owner/区间回填 |
+| `B1F2-G1` |  | 批一消化第二轮：B1R-01 consumer 数学重放终修 |
+| `B1F2-G2` |  | 批一消化第二轮：B1R2-02 producer 常量单源与 manifest 守卫 |
+| `B1F2-G3` |  | 批一消化第二轮：B1R2-01 无主空行恢复与台账收口 |
 
 ## 未映射 hunk 计数
 
@@ -111,6 +117,7 @@
 - 批四（`f2a6e41..6b7ab8d`，含 `B4-G1`=`ba6b98e`/`B4-G2`=`1850205`/`B4-G3`=`1e3d5a6` 与本表自身回填 `6b7ab8d`）：`0` 候选（批内审查独立复算=0，清单与 commit 边界逐文件吻合）。
 - 批四批内消化（`6b7ab8d..` 至本回填 commit 即候选 tip，含 `B4F-G1`=`13d76c0` 与本表自身回填）：`0` 候选（全部 hunk 归属 `B4F-G1`；回填 commit 按通例自指式计入；待重审独立复算）。
 - R9 批一（`63cf715..` 至本回填 commit 即候选 tip，含 `85753da`/`2f197d2`/`592b0c2`/`35c94eb` 与本表自身回填）：`0` 候选（22 个改动/新增文件全部归属 `R9-B1-G1`～`R9-B1-G7`；多 owner 文件已按 hunk 显式拆分；回填 commit 按通例自指式计入；待批内审查独立复算）。
-- R9 批一批内消化（`144c652..` 至本回填 commit 即候选 tip，含 `B1F-G1`～`B1F-G4` 与本表自身回填）：`0` 候选（全部 hunk 归属 `B1F-G1`～`B1F-G4`；回填 commit 按通例自指式计入；SHA 留空待裁判回填；待增量重审独立复算）。
+- R9 批一批内消化（`144c652..0bb94ba`，含 `B1F-G1`～`B1F-G4` 与 SHA 回填）：重审独立复算未映射 hunk=`1`，即 `solana_attested_session.py` 末尾空行删除（`B1R2-01`）；原自报 `0` 作废并由 B1F2-G3 恢复。
+- R9 批一批内消化第二轮（`0bb94ba..` 至候选 tip，含 `B1F2-G1`～`B1F2-G3` 与本表自身回填）：`0` 候选（当前新增 hunk 全部归属三组；三组 SHA 留空待裁判回填；终修后待独立重审）。
 
 通例：区间末端恒取候选 tip；自指式 SHA 回填 commit 计入本区间。map 行文件清单以 Fable 实际 commit 分组为准；一文件含多 owner 的 hunk 时（文件级 commit 无法拆分），物理归属行与语义 owner 行互相注明，Fable 回填 SHA 时校正清单。

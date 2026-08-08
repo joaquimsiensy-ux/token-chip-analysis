@@ -116,3 +116,4 @@ class SolanaAttestedSession:
                     self._advance()
             raise SolanaRpcError(
                 f"all Solana endpoints failed for {method}: " + " | ".join(failures))
+
