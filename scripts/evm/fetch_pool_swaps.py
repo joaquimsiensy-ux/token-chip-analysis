@@ -23,6 +23,9 @@ import requests, json, csv, time, argparse, sys
 import os
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
+from artifact_quarantine import quarantine_current
+
 PANCAKE_V3 = "0x19b47279256b2a23a1665c810c8d55a1758940ee09377d4f8d26497a3577dc83"
 DEFAULT_TOKEN_FILE = "~/.config/hypersync/token"
 
@@ -58,20 +61,6 @@ def parse_args(argv=None):
         ap.error("块区间必须满足 0 <= from-block < to-block")
     a.token = _load_token(ap, a.token_file)
     return a
-
-
-def quarantine_current(path: Path) -> Path | None:
-    """Move a prior canonical artifact out of the current formal location."""
-    if not os.path.lexists(path):
-        return None
-    if not path.is_file() and not path.is_symlink():
-        raise RuntimeError(f"旧 canonical 不是普通文件: {path}")
-    run_id = f"{time.time_ns()}.{os.getpid()}"
-    stale = path.with_name(f"{path.name}.stale.{run_id}")
-    if os.path.lexists(stale):
-        raise RuntimeError(f"stale destination already exists: {stale}")
-    os.replace(path, stale)
-    return stale
 
 
 def main():

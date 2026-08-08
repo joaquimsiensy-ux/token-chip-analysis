@@ -27,14 +27,13 @@ def _urllib_json(endpoint, payload, timeout):
 
 
 class SolanaAttestedSession:
-    """Attest the active endpoint before its first business RPC.
+    """Attest the active endpoint as Solana mainnet before its first business RPC.
 
     ``request_json`` is the only test injection boundary.  It receives
     ``(endpoint, payload, timeout)`` and must return a decoded JSON object.
     """
 
-    def __init__(self, endpoints, *, expected_genesis=SOLANA_MAINNET_GENESIS_HASH,
-                 request_json=None, timeout=30):
+    def __init__(self, endpoints, *, request_json=None, timeout=30):
         if isinstance(endpoints, str):
             endpoints = [endpoints]
         unique = []
@@ -46,10 +45,7 @@ class SolanaAttestedSession:
                 unique.append(endpoint)
         if not unique:
             raise ValueError("at least one Solana endpoint is required")
-        if not isinstance(expected_genesis, str) or not expected_genesis:
-            raise ValueError("expected genesis hash must be non-empty")
         self._endpoints = tuple(unique)
-        self._expected_genesis = expected_genesis
         self._request_json = request_json or _urllib_json
         self._timeout = timeout
         self._index = 0
@@ -90,10 +86,10 @@ class SolanaAttestedSession:
         if not isinstance(observed, str) or not observed:
             raise SolanaAttestationError(
                 f"getGenesisHash returned invalid result for {endpoint}")
-        if observed != self._expected_genesis:
+        if observed != SOLANA_MAINNET_GENESIS_HASH:
             raise SolanaAttestationError(
                 f"Solana genesis mismatch for {endpoint}: expected "
-                f"{self._expected_genesis}, observed {observed}")
+                f"{SOLANA_MAINNET_GENESIS_HASH}, observed {observed}")
         self._attested_endpoint = endpoint
         self._observed_genesis = observed
 
@@ -120,4 +116,3 @@ class SolanaAttestedSession:
                     self._advance()
             raise SolanaRpcError(
                 f"all Solana endpoints failed for {method}: " + " | ".join(failures))
-

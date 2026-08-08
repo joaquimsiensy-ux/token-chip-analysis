@@ -35,6 +35,7 @@ from pathlib import Path
 import duckdb
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from artifact_quarantine import quarantine_current, quarantine_run_id
 from receipt_kernel import (RawBytes, build_envelope, finalize_envelope,
                             publish_overwrite, publish_txn)
 
@@ -205,13 +206,29 @@ def main():
         ap.error("--final-block must be non-negative")
     a.chain = a.chain.lower()
     a.token = a.token.lower()
+    out_dir = Path(a.out_dir).expanduser().resolve()
+    plan_path = out_dir / "anchor_plan.json"
+    receipt_path = out_dir / "anchor_plan.receipt.json"
+    run_id = quarantine_run_id()
+    try:
+        # Receipt is the commit marker: remove it first so partial quarantine
+        # cannot leave a prior plan consumable as the current run's output.
+        stale_receipt = quarantine_current(receipt_path, run_id)
+        stale_plan = quarantine_current(plan_path, run_id)
+    except Exception as exc:
+        print(f"[fatal] prior anchor plan/receipt quarantine failed: {exc}", file=sys.stderr)
+        return 1
+    if stale_receipt is not None:
+        print(f"[stale] previous anchor receipt moved to {stale_receipt}", file=sys.stderr)
+    if stale_plan is not None:
+        print(f"[stale] previous anchor plan moved to {stale_plan}", file=sys.stderr)
     try:
         input_identity, input_files = _input_identity(a.input)
     except Exception as exc:
         ap.error(f"input identity failed: {exc}")
 
-    os.makedirs(a.out_dir, exist_ok=True)
-    a.out_dir = str(Path(a.out_dir).resolve())
+    os.makedirs(out_dir, exist_ok=True)
+    a.out_dir = str(out_dir)
     con = duckdb.connect()
     con.execute(f"SET memory_limit='{a.mem_limit}'; SET threads={a.threads}; "
                 f"SET preserve_insertion_order=false;")
@@ -369,8 +386,8 @@ def main():
         print(f"[fatal] anchor plan probe boundary invalid: {exc}", file=sys.stderr)
         return 2
 
-    jp = Path(a.out_dir) / "anchor_plan.json"
-    rp = Path(a.out_dir) / "anchor_plan.receipt.json"
+    jp = plan_path
+    rp = receipt_path
     ip = Path(a.out_dir) / "anchor_plan.input.json"
     input_manifest = {"schema": "anchor-plan-input/v1", "input": input_identity,
                       "files": input_files}

@@ -169,14 +169,20 @@ def test_r9_02_real_anchor_producer_consumer(root):
         "block,ts,tx,from,to,value\n"
         f"301,2025-01-01T00:00:00Z,0xt2,0x{'0' * 40},0x{'1' * 40},100\n",
         encoding="utf-8")
-    bad_dir = root / "bad-plan"
     bad = run([sys.executable, str(ANCHOR), "--input", str(beyond),
                "--chain", "bsc", "--token", TOKEN, "--total-supply", "100",
                "--decimals", "0", "--min-pct", "0", "--final-block", "300",
-               "--out-dir", str(bad_dir)], root)
+               "--out-dir", str(out_dir)], root)
     assert bad.returncode != 0, detail(bad)
-    assert not (bad_dir / "anchor_plan.json").exists()
-    assert not (bad_dir / "anchor_plan.receipt.json").exists()
+    assert not plan_path.exists() and not receipt_path.exists(), \
+        "failed anchor rerun left prior plan/receipt current"
+    assert list(out_dir.glob("anchor_plan.json.stale.*"))
+    assert list(out_dir.glob("anchor_plan.receipt.json.stale.*"))
+    stale_consumer = run([
+        sys.executable, str(SPOTCHECK), "--plan", str(plan_path), "--dry-run",
+        "--chain", "bsc", "--token", TOKEN, "--final-block", "300",
+        "--out", str(root / "stale-spotcheck.json")], root)
+    assert stale_consumer.returncode != 0, detail(stale_consumer)
 
 
 def pool_command(root, out, transport):

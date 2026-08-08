@@ -22,6 +22,7 @@ import argparse, base64, hashlib, json, os, subprocess, sys, time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
+from artifact_quarantine import quarantine_current, quarantine_run_id
 from receipt_kernel import (assert_distinct_paths, build_envelope, finalize_envelope,
                             publish_txn)
 
@@ -36,20 +37,6 @@ def sha256_file(path):
         for block in iter(lambda: f.read(4 * 1024 * 1024), b""):
             h.update(block)
     return h.hexdigest()
-
-
-def quarantine_current(path, run_id):
-    """Remove a prior canonical artifact from the current-run namespace."""
-    current = Path(os.path.abspath(os.path.expanduser(str(path))))
-    if not os.path.lexists(current):
-        return None
-    if not current.is_file() and not current.is_symlink():
-        raise RuntimeError(f"old canonical is not a regular file: {current}")
-    stale = current.with_name(f"{current.name}.stale.{run_id}")
-    if os.path.lexists(stale):
-        raise RuntimeError(f"stale destination already exists: {stale}")
-    os.replace(current, stale)
-    return stale
 
 
 def b58encode(b: bytes) -> str:
@@ -178,7 +165,7 @@ def main():
         print(f"FATAL: output/receipt path conflict: {exc}", file=sys.stderr)
         return 2
 
-    run_id = f"{time.time_ns()}.{os.getpid()}"
+    run_id = quarantine_run_id()
     try:
         # The receipt is the commit marker: invalidate it before data so a
         # partial quarantine can never leave a current PASS marker.

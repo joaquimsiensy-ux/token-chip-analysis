@@ -105,6 +105,18 @@ def test_attestation_transport_and_shape_fail_closed():
     assert business == []
 
 
+def test_expected_genesis_is_not_a_constructor_boundary():
+    try:
+        SolanaAttestedSession(
+            "fork", expected_genesis="caller-controlled-genesis",
+            request_json=lambda _endpoint, _payload, _timeout: {
+                "result": "caller-controlled-genesis"})
+    except TypeError:
+        pass
+    else:
+        raise AssertionError("caller can override the Solana genesis trust root")
+
+
 def main():
     tests = (
         test_wrong_genesis_has_zero_business_calls,
@@ -112,6 +124,7 @@ def main():
         test_wrong_endpoint_fails_over_and_reattests,
         test_business_failure_switches_endpoint_and_reattests,
         test_attestation_transport_and_shape_fail_closed,
+        test_expected_genesis_is_not_a_constructor_boundary,
     )
     for test in tests:
         test()

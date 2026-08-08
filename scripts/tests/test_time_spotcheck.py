@@ -62,6 +62,27 @@ def refresh_bundle(plan_path, mutate):
     return str(plan_file)
 
 
+def forge_producer_bundle(plan_path):
+    """Re-sign a real plan while falsely naming an unrelated repo file as producer."""
+    plan_file = Path(plan_path)
+    receipt_file = plan_file.with_name("anchor_plan.receipt.json")
+    fake_path = "references/maintenance-review-repair.md"
+    fake_producer = {
+        "path": fake_path,
+        "sha256": sha(Path(HERE).parents[1] / fake_path),
+    }
+    plan = json.loads(plan_file.read_text(encoding="utf-8"))
+    plan["producer"] = fake_producer
+    plan_file.write_text(json.dumps(plan, ensure_ascii=False, indent=2) + "\n",
+                         encoding="utf-8")
+    receipt = json.loads(receipt_file.read_text(encoding="utf-8"))
+    receipt["producer"] = fake_producer
+    receipt["output"]["size"] = plan_file.stat().st_size
+    receipt["output"]["sha256"] = sha(plan_file)
+    receipt_file.write_text(json.dumps(receipt, ensure_ascii=False, indent=2) + "\n",
+                            encoding="utf-8")
+
+
 def produce_plan(d, token):
     source = Path(d) / "transfers.csv"
     source.write_text(
@@ -155,11 +176,25 @@ def main():
         p = run(["--plan", plan, "--dry-run", "--final-block", "300"] + base)
         check("plan/receipt 哈希不一致拒绝", p.returncode != 0)
 
+        # 8. plan+receipt 可以自洽重签，但 consumer 必须绑定登记的真实 producer。
+        restore()
+        forge_producer_bundle(plan)
+        p = run(["--plan", plan, "--dry-run", "--final-block", "300"] + base)
+        check("伪造 Markdown producer 的 dry-run 在业务前拒绝",
+              p.returncode != 0 and "registered anchor producer" in p.stderr)
+        formal_out = os.path.join(d, "formal-out.json")
+        p = run(["--plan", plan, "--rpc", "http://127.0.0.1:1/nope",
+                 "--final-block", "300", "--chain", "bsc", "--token", token,
+                 "--out", formal_out])
+        check("伪造 Markdown producer 的正式路径在 RPC 前拒绝",
+              p.returncode != 0 and "registered anchor producer" in p.stderr
+              and not list(Path(d).glob("formal-out.error.*.json")))
+
     print("=" * 40)
     if FAILS:
         print(f"time_spotcheck 契约测试 {len(FAILS)} 项失败")
         return 1
-    print("time_spotcheck 契约测试全部通过（8 项）")
+    print("time_spotcheck 契约测试全部通过（10 项）")
     return 0
 
 

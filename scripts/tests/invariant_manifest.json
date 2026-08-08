@@ -14,7 +14,7 @@
     "receipt_producers": 49,
     "receipt_consumers": 53,
     "transport_calls": 58,
-    "atomic_writes": 39,
+    "atomic_writes": 38,
     "formal_entrypoints": 58
   },
   "receipt_producers": [
@@ -669,11 +669,6 @@
       "semantics": "overwrite_single"
     },
     {
-      "locator": "quarantine_current",
-      "script": "scripts/evm/fetch_pool_swaps.py",
-      "semantics": "overwrite_single"
-    },
-    {
       "locator": "atomic_write",
       "script": "scripts/evm/make_channel_receipt.py",
       "semantics": "overwrite_single"
@@ -691,6 +686,11 @@
     {
       "locator": "main",
       "script": "scripts/labels/sourcify_check.py",
+      "semantics": "overwrite_single"
+    },
+    {
+      "locator": "quarantine_current",
+      "script": "scripts/lib/artifact_quarantine.py",
       "semantics": "overwrite_single"
     },
     {
@@ -811,11 +811,6 @@
     {
       "locator": "finalize",
       "script": "scripts/solana/fetch_sqd_transfers_v2.py",
-      "semantics": "overwrite_single"
-    },
-    {
-      "locator": "quarantine_current",
-      "script": "scripts/solana/scan_token_accounts.py",
       "semantics": "overwrite_single"
     },
     {

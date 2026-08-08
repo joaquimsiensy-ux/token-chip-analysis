@@ -49,6 +49,7 @@ BALANCEOF_SELECTOR = "0x70a08231"
 SCHEMA = "time-spotcheck/v2"
 PLAN_SCHEMA = "anchor-plan/v2"
 PLAN_RECEIPT_SCHEMA = "anchor-plan-receipt/v2"
+EXPECTED_PLAN_PRODUCER = "scripts/lib/anchor_plan.py"
 
 
 def _sha256(path):
@@ -80,6 +81,13 @@ def load_validated_plan(plan_path, receipt_path):
         raise ValueError(f"plan schema must be {PLAN_SCHEMA}")
     if receipt.get("schema") != PLAN_RECEIPT_SCHEMA or receipt.get("verdict") != "PASS":
         raise ValueError("plan receipt schema/verdict invalid")
+    producer = receipt.get("producer")
+    producer_path = producer.get("path") if isinstance(producer, dict) else None
+    normalized_producer = (Path(os.path.normpath(producer_path)).as_posix()
+                           if isinstance(producer_path, str) and producer_path else None)
+    if normalized_producer != EXPECTED_PLAN_PRODUCER:
+        raise ValueError(
+            f"plan receipt must name registered anchor producer {EXPECTED_PLAN_PRODUCER}")
     if plan.get("target") != receipt.get("target"):
         raise ValueError("plan target differs from receipt target")
     target = plan["target"]
