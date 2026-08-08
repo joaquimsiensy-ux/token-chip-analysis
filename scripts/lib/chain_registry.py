@@ -9,9 +9,12 @@ from __future__ import annotations
 from collections.abc import Mapping
 from types import MappingProxyType
 
+from attestation_adapters import resolve_attestation_adapter
+from formal_capability_probes import missing_executable_capabilities
+
 
 RELEASE_TIERS = frozenset({"formal", "exploration", "unsupported"})
-REQUIRED_FORMAL_CAPABILITIES = frozenset({
+OPERATIONAL_CAPABILITIES = frozenset({
     "accounting_adapter",
     "balance_producer",
     "supply_producer",
@@ -22,9 +25,16 @@ REQUIRED_FORMAL_CAPABILITIES = frozenset({
     "labels_table",
     "handoff",
     "audit_release",
-    "chain_attestation",
-    "vertical_slice_verified",
 })
+REQUIRED_FORMAL_CAPABILITIES = frozenset({
+    "chain_attestation",
+    "freeze_target_adapter",
+    "accounting_supply_adapter",
+    "vertical_slice_evidence",
+    "wrong_chain_test",
+    "failure_artifact_gate",
+})
+ALL_CAPABILITY_FIELDS = OPERATIONAL_CAPABILITIES | REQUIRED_FORMAL_CAPABILITIES
 
 
 def _capabilities(**overrides):
@@ -40,10 +50,14 @@ def _capabilities(**overrides):
         "handoff": False,
         "audit_release": False,
         "chain_attestation": None,
-        "vertical_slice_verified": False,
+        "freeze_target_adapter": None,
+        "accounting_supply_adapter": None,
+        "vertical_slice_evidence": None,
+        "wrong_chain_test": None,
+        "failure_artifact_gate": None,
     }
     facts.update(overrides)
-    if set(facts) != REQUIRED_FORMAL_CAPABILITIES:
+    if set(facts) != ALL_CAPABILITY_FIELDS:
         raise ValueError("invalid capability fact set")
     return MappingProxyType(facts)
 
@@ -62,20 +76,28 @@ def _record(canonical, *, aliases=(), release_tier="unsupported",
     })
 
 
-_FORMAL_EVM = dict(
-    release_tier="formal", capture_evm_family=True,
-    accounting_adapter="evm", balance_producer=True, supply_producer=True,
-    time_producer=True, controlled_runner=True,
-    reconciliation_consumer=True, identity_adapter="evm", labels_table=True,
-    handoff=True, audit_release=True, chain_attestation="evm-chain-id",
-    vertical_slice_verified=True,
-)
+def _formal_evm(vertical_slice_evidence):
+    return dict(
+        release_tier="formal", capture_evm_family=True,
+        accounting_adapter="evm", balance_producer=True, supply_producer=True,
+        time_producer=True, controlled_runner=True,
+        reconciliation_consumer=True, identity_adapter="evm", labels_table=True,
+        handoff=True, audit_release=True, chain_attestation="evm-chain-id",
+        freeze_target_adapter="entity-freeze-v2",
+        accounting_supply_adapter="evm-accounting-supply-v1",
+        vertical_slice_evidence=vertical_slice_evidence,
+        wrong_chain_test="evm-chain-id-zero-business-r9",
+        failure_artifact_gate="formal-failure-artifact-v1",
+    )
 
 
 CHAIN_REGISTRY = MappingProxyType({
-    "eth": _record("eth", aliases=("ethereum",), evm_chain_id=1, **_FORMAL_EVM),
-    "bsc": _record("bsc", evm_chain_id=56, **_FORMAL_EVM),
-    "base": _record("base", evm_chain_id=8453, **_FORMAL_EVM),
+    "eth": _record("eth", aliases=("ethereum",), evm_chain_id=1,
+                   **_formal_evm("r9-eth-mainnet-vertical-slice")),
+    "bsc": _record("bsc", evm_chain_id=56,
+                   **_formal_evm("r9-bsc-mainnet-vertical-slice")),
+    "base": _record("base", evm_chain_id=8453,
+                    **_formal_evm("r9-base-mainnet-vertical-slice")),
     "arbitrum": _record(
         "arbitrum", aliases=("arbitrum one", "arbitrum-one", "arb"),
         release_tier="exploration", capture_evm_family=True,
@@ -135,7 +157,11 @@ CHAIN_REGISTRY = MappingProxyType({
         time_producer=True, controlled_runner=True,
         reconciliation_consumer=True, identity_adapter="solana", labels_table=True,
         handoff=True, audit_release=True, chain_attestation="solana-cluster",
-        vertical_slice_verified=True,
+        freeze_target_adapter="entity-freeze-v2",
+        accounting_supply_adapter="solana-accounting-supply-v1",
+        vertical_slice_evidence="r9-solana-pythia-mainnet-vertical-slice",
+        wrong_chain_test="solana-genesis-zero-business-r9",
+        failure_artifact_gate="formal-failure-artifact-v1",
     ),
 })
 
@@ -151,8 +177,12 @@ def _validate_registry():
             raise ValueError(f"invalid chain registry record: {key}")
         if record["release_tier"] not in RELEASE_TIERS:
             raise ValueError(f"invalid release tier: {key}")
-        if set(record["capabilities"]) != REQUIRED_FORMAL_CAPABILITIES:
+        if set(record["capabilities"]) != ALL_CAPABILITY_FIELDS:
             raise ValueError(f"invalid capability facts: {key}")
+        if record["release_tier"] == "formal":
+            adapter_key = record["capabilities"].get("chain_attestation")
+            if adapter_key:
+                resolve_attestation_adapter(adapter_key)
         for raw in (key, *record["aliases"]):
             alias = str(raw).strip().lower()
             if alias in aliases and aliases[alias] != key:
@@ -188,10 +218,8 @@ def _missing_formal_capabilities_from_record(record):
     facts = record.get("capabilities")
     if not isinstance(facts, Mapping):
         return tuple(missing + ["capabilities"])
-    missing.extend(sorted(key for key in REQUIRED_FORMAL_CAPABILITIES
-                          if not facts.get(key)))
-    if record.get("capture_evm_family") and record.get("evm_chain_id") is None:
-        missing.append("evm_chain_id")
+    missing.extend(missing_executable_capabilities(
+        record, REQUIRED_FORMAL_CAPABILITIES))
     return tuple(missing)
 
 
@@ -234,7 +262,7 @@ def known_chains_for_release():
 
 
 def capability_chains(name, *, release_tiers=None):
-    if name not in REQUIRED_FORMAL_CAPABILITIES:
+    if name not in ALL_CAPABILITY_FIELDS:
         raise ValueError(f"unknown capability: {name}")
     tiers = set(release_tiers or RELEASE_TIERS)
     return {key for key, record in CHAIN_REGISTRY.items()
@@ -285,3 +313,13 @@ def recon_adapter_for(value):
 def evm_chain_id_for(value):
     record = get_chain_config(value)
     return record.get("evm_chain_id") if record else None
+
+
+# Importing the matrix executes every formal-intent probe once.  Readiness APIs
+# still re-probe dynamically so deleting a target or unmounting a test cannot be
+# hidden by this diagnostic snapshot.
+IMPORT_FORMAL_PROBE_MISSING = MappingProxyType({
+    chain: _missing_formal_capabilities_from_record(record)
+    for chain, record in CHAIN_REGISTRY.items()
+    if record["release_tier"] == "formal"
+})
