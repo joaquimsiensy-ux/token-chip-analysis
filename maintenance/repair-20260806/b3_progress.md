@@ -239,3 +239,23 @@ G3-0A 报告已删除；沿上文 G3-0 命令重跑即可。验收时除原活�
 
 - 首轮 G3-0A 的含 key error 曾短暂落盘（文件已删）且出现在裁判会话输出中；建议用户择机在 Helius 后台轮换 api-key（免费层，风险低，按红线执行）。
 - R9-01/R9-05 的 mainnet 待登记位由本节补齐；批内 Opus 攻击审查及其消化仍在后（未做完不收口批三）。
+
+## 批三批内审查裁决（Fable 总验收，2026-08-08）
+
+**裁决：BLOCK，进批内修复循环 2。** Opus 4.8 只读子代理六视角+边界外一步攻击，15 finding（P0=0 / P1=1 / P2=7 / P3=7）全部自称 CONFIRMED。报告入库 `reviews/r9-batch3-review.md`，证据脚本 13 个在 `r9-reviews/b3/evidence/`。
+
+**Fable 读码复现核实**：抽核 P1 + 6 条（B3R9-01/02/04/05/06/07）逐条属实——B3R9-01 `endpoint_identity.py:19` 确剥 query 留 path（Alchemy/Infura path 型 key 泄漏，落在循环1 B3FIX-02 半修残留上）；B3R9-02 producer 自检弱于 validator（降级 checked 不截断 + GPA slot 只查 <pre 不查 <parsed）；B3R9-04 影子函数 `test_r9_batch3_solana_observation.py:399` 孤儿空壳（不被注册表指、不在自己 main tests、自称 Executable evidence target）；B3R9-05 harness 两守卫四链基线下进/出观测相同退化恒真；B3R9-06 r7 断言弱化为 is None；B3R9-07 smoke-20260808/g3_0b 在 diff-finding-map grep=0 属实（Fable 入档证据未回补 map）。Opus 报告质量高（13 条 REFUTED-CANDIDATE 含自我推翻 R-1、克制归因 R-10/R-13、裁判证据 5/5 哈希逐字核对），采信全部 15 条。
+
+**止损计数**：批三第 `2` 个批内修复循环（循环1=B3FIX SSL/脱敏）。B3R9-01=半修残留（落在循环1 B3FIX-02 上）计数、B3R9-02~06=修复中新引入计数。当前 **2/3**；循环 2 修完仍 BLOCK=3/3 冻结上报用户。B3R9-01 不构成「同 INV 再穿」加重（循环1修复未经独立重审宣告闭合，属半修残留非闭合再穿）。
+
+**流程教训**：批内修复循环 1（B3FIX）当时仅由 codex 自报+Fable mainnet 验收即 commit，未过 opus 独立攻击——正是这轮 opus 才抓出 B3FIX-02 只修 query 半。今后批内修复循环也应过一次攻击审查，不以 codex 自报修完为闭合。
+
+**循环 2 修复清单**（P1 全修+P2 全修+P3 随手/登记）：
+- P1 B3R9-01：public_endpoint 补 path 脱敏 + redact 只替换 key=value 片段 + path/无 scheme 负例。
+- P2 B3R9-02：根治=producer publish 前自跑 validate_observation_bundle（约束集机器闭合）+ GPA≥parsed 断言 + 降级 checked 截断。
+- P2 B3R9-03：发布层 6 断言各补先红后绿负例。
+- P2 B3R9-04：删/改影子函数去 Executable evidence target 自述。
+- P2 B3R9-05/06：harness 守卫测试内先建 not-ready 基线验对称 + r7 断言改精确值。
+- P2 B3R9-07：补 4 证据 JSON owner 行 + solana_sqd_dataset 跨批注记 + 未映射 hunk 复算真实数。
+- P2 B3R9-08：ledger R9-01 登记闭合边界（不含防伪，依赖批四通用守卫）。
+- P3 B3R9-09~15：min-context-slot producer 复核 / writable lookups fail-closed / 零样本 coverage 措辞 / docstring 同步 / getTokenSupply 时序改 Retryable / 删不可达死闸 / window partial 顺序登记取舍。
