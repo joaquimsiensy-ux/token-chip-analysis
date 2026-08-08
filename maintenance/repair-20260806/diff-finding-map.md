@@ -113,11 +113,11 @@
 | `B1F2-G1` | `1a7e685` | 批一消化第二轮：B1R-01 consumer 数学重放终修（G1/G2 同 commit） |
 | `B1F2-G2` | `1a7e685` | 批一消化第二轮：B1R2-02 producer 常量单源与 manifest 守卫（同上） |
 | `B1F2-G3` | `658f78e` | 批一消化第二轮：B1R2-01 无主空行恢复与台账收口 |
-| `R9-B2-G1` |  | 可执行 chain-attestation 适配器键；Fable 回填 |
-| `R9-B2-G2` |  | 六探针 readiness 与 R9 纵切片证据接口；Fable 回填 |
-| `R9-B2-G3` |  | Solana SQD dataset scope 适配器；Fable 回填 |
-| `R9-B2-G4` |  | SKILL 单口径与 exploration 降级保持；Fable 回填 |
-| `R9-B2-G5` |  | ledger/map/progress 与全量门禁；Fable 回填 |
+| `R9-B2-G1` | `ae3ff29`(生产)+`3b69e5d`(测试) | 可执行 chain-attestation 适配器键（commit 按生产/测试横切，下同） |
+| `R9-B2-G2` | `ae3ff29`(生产)+`3b69e5d`(测试) | 六探针 readiness 与 R9 纵切片证据接口 |
+| `R9-B2-G3` | `ae3ff29`(生产)+`3b69e5d`(测试) | Solana SQD dataset scope 适配器 |
+| `R9-B2-G4` | `4bc31db`(SKILL)+`3b69e5d`(test_chain_support_matrix) | SKILL 单口径与 exploration 降级保持 |
+| `R9-B2-G5` | `cf67cd0` | ledger/map/progress 与全量门禁 |
 
 ## 未映射 hunk 计数
 
@@ -134,6 +134,6 @@
 - R9 批一（`63cf715..` 至本回填 commit 即候选 tip，含 `85753da`/`2f197d2`/`592b0c2`/`35c94eb` 与本表自身回填）：`0` 候选（22 个改动/新增文件全部归属 `R9-B1-G1`～`R9-B1-G7`；多 owner 文件已按 hunk 显式拆分；回填 commit 按通例自指式计入；待批内审查独立复算）。
 - R9 批一批内消化（`144c652..0bb94ba`，含 `B1F-G1`～`B1F-G4` 与 SHA 回填）：重审独立复算未映射 hunk=`1`，即 `solana_attested_session.py` 末尾空行删除（`B1R2-01`）；原自报 `0` 作废并由 B1F2-G3 恢复。
 - R9 批一批内消化第二轮（`0bb94ba..` 至候选 tip，含 `B1F2-G1/G2`=`1a7e685`/`B1F2-G3`=`658f78e` 与本表自身回填）：`0` 候选（全部 hunk 归属三组；回填 commit 按通例自指式计入）。第三轮增量重审（report-recheck2.md）**ALL-CLEAR**：B1R-01 CLOSED、两 P3 CLOSED；新增历史漏检 `B1R3-01`（P3 非阻断，anchor per_cell/edge_max 无下界→弱覆盖 plan，非 B1R-01 未闭合）留批四守卫层处理+最终盲审复验。
-- R9 批二（`5b06677..` 当前 worktree，SHA 待 Fable 回填）：`0` 候选（全部生产、测试、SKILL 与台账 hunk 已归属 `R9-B2-G1`～`R9-B2-G5`；多 owner 文件已按语义 hunk 拆分；待 Fable 独立复算）。
+- R9 批二（`5b06677..` 至本回填 commit 即候选 tip，含生产 `ae3ff29`/测试 `3b69e5d`/SKILL `4bc31db`/台账 `cf67cd0` 与本表自身回填）：`0` 候选（全部 hunk 归属 `R9-B2-G1`～`R9-B2-G5`；commit 按生产/测试/SKILL/台账横切，各 G 跨 commit 已在 SHA 对照注明；回填 commit 自指式计入；待批内审查独立复算）。
 
 通例：区间末端恒取候选 tip；自指式 SHA 回填 commit 计入本区间。map 行文件清单以 Fable 实际 commit 分组为准；一文件含多 owner 的 hunk 时（文件级 commit 无法拆分），物理归属行与语义 owner 行互相注明，Fable 回填 SHA 时校正清单。
