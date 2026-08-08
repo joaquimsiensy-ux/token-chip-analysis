@@ -68,6 +68,12 @@ def csv_has_rows(path):
 
 def main():
     declared = frontmatter_chains()
+    description = frontmatter_description()
+    for phrase in (
+        "六项可执行能力", "链身份会话", "冻结目标", "会计/供应量",
+        "R9 正式纵切片", "错链负测", "失败产物门禁",
+    ):
+        assert phrase in description, f"frontmatter missing executable matrix phrase: {phrase}"
     sys.path.insert(0, str(ROOT / "scripts/lib"))
     from chain_registry import (formal_ready_chains, formal_tier_chains,
                                 identity_chains, identity_evm_chains,
@@ -79,7 +85,7 @@ def main():
     )
     assert declared <= buildable
     assert "robinhood" in buildable and release_tier_for("robinhood") == "exploration"
-    assert formal_ready_chains() == {"eth", "bsc", "base", "sol"}
+    assert formal_ready_chains() == set()
 
     sys.path.insert(0, str(ROOT / "scripts/labels"))
     from labels_resolver import LabelResolver

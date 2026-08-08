@@ -13,6 +13,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path[:0] = [str(ROOT / "scripts/report"), str(ROOT / "scripts/tests")]
+from formal_ready_test_harness import run_formal_script  # noqa: E402
 TOKEN = "0x" + "9" * 40
 A = "0x" + "1" * 40
 B = "0x" + "2" * 40
@@ -93,7 +94,13 @@ class FixtureHandler(BaseHTTPRequestHandler):
 def run(command, cwd, *, expect=0):
     env = os.environ.copy()
     env["PYTHONDONTWRITEBYTECODE"] = "1"
-    proc = subprocess.run(command, cwd=cwd, capture_output=True, text=True, env=env)
+    formal_fixture = Path(command[1]).name in {
+        "handoff_manifest.py", "audit_release_gate.py",
+    }
+    if formal_fixture:
+        proc = run_formal_script(command[1], command[2:], env=env, cwd=cwd)
+    else:
+        proc = subprocess.run(command, cwd=cwd, capture_output=True, text=True, env=env)
     if (proc.returncode == 0) != (expect == 0):
         wrapper = Path(cwd) / "reconciliation_report.json"
         detail = wrapper.read_text() if wrapper.is_file() else ""

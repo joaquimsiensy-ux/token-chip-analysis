@@ -94,11 +94,11 @@ def test_vertical_slice_double_binding_injections(scan, root):
     suite = root / "run_all.py"
     text = (ROOT / "scripts/tests/run_all.py").read_text()
     suite.write_text(text.replace("         'test_batch3_evm_vertical_slice.py',\n", ""))
-    errors = scan.vertical_slice_errors(suite_path=suite)
+    errors = scan.vertical_slice_errors(
+        mapping={"eth": "test_batch3_evm_vertical_slice.py"}, suite_path=suite)
     assert any("not mounted in run_all.SUITE" in error for error in errors), errors
 
-    mapping = dict(scan.VERTICAL_SLICE_TESTS)
-    mapping["sol"] = "test_does_not_exist.py"
+    mapping = {"sol": "test_does_not_exist.py"}
     errors = scan.vertical_slice_errors(mapping=mapping)
     assert any("test file missing" in error and "sol" in error for error in errors), errors
     assert scan.vertical_slice_errors() == []

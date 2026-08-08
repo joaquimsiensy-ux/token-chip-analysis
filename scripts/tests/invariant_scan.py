@@ -49,12 +49,9 @@ LABEL_CHAIN_SURFACES = (
     # serial-offender accumulation consumes the same labels-table asset surface.
     ("scripts/labels/accumulate_offenders.py", "table", "membership:chain:1"),
 )
-VERTICAL_SLICE_TESTS = {
-    "eth": "test_batch3_evm_vertical_slice.py",
-    "bsc": "test_batch3_evm_vertical_slice.py",
-    "base": "test_batch3_evm_vertical_slice.py",
-    "sol": "test_batch3_solana_vertical_slice.py",
-}
+# R9 batch 3 will register fresh executable evidence.  Old R8 slice files stay
+# mounted for regression coverage but no longer constitute current readiness.
+VERTICAL_SLICE_TESTS = {}
 CAPABILITY_ENTRYPOINTS = {
     "controlled_runner": "scripts/report/reconciliation_report.py",
     "reconciliation_consumer": "scripts/report/shared_release_receipt.py",
@@ -133,7 +130,13 @@ def _load_chain_registry():
     path = ROOT / "scripts/lib/chain_registry.py"
     spec = importlib.util.spec_from_file_location("invariant_chain_registry", path)
     module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
+    original_path = list(sys.path)
+    try:
+        sys.path.insert(0, str(path.parent))
+        sys.path.insert(0, str(ROOT))
+        spec.loader.exec_module(module)
+    finally:
+        sys.path[:] = original_path
     return module
 
 
@@ -171,7 +174,7 @@ def registered_formal_entrypoints(*, shared_path=None):
     families = {
         record["capabilities"]["accounting_adapter"]
         for chain, record in registry.CHAIN_REGISTRY.items()
-        if registry.formal_ready(chain)
+        if record["release_tier"] == "formal"
     }
     paths = set(FORMAL_RELEASE_ENTRYPOINTS)
     accounting = shared["ACCOUNTING_PRODUCERS"]
@@ -199,7 +202,7 @@ def registered_formal_entrypoints(*, shared_path=None):
     paths.update(shared["RECON_RUNNERS"])
     paths.update(shared["ADVERSARIAL_RUNNERS"])
     for chain, record in registry.CHAIN_REGISTRY.items():
-        if not registry.formal_ready(chain):
+        if record["release_tier"] != "formal":
             continue
         for fact, rel in CAPABILITY_ENTRYPOINTS.items():
             if record["capabilities"].get(fact):
@@ -323,22 +326,16 @@ def vertical_slice_errors(*, mapping=None, suite_path=None):
     mapping = dict(mapping or VERTICAL_SLICE_TESTS)
     suite_path = Path(suite_path or ROOT / "scripts/tests/run_all.py")
     mounted = _suite_entries(suite_path)
-    verified = {
-        chain for chain, record in registry.CHAIN_REGISTRY.items()
-        if record["capabilities"].get("vertical_slice_verified") is True
-    }
+    formal = registry.formal_tier_chains()
     errors = []
-    for chain in sorted(verified):
-        test_name = mapping.get(chain)
-        if not test_name:
-            errors.append(f"vertical slice mapping missing for {chain}")
+    for chain, test_name in sorted(mapping.items()):
+        if chain not in formal:
+            errors.append(f"vertical slice mapping has non-formal chain: {chain}")
             continue
         if not (ROOT / "scripts/tests" / test_name).is_file():
             errors.append(f"vertical slice test file missing for {chain}: {test_name}")
         if test_name not in mounted:
             errors.append(f"vertical slice test for {chain} not mounted in run_all.SUITE: {test_name}")
-    for chain in sorted(set(mapping) - verified):
-        errors.append(f"vertical slice mapping has non-verified chain: {chain}")
     return errors
 
 

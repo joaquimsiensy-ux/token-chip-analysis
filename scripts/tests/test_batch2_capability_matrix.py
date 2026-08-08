@@ -16,7 +16,8 @@ from chain_registry import (  # noqa: E402
     formal_ready_chains, formal_reconciliation_chains, formal_tier_chains,
     missing_formal_capabilities, release_tier_for,
 )
-from formal_ready_test_harness import fixture_missing_formal_capabilities  # noqa: E402
+from formal_ready_test_harness import (fixture_missing_formal_capabilities,
+                                       test_vertical_slices)  # noqa: E402
 
 
 def mutable_record(chain):
@@ -38,28 +39,21 @@ def test_no_manual_formal_switch():
 
 def test_each_missing_capability_blocks_readiness():
     complete = mutable_record("eth")
-    complete["capabilities"] = {
-        key: ("fixture-adapter" if key.endswith("_adapter")
-              or key == "chain_attestation" else True)
-        for key in REQUIRED_FORMAL_CAPABILITIES
-    }
-    assert not fixture_missing_formal_capabilities(complete)
-    for key in REQUIRED_FORMAL_CAPABILITIES:
+    with test_vertical_slices():
+        assert not fixture_missing_formal_capabilities(complete)
+        for key in REQUIRED_FORMAL_CAPABILITIES:
+            broken = copy.deepcopy(complete)
+            broken["capabilities"][key] = None
+            assert key in fixture_missing_formal_capabilities(broken), (key, broken)
         broken = copy.deepcopy(complete)
-        broken["capabilities"][key] = None if isinstance(
-            complete["capabilities"][key], str) else False
-        assert fixture_missing_formal_capabilities(broken), key
-        assert key in fixture_missing_formal_capabilities(broken), (key, broken)
-    broken = copy.deepcopy(complete)
-    broken["evm_chain_id"] = None
-    assert fixture_missing_formal_capabilities(broken)
-    assert "evm_chain_id" in fixture_missing_formal_capabilities(broken)
+        broken["evm_chain_id"] = None
+        assert "chain_attestation" in fixture_missing_formal_capabilities(broken)
 
 
 def test_verified_formal_chains_and_choices_are_derived():
     assert formal_tier_chains() == {"eth", "bsc", "base", "sol"}
-    assert formal_ready_chains() == {"eth", "bsc", "base", "sol"}
-    assert all(formal_ready(chain) == (chain in {"eth", "bsc", "base", "sol"})
+    assert formal_ready_chains() == set()
+    assert all(not formal_ready(chain)
                for chain in CHAIN_REGISTRY)
     assert release_tier_for("robinhood") == "exploration"
     assert CHAIN_REGISTRY["robinhood"]["evm_chain_id"] is None

@@ -25,7 +25,7 @@ def assert_three_layers_read_only(registry):
         lambda: registry.__setitem__("fake", registry["eth"]),
         lambda: registry["eth"].__setitem__("release_tier", "exploration"),
         lambda: registry["eth"]["capabilities"].__setitem__(
-            "vertical_slice_verified", False),
+            "vertical_slice_evidence", "forged"),
     ):
         try:
             mutate()
@@ -59,14 +59,14 @@ def test_activation_is_reversible_and_immutable():
         assert chain_registry.formal_ready_chains() == {"eth", "bsc", "base", "sol"}
         assert_three_layers_read_only(chain_registry.CHAIN_REGISTRY)
     assert chain_registry.CHAIN_REGISTRY is original
-    assert chain_registry.formal_ready_chains() == {"eth", "bsc", "base", "sol"}
+    assert chain_registry.formal_ready_chains() == set()
     assert_three_layers_read_only(chain_registry.CHAIN_REGISTRY)
 
 
 def test_alphabetical_import_does_not_leak_readiness():
     for name in ("test_audit_release_gate", "test_round4_a5_seal"):
         importlib.import_module(name)
-    assert chain_registry.formal_ready_chains() == {"eth", "bsc", "base", "sol"}
+    assert chain_registry.formal_ready_chains() == set()
 
 
 def test_child_bytecode_guard_is_explicit():
