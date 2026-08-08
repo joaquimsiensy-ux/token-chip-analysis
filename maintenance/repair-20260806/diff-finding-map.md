@@ -93,10 +93,10 @@
 | `R9-B1-G5` | `2f197d2` | R9 批一：SolanaAttestedSession 原语+5 反例测试 |
 | `R9-B1-G1/G4` | `592b0c2` | R9 批一：anchor-plan/v2 producer/receipt/consumer + 真实 subprocess 边界测试 + run_all 挂载（run_all 的 G5 挂载行物理归此 commit，语义 owner 见上表） |
 | `R9-B1-G6/G7` | `35c94eb` | R9 批一：台账 49 项+归因规则回写+invariant census 同步 |
-| `B1F-G1` |  | 批一消化：B1R-01 consumer 真实 producer 身份绑定；SHA 由裁判回填 |
-| `B1F-G2` |  | 批一消化：B1R-02 公共 quarantine 与 anchor 启动隔离；SHA 由裁判回填 |
-| `B1F-G3` |  | 批一消化：B1R-03 Solana genesis 信任根收紧；SHA 由裁判回填 |
-| `B1F-G4` |  | 批一消化：B1R-04 治理条文与 owner/区间回填；SHA 由裁判回填 |
+| `B1F-G1` | `fa82b32` | 批一消化：B1R-01 consumer 真实 producer 身份绑定（G1/G2/G3 同 commit） |
+| `B1F-G2` | `fa82b32` | 批一消化：B1R-02 公共 quarantine 与 anchor 启动隔离（同上） |
+| `B1F-G3` | `fa82b32` | 批一消化：B1R-03 Solana genesis 信任根收紧（同上） |
+| `B1F-G4` | `8477e04` | 批一消化：B1R-04 治理条文与 owner/区间回填 |
 
 ## 未映射 hunk 计数
 
