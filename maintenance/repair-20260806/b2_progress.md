@@ -188,3 +188,30 @@ exit 0
 85/85 PASS
 全部通过
 ```
+
+## 批二裁决记录（Fable 总验收，2026-08-08）
+
+**裁决：PASS（附程序性说明，用户 2026-08-08 拍板接受）。R9-05 矩阵层闭合。**
+
+### 独立审查异常（如实登记，不掩盖）
+批二批内对抗审查（opus 子代理）连续三发均因**子代理自身工具通道渲染故障**中止，未产出有效核验：
+- 第一发：报 .py 源码渲染出磁盘不存在内容+"注入文本"，判 INCONCLUSIVE。Fable 核实：所报"注入文本"仓库 grep 零命中、四文件 sha256 与提交完全吻合、"篡改内容"磁盘零命中——子代理渲染幻觉，非真实注入，仓库健康。
+- 第二发：收敛到"SKILL.md 148 行+日/。垃圾行"疑点。Fable 字节级核实：SKILL.md 实为 87 行 7707B，孤立垃圾行 0，od 末尾字节干净——又一渲染幻觉（连行数都错）。
+- 第三发：改动态验证策略后，23 分钟仅 2 个工具调用即会话死亡，仅留"起手基线确认"一句，无结论。
+- 定性：审查基础设施在本环境当前不稳（逐行读大 .py 触发 harness 渲染故障），非被审代码问题。三次均无确认 finding，不计止损循环。
+
+### Fable 裁判核实（主会话干净通道，读码级+动态行为，替代但不等同独立攻击审查）
+八项动态攻击（python3 调 API 看真实行为）全部守住：
+1. `formal_ready_chains()==set()`，四链唯一缺口均 `vertical_slice_evidence`（能力自然导出）。
+2. 适配器键真解析：`evm-chain-id`→`net.attested_rpc_pool`、`solana-cluster`→`SolanaAttestedSession`（callable）；伪造键/空/None 全 LookupError。
+3/4. record 为不可变 MappingProxyType 防篡改；chain_attestation 键指向坏值（伪造集群/None/int）探针全拒。
+5. **能力④防后门（头号靶子）**：批二 VERTICAL_SLICE_EVIDENCE_TARGETS 空；四种假 target（不存在模块/属性缺失/非callable/未挂载测试）注入全部被 `_resolve_target`/`_resolve_registry_key` 拒绝——批三无法用可 touch 假证据凭空造 formal-ready，声明式后门不存在。
+6. 五能力（chain_attestation/freeze_target/accounting_supply/wrong_chain_test/failure_artifact）逐项真解析到 callable；能力④空注册表自然拒。
+7. 无手工开关：grep 唯一命中是注释"without a kill switch"。
+8. 边界合规：solana 业务脚本未接入 SolanaAttestedSession，未抢跑批三。
+- 挂载检查健全：`scripts.tests.` target 强制文件名挂载 run_all.SUITE（`_resolve_target:108-111`），正例真挂载、反例 ModuleNotFoundError。
+- SKILL.md 87 行 7707B<8192 无垃圾行；全量 suite 85/85；四文件磁盘 sha256 与提交吻合。
+
+### 程序性说明（标准降格，用户授权）
+本批"独立第二双眼睛做攻击式审查"这道防线因环境故障未完成，以 Fable 裁判核实替代——这是对既定验收标准的一次降格，非代码不达标。用户 2026-08-08 明确拍板接受此核实、进批三。
+**遗留欠账**：待 opus 子代理环境恢复后，补一次批二独立攻击式审查回填本台账；最终盲审（Round A/B）对 f9c3ea5 起的批二改动仍照常覆盖，构成事后独立复核。
