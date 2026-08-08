@@ -2,14 +2,21 @@
 """R9-05 batch-1 tests for the unattached Solana attested-session primitive."""
 from __future__ import annotations
 
+import json
 import sys
 from pathlib import Path
+from types import SimpleNamespace
+from unittest import mock
 
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts/lib"))
+import solana_attested_session as session_module
 from solana_attested_session import (SOLANA_MAINNET_GENESIS_HASH,
                                      SolanaAttestedSession, SolanaRpcError)
+
+
+SECRET_ENDPOINT = "https://mainnet.helius-rpc.com/v1?api-key=SECRET#private"
 
 
 def methods(calls, endpoint=None):
@@ -117,6 +124,91 @@ def test_expected_genesis_is_not_a_constructor_boundary():
         raise AssertionError("caller can override the Solana genesis trust root")
 
 
+def test_certifi_and_system_ca_context_branches_and_reuse():
+    calls = []
+
+    def build_context(**kwargs):
+        calls.append(kwargs)
+        return object()
+
+    fake_certifi = SimpleNamespace(where=lambda: "/fixture/certifi/cacert.pem")
+    with mock.patch.object(session_module.ssl, "create_default_context",
+                           side_effect=build_context):
+        certifi_context = session_module._build_ssl_context(fake_certifi)
+        system_context = session_module._build_ssl_context(None)
+    assert certifi_context is not system_context
+    assert calls == [{"cafile": "/fixture/certifi/cacert.pem"}, {}]
+
+    seen = []
+
+    class Response:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def read(self):
+            return json.dumps({"result": "ok"}).encode()
+
+    def urlopen(_request, *, timeout, context):
+        seen.append((timeout, context))
+        return Response()
+
+    with mock.patch.object(session_module.urllib.request, "urlopen",
+                           side_effect=urlopen):
+        session_module._urllib_json("https://rpc.invalid", {"id": 1}, 7)
+        session_module._urllib_json("https://rpc.invalid", {"id": 2}, 8)
+    assert seen == [(7, session_module._SSL_CONTEXT),
+                    (8, session_module._SSL_CONTEXT)]
+
+
+def _assert_exception_chain_has_no_endpoint_secret(exc):
+    seen = set()
+    chain = []
+    current = exc
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        chain.append(str(current))
+        current = current.__cause__ or (
+            None if current.__suppress_context__ else current.__context__)
+    rendered = " | ".join(chain)
+    assert "api-key" not in rendered.lower(), rendered
+    assert "SECRET" not in rendered, rendered
+    assert "#private" not in rendered, rendered
+
+
+def _captured_failure(transport, endpoints=SECRET_ENDPOINT):
+    try:
+        SolanaAttestedSession(endpoints, request_json=transport).call(
+            "getTokenSupply", ["mint"])
+    except SolanaRpcError as exc:
+        _assert_exception_chain_has_no_endpoint_secret(exc)
+        return str(exc)
+    raise AssertionError("fixture failure was accepted")
+
+
+def test_endpoint_secrets_redacted_from_four_failure_shapes():
+    def transport_failure(endpoint, _payload, _timeout):
+        raise OSError(f"transport rejected {endpoint}")
+
+    _captured_failure(transport_failure)
+
+    def rpc_error(endpoint, payload, _timeout):
+        if payload["method"] == "getGenesisHash":
+            return {"result": SOLANA_MAINNET_GENESIS_HASH}
+        return {"error": {"message": f"upstream rejected {endpoint}"}}
+
+    _captured_failure(rpc_error)
+
+    _captured_failure(lambda _endpoint, _payload, _timeout: {
+        "result": "wrong-genesis"})
+
+    endpoints = [SECRET_ENDPOINT, SECRET_ENDPOINT.replace("SECRET", "SECRET2")]
+    exhausted = _captured_failure(transport_failure, endpoints=endpoints)
+    assert exhausted.count("https://mainnet.helius-rpc.com/v1") >= 2
+
+
 def main():
     tests = (
         test_wrong_genesis_has_zero_business_calls,
@@ -125,6 +217,8 @@ def main():
         test_business_failure_switches_endpoint_and_reattests,
         test_attestation_transport_and_shape_fail_closed,
         test_expected_genesis_is_not_a_constructor_boundary,
+        test_certifi_and_system_ca_context_branches_and_reuse,
+        test_endpoint_secrets_redacted_from_four_failure_shapes,
     )
     for test in tests:
         test()

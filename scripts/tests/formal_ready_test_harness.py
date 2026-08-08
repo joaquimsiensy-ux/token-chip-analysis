@@ -29,13 +29,14 @@ def test_vertical_slices():
     original = formal_capability_probes.VERTICAL_SLICE_EVIDENCE_TARGETS
     formal_capability_probes.VERTICAL_SLICE_EVIDENCE_TARGETS = MappingProxyType({
         "r9-eth-mainnet-vertical-slice": (
-            "scripts.tests.test_batch3_evm_vertical_slice:main",),
+            "scripts.tests.test_batch3_evm_vertical_slice:test_r9_eth_mainnet_vertical_slice",),
         "r9-bsc-mainnet-vertical-slice": (
-            "scripts.tests.test_batch3_evm_vertical_slice:main",),
+            "scripts.tests.test_batch3_evm_vertical_slice:test_r9_bsc_mainnet_vertical_slice",),
         "r9-base-mainnet-vertical-slice": (
-            "scripts.tests.test_batch3_evm_vertical_slice:main",),
+            "scripts.tests.test_batch3_evm_vertical_slice:test_r9_base_mainnet_vertical_slice",),
         "r9-solana-pythia-mainnet-vertical-slice": (
-            "scripts.tests.test_batch3_solana_vertical_slice:main",),
+            "scripts.tests.test_batch3_solana_vertical_slice:"
+            "test_r9_solana_pythia_mainnet_vertical_slice",),
     })
     try:
         yield chain_registry

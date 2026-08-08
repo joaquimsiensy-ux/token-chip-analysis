@@ -37,6 +37,8 @@ import msgspec
 from tenacity import (AsyncRetrying, retry_if_exception, stop_after_attempt,
                       wait_random_exponential)
 
+from endpoint_identity import public_endpoint, redact_endpoint_text
+
 # HTTP 状态码：这些值得重试（限流/网关抖动）；4xx 其余不重试
 RETRYABLE_STATUS = {429, 500, 502, 503, 504, 408}
 # JSON-RPC 错误码：限流/节点过载类可重试；其余（方法不存在/参数错）不重试
@@ -238,7 +240,8 @@ class RpcPool:
                 j = await _request_json(client, bucket, "POST", endpoint,
                                         json_body=body, attempts=self.attempts)
             except Exception as e:
-                return {"ok": False, "error": f"{type(e).__name__}: {str(e)[:120]}"}
+                detail = redact_endpoint_text(f"{type(e).__name__}: {e}", [endpoint])
+                return {"ok": False, "error": detail[:120]}
             err = j.get("error") if isinstance(j, dict) else None
             if err:
                 code = err.get("code")
@@ -250,9 +253,13 @@ class RpcPool:
                                                 json_body=body, attempts=self.attempts)
                         err = j.get("error") if isinstance(j, dict) else None
                     except Exception as e:
-                        return {"ok": False, "error": f"{type(e).__name__}: {str(e)[:120]}"}
+                        detail = redact_endpoint_text(
+                            f"{type(e).__name__}: {e}", [endpoint])
+                        return {"ok": False, "error": detail[:120]}
                 if err:
-                    return {"ok": False, "error": f"rpc {err.get('code')}: {str(err.get('message'))[:120]}"}
+                    detail = redact_endpoint_text(err.get("message"), [endpoint])
+                    return {"ok": False,
+                            "error": f"rpc {err.get('code')}: {detail[:120]}"}
             return {"ok": True, "result": j.get("result")}
 
     async def _attest_endpoint(self, client, bucket, endpoint):
@@ -265,30 +272,36 @@ class RpcPool:
                 client, bucket, "POST", endpoint, json_body=body,
                 attempts=self.attempts)
         except Exception as exc:
+            detail = redact_endpoint_text(
+                f"{type(exc).__name__}: {exc}", [endpoint])
             raise RpcAttestationError(
-                f"eth_chainId failed for {endpoint}: {type(exc).__name__}: {exc}") from exc
+                f"eth_chainId failed for {public_endpoint(endpoint)}: {detail}") from None
         if not isinstance(response, dict):
             raise RpcAttestationError(
-                f"eth_chainId returned non-object for {endpoint}")
+                f"eth_chainId returned non-object for {public_endpoint(endpoint)}")
         if response.get("error") is not None:
+            detail = redact_endpoint_text(response.get("error"), [endpoint])
             raise RpcAttestationError(
-                f"eth_chainId RPC error for {endpoint}: {response.get('error')}")
+                f"eth_chainId RPC error for {public_endpoint(endpoint)}: {detail}")
         raw = response.get("result")
         if not isinstance(raw, str) or not raw.startswith("0x") or raw == "0x":
             raise RpcAttestationError(
-                f"eth_chainId returned invalid result for {endpoint}: {raw!r}")
+                f"eth_chainId returned invalid result for {public_endpoint(endpoint)}: "
+                f"{redact_endpoint_text(raw, [endpoint])!r}")
         try:
             observed = int(raw, 16)
         except ValueError as exc:
             raise RpcAttestationError(
-                f"eth_chainId returned invalid hex for {endpoint}: {raw!r}") from exc
+                f"eth_chainId returned invalid hex for {public_endpoint(endpoint)}: "
+                f"{redact_endpoint_text(raw, [endpoint])!r}") from exc
         if observed <= 0:
             raise RpcAttestationError(
-                f"eth_chainId returned non-positive id for {endpoint}: {raw!r}")
+                f"eth_chainId returned non-positive id for {public_endpoint(endpoint)}: "
+                f"{redact_endpoint_text(raw, [endpoint])!r}")
         if observed != self.expected_chain_id:
             raise RpcChainMismatch(
                 f"RPC eth_chainId={observed} does not match expected "
-                f"{self.expected_chain_id} for {endpoint}")
+                f"{self.expected_chain_id} for {public_endpoint(endpoint)}")
         self._attested_endpoint = endpoint
         return observed
 

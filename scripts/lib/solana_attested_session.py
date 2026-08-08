@@ -3,8 +3,16 @@
 from __future__ import annotations
 
 import json
+import ssl
 import threading
 import urllib.request
+
+from endpoint_identity import public_endpoint, redact_endpoint_text
+
+try:
+    import certifi as _certifi
+except ImportError:  # Optional: system CA remains the zero-dependency fallback.
+    _certifi = None
 
 
 SOLANA_MAINNET_GENESIS_HASH = "5eykt4UsFv8P8NJdTREpY1vzqKqZKvdpKuc147dw2N9d"
@@ -18,11 +26,24 @@ class SolanaRpcError(RuntimeError):
     pass
 
 
+def _build_ssl_context(certifi_module):
+    if certifi_module is not None:
+        try:
+            return ssl.create_default_context(cafile=certifi_module.where())
+        except (OSError, ssl.SSLError, AttributeError):
+            pass
+    return ssl.create_default_context()
+
+
+_SSL_CONTEXT = _build_ssl_context(_certifi)
+
+
 def _urllib_json(endpoint, payload, timeout):
     request = urllib.request.Request(
         endpoint, data=json.dumps(payload).encode("utf-8"),
         headers={"Content-Type": "application/json"}, method="POST")
-    with urllib.request.urlopen(request, timeout=timeout) as response:
+    with urllib.request.urlopen(
+            request, timeout=timeout, context=_SSL_CONTEXT) as response:
         return json.loads(response.read().decode("utf-8"))
 
 
@@ -68,28 +89,38 @@ class SolanaAttestedSession:
                 "method": method, "params": list(params or [])}
 
     def _request(self, endpoint, method, params):
+        display = public_endpoint(endpoint)
         try:
             response = self._request_json(
                 endpoint, self._payload(method, params), self._timeout)
         except Exception as exc:
-            raise SolanaRpcError(f"{method} transport failed for {endpoint}: {exc}") from exc
+            detail = redact_endpoint_text(
+                f"{type(exc).__name__}: {exc}", [endpoint])
+            raise SolanaRpcError(
+                f"{method} transport failed for {display}: {detail}") from None
         if not isinstance(response, dict):
-            raise SolanaRpcError(f"{method} response is not an object for {endpoint}")
+            raise SolanaRpcError(
+                f"{method} response is not an object for {display}")
         if response.get("error") is not None:
-            raise SolanaRpcError(f"{method} RPC error for {endpoint}: {response['error']}")
+            detail = redact_endpoint_text(response["error"], [endpoint])
+            raise SolanaRpcError(
+                f"{method} RPC error for {display}: {detail}")
         if "result" not in response:
-            raise SolanaRpcError(f"{method} response missing result for {endpoint}")
+            raise SolanaRpcError(
+                f"{method} response missing result for {display}")
         return response["result"]
 
     def _attest(self, endpoint):
+        display = public_endpoint(endpoint)
         observed = self._request(endpoint, "getGenesisHash", [])
         if not isinstance(observed, str) or not observed:
             raise SolanaAttestationError(
-                f"getGenesisHash returned invalid result for {endpoint}")
+                f"getGenesisHash returned invalid result for {display}")
         if observed != SOLANA_MAINNET_GENESIS_HASH:
+            safe_observed = redact_endpoint_text(observed, [endpoint])
             raise SolanaAttestationError(
-                f"Solana genesis mismatch for {endpoint}: expected "
-                f"{SOLANA_MAINNET_GENESIS_HASH}, observed {observed}")
+                f"Solana genesis mismatch for {display}: expected "
+                f"{SOLANA_MAINNET_GENESIS_HASH}, observed {safe_observed}")
         self._attested_endpoint = endpoint
         self._observed_genesis = observed
 
@@ -116,4 +147,3 @@ class SolanaAttestedSession:
                     self._advance()
             raise SolanaRpcError(
                 f"all Solana endpoints failed for {method}: " + " | ".join(failures))
-

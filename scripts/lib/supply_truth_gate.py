@@ -39,6 +39,8 @@ from receipt_kernel import (build_envelope, finalize_envelope, publish_error_rec
                             publish_overwrite)
 from chain_registry import formal_reconciliation_chains
 from net import attested_rpc_pool
+from solana_observation import (assert_declared_slot,
+                                validate_observation_bundle)
 
 SEL_TOTSUP = "0x18160ddd"  # totalSupply()
 
@@ -74,23 +76,13 @@ def decide(replay_net: int, onchain: int, tolerance_bps: int = 10):
     return ("PASS" if diff_bps <= tolerance_bps else "FAIL"), diff, diff_bps
 
 
-def _post(url, payload, proxy=None, timeout=30):
-    import requests
-    proxies = {"http": proxy, "https": proxy} if proxy else None
-    r = requests.post(url, json=payload, proxies=proxies, timeout=timeout)
-    r.raise_for_status()
-    return r.json()
-
-
 def fetch_onchain_supply(chain, token=None, mint=None, rpc=None, proxy=None,
                          as_of_block=None):
     """返回 (最小单位总供给, Solana observed context slot|None)。"""
     url = rpc or DEFAULT_RPC[chain]
     if chain == "solana":
-        res = _post(url, {"jsonrpc": "2.0", "id": 1, "method": "getTokenSupply",
-                          "params": [mint]}, proxy)
-        result = res["result"]
-        return int(result["value"]["amount"]), int(result["context"]["slot"])
+        raise ValueError(
+            "Solana formal supply is consumed from --observation-bundle; direct RPC is forbidden")
     tag = hex(int(as_of_block)) if as_of_block is not None else "latest"
     pool = attested_rpc_pool(url, chain, formal=True, proxy=proxy,
                              rps=2, concurrency=1)
@@ -103,7 +95,7 @@ def fetch_onchain_supply(chain, token=None, mint=None, rpc=None, proxy=None,
     return int(hexval, 16), None
 
 
-def main():
+def main(argv=None):
     ap = argparse.ArgumentParser(description="供给真值闸：重放净供给 vs 链上 totalSupply")
     supply_chains = formal_reconciliation_chains("supply")
     supply_choices = sorted((supply_chains - {"sol"}) | ({"solana"} if "sol" in supply_chains else set()))
@@ -116,21 +108,59 @@ def main():
                     help="探索模式；仅此模式允许 --replay-net-raw，正式聚合器拒收")
     ap.add_argument("--rpc")
     ap.add_argument("--proxy")
+    ap.add_argument("--observation-bundle",
+                    help="Solana formal solana-observation-bundle/v1 from scan_token_accounts")
+    ap.add_argument("--min-context-slot", type=int, default=0,
+                    help="Solana bundle snapshot lower-bound assertion")
     ap.add_argument("--tolerance-bps", type=int, default=10)
     ap.add_argument("--as-of-block", type=int, default=None,
                     help="与 accounting target 对齐的冻结块/slot；正式发布必须提供")
     ap.add_argument("--out", default="supply_truth.json")
-    a = ap.parse_args()
+    a = ap.parse_args(argv)
 
-    target = {"chain": a.chain, "token": (a.token or a.mint or "").lower(),
-              "as_of_block": a.as_of_block}
     mode = "exploration" if a.exploration else "formal"
+    bundle = None
+    bundle_path = None
+    observed_context_slot = None
+    envelope = None
+    if a.min_context_slot < 0:
+        ap.error("--min-context-slot must be non-negative")
+    if a.chain == "solana" and not a.mint:
+        ap.error("solana 链必须给 --mint")
     try:
+        observed_snapshot_slot = a.as_of_block
+        if a.chain == "solana":
+            if not a.observation_bundle:
+                raise ValueError("solana 链必须给 --observation-bundle")
+            bundle_path = Path(a.observation_bundle).resolve(strict=True)
+            bundle = json.loads(bundle_path.read_text(encoding="utf-8"))
+            validate_observation_bundle(
+                bundle, bundle_path=bundle_path, expected_mint=a.mint)
+            observed_snapshot_slot = bundle["snapshot"]["slot"]
+        target = {"chain": a.chain, "token": (a.token or a.mint or "").lower(),
+                  "as_of_block": observed_snapshot_slot}
+        envelope_inputs = {}
+        if a.replay_stats:
+            envelope_inputs["replay_stats"] = Path(a.replay_stats)
+        if bundle_path is not None:
+            envelope_inputs["observation_bundle"] = bundle_path
         envelope = build_envelope(
             "supply-truth-receipt/v2", target, __file__, mode,
-            inputs={"replay_stats": Path(a.replay_stats)} if a.replay_stats else None)
+            inputs=envelope_inputs or None)
+        if a.chain == "solana":
+            assert_declared_slot(a.as_of_block, observed_snapshot_slot, "--as-of-block")
+            if observed_snapshot_slot < a.min_context_slot:
+                raise ValueError(
+                    f"bundle snapshot slot {observed_snapshot_slot} < "
+                    f"--min-context-slot {a.min_context_slot}")
     except Exception as exc:
         print(f"检测自身失败（exit 1，修通道重跑）: {exc}", file=sys.stderr)
+        if envelope is not None:
+            try:
+                error_path = publish_error_receipt(a.out, envelope, exc)
+                print(f"[supply_truth] ERROR → {error_path}", file=sys.stderr)
+            except Exception as write_exc:
+                print(f"[supply_truth] ERROR receipt 写入失败: {write_exc}", file=sys.stderr)
         return 1
 
     try:
@@ -150,19 +180,16 @@ def main():
             raise ValueError("solana 链必须给 --mint")
         if a.chain != "solana" and not a.token:
             raise ValueError("EVM 链必须给 --token")
-        observed = fetch_onchain_supply(a.chain, a.token, a.mint, a.rpc, a.proxy,
-                                        a.as_of_block)
-        if isinstance(observed, tuple):
-            onchain, observed_context_slot = observed
-        else:  # 兼容注入 mock；真实实现始终返回 tuple。
-            onchain, observed_context_slot = int(observed), None
-        if a.chain == "solana" and observed_context_slot is None:
-            raise ValueError("getTokenSupply 缺 result.context.slot，当前观测时点不可证")
-        if (mode == "formal" and a.chain == "solana"
-                and observed_context_slot != a.as_of_block):
-            raise ValueError(
-                f"getTokenSupply context.slot={observed_context_slot} "
-                f"!= frozen slot={a.as_of_block}")
+        if a.chain == "solana":
+            onchain = int(bundle["supply"]["amount"])
+            observed_context_slot = int(bundle["supply"]["slot"])
+        else:
+            observed = fetch_onchain_supply(a.chain, a.token, a.mint, a.rpc, a.proxy,
+                                            a.as_of_block)
+            if isinstance(observed, tuple):
+                onchain, observed_context_slot = observed
+            else:  # 兼容 EVM 注入 mock。
+                onchain, observed_context_slot = int(observed), None
     except Exception as e:  # 网络/字段/文件——检测自身失败，禁当 PASS
         print(f"检测自身失败（exit 1，修通道重跑）: {e}", file=sys.stderr)
         try:
@@ -182,8 +209,13 @@ def main():
         diff_bps=round(diff_bps, 4) if diff_bps is not None else None,
         tolerance_bps=a.tolerance_bps,
         observed_context_slot=observed_context_slot if a.chain == "solana" else None,
+        observation_bundle=(
+            {"path": str(bundle_path), "size": bundle_path.stat().st_size,
+             "sha256": __import__("hashlib").sha256(bundle_path.read_bytes()).hexdigest()}
+            if bundle_path is not None else None),
         supply_observation_semantics=(
-            "current value observed at observed_context_slot; not a frozen as-of supply"
+            "bundle getTokenSupply cross-check observed at observed_context_slot; "
+            "canonical freeze remains target.as_of_block from GPA context"
             if a.chain == "solana" else "historical eth_call at target.as_of_block"),
         on_fail=("余额禁用重放结果改链上实时直查；地址全集/转账历史仍可用重放；"
                  "重放余额仅可作≥阈值超集筛选" if verdict == "FAIL" else None))

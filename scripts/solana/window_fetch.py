@@ -174,7 +174,6 @@ def main(argv=None):
     segment_timestamps = []
     out_path.parent.mkdir(parents=True, exist_ok=True)
     outf = partial.open("w", encoding="utf-8")
-    committed = False
     lock = __import__("threading").Lock()
     target = {"chain": "solana", "token": MINT.lower(), "as_of_block": args.to}
     base_envelope = build_envelope(SCHEMA, target, __file__, "formal")
@@ -233,31 +232,14 @@ def main(argv=None):
         if gaps:
             publish_overwrite(args.receipt, receipt)
         else:
+            partial.unlink()
             publish_txn(out_path, RawBytes(data_bytes), args.receipt, receipt)
-            committed = True
-            if partial.exists():
-                partial.unlink()
-            if __import__("hashlib").sha256(out_path.read_bytes()).hexdigest() != published["sha256"]:
-                raise RuntimeError("联合发布后独立读者哈希不一致")
         print(f"{verdict} {len(segs)} segs ({len(gaps)} gaps) in {time.time()-t0:.0f}s"
               f" -> {out_path if not gaps else partial}", flush=True)
         return exit_code
     except Exception as exc:
         if not outf.closed:
             outf.close()
-        withdrawal_errors = []
-        if committed:
-            try:
-                Path(args.receipt).unlink(missing_ok=True)
-            except Exception as cleanup_exc:
-                withdrawal_errors.append(f"receipt: {cleanup_exc}")
-            try:
-                if out_path.exists():
-                    os.replace(out_path, partial)
-            except Exception as cleanup_exc:
-                withdrawal_errors.append(f"data: {cleanup_exc}")
-        if withdrawal_errors:
-            exc = RuntimeError(f"{exc}; 撤回失败: {'; '.join(withdrawal_errors)}")
         _publish_error(args.receipt, base_envelope, exc, run_id)
         print(f"[window_fetch] 检测/提交失败（exit 1）: {exc}", file=sys.stderr)
         return 1

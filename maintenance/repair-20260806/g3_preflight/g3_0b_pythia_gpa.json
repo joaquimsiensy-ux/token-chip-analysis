@@ -1,0 +1,130 @@
+{
+  "schema": "g3-0b-pythia-gpa/v1",
+  "results": [
+    {
+      "status": "ERROR",
+      "carrier": "pythia-full-observation",
+      "mint": "CreiuhfwdWCN5mJbMJtA9bBpYQrQF2tCBuZwSPWfpump",
+      "endpoint": {
+        "public_origin": "https://mainnet.helius-rpc.com/",
+        "sha256": "6e6615a22187c44572db77a46d7ea8d6116aeb5f3baab1416b04a34da6419db4"
+      },
+      "error": "all Solana endpoints failed for getProgramAccounts: getProgramAccounts RPC error for https://mainnet.helius-rpc.com/: {'code': -32600, 'message': 'Too many accounts requested (Large number of pubkeys), Please use getProgramAccountsV2 with pagination to handle large datasets. See: https://www.helius.dev/docs/api-reference/rpc/http/getprogramaccountsv2'}",
+      "cost": {
+        "rpc_calls": 4,
+        "response_bytes": 1146,
+        "elapsed_seconds": 6.724652,
+        "rate_limit_events": 0
+      },
+      "wall_seconds": 6.725431
+    },
+    {
+      "status": "PASS",
+      "carrier": "pythia-full-observation",
+      "mint": "CreiuhfwdWCN5mJbMJtA9bBpYQrQF2tCBuZwSPWfpump",
+      "endpoint": {
+        "public_origin": "https://api.mainnet-beta.solana.com",
+        "sha256": "d6092b5f25eb26ad08e1c49bf16ff3df02faccaa5a717900ab9bf901abbab202"
+      },
+      "observation": {
+        "schema": "solana-observation-core/v1",
+        "canonical_target": {
+          "chain": "solana",
+          "token": "creiuhfwdwcn5mjbmjta9bbpyqrqf2tcbuzwspwfpump",
+          "as_of_block": 438010311
+        },
+        "attestation": {
+          "expected_genesis": "5eykt4UsFv8P8NJdTREpY1vzqKqZKvdpKuc147dw2N9d",
+          "observed_genesis": "5eykt4UsFv8P8NJdTREpY1vzqKqZKvdpKuc147dw2N9d",
+          "endpoint": {
+            "public_origin": "https://api.mainnet-beta.solana.com",
+            "sha256": "d6092b5f25eb26ad08e1c49bf16ff3df02faccaa5a717900ab9bf901abbab202"
+          }
+        },
+        "mint": "CreiuhfwdWCN5mJbMJtA9bBpYQrQF2tCBuZwSPWfpump",
+        "program": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        "mint_pre": {
+          "slot": 438010301,
+          "raw_sha256": "a8102254727da5d1df651a3cfeabab006212a0b0350d25d072ece262aed286d6",
+          "json_parsed_slot": 438010305,
+          "json_parsed": {
+            "info": {
+              "decimals": 6,
+              "freezeAuthority": null,
+              "isInitialized": true,
+              "mintAuthority": null,
+              "supply": "998158041739995"
+            },
+            "type": "mint"
+          }
+        },
+        "snapshot": {
+          "slot": 438010311,
+          "account_count": 82223,
+          "accounts_sha256": "55e5bf0c447c95414f154d5d0a6c308fbe48872ae4435a6aa3ecdb9aac57e268"
+        },
+        "mint_post": {
+          "slot": 438010364,
+          "raw_sha256": "a8102254727da5d1df651a3cfeabab006212a0b0350d25d072ece262aed286d6"
+        },
+        "activity": {
+          "mode": "complete",
+          "window": {
+            "from_slot": 438010301,
+            "to_slot": 438010364
+          },
+          "referenced_signatures": 0,
+          "successful_references": 0,
+          "sample_size": 0,
+          "unavailable_transactions": 0,
+          "complete": true,
+          "pagination_complete": true,
+          "pagination_error": null,
+          "signature_pages": 1,
+          "limits": {
+            "complete_signature_limit": 200,
+            "signature_page_limit": 1000,
+            "complete_rpc_limit": 250,
+            "deadline_seconds": 120,
+            "light_sample_limit": 50
+          },
+          "writable_hits": [],
+          "rpc_calls": 1,
+          "elapsed_seconds": 2.922421,
+          "coverage_statement": "all successful referenced transactions in the observed window were parsed; the mint was never writable",
+          "signature_set_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+        },
+        "supply": {
+          "slot": 438010376,
+          "amount": "998158041739995",
+          "decimals": 6,
+          "semantics": "cross-check observation only; not the freeze point"
+        },
+        "closure": {
+          "gpa_amount": "998158041739995",
+          "mint_raw_amount": "998158041739995",
+          "token_supply_amount": "998158041739995",
+          "closed": true
+        },
+        "input_hashes": {
+          "pre_raw": "a8102254727da5d1df651a3cfeabab006212a0b0350d25d072ece262aed286d6",
+          "json_parsed": "839481fbf3c416f9680bf2c60e2a654b920cdd93973665d839531175757622e4",
+          "gpa": "098586d06706d10b4845a8de5579bcb8eceb8499aaec177d7d4f2730cafbbfbc",
+          "post_raw": "a8102254727da5d1df651a3cfeabab006212a0b0350d25d072ece262aed286d6",
+          "token_supply": "8dc587541bceb0d821c05347cda3d2ab2eceb89ee486c516485e81990f2e6911"
+        },
+        "attempt": 1
+      },
+      "gpa_account_count": 82223,
+      "cost": {
+        "rpc_calls": 7,
+        "response_bytes": 23574974,
+        "elapsed_seconds": 35.033582,
+        "rate_limit_events": 0
+      },
+      "wall_seconds": 35.320708,
+      "baseline_scale_note": "~38,039 nonzero accounts/~38,012 owners is context only, never PASS evidence."
+    }
+  ],
+  "verdict": "PASS"
+}

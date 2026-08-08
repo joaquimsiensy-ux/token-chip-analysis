@@ -137,6 +137,23 @@ def test_correct_chain_and_failover_reattest():
                      ("http://second", "eth_call")], calls
 
 
+def test_evm_attestation_errors_redact_endpoint_query():
+    endpoint = "https://evm.invalid/rpc?api-key=SECRET#private"
+
+    async def transport(client, bucket, method, url, *, json_body=None, attempts=6):
+        raise TimeoutError(f"failed endpoint {url}")
+
+    pool = net.RpcPool(endpoint, expected_chain_id=56)
+    try:
+        run_with_backend(pool, transport)
+    except net.RpcAttestationError as exc:
+        rendered = str(exc)
+    else:
+        raise AssertionError("EVM transport failure was accepted")
+    assert "api-key" not in rendered.lower() and "SECRET" not in rendered
+    assert "#private" not in rendered
+
+
 def test_registry_factory_rejects_missing_identity():
     for chain in ("robinhood", "opbnb"):
         try:
@@ -291,6 +308,7 @@ def main():
     test_wrong_chain_zero_business()
     test_attestation_failures()
     test_correct_chain_and_failover_reattest()
+    test_evm_attestation_errors_redact_endpoint_query()
     test_registry_factory_rejects_missing_identity()
     test_each_formal_callsite_wrong_chain_zero_business()
     test_remaining_formal_entrypoints_wrong_chain_zero_business()

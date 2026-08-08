@@ -74,6 +74,25 @@
 | `R9-B2-G4:SKILL.md; scripts/tests/test_chain_support_matrix.py` 的 frontmatter hunk | `INV-11, INV-20`; secondary `INV-18` | `R9-05`; `RH-EX-01/02`; B2-G4 | SKILL 与六探针矩阵单口径；Robinhood/Arbitrum 保持 exploration；不改 VERSION | chain support/RH/Arbitrum/docs lint；`SKILL.md=7707B` |  |
 | `R9-B2-G5:maintenance/repair-20260806/{ledger.md,diff-finding-map.md,b2_progress.md}` | `INV-11, INV-18, INV-19` | `R9-05`; B2-G1～G5 | 登记逐组红绿、owner 与“矩阵层闭合，callsite 留批三”的未完全销账状态 | 受影响测试；全量 suite；未映射 hunk=0 |  |
 
+## R9 批三：正式纵切片与 Solana 精确快照
+
+| commit/hunk | primary invariant | finding 列表或配套任务 | 修改目的 | 测试/纵切片/守卫 | 审查结论 |
+|---|---|---|---|---|---|
+| `R9-B3-G1:scripts/lib/solana_observation.py; scripts/tests/test_r9_batch3_solana_observation.py` 的 observation/activity hunk | `INV-08`; secondary `INV-02, INV-11` | `R9-01`; B3-G1/G4 九负例 | 以 attested session 实现前观测→GPA canonical slot→后观测→活动验证→supply 交叉→三方闭合；声明 slot 只作断言；完整/轻量预算 fail-closed | 错 genesis 业务=0；77≠103；前后变化；分页中断；双模式 writable；supply 过早；三方不闭合；RPC 预算 |  |
+| `R9-B3-G2:scripts/solana/{scan_token_accounts.py,accounting_gate_sol.py,anchor_sampler.py,window_fetch.py}; scripts/lib/supply_truth_gate.py; scripts/report/{reconciliation_report.py,shared_release_receipt.py}; scripts/tests/{test_r9_batch3_dynamic_runner.py,test_batch3_solana_producers.py,test_r7_findings.py,test_round4_identity_emitter.py}` | `INV-05, INV-08, INV-10, INV-12`; secondary `INV-01, INV-03, INV-04` | `R9-01`; `R8-04, R8-12`; `R7-03, R7-05, R7-06, R8-01, R8-03` | scan 生产 bundle+snapshot 联合发布；accounting/supply truth 绑定同 bundle；runner 从 supply 观测 slot 动态派生；anchor/window 以 txn 作最后可失败操作 | stale marker 隔离；三 consumer slot/bundle 绑定；动态 runner；提交后自检红例 |  |
+| `R9-B3-G3:scripts/lib/formal_capability_probes.py; scripts/tests/{test_batch3_evm_vertical_slice.py,test_r9_batch2_executable_capabilities.py,formal_ready_test_harness.py,test_batch2_capability_matrix.py,test_batch2_registry_harness_hardening.py,test_chain_registry.py,test_chain_support_matrix.py}` 的 EVM/target hunk | `INV-11`; secondary `INV-06, INV-07, INV-10, INV-12, INV-17` | `R9-05`; `R9-02`; eth/bsc/base 纵切片 | 注册三链真实 callable；每链现场 anchor plan、错链零业务、runner→READY→release；删 target 或摘 SUITE 即掉 ready | time_spotcheck 20 项；target 删除回归；loopback E2E 待允许 bind 环境复跑 |  |
+| `R9-B3-G4:scripts/solana/fetch_sqd_transfers_v2.py; scripts/tests/{test_batch3_solana_vertical_slice.py,test_r9_batch3_solana_observation.py}; maintenance/repair-20260806/transport-injections.json` | `INV-11`; secondary `INV-02, INV-08, INV-17` | `R9-05`; Solana PYTHIA 纵切片；SQD 负例⑨ | transport fake 增加 genesis、单调 slot、双模式活动、mint/GPA/supply；SQD dataset/mint/range 进入真实消费路径 | 九负例；SQD scope；Solana loopback E2E 待允许 bind 环境复跑 |  |
+| `R9-B3-G5:maintenance/repair-20260806/g3_preflight/{g3_0a_usdc_activity.py,g3_0b_pythia_gpa.py}; scripts/tests/test_r9_batch3_preflight.py` | `INV-08, INV-11` | G3-0 双载体 | 两壳直接 import G1 生产活动/完整 observation；逐 endpoint 成本、字节、耗时、429 如实登记；USDC 禁 GPA | 两壳 `--help` 独立启动；fake transport 各一绿例 |  |
+| `R9-B3-G6:maintenance/repair-20260806/b3_progress.md` 的裁判执行手册 hunk | `INV-08, INV-18` | `R9-01`; G3-0/mainnet smoke 待登记 | 固化 Helius key-file 拼接、同 bundle 三 consumer 命令、代理边界与 PASS 判据，不在无网沙箱伪跑 | 裁判 G3-0a/G3-0b/PYTHIA smoke 待回填 |  |
+| `R9-B3-G7:SKILL.md; scripts/tests/{run_all.py,invariant_scan.py,invariant_manifest.json,test_chain_support_matrix.py}; maintenance/repair-20260806/{ledger.md,diff-finding-map.md,b3_progress.md,transport-injections.json}` 的治理/门禁 hunk | `INV-17, INV-18, INV-19, INV-20`; secondary `INV-11` | `R9-01, R9-05`; B3-G1～G7 | 同步四链 ready 口径、transport/receipt/entrypoint census、逐组红绿、裁判待跑位与未映射 hunk | docs lint；SKILL 字节闸；invariant scan；全量 85/87，唯二 EPERM bind |  |
+
+## R9 批三批内修复循环 1
+
+| commit/hunk | primary invariant | finding 列表或配套任务 | 修改目的 | 测试/纵切片/守卫 | 审查结论 |
+|---|---|---|---|---|---|
+| `B3F2-G1:scripts/lib/{endpoint_identity.py,solana_attested_session.py,solana_observation.py,net.py}; scripts/solana/{accounting_gate_sol.py,anchor_sampler.py}; maintenance/repair-20260806/g3_preflight/g3_0a_usdc_activity.py; scripts/tests/{test_r9_solana_attested_session.py,test_batch1_rpc_attestation.py,test_r9_batch3_solana_observation.py,test_r9_batch3_preflight.py,test_sixlens_receipts.py}` | `INV-11`; secondary `INV-02, INV-08` | `B3FIX-01` P2、`B3FIX-02` P1；源头 R9-05 | certifi CA context 构造一次复用且可选依赖缺失回退；endpoint 日志/异常/receipt/行身份统一 public origin；G3-0 成本壳不再旁路生产 urllib transport | certifi 有/无与 context 复用；transport/RPC/attestation/exhausted 四型密钥负例；preflight/scan/anchor 持久化负例；EVM 同族回归 |  |
+| `B3F2-G2:maintenance/repair-20260806/{g3_preflight/g3_0a_usdc_activity.json(删除),b3_progress.md,ledger.md,diff-finding-map.md}` | `INV-18, INV-19`; secondary `INV-11` | 批内修复循环 1 止损与污染清理 | 删除裁判首跑含 key 报告且不留副本；如实登记第一循环、红绿与裁判重跑位 | 文件不存在断言；docs lint；全量 suite |  |
+
 ## 分组 → commit SHA 对照（Fable 代 commit 后回填）
 
 | 分组 | commit SHA | 说明 |
@@ -118,6 +137,15 @@
 | `R9-B2-G3` | `ae3ff29`(生产)+`3b69e5d`(测试) | Solana SQD dataset scope 适配器 |
 | `R9-B2-G4` | `4bc31db`(SKILL)+`3b69e5d`(test_chain_support_matrix) | SKILL 单口径与 exploration 降级保持 |
 | `R9-B2-G5` | `cf67cd0` | ledger/map/progress 与全量门禁 |
+| `R9-B3-G1` |  | Fable 回填：Solana observation bundle 核心与活动判定 |
+| `R9-B3-G2` |  | Fable 回填：三消费者、动态 runner、producer txn 尾巴 |
+| `R9-B3-G3` |  | Fable 回填：EVM 三链纵切片与 evidence targets |
+| `R9-B3-G4` |  | Fable 回填：Solana 纵切片 fake 与 SQD callsite |
+| `R9-B3-G5` |  | Fable 回填：G3-0 双载体预演壳 |
+| `R9-B3-G6` |  | Fable 回填：mainnet smoke 裁判手册 |
+| `R9-B3-G7` |  | Fable 回填：台账、矩阵、门禁与待跑位 |
+| `B3F2-G1` |  | Fable 回填：CA context、endpoint public identity 与生产 G3-0 transport 接线 |
+| `B3F2-G2` |  | Fable 回填：污染清理、批内循环 1 台账与门禁 |
 
 ## 未映射 hunk 计数
 
@@ -135,5 +163,7 @@
 - R9 批一批内消化（`144c652..0bb94ba`，含 `B1F-G1`～`B1F-G4` 与 SHA 回填）：重审独立复算未映射 hunk=`1`，即 `solana_attested_session.py` 末尾空行删除（`B1R2-01`）；原自报 `0` 作废并由 B1F2-G3 恢复。
 - R9 批一批内消化第二轮（`0bb94ba..` 至候选 tip，含 `B1F2-G1/G2`=`1a7e685`/`B1F2-G3`=`658f78e` 与本表自身回填）：`0` 候选（全部 hunk 归属三组；回填 commit 按通例自指式计入）。第三轮增量重审（report-recheck2.md）**ALL-CLEAR**：B1R-01 CLOSED、两 P3 CLOSED；新增历史漏检 `B1R3-01`（P3 非阻断，anchor per_cell/edge_max 无下界→弱覆盖 plan，非 B1R-01 未闭合）留批四守卫层处理+最终盲审复验。
 - R9 批二（`5b06677..` 至本回填 commit 即候选 tip，含生产 `ae3ff29`/测试 `3b69e5d`/SKILL `4bc31db`/台账 `cf67cd0` 与本表自身回填）：`0` 候选（全部 hunk 归属 `R9-B2-G1`～`R9-B2-G5`；commit 按生产/测试/SKILL/台账横切，各 G 跨 commit 已在 SHA 对照注明；回填 commit 自指式计入；待批内审查独立复算）。
+- R9 批三（`5771419..` 至当前未提交 worktree）：`0` 候选（全部生产、测试、fixture、SKILL 与 maintenance hunk 已归属 `R9-B3-G1`～`R9-B3-G7`；SHA 依工单留空待 Fable 回填；当前环境未执行任何 git 写操作）。
+- R9 批三批内修复循环 1（接续当前未提交 worktree）：`0` 候选（CA/endpoint identity、G3-0 transport 旁路、上层持久化负例、污染文件删除与三份台账 hunk 均归属 `B3F2-G1/G2`；SHA 留空待 Fable 回填；未执行任何 git 写操作）。
 
 通例：区间末端恒取候选 tip；自指式 SHA 回填 commit 计入本区间。map 行文件清单以 Fable 实际 commit 分组为准；一文件含多 owner 的 hunk 时（文件级 commit 无法拆分），物理归属行与语义 owner 行互相注明，Fable 回填 SHA 时校正清单。

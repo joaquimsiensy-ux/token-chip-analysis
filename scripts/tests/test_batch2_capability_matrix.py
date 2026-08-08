@@ -52,9 +52,8 @@ def test_each_missing_capability_blocks_readiness():
 
 def test_verified_formal_chains_and_choices_are_derived():
     assert formal_tier_chains() == {"eth", "bsc", "base", "sol"}
-    assert formal_ready_chains() == set()
-    assert all(not formal_ready(chain)
-               for chain in CHAIN_REGISTRY)
+    assert formal_ready_chains() == {"eth", "bsc", "base", "sol"}
+    assert all(formal_ready(chain) for chain in formal_tier_chains())
     assert release_tier_for("robinhood") == "exploration"
     assert CHAIN_REGISTRY["robinhood"]["evm_chain_id"] is None
     assert formal_evm_chains("accounting_adapter") == {"eth", "bsc", "base"}

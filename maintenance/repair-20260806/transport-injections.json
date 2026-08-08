@@ -103,11 +103,11 @@
       "allowed_reason": "The production permission adapter handles an unverified contract through its documented 404 branch; no permission business function is mocked."
     },
     {
-      "production_callsite": "scripts/solana/accounting_gate_sol.py:requests.post; scripts/solana/scan_token_accounts.py:rpc_call; scripts/lib/supply_truth_gate.py:_post",
+      "production_callsite": "scripts/solana/{scan_token_accounts.py,accounting_gate_sol.py} -> scripts/lib/solana_observation.py -> scripts/lib/solana_attested_session.py:_urllib_json",
       "protocol": "Solana JSON-RPC over HTTP",
       "fake_backend": "scripts/tests/test_batch3_solana_vertical_slice.py ThreadingHTTPServer bound to 127.0.0.1:0",
       "test_id": "B3-SOL-E2E",
-      "allowed_reason": "Real producer mains parse getAccountInfo/getTokenSupply/getProgramAccounts and publish production envelopes; only the RPC transport endpoint is loopback."
+      "allowed_reason": "Real producer/consumer mains, attestation, observation window, activity parser, three-way closure and receipt publication execute unchanged; only the HTTP endpoint is loopback. supply_truth consumes the resulting bundle and has no Solana transport of its own."
     },
     {
       "production_callsite": "scripts/solana/{anchor_sampler.py,window_fetch.py} -> scripts/lib/net.py:curl_json",
@@ -115,6 +115,27 @@
       "fake_backend": "scripts/tests/test_batch3_solana_vertical_slice.py loopback Solana stream handler selected by --endpoint",
       "test_id": "B3-SOL-E2E",
       "allowed_reason": "The real anchor/window scan, timestamp validation, joint transaction and receipt logic execute unchanged; only the remote SQD response is supplied locally."
+    },
+    {
+      "production_callsite": "scripts/lib/solana_observation.py:observe_snapshot/measure_mint_activity -> SolanaAttestedSession.call",
+      "protocol": "Solana JSON-RPC decoded-response transport boundary",
+      "fake_backend": "scripts/tests/test_r9_batch3_solana_observation.py:SolanaTransportFake passed only as SolanaAttestedSession.request_json",
+      "test_id": "R9-B3-SOL-OBS-01..09",
+      "allowed_reason": "The fake returns decoded RPC transport responses only. Production attestation, minContextSlot, monotonic slot, activity mode, writable parsing, supply closure and retry logic all execute unchanged."
+    },
+    {
+      "production_callsite": "maintenance/repair-20260806/g3_preflight/{g3_0a_usdc_activity.py,g3_0b_pythia_gpa.py} -> scripts/lib/solana_observation.py",
+      "protocol": "Solana JSON-RPC decoded-response transport boundary",
+      "fake_backend": "scripts/tests/test_r9_batch3_preflight.py reuses SolanaTransportFake as request_json",
+      "test_id": "R9-B3-G5-OFFLINE-USDC/PYTHIA",
+      "allowed_reason": "Both shells import and execute the production observation/activity library; the offline test replaces only request_json and verifies the carrier wiring without network access."
+    },
+    {
+      "production_callsite": "scripts/solana/fetch_sqd_transfers_v2.py -> scripts/lib/solana_sqd_dataset.py -> SolanaAttestedSession.call",
+      "protocol": "Solana JSON-RPC state anchor for SQD dataset identity",
+      "fake_backend": "scripts/tests/test_r9_batch3_solana_observation.py SolanaTransportFake passed as request_json; Fetcher.head is replaced only in the wrong-cache pre-request branch",
+      "test_id": "R9-B3-SQD-SCOPE-09",
+      "allowed_reason": "The production collector main/run and dataset adapter reject wrong dataset, empty or cache-mismatched mint, reversed range, wrong genesis and uncovered head. The fake replaces only state RPC, and the head stub is used only to reach cache identity validation before any SQD stream request."
     }
   ]
 }

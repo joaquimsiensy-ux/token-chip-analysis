@@ -150,12 +150,14 @@ def validate_reconciliation_check(root, key, item, target, family):
                  and coverage.get("failed_days") == 0 and receipt.get("failures") == [],
                  "anchor receipt coverage incomplete")
     elif family == "solana" and key == "supply":
-        _require(schema == "solana-holder-snapshot-receipt/v3",
+        _require(schema == "solana-observation-bundle/v1",
                  f"reconciliation supply unknown schema {schema!r}；{migration}")
         _require(receipt.get("closed") is True
                  and str(receipt.get("supply_raw")) == str(receipt.get("sum_accounts_raw"))
                  and isinstance(receipt.get("output"), dict),
                  "solana supply receipt is not a closed snapshot")
+        from solana_observation import validate_observation_bundle
+        validate_observation_bundle(receipt, expected_mint=target["token"])
         ref_ok(root, receipt["output"])
     elif key == "supply_truth":
         _require(schema == "supply-truth-receipt/v2",
@@ -169,10 +171,20 @@ def validate_reconciliation_check(root, key, item, target, family):
                  and bool(receipt["inputs"]),
                  "supply_truth receipt must be formal and bind replay_stats input")
         if family == "solana":
+            bundle_ref = (receipt.get("inputs") or {}).get("observation_bundle")
+            _require(isinstance(bundle_ref, dict),
+                     "solana supply_truth does not bind observation bundle")
+            bundle_path = Path(bundle_ref.get("path", "")).resolve()
+            bundle_path.relative_to(root)
+            bundle = json.loads(bundle_path.read_text(encoding="utf-8"))
+            from solana_observation import validate_observation_bundle
+            validate_observation_bundle(bundle, bundle_path=bundle_path,
+                                        expected_mint=target["token"])
             _require(isinstance(receipt.get("observed_context_slot"), int)
-                     and receipt["observed_context_slot"]
+                     and receipt["observed_context_slot"] == bundle["supply"]["slot"]
+                     and bundle["snapshot"]["slot"]
                      == canonical_target(target)["as_of_block"],
-                     "solana supply_truth is not bound to the frozen slot")
+                     "solana supply_truth observation/bundle slots are not bound")
     elif family == "evm" and key == "time":
         _require(schema == "time-spotcheck/v2",
                  f"reconciliation time unknown schema {schema!r}；{migration}")
@@ -229,6 +241,23 @@ def validate_sources(root):
     token = accounting.get("token") or accounting.get("mint")
     target = {"chain": accounting["chain"], "token": str(token).lower(),
               "as_of_block": accounting.get("as_of_block")}
+    if family == "solana":
+        _require(accounting.get("execution_mode") == "formal",
+                 "solana accounting exploration evidence is not releasable")
+        bundle_ref = accounting.get("observation_bundle")
+        _require(isinstance(bundle_ref, dict),
+                 "solana accounting does not bind observation bundle")
+        bundle_path = Path(bundle_ref.get("path", "")).resolve()
+        bundle_path.relative_to(root)
+        _require(bundle_path.is_file() and bundle_ref.get("size") == bundle_path.stat().st_size
+                 and bundle_ref.get("sha256") == sha(bundle_path),
+                 "solana accounting observation bundle ref invalid")
+        bundle = json.loads(bundle_path.read_text(encoding="utf-8"))
+        from solana_observation import validate_observation_bundle
+        validate_observation_bundle(bundle, bundle_path=bundle_path,
+                                    expected_mint=token)
+        _require(accounting.get("observed_context_slot") == bundle["snapshot"]["slot"],
+                 "solana accounting slot is not bundle snapshot slot")
     validate_reconciliation_report(root, target)
     if (adversarial.get("schema") != "adversarial-review/v2"
             or canonical_target(adversarial.get("target")) != canonical_target(target)

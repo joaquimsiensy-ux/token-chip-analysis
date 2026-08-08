@@ -49,9 +49,12 @@ LABEL_CHAIN_SURFACES = (
     # serial-offender accumulation consumes the same labels-table asset surface.
     ("scripts/labels/accumulate_offenders.py", "table", "membership:chain:1"),
 )
-# R9 batch 3 will register fresh executable evidence.  Old R8 slice files stay
-# mounted for regression coverage but no longer constitute current readiness.
-VERTICAL_SLICE_TESTS = {}
+VERTICAL_SLICE_TESTS = {
+    "eth": "test_batch3_evm_vertical_slice.py",
+    "bsc": "test_batch3_evm_vertical_slice.py",
+    "base": "test_batch3_evm_vertical_slice.py",
+    "sol": "test_batch3_solana_vertical_slice.py",
+}
 CAPABILITY_ENTRYPOINTS = {
     "controlled_runner": "scripts/report/reconciliation_report.py",
     "reconciliation_consumer": "scripts/report/shared_release_receipt.py",
@@ -388,6 +391,7 @@ def scan_python(path: Path):
     has_urllib = False
     has_httpx = False
     has_aiohttp = False
+    has_solana_session = False
     curl_vars = set()
     schema_vars = set()
     schema_dict_vars = {}
@@ -447,6 +451,7 @@ def scan_python(path: Path):
             has_net |= node.module == "net"
             has_httpx |= node.module == "httpx"
             has_aiohttp |= node.module == "aiohttp"
+            has_solana_session |= node.module == "solana_attested_session"
         elif isinstance(node, ast.Call) and (
                 _call_name(node.func).endswith(".urlopen") or _call_name(node.func) == "urlopen"):
             has_urllib = True
@@ -475,6 +480,8 @@ def scan_python(path: Path):
         transports.add("httpx")
     if has_aiohttp:
         transports.add("aiohttp")
+    if has_solana_session:
+        transports.add("solana-attested-session")
     return producers, consumers, transports, atomic.locators
 
 

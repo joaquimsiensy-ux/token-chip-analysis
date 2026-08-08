@@ -35,11 +35,14 @@ import hashlib
 import json
 import os
 import sys
-import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-import requests
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
+from solana_attested_session import SolanaAttestedSession
+from endpoint_identity import public_endpoint
+from solana_observation import (assert_declared_slot,
+                                validate_observation_bundle)
 
 SPL_TOKEN = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
 TOKEN_2022 = "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
@@ -98,30 +101,42 @@ def classify_ext(ext):
     return "BLOCK", f"未识别扩展 {name}（保守拦停，人工核对后可加入分级表）"
 
 
-def main():
+def _default_rpc():
+    key_file = Path.home() / ".config/helius/api-key"
+    if key_file.is_file():
+        key = key_file.read_text(encoding="utf-8").strip()
+        if key:
+            return f"https://mainnet.helius-rpc.com/?api-key={key}"
+    return PUBLIC_RPC
+
+
+def main(argv=None, *, request_json=None):
     ap = argparse.ArgumentParser(description="Solana 记账模型准入 gate")
     ap.add_argument("--mint", required=True)
-    ap.add_argument("--rpc", default=None,
-                    help="默认读 ~/.config/helius/api-key 拼 Helius；无则公共 RPC")
-    ap.add_argument("--as-of-slot", type=int, required=True)
+    ap.add_argument("--rpc", action="append", dest="rpcs",
+                    help="repeat for attested failover; exploration mode only")
+    ap.add_argument("--bundle", help="formal solana-observation-bundle/v1 from scan_token_accounts")
+    ap.add_argument("--exploration", action="store_true",
+                    help="allow a standalone attested RPC probe; formal aggregators reject it")
+    ap.add_argument("--as-of-slot", type=int, default=None,
+                    help="optional compatibility assertion against observed snapshot slot")
+    ap.add_argument("--min-context-slot", type=int, default=0)
     ap.add_argument("--out", default="accounting_mode.json")
-    a = ap.parse_args()
+    a = ap.parse_args(argv)
+    if a.as_of_slot is not None and a.as_of_slot < 0:
+        ap.error("--as-of-slot 必须是非负兼容断言")
+    if a.min_context_slot < 0:
+        ap.error("--min-context-slot 必须非负")
+    if not a.bundle and not a.exploration:
+        ap.error("正式模式必须给 --bundle；独跑须显式 --exploration")
+    if a.bundle and a.exploration:
+        ap.error("--bundle 与 --exploration 互斥")
 
-    rpc = a.rpc
-    if not rpc:
-        kf = os.path.expanduser("~/.config/helius/api-key")
-        if os.path.exists(kf):
-            rpc = "https://mainnet.helius-rpc.com/?api-key=" + open(kf).read().strip()
-        else:
-            rpc = PUBLIC_RPC
-
-    if a.as_of_slot < 0:
-        ap.error("--as-of-slot 必须是非负冻结 slot")
     result = {"schema": "accounting-gate/v1", "chain": "solana", "mint": a.mint,
-              "as_of_slot": a.as_of_slot, "as_of_block": a.as_of_slot,
               "producer": {"path": "scripts/solana/accounting_gate_sol.py",
                            "sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest()},
-              "checked_at": now_iso(), "rpc": rpc.split("?")[0],
+              "checked_at": now_iso(),
+              "execution_mode": "exploration" if a.exploration else "formal",
               "checks": {}, "warnings": [], "reasons": []}
 
     def finish(mode, verdict, code):
@@ -137,25 +152,51 @@ def main():
             print(f"  warn:   {w_}")
         sys.exit(code)
 
-    # ---- getAccountInfo（重试 4 次）----
-    j = None
-    for att in range(4):
-        try:
-            r = requests.post(rpc, json={"jsonrpc": "2.0", "id": 1, "method": "getAccountInfo",
-                                         "params": [a.mint, {"encoding": "jsonParsed"}]},
-                              timeout=30)
-            j = r.json()
-            if "error" not in j:
-                break
-            result["reasons"].append(f"rpc error: {j['error'].get('message', '')[:100]}")
-        except Exception as e:  # noqa: BLE001
-            result["reasons"].append(f"{type(e).__name__}: {str(e)[:100]}")
-        time.sleep(1.5 * (att + 1))
-    else:
-        result["reasons"] = result["reasons"][-1:] + ["getAccountInfo 重试耗尽"]
+    try:
+        if a.bundle:
+            bundle_path = Path(a.bundle).resolve(strict=True)
+            bundle = json.loads(bundle_path.read_text(encoding="utf-8"))
+            validate_observation_bundle(
+                bundle, bundle_path=bundle_path, expected_mint=a.mint)
+            observed_slot = bundle["snapshot"]["slot"]
+            result["observed_context_slot"] = observed_slot
+            result["observation_slots"] = bundle["observed_slots"]
+            result["as_of_slot"] = observed_slot
+            result["as_of_block"] = observed_slot
+            assert_declared_slot(a.as_of_slot, observed_slot, "--as-of-slot")
+            if observed_slot < a.min_context_slot:
+                raise ValueError(
+                    f"bundle snapshot slot {observed_slot} < --min-context-slot {a.min_context_slot}")
+            val = {"owner": bundle["program"],
+                   "data": {"parsed": bundle["mint_pre"]["json_parsed"]}}
+            result["observation_bundle"] = {
+                "path": str(bundle_path), "size": bundle_path.stat().st_size,
+                "sha256": hashlib.sha256(bundle_path.read_bytes()).hexdigest(),
+            }
+            result["rpc"] = bundle["attestation"]["endpoint"]["public_origin"]
+        else:
+            session = SolanaAttestedSession(
+                a.rpcs or [_default_rpc()], request_json=request_json, timeout=30)
+            observed = session.call("getAccountInfo", [a.mint, {
+                "commitment": "finalized", "encoding": "jsonParsed",
+                "minContextSlot": a.min_context_slot,
+            }])
+            context = observed.get("context") if isinstance(observed, dict) else None
+            observed_slot = context.get("slot") if isinstance(context, dict) else None
+            if isinstance(observed_slot, bool) or not isinstance(observed_slot, int):
+                raise ValueError("getAccountInfo result.context.slot missing")
+            result["observed_context_slot"] = observed_slot
+            result["as_of_slot"] = observed_slot
+            result["as_of_block"] = observed_slot
+            assert_declared_slot(a.as_of_slot, observed_slot, "--as-of-slot")
+            val = observed.get("value")
+            result["rpc"] = public_endpoint(session.endpoint)
+            result["expected_genesis"] = session.observed_genesis
+            result["observed_genesis"] = session.observed_genesis
+    except Exception as exc:
+        result["reasons"].append(str(exc))
         finish("unknown", "FAIL", 1)
 
-    val = (j.get("result") or {}).get("value")
     if val is None:
         result["reasons"].append("账户不存在（mint 地址错/错链）")
         finish("unknown", "FAIL", 1)

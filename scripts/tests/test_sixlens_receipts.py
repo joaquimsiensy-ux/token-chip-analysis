@@ -151,7 +151,8 @@ def test_anchor_sampler(root):
         mod = load(ROOT / "scripts/solana/anchor_sampler.py", "sixlens_anchor")
         args = ["--start", "2026-01-01", "--end", "2026-01-01",
                 "--as-of-slot", "10000", "--out", str(work / "anchors.jsonl"),
-                "--receipt", str(work / "anchor_receipt.json")]
+                "--receipt", str(work / "anchor_receipt.json"), "--endpoint",
+                "https://portal.sqd.dev/datasets/solana-mainnet/stream?api-key=SECRET#private"]
         with mock.patch.object(mod, "fetch_window", return_value=None), \
                 mock.patch.object(mod.time, "sleep"):
             assert mod.main(args) != 0
@@ -183,6 +184,9 @@ def test_anchor_sampler(root):
         assert {"path", "size", "sha256"} <= set(receipt["output"])
         assert {"chain", "mint", "endpoint", "as_of_slot"} <= set(row)
         assert row["chain"] == "solana" and row["mint"] == "mint1"
+        assert row["endpoint"] == "https://portal.sqd.dev/datasets/solana-mainnet/stream"
+        assert "api-key" not in (work / "anchors.jsonl").read_text()
+        assert "SECRET" not in (work / "anchors.jsonl").read_text()
         validator = load(ROOT / "scripts/lib/receipt_validate.py", "sixlens_anchor_validator")
         assert validator.validate_receipt(receipt) == []
         shared = load(ROOT / "scripts/report/shared_release_receipt.py", "sixlens_anchor_shared")

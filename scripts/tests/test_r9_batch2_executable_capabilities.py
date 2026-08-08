@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
+from types import MappingProxyType
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -31,12 +32,29 @@ def mutable_record(chain):
 def test_exact_six_capabilities_and_natural_not_ready():
     assert chain_registry.REQUIRED_FORMAL_CAPABILITIES == EXPECTED
     assert chain_registry.formal_tier_chains() == {"eth", "bsc", "base", "sol"}
-    assert chain_registry.formal_ready_chains() == set()
+    assert chain_registry.formal_ready_chains() == {"eth", "bsc", "base", "sol"}
     for chain in sorted(chain_registry.formal_tier_chains()):
-        assert chain_registry.IMPORT_FORMAL_PROBE_MISSING[chain] == (
-            "vertical_slice_evidence",), chain
-        assert chain_registry.missing_formal_capabilities(chain) == (
-            "vertical_slice_evidence",), chain
+        assert chain_registry.missing_formal_capabilities(chain) == (), chain
+
+
+def test_deleting_one_evidence_target_drops_only_its_chain():
+    import formal_capability_probes
+
+    original = formal_capability_probes.VERTICAL_SLICE_EVIDENCE_TARGETS
+    key_to_chain = {
+        "r9-eth-mainnet-vertical-slice": "eth",
+        "r9-bsc-mainnet-vertical-slice": "bsc",
+        "r9-base-mainnet-vertical-slice": "base",
+        "r9-solana-pythia-mainnet-vertical-slice": "sol",
+    }
+    try:
+        for key, chain in key_to_chain.items():
+            formal_capability_probes.VERTICAL_SLICE_EVIDENCE_TARGETS = MappingProxyType(
+                {name: targets for name, targets in original.items() if name != key})
+            assert chain_registry.formal_ready_chains() \
+                == {"eth", "bsc", "base", "sol"} - {chain}
+    finally:
+        formal_capability_probes.VERTICAL_SLICE_EVIDENCE_TARGETS = original
 
 
 def test_five_non_slice_probes_resolve_to_callables():
@@ -67,10 +85,11 @@ def test_unknown_probe_key_is_missing_not_truthy():
 
 def main():
     test_exact_six_capabilities_and_natural_not_ready()
+    test_deleting_one_evidence_target_drops_only_its_chain()
     test_five_non_slice_probes_resolve_to_callables()
     test_bool_vertical_slice_claim_does_not_satisfy_probe()
     test_unknown_probe_key_is_missing_not_truthy()
-    print("PASS R9 B2-G2: six executable probes; only R9 vertical evidence missing")
+    print("PASS R9 B3-G3/G4: six probes ready; deleting one slice drops its chain")
     return 0
 
 

@@ -15,9 +15,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
 import net
+from endpoint_identity import public_endpoint
 from receipt_kernel import (RawBytes, assert_distinct_paths, build_envelope,
-                            finalize_envelope, publish_error_receipt, publish_overwrite,
-                            publish_txn)
+                            finalize_envelope, publish_error_receipt, publish_txn)
 
 SQD = "https://portal.sqd.dev/datasets/solana-mainnet/stream"
 CFG = json.loads(Path("config.json").read_text())
@@ -103,7 +103,8 @@ def _identity_error(row, cutoff, seen_dates, endpoint=SQD):
     missing = [key for key in (*ROW_IDENTITY, "as_of_slot") if key not in row]
     if missing:
         return f"旧格式缺身份列 {missing}，拒绝复用；请重采"
-    expected = {**ROW_IDENTITY, "endpoint": endpoint, "as_of_slot": cutoff}
+    expected = {**ROW_IDENTITY, "endpoint": public_endpoint(endpoint),
+                "as_of_slot": cutoff}
     mismatched = [key for key, value in expected.items() if row.get(key) != value]
     if mismatched:
         return f"resume 身份不匹配 {mismatched}，拒绝复用；请重采"
@@ -124,7 +125,8 @@ def _identity_error(row, cutoff, seen_dates, endpoint=SQD):
 
 
 def _with_identity(row, cutoff, endpoint=SQD):
-    return {**row, **ROW_IDENTITY, "endpoint": endpoint, "as_of_slot": cutoff}
+    return {**row, **ROW_IDENTITY, "endpoint": public_endpoint(endpoint),
+            "as_of_slot": cutoff}
 
 
 def _error_receipt(receipt_path, envelope, message):
@@ -263,7 +265,6 @@ def main(argv=None):
     print(f"DONE {len(days)} days, fails={fails}, {time.time()-t0:.0f}s", flush=True)
     failures = []
     covered = 0
-    committed = False
     try:
         for row in rows:
             if args.start <= str(row.get("date", "")) <= end:
@@ -289,25 +290,8 @@ def main(argv=None):
             envelope, "PASS", 0, date_range={"start": args.start, "end": end},
             output=output_ref, coverage=coverage, failures=[])
         publish_txn(out, RawBytes(data_bytes), args.receipt, receipt)
-        committed = True
-        if __import__("hashlib").sha256(out.read_bytes()).hexdigest() != output_ref["sha256"]:
-            raise RuntimeError("联合发布后独立读者哈希不一致")
         return 0
     except Exception as exc:
-        withdrawal_errors = []
-        if committed:
-            try:
-                Path(args.receipt).unlink(missing_ok=True)
-            except Exception as cleanup_exc:
-                withdrawal_errors.append(f"receipt: {cleanup_exc}")
-            try:
-                if out.exists():
-                    publish_overwrite(partial, RawBytes(out.read_bytes()))
-                    out.unlink()
-            except Exception as cleanup_exc:
-                withdrawal_errors.append(f"data: {cleanup_exc}")
-        if withdrawal_errors:
-            exc = RuntimeError(f"{exc}; 撤回失败: {'; '.join(withdrawal_errors)}")
         _error_receipt(args.receipt, base_envelope, exc)
         print(f"[anchor_sampler] receipt 生成失败（exit 1）: {exc}", file=sys.stderr)
         return 1

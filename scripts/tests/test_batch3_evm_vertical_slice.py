@@ -228,17 +228,34 @@ def full_chain(chain, endpoint):
              str(case), "--report", str(report)], case)
 
 
-def main():
+def _run_registered_chain(chain):
     server = ThreadingHTTPServer(("127.0.0.1", 0), FixtureHandler)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     try:
         endpoint = f"http://127.0.0.1:{server.server_port}"
-        for chain in ("eth", "bsc", "base"):
-            full_chain(chain, endpoint)
+        full_chain(chain, endpoint)
     finally:
         server.shutdown()
         thread.join()
+
+
+def test_r9_eth_mainnet_vertical_slice():
+    _run_registered_chain("eth")
+
+
+def test_r9_bsc_mainnet_vertical_slice():
+    _run_registered_chain("bsc")
+
+
+def test_r9_base_mainnet_vertical_slice():
+    _run_registered_chain("base")
+
+
+def main():
+    test_r9_eth_mainnet_vertical_slice()
+    test_r9_bsc_mainnet_vertical_slice()
+    test_r9_base_mainnet_vertical_slice()
     print("PASS B3-EVM-E2E: eth/bsc/base real slices; wrong chain has zero business RPC")
     return 0
 

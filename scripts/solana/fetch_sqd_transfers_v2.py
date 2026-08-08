@@ -59,6 +59,11 @@ from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
+from solana_attested_session import SolanaAttestedSession
+from solana_sqd_dataset import (SOLANA_SQD_DATASET_ID,
+                                SolanaSqdDatasetAdapter)
+
 try:
     import requests
 except ImportError:
@@ -790,7 +795,8 @@ def make_merger(cache_fp, parts_dir, part_files, old_ok, old_rows, max_rows):
 
 def run(mint, launch_ts, wall_min, conc, rps, base_url, key,
         hs_cfg=None, from_slot_cli=None, to_slot_cli=None,
-        empty_max=EMPTY_MAX, merge_max_rows=MERGE_INMEM_MAX_ROWS):
+        empty_max=EMPTY_MAX, merge_max_rows=MERGE_INMEM_MAX_ROWS,
+        dataset_id=SOLANA_SQD_DATASET_ID, state_session=None):
     fx = Fetcher(base_url, mint, key, TokenBucket(rps), conc, empty_max=empty_max)
     head = fx.head()
     if not head:
@@ -832,6 +838,13 @@ def run(mint, launch_ts, wall_min, conc, rps, base_url, key,
         back = int((now - (launch_ts or now - 90 * 86400)) * SQD_SLOT_RATE) + SQD_LAUNCH_PAD
         span_from = from_slot = max(1, head - back)
         meta = fresh_meta(from_slot)
+
+    if state_session is None:
+        raise ValueError("formal SQD collection requires an attested Solana state session")
+    dataset_scope = SolanaSqdDatasetAdapter(
+        dataset_id=dataset_id, mint=mint, from_slot=span_from, to_slot=head,
+        state_session=state_session).attest_state_anchor()
+    meta["dataset_scope"] = dataset_scope
 
     # ---- HyperSync 第二引擎初始化：探窗失败即降级纯 SQD（采集完备性优先）----
     fx_hs, hs_lo, hs_hi = None, None, None
@@ -1069,9 +1082,21 @@ def run(mint, launch_ts, wall_min, conc, rps, base_url, key,
     return EdgeCount(final["rows"]), gap_msg
 
 
-def main():
+def _default_state_rpc():
+    key_file = Path.home() / ".config/helius/api-key"
+    if key_file.is_file():
+        key = key_file.read_text(encoding="utf-8").strip()
+        if key:
+            return f"https://mainnet.helius-rpc.com/?api-key={key}"
+    return "https://api.mainnet-beta.solana.com"
+
+
+def main(argv=None, *, request_json=None):
     ap = argparse.ArgumentParser(description="SQD portal Solana 转账边采集 v2（压缩+自适应并发+令牌桶+HyperSync 第二引擎）")
     ap.add_argument("mint")
+    ap.add_argument("--dataset-id", default=SOLANA_SQD_DATASET_ID)
+    ap.add_argument("--state-rpc", action="append", dest="state_rpcs",
+                    help="attested Solana mainnet state endpoint; repeat for failover")
     ap.add_argument("--launch-ts", type=int, default=0, help="发射 unix 秒，缺省回看 90 天")
     ap.add_argument("--wall-min", type=int, default=100, help="墙钟保险丝（分钟）")
     ap.add_argument("--conc", type=int, default=6, help="并发空洞数（带宽整形下 3 路已近饱和，留冗余）")
@@ -1098,7 +1123,16 @@ def main():
     ap.add_argument("--merge-max-rows", type=int, default=MERGE_INMEM_MAX_ROWS,
                     help=f"收尾全内存合并的行数上限（默认 {MERGE_INMEM_MAX_ROWS:,}，"
                          "超过自动降级 DuckDB 磁盘外排防 OOM）")
-    a = ap.parse_args()
+    a = ap.parse_args(argv)
+    if a.from_slot and a.to_slot and a.from_slot > a.to_slot:
+        ap.error("--from-slot must not exceed --to-slot")
+    state_session = SolanaAttestedSession(
+        a.state_rpcs or [_default_state_rpc()], request_json=request_json, timeout=30)
+    # Reject dataset/mint identity before the first SQD business request.  The
+    # actual inclusive range is re-bound inside run() after SQD head discovery.
+    SolanaSqdDatasetAdapter(
+        dataset_id=a.dataset_id, mint=a.mint, from_slot=0, to_slot=0,
+        state_session=state_session)
     key = None
     try:
         key = Path(a.key_file).read_text().strip() or None
@@ -1116,7 +1150,8 @@ def main():
     edges, gap = run(a.mint, a.launch_ts or None, a.wall_min, a.conc, a.rps, a.url, key,
                      hs_cfg=hs_cfg, from_slot_cli=a.from_slot or None,
                      to_slot_cli=a.to_slot or None, empty_max=a.empty_max,
-                     merge_max_rows=a.merge_max_rows)
+                     merge_max_rows=a.merge_max_rows, dataset_id=a.dataset_id,
+                     state_session=state_session)
     if edges is None:
         print(f"失败：{gap}", flush=True)
         sys.exit(1)

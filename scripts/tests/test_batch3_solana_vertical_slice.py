@@ -14,13 +14,27 @@ from pathlib import Path
 import os
 
 ROOT = Path(__file__).resolve().parents[2]
-sys.path[:0] = [str(ROOT / "scripts/report"), str(ROOT / "scripts/tests")]
+sys.path[:0] = [str(ROOT / "scripts/report"), str(ROOT / "scripts/tests"),
+                str(ROOT / "scripts/lib")]
 from formal_ready_test_harness import run_formal_script  # noqa: E402
+from solana_attested_session import SOLANA_MAINNET_GENESIS_HASH  # noqa: E402
+
+MINT = "CreiuhfwdWCN5mJbMJtA9bBpYQrQF2tCBuZwSPWfpump"
+PROGRAM = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+
+
+def mint_raw(supply):
+    raw = bytearray(82)
+    raw[36:44] = int(supply).to_bytes(8, "little")
+    raw[44] = 0
+    raw[45] = 1
+    return bytes(raw)
 
 
 class FixtureHandler(BaseHTTPRequestHandler):
     calls = []
     supply = 100
+    slot = 100
 
     def log_message(self, *_args):
         return
@@ -37,20 +51,46 @@ class FixtureHandler(BaseHTTPRequestHandler):
                                            "preAmount": "0", "postAmount": "100"}]}]
         else:
             method = body.get("method")
-            if method == "getAccountInfo":
-                value = {"value": {"owner":
-                    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
-                    "data": {"parsed": {"type": "mint", "info": {
+            params = body.get("params") or []
+            if method == "getGenesisHash":
+                value = SOLANA_MAINNET_GENESIS_HASH
+            elif method == "getAccountInfo":
+                config = params[1]
+                minimum = int(config.get("minContextSlot", 0))
+                type(self).slot = max(type(self).slot + 1, minimum)
+                if config.get("encoding") == "jsonParsed":
+                    data = {"parsed": {"type": "mint", "info": {
                         "mintAuthority": None, "freezeAuthority": None,
-                        "supply": "100", "decimals": 0}}}}}
+                        "supply": str(type(self).supply), "decimals": 0}}}
+                else:
+                    data = [base64.b64encode(mint_raw(type(self).supply)).decode(), "base64"]
+                value = {"context": {"slot": type(self).slot},
+                         "value": {"owner": PROGRAM, "data": data}}
             elif method == "getTokenSupply":
-                value = {"context": {"slot": 77},
+                type(self).slot += 1
+                value = {"context": {"slot": type(self).slot},
                          "value": {"amount": str(type(self).supply), "decimals": 0}}
             elif method == "getProgramAccounts":
+                config = params[1]
+                type(self).slot = max(type(self).slot + 1,
+                                      int(config.get("minContextSlot", 0)))
                 raw = bytes(32) + int(type(self).supply).to_bytes(8, "little")
-                value = {"context": {"slot": 77}, "value": [{
+                value = {"context": {"slot": type(self).slot}, "value": [{
                     "pubkey": "Account1", "account": {
                         "data": [base64.b64encode(raw).decode(), "base64"]}}]}
+            elif method == "getSignaturesForAddress":
+                value = [{"signature": "sig-readonly", "slot": type(self).slot,
+                          "err": None},
+                         {"signature": "sig-before", "slot": max(0, type(self).slot - 10),
+                          "err": None}]
+            elif method == "getTransaction":
+                value = {"slot": type(self).slot, "meta": {
+                    "err": None, "loadedAddresses": {"writable": [], "readonly": []}},
+                    "transaction": {"signatures": [params[0]], "message": {
+                        "accountKeys": ["payer", MINT],
+                        "header": {"numRequiredSignatures": 1,
+                                   "numReadonlySignedAccounts": 0,
+                                   "numReadonlyUnsignedAccounts": 1}}}}
             else:
                 self.send_error(400, method)
                 return
@@ -83,11 +123,14 @@ def run(command, cwd):
 
 
 def runner_spec(case, endpoint):
-    target = {"chain": "solana", "token": "mint", "as_of_block": 77}
+    target = {"chain": "solana", "token": MINT.lower(), "as_of_block": None}
+    observed = "{observed_as_of_block}"
     anchor = ["--start", "2025-01-01", "--end", "2025-01-01",
-              "--ref-slot", "77", "--ref-ts", "1735689600", "--as-of-slot", "77",
+              "--ref-slot", observed, "--ref-ts", "1735689600",
+              "--as-of-slot", observed,
               "--endpoint", endpoint]
     return {"family": "solana", "case_dir": str(case), "target": target,
+            "derive_as_of_from": "supply",
             "inputs": {"config": "config.json", "stats": "stats.json"},
             "checks": {
                 "balance": {"producer": "scripts/solana/anchor_sampler.py",
@@ -95,15 +138,17 @@ def runner_spec(case, endpoint):
                                      "--receipt", "balance_receipt.json"],
                             "receipt": "balance_receipt.json"},
                 "supply": {"producer": "scripts/solana/scan_token_accounts.py",
-                           "argv": ["Mint", "--program", "spl", "--rpc", endpoint,
-                                    "--as-of-slot", "77", "--out", "supply_snapshot.json",
-                                    "--receipt", "supply_receipt.json",
+                           "argv": [MINT, "--program", "spl", "--rpc", endpoint,
+                                    "--out", "supply_snapshot.json",
+                                    "--bundle", "supply_receipt.json",
                                     "--work-dir", "solana_scan_work"],
                            "receipt": "supply_receipt.json"},
                 "supply_truth": {"producer": "scripts/lib/supply_truth_gate.py",
-                                 "argv": ["--chain", "solana", "--mint", "Mint",
-                                          "--as-of-block", "77", "--replay-stats", "stats.json",
-                                          "--rpc", endpoint, "--out", "supply_truth.json"],
+                                 "argv": ["--chain", "solana", "--mint", MINT,
+                                          "--observation-bundle", "supply_receipt.json",
+                                          "--as-of-block", observed,
+                                          "--replay-stats", "stats.json",
+                                          "--out", "supply_truth.json"],
                                  "receipt": "supply_truth.json"},
                 "time": {"producer": "scripts/solana/anchor_sampler.py",
                          "argv": [*anchor, "--out", "time.jsonl",
@@ -115,19 +160,21 @@ def execute_real_slice(case, endpoint):
     holders = case / "data/holders_owners.json"
     total = sum(json.loads(holders.read_text()).values()) if holders.is_file() else 100
     FixtureHandler.supply = total
-    (case / "config.json").write_text(json.dumps({"mint": "Mint"}))
+    (case / "config.json").write_text(json.dumps({"mint": MINT}))
     (case / "stats.json").write_text(json.dumps({"mint_total_raw": total,
                                                   "burn_total_raw": 0}))
-    run([sys.executable, str(ROOT / "scripts/solana/accounting_gate_sol.py"),
-         "--mint", "Mint", "--rpc", endpoint, "--as-of-slot", "77",
-         "--out", "accounting_mode.json"], case)
-    run([sys.executable, str(ROOT / "scripts/solana/window_fetch.py"), "77", "77",
-         "window.jsonl", "--receipt", "window_receipt.json", "--endpoint", endpoint,
-         "--conc", "1"], case)
     spec = case / "reconciliation_job.json"
     spec.write_text(json.dumps(runner_spec(case, endpoint)))
     run([sys.executable, str(ROOT / "scripts/report/reconciliation_report.py"), str(spec)], case)
-    return total
+    bundle = json.loads((case / "supply_receipt.json").read_text())
+    slot = bundle["snapshot"]["slot"]
+    run([sys.executable, str(ROOT / "scripts/solana/accounting_gate_sol.py"),
+         "--mint", MINT, "--bundle", "supply_receipt.json",
+         "--as-of-slot", str(slot), "--out", "accounting_mode.json"], case)
+    run([sys.executable, str(ROOT / "scripts/solana/window_fetch.py"), str(slot), str(slot),
+         "window.jsonl", "--receipt", "window_receipt.json", "--endpoint", endpoint,
+         "--conc", "1"], case)
+    return total, slot
 
 
 def test_handoff_and_release(endpoint):
@@ -136,20 +183,20 @@ def test_handoff_and_release(endpoint):
 
     with tempfile.TemporaryDirectory(prefix="b3-sol-handoff-") as td:
         case = Path(td)
-        make_case(str(case), chain="solana", token="Mint", as_of_block=77)
+        make_case(str(case), chain="solana", token=MINT, as_of_block=77)
         for name in ("reconciliation_report.json", "reconciliation_balance_receipt.json",
                      "reconciliation_supply_receipt.json",
                      "reconciliation_supply_truth_receipt.json",
                      "reconciliation_time_receipt.json", "supply_truth.json",
                      "time_spotcheck.json"):
             (case / name).unlink(missing_ok=True)
-        total = execute_real_slice(case, endpoint)
+        total, slot = execute_real_slice(case, endpoint)
         run([sys.executable, str(ROOT / "scripts/report/holder_distribution_scan.py"),
              "--case-dir", str(case), "--stage", "initial"], case)
         args = [sys.executable, str(ROOT / "scripts/report/handoff_manifest.py"), "generate",
                 "--case-dir", str(case), "--status", "READY", "--mode", "full",
-                "--producer-model", "batch3", "--chain", "solana", "--contract", "Mint",
-                "--cutoff", "2025-01-01T00:00:00Z", "--frozen-block", "77",
+                "--producer-model", "batch3", "--chain", "solana", "--contract", MINT,
+                "--cutoff", "2025-01-01T00:00:00Z", "--frozen-block", str(slot),
                 "--denominators", json.dumps({"total_supply_raw": str(total)})]
         run(args, case)
         run([sys.executable, str(ROOT / "scripts/report/handoff_manifest.py"), "verify",
@@ -164,15 +211,18 @@ def test_handoff_and_release(endpoint):
                      case / "shared_release_receipt.json"]:
             path.unlink(missing_ok=True)
         adversarial = json.loads((case / "adversarial_review.json").read_text())
-        adversarial["target"] = {"chain": "solana", "token": "mint", "as_of_block": 77}
+        total, slot = execute_real_slice(case, endpoint)
+        adversarial["target"] = {"chain": "solana", "token": MINT.lower(),
+                                 "as_of_block": slot}
         (case / "adversarial_review.json").write_text(json.dumps(adversarial))
-        execute_real_slice(case, endpoint)
         run([sys.executable, str(ROOT / "scripts/report/shared_release_receipt.py"), str(case)], case)
         run([sys.executable, str(ROOT / "scripts/report/audit_release_gate.py"),
              str(case), "--report", str(report)], case)
 
 
-def main():
+def test_r9_solana_pythia_mainnet_vertical_slice():
+    FixtureHandler.calls = []
+    FixtureHandler.slot = 100
     server = ThreadingHTTPServer(("127.0.0.1", 0), FixtureHandler)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
@@ -182,6 +232,10 @@ def main():
         server.shutdown()
         thread.join()
     print("PASS B3-SOL-E2E: real producer->runner->aggregator->READY->release")
+
+
+def main():
+    test_r9_solana_pythia_mainnet_vertical_slice()
     return 0
 
 

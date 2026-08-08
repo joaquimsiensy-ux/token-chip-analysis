@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
 """Identity-bound descriptor for the Solana mainnet SQD dataset.
 
-This module does not consume SQD data.  It fixes the dataset request identity
-and proves that the requested slot range is anchored by the real
-``SolanaAttestedSession`` trust root; production collection wiring belongs to
-R9 batch 3.
+The R9 batch-3 collector calls this adapter before consuming its requested
+range.  It fixes the dataset request identity and proves that the range is
+anchored by the real ``SolanaAttestedSession`` trust root.
 """
 from __future__ import annotations
 

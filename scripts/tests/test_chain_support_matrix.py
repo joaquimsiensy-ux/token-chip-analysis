@@ -85,7 +85,7 @@ def main():
     )
     assert declared <= buildable
     assert "robinhood" in buildable and release_tier_for("robinhood") == "exploration"
-    assert formal_ready_chains() == set()
+    assert formal_ready_chains() == declared
 
     sys.path.insert(0, str(ROOT / "scripts/labels"))
     from labels_resolver import LabelResolver
@@ -105,7 +105,7 @@ def main():
     assert "arbitrum" in identity_evm_chains(), \
         "exploratory Arbitrum identity receipt capability was removed"
     print("PASS: formal-candidate matrix closes frontmatter + labels capability: "
-          f"{sorted(declared)}; all await vertical slices; Robinhood/Arbitrum remain exploration")
+          f"{sorted(declared)}; R9 vertical slices mounted; Robinhood/Arbitrum remain exploration")
     return 0
 
 

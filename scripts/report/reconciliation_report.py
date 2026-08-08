@@ -18,6 +18,7 @@ REPO = HERE.parent.parent
 RUNNER_REL = "scripts/report/reconciliation_report.py"
 CHECK_KEYS = ("balance", "supply", "supply_truth", "time")
 OUTPUT_NAME = "reconciliation_report.json"
+OBSERVED_SLOT_PLACEHOLDER = "{observed_as_of_block}"
 
 
 class RunnerError(ValueError):
@@ -144,11 +145,17 @@ def _validate_spec(spec, case_dir):
     if family not in RECON_PRODUCERS:
         raise RunnerError(f"family must be one of {sorted(RECON_PRODUCERS)}")
     target = spec.get("target")
+    derive_as_of = spec.get("derive_as_of_from")
+    dynamic_solana = family == "solana" and derive_as_of == "supply"
+    if derive_as_of is not None and not dynamic_solana:
+        raise RunnerError("derive_as_of_from is only supported as solana/supply")
     if not isinstance(target, dict) or set(target) != {"chain", "token", "as_of_block"} \
             or not target.get("chain") or not target.get("token") \
-            or isinstance(target.get("as_of_block"), bool) \
-            or not isinstance(target.get("as_of_block"), int) \
-            or target["as_of_block"] < 0:
+            or (target.get("as_of_block") is None and not dynamic_solana) \
+            or (target.get("as_of_block") is not None and (
+                isinstance(target.get("as_of_block"), bool)
+                or not isinstance(target.get("as_of_block"), int)
+                or target["as_of_block"] < 0)):
         raise RunnerError("target must contain exactly chain/token/as_of_block")
     checks = spec.get("checks")
     if not isinstance(checks, dict) or set(checks) != set(CHECK_KEYS):
@@ -179,8 +186,15 @@ def _validate_spec(spec, case_dir):
             "producer": producer, "producer_ref": producer_ref,
             "argv": list(argv), "receipt": receipt,
         }
+    if dynamic_solana:
+        if OBSERVED_SLOT_PLACEHOLDER in prepared["supply"]["argv"]:
+            raise RunnerError("supply producer cannot consume the slot it must observe")
+        for key in ("balance", "supply_truth", "time"):
+            if OBSERVED_SLOT_PLACEHOLDER not in prepared[key]["argv"]:
+                raise RunnerError(
+                    f"dynamic solana check {key} must consume {OBSERVED_SLOT_PLACEHOLDER}")
     inputs = snapshot_inputs(case_dir, spec.get("inputs"))
-    return family, case_dir, dict(target), prepared, inputs
+    return family, case_dir, dict(target), prepared, inputs, dynamic_solana
 
 
 def run_job(spec, *, base_dir=None):
@@ -189,14 +203,24 @@ def run_job(spec, *, base_dir=None):
     wrapper = None
     receipt_snapshots = {}
     try:
-        family, case_dir, target, checks, inputs = _validate_spec(spec, case_dir)
+        family, case_dir, target, checks, inputs, dynamic_solana = _validate_spec(spec, case_dir)
         wrapper = _base_wrapper(target)
         if inputs:
             wrapper["inputs"] = inputs
-        for key in CHECK_KEYS:
+        order = ("supply", "balance", "supply_truth", "time") if dynamic_solana else CHECK_KEYS
+        for key in order:
             item = checks[key]
+            argv = list(item["argv"])
+            if dynamic_solana and key != "supply":
+                observed_slot = target.get("as_of_block")
+                if not isinstance(observed_slot, int):
+                    raise RunnerError("Solana observed slot was not adopted from supply producer")
+                argv = [str(observed_slot) if arg == OBSERVED_SLOT_PLACEHOLDER else arg
+                        for arg in argv]
+            if OBSERVED_SLOT_PLACEHOLDER in argv:
+                raise RunnerError(f"unresolved observed slot placeholder in check {key}")
             proc = subprocess.run(
-                [sys.executable, str(REPO / item["producer"]), *item["argv"]],
+                [sys.executable, str(REPO / item["producer"]), *argv],
                 cwd=case_dir, capture_output=True, text=True,
             )
             result = {
@@ -221,6 +245,19 @@ def run_job(spec, *, base_dir=None):
                 "receipt": receipt_ref,
             })
             receipt_snapshots[key] = receipt_ref
+            if dynamic_solana and key == "supply":
+                observed_target = receipt.get("target")
+                if (not isinstance(observed_target, dict)
+                        or set(observed_target) != {"chain", "token", "as_of_block"}
+                        or observed_target.get("chain") != target.get("chain")
+                        or str(observed_target.get("token", "")).lower()
+                        != str(target.get("token", "")).lower()
+                        or isinstance(observed_target.get("as_of_block"), bool)
+                        or not isinstance(observed_target.get("as_of_block"), int)
+                        or observed_target["as_of_block"] < 0):
+                    raise RunnerError("supply receipt did not provide a valid observed target")
+                target = dict(observed_target)
+                wrapper["target"] = dict(target)
             if receipt.get("target") != target:
                 raise RunnerError(f"check {key} receipt target mismatch")
             if receipt.get("verdict") != "PASS" or receipt.get("exit_code") != 0:

@@ -15,6 +15,8 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parents[2]
 SOL = ROOT / "scripts/solana"
 sys.path.insert(0, str(ROOT / "scripts/lib"))
+sys.path.insert(0, str(ROOT / "scripts/tests"))
+from test_r9_batch3_solana_observation import (MINT, SolanaTransportFake)  # noqa: E402
 
 
 def load(path, name):
@@ -34,22 +36,33 @@ def run_main(module, argv):
 
 
 def test_accounting_requires_and_emits_frozen_slot(root):
+    scan = _load_solana_module(root, "scan_token_accounts.py", "b3_accounting_scan")
+    old = Path.cwd(); os.chdir(root)
+    try:
+        rc = scan.main([MINT, "--program", "spl", "--rpc", "fixture://solana",
+                        "--out", "snapshot.json", "--bundle", "bundle.json",
+                        "--work-dir", "data"], request_json=SolanaTransportFake())
+    finally:
+        os.chdir(old)
+    assert rc == 0
+    observed_slot = json.loads((root / "bundle.json").read_text())["snapshot"]["slot"]
     module = load(SOL / "accounting_gate_sol.py", "b3_accounting_sol")
-    response = mock.Mock()
-    response.json.return_value = {"result": {"value": {
-        "owner": module.SPL_TOKEN,
-        "data": {"parsed": {"type": "mint", "info": {
-            "mintAuthority": None, "freezeAuthority": None,
-            "supply": "100", "decimals": 0}}}}}}
     out = root / "accounting.json"
-    with mock.patch.object(module.requests, "post", return_value=response), \
-            mock.patch.object(module.time, "sleep"):
-        rc = run_main(module, ["accounting_gate_sol.py", "--mint", "Mint",
-                               "--rpc", "http://fixture", "--as-of-slot", "77",
-                               "--out", str(out)])
+    rc = run_main(module, ["accounting_gate_sol.py", "--mint", MINT,
+                           "--bundle", str(root / "bundle.json"),
+                           "--as-of-slot", str(observed_slot), "--out", str(out)])
     assert rc == 0
     receipt = json.loads(out.read_text())
-    assert receipt["as_of_slot"] == 77
+    assert receipt["as_of_slot"] == observed_slot
+    assert receipt["observation_bundle"]["sha256"]
+    mismatch = root / "accounting-mismatch.json"
+    rc = run_main(module, ["accounting_gate_sol.py", "--mint", MINT,
+                           "--bundle", str(root / "bundle.json"),
+                           "--as-of-slot", "77", "--out", str(mismatch)])
+    assert rc != 0
+    failed = json.loads(mismatch.read_text())
+    assert failed["observed_context_slot"] == observed_slot
+    assert failed["as_of_slot"] == observed_slot
 
 
 def _load_solana_module(root, filename, name):
@@ -78,8 +91,9 @@ def test_window_missing_timestamp_fails_without_pass(root):
         assert json.loads(receipt.read_text()).get("verdict") != "PASS"
 
 
-def _commit_mismatched_bytes(data_path, _data, receipt_path, receipt):
-    Path(data_path).write_bytes(b"committed-but-not-requested\n")
+def _commit_requested_bytes(data_path, data, receipt_path, receipt):
+    payload = data.data if hasattr(data, "data") else json.dumps(data).encode()
+    Path(data_path).write_bytes(payload)
     Path(receipt_path).write_text(json.dumps(receipt), encoding="utf-8")
 
 
@@ -91,36 +105,52 @@ def _assert_committed_mismatch_was_withdrawn(root, out, receipt):
     assert errors and json.loads(errors[-1].read_text())["verdict"] == "ERROR"
 
 
-def test_window_post_commit_selfcheck_withdraws_formal_artifacts(root):
-    """B3F-TXN-01: post-commit mismatch cannot leave formal data plus PASS."""
+def test_window_has_no_post_commit_failure_surface(root):
+    """R9 B3: publish_txn is the final fallible data+receipt operation."""
     module = _load_solana_module(root, "window_fetch.py", "b3_window_post_commit")
     out = root / "window.jsonl"
     receipt = root / "window.receipt.json"
+    original = Path.read_bytes
+
+    def reject_post_commit_read(path):
+        if Path(path) == out and out.exists():
+            raise AssertionError("post-commit data self-check executed")
+        return original(path)
+
     with mock.patch.object(module, "scan_seg", return_value=([], True, [1735689600])), \
-            mock.patch.object(module, "publish_txn", side_effect=_commit_mismatched_bytes):
+            mock.patch.object(module, "publish_txn", side_effect=_commit_requested_bytes), \
+            mock.patch.object(Path, "read_bytes", reject_post_commit_read):
         rc = module.main(["10", "10", str(out), "--receipt", str(receipt), "--conc", "1"])
-    assert rc != 0
-    _assert_committed_mismatch_was_withdrawn(root, out, receipt)
+    assert rc == 0
+    assert out.exists() and json.loads(receipt.read_text())["verdict"] == "PASS"
 
 
-def test_anchor_post_commit_selfcheck_withdraws_formal_artifacts(root):
-    """B3F-TXN-02: anchor matches window withdrawal depth after commit."""
+def test_anchor_has_no_post_commit_failure_surface(root):
+    """R9 B3: anchor returns immediately after the kernel transaction commits."""
     module = _load_solana_module(root, "anchor_sampler.py", "b3_anchor_post_commit")
     out = root / "anchors.jsonl"
     receipt = root / "anchor.receipt.json"
     old = Path.cwd()
     os.chdir(root)
+    original = Path.read_bytes
+
+    def reject_post_commit_read(path):
+        if Path(path) == out and out.exists():
+            raise AssertionError("post-commit data self-check executed")
+        return original(path)
+
     try:
         with mock.patch.object(module, "fetch_window", return_value=[]), \
-                mock.patch.object(module, "publish_txn", side_effect=_commit_mismatched_bytes):
+                mock.patch.object(module, "publish_txn", side_effect=_commit_requested_bytes), \
+                mock.patch.object(Path, "read_bytes", reject_post_commit_read):
             rc = module.main(["--start", "2025-01-01", "--end", "2025-01-01",
                               "--ref-slot", "100", "--ref-ts", "1735689600",
                               "--as-of-slot", "1000", "--out", str(out),
                               "--receipt", str(receipt)])
     finally:
         os.chdir(old)
-    assert rc != 0
-    _assert_committed_mismatch_was_withdrawn(root, out, receipt)
+    assert rc == 0
+    assert out.exists() and json.loads(receipt.read_text())["verdict"] == "PASS"
 
 
 def test_window_complete_segment_requires_timestamp_evidence(root):
@@ -170,55 +200,49 @@ def test_anchor_and_window_reject_same_or_alias_paths(root):
 
 def test_supply_cli_has_runner_bound_outputs(root):
     module = _load_solana_module(root, "scan_token_accounts.py", "b3_supply_cli")
-    raw = bytes(32) + (100).to_bytes(8, "little")
-
-    def fake_rpc(_url, payload, out_file, _timeout=120):
-        method = payload["method"]
-        if method == "getTokenSupply":
-            result = {"context": {"slot": 77},
-                      "value": {"amount": "100", "decimals": 0}}
-        elif method == "getProgramAccounts":
-            result = {"context": {"slot": 77}, "value": [{
-                "pubkey": "Account1",
-                "account": {"data": [base64.b64encode(raw).decode(), "base64"]},
-            }]}
-        else:
-            raise AssertionError(method)
-        Path(out_file).write_text(json.dumps({"result": result}))
-        return True
-
     out = root / "snapshot.json"
     receipt = root / "supply.receipt.json"
     old = Path.cwd()
     os.chdir(root)
     try:
-        with mock.patch.object(module, "rpc_call", side_effect=fake_rpc), \
-                mock.patch.object(sys, "argv", [
-                "scan_token_accounts.py", "Mint", "--program", "spl",
-                "--rpc", "http://fixture", "--as-of-slot", "77",
-                "--out", str(out), "--receipt", str(receipt)]):
-            rc = module.main()
+        rc = module.main([MINT, "--program", "spl", "--rpc", "fixture://solana",
+                          "--out", str(out), "--bundle", str(receipt),
+                          "--work-dir", "data"], request_json=SolanaTransportFake())
     finally:
         os.chdir(old)
     assert int(rc or 0) == 0
     payload = json.loads(receipt.read_text())
-    assert payload["schema"] == "solana-holder-snapshot-receipt/v3"
-    assert payload["target"] == {"chain": "solana", "token": "mint", "as_of_block": 77}
+    assert payload["schema"] == "solana-observation-bundle/v1"
+    assert payload["target"]["token"] == MINT.lower()
+    assert payload["target"]["as_of_block"] == payload["snapshot"]["slot"]
     assert payload["closed"] is True
     assert json.loads(out.read_text())["target"] == payload["target"]
 
 
-def test_supply_truth_requires_exact_frozen_slot(root):
+def test_supply_truth_declared_slot_is_assertion(root):
+    scan = _load_solana_module(root, "scan_token_accounts.py", "b3_truth_scan")
+    old = Path.cwd(); os.chdir(root)
+    try:
+        assert scan.main([MINT, "--program", "spl", "--rpc", "fixture://solana",
+                          "--out", "snapshot.json", "--bundle", "bundle.json",
+                          "--work-dir", "data"], request_json=SolanaTransportFake()) == 0
+    finally:
+        os.chdir(old)
     module = load(ROOT / "scripts/lib/supply_truth_gate.py", "b3_supply_truth_slot")
     stats = root / "stats.json"
     stats.write_text(json.dumps({"mint_total_raw": 100, "burn_total_raw": 0}))
     out = root / "truth.json"
-    argv = ["supply_truth_gate.py", "--chain", "solana", "--mint", "Mint",
+    argv = ["supply_truth_gate.py", "--chain", "solana", "--mint", MINT,
+            "--observation-bundle", str(root / "bundle.json"),
             "--as-of-block", "77", "--replay-stats", str(stats), "--out", str(out)]
-    with mock.patch.object(module, "fetch_onchain_supply", return_value=(100, 78)):
-        rc = run_main(module, argv)
+    rc = module.main(argv[1:])
     assert rc != 0
     assert not out.exists()
+    errors = list(root.glob("truth.error.*.json"))
+    assert errors
+    failed = json.loads(errors[-1].read_text())
+    assert failed["target"]["as_of_block"] == json.loads(
+        (root / "bundle.json").read_text())["snapshot"]["slot"]
 
 
 def test_runner_rejects_none_target_before_producer(root):
@@ -247,12 +271,12 @@ def main():
         tests = (
             test_accounting_requires_and_emits_frozen_slot,
             test_window_missing_timestamp_fails_without_pass,
-            test_window_post_commit_selfcheck_withdraws_formal_artifacts,
-            test_anchor_post_commit_selfcheck_withdraws_formal_artifacts,
+            test_window_has_no_post_commit_failure_surface,
+            test_anchor_has_no_post_commit_failure_surface,
             test_window_complete_segment_requires_timestamp_evidence,
             test_anchor_and_window_reject_same_or_alias_paths,
             test_supply_cli_has_runner_bound_outputs,
-            test_supply_truth_requires_exact_frozen_slot,
+            test_supply_truth_declared_slot_is_assertion,
             test_runner_rejects_none_target_before_producer,
         )
         failures = []

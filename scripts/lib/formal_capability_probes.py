@@ -51,9 +51,21 @@ FAILURE_ARTIFACT_GATE_TARGETS = MappingProxyType({
     ),
 })
 
-# Batch 3 owns additions to this registry.  Batch 2 must leave it empty so the
-# four formal-intent chains naturally remain not-ready without a kill switch.
-VERTICAL_SLICE_EVIDENCE_TARGETS = MappingProxyType({})
+VERTICAL_SLICE_EVIDENCE_TARGETS = MappingProxyType({
+    "r9-eth-mainnet-vertical-slice": (
+        "scripts.tests.test_batch3_evm_vertical_slice:test_r9_eth_mainnet_vertical_slice",
+    ),
+    "r9-bsc-mainnet-vertical-slice": (
+        "scripts.tests.test_batch3_evm_vertical_slice:test_r9_bsc_mainnet_vertical_slice",
+    ),
+    "r9-base-mainnet-vertical-slice": (
+        "scripts.tests.test_batch3_evm_vertical_slice:test_r9_base_mainnet_vertical_slice",
+    ),
+    "r9-solana-pythia-mainnet-vertical-slice": (
+        "scripts.tests.test_batch3_solana_vertical_slice:"
+        "test_r9_solana_pythia_mainnet_vertical_slice",
+    ),
+})
 
 
 def _flatten_suite(value):

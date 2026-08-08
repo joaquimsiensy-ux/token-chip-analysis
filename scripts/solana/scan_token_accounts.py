@@ -18,13 +18,16 @@
 - 基础布局不变：mint@0 owner@32 amount@64(u64 LE)，dataSlice{32,40} 一次带出 owner+amount
 - getProgramAccounts 无分页，一次全量返回；落盘后本地解析
 """
-import argparse, base64, hashlib, json, os, subprocess, sys, time
+import argparse, base64, hashlib, json, os, sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
 from artifact_quarantine import quarantine_current, quarantine_run_id
 from receipt_kernel import (assert_distinct_paths, build_envelope, finalize_envelope,
-                            publish_txn)
+                            publish_error_receipt, publish_overwrite, publish_txn)
+from solana_attested_session import SolanaAttestedSession
+from solana_observation import (assert_declared_slot, build_observation_bundle,
+                                observe_snapshot)
 
 SPL = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
 T22 = "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
@@ -51,28 +54,6 @@ def b58encode(b: bytes) -> str:
         else:
             break
     return s
-
-
-def rpc_call(url: str, payload: dict, out_file: Path, timeout: int = 120):
-    body = json.dumps(payload)
-    for attempt in range(4):
-        p = subprocess.run(
-            ["curl", "-s", "--compressed", "-m", str(timeout), url, "-X", "POST",
-             "-H", "Content-Type: application/json", "-d", body, "-o", str(out_file)],
-            capture_output=True, text=True, timeout=timeout + 30)
-        # 校验返回体为含 result 的合法 JSON 才算成功——curl 对 504/HTML 错误页同样 returncode=0，
-        # 错误体一旦落盘会被当缓存复用（PUB 增量实战踩坑，2026-07-15）
-        if p.returncode == 0 and out_file.exists() and out_file.stat().st_size > 0:
-            try:
-                if "result" in json.loads(out_file.read_text()):
-                    return True
-            except Exception:
-                pass
-            head = out_file.read_text()[:80]
-            print(f"[warn] RPC 返回非 JSON/无 result（attempt {attempt+1}）: {head}", file=sys.stderr)
-            out_file.unlink(missing_ok=True)
-        time.sleep(2 * (attempt + 1))
-    return False
 
 
 def choose_datasizes(program, requested):
@@ -141,226 +122,188 @@ def parse_token_accounts(accounts):
     return unique, rows, dict(sorted(owners.items(), key=lambda kv: -kv[1])), malformed
 
 
-def main():
+def _default_rpc():
+    key_file = Path.home() / ".config/helius/api-key"
+    if key_file.is_file():
+        key = key_file.read_text(encoding="utf-8").strip()
+        if key:
+            return f"https://mainnet.helius-rpc.com/?api-key={key}"
+    return "https://api.mainnet-beta.solana.com"
+
+
+def _case_relative(path):
+    resolved = Path(path).resolve()
+    try:
+        return resolved.relative_to(Path.cwd().resolve()).as_posix()
+    except ValueError as exc:
+        raise ValueError("formal outputs must stay inside the case directory") from exc
+
+
+def main(argv=None, *, request_json=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("mint")
-    ap.add_argument("--program", choices=["auto", "token2022", "spl"], default="auto",
-                    help="auto=getAccountInfo(mint) 查 owner 自动判定（默认，防标准 SPL 币被 token2022 空扫）")
-    ap.add_argument("--rpc", default="https://solana-rpc.publicnode.com")
+    ap.add_argument("--program", choices=["auto", "token2022", "spl"], default="auto")
+    ap.add_argument("--rpc", action="append", dest="rpcs",
+                    help="Solana JSON-RPC endpoint; repeat for attested failover")
     ap.add_argument("--datasizes", default="auto",
-                    help="auto=Token-2022 无 dataSize 全扫/SPL 165；也可给逗号列表或 all"
-                         "（publicnode 会 504；api.mainnet-beta 实测放行，2026-07-13）")
-    ap.add_argument("--timeout", type=int, default=150,
-                    help="GPA 请求超时秒（大盘子 mint 配 Helius 用 300，2026-07-22 GOAT 实测）")
-    ap.add_argument("--as-of-slot", type=int, required=True)
-    ap.add_argument("--out", required=True)
-    ap.add_argument("--receipt", required=True)
+                    help="compatibility option; the observation protocol always scans all extension sizes")
+    ap.add_argument("--timeout", type=int, default=300)
+    ap.add_argument("--as-of-slot", type=int, default=None,
+                    help="optional compatibility assertion against observed GPA context.slot")
+    ap.add_argument("--min-context-slot", type=int, default=0,
+                    help="lower bound forwarded to finalized account/GPA observations")
+    ap.add_argument("--out", required=True, help="solana-holder-snapshot/v3 output")
+    ap.add_argument("--receipt", help="compatibility name for the observation bundle/commit marker")
+    ap.add_argument("--bundle", help="solana-observation-bundle/v1 output/commit marker")
     ap.add_argument("--work-dir", default="data")
-    args = ap.parse_args()
-    if args.as_of_slot < 0:
+    args = ap.parse_args(argv)
+    marker = args.bundle or args.receipt
+    if not marker:
+        ap.error("one of --bundle/--receipt is required")
+    if args.bundle and args.receipt and Path(args.bundle).resolve() != Path(args.receipt).resolve():
+        ap.error("--bundle and --receipt name the same commit marker; separate paths are rejected")
+    if args.as_of_slot is not None and args.as_of_slot < 0:
         ap.error("--as-of-slot must be non-negative")
+    if args.min_context_slot < 0:
+        ap.error("--min-context-slot must be non-negative")
+    if args.timeout <= 0:
+        ap.error("--timeout must be positive")
     try:
-        assert_distinct_paths(args.out, args.receipt)
+        assert_distinct_paths(args.out, marker)
     except Exception as exc:
-        print(f"FATAL: output/receipt path conflict: {exc}", file=sys.stderr)
+        print(f"FATAL: output/bundle path conflict: {exc}", file=sys.stderr)
         return 2
 
     run_id = quarantine_run_id()
     try:
-        # The receipt is the commit marker: invalidate it before data so a
-        # partial quarantine can never leave a current PASS marker.
-        stale_receipt = quarantine_current(args.receipt, run_id)
+        stale_marker = quarantine_current(marker, run_id)
         stale_out = quarantine_current(args.out, run_id)
     except Exception as exc:
         print(f"FATAL: prior snapshot/marker quarantine failed: {exc}", file=sys.stderr)
         return 1
-    if stale_receipt is not None:
-        print(f"[stale] previous marker moved to {stale_receipt}", file=sys.stderr)
-    if stale_out is not None:
-        print(f"[stale] previous snapshot moved to {stale_out}", file=sys.stderr)
+    for label, stale in (("marker", stale_marker), ("snapshot", stale_out)):
+        if stale is not None:
+            print(f"[stale] previous {label} moved to {stale}", file=sys.stderr)
 
-    data_dir = Path(args.work_dir); data_dir.mkdir(parents=True, exist_ok=True)
-
-    if args.program == "auto":
-        info_f = data_dir / "_mint_info.json"
-        ok = rpc_call(args.rpc, {"jsonrpc": "2.0", "id": 1, "method": "getAccountInfo",
-                                 "params": [args.mint, {"encoding": "base64"}]}, info_f, 30)
-        if not ok:
-            print("FATAL: getAccountInfo(mint) 失败，无法自动判定 program——用 --program 显式指定", file=sys.stderr)
-            sys.exit(1)
-        mint_owner = (json.loads(info_f.read_text())["result"]["value"] or {}).get("owner")
-        if mint_owner == T22:
-            prog = T22
-        elif mint_owner == SPL:
-            prog = SPL
+    data_dir = Path(args.work_dir).resolve()
+    data_dir.mkdir(parents=True, exist_ok=True)
+    endpoints = args.rpcs or [_default_rpc()]
+    error_target = {"chain": "solana", "token": args.mint.lower(),
+                    "as_of_block": (args.as_of_slot if args.as_of_slot is not None
+                                    else args.min_context_slot)}
+    error_envelope = None
+    try:
+        error_envelope = build_envelope(
+            "solana-observation-bundle/v1", error_target, __file__, "formal")
+        session = SolanaAttestedSession(
+            endpoints, request_json=request_json, timeout=args.timeout)
+        if args.program == "auto":
+            detected = session.call("getAccountInfo", [args.mint, {
+                "commitment": "finalized", "encoding": "base64",
+                "minContextSlot": args.min_context_slot,
+            }])
+            value = detected.get("value") if isinstance(detected, dict) else None
+            prog = value.get("owner") if isinstance(value, dict) else None
+            if prog not in {SPL, T22}:
+                raise ValueError(f"mint owner={prog!r} is not SPL/Token-2022")
         else:
-            print(f"FATAL: mint owner={mint_owner} 不是 SPL/Token-2022 程序", file=sys.stderr)
-            sys.exit(1)
-        print(f"program=auto → mint owner 判定为 {'Token-2022' if prog == T22 else '标准 SPL'}")
-    else:
-        prog = T22 if args.program == "token2022" else SPL
+            prog = T22 if args.program == "token2022" else SPL
+        if args.datasizes not in {"auto", "all"} and prog == T22:
+            raise ValueError("Token-2022 formal observation rejects dataSize filters")
 
-    # 冒烟：supply
-    sup_f = data_dir / "_supply.json"
-    ok = rpc_call(args.rpc, {"jsonrpc": "2.0", "id": 1, "method": "getTokenSupply",
-                             "params": [args.mint]}, sup_f, 30)
-    if not ok:
-        print("FATAL: getTokenSupply 失败", file=sys.stderr); sys.exit(1)
-    supply_slot, decimals, supply_raw = parse_supply_response(json.loads(sup_f.read_text()))
-    if supply_slot != args.as_of_slot:
-        print(f"FATAL: getTokenSupply slot={supply_slot} != frozen slot={args.as_of_slot}",
-              file=sys.stderr)
-        return 1
-    print(f"supply={supply_raw} decimals={decimals} ui={supply_raw/10**decimals:,.2f}")
+        core, normalized = observe_snapshot(
+            session, args.mint, prog, min_context_slot=args.min_context_slot)
+        snapshot_slot = core["snapshot"]["slot"]
+        error_envelope = build_envelope(
+            "solana-observation-bundle/v1",
+            {"chain": "solana", "token": args.mint.lower(),
+             "as_of_block": snapshot_slot},
+            __file__, "formal")
+        assert_declared_slot(args.as_of_slot, snapshot_slot, "--as-of-slot")
+        supply_raw = int(core["supply"]["amount"])
+        decimals = int(core["supply"]["decimals"])
 
-    # Token-2022 extension 账户长度不封顶，正式默认必须无 dataSize 全扫。
-    accounts = []
-    try:
-        ds_list = choose_datasizes(prog, args.datasizes)
-    except ValueError:
-        print("FATAL: Token-2022 正式快照必须无 dataSize 全扫；扩展账户长度不封顶。"
-              "请使用 --datasizes all（或默认 auto）并选择支持该查询的 RPC。", file=sys.stderr)
-        sys.exit(2)
-    scan_receipts = []
-    for ds in ds_list:
-        raw_f = data_dir / f"_gpa_raw_{ds}.json"
-        meta_f = data_dir / f"_gpa_raw_{ds}.meta.json"
-        t0 = time.time()
-        reused = False
-        filters = [{"memcmp": {"offset": 0, "bytes": args.mint}}]
-        if ds != "all":
-            filters.insert(0, {"dataSize": ds})
-        expected_identity = {"schema": "solana-gpa-cache-v2", "mint": args.mint,
-                             "program": prog, "rpc": args.rpc, "filters": filters,
-                             "supply_observed_slot": supply_slot}
-        if raw_f.exists() and raw_f.stat().st_size > 100:
-            try:
-                resp = json.loads(raw_f.read_text())
-                meta = json.loads(meta_f.read_text()) if meta_f.exists() else {}
-                reused = "result" in resp and cache_identity_matches(meta, expected_identity)
-            except Exception:
-                reused = False
-        if reused:
-            age_h = (time.time() - raw_f.stat().st_mtime) / 3600
-            print(f"[warn] 复用缓存 {raw_f.name}（{age_h:.1f} 小时前）——数据非实时；"
-                  f"增量更新/要最新快照请先删除或改名该缓存", file=sys.stderr)
-        if not reused:
-            payload = {"jsonrpc": "2.0", "id": 1, "method": "getProgramAccounts", "params": [
-                prog, {"encoding": "base64", "dataSlice": {"offset": 32, "length": 40},
-                       "filters": filters, "withContext": True,
-                       **({"minContextSlot": supply_slot} if supply_slot is not None else {})}]}
-            ok = rpc_call(args.rpc, payload, raw_f, args.timeout)
-            if not ok:
-                print(f"FATAL: getProgramAccounts dataSize={ds} 失败", file=sys.stderr); sys.exit(1)
-            resp = json.loads(raw_f.read_text())
-        try:
-            batch, gpa_slot = parse_gpa_response(resp)
-        except ValueError as exc:
-            print(f"FATAL: RPC error (ds={ds}): {exc}", file=sys.stderr); sys.exit(1)
-        if gpa_slot != args.as_of_slot:
-            print(f"FATAL: GPA slot={gpa_slot} != frozen slot={args.as_of_slot}",
-                  file=sys.stderr)
-            return 1
-        meta = {**expected_identity, "gpa_response_slot": gpa_slot, "account_count": len(batch)}
-        if not reused:
-            meta_f.write_text(json.dumps(meta, indent=2, sort_keys=True))
-        elif json.loads(meta_f.read_text()) != meta:
-            print(f"FATAL: 缓存 meta 与响应不闭合（ds={ds}）", file=sys.stderr)
-            sys.exit(2)
-        scan_receipts.append({**meta,
-            "raw_artifact": {"path": raw_f.name, "size": raw_f.stat().st_size,
-                             "sha256": sha256_file(raw_f)},
-            "meta_artifact": {"path": meta_f.name, "size": meta_f.stat().st_size,
-                              "sha256": sha256_file(meta_f)}})
-        print(f"scan ds={ds}: {len(batch)} accounts, {raw_f.stat().st_size/1e6:.1f}MB, {time.time()-t0:.0f}s")
-        accounts.extend(batch)
-    accounts, rows, owners, malformed = parse_token_accounts(accounts)
-    print(f"scan total: {len(accounts)} accounts (去重后)")
-
-    total = sum(owners.values())
-    print(f"nonzero token accounts={len(rows)}  unique owners={len(owners)}")
-    print(f"对账: 扫描加总={total} vs getTokenSupply={supply_raw}  diff={supply_raw-total}")
-    try:
+        rpc_accounts = [{"pubkey": item["pubkey"], "account": {
+            "data": [item["data_base64"], "base64"]}} for item in normalized]
+        _, rows, owners, malformed = parse_token_accounts(rpc_accounts)
+        total = sum(owners.values())
         require_snapshot_closed(total, supply_raw, malformed)
-    except ValueError:
-        print(f"FATAL: holder snapshot 不闭合：malformed={malformed} "
-              f"sum_accounts={total} supply={supply_raw} diff={supply_raw-total}。"
-              "不得生成正式 holders 产物；换完整 RPC/检查过滤器后重跑。", file=sys.stderr)
-        sys.exit(2)
-    owners_sorted = owners
-    accounts_out = data_dir / "holders_accounts.json"
-    owners_out = data_dir / "holders_owners.json"
-    accounts_out.write_text(json.dumps(rows))
-    owners_out.write_text(json.dumps(owners_sorted))
-    (data_dir / "holders_snapshot_meta.json").write_text(json.dumps({
-        "schema": "solana-holder-snapshot-v2", "mint": args.mint, "program": prog,
-        "target": {"chain": "solana", "token": args.mint.lower(),
-                   "as_of_block": supply_slot},
-        "verdict": "PASS", "exit_code": 0,
-        "rpc": args.rpc, "supply_raw": str(supply_raw), "sum_accounts_raw": str(total),
-        "decimals": decimals, "closed": True,
-        "producer": {"path": "scan_token_accounts.py", "sha256": sha256_file(__file__)},
-        "supply_receipt": {"path": sup_f.name, "size": sup_f.stat().st_size,
-                           "sha256": sha256_file(sup_f)},
-        "outputs": {
-            "holders_accounts": {"path": accounts_out.name, "size": accounts_out.stat().st_size,
-                                 "sha256": sha256_file(accounts_out)},
-            "holders_owners": {"path": owners_out.name, "size": owners_out.stat().st_size,
-                               "sha256": sha256_file(owners_out)}},
-        "scans": scan_receipts,
-    }, indent=2, sort_keys=True))
 
-    snapshot = {
-        "schema": "solana-holder-snapshot/v3",
-        "target": {"chain": "solana", "token": args.mint.lower(),
-                   "as_of_block": args.as_of_slot},
-        "mint": args.mint,
-        "program": prog,
-        "rpc": args.rpc,
-        "decimals": decimals,
-        "supply_raw": str(supply_raw),
-        "sum_accounts_raw": str(total),
-        "closed": True,
-        "accounts": rows,
-        "owners": owners_sorted,
-    }
-    envelope = build_envelope(
-        "solana-holder-snapshot-receipt/v3",
-        snapshot["target"], __file__, "formal",
-        inputs={"supply_rpc": sup_f,
-                **{f"gpa_{i}": data_dir / scan["raw_artifact"]["path"]
-                   for i, scan in enumerate(scan_receipts)}})
-    data_bytes = (json.dumps(snapshot, ensure_ascii=False, indent=2) + "\n").encode()
-    receipt = finalize_envelope(
-        envelope, "PASS", 0, closed=True,
-        supply_raw=str(supply_raw), sum_accounts_raw=str(total),
-        observed_slots={"supply": supply_slot,
-                        "gpa": [scan["gpa_response_slot"] for scan in scan_receipts]},
-        output={"path": str(Path(args.out).resolve()), "size": len(data_bytes),
-                "sha256": hashlib.sha256(data_bytes).hexdigest()})
-    try:
-        publish_txn(args.out, snapshot, args.receipt, receipt)
+        supply_file = data_dir / "_supply.json"
+        gpa_file = data_dir / "_gpa_raw_all.json"
+        gpa_meta_file = data_dir / "_gpa_raw_all.meta.json"
+        accounts_out = data_dir / "holders_accounts.json"
+        owners_out = data_dir / "holders_owners.json"
+        supply_payload = {"result": {"context": {"slot": core["supply"]["slot"]},
+                                      "value": {"amount": str(supply_raw),
+                                                "decimals": decimals}}}
+        gpa_payload = {"result": {"context": {"slot": snapshot_slot},
+                                   "value": rpc_accounts}}
+        filters = [{"memcmp": {"offset": 0, "bytes": args.mint}}]
+        gpa_meta = {"schema": "solana-gpa-cache-v2", "mint": args.mint,
+                    "program": prog, "rpc": core["attestation"]["endpoint"]["public_origin"],
+                    "filters": filters, "supply_observed_slot": core["supply"]["slot"],
+                    "gpa_response_slot": snapshot_slot, "account_count": len(rpc_accounts)}
+        for path, payload in ((supply_file, supply_payload), (gpa_file, gpa_payload),
+                              (gpa_meta_file, gpa_meta), (accounts_out, rows),
+                              (owners_out, owners)):
+            publish_overwrite(path, payload)
+
+        def ref(path):
+            return {"path": Path(path).name, "size": Path(path).stat().st_size,
+                    "sha256": sha256_file(path)}
+
+        scan_receipt = {**gpa_meta, "raw_artifact": ref(gpa_file),
+                        "meta_artifact": ref(gpa_meta_file)}
+        meta = {
+            "schema": "solana-holder-snapshot-v2", "mint": args.mint, "program": prog,
+            "target": core["canonical_target"], "verdict": "PASS", "exit_code": 0,
+            "rpc": core["attestation"]["endpoint"]["public_origin"],
+            "supply_raw": str(supply_raw), "sum_accounts_raw": str(total),
+            "decimals": decimals, "closed": True,
+            "producer": {"path": "scan_token_accounts.py", "sha256": sha256_file(__file__)},
+            "supply_receipt": ref(supply_file),
+            "outputs": {"holders_accounts": ref(accounts_out),
+                        "holders_owners": ref(owners_out)},
+            "scans": [scan_receipt],
+            "observation_bundle": {"path": _case_relative(marker)},
+        }
+        publish_overwrite(data_dir / "holders_snapshot_meta.json", meta)
+
+        snapshot = {
+            "schema": "solana-holder-snapshot/v3", "target": core["canonical_target"],
+            "mint": args.mint, "program": prog,
+            "endpoint": core["attestation"]["endpoint"], "decimals": decimals,
+            "supply_raw": str(supply_raw), "sum_accounts_raw": str(total),
+            "closed": True, "accounts": rows, "owners": owners,
+        }
+        data_bytes = (json.dumps(snapshot, ensure_ascii=False, indent=2) + "\n").encode()
+        bundle = build_observation_bundle(
+            core, __file__, inputs={"supply_rpc": supply_file, "gpa_rpc": gpa_file,
+                                    "gpa_meta": gpa_meta_file},
+            closed=True, supply_raw=str(supply_raw), sum_accounts_raw=str(total),
+            as_of_slot=snapshot_slot, as_of_block=snapshot_slot,
+            observed_context_slot=snapshot_slot,
+            observed_slots={"pre": core["mint_pre"]["slot"], "gpa": snapshot_slot,
+                            "post": core["mint_post"]["slot"],
+                            "supply": core["supply"]["slot"]},
+            output={"path": _case_relative(args.out), "size": len(data_bytes),
+                    "sha256": hashlib.sha256(data_bytes).hexdigest()},
+            holder_outputs={"accounts": ref(accounts_out), "owners": ref(owners_out)})
+        publish_txn(args.out, snapshot, marker, bundle)
     except Exception as exc:
-        print(f"FATAL: snapshot transaction publish failed: {exc}", file=sys.stderr)
+        print(f"FATAL: Solana observation failed: {exc}", file=sys.stderr)
+        if error_envelope is not None:
+            try:
+                error_path = publish_error_receipt(marker, error_envelope, exc, run_id=run_id)
+                print(f"[scan_token_accounts] ERROR -> {error_path}", file=sys.stderr)
+            except Exception as write_exc:
+                print(f"[scan_token_accounts] ERROR receipt failed: {write_exc}", file=sys.stderr)
         return 1
 
-    ui = lambda x: x / 10**decimals
-    tiers = [(1e6, ">=100万"), (1e5, "10-100万"), (1e4, "1-10万"), (1e3, "1千-1万"), (0, "<1千")]
-    cnt = {label: [0, 0] for _, label in tiers}
-    for amt in owners.values():
-        u = ui(amt)
-        for thr, label in tiers:
-            if u >= thr:
-                cnt[label][0] += 1; cnt[label][1] += amt
-                break
-    print("五档分层（owner 口径）:")
-    for _, label in tiers:
-        c, s = cnt[label]
-        print(f"  {label:>8}: {c:>6} owners  {ui(s):>18,.0f} 枚  {s/total*100:6.2f}%")
-
-    print("top20 owners:")
-    for i, (o, amt) in enumerate(list(owners_sorted.items())[:20], 1):
-        print(f"  #{i:<3}{o}  {ui(amt):>16,.0f}  {amt/total*100:6.3f}%")
+    print(f"snapshot_slot={snapshot_slot} accounts={len(rows)} owners={len(owners)} "
+          f"supply={supply_raw} activity={core['activity']['mode']} -> {args.out}")
+    return 0
 
 
 if __name__ == "__main__":

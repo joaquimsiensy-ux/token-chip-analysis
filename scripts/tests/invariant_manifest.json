@@ -78,6 +78,13 @@
     },
     {
       "schemas": [
+        "solana-observation-bundle/v1",
+        "solana-observation-core/v1"
+      ],
+      "script": "scripts/lib/solana_observation.py"
+    },
+    {
+      "schemas": [
         "supply-truth-receipt/v2"
       ],
       "script": "scripts/lib/supply_truth_gate.py"
@@ -235,9 +242,9 @@
     {
       "schemas": [
         "solana-gpa-cache-v2",
-        "solana-holder-snapshot-receipt/v3",
         "solana-holder-snapshot-v2",
-        "solana-holder-snapshot/v3"
+        "solana-holder-snapshot/v3",
+        "solana-observation-bundle/v1"
       ],
       "script": "scripts/solana/scan_token_accounts.py"
     },
@@ -249,6 +256,13 @@
     }
   ],
   "receipt_consumers": [
+    {
+      "schemas": [
+        "solana-observation-bundle/v1",
+        "solana-observation-core/v1"
+      ],
+      "script": "scripts/lib/solana_observation.py"
+    },
     {
       "schemas": [
         "anchor-plan-receipt/v2",
@@ -368,7 +382,7 @@
         "reconciliation-report/v2",
         "shared-release-receipt/v1",
         "solana-anchor-sampler-receipt/v2",
-        "solana-holder-snapshot-receipt/v3",
+        "solana-observation-bundle/v1",
         "supply-truth-receipt/v2",
         "time-spotcheck/v2"
       ],
@@ -491,11 +505,15 @@
       "script": "scripts/lib/solana_attested_session.py"
     },
     {
-      "kind": "net.py",
-      "script": "scripts/lib/supply_truth_gate.py"
+      "kind": "solana-attested-session",
+      "script": "scripts/lib/solana_observation.py"
     },
     {
-      "kind": "requests",
+      "kind": "solana-attested-session",
+      "script": "scripts/lib/solana_sqd_dataset.py"
+    },
+    {
+      "kind": "net.py",
       "script": "scripts/lib/supply_truth_gate.py"
     },
     {
@@ -555,12 +573,12 @@
       "script": "scripts/solana/audit_closed_accounts.py"
     },
     {
-      "kind": "requests",
-      "script": "scripts/solana/accounting_gate_sol.py"
-    },
-    {
       "kind": "net.py",
       "script": "scripts/solana/anchor_sampler.py"
+    },
+    {
+      "kind": "solana-attested-session",
+      "script": "scripts/solana/accounting_gate_sol.py"
     },
     {
       "kind": "requests",
@@ -580,6 +598,10 @@
     },
     {
       "kind": "requests",
+      "script": "scripts/solana/fetch_sqd_transfers_v2.py"
+    },
+    {
+      "kind": "solana-attested-session",
       "script": "scripts/solana/fetch_sqd_transfers_v2.py"
     },
     {
@@ -603,7 +625,7 @@
       "script": "scripts/solana/scan_sharded.py"
     },
     {
-      "kind": "curl",
+      "kind": "solana-attested-session",
       "script": "scripts/solana/scan_token_accounts.py"
     },
     {
