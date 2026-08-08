@@ -118,6 +118,6 @@
 - 批四批内消化（`6b7ab8d..` 至本回填 commit 即候选 tip，含 `B4F-G1`=`13d76c0` 与本表自身回填）：`0` 候选（全部 hunk 归属 `B4F-G1`；回填 commit 按通例自指式计入；待重审独立复算）。
 - R9 批一（`63cf715..` 至本回填 commit 即候选 tip，含 `85753da`/`2f197d2`/`592b0c2`/`35c94eb` 与本表自身回填）：`0` 候选（22 个改动/新增文件全部归属 `R9-B1-G1`～`R9-B1-G7`；多 owner 文件已按 hunk 显式拆分；回填 commit 按通例自指式计入；待批内审查独立复算）。
 - R9 批一批内消化（`144c652..0bb94ba`，含 `B1F-G1`～`B1F-G4` 与 SHA 回填）：重审独立复算未映射 hunk=`1`，即 `solana_attested_session.py` 末尾空行删除（`B1R2-01`）；原自报 `0` 作废并由 B1F2-G3 恢复。
-- R9 批一批内消化第二轮（`0bb94ba..` 至候选 tip，含 `B1F2-G1/G2`=`1a7e685`/`B1F2-G3`=`658f78e` 与本表自身回填）：`0` 候选（全部 hunk 归属三组；回填 commit 按通例自指式计入；终修后待第三轮独立重审）。
+- R9 批一批内消化第二轮（`0bb94ba..` 至候选 tip，含 `B1F2-G1/G2`=`1a7e685`/`B1F2-G3`=`658f78e` 与本表自身回填）：`0` 候选（全部 hunk 归属三组；回填 commit 按通例自指式计入）。第三轮增量重审（report-recheck2.md）**ALL-CLEAR**：B1R-01 CLOSED、两 P3 CLOSED；新增历史漏检 `B1R3-01`（P3 非阻断，anchor per_cell/edge_max 无下界→弱覆盖 plan，非 B1R-01 未闭合）留批四守卫层处理+最终盲审复验。
 
 通例：区间末端恒取候选 tip；自指式 SHA 回填 commit 计入本区间。map 行文件清单以 Fable 实际 commit 分组为准；一文件含多 owner 的 hunk 时（文件级 commit 无法拆分），物理归属行与语义 owner 行互相注明，Fable 回填 SHA 时校正清单。

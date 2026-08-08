@@ -309,3 +309,19 @@
 - 沙箱内首轮全量只有 Solana/EVM 两个 loopback 纵切片因 `bind(127.0.0.1)` 权限失败，其余 `80/82` PASS；获批在沙箱外运行同一命令后 `82/82 PASS`，末行 `全部通过`。
 - invariant census：`receipt_producers=49, receipt_consumers=53, transport_calls=58, atomic_writes=38, formal_entrypoints=58, exceptions=0`。
 - 边界：`VERSION` 未改；B1F2 三组 SHA 均留空待裁判回填；未执行任何 git 写操作。`solana_attested_session.py` 的任务指定末尾空行会被 `git diff --check` 报 `new blank line at EOF`，该字节正是 `B1R2-01` 要求恢复的内容，未擅自再次删除。
+
+## 批一裁决记录（Fable 总验收，2026-08-08）
+
+三轮批内审查节拍完成，批一收口 **PASS**：
+- 批内审查一（opus5，report.md）BLOCK 4 项 → 消化 B1F（`fa82b32`/`8477e04`/`0bb94ba`）。
+- 增量重审一（opus5，report-recheck.md）BLOCK：B1R-01 二次 REOPEN（声明式校验照抄穿）+ 2 项 P3 → Fable 定终修方案「consumer 语义重放」→ 消化 B1F2（`1a7e685`/`658f78e`/`120c9ef`）。
+- 增量重审二（opus5，report-recheck2.md）**ALL-CLEAR**：B1R-01 CLOSED（真闭合，9 类篡改+多重集+类型混淆全 REJECT，仅合法点序重排放行）、B1R2-01/B1R2-02 均 CLOSED；新增 1 项非阻断历史 P3。
+- Fable 读码复现核实：语义重放 `matrix_points`+`forced_points` 双多重集比对且走共用 `anchor_selection`（`time_spotcheck.py:176`），伪造等价真跑，B1R-01 确 CLOSED；两 P3 归因属实。全量 suite Fable 亲跑 `82/82`。
+
+**遗留登记 `B1R3-01`（P3，历史漏检，非阻断，不计止损循环）**：
+- 现象：真 `anchor_plan.py` 传 `--per-cell 0 --edge-max 0` 产出合法但退化的弱覆盖 plan（matrix 空、仅剩强制极值点），语义重放一致通过、正式路径过闸出 PASS。
+- 读码核实：`anchor_plan.py:71-72` 的 `--per-cell`/`--edge-max` 无下界校验（`type=int` 无 min）；退化机制为 `anchor_selection.py:215` `WHERE rn <= {per_cell}` 与 `:291` `LIMIT {edge_max}`。参数下界缺失早于冻结基线，**非 R9 引入**。
+- 定性：方向是「覆盖变少」非「放假货」——退化 plan 逐句满足 B1R-01 不变量（真 producer/真实输入/可独立重放），故 **不是 B1R-01 未闭合**，封顶 P3。
+- 处置（按 PLAN 历史 P3 规则「修复、记录但不重置盲审」）：**留待批四**统一处理——批四主题为「审计存量 fixture + 防复发守卫」，B1R3-01 本质是覆盖充分性问题，宜在批四加「plan 有效覆盖点数/参数下界」守卫系统处理，而非此刻在 anchor_plan 单点补丁抢跑批三/批四；必须在最终 SHA 的 Round B 反查盲审复验。裁判不现在改生产代码，避免 P3 修复引入未经审查的新面。
+
+止损：批一经 2 个消化循环后第三轮达标（未触发连续三循环冻结线），campaign 循环计数在批一收口后归零，批二从 0 计。
