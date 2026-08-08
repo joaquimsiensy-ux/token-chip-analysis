@@ -137,15 +137,15 @@
 | `R9-B2-G3` | `ae3ff29`(生产)+`3b69e5d`(测试) | Solana SQD dataset scope 适配器 |
 | `R9-B2-G4` | `4bc31db`(SKILL)+`3b69e5d`(test_chain_support_matrix) | SKILL 单口径与 exploration 降级保持 |
 | `R9-B2-G5` | `cf67cd0` | ledger/map/progress 与全量门禁 |
-| `R9-B3-G1` |  | Fable 回填：Solana observation bundle 核心与活动判定 |
-| `R9-B3-G2` |  | Fable 回填：三消费者、动态 runner、producer txn 尾巴 |
-| `R9-B3-G3` |  | Fable 回填：EVM 三链纵切片与 evidence targets |
-| `R9-B3-G4` |  | Fable 回填：Solana 纵切片 fake 与 SQD callsite |
-| `R9-B3-G5` |  | Fable 回填：G3-0 双载体预演壳 |
-| `R9-B3-G6` |  | Fable 回填：mainnet smoke 裁判手册 |
-| `R9-B3-G7` |  | Fable 回填：台账、矩阵、门禁与待跑位 |
-| `B3F2-G1` |  | Fable 回填：CA context、endpoint public identity 与生产 G3-0 transport 接线 |
-| `B3F2-G2` |  | Fable 回填：污染清理、批内循环 1 台账与门禁 |
+| `R9-B3-G1` | `160a852` | Solana observation bundle 核心与活动判定 |
+| `R9-B3-G2` | `160a852` | 三消费者、动态 runner、producer txn 尾巴 |
+| `R9-B3-G3` | `160a852` | EVM 三链纵切片与 evidence targets |
+| `R9-B3-G4` | `160a852` | Solana 纵切片 fake 与 SQD callsite |
+| `R9-B3-G5` | `160a852` | G3-0 双载体预演壳 |
+| `R9-B3-G6` | `160a852` | mainnet smoke 裁判手册 |
+| `R9-B3-G7` | `160a852` | 台账、矩阵、门禁与待跑位 |
+| `B3F2-G1` | `160a852` | CA context、endpoint public identity 与生产 G3-0 transport 接线 |
+| `B3F2-G2` | `160a852` | 污染清理、批内循环 1 台账与门禁 |
 
 ## 未映射 hunk 计数
 
@@ -163,7 +163,7 @@
 - R9 批一批内消化（`144c652..0bb94ba`，含 `B1F-G1`～`B1F-G4` 与 SHA 回填）：重审独立复算未映射 hunk=`1`，即 `solana_attested_session.py` 末尾空行删除（`B1R2-01`）；原自报 `0` 作废并由 B1F2-G3 恢复。
 - R9 批一批内消化第二轮（`0bb94ba..` 至候选 tip，含 `B1F2-G1/G2`=`1a7e685`/`B1F2-G3`=`658f78e` 与本表自身回填）：`0` 候选（全部 hunk 归属三组；回填 commit 按通例自指式计入）。第三轮增量重审（report-recheck2.md）**ALL-CLEAR**：B1R-01 CLOSED、两 P3 CLOSED；新增历史漏检 `B1R3-01`（P3 非阻断，anchor per_cell/edge_max 无下界→弱覆盖 plan，非 B1R-01 未闭合）留批四守卫层处理+最终盲审复验。
 - R9 批二（`5b06677..` 至本回填 commit 即候选 tip，含生产 `ae3ff29`/测试 `3b69e5d`/SKILL `4bc31db`/台账 `cf67cd0` 与本表自身回填）：`0` 候选（全部 hunk 归属 `R9-B2-G1`～`R9-B2-G5`；commit 按生产/测试/SKILL/台账横切，各 G 跨 commit 已在 SHA 对照注明；回填 commit 自指式计入；待批内审查独立复算）。
-- R9 批三（`5771419..` 至当前未提交 worktree）：`0` 候选（全部生产、测试、fixture、SKILL 与 maintenance hunk 已归属 `R9-B3-G1`～`R9-B3-G7`；SHA 依工单留空待 Fable 回填；当前环境未执行任何 git 写操作）。
-- R9 批三批内修复循环 1（接续当前未提交 worktree）：`0` 候选（CA/endpoint identity、G3-0 transport 旁路、上层持久化负例、污染文件删除与三份台账 hunk 均归属 `B3F2-G1/G2`；SHA 留空待 Fable 回填；未执行任何 git 写操作）。
+- R9 批三（`5771419..160a852`，主体+批内循环 1+裁判证据登记合一 commit）：`0` 候选（全部生产、测试、fixture、SKILL 与 maintenance hunk 已归属 `R9-B3-G1`～`R9-B3-G7`；SHA 已回填 `160a852`；待批内审查独立复算）。
+- R9 批三批内修复循环 1（物理并入 `160a852`）：`0` 候选（CA/endpoint identity、G3-0 transport 旁路、上层持久化负例、污染文件删除与三份台账 hunk 均归属 `B3F2-G1/G2`；SHA 已回填 `160a852`；本表自身回填 commit 按通例自指式计入）。
 
 通例：区间末端恒取候选 tip；自指式 SHA 回填 commit 计入本区间。map 行文件清单以 Fable 实际 commit 分组为准；一文件含多 owner 的 hunk 时（文件级 commit 无法拆分），物理归属行与语义 owner 行互相注明，Fable 回填 SHA 时校正清单。
