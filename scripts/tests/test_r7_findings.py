@@ -391,7 +391,8 @@ def test_r7_13():
         assert produced.returncode == 0, produced.stdout + produced.stderr
         good = root / "anchor_plan.json"
         out_bad = root / "bad_receipt.json"
-        args = ["time_spotcheck.py", "--plan", str(good), "--chain", "eth",
+        args = ["time_spotcheck.py", "--plan", str(good), "--input", str(source),
+                "--chain", "eth",
                 "--rpc", "http://fixture", "--token", "0xaaa", "--final-block", "10",
                 "--out", str(out_bad)]
         with mock.patch.object(sys, "argv", args), mock.patch.dict(sys.modules, {"net": fake_net}):

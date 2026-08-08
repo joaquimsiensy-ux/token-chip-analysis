@@ -144,7 +144,7 @@ def test_r9_02_real_anchor_producer_consumer(root):
         if legacy_replay.returncode == 0:
             consumer = run([
                 sys.executable, str(SPOTCHECK), "--plan", str(out_dir / "anchor_plan.json"),
-                "--dry-run", "--chain", "bsc", "--token", TOKEN,
+                "--input", str(source), "--dry-run", "--chain", "bsc", "--token", TOKEN,
                 "--final-block", "300", "--out", str(root / "spotcheck.json")], root)
             raise AssertionError(
                 "R9-02 producer rejected --final-block; legacy real producer output then "
@@ -160,7 +160,7 @@ def test_r9_02_real_anchor_producer_consumer(root):
     assert receipt["schema"] == "anchor-plan-receipt/v2" and receipt["verdict"] == "PASS"
     consumer = run([
         sys.executable, str(SPOTCHECK), "--plan", str(plan_path), "--dry-run",
-        "--chain", "bsc", "--token", TOKEN, "--final-block", "300",
+        "--input", str(source), "--chain", "bsc", "--token", TOKEN, "--final-block", "300",
         "--out", str(root / "spotcheck.json")], root)
     assert consumer.returncode == 0, detail(consumer)
 
@@ -180,7 +180,7 @@ def test_r9_02_real_anchor_producer_consumer(root):
     assert list(out_dir.glob("anchor_plan.receipt.json.stale.*"))
     stale_consumer = run([
         sys.executable, str(SPOTCHECK), "--plan", str(plan_path), "--dry-run",
-        "--chain", "bsc", "--token", TOKEN, "--final-block", "300",
+        "--input", str(beyond), "--chain", "bsc", "--token", TOKEN, "--final-block", "300",
         "--out", str(root / "stale-spotcheck.json")], root)
     assert stale_consumer.returncode != 0, detail(stale_consumer)
 

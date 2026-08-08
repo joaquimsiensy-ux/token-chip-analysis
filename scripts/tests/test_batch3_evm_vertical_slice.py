@@ -142,7 +142,8 @@ def spec(case, chain, endpoint):
                                           "--out", "supply_truth.json"],
                                  "receipt": "supply_truth.json"},
                 "time": {"producer": "scripts/lib/time_spotcheck.py",
-                         "argv": ["--plan", "anchor_plan.json", "--chain", chain,
+                         "argv": ["--plan", "anchor_plan.json", "--input", "transfers_evm.csv",
+                                  "--chain", chain,
                                   "--token", TOKEN, "--final-block", "123", "--rpc", endpoint,
                                   "--out", "time_spotcheck.json"],
                          "receipt": "time_spotcheck.json"}}}
@@ -166,7 +167,8 @@ def wrong_chain_zero_business(case, chain, endpoint):
     FixtureHandler.chain_id = 999
     FixtureHandler.methods.clear()
     proc = run([sys.executable, str(ROOT / "scripts/lib/time_spotcheck.py"),
-                "--plan", "anchor_plan.json", "--chain", chain, "--token", TOKEN,
+                "--plan", "anchor_plan.json", "--input", "transfers_evm.csv",
+                "--chain", chain, "--token", TOKEN,
                 "--final-block", "123", "--rpc", endpoint,
                 "--out", "wrong_chain.json"], case, expect=1)
     assert proc.returncode != 0

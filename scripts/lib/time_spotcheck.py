@@ -19,9 +19,10 @@ Alchemy archive / 公共 archive 节点均可；APU 案 Alchemy archive 15/15 �
 Solana 案不适用本脚本（时间抽查走 solana/anchor_sampler.py 通道）。
 
 用法:
-  python3 time_spotcheck.py --plan anchor_plan.json --rpc <archive_rpc_url> \
+  python3 time_spotcheck.py --plan anchor_plan.json --input <transfers.csv|parquet|v2目录> \
+      --rpc <archive_rpc_url> \
       --chain bsc --token 0x... --out time_spotcheck.json --final-block N [--rps 8]
-  dry-run 可省 --chain/--final-block，仅解析计划且不生成正式 receipt。
+  dry-run 可省 --chain/--rpc，但仍须真实 --input 与 --final-block；不生成正式 receipt。
 
   --final-block  数据截止块，也是 v2 receipt target.as_of_block；正式运行必填。
   --dry-run      只解析计划分型统计（不打网），供预检与契约测试。
@@ -31,14 +32,18 @@ Solana 案不适用本脚本（时间抽查走 solana/anchor_sampler.py 通道�
 产物 time_spotcheck.json 带 verdict+exit_code，供 handoff_manifest AUTO_GATES 重读防手报。
 （来源：APU SQD 全史重拉冗余复盘 + codex 交叉复核，2026-08-01）"""
 import argparse
+from collections import Counter
 import datetime
-import hashlib
 import json
+import math
 import os
 import sys
 from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from anchor_selection import (EXPECTED_PLAN_PRODUCER, REPLAY_PARAMETER_FIELDS,
+                              generate_anchor_selection, input_identity,
+                              sha256_file)
 from chain_registry import formal_evm_chains
 from receipt_validate import validate_receipt
 from receipt_kernel import (build_envelope, finalize_envelope, publish_error_receipt,
@@ -49,15 +54,6 @@ BALANCEOF_SELECTOR = "0x70a08231"
 SCHEMA = "time-spotcheck/v2"
 PLAN_SCHEMA = "anchor-plan/v2"
 PLAN_RECEIPT_SCHEMA = "anchor-plan-receipt/v2"
-EXPECTED_PLAN_PRODUCER = "scripts/lib/anchor_plan.py"
-
-
-def _sha256(path):
-    digest = hashlib.sha256()
-    with Path(path).open("rb") as handle:
-        for chunk in iter(lambda: handle.read(1 << 20), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
 
 
 def _default_plan_receipt(plan_path):
@@ -107,7 +103,8 @@ def load_validated_plan(plan_path, receipt_path):
         raise ValueError("plan receipt output missing")
     if Path(str(output.get("path", ""))).resolve() != plan_file.resolve():
         raise ValueError("plan receipt output path mismatch")
-    if output.get("size") != plan_file.stat().st_size or output.get("sha256") != _sha256(plan_file):
+    if (output.get("size") != plan_file.stat().st_size
+            or output.get("sha256") != sha256_file(plan_file)):
         raise ValueError("plan receipt output size/hash mismatch")
     if receipt.get("plan_schema") != PLAN_SCHEMA:
         raise ValueError("plan receipt plan_schema mismatch")
@@ -117,6 +114,75 @@ def load_validated_plan(plan_path, receipt_path):
     if receipt.get("probe_count") != point_count:
         raise ValueError("plan receipt probe_count mismatch")
     return plan
+
+
+def _strict_int(value, field):
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError(f"replay parameter {field} must be an integer")
+    return value
+
+
+def _strict_number(value, field):
+    if isinstance(value, bool) or not isinstance(value, (int, float)) \
+            or not math.isfinite(value):
+        raise ValueError(f"replay parameter {field} must be a finite number")
+    return value
+
+
+def _point_multiset(value, field):
+    if not isinstance(value, list) or any(not isinstance(item, dict) for item in value):
+        raise ValueError(f"{field} must be a list of point objects")
+    return Counter(json.dumps(item, ensure_ascii=False, sort_keys=True,
+                              separators=(",", ":")) for item in value)
+
+
+def validate_semantic_replay(plan, raw_input, *, mem_limit="6GB", threads=4):
+    """Recompute selection from the real input and compare all deterministic results."""
+    missing = [field for field in REPLAY_PARAMETER_FIELDS if field not in plan]
+    if missing:
+        raise ValueError("missing replay parameters: " + ", ".join(missing))
+    if not isinstance(plan["chain"], str) or not plan["chain"]:
+        raise ValueError("replay parameter chain must be a non-empty string")
+    if not isinstance(plan["token"], str) or not plan["token"]:
+        raise ValueError("replay parameter token must be a non-empty string")
+    for field in ("final_block", "decimals", "per_cell", "edge_max", "seed"):
+        _strict_int(plan[field], field)
+    for field in ("total_supply", "threshold_pct", "min_pct"):
+        _strict_number(plan[field], field)
+    bounds = plan["boundary_blocks"]
+    if not isinstance(bounds, list):
+        raise ValueError("replay parameter boundary_blocks must be a list")
+    for index, value in enumerate(bounds):
+        _strict_int(value, f"boundary_blocks[{index}]")
+
+    actual_identity, _ = input_identity(raw_input)
+    declared_identity = plan.get("input")
+    if not isinstance(declared_identity, dict) or not declared_identity.get("sha256"):
+        raise ValueError("plan input.sha256 missing")
+    if actual_identity["sha256"] != declared_identity["sha256"]:
+        raise ValueError(
+            f"input sha256 mismatch: actual {actual_identity['sha256']} "
+            f"!= plan {declared_identity['sha256']}")
+
+    replayed = generate_anchor_selection(
+        input_path=raw_input, chain=plan["chain"], token=plan["token"],
+        total_supply=plan["total_supply"], decimals=plan["decimals"],
+        threshold_pct=plan["threshold_pct"], min_pct=plan["min_pct"],
+        boundary_blocks=bounds, per_cell=plan["per_cell"], edge_max=plan["edge_max"],
+        seed=plan["seed"], mem_limit=mem_limit, threads=threads)
+    for field in ("date_range", "time_cuts", "cell_population", "boundary_blocks"):
+        if plan.get(field) != replayed[field]:
+            raise ValueError(f"{field} differs from deterministic replay")
+    for field in ("matrix_points", "forced_points"):
+        declared = _point_multiset(plan.get(field), field)
+        expected = _point_multiset(replayed[field], field)
+        if declared != expected:
+            missing_count = sum((expected - declared).values())
+            extra_count = sum((declared - expected).values())
+            raise ValueError(
+                f"{field} differs from deterministic replay "
+                f"(missing={missing_count}, extra={extra_count})")
+    return actual_identity
 
 
 def classify(plan):
@@ -145,6 +211,8 @@ def addr_word(addr):
 def main():
     ap = argparse.ArgumentParser(description="A2 时间抽查执行器（EVM 锚点级第二源直查）")
     ap.add_argument("--plan", required=True, help="anchor_plan.json（anchor_plan.py 产物）")
+    ap.add_argument("--input", required=True,
+                    help="生成 plan 所用的真实 merged 转账数据；consumer 会全量重放")
     ap.add_argument("--plan-receipt",
                     help="anchor plan receipt；默认取 plan 同目录的 anchor_plan.receipt.json")
     ap.add_argument("--chain", choices=sorted(formal_evm_chains("time_producer")),
@@ -155,6 +223,8 @@ def main():
     ap.add_argument("--final-block", type=int, default=None,
                     help="数据截止块（边缘地址点无 day_end_block 时用）")
     ap.add_argument("--rps", type=int, default=8)
+    ap.add_argument("--mem-limit", default="6GB", help="DuckDB 重放内存上限")
+    ap.add_argument("--threads", type=int, default=4, help="DuckDB 重放线程数")
     ap.add_argument("--dry-run", action="store_true", help="只解析分型统计，不打网")
     a = ap.parse_args()
 
@@ -163,6 +233,12 @@ def main():
         plan = load_validated_plan(a.plan, plan_receipt)
     except Exception as e:
         print(f"[fatal] anchor_plan/receipt 校验失败: {e}", file=sys.stderr)
+        return 2
+    try:
+        validate_semantic_replay(
+            plan, a.input, mem_limit=a.mem_limit, threads=a.threads)
+    except Exception as e:
+        print(f"[fatal] anchor_plan semantic replay failed: {e}", file=sys.stderr)
         return 2
     bal_pts, tx_pts, odd_pts = classify(plan)
     total = len(bal_pts) + len(tx_pts)

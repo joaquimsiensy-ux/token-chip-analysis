@@ -203,7 +203,8 @@ def test_each_formal_callsite_wrong_chain_zero_business():
         plan = root / "anchor_plan.json"
         spot = load("scripts/lib/time_spotcheck.py", "batch1_time_spotcheck")
         methods = []
-        argv = ["time_spotcheck.py", "--plan", str(plan), "--chain", "bsc",
+        argv = ["time_spotcheck.py", "--plan", str(plan), "--input", str(source),
+                "--chain", "bsc",
                 "--rpc", "http://wrong", "--token", token, "--final-block", "10",
                 "--out", str(root / "spot.json")]
         with mock.patch.object(sys, "argv", argv), mock.patch.object(
