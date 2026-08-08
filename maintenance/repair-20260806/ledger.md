@@ -84,7 +84,7 @@
 | `R9-02` | R9@`63cf715` | P1 | 修复中新引入 | INV-10 | INV-06, INV-08 | `anchor_plan.py`; `time_spotcheck.py`; EVM 正式纵切片 | ② | `B1-R9-02-PRODUCER-CONSUMER`; `test_batch3_evm_vertical_slice.py` 真实 producer | REPRODUCED（真实旧 producer 无 final_block，consumer rc=2） |  |  |
 | `R9-03` | R9@`63cf715` | P1 | 老问题修复不全 | INV-03 | INV-04, INV-06 | `fetch_pool_swaps.py` 进程入口、tmp/canonical/stale | ① | `B1-R9-03-PROCESS/STALE`; `test_fetch_failclosed.py` | REPRODUCED（缺 next_block fatal，但 subprocess rc=0 且旧 CSV current） |  |  |
 | `R9-04` | R9@`63cf715` | P1 | 老问题修复不全 | INV-03 | INV-01, INV-04, INV-10 | `scan_token_accounts.py` 四个 return 分支、snapshot/receipt marker 发布 | ① | `B1-R9-04-PROCESS/MARKER`; `test_batch3_solana_producers.py` | REPRODUCED（路径冲突 fatal，但 subprocess rc=0） |  |  |
-| `R9-05` | R9@`63cf715` | P1 | 修复中新引入 | INV-11 | INV-02, INV-08 | Solana capability 声明、正式 JSON-RPC callsite 与纵切片 | ② | 批一 `SolanaAttestedSession` 错 genesis 业务=0；待批二/三 callsite+正式纵切片 | REPRODUCED（formal-ready 无 getGenesisHash 仍通过） |  |  |
+| `R9-05` | R9@`63cf715` | P1 | 修复中新引入 | INV-11 | INV-02, INV-08 | Solana capability 声明、正式 JSON-RPC callsite 与纵切片 | ② | 批一 `SolanaAttestedSession` 错 genesis 业务=0；批二六探针矩阵及 SQD scope 适配器；待批三 callsite+重生正式纵切片 | REPRODUCED（formal-ready 无 getGenesisHash 仍通过） | 批二矩阵层闭合，callsite 接入留批三；R9-05 尚未完全销账 |  |
 
 ## 三、逐项详情
 
@@ -570,9 +570,9 @@
 
 - 报告基线/严重度/归因：R9@`63cf715`；P1；修复中新引入。
 - primary/secondary：INV-11；INV-02、INV-08。
-- 主覆盖类别：②正式链纵切片覆盖；批一只建立公共 session 与独立反例，callsite/矩阵接入留批二/三，本批不销账。
+- 主覆盖类别：②正式链纵切片覆盖；批二已闭合六探针矩阵层与 SQD scope 适配器，四链仅因 R9 纵切片证据缺席而自然 not-ready；Solana 正式 callsite 接入与纵切片重生留批三，R9-05 尚未完全销账。
 - 基线回放：**REPRODUCED**。Solana formal-ready 正例无任何 cluster identity 请求仍通过。
-- 最终结果：
+- 最终结果：批二矩阵层闭合，callsite 接入留批三。
 - 两轮盲审与 Fable 结论：
 
 ## 四、supplementary claims（不计 49 分母）

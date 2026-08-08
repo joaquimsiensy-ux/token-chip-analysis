@@ -64,6 +64,16 @@
 | `B1F2-G2:scripts/lib/{anchor_selection.py,time_spotcheck.py}; scripts/tests/test_time_spotcheck.py; maintenance/repair-20260806/b1_progress.md` 的 G2 单源 hunk（与 G1 同文件时按语义 owner 拆分） | `INV-10`; secondary `INV-17` | owner `B1R2-02` | `EXPECTED_PLAN_PRODUCER` 只在共享模块赋值，consumer import；契约测试与 invariant manifest 唯一 anchor 登记对账 | baseline 单源断言红；manifest 对账守卫绿；`invariant_scan.py` |  |
 | `B1F2-G3:scripts/lib/solana_attested_session.py; maintenance/repair-20260806/{diff-finding-map.md,b1_progress.md}` 的 G3 清理/台账 hunk | `INV-11, INV-19`; secondary `INV-10` | owner `B1R2-01`; 登记 `B1R-01/B1R2-02` 终修 owner | 恢复被无主删除的末尾空行；补 B1F2 三组 owner、空 SHA 与真实未映射 hunk 复算 | 末尾双换行字节断言；docs lint；B1F2 未映射 hunk=0 |  |
 
+## R9 批二：可执行能力矩阵
+
+| commit/hunk | primary invariant | finding 列表或配套任务 | 修改目的 | 测试/纵切片/守卫 | 审查结论 |
+|---|---|---|---|---|---|
+| `R9-B2-G1:scripts/lib/{attestation_adapters.py,chain_registry.py}; scripts/tests/{test_r9_batch2_attestation_adapters.py,test_batch2_capability_matrix.py,run_all.py}` 的 attestation hunk | `INV-11`; secondary `INV-02, INV-08` | `R9-05`; B2-G1 | `chain_attestation` 键必须 import 到 EVM/Solana 真实 session factory，未知或缺实现不得当能力 | `test_r9_batch2_attestation_adapters.py`; Solana session 6/6 |  |
+| `R9-B2-G2:scripts/lib/{formal_capability_probes.py,chain_registry.py}; scripts/tests/{formal_ready_test_harness.py,test_r9_batch2_executable_capabilities.py,test_batch2_capability_matrix.py,test_batch2_registry_harness_hardening.py,test_chain_registry.py,test_chain_support_matrix.py,test_batch3_evm_vertical_slice.py,test_batch3_solana_vertical_slice.py,invariant_scan.py,test_batch4_invariant_guards.py,run_all.py}` 的六探针 hunk | `INV-11`; secondary `INV-12, INV-17` | `R9-05`; B2-G2 | readiness 改为六项真实 callable/test/gate 探针；R9 evidence registry 批二留空，四链只因能力④缺席而自然 not-ready；旧 R8 纵切片仅在测试可恢复 callable 上下文中保留回归作用，不计 R9 证据 | 六项逐一破坏；bool True 伪证据拒绝；`formal_ready_chains()==set()`；invariant scanner；旧 R8 loopback 回归 |  |
+| `R9-B2-G3:scripts/lib/solana_sqd_dataset.py; scripts/tests/{test_r9_batch2_solana_sqd_adapter.py,run_all.py}` | `INV-11`; secondary `INV-02, INV-08` | `R9-05`; B2-G3 | 固定 `solana-mainnet + mint + slot range`，以真实 attested RPC genesis/slot 锚定状态；不接业务 callsite | dataset/mint/slot 负例；错 genesis 业务=0；anchor 覆盖区间 |  |
+| `R9-B2-G4:SKILL.md; scripts/tests/test_chain_support_matrix.py` 的 frontmatter hunk | `INV-11, INV-20`; secondary `INV-18` | `R9-05`; `RH-EX-01/02`; B2-G4 | SKILL 与六探针矩阵单口径；Robinhood/Arbitrum 保持 exploration；不改 VERSION | chain support/RH/Arbitrum/docs lint；`SKILL.md=7707B` |  |
+| `R9-B2-G5:maintenance/repair-20260806/{ledger.md,diff-finding-map.md,b2_progress.md}` | `INV-11, INV-18, INV-19` | `R9-05`; B2-G1～G5 | 登记逐组红绿、owner 与“矩阵层闭合，callsite 留批三”的未完全销账状态 | 受影响测试；全量 suite；未映射 hunk=0 |  |
+
 ## 分组 → commit SHA 对照（Fable 代 commit 后回填）
 
 | 分组 | commit SHA | 说明 |
@@ -103,6 +113,11 @@
 | `B1F2-G1` | `1a7e685` | 批一消化第二轮：B1R-01 consumer 数学重放终修（G1/G2 同 commit） |
 | `B1F2-G2` | `1a7e685` | 批一消化第二轮：B1R2-02 producer 常量单源与 manifest 守卫（同上） |
 | `B1F2-G3` | `658f78e` | 批一消化第二轮：B1R2-01 无主空行恢复与台账收口 |
+| `R9-B2-G1` |  | 可执行 chain-attestation 适配器键；Fable 回填 |
+| `R9-B2-G2` |  | 六探针 readiness 与 R9 纵切片证据接口；Fable 回填 |
+| `R9-B2-G3` |  | Solana SQD dataset scope 适配器；Fable 回填 |
+| `R9-B2-G4` |  | SKILL 单口径与 exploration 降级保持；Fable 回填 |
+| `R9-B2-G5` |  | ledger/map/progress 与全量门禁；Fable 回填 |
 
 ## 未映射 hunk 计数
 
@@ -119,5 +134,6 @@
 - R9 批一（`63cf715..` 至本回填 commit 即候选 tip，含 `85753da`/`2f197d2`/`592b0c2`/`35c94eb` 与本表自身回填）：`0` 候选（22 个改动/新增文件全部归属 `R9-B1-G1`～`R9-B1-G7`；多 owner 文件已按 hunk 显式拆分；回填 commit 按通例自指式计入；待批内审查独立复算）。
 - R9 批一批内消化（`144c652..0bb94ba`，含 `B1F-G1`～`B1F-G4` 与 SHA 回填）：重审独立复算未映射 hunk=`1`，即 `solana_attested_session.py` 末尾空行删除（`B1R2-01`）；原自报 `0` 作废并由 B1F2-G3 恢复。
 - R9 批一批内消化第二轮（`0bb94ba..` 至候选 tip，含 `B1F2-G1/G2`=`1a7e685`/`B1F2-G3`=`658f78e` 与本表自身回填）：`0` 候选（全部 hunk 归属三组；回填 commit 按通例自指式计入）。第三轮增量重审（report-recheck2.md）**ALL-CLEAR**：B1R-01 CLOSED、两 P3 CLOSED；新增历史漏检 `B1R3-01`（P3 非阻断，anchor per_cell/edge_max 无下界→弱覆盖 plan，非 B1R-01 未闭合）留批四守卫层处理+最终盲审复验。
+- R9 批二（`5b06677..` 当前 worktree，SHA 待 Fable 回填）：`0` 候选（全部生产、测试、SKILL 与台账 hunk 已归属 `R9-B2-G1`～`R9-B2-G5`；多 owner 文件已按语义 hunk 拆分；待 Fable 独立复算）。
 
 通例：区间末端恒取候选 tip；自指式 SHA 回填 commit 计入本区间。map 行文件清单以 Fable 实际 commit 分组为准；一文件含多 owner 的 hunk 时（文件级 commit 无法拆分），物理归属行与语义 owner 行互相注明，Fable 回填 SHA 时校正清单。
