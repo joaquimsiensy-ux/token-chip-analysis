@@ -191,3 +191,69 @@
 - 范围：未改 `VERSION`，仍为 `6.36.0`；未改 `scripts/lib/chain_registry.py`、`scripts/solana/accounting_gate_sol.py`，`getGenesisHash` 只存在于新公共原语及其测试，未接正式 callsite。
 - CLI 同族：裁定的 6 个文件均为 `raise SystemExit(main())`，裸 `main()` 入口扫描 0 命中。
 - 仓库纪律：施工期间未执行 `git add/commit/push/branch` 等 git 写操作；`git diff --check` 通过；`git status --short` 未列出 `.pyc`/`__pycache__` 施工变更。工作树内存在被 git 忽略的既有 cache 目录，本批未擅自删除。
+
+## B1F-G1｜消化 B1R-01：consumer 绑定真实 producer 身份
+
+- 修改文件：`scripts/tests/test_time_spotcheck.py`、`scripts/lib/time_spotcheck.py`、本进度文件。通用 `receipt_validate.py` 未改，anchor 特例只绑在 consumer 侧。
+- 红测场景：先用真实 `anchor_plan.py` 生成 plan+receipt，再把两份 `producer` 同步伪造为仓库内 `references/maintenance-review-repair.md`，填入其真实 SHA256 并重签 plan output size/hash。
+- 红色命令：`PYTHONDONTWRITEBYTECODE=1 python3 scripts/tests/test_time_spotcheck.py`。
+- 红色结果：`exit=1`，新增两条均红：`FAIL  伪造 Markdown producer 的 dry-run 在业务前拒绝`、`FAIL  伪造 Markdown producer 的正式路径在 RPC 前拒绝`。
+- 实现：`load_validated_plan` 在通用 receipt 验证后将 `receipt.producer.path` 词法归一化，必须精确等于仓库根相对固定值 `scripts/lib/anchor_plan.py`；既有 `plan.producer == receipt.producer` 交叉绑定保留。
+- 绿色命令与结果：
+  - `PYTHONDONTWRITEBYTECODE=1 python3 scripts/tests/test_time_spotcheck.py` → `time_spotcheck 契约测试全部通过（10 项）`；
+  - `PYTHONDONTWRITEBYTECODE=1 python3 scripts/tests/test_batch3_evm_vertical_slice.py` → 沙箱内仅因 `bind(127.0.0.1)` 权限失败；获批在沙箱外运行同一命令后 `PASS B3-EVM-E2E: eth/bsc/base real slices; wrong chain has zero business RPC`。
+
+## B1F-G2｜消化 B1R-02：anchor 启动隔离与公共原语
+
+- 修改文件：新增 `scripts/lib/artifact_quarantine.py`；修改 `scripts/lib/anchor_plan.py`、`scripts/evm/fetch_pool_swaps.py`、`scripts/solana/scan_token_accounts.py`、`scripts/tests/test_r9_batch1_boundaries.py`、`scripts/tests/invariant_manifest.json`、本进度文件。
+- 红测场景：同一 `--out-dir` 先用合法 CSV 成功产出 plan+receipt，再用含 `block=301 > final_block=300` 的 CSV 注入生产失败；断言旧 plan/receipt 已离开正式位置、两份 stale 存在、consumer 非零。
+- 红色命令：`PYTHONDONTWRITEBYTECODE=1 python3 scripts/tests/test_r9_batch1_boundaries.py --only anchor`。
+- 红色结果：`exit=1`，`FAIL R9 batch1 anchor: failed anchor rerun left prior plan/receipt current`。
+- 实现：把原 pool/scan 两份 `quarantine_current` 合并为唯一公共原语，共享 `quarantine_run_id=<time_ns>.<pid>`；pool/scan/anchor 三处共用。anchor 在读取/解析输入之前先隔离 receipt（commit marker）、再隔离 plan；任一隔离失败返回非零，部分隔离也不会留下可消费的 plan+receipt 对。
+- invariant 同步：首跑 `invariant_scan.py` 稳定红 3 discrepancy（新公共 locator 未登记，pool/scan 旧 locator 已消失）；manifest 改登记 `scripts/lib/artifact_quarantine.py:quarantine_current`，`atomic_writes` 由 39 按实际唯一实现更新为 38。
+- 绿色命令与结果：
+  - `PYTHONDONTWRITEBYTECODE=1 python3 scripts/tests/test_r9_batch1_boundaries.py --only anchor` → `PASS ... 1/1`；
+  - 同一测试的 `--only pool`、`--only scan` 均 `PASS ... 1/1`，整组→ `PASS ... 3/3`；
+  - `PYTHONDONTWRITEBYTECODE=1 python3 scripts/tests/test_fetch_failclosed.py` → `PASS: HyperSync 采集器失败与游标异常均 fail-closed`；
+  - `PYTHONDONTWRITEBYTECODE=1 python3 scripts/tests/test_batch3_solana_producers.py` → `PASS B3-G2: Solana slot/envelope/txn/timestamp producer guards`；
+  - `PYTHONDONTWRITEBYTECODE=1 python3 scripts/tests/invariant_scan.py` → `PASS ... atomic_writes=38 ... exceptions=0`；`--self-test` 的 delete/add 破坏注入均 `RED (rc=1)`。
+- 同族深度检查：`rg -n '^def quarantine_current' scripts/lib scripts/evm scripts/solana` 仅命中 `scripts/lib/artifact_quarantine.py`，无三重复制。
+
+## B1F-G3｜消化 B1R-03：收紧 SolanaAttestedSession 信任根
+
+- 修改文件：`scripts/tests/test_r9_solana_attested_session.py`、`scripts/lib/solana_attested_session.py`、本进度文件。
+- 红测场景：构造 `SolanaAttestedSession(..., expected_genesis="caller-controlled-genesis", request_json=<transport>)`，要求构造器没有该信任根注入口并抛 `TypeError`。
+- 红色命令：`PYTHONDONTWRITEBYTECODE=1 python3 scripts/tests/test_r9_solana_attested_session.py`。
+- 红色结果：`exit=1`，精确失败为 `AssertionError: caller can override the Solana genesis trust root`，证明旧构造器接受该覆盖。
+- 实现：删除 `expected_genesis` 构造参数和 `_expected_genesis` 实例状态；`_attest` 只与库常量 `SOLANA_MAINNET_GENESIS_HASH` 比较。docstring 明确为 Solana mainnet attestation，`request_json` 现为唯一测试注入边界。
+- 绿色命令与结果：`PYTHONDONTWRITEBYTECODE=1 python3 scripts/tests/test_r9_solana_attested_session.py` → `PASS R9 SolanaAttestedSession: 6/6`；原 5 条 transport 注入反例全保留，新增第 6 条构造口不存在反例。
+- 静态核对：`rg -n "expected_genesis|_expected_genesis" scripts/lib scripts/tests` 只剩正式测试中的攻击调用，生产实现零命中。
+
+## B1F-G4｜消化 B1R-04：恢复治理条文并补 owner/区间
+
+- 修改文件：`maintenance/repair-20260806/invariant-merge.md`、`maintenance/repair-20260806/diff-finding-map.md`、本进度文件。
+- 红色命令：`PYTHONDONTWRITEBYTECODE=1 python3 -c '<精确 needle 断言>'`，needle 为「此后拆分/合并不变量必须经 Fable 批准并同步 ledger 双台账，不得在验收阶段为销账临时改组。」
+- 红色结果：`exit=1`，`AssertionError: governance clause missing`。
+- 实现：在 `invariant-merge.md` 页首状态/计数口径之间恢复完整治理纪律；`diff-finding-map.md` 的 R9 批一节补 `B1F-G1`～`B1F-G4` 四条 hunk owner，SHA 对照表补四行空值待裁判回填，未映射 hunk 节补 `144c652..candidate tip` 批一消化区间行，当前计数 `0`。
+- 绿色命令与结果：
+  - 同一精确 needle 断言 → `PASS governance clause restored`；
+  - `PYTHONDONTWRITEBYTECODE=1 python3 scripts/tests/docs_lint.py --all` → `PASS: 58 个文档，引用无断链、粗体配对完整`；
+  - `rg` 核对→ `B1F-G1`～`B1F-G4` 四行 SHA 为空，且批一消化 `144c652..` 区间行存在。
+
+## B1F 批一消化汇总
+
+### 四项红→绿
+
+- `B1R-01`：伪造 Markdown producer 的 dry-run/正式路径两条在旧实现均未命中「registered anchor producer」前置拒绝而红；consumer 固定绑定后转绿，`time_spotcheck` `10/10`，eth/bsc/base 纵切片通过。
+- `B1R-02`：同 out-dir 成功→失败后旧 plan/receipt 仍 current 的反例红；公共 quarantine 原语和 anchor 启动隔离后转绿，pool/scan/anchor 边界 `3/3`，atomic 登记对表通过。
+- `B1R-03`：调用方可传 `expected_genesis` 的构造反例红；删除入口后 TypeError 反例与原 5 条 transport 反例共 `6/6` 绿。
+- `B1R-04`：治理条文精确 needle 缺失红；恢复条文、四组 owner、空 SHA 和 `144c652..candidate tip` 消化区间后转绿，未映射 hunk=`0`。
+
+### 受影响集合与全量门禁
+
+- 受影响命令全部通过：`test_time_spotcheck.py` `10/10`；`test_r9_batch1_boundaries.py` `3/3`；`test_r9_solana_attested_session.py` `6/6`；`test_fetch_failclosed.py`；`test_batch3_solana_producers.py`；`invariant_scan.py` 及 `--self-test`；`docs_lint.py --all`；`test_batch3_evm_vertical_slice.py` eth/bsc/base。
+- EVM 纵切片因沙箱禁止 `bind(127.0.0.1)` 在沙箱外运行同一命令，仅使用本机回环 fake，不访问外网；结果 `PASS B3-EVM-E2E: eth/bsc/base real slices; wrong chain has zero business RPC`。
+- 全量命令：`PYTHONDONTWRITEBYTECODE=1 python3 scripts/tests/run_all.py`。
+- 全量结果：`82/82 PASS`，`exit=0`，末行 `全部通过`。
+- invariant census：`receipt_producers=49, receipt_consumers=53, transport_calls=58, atomic_writes=38, formal_entrypoints=58, exceptions=0`；delete/add 两类自测破坏注入均稳定红。
+- 边界核对：`git diff --check` 通过；`VERSION` 零 diff，仍为 `6.36.0`；未执行任何 git 写操作。

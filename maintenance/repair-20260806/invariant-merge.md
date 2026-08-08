@@ -2,6 +2,7 @@
 
 - R8 冻结基线：`main@6e943486a9e4a6f2b673c7cd7a03093f463da233`；R9 当前冻结基线：`main@63cf715cb6d11f6669f4370c77574930da655891`。
 - 状态：R8 的 20 个种子、44 项 primary 分配与六同族组已由 Fable 冻结；R9 按 PLAN 第二节追加 5 项，仍使用既有 20 个种子，不拆分/合并。INV-20 继续保留为零 primary 的豁免防回流 secondary 守卫。
+- 治理纪律：此后拆分/合并不变量必须经 Fable 批准并同步 ledger 双台账，不得在验收阶段为销账临时改组。
 - 计数口径：49 项 finding 每项恰好一个 primary invariant；secondary 只作同族导航，不计 primary 分母。
 
 ## 一、PLAN 第三节初始种子（原样照抄）
