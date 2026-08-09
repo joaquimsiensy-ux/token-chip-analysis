@@ -52,6 +52,12 @@
     },
     {
       "schemas": [
+        "pool-swaps-collector-receipt/v1"
+      ],
+      "script": "scripts/evm/fetch_pool_swaps.py"
+    },
+    {
+      "schemas": [
         "trigger-days-replay/v1"
       ],
       "script": "scripts/evm/peaks_daily.py"
@@ -487,6 +493,14 @@
     {
       "kind": "requests",
       "script": "scripts/labels/sourcify_check.py"
+    },
+    {
+      "kind": "net.py",
+      "script": "scripts/lib/formal_capability_probes.py"
+    },
+    {
+      "kind": "solana-attested-session",
+      "script": "scripts/lib/formal_capability_probes.py"
     },
     {
       "kind": "curl",

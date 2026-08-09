@@ -11,12 +11,26 @@ import duckdb
 Z = "0x0000000000000000000000000000000000000000"
 DEAD = "0x000000000000000000000000000000000000dead"
 EXPECTED_PLAN_PRODUCER = "scripts/lib/anchor_plan.py"
+MIN_PER_CELL = 2
+MIN_EDGE_MAX = 3
 
 REPLAY_PARAMETER_FIELDS = (
     "chain", "token", "final_block", "total_supply", "decimals",
     "threshold_pct", "min_pct", "per_cell", "edge_max", "seed",
     "boundary_blocks",
 )
+
+
+def validate_anchor_coverage_parameters(per_cell, edge_max):
+    """Reject plans whose caller-controlled sampling budget is too weak."""
+    for value, field, minimum in (
+            (per_cell, "per_cell", MIN_PER_CELL),
+            (edge_max, "edge_max", MIN_EDGE_MAX)):
+        if isinstance(value, bool) or not isinstance(value, int):
+            raise ValueError(f"minimum coverage requires integer {field}")
+        if value < minimum:
+            raise ValueError(
+                f"minimum coverage requires {field}>={minimum}; got {value}")
 EXPLORER = {
     "bsc": ("https://bscscan.com", "evm"),
     "eth": ("https://etherscan.io", "evm"),

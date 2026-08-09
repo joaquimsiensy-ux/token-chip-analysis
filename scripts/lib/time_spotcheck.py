@@ -43,7 +43,7 @@ from pathlib import Path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from anchor_selection import (EXPECTED_PLAN_PRODUCER, REPLAY_PARAMETER_FIELDS,
                               generate_anchor_selection, input_identity,
-                              sha256_file)
+                              sha256_file, validate_anchor_coverage_parameters)
 from chain_registry import formal_evm_chains
 from receipt_validate import validate_receipt
 from receipt_kernel import (build_envelope, finalize_envelope, publish_error_receipt,
@@ -147,6 +147,7 @@ def validate_semantic_replay(plan, raw_input, *, mem_limit="6GB", threads=4):
         raise ValueError("replay parameter token must be a non-empty string")
     for field in ("final_block", "decimals", "per_cell", "edge_max", "seed"):
         _strict_int(plan[field], field)
+    validate_anchor_coverage_parameters(plan["per_cell"], plan["edge_max"])
     for field in ("total_supply", "threshold_pct", "min_pct"):
         _strict_number(plan[field], field)
     bounds = plan["boundary_blocks"]

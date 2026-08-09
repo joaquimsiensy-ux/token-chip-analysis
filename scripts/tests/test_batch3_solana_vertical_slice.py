@@ -17,6 +17,7 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path[:0] = [str(ROOT / "scripts/report"), str(ROOT / "scripts/tests"),
                 str(ROOT / "scripts/lib")]
 from formal_ready_test_harness import run_formal_script  # noqa: E402
+from formal_capability_probes import formal_evidence_target  # noqa: E402
 from solana_attested_session import SOLANA_MAINNET_GENESIS_HASH  # noqa: E402
 
 MINT = "CreiuhfwdWCN5mJbMJtA9bBpYQrQF2tCBuZwSPWfpump"
@@ -220,6 +221,7 @@ def test_handoff_and_release(endpoint):
              str(case), "--report", str(report)], case)
 
 
+@formal_evidence_target("sol")
 def test_r9_solana_pythia_mainnet_vertical_slice():
     FixtureHandler.calls = []
     FixtureHandler.slot = 100

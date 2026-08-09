@@ -9,6 +9,7 @@ its mounted test makes the corresponding chain not ready.
 from __future__ import annotations
 
 import ast
+import functools
 import importlib
 import sys
 from collections.abc import Mapping
@@ -66,6 +67,85 @@ VERTICAL_SLICE_EVIDENCE_TARGETS = MappingProxyType({
         "test_r9_solana_pythia_mainnet_vertical_slice",
     ),
 })
+VERTICAL_EVIDENCE_CHAINS = MappingProxyType({
+    "r9-eth-mainnet-vertical-slice": "eth",
+    "r9-bsc-mainnet-vertical-slice": "bsc",
+    "r9-base-mainnet-vertical-slice": "base",
+    "r9-solana-pythia-mainnet-vertical-slice": "sol",
+})
+
+
+def run_attestation_negative_probe(chain):
+    """Exercise the registered identity adapter against a wrong-chain fake.
+
+    This is deliberately transport-only and runs before every formal evidence
+    target.  A mismatch must stop at identity attestation with zero business
+    calls; no external endpoint is contacted.
+    """
+    import chain_registry
+
+    record = chain_registry.CHAIN_REGISTRY[chain]
+    key = record["capabilities"]["chain_attestation"]
+    factory = resolve_attestation_adapter(key)
+    calls = []
+    if record.get("capture_evm_family"):
+        from unittest import mock
+        import net
+
+        async def wrong_chain(_client, _bucket, _method, _url, *, json_body=None,
+                              attempts=6):
+            calls.append(json_body["method"])
+            if json_body["method"] != "eth_chainId":
+                raise AssertionError("business RPC reached after wrong chain id")
+            return {"jsonrpc": "2.0", "id": 1, "result": "0x7fffffff"}
+
+        with mock.patch.object(net, "_request_json", side_effect=wrong_chain):
+            pool = factory("http://wrong-chain.invalid", chain, formal=True,
+                           attempts=1, rps=1000)
+            try:
+                pool.call("eth_blockNumber", [])
+            except net.RpcChainMismatch:
+                pass
+            else:
+                raise AssertionError(f"{chain}: wrong chain id was accepted")
+        if calls != ["eth_chainId"]:
+            raise AssertionError(f"{chain}: wrong-chain probe calls={calls}")
+        return {"chain": chain, "adapter": key, "calls": tuple(calls)}
+
+    from solana_attested_session import SolanaRpcError
+
+    def wrong_genesis(_endpoint, payload, _timeout):
+        calls.append(payload["method"])
+        if payload["method"] != "getGenesisHash":
+            raise AssertionError("business RPC reached after wrong genesis")
+        return {"result": "wrong-genesis"}
+
+    session = factory("wrong-genesis.invalid", request_json=wrong_genesis)
+    try:
+        session.call("getBalance", ["address"])
+    except SolanaRpcError:
+        pass
+    else:
+        raise AssertionError(f"{chain}: wrong genesis was accepted")
+    if calls != ["getGenesisHash"]:
+        raise AssertionError(f"{chain}: wrong-genesis probe calls={calls}")
+    return {"chain": chain, "adapter": key, "calls": tuple(calls)}
+
+
+def formal_evidence_target(chain):
+    """Make the attestation negative probe a mandatory prelude to one target."""
+    if chain not in set(VERTICAL_EVIDENCE_CHAINS.values()):
+        raise ValueError(f"unknown formal evidence chain: {chain!r}")
+
+    def decorate(function):
+        @functools.wraps(function)
+        def guarded(*args, **kwargs):
+            run_attestation_negative_probe(chain)
+            return function(*args, **kwargs)
+
+        guarded.__formal_evidence_chain__ = chain
+        return guarded
+    return decorate
 
 
 def _flatten_suite(value):
@@ -132,7 +212,17 @@ def _resolve_registry_key(key, registry, capability):
     targets = registry[key]
     if not isinstance(targets, tuple) or not targets:
         raise TypeError(f"{capability} target list must be a non-empty tuple")
-    return tuple(_resolve_target(target) for target in targets)
+    resolved = tuple(_resolve_target(target) for target in targets)
+    if capability == "vertical_slice_evidence":
+        expected_chain = VERTICAL_EVIDENCE_CHAINS.get(key)
+        if expected_chain is None:
+            raise LookupError(f"vertical evidence key has no chain contract: {key!r}")
+        for implementation in resolved:
+            if getattr(implementation, "__formal_evidence_chain__", None) != expected_chain:
+                raise TypeError(
+                    f"vertical evidence target does not execute the {expected_chain} "
+                    "attestation contract")
+    return resolved
 
 
 def resolve_formal_capability(record, capability):

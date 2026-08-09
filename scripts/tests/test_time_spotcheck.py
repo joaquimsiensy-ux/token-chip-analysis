@@ -287,6 +287,15 @@ def main():
             check(f"重放拒绝变形：{label}",
                   p.returncode != 0 and "semantic replay" in p.stderr)
 
+        # 10b. 即使 plan/receipt 自洽重签，退化参数也要在 SQL 重放前独立拒绝。
+        restore()
+        refresh_bundle(plan, lambda obj: (obj.__setitem__("per_cell", 1),
+                                          obj.__setitem__("edge_max", 1)))
+        p = run_consumer(source, ["--plan", plan, "--dry-run",
+                                  "--final-block", "300"] + base)
+        check("per_cell=1/edge_max=1 弱覆盖参数在重放前拒绝",
+              p.returncode != 0 and "minimum coverage" in p.stderr)
+
         # 11. --input 是真实输入绑定，不得保留旧的无输入消费入口。
         restore()
         p = run(["--plan", plan, "--dry-run", "--final-block", "300"] + base)

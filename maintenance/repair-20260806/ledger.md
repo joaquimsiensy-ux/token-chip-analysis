@@ -36,55 +36,55 @@
 
 | canonical ID | 报告基线 | 严重度 | 原归因 | primary | secondary | 当前生产路径与同族面（6e94348） | 覆盖初判 | 测试/纵切片/豁免证据 | 基线回放 | 最终结果 | 两轮盲审 / Fable |
 |---|---|---:|---|---|---|---|---|---|---|---|---|
-| `full-F-01` | full@`b0b7744` | P0 | 报告未判定 | INV-01 | INV-10, INV-12 | `shared_release_receipt.py:93-149,173-209`; `reconciliation_report.py:143-229`; `handoff_manifest.py:68-89,218-249` | ② | `B3-RUNNER-FRESH-01`; `B3-EVM-E2E-ETH/BSC/BASE`; `B3-SOL-E2E` | REPRODUCED (`CMD-FORGE`) |  |  |
-| `six-F-03` | six@`fca61ad` | P0 | 历史漏检 | INV-01 | INV-02, INV-10 | 同上 | ② | `B3-RUNNER-FRESH-01`; 四链真实 controlled runner 纵切片 | REPRODUCED (`CMD-FORGE`) |  |  |
-| `R7-01` | R7@`d8bd3c5` | P0 | 新引入 | INV-01 | INV-10 | 同上；点名 test 只拒无/错 runner binding | ② | `B3-RUNNER-FRESH-01`; 未运行 producer/预置 receipt 不得通过 runner | REPRODUCED (`CMD-FORGE`; `CMD-R7` 点名绿不构成执行证明) |  |  |
-| `full-F-02` | full@`b0b7744` | P1 | 报告未判定 | INV-02 | INV-06, INV-16, INV-20 | `pull_transfers_rpc.py:13-62`; `pull_block_ts_anchors.py:5-24`; `merge_hs_rpc.py:47-104` | ④ | 待 Fable 批准；见 `robinhood-impact.md` | REPRODUCED (`CMD-RH`) |  |  |
-| `R7-03` | R7@`d8bd3c5` | P0 | 半修残留 | INV-02 | INV-05, INV-06 | `anchor_sampler.py:137-179,245-275`; sibling alias in `CMD-R8-ALIAS` | ③ | `B3-SOL-PROD-03`; `B3-SOL-E2E` | REPRODUCED（原 resume 反例被拒；同族 data/receipt alias 仍击穿） |  |  |
-| `R7-04` | R7@`d8bd3c5` | P0 | 半修残留 | INV-02 | INV-06, INV-08 | `supply_truth_gate.py:103-175`; `shared_release_receipt.py:151-161` | ① | `test_supply_truth_gate.py`; `test_r7_findings.py::R7-04`; shared-release 语义回归 | FIXED_ON_BASELINE (`CMD-R7`: formal raw override 拒、file_ref/context slot 在场) |  |  |
-| `six-F-02` | six@`fca61ad` | P0 | 历史漏检 | INV-03 | INV-07 | `verify_recon.py:58-144` | ① | `test_sixlens_receipts.py`; `B1-RPC-CALLSITE-recon` | FIXED_ON_BASELINE (`CMD-RECEIPT`: mismatch=2, RPC error=1) |  |  |
-| `six-F-04` | six@`fca61ad` | P0 | 历史漏检 | INV-03 | INV-09 | `anchor_sampler.py:196-279` | ① | `test_sixlens_receipts.py::test_anchor_sampler`; `B3F-TXN-02` | FIXED_ON_BASELINE (`CMD-RECEIPT`: fetch/no-converge 非零且无 canonical PASS) |  |  |
-| `R7-08` | R7@`d8bd3c5` | P1 | 历史漏检 | INV-03 | INV-12 | `handoff_manifest.py:228-249,421-447` | ② | `B2-REC-01`; `B3-EVM-E2E-ETH/BSC/BASE`; `B3-SOL-E2E` | REPRODUCED（declared PASS/2 已修；同族 reconciliation gate 可整项省略，`CMD-HANDOFF`） |  |  |
-| `six-F-05` | six@`fca61ad` | P0 | 历史漏检 | INV-04 | INV-03, INV-06 | `window_fetch.py:127-231` | ① | `test_sixlens_receipts.py::test_window_fetch`; `test_r7_findings.py::R7-06`; `B3F-TS-01` | FIXED_ON_BASELINE (`CMD-RECEIPT`: gap 只留 partial/stale，exit=2) |  |  |
-| `six-F-07` | six@`fca61ad` | P1 | 半修残留 | INV-04 | INV-03 | `fetch_pool_swaps.py:46-114` | ① | `test_fetch_failclosed.py` 分页/旧产物保护反例 | FIXED_ON_BASELINE (`CMD-FETCH`: 分页失败不提交正式 CSV) |  |  |
-| `six-F-08` | six@`fca61ad` | P1 | 新引入 | INV-04 | INV-03 | `fetch_gmgn.sh:18-49` | ① | `test_fetch_gmgn_sh.py` 临时文件/JSON/失败聚合回归 | FIXED_ON_BASELINE (`CMD-GMGN`: success→failure 旧文件转 `.stale`) |  |  |
-| `R8-04` | R8@`6e94348` | P1 | 新引入 | INV-05 | INV-04 | `receipt_kernel.py:192-220,268-273`; `anchor_sampler.py`; `window_fetch.py` | ③ | kernel 路径反例；R9 B3 producer 迁移；提交后独立自检反例 | N/A-R8基线即当前 | 批三代码侧闭合：两 producer 以 `publish_txn` 作最后可失败的 data+receipt 操作 |  |
-| `R8-12` | R8@`6e94348` | P1 | 半修残留 | INV-05 | INV-02, INV-04 | `anchor_sampler.py:143-150,245-275`; `window_fetch.py:127-215` | ③ | `B1-RK-01`～`B1-RK-06`; `B3-SOL-PROD-03`; R9 B3 提交后无独立自检 | N/A-R8基线即当前 | 批三代码侧销账；Solana E2E 本沙箱受 loopback bind 限制待裁判复跑 |  |
-| `six-F-06` | six@`fca61ad` | P0 | 半修残留 | INV-06 | INV-03 | `fetch_pool_swaps.py:46-58` | ① | `test_fetch_failclosed.py` 相等/反向/负区间 transport 前拒绝 | FIXED_ON_BASELINE (`CMD-FETCH`: 相等/反向/负区间开文件前拒) |  |  |
-| `R7-06` | R7@`d8bd3c5` | P1 | 半修残留 | INV-06 | INV-05, INV-10 | `window_fetch.py:127-215` | ③ | `B3-SOL-PROD-02/03`; `B3-SOL-E2E` | REPRODUCED（原反向窗已修；同族 data/receipt alias 仍 PASS，`CMD-R8-ALIAS`） |  |  |
-| `R8-08` | R8@`6e94348` | P1 | 半修残留 | INV-06 | INV-08 | `time_spotcheck.py:119-153,162-180` | ② | `B3-TIME-01/02`; `B3-EVM-E2E-ETH/BSC/BASE` | N/A-R8基线即当前 |  |  |
-| `R7-12` | R7@`d8bd3c5` | P1 | 新引入 | INV-07 | INV-11 | `verify_recon.py:49-54,114-119`; sibling `time_spotcheck.py:140-153` | ② | `B1-RPC-01`～`B1-RPC-06`; `B3-EVM-E2E/Wrong-ETH/BSC/BASE` | REPRODUCED（verify_recon 原入口已修；time sibling 无 `eth_chainId`，`CMD-R8-TARGET`） |  |  |
-| `R8-07` | R8@`6e94348` | P1 | 半修残留 | INV-07 | INV-08 | `time_spotcheck.py:140-153` | ② | `B1-RPC-CALLSITE-time`; `B3-EVM-WRONG-ETH/BSC/BASE` 业务 RPC=0 | N/A-R8基线即当前 |  |  |
-| `R8-09` | R8@`6e94348` | P1 | 历史漏检 | INV-07 | INV-02 | `supply_truth_gate.py:84-98` | ② | `B1-RPC-CALLSITE-supply`; `B3-EVM-E2E-ETH/BSC/BASE` totalSupply 复验 | N/A-R8基线即当前 |  |  |
-| `six-F-13` | six@`fca61ad` | P1 | 历史漏检 | INV-08 | INV-12 | `handoff_manifest.py:164-180,212-222,396-419,966-1010` | ① | `test_handoff_manifest.py` 65 项；`B2F-LG-01`～`05` legacy 补闸 | FIXED_ON_BASELINE (`CMD-HANDOFF`: READY 缺 chain/contract/未知链均拒) |  |  |
-| `R7-13` | R7@`d8bd3c5` | P1 | 新引入 | INV-08 | INV-06 | `time_spotcheck.py:119-153`; `anchor_plan.py` target producer | ② | `B3-TIME-01/02`; plan↔CLI final-block 精确绑定 | REPRODUCED（plan chain/token/file_ref 已修；final-block 未绑定且查询 cutoff+1，`CMD-R8-TARGET`） |  |  |
-| `R8-03` | R8@`6e94348` | P0 | 历史漏检 | INV-08 | INV-10 | `accounting_gate_sol.py:101-124`; `shared_release_receipt.py:173-190` | ② | `B3-SOL-PROD-01/05/06`; `B3-SOL-E2E` slot=77 单源 | N/A-R8基线即当前 |  |  |
-| `R7-02` | R7@`d8bd3c5` | P0 | 半修残留 | INV-09 | INV-03 | `net.py` Result/curl backend；`anchor_sampler.py:208-223` | ① | `test_net_result.py`; `test_r7_findings.py::R7-02`; `test_sixlens_receipts.py` | FIXED_ON_BASELINE (`CMD-R7`/`CMD-RECEIPT`: curl rc=7 空 stdout → ERROR/nonzero) |  |  |
-| `R8-11` | R8@`6e94348` | P1 | 历史漏检 | INV-09 | INV-06, INV-16 | `window_fetch.py:43-111,208-215` | ③ | `B3-SOL-PROD-02`; `B3-SOL-E2E` timestamp segment summary | N/A-R8基线即当前 |  |  |
-| `R7-05` | R7@`d8bd3c5` | P1 | 新引入 | INV-10 | INV-01, INV-12 | `reconciliation_report.py:143-229`; `shared_release_receipt.py:25-37` | ② | `B3-SOL-PROD-04`; `B3-SOL-E2E` 真实 runner 执行 supply | REPRODUCED（wrapper producer 已有；Solana supply producer CLI/schema 无法被 runner 执行，见 R8-01 当前路径） |  |  |
-| `R8-01` | R8@`6e94348` | P0 | 新引入 | INV-10 | INV-01, INV-08 | `scan_token_accounts.py:139-150,253-273`; `reconciliation_report.py:143-169`; `shared_release_receipt.py:93-106` | ② | `B3-SOL-PROD-04`; `B3-SOL-E2E` current envelope+consumer | N/A-R8基线即当前 |  |  |
-| `R7-07` | R7@`d8bd3c5` | P1 | 新引入 | INV-11 | INV-20 | `chain_registry.py:6-49,128+`; `handoff_manifest.py:84,164-180`; mandatory CLIs | ② | `B2-CAP-01`～`B2-CAP-04`; `B3-EVM-E2E-ETH/BSC/BASE`; `B3-SOL-E2E` | REPRODUCED（Arbitrum 已正确降级；Robinhood formal=true 但四 CLI 全拒，`CMD-RH-CAP`） |  |  |
-| `R8-02` | R8@`6e94348` | P0 | 半修残留 | INV-11 | INV-07, INV-20 | `chain_registry.py:44-49`; four mandatory CLI choices | ④ | `B2-RH-01`; `RH-EX-01/02`; `B3-EVM-E2E-*` + `B3-SOL-E2E` 证明仅四链 readiness 闭合 | N/A-R8基线即当前 |  |  |
-| `R8-06` | R8@`6e94348` | P1 | 半修残留 | INV-12 | INV-01, INV-10 | `handoff_manifest.py:59-89,218-249,410-447` | ② | `B2-REC-01`; `B3-EVM-E2E-ETH/BSC/BASE`; `B3-SOL-E2E` READY 必经 recon | N/A-R8基线即当前 |  |  |
-| `six-F-01` | six@`fca61ad` | P0 | 历史漏检 | INV-13 | INV-12, INV-20 | `entity_source_trace.py:206-222,653-679`; `handoff_manifest.py:606-728` | ① | `test_entity_source_trace.py`; `test_handoff_manifest.py` strict freeze | FIXED_ON_BASELINE (`CMD-ENTITY`: 正式缺 labels 拒；探索 freeze 拒) |  |  |
-| `R7-09` | R7@`d8bd3c5` | P1 | 半修残留 | INV-13 | INV-15 | 同上，正式有效标签计数双端重算 | ① | `test_entity_source_trace.py`; `test_r7_findings.py::R7-09` | FIXED_ON_BASELINE (`CMD-R7`: 空/未知 kind labels formal 拒) |  |  |
-| `six-F-09` | six@`fca61ad` | P0 | 半修残留 | INV-14 | INV-15 | `add_labels.py:118-223` | ① | `test_add_labels_rollback.py` validate/benchmark/manifest 三闸 | FIXED_ON_BASELINE (`CMD-LABEL-TXN`: validate+benchmark+manifest 强制) |  |  |
-| `R7-10` | R7@`d8bd3c5` | P1 | 半修残留 | INV-14 | INV-18 | `add_labels.py:118-223`（archive staging 在三闸前、失败整体回滚） | ① | `test_add_labels_rollback.py`; `test_r7_findings.py::R7-10` | FIXED_ON_BASELINE (`CMD-LABEL-TXN`: staging/重名/竞态失败均回滚) |  |  |
-| `six-F-10` | six@`fca61ad` | P1 | 半修残留 | INV-15 | INV-18 | `roundtrip_check.py:22-57,127-144`; `labels_resolver.py:315-326` | ① | `test_roundtrip_check.py`; `test_batch1_risk_flags.py` | FIXED_ON_BASELINE (`CMD-ROUNDTRIP`: risk_flags 漂移阻断；日期倒退由 R7 test 阻断) |  |  |
-| `R7-11` | R7@`d8bd3c5` | P1 | 新引入 | INV-15 | INV-18 | `roundtrip_check.py:25-27,127-144` | ① | `test_roundtrip_check.py`; `test_r7_findings.py::R7-11` | FIXED_ON_BASELINE (`CMD-R7`: verified_at 倒退非零) |  |  |
-| `R7-14` | R7@`d8bd3c5` | P2 | 新引入 | INV-15 | INV-18 | `roundtrip_check.py:50-57`; sibling add/validate/resolver | ③ | `B1-RF-01`～`B1-RF-03`；`B2-P3-RF-01/02` invisible 空白+非字符串 fail-closed；OB-2 merge 共用 | REPRODUCED（roundtrip 自身 trim/dedup 已修；validator/resolver 仍语义分裂，`CMD-R8-FLAGS`） |  |  |
-| `R8-10` | R8@`6e94348` | P2 | 半修残留 | INV-15 | INV-14 | `add_labels.py:151-153`; `validate_labels.py:86-98`; `labels_resolver.py:318-326` | ③ | `B1-RF-01`～`B1-RF-03`；`B2-P3-RF-01/02`；`test_batch2_p3_hardening.py` | N/A-R8基线即当前 |  |  |
-| `full-F-03` | full@`b0b7744` | P1 | 报告未判定 | INV-16 | INV-03, INV-07, INV-20 | `multicall_balances.py:31-35,57-83,85-115` | ④ | 待调用图与防回流证明、Fable 批准 | REPRODUCED (`CMD-MC`) |  |  |
-| `R8-05` | R8@`6e94348` | P1 | 新引入 | INV-17 | INV-18 | `invariant_scan.py`; `invariant_manifest.json`; `formal_capability_probes.py` | ③ | `B4-INV17-01/02`; R9 B3 将五个 attested Solana callsite 纳入 census，四个纵切片 target 与 SUITE 双绑定 | N/A-R8基线即当前 | 批四既有销账保持；批三新增 census `51/55/60/38/58` 通过 |  |
-| `full-F-04` | full@`b0b7744` | P3 | 报告未判定 | INV-18 | INV-17 | `data-pipeline-robinhood.md:16`; `scripts/robinhood/` | ③ | `B2-DOC-RH-COUNT`; `B4-RH-COUNT-01` 文档 16/15 与磁盘实数动态对表 | REPRODUCED（文档仍“全14件”，当前普通文件 16） |  |  |
-| `six-F-11` | six@`fca61ad` | P2 | 半修残留 | INV-18 | — | `retrospective.md:68,91`; `docs_lint.py` 8192B 守卫 | ① | `docs_lint.py --all`; `test_sixlens_docs.py` | FIXED_ON_BASELINE (`CMD-DOC`: 7.5KB 预警/8192B 硬闸统一) |  |  |
-| `R7-15` | R7@`d8bd3c5` | P2 | 半修残留 | INV-18 | INV-15 | `references/labels/MAINTENANCE.md`; `roundtrip_check.py:22-27`; `add_labels.py:180-223` | ① | `test_roundtrip_check.py`; `test_add_labels_rollback.py`; docs lint | FIXED_ON_BASELINE (`CMD-R7`: 七字段/三闸文档一致) |  |  |
-| `six-F-12` | six@`fca61ad` | P2 | 历史漏检 | INV-19 | INV-18 | `casebook/README.md`; `retrospective.md:93-95`; docs archive guard | ① | `docs_lint.py --all`; `test_sixlens_docs.py` archive/runtime 路由 | FIXED_ON_BASELINE (`CMD-DOC`: casebook 执行路由不再回流 archive；A6 维护动作保留) |  |  |
-| `R9-01` | R9@`63cf715` | P0 | 老问题修复不全 | INV-08 | INV-02, INV-11 | `solana_observation.py`; `scan_token_accounts.py`; `accounting_gate_sol.py`; `supply_truth_gate.py`; `shared_release_receipt.py` | ② | `R9-B3-SOL-OBS-01..09`; declared 77≠observed 103；同 bundle 三消费者；`B3-SOL-E2E` | REPRODUCED（旧实现 CLI 77/RPC 999 仍 PASS） | 批三闭合“声明当观测”的观测协议；不含 bundle 防伪，须由批四 producer/consumer 通用守卫保证测试关键输入由登记生产者现场生成 |  |
-| `R9-02` | R9@`63cf715` | P1 | 修复中新引入 | INV-10 | INV-06, INV-08 | `anchor_plan.py`; `time_spotcheck.py`; EVM 正式纵切片 | ② | `B1-R9-02-PRODUCER-CONSUMER`; `test_batch3_evm_vertical_slice.py` 真实 producer | REPRODUCED（真实旧 producer 无 final_block，consumer rc=2） |  |  |
-| `R9-03` | R9@`63cf715` | P1 | 老问题修复不全 | INV-03 | INV-04, INV-06 | `fetch_pool_swaps.py` 进程入口、tmp/canonical/stale | ① | `B1-R9-03-PROCESS/STALE`; `test_fetch_failclosed.py` | REPRODUCED（缺 next_block fatal，但 subprocess rc=0 且旧 CSV current） |  |  |
-| `R9-04` | R9@`63cf715` | P1 | 老问题修复不全 | INV-03 | INV-01, INV-04, INV-10 | `scan_token_accounts.py` 四个 return 分支、snapshot/receipt marker 发布 | ① | `B1-R9-04-PROCESS/MARKER`; `test_batch3_solana_producers.py` | REPRODUCED（路径冲突 fatal，但 subprocess rc=0） |  |  |
-| `R9-05` | R9@`63cf715` | P1 | 修复中新引入 | INV-11 | INV-02, INV-08 | Solana capability 声明、正式 JSON-RPC callsite、SQD scope 与纵切片 | ② | 批一 session；批二六探针/SQD adapter；批三 observation/accounting/SQD callsite + 四链真实 target | REPRODUCED（旧 formal-ready 无 getGenesisHash） | callsite 与 target 注册代码侧闭合；四链自然 ready；批内循环 1 消化 session CA/query secret，循环 2 消化 path secret 半修残留并统一持久化身份；两份 loopback E2E/裁判 mainnet 重跑后最终销账 |  |
+| `full-F-01` | full@`b0b7744` | P0 | 报告未判定 | INV-01 | INV-10, INV-12 | `shared_release_receipt.py:93-149,173-209`; `reconciliation_report.py:143-229`; `handoff_manifest.py:68-89,218-249` | ② | `B3-RUNNER-FRESH-01`; `B3-EVM-E2E-ETH/BSC/BASE`; `B3-SOL-E2E` | REPRODUCED (`CMD-FORGE`) | 对应批次施工已闭合；现役反例/纵切片与批四守卫复核通过 | 批内攻击审查/Fable 结论见§七；最终两轮全库盲审待总验收执行（本批不抢跑） |
+| `six-F-03` | six@`fca61ad` | P0 | 历史漏检 | INV-01 | INV-02, INV-10 | 同上 | ② | `B3-RUNNER-FRESH-01`; 四链真实 controlled runner 纵切片 | REPRODUCED (`CMD-FORGE`) | 对应批次施工已闭合；现役反例/纵切片与批四守卫复核通过 | 批内攻击审查/Fable 结论见§七；最终两轮全库盲审待总验收执行（本批不抢跑） |
+| `R7-01` | R7@`d8bd3c5` | P0 | 新引入 | INV-01 | INV-10 | 同上；点名 test 只拒无/错 runner binding | ② | `B3-RUNNER-FRESH-01`; 未运行 producer/预置 receipt 不得通过 runner | REPRODUCED (`CMD-FORGE`; `CMD-R7` 点名绿不构成执行证明) | 对应批次施工已闭合；现役反例/纵切片与批四守卫复核通过 | 批内攻击审查/Fable 结论见§七；最终两轮全库盲审待总验收执行（本批不抢跑） |
+| `full-F-02` | full@`b0b7744` | P1 | 报告未判定 | INV-02 | INV-06, INV-16, INV-20 | `pull_transfers_rpc.py:13-62`; `pull_block_ts_anchors.py:5-24`; `merge_hs_rpc.py:47-104` | ④ | 待 Fable 批准；见 `robinhood-impact.md` | REPRODUCED (`CMD-RH`) | 正式发布路径外豁免保持；影响与自动失效条件已登记 | 批内攻击审查/Fable 结论见§七；最终两轮全库盲审待总验收执行（本批不抢跑） |
+| `R7-03` | R7@`d8bd3c5` | P0 | 半修残留 | INV-02 | INV-05, INV-06 | `anchor_sampler.py:137-179,245-275`; sibling alias in `CMD-R8-ALIAS` | ③ | `B3-SOL-PROD-03`; `B3-SOL-E2E` | REPRODUCED（原 resume 反例被拒；同族 data/receipt alias 仍击穿） | 对应批次施工已闭合；现役反例/纵切片与批四守卫复核通过 | 批内攻击审查/Fable 结论见§七；最终两轮全库盲审待总验收执行（本批不抢跑） |
+| `R7-04` | R7@`d8bd3c5` | P0 | 半修残留 | INV-02 | INV-06, INV-08 | `supply_truth_gate.py:103-175`; `shared_release_receipt.py:151-161` | ① | `test_supply_truth_gate.py`; `test_r7_findings.py::R7-04`; shared-release 语义回归 | FIXED_ON_BASELINE (`CMD-R7`: formal raw override 拒、file_ref/context slot 在场) | 基线既有修复保持；常驻负向回归与批四门禁复核无回退 | 批内攻击审查/Fable 结论见§七；最终两轮全库盲审待总验收执行（本批不抢跑） |
+| `six-F-02` | six@`fca61ad` | P0 | 历史漏检 | INV-03 | INV-07 | `verify_recon.py:58-144` | ① | `test_sixlens_receipts.py`; `B1-RPC-CALLSITE-recon` | FIXED_ON_BASELINE (`CMD-RECEIPT`: mismatch=2, RPC error=1) | 基线既有修复保持；常驻负向回归与批四门禁复核无回退 | 批内攻击审查/Fable 结论见§七；最终两轮全库盲审待总验收执行（本批不抢跑） |
+| `six-F-04` | six@`fca61ad` | P0 | 历史漏检 | INV-03 | INV-09 | `anchor_sampler.py:196-279` | ① | `test_sixlens_receipts.py::test_anchor_sampler`; `B3F-TXN-02` | FIXED_ON_BASELINE (`CMD-RECEIPT`: fetch/no-converge 非零且无 canonical PASS) | 基线既有修复保持；常驻负向回归与批四门禁复核无回退 | 批内攻击审查/Fable 结论见§七；最终两轮全库盲审待总验收执行（本批不抢跑） |
+| `R7-08` | R7@`d8bd3c5` | P1 | 历史漏检 | INV-03 | INV-12 | `handoff_manifest.py:228-249,421-447` | ② | `B2-REC-01`; `B3-EVM-E2E-ETH/BSC/BASE`; `B3-SOL-E2E` | REPRODUCED（declared PASS/2 已修；同族 reconciliation gate 可整项省略，`CMD-HANDOFF`） | 对应批次施工已闭合；现役反例/纵切片与批四守卫复核通过 | 批内攻击审查/Fable 结论见§七；最终两轮全库盲审待总验收执行（本批不抢跑） |
+| `six-F-05` | six@`fca61ad` | P0 | 历史漏检 | INV-04 | INV-03, INV-06 | `window_fetch.py:127-231` | ① | `test_sixlens_receipts.py::test_window_fetch`; `test_r7_findings.py::R7-06`; `B3F-TS-01` | FIXED_ON_BASELINE (`CMD-RECEIPT`: gap 只留 partial/stale，exit=2) | 基线既有修复保持；常驻负向回归与批四门禁复核无回退 | 批内攻击审查/Fable 结论见§七；最终两轮全库盲审待总验收执行（本批不抢跑） |
+| `six-F-07` | six@`fca61ad` | P1 | 半修残留 | INV-04 | INV-03 | `fetch_pool_swaps.py:46-114` | ① | `test_fetch_failclosed.py` 分页/旧产物保护反例 | FIXED_ON_BASELINE (`CMD-FETCH`: 分页失败不提交正式 CSV) | 基线既有修复保持；常驻负向回归与批四门禁复核无回退 | 批内攻击审查/Fable 结论见§七；最终两轮全库盲审待总验收执行（本批不抢跑） |
+| `six-F-08` | six@`fca61ad` | P1 | 新引入 | INV-04 | INV-03 | `fetch_gmgn.sh:18-49` | ① | `test_fetch_gmgn_sh.py` 临时文件/JSON/失败聚合回归 | FIXED_ON_BASELINE (`CMD-GMGN`: success→failure 旧文件转 `.stale`) | 基线既有修复保持；常驻负向回归与批四门禁复核无回退 | 批内攻击审查/Fable 结论见§七；最终两轮全库盲审待总验收执行（本批不抢跑） |
+| `R8-04` | R8@`6e94348` | P1 | 新引入 | INV-05 | INV-04 | `receipt_kernel.py:192-220,268-273`; `anchor_sampler.py`; `window_fetch.py` | ③ | kernel 路径反例；R9 B3 producer 迁移；提交后独立自检反例 | N/A-R8基线即当前 | 批三代码侧闭合：两 producer 以 `publish_txn` 作最后可失败的 data+receipt 操作 | 批内攻击审查/Fable 结论见§七；最终两轮全库盲审待总验收执行（本批不抢跑） |
+| `R8-12` | R8@`6e94348` | P1 | 半修残留 | INV-05 | INV-02, INV-04 | `anchor_sampler.py:143-150,245-275`; `window_fetch.py:127-215` | ③ | `B1-RK-01`～`B1-RK-06`; `B3-SOL-PROD-03`; R9 B3 提交后无独立自检 | N/A-R8基线即当前 | 批三代码侧销账；Solana E2E 本沙箱受 loopback bind 限制待裁判复跑 | 批内攻击审查/Fable 结论见§七；最终两轮全库盲审待总验收执行（本批不抢跑） |
+| `six-F-06` | six@`fca61ad` | P0 | 半修残留 | INV-06 | INV-03 | `fetch_pool_swaps.py:46-58` | ① | `test_fetch_failclosed.py` 相等/反向/负区间 transport 前拒绝 | FIXED_ON_BASELINE (`CMD-FETCH`: 相等/反向/负区间开文件前拒) | 基线既有修复保持；常驻负向回归与批四门禁复核无回退 | 批内攻击审查/Fable 结论见§七；最终两轮全库盲审待总验收执行（本批不抢跑） |
+| `R7-06` | R7@`d8bd3c5` | P1 | 半修残留 | INV-06 | INV-05, INV-10 | `window_fetch.py:127-215` | ③ | `B3-SOL-PROD-02/03`; `B3-SOL-E2E` | REPRODUCED（原反向窗已修；同族 data/receipt alias 仍 PASS，`CMD-R8-ALIAS`） | 对应批次施工已闭合；现役反例/纵切片与批四守卫复核通过 | 批内攻击审查/Fable 结论见§七；最终两轮全库盲审待总验收执行（本批不抢跑） |
+| `R8-08` | R8@`6e94348` | P1 | 半修残留 | INV-06 | INV-08 | `time_spotcheck.py:119-153,162-180` | ② | `B3-TIME-01/02`; `B3-EVM-E2E-ETH/BSC/BASE` | N/A-R8基线即当前 | 对应 R8/R9 施工与纵切片已闭合；批四自动守卫复核无回退 | 批内攻击审查/Fable 结论见§七；最终两轮全库盲审待总验收执行（本批不抢跑） |
+| `R7-12` | R7@`d8bd3c5` | P1 | 新引入 | INV-07 | INV-11 | `verify_recon.py:49-54,114-119`; sibling `time_spotcheck.py:140-153` | ② | `B1-RPC-01`～`B1-RPC-06`; `B3-EVM-E2E/Wrong-ETH/BSC/BASE` | REPRODUCED（verify_recon 原入口已修；time sibling 无 `eth_chainId`，`CMD-R8-TARGET`） | 对应批次施工已闭合；现役反例/纵切片与批四守卫复核通过 | 批内攻击审查/Fable 结论见§七；最终两轮全库盲审待总验收执行（本批不抢跑） |
+| `R8-07` | R8@`6e94348` | P1 | 半修残留 | INV-07 | INV-08 | `time_spotcheck.py:140-153` | ② | `B1-RPC-CALLSITE-time`; `B3-EVM-WRONG-ETH/BSC/BASE` 业务 RPC=0 | N/A-R8基线即当前 | 对应 R8/R9 施工与纵切片已闭合；批四自动守卫复核无回退 | 批内攻击审查/Fable 结论见§七；最终两轮全库盲审待总验收执行（本批不抢跑） |
+| `R8-09` | R8@`6e94348` | P1 | 历史漏检 | INV-07 | INV-02 | `supply_truth_gate.py:84-98` | ② | `B1-RPC-CALLSITE-supply`; `B3-EVM-E2E-ETH/BSC/BASE` totalSupply 复验 | N/A-R8基线即当前 | 对应 R8/R9 施工与纵切片已闭合；批四自动守卫复核无回退 | 批内攻击审查/Fable 结论见§七；最终两轮全库盲审待总验收执行（本批不抢跑） |
+| `six-F-13` | six@`fca61ad` | P1 | 历史漏检 | INV-08 | INV-12 | `handoff_manifest.py:164-180,212-222,396-419,966-1010` | ① | `test_handoff_manifest.py` 65 项；`B2F-LG-01`～`05` legacy 补闸 | FIXED_ON_BASELINE (`CMD-HANDOFF`: READY 缺 chain/contract/未知链均拒) | 基线既有修复保持；常驻负向回归与批四门禁复核无回退 | 批内攻击审查/Fable 结论见§七；最终两轮全库盲审待总验收执行（本批不抢跑） |
+| `R7-13` | R7@`d8bd3c5` | P1 | 新引入 | INV-08 | INV-06 | `time_spotcheck.py:119-153`; `anchor_plan.py` target producer | ② | `B3-TIME-01/02`; plan↔CLI final-block 精确绑定 | REPRODUCED（plan chain/token/file_ref 已修；final-block 未绑定且查询 cutoff+1，`CMD-R8-TARGET`） | 对应批次施工已闭合；现役反例/纵切片与批四守卫复核通过 | 批内攻击审查/Fable 结论见§七；最终两轮全库盲审待总验收执行（本批不抢跑） |
+| `R8-03` | R8@`6e94348` | P0 | 历史漏检 | INV-08 | INV-10 | `accounting_gate_sol.py:101-124`; `shared_release_receipt.py:173-190` | ② | `B3-SOL-PROD-01/05/06`; `B3-SOL-E2E` slot=77 单源 | N/A-R8基线即当前 | 对应 R8/R9 施工与纵切片已闭合；批四自动守卫复核无回退 | 批内攻击审查/Fable 结论见§七；最终两轮全库盲审待总验收执行（本批不抢跑） |
+| `R7-02` | R7@`d8bd3c5` | P0 | 半修残留 | INV-09 | INV-03 | `net.py` Result/curl backend；`anchor_sampler.py:208-223` | ① | `test_net_result.py`; `test_r7_findings.py::R7-02`; `test_sixlens_receipts.py` | FIXED_ON_BASELINE (`CMD-R7`/`CMD-RECEIPT`: curl rc=7 空 stdout → ERROR/nonzero) | 基线既有修复保持；常驻负向回归与批四门禁复核无回退 | 批内攻击审查/Fable 结论见§七；最终两轮全库盲审待总验收执行（本批不抢跑） |
+| `R8-11` | R8@`6e94348` | P1 | 历史漏检 | INV-09 | INV-06, INV-16 | `window_fetch.py:43-111,208-215` | ③ | `B3-SOL-PROD-02`; `B3-SOL-E2E` timestamp segment summary | N/A-R8基线即当前 | 对应 R8/R9 施工与纵切片已闭合；批四自动守卫复核无回退 | 批内攻击审查/Fable 结论见§七；最终两轮全库盲审待总验收执行（本批不抢跑） |
+| `R7-05` | R7@`d8bd3c5` | P1 | 新引入 | INV-10 | INV-01, INV-12 | `reconciliation_report.py:143-229`; `shared_release_receipt.py:25-37` | ② | `B3-SOL-PROD-04`; `B3-SOL-E2E` 真实 runner 执行 supply | REPRODUCED（wrapper producer 已有；Solana supply producer CLI/schema 无法被 runner 执行，见 R8-01 当前路径） | 对应批次施工已闭合；现役反例/纵切片与批四守卫复核通过 | 批内攻击审查/Fable 结论见§七；最终两轮全库盲审待总验收执行（本批不抢跑） |
+| `R8-01` | R8@`6e94348` | P0 | 新引入 | INV-10 | INV-01, INV-08 | `scan_token_accounts.py:139-150,253-273`; `reconciliation_report.py:143-169`; `shared_release_receipt.py:93-106` | ② | `B3-SOL-PROD-04`; `B3-SOL-E2E` current envelope+consumer | N/A-R8基线即当前 | 对应 R8/R9 施工与纵切片已闭合；批四自动守卫复核无回退 | 批内攻击审查/Fable 结论见§七；最终两轮全库盲审待总验收执行（本批不抢跑） |
+| `R7-07` | R7@`d8bd3c5` | P1 | 新引入 | INV-11 | INV-20 | `chain_registry.py:6-49,128+`; `handoff_manifest.py:84,164-180`; mandatory CLIs | ② | `B2-CAP-01`～`B2-CAP-04`; `B3-EVM-E2E-ETH/BSC/BASE`; `B3-SOL-E2E` | REPRODUCED（Arbitrum 已正确降级；Robinhood formal=true 但四 CLI 全拒，`CMD-RH-CAP`） | 对应批次施工已闭合；现役反例/纵切片与批四守卫复核通过 | 批内攻击审查/Fable 结论见§七；最终两轮全库盲审待总验收执行（本批不抢跑） |
+| `R8-02` | R8@`6e94348` | P0 | 半修残留 | INV-11 | INV-07, INV-20 | `chain_registry.py:44-49`; four mandatory CLI choices | ④ | `B2-RH-01`; `RH-EX-01/02`; `B3-EVM-E2E-*` + `B3-SOL-E2E` 证明仅四链 readiness 闭合 | N/A-R8基线即当前 | 对应 R8/R9 施工与纵切片已闭合；批四自动守卫复核无回退 | 批内攻击审查/Fable 结论见§七；最终两轮全库盲审待总验收执行（本批不抢跑） |
+| `R8-06` | R8@`6e94348` | P1 | 半修残留 | INV-12 | INV-01, INV-10 | `handoff_manifest.py:59-89,218-249,410-447` | ② | `B2-REC-01`; `B3-EVM-E2E-ETH/BSC/BASE`; `B3-SOL-E2E` READY 必经 recon | N/A-R8基线即当前 | 对应 R8/R9 施工与纵切片已闭合；批四自动守卫复核无回退 | 批内攻击审查/Fable 结论见§七；最终两轮全库盲审待总验收执行（本批不抢跑） |
+| `six-F-01` | six@`fca61ad` | P0 | 历史漏检 | INV-13 | INV-12, INV-20 | `entity_source_trace.py:206-222,653-679`; `handoff_manifest.py:606-728` | ① | `test_entity_source_trace.py`; `test_handoff_manifest.py` strict freeze | FIXED_ON_BASELINE (`CMD-ENTITY`: 正式缺 labels 拒；探索 freeze 拒) | 基线既有修复保持；常驻负向回归与批四门禁复核无回退 | 批内攻击审查/Fable 结论见§七；最终两轮全库盲审待总验收执行（本批不抢跑） |
+| `R7-09` | R7@`d8bd3c5` | P1 | 半修残留 | INV-13 | INV-15 | 同上，正式有效标签计数双端重算 | ① | `test_entity_source_trace.py`; `test_r7_findings.py::R7-09` | FIXED_ON_BASELINE (`CMD-R7`: 空/未知 kind labels formal 拒) | 基线既有修复保持；常驻负向回归与批四门禁复核无回退 | 批内攻击审查/Fable 结论见§七；最终两轮全库盲审待总验收执行（本批不抢跑） |
+| `six-F-09` | six@`fca61ad` | P0 | 半修残留 | INV-14 | INV-15 | `add_labels.py:118-223` | ① | `test_add_labels_rollback.py` validate/benchmark/manifest 三闸 | FIXED_ON_BASELINE (`CMD-LABEL-TXN`: validate+benchmark+manifest 强制) | 基线既有修复保持；常驻负向回归与批四门禁复核无回退 | 批内攻击审查/Fable 结论见§七；最终两轮全库盲审待总验收执行（本批不抢跑） |
+| `R7-10` | R7@`d8bd3c5` | P1 | 半修残留 | INV-14 | INV-18 | `add_labels.py:118-223`（archive staging 在三闸前、失败整体回滚） | ① | `test_add_labels_rollback.py`; `test_r7_findings.py::R7-10` | FIXED_ON_BASELINE (`CMD-LABEL-TXN`: staging/重名/竞态失败均回滚) | 基线既有修复保持；常驻负向回归与批四门禁复核无回退 | 批内攻击审查/Fable 结论见§七；最终两轮全库盲审待总验收执行（本批不抢跑） |
+| `six-F-10` | six@`fca61ad` | P1 | 半修残留 | INV-15 | INV-18 | `roundtrip_check.py:22-57,127-144`; `labels_resolver.py:315-326` | ① | `test_roundtrip_check.py`; `test_batch1_risk_flags.py` | FIXED_ON_BASELINE (`CMD-ROUNDTRIP`: risk_flags 漂移阻断；日期倒退由 R7 test 阻断) | 基线既有修复保持；常驻负向回归与批四门禁复核无回退 | 批内攻击审查/Fable 结论见§七；最终两轮全库盲审待总验收执行（本批不抢跑） |
+| `R7-11` | R7@`d8bd3c5` | P1 | 新引入 | INV-15 | INV-18 | `roundtrip_check.py:25-27,127-144` | ① | `test_roundtrip_check.py`; `test_r7_findings.py::R7-11` | FIXED_ON_BASELINE (`CMD-R7`: verified_at 倒退非零) | 基线既有修复保持；常驻负向回归与批四门禁复核无回退 | 批内攻击审查/Fable 结论见§七；最终两轮全库盲审待总验收执行（本批不抢跑） |
+| `R7-14` | R7@`d8bd3c5` | P2 | 新引入 | INV-15 | INV-18 | `roundtrip_check.py:50-57`; sibling add/validate/resolver | ③ | `B1-RF-01`～`B1-RF-03`；`B2-P3-RF-01/02` invisible 空白+非字符串 fail-closed；OB-2 merge 共用 | REPRODUCED（roundtrip 自身 trim/dedup 已修；validator/resolver 仍语义分裂，`CMD-R8-FLAGS`） | 对应批次施工已闭合；现役反例/纵切片与批四守卫复核通过 | 批内攻击审查/Fable 结论见§七；最终两轮全库盲审待总验收执行（本批不抢跑） |
+| `R8-10` | R8@`6e94348` | P2 | 半修残留 | INV-15 | INV-14 | `add_labels.py:151-153`; `validate_labels.py:86-98`; `labels_resolver.py:318-326` | ③ | `B1-RF-01`～`B1-RF-03`；`B2-P3-RF-01/02`；`test_batch2_p3_hardening.py` | N/A-R8基线即当前 | 对应 R8/R9 施工与纵切片已闭合；批四自动守卫复核无回退 | 批内攻击审查/Fable 结论见§七；最终两轮全库盲审待总验收执行（本批不抢跑） |
+| `full-F-03` | full@`b0b7744` | P1 | 报告未判定 | INV-16 | INV-03, INV-07, INV-20 | `multicall_balances.py:31-35,57-83,85-115` | ④ | 待调用图与防回流证明、Fable 批准 | REPRODUCED (`CMD-MC`) | 正式发布路径外豁免保持；影响与自动失效条件已登记 | 批内攻击审查/Fable 结论见§七；最终两轮全库盲审待总验收执行（本批不抢跑） |
+| `R8-05` | R8@`6e94348` | P1 | 新引入 | INV-17 | INV-18 | `invariant_scan.py`; `invariant_manifest.json`; `formal_capability_probes.py` | ③ | `B4-INV17-01/02`; R9 B3 将五个 attested Solana callsite 纳入 census，四个纵切片 target 与 SUITE 双绑定 | N/A-R8基线即当前 | 批四既有销账保持；批三新增 census `51/55/60/38/58` 通过 | 批内攻击审查/Fable 结论见§七；最终两轮全库盲审待总验收执行（本批不抢跑） |
+| `full-F-04` | full@`b0b7744` | P3 | 报告未判定 | INV-18 | INV-17 | `data-pipeline-robinhood.md:16`; `scripts/robinhood/` | ③ | `B2-DOC-RH-COUNT`; `B4-RH-COUNT-01` 文档 16/15 与磁盘实数动态对表 | REPRODUCED（文档仍“全14件”，当前普通文件 16） | 对应批次施工已闭合；现役反例/纵切片与批四守卫复核通过 | 批内攻击审查/Fable 结论见§七；最终两轮全库盲审待总验收执行（本批不抢跑） |
+| `six-F-11` | six@`fca61ad` | P2 | 半修残留 | INV-18 | — | `retrospective.md:68,91`; `docs_lint.py` 8192B 守卫 | ① | `docs_lint.py --all`; `test_sixlens_docs.py` | FIXED_ON_BASELINE (`CMD-DOC`: 7.5KB 预警/8192B 硬闸统一) | 基线既有修复保持；常驻负向回归与批四门禁复核无回退 | 批内攻击审查/Fable 结论见§七；最终两轮全库盲审待总验收执行（本批不抢跑） |
+| `R7-15` | R7@`d8bd3c5` | P2 | 半修残留 | INV-18 | INV-15 | `references/labels/MAINTENANCE.md`; `roundtrip_check.py:22-27`; `add_labels.py:180-223` | ① | `test_roundtrip_check.py`; `test_add_labels_rollback.py`; docs lint | FIXED_ON_BASELINE (`CMD-R7`: 七字段/三闸文档一致) | 基线既有修复保持；常驻负向回归与批四门禁复核无回退 | 批内攻击审查/Fable 结论见§七；最终两轮全库盲审待总验收执行（本批不抢跑） |
+| `six-F-12` | six@`fca61ad` | P2 | 历史漏检 | INV-19 | INV-18 | `casebook/README.md`; `retrospective.md:93-95`; docs archive guard | ① | `docs_lint.py --all`; `test_sixlens_docs.py` archive/runtime 路由 | FIXED_ON_BASELINE (`CMD-DOC`: casebook 执行路由不再回流 archive；A6 维护动作保留) | 基线既有修复保持；常驻负向回归与批四门禁复核无回退 | 批内攻击审查/Fable 结论见§七；最终两轮全库盲审待总验收执行（本批不抢跑） |
+| `R9-01` | R9@`63cf715` | P0 | 老问题修复不全 | INV-08 | INV-02, INV-11 | `solana_observation.py`; `scan_token_accounts.py`; `accounting_gate_sol.py`; `supply_truth_gate.py`; `shared_release_receipt.py` | ② | `R9-B3-SOL-OBS-01..09`; declared 77≠observed 103；同 bundle 三消费者；`B3-SOL-E2E` | REPRODUCED（旧实现 CLI 77/RPC 999 仍 PASS） | 批三闭合“声明当观测”的观测协议；不含 bundle 防伪，须由批四 producer/consumer 通用守卫保证测试关键输入由登记生产者现场生成 | 批内攻击审查/Fable 结论见§七；最终两轮全库盲审待总验收执行（本批不抢跑） |
+| `R9-02` | R9@`63cf715` | P1 | 修复中新引入 | INV-10 | INV-06, INV-08 | `anchor_plan.py`; `time_spotcheck.py`; EVM 正式纵切片 | ② | `B1-R9-02-PRODUCER-CONSUMER`; `test_batch3_evm_vertical_slice.py` 真实 producer | REPRODUCED（真实旧 producer 无 final_block，consumer rc=2） | anchor-plan/v2 已绑定 final_block、真实输入与 deterministic replay；批四补 per_cell>=2/edge_max>=3 双端下界 | R9 批一三轮增量重审既有 finding 全闭合；B1R3-01 本批红绿销账，最终两轮全库盲审待总验收 |
+| `R9-03` | R9@`63cf715` | P1 | 老问题修复不全 | INV-03 | INV-04, INV-06 | `fetch_pool_swaps.py` 进程入口、tmp/canonical/stale | ① | `B1-R9-03-PROCESS/STALE`; `test_fetch_failclosed.py` | REPRODUCED（缺 next_block fatal，但 subprocess rc=0 且旧 CSV current） | 六入口退出码传播已闭合；pool 启动隔离、PASS marker 与唯一 ERROR side receipt 纳入批四登记守卫 | R9 批一三轮增量重审 ALL-CLEAR；批四 stale 守卫再复核，最终两轮全库盲审待总验收 |
+| `R9-04` | R9@`63cf715` | P1 | 老问题修复不全 | INV-03 | INV-01, INV-04, INV-10 | `scan_token_accounts.py` 四个 return 分支、snapshot/receipt marker 发布 | ① | `B1-R9-04-PROCESS/MARKER`; `test_batch3_solana_producers.py` | REPRODUCED（路径冲突 fatal，但 subprocess rc=0） | scan 退出码、marker-first 隔离、ERROR side receipt 与 observation bundle 原子发布均闭合并纳入批四登记守卫 | R9 批一三轮增量重审 ALL-CLEAR；批四 stale/fixture 守卫再复核，最终两轮全库盲审待总验收 |
+| `R9-05` | R9@`63cf715` | P1 | 修复中新引入 | INV-11 | INV-02, INV-08 | Solana capability 声明、正式 JSON-RPC callsite、SQD scope 与纵切片 | ② | 批一 session；批二六探针/SQD adapter；批三 observation/accounting/SQD callsite + 四链真实 target | REPRODUCED（旧 formal-ready 无 getGenesisHash） | callsite 与 target 注册代码侧闭合；四链自然 ready；批内循环 1 消化 session CA/query secret，循环 2 消化 path secret 半修残留并统一持久化身份；两份 loopback E2E/裁判 mainnet 重跑后最终销账 | 批内攻击审查/Fable 结论见§七；最终两轮全库盲审待总验收执行（本批不抢跑） |
 
 ## 三、逐项详情
 
@@ -97,8 +97,8 @@
 - 当前路径与同族面：`shared_release_receipt.py:93-149,173-209`；`reconciliation_report.py:143-229`；`handoff_manifest.py:68-89,218-249`。
 - 覆盖初判：②由纵切片覆盖；施工证据：`B3-RUNNER-FRESH-01`；`B3-EVM-E2E-ETH/BSC/BASE`；`B3-SOL-E2E`。
 - 基线回放：**REPRODUCED**。`CMD-FORGE` 未运行任何 reconciliation producer，仅由测试 fixture 手写四份 receipt 和 wrapper、填写当前 runner SHA，`validate_sources` 接受 target `{bsc,0xtoken,123}`。这不是 CHANGELOG/worklog 推断。
-- 最终结果：
-- 两轮盲审与 Fable 结论：
+- 最终结果：见主表同 ID；代码侧与现役执行证据已闭合或按登记豁免保持。
+- 两轮盲审与 Fable 结论：批内攻击审查/Fable 结论见第七节；最终两轮全库盲审属于总验收，本批不抢跑并保留待执行状态。
 
 ### full-F-02
 
@@ -107,8 +107,8 @@
 - 当前路径与同族面：`pull_transfers_rpc.py:13-62` 无 target/range receipt；`pull_block_ts_anchors.py:5-24` 硬编码且部分成功；`merge_hs_rpc.py:47-104` 无双侧 receipt，端点外推钳平并写 ISO 字符串。
 - 覆盖初判：④正式发布路径外豁免；证据待 Fable 批准，影响台账见 `robinhood-impact.md`。
 - 基线回放：**REPRODUCED**。`CMD-RH` 对 block 300 使用最大锚 block 200，命令 `rc=0`，输出混合 `int/str` 时间戳，且 RPC 行无 token 身份可核。
-- 最终结果：
-- 两轮盲审与 Fable 结论：
+- 最终结果：见主表同 ID；代码侧与现役执行证据已闭合或按登记豁免保持。
+- 两轮盲审与 Fable 结论：批内攻击审查/Fable 结论见第七节；最终两轮全库盲审属于总验收，本批不抢跑并保留待执行状态。
 
 ### full-F-03
 
@@ -117,8 +117,8 @@
 - 当前路径与同族面：`multicall_balances.py:31-35` 允许单 call 失败；`:57-83` 固定 `/1e18` 且失败转 `None`；`:85-115` 无 decimals/block/receipt，仍写正式 JSON 并 `[done]`。
 - 覆盖初判：④正式发布路径外豁免；需调用图、能力矩阵与防回流负测后由 Fable 批准。
 - 基线回放：**REPRODUCED**。`CMD-MC` 令 raw=1,000,000，输出 `1e-12`；令全批失败，`main_return=None`、JSON 含 `null` 且仍打印 `[done]`。
-- 最终结果：
-- 两轮盲审与 Fable 结论：
+- 最终结果：见主表同 ID；代码侧与现役执行证据已闭合或按登记豁免保持。
+- 两轮盲审与 Fable 结论：批内攻击审查/Fable 结论见第七节；最终两轮全库盲审属于总验收，本批不抢跑并保留待执行状态。
 
 ### full-F-04
 
@@ -127,8 +127,8 @@
 - 当前路径与同族面：`references/data-pipeline-robinhood.md:16` 仍写“全 14 件”；`find scripts/robinhood -maxdepth 1 -type f` 实数 16。
 - 覆盖初判：③需补独立反例；施工证据：`B2-DOC-RH-COUNT`；`B4-RH-COUNT-01` 对文档 16/15 与磁盘普通文件/Python 实数动态双向校验。
 - 基线回放：**REPRODUCED**。命令 `find scripts/robinhood -maxdepth 1 -type f | wc -l` 得 16；文档声明 14。
-- 最终结果：
-- 两轮盲审与 Fable 结论：
+- 最终结果：见主表同 ID；代码侧与现役执行证据已闭合或按登记豁免保持。
+- 两轮盲审与 Fable 结论：批内攻击审查/Fable 结论见第七节；最终两轮全库盲审属于总验收，本批不抢跑并保留待执行状态。
 
 ### six-F-01
 
@@ -137,8 +137,8 @@
 - 当前路径与同族面：`entity_source_trace.py:653-679` 正式 labels 必填且有效数非零；`handoff_manifest.py:606-728` freeze 重验。
 - 覆盖初判：①已被新反例覆盖；施工证据：`test_entity_source_trace.py`；`test_handoff_manifest.py` strict freeze。
 - 基线回放：**FIXED_ON_BASELINE**。`CMD-ENTITY` 实跑“正式缺 labels exit 2；显式无标签仅 exploration”，freeze 侧另有拒收测试。
-- 最终结果：
-- 两轮盲审与 Fable 结论：
+- 最终结果：见主表同 ID；代码侧与现役执行证据已闭合或按登记豁免保持。
+- 两轮盲审与 Fable 结论：批内攻击审查/Fable 结论见第七节；最终两轮全库盲审属于总验收，本批不抢跑并保留待执行状态。
 
 ### six-F-02
 
@@ -147,8 +147,8 @@
 - 当前路径与同族面：`verify_recon.py:58-144` 参数化、chain attestation、结构化 receipt 和分级退出。
 - 覆盖初判：①；施工证据：`test_sixlens_receipts.py`；`B1-RPC-CALLSITE-recon`。
 - 基线回放：**FIXED_ON_BASELINE**。`CMD-RECEIPT` 得 supply/balance mismatch `exit=2`，RPC error `exit=1`，闭合正例 `exit=0`。
-- 最终结果：
-- 两轮盲审与 Fable 结论：
+- 最终结果：见主表同 ID；代码侧与现役执行证据已闭合或按登记豁免保持。
+- 两轮盲审与 Fable 结论：批内攻击审查/Fable 结论见第七节；最终两轮全库盲审属于总验收，本批不抢跑并保留待执行状态。
 
 ### six-F-03
 
@@ -157,8 +157,8 @@
 - 当前路径与同族面：与 full-F-01 相同。
 - 覆盖初判：②；施工证据：`B3-RUNNER-FRESH-01`；四链真实 controlled runner 纵切片。
 - 基线回放：**REPRODUCED**。`CMD-FORGE` 证明未知/空 schema 已被堵，但“当前 producer 真实执行”仍可由手工自洽内容加当前 runner hash 冒充；关键输出为 `FABRICATED_FIXTURE_ACCEPTED_TARGET ...`。
-- 最终结果：
-- 两轮盲审与 Fable 结论：
+- 最终结果：见主表同 ID；代码侧与现役执行证据已闭合或按登记豁免保持。
+- 两轮盲审与 Fable 结论：批内攻击审查/Fable 结论见第七节；最终两轮全库盲审属于总验收，本批不抢跑并保留待执行状态。
 
 ### six-F-04
 
@@ -167,8 +167,8 @@
 - 当前路径与同族面：`anchor_sampler.py:196-279`。
 - 覆盖初判：①；施工证据：`test_sixlens_receipts.py::test_anchor_sampler`；`B3F-TXN-02`。
 - 基线回放：**FIXED_ON_BASELINE**。`CMD-RECEIPT` 对 fetch_fail/no_converge 均生成 ERROR side receipt 并非零退出；无 canonical PASS。
-- 最终结果：
-- 两轮盲审与 Fable 结论：
+- 最终结果：见主表同 ID；代码侧与现役执行证据已闭合或按登记豁免保持。
+- 两轮盲审与 Fable 结论：批内攻击审查/Fable 结论见第七节；最终两轮全库盲审属于总验收，本批不抢跑并保留待执行状态。
 
 ### six-F-05
 
@@ -177,8 +177,8 @@
 - 当前路径与同族面：`window_fetch.py:127-231`。
 - 覆盖初判：①；施工证据：`test_sixlens_receipts.py::test_window_fetch`；`test_r7_findings.py::R7-06`；`B3F-TS-01`。
 - 基线回放：**FIXED_ON_BASELINE**。`CMD-RECEIPT` 的 gap 运行输出 `.partial`、旧正式件转 stale、返回 2；成功才正式发布。
-- 最终结果：
-- 两轮盲审与 Fable 结论：
+- 最终结果：见主表同 ID；代码侧与现役执行证据已闭合或按登记豁免保持。
+- 两轮盲审与 Fable 结论：批内攻击审查/Fable 结论见第七节；最终两轮全库盲审属于总验收，本批不抢跑并保留待执行状态。
 
 ### six-F-06
 
@@ -187,8 +187,8 @@
 - 当前路径与同族面：`fetch_pool_swaps.py:46-58`。
 - 覆盖初判：①；施工证据：`test_fetch_failclosed.py` 相等/反向/负区间开文件前拒绝。
 - 基线回放：**FIXED_ON_BASELINE**。`CMD-FETCH` 对 10→10、100→10 和负数均 argparse exit 2、零正式产物。
-- 最终结果：
-- 两轮盲审与 Fable 结论：
+- 最终结果：见主表同 ID；代码侧与现役执行证据已闭合或按登记豁免保持。
+- 两轮盲审与 Fable 结论：批内攻击审查/Fable 结论见第七节；最终两轮全库盲审属于总验收，本批不抢跑并保留待执行状态。
 
 ### six-F-07
 
@@ -197,8 +197,8 @@
 - 当前路径与同族面：`fetch_pool_swaps.py:46-114`（temp 写、完整后替换）。
 - 覆盖初判：①；施工证据：`test_fetch_failclosed.py` 分页失败与旧产物保护。
 - 基线回放：**FIXED_ON_BASELINE**。`CMD-FETCH` 实际注入“第一页成功、下一页失败”，正式 CSV 不提交。
-- 最终结果：
-- 两轮盲审与 Fable 结论：
+- 最终结果：见主表同 ID；代码侧与现役执行证据已闭合或按登记豁免保持。
+- 两轮盲审与 Fable 结论：批内攻击审查/Fable 结论见第七节；最终两轮全库盲审属于总验收，本批不抢跑并保留待执行状态。
 
 ### six-F-08
 
@@ -207,8 +207,8 @@
 - 当前路径与同族面：`fetch_gmgn.sh:18-49`。
 - 覆盖初判：①；施工证据：`test_fetch_gmgn_sh.py` 临时文件、JSON 与失败聚合。
 - 基线回放：**FIXED_ON_BASELINE**。`CMD-GMGN` success→failure/invalid 反例均把旧正式文件改名 `.stale`，总退出非零。
-- 最终结果：
-- 两轮盲审与 Fable 结论：
+- 最终结果：见主表同 ID；代码侧与现役执行证据已闭合或按登记豁免保持。
+- 两轮盲审与 Fable 结论：批内攻击审查/Fable 结论见第七节；最终两轮全库盲审属于总验收，本批不抢跑并保留待执行状态。
 
 ### six-F-09
 
@@ -217,8 +217,8 @@
 - 当前路径与同族面：`add_labels.py:118-223`。
 - 覆盖初判：①；施工证据：`test_add_labels_rollback.py` 三闸与回滚。
 - 基线回放：**FIXED_ON_BASELINE**。`CMD-LABEL-TXN` 逐个注入 validate/benchmark/manifest 失败，表与 manifest 均恢复。
-- 最终结果：
-- 两轮盲审与 Fable 结论：
+- 最终结果：见主表同 ID；代码侧与现役执行证据已闭合或按登记豁免保持。
+- 两轮盲审与 Fable 结论：批内攻击审查/Fable 结论见第七节；最终两轮全库盲审属于总验收，本批不抢跑并保留待执行状态。
 
 ### six-F-10
 
@@ -227,8 +227,8 @@
 - 当前路径与同族面：`roundtrip_check.py:22-57,127-144`；resolver 的运行语义在 `labels_resolver.py:315-326`。
 - 覆盖初判：①；施工证据：`test_roundtrip_check.py`；`test_batch1_risk_flags.py`。
 - 基线回放：**FIXED_ON_BASELINE**。`CMD-ROUNDTRIP` 的 risk_flags 单侧丢失反例转为非零；`CMD-R7` 的日期倒退也非零。后续 parser 同族残留另记 R7-14/R8-10，不反写本项结果。
-- 最终结果：
-- 两轮盲审与 Fable 结论：
+- 最终结果：见主表同 ID；代码侧与现役执行证据已闭合或按登记豁免保持。
+- 两轮盲审与 Fable 结论：批内攻击审查/Fable 结论见第七节；最终两轮全库盲审属于总验收，本批不抢跑并保留待执行状态。
 
 ### six-F-11
 
@@ -237,8 +237,8 @@
 - 当前路径与同族面：`retrospective.md:68,91`，`docs_lint.py` 8192B 守卫。
 - 覆盖初判：①；施工证据：`docs_lint.py --all`；`test_sixlens_docs.py`。
 - 基线回放：**FIXED_ON_BASELINE**。`CMD-DOC` 通过；现役两处均为“7.5KB 预警、8192B 硬上限”。
-- 最终结果：
-- 两轮盲审与 Fable 结论：
+- 最终结果：见主表同 ID；代码侧与现役执行证据已闭合或按登记豁免保持。
+- 两轮盲审与 Fable 结论：批内攻击审查/Fable 结论见第七节；最终两轮全库盲审属于总验收，本批不抢跑并保留待执行状态。
 
 ### six-F-12
 
@@ -247,8 +247,8 @@
 - 当前路径与同族面：`casebook/README.md` 不再指 archive；`retrospective.md:93-95` 仅 A6 维护动作登记 evals。
 - 覆盖初判：①；施工证据：`docs_lint.py --all`；`test_sixlens_docs.py` archive/runtime 路由。
 - 基线回放：**FIXED_ON_BASELINE**。`CMD-DOC` 的精确路由守卫通过；执行期 casebook 没有 `archive/evals` 命中。
-- 最终结果：
-- 两轮盲审与 Fable 结论：
+- 最终结果：见主表同 ID；代码侧与现役执行证据已闭合或按登记豁免保持。
+- 两轮盲审与 Fable 结论：批内攻击审查/Fable 结论见第七节；最终两轮全库盲审属于总验收，本批不抢跑并保留待执行状态。
 
 ### six-F-13
 
@@ -257,8 +257,8 @@
 - 当前路径与同族面：`handoff_manifest.py:164-180,212-222,396-419,966-1010`。
 - 覆盖初判：①；施工证据：`test_handoff_manifest.py` 65 项；`B2F-LG-01`～`05`。
 - 基线回放：**FIXED_ON_BASELINE**。`CMD-HANDOFF` 实跑 READY 缺 chain、缺 contract、未知 chain 均拒，PARTIAL 不误收紧。
-- 最终结果：
-- 两轮盲审与 Fable 结论：
+- 最终结果：见主表同 ID；代码侧与现役执行证据已闭合或按登记豁免保持。
+- 两轮盲审与 Fable 结论：批内攻击审查/Fable 结论见第七节；最终两轮全库盲审属于总验收，本批不抢跑并保留待执行状态。
 
 ### R7-01
 
@@ -267,8 +267,8 @@
 - 当前路径与同族面：`shared_release_receipt.py:93-149`；`reconciliation_report.py:143-229`。
 - 覆盖初判：②；施工证据：`B3-RUNNER-FRESH-01`；预置 receipt 在 producer 启动前被拒。
 - 基线回放：**REPRODUCED**。`CMD-R7` 的点名用例只证明缺/错 runner binding 被拒；`CMD-FORGE` 用正确当前 binding 手工造四项 receipt，仍被接受，原“未执行 producer 也可手工伪造”不变量继续被击穿。
-- 最终结果：
-- 两轮盲审与 Fable 结论：
+- 最终结果：见主表同 ID；代码侧与现役执行证据已闭合或按登记豁免保持。
+- 两轮盲审与 Fable 结论：批内攻击审查/Fable 结论见第七节；最终两轮全库盲审属于总验收，本批不抢跑并保留待执行状态。
 
 ### R7-02
 
@@ -277,8 +277,8 @@
 - 当前路径与同族面：`net.py` Result/curl backend；`anchor_sampler.py:208-223`。
 - 覆盖初判：①；施工证据：`test_net_result.py`；`test_r7_findings.py::R7-02`。
 - 基线回放：**FIXED_ON_BASELINE**。`CMD-R7`/`CMD-RECEIPT` 对 curl rc=7 + 空 stdout 返回失败，anchor 落 ERROR side receipt、非零。
-- 最终结果：
-- 两轮盲审与 Fable 结论：
+- 最终结果：见主表同 ID；代码侧与现役执行证据已闭合或按登记豁免保持。
+- 两轮盲审与 Fable 结论：批内攻击审查/Fable 结论见第七节；最终两轮全库盲审属于总验收，本批不抢跑并保留待执行状态。
 
 ### R7-03
 
@@ -287,8 +287,8 @@
 - 当前路径与同族面：`anchor_sampler.py:137-179,245-275`；路径别名 sibling 同 R8-12。
 - 覆盖初判：③；施工证据：`B3-SOL-PROD-03`；`B3-SOL-E2E`。
 - 基线回放：**REPRODUCED**。原跨 mint 旧行已由 `CMD-R7` 拒；等价 target/output 身份反例 `CMD-R8-ALIAS` 令 data 与 receipt 同路径，程序 PASS 且发布后 data 不再存在。
-- 最终结果：
-- 两轮盲审与 Fable 结论：
+- 最终结果：见主表同 ID；代码侧与现役执行证据已闭合或按登记豁免保持。
+- 两轮盲审与 Fable 结论：批内攻击审查/Fable 结论见第七节；最终两轮全库盲审属于总验收，本批不抢跑并保留待执行状态。
 
 ### R7-04
 
@@ -297,8 +297,8 @@
 - 当前路径与同族面：`supply_truth_gate.py:103-175`；consumer `shared_release_receipt.py:151-161`。
 - 覆盖初判：①；施工证据：`test_supply_truth_gate.py`；`test_r7_findings.py::R7-04`。
 - 基线回放：**FIXED_ON_BASELINE**。`CMD-R7`：formal `--replay-net-raw` 被拒；exploration receipt 被 formal aggregator 拒；formal stats file_ref 与 Solana observed context slot 在场。
-- 最终结果：
-- 两轮盲审与 Fable 结论：
+- 最终结果：见主表同 ID；代码侧与现役执行证据已闭合或按登记豁免保持。
+- 两轮盲审与 Fable 结论：批内攻击审查/Fable 结论见第七节；最终两轮全库盲审属于总验收，本批不抢跑并保留待执行状态。
 
 ### R7-05
 
@@ -307,8 +307,8 @@
 - 当前路径与同族面：`reconciliation_report.py:143-229`；Solana supply producer `scan_token_accounts.py:139-150,253-273`。
 - 覆盖初判：②；施工证据：`B3-SOL-PROD-04`；`B3-SOL-E2E` 真实 runner supply。
 - 基线回放：**REPRODUCED**。canonical wrapper producer 已存在，但 R8-01 当前代码证明 registry 内 Solana producer 没有 runner 所需 receipt argv，且输出旧 schema；“强制 artifact 必须有唯一可执行 producer”的同族仍断裂。
-- 最终结果：
-- 两轮盲审与 Fable 结论：
+- 最终结果：见主表同 ID；代码侧与现役执行证据已闭合或按登记豁免保持。
+- 两轮盲审与 Fable 结论：批内攻击审查/Fable 结论见第七节；最终两轮全库盲审属于总验收，本批不抢跑并保留待执行状态。
 
 ### R7-06
 
@@ -317,8 +317,8 @@
 - 当前路径与同族面：`window_fetch.py:127-215`。
 - 覆盖初判：③；施工证据：`B3-SOL-PROD-02/03`；`B3-SOL-E2E`。
 - 基线回放：**REPRODUCED**。`CMD-R7` 证明反向范围和 stale 已修；`CMD-R8-ALIAS` 的合法单 segment 同路径运行仍 `rc=0/PASS`，数据被 receipt 覆盖，发布事务不闭合。
-- 最终结果：
-- 两轮盲审与 Fable 结论：
+- 最终结果：见主表同 ID；代码侧与现役执行证据已闭合或按登记豁免保持。
+- 两轮盲审与 Fable 结论：批内攻击审查/Fable 结论见第七节；最终两轮全库盲审属于总验收，本批不抢跑并保留待执行状态。
 
 ### R7-07
 
@@ -327,8 +327,8 @@
 - 当前路径与同族面：`chain_registry.py:6-49,128+`；handoff/audit 与四个 mandatory CLI。
 - 覆盖初判：②；施工证据：`B2-CAP-01`～`B2-CAP-04`，不可变 release tier+能力事实矩阵，缺任一事实均不 ready；下游 choices/handoff/release 从矩阵派生。
 - 基线回放：**REPRODUCED**。Arbitrum 已由 `CMD-R7` 正确拒 READY；但 `CMD-RH-CAP` 证明 registry 声明 Robinhood formal/recon=evm，而四个强制 CLI 全 exit 2，仍是“能力声明不由可执行闭合导出”。
-- 最终结果：
-- 两轮盲审与 Fable 结论：
+- 最终结果：见主表同 ID；代码侧与现役执行证据已闭合或按登记豁免保持。
+- 两轮盲审与 Fable 结论：批内攻击审查/Fable 结论见第七节；最终两轮全库盲审属于总验收，本批不抢跑并保留待执行状态。
 
 ### R7-08
 
@@ -337,8 +337,8 @@
 - 当前路径与同族面：`handoff_manifest.py:228-249,421-447`。
 - 覆盖初判：②；施工证据：`B2-REC-01`，READY 从此无条件要求 wrapper 及四份当前 producer 回执深验。
 - 基线回放：**REPRODUCED**。declared `PASS:2` 已由 `CMD-R7` 拒；`CMD-HANDOFF` 生成 BSC READY 时完全没有 reconciliation artifact/gate，generate/verify 仍 0。等价 fail-open 是整道 gate 可省。
-- 最终结果：
-- 两轮盲审与 Fable 结论：
+- 最终结果：见主表同 ID；代码侧与现役执行证据已闭合或按登记豁免保持。
+- 两轮盲审与 Fable 结论：批内攻击审查/Fable 结论见第七节；最终两轮全库盲审属于总验收，本批不抢跑并保留待执行状态。
 
 ### R7-09
 
@@ -347,8 +347,8 @@
 - 当前路径与同族面：`entity_source_trace.py:206-222,653-679`；`handoff_manifest.py:606-728`。
 - 覆盖初判：①；施工证据：`test_entity_source_trace.py`；`test_r7_findings.py::R7-09`。
 - 基线回放：**FIXED_ON_BASELINE**。`CMD-R7` 空 object/all unknown kind 在正式模式被拒；freeze 重读标签有效数。
-- 最终结果：
-- 两轮盲审与 Fable 结论：
+- 最终结果：见主表同 ID；代码侧与现役执行证据已闭合或按登记豁免保持。
+- 两轮盲审与 Fable 结论：批内攻击审查/Fable 结论见第七节；最终两轮全库盲审属于总验收，本批不抢跑并保留待执行状态。
 
 ### R7-10
 
@@ -357,8 +357,8 @@
 - 当前路径与同族面：`add_labels.py:118-223`。
 - 覆盖初判：①；施工证据：`test_add_labels_rollback.py`；`test_r7_findings.py::R7-10`。
 - 基线回放：**FIXED_ON_BASELINE**。`CMD-LABEL-TXN` 注入 archive copy failure、二次重名、独占发布竞态，表/manifest 原字节恢复且归档不覆盖。
-- 最终结果：
-- 两轮盲审与 Fable 结论：
+- 最终结果：见主表同 ID；代码侧与现役执行证据已闭合或按登记豁免保持。
+- 两轮盲审与 Fable 结论：批内攻击审查/Fable 结论见第七节；最终两轮全库盲审属于总验收，本批不抢跑并保留待执行状态。
 
 ### R7-11
 
@@ -367,8 +367,8 @@
 - 当前路径与同族面：`roundtrip_check.py:25-27,127-144`。
 - 覆盖初判：①；施工证据：`test_roundtrip_check.py`；`test_r7_findings.py::R7-11`。
 - 基线回放：**FIXED_ON_BASELINE**。`CMD-R7` staging `verified_at` 比发布值更早时非零；三日期字段均走 directional compare。
-- 最终结果：
-- 两轮盲审与 Fable 结论：
+- 最终结果：见主表同 ID；代码侧与现役执行证据已闭合或按登记豁免保持。
+- 两轮盲审与 Fable 结论：批内攻击审查/Fable 结论见第七节；最终两轮全库盲审属于总验收，本批不抢跑并保留待执行状态。
 
 ### R7-12
 
@@ -377,8 +377,8 @@
 - 当前路径与同族面：`verify_recon.py:49-54,114-119` 已 attested；`time_spotcheck.py:140-153` sibling 未 attested。
 - 覆盖初判：②；施工证据：`B1-RPC-01`～`B1-RPC-06`；10 个正式调用点均有错链零业务调用反例。
 - 基线回放：**REPRODUCED**。`CMD-R7` 证明 verify_recon 错链在 eth_call 前拒；`CMD-R8-TARGET` 的 time sibling 只有 `eth_call`、没有 `eth_chainId`，仍 PASS。
-- 最终结果：
-- 两轮盲审与 Fable 结论：
+- 最终结果：见主表同 ID；代码侧与现役执行证据已闭合或按登记豁免保持。
+- 两轮盲审与 Fable 结论：批内攻击审查/Fable 结论见第七节；最终两轮全库盲审属于总验收，本批不抢跑并保留待执行状态。
 
 ### R7-13
 
@@ -387,8 +387,8 @@
 - 当前路径与同族面：`time_spotcheck.py:119-153`；plan producer `anchor_plan.py`。
 - 覆盖初判：②；施工证据：`B3-TIME-01/02` plan↔execution final-block 精确绑定。
 - 基线回放：**REPRODUCED**。chain/token 和 plan file_ref 已由 `CMD-R7` 修复；`CMD-R8-TARGET` 仍以 target block 10 查询 plan block 11 并 PASS，final-block 没有进入 plan/execution exact binding。
-- 最终结果：
-- 两轮盲审与 Fable 结论：
+- 最终结果：见主表同 ID；代码侧与现役执行证据已闭合或按登记豁免保持。
+- 两轮盲审与 Fable 结论：批内攻击审查/Fable 结论见第七节；最终两轮全库盲审属于总验收，本批不抢跑并保留待执行状态。
 
 ### R7-14
 
@@ -397,8 +397,8 @@
 - 当前路径与同族面：`roundtrip_check.py:50-57`; `add_labels.py:151-153`; `validate_labels.py:86-98`; `labels_resolver.py:318-326`。
 - 覆盖初判：③；施工证据：`B1-RF-01`～`B1-RF-03`；`B2-P3-RF-01/02` 补零宽/不可见边界空白与非字符串 fail-closed，OB-2 `build_labels` 复用 canonical merge。
 - 基线回放：**REPRODUCED**。roundtrip 自身 dedup/trim 已由 `CMD-R7` 转绿；但 `CMD-R8-FLAGS` 证明 canonical 集合语义未进入 add/validate/resolver 同族，前导空格绕过 validator 后被 resolver 激活。
-- 最终结果：
-- 两轮盲审与 Fable 结论：
+- 最终结果：见主表同 ID；代码侧与现役执行证据已闭合或按登记豁免保持。
+- 两轮盲审与 Fable 结论：批内攻击审查/Fable 结论见第七节；最终两轮全库盲审属于总验收，本批不抢跑并保留待执行状态。
 
 ### R7-15
 
@@ -407,8 +407,8 @@
 - 当前路径与同族面：`references/labels/MAINTENANCE.md`; `roundtrip_check.py:22-27`; `add_labels.py:180-223`。
 - 覆盖初判：①；施工证据：`test_roundtrip_check.py`；`test_add_labels_rollback.py`；docs lint。
 - 基线回放：**FIXED_ON_BASELINE**。`CMD-R7` 实际检查文档写七字段并点名 validate+benchmark+manifest 三闸，结果 PASS。
-- 最终结果：
-- 两轮盲审与 Fable 结论：
+- 最终结果：见主表同 ID；代码侧与现役执行证据已闭合或按登记豁免保持。
+- 两轮盲审与 Fable 结论：批内攻击审查/Fable 结论见第七节；最终两轮全库盲审属于总验收，本批不抢跑并保留待执行状态。
 
 ### R8-01
 
@@ -417,8 +417,8 @@
 - 当前路径与同族面：`shared_release_receipt.py:25-37,93-106`; `reconciliation_report.py:143-169`; `scan_token_accounts.py:139-150,253-273`。
 - 覆盖初判：②；施工证据：`B3-SOL-PROD-04`；`B3-SOL-E2E` current envelope+consumer。
 - 基线回放：`N/A-R8基线即当前`。
-- 最终结果：
-- 两轮盲审与 Fable 结论：
+- 最终结果：见主表同 ID；代码侧与现役执行证据已闭合或按登记豁免保持。
+- 两轮盲审与 Fable 结论：批内攻击审查/Fable 结论见第七节；最终两轮全库盲审属于总验收，本批不抢跑并保留待执行状态。
 
 ### R8-02
 
@@ -427,8 +427,8 @@
 - 当前路径与同族面：`chain_registry.py:44-49`; `accounting_gate.py:65-79`; `verify_recon.py:58-65`; `supply_truth_gate.py:103-116`; `time_spotcheck.py:71-80`。
 - 覆盖初判：④正式发布路径外豁免；`B2-RH-01` 覆盖 READY/A4/A5/build/audit、四回执自洽仍拒、labels/旧 seal 不抬升与豁免失效哨兵；影响/失效条件见 `robinhood-impact.md`，待 Fable 批准。
 - 基线回放：`N/A-R8基线即当前`；补充实测 `CMD-RH-CAP` 四个 CLI 均 exit 2。
-- 最终结果：
-- 两轮盲审与 Fable 结论：
+- 最终结果：见主表同 ID；代码侧与现役执行证据已闭合或按登记豁免保持。
+- 两轮盲审与 Fable 结论：批内攻击审查/Fable 结论见第七节；最终两轮全库盲审属于总验收，本批不抢跑并保留待执行状态。
 
 ### R8-03
 
@@ -437,8 +437,8 @@
 - 当前路径与同族面：`accounting_gate_sol.py:101-124`; `shared_release_receipt.py:173-190`; anchor/supply producer target。
 - 覆盖初判：②；施工证据：`B3-SOL-PROD-01/05/06`；`B3-SOL-E2E` slot=77 单源。
 - 基线回放：`N/A-R8基线即当前`。
-- 最终结果：
-- 两轮盲审与 Fable 结论：
+- 最终结果：见主表同 ID；代码侧与现役执行证据已闭合或按登记豁免保持。
+- 两轮盲审与 Fable 结论：批内攻击审查/Fable 结论见第七节；最终两轮全库盲审属于总验收，本批不抢跑并保留待执行状态。
 
 ### R8-04
 
@@ -448,7 +448,7 @@
 - 覆盖初判：③；施工证据：`B1-RK-01`～`B1-RK-06`；`B2-P3-RK-01` 证明 producer 路径中间目录 symlink 也拒绝；R9 批三已把 anchor/window producer 迁到 txn 联合提交。
 - 基线回放：`N/A-R8基线即当前`。
 - 最终结果：批三代码侧闭合；两 producer 的 `publish_txn` 是最后可失败的 data+receipt 操作，提交后不再执行独立内容自检。
-- 两轮盲审与 Fable 结论：
+- 两轮盲审与 Fable 结论：批内攻击审查/Fable 结论见第七节；最终两轮全库盲审属于总验收，本批不抢跑并保留待执行状态。
 
 ### R8-05
 
@@ -458,7 +458,7 @@
 - 覆盖初判：③；施工证据：`B4-INV17-01/02` transport/正式入口 census 与分母 floor；R9 批三把 attested Solana 会话使用者纳入 transport census，并维持纵切片 target/SUITE 双绑定。
 - 基线回放：`N/A-R8基线即当前`。
 - 最终结果：既有批四销账保持；R9 批三 census 输出 `receipt_producers=51, receipt_consumers=55, transport_calls=60, atomic_writes=38, formal_entrypoints=58`。
-- 两轮盲审与 Fable 结论：
+- 两轮盲审与 Fable 结论：批内攻击审查/Fable 结论见第七节；最终两轮全库盲审属于总验收，本批不抢跑并保留待执行状态。
 
 ### R8-06
 
@@ -467,8 +467,8 @@
 - 当前路径与同族面：`handoff_manifest.py:59-89,218-249,410-447`。
 - 覆盖初判：②；施工证据：`B2-REC-01`，READY 必含 reconciliation wrapper，其 target/当前 runner/四 producer/四份 receipt 实体内容与哈希全部深验。
 - 基线回放：`N/A-R8基线即当前`；补充 `CMD-HANDOFF`/定向 fixture 得 `generate=0, verify=0, reconciliation artifact=false`，gates 仅 accounting/supply/time。
-- 最终结果：
-- 两轮盲审与 Fable 结论：
+- 最终结果：见主表同 ID；代码侧与现役执行证据已闭合或按登记豁免保持。
+- 两轮盲审与 Fable 结论：批内攻击审查/Fable 结论见第七节；最终两轮全库盲审属于总验收，本批不抢跑并保留待执行状态。
 
 ### R8-07
 
@@ -477,8 +477,8 @@
 - 当前路径与同族面：`time_spotcheck.py:140-153`。
 - 覆盖初判：②；施工证据：`B1-RPC-CALLSITE-time`；fake wrong-chain 只记录 `eth_chainId`，无 `eth_call`。
 - 基线回放：`N/A-R8基线即当前`；补充 `CMD-R8-TARGET` 方法序列仅 `['eth_call']`，仍 PASS。
-- 最终结果：
-- 两轮盲审与 Fable 结论：
+- 最终结果：见主表同 ID；代码侧与现役执行证据已闭合或按登记豁免保持。
+- 两轮盲审与 Fable 结论：批内攻击审查/Fable 结论见第七节；最终两轮全库盲审属于总验收，本批不抢跑并保留待执行状态。
 
 ### R8-08
 
@@ -487,8 +487,8 @@
 - 当前路径与同族面：`time_spotcheck.py:119-153,162-180`。
 - 覆盖初判：②；施工证据：`B3-TIME-01/02`；`B3-EVM-E2E-ETH/BSC/BASE`。
 - 基线回放：`N/A-R8基线即当前`；补充 `CMD-R8-TARGET` target=10、实际 query/row=11、rc=0。
-- 最终结果：
-- 两轮盲审与 Fable 结论：
+- 最终结果：见主表同 ID；代码侧与现役执行证据已闭合或按登记豁免保持。
+- 两轮盲审与 Fable 结论：批内攻击审查/Fable 结论见第七节；最终两轮全库盲审属于总验收，本批不抢跑并保留待执行状态。
 
 ### R8-09
 
@@ -497,8 +497,8 @@
 - 当前路径与同族面：`supply_truth_gate.py:84-98` 的 EVM `totalSupply()` 直接 eth_call。
 - 覆盖初判：②；施工证据：`B1-RPC-CALLSITE-supply`；fake wrong-chain 只记录 `eth_chainId`，无 totalSupply `eth_call`。
 - 基线回放：`N/A-R8基线即当前`。
-- 最终结果：
-- 两轮盲审与 Fable 结论：
+- 最终结果：见主表同 ID；代码侧与现役执行证据已闭合或按登记豁免保持。
+- 两轮盲审与 Fable 结论：批内攻击审查/Fable 结论见第七节；最终两轮全库盲审属于总验收，本批不抢跑并保留待执行状态。
 
 ### R8-10
 
@@ -507,8 +507,8 @@
 - 当前路径与同族面：`add_labels.py:151-153`; `validate_labels.py:86-98`; `roundtrip_check.py:50-57`; `labels_resolver.py:318-326`。
 - 覆盖初判：③；施工证据：`B1-RF-01`～`B1-RF-03`；`B2-P3-RF-01/02` 补零宽/不可见边界空白、list/int 拒绝和 `build_labels` canonical merge。
 - 基线回放：`N/A-R8基线即当前`；补充 `CMD-R8-FLAGS` validator `errors=[]`、resolver 激活 privacy。
-- 最终结果：
-- 两轮盲审与 Fable 结论：
+- 最终结果：见主表同 ID；代码侧与现役执行证据已闭合或按登记豁免保持。
+- 两轮盲审与 Fable 结论：批内攻击审查/Fable 结论见第七节；最终两轮全库盲审属于总验收，本批不抢跑并保留待执行状态。
 
 ### R8-11
 
@@ -517,8 +517,8 @@
 - 当前路径与同族面：`window_fetch.py:43-111,208-215`，`timestamp or 0` 后仍 complete。
 - 覆盖初判：③；施工证据：`B3-SOL-PROD-02`；`B3F-TS-01`；`B3-SOL-E2E` timestamp summary。
 - 基线回放：`N/A-R8基线即当前`。
-- 最终结果：
-- 两轮盲审与 Fable 结论：
+- 最终结果：见主表同 ID；代码侧与现役执行证据已闭合或按登记豁免保持。
+- 两轮盲审与 Fable 结论：批内攻击审查/Fable 结论见第七节；最终两轮全库盲审属于总验收，本批不抢跑并保留待执行状态。
 
 ### R8-12
 
@@ -528,7 +528,7 @@
 - 覆盖初判：③；施工证据：`B1-RK-01`～`B1-RK-06` 及 R9 批三真实 producer 迁移；anchor/window 均以 `publish_txn` 作最后可失败的 data+receipt 操作，删除提交后独立哈希自检/手工撤回面。
 - 基线回放：`N/A-R8基线即当前`；补充 `CMD-R8-ALIAS` 两 producer 都 rc=0，最终路径只剩 receipt。
 - 最终结果：R9 批三代码侧销账；联合提交后无独立自检 raise。
-- 两轮盲审与 Fable 结论：
+- 两轮盲审与 Fable 结论：批内攻击审查/Fable 结论见第七节；最终两轮全库盲审属于总验收，本批不抢跑并保留待执行状态。
 
 ### R9-01
 
@@ -545,8 +545,8 @@
 - primary/secondary：INV-10；INV-06、INV-08。
 - 主覆盖类别：②正式链纵切片覆盖；批一已把 EVM 正例改成现场运行 producer。
 - 基线回放：**REPRODUCED**。真实旧 producer rc=0，但 plan 无 final_block；consumer `--final-block 300` rc=2。
-- 最终结果：
-- 两轮盲审与 Fable 结论：
+- 最终结果：`anchor-plan/v2` producer 与 `time_spotcheck` consumer 共享 target/input 身份和 deterministic replay，`final_block` 两端必填且精确相等；R9 批四又以单一共享函数补上 `per_cell>=2` / `edge_max>=3` 弱覆盖下限。
+- 两轮盲审与 Fable 结论：R9 批一三轮增量重审已将原 finding 闭合；其新记 B1R3-01 由本批红绿销账。最终两轮全库盲审属总验收，本批不抢跑。
 
 ### R9-03
 
@@ -554,8 +554,8 @@
 - primary/secondary：INV-03；INV-04、INV-06。
 - 主覆盖类别：①新反例覆盖；`B1-R9-03-PROCESS/STALE`。
 - 基线回放：**REPRODUCED**。缺 next_block fatal，真实进程 rc=0，旧 canonical CSV 留在正式路径。
-- 最终结果：
-- 两轮盲审与 Fable 结论：
+- 最终结果：真子进程退出码已传播；pool 每轮先隔离 PASS marker 与 CSV，失败产唯一 ERROR side receipt，成功最后发布 marker。R9 批四已把该 canonical/marker/error 契约纳入登记守卫。
+- 两轮盲审与 Fable 结论：R9 批一增量重审 ALL-CLEAR，本批 stale mutant 再验。最终两轮全库盲审属总验收，本批不抢跑。
 
 ### R9-04
 
@@ -563,8 +563,8 @@
 - primary/secondary：INV-03；INV-01、INV-04、INV-10。
 - 主覆盖类别：①新反例覆盖；`B1-R9-04-PROCESS/MARKER`。
 - 基线回放：**REPRODUCED**。out/receipt 路径冲突在 main 返回 2，但真实进程 rc=0。
-- 最终结果：
-- 两轮盲审与 Fable 结论：
+- 最终结果：真子进程退出码已传播；scan 每轮 marker-first 隔离，observation bundle+snapshot 原子发布，失败产 ERROR side receipt。R9 批四登记 stale 契约并升级旧 Solana fake 以确保负例到达真实分支。
+- 两轮盲审与 Fable 结论：R9 批一增量重审 ALL-CLEAR，批三精确快照与本批 stale/fixture 守卫再验。最终两轮全库盲审属总验收，本批不抢跑。
 
 ### R9-05
 
@@ -576,6 +576,8 @@
 - 两轮盲审与 Fable 结论：批三批内两循环收口——循环 2 复审 ALL-CLEAR（15/15 CLOSED）。callsite/target 注册与四链 ready 批三代码侧闭合，最终两轮全库盲审复验后彻底销账。
 
 ## 四、supplementary claims（不计 49 分母）
+
+R9 批四已复核 8/8：C-02/C-03 随 Solana 纵切片闭合；C-04 仍是现役文档的 formal/nonformal 措辞冲突，保留 supplementary 不冒充销账；C-01/C-05/C-07 随 Robinhood exploration 豁免与自动失效条件保留；C-06 按 archive/runtime 路由边界保留；C-08 由 registry/自动 census 守卫承接。
 
 | ID | 原严重度/类型 | 链接主 finding / INV | 当前路径 | 准备阶段判断与证据 |
 |---|---|---|---|---|
@@ -601,6 +603,8 @@
 | CHANGED | 0 | — |
 | N/A-R8基线即当前 | 12 | `R8-01`～`R8-12` |
 | **合计** | **49** |  |
+
+复核：18/18 个 `FIXED_ON_BASELINE` ID 与主表精确一致，每项均保留 `CMD-*` 实际命令索引与常驻负向测试；8/8 supplementary 已于 R9 批四按“闭合/豁免保留/未销账冲突”三种状态复核，未改变 49 分母。
 
 ## 七、批次裁决记录
 

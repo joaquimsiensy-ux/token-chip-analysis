@@ -9,7 +9,6 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import stat
 import subprocess
 import sys
 import tempfile
@@ -43,7 +42,99 @@ def write_transport_fixtures(root):
     transport = root / "transport"
     transport.mkdir()
     (transport / "sitecustomize.py").write_text(
-        "import time\ntime.sleep = lambda _seconds: None\n", encoding="utf-8")
+        r'''
+import base64
+import json
+import os
+import time
+import urllib.request
+from pathlib import Path
+
+time.sleep = lambda _seconds: None
+_slot = 100
+
+
+class _Response:
+    def __init__(self, payload):
+        self.payload = payload
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_args):
+        return False
+
+    def read(self):
+        if self.payload is None:
+            return b"{not-json"
+        return json.dumps(self.payload).encode("utf-8")
+
+
+def _next_slot(config=None):
+    global _slot
+    minimum = int((config or {}).get("minContextSlot", 0))
+    _slot = max(_slot + 1, minimum)
+    return _slot
+
+
+def _mint_raw():
+    raw = bytearray(82)
+    raw[36:44] = (100).to_bytes(8, "little")
+    raw[44] = 0
+    raw[45] = 1
+    return bytes(raw)
+
+
+def _urlopen(request, **_kwargs):
+    body = json.loads(request.data)
+    method = body["method"]
+    scenario = os.environ.get("R9_SCAN_SCENARIO", "success")
+    trace = os.environ.get("R9_SCAN_TRACE")
+    if trace:
+        with open(trace, "a", encoding="utf-8") as handle:
+            handle.write(method + "\n")
+    if scenario == "network":
+        raise RuntimeError("injected network failure")
+    if method == "getGenesisHash":
+        result = "5eykt4UsFv8P8NJdTREpY1vzqKqZKvdpKuc147dw2N9d"
+    elif method == "getAccountInfo":
+        config = body["params"][1]
+        slot = _next_slot(config)
+        if config.get("encoding") == "jsonParsed":
+            data = {"parsed": {"type": "mint", "info": {
+                "mintAuthority": None, "freezeAuthority": None,
+                "supply": "100", "decimals": 0}}}
+        else:
+            data = [base64.b64encode(_mint_raw()).decode(), "base64"]
+        result = {"context": {"slot": slot}, "value": {
+            "owner": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA", "data": data}}
+    elif method == "getProgramAccounts":
+        config = body["params"][1]
+        slot = _next_slot(config)
+        if scenario == "gpa_slot":
+            slot -= 2
+        amount = 99 if scenario == "accounting" else 100
+        raw = bytes(32) + amount.to_bytes(8, "little")
+        result = {"context": {"slot": slot}, "value": [{
+            "pubkey": "Account1", "account": {
+                "data": [base64.b64encode(raw).decode(), "base64"]}}]}
+        if scenario == "publish":
+            Path(os.environ["R9_SCAN_RECEIPT"]).mkdir(parents=False, exist_ok=False)
+    elif method == "getSignaturesForAddress":
+        result = []
+    elif method == "getTokenSupply":
+        if scenario == "parse":
+            return _Response(None)
+        slot = 100 if scenario == "supply_slot" else _next_slot()
+        result = {"context": {"slot": slot},
+                  "value": {"amount": "100", "decimals": 0}}
+    else:
+        raise AssertionError(method)
+    return _Response({"jsonrpc": "2.0", "id": body.get("id", 1), "result": result})
+
+
+urllib.request.urlopen = _urlopen
+''', encoding="utf-8")
     (transport / "requests.py").write_text(r'''
 import os
 
@@ -74,50 +165,6 @@ class Session:
         return Response({"data": [], "next_block": 10})
 ''', encoding="utf-8")
 
-    fake_curl = transport / "curl"
-    fake_curl.write_text(r'''#!/usr/bin/env python3
-import base64
-import json
-import os
-import sys
-from pathlib import Path
-
-args = sys.argv[1:]
-out = Path(args[args.index("-o") + 1])
-body = json.loads(args[args.index("-d") + 1])
-method = body["method"]
-scenario = os.environ.get("R9_SCAN_SCENARIO", "success")
-
-if scenario == "network":
-    raise SystemExit(7)
-if scenario == "parse" and method == "getTokenSupply":
-    out.write_text("{not-json", encoding="utf-8")
-    raise SystemExit(0)
-
-if method == "getTokenSupply":
-    slot = 78 if scenario == "supply_slot" else 77
-    result = {"context": {"slot": slot},
-              "value": {"amount": "100", "decimals": 0}}
-elif method == "getProgramAccounts":
-    slot = 78 if scenario == "gpa_slot" else 77
-    amount = 99 if scenario == "accounting" else 100
-    raw = bytes(32) + amount.to_bytes(8, "little")
-    result = {"context": {"slot": slot}, "value": [{
-        "pubkey": "Account1",
-        "account": {"data": [base64.b64encode(raw).decode(), "base64"]},
-    }]}
-    if scenario == "publish":
-        marker = Path(os.environ["R9_SCAN_RECEIPT"])
-        marker.mkdir(parents=False, exist_ok=False)
-elif method == "getAccountInfo":
-    result = {"context": {"slot": 77}, "value": {
-        "owner": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"}}
-else:
-    raise AssertionError(method)
-
-out.write_text(json.dumps({"result": result}), encoding="utf-8")
-''', encoding="utf-8")
-    fake_curl.chmod(fake_curl.stat().st_mode | stat.S_IXUSR)
     return transport
 
 
@@ -164,6 +211,16 @@ def test_r9_02_real_anchor_producer_consumer(root):
         "--out", str(root / "spotcheck.json")], root)
     assert consumer.returncode == 0, detail(consumer)
 
+    weak_dir = root / "weak-plan"
+    weak = run([sys.executable, str(ANCHOR), "--input", str(source),
+                "--chain", "bsc", "--token", TOKEN, "--total-supply", "100",
+                "--decimals", "0", "--min-pct", "0", "--final-block", "300",
+                "--per-cell", "1", "--edge-max", "1",
+                "--out-dir", str(weak_dir)], root)
+    assert weak.returncode != 0, "weak per_cell=1/edge_max=1 plan was accepted\n" + detail(weak)
+    assert not (weak_dir / "anchor_plan.json").exists() \
+        and not (weak_dir / "anchor_plan.receipt.json").exists()
+
     beyond = root / "beyond.csv"
     beyond.write_text(
         "block,ts,tx,from,to,value\n"
@@ -178,6 +235,8 @@ def test_r9_02_real_anchor_producer_consumer(root):
         "failed anchor rerun left prior plan/receipt current"
     assert list(out_dir.glob("anchor_plan.json.stale.*"))
     assert list(out_dir.glob("anchor_plan.receipt.json.stale.*"))
+    assert list(out_dir.glob("anchor_plan.receipt.error.*.json")), \
+        "failed anchor producer did not publish a unique ERROR receipt"
     stale_consumer = run([
         sys.executable, str(SPOTCHECK), "--plan", str(plan_path), "--dry-run",
         "--input", str(beyond), "--chain", "bsc", "--token", TOKEN, "--final-block", "300",
@@ -197,13 +256,19 @@ def pool_command(root, out, transport):
 
 def test_r9_03_pool_process_and_stale(root, transport):
     out = root / "pool.csv"
+    marker = root / "pool.csv.receipt.json"
     command, env = pool_command(root, out, transport)
     success = run(command, root, env={**env, "R9_POOL_SCENARIO": "success"})
-    assert success.returncode == 0 and out.is_file(), detail(success)
+    assert success.returncode == 0 and out.is_file() and marker.is_file(), detail(success)
     failed = run(command, root, env={**env, "R9_POOL_SCENARIO": "missing_cursor"})
     stale = list(root.glob("pool.csv.stale*"))
     assert failed.returncode != 0, detail(failed)
-    assert not out.exists() and stale, "failed rerun left prior canonical CSV current"
+    assert not out.exists() and not marker.exists() and stale, \
+        "failed rerun left prior canonical CSV/marker current"
+    assert list(root.glob("pool.csv.receipt.error.*.json")), \
+        "failed pool producer did not publish a unique ERROR receipt"
+    assert list(root.glob("pool.csv.receipt.json.stale.*")), \
+        "failed pool producer did not quarantine the prior PASS marker"
 
     for scenario in ("network", "parse", "missing_cursor", "stalled_cursor"):
         target = root / f"pool-{scenario}.csv"
@@ -220,13 +285,13 @@ def test_r9_03_pool_process_and_stale(root, transport):
 
 def scan_command(root, out, receipt, transport):
     work = root / "work"
+    trace = root / "rpc.trace"
     env = {"PYTHONPATH": str(transport),
-           "PATH": str(transport) + os.pathsep + os.environ.get("PATH", ""),
-           "R9_SCAN_RECEIPT": str(receipt)}
+           "R9_SCAN_RECEIPT": str(receipt), "R9_SCAN_TRACE": str(trace)}
     command = [sys.executable, str(SCAN), MINT, "--program", "spl",
-               "--rpc", "http://fixture", "--timeout", "1", "--as-of-slot", "77",
+               "--rpc", "http://fixture", "--timeout", "1",
                "--out", str(out), "--receipt", str(receipt), "--work-dir", str(work)]
-    return command, env
+    return command, env, trace
 
 
 def test_r9_04_scan_process_and_marker(root, transport):
@@ -236,12 +301,14 @@ def test_r9_04_scan_process_and_marker(root, transport):
         case.mkdir()
         out = case / "snapshot.json"
         receipt = case / "snapshot.receipt.json"
-        command, env = scan_command(case, out, receipt, transport)
+        command, env, trace = scan_command(case, out, receipt, transport)
         if scenario == "path_conflict":
             command[command.index("--receipt") + 1] = str(out)
         proc = run(command, case, env={**env, "R9_SCAN_SCENARIO": scenario})
         assert proc.returncode != 0, f"scan scenario={scenario}\n{detail(proc)}"
         assert not receipt.is_file(), f"scan scenario={scenario} left a current marker"
+        if scenario != "path_conflict":
+            assert trace.read_text(encoding="utf-8").splitlines()[0] == "getGenesisHash"
 
     old = root / "old"
     old.mkdir()
@@ -249,23 +316,25 @@ def test_r9_04_scan_process_and_marker(root, transport):
     receipt = old / "snapshot.receipt.json"
     out.write_text('{"old": true}\n', encoding="utf-8")
     receipt.write_text('{"verdict": "PASS", "old": true}\n', encoding="utf-8")
-    command, env = scan_command(old, out, receipt, transport)
+    command, env, trace = scan_command(old, out, receipt, transport)
     proc = run(command, old, env={**env, "R9_SCAN_SCENARIO": "supply_slot"})
     assert proc.returncode != 0, detail(proc)
     assert not out.exists() and not receipt.exists(), \
         "failed scan left prior canonical data/marker current"
     assert list(old.glob("snapshot.json.stale*"))
     assert list(old.glob("snapshot.receipt.json.stale*"))
+    assert trace.read_text(encoding="utf-8").splitlines()[0] == "getGenesisHash"
 
     for scenario in ("network", "parse", "accounting"):
         case = root / scenario
         case.mkdir()
         out = case / "snapshot.json"
         receipt = case / "snapshot.receipt.json"
-        command, env = scan_command(case, out, receipt, transport)
+        command, env, trace = scan_command(case, out, receipt, transport)
         proc = run(command, case, env={**env, "R9_SCAN_SCENARIO": scenario})
         assert proc.returncode != 0 and not receipt.is_file(), \
             f"scan scenario={scenario}\n{detail(proc)}"
+        assert trace.read_text(encoding="utf-8").splitlines()[0] == "getGenesisHash"
 
 
 def main(argv=None):

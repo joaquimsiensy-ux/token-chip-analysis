@@ -19,15 +19,18 @@
         --out data/pool_swaps.csv [--topic <swap_topic0>] [--url https://bsc.hypersync.xyz/query]
   token 优先级：显式 --token-file > HYPERSYNC_TOKEN > ~/.config/hypersync/token；禁止位置参数明文传入。
 （来源：SIREN(BSC) 分析实战产物，2026-07-19）"""
-import requests, json, csv, time, argparse, sys
+import requests, json, csv, time, argparse, sys, hashlib
 import os
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
-from artifact_quarantine import quarantine_current
+from artifact_quarantine import quarantine_current, quarantine_run_id
+from receipt_kernel import (build_envelope, finalize_envelope,
+                            publish_error_receipt, publish_overwrite)
 
 PANCAKE_V3 = "0x19b47279256b2a23a1665c810c8d55a1758940ee09377d4f8d26497a3577dc83"
 DEFAULT_TOKEN_FILE = "~/.config/hypersync/token"
+RECEIPT_SCHEMA = "pool-swaps-collector-receipt/v1"
 
 def _load_token(ap, token_file):
     if token_file is not None:
@@ -66,13 +69,38 @@ def parse_args(argv=None):
 def main():
     a = parse_args()
     headers = {"Authorization": f"Bearer {a.token}", "Content-Type": "application/json"}
-    out_path = Path(os.path.abspath(os.path.expanduser(a.out)))
+    # Canonicalize macOS /var -> /private/var aliases before receipt-kernel
+    # path validation; otherwise a legitimate tempfile parent looks symlinked.
+    out_path = Path(a.out).expanduser().resolve()
+    receipt_path = out_path.with_name(out_path.name + ".receipt.json")
     out_path.parent.mkdir(parents=True, exist_ok=True)
+    run_id = quarantine_run_id()
     try:
-        stale = quarantine_current(out_path)
+        envelope = build_envelope(
+            RECEIPT_SCHEMA,
+            {"chain": "bsc", "token": a.pool.lower(), "as_of_block": a.to_block},
+            Path(__file__).resolve(), "formal")
+    except Exception as exc:
+        print(f"[fatal] pool receipt envelope failed: {exc}", flush=True)
+        return 1
+
+    def fail(code, error):
+        try:
+            error_path = publish_error_receipt(
+                receipt_path, envelope, error, run_id=run_id)
+            print(f"[fetch_pool_swaps] ERROR → {error_path}", flush=True)
+        except Exception as write_exc:
+            print(f"[fetch_pool_swaps] ERROR receipt failed: {write_exc}", flush=True)
+        return code
+
+    try:
+        stale_receipt = quarantine_current(receipt_path, run_id)
+        stale = quarantine_current(out_path, run_id)
     except Exception as exc:
         print(f"[fatal] 旧 canonical 无法退出本次正式位置: {exc}", flush=True)
-        return 1
+        return fail(1, exc)
+    if stale_receipt is not None:
+        print(f"[stale] previous receipt moved to {stale_receipt}", flush=True)
     if stale is not None:
         print(f"[stale] previous canonical moved to {stale}", flush=True)
     tmp_path = out_path.with_name(f".{out_path.name}.tmp.{os.getpid()}")
@@ -100,7 +128,7 @@ def main():
             print("[fatal] giving up", flush=True)
             out_file.close()
             tmp_path.unlink(missing_ok=True)
-            return 2
+            return fail(2, "transport retries exhausted")
         bts = {}
         for batch in j.get("data", []):
             for b in batch.get("blocks", []):
@@ -116,17 +144,26 @@ def main():
                   flush=True)
             out_file.close()
             tmp_path.unlink(missing_ok=True)
-            return 2
+            return fail(2, "provider missing integer next_block")
         if nxt <= cur:
             print(f"[fatal] next_block 停滞，current={cur} next_block={nxt} "
                   f"to_block={a.to_block}", flush=True)
             out_file.close()
             tmp_path.unlink(missing_ok=True)
-            return 2
+            return fail(2, "provider next_block stalled")
         cur = nxt
         time.sleep(0.5)
     out_file.flush(); os.fsync(out_file.fileno()); out_file.close()
     os.replace(tmp_path, out_path)
+    try:
+        data = out_path.read_bytes()
+        receipt = finalize_envelope(
+            envelope, "PASS", 0, row_count=n,
+            output={"path": str(out_path), "size": len(data),
+                    "sha256": hashlib.sha256(data).hexdigest()})
+        publish_overwrite(receipt_path, receipt)
+    except Exception as exc:
+        return fail(1, f"receipt publication failed: {exc}")
     print(f"swaps {n} rows {time.time()-t0:.0f}s", flush=True)
     return 0
 

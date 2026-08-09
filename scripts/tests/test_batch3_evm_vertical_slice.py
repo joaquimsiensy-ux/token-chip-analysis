@@ -12,8 +12,10 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-sys.path[:0] = [str(ROOT / "scripts/report"), str(ROOT / "scripts/tests")]
+sys.path[:0] = [str(ROOT / "scripts/report"), str(ROOT / "scripts/tests"),
+                str(ROOT / "scripts/lib")]
 from formal_ready_test_harness import run_formal_script  # noqa: E402
+from formal_capability_probes import formal_evidence_target  # noqa: E402
 TOKEN = "0x" + "9" * 40
 A = "0x" + "1" * 40
 B = "0x" + "2" * 40
@@ -240,14 +242,17 @@ def _run_registered_chain(chain):
         thread.join()
 
 
+@formal_evidence_target("eth")
 def test_r9_eth_mainnet_vertical_slice():
     _run_registered_chain("eth")
 
 
+@formal_evidence_target("bsc")
 def test_r9_bsc_mainnet_vertical_slice():
     _run_registered_chain("bsc")
 
 
+@formal_evidence_target("base")
 def test_r9_base_mainnet_vertical_slice():
     _run_registered_chain("base")
 

@@ -158,3 +158,12 @@
 端到端正例只允许替换 transport；每条注入必须登记五字段：生产 callsite、协议、fake backend/loopback server、测试 ID、允许理由。为什么：少任一字段，就无法判断 fake 是否偷偷绕过了 producer、runner、receipt builder 或 consumer。
 
 手写 PASS receipt 只可用于单元 schema/validator fixture，不得冒充端到端执行成功；旧 schema fixture 必须显式走 legacy-read-only 或负例路径。为什么：fixture 能证明“校验器如何解释字节”，不能证明生产流程真的运行过。
+
+---
+
+## 八、R9 新增的攻击式收口纪律
+
+- **批内修复循环也必须过攻击式审查。** 修复者自报“已修完”不是闭合证据；每个循环至少重放旧 finding，再从修复边界外一步攻击新代码。R9 的 query-secret 脱敏首修遗漏 path-secret，就是“修复也会造新半修残留”的实例。
+- **Opus 复审工单四预案。** 禁止对大 worktree 做 `du/find` 全盘扫描；第一条命令建最小镜像，脱离大 worktree 后再审；连续 2 次无响应即交付已完成证据与未完项，不无限重发；每次 Write 后立即 `ls` 确认产物真已落盘。
+- **密钥/脱敏边界降档纪律。** 先保证真实密钥不进命令日志、异常、receipt 和台账；安全边界达标后，纯诊断文字美化或启发式优化按质量残留降档，不借安全名义无限扩大施工面。
+- **producer/validator 约束机器同源。** 不靠两份手写条件“看起来一样”；producer 在发布 canonical 产物前，对即将落盘的内存对象直接运行 consumer 同一 validator。这把“声明式校验一致”变成可执行事实，也让 producer 能为“我发出的正式件必能被 consumer 接受”负责。

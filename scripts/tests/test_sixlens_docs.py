@@ -3,6 +3,7 @@
 from pathlib import Path
 import ast
 import os
+import re
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -40,6 +41,25 @@ def main():
         "Solana SQD 批三 docstring hunk 缺跨批 owner 注记")
 
     ledger = (ROOT / "maintenance/repair-20260806/ledger.md").read_text(encoding="utf-8")
+    main_table = ledger.split("## 二、49 项主表", 1)[1].split("## 三、逐项详情", 1)[0]
+    rows = [line for line in main_table.splitlines()
+            if line.startswith("| `")]
+    assert len(rows) == 49, f"49 项主表行数漂移: {len(rows)}"
+    for row in rows:
+        fields = [field.strip() for field in row.strip("|").split("|")]
+        assert len(fields) == 12 and fields[10] and fields[11], \
+            f"主表最终结果/盲审栏留空: {fields[0]}"
+    details = ledger.split("## 三、逐项详情", 1)[1].split(
+        "## 四、supplementary claims", 1)[0]
+    assert len(re.findall(r"^- 最终结果：\S", details, re.MULTILINE)) == 49
+    assert len(re.findall(r"^- 两轮盲审与 Fable 结论：\S", details, re.MULTILINE)) == 49
+    replay = ledger.split("## 六、准备阶段回放计数", 1)[1].split(
+        "## 七、批次裁决记录", 1)[0]
+    assert "| FIXED_ON_BASELINE | 18 |" in replay
+    assert "复核：18/18" in replay
+    supplementary = ledger.split("## 四、supplementary claims", 1)[1].split(
+        "## 五、补充观察", 1)[0]
+    assert "批四" not in supplementary or "R9 批四已复核" in supplementary
     r9_01 = ledger.split("### R9-01", 1)[1].split("### R9-02", 1)[0]
     for statement in ("不含 bundle 防伪", "批四 producer/consumer 通用守卫", "现场生成"):
         assert statement in r9_01, f"R9-01 闭合边界缺失: {statement}"
@@ -58,6 +78,15 @@ def main():
     assert "--min-context-slot" in docs["scripts/lib/supply_truth_gate.py"]
     assert "--bundle" in docs["scripts/solana/scan_token_accounts.py"]
     assert "--min-context-slot" in docs["scripts/solana/scan_token_accounts.py"]
+    method = (ROOT / "references/maintenance-review-repair.md").read_text(
+        encoding="utf-8")
+    for statement in (
+        "批内修复循环也必须过攻击式审查",
+        "连续 2 次无响应即交付",
+        "密钥/脱敏边界降档纪律",
+        "producer/validator 约束机器同源",
+    ):
+        assert statement in method, f"R9 批四方法论缺失: {statement}"
     probes = (ROOT / "scripts/lib/formal_capability_probes.py").read_text(encoding="utf-8")
     harness = (ROOT / "scripts/tests/formal_ready_test_harness.py").read_text(encoding="utf-8")
     assert "batch 3 must add real test targets" not in probes

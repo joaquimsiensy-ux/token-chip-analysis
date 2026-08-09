@@ -98,6 +98,32 @@ def test_solana_evidence_function_has_no_same_named_shadow():
         f"registered evidence function {function} is shadowed by {shadow_path.name}")
 
 
+def test_unrelated_callable_cannot_replace_vertical_evidence():
+    """R9-B4-CAP-01: importable/callable is not executable chain evidence."""
+    import formal_capability_probes
+
+    original = formal_capability_probes.VERTICAL_SLICE_EVIDENCE_TARGETS
+    try:
+        forged = dict(original)
+        forged["r9-eth-mainnet-vertical-slice"] = (
+            "scripts.lib.endpoint_identity:public_endpoint",)
+        formal_capability_probes.VERTICAL_SLICE_EVIDENCE_TARGETS = MappingProxyType(forged)
+        assert "eth" not in chain_registry.formal_ready_chains(), (
+            "unrelated helper was accepted as executable vertical evidence")
+    finally:
+        formal_capability_probes.VERTICAL_SLICE_EVIDENCE_TARGETS = original
+
+
+def test_each_formal_target_executes_registered_wrong_identity_probe():
+    from formal_capability_probes import run_attestation_negative_probe
+
+    for chain in sorted(chain_registry.formal_tier_chains()):
+        evidence = run_attestation_negative_probe(chain)
+        assert evidence["chain"] == chain
+        expected = "getGenesisHash" if chain == "sol" else "eth_chainId"
+        assert evidence["calls"] == (expected,), evidence
+
+
 def main():
     test_exact_six_capabilities_and_natural_not_ready()
     test_deleting_one_evidence_target_drops_only_its_chain()
@@ -105,6 +131,8 @@ def main():
     test_bool_vertical_slice_claim_does_not_satisfy_probe()
     test_unknown_probe_key_is_missing_not_truthy()
     test_solana_evidence_function_has_no_same_named_shadow()
+    test_unrelated_callable_cannot_replace_vertical_evidence()
+    test_each_formal_target_executes_registered_wrong_identity_probe()
     print("PASS R9 B3-G3/G4: six probes ready; deleting one slice drops its chain")
     return 0
 

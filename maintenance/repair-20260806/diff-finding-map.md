@@ -105,6 +105,17 @@
 | `B3F3-G5-cross:scripts/lib/solana_sqd_dataset.py` 的批三 docstring hunk（物理落 `160a852`，批二生产实现语义 owner 仍见 `R9-B2-G3`） | `INV-19`; secondary `INV-11` | `B3R9-07` 跨批注记 | 批三消费接入时对批二 adapter docstring 的修改不再只挂批二 owner | map 双向文本守卫 |  |
 | `B3F3-G6:scripts/lib/{solana_observation.py,supply_truth_gate.py,formal_capability_probes.py}; scripts/solana/{accounting_gate_sol.py,scan_token_accounts.py,window_fetch.py,anchor_sampler.py}; scripts/tests/{test_r9_batch3_solana_observation.py,test_batch3_solana_producers.py,test_sixlens_docs.py,formal_ready_test_harness.py}; maintenance/repair-20260806/b3_progress.md` | `INV-02, INV-05, INV-08, INV-18`; secondary `INV-11` | `B3R9-10`～`B3R9-15` | writable 保守判定；零样本诚实措辞；CLI/doc 同步；删死闸；supply retry；txn 失败保留 partial 且提交后清理不反转 PASS | lookup/lying flag/zero sample；doc needles；txn fail/cleanup fail |  |
 
+## R9 批四：防复发守卫与主账收口
+
+| commit/hunk | primary invariant | finding 列表或配套任务 | 修改目的 | 测试/纵切片/守卫 | 审查结论 |
+|---|---|---|---|---|---|
+| `R9-B4-G1:scripts/tests/{invariant_scan.py,test_batch4_invariant_guards.py}` 的 main-exit AST hunk | `INV-03, INV-17` | R9-03/04 族；G1 | 整数 `main` 在真实入口必须传播给 SystemExit | `R9-B4-MAIN-01` 裸 main 临时样例 |  |
+| `R9-B4-G2:scripts/tests/{invariant_scan.py,test_batch4_invariant_guards.py}` 的 formal E2E 调用图 hunk | `INV-01, INV-17` | `B3R9-08`; G2 | 正式 evidence target 必须现场运行 controlled runner+登记 producer，不认手写自报产物 | `R9-B4-E2E-01` 手写 bundle mutant |  |
+| `R9-B4-G3:scripts/lib/formal_capability_probes.py; scripts/tests/{test_r9_batch2_executable_capabilities.py,test_batch3_evm_vertical_slice.py,test_batch3_solana_vertical_slice.py,invariant_manifest.json}` | `INV-11`; secondary `INV-17` | B3R9-04 5e/5f；G3 | target decorator 将真实 adapter 错身份零业务探针变成每次 evidence 的前置必经路 | unrelated callable mutant；四链 runtime negative probe |  |
+| `R9-B4-G4:scripts/tests/{invariant_scan.py,invariant_manifest.json,test_batch4_invariant_guards.py,test_r9_batch1_boundaries.py}; scripts/lib/anchor_plan.py; scripts/evm/fetch_pool_swaps.py` | `INV-03, INV-04, INV-17` | R9-03/04 stale 族；G4 | 从 accounting/reconciliation registry 派生全部 formal producer，与 standalone stale-sensitive producer 一起逐个登记 canonical/marker/error 角色及保护方式；anchor/pool 失败统一 ERROR side receipt，pool 增 commit marker | `R9-B4-STALE-01/02`；anchor/pool/scan 真子进程 |  |
+| `R9-B4-G5:scripts/lib/{anchor_selection.py,anchor_plan.py,time_spotcheck.py}; scripts/tests/{test_time_spotcheck.py,test_r9_batch1_boundaries.py}` | `INV-06, INV-10, INV-18` | `B1R3-01`；四类 fixture 审计；G5 | producer/consumer 共享覆盖下限；批一旧 Solana curl/fixed-77 fake 升级 genesis+单调 urllib transport fake | 1/1 弱 plan 双端红；20 项 spotcheck；scan-only |  |
+| `R9-B4-G6:references/maintenance-review-repair.md; maintenance/repair-20260806/{ledger.md,invariant-merge.md,diff-finding-map.md,b4_progress.md}; scripts/tests/test_sixlens_docs.py` | `INV-18, INV-19`; secondary `INV-17` | R9-01～05；49 项主账；G6 | 追加 R9 方法论；主表/详情零空栏；18 baseline-fixed 和 8 supplementary 复核；守卫归并/owner | docs 结构门禁；49 行精确计数；未映射 hunk=0 |  |
+
 ## 分组 → commit SHA 对照（Fable 代 commit 后回填）
 
 | 分组 | commit SHA | 说明 |
@@ -164,6 +175,12 @@
 | `B3F3-G4` | `c46ef9f` | 测试守卫判别力恢复 |
 | `B3F3-G5` | `c46ef9f` | 证据 owner、跨批注记与闭合边界 |
 | `B3F3-G6` | `c46ef9f` | P3 writable/措辞/docstring/partial 时序 |
+| `R9-B4-G1` | 待 Fable 回填 | main 退出码 AST 守卫 |
+| `R9-B4-G2` | 待 Fable 回填 | formal E2E producer/consumer 现场生成守卫 |
+| `R9-B4-G3` | 待 Fable 回填 | capability adapter 错身份执行守卫 |
+| `R9-B4-G4` | 待 Fable 回填 | stale canonical/marker/error 登记守卫 |
+| `R9-B4-G5` | 待 Fable 回填 | fixture 审计与 anchor 弱覆盖下限 |
+| `R9-B4-G6` | 待 Fable 回填 | 方法论、49 项主账、归并表与 map 收口 |
 
 ## 未映射 hunk 计数
 
@@ -184,5 +201,6 @@
 - R9 批三（`5771419..160a852`，主体+批内循环 1+裁判证据登记合一 commit）：`0` 候选（全部生产、测试、fixture、SKILL 与 maintenance hunk 已归属 `R9-B3-G1`～`R9-B3-G7`；SHA 已回填 `160a852`；待批内审查独立复算）。
 - R9 批三批内修复循环 1（物理并入 `160a852`）：`0` 候选（CA/endpoint identity、G3-0 transport 旁路、上层持久化负例、污染文件删除与三份台账 hunk 均归属 `B3F2-G1/G2`；SHA 已回填 `160a852`；本表自身回填 commit 按通例自指式计入）。
 - R9 批三批内修复循环 2（`b4e9595..c46ef9f`）：`0` 候选（全部 hunk 已归属 `B3F3-G1`～`B3F3-G6`；四个既有裁判 mainnet JSON 与 SQD docstring 跨批 hunk 由 G5 追补 owner；SHA 已回填 `c46ef9f`；本表自身回填 commit 按通例自指式计入；待 opus 复审独立复算）。
+- R9 批四（`f4c40ea..` 至候选 tip）：`0` 候选（当前全部生产、测试、fixture、方法论与 maintenance hunk 已归属 `R9-B4-G1`～`R9-B4-G6`；同文件多 owner 已按 hunk 拆分说明；SHA 留待 Fable 回填；本表自指式计入 G6）。
 
 通例：区间末端恒取候选 tip；自指式 SHA 回填 commit 计入本区间。map 行文件清单以 Fable 实际 commit 分组为准；一文件含多 owner 的 hunk 时（文件级 commit 无法拆分），物理归属行与语义 owner 行互相注明，Fable 回填 SHA 时校正清单。

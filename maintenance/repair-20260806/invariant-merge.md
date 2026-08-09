@@ -82,3 +82,15 @@
 ## 五、变更提案
 
 **提案数：0。** 当前 20 个种子足以表达 49 项 primary finding；R9 不拆分或合并。`INV-20` 虽暂为 0 个 primary finding，但它是 Robinhood 降级和所有第四类豁免的自动失效/防回流守卫，不能删除。
+
+## 六、R9 批四可执行守卫落点（不改 49 分母）
+
+| 守卫 | 承接不变量 | 机器判据 | 破坏注入 |
+|---|---|---|---|
+| `R9-B4-MAIN-01` | INV-03, INV-17 | AST 扫描全部 `scripts/**/*.py`；有整数返回的 `main` 在 `__main__` 中必须传入 `SystemExit/sys.exit/exit` | 临时脚本裸 `main()` 必红 |
+| `R9-B4-E2E-01` | INV-01, INV-17 | 从四链正式 evidence target 做 AST 调用图闭包，必须可达 controlled runner 与链族登记 producer | 手写 PASS/bundle 冒充 E2E 必红 |
+| `R9-B4-CAP-01` | INV-11 | evidence target 绑定精确 chain decorator，每次执行前调真实 adapter 的错 chain-id/genesis 零业务探针 | 无关 callable/空壳替换 target 必红 |
+| `R9-B4-STALE-01` | INV-03, INV-04, INV-17 | stale-sensitive producer 登记 canonical/marker/error 契约，AST 要求 quarantine+ERROR receipt，真子进程验证失败终态 | 失败留旧 canonical 的临时 producer 必红 |
+| `R9-B4-ANCHOR-01` | INV-06, INV-10 | anchor producer/consumer 调同一 coverage validator，`per_cell>=2` 且 `edge_max>=3` | 自洽重签的 1/1 弱 plan 在双端必红 |
+
+归并结论：这些是 R9 三批暴露缺口对现有 INV-01/03/04/06/10/11/17 的可执行补强，不是新 finding 分母，也不新建不变量。

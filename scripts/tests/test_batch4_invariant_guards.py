@@ -141,6 +141,85 @@ def test_scanner_denominator_injections(scan, root):
     print("INJECT B4-RH-COUNT-01 documented 15/14 vs disk 16/15 -> RED")
 
 
+def test_main_exit_propagation_injection(scan, root):
+    """R9-B4-MAIN-01: an integer-returning main may not be called bare."""
+    sample = root / "scripts/bare_main.py"
+    sample.parent.mkdir(parents=True, exist_ok=True)
+    sample.write_text(
+        "def main():\n    return 1\n\n"
+        "if __name__ == '__main__':\n    main()\n",
+        encoding="utf-8")
+    errors = scan.main_exit_propagation_errors(files=[sample], root=root)
+    assert any("does not propagate" in error for error in errors), errors
+    assert scan.main_exit_propagation_errors() == []
+    print("INJECT R9-B4-MAIN-01 bare integer main() -> RED")
+
+
+def test_handwritten_e2e_provenance_injection(scan, root):
+    """R9-B4-E2E-01: hand-written PASS bytes do not count as a formal slice."""
+    sample = root / "test_handwritten_slice.py"
+    sample.write_text(
+        "import json\nfrom pathlib import Path\n\n"
+        "def test_fake_vertical_slice():\n"
+        "    claimed = (\n"
+        "        'scripts/report/reconciliation_report.py',\n"
+        "        'scripts/solana/scan_token_accounts.py',\n"
+        "        'scripts/solana/anchor_sampler.py',\n"
+        "        'scripts/lib/supply_truth_gate.py',\n"
+        "        'scripts/solana/accounting_gate_sol.py',\n"
+        "        'scripts/solana/window_fetch.py',\n"
+        "    )\n"
+        "    Path('solana_observation_bundle.json').write_text("
+        "json.dumps({'verdict': 'PASS', 'claimed': claimed}))\n\n"
+        "def main():\n"
+        "    test_fake_vertical_slice()\n",
+        encoding="utf-8")
+    errors = scan.formal_e2e_provenance_errors(targets={
+        "sol": (sample, "test_fake_vertical_slice"),
+    })
+    assert any("registered producer" in error or "reconciliation runner" in error
+               for error in errors), errors
+    assert scan.formal_e2e_provenance_errors() == []
+    print("INJECT R9-B4-E2E-01 hand-written observation bundle -> RED")
+
+
+def test_failure_artifact_contract_injection(scan, root):
+    """R9-B4-STALE-01: registered producer cannot leave old current success."""
+    sample = root / "scripts/stale_producer.py"
+    sample.parent.mkdir(parents=True, exist_ok=True)
+    sample.write_text(
+        "from pathlib import Path\n\n"
+        "def main():\n"
+        "    out = Path('canonical.json')\n"
+        "    try:\n"
+        "        raise RuntimeError('injected')\n"
+        "    except RuntimeError:\n"
+        "        return 1\n\n"
+        "if __name__ == '__main__':\n"
+        "    raise SystemExit(main())\n",
+        encoding="utf-8")
+    contracts = ({
+        "script": sample,
+        "entrypoint": "main",
+        "canonical_artifacts": 1,
+    },)
+    errors = scan.failure_artifact_contract_errors(contracts=contracts, root=root)
+    assert any("quarantine" in error for error in errors), errors
+    assert any("error receipt" in error for error in errors), errors
+    assert scan.failure_artifact_contract_errors() == []
+    print("INJECT R9-B4-STALE-01 failed producer leaves old canonical -> RED")
+
+
+def test_failure_artifact_registry_completeness(scan, _root):
+    """R9-B4-STALE-02: every formal/standalone producer has named artifacts."""
+    coverage = copy.deepcopy(scan.FAILURE_ARTIFACT_COVERAGE)
+    coverage.pop("scripts/solana/scan_token_accounts.py")
+    errors = scan.failure_artifact_coverage_errors(coverage=coverage)
+    assert any("scan_token_accounts.py" in error for error in errors), errors
+    assert scan.failure_artifact_coverage_errors() == []
+    print("INJECT R9-B4-STALE-02 remove formal producer artifact registration -> RED")
+
+
 def main():
     scan = load_scan()
     with tempfile.TemporaryDirectory(prefix="batch4-invariant-") as td:
@@ -151,6 +230,10 @@ def main():
             test_formal_entrypoint_source_diagnostic,
             test_vertical_slice_double_binding_injections,
             test_scanner_denominator_injections,
+            test_main_exit_propagation_injection,
+            test_handwritten_e2e_provenance_injection,
+            test_failure_artifact_contract_injection,
+            test_failure_artifact_registry_completeness,
         )
         for index, case in enumerate(cases):
             work = root / str(index)

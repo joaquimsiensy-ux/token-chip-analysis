@@ -55,6 +55,71 @@ VERTICAL_SLICE_TESTS = {
     "base": "test_batch3_evm_vertical_slice.py",
     "sol": "test_batch3_solana_vertical_slice.py",
 }
+FORMAL_E2E_REQUIRED_PRODUCERS = {
+    "eth": frozenset({
+        "scripts/lib/anchor_plan.py", "scripts/evm/accounting_gate.py",
+        "scripts/evm/verify_recon.py", "scripts/lib/supply_truth_gate.py",
+        "scripts/lib/time_spotcheck.py",
+    }),
+    "bsc": frozenset({
+        "scripts/lib/anchor_plan.py", "scripts/evm/accounting_gate.py",
+        "scripts/evm/verify_recon.py", "scripts/lib/supply_truth_gate.py",
+        "scripts/lib/time_spotcheck.py",
+    }),
+    "base": frozenset({
+        "scripts/lib/anchor_plan.py", "scripts/evm/accounting_gate.py",
+        "scripts/evm/verify_recon.py", "scripts/lib/supply_truth_gate.py",
+        "scripts/lib/time_spotcheck.py",
+    }),
+    "sol": frozenset({
+        "scripts/solana/scan_token_accounts.py",
+        "scripts/solana/anchor_sampler.py",
+        "scripts/lib/supply_truth_gate.py",
+        "scripts/solana/accounting_gate_sol.py",
+        "scripts/solana/window_fetch.py",
+    }),
+}
+FAILURE_ARTIFACT_CONTRACTS = (
+    {"script": "scripts/evm/fetch_pool_swaps.py", "entrypoint": "main",
+     "canonical_artifacts": 2},
+    {"script": "scripts/lib/anchor_plan.py", "entrypoint": "main",
+     "canonical_artifacts": 2},
+    {"script": "scripts/solana/scan_token_accounts.py", "entrypoint": "main",
+     "canonical_artifacts": 2},
+)
+FAILURE_ARTIFACT_COVERAGE = {
+    "scripts/evm/accounting_gate.py": {
+        "canonical": "accounting status receipt", "marker": "verdict+exit_code",
+        "error": "same-path FAIL status receipt", "protections": ("fresh_status_receipt",)},
+    "scripts/solana/accounting_gate_sol.py": {
+        "canonical": "accounting status receipt", "marker": "verdict+exit_code",
+        "error": "same-path FAIL status receipt", "protections": ("fresh_status_receipt",)},
+    "scripts/evm/verify_recon.py": {
+        "canonical": "reconciliation check receipt", "marker": "runner wrapper",
+        "error": "unique ERROR side receipt", "protections": ("runner_fresh_receipt",)},
+    "scripts/lib/supply_truth_gate.py": {
+        "canonical": "supply-truth check receipt", "marker": "runner wrapper",
+        "error": "unique ERROR side receipt", "protections": ("runner_fresh_receipt",)},
+    "scripts/lib/time_spotcheck.py": {
+        "canonical": "time check receipt", "marker": "runner wrapper",
+        "error": "unique ERROR side receipt", "protections": ("runner_fresh_receipt",)},
+    "scripts/solana/anchor_sampler.py": {
+        "canonical": "anchor data", "marker": "anchor check receipt",
+        "error": "unique ERROR side receipt", "protections": ("runner_fresh_receipt",)},
+    "scripts/solana/scan_token_accounts.py": {
+        "canonical": "holder snapshot", "marker": "observation bundle",
+        "error": "unique ERROR side receipt",
+        "protections": ("runner_fresh_receipt", "self_quarantine")},
+    "scripts/lib/anchor_plan.py": {
+        "canonical": "anchor plan", "marker": "anchor-plan receipt",
+        "error": "unique ERROR side receipt", "protections": ("self_quarantine",)},
+    "scripts/evm/fetch_pool_swaps.py": {
+        "canonical": "pool swap CSV", "marker": "pool collector receipt",
+        "error": "unique ERROR side receipt", "protections": ("self_quarantine",)},
+    "scripts/solana/window_fetch.py": {
+        "canonical": "window data", "marker": "window receipt",
+        "error": "unique ERROR side receipt", "protections": ("manual_stale_move",)},
+}
 CAPABILITY_ENTRYPOINTS = {
     "controlled_runner": "scripts/report/reconciliation_report.py",
     "reconciliation_consumer": "scripts/report/shared_release_receipt.py",
@@ -250,6 +315,74 @@ def bare_rpc_pool_errors(*, files=None, root=ROOT):
     return errors
 
 
+def _direct_value_returns(function):
+    """Return value-bearing Return nodes, excluding nested functions/lambdas."""
+    found = []
+
+    class Visitor(ast.NodeVisitor):
+        def visit_FunctionDef(self, node):
+            if node is function:
+                self.generic_visit(node)
+
+        visit_AsyncFunctionDef = visit_FunctionDef
+
+        def visit_Lambda(self, _node):
+            return
+
+        def visit_Return(self, node):
+            if node.value is not None:
+                found.append(node)
+
+    Visitor().visit(function)
+    return found
+
+
+def _is_main_guard(node):
+    if not isinstance(node, ast.If) or not isinstance(node.test, ast.Compare):
+        return False
+    values = [node.test.left, *node.test.comparators]
+    has_name = any(isinstance(value, ast.Name) and value.id == "__name__"
+                   for value in values)
+    has_main = any(isinstance(value, ast.Constant) and value.value == "__main__"
+                   for value in values)
+    return has_name and has_main
+
+
+def _exit_propagates(call, parents):
+    parent = parents.get(call)
+    return (isinstance(parent, ast.Call)
+            and _call_name(parent.func) in {"exit", "sys.exit", "SystemExit"}
+            and call in parent.args)
+
+
+def main_exit_propagation_errors(*, files=None, root=ROOT):
+    """Find value-returning main functions whose __main__ call drops the value."""
+    paths = files if files is not None else sorted((ROOT / "scripts").rglob("*.py"))
+    errors = []
+    for path in paths:
+        path = Path(path)
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        main = next((node for node in tree.body
+                     if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+                     and node.name == "main"), None)
+        if main is None or not _direct_value_returns(main):
+            continue
+        try:
+            rel = path.relative_to(root).as_posix()
+        except ValueError:
+            rel = path.as_posix()
+        for guard in (node for node in tree.body if _is_main_guard(node)):
+            parents = {child: parent for parent in ast.walk(guard)
+                       for child in ast.iter_child_nodes(parent)}
+            for call in (node for node in ast.walk(guard) if isinstance(node, ast.Call)
+                         and _call_name(node.func) == "main"):
+                if not _exit_propagates(call, parents):
+                    errors.append(
+                        f"integer/value-returning main does not propagate process exit: "
+                        f"{rel}:{call.lineno}")
+    return errors
+
+
 def _surface_values(path: Path, locator: str):
     tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
     if locator.startswith("assign:"):
@@ -339,6 +472,199 @@ def vertical_slice_errors(*, mapping=None, suite_path=None):
             errors.append(f"vertical slice test file missing for {chain}: {test_name}")
         if test_name not in mounted:
             errors.append(f"vertical slice test for {chain} not mounted in run_all.SUITE: {test_name}")
+    return errors
+
+
+def _local_function_closure(tree, start):
+    functions = {node.name: node for node in tree.body
+                 if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))}
+    if start not in functions:
+        return set(), functions
+    seen = set()
+    pending = [start]
+    while pending:
+        name = pending.pop()
+        if name in seen or name not in functions:
+            continue
+        seen.add(name)
+        for node in ast.walk(functions[name]):
+            if not isinstance(node, ast.Call):
+                continue
+            called = _call_name(node.func).rsplit(".", 1)[-1]
+            if called in functions and called not in seen:
+                pending.append(called)
+    return seen, functions
+
+
+def _reachable_execution_evidence(function_names, functions):
+    """Return scripts in actual run calls plus producer fields in reachable specs.
+
+    Bare string constants do not count: that was the original hand-written E2E
+    bypass.  Producer fields count only when a real controlled runner command is
+    present, because that runner validates and executes every spec producer.
+    """
+    executed = set()
+    producers = set()
+    for name in function_names:
+        function = functions[name]
+        for node in ast.walk(function):
+            if isinstance(node, ast.Call):
+                called = _call_name(node.func).rsplit(".", 1)[-1]
+                if called in {"run", "run_formal_script"}:
+                    for item in ast.walk(node):
+                        if (isinstance(item, ast.Constant)
+                                and isinstance(item.value, str)
+                                and item.value.startswith("scripts/")
+                                and item.value.endswith(".py")):
+                            executed.add(item.value)
+            if isinstance(node, ast.Dict):
+                for key, value in zip(node.keys, node.values):
+                    if isinstance(key, ast.Constant) and key.value == "producer" \
+                            and isinstance(value, ast.Constant) \
+                            and isinstance(value.value, str):
+                        producers.add(value.value)
+    return executed, producers
+
+
+def _default_formal_e2e_targets():
+    path = ROOT / "scripts/lib/formal_capability_probes.py"
+    spec = importlib.util.spec_from_file_location("invariant_formal_probes", path)
+    module = importlib.util.module_from_spec(spec)
+    original_path = list(sys.path)
+    try:
+        sys.path[:0] = [str(path.parent), str(ROOT)]
+        spec.loader.exec_module(module)
+    finally:
+        sys.path[:] = original_path
+    key_to_chain = {
+        "r9-eth-mainnet-vertical-slice": "eth",
+        "r9-bsc-mainnet-vertical-slice": "bsc",
+        "r9-base-mainnet-vertical-slice": "base",
+        "r9-solana-pythia-mainnet-vertical-slice": "sol",
+    }
+    targets = {}
+    for key, chain in key_to_chain.items():
+        registered = module.VERTICAL_SLICE_EVIDENCE_TARGETS.get(key, ())
+        if len(registered) != 1 or registered[0].count(":") != 1:
+            targets[chain] = (None, None)
+            continue
+        module_name, function = registered[0].split(":", 1)
+        targets[chain] = (ROOT / (module_name.replace(".", "/") + ".py"), function)
+    return targets
+
+
+def formal_e2e_provenance_errors(*, targets=None):
+    """Require formal E2E targets to reach the runner and real producer specs."""
+    targets = dict(targets or _default_formal_e2e_targets())
+    errors = []
+    for chain, (path, function) in sorted(targets.items()):
+        if path is None or not Path(path).is_file() or not isinstance(function, str):
+            errors.append(f"formal E2E target missing for {chain}")
+            continue
+        path = Path(path)
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        reachable, functions = _local_function_closure(tree, function)
+        if not reachable:
+            errors.append(f"formal E2E target function missing for {chain}: {function}")
+            continue
+        main_reachable, _ = _local_function_closure(tree, "main")
+        if function not in main_reachable:
+            errors.append(f"formal E2E target is not executed by module main for {chain}: {function}")
+        executed, producers = _reachable_execution_evidence(reachable, functions)
+        runner = "scripts/report/reconciliation_report.py"
+        if runner not in executed:
+            errors.append(f"formal E2E target lacks real reconciliation runner for {chain}")
+        # Spec producer declarations become execution evidence only behind the
+        # real runner command, whose production contract rejects pre-existing
+        # receipts and launches every registered producer itself.
+        observed = executed | (producers if runner in executed else set())
+        missing = FORMAL_E2E_REQUIRED_PRODUCERS.get(chain, frozenset()) - observed
+        if missing:
+            errors.append(
+                f"formal E2E target lacks registered producer execution for {chain}: "
+                f"{sorted(missing)}")
+    return errors
+
+
+def failure_artifact_contract_errors(*, contracts=None, root=ROOT):
+    """Require stale-sensitive formal producers to quarantine and emit ERROR."""
+    contracts = tuple(contracts or FAILURE_ARTIFACT_CONTRACTS)
+    errors = []
+    for contract in contracts:
+        raw_script = contract.get("script")
+        path = Path(raw_script)
+        if not path.is_absolute():
+            path = Path(root) / path
+        entrypoint = contract.get("entrypoint")
+        expected = contract.get("canonical_artifacts")
+        label = path.as_posix()
+        if not path.is_file() or not isinstance(entrypoint, str):
+            errors.append(f"failure artifact contract missing producer: {label}")
+            continue
+        if isinstance(expected, bool) or not isinstance(expected, int) or expected < 1:
+            errors.append(f"failure artifact contract has invalid canonical count: {label}")
+            continue
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        function = next((node for node in tree.body
+                         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+                         and node.name == entrypoint), None)
+        if function is None:
+            errors.append(f"failure artifact entrypoint missing: {label}:{entrypoint}")
+            continue
+        calls = [_call_name(node.func) for node in ast.walk(function)
+                 if isinstance(node, ast.Call)]
+        quarantine_count = sum(name.endswith("quarantine_current") for name in calls)
+        if quarantine_count < expected:
+            errors.append(
+                f"failure artifact quarantine incomplete: {label} "
+                f"expected={expected} got={quarantine_count}")
+        if not any(name.endswith("publish_error_receipt") for name in calls):
+            errors.append(f"failure artifact error receipt missing: {label}")
+    return errors
+
+
+def failure_artifact_coverage_errors(*, coverage=None, shared_path=None):
+    """Keep every formal producer and standalone stale-sensitive producer registered."""
+    coverage = dict(coverage or FAILURE_ARTIFACT_COVERAGE)
+    shared_path = Path(shared_path or ROOT / "scripts/report/shared_release_receipt.py")
+    shared = _literal_assignments(
+        shared_path, {"ACCOUNTING_PRODUCERS", "RECON_PRODUCERS"})
+    if set(shared) != {"ACCOUNTING_PRODUCERS", "RECON_PRODUCERS"}:
+        return ["failure artifact coverage cannot derive formal producer registries"]
+    accounting = set(shared["ACCOUNTING_PRODUCERS"].values())
+    reconciliation = {
+        script for family in shared["RECON_PRODUCERS"].values()
+        for producers in family.values() for script in producers
+    }
+    standalone = {
+        "scripts/lib/anchor_plan.py", "scripts/evm/fetch_pool_swaps.py",
+        "scripts/solana/window_fetch.py",
+    }
+    expected = accounting | reconciliation | standalone
+    errors = []
+    for missing in sorted(expected - set(coverage)):
+        errors.append(f"formal producer failure artifacts unregistered: {missing}")
+    for extra in sorted(set(coverage) - expected):
+        errors.append(f"failure artifact registry has non-producer entry: {extra}")
+    required_fields = {"canonical", "marker", "error", "protections"}
+    for script, contract in sorted(coverage.items()):
+        if not isinstance(contract, dict) or set(contract) != required_fields:
+            errors.append(f"failure artifact roles invalid: {script}")
+            continue
+        if any(not isinstance(contract[field], str) or not contract[field].strip()
+               for field in ("canonical", "marker", "error")):
+            errors.append(f"failure artifact role name missing: {script}")
+        protections = contract["protections"]
+        if not isinstance(protections, tuple) or not protections:
+            errors.append(f"failure artifact protections missing: {script}")
+            continue
+        if script in accounting and "fresh_status_receipt" not in protections:
+            errors.append(f"accounting failure status protection missing: {script}")
+        if script in reconciliation and "runner_fresh_receipt" not in protections:
+            errors.append(f"runner fresh-receipt protection missing: {script}")
+        if script in standalone and not ({"self_quarantine", "manual_stale_move"}
+                                         & set(protections)):
+            errors.append(f"standalone stale protection missing: {script}")
     return errors
 
 
@@ -614,8 +940,12 @@ def validate_manifest(manifest, actual):
         if not re.fullmatch(r"\d+\.\d+\.\d+", str(item.get("expiry_version", ""))):
             errors.append(f"exceptions: invalid expiry_version for {item.get('id')}")
     errors += bare_rpc_pool_errors()
+    errors += main_exit_propagation_errors()
     errors += label_chain_surface_errors()
     errors += vertical_slice_errors()
+    errors += formal_e2e_provenance_errors()
+    errors += failure_artifact_contract_errors()
+    errors += failure_artifact_coverage_errors()
     errors += robinhood_inventory_errors()
     return errors
 
