@@ -363,3 +363,20 @@ opus 复审两发均因子代理自跑 `du` 卡死巨型 worktree 的 Bash 队�
 - **window partial 新面**：改回 publish_txn 成功后删 partial、unlink 失败不反转 PASS（读码 B3R9-15 已坐实），publish 失败时 partial 仍在可重采、无新丢数面。
 
 **结论**：边界外一步的结构性问题读码坐实**无循环2新引入洞**。剩「4 mutant 先红后绿」（B3R9-03/05/06/10，验证负例测试真能抓缺陷）属攻击式，坚持交 opus（第三发，禁 du+最小镜像）。此 4 条已有三重旁证（Fable 读码确认负例存在+逻辑对+挂 SUITE 单跑 PASS、codex 先红后绿自述、opus 首轮确认原缺陷），mutant 为第四重独立确认；最终两轮全库盲审另覆盖。
+
+## 批三收口裁决（Fable 总验收，2026-08-08）
+
+**裁决：批三 PASS 收口，循环 2 复审 ALL-CLEAR，15/15 finding 全部 CLOSED，无新引入、无半修残留。** 进批四。
+
+**15 finding 闭合来源三分**：
+- opus 攻击验证 4（复审第一发 a9a869c0）：B3R9-01（脱敏 path 型 key 被挡·降档口径）、B3R9-02A（降级 sample_size 截断）、B3R9-02B（GPA<parsed FATAL）、B3R9-09（min-context-slot 返回值复核 FATAL）。
+- opus mutant 先红后绿 4（复审第三发 ab977229）：B3R9-03（发布层 6 负例 6/6 转红）、B3R9-05（harness H1+H2 转红）、B3R9-06（r7 断言写 0 转红）、B3R9-10（writable W1+W2 转红）。共 11 放松点全先红后绿、无自嗨负例。
+- Fable 读码/台账坐实 7 + 边界外完备性：B3R9-04（影子函数改名+防回流）、B3R9-07（25 文件全在 owner 清单）、B3R9-08（ledger 登记闭合边界不含防伪）、B3R9-11（coverage 零样本单列分支）、B3R9-12（过时注释删）、B3R9-13（**补核**：supply_slot<snapshot 改 RetryableObservationError，getTokenSupply 不支持 minContextSlot）、B3R9-14（死闸删+穷尽注释）、B3R9-15（改回 publish 后删 partial）；边界外 B3R9-02 根治完备性（producer/consumer 同一 validate 函数、无差别分支、自校验对象=落盘对象、无反向 fail-open）。
+
+**复审工艺记录（有工程价值）**：opus 复审前两发均因**子代理自跑 `du` 卡死巨型 worktree 的 Bash 队列**中止（第二发查清根因，非通道玄学）；第三发工单禁 du+第一条命令建最小镜像脱离 worktree 后一次成功。子代理两次「以为 Write 落盘其实没有」的状态幻觉（rereview2/rereview3 均未真落盘，Fable 据 result 兜底重建入库）；子代理第三发自查纠正一处脑补 mutant anchor（被其 driver `assert mut!=orig` no-op 断言拦下、重读修正）——反幻觉纪律起效。**新维护纪律**：opus 复审工单必含「禁 du/find 全盘、第一条命令建最小镜像脱离大 worktree、连续 2 次工具无响应立即交付、Write 后 ls 确认落盘」四条预案。
+
+**止损**：批三共 2 个批内修复循环（循环1 B3FIX SSL/脱敏 + 循环2 B3F3 十五 finding），循环 2 复审 ALL-CLEAR，**未触发连续三循环冻结线**；campaign 计数批三收口归零，批四从 0 计。
+
+**R9-01/R9-05 状态**：批三代码侧闭合 + 裁判 mainnet 实证（diff=0），ledger 详情节两轮盲审栏已填批三收口结论；**最终两轮全库盲审复验后彻底销账**（PLAN 要求）。
+
+**批三候选 tip**：本收口 commit。批四清单（PLAN）：AST/入口守卫、producer/consumer 通用守卫（承接 B3R9-08 手搓 bundle 防伪）、capability 执行守卫、失败产物守卫、存量 fixture 审计、maintenance-review-repair.md 更新、49 项主账收口、B1R3-01 处理。

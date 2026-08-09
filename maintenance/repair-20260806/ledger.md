@@ -537,7 +537,7 @@
 - 主覆盖类别：②正式链纵切片覆盖；批三已以 GPA `context.slot` 为唯一 canonical snapshot，CLI slot 降为断言，accounting/supply truth 消费同一 bundle。
 - 基线回放：**REPRODUCED**。RPC `context.slot=999`，CLI `--as-of-slot 77`，当前 receipt 仍以 77 PASS。
 - 最终结果：批三 observation bundle 已闭合“CLI 声明当观测”这一 P0 病根：RPC 观测值是唯一真值，绑定 mainnet genesis 常量、前后 raw 一致、GPA snapshot 与三方 supply 闭合，并由 13 项字段约束及三消费者复核。闭合边界**不含 bundle 防伪**：producer path/sha 与内部自洽字段不是不可伪造的产出凭证；测试中的关键输入必须由登记生产者现场生成，这一必经性依赖批四 producer/consumer 通用守卫。裁判 mainnet 证据已入档并由 B3F3-G5 补 owner，但不把内容绑定误写为执行来源证明。
-- 两轮盲审与 Fable 结论：
+- 两轮盲审与 Fable 结论：批三批内两循环收口——循环 2 复审 ALL-CLEAR（15/15 finding CLOSED：opus 攻击 4 + mutant 4、Fable 读码/台账 7，见 reviews/r9-batch3-rereview3-mutants.md 与 rereview-partial.md）。R9-01 观测协议批三代码侧闭合、裁判 mainnet 实证 diff=0，最终两轮全库盲审复验后彻底销账。
 
 ### R9-02
 
@@ -572,8 +572,8 @@
 - primary/secondary：INV-11；INV-02、INV-08。
 - 主覆盖类别：②正式链纵切片覆盖；批三已接入 Solana observation/accounting 与 SQD state-anchor callsite，并注册 eth/bsc/base/sol 四个可执行 target。
 - 基线回放：**REPRODUCED**。Solana formal-ready 正例无任何 cluster identity 请求仍通过。
-- 最终结果：callsite 与 target 注册代码侧闭合；`formal_ready_chains()=={"eth","bsc","base","sol"}` 由证据自然导出。批内循环 1 消化 B3FIX-01/02：共享 urllib transport 复用 certifi CA context（缺包回退系统 CA），已污染 G3-0A 报告删除待裁判重跑；循环 2 消化 path 型 key 半修残留，异常/正式身份/cache meta 统一只保留脱敏 public origin 与不可逆 endpoint digest。当前沙箱两份真实 loopback 编排均在首个 `socket.bind` 被系统 `EPERM` 阻断，须在允许 loopback 的裁判环境复跑后最终销账。
-- 两轮盲审与 Fable 结论：
+- 最终结果：callsite 与 target 注册代码侧闭合；`formal_ready_chains()=={"eth","bsc","base","sol"}` 由证据自然导出。批内循环 1 消化 B3FIX-01/02：共享 urllib transport 复用 certifi CA context（缺包回退系统 CA），已污染 G3-0A 报告删除待裁判重跑；循环 2 消化 path 型 key 半修残留，异常/正式身份/cache meta 统一只保留脱敏 public origin 与不可逆 endpoint digest。当前 codex 沙箱两份真实 loopback 编排在首个 `socket.bind` 被系统 `EPERM` 阻断，**裁判环境全量 suite exit=0 已复跑通过**、PYTHIA mainnet smoke 全链 PASS（diff=0）。
+- 两轮盲审与 Fable 结论：批三批内两循环收口——循环 2 复审 ALL-CLEAR（15/15 CLOSED）。callsite/target 注册与四链 ready 批三代码侧闭合，最终两轮全库盲审复验后彻底销账。
 
 ## 四、supplementary claims（不计 49 分母）
 
