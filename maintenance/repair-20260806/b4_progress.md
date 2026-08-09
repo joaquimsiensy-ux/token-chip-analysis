@@ -117,3 +117,11 @@
 - 其他门禁：`formal_ready_chains()=={'eth','bsc','base','sol'}`；`invariant_scan.py` PASS（52/55/62/42/58，exceptions=0）；`docs_lint.py --all` PASS；`env_check.py` PASS；`test_sixlens_docs.py` PASS；`SKILL.md=7737B<=8192B`；`VERSION=6.36.0` 未改；`git diff --check` 零输出。
 - diff→finding map 已登记 `B4F-G1`～`B4F-G5`，SHA 留空待 Fable 回填；本循环当前未映射 hunk=`0`。未执行 git 写操作，未出网。
 - 结论：`B4F2_COMPLETE`。
+
+## 批内复审循环 1 裁决（Fable，opus 复审 ae2facf7）
+
+- **裁决：BLOCK。** opus 4.8 只读复审员在最小镜像实跑，判 F-B4-01 **STILL-OPEN（P2）**；其余 4 条（F-B4-02/03/04/05）独立 mutant + 反向不误伤双验，**真闭合**。报告入库 `reviews/r9-batch4-rereview.md`。
+- **Fable 读码坐实（非攻击式，纯读码）**：`invariant_scan.py:_is_execution_primitive`(531-539) 对执行原语纯限定名白名单匹配；`_resolved_call_name`(523-528) **只在 `head in imports` 时才走 import 解析，否则直接返回原名**。故裸写未 import 的 `subprocess.run('scripts/..')`（M6）/`os.execv`（M7）/`run_formal_script`（M8）字面、或真 import 后函数内 `subprocess=None` 本地遮蔽（M10），`formal_e2e_provenance_errors()` 照样返回 `[]` 放行。上文 G1「绿」段与「批内修复循环 1 总结」自称「收紧为 import 身份机器判据」「5 finding 全部消化」**属 overclaim**——循环 1 只堵了自己枚举的两种语法（本地 no-op wrapper、`if False` 死代码），M6/M10 这类更平凡的同类变体未堵。
+- **根因定性**：与 B1R-01/B3R9-02 同族——声明式/字符串匹配冒充可执行事实。判据锚点是"名字长得像原语"，不是"名字真绑定到 import 的执行模块"。
+- **误伤边界已 Fable 读码确认**：四链现役 target（`test_batch3_evm/solana_vertical_slice.py`）模块顶层真 `import subprocess/os` + `from formal_ready_test_harness import run_formal_script`，`run(command,cwd)` wrapper 参数不重绑原语名。故"要求 import 真绑定 + 无本地遮蔽"的修法对四链零误伤（它们真跑子进程→必然真 import，静态判据对齐运行时事实）。
+- **处置**：按 R9 铁律（半修残留/同 INV 再穿不分严重度必消化）→ 开**批内修复循环 2**，唯一 finding=F-B4-01 回炉。止损：批四消化循环 **2/3**（未触冻结线）。修复方向已在循环 2 工单定死（import 真绑定硬门 + 本地遮蔽检测 + 诚实文档边界），不再让施工方自行枚举语法。
