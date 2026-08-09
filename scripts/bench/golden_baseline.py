@@ -70,6 +70,8 @@ def snapshot(data_dir, tag=""):
 # replay_stats 的对表契约键（两引擎必须逐字段相等）；此外的键视为引擎自有扩展
 # （如 DuckDB 引擎的 reject 记账 n_source_rows 等），只展示不判等。
 STATS_CONTRACT = ["events", "mint_total_wei", "burn_total_wei", "sum_balances_wei",
+                  "zero_event_inflow_wei", "dead_event_inflow_wei",
+                  "dead_event_outflow_wei", "dead_sink_net_wei",
                   "supply_check_ok", "neg_balance_addrs", "unique_addrs", "gate_pass"]
 
 

@@ -19,9 +19,7 @@ from chain_registry import formal_evm_chains
 from net import RpcChainMismatch, attested_rpc_pool
 from receipt_kernel import (build_envelope, finalize_envelope, publish_error_receipt,
                             publish_overwrite)
-
-ZERO = "0x0000000000000000000000000000000000000000"
-DEAD = "0x000000000000000000000000000000000000dead"
+from supply_semantics import DEAD, ZERO
 SCHEMA = "evm-reconciliation-receipt/v2"
 
 
@@ -85,7 +83,9 @@ def main(argv=None):
         burn = int(str(stats.get("burn_total_wei", stats.get("burn_total_raw", 0))))
         balance_sum = sum(balances.values())
         negatives = sorted(k for k, v in balances.items() if v < 0)
-        supply_closed = mint == nominal and balance_sum == mint - burn and not negatives
+        # Replay credits sink recipients while separately recording burn_total.
+        # Therefore terminal balances close to mint; burn remains an observation.
+        supply_closed = mint == nominal and balance_sum == mint and not negatives
 
         rpc = a.rpc or str((cfg.get("alchemy") or {}).get("url", "")) + str(
             (cfg.get("alchemy") or {}).get("key", ""))

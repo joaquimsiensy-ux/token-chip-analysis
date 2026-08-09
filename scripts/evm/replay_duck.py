@@ -34,13 +34,13 @@ uint256 策略（防浮点退化——UHUGEINT 的 SUM 会静默退化 DOUBLE，
       [--mem-limit 8GB] [--threads 6]
 """
 import argparse, csv, glob, json, os, sys, time
+from pathlib import Path
 
 import duckdb
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
 from channels_preflight import preflight_channels, replay_provenance
-
-Z = '0x0000000000000000000000000000000000000000'
-DEAD = '0x000000000000000000000000000000000000dead'
+from supply_semantics import DEAD, ZERO as Z
 
 
 def _v2_select(c, dir_):
@@ -196,11 +196,20 @@ def replay_pass1(con, out_dir, vt):
         f"SELECT COALESCE(SUM(CAST(v AS {vt})), 0) FROM events WHERE frm = '{Z}'").fetchone()[0]
     burn_total = con.execute(
         f"SELECT COALESCE(SUM(CAST(v AS {vt})), 0) FROM events WHERE t2 IN ('{Z}','{DEAD}')").fetchone()[0]
+    zero_event_inflow, dead_event_inflow, dead_event_outflow = con.execute(f"""
+        SELECT COALESCE(SUM(CAST(v AS {vt})) FILTER (WHERE t2 = '{Z}'), 0),
+               COALESCE(SUM(CAST(v AS {vt})) FILTER (WHERE t2 = '{DEAD}'), 0),
+               COALESCE(SUM(CAST(v AS {vt})) FILTER (WHERE frm = '{DEAD}'), 0)
+        FROM events""").fetchone()
     su = con.execute("SELECT COALESCE(SUM(s), 0) FROM bal").fetchone()[0]
     neg = con.execute("SELECT COUNT(*) FROM bal WHERE s < 0").fetchone()[0]
     uniq = con.execute("SELECT COUNT(*) FROM bal").fetchone()[0]
     n_events = con.execute("SELECT COUNT(*) FROM events").fetchone()[0]
     mint_total, burn_total, su = int(mint_total), int(burn_total), int(su)
+    zero_event_inflow = int(zero_event_inflow)
+    dead_event_inflow = int(dead_event_inflow)
+    dead_event_outflow = int(dead_event_outflow)
+    dead_sink_net = dead_event_inflow - dead_event_outflow
 
     # 峰值：块末口径 cumsum 窗口；VARINT 窗口不可用时回退 Python 流式（输入已聚合）
     peak_min = mint_total // 1000
@@ -297,6 +306,10 @@ def replay_pass1(con, out_dir, vt):
 
     stats = {"events": n_events, "mint_total_wei": str(mint_total),
              "burn_total_wei": str(burn_total), "sum_balances_wei": str(su),
+             "zero_event_inflow_wei": str(zero_event_inflow),
+             "dead_event_inflow_wei": str(dead_event_inflow),
+             "dead_event_outflow_wei": str(dead_event_outflow),
+             "dead_sink_net_wei": str(dead_sink_net),
              "supply_check_ok": su == mint_total, "neg_balance_addrs": neg,
              "unique_addrs": uniq, "gate_pass": su == mint_total and neg == 0}
 

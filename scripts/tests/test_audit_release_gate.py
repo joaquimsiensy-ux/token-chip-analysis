@@ -88,9 +88,11 @@ def build_case(root, historical=True):
                         "mismatched": 0, "rpc_errors": 0},
                     "gmgn_comparison": {"checked": 1, "diff_count": 0}}}
         elif key == "supply_truth":
-            receipt_doc = {"schema": "supply-truth-receipt/v2", "target": target,
+            receipt_doc = {"schema": "supply-truth-receipt/v3", "target": target,
                 "gate": "supply_truth", "replay_net": "100",
                 "onchain_total_supply": "100", "diff": "0",
+                "decision_rule": "primary_form1", "burn_form": None,
+                "primary_verdict": "PASS", "sink_reconciliation": None,
                 "verdict": "PASS", "exit_code": 0}
         else:
             receipt_doc = {"schema": "time-spotcheck/v2", "target": target,

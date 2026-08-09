@@ -83,3 +83,12 @@
 - **证据要求（证据不足时的结论上限）**：未完成键集合与图例计数核对时不得交付阵营图或引用其缺失曲线作阴性结论。
 - **正确规则指针**：report-template 交付前 checklist 第 15 条；standard_charts.py `CAMP_ORDER`
 - **案源**：出处：GMX 2026-07-26。曾传入 8 个阵营但只画出 2 个标准名，构建仍返回 0，最终靠目检发现。
+
+## S-11 dead 沉没被误判为合约级 burn 【单案候选】
+
+- **触发现象**：Transfer 重放把转入 `0x…dead` 计入 `burn_total`，但链上 `totalSupply()` 从未下降；旧供给真值闸用 `mint−burn` 对 `totalSupply()`，因此出现大幅假 FAIL。
+- **失败原因（禁止推断）**：所有 sink 流入都会让 `totalSupply` 实减。事件流只能看到收方是 ZERO/dead，不能单独区分合约级 burn 与 dead 地址沉没；且 replay 对 sink 收方余额照加，`sum_balances==mint−burn` 会把同一笔再次扣除。
+- **必做区分检验**：机械闸 `supply_truth_gate.py` 仅在主规则 FAIL、EVM 拆分统计齐全时启用形态②回退：冻结块 `mint==totalSupply`，ZERO 事件流入逐 wei 等于 `balanceOf(ZERO)`，dead 净流入逐 wei 等于 `balanceOf(dead)`，两 sink 合计等于 `burn_total`；`verify_recon` 同时按 `sum_balances==mint_total` 闭合。混合形态、旧 stats、逐地址差 1 wei 或地址间补偿均 FAIL。
+- **证据要求（证据不足时的结论上限）**：任一 sink 拆分或冻结块链上余额缺失时，不得把主 FAIL 改判为沉没形态；只报告供给口径未闭合并阻断重放余额发布。
+- **正确规则指针**：`scripts/lib/supply_truth_gate.py` 的 `decide_sink_fallback` 与 `references/data-pipeline-evm-recon.md`「两种销毁形态」；权威定义见 `playbook-supply-recon.md` §1。
+- **案源**：出处：APU 2026-08-09；dead 沉没余额使旧主规则出现 1968.2bps 偏差，冻结块 `totalSupply` 与 mint 逐 wei 相等。

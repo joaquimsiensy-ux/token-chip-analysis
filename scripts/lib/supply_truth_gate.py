@@ -4,8 +4,8 @@
 背景（GNT 实测，2026-07-28）：老合约 migrate() 直接改账本、不发任何 Transfer/Burn
 事件，全量重放余额虚高 10 倍，而 mint/burn 闭合、负余额、accounting_gate 全部检测项
 均 PASS（模型错但自洽）。唯一暴露手段：重放净供给 mint_total − burn_total 对比链上
-实查 totalSupply()。本闸在正式分析重放收尾必跑，
-成本一次 RPC 调用。
+实查 totalSupply()。本闸在正式分析重放收尾必跑；主规则成本一次 RPC 调用，
+形态②候选另加一次三值批量调用。
 
 判定（fail-closed）:
   |replay_net − onchain| <= onchain × tolerance_bps/10000  → PASS
@@ -22,18 +22,19 @@
   --rpc URL          不给时用链默认免 key 端点（DEFAULT_RPC，与 accounting_gate 同表）
   --proxy URL        只作用于 RPC（Alchemy 国内走 clash 时传 http://127.0.0.1:7897）
   --tolerance-bps N  容差，默认 10（0.1%）
-  --as-of-block N    v2 receipt target 的冻结块/slot；正式发布必填
+  --as-of-block N    v3 receipt target 的冻结块/slot；正式发布必填
   --out PATH         结果 JSON 落盘（默认 supply_truth.json，写工作目录）
 
 replay-stats 字段识别（依次尝试，值可为 int 或十进制字符串）:
   mint_total_wei/burn_total_wei → mint_total_raw/burn_total_raw → mint_total/burn_total
 
 退出码: 0 = PASS
-        2 = FAIL（超容差＝存在静默改账/记账错位——硬停，处置见上）
+        2 = FAIL（终态供给或 sink 逐地址归因不闭合——硬停，处置见上）
         1 = 检测自身失败（网络/字段缺失）——修通道重跑，禁当 PASS
 （来源：GNT replay-silent-burn-trap 2026-07-28；v6.0.0 唯一批准代码例外）"""
 import argparse
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -43,8 +44,12 @@ from chain_registry import formal_reconciliation_chains
 from net import attested_rpc_pool
 from solana_observation import (assert_declared_slot,
                                 validate_observation_bundle)
+from supply_semantics import DEAD, ZERO
 
 SEL_TOTSUP = "0x18160ddd"  # totalSupply()
+SEL_BALANCE = "0x70a08231"  # balanceOf(address)
+SINK_STATS_FIELDS = ("zero_event_inflow_wei", "dead_event_inflow_wei",
+                     "dead_event_outflow_wei", "dead_sink_net_wei")
 
 DEFAULT_RPC = {
     "bsc": "https://bsc-dataseed.bnbchain.org",
@@ -78,23 +83,76 @@ def decide(replay_net: int, onchain: int, tolerance_bps: int = 10):
     return ("PASS" if diff_bps <= tolerance_bps else "FAIL"), diff, diff_bps
 
 
+def decide_sink_fallback(mint_total, burn_total, onchain,
+                         zero_event_inflow, dead_sink_net,
+                         onchain_zero_balance, onchain_dead_balance):
+    """主判定 FAIL 后的形态②判定。
+
+    全部 wei 级零容差，任何 None 分量均不适用并返回 FAIL 语义。全部成立才 PASS：
+    C1 mint_total == onchain；C2a zero_event_inflow == onchain_zero_balance；
+    C2b dead_sink_net == onchain_dead_balance；
+    C3 zero_event_inflow + dead_sink_net == burn_total。
+    返回 (verdict, burn_form)：("PASS", "dead_sink") 或 ("FAIL", None)。
+    """
+    values = (mint_total, burn_total, onchain, zero_event_inflow,
+              dead_sink_net, onchain_zero_balance, onchain_dead_balance)
+    if any(value is None for value in values):
+        return "FAIL", None
+    try:
+        mint_total, burn_total, onchain, zero_event_inflow, dead_sink_net, \
+            onchain_zero_balance, onchain_dead_balance = map(int, values)
+    except (TypeError, ValueError):
+        return "FAIL", None
+    closed = (
+        mint_total == onchain
+        and zero_event_inflow == onchain_zero_balance
+        and dead_sink_net == onchain_dead_balance
+        and zero_event_inflow + dead_sink_net == burn_total
+    )
+    return ("PASS", "dead_sink") if closed else ("FAIL", None)
+
+
+def _parse_eth_call_value(response, label):
+    if not isinstance(response, dict) or not response.get("ok"):
+        error = response.get("error") if isinstance(response, dict) else response
+        raise ValueError(f"eth_call {label} RPC 失败: {error}")
+    raw = response.get("result")
+    if not isinstance(raw, str) or not re.fullmatch(r"0x[0-9a-fA-F]+", raw):
+        raise ValueError(f"eth_call {label} 返回非法值: {raw!r}")
+    return int(raw, 16)
+
+
+def _balance_of_data(address):
+    return SEL_BALANCE + "0" * 24 + address.removeprefix("0x").lower()
+
+
+def fetch_sink_reconciliation(pool, token, as_of_block):
+    """在同一冻结块批量取得终态标量与两个 sink 的逐地址余额。"""
+    tag = hex(int(as_of_block))
+    calls = [
+        ("eth_call", [{"to": token, "data": SEL_TOTSUP}, tag]),
+        ("eth_call", [{"to": token, "data": _balance_of_data(ZERO)}, tag]),
+        ("eth_call", [{"to": token, "data": _balance_of_data(DEAD)}, tag]),
+    ]
+    responses = pool.call_many(calls)
+    if not isinstance(responses, list) or len(responses) != len(calls):
+        raise ValueError("sink reconciliation RPC 返回数量不完整")
+    return tuple(_parse_eth_call_value(response, label) for response, label in zip(
+        responses, ("totalSupply", "balanceOf(ZERO)", "balanceOf(DEAD)")))
+
+
 def fetch_onchain_supply(chain, token=None, mint=None, rpc=None, proxy=None,
-                         as_of_block=None):
+                         as_of_block=None, pool=None):
     """返回 (最小单位总供给, Solana observed context slot|None)。"""
     url = rpc or DEFAULT_RPC[chain]
     if chain == "solana":
         raise ValueError(
             "Solana formal supply is consumed from --observation-bundle; direct RPC is forbidden")
     tag = hex(int(as_of_block)) if as_of_block is not None else "latest"
-    pool = attested_rpc_pool(url, chain, formal=True, proxy=proxy,
-                             rps=2, concurrency=1)
+    pool = pool or attested_rpc_pool(url, chain, formal=True, proxy=proxy,
+                                    rps=2, concurrency=1)
     response = pool.call("eth_call", [{"to": token, "data": SEL_TOTSUP}, tag])
-    if not response.get("ok"):
-        raise ValueError(f"eth_call totalSupply RPC 失败: {response.get('error')}")
-    hexval = response.get("result")
-    if not hexval or hexval == "0x":
-        raise ValueError(f"eth_call totalSupply 返回空（{hexval!r}）——地址/链是否正确？")
-    return int(hexval, 16), None
+    return _parse_eth_call_value(response, "totalSupply"), None
 
 
 def main(argv=None):
@@ -125,6 +183,8 @@ def main(argv=None):
     bundle_path = None
     observed_context_slot = None
     envelope = None
+    replay_stats = None
+    evm_pool = None
     if a.min_context_slot < 0:
         ap.error("--min-context-slot must be non-negative")
     if a.chain == "solana" and not a.mint:
@@ -147,7 +207,7 @@ def main(argv=None):
         if bundle_path is not None:
             envelope_inputs["observation_bundle"] = bundle_path
         envelope = build_envelope(
-            "supply-truth-receipt/v2", target, __file__, mode,
+            "supply-truth-receipt/v3", target, __file__, mode,
             inputs=envelope_inputs or None)
         if a.chain == "solana":
             assert_declared_slot(a.as_of_block, observed_snapshot_slot, "--as-of-block")
@@ -174,7 +234,8 @@ def main(argv=None):
             replay_net, mint_t, burn_t = a.replay_net_raw, None, None
         elif a.replay_stats:
             with open(a.replay_stats) as f:
-                mint_t, burn_t = parse_replay_stats(json.load(f))
+                replay_stats = json.load(f)
+            mint_t, burn_t = parse_replay_stats(replay_stats)
             replay_net = mint_t - burn_t
         else:
             raise ValueError("必须给 --replay-stats 或 --replay-net-raw")
@@ -186,8 +247,11 @@ def main(argv=None):
             onchain = int(bundle["supply"]["amount"])
             observed_context_slot = int(bundle["supply"]["slot"])
         else:
+            evm_pool = attested_rpc_pool(
+                a.rpc or DEFAULT_RPC[a.chain], a.chain, formal=True, proxy=a.proxy,
+                rps=2, concurrency=1)
             observed = fetch_onchain_supply(a.chain, a.token, a.mint, a.rpc, a.proxy,
-                                            a.as_of_block)
+                                            a.as_of_block, pool=evm_pool)
             if isinstance(observed, tuple):
                 onchain, observed_context_slot = observed
             else:  # 兼容 EVM 注入 mock。
@@ -201,7 +265,48 @@ def main(argv=None):
             print(f"[supply_truth] ERROR receipt 写入失败: {write_exc}", file=sys.stderr)
         return 1
 
-    verdict, diff, diff_bps = decide(replay_net, onchain, a.tolerance_bps)
+    primary_verdict, diff, diff_bps = decide(replay_net, onchain, a.tolerance_bps)
+    verdict = primary_verdict
+    decision_rule = "primary_form1"
+    burn_form = None
+    sink_reconciliation = None
+    fallback_ready = (
+        primary_verdict == "FAIL"
+        and a.chain != "solana"
+        and isinstance(replay_stats, dict)
+        and all(field in replay_stats for field in SINK_STATS_FIELDS)
+    )
+    if fallback_ready:
+        try:
+            batched_supply, onchain_zero, onchain_dead = fetch_sink_reconciliation(
+                evm_pool, a.token, a.as_of_block)
+            if batched_supply != onchain:
+                raise ValueError(
+                    "同一冻结块的 totalSupply 单查与 sink 批量观测不一致")
+            split_values = {
+                field: int(str(replay_stats[field])) for field in SINK_STATS_FIELDS
+            }
+            zero_event_inflow = split_values["zero_event_inflow_wei"]
+            dead_sink_net = split_values["dead_sink_net_wei"]
+            decision_rule = "sink_fallback_form2"
+            verdict, burn_form = decide_sink_fallback(
+                mint_t, burn_t, batched_supply, zero_event_inflow, dead_sink_net,
+                onchain_zero, onchain_dead)
+            sink_reconciliation = {
+                "zero": {"replay_raw": str(zero_event_inflow),
+                         "onchain_raw": str(onchain_zero)},
+                "dead": {"replay_raw": str(dead_sink_net),
+                         "onchain_raw": str(onchain_dead)},
+            }
+        except Exception as exc:
+            print(f"检测自身失败（exit 1，修通道重跑）: {exc}", file=sys.stderr)
+            try:
+                error_path = publish_error_receipt(a.out, envelope, exc)
+                print(f"[supply_truth] ERROR → {error_path}", file=sys.stderr)
+            except Exception as write_exc:
+                print(f"[supply_truth] ERROR receipt 写入失败: {write_exc}", file=sys.stderr)
+            return 1
+
     result = finalize_envelope(envelope, verdict, 0 if verdict == "PASS" else 2,
         gate="supply_truth", chain=a.chain,
         token=a.token or a.mint,
@@ -210,6 +315,10 @@ def main(argv=None):
         onchain_total_supply=str(onchain), diff=str(diff),
         diff_bps=round(diff_bps, 4) if diff_bps is not None else None,
         tolerance_bps=a.tolerance_bps,
+        decision_rule=decision_rule,
+        burn_form=burn_form,
+        primary_verdict=primary_verdict,
+        sink_reconciliation=sink_reconciliation,
         observed_context_slot=observed_context_slot if a.chain == "solana" else None,
         observation_bundle=(
             {"path": str(bundle_path), "size": bundle_path.stat().st_size,
@@ -229,7 +338,7 @@ def main(argv=None):
     ratio = f"{diff_bps:.1f}bps" if diff_bps is not None else "n/a"
     print(f"[supply_truth] {verdict}  重放净供给={replay_net}  链上={onchain}  差={diff}（{ratio}，容差 {a.tolerance_bps}bps）→ {a.out}")
     if verdict == "FAIL":
-        print("[supply_truth] FAIL：存在静默改账/记账错位。余额改走链上实时直查，重放余额仅作超集筛选。", file=sys.stderr)
+        print("[supply_truth] FAIL：终态供给或 sink 逐地址归因不闭合。余额改走链上实时直查，重放余额仅作超集筛选。", file=sys.stderr)
     return result["exit_code"]
 
 

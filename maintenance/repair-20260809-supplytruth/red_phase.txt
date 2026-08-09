@@ -1,0 +1,130 @@
+RED PHASE — before A1-A5 implementation
+
+Command:
+PYTHONDONTWRITEBYTECODE=1 python3 scripts/tests/test_supply_truth_gate.py
+Exit: 1
+
+[supply_truth] FAIL：存在静默改账/记账错位。余额改走链上实时直查，重放余额仅作超集筛选。
+[supply_truth] FAIL：存在静默改账/记账错位。余额改走链上实时直查，重放余额仅作超集筛选。
+[supply_truth] FAIL：存在静默改账/记账错位。余额改走链上实时直查，重放余额仅作超集筛选。
+[supply_truth] FAIL：存在静默改账/记账错位。余额改走链上实时直查，重放余额仅作超集筛选。
+ok    primary exact-equal PASS
+ok    primary GNT silent-migration FAIL
+ok    primary tolerance 9bps PASS
+ok    primary tolerance 11bps FAIL
+ok    primary negative-diff FAIL
+ok    primary both-zero PASS
+ok    primary replay>0/onchain=0 FAIL
+ok    parse wei fields
+ok    parse raw fields
+ok    parse plain fields
+ok    parse missing fields raises
+FAIL  APU fallback pure PASS
+FAIL  GNT fallback C1 FAIL
+FAIL  mixed burn forms FAIL
+FAIL  dead sink differs by 1 wei FAIL
+FAIL  cross-address compensation FAIL
+FAIL  None component fail-closed
+[supply_truth] FAIL  重放净供给=337889146346088792653960057820  链上=420690000000000000000000000000  差=-82800853653911207346039942180（1968.2bps，容差 10bps）→ /private/tmp/supply-truth-test-44nd_z21/supply_truth.json
+FAIL  APU main PASS
+FAIL  APU receipt v3
+FAIL  APU receipt fallback semantics
+FAIL  APU sink reconciliation exact strings
+FAIL  fallback uses one call_many of three at frozen block
+[supply_truth] FAIL  重放净供给=337889146346088792653960057820  链上=420690000000000000000000000000  差=-82800853653911207346039942180（1968.2bps，容差 10bps）→ /private/tmp/supply-truth-test-4s7lpyca/supply_truth.json
+FAIL  legacy stats remain FAIL
+[supply_truth] PASS  重放净供给=1000  链上=1000  差=0（0.0bps，容差 10bps）→ /private/tmp/supply-truth-test-c5vgmkmn/supply_truth.json
+FAIL  primary form1 receipt unchanged values
+[supply_truth] FAIL  重放净供给=337889146346088792653960057820  链上=420690000000000000000000000000  差=-82800853653911207346039942180（1968.2bps，容差 10bps）→ /private/tmp/supply-truth-test-_2wsomch/supply_truth.json
+FAIL  partial fallback RPC failure is ERROR
+[supply_truth] FAIL  重放净供给=337889146346088792653960057820  链上=100  差=337889146346088792653960057720（33788914634608878389067253809152.0bps，容差 10bps）→ /private/tmp/supply-truth-sol-ycxqwlkq/supply_truth.json
+FAIL  Solana fallback disabled
+FAIL  legacy v2 fixture explicitly rejected
+========================================================
+16 项失败: ['APU fallback pure PASS', 'GNT fallback C1 FAIL', 'mixed burn forms FAIL', 'dead sink differs by 1 wei FAIL', 'cross-address compensation FAIL', 'None component fail-closed', 'APU main PASS', 'APU receipt v3', 'APU receipt fallback semantics', 'APU sink reconciliation exact strings', 'fallback uses one call_many of three at frozen block', 'legacy stats remain FAIL', 'primary form1 receipt unchanged values', 'partial fallback RPC failure is ERROR', 'Solana fallback disabled', 'legacy v2 fixture explicitly rejected']
+
+Command (offline 127.0.0.1 fixture):
+PYTHONDONTWRITEBYTECODE=1 python3 scripts/tests/test_batch3_evm_vertical_slice.py
+Exit: 1
+
+Traceback (most recent call last):
+  File "/Users/uravvv/.claude/skills/tca-supplytruth-fix/scripts/tests/test_batch3_evm_vertical_slice.py", line 325, in <module>
+    raise SystemExit(main())
+                     ~~~~^^
+  File "/Users/uravvv/.claude/skills/tca-supplytruth-fix/scripts/tests/test_batch3_evm_vertical_slice.py", line 319, in main
+    test_nonzero_dead_vertical_slice()
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "/Users/uravvv/.claude/skills/tca-supplytruth-fix/scripts/tests/test_batch3_evm_vertical_slice.py", line 285, in test_nonzero_dead_vertical_slice
+    execute_real_slice(case, "eth", endpoint, 100, dead_balance=20)
+    ~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/uravvv/.claude/skills/tca-supplytruth-fix/scripts/tests/test_batch3_evm_vertical_slice.py", line 190, in execute_real_slice
+    run([sys.executable, str(ROOT / "scripts/report/reconciliation_report.py"), str(job)], case)
+    ~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/uravvv/.claude/skills/tca-supplytruth-fix/scripts/tests/test_batch3_evm_vertical_slice.py", line 119, in run
+    raise AssertionError(f"{command}\n{proc.stdout}\n{proc.stderr}\n{detail}")
+AssertionError: ['/usr/local/bin/python3', '/Users/uravvv/.claude/skills/tca-supplytruth-fix/scripts/report/reconciliation_report.py', '/private/tmp/b3-eth-dead-aal61cx0/reconciliation_job.json']
+
+
+{
+  "schema": "reconciliation-report/v2",
+  "target": {
+    "chain": "eth",
+    "token": "0x9999999999999999999999999999999999999999",
+    "as_of_block": 123
+  },
+  "producer": {
+    "path": "scripts/report/reconciliation_report.py",
+    "sha256": "c8b0b429252624c20ec0cf123a652c89fb9c013c6f06a8155427ce89af5894d9"
+  },
+  "verdict": "FAIL",
+  "exit_code": 2,
+  "checks": {
+    "balance": {
+      "status": "FAIL",
+      "exit_code": 2,
+      "process_exit_code": 2,
+      "producer": {
+        "path": "scripts/evm/verify_recon.py",
+        "sha256": "39d048b49cf4fd14731c4722854f688af19d3c4ae5a3a163be0a69f6b340d7cb"
+      }
+    }
+  },
+  "inputs": {
+    "config_evm.json": {
+      "path": "config_evm.json",
+      "size": 99,
+      "sha256": "81e0e4a63107fd6477f7d65028ba310bd70ac3c04a23516849fb8a4af83439e4"
+    },
+    "balances_evm.json": {
+      "path": "balances_evm.json",
+      "size": 104,
+      "sha256": "f18ce3727135aa1f201db81a100b4f60a9abe37c329c893ec6d9affa19e8fef7"
+    },
+    "stats_evm.json": {
+      "path": "stats_evm.json",
+      "size": 186,
+      "sha256": "0d61846358e4c6c25083d1be8603e0979030bc656800b22f142db3580e0e6773"
+    },
+    "gmgn_evm.csv": {
+      "path": "gmgn_evm.csv",
+      "size": 12,
+      "sha256": "41fc5a2682205c1818470e3b56f5eca89ef27614da6e99e6f2fbf8634305a213"
+    },
+    "transfers_evm.csv": {
+      "path": "transfers_evm.csv",
+      "size": 145,
+      "sha256": "759d20a05f4509f1aeaa21ec420a789944ff741cbcd6e651bb4988acc212cc87"
+    },
+    "anchor_plan.json": {
+      "path": "anchor_plan.json",
+      "size": 3003,
+      "sha256": "b848395f60212e816dd5b756a969741e9c68a3c7b040f387"
+    },
+    "anchor_plan.receipt.json": {
+      "path": "anchor_plan.receipt.json",
+      "size": 1083,
+      "sha256": "cb9d3bcc4df24b73862aeb6687fa9a612265882e358a11a9647f10b2b43a1340"
+    }
+  },
+  "error": "check balance producer exited 2"
+}

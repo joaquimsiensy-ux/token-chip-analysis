@@ -125,9 +125,11 @@ def make_case(d, chain="bsc", token="0x0", as_of_block=999):
                            "balance_reconciliation": {"checked": 1, "matched": 1,
                                                        "mismatched": 0, "rpc_errors": 0}}}
         elif key == "supply_truth":
-            receipt = {"schema": "supply-truth-receipt/v2", "target": target,
+            receipt = {"schema": "supply-truth-receipt/v3", "target": target,
                        "gate": "supply_truth", "replay_net": "100",
-                       "onchain_total_supply": "100", "diff": "0"}
+                       "onchain_total_supply": "100", "diff": "0",
+                       "decision_rule": "primary_form1", "burn_form": None,
+                       "primary_verdict": "PASS", "sink_reconciliation": None}
         else:
             receipt = {"schema": "time-spotcheck/v2", "target": target,
                        "points": 1, "exact_match": 1, "mismatch": 0, "rpc_err": 0}

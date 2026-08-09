@@ -19,12 +19,15 @@ from formal_capability_probes import formal_evidence_target  # noqa: E402
 TOKEN = "0x" + "9" * 40
 A = "0x" + "1" * 40
 B = "0x" + "2" * 40
+ZERO = "0x" + "0" * 40
+DEAD = "0x000000000000000000000000000000000000dead"
 CHAIN_IDS = {"eth": 1, "bsc": 56, "base": 8453}
 
 
 class FixtureHandler(BaseHTTPRequestHandler):
     chain_id = 1
     supply = 100
+    dead_balance = 0
     methods = []
 
     def log_message(self, *_args):
@@ -39,7 +42,8 @@ class FixtureHandler(BaseHTTPRequestHandler):
         if self.path.endswith("/query"):
             log = {"block_number": 122, "log_index": 0, "transaction_hash": "0xabc",
                    "topic1": "0x" + "0" * 24 + A[2:],
-                   "topic2": "0x" + "0" * 24 + B[2:], "data": hex(self.supply)}
+                   "topic2": "0x" + "0" * 24 + B[2:],
+                   "data": hex(self.supply - self.dead_balance)}
             value = {"data": [{"logs": [log]}], "next_block": body["to_block"]}
         else:
             method = body.get("method")
@@ -65,6 +69,12 @@ class FixtureHandler(BaseHTTPRequestHandler):
                         amount = 0
                     elif address.lower() == A and block != hex(121):
                         amount = 0
+                    elif address.lower() == ZERO:
+                        amount = 0
+                    elif address.lower() == DEAD:
+                        amount = type(self).dead_balance
+                    elif address.lower() == B:
+                        amount = type(self).supply - type(self).dead_balance
                     else:
                         amount = type(self).supply
                 result = hex(amount)
@@ -76,7 +86,7 @@ class FixtureHandler(BaseHTTPRequestHandler):
                         "0x" + "0" * 64,
                         "0x" + "0" * 24 + B[2:],
                     ],
-                    "data": hex(type(self).supply),
+                    "data": hex(type(self).supply - type(self).dead_balance),
                 }]}
             elif method == "eth_simulateV1":
                 sent = int(params[0]["blockStateCalls"][0]["calls"][0]["data"][-64:], 16)
@@ -110,16 +120,24 @@ def run(command, cwd, *, expect=0):
     return proc
 
 
-def prepare_inputs(case, chain, total):
+def prepare_inputs(case, chain, total, dead_balance=0):
     (case / "config_evm.json").write_text(json.dumps(
         {"token": TOKEN, "decimals": 0, "total_supply_human": str(total)}))
-    (case / "balances_evm.json").write_text(json.dumps({B: str(total)}))
+    balances = {B: str(total - dead_balance)}
+    if dead_balance:
+        balances[DEAD] = str(dead_balance)
+    (case / "balances_evm.json").write_text(json.dumps(balances))
     (case / "stats_evm.json").write_text(json.dumps(
-        {"max_block": 123, "mint_total_raw": str(total), "burn_total_raw": "0"}))
+        {"max_block": 123, "mint_total_raw": str(total),
+         "burn_total_raw": str(dead_balance),
+         "zero_event_inflow_wei": "0",
+         "dead_event_inflow_wei": str(dead_balance),
+         "dead_event_outflow_wei": "0",
+         "dead_sink_net_wei": str(dead_balance)}))
     (case / "gmgn_evm.csv").write_text("address,pct\n")
     (case / "transfers_evm.csv").write_text(
         "block,ts,tx,from,to,value\n"
-        f"123,2025-01-01T00:00:00Z,0xt1,0x{'0' * 40},{B},{total}\n")
+        f"123,2025-01-01T00:00:00Z,0xt1,0x{'0' * 40},{B},{total - dead_balance}\n")
     run([sys.executable, str(ROOT / "scripts/lib/anchor_plan.py"),
          "--input", "transfers_evm.csv", "--chain", chain, "--token", TOKEN,
          "--total-supply", str(total), "--decimals", "0", "--min-pct", "0",
@@ -158,10 +176,11 @@ def spec(case, chain, endpoint):
                          "receipt": "time_spotcheck.json"}}}
 
 
-def execute_real_slice(case, chain, endpoint, total):
+def execute_real_slice(case, chain, endpoint, total, dead_balance=0):
     FixtureHandler.chain_id = CHAIN_IDS[chain]
     FixtureHandler.supply = total
-    prepare_inputs(case, chain, total)
+    FixtureHandler.dead_balance = dead_balance
+    prepare_inputs(case, chain, total, dead_balance)
     run([sys.executable, str(ROOT / "scripts/evm/accounting_gate.py"),
          "--chain", chain, "--token", TOKEN, "--rpc", endpoint,
          "--hypersync", endpoint, "--sourcify", endpoint, "--samples", "1",
@@ -189,10 +208,10 @@ def full_chain(chain, endpoint):
     from test_handoff_manifest import make_case
     from test_audit_release_gate import build_case
 
-    with tempfile.TemporaryDirectory(prefix=f"b3-{chain}-wrong-") as td:
+    with tempfile.TemporaryDirectory(prefix=f"b3-{chain}-wrong-", dir="/private/tmp") as td:
         wrong_chain_zero_business(Path(td), chain, endpoint)
 
-    with tempfile.TemporaryDirectory(prefix=f"b3-{chain}-handoff-") as td:
+    with tempfile.TemporaryDirectory(prefix=f"b3-{chain}-handoff-", dir="/private/tmp") as td:
         case = Path(td)
         make_case(str(case), chain=chain, token=TOKEN, as_of_block=123)
         total = sum(json.loads((case / "data/holders_owners.json").read_text()).values())
@@ -213,7 +232,7 @@ def full_chain(chain, endpoint):
         run([sys.executable, str(ROOT / "scripts/report/handoff_manifest.py"), "verify",
              "--case-dir", str(case)], case)
 
-    with tempfile.TemporaryDirectory(prefix=f"b3-{chain}-release-") as td:
+    with tempfile.TemporaryDirectory(prefix=f"b3-{chain}-release-", dir="/private/tmp") as td:
         case = Path(td)
         report = build_case(case, historical=False)
         for path in [*(case / f"{key}_receipt.json"
@@ -242,6 +261,42 @@ def _run_registered_chain(chain):
         thread.join()
 
 
+def test_nonzero_dead_vertical_slice():
+    """burn>0: verify sum==mint, supply-truth v3 fallback, shared validator all PASS."""
+    from test_audit_release_gate import build_case
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), FixtureHandler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        endpoint = f"http://127.0.0.1:{server.server_port}"
+        with tempfile.TemporaryDirectory(prefix="b3-eth-dead-", dir="/private/tmp") as td:
+            case = Path(td)
+            build_case(case, historical=False)
+            for path in [*(case / f"{key}_receipt.json"
+                           for key in ("balance", "supply", "supply_truth", "time")),
+                         case / "reconciliation_report.json", case / "accounting_mode.json",
+                         case / "shared_release_receipt.json"]:
+                path.unlink(missing_ok=True)
+            adversarial = json.loads((case / "adversarial_review.json").read_text())
+            adversarial["target"] = {"chain": "eth", "token": TOKEN,
+                                     "as_of_block": 123}
+            (case / "adversarial_review.json").write_text(json.dumps(adversarial))
+            execute_real_slice(case, "eth", endpoint, 100, dead_balance=20)
+
+            supply = json.loads((case / "supply_receipt.json").read_text())
+            truth = json.loads((case / "supply_truth.json").read_text())
+            assert supply["observations"]["supply_closure"]["closed"] is True
+            assert truth["schema"] == "supply-truth-receipt/v3"
+            assert truth["decision_rule"] == "sink_fallback_form2"
+            assert truth["burn_form"] == "dead_sink"
+            run([sys.executable, str(ROOT / "scripts/report/shared_release_receipt.py"),
+                 str(case)], case)
+    finally:
+        server.shutdown()
+        thread.join()
+
+
 @formal_evidence_target("eth")
 def test_r9_eth_mainnet_vertical_slice():
     _run_registered_chain("eth")
@@ -261,7 +316,8 @@ def main():
     test_r9_eth_mainnet_vertical_slice()
     test_r9_bsc_mainnet_vertical_slice()
     test_r9_base_mainnet_vertical_slice()
-    print("PASS B3-EVM-E2E: eth/bsc/base real slices; wrong chain has zero business RPC")
+    test_nonzero_dead_vertical_slice()
+    print("PASS B3-EVM-E2E: eth/bsc/base slices + nonzero dead vertical closure")
     return 0
 
 

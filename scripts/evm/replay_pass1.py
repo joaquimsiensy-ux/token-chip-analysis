@@ -15,13 +15,13 @@ channels.json 必须用 evm-channels/v2：顶层声明 token/expected_from/expec
 输出（--out-dir 下）：merged.csv、balances_final.json、peaks.json（峰值≥总铸量 0.1%，含 peak_blk/first_blk/last_blk）、
   mint_ledger.json（from=0x0 按接收地址记，x402/批量代执行 mint 必须按接收方不按 tx.from）、replay_stats.json
 """
-import csv, json, argparse
+import csv, json, argparse, sys
 from collections import defaultdict
+from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
 from channels_preflight import preflight_channels, replay_provenance
-
-Z = '0x0000000000000000000000000000000000000000'
-DEAD = '0x000000000000000000000000000000000000dead'
+from supply_semantics import DEAD, REPLAY_BALANCE_SINKS, ZERO as Z
 
 
 def main():
@@ -90,6 +90,7 @@ def main():
     peak = defaultdict(int)  # 每地址历史峰值（块末口径）
     peak_blk = {}
     mint_total = burn_total = 0
+    zero_event_inflow = dead_event_inflow = dead_event_outflow = 0
     mint_by_to = defaultdict(int)
     first_seen, last_active = {}, {}
     prev_blk, touched = None, set()
@@ -111,8 +112,14 @@ def main():
             else:
                 bal[frm] -= val
                 touched.add(frm)
-            if to in (Z, DEAD):
+            if to in REPLAY_BALANCE_SINKS:
                 burn_total += val
+            if to == Z:
+                zero_event_inflow += val
+            if to == DEAD:
+                dead_event_inflow += val
+            if frm == DEAD:
+                dead_event_outflow += val
             bal[to] += val
             touched.add(to)
             for ad in (frm, to):
@@ -129,7 +136,12 @@ def main():
     su = sum(bal.values())
     neg = [(ad, v) for ad, v in bal.items() if v < 0]
     peak_min = mint_total // 1000  # 峰值 ≥ 总铸量 0.1% 才存
+    dead_sink_net = dead_event_inflow - dead_event_outflow
     stats = {"events": len(rows), "mint_total_wei": str(mint_total), "burn_total_wei": str(burn_total),
+             "zero_event_inflow_wei": str(zero_event_inflow),
+             "dead_event_inflow_wei": str(dead_event_inflow),
+             "dead_event_outflow_wei": str(dead_event_outflow),
+             "dead_sink_net_wei": str(dead_sink_net),
              "sum_balances_wei": str(su), "supply_check_ok": su == mint_total,
              "neg_balance_addrs": len(neg), "unique_addrs": len(bal),
              "gate_pass": su == mint_total and len(neg) == 0,

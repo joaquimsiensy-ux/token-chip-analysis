@@ -91,7 +91,7 @@
     },
     {
       "schemas": [
-        "supply-truth-receipt/v2"
+        "supply-truth-receipt/v3"
       ],
       "script": "scripts/lib/supply_truth_gate.py"
     },
@@ -389,7 +389,7 @@
         "shared-release-receipt/v1",
         "solana-anchor-sampler-receipt/v2",
         "solana-observation-bundle/v1",
-        "supply-truth-receipt/v2",
+        "supply-truth-receipt/v3",
         "time-spotcheck/v2"
       ],
       "script": "scripts/report/shared_release_receipt.py"

@@ -10,6 +10,7 @@
 
 ## 版本索引（活跃窗口，新在上；每版一行，详情见下方对应条目）
 
+- **6.38.0** 2026-08-09 供给真值闸补齐 dead 沉没形态：sink 统计单源与逐地址闭合、receipt v3、verify_recon 余额恒等式修正、APU/GNT 对照与非零 dead 纵向回归
 - **6.37.0** 2026-08-09 R9 收敛修复工程收口：五 finding 四批闭环（Solana 观测协议+mainnet 实证/anchor 语义重放/双采集器进程边界 fail-closed/attestation 可执行化+四链纵切片）；F-B4-01 静态元守卫经用户裁决降级诚实记账；两轮盲审=台账重放 43/49 一致（full-F-03 豁免手续补全）+六视角六条存量 finding 立 R10 候选
 - **6.36.0** 2026-08-06 结构收敛工程阶段 3+4 收口：receipt kernel+独立 validator、EVM/Solana 五件垂直切片迁移、net.py Result+curl 后端；R7 十五项 15/15 全绿、四零机器复算达成（kernel 采用 5/35 逐版推进）
 - **6.35.0** 2026-08-06 结构收敛工程阶段 1+2：invariant manifest 实施面分母+R7 十五项先红测试防装死隔离；受控 runner 编排执行四查+聚合器只认 runner 绑定；链能力注册表单源（同名异义 KNOWN_CHAINS 消灭），R7-01/05/07 转绿
@@ -31,6 +32,13 @@
 - **6.20.1** 2026-08-05 修 5 处阻断级文档漂移（A4 前禁写报告冲突/easy 残留/惯犯回灌 docstring/批量预采集残留/旧 Par 路线历史降级）＋docs_lint 增中文禁词与 Python module docstring 扫描
 
 更早版本（6.20.0 及以前）详见 `archive/CHANGELOG-archive.md`。
+
+## [6.38.0] - 2026-08-09 — 供给真值闸 dead 沉没形态适配与闭合口径修正
+
+- **sink 语义与重放统计单源**：新增 `supply_semantics.py`，统一 ZERO/dead 与“burn 另记、sink 余额照加”语义；`replay_duck`、`replay_pass1`、`replay_stream` 全部保留旧字段并新增 ZERO 流入、dead 流入/流出/净额四个 wei 级统计，黄金基线契约同步逐字段对表。
+- **形态②自动回退与 v3 receipt**：主 `decide()` 及形态①容差行为不变；仅 EVM 主 FAIL 且拆分统计齐全时，在同一冻结块和同一 attested pool 批量读取 totalSupply/ZERO/dead 三值，按总量与逐地址四条件零容差闭合。混合形态、旧 stats、1 wei 偏差、地址间补偿及 RPC 部分失败全部 fail-closed；回执升级 `supply-truth-receipt/v3` 并记录 decision rule、burn form、主判定与 sink 对账。
+- **余额闭合公式修正**：`verify_recon` 从 `sum_balances==mint−burn` 改为与 replay 记账一致的 `sum_balances==mint`，burn 继续独立落盘；shared release validator、invariant manifest、正式 fixtures 与持仓分布消费面完成兼容核验，v2 仅保留显式 legacy 拒收负例。
+- **回归门禁**：先红留档后实现；真实量级 dead 沉没反例转 PASS，GNT 式 mint 与链上供给不等仍 FAIL，并新增 burn>0 纵向闭环覆盖 `verify_recon → supply_truth v3 → shared_release_receipt`。本次为工具工程，无代币分析结论；新增/扩展反例均为离线 mock。
 
 ## [6.37.0] - 2026-08-09 — R9 收敛修复工程收口：五 finding 四批＋两轮盲审，止损纪律与诚实降级首次全程落地
 

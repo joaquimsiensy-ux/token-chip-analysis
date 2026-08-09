@@ -112,7 +112,7 @@ def validate_reconciliation_check(root, key, item, target, family):
         receipt = json.loads(path.read_text(encoding="utf-8"))
     except Exception as exc:
         raise ValueError(f"reconciliation {key} receipt JSON invalid: {exc}") from exc
-    migration = "存量案例须重跑对应生产者获取 v2 回执"
+    migration = "存量案例须重跑对应生产者获取当前回执"
     envelope_errors = validate_receipt(receipt)
     if envelope_errors:
         raise ValueError(
@@ -160,13 +160,47 @@ def validate_reconciliation_check(root, key, item, target, family):
         validate_observation_bundle(receipt, expected_mint=target["token"])
         ref_ok(root, receipt["output"])
     elif key == "supply_truth":
-        _require(schema == "supply-truth-receipt/v2",
+        _require(schema == "supply-truth-receipt/v3",
                  f"reconciliation supply_truth unknown schema {schema!r}；{migration}")
         _require(receipt.get("gate") == "supply_truth"
                  and receipt.get("replay_net") is not None
                  and receipt.get("onchain_total_supply") is not None
-                 and receipt.get("diff") is not None,
+                 and receipt.get("diff") is not None
+                 and all(field in receipt for field in (
+                     "decision_rule", "burn_form", "primary_verdict",
+                     "sink_reconciliation")),
                  "supply_truth receipt observations incomplete")
+        rule = receipt.get("decision_rule")
+        _require(rule in {"primary_form1", "sink_fallback_form2"},
+                 "supply_truth decision_rule invalid")
+        if rule == "primary_form1":
+            _require(receipt.get("primary_verdict") == "PASS"
+                     and receipt.get("burn_form") is None
+                     and receipt.get("sink_reconciliation") is None,
+                     "primary_form1 receipt semantics invalid")
+        else:
+            sink = receipt.get("sink_reconciliation")
+            _require(family == "evm" and receipt.get("primary_verdict") == "FAIL"
+                     and receipt.get("burn_form") == "dead_sink"
+                     and isinstance(sink, dict) and set(sink) == {"zero", "dead"},
+                     "sink_fallback_form2 receipt semantics invalid")
+            for address in ("zero", "dead"):
+                row = sink.get(address)
+                _require(isinstance(row, dict)
+                         and set(row) == {"replay_raw", "onchain_raw"}
+                         and isinstance(row.get("replay_raw"), str)
+                         and row.get("replay_raw") == row.get("onchain_raw"),
+                         f"sink_fallback_form2 {address} reconciliation invalid")
+            try:
+                mint_raw = int(str(receipt["mint_total"]))
+                burn_raw = int(str(receipt["burn_total"]))
+                onchain_raw = int(str(receipt["onchain_total_supply"]))
+                sink_raw = sum(int(sink[address]["replay_raw"])
+                               for address in ("zero", "dead"))
+            except (KeyError, TypeError, ValueError) as exc:
+                raise ValueError("sink_fallback_form2 scalar fields invalid") from exc
+            _require(mint_raw == onchain_raw and sink_raw == burn_raw,
+                     "sink_fallback_form2 scalar/sink closure invalid")
         _require(receipt.get("mode") == "formal" and isinstance(receipt.get("inputs"), dict)
                  and bool(receipt["inputs"]),
                  "supply_truth receipt must be formal and bind replay_stats input")
