@@ -138,3 +138,16 @@
 - **门禁**：`invariant_scan.py` PASS（52/55/62/42/58，exceptions=0）；`docs_lint.py --all`、`env_check.py`、`test_sixlens_docs.py` PASS；`SKILL.md=7737B<=8192B`；`VERSION=6.36.0` 未改；`git diff --check` 零输出。
 - **diff→finding**：唯一 owner `B4F2C2` 已登记，SHA 留空待 Fable 回填；本循环未映射 hunk=`0`。未执行 git 写操作，未出网。
 - **结论**：`B4F2C2_COMPLETE`。
+
+## 批内复审循环 2 裁决（Fable，opus 复审 aa73a16b）— BLOCK，止损 3/3 冻结上报用户
+
+- **裁决：BLOCK。F-B4-01 第三次 STILL-OPEN（P2）+ 新增 F-B4-01-B（P3）。** 报告入库 `reviews/r9-batch4-rereview2.md`（20360B，最小镜像实跑，原 worktree 只读 HEAD=919266e）。
+- **循环 1 四变体（M6/M7/M8/M10）确已 CAUGHT**——import 真绑定硬门对上一轮点名的四种有效。**但只把攻击面往外推了一格**：opus 实测 20 条变体，**9 条 BYPASSED**——
+  - **模块作用域重绑定**（N1/N12/N14/N15/N16）：`import subprocess` 后在**模块层**（非函数内）`subprocess=None` / 同名 `def subprocess()` / `import json as subprocess` / `run_formal_script=_stub`。N1 就是上一轮 M10 那行代码**左移四个空格**到模块层即复穿；**N15 杀伤最大=照抄现役四链纵切片真实的 `from formal_ready_test_harness import run_formal_script` 形态，模块层加一行 stub 即整体伪造**。
+  - **外层作用域重绑定**（N7/N18/N19/N20）：遮蔽写在外层函数/嵌套 def/嵌套 class 方法/顶层 wrapper，内层调用拿到 fail-open 空集。
+- **武器化实证 N1W（决定性）**：模块层一行 `subprocess=_Silent`，实测「静态守卫 errors=[] + 运行时 exit=0 + 六个 producer 一个都没启动」三件同时成立=F-B4-01 原始威胁模型（伪造 E2E 执行证据）未闭合。
+- **根因（opus 读码+实测双证）**：①`_execution_call_bindings.visit_Call` 只记 `stack[-1]`（紧邻那层函数），外层/模块层一概不看；②`_execution_imports` 只建 imports 映射，**从不检查该名字后来在模块层是否被重绑**；③`call_bindings.get(id(node), frozenset())` 兜底空集=fail-open，visitor 没走到的节点（嵌套 def/class 体内）默认"干净"。
+- **F-B4-01-B（P3）**：循环 2 新写的诚实文档把兜底推给「SUITE 的 loopback E2E harness」，但那 harness 就是本守卫要校验真伪的纵切片文件本身（`test_batch3_evm/solana_vertical_slice.py`）——**兜底与被验证对象同一物=循环论证，非独立防线**。
+- **不误伤全 PASS**：默认四链 `[]`、`formal_ready_chains()=={eth,bsc,base,sol}`、M4/M5/三种 `from X import Y` 直用全放行、`test_batch4` EXIT=0、F-B4-02/03/04/05 注入行全在位、改动面与声明一致。**过严边界**（非洞，记账）：N2 函数内局部 import、N10/N11 条件导入（`try: import…except`）会被误拒，建议修 P2 时把 `_execution_imports` 改走 `ast.walk` 收模块层导入。
+- **根因定性=静态 AST 原理边界**：opus 3.4/4.5 明示——继续在静态守卫里堵语法是打地鼠（fail-open→fail-closed 只是防"第四代变体"，原理上静态分析无法证明运行时行为）；真正的独立防线方向=**由 runner 自己产出的、带进程指纹的运行时收据**（独立于被测纵切片文件）。
+- **止损**：批四消化循环 1（BLOCK）+ 循环 2（BLOCK）→ **F-B4-01 连续三次判可绕（首审+两轮消化），触及止损冻结线。按 R9 铁律停工，交用户裁决，Fable 不自行开循环 3。** 候选 tip 仍 `919266e`；批四其余 F-B4-02/03/04/05 + G1/G3/G5 + B1R3-01 均已达标，唯 F-B4-01 悬置。
