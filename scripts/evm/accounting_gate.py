@@ -388,6 +388,11 @@ def main():
     ap.add_argument("--samples", type=int, default=8)
     ap.add_argument("--sourcify", default="https://sourcify.dev/server")
     ap.add_argument("--out", default="accounting_mode.json")
+    ap.add_argument("--as-of-block", type=int, default=None,
+                    help="收据 target 绑定块（分析冻结块）。模型探测仍在当前 tip 执行"
+                         "（tip_block 字段忠实记录探测时点）；不给则 as_of_block=tip（旧行为）。"
+                         "存量案重跑 accounting 时必给：shared_release_receipt 要求三键 target"
+                         "与 reconciliation（冻结块）全等，tip 漂移会死锁升级路径。")
     a = ap.parse_args()
 
     token = a.token.lower()
@@ -424,7 +429,7 @@ def main():
     # ---- 基础与代理 ----
     try:
         tip = int(rpc.call("eth_blockNumber", []), 16)
-        result["as_of_block"] = tip
+        result["as_of_block"] = a.as_of_block if a.as_of_block is not None else tip
         code_ = rpc.call("eth_getCode", [token, "latest"])
         if not code_ or code_ == "0x":
             result["reasons"].append("目标地址无合约代码（EOA/错链）")

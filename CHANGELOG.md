@@ -10,6 +10,7 @@
 
 ## 版本索引（活跃窗口，新在上；每版一行，详情见下方对应条目）
 
+- 6.39.3（2026-08-09）accounting_gate 加 --as-of-block 目标块绑定（存量案重跑 tip 漂移死锁修复）
 - 6.39.2（2026-08-09）entity_source_trace 进货单并列序非确定性修复（freeze 重放对账假阴性）
 - **6.39.1** 2026-08-09 分布扫描 validate 可移植性修复：semantic_payload 剔除 labels_manifest 宿主绝对路径（内容漂移仍由 sha256 抓）
 - **6.39.0** 2026-08-09 APU 案 ANOM-012 存量迁移三工单：replay_stats 覆盖截止块契约闭合（三引擎单点等深）、太古 done 官方迁移全链、旧 −1 产物格式迁移命令 migrate_legacy_case
@@ -35,6 +36,15 @@
 - **6.20.1** 2026-08-05 修 5 处阻断级文档漂移（A4 前禁写报告冲突/easy 残留/惯犯回灌 docstring/批量预采集残留/旧 Par 路线历史降级）＋docs_lint 增中文禁词与 Python module docstring 扫描
 
 更早版本（6.20.0 及以前）详见 `archive/CHANGELOG-archive.md`。
+
+## [6.39.3] - 2026-08-09 — accounting_gate 目标块绑定参数：存量案升级死锁修复
+
+- `shared_release_receipt` 要求 accounting 与 reconciliation 的三键 target（chain/token/as_of_block）
+  全等，但 `accounting_gate.py` 硬写 `as_of_block=tip` 且无钉块参数——存量案按 §157 重跑当前
+  accounting 时 tip 必然漂离冻结块，聚合器永拒（APU 0801 案首触发；R9 纵切片同环境一次跑完
+  tip 恰同故测不到）。
+- 修复：加 `--as-of-block`（收据 target 绑定块）。模型探测语义不变仍在当前 tip 执行，
+  `tip_block` 字段忠实记录探测时点；两字段并存=目标绑定与探测时点分离，无语义撒谎。
 
 ## [6.39.2] - 2026-08-09 — entity_source_trace 进货单并列序非确定性修复
 
