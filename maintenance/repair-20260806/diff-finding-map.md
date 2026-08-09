@@ -116,6 +116,16 @@
 | `R9-B4-G5:scripts/lib/{anchor_selection.py,anchor_plan.py,time_spotcheck.py}; scripts/tests/{test_time_spotcheck.py,test_r9_batch1_boundaries.py}` | `INV-06, INV-10, INV-18` | `B1R3-01`；四类 fixture 审计；G5 | producer/consumer 共享覆盖下限；批一旧 Solana curl/fixed-77 fake 升级 genesis+单调 urllib transport fake | 1/1 弱 plan 双端红；20 项 spotcheck；scan-only |  |
 | `R9-B4-G6:references/maintenance-review-repair.md; maintenance/repair-20260806/{ledger.md,invariant-merge.md,diff-finding-map.md,b4_progress.md}; scripts/tests/test_sixlens_docs.py` | `INV-18, INV-19`; secondary `INV-17` | R9-01～05；49 项主账；G6 | 追加 R9 方法论；主表/详情零空栏；18 baseline-fixed 和 8 supplementary 复核；守卫归并/owner | docs 结构门禁；49 行精确计数；未映射 hunk=0 |  |
 
+## R9 批四批内修复循环 1
+
+| commit/hunk | primary invariant | finding 列表或配套任务 | 修改目的 | 测试/纵切片/守卫 | 审查结论 |
+|---|---|---|---|---|---|
+| `R9-B4F-G1:scripts/tests/{invariant_scan.py,test_batch4_invariant_guards.py}; maintenance/repair-20260806/b4_progress.md` 的 execution-authenticity hunk | `INV-01, INV-17` | `F-B4-01` | 本地 run wrapper 必须递归可达白名单执行原语，空同名函数不计 formal E2E 证据 | `B4F2-E2E-02`；四链现役 target 零误报 |  |
+| `R9-B4F-G2:scripts/tests/{invariant_scan.py,test_batch4_invariant_guards.py}; maintenance/repair-20260806/b4_progress.md` 的 reachable-contract hunk | `INV-03, INV-04, INV-17` | `F-B4-02` | quarantine / ERROR 契约只计静态可达路径，死分支和 return 后代码不计 | `B4F2-STALE-03` |  |
+| `R9-B4F-G3:scripts/tests/{invariant_scan.py,test_batch4_invariant_guards.py}; maintenance/repair-20260806/b4_progress.md` 的 top-level-main hunk | `INV-03, INV-17` | `F-B4-03` | 扩展 main 退出传播守卫到模块顶层裸调 | `B4F2-MAIN-02` |  |
+| `R9-B4F-G4:scripts/tests/{invariant_scan.py,test_batch4_invariant_guards.py}; maintenance/repair-20260806/b4_progress.md` 的 standalone-denominator hunk | `INV-03, INV-04, INV-17` | `F-B4-04` | 从 standalone 入口可达的成功发布+ERROR receipt 语义自动派生 stale-sensitive producer 分母 | `B4F2-STALE-04` |  |
+| `R9-B4F-G5:scripts/evm/fetch_pool_swaps.py; scripts/tests/{test_fetch_failclosed.py,invariant_scan.py,invariant_manifest.json}; maintenance/repair-20260806/{b4_progress.md,diff-finding-map.md}` | `INV-03, INV-05, INV-17, INV-19` | `F-B4-05` | pool CSV+PASS marker 迁入 receipt-kernel 联合事务；发布第二件失败撤回 CSV；补齐 txn atomic census | receipt rename fault injection；fetch failclosed；invariant scan |  |
+
 ## 分组 → commit SHA 对照（Fable 代 commit 后回填）
 
 | 分组 | commit SHA | 说明 |
@@ -181,6 +191,11 @@
 | `R9-B4-G4` | `3b76db8` | stale canonical/marker/error 登记守卫 |
 | `R9-B4-G5` | `3b76db8` | fixture 审计与 anchor 弱覆盖下限 |
 | `R9-B4-G6` | `3b76db8` | 方法论、49 项主账、归并表与 map 收口 |
+| `R9-B4F-G1` |  | F-B4-01 run 真实性收紧 |
+| `R9-B4F-G2` |  | F-B4-02 failure contract 可达性 |
+| `R9-B4F-G3` |  | F-B4-03 顶层 main 退出传播 |
+| `R9-B4F-G4` |  | F-B4-04 standalone 分母自动派生 |
+| `R9-B4F-G5` |  | F-B4-05 pool 双件事务发布与循环台账 |
 
 ## 未映射 hunk 计数
 
@@ -202,5 +217,6 @@
 - R9 批三批内修复循环 1（物理并入 `160a852`）：`0` 候选（CA/endpoint identity、G3-0 transport 旁路、上层持久化负例、污染文件删除与三份台账 hunk 均归属 `B3F2-G1/G2`；SHA 已回填 `160a852`；本表自身回填 commit 按通例自指式计入）。
 - R9 批三批内修复循环 2（`b4e9595..c46ef9f`）：`0` 候选（全部 hunk 已归属 `B3F3-G1`～`B3F3-G6`；四个既有裁判 mainnet JSON 与 SQD docstring 跨批 hunk 由 G5 追补 owner；SHA 已回填 `c46ef9f`；本表自身回填 commit 按通例自指式计入；待 opus 复审独立复算）。
 - R9 批四（`f4c40ea..3b76db8`）：`0` 候选（全部生产、测试、fixture、方法论与 maintenance hunk 已归属 `R9-B4-G1`～`R9-B4-G6`；同文件多 owner 已按 hunk 拆分说明；SHA 已回填 `3b76db8`；本表自指式计入 G6；待 opus 批四批内审查独立复算）。
+- R9 批四批内修复循环 1（`c86f251..` 候选 tip；`c86f251` 仅比用户所报 `65443cf` 多批四审查报告入库）：`0` 候选（生产、scanner、manifest、两测试与两台账 hunk 均已归属 `R9-B4F-G1`～`R9-B4F-G5`；SHA 依约留空待 Fable 回填；本表自指式计入 G5）。
 
 通例：区间末端恒取候选 tip；自指式 SHA 回填 commit 计入本区间。map 行文件清单以 Fable 实际 commit 分组为准；一文件含多 owner 的 hunk 时（文件级 commit 无法拆分），物理归属行与语义 owner 行互相注明，Fable 回填 SHA 时校正清单。

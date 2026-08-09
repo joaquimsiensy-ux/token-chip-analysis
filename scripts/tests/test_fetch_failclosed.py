@@ -173,6 +173,28 @@ def main():
         assert code == 1 and not tr_out.exists() and not tr_receipt.exists(), \
             "receipt 提交失败后未撤回正式 transfer CSV"
 
+        pool = load(POOL, "pool_receipt_commit_fail")
+        class PoolCompleteSession:
+            def post(self, *args, **kwargs):
+                return Response({"data": [], "next_block": 10})
+        pool_out = root / "pool-commit.csv"
+        pool_receipt = root / "pool-commit.csv.receipt.json"
+        real_replace = os.replace
+        replace_calls = {"n": 0}
+        def fail_pool_receipt_replace(src, dst, *args, **kwargs):
+            replace_calls["n"] += 1
+            if replace_calls["n"] == 2:
+                raise OSError("pool receipt rename failed")
+            return real_replace(src, dst, *args, **kwargs)
+        code, _ = invoke(
+            pool, pool_args(pool_out),
+            [((pool.requests, "Session"), PoolCompleteSession),
+             ((pool.os, "replace"), fail_pool_receipt_replace)])
+        assert code == 1 and not pool_out.exists() and not pool_receipt.exists(), \
+            "pool receipt 提交失败后未撤回正式 CSV/marker"
+        assert list(root.glob("pool-commit.csv.receipt.error.*.json")), \
+            "pool receipt 提交失败后未产 ERROR side receipt"
+
         pool = load(POOL, "pool_complete")
         class CompleteSession:
             def post(self, *args, **kwargs):

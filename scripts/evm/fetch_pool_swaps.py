@@ -25,8 +25,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
 from artifact_quarantine import quarantine_current, quarantine_run_id
-from receipt_kernel import (build_envelope, finalize_envelope,
-                            publish_error_receipt, publish_overwrite)
+from receipt_kernel import (RawBytes, build_envelope, finalize_envelope,
+                            publish_error_receipt, publish_txn)
 
 PANCAKE_V3 = "0x19b47279256b2a23a1665c810c8d55a1758940ee09377d4f8d26497a3577dc83"
 DEFAULT_TOKEN_FILE = "~/.config/hypersync/token"
@@ -154,16 +154,17 @@ def main():
         cur = nxt
         time.sleep(0.5)
     out_file.flush(); os.fsync(out_file.fileno()); out_file.close()
-    os.replace(tmp_path, out_path)
     try:
-        data = out_path.read_bytes()
+        data = tmp_path.read_bytes()
         receipt = finalize_envelope(
             envelope, "PASS", 0, row_count=n,
             output={"path": str(out_path), "size": len(data),
                     "sha256": hashlib.sha256(data).hexdigest()})
-        publish_overwrite(receipt_path, receipt)
+        publish_txn(out_path, RawBytes(data), receipt_path, receipt)
     except Exception as exc:
+        tmp_path.unlink(missing_ok=True)
         return fail(1, f"receipt publication failed: {exc}")
+    tmp_path.unlink(missing_ok=True)
     print(f"swaps {n} rows {time.time()-t0:.0f}s", flush=True)
     return 0
 

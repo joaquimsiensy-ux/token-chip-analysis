@@ -356,7 +356,7 @@ def _exit_propagates(call, parents):
 
 
 def main_exit_propagation_errors(*, files=None, root=ROOT):
-    """Find value-returning main functions whose __main__ call drops the value."""
+    """Find value-returning main calls whose process exit value is discarded."""
     paths = files if files is not None else sorted((ROOT / "scripts").rglob("*.py"))
     errors = []
     for path in paths:
@@ -371,6 +371,18 @@ def main_exit_propagation_errors(*, files=None, root=ROOT):
             rel = path.relative_to(root).as_posix()
         except ValueError:
             rel = path.as_posix()
+        # A bare module-level expression executes on import as well as CLI use;
+        # it still discards main's value even though it sits outside the usual
+        # __main__ guard that the original R9-B4 check inspected.
+        for statement in (node for node in tree.body if isinstance(node, ast.Expr)):
+            parents = {child: parent for parent in ast.walk(statement)
+                       for child in ast.iter_child_nodes(parent)}
+            for call in (node for node in ast.walk(statement) if isinstance(node, ast.Call)
+                         and _call_name(node.func) == "main"):
+                if not _exit_propagates(call, parents):
+                    errors.append(
+                        f"integer/value-returning main does not propagate process exit: "
+                        f"{rel}:{call.lineno}")
         for guard in (node for node in tree.body if _is_main_guard(node)):
             parents = {child: parent for parent in ast.walk(guard)
                        for child in ast.iter_child_nodes(parent)}
@@ -487,16 +499,65 @@ def _local_function_closure(tree, start):
         if name in seen or name not in functions:
             continue
         seen.add(name)
-        for node in ast.walk(functions[name]):
-            if not isinstance(node, ast.Call):
-                continue
+        for node in _reachable_calls(functions[name]):
             called = _call_name(node.func).rsplit(".", 1)[-1]
             if called in functions and called not in seen:
                 pending.append(called)
     return seen, functions
 
 
-def _reachable_execution_evidence(function_names, functions):
+def _execution_imports(tree):
+    """Map local import names to execution-capable qualified symbols."""
+    aliases = {}
+    for node in tree.body:
+        if isinstance(node, ast.Import):
+            for item in node.names:
+                if item.name in {"subprocess", "os"}:
+                    aliases[item.asname or item.name] = item.name
+        elif isinstance(node, ast.ImportFrom) and node.module:
+            for item in node.names:
+                aliases[item.asname or item.name] = f"{node.module}.{item.name}"
+    return aliases
+
+
+def _resolved_call_name(call, imports):
+    name = _call_name(call.func)
+    head, dot, tail = name.partition(".")
+    if head in imports:
+        return imports[head] + (dot + tail if dot else "")
+    return name
+
+
+def _is_execution_primitive(call, imports):
+    name = _resolved_call_name(call, imports)
+    return (name in {
+                "subprocess.run", "subprocess.Popen",
+                "subprocess.check_call", "subprocess.check_output",
+                "formal_ready_test_harness.run_formal_script",
+            }
+            or name.startswith("subprocess.check_")
+            or name.startswith("os.exec"))
+
+
+def _local_function_executes(name, functions, imports, visiting=None):
+    """Prove a local wrapper reaches an imported process execution primitive."""
+    visiting = set() if visiting is None else visiting
+    if name in visiting or name not in functions:
+        return False
+    visiting.add(name)
+    try:
+        for node in _reachable_calls(functions[name]):
+            if _is_execution_primitive(node, imports):
+                return True
+            if isinstance(node.func, ast.Name) and node.func.id in functions \
+                    and _local_function_executes(node.func.id, functions, imports, visiting):
+                return True
+        return False
+    finally:
+        visiting.remove(name)
+
+
+def _reachable_execution_evidence(function_names, functions, tree):
     """Return scripts in actual run calls plus producer fields in reachable specs.
 
     Bare string constants do not count: that was the original hand-written E2E
@@ -505,18 +566,23 @@ def _reachable_execution_evidence(function_names, functions):
     """
     executed = set()
     producers = set()
+    imports = _execution_imports(tree)
     for name in function_names:
         function = functions[name]
+        for node in _reachable_calls(function):
+            called = _call_name(node.func)
+            local_wrapper = (isinstance(node.func, ast.Name)
+                             and called in functions)
+            executes = (_local_function_executes(called, functions, imports)
+                        if local_wrapper else _is_execution_primitive(node, imports))
+            if executes:
+                for item in ast.walk(node):
+                    if (isinstance(item, ast.Constant)
+                            and isinstance(item.value, str)
+                            and item.value.startswith("scripts/")
+                            and item.value.endswith(".py")):
+                        executed.add(item.value)
         for node in ast.walk(function):
-            if isinstance(node, ast.Call):
-                called = _call_name(node.func).rsplit(".", 1)[-1]
-                if called in {"run", "run_formal_script"}:
-                    for item in ast.walk(node):
-                        if (isinstance(item, ast.Constant)
-                                and isinstance(item.value, str)
-                                and item.value.startswith("scripts/")
-                                and item.value.endswith(".py")):
-                            executed.add(item.value)
             if isinstance(node, ast.Dict):
                 for key, value in zip(node.keys, node.values):
                     if isinstance(key, ast.Constant) and key.value == "producer" \
@@ -570,7 +636,7 @@ def formal_e2e_provenance_errors(*, targets=None):
         main_reachable, _ = _local_function_closure(tree, "main")
         if function not in main_reachable:
             errors.append(f"formal E2E target is not executed by module main for {chain}: {function}")
-        executed, producers = _reachable_execution_evidence(reachable, functions)
+        executed, producers = _reachable_execution_evidence(reachable, functions, tree)
         runner = "scripts/report/reconciliation_report.py"
         if runner not in executed:
             errors.append(f"formal E2E target lacks real reconciliation runner for {chain}")
@@ -584,6 +650,161 @@ def formal_e2e_provenance_errors(*, targets=None):
                 f"formal E2E target lacks registered producer execution for {chain}: "
                 f"{sorted(missing)}")
     return errors
+
+
+def _static_truth(node):
+    """Return True/False for literal truth tests, otherwise None."""
+    if isinstance(node, ast.UnaryOp) and isinstance(node.op, ast.Not):
+        value = _static_truth(node.operand)
+        return None if value is None else not value
+    if isinstance(node, ast.BoolOp):
+        values = [_static_truth(item) for item in node.values]
+        if isinstance(node.op, ast.And):
+            return False if False in values else True if all(value is True for value in values) \
+                else None
+        if isinstance(node.op, ast.Or):
+            return True if True in values else False if all(value is False for value in values) \
+                else None
+    if isinstance(node, ast.Compare):
+        try:
+            values = [ast.literal_eval(item) for item in (node.left, *node.comparators)]
+            outcomes = []
+            for left, op, right in zip(values, node.ops, values[1:]):
+                if isinstance(op, ast.Eq):
+                    outcomes.append(left == right)
+                elif isinstance(op, ast.NotEq):
+                    outcomes.append(left != right)
+                elif isinstance(op, ast.Lt):
+                    outcomes.append(left < right)
+                elif isinstance(op, ast.LtE):
+                    outcomes.append(left <= right)
+                elif isinstance(op, ast.Gt):
+                    outcomes.append(left > right)
+                elif isinstance(op, ast.GtE):
+                    outcomes.append(left >= right)
+                elif isinstance(op, ast.Is):
+                    outcomes.append(left is right)
+                elif isinstance(op, ast.IsNot):
+                    outcomes.append(left is not right)
+                elif isinstance(op, ast.In):
+                    outcomes.append(left in right)
+                elif isinstance(op, ast.NotIn):
+                    outcomes.append(left not in right)
+                else:
+                    return None
+            return all(outcomes)
+        except (ValueError, TypeError):
+            return None
+    try:
+        value = ast.literal_eval(node)
+    except (ValueError, TypeError):
+        return None
+    if isinstance(value, (bool, int, float, str, bytes, tuple, list, set, dict)) \
+            or value is None:
+        return bool(value)
+    return None
+
+
+def _always_terminates(statement):
+    if isinstance(statement, (ast.Return, ast.Raise, ast.Break, ast.Continue)):
+        return True
+    if isinstance(statement, ast.If) and statement.body and statement.orelse:
+        truth = _static_truth(statement.test)
+        if truth is True:
+            return _always_terminates(statement.body[-1])
+        if truth is False:
+            return _always_terminates(statement.orelse[-1])
+        return (_always_terminates(statement.body[-1])
+                and _always_terminates(statement.orelse[-1]))
+    return False
+
+
+def _reachable_calls(function):
+    """Collect calls on statically reachable paths, following local helpers."""
+    local_functions = {
+        node.name: node for node in ast.walk(function)
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node is not function
+    }
+    calls = []
+    visiting = set()
+
+    class Visitor(ast.NodeVisitor):
+        def visit_FunctionDef(self, _node):
+            return
+
+        visit_AsyncFunctionDef = visit_FunctionDef
+
+        def visit_Lambda(self, _node):
+            return
+
+        def visit_Call(self, node):
+            calls.append(node)
+            if isinstance(node.func, ast.Name) and node.func.id in local_functions:
+                visit_function(local_functions[node.func.id])
+            self.generic_visit(node)
+
+        def visit_If(self, node):
+            self.visit(node.test)
+            truth = _static_truth(node.test)
+            if truth is not False:
+                visit_block(node.body)
+            if truth is not True:
+                visit_block(node.orelse)
+
+        def visit_While(self, node):
+            self.visit(node.test)
+            truth = _static_truth(node.test)
+            if truth is not False:
+                visit_block(node.body)
+            visit_block(node.orelse)
+
+        def visit_For(self, node):
+            self.visit(node.target)
+            self.visit(node.iter)
+            visit_block(node.body)
+            visit_block(node.orelse)
+
+        visit_AsyncFor = visit_For
+
+        def visit_With(self, node):
+            for item in node.items:
+                self.visit(item.context_expr)
+                if item.optional_vars:
+                    self.visit(item.optional_vars)
+            visit_block(node.body)
+
+        visit_AsyncWith = visit_With
+
+        def visit_Try(self, node):
+            visit_block(node.body)
+            for handler in node.handlers:
+                self.visit(handler.type) if handler.type else None
+                visit_block(handler.body)
+            visit_block(node.orelse)
+            visit_block(node.finalbody)
+
+    visitor = Visitor()
+
+    def visit_block(statements):
+        for statement in statements:
+            if isinstance(statement, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            visitor.visit(statement)
+            if _always_terminates(statement):
+                break
+
+    def visit_function(node):
+        identity = id(node)
+        if identity in visiting:
+            return
+        visiting.add(identity)
+        try:
+            visit_block(node.body)
+        finally:
+            visiting.remove(identity)
+
+    visit_function(function)
+    return calls
 
 
 def failure_artifact_contract_errors(*, contracts=None, root=ROOT):
@@ -611,8 +832,7 @@ def failure_artifact_contract_errors(*, contracts=None, root=ROOT):
         if function is None:
             errors.append(f"failure artifact entrypoint missing: {label}:{entrypoint}")
             continue
-        calls = [_call_name(node.func) for node in ast.walk(function)
-                 if isinstance(node, ast.Call)]
+        calls = [_call_name(node.func) for node in _reachable_calls(function)]
         quarantine_count = sum(name.endswith("quarantine_current") for name in calls)
         if quarantine_count < expected:
             errors.append(
@@ -621,6 +841,35 @@ def failure_artifact_contract_errors(*, contracts=None, root=ROOT):
         if not any(name.endswith("publish_error_receipt") for name in calls):
             errors.append(f"failure artifact error receipt missing: {label}")
     return errors
+
+
+def standalone_failure_artifact_producers():
+    """Derive standalone stale-sensitive publishers from production source.
+
+    A candidate must be directly executable and its reachable module call graph
+    must contain both a success publication primitive and an ERROR side-receipt
+    primitive.  This intentionally replaces the original three-name allowlist:
+    a newly added publisher with the same semantics joins the denominator.
+    """
+    found = set()
+    success_primitives = {"publish_txn", "publish_overwrite", "os.replace"}
+    for path in production_files():
+        if path.suffix != ".py":
+            continue
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        if not any(_is_main_guard(node) for node in tree.body):
+            continue
+        reachable, functions = _local_function_closure(tree, "main")
+        calls = {
+            _call_name(call.func)
+            for name in reachable
+            for call in _reachable_calls(functions[name])
+        }
+        suffixes = {name.rsplit(".", 1)[-1] for name in calls}
+        has_success = bool(success_primitives.intersection(calls | suffixes))
+        if has_success and "publish_error_receipt" in suffixes:
+            found.add(_rel(path))
+    return found
 
 
 def failure_artifact_coverage_errors(*, coverage=None, shared_path=None):
@@ -636,10 +885,9 @@ def failure_artifact_coverage_errors(*, coverage=None, shared_path=None):
         script for family in shared["RECON_PRODUCERS"].values()
         for producers in family.values() for script in producers
     }
-    standalone = {
-        "scripts/lib/anchor_plan.py", "scripts/evm/fetch_pool_swaps.py",
-        "scripts/solana/window_fetch.py",
-    }
+    # Formal producers are already in the two release registries.  Every other
+    # executable success+ERROR publisher is a standalone stale-sensitive entry.
+    standalone = standalone_failure_artifact_producers() - accounting - reconciliation
     expected = accounting | reconciliation | standalone
     errors = []
     for missing in sorted(expected - set(coverage)):
@@ -700,7 +948,8 @@ class AtomicVisitor(ast.NodeVisitor):
     visit_AsyncFunctionDef = visit_FunctionDef
 
     def visit_Call(self, node):
-        if _call_name(node.func) in {"os.replace", "os.link"}:
+        name = _call_name(node.func)
+        if name in {"os.replace", "os.link"} or name.endswith("publish_txn"):
             self.locators.add(self.stack[-1])
         self.generic_visit(node)
 

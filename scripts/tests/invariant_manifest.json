@@ -702,7 +702,7 @@
     {
       "locator": "main",
       "script": "scripts/evm/fetch_pool_swaps.py",
-      "semantics": "overwrite_single"
+      "semantics": "dual_file_txn"
     },
     {
       "locator": "atomic_write",
@@ -728,6 +728,11 @@
       "locator": "quarantine_current",
       "script": "scripts/lib/artifact_quarantine.py",
       "semantics": "overwrite_single"
+    },
+    {
+      "locator": "main",
+      "script": "scripts/lib/anchor_plan.py",
+      "semantics": "dual_file_txn"
     },
     {
       "locator": "main",
@@ -835,6 +840,11 @@
       "semantics": "overwrite_single"
     },
     {
+      "locator": "main",
+      "script": "scripts/solana/anchor_sampler.py",
+      "semantics": "dual_file_txn"
+    },
+    {
       "locator": "_atomic_json",
       "script": "scripts/solana/decode_txs_v2.py",
       "semantics": "overwrite_single"
@@ -853,6 +863,11 @@
       "locator": "run",
       "script": "scripts/solana/fetch_sqd_transfers_v2.py",
       "semantics": "overwrite_single"
+    },
+    {
+      "locator": "main",
+      "script": "scripts/solana/scan_token_accounts.py",
+      "semantics": "dual_file_txn"
     },
     {
       "locator": "main",

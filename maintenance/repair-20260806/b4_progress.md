@@ -19,7 +19,7 @@
 
 - 不变量：formal E2E 的注册 target 必须从自身可达调用图进入真实 `reconciliation_report.py`，且 runner spec/直接命令必须包含该链登记的关键 producer；产物内自报 producer path/sha、手写 PASS JSON 均不计证据。
 - 红：临时 `test_fake_vertical_slice()` 只用 `Path.write_text(json.dumps({'verdict':'PASS'}))` 写 observation bundle。未加守卫时正式测试红于 scanner 无 `formal_e2e_provenance_errors`，即旧 R8 vertical guard 只验“文件存在+挂 SUITE”，不能区分现场 producer 与手写字节。
-- 绿：在 R8 `invariant_scan.py` 增加 AST 本地调用图闭包，从四条生产注册 target 出发，双向验证 target 被模块 `main()` 实际调用、可达 reconciliation runner、并可达链族关键 producer 集合。EVM 必含真实 anchor/accounting/verify/supply-truth/time producer；Solana 必含 scan/anchor/supply-truth/accounting/window producer。最终自审又加“`main` 已挂载+全套 producer 字面路径+零 subprocess”绕过 mutant：旧判据实测被穿，收紧后只计可达 `run/run_formal_script` 调用参数里的真实脚本；runner spec 的 producer 只在 controlled runner 命令实际在场时计入。手写样例稳定输出 `INJECT R9-B4-E2E-01 ... -> RED`，四条现役 target 零错误。
+- 绿：在 R8 `invariant_scan.py` 增加 AST 本地调用图闭包，从四条生产注册 target 出发，双向验证 target 被模块 `main()` 调用、调用形态上可达 reconciliation runner、并包含链族关键 producer 集合。EVM 必含 anchor/accounting/verify/supply-truth/time producer；Solana 必含 scan/anchor/supply-truth/accounting/window producer。最终自审又加“`main` 已挂载+全套 producer 字面路径+零调用”绕过 mutant：旧判据实测被穿，当时收紧到只计 `run/run_formal_script` 调用参数里的脚本；runner spec 的 producer 只在 controlled runner 命令在场时计入。该判据尚未证明本地 `run` 的函数体真会启动子进程，此半修残留由批内修复循环 1 收紧。
 - 防误伤边界：schema/validator 单元 fixture 不在 `VERTICAL_SLICE_EVIDENCE_TARGETS`，不受此闸约束；只有自称 formal E2E evidence 的注册 target 必须满足。判据不要求运行时密码学防伪，也不把公开 producer path/sha 当产出凭证。
 - 绿命令：`PYTHONDONTWRITEBYTECODE=1 python3 scripts/tests/test_batch4_invariant_guards.py` → PASS，既有 R8 注入与 G1/G2 新注入全部到达目标分支。
 
@@ -69,3 +69,51 @@
 - 其他门禁：`test_batch4_invariant_guards.py` PASS（含 10 条显式 `INJECT ... -> RED`）；`test_r9_batch2_executable_capabilities.py` PASS；`docs_lint.py --all` PASS；`env_check.py` PASS；`invariant_scan.py` PASS；`formal_ready_chains()=={"eth","bsc","base","sol"}`；13 个改动 Python 文件 AST parse PASS；`git diff --check` 零输出。
 - 边界核对：`SKILL.md=7737B<=8192B`；`VERSION=6.36.0` 与基线一致；未执行任何 git 写操作、未出网。最终两轮全库盲审及 Fable SHA 回填依工单边界留总验收，不在本批伪造。
 - 结论：`B4F_COMPLETE`。
+
+## 批内修复循环 1
+
+- 基线核对：用户所报 tip=`65443cf`；开工时实际 HEAD=`c86f251`，读取对比证明两者之间唯一变化是 `reviews/r9-batch4-review.md` 审查报告入库，无生产/测试漂移；因此以 `c86f251` 作本循环实际输入基线。
+
+### B4F-G1：formal E2E `run` 执行真实性
+
+- finding：F-B4-01（P2，半修残留）。旧 `_reachable_execution_evidence` 只按 `run` / `run_formal_script` 名称和 `scripts/*.py` 字面量计证，本地空 `run()` 也能冒充执行事实。
+- 红：正式回归 `test_fake_local_run_provenance_injection` 构造本地 no-op `run(*args)`，并把 runner 及 Solana 五 producer 路径全塞入调用。未修实现返回 `errors=[]`，测试精确红于 `AssertionError: []`。命令：`PYTHONDONTWRITEBYTECODE=1 python3 scripts/tests/test_batch4_invariant_guards.py`。
+- 绿：scanner 先解析 import alias，只把 `subprocess.run/Popen/check_*`、`os.exec*` 及从 `formal_ready_test_harness` 导入的 `run_formal_script` 当执行原语；遇到本地 wrapper 时递归追踪其函数体的静态可达路径，直到真实原语才计证。本地空 `run` 现同时缺 runner 与 producer；又补 `B4F2-E2E-03` 自攻：把 `subprocess.run` 藏在 `if False` 时未加可达判据仍红于 `errors=[]`，收紧后不再计证。EVM/Solana 现役 wrapper 内含可达 `subprocess.run` / harness 原语，四链 `formal_e2e_provenance_errors()==[]`。同一命令全绿。
+- 边界：这个 AST 判据证明到“本地 wrapper 递归含白名单执行原语”，不宣称防一切伪造；运行时真执行仍由 loopback E2E harness 兜底。
+
+### B4F-G2：failure contract 可达性
+
+- finding：F-B4-02（P3）。旧 `failure_artifact_contract_errors` 对 entrypoint 做全树 `ast.walk`，因而 `if False:` 里的 quarantine / ERROR 调用也会抵消契约计数。
+- 红：正式回归 `test_dead_failure_contract_injection` 把两个原语全放入 `if False:`；未修实现返回 `errors=[]`，精确红于 `AssertionError: []`。命令：`PYTHONDONTWRITEBYTECODE=1 python3 scripts/tests/test_batch4_invariant_guards.py`。
+- 绿：新增静态可达调用遍历，跳过常量假分支、可静态求值的永假布尔/比较分支、同一 block 中 `return/raise/break/continue` 之后的死代码，并在真实调用处递归进入本地 helper（保留 anchor/pool 现役 `fail()` 包装）。附加 `B4F2-STALE-03B` 先以 `if 1 == 0` 精确红于 `errors=[]`，实现常量比较求值后转绿。mutant 现同时缺 quarantine 与 ERROR receipt，现役 contract 和 `invariant_scan.py` 全绿（exceptions=0）。
+
+### B4F-G3：模块顶层裸调 `main()`
+
+- finding：F-B4-03（P3）。旧 `main_exit_propagation_errors` 只进入 `if __name__ == '__main__'` guard，对模块顶层表达式 `main()` 不报错。
+- 红：正式回归 `test_top_level_main_exit_propagation_injection` 定义 `main(): return 1` 后在顶层裸调；未修实现返回 `errors=[]`，精确红于 `AssertionError: []`。
+- 绿：scanner 现同时遍历模块顶层表达式和 `__main__` guard，任一 value-returning `main()` 未被 `exit/sys.exit/SystemExit` 传播都报精确行号。`test_batch4_invariant_guards.py` 与全库 `invariant_scan.py` 全绿。
+
+### B4F-G4：standalone stale producer 分母自动扩展
+
+- finding：F-B4-04（P3）。旧 `failure_artifact_coverage_errors` 将 anchor-plan / pool / window 三个 standalone 入口写死在集合里，新增同类 producer 不会自动进入登记分母。
+- 红：正式回归 `test_new_standalone_producer_requires_registration` 通过 production-files 注入一个新的 standalone 入口，其可达路径同时有 canonical+marker 事务发布与 ERROR side receipt。旧实现返回 `errors=[]`，精确红于 `AssertionError: []`。
+- 绿：删除三名硬编码集合；`standalone_failure_artifact_producers()` 现扫 production Python，要求存在 `__main__` 入口，且从 `main` 的本地调用图可达 success publication（`publish_txn/publish_overwrite/os.replace`）与 `publish_error_receipt`。派生集再扣除 accounting/reconciliation 注册集，剩余 standalone 必须在 `FAILURE_ARTIFACT_COVERAGE` 登记。当前自动枚举集覆盖原三个 standalone 及现役 formal producer；新 mutant 稳定报 `unregistered`，现役登记零错。
+- 边界：自动分母以“standalone + 成功发布 + ERROR side receipt”为可执行语义；不是按文件名推测，也不宣称覆盖尚未采用 receipt kernel 的普通脚本。
+
+### B4F-G5：pool CSV + PASS marker 原子发布
+
+- finding：F-B4-05（P3）。旧 pool 成功路径先 `os.replace(tmp, CSV)`，再单独 `publish_overwrite(PASS marker)`；第二步失败时新 CSV 留在 canonical，只有 ERROR side receipt。
+- 消费口径勘察：`rg` 全库未发现任何生产 consumer 在读 pool CSV 前强制验证 PASS marker；因此不选“文档声明无 marker 不消费”，直接选联合事务发布。
+- 红：`test_fetch_failclosed.py` 新增 `pool_receipt_commit_fail`，完成采集后在第二次 `os.replace`（marker 提交）注入 `OSError`。未修实现精确红于 `pool receipt 提交失败后未撤回正式 CSV/marker`，证明 CSV 半发布。
+- 绿：pool 在自有 temp CSV 完整 flush+fsync 后读取字节、构建 PASS receipt，再用 `receipt_kernel.publish_txn(RawBytes(CSV), receipt)` 联合提交；marker rename 失败时 kernel 撤回已发布 CSV，上层只留唯一 ERROR side receipt。`test_fetch_failclosed.py` 与真子进程 `test_r9_batch1_boundaries.py` 全绿。
+- 登记：`AtomicVisitor` 现识别 `publish_txn` 调用，manifest 将 pool 更正为 `dual_file_txn`，并补齐已在使用同一 kernel 的 anchor-plan / Solana anchor / scan 三个既有原子落点。`invariant_scan.py` 绿：atomic_writes=42，exceptions=0。
+
+### 批内修复循环 1 总结与门禁
+
+- 5 finding 全部消化：F-B4-01 收紧为 import 身份+本地可达调用图+执行原语的机器判据；F-B4-02 拒绝死分支/终止后契约；F-B4-03 扩展到顶层裸 main；F-B4-04 由代码语义自动派生 standalone 分母；F-B4-05 将 pool CSV+marker 迁入联合事务。
+- 正式破坏注入：`test_batch4_invariant_guards.py` 现含 `B4F2-MAIN-02`、`B4F2-E2E-02/03`、`B4F2-STALE-03/03B/04`，全部到达目标分支并绿；`test_fetch_failclosed.py` 的 pool receipt 第二 rename fault 证明新 CSV 被撤回。
+- 受影响绿证：`test_batch4_invariant_guards.py` PASS；`test_fetch_failclosed.py` PASS；`test_r9_batch1_boundaries.py` 3/3 PASS；`test_r9_batch2_executable_capabilities.py` PASS；`test_chain_support_matrix.py` PASS。
+- 最终全量：`PYTHONDONTWRITEBYTECODE=1 python3 scripts/tests/run_all.py` 以最终实现运行 89 项，87 PASS / 2 FAIL。唯二失败为 `test_batch3_solana_vertical_slice.py` 与 `test_batch3_evm_vertical_slice.py`，都在 `ThreadingHTTPServer(("127.0.0.1", 0))` 首个 `socket.bind` 被沙箱 `PermissionError: [Errno 1] Operation not permitted` 拒绝，未进入业务断言；与工单预告一致，无第三项失败。
+- 其他门禁：`formal_ready_chains()=={'eth','bsc','base','sol'}`；`invariant_scan.py` PASS（52/55/62/42/58，exceptions=0）；`docs_lint.py --all` PASS；`env_check.py` PASS；`test_sixlens_docs.py` PASS；`SKILL.md=7737B<=8192B`；`VERSION=6.36.0` 未改；`git diff --check` 零输出。
+- diff→finding map 已登记 `B4F-G1`～`B4F-G5`，SHA 留空待 Fable 回填；本循环当前未映射 hunk=`0`。未执行 git 写操作，未出网。
+- 结论：`B4F2_COMPLETE`。

@@ -155,6 +155,21 @@ def test_main_exit_propagation_injection(scan, root):
     print("INJECT R9-B4-MAIN-01 bare integer main() -> RED")
 
 
+def test_top_level_main_exit_propagation_injection(scan, root):
+    """B4F2-MAIN-02: a top-level bare main call also drops the exit code."""
+    sample = root / "scripts/top_level_bare_main.py"
+    sample.parent.mkdir(parents=True, exist_ok=True)
+    sample.write_text(
+        "def main():\n"
+        "    return 1\n\n"
+        "main()\n",
+        encoding="utf-8")
+    errors = scan.main_exit_propagation_errors(files=[sample], root=root)
+    assert any("does not propagate" in error for error in errors), errors
+    assert scan.main_exit_propagation_errors() == []
+    print("INJECT B4F2-MAIN-02 top-level bare integer main() -> RED")
+
+
 def test_handwritten_e2e_provenance_injection(scan, root):
     """R9-B4-E2E-01: hand-written PASS bytes do not count as a formal slice."""
     sample = root / "test_handwritten_slice.py"
@@ -181,6 +196,58 @@ def test_handwritten_e2e_provenance_injection(scan, root):
                for error in errors), errors
     assert scan.formal_e2e_provenance_errors() == []
     print("INJECT R9-B4-E2E-01 hand-written observation bundle -> RED")
+
+
+def test_fake_local_run_provenance_injection(scan, root):
+    """B4F2-E2E-02: a locally named no-op run is not execution evidence."""
+    sample = root / "test_fake_run_slice.py"
+    sample.write_text(
+        "def run(*_args, **_kwargs):\n"
+        "    return None\n\n"
+        "def test_fake_vertical_slice():\n"
+        "    run(['python3', 'scripts/report/reconciliation_report.py'])\n"
+        "    run(['python3', 'scripts/solana/scan_token_accounts.py'])\n"
+        "    run(['python3', 'scripts/solana/anchor_sampler.py'])\n"
+        "    run(['python3', 'scripts/lib/supply_truth_gate.py'])\n"
+        "    run(['python3', 'scripts/solana/accounting_gate_sol.py'])\n"
+        "    run(['python3', 'scripts/solana/window_fetch.py'])\n\n"
+        "def main():\n"
+        "    test_fake_vertical_slice()\n",
+        encoding="utf-8")
+    errors = scan.formal_e2e_provenance_errors(targets={
+        "sol": (sample, "test_fake_vertical_slice"),
+    })
+    assert any("real reconciliation runner" in error for error in errors), errors
+    assert any("registered producer execution" in error for error in errors), errors
+    assert scan.formal_e2e_provenance_errors() == []
+    print("INJECT B4F2-E2E-02 local no-op run wrapper -> RED")
+
+
+def test_dead_execution_primitive_injection(scan, root):
+    """B4F2-E2E-03: an execution primitive in dead code is not evidence."""
+    sample = root / "test_dead_run_slice.py"
+    sample.write_text(
+        "import subprocess\n\n"
+        "def run(command):\n"
+        "    if False:\n"
+        "        subprocess.run(command)\n"
+        "    return None\n\n"
+        "def test_fake_vertical_slice():\n"
+        "    run(['python3', 'scripts/report/reconciliation_report.py'])\n"
+        "    run(['python3', 'scripts/solana/scan_token_accounts.py'])\n"
+        "    run(['python3', 'scripts/solana/anchor_sampler.py'])\n"
+        "    run(['python3', 'scripts/lib/supply_truth_gate.py'])\n"
+        "    run(['python3', 'scripts/solana/accounting_gate_sol.py'])\n"
+        "    run(['python3', 'scripts/solana/window_fetch.py'])\n\n"
+        "def main():\n"
+        "    test_fake_vertical_slice()\n",
+        encoding="utf-8")
+    errors = scan.formal_e2e_provenance_errors(targets={
+        "sol": (sample, "test_fake_vertical_slice"),
+    })
+    assert any("real reconciliation runner" in error for error in errors), errors
+    assert scan.formal_e2e_provenance_errors() == []
+    print("INJECT B4F2-E2E-03 dead subprocess primitive -> RED")
 
 
 def test_failure_artifact_contract_injection(scan, root):
@@ -210,6 +277,51 @@ def test_failure_artifact_contract_injection(scan, root):
     print("INJECT R9-B4-STALE-01 failed producer leaves old canonical -> RED")
 
 
+def test_dead_failure_contract_injection(scan, root):
+    """B4F2-STALE-03: calls hidden in statically dead code do not count."""
+    sample = root / "scripts/dead_contract.py"
+    sample.parent.mkdir(parents=True, exist_ok=True)
+    sample.write_text(
+        "def main():\n"
+        "    if False:\n"
+        "        quarantine_current('canonical.json', 'run')\n"
+        "        publish_error_receipt('receipt.json', {}, 'error')\n"
+        "    return 1\n",
+        encoding="utf-8")
+    contracts = ({
+        "script": sample,
+        "entrypoint": "main",
+        "canonical_artifacts": 1,
+    },)
+    errors = scan.failure_artifact_contract_errors(contracts=contracts, root=root)
+    assert any("quarantine" in error for error in errors), errors
+    assert any("error receipt" in error for error in errors), errors
+    assert scan.failure_artifact_contract_errors() == []
+    print("INJECT B4F2-STALE-03 dead quarantine/error calls -> RED")
+
+
+def test_constant_false_failure_contract_injection(scan, root):
+    """B4F2-STALE-03B: a literal false comparison is also dead code."""
+    sample = root / "scripts/constant_false_contract.py"
+    sample.parent.mkdir(parents=True, exist_ok=True)
+    sample.write_text(
+        "def main():\n"
+        "    if 1 == 0:\n"
+        "        quarantine_current('canonical.json', 'run')\n"
+        "        publish_error_receipt('receipt.json', {}, 'error')\n"
+        "    return 1\n",
+        encoding="utf-8")
+    contracts = ({
+        "script": sample,
+        "entrypoint": "main",
+        "canonical_artifacts": 1,
+    },)
+    errors = scan.failure_artifact_contract_errors(contracts=contracts, root=root)
+    assert any("quarantine" in error for error in errors), errors
+    assert any("error receipt" in error for error in errors), errors
+    print("INJECT B4F2-STALE-03B constant-false contract calls -> RED")
+
+
 def test_failure_artifact_registry_completeness(scan, _root):
     """R9-B4-STALE-02: every formal/standalone producer has named artifacts."""
     coverage = copy.deepcopy(scan.FAILURE_ARTIFACT_COVERAGE)
@@ -218,6 +330,34 @@ def test_failure_artifact_registry_completeness(scan, _root):
     assert any("scan_token_accounts.py" in error for error in errors), errors
     assert scan.failure_artifact_coverage_errors() == []
     print("INJECT R9-B4-STALE-02 remove formal producer artifact registration -> RED")
+
+
+def test_new_standalone_producer_requires_registration(scan, root):
+    """B4F2-STALE-04: a newly enumerable standalone producer cannot be omitted."""
+    sample = root / "scripts/evm/new_stale_producer.py"
+    sample.parent.mkdir(parents=True, exist_ok=True)
+    sample.write_text(
+        "def main():\n"
+        "    quarantine_current('canonical.json', 'run')\n"
+        "    publish_error_receipt('marker.json', {}, 'error')\n"
+        "    publish_txn('canonical.json', b'data', 'marker.json', {})\n"
+        "    return 0\n\n"
+        "if __name__ == '__main__':\n"
+        "    raise SystemExit(main())\n",
+        encoding="utf-8")
+    original_files = scan.production_files
+    original_rel = scan._rel
+    scan.production_files = lambda: [sample]
+    scan._rel = lambda path: Path(path).relative_to(root).as_posix()
+    try:
+        errors = scan.failure_artifact_coverage_errors()
+    finally:
+        scan.production_files = original_files
+        scan._rel = original_rel
+    assert any("new_stale_producer.py" in error and "unregistered" in error
+               for error in errors), errors
+    assert scan.failure_artifact_coverage_errors() == []
+    print("INJECT B4F2-STALE-04 newly added standalone producer -> RED")
 
 
 def main():
@@ -231,9 +371,15 @@ def main():
             test_vertical_slice_double_binding_injections,
             test_scanner_denominator_injections,
             test_main_exit_propagation_injection,
+            test_top_level_main_exit_propagation_injection,
             test_handwritten_e2e_provenance_injection,
+            test_fake_local_run_provenance_injection,
+            test_dead_execution_primitive_injection,
             test_failure_artifact_contract_injection,
+            test_dead_failure_contract_injection,
+            test_constant_false_failure_contract_injection,
             test_failure_artifact_registry_completeness,
+            test_new_standalone_producer_requires_registration,
         )
         for index, case in enumerate(cases):
             work = root / str(index)
