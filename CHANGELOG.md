@@ -10,6 +10,7 @@
 
 ## 版本索引（活跃窗口，新在上；每版一行，详情见下方对应条目）
 
+- 6.39.2（2026-08-09）entity_source_trace 进货单并列序非确定性修复（freeze 重放对账假阴性）
 - **6.39.1** 2026-08-09 分布扫描 validate 可移植性修复：semantic_payload 剔除 labels_manifest 宿主绝对路径（内容漂移仍由 sha256 抓）
 - **6.39.0** 2026-08-09 APU 案 ANOM-012 存量迁移三工单：replay_stats 覆盖截止块契约闭合（三引擎单点等深）、太古 done 官方迁移全链、旧 −1 产物格式迁移命令 migrate_legacy_case
 - **6.38.0** 2026-08-09 供给真值闸补齐 dead 沉没形态：sink 统计单源与逐地址闭合、receipt v3、verify_recon 余额恒等式修正、APU/GNT 对照与非零 dead 纵向回归
@@ -34,6 +35,13 @@
 - **6.20.1** 2026-08-05 修 5 处阻断级文档漂移（A4 前禁写报告冲突/easy 残留/惯犯回灌 docstring/批量预采集残留/旧 Par 路线历史降级）＋docs_lint 增中文禁词与 Python module docstring 扫描
 
 更早版本（6.20.0 及以前）详见 `archive/CHANGELOG-archive.md`。
+
+## [6.39.2] - 2026-08-09 — entity_source_trace 进货单并列序非确定性修复
+
+- `direct_upstream` 进货单 SQL `ORDER BY SUM DESC` 无次级键：金额并列的上家在 DuckDB
+  并行聚合下跨进程顺序漂移，freeze 的 provenance 重放语义 sha 与台账对不上，fail-closed
+  误拒合法冻结（APU 0801 案 12 址实体、68 上家多组并列首次触发）。
+- 修复：`ORDER BY 2 DESC, 1` 加地址字典序 tie-break。语义零变更（集合与金额不变，仅并列序固定）。
 
 ## [6.39.1] - 2026-08-09 — 分布扫描 validate 可移植性修复：宿主 checkout 绝对路径不得进语义比较
 
