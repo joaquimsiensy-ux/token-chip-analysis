@@ -647,13 +647,20 @@ def _local_function_executes(name, functions, imports, call_bindings, visiting=N
 def _reachable_execution_evidence(function_names, functions, tree):
     """Return scripts in actual run calls plus producer fields in reachable specs.
 
-    Static proof stops at a call name that resolves through a real module import
-    and is not rebound anywhere in the call's directly enclosing function.  It
-    does not prove that a process launches at runtime: dynamic exec dispatch,
-    ``importlib.import_module``/``getattr`` indirection, and module-load
-    monkeypatching are outside this AST guard and remain covered by the SUITE's
-    loopback E2E harness.  Producer fields count only behind that controlled
-    runner call, which validates and executes every registered spec producer.
+    Scope of this static guard -- accepted-downgrade boundary, user decision
+    2026-08-09.  It only proves that a call name resolves through a real module
+    import and is not rebound inside the call's *directly enclosing* function.
+    It is a best-effort internal integrity guard against low-effort forged E2E
+    evidence, NOT a completeness proof.  KNOWN-OPEN, deliberately not closed:
+    module-level rebinding of the imported name, rebinding in an outer/nested
+    function or class scope, dynamic exec dispatch, importlib/getattr
+    indirection, and module-load monkeypatching all defeat it (see
+    reviews/r9-batch4-rereview2.md N1..N20).  There is currently NO independent
+    runtime backstop: the loopback E2E harness is the very vertical-slice file
+    this guard inspects, so a forged file fakes guard and harness at once.  Real
+    data correctness is guaranteed by on-chain reconciliation (mainnet diff=0),
+    not by this meta-guard.  Producer fields count only behind the controlled
+    runner call.
     """
     executed = set()
     producers = set()
