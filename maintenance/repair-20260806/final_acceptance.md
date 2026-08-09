@@ -60,9 +60,11 @@
 | RA-04 | P1 | 对抗复核可被空壳满足 | 发布闸把关深度 |
 | RA-07 | P2 | v2 采集器位置明文 token 漏回归 | 采集操作 key 纪律 |
 
-## 5. 版本收口(待用户裁决 R10 处置后)
+## 5. 版本收口(完成,2026-08-09)
 
-- 升 VERSION 6.36.0→6.37.0 + CHANGELOG;请用户授权 --ff-only 合并 main+push(Fable 不自行 push)。
+- 用户裁决(AskUserQuestion):R9 先收尾,R10 候选六条下轮修。
+- VERSION 6.36.0→6.37.0;CHANGELOG 版本索引+详情节已写(changelog_lint PASS,活跃 18 条)。
+- 待用户授权:--ff-only 合并 main+push(Fable 不自行 push)。
 
 ## 5. 版本收口(待盲审后)
 

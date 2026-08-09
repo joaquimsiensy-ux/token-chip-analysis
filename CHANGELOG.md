@@ -10,6 +10,7 @@
 
 ## 版本索引（活跃窗口，新在上；每版一行，详情见下方对应条目）
 
+- **6.37.0** 2026-08-09 R9 收敛修复工程收口：五 finding 四批闭环（Solana 观测协议+mainnet 实证/anchor 语义重放/双采集器进程边界 fail-closed/attestation 可执行化+四链纵切片）；F-B4-01 静态元守卫经用户裁决降级诚实记账；两轮盲审=台账重放 43/49 一致（full-F-03 豁免手续补全）+六视角六条存量 finding 立 R10 候选
 - **6.36.0** 2026-08-06 结构收敛工程阶段 3+4 收口：receipt kernel+独立 validator、EVM/Solana 五件垂直切片迁移、net.py Result+curl 后端；R7 十五项 15/15 全绿、四零机器复算达成（kernel 采用 5/35 逐版推进）
 - **6.35.0** 2026-08-06 结构收敛工程阶段 1+2：invariant manifest 实施面分母+R7 十五项先红测试防装死隔离；受控 runner 编排执行四查+聚合器只认 runner 绑定；链能力注册表单源（同名异义 KNOWN_CHAINS 消灭），R7-01/05/07 转绿
 - **6.34.0** 2026-08-06 六视角首战修复轮：13 项五批全修（发布证据链 receipt 化/采集器原子产物/标签门禁等深/正式输入必填/文档口径），验收返工 1 项 risk_flags 规范化
@@ -30,6 +31,14 @@
 - **6.20.1** 2026-08-05 修 5 处阻断级文档漂移（A4 前禁写报告冲突/easy 残留/惯犯回灌 docstring/批量预采集残留/旧 Par 路线历史降级）＋docs_lint 增中文禁词与 Python module docstring 扫描
 
 更早版本（6.20.0 及以前）详见 `archive/CHANGELOG-archive.md`。
+
+## [6.37.0] - 2026-08-09 — R9 收敛修复工程收口：五 finding 四批＋两轮盲审，止损纪律与诚实降级首次全程落地
+
+- **五 finding 处置**：R9-01（Solana accounting 以 CLI 声明冒充观测）→ 八步观测协议 `solana_observation.py`（GPA context.slot 唯一真值/前后 raw 一致/窗口重试/三方 supply 闭合/producer publish 前自跑 consumer 同一 validator），裁判 mainnet 实证 PYTHIA GPA 82k 账户 diff=0；R9-02（anchor plan↔spotcheck 断契约）→ consumer 语义重放（`anchor_selection.py` 单实现，plan 参数对真实输入确定性重算逐位比对，伪造等价于真跑 producer）+per_cell>=2/edge_max>=3 下界双端共享；R9-03/04（fetch_pool_swaps/scan_token_accounts 失败 exit 0+stale 旧件冒充当前成功）→ 退出码传播+启动先隔离+ERROR side receipt+CSV/marker 迁 receipt-kernel 联合事务；R9-05（solana-cluster attestation 纯声明）→ 可执行适配器键（真 import 到 callable）+六能力探针+`@formal_evidence_target` 错身份零业务前置探针+四链真实纵切片，formal_ready 自然导出。
+- **批四防复发守卫**（AST/机器判据挂 validate_manifest+SUITE 必经）：main 退出码传播（含顶层裸调）/formal E2E 现场 producer 调用图/capability 错身份执行/失败产物登记分母自动派生/anchor 弱覆盖下界。**F-B4-01（G2 执行证据静态守卫）三轮修复三次被 opus 复审攻穿（未 import 裸名→函数内遮蔽→模块层/外层作用域重绑定），触止损 3/3 冻结，用户裁决降级接受**：定位=内部元守卫尽力挡低级伪造，模块层伪造 KNOWN-OPEN 无独立运行时兜底，docstring/ledger 诚实记账（教训:静态 AST 判运行时执行原理不可闭合，逐层堵语法是打地鼠；真闭合方向=runner 进程指纹收据，列后续立项）。
+- **两轮 codex 全库盲审（互盲,基线 45bf8f3）**：Round B 台账重放 49 项=43 CONSISTENT/1 INCONSISTENT/5 环境不可复核——full-F-03「豁免已登记」先行于事实被抓，整改=第四类豁免独立台账 `exemptions.md`（调用图/formal registry/能力矩阵三证据+四条自动失效条件）+`test_exemption_guards.py` 防回流负测挂 SUITE+§7 批三 B3F_COMPLETE 履约登记+SHA 回放工具 `sha_replay.py` 入库（口径/时点声明）。Round A 六视角判 BLOCK：六条存量 finding（git blame 全早于 R9 基线,replay→state→figures 呈现层等 R9 未触子系统）全部读码坐实,登记 final_acceptance「R10 候选清单」用户裁决下轮修——**重点 RA-01(P0) 图 1 阵营序列自报无值域/闭合/绑定校验、RA-02(P0) 阵营互斥无 validator 重复地址后项静默覆盖**；RA-06 即 F-B4-01 降级项,盲审独立复现并自评「已诚实登记不夸大」=降级记账经受住外部检验。
+- **维护方法论新增（R9 章,均已写回 maintenance-review-repair.md）**：批内修复循环本身必须过攻击式审查（codex 自报修完≠闭合,三轮「换语法就穿」实证）；opus 复审工单四预案（禁 du/find 全盘、第一命令建最小镜像脱离大 worktree、连续 2 次无响应即交付、Write 后 ls 确认落盘）；密钥/脱敏降档纪律（安全边界够用即可,不外溢质量残留）；producer/validator 约束机器同源范式。
+- **收口台账**：ledger 49 项主表/详情零空栏,diff→finding map 37 唯一 SHA 全链回放 PASS,全量 suite 90 项（含新豁免守卫）Fable 环境全绿,invariant_scan exceptions=0,四链 formal ready。R9 campaign 止损记录：批一 2 循环/批三 2 循环/批四 3 循环触冻结（首例走完冻结→用户裁决全流程）。
 
 ## [6.36.0] - 2026-08-06 — 结构收敛工程阶段 3+4 收口：receipt kernel＋垂直切片迁移＋net.py 演进，15/15 全绿
 
