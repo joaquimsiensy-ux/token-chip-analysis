@@ -86,7 +86,10 @@ CSV 的每个历史 prefix，再从前一 `requested_to` 续采并发布加长 c
 **增量拉取（研报更新/补尾场景）**：v2 对增量天然友好——同一 run 根目录下新起 run（from_block=上次 done.json 的 next_block）即可；**补丁段重叠核验法**：对怀疑有洞的区间补拉一段落盘独立 patch 目录，按 (tx,log_index) 键与主数据对比，零差即证该段完整、有差即用 patch 覆盖。
 
 **存量 HyperSync v2 目录迁移（增量更新前置）**：2026-08-02 之前的
-`hypersync-v2-done/v2` 没有 `files` 实体回执，不得直接被新续拉器信任。QUQ、
+`hypersync-v2-done/v2` 没有 `files` 实体回执，不得直接被新续拉器信任；更早的
+太古 done（无 `schema` 字段、只有 from_block/next_block/token/url 五键，APU 案
+ANOM-012 实证形态）同样由本命令迁移——parquet 列集经实读硬验与现行采集器查询
+形态一致后重建全部边界与文件指纹，并补建 `capture_identity.json`。QUQ、
 PYTHIA、TROLL 类存量币在下次增量采集或投后更新前，先对该币的 v2
 采集根目录执行：
 

@@ -725,18 +725,13 @@
       "semantics": "overwrite_single"
     },
     {
-      "locator": "quarantine_current",
-      "script": "scripts/lib/artifact_quarantine.py",
-      "semantics": "overwrite_single"
-    },
-    {
       "locator": "main",
       "script": "scripts/lib/anchor_plan.py",
       "semantics": "dual_file_txn"
     },
     {
-      "locator": "main",
-      "script": "scripts/lib/rpc_batch.py",
+      "locator": "quarantine_current",
+      "script": "scripts/lib/artifact_quarantine.py",
       "semantics": "overwrite_single"
     },
     {
@@ -758,6 +753,11 @@
       "locator": "publish_txn",
       "script": "scripts/lib/receipt_kernel.py",
       "semantics": "dual_file_txn"
+    },
+    {
+      "locator": "main",
+      "script": "scripts/lib/rpc_batch.py",
+      "semantics": "overwrite_single"
     },
     {
       "locator": "cmd_series",
@@ -797,6 +797,11 @@
     {
       "locator": "write",
       "script": "scripts/report/identity_snapshot_receipt.py",
+      "semantics": "overwrite_single"
+    },
+    {
+      "locator": "atomic_write_with_backup",
+      "script": "scripts/report/migrate_legacy_case.py",
       "semantics": "overwrite_single"
     },
     {

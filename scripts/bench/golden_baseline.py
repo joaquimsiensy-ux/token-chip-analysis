@@ -72,7 +72,8 @@ def snapshot(data_dir, tag=""):
 STATS_CONTRACT = ["events", "mint_total_wei", "burn_total_wei", "sum_balances_wei",
                   "zero_event_inflow_wei", "dead_event_inflow_wei",
                   "dead_event_outflow_wei", "dead_sink_net_wei",
-                  "supply_check_ok", "neg_balance_addrs", "unique_addrs", "gate_pass"]
+                  "supply_check_ok", "neg_balance_addrs", "unique_addrs", "gate_pass",
+                  "max_block"]
 
 
 def compare(pa, pb):

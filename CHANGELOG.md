@@ -10,6 +10,7 @@
 
 ## 版本索引（活跃窗口，新在上；每版一行，详情见下方对应条目）
 
+- **6.39.0** 2026-08-09 APU 案 ANOM-012 存量迁移三工单：replay_stats 覆盖截止块契约闭合（三引擎单点等深）、太古 done 官方迁移全链、旧 −1 产物格式迁移命令 migrate_legacy_case
 - **6.38.0** 2026-08-09 供给真值闸补齐 dead 沉没形态：sink 统计单源与逐地址闭合、receipt v3、verify_recon 余额恒等式修正、APU/GNT 对照与非零 dead 纵向回归
 - **6.37.0** 2026-08-09 R9 收敛修复工程收口：五 finding 四批闭环（Solana 观测协议+mainnet 实证/anchor 语义重放/双采集器进程边界 fail-closed/attestation 可执行化+四链纵切片）；F-B4-01 静态元守卫经用户裁决降级诚实记账；两轮盲审=台账重放 43/49 一致（full-F-03 豁免手续补全）+六视角六条存量 finding 立 R10 候选
 - **6.36.0** 2026-08-06 结构收敛工程阶段 3+4 收口：receipt kernel+独立 validator、EVM/Solana 五件垂直切片迁移、net.py Result+curl 后端；R7 十五项 15/15 全绿、四零机器复算达成（kernel 采用 5/35 逐版推进）
@@ -32,6 +33,13 @@
 - **6.20.1** 2026-08-05 修 5 处阻断级文档漂移（A4 前禁写报告冲突/easy 残留/惯犯回灌 docstring/批量预采集残留/旧 Par 路线历史降级）＋docs_lint 增中文禁词与 Python module docstring 扫描
 
 更早版本（6.20.0 及以前）详见 `archive/CHANGELOG-archive.md`。
+
+## [6.39.0] - 2026-08-09 — APU 案 ANOM-012 存量迁移三工单：首个真实 EVM 受控全链暴露的缺口收口
+
+- **工单一（replay_stats 覆盖截止块契约，归因=修复中新引入）**：6.34.0 给 `verify_recon` 加"replay_stats 截止块==--end-block"必读断言时未同步任何生产者——三 replay 引擎从不写 `max_block`，断契约存活 4 个版本，测试全绿全靠 fixture 手写 stats 掩盖（7.5 手写 receipt 反面实证），APU 真实首跑必断。修复=单点注入 `replay_provenance()`：`max_block = 重验过的 preflight expected_to − 1`（采集覆盖语义而非最后事件块，尾部空块不缩小覆盖；值取自 `validate_preflight_artifact` 重验产物，非引擎自报），`replay_duck`/`replay_pass1`/`replay_stream` 三引擎自动同深度；`max_block` 入黄金基线 STATS_CONTRACT 对表键。真实引擎产物直连 verify_recon 的消费连线测试补上（修前死于截止块、修后推进到 RPC 段），篡改 max_block 拒绝负例留档。
+- **工单二（太古 done 官方迁移，归因=历史漏检）**：`--refresh-manifests` 只认 `hypersync-v2-done/v2`，无 schema 字段的太古五键 done（from_block/next_block/token/url/elapsed_s，v1 采集时代）被"不支持迁移的旧 schema: None"拒绝，新版 channels preflight 对存量数据直接 BLOCK 且无官方出路（APU −2 现场手拼被正确否决后只能回退）。修复=`_prehistoric_refresh_candidate`：parquet 列集经 `inspect_run_files` 实读硬验与现行采集器查询形态一致（列集是查询形态的物理证据，非对旧声明的信任）后重建全部边界与文件指纹，`capture_from=from_block`、`to_block=next_block`，留痕 `refreshed_from_schema=pre-schema-v1`；显式 `"schema": null` 的畸形件不走此分支照旧拒绝。`ensure_outdir_identity` 挪到 done 升级落盘后（其迁移预检要求磁盘 done 已带现行 query_schema，太古升级前不满足；唯一性已在收集阶段验证，ensure 幂等可自愈）。两阶段全验证-或-全不写事务保持：越界 run 使整体拒绝且好 run 的 done 字节不变。真实 APU 存量（943,807 行）副本实弹：迁移→receipt→preflight→`replay_stream` 真跑 gate_pass 全链通过，partial_run_ 前缀目录正确忽略。
+- **工单三（旧 −1 产物格式迁移命令，归因=历史漏检）**：新增 `scripts/report/migrate_legacy_case.py` 作为旧案目录唯一官方迁移路径（禁手拼）：①data_map 哈希剥 `sha256:` 前缀（仅精确形态 `sha256:<64hex>`，其余值原样），剥后对在场登记文件重验哈希——失配整文件拒迁（不把腐坏账本洗白成合规格式），登记文件已清理只计数不阻断；②candidate_universe 条目补 `id=cid` 保留 cid（与 APU −2 现场修法同型），既无 id 也无 cid 拒迁；③anchor_plan 无 kernel receipt 只报 NEEDS_RERUN 指引现行 anchor_plan.py 重跑——receipt 是执行证据不可补票。分文件独立原子处置（改前 `.bak_migrate_<UTC>` 备份），全合规 exit 0 / 有拒绝或待重跑项 exit 2。消费连线：迁移前 `verify_data_map` 拒、迁移后同校验器通过；幂等重跑不重复改写。
+- **登记与文档**：`test_apu_legacy_gaps.py`（23 项契约测试）入 SUITE；`atomic_write_with_backup` 登记 invariant manifest（atomic_writes 43）；data-pipeline-evm-channels §迁移段与 split-run §3.1 步 2 补官方迁移指引。本次为工具工程，无代币分析结论；全部反例离线 fixture，正例由真实 producer 现场生成。
 
 ## [6.38.0] - 2026-08-09 — 供给真值闸 dead 沉没形态适配与闭合口径修正
 

@@ -115,7 +115,7 @@
 ### 3.1 开工序（八步，顺序执行，写死进 /token-analyze-2）
 
 1. **模型自检**：非 Fable/主力判断模型 → 警告（不硬停）。
-2. **`handoff_manifest.py verify` fail-closed**：文件齐＋哈希对＋语义验证（gate exit 码与状态重查、schema 版本兼容、状态必须 READY——BLOCKED/PARTIAL/BLOCKED_CEX_GATE 一律 exit 2 拒收）。
+2. **`handoff_manifest.py verify` fail-closed**：文件齐＋哈希对＋语义验证（gate exit 码与状态重查、schema 版本兼容、状态必须 READY——BLOCKED/PARTIAL/BLOCKED_CEX_GATE 一律 exit 2 拒收）。旧版 skill 产的 −1 目录（data_map 哈希带 `sha256:` 前缀、candidate_universe 条目只有 `cid`、anchor_plan 无 kernel receipt，APU 案 ANOM-012 实证）先跑 `scripts/report/migrate_legacy_case.py --case-dir <案目录>` 官方迁移，禁止手拼；anchor receipt 缺失只能用现行 anchor_plan.py 重跑补产，不可补票。
 3. **数据保鲜检查（用户定稿口径）**：默认按已有数据跑（cutoff 即分析截止点，报告如实标注数据时点）；仅当 cutoff 距今缺口 **>72h** 才弹警报，AskUserQuestion 停等用户确认是否拉取缺口段——确认拉取则增量拼接、重跑受影响 gate 与候选门槛、产 superseding manifest；用户选按原数据继续则裁决记入 anomalies 后照跑。**绝不自动拉取。**
 4. **必读件**：anomalies.json、四查结论、accounting_mode、点名式 CEX 黑箱关卡结论（若有）。
 5. **候选覆盖自检（防 candidates 锚定）**：用重放产物独立重算阈值榜单/历史越线/归零/静置清单，比对 candidate_universe 无缺漏才继续；发现缺漏记 anomalies 并补入。
