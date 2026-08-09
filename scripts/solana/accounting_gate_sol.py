@@ -18,9 +18,11 @@ TransferFee / TransferHook / InterestBearing / PermanentDelegate 等扩展会让
      未识别扩展 → 保守按 BLOCK（宁可误停不可漏放）
 
 用法:
-  python3 accounting_gate_sol.py --mint <mint地址> [--rpc URL] [--out accounting_mode.json]
-  --rpc 默认读 ~/.config/helius/api-key 拼 Helius 端点（国内直连）；无 key 时退
-        https://api.mainnet-beta.solana.com（须走系统代理）
+  正式：python3 accounting_gate_sol.py --mint <mint地址> --bundle <observation.json>
+        [--as-of-slot N] [--min-context-slot N] [--out accounting_mode.json]
+  探索：python3 accounting_gate_sol.py --mint <mint地址> --exploration [--rpc URL]
+        [--min-context-slot N] [--out accounting_mode.json]
+  --rpc 仅探索模式使用；默认读 ~/.config/helius/api-key 拼 Helius，缺 key 时退公共节点。
 
 输出: accounting_mode.json（mode/verdict/exit_code/owner_program/extensions 分级明细）
 退出码: 0 = standard 或 WARN 级（可冻结/可调费等——记录放行，报告里提示盯参数切换）

@@ -232,8 +232,14 @@ def main(argv=None):
         if gaps:
             publish_overwrite(args.receipt, receipt)
         else:
-            partial.unlink()
             publish_txn(out_path, RawBytes(data_bytes), args.receipt, receipt)
+            try:
+                partial.unlink()
+            except OSError as cleanup_exc:
+                # Formal data+receipt are already atomically committed.  Keep
+                # PASS and report only recoverable staging-file cleanup drift.
+                print(f"[window_fetch] WARN partial cleanup failed: {cleanup_exc}",
+                      file=sys.stderr)
         print(f"{verdict} {len(segs)} segs ({len(gaps)} gaps) in {time.time()-t0:.0f}s"
               f" -> {out_path if not gaps else partial}", flush=True)
         return exit_code

@@ -122,7 +122,11 @@ def test_r7_03():
 
 def test_r7_04():
     """Formal supply truth rejects raw override and binds inputs/context slot."""
-    mod = load(ROOT / "scripts/lib/supply_truth_gate.py", "r7_supply")
+    supply_path = Path(os.environ.get(
+        "R9_SUPPLY_TRUTH_MODULE", ROOT / "scripts/lib/supply_truth_gate.py"))
+    mod = load(supply_path, "r7_supply")
+    if os.environ.get("R9_SUPPLY_TRUTH_MODULE"):
+        mod.__file__ = str(ROOT / "scripts/lib/supply_truth_gate.py")
     problems = []
     with tempfile.TemporaryDirectory() as td:
         root = Path(td).resolve(); out = root / "receipt.json"
@@ -152,8 +156,9 @@ def test_r7_04():
         with mock.patch.object(sys, "argv", explore_argv):
             rc = mod.main()
         exploration = json.loads(explore_out.read_text()) if explore_out.exists() else {}
+        expected_supply_slot = json.loads(bundle.read_text())["supply"]["slot"]
         if rc != 0 or exploration.get("mode") != "exploration" \
-                or exploration.get("observed_context_slot") is None:
+                or exploration.get("observed_context_slot") != expected_supply_slot:
             problems.append("explicit exploration raw override lacks mode/context binding")
         else:
             shared = load(ROOT / "scripts/report/shared_release_receipt.py", "r7_supply_shared")
@@ -183,7 +188,7 @@ def test_r7_04():
                    for v in inputs.values()):
             problems.append("receipt has no inputs file_ref")
         if rc != 0 or receipt.get("mode") != "formal" \
-                or receipt.get("observed_context_slot") is None:
+                or receipt.get("observed_context_slot") != expected_supply_slot:
             problems.append("Solana receipt omits observed_context_slot")
     assert not problems, "; ".join(problems)
 

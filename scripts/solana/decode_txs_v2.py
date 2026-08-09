@@ -21,9 +21,18 @@ from decimal import Decimal
 from pathlib import Path
 import requests
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
+from endpoint_identity import endpoint_fingerprint
+
 DEF_RPC = "https://api.mainnet-beta.solana.com"
 OUTPUT_SCHEMA = "solana-tx-decode-output-v2"
 RECEIPT_SCHEMA = "solana-tx-decode-receipt/v1"
+
+
+def _rpc_identity(rpc):
+    fingerprint = endpoint_fingerprint(rpc)
+    return {"rpc": fingerprint["public_origin"],
+            "rpc_sha256": fingerprint["sha256"]}
 
 
 def log(msg):
@@ -39,7 +48,7 @@ class SigCache:
         self.mem = {}
         if self.root:
             identity = {"schema": self.SCHEMA, "chain_id": chain_id, "mint": mint,
-                        "pool": pool or "", "rpc": rpc}
+                        "pool": pool or "", **_rpc_identity(rpc)}
             digest = hashlib.sha256(json.dumps(identity, sort_keys=True).encode()).hexdigest()
             self.root = self.root / digest
             self.root.mkdir(parents=True, exist_ok=True)
@@ -136,7 +145,7 @@ def completed_sigs(outp, mint):
 
 def output_identity(mint, pool, rpc):
     return {"schema": OUTPUT_SCHEMA, "chain_id": "solana-mainnet",
-            "mint": mint, "pool": pool or "", "rpc": rpc}
+            "mint": mint, "pool": pool or "", **_rpc_identity(rpc)}
 
 
 def _atomic_json(path, obj):

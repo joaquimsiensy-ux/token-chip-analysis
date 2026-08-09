@@ -125,6 +125,34 @@ def test_window_has_no_post_commit_failure_surface(root):
     assert out.exists() and json.loads(receipt.read_text())["verdict"] == "PASS"
 
 
+def test_window_txn_failure_preserves_recovery_partial(root):
+    module = _load_solana_module(root, "window_fetch.py", "b3_window_txn_recovery")
+    out = root / "window.jsonl"
+    receipt = root / "window.receipt.json"
+    partial = Path(str(out) + ".partial")
+    with mock.patch.object(
+            module, "scan_seg", return_value=([], True, [1735689600])), \
+            mock.patch.object(module, "publish_txn", side_effect=OSError("txn injected")):
+        rc = module.main(["10", "10", str(out), "--receipt", str(receipt), "--conc", "1"])
+    assert rc != 0
+    assert not out.exists() and not receipt.exists()
+    assert partial.is_file(), "failed atomic publish discarded the completed collection"
+
+
+def test_window_post_commit_partial_cleanup_is_nonfatal(root):
+    module = _load_solana_module(root, "window_fetch.py", "b3_window_cleanup_nonfatal")
+    out = root / "window.jsonl"
+    receipt = root / "window.receipt.json"
+    partial = Path(str(out) + ".partial")
+    with mock.patch.object(
+            module, "scan_seg", return_value=([], True, [1735689600])), \
+            mock.patch.object(Path, "unlink", side_effect=OSError("cleanup injected")):
+        rc = module.main(["10", "10", str(out), "--receipt", str(receipt), "--conc", "1"])
+    assert rc == 0
+    assert out.is_file() and receipt.is_file() and partial.is_file()
+    assert json.loads(receipt.read_text())["verdict"] == "PASS"
+
+
 def test_anchor_has_no_post_commit_failure_surface(root):
     """R9 B3: anchor returns immediately after the kernel transaction commits."""
     module = _load_solana_module(root, "anchor_sampler.py", "b3_anchor_post_commit")
@@ -272,6 +300,8 @@ def main():
             test_accounting_requires_and_emits_frozen_slot,
             test_window_missing_timestamp_fails_without_pass,
             test_window_has_no_post_commit_failure_surface,
+            test_window_txn_failure_preserves_recovery_partial,
+            test_window_post_commit_partial_cleanup_is_nonfatal,
             test_anchor_has_no_post_commit_failure_surface,
             test_window_complete_segment_requires_timestamp_evidence,
             test_anchor_and_window_reject_same_or_alias_paths,

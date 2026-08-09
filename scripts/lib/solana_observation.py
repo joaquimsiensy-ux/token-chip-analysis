@@ -13,7 +13,7 @@ import json
 import time
 from pathlib import Path
 
-from endpoint_identity import public_endpoint
+from endpoint_identity import endpoint_fingerprint
 from receipt_kernel import build_envelope, finalize_envelope
 from receipt_validate import validate_receipt
 from solana_attested_session import (SOLANA_MAINNET_GENESIS_HASH,
@@ -49,14 +49,6 @@ def canonical_json_sha256(value) -> str:
 
 def sha256_bytes(value: bytes) -> str:
     return hashlib.sha256(value).hexdigest()
-
-
-def endpoint_fingerprint(endpoint: str) -> dict:
-    """Return a non-secret endpoint identity; query strings are never emitted."""
-    return {
-        "public_origin": public_endpoint(endpoint),
-        "sha256": sha256_bytes(endpoint.encode("utf-8")),
-    }
 
 
 def assert_declared_slot(declared, observed, flag="--as-of-slot"):
@@ -160,10 +152,18 @@ def _account_keys_and_writable(transaction):
         for index in range(len(keys)):
             derived = (index < signed_writable_end if index < required
                        else index < unsigned_writable_end)
-            writable.append(explicit[index] if explicit[index] is not None else derived)
+            # Header-derived writability is authoritative for the static key
+            # layout.  Parsed per-key flags may only make the result stricter.
+            writable.append(derived or explicit[index] is True)
 
     meta = transaction.get("meta") if isinstance(transaction, dict) else None
     loaded = meta.get("loadedAddresses") if isinstance(meta, dict) else None
+    lookups = message.get("addressTableLookups")
+    if lookups is not None and not isinstance(lookups, list):
+        raise SolanaObservationError("transaction addressTableLookups invalid")
+    if lookups and not isinstance(loaded, dict):
+        raise SolanaObservationError(
+            "transaction loadedAddresses missing for addressTableLookups")
     if isinstance(loaded, dict):
         for item in loaded.get("writable") or []:
             if not isinstance(item, str):
@@ -244,8 +244,8 @@ def _activity_validation(session, mint, pre_slot, post_slot, *, deadline_seconds
     if pagination_error and not high_activity:
         raise RetryableObservationError(
             f"complete activity pagination incomplete: {pagination_error}")
-    if not complete and not high_activity:
-        raise RetryableObservationError("complete activity pagination incomplete")
+    # Every non-complete exit above records either pagination_error or one of
+    # the high-activity budget flags; there is no third reachable state.
 
     mode = "lightweight" if high_activity else "complete"
     candidates = references[:LIGHT_SAMPLE_LIMIT] if mode == "lightweight" else references
@@ -258,6 +258,7 @@ def _activity_validation(session, mint, pre_slot, post_slot, *, deadline_seconds
                                     or time.monotonic() - started > deadline_seconds):
             mode = "lightweight"
             successful = successful[:LIGHT_SAMPLE_LIMIT]
+            checked = min(checked, LIGHT_SAMPLE_LIMIT)
             break
         try:
             tx = session.call("getTransaction", [row["signature"], {
@@ -310,6 +311,9 @@ def _activity_validation(session, mint, pre_slot, post_slot, *, deadline_seconds
         "rpc_calls": rpc_calls,
         "elapsed_seconds": round(elapsed, 6),
         "coverage_statement": (
+            "zero referenced signatures were returned for the observed window; "
+            "no transaction writable checks were performed"
+            if is_complete and not references else
             "all successful referenced transactions in the observed window were parsed; "
             "the mint was never writable" if is_complete else
             "adaptive sample only; this does not prove absence of intermediate mint state changes"
@@ -365,6 +369,10 @@ def _observe_once(session, mint, program, min_context_slot, deadline_seconds):
         "minContextSlot": min_context_slot,
     }])
     pre_slot, pre_value = _account_value(pre_raw_result, "getAccountInfo(raw pre)")
+    if pre_slot < min_context_slot:
+        raise SolanaObservationError(
+            f"getAccountInfo(raw pre) slot {pre_slot} is below min_context_slot "
+            f"{min_context_slot}")
     if pre_value.get("owner") != program:
         raise SolanaObservationError(
             f"mint owner mismatch: expected {program}, observed {pre_value.get('owner')}")
@@ -392,8 +400,9 @@ def _observe_once(session, mint, program, min_context_slot, deadline_seconds):
         "filters": filters, "withContext": True, "minContextSlot": parsed_slot,
     }])
     snapshot_slot, accounts = _normalized_gpa_accounts(gpa_result)
-    if snapshot_slot < pre_slot:
-        raise SolanaObservationError("GPA context slot is below the pre-observation slot")
+    if snapshot_slot < parsed_slot:
+        raise SolanaObservationError(
+            "GPA context slot is below the jsonParsed minContextSlot floor")
 
     post_result = session.call("getAccountInfo", [mint, {
         "commitment": "finalized", "encoding": "base64",
@@ -422,7 +431,9 @@ def _observe_once(session, mint, program, min_context_slot, deadline_seconds):
     supply_amount = int(str(value.get("amount")))
     supply_decimals = int(value.get("decimals"))
     if supply_slot < snapshot_slot:
-        raise SolanaObservationError(
+        # getTokenSupply does not support minContextSlot; a lagging failover
+        # endpoint is therefore a retryable observation race, not a hard shape error.
+        raise RetryableObservationError(
             f"getTokenSupply context slot {supply_slot} is before snapshot {snapshot_slot}")
 
     account_total = 0

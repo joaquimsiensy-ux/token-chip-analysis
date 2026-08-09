@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import importlib
+import importlib.util
 import inspect
+import os
 import sys
 from pathlib import Path
 from types import MappingProxyType
@@ -14,7 +16,16 @@ HERE = Path(__file__).resolve().parent
 sys.path[:0] = [str(ROOT / "scripts/lib"), str(HERE)]
 
 import chain_registry  # noqa: E402
-import formal_ready_test_harness as harness  # noqa: E402
+if os.environ.get("R9_FORMAL_READY_HARNESS"):
+    spec = importlib.util.spec_from_file_location(
+        "formal_ready_test_harness_mutant", os.environ["R9_FORMAL_READY_HARNESS"])
+    harness = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(harness)
+    harness.ROOT = ROOT
+    harness.LIB = ROOT / "scripts/lib"
+    harness.REPORT = ROOT / "scripts/report"
+else:
+    import formal_ready_test_harness as harness  # noqa: E402
 
 
 def assert_three_layers_read_only(registry):
@@ -53,20 +64,40 @@ def test_public_record_api_rejects_self_report():
 
 
 def test_activation_is_reversible_and_immutable():
+    import formal_capability_probes
+
     assert hasattr(harness, "test_vertical_slices"), "missing reversible fixture context"
-    original = chain_registry.CHAIN_REGISTRY
-    with harness.test_vertical_slices():
-        assert chain_registry.formal_ready_chains() == {"eth", "bsc", "base", "sol"}
+    original_registry = chain_registry.CHAIN_REGISTRY
+    original_targets = formal_capability_probes.VERTICAL_SLICE_EVIDENCE_TARGETS
+    empty_targets = MappingProxyType({})
+    try:
+        formal_capability_probes.VERTICAL_SLICE_EVIDENCE_TARGETS = empty_targets
+        assert chain_registry.formal_ready_chains() == set()
+        with harness.test_vertical_slices():
+            assert chain_registry.formal_ready_chains() == {"eth", "bsc", "base", "sol"}
+            assert_three_layers_read_only(chain_registry.CHAIN_REGISTRY)
+        assert formal_capability_probes.VERTICAL_SLICE_EVIDENCE_TARGETS is empty_targets
+        assert chain_registry.formal_ready_chains() == set()
+        assert chain_registry.CHAIN_REGISTRY is original_registry
         assert_three_layers_read_only(chain_registry.CHAIN_REGISTRY)
-    assert chain_registry.CHAIN_REGISTRY is original
-    assert chain_registry.formal_ready_chains() == {"eth", "bsc", "base", "sol"}
-    assert_three_layers_read_only(chain_registry.CHAIN_REGISTRY)
+    finally:
+        formal_capability_probes.VERTICAL_SLICE_EVIDENCE_TARGETS = original_targets
 
 
 def test_alphabetical_import_does_not_leak_readiness():
-    for name in ("test_audit_release_gate", "test_round4_a5_seal"):
-        importlib.import_module(name)
-    assert chain_registry.formal_ready_chains() == {"eth", "bsc", "base", "sol"}
+    import formal_capability_probes
+
+    original_targets = formal_capability_probes.VERTICAL_SLICE_EVIDENCE_TARGETS
+    empty_targets = MappingProxyType({})
+    try:
+        formal_capability_probes.VERTICAL_SLICE_EVIDENCE_TARGETS = empty_targets
+        assert chain_registry.formal_ready_chains() == set()
+        for name in ("test_audit_release_gate", "test_round4_a5_seal"):
+            importlib.import_module(name)
+        assert formal_capability_probes.VERTICAL_SLICE_EVIDENCE_TARGETS is empty_targets
+        assert chain_registry.formal_ready_chains() == set()
+    finally:
+        formal_capability_probes.VERTICAL_SLICE_EVIDENCE_TARGETS = original_targets
 
 
 def test_child_bytecode_guard_is_explicit():

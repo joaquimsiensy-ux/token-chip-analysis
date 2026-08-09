@@ -93,6 +93,18 @@
 | `B3F2-G1:scripts/lib/{endpoint_identity.py,solana_attested_session.py,solana_observation.py,net.py}; scripts/solana/{accounting_gate_sol.py,anchor_sampler.py}; maintenance/repair-20260806/g3_preflight/g3_0a_usdc_activity.py; scripts/tests/{test_r9_solana_attested_session.py,test_batch1_rpc_attestation.py,test_r9_batch3_solana_observation.py,test_r9_batch3_preflight.py,test_sixlens_receipts.py}` | `INV-11`; secondary `INV-02, INV-08` | `B3FIX-01` P2、`B3FIX-02` P1；源头 R9-05 | certifi CA context 构造一次复用且可选依赖缺失回退；endpoint 日志/异常/receipt/行身份统一 public origin；G3-0 成本壳不再旁路生产 urllib transport | certifi 有/无与 context 复用；transport/RPC/attestation/exhausted 四型密钥负例；preflight/scan/anchor 持久化负例；EVM 同族回归 |  |
 | `B3F2-G2:maintenance/repair-20260806/{g3_preflight/g3_0a_usdc_activity.json(删除),b3_progress.md,ledger.md,diff-finding-map.md}` | `INV-18, INV-19`; secondary `INV-11` | 批内修复循环 1 止损与污染清理 | 删除裁判首跑含 key 报告且不留副本；如实登记第一循环、红绿与裁判重跑位 | 文件不存在断言；docs lint；全量 suite |  |
 
+## R9 批三批内修复循环 2
+
+| commit/hunk | primary invariant | finding 列表或配套任务 | 修改目的 | 测试/纵切片/守卫 | 审查结论 |
+|---|---|---|---|---|---|
+| `B3F3-G1:scripts/lib/{endpoint_identity.py,solana_observation.py}; scripts/evm/accounting_gate.py; scripts/solana/{decode_txs_v2.py,fetch_sqd_transfers_v2.py}; scripts/tests/{invariant_manifest.json,test_r9_solana_attested_session.py,test_batch1_rpc_attestation.py,test_review_solana_integrity.py,test_review_resume_integrity.py,test_r9_batch3_solana_observation.py}` | `INV-11`; secondary `INV-02, INV-05` | `B3R9-01` | path/query/userinfo/fragment 密钥统一脱敏且普通正文不被 query key 腐蚀；持久化 endpoint 身份只存 public origin+不可逆 digest | Alchemy/Infura/无 scheme/path token；EVM+Solana 异常链；accounting/decode/SQD receipt/cache metadata；legacy meta 原子清洗登记 |  |
+| `B3F3-G2:scripts/lib/solana_observation.py; scripts/solana/scan_token_accounts.py; scripts/tests/test_r9_batch3_solana_observation.py` | `INV-08`; secondary `INV-02, INV-11` | `B3R9-02, B3R9-09, B3R9-13` | producer 发布前运行共享对象 validator；修降级样本、pre/parsed/GPA 下限与 supply retry 分类 | 两条正式位假成功红；validator 注入；min slot；retry attempt=2 |  |
+| `B3F3-G3:scripts/tests/{test_r9_batch3_release_guards.py,run_all.py}` | `INV-12`; secondary `INV-08, INV-17` | `B3R9-03` | 六条 Solana 发布断言各有独立负例且挂全量 SUITE | 六负例；D1～D4 临时 mutant 均红 |  |
+| `B3F3-G4:scripts/tests/{test_r9_batch2_executable_capabilities.py,test_r9_batch3_solana_observation.py,test_batch2_registry_harness_hardening.py,test_r7_findings.py}` | `INV-11, INV-17`; secondary `INV-08` | `B3R9-04, B3R9-05, B3R9-06` | 消除同名影子 target；恢复 harness 可逆/不泄漏判别力；slot 改精确断言 | AST shadow 红；H1/H2/R1 mutant 红 |  |
+| `B3F3-G5:maintenance/repair-20260806/g3_preflight/g3_0b_pythia_gpa.json; maintenance/repair-20260806/g3_preflight/smoke-20260808/accounting_mode.json; maintenance/repair-20260806/g3_preflight/smoke-20260808/solana_observation_bundle.json; maintenance/repair-20260806/g3_preflight/smoke-20260808/supply_truth.json; maintenance/repair-20260806/{ledger.md,diff-finding-map.md,b3_progress.md}; scripts/tests/test_sixlens_docs.py` | `INV-18, INV-19`; secondary `INV-08` | `B3R9-07, B3R9-08` | 给裁判 mainnet 证据建 owner；明确 R9-01 观测闭合不等于 bundle 防伪 | 四文件逐名守卫；R9-01 三条边界 needle；未映射复算 |  |
+| `B3F3-G5-cross:scripts/lib/solana_sqd_dataset.py` 的批三 docstring hunk（物理落 `160a852`，批二生产实现语义 owner 仍见 `R9-B2-G3`） | `INV-19`; secondary `INV-11` | `B3R9-07` 跨批注记 | 批三消费接入时对批二 adapter docstring 的修改不再只挂批二 owner | map 双向文本守卫 |  |
+| `B3F3-G6:scripts/lib/{solana_observation.py,supply_truth_gate.py,formal_capability_probes.py}; scripts/solana/{accounting_gate_sol.py,scan_token_accounts.py,window_fetch.py,anchor_sampler.py}; scripts/tests/{test_r9_batch3_solana_observation.py,test_batch3_solana_producers.py,test_sixlens_docs.py,formal_ready_test_harness.py}; maintenance/repair-20260806/b3_progress.md` | `INV-02, INV-05, INV-08, INV-18`; secondary `INV-11` | `B3R9-10`～`B3R9-15` | writable 保守判定；零样本诚实措辞；CLI/doc 同步；删死闸；supply retry；txn 失败保留 partial 且提交后清理不反转 PASS | lookup/lying flag/zero sample；doc needles；txn fail/cleanup fail |  |
+
 ## 分组 → commit SHA 对照（Fable 代 commit 后回填）
 
 | 分组 | commit SHA | 说明 |
@@ -146,6 +158,12 @@
 | `R9-B3-G7` | `160a852` | 台账、矩阵、门禁与待跑位 |
 | `B3F2-G1` | `160a852` | CA context、endpoint public identity 与生产 G3-0 transport 接线 |
 | `B3F2-G2` | `160a852` | 污染清理、批内循环 1 台账与门禁 |
+| `B3F3-G1` |  | Fable 回填：endpoint path/query 密钥脱敏 |
+| `B3F3-G2` |  | Fable 回填：producer-validator 等价与 slot/retry |
+| `B3F3-G3` |  | Fable 回填：Solana 发布层六负例 |
+| `B3F3-G4` |  | Fable 回填：测试守卫判别力恢复 |
+| `B3F3-G5` |  | Fable 回填：证据 owner、跨批注记与闭合边界 |
+| `B3F3-G6` |  | Fable 回填：P3 writable/措辞/docstring/partial 时序 |
 
 ## 未映射 hunk 计数
 
@@ -165,5 +183,6 @@
 - R9 批二（`5b06677..` 至本回填 commit 即候选 tip，含生产 `ae3ff29`/测试 `3b69e5d`/SKILL `4bc31db`/台账 `cf67cd0` 与本表自身回填）：`0` 候选（全部 hunk 归属 `R9-B2-G1`～`R9-B2-G5`；commit 按生产/测试/SKILL/台账横切，各 G 跨 commit 已在 SHA 对照注明；回填 commit 自指式计入；待批内审查独立复算）。
 - R9 批三（`5771419..160a852`，主体+批内循环 1+裁判证据登记合一 commit）：`0` 候选（全部生产、测试、fixture、SKILL 与 maintenance hunk 已归属 `R9-B3-G1`～`R9-B3-G7`；SHA 已回填 `160a852`；待批内审查独立复算）。
 - R9 批三批内修复循环 1（物理并入 `160a852`）：`0` 候选（CA/endpoint identity、G3-0 transport 旁路、上层持久化负例、污染文件删除与三份台账 hunk 均归属 `B3F2-G1/G2`；SHA 已回填 `160a852`；本表自身回填 commit 按通例自指式计入）。
+- R9 批三批内修复循环 2（`b4e9595..` 至当前未提交 worktree）：`0` 候选（当前 hunk 已归属 `B3F3-G1`～`B3F3-G6`；四个既有裁判 mainnet JSON 与 SQD docstring 跨批 hunk由 G5 追补 owner；SHA 留空待 Fable 回填；未执行任何 git 写操作）。
 
 通例：区间末端恒取候选 tip；自指式 SHA 回填 commit 计入本区间。map 行文件清单以 Fable 实际 commit 分组为准；一文件含多 owner 的 hunk 时（文件级 commit 无法拆分），物理归属行与语义 owner 行互相注明，Fable 回填 SHA 时校正清单。

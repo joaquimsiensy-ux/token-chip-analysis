@@ -50,6 +50,7 @@ from pathlib import Path
 import requests
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
+from endpoint_identity import public_endpoint
 from chain_registry import evm_chain_id_for, formal_evm_chains
 from net import RpcAttestationError, attested_rpc_pool
 
@@ -403,7 +404,7 @@ def main():
     result = {"schema": "accounting-gate/v1", "chain": a.chain, "token": token,
               "producer": {"path": "scripts/evm/accounting_gate.py",
                            "sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest()},
-              "checked_at": now_iso(), "rpc": rpc_url.split("/v2/")[0],
+              "checked_at": now_iso(), "rpc": public_endpoint(rpc_url),
               "hypersync": hs_url, "checks": {}, "warnings": [], "reasons": []}
 
     def finish(mode, verdict, code):

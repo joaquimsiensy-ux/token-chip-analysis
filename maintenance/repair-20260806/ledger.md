@@ -80,11 +80,11 @@
 | `six-F-11` | six@`fca61ad` | P2 | 半修残留 | INV-18 | — | `retrospective.md:68,91`; `docs_lint.py` 8192B 守卫 | ① | `docs_lint.py --all`; `test_sixlens_docs.py` | FIXED_ON_BASELINE (`CMD-DOC`: 7.5KB 预警/8192B 硬闸统一) |  |  |
 | `R7-15` | R7@`d8bd3c5` | P2 | 半修残留 | INV-18 | INV-15 | `references/labels/MAINTENANCE.md`; `roundtrip_check.py:22-27`; `add_labels.py:180-223` | ① | `test_roundtrip_check.py`; `test_add_labels_rollback.py`; docs lint | FIXED_ON_BASELINE (`CMD-R7`: 七字段/三闸文档一致) |  |  |
 | `six-F-12` | six@`fca61ad` | P2 | 历史漏检 | INV-19 | INV-18 | `casebook/README.md`; `retrospective.md:93-95`; docs archive guard | ① | `docs_lint.py --all`; `test_sixlens_docs.py` archive/runtime 路由 | FIXED_ON_BASELINE (`CMD-DOC`: casebook 执行路由不再回流 archive；A6 维护动作保留) |  |  |
-| `R9-01` | R9@`63cf715` | P0 | 老问题修复不全 | INV-08 | INV-02, INV-11 | `solana_observation.py`; `scan_token_accounts.py`; `accounting_gate_sol.py`; `supply_truth_gate.py`; `shared_release_receipt.py` | ② | `R9-B3-SOL-OBS-01..09`; declared 77≠observed 103；同 bundle 三消费者；`B3-SOL-E2E` | REPRODUCED（旧实现 CLI 77/RPC 999 仍 PASS） | 批三代码侧闭合；mainnet smoke/G3-0 真实报告待裁判登记 |  |
+| `R9-01` | R9@`63cf715` | P0 | 老问题修复不全 | INV-08 | INV-02, INV-11 | `solana_observation.py`; `scan_token_accounts.py`; `accounting_gate_sol.py`; `supply_truth_gate.py`; `shared_release_receipt.py` | ② | `R9-B3-SOL-OBS-01..09`; declared 77≠observed 103；同 bundle 三消费者；`B3-SOL-E2E` | REPRODUCED（旧实现 CLI 77/RPC 999 仍 PASS） | 批三闭合“声明当观测”的观测协议；不含 bundle 防伪，须由批四 producer/consumer 通用守卫保证测试关键输入由登记生产者现场生成 |  |
 | `R9-02` | R9@`63cf715` | P1 | 修复中新引入 | INV-10 | INV-06, INV-08 | `anchor_plan.py`; `time_spotcheck.py`; EVM 正式纵切片 | ② | `B1-R9-02-PRODUCER-CONSUMER`; `test_batch3_evm_vertical_slice.py` 真实 producer | REPRODUCED（真实旧 producer 无 final_block，consumer rc=2） |  |  |
 | `R9-03` | R9@`63cf715` | P1 | 老问题修复不全 | INV-03 | INV-04, INV-06 | `fetch_pool_swaps.py` 进程入口、tmp/canonical/stale | ① | `B1-R9-03-PROCESS/STALE`; `test_fetch_failclosed.py` | REPRODUCED（缺 next_block fatal，但 subprocess rc=0 且旧 CSV current） |  |  |
 | `R9-04` | R9@`63cf715` | P1 | 老问题修复不全 | INV-03 | INV-01, INV-04, INV-10 | `scan_token_accounts.py` 四个 return 分支、snapshot/receipt marker 发布 | ① | `B1-R9-04-PROCESS/MARKER`; `test_batch3_solana_producers.py` | REPRODUCED（路径冲突 fatal，但 subprocess rc=0） |  |  |
-| `R9-05` | R9@`63cf715` | P1 | 修复中新引入 | INV-11 | INV-02, INV-08 | Solana capability 声明、正式 JSON-RPC callsite、SQD scope 与纵切片 | ② | 批一 session；批二六探针/SQD adapter；批三 observation/accounting/SQD callsite + 四链真实 target | REPRODUCED（旧 formal-ready 无 getGenesisHash） | callsite 与 target 注册代码侧闭合；四链自然 ready；批内循环 1 已消化 session CA 缺口与 endpoint secret 泄漏；两份 loopback E2E/裁判 mainnet 重跑后最终销账 |  |
+| `R9-05` | R9@`63cf715` | P1 | 修复中新引入 | INV-11 | INV-02, INV-08 | Solana capability 声明、正式 JSON-RPC callsite、SQD scope 与纵切片 | ② | 批一 session；批二六探针/SQD adapter；批三 observation/accounting/SQD callsite + 四链真实 target | REPRODUCED（旧 formal-ready 无 getGenesisHash） | callsite 与 target 注册代码侧闭合；四链自然 ready；批内循环 1 消化 session CA/query secret，循环 2 消化 path secret 半修残留并统一持久化身份；两份 loopback E2E/裁判 mainnet 重跑后最终销账 |  |
 
 ## 三、逐项详情
 
@@ -536,7 +536,7 @@
 - primary/secondary：INV-08；INV-02、INV-11。
 - 主覆盖类别：②正式链纵切片覆盖；批三已以 GPA `context.slot` 为唯一 canonical snapshot，CLI slot 降为断言，accounting/supply truth 消费同一 bundle。
 - 基线回放：**REPRODUCED**。RPC `context.slot=999`，CLI `--as-of-slot 77`，当前 receipt 仍以 77 PASS。
-- 最终结果：代码侧闭合；裁判 mainnet PYTHIA smoke 与 G3-0 报告留待登记，不伪写为已实跑。
+- 最终结果：批三 observation bundle 已闭合“CLI 声明当观测”这一 P0 病根：RPC 观测值是唯一真值，绑定 mainnet genesis 常量、前后 raw 一致、GPA snapshot 与三方 supply 闭合，并由 13 项字段约束及三消费者复核。闭合边界**不含 bundle 防伪**：producer path/sha 与内部自洽字段不是不可伪造的产出凭证；测试中的关键输入必须由登记生产者现场生成，这一必经性依赖批四 producer/consumer 通用守卫。裁判 mainnet 证据已入档并由 B3F3-G5 补 owner，但不把内容绑定误写为执行来源证明。
 - 两轮盲审与 Fable 结论：
 
 ### R9-02
@@ -572,7 +572,7 @@
 - primary/secondary：INV-11；INV-02、INV-08。
 - 主覆盖类别：②正式链纵切片覆盖；批三已接入 Solana observation/accounting 与 SQD state-anchor callsite，并注册 eth/bsc/base/sol 四个可执行 target。
 - 基线回放：**REPRODUCED**。Solana formal-ready 正例无任何 cluster identity 请求仍通过。
-- 最终结果：callsite 与 target 注册代码侧闭合；`formal_ready_chains()=={"eth","bsc","base","sol"}` 由证据自然导出。批内循环 1 消化 B3FIX-01/02：共享 urllib transport 复用 certifi CA context（缺包回退系统 CA），所有 endpoint 异常/正式身份只保留无 query/fragment 的 public origin，已污染 G3-0A 报告删除待裁判重跑。当前沙箱两份真实 loopback 编排均在首个 `socket.bind` 被系统 `EPERM` 阻断，须在允许 loopback 的裁判环境复跑后最终销账。
+- 最终结果：callsite 与 target 注册代码侧闭合；`formal_ready_chains()=={"eth","bsc","base","sol"}` 由证据自然导出。批内循环 1 消化 B3FIX-01/02：共享 urllib transport 复用 certifi CA context（缺包回退系统 CA），已污染 G3-0A 报告删除待裁判重跑；循环 2 消化 path 型 key 半修残留，异常/正式身份/cache meta 统一只保留脱敏 public origin 与不可逆 endpoint digest。当前沙箱两份真实 loopback 编排均在首个 `socket.bind` 被系统 `EPERM` 阻断，须在允许 loopback 的裁判环境复跑后最终销账。
 - 两轮盲审与 Fable 结论：
 
 ## 四、supplementary claims（不计 49 分母）
@@ -668,7 +668,7 @@
 - 代码侧：observation bundle、三消费者、动态 Solana runner、SQD scope callsite、anchor/window txn 尾巴、四链 evidence target、G3-0 双载体壳和裁判 smoke 命令均已落地。
 - 门禁：全量 `run_all.py` 共 87 项，85 项 PASS；唯二失败是 Solana/EVM 正式纵切片 fixture 在创建 `ThreadingHTTPServer` 时被本沙箱 `socket.bind(127.0.0.1)` 以 `EPERM` 拒绝，尚未进入任何生产业务断言。
 - 不降级：没有用 skip、声明型 PASS 或手写 plan 取代真实编排；因此四链 target 已挂载并自然导出 ready，但 R9-05 最终执行证据及 R9-01 mainnet 证据仍保留裁判待登记位。
-- 批内循环计数：`1`。裁判 mainnet 首跑发现两项源自批一 R9-05 施工件的“修复中新引入” finding（B3FIX-01/P2、B3FIX-02/P1），已在本循环代码侧消化；删除含密钥污染报告，不保留副本，真实报告仍待裁判重跑。
+- 批内循环计数：`2`。循环 1 为裁判 mainnet 首跑发现的 B3FIX-01/P2、B3FIX-02/P1；循环 2 为 Opus 攻击审查确认的 B3R9-01～15（P1=1/P2=7/P3=7）。两轮 finding 均已进入正式反例与代码侧修复，循环 2 仍须以本轮全量门禁及裁判 loopback/mainnet 复跑作最终执行证据。
 - 裁判复跑：先在允许 loopback bind 的离线环境重跑两份纵切片及全量 suite，再按 `b3_progress.md` 执行 G3-0 与 PYTHIA mainnet smoke；全部满足后方可改写为 `B3F_COMPLETE`。
 
 ## 八、批四自动守卫待办

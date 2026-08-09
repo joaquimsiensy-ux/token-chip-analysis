@@ -158,10 +158,9 @@ def main(argv=None):
                  "(取法:getSlot + getBlockTime 一对近期映射)")
 
     out = Path(args.out)
-    partial = Path(str(out) + ".partial")
     out.parent.mkdir(parents=True, exist_ok=True)
     try:
-        assert_distinct_paths(out, args.receipt, partial)
+        assert_distinct_paths(out, args.receipt)
     except Exception as exc:
         print(f"[anchor_sampler] 发布路径冲突: {exc}", file=sys.stderr)
         return 2

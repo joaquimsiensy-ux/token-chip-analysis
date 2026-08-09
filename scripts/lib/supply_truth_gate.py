@@ -15,7 +15,9 @@
 
 用法:
   EVM:    python3 supply_truth_gate.py --chain bsc --token 0x... --as-of-block N --replay-stats replay_stats.json
-  Solana: python3 supply_truth_gate.py --chain solana --mint <mint> --as-of-block <slot> --replay-stats stats.json
+  Solana: python3 supply_truth_gate.py --chain solana --mint <mint> \
+           --observation-bundle <bundle.json> --as-of-block <slot> \
+           --min-context-slot N --replay-stats stats.json
   绕过 stats 文件直接传数: --replay-net-raw <最小单位整数>
   --rpc URL          不给时用链默认免 key 端点（DEFAULT_RPC，与 accounting_gate 同表）
   --proxy URL        只作用于 RPC（Alchemy 国内走 clash 时传 http://127.0.0.1:7897）

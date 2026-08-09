@@ -204,6 +204,56 @@ G3-0A 报告已删除；沿上文 G3-0 命令重跑即可。验收时除原活�
 - 全量 `PYTHONDONTWRITEBYTECODE=1 python3 scripts/tests/run_all.py` → 87 项中 85 PASS；仍且仅有 `test_batch3_solana_vertical_slice.py`、`test_batch3_evm_vertical_slice.py` 两项在首个 `ThreadingHTTPServer.bind(('127.0.0.1',0))` 处 `PermissionError: [Errno 1] Operation not permitted`。这与循环前相同，未进入业务断言；按工单如实登记为沙箱 EPERM，不算本循环回归失败，也不伪记 loopback 绿。
 - 循环结论：B3FIX-01/02 代码、离线反例、污染清理与台账闭合；真实 HTTPS CA 与新报告需裁判复跑。批三总任务仍保留既有环境验真待登记位，本批内修复循环输出 `B3F2_COMPLETE`。
 
+## 批内修复循环 2（opus 15 finding）
+
+止损计数：这是批三第 `2` 个批内修复循环。审查报告 `reviews/r9-batch3-review.md` 的 B3R9-01～15 全部按 CONFIRMED 施工；严格限于点名项及其同族等深面，不扩做批四通用守卫。基线 `b4e9595`，分支 `fix/r9-closure-20260807`；本循环禁 git 写、禁改 VERSION、零出网。
+
+### B3F3-G1：B3R9-01 endpoint path 密钥脱敏
+
+- 不变量：任何 endpoint 的 userinfo、query、fragment 或凭据型 path 段都不得进入异常、stderr、receipt、报告或身份行；脱敏不得腐蚀普通诊断正文。
+- 同族：`endpoint_identity.py` 是 `net.py`、`solana_attested_session.py`、`solana_observation.endpoint_fingerprint`、accounting result、anchor 行身份和 G3 两壳的共享口径；生产 sink 均复用它。
+- 红：`test_r9_solana_attested_session.py` 新增 Alchemy `/v2/FAKEKEY123`、Infura `/v3/FAKEKEY123`、无 scheme `rpc.example.com/v2/FAKEKEY123` 与 query-key 正文负例。未修输出 path key 原文，首个 public-origin 断言红；`test_batch1_rpc_attestation.py` 的 EVM path key 异常也红于 `FAKEKEY123` 仍在异常串。
+- 绿：`public_endpoint()` 对 v1/v2/v3/key/token/api-key 后继段、UUID、长 hex、长 base58/base64 风格 token 段替换为 `[redacted]`，保留 host 与结构前缀；`redact_endpoint_text()` 不再全局替换 query key 普通词，只清理完整 query/fragment、query value 与凭据 path 段。`test_r9_solana_attested_session.py` → `PASS ... 10/10`；`test_batch1_rpc_attestation.py` → PASS，输出中的 Alchemy endpoint 为 `/v2/[redacted]`。
+- 同族扫描增补：EVM accounting receipt 的 Infura `/v3/FAKEKEY123`、Solana decode output/cache receipt 与 SQD cache meta 仍曾持久化完整 URL。三条正式反例在未修 callsite 分别红于 receipt/meta 含假 key（SQD 红于缺少安全 identity 构造点）；现统一只落 `public_origin` 与完整 URL 的不可逆 SHA256，既不泄密又保留跨端点身份判别。既有 SQD v3 raw-endpoint meta 经精确 digest/原值匹配后原子清洗，不要求重采；新增原子点首次令 invariant scan 红于 manifest 缺登记，补入 manifest 后收口。`test_review_solana_integrity.py`、`test_review_resume_integrity.py`、`test_r9_batch3_solana_observation.py` 纳入回归。
+
+### B3F3-G2：B3R9-02/09/13 producer-validator 机器等价与观测时序
+
+- 不变量：scan 写入正式 bundle/snapshot 前，内存中的最终 bundle 对象必须通过消费者使用的同一个 `validate_observation_bundle()`；RPC 返回 slot 还必须满足调用时下达的本地下限/单调关系。`bundle_path` 字节比对仅因原子写尚未发生而留给下游，所有对象级约束完全同源。
+- 红：正式测试一次呈现 6 红：GPA=101<jsonParsed=102 被 producer 接受；CLI `min_context_slot=1000000` 而 pre=5 被接受；supply 首次落后直接硬错未重试；中途降级写出 lightweight `sample_size=55`；GPA 早退仍 rc=0 发布正式位；scan 模块不存在可注入的 `validate_observation_bundle` 自校验点。
+- 绿：complete→lightweight 时同步把 `successful` 与报告 `checked` 截到 `LIGHT_SAMPLE_LIMIT`；GPA 复核改为 `snapshot_slot>=parsed_slot`；第一 raw pre 复核 `pre_slot>=min_context_slot`；`getTokenSupply` 官方不支持 `minContextSlot`，保留 commitment-only 调用并把 supply slot 落后归为 `RetryableObservationError`。scan 在 `publish_txn` 前调用共享 validator；注入 validator 失败时 rc!=0、正式 bundle/snapshot 均不存在、只产 ERROR receipt。
+- 证据：`PYTHONDONTWRITEBYTECODE=1 python3 scripts/tests/test_r9_batch3_solana_observation.py` → PASS；lag fake 第 1 轮 supply 早退、第 2 轮成功且 `attempt==2`；downgrade 最终样本≤50；GPA<parsed 与自校验注入均 fail-closed。
+
+### B3F3-G3：B3R9-03 发布层六断言负例
+
+- 新增并挂 SUITE：`test_r9_batch3_release_guards.py`。fixture 只替换 Solana transport，实际运行 scan→accounting→supply_truth 三个生产者；测试再逐项篡改产物并直接进入 `shared_release_receipt` 对应发布分支。
+- 六负例：① exploration accounting；② accounting 缺 bundle ref；③ accounting observed slot≠snapshot slot；④ supply_truth 缺 bundle input；⑤ supply_truth observed slot≠bundle supply slot；⑥ reconciliation supply bundle genesis 非 mainnet。每条均断言发布层的精确拒绝原因。
+- 红（临时源副本，不改仓库）：D1 删除 exploration 块、D2 删除 accounting binding+slot 块、D3 删除 supply_truth binding+slot 块、D4 删除 supply bundle validator；四个 mutant 运行正式测试分别 `rc=1/1/1/1`，证明六负例确实到达并依赖目标分支。
+- 绿：未变异生产文件运行 `PYTHONDONTWRITEBYTECODE=1 python3 scripts/tests/test_r9_batch3_release_guards.py` → `PASS R9 B3F3-G3: Solana release negatives 6/6`。
+
+### B3F3-G4：B3R9-04/05/06 测试守卫判别力
+
+- B3R9-04 红：`test_r9_batch2_executable_capabilities.py` 新增 AST 守卫后，旧 observation 文件因定义与注册 target 同名的 `test_r9_solana_pythia_mainnet_vertical_slice` 立即红。绿：影子改名为 `test_r9_observation_negative_suite`，删除 evidence-target 自述并纳入本文件 `main()`；真实注册 target 仍唯一位于 process E2E 文件。capability 测试 PASS。
+- B3R9-05：harness 两测试先把生产 evidence targets 临时置为空，确认 not-ready，再验证 context 内四链 ready、退出后恢复同一空对象且仍 not-ready；import 泄漏测试亦在空基线上运行，finally 再恢复真实生产表。临时 H1“不恢复”与 H2“缺 sol 且泄漏” mutant 均令正式测试 `rc=1`；正常文件 PASS。
+- B3R9-06：R7-04 的 exploration/formal 两处 `observed_context_slot` 均精确等于 `bundle["supply"]["slot"]`，不再只验非 None。临时把生产 supply_truth 写值改成 0 后 `test_r7_findings.py rc=1`；正常生产文件 `15/15 observed green`。
+- 组合绿：`test_r9_batch2_executable_capabilities.py`、`test_batch2_registry_harness_hardening.py`、`test_r7_findings.py`、`test_r9_batch3_solana_observation.py` 全部 rc=0。
+
+### B3F3-G5：B3R9-07/08 台账诚实与闭合边界
+
+- 红：`test_sixlens_docs.py` 增加四个裁判证据逐文件 owner、SQD 跨批 owner、R9-01 三条闭合边界 needle 后，先红于 `g3_preflight/g3_0b_pythia_gpa.json` 在 map 中零命中。
+- 绿：B3F3-G5 显式登记 G3-0B 与 smoke 的 accounting/bundle/supply_truth 四个 JSON；`solana_sqd_dataset.py` 的批三 docstring hunk 增加“物理落 160a852、批二实现 owner 见 R9-B2-G3”的跨批行。循环 2 当前 hunk 全部纳入 G1～G6，未映射候选复算为 0。
+- R9-01 最终结果明确限界：批三闭合的是“CLI 声明当观测”——RPC 观测唯一真值、genesis 常量、前后 raw、GPA snapshot、三方 supply 与 13 项字段约束；**不含 bundle 防伪**。producer path/sha 与内部自洽不是产出凭证，测试关键输入必须由登记生产者现场生成，依赖批四 producer/consumer 通用守卫。
+- `PYTHONDONTWRITEBYTECODE=1 python3 scripts/tests/test_sixlens_docs.py` → PASS。
+
+### B3F3-G6：B3R9-10～15 P3 收口
+
+- B3R9-10 红：addressTableLookups 非空而 meta 无 loadedAddresses 时旧判定静默 False；header 推导 mint writable=True 但 parsed key 自报 false 时旧判定亦 False。绿：前者抛 `SolanaObservationError` fail-closed；后者采用 `derived or explicit_true`，自报只能加严不能放松。
+- B3R9-11 红：complete 且零引用 fake 的 coverage 仍声称“all successful referenced transactions ... parsed”。绿：零引用明确写 `zero referenced signatures`、`sample_size=0`、未执行 writable checks；G6 裁判事实补记引用=0/sample=0，不再只写 activity=complete。
+- B3R9-12 红：docs 契约先红于 accounting docstring 缺 `--bundle`。绿：accounting/supply_truth/scan 三个 docstring 补正式 bundle 与 min-context 用法；formal probes/harness 删除 batch2/“batch3 must add”过时叙述；`test_sixlens_docs.py` 双向守卫。
+- B3R9-13 已在 G2 修：getTokenSupply 无官方 minContextSlot，保留 commitment-only 并把 supply slot 落后归入整轮 Retryable；两轮 fake 证明可恢复。
+- B3R9-14：删除控制流不可达的 `not complete and not high_activity` 假闸，保留注释说明所有非 complete 出口已由 pagination_error 或 high-activity flags 穷尽；正式 docs 守卫禁止该死条件回流，临时回植真实分支 mutant 后 `test_sixlens_docs.py rc=1`。
+- B3R9-15 红：publish_txn 注入失败后旧顺序已删 `.partial`，恢复证据断言红。绿：先原子提交 data+receipt，成功后 best-effort 删除 partial；txn 失败保留完整 partial，cleanup 自身失败只 WARN 且不反转已提交 PASS。anchor 从未写 partial，删除无效变量及 alias 参数，仅保留真实 out/receipt 路径约束。
+- 绿：`test_r9_batch3_solana_observation.py`、`test_batch3_solana_producers.py`、`test_sixlens_docs.py` 全部 rc=0。
+
 ## 裁判 mainnet 证据登记（Fable 总验收，2026-08-08）
 
 角色纪律：以下全部为裁判亲自执行的真实 mainnet 运行与复现级核实；攻击式审查另由 Opus 子代理批内执行，不由裁判本人做。
@@ -231,7 +281,7 @@ G3-0A 报告已删除；沿上文 G3-0 命令重跑即可。验收时除原活�
 ### G6 PYTHIA mainnet transport smoke（最终实现全链）
 
 - 执行链：`scan_token_accounts.py`（producer，公共节点）→ `receipt_validate.py`（独立校验 PASS）→ `accounting_gate_sol.py --bundle` → `supply_truth_gate.py --observation-bundle`（独立重放产物 `PYTHIA分析/replay_stats.json`，未用 bundle 自证）。
-- 观测：OBS_SLOT=**438,010,504**（GPA context 真实观测，非 CLI 声明）；非零账户 37,929 / owner 37,902（本地历史基线 38,039/38,012 同量级，仅作对照）；activity=complete。
+- 观测：OBS_SLOT=**438,010,504**（GPA context 真实观测，非 CLI 声明）；非零账户 37,929 / owner 37,902（本地历史基线 38,039/38,012 同量级，仅作对照）；activity=complete，但窗口引用签名=0、sample_size=0、未执行任何 getTransaction writable 判定，零样本事实不表述成“已解析过交易”。
 - 三件回执终判：bundle PASS / accounting PASS,exit=0 / supply_truth PASS,exit=0；三者 target slot 均=438,010,504；accounting 的 bundle sha256 绑定与磁盘文件一致；supply_truth `diff=0`（0.0bps，容差 10bps），supply 观测 slot=438,010,552（>snapshot，交叉语义正确）；三件合并全文 key 泄漏检查干净。
 - 证据哈希：bundle=`1d606ec406a8eb313976a452de7170473c57af780b0b45ba00240c981db205f9`，snapshot（8.85MB 未入档只记哈希）=`46e0fd16ba1da38eef86e4e5fc7368b8fe3f6a9bd304cb2bbdf43d3067b613a3`，accounting=`5fa831ceac129b928c289fef9bada9564c291de4243f067e5926db379b081ff7`，supply_truth=`67767aa1b3f4c2f0594692a4445d3494063a31cbd3a7a5e326384f9dcb131b37`；三件小回执副本入档 `g3_preflight/smoke-20260808/`。
 
@@ -259,3 +309,34 @@ G3-0A 报告已删除；沿上文 G3-0 命令重跑即可。验收时除原活�
 - P2 B3R9-07：补 4 证据 JSON owner 行 + solana_sqd_dataset 跨批注记 + 未映射 hunk 复算真实数。
 - P2 B3R9-08：ledger R9-01 登记闭合边界（不含防伪，依赖批四通用守卫）。
 - P3 B3R9-09~15：min-context-slot producer 复核 / writable lookups fail-closed / 零样本 coverage 措辞 / docstring 同步 / getTokenSupply 时序改 Retryable / 删不可达死闸 / window partial 顺序登记取舍。
+
+## 批内修复循环 2 最终汇总
+
+- 覆盖结论：B3R9-01～15 全部进入仓库正式测试并完成红→绿；没有用 skip、手写 PASS 或批四通用守卫替代批三自身负例。G2 的根治点位于 scan 正式发布前的共享 `validate_observation_bundle()` 自校验，producer/consumer 对对象级约束机器同源。
+- 密钥面：除审查点名的 session/observation/accounting/anchor/G3 壳外，同族扫描继续打到 EVM accounting receipt、Solana decode output/cache receipt、SQD cache meta；三者均以字面假 key 先红，现只持久化脱敏 public origin 与不可逆 SHA256。裁判既有 mainnet JSON 未重跑、未出网、未写入任何真实 key。
+- 受影响组合绿：`test_r9_solana_attested_session.py`、`test_batch1_rpc_attestation.py`、`test_r9_batch3_solana_observation.py`、`test_batch3_solana_producers.py`、`test_r9_batch3_release_guards.py`、`test_r9_batch2_executable_capabilities.py`、`test_batch2_registry_harness_hardening.py`、`test_r7_findings.py`、`test_review_solana_integrity.py`、`test_review_resume_integrity.py`、`test_sixlens_docs.py` 全部 rc=0。
+- 机器门禁：`formal_ready_chains()=={'eth','bsc','base','sol'}`；`docs_lint.py --all` → `PASS: 58 个文档`；`invariant_scan.py` → `PASS ... exceptions=0`；transport JSON 可解析；`git diff --check` 绿；`SKILL.md=7737B`；`VERSION=6.36.0` 且无 diff；未执行任何 git 写操作。
+- 全量：`PYTHONDONTWRITEBYTECODE=1 python3 scripts/tests/run_all.py` → 88 项中 86 PASS。仍且仅 `test_batch3_solana_vertical_slice.py`、`test_batch3_evm_vertical_slice.py` 两项失败；均在首个 `ThreadingHTTPServer(('127.0.0.1',0))` 的 `socket.bind` 处 `PermissionError: [Errno 1] Operation not permitted`，未进入 transport 或业务断言。按工单要求如实登记为本沙箱既有 loopback EPERM，需裁判允许 bind 的环境复跑，不改成 skip。
+- 未映射 hunk：`0` 候选；B3F3-G1～G6 全部在 `diff-finding-map.md` 登记，SHA 留空待 Fable 回填。
+- 循环结论：代码、正式反例、台账与本沙箱可执行门禁闭合；完成信号 `B3F3_COMPLETE`。
+
+## 批内修复循环 2 — Fable 总验收登记（2026-08-08）
+
+**裁决：PASS，15 finding 全部读码复现核实真修。** 攻击式复现交后续 opus 复审，Fable 只做读码复现级核实+跑既有 suite+主网数据复现+代 commit。codex resume 本轮未 commit（改动全在工作区含 untracked），由 Fable 代 commit。
+
+**读码核实 7 条核心（P1+6 咬合 P2）**：
+- B3R9-01（P1，按用户降档「够用」标准）：`endpoint_identity.py` 新增 `_redacted_path`——path 段启发式（v1/v2/v3/key/token 前缀 + UUID/长hex≥24/长token≥24）替换 [redacted]，覆盖 Alchemy `/v2/KEY`、Infura `/v3/KEY`；`redact_endpoint_text` query-key 全局替换改为只替 value（不再腐蚀正文）。够用，不苛求边界完备（用户 2026-08-08 明示密钥可替换、脱敏不必追完美）。
+- B3R9-02（P2，最有价值根治）：`scan_token_accounts.py:297` publish_txn 前调 `validate_observation_bundle(bundle, expected_mint=args.mint)`（consumer 同一函数），失败即 except→ERROR receipt→return 1 不发布正式位。try 块内必经之路，producer/validator 约束机器同源。附带降级 checked 截断、GPA≥parsed 断言、min-context-slot producer 复核、getTokenSupply 时序改 Retryable。
+- B3R9-03（P2）：新建 `test_r9_batch3_release_guards.py` 6 负例（exploration 拒/无 bundle 绑定拒×2/slot 不匹配拒×2/无效 supply bundle 拒），挂 SUITE，单跑 PASS 6/6。
+- B3R9-04（P2）：影子函数改名 `test_r9_observation_negative_suite`，去 "Executable evidence target" 自述，纳入 main tests 列表（22 项含循环 2 全部新负例）；另加 `test_solana_evidence_function_has_no_same_named_shadow` 防同名回流。
+- B3R9-05（P2）：`test_batch2_registry_harness_hardening.py` 两守卫先置空 VERTICAL_SLICE_EVIDENCE_TARGETS 建 not-ready 基线（断言 formal_ready==set()）再验 harness 进/出对称与不泄漏，finally 恢复；判别力恢复（harness 不恢复即红）。
+- B3R9-06（P2）：`test_r7_findings.py:161,191` 断言从 `is None` 改 `!= bundle["supply"]["slot"]` 精确值。
+- B3R9-07/08（P2 台账）：diff-finding-map 补 4 证据 JSON owner 行（smoke-20260808/g3_0b grep≥1）；ledger R9-01 最终结果登记闭合边界=闭合「声明当观测」P0 病根但**不含 bundle 防伪**，依赖批四 producer/consumer 通用守卫。
+
+**G6 P3 负例**（从新增 def 与 main 列表核实）：writable lookups fail-closed、explicit 不覆盖 header writable、零样本 coverage explicit、supply lag retryable、window partial 两顺序、docstring 同步、死闸处理——均落成正式测试。
+
+**门禁**：裁判环境全量 `run_all.py` exit=0（88 项全绿，codex 沙箱 EPERM 两项在裁判环境真跑通）；formal_ready_chains()=={eth,bsc,base,sol}；SKILL 7737B；VERSION 未改；docs_lint/invariant_scan 绿。
+
+**主网数据复现（循环 2 后全链重跑，公共节点）**：producer 自校验**未误伤**真实 bundle——正常落盘 snapshot slot=438,104,303（新实时观测）、GPA 82,218 账户、非零 37,932/owner 37,905（与基线 38,039 同量级）；独立 receipt_validate PASS；accounting PASS exit 0（rpc 字段=公共节点无 key 脱敏后不变，合理）；supply_truth PASS exit 0 **diff=0**；三件 target slot 一致、api-key 干净。根治在真实主网未跑坏。
+
+**止损**：循环 2 消化完成，Fable 验收 PASS。攻击式真闭合待 opus 复审确认（复跑 13 evidence 脚本转绿+边界外一步）。复审若 ALL-CLEAR→批三收口进批四；若再 BLOCK→止损 3/3 冻结上报用户。

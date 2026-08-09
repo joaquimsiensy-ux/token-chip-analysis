@@ -836,6 +836,11 @@
       "semantics": "overwrite_single"
     },
     {
+      "locator": "run",
+      "script": "scripts/solana/fetch_sqd_transfers_v2.py",
+      "semantics": "overwrite_single"
+    },
+    {
       "locator": "main",
       "script": "scripts/solana/window_fetch.py",
       "semantics": "restore_on_fail"

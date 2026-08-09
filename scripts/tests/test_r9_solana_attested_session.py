@@ -12,6 +12,7 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts/lib"))
 import solana_attested_session as session_module
+from endpoint_identity import public_endpoint, redact_endpoint_text
 from solana_attested_session import (SOLANA_MAINNET_GENESIS_HASH,
                                      SolanaAttestedSession, SolanaRpcError)
 
@@ -209,6 +210,35 @@ def test_endpoint_secrets_redacted_from_four_failure_shapes():
     assert exhausted.count("https://mainnet.helius-rpc.com/v1") >= 2
 
 
+def test_path_credentials_and_scheme_less_endpoints_are_redacted():
+    cases = {
+        "https://base-mainnet.g.alchemy.com/v2/FAKEKEY123":
+            "https://base-mainnet.g.alchemy.com/v2/[redacted]",
+        "https://mainnet.infura.io/v3/FAKEKEY123":
+            "https://mainnet.infura.io/v3/[redacted]",
+        "rpc.example.com/v2/FAKEKEY123":
+            "rpc.example.com/v2/[redacted]",
+    }
+    for endpoint, expected in cases.items():
+        assert public_endpoint(endpoint) == expected
+        rendered = _captured_failure(
+            lambda value, _payload, _timeout: (_ for _ in ()).throw(
+                OSError(f"transport failed for {value}")),
+            endpoints=endpoint)
+        assert "FAKEKEY123" not in rendered
+
+
+def test_query_key_redaction_does_not_corrupt_plain_words():
+    endpoint = "https://rpc.example/v2?transport=SECRET"
+    rendered = redact_endpoint_text(
+        f"transport failed while calling {endpoint}; transport remains diagnostic",
+        [endpoint])
+    assert "transport failed" in rendered
+    assert "transport remains diagnostic" in rendered
+    assert "tr[redacted-key]nsport" not in rendered
+    assert "SECRET" not in rendered
+
+
 def main():
     tests = (
         test_wrong_genesis_has_zero_business_calls,
@@ -219,6 +249,8 @@ def main():
         test_expected_genesis_is_not_a_constructor_boundary,
         test_certifi_and_system_ca_context_branches_and_reuse,
         test_endpoint_secrets_redacted_from_four_failure_shapes,
+        test_path_credentials_and_scheme_less_endpoints_are_redacted,
+        test_query_key_redaction_does_not_corrupt_plain_words,
     )
     for test in tests:
         test()

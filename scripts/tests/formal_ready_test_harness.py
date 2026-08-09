@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Test-only executable R9 vertical evidence for formal-path fixtures.
 
-Production batch 2 has no R9 vertical-slice evidence.  Older formal-path tests
-enter this restoring context, which registers real, mounted test callables and
-never edits the immutable chain matrix or installs a boolean readiness switch.
+Production now registers R9 vertical-slice evidence.  Older formal-path tests
+still enter this restoring context to install a deterministic real, mounted
+callable set without editing the immutable chain matrix or using a boolean switch.
 """
 from __future__ import annotations
 

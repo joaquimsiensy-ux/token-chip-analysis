@@ -138,20 +138,23 @@ def test_correct_chain_and_failover_reattest():
 
 
 def test_evm_attestation_errors_redact_endpoint_query():
-    endpoint = "https://evm.invalid/rpc?api-key=SECRET#private"
-
     async def transport(client, bucket, method, url, *, json_body=None, attempts=6):
         raise TimeoutError(f"failed endpoint {url}")
 
-    pool = net.RpcPool(endpoint, expected_chain_id=56)
-    try:
-        run_with_backend(pool, transport)
-    except net.RpcAttestationError as exc:
-        rendered = str(exc)
-    else:
-        raise AssertionError("EVM transport failure was accepted")
-    assert "api-key" not in rendered.lower() and "SECRET" not in rendered
-    assert "#private" not in rendered
+    endpoints = (
+        "https://evm.invalid/rpc?api-key=SECRET#private",
+        "https://base-mainnet.g.alchemy.com/v2/FAKEKEY123",
+    )
+    for endpoint in endpoints:
+        pool = net.RpcPool(endpoint, expected_chain_id=56)
+        try:
+            run_with_backend(pool, transport)
+        except net.RpcAttestationError as exc:
+            rendered = str(exc)
+        else:
+            raise AssertionError("EVM transport failure was accepted")
+        for secret in ("api-key", "SECRET", "#private", "FAKEKEY123"):
+            assert secret not in rendered, rendered
 
 
 def test_registry_factory_rejects_missing_identity():
@@ -243,8 +246,10 @@ def test_each_formal_callsite_wrong_chain_zero_business():
         # accounting_gate: first requested business method is eth_blockNumber.
         accounting = load("scripts/evm/accounting_gate.py", "batch1_accounting_gate")
         methods = []
+        secret_rpc = "https://mainnet.infura.io/v3/FAKEKEY123"
+        accounting_out = root / "accounting.json"
         argv = ["accounting_gate.py", "--chain", "bsc", "--token", token,
-                "--rpc", "http://wrong", "--out", str(root / "accounting.json")]
+                "--rpc", secret_rpc, "--out", str(accounting_out)]
         with mock.patch.object(sys, "argv", argv), mock.patch.object(
                 net, "_request_json", side_effect=_wrong_chain_backend(methods)):
             try:
@@ -254,6 +259,7 @@ def test_each_formal_callsite_wrong_chain_zero_business():
             else:
                 raise AssertionError("accounting_gate did not exit")
         assert rc != 0 and methods == ["eth_chainId"], ("accounting_gate", rc, methods)
+        assert "FAKEKEY123" not in accounting_out.read_text(), accounting_out.read_text()
 
 
 def test_remaining_formal_entrypoints_wrong_chain_zero_business():

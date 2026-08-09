@@ -3,8 +3,8 @@
 
 Each matrix key resolves to live callables.  Test-backed capabilities also
 require their test file to be mounted in ``scripts/tests/run_all.py``.  R9
-vertical-slice evidence is intentionally unregistered in batch 2; batch 3 must
-add real test targets before an individual chain can become formal-ready.
+batch 3 registers the four real vertical-slice targets; removing a target or
+its mounted test makes the corresponding chain not ready.
 """
 from __future__ import annotations
 

@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """SPL / Token-2022 全量持仓扫描（getProgramAccounts + dataSlice{32,40}）。
 
-用法：python3 scan_token_accounts.py <mint> [--program auto|token2022|spl] [--rpc URL] [--timeout 秒]
+用法：python3 scan_token_accounts.py <mint> --out <snapshot.json> --bundle <bundle.json>
+      [--program auto|token2022|spl] [--rpc URL] [--min-context-slot N] [--timeout 秒]
 --program 默认 auto：先 getAccountInfo(mint) 看 owner 自动判定 SPL / Token-2022——
   旧默认 token2022 对标准 SPL 老币会扫出 0 账户且不报错（TROLL 实战踩坑：叠加代理返回
   "合法空 result"被当缓存，两层坑连环；2026-07-29 改 auto 根治）
@@ -27,7 +28,7 @@ from receipt_kernel import (assert_distinct_paths, build_envelope, finalize_enve
                             publish_error_receipt, publish_overwrite, publish_txn)
 from solana_attested_session import SolanaAttestedSession
 from solana_observation import (assert_declared_slot, build_observation_bundle,
-                                observe_snapshot)
+                                observe_snapshot, validate_observation_bundle)
 
 SPL = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
 T22 = "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
@@ -290,6 +291,10 @@ def main(argv=None, *, request_json=None):
             output={"path": _case_relative(args.out), "size": len(data_bytes),
                     "sha256": hashlib.sha256(data_bytes).hexdigest()},
             holder_outputs={"accounts": ref(accounts_out), "owners": ref(owners_out)})
+        # Producer and consumers share the exact same object-level contract.
+        # bundle_path is intentionally omitted because the atomic formal write
+        # has not happened yet; byte equality is checked by consumers later.
+        validate_observation_bundle(bundle, expected_mint=args.mint)
         publish_txn(args.out, snapshot, marker, bundle)
     except Exception as exc:
         print(f"FATAL: Solana observation failed: {exc}", file=sys.stderr)

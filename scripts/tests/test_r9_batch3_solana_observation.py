@@ -67,7 +67,9 @@ class SolanaTransportFake:
     def __init__(self, *, genesis=SOLANA_MAINNET_GENESIS_HASH, activity="full",
                  mutate_mint=False, writable=False, incomplete=False,
                  supply_slot_early=False, gpa_total=100, mint_supply=100,
-                 supply_amount=100, parsed_slot_early=False):
+                 supply_amount=100, parsed_slot_early=False,
+                 gpa_slot_early=False, pre_slot_ignores_min=False,
+                 supply_early_attempts=0):
         self.genesis = genesis
         self.activity = activity
         self.mutate_mint = mutate_mint
@@ -78,11 +80,15 @@ class SolanaTransportFake:
         self.mint_supply = mint_supply
         self.supply_amount = supply_amount
         self.parsed_slot_early = parsed_slot_early
+        self.gpa_slot_early = gpa_slot_early
+        self.pre_slot_ignores_min = pre_slot_ignores_min
+        self.supply_early_attempts = supply_early_attempts
         self.calls = []
         self.business_calls = 0
         self.slot = 100
         self.raw_reads = 0
         self.signature_pages = 0
+        self.supply_calls = 0
 
     def _slot(self, config=None):
         minimum = int((config or {}).get("minContextSlot", 0))
@@ -108,6 +114,9 @@ class SolanaTransportFake:
                 }}}}
             else:
                 self.raw_reads += 1
+                if self.pre_slot_ignores_min and self.raw_reads % 2 == 1:
+                    slot = 5
+                    self.slot = slot
                 marker = 1 if self.mutate_mint and self.raw_reads >= 2 else 0
                 raw = mint_bytes(self.mint_supply, marker=marker)
                 value = {"owner": PROGRAM,
@@ -116,6 +125,8 @@ class SolanaTransportFake:
         if method == "getProgramAccounts":
             config = params[1]
             slot = self._slot(config)
+            if self.gpa_slot_early:
+                slot = 101
             raw = token_account_bytes(self.gpa_total)
             return {"result": {"context": {"slot": slot}, "value": [{
                 "pubkey": "Account1", "account": {
@@ -123,6 +134,8 @@ class SolanaTransportFake:
             }]}}
         if method == "getSignaturesForAddress":
             self.signature_pages += 1
+            if self.activity == "zero":
+                return {"result": []}
             if self.activity == "rpc-pressure":
                 if self.signature_pages > 251:
                     raise RuntimeError("fixture RPC budget sentinel")
@@ -135,6 +148,9 @@ class SolanaTransportFake:
             if self.activity == "light":
                 rows = [{"signature": f"sig-{i}", "slot": self.slot, "err": None}
                         for i in range(201)]
+            elif self.activity == "downgrade":
+                rows = [{"signature": f"sig-{i}", "slot": self.slot, "err": None}
+                        for i in range(60)]
             elif self.incomplete:
                 rows = ([{"signature": f"sig-{i}", "slot": self.slot, "err": None}
                          for i in range(200)]
@@ -149,7 +165,9 @@ class SolanaTransportFake:
             tx = writable_tx(signature) if self.writable else readonly_tx(signature)
             return {"result": tx}
         if method == "getTokenSupply":
-            slot = 101 if self.supply_slot_early else self._slot()
+            self.supply_calls += 1
+            early = self.supply_slot_early or self.supply_calls <= self.supply_early_attempts
+            slot = 101 if early else self._slot()
             return {"result": {"context": {"slot": slot}, "value": {
                 "amount": str(self.supply_amount), "decimals": 0,
             }}}
@@ -222,6 +240,19 @@ def test_json_parsed_slot_cannot_precede_raw_pre():
     expect_error(SolanaTransportFake(parsed_slot_early=True), "jsonparsed")
 
 
+def test_gpa_slot_cannot_precede_json_parsed_floor():
+    expect_error(SolanaTransportFake(gpa_slot_early=True), "gpa")
+
+
+def test_pre_slot_must_honor_cli_min_context_slot():
+    try:
+        observe(SolanaTransportFake(pre_slot_ignores_min=True), min_context_slot=1_000_000)
+    except Exception as exc:
+        assert "min_context_slot" in str(exc)
+    else:
+        raise AssertionError("node response below min_context_slot was accepted")
+
+
 def test_complete_pagination_incomplete_rejected():
     expect_error(SolanaTransportFake(incomplete=True), "incomplete")
 
@@ -233,6 +264,14 @@ def test_writable_mutation_rejected_in_both_modes():
 
 def test_supply_context_before_snapshot_rejected():
     expect_error(SolanaTransportFake(supply_slot_early=True), "supply")
+
+
+def test_supply_context_lag_is_retryable():
+    fake = SolanaTransportFake(supply_early_attempts=1)
+    from solana_observation import observe_snapshot
+    core, _ = observe_snapshot(session(fake), MINT, PROGRAM, max_attempts=2)
+    assert core["attempt"] == 2
+    assert fake.supply_calls == 2
 
 
 def test_three_way_supply_closure_rejected():
@@ -247,10 +286,123 @@ def test_writable_parser_static_and_loaded_addresses():
     assert mint_is_writable(writable_tx(loaded=True), MINT) is True
 
 
+def test_writable_parser_fails_closed_on_unresolved_lookup_table():
+    from solana_observation import mint_is_writable
+    tx = readonly_tx("lookup-missing")
+    tx["transaction"]["message"]["accountKeys"] = ["payer"]
+    tx["transaction"]["message"]["header"]["numReadonlyUnsignedAccounts"] = 0
+    tx["transaction"]["message"]["addressTableLookups"] = [{
+        "accountKey": "LookupTable", "writableIndexes": [0], "readonlyIndexes": [],
+    }]
+    tx["meta"].pop("loadedAddresses")
+    try:
+        mint_is_writable(tx, MINT)
+    except Exception as exc:
+        assert "loadedaddresses" in str(exc).lower()
+    else:
+        raise AssertionError("unresolved address lookup was treated as readonly")
+
+
+def test_explicit_readonly_cannot_override_header_writable():
+    from solana_observation import mint_is_writable
+    tx = writable_tx("lying-explicit")
+    tx["transaction"]["message"]["accountKeys"] = [
+        {"pubkey": "payer", "writable": True, "signer": True},
+        {"pubkey": MINT, "writable": False, "signer": False},
+    ]
+    assert mint_is_writable(tx, MINT) is True
+
+
+def test_complete_zero_reference_coverage_is_explicit():
+    core, _ = observe(SolanaTransportFake(activity="zero"))
+    activity = core["activity"]
+    assert activity["mode"] == "complete" and activity["sample_size"] == 0
+    statement = activity["coverage_statement"].lower()
+    assert "zero" in statement or "0" in statement
+    assert "all successful referenced transactions" not in statement
+
+
 def test_activity_rpc_budget_switches_before_call_251():
     full, _ = observe(SolanaTransportFake(activity="rpc-pressure"))
     assert full["activity"]["mode"] == "lightweight"
     assert full["activity"]["rpc_calls"] <= 250
+
+
+class DeadlineClock:
+    def __init__(self, flip):
+        self.flip = flip
+        self.calls = 0
+
+    def __call__(self):
+        self.calls += 1
+        return 0.0 if self.calls <= self.flip else 999.0
+
+
+def test_mid_scan_lightweight_downgrade_never_publishes_over_limit():
+    scan = _load(ROOT / "scripts/solana/scan_token_accounts.py", "r9_b3_scan_downgrade")
+    with tempfile.TemporaryDirectory(prefix="r9-b3-scan-downgrade-") as raw:
+        case = Path(raw).resolve()
+        old = Path.cwd()
+        os.chdir(case)
+        try:
+            with mock.patch("solana_observation.time.monotonic", DeadlineClock(58)):
+                rc = scan.main([
+                    MINT, "--program", "spl", "--rpc", "fixture://solana",
+                    "--out", "snapshot.json", "--bundle", "bundle.json",
+                    "--work-dir", "data",
+                ], request_json=SolanaTransportFake(activity="downgrade"))
+            if rc == 0:
+                bundle = json.loads((case / "bundle.json").read_text())
+                assert bundle["activity"]["mode"] == "lightweight"
+                assert bundle["activity"]["sample_size"] <= 50
+            else:
+                assert not (case / "bundle.json").exists()
+                assert not (case / "snapshot.json").exists()
+        finally:
+            os.chdir(old)
+
+
+def test_scan_rejects_gpa_below_parsed_before_formal_publish():
+    scan = _load(ROOT / "scripts/solana/scan_token_accounts.py", "r9_b3_scan_gpa_floor")
+    with tempfile.TemporaryDirectory(prefix="r9-b3-scan-gpa-floor-") as raw:
+        case = Path(raw).resolve()
+        old = Path.cwd()
+        os.chdir(case)
+        try:
+            rc = scan.main([
+                MINT, "--program", "spl", "--rpc", "fixture://solana",
+                "--out", "snapshot.json", "--bundle", "bundle.json",
+                "--work-dir", "data",
+            ], request_json=SolanaTransportFake(gpa_slot_early=True))
+            assert rc != 0
+            assert not (case / "bundle.json").exists()
+            assert not (case / "snapshot.json").exists()
+        finally:
+            os.chdir(old)
+
+
+def test_scan_runs_in_memory_bundle_validator_before_publish():
+    scan = _load(ROOT / "scripts/solana/scan_token_accounts.py", "r9_b3_scan_self_validate")
+    with tempfile.TemporaryDirectory(prefix="r9-b3-scan-self-validate-") as raw:
+        case = Path(raw).resolve()
+        old = Path.cwd()
+        os.chdir(case)
+        try:
+            with mock.patch.object(
+                    scan, "validate_observation_bundle",
+                    side_effect=ValueError("injected producer-validator disagreement")) as validate:
+                rc = scan.main([
+                    MINT, "--program", "spl", "--rpc", "fixture://solana",
+                    "--out", "snapshot.json", "--bundle", "bundle.json",
+                    "--work-dir", "data",
+                ], request_json=SolanaTransportFake())
+            assert validate.call_count == 1
+            assert rc != 0
+            assert not (case / "bundle.json").exists()
+            assert not (case / "snapshot.json").exists()
+            assert list(case.glob("bundle.error.*.json"))
+        finally:
+            os.chdir(old)
 
 
 def test_bundle_hashes_are_deterministic():
@@ -353,6 +505,19 @@ def test_sqd_dataset_mint_and_slot_scope_rejected():
 def test_sqd_collector_rejects_bad_scope_before_run():
     collector = _load(
         ROOT / "scripts/solana/fetch_sqd_transfers_v2.py", "r9_b3_sqd_collector")
+    secret_endpoint = "https://portal.sqd.dev/v2/FAKEKEY123"
+    safe_identity = collector.cache_identity(MINT, secret_endpoint)
+    assert "FAKEKEY123" not in json.dumps(safe_identity), safe_identity
+    assert collector.cache_identity_matches(
+        {**safe_identity, "collection_upper_slot": 10}, MINT, secret_endpoint)
+    legacy_meta = {
+        "schema": "sqd-solana-cache/v3", "version": 3, "mint": MINT,
+        "endpoint": secret_endpoint,
+        "collector": "fetch_sqd_transfers_v2.py/v3",
+        "collection_upper_slot": 10,
+    }
+    normalized = collector.normalize_cache_identity(legacy_meta, MINT, secret_endpoint)
+    assert normalized and "FAKEKEY123" not in json.dumps(normalized), normalized
     cases = (
         [MINT, "--dataset-id", "solana-devnet"],
         ["", "--dataset-id", "solana-mainnet"],
@@ -396,8 +561,7 @@ def test_sqd_collector_rejects_bad_scope_before_run():
             os.chdir(old)
 
 
-def test_r9_solana_pythia_mainnet_vertical_slice():
-    """Executable evidence target; the full process slice lives in sibling E2E test."""
+def test_r9_observation_negative_suite():
     test_monotonic_full_and_light_modes()
     test_wrong_genesis_zero_business()
     test_mint_pre_post_change_rejected()
@@ -414,17 +578,27 @@ def main():
         test_declared_slot_is_assertion_not_observation,
         test_mint_pre_post_change_rejected,
         test_json_parsed_slot_cannot_precede_raw_pre,
+        test_gpa_slot_cannot_precede_json_parsed_floor,
+        test_pre_slot_must_honor_cli_min_context_slot,
         test_complete_pagination_incomplete_rejected,
         test_writable_mutation_rejected_in_both_modes,
         test_supply_context_before_snapshot_rejected,
+        test_supply_context_lag_is_retryable,
         test_three_way_supply_closure_rejected,
         test_writable_parser_static_and_loaded_addresses,
+        test_writable_parser_fails_closed_on_unresolved_lookup_table,
+        test_explicit_readonly_cannot_override_header_writable,
+        test_complete_zero_reference_coverage_is_explicit,
         test_activity_rpc_budget_switches_before_call_251,
+        test_mid_scan_lightweight_downgrade_never_publishes_over_limit,
+        test_scan_rejects_gpa_below_parsed_before_formal_publish,
+        test_scan_runs_in_memory_bundle_validator_before_publish,
         test_bundle_hashes_are_deterministic,
         test_scan_cli_assertion_quarantines_old_marker,
         test_scan_error_receipt_and_stderr_redact_endpoint_query,
         test_sqd_dataset_mint_and_slot_scope_rejected,
         test_sqd_collector_rejects_bad_scope_before_run,
+        test_r9_observation_negative_suite,
     ]
     failures = []
     for test in tests:

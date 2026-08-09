@@ -2,6 +2,7 @@
 """R9-05 B2-G2: formal readiness is six executable probes, not declarations."""
 from __future__ import annotations
 
+import ast
 import sys
 from pathlib import Path
 from types import MappingProxyType
@@ -83,12 +84,27 @@ def test_unknown_probe_key_is_missing_not_truthy():
         assert capability in fixture_missing_formal_capabilities(forged), capability
 
 
+def test_solana_evidence_function_has_no_same_named_shadow():
+    import formal_capability_probes
+
+    target = formal_capability_probes.VERTICAL_SLICE_EVIDENCE_TARGETS[
+        "r9-solana-pythia-mainnet-vertical-slice"][0]
+    _module, function = target.split(":", 1)
+    shadow_path = ROOT / "scripts/tests/test_r9_batch3_solana_observation.py"
+    tree = ast.parse(shadow_path.read_text(encoding="utf-8"))
+    defined = {node.name for node in ast.walk(tree)
+               if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))}
+    assert function not in defined, (
+        f"registered evidence function {function} is shadowed by {shadow_path.name}")
+
+
 def main():
     test_exact_six_capabilities_and_natural_not_ready()
     test_deleting_one_evidence_target_drops_only_its_chain()
     test_five_non_slice_probes_resolve_to_callables()
     test_bool_vertical_slice_claim_does_not_satisfy_probe()
     test_unknown_probe_key_is_missing_not_truthy()
+    test_solana_evidence_function_has_no_same_named_shadow()
     print("PASS R9 B3-G3/G4: six probes ready; deleting one slice drops its chain")
     return 0
 

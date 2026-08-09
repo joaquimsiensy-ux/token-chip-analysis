@@ -60,6 +60,7 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
+from endpoint_identity import endpoint_fingerprint
 from solana_attested_session import SolanaAttestedSession
 from solana_sqd_dataset import (SOLANA_SQD_DATASET_ID,
                                 SolanaSqdDatasetAdapter)
@@ -535,11 +536,32 @@ def load_meta(meta_fp):
     return {}
 
 
+def cache_identity(mint, endpoint):
+    fingerprint = endpoint_fingerprint(endpoint)
+    return {"schema": "sqd-solana-cache/v3", "mint": mint,
+            "endpoint": fingerprint["public_origin"],
+            "endpoint_sha256": fingerprint["sha256"],
+            "collector": "fetch_sqd_transfers_v2.py/v3"}
+
+
+def normalize_cache_identity(meta, mint, endpoint):
+    """Validate current/legacy endpoint identity and return a secret-safe copy."""
+    if not meta or meta.get("collection_upper_slot") is None:
+        return None
+    expected = cache_identity(mint, endpoint)
+    common = (meta.get("schema") == expected["schema"]
+              and meta.get("mint") == expected["mint"]
+              and meta.get("collector") == expected["collector"])
+    current = (meta.get("endpoint") == expected["endpoint"]
+               and meta.get("endpoint_sha256") == expected["endpoint_sha256"])
+    legacy = ("endpoint_sha256" not in meta and meta.get("endpoint") == endpoint)
+    if not common or not (current or legacy):
+        return None
+    return {**meta, **expected}
+
+
 def cache_identity_matches(meta, mint, endpoint):
-    expected = {"schema": "sqd-solana-cache/v3", "mint": mint,
-                "endpoint": endpoint, "collector": "fetch_sqd_transfers_v2.py/v3"}
-    return bool(meta) and all(meta.get(k) == v for k, v in expected.items()) \
-        and meta.get("collection_upper_slot") is not None
+    return normalize_cache_identity(meta, mint, endpoint) is not None
 
 
 def plan_areas(meta, span_from, head):
@@ -806,11 +828,19 @@ def run(mint, launch_ts, wall_min, conc, rps, base_url, key,
     cache_fp, meta_fp, parts_dir = cache_paths(mint)
     parts_dir.mkdir(parents=True, exist_ok=True)
     meta = load_meta(meta_fp)
-    identity = {"schema": "sqd-solana-cache/v3", "mint": mint,
-                "endpoint": base_url, "collector": "fetch_sqd_transfers_v2.py/v3"}
-    if meta and not cache_identity_matches(meta, mint, base_url):
-        raise SystemExit("[fail-closed] SQD cache meta 与 mint/endpoint/采集器身份不一致；"
-                         "不得跨标的或跨端点复用，改用新的 data 目录")
+    identity = cache_identity(mint, base_url)
+    if meta:
+        normalized = normalize_cache_identity(meta, mint, base_url)
+        if normalized is None:
+            raise SystemExit("[fail-closed] SQD cache meta 与 mint/endpoint/采集器身份不一致；"
+                             "不得跨标的或跨端点复用，改用新的 data 目录")
+        if normalized != meta:
+            # Old v3 metadata stored the raw endpoint.  Rewrite it before any
+            # resume work so a pre-existing path/query credential is removed.
+            tmp = meta_fp.with_name("." + meta_fp.name + ".identity.tmp")
+            tmp.write_text(json.dumps(normalized, sort_keys=True))
+            os.replace(tmp, meta_fp)
+        meta = normalized
 
     def fresh_meta(start):
         return {**identity, "version": 3, "from_slot": start,
