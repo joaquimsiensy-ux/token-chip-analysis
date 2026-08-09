@@ -352,3 +352,14 @@ G3-0A 报告已删除；沿上文 G3-0 命令重跑即可。验收时除原活�
 **待 opus 攻击补验（4 mutant + 边界外一步）**：B3R9-03（发布层6负例先红后绿 mutant）、B3R9-05（harness 两守卫 H1/H2 mutant 转红）、B3R9-06（r7 断言写错值 mutant 转红）、B3R9-10（writable 判定器 lookups/explicit mutant）；边界外一步 5 项（B3R9-02 完备性=自校验对象vs落盘字节同一/约束集反向 fail-open、6负例抽样先红后绿、harness not-ready 基线是否污染模块级全局、endpoint_identity 脱敏对全链 receipt 连带、window partial 新面）。→ 重发聚焦 opus（错峰、强抗故障预案）。
 
 **注**：Fable 读码补收非攻击式（读逻辑/grep/台账对表），符合角色纪律；mutant 先红后绿与边界外构造新攻击属攻击式，坚持交 opus。11/15 已 CLOSED，剩 4 mutant 有 Fable 读码确认负例存在+codex 先红后绿自述+opus 首轮确认原缺陷三重旁证，风险可控但仍待独立攻击定论。
+
+## 边界外一步 — Fable 读码坐实（2026-08-08，非攻击式）
+
+opus 复审两发均因子代理自跑 `du` 卡死巨型 worktree 的 Bash 队列中止（第二发查清根因，非通道玄学）。Fable 就「边界外一步」中**可读码坐实的结构性问题**自行核实（读逻辑对比、非构造攻击）：
+
+- **B3R9-02 根治完备性（最重要，最可能藏「修一半」）→ 无反向 fail-open**：`validate_observation_bundle`（solana_observation.py:529-597）全文**无 producer/consumer 差别分支**，所有语义约束（schema/receipt envelope/PASS·formal/producer 绑定/mint target/snapshot==target/兼容 slot 三等/slot 窗口≤512/pre≤parsed≤snapshot/raw 前后一致/supply≥snapshot·闭合/三方 amount 全等/genesis 双常量/activity mode·writable_hits==[]/sample_size≤50·complete 预算）对所有调用者一视同仁。producer 自校验（scan_token_accounts.py:297 传 bundle_path=None）与 consumer 调**同一函数**；consumer 唯一多做的 bundle_path 字节比对（592）是**加严**（防落盘后篡改），非放松。producer 自校验对象=publish_txn 落盘对象（282 build→297 validate→298 publish 同一 bundle 变量）。故 producer⊆consumer 约束、无反向 fail-open、无「自校验过落盘另一个」。opus 第一发已实证 02A（sample_size 截断）/02B（GPA<parsed FATAL）CLOSED，与此结构分析一致。
+- **harness 全局污染**：test_batch2_registry_harness_hardening.py 两守卫用 try/finally，`finally: VERTICAL_SLICE_EVIDENCE_TARGETS = original_targets` 保证正常/异常路径都恢复模块级全局。
+- **endpoint_identity 连带**：public_endpoint 保留 host+结构性 path 前缀，只替疑似密钥段；receipt 中 endpoint 为诊断字段不参与业务逻辑；opus 第一发实证 host 保留、无功能回归、全量 suite 全绿。
+- **window partial 新面**：改回 publish_txn 成功后删 partial、unlink 失败不反转 PASS（读码 B3R9-15 已坐实），publish 失败时 partial 仍在可重采、无新丢数面。
+
+**结论**：边界外一步的结构性问题读码坐实**无循环2新引入洞**。剩「4 mutant 先红后绿」（B3R9-03/05/06/10，验证负例测试真能抓缺陷）属攻击式，坚持交 opus（第三发，禁 du+最小镜像）。此 4 条已有三重旁证（Fable 读码确认负例存在+逻辑对+挂 SUITE 单跑 PASS、codex 先红后绿自述、opus 首轮确认原缺陷），mutant 为第四重独立确认；最终两轮全库盲审另覆盖。
