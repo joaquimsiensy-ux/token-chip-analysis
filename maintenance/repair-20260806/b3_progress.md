@@ -340,3 +340,15 @@ G3-0A 报告已删除；沿上文 G3-0 命令重跑即可。验收时除原活�
 **主网数据复现（循环 2 后全链重跑，公共节点）**：producer 自校验**未误伤**真实 bundle——正常落盘 snapshot slot=438,104,303（新实时观测）、GPA 82,218 账户、非零 37,932/owner 37,905（与基线 38,039 同量级）；独立 receipt_validate PASS；accounting PASS exit 0（rpc 字段=公共节点无 key 脱敏后不变，合理）；supply_truth PASS exit 0 **diff=0**；三件 target slot 一致、api-key 干净。根治在真实主网未跑坏。
 
 **止损**：循环 2 消化完成，Fable 验收 PASS。攻击式真闭合待 opus 复审确认（复跑 13 evidence 脚本转绿+边界外一步）。复审若 ALL-CLEAR→批三收口进批四；若再 BLOCK→止损 3/3 冻结上报用户。
+
+## 循环 2 复审进度（Fable，2026-08-08）— 第一发部分完成 + Fable 读码补收
+
+**opus 复审第一发（agent a9a869c038dee17f9）：INCONCLUSIVE，工具通道故障中止**（完成前 4 条后 Bash/Read/Monitor 全通道近 30 次探活无响应——记忆在案的 opus 后台子代理故障老毛病）。该代理表现诚实：验证 4 条全 CLOSED、自我纠正一次 Read 渲染幻觉（sed+shasum 核实 atk3a/atk4 为正常脚本非注入）、如实交付部分不编造。报告存档 `reviews/r9-batch3-rereview-partial.md`。
+
+**opus 已攻击验证 CLOSED（4）**：B3R9-01（脱敏 path 型 key 被挡、正文不腐蚀、host 保留无回归，降档口径）、B3R9-02A（降级 sample_size 截断至 50、coverage 诚实措辞）、B3R9-02B（GPA<parsed producer 侧 FATAL 不发布）、B3R9-09（min-context-slot 返回值 producer 复核 FATAL）。
+
+**Fable 读码/台账复现补收 CLOSED（7）**：B3R9-04（影子函数改名 test_r9_observation_negative_suite、grep 无孤儿同名、防回流测试在）、B3R9-07（循环2 25 文件全在 B3F3 owner 清单命中≥1、无未映射孤儿）、B3R9-08（ledger R9-01 登记闭合边界不含防伪依赖批四）、B3R9-11（coverage_statement 三分支：零样本单列"no writable checks performed"）、B3R9-12（过时注释 grep 空已删）、B3R9-14（不可达死闸删除+穷尽性注释，保留 pagination_error 真实可达 raise）、B3R9-15（改回 publish_txn 后删 partial、unlink 失败不反转 PASS）。
+
+**待 opus 攻击补验（4 mutant + 边界外一步）**：B3R9-03（发布层6负例先红后绿 mutant）、B3R9-05（harness 两守卫 H1/H2 mutant 转红）、B3R9-06（r7 断言写错值 mutant 转红）、B3R9-10（writable 判定器 lookups/explicit mutant）；边界外一步 5 项（B3R9-02 完备性=自校验对象vs落盘字节同一/约束集反向 fail-open、6负例抽样先红后绿、harness not-ready 基线是否污染模块级全局、endpoint_identity 脱敏对全链 receipt 连带、window partial 新面）。→ 重发聚焦 opus（错峰、强抗故障预案）。
+
+**注**：Fable 读码补收非攻击式（读逻辑/grep/台账对表），符合角色纪律；mutant 先红后绿与边界外构造新攻击属攻击式，坚持交 opus。11/15 已 CLOSED，剩 4 mutant 有 Fable 读码确认负例存在+codex 先红后绿自述+opus 首轮确认原缺陷三重旁证，风险可控但仍待独立攻击定论。
