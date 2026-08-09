@@ -475,7 +475,7 @@ def gross_upstream(con, ph, T):
     rows = con.execute(f"""
         SELECT f, SUM(amt) FROM e
         WHERE t IN ('{ph}') AND f NOT IN ('{ph}') AND ts <= {T}
-        GROUP BY f ORDER BY 2 DESC""").fetchall()
+        GROUP BY f ORDER BY 2 DESC, 1""").fetchall()
     total_in = sum(int(v) for _, v in rows)
     if not total_in:
         return []
