@@ -131,6 +131,7 @@
 | commit/hunk | primary invariant | finding 列表或配套任务 | 修改目的 | 测试/纵切片/守卫 | 审查结论 |
 |---|---|---|---|---|---|
 | `B4F2C2:scripts/tests/{invariant_scan.py,test_batch4_invariant_guards.py}; maintenance/repair-20260806/{b4_progress.md,diff-finding-map.md}` 的 import-binding / local-shadow hunk | `INV-01, INV-17, INV-19` | owner `F-B4-01`（STILL-OPEN 二次消化） | 执行原语必须由真实 import 绑定解析，且调用点直接函数作用域内不得有同名本地重绑；同步诚实静态边界与循环 1 勘误 | `B4F2C2-E2E-04/05/06/07`；M4/M5；四链 ready；全量 suite |  |
+| `BR-DIGEST:maintenance/repair-20260806/{exemptions.md,final_acceptance.md,sha_replay.py,ledger.md,diff-finding-map.md}; scripts/tests/{test_exemption_guards.py,run_all.py}` | `INV-18, INV-19`; secondary `INV-16` | owner Round B 盲审 `full-F-03` INCONSISTENT 整改 + final_acceptance 第 3 节口径缺口 + §7 批三履约登记 | 第四类豁免四要素齐备(独立台账+调用图/能力矩阵证据+防回流负测+批准记录)；SHA 回放工具入库可复现；两轮盲审结果登记 | `test_exemption_guards.py` 4 断言(含注入红)；`sha_replay.py` 四道检查；全量 suite |  |
 
 ## 分组 → commit SHA 对照（Fable 代 commit 后回填）
 
@@ -203,6 +204,7 @@
 | `R9-B4F-G4` | `c121422` | F-B4-04 standalone 分母自动派生 |
 | `R9-B4F-G5` | `c121422` | F-B4-05 pool 双件事务发布与循环台账 |
 | `B4F2C2` | `f6523ef` | F-B4-01 import 真绑定与本地遮蔽终修 |
+| `BR-DIGEST` |  | 两轮盲审消化(full-F-03 豁免手续/final_acceptance 修正/§7 履约)；SHA 待 Fable 回填 |
 
 ## 未映射 hunk 计数
 

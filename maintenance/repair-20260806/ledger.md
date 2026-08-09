@@ -74,7 +74,7 @@
 | `R7-11` | R7@`d8bd3c5` | P1 | 新引入 | INV-15 | INV-18 | `roundtrip_check.py:25-27,127-144` | ① | `test_roundtrip_check.py`; `test_r7_findings.py::R7-11` | FIXED_ON_BASELINE (`CMD-R7`: verified_at 倒退非零) | 基线既有修复保持；常驻负向回归与批四门禁复核无回退 | 批内攻击审查/Fable 结论见§七；最终两轮全库盲审待总验收执行（本批不抢跑） |
 | `R7-14` | R7@`d8bd3c5` | P2 | 新引入 | INV-15 | INV-18 | `roundtrip_check.py:50-57`; sibling add/validate/resolver | ③ | `B1-RF-01`～`B1-RF-03`；`B2-P3-RF-01/02` invisible 空白+非字符串 fail-closed；OB-2 merge 共用 | REPRODUCED（roundtrip 自身 trim/dedup 已修；validator/resolver 仍语义分裂，`CMD-R8-FLAGS`） | 对应批次施工已闭合；现役反例/纵切片与批四守卫复核通过 | 批内攻击审查/Fable 结论见§七；最终两轮全库盲审待总验收执行（本批不抢跑） |
 | `R8-10` | R8@`6e94348` | P2 | 半修残留 | INV-15 | INV-14 | `add_labels.py:151-153`; `validate_labels.py:86-98`; `labels_resolver.py:318-326` | ③ | `B1-RF-01`～`B1-RF-03`；`B2-P3-RF-01/02`；`test_batch2_p3_hardening.py` | N/A-R8基线即当前 | 对应 R8/R9 施工与纵切片已闭合；批四自动守卫复核无回退 | 批内攻击审查/Fable 结论见§七；最终两轮全库盲审待总验收执行（本批不抢跑） |
-| `full-F-03` | full@`b0b7744` | P1 | 报告未判定 | INV-16 | INV-03, INV-07, INV-20 | `multicall_balances.py:31-35,57-83,85-115` | ④ | 待调用图与防回流证明、Fable 批准 | REPRODUCED (`CMD-MC`) | 正式发布路径外豁免保持；影响与自动失效条件已登记 | 批内攻击审查/Fable 结论见§七；最终两轮全库盲审待总验收执行（本批不抢跑） |
+| `full-F-03` | full@`b0b7744` | P1 | 报告未判定 | INV-16 | INV-03, INV-07, INV-20 | `multicall_balances.py:31-35,57-83,85-115` | ④ | 调用图/能力矩阵/防回流负测三要素已证，Fable 已批准（2026-08-09） | REPRODUCED (`CMD-MC`) | 正式发布路径外豁免保持；豁免台账 exemptions.md EX-01（四要素齐），防回流由 test_exemption_guards.py 机器看护 | 批内攻击审查/Fable 结论见§七；Round B 盲审判 INCONSISTENT 后补全豁免手续（原「已登记」先行于事实） |
 | `R8-05` | R8@`6e94348` | P1 | 新引入 | INV-17 | INV-18 | `invariant_scan.py`; `invariant_manifest.json`; `formal_capability_probes.py` | ③ | `B4-INV17-01/02`; R9 B3 将五个 attested Solana callsite 纳入 census，四个纵切片 target 与 SUITE 双绑定 | N/A-R8基线即当前 | 批四既有销账保持；批三新增 census `51/55/60/38/58` 通过 | 批内攻击审查/Fable 结论见§七；最终两轮全库盲审待总验收执行（本批不抢跑） |
 | `full-F-04` | full@`b0b7744` | P3 | 报告未判定 | INV-18 | INV-17 | `data-pipeline-robinhood.md:16`; `scripts/robinhood/` | ③ | `B2-DOC-RH-COUNT`; `B4-RH-COUNT-01` 文档 16/15 与磁盘实数动态对表 | REPRODUCED（文档仍“全14件”，当前普通文件 16） | 对应批次施工已闭合；现役反例/纵切片与批四守卫复核通过 | 批内攻击审查/Fable 结论见§七；最终两轮全库盲审待总验收执行（本批不抢跑） |
 | `six-F-11` | six@`fca61ad` | P2 | 半修残留 | INV-18 | — | `retrospective.md:68,91`; `docs_lint.py` 8192B 守卫 | ① | `docs_lint.py --all`; `test_sixlens_docs.py` | FIXED_ON_BASELINE (`CMD-DOC`: 7.5KB 预警/8192B 硬闸统一) | 基线既有修复保持；常驻负向回归与批四门禁复核无回退 | 批内攻击审查/Fable 结论见§七；最终两轮全库盲审待总验收执行（本批不抢跑） |
@@ -117,8 +117,8 @@
 - 当前路径与同族面：`multicall_balances.py:31-35` 允许单 call 失败；`:57-83` 固定 `/1e18` 且失败转 `None`；`:85-115` 无 decimals/block/receipt，仍写正式 JSON 并 `[done]`。
 - 覆盖初判：④正式发布路径外豁免；需调用图、能力矩阵与防回流负测后由 Fable 批准。
 - 基线回放：**REPRODUCED**。`CMD-MC` 令 raw=1,000,000，输出 `1e-12`；令全批失败，`main_return=None`、JSON 含 `null` 且仍打印 `[done]`。
-- 最终结果：见主表同 ID；代码侧与现役执行证据已闭合或按登记豁免保持。
-- 两轮盲审与 Fable 结论：批内攻击审查/Fable 结论见第七节；最终两轮全库盲审属于总验收，本批不抢跑并保留待执行状态。
+- 最终结果：豁免手续四要素补全（2026-08-09）：①调用图=生产代码零 import/零字符串引用（引用仅三个传输合规测试）；②formal registry（runner producer 白名单/invariant 分母/evidence targets）零引用；③能力矩阵=attested 探索组非 formal 派生组；④防回流负测 `test_exemption_guards.py`（挂 SUITE，含注入红自测）看护四条自动失效条件。豁免台账 `exemptions.md` EX-01，Fable 批准记录在案。缺陷本体不修按豁免保持。
+- 两轮盲审与 Fable 结论：Round B 台账重放盲审判本项 **INCONSISTENT**（主表「已登记」先行于事实——豁免台账/批准记录/防回流负测当时均不存在，robinhood-impact.md 要求的独立台账未建）。Fable 认账并按详情节自设条件补全全部手续（见「最终结果」），整改后声称与仓库证据一致。批内攻击审查见第七节。
 
 ### full-F-04
 
@@ -667,7 +667,9 @@ R9 批四已复核 8/8：C-02/C-03 随 Solana 纵切片闭合；C-04 仍是现�
 - 批四覆盖 finding 的批内状态：`R8-05`（INV-17 scanner 分母）→ 销账；`full-F-04` 动态计数守卫补齐；`B1R-01`/`OB-B`/`B3R-Q1` 三守卫欠账全部落地收口；fixture 审计与六脚本判定入档。
 - 工艺记录：守卫本身作为被审对象过了独立可绕性检验；批四消化一次循环收口（全工程最快）。
 
-### R9 批三（正式纵切片重建）— 当前裁决：**B3F_BLOCKED（环境验真未闭）**
+### R9 批三（正式纵切片重建）— 当前裁决：**B3F_COMPLETE（裁判复跑已闭，2026-08-09 履约登记）**
+
+> 裁判复跑登记（按本节末行原约定改写裁决行，原文其余内容保留为历史记录）：Fable 环境（无沙箱 loopback 限制）已多次全量复跑——两份纵切片随 `run_all.py` 89 项全 PASS（批三收口 f4c40ea、批四各循环、降级收口 b7a8537 后均复跑）；G3-0 双分支与 PYTHIA mainnet smoke 已按 `b3_progress.md` 完成（GPA 82,218~82,223 账户、三方闭合 diff=0、三 receipt 同 slot，证据哈希入档 g3_preflight/smoke-20260808/）。Round B 盲审指出本节旧标题「B3F_BLOCKED」与 R9-05 详情不一致——系裁判复跑完成后未回本节履约登记，本次补正。
 
 - 代码侧：observation bundle、三消费者、动态 Solana runner、SQD scope callsite、anchor/window txn 尾巴、四链 evidence target、G3-0 双载体壳和裁判 smoke 命令均已落地。
 - 门禁：全量 `run_all.py` 共 87 项，85 项 PASS；唯二失败是 Solana/EVM 正式纵切片 fixture 在创建 `ThreadingHTTPServer` 时被本沙箱 `socket.bind(127.0.0.1)` 以 `EPERM` 拒绝，尚未进入任何生产业务断言。
