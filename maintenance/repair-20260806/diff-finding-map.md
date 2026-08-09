@@ -158,12 +158,12 @@
 | `R9-B3-G7` | `160a852` | 台账、矩阵、门禁与待跑位 |
 | `B3F2-G1` | `160a852` | CA context、endpoint public identity 与生产 G3-0 transport 接线 |
 | `B3F2-G2` | `160a852` | 污染清理、批内循环 1 台账与门禁 |
-| `B3F3-G1` |  | Fable 回填：endpoint path/query 密钥脱敏 |
-| `B3F3-G2` |  | Fable 回填：producer-validator 等价与 slot/retry |
-| `B3F3-G3` |  | Fable 回填：Solana 发布层六负例 |
-| `B3F3-G4` |  | Fable 回填：测试守卫判别力恢复 |
-| `B3F3-G5` |  | Fable 回填：证据 owner、跨批注记与闭合边界 |
-| `B3F3-G6` |  | Fable 回填：P3 writable/措辞/docstring/partial 时序 |
+| `B3F3-G1` | `c46ef9f` | endpoint path/query 密钥脱敏 |
+| `B3F3-G2` | `c46ef9f` | producer-validator 等价与 slot/retry |
+| `B3F3-G3` | `c46ef9f` | Solana 发布层六负例 |
+| `B3F3-G4` | `c46ef9f` | 测试守卫判别力恢复 |
+| `B3F3-G5` | `c46ef9f` | 证据 owner、跨批注记与闭合边界 |
+| `B3F3-G6` | `c46ef9f` | P3 writable/措辞/docstring/partial 时序 |
 
 ## 未映射 hunk 计数
 
@@ -183,6 +183,6 @@
 - R9 批二（`5b06677..` 至本回填 commit 即候选 tip，含生产 `ae3ff29`/测试 `3b69e5d`/SKILL `4bc31db`/台账 `cf67cd0` 与本表自身回填）：`0` 候选（全部 hunk 归属 `R9-B2-G1`～`R9-B2-G5`；commit 按生产/测试/SKILL/台账横切，各 G 跨 commit 已在 SHA 对照注明；回填 commit 自指式计入；待批内审查独立复算）。
 - R9 批三（`5771419..160a852`，主体+批内循环 1+裁判证据登记合一 commit）：`0` 候选（全部生产、测试、fixture、SKILL 与 maintenance hunk 已归属 `R9-B3-G1`～`R9-B3-G7`；SHA 已回填 `160a852`；待批内审查独立复算）。
 - R9 批三批内修复循环 1（物理并入 `160a852`）：`0` 候选（CA/endpoint identity、G3-0 transport 旁路、上层持久化负例、污染文件删除与三份台账 hunk 均归属 `B3F2-G1/G2`；SHA 已回填 `160a852`；本表自身回填 commit 按通例自指式计入）。
-- R9 批三批内修复循环 2（`b4e9595..` 至当前未提交 worktree）：`0` 候选（当前 hunk 已归属 `B3F3-G1`～`B3F3-G6`；四个既有裁判 mainnet JSON 与 SQD docstring 跨批 hunk由 G5 追补 owner；SHA 留空待 Fable 回填；未执行任何 git 写操作）。
+- R9 批三批内修复循环 2（`b4e9595..c46ef9f`）：`0` 候选（全部 hunk 已归属 `B3F3-G1`～`B3F3-G6`；四个既有裁判 mainnet JSON 与 SQD docstring 跨批 hunk 由 G5 追补 owner；SHA 已回填 `c46ef9f`；本表自身回填 commit 按通例自指式计入；待 opus 复审独立复算）。
 
 通例：区间末端恒取候选 tip；自指式 SHA 回填 commit 计入本区间。map 行文件清单以 Fable 实际 commit 分组为准；一文件含多 owner 的 hunk 时（文件级 commit 无法拆分），物理归属行与语义 owner 行互相注明，Fable 回填 SHA 时校正清单。
