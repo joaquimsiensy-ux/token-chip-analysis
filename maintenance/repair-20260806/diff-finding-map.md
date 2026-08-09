@@ -126,6 +126,12 @@
 | `R9-B4F-G4:scripts/tests/{invariant_scan.py,test_batch4_invariant_guards.py}; maintenance/repair-20260806/b4_progress.md` 的 standalone-denominator hunk | `INV-03, INV-04, INV-17` | `F-B4-04` | 从 standalone 入口可达的成功发布+ERROR receipt 语义自动派生 stale-sensitive producer 分母 | `B4F2-STALE-04` |  |
 | `R9-B4F-G5:scripts/evm/fetch_pool_swaps.py; scripts/tests/{test_fetch_failclosed.py,invariant_scan.py,invariant_manifest.json}; maintenance/repair-20260806/{b4_progress.md,diff-finding-map.md}` | `INV-03, INV-05, INV-17, INV-19` | `F-B4-05` | pool CSV+PASS marker 迁入 receipt-kernel 联合事务；发布第二件失败撤回 CSV；补齐 txn atomic census | receipt rename fault injection；fetch failclosed；invariant scan |  |
 
+## R9 批四批内修复循环 2
+
+| commit/hunk | primary invariant | finding 列表或配套任务 | 修改目的 | 测试/纵切片/守卫 | 审查结论 |
+|---|---|---|---|---|---|
+| `B4F2C2:scripts/tests/{invariant_scan.py,test_batch4_invariant_guards.py}; maintenance/repair-20260806/{b4_progress.md,diff-finding-map.md}` 的 import-binding / local-shadow hunk | `INV-01, INV-17, INV-19` | owner `F-B4-01`（STILL-OPEN 二次消化） | 执行原语必须由真实 import 绑定解析，且调用点直接函数作用域内不得有同名本地重绑；同步诚实静态边界与循环 1 勘误 | `B4F2C2-E2E-04/05/06/07`；M4/M5；四链 ready；全量 suite |  |
+
 ## 分组 → commit SHA 对照（Fable 代 commit 后回填）
 
 | 分组 | commit SHA | 说明 |
@@ -196,6 +202,7 @@
 | `R9-B4F-G3` | `c121422` | F-B4-03 顶层 main 退出传播 |
 | `R9-B4F-G4` | `c121422` | F-B4-04 standalone 分母自动派生 |
 | `R9-B4F-G5` | `c121422` | F-B4-05 pool 双件事务发布与循环台账 |
+| `B4F2C2` |  | F-B4-01 import 真绑定与本地遮蔽终修；SHA 待 Fable 回填 |
 
 ## 未映射 hunk 计数
 
@@ -218,5 +225,6 @@
 - R9 批三批内修复循环 2（`b4e9595..c46ef9f`）：`0` 候选（全部 hunk 已归属 `B3F3-G1`～`B3F3-G6`；四个既有裁判 mainnet JSON 与 SQD docstring 跨批 hunk 由 G5 追补 owner；SHA 已回填 `c46ef9f`；本表自身回填 commit 按通例自指式计入；待 opus 复审独立复算）。
 - R9 批四（`f4c40ea..3b76db8`）：`0` 候选（全部生产、测试、fixture、方法论与 maintenance hunk 已归属 `R9-B4-G1`～`R9-B4-G6`；同文件多 owner 已按 hunk 拆分说明；SHA 已回填 `3b76db8`；本表自指式计入 G6；待 opus 批四批内审查独立复算）。
 - R9 批四批内修复循环 1（`c86f251..c121422`；`c86f251` 仅比用户所报 `65443cf` 多批四审查报告入库）：`0` 候选（生产、scanner、manifest、两测试与两台账 hunk 均已归属 `R9-B4F-G1`～`R9-B4F-G5`；SHA 已回填 `c121422`；本表自指式计入 G5；待 opus 复审独立复算）。
+- R9 批四批内修复循环 2（`6b93e9d..` 候选 tip）：`0` 候选（scanner、正式回归与两份台账 hunk 全部归属唯一 owner `B4F2C2`；SHA 留空待 Fable 回填；本表自指式计入）。
 
 通例：区间末端恒取候选 tip；自指式 SHA 回填 commit 计入本区间。map 行文件清单以 Fable 实际 commit 分组为准；一文件含多 owner 的 hunk 时（文件级 commit 无法拆分），物理归属行与语义 owner 行互相注明，Fable 回填 SHA 时校正清单。

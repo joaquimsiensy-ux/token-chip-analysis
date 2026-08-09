@@ -2,6 +2,7 @@
 """Batch 4 destructive injections for invariant scanner denominators."""
 from __future__ import annotations
 
+import ast
 import copy
 import importlib.util
 import json
@@ -250,6 +251,146 @@ def test_dead_execution_primitive_injection(scan, root):
     print("INJECT B4F2-E2E-03 dead subprocess primitive -> RED")
 
 
+def _fake_sol_slice_source(call_prefix, *, imports="", shadow=""):
+    scripts = (
+        "scripts/report/reconciliation_report.py",
+        "scripts/solana/scan_token_accounts.py",
+        "scripts/solana/anchor_sampler.py",
+        "scripts/lib/supply_truth_gate.py",
+        "scripts/solana/accounting_gate_sol.py",
+        "scripts/solana/window_fetch.py",
+    )
+    calls = "".join(call_prefix.format(script=script) for script in scripts)
+    return (
+        imports
+        + "def test_fake_vertical_slice():\n"
+        + shadow
+        + calls
+        + "\ndef main():\n"
+        + "    test_fake_vertical_slice()\n"
+    )
+
+
+def _assert_fake_sol_slice_rejected(scan, sample):
+    errors = scan.formal_e2e_provenance_errors(targets={
+        "sol": (sample, "test_fake_vertical_slice"),
+    })
+    assert any("real reconciliation runner" in error for error in errors), errors
+    assert any("registered producer execution" in error for error in errors), errors
+
+
+def test_unimported_subprocess_primitive_injection(scan, root):
+    """B4F2C2-E2E-04/M6: an unbound qualified name is not execution."""
+    sample = root / "test_unimported_subprocess_slice.py"
+    sample.write_text(_fake_sol_slice_source(
+        "    subprocess.run(['python3', '{script}'])\n"), encoding="utf-8")
+    _assert_fake_sol_slice_rejected(scan, sample)
+    print("INJECT B4F2C2-E2E-04 unimported subprocess.run -> RED")
+
+
+def test_unimported_os_exec_primitive_injection(scan, root):
+    """B4F2C2-E2E-05/M7: an unbound os.exec name is not execution."""
+    sample = root / "test_unimported_os_exec_slice.py"
+    sample.write_text(_fake_sol_slice_source(
+        "    os.execv('python3', ['python3', '{script}'])\n"), encoding="utf-8")
+    _assert_fake_sol_slice_rejected(scan, sample)
+    print("INJECT B4F2C2-E2E-05 unimported os.execv -> RED")
+
+
+def test_unimported_harness_primitive_injection(scan, root):
+    """B4F2C2-E2E-06/M8: an unbound harness name is not execution."""
+    sample = root / "test_unimported_harness_slice.py"
+    sample.write_text(_fake_sol_slice_source(
+        "    formal_ready_test_harness.run_formal_script('{script}', [])\n"),
+        encoding="utf-8")
+    _assert_fake_sol_slice_rejected(scan, sample)
+    print("INJECT B4F2C2-E2E-06 unimported harness primitive -> RED")
+
+
+def test_shadowed_subprocess_primitive_injection(scan, root):
+    """B4F2C2-E2E-07/M10: a locally rebound import is not execution."""
+    sample = root / "test_shadowed_subprocess_slice.py"
+    sample.write_text(_fake_sol_slice_source(
+        "    subprocess.run(['python3', '{script}'])\n",
+        imports="import subprocess\n\n",
+        shadow="    subprocess = None\n"), encoding="utf-8")
+    _assert_fake_sol_slice_rejected(scan, sample)
+    print("INJECT B4F2C2-E2E-07 locally shadowed subprocess -> RED")
+
+
+def test_execution_import_binding_positive_controls(scan, root):
+    """B4F2C2 positive controls: M4/M5 and all four live chains stay ready."""
+    scripts = (
+        "scripts/report/reconciliation_report.py",
+        "scripts/solana/scan_token_accounts.py",
+        "scripts/solana/anchor_sampler.py",
+        "scripts/lib/supply_truth_gate.py",
+        "scripts/solana/accounting_gate_sol.py",
+        "scripts/solana/window_fetch.py",
+    )
+    calls = "".join(
+        f"    run(['python3', '{script}'])\n" for script in scripts)
+    m4 = root / "test_multilevel_real_run_slice.py"
+    m4.write_text(
+        "import subprocess\n\n"
+        "def _r2(command):\n"
+        "    subprocess.run(command)\n\n"
+        "def run(command):\n"
+        "    _r2(command)\n\n"
+        "def test_fake_vertical_slice():\n"
+        + calls
+        + "\ndef main():\n"
+        + "    test_fake_vertical_slice()\n",
+        encoding="utf-8")
+    assert scan.formal_e2e_provenance_errors(targets={
+        "sol": (m4, "test_fake_vertical_slice"),
+    }) == []
+
+    m5 = root / "test_aliased_real_run_slice.py"
+    m5.write_text(_fake_sol_slice_source(
+        "    sp.run(['python3', '{script}'])\n",
+        imports="import subprocess as sp\n\n"), encoding="utf-8")
+    assert scan.formal_e2e_provenance_errors(targets={
+        "sol": (m5, "test_fake_vertical_slice"),
+    }) == []
+    assert scan.formal_e2e_provenance_errors() == []
+    assert scan._load_chain_registry().formal_ready_chains() == {
+        "eth", "bsc", "base", "sol",
+    }
+    print("PASS B4F2C2 M4/M5 import bindings + four live ready chains")
+
+
+def test_execution_local_binding_scope_contract(scan, _root):
+    """B4F2C2 local binding census covers named forms but not child scopes."""
+    tree = ast.parse(
+        "def sample(param_shadow):\n"
+        "    assign_shadow = 1\n"
+        "    aug_shadow += 1\n"
+        "    ann_shadow: int = 1\n"
+        "    for for_shadow in ():\n"
+        "        pass\n"
+        "    with context() as with_shadow:\n"
+        "        pass\n"
+        "    try:\n"
+        "        pass\n"
+        "    except Exception as except_shadow:\n"
+        "        pass\n"
+        "    if (walrus_shadow := 1):\n"
+        "        pass\n"
+        "    def nested(nested_param):\n"
+        "        nested_assign = 1\n"
+        "    hidden = lambda nested_lambda: (nested_walrus := 1)\n")
+    bindings = scan._function_local_bindings(tree.body[0])
+    assert {
+        "param_shadow", "assign_shadow", "aug_shadow", "ann_shadow",
+        "for_shadow", "with_shadow", "except_shadow", "walrus_shadow",
+    } <= bindings
+    assert not {
+        "nested_param", "nested_assign", "nested_lambda", "nested_walrus",
+    } & bindings
+    print("PASS B4F2C2 local binding forms + nested scope boundary")
+
+
 def test_failure_artifact_contract_injection(scan, root):
     """R9-B4-STALE-01: registered producer cannot leave old current success."""
     sample = root / "scripts/stale_producer.py"
@@ -375,6 +516,12 @@ def main():
             test_handwritten_e2e_provenance_injection,
             test_fake_local_run_provenance_injection,
             test_dead_execution_primitive_injection,
+            test_unimported_subprocess_primitive_injection,
+            test_unimported_os_exec_primitive_injection,
+            test_unimported_harness_primitive_injection,
+            test_shadowed_subprocess_primitive_injection,
+            test_execution_import_binding_positive_controls,
+            test_execution_local_binding_scope_contract,
             test_failure_artifact_contract_injection,
             test_dead_failure_contract_injection,
             test_constant_false_failure_contract_injection,

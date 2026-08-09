@@ -520,15 +520,101 @@ def _execution_imports(tree):
     return aliases
 
 
+def _function_local_bindings(function):
+    """Collect conservative local rebinding names without entering child scopes."""
+    names = {
+        arg.arg for arg in (
+            *function.args.posonlyargs,
+            *function.args.args,
+            *function.args.kwonlyargs,
+        )
+    }
+    if function.args.vararg:
+        names.add(function.args.vararg.arg)
+    if function.args.kwarg:
+        names.add(function.args.kwarg.arg)
+
+    class Visitor(ast.NodeVisitor):
+        def visit_Name(self, node):
+            if isinstance(node.ctx, (ast.Store, ast.Del)):
+                names.add(node.id)
+
+        def visit_FunctionDef(self, node):
+            names.add(node.name)
+            return
+
+        visit_AsyncFunctionDef = visit_FunctionDef
+
+        def visit_Lambda(self, _node):
+            return
+
+        def visit_ClassDef(self, node):
+            names.add(node.name)
+            return
+
+        def visit_Import(self, node):
+            for item in node.names:
+                names.add(item.asname or item.name.partition(".")[0])
+
+        def visit_ImportFrom(self, node):
+            for item in node.names:
+                if item.name != "*":
+                    names.add(item.asname or item.name)
+
+        def visit_ExceptHandler(self, node):
+            if isinstance(node.name, str):
+                names.add(node.name)
+            self.generic_visit(node)
+
+    visitor = Visitor()
+    for statement in function.body:
+        visitor.visit(statement)
+    return frozenset(names)
+
+
+def _execution_call_bindings(tree):
+    """Map each call to bindings in its directly enclosing function scope."""
+    bindings = {}
+    stack = []
+
+    class Visitor(ast.NodeVisitor):
+        def visit_FunctionDef(self, node):
+            stack.append(_function_local_bindings(node))
+            try:
+                for statement in node.body:
+                    self.visit(statement)
+            finally:
+                stack.pop()
+
+        visit_AsyncFunctionDef = visit_FunctionDef
+
+        def visit_Lambda(self, _node):
+            return
+
+        def visit_ClassDef(self, _node):
+            return
+
+        def visit_Call(self, node):
+            if stack:
+                bindings[id(node)] = stack[-1]
+            self.generic_visit(node)
+
+    Visitor().visit(tree)
+    return bindings
+
+
 def _resolved_call_name(call, imports):
     name = _call_name(call.func)
     head, dot, tail = name.partition(".")
-    if head in imports:
-        return imports[head] + (dot + tail if dot else "")
-    return name
+    if not head or head not in imports:
+        return None
+    return imports[head] + (dot + tail if dot else "")
 
 
-def _is_execution_primitive(call, imports):
+def _is_execution_primitive(call, imports, local_bindings=frozenset()):
+    head = _call_name(call.func).partition(".")[0]
+    if not head or head not in imports or head in local_bindings:
+        return False
     name = _resolved_call_name(call, imports)
     return (name in {
                 "subprocess.run", "subprocess.Popen",
@@ -539,7 +625,7 @@ def _is_execution_primitive(call, imports):
             or name.startswith("os.exec"))
 
 
-def _local_function_executes(name, functions, imports, visiting=None):
+def _local_function_executes(name, functions, imports, call_bindings, visiting=None):
     """Prove a local wrapper reaches an imported process execution primitive."""
     visiting = set() if visiting is None else visiting
     if name in visiting or name not in functions:
@@ -547,10 +633,11 @@ def _local_function_executes(name, functions, imports, visiting=None):
     visiting.add(name)
     try:
         for node in _reachable_calls(functions[name]):
-            if _is_execution_primitive(node, imports):
+            if _is_execution_primitive(node, imports, call_bindings.get(id(node), frozenset())):
                 return True
             if isinstance(node.func, ast.Name) and node.func.id in functions \
-                    and _local_function_executes(node.func.id, functions, imports, visiting):
+                    and _local_function_executes(
+                        node.func.id, functions, imports, call_bindings, visiting):
                 return True
         return False
     finally:
@@ -560,21 +647,28 @@ def _local_function_executes(name, functions, imports, visiting=None):
 def _reachable_execution_evidence(function_names, functions, tree):
     """Return scripts in actual run calls plus producer fields in reachable specs.
 
-    Bare string constants do not count: that was the original hand-written E2E
-    bypass.  Producer fields count only when a real controlled runner command is
-    present, because that runner validates and executes every spec producer.
+    Static proof stops at a call name that resolves through a real module import
+    and is not rebound anywhere in the call's directly enclosing function.  It
+    does not prove that a process launches at runtime: dynamic exec dispatch,
+    ``importlib.import_module``/``getattr`` indirection, and module-load
+    monkeypatching are outside this AST guard and remain covered by the SUITE's
+    loopback E2E harness.  Producer fields count only behind that controlled
+    runner call, which validates and executes every registered spec producer.
     """
     executed = set()
     producers = set()
     imports = _execution_imports(tree)
+    call_bindings = _execution_call_bindings(tree)
     for name in function_names:
         function = functions[name]
         for node in _reachable_calls(function):
             called = _call_name(node.func)
             local_wrapper = (isinstance(node.func, ast.Name)
                              and called in functions)
-            executes = (_local_function_executes(called, functions, imports)
-                        if local_wrapper else _is_execution_primitive(node, imports))
+            executes = (_local_function_executes(
+                            called, functions, imports, call_bindings)
+                        if local_wrapper else _is_execution_primitive(
+                            node, imports, call_bindings.get(id(node), frozenset())))
             if executes:
                 for item in ast.walk(node):
                     if (isinstance(item, ast.Constant)

@@ -125,3 +125,16 @@
 - **根因定性**：与 B1R-01/B3R9-02 同族——声明式/字符串匹配冒充可执行事实。判据锚点是"名字长得像原语"，不是"名字真绑定到 import 的执行模块"。
 - **误伤边界已 Fable 读码确认**：四链现役 target（`test_batch3_evm/solana_vertical_slice.py`）模块顶层真 `import subprocess/os` + `from formal_ready_test_harness import run_formal_script`，`run(command,cwd)` wrapper 参数不重绑原语名。故"要求 import 真绑定 + 无本地遮蔽"的修法对四链零误伤（它们真跑子进程→必然真 import，静态判据对齐运行时事实）。
 - **处置**：按 R9 铁律（半修残留/同 INV 再穿不分严重度必消化）→ 开**批内修复循环 2**，唯一 finding=F-B4-01 回炉。止损：批四消化循环 **2/3**（未触冻结线）。修复方向已在循环 2 工单定死（import 真绑定硬门 + 本地遮蔽检测 + 诚实文档边界），不再让施工方自行枚举语法。
+
+## 批内修复循环 2（B4F2C2，F-B4-01 二次消化）
+
+- **勘误（仅追加，不改写循环 1 历史）**：循环 1 的“F-B4-01 收紧为 import 身份机器判据”“5 finding 全部消化”措辞过强；循环 1 实际只堵住本地 no-op wrapper 与 `if False` 两种枚举语法，M6/M10 所代表的未绑定限定名与本地遮蔽直到本循环才堵住。
+- **红证据**：先在 `scripts/tests/test_batch4_invariant_guards.py` 落成 `B4F2C2-E2E-04/05/06/07`，分别覆盖 M6 未 import 的 `subprocess.run`、M7 未 import 的 `os.execv`、M8 未 import 的 harness 限定名、M10 真 import 后函数内 `subprocess=None`。在未修 `invariant_scan.py` 上逐条调用，四条均精确红于 `AssertionError: []`，汇总 `EXPECTED_RED_COUNT=4/4`。
+- **绿实现**：`_resolved_call_name` 对 head 不在 `_execution_imports(tree)` 的调用直接返回 `None`；`_is_execution_primitive` 在白名单前先强制 head 真实存在于 import 表。新增 AST 本地绑定收集，以 `Name(Store/Del)` 统一覆盖 `Assign/AugAssign/AnnAssign` target、`for` target、`with ... as`、walrus 等绑定形态，并显式覆盖函数形参、`except ... as`、局部 import 与嵌套 def/class 名；按调用节点映射到直接包含它的函数。任一同名绑定在函数体任何位置出现即保守拒绝，且不下钻嵌套 def/lambda/class 的独立作用域。
+- **绿证据与不误伤**：四条负例现在同时报缺 real reconciliation runner 与 registered producer execution；M4 `run→_r2→subprocess.run`、M5 `import subprocess as sp; sp.run` 均 PASS；`formal_e2e_provenance_errors()==[]`，`formal_ready_chains()=={'eth','bsc','base','sol'}`。本地绑定形态与子作用域边界另有正式断言。`test_batch4_invariant_guards.py` PASS。
+- **诚实静态边界**：本守卫只证明到“调用名可静态追溯到真实 import 绑定，且在调用点所在函数作用域内未被本地重绑”。静态 AST 无法、也不宣称证明运行时真的启动了子进程；动态派发 exec、`importlib.import_module`/`getattr` 间接调用、模块加载期 monkeypatch 等超出静态可判定域，由 SUITE 的 loopback E2E harness 在运行时兜底。
+- **非目标 finding 保持闭合**：未改 F-B4-02/03/04/05 实现；循环 1 的 failure-contract、top-level main、standalone denominator 注入在 `test_batch4_invariant_guards.py` 继续全绿，F-B4-05 的 `test_fetch_failclosed.py` PASS，`test_r9_batch1_boundaries.py` 3/3 PASS。
+- **全量 suite**：`PYTHONDONTWRITEBYTECODE=1 python3 scripts/tests/run_all.py` 运行 89 项，87 PASS / 2 FAIL；唯二失败仍是 `test_batch3_solana_vertical_slice.py` 与 `test_batch3_evm_vertical_slice.py` 在 `ThreadingHTTPServer(("127.0.0.1", 0))` 首个 `socket.bind` 被沙箱 `PermissionError: [Errno 1] Operation not permitted` 拒绝，未进入业务断言，无第三项失败。
+- **门禁**：`invariant_scan.py` PASS（52/55/62/42/58，exceptions=0）；`docs_lint.py --all`、`env_check.py`、`test_sixlens_docs.py` PASS；`SKILL.md=7737B<=8192B`；`VERSION=6.36.0` 未改；`git diff --check` 零输出。
+- **diff→finding**：唯一 owner `B4F2C2` 已登记，SHA 留空待 Fable 回填；本循环未映射 hunk=`0`。未执行 git 写操作，未出网。
+- **结论**：`B4F2C2_COMPLETE`。
