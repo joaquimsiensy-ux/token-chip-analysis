@@ -204,7 +204,7 @@
 | `R9-B4F-G4` | `c121422` | F-B4-04 standalone 分母自动派生 |
 | `R9-B4F-G5` | `c121422` | F-B4-05 pool 双件事务发布与循环台账 |
 | `B4F2C2` | `f6523ef` | F-B4-01 import 真绑定与本地遮蔽终修 |
-| `BR-DIGEST` |  | 两轮盲审消化(full-F-03 豁免手续/final_acceptance 修正/§7 履约)；SHA 待 Fable 回填 |
+| `BR-DIGEST` | `c8ab6c2` | 两轮盲审消化(full-F-03 豁免手续/final_acceptance 修正/§7 履约) |
 
 ## 未映射 hunk 计数
 
