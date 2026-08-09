@@ -191,11 +191,11 @@
 | `R9-B4-G4` | `3b76db8` | stale canonical/marker/error 登记守卫 |
 | `R9-B4-G5` | `3b76db8` | fixture 审计与 anchor 弱覆盖下限 |
 | `R9-B4-G6` | `3b76db8` | 方法论、49 项主账、归并表与 map 收口 |
-| `R9-B4F-G1` |  | F-B4-01 run 真实性收紧 |
-| `R9-B4F-G2` |  | F-B4-02 failure contract 可达性 |
-| `R9-B4F-G3` |  | F-B4-03 顶层 main 退出传播 |
-| `R9-B4F-G4` |  | F-B4-04 standalone 分母自动派生 |
-| `R9-B4F-G5` |  | F-B4-05 pool 双件事务发布与循环台账 |
+| `R9-B4F-G1` | `c121422` | F-B4-01 run 真实性收紧 |
+| `R9-B4F-G2` | `c121422` | F-B4-02 failure contract 可达性 |
+| `R9-B4F-G3` | `c121422` | F-B4-03 顶层 main 退出传播 |
+| `R9-B4F-G4` | `c121422` | F-B4-04 standalone 分母自动派生 |
+| `R9-B4F-G5` | `c121422` | F-B4-05 pool 双件事务发布与循环台账 |
 
 ## 未映射 hunk 计数
 
@@ -217,6 +217,6 @@
 - R9 批三批内修复循环 1（物理并入 `160a852`）：`0` 候选（CA/endpoint identity、G3-0 transport 旁路、上层持久化负例、污染文件删除与三份台账 hunk 均归属 `B3F2-G1/G2`；SHA 已回填 `160a852`；本表自身回填 commit 按通例自指式计入）。
 - R9 批三批内修复循环 2（`b4e9595..c46ef9f`）：`0` 候选（全部 hunk 已归属 `B3F3-G1`～`B3F3-G6`；四个既有裁判 mainnet JSON 与 SQD docstring 跨批 hunk 由 G5 追补 owner；SHA 已回填 `c46ef9f`；本表自身回填 commit 按通例自指式计入；待 opus 复审独立复算）。
 - R9 批四（`f4c40ea..3b76db8`）：`0` 候选（全部生产、测试、fixture、方法论与 maintenance hunk 已归属 `R9-B4-G1`～`R9-B4-G6`；同文件多 owner 已按 hunk 拆分说明；SHA 已回填 `3b76db8`；本表自指式计入 G6；待 opus 批四批内审查独立复算）。
-- R9 批四批内修复循环 1（`c86f251..` 候选 tip；`c86f251` 仅比用户所报 `65443cf` 多批四审查报告入库）：`0` 候选（生产、scanner、manifest、两测试与两台账 hunk 均已归属 `R9-B4F-G1`～`R9-B4F-G5`；SHA 依约留空待 Fable 回填；本表自指式计入 G5）。
+- R9 批四批内修复循环 1（`c86f251..c121422`；`c86f251` 仅比用户所报 `65443cf` 多批四审查报告入库）：`0` 候选（生产、scanner、manifest、两测试与两台账 hunk 均已归属 `R9-B4F-G1`～`R9-B4F-G5`；SHA 已回填 `c121422`；本表自指式计入 G5；待 opus 复审独立复算）。
 
 通例：区间末端恒取候选 tip；自指式 SHA 回填 commit 计入本区间。map 行文件清单以 Fable 实际 commit 分组为准；一文件含多 owner 的 hunk 时（文件级 commit 无法拆分），物理归属行与语义 owner 行互相注明，Fable 回填 SHA 时校正清单。
