@@ -227,4 +227,4 @@
 - R9 批四批内修复循环 1（`c86f251..c121422`；`c86f251` 仅比用户所报 `65443cf` 多批四审查报告入库）：`0` 候选（生产、scanner、manifest、两测试与两台账 hunk 均已归属 `R9-B4F-G1`～`R9-B4F-G5`；SHA 已回填 `c121422`；本表自指式计入 G5；待 opus 复审独立复算）。
 - R9 批四批内修复循环 2（`6b93e9d..` 候选 tip）：`0` 候选（scanner、正式回归与两份台账 hunk 全部归属唯一 owner `B4F2C2`；SHA 留空待 Fable 回填；本表自指式计入）。
 
-通例：区间末端恒取候选 tip；自指式 SHA 回填 commit 计入本区间。map 行文件清单以 Fable 实际 commit 分组为准；一文件含多 owner 的 hunk 时（文件级 commit 无法拆分），物理归属行与语义 owner 行互相注明，Fable 回填 SHA 时校正清单。
+通例：区间末端恒取候选 tip；自指式 SHA 回填 commit 计入本区间。map 行文件清单以 Fable 实际 commit 分组为准；一文件含多 owner 的 hunk 时（文件级 commit 无法拆分），物理归属行与语义 owner 行互相注明，Fable 回填 SHA 时校正清单。审查产物豁免：opus 批内审查/复审报告入库件（`maintenance/repair-20260806/reviews/r9-batch*-*.md`，由 Fable 从 `r9-reviews/` 转录或 cp 入库）与 `r9-reviews/`、`blind-reviews/` 原件同性质，属审查记录非施工 hunk，owner=对应批次裁决 commit，不逐行登记 finding owner（2026-08-09 最终验收 SHA 回放时明文化）。
