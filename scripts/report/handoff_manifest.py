@@ -90,6 +90,8 @@ REQUIRED_FOR_READY_EVM = ["time_spotcheck.json"]
 AUTO_GATES = {"accounting_gate": "accounting_mode.json", "supply_truth_gate": "supply_truth.json",
               "time_spotcheck": "time_spotcheck.json",
               "reconciliation_four_checks": "reconciliation_report.json"}
+# accounting_gate.py 的公开退出码契约允许 WARN + exit 0 放行；其余自动 gate 必须 PASS。
+AUTO_GATE_ACCEPTED_VERDICTS = {"accounting_gate": {"PASS", "WARN"}}
 PROVENANCE_LABEL_KINDS = {"cex", "dex_pool", "facility", "bridge", "launch_alloc",
                           "airdrop", "vesting"}
 # data_map 明确登记的 .duckdb 可能是 provenance 的正式重放源，必须进 manifest 绑定；
@@ -479,8 +481,11 @@ def verify_case(case_dir, legacy_read_only=False):
                     if now["verdict"] != g.get("verdict") or now["exit_code"] != g.get("exit_code"):
                         fails.append(f"gate {gname} 语义漂移: manifest 记 {g.get('verdict')}/{g.get('exit_code')}，"
                                      f"产物现为 {now['verdict']}/{now['exit_code']}")
-                    elif now["verdict"] != "PASS" or now["exit_code"] != 0:
-                        fails.append(f"gate {gname} 非 PASS 却报 READY: {now}")
+                    elif str(now["verdict"] or "").upper() not in \
+                            AUTO_GATE_ACCEPTED_VERDICTS.get(gname, {"PASS"}) \
+                            or now["exit_code"] != 0:
+                        accepted = sorted(AUTO_GATE_ACCEPTED_VERDICTS.get(gname, {"PASS"}))
+                        fails.append(f"gate {gname} 不满足 READY 语义（允许 verdict={accepted}, exit_code=0）: {now}")
                 except Exception as e:
                     fails.append(f"gate {gname} 产物重读失败: {e}")
             else:

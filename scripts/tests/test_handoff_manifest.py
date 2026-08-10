@@ -234,6 +234,18 @@ def main():
         p = run(["verify", "--case-dir", d])
         check("verify READY exit 0", p.returncode == 0)
 
+        # accounting_gate.py 的契约明确规定 WARN + exit 0 放行（例如可升级代理）；
+        # handoff 只能对 accounting_gate 接受该组合，其他自动 gate 仍须 PASS。
+        dwarn = os.path.join(root, "case_accounting_warn")
+        os.makedirs(dwarn)
+        make_case(dwarn)
+        write_json(dwarn, "accounting_mode.json", {
+            "schema": "accounting-gate/v1", "mode": "upgradeable-proxy",
+            "verdict": "WARN", "exit_code": 0})
+        p = run(["generate", "--case-dir", dwarn, "--status", "READY"] + GEN)
+        p_verify = run(["verify", "--case-dir", dwarn]) if p.returncode == 0 else p
+        check("accounting WARN + exit 0 按记账 gate 契约放行", p_verify.returncode == 0)
+
         dscope = os.path.join(root, "case_scope_required"); os.makedirs(dscope); make_case(dscope)
         base_gen = ["generate", "--case-dir", dscope, "--status", "READY", "--mode", "full",
                     "--producer-model", "test-model"]
