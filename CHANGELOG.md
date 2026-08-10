@@ -10,8 +10,8 @@
 
 ## 版本索引（活跃窗口，新在上；每版一行，详情见下方对应条目）
 
-- 6.39.3（2026-08-09）accounting_gate 加 --as-of-block 目标块绑定（存量案重跑 tip 漂移死锁修复）
-- 6.39.2（2026-08-09）entity_source_trace 进货单并列序非确定性修复（freeze 重放对账假阴性）
+- **6.39.3**（2026-08-09）accounting_gate 加 --as-of-block 目标块绑定（存量案重跑 tip 漂移死锁修复）
+- **6.39.2**（2026-08-09）entity_source_trace 进货单并列序非确定性修复（freeze 重放对账假阴性）
 - **6.39.1** 2026-08-09 分布扫描 validate 可移植性修复：semantic_payload 剔除 labels_manifest 宿主绝对路径（内容漂移仍由 sha256 抓）
 - **6.39.0** 2026-08-09 APU 案 ANOM-012 存量迁移三工单：replay_stats 覆盖截止块契约闭合（三引擎单点等深）、太古 done 官方迁移全链、旧 −1 产物格式迁移命令 migrate_legacy_case
 - **6.38.0** 2026-08-09 供给真值闸补齐 dead 沉没形态：sink 统计单源与逐地址闭合、receipt v3、verify_recon 余额恒等式修正、APU/GNT 对照与非零 dead 纵向回归
