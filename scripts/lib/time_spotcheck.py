@@ -19,11 +19,12 @@ Alchemy archive / 公共 archive 节点均可；APU 案 Alchemy archive 15/15 �
 Solana 案不适用本脚本（时间抽查走 solana/anchor_sampler.py 通道）。
 
 用法:
-  python3 time_spotcheck.py --plan anchor_plan.json --rpc <archive_rpc_url> \
-      --token 0x... --out time_spotcheck.json [--final-block N] [--rps 8] [--dry-run]
+  python3 time_spotcheck.py --plan anchor_plan.json --input <transfers.csv|parquet|v2目录> \
+      --rpc <archive_rpc_url> \
+      --chain bsc --token 0x... --out time_spotcheck.json --final-block N [--rps 8]
+  dry-run 可省 --chain/--rpc，但仍须真实 --input 与 --final-block；不生成正式 receipt。
 
-  --final-block  数据截止块。门槛边缘地址点无 day_end_block 字段，用它查最终余额；
-                 计划里存在此类点而未传本参数 → exit 1（fail-closed，禁静默跳点）。
+  --final-block  数据截止块，也是 v2 receipt target.as_of_block；正式运行必填。
   --dry-run      只解析计划分型统计（不打网），供预检与契约测试。
 
 退出码（对齐 skill gate 惯例）: 0=全点一致 PASS / 2=存在 mismatch FAIL /
@@ -31,15 +32,158 @@ Solana 案不适用本脚本（时间抽查走 solana/anchor_sampler.py 通道�
 产物 time_spotcheck.json 带 verdict+exit_code，供 handoff_manifest AUTO_GATES 重读防手报。
 （来源：APU SQD 全史重拉冗余复盘 + codex 交叉复核，2026-08-01）"""
 import argparse
+from collections import Counter
 import datetime
 import json
+import math
 import os
 import sys
+from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from anchor_selection import (EXPECTED_PLAN_PRODUCER, REPLAY_PARAMETER_FIELDS,
+                              generate_anchor_selection, input_identity,
+                              sha256_file, validate_anchor_coverage_parameters)
+from chain_registry import formal_evm_chains
+from receipt_validate import validate_receipt
+from receipt_kernel import (build_envelope, finalize_envelope, publish_error_receipt,
+                            publish_overwrite)
 
 TRANSFER_TOPIC = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
 BALANCEOF_SELECTOR = "0x70a08231"
+SCHEMA = "time-spotcheck/v2"
+PLAN_SCHEMA = "anchor-plan/v2"
+PLAN_RECEIPT_SCHEMA = "anchor-plan-receipt/v2"
+
+
+def _default_plan_receipt(plan_path):
+    path = Path(plan_path)
+    suffix = path.suffix or ".json"
+    stem = path.name[:-len(suffix)] if path.name.endswith(suffix) else path.name
+    return path.with_name(f"{stem}.receipt{suffix}")
+
+
+def load_validated_plan(plan_path, receipt_path):
+    plan_file = Path(plan_path)
+    receipt_file = Path(receipt_path)
+    if plan_file.is_symlink() or receipt_file.is_symlink():
+        raise ValueError("plan/receipt symlink rejected")
+    plan = json.loads(plan_file.read_text(encoding="utf-8"))
+    receipt = json.loads(receipt_file.read_text(encoding="utf-8"))
+    errors = validate_receipt(receipt)
+    if errors:
+        raise ValueError("plan receipt invalid: " + "; ".join(errors))
+    if plan.get("schema") != PLAN_SCHEMA:
+        raise ValueError(f"plan schema must be {PLAN_SCHEMA}")
+    if receipt.get("schema") != PLAN_RECEIPT_SCHEMA or receipt.get("verdict") != "PASS":
+        raise ValueError("plan receipt schema/verdict invalid")
+    producer = receipt.get("producer")
+    producer_path = producer.get("path") if isinstance(producer, dict) else None
+    normalized_producer = (Path(os.path.normpath(producer_path)).as_posix()
+                           if isinstance(producer_path, str) and producer_path else None)
+    if normalized_producer != EXPECTED_PLAN_PRODUCER:
+        raise ValueError(
+            f"plan receipt must name registered anchor producer {EXPECTED_PLAN_PRODUCER}")
+    if plan.get("target") != receipt.get("target"):
+        raise ValueError("plan target differs from receipt target")
+    target = plan["target"]
+    if (plan.get("chain") != target.get("chain")
+            or plan.get("token") != target.get("token")
+            or plan.get("final_block") != target.get("as_of_block")):
+        raise ValueError("plan compatibility target fields diverge")
+    if plan.get("producer") != receipt.get("producer"):
+        raise ValueError("plan producer differs from receipt producer")
+    if plan.get("input") != receipt.get("input_identity"):
+        raise ValueError("plan input identity differs from receipt")
+    manifest = (receipt.get("inputs") or {}).get("input_manifest")
+    if not isinstance(manifest, dict) or plan.get("input_manifest") != manifest:
+        raise ValueError("plan input manifest differs from receipt binding")
+    output = receipt.get("output")
+    if not isinstance(output, dict):
+        raise ValueError("plan receipt output missing")
+    if Path(str(output.get("path", ""))).resolve() != plan_file.resolve():
+        raise ValueError("plan receipt output path mismatch")
+    if (output.get("size") != plan_file.stat().st_size
+            or output.get("sha256") != sha256_file(plan_file)):
+        raise ValueError("plan receipt output size/hash mismatch")
+    if receipt.get("plan_schema") != PLAN_SCHEMA:
+        raise ValueError("plan receipt plan_schema mismatch")
+    if receipt.get("generated_at") != plan.get("generated_at"):
+        raise ValueError("plan generated_at differs from receipt")
+    point_count = sum(len(plan.get(key) or []) for key in ("matrix_points", "forced_points"))
+    if receipt.get("probe_count") != point_count:
+        raise ValueError("plan receipt probe_count mismatch")
+    return plan
+
+
+def _strict_int(value, field):
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError(f"replay parameter {field} must be an integer")
+    return value
+
+
+def _strict_number(value, field):
+    if isinstance(value, bool) or not isinstance(value, (int, float)) \
+            or not math.isfinite(value):
+        raise ValueError(f"replay parameter {field} must be a finite number")
+    return value
+
+
+def _point_multiset(value, field):
+    if not isinstance(value, list) or any(not isinstance(item, dict) for item in value):
+        raise ValueError(f"{field} must be a list of point objects")
+    return Counter(json.dumps(item, ensure_ascii=False, sort_keys=True,
+                              separators=(",", ":")) for item in value)
+
+
+def validate_semantic_replay(plan, raw_input, *, mem_limit="6GB", threads=4):
+    """Recompute selection from the real input and compare all deterministic results."""
+    missing = [field for field in REPLAY_PARAMETER_FIELDS if field not in plan]
+    if missing:
+        raise ValueError("missing replay parameters: " + ", ".join(missing))
+    if not isinstance(plan["chain"], str) or not plan["chain"]:
+        raise ValueError("replay parameter chain must be a non-empty string")
+    if not isinstance(plan["token"], str) or not plan["token"]:
+        raise ValueError("replay parameter token must be a non-empty string")
+    for field in ("final_block", "decimals", "per_cell", "edge_max", "seed"):
+        _strict_int(plan[field], field)
+    validate_anchor_coverage_parameters(plan["per_cell"], plan["edge_max"])
+    for field in ("total_supply", "threshold_pct", "min_pct"):
+        _strict_number(plan[field], field)
+    bounds = plan["boundary_blocks"]
+    if not isinstance(bounds, list):
+        raise ValueError("replay parameter boundary_blocks must be a list")
+    for index, value in enumerate(bounds):
+        _strict_int(value, f"boundary_blocks[{index}]")
+
+    actual_identity, _ = input_identity(raw_input)
+    declared_identity = plan.get("input")
+    if not isinstance(declared_identity, dict) or not declared_identity.get("sha256"):
+        raise ValueError("plan input.sha256 missing")
+    if actual_identity["sha256"] != declared_identity["sha256"]:
+        raise ValueError(
+            f"input sha256 mismatch: actual {actual_identity['sha256']} "
+            f"!= plan {declared_identity['sha256']}")
+
+    replayed = generate_anchor_selection(
+        input_path=raw_input, chain=plan["chain"], token=plan["token"],
+        total_supply=plan["total_supply"], decimals=plan["decimals"],
+        threshold_pct=plan["threshold_pct"], min_pct=plan["min_pct"],
+        boundary_blocks=bounds, per_cell=plan["per_cell"], edge_max=plan["edge_max"],
+        seed=plan["seed"], mem_limit=mem_limit, threads=threads)
+    for field in ("date_range", "time_cuts", "cell_population", "boundary_blocks"):
+        if plan.get(field) != replayed[field]:
+            raise ValueError(f"{field} differs from deterministic replay")
+    for field in ("matrix_points", "forced_points"):
+        declared = _point_multiset(plan.get(field), field)
+        expected = _point_multiset(replayed[field], field)
+        if declared != expected:
+            missing_count = sum((expected - declared).values())
+            extra_count = sum((declared - expected).values())
+            raise ValueError(
+                f"{field} differs from deterministic replay "
+                f"(missing={missing_count}, extra={extra_count})")
+    return actual_identity
 
 
 def classify(plan):
@@ -68,19 +212,35 @@ def addr_word(addr):
 def main():
     ap = argparse.ArgumentParser(description="A2 时间抽查执行器（EVM 锚点级第二源直查）")
     ap.add_argument("--plan", required=True, help="anchor_plan.json（anchor_plan.py 产物）")
+    ap.add_argument("--input", required=True,
+                    help="生成 plan 所用的真实 merged 转账数据；consumer 会全量重放")
+    ap.add_argument("--plan-receipt",
+                    help="anchor plan receipt；默认取 plan 同目录的 anchor_plan.receipt.json")
+    ap.add_argument("--chain", choices=sorted(formal_evm_chains("time_producer")),
+                    help="正式回执目标链；非 dry-run 必填")
     ap.add_argument("--rpc", help="独立第二源 archive RPC（--dry-run 时可省）")
     ap.add_argument("--token", required=True, help="代币合约地址")
     ap.add_argument("--out", required=True, help="输出 time_spotcheck.json")
     ap.add_argument("--final-block", type=int, default=None,
                     help="数据截止块（边缘地址点无 day_end_block 时用）")
     ap.add_argument("--rps", type=int, default=8)
+    ap.add_argument("--mem-limit", default="6GB", help="DuckDB 重放内存上限")
+    ap.add_argument("--threads", type=int, default=4, help="DuckDB 重放线程数")
     ap.add_argument("--dry-run", action="store_true", help="只解析分型统计，不打网")
     a = ap.parse_args()
 
+    plan_receipt = a.plan_receipt or _default_plan_receipt(a.plan)
     try:
-        plan = json.load(open(a.plan, encoding="utf-8"))
+        plan = load_validated_plan(a.plan, plan_receipt)
     except Exception as e:
-        sys.exit(f"[fatal] anchor_plan 读取失败: {e}")
+        print(f"[fatal] anchor_plan/receipt 校验失败: {e}", file=sys.stderr)
+        return 2
+    try:
+        validate_semantic_replay(
+            plan, a.input, mem_limit=a.mem_limit, threads=a.threads)
+    except Exception as e:
+        print(f"[fatal] anchor_plan semantic replay failed: {e}", file=sys.stderr)
+        return 2
     bal_pts, tx_pts, odd_pts = classify(plan)
     total = len(bal_pts) + len(tx_pts)
     # GMX 案实锤教训：0 个点循环零次 bad==0 直接打 PASS——必须硬失败
@@ -92,29 +252,80 @@ def main():
     if need_final and a.final_block is None:
         sys.exit(f"[fatal] {len(need_final)} 个 balance 锚点无 day_end_block（门槛边缘地址型），"
                  "必须传 --final-block <数据截止块>——静默跳点=覆盖缩水，fail-closed")
+    plan_final = plan.get("final_block")
+    if (isinstance(plan_final, bool) or not isinstance(plan_final, int)
+            or a.final_block is None or plan_final != a.final_block):
+        print("[fatal] anchor_plan final_block 必须与 CLI --final-block 精确一致", file=sys.stderr)
+        return 2
+    query_blocks = [p.get("day_end_block") for p in bal_pts
+                    if p.get("day_end_block") is not None]
+    query_blocks += [p.get("block") for p in tx_pts if p.get("block") is not None]
+    if any(isinstance(block, bool) or not isinstance(block, int)
+           or block < 0 or block > a.final_block for block in query_blocks):
+        print("[fatal] anchor_plan 查询块非法或越过 final_block", file=sys.stderr)
+        return 2
 
     if a.dry_run:
+        plan_chain = str(plan.get("chain") or "").lower()
+        plan_token = str(plan.get("token") or "").lower()
+        if not plan_chain or not plan_token or plan_token != a.token.lower() \
+                or (a.chain and plan_chain != a.chain):
+            print("[fatal] anchor_plan chain/token 与 CLI target 不一致或缺失", file=sys.stderr)
+            return 2
         print(json.dumps({"dry_run": True, "balance_points": len(bal_pts),
                           "tx_points": len(tx_pts), "total": total,
                           "need_final_block": len(need_final)}, ensure_ascii=False))
         return 0
     if not a.rpc:
         sys.exit("[fatal] 非 --dry-run 必须给 --rpc（独立第二源 archive 节点）")
+    if not a.chain:
+        sys.exit("[fatal] 非 --dry-run 必须给 --chain，receipt target 禁止自报空链")
+    if a.final_block is None:
+        sys.exit("[fatal] 非 --dry-run 必须给 --final-block，receipt target 必须冻结截止块")
 
-    from net import RpcPool
-    pool = RpcPool(a.rpc, rps=a.rps, concurrency=min(a.rps, 8))
     token = a.token.lower()
+    target = {"chain": a.chain, "token": token, "as_of_block": a.final_block}
+    try:
+        envelope = build_envelope(SCHEMA, target, __file__, "formal",
+                                  inputs={"plan": a.plan})
+    except Exception as exc:
+        print(f"[fatal] receipt envelope 构建失败: {exc}", file=sys.stderr)
+        return 1
+    plan_chain = str(plan.get("chain") or "").lower()
+    plan_token = str(plan.get("token") or "").lower()
+    if plan_chain != a.chain or plan_token != token:
+        result = finalize_envelope(
+            envelope, "FAIL", 2, gate="time_spotcheck", error=(
+                f"anchor_plan target {plan_chain}/{plan_token} 与 CLI {a.chain}/{token} 不一致"))
+        try:
+            publish_overwrite(a.out, result)
+        except Exception as exc:
+            print(f"[time_spotcheck] FAIL receipt 写入失败: {exc}", file=sys.stderr)
+            return 1
+        return 2
 
-    calls = []
-    for p in bal_pts:
-        blk = p.get("day_end_block")
-        blk = int(blk) if blk is not None else a.final_block
-        calls.append(("eth_call", [{"to": token,
-                                    "data": BALANCEOF_SELECTOR + addr_word(p["addr"])},
-                                   hexblock(blk)]))
-    for p in tx_pts:
-        calls.append(("eth_getTransactionReceipt", [p["tx"]]))
-    results = pool.call_many(calls)
+    try:
+        from net import attested_rpc_pool
+        pool = attested_rpc_pool(
+            a.rpc, a.chain, formal=True, rps=a.rps, concurrency=min(a.rps, 8))
+
+        calls = []
+        for p in bal_pts:
+            blk = p.get("day_end_block")
+            blk = int(blk) if blk is not None else a.final_block
+            calls.append(("eth_call", [{"to": token,
+                                        "data": BALANCEOF_SELECTOR + addr_word(p["addr"])},
+                                       hexblock(blk)]))
+        for p in tx_pts:
+            calls.append(("eth_getTransactionReceipt", [p["tx"]]))
+        results = pool.call_many(calls)
+    except Exception as exc:
+        try:
+            error_path = publish_error_receipt(a.out, envelope, exc)
+            print(f"[time_spotcheck] ERROR → {error_path}", file=sys.stderr)
+        except Exception as write_exc:
+            print(f"[time_spotcheck] ERROR receipt 写入失败: {write_exc}", file=sys.stderr)
+        return 1
 
     rows, exact, mism, rpc_err = [], 0, 0, 0
     for p, r in zip(bal_pts, results[:len(bal_pts)]):
@@ -173,16 +384,25 @@ def main():
         verdict, exit_code = "FAIL", 2
     else:
         verdict, exit_code = "PASS", 0
-    out = {"gate": "time_spotcheck", "schema": "time-spotcheck/v1",
-           "second_source": a.rpc, "token": token,
-           "points": total, "balance_points": len(bal_pts), "tx_points": len(tx_pts),
-           "exact_match": exact, "mismatch": mism, "rpc_err": rpc_err,
-           "verdict": verdict, "exit_code": exit_code,
-           "generated_at": datetime.datetime.now(datetime.timezone.utc)
-               .strftime("%Y-%m-%dT%H:%M:%SZ"),
-           "rows": rows}
-    with open(a.out, "w", encoding="utf-8") as f:
-        json.dump(out, f, ensure_ascii=False, indent=1)
+    fields = {"gate": "time_spotcheck", "second_source": a.rpc, "token": token,
+              "points": total, "balance_points": len(bal_pts), "tx_points": len(tx_pts),
+              "exact_match": exact, "mismatch": mism, "rpc_err": rpc_err,
+              "generated_at": datetime.datetime.now(datetime.timezone.utc)
+                  .strftime("%Y-%m-%dT%H:%M:%SZ"), "rows": rows}
+    if verdict == "ERROR":
+        try:
+            error_path = publish_error_receipt(a.out, envelope,
+                                               f"{rpc_err} 个 RPC 观测失败")
+            print(f"[time_spotcheck] ERROR → {error_path}", file=sys.stderr)
+        except Exception as exc:
+            print(f"[time_spotcheck] ERROR receipt 写入失败: {exc}", file=sys.stderr)
+        return 1
+    out = finalize_envelope(envelope, verdict, exit_code, **fields)
+    try:
+        publish_overwrite(a.out, out)
+    except Exception as exc:
+        print(f"[time_spotcheck] receipt 写入失败: {exc}", file=sys.stderr)
+        return 1
     print(f"[time_spotcheck] {verdict}  {exact}/{total} 一致"
           f"（balance {len(bal_pts)} + tx {len(tx_pts)}；mismatch {mism}，rpc_err {rpc_err}）→ {a.out}")
     if mism:

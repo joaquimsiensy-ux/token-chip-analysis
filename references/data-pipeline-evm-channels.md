@@ -52,7 +52,7 @@ channels.json 的 path 字段语义（2026-07-25 SPX6900 实测坑）：hypersyn
 正式 HyperSync CSV 首段必须是运行前不存在的新文件：
 
 ```bash
-python3 scripts/evm/fetch_hypersync.py "$TOKEN" <lo> --token-addr 0x... \
+python3 scripts/evm/fetch_hypersync.py <lo> --token-file ~/.config/hypersync/token --token-addr 0x... \
   --to-block <hi排他> --out data/full.csv --receipt data/full.collector.json
 python3 scripts/evm/make_channel_receipt.py \
   --data data/full.csv --format v1csv --token 0x... --lo <lo> --hi <hi> --tag primary \
@@ -86,7 +86,10 @@ CSV 的每个历史 prefix，再从前一 `requested_to` 续采并发布加长 c
 **增量拉取（研报更新/补尾场景）**：v2 对增量天然友好——同一 run 根目录下新起 run（from_block=上次 done.json 的 next_block）即可；**补丁段重叠核验法**：对怀疑有洞的区间补拉一段落盘独立 patch 目录，按 (tx,log_index) 键与主数据对比，零差即证该段完整、有差即用 patch 覆盖。
 
 **存量 HyperSync v2 目录迁移（增量更新前置）**：2026-08-02 之前的
-`hypersync-v2-done/v2` 没有 `files` 实体回执，不得直接被新续拉器信任。QUQ、
+`hypersync-v2-done/v2` 没有 `files` 实体回执，不得直接被新续拉器信任；更早的
+太古 done（无 `schema` 字段、只有 from_block/next_block/token/url 五键，APU 案
+ANOM-012 实证形态）同样由本命令迁移——parquet 列集经实读硬验与现行采集器查询
+形态一致后重建全部边界与文件指纹，并补建 `capture_identity.json`。QUQ、
 PYTHIA、TROLL 类存量币在下次增量采集或投后更新前，先对该币的 v2
 采集根目录执行：
 
@@ -147,7 +150,7 @@ size 与 SHA-256；全部通过后才原子将旧 done 升为 `hypersync-v2-done
 - POST `https://bsc.hypersync.xyz/query`；header `Authorization: Bearer {TOKEN}`；body 含 `from_block`、`logs: [{address, topics}]`、`field_selection`。（SIREN，07）
 - 匿名（无 token）已不可用；token 让用户到 app.envio.dev 注册——控制台在用户（中国）网络打不开需 VPN，但 API 端点直连可用，"控制台打不开 ≠ API 不可用"。（SIREN，07）
 - archive_height 到最新块，全史无缺口；换 token 地址与链子域名即可用于其他 HyperSync 支持链。（SIREN，07）
-- token 从 `~/.config/hypersync/token` 自动读取（fetch_hypersync 内置）；换 key 时该文件与 `~/.claude/api-keys.md` §1 两处同步。
+- token 取用优先级为：显式 `--token-file` > `HYPERSYNC_TOKEN` > 默认 `~/.config/hypersync/token`；三支 v1 脚本都禁止位置参数明文 token。换 key 时原始存放文件与 `~/.claude/api-keys.md` §1 登记同步。
 - **transactions 端点做 BNB 注资溯源**：body `{"transactions":[{"to":[addr]}],"field_selection":{"transaction":["block_number","from","to","value"]}}`（value 为 hex）——单址全链入金一次查询 ~2.3s 到 tip，比逐块扫快几个量级；⚠25 址×全链批量会 10 分钟超时，可用姿势=关键地址单址逐查 / 发射窗小块段批量（from/to_block 圈定）。（哈基米，07-18）
 - 【历史降级·新案禁用】分段多进程姿势：复制脚本改 OUT 与 to_block 边界（`if nxt >= BOUND: break`）、sleep 提至 0.5s，各进程独立 CSV 事后按 (tx,log_index) 去重合并；改 config 后重启前删本地缓存的段清单文件。（哈基米，07-18）现行主线为 v2 Parquet/done manifest。
 - **多会话共享 key 限速冲突**：并行分析会话同打一个 HyperSync key/端点会互相触发 429（SQD 案与另一标的采集会话撞车实测）——开工前 `ps aux | grep fetch_hypersync` 查有无在跑进程；撞车时不必停工，调低单会话吞吐预期、靠 429 退避共存。（SQD，07-20）**限流是 key 级共享、不是端点独立**——同 key 打不同链子域（eth+arbitrum）并发同样互抢限额；多链标的的分链采集按链串行或错峰，别指望换端点绕开限额。（LPT，07-21）
@@ -177,6 +180,7 @@ size 与 SHA-256；全部通过后才原子将旧 done 升为 `hypersync-v2-done
 - 免费 key 仅 chainid=1 可用；跨链代币的 ETH 侧全量转账、金库地址 txlist/txlistinternal（vesting 释放追踪）都走它。（OPN，07）
 
 ### 3.5 Multicall3 批量余额（scripts/evm/multicall_balances.py）
+- 参数化调用：`python3 scripts/evm/multicall_balances.py --token 0x... --input addresses.txt --out balances.json [--rpc URL ...]`。默认 4 个公共节点仅适用于 BSC；跨链必须显式传对应链的 `--rpc`，禁止改源码注入标的。
 - eth_call 到 Multicall3（`0xca11bde05977b3631167028862be2a173976ca11`，各 EVM 链同地址）的 aggregate3，手工 ABI 编解码，≤200 地址/批；近千地址几十秒查完。（SIREN，07）
 - 反例：逐地址 eth_call 串行查 990 地址 10 分钟命令超时（exit 143），别走。（SIREN，07）
 - 纪律：先用 2 个地址小样本打印原始 RPC 响应验证编解码再放量；异常必须落日志绝不吞。（SIREN，07）

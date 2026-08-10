@@ -1,5 +1,7 @@
 # Robinhood Chain 数据管道（2026-07-12 GME + RAXOL 两次分析实测合并）
 
+当前准入状态：**exploration only**。本页与三个分册保留历史实测和调查方法，不构成 formal-ready 能力证据；Robinhood 产物不得进入 READY handoff、A4/A5 或 audit release。registry 故意保持 `evm_chain_id=None`，文档中的 4663 历史链标识不得代替 chain-attested 正式 session。
+
 Robinhood Chain = Arbitrum Orbit L2（chainid 4663），原生 gas 币 ETH，Uniswap V2/V4 双栈。已知发射台五类：Virtuals Protocol（agent 币，BONDING_V5，坑 3）、NOXA（无 bonding curve，坑 4/4a/9）、Flap（flap.sh，坑 4b）、Uniswap 官方 Liquidity Launchpad（CCA 拍卖，坑 10）、ReflectionToken 外部资产分红盘（坑 15）。
 
 > 通道结论由 GME/RAXOL 两次独立分析合并（曾互相矛盾的记录见 channels 分册修正记录），此后 CASHCAT/Pointless/TRASH/meow/VEX/HAN/BEGGAR/DUMBMONEY/VIRTUAL/COMPUTE/Index 等案持续增补。
@@ -13,7 +15,7 @@ Robinhood Chain = Arbitrum Orbit L2（chainid 4663），原生 gas 币 ETH，Uni
 | 段 | 主题 | 分册文件 |
 |---|---|---|
 | 通道决策表（HyperSync/Blockscout/公共 RPC/GT/DS/Etherscan V2/Virtuals API/RPC getLogs 备选/死名单） | 采集通道 | `data-pipeline-robinhood-channels.md` |
-| 可复用脚本（scripts/robinhood/ 全 14 件：pull_transfers/gas_trace_bs/cost_engine/build_price/V4 采集/429 备选三件套…） | 采集通道 | `data-pipeline-robinhood-channels.md` |
+| exploration 可复用脚本（`scripts/robinhood/` 当前 16 个普通文件：15 个 Python + `config.example.json`） | 采集通道 | `data-pipeline-robinhood-channels.md` |
 | 修正记录（否定性通道结论纪律实例，retrospective 红线 4 出处） | 采集通道 | `data-pipeline-robinhood-channels.md` |
 | 坑 1–2/7–9/17：平台设施（Relay solver/桥别名/V4 单例/零地址充值/7702 账户/Settler） | 链特有的坑 | `data-pipeline-robinhood-traps.md` |
 | 坑 3–4b/10–11/15–16：五类发射台结构（Virtuals/NOXA/Flap/Uniswap CCA/Reflection）＋LP NFT 锁仓判别 | 链特有的坑 | `data-pipeline-robinhood-traps.md` |

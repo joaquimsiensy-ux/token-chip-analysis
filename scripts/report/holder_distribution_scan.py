@@ -209,9 +209,11 @@ def load_supply(case_dir: Path) -> tuple[Path, int, int]:
     obj = load_json(path)
     if str(obj.get("verdict", "")).upper() != "PASS" or obj.get("exit_code") != 0:
         raise ValueError("supply_truth 非 PASS/exit 0")
-    total = strict_raw(obj.get("total_supply_raw", obj.get("frozen_total_supply_raw")),
+    total = strict_raw(obj.get("total_supply_raw", obj.get(
+        "frozen_total_supply_raw", obj.get("onchain_total_supply"))),
                        "total_supply_raw")
-    net = strict_raw(obj.get("net_supply_raw", total), "net_supply_raw")
+    net = strict_raw(obj.get("net_supply_raw", obj.get("replay_net", total)),
+                     "net_supply_raw")
     if not total or not net or net > total:
         raise ValueError("供给真值 total/net 非法")
     return path, total, net
@@ -554,7 +556,16 @@ def semantic_payload(scan: dict):
             "partition_check", "verdict", "not_evaluable_reason", "small_sample_mode",
             "abnormal_clusters", "denominators", "bucket_coverage", "owner_count_private_main",
             "base_bins", "shifted_bins", "concentration", "disclosure_required")
-    return {k: scan.get(k) for k in keys}
+    payload = {k: scan.get(k) for k in keys}
+    binding = payload.get("input_binding")
+    if isinstance(binding, dict) and isinstance(binding.get("labels_manifest"), dict):
+        # labels_manifest 的语义身份是内容哈希；path 是宿主 checkout 的绝对路径，
+        # 换 checkout 位置验证同一案目录时会漂移，不得进语义比较（内容漂移仍由 sha256 抓）
+        binding = dict(binding)
+        binding["labels_manifest"] = {k: v for k, v in binding["labels_manifest"].items()
+                                      if k != "path"}
+        payload["input_binding"] = binding
+    return payload
 
 
 def write_png(path: Path, scan: dict) -> None:

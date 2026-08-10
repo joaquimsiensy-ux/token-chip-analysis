@@ -82,12 +82,21 @@ def validate_revision_chain(case_dir, seal):
     errors = []
     seen = set()
     current = seal
+    import audit_release_gate
+    expected_chain = audit_release_gate.normalize_chain(current.get("chain"))
+    chain_error = audit_release_gate.formal_chain_error(expected_chain)
+    if chain_error:
+        return [f"A4 seal 链不允许正式封口: {chain_error}"]
     expected_revision = current.get("revision")
     if not isinstance(expected_revision, int) or expected_revision < 1:
         return ["A4 seal revision 非正整数"]
     while True:
         if current.get("schema") != "a4-seal/v4" or current.get("revision") != expected_revision:
             errors.append("A4 revision 链 schema 或序号不连续")
+            break
+        current_chain = audit_release_gate.normalize_chain(current.get("chain"))
+        if current_chain != expected_chain:
+            errors.append(f"A4 revision 链 chain 漂移: {current_chain!r} != {expected_chain!r}")
             break
         previous = current.get("previous_seal")
         if expected_revision == 1:
@@ -113,6 +122,32 @@ def validate_revision_chain(case_dir, seal):
             break
         expected_revision -= 1
     return errors
+
+
+def validate_formal_case_chain(case_dir):
+    """A4 seals are formal artifacts; bind state and G8 to one formal chain."""
+    errors = []
+    root = Path(case_dir).resolve()
+    try:
+        state = json.loads(safe_case_file(root, "analysis-state.json").read_text(encoding="utf-8"))
+        identity = json.loads(safe_case_file(root, "identity_gate.json").read_text(encoding="utf-8"))
+    except Exception as exc:
+        return None, [f"正式封口链资产不可读: {exc}"]
+    import audit_release_gate
+    state_chain = audit_release_gate.normalize_chain(
+        state.get("chain") or (state.get("token") or {}).get("chain"))
+    identity_chain = audit_release_gate.normalize_chain(identity.get("chain"))
+    if not state_chain or not identity_chain:
+        errors.append("analysis-state.json 或 identity_gate.json 缺 chain")
+        return None, errors
+    if state_chain != identity_chain:
+        errors.append(f"正式封口链不一致: state={state_chain!r} identity={identity_chain!r}")
+        return None, errors
+    reason = audit_release_gate.formal_chain_error(state_chain)
+    if reason:
+        errors.append(reason)
+        return None, errors
+    return state_chain, errors
 
 
 def _norm_text(value):
@@ -268,6 +303,8 @@ def cmd_finalize(a):
         return 1
 
     fails = []
+    case_chain, chain_errors = validate_formal_case_chain(case_dir)
+    fails.extend(chain_errors)
     if not isinstance(reg, dict) or reg.get("schema") != "a4-claims/v2":
         fails.append("a4_claims.json schema 必须为 a4-claims/v2")
         claims = []
@@ -378,6 +415,7 @@ def cmd_finalize(a):
             print(f"[finalize] 旧 A4 seal revision 链不可用: {exc}", file=sys.stderr)
             return 2
     seal = {"schema": "a4-seal/v4", "gate": "a4_gate", "verdict": "PASS", "exit_code": 0,
+            "chain": case_chain,
             "workflow_type": a.workflow_type,
             "revision": revision, "previous_seal": previous,
             "sealed_at_utc": utcnow(),

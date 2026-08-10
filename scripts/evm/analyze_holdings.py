@@ -20,7 +20,7 @@ except Exception:
     LabelResolver = None
     append_misses = None
 try:
-    from labels_resolver import blind_serial_env, seal_serial_hits, blind_notice   # A5 惯犯延迟揭盲
+    from labels_resolver import blind_serial_env, seal_serial_hits, blind_notice   # A2–A3 盲化、A4 揭盲
 except Exception:
     blind_serial_env = lambda: False
     seal_serial_hits = blind_notice = None
@@ -189,7 +189,7 @@ def main(chain, eth_csv):
     #      + 设施/桶类（balance_policy）提示 + 实战 miss 队列 + labels_meta 落盘 ----
     if resv is not None and resv.table:
         top = [(a, b) for a, b in sorted(bal.items(), key=lambda x: -x[1])[:200] if b > 0]
-        blind = blind_serial_env()   # A5：聚类期 CHIP_BLIND_SERIAL=1 盲化惯犯层输出
+        blind = blind_serial_env()   # A2–A3：CHIP_BLIND_SERIAL=1 盲化惯犯层输出
         serials, warns, cands, unknowns, infra = [], [], [], [], []
         for a, b in top:
             r = resv.get(a)
@@ -208,7 +208,7 @@ def main(chain, eth_csv):
             if r["balance_policy"] in ("exclude", "bucket") and not rp["definitive"]:
                 infra.append((a, b, r))
         if blind and seal_serial_hits is not None:
-            # A5 盲化：命中详情（如有）封存案目录，主输出恒定一行提示（有无命中不可区分）
+            # A2–A3 盲化、A4 揭盲：详情封存案目录，主输出恒定提示（有无命中不可区分）
             sealed_path = seal_serial_hits(
                 [{'chain': chain, 'address': a, 'balance_M': round(b / DEC / 1e6, 3),
                   **{k: v for k, v in r.items()}} for a, b, r in serials],

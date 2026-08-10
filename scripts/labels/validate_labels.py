@@ -25,6 +25,7 @@ import csv, glob, os, re, sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from labels_resolver import (BASE_FIELDS, V4_OPTIONAL_FIELDS, norm_addr,
                              _classify_flag, SERIAL_CATEGORY)
+from risk_flags import canonical_risk_flags, parse_risk_flags
 
 TIERS = {'exclude', 'identity', 'risk'}
 BEHAVIORAL_FLAGS = {'tornado-user'}
@@ -47,8 +48,13 @@ def _valid_header(header):
     return extra == V4_OPTIONAL_FIELDS[:len(extra)]
 
 
-def validate_file(path):
+def validate_file(path, *, strict_canonical=None):
     errs, warns = [], []
+    if strict_canonical is None:
+        active = os.path.abspath(os.path.join(
+            os.path.dirname(os.path.abspath(__file__)), '..', '..',
+            'references', 'labels'))
+        strict_canonical = os.path.abspath(os.path.dirname(path)) != active
     chain = os.path.basename(path).replace('labels-', '').replace('.csv', '')
     if chain.endswith('-privacy'):
         chain = chain[:-len('-privacy')]
@@ -83,7 +89,13 @@ def validate_file(path):
         cat = (r.get('category') or '').strip()
         if not cat:
             errs.append(f'行{i} category 为空: {a}')
-        flags = [f for f in (r.get('risk_flags') or '').split('|') if f.strip()]
+        raw_flags = r.get('risk_flags') or ''
+        flags = list(parse_risk_flags(raw_flags))
+        canonical_flags = canonical_risk_flags(raw_flags)
+        if raw_flags != canonical_flags:
+            message = (f'行{i} risk_flags 非 canonical（读取按 {canonical_flags!r} '
+                       f'解释；新写入须规范化）: {a}')
+            (errs if strict_canonical else warns).append(message)
         if cat == 'burn' and flags:
             errs.append(f'行{i} burn 地址带 risk_flags({r["risk_flags"]}): {a}')
         if r.get('tier') == 'exclude' and (set(flags) & BEHAVIORAL_FLAGS):
@@ -94,7 +106,7 @@ def validate_file(path):
             if not (r.get('evidence') or '').strip():
                 errs.append(f'行{i} tier=risk 无 evidence: {a}')
         for f in flags:
-            if _classify_flag(f.strip()) == 'unknown':
+            if _classify_flag(f) == 'unknown':
                 errs.append(f'行{i} 白名单外旗标 "{f}"（先扩 labels_resolver 白名单再入库）: {a}')
         if (r.get('merge_policy') or '') not in MERGE_VALUES:
             errs.append(f'行{i} 非法 merge_policy: {r.get("merge_policy")}')
@@ -133,6 +145,8 @@ def main():
         print(f'[{st}] {os.path.basename(p)}: {n} 行' + (f' | {len(errs)} 项错误' if errs else ''))
         for e in errs[:15]:
             print(f'    - {e}')
+        for warning in warns[:15]:
+            print(f'    [WARN] {warning}')
         total_errs += len(errs)
     if total_errs:
         print(f'\n校验未通过：共 {total_errs} 项错误'); sys.exit(1)

@@ -1,0 +1,142 @@
+{
+  "schema": "solana-observation-bundle/v1",
+  "target": {
+    "chain": "solana",
+    "token": "creiuhfwdwcn5mjbmjta9bbpyqrqf2tcbuzwspwfpump",
+    "as_of_block": 438010504
+  },
+  "producer": {
+    "path": "scripts/solana/scan_token_accounts.py",
+    "sha256": "4481d9549dc169eb544279af6658572ac3ab6c56bf1eb491af1d70d2d0786016"
+  },
+  "mode": "formal",
+  "inputs": {
+    "supply_rpc": {
+      "path": "/private/tmp/claude-502/-Users-uravvv-Desktop-----fable----/a89cc778-eeae-4a2c-bafd-be8ebc62fe12/scratchpad/pythia-smoke-case/data/_supply.json",
+      "size": 146,
+      "sha256": "2d93ef1d8dd6adc634a42460cfdb6143d66f800b0f635d4a93a385ea4296917a"
+    },
+    "gpa_rpc": {
+      "path": "/private/tmp/claude-502/-Users-uravvv-Desktop-----fable----/a89cc778-eeae-4a2c-bafd-be8ebc62fe12/scratchpad/pythia-smoke-case/data/_gpa_raw_all.json",
+      "size": 19646785,
+      "sha256": "f1ee5c9f37d1c8e46568a50e4f289dd27e11041e2d10a2089d9f54fc4b48627e"
+    },
+    "gpa_meta": {
+      "path": "/private/tmp/claude-502/-Users-uravvv-Desktop-----fable----/a89cc778-eeae-4a2c-bafd-be8ebc62fe12/scratchpad/pythia-smoke-case/data/_gpa_raw_all.meta.json",
+      "size": 444,
+      "sha256": "8c497f4bd1f0fe5f607d2c1b0cc7ab647a2dabe8bd062c83bfd26d8bf0adf43c"
+    }
+  },
+  "attestation": {
+    "expected_genesis": "5eykt4UsFv8P8NJdTREpY1vzqKqZKvdpKuc147dw2N9d",
+    "observed_genesis": "5eykt4UsFv8P8NJdTREpY1vzqKqZKvdpKuc147dw2N9d",
+    "endpoint": {
+      "public_origin": "https://api.mainnet-beta.solana.com",
+      "sha256": "d6092b5f25eb26ad08e1c49bf16ff3df02faccaa5a717900ab9bf901abbab202"
+    }
+  },
+  "mint": "CreiuhfwdWCN5mJbMJtA9bBpYQrQF2tCBuZwSPWfpump",
+  "program": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+  "mint_pre": {
+    "slot": 438010494,
+    "raw_sha256": "a8102254727da5d1df651a3cfeabab006212a0b0350d25d072ece262aed286d6",
+    "json_parsed_slot": 438010499,
+    "json_parsed": {
+      "info": {
+        "decimals": 6,
+        "freezeAuthority": null,
+        "isInitialized": true,
+        "mintAuthority": null,
+        "supply": "998158041739995"
+      },
+      "type": "mint"
+    }
+  },
+  "snapshot": {
+    "slot": 438010504,
+    "account_count": 82223,
+    "accounts_sha256": "789aa6912cdf8a775ed42916e486ee9f4013d630271926994df1cd8903e62192"
+  },
+  "mint_post": {
+    "slot": 438010542,
+    "raw_sha256": "a8102254727da5d1df651a3cfeabab006212a0b0350d25d072ece262aed286d6"
+  },
+  "activity": {
+    "mode": "complete",
+    "window": {
+      "from_slot": 438010494,
+      "to_slot": 438010542
+    },
+    "referenced_signatures": 0,
+    "successful_references": 0,
+    "sample_size": 0,
+    "unavailable_transactions": 0,
+    "complete": true,
+    "pagination_complete": true,
+    "pagination_error": null,
+    "signature_pages": 1,
+    "limits": {
+      "complete_signature_limit": 200,
+      "signature_page_limit": 1000,
+      "complete_rpc_limit": 250,
+      "deadline_seconds": 120,
+      "light_sample_limit": 50
+    },
+    "writable_hits": [],
+    "rpc_calls": 1,
+    "elapsed_seconds": 2.842591,
+    "coverage_statement": "all successful referenced transactions in the observed window were parsed; the mint was never writable",
+    "signature_set_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+  },
+  "supply": {
+    "slot": 438010552,
+    "amount": "998158041739995",
+    "decimals": 6,
+    "semantics": "cross-check observation only; not the freeze point"
+  },
+  "closure": {
+    "gpa_amount": "998158041739995",
+    "mint_raw_amount": "998158041739995",
+    "token_supply_amount": "998158041739995",
+    "closed": true
+  },
+  "input_hashes": {
+    "pre_raw": "a8102254727da5d1df651a3cfeabab006212a0b0350d25d072ece262aed286d6",
+    "json_parsed": "b68b9d071042517b3dcbee7da186946d5f002f9240774b0e3169e3a936d93cb2",
+    "gpa": "348ec9e7ff3cc99a551d2f5f6c43a977051b9f35ec2cd06d17ce9c2d81e0a3dd",
+    "post_raw": "a8102254727da5d1df651a3cfeabab006212a0b0350d25d072ece262aed286d6",
+    "token_supply": "8e76ddfd651c7f0149b2b79ede9dc0c898d364105bb3880ea2bf34939c6c9aa8"
+  },
+  "attempt": 1,
+  "closed": true,
+  "supply_raw": "998158041739995",
+  "sum_accounts_raw": "998158041739995",
+  "as_of_slot": 438010504,
+  "as_of_block": 438010504,
+  "observed_context_slot": 438010504,
+  "observed_slots": {
+    "pre": 438010494,
+    "gpa": 438010504,
+    "post": 438010542,
+    "supply": 438010552
+  },
+  "output": {
+    "path": "supply_snapshot.json",
+    "size": 8850071,
+    "sha256": "46e0fd16ba1da38eef86e4e5fc7368b8fe3f6a9bd304cb2bbdf43d3067b613a3"
+  },
+  "holder_outputs": {
+    "accounts": {
+      "path": "holders_accounts.json",
+      "size": 6093368,
+      "sha256": "6b9f9dcd4f5297dac3ac55bba554dc426c0cf9895d45a8fc7d354adf0e41787d"
+    },
+    "owners": {
+      "path": "holders_owners.json",
+      "size": 2301010,
+      "sha256": "cf3b5066c458d191ef9012c3f2790980b424023acf0cc3e78cbd997f131d0395"
+    }
+  },
+  "verdict": "PASS",
+  "exit_code": 0
+}

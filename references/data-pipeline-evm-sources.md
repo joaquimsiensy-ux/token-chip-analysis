@@ -25,7 +25,7 @@
 | four.meme 发射参数 | `curl https://four.meme/meme-api/v1/private/token/get/v2?address={token}` | ✅2026-07-19 SIREN 实测**复活可用**（此前"全路径 404"过时）：返回 totalAmount/saleAmount（曲线售罄量，SIREN=8 亿/80%）/raisedAmount（毕业募集 BNB）/launchTime/userAddress（=creator）/tokenPrice.marketCap；与链上 mint 块时间戳互验；bundle 成本=买入 tx 实付 value + raisedAmount + 毕业注池额三方闭环 | （bibi 07-12；SIREN API 复活实测 07-19） |
 | CEX 封闭盘识别三角 | ①`api.kucoin.com/api/v3/currencies/{SYM}`（免 key，isDepositEnabled/isWithdrawEnabled/chains 含合约地址）②各所现价：Gate `api.gateio.ws/api/v4/spot/tickers?currency_pair={SYM}_USDT`、MEXC `api.mexc.com/api/v3/ticker/price?symbol={SYM}USDT`（均走 clash 代理）③链上池价 GeckoTerminal | rug 后风控关充值→"链上买→充值→场内卖"套利腿被斩断→各所内盘成独立封闭盘、价格脱锚（SIREN 实测 KuCoin/Gate 较链上 +135%）。**多所价差>20% 时 CoinGecko 聚合价被污染成系统性坏数据，估值必须弃用**（SIREN CG $0.055 vs 真实 $0.0288） | （SIREN，07-19） |
 | 单地址全量流水独立复核 | HyperSync query 按 address 过滤 topics | 对关键黑箱地址（如托管合约）用 HyperSync 独立重扫其全部 Transfer（可跨全部代币），与扫块 CSV 互为独立通道——对账级双验证的低成本方式 | （bibi，07-12） |
-| 千级地址现时余额 | scripts/evm/multicall_balances.py | 见 §3.5 | （SIREN，07） |
+| 千级地址现时余额 | scripts/evm/multicall_balances.py | 见 §3.5；用 `--token/--input/--out` 注入本案参数，非 BSC 链另显式传 `--rpc`，禁止改源码注入标的 | （SIREN，07） |
 | TGE 老币全史日K | `api.gateio.ws/api/v4/spot/candlesticks?currency_pair={SYM}_USDT&interval=1d&limit=1000`（走 clash 代理） | 免 key 单次最多 1000 根，SQD 实测一次拿 796 根全史——上过 Gate 现货的 TGE 老币全史价格正解（GT 181 根墙/CoinGecko 365 天墙的解法）；上过 Gate 的币远多于上币安的，覆盖面广 | （SQD，07-20） |
 | 第三方富豪榜快照（CoinCarp 类） | — | ⚠只当历史线索、绝不当现状数据：快照可严重过时（SQD 案榜前 8 有 6 个现持已清零，快照疑似两年前）——现状持仓一律链上实查 | （SQD，07-20） |
 | 官方 subgraph 免 key 白嫖 | 项目 explorer 前端 bundle 里 grep `gateway.thegraph` 附近的压缩变量赋值 | 前端直连 The Graph gateway 的项目会把 API key 以 NEXT_PUBLIC_ 环境变量内联进公开打包 JS（每个访问者浏览器都在用）——提取即得免 key 通道，**对任何"前端直连 subgraph"的项目通用**；LPT 案 10 次查询拿到质押账本快照/全轮次历史，与链上重放双源互验。批量分页快照落盘模板：LPT 工作目录 fetch_subgraph.py（专属存档，非复用件；skip 分页有 5000+1000 上限） | （LPT，07-21） |
@@ -72,7 +72,7 @@ EOS 侧持有人榜可用 `POST /v1/chain/get_table_by_scope`（`code`=代币合
 - **亿级多段拼接重放必做"丢弃行审计"（dropped-audit）**：去重丢弃行数应=重复键数，不等即有误杀；段间乱序写入造成的误杀行逐行甄别后补放（实测 607 键去重+607 行乱序误杀全部甄别补放，负余额地址 0 才放行）（VIRTUAL(Base+ETH) 多链分析，07-18）
 - **【历史降级·新案禁用】旧 `fetch_hypersync_par.py` CSV 分片路线的跨天无人值守采集件（watchdog 守护+事件观察哨）**：本条所述 `fetch_hypersync_par.py` CSV 分片路线已退役（`merge_parts.py` 同标 deprecated），现行正式主线为 HyperSync v2 Parquet + `done.json` manifest 体系；新案禁止启用旧 Par 路线采集。
   其“守护巡检+断点续传+事件词叫醒”方法模式仍通用可移植：nohup 守护进程每 60s 巡检——备用通道探测到可用即自启采集器、任一采集器死亡自动重启（断点续传保证不重不漏）、备用通道始终未启用则把其段归还主通道兜底、全段落定写 ALL_DONE 退出；会话侧用 Monitor tail -f 守护日志 grep 事件词（ALL_DONE/FALLBACK/HS_DEAD/ALCHEMY_DEAD）实现“完成即叫醒”。
-  历史脚本：scripts/evm/watchdog_dual.py + fetch_hypersync_par.py（v3.4 参数化收编，含 plan.json 段计划固化/.prog 断点/.aldone 完成标记体系）（VIRTUAL(Base+ETH) 多链分析，07-18）
+  历史脚本：`watchdog_dual.py` + `fetch_hypersync_par.py` 已迁考古区 EVM Par route 族（执行会话禁读；v3.4 参数化收编，含 plan.json 段计划固化/.prog 断点/.aldone 完成标记体系）（VIRTUAL(Base+ETH) 多链分析，07-18）
 
 ### 8.2 Base 辅助数据面
 
@@ -104,6 +104,9 @@ EOS 侧持有人榜可用 `POST /v1/chain/get_table_by_scope`（`code`=代币合
 - 转账笔数与市值的异常比可极端（实测 $150 万级市值 239 万笔 Transfer）——数据量预估禁止按市值直觉，先抽样按事件密度外推（呼应 §8.1 抽样坑与 playbook §9 异常比信号）（PING，07-17）
 
 ## 9. Arbitrum 链专节（SQD 全量实测，2026-07-20）
+
+> **支持级别：探索。** 下述采集与对账能力继续保留；目标链标签主表尚未补齐，
+> G8 只能以 degraded_mode 运行，因此不得据此封口或编译正式 analysis。
 
 Arbitrum One（chainid 42161）待遇比 BSC/Base 好：Etherscan V2 免费层全开 + 官方公共 RPC 稳定直连，EVM 通用管道原样可用，无需专用脚本。
 

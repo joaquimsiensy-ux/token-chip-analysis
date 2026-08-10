@@ -15,6 +15,15 @@
 4. **时间抽查（分层计划制）**：`anchor_plan.py` 出分层抽样计划（矩阵点＋四类强制覆盖点），`scripts/lib/time_spotcheck.py` 对独立第二源逐锚点核对（balance 型 archive balanceOf 直查＋tx 型收据五元组，产 time_spotcheck.json）；第二源分层选型与全史重拉例外条款见 §13。（旧"固定块距插值抽几笔对浏览器"形态已由本制取代；OPN/SIREN 07 → 2026-08-01 改版）
 5. **重放前置完整性检查（快照缺块防护，重放开跑前做）**：核对全部采集 run 的 done.json——next_block 全部达到目标块、mtime 晚于最后一次采集启动，才允许重放（实锤：重放跑在尾部 run 拉完前 13 分钟，快照缺尾部 ~980 块/682 条）。**机制警示：供给闭合恒等式（上面第 2/3 查）对"缺整行"免疫**——整行缺失时借贷两边同时缺、sum 恒等于 TOTAL 照样通过，此类洞只有 RPC 抽查负余额能暴露；增量重放出现"期初为 0 的地址转出变负"=上游快照有洞的指纹，见到即停下补数据。（QUQ 完整版分析，07-22）
 
+**供给真值闸的两种销毁形态（`supply-truth-receipt/v3`）**：主规则继续按形态①校验
+`mint_total − burn_total` 与冻结块 `totalSupply()`；只有主规则 FAIL、EVM replay_stats
+同时带齐 ZERO/dead 的流入、流出与净额拆分时，才自动尝试形态②。形态②必须 wei 级同时满足：
+`mint_total == totalSupply()`、ZERO 事件流入等于链上 `balanceOf(ZERO)`、dead 事件净流入
+等于链上 `balanceOf(dead)`、两处 sink 重放值之和等于 `burn_total`。这只证明
+**终态标量与 sink 逐地址归因闭合**；混合形态、旧 stats、任一 RPC/格式异常都不放行，且不提供人工 override。
+重放侧对 sink 收方余额照加，所以 `verify_recon` 的余额恒等式是 `sum_balances == mint_total`；
+`burn_total` 保留为独立观测，不从终态余额和再次扣除。
+
 **对账比对的 DuckDB 两坑（2026-07-25 实测，两个都会静默产生错误结论）**：
 - **`read_csv` 把 wei 值推断成 DOUBLE → 制造全量假差集**：独立源 CSV 与主数据做六元组比对时，`read_csv`/`read_csv_auto` 会把 20+ 位的 wei 十进制串推断为 DOUBLE，精度丢失导致**每一行都对不上**（看起来像"数据源完全不一致"的灾难性结论）。对账读 CSV 一律 `all_varchar=true` 后显式 `CAST(... AS HUGEINT)`。
 - **`others` 是保留字，不可作列别名**：`SUM(...) AS others` 直接语法错误（`Parser Error: syntax error at or near "others"`）。聚合列命名避开 `others`/`day`/`filter` 等保留字。
@@ -123,11 +132,12 @@ KOGE 一级 inflow 预筛（≥0.1% 供应）后**仍剩 157,459 个候选**，�
 **层 1（默认，有 archive 通道的链：ETH/Base/Arbitrum/Polygon 等）——锚点直查，跑固化脚本**：
 ```bash
 python3 scripts/lib/time_spotcheck.py --plan anchor_plan.json --rpc <独立archive节点> \
-    --token 0x标的 --out time_spotcheck.json [--final-block <数据截止块>]
+    --chain <eth|bsc|base|arbitrum> --token 0x标的 --out time_spotcheck.json \
+    --final-block <数据截止块>
 ```
 - balance 型锚点走 archive `eth_call balanceOf`（历史块状态直查），tx 型锚点（最大单笔/交界块）走 `eth_getTransactionReceipt` 核五元组——**两型都查**，只查 balance 型等于四类强制覆盖点漏验两类。O(锚点数) 秒级完成，APU 案 Alchemy archive 15/15 精确一致实证。
 - 独立性口径（措辞纪律）：状态直查对"余额结果"的验证比换一家事件索引商更直接；但**不能替代事件集合完整性验证**——等额进出抵消、零余额中转层、tx/logIndex/时间戳元数据错误它天然验不出（这些去层 3）。
-- 产物 `time_spotcheck.json`（verdict/exit_code，0 PASS/2 FAIL/1 检测自身失败禁当 PASS）；split-run 案是 READY 必备件＋AUTO_GATES（handoff_manifest 重读防手报）。
+- 产物 `time_spotcheck.json`（`time-spotcheck/v2`，target 绑定 chain/token/final-block；verdict/exit_code 为 0 PASS/2 FAIL/1 检测自身失败禁当 PASS）；split-run 案是 READY 必备件＋AUTO_GATES（handoff_manifest 重读防手报）。
 
 **层 2（BSC 等无免费 archive balanceOf 通道的链）——SQD 只拉锚点窄窗，禁止默认全史**：SQD Portal 仍是 BSC 唯一独立对照源（§11 格局未变），但只拉**锚点所在代表日/窄块窗**（BANANAS31 先例：4 代表日 67,731 行零差集）。窗口覆盖规则：所有锚点日＋早/中/晚三段＋峰值日＋数据源交界＋门槛边缘各至少一窗；逐窗断点续传；逐事件比键 `(block,tx,log_index)` 与值 `(from,to,value)`。主通道本身是 SQD 时它不算独立第二源（换 BigQuery 等，见 §11）。
 

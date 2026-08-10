@@ -15,6 +15,11 @@ import sys
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
+LIB = Path(__file__).resolve().parents[1] / "lib"
+sys.path.insert(0, str(LIB))
+from chain_registry import (formal_ready, known_chains_for_release,
+                            missing_formal_capabilities, release_tier_for, resolve_alias)
+
 
 SHARED_REQUIRED = (
     "accounting_mode.json",
@@ -37,6 +42,7 @@ NEW_ANALYSIS_REQUIRED = (
     "distribution_rounds.json",
     "a5_report_seal.json",
 )
+LEGACY_READONLY_RECEIPT = "legacy_readonly_receipt.json"
 REQUIRED_BY_PROFILE = {
     "new-analysis": SHARED_REQUIRED + NEW_ANALYSIS_REQUIRED,
     "independent-audit": SHARED_REQUIRED + AUDIT_ONLY_REQUIRED,
@@ -47,6 +53,51 @@ DECISIVE_TYPES = {
     "entity_attribution", "economic_control", "whale_tier", "cex_identity",
     "cex_channel", "historical_peak", "historical_chart", "negative_exhaustive",
 }
+def normalize_chain(value):
+    return resolve_alias(value)
+
+
+def formal_chain_error(value):
+    chain = normalize_chain(value)
+    if formal_ready(chain):
+        return None
+    if chain == "arbitrum":
+        return ("chain=arbitrum 为探索支持：缺少 references/labels/labels-arbitrum.csv "
+                "及完整目标链标签门禁；可保留采集、对账和 identity snapshot，"
+                "但不得编译正式 analysis")
+    if release_tier_for(chain) == "formal":
+        missing = ",".join(missing_formal_capabilities(chain))
+        return f"chain={chain} 尚未闭合正式发布能力（缺 {missing}），不得编译正式 analysis"
+    if chain in known_chains_for_release():
+        return f"chain={chain} 为 exploration，不得编译正式 analysis"
+    return f"chain={chain or '<missing>'} 未进入正式支持矩阵，不得编译正式 analysis"
+
+
+def check_formal_case_chain(data, errors):
+    """Bind formal release to one chain declared by both accounting and reconciliation."""
+    claims = []
+    accounting = data.get("accounting_mode.json")
+    if isinstance(accounting, dict):
+        claims.append(("accounting_mode.json", normalize_chain(accounting.get("chain"))))
+    reconciliation = data.get("reconciliation_report.json")
+    if isinstance(reconciliation, dict):
+        target = reconciliation.get("target") or {}
+        claims.append(("reconciliation_report.json", normalize_chain(target.get("chain"))))
+    missing = [name for name, chain in claims if not chain]
+    if missing:
+        errors.append("正式发布链声明缺失: " + ", ".join(missing))
+        return None
+    unique = {chain for _, chain in claims}
+    if len(unique) != 1:
+        errors.append("正式发布链声明不一致: "
+                      + ", ".join(f"{name}={chain}" for name, chain in claims))
+        return None
+    chain = next(iter(unique), "")
+    reason = formal_chain_error(chain)
+    if reason:
+        errors.append(reason)
+        return None
+    return chain
 
 
 def load_json(path: Path, errors: list[str]):
@@ -447,10 +498,10 @@ def check_dormant(case_dir: Path, d: dict, errors: list[str]):
     if n_unresolved:
         errors.append(f"静置仓审计仍有 {n_unresolved} 个未决候选")
     # v6.9.1 集合对账（codex 复核修复：coverage 五键是自报布尔，闸不住漏仓——
-    # 必须绑定 wave_scan v3 落盘的候选全集并逐址对账；缺绑定/旧 schema 一律拒）。
+    # 必须绑定 wave-scan/v3 落盘的候选全集并逐址对账；缺绑定/旧 schema 一律拒）。
     ref = d.get("universe_ref")
     if not isinstance(ref, dict) or not ref.get("path") or not ref.get("sha256"):
-        errors.append("静置仓审计缺 universe_ref（须绑定 wave_scan v3 报告的 path+sha256）")
+        errors.append("静置仓审计缺 universe_ref（须绑定 wave-scan/v3 报告的 path+sha256）")
         return
     wp = regular_case_path(case_dir, str(ref["path"]))
     if wp is None:
@@ -693,6 +744,9 @@ def run(case_dir: Path, report: Path | None, *, profile="independent-audit"):
     case_dir = case_dir.resolve()
     if profile not in REQUIRED_BY_PROFILE:
         raise ValueError(f"未知发布 profile: {profile}")
+    legacy_marker = case_dir / LEGACY_READONLY_RECEIPT
+    if legacy_marker.exists() or legacy_marker.is_symlink():
+        errors.append("只读降级 legacy 案不得编译新正式 analysis")
     required = REQUIRED_BY_PROFILE[profile]
     missing = [name for name in required if not (case_dir / name).is_file()]
     errors.extend(f"缺必需资产: {name}" for name in missing)
@@ -701,6 +755,7 @@ def run(case_dir: Path, report: Path | None, *, profile="independent-audit"):
         p = case_dir / name
         if p.suffix == ".json" and p.is_file():
             data[name] = load_json(p, errors)
+    check_formal_case_chain(data, errors)
     if "audit_input_manifest.json" in data:
         check_manifest(case_dir, data["audit_input_manifest.json"], errors)
     try:

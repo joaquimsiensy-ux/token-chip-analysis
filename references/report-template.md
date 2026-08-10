@@ -1,12 +1,13 @@
 # 报告结构与写作纪律（庄家行为分析版）
 
-> 框架版本：v5.0 “三问一异常”四项结论框架（2026-07-30 用户修订：删除旧问 4 背景调查、取消 P0/P1 分级、
-> 废止狙击集团标签；前身 v2.0 四问框架 2026-07-14）。核心硬性：按标签体系计数；
-> 图 1/图 2 前置 TL;DR 顶部；≥20% 的大庄/项目方必配全周期流转路径图；正文钱包一律
-> 标签制、代币数量一律带【总量X%】；无行内置信度 tag。
+> 现行框架 v5.0：“三问一异常”。硬性清单：按标签体系计数；图 1/图 2 前置 TL;DR；
+> ≥20% 的大庄/项目方必配全周期流转图；正文钱包标签制，代币数量带【总量X%】；无行内置信度 tag。
+> 已废止：问 4 背景调查、P0/P1 分级、狙击集团标签；沿革见 CHANGELOG。
 
 **交付物：自包含单文件 HTML**（图 base64 内嵌），输出到用户工作目录。
-管道：先写 `报告.md` + `charts/*.png`（标准图用 `scripts/report/standard_charts.py`，流转图用 `scripts/report/lifecycle_flow.py`），复核修正全部落定后：
+**物化顺序（A4→A5）**：A4 finalize 前不得创建报告 Markdown、报告图片或 HTML；
+只允许维护 claims/findings/data/facts/state 等复核输入。A4 封口后进入 A5，
+一次生成 `报告.md`，并把标准图和流转图只物化到 `charts/final/`；随后 seal 并构建 HTML。
 
 ```bash
 python3 scripts/report/a5_report_seal.py --case-dir . --report 报告.md --a4-seal a4_seal.json --out a5_report_seal.json
@@ -16,7 +17,6 @@ python3 scripts/report/build_html.py --mode analysis-new --md 报告.md --out �
 
 **监控包按需生成（v3.2，2026-07-18 用户定）**：观察哨清单、两档监控建议、`appendix.json`（含 report-extract 四键）**默认不随报告生成**——用户实测约 3/4 的标的看完报告不买入，监控产物白做。分析报告交付后，**用户确认买入（或点名要监控）时**再按 `monitoring-package.md`「买入后监控包」节补生成并重出带 `--json` 的 HTML（schema 与流程 v3.3 起全在该分册）。观察哨/监控建议/JSON 附录的格式标准**原样有效**，只是执行时机改为按需。
 
-**先审 md 再出 HTML**——复核 agent 和用户都直接读 md，别拿 HTML 当第一稿。PDF 不再默认交付，仅当用户点名要 PDF 时用 `md2pdf.py`（语法兼容）。
 
 ## 本册路由
 
@@ -92,7 +92,8 @@ python3 scripts/report/build_html.py --mode analysis-new --md 报告.md --out �
   ①**实体成员表**：哪些 EOA/已证专属合约同控（公共池、路由、CEX 热钱包永不入成员，见 methods pool-probe 硬闸）；
   ②**链上位置账**：币停在钱包/池/CEX/销毁地址（按位置如实单列）；
   ③**经济控制账**：谁握有可证明的最终赎回权/受益权——**"庄控制多少"的主答案必须用这张账**＝钱包自持＋可证设施权益穿透（LP：V3 按 LP NFT 持有人份额、V4 按 poolId+position+owner 逐头寸重放，见 channels V4 条目；CEX 子账户/桥/质押锁仓/vault/托管：按 `economic-control-accounting.md` 纳入门槛——权利可归属且数量可复算），未决权益不猜、单列。主结论采用"可证经济控制下限"，**不得拿钱包自持替代**，直接钱包余额只在位置拆分表展示。
-  三个反向病例同一制度治：拿位置账当主答案（把庄自有池的币写成"已失去控制"）、拿设施总余额直接归庄（把公用金库当实体仓）、把锁仓协议收进成员表当"归集主仓"或正确剔除却漏受益权穿透（实体曲线在锁仓月错误归零）——反向错误夹出唯一正解＝**设施剔除出成员表＋按受益权穿透计回经济控制账**：锁仓/vesting 协议与 LP 同等适用，闭合锁仓计划的本金按受益地址计回，协议内计划外余额单列不并（QUQ 双报告病例 07-22；SIREN 复核 07-24）。产物（6.5.0 经用户裁决转正式）：完整版**必须**交付 `economic_control_ledger.json`（每项设施权益带所有权证据、目标块可赎回量、防双计 key；结构与发布前逐实体检查见 `economic-control-accounting.md` §5），日后复核同一报告时以它为控制口径基线。
+  三账冲突统一按“设施剔除出成员表＋可证受益权穿透计回经济控制账”处理；
+  未决设施权益单列，不得拿位置账或设施总余额替代。判例见 casebook S-07/E-02。
 
 ## 三、庄级实体识别与类型判定（问1+问2）
   按标签顺序呈现：项目方 → 大庄 → 小庄 → 离场庄 → 刷量地址
@@ -208,8 +209,9 @@ python3 scripts/report/build_html.py --mode analysis-new --md 报告.md --out �
 - **facts.json**（阶段 3 结束、写报告前构建；schema 与宏语法全集见 `scripts/report/facts_gate.py` docstring）：token 总量/decimals + entities（每实体 label/addresses/current_raw/peak_raw，数值一律**原始整数字符串**从落盘数据复制；**多地址实体另填 merge_evidence_earliest**=归并证据最早时间，3.19 A1）+ metrics（自定义分子分母）。entities 字典键即 entity_id 稳定主键，与 analysis-state whale_groups[].entity_id 一致。
 - **合并时点措辞（3.19）**：叙述多地址实体在归并证据出现之前的共同行为，用宏 `{{e_x.merged_since}}` 标注时间或写"以最终归并口径回看"——禁写"当时已可确认同一实体"（细则 playbook-evidence-wording.md §11，facts_gate G6 自动提示）。
 - **写作纪律**：报告 md 中实体的持仓枚数/占比/峰值/成员数一律写宏——`{{e1.amount_share}}` → "2.78亿枚【总量27.84%】"（自动满足带【总量%】纪律）、`{{e1.share}}`、`{{e1.peak_share}}`、`{{e1.naddr}}`、`{{m:指标id}}`；附录 B 整块写 `{{appendix_b}}` 自动生成（**手打地址在架构上被消灭**）。禁止手打这些数字；价格/涨跌幅等非实体结论数字暂可手写（G5 会列清单供人工过目）。
-- **宏口径边界：`{{e.peak_share}}`=日末序列峰值，日内事件占比禁用宏**：peak_raw 来自日末快照序列，闪电过手型实体（单笔吃下→当日部分回吐）的**日内峰值高于日末峰值**（EGL1 案两处误用宏被外部异构复核抓出）。规则：单笔买入/日内持有语境的占比一律手写并标注"单笔/日内"口径；报告含此型实体时，日末峰值与日内峰值两口径并列写清（另见流转图 footnote 块级峰值声明纪律）；判级流程侧的峰值口径（日终＋L2 上界兜底＋四触发日逐笔）权威见 tiering"峰值判级口径"条，两处口径一体（EGL1 redo2 @CX 复核，07-28）
-- **序列类指标引用必须钉时点、程序化取尾**：正文引用 camp_share_series 等时间序列的"当前值"，必须从序列**末点**程序化取数并写明"截至 <数据截止日>"——凭目视/记忆取数会拿到中段值（EGL1 案手写值实为中段值，@CX 复核抓出）。互斥阵营残差桶另做一次"100−Σ各阵营末点"的算术复核（EGL1 redo2 @CX 复核，07-28）
+- **宏口径边界**：`{{e.peak_share}}` 只代表日末序列峰值；日内事件占比禁用宏，
+  必须以逐事件重放值手写并标明“单笔/日内”，同时并列日末与日内口径。
+- **序列指标钉时点**：当前值必须程序化取终点并显式标注日期；不得手抄中间点或沿用旧序列。
 - **编译**：全新分析用 `build_html.py --mode analysis-new ...`，净室复核用 `--mode analysis-audit ...`；两者强制 facts/state/identity/A4 v4/A5 report seal v2，并分别走 new-analysis/independent-audit 发布 profile。全新分析的 G11 还会重验 initial scan、terminal final scan、rounds 台账、解释或 waiver 和唯一分布图。analysis-audit 在 v1 分布闸中明确豁免，等待 single-stage 语义单独立项。不存在 generic analysis 或 skip gate。历史重编译用 `--mode legacy-recompile --degrade-reason "<理由>"`，并带非正式水印。
 - 纯校验（不出 HTML）：`python3 scripts/report/facts_gate.py --facts facts.json --state analysis-state.json --md 报告.md`。
 - **图层同源（3.19，`scripts/report/figures_from_facts.py`）**：编译化延伸到图——①图 1 直接 `figures_from_facts.py fig1 --state analysis-state.json --out charts/final/fig1.png [--price-csv 价格.csv]` 从 state 的 camp_share_series 直出（6.7.0 起报告图一律输出 charts/final/，G9 只认此目录），禁止再现场手写装配脚本；
@@ -255,7 +257,7 @@ schema 全部细节（report-extract 四键与 `id="report-extract"` 硬约定�
 ## md 排版约定（build_html.py 与 md2pdf.py 共同支持的语法）
 
 - `> i 文字` → 蓝色信息框（TL;DR/图下结论解读）；`> ! 文字` → 红色警示框（风险提示/"该图未绘制"说明）；`> 文字` → 普通灰引用
-- `![题注](charts/fig1.png)` 独立成行，后紧跟一行 `*斜体题注*` → 图与题注绑定
+- `![题注](charts/final/fig1.png)` 独立成行，后紧跟一行 `*斜体题注*` → 图与题注绑定
 - 表格列数不限但超 6 列考虑拆分（HTML 可横滚，PDF 会裁切）
 - **正文（含表格）不出现地址**——一律钱包标签；完整地址只在附录 B 与 JSON 附录
 - 事件清单行首用 ①②③（`plot_price_events` 返回值已带）
@@ -271,8 +273,8 @@ schema 全部细节（report-extract 四键与 `id="report-extract"` 硬约定�
 3. **每个 ≥20%（总供应或流通）的大庄/项目方都有全周期流转路径图吗**（v5.0 门槛）；**图自解释验收过了吗**：只看图能复述实体全部操作、卡片全带【总量%】、分/合方式在边标签、归属证据有落点、账目行加法配平（期初−期末=Σ去向）
 4. 标签体系判级复查：大庄/小庄按**当前**持仓、离场庄按**峰值**；刷量地址单独标签（关联的用复合标签）；其他大户（≥0.1%/≥0.2%）全部过完 ET-1/ET-2、排查覆盖数写进阴性排查小节；其他大户与散户只出现在图 1
 4b. **单一成员集合对账**：图 1/图 2 曲线、verdict 汇总数、附录逐址表、JSON whale_groups 四处的实体成员集合必须由同一份名单驱动并交叉对一遍账——"逐址表 vs 汇总曲线"两套手工产出各自维护会互相打架（实锤：GME 案曲线漏编一个 1.2% 成员致在场庄合计低估，逐址表反而是对的；GME 怀疑者复核，07-15）。**3.18.0 起本条中"报告↔state"一段由 facts 语义 gate G1 自动执行**（build_html --facts --state），图表脚本喂的名单与 facts 同源仍须人工确认
-4c. **经济控制穿透硬闸**（6.5.0 转正）：`economic_control_ledger.json` 已生成并逐实体覆盖钱包自持及各设施权益了吗？权利归属和目标时点可兑换数量可复算、`double_count_key` 全局唯一吗？TL;DR 控盘比例、庄级判定、实体表和图 2 是否从该账本同源生成？图 1 按位置、图 2 按经济控制，设施地址不进永久成员表但可归属份额必须穿透；任何"转入设施当日实体线断崖归零、赎回日原数跳回"先按记账错误处理。强关联扩展与未决设施暴露单列，不混入可证下限；仅有 CEX 充值不得假定所内权益仍归原实体
-4d. **历史静置仓反向扫描硬闸**（6.5.0 转正）：`dormant_warehouse_audit.json` 已落盘且覆盖历史峰值榜、已归零/大幅回落仓、长期静置仓、关键退出窗上游及执行网络边界外一圈吗？每个候选都有 strict/expanded/excluded 裁决与公共设施排除证据吗？若存在 expanded 成员，正文、图 2 和附录是否并列给出严格下限/扩展上限，并按同一交易末快照重放而非个人峰值相加？没有 expanded 也必须在审计文件显式记录空数组
+4c. **经济控制验收**：按契约 CT-CONTROL-04、CT-CONTROL-08、CT-CONTROL-09 核验三账、判级确权边界与同源产出；完整门槛只在权威册维护。
+4d. **历史静置仓验收**：按契约 CT-METHOD-04、CT-METHOD-10 核验候选覆盖与双边界峰值；完整裁决、重放和空集规则只在权威册维护。
 5. **全文所有代币数量都带【总量X%】换算了吗**
 6. **正文零地址**（一律钱包标签）；附录 B 标签↔地址对照表齐全完整（默认交付的可验证性支点）
 7. 无任何行内置信度 tag；证据强度用自然语言分级用词；意图判定并列写；类型③措辞不超"高度疑似"
@@ -283,19 +285,10 @@ schema 全部细节（report-extract 四键与 `id="report-extract"` 硬约定�
 11. 附录四件套齐了吗（验证步骤/标签地址对照/修正记录/来源）；默认不含 JSON（买入后按需）；**analysis-state.json 已落盘**且地址与附录 B 一致（v3.3）
 11b. **A4 封口闸（G9）**：`a4-seal/v4` 的 workflow_type 是否匹配，revision 链是否连续，new-analysis 的 `dist-*` claims 是否与当前分布 claim source 双向闭合，registry、verdicts、findings、analysis-state、facts、identity gate 与全部 claim 文件是否封口；净室复核是否同时绑定并对账 claim_registry。
 11c. **A5 报告闸（G10）**：`a5-report-seal/v2` 是否绑定当前 A4 seal、最终 Markdown、全部报告图、terminal rounds、final scan、解释或 waiver 和唯一分布图；正文或图变化先重跑 A5 seal。
-11d. **分布发布闸（G11）**：initial 与 terminal final 是否都通过独立重算；ABNORMAL 是否已 EXPLAINED 或带完整 waiver；low_sample 是否有完整集中度模式和强制披露句；报告是否只引用一张 `holder_distribution_current.png`；任何 data_broken、非终态、过期 seal 或缺字段收据都必须拒编。
+11d. **分布验收**：按契约 CT-DISTRIBUTION-09、CT-DISTRIBUTION-10、CT-DISTRIBUTION-12 核验初判、终判与发布门禁；产物、低样本披露和拒编条件只在权威册维护。
 12. `build_html.py` 退出码 0（6.7.0 起有 [WARN] 直接不写出文件）；阵营图 `id="chart-camps"` 自动嵌入目检存在
 13. **【买入后监控包交付时追加】**：观察哨与两档监控建议齐且逐条有原因、与 JSON monitoring_advice 的 mode/alert_threshold_pct 一一对应；JSON 顶层四键齐、addresses 与附录 B 一致且完整地址、sentinel 纪律复查（周期性会动的地址必须 false）、round_target/watch_return 该填的填了；重跑 build_html 零 WARN、`id="report-extract"` 目检存在
 14. 浏览器打开 HTML 目检：图片全显示、表格无错位、蓝红框正常、（带监控包时）JSON 折叠块可展开
-15. ~~交付后固定动作（3.18.0）~~ **已移入复盘（v6.4.1）**：惯犯库回灌（`accumulate_offenders.py --apply` 及跨案身份冲突检测裁决）不再随交付执行——用户下令复盘时按 retrospective.md 步骤 3 做，结论未经用户复核不入库。交付时本条无动作。
-
-**图 1 出图后必须目检"图例条数 == 传入阵营数"（GMX 2026-07-26 定）**：
-`standard_charts.plot_camp_evolution` 按 `CAMP_ORDER` 白名单过滤 series 键，**传入非标准阵营名会被静默跳过、不报错也不 WARN**（GMX 案 8 阵营只画出 2 个、退出码仍为 0，纯靠目检才发现）。阵营名一律用标准名；出图后数一遍图例。
-
-**留存率类指标必须先剔除设施收款方（GMX 2026-07-26 定）**：
-算"某分发源的收款人留存率"时，收款方名单里往往混着质押合约、DEX 池、归属兑付池、桥等设施——它们本不是"人"，不剔除会把量级拉错、叙事拉反。同类指标（人均持仓、分发集中度）同样适用。（判例：casebook/supply-accounting.md S-05）
-
-**阵营归属 ↔ 正文叙事交叉自检（交付前机械检查，2026-07-25）**：
-**纪律**：交付前逐条核——凡在正文被点名参与某实体动作的地址，必须在阵营表里有明确归属且
-两处措辞一致；发现互斥时二选一（并入该实体，或单列为独立实体并改写正文措辞），**不能两处并存**。
-实锤：KOGE 案一个账户两处互斥归属、散户份额虚高 2.6 倍（KOGE 复核 07-25）。
+15. 图 1 的图例条数是否等于传入阵营数，且全部阵营名逐字取自 `CAMP_ORDER`；非标准名会静默漏图（判例：casebook/supply-accounting.md S-10）。
+16. 留存率、人均持仓和分发集中度是否先剔除质押合约、DEX 池、归属池、桥等设施收款方；否则口径与叙事可能反转（判例：casebook/supply-accounting.md S-05）。
+17. 正文点名参与实体动作的地址是否与阵营表逐址同归属；互斥时必须修归属或改叙事，否则实体与散户占比失真（判例：casebook/entity-clustering.md E-18）。

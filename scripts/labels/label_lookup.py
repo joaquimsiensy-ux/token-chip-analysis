@@ -20,7 +20,7 @@
 非 sol/eth 的受支持 EVM 链自动对 eth 表做 EVM 同址联查（cross_chain 提示级：EOA=同私钥可信，
 CREATE2 canonical=同部署流程，普通合约同址≠同实体需现场核验；自动决策不采信）。
 
-惯犯层延迟揭盲（A5 2026-07-22）：聚类期加 --blind-serial（或 CHIP_BLIND_SERIAL=1）——
+惯犯层延迟揭盲（A2–A3 盲化、A4 揭盲）：聚类期加 --blind-serial（或 CHIP_BLIND_SERIAL=1）——
 [SERIAL] 命中不进主输出（等同未命中），完整详情封存 sealed_serial_hits.jsonl，防先入之见；
 实体冻结后复核期 --unseal 揭盲作定向复核线索。设施类（cex/infra/bridge…）输出不受影响。
 """
@@ -91,7 +91,7 @@ def main():
     ap.add_argument('--misses', action='store_true', help='额外列出未命中的地址')
     ap.add_argument('--json', action='store_true', help='JSONL 输出（每地址一行，机器可读）')
     ap.add_argument('--blind-serial', action='store_true',
-                    help='聚类期盲化（A5）：serial 惯犯命中不进主输出（含 --json），完整详情'
+                    help='A2–A3 盲化、A4 揭盲：serial 惯犯命中不进主输出（含 --json），完整详情'
                          '追加封存 sealed_serial_hits.jsonl；等价环境变量 CHIP_BLIND_SERIAL=1')
     ap.add_argument('--sealed-dir', default='.', help='封存文件目录（默认当前目录=案目录）')
     ap.add_argument('--unseal', action='store_true',
@@ -144,7 +144,7 @@ def main():
                 misses.append((chain, na))
 
     if blind:
-        # A5 盲化：serial 行整行剥离（其 risk_flags=serial-offender 会经 RISK 段泄露，
+        # A2–A3 盲化、A4 揭盲：serial 行整行剥离（其 risk_flags=serial-offender 会经 RISK 段泄露，
         # 故不能只隐 [SERIAL] 段）；主输出中该地址等同未命中，真相进封存文件。
         sealed, kept = [], []
         for chain, na, row in hits:

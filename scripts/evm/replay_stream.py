@@ -55,13 +55,13 @@ import json
 import os
 import sys
 import time
+from pathlib import Path
 
 import duckdb
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
 from channels_preflight import preflight_channels, replay_provenance
-
-Z = "0x" + "0" * 40
-DEAD = "0x000000000000000000000000000000000000dead"
+from supply_semantics import DEAD, ZERO as Z
 
 # 与 replay_duck._v2_select 完全一致的 value 解码（两段 HUGEINT，禁 VARINT 乘法）
 VAL = ("CASE WHEN data IS NULL OR data IN ('','0x') THEN 0::HUGEINT ELSE "
@@ -181,6 +181,13 @@ def main():
     t = time.time()
     mint_total = int(con.execute(f"SELECT COALESCE(SUM(v),0)::HUGEINT FROM ev WHERE frm='{Z}'").fetchone()[0])
     burn_total = int(con.execute(f"SELECT COALESCE(SUM(v),0)::HUGEINT FROM ev WHERE t2 IN ('{Z}','{DEAD}')").fetchone()[0])
+    zero_event_inflow, dead_event_inflow, dead_event_outflow = (
+        int(value) for value in con.execute(f"""
+            SELECT COALESCE(SUM(v) FILTER (WHERE t2='{Z}'),0)::HUGEINT,
+                   COALESCE(SUM(v) FILTER (WHERE t2='{DEAD}'),0)::HUGEINT,
+                   COALESCE(SUM(v) FILTER (WHERE frm='{DEAD}'),0)::HUGEINT
+            FROM ev""").fetchone())
+    dead_sink_net = dead_event_inflow - dead_event_outflow
     su = int(con.execute("SELECT COALESCE(SUM(s),0)::HUGEINT FROM bal").fetchone()[0])
     neg = con.execute("SELECT COUNT(*) FROM bal WHERE s<0").fetchone()[0]
     n_events = con.execute("SELECT COUNT(*) FROM ev").fetchone()[0]
@@ -228,6 +235,10 @@ def main():
              "dedup_verified_segments": a.dedup_segments if a.verify else None,
              "dedup_duplicate_keys": n_dup,
              "mint_total_wei": str(mint_total), "burn_total_wei": str(burn_total),
+             "zero_event_inflow_wei": str(zero_event_inflow),
+             "dead_event_inflow_wei": str(dead_event_inflow),
+             "dead_event_outflow_wei": str(dead_event_outflow),
+             "dead_sink_net_wei": str(dead_sink_net),
              "sum_balances_wei": str(su), "supply_check_ok": su == mint_total,
              "neg_balance_addrs": neg, "unique_addrs": n_addr,
              "gate_pass": su == mint_total and neg == 0,

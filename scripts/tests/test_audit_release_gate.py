@@ -15,9 +15,19 @@ HERE = Path(__file__).resolve().parent
 REPO = HERE.parent.parent
 GATE = HERE.parent / "report" / "audit_release_gate.py"
 REPRODUCE = HERE.parent / "report" / "reproduce_receipt.py"
+from formal_ready_test_harness import test_vertical_slices
 spec = importlib.util.spec_from_file_location("audit_release_gate", GATE)
 gate = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(gate)
+_gate_run = gate.run
+
+
+def _run_with_test_vertical_slices(*args, **kwargs):
+    with test_vertical_slices():
+        return _gate_run(*args, **kwargs)
+
+
+gate.run = _run_with_test_vertical_slices
 
 
 def write_json(root, name, value):
@@ -66,15 +76,38 @@ def build_case(root, historical=True):
                  "supply_truth": "scripts/lib/supply_truth_gate.py",
                  "time": "scripts/lib/time_spotcheck.py"}
     checks = {}
+    envelope_input = {"fixture": {"path": str(raw.resolve()), "size": raw.stat().st_size,
+                                    "sha256": sha(raw)}}
     for key in ("balance", "supply", "supply_truth", "time"):
         evidence = root / f"{key}_receipt.json"
-        write_json(root, evidence.name, {"schema": f"{key}-receipt/v1",
-                                         "status": "PASS", "exit_code": 0})
+        if key in {"balance", "supply"}:
+            receipt_doc = {"schema": "evm-reconciliation-receipt/v2", "target": target,
+                "verdict": "PASS", "exit_code": 0, "observations": {
+                    "supply_closure": {"closed": True, "negative_count": 0},
+                    "balance_reconciliation": {"checked": 1, "matched": 1,
+                        "mismatched": 0, "rpc_errors": 0},
+                    "gmgn_comparison": {"checked": 1, "diff_count": 0}}}
+        elif key == "supply_truth":
+            receipt_doc = {"schema": "supply-truth-receipt/v3", "target": target,
+                "gate": "supply_truth", "replay_net": "100",
+                "onchain_total_supply": "100", "diff": "0",
+                "decision_rule": "primary_form1", "burn_form": None,
+                "primary_verdict": "PASS", "sink_reconciliation": None,
+                "verdict": "PASS", "exit_code": 0}
+        else:
+            receipt_doc = {"schema": "time-spotcheck/v2", "target": target,
+                "points": 1, "exact_match": 1, "mismatch": 0, "rpc_err": 0,
+                "verdict": "PASS", "exit_code": 0}
+        receipt_doc.update({"producer": repo_ref(producers[key]), "mode": "formal",
+                            "inputs": envelope_input})
+        write_json(root, evidence.name, receipt_doc)
         checks[key] = {"status": "PASS", "exit_code": 0,
                        "receipt": {"path": evidence.name, "sha256": sha(evidence)},
                        "producer": repo_ref(producers[key])}
     write_json(root, "reconciliation_report.json", {
-        "schema": "reconciliation-report/v2", "target": target, "checks": checks})
+        "schema": "reconciliation-report/v2", "target": target,
+        "producer": repo_ref("scripts/report/reconciliation_report.py"),
+        "verdict": "PASS", "exit_code": 0, "checks": checks})
     write_json(root, "address_classification.json", {
         "current_owner_threshold_pct": 0.1,
         "current_owner_float_threshold_pct": 0.2,
@@ -96,7 +129,7 @@ def build_case(root, historical=True):
                      "confirmed_economic_control_raw": "100",
                      "unresolved_facility_exposure": []}],
         "double_count_check_passed": True, "unresolved_count": 0, "unresolved": []})
-    # v6.9.1：静置仓审计必须绑定 wave_scan v3 落盘全集并逐址对账（coverage 自报不作数）
+    # v6.9.1：静置仓审计必须绑定 wave-scan/v3 落盘全集并逐址对账（coverage 自报不作数）
     write_json(root, "wave_scan_report.json", {
         "schema": "wave-scan/v3",
         "scan_universe_count": 2,

@@ -35,6 +35,11 @@ import sys
 import tempfile
 from datetime import datetime, timezone
 
+_LIB = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "lib"))
+sys.path.insert(0, _LIB)
+from chain_registry import (evm_family, formal_ready_chains, get_chain_config,
+                            release_tier_for, resolve_alias)
+
 SCHEMA_VERSION = "handoff/v3"
 # verify 端支持集；consumer_min_schema 不在集内即拒收。
 # v1（6.7.x 及以前）默认拒——fail-open 修复（2026-08-01 codex 复核）：漏跑新生产器的旧格式
@@ -59,6 +64,7 @@ CONTRACT_FILES = [
     "accounting_mode.json", "supply_truth.json", "wave_scan_report.json",
     "flow_anomaly_report.json", ADJUDICATIONS_NAME, "provenance_ledger.json",
     "time_spotcheck.json", "distribution_scan.json", DISTRIBUTION_ADJUDICATIONS_NAME,
+    "reconciliation_report.json",
 ]
 REQUIRED_FOR_READY = ["candidate_universe.json", "candidate_screening.json",
                       "identity_preflight.json", "anomalies.json", "data_map.json",
@@ -71,18 +77,21 @@ REQUIRED_FOR_READY = ["candidate_universe.json", "candidate_screening.json",
                       "wave_scan_report.json", "flow_anomaly_report.json",
                       # A3 机械层第 9 项：initial 分布扫描。scan 不反绑 manifest；
                       # READY manifest 单向绑定 scan，避免 B-01 哈希循环。
-                      "distribution_scan.json"]
+                      "distribution_scan.json",
+                      # INV-12：四查 wrapper 及其四份生产 receipt 是所有 READY 链的无条件必备件。
+                      "reconciliation_report.json"]
 # EVM 家族链另加时间抽查产物为 READY 必备（6.7.0，APU SQD 全史重拉冗余复盘）——
 # time_spotcheck.py 固化后，锚点级第二源直查是 A2 第 4 查的机器凭证，缺件＝时间抽查没跑
 # 或又走了自由发挥老路。Solana（anchor_sampler 通道）等非 EVM 链时间抽查形态不同，
 # 不进本硬闸（白名单法：链名命中才强制，未知新链不误伤）。
-EVM_CHAINS = {"eth", "ethereum", "bsc", "base", "arbitrum", "polygon", "optimism",
-              "robinhood", "opbnb", "avalanche", "fantom", "cronos", "linea",
-              "scroll", "blast", "zksync"}
+READY_CHAINS = formal_ready_chains()
 REQUIRED_FOR_READY_EVM = ["time_spotcheck.json"]
 # 自动 gate 适配：从产物 JSON 读 verdict/exit_code（防手报）；verify 时重读比对
 AUTO_GATES = {"accounting_gate": "accounting_mode.json", "supply_truth_gate": "supply_truth.json",
-              "time_spotcheck": "time_spotcheck.json"}
+              "time_spotcheck": "time_spotcheck.json",
+              "reconciliation_four_checks": "reconciliation_report.json"}
+PROVENANCE_LABEL_KINDS = {"cex", "dex_pool", "facility", "bridge", "launch_alloc",
+                          "airdrop", "vesting"}
 # data_map 明确登记的 .duckdb 可能是 provenance 的正式重放源，必须进 manifest 绑定；
 # WAL/临时文件仍排除。大库由 sha256-sparse 做交接哈希，freeze 的 input_binding 另做完整哈希。
 EXCLUDE_SUFFIXES = (".log", ".duckdb.wal", ".lock", ".tmp", ".bak")
@@ -158,6 +167,19 @@ def cmd_generate(a):
     if a.status not in STATUSES:
         print(f"[generate] status 必须是 {sorted(STATUSES)}", file=sys.stderr)
         return 1
+    chains = [resolve_alias(c) for c in (a.chain or "").split(",") if c.strip()]
+    if a.status == "READY":
+        if not chains or not str(a.contract or "").strip():
+            print("[generate] READY 必须显式给 --chain 与 --contract", file=sys.stderr)
+            return 2
+        if len(set(chains)) != 1:
+            print("[generate] READY 当前只接受单链 scope；reconciliation target 必须唯一", file=sys.stderr)
+            return 2
+        chains = sorted(set(chains))
+        unknown = sorted(set(chains) - READY_CHAINS)
+        if unknown:
+            print(f"[generate] READY 含非正式链 {unknown}；先补正式链能力再生成", file=sys.stderr)
+            return 2
 
     artifacts, missing_required = [], []
     seen = set()
@@ -201,8 +223,7 @@ def cmd_generate(a):
 
     if a.status == "READY":
         required = list(REQUIRED_FOR_READY)
-        chains = {c.strip().lower() for c in (a.chain or "").split(",") if c.strip()}
-        if chains & EVM_CHAINS:
+        if set(chains) & evm_family():
             required += REQUIRED_FOR_READY_EVM
         missing_required = [n for n in required if n not in seen]
         if missing_required:
@@ -224,6 +245,10 @@ def cmd_generate(a):
             print(f"[generate] --gate 格式应为 name:verdict:exit:artifact，收到: {spec}", file=sys.stderr)
             return 1
         gname, verdict, exit_code, rel = parts
+        if gname in AUTO_GATES:
+            print(f"[generate] --gate {gname} 已有 AUTO_GATES 适配，禁止 declared 覆盖机器读数",
+                  file=sys.stderr)
+            return 2
         add(rel)
         if rel not in seen:
             print(f"[generate] --gate {gname} 绑定的产物不存在: {rel}", file=sys.stderr)
@@ -257,8 +282,9 @@ def cmd_generate(a):
         "generated_at": utcnow(),
         "skill_git_sha": {"cc": git_sha("~/.claude/skills/token-chip-analysis"),
                           "codex": git_sha("~/.codex/skills/token-chip-analysis")},
-        "scope": {"chains": [c for c in (a.chain or "").split(",") if c] or None,
-                  "contract": a.contract, "cutoff_utc": a.cutoff,
+        "scope": {"chains": chains or None,
+                  "contract": str(a.contract).strip() if a.contract is not None else None,
+                  "cutoff_utc": a.cutoff,
                   "frozen_block": a.frozen_block,
                   "denominators": json.loads(a.denominators) if a.denominators else None},
         "gates": gates,
@@ -275,7 +301,7 @@ def cmd_generate(a):
 
 # ---------------- verify ----------------
 
-def _verify_light_schema(case_dir, fails, legacy=False):
+def _verify_light_schema(case_dir, fails, manifest, legacy=False):
     """轻量 schema 检查：防 −1 交空壳（split-run §3.1 步 2 的语义验证部分）。
     legacy=True（--legacy-read-only）时跳过两扫描器新版检查——旧案产物是旧格式，只验哈希与公共件。"""
     try:
@@ -300,6 +326,24 @@ def _verify_light_schema(case_dir, fails, legacy=False):
             fails.append(f"blocking 异常未解决却报 READY: {blocking_open}")
     except Exception as e:
         fails.append(f"anomalies.json 读取失败: {e}")
+    art_paths = {item.get("path") for item in manifest.get("artifacts") or []
+                 if isinstance(item, dict)}
+    # Legacy only waives absent Batch-2 artifacts.  If the wrapper is listed, it
+    # is evidence and must pass the same current deep validator and scope bind.
+    wrapper_present = ("reconciliation_report.json" in art_paths
+                       or os.path.isfile(os.path.join(case_dir, "reconciliation_report.json")))
+    if not legacy or wrapper_present:
+        try:
+            from shared_release_receipt import validate_reconciliation_report
+            target = validate_reconciliation_report(case_dir)
+            scope = manifest.get("scope") or {}
+            chains = {resolve_alias(chain) for chain in scope.get("chains") or []}
+            if len(chains) != 1 or resolve_alias(target.get("chain")) not in chains:
+                fails.append("reconciliation target.chain 未与唯一 READY scope 链绑定")
+            if str(target.get("token") or "").lower() != str(scope.get("contract") or "").lower():
+                fails.append("reconciliation target.token 未与 READY scope.contract 绑定")
+        except Exception as exc:
+            fails.append(f"reconciliation_report.json 深验失败: {exc}")
     if legacy:
         return
     try:
@@ -369,12 +413,37 @@ def verify_case(case_dir, legacy_read_only=False):
             legacy_mode = True
         elif schema in LEGACY_SCHEMAS:
             fails.append(f"schema {schema} 是旧版——新运行必须重跑 v6.8.0 生产器"
-                         "（wave_scan v2/flow_anomaly）后重 generate；只读旧案加 --legacy-read-only")
+                         "（wave-scan/v3、flow-anomaly/v2）后重 generate；只读旧案加 --legacy-read-only")
         else:
             fails.append(f"schema 不兼容: 需要 {schema}，本端支持 {sorted(SUPPORTED_SCHEMAS)}")
     status = m.get("status")
     if status != "READY":
         fails.append(f"状态 {status} ≠ READY，拒绝消费（原因: {m.get('status_reason')}）")
+    if status == "READY":
+        scope = m.get("scope") or {}
+        raw_chains = scope.get("chains")
+        if not isinstance(raw_chains, list) or len(raw_chains) != 1 \
+                or not isinstance(raw_chains[0], str) or not raw_chains[0].strip():
+            chains = set()
+            fails.append("READY scope.chains 为空——缺正式链范围")
+            if isinstance(raw_chains, list) and raw_chains:
+                fails[-1] = "READY scope.chains 必须恰有一个非空字符串链名"
+        else:
+            chains = {resolve_alias(raw_chains[0])}
+        if len(chains) == 1 and legacy_mode:
+            chain = next(iter(chains))
+            if get_chain_config(chain) is None:
+                fails.append(f"legacy READY scope 链未登记: {chain}")
+            elif release_tier_for(chain) == "exploration":
+                fails.append(f"legacy READY scope 链为 exploration，拒绝正式回流: {chain}")
+            elif release_tier_for(chain) != "formal":
+                fails.append(f"legacy READY scope 链非 formal tier: {chain}")
+        elif len(chains) == 1:
+            unknown = sorted(chains - READY_CHAINS)
+            if unknown:
+                fails.append(f"READY scope 含非正式链 {unknown}")
+        if not str(scope.get("contract") or "").strip():
+            fails.append("READY scope.contract 为空")
 
     if not fails:  # schema/状态硬伤先报，避免在坏 manifest 上白跑哈希
         art_paths = {ent.get("path") for ent in m.get("artifacts", [])}
@@ -382,8 +451,8 @@ def verify_case(case_dir, legacy_read_only=False):
         # artifacts/gates 列表同样过不了这道重查）
         if not legacy_mode:
             required = list(REQUIRED_FOR_READY)
-            chains = {str(c).strip().lower() for c in (m.get("scope", {}) or {}).get("chains") or []}
-            if chains & EVM_CHAINS:
+            chains = {resolve_alias(c) for c in (m.get("scope", {}) or {}).get("chains") or []}
+            if chains & evm_family():
                 required += REQUIRED_FOR_READY_EVM
             miss = [n for n in required if n not in art_paths]
             if miss:
@@ -392,6 +461,9 @@ def verify_case(case_dir, legacy_read_only=False):
             for gname, rel in AUTO_GATES.items():
                 if rel in art_paths and gname not in gates_m:
                     fails.append(f"gate {gname} 缺失（产物 {rel} 在场却无对应 gate 记录）")
+        elif "reconciliation_report.json" in art_paths \
+                and "reconciliation_four_checks" not in (m.get("gates") or {}):
+            fails.append("legacy 案在场 reconciliation_report.json 缺对应 gate 记录")
         for ent in m.get("artifacts", []):
             p = os.path.join(case_dir, ent["path"])
             if not os.path.isfile(p):
@@ -414,7 +486,9 @@ def verify_case(case_dir, legacy_read_only=False):
             else:
                 if str(g.get("verdict", "")).upper() not in ("PASS", "OK"):
                     fails.append(f"gate {gname}（declared）非 PASS 却报 READY: {g.get('verdict')}")
-        _verify_light_schema(case_dir, fails, legacy=legacy_mode)
+                if g.get("exit_code") != 0:
+                    fails.append(f"gate {gname}（declared）exit_code={g.get('exit_code')} ≠ 0 却报 READY")
+        _verify_light_schema(case_dir, fails, m, legacy=legacy_mode)
     return (fails, m, legacy_mode)
 
 
@@ -578,6 +652,10 @@ def validate_and_replay_provenance(case_dir, pl, pl_path, ep, manifest):
     b = pl.get("input_binding")
     if not isinstance(b, dict):
         return ["provenance 缺 input_binding——旧/人工台账不可冻结，必须从原始边重跑"]
+    if pl.get("exploration") is True or b.get("mode") == "exploration":
+        return ["provenance 是 allow-no-labels 探索产物，禁止进入正式 freeze"]
+    if b.get("labels_file") is None:
+        return ["provenance labels_file 为空——正式 freeze 必须绑定标签快照"]
 
     script = os.path.join(os.path.dirname(os.path.abspath(__file__)), "entity_source_trace.py")
     algorithm = b.get("algorithm") or {}
@@ -595,11 +673,18 @@ def validate_and_replay_provenance(case_dir, pl, pl_path, ep, manifest):
     _, err = check_bound_file(case_dir, b.get("entity_file"), expected_path=ep)
     if err:
         fails.append(f"entity_file {err}")
-    labels_path = None
-    if b.get("labels_file") is not None:
-        labels_path, err = check_bound_file(case_dir, b.get("labels_file"))
-        if err:
-            fails.append(f"labels_file {err}")
+    labels_path, err = check_bound_file(case_dir, b.get("labels_file"))
+    if err:
+        fails.append(f"labels_file {err}")
+    elif labels_path:
+        try:
+            labels_obj = load_json(labels_path)
+            valid_labels = [meta for meta in labels_obj.values()
+                            if isinstance(meta, dict) and meta.get("kind") in PROVENANCE_LABEL_KINDS]
+            if not valid_labels:
+                fails.append("labels_file 有效标签数为 0——正式 freeze 不接受空标签快照")
+        except (AttributeError, OSError, ValueError, TypeError) as exc:
+            fails.append(f"labels_file 内容校验失败: {exc}")
 
     hb = b.get("handoff_manifest")
     if not isinstance(hb, dict):

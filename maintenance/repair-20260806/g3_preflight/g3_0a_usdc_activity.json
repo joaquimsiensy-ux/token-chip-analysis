@@ -1,0 +1,72 @@
+{
+  "schema": "g3-0a-usdc-activity/v1",
+  "results": [
+    {
+      "status": "ERROR",
+      "carrier": "native-usdc-activity-only",
+      "mint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+      "endpoint": {
+        "public_origin": "https://mainnet.helius-rpc.com/",
+        "sha256": "6e6615a22187c44572db77a46d7ea8d6116aeb5f3baab1416b04a34da6419db4"
+      },
+      "error": "mint writable mutation reference observed: 311y5fqjJSUYkgdMQmauCg7SaDEQVCiKEQQBzZ2RM9rsTcVi9uW4GQGHb2Ump7E1J25WzL2UN5oPVYQZzXd1sWtW",
+      "cost": {
+        "rpc_calls": 37,
+        "response_bytes": 822244,
+        "elapsed_seconds": 70.263792,
+        "rate_limit_events": 0
+      },
+      "wall_seconds": 70.273619,
+      "non_blocking": true
+    },
+    {
+      "status": "PASS",
+      "carrier": "native-usdc-activity-only",
+      "mint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+      "endpoint": {
+        "public_origin": "https://api.mainnet-beta.solana.com",
+        "sha256": "d6092b5f25eb26ad08e1c49bf16ff3df02faccaa5a717900ab9bf901abbab202"
+      },
+      "finalized_tip": 438010032,
+      "window": {
+        "from_slot": 438009520,
+        "to_slot": 438010032
+      },
+      "activity": {
+        "mode": "lightweight",
+        "window": {
+          "from_slot": 438009520,
+          "to_slot": 438010032
+        },
+        "referenced_signatures": 698,
+        "successful_references": 281,
+        "sample_size": 26,
+        "unavailable_transactions": 0,
+        "complete": false,
+        "pagination_complete": false,
+        "pagination_error": null,
+        "signature_pages": 1,
+        "limits": {
+          "complete_signature_limit": 200,
+          "signature_page_limit": 1000,
+          "complete_rpc_limit": 250,
+          "deadline_seconds": 120,
+          "light_sample_limit": 50
+        },
+        "writable_hits": [],
+        "rpc_calls": 27,
+        "elapsed_seconds": 56.634366,
+        "coverage_statement": "adaptive sample only; this does not prove absence of intermediate mint state changes",
+        "signature_set_sha256": "0c5ae62f26ca72fcbc9ff48375a5ddf29c5ac3c80e5c9db0265c209617bfc73c"
+      },
+      "cost": {
+        "rpc_calls": 29,
+        "response_bytes": 737429,
+        "elapsed_seconds": 60.282381,
+        "rate_limit_events": 0
+      },
+      "wall_seconds": 60.293256,
+      "scope_note": "USDC is activity-only; no GPA or holder closure is attempted."
+    }
+  ]
+}

@@ -43,6 +43,9 @@ def check(name, cond):
 
 
 def run(script, args):
+    if os.path.realpath(script) == os.path.realpath(HANDOFF):
+        from test_handoff_manifest import run as run_handoff
+        return run_handoff(args)
     return subprocess.run([sys.executable, script] + args, capture_output=True, text=True)
 
 

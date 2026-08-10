@@ -1,0 +1,45 @@
+{
+  "schema": "supply-truth-receipt/v2",
+  "target": {
+    "chain": "solana",
+    "token": "creiuhfwdwcn5mjbmjta9bbpyqrqf2tcbuzwspwfpump",
+    "as_of_block": 438010504
+  },
+  "producer": {
+    "path": "scripts/lib/supply_truth_gate.py",
+    "sha256": "743a619c1f7c38477e5f5c2b97272d41b0e00ddcb6f433bdfc7460b394a0bd04"
+  },
+  "mode": "formal",
+  "inputs": {
+    "replay_stats": {
+      "path": "/Users/uravvv/Documents/5.6筹码分析/PYTHIA分析/replay_stats.json",
+      "size": 827,
+      "sha256": "f6f1e062ac393f2ac691d537feb4ef20ee3ee038a2f730b4b2f97010edd8b655"
+    },
+    "observation_bundle": {
+      "path": "/private/tmp/claude-502/-Users-uravvv-Desktop-----fable----/a89cc778-eeae-4a2c-bafd-be8ebc62fe12/scratchpad/pythia-smoke-case/solana_observation_bundle.json",
+      "size": 4903,
+      "sha256": "1d606ec406a8eb313976a452de7170473c57af780b0b45ba00240c981db205f9"
+    }
+  },
+  "gate": "supply_truth",
+  "chain": "solana",
+  "token": "CreiuhfwdWCN5mJbMJtA9bBpYQrQF2tCBuZwSPWfpump",
+  "replay_net": "998158041739995",
+  "mint_total": "1000000000000000",
+  "burn_total": "1841958260005",
+  "onchain_total_supply": "998158041739995",
+  "diff": "0",
+  "diff_bps": 0.0,
+  "tolerance_bps": 10,
+  "observed_context_slot": 438010552,
+  "observation_bundle": {
+    "path": "/private/tmp/claude-502/-Users-uravvv-Desktop-----fable----/a89cc778-eeae-4a2c-bafd-be8ebc62fe12/scratchpad/pythia-smoke-case/solana_observation_bundle.json",
+    "size": 4903,
+    "sha256": "1d606ec406a8eb313976a452de7170473c57af780b0b45ba00240c981db205f9"
+  },
+  "supply_observation_semantics": "bundle getTokenSupply cross-check observed at observed_context_slot; canonical freeze remains target.as_of_block from GPA context",
+  "on_fail": null,
+  "verdict": "PASS",
+  "exit_code": 0
+}

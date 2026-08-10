@@ -6,6 +6,7 @@ import sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, "..", "labels"))
 from labels_resolver import LabelResolver, norm_addr
+from check_manual_sync import runtime_keys, source_keys
 
 
 def main():
@@ -21,7 +22,13 @@ def main():
 
     invalid = "0x" + "g" * 40
     assert norm_addr(invalid, "eth") is None
-    print("PASS: B-09 manual address-book rows are chain-scoped; invalid EVM hex rejected")
+
+    # 同址跨链必须作为不同键闭合；旧 address-only 集合会漏掉其中任一链行。
+    zero = "0x0000000000000000000000000000000000000000"
+    expected_zero_keys = {(chain, zero) for chain in ("eth", "bsc", "base", "robinhood")}
+    assert expected_zero_keys <= source_keys()
+    assert source_keys() == runtime_keys()
+    print("PASS: B-09 manual address-book rows are chain-scoped; composite sync keys and invalid EVM hex verified")
     return 0
 
 

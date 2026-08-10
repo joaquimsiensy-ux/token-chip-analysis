@@ -1,25 +1,25 @@
 #!/usr/bin/env python3
 """SQD portal 全量拉取 Solana SPL 代币转账边 v2——压缩传输+自适应区域并发+全局令牌桶。
 
-来源：Solana 采集加速工程 2026-07-21（@CX 交叉复核定案）。v1（fetch_sqd_transfers.py）保留不动。
-相对 v1 的三刀（实测依据见 data-pipeline-solana.md §13）：
+来源：Solana 采集加速工程 2026-07-21（@CX 交叉复核定案）。
+相对旧采集器的三刀（实测依据见 data-pipeline-solana.md §13）：
   1. requests.Session 替代逐请求 curl 子进程：连接复用 + 默认 gzip 协商
-     （明文传输是 v1 慢的主因：wSOL 压测明文 4.65 slots/s vs 压缩 98 slots/s ≈ 21 倍）
+     （明文传输是旧采集器慢的主因：wSOL 压测明文 4.65 slots/s vs 压缩 98 slots/s ≈ 21 倍）
   2. 自适应区域并发：区域大小按实测耗时自动伸缩（发射窗自动缩小、死亡期自动放大），
-     失败区域进 gaps 继续别的——不再像 v1 那样"第一个未完段之后整体丢弃"
+     失败区域进 gaps 继续别的——不再像旧采集器那样"第一个未完段之后整体丢弃"
   3. 全局令牌桶限速：默认 1.6 请求/秒（公共端点文档限 20 次/10 秒），并发共享一个桶
 
 用法（cd 到工作目录跑，缓存写入 ./data/）：
   python3 fetch_sqd_transfers_v2.py <mint> [--launch-ts <unix秒>] [--wall-min 100]
       [--conc 6] [--rps 1.6] [--url <端点>] [--key-file ~/.config/sqd/api-key]
       [--hypersync] [--hs-conc 2] [--hs-rps 4] [--hs-token-file ~/.config/hypersync/token]
-输出（与 v1 完全同构，下游无感）：
+输出（现役 v3 缓存格式）：
   data/soltx-<sha256(原始mint)>.jsonl.gz   每行 [ts, slot, from_owner, to_owner, amount_raw]
   data/soltx-<sha256>.meta.json  绑定原始 mint/endpoint/采集上界的 v3 元数据
   data/soltx-<sha256>.parts/     区域分片工作目录（合并成功后自动清空）
 
 要点：
-- 转账边=同 tx 内 owner 级净变动贪心配对（与 v1/window_fetch 同一解析核，量级与关系正确够聚类用）
+- 转账边=同 tx 内 owner 级净变动贪心配对（与 window_fetch 同一解析核，量级与关系正确够聚类用）
 - from/to 为 ZERO 哨兵（"0x"+40个0）即铸造/销毁；双过滤 postMint+preMint；失败交易剔除
 - gaps 非空时 stdout 明确声明缺口区间——禁止无声吞洞
 - key：公共端点 2026-07 实测不认证（key 无效也无害地带上）；拿到专属端点后 --url 换掉即生效
@@ -58,6 +58,12 @@ import argparse, gzip, hashlib, json, os, shutil, sys, threading, time
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
+from endpoint_identity import endpoint_fingerprint
+from solana_attested_session import SolanaAttestedSession
+from solana_sqd_dataset import (SOLANA_SQD_DATASET_ID,
+                                SolanaSqdDatasetAdapter)
 
 try:
     import requests
@@ -142,7 +148,7 @@ class AdaptiveArea:
 
 
 def pair_tx(delta):
-    """同一 tx 内 owner 级净变动 → 转账边（与 v1 逐字同构）。"""
+    """同一 tx 内 owner 级净变动 → 转账边。"""
     pos = sorted(([o, d] for o, d in delta.items() if d > 0), key=lambda x: -x[1])
     neg = sorted(([o, -d] for o, d in delta.items() if d < 0), key=lambda x: -x[1])
     edges, i, j = [], 0, 0
@@ -518,7 +524,7 @@ def cache_paths(address):
 
 
 def load_meta(meta_fp):
-    """读 meta，v1 格式（from_slot/next_slot）自动迁移为 v2 areas。"""
+    """读取已支持的 v2/v3 meta；其他格式不作为有效断点。"""
     if not meta_fp.exists():
         return {}
     try:
@@ -527,20 +533,35 @@ def load_meta(meta_fp):
         return {}
     if m.get("version") in (2, 3):
         return m
-    # v1 迁移：连续前缀 [from_slot, next_slot) 视为一个已完成区域
-    if m.get("next_slot"):
-        return {"version": 2, "from_slot": int(m.get("from_slot") or m["next_slot"]),
-                "launch_covered": bool(m.get("launch_covered")),
-                "areas": [{"s": int(m.get("from_slot") or m["next_slot"]),
-                           "e": int(m["next_slot"]) - 1, "done": True, "src": "v1"}]}
     return {}
 
 
+def cache_identity(mint, endpoint):
+    fingerprint = endpoint_fingerprint(endpoint)
+    return {"schema": "sqd-solana-cache/v3", "mint": mint,
+            "endpoint": fingerprint["public_origin"],
+            "endpoint_sha256": fingerprint["sha256"],
+            "collector": "fetch_sqd_transfers_v2.py/v3"}
+
+
+def normalize_cache_identity(meta, mint, endpoint):
+    """Validate current/legacy endpoint identity and return a secret-safe copy."""
+    if not meta or meta.get("collection_upper_slot") is None:
+        return None
+    expected = cache_identity(mint, endpoint)
+    common = (meta.get("schema") == expected["schema"]
+              and meta.get("mint") == expected["mint"]
+              and meta.get("collector") == expected["collector"])
+    current = (meta.get("endpoint") == expected["endpoint"]
+               and meta.get("endpoint_sha256") == expected["endpoint_sha256"])
+    legacy = ("endpoint_sha256" not in meta and meta.get("endpoint") == endpoint)
+    if not common or not (current or legacy):
+        return None
+    return {**meta, **expected}
+
+
 def cache_identity_matches(meta, mint, endpoint):
-    expected = {"schema": "sqd-solana-cache/v3", "mint": mint,
-                "endpoint": endpoint, "collector": "fetch_sqd_transfers_v2.py/v3"}
-    return bool(meta) and all(meta.get(k) == v for k, v in expected.items()) \
-        and meta.get("collection_upper_slot") is not None
+    return normalize_cache_identity(meta, mint, endpoint) is not None
 
 
 def plan_areas(meta, span_from, head):
@@ -796,7 +817,8 @@ def make_merger(cache_fp, parts_dir, part_files, old_ok, old_rows, max_rows):
 
 def run(mint, launch_ts, wall_min, conc, rps, base_url, key,
         hs_cfg=None, from_slot_cli=None, to_slot_cli=None,
-        empty_max=EMPTY_MAX, merge_max_rows=MERGE_INMEM_MAX_ROWS):
+        empty_max=EMPTY_MAX, merge_max_rows=MERGE_INMEM_MAX_ROWS,
+        dataset_id=SOLANA_SQD_DATASET_ID, state_session=None):
     fx = Fetcher(base_url, mint, key, TokenBucket(rps), conc, empty_max=empty_max)
     head = fx.head()
     if not head:
@@ -806,11 +828,19 @@ def run(mint, launch_ts, wall_min, conc, rps, base_url, key,
     cache_fp, meta_fp, parts_dir = cache_paths(mint)
     parts_dir.mkdir(parents=True, exist_ok=True)
     meta = load_meta(meta_fp)
-    identity = {"schema": "sqd-solana-cache/v3", "mint": mint,
-                "endpoint": base_url, "collector": "fetch_sqd_transfers_v2.py/v3"}
-    if meta and not cache_identity_matches(meta, mint, base_url):
-        raise SystemExit("[fail-closed] SQD cache meta 与 mint/endpoint/采集器身份不一致；"
-                         "不得跨标的或跨端点复用，改用新的 data 目录")
+    identity = cache_identity(mint, base_url)
+    if meta:
+        normalized = normalize_cache_identity(meta, mint, base_url)
+        if normalized is None:
+            raise SystemExit("[fail-closed] SQD cache meta 与 mint/endpoint/采集器身份不一致；"
+                             "不得跨标的或跨端点复用，改用新的 data 目录")
+        if normalized != meta:
+            # Old v3 metadata stored the raw endpoint.  Rewrite it before any
+            # resume work so a pre-existing path/query credential is removed.
+            tmp = meta_fp.with_name("." + meta_fp.name + ".identity.tmp")
+            tmp.write_text(json.dumps(normalized, sort_keys=True))
+            os.replace(tmp, meta_fp)
+        meta = normalized
 
     def fresh_meta(start):
         return {**identity, "version": 3, "from_slot": start,
@@ -838,6 +868,13 @@ def run(mint, launch_ts, wall_min, conc, rps, base_url, key,
         back = int((now - (launch_ts or now - 90 * 86400)) * SQD_SLOT_RATE) + SQD_LAUNCH_PAD
         span_from = from_slot = max(1, head - back)
         meta = fresh_meta(from_slot)
+
+    if state_session is None:
+        raise ValueError("formal SQD collection requires an attested Solana state session")
+    dataset_scope = SolanaSqdDatasetAdapter(
+        dataset_id=dataset_id, mint=mint, from_slot=span_from, to_slot=head,
+        state_session=state_session).attest_state_anchor()
+    meta["dataset_scope"] = dataset_scope
 
     # ---- HyperSync 第二引擎初始化：探窗失败即降级纯 SQD（采集完备性优先）----
     fx_hs, hs_lo, hs_hi = None, None, None
@@ -1020,7 +1057,7 @@ def run(mint, launch_ts, wall_min, conc, rps, base_url, key,
                 meta["from_slot"] = from_slot = new_from
             persist_meta()
 
-    # 落盘：整写 jsonl.gz（v1 同构，临时文件+原子 rename），meta 记 launch_covered 与 gaps
+    # 落盘：整写 jsonl.gz（临时文件+原子 rename），meta 记 launch_covered 与 gaps
     final = {"rows": 0, "has_mint": False, "min_ts": None}
     try:
         final = merger.finalize()
@@ -1029,7 +1066,7 @@ def run(mint, launch_ts, wall_min, conc, rps, base_url, key,
         has_mint = final["has_mint"]
         covered = sorted(((a["s"], a["e"]) for a in meta["areas"] if a.get("done")),
                          key=lambda x: x[0])
-        # 连续覆盖前沿（供增量续拉与 v1 兼容语义）
+        # 连续覆盖前沿（供增量续拉）
         front = from_slot - 1
         for s, e in covered:
             if s <= front + 1:
@@ -1075,9 +1112,21 @@ def run(mint, launch_ts, wall_min, conc, rps, base_url, key,
     return EdgeCount(final["rows"]), gap_msg
 
 
-def main():
+def _default_state_rpc():
+    key_file = Path.home() / ".config/helius/api-key"
+    if key_file.is_file():
+        key = key_file.read_text(encoding="utf-8").strip()
+        if key:
+            return f"https://mainnet.helius-rpc.com/?api-key={key}"
+    return "https://api.mainnet-beta.solana.com"
+
+
+def main(argv=None, *, request_json=None):
     ap = argparse.ArgumentParser(description="SQD portal Solana 转账边采集 v2（压缩+自适应并发+令牌桶+HyperSync 第二引擎）")
     ap.add_argument("mint")
+    ap.add_argument("--dataset-id", default=SOLANA_SQD_DATASET_ID)
+    ap.add_argument("--state-rpc", action="append", dest="state_rpcs",
+                    help="attested Solana mainnet state endpoint; repeat for failover")
     ap.add_argument("--launch-ts", type=int, default=0, help="发射 unix 秒，缺省回看 90 天")
     ap.add_argument("--wall-min", type=int, default=100, help="墙钟保险丝（分钟）")
     ap.add_argument("--conc", type=int, default=6, help="并发空洞数（带宽整形下 3 路已近饱和，留冗余）")
@@ -1104,7 +1153,16 @@ def main():
     ap.add_argument("--merge-max-rows", type=int, default=MERGE_INMEM_MAX_ROWS,
                     help=f"收尾全内存合并的行数上限（默认 {MERGE_INMEM_MAX_ROWS:,}，"
                          "超过自动降级 DuckDB 磁盘外排防 OOM）")
-    a = ap.parse_args()
+    a = ap.parse_args(argv)
+    if a.from_slot and a.to_slot and a.from_slot > a.to_slot:
+        ap.error("--from-slot must not exceed --to-slot")
+    state_session = SolanaAttestedSession(
+        a.state_rpcs or [_default_state_rpc()], request_json=request_json, timeout=30)
+    # Reject dataset/mint identity before the first SQD business request.  The
+    # actual inclusive range is re-bound inside run() after SQD head discovery.
+    SolanaSqdDatasetAdapter(
+        dataset_id=a.dataset_id, mint=a.mint, from_slot=0, to_slot=0,
+        state_session=state_session)
     key = None
     try:
         key = Path(a.key_file).read_text().strip() or None
@@ -1122,7 +1180,8 @@ def main():
     edges, gap = run(a.mint, a.launch_ts or None, a.wall_min, a.conc, a.rps, a.url, key,
                      hs_cfg=hs_cfg, from_slot_cli=a.from_slot or None,
                      to_slot_cli=a.to_slot or None, empty_max=a.empty_max,
-                     merge_max_rows=a.merge_max_rows)
+                     merge_max_rows=a.merge_max_rows, dataset_id=a.dataset_id,
+                     state_session=state_session)
     if edges is None:
         print(f"失败：{gap}", flush=True)
         sys.exit(1)

@@ -34,10 +34,13 @@ v4 2026-07-16（codex 交叉复核第二轮融合：policy 三维拆分 / risk �
 """
 import csv, datetime, os, sys
 
+from risk_flags import parse_risk_flags
+
 _HERE = os.path.dirname(os.path.abspath(__file__))
 DEFAULT_LABELS_DIR = os.path.normpath(os.path.join(_HERE, '..', '..', 'references', 'labels'))
 
 LABELS_SCHEMA_VERSION = 4
+# known 包含可探索链；正式发布集合由 report/audit_release_gate.py 的 FORMAL_CHAINS 裁决。
 KNOWN_CHAINS = ('eth', 'base', 'bsc', 'arbitrum', 'sol', 'robinhood')
 
 # 基础 9 列（v3）+ v4 可选列（旧行空值合法，resolver 对空值走推导）
@@ -140,8 +143,9 @@ def _load_csv(labels_dir, chain):
 # 血案背景：PYTHIA 案币安 Alpha 库存仓 9ZPsR… 早已录入 address-book.md 并点名 PYTHIA
 # 第一大持仓，但 label_lookup 只读 CSV 库 → 零命中 → 该仓被误判"小庄#1 私人庄家"。
 # 同族错误第三次复发（IQ 案 Upbit 托管判大庄、LPT 案 Bitvavo 质押判巨鲸）。
-# 根治：address-book.md 永久并入解析器数据源——任何一次标签查询自动覆盖手工层，
-# "跑过 label_lookup"从此等价于"查过地址簿"。CSV 主库同址覆盖本层（主库信息更全）。
+# 运行时只读由 address-book.md 规范区确定性生成的 sources/manual_labels.csv；
+# gen_manual_from_addressbook.py 负责生成，check_manual_sync.py 逐行及双向对账并进入全量 suite。
+# CSV 主库同址覆盖本手工层（主库信息更全）。
 _BOOK_CATEGORY_RULES = (
     ('做市商', 'market-maker', 'identity'),
     ('锁仓', 'locker', 'identity'),
@@ -157,9 +161,9 @@ def _load_address_book(labels_dir, chain):
     """Load the generated address-book layer with an explicit per-row chain.
 
     Address shape is not chain evidence: the same 0x address can mean unrelated
-    contracts on ETH/BSC/Base.  The human markdown is therefore never parsed
-    directly at runtime; its chain-qualified generated table is the executable
-    schema and check_manual_sync keeps the two sources aligned.
+    contracts on ETH/BSC/Base.  Runtime therefore reads only the chain-qualified
+    generated table; check_manual_sync keeps that derived artifact aligned with
+    the single structured source in address-book.md.
     """
     path = os.path.join(_HERE, 'sources', 'manual_labels.csv')
     if not os.path.exists(path):
@@ -317,10 +321,8 @@ class LabelResolver:
         unknown=白名单外旗标：提示人工核验，不作自动定性（修复 v3"宁严勿松"把
         拼错/脏旗标放大成'必写报告重大信号'的副作用）。"""
         out = {'definitive': [], 'candidate': [], 'privacy': [], 'unknown': []}
-        for f in (row.get('risk_flags') or '').split('|'):
-            f = f.strip()
-            if f:
-                out[_classify_flag(f)].append(f)
+        for f in parse_risk_flags(row.get('risk_flags')):
+            out[_classify_flag(f)].append(f)
         return out
 
     def stats(self):
@@ -335,7 +337,7 @@ class LabelResolver:
         return s
 
 
-# ---- 惯犯层延迟揭盲（A5 2026-07-22）：聚类阶段盲化 serial 命中，防先入之见 ----
+# ---- 惯犯层延迟揭盲（A2–A3 盲化、A4 揭盲）：隐藏 serial 命中，防先入之见 ----
 # 流程：聚类/持仓分析期开 CHIP_BLIND_SERIAL=1（或 label_lookup --blind-serial）——
 # serial 命中不进任何主输出，完整详情追加封存 sealed_serial_hits.jsonl；
 # 实体冻结后复核期 label_lookup.py --unseal 揭盲，作定向复核线索。

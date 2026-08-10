@@ -70,6 +70,17 @@ def run_trace(d, ep, entities, labels=None, extra=None):
 
 def main():
     d = tempfile.mkdtemp(prefix="trace_test_")
+    # F-01：正式模式缺标签必须先于数据加载拒绝；探索模式需显式标记。
+    pre = tempfile.mkdtemp(prefix="trace_labels_required_")
+    pre_edges = write_edges(pre, [(day(1), Z, "PRE", 1)])
+    p = run_trace(pre, pre_edges, {"pre": ["PRE"]})
+    check("正式 provenance 缺 --labels-file exit 2", p.returncode == 2
+          and not os.path.exists(os.path.join(pre, "ledger.json")))
+    p = run_trace(pre, pre_edges, {"pre": ["PRE"]}, extra=["--allow-no-labels"])
+    explore = json.load(open(os.path.join(pre, "ledger.json"))) if p.returncode == 0 else {}
+    check("显式无标签探索模式落 exploration 标记",
+          p.returncode == 0 and explore.get("exploration") is True
+          and explore.get("input_binding", {}).get("mode") == "exploration")
     E = []
     # 1. mint 直达
     E.append((day(1), Z, "A1", 100))
@@ -186,11 +197,11 @@ def main():
     # 12. --entity-file 类型硬检查
     d12 = tempfile.mkdtemp(prefix="trace_badent_")
     ep12 = write_edges(d12, [(day(1), Z, "Y", 100)])
-    p = run_trace(d12, ep12, {"ea": ["Y"], "eb": ["Y"]})
+    p = run_trace(d12, ep12, {"ea": ["Y"], "eb": ["Y"]}, labels={})
     check("成员跨实体重复 exit 2", p.returncode == 2)
-    p = run_trace(d12, ep12, {"ea": [123]})
+    p = run_trace(d12, ep12, {"ea": [123]}, labels={})
     check("成员非字符串 exit 2", p.returncode == 2)
-    p = run_trace(d12, ep12, {"ea": []})
+    p = run_trace(d12, ep12, {"ea": []}, labels={})
     check("成员空数组 exit 2", p.returncode == 2)
 
     # 13. high-1 反例：真实观察顺序是 X→实体，然后 DEX→X。旧拓扑排序会反向执行成

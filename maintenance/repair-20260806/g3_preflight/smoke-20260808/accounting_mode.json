@@ -1,0 +1,41 @@
+{
+ "schema": "accounting-gate/v1",
+ "chain": "solana",
+ "mint": "CreiuhfwdWCN5mJbMJtA9bBpYQrQF2tCBuZwSPWfpump",
+ "producer": {
+  "path": "scripts/solana/accounting_gate_sol.py",
+  "sha256": "255424954a7fee340a6ac7f74e47ddd757f0397c9da6aebe837c3b339c95784c"
+ },
+ "checked_at": "2026-08-08T14:33:23Z",
+ "execution_mode": "formal",
+ "checks": {
+  "owner": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+  "account_type": "mint",
+  "owner_program": "spl-token",
+  "mint_authority": null,
+  "freeze_authority": null,
+  "supply": "998158041739995",
+  "decimals": 6,
+  "extensions": []
+ },
+ "warnings": [],
+ "reasons": [],
+ "observed_context_slot": 438010504,
+ "observation_slots": {
+  "pre": 438010494,
+  "gpa": 438010504,
+  "post": 438010542,
+  "supply": 438010552
+ },
+ "as_of_slot": 438010504,
+ "as_of_block": 438010504,
+ "observation_bundle": {
+  "path": "/private/tmp/claude-502/-Users-uravvv-Desktop-----fable----/a89cc778-eeae-4a2c-bafd-be8ebc62fe12/scratchpad/pythia-smoke-case/solana_observation_bundle.json",
+  "size": 4903,
+  "sha256": "1d606ec406a8eb313976a452de7170473c57af780b0b45ba00240c981db205f9"
+ },
+ "rpc": "https://api.mainnet-beta.solana.com",
+ "mode": "standard",
+ "verdict": "PASS",
+ "exit_code": 0
+}

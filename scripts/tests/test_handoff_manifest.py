@@ -30,6 +30,9 @@ import shutil
 import subprocess
 import sys
 import tempfile
+from pathlib import Path
+
+from formal_ready_test_harness import run_formal_script
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 SCRIPT = os.path.join(HERE, "..", "report", "handoff_manifest.py")
@@ -48,10 +51,8 @@ def check(name, cond):
 
 
 def run(args, env=None):
-    e = os.environ.copy()
-    if env:
-        e.update(env)
-    return subprocess.run([sys.executable, SCRIPT] + args, capture_output=True, text=True, env=e)
+    """Run handoff inside the backward-compatible immutable registry context."""
+    return run_formal_script(SCRIPT, args, env=env)
 
 
 def write_json(d, name, obj):
@@ -59,7 +60,7 @@ def write_json(d, name, obj):
         json.dump(obj, f, ensure_ascii=False)
 
 
-def make_case(d):
+def make_case(d, chain="bsc", token="0x0", as_of_block=999):
     """最小合法 −1 案目录。"""
     write_json(d, "candidate_universe.json", {"candidates": [
         {"id": "c1", "address": "0xabc", "reasons": ["threshold_current"]},
@@ -95,9 +96,54 @@ def make_case(d):
     write_json(d, "flow_anomaly_report.json", {"schema": "flow-anomaly/v2", "eligible_universe_count": 0,
                                                "sinks": [], "sprays": [],
                                                "requires_adjudication": False})
-    write_json(d, "time_spotcheck.json", {"gate": "time_spotcheck", "schema": "time-spotcheck/v1",
+    write_json(d, "time_spotcheck.json", {"gate": "time_spotcheck", "schema": "time-spotcheck/v2",
                                           "points": 2, "exact_match": 2, "mismatch": 0,
                                           "rpc_err": 0, "verdict": "PASS", "exit_code": 0})
+    repo = Path(HERE).parents[1]
+    input_path = Path(d, "data", "holders_owners.json").resolve()
+
+    def file_sha(path):
+        return hashlib.sha256(Path(path).read_bytes()).hexdigest()
+
+    def repo_ref(rel):
+        return {"path": rel, "sha256": file_sha(repo / rel)}
+
+    target = {"chain": chain, "token": token.lower(), "as_of_block": as_of_block}
+    producers = {"balance": "scripts/evm/verify_recon.py",
+                 "supply": "scripts/evm/verify_recon.py",
+                 "supply_truth": "scripts/lib/supply_truth_gate.py",
+                 "time": "scripts/lib/time_spotcheck.py"}
+    bound_input = {"fixture": {"path": str(input_path), "size": input_path.stat().st_size,
+                                "sha256": file_sha(input_path)}}
+    recon_checks = {}
+    for key in ("balance", "supply", "supply_truth", "time"):
+        receipt_name = f"reconciliation_{key}_receipt.json"
+        if key in {"balance", "supply"}:
+            receipt = {"schema": "evm-reconciliation-receipt/v2", "target": target,
+                       "observations": {
+                           "supply_closure": {"closed": True, "negative_count": 0},
+                           "balance_reconciliation": {"checked": 1, "matched": 1,
+                                                       "mismatched": 0, "rpc_errors": 0}}}
+        elif key == "supply_truth":
+            receipt = {"schema": "supply-truth-receipt/v3", "target": target,
+                       "gate": "supply_truth", "replay_net": "100",
+                       "onchain_total_supply": "100", "diff": "0",
+                       "decision_rule": "primary_form1", "burn_form": None,
+                       "primary_verdict": "PASS", "sink_reconciliation": None}
+        else:
+            receipt = {"schema": "time-spotcheck/v2", "target": target,
+                       "points": 1, "exact_match": 1, "mismatch": 0, "rpc_err": 0}
+        receipt.update({"producer": repo_ref(producers[key]), "mode": "formal",
+                        "inputs": bound_input, "verdict": "PASS", "exit_code": 0})
+        write_json(d, receipt_name, receipt)
+        recon_checks[key] = {"status": "PASS", "exit_code": 0,
+                             "receipt": {"path": receipt_name,
+                                         "sha256": file_sha(Path(d, receipt_name))},
+                             "producer": repo_ref(producers[key])}
+    write_json(d, "reconciliation_report.json", {
+        "schema": "reconciliation-report/v2", "target": target,
+        "producer": repo_ref("scripts/report/reconciliation_report.py"),
+        "verdict": "PASS", "exit_code": 0, "checks": recon_checks})
     os.makedirs(os.path.join(d, "sealed"), exist_ok=True)
     with open(os.path.join(d, "sealed", "stage1_hypotheses.sealed.md"), "w") as f:
         f.write("> −2 实体冻结前禁读\n假说：无\n")
@@ -125,8 +171,11 @@ def make_provenance(d, entity_map, schema="provenance-ledger/v2", stable=True,
     prior = open(entity_path, "rb").read() if os.path.isfile(entity_path) else None
     write_json(d, "s2_entity_members.json", entity_map)
     trace = os.path.join(HERE, "..", "report", "entity_source_trace.py")
+    labels_path = os.path.join(d, "fixture_labels.json")
+    write_json(d, "fixture_labels.json", {"0xfacility": {"kind": "facility", "name": "fixture"}})
     p = subprocess.run([sys.executable, trace, "--edges-sol", os.path.join(d, "data", "edges.jsonl"),
-                        "--total-supply", str(10 ** 12), "--entity-file", entity_path, "--out", out,
+                        "--total-supply", str(10 ** 12), "--entity-file", entity_path,
+                        "--labels-file", labels_path, "--out", out,
                         "--depth-limit", str(depth_limit)],
                        capture_output=True, text=True)
     if p.returncode != 0:
@@ -180,12 +229,33 @@ def main():
         m = json.load(open(os.path.join(d, "handoff_manifest.json")))
         check("manifest 收录 data_map 索引文件", any(a["path"] == "data/transfers.csv" for a in m["artifacts"]))
         check("manifest sealed 只记哈希", m["sealed"] and "sha256" in m["sealed"][0])
-        check("manifest 自动 gate 三个", set(m["gates"]) == {"accounting_gate", "supply_truth_gate",
-                                                            "time_spotcheck"})
+        check("manifest 自动 gate 四个", set(m["gates"]) == {"accounting_gate", "supply_truth_gate",
+                                                            "time_spotcheck", "reconciliation_four_checks"})
         p = run(["verify", "--case-dir", d])
         check("verify READY exit 0", p.returncode == 0)
 
-        # 14. EVM 链缺 time_spotcheck.json 拒 READY；solana 链豁免（6.7.0 时间抽查收编）
+        dscope = os.path.join(root, "case_scope_required"); os.makedirs(dscope); make_case(dscope)
+        base_gen = ["generate", "--case-dir", dscope, "--status", "READY", "--mode", "full",
+                    "--producer-model", "test-model"]
+        p = run(base_gen + ["--contract", "0x0"])
+        check("READY 缺 chain generate 拒", p.returncode == 2)
+        p = run(base_gen + ["--chain", "bsc"])
+        check("READY 缺 contract generate 拒", p.returncode == 2)
+        p = run(base_gen + ["--chain", "unknown-chain", "--contract", "0x0"])
+        check("READY 未知 chain generate 拒", p.returncode == 2)
+        p = run(["generate", "--case-dir", dscope, "--status", "PARTIAL", "--mode", "full",
+                 "--producer-model", "test-model"])
+        check("PARTIAL 不强制正式 scope", p.returncode == 0)
+
+        p = run(["generate", "--case-dir", dscope, "--status", "READY"] + GEN)
+        check("scope 独立正例生成", p.returncode == 0)
+        broken_scope = json.load(open(os.path.join(dscope, "handoff_manifest.json")))
+        broken_scope["scope"]["chains"] = []
+        write_json(dscope, "handoff_manifest.json", broken_scope)
+        p = run(["verify", "--case-dir", dscope])
+        check("verify 空 chains scope 拒", p.returncode == 2)
+
+        # 14. EVM 链缺 time_spotcheck.json 拒 READY；错链 reconciliation 不得被豁免
         d14 = os.path.join(root, "case_no_spotcheck")
         os.makedirs(d14)
         make_case(d14)
@@ -194,7 +264,17 @@ def main():
         check("EVM 链缺 time_spotcheck 拒 READY exit 2", p.returncode == 2)
         p = run(["generate", "--case-dir", d14, "--status", "READY", "--mode", "full",
                  "--producer-model", "test-model", "--chain", "solana", "--contract", "0x0"])
-        check("solana 链无 time_spotcheck 豁免 exit 0", p.returncode == 0)
+        p_verify = run(["verify", "--case-dir", d14]) if p.returncode == 0 else p
+        check("solana 不得复用 bsc reconciliation", p_verify.returncode == 2)
+
+        # READY 从本批起无条件要求 reconciliation wrapper 及四份绑定回执。
+        drecon = os.path.join(root, "case_missing_reconciliation")
+        os.makedirs(drecon)
+        make_case(drecon)
+        os.unlink(os.path.join(drecon, "reconciliation_report.json"))
+        p = run(["generate", "--case-dir", drecon, "--status", "READY"] + GEN)
+        check("READY 缺 reconciliation 拒", p.returncode == 2 and
+              "reconciliation" in (p.stdout + p.stderr).lower())
 
         # 9. receipt（在正例目录顺手验）
         p = run(["receipt", "--case-dir", d, "--step", "A1", "--cmd", "collect", "--exit", "0",
@@ -215,6 +295,14 @@ def main():
         p = run(["freeze", "--case-dir", d] + FRZ + ["--pending", "c2 待裁决"])
         check("无裁决台账 freeze 拒 exit 2", p.returncode == 2)
         setup_freezeable(d)
+        exploratory = json.load(open(os.path.join(d, "provenance_ledger.json")))
+        exploratory["exploration"] = True
+        exploratory["input_binding"]["mode"] = "exploration"
+        exploratory["input_binding"]["labels_file"] = None
+        write_json(d, "provenance_ledger.json", exploratory)
+        p = run(["freeze", "--case-dir", d] + FRZ)
+        check("exploration/null-label provenance freeze 拒", p.returncode == 2)
+        write_json(d, "provenance_ledger.json", make_provenance(d, {"E1": ["0xabc"]}))
         p = run(["freeze", "--case-dir", d] + FRZ + ["--pending", "c2 待裁决"])
         check("四重前置齐备 freeze 初次 exit 0", p.returncode == 0)
         fz0 = json.load(open(os.path.join(d, "entity_freeze.json")))

@@ -14,7 +14,7 @@
 | 账户历史 / 钱包持仓画像 | 公共 RPC `https://api.mainnet-beta.solana.com` | 免 key；限速紧（间隔 ≥0.12s、退避重试），本机走 clash 代理 `[实测·他场景]` |
 | 单地址 / 单笔交易核验、公开标签 | Solscan 网页（`solscan.io/token/<MINT>`、`/account/<ADDR>`） | 免 key；浏览器可看，**WebFetch 直读被 Cloudflare 拦**（见死亡名单）；作报告可验证性背书 |
 | 全量历史转账（archive 回放） | SQD portal（见 §8，后续实战补入） | 免 key 免代理，补公共 RPC 无历史回放的洞 `[实测·他场景]` |
-| 深挖升级通道（增强 API） | Helius | 自动注册被后端 bot 检测拒绝（2026-07 两次实测），需用户手动注册后把 key 放 `~/.config/helius/api-key`（chmod 600） `[实测·他场景]` |
+| 深挖升级通道（增强 API） | Helius | 运行前检测 `~/.config/helius/api-key`：存在则按 Helius 参数跑，缺失则降级公共 RPC（key 注册沿革见 CHANGELOG） `[实测·他场景]` |
 | 量价 / 衍生品 / 解锁表 | CoinGecko / fapi.binance.com / Coinglass / DropsTab + Tokenomist | 见第 4 节 |
 
 ### 0a. 双公共 RPC 互补矩阵（关键工程事实）
@@ -81,7 +81,7 @@ Solana 特有优势：program-owned PDA 让托管类型可以直接从账户归�
   - **Squads 多签程序 `SQDS4ep65T869zMMBKyuUq6aD6EgTu8psMjkvj52pCf`** → 官方金库佐证（CEX 不会用 Squads 管钱包）。识别姿势：金库大额转出交易的 instructions 里出现该程序 ID；再叠加项目官方代币分配文档对表（分配结构、总量、年限）完成定性。
   - **Magna vesting 程序 `magnaSHyv8zzKJJmr8NSz5JXmtdGDTTFPEADmvNAwbj`** → 线性解锁托管 PDA（token account 的 owner 直接是它），特征为持续（小时级）匀速释放。
   - **Streamflow 锁仓程序 `strmRqUCoQUgGUan5YhzUZa6KqdzwX5L6FpUxfmKg5m`**（外部 CLAW 分析实测，2026-07）→ 锁仓 escrow 的 token 账户 authority = 账户自身；stream 元数据账户（owner=strm 程序）可 **raw 解码锁仓参数**：定位 mint 的 32 字节偏移 `moff` 后，`sender@moff-128`、`recipient@moff-64`，参数区 `start/deposited/period/amount_per_period/cliff` 在 `moff+148` 起的 u64 序列（flags+stream_name 紧随）。**懒人路线**：GMGN holders 的 `streamflow_status` 字段直接给 `next_unlock_time/current_locked_amount`，无需手解，与链上互验即可。
-    **固定偏移速查（data_len=1104 版布局，CLUDE 实战三处互验）**`[VERIFIED·CLUDE实战]`：offset 9=创建时间、**33=end_time（到期）**、409=start、417=net_deposited、441=cliff 时间（33/409/441 对一次性 cliff 流三处同值互验）；**cancelable_by_sender/recipient、transferable_by_sender/recipient、automatic_withdrawal 标志位必读**——`period=1s+cliff_amount=全额`=一次性 cliff 到期全解，transferable=0 直接反证"受益权可场外转让"风险提示（写"锁仓可转让"之前必查此位）；automatic_withdrawal=0 则到期后币不自动离开 escrow，观察哨要按"历史到期→处置最长空窗"设过渡期防误报。解码脚本 `scripts/solana/probe_escrows.py`。（CLUDE，07-13）
+    **固定偏移速查（data_len=1104 版布局，CLUDE 实战三处互验）**`[VERIFIED·CLUDE实战]`：offset 9=创建时间、**33=end_time（到期）**、409=start、417=net_deposited、441=cliff 时间（33/409/441 对一次性 cliff 流三处同值互验）；**cancelable_by_sender/recipient、transferable_by_sender/recipient、automatic_withdrawal 标志位必读**——`period=1s+cliff_amount=全额`=一次性 cliff 到期全解，transferable=0 直接反证"受益权可场外转让"风险提示（写"锁仓可转让"之前必查此位）；automatic_withdrawal=0 则到期后币不自动离开 escrow，观察哨要按"历史到期→处置最长空窗"设过渡期防误报。解码脚本 `scripts/solana/probe_escrows.py`，调用时用必填 `--targets-file` 注入本案 `{address, label}` JSON 数组。（CLUDE，07-13）
     - **"即建即提"洗筹指纹（CLAW 实测）**：操盘方用即建即提 stream 做一跳中转，切断"老仓→新仓"的直接转账链路伪装成独立成本；识别锚点 = 提取 tx 的 **feePayer = Streamflow 自动提取服务 `wdrwhnCv4pzW8beKsbPa4S2UDZrXenjg16KJdKSpb5u`**，多笔提取共用此 feePayer = 同一批操作，据此把散落的"新钱包"归回原实体。
     - **recipient 激活状态检测**（外部 CLAW 考古，2026-07）：对 stream 的 recipient 地址查账户存在性——账户不存在（fresh keypair 从未注资）= 收款人从未动过，锁仓休眠中；配套受益人时序画像：发射后分钟级首买 = 先验知情，发射前数天新建并注资 = 预谋配置。
     - **措辞纪律：锁仓流的可转让性以该 stream 实例的 transferable_by_* 标志位为唯一裁决**（外部 CLAW 考古，2026-07；与上方"标志位必读"条呼应）——transferable=1 时解锁权可私下转售且不在代币转账留痕，"锁仓至 2030"≠"当前受益人持有至 2030"，结论措辞必须带此提示；transferable=0 则直接反证该风险，禁写"可转让"。
@@ -118,15 +118,15 @@ Solana 特有优势：program-owned PDA 让托管类型可以直接从账户归�
 
 ### 3a. 流水追踪的三个 Solana 特有坑
 
-1. **签名历史挂在 token account 上，不在 owner 钱包上**：对休眠大户的 owner 钱包查 `getSignaturesForAddress` 大概率 NO TXS（IO 实录 13 个大户 9 个如此）——他人发起的转入只"提及"token account。查代币流水一律查 token account 地址；owner 钱包有签名 ≠ 代币动过（见坑 2），token account 无签名 = 确凿休眠。
-2. **签名列表投毒（address-poisoning）**：大钱包的签名列表被 pump AMM 垃圾交易污染——攻击者把知名大地址塞进自己交易的 accountKeys 或向其 ATA 转微量，制造"每天十几笔活动"假象（IO 实录 #1 金库表面日活 15 笔，decode 后本尊 IO 余额一年只动 1 次）。**活跃度判定必须 decode 交易看 pre/postTokenBalances 里本尊是否真有变动**，绝不能拿签名条数当活跃度。
-3. **decode 必须按 mint 过滤**：大户签名史里混着它持有的其它代币的活动（IO 实录某 27.2M 大户最近 5 笔全是非目标代币交易）；金额解读还要防不同代币 decimals 差异造成的"天文数字转账"错觉——先按 mint 过滤再谈金额。
-4. **高频钱包的 owner 级签名史稀释**（坑 1 的反面）：对 4,000+ 签名的高频 bot，owner 级取签名+均匀抽样 decode 可能**完全漏掉目标 mint 的关键买卖笔**（CLUDE 实测：两个隐鲸 160/4000 抽样 CLUDE 笔=0）。正解：查该 mint 的 token account（ATA）级签名史——只含目标币相关、通常 <30 条全量 decode；**ATA 已销户时**，从任一已知交易（哪怕只有一笔买入）的 pre/postTokenBalances 的 accountIndex 映射 accountKeys 反查出 account 地址，再对它 getSignaturesForAddress（地址签名史销户后仍可查）。固化于 `scripts/solana/probe_token_account_history.py`。（CLUDE，07-13）
-5. **镜像 vanity dust 投毒（投毒坑 2 的升级变种）**：投毒 bot 仿冒**真实大额交易对手**的首尾字符生成 vanity 地址（仿 dev、仿中转、仿受赠户），在目标每笔操作后 16-19 秒内跟发 dust/空交易——密集同窗签名**绝不可当作钱包主人的关联操作证据**（CLUDE 实测某两仓 05-18 的 17+21 笔"同窗"全是第三方投毒）。取证一律全串比对。**反向价值**：投毒 bot 只仿真实对手，其选择性投毒本身可独立佐证两地址真有大额资金关系。（CLUDE，07-13）
-6. **中转钱包按时间窗解码必须校验 NET≥0**：按"已知转账时间 ±N 天"窗口过滤签名再 decode 省时，但会漏窗外流入边，得出"净流出为负"的物理矛盾数（CLUDE 实测两中转 moves 只覆盖 16/54 与 14/41 笔）。中转/枢纽钱包尽量全签名解码；用窗口法必须做 NET 非负校验，不过即补扫。（CLUDE，07-13）
-7. **owner 级签名史对"纯接收方"漏边、边表不配平**：按 owner 钱包（而非其目标币 ATA）拉签名史 decode 建转账图时，**纯接收巨仓的入账边可能整条缺失**（转入交易只提及收款 ATA，未把 owner 放进 accountKeys；owner 视角 getSignaturesForAddress 查不到）——表现为节点"流出>流入"的负净额（OPAL 拆仓网络实测：owner 版 6MLg 少 5000 万入账边、HpECTm 少 2800 万）。**正解=对不配平节点走 ATA 级补扫**（从已知边的 tx 反查出 owner 的目标币 account 地址，再 getSignaturesForAddress 该 ATA），全节点净流配平后边表才可信。已固化于 `probe_token_account_history.py` 与 1.12.0 的 `whale_deep.py`（三级 ATA 发现）。（OPAL，07-14）
-8. **★ATA 级 trace 的 sol_delta 恒 0 → "费领取"系统性误判（资金侧盲区，后果最重的一条）**：对 token account（而非 owner 钱包）跑逐笔 trace 时，脚本取 `keys.index(w)` 的 lamports 变化——ATA 的 lamports 恒不动，`sol_delta` 恒≈0，于是"零 SOL 支出的池子流入"被顺势归类为"币本位创作者费领取"。CLUDE 增量复核实证：dev 全史 40+ 笔被旧报告标为"费领取"的主池流入，抽验 3/3 实为 dev 付整数 SOL（25-80 SOL/笔）的市场买入（主池 WSOL 侧同步增加分毫吻合）——整个"费收入账本"随之作废重算。**纪律：流入定性必须验证资金侧（owner 主钱包的 SOL 变化），不能只看币侧**；`trace_wallet.py` 已加 `owner_sol_delta` 字段（w 为 ATA 时自动补算 owner 的 lamports Δ，v2.9.0）——凡引用旧版 trace 产出的"费领取"标签一律视为未定性。（CLUDE 更新复核，07-15）
-9. **"CEX 提币→精确金额买入"型定投钱包识别**：某地址每次买入前 1-2 分钟由固定热钱包**精确注入本次所需 SOL**（误差 <0.01），随即全额买入——注资方实测日交易 3,700~16,400 笔、durable-nonce 批量转账形态=CEX 提币热钱包。含义：①这是"从交易所定期提币定投"的钱包画像（非项目方马甲的典型形态）；②但资金源在 CEX 处**硬止**，链上无法证明也无法排除背后是谁——涉其归属的排除性结论措辞封顶"无罪推定"，不可写"确证独立"。（CLUDE 更新，07-15）
+1. **签名史归属**：代币流水查 token account/ATA，不以 owner 签名条数替代；owner 与 ATA 均须记录查询范围。判例见 casebook E-16。
+2. **签名列表投毒**：只有 pre/postTokenBalances 中目标主体余额真实变化才算活动；签名提及不等于本人操作。判例见 casebook E-16。
+3. **decode 按 mint 过滤**：先过滤目标 mint 并核 decimals，再解释金额与动作。判例见 casebook S-04。
+4. **高频 owner 史稀释**：改查目标 ATA 全签名；ATA 销户时从已知交易反查 accountIndex 后补扫。判例见 casebook S-04。
+5. **镜像 vanity dust 投毒**：完整地址逐字节比对并核余额腿；密集同窗签名不得成关联边。判例见 casebook E-10。
+6. **中转窗 NET 校验**：窗口解码后必须验证物理净额；出现负净额立即补全签名史。判例见 casebook S-04。
+7. **纯接收方漏边**：边表不配平的节点必须走 ATA 级补扫，全部净流闭合后才可发布。判例见 casebook S-04。
+8. **ATA trace 资金侧**：用 owner 主钱包的原生币变化定性买入/领费；只有 ATA 的 sol_delta 不得作动作分类。判例见 casebook S-05。
+9. **CEX 精确注资型定投**：可写交易所提币后定投画像；资金源在 CEX 截断时不得确证独立或项目方归属。判例见 casebook C-07。
 
 ### 3b. Solana 控盘团伙（庄）识别指纹（外部 FyedK/CLAW 协同集群分析，2026-07）
 

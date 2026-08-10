@@ -1,6 +1,6 @@
 # 完整版分析手册（/token-analyze，A0–A6）
 
-> v6.0.0 承接旧 SKILL.md 全部阶段细节（规则语义零变更）。本手册是各阶段执行细节的唯一权威源；判定类失败模式在 `casebook/`（只指不抄）；上下文与外包纪律在 `context-discipline.md`；链专属操作在各 data-pipeline 文档。
+> v6.0.0 承接旧 SKILL.md 全部阶段细节（规则语义零变更）。本手册是各阶段执行细节的唯一权威源；判定类失败模式在 `casebook/`（只指不抄）；上下文与外包纪律在 `context-discipline.md`；按需研究与异构复核在 `research-workflows.md`；链专属操作在各 data-pipeline 文档。
 
 ## 通用执行纪律（全阶段生效）
 
@@ -8,7 +8,19 @@
 - **关键字符串（地址/哈希）一律从落盘文件取**，从打印输出复制截断补全＝编造。
 - 脚本产出判定以代码写入语句＋文件时间戳为准，stdout 叙述不可信（environment.md「stdout 与实际行为不一致」条）。
 - 免费层限流当场翻车：限速常数实测收敛；退避＋断点续传标配；卡点超 1–2h 摆路径给用户选，不单通道死等。
-- 本机环境坑（SSL/字体/shell/沙箱杀进程等）开工扫一眼 `environment.md`。
+- 本机环境坑（SSL/字体/shell/沙箱杀进程等）开工 preflight 只扫 `environment.md` 坑速查（扫≠整读）；运行异常或涉及 OS/Python/字体/SSL/shell 时再深读对应节。
+
+## 入口分流（唯一权威）
+
+- 用户以自然语言要求**复核、审计或核验既有筹码报告/第三方报告/旧版分析**时，进入
+  `independent-audit-protocol.md` 净室复核轨；不新增 slash command。旧报告只拆成
+  `claim_registry.json` 待审命题，正文、实体表、标签、衍生 JSON 与图表均不作证据输入。
+- 净室轨与新分析共用 A0–A2 骨架：A0 核定标的、链范围、分母和记账模型，A1 独立采集原始数据
+  并冻结 `audit_input_manifest.json`，A2 完成四查对账。A3 起以净室协议重建实体、三账、历史序列和
+  命题裁决；A4 使用 `--workflow-type independent-audit`，A5 仅以
+  `build_html.py --mode analysis-audit` 编译并强制 `audit_release_gate --profile independent-audit`。
+- 不满足上述触发条件的新币/新分析走标准 A0–A5、`--workflow-type new-analysis` 与
+  `build_html.py --mode analysis-new`。两轨不得互相猜 profile 或共用被审报告的衍生结论。
 
 ## A0 标的画像与链路由
 
@@ -26,9 +38,10 @@
 
 | 标的形态 | 读哪份 pipeline / 跑哪套脚本 |
 |---|---|
-| 0x 地址，Ethereum/BSC/Base/Arbitrum | 进入 `data-pipeline-evm.md` 通道决策树＋ `scripts/evm/` |
+| 0x 地址，Ethereum/BSC/Base（正式） | 进入 `data-pipeline-evm.md` 通道决策树＋ `scripts/evm/` |
+| 0x 地址，Arbitrum（探索） | 可跑 EVM 采集、对账与身份快照；标签主表缺失，禁止 A4/A5 seal 与正式 analysis 编译 |
 | base58 mint | `data-pipeline-solana.md`（双 RPC 按方法路由见其分册 §0a） |
-| 0x 地址，Robinhood Chain（chainid 4663） | `data-pipeline-robinhood.md` ＋ `scripts/robinhood/` |
+| 0x 地址，Robinhood Chain（exploration only） | 可路由至 `data-pipeline-robinhood.md` ＋ `scripts/robinhood/`；禁止 A4/A5 seal 与正式 analysis 编译 |
 | 跨链部署（OFT/CCIP 等） | 先过多链硬关卡选定范围 → 各链按其 pipeline 采集＋跨链 mint/burn 配平；桥接分支链范式见 playbook §6a |
 | 全新链 | 新链 SOP：先实测数据面并实现采集 receipt、四查、标签 resolver 与 G8 chain 适配；这些正式门禁未齐前只能交付明确降级的探索结果，不得编译正式 analysis |
 
@@ -48,8 +61,10 @@
 
 1. **余额对账**：重建结果 vs 独立数据源精确对表（形态见各链 pipeline recon 分册）。
 2. **供给闭合**：总量恒等式/mint−burn 配平（内部自洽检验）。
-3. **供给真值闸（v6 新增，重放收尾必跑）**：`python3 scripts/lib/supply_truth_gate.py --chain <链> --token 0x…|--mint <mint> --replay-stats <replay_stats.json> --out supply_truth.json`——重放净供给对链上实查 totalSupply()，治静默改账盲区（老合约 migrate() 改账不发事件、全部内部自检 PASS 而余额虚高，见 casebook S-01）。**exit 0 PASS／exit 2 FAIL＝该币余额禁用重放结果改 Multicall3/RPC 实时直查（地址全集与转账历史仍可用重放，重放余额仅作 ≥阈值超集筛选）／exit 1 检测自身失败修通道重跑，禁当 PASS**。
-4. **时间抽查**：EVM 走分层计划制——先跑 `scripts/lib/anchor_plan.py` 出抽样计划（3 时段×3 余额档矩阵点＋四类强制覆盖点：全史最大单笔/最大单日净变动/数据源交界块/门槛±10% 边缘地址），再跑 `scripts/lib/time_spotcheck.py` 对独立第二源逐锚点核对（balance 型 archive balanceOf 直查＋tx 型收据五元组，产 `time_spotcheck.json`，verdict=PASS 才过；第二源分层选型与"全史双源重拉仅例外、做前 pilot 报 ETA"条款见 evm-recon §13——**默认锚点级即闭环，禁止把全史第二源重拉当标准动作**，APU 案 103 分钟冗余教训）；纯随机锚点容易全抽在平静期、高风险位置反而漏掉。Solana 案走 anchor_sampler.py。注意本查测的是数据完备性与第二源一致性，不替代供给闭合对 mint/burn 口径的把关。
+   分母定夺与重放收尾先过 `casebook/supply-accounting.md` 和
+   `casebook/supply-accounting-methods.md` 的触发现象与区分检验。
+3. **供给真值闸（v6 新增，重放收尾必跑）**：`python3 scripts/lib/supply_truth_gate.py --chain <链> --token 0x…|--mint <mint> --as-of-block <冻结块或slot> --replay-stats <replay_stats.json> --out supply_truth.json`——产 `supply-truth-receipt/v3` 并绑定 target。主规则按形态①对比 `mint−burn` 与链上 `totalSupply()`；EVM 主 FAIL 且拆分统计齐全时，形态②自动要求 `mint==totalSupply`、ZERO/dead 各自与冻结块 `balanceOf` 逐地址相等、两 sink 合计与 burn 闭合。这里只证明终态标量与 sink 逐地址归因闭合；混合形态、旧 stats 或任一观测失败均维持 fail-closed（见 casebook S-01/S-11）。**exit 0 PASS／exit 2 FAIL＝该币余额禁用重放结果改 Multicall3/RPC 实时直查（地址全集与转账历史仍可用重放，重放余额仅作 ≥阈值超集筛选）／exit 1 检测自身失败修通道重跑，禁当 PASS**。
+4. **时间抽查**：EVM 走分层计划制——先跑 `scripts/lib/anchor_plan.py` 出抽样计划，再跑 `scripts/lib/time_spotcheck.py --chain <链> --final-block <冻结块>` 对独立第二源逐锚点核对，产绑定 target 的 `time-spotcheck/v2`；纯随机锚点容易漏高风险位置。Solana 走 `anchor_sampler.py --as-of-slot <冻结slot> --receipt <回执>`，任一失败日 exit 2。第二源分层选型与全史重拉例外见 evm-recon §13。注意本查不替代供给闭合。
 
 对不上＝数据有洞＝回去补，不许"差不多就行"。
 
@@ -57,24 +72,61 @@
 
 **惯犯层盲化（A2–A3 全程）**：开工即 `export CHIP_BLIND_SERIAL=1`——标签查询的 serial-actor（惯犯）命中不进任何主输出、完整详情自动封存案目录 `sealed_serial_hits.jsonl`（label_lookup/analyze_holdings/replay_edges/build_evolution 四出口已接线；设施类标签照常输出）。动机：提前看到"这是 XX 案惯犯"会造成合并判定的先入之见；实体冻结后在 A4 揭盲作定向复核线索。
 
-方法学全部在 `analysis-playbook.md` 路由索引（先定位节再区间读分册），按序做：
+方法学全部在 `analysis-playbook.md` 路由索引（先定位节再区间读分册）。先完成机械准备：
+**地址身份标注**（官方标签→外部证据→行为特征三级兜底，playbook §3）→
+**金库与核心实体逐笔归因**（§4）；分段模式直接验收 −1 的同源产物。其后判断主序与
+`split-run.md` §3.2 一致，按下列顺序执行：
 
-1. **地址身份标注**（官方标签→外部证据→行为特征三级兜底，playbook §3）→ **金库与核心实体逐笔归因**（§4）→ **关联聚类**（多证据边＋中间节点三段式检验，§6；合并只认专属性证据——通用实现/通用服务共用不算，见 casebook E-01）。
-2. **判例库过闸（实体表冻结前必做）**：把 `casebook/cex-custody.md` 与 `casebook/entity-clustering.md` 全册触发现象过一遍，命中的逐条做"必做区分检验"。
-3. **实体身份硬闸（G8）**：先由生产 emitter 生成 `identity-holder-snapshot/v2`。EVM 五链（eth/base/bsc/arbitrum/robinhood）用 `identity_snapshot_receipt.py --chain ... --snapshot balances_final.json --source-receipt channels_preflight.json --replay-stats replay_stats.json`，Solana 用同工具 `--chain sol --snapshot holders_owners.json --source-receipt holders_snapshot_meta.json`。
+1. **判例库过闸（实体表冻结前必做）**：按 `casebook/README.md` 的使用纪律，把
+   `casebook/cex-custody.md`、`casebook/cex-custody-methods.md`、
+   `casebook/entity-clustering.md`、`casebook/entity-clustering-methods.md`
+   全册触发现象过一遍，命中的逐条做"必做区分检验"。
+2. **聚类合并裁决→临时实体**：多证据边＋中间节点三段式检验（§6）；合并只认专属性证据，
+   通用实现/通用服务共用不算（见 casebook E-01）。本步只落临时实体，不得提前冻结。
+3. **ET-2 无下限成员完整性扫描**：对每个临时实体做不设持仓下限的成员完整性扫描。
+   ET 是判级筛查层，不与 EF-1～EF-3 顶层冻结门禁混称。
+4. **EF-3A 全体持仓波次扫描／EF-3B 资金流异常扫描**：名册定稿前分别运行
+   `wave_scan.py` 与 `flow_anomaly_scan.py`，产 `wave_scan_report.json`（wave-scan/v3）和
+   `flow_anomaly_report.json`（flow-anomaly/v2）。分段执行时 EF-3A/B 跑批归 −1。
+5. **当前持仓分布初判**：仅在 EF-3A 和 EF-3B 之后运行
+   `holder_distribution_scan.py --stage initial`。产物是 `distribution_scan.json` 和
+   `charts/distribution_stage1.png`。JSON 进入 READY `handoff/v3`，verify 会重新派生五桶并重算；
+   工作图不进 seal，也不进报告。initial 只绑定快照、来源收据、排除派生链、算法和阈值，
+   不绑定 handoff manifest。
+6. **EF-3C 候选裁决与实体溯源**：两扫描器全部候选经 `adjudication_validator.py`
+   成员级裁决，再对临时实体表跑 `entity_source_trace.py`；新支路回裁决环，EF-3C 归 −2。
+7. **EF-1／EF-2 门禁**：临时实体成形后、freeze 前落
+   `economic_control_ledger.json` 与 `dormant_warehouse_audit.json`；EF-1 核清最终经济控制，
+   EF-2 完成历史静置仓反向扫描。任一未闭合不得 freeze。
+8. **实体冻结**：`handoff_manifest.py freeze` 固定校验 EF-3C-P1 严格 verify、P2 裁决名册绑定、
+   P3 溯源内容重查、P4 原始边/标签/分母/cutoff/block/manifest/data_map/算法绑定后真实重放；
+   存在 `distribution_adjudications.json` 时同时绑定当前分布裁决。
+9. **实体身份硬闸（G8）**：从冻结实体表生成 state 输入，再由生产 emitter 生成
+   `identity-holder-snapshot/v2`。EVM 五链（eth/base/bsc/arbitrum/robinhood）均可生成
+   身份快照 receipt；其中 arbitrum 与 robinhood 仅供探索档与存量数据重放，身份能力不构成正式发布资格。EVM 用
+   `identity_snapshot_receipt.py --chain ... --snapshot balances_final.json --source-receipt channels_preflight.json --replay-stats replay_stats.json`，
+   Solana 用同工具 `--chain sol --snapshot holders_owners.json --source-receipt holders_snapshot_meta.json`。
    EVM 的 `channels_preflight.json` 必须由当前 `channels_preflight.py` 生成并绑定已验 collector receipt/segment chain 与确切 CSV/Parquet `inputs`，`replay_stats.json` 必须由所选当前 replay 引擎生成并绑定同一 inputs、preflight 与 `balances_final.json`；Solana meta 必须由当前 `scan_token_accounts.py` 生成并绑定 supply receipt、每个 GPA raw/meta 与 account/owner 输出；emitter 和 G8 check 会用 scanner 的同一套 base64→
    owner/amount＋跨 scan pubkey 去重函数离线重解析全部 raw GPA，逐条比对 `holders_accounts.json`/`holders_owners.json`，并重读 supply receipt 的 amount 后闭合总量。emitter 和 G8 check 都重验上述实物链，孤立手写或只抄 producer 哈希一律拒绝。再跑 `entity_identity_gate.py --state ... --snapshot-receipt ... --total-supply-raw ...`，产 `identity_gate_v3`。
    存量没有 `producer/inputs/outputs` 的 EVM preflight/stats 必须重跑对应 replay 引擎（其会重跑 preflight 与完整重放），Solana 旧 meta 必须重跑 `scan_token_accounts.py` 重新扫描，然后再跑 emitter；不得手工补字段或用测试 fixture 迁移。闸覆盖每个实体地址＋≥1% 总供应单址；所有无标签实体成员一律 `BIG_UNLABELED`（Solana off-curve 则 `PDA_UNRESOLVED`）。
    CLI `--check` 与 build_html G8 共用 validator，重验全部来源绑定。
-4. **庄级实体识别、标签划分与类型三分类**：门槛数值与细则的唯一权威源＝playbook-entity-cluster-tiering §6a（本处不设数值副本防漂移，v6.4.2 定；结构要点：不分级；项目方无论份额；大庄/小庄按当前持仓、离场庄按峰值判；刷量地址单独标签；发射窗协同实体按普通门槛判级；合并口径含全部疑似关联地址）。
-5. **ET 双闸**（§6a）：ET-1＝其他大户线（当前 ≥0.1% 总供应或 ≥0.2% 流通）逐个过标签库/惯犯库/指纹/funder 批量排查，报警才人工深挖；ET-2＝每个已识别实体做不设持仓下限的成员完整性扫描。ET 是判级筛查层，不与 EF-1～EF-3 顶层冻结门禁混称。
-6. **已声明范围内的转账重放出各阵营占比演变序列**（阵营划分见 §6a）：分母＝当期净供应序列，**逐时点 assert Σ阵营＝100%±容差**，改过名册跑反向断言（casebook S-03）。随后执行 EF-3 覆盖发现闸（schema 权威定义 scan-schemas.md）：
-   - **EF-3A 全体持仓波次扫描**：名册定稿前必跑 `wave_scan.py`，产 `wave_scan_report.json`（wave-scan/v3）。
-   - **EF-3B 资金流异常扫描**：必跑 `flow_anomaly_scan.py`，产 `flow_anomaly_report.json`（flow-anomaly/v2）。
-   - **EF-3C 候选裁决与实体溯源**：两扫描器全部候选经 `adjudication_validator.py` 成员级裁决，再对临时实体表跑 `entity_source_trace.py`；新支路回裁决环。freeze 固定校验 EF-3C-P1 严格 verify、P2 裁决名册绑定、P3 溯源内容重查、P4 原始边/标签/分母/cutoff/block/manifest/data_map/算法绑定后真实重放。分段执行时 EF-3A/B 跑批归 −1，EF-3C 归 −2。
-   - **当前持仓分布初判**：EF-3A 和 EF-3B 之后运行 `holder_distribution_scan.py --stage initial`。产物是 `distribution_scan.json` 和 `charts/distribution_stage1.png`。JSON 进入 READY `handoff/v3`，verify 会重新派生五桶并重算；工作图不进 seal，也不进报告。initial 只绑定快照、来源收据、排除派生链、算法和阈值，不绑定 handoff manifest。
-   - **覆盖真空声明（用户 2026-08-01 确认接受；2026-08-02 flow v2 补缝后边界更新）**：v6.8.0 删除 camp_jump_audit.py（阵营序列骤变归因闸）后，系统不再有"从最终阵营序列反向发现未解释大变化"的输出侧报警器——wave/flow 覆盖不了标签重分类、分母变化、慢速迁移类异常；无法归因的骤变按判断层义务写进报告"局限性"，本轮不做替代闸（不承诺永久）。flow 分发点侧 v2 补缝后仍不可见（真空收窄未消除）：收方 20~99 且任何 14 日窗不达双线的慢速分发／<20 收方拆分／全史流出 <2%／一实体轮换多址各 <2%（entity-file 只抵消内部边不聚合外发）／多跳二级分发。仅存的输出侧轻量信号＝阵营重放产出时标记"单日阵营变动 ≥10pp"的日子，作为峰值逐笔触发日之一（无归因义务，见 tiering"峰值判级口径"条，2026-08-02）。
-7. **庄家当前状态评估**（§7）→ 质押/留存修正（§8）；建仓成本仅按需算（§6b 降为工具）；CEX 净流×价格作为演变解读工具按需用（防内部调仓伪影，§5）。
+10. **判级（含 ET-1）**：庄级实体识别、标签划分与类型三分类的门槛数值与细则唯一权威源＝
+    playbook-entity-cluster-tiering §6a（本处不设数值副本防漂移）。ET-1 对其他大户线逐个过
+    标签库/惯犯库/指纹/funder 批量排查，报警才人工深挖；项目方、大庄/小庄、离场庄、
+    刷量地址与发射窗协同实体均按该节判级，合并口径含全部疑似关联地址。
+11. **阵营演变重放**：按已冻结且过 G8/判级的名册，重放已声明范围内各阵营占比演变序列；
+    分母＝当期净供应序列，**逐时点 assert Σ阵营＝100%±容差**，改过名册跑反向断言
+    （casebook S-03）。不得在 EF-3 候选闭环前先跑本步。
+12. **A3 落盘**：生成 `findings.md`、`facts.json`、`analysis-state.json`、`identity_gate.json`；
+    完成庄家当前状态评估（§7）与质押/留存修正（§8）。建仓成本仅按需算（§6b 降为工具）；
+    CEX 净流×价格作为演变解读工具按需用（防内部调仓伪影，§5）。
+
+**覆盖真空声明（用户 2026-08-01 确认接受）**：
+
+- **当前事实**：系统没有从最终阵营序列反向发现并归因全部未解释大变化的硬闸。
+- **仍可能漏检**：标签重分类、分母变化、慢速迁移；收方 20～99 且任一 14 日窗不达双线、少于 20 收方拆分、全史流出低于 2%、一实体轮换多址各低于 2%（entity-file 只抵消内部边、不聚合外发）及多跳二级分发。
+- **现有轻量信号**：阵营重放标记单日阵营变动 ≥10pp 的日期，作为峰值逐笔触发日之一，但不承担归因义务。
+- **报告义务**：无法归因的骤变和上述覆盖边界必须写入报告局限性，不得把未报警表述为不存在异常。
 
 数据先验结构再分析（榜单唯一性断言、多档抽查），批量脚本先 2 个样本验证编解码再放量、绝不吞异常。**份额阈值一律整数运算**（`TOTAL//100`，浮点比较会把"恰好整数枚"大户判漏——那本身还是橱窗仓指纹，漏它双重损失；来源：meow 案 2026-07-15）。
 

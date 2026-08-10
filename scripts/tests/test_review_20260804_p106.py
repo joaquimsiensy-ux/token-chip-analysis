@@ -10,6 +10,7 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 GATE = HERE.parent / "report" / "a4_gate.py"
+from formal_ready_test_harness import run_formal_script
 
 
 def dump(path, obj):
@@ -17,9 +18,10 @@ def dump(path, obj):
 
 
 def fixture(root):
-    for name in ("findings.md", "analysis-state.json", "facts.json", "identity_gate.json",
-                 "raw1.json", "raw2.json"):
+    for name in ("findings.md", "facts.json", "raw1.json", "raw2.json"):
         (root / name).write_text("{}\n", encoding="utf-8")
+    dump(root / "analysis-state.json", {"chain": "bsc"})
+    dump(root / "identity_gate.json", {"chain": "bsc"})
     (root / "charts" / "final").mkdir(parents=True)
     a4 = {"schema": "a4-claims/v2", "claims": [
         {"id": "C1", "text": "Entity A controls 10%", "files": ["raw1.json"],
@@ -44,10 +46,10 @@ def fixture(root):
 
 
 def finalize(root):
-    return subprocess.run([sys.executable, str(GATE), "finalize", "--case-dir", str(root),
-                           "--verdicts-file", str(root / "verdicts.json"),
-                           "--seal-files", "findings.md,analysis-state.json,facts.json,identity_gate.json",
-                           "--workflow-type", "independent-audit"], capture_output=True, text=True)
+    return run_formal_script(GATE, ["finalize", "--case-dir", str(root),
+                                    "--verdicts-file", str(root / "verdicts.json"),
+                                    "--seal-files", "findings.md,analysis-state.json,facts.json,identity_gate.json",
+                                    "--workflow-type", "independent-audit"])
 
 
 def must_block(mutator):

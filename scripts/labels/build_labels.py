@@ -19,8 +19,11 @@ from collections import Counter
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from labels_resolver import norm_addr   # 全链统一地址规范化
+from risk_flags import canonical_risk_flags, merge_risk_flags, parse_risk_flags
 
 CHAIN_BY_ID = {'1': 'eth', '8453': 'base', '56': 'bsc'}
+# 这是标签资产构建面，不是 release-tier 或 formal-ready 链清单。
+BUILD_CHAINS = {'eth', 'bsc', 'base', 'sol', 'robinhood'}
 
 # 各上游源的快照时点（重建/换源时人工更新；写进 source_snapshot_at 列供时效审计）
 SOURCE_SNAPSHOT = {
@@ -137,8 +140,8 @@ def upsert(chain, address, name, category, tier, source, date='', evidence='', r
         return
     old['_raw'] |= raws
     # risk 信息只追加 flags，不动已有功能分类
-    if risk_flag and risk_flag not in old['risk_flags']:
-        old['risk_flags'] = (old['risk_flags'] + '|' + risk_flag).strip('|')
+    if risk_flag:
+        old['risk_flags'] = merge_risk_flags(old['risk_flags'], risk_flag)
     incoming_is_pure_risk = (tier == 'risk')
     if prio < old['_p']:
         if name: old['name'] = name
@@ -402,7 +405,7 @@ for _fn in _EXTRA_SOURCES + _ADDITION_FILES:
         continue
     n = 0
     for r in csv.DictReader(open(_fn)):
-        if r.get('chain') not in {'eth', 'bsc', 'base', 'sol', 'robinhood'}:
+        if r.get('chain') not in BUILD_CHAINS:
             continue
         _rawl = [x for x in (r.get('raw_labels') or '').split('|') if x]
         upsert(r['chain'], r['address'], r['name'], r['category'], r['tier'],
@@ -565,10 +568,13 @@ for (chain, addr), row in book.items():
         if row['risk_flags']:
             row['risk_flags'] = ''; n_strip += 1
     elif row['tier'] == 'exclude' and row['risk_flags']:
-        kept = [f for f in row['risk_flags'].split('|') if f and f not in BEHAVIORAL_FLAGS]
-        if len(kept) != len([f for f in row['risk_flags'].split('|') if f]):
+        parsed = parse_risk_flags(row['risk_flags'])
+        kept = [f for f in parsed if f not in BEHAVIORAL_FLAGS]
+        if len(kept) != len(parsed):
             n_strip += 1
-        row['risk_flags'] = '|'.join(kept)
+        row['risk_flags'] = canonical_risk_flags('|'.join(kept))
+    else:
+        row['risk_flags'] = canonical_risk_flags(row['risk_flags'])
     if (row['category'] not in ('token-contract', 'kol', 'smart-money', 'tornado-user', 'scam-candidate')
             and LOCKER_NAME_RE.search(row['name'] or '')
             and not TOKEN_NAME_RE.search(row['name'] or '')):

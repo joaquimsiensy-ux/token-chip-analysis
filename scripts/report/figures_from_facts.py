@@ -10,7 +10,7 @@
 
   fig1   图 1 从 analysis-state.json 的 camp_share_series 直出（消灭手工装配）：
          python3 figures_from_facts.py fig1 --state analysis-state.json \
-             --token QUQ --out charts/fig1.png [--price-csv price.csv]
+             --token QUQ --out charts/final/fig1.png [--price-csv price.csv]
          price csv 列自动探测（date/ts/time/day + close/price/usd），也可用
          --price-cols date,close 显式指定。
 

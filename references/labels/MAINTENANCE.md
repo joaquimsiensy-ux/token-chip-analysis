@@ -2,21 +2,13 @@
 
 > **本文件只在维护标签库时读**（重建/扩容/审计/发布）；分析时只读 `README.md`（使用篇）。
 
-## 版本与变更史（labels 数据版本独立于 skill 版本，见 retrospective「版本号约定」）
-
-| 表 | v4.2 变更摘要（2026-07-17） |
-|---|---|
-| labels-eth | 17 条 Alchemy/Candide/Stackup bundler+paymaster 从 identity 修正为 exclude（长尾错标休眠炸弹）+EntryPoint v0.6+Relay 10 solver+Across/deBridge/LiFi/Socket 合约层 |
-| labels-bsc | +Safe 官方部署家族 24（getCode 亲验）+Relay 4 solver+deBridge DLN 5+LiFi 3+Socket 2+EntryPoint v0.6；DxLock status 错位行源头修复 |
-| labels-base | +活跃 bundler 24+paymaster 12（HyperSync 7 日 33 万 UserOp 链上聚合——此前 AA 层=0 是 gas 溯源假金主最大盲区）+Safe 家族 24+Relay 21 solver+Seaport/Banana Gun Router 错标修正 |
-| labels-sol | +疑似 Upbit 热钱包 2（suspected-cex 禁边不剔仓）+Upbit 被黑攻击者 3（heist）；"疑似 OKX"改 suspected-cex |
-| labels-robinhood | +Safe 家族 24+Relay solver 第 5 个+EntryPoint v0.6/v0.7；TRASH 案 serial+21 等未归档增量固化进 additions/ |
+labels 数据版本独立于 skill 版本；已发布版本与逐表变更见 CHANGELOG。
 
 **发布库维护纪律（v4.2+ 稳定化定，2026-07-18）**：
 - **curation 层（SRC_PRIORITY = -1，高于 manual/addressbook）**：`additions/curation_overrides_*.csv` 的 source 一律写 `curation`。根因：add_labels.py 对同级采用"新条目覆盖"、build_labels.py 采用"先到保留"——两语义不一致曾致 12 行 v4.2 精修（Relay solver 官方 API 亲验等）在全量重建时被 gen_manual 泛化行回退（列级 diff 实测抓出，已救回 `curation_overrides_20260718.csv`）。**今后凡"直改发布库"级别的精修，必须同步固化为 curation override 文件**，否则下次重建即回退。
 - **高优先级源覆盖语义**：upsert 的 evidence/verified_at/status 三列随优先级覆盖（有值才覆盖）——curation/manual 层的权威证据出处才能真正生效。
-- **benchmark fail-fast**：`--labels-dir` 找不到任何 labels-*.csv 时 FAIL 退出（此前路径错→空表→"错误 exclude=0"恒真假 PASS，预检门禁可被 cwd 错误静默绕过；README 预检命令须在 `scripts/labels/` 下运行）。
-- **roundtrip_check.py 进发布流程**（见下方重建步骤）。
+- **benchmark fail-fast**：默认发布库与 `--labels-dir` 预检都要求五张登记链主表齐全且非空；缺表或只有表头均 exit 2。这是标签资产完整性，不是 release tier；Robinhood 仍为 exploration。
+- **roundtrip_check.py 进发布流程**（见下方重建步骤）：行级收敛门禁比较七个决策字段（以 `roundtrip_check.py::DECISION_FIELDS` 为准），缺表即 exit 2。
 
 ## 数据源清单
 
@@ -59,10 +51,10 @@
 cd ~/.claude/skills/token-chip-analysis/scripts/labels
 ( cd sources && python3 ../gen_manual_from_addressbook.py && python3 ../build_labels.py )
 #    ↑ 构建末尾自动跑 validate_labels + check_manual_sync 双校验，任一 FAIL 拒绝发布
-python3 roundtrip_check.py                       # 发布版 ⊆ 新构建（行级收敛门禁，稳定化新增）
-python3 benchmark_labels.py --labels-dir=sources/out   # 发布前预检（fail-fast 已装）
+python3 roundtrip_check.py                       # 发布版逐键逐行收敛；任一正式链缺表即 exit 2
+python3 benchmark_labels.py --labels-dir=sources/out   # 发布前预检（五表齐全且非空）
 cp sources/out/labels-*.csv ../../references/labels/   # 发布
-python3 benchmark_labels.py --save               # 回归 PASS 才算完（七链强制出现，缺链即 FAIL）
+python3 benchmark_labels.py --save               # 回归 PASS 才算完；五条登记链金标强制出现（校验对象是 goldset，缺链即 FAIL）；标签表口径＝五张主表＋两张 privacy 子表，不用于推导 formal-ready
 python3 ../tests/labels_manifest.py --write      # 发布落印（校验和 manifest；add_labels 增量入库后同样要 --write）
 ```
 
@@ -86,10 +78,11 @@ ETH_RPC="https://ethereum-rpc.publicnode.com" python3 ../probe_codetype.py scams
 **增量入库（免重建）与惯犯层刷新**：
 
 ```bash
-cd sources && python3 ../add_labels.py my_additions.csv        # 合并进现库 + 自动 validate（FAIL 还原）
+cd sources && python3 ../add_labels.py my_additions.csv        # 合并进现库 + 三闸事务（FAIL 还原）
 python3 ../accumulate_offenders.py && cd sources && python3 ../add_labels.py serial_actors.csv
 ```
 - add_labels 成功后补录 CSV 自动归档进 additions/（round-trip 保证）；**人工精修（改 name/evidence/category 级别）不要走 add_labels 常规层——写成 curation override 文件**（source=curation），否则重建时会被 manual 同级"先到保留"规则回退。
+- add_labels 在改发布表前先把补录源复制到 additions 临时 staging；随后依次跑 **validate + benchmark + manifest 三闸**，三闸与归档独占发布全部成功后 staging 才转正，之后才删除表/manifest 备份。任一失败恢复原表与旧 manifest，并清理 staging；重名只允许追加时分秒一次，二次重名直接拒绝，绝不覆盖既有归档。
 
 **Dune 月度刷新**（credits 消耗大，按需执行）：①网页登录 dune.com 跑 query 7999252（免费层 API 不能 execute）→ ②`python3 dune_fetch_results.py ~/.config/dune/api-key 7999252 dune_labels_v2.csv` → ③tornado 版按 api-keys.md 第 14 节「Dune」 SQL 临时替换再跑（29 万行 ≈500+ credits，非必要不刷）→ ④重跑重建流程。坑：labels.addresses 语义键是 model_name 不是 category；SOL 地址 varbinary hex 须转 base58（构建器内置）。**B8 审计结论（2026-07-17）**：BSC tornado-user 来自 spellbook `tornado_cash_bnb` 解码事件模型（四面额合约 join transactions 取 from），链上抽验 9/10 命中——数据为真，语义正确；用户经 proxy `0x0d5550d5…` 调用（查交互勿直接 filter to=面额合约）。
 
@@ -107,12 +100,7 @@ python3 ../accumulate_offenders.py && cd sources && python3 ../add_labels.py ser
 - **校准基线**（2026-07-17，bibi BSC 20.5 万转账 + TRASH Robinhood 9.9 万转账）：47 个 appendix 实体地址误伤 0（连候选提示都 0）；已知设施交叉确认 10；净增益 8 个库外真漏斗。**阈值任何改动必须重跑两案校准**。
 - 扩容闭环：FUNNEL 命中且静态库无记录 → 自动进 miss 队列（最高优先级回填候选）→ 人工判明身份 → add_labels 回填。行为发现→人工确认→静态库成长，取代"审计轮脑补扩容"。
 
-## 扩容路线（△=codex 建议；✅=已落地）
-
-- ✅ v4 P0/P1/P2 全批（决策语义三维/resolver 主流程/金标扩衡/Base 定向补录/miss 队列/serial 层/codehash 指纹/OFAC 分流/时态字段/BSC tornado 审计/privacy 拆分/manual 双真源校验）
-- ✅ v4.1（覆盖面专项，codex 第三轮）：spellbook 三链投影分流（删 531）；SOL 垃圾清洗 55+base58 硬校验；BSC 桥 30/router 18/locker 17/four.meme 11；SOL 四所 23+Jupiter Lock/Bonfida/Boop；GoPlus 通道；Robinhood verified-contracts 脚本
-- ✅ v4.2（闭环专项，codex 第四轮）：round-trip 三断环；ETH AA 17 条错标修正+归一规则；validate 不变量 11-14；benchmark 五链强制+预检；gatekeeper（两案校准误伤 0）+cluster 接入；Safe 家族 72；Relay 22 solver+聚合桥合约层 95；Base AA 36；EntryPoint 四链；SOL 韩所疑似+heist
-- ✅ v4.2+ 稳定化（2026-07-18）：curation 层最高优先级+12 行精修救回；upsert 证据列覆盖语义；benchmark fail-fast；roundtrip_check 发布门禁；manifest 校验和（scripts/tests/）
+## 开放扩容路线
 - **P1 余款** Base bundler/paymaster 快照定期刷新（HyperSync 聚合法已沉淀；2026-07-17 快照，≥1000 笔/≥900 UserOp 阈值，bundler EOA 会轮换）；韩所 SOL 正式标签持续物色（当前守门员兜底）。
 - **P1 余款** △ 协议官方 deployment registry 持续扩容（Safe deployments / Hyperlane 合约页——机制已建：official_registry.csv + add_labels.py，逐案补）。
 - **P1 余款** Robinhood 工厂事件回放（PoolCreated/ProxyCreation）+ verified-contracts 候选池首轮人工审（`pull_verified_contracts.py` 定期增量拉，同名家族=克隆工厂线索，**只产候选不自动入库**）。

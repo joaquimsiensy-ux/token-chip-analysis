@@ -4,15 +4,15 @@
 
 ## 本册路由
 
-- [§6–§10 脚本与基础重建](#6-脚本资产readme-另存-3-项低优先待建项两批清单勿混)：资产、验证、实测补充、锚点与快照。
+- [§6–§10 脚本与基础重建](#6-脚本资产)：资产、验证、实测补充、锚点与快照。
 - [§11 长币龄混合重建](#11-长币龄混合重建--高密度期定向采集uselesssolana-2026-07-21-实战)与[§12 销户覆盖](#12-销户账户覆盖审计sqd-边集对账盲区加固2026-07-21)。
 - [§13 SQD 加速工程](#13-solana-采集加速工程2026-07-21cx-交叉复核定案后实施)：stream、全程采集、解码与 HyperSync 边界。
 - [§14 日级余额快照](#14-日级余额快照重建法长币龄演变默认方法goat-2026-07-26-翻案驱动)。
 - [§15 pump.fun 长内盘](#15-pumpfun-长内盘期全量重建签名史双索引法troll-2026-07-29-实战)。
 
-## 6. 脚本资产（README 另存 3 项低优先待建项，两批清单勿混）
+## 6. 脚本资产
 
-核心脚本已收编（`scan_token_accounts.py`/`fast_probe_tops.py`/`fetch_sqd_transfers[_v2].py`/`decode_txs_v2.py` 等；"classify_top_holders"未独立成脚本，其功能由 scan_token_accounts 的 owner 聚合＋fast_probe_tops 画像覆盖；现役全清单见 `scripts/solana/README.md`）；getSignaturesForAddress 按 token account 索引、tokenBalances owner 映射等实现坑的完整版在 §3a（scan 分册）。
+核心脚本已收编（`scan_token_accounts.py`/`fast_probe_tops.py`/`fetch_sqd_transfers_v2.py`/`decode_txs_v2.py` 等；"classify_top_holders"未独立成脚本，其功能由 scan_token_accounts 的 owner 聚合＋fast_probe_tops 画像覆盖；现役薄索引见 `scripts/solana/README.md`）；getSignaturesForAddress 按 token account 索引、tokenBalances owner 映射等实现坑的完整版在 §3a（scan 分册）。
 
 - 工程纪律（保留，来自前次报告硬伤）：同一地址在正文/附录多处引用时，必须由脚本从落盘数据统一生成，交付前做全文地址一致性自查；关键字符串（地址/哈希）一律取自落盘文件，禁止从终端打印输出复制补全。
 
@@ -31,13 +31,13 @@
 
 以下通道已在真实分析中跑通，标注 [实测·他场景]，直接可用：
 
-1. **全量转账＝SQD portal**（portal.sqd.dev，免 key 免代理）——采集器现役 **v2**（§13b；v1 断点/输出同构自动迁移）。转账边=同 tx 内 owner 级净变动贪心配对，from/to 为 ZERO 哨兵即铸造/销毁；断点续拉增量无缝无重叠（meta next_slot"连续完成前缀"天然防 off-by-one）。
+1. **全量转账＝SQD portal**（portal.sqd.dev，免 key 免代理）——采集器现役 **v2**（§13b；缓存使用 sha256 路径与 `sqd-solana-cache/v3` meta；旧 v1 缓存不得直接续跑，恢复须先写一次性 importer）。转账边=同 tx 内 owner 级净变动贪心配对，from/to 为 ZERO 哨兵即铸造/销毁；断点续拉增量无缝无重叠（meta 连续完成前缀天然防 off-by-one）。
    **吞吐与架构选择**：v2 稳态约 255 倍实时（§13a 传输层翻案了旧的 1.5-4x 数字）——2-6 个月币龄全程重放数小时级；§11 混合重建（发射窗精确+核心实体流水+CPMM 重建+快照封口）降级为超长币龄（1 年+）专用。
 2. **发射期精确定价**：GeckoTerminal 分钟 K `/ohlcv/minute?aggregate=1&limit=1000&before_timestamp=`（池创建起就有）；小时 K 翻页可拿全历史。pump.fun"发射即迁移"币无内盘 K 线，内盘成本用 GMGN dev avg_cost 近似。
 3. **资金同源（gas 溯源）**：公共 RPC `getSignaturesForAddress`（翻到最老）+ `getTransaction(jsonParsed)` 找首笔 system transfer 入金 source；0.25s 间隔+走 clash 代理。识别马甲网络最有效的一招（母钱包收敛即实锤）。
 4. **双跳换仓溯源**：老仓→一次性中转→新址的双跳必须重放溯源，禁止把前端 `transfer_in` 当独立新仓。（判例：casebook/entity-clustering.md E-04）
 5. **铸造受益人全清单**：创建 tx 的全部铸造受益地址都作为 creator 系起点。（判例：casebook/entity-clustering.md E-12）
-6. **bonding curve 成本校准**：关键笔用链上余额真值校准，批量值报告修正区间，并剔除毕业迁移笔。（判例：casebook/supply-accounting.md S-05）
+6. **bonding curve 成本校准**：枚数按 token 守恒重建；标准虚拟储备参数算出的 SOL 成本可能系统性低估约 10%，关键笔必须用 `getTransaction` 实付真值校准，批量值报告修正区间，并剔除毕业迁移笔。（判例：casebook/supply-accounting.md S-05）
 
 （CLAW，07-12，经 onchain-data-accounts 记忆转录；第 5/6 条为 PUB 07-14 补充）
 
@@ -71,8 +71,8 @@
 §8"全程 SQD 重放不现实"与 §9 锚点法的合体升级——14 个月+币龄、13.5 万持仓账户量级标的实战定型：
 
 1. **混合重建演变架构（长币龄标准件，两端精确、中段插值）**：①发射窗（发射日起 24-48h）用 `window_fetch.py` 拉全量边（精确——狙击/bundle 分析必须逐笔）②核心实体（庄/项目方/大户）ATA 级全流水（`whale_deep.py`，精确）③中段日级锚点前向填充（`anchor_sampler.py`）④**当前快照封口 + 末日快照注入**——把 data_cutoff 日全量快照作为最后一个锚点注入序列，修"清仓发生在锚点观测窗外则旧值永久残留"的系统性尾部误差。图 1/图 2 由 ①②③④ 合成，散户=残差；精度声明照 §9 写进局限性（USELESS，07-21）。专案脚本不可直接复用：实体分组、发射日、价格文件名按案硬编码，新案仅参考算法结构重写；通用化抽象列遗留。
-2. **SQD 高密度期定向拉取用小段+并发（`window_fetch.py`）**：密集期（发射窗/事件日）正解=**2000 slot 小段 × 8 并发**，失败段落 `.gaps.json`（必须为空才算完整）。反面教训：fetch_sqd_transfers 的 50K 大段在发射期反复 curl 超时截断重试。**gap 段补拉合并纪律（GOAT 实测坑）**：标 gap 的段**仍会写出部分数据**——补拉后与原文件 cat 追加合并=重复边；重复合并的快查指纹=**重放负余额账户数暴增**。正解：gap 段用补拉版**整段替换**（按 slot 区间切除旧段再并入）或合并后全字段 dedup；重放见两位数以上负余额账户，先查重复合并再查采集通道。另：发射窗峰值榜必剔 pump.fun 官方毕业迁移钱包（address-book Solana 平台表，20.7% 级协议常数过手），否则误判狙击集团（GOAT，07-22）。
-3. **日级锚点采样（`anchor_sampler.py`）与它的观测边界（★阴性依据禁用）**：从新到旧滚动校准 slot↔ts（分段线性外推、漂移 >4h 自动重估，435 天约 5s/天）。**⚠观测窗真相**：名义 1h 窗（9000 slot）在高活跃期因响应截断实际仅 ~3.6 分钟，且 SQD tokenBalances 只记**发生变动**的账户——静止大户被系统性漏观测。
+2. **SQD 高密度期定向拉取用小段+并发（`window_fetch.py`）**：密集期正解=**2000 slot 小段 × 8 并发**并强制 `--receipt`。gaps 非空时只留 `.partial`＋覆盖回执并 exit 2，正式文件名不存在；gaps 为空才原子发布。旧 gap 部分文件不得 cat 追加，补拉后整段替换或全字段 dedup；重放负余额暴增先查重复合并。发射窗峰值榜仍须剔除 pump.fun 官方毕业迁移钱包。
+3. **日级锚点采样（`anchor_sampler.py`）与它的观测边界（★阴性依据禁用）**：正式运行强制 `--as-of-slot` 与 `--receipt`，receipt 绑定 mint/日期范围/覆盖；任一天 fetch_fail/no_converge 完整写结果后 exit 2。从新到旧滚动校准 slot↔ts；名义 1h 窗在高活跃期可能仅数分钟，且只记发生变动账户，静止大户仍系统性漏观测。
    因此**锚点单独不可作任何"某地址没动/没持仓"的阴性依据**，阴性结论必须快照或全流水兜底；锚点只用于正向变动观测与序列插值（对抗复核实测抓出，来源：USELESS(Solana) 分析，2026-07-21）。
    **【候选·单案】锚点复用两扫描（混合重建建议必做步，零边际成本）**：锚点序列采完后顺手做 ①**全 owner 峰值普查**（阈值 ≥1.5% 总供应）——产出"历史大仓名单"（含已清仓离场者），补当前快照视角的系统性盲区（快照只见在场者）；②**全史前三涨跌日×锚点对照**——最大涨/跌日与该日锚点观测交叉，抓事件日实体动作指纹（如拉高日金库调拨）。
 4. **publicnode 大扫描死角补充（§0a/§1 的边界）**：13.5 万 token account 量级的 mint，publicnode getProgramAccounts 恒 504（dataSlice 也救不回）；**api.mainnet-beta 做 SPL 大扫描会静默返回空结果**（不报错——危险，靠对账关卡拦住，勿当"该 mint 无账户"）。
@@ -110,7 +110,7 @@
 
 ### 13b. 全程采集器 v2（`fetch_sqd_transfers_v2.py`，全程重放主力）
 
-三刀：requests.Session（连接复用+自动 gzip）/ 自适应区域并发（全局段队列动态领取,区域大小按耗时自动伸缩 1 万-100 万 slot,发射窗自动缩、死亡期自动放大）/ 全局令牌桶（默认 4 rps 防雪崩护栏——高密度段 1.6 会顶死请求数,实测教训）。失败区域重试 2 轮后进 gaps 继续别的段（修 v1"第一个未完段之后整体丢弃"缺陷）,gaps 非空退出码 2、清零前不得进重放。输出/断点与 v1 完全同构（v1 meta 自动迁移）。
+三刀：requests.Session（连接复用+自动 gzip）/ 自适应区域并发（全局段队列动态领取,区域大小按耗时自动伸缩 1 万-100 万 slot,发射窗自动缩、死亡期自动放大）/ 全局令牌桶（默认 4 rps 防雪崩护栏——高密度段 1.6 会顶死请求数,实测教训）。失败区域重试 2 轮后进 gaps 继续别的段（修旧采集器"第一个未完段之后整体丢弃"缺陷）,gaps 非空退出码 2、清零前不得进重放。现役缓存仅接受绑定原始 mint/endpoint/采集上界的 `sqd-solana-cache/v3` identity；旧 v1 缓存不自动迁移。
 普通密度币自适应放大区域后更快——**2-6 个月币龄全程重放=数小时级,夜间挂机稳稳可行**;§11 混合重建降级为超长币龄（1 年+）专用。
 
 #### SQD stream 响应语义（2026-07-26 实测定案,判完备性的地基）
@@ -145,7 +145,7 @@
 
 ### 13c. 溯源解码 v2（`decode_txs_v2.py`,三板斧落地）
 
-JSON-RPC batch + 跨地址共享 sig 缓存（`--cache-dir`,按 sig 前 2 字符 256 片）+ `--rpc` 端点可换。**mainnet-beta 实测硬墙**：batch 内子请求被**按方法逐个限流**（"Too many requests for a specific RPC call"）——batch 默认 8,429 子请求自动收回重试，绝不能记 decode_fail。公共节点净速度收益约 1.5 倍；**真价值=①缓存**（关联地址重复交易第二址起零请求）**②Helius 就位即切**。**Helius 已就位**：端点国内直连免代理；**实测免费层不支持 batch**（403 码 -32403,单元素数组同拒），账号级上限 **10 RPS**——正解=`--rpc https://mainnet.helius-rpc.com/?api-key=<key> --workers 6 --interval 0.12` 单笔并发贴近上限；archival 10 credits/笔,免费月额≈10 万笔。更高套餐能力未经本管线实测，不得把 50 RPS 或可 batch 当通用口径。
+JSON-RPC batch + 跨地址共享 sig 缓存（`--cache-dir`,按 sig 前 2 字符 256 片）+ `--rpc` 端点可换。**mainnet-beta 实测硬墙**：batch 内子请求被**按方法逐个限流**（"Too many requests for a specific RPC call"）——batch 默认 8,429 子请求自动收回重试，绝不能记 decode_fail。公共节点净速度收益约 1.5 倍；**真价值=①缓存**（关联地址重复交易第二址起零请求）**②Helius key 存在即切**。**运行前检测 `~/.config/helius/api-key`**：存在则按下列 Helius 参数跑，缺失则降级公共 RPC（key 注册沿革见 CHANGELOG）；端点国内直连免代理；**实测免费层不支持 batch**（403 码 -32403,单元素数组同拒），账号级上限 **10 RPS**——正解=`--rpc https://mainnet.helius-rpc.com/?api-key=<key> --workers 6 --interval 0.12` 单笔并发贴近上限；archival 10 credits/笔,免费月额≈10 万笔。更高套餐能力未经本管线实测，不得把 50 RPS 或可 batch 当通用口径。
 **⚠ urllib 逐笔新建连接对 Helius 会 sock_connect 挂死**：decode_txs_v2 在部分本机网络环境下逐笔 urlopen 挂起（即使 `ProxyHandler({})` 强制直连也不稳）——症状是单笔卡住无超时推进。绕行=手写 `http.client.HTTPSConnection` **keep-alive 长连接**版；根治通道=environment.md B5 的 `scripts/lib/net.py`（httpx 连接池），新写解码脚本直接用它，别再走 urllib。
 
 ### 13d. Solana HyperSync 通道（**已禁用**——完备性验收不通过，GA 后重验；全量细节见 git 3.18.x 条目）
@@ -154,7 +154,7 @@ JSON-RPC batch + 跨地址共享 sig 缓存（`--cache-dir`,按 sig 前 2 字符
 - **GA 后重验路径**：对账脚本 `scripts/solana/hypersync_recon.py`（三区各跑一轮+Helius 终审定责）；mint 过滤隐藏能力、跨源对账三工程坑、双引擎吞吐 POC 细节从 git 考古（3.18.x）。
 - **⚠混合分段提议已否决，勿再重议（07-22 @CX）**：滚动窗口是覆盖范围不是准确范围；洞静默→证明某段完整的唯一办法=SQD 重拉对账，HS 等于白跑；供给对账兜不住成对缺行（借贷双缺仍守恒），完备性必须落到边集合一致；SQD 全量恒为关键路径，双引擎不缩短认证耗时。
 
-**遗留后续项**：①~~v2 整合 HyperSync 第二引擎~~ ②~~完备性验收~~（均 3.18.0 完成，验收不通过→禁用待 GA 重验）③Helius 注册（已就位,见 §13c）④SQD key 专属端点补录 ⑤实时 mint 档案（方案 4,用户暂缓）。
+**遗留后续项**：①~~v2 整合 HyperSync 第二引擎~~ ②~~完备性验收~~（均 3.18.0 完成，验收不通过→禁用待 GA 重验）③Helius key 运行时检测（见 §13c）④SQD key 专属端点补录 ⑤实时 mint 档案（方案 4,用户暂缓）。
 
 （Solana 采集加速工程,@CX 三轮交叉复核 + 本机四组实测,2026-07-21;完备性验收与双引擎整合,2026-07-22）
 

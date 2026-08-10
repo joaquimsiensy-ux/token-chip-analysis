@@ -75,6 +75,12 @@ def main():
     assert row["pool_balance"] == "1000000000.000000008"
 
     with tempfile.TemporaryDirectory() as tmp:
+        secret_rpc = "https://mainnet.infura.io/v3/FAKEKEY123"
+        safe_identity = decode_v2.output_identity(mint, pool, secret_rpc)
+        assert "FAKEKEY123" not in json.dumps(safe_identity), safe_identity
+        secret_cache = SigCache(os.path.join(tmp, "secret-cache"), mint, pool, secret_rpc)
+        assert "FAKEKEY123" not in (secret_cache.root / "meta.json").read_text()
+
         c1 = SigCache(tmp, "MintA", "Pool", "rpc")
         c1.put({"sig": "sameSig", "mint": "MintA", "deltas_raw": {"a": 1}})
         assert SigCache(tmp, "MintA", "Pool", "rpc").get("sameSig") is not None

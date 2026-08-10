@@ -19,7 +19,7 @@ sys.path.insert(0, str(HERE))
 
 from fetch_hypersync_v2 import QUERY_SCHEMA, find_resume_block
 from channels_preflight import _csv_stats, _file_fingerprints, _v2_stats
-from fetch_sqd_transfers_v2 import cache_identity_matches, cache_paths
+from fetch_sqd_transfers_v2 import cache_identity, cache_identity_matches, cache_paths
 from replay_edges import cmd_evolution, cmd_reconcile
 from evm_channel_fixture import write_csv_channel_receipt
 
@@ -212,8 +212,7 @@ def test_h04(tmp):
 
 def test_h05():
     assert cache_paths("AbC")[0] != cache_paths("aBc")[0]
-    meta = {"schema": "sqd-solana-cache/v3", "mint": "AbC", "endpoint": "ep",
-            "collector": "fetch_sqd_transfers_v2.py/v3", "collection_upper_slot": 99}
+    meta = {**cache_identity("AbC", "ep"), "collection_upper_slot": 99}
     assert cache_identity_matches(meta, "AbC", "ep")
     assert not cache_identity_matches(meta, "aBc", "ep")
     assert not cache_identity_matches({**meta, "endpoint": "other"}, "AbC", "ep")

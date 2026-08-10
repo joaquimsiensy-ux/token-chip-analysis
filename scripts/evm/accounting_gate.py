@@ -49,6 +49,11 @@ from pathlib import Path
 
 import requests
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
+from endpoint_identity import public_endpoint
+from chain_registry import evm_chain_id_for, formal_evm_chains
+from net import RpcAttestationError, attested_rpc_pool
+
 TRANSFER = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
 ZERO32 = "0x" + "0" * 64
 ZERO_ADDR = "0x" + "0" * 40
@@ -76,7 +81,6 @@ DEFAULT_HS = {
     "arbitrum": "https://arbitrum.hypersync.xyz",
     "polygon": "https://polygon.hypersync.xyz",
 }
-CHAIN_IDS = {"eth": 1, "bsc": 56, "base": 8453, "arbitrum": 42161, "polygon": 137}
 # 权限面扫描（Sourcify ABI 函数名，小写含匹配；只记录不定级）
 PERM_PATTERNS = ["mint", "pause", "blacklist", "blocklist", "freeze", "setfee", "settax",
                  "setmax", "excludefrom", "upgradeto", "burnfrom", "rescue", "setrate",
@@ -88,40 +92,29 @@ def now_iso():
 
 
 class Rpc:
-    """顺序小请求 JSON-RPC 封装（gate 全程 <100 调用，不走 lib/net 批量层——
-    需要 per-endpoint 代理且调用有先后依赖）。"""
+    """Accounting adapter over the sole chain-attested shared RPC session."""
 
-    def __init__(self, url, proxy=None, interval=0.12):
+    def __init__(self, url, chain, proxy=None, interval=0.12):
         self.url, self.interval = url, interval
-        self.sess = requests.Session()
-        self.proxies = {"http": proxy, "https": proxy} if proxy else None
+        self.pool = attested_rpc_pool(
+            url, chain, formal=True, proxy=proxy, rps=max(1.0, 1.0 / interval),
+            concurrency=1, attempts=5)
         self.n_calls = 0
 
     def call(self, method, params, attempts=5, quiet_errors=()):
-        last = None
-        for att in range(attempts):
-            self.n_calls += 1
-            try:
-                r = self.sess.post(self.url, json={"jsonrpc": "2.0", "id": 1,
-                                                   "method": method, "params": params},
-                                   timeout=30, proxies=self.proxies)
-                j = r.json()
-            except Exception as e:  # noqa: BLE001
-                last = f"{type(e).__name__}: {str(e)[:100]}"
-                time.sleep(1.5 * (att + 1))
-                continue
-            if "error" in j:
-                msg = str(j["error"].get("message", ""))
-                code = j["error"].get("code")
-                # 不可重试的语义错误（state 出窗/方法不存在）直接抛给调用方判断
-                if any(s in msg for s in quiet_errors) or code in (-32601, -32602):
-                    raise RpcSemanticError(msg)
-                last = f"rpc {code}: {msg[:100]}"
-                time.sleep(1.5 * (att + 1))
-                continue
-            time.sleep(self.interval)
-            return j.get("result")
-        raise RpcNetError(last or "重试耗尽")
+        try:
+            result = self.pool.call(method, params)
+        except RpcAttestationError as exc:
+            raise RpcNetError(str(exc)) from exc
+        self.n_calls += 1
+        if not result.get("ok"):
+            message = str(result.get("error") or "RPC call failed")
+            if any(item in message for item in quiet_errors) \
+                    or "rpc -32601:" in message or "rpc -32602:" in message:
+                raise RpcSemanticError(message)
+            raise RpcNetError(message)
+        time.sleep(self.interval)
+        return result.get("result")
 
 
 class RpcNetError(Exception):
@@ -360,13 +353,13 @@ def check_rebase(rpc, hs_url, bearer, token, tip, window, logs_in_window):
     return out
 
 
-def check_permissions(chain, token):
+def check_permissions(chain, token, sourcify_url="https://sourcify.dev/server"):
     """Sourcify v2 ABI 权限面扫描——只记录不定级；404=未验证不算失败。"""
-    cid = CHAIN_IDS.get(chain)
+    cid = evm_chain_id_for(chain)
     if not cid:
         return {"available": False, "note": "Sourcify 不支持该链"}
     try:
-        r = requests.get(f"https://sourcify.dev/server/v2/contract/{cid}/{token}",
+        r = requests.get(f"{sourcify_url.rstrip('/')}/v2/contract/{cid}/{token}",
                          params={"fields": "abi,compilation"}, timeout=25)
         if r.status_code == 404:
             return {"available": True, "verified": False}
@@ -385,14 +378,21 @@ def check_permissions(chain, token):
 def main():
     ap = argparse.ArgumentParser(description="EVM 记账模型准入 gate")
     ap.add_argument("--token", required=True)
-    ap.add_argument("--chain", required=True, choices=sorted(DEFAULT_RPC))
+    ap.add_argument("--chain", required=True,
+                    choices=sorted(formal_evm_chains("accounting_adapter")))
     ap.add_argument("--rpc", default=None, help="JSON-RPC 端点（默认见 DEFAULT_RPC）")
     ap.add_argument("--hypersync", default=None, help="HyperSync 裸域名（默认按链）")
     ap.add_argument("--hypersync-token-file",
                     default=os.path.expanduser("~/.config/hypersync/token"))
     ap.add_argument("--proxy", default=None, help="RPC 代理（Alchemy 国内必须 clash）")
     ap.add_argument("--samples", type=int, default=8)
+    ap.add_argument("--sourcify", default="https://sourcify.dev/server")
     ap.add_argument("--out", default="accounting_mode.json")
+    ap.add_argument("--as-of-block", type=int, default=None,
+                    help="收据 target 绑定块（分析冻结块）。模型探测仍在当前 tip 执行"
+                         "（tip_block 字段忠实记录探测时点）；不给则 as_of_block=tip（旧行为）。"
+                         "存量案重跑 accounting 时必给：shared_release_receipt 要求三键 target"
+                         "与 reconciliation（冻结块）全等，tip 漂移会死锁升级路径。")
     a = ap.parse_args()
 
     token = a.token.lower()
@@ -404,12 +404,12 @@ def main():
     bearer = None
     if os.path.exists(a.hypersync_token_file):
         bearer = open(a.hypersync_token_file).read().strip()
-    rpc = Rpc(rpc_url, proxy=proxy)
+    rpc = Rpc(rpc_url, a.chain, proxy=proxy)
 
     result = {"schema": "accounting-gate/v1", "chain": a.chain, "token": token,
               "producer": {"path": "scripts/evm/accounting_gate.py",
                            "sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest()},
-              "checked_at": now_iso(), "rpc": rpc_url.split("/v2/")[0],
+              "checked_at": now_iso(), "rpc": public_endpoint(rpc_url),
               "hypersync": hs_url, "checks": {}, "warnings": [], "reasons": []}
 
     def finish(mode, verdict, code):
@@ -429,6 +429,7 @@ def main():
     # ---- 基础与代理 ----
     try:
         tip = int(rpc.call("eth_blockNumber", []), 16)
+        result["as_of_block"] = a.as_of_block if a.as_of_block is not None else tip
         code_ = rpc.call("eth_getCode", [token, "latest"])
         if not code_ or code_ == "0x":
             result["reasons"].append("目标地址无合约代码（EOA/错链）")
@@ -490,7 +491,7 @@ def main():
         result["warnings"].append("rebase 子检测无有效样本（TS 读取失败且静默地址全无余额）——本项未证伪")
 
     # ---- 权限面（只记录）----
-    perms = check_permissions(a.chain, token)
+    perms = check_permissions(a.chain, token, a.sourcify)
     result["checks"]["permissions"] = perms
     if perms.get("flags"):
         result["warnings"].append("权限面（Sourcify ABI，只记录不定级）: " + ",".join(perms["flags"]))
@@ -522,4 +523,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

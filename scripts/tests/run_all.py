@@ -7,7 +7,34 @@
 import os, subprocess, sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-SUITE = ['changelog_lint.py', ['docs_lint.py', '--all'], 'labels_manifest.py', 'env_check.py',
+SUITE = ['changelog_lint.py', ['docs_lint.py', '--all'], 'labels_manifest.py',
+         'invariant_scan.py', 'test_r7_findings.py',
+         'test_net_result.py',
+         'test_batch1_rpc_attestation.py',
+         'test_batch2_p3_hardening.py',
+         'test_batch2_capability_matrix.py',
+         'test_batch2_ready_reconciliation.py',
+         'test_batch2_robinhood_exploration.py',
+         'test_batch2_legacy_hardening.py',
+         'test_batch2_registry_harness_hardening.py',
+         'test_batch3_solana_producers.py',
+         'test_batch3_solana_vertical_slice.py',
+         'test_batch3_evm_vertical_slice.py',
+         'test_r9_batch1_boundaries.py',
+         'test_r9_solana_attested_session.py',
+         'test_r9_batch2_attestation_adapters.py',
+         'test_r9_batch2_executable_capabilities.py',
+         'test_r9_batch2_solana_sqd_adapter.py',
+         'test_r9_batch3_solana_observation.py',
+         'test_r9_batch3_dynamic_runner.py',
+         'test_r9_batch3_preflight.py',
+         'test_r9_batch3_release_guards.py',
+         'test_batch4_invariant_guards.py',
+         'test_exemption_guards.py',
+         'test_receipt_kernel.py',
+         'test_batch1_receipt_paths.py',
+         'test_reconciliation_runner.py', 'test_chain_registry.py',
+         '../labels/check_manual_sync.py', 'env_check.py',
          'test_commands_deploy_sync.py',
          'casebook_lint.py', 'fixtures_lint.py',
          'test_build_html.py', 'test_engine_equivalence.py',
@@ -19,9 +46,17 @@ SUITE = ['changelog_lint.py', ['docs_lint.py', '--all'], 'labels_manifest.py', '
          'test_review_resume_integrity.py',
          'test_entity_identity_gate.py',
          'test_review_chain_collectors.py',
-         'test_review_medium_guards.py',
+         'test_labels_resolver_guards.py',
+         'test_batch1_risk_flags.py',
+         'test_roundtrip_check.py', 'test_benchmark_labels.py',
+         'test_add_labels_rollback.py',
+         'test_fetch_failclosed.py', 'test_fetch_gmgn_sh.py', 'test_sixlens_receipts.py',
+         'test_sixlens_docs.py',
+         'test_token_no_positional.py',
+         'test_contract_routes.py',
          'test_version_consistency.py',
          'test_chain_support_matrix.py',
+         'test_formal_chain_support.py',
          'test_review_scale_guards.py',
          'test_figures_from_facts.py', 'test_cluster_quality.py',
          'test_sqd_merge_equiv.py', 'test_supply_truth_gate.py',
@@ -34,6 +69,7 @@ SUITE = ['changelog_lint.py', ['docs_lint.py', '--all'], 'labels_manifest.py', '
          'test_review_20260804_p201.py',
          'test_review_20260804_p202.py',
          'test_round4_csv_adapters.py',
+         'test_param_scripts.py',
          'test_round4_a5_seal.py',
          'test_round4_identity_emitter.py', 'test_round4b_provenance.py',
          'test_round4c_solana_provenance.py',
@@ -44,6 +80,10 @@ SUITE = ['changelog_lint.py', ['docs_lint.py', '--all'], 'labels_manifest.py', '
 
 # v6.20.0 持仓分布形态硬闸。单列在扫描器与封口链测试之后，任何新绕过都会阻断全量 suite。
 SUITE += ['test_distribution_gate.py']
+
+# v6.39.0 APU 案（ANOM-012）存量迁移三工单：replay_stats 覆盖截止块契约、
+# 太古 done 官方迁移全链、旧 −1 产物格式迁移命令。
+SUITE += ['test_apu_legacy_gaps.py']
 
 
 def main():

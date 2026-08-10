@@ -28,6 +28,7 @@ import shutil
 from pathlib import Path
 
 from test_audit_release_gate import build_case
+from formal_ready_test_harness import run_formal_script
 from identity_gate_fixture import augment_gate
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -61,11 +62,11 @@ def run(script, args):
         md = Path(args[args.index("--md") + 1]).resolve()
         a4 = Path(args[args.index("--a4-seal") + 1]).resolve()
         a5 = md.parent / "a5_report_seal.json"
-        made = subprocess.run([sys.executable, A5, "--case-dir", str(md.parent),
-                               "--report", str(md), "--a4-seal", str(a4), "--out", str(a5)],
-                              capture_output=True, text=True)
+        made = run_formal_script(A5, ["--case-dir", str(md.parent),
+                                      "--report", str(md), "--a4-seal", str(a4),
+                                      "--out", str(a5)])
         args = args + ["--a5-seal", str(a5)]
-    return subprocess.run([sys.executable, script] + args, capture_output=True, text=True)
+    return run_formal_script(script, args)
 
 
 def wj(d, name, obj):
@@ -87,8 +88,7 @@ def add_distribution_initial(d):
                                   "total_supply_raw": str(total), "net_supply_raw": str(total)})
     wj(d, "data_map.json", {"files": [{"path": "data/holders_owners.json",
                                           "sha256": hashlib.sha256(snap.read_bytes()).hexdigest()}]})
-    p = subprocess.run([sys.executable, DIST, "--case-dir", d, "--stage", "initial"],
-                       capture_output=True, text=True)
+    p = run_formal_script(DIST, ["--case-dir", d, "--stage", "initial"])
     assert p.returncode == 0, p.stdout + p.stderr
 
 
@@ -101,12 +101,10 @@ def finish_distribution_normal(d):
                  "address_classification.json"):
         if not Path(d, name).is_file():
             wj(d, name, {"rows": []})
-    p = subprocess.run([sys.executable, DIST, "--case-dir", d, "--stage", "final", "--round", "1"],
-                       capture_output=True, text=True)
+    p = run_formal_script(DIST, ["--case-dir", d, "--stage", "final", "--round", "1"])
     assert p.returncode == 0, p.stdout + p.stderr
-    p = subprocess.run([sys.executable, DIST, "record-round", "--case-dir", d,
-                        "--scan", "dist_rounds/round_1/distribution_scan.json"],
-                       capture_output=True, text=True)
+    p = run_formal_script(DIST, ["record-round", "--case-dir", d,
+                                 "--scan", "dist_rounds/round_1/distribution_scan.json"])
     assert p.returncode == 0, p.stdout + p.stderr
     report = Path(d, "report.md")
     report.write_text(report.read_text(encoding="utf-8")

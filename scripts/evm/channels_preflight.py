@@ -293,6 +293,10 @@ def replay_provenance(out_dir, engine_path):
         raise ChannelsPreflightError("replay 尚未产出 balances_final.json，不能签 stats")
     return {"producer": {"path": engine.name, "sha256": _sha256_file(engine)},
             "preflight": {"path": preflight.name, "sha256": _sha256_file(preflight)},
+            # 覆盖截止块=声明区间 [expected_from, expected_to) 的最后一个块。采集覆盖
+            # 语义而非最后事件块（尾部空块不缩小覆盖）；取自重验过的 preflight 声明，
+            # 不由引擎自报。verify_recon 以它断言重放范围对齐对账目标块。
+            "max_block": int(obj["expected_to"]) - 1,
             "inputs": obj["inputs"],
             "outputs": {"balances_final": {"path": balances.name,
                          "size": balances.stat().st_size, "sha256": _sha256_file(balances)}}}

@@ -216,6 +216,8 @@ def _manifest_refresh_candidate(done_path):
         if d.get("files") != actual:
             raise ValueError("v3 done manifest files 与当前 Parquet 不一致")
         return None
+    if "schema" not in d:
+        return _prehistoric_refresh_candidate(path, d)
     if schema not in LEGACY_MANIFEST_SCHEMAS:
         raise ValueError(f"不支持迁移的旧 schema: {schema!r}")
     if d.get("query_schema") != QUERY_SCHEMA:
@@ -235,6 +237,41 @@ def _manifest_refresh_candidate(done_path):
     files = inspect_run_files(path.parent, frm, end)
     return {**d, "schema": MANIFEST_SCHEMA, "token": token, "url": url,
             "files": files, "refreshed_from_schema": schema}
+
+
+PREHISTORIC_KEYS = {"from_block", "next_block", "token", "url"}
+
+
+def _prehistoric_refresh_candidate(path, d):
+    """无 schema 字段的太古 done（v1 采集时代五键格式）→ 现行 v3 payload。
+
+    太古 done 无任何回执可信，全部边界/文件指纹从数据实物重验重建；显式写
+    "schema": null 的畸形件不走本分支（调用方按不支持 schema 拒绝）。
+    query_schema 补写依据：inspect_run_files 硬验两个 Parquet 的列集与现行采集器
+    field_selection 的产物形态一致（logs 7 列 / blocks 2 列）——列集是查询形态的
+    物理证据，不是对旧声明的信任；列集不符即 fail-closed。
+    """
+    missing = PREHISTORIC_KEYS - set(d)
+    if missing:
+        raise ValueError(f"pre-schema done 缺必备键: {sorted(missing)}")
+    token = str(d.get("token", "")).strip().lower()
+    url = re.sub(r"/query/?$", "", str(d.get("url", "")).strip().rstrip("/"))
+    if not token or not url:
+        raise ValueError("token/url 身份字段缺失")
+    try:
+        frm, nb = int(d["from_block"]), int(d["next_block"])
+    except (TypeError, ValueError) as exc:
+        raise ValueError("pre-schema done 边界非整数") from exc
+    if not 0 <= frm < nb:
+        raise ValueError(f"pre-schema done 边界非法: from={frm} next={nb}")
+    files = inspect_run_files(path.parent, frm, nb)
+    payload = {"schema": MANIFEST_SCHEMA, "query_schema": QUERY_SCHEMA,
+               "capture_from": frm, "from_block": frm, "to_block": nb,
+               "next_block": nb, "token": token, "url": url, "files": files,
+               "refreshed_from_schema": "pre-schema-v1"}
+    if "elapsed_s" in d:
+        payload["elapsed_s"] = d["elapsed_s"]
+    return payload
 
 
 def refresh_manifests(outdir):
@@ -264,9 +301,12 @@ def refresh_manifests(outdir):
     token, url, query_schema = next(iter(identities))
     if not token or not url or query_schema != QUERY_SCHEMA:
         raise ValueError("存量 run 缺 token/url 或 query_schema 非现行版")
-    ensure_outdir_identity(root, token, url)
     for path, payload in pending:
         atomic_write_json(path, payload)
+    # identity 必须建在 done 升级之后：其迁移预检要求磁盘上每个 done 已带现行
+    # query_schema，太古 done 升级前不满足。唯一性上面已验；ensure 幂等，此处
+    # 失败时重跑 refresh 自愈（done 已 v3 走 already_v3 路径）。
+    ensure_outdir_identity(root, token, url)
     return {"checked": len(done_paths), "upgraded": len(pending),
             "already_v3": len(done_paths) - len(pending)}
 

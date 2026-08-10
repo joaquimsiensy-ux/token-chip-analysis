@@ -51,21 +51,63 @@ EGL1 实测 2025-07-22 的 37 址跨 10 个建仓窗口、跨度 4 天，ρ=−1
 
 ## 用法
 
-  python3 cadence_rank.py            # 在案目录内跑，读 tier_addrs.txt / out/merged.parquet
-  产物 tier_final.json：[{members, n, pct_supply, retention_pct, holding_cv, windows}]
+  python3 cadence_rank.py --pools 0x池1,0x池2 --tier-file tier_addrs.txt \
+    --parquet out/merged.parquet --total-supply 1000000000000000000000000000 \
+    --formation-cutoff 2025-06-18 [--state-file analysis-state.json]
+  产物 tier_final.json：{identity, entities}
 """
 
-import duckdb, json, random, itertools, datetime as dt, statistics as stt
+import argparse
+import datetime as dt
+import json
+import random
+import statistics as stt
 
-POOLS = ['0x6d76e7bb743fee795a2f00a317760acf822ee2be',
-         '0x5c952063c7fc8610ffdb798152d69f0b9550762b']
-tier = [l.strip().lower() for l in open('tier_addrs.txt') if l.strip().startswith('0x')]
+
+def parse_args():
+    parser = argparse.ArgumentParser(description="候选地址池的 Spearman 节拍指纹细扫")
+    parser.add_argument("--pools", help="池地址，多个地址用逗号分隔")
+    parser.add_argument("--tier-file", help="候选地址清单文件，一行一个地址")
+    parser.add_argument("--parquet", help="Transfer 事件 parquet 文件")
+    parser.add_argument("--total-supply", help="总供应 raw 整数")
+    parser.add_argument("--formation-cutoff", help="建仓截止日，格式 YYYY-MM-DD")
+    parser.add_argument("--state-file", help="可选 analysis-state.json；缺省时不标注已知实体名")
+    args = parser.parse_args()
+    missing = [name for name in ("pools", "tier_file", "parquet", "total_supply",
+                                  "formation_cutoff") if not getattr(args, name)]
+    if missing:
+        parser.error("缺少必填参数：" + "、".join("--" + name.replace("_", "-") for name in missing))
+    try:
+        args.total_supply = int(args.total_supply)
+        if args.total_supply <= 0:
+            raise ValueError
+    except ValueError:
+        parser.error("--total-supply 必须是正的 raw 整数")
+    try:
+        dt.datetime.strptime(args.formation_cutoff, "%Y-%m-%d")
+    except ValueError:
+        parser.error("--formation-cutoff 必须是 YYYY-MM-DD")
+    args.pools = [p.strip().lower() for p in args.pools.split(",") if p.strip()]
+    if not args.pools:
+        parser.error("--pools 至少要提供一个池地址")
+    return args
+
+
+args = parse_args()
+import duckdb
+
+POOLS = args.pools
+tier = [l.strip().lower() for l in open(args.tier_file) if l.strip().startswith('0x')]
 L = ','.join(repr(a) for a in tier); PF = ','.join(repr(p) for p in POOLS)
+parquet_sql = args.parquet.replace("'", "''")
 con = duckdb.connect(); con.execute("SET memory_limit='8GB'")
-con.execute('''CREATE VIEW ev AS SELECT block,ts,tx,log_index,"from" AS frm,"to" AS t2,
-  CAST(value AS HUGEINT) AS v FROM read_parquet('out/merged.parquet') WHERE CAST(value AS HUGEINT)>0''')
+con.execute(f'''CREATE VIEW ev AS SELECT block,ts,tx,log_index,"from" AS frm,"to" AS t2,
+  CAST(value AS HUGEINT) AS v FROM read_parquet('{parquet_sql}') WHERE CAST(value AS HUGEINT)>0''')
 rows = con.execute(f'''SELECT ts,t2 FROM ev WHERE t2 IN ({L}) AND frm IN ({PF})
   ORDER BY block,log_index''').fetchall()
+identity = {"pools": POOLS, "parquet": args.parquet, "total_supply": args.total_supply,
+            "formation_cutoff": args.formation_cutoff}
+print(f"[identity] {json.dumps(identity, ensure_ascii=False, sort_keys=True)}")
 def ep(t): return dt.datetime.strptime(t[:19], '%Y-%m-%dT%H:%M:%S').timestamp()
 def sp(a, b):
     ra={x:i for i,x in enumerate(a)}; rb={x:i for i,x in enumerate(b)}
@@ -86,7 +128,7 @@ for c in cl:
         if a not in s: s.add(a); o.append(a)
     if len(o)<6: continue
     fb=firstbuy(o)
-    if fb[0]==o[0] and len(set(fb)&set(o))==len(o) and c[0][0][:10]<='2025-06-18':
+    if fb[0]==o[0] and len(set(fb)&set(o))==len(o) and c[0][0][:10]<=args.formation_cutoff:
         pass  # 建仓窗口本身，仍参与比对
     rho=sp(o,fb)
     cnt=sum(1 for _ in range(3000) if abs(sp(o,random.sample(fb,len(fb))))>=abs(rho))
@@ -111,11 +153,11 @@ for h in hits:
 grp={}
 for a in list(par): grp.setdefault(find(a),[]).append(a)
 
-TOT=10**9*10**18
+TOT=args.total_supply
 bal=con.execute('''SELECT addr,SUM(d) b FROM (SELECT t2 addr,v d FROM ev
   UNION ALL SELECT frm,-v FROM ev) GROUP BY 1''').df()
 bm=dict(zip(bal.addr,bal.b))
-st=json.load(open('analysis-state.json')); kn={}
+st=json.load(open(args.state_file)) if args.state_file else {}; kn={}
 for g in st.get('whale_groups',[]):
     for m in (g.get('members') or []): kn[m.lower()]=g.get('name','?')
 
@@ -142,5 +184,5 @@ for root,ms in sorted(grp.items(),key=lambda kv:-sum(int(bm.get(m,0)) for m in k
                 'n_in':nin,'n_out':nout,'holding_cv':cv,'known_tags':tags,
                 'windows':[{'t':h['t0'],'n':h['n'],'rho':h['rho'],'p':h['p']} for h in sorted(hh,key=lambda x:x['t0'])]})
 print(f'\n[sum] 持仓型(留存≥50%)实体合计 {tot_pct:.4f}% 总供应')
-json.dump(out,open('tier_final.json','w'),ensure_ascii=False,indent=1)
+json.dump({'identity': identity, 'entities': out},open('tier_final.json','w'),ensure_ascii=False,indent=1)
 print('[done] -> tier_final.json')

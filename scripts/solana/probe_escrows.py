@@ -1,15 +1,19 @@
-# 收编自 CLUDE(Solana) 分析 2026-07-13；标的专属地址列表请按新标的替换（TARGETS/WHALES 常量或改造为 argparse）
 #!/usr/bin/env python3
-"""探查 escrow/PDA 账户：最老创建交易 + Streamflow stream 元数据解码。
+"""通用 escrow/PDA 探查工具：最老创建交易 + Streamflow stream 元数据解码。
 
 对每个目标账户：
 1. getSignaturesForAddress 翻到最老（limit 1000 + before 游标）
 2. 最老 tx getTransaction(jsonParsed) → 记录涉及程序与账户
 3. 若涉及 Streamflow 程序：定位 stream 元数据账户（owner=strm），raw 解码
    sender@moff-128 / recipient@moff-64 / 参数区 moff+148 起 u64 序列（管道文档 §2）
+目标由 --targets-file JSON 数组注入，每项为 {"address": "...", "label": "..."}。
 输出：data/escrow_probe.json + stdout 摘要
 """
-import base64, json, subprocess, sys, time
+import argparse
+import base64
+import json
+import subprocess
+import time
 from pathlib import Path
 
 RPC = "https://api.mainnet-beta.solana.com"
@@ -22,19 +26,9 @@ def _load_mint():
     if p.exists():
         return _json.loads(p.read_text()).get("mint")
     raise SystemExit("需要 mint：设 MINT 环境变量或工作目录 config.json 里给 mint 字段")
-MINT = _load_mint()
+MINT = None
 STRM = "strmRqUCoQUgGUan5YhzUZa6KqdzwX5L6FpUxfmKg5m"
 ALPHA = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
-
-TARGETS = [
-    ("8mdvt3hwUfZoP3CY4bcAEQ4aSDk4WakUqBBxsRZPf4pX", "StreamflowVault#1 7.13%"),
-    ("3wxPkfjghd5emawiXKv6pi4ahc2CRMWcunZJpUzKpNjH", "StreamflowVault#2 5.29%"),
-    ("9Ar3BuWUryoiPqj8c2ZTqgrucf7FMPq7roL1U3Eyg5So", "StreamflowVault#3 4.97%"),
-    ("E1q5bq2AHwoD3dhUxCebxsTt3hBqdApTz8z5yhu1sn8S", "StreamflowVault#4 2.40%"),
-    ("9igEyPWysUYTu7wM7k1fhpT4344pt2UM7Ww4PY62PHSz", "未注资PDA 2.19%"),
-    ("7kfVZ7a534jUu1C7keMtNxHM2jfgNbZhVnX8bD4HUeW7", "defAh9DW程序PDA 2.0%"),
-    ("EviNYQP3c1dksnkFoU7yHhQ5NyBHCq4trUPpGZvc4Fk8", "PrintrStakePool"),
-]
 
 
 def b58e(b: bytes) -> str:
@@ -107,9 +101,37 @@ def decode_stream_meta(meta_addr):
             "u64_seq_from_moff148": vals, "data_len": len(raw)}
 
 
+def parse_args():
+    parser = argparse.ArgumentParser(description="探查 Solana escrow/PDA 与 Streamflow 元数据")
+    parser.add_argument("--targets-file", help='JSON 数组文件，元素为 {"address", "label"}')
+    parser.add_argument("--rpc", default=RPC, help=f"Solana RPC（默认：{RPC}）")
+    parser.add_argument("--proxy", default=PROXY, help=f"curl 代理（默认：{PROXY}）")
+    args = parser.parse_args()
+    if not args.targets_file:
+        parser.error("缺少必填参数：--targets-file")
+    return args
+
+
+def load_targets(path):
+    try:
+        raw = json.loads(Path(path).read_text())
+    except (OSError, json.JSONDecodeError) as exc:
+        raise SystemExit(f"读取 --targets-file 失败：{exc}")
+    if not isinstance(raw, list) or any(
+            not isinstance(item, dict) or not item.get("address") or "label" not in item
+            for item in raw):
+        raise SystemExit('--targets-file 必须是 JSON 数组，元素为 {"address", "label"}')
+    return [(item["address"], item["label"]) for item in raw]
+
+
 def main():
+    global MINT, RPC, PROXY
+    args = parse_args()
+    RPC, PROXY = args.rpc, args.proxy
+    MINT = _load_mint()
+    targets = load_targets(args.targets_file)
     out = []
-    for addr, label in TARGETS:
+    for addr, label in targets:
         sig, bt = oldest_sig(addr)
         rec = {"addr": addr, "label": label, "oldest_sig": sig, "oldest_blocktime": bt}
         if sig:

@@ -2,8 +2,8 @@
 """Round4b F-01: identity receipts require real collector/replay or holder-scan chains."""
 import base64,hashlib,json,os,subprocess,sys,tempfile
 from pathlib import Path
-HERE=Path(__file__).resolve().parent; EVM=HERE.parent/"evm"; SOL=HERE.parent/"solana"; REPORT=HERE.parent/"report"
-sys.path[:0]=[str(EVM),str(REPORT),str(SOL)]
+HERE=Path(__file__).resolve().parent; EVM=HERE.parent/"evm"; SOL=HERE.parent/"solana"; REPORT=HERE.parent/"report"; LIB=HERE.parent/"lib"
+sys.path[:0]=[str(EVM),str(REPORT),str(SOL),str(LIB),str(HERE)]
 TOKEN="0x"+"a"*40; OWNER="0x"+"b"*40; ZERO="0x"+"0"*40
 def run_evm(root):
  import fetch_hypersync as fetch
@@ -15,7 +15,8 @@ def run_evm(root):
    "next_block":10,"archive_height":10}
  fetch.requests.post=lambda *a,**k:R(); old=sys.argv
  csv=root/"events.csv"; native=root/"collector.json"
- sys.argv=["fetch_hypersync.py","secret","0","--url","https://fixture/query","--token-addr",TOKEN,
+ token_file=root/"hypersync.token"; token_file.write_text("secret\n")
+ sys.argv=["fetch_hypersync.py","0","--token-file",str(token_file),"--url","https://fixture/query","--token-addr",TOKEN,
            "--out",str(csv),"--to-block","10","--receipt",str(native),"--sleep","0"]
  try: fetch.main()
  finally: sys.argv=old
@@ -27,21 +28,14 @@ def run_evm(root):
  return root/"balances_final.json",root/"channels_preflight.json",root/"replay_stats.json"
 def run_solana(root):
  import scan_token_accounts as scan
- owner_bytes=bytes(range(32)); owner_bytes_2=bytes(range(1,33))
- account_data=base64.b64encode(owner_bytes+(60).to_bytes(8,"little")).decode()
- account_data_2=base64.b64encode(owner_bytes_2+(40).to_bytes(8,"little")).decode()
- def fake_rpc(url,payload,out,timeout):
-  method=payload["method"]
-  if method=="getAccountInfo": obj={"result":{"value":{"owner":scan.SPL}}}
-  elif method=="getTokenSupply": obj={"result":{"context":{"slot":123},"value":{"amount":"100","decimals":0}}}
-  else: obj={"result":{"context":{"slot":123},"value":[
-   {"pubkey":"acct1","account":{"data":[account_data,"base64"]}},
-   {"pubkey":"acct2","account":{"data":[account_data_2,"base64"]}}]}}
-  Path(out).write_text(json.dumps(obj)); return True
- scan.rpc_call=fake_rpc; old_argv,old_cwd=sys.argv,os.getcwd(); os.chdir(root)
- sys.argv=["scan_token_accounts.py","mint","--program","spl","--rpc","https://fixture"]
- try: scan.main()
- finally: sys.argv=old_argv; os.chdir(old_cwd)
+ from test_r9_batch3_solana_observation import SolanaTransportFake
+ old_cwd=os.getcwd(); os.chdir(root)
+ try:
+  rc=scan.main(["mint","--program","spl","--rpc","fixture://solana",
+                "--out","snapshot.json","--bundle","snapshot_receipt.json",
+                "--work-dir","data"],request_json=SolanaTransportFake())
+  assert rc==0
+ finally: os.chdir(old_cwd)
  return root/"data"/"holders_owners.json",root/"data"/"holders_snapshot_meta.json"
 def main():
  from identity_snapshot_receipt import emit_evm,emit_solana
