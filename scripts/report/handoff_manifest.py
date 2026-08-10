@@ -718,7 +718,10 @@ def validate_and_replay_provenance(case_dir, pl, pl_path, ep, manifest):
     den = scope.get("denominators")
     supply = None
     if isinstance(den, dict):
-        for key in ("total_supply_raw", "total_supply", "supply_raw"):
+        # 分母键按优先级取第一个命中；细分分母 manifest（ANOM-A2-002 型拆分）以
+        # nominal_allocation_supply_raw 为占比口径的冻结值，同受一致性绑定约束。
+        for key in ("total_supply_raw", "total_supply", "supply_raw",
+                    "nominal_allocation_supply_raw"):
             if den.get(key) is not None:
                 supply = str(den[key])
                 break
