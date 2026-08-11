@@ -29,7 +29,9 @@ import tempfile
 HERE = os.path.dirname(os.path.abspath(__file__))
 SCRIPT = os.path.join(HERE, "..", "report", "entity_source_trace.py")
 FAILS = []
-TOTAL = 10 ** 12
+# fixture 金额为 100 量级；TOTAL 取 1e6 使其 ≥0.01% 供应（v6.39.4 尘埃锚点线之上，
+# 翻转/顺序判定保持生效——TOTAL=1e12 时 fixture 全落尘埃线会被豁免）
+TOTAL = 10 ** 6
 Z = "0x0000000000000000000000000000000000000000"
 
 

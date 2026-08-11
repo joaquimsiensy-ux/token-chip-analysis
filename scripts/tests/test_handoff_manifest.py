@@ -561,13 +561,38 @@ def main():
               p.returncode == 2 and "input_binding" in (p.stderr + p.stdout))
 
         # stable 自报 true，但把 fifo 的策略明细主导终点改掉；freeze 必须从明细重算翻转。
+        def scale_anchors(obj, k=10 ** 8):
+            """把 fixture 锚点库存放大到非尘埃（v6.39.4 尘埃线后翻转判定只作用于
+            ≥总供应 0.01% 的锚点；fixture 原始库存 100/1e12 属尘埃）。"""
+            for ent in obj["entities"]:
+                for anchor in ent["anchors"].values():
+                    anchor["stock_raw"] = str(int(anchor["stock_raw"]) * k)
+                    for c in anchor["composition"]:
+                        c["raw"] = str(int(c["raw"]) * k)
+            for s in obj["bounds_sensitivity"]["per_entity"].values():
+                for a_ in (s.get("anchors") or {}).values():
+                    for rows in a_["policy_details"].values():
+                        for r in rows:
+                            r["raw"] = str(int(r["raw"]) * k)
+
         fake_stable = make_provenance(d18, emap)
+        scale_anchors(fake_stable)
         fa = fake_stable["bounds_sensitivity"]["per_entity"]["E1"]["anchors"]["current"]
         fa["policy_details"]["fifo"][0]["terminal"] = ["BOUNDARY", "dex_pool", "0xpool"]
         write_json(d18, "provenance_ledger.json", fake_stable)
         p = run(["freeze", "--case-dir", d18] + FRZ)
         check("策略明细翻转但 stable=true 仍由 freeze 重算拒绝",
               p.returncode == 2 and "机器从明细重算" in (p.stderr + p.stdout))
+
+        # 尘埃锚点（<0.01% 供应）的明细翻转不再触发翻转拒——由重放语义摘要兜底伪造
+        dust_flip = make_provenance(d18, emap)
+        da = dust_flip["bounds_sensitivity"]["per_entity"]["E1"]["anchors"]["current"]
+        da["policy_details"]["fifo"][0]["terminal"] = ["BOUNDARY", "dex_pool", "0xpool"]
+        write_json(d18, "provenance_ledger.json", dust_flip)
+        p = run(["freeze", "--case-dir", d18] + FRZ)
+        check("尘埃锚点翻转豁免（不因翻转拒；伪造由重放语义摘要兜底）",
+              "机器从明细重算" not in (p.stderr + p.stdout)
+              and p.returncode == 2 and "重放语义摘要" in (p.stderr + p.stdout))
 
         # closure/敏感性都保持自洽，只篡改来源类别；唯有从当前原始边重放才能识别。
         stale = make_provenance(d18, emap)
