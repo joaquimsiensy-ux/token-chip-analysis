@@ -10,6 +10,7 @@
 
 ## 版本索引（活跃窗口，新在上；每版一行，详情见下方对应条目）
 
+- **6.39.4**（2026-08-11）provenance 敏感性闸粒度修复：尘埃锚点线（<0.01% 供应不入翻转判定）＋ --acknowledge-flip 翻转书面确认通道（freeze 重放同参还原）
 - **6.39.3**（2026-08-09）accounting_gate 加 --as-of-block 目标块绑定（存量案重跑 tip 漂移死锁修复）
 - **6.39.2**（2026-08-09）entity_source_trace 进货单并列序非确定性修复（freeze 重放对账假阴性）
 - **6.39.1** 2026-08-09 分布扫描 validate 可移植性修复：semantic_payload 剔除 labels_manifest 宿主绝对路径（内容漂移仍由 sha256 抓）
@@ -36,6 +37,13 @@
 - **6.20.1** 2026-08-05 修 5 处阻断级文档漂移（A4 前禁写报告冲突/easy 残留/惯犯回灌 docstring/批量预采集残留/旧 Par 路线历史降级）＋docs_lint 增中文禁词与 Python module docstring 扫描
 
 更早版本（6.20.0 及以前）详见 `archive/CHANGELOG-archive.md`。
+
+## [6.39.4] - 2026-08-11 — provenance 敏感性闸粒度修复（MOG 案随案落地）
+
+- **触发**：MOG-ETH-BASE −2 freeze 前置三型翻转全无出口：①清零实体残渣库存（0.00003% 供应）来源排序翻转卡死整案；②现仓翻转仅在 Coinbase 同所双热钱包终点之间（语义等价）；③项目方峰值 mint 直分 vs 主池回收双来源量级接近＝真实混合结构。
+- **修复**（trace/freeze 两侧同步，fail-closed 保持）：`NEGLIGIBLE_STOCK_PCT=0.01`——锚点库存 <总供应 0.01% 不入翻转/顺序判定（明细照记标 `negligible_stock`）；`--acknowledge-flip ENTITY:ANCHOR:理由`（≥10 字符、禁预防性豁免）书面确认真实多来源翻转，确认不改 stable 真实布尔、新增 `publishable` 承载 exit 语义，确认进 `acknowledged_flips`+`algorithm_params` 随 freeze 重放还原；`recompute_provenance_sensitivity` 同步两豁免（未确认翻转仍拒）。
+- **测试**：翻转 fixture 放大至非尘埃保持"未确认必拒"原意；新增尘埃翻转豁免用例（伪造由重放语义摘要兜底）；trace 套件 TOTAL 1e12→1e6。handoff 67 项、trace、run_all 全绿。
+- **纪律**：确认过的翻转锚点，报告构成结论必须按三策略并列披露，不得发布单一主导来源。
 
 ## [6.39.3] - 2026-08-09 — accounting_gate 目标块绑定参数：存量案升级死锁修复
 
