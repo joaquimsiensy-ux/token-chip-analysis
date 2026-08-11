@@ -86,6 +86,10 @@ ENTITY_NODE = "@ENTITY"
 ORDER_AMBIGUOUS_KEY = ("UNRESOLVED", "order_ambiguous", None)
 EPS = 1e-6
 ORDER_MATERIAL_PCT = 0.5
+# 尘埃锚点线：锚点库存 < 总供应的 0.01% 时，构成"第一大来源"不承载任何结论，
+# 三策略翻转不入稳定性判定（明细照记并标 negligible_stock）。清零实体的残渣
+# 库存曾把整案 freeze 卡死（MOG 2026-08-11：0.00003% 残渣的来源排序翻转）。
+NEGLIGIBLE_STOCK_PCT = 0.01
 
 
 def log(msg):
@@ -159,7 +163,9 @@ def source_binding(a, case_dir):
         "total_supply_raw": str(a.total_supply),
         "algorithm_params": {"depth_limit": a.depth_limit,
                              "facility_min_degree": a.facility_min_degree,
-                             "node_budget": a.node_budget, "edge_budget": a.edge_budget},
+                             "node_budget": a.node_budget, "edge_budget": a.edge_budget,
+                             # 翻转确认随绑定传递：freeze 重放用同一参数还原同一 exit 语义
+                             "acknowledged_flips": sorted(a.acknowledge_flip or [])},
     }
 
 
@@ -603,19 +609,22 @@ def trace_entity(con, classifier, eid, members, total, a):
     for snap_key, stock in (("peak", peak), ("current", current)):
         if stock <= 0:
             continue
+        # 尘埃锚点（<总供应 0.01%）：构成排序不承载结论，翻转不入稳定性判定
+        negligible = stock * 10000 < total
         tops = {p: top_entry(runs[p][snap_key]) for p in POLICIES}
         agree = len({t for t in tops.values()}) == 1
-        if not agree:
+        if not agree and not negligible:
             sens["stable"] = sens["consumption_stable"] = False
         order_raw = float(main[snap_key].get(ORDER_AMBIGUOUS_KEY, 0.0))
         order_pct = order_raw * 100.0 / stock
         order_ok = order_pct <= ORDER_MATERIAL_PCT
-        if not order_ok:
+        if not order_ok and not negligible:
             sens["stable"] = sens["ordering_stable"] = False
         sens["anchors"][snap_key] = {
             "top_by_policy": {p: (list(t) if t else None) for p, t in tops.items()},
             "policy_details": {p: policy_detail(runs[p][snap_key]) for p in POLICIES},
             "agree": agree,
+            "negligible_stock": negligible,
             "ordering_sensitivity": {
                 "status": "RESOLVED" if order_ok else "UNRESOLVED",
                 "order_ambiguous_raw": str(int(order_raw)),
@@ -654,6 +663,10 @@ def main():
     ap.add_argument("--allow-no-labels", action="store_true",
                     help="仅探索：允许无标签运行；产物带 exploration 标记且禁止 freeze")
     ap.add_argument("--out", default="provenance_ledger.json")
+    ap.add_argument("--acknowledge-flip", action="append", metavar="ENTITY:ANCHOR:REASON",
+                    help="显式确认某锚点的三策略主导翻转是真实多来源结构（构成结论必须按"
+                         "多策略并列披露）。格式 entity_id:anchor:理由（理由 ≥10 字符）；"
+                         "可重复。确认随 input_binding 传递，freeze 重放同参还原。")
     ap.add_argument("--mem-limit", default="8GB")
     ap.add_argument("--depth-limit", type=int, default=10, help="BFS 深度上限（距实体最短跳数）")
     ap.add_argument("--facility-min-degree", type=int, default=1000, help="设施启发式：双向对手方 ≥此数")
@@ -756,6 +769,28 @@ def main():
         unresolved_total += sum(float(c["raw"]) for c in e["anchors"]["peak"]["composition"]
                                 if c["kind"] == "UNRESOLVED")
     all_stable = all(s["stable"] for s in sens_all.values()) if sens_all else True
+    # 翻转确认解析与覆盖判定：确认不改变 stable 真实值，只决定可发布性（exit 码）
+    ack_flips = []
+    for spec in (a.acknowledge_flip or []):
+        parts = spec.split(":", 2)
+        if len(parts) != 3 or not parts[0] or parts[1] not in ("peak", "current") \
+                or len(parts[2].strip()) < 10:
+            log(f"--acknowledge-flip 格式错误（需 entity:anchor:理由≥10字符）: {spec!r}")
+            sys.exit(2)
+        ack_flips.append({"entity_id": parts[0], "anchor": parts[1],
+                          "reason": parts[2].strip()})
+    ack_keys = {(x["entity_id"], x["anchor"]) for x in ack_flips}
+    real_flips = set()
+    for eid, s in sens_all.items():
+        for anc, d in (s.get("anchors") or {}).items():
+            if not d.get("agree", True) and not d.get("negligible_stock"):
+                real_flips.add((eid, anc))
+    unknown_acks = ack_keys - real_flips
+    if unknown_acks:
+        log(f"--acknowledge-flip 指向不存在的翻转锚点（不许预防性豁免）: {sorted(unknown_acks)}")
+        sys.exit(2)
+    ordering_bad = any(not s.get("ordering_stable", True) for s in sens_all.values())
+    publishable = (not ordering_bad) and real_flips <= ack_keys
     report = {
         "schema": SCHEMA,
         "exploration": bool(a.allow_no_labels),
@@ -770,17 +805,23 @@ def main():
             "methods": list(POLICIES),
             "per_entity": {eid: s for eid, s in sens_all.items()},
             "conservative_vs_aggressive_verdict_stable": all_stable,
+            "acknowledged_flips": sorted(ack_flips, key=lambda x: (x["entity_id"], x["anchor"])),
+            "publishable": publishable,
             "note": "两维独立敏感性：三种库存消耗策略逐锚点比对完整明细；缺精确链上位置时，"
-                    "同一最细粒度桶内既收又发的来源记 UNRESOLVED/order_ambiguous。任一消费"
-                    "主导翻转或顺序未决量 >0.5% 锚点库存，均 exit 2 阻断发布"},
+                    "同一最细粒度桶内既收又发的来源记 UNRESOLVED/order_ambiguous。尘埃锚点"
+                    "（<总供应 0.01%）不入判定；真实消费翻转须 --acknowledge-flip 书面确认"
+                    "且构成结论按多策略并列披露，顺序未决量 >0.5% 锚点库存无豁免，exit 2"},
     }
     report["replay_semantic_sha256"] = semantic_sha256(report)
     with open(a.out, "w", encoding="utf-8") as fh:
         json.dump(report, fh, ensure_ascii=False, indent=1)
     log(f"{len(entities)} 实体溯源完成 → {a.out}")
-    if not all_stable:
+    if not publishable:
+        pending = sorted(real_flips - ack_keys)
         log("敏感性不稳：消费策略主导翻转或事件顺序未决量达到实质线——结论不得发布"
-            "（exit 2）；补齐 block/slot + tx + log/instruction 序号或解决未决量后重跑")
+            f"（exit 2）；未确认翻转锚点: {pending or '无'}。真实多来源结构可用 "
+            "--acknowledge-flip entity:anchor:理由 书面确认后重跑（构成结论必须按多策略"
+            "并列披露）；顺序未决须补齐 block/slot + tx + log/instruction 序号")
         sys.exit(2)
     return 0
 

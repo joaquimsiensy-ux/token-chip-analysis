@@ -593,12 +593,26 @@ def provenance_semantic_sha(report):
 
 
 def recompute_provenance_sensitivity(pl):
-    """只读各策略完整明细重算，不读取 stable/agree/top_by_policy 汇总布尔值作裁决。"""
+    """只读各策略完整明细重算，不读取 stable/agree/top_by_policy 汇总布尔值作裁决。
+
+    与 entity_source_trace 同步的两条豁免（v6.39.4）：
+    ①尘埃锚点（<总供应 0.01%）不入翻转判定；②真实翻转若被 ledger 的
+    acknowledged_flips（--acknowledge-flip 书面确认，理由 ≥10 字符）精确覆盖则放行——
+    确认不改变 stable 真实布尔，只解除发布阻断；顺序未决无豁免。"""
     fails = []
     bs = pl.get("bounds_sensitivity") or {}
     per = bs.get("per_entity")
     if not isinstance(per, dict):
         return ["bounds_sensitivity.per_entity 缺失"]
+    try:
+        total_supply = int(pl.get("total_supply_raw") or 0)
+    except (TypeError, ValueError):
+        total_supply = 0
+    acks = {}
+    for x in (bs.get("acknowledged_flips") or []):
+        if isinstance(x, dict) and x.get("entity_id") and x.get("anchor") in ("peak", "current") \
+                and len(str(x.get("reason", "")).strip()) >= 10:
+            acks[(x["entity_id"], x["anchor"])] = str(x["reason"]).strip()
     entity_ids = {e.get("entity_id") for e in pl.get("entities") or []}
     if set(per) != entity_ids:
         fails.append("敏感性实体集与 provenance entities 不一致")
@@ -612,6 +626,8 @@ def recompute_provenance_sensitivity(pl):
             stock = int(((ent.get("anchors") or {}).get(anchor_name) or {}).get("stock_raw", 0))
             if stock <= 0:
                 continue
+            if total_supply > 0 and stock * 10000 < total_supply:
+                continue  # 尘埃锚点：构成排序不承载结论
             detail = anchors.get(anchor_name) or {}
             pd = detail.get("policy_details")
             if not isinstance(pd, dict) or set(pd) != {"pro_rata", "fifo", "lifo"}:
@@ -637,8 +653,10 @@ def recompute_provenance_sensitivity(pl):
                     fails.append(f"{eid} {anchor_name} {policy} 明细结构异常: {e}")
                     tops.append(None)
             if len(set(tops)) != 1:
-                fails.append(f"{eid} {anchor_name} 三策略主导终点翻转（机器从明细重算）")
                 all_stable = False
+                if (eid, anchor_name) not in acks:
+                    fails.append(f"{eid} {anchor_name} 三策略主导终点翻转（机器从明细重算）"
+                                 "——真实多来源结构须 --acknowledge-flip 书面确认后重跑 trace")
             order_rows = pd.get("pro_rata") or []
             order_raw = sum(int(r.get("raw", 0)) for r in order_rows
                             if r.get("terminal") == ["UNRESOLVED", "order_ambiguous", None])
@@ -775,6 +793,8 @@ def validate_and_replay_provenance(case_dir, pl, pl_path, ep, manifest):
                 "--facility-min-degree", str(params["facility_min_degree"]),
                 "--node-budget", str(params["node_budget"]),
                 "--edge-budget", str(params["edge_budget"])]
+        for spec in (params.get("acknowledged_flips") or []):
+            cmd += ["--acknowledge-flip", str(spec)]
         if labels_path:
             cmd += ["--labels-file", labels_path]
         env = dict(os.environ)
