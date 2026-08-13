@@ -440,3 +440,107 @@ g.check_distribution_snapshot_binding(d, data, "sui", errors)
 轮 2 的范围很窄，估计一次施工就能收：**锚点取值顺序倒置并对绑定收据（N-B1）＋在场非法不静默回退（N-B2）＋两条红线补测（N-B3）＋文档一行（N-B4）**，其余部分不必返工。
 
 消化轮 1 复核完成
+
+---
+
+# 消化轮 2 复核（`397e38f`）
+
+- **复核对象**：`394ffbb → 397e38f`，生产改动只有 `holder_distribution_scan.py` 锚点取值区
+- **方式**：只读＋副本变异。钉死副本 `/private/tmp/batchB_probe/r2repo/`，两个主文件与 `git show 397e38f:` 逐字节 SAME；全量 `run_all.py` 在钉死副本上独立复跑 **EXIT=0**（无既有绿例被打掉）
+- **结论**：**N-B1~N-B4 全部 CLOSED**；轮 2 新代码**没有新引入缺陷**，只留 2 条 P3（一条是轮 1 就存在的信任属性、一条是缺红线）。**批 B 可收口**
+
+| 编号 | 判定 | 依据 |
+|---|---|---|
+| N-B1 | **CLOSED** | 攻击面转拒、误伤面转绿，且新增交叉验 |
+| N-B2 | **CLOSED** | 案根同名件在场非法 → fail-closed |
+| N-B3 | **CLOSED** | 轮 1 存活的两条变异现在都变红 |
+| N-B4 | **CLOSED** | 文档两处（正文＋schema 字段表）改口 |
+
+## 1. 逐条重放（`/private/tmp/batchB_probe/recheck2.py`）
+
+```
+[CLOSED] N-B1 攻击面：抹平快照＋伪造案根 replay_stats
+         rc=2 锚点=None BLOCK: 快照 raw 和未对铸造总量 mint 精确闭合:
+         快照=59124503 mint=59127382（bound_replay_mint）容差=0bps
+[CLOSED] N-B1 误伤面：合法快照＋案根陈旧 replay_stats 不再被误杀
+         rc=0 锚点=bound_replay_mint  PASS: initial NORMAL_SHAPE
+[CLOSED] N-B2 案根 replay_stats 是符号链接 → 不再静默降档
+         rc=2 BLOCK: 案根 replay_stats.json 在场但非法（符号链接或非普通文件），拒绝静默换档
+[CLOSED] 轮2新码：只改绑定实物、不动 replay_net → 交叉验拦住
+         rc=2 BLOCK: 绑定 replay_stats 的 mint−burn 与收据 replay_net 不一致，闭合锚点不可信
+```
+
+取值链改成"**收据 `inputs.replay_stats` 绑定的那份实物**优先 → 收据 `mint_total` → `onchain_total_supply`"，案根裸件降级为**只做完整性闸、不参与取值**——这正是我建议的方向，而且比我建议的多做了一层：`mint−burn == replay_net` 交叉验，把"只改实物那一个文件"这种单点篡改也堵了。
+
+**N-B3** 两条轮 1 存活变异现在都咬得住：删跨轮 `snapshot_sha` 检查 → `N-B3 跨轮 snapshot_sha 不一致必报` 红；把影子键 fallback 加回锚点函数 → 两条红（**源码扫描从"只扫比较行的正则"升级为扫 `mint_closure_anchor`＋`_bound_replay_stats` 函数体，另加一条功能反例**，正好补上我指出的"正则看不见取值处"）。
+
+**N-B4** 文档两处到位：正文写明"`denominators.total_supply_raw` ＝铸造总量（含已销毁），真 `_burn` 案两者可差三成以上（IQ 差 34.9%）"，schema 字段表也加了行内注释；改键名留批 D。
+
+## 2. 轮 2 新代码检查（固定动作）
+
+### 2.1 burn 定义修正——**独立核实成立**
+
+施工方自报揪出轮 1 夹具的 `burn = mint − onchain` 在 form2 下恒为 0。我不看工单数字，直接读 APU 真实收据复算：
+
+```
+APU: mint_total=420690000000000000000000000000  onchain_total_supply=同值(form2)
+     replay_net=337889146346088792653960057820  收据 burn_total=82800853653911207346039942180
+  mint − onchain    = 0                                   ← 轮 1 夹具口径，错
+  mint − replay_net = 82800853653911207346039942180       ← 轮 2 新口径，与收据 burn_total 逐位相等 ✅
+```
+
+新定义两形态通用：form1（真 `_burn`）下 `onchain == replay_net == mint−burn`，两个口径等价；form2 下只有 `mint−replay_net` 是对的。**修正成立，轮 1 夹具确实是错的。**
+
+**夹具修正性质裁定：属"重绑等效重跑生产者"，不是改弱断言。** 两点实证：
+- 新 `with_replay_stats` 把实物落到 `data/replay_stats.json` 并由收据 `inputs.replay_stats` 绑定（绝对路径＋size＋sha）。我核了 APU 真实收据：`inputs.replay_stats.path` 就是绝对路径 `…/APU分析0801/data/replay_stats.json` ——**夹具是在向真生产者的输出形态靠拢**，而不是向被测代码靠拢。
+- 断言侧：整个轮 2 test diff 里只有一条 `check` 被替换（影子键守卫，从正则升级为函数体扫描＋功能反例＝**加强**），其余全是新增 `def test_*`，没有任何 `assert`／`check` 被删或放宽。
+
+### 2.2 新取值链的绕路与误伤复查
+
+- **误伤**：`_bound_replay_stats` 接受绝对路径再做案根遏制——APU 真实收据正是绝对路径形态，吃得下，无误伤。三个真案（APU／IQ／KOGE）的 replay_stats 键名统一为 `mint_total_wei`／`burn_total_wei`，不存在"mint 用 wei 后缀、burn 用 raw 后缀"导致 `_mint_from_stats` 把 burn 静默取 0、进而交叉验误杀的风险。案根陈旧件的误伤面已实测消失。
+- **绕路**：新增的两条 fail-closed（案根同名件在场非法、mint−burn≠replay_net）变异后都变红，说明是真闸不是摆设。
+
+### 2.3 本轮新观察（均 P3，不构成新 finding 级缺陷）
+
+**R2-O1（P3）扫描器自身不校验收据 `inputs.replay_stats` 的 sha/size。**
+实测：把绑定实物 `data/replay_stats.json` 改小、并把同一个 `supply_truth.json` 里的 `replay_net` 一起对上（两处协同改），抹平快照通过闭合（`rc=0`，锚点 `bound_replay_mint`），而收据里 `inputs.replay_stats.sha256` 仍记着旧值——**这份收据自己就写着实物变了，扫描器路径上没人去看**。
+
+诚实定性：**不是轮 2 新引入**（轮 1 读案根裸件同样不校验 sha），而且攻击成本比轮 1 更高（从"丢一个文件"变成"协同改两处字段"）；正式发布路径由 `receipt_validate.validate_receipt` 的 input 三验兜住，不影响出报告。唯一算问题的是函数 docstring 写"收据 inputs 已由 receipt_validate 做过存在＋size＋sha256 三验"——这话在发布闸路径成立、在扫描器单跑路径（−1／handoff／a4 重验）不成立，属过度宣称。
+修法：3 行，读实物后按 ref 的 sha/size 比一下（本文件 `_verify_bound` 就是现成写法），顺带把 docstring 那句改准。
+
+**R2-O2（P3）"绑定实物必须在案根内"这条 fail-closed 分支零回归覆盖。**
+变异 R2-c（删掉 `path.relative_to(case_dir)` 遏制检查）→ `test_repair_batch_b` 全绿存活。批 A 的 N-1 把"replay_stats 必须在案根内"定成 P1 级要求，同款约束在这里该有一条红线。修法：补一条"收据绑定实物指到案外 → 必拒"的用例。
+
+## 3. 已 CLOSED 条目抽查（轮 2 没把它们重新打开）
+
+把轮 1 的 `recheck1.py` 原样指向 `r2repo` 重跑：
+
+```
+[CLOSED] F-B1 生产侧：final 换仓快照            rc=2（final 轮不得更换 owner 快照）
+[CLOSED] F-B1 合法案仍放行（防误伤）            []
+[CLOSED] F-B1 发布闸终态分支：手改终态快照 sha   ['…终态 final scan 的快照 sha256 与四查…不一致']
+[CLOSED] F-B2 原攻击（锚点不动抹平快照）         ABNORMAL_SHAPE → 抹平后 rc=2
+[CLOSED] F-B3 / F-B7                            均与轮 1 复核一致
+```
+
+脚本里那条标着 REOPEN 的"F-B2 变体"**不是 finding**，要澄清：它把收据、绑定实物、`replay_net`、快照**整案做成自洽的假案**，这已经是仓内既定的 F-12 已接受边界（伪造整案数据链），且发布闸仍要求快照 sha 等于四查 `inputs.balances`，出不了报告。留在输出里只是因为脚本是轮 1 原样重放，未改判定标签。
+
+## 4. 复现件（本轮新增）
+
+| 文件 | 用途 |
+|---|---|
+| `r2repo/` | `397e38f` 钉死副本（两主文件 SAME），变异实验场，实验后校验逐字节还原 |
+| `recheck2.py` | N-B1 攻击面／误伤面、N-B2、轮 2 新码两条攻击 |
+| `recheck1_on_r2.py` | 轮 1 攻击件原样指向 r2repo 的抽查 |
+| `run_all_r2.log` | 钉死副本全量 suite 独立复跑 |
+
+## 5. 终判
+
+**批 B 可收口，不需要消化轮 3。**
+
+- N-B1~N-B4 四条全关，且关得比我建议的更深（多了 `mint−burn == replay_net` 交叉验）；变异 5 条里 4 条变红，唯一存活的 R2-c 是**缺红线**不是漏洞。
+- 锚点翻案的事实基础（含 burn 定义修正）我在真实收据上逐位独立复算，成立；夹具修正经裁定属重绑等效重跑生产者，无断言弱化。
+- 轮 2 **没有新引入缺陷**：两条 P3 里，R2-O1 是轮 1 就存在的信任属性（且攻击成本反而升高、发布路径不受影响、真正要改的只是一句 docstring 过度宣称），R2-O2 是回归覆盖缺口。按 §7.1"新引入才强制修复后重审"的口径，这两条不触发重审。
+- 建议收尾动作（不阻塞收口）：R2-O1 的 3 行 sha/size 比对＋docstring 改准、R2-O2 的一条红线用例，两条一并记批 D 台账随下批做。
+
+消化轮 2 复核完成
