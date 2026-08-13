@@ -7,7 +7,7 @@
 
 ## 本册路由
 
-- §0 公共纪律；§1 wave-scan；§2 flow-anomaly；§3 裁决台账；§4 provenance-ledger；§5 PYTHIA fixture；§6 至 §11 是分布形态契约。
+- §0 公共纪律；§1 wave-scan；§2 flow-anomaly；§3 裁决台账；§4 provenance-ledger；§5 PYTHIA fixture；§6 至 §11 是分布形态契约；§13 阵营序列 sidecar 与 burn 闭合口径。
 
 ## 0. 四条公共纪律
 
@@ -506,3 +506,26 @@ validator 对候选文件、schema、ID 集、重复 ID、候选哈希、成员�
 | 合成盘 | 覆盖正常长尾、鼓包、等额组、头部集中、粉尘长尾、设施分桶、黑箱披露、经济门边界、99-owner 小样本、分箱平移和多簇。 |
 
 QUQ 与 PYTHIA 只用于算法层探索定标。防伪链测试使用合成 fixture。阈值出身是两案探索定标和合成盘，缺少完整保留集与多案校准。
+
+## 13. camp-series-provenance/v1（阵营序列 producer sidecar，camp_series_provenance.py）
+
+**要解决的事**（F-04，2026-08-13）：图 1 的阵营序列此前是编报告的人自己填进 state 的数字，编译器不问出处——伪造序列能一路走到封章。本节把序列钉回重放产物：谁产的、用什么输入产的、产物本体的指纹是什么，全部落在序列文件旁边的 sidecar 里。
+
+**producer 侧**：四族重放入口（`evm/replay_pass2.py`、`evm/replay_duck.py`、`solana/replay_edges.py evolution`、`solana/build_evolution.py`）写序列文件时**同步**写 `<序列名去 .json>.provenance.json`（如 `camp_series.json` → `camp_series.provenance.json`），共享实现 `scripts/lib/camp_series_provenance.py`（写法＝tmp＋os.replace 原子替换）。字段：
+
+| 字段 | 含义 |
+|---|---|
+| `schema` | 恒 `camp-series-provenance/v1` |
+| `producer` | 产者脚本仓库相对路径（如 `scripts/evm/replay_duck.py`） |
+| `series_file` / `series_sha256` / `series_size` | 序列文件名与本体指纹（输出绑定） |
+| `series_format` | `evm-dict`（EVM 两引擎）/ `sol-rows`（replay_edges）/ `sol-anchor-rows`（build_evolution，小样本辅助）/ `evm-entity-dict`（entity_series，图 2 原料） |
+| `denominator` | `current_net_supply` / `mint_total_legacy` / `net_supply` / `config_total_supply`——只作口径声明，consumer 重算分母不信此处自报数字 |
+| `camps_spec` | 阵营定义文件 `{path(basename), sha256, size}` |
+| `final_balances` | 与本序列**同一次重放**落盘的终态余额快照（EVM＝`balances_final.json`；sol-rows＝`effective_balances.json`）——末点对账的快照锚 |
+| `inputs` | `{语义名: {path, sha256, size}}`：EVM 必含 `replay_stats`；sol-rows 必含 `reconcile_receipt`（正式链）；亿级边数据本体不进 sidecar（其完整性由 replay_stats reject 记账＋供给真值链保证） |
+
+**consumer 侧**（`state_from_facts.py --series-source <序列文件>`，正式编译必给）：①序列 sha 对 sidecar（落盘后改一字节即拒）；②camps_spec/final_balances/inputs 逐项三验（存在＋sha＋size，basename 只在序列目录与案根两层内找，符号链接拒）；③登记面命中——`evm-dict` 要求案内 `supply_truth.json` 在场且 sidecar 的 replay_stats sha 命中其绑定集合，`sol-rows` 要求绑定的 `reconcile_receipt.json` gate_pass 为 true 且终态快照合计＝其 `net_supply_raw`；④**末点对账**＝从 camps spec＋final_balances 机械重算各 spec 阵营终点份额，与序列末点逐桶比对（容差 0.05pp，formal 写死）——spec 外动态桶（散户残差等）用恒等式 `100−Σspec` 比对，不是单向下界；⑤state 的 `camp_share_series` 由编译器从原生文件转换生成（sol-rows 的 `其他散户`/`首30分钟狙击者` 两个动态桶并入 `散户`，狙击窗明细在 `sniper_set.json` 不丢），source 手填了该字段就必须与转换结果逐点相等。`sol-anchor-rows` 不入正式编译链（锚点法小样本辅助、无对账链锚，正式序列走 replay_edges/replay_duck）。旧案无 sidecar → 不经 compile_state 的重绘路径照旧，无追溯卡死。
+
+**camp_share_series 数值面（compile_state 无条件校验，与 --series-source 无关）**：桶名白名单＝`standard_charts.CAMP_ORDER_MODERN`（∪ `burn_cum_pct` 豁免键；legacy 名与实体级自造桶名新报告一律拒）；全值有限；非 burn 桶值域 [0,100]；日期轴统一 UTC 解析后严格递增无重复（naive 视为 UTC，带时区先换算再比）。
+
+**burn 口径定案（rg 全库落锤，防 100% 闭合闸误杀 burn 案）**：三族产物的 burn 表达不同——EVM 现代口径 `burn_cum_pct` 顶层单列（分母＝当期净供应，可 >100%，不参与堆叠）；replay_edges 行内 `锁仓/销毁`（分母＝净供应，不参与闭合，有 burn 时全桶合计 >100% 是**合法形态**）；build_evolution 行内 `锁仓/销毁`（分母＝total_supply，**参与** 100% 闭合）。故同点合计闭合＝**双式**：非 burn 桶之和≈100 **或** 全桶之和≈100（容差 0.05pp），二中其一即过；burn 桶单独验非负有限、不设 100 上界；全桶全零的点（供应尚未产生）豁免。轴/元数据键（`dates`/`ts`/`_meta`/`_supply_raw`）不是桶，转换层剔除或转为 dates。

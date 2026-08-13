@@ -84,6 +84,12 @@
     },
     {
       "schemas": [
+        "camp-series-provenance/v1"
+      ],
+      "script": "scripts/lib/camp_series_provenance.py"
+    },
+    {
+      "schemas": [
         "solana-observation-bundle/v1",
         "solana-observation-core/v1"
       ],
@@ -281,6 +287,12 @@
         "anchor-plan/v2"
       ],
       "script": "scripts/lib/time_spotcheck.py"
+    },
+    {
+      "schemas": [
+        "camp-series-provenance/v1"
+      ],
+      "script": "scripts/lib/camp_series_provenance.py"
     },
     {
       "schemas": [
@@ -739,6 +751,11 @@
     {
       "locator": "quarantine_current",
       "script": "scripts/lib/artifact_quarantine.py",
+      "semantics": "overwrite_single"
+    },
+    {
+      "locator": "write_series_sidecar",
+      "script": "scripts/lib/camp_series_provenance.py",
       "semantics": "overwrite_single"
     },
     {

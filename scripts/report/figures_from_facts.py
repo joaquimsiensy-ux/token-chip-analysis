@@ -30,7 +30,8 @@
          图 2 的时间序列本身无法从快照型 state 重建（需重放中间序列），故此处
          做终值对账而非生成——序列中间值的正确性仍由重放脚本+对账关卡负责。
 
-退出码：0=成功/对账过；1=失败（宏残留/对账超差/输入缺失）。
+退出码：0=成功/对账过；1=失败（宏残留/对账超差/输入缺失）；
+        2=check 容差政策拒（正式模式改 --tol-pp 未加 --exploration，F-04 钳制）。
 """
 import argparse
 import csv
@@ -156,7 +157,18 @@ def mode_flow(a):
     return 0
 
 
+DEFAULT_TOL_PP = 0.05  # 图 2 末点对账容差；formal 写死本值，仅 --exploration 可覆盖
+
+
 def mode_check(a):
+    # F-04 同族钳制（同 supply_truth_gate --tolerance-bps 的 F-02 模式）：--tol-pp 直接
+    # 决定图 2 末点对账 PASS/FAIL，是判定翻转参数——正式模式写死默认值，探索放宽必须
+    # 显式声明 --exploration（fail-loud，不静默夹回默认值）。exit 2=容差政策拒
+    # （调用方式非法，与对账 FAIL 的 exit 1 区分，同 supply_truth_gate 口径）
+    if not a.exploration and a.tol_pp != DEFAULT_TOL_PP:
+        print(f"FAIL: 正式模式 --tol-pp 写死 {DEFAULT_TOL_PP}pp（收到 {a.tol_pp}）"
+              f"——探索性放宽必须显式加 --exploration", file=sys.stderr)
+        raise SystemExit(2)
     facts = Facts(_load(a.facts))
     series = _load(a.series)
     if not isinstance(series, list):
@@ -193,7 +205,8 @@ def mode_check(a):
             print(f"[CHECK-FAIL] {e}")
         print(f"FAIL: 图 2 装配数据与 facts 终值 {len(errs)} 处不同源")
         return 1
-    print(f"PASS: 图 2 全部 {okc} 条实体线末点与 facts 当前持仓同源"
+    tag = "[exploration] " if a.exploration else ""
+    print(f"{tag}PASS: 图 2 全部 {okc} 条实体线末点与 facts 当前持仓同源"
           f"（容差 {a.tol_pp}pp）")
     return 0
 
@@ -221,7 +234,11 @@ def main():
     p3 = sub.add_parser("check", help="图2 装配数据与 facts 终值对账")
     p3.add_argument("--facts", required=True)
     p3.add_argument("--series", required=True)
-    p3.add_argument("--tol-pp", type=float, default=0.05)
+    p3.add_argument("--tol-pp", type=float, default=DEFAULT_TOL_PP,
+                    help=f"末点对账容差 pp；正式模式写死 {DEFAULT_TOL_PP}，"
+                         "改动必须同时加 --exploration")
+    p3.add_argument("--exploration", action="store_true",
+                    help="显式声明探索运行，才允许覆盖 --tol-pp（正式发布禁用）")
     p3.set_defaults(fn=mode_check)
     a = ap.parse_args()
     return a.fn(a)

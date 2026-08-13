@@ -12,8 +12,12 @@ camps.json 格式：{"camps": {"阵营名": [地址...]}, "entities": {"实体�
   阵营且确有烧毁时自动增列）。修复前烧毁量残留在散户残差里（SQD 案散户虚高 2.65pp）。
   mint（from=0x0）不记账；全程无烧毁时"销毁"曲线不输出。0xdead 类烧毁地址仍需在 camps.json 显式归入"销毁"。
 """
-import csv, json, argparse, os
+import csv, json, argparse, os, sys
 from collections import defaultdict
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
+from camp_spec import validate_camp_spec
 
 Z = '0x0000000000000000000000000000000000000000'
 
@@ -25,7 +29,11 @@ def main():
     a = ap.parse_args()
     spec = json.load(open(a.camps))
     total = int(json.load(open(f"{a.data_dir}/replay_stats.json"))["mint_total_wei"])
-    camps = {k: set(x.lower() for x in v) for k, v in spec.get("camps", {}).items()}
+    # F-05：互斥校验（同营内+跨营重复硬拒 exit 2）在 set() 化之前、规范化之后做；
+    # 校验实现四入口共享（scripts/lib/camp_spec.py），禁再各自手写
+    camps_valid = validate_camp_spec(spec.get("camps", {}), chain_family="evm",
+                                     source_label=a.camps)
+    camps = {k: set(v) for k, v in camps_valid.items()}
     camps.setdefault("销毁", set())
     ents = {k: set(x.lower() for x in v) for k, v in spec.get("entities", {}).items()}
     addr2camp = {}
@@ -114,6 +122,22 @@ def main():
         out["burn_cum_pct"] = burn_pct
     json.dump(out, open(f"{a.data_dir}/camp_series.json", "w"))
     json.dump({"dates": dates, **{k: v for k, v in eseries.items()}}, open(f"{a.data_dir}/entity_series.json", "w"))
+    # F-04：producer sidecar——序列落盘即同步写 provenance（spec/输入/输出 sha 绑定），
+    # state_from_facts --series-source 只认带 sidecar 的序列（camp_series_provenance.py）
+    from camp_series_provenance import write_series_sidecar
+    _den = "mint_total_legacy" if legacy else "current_net_supply"
+    _sidecar_inputs = {"replay_stats": f"{a.data_dir}/replay_stats.json"}
+    _fb = f"{a.data_dir}/balances_final.json"
+    write_series_sidecar(f"{a.data_dir}/camp_series.json",
+                         producer="scripts/evm/replay_pass2.py",
+                         series_format="evm-dict", denominator=_den,
+                         camps_spec_path=a.camps,
+                         final_balances_path=_fb if os.path.exists(_fb) else None,
+                         inputs=_sidecar_inputs)
+    write_series_sidecar(f"{a.data_dir}/entity_series.json",
+                         producer="scripts/evm/replay_pass2.py",
+                         series_format="evm-entity-dict", denominator=_den,
+                         camps_spec_path=a.camps, inputs=_sidecar_inputs)
     print(f"天数={len(dates)} 阵营={[k for k in series]} 实体={list(ents)}")
     print("末日阵营占比:", {k: series[k][-1] for k in series})
     print("末日实体占比:", {k: eseries[k][-1] for k in eseries})

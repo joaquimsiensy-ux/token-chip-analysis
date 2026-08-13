@@ -30,7 +30,9 @@ from pathlib import Path
 
 # 批量标签库共享内核（v4 2026-07-17 接入 SOL 主流程；--no-labels 关闭）：
 # top/sniper/trace 输出带标签标注（CEX/桥/程序/惯犯高亮），top 未命中大户落 miss 队列
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "lib"))
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "labels"))
+from camp_spec import validate_camp_spec
 try:
     from labels_resolver import LabelResolver, append_misses
 except Exception:
@@ -235,7 +237,19 @@ def cmd_mints(edges, dec):
 
 
 def cmd_evolution(edges, dec, camps_file, stake_pools):
-    camps_def = json.loads(Path(camps_file).read_text()) if Path(camps_file).exists() else {}
+    # F-05 定案（rg 调用面：main --camps 默认 camps.json + test_review_resume_integrity，
+    # 文档与真实案均无"无 camps 跑 evolution"的用法）：缺文件从"静默空 spec"改为硬拒——
+    # 静默空 spec 的效果是全部地址落散户/狙击者两桶，序列外观正常实际零阵营。
+    # 确需无阵营定义的探索跑，显式建一份内容为 {} 的 camps 文件表达意图。
+    if not Path(camps_file).exists():
+        print(f"[camp-spec] 阵营定义文件不存在：{camps_file}——evolution 必须显式给"
+              f" camps（无阵营定义就放一份 {{}}），拒绝静默按空 spec 重放", file=sys.stderr)
+        raise SystemExit(2)
+    camps_def = json.loads(Path(camps_file).read_text())
+    # 互斥校验（同营内+跨营重复硬拒 exit 2；Solana base58 原样不改写大小写），
+    # 与 EVM 两引擎同一共享实现（scripts/lib/camp_spec.py）
+    camps_def = validate_camp_spec(camps_def, chain_family="solana",
+                                   source_label=str(camps_file))
     addr2camp = {}
     pools = set()
     for camp, addrs in camps_def.items():
@@ -322,6 +336,18 @@ def cmd_evolution(edges, dec, camps_file, stake_pools):
     json.dump({a: v for a, v in sorted(eff.items(), key=lambda kv: -kv[1]) if v != 0},
               open("data/effective_balances.json", "w"))
     print("有效持仓末态已写 data/effective_balances.json")
+    # F-04：producer sidecar——effective_balances 是与本序列同一次重放的终态快照
+    # （末点对账锚）；reconcile_receipt 在场即绑（正式编译链要求其在场且 gate_pass）
+    from camp_series_provenance import write_series_sidecar
+    _inputs = {"sniper_set": "data/sniper_set.json"}
+    if Path("data/reconcile_receipt.json").exists():
+        _inputs["reconcile_receipt"] = "data/reconcile_receipt.json"
+    write_series_sidecar("data/camp_share_series.json",
+                         producer="scripts/solana/replay_edges.py",
+                         series_format="sol-rows", denominator="net_supply",
+                         camps_spec_path=camps_file,
+                         final_balances_path="data/effective_balances.json",
+                         inputs=_inputs)
 
 
 def main():

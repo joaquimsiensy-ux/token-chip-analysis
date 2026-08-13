@@ -39,6 +39,7 @@ from pathlib import Path
 import duckdb
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
+from camp_spec import validate_camp_spec
 from channels_preflight import preflight_channels, replay_provenance
 from supply_semantics import DEAD, ZERO as Z
 
@@ -371,13 +372,17 @@ def emit_merged(con, out_dir, emit_csv, merged_parquet):
 def replay_pass2(con, camps_path, out_dir, mint_total, vt):
     """日度阵营/实体序列——known 累加按 camps.json 键序，与旧 snap() 逐表达式同构。"""
     spec = json.load(open(camps_path))
-    camps_order = list(spec.get("camps", {}).keys())
+    # F-05：互斥校验（同营内+跨营重复硬拒 exit 2）在原始列表上、lower 规范化之后做；
+    # 与 replay_pass2.py 同一共享实现（scripts/lib/camp_spec.py），两 EVM 引擎同深
+    camps_valid = validate_camp_spec(spec.get("camps", {}), chain_family="evm",
+                                     source_label=str(camps_path))
+    camps_order = list(camps_valid.keys())
     if "销毁" not in camps_order:
         camps_order.append("销毁")
     addr2camp = {}
-    for c, addrs in spec.get("camps", {}).items():
+    for c, addrs in camps_valid.items():
         for ad in addrs:
-            addr2camp[ad.lower()] = c          # 后配置覆盖先前（复刻 dict 语义）
+            addr2camp[ad] = c
     addr2camp.pop(Z, None)                     # 0x0 永不走阵营映射（销毁另算）
     ent_pairs = [(ad.lower(), e) for e, addrs in spec.get("entities", {}).items()
                  for ad in addrs]
@@ -476,6 +481,22 @@ def replay_pass2(con, camps_path, out_dir, mint_total, vt):
         out["burn_cum_pct"] = burn_pct
     json.dump(out, open(f"{out_dir}/camp_series.json", "w"))
     json.dump({"dates": dates, **eseries}, open(f"{out_dir}/entity_series.json", "w"))
+    # F-04：producer sidecar——与 replay_pass2.py 同族同深（同一共享实现），
+    # balances_final.json 由同进程 pass1 刚写出（同一次重放同源，末点对账的快照锚）
+    from camp_series_provenance import write_series_sidecar
+    _den = "mint_total_legacy" if legacy else "current_net_supply"
+    _sidecar_inputs = {"replay_stats": f"{out_dir}/replay_stats.json"}
+    _fb = f"{out_dir}/balances_final.json"
+    write_series_sidecar(f"{out_dir}/camp_series.json",
+                         producer="scripts/evm/replay_duck.py",
+                         series_format="evm-dict", denominator=_den,
+                         camps_spec_path=camps_path,
+                         final_balances_path=_fb if os.path.exists(_fb) else None,
+                         inputs=_sidecar_inputs)
+    write_series_sidecar(f"{out_dir}/entity_series.json",
+                         producer="scripts/evm/replay_duck.py",
+                         series_format="evm-entity-dict", denominator=_den,
+                         camps_spec_path=camps_path, inputs=_sidecar_inputs)
     print(f"天数={len(dates)} 分母={'mint_total(legacy)' if legacy else '当期净供应'} "
           f"阵营={[k for k in series]} 实体={ents_order}", flush=True)
 
