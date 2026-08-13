@@ -66,6 +66,7 @@ def main():
         stats = td / "data/replay_stats.json"
         (td / "supply_truth.json").write_text(json.dumps(
             {"schema": "supply-truth-receipt/v3", "verdict": "PASS", "exit_code": 0,
+             "target": {"chain": "bsc", "token": A, "as_of_block": 120},
              "onchain_total_supply": "950", "replay_net": "950", "chain": "bsc",
              "inputs": {"replay_stats": {
                  "path": "data/replay_stats.json",

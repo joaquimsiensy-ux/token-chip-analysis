@@ -169,6 +169,9 @@ def bind_series_source(source: dict, series_source: Path) -> dict:
         "producer": sidecar.get("producer"),
         "series_file": sidecar.get("series_file"),
         "series_sha256": sidecar.get("series_sha256"),
+        # 消化轮 2（F-C1 终关）：发布闸要用同一转换器把案内序列实物重转换一遍
+        # 与 state 的 camp_share_series 逐点比对——format 必须随绑定块落盘
+        "series_format": sidecar.get("series_format"),
     }
     bound["provenance"] = provenance
     return bound

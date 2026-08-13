@@ -418,6 +418,38 @@ def registry_anchor_check(sidecar: dict, resolved: dict, series_path):
                 or truth.get("exit_code") != 0:
             raise SeriesProvenanceError(
                 "supply_truth.json 非 PASS/exit 0——供给真值闸未通过的案不得编译序列")
+        # N-C3（消化轮 2）：target 三键=收据的案身份锚（真实生产者恒写
+        # {chain, token, as_of_block}）。不验它，一份从别的案复制来的合法收据或
+        # 凭空造的收据都能当登记面用。token 必须与案内采集链身份件
+        # channels_preflight.json 的 token 一致（EVM replay 数据链必产、自身有
+        # receipt 三验链）——找不到 preflight 即拒，不留条件式跳过（N-C1 教训）。
+        target = truth.get("target")
+        if not isinstance(target, dict) \
+                or not str(target.get("chain") or "").strip() \
+                or not str(target.get("token") or "").strip() \
+                or isinstance(target.get("as_of_block"), bool) \
+                or not isinstance(target.get("as_of_block"), int) \
+                or target["as_of_block"] <= 0:
+            raise SeriesProvenanceError(
+                "supply_truth.json 缺合法 target 三键（chain/token/as_of_block）"
+                "——没有案身份锚的收据不算登记面")
+        if str(target.get("chain")).strip().lower() \
+                != str(truth.get("chain") or "").strip().lower():
+            raise SeriesProvenanceError(
+                "supply_truth.json target.chain 与收据顶层 chain 不一致"
+                "——真实生产者两处同源，撕裂即伪造/拼接")
+        preflight = next((d / "channels_preflight.json" for d in dirs
+                          if (d / "channels_preflight.json").is_file()), None)
+        if preflight is None:
+            raise SeriesProvenanceError(
+                "案内找不到 channels_preflight.json——EVM 序列的采集链身份件缺席，"
+                "target.token 无从对锚")
+        preflight_token = str(json.loads(
+            preflight.read_text(encoding="utf-8")).get("token") or "").lower()
+        if str(target.get("token")).lower() != preflight_token:
+            raise SeriesProvenanceError(
+                f"supply_truth.json target.token 与案内 channels_preflight.json "
+                f"的 token 不一致——收据不是本案的（复制他案收据/凭空伪造）")
         bound = ((truth.get("inputs") or {}).get("replay_stats") or {})
         registered_sha = str(bound.get("sha256", "")).lower()
         if not registered_sha:

@@ -249,3 +249,209 @@ exploration 运行产生的落盘文件：无（零留痕）
 **原样收口的终判**：**不建议**。F-C1 一条就使本批 F-04 的核心不变量（"进入 analysis-state 的序列必然锚在 producer 链上"）在落盘产物上不成立，属于必须进消化轮的 P0；F-C2/F-C3 两条 P1 一个是存量面未评估、一个是强度宣称与实际不符，都可低成本收口。数值面与 F-05 那两半可以原样保留。
 
 对抗审查完成
+
+---
+
+# 消化轮 1 复核
+
+- **复核对象**：`eb6bee2`（基线 `20ed20b`）——批 C 消化轮 1，工单 `batchC_fixround1_workorder.md`，施工方声称 F-C1~F-C6 全关
+- **复核方式**：只读＋副本变异，副本 `/private/tmp/batchC_probe/repo2/`（`eb6bee2` 钉死态）。生产树零改动
+- **基线核对（独立复跑）**：`run_all.py` **EXIT=0**；`test_repair_batch_c.py` **rc=0，103 checks**（69→103 属实）；`invariant_scan.py` **rc=0**（producers=54／consumers=61／atomic=45，与工单自报一致）
+- **结论**：**5 关 1 开**。F-C2/C3/C4/C5/C6 关闭；**F-C1 REOPEN（P0→P1）**——编译期必经化做得干净彻底，但轮 1 新写的下游发布闸 `check_series_binding` 是**自证式**的，"伪造序列进正式发布"这条路径换个操作方式仍然通畅。另有 **3 条新 finding（全 P2）**
+
+| 编号 | 判定 | 一句话 |
+|---|---|---|
+| F-C1 | **REOPEN（P1）** | 编译期三道全关（原攻击 exit 2／exploration 如实标记／source 预置拒），但发布闸 `check_series_binding` 只验"state 自报的 sidecar 块与案内同名文件 sha 自洽"，**从不比对 state 里的 `camp_share_series` 与那个序列文件的内容**——手改两个字段即放行 |
+| F-C2 | CLOSED | 34 state 扩面属实、A/B/C 分类框架站得住（A/B 类独立抽查全成立）；C 类两处数字失真另记 N-C2 |
+| F-C3 | CLOSED | 三种粗糙伪造（46B 冒充／sha 塞顶层／verdict=FAIL）全部转拒 ✓；完整伪造收据仍过、成本仅 +129B，另记 N-C3 |
+| F-C4 | CLOSED | 两个互救构造全部转拒（`closure_mode=net`／`total` 各自报错）；burn 两族合法绿例与 dual 宽式零误伤 |
+| F-C5 | CLOSED | `--tol-pp 99 --exploration` 现在落收据（mode=exploration）且被发布闸拦下——原诉求"零留痕、发布闸不可验"已消除；收据本身可手写另记 N-C1 |
+| F-C6 | CLOSED | `replay_pass2` 缺 `balances_final.json` → **rc=2 硬拒**（实跑）；有则正常绑定；`write_series_sidecar` 已 flush+fsync+replace |
+
+| 新编号 | 严重度 | 轮 1 新引入？ | 一句话 |
+|---|---|---|---|
+| N-C1 | P2 | **是** | `figure2_check_receipt.json` 可纯手写伪造：series sha 验证是**条件式**（收据里的 path 不在案根就整段跳过）、facts sha **完全不验**——不跑 check 直接手写一份 formal/PASS 收据即过发布闸 |
+| N-C2 | P2 | **是** | F-C2 上报裁判的 MOG 闭合偏差取的**不是最差点**：工单写"第 93 点 99.9440，差 0.056pp 超容差一线"，实测最差在 idx 177 = **99.7433（偏离 0.2567pp）**，低估 4.6 倍；KOGE 日期轴重复实为 **2 处**（idx 8、idx 12），工单只报 1 处 |
+| N-C3 | P2 | 否（盲审建议未完全落实） | 登记面三验加了 schema/verdict/exit_code＋位绑定，**但没加 target 三键**（真实收据带 `chain/token/as_of_block`）——完整伪造链实测从 1663B 涨到 **1792B**，成本几乎未变，登记面仍无案身份锚 |
+
+---
+
+## 1. F-C1~F-C6 逐条重放
+
+### F-C1 —— REOPEN（P0→P1）
+
+**已关的部分（编译期，做得干净）**——三条实测全部转拒：
+
+```
+手编序列直通（无 --series-source）  rc=2  BLOCK: formal 编译必须 --series-source（闸不挂可选参数）
+加 --exploration 豁免              rc=0  产物 provenance.series_binding = "exploration-unbound"   ← 标记如实
+source 预置 producer-sidecar 标记   rc=2  BLOCK: source.provenance 不得预置 series_binding/camp_series_sidecar
+```
+
+**未关的部分（下游发布闸自证）**——`check_series_binding` 只做三件事：读 state 自报的 `series_binding`、按 `camp_series_sidecar.series_file` 的 basename 在案根/`data/` 找实物、比对该实物 sha 与 state 自报的 `series_sha256`。**三样东西全部由 state 自己携带，序列文件的内容与 state 里的 `camp_share_series` 之间没有任何一行代码建立联系。**
+
+单元级实测（`check_series_binding(case_dir, state, errors)` 直调）：
+
+| 场景 | 结果 |
+|---|---|
+| **A) exploration 产物手改标记**：伪造 `camp_share_series`＋手写 `series_binding="producer-sidecar"`＋自补 sidecar 块指向案内一份内容任意的 `data/camp_series.json`（sha 自己算） | **★ 放行（零 error）** |
+| **B) formal 合法产物编译后篡改 `camp_share_series`**（provenance 原样不动） | **★ 放行（零 error）** |
+| A0) 诚实的 `exploration-unbound` 产物 | 拦下 ✓ |
+| C) 序列实物被改（sha 与登记不符） | 拦下 ✓ |
+| D) 序列实物不在案根/`data/` 两层 | 拦下 ✓ |
+
+攻击 A 的完整成本：手写两个 JSON（改后的 state ＋ 一份随便什么内容的 `camp_series.json`），**不需要跑任何 producer、不需要任何真实数据**。
+
+**兜底面已查，无有效兜底**：`entity_identity_gate.py:187` 与 `a5_report_seal.py` 确实绑 analysis-state 的 sha256，但它们封的是"当前磁盘状态"——攻击者手改 state 之后再跑这两步，封的就是改后的 state。它们防的是"封章后被改"，不防"封章前被改"。
+
+**归属说明（对我自己轮 0 建议的更正）**：我轮 0 的收口建议原文是"让至少一个下游闸验该键在场且 `series_sha256` 与案内序列实物相符"——施工方**逐字照做了**。是我的建议本身不完备：验 sha 相符只证明"序列文件没被改"，不证明"state 里的序列是这个文件转换来的"。**正确的闸条件是：发布闸自己用 `series_to_state_form` 把案内序列文件重新转换一遍，与 state 里的 `camp_share_series` 逐点比对**（转换器是纯函数、无外部依赖，发布闸可直接 import；这样 A 和 B 两个攻击同时死）。
+
+### F-C2 —— CLOSED（分类站得住，数字失真另记 N-C2）
+
+**A 类（仅白名单拒）独立抽查 2 案**——把白名单这一道临时豁免、其余数值面全跑：
+
+| 案 | 点数 | 日期轴重复 | 最差闭合偏离 | 负值 | 超 100 | 豁免白名单后 |
+|---|---|---|---|---|---|---|
+| QUQ | 489 | 0 | 0.0002pp | 无 | 无 | **PASS ✓** |
+| TAG | 500 | 0 | 0.0002pp | 无 | 无 | **PASS ✓** |
+
+A 类定义（"数值面全过、仅桶名不合"）**成立**。
+
+**B 类（非本批引入）定性抽查 2 案**——用旧编译器（`2582c81` 版 `state_from_facts.py`，无 `validate_series_payload`）跑：
+
+```
+B2    camp_share_series 键 = [schema, denominator, camps, series, final_pct]
+      旧编译器 REJECT: source.camp_share_series 结构非法   ← 非本批引入 ✓
+TROLL camp_share_series 键 = [dates, camps]
+      旧编译器 REJECT: source.camp_share_series 结构非法   ← 非本批引入 ✓
+```
+
+B 类定性**成立**，"本批新增拒绝面实为 A 类 4 案＋C 类 2 案"这一修正对我轮 0 报告的细化**属实**（我轮 0 把 B2 列进"7 拒"里确实是口径问题）。
+
+**C 类抽查**：分类归属成立（两案确实是白名单＋数值面双拒），但两处数字失真，见 N-C2。
+
+### F-C3 —— CLOSED（原诉求已关，成本几乎未变另记 N-C3）
+
+四个梯度实测：
+
+```
+原 1663B {"sha256": "..."} 冒充        rc=2  不是合法供给真值收据（schema 必须是 supply-truth-receipt/v3）
+真 schema 但 sha 塞顶层任意位置          rc=2  缺 inputs.replay_stats.sha256 绑定
+真 schema + 位对但 verdict=FAIL        rc=2  非 PASS/exit 0
+真 schema + PASS + exit_code=0 + 位对   rc=0  ★ 仍过（完整伪造链 1792 字节）
+```
+
+schema 名矫正独立核实**属实**：TAG 案实物 `supply_truth.json` 的 `schema` 确为 `supply-truth-receipt/v3`、`verdict=PASS`、`exit_code=0`、`inputs.replay_stats.sha256` 在场——修主批时夹具用的 `supply-truth/v1` 确是影子形态，本轮矫正方向正确。
+
+原 finding 的论点①（"schema/gate/target 一概不验"）已关；论点②（"成本 1663 字节，与'伪造整案数据链'不是一个量级"）**未关**，见 N-C3。判 CLOSED 是因为①是要害、②本就是程度问题且工单未再声称已解决。
+
+### F-C4 —— CLOSED，零误伤
+
+```
+净族 非burn=95 + burn_cum_pct=5 蹭 s_all   rc=2  不闭合（closure_mode=net）：非burn桶Σ=95.0000
+total族 s_non=100 + 锁仓/销毁=7（总量107）  rc=2  不闭合（closure_mode=total）：全桶Σ=107.0000
+```
+
+**防误伤抽查（裁判要求 4）全过**：净族 EVM（非 burn=100、`burn_cum_pct`=5.2632）PASS ✓；净族 sol-rows（非 burn=100、`锁仓/销毁`=11.11）PASS ✓；total 族（全桶含 `锁仓/销毁`=100）PASS ✓；手填路径 `dual` 宽式保留 ✓。`closure_mode_for` 四口径映射正确（`current_net_supply`/`net_supply`→net，`mint_total_legacy`/`config_total_supply`→total），未知口径拒 ✓。
+
+TROLL/TAG 的末点对账实测不受本轮影响：`endpoint_reconcile` 本轮零改动，且这两案的序列桶名本就不在 MODERN 白名单（轮 0 报告已指出那两次"实测"是在 `endpoint_reconcile` 层单跑的，不是全链）。
+
+### F-C5 —— CLOSED（原诉求已关，收据可手写另记 N-C1）
+
+```
+--tol-pp 99 --exploration   rc=0，收据在场，mode=exploration / tol_pp=99.0 / verdict=PASS
+发布闸 check_figure2_receipt → 拦下："mode='exploration'——exploration 运行的产物不得进正式发布"
+```
+
+轮 0 的原诉求是"exploration 放宽零成本、零留痕、发布闸不可验"——**三点全部消除**：现在有收据、mode 如实、发布闸复验。判 CLOSED。
+
+### F-C6 —— CLOSED
+
+```
+replay_pass2 缺 data/balances_final.json  rc=2  [camp-series] 缺 …/balances_final.json
+replay_pass2 有 balances_final            rc=0  sidecar final_balances 绑定 = balances_final.json
+```
+
+`write_series_sidecar` 已改为 `open→write→flush→os.fsync→os.replace`，与 `receipt_kernel` 先例对齐 ✓。
+
+---
+
+## 2. 轮 1 新代码检查（固定动作）
+
+### 2a. formal 必经化后，exploration 产物能不能伪装 formal
+
+**编译期不能**（`source.provenance` 预置标记直接拒，实测 exit 2）；**产物落盘后能**——把 `analysis-state.json` 里的 `series_binding` 手改成 `producer-sidecar` 并补一个 sidecar 块，发布闸放行（见 F-C1 攻击 A）。标记的防伪只做到了"编译器不接受外部预置"，没做到"发布闸能识别标记是不是这次编译真产的"。**结论：伪装 formal 的 exploration 产物能混过发布闸。**
+
+### 2b. `audit_release_gate.py` 改动是否"仅新增独立函数与 REQUIRED 项，批 B 第二层 hunk 零触碰"
+
+**核对属实**。三个 hunk 分别是 `NEW_ANALYSIS_REQUIRED` 加一项、在 `check_distribution_snapshot_binding` **之后**纯插入 74 行新函数（删除 0 行）、`run()` 里加 7 行 new-analysis 分支。逐字节验证：`20ed20b` 版 `check_distribution_snapshot_binding` 函数体（3149 字符）**原样出现在 `eb6bee2` 中**。批 A/B 其余已收口实现（`holder_distribution_scan.py`／`supply_truth_gate.py`／`accounting_gate.py`／`shared_release_receipt.py`）`git diff --numstat` 全部**零改动**。
+
+（方法学提醒：`git diff` 的 `@@ … @@ def check_distribution_snapshot_binding` 里那个函数名只是 hunk 所在位置的最近函数标记，**不代表该函数被改**；按"下一个顶层 def"截取函数体做比对也会因新函数插入而假阳性——必须用"旧函数体文本是否原样出现在新文件中"来判。）
+
+### 2c. `closure_mode_for` / `supply_truth` 三验 / `check_figure2_receipt` 自身有没有绕路
+
+- `closure_mode_for`：四口径全覆盖、未知即拒、`validate_series_payload` 三态校验（`dual/net/total` 之外拒）——**无绕路**。
+- `supply_truth` 三验：schema/verdict/exit_code 三道 ＋ 位绑定（`inputs.replay_stats.sha256`），`_sha_values` 递归收集式已整段删除（无死代码）——**无绕路**，但无案身份锚（N-C3）。
+- `check_figure2_receipt`：mode/tol_pp/verdict 三验硬命中；**series sha 是条件式**（`if cand.is_file()`，收据里 path 的 basename 在案根找不到就整段跳过），**facts sha 完全不验**——见 N-C1。
+
+---
+
+## 3. 新 finding 详表
+
+### N-C1 —— P2（轮 1 新引入）—— figure2 收据可纯手写伪造
+
+`check_figure2_receipt` 的四道校验里，三道读的是收据自报字段（mode/tol_pp/verdict），第四道（series sha）是条件式。实测：
+
+| 攻击 | 结果 |
+|---|---|
+| a) 手写 formal 收据、series 在案根但 sha 填假 | 拦下 ✓ |
+| **b) 手写 formal 收据、`series.path` 写成 `charts/other_series.json`**（案根无同名文件→sha 整段跳过） | **★ 放行** |
+| **c) 手写 formal 收据、series sha 填真值、facts sha 乱填** | **★ 放行** |
+
+也就是说：根本不跑 `figures_from_facts check`，直接手写一份 JSON 就能满足发布闸的"图 2 已对账"这项必经资产。攻击 c 的成本 = 一个 JSON ＋ 对案内序列文件算一次 sha。
+
+**收口建议**：①series 找不到实物时**报错而不是跳过**（收据宣称对账过就必须能验）；②facts sha 同样加验（案根 `facts.json` 是必经资产，一定在场）；③进一步可要求收据的 facts/series sha 与 `analysis-state`／案内实物三方一致。
+
+### N-C2 —— P2（轮 1 新引入）—— 上报裁判的 C 类数字失真
+
+工单 F-C2 上报段第 3 条写 MOG"第 93 点闭合差 **0.0560pp** 超容差 0.05 **一线**（数据微洞或舍入累积）——是'修数据'还是'容差边界裁决'归裁判定"。
+
+独立核数（MOG 案 5 份 state 全部同值）：
+
+- 第 93 点 `s_non=99.9440` — **数字本身属实**
+- **但最差点是 idx 177：`s_non=s_all=99.7433`，偏离 0.2567pp** — 是上报值的 **4.6 倍**
+
+这个差别直接影响裁决：按"差 0.056pp 一线"，裁判可能倾向"容差边界裁决"（放宽到 0.06 即可）；按实际 0.2567pp，要放宽到 5 倍现容差才盖得住，"舍入累积"的解释也站不住（0.26pp 不是 `round(4)` 能攒出来的），只能是数据问题。**上报材料必须取最差点，不能取任意一点。**
+
+同段 KOGE 只报了 `dates[8]='2025-06-15'` 一处日期轴重复，实测有 **2 处**（idx 8 与 idx 12='2025-07-18'）。
+
+### N-C3 —— P2（非轮 1 新引入；盲审收口建议未完全落实）—— 登记面仍无案身份锚
+
+我轮 0 的收口建议 2 原文是"加验 `schema` 与 gate 判定（sol 侧同理加验 reconcile 收据的 schema/target）"。落实了 schema／verdict／exit_code／位绑定，**没落实 target**。真实 `supply_truth.json` 带 `target = {chain, token, as_of_block}`（TAG 案实物核对），这是唯一能把收据钉到"哪个案、哪个币、哪个块"的字段——不验它，一份从别的案复制来的合法收据、或凭空造的收据都能用。
+
+实测量化：完整伪造链从轮 0 的 **1663 字节**变成轮 1 的 **1792 字节**（+129B，多写 4 个字段）。工单写"登记面命中结构化"给人的印象是伪造门槛显著提高，实测**几乎没变**。
+
+**收口建议**：加验 `truth["target"]` 的 chain/token 与案内身份件（`identity_gate.json`／`facts.token`）一致；sol 侧同理。这一项能真正把成本推到"整案身份自洽"。
+
+---
+
+## 4. 复现件清单（轮 1 新增）
+
+全部在 `/private/tmp/batchC_probe/`：
+
+| 件 | 用途 |
+|---|---|
+| `repo2/` | `eb6bee2` 完整副本（复核期间零改动，无需还原） |
+| 会话内一次性脚本 | `check_series_binding` 五场景单元攻击（A/A0/B/C/D）；F-C1 编译期三攻击；F-C3 四梯度伪造；F-C4 两互救＋四绿例；F-C5 exploration 逃逸＋三手写收据攻击；F-C6 producer 两态；F-C2 的 A/B/C 三类抽查（含旧编译器 `2582c81` 动态加载对照）；`audit_release_gate` 批 B 函数体逐字节比对 |
+
+轮 0 的 `mutate.py`／`mutate2.py` 本轮未重跑（轮 1 未触碰 `camp_spec.py`，`camp_series_provenance.py` 的改动已被本节针对性重放覆盖）。
+
+---
+
+## 5. 终判
+
+**需消化轮 2。** 单一原因：**F-C1 未闭合**——批 C 的核心不变量"进入正式发布的 analysis-state，其 `camp_share_series` 必然是 producer 链产出的"在落盘产物上**仍然不成立**，只是操作成本从"少给一个 CLI 参数"变成"手改 state 里两个字段"，威胁模型上是同一档（都不需要任何真实数据）。修法明确且工作量小：发布闸用 `series_to_state_form` 重新转换案内序列文件，与 state 的 `camp_share_series` 逐点比对（一次同时关掉 F-C1 的 A、B 两个攻击）。
+
+其余五条实质关闭，轮 1 的工程质量总体高于主施工轮（编译期必经化、closure_mode 分派、fsync、producer fail-loud 都是干净的单点修复，零误伤，103 checks 与 invariant 登记同步到位）。三条新 finding 均为 P2，其中 N-C1 与 F-C1 同族（两个新发布闸函数都是"验产物自洽"而非"验产物来自真实运行"），**建议与 F-C1 同批修**；N-C2 是上报材料的数字问题，需要在裁判裁决 MOG 之前更正。
+
+消化轮 1 复核完成

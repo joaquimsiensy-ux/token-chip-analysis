@@ -146,12 +146,14 @@ def build_evm_case(td: Path, camps_obj, *, expect_rc=0):
 
 def write_supply_truth(td: Path):
     """真实生产者形态（supply_truth_gate.py 收据：schema/verdict/exit_code/
-    inputs.replay_stats 三键，TAG 案实物核对）——F-C3 起登记面结构化三验，
+    target 三键/inputs.replay_stats，TAG 案实物核对）——F-C3 起登记面结构化
+    三验＋N-C3 起 target 案身份锚（token 对案内 channels_preflight.json），
     影子 schema（如自造 supply-truth/v1）会被拒。"""
     import hashlib
     stats = td / "data/replay_stats.json"
     (td / "supply_truth.json").write_text(json.dumps(
         {"schema": "supply-truth-receipt/v3", "verdict": "PASS", "exit_code": 0,
+         "target": {"chain": "bsc", "token": A, "as_of_block": 120},
          "onchain_total_supply": "950", "replay_net": "950", "chain": "bsc",
          "inputs": {"replay_stats": {
              "path": "data/replay_stats.json",
@@ -654,19 +656,57 @@ def t_fixround1():
         gate.check_series_binding(td, {"chain": "bsc", "whale_groups": []}, errs)
         check("FC1 下游闸对无序列 state 不强加", errs == [], str(errs))
 
+        # ── 消化轮 2：F-C1 终关（自证式→内容重转换比对）两攻击 ──
+        import hashlib as _h2
+        series_file = td / "data/camp_series.json"
+        real_sha = _h2.sha256(series_file.read_bytes()).hexdigest()
+        # 攻击 A（盲审）：exploration/手编 state 手写 producer-sidecar 标记＋自补
+        # sidecar 块指向案内真实序列文件（sha/format 全真）——但 state 里的
+        # camp_share_series 是伪造的 → 内容重转换比对拒
+        fake_state = {
+            "camp_share_series": {"dates": ["2026-08-01"],
+                                  "series": {"项目方": [88.8], "散户": [11.2]}},
+            "provenance": {"series_binding": "producer-sidecar",
+                           "camp_series_sidecar": {
+                               "producer": "scripts/evm/replay_duck.py",
+                               "series_file": "camp_series.json",
+                               "series_sha256": real_sha,
+                               "series_format": "evm-dict"}}}
+        errs = []
+        gate.check_series_binding(td, fake_state, errs)
+        check("FC1终关 攻击A：伪 state 自补真 sidecar 块被内容比对拒",
+              any("重转换" in x for x in errs), str(errs))
+        # 攻击 B（盲审）：formal 合法产物编译后篡改 camp_share_series 一个值
+        # （provenance 原样不动）→ 内容重转换比对拒
+        tampered_state = json.loads(json.dumps(st))
+        tampered_state["camp_share_series"]["series"]["大庄"][-1] = 30.0
+        errs = []
+        gate.check_series_binding(td, tampered_state, errs)
+        check("FC1终关 攻击B：编译后篡改 series 被内容比对拒",
+              any("重转换" in x for x in errs), str(errs))
+        # 绑定块缺 series_format（旧轮 1 产物/伪造块）→ 拒
+        no_fmt = json.loads(json.dumps(st))
+        del no_fmt["provenance"]["camp_series_sidecar"]["series_format"]
+        errs = []
+        gate.check_series_binding(td, no_fmt, errs)
+        check("FC1终关 绑定块缺 series_format 拒",
+              any("series_format" in x for x in errs), str(errs))
+
         # F-C3：伪 supply_truth（46 字节式 {"sha256": ...}）→ 拒；无 schema → 拒
         st_path = td / "supply_truth.json"
         st_orig = st_path.read_text()
         import hashlib as _h
         stats_sha = _h.sha256((td / "data/replay_stats.json").read_bytes()).hexdigest()
+        good_target = {"chain": "bsc", "token": A, "as_of_block": 120}
         st_path.write_text(json.dumps({"sha256": stats_sha}))
         p = compile_state_cli(td, "--series-source", "data/camp_series.json")
         check("FC3 任意 JSON 冒充 supply_truth 拒", p.returncode == 2
               and "不是合法供给真值收据" in p.stdout, p.stdout)
-        # 带真 schema 但 sha 塞在顶层任意位置（修前全文包含式会放行）→ 仍拒
+        # 带真 schema+target 但 sha 塞在顶层任意位置（修前全文包含式会放行）→ 仍拒
         st_path.write_text(json.dumps(
             {"schema": "supply-truth-receipt/v3", "verdict": "PASS",
-             "exit_code": 0, "sha256": stats_sha}))
+             "exit_code": 0, "chain": "bsc", "target": good_target,
+             "sha256": stats_sha}))
         p = compile_state_cli(td, "--series-source", "data/camp_series.json")
         check("FC3 sha 不在 inputs.replay_stats 特定位置拒", p.returncode == 2
               and "缺 inputs.replay_stats.sha256" in p.stdout, p.stdout)
@@ -677,6 +717,28 @@ def t_fixround1():
         p = compile_state_cli(td, "--series-source", "data/camp_series.json")
         check("FC3 supply_truth 非 PASS 拒", p.returncode == 2
               and "非 PASS/exit 0" in p.stdout, p.stdout)
+        # N-C3（消化轮 2）：盲审 1792B 全套伪造链＝schema/verdict/位绑定全对但
+        # **缺 target 三键** → 拒（案身份锚）
+        obj = json.loads(st_orig)
+        del obj["target"]
+        st_path.write_text(json.dumps(obj))
+        p = compile_state_cli(td, "--series-source", "data/camp_series.json")
+        check("NC3 全套伪造链缺 target 三键拒", p.returncode == 2
+              and "缺合法 target 三键" in p.stdout, p.stdout)
+        # target 齐但 token 与案内采集链身份件不符（复制他案收据）→ 拒
+        obj = json.loads(st_orig)
+        obj["target"] = dict(good_target, token="0x" + "f" * 40)
+        st_path.write_text(json.dumps(obj))
+        p = compile_state_cli(td, "--series-source", "data/camp_series.json")
+        check("NC3 target.token 不对案内 preflight 锚拒", p.returncode == 2
+              and "channels_preflight" in p.stdout, p.stdout)
+        # target.chain 与顶层 chain 撕裂 → 拒
+        obj = json.loads(st_orig)
+        obj["target"] = dict(good_target, chain="eth")
+        st_path.write_text(json.dumps(obj))
+        p = compile_state_cli(td, "--series-source", "data/camp_series.json")
+        check("NC3 target.chain 与顶层撕裂拒", p.returncode == 2
+              and "顶层 chain 不一致" in p.stdout, p.stdout)
         st_path.write_text(st_orig)
 
         # 小事①（盲审更正变异表第 11 条）：只改序列中间点（末点/桶名/闭合全不变）
@@ -806,6 +868,37 @@ def t_fc5_receipt_chain():
         gate.check_figure2_receipt(td, rcpt, errs)
         check("FC5 对账后改序列被实物 sha 抓获",
               any("实物不一致" in x for x in errs), str(errs))
+
+        # ── 消化轮 2：N-C1 手写收据攻击（不跑 check 纯手写）──
+        import hashlib as _h3
+        facts_sha = _h3.sha256((td / "facts.json").read_bytes()).hexdigest()
+        ws_sha = _h3.sha256((td / "ws.json").read_bytes()).hexdigest()
+        # 攻击 b（盲审）：series.path 写不存在的名字（轮 1 条件式整段跳过）→ 拒
+        errs = []
+        gate.check_figure2_receipt(td, {
+            "schema": "figure2-check-receipt/v1", "mode": "formal",
+            "tol_pp": 0.05, "verdict": "PASS",
+            "series": {"path": "charts/other_series.json", "sha256": "a" * 64},
+            "facts": {"path": "facts.json", "sha256": facts_sha}}, errs)
+        check("NC1 手写收据 series 实物缺席拒",
+              any("不在案根" in x for x in errs), str(errs))
+        # 攻击 c（盲审）：series sha 真、facts sha 乱填（轮 1 完全不验）→ 拒
+        errs = []
+        gate.check_figure2_receipt(td, {
+            "schema": "figure2-check-receipt/v1", "mode": "formal",
+            "tol_pp": 0.05, "verdict": "PASS",
+            "series": {"path": "ws.json", "sha256": ws_sha},
+            "facts": {"path": "facts.json", "sha256": "b" * 64}}, errs)
+        check("NC1 手写收据 facts sha 乱填拒",
+              any("facts" in x and "不一致" in x for x in errs), str(errs))
+        # 收据缺 facts 绑定段 → 拒
+        errs = []
+        gate.check_figure2_receipt(td, {
+            "schema": "figure2-check-receipt/v1", "mode": "formal",
+            "tol_pp": 0.05, "verdict": "PASS",
+            "series": {"path": "ws.json", "sha256": ws_sha}}, errs)
+        check("NC1 收据缺 facts 绑定拒",
+              any("缺 facts 绑定" in x for x in errs), str(errs))
 
 
 def t_f04_tolpp_clamp():

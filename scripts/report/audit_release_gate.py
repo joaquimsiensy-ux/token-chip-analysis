@@ -822,12 +822,36 @@ FIGURE2_RECEIPT_SCHEMA = "figure2-check-receipt/v1"
 FIGURE2_DEFAULT_TOL_PP = 0.05
 
 
+def _figure2_input_check(case_dir: Path, ref, label: str, errors: list[str]):
+    """N-C1：收据引用的输入实物**无条件**三段验——收据宣称对账过就必须能验：
+    basename 在案根找不到=拒（不许条件式跳过）、符号链接=拒、sha 不符=拒。"""
+    ref = ref or {}
+    name = Path(str(ref.get("path") or "")).name
+    if not name:
+        errors.append(f"figure2 收据缺 {label} 绑定（path/sha256）")
+        return
+    cand = case_dir / name
+    if cand.is_symlink():
+        errors.append(f"figure2 收据绑定的 {label}（{name}）是符号链接，拒收")
+        return
+    if not cand.is_file():
+        errors.append(f"figure2 收据绑定的 {label}（{name}）不在案根——"
+                      "收据宣称对账过的输入必须随案可验")
+        return
+    actual = hashlib.sha256(cand.read_bytes()).hexdigest()
+    if actual != str(ref.get("sha256", "")).lower():
+        errors.append(f"figure2 收据绑定的 {label}（{name}）sha256 与案内实物"
+                      "不一致——收据不是对当前案内文件跑出来的")
+
+
 def check_figure2_receipt(case_dir: Path, d: dict, errors: list[str]):
     """F-C5：图 2 末点对账收据复验（new-analysis 必经）。
 
     figures_from_facts check 每次运行（含 exploration）都落收据；发布闸只放行
-    formal＋默认容差＋PASS——exploration 放宽的对账在这里现形。series 实物在
-    案根同名在场时加验 sha（收据不携带路径层级，basename 案根查）。
+    formal＋默认容差＋PASS——exploration 放宽的对账在这里现形。
+    N-C1（消化轮 2）：series 与 facts 两个输入实物**无条件**验（轮 1 的 series
+    条件式验证＋facts 不验被盲审"纯手写收据"攻击穿透——path 写个不存在的名字
+    就整段跳过）。
     """
     if d.get("schema") != FIGURE2_RECEIPT_SCHEMA:
         errors.append(f"figure2 收据 schema 必须是 {FIGURE2_RECEIPT_SCHEMA}")
@@ -840,24 +864,19 @@ def check_figure2_receipt(case_dir: Path, d: dict, errors: list[str]):
                       f"{FIGURE2_DEFAULT_TOL_PP}（判定翻转参数不得放宽）")
     if d.get("verdict") != "PASS":
         errors.append(f"figure2 对账收据 verdict={d.get('verdict')!r} 非 PASS")
-    series_ref = d.get("series") or {}
-    name = Path(str(series_ref.get("path") or "")).name
-    if name:
-        cand = case_dir / name
-        if cand.is_file() and not cand.is_symlink():
-            actual = hashlib.sha256(cand.read_bytes()).hexdigest()
-            if actual != str(series_ref.get("sha256", "")).lower():
-                errors.append(f"figure2 收据绑定的 series（{name}）sha256 与案内"
-                              "实物不一致——对账后序列被改动")
+    _figure2_input_check(case_dir, d.get("series"), "series", errors)
+    _figure2_input_check(case_dir, d.get("facts"), "facts", errors)
 
 
 def check_series_binding(case_dir: Path, d: dict, errors: list[str]):
-    """F-C1 下游闸：analysis-state 含 camp_share_series 就必须带 producer 绑定。
+    """F-C1 下游闸（消化轮 2 终关：自证式→内容重转换比对）。
 
-    state_from_facts formal 编译落 provenance.series_binding=producer-sidecar＋
-    camp_series_sidecar 块；exploration 编译落 exploration-unbound 非正式标记。
-    发布闸只认 producer-sidecar，且 sidecar 登记的序列实物（series_file basename，
-    案根与 data/ 两层找）sha 必须与登记一致——手编序列/探索产物在此拦死。
+    轮 1 版只验"state 自报的 sidecar 块与案内同名文件 sha 自洽"——盲审两攻击放行
+    （exploration 产物手改标记＋自补块指向任意序列文件；formal 产物编译后篡改
+    camp_share_series）。终关＝发布闸自己用编译器同一转换器（series_to_state_form，
+    纯函数）把案内序列实物重转换一遍，与 state 的 camp_share_series **逐点比对**：
+    state 里的序列不是这个文件转换来的就拒——两攻击同死。exploration 编译产物
+    （exploration-unbound）与无标记手编 state 照旧拦。
     """
     if "camp_share_series" not in d:
         return  # 无序列即无绑定对象（旧简报型 state），不强加
@@ -873,9 +892,10 @@ def check_series_binding(case_dir: Path, d: dict, errors: list[str]):
     sidecar_ref = provenance.get("camp_series_sidecar") or {}
     name = Path(str(sidecar_ref.get("series_file") or "")).name
     registered = str(sidecar_ref.get("series_sha256") or "").lower()
-    if not name or not registered:
+    fmt = sidecar_ref.get("series_format")
+    if not name or not registered or not fmt:
         errors.append("series_binding=producer-sidecar 但 camp_series_sidecar "
-                      "缺 series_file/series_sha256")
+                      "缺 series_file/series_sha256/series_format")
         return
     for base in (case_dir, case_dir / "data"):
         cand = base / name
@@ -887,6 +907,21 @@ def check_series_binding(case_dir: Path, d: dict, errors: list[str]):
             if actual != registered:
                 errors.append(f"案内序列实物 {name} sha256 与 analysis-state 绑定"
                               "不一致——编译后序列被改动")
+                return
+            # 内容重转换逐点比对（F-C1 终关的关键一步）：sha 相符只证明文件没被改，
+            # 不证明 state 里的序列是它转换来的
+            try:
+                from camp_series_provenance import series_to_state_form
+                compiled = series_to_state_form(
+                    json.loads(cand.read_text(encoding="utf-8")), fmt)
+            except Exception as exc:
+                errors.append(f"案内序列实物 {name} 重转换失败（format={fmt}）：{exc}")
+                return
+            if compiled != d["camp_share_series"]:
+                errors.append(
+                    "analysis-state 的 camp_share_series 与案内序列实物的重转换"
+                    "结果不一致——state 里的序列不是该 producer 文件产出的"
+                    "（编译后篡改或伪造绑定块）")
             return
     errors.append(f"analysis-state 绑定的序列实物 {name} 在案根与 data/ 两层内"
                   "都找不到——正式案序列文件必须随案在档")
