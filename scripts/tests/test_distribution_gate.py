@@ -33,7 +33,9 @@ def make_case(root: Path, balances: dict[str, int], *, duplicate_partition=False
                       for owner, raw in balances.items()])
     total = sum(balances.values())
     write_json(root / "supply_truth.json", {
-        "schema": "supply-truth/v1", "verdict": "PASS", "exit_code": 0,
+        "schema": "supply-truth-receipt/v3", "verdict": "PASS", "exit_code": 0,
+        "chain": "bsc", "onchain_total_supply": str(total), "replay_net": str(total),
+        "mint_total": str(total), "burn_total": "0", "decision_rule": "primary_form1",
         "total_supply_raw": str(total), "net_supply_raw": str(total),
     })
     write_json(root / "data_map.json", {

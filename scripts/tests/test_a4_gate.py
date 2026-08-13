@@ -129,17 +129,28 @@ def bind_balance_receipt_to_snapshot(d, snap):
 
 def add_distribution_initial(d):
     Path(d, "data").mkdir(exist_ok=True)
-    balances = {f"owner-{i:03d}": max(1, int(2_000_000 / (1.035 ** i))) for i in range(240)}
-    total = sum(balances.values())
+    # 分布快照必须与案根真实 replay 产物同源：这个案子的 replay_stats.json（mint=100）、
+    # balances_final.json（sum=100）、identity_gate（total=100）是 audit 链真跑 replay_pass1
+    # 得到的一整套自洽产物，G8 identity_gate 靠它们互证。分布闭合锚点走 replay 侧 mint_total，
+    # 所以直接用案内 balances_final.json 当 owner 快照，全案同一个 100——不再另造 240-owner
+    # 快照制造两套冲突的供给量。owner 少落 low_sample 是合法终态。
+    bf = json.loads(Path(d, "balances_final.json").read_text(encoding="utf-8"))
+    balances = bf if isinstance(bf, dict) else {r.get("owner", r.get("address")):
+                                                r.get("balance_raw", r.get("raw")) for r in bf}
+    total = sum(int(v) for v in balances.values())
     snap = Path(d, "data/holders_owners.json")
     snap.write_text(json.dumps(balances), encoding="utf-8")
     bind_balance_receipt_to_snapshot(d, snap)
     wj(d, "candidate_screening.json", {"schema": "candidate-screening/v1",
                                          "auto_excluded_candidate": []})
     wj(d, "supply_truth.json", {"verdict": "PASS", "exit_code": 0,
+                                  "chain": "bsc", "onchain_total_supply": str(total),
+                                  "replay_net": str(total), "mint_total": str(total),
+                                  "burn_total": "0", "decision_rule": "primary_form1",
                                   "total_supply_raw": str(total), "net_supply_raw": str(total)})
     wj(d, "data_map.json", {"files": [{"path": "data/holders_owners.json",
                                           "sha256": hashlib.sha256(snap.read_bytes()).hexdigest()}]})
+    # 案根 replay_stats.json 保持不动（mint=100 与本快照同源），闭合锚点走它。
     p = run_formal_script(DIST, ["--case-dir", d, "--stage", "initial"])
     assert p.returncode == 0, p.stdout + p.stderr
 
@@ -158,9 +169,15 @@ def finish_distribution_normal(d):
     p = run_formal_script(DIST, ["record-round", "--case-dir", d,
                                  "--scan", "dist_rounds/round_1/distribution_scan.json"])
     assert p.returncode == 0, p.stdout + p.stderr
+    # 分布终态可能是 NORMAL_SHAPE 或 low_sample（本案 owner 少落 low_sample）——
+    # A5 seal 对两者要求不同的强制披露句，按 final scan verdict 选对应句。
+    final_scan = json.loads(Path(d, "dist_rounds/round_1/distribution_scan.json").read_text(encoding="utf-8"))
+    sentence = ("形态统计因样本不足未做,以逐址集中度事实替代"
+                if final_scan.get("not_evaluable_reason") == "low_sample"
+                else "当前快照呈正常形态;这只表示本闸未检出结构性畸形,不等于没有庄。")
     report = Path(d, "report.md")
     report.write_text(report.read_text(encoding="utf-8")
-                      + "\n当前快照呈正常形态;这只表示本闸未检出结构性畸形,不等于没有庄。\n"
+                      + f"\n{sentence}\n"
                       + "\n![持仓分布](charts/final/holder_distribution_current.png)\n",
                       encoding="utf-8")
 

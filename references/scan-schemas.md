@@ -298,11 +298,17 @@ TERMINAL = {
 
 ## 6. distribution-scan/v1
 
-本产物只计算冻结 cutoff 的当前 owner 快照。owner 快照必须对冻结 `total_supply_raw` **双向闭合**（缺口和超发同拦），容差 `10` bps 写死在扫描脚本里，与供给真值那把 `--tolerance-bps` 各是各的旋钮——供给真值按批准的 waiver 放宽，不会连带松动这里。闭合分母是 `total` 不是 `net`：五桶分区物理上包含 `burn_sentinel`，dead 地址就在快照里；按 `net` 闭合会误杀 mint 100／burn 20 这类合法 dead-sink 案。`net` 只用于分布百分比。
+本产物只计算冻结 cutoff 的当前 owner 快照。owner 快照必须对**铸造总量 `mint_total`（闭合锚点）逐 wei 精确闭合**（缺口和超发同拦，零容差，与供给真值那把 `--tolerance-bps` 各是各的旋钮）。
+
+闭合分母是 `mint_total` 不是 `onchain_total_supply`／`total_supply_raw`：replay 引擎对 sink 是记账不抹除，`sum(快照含 dead/zero) == mint_total` 恒成立——form2（转 dead 不减供给，`onchain==mint`）与 form1（真 `_burn`，`onchain==mint−burn`）都如此（APU／IQ／KOGE 真案逐 wei 实测）。若对 `onchain` 闭合，整类 form1 销毁币会被误杀。分母取值分链：EVM 取 `replay_stats.json` 的 `mint_total`（replay 产物，收据里有），Solana 取 `onchain_total_supply`（scanner `require_snapshot_closed` 已保证 `sum==supply` 精确，不套 EVM 的 replay mint 语义）。
+
+`total_supply_raw`／`frozen_total_supply_raw` 是**调用者可注入的影子键**（真实生产者 `supply_truth_gate` 只写 `onchain_total_supply`／`replay_net`／`mint_total`／`burn_total`）——闭合分母绝不取影子键，`net`（分布百分比分母）也优先取真实键 `replay_net`／`onchain_total_supply`。`net` 只用于分布百分比。
 
 `initial` 记录上游收据但不绑定 handoff manifest。上游收据是 **optional 的记录性收据**：案根没有那份文件就不记（split-run 下 −1 出 initial scan 时，−2 还没把 preflight 副本拷进案根），**在场即三验**——凡是记进 `upstream_receipts` 的条目，validate 都要核实文件存在且 sha256／size 与记录一致。校验方向只有"记录项 → 磁盘"这一条，反过来要求"磁盘上有的都得记"会把 6.39.5 修掉的三闸死环修回来。文件在场却非法（符号链接、指到案外、不是普通文件）时生产侧直接 exit 2，不做静默跳过。
 
-分布扫描吃的那份 owner 快照，必须就是四查真正核过的那一份：EVM 比对四查 `balance` 收据的 `inputs.balances.sha256`，Solana 比对 observation bundle 的 `holder_outputs.owners.sha256`，**只比 sha256 不比 path**（两边路径形态本来就不同）。该交叉检查由 `audit_release_gate.py --profile new-analysis` 执行，不放进 validate，避免存量终态案被追溯卡死。
+分布扫描吃的那份 owner 快照，必须就是四查真正核过的那一份：EVM 比对四查 `balance` 收据的 `inputs.balances.sha256`，Solana 比对 observation bundle 的 `holder_outputs.owners.sha256`，**只比 sha256 不比 path**（两边路径形态本来就不同）。**initial 扫描与进报告的终态 final 扫描（`distribution_rounds.json` 的 `terminal.final_scan_path`）两份都要落在同一个四查 sha 上**——只绑 initial 挡不住 final 轮换一份同值换仓快照产终态判定（F-B1）。该交叉检查由 `audit_release_gate.py --profile new-analysis` 执行，**只放发布闸、不放进 validate**（终态 scan 是本轮新产，不涉及存量案追溯）。
+
+**两侧绑定强度目前不等（F-B6，如实标注）**：EVM 的 `inputs.balances` 由 `receipt_validate.validate_receipt` 拿案内实物文件做 path/size/sha 三验，有实物锚；Solana 的 `holder_outputs.owners` **目前全库无 validator 做过实物三验、无实物锚**（`validate_observation_bundle` 只校验 `inputs`、不碰 `holder_outputs`），只有本闸这一处 sha 等值比对。给 `holder_outputs` 补文件级三验列在批 D 台账，未落地前 Solana 侧强度弱 EVM 一档。
 
 `final` 绑定 READY `handoff/v3`、身份快照收据、当前 A4 seal、当前 entity freeze revision、三账、initial scan 和上一轮 final scan。
 
@@ -383,6 +389,8 @@ TERMINAL = {
 ```
 
 `data_broken` 产物只保留 schema、stage、时间、exit code、阈值、verdict、reason、errors 和空异常簇，脚本返回 2。`low_sample` 必须带完整逐址分类、top-k、HHI、等额组和分区闭合结果，脚本返回 0。validate 会从绑定文件重新派生五桶、重新计算全部统计量并比较语义字段，并对 `upstream_receipts` 里**已记录**的每一项做存在＋sha256＋size 三验（记录性收据，缺席合法、在场即验）；`upstream_receipts` 本身不进语义逐位比较（6.39.5 三闸死环修复）。
+
+**重验须重跑当前版本生产者（F-B5，修正旧口径）**：validate 内部经 `build_scan` 重算，闭合闸也在这条追溯路径上，且 `input_binding.algorithm.sha256` 绑脚本自身哈希——脚本改过一个字节，旧产物就对不上。所以存量案在 A5 重验前无论如何都要重跑对应生产者获取当前回执（与仓内既有的"存量案例须重跑对应生产者"一致），这**不是死锁**。重跑后仍不对铸造总量精确闭合的存量案按 `data_broken` 拒收，这是**刻意收紧不是回归**（基线时代只拦超发，残缺快照能过）。第二层交叉检查禁入 validate 只是不让"快照↔四查绑定"这一条追溯卡死，闭合闸的追溯收紧另算。
 
 ## 7. distribution-explanation/v1
 

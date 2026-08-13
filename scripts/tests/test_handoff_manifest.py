@@ -86,6 +86,10 @@ def make_case(d, chain="bsc", token="0x0", as_of_block=999):
         f.write(json.dumps([86400, 1, 1, 0, Z, "0xdef", 100]) + "\n")
     write_json(d, "accounting_mode.json", {"schema": "accounting-gate/v1", "verdict": "PASS", "exit_code": 0})
     write_json(d, "supply_truth.json", {"verdict": "PASS", "exit_code": 0,
+                                         "chain": "bsc" if chain != "solana" else "solana",
+                                         "onchain_total_supply": str(total), "replay_net": str(total),
+                                         "mint_total": str(total), "burn_total": "0",
+                                         "decision_rule": "primary_form1",
                                          "total_supply_raw": str(total), "net_supply_raw": str(total)})
     write_json(d, "wave_scan_report.json", {"schema": "wave-scan/v3", "scan_universe_count": 0,
                                             "scan_universe": [], "must_adjudicate_count": 0,

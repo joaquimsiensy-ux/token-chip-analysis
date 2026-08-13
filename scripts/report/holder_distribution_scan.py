@@ -14,10 +14,13 @@ sqrt(2)，平移复算使用半档。私人主箱低于 100 个 owner 时切换�
 定标，不构成现役防伪链 fixture。TROLL soltx 元数据 launch_covered=false，未纳入保留集。
 
 scan 重新派生五桶并生成 distribution-scan/v1；validate 从 input_binding 读取上游文件，
-重新派生、重新分箱并逐项比对，不信产物自报。owner 快照必须对冻结 total_supply_raw
-双向闭合，容差 10bps 写死在本脚本、与供给真值那把容差各是各的旋钮。initial 不绑定
-handoff manifest，其 upstream_receipts 是记录性收据（可以缺席不记，记了就逐项三验）；
-final 才绑定 READY manifest、身份收据、A4 seal、entity_freeze revision 和三账。
+重新派生、重新分箱并逐项比对，不信产物自报。owner 快照必须对**铸造总量 mint_total**
+（replay 侧产物，EVM 取 replay_stats、Solana 取 onchain）逐 wei 精确闭合——replay 记账
+不抹除，sum(快照含 dead/zero)==mint 恒成立，对 onchain 闭合会误杀整类 form1 销毁币。
+闭合分母绝不取 total_supply_raw/frozen 影子键。initial 不绑定 handoff manifest，其
+upstream_receipts 是记录性收据（可缺席不记，记了就逐项三验＋path 白名单）；final 绑定
+READY manifest、身份收据、A4 seal、entity_freeze revision、三账，且其 owner 快照必须与
+initial scan 是同一份（跨轮不得更换）。
 """
 from __future__ import annotations
 
@@ -45,10 +48,19 @@ MIN_BIN_OWNERS = 5
 SHIFT_JACCARD_MIN = 0.8
 SAMPLE_LINE = 100
 DISCLOSURE_PCT = 1.0
-# 快照对冻结 total supply 的双向闭合容差，单位 bps（万分之一）。
-# 这是本闸自己的旋钮，独立写死，**不读 supply_truth 收据里的 tolerance_bps**：
-# 供给真值那边即便按批准的 waiver 放宽容差，也不得连带把这里的闭合闸一起松动。
-SNAPSHOT_CLOSURE_TOLERANCE_BPS = 10
+# 快照对冻结 total supply 的闭合容差，单位 bps（万分之一）。
+# 消化循环第 1 轮（P2-B4）收回到 0＝逐 wei 精确：闭合锚点改用 replay 侧 mint_total 后，
+# sum(快照含 dead/zero) == mint_total 在真实 form1/form2 案上均逐 wei 成立（APU/IQ/KOGE 实测），
+# 且快照与 totalSupply 同 as_of_block 冻结不存在块高漂移，故不再留任何容差窗口——
+# 留窗口会被"删掉几个刚过 dust 线的 owner 翻 low_sample"这类判定翻转攻击钻空（P2-B4 反例）。
+# 这是本闸自己的旋钮，独立写死，**不读 supply_truth 收据里的 tolerance_bps**。
+SNAPSHOT_CLOSURE_TOLERANCE_BPS = 0
+# replay_stats 里 mint/burn 的字段名（与 supply_truth_gate.FIELD_PAIRS 同口径，此处内联避免依赖）。
+MINT_BURN_FIELD_PAIRS = (("mint_total_wei", "burn_total_wei"),
+                         ("mint_total_raw", "burn_total_raw"),
+                         ("mint_total", "burn_total"))
+# 记录性上游收据的合法 path 白名单（build_scan 只会记这两个名，见 P2-B5）。
+UPSTREAM_RECEIPT_WHITELIST = ("channels_preflight.json", "holders_snapshot_meta.json")
 FAMILY_ALPHA = 0.01
 TOP_K_BASELINES = {1: 20.0, 3: 30.0, 5: 40.0, 10: 50.0}
 HHI_BASELINE = 0.05
@@ -210,19 +222,65 @@ def verify_data_map(case_dir: Path, snapshot_rel: str, snapshot: Path) -> Path:
     return path
 
 
-def load_supply(case_dir: Path) -> tuple[Path, int, int]:
+def load_supply(case_dir: Path) -> tuple[Path, int, int, str, dict]:
+    """读 supply_truth，返回 (path, onchain, net, chain, obj)。
+
+    onchain（链上流通总量）与 net（分布百分比分母）都**优先取真实生产键**
+    onchain_total_supply/replay_net；只有真实键缺席时才回退影子键
+    total_supply_raw/net_supply_raw（P1-B2：真实案永远走真实键，注入影子键翻不动结果）。
+    闭合分母不在这里取，见 mint_closure_anchor。
+    """
     path = safe_file(case_dir, "supply_truth.json", "供给真值")
     obj = load_json(path)
     if str(obj.get("verdict", "")).upper() != "PASS" or obj.get("exit_code") != 0:
         raise ValueError("supply_truth 非 PASS/exit 0")
-    total = strict_raw(obj.get("total_supply_raw", obj.get(
-        "frozen_total_supply_raw", obj.get("onchain_total_supply"))),
-                       "total_supply_raw")
-    net = strict_raw(obj.get("net_supply_raw", obj.get("replay_net", total)),
+    onchain = strict_raw(obj.get("onchain_total_supply", obj.get(
+        "total_supply_raw", obj.get("frozen_total_supply_raw"))), "onchain_total_supply")
+    net = strict_raw(obj.get("replay_net", obj.get("net_supply_raw", onchain)),
                      "net_supply_raw")
-    if not total or not net or net > total:
-        raise ValueError("供给真值 total/net 非法")
-    return path, total, net
+    if not onchain or not net or net > onchain:
+        raise ValueError("供给真值 onchain/net 非法")
+    chain = str(obj.get("chain", "")).strip().lower()
+    return path, onchain, net, chain, obj
+
+
+def mint_closure_anchor(case_dir: Path, supply_obj: dict, chain: str,
+                        onchain: int) -> tuple[int, str, dict | None]:
+    """快照闭合分母＝铸造总量 mint_total（replay 侧），分链且绝不依赖影子键。
+
+    replay 对 sink 是记账不抹除：sum(balances_final 含 dead/zero) == mint_total 恒成立，
+    form1（真 _burn，onchain==mint−burn）与 form2（转 dead 不减供给，onchain==mint）都如此
+    （APU/IQ/KOGE 真案逐 wei 实测）。对 onchain/total 闭合会把整类 form1 币误杀（P1-B3）。
+
+    取值顺序（全部非调用者可注入的影子键）：
+      Solana：== onchain（scanner require_snapshot_closed 已保证 sum==supply，另一套精确等式，
+              不套 EVM 的 replay mint 语义）。
+      EVM：① 案根 replay_stats.json 的 mint_total（replay 引擎产物，主线）
+           ② supply_truth 收据的 mint_total 字段（真实生产者 form2 / 带 mint 的 form1 写）
+           ③ supply_truth 的 onchain_total_supply（无 burn 的简单真实案）
+    绝不回退 total_supply_raw/frozen_total_supply_raw 影子键。
+    """
+    if chain == "solana":
+        return onchain, "solana_onchain", None
+    try:
+        stats_path = safe_file(case_dir, "replay_stats.json", "replay_stats")
+    except ValueError:
+        stats_path = None
+    if stats_path is not None:
+        stats = load_json(stats_path)
+        for mk, _bk in MINT_BURN_FIELD_PAIRS:
+            if mk in stats:
+                mint = strict_raw(stats[mk], f"replay_stats.{mk}")
+                return mint, "replay_mint", rel_entry(case_dir, stats_path)
+        raise ValueError(f"replay_stats 缺 mint 字段（认 {[m for m, _ in MINT_BURN_FIELD_PAIRS]}）")
+    if supply_obj.get("mint_total") not in (None, ""):
+        return strict_raw(supply_obj.get("mint_total"), "supply_truth.mint_total"), \
+            "supply_truth_mint", None
+    if supply_obj.get("onchain_total_supply") not in (None, ""):
+        return strict_raw(supply_obj.get("onchain_total_supply"), "onchain_total_supply"), \
+            "supply_truth_onchain", None
+    raise ValueError("无法确定快照闭合锚点：缺 replay_stats.json / supply_truth.mint_total "
+                     "/ onchain_total_supply（total_supply_raw 影子键不作闭合分母）")
 
 
 def threshold_snapshot() -> dict:
@@ -505,22 +563,25 @@ def build_scan(case_dir: Path, stage: str, snapshot_arg: str | None):
     snapshot, snapshot_rel = find_snapshot(case_dir, snapshot_arg)
     balances = parse_snapshot(snapshot)
     data_map = verify_data_map(case_dir, snapshot_rel, snapshot)
-    supply, total, net = load_supply(case_dir)
+    supply, onchain, net, chain, supply_obj = load_supply(case_dir)
+    anchor, anchor_source, replay_ref = mint_closure_anchor(case_dir, supply_obj, chain, onchain)
     snapshot_sum = sum(balances.values())
-    # 快照必须对 total_supply_raw **双向**闭合：只拦"多出来"挡不住"少了 99%"的残缺
-    # 快照，头部集中度和鼓包会被整段藏掉。闭合分母是 total 不是 net——五桶分区物理上
-    # 含 burn_sentinel（dead 地址就在快照里），net 只用来算分布百分比；对 net 闭合会
-    # 误杀 mint=100/burn=20 这类合法 dead-sink 案。整数交叉乘法，18 位面额的大整数
-    # 全程不经过 float。
-    if abs(snapshot_sum - total) * 10000 > total * SNAPSHOT_CLOSURE_TOLERANCE_BPS:
-        raise ValueError(f"快照 raw 和未对冻结 total supply 闭合: 快照={snapshot_sum} "
-                         f"total={total} 容差={SNAPSHOT_CLOSURE_TOLERANCE_BPS}bps")
+    # 快照必须对**铸造总量 mint_total（闭合锚点）逐 wei 精确闭合**：缺口和超发同拦。
+    # 锚点是 mint 不是 onchain——replay 记账不抹除，sum(快照含 dead/zero) == mint 恒成立；
+    # 对 onchain(=mint−burn) 闭合会把整类 form1 销毁币误杀（P1-B3，APU/IQ/KOGE 真案实测）。
+    # 零容差：块高同点冻结无漂移，留窗口会被"抹平快照翻 low_sample"攻击钻空（P2-B4）。
+    if abs(snapshot_sum - anchor) * 10000 > anchor * SNAPSHOT_CLOSURE_TOLERANCE_BPS:
+        raise ValueError(f"快照 raw 和未对铸造总量 mint 精确闭合: 快照={snapshot_sum} "
+                         f"mint={anchor}（{anchor_source}）容差={SNAPSHOT_CLOSURE_TOLERANCE_BPS}bps")
     partition, bucket_raw, private_supply, dust_raw, derivation = derive_partition(
         case_dir, balances, stage)
-    result = analyze(partition, bucket_raw, private_supply, total, net)
+    # denominators：total_supply_raw 展示口径＝mint（铸造总量），net＝onchain 流通量
+    result = analyze(partition, bucket_raw, private_supply, anchor, net)
     script = Path(__file__).resolve()
     common = {"snapshot": rel_entry(case_dir, snapshot), "data_map": rel_entry(case_dir, data_map),
               "supply_truth": rel_entry(case_dir, supply),
+              "mint_closure_anchor": {"source": anchor_source, "raw": str(anchor),
+                                      **({"replay_stats": replay_ref} if replay_ref else {})},
               "exclusion_sources": derivation["sources"],
               "exclusion_derivation_sha256": canonical_sha(derivation),
               "algorithm": {"name": "holder-distribution-gate/v1",
@@ -556,6 +617,15 @@ def build_scan(case_dir: Path, stage: str, snapshot_arg: str | None):
         seal = load_json(case_dir / "a4_seal.json")
         if seal.get("schema") != "a4-seal/v4" or seal.get("verdict") != "PASS":
             raise ValueError("final scan 只接受 PASS a4-seal/v4")
+        # P0-B1：final 轮吃的 owner 快照必须与它绑定的 initial scan 是同一份。
+        # 否则可以 initial 喂真快照过第二层交叉检查、final 换一份"抹平/换仓"快照产终态判定，
+        # 终版图/A5 seal/发布闸全程放行（盲审端到端复现）。两个 sha 本已在场，直接比对。
+        initial_scan = load_json(case_dir / "distribution_scan.json")
+        initial_snapshot = ((initial_scan.get("input_binding") or {}).get("snapshot") or {})
+        if initial_snapshot.get("sha256") != common["snapshot"]["sha256"]:
+            raise ValueError(
+                "final scan 快照与绑定的 initial scan 快照不一致（final 轮不得更换 owner 快照）: "
+                f"initial={initial_snapshot.get('sha256')} final={common['snapshot']['sha256']}")
         common["final_bindings"] = final_files
         common["handoff_manifest"] = {"run_id": manifest.get("run_id"),
                                       **final_files["handoff_manifest.json"]}
@@ -636,12 +706,17 @@ def validate_rounds_ledger(ledger: dict) -> list[str]:
     if ledger.get("schema") != ROUNDS_SCHEMA or not isinstance(ledger.get("rounds"), list):
         return ["rounds 台账 schema 或 rounds 非法"]
     rounds = ledger["rounds"]
+    first_snapshot_sha = rounds[0].get("snapshot_sha") if rounds else None
     for index, row in enumerate(rounds, 1):
         if row.get("round_n") != index:
             errors.append(f"rounds 第 {index} 项 round_n 不连续")
         expected = canonical_sha(rounds[index - 2]) if index > 1 else None
         if row.get("previous_entry_sha256") != expected:
             errors.append(f"rounds 第 {index} 项前向哈希断裂")
+        # P0-B1：同一 cutoff 的当前快照跨轮必须是同一份——各轮 snapshot_sha 必须一致，
+        # 否则某一轮偷换 owner 快照（抹平/换仓）而台账照样连续。现在只记不比＝漏洞。
+        if row.get("snapshot_sha") != first_snapshot_sha:
+            errors.append(f"rounds 第 {index} 项 snapshot_sha 与首轮不一致（当前快照跨轮被更换）")
     terminal = ledger.get("terminal")
     if terminal is not None:
         matched = [row for row in rounds if row.get("round_n") == terminal.get("round_n")]
@@ -795,6 +870,11 @@ def validate_scan(case: Path, scan_rel: str, expected_stage: str | None = None) 
             for entry in receipts:
                 if not isinstance(entry, dict):
                     raise ValueError("upstream_receipts 条目不是对象")
+                # P2-B5：path 钉白名单——build_scan 只会记这两个名，记别的（哪怕文件真存在、
+                # sha/size 都对）也是伪造记录项，直接拒。
+                if entry.get("path") not in UPSTREAM_RECEIPT_WHITELIST:
+                    raise ValueError(f"上游收据 path 不在白名单 {UPSTREAM_RECEIPT_WHITELIST}: "
+                                     f"{entry.get('path')}")
                 _verify_bound(case, entry, "上游收据")
         if binding.get("thresholds_sha256") != canonical_sha(threshold_snapshot()):
             errors.append("阈值快照哈希不符")

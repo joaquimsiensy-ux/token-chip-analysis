@@ -724,36 +724,64 @@ def check_adversarial(d: dict, errors: list[str]):
         errors.append("对抗复核 release_decision 未放行")
 
 
+# F-B7：链族→四查快照绑定口径的分派表提成模块常量，取值前做成员检查，
+# 绝不裸下标（将来加第三个链族时 KeyError 会逃出闸函数、连 --json-out 都不落盘）。
+SNAPSHOT_BINDING_BY_FAMILY = {
+    "evm": {"check_key": "balance", "label": "四查 balance 收据的 inputs.balances",
+            "reader": lambda r: ((r.get("inputs") or {}).get("balances") or {}).get("sha256")},
+    "solana": {"check_key": "supply", "label": "observation bundle 的 holder_outputs.owners",
+               "reader": lambda r: ((r.get("holder_outputs") or {}).get("owners") or {}).get("sha256")},
+}
+
+
+def _scan_snapshot_sha(case_dir: Path, rel: str, errors: list[str], label: str):
+    """读案内某份 distribution scan 的 input_binding.snapshot.sha256。"""
+    path = regular_case_path(case_dir, rel) if isinstance(rel, str) and rel else None
+    if path is None:
+        errors.append(f"分布快照未绑定对账 owner 快照: 找不到{label} {rel!r}")
+        return None
+    scan = load_json(path, errors)
+    binding = scan.get("input_binding") if isinstance(scan, dict) else None
+    snapshot = binding.get("snapshot") if isinstance(binding, dict) else None
+    sha = snapshot.get("sha256") if isinstance(snapshot, dict) else None
+    if not isinstance(sha, str) or not sha:
+        errors.append(f"分布快照未绑定对账 owner 快照: {label}缺 input_binding.snapshot.sha256")
+        return None
+    return sha.lower()
+
+
 def check_distribution_snapshot_binding(case_dir: Path, data: dict, chain, errors: list[str]):
-    """分布扫描用的 owner 快照，必须就是四查真正核过的那一份。
+    """分布扫描用的 owner 快照，必须就是四查真正核过的那一份——initial 与终态 final 两份都绑。
 
     只对 sha256，不对 path：Solana 的 observation bundle 里记的是文件名（basename），
     EVM 的四查收据里记的是喂给 verify_recon 的绝对路径，两边路径形态天生不同，
     比 path 只会误伤。data_map 只能证明"这份文件被登记过"，登记多份就绕过去了；
     真正堵住"同值换仓"（总和对得上、owner 分配是编的）只能靠这一条哈希等值。
 
-    只在 new-analysis profile 跑：存量终态案走的是 independent-audit，不会被追溯卡死。
+    F-B1：进报告的是 dist_rounds/round_N 的终态 final scan，不是 initial——两份都要落在
+    同一个四查 sha 上。只在 new-analysis profile 跑（发布闸路径，不进 validate_scan）：
+    存量终态案走 independent-audit，不会被追溯卡死。
     """
     scan = data.get("distribution_scan.json")
     binding = scan.get("input_binding") if isinstance(scan, dict) else None
     snapshot = binding.get("snapshot") if isinstance(binding, dict) else None
     snapshot_sha = snapshot.get("sha256") if isinstance(snapshot, dict) else None
     if not isinstance(snapshot_sha, str) or not snapshot_sha:
-        errors.append("分布快照未绑定对账 owner 快照: distribution_scan 缺 "
+        errors.append("分布快照未绑定对账 owner 快照: initial distribution_scan 缺 "
                       "input_binding.snapshot.sha256")
         return
+    snapshot_sha = snapshot_sha.lower()
     try:
         from shared_release_receipt import chain_family
         family = chain_family(chain)
     except Exception as exc:
         errors.append(f"分布快照未绑定对账 owner 快照: 无法判定链族 {chain!r}: {exc}")
         return
-    key, label, reader = {
-        "evm": ("balance", "四查 balance 收据的 inputs.balances",
-                lambda r: ((r.get("inputs") or {}).get("balances") or {}).get("sha256")),
-        "solana": ("supply", "observation bundle 的 holder_outputs.owners",
-                   lambda r: ((r.get("holder_outputs") or {}).get("owners") or {}).get("sha256")),
-    }[family]
+    if family not in SNAPSHOT_BINDING_BY_FAMILY:
+        errors.append(f"分布快照未绑定对账 owner 快照: 未登记链族 {family!r} 的快照绑定口径")
+        return
+    spec = SNAPSHOT_BINDING_BY_FAMILY[family]
+    key, label, reader = spec["check_key"], spec["label"], spec["reader"]
     recon = data.get("reconciliation_report.json")
     checks = recon.get("checks") if isinstance(recon, dict) else None
     item = checks.get(key) if isinstance(checks, dict) else None
@@ -768,9 +796,23 @@ def check_distribution_snapshot_binding(case_dir: Path, data: dict, chain, error
     if not isinstance(bound, str) or not bound:
         errors.append(f"分布快照未绑定对账 owner 快照: {label} 缺 sha256")
         return
-    if bound.lower() != snapshot_sha.lower():
-        errors.append(f"分布快照未绑定对账 owner 快照: distribution_scan 的快照 sha256 "
+    bound = bound.lower()
+    if bound != snapshot_sha:
+        errors.append(f"分布快照未绑定对账 owner 快照: initial distribution_scan 的快照 sha256 "
                       f"与{label}不一致（同值换仓也逃不掉）")
+    # F-B1：终态 final scan（进报告/图/A5 的那份）也必须落在同一个四查 sha 上。
+    rounds = data.get("distribution_rounds.json")
+    terminal = rounds.get("terminal") if isinstance(rounds, dict) else None
+    final_rel = terminal.get("final_scan_path") if isinstance(terminal, dict) else None
+    if not final_rel:
+        errors.append("分布快照未绑定对账 owner 快照: distribution_rounds 缺 terminal.final_scan_path")
+        return
+    final_sha = _scan_snapshot_sha(case_dir, final_rel, errors, "终态 final scan")
+    if final_sha is None:
+        return
+    if final_sha != bound:
+        errors.append(f"分布快照未绑定对账 owner 快照: 终态 final scan 的快照 sha256 "
+                      f"与{label}不一致（final 轮换仓/抹平快照逃不掉）")
 
 
 def check_chart(d: dict, errors: list[str]):

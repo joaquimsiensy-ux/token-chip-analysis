@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
-"""修复批 B 回归：F-03 快照双向闭合（两层）＋F-08 上游收据记录项三验。
+"""修复批 B 回归：F-03 快照闭合（两层）＋F-08 记录项三验，含消化循环第 1 轮对抗修复。
 
-反例口径：
-- F-03 第一层原反例＝快照只装 1% 的币，build_scan 照样 exit 0（缺口不拦）。
-- F-03 第二层原反例＝同值换仓，分布扫描换一份"总和一样、owner 分配不同"的快照，
-  发布闸照样放行（不比对四查真正核过的那份快照）。
-- F-08 原反例＝把已记录的 upstream_receipts 改成不存在的文件＋伪 sha/size，
-  validate_scan 照样返回空错误表。
-合法绿例（防误伤）：dead-sink 20%（sum=total≠net）、案根有收据但 scan 没记 → 仍 PASS。
+第 1 轮盲审抓的六项，全部在此有先红后绿的复现：
+- P0-B1：final 轮 scan 换一份"同值换仓"快照能通关全链 → final 绑定 initial 快照 sha。
+- P1-B3：闭合锚点从 onchain/total 改 mint_total（replay 侧），否则整类 form1 币被误杀。
+  真案实测：APU(form2)/IQ(form1)/KOGE(form1) 均 sum(含 dead)==mint_total 逐 wei 精确。
+- P1-B2：total_supply_raw/frozen 是调用者可注入的影子键，真实生产者只写
+  onchain_total_supply/replay_net/mint_total——闭合分母不得依赖影子键；补真实收据形态用例。
+- P2-B4：sum==mint 精确成立后超发/缺失侧一律零容差。
+- P2-B5：记录项 path 钉白名单 {channels_preflight.json, holders_snapshot_meta.json}。
 """
 from __future__ import annotations
 
@@ -34,6 +35,12 @@ _spec = importlib.util.spec_from_file_location("audit_release_gate_batchb", GATE
 gate = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(gate)
 
+# 真案链上数字（reproduce_audit 级别的锚点，见工单实测段）：
+APU_MINT = 420690000000000000000000000000       # form2 dead_sink，onchain==mint
+APU_BURN = 82800853653911207346039942180
+IQ_MINT = 31082094105963223790329250162         # form1 真 _burn，onchain==mint-burn
+IQ_BURN = 8043180819409999643271509537
+
 RESULTS: list[tuple[str, bool, str]] = []
 
 
@@ -52,16 +59,37 @@ def write_json(path: Path, value) -> None:
     path.write_text(json.dumps(value, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
 
-def make_case(root: Path, balances: dict[str, int], *, total: int | None = None,
-              net: int | None = None, excluded: list[dict] | None = None) -> None:
-    """最小合法案目录；total/net 可与快照和脱钩，用来造闭合缺口与 dead-sink。"""
+def make_case(root: Path, balances: dict[str, int], *, mint: int | None = None,
+              onchain: int | None = None, net: int | None = None, chain: str = "bsc",
+              excluded: list[dict] | None = None, with_replay_stats: bool = False,
+              shadow_only: bool = False, decision_rule: str = "primary_form1",
+              burn_form=None) -> None:
+    """最小合法案目录。
+
+    默认写真实生产键（onchain_total_supply/replay_net）而非影子键；
+    shadow_only=True 只写 total_supply_raw/net_supply_raw 影子键，用于 P1-B2 反例；
+    with_replay_stats=True 额外落 replay_stats.json（EVM replay 主线，承载 mint_total）。
+    """
     snap = root / "data/holders_owners.json"
     write_json(snap, {owner: str(raw) for owner, raw in balances.items()})
     snapshot_sum = sum(balances.values())
-    write_json(root / "supply_truth.json", {
-        "schema": "supply-truth/v1", "verdict": "PASS", "exit_code": 0,
-        "total_supply_raw": str(snapshot_sum if total is None else total),
-        "net_supply_raw": str(snapshot_sum if net is None else net)})
+    mint = snapshot_sum if mint is None else mint
+    onchain = mint if onchain is None else onchain
+    net = onchain if net is None else net
+    burn = mint - onchain
+    if shadow_only:
+        supply = {"schema": "supply-truth/v1", "verdict": "PASS", "exit_code": 0,
+                  "total_supply_raw": str(mint), "net_supply_raw": str(net)}
+    else:
+        supply = {"schema": "supply-truth-receipt/v3", "verdict": "PASS", "exit_code": 0,
+                  "chain": chain, "onchain_total_supply": str(onchain), "replay_net": str(net),
+                  "mint_total": (str(mint) if not with_replay_stats else None),
+                  "burn_total": (str(burn) if not with_replay_stats else None),
+                  "decision_rule": decision_rule, "burn_form": burn_form}
+    write_json(root / "supply_truth.json", supply)
+    if with_replay_stats and chain != "solana":
+        write_json(root / "replay_stats.json",
+                   {"mint_total_wei": str(mint), "burn_total_wei": str(burn)})
     write_json(root / "data_map.json", {
         "schema": "data-map/v1",
         "files": [{"path": "data/holders_owners.json", "sha256": sha(snap)}]})
@@ -78,15 +106,19 @@ def smooth(n=240, scale=1) -> dict[str, int]:
     return {f"owner-{i:04d}": max(1, int(2_000_000 / (1.035 ** i))) * scale for i in range(n)}
 
 
+DEAD = "0x000000000000000000000000000000000000dead"
+ZERO = "0x0000000000000000000000000000000000000000"
+
+
 # --------------------------------------------------------------------------
-# F-03 第一层：build_scan 快照双向闭合
+# F-03 第一层：build_scan 快照闭合（锚点=mint_total，零容差）
 # --------------------------------------------------------------------------
 
 def test_f03_snapshot_gap_rejected() -> None:
-    """原反例：total=100 而快照只有 1 个币，缺口 99% 必须拒。"""
+    """原反例：mint=100 而快照只有 1 个币，缺口 99% 必须拒。"""
     with tempfile.TemporaryDirectory() as td:
         d = Path(td)
-        make_case(d, {"0xaaa": 1}, total=100, net=100)
+        make_case(d, {"0xaaa": 1}, mint=100, onchain=100)
         p = run_scan(d)
         out = json.loads((d / "distribution_scan.json").read_text())
         check("F-03/1 快照缺口 99% 被拒", p.returncode == 2
@@ -95,68 +127,143 @@ def test_f03_snapshot_gap_rejected() -> None:
               f"rc={p.returncode} out={out.get('exit_code')} {p.stdout}{p.stderr}")
 
 
-def test_f03_dead_sink_green() -> None:
-    """合法绿例：mint 100 / burn 20 的 dead-sink——sum==total 但 net<total，必须放行。"""
+def test_f03_overshoot_rejected() -> None:
+    """失败分支：快照和超过 mint 仍拒（零容差，1 wei 也不放）。"""
     with tempfile.TemporaryDirectory() as td:
         d = Path(td)
-        rows = smooth(240)
-        private = sum(rows.values())
-        dead = private // 4                      # 占 total 的 20%
-        rows["0x000000000000000000000000000000000000dead"] = dead
-        make_case(d, rows, total=private + dead, net=private,
-                  excluded=[{"address": "0x000000000000000000000000000000000000dead",
-                             "bucket": "burn_sentinel"}])
+        make_case(d, {"0xaaa": 101}, mint=100, onchain=100)
+        p = run_scan(d)
+        check("F-03/1 快照超发 1 wei 被拒", p.returncode == 2, f"rc={p.returncode} {p.stdout}")
+
+
+def test_p1b3_form1_real_receipt() -> None:
+    """P1-B3：真实 form1 收据（IQ 数字，replay 侧 mint_total）——sum(含 0x0=burn)==mint 精确闭合放行。"""
+    with tempfile.TemporaryDirectory() as td:
+        d = Path(td)
+        onchain = IQ_MINT - IQ_BURN
+        private = {f"p{i:03d}": onchain // 120 for i in range(120)}
+        remainder = onchain - sum(private.values())
+        private["p000"] += remainder                       # 私人和精确 == onchain(流通)
+        rows = dict(private)
+        rows[ZERO] = IQ_BURN                                # 真 _burn 记账落 0x0
+        make_case(d, rows, mint=IQ_MINT, onchain=onchain, net=onchain, chain="eth",
+                  with_replay_stats=True, decision_rule="primary_form1",
+                  excluded=[{"address": ZERO, "bucket": "burn_sentinel"}])
+        p = run_scan(d)
+        out = json.loads((d / "distribution_scan.json").read_text()) \
+            if (d / "distribution_scan.json").is_file() else {}
+        den = out.get("denominators") or {}
+        binding = out.get("input_binding") or {}
+        check("P1-B3 form1 真实收据对 mint_total 精确闭合放行", p.returncode == 0
+              and out.get("exit_code") == 0
+              and den.get("total_supply_raw") == str(IQ_MINT)          # 展示口径=mint
+              and den.get("net_supply_raw") == str(onchain)            # 流通=onchain
+              and isinstance(binding.get("mint_closure_anchor"), dict)
+              and binding["mint_closure_anchor"].get("source") == "replay_mint",
+              f"rc={p.returncode} den={den} anchor={binding.get('mint_closure_anchor')} {p.stdout}{p.stderr}")
+        # 篡改：私人少 1 wei（sum≠mint）→ 拒
+        rows["p000"] -= 1
+        make_case(d, rows, mint=IQ_MINT, onchain=onchain, net=onchain, chain="eth",
+                  with_replay_stats=True, decision_rule="primary_form1",
+                  excluded=[{"address": ZERO, "bucket": "burn_sentinel"}])
+        p2 = run_scan(d)
+        check("P1-B3 form1 快照少 1 wei 被拒（零容差）", p2.returncode == 2,
+              f"rc={p2.returncode} {p2.stdout}{p2.stderr}")
+
+
+def test_p1b3_form2_real_receipt() -> None:
+    """P1-B3：真实 form2 收据（APU 数字）——onchain==mint，dead 持 burn，sum==mint 精确闭合放行。"""
+    with tempfile.TemporaryDirectory() as td:
+        d = Path(td)
+        onchain = APU_MINT                                  # form2：onchain==mint
+        flow = APU_MINT - APU_BURN                          # 非 dead 流通
+        private = {f"p{i:03d}": flow // 120 for i in range(120)}
+        private["p000"] += flow - sum(private.values())
+        rows = dict(private)
+        rows[DEAD] = APU_BURN                               # 转 dead 不减供给
+        make_case(d, rows, mint=APU_MINT, onchain=onchain, net=flow, chain="eth",
+                  with_replay_stats=True, decision_rule="sink_fallback_form2",
+                  burn_form="dead_sink",
+                  excluded=[{"address": DEAD, "bucket": "burn_sentinel"}])
         p = run_scan(d)
         out = json.loads((d / "distribution_scan.json").read_text()) \
             if (d / "distribution_scan.json").is_file() else {}
         den = out.get("denominators") or {}
         burn = (out.get("bucket_coverage") or {}).get("burn_sentinel") or {}
-        check("F-03/1 dead-sink 20% 合法绿例（sum=total≠net）", p.returncode == 0
+        check("P1-B3 form2 真实收据（dead-sink）精确闭合放行", p.returncode == 0
               and out.get("exit_code") == 0
-              and den.get("total_supply_raw") == str(private + dead)
-              and den.get("net_supply_raw") == str(private)
-              and burn.get("raw") == str(dead),
+              and den.get("total_supply_raw") == str(APU_MINT)
+              and den.get("net_supply_raw") == str(flow)
+              and burn.get("raw") == str(APU_BURN),
               f"rc={p.returncode} den={den} burn={burn} {p.stdout}{p.stderr}")
 
 
-def test_f03_tolerance_boundary_bigint() -> None:
-    """同族变体：18 位面额大整数上，10bps 边界必须逐位精确（float 做不到）。"""
-    total = 10 ** 24
-    allowed = total * 10 // 10000                # 恰好 10bps = 10**21
+def test_p1b2_shadow_key_cannot_close() -> None:
+    """P1-B2：只写影子键 total_supply_raw（无真实键、无 replay_stats）→ 闭合锚点拿不到 → 拒。
+
+    修前反例：真实收据基础上再注入一个 total_supply_raw 影子键就把闭合闸放行（rc2→rc0）。
+    """
     with tempfile.TemporaryDirectory() as td:
         d = Path(td)
-        make_case(d, {"0xaaa": total - allowed}, total=total, net=total)
-        edge = run_scan(d)
-        d2 = Path(td) / "over"
-        d2.mkdir()
-        make_case(d2, {"0xaaa": total - allowed - 1}, total=total, net=total)
-        over = run_scan(d2)
-        check("F-03/1 10bps 边界整数精确（内 PASS / 外 1 wei 即拒）",
-              edge.returncode == 0 and over.returncode == 2,
-              f"edge={edge.returncode} over={over.returncode} {edge.stderr}{over.stderr}")
-
-
-def test_f03_overshoot_rejected() -> None:
-    """失败分支：快照和超过 total 且越过容差，仍然拒（既有强度不得丢）。"""
-    with tempfile.TemporaryDirectory() as td:
-        d = Path(td)
-        make_case(d, {"0xaaa": 200}, total=100, net=100)
+        # 只有影子键，快照残缺 → 修后闭合锚点无从取得，必须拒（影子键喂不动闭合）
+        make_case(d, {"0xaaa": 1}, mint=100, shadow_only=True)
         p = run_scan(d)
-        check("F-03/1 快照和超发被拒", p.returncode == 2, f"rc={p.returncode} {p.stdout}")
+        check("P1-B2 只有影子键时残缺快照仍被拒", p.returncode == 2,
+              f"rc={p.returncode} {p.stdout}{p.stderr}")
+    with tempfile.TemporaryDirectory() as td:
+        d = Path(td)
+        # 真实收据缺口案 + 注入影子键 total_supply_raw=1（=快照和）妄图翻案 → 仍拒
+        rows = {"0xaaa": 1}
+        make_case(d, rows, mint=100, onchain=100, chain="eth", with_replay_stats=True)
+        supply = json.loads((d / "supply_truth.json").read_text())
+        supply["total_supply_raw"] = "1"                    # 注入影子键，等于快照和
+        write_json(d / "supply_truth.json", supply)
+        data_map = json.loads((d / "data_map.json").read_text())
+        write_json(d / "data_map.json", data_map)
+        p = run_scan(d)
+        check("P1-B2 注入 total_supply_raw 影子键无法放大闭合闸", p.returncode == 2,
+              f"rc={p.returncode} {p.stdout}{p.stderr}")
 
 
-def test_f03_tolerance_is_independent_knob() -> None:
-    """闸的容差写死在本脚本，不读 supply_truth 收据里的 tolerance_bps。"""
+def test_p2b4_exact_closure_window() -> None:
+    """P2-B4：删掉几个刚过 dust 线的 owner（旧 10bps 窗口内）→ 零容差下立即破坏闭合被拒。"""
+    big = {"owner-000": 25 * 10 ** 16}
+    for i in range(1, 99):
+        big[f"owner-{i:03d}"] = int(75 * 10 ** 16 / 98)
+    private = sum(big.values())
+    tiny_each = private // 10 ** 7
+    full = dict(big)
+    for j in range(5):
+        full[f"tiny-{j}"] = tiny_each + j
+    mint = sum(full.values())
+    with tempfile.TemporaryDirectory() as td:
+        d = Path(td)
+        make_case(d, full, mint=mint, onchain=mint, chain="eth", with_replay_stats=True)
+        p_full = run_scan(d)
+        out_full = json.loads((d / "distribution_scan.json").read_text())
+    with tempfile.TemporaryDirectory() as td:
+        d = Path(td)
+        # 删掉 5 个极小 owner，但 mint 分母不动（模拟抹平快照翻 low_sample 的攻击）
+        make_case(d, big, mint=mint, onchain=mint, chain="eth", with_replay_stats=True)
+        p_cut = run_scan(d)
+    check("P2-B4 抹平快照（旧窗口内）零容差下被拒", p_full.returncode == 0
+          and out_full.get("verdict") == "ABNORMAL_SHAPE" and p_cut.returncode == 2,
+          f"full={p_full.returncode}/{out_full.get('verdict')} cut={p_cut.returncode} {p_cut.stdout}{p_cut.stderr}")
+
+
+def test_f03_closure_anchor_no_shadow_dependency() -> None:
+    """守卫：闭合分母走 mint_closure_anchor，源码不再从影子键取闭合总量。"""
     src = SCAN.read_text(encoding="utf-8")
-    tolerance_const = getattr(dist, "SNAPSHOT_CLOSURE_TOLERANCE_BPS", None)
-    reads = re.findall(r'(?:get\(\s*["\']tolerance|\[["\']tolerance)', src)
-    check("F-03/1 闭合容差是独立写死的 10bps 且不读收据容差",
-          tolerance_const == 10 and not reads,
-          f"const={tolerance_const} 读取点={reads}")
+    has_anchor = "mint_closure_anchor" in src and hasattr(dist, "mint_closure_anchor")
+    # 闭合比较行不得直接读 total_supply_raw/frozen 影子键
+    closure_reads_shadow = re.search(r"snapshot_sum.*(total_supply_raw|frozen_total_supply)", src)
+    check("F-03/1 闭合分母走 mint_anchor 且不依赖影子键",
+          has_anchor and not closure_reads_shadow,
+          f"has_anchor={has_anchor} closure_reads_shadow={bool(closure_reads_shadow)}")
 
 
 # --------------------------------------------------------------------------
-# F-03 第二层：audit_release_gate（new-analysis）交叉检查
+# F-03 第二层：audit_release_gate（new-analysis）交叉检查（initial）
 # --------------------------------------------------------------------------
 
 BINDING_ERROR = "分布快照未绑定对账 owner 快照"
@@ -168,7 +275,7 @@ def _p105():
 
 
 def test_f03_gate_evm_same_total_swap() -> None:
-    """原反例（EVM）：同值换仓——总和一样、owner 分配不同的快照必须被拒。"""
+    """原反例（EVM）：initial 同值换仓——总和一样、owner 分配不同的快照必须被拒。"""
     p105 = _p105()
     fixture = p105.fixture
     with tempfile.TemporaryDirectory() as td:
@@ -196,49 +303,63 @@ def test_f03_gate_evm_same_total_swap() -> None:
                                         "--snapshot", "data/holders_owners_alt.json"])
         assert proc.returncode == 0, proc.stdout + proc.stderr
         errors = fixture.gate.run(root, report, profile="new-analysis")
-        check("F-03/2 EVM 同值换仓被拒", any(BINDING_ERROR in x for x in errors), str(errors))
+        check("F-03/2 EVM initial 同值换仓被拒", any(BINDING_ERROR in x for x in errors), str(errors))
 
 
-def _solana_case(root: Path, owners_sha: str) -> dict:
-    """只造第二层要读的两份产物：分布扫描壳＋四查 wrapper 指向 observation bundle。"""
+def _solana_case(root: Path, owners_sha: str, *, initial_sha: str = "b" * 64,
+                 final_sha: str | None = None) -> dict:
+    """手搓一个 Solana new-analysis 的 data + 落盘 supply_receipt/终态 final scan。"""
+    final_sha = initial_sha if final_sha is None else final_sha
     bundle = root / "supply_receipt.json"
     write_json(bundle, {"schema": "solana-observation-bundle/v1",
                         "holder_outputs": {"accounts": {"path": "holders_accounts.json",
                                                         "size": 1, "sha256": "a" * 64},
                                            "owners": {"path": "holders_owners.json",
                                                       "size": 2, "sha256": owners_sha}}})
+    final_scan = root / "dist_rounds/round_1/distribution_scan.json"
+    write_json(final_scan, {"schema": "distribution-scan/v1", "stage": "final",
+                            "input_binding": {"snapshot": {"path": "data/holders_owners.json",
+                                                           "sha256": final_sha, "size": 3}}})
     return {
         "distribution_scan.json": {"schema": "distribution-scan/v1", "stage": "initial",
                                    "input_binding": {"snapshot": {
                                        "path": "data/holders_owners.json",
-                                       "sha256": "b" * 64, "size": 3}}},
+                                       "sha256": initial_sha, "size": 3}}},
         "reconciliation_report.json": {"schema": "reconciliation-report/v2",
                                        "target": {"chain": "solana", "token": "t",
                                                   "as_of_block": 1},
                                        "checks": {"supply": {"status": "PASS",
                                                              "receipt": {"path": "supply_receipt.json",
                                                                          "sha256": sha(bundle)}}}},
+        "distribution_rounds.json": {"schema": "distribution-rounds/v1",
+                                     "rounds": [{"round_n": 1, "status": "NORMAL"}],
+                                     "terminal": {"round_n": 1, "status": "NORMAL",
+                                                  "final_scan_path": "dist_rounds/round_1/distribution_scan.json"}},
     }
 
 
 def test_f03_gate_solana_not_skipped() -> None:
-    """Solana 不跳过：绑 observation bundle 的 holder_outputs.owners sha。"""
     fn = getattr(gate, "check_distribution_snapshot_binding", None)
     if fn is None:
         check("F-03/2 Solana 分支存在", False, "audit_release_gate 缺 check_distribution_snapshot_binding")
         return
     with tempfile.TemporaryDirectory() as td:
-        # 与生产一致：run() 进来就 case_dir.resolve()，这里也传解析后的真实路径
         root = Path(td).resolve()
         data = _solana_case(root, "b" * 64)
         errors: list[str] = []
         fn(root, data, "solana", errors)
-        check("F-03/2 Solana 快照 sha 相符放行", not errors, str(errors))
+        check("F-03/2 Solana initial+终态 sha 相符放行", not errors, str(errors))
 
-        data = _solana_case(root, "c" * 64)
+        data = _solana_case(root, "c" * 64)                # bound=c，initial=b → initial 不符
         errors = []
         fn(root, data, "solana", errors)
-        check("F-03/2 Solana 同值换仓被拒", any(BINDING_ERROR in x for x in errors), str(errors))
+        check("F-03/2 Solana initial 同值换仓被拒", any(BINDING_ERROR in x for x in errors), str(errors))
+
+        # F-B1 Solana 侧：initial 相符但终态 final 换仓 → 仍拒
+        data = _solana_case(root, "b" * 64, final_sha="d" * 64)
+        errors = []
+        fn(root, data, "solana", errors)
+        check("F-03/2 Solana 终态 final 换仓被拒", any("终态 final" in x for x in errors), str(errors))
 
         data = _solana_case(root, "b" * 64)
         bundle = json.loads((root / "supply_receipt.json").read_text())
@@ -251,8 +372,36 @@ def test_f03_gate_solana_not_skipped() -> None:
         check("F-03/2 Solana bundle 缺 owners 绑定被拒", bool(errors), str(errors))
 
 
+def test_fb4_second_layer_failclosed_branches() -> None:
+    """F-B4：第二层三条 fail-closed 分支定向红线（M12/M13/M14），各只坏一处。"""
+    fn = gate.check_distribution_snapshot_binding
+    with tempfile.TemporaryDirectory() as td:
+        root = Path(td).resolve()
+        # M12：找不到四查收据文件（receipt.path 指向不存在文件）
+        data = {"distribution_scan.json": {"input_binding": {"snapshot": {"sha256": "b" * 64}}},
+                "reconciliation_report.json": {"checks": {"balance": {
+                    "receipt": {"path": "nonexist_receipt.json", "sha256": "0" * 64}}}}}
+        errors: list[str] = []
+        fn(root, data, "eth", errors)
+        check("F-B4/M12 找不到四查收据文件必报错",
+              any("找不到四查" in x for x in errors), str(errors))
+        # M13：initial scan 缺 snapshot.sha256
+        data = {"distribution_scan.json": {"input_binding": {"snapshot": {}}},
+                "reconciliation_report.json": {"checks": {}}}
+        errors = []
+        fn(root, data, "eth", errors)
+        check("F-B4/M13 initial 缺 snapshot.sha256 必报错",
+              any("snapshot.sha256" in x for x in errors), str(errors))
+        # M14：链族判不出（chain_family 对未注册链族抛 ValueError）
+        data = {"distribution_scan.json": {"input_binding": {"snapshot": {"sha256": "b" * 64}}},
+                "reconciliation_report.json": {"checks": {}}}
+        errors = []
+        fn(root, data, "sui-unregistered", errors)
+        check("F-B4/M14 链族判不出必报错",
+              any("无法判定链族" in x or "未登记链族" in x for x in errors), str(errors))
+
+
 def test_f03_gate_solana_producer_field_present() -> None:
-    """在场率守卫：生产者一旦改名 holder_outputs.owners，本条先红。"""
     src = (ROOT / "scripts/solana/scan_token_accounts.py").read_text(encoding="utf-8")
     check("F-03/2 Solana 生产者仍输出 holder_outputs.owners",
           'holder_outputs={"accounts": ref(accounts_out), "owners": ref(owners_out)}' in src,
@@ -260,7 +409,74 @@ def test_f03_gate_solana_producer_field_present() -> None:
 
 
 # --------------------------------------------------------------------------
-# F-08：validate_scan 对已记录的 upstream_receipts 逐项三验
+# P0-B1：final 轮 scan 的快照必须绑定 initial scan 的快照
+# --------------------------------------------------------------------------
+
+def test_p0b1_final_snapshot_swap_rejected() -> None:
+    """P0-B1：final 轮换一份同值换仓快照 → final 生成即拒（不再放行到 A5/发布闸）。"""
+    p105 = _p105()
+    fixture = p105.fixture
+    from formal_ready_test_harness import run_formal_script
+    with tempfile.TemporaryDirectory() as td:
+        root = Path(td)
+        report = fixture.build_case(root, historical=False)
+        for name in p105.AUDIT_ONLY:
+            (root / name).unlink(missing_ok=True)
+
+        balances = {f"owner-{i:03d}": max(1, int(2_000_000 / (1.035 ** i))) for i in range(240)}
+        snap = root / "data/holders_owners.json"
+        p105.write_json(snap, balances)
+        p105.bind_balance_receipt_to_snapshot(root, snap)
+        total = sum(balances.values())
+        p105.write_json(root / "supply_truth.json", {
+            "schema": "supply-truth-receipt/v3", "verdict": "PASS", "exit_code": 0,
+            "chain": "bsc", "onchain_total_supply": str(total), "replay_net": str(total),
+            "mint_total": str(total), "burn_total": "0", "decision_rule": "primary_form1"})
+
+        keys = sorted(balances)
+        swapped = dict(balances)
+        swapped[keys[0]], swapped[keys[-1]] = balances[keys[-1]], balances[keys[0]]
+        alt = root / "data/holders_owners_alt.json"
+        p105.write_json(alt, swapped)
+        p105.write_json(root / "data_map.json", {"files": [
+            {"path": "data/holders_owners.json", "sha256": sha(snap)},
+            {"path": "data/holders_owners_alt.json", "sha256": sha(alt)}]})
+        p105.write_json(root / "candidate_screening.json", {"auto_excluded_candidate": []})
+
+        p = run_formal_script(SCAN, ["--case-dir", str(root), "--stage", "initial"])
+        assert p.returncode == 0, p.stdout + p.stderr
+
+        for name, value in {
+            "handoff_manifest.json": {"consumer_min_schema": "handoff/v3", "status": "READY",
+                                      "run_id": "fixture"},
+            "identity_snapshot_receipt.json": {"schema": "identity-snapshot-receipt/v1"},
+            "entity_freeze.json": {"schema": "entity-freeze/v1", "revisions": []},
+            "analysis-state.json": {"chain": "bsc", "whale_groups": []},
+            "facts.json": {"entities": {}}, "evidence.json": {"source": "fixture"},
+            "a4_claims.json": {"schema": "a4-claims/v2", "claims": [{"id": "C1"}]},
+        }.items():
+            p105.write_json(root / name, value)
+        for name in ("membership_ledger.json", "position_ledger.json",
+                     "economic_control_ledger.json", "address_classification.json"):
+            p105.write_json(root / name, {"rows": []})
+        p105.write_json(root / "a4_seal.json", {
+            "schema": "a4-seal/v4", "verdict": "PASS", "chain": "bsc",
+            "workflow_type": "new-analysis", "revision": 1, "previous_seal": None,
+            "charts_dir": "charts/final", "claims": [{"id": "C1", "verdict": "CONFIRMED"}]})
+
+        # 合法 final（同一份快照）先证明放行
+        ok = run_formal_script(SCAN, ["--case-dir", str(root), "--stage", "final", "--round", "1"])
+        check("P0-B1 final 用同一份 initial 快照放行", ok.returncode == 0,
+              f"rc={ok.returncode} {ok.stdout}{ok.stderr}")
+        # 攻击：final 改吃 alt 换仓快照 → 必须拒
+        swap = run_formal_script(SCAN, ["--case-dir", str(root), "--stage", "final", "--round", "1",
+                                        "--snapshot", "data/holders_owners_alt.json"])
+        check("P0-B1 final 换仓快照被拒", swap.returncode == 2,
+              f"rc={swap.returncode} {swap.stdout}{swap.stderr}")
+
+
+# --------------------------------------------------------------------------
+# F-08：validate_scan 记录项三验 + P2-B5 白名单
 # --------------------------------------------------------------------------
 
 def _initial_case(td: Path, *, with_preflight=True) -> Path:
@@ -274,7 +490,6 @@ def _initial_case(td: Path, *, with_preflight=True) -> Path:
 
 
 def test_f08_forged_records_rejected() -> None:
-    """原反例：记录项换成不存在的文件／伪 sha／伪 size，全部必须拒。"""
     variants = {
         "缺件": lambda e: e.update({"path": "does-not-exist.json"}),
         "错 sha": lambda e: e.update({"sha256": "0" * 64}),
@@ -292,8 +507,23 @@ def test_f08_forged_records_rejected() -> None:
             check(f"F-08 记录项{label}被拒", bool(errors), str(errors))
 
 
+def test_p2b5_receipt_path_whitelist() -> None:
+    """P2-B5：记录项 path 钉白名单——记一个白名单外的合法文件也必须拒。"""
+    with tempfile.TemporaryDirectory() as td:
+        d = _initial_case(Path(td))
+        # 案根放一个白名单外的真文件，并伪造成 upstream_receipt 记录项
+        other = d / "supply_truth.json"                     # 真实存在、非白名单
+        scan = json.loads((d / "distribution_scan.json").read_text())
+        scan["input_binding"]["upstream_receipts"].append(
+            {"path": "supply_truth.json", "sha256": sha(other), "size": other.stat().st_size})
+        write_json(d / "distribution_scan.json", scan)
+        errors = dist.validate_scan(d, "distribution_scan.json", "initial")
+        check("P2-B5 白名单外记录项被拒（即便文件真存在且 sha/size 对）",
+              any("白名单" in x or "upstream" in x.lower() or "上游收据" in x for x in errors),
+              str(errors))
+
+
 def test_f08_unrecorded_disk_receipt_passes() -> None:
-    """合法绿例：案根有 channels_preflight.json 但 scan 记录为空 → 仍 PASS。"""
     with tempfile.TemporaryDirectory() as td:
         d = _initial_case(Path(td), with_preflight=False)
         write_json(d / "channels_preflight.json", {"schema": "channels-preflight/v1"})
@@ -304,7 +534,6 @@ def test_f08_unrecorded_disk_receipt_passes() -> None:
 
 
 def test_f08_absent_receipt_is_skipped_not_fatal() -> None:
-    """记录性语义：案根没有这份收据，生产侧照常 exit 0 并记空表。"""
     with tempfile.TemporaryDirectory() as td:
         d = _initial_case(Path(td), with_preflight=False)
         scan = json.loads((d / "distribution_scan.json").read_text())
@@ -314,7 +543,6 @@ def test_f08_absent_receipt_is_skipped_not_fatal() -> None:
 
 
 def test_f08_illegal_receipt_producer_rejected() -> None:
-    """失败分支拆分：收据存在但非法（符号链接／指到案外）→ 生产侧 exit 2，不再静默跳过。"""
     with tempfile.TemporaryDirectory() as td:
         d = Path(td) / "case"
         d.mkdir()
@@ -329,27 +557,86 @@ def test_f08_illegal_receipt_producer_rejected() -> None:
 
 
 def test_f08_docs_state_record_semantics() -> None:
-    """文档口径同批改：scan-schemas 必须写清"记录性收据（在场即三验）"。"""
     text = (ROOT / "references/scan-schemas.md").read_text(encoding="utf-8")
     check("F-08 scan-schemas 已改口为记录性收据在场即三验",
           "记录性收据" in text and "在场即三验" in text and "optional" in text,
           "scan-schemas.md 未同批改口")
 
 
+def test_p1b2_docs_shadow_key_wording() -> None:
+    """P1-B2：scan-schemas 把 total_supply_raw 当正式名的错误口径改掉。"""
+    text = (ROOT / "references/scan-schemas.md").read_text(encoding="utf-8")
+    check("P1-B2 scan-schemas 改用 mint_total 闭合口径且点明影子键",
+          "mint_total" in text and ("影子键" in text or "onchain_total_supply" in text),
+          "scan-schemas.md 未更新闭合锚点口径")
+
+
+def test_fb5_docs_retro_not_deadlock_wording() -> None:
+    """F-B5：改口径不改代码——scan-schemas 承认重验须重跑生产者、不闭合按 data_broken 拒收。"""
+    text = (ROOT / "references/scan-schemas.md").read_text(encoding="utf-8")
+    check("F-B5 scan-schemas 承认重验须重跑当前版本生产者且不闭合按 data_broken 拒",
+          "重跑当前版本生产者" in text and "data_broken" in text
+          and ("刻意收紧" in text or "不是回归" in text),
+          "scan-schemas.md 未按 F-B5 改口径")
+
+
+def test_fb6_docs_binding_strength_diff() -> None:
+    """F-B6③：scan-schemas 如实写出 EVM/Solana 两侧绑定强度差异。"""
+    text = (ROOT / "references/scan-schemas.md").read_text(encoding="utf-8")
+    check("F-B6③ scan-schemas 写明 Solana holder_outputs.owners 暂无 validator 实物锚",
+          "receipt_validate" in text and "holder_outputs" in text
+          and ("无 validator" in text or "无实物锚" in text or "尚无实物锚" in text),
+          "scan-schemas.md 未写明两侧绑定强度差异")
+
+
+def test_c_deadsink_synthetic_green_under_mint_anchor() -> None:
+    """锚点三向 c：既有 dead-sink 合成绿例（sum=mint≠net）在 mint 锚点下仍绿。"""
+    with tempfile.TemporaryDirectory() as td:
+        d = Path(td)
+        private = smooth(240)
+        flow = sum(private.values())
+        dead = flow // 4                                   # dead 占 mint 的 20%
+        mint = flow + dead
+        rows = dict(private)
+        rows[DEAD] = dead
+        make_case(d, rows, mint=mint, onchain=mint, net=flow, chain="bsc",
+                  with_replay_stats=True, decision_rule="sink_fallback_form2",
+                  burn_form="dead_sink",
+                  excluded=[{"address": DEAD, "bucket": "burn_sentinel"}])
+        p = run_scan(d)
+        out = json.loads((d / "distribution_scan.json").read_text()) \
+            if (d / "distribution_scan.json").is_file() else {}
+        den = out.get("denominators") or {}
+        check("锚点c 合成 dead-sink 20%（sum=mint≠net）在 mint 锚点下仍绿",
+              p.returncode == 0 and out.get("exit_code") == 0
+              and den.get("total_supply_raw") == str(mint)
+              and den.get("net_supply_raw") == str(flow) and mint != flow,
+              f"rc={p.returncode} den={den} {p.stdout}{p.stderr}")
+
+
 def main() -> int:
     test_f03_snapshot_gap_rejected()
-    test_f03_dead_sink_green()
-    test_f03_tolerance_boundary_bigint()
     test_f03_overshoot_rejected()
-    test_f03_tolerance_is_independent_knob()
+    test_p1b3_form1_real_receipt()
+    test_p1b3_form2_real_receipt()
+    test_p1b2_shadow_key_cannot_close()
+    test_p2b4_exact_closure_window()
+    test_f03_closure_anchor_no_shadow_dependency()
     test_f03_gate_evm_same_total_swap()
     test_f03_gate_solana_not_skipped()
+    test_fb4_second_layer_failclosed_branches()
     test_f03_gate_solana_producer_field_present()
+    test_p0b1_final_snapshot_swap_rejected()
     test_f08_forged_records_rejected()
+    test_p2b5_receipt_path_whitelist()
     test_f08_unrecorded_disk_receipt_passes()
     test_f08_absent_receipt_is_skipped_not_fatal()
     test_f08_illegal_receipt_producer_rejected()
     test_f08_docs_state_record_semantics()
+    test_p1b2_docs_shadow_key_wording()
+    test_fb5_docs_retro_not_deadlock_wording()
+    test_fb6_docs_binding_strength_diff()
+    test_c_deadsink_synthetic_green_under_mint_anchor()
     failed = [name for name, ok, _ in RESULTS if not ok]
     if failed:
         print(f"BATCH B FAIL {len(failed)}/{len(RESULTS)}: " + "; ".join(failed))
