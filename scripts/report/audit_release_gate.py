@@ -922,6 +922,30 @@ def check_series_binding(case_dir: Path, d: dict, errors: list[str]):
                     "analysis-state 的 camp_share_series 与案内序列实物的重转换"
                     "结果不一致——state 里的序列不是该 producer 文件产出的"
                     "（编译后篡改或伪造绑定块）")
+                return
+            # N-C4（消化轮 3 止损轮）：发布期复算整条来源链——轮 2 只关掉了
+            # "state 与文件不一致"的篡改，对"自造原生格式文件＋state 用它的转换
+            # 结果＋绑定块自填"的同步一致造假无效（案内不需要 sidecar 实物也不
+            # 需要 supply_truth 就能过）。复用编译期同三件纯函数：sidecar 实物
+            # 强制在场＋输出 sha＋输入三验 → 登记面锚 → camps spec 末点对账。
+            # 剩余残余=伪造整案原始数据后真跑 producer（F-12 已接受边界同族）。
+            try:
+                from camp_series_provenance import (SeriesProvenanceError,
+                                                    endpoint_reconcile,
+                                                    load_series_with_sidecar,
+                                                    registry_anchor_check)
+                sidecar, _raw, resolved = load_series_with_sidecar(cand)
+                if sidecar.get("producer") != sidecar_ref.get("producer"):
+                    errors.append(
+                        "analysis-state 绑定块的 producer 与磁盘 sidecar 实物"
+                        "不一致——绑定块不是对这份 sidecar 编译出来的")
+                    return
+                registry_anchor_check(sidecar, resolved, cand)
+                endpoint_reconcile(sidecar, compiled, resolved)
+            except SeriesProvenanceError as exc:
+                errors.append(f"发布期来源链复算失败：{exc}")
+            except Exception as exc:
+                errors.append(f"发布期来源链复算异常：{exc}")
             return
     errors.append(f"analysis-state 绑定的序列实物 {name} 在案根与 data/ 两层内"
                   "都找不到——正式案序列文件必须随案在档")

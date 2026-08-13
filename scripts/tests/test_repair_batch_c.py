@@ -692,6 +692,53 @@ def t_fixround1():
         check("FC1终关 绑定块缺 series_format 拒",
               any("series_format" in x for x in errs), str(errs))
 
+        # ── 消化轮 3（N-C4）：同步一致造假——发布期复算整条来源链 ──
+        # 攻击 C'（盲审原样）：自造原生格式序列文件＋state 用它的转换结果＋
+        # 绑定块自填（sha/format 全自洽）——轮 2 的重转换比对必然通过，
+        # 必须被"sidecar 实物强制在场"拦下
+        from camp_series_provenance import series_to_state_form
+        fake_native = {"dates": ["2026-01-01", "2026-01-02"],
+                       "项目方": [5.0, 88.8], "散户": [95.0, 11.2]}
+        fake_path = td / "data/camp_series_v2.json"
+        fake_path.write_text(json.dumps(fake_native, ensure_ascii=False))
+        fake_sha = _h2.sha256(fake_path.read_bytes()).hexdigest()
+        sync_fake = {
+            "camp_share_series": series_to_state_form(fake_native, "evm-dict"),
+            "provenance": {"series_binding": "producer-sidecar",
+                           "camp_series_sidecar": {
+                               "producer": "scripts/evm/replay_duck.py",
+                               "series_file": "camp_series_v2.json",
+                               "series_sha256": fake_sha,
+                               "series_format": "evm-dict"}}}
+        errs = []
+        gate.check_series_binding(td, sync_fake, errs)
+        check("NC4 同步一致造假被 sidecar 实物强制拦下",
+              any("provenance sidecar" in x for x in errs), str(errs))
+        # 强化：连 sidecar 也自造（公开函数）且绑真 replay_stats/spec/终态快照
+        # → 登记面全过，但伪末点被末点对账复算拦死（最后一层机器可闭合边界）
+        from camp_series_provenance import write_series_sidecar
+        write_series_sidecar(fake_path, producer="scripts/evm/replay_duck.py",
+                             series_format="evm-dict",
+                             denominator="current_net_supply",
+                             camps_spec_path=td / "camps.json",
+                             final_balances_path=td / "data/balances_final.json",
+                             inputs={"replay_stats": td / "data/replay_stats.json"})
+        errs = []
+        gate.check_series_binding(td, sync_fake, errs)
+        check("NC4 自造 sidecar 全套绑真件仍被末点对账复算拦下",
+              any("末点对账失败" in x for x in errs), str(errs))
+        fake_path.unlink()
+        (td / "data/camp_series_v2.provenance.json").unlink()
+        # 误伤三查①：formal 正常产物（案内 sidecar/supply_truth/preflight 全链
+        # 在场）发布期复算零 error——上方 "FC1 下游闸 producer-sidecar 绿例"
+        # 在本轮已含三件套复算，此处显式复跑一次坐实
+        errs = []
+        gate.check_series_binding(td, st, errs)
+        check("NC4 误伤查① formal 正常产物复算放行", errs == [], str(errs))
+        # 误伤三查②③（无序列 state 不强加 / exploration 标记拒）由既有
+        # "FC1 下游闸对无序列 state 不强加" 与 "FC1 下游闸拒 exploration 产物"
+        # 两 check 覆盖（本轮语义未变，回归即证）
+
         # F-C3：伪 supply_truth（46 字节式 {"sha256": ...}）→ 拒；无 schema → 拒
         st_path = td / "supply_truth.json"
         st_orig = st_path.read_text()

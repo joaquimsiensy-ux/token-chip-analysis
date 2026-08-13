@@ -455,3 +455,136 @@ replay_pass2 有 balances_final            rc=0  sidecar final_balances 绑定 =
 其余五条实质关闭，轮 1 的工程质量总体高于主施工轮（编译期必经化、closure_mode 分派、fsync、producer fail-loud 都是干净的单点修复，零误伤，103 checks 与 invariant 登记同步到位）。三条新 finding 均为 P2，其中 N-C1 与 F-C1 同族（两个新发布闸函数都是"验产物自洽"而非"验产物来自真实运行"），**建议与 F-C1 同批修**；N-C2 是上报材料的数字问题，需要在裁判裁决 MOG 之前更正。
 
 消化轮 1 复核完成
+
+---
+
+# 消化轮 2 复核（收口判定轮）
+
+- **复核对象**：`70096b4`（基线 `e26dac6`）——F-C1 终关＋N-C1/N-C2/N-C3，工单 `batchC_fixround2_workorder.md`
+- **复核方式**：只读＋副本变异，副本 `/private/tmp/batchC_probe/repo3/`（`70096b4` 钉死态）。生产树零改动
+- **基线核对（独立复跑）**：`run_all.py` **EXIT=0**；`test_repair_batch_c.py` **rc=0，112 checks**（103→112 属实）；`invariant_scan.py` **rc=0**（54/61/45，本轮零新 schema 字面量与工单说法一致）
+- **结论**：**4 条全部 CLOSED，零误伤**。轮 2 是三轮里质量最高的一轮——修法逐字落在盲审给的位置上，且每处都没留条件式跳过。**但站到边界外一步仍抓到 2 条新 finding（P2/P3，均非轮 2 新引入，是同根因的更深一层）**：发布闸把"验 state 自洽"扩大成了"验 state 与案内序列文件互洽"，仍然不是"验产物来自真实 producer 运行"
+
+| 编号 | 判定 | 一句话 |
+|---|---|---|
+| F-C1 | **CLOSED** | 轮 1 点名的两攻击（A 手改标记＋自补块指真文件／B 编译后篡改 series）双双转拒，重转换逐点比对生效；format 异族值、缺 format、exploration 标记全拒；formal 绿例与旧简报型 state 零误伤 |
+| N-C1 | **CLOSED** | 三攻击（series.path 写不存在名字／facts sha 乱填／缺 facts 段）全转拒，条件式跳过整段消除，绿例放行 |
+| N-C2 | **CLOSED** | 数字已更正入台账 `e26dac6`；A 类 5 文件独立核数与自报**逐案一致**（最差闭合全 0.0002pp、日期重复 0、负值 0、超 100 零、非有限 0），分类零翻案；失真归因（fail-fast 取首个违例当最差点）成立 |
+| N-C3 | **CLOSED** | target 三键结构验＋chain 两处同源＋token 对案内 `channels_preflight.json` 锚，四个反例全转拒；全库 18 份 preflight **全部**含非空 token 键，零误伤 |
+
+| 新编号 | 严重度 | 轮 2 新引入？ | 一句话 |
+|---|---|---|---|
+| N-C4 | P2 | 否（F-C1 同根因更深一层） | 发布闸从不要求 producer sidecar 实物在场、不复算 registry/末点链——**"同步一致造假"实测放行**：自造一份原生格式序列文件＋state 用它的转换结果＋绑定块自填，案内**不需要** `.provenance.json`、**不需要** `supply_truth.json` |
+| N-C5 | P3 | 否 | 两处结构检查无真实对锚：①`target.as_of_block` 只验"正整数"，改成任意别的正整数照过（实测）；②sol 侧 `solana-reconcile/v2` 收据 schema 确无身份键（`replay_edges.py:166` 实物核实，施工方诚实边界**如实**），跨案复制收据可用 |
+
+---
+
+## 1. F-C1 终判：两攻击转拒 ＋ 边界外一步
+
+**轮 1 两攻击已死**（单元级直调 `check_series_binding`）：
+
+| 场景 | 轮 1 | 轮 2 |
+|---|---|---|
+| A) 伪 series＋手改标记＋绑定块指向案内真序列（sha/format 全真） | ★放行 | **拦下**："camp_share_series 与案内序列实物的重转换结果不一致" |
+| B) formal 合法产物编译后篡改 `camp_share_series` 一个值 | ★放行 | **拦下**（同上） |
+| 绿例：formal 正常产物 | 放行 | 放行 ✓ |
+| 旧简报型 state（无 `camp_share_series`） | 不强加 | 不强加 ✓ |
+
+**边界外一步的三题（裁判点题）逐条查证**：
+
+1. **`series_format` 分派键喂异族值**——不可绕。喂 `sol-rows` 给 evm-dict 文件、喂 `sol-anchor-rows`，均在重转换处抛错被捕获成 exit 拒；缺 `series_format` 直接拒。分派键虽由 state 携带（攻击者可控），但两族形态互斥（dict 带 dates ↔ 非空行数组），换键必然转换失败或结果不等。
+2. **重转换函数与编译器转换器漂移**——不存在。发布闸 `from camp_series_provenance import series_to_state_form` 与 `bind_series_source` 是**同一个纯函数**，无第二份实现。
+3. **篡改序列文件与 state 同步一致造假**——**可绕，实测放行**。见 N-C4。
+
+### N-C4 —— P2（非轮 2 新引入）—— "同步一致造假"仍通
+
+发布闸 `check_series_binding` 读三样东西：state 自报的 `series_binding`、state 自报的 `camp_series_sidecar` 块（series_file／series_sha256／series_format）、案内同名序列文件。**磁盘上的 `<series>.provenance.json` sidecar 实物它从不读**，`registry_anchor_check`（supply_truth/target/preflight 锚）与 `endpoint_reconcile`（末点对账）也只在 `compile_state` 里跑过一次，发布期不复算——而发布闸无从确认这个 state 是不是 `compile_state` 产的。
+
+实测（攻击 C'）：
+
+```
+案内写一份自造的 data/camp_series_v2.json（evm-dict 原生格式，内容=想要的伪造序列）
+state.camp_share_series = series_to_state_form(该文件, "evm-dict")
+state.provenance = {series_binding: "producer-sidecar",
+                    camp_series_sidecar: {series_file: "camp_series_v2.json",
+                                          series_sha256: <自己算>, series_format: "evm-dict"}}
+→ check_series_binding: ★ 放行（零 error）
+   案内是否需要 .provenance.json sidecar 实物: False
+   案内是否需要 supply_truth.json:            False
+```
+
+**成本评估（关键）**：攻击者不必手写整个 state——拿一份**真实的 formal 编译产物**（whale_groups／token／address_balances 全真，过 G1 成员对账与其余所有闸），只改 `camp_share_series` ＋ 三个 provenance 字段 ＋ 案内加一个原生格式 JSON 即可。而 evm-dict 原生格式（`{dates: [...], 桶名: [...]}`）与 state 形态只差一层嵌套，把伪造序列写成原生格式**近乎零额外成本**。**边际成本与轮 1 攻击 A 基本相同。**
+
+**轮 2 确实提高了什么**：关掉了"改 state 不改文件"和"改文件不改 state"两类**不一致**篡改。这是实质进步，但对"双向一致地造假"无效。
+
+**修法（明确、量小、有终点）**：发布闸在重转换比对之外，再复用现成的三件套——`load_series_with_sidecar(案内序列文件)`（强制 `.provenance.json` 实物在场＋输出 sha＋输入三验）→ `registry_anchor_check`（supply_truth/target/preflight 锚）→ `endpoint_reconcile`（camps spec＋终态快照末点对账）。约 15 行，全部是已有纯函数。修完之后，剩余残余就落到"伪造整案原始数据后真跑一遍 producer"——那是仓内已接受的 F-12 同族边界（一致性校验器不能证伪自洽的伪造输入）。**也就是说 N-C4 是这条链上最后一层可机器闭合的边界，值得关掉；关掉之后不会再有第四层。**
+
+## 2. N-C1 / N-C2 / N-C3 逐条
+
+### N-C1 —— CLOSED
+
+```
+绿例（两输入 sha 全真）                  放行 ✓
+攻击 b) series.path 写案根不存在的名字     拦下："不在案根——收据宣称对账过的输入必须随案可验"
+攻击 c) series sha 真 + facts sha 乱填   拦下："facts sha256 与案内实物不一致"
+攻击 d) 收据缺 facts 绑定段              拦下："缺 facts 绑定（path/sha256）"
+对照）series sha 假                    拦下 ✓
+```
+
+轮 1 的两个穿透点（series 条件式 `if cand.is_file()`、facts 完全不验）**整段消除**，`_figure2_input_check` 对两个输入做同一套无条件三段验（找不到＝拒／符号链接＝拒／sha 不符＝拒）。
+
+### N-C2 —— CLOSED
+
+台账 `e26dac6` 已按我轮 1 的核数更正（MOG 最差 idx 177 = 99.7433／偏离 0.2567pp，裁决不变、不放宽容差）。
+
+**裁判要求的 A 类独立复核（抽全 5 文件）**：
+
+| 文件 | 最差闭合偏离 | 日期重复 | 负值 | 超 100 | 非有限 |
+|---|---|---|---|---|---|
+| APU分析/analysis-state.json | 0.0002pp (idx 473) | 0 | 0 | 0 | 0 |
+| QUQ分析/analysis-state.json | 0.0002pp (idx 34) | 0 | 0 | 0 | 0 |
+| ASTEROID分析/analysis-state.json | 0.0002pp (idx 248) | 0 | 0 | 0 | 0 |
+| TAG分析/analysis-state.json | 0.0002pp (idx 479) | 0 | 0 | 0 | 0 |
+| TAG replay/analysis-state.json | 0.0002pp (idx 479) | 0 | 0 | 0 | 0 |
+
+与工单自报**逐案一致**，A 类定义（数值面全过、仅桶名不合）成立，分类零翻案。失真归因（诊断脚本复用 fail-fast 的 `validate_series_payload`，抛首个违例即停，把首违例点当最差点抄进上报表）**成立**——分类判据是二值"过/不过"，与取哪个违例点无关，所以只影响上报数字不影响分类。归因诚实。
+
+### N-C3 —— CLOSED
+
+```
+无 target（盲审 1792B 伪造链）              rc=2  缺合法 target 三键
+target.chain 与顶层撕裂                     rc=2  两处同源，撕裂即伪造/拼接
+target.token 不对案内 preflight             rc=2  收据不是本案的
+案内缺 channels_preflight.json             rc=2  采集链身份件缺席（无条件式跳过 ✓）
+as_of_block=0 / bool                      rc=2  结构检查命中
+绿例：target 三键全对＋token 命中 preflight     rc=0  ✓
+```
+
+**误伤面已查**：TAG 案实物 `channels_preflight.json` 有 `token` 键且与 `supply_truth.target.token` 一致；全库 **18 份 preflight 全部含非空 token**，键名对得上，无误伤。
+
+**诚实评估（记入 N-C4 的语境）**：target.token 锚提高的是"跨案复制收据"和"凭空造收据"的门槛。对**本案内伪造序列**这个最现实的威胁（分析师想让自己报告好看）它**不起作用**——本案内 preflight/token/chain 全是真的。伪造链成本 1792B → **2010B**。
+
+## 3. 轮 2 新代码固定检查
+
+- **内容重转换逐点比对的误伤面**：formal 正常产物放行 ✓（编译器注入的 series 本就是同一转换器输出，逐点必等）；旧简报型 state 不强加 ✓；`sol-rows` 族的转换含 `round(acc, 4)` 与并桶，发布闸与编译器走同一函数故必等 ✓。
+- **无条件三段验的误伤面**：`facts.json` 与 `whale_series.json` 都是 new-analysis 的必经资产、恒在案根，无条件验不会误杀；p105／a4_gate 两处夹具已改为真跑 `check` 产收据（run_all 全绿佐证）。
+- **burn 两族＋dual 绿例复查**（轮 1 已关项防误伤）：净族 EVM（`burn_cum_pct`=5.2632）PASS ✓／净族 sol（`锁仓/销毁`=11.11）PASS ✓／total 族（全桶=100）PASS ✓／`dual` 手填宽式 PASS ✓——F-C4 实现零触碰、零回归。
+- **sol 侧诚实边界核实**：`replay_edges.py:166` 的收据实物形态 = `{schema: "solana-reconcile/v2", edge_count, net_supply_raw, snapshot_mismatch_count, gate_pass, …}`，**确无 mint/token/chain 任一身份键**——施工方"target 锚加不上去、属 producer schema 扩面、留 R10"的说法**如实**。
+  **当前可利用性评级：P3。** 缺身份锚使一份来自别的 Solana 案的 reconcile 收据可直接复用（`net_supply_raw` 与终态快照合计的交叉等式由攻击者控制的快照凑得上）。但在 N-C4 未关的前提下，sol 侧这个缺口**不是边际决定项**（发布期整条链本就不复算）；若将来按 N-C4 修法复算发布期链条，则此项升为边际项，需同批补 producer 侧身份键。
+
+## 4. 复现件清单（轮 2 新增）
+
+`/private/tmp/batchC_probe/repo3/`（`70096b4` 完整副本，复核期零改动）＋会话内一次性脚本：`check_series_binding` 九场景（轮 1 攻击 A/B、绿例、★攻击 C'、format 异族两种、缺 format、exploration 标记、旧简报型）；`check_figure2_receipt` 五场景；`registry_anchor_check` 八梯度（含 as_of_block 三变体）；burn 两族＋dual 绿例；A 类 5 文件独立核数；preflight 全库 18 份键在场率扫描。
+
+## 5. 终判
+
+**技术判定：批 C 的四条待关项全部 CLOSED，轮 2 零误伤、零回归、测试与登记同步到位。** 但**核心不变量在发布期仍未闭合**——N-C4 实测证明"同步一致造假"以与轮 1 攻击 A 相当的边际成本仍可进正式发布。
+
+**给裁判的两个选项（我不替裁判拍板，但给出倾向）**：
+
+- **选项 1（倾向）：开消化轮 3，只修 N-C4 一条。** 修法明确、量小（约 15 行，复用 `load_series_with_sidecar`＋`registry_anchor_check`＋`endpoint_reconcile` 三个现成纯函数），且**这是这条链上最后一层可机器闭合的边界**——关掉之后剩余残余落到仓内已接受的 F-12 同族边界，不会再有第四层。第 3 轮触线需上报用户裁决，但代价是一次小改而不是一轮拉锯。N-C5 两项随轮入 R10 台账。
+- **选项 2：本批就此收口。** 则 N-C4／N-C5 必须入 R10 台账，且 CHANGELOG 与 `scan-schemas.md` §13 要**明账**："批 C 的序列来源绑定在**编译期**闭合，**发布期**只做 state↔序列文件一致性复验、不复算 producer 链——控制案目录的伪造方仍可让伪造序列进正式发布。" 不能让"F-C1 全关"这个说法留在文档里被将来引用成"发布期已闭合"。
+
+**明确反对的第三种处理**：把 N-C4 记成"已接受边界"而不修也不明账。它与 F-12 有本质区别——F-12 的残余是"伪造原始数据后真跑一遍"（无法用一致性校验器证伪），N-C4 的残余是"根本不跑 producer"（现成函数就能证伪）。两者不是一回事，不能借 F-12 的口径豁免。
+
+消化轮 2 复核完成
