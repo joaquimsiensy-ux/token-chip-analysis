@@ -7,6 +7,7 @@ import hashlib
 import json
 import os
 import sys
+from datetime import datetime
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -16,6 +17,7 @@ sys.path.insert(0, str(HERE.parent / "lib"))
 from adversarial_review_runner import validate_review_receipt
 from chain_registry import recon_adapter_for, resolve_alias
 from receipt_validate import validate_receipt
+from supply_truth_gate import FORMAL_TOLERANCE_BPS_MAX, decide
 
 FILES = ("accounting_mode.json", "reconciliation_report.json", "adversarial_review.json")
 ACCOUNTING_PRODUCERS = {
@@ -101,6 +103,112 @@ def canonical_target(target):
     if not chain or not token:
         raise ValueError("target chain/token must be non-empty")
     return {"chain": chain, "token": token, "as_of_block": slot}
+
+
+def _bound_case_ref(root, ref, label, *, base=None):
+    if not isinstance(ref, dict) or not {"path", "size", "sha256"} <= set(ref):
+        raise ValueError(f"{label} must bind path/size/sha256")
+    case_root = Path(root).resolve()
+    base = Path(base or case_root).resolve()
+    raw = Path(str(ref.get("path") or ""))
+    if raw.is_absolute() or not raw.parts or ".." in raw.parts:
+        raise ValueError(f"{label} path must be a safe relative path")
+    lexical = base
+    for part in raw.parts:
+        lexical = lexical / part
+        if lexical.is_symlink():
+            raise ValueError(f"{label} path is a symlink")
+    try:
+        path = lexical.resolve(strict=True)
+        path.relative_to(case_root)
+    except (OSError, ValueError) as exc:
+        raise ValueError(f"{label} file invalid or escapes case root") from exc
+    if not path.is_file():
+        raise ValueError(f"{label} is not a regular file")
+    _require(not isinstance(ref.get("size"), bool) and isinstance(ref.get("size"), int)
+             and ref.get("size") == path.stat().st_size,
+             f"{label} size mismatch")
+    _require(ref.get("sha256") == sha(path), f"{label} sha256 mismatch")
+    return path
+
+
+def _validate_tolerance_policy(root, receipt, target):
+    """独立重算 primary 结论，并重验 formal 容差与 waiver 输入绑定。"""
+    try:
+        replay_net = int(str(receipt.get("replay_net")))
+        onchain = int(str(receipt.get("onchain_total_supply")))
+    except (TypeError, ValueError) as exc:
+        raise ValueError("supply_truth primary inputs are not integers") from exc
+    tolerance = receipt.get("tolerance_bps")
+    _require(not isinstance(tolerance, bool) and isinstance(tolerance, int)
+             and tolerance >= 0,
+             "supply_truth formal tolerance_bps must be a non-negative integer")
+    recomputed_verdict, _, _ = decide(replay_net, onchain, tolerance)
+    _require(receipt.get("primary_verdict") == recomputed_verdict,
+             "supply_truth primary_verdict 与 decide 独立重算值不一致")
+
+    inputs = receipt.get("inputs") or {}
+    replay_input = inputs.get("replay_stats")
+    _require(isinstance(replay_input, dict),
+             "supply_truth receipt must bind replay_stats input")
+    replay_path = Path(str(replay_input.get("path") or "")).resolve()
+
+    waiver_input = inputs.get("tolerance_waiver")
+    if tolerance > FORMAL_TOLERANCE_BPS_MAX:
+        _require(isinstance(waiver_input, dict),
+                 f"supply_truth formal tolerance above "
+                 f"{FORMAL_TOLERANCE_BPS_MAX}bps lacks tolerance waiver")
+    if waiver_input is None:
+        return
+
+    waiver_path = Path(str(waiver_input.get("path") or "")).resolve()
+    try:
+        waiver_path.relative_to(Path(root).resolve())
+    except ValueError as exc:
+        raise ValueError("tolerance waiver input escapes case root") from exc
+    try:
+        waiver = json.loads(waiver_path.read_text(encoding="utf-8"))
+    except Exception as exc:
+        raise ValueError(f"tolerance waiver JSON invalid: {exc}") from exc
+    required = {
+        "schema", "approved_tolerance_bps", "approved_by", "user_decided_at_utc",
+        "target", "replay_stats", "evidence_refs", "reason",
+    }
+    _require(isinstance(waiver, dict)
+             and all(key in waiver and waiver.get(key) not in (None, "", [])
+                     for key in required),
+             "tolerance waiver schema or required fields incomplete")
+    _require(waiver.get("schema") == "tolerance-waiver/v1",
+             "tolerance waiver schema invalid")
+    approved = waiver.get("approved_tolerance_bps")
+    _require(not isinstance(approved, bool) and isinstance(approved, int)
+             and 0 <= tolerance <= approved,
+             "supply_truth tolerance exceeds waiver approved_tolerance_bps")
+    _require(isinstance(waiver.get("approved_by"), str)
+             and bool(waiver["approved_by"].strip()),
+             "tolerance waiver approved_by invalid")
+    decided_at = waiver.get("user_decided_at_utc")
+    try:
+        if not isinstance(decided_at, str) or not decided_at.endswith("Z"):
+            raise ValueError
+        datetime.fromisoformat(decided_at[:-1] + "+00:00")
+    except ValueError as exc:
+        raise ValueError("tolerance waiver user_decided_at_utc invalid") from exc
+    _require(waiver.get("target") == target,
+             "tolerance waiver target mismatch")
+    _require(isinstance(waiver.get("reason"), str) and bool(waiver["reason"].strip()),
+             "tolerance waiver reason invalid")
+    waiver_replay = _bound_case_ref(
+        root, waiver.get("replay_stats"), "tolerance waiver replay_stats",
+        base=waiver_path.parent)
+    _require(waiver_replay == replay_path,
+             "tolerance waiver replay_stats does not bind receipt input")
+    evidence_refs = waiver.get("evidence_refs")
+    _require(isinstance(evidence_refs, list) and bool(evidence_refs),
+             "tolerance waiver evidence_refs invalid")
+    for index, ref in enumerate(evidence_refs):
+        _bound_case_ref(root, ref, f"tolerance waiver evidence_refs[{index}]",
+                        base=waiver_path.parent)
 
 
 def validate_reconciliation_check(root, key, item, target, family):
@@ -204,6 +312,7 @@ def validate_reconciliation_check(root, key, item, target, family):
         _require(receipt.get("mode") == "formal" and isinstance(receipt.get("inputs"), dict)
                  and bool(receipt["inputs"]),
                  "supply_truth receipt must be formal and bind replay_stats input")
+        _validate_tolerance_policy(root, receipt, target)
         if family == "solana":
             bundle_ref = (receipt.get("inputs") or {}).get("observation_bundle")
             _require(isinstance(bundle_ref, dict),
@@ -270,6 +379,14 @@ def validate_sources(root):
             or not isinstance(accounting.get("checks"), dict) or not accounting["checks"]):
         raise ValueError("accounting evidence is not a production gate receipt")
     family = chain_family(accounting["chain"])
+    if family == "evm":
+        tip = accounting.get("tip_block")
+        as_of = accounting.get("as_of_block")
+        _require(not isinstance(tip, bool) and isinstance(tip, int) and tip >= 0,
+                 "EVM accounting tip_block missing or invalid")
+        _require(not isinstance(as_of, bool) and isinstance(as_of, int) and as_of >= 0
+                 and as_of <= tip,
+                 "EVM accounting as_of_block must be <= tip_block")
     expected_accounting = ACCOUNTING_PRODUCERS[family]
     repo_ref_ok(accounting.get("producer"), {expected_accounting}, "accounting")
     token = accounting.get("token") or accounting.get("mint")

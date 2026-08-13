@@ -128,13 +128,16 @@ def make_case(d, chain="bsc", token="0x0", as_of_block=999):
             receipt = {"schema": "supply-truth-receipt/v3", "target": target,
                        "gate": "supply_truth", "replay_net": "100",
                        "onchain_total_supply": "100", "diff": "0",
+                       "diff_bps": 0.0, "tolerance_bps": 10,
                        "decision_rule": "primary_form1", "burn_form": None,
                        "primary_verdict": "PASS", "sink_reconciliation": None}
         else:
             receipt = {"schema": "time-spotcheck/v2", "target": target,
                        "points": 1, "exact_match": 1, "mismatch": 0, "rpc_err": 0}
         receipt.update({"producer": repo_ref(producers[key]), "mode": "formal",
-                        "inputs": bound_input, "verdict": "PASS", "exit_code": 0})
+                        "inputs": ({"replay_stats": bound_input["fixture"]}
+                                   if key == "supply_truth" else bound_input),
+                        "verdict": "PASS", "exit_code": 0})
         write_json(d, receipt_name, receipt)
         recon_checks[key] = {"status": "PASS", "exit_code": 0,
                              "receipt": {"path": receipt_name,

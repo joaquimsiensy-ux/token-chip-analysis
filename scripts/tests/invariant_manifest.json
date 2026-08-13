@@ -271,6 +271,12 @@
     },
     {
       "schemas": [
+        "tolerance-waiver/v1"
+      ],
+      "script": "scripts/lib/supply_truth_gate.py"
+    },
+    {
+      "schemas": [
         "anchor-plan-receipt/v2",
         "anchor-plan/v2"
       ],
@@ -390,7 +396,8 @@
         "solana-anchor-sampler-receipt/v2",
         "solana-observation-bundle/v1",
         "supply-truth-receipt/v3",
-        "time-spotcheck/v2"
+        "time-spotcheck/v2",
+        "tolerance-waiver/v1"
       ],
       "script": "scripts/report/shared_release_receipt.py"
     },

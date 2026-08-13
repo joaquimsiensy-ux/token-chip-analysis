@@ -33,9 +33,11 @@ replay-stats 字段识别（依次尝试，值可为 int 或十进制字符串�
         1 = 检测自身失败（网络/字段缺失）——修通道重跑，禁当 PASS
 （来源：GNT replay-silent-burn-trap 2026-07-28；v6.0.0 唯一批准代码例外）"""
 import argparse
+import hashlib
 import json
 import re
 import sys
+from datetime import datetime
 from pathlib import Path
 
 from receipt_kernel import (build_envelope, finalize_envelope, publish_error_receipt,
@@ -63,6 +65,99 @@ DEFAULT_RPC = {
 FIELD_PAIRS = [("mint_total_wei", "burn_total_wei"),
                ("mint_total_raw", "burn_total_raw"),
                ("mint_total", "burn_total")]
+FORMAL_TOLERANCE_BPS_MAX = 10
+TOLERANCE_WAIVER_SCHEMA = "tolerance-waiver/v1"
+
+
+class TolerancePolicyError(ValueError):
+    """正式容差政策或 waiver 不合法（调用错误，exit 2）。"""
+
+
+def _sha256_file(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def _waiver_file_ref(waiver_path: Path, ref, label: str) -> Path:
+    if not isinstance(ref, dict) or not {"path", "size", "sha256"} <= set(ref):
+        raise TolerancePolicyError(f"waiver {label} 必须绑定 path/size/sha256")
+    raw = Path(str(ref.get("path") or ""))
+    if raw.is_absolute() or not raw.parts or ".." in raw.parts:
+        raise TolerancePolicyError(f"waiver {label} path 必须是收据同目录内的安全相对路径")
+    lexical = waiver_path.parent
+    for part in raw.parts:
+        lexical = lexical / part
+        if lexical.is_symlink():
+            raise TolerancePolicyError(f"waiver {label} 不得引用符号链接")
+    try:
+        path = lexical.resolve(strict=True)
+        path.relative_to(waiver_path.parent)
+    except (OSError, ValueError) as exc:
+        raise TolerancePolicyError(f"waiver {label} 文件不存在或越界") from exc
+    if not path.is_file():
+        raise TolerancePolicyError(f"waiver {label} 不是普通文件")
+    if (isinstance(ref.get("size"), bool) or not isinstance(ref.get("size"), int)
+            or ref.get("size") != path.stat().st_size):
+        raise TolerancePolicyError(f"waiver {label} size 不匹配")
+    if ref.get("sha256") != _sha256_file(path):
+        raise TolerancePolicyError(f"waiver {label} sha256 不匹配")
+    return path
+
+
+def load_tolerance_waiver(path, *, target: dict, tolerance_bps: int,
+                          replay_stats_path) -> tuple[Path, dict]:
+    """加载并验证仅放大 supply truth 容差的输入侧人工裁决收据。"""
+    shown = Path(path).expanduser()
+    try:
+        waiver_path = shown.resolve(strict=True)
+    except OSError as exc:
+        raise TolerancePolicyError("tolerance waiver 文件不存在") from exc
+    if shown.is_symlink() or not waiver_path.is_file():
+        raise TolerancePolicyError("tolerance waiver 必须是普通文件且不得为符号链接")
+    try:
+        waiver = json.loads(waiver_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise TolerancePolicyError(f"tolerance waiver JSON 损坏: {exc}") from exc
+    required = {
+        "schema", "approved_tolerance_bps", "approved_by", "user_decided_at_utc",
+        "target", "replay_stats", "evidence_refs", "reason",
+    }
+    if not isinstance(waiver, dict) or any(
+            key not in waiver or waiver.get(key) in (None, "", []) for key in required):
+        raise TolerancePolicyError("tolerance waiver schema 或必填字段不完整")
+    if waiver.get("schema") != TOLERANCE_WAIVER_SCHEMA:
+        raise TolerancePolicyError("tolerance waiver schema 必须是 tolerance-waiver/v1")
+    approved = waiver.get("approved_tolerance_bps")
+    if isinstance(approved, bool) or not isinstance(approved, int) or approved < 0:
+        raise TolerancePolicyError("waiver 批准容差必须是非负整数")
+    if tolerance_bps < 0 or tolerance_bps > approved:
+        raise TolerancePolicyError(
+            f"实际容差 {tolerance_bps}bps 超出 waiver 批准值 {approved}bps")
+    if not isinstance(waiver.get("approved_by"), str) or not waiver["approved_by"].strip():
+        raise TolerancePolicyError("waiver 裁决主体 approved_by 必填")
+    decided_at = waiver.get("user_decided_at_utc")
+    try:
+        if not isinstance(decided_at, str) or not decided_at.endswith("Z"):
+            raise ValueError
+        datetime.fromisoformat(decided_at[:-1] + "+00:00")
+    except ValueError as exc:
+        raise TolerancePolicyError("waiver user_decided_at_utc 必须是有效 UTC 时间") from exc
+    if waiver.get("target") != target:
+        raise TolerancePolicyError("waiver target 的 chain/token/as_of_block 与本次运行不全等")
+    if not isinstance(waiver.get("reason"), str) or not waiver["reason"].strip():
+        raise TolerancePolicyError("waiver 理由文本必填")
+    replay_ref_path = _waiver_file_ref(waiver_path, waiver.get("replay_stats"), "replay_stats")
+    try:
+        current_replay = Path(replay_stats_path).expanduser().resolve(strict=True)
+    except (OSError, TypeError) as exc:
+        raise TolerancePolicyError("waiver 运行必须提供存在的 --replay-stats") from exc
+    if replay_ref_path != current_replay:
+        raise TolerancePolicyError("waiver replay_stats 未绑定本次实际输入")
+    refs = waiver.get("evidence_refs")
+    if not isinstance(refs, list) or not refs:
+        raise TolerancePolicyError("waiver evidence_refs 必须是非空数组")
+    for index, ref in enumerate(refs):
+        _waiver_file_ref(waiver_path, ref, f"evidence_refs[{index}]")
+    return waiver_path, waiver
 
 
 def parse_replay_stats(stats: dict):
@@ -173,6 +268,8 @@ def main(argv=None):
     ap.add_argument("--min-context-slot", type=int, default=0,
                     help="Solana bundle snapshot lower-bound assertion")
     ap.add_argument("--tolerance-bps", type=int, default=10)
+    ap.add_argument("--tolerance-waiver",
+                    help="formal 模式超过 10bps 时必需的 tolerance-waiver/v1 输入收据")
     ap.add_argument("--as-of-block", type=int, default=None,
                     help="与 accounting target 对齐的冻结块/slot；正式发布必须提供")
     ap.add_argument("--out", default="supply_truth.json")
@@ -189,6 +286,14 @@ def main(argv=None):
         ap.error("--min-context-slot must be non-negative")
     if a.chain == "solana" and not a.mint:
         ap.error("solana 链必须给 --mint")
+    if mode == "formal" and a.tolerance_bps < 0:
+        print("正式模式 --tolerance-bps 必须满足 0 <= 值", file=sys.stderr)
+        return 2
+    if (mode == "formal" and a.tolerance_bps > FORMAL_TOLERANCE_BPS_MAX
+            and not a.tolerance_waiver):
+        print("正式模式 --tolerance-bps 上限为 10；超出必须提供 --tolerance-waiver",
+              file=sys.stderr)
+        return 2
     try:
         observed_snapshot_slot = a.as_of_block
         if a.chain == "solana":
@@ -206,6 +311,11 @@ def main(argv=None):
             envelope_inputs["replay_stats"] = Path(a.replay_stats)
         if bundle_path is not None:
             envelope_inputs["observation_bundle"] = bundle_path
+        if mode == "formal" and a.tolerance_waiver:
+            waiver_path, _ = load_tolerance_waiver(
+                a.tolerance_waiver, target=target, tolerance_bps=a.tolerance_bps,
+                replay_stats_path=a.replay_stats)
+            envelope_inputs["tolerance_waiver"] = waiver_path
         envelope = build_envelope(
             "supply-truth-receipt/v3", target, __file__, mode,
             inputs=envelope_inputs or None)
@@ -215,6 +325,9 @@ def main(argv=None):
                 raise ValueError(
                     f"bundle snapshot slot {observed_snapshot_slot} < "
                     f"--min-context-slot {a.min_context_slot}")
+    except TolerancePolicyError as exc:
+        print(f"正式容差政策拒绝（exit 2）: {exc}", file=sys.stderr)
+        return 2
     except Exception as exc:
         print(f"检测自身失败（exit 1，修通道重跑）: {exc}", file=sys.stderr)
         if envelope is not None:

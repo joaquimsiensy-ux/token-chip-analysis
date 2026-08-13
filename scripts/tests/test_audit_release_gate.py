@@ -68,6 +68,7 @@ def build_case(root, historical=True):
     target = {"chain": "bsc", "token": "0xtoken", "as_of_block": 123}
     write_json(root, "accounting_mode.json", {"schema": "accounting-gate/v1",
         "chain": "bsc", "token": "0xtoken", "as_of_block": 123,
+        "tip_block": 123, "model_probe_block": 123,
         "producer": repo_ref("scripts/evm/accounting_gate.py"),
         "verdict": "PASS", "exit_code": 0, "mode": "standard",
         "checks": {"fot": {"status": "clean"}}})
@@ -91,6 +92,7 @@ def build_case(root, historical=True):
             receipt_doc = {"schema": "supply-truth-receipt/v3", "target": target,
                 "gate": "supply_truth", "replay_net": "100",
                 "onchain_total_supply": "100", "diff": "0",
+                "diff_bps": 0.0, "tolerance_bps": 10,
                 "decision_rule": "primary_form1", "burn_form": None,
                 "primary_verdict": "PASS", "sink_reconciliation": None,
                 "verdict": "PASS", "exit_code": 0}
@@ -99,7 +101,8 @@ def build_case(root, historical=True):
                 "points": 1, "exact_match": 1, "mismatch": 0, "rpc_err": 0,
                 "verdict": "PASS", "exit_code": 0}
         receipt_doc.update({"producer": repo_ref(producers[key]), "mode": "formal",
-                            "inputs": envelope_input})
+                            "inputs": ({"replay_stats": envelope_input["fixture"]}
+                                       if key == "supply_truth" else envelope_input)})
         write_json(root, evidence.name, receipt_doc)
         checks[key] = {"status": "PASS", "exit_code": 0,
                        "receipt": {"path": evidence.name, "sha256": sha(evidence)},
