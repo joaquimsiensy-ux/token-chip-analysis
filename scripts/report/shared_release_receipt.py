@@ -17,7 +17,8 @@ sys.path.insert(0, str(HERE.parent / "lib"))
 from adversarial_review_runner import validate_review_receipt
 from chain_registry import recon_adapter_for, resolve_alias
 from receipt_validate import validate_receipt
-from supply_truth_gate import FORMAL_TOLERANCE_BPS_MAX, decide
+from supply_truth_gate import (FORMAL_TOLERANCE_BPS_MAX, decide,
+                               parse_replay_stats)
 
 FILES = ("accounting_mode.json", "reconciliation_report.json", "adversarial_review.json")
 ACCOUNTING_PRODUCERS = {
@@ -132,6 +133,32 @@ def _bound_case_ref(root, ref, label, *, base=None):
     return path
 
 
+MIGRATION_HINT = "存量案例须重跑对应生产者获取当前回执"
+
+
+def _bound_replay_totals(receipt):
+    """读收据 inputs 绑定的那份 replay_stats 实物，解出 (path, mint_total, burn_total)。
+
+    上游 validate_receipt 已经对这个文件做过"存在＋size＋sha256"三验，所以这里直接读
+    内容即可；读不出 mint/burn（旧格式、字段缺失）一律 fail-closed，不放行。
+    """
+    inputs = receipt.get("inputs") or {}
+    replay_input = inputs.get("replay_stats")
+    _require(isinstance(replay_input, dict),
+             "supply_truth receipt must bind replay_stats input")
+    replay_path = Path(str(replay_input.get("path") or "")).resolve()
+    try:
+        stats = json.loads(replay_path.read_text(encoding="utf-8"))
+        if not isinstance(stats, dict):
+            raise TypeError("replay_stats 不是 JSON 对象")
+        mint_total, burn_total = parse_replay_stats(stats)
+    except Exception as exc:
+        raise ValueError(
+            f"supply_truth 绑定的 replay_stats 解不出 mint/burn: {exc}；"
+            f"{MIGRATION_HINT}") from exc
+    return replay_path, mint_total, burn_total
+
+
 def _validate_tolerance_policy(root, receipt, target):
     """独立重算 primary 结论，并重验 formal 容差与 waiver 输入绑定。"""
     try:
@@ -143,16 +170,18 @@ def _validate_tolerance_policy(root, receipt, target):
     _require(not isinstance(tolerance, bool) and isinstance(tolerance, int)
              and tolerance >= 0,
              "supply_truth formal tolerance_bps must be a non-negative integer")
-    recomputed_verdict, _, _ = decide(replay_net, onchain, tolerance)
+    recomputed_verdict, _, recomputed_diff_bps = decide(replay_net, onchain, tolerance)
     _require(receipt.get("primary_verdict") == recomputed_verdict,
              "supply_truth primary_verdict 与 decide 独立重算值不一致")
 
-    inputs = receipt.get("inputs") or {}
-    replay_input = inputs.get("replay_stats")
-    _require(isinstance(replay_input, dict),
-             "supply_truth receipt must bind replay_stats input")
-    replay_path = Path(str(replay_input.get("path") or "")).resolve()
+    # 消费侧不能只拿收据自报的三个数互相印证：replay_net 必须对得上案根里那份被哈希
+    # 绑定的 replay_stats 实物，否则改一个数就能绕开整套容差钳制与 waiver（F-A）。
+    replay_path, stats_mint, stats_burn = _bound_replay_totals(receipt)
+    _require(stats_mint - stats_burn == replay_net,
+             f"supply_truth replay_net 与绑定 replay_stats 实物的 mint−burn 不一致；"
+             f"{MIGRATION_HINT}")
 
+    inputs = receipt.get("inputs") or {}
     waiver_input = inputs.get("tolerance_waiver")
     if tolerance > FORMAL_TOLERANCE_BPS_MAX:
         _require(isinstance(waiver_input, dict),
@@ -165,14 +194,23 @@ def _validate_tolerance_policy(root, receipt, target):
     try:
         waiver_path.relative_to(Path(root).resolve())
     except ValueError as exc:
-        raise ValueError("tolerance waiver input escapes case root") from exc
+        raise ValueError(
+            f"收据记录的 tolerance waiver 路径不在当前案根内——{MIGRATION_HINT}"
+            "（存量案或整目录复制过的案子，收据里记的是老绝对路径，不是 waiver 放错了地方）"
+        ) from exc
+    # 读不动＝通道故障，JSON 坏了＝内容不合法，两类别再顶着同一句"JSON invalid"（F-D）。
     try:
-        waiver = json.loads(waiver_path.read_text(encoding="utf-8"))
-    except Exception as exc:
+        waiver_text = waiver_path.read_text(encoding="utf-8")
+    except OSError as exc:
+        raise ValueError(
+            f"tolerance waiver 文件读取失败（通道故障，非政策问题）: {exc}") from exc
+    try:
+        waiver = json.loads(waiver_text)
+    except json.JSONDecodeError as exc:
         raise ValueError(f"tolerance waiver JSON invalid: {exc}") from exc
     required = {
         "schema", "approved_tolerance_bps", "approved_by", "user_decided_at_utc",
-        "target", "replay_stats", "evidence_refs", "reason",
+        "target", "replay_stats", "evidence_refs", "reason", "observed_diff_bps",
     }
     _require(isinstance(waiver, dict)
              and all(key in waiver and waiver.get(key) not in (None, "", [])
@@ -184,6 +222,16 @@ def _validate_tolerance_policy(root, receipt, target):
     _require(not isinstance(approved, bool) and isinstance(approved, int)
              and 0 <= tolerance <= approved,
              "supply_truth tolerance exceeds waiver approved_tolerance_bps")
+    observed_diff = waiver.get("observed_diff_bps")
+    _require(not isinstance(observed_diff, bool)
+             and isinstance(observed_diff, (int, float)) and observed_diff >= 0,
+             "tolerance waiver observed_diff_bps invalid")
+    # 本次实际偏差必须落在裁决人签字时看到的偏差之内；比较值取自同一个 decide()，
+    # 与生产侧同源，不会在浮点边界上分叉（F-E）。
+    _require(float(0.0 if recomputed_diff_bps is None else recomputed_diff_bps)
+             <= float(observed_diff),
+             "supply_truth 实际偏差超过 tolerance waiver 记录的 observed_diff_bps"
+             "——裁决人没见过这么大的偏差，该收据失效须重新人工裁决")
     _require(isinstance(waiver.get("approved_by"), str)
              and bool(waiver["approved_by"].strip()),
              "tolerance waiver approved_by invalid")
@@ -207,8 +255,12 @@ def _validate_tolerance_policy(root, receipt, target):
     _require(isinstance(evidence_refs, list) and bool(evidence_refs),
              "tolerance waiver evidence_refs invalid")
     for index, ref in enumerate(evidence_refs):
-        _bound_case_ref(root, ref, f"tolerance waiver evidence_refs[{index}]",
-                        base=waiver_path.parent)
+        evidence_path = _bound_case_ref(
+            root, ref, f"tolerance waiver evidence_refs[{index}]",
+            base=waiver_path.parent)
+        # 人工核对证据不能就是被豁免的那份输入自身（F-E）。
+        _require(evidence_path != waiver_replay,
+                 f"tolerance waiver evidence_refs[{index}] 不得指向 replay_stats 输入自身")
 
 
 def validate_reconciliation_check(root, key, item, target, family):
@@ -309,6 +361,11 @@ def validate_reconciliation_check(root, key, item, target, family):
                 raise ValueError("sink_fallback_form2 scalar fields invalid") from exc
             _require(mint_raw == onchain_raw and sink_raw == burn_raw,
                      "sink_fallback_form2 scalar/sink closure invalid")
+            # 两个标量同样不能自报自验：对回案根里被哈希绑定的 replay_stats 实物（F-A）。
+            _, stats_mint, stats_burn = _bound_replay_totals(receipt)
+            _require(mint_raw == stats_mint and burn_raw == stats_burn,
+                     f"sink_fallback_form2 mint_total/burn_total 与绑定 replay_stats "
+                     f"实物不一致；{migration}")
         _require(receipt.get("mode") == "formal" and isinstance(receipt.get("inputs"), dict)
                  and bool(receipt["inputs"]),
                  "supply_truth receipt must be formal and bind replay_stats input")
@@ -387,6 +444,15 @@ def validate_sources(root):
         _require(not isinstance(as_of, bool) and isinstance(as_of, int) and as_of >= 0
                  and as_of <= tip,
                  "EVM accounting as_of_block must be <= tip_block")
+        # 时点闸不能只挂在 tip_block 一个自报字段上：生产侧把同一个 tip 同时写进
+        # model_probe_block，消费侧就得两个都验，想抬时点必须同时改两处（F-B）。
+        probe = accounting.get("model_probe_block")
+        _require(not isinstance(probe, bool) and isinstance(probe, int) and probe >= 0,
+                 "EVM accounting model_probe_block missing or invalid")
+        _require(probe == tip,
+                 "EVM accounting model_probe_block must equal tip_block")
+        _require(as_of <= probe,
+                 "EVM accounting as_of_block must be <= model_probe_block")
     expected_accounting = ACCOUNTING_PRODUCERS[family]
     repo_ref_ok(accounting.get("producer"), {expected_accounting}, "accounting")
     token = accounting.get("token") or accounting.get("mint")

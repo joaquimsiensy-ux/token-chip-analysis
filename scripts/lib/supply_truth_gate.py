@@ -21,7 +21,12 @@
   绕过 stats 文件直接传数: --replay-net-raw <最小单位整数>
   --rpc URL          不给时用链默认免 key 端点（DEFAULT_RPC，与 accounting_gate 同表）
   --proxy URL        只作用于 RPC（Alchemy 国内走 clash 时传 http://127.0.0.1:7897）
-  --tolerance-bps N  容差，默认 10（0.1%）
+  --tolerance-bps N  容差，默认 10（0.1%）；正式模式（不加 --exploration）上限就是 10
+  --tolerance-waiver PATH  正式模式容差要超过 10bps 时唯一的合法通道：一份人工裁决
+                     收据 tolerance-waiver/v1，必须写明批准容差、裁决人、UTC 决定时间、
+                     本次实际偏差 observed_diff_bps、与本次全等的 target、
+                     绑定本次 --replay-stats 的 path/size/sha256、
+                     以及至少一份独立于 replay_stats 的人工核对证据与理由
   --as-of-block N    v3 receipt target 的冻结块/slot；正式发布必填
   --out PATH         结果 JSON 落盘（默认 supply_truth.json，写工作目录）
 
@@ -29,8 +34,11 @@ replay-stats 字段识别（依次尝试，值可为 int 或十进制字符串�
   mint_total_wei/burn_total_wei → mint_total_raw/burn_total_raw → mint_total/burn_total
 
 退出码: 0 = PASS
-        2 = FAIL（终态供给或 sink 逐地址归因不闭合——硬停，处置见上）
-        1 = 检测自身失败（网络/字段缺失）——修通道重跑，禁当 PASS
+        2 = 两种语义，看有没有落收据来分辨：
+            ①落了收据 → FAIL（终态供给或 sink 逐地址归因不闭合——硬停，处置见上）；
+            ②没落收据 → 容差政策拒绝（正式模式超 10bps 却无 waiver，或 waiver 本身
+              不合法／没覆盖住本次实际偏差）——补齐人工裁决收据再跑，别当 FAIL 读
+        1 = 检测自身失败（网络/字段缺失/文件读不动等通道故障）——修通道重跑，禁当 PASS
 （来源：GNT replay-silent-burn-trap 2026-07-28；v6.0.0 唯一批准代码例外）"""
 import argparse
 import hashlib
@@ -88,17 +96,24 @@ def _waiver_file_ref(waiver_path: Path, ref, label: str) -> Path:
         lexical = lexical / part
         if lexical.is_symlink():
             raise TolerancePolicyError(f"waiver {label} 不得引用符号链接")
+    # 文件不存在／越界＝waiver 内容不合法（exit 2）；其余 OSError（权限等）＝通道故障，
+    # 原样往外抛由 main 归 exit 1，别混进政策错误里（F-D）。
     try:
         path = lexical.resolve(strict=True)
+    except FileNotFoundError as exc:
+        raise TolerancePolicyError(f"waiver {label} 文件不存在") from exc
+    try:
         path.relative_to(waiver_path.parent)
-    except (OSError, ValueError) as exc:
-        raise TolerancePolicyError(f"waiver {label} 文件不存在或越界") from exc
+    except ValueError as exc:
+        raise TolerancePolicyError(f"waiver {label} 越界（必须在 waiver 同目录内）") from exc
     if not path.is_file():
         raise TolerancePolicyError(f"waiver {label} 不是普通文件")
+    actual_size = path.stat().st_size   # OSError 归 exit 1
+    actual_sha = _sha256_file(path)     # 同上：读不动是通道故障，不是政策问题
     if (isinstance(ref.get("size"), bool) or not isinstance(ref.get("size"), int)
-            or ref.get("size") != path.stat().st_size):
+            or ref.get("size") != actual_size):
         raise TolerancePolicyError(f"waiver {label} size 不匹配")
-    if ref.get("sha256") != _sha256_file(path):
+    if ref.get("sha256") != actual_sha:
         raise TolerancePolicyError(f"waiver {label} sha256 不匹配")
     return path
 
@@ -113,13 +128,16 @@ def load_tolerance_waiver(path, *, target: dict, tolerance_bps: int,
         raise TolerancePolicyError("tolerance waiver 文件不存在") from exc
     if shown.is_symlink() or not waiver_path.is_file():
         raise TolerancePolicyError("tolerance waiver 必须是普通文件且不得为符号链接")
+    # 读不动（权限等 OSError）＝通道故障，原样抛出走 exit 1；只有 JSON 本身坏了才是
+    # 内容不合法（exit 2）。两类别再合并（F-D）。
+    waiver_text = waiver_path.read_text(encoding="utf-8")
     try:
-        waiver = json.loads(waiver_path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as exc:
+        waiver = json.loads(waiver_text)
+    except json.JSONDecodeError as exc:
         raise TolerancePolicyError(f"tolerance waiver JSON 损坏: {exc}") from exc
     required = {
         "schema", "approved_tolerance_bps", "approved_by", "user_decided_at_utc",
-        "target", "replay_stats", "evidence_refs", "reason",
+        "target", "replay_stats", "evidence_refs", "reason", "observed_diff_bps",
     }
     if not isinstance(waiver, dict) or any(
             key not in waiver or waiver.get(key) in (None, "", []) for key in required):
@@ -132,6 +150,11 @@ def load_tolerance_waiver(path, *, target: dict, tolerance_bps: int,
     if tolerance_bps < 0 or tolerance_bps > approved:
         raise TolerancePolicyError(
             f"实际容差 {tolerance_bps}bps 超出 waiver 批准值 {approved}bps")
+    observed_diff = waiver.get("observed_diff_bps")
+    if (isinstance(observed_diff, bool) or not isinstance(observed_diff, (int, float))
+            or observed_diff < 0):
+        raise TolerancePolicyError(
+            "waiver observed_diff_bps 必须是非负数值（裁决人签字时看到的本次实际偏差）")
     if not isinstance(waiver.get("approved_by"), str) or not waiver["approved_by"].strip():
         raise TolerancePolicyError("waiver 裁决主体 approved_by 必填")
     decided_at = waiver.get("user_decided_at_utc")
@@ -156,8 +179,28 @@ def load_tolerance_waiver(path, *, target: dict, tolerance_bps: int,
     if not isinstance(refs, list) or not refs:
         raise TolerancePolicyError("waiver evidence_refs 必须是非空数组")
     for index, ref in enumerate(refs):
-        _waiver_file_ref(waiver_path, ref, f"evidence_refs[{index}]")
+        evidence_path = _waiver_file_ref(waiver_path, ref, f"evidence_refs[{index}]")
+        # "人工核对证据"不能就是被豁免的那份输入自身，否则等于自己给自己作证（F-E）。
+        if evidence_path == replay_ref_path:
+            raise TolerancePolicyError(
+                f"waiver evidence_refs[{index}] 不得指向本次 replay_stats 输入自身，"
+                "人工核对证据必须是独立文件")
     return waiver_path, waiver
+
+
+def assert_waiver_covers_diff(waiver: dict, diff_bps) -> None:
+    """本次算出的实际偏差必须落在裁决人签字时看到的偏差之内。
+
+    diff_bps 直接用 decide() 的返回值，与判定同源，避免两处各算一遍在浮点边界上分叉。
+    onchain == 0 时 decide 不产生比值（判据退化成严格相等，waiver 在那里买不到任何
+    放宽），按 0.0 处理。
+    """
+    observed = waiver.get("observed_diff_bps")
+    actual = 0.0 if diff_bps is None else float(diff_bps)
+    if actual > float(observed):
+        raise TolerancePolicyError(
+            f"本次实际偏差 {actual}bps 超过 waiver 记录的 observed_diff_bps {observed}bps"
+            "——裁决人没见过这么大的偏差，该收据失效，须重新人工裁决")
 
 
 def parse_replay_stats(stats: dict):
@@ -282,6 +325,7 @@ def main(argv=None):
     envelope = None
     replay_stats = None
     evm_pool = None
+    waiver_doc = None
     if a.min_context_slot < 0:
         ap.error("--min-context-slot must be non-negative")
     if a.chain == "solana" and not a.mint:
@@ -312,7 +356,7 @@ def main(argv=None):
         if bundle_path is not None:
             envelope_inputs["observation_bundle"] = bundle_path
         if mode == "formal" and a.tolerance_waiver:
-            waiver_path, _ = load_tolerance_waiver(
+            waiver_path, waiver_doc = load_tolerance_waiver(
                 a.tolerance_waiver, target=target, tolerance_bps=a.tolerance_bps,
                 replay_stats_path=a.replay_stats)
             envelope_inputs["tolerance_waiver"] = waiver_path
@@ -379,6 +423,13 @@ def main(argv=None):
         return 1
 
     primary_verdict, diff, diff_bps = decide(replay_net, onchain, a.tolerance_bps)
+    if waiver_doc is not None:
+        # 偏差要等 decide 算完才知道，所以这条政策检查只能落在这里（F-E）。
+        try:
+            assert_waiver_covers_diff(waiver_doc, diff_bps)
+        except TolerancePolicyError as exc:
+            print(f"正式容差政策拒绝（exit 2）: {exc}", file=sys.stderr)
+            return 2
     verdict = primary_verdict
     decision_rule = "primary_form1"
     burn_form = None

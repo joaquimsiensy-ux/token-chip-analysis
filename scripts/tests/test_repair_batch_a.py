@@ -59,13 +59,33 @@ class SupplyPool:
         return {"ok": True, "result": hex(self.total_supply)}
 
 
-def write_waiver(root: Path, *, approved=10000, mutate=None) -> Path:
+class SinkPool(SupplyPool):
+    """形态②用：totalSupply 之外还批量吐 ZERO/dead 两个 sink 的冻结块余额。"""
+
+    def __init__(self, total_supply: int, zero_balance: int, dead_balance: int):
+        super().__init__(total_supply)
+        self.zero_balance = zero_balance
+        self.dead_balance = dead_balance
+
+    def call_many(self, calls):
+        assert len(calls) == 3, calls
+        return [{"ok": True, "result": hex(value)} for value in
+                (self.total_supply, self.zero_balance, self.dead_balance)]
+
+
+# 夹具固定跑 mint=1/burn=0 对链上 100 → decide() 算出的实际偏差恒为 9900.0bps。
+FIXTURE_DIFF_BPS = 9900.0
+
+
+def write_waiver(root: Path, *, approved=10000, observed=FIXTURE_DIFF_BPS,
+                 mutate=None) -> Path:
     (root / "evidence.txt").write_text("human adjudication evidence\n", encoding="utf-8")
     waiver = {
         "schema": "tolerance-waiver/v1",
         "approved_tolerance_bps": approved,
         "approved_by": "risk-committee@example.test",
         "user_decided_at_utc": "2026-08-13T12:00:00Z",
+        "observed_diff_bps": observed,
         "target": dict(TARGET),
         "replay_stats": file_ref(root, "replay_stats.json"),
         "evidence_refs": [file_ref(root, "evidence.txt")],
@@ -115,6 +135,48 @@ def expect_waiver_rejection(root: Path, mutate, needle: str):
     rc, receipt, stderr = run_supply(root, waiver=waiver)
     assert rc == 2 and receipt is None, (rc, receipt, stderr)
     assert needle.lower() in stderr.lower(), stderr
+
+
+def supply_item(root: Path, name: str = "supply_truth.json") -> dict:
+    path = root / name
+    return {"status": "PASS", "exit_code": 0,
+            "receipt": {"path": name, "size": path.stat().st_size,
+                        "sha256": sha256(path)}}
+
+
+def expect_check_rejection(root: Path, needle: str, family: str = "evm"):
+    try:
+        shared.validate_reconciliation_check(root, "supply_truth", supply_item(root),
+                                             TARGET, family)
+    except ValueError as exc:
+        assert needle.lower() in str(exc).lower(), (needle, exc)
+        return str(exc)
+    raise AssertionError(f"消费侧放行了应被拒的收据：{needle}")
+
+
+def consumer_case(root: Path, *, mutate=None, approved=10000,
+                  observed=FIXTURE_DIFF_BPS, prepare=None):
+    """先用一张合法 waiver 跑通 producer，再把案根里的 waiver 换成变异版，
+    并把收据 inputs 的 size/sha 重新绑到新实物上。
+
+    重绑这一步是关键：不重绑的话，拦下变异的是既有的 receipt_validate 掉包校验，
+    根本轮不到消费侧这批新校验出手——F-C 指出的正是这种"看着有测其实没测"。
+    """
+    (root / "replay_stats.json").write_text(
+        json.dumps({"mint_total_raw": "1", "burn_total_raw": "0"}), encoding="utf-8")
+    waiver = write_waiver(root)
+    rc, receipt, stderr = run_supply(root, waiver=waiver)
+    assert rc == 0 and receipt is not None, (rc, stderr)
+    if prepare is not None:
+        prepare(root)
+    write_waiver(root, approved=approved, observed=observed,
+                 mutate=(lambda body: mutate(body, root)) if mutate else None)
+    bound = receipt["inputs"]["tolerance_waiver"]
+    bound["size"] = waiver.stat().st_size
+    bound["sha256"] = sha256(waiver)
+    (root / "supply_truth.json").write_text(
+        json.dumps(receipt, ensure_ascii=False), encoding="utf-8")
+    return receipt
 
 
 def test_f01_no_code_failure_receipt_keeps_tip():
@@ -321,6 +383,210 @@ def test_f02_tolerance_cap_uses_producer_constant():
             == supply.FORMAL_TOLERANCE_BPS_MAX)
 
 
+def test_fc_producer_waiver_field_level_negatives():
+    """F-C：补上只打中"必填组"、绕过字段级校验的两处生产侧漏网（M8/M9）。"""
+    variants = [
+        ("approved_by 是全空白串", lambda w: w.update(approved_by="   "), "approved_by"),
+        ("user_decided_at_utc 少了 Z",
+         lambda w: w.update(user_decided_at_utc="2026-08-13T12:00:00"),
+         "user_decided_at_utc"),
+        ("user_decided_at_utc 是不存在的日期",
+         lambda w: w.update(user_decided_at_utc="2026-13-45T00:00:00Z"),
+         "user_decided_at_utc"),
+        # F-E：裁决人签字时看到的偏差这一项，生产侧同样要拦
+        ("必填缺 observed_diff_bps", lambda w: w.pop("observed_diff_bps"), "必填"),
+        ("observed_diff_bps 不是数值",
+         lambda w: w.update(observed_diff_bps="很大"), "observed_diff_bps"),
+        ("本次实际偏差超过裁决人看到的偏差",
+         lambda w: w.update(observed_diff_bps=FIXTURE_DIFF_BPS - 1), "observed_diff_bps"),
+        ("人工核对证据就是 replay_stats 自身",
+         lambda w: w.update(evidence_refs=[dict(w["replay_stats"])]),
+         "replay_stats 输入自身"),
+    ]
+    for index, (label, mutate, needle) in enumerate(variants):
+        with tempfile.TemporaryDirectory(
+                prefix=f"batch-a-fc-producer-{index}-", dir="/private/tmp") as raw:
+            expect_waiver_rejection(Path(raw), mutate, needle), label
+
+
+def test_fc_consumer_side_waiver_negatives():
+    """F-C：反例一份喂两侧——生产侧那 5 条在消费侧重跑，外加消费侧独有的几条。"""
+    def write_other_stats(root: Path):
+        (root / "other_stats.json").write_text(
+            json.dumps({"mint_total_raw": "1", "burn_total_raw": "0"}), encoding="utf-8")
+
+    variants = [
+        # 变异编号对应审查者 exp_c2_mutation.py 的 M10–M18
+        ("M18 必填组缺 approved_by", lambda w, r: w.pop("approved_by"), None,
+         {}, "required fields incomplete"),
+        ("M10 approved_by 全空白串", lambda w, r: w.update(approved_by="   "), None,
+         {}, "approved_by invalid"),
+        ("M11 user_decided_at_utc 少了 Z",
+         lambda w, r: w.update(user_decided_at_utc="2026-08-13T12:00:00"), None,
+         {}, "user_decided_at_utc invalid"),
+        ("M12 waiver target 与本次不全等",
+         lambda w, r: w["target"].update(token="0xwrong"), None,
+         {}, "target mismatch"),
+        ("M15 schema 名写错",
+         lambda w, r: w.update(schema="tolerance-waiver/v2"), None,
+         {}, "schema invalid"),
+        ("M16 批准容差低于收据实际容差", None, None,
+         {"approved": 9999}, "exceeds waiver approved_tolerance_bps"),
+        ("M14 waiver 的 replay_stats 指向另一份文件",
+         lambda w, r: w.update(replay_stats=file_ref(r, "other_stats.json")),
+         write_other_stats, {}, "does not bind receipt input"),
+        ("M13 evidence sha 改错",
+         lambda w, r: w["evidence_refs"][0].update(sha256="0" * 64), None,
+         {}, "evidence_refs[0] sha256 mismatch"),
+        ("replay_stats sha 改错",
+         lambda w, r: w["replay_stats"].update(sha256="0" * 64), None,
+         {}, "replay_stats sha256 mismatch"),
+        ("F-E 必填缺 observed_diff_bps",
+         lambda w, r: w.pop("observed_diff_bps"), None,
+         {}, "required fields incomplete"),
+        ("F-E 实际偏差超过裁决人看到的偏差", None, None,
+         {"observed": FIXTURE_DIFF_BPS - 1}, "实际偏差超过"),
+        ("F-E 证据就是 replay_stats 自身",
+         lambda w, r: w.update(evidence_refs=[dict(w["replay_stats"])]), None,
+         {}, "不得指向 replay_stats 输入自身"),
+    ]
+    for index, (label, mutate, prepare, kwargs, needle) in enumerate(variants):
+        with tempfile.TemporaryDirectory(
+                prefix=f"batch-a-fc-consumer-{index}-", dir="/private/tmp") as raw:
+            root = Path(raw)
+            consumer_case(root, mutate=mutate, prepare=prepare, **kwargs)
+            expect_check_rejection(root, needle), label
+
+
+def test_fa_consumer_reconciles_replay_net_against_bound_stats():
+    """F-A：不碰容差、不办 waiver，只把收据自报的 replay_net 改成与链上相等。"""
+    with tempfile.TemporaryDirectory(prefix="batch-a-fa-replaynet-", dir="/private/tmp") as raw:
+        root = Path(raw)
+        rc, receipt, stderr = run_supply(root, tolerance=10)
+        assert rc == 2 and receipt["verdict"] == "FAIL", (rc, receipt, stderr)
+        forged = json.loads((root / "supply_truth.json").read_text(encoding="utf-8"))
+        forged.update({"replay_net": "100", "diff": "0", "diff_bps": 0.0,
+                       "tolerance_bps": 0, "primary_verdict": "PASS",
+                       "verdict": "PASS", "exit_code": 0})
+        forged["inputs"].pop("tolerance_waiver", None)
+        assert "replay_stats" in forged["inputs"]
+        (root / "supply_truth.json").write_text(
+            json.dumps(forged, ensure_ascii=False), encoding="utf-8")
+        expect_check_rejection(root, "replay_net 与绑定 replay_stats")
+
+    # 旧格式/解不出 mint-burn 的 stats 必须 fail-closed，而不是"没法核对就放行"。
+    with tempfile.TemporaryDirectory(prefix="batch-a-fa-legacy-", dir="/private/tmp") as raw:
+        root = Path(raw)
+        rc, receipt, stderr = run_supply(root, tolerance=10)
+        stats = root / "replay_stats.json"
+        stats.write_text(json.dumps({"net_supply": "1"}), encoding="utf-8")
+        receipt["inputs"]["replay_stats"].update(
+            size=stats.stat().st_size, sha256=sha256(stats))
+        receipt.update({"verdict": "PASS", "exit_code": 0, "primary_verdict": "PASS",
+                        "tolerance_bps": 10000, "diff_bps": 9900.0})
+        (root / "supply_truth.json").write_text(
+            json.dumps(receipt, ensure_ascii=False), encoding="utf-8")
+        expect_check_rejection(root, "解不出 mint/burn")
+
+
+def test_fa_sink_fallback_scalars_bound_to_stats():
+    """F-A：形态②的 mint_total/burn_total 同样不许自报自验。"""
+    stats_doc = {"mint_total_raw": "100", "burn_total_raw": "40",
+                 "zero_event_inflow_wei": "25", "dead_event_inflow_wei": "15",
+                 "dead_event_outflow_wei": "0", "dead_sink_net_wei": "15"}
+
+    def run_sink(root: Path):
+        (root / "replay_stats.json").write_text(json.dumps(stats_doc), encoding="utf-8")
+        out = root / "supply_truth.json"
+        argv = ["--chain", "eth", "--token", TOKEN, "--as-of-block", "123",
+                "--rpc", "offline://fixture", "--tolerance-bps", "10",
+                "--replay-stats", "replay_stats.json", "--out", str(out)]
+        with chdir(root), mock.patch.object(
+                supply, "attested_rpc_pool", return_value=SinkPool(100, 25, 15)):
+            rc = supply.main(argv)
+        return rc, json.loads(out.read_text(encoding="utf-8"))
+
+    with tempfile.TemporaryDirectory(prefix="batch-a-fa-sink-ok-", dir="/private/tmp") as raw:
+        root = Path(raw)
+        rc, receipt = run_sink(root)
+        assert rc == 0 and receipt["decision_rule"] == "sink_fallback_form2", receipt
+        # 诚实的形态②收据必须仍然放行，别把闸装成误伤。
+        shared.validate_reconciliation_check(root, "supply_truth", supply_item(root),
+                                             TARGET, "evm")
+
+    with tempfile.TemporaryDirectory(prefix="batch-a-fa-sink-forged-", dir="/private/tmp") as raw:
+        root = Path(raw)
+        rc, receipt = run_sink(root)
+        # 同步抬高 mint_total 与链上供给：形态②自身的标量闭合仍然自洽，
+        # 只有对回 replay_stats 实物才看得出 mint 是编的。
+        receipt.update({"mint_total": "200", "onchain_total_supply": "200"})
+        (root / "supply_truth.json").write_text(
+            json.dumps(receipt, ensure_ascii=False), encoding="utf-8")
+        expect_check_rejection(root, "mint_total/burn_total 与绑定 replay_stats")
+
+
+def test_fb_model_probe_block_has_a_consumer():
+    """F-B：时点闸不能只挂 tip_block 一个字段。"""
+    from test_audit_release_gate import build_case
+
+    delete = object()
+    scenarios = [
+        ("单改 tip_block：as_of=101 tip=101 而探测发生在 100", 101, 101, 100,
+         "model_probe_block must equal tip_block"),
+        ("删除 model_probe_block", 1, 100, delete,
+         "model_probe_block missing or invalid"),
+        ("model_probe_block=0 与 tip=100 自相矛盾", 1, 100, 0,
+         "model_probe_block must equal tip_block"),
+        ("model_probe_block 填字符串", 1, 100, "不是数字",
+         "model_probe_block missing or invalid"),
+    ]
+    for index, (label, as_of, tip, probe, needle) in enumerate(scenarios):
+        with tempfile.TemporaryDirectory(
+                prefix=f"batch-a-fb-{index}-", dir="/private/tmp") as raw:
+            root = Path(raw)
+            build_case(root, historical=False)
+            _retarget_evm_case(root, as_of, tip)
+            accounting = json.loads((root / "accounting_mode.json").read_text())
+            if probe is delete:
+                accounting.pop("model_probe_block", None)
+            else:
+                accounting["model_probe_block"] = probe
+            (root / "accounting_mode.json").write_text(
+                json.dumps(accounting), encoding="utf-8")
+            try:
+                shared.validate_sources(root)
+            except ValueError as exc:
+                assert needle in str(exc), (label, exc)
+            else:
+                raise AssertionError(f"时点闸放行了：{label}")
+
+
+def test_fd_unreadable_files_all_land_on_exit_1():
+    """F-D：同一类"文件读不动"故障必须走同一个退出码（检测自身失败＝1）。"""
+    if os.getuid() == 0:
+        print("  (skip) root 用户下 chmod 000 不生效")
+        return
+    codes = {}
+    for label, victim in (("waiver", "waiver.json"), ("evidence", "evidence.txt")):
+        with tempfile.TemporaryDirectory(
+                prefix=f"batch-a-fd-{label}-", dir="/private/tmp") as raw:
+            root = Path(raw)
+            (root / "replay_stats.json").write_text(
+                json.dumps({"mint_total_raw": "1", "burn_total_raw": "0"}),
+                encoding="utf-8")
+            waiver = write_waiver(root)
+            target = root / victim
+            os.chmod(target, 0o000)
+            try:
+                rc, receipt, stderr = run_supply(root, waiver=waiver)
+            finally:
+                os.chmod(target, 0o644)
+            assert receipt is None, (label, receipt)
+            assert "检测自身失败" in stderr, (label, stderr)
+            codes[label] = rc
+    assert codes == {"waiver": 1, "evidence": 1}, codes
+
+
 def main():
     tests = [
         test_f01_no_code_failure_receipt_keeps_tip,
@@ -331,6 +597,12 @@ def main():
         test_f02_valid_waiver_and_shared_recompute,
         test_f02_waiver_swap_integrity_counterexample,
         test_f02_tolerance_cap_uses_producer_constant,
+        test_fc_producer_waiver_field_level_negatives,
+        test_fc_consumer_side_waiver_negatives,
+        test_fa_consumer_reconciles_replay_net_against_bound_stats,
+        test_fa_sink_fallback_scalars_bound_to_stats,
+        test_fb_model_probe_block_has_a_consumer,
+        test_fd_unreadable_files_all_land_on_exit_1,
     ]
     failed = []
     for test in tests:

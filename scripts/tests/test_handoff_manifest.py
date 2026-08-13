@@ -115,6 +115,13 @@ def make_case(d, chain="bsc", token="0x0", as_of_block=999):
                  "time": "scripts/lib/time_spotcheck.py"}
     bound_input = {"fixture": {"path": str(input_path), "size": input_path.stat().st_size,
                                 "sha256": file_sha(input_path)}}
+    # supply_truth 的 replay_stats 要能被消费侧重算 mint−burn 对账，必须是真的重放统计；
+    # 文件名避开正牌 replay_stats.json，免得跟真跑出来的重放产物撞名互相覆盖。
+    write_json(d, "fixture_replay_stats.json",
+               {"mint_total_raw": "100", "burn_total_raw": "0"})
+    stats_path = Path(d, "fixture_replay_stats.json").resolve()
+    replay_input = {"path": str(stats_path), "size": stats_path.stat().st_size,
+                    "sha256": file_sha(stats_path)}
     recon_checks = {}
     for key in ("balance", "supply", "supply_truth", "time"):
         receipt_name = f"reconciliation_{key}_receipt.json"
@@ -135,7 +142,7 @@ def make_case(d, chain="bsc", token="0x0", as_of_block=999):
             receipt = {"schema": "time-spotcheck/v2", "target": target,
                        "points": 1, "exact_match": 1, "mismatch": 0, "rpc_err": 0}
         receipt.update({"producer": repo_ref(producers[key]), "mode": "formal",
-                        "inputs": ({"replay_stats": bound_input["fixture"]}
+                        "inputs": ({"replay_stats": replay_input}
                                    if key == "supply_truth" else bound_input),
                         "verdict": "PASS", "exit_code": 0})
         write_json(d, receipt_name, receipt)

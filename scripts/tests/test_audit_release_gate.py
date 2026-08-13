@@ -79,6 +79,14 @@ def build_case(root, historical=True):
     checks = {}
     envelope_input = {"fixture": {"path": str(raw.resolve()), "size": raw.stat().st_size,
                                     "sha256": sha(raw)}}
+    # supply_truth 的 replay_stats 必须是真的重放统计：消费侧要拿它重算 mint−burn 对账，
+    # 绑一份 raw_transfers 之类的无关文件属于夹具失真。文件名特意避开正牌
+    # replay_stats.json——test_a4_gate 那条链会真跑一遍 replay_pass1 覆盖同名文件。
+    write_json(root, "fixture_replay_stats.json",
+               {"mint_total_raw": "100", "burn_total_raw": "0"})
+    stats = (root / "fixture_replay_stats.json").resolve()
+    replay_input = {"path": str(stats), "size": stats.stat().st_size,
+                    "sha256": sha(stats)}
     for key in ("balance", "supply", "supply_truth", "time"):
         evidence = root / f"{key}_receipt.json"
         if key in {"balance", "supply"}:
@@ -101,7 +109,7 @@ def build_case(root, historical=True):
                 "points": 1, "exact_match": 1, "mismatch": 0, "rpc_err": 0,
                 "verdict": "PASS", "exit_code": 0}
         receipt_doc.update({"producer": repo_ref(producers[key]), "mode": "formal",
-                            "inputs": ({"replay_stats": envelope_input["fixture"]}
+                            "inputs": ({"replay_stats": replay_input}
                                        if key == "supply_truth" else envelope_input)})
         write_json(root, evidence.name, receipt_doc)
         checks[key] = {"status": "PASS", "exit_code": 0,
