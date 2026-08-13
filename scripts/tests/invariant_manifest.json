@@ -153,6 +153,12 @@
     },
     {
       "schemas": [
+        "figure2-check-receipt/v1"
+      ],
+      "script": "scripts/report/figures_from_facts.py"
+    },
+    {
+      "schemas": [
         "flow-anomaly/v2"
       ],
       "script": "scripts/report/flow_anomaly_scan.py"
@@ -290,7 +296,9 @@
     },
     {
       "schemas": [
-        "camp-series-provenance/v1"
+        "camp-series-provenance/v1",
+        "solana-reconcile/v2",
+        "supply-truth-receipt/v3"
       ],
       "script": "scripts/lib/camp_series_provenance.py"
     },
@@ -345,6 +353,7 @@
         "accounting-gate/v1",
         "address-balance-snapshot/v1",
         "adversarial-review/v2",
+        "figure2-check-receipt/v1",
         "reconciliation-report/v2",
         "reproduce-receipt/v2"
       ],
@@ -806,6 +815,11 @@
     {
       "locator": "atomic_json",
       "script": "scripts/report/distribution_explanation_check.py",
+      "semantics": "overwrite_single"
+    },
+    {
+      "locator": "_write_check_receipt",
+      "script": "scripts/report/figures_from_facts.py",
       "semantics": "overwrite_single"
     },
     {

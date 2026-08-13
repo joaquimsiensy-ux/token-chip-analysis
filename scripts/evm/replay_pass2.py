@@ -128,11 +128,17 @@ def main():
     _den = "mint_total_legacy" if legacy else "current_net_supply"
     _sidecar_inputs = {"replay_stats": f"{a.data_dir}/replay_stats.json"}
     _fb = f"{a.data_dir}/balances_final.json"
+    if not os.path.exists(_fb):
+        # F-C6：缺终态快照当场硬拒（与缺 camps 同口径 fail-loud），不许静默少绑
+        # sidecar 拖到编译期才炸——balances_final 与 replay_stats 同为 pass1 四件产物
+        print(f"[camp-series] 缺 {_fb}（pass1 终态快照，末点对账的锚）——先跑"
+              f" pass1/replay_duck 再跑 pass2", file=sys.stderr)
+        sys.exit(2)
     write_series_sidecar(f"{a.data_dir}/camp_series.json",
                          producer="scripts/evm/replay_pass2.py",
                          series_format="evm-dict", denominator=_den,
                          camps_spec_path=a.camps,
-                         final_balances_path=_fb if os.path.exists(_fb) else None,
+                         final_balances_path=_fb,
                          inputs=_sidecar_inputs)
     write_series_sidecar(f"{a.data_dir}/entity_series.json",
                          producer="scripts/evm/replay_pass2.py",

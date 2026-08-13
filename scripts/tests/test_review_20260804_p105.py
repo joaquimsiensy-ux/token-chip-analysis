@@ -73,11 +73,22 @@ def add_new_analysis_distribution(root: Path, report: Path) -> None:
         "identity_snapshot_receipt.json": {"schema": "identity-snapshot-receipt/v1"},
         "entity_freeze.json": {"schema": "entity-freeze/v1", "revisions": []},
         "analysis-state.json": {"chain": "bsc", "whale_groups": []},
-        "facts.json": {"entities": {}},
+        # facts 带最小 token（figure2 check 真跑需要 total_supply_raw>0）
+        "facts.json": {"token": {"symbol": "FX", "decimals": 0,
+                                 "total_supply_raw": "1"}, "entities": {}},
         "evidence.json": {"source": "fixture"},
         "a4_claims.json": {"schema": "a4-claims/v2", "claims": [{"id": "C1"}]},
     }.items():
         write_json(root / name, value)
+    # F-C5：figure2 对账收据由真实生产者产出（figures_from_facts check 真跑，
+    # 防手搓影子形态假绿）——空 whale_series 对空 entities 合法 PASS
+    write_json(root / "whale_series.json", [])
+    fff = HERE.parent / "report/figures_from_facts.py"
+    p = subprocess.run([sys.executable, str(fff), "check", "--facts", "facts.json",
+                        "--series", "whale_series.json"], cwd=root,
+                       capture_output=True, text=True)
+    assert p.returncode == 0 and (root / "figure2_check_receipt.json").is_file(), \
+        f"figure2 check 收据生成失败: {p.stdout} {p.stderr}"
     write_json(root / "a4_seal.json", {"schema": "a4-seal/v4", "verdict": "PASS", "chain": "bsc",
         "workflow_type": "new-analysis", "revision": 1, "previous_seal": None,
         "charts_dir": "charts/final", "claims": [{"id": "C1", "verdict": "CONFIRMED"}]})

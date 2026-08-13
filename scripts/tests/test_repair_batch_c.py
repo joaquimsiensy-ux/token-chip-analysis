@@ -145,10 +145,13 @@ def build_evm_case(td: Path, camps_obj, *, expect_rc=0):
 
 
 def write_supply_truth(td: Path):
+    """真实生产者形态（supply_truth_gate.py 收据：schema/verdict/exit_code/
+    inputs.replay_stats 三键，TAG 案实物核对）——F-C3 起登记面结构化三验，
+    影子 schema（如自造 supply-truth/v1）会被拒。"""
     import hashlib
     stats = td / "data/replay_stats.json"
     (td / "supply_truth.json").write_text(json.dumps(
-        {"schema": "supply-truth/v1", "verdict": "PASS", "exit_code": 0,
+        {"schema": "supply-truth-receipt/v3", "verdict": "PASS", "exit_code": 0,
          "onchain_total_supply": "950", "replay_net": "950", "chain": "bsc",
          "inputs": {"replay_stats": {
              "path": "data/replay_stats.json",
@@ -298,7 +301,7 @@ def t_f04_evm_chain():
         st_path.write_text(json.dumps(st_obj))
         p = compile_state_cli(td, "--series-source", "data/camp_series.json")
         check("F04 replay_stats sha 未命中登记面拒", p.returncode == 2
-              and "未命中 supply_truth" in p.stdout, p.stdout)
+              and "inputs.replay_stats.sha256" in p.stdout, p.stdout)
         st_path.write_text(st_orig)
 
         # 反例：source 手填 series 与 producer 转换结果分叉
@@ -578,6 +581,233 @@ def t_f04_payload_unit():
     check("F04 burn 桶负值拒", ok, msg)
 
 
+def t_fixround1():
+    """消化轮第 1 轮（F-C1~F-C6）回归。EVM 真跑链复用 build_evm_case。"""
+    from camp_series_provenance import (SeriesProvenanceError, closure_mode_for,
+                                        validate_series_payload,
+                                        write_series_sidecar)
+    ok_spec = {"camps": {"项目方": [A], "大庄": [B]}, "entities": {"实体X": [B]}}
+    with tempfile.TemporaryDirectory() as s:
+        td = Path(s)
+        build_evm_case(td, ok_spec)
+        write_supply_truth(td)
+        write_facts_source(td)
+
+        # F-C1 原反例：手编"5%→88.8% 吸筹"序列、不带 --series-source → 拒
+        src_obj = json.loads((td / "source.json").read_text())
+        src_obj["camp_share_series"] = {
+            "dates": ["2026-08-01", "2026-08-02", "2026-08-03"],
+            "series": {"项目方": [5.0, 40.0, 88.8], "散户": [95.0, 60.0, 11.2]}}
+        (td / "source.json").write_text(json.dumps(src_obj, ensure_ascii=False))
+        p = compile_state_cli(td)
+        check("FC1 手编序列无绑定被 formal 必经拒", p.returncode == 2
+              and "--series-source" in p.stdout, p.stdout)
+        # exploration 显式豁免 → 放行但产物带非正式标记
+        p = compile_state_cli(td, "--exploration")
+        check("FC1 exploration 放行且落非正式标记", p.returncode == 0, p.stdout)
+        st = json.loads((td / "analysis-state.json").read_text())
+        check("FC1 exploration 标记 exploration-unbound",
+              st["provenance"]["series_binding"] == "exploration-unbound"
+              and "camp_series_sidecar" not in st["provenance"],
+              json.dumps(st["provenance"], ensure_ascii=False))
+        # source 预置伪 formal 标记 → 拒（标记只能编译器生成）
+        src_obj["provenance"] = {"skill_commit": "c", "data_sources": ["d"],
+                                 "series_binding": "producer-sidecar"}
+        (td / "source.json").write_text(json.dumps(src_obj, ensure_ascii=False))
+        p = compile_state_cli(td, "--exploration")
+        check("FC1 预置绑定标记被拒", p.returncode == 2 and "预置" in p.stdout,
+              p.stdout)
+        write_facts_source(td)
+        # formal 绑定绿例：产物带 producer-sidecar 标记
+        p = compile_state_cli(td, "--series-source", "data/camp_series.json")
+        check("FC1 formal 绑定绿例", p.returncode == 0, p.stdout + p.stderr)
+        st = json.loads((td / "analysis-state.json").read_text())
+        check("FC1 formal 标记 producer-sidecar",
+              st["provenance"]["series_binding"] == "producer-sidecar")
+
+        # F-C1 下游闸（audit_release_gate.check_series_binding 单元级）
+        import audit_release_gate as gate
+        errs = []
+        gate.check_series_binding(td, st, errs)
+        # state 绑定的序列实物在 data/ 层 → 应零错
+        check("FC1 下游闸 producer-sidecar 绿例", errs == [], str(errs))
+        errs = []
+        bad_st = json.loads(json.dumps(st))
+        bad_st["provenance"]["series_binding"] = "exploration-unbound"
+        gate.check_series_binding(td, bad_st, errs)
+        check("FC1 下游闸拒 exploration 产物",
+              any("producer-sidecar" in x for x in errs), str(errs))
+        errs = []
+        bad_st = json.loads(json.dumps(st))
+        del bad_st["provenance"]["series_binding"]
+        del bad_st["provenance"]["camp_series_sidecar"]
+        gate.check_series_binding(td, bad_st, errs)
+        check("FC1 下游闸拒无标记手编 state",
+              any("series_binding" in x for x in errs), str(errs))
+        errs = []
+        bad_st = json.loads(json.dumps(st))
+        bad_st["provenance"]["camp_series_sidecar"]["series_sha256"] = "0" * 64
+        gate.check_series_binding(td, bad_st, errs)
+        check("FC1 下游闸拒实物 sha 不符",
+              any("不一致" in x for x in errs), str(errs))
+        errs = []
+        gate.check_series_binding(td, {"chain": "bsc", "whale_groups": []}, errs)
+        check("FC1 下游闸对无序列 state 不强加", errs == [], str(errs))
+
+        # F-C3：伪 supply_truth（46 字节式 {"sha256": ...}）→ 拒；无 schema → 拒
+        st_path = td / "supply_truth.json"
+        st_orig = st_path.read_text()
+        import hashlib as _h
+        stats_sha = _h.sha256((td / "data/replay_stats.json").read_bytes()).hexdigest()
+        st_path.write_text(json.dumps({"sha256": stats_sha}))
+        p = compile_state_cli(td, "--series-source", "data/camp_series.json")
+        check("FC3 任意 JSON 冒充 supply_truth 拒", p.returncode == 2
+              and "不是合法供给真值收据" in p.stdout, p.stdout)
+        # 带真 schema 但 sha 塞在顶层任意位置（修前全文包含式会放行）→ 仍拒
+        st_path.write_text(json.dumps(
+            {"schema": "supply-truth-receipt/v3", "verdict": "PASS",
+             "exit_code": 0, "sha256": stats_sha}))
+        p = compile_state_cli(td, "--series-source", "data/camp_series.json")
+        check("FC3 sha 不在 inputs.replay_stats 特定位置拒", p.returncode == 2
+              and "缺 inputs.replay_stats.sha256" in p.stdout, p.stdout)
+        # verdict 非 PASS → 拒
+        obj = json.loads(st_orig)
+        obj["verdict"] = "FAIL"
+        st_path.write_text(json.dumps(obj))
+        p = compile_state_cli(td, "--series-source", "data/camp_series.json")
+        check("FC3 supply_truth 非 PASS 拒", p.returncode == 2
+              and "非 PASS/exit 0" in p.stdout, p.stdout)
+        st_path.write_text(st_orig)
+
+        # 小事①（盲审更正变异表第 11 条）：只改序列中间点（末点/桶名/闭合全不变）
+        # → 输出 sha 闸独立命中
+        series_p = td / "data/camp_series.json"
+        orig = series_p.read_text()
+        tam = json.loads(orig)
+        tam["项目方"][1] = round(tam["项目方"][1] - 1.0, 4)
+        tam["散户"][1] = round(tam["散户"][1] + 1.0, 4)
+        series_p.write_text(json.dumps(tam, ensure_ascii=False))
+        p = compile_state_cli(td, "--series-source", "data/camp_series.json")
+        check("FC 中间点篡改被输出 sha 独立拦截", p.returncode == 2
+              and "sha256 与 sidecar 登记不一致" in p.stdout, p.stdout)
+        series_p.write_text(orig)
+
+        # F-C6：balances_final 缺席 → replay_pass2 生产侧当场硬拒（不再静默少绑）
+        p = run([ROOT / "scripts/evm/replay_duck.py", "--channels", "channels.json",
+                 "--out-dir", "data", "--emit-csv"], td)
+        assert p.returncode == 0, p.stderr[-200:]
+        (td / "data/balances_final.json").rename(td / "data/balances_final.bak")
+        p = run([ROOT / "scripts/evm/replay_pass2.py", "camps.json",
+                 "--data-dir", "data"], td)
+        check("FC6 replay_pass2 缺终态快照生产侧硬拒", p.returncode == 2
+              and "pass1 终态快照" in p.stderr, f"rc={p.returncode} {p.stderr[-200:]}")
+        (td / "data/balances_final.bak").rename(td / "data/balances_final.json")
+
+        # F-C6：sidecar 写入 fsync 对齐 receipt_kernel 先例（源码契约断言）
+        import inspect
+        import camp_series_provenance as csp_mod
+        body = inspect.getsource(csp_mod.write_series_sidecar)
+        check("FC6 sidecar 写入含 fsync", "os.fsync" in body and "os.replace" in body)
+
+    # F-C4：闭合互救关死（单元级，sidecar 口径单式）
+    check("FC4 净分母口径映射", closure_mode_for("current_net_supply") == "net"
+          and closure_mode_for("net_supply") == "net")
+    check("FC4 total 口径映射", closure_mode_for("mint_total_legacy") == "total"
+          and closure_mode_for("config_total_supply") == "total")
+
+    def rejected(css, mode):
+        try:
+            validate_series_payload(css, closure_mode=mode)
+            return False
+        except SeriesProvenanceError:
+            return True
+
+    hijack_net = {"dates": ["2026-01-01"],
+                  "series": {"大庄": [55.0], "散户": [40.0],
+                             "burn_cum_pct": [5.0]}}   # 非burn=95、burn 恰补 5
+    check("FC4 净分母族缺口不得靠 burn 蹭 s_all", rejected(hijack_net, "net"))
+    check("FC4 同构造在 dual 宽式下确实曾放行（互救实证）",
+          not rejected(hijack_net, "dual"))
+    hijack_total = {"dates": ["2026-01-01"],
+                    "series": {"大庄": [60.0], "散户": [40.0],
+                               "锁仓/销毁": [7.0]}}     # s_non=100、s_all=107
+    check("FC4 total 族超发不得靠 s_non 蹭过", rejected(hijack_total, "total"))
+    check("FC4 burn 案单式绿例（净族）", not rejected(
+        {"dates": ["2026-01-01"],
+         "series": {"大庄": [40.0], "散户": [60.0], "burn_cum_pct": [120.0]}},
+        "net"))
+    check("FC4 burn 案单式绿例（total 族）", not rejected(
+        {"dates": ["2026-01-01"],
+         "series": {"大庄": [40.0], "散户": [40.0], "锁仓/销毁": [20.0]}},
+        "total"))
+    try:
+        closure_mode_for("nonsense")
+        check("FC4 未知口径拒", False)
+    except SeriesProvenanceError:
+        check("FC4 未知口径拒", True)
+
+
+def t_fc5_receipt_chain():
+    """F-C5：check 落收据（PASS/FAIL/exploration 全留痕）＋发布闸复验。"""
+    fff = ROOT / "scripts/report/figures_from_facts.py"
+    import audit_release_gate as gate
+    with tempfile.TemporaryDirectory() as s:
+        td = Path(s)
+        (td / "facts.json").write_text(json.dumps(
+            {"token": {"symbol": "TT", "decimals": 0, "total_supply_raw": "1000"},
+             "entities": {"e1": {"label": "大庄#1", "addresses": [A],
+                                 "current_raw": "278", "peak_raw": "300"}}}))
+        (td / "ws.json").write_text(json.dumps(
+            [{"entity_id": "e1", "ts": ["2026-01-01"], "pct": [27.8]}]))
+        p = run([fff, "check", "--facts", "facts.json", "--series", "ws.json"], td)
+        rcpt_path = td / "figure2_check_receipt.json"
+        check("FC5 formal PASS 落收据", p.returncode == 0 and rcpt_path.is_file(),
+              p.stdout)
+        rcpt = json.loads(rcpt_path.read_text())
+        check("FC5 收据字段（formal/默认容差/PASS/双输入 sha）",
+              rcpt["schema"] == "figure2-check-receipt/v1"
+              and rcpt["mode"] == "formal" and rcpt["tol_pp"] == 0.05
+              and rcpt["verdict"] == "PASS"
+              and len(rcpt["facts"]["sha256"]) == 64
+              and len(rcpt["series"]["sha256"]) == 64, json.dumps(rcpt)[:300])
+        errs = []
+        gate.check_figure2_receipt(td, rcpt, errs)
+        # series 实物（ws.json）在案根且 sha 一致 → 发布闸绿
+        check("FC5 发布闸复验绿例", errs == [], str(errs))
+        # exploration 放宽运行同样留痕，且发布闸现形
+        p = run([fff, "check", "--facts", "facts.json", "--series", "ws.json",
+                 "--tol-pp", "99", "--exploration"], td)
+        check("FC5 exploration 运行留痕", p.returncode == 0 and rcpt_path.is_file())
+        rcpt = json.loads(rcpt_path.read_text())
+        check("FC5 exploration 收据如实记录 mode/tol",
+              rcpt["mode"] == "exploration" and rcpt["tol_pp"] == 99.0)
+        errs = []
+        gate.check_figure2_receipt(td, rcpt, errs)
+        check("FC5 发布闸拒 exploration 收据",
+              any("exploration" in x for x in errs)
+              and any("tol_pp" in x for x in errs), str(errs))
+        # FAIL 对账也留痕，发布闸拒 verdict!=PASS
+        (td / "ws.json").write_text(json.dumps(
+            [{"entity_id": "e1", "ts": ["2026-01-01"], "pct": [30.0]}]))
+        p = run([fff, "check", "--facts", "facts.json", "--series", "ws.json"], td)
+        rcpt = json.loads(rcpt_path.read_text())
+        check("FC5 FAIL 对账留痕", p.returncode == 1 and rcpt["verdict"] == "FAIL")
+        errs = []
+        gate.check_figure2_receipt(td, rcpt, errs)
+        check("FC5 发布闸拒 FAIL 收据", any("非 PASS" in x for x in errs), str(errs))
+        # 对账后序列被改动 → 发布闸抓实物 sha 不符
+        (td / "ws.json").write_text(json.dumps(
+            [{"entity_id": "e1", "ts": ["2026-01-01"], "pct": [27.8]}]))
+        run([fff, "check", "--facts", "facts.json", "--series", "ws.json"], td)
+        rcpt = json.loads(rcpt_path.read_text())
+        (td / "ws.json").write_text(json.dumps(
+            [{"entity_id": "e1", "ts": ["2026-01-01"], "pct": [27.81]}]))
+        errs = []
+        gate.check_figure2_receipt(td, rcpt, errs)
+        check("FC5 对账后改序列被实物 sha 抓获",
+              any("实物不一致" in x for x in errs), str(errs))
+
+
 def t_f04_tolpp_clamp():
     """--tol-pp 同族钳制（同 F-02 模式）：formal 写死默认值，仅 --exploration 可覆盖。"""
     fff = ROOT / "scripts/report/figures_from_facts.py"
@@ -625,7 +855,9 @@ def main():
     t_f05_f04_build_evolution()
     t_f04_payload_unit()
     t_f04_tolpp_clamp()
-    print(f"PASS: repair batch C (F-05+F-04) {len(PASSED)} checks")
+    t_fixround1()
+    t_fc5_receipt_chain()
+    print(f"PASS: repair batch C (F-05+F-04+fixround1) {len(PASSED)} checks")
     return 0
 
 

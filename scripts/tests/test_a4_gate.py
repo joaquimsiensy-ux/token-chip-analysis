@@ -332,6 +332,15 @@ def main():
                    "--workflow-type", "new-analysis"])
     new_seal = os.path.join(new_d, "a4_seal.json")
     finish_distribution_normal(new_d)
+    # F-C5（批 C 消化轮）：figure2 对账收据成为 new-analysis 必经资产——
+    # 由真实生产者（figures_from_facts check）产出，空 whale_series 合法 PASS
+    Path(new_d, "whale_series.json").write_text("[]", encoding="utf-8")
+    p_chk = run(os.path.join(HERE, "..", "report", "figures_from_facts.py"),
+                ["check", "--facts", os.path.join(new_d, "facts.json"),
+                 "--series", os.path.join(new_d, "whale_series.json")])
+    assert p_chk.returncode == 0 and os.path.isfile(
+        os.path.join(new_d, "figure2_check_receipt.json")), \
+        f"figure2 收据生成失败: {p_chk.stdout} {p_chk.stderr}"
     new_out = os.path.join(new_d, "new.html")
     p_build = run(BUILD, ["--mode", "analysis-new", "--md", os.path.join(new_d, "report.md"),
                           "--out", new_out, "--facts", os.path.join(new_d, "facts.json"),

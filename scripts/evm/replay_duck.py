@@ -487,11 +487,16 @@ def replay_pass2(con, camps_path, out_dir, mint_total, vt):
     _den = "mint_total_legacy" if legacy else "current_net_supply"
     _sidecar_inputs = {"replay_stats": f"{out_dir}/replay_stats.json"}
     _fb = f"{out_dir}/balances_final.json"
+    if not os.path.exists(_fb):
+        # F-C6：缺终态快照当场硬拒（同 replay_pass2 口径 exit 2），不许静默少绑拖到编译期
+        print(f"[camp-series] 缺 {_fb}（pass1 终态快照，末点对账的锚）"
+              f"——同进程 pass1 应已写出，缺失即数据链断裂", file=sys.stderr)
+        raise SystemExit(2)
     write_series_sidecar(f"{out_dir}/camp_series.json",
                          producer="scripts/evm/replay_duck.py",
                          series_format="evm-dict", denominator=_den,
                          camps_spec_path=camps_path,
-                         final_balances_path=_fb if os.path.exists(_fb) else None,
+                         final_balances_path=_fb,
                          inputs=_sidecar_inputs)
     write_series_sidecar(f"{out_dir}/entity_series.json",
                          producer="scripts/evm/replay_duck.py",

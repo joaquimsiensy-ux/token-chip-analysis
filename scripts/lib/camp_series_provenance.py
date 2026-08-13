@@ -126,8 +126,12 @@ def write_series_sidecar(series_path, *, producer: str, series_format: str,
         doc["extra"] = dict(extra)
     out = sidecar_path_for(series_path)
     tmp = out.with_name(out.name + ".tmp")
-    tmp.write_text(json.dumps(doc, ensure_ascii=False, indent=1) + "\n",
-                   encoding="utf-8")
+    # F-C6：fsync 对齐仓内最强先例（receipt_kernel 的 flush+fsync+replace）——
+    # sidecar 是来源链锚点件，掉电半写不可接受
+    with open(tmp, "w", encoding="utf-8") as fh:
+        fh.write(json.dumps(doc, ensure_ascii=False, indent=1) + "\n")
+        fh.flush()
+        os.fsync(fh.fileno())
     os.replace(tmp, out)
     return out
 
@@ -280,15 +284,33 @@ def modern_camp_whitelist() -> set:
     return set(CAMP_ORDER_MODERN)
 
 
-def validate_series_payload(css: dict, *, tol_pp: float = CLOSURE_TOL_PP):
+def closure_mode_for(denominator: str) -> str:
+    """F-C4：sidecar 的 denominator 口径 → 闭合单式选择（绑定路径专用）。
+
+    净分母族（current_net_supply/net_supply）：burn 桶不参与堆叠，闭合只认
+    非 burn 之和≈100——burn 值不得蹭进合计救非 burn 桶的缺口；
+    total 分母族（mint_total_legacy/config_total_supply）：锁仓/销毁参与闭合，
+    只认全桶之和≈100——总量超发不得靠非 burn 式蹭过。
+    """
+    if denominator in ("current_net_supply", "net_supply"):
+        return "net"
+    if denominator in ("mint_total_legacy", "config_total_supply"):
+        return "total"
+    raise SeriesProvenanceError(f"denominator {denominator!r} 无闭合口径映射")
+
+
+def validate_series_payload(css: dict, *, tol_pp: float = CLOSURE_TOL_PP,
+                            closure_mode: str = "dual"):
     """state 形态 camp_share_series 的数值面硬校验（拒=raise SeriesProvenanceError）：
 
     ①桶名白名单=CAMP_ORDER_MODERN ∪ burn 豁免键（legacy 桶名/实体级自造桶名一律拒，
       新报告禁用；旧案重绘不经 compile_state）；
     ②全值有限（json 的 NaN/Infinity 字面量默认能解析进来，必须显式查）；
     ③非 burn 桶值域 [0,100]；burn 桶仅验非负有限（burn_cum_pct 按净分母可 >100 合法）；
-    ④同点合计双式闭合：非 burn 之和≈100 或 全桶之和≈100（容差 tol_pp；
-      全桶全零点=供应未产生，豁免）；
+    ④同点合计闭合，closure_mode 三态（F-C4）：
+       "net"=只认非 burn 之和≈100、"total"=只认全桶之和≈100（sidecar 绑定路径按
+       denominator 口径单式严判，两族不得互救）；"dual"=二中其一（无口径信息的
+       手填路径专用宽式）。全桶全零点=供应未产生，豁免。容差 tol_pp。
     ⑤日期轴统一 UTC 解析后严格递增无重复（倒序/重复/非法日期/时区换算后倒挂都拒）。
     """
     dates = css.get("dates")
@@ -304,7 +326,9 @@ def validate_series_payload(css: dict, *, tol_pp: float = CLOSURE_TOL_PP):
         raise SeriesProvenanceError(
             f"camp_share_series 含白名单外桶名 {bad_names}——阵营名唯一权威是 "
             f"standard_charts.CAMP_ORDER_MODERN（v5.0 标签体系；legacy 名与实体级"
-            f"自造桶名新报告禁用）")
+            f"自造桶名新报告禁用）。存量案迁移口径见 scan-schemas.md §13"
+            f"「存量迁移」：不重编译不受影响；重编译须先按案内证据把桶归入现代名"
+            f"（映射是分析判断非机械替换）")
     n = len(dates)
     for camp, values in series.items():
         if not isinstance(values, list) or len(values) != n:
@@ -318,6 +342,9 @@ def validate_series_payload(css: dict, *, tol_pp: float = CLOSURE_TOL_PP):
                 raise SeriesProvenanceError(f"桶「{camp}」[{i}] 为负: {v}")
             if not is_burn and v > 100:
                 raise SeriesProvenanceError(f"桶「{camp}」[{i}] 超出 100: {v}")
+    if closure_mode not in ("dual", "net", "total"):
+        raise SeriesProvenanceError(f"closure_mode 只认 dual/net/total，"
+                                    f"收到 {closure_mode!r}")
     non_burn = [c for c in series if c not in BURN_EXEMPT_KEYS]
     burn = [c for c in series if c in BURN_EXEMPT_KEYS]
     for i in range(n):
@@ -325,10 +352,17 @@ def validate_series_payload(css: dict, *, tol_pp: float = CLOSURE_TOL_PP):
         s_all = s_non + sum(series[c][i] for c in burn)
         if s_all == 0:
             continue  # 供应尚未产生的点（producer 全零输出），豁免
-        if abs(s_non - 100.0) > tol_pp and abs(s_all - 100.0) > tol_pp:
+        if closure_mode == "net":
+            closed = abs(s_non - 100.0) <= tol_pp
+        elif closure_mode == "total":
+            closed = abs(s_all - 100.0) <= tol_pp
+        else:
+            closed = abs(s_non - 100.0) <= tol_pp or abs(s_all - 100.0) <= tol_pp
+        if not closed:
             raise SeriesProvenanceError(
-                f"第 {i} 点（{dates[i]}）合计不闭合：非burn桶Σ={s_non:.4f}、"
-                f"全桶Σ={s_all:.4f}，两式均偏离 100 超过 {tol_pp}pp")
+                f"第 {i} 点（{dates[i]}）合计不闭合（closure_mode={closure_mode}）："
+                f"非burn桶Σ={s_non:.4f}、全桶Σ={s_all:.4f}，"
+                f"偏离 100 超过 {tol_pp}pp")
     prev = None
     for i, d in enumerate(dates):
         cur = parse_axis_utc(d, i)
@@ -342,29 +376,24 @@ def validate_series_payload(css: dict, *, tol_pp: float = CLOSURE_TOL_PP):
 # ── 登记面命中与末点对账（--series-source 模式）─────────────────────
 
 
-def _sha_values(obj) -> set:
-    out = set()
-    if isinstance(obj, dict):
-        for key, value in obj.items():
-            if key == "sha256" and isinstance(value, str):
-                out.add(value.lower())
-            else:
-                out.update(_sha_values(value))
-    elif isinstance(obj, list):
-        for item in obj:
-            out.update(_sha_values(item))
-    return out
+SUPPLY_TRUTH_SCHEMA = "supply-truth-receipt/v3"
+RECONCILE_SCHEMA = "solana-reconcile/v2"
 
 
 def registry_anchor_check(sidecar: dict, resolved: dict, series_path):
-    """sidecar 的 inputs 必须命中案内已对账的登记面（把序列锚进案内数据链）：
+    """sidecar 的 inputs 必须命中案内已对账的登记面（把序列锚进案内数据链）。
 
-    evm-dict：案内（序列目录或其父目录）supply_truth.json 必须在场，且 sidecar
-      登记的 replay_stats sha256 出现在 supply_truth 的 sha256 绑定集合中
-      （supply_truth 收据 inputs.replay_stats 由批 A 起哈希绑定）。
-    sol-rows：sidecar 必须绑定 reconcile_receipt（inputs.reconcile_receipt），
-      该收据 gate_pass 必须为 true——工作流上 reconcile 是阶段 2 硬关卡，先于
-      evolution；缺收据/收据 FAIL 的序列不入正式编译。
+    F-C3（消化轮）：登记面命中是**结构化校验**，不是"文件里含某个 sha 字符串"——
+    修前的全文包含式实测被 46 字节任意 JSON（{"sha256": "..."}）伪造通过。修后：
+
+    evm-dict：案内 supply_truth.json 必须在场且本身过合法性三验（真实生产者
+      supply_truth_gate.py 的收据形态：schema==supply-truth-receipt/v3、
+      verdict==PASS、exit_code==0，参照 holder_distribution_scan.load_supply
+      先例），且 sidecar 登记的 replay_stats sha256 必须命中收据的**特定字段位置**
+      inputs.replay_stats.sha256（批 A 起哈希绑定的那一格，非任意位置）。
+    sol-rows：sidecar 必须绑定 reconcile_receipt，该收据 schema 必须是
+      solana-reconcile/v2（真实生产者 replay_edges cmd_reconcile 的形态）且
+      gate_pass 为 true——工作流上 reconcile 是阶段 2 硬关卡，先于 evolution。
     """
     fmt = sidecar.get("series_format")
     series_path = Path(series_path)
@@ -379,11 +408,26 @@ def registry_anchor_check(sidecar: dict, resolved: dict, series_path):
         stats_ref = (sidecar.get("inputs") or {}).get("replay_stats")
         if not stats_ref:
             raise SeriesProvenanceError("evm-dict sidecar 必须登记 inputs.replay_stats")
-        registered = _sha_values(json.loads(st.read_text(encoding="utf-8")))
-        if str(stats_ref.get("sha256", "")).lower() not in registered:
+        truth = json.loads(st.read_text(encoding="utf-8"))
+        if not isinstance(truth, dict) \
+                or truth.get("schema") != SUPPLY_TRUTH_SCHEMA:
             raise SeriesProvenanceError(
-                "sidecar 登记的 replay_stats sha256 未命中 supply_truth.json 的"
-                "绑定集合——序列与供给真值闸不是同一条数据链")
+                f"supply_truth.json 不是合法供给真值收据（schema 必须是 "
+                f"{SUPPLY_TRUTH_SCHEMA}）——任意 JSON 冒充登记面不算数")
+        if str(truth.get("verdict", "")).upper() != "PASS" \
+                or truth.get("exit_code") != 0:
+            raise SeriesProvenanceError(
+                "supply_truth.json 非 PASS/exit 0——供给真值闸未通过的案不得编译序列")
+        bound = ((truth.get("inputs") or {}).get("replay_stats") or {})
+        registered_sha = str(bound.get("sha256", "")).lower()
+        if not registered_sha:
+            raise SeriesProvenanceError(
+                "supply_truth.json 缺 inputs.replay_stats.sha256 绑定"
+                "——收据没有把 replay_stats 哈希绑定进来，登记面锚不成立")
+        if str(stats_ref.get("sha256", "")).lower() != registered_sha:
+            raise SeriesProvenanceError(
+                "sidecar 登记的 replay_stats sha256 ≠ supply_truth.json 的 "
+                "inputs.replay_stats.sha256——序列与供给真值闸不是同一条数据链")
         return st
     if fmt == "sol-rows":
         rr = resolved.get("inputs.reconcile_receipt")
@@ -392,6 +436,11 @@ def registry_anchor_check(sidecar: dict, resolved: dict, series_path):
                 "sol-rows sidecar 必须登记 inputs.reconcile_receipt"
                 "（replay_edges reconcile 是阶段 2 硬关卡，先跑 reconcile 再跑 evolution）")
         receipt = json.loads(Path(rr).read_text(encoding="utf-8"))
+        if not isinstance(receipt, dict) \
+                or receipt.get("schema") != RECONCILE_SCHEMA:
+            raise SeriesProvenanceError(
+                f"reconcile_receipt 不是合法对账收据（schema 必须是 "
+                f"{RECONCILE_SCHEMA}）——任意 JSON 冒充登记面不算数")
         if not receipt.get("gate_pass"):
             raise SeriesProvenanceError("reconcile_receipt gate_pass 非 true，序列不入正式编译")
         return rr

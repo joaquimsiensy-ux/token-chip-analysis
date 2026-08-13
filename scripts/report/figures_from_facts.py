@@ -32,10 +32,15 @@
 
 退出码：0=成功/对账过；1=失败（宏残留/对账超差/输入缺失）；
         2=check 容差政策拒（正式模式改 --tol-pp 未加 --exploration，F-04 钳制）。
+check 留痕（F-C5）：每次对账（PASS/FAIL、formal/exploration）都落
+  figure2_check_receipt.json（mode/tol_pp/verdict/facts+series sha）到工作目录；
+  发布闸 new-analysis 复验其在场且 mode=formal、tol_pp=默认、verdict=PASS——
+  exploration 放宽的运行有痕、且过不了发布闸。
 """
 import argparse
 import csv
 import datetime as dt
+import hashlib
 import json
 import os
 import sys
@@ -158,6 +163,36 @@ def mode_flow(a):
 
 
 DEFAULT_TOL_PP = 0.05  # 图 2 末点对账容差；formal 写死本值，仅 --exploration 可覆盖
+CHECK_RECEIPT_NAME = "figure2_check_receipt.json"
+
+
+def _file_ref(path):
+    data = open(path, "rb").read()
+    return {"path": os.path.basename(str(path)),
+            "sha256": hashlib.sha256(data).hexdigest(), "size": len(data)}
+
+
+def _write_check_receipt(a, verdict, okc, errs):
+    """F-C5：check 的留痕收据（写 --series 文件同目录；whale_series 惯例在案根，
+    收据即落案根供发布闸复验）。PASS/FAIL 都写（exploration 运行同样留痕，mode
+    字段如实记录）；发布闸（audit_release_gate new-analysis）复验在场且
+    mode==formal、tol_pp==默认、verdict==PASS。政策拒（exit 2）在此之前发生，
+    不产收据。写法=tmp+fsync+os.replace（对齐 receipt_kernel 先例）。"""
+    doc = {"schema": "figure2-check-receipt/v1",
+           "mode": "exploration" if a.exploration else "formal",
+           "tol_pp": a.tol_pp, "verdict": verdict,
+           "facts": _file_ref(a.facts), "series": _file_ref(a.series),
+           "lines_checked": okc, "mismatches": errs,
+           "generated_at_utc": dt.datetime.now(dt.timezone.utc)
+                                 .strftime("%Y-%m-%dT%H:%M:%SZ")}
+    out = os.path.join(os.path.dirname(os.path.abspath(a.series)),
+                       CHECK_RECEIPT_NAME)
+    tmp = out + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as fh:
+        fh.write(json.dumps(doc, ensure_ascii=False, indent=1) + "\n")
+        fh.flush()
+        os.fsync(fh.fileno())
+    os.replace(tmp, out)
 
 
 def mode_check(a):
@@ -203,11 +238,14 @@ def mode_check(a):
     if errs:
         for e in errs:
             print(f"[CHECK-FAIL] {e}")
-        print(f"FAIL: 图 2 装配数据与 facts 终值 {len(errs)} 处不同源")
+        _write_check_receipt(a, "FAIL", okc, errs)
+        print(f"FAIL: 图 2 装配数据与 facts 终值 {len(errs)} 处不同源"
+              f"（收据 {CHECK_RECEIPT_NAME}）")
         return 1
+    _write_check_receipt(a, "PASS", okc, [])
     tag = "[exploration] " if a.exploration else ""
     print(f"{tag}PASS: 图 2 全部 {okc} 条实体线末点与 facts 当前持仓同源"
-          f"（容差 {a.tol_pp}pp）")
+          f"（容差 {a.tol_pp}pp，收据 {CHECK_RECEIPT_NAME}）")
     return 0
 
 

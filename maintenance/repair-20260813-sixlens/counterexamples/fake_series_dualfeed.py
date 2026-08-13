@@ -65,7 +65,7 @@ def main():
         assert p.returncode == 0, p.stderr[-300:]
         stats = td / "data/replay_stats.json"
         (td / "supply_truth.json").write_text(json.dumps(
-            {"schema": "supply-truth/v1", "verdict": "PASS", "exit_code": 0,
+            {"schema": "supply-truth-receipt/v3", "verdict": "PASS", "exit_code": 0,
              "onchain_total_supply": "950", "replay_net": "950", "chain": "bsc",
              "inputs": {"replay_stats": {
                  "path": "data/replay_stats.json",

@@ -41,6 +41,9 @@ NEW_ANALYSIS_REQUIRED = (
     "distribution_scan.json",
     "distribution_rounds.json",
     "a5_report_seal.json",
+    # F-C5：图 2 末点对账留痕收据（figures_from_facts check 每跑必写）——
+    # 发布闸复验 mode==formal、tol_pp==默认、verdict==PASS
+    "figure2_check_receipt.json",
 )
 LEGACY_READONLY_RECEIPT = "legacy_readonly_receipt.json"
 REQUIRED_BY_PROFILE = {
@@ -815,6 +818,80 @@ def check_distribution_snapshot_binding(case_dir: Path, data: dict, chain, error
                       f"与{label}不一致（final 轮换仓/抹平快照逃不掉）")
 
 
+FIGURE2_RECEIPT_SCHEMA = "figure2-check-receipt/v1"
+FIGURE2_DEFAULT_TOL_PP = 0.05
+
+
+def check_figure2_receipt(case_dir: Path, d: dict, errors: list[str]):
+    """F-C5：图 2 末点对账收据复验（new-analysis 必经）。
+
+    figures_from_facts check 每次运行（含 exploration）都落收据；发布闸只放行
+    formal＋默认容差＋PASS——exploration 放宽的对账在这里现形。series 实物在
+    案根同名在场时加验 sha（收据不携带路径层级，basename 案根查）。
+    """
+    if d.get("schema") != FIGURE2_RECEIPT_SCHEMA:
+        errors.append(f"figure2 收据 schema 必须是 {FIGURE2_RECEIPT_SCHEMA}")
+        return
+    if d.get("mode") != "formal":
+        errors.append(f"figure2 对账收据 mode={d.get('mode')!r}——exploration "
+                      "运行的产物不得进正式发布")
+    if d.get("tol_pp") != FIGURE2_DEFAULT_TOL_PP:
+        errors.append(f"figure2 对账收据 tol_pp={d.get('tol_pp')!r} ≠ 默认 "
+                      f"{FIGURE2_DEFAULT_TOL_PP}（判定翻转参数不得放宽）")
+    if d.get("verdict") != "PASS":
+        errors.append(f"figure2 对账收据 verdict={d.get('verdict')!r} 非 PASS")
+    series_ref = d.get("series") or {}
+    name = Path(str(series_ref.get("path") or "")).name
+    if name:
+        cand = case_dir / name
+        if cand.is_file() and not cand.is_symlink():
+            actual = hashlib.sha256(cand.read_bytes()).hexdigest()
+            if actual != str(series_ref.get("sha256", "")).lower():
+                errors.append(f"figure2 收据绑定的 series（{name}）sha256 与案内"
+                              "实物不一致——对账后序列被改动")
+
+
+def check_series_binding(case_dir: Path, d: dict, errors: list[str]):
+    """F-C1 下游闸：analysis-state 含 camp_share_series 就必须带 producer 绑定。
+
+    state_from_facts formal 编译落 provenance.series_binding=producer-sidecar＋
+    camp_series_sidecar 块；exploration 编译落 exploration-unbound 非正式标记。
+    发布闸只认 producer-sidecar，且 sidecar 登记的序列实物（series_file basename，
+    案根与 data/ 两层找）sha 必须与登记一致——手编序列/探索产物在此拦死。
+    """
+    if "camp_share_series" not in d:
+        return  # 无序列即无绑定对象（旧简报型 state），不强加
+    provenance = d.get("provenance") or {}
+    binding = provenance.get("series_binding")
+    if binding != "producer-sidecar":
+        errors.append(
+            f"analysis-state 含 camp_share_series 但 series_binding="
+            f"{binding!r}——正式发布只认 producer-sidecar 绑定"
+            "（exploration-unbound 是非正式产物；缺标记=旧口径手编，须用 "
+            "state_from_facts --series-source 重编译）")
+        return
+    sidecar_ref = provenance.get("camp_series_sidecar") or {}
+    name = Path(str(sidecar_ref.get("series_file") or "")).name
+    registered = str(sidecar_ref.get("series_sha256") or "").lower()
+    if not name or not registered:
+        errors.append("series_binding=producer-sidecar 但 camp_series_sidecar "
+                      "缺 series_file/series_sha256")
+        return
+    for base in (case_dir, case_dir / "data"):
+        cand = base / name
+        if cand.is_symlink():
+            errors.append(f"案内序列实物 {cand.name} 是符号链接，拒收")
+            return
+        if cand.is_file():
+            actual = hashlib.sha256(cand.read_bytes()).hexdigest()
+            if actual != registered:
+                errors.append(f"案内序列实物 {name} sha256 与 analysis-state 绑定"
+                              "不一致——编译后序列被改动")
+            return
+    errors.append(f"analysis-state 绑定的序列实物 {name} 在案根与 data/ 两层内"
+                  "都找不到——正式案序列文件必须随案在档")
+
+
 def check_chart(d: dict, errors: list[str]):
     required = (
         "same_grain_series", "last_day_snapshot_match", "supply_closed",
@@ -883,6 +960,13 @@ def run(case_dir: Path, report: Path | None, *, profile="independent-audit"):
             errors.append(f"持仓分布 initial scan validator 失败: {exc}")
         if case_chain:
             check_distribution_snapshot_binding(case_dir, data, case_chain, errors)
+    if profile == "new-analysis":
+        # F-C5/F-C1（批 C 消化轮）：图 2 对账收据复验＋阵营序列 producer 绑定复验
+        if "figure2_check_receipt.json" in data:
+            check_figure2_receipt(case_dir, data["figure2_check_receipt.json"], errors)
+        state_path = case_dir / "analysis-state.json"
+        if state_path.is_file():
+            check_series_binding(case_dir, load_json(state_path, errors), errors)
     if "historical_chart" in claim_types:
         chart_path = case_dir / "chart_reconciliation.json"
         if not chart_path.is_file():
