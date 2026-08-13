@@ -27,7 +27,7 @@ import hashlib
 import shutil
 from pathlib import Path
 
-from test_audit_release_gate import build_case
+from test_audit_release_gate import build_case, sha
 from formal_ready_test_harness import run_formal_script
 from identity_gate_fixture import augment_gate
 
@@ -74,6 +74,40 @@ def wj(d, name, obj):
     with open(p, "w", encoding="utf-8") as f:
         json.dump(obj, f, ensure_ascii=False)
     return p
+
+
+def rebind_case_inputs(old_root, new_root):
+    """把 copytree 复制出来的案子的收据输入，重新指到它自己那份拷贝上。
+
+    发布校验器要求 supply_truth 绑定的 replay_stats 实物落在**当前**案根内
+    （见 shared_release_receipt._bound_replay_totals：案外实物人工翻案子时看不见，
+    是伪造账本的天然藏身处）；同一个校验器对 Solana 的 observation bundle 和
+    tolerance waiver 早就是这个要求。复制出来的案子照理该"重跑生产者"，
+    这个帮手就是把重跑会得到的结果直接摆好：文件是逐字节拷贝，size/sha 都不变，
+    只有收据里记的绝对路径要跟着搬家。
+    """
+    old_root = str(Path(old_root).resolve())
+    new_root = str(Path(new_root).resolve())
+    recon_path = Path(new_root, "reconciliation_report.json")
+    recon = json.loads(recon_path.read_text(encoding="utf-8"))
+    for item in recon["checks"].values():
+        receipt_path = Path(new_root, item["receipt"]["path"])
+        receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+        moved = False
+        for ref in (receipt.get("inputs") or {}).values():
+            raw = str(ref.get("path", ""))
+            if raw.startswith(old_root + os.sep):
+                ref["path"] = new_root + raw[len(old_root):]
+                moved = True
+        if moved:
+            receipt_path.write_text(json.dumps(receipt, ensure_ascii=False),
+                                    encoding="utf-8")
+            item["receipt"]["sha256"] = sha(receipt_path)
+    recon_path.write_text(json.dumps(recon, ensure_ascii=False), encoding="utf-8")
+    shared_path = Path(new_root, "shared_release_receipt.json")
+    shared = json.loads(shared_path.read_text(encoding="utf-8"))
+    shared["inputs"]["reconciliation_report.json"]["sha256"] = sha(recon_path)
+    shared_path.write_text(json.dumps(shared, ensure_ascii=False), encoding="utf-8")
 
 
 def add_distribution_initial(d):
@@ -252,6 +286,7 @@ def main():
     # P1-05：全新分析走共享门禁，不伪造净室资产；seal 轨道不可互换。
     new_d = os.path.join(root, "case_new")
     shutil.copytree(d, new_d)
+    rebind_case_inputs(d, new_d)
     for name in ("audit_input_manifest.json", "claim_registry.json", "reproduce_audit.py",
                  "reproduce_receipt.json", "reproduce_output.json", "a5_report_seal.json"):
         Path(new_d, name).unlink(missing_ok=True)

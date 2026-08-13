@@ -136,17 +136,31 @@ def _bound_case_ref(root, ref, label, *, base=None):
 MIGRATION_HINT = "存量案例须重跑对应生产者获取当前回执"
 
 
-def _bound_replay_totals(receipt):
+def _bound_replay_totals(root, receipt):
     """读收据 inputs 绑定的那份 replay_stats 实物，解出 (path, mint_total, burn_total)。
 
     上游 validate_receipt 已经对这个文件做过"存在＋size＋sha256"三验，所以这里直接读
     内容即可；读不出 mint/burn（旧格式、字段缺失）一律 fail-closed，不放行。
+
+    实物**必须落在案根内**（N-1）：上游三验只管"这个路径上的文件与收据登记的哈希一致"，
+    不管它在哪。绑一份案外伪造账本同样自洽，而案根里那本真账没人再看一眼——
+    伪造件不进案目录，就不会出现在 audit_input_manifest 的清单里、人工翻案子时也看不见，
+    等于绕开了本仓"内容绑定"防线的全部可见性。强制在案根内之后，伪造者只能覆盖案内那份
+    真账本，那会立刻把 balance/supply 两查收据的输入哈希打炸，一望即知。
+    resolve() 已经跟完符号链接，所以"案内软链指向案外"也会在这里被拦下。
     """
     inputs = receipt.get("inputs") or {}
     replay_input = inputs.get("replay_stats")
     _require(isinstance(replay_input, dict),
              "supply_truth receipt must bind replay_stats input")
     replay_path = Path(str(replay_input.get("path") or "")).resolve()
+    try:
+        replay_path.relative_to(Path(root).resolve())
+    except ValueError as exc:
+        raise ValueError(
+            f"收据绑定的 replay_stats 实物不在当前案根内——{MIGRATION_HINT}"
+            "（对账实物必须与收据同案；存量案或整目录复制过的案子，收据里记的是老绝对路径）"
+        ) from exc
     try:
         stats = json.loads(replay_path.read_text(encoding="utf-8"))
         if not isinstance(stats, dict):
@@ -176,7 +190,7 @@ def _validate_tolerance_policy(root, receipt, target):
 
     # 消费侧不能只拿收据自报的三个数互相印证：replay_net 必须对得上案根里那份被哈希
     # 绑定的 replay_stats 实物，否则改一个数就能绕开整套容差钳制与 waiver（F-A）。
-    replay_path, stats_mint, stats_burn = _bound_replay_totals(receipt)
+    replay_path, stats_mint, stats_burn = _bound_replay_totals(root, receipt)
     _require(stats_mint - stats_burn == replay_net,
              f"supply_truth replay_net 与绑定 replay_stats 实物的 mint−burn 不一致；"
              f"{MIGRATION_HINT}")
@@ -362,7 +376,7 @@ def validate_reconciliation_check(root, key, item, target, family):
             _require(mint_raw == onchain_raw and sink_raw == burn_raw,
                      "sink_fallback_form2 scalar/sink closure invalid")
             # 两个标量同样不能自报自验：对回案根里被哈希绑定的 replay_stats 实物（F-A）。
-            _, stats_mint, stats_burn = _bound_replay_totals(receipt)
+            _, stats_mint, stats_burn = _bound_replay_totals(root, receipt)
             _require(mint_raw == stats_mint and burn_raw == stats_burn,
                      f"sink_fallback_form2 mint_total/burn_total 与绑定 replay_stats "
                      f"实物不一致；{migration}")
@@ -385,6 +399,18 @@ def validate_reconciliation_check(root, key, item, target, family):
                      and bundle["snapshot"]["slot"]
                      == canonical_target(target)["as_of_block"],
                      "solana supply_truth observation/bundle slots are not bound")
+            # 链上供给这个数在 Solana 侧有案内实物可对——bundle 就在手上（上面刚读进来
+            # 比过两处 slot），不比一下就等于让收据自报链上总量（N-2）。
+            try:
+                bundle_supply = int(str(bundle["supply"]["amount"]))
+                receipt_supply = int(str(receipt.get("onchain_total_supply")))
+            except (KeyError, TypeError, ValueError) as exc:
+                raise ValueError(
+                    f"solana supply_truth onchain/bundle supply amount is not an "
+                    f"integer；{migration}") from exc
+            _require(receipt_supply == bundle_supply,
+                     "solana supply_truth onchain_total_supply is not bound to "
+                     "bundle supply amount")
     elif family == "evm" and key == "time":
         _require(schema == "time-spotcheck/v2",
                  f"reconciliation time unknown schema {schema!r}；{migration}")

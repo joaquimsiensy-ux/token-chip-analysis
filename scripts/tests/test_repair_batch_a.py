@@ -561,6 +561,118 @@ def test_fb_model_probe_block_has_a_consumer():
                 raise AssertionError(f"时点闸放行了：{label}")
 
 
+def test_n1_replay_stats_must_live_inside_case_root():
+    """N-1：不改收据里任何一个数，只把 replay_stats 改绑一份案外伪造账本。
+
+    案外伪造件不进案目录，就不会出现在 audit_input_manifest 清单里、人工翻案子时
+    也看不见——绕过的恰恰是"内容绑定"防线的全部可见性，所以必须在案根内。
+    """
+    with tempfile.TemporaryDirectory(prefix="batch-a-n1-outside-", dir="/private/tmp") as raw:
+        root = Path(raw)
+        rc, receipt, stderr = run_supply(root, tolerance=10)
+        assert rc == 2 and receipt["verdict"] == "FAIL", (rc, receipt, stderr)
+        with tempfile.TemporaryDirectory(
+                prefix="batch-a-n1-fake-", dir="/private/tmp") as fake_raw:
+            fake = Path(fake_raw) / "replay_stats.json"
+            # 伪造账本自身完全自洽：mint=100 让 replay_net=100 与链上 100 对得上，
+            # 收据登记的 size/sha 也照实物填，上游 validate_receipt 三验一路放行。
+            fake.write_text(json.dumps({"mint_total_raw": "100", "burn_total_raw": "0"}),
+                            encoding="utf-8")
+            receipt["inputs"]["replay_stats"] = {
+                "path": str(fake), "size": fake.stat().st_size, "sha256": sha256(fake)}
+            receipt.update({"replay_net": "100", "diff": "0", "diff_bps": 0.0,
+                            "tolerance_bps": 0, "primary_verdict": "PASS",
+                            "verdict": "PASS", "exit_code": 0})
+            receipt["inputs"].pop("tolerance_waiver", None)
+            (root / "supply_truth.json").write_text(
+                json.dumps(receipt, ensure_ascii=False), encoding="utf-8")
+            # 案根里那本真账原封不动，正是它该被读到的那一份。
+            assert json.loads((root / "replay_stats.json").read_text())["mint_total_raw"] == "1"
+            expect_check_rejection(root, "不在当前案根内")
+
+    # 案内软链指向案外同样进不来——这一条由**上游既有**的 receipt_validate 先拦
+    # （"path is a symlink"），不是本轮新代码的功劳，如实记在这里，免得日后误以为
+    # 案根约束自己扛下了软链逃逸。
+    with tempfile.TemporaryDirectory(prefix="batch-a-n1-symlink-", dir="/private/tmp") as raw:
+        root = Path(raw)
+        rc, receipt, stderr = run_supply(root, tolerance=10)
+        with tempfile.TemporaryDirectory(
+                prefix="batch-a-n1-slink-", dir="/private/tmp") as fake_raw:
+            fake = Path(fake_raw) / "replay_stats.json"
+            fake.write_text(json.dumps({"mint_total_raw": "100", "burn_total_raw": "0"}),
+                            encoding="utf-8")
+            link = root / "linked_stats.json"
+            link.symlink_to(fake)
+            receipt["inputs"]["replay_stats"] = {
+                "path": str(link), "size": link.stat().st_size, "sha256": sha256(link)}
+            receipt.update({"replay_net": "100", "diff": "0", "diff_bps": 0.0,
+                            "tolerance_bps": 0, "primary_verdict": "PASS",
+                            "verdict": "PASS", "exit_code": 0})
+            receipt["inputs"].pop("tolerance_waiver", None)
+            (root / "supply_truth.json").write_text(
+                json.dumps(receipt, ensure_ascii=False), encoding="utf-8")
+            expect_check_rejection(root, "symlink")
+
+
+def _solana_case(case: Path, replay_mint: int):
+    """跑一遍真实 Solana 生产链，返回 (bundle, 收据, target)。"""
+    from test_r9_batch3_release_guards import MINT, build_case, load, write
+
+    bundle = build_case(case)
+    slot = bundle["snapshot"]["slot"]
+    supply = load(ROOT / "scripts/lib/supply_truth_gate.py", "batch_a_n2_supply")
+    write(case / "replay_stats.json",
+          {"mint_total_raw": replay_mint, "burn_total_raw": 0})
+    (case / "supply_truth.json").unlink()   # 旧 PASS 收据不许被降级覆盖，先清掉
+    with chdir(case):
+        rc = supply.main(["--chain", "solana", "--mint", MINT,
+                          "--observation-bundle", "bundle.json",
+                          "--as-of-block", str(slot),
+                          "--replay-stats", "replay_stats.json",
+                          "--out", "supply_truth.json"])
+    receipt = json.loads((case / "supply_truth.json").read_text(encoding="utf-8"))
+    target = {key: receipt["target"][key] for key in ("chain", "token", "as_of_block")}
+    return rc, bundle, receipt, target
+
+
+def test_n2_solana_onchain_bound_to_bundle_amount():
+    """N-2 Solana 半：链上供给的实物就在同案 bundle 里，必须比一比。"""
+    # 必须用模块级 shared（而不是 r9 的 shared_module()）——后者按路径重新 load，
+    # 变异探针注入 sys.modules 的打断版本够不着它，会让这条测试"看着有测其实没测"。
+    with tempfile.TemporaryDirectory(prefix="batch-a-n2-solana-") as raw:
+        case = Path(raw).resolve()
+        # 造 GNT 式局面：重放净供给 1000，bundle 实物只有 100
+        rc, bundle, receipt, target = _solana_case(case, 1000)
+        assert rc == 2 and receipt["verdict"] == "FAIL", (rc, receipt)
+        assert str(bundle["supply"]["amount"]) == "100", bundle["supply"]
+
+        # 伪造：只把 onchain 抬到与重放净供给相等。重放侧一个字不动，
+        # 所以 F-A 的实物对账照样过，primary_verdict 重算也自洽——
+        # 唯一能拆穿它的就是同案 bundle 里那个 supply.amount。
+        receipt.update({"onchain_total_supply": receipt["replay_net"], "diff": "0",
+                        "diff_bps": 0.0, "tolerance_bps": 0, "primary_verdict": "PASS",
+                        "verdict": "PASS", "exit_code": 0})
+        (case / "supply_truth.json").write_text(
+            json.dumps(receipt, ensure_ascii=False), encoding="utf-8")
+        try:
+            shared.validate_reconciliation_check(
+                case, "supply_truth", supply_item(case), target, "solana")
+        except ValueError as exc:
+            assert "bundle supply amount" in str(exc), exc
+        else:
+            raise AssertionError("Solana 收据自报的链上供给未与 bundle 实物对账")
+
+
+def test_n2_solana_honest_receipt_still_passes():
+    """绿例：诚实的 Solana 收据（重放净供给恰好等于 bundle 实物）必须仍然放行。"""
+    with tempfile.TemporaryDirectory(prefix="batch-a-n2-solana-ok-") as raw:
+        case = Path(raw).resolve()
+        rc, bundle, receipt, target = _solana_case(case, 100)
+        assert rc == 0 and receipt["verdict"] == "PASS", (rc, receipt)
+        shared.validate_reconciliation_check(
+            case, "supply_truth", supply_item(case), target, "solana")
+
+
 def test_fd_unreadable_files_all_land_on_exit_1():
     """F-D：同一类"文件读不动"故障必须走同一个退出码（检测自身失败＝1）。"""
     if os.getuid() == 0:
@@ -603,6 +715,9 @@ def main():
         test_fa_sink_fallback_scalars_bound_to_stats,
         test_fb_model_probe_block_has_a_consumer,
         test_fd_unreadable_files_all_land_on_exit_1,
+        test_n1_replay_stats_must_live_inside_case_root,
+        test_n2_solana_onchain_bound_to_bundle_amount,
+        test_n2_solana_honest_receipt_still_passes,
     ]
     failed = []
     for test in tests:
