@@ -36,6 +36,16 @@
 
 另：批 C 新契约面（figure2-check-receipt/v1、--exploration×2 CLI、camp-series sidecar 族）已由施工方记账，批 D 契约三件同步时统一登记。
 
+## 二c、批 C 终验沉淀：R10 级三条（批 D 建 r10_ledger.md 时转入）
+
+| # | 条目 | 要点 |
+|---|---|---|
+| C-R1 | `target.as_of_block` 无真实对锚（N-C5 前半） | 改成任意正整数照过；锚到案外链上证据属 F-12 地盘，锚到案内件只是多一个可伪造件——修法待设计 |
+| C-R2 | sol 侧 `solana-reconcile/v2` 收据 schema 无身份键（N-C5 后半） | replay_edges.py:166 实物核实；加身份键属 producer schema 扩面；跨案复制收据当前可用 |
+| C-R3 | sol 分支发布期复算路径未经真实案端到端验证 | 批 C 终验实测只覆盖 EVM 链路；将来补 C-R2 身份键时须同批做 sol 真实案端到端 |
+
+批 C 残余边界准确口径（终验更正，已同步 scan-schemas §13）：控制案目录者手写一组互相自洽的案内小件（实测约 1.5KB、无需运行 producer）即可通过全部一致性校验——validator 是一致性校验器不是真实性证明器；此链上已无可机器闭合的下一层（终验逐个查证 channels_preflight 自身收据链/identity_gate 实物两个候选锚，均只是"多一个可伪造件"）。
+
 ## 三、状态
 
 - 批 A：已收口（f575472/78d1c4c/8b089c3 系列，终复核零实质新 finding）
