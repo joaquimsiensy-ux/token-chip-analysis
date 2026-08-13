@@ -32,9 +32,29 @@ def sha(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def bind_balance_receipt_to_snapshot(root: Path, snap: Path) -> None:
+    """把四查 balance 收据的 inputs.balances 绑到同一份 owner 快照。
+
+    对应 −1 工作流口径：verify_recon 与 initial 分布扫描必须吃同一个快照文件，
+    否则发布闸的 F-03 第二层交叉检查（快照 sha 对四查 balance 输入）无从对起。
+    """
+    receipt_path = root / "balance_receipt.json"
+    receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+    receipt["inputs"]["balances"] = {"path": str(snap.resolve()),
+                                     "size": snap.stat().st_size, "sha256": sha(snap)}
+    write_json(receipt_path, receipt)
+    recon = json.loads((root / "reconciliation_report.json").read_text(encoding="utf-8"))
+    recon["checks"]["balance"]["receipt"]["sha256"] = sha(receipt_path)
+    write_json(root / "reconciliation_report.json", recon)
+    sys.path.insert(0, str(HERE.parent / "report"))
+    from shared_release_receipt import create_bundle
+    create_bundle(root)
+
+
 def add_new_analysis_distribution(root: Path, report: Path) -> None:
     balances = {f"owner-{i:03d}": max(1, int(2_000_000 / (1.035 ** i))) for i in range(240)}
     snap = root / "data/holders_owners.json"; write_json(snap, balances)
+    bind_balance_receipt_to_snapshot(root, snap)
     total = sum(balances.values())
     write_json(root / "supply_truth.json", {"verdict": "PASS", "exit_code": 0,
                                                 "total_supply_raw": str(total),

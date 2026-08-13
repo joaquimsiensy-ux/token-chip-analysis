@@ -724,6 +724,55 @@ def check_adversarial(d: dict, errors: list[str]):
         errors.append("对抗复核 release_decision 未放行")
 
 
+def check_distribution_snapshot_binding(case_dir: Path, data: dict, chain, errors: list[str]):
+    """分布扫描用的 owner 快照，必须就是四查真正核过的那一份。
+
+    只对 sha256，不对 path：Solana 的 observation bundle 里记的是文件名（basename），
+    EVM 的四查收据里记的是喂给 verify_recon 的绝对路径，两边路径形态天生不同，
+    比 path 只会误伤。data_map 只能证明"这份文件被登记过"，登记多份就绕过去了；
+    真正堵住"同值换仓"（总和对得上、owner 分配是编的）只能靠这一条哈希等值。
+
+    只在 new-analysis profile 跑：存量终态案走的是 independent-audit，不会被追溯卡死。
+    """
+    scan = data.get("distribution_scan.json")
+    binding = scan.get("input_binding") if isinstance(scan, dict) else None
+    snapshot = binding.get("snapshot") if isinstance(binding, dict) else None
+    snapshot_sha = snapshot.get("sha256") if isinstance(snapshot, dict) else None
+    if not isinstance(snapshot_sha, str) or not snapshot_sha:
+        errors.append("分布快照未绑定对账 owner 快照: distribution_scan 缺 "
+                      "input_binding.snapshot.sha256")
+        return
+    try:
+        from shared_release_receipt import chain_family
+        family = chain_family(chain)
+    except Exception as exc:
+        errors.append(f"分布快照未绑定对账 owner 快照: 无法判定链族 {chain!r}: {exc}")
+        return
+    key, label, reader = {
+        "evm": ("balance", "四查 balance 收据的 inputs.balances",
+                lambda r: ((r.get("inputs") or {}).get("balances") or {}).get("sha256")),
+        "solana": ("supply", "observation bundle 的 holder_outputs.owners",
+                   lambda r: ((r.get("holder_outputs") or {}).get("owners") or {}).get("sha256")),
+    }[family]
+    recon = data.get("reconciliation_report.json")
+    checks = recon.get("checks") if isinstance(recon, dict) else None
+    item = checks.get(key) if isinstance(checks, dict) else None
+    ref = item.get("receipt") if isinstance(item, dict) else None
+    rel = ref.get("path") if isinstance(ref, dict) else None
+    path = regular_case_path(case_dir, rel) if isinstance(rel, str) and rel else None
+    if path is None:
+        errors.append(f"分布快照未绑定对账 owner 快照: 找不到四查 {key} 收据文件")
+        return
+    receipt = load_json(path, errors)
+    bound = reader(receipt) if isinstance(receipt, dict) else None
+    if not isinstance(bound, str) or not bound:
+        errors.append(f"分布快照未绑定对账 owner 快照: {label} 缺 sha256")
+        return
+    if bound.lower() != snapshot_sha.lower():
+        errors.append(f"分布快照未绑定对账 owner 快照: distribution_scan 的快照 sha256 "
+                      f"与{label}不一致（同值换仓也逃不掉）")
+
+
 def check_chart(d: dict, errors: list[str]):
     required = (
         "same_grain_series", "last_day_snapshot_match", "supply_closed",
@@ -755,7 +804,7 @@ def run(case_dir: Path, report: Path | None, *, profile="independent-audit"):
         p = case_dir / name
         if p.suffix == ".json" and p.is_file():
             data[name] = load_json(p, errors)
-    check_formal_case_chain(data, errors)
+    case_chain = check_formal_case_chain(data, errors)
     if "audit_input_manifest.json" in data:
         check_manifest(case_dir, data["audit_input_manifest.json"], errors)
     try:
@@ -790,6 +839,8 @@ def run(case_dir: Path, report: Path | None, *, profile="independent-audit"):
                               case_dir, "distribution_scan.json", "initial"))
         except Exception as exc:
             errors.append(f"持仓分布 initial scan validator 失败: {exc}")
+        if case_chain:
+            check_distribution_snapshot_binding(case_dir, data, case_chain, errors)
     if "historical_chart" in claim_types:
         chart_path = case_dir / "chart_reconciliation.json"
         if not chart_path.is_file():

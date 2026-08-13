@@ -110,12 +110,30 @@ def rebind_case_inputs(old_root, new_root):
     shared_path.write_text(json.dumps(shared, ensure_ascii=False), encoding="utf-8")
 
 
+def bind_balance_receipt_to_snapshot(d, snap):
+    """四查 balance 收据与分布扫描必须吃同一份 owner 快照（发布闸 F-03 第二层交叉检查）。"""
+    receipt_path = Path(d, "balance_receipt.json")
+    receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+    receipt["inputs"]["balances"] = {"path": str(snap.resolve()),
+                                     "size": snap.stat().st_size, "sha256": sha(snap)}
+    receipt_path.write_text(json.dumps(receipt, ensure_ascii=False), encoding="utf-8")
+    recon_path = Path(d, "reconciliation_report.json")
+    recon = json.loads(recon_path.read_text(encoding="utf-8"))
+    recon["checks"]["balance"]["receipt"]["sha256"] = sha(receipt_path)
+    recon_path.write_text(json.dumps(recon, ensure_ascii=False), encoding="utf-8")
+    shared_path = Path(d, "shared_release_receipt.json")
+    shared = json.loads(shared_path.read_text(encoding="utf-8"))
+    shared["inputs"]["reconciliation_report.json"]["sha256"] = sha(recon_path)
+    shared_path.write_text(json.dumps(shared, ensure_ascii=False), encoding="utf-8")
+
+
 def add_distribution_initial(d):
     Path(d, "data").mkdir(exist_ok=True)
     balances = {f"owner-{i:03d}": max(1, int(2_000_000 / (1.035 ** i))) for i in range(240)}
     total = sum(balances.values())
     snap = Path(d, "data/holders_owners.json")
     snap.write_text(json.dumps(balances), encoding="utf-8")
+    bind_balance_receipt_to_snapshot(d, snap)
     wj(d, "candidate_screening.json", {"schema": "candidate-screening/v1",
                                          "auto_excluded_candidate": []})
     wj(d, "supply_truth.json", {"verdict": "PASS", "exit_code": 0,

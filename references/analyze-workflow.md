@@ -93,6 +93,11 @@
    `charts/distribution_stage1.png`。JSON 进入 READY `handoff/v3`，verify 会重新派生五桶并重算；
    工作图不进 seal，也不进报告。initial 只绑定快照、来源收据、排除派生链、算法和阈值，
    不绑定 handoff manifest。
+   **喂它的 owner 快照必须与 A2 四查里 `verify_recon --balances` 吃的是同一个文件**
+   （EVM 通常是 `balances_final.json`，Solana 是 scanner 自己产的
+   `data/holders_owners.json`）：发布闸 new-analysis 会拿分布快照的 sha256 去对四查
+   `balance` 收据的 `inputs.balances`（Solana 对 observation bundle 的
+   `holder_outputs.owners`），喂两份不同的文件即便总和相同也会被判"同值换仓"而拒。
 6. **EF-3C 候选裁决与实体溯源**：两扫描器全部候选经 `adjudication_validator.py`
    成员级裁决，再对临时实体表跑 `entity_source_trace.py`；新支路回裁决环，EF-3C 归 −2。
 7. **EF-1／EF-2 门禁**：临时实体成形后、freeze 前落

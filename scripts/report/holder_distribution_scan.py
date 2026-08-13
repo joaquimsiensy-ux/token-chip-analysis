@@ -14,8 +14,10 @@ sqrt(2)，平移复算使用半档。私人主箱低于 100 个 owner 时切换�
 定标，不构成现役防伪链 fixture。TROLL soltx 元数据 launch_covered=false，未纳入保留集。
 
 scan 重新派生五桶并生成 distribution-scan/v1；validate 从 input_binding 读取上游文件，
-重新派生、重新分箱并逐项比对，不信产物自报。initial 不绑定 handoff manifest；final
-才绑定 READY manifest、身份收据、A4 seal、entity_freeze revision 和三账。
+重新派生、重新分箱并逐项比对，不信产物自报。owner 快照必须对冻结 total_supply_raw
+双向闭合，容差 10bps 写死在本脚本、与供给真值那把容差各是各的旋钮。initial 不绑定
+handoff manifest，其 upstream_receipts 是记录性收据（可以缺席不记，记了就逐项三验）；
+final 才绑定 READY manifest、身份收据、A4 seal、entity_freeze revision 和三账。
 """
 from __future__ import annotations
 
@@ -43,6 +45,10 @@ MIN_BIN_OWNERS = 5
 SHIFT_JACCARD_MIN = 0.8
 SAMPLE_LINE = 100
 DISCLOSURE_PCT = 1.0
+# 快照对冻结 total supply 的双向闭合容差，单位 bps（万分之一）。
+# 这是本闸自己的旋钮，独立写死，**不读 supply_truth 收据里的 tolerance_bps**：
+# 供给真值那边即便按批准的 waiver 放宽容差，也不得连带把这里的闭合闸一起松动。
+SNAPSHOT_CLOSURE_TOLERANCE_BPS = 10
 FAMILY_ALPHA = 0.01
 TOP_K_BASELINES = {1: 20.0, 3: 30.0, 5: 40.0, 10: 50.0}
 HHI_BASELINE = 0.05
@@ -500,8 +506,15 @@ def build_scan(case_dir: Path, stage: str, snapshot_arg: str | None):
     balances = parse_snapshot(snapshot)
     data_map = verify_data_map(case_dir, snapshot_rel, snapshot)
     supply, total, net = load_supply(case_dir)
-    if sum(balances.values()) > total:
-        raise ValueError("快照 raw 和大于冻结 total supply")
+    snapshot_sum = sum(balances.values())
+    # 快照必须对 total_supply_raw **双向**闭合：只拦"多出来"挡不住"少了 99%"的残缺
+    # 快照，头部集中度和鼓包会被整段藏掉。闭合分母是 total 不是 net——五桶分区物理上
+    # 含 burn_sentinel（dead 地址就在快照里），net 只用来算分布百分比；对 net 闭合会
+    # 误杀 mint=100/burn=20 这类合法 dead-sink 案。整数交叉乘法，18 位面额的大整数
+    # 全程不经过 float。
+    if abs(snapshot_sum - total) * 10000 > total * SNAPSHOT_CLOSURE_TOLERANCE_BPS:
+        raise ValueError(f"快照 raw 和未对冻结 total supply 闭合: 快照={snapshot_sum} "
+                         f"total={total} 容差={SNAPSHOT_CLOSURE_TOLERANCE_BPS}bps")
     partition, bucket_raw, private_supply, dust_raw, derivation = derive_partition(
         case_dir, balances, stage)
     result = analyze(partition, bucket_raw, private_supply, total, net)
@@ -520,8 +533,14 @@ def build_scan(case_dir: Path, stage: str, snapshot_arg: str | None):
     if stage == "initial":
         receipts = []
         for rel in ("channels_preflight.json", "holders_snapshot_meta.json"):
-            try: receipts.append(rel_entry(case_dir, safe_file(case_dir, rel, "上游收据")))
-            except ValueError: pass
+            candidate = case_dir / rel
+            # 记录性收据：案根压根没有这份文件＝合法缺席，跳过不记（split-run 下 −1 出
+            # initial scan 时，−2 还没把 preflight 副本拷进案根）。但文件**在场却非法**
+            # （符号链接、指到案外、不是普通文件）必须炸——旧版一律 except: pass 会把
+            # 掉包过的收据静默漂白成"没记"。
+            if not candidate.exists() and not candidate.is_symlink():
+                continue
+            receipts.append(rel_entry(case_dir, safe_file(case_dir, rel, "上游收据")))
         common["upstream_receipts"] = receipts
         common["handoff_manifest"] = None
     else:
@@ -766,6 +785,17 @@ def validate_scan(case: Path, scan_rel: str, expected_stage: str | None = None) 
         _verify_bound(case, binding["supply_truth"], "供给真值")
         for entry in binding.get("exclusion_sources", []):
             _verify_bound(case, entry, "排除来源")
+        # 上游收据是"记录性收据"：可以不记，但**记了就得逐项三验**（存在＋sha256＋size）。
+        # 校验对象是 scan 里已记录的条目，**不是磁盘上现有的文件**——方向写反（要求磁盘上
+        # 有的都必须被记）会把 6.39.5 修掉的 split-run 三闸死环原样修回来。
+        receipts = binding.get("upstream_receipts")
+        if receipts is not None:
+            if not isinstance(receipts, list):
+                raise ValueError("upstream_receipts 不是数组")
+            for entry in receipts:
+                if not isinstance(entry, dict):
+                    raise ValueError("upstream_receipts 条目不是对象")
+                _verify_bound(case, entry, "上游收据")
         if binding.get("thresholds_sha256") != canonical_sha(threshold_snapshot()):
             errors.append("阈值快照哈希不符")
         if binding.get("recognition_rules") != {"version": RECOGNITION_RULE_VERSION,

@@ -298,7 +298,13 @@ TERMINAL = {
 
 ## 6. distribution-scan/v1
 
-本产物只计算冻结 cutoff 的当前 owner 快照。`initial` 绑定上游收据但不绑定 handoff manifest。`final` 绑定 READY `handoff/v3`、身份快照收据、当前 A4 seal、当前 entity freeze revision、三账、initial scan 和上一轮 final scan。
+本产物只计算冻结 cutoff 的当前 owner 快照。owner 快照必须对冻结 `total_supply_raw` **双向闭合**（缺口和超发同拦），容差 `10` bps 写死在扫描脚本里，与供给真值那把 `--tolerance-bps` 各是各的旋钮——供给真值按批准的 waiver 放宽，不会连带松动这里。闭合分母是 `total` 不是 `net`：五桶分区物理上包含 `burn_sentinel`，dead 地址就在快照里；按 `net` 闭合会误杀 mint 100／burn 20 这类合法 dead-sink 案。`net` 只用于分布百分比。
+
+`initial` 记录上游收据但不绑定 handoff manifest。上游收据是 **optional 的记录性收据**：案根没有那份文件就不记（split-run 下 −1 出 initial scan 时，−2 还没把 preflight 副本拷进案根），**在场即三验**——凡是记进 `upstream_receipts` 的条目，validate 都要核实文件存在且 sha256／size 与记录一致。校验方向只有"记录项 → 磁盘"这一条，反过来要求"磁盘上有的都得记"会把 6.39.5 修掉的三闸死环修回来。文件在场却非法（符号链接、指到案外、不是普通文件）时生产侧直接 exit 2，不做静默跳过。
+
+分布扫描吃的那份 owner 快照，必须就是四查真正核过的那一份：EVM 比对四查 `balance` 收据的 `inputs.balances.sha256`，Solana 比对 observation bundle 的 `holder_outputs.owners.sha256`，**只比 sha256 不比 path**（两边路径形态本来就不同）。该交叉检查由 `audit_release_gate.py --profile new-analysis` 执行，不放进 validate，避免存量终态案被追溯卡死。
+
+`final` 绑定 READY `handoff/v3`、身份快照收据、当前 A4 seal、当前 entity freeze revision、三账、initial scan 和上一轮 final scan。
 
 固定阈值如下：分箱倍率为 `sqrt(2)`，范围为私人可入箱供应的 `0.000001%` 至 `100%`，dust 线等于最低分箱边界，经济门为净供应 `2%`，低计数档至少 `5` 个 owner，基础分箱与平移分箱成员 Jaccard 至少 `0.8`，样本线为 `100` 个私人主箱 owner，未识别合约披露线为净供应 `1%`。鼓包检验的族错误率为 `1%`。头部基线为 top-1 `20%`、top-3 `30%`、top-5 `40%`、top-10 `50%`、HHI `0.05` 和相邻质量比 `8`。
 
@@ -333,7 +339,7 @@ TERMINAL = {
     "thresholds_sha256": sha256,
     "recognition_rules": {"version", "sha256"},
     "labels_manifest": {"path", "sha256", "size"}|null,
-    "upstream_receipts": [{"path", "sha256", "size"}],
+    "upstream_receipts": [{"path", "sha256", "size"}],   // optional 记录性收据，在场即三验
     "handoff_manifest": null|{"path", "sha256", "size", "run_id"},
     "final_bindings": {filename: {"path", "sha256", "size"}},
     "entity_freeze_revision": int, "a4_seal_revision": int
@@ -376,7 +382,7 @@ TERMINAL = {
 }
 ```
 
-`data_broken` 产物只保留 schema、stage、时间、exit code、阈值、verdict、reason、errors 和空异常簇，脚本返回 2。`low_sample` 必须带完整逐址分类、top-k、HHI、等额组和分区闭合结果，脚本返回 0。validate 会从绑定文件重新派生五桶、重新计算全部统计量并比较语义字段。
+`data_broken` 产物只保留 schema、stage、时间、exit code、阈值、verdict、reason、errors 和空异常簇，脚本返回 2。`low_sample` 必须带完整逐址分类、top-k、HHI、等额组和分区闭合结果，脚本返回 0。validate 会从绑定文件重新派生五桶、重新计算全部统计量并比较语义字段，并对 `upstream_receipts` 里**已记录**的每一项做存在＋sha256＋size 三验（记录性收据，缺席合法、在场即验）；`upstream_receipts` 本身不进语义逐位比较（6.39.5 三闸死环修复）。
 
 ## 7. distribution-explanation/v1
 
