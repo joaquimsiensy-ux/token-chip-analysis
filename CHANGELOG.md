@@ -10,6 +10,7 @@
 
 ## 版本索引（活跃窗口，新在上；每版一行，详情见下方对应条目）
 
+- **6.39.5**（2026-08-12）distribution 语义重验剔除记录性 upstream_receipts（split-run G8/audit_release_gate 三闸死环修复，TAG 案实撞；同步补 6.39.4 漏 bump 的 pyproject）
 - **6.39.4**（2026-08-11）provenance 敏感性闸粒度修复：尘埃锚点线（<0.01% 供应不入翻转判定）＋ --acknowledge-flip 翻转书面确认通道（freeze 重放同参还原）
 - **6.39.3**（2026-08-09）accounting_gate 加 --as-of-block 目标块绑定（存量案重跑 tip 漂移死锁修复）
 - **6.39.2**（2026-08-09）entity_source_trace 进货单并列序非确定性修复（freeze 重放对账假阴性）
@@ -37,6 +38,13 @@
 - **6.20.1** 2026-08-05 修 5 处阻断级文档漂移（A4 前禁写报告冲突/easy 残留/惯犯回灌 docstring/批量预采集残留/旧 Par 路线历史降级）＋docs_lint 增中文禁词与 Python module docstring 扫描
 
 更早版本（6.20.0 及以前）详见 `archive/CHANGELOG-archive.md`。
+
+## [6.39.5] - 2026-08-12 — distribution 语义重验假阳性修复（split-run 三闸死环）
+
+- **坑**：initial `distribution_scan.json` 由 −1 生成（案根尚无 preflight 副本）；−2 按 G8 同目录要求把 `channels_preflight.json` 拷入案根；A5 `audit_release_gate` 重验 initial 时重算收录该副本 → `upstream_receipts` 与存档漂移报"语义与独立重算不一致"。G8 与该重验对同一文件的案根存在性要求相反，`build_html --state` 又锁死案根布局——三闸物理互斥，split-run 案必卡（TAG 案实撞，用户批准修复）。
+- **修**：`holder_distribution_scan.semantic_payload()` 把记录性收据 `input_binding.upstream_receipts` 剔出语义比较（同款先例=labels_manifest.path 剔除）。收据不参与五桶分区/阈值/判定计算；final 对 handoff_manifest 的强绑定由 validate_scan 显式检查承担，不受影响。
+- 顺手修存量断链：6.39.4 漏 bump pyproject（test_version_consistency 红）。
+- 成本：A5 卡闸排查约 20 轮 Bash；质量：SUITE 全绿后案子交付恢复，无判定语义变化。
 
 ## [6.39.4] - 2026-08-11 — provenance 敏感性闸粒度修复（MOG 案随案落地）
 

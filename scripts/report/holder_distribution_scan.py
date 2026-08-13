@@ -558,12 +558,19 @@ def semantic_payload(scan: dict):
             "base_bins", "shifted_bins", "concentration", "disclosure_required")
     payload = {k: scan.get(k) for k in keys}
     binding = payload.get("input_binding")
-    if isinstance(binding, dict) and isinstance(binding.get("labels_manifest"), dict):
-        # labels_manifest 的语义身份是内容哈希；path 是宿主 checkout 的绝对路径，
-        # 换 checkout 位置验证同一案目录时会漂移，不得进语义比较（内容漂移仍由 sha256 抓）
+    if isinstance(binding, dict):
         binding = dict(binding)
-        binding["labels_manifest"] = {k: v for k, v in binding["labels_manifest"].items()
-                                      if k != "path"}
+        if isinstance(binding.get("labels_manifest"), dict):
+            # labels_manifest 的语义身份是内容哈希；path 是宿主 checkout 的绝对路径，
+            # 换 checkout 位置验证同一案目录时会漂移，不得进语义比较（内容漂移仍由 sha256 抓）
+            binding["labels_manifest"] = {k: v for k, v in binding["labels_manifest"].items()
+                                          if k != "path"}
+        # upstream_receipts 是记录性收据（initial 专有）：split-run 下 initial scan 由 −1 生成，
+        # 彼时案根尚无 −2 为 G8 拷入的 channels_preflight.json 副本；A5 重验时副本被重算收录，
+        # 造成"分区语义逐位一致、仅收据清单漂移"的假阳性，且与 G8 的案根同目录要求物理互斥
+        # （TAG 2026-08-12 实撞，用户批准修复）。收据不参与分区/阈值/判定计算，剔出语义比较；
+        # final 阶段对 handoff_manifest 的强绑定由 validate_scan 的显式检查承担，不经此路径。
+        binding.pop("upstream_receipts", None)
         payload["input_binding"] = binding
     return payload
 
