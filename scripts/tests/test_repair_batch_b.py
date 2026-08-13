@@ -68,7 +68,8 @@ def make_case(root: Path, balances: dict[str, int], *, mint: int | None = None,
 
     默认写真实生产键（onchain_total_supply/replay_net）而非影子键；
     shadow_only=True 只写 total_supply_raw/net_supply_raw 影子键，用于 P1-B2 反例；
-    with_replay_stats=True 额外落 replay_stats.json（EVM replay 主线，承载 mint_total）。
+    with_replay_stats=True 落 **data/replay_stats.json 并由收据 inputs.replay_stats 绑定**
+    ——照真实 APU 收据形态（真案 9/10 把 replay_stats 放子目录、由收据绑定，N-B1）。
     """
     snap = root / "data/holders_owners.json"
     write_json(snap, {owner: str(raw) for owner, raw in balances.items()})
@@ -76,7 +77,10 @@ def make_case(root: Path, balances: dict[str, int], *, mint: int | None = None,
     mint = snapshot_sum if mint is None else mint
     onchain = mint if onchain is None else onchain
     net = onchain if net is None else net
-    burn = mint - onchain
+    # burn 的真实定义是 mint − replay_net（两形态通用）：form1 下 onchain==mint−burn 与之等价；
+    # form2 下 onchain==mint、burn 仍是 mint−replay_net。写成 mint−onchain 会让 form2 夹具
+    # 的 burn 恒为 0，与收据 replay_net 自相矛盾（真实 APU 收据验算：mint−replay_net==burn_total）。
+    burn = mint - net
     if shadow_only:
         supply = {"schema": "supply-truth/v1", "verdict": "PASS", "exit_code": 0,
                   "total_supply_raw": str(mint), "net_supply_raw": str(net)}
@@ -86,10 +90,14 @@ def make_case(root: Path, balances: dict[str, int], *, mint: int | None = None,
                   "mint_total": (str(mint) if not with_replay_stats else None),
                   "burn_total": (str(burn) if not with_replay_stats else None),
                   "decision_rule": decision_rule, "burn_form": burn_form}
-    write_json(root / "supply_truth.json", supply)
     if with_replay_stats and chain != "solana":
-        write_json(root / "replay_stats.json",
-                   {"mint_total_wei": str(mint), "burn_total_wei": str(burn)})
+        # 真案形态：实物在 data/ 子目录，收据 inputs 绑定它（不是案根裸件）
+        stats = root / "data/replay_stats.json"
+        write_json(stats, {"mint_total_wei": str(mint), "burn_total_wei": str(burn)})
+        supply["inputs"] = {"replay_stats": {"path": str(stats.resolve()),
+                                             "size": stats.stat().st_size,
+                                             "sha256": sha(stats)}}
+    write_json(root / "supply_truth.json", supply)
     write_json(root / "data_map.json", {
         "schema": "data-map/v1",
         "files": [{"path": "data/holders_owners.json", "sha256": sha(snap)}]})
@@ -159,7 +167,7 @@ def test_p1b3_form1_real_receipt() -> None:
               and den.get("total_supply_raw") == str(IQ_MINT)          # 展示口径=mint
               and den.get("net_supply_raw") == str(onchain)            # 流通=onchain
               and isinstance(binding.get("mint_closure_anchor"), dict)
-              and binding["mint_closure_anchor"].get("source") == "replay_mint",
+              and binding["mint_closure_anchor"].get("source") == "bound_replay_mint",
               f"rc={p.returncode} den={den} anchor={binding.get('mint_closure_anchor')} {p.stdout}{p.stderr}")
         # 篡改：私人少 1 wei（sum≠mint）→ 拒
         rows["p000"] -= 1
@@ -252,14 +260,137 @@ def test_p2b4_exact_closure_window() -> None:
 
 
 def test_f03_closure_anchor_no_shadow_dependency() -> None:
-    """守卫：闭合分母走 mint_closure_anchor，源码不再从影子键取闭合总量。"""
-    src = SCAN.read_text(encoding="utf-8")
-    has_anchor = "mint_closure_anchor" in src and hasattr(dist, "mint_closure_anchor")
-    # 闭合比较行不得直接读 total_supply_raw/frozen 影子键
-    closure_reads_shadow = re.search(r"snapshot_sum.*(total_supply_raw|frozen_total_supply)", src)
-    check("F-03/1 闭合分母走 mint_anchor 且不依赖影子键",
-          has_anchor and not closure_reads_shadow,
-          f"has_anchor={has_anchor} closure_reads_shadow={bool(closure_reads_shadow)}")
+    """守卫（N-B3 加强）：不再只扫比较行，改为扫 mint_closure_anchor 函数体＋功能反例。
+
+    功能反例是关键：造一个"影子键 total_supply_raw 恰等于快照和、且没有任何合法锚点来源"
+    的案子——正确行为是拿不到锚点直接拒；若锚点允许回退影子键，闭合就会通过（rc=0）。
+    """
+    import inspect
+    body = inspect.getsource(dist.mint_closure_anchor) + inspect.getsource(dist._bound_replay_stats)
+    shadow_in_anchor = re.search(r"(get|\[)\s*\(?\s*[\"'](total_supply_raw|frozen_total_supply_raw)", body)
+    check("N-B3 锚点函数体内不出现影子键取值", not shadow_in_anchor,
+          f"锚点函数体命中影子键取值: {shadow_in_anchor.group(0) if shadow_in_anchor else ''}")
+    with tempfile.TemporaryDirectory() as td:
+        d = Path(td)
+        rows = smooth(240)
+        total = sum(rows.values())
+        snap = d / "data/holders_owners.json"
+        write_json(snap, {k: str(v) for k, v in rows.items()})
+        # 影子键 == 快照和；真实键 onchain 缺席、无 mint_total、无绑定 replay_stats
+        write_json(d / "supply_truth.json", {"schema": "supply-truth/v1", "verdict": "PASS",
+                                             "exit_code": 0, "chain": "bsc",
+                                             "total_supply_raw": str(total),
+                                             "net_supply_raw": str(total)})
+        write_json(d / "data_map.json", {"files": [{"path": "data/holders_owners.json",
+                                                    "sha256": sha(snap)}]})
+        write_json(d / "candidate_screening.json", {"auto_excluded_candidate": []})
+        p = run_scan(d)
+        # load_supply 允许影子键兜 onchain（展示用），但闭合锚点必须走 supply_truth_onchain
+        # 而非影子键——这里断言"锚点来源不是影子键"，即便闭合数值恰好相等也要记明来源。
+        out = json.loads((d / "distribution_scan.json").read_text()) \
+            if (d / "distribution_scan.json").is_file() else {}
+        src_name = ((out.get("input_binding") or {}).get("mint_closure_anchor") or {}).get("source")
+        check("N-B3 影子键案的锚点来源不得记为 replay/影子键",
+              p.returncode != 0 or src_name in {"supply_truth_onchain", "supply_truth_mint"},
+              f"rc={p.returncode} source={src_name}")
+
+
+def test_nb1_anchor_prefers_bound_receipt() -> None:
+    """N-B1 攻击面：伪造的案根裸 replay_stats 配抹平快照，必须被拒（案根件不是锚点来源）。"""
+    with tempfile.TemporaryDirectory() as td:
+        d = Path(td)
+        rows = smooth(240)
+        true_mint = sum(rows.values())
+        doctored = dict(rows)
+        for k in sorted(rows)[-5:]:                       # 抹平 5 个最小 owner
+            doctored.pop(k)
+        cut_sum = sum(doctored.values())
+        make_case(d, doctored, mint=true_mint, onchain=true_mint, chain="bsc",
+                  with_replay_stats=True)                 # 收据绑 data/ 真值 mint
+        # 攻击件：案根裸 replay_stats，mint 配合抹平快照
+        write_json(d / "replay_stats.json",
+                   {"mint_total_wei": str(cut_sum), "burn_total_wei": "0"})
+        p = run_scan(d)
+        check("N-B1 攻击面：伪案根 replay_stats+抹平快照被拒", p.returncode == 2,
+              f"rc={p.returncode} {p.stdout}{p.stderr}")
+
+
+def test_nb1_stale_root_file_ignored() -> None:
+    """N-B1 误伤面：案根留一份陈旧 replay_stats，合法案必须照样通过（案根件被忽略）。"""
+    with tempfile.TemporaryDirectory() as td:
+        d = Path(td)
+        rows = smooth(240)
+        total = sum(rows.values())
+        make_case(d, rows, mint=total, onchain=total, chain="bsc", with_replay_stats=True)
+        write_json(d / "replay_stats.json",                # 陈旧件：mint 是真值的两倍
+                   {"mint_total_wei": str(total * 2), "burn_total_wei": "0"})
+        p = run_scan(d)
+        out = json.loads((d / "distribution_scan.json").read_text()) \
+            if (d / "distribution_scan.json").is_file() else {}
+        anchor = (out.get("input_binding") or {}).get("mint_closure_anchor") or {}
+        check("N-B1 误伤面：案根陈旧件被忽略，合法案放行",
+              p.returncode == 0 and anchor.get("source") == "bound_replay_mint"
+              and anchor.get("raw") == str(total),
+              f"rc={p.returncode} anchor={anchor} {p.stdout}{p.stderr}")
+
+
+def test_nb1_bound_stats_cross_check() -> None:
+    """N-B1：绑定的 replay_stats 与收据 replay_net 不自洽（mint−burn≠replay_net）→ 拒。"""
+    with tempfile.TemporaryDirectory() as td:
+        d = Path(td)
+        rows = smooth(240)
+        total = sum(rows.values())
+        make_case(d, rows, mint=total, onchain=total, chain="bsc", with_replay_stats=True)
+        supply = json.loads((d / "supply_truth.json").read_text())
+        supply["replay_net"] = str(total - 12345)          # 与 mint−burn 不符
+        write_json(d / "supply_truth.json", supply)
+        p = run_scan(d)
+        check("N-B1 绑定 replay_stats 与 replay_net 不自洽被拒", p.returncode == 2,
+              f"rc={p.returncode} {p.stdout}{p.stderr}")
+
+
+def test_nb2_root_stats_symlink_failclosed() -> None:
+    """N-B2：案根 replay_stats.json 是符号链接 → fail-closed exit 2，不再静默换档。"""
+    with tempfile.TemporaryDirectory() as td:
+        d = Path(td) / "case"
+        d.mkdir(parents=True)
+        rows = smooth(240)
+        total = sum(rows.values())
+        make_case(d, rows, mint=total, onchain=total, chain="bsc", with_replay_stats=True)
+        outside = Path(td) / "outside_stats.json"
+        write_json(outside, {"mint_total_wei": str(total), "burn_total_wei": "0"})
+        os.symlink(outside, d / "replay_stats.json")
+        p = run_scan(d)
+        check("N-B2 案根 replay_stats 符号链接 fail-closed",
+              p.returncode == 2 and "在场但非法" in (p.stdout + p.stderr),
+              f"rc={p.returncode} {p.stdout}{p.stderr}")
+
+
+def test_nb3_rounds_snapshot_sha_consistency() -> None:
+    """N-B3：rounds 台账第 2 轮 snapshot_sha 与首轮不同 → validate_rounds_ledger 必报。"""
+    rounds = [{"round_n": 1, "status": "UNEXPLAINED", "snapshot_sha": "a" * 64,
+               "previous_entry_sha256": None}]
+    second = {"round_n": 2, "status": "NORMAL", "snapshot_sha": "b" * 64,
+              "previous_entry_sha256": dist.canonical_sha(rounds[0])}
+    ledger = {"schema": dist.ROUNDS_SCHEMA, "rounds": rounds + [second], "terminal": None}
+    errors = dist.validate_rounds_ledger(ledger)
+    check("N-B3 跨轮 snapshot_sha 不一致必报",
+          any("snapshot_sha" in x for x in errors), str(errors))
+    # 防误伤：一致时不得误报
+    same = dict(second, snapshot_sha="a" * 64)
+    same["previous_entry_sha256"] = dist.canonical_sha(rounds[0])
+    ok_ledger = {"schema": dist.ROUNDS_SCHEMA, "rounds": rounds + [same], "terminal": None}
+    check("N-B3 跨轮 snapshot_sha 一致不误报",
+          not any("snapshot_sha" in x for x in dist.validate_rounds_ledger(ok_ledger)),
+          str(dist.validate_rounds_ledger(ok_ledger)))
+
+
+def test_nb4_docs_denominator_semantics() -> None:
+    """N-B4：denominators.total_supply_raw 语义已变为铸造总量，schema 段必须写明。"""
+    text = (ROOT / "references/scan-schemas.md").read_text(encoding="utf-8")
+    check("N-B4 scan-schemas 写明 total_supply_raw=mint_total（含已销毁）",
+          "含已销毁" in text and "denominators" in text,
+          "scan-schemas.md 未标注 denominators 语义变更")
 
 
 # --------------------------------------------------------------------------
@@ -622,6 +753,12 @@ def main() -> int:
     test_p1b2_shadow_key_cannot_close()
     test_p2b4_exact_closure_window()
     test_f03_closure_anchor_no_shadow_dependency()
+    test_nb1_anchor_prefers_bound_receipt()
+    test_nb1_stale_root_file_ignored()
+    test_nb1_bound_stats_cross_check()
+    test_nb2_root_stats_symlink_failclosed()
+    test_nb3_rounds_snapshot_sha_consistency()
+    test_nb4_docs_denominator_semantics()
     test_f03_gate_evm_same_total_swap()
     test_f03_gate_solana_not_skipped()
     test_fb4_second_layer_failclosed_branches()

@@ -265,3 +265,178 @@ g.check_distribution_snapshot_binding(d, data, "sui", errors)
 - F-B6 的①②可评估后进批 D 台账，③（文档如实写强度差）建议本批就改。
 
 对抗审查完成
+
+---
+
+# 消化轮 1 复核（`394ffbb`）
+
+- **复核对象**：`ee0e8e9 → 394ffbb`，施工方声称 F-B1~F-B7 全关
+- **方式**：只读＋副本变异。钉死副本 `/private/tmp/batchB_probe/r1repo/`，三个主文件与 `git show 394ffbb:` 逐字节相同（scan／gate／test 三处 SAME 已核）。全量 `run_all.py` 在钉死副本上独立复跑 **EXIT=0**
+- **结论**：**7 条全部 CLOSED**；但本轮新引入的闭合锚点自身带出 **4 条新 finding（2×P2＋2×P3）**，需要一个小范围的消化轮 2
+
+| 编号 | 判定 | 依据（实测） |
+|---|---|---|
+| F-B1 | **CLOSED** | 两道独立防线都咬住，且都变异验证过 |
+| F-B2 | **CLOSED** | 容差收到 0，原攻击当场 `data_broken` |
+| F-B3 | **CLOSED** | path 白名单，含"边界外一步"变体 |
+| F-B4 | **CLOSED** | 三条 fail-closed 分支各有定向红线 |
+| F-B5 | **CLOSED** | 口径改正已落 `scan-schemas.md` |
+| F-B6 | **CLOSED**（②按裁定收口） | ①③落地，②覆盖面判定见下 |
+| F-B7 | **CLOSED** | 常量表＋成员检查，不再崩栈 |
+
+## 1. 逐条重放
+
+复现件 `/private/tmp/batchB_probe/recheck1.py`（攻击构造与轮 1 逐字相同，只按新夹具 API 改了 `make_case` 的参数名）：
+
+```
+[CLOSED] F-B1 生产侧：final 换仓快照  rc=2 BLOCK: distribution data_broken: final scan 快照与绑定的
+         initial scan 快照不一致（final 轮不得更换 owner 快照）: initial=a195c14f4462…
+[CLOSED] F-B1 合法案仍放行（防误伤）  []
+[CLOSED] F-B1 发布闸终态分支：手改终态快照 sha  ['分布快照未绑定对账 owner 快照: 终态 final scan 的
+         快照 sha256 与四查 balance 收据的 inputs.balances不一致（final 轮换仓/抹平快照逃不掉）']
+[CLOSED] F-B2 原攻击（锚点不动抹平快照）  原案 verdict=ABNORMAL_SHAPE/rc=0 → 抹平后 rc=2
+[CLOSED] F-B3 记录项换成案内别的真文件  ["上游收据 path 不在白名单 (…): supply_truth.json"]
+[CLOSED] F-B3 边界外一步：白名单名加 ./ 前缀  ["上游收据 path 不在白名单 (…): ./channels_preflight.json"]
+[CLOSED] F-B7 未登记链族不再崩栈  ["…未登记链族 'sui' 的快照绑定口径"]
+```
+
+- **F-B1** 关了两次：生产侧 `build_scan` final 分支强制"final 快照 sha == 绑定的 initial scan 快照 sha"，发布闸再把**终态 final scan** 也纳入同一条四查等值比对。我另做了第二道独立验证——先合法产完整案（gate 零报错），再**手改终态 scan 里记的快照 sha**，发布闸精确报出"终态 final"那条。轮 1 的端到端 BYPASS 不复存在。
+- **F-B2** 死于零容差：删任何一个 owner 立刻破坏逐 wei 闭合。原攻击的 0.005bps 缺口不再有窗口可钻。
+- **F-B4** 由 `test_fb4_second_layer_failclosed_branches` 三条定向用例接管；我把 M12 变异（找不到四查收据→静默 return）重放，**变红**（轮 1 时它能穿过全量 suite）。
+- **F-B5** 已在 `scan-schemas.md` 写明"重验须重跑当前版本生产者…不闭合按 `data_broken` 拒收＝刻意收紧不是回归"，正是我建议的口径。
+
+## 2. 特别盘点 a：mint 锚点落地态（我自己那条错判的更正）
+
+**我轮 1 视角⑤ 判"total 锚未发现误伤"是错的。** 我当时只测了合成 dead-sink，没测过真实"真 `_burn`"案。用同级工作区真案产物**独立复算**（不看工单数字，自己读 `balances_final.json` + `replay_stats.json` 重算）：
+
+| 案 | owners | sum(快照含 sink 行) | mint_total | sum==mint | mint−burn | sum==mint−burn |
+|---|---:|---|---|:-:|---|:-:|
+| APU | 32,635 | 420690000000000000000000000000 | 同左 | ✅ | 337889146346088792653960057820 | ❌ |
+| IQ | 4,127 | 31082094105963223790329250162 | 同左 | ✅ | 23038913286553224147057740625 | ❌ |
+| KOGE | 82,518 | 5000000000000000000000000 | 同左 | ✅ | 3379997186850493127129576 | ❌ |
+
+**三案逐位与工单表一致，独立复现成立。** IQ 的 `0x0` 持 8.043e27、KOGE 的 `0x0` 持 1.62e24、APU 的 `dead` 持 8.28e28——快照确实带 sink 行。所以旧的 onchain/total 锚点会把 IQ（销毁 25.9%）、KOGE（销毁 32.4%）整类真 `_burn` 币按 `data_broken` 误杀，**锚点翻案成立，我的原判被推翻**。另核 APU 的真实收据：`onchain_total_supply == mint_total`、`replay_net == mint−burn`（form2 语义），工单表头把 onchain 写成 `mint−burn` 是笔误，不影响结论。
+
+**两条误伤防线在 mint 锚下仍有效（实测）**：
+- 我轮 1 的 dead-sink 20% 绿例（sum=mint≠net）重放 → `rc=0 / NORMAL_SHAPE`，`denominators` 与 `burn_sentinel` 都对；
+- M3 族变异（把锚点从 mint 换成 net）→ **3 条红**（form1 真实收据、form2 真实收据、合成 dead-sink 全部被误杀并报警）。
+- F-B2 攻击在容差 0 下真死（见上）。
+
+## 3. 特别盘点 b：F-B6② 覆盖面裁定
+
+**裁定：本轮可以收口，不立 finding；完整端到端保留在批 D 台账。** 理由三条：
+
+1. 交付的不是纯内存桩——`_solana_case` 把 `supply_receipt.json` 与 `dist_rounds/round_1/distribution_scan.json` **真落盘**，`regular_case_path`／`load_json`／路径遏制这些真实机制都被走到；只有 recon wrapper 与 initial scan 两个 dict 是手搓的。
+2. 覆盖了第二层 Solana 侧全部四条判定路径：sha 相符放行、initial 换仓拒、**终态 final 换仓拒**（F-B1 的 Solana 半边）、bundle 缺 `owners` 绑定拒。
+3. 我做了一次"新校验删掉即红"抽查：把发布闸终态分支改成恒不报错 → 先红的正是 `F-03/2 Solana 终态 final 换仓被拒`，说明这层夹具**确实在钉生产代码**，不是摆设。
+
+保留意见（不阻塞）：`chain_family` 到 `run()` 的这一段仍是 Solana 侧唯一没被真实案走过的接缝，加上 F-B6 已如实标注的"Solana 无实物锚"，两条一起留批 D。
+
+## 4. 特别盘点 c：新增测试变异抽查
+
+`/private/tmp/batchB_probe/mutate_r1.py`，8 条变异逐条注入后还原：
+
+| 变异 | 结果 |
+|---|---|
+| N1 final 绑 initial 快照检查删除 | 变红（`P0-B1 final 换仓快照被拒`） |
+| N2 发布闸终态分支改恒不报错 | 变红（`Solana 终态 final 换仓被拒`） |
+| N4 上游收据白名单删除 | 变红（`P2-B5`） |
+| N5 容差 0 放回 10bps | 变红（2 条） |
+| N6 闭合锚点回退成 onchain | 变红（`P1-B3 form1 真实收据`） |
+| N8 第二层 M12 分支静默放过 | 变红（`F-B4/M12`） |
+| **N3 rounds 跨轮 `snapshot_sha` 一致性检查删除** | **全量 suite 仍全绿 → 见 N-B3** |
+| **N7 锚点允许回退到影子键 `total_supply_raw`** | **仍全绿 → 见 N-B3** |
+
+裁判点名的三处（final 绑定／mint 闭合／白名单）＋F-B4 三分支**确认删掉即红，非"为绿而绿"**。
+
+**绿例误伤与断言强度**：钉死副本全量 `run_all` EXIT=0，无既有绿例被打掉。测试 diff 里没有 `assert` 被删改，只有新增。唯一需要记录的口径变动是 `test_a4_gate.add_distribution_initial` 改用案内真实 `balances_final.json`（1 owner）当快照，该案因此从"完整形态评估"落到 `low_sample` 终态——按批 A"夹具重绑等效重跑生产者"的先例这是**保真而非削弱**（原来那份 240-owner 合成快照与案根 replay 产物本就冲突），且完整形态评估路径仍由 p105 那条链覆盖（我的复核实测该案 final verdict = `NORMAL_SHAPE` 且发布闸零报错）。
+
+## 5. 本轮新 finding
+
+### N-B1 —— P2 —— 闭合锚点优先读**未被任何收据绑定**的案根 `replay_stats.json`
+
+**一句话**：新的 `mint_closure_anchor` 取值顺序把"案根硬编码文件名 `replay_stats.json`"排在第一，把已被四查链验证的 `supply_truth.mint_total` 排在后面——分母这个新的关键字段回到了"自己报自己验"。
+
+**实测（攻击面）**：抹平快照（删 5 个最小 owner）＋在案根丢一份配套的 `replay_stats.json`，收据里的真值 mint 与 `data/replay_stats.json` 都保持真实：
+
+```
+   收据 supply_truth.mint_total = 59127382（真值）
+   data/replay_stats.mint       = 59127382（收据 inputs 常见绑定位置）
+   案根 replay_stats.mint       = 59124503（未绑定，与抹平快照配套）
+   抹平快照 sum = 59124503（少 5 个 owner）
+   scan rc=0  锚点={'source': 'replay_mint', 'raw': '59124503', …}
+   → 抹平快照凭未绑定的案根文件通过闭合
+```
+
+**实测（误伤面，更要命）**：案根留一份陈旧／异 cutoff 的 `replay_stats.json`，**合法快照直接被拒**：
+
+```
+   合法快照 + 案根陈旧 replay_stats → rc=2
+   BLOCK: distribution data_broken: 快照 raw 和未对铸造总量 mint 精确闭合:
+          快照=59127382 mint=118254764（replay_mint）容差=0bps
+```
+
+**为什么误伤面是真的**：真实案根本不把 replay_stats 放在案根。我扫了 9 个真案——IQ／QUQ／SQD／EGL1／BUILD／PING／BANANAS31／SIREN 全在 `data/`，KOGE 在 `data/replay/`，**只有 APU 在案根（且案根与 `data/` 两份并存，眼下 sha 相同纯属运气）**。也就是说施工方只在唯一一个"案根有"的案子上验证了主线取值路径，其余 8 个案子实际走的是 fallback ②。
+
+**范围诚实标注**：这**不是**正式发布路径的新绕闸——发布闸仍把 initial 与终态 final 的快照 sha 双双钉在四查 `inputs.balances` 上，抹平快照要上报告仍得把四查收据一起伪造（F-12 既定边界）。暴露面是 −1 分段产物、`handoff_manifest` 与 `a4_gate` 的重验路径，以及上面那条对全体存量案生效的误伤。
+
+**建议修法**：取值顺序倒过来并钉绑定——主源取 `supply_truth` 收据的 `mint_total`（它已由 `_bound_replay_totals` 对回收据 `inputs.replay_stats` 绑定的实物，且被 `replay_net == mint−burn` 交叉验过）；若仍要读 replay_stats 实物，就**读收据 `inputs.replay_stats` 指向的那份**，不要读硬编码的案根文件名。
+
+### N-B2 —— P2 —— `replay_stats.json` 在场却非法时静默回退（与本批 F-08 定的规矩自相矛盾）
+
+**一句话**：案根 `replay_stats.json` 是符号链接（或不是普通文件）时，`safe_file` 抛的 ValueError 被 `except ValueError: stats_path = None` 一把吞掉，锚点**无声无息换一档**继续算——正是本批 F-08 刚刚定性禁止的"在场却非法被静默漂白"，同一个文件里两套标准。
+
+**实测**：
+
+```
+   案根 replay_stats.json → 指向案外文件的符号链接
+   scan rc=0  锚点 = {'source': 'supply_truth_mint', 'raw': '59127382'}
+   → 静默回退（未报错）
+```
+
+**建议修法**：照抄本批 F-08 的写法——`candidate.exists() or candidate.is_symlink()` 判在场，在场就必须 `safe_file` 成功，失败即 raise；只有"压根没有这份文件"才允许走下一档。
+
+### N-B3 —— P3 —— 两条新防线零回归覆盖
+
+**一句话**：`validate_rounds_ledger` 里新加的"跨轮 `snapshot_sha` 必须一致"（F-B1 的第三道保险）和"锚点不得用影子键"这条不变量，删掉／绕过后全量 suite 仍全绿。
+
+**实测**：N3 与 N7 两条变异存活（见上表）。N7 能存活的原因很具体：守卫 `test_f03_closure_anchor_no_shadow_dependency` 只用正则扫**闭合比较那一行** `snapshot_sum.*total_supply_raw`，而分母是在 `mint_closure_anchor` 函数里选的——把影子键 fallback 加进那个函数，正则完全看不见。
+
+**诚实定性**：两条当前代码都是对的，且各自都被更前面的防线遮住（每轮 final 都强制等于 initial 快照，所以跨轮 sha 天然一致）。属回归覆盖缺口，不是现存漏洞。
+
+**建议修法**：①造一份"第 2 轮 `snapshot_sha` 与首轮不同"的 rounds 台账断言必红；②把影子键守卫从"扫比较行"改成"扫 `mint_closure_anchor` 函数体"或直接注入影子键跑一遍取值。
+
+### N-B4 —— P3 —— `denominators.total_supply_raw` 语义变了但字段名与 schema 段没变
+
+**一句话**：`analyze()` 的 total 参数换成 mint 锚点后，产物里 `denominators.total_supply_raw` 从"链上流通总量"变成"铸造总量（含已销毁）"，真 `_burn` 案两者能差三成以上，而 `scan-schemas.md` 的字段表原样未动。
+
+**实测**（mint=2e22、销毁 20%）：
+
+```
+   mint=20000000000000000000000  链上流通 onchain=16000000000000000000000
+   产物 denominators = {'total_supply_raw': '20000000000000000000000',
+                        'net_supply_raw':   '16000000000000000000000', …}
+   → total_supply_raw ＝ mint（含已销毁部分）
+```
+
+**范围**：全库代码消费者只有 `adjudication_validator.py:302` 读 `net_supply_raw`，**没有代码读 `total_supply_raw`**，所以不会算错数。风险纯在人读——按 IQ 的量级，照字面引用会把总量说高 34.9%。
+
+**建议修法**：`scan-schemas.md` 的 `denominators` 字段表加一行注明 `total_supply_raw = mint_total（铸造总量，含已销毁）`；或干脆把键名改成 `mint_total_raw`（改名要连 schema 版本一起走，可留批 D）。
+
+## 6. 复现件清单（本轮新增）
+
+| 文件 | 用途 |
+|---|---|
+| `r1repo/` | `394ffbb` 钉死副本（三主文件逐字节核对 SAME），变异实验场，实验后逐条还原 |
+| `recheck1.py` | F-B1／F-B2／F-B3／F-B7 攻击原样重放＋发布闸终态分支独立验证 |
+| `probe4_anchor.py` | N-B1／N-B2／N-B4 的锚点攻击面与误伤面 |
+| `mutate_r1.py` | 新校验 8 条变异抽查（N1~N8） |
+| `run_all_r1.log` | 钉死副本全量 suite 独立复跑（EXIT=0） |
+
+## 7. 终判
+
+**批 B 不能就此收口，需要一个小范围的消化轮 2。** 原 7 条 finding 确实全关、且关得扎实（两条 P0 防线都经得起变异和边界外一步攻击），锚点翻案我也独立复算三案确认成立、我自己轮 1 的判断被正确推翻。但按 `maintenance-review-repair.md` §7.1「新引入不分严重度都要求修复后重审」，本轮**在修复中新引入**了 N-B1／N-B2 两条 P2——而且 N-B1 的误伤面对现有 9 个真案里的 8 个都成立，不是纸面风险。
+
+轮 2 的范围很窄，估计一次施工就能收：**锚点取值顺序倒置并对绑定收据（N-B1）＋在场非法不静默回退（N-B2）＋两条红线补测（N-B3）＋文档一行（N-B4）**，其余部分不必返工。
+
+消化轮 1 复核完成

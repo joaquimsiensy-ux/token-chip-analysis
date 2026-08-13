@@ -244,6 +244,35 @@ def load_supply(case_dir: Path) -> tuple[Path, int, int, str, dict]:
     return path, onchain, net, chain, obj
 
 
+def _bound_replay_stats(case_dir: Path, supply_obj: dict) -> Path | None:
+    """取 supply_truth 收据 inputs.replay_stats **绑定的那份**实物（不是案根硬编码文件名）。
+
+    这条路径与 shared_release_receipt._bound_replay_totals 同源同口径：收据 inputs 已由
+    receipt_validate 做过存在＋size＋sha256 三验，且实物必须落在案根内。绑定缺席返回 None。
+    """
+    ref = (supply_obj.get("inputs") or {}).get("replay_stats")
+    if not isinstance(ref, dict) or not str(ref.get("path") or ""):
+        return None
+    path = Path(str(ref["path"]))
+    path = path if path.is_absolute() else (case_dir / path)
+    path = path.resolve()
+    try:
+        path.relative_to(Path(case_dir).resolve())
+    except ValueError as exc:
+        raise ValueError("收据绑定的 replay_stats 实物不在当前案根内，不得作闭合锚点") from exc
+    if path.is_symlink() or not path.is_file():
+        raise ValueError(f"收据绑定的 replay_stats 实物缺失或非普通文件: {ref['path']}")
+    return path
+
+
+def _mint_from_stats(stats: dict, label: str) -> tuple[int, int]:
+    for mk, bk in MINT_BURN_FIELD_PAIRS:
+        if mk in stats:
+            return (strict_raw(stats[mk], f"{label}.{mk}"),
+                    strict_raw(stats.get(bk, 0), f"{label}.{bk}"))
+    raise ValueError(f"{label} 缺 mint 字段（认 {[m for m, _ in MINT_BURN_FIELD_PAIRS]}）")
+
+
 def mint_closure_anchor(case_dir: Path, supply_obj: dict, chain: str,
                         onchain: int) -> tuple[int, str, dict | None]:
     """快照闭合分母＝铸造总量 mint_total（replay 侧），分链且绝不依赖影子键。
@@ -252,34 +281,45 @@ def mint_closure_anchor(case_dir: Path, supply_obj: dict, chain: str,
     form1（真 _burn，onchain==mint−burn）与 form2（转 dead 不减供给，onchain==mint）都如此
     （APU/IQ/KOGE 真案逐 wei 实测）。对 onchain/total 闭合会把整类 form1 币误杀（P1-B3）。
 
-    取值顺序（全部非调用者可注入的影子键）：
+    取值顺序（N-B1：**已绑定已验证的链路优先**，案根裸件永不作锚点来源）：
       Solana：== onchain（scanner require_snapshot_closed 已保证 sum==supply，另一套精确等式，
               不套 EVM 的 replay mint 语义）。
-      EVM：① 案根 replay_stats.json 的 mint_total（replay 引擎产物，主线）
-           ② supply_truth 收据的 mint_total 字段（真实生产者 form2 / 带 mint 的 form1 写）
+      EVM：① supply_truth 收据 inputs.replay_stats **绑定**的那份实物（已过三验＋案根遏制，
+              且这里再交叉验 mint−burn == replay_net，与四查同一口径）
+           ② supply_truth 收据的 mint_total 字段（同样受四查链约束）
            ③ supply_truth 的 onchain_total_supply（无 burn 的简单真实案）
-    绝不回退 total_supply_raw/frozen_total_supply_raw 影子键。
+    绝不取 total_supply_raw/frozen_total_supply_raw 影子键。
+
+    **案根裸 replay_stats.json 不是锚点来源**（N-B1）：真案 9/10 把 replay_stats 放
+    data/、out/、replay/ 等子目录，只有 APU 在案根——把案根硬编码文件名排在第一，既让
+    "抹平快照＋伪造一份未绑定案根件"直接过闸（攻击面），又让"案根留一份陈旧件"把合法案
+    打成 data_broken（误伤面，对 8/9 真案成立）。未绑定的文件不是证据，既不该被采用，
+    也不该有一票否决权，故合法但未绑定的案根件**忽略**（理由见工单）。但它若**在场却非法**
+    （符号链接／非普通文件）仍 fail-closed 拒（N-B2）——与本文件 F-08 "在场非法不得静默
+    漂白"同一把尺子，案目录被动过手脚是完整性信号，不因该文件不参与计算而豁免。
     """
     if chain == "solana":
         return onchain, "solana_onchain", None
-    try:
-        stats_path = safe_file(case_dir, "replay_stats.json", "replay_stats")
-    except ValueError:
-        stats_path = None
-    if stats_path is not None:
-        stats = load_json(stats_path)
-        for mk, _bk in MINT_BURN_FIELD_PAIRS:
-            if mk in stats:
-                mint = strict_raw(stats[mk], f"replay_stats.{mk}")
-                return mint, "replay_mint", rel_entry(case_dir, stats_path)
-        raise ValueError(f"replay_stats 缺 mint 字段（认 {[m for m, _ in MINT_BURN_FIELD_PAIRS]}）")
+    # N-B2：案根同名件在场即验，非法即拒；它不参与取值，只做完整性闸。
+    root_stats = Path(case_dir) / "replay_stats.json"
+    if root_stats.is_symlink() or (root_stats.exists() and not root_stats.is_file()):
+        raise ValueError("案根 replay_stats.json 在场但非法（符号链接或非普通文件），"
+                         "拒绝静默换档：请移除或换成真实 replay 产物")
+    bound = _bound_replay_stats(case_dir, supply_obj)
+    if bound is not None:
+        mint, burn = _mint_from_stats(load_json(bound), "绑定 replay_stats")
+        replay_net = supply_obj.get("replay_net")
+        if replay_net not in (None, "") and mint - burn != strict_raw(replay_net, "replay_net"):
+            raise ValueError("绑定 replay_stats 的 mint−burn 与收据 replay_net 不一致，"
+                             "闭合锚点不可信")
+        return mint, "bound_replay_mint", rel_entry(case_dir, bound)
     if supply_obj.get("mint_total") not in (None, ""):
         return strict_raw(supply_obj.get("mint_total"), "supply_truth.mint_total"), \
             "supply_truth_mint", None
     if supply_obj.get("onchain_total_supply") not in (None, ""):
         return strict_raw(supply_obj.get("onchain_total_supply"), "onchain_total_supply"), \
             "supply_truth_onchain", None
-    raise ValueError("无法确定快照闭合锚点：缺 replay_stats.json / supply_truth.mint_total "
+    raise ValueError("无法确定快照闭合锚点：缺收据绑定的 replay_stats / supply_truth.mint_total "
                      "/ onchain_total_supply（total_supply_raw 影子键不作闭合分母）")
 
 

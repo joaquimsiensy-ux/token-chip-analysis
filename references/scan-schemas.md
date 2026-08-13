@@ -304,6 +304,10 @@ TERMINAL = {
 
 `total_supply_raw`／`frozen_total_supply_raw` 是**调用者可注入的影子键**（真实生产者 `supply_truth_gate` 只写 `onchain_total_supply`／`replay_net`／`mint_total`／`burn_total`）——闭合分母绝不取影子键，`net`（分布百分比分母）也优先取真实键 `replay_net`／`onchain_total_supply`。`net` 只用于分布百分比。
 
+**闭合锚点的取值顺序（已绑定已验证的链路优先）**：① `supply_truth` 收据 `inputs.replay_stats` **绑定**的那份实物（已过 receipt 三验＋案根遏制，取值后再交叉验 `mint−burn == replay_net`）；② 收据的 `mint_total` 字段；③ `onchain_total_supply`。**案根裸 `replay_stats.json` 永远不是锚点来源**——真案 9/10 把它放 `data/`／`out/`／`replay/` 子目录并由收据绑定，把案根硬编码文件名排在第一，既让"抹平快照＋伪造一份未绑定案根件"直接过闸，又让"案根留一份陈旧件"把合法案误杀。合法但未绑定的案根同名件**忽略**（未绑定的文件不是证据，不该被采用，也不该有一票否决权）；它若**在场却非法**（符号链接／非普通文件）则 fail-closed 拒，与上面"在场非法不得静默漂白"同一把尺子。
+
+产物里 `denominators.total_supply_raw` 因此＝**铸造总量 `mint_total`（含已销毁）**，不是链上流通量；真 `_burn` 案两者可差三成以上（IQ 差 34.9%）。引用该字段描述"总量"时必须按此口径，链上流通量看 `net_supply_raw`。（改键名为 `mint_total_raw` 属 schema 升版，留批 D。）
+
 `initial` 记录上游收据但不绑定 handoff manifest。上游收据是 **optional 的记录性收据**：案根没有那份文件就不记（split-run 下 −1 出 initial scan 时，−2 还没把 preflight 副本拷进案根），**在场即三验**——凡是记进 `upstream_receipts` 的条目，validate 都要核实文件存在且 sha256／size 与记录一致。校验方向只有"记录项 → 磁盘"这一条，反过来要求"磁盘上有的都得记"会把 6.39.5 修掉的三闸死环修回来。文件在场却非法（符号链接、指到案外、不是普通文件）时生产侧直接 exit 2，不做静默跳过。
 
 分布扫描吃的那份 owner 快照，必须就是四查真正核过的那一份：EVM 比对四查 `balance` 收据的 `inputs.balances.sha256`，Solana 比对 observation bundle 的 `holder_outputs.owners.sha256`，**只比 sha256 不比 path**（两边路径形态本来就不同）。**initial 扫描与进报告的终态 final 扫描（`distribution_rounds.json` 的 `terminal.final_scan_path`）两份都要落在同一个四查 sha 上**——只绑 initial 挡不住 final 轮换一份同值换仓快照产终态判定（F-B1）。该交叉检查由 `audit_release_gate.py --profile new-analysis` 执行，**只放发布闸、不放进 validate**（终态 scan 是本轮新产，不涉及存量案追溯）。
@@ -362,7 +366,8 @@ TERMINAL = {
   "verdict": "NORMAL_SHAPE|ABNORMAL_SHAPE|NOT_EVALUABLE",
   "not_evaluable_reason": null|"low_sample|data_broken",
   "errors": [str],
-  "denominators": {"total_supply_raw": str, "net_supply_raw": str,
+  "denominators": {"total_supply_raw": str,   // ＝mint_total 铸造总量（含已销毁），非链上流通量
+                     "net_supply_raw": str,     // ＝replay_net 链上流通量
                      "private_boxable_supply_raw": str},
   "bucket_coverage": {bucket: {"raw": str, "net_supply_pct": float}},
   "owner_count_private_main": int,
