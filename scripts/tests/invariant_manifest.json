@@ -153,6 +153,7 @@
   },
   {
    "schemas": [
+    "figure1-legend/v1",
     "figure2-check-receipt/v1"
    ],
    "script": "scripts/report/figures_from_facts.py"
@@ -831,6 +832,16 @@
   },
   {
    "locator": "_write_check_receipt",
+   "script": "scripts/report/figures_from_facts.py",
+   "semantics": "overwrite_single"
+  },
+  {
+   "locator": "_write_fig1_legend_receipt",
+   "script": "scripts/report/figures_from_facts.py",
+   "semantics": "overwrite_single"
+  },
+  {
+   "locator": "mode_fig1",
    "script": "scripts/report/figures_from_facts.py",
    "semantics": "overwrite_single"
   },

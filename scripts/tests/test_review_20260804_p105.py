@@ -59,23 +59,56 @@ def add_new_analysis_distribution(root: Path, report: Path) -> None:
     from test_audit_release_gate import align_ledgers_to_owner_snapshot
     align_ledgers_to_owner_snapshot(root, snap)
     total = sum(balances.values())
-    write_json(root / "supply_truth.json", {"verdict": "PASS", "exit_code": 0,
-                                                "chain": "bsc", "onchain_total_supply": str(total),
-                                                "replay_net": str(total), "mint_total": str(total),
-                                                "burn_total": "0", "decision_rule": "primary_form1",
-                                                "total_supply_raw": str(total),
-                                                "net_supply_raw": str(total)})
+    stats = root / "camp_replay_stats.json"
+    write_json(stats, {"mint_total_raw": str(total), "burn_total_raw": "0"})
+    write_json(root / "channels_preflight.json", {"token": "0xtoken"})
+    write_json(root / "supply_truth.json", {
+        "schema": "supply-truth-receipt/v3",
+        "target": {"chain": "bsc", "token": "0xtoken", "as_of_block": 123},
+        "verdict": "PASS", "exit_code": 0, "chain": "bsc",
+        "onchain_total_supply": str(total), "replay_net": str(total),
+        "mint_total": str(total), "burn_total": "0",
+        "decision_rule": "primary_form1", "total_supply_raw": str(total),
+        "net_supply_raw": str(total),
+        "inputs": {"replay_stats": {
+            "path": stats.name, "size": stats.stat().st_size, "sha256": sha(stats),
+        }},
+    })
     write_json(root / "data_map.json", {"files": [{"path": "data/holders_owners.json",
                                                         "sha256": sha(snap)}]})
     write_json(root / "candidate_screening.json", {"auto_excluded_candidate": []})
     dist = HERE.parent / "report/holder_distribution_scan.py"
     p = run_formal_script(dist, ["--case-dir", str(root), "--stage", "initial"])
     assert p.returncode == 0, p.stdout + p.stderr
+    write_json(root / "camps.json", {"camps": {}, "entities": {}})
+    series_path = root / "data/camp_series.json"
+    write_json(series_path, {"dates": ["2026-01-01"], "散户": [100.0]})
+    sys.path.insert(0, str(HERE.parent / "lib"))
+    from camp_series_provenance import series_to_state_form, write_series_sidecar
+    sidecar_path = write_series_sidecar(
+        series_path, producer="scripts/tests/test_review_20260804_p105.py",
+        series_format="evm-dict", denominator="current_net_supply",
+        camps_spec_path=root / "camps.json", final_balances_path=snap,
+        inputs={"replay_stats": stats},
+    )
+    sidecar = json.loads(sidecar_path.read_text(encoding="utf-8"))
+    state = {
+        "chain": "bsc", "whale_groups": [],
+        "camp_share_series": series_to_state_form(
+            json.loads(series_path.read_text(encoding="utf-8")), "evm-dict"),
+        "provenance": {"series_binding": "producer-sidecar",
+                       "camp_series_sidecar": {
+                           "producer": sidecar["producer"],
+                           "series_file": sidecar["series_file"],
+                           "series_sha256": sidecar["series_sha256"],
+                           "series_format": sidecar["series_format"],
+                       }},
+    }
     for name, value in {
         "handoff_manifest.json": {"consumer_min_schema": "handoff/v3", "status": "READY", "run_id": "fixture"},
         "identity_snapshot_receipt.json": {"schema": "identity-snapshot-receipt/v1"},
         "entity_freeze.json": {"schema": "entity-freeze/v1", "revisions": []},
-        "analysis-state.json": {"chain": "bsc", "whale_groups": []},
+        "analysis-state.json": state,
         # facts 带最小 token（figure2 check 真跑需要 total_supply_raw>0）
         "facts.json": {"token": {"symbol": "FX", "decimals": 0,
                                  "total_supply_raw": "1"}, "entities": {}},
@@ -103,6 +136,13 @@ def add_new_analysis_distribution(root: Path, report: Path) -> None:
     report.write_text(report.read_text(encoding="utf-8")
         + "\n当前快照呈正常形态;这只表示本闸未检出结构性畸形,不等于没有庄。\n"
         + "\n![持仓分布](charts/final/holder_distribution_current.png)\n", encoding="utf-8")
+    p = subprocess.run([sys.executable, str(fff), "fig1", "--state",
+                        "analysis-state.json", "--out", "charts/final/fig1.png"],
+                       cwd=root, capture_output=True, text=True)
+    assert p.returncode == 0 and (root / "fig1_legend_receipt.json").is_file(), \
+        f"fig1 legend 收据生成失败: {p.stdout} {p.stderr}"
+    report.write_text(report.read_text(encoding="utf-8")
+                      + "\n![阵营演变](charts/final/fig1.png)\n", encoding="utf-8")
     a5 = HERE.parent / "report/a5_report_seal.py"
     p = run_formal_script(a5, ["--case-dir", str(root), "--report", str(report),
                                "--a4-seal", str(root / "a4_seal.json"),

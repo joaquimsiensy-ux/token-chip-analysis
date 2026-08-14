@@ -66,7 +66,7 @@ def _load(p):
 
 def _parse_date(s):
     s = str(s).strip()
-    for fmt in ("%Y-%m-%d", "%Y-%m-%d %H:%M:%S", "%Y/%m/%d"):
+    for fmt in ("%Y-%m-%d", "%Y-%m-%d %H:%M:%S", "%Y/%m/%d", "%Y-%m-%dT%H:%M:%SZ"):
         try:
             return dt.datetime.strptime(s, fmt)
         except ValueError:

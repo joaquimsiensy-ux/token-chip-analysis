@@ -34,6 +34,7 @@ import supply_truth_gate as supply  # noqa: E402
 import receipt_kernel as kernel  # noqa: E402
 from test_repair_batch_a import SupplyPool, TOKEN  # noqa: E402
 from evm_channel_fixture import write_csv_channel_receipt  # noqa: E402
+import figures_from_facts as figures  # noqa: E402
 import standard_charts as charts  # noqa: E402
 
 
@@ -691,6 +692,12 @@ F01_SCRIPT = ROOT / "scripts/report/figures_from_facts.py"
 F01_RECEIPT = "fig1_legend_receipt.json"
 
 
+def test_f01_sol_rows_contract_date_parse():
+    parsed = figures._parse_date("2026-01-01T00:00:00Z")
+    assert parsed.isoformat() == "2026-01-01T00:00:00" and parsed.tzinfo is None
+    _expect_error(lambda: figures._parse_date("2026-13-99Txx"), "无法解析日期")
+
+
 def _f01_sha256(path: Path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
@@ -1063,6 +1070,7 @@ def main():
         test_f03_original_counterexample_and_gate_isolation(root)
         test_f03_pass2_stats_schema_fail_closed(root)
         test_f03_pass1_toctou_disappearance_is_immediate(root)
+        test_f01_sol_rows_contract_date_parse()
         test_f01_selector_triple_and_whitelist_rejection(root)
         test_f01_receipt_fields_and_shared_render_set(root)
         test_f01_excluded_nonfinite_and_png_failure_leave_no_receipt(root)
