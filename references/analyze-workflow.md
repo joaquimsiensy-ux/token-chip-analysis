@@ -77,7 +77,7 @@
 
    **流程要求**：Fable 必须在当前会话内向用户如实报告偏差原因并取得明确批复后，才可写 `over-cap-approval/v1`；不得把普通 waiver 自行升级成用户特批。用户批复必须含文字（中英文等白名单语种），纯表情符号不构成有效批复文本。此设计防工作流走捷径/误操作，不防持同用户权限的恶意进程。
 
-   **退出语义**：exit 0＝PASS。exit 2 有两种情况，看有没有落收据来分：落了收据＝FAIL，该币余额禁用重放结果并改 Multicall3/RPC 实时直查（地址全集与转账历史仍可用重放，重放余额仅作 ≥阈值超集筛选）；没落收据＝容差政策拒绝（缺 waiver/approval、凭据不合法或未覆盖本次实际偏差），不是 FAIL。政策拒绝会把上一轮旧收据自动作废归档为 `supply_truth.json.superseded-<UTC>`，归档失败升格 exit 1；凭据内容导致的解析异常归 exit 2，同样履行旧收据自动作废归档。exit 1＝检测自身失败（含凭据文件读不动等通道故障），修通道重跑，禁当 PASS。
+   **退出语义**：exit 0＝PASS。exit 2 有两种情况，看有没有落收据来分：落了收据＝FAIL；若同 target、同 schema 家族的旧 PASS 在场，kernel 会先以同目录 hard-link 将它归档为 `.superseded-<UTC微秒>.<PID>`，再原子替换 canonical，FAIL 仍返回 exit 2，不得误报通道故障 exit 1。该币余额禁用重放结果并改 Multicall3/RPC 实时直查（地址全集与转账历史仍可用重放，重放余额仅作 ≥阈值超集筛选）；没落收据＝容差政策拒绝（缺 waiver/approval、凭据不合法或未覆盖本次实际偏差），不是 FAIL。政策拒绝会把上一轮旧收据自动作废归档为 `supply_truth.json.superseded-<UTC>`，案内不再有现役收据，下游缺件即停；归档失败升格 exit 1；凭据内容导致的解析异常归 exit 2，同样履行旧收据自动作废归档。exit 1＝检测自身失败（含凭据文件读不动等通道故障），修通道重跑，禁当 PASS。
 4. **时间抽查**：EVM 走分层计划制——先跑 `scripts/lib/anchor_plan.py` 出抽样计划，再跑 `scripts/lib/time_spotcheck.py --chain <链> --final-block <冻结块>` 对独立第二源逐锚点核对，产绑定 target 的 `time-spotcheck/v2`；纯随机锚点容易漏高风险位置。Solana 走 `anchor_sampler.py --as-of-slot <冻结slot> --receipt <回执>`，任一失败日 exit 2。第二源分层选型与全史重拉例外见 evm-recon §13。注意本查不替代供给闭合。
 
 对不上＝数据有洞＝回去补，不许"差不多就行"。
@@ -173,9 +173,9 @@ A4 finalize 后，用同一 cutoff 快照运行 `holder_distribution_scan.py --s
 
 ## A5 报告
 
-**进入本阶段的前置＝`a4_seal.json` 已由 A4 第 7 步产出，分布轮次已到唯一终态，终版分布图已物化。** 报告本体先写 `报告.md`＋`charts/final/*.png`，再运行 `a5_report_seal.py --case-dir . --report 报告.md --a4-seal a4_seal.json --out a5_report_seal.json`，产 `a5-report-seal/v2`。A5 seal 会绑定 rounds 台账、terminal final scan、解释或 waiver 收据和唯一分布图。build_html 的 G11 会重新计算这些绑定。**报告图一律输出到 `charts/final/`**。复核过程草稿图放 charts/ 根或 `dist_rounds/`，不进报告。**三张标准图必配**（阵营占比演变/庄级实体 vs 价格/价格与关键事件），直接调 `scripts/report/standard_charts.py` 三个函数。持仓分布终版图另放第二章，不作为第二张分布图重复绘制。**每个当前持仓 ≥20% 总供应或 ≥20% 流通的大庄/项目方必配一张全周期流转路径图**。
+**进入本阶段的前置＝`a4_seal.json` 已由 A4 第 7 步产出，分布轮次已到唯一终态，终版分布图已物化。** 报告本体先写 `报告.md`＋`charts/final/*.png`，再运行 `a5_report_seal.py --case-dir . --report 报告.md --a4-seal a4_seal.json --out a5_report_seal.json`，产 `a5-report-seal/v3`。A5 seal 会绑定 rounds 台账、terminal final scan、解释或 waiver 收据和唯一分布图。build_html 的 G11 会重新计算这些绑定。**报告图一律输出到 `charts/final/`**。复核过程草稿图放 charts/ 根或 `dist_rounds/`，不进报告。**三张标准图必配**（阵营占比演变/庄级实体 vs 价格/价格与关键事件），直接调 `scripts/report/standard_charts.py` 三个函数。持仓分布终版图另放第二章，不作为第二张分布图重复绘制。**每个当前持仓 ≥20% 总供应或 ≥20% 流通的大庄/项目方必配一张全周期流转路径图**。
 
-出图纪律：`standard_charts.plot_camp_evolution` 按 CAMP_ORDER 白名单过滤 series 键，非标准阵营名**静默跳过不报错**——阵营名必须逐字取自 `standard_charts.py` 的 `CAMP_ORDER`（唯一权威；现行 14 键：项目方、大庄、小庄、离场庄、刷量地址、CEX资金通道、CEX托管、疑似CEX托管、流动性池、其他大户、历史大户、散户、桥锁仓、锁仓/销毁；"狙击集团"等仅旧数据重绘 legacy）；**出图后必须目检图例条数 == 传入阵营数**。
+出图纪律：`figures_from_facts.py fig1` 与 `standard_charts.plot_camp_evolution` 共用 `select_fig1_series()` 机器闸。阵营名必须逐字取自 `standard_charts.py` 的 `CAMP_ORDER`（唯一权威；现行 14 键：项目方、大庄、小庄、离场庄、刷量地址、CEX资金通道、CEX托管、疑似CEX托管、流动性池、其他大户、历史大户、散户、桥锁仓、锁仓/销毁；"狙击集团"与 EVM legacy `销毁`等仅旧数据重绘 legacy）。白名单外键 exit 2 硬拒；`burn_cum_pct` 只能以 `non_stacked_metric` 结构化豁免；出图后必须落 `fig1_legend_receipt.json`，绑定实绘集合、豁免键、overlay 组成及输入/输出哈希，不再以人工目检替代闸口。
 
 结构与措辞纪律见 `report-template.md`。正式报告只有两个入口：全新分析用 `build_html.py --mode analysis-new ... --a5-seal a5_report_seal.json`，净室复核用 `--mode analysis-audit ...`；二者都会核对 seal.workflow_type，并分别强制 `audit_release_gate --profile new-analysis|independent-audit`。**new-analysis 发布闸必须带 `--report <最终 Markdown>`**——A5 seal 自批 D 消化轮 1 起在发布闸内重验（分布终态链与翻转披露都要对报告实物核），缺 `--report` 时 A5 seal 在场即 fail-closed 拒。不存在 generic analysis 或 skip gate。历史重编译必须显式用 `--mode legacy-recompile --degrade-reason "<理由>"`，产物带可见非正式水印。PDF 仅用户点名。
 

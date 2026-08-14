@@ -11,10 +11,10 @@
   "scripts/*.py"
  ],
  "minimum_counts": {
-  "receipt_producers": 49,
-  "receipt_consumers": 53,
+  "receipt_producers": 50,
+  "receipt_consumers": 54,
   "transport_calls": 58,
-  "atomic_writes": 38,
+  "atomic_writes": 39,
   "formal_entrypoints": 58
  },
  "receipt_producers": [
@@ -90,6 +90,12 @@
   },
   {
    "schemas": [
+    "receipt-supersede-lock/v1"
+   ],
+   "script": "scripts/lib/receipt_kernel.py"
+  },
+  {
+   "schemas": [
     "solana-observation-bundle/v1",
     "solana-observation-core/v1"
    ],
@@ -116,7 +122,7 @@
   },
   {
    "schemas": [
-    "a5-report-seal/v2"
+    "a5-report-seal/v3"
    ],
    "script": "scripts/report/a5_report_seal.py"
   },
@@ -154,6 +160,7 @@
   },
   {
    "schemas": [
+    "figure1-legend/v1",
     "figure2-check-receipt/v1"
    ],
    "script": "scripts/report/figures_from_facts.py"
@@ -277,6 +284,12 @@
  "receipt_consumers": [
   {
    "schemas": [
+    "receipt-supersede-lock/v1"
+   ],
+   "script": "scripts/lib/receipt_kernel.py"
+  },
+  {
+   "schemas": [
     "solana-observation-bundle/v1",
     "solana-observation-core/v1"
    ],
@@ -331,7 +344,7 @@
   {
    "schemas": [
     "a4-seal/v4",
-    "a5-report-seal/v2",
+    "a5-report-seal/v3",
     "distribution-exception-receipt/v1",
     "distribution-rounds/v1",
     "provenance-ledger/v2"
@@ -801,6 +814,11 @@
    "semantics": "restore_on_fail"
   },
   {
+   "locator": "publish_supersede",
+   "script": "scripts/lib/receipt_kernel.py",
+   "semantics": "supersede_single"
+  },
+  {
    "locator": "publish_txn",
    "script": "scripts/lib/receipt_kernel.py",
    "semantics": "dual_file_txn"
@@ -842,6 +860,16 @@
   },
   {
    "locator": "_write_check_receipt",
+   "script": "scripts/report/figures_from_facts.py",
+   "semantics": "overwrite_single"
+  },
+  {
+   "locator": "_write_fig1_legend_receipt",
+   "script": "scripts/report/figures_from_facts.py",
+   "semantics": "overwrite_single"
+  },
+  {
+   "locator": "mode_fig1",
    "script": "scripts/report/figures_from_facts.py",
    "semantics": "overwrite_single"
   },

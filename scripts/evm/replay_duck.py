@@ -369,7 +369,7 @@ def emit_merged(con, out_dir, emit_csv, merged_parquet):
         print(f"merged.csv 写出（旧格式兼容模式）", flush=True)
 
 
-def replay_pass2(con, camps_path, out_dir, mint_total, vt):
+def replay_pass2(con, camps_path, out_dir, mint_total, vt, *, diagnostic_gate_failed=False):
     """日度阵营/实体序列——known 累加按 camps.json 键序，与旧 snap() 逐表达式同构。"""
     spec = json.load(open(camps_path))
     # F-05：互斥校验（同营内+跨营重复硬拒 exit 2）在原始列表上、lower 规范化之后做；
@@ -479,8 +479,17 @@ def replay_pass2(con, camps_path, out_dir, mint_total, vt):
         out["_meta"] = {"denominator": "current_net_supply",
                         "note": "分母=当期净供应(累计mint−累计burn)；burn_cum_pct 不参与堆叠"}
         out["burn_cum_pct"] = burn_pct
+    if diagnostic_gate_failed:
+        out["status"] = "DIAGNOSTIC_GATE_FAILED"
+    entity_out = {"dates": dates, **eseries}
+    if diagnostic_gate_failed:
+        entity_out["status"] = "DIAGNOSTIC_GATE_FAILED"
     json.dump(out, open(f"{out_dir}/camp_series.json", "w"))
-    json.dump({"dates": dates, **eseries}, open(f"{out_dir}/entity_series.json", "w"))
+    json.dump(entity_out, open(f"{out_dir}/entity_series.json", "w"))
+    if diagnostic_gate_failed:
+        print(f"[camp-series] gate FAIL：诊断序列已隔离到 {out_dir}；"
+              "不生成正式 provenance sidecar", flush=True)
+        return
     # F-04：producer sidecar——与 replay_pass2.py 同族同深（同一共享实现），
     # balances_final.json 由同进程 pass1 刚写出（同一次重放同源，末点对账的快照锚）
     from camp_series_provenance import write_series_sidecar
@@ -583,7 +592,13 @@ def main():
     if not a.no_merged:
         emit_merged(con, a.out_dir, a.emit_csv, a.merged_parquet)
     if a.camps:
-        replay_pass2(con, a.camps, a.out_dir, mint_total, vt)
+        if stats["gate_pass"]:
+            replay_pass2(con, a.camps, a.out_dir, mint_total, vt)
+        else:
+            diagnostic_dir = os.path.join(a.out_dir, "diagnostics", "gate-failed")
+            os.makedirs(diagnostic_dir, exist_ok=True)
+            replay_pass2(con, a.camps, diagnostic_dir, mint_total, vt,
+                         diagnostic_gate_failed=True)
     print("[gate]", "PASS" if stats["gate_pass"] else "FAIL——禁止进入下游分析")
     sys.exit(0 if stats["gate_pass"] else 4)
 

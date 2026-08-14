@@ -612,16 +612,26 @@ def t_f05_f04_solana_chain():
             sentence = ("形态统计因样本不足未做,以逐址集中度事实替代"
                         if final_scan.get("not_evaluable_reason") == "low_sample"
                         else "当前快照呈正常形态;这只表示本闸未检出结构性畸形,不等于没有庄。")
+            # 批 1 A5 v3 把图 1 legend receipt 纳入 new-analysis 必经信任根；
+            # 此处必须走真实 fig1 producer，不能手补收据或放宽 A5 守卫。
+            fig1 = Path("charts/final/fig1.png")
+            p = run([figures, "fig1", "--state", "analysis-state.json",
+                     "--out", str(fig1)], td)
+            check("F09 Solana 同案 ④ fig1/legend receipt",
+                  p.returncode == 0 and fig1.is_file()
+                  and Path("fig1_legend_receipt.json").is_file(),
+                  p.stdout + p.stderr)
             report = Path("report.md")
             report.write_text(
                 "# Solana 同案端到端报告\n大庄#1 现仓 300。\n" + sentence
-                + "\n\n![持仓分布](charts/final/holder_distribution_current.png)\n",
+                + "\n\n![阵营演变](charts/final/fig1.png)\n"
+                + "\n![持仓分布](charts/final/holder_distribution_current.png)\n",
                 encoding="utf-8")
             a5 = ROOT / "scripts/report/a5_report_seal.py"
             p = run_formal_script(a5, ["--case-dir", str(td), "--report", str(report),
                                        "--a4-seal", str(seal), "--out",
                                        str(Path("a5_report_seal.json"))])
-            check("F09 Solana 同案 ④ A5 seal（state→figures→A4→A5）",
+            check("F09 Solana 同案 ⑤ A5 seal（state→figures→A4→A5）",
                   p.returncode == 0 and Path("a5_report_seal.json").is_file(),
                   p.stdout + p.stderr)
         finally:
@@ -696,7 +706,7 @@ def t_f04_payload_unit():
     expected = ["项目方", "大庄", "小庄", "离场庄", "刷量地址", "CEX资金通道",
                 "CEX托管", "疑似CEX托管", "流动性池", "其他大户", "历史大户",
                 "散户", "桥锁仓", "锁仓/销毁", "狙击集团", "庄家TOP1",
-                "庄家其他组", "首30分钟狙击者", "其他散户"]
+                "庄家其他组", "首30分钟狙击者", "其他散户", "销毁"]
     check("F04 CAMP_ORDER 合并保原序", scharts.CAMP_ORDER == expected,
           str(scharts.CAMP_ORDER))
     check("F04 两段无重叠且并集=全量",

@@ -10,7 +10,8 @@
 
 ## 版本索引（活跃窗口，新在上；每版一行，详情见下方对应条目）
 
-- **6.41.0**（2026-08-14）批 2 三线收口：F-10 waiver 三段硬顶＋用户超顶批复、F-02 对抗复核结构化 v3、F-09 solana-reconcile/v3 身份链与 PYTHIA 实证；三轮盲审残留锚、R10 清账/新登记及文档边界统一封口
+- **6.42.0**（2026-08-14）批 2 三线收口：F-10 waiver 三段硬顶＋用户超顶批复、F-02 对抗复核结构化 v3、F-09 solana-reconcile/v3 身份链与 PYTHIA 实证；三轮盲审残留锚、R10 清账/新登记及文档边界统一封口
+- **6.41.0**（2026-08-14）批 1 五项修复收口：RV-07 receipt supersede＋五出口真 FAIL 落盘；RV-04/RV-17 proxy 单源解析＋stake_decode fail-closed；F-03 replay 三引擎 gate 语义统一；F-01 图 1 白名单/legend receipt/A5 v3 双层信任根；F-04 四入口位置 token 移除且 sentinel 不进输出
 - **6.40.0**（2026-08-13）六视角 BLOCK 修复工程 A-D 四批收口：发布收据验证链（F-01/02）＋分布扫描族（F-03/08）＋阵营序列 producer 链（F-04/05）＋flip 裁决收据制（F-06）/refresh 真事务（F-07）/销户审计收口（GPT-F-06）＋台账八项＋distribution-scan/v2；R10 存量台账本轮未修、台账保留（r10_ledger.md）
 - **6.39.5**（2026-08-12）distribution 语义重验剔除记录性 upstream_receipts（split-run G8/audit_release_gate 三闸死环修复，TAG 案实撞；同步补 6.39.4 漏 bump 的 pyproject）
 - **6.39.4**（2026-08-11）provenance 敏感性闸粒度修复：尘埃锚点线（<0.01% 供应不入翻转判定）＋ --acknowledge-flip 翻转书面确认通道（freeze 重放同参还原）
@@ -41,7 +42,7 @@
 
 更早版本（6.20.0 及以前）详见 `archive/CHANGELOG-archive.md`。
 
-## [6.41.0] - 2026-08-14 — 批 2 防伪面三线三轮盲审收口
+## [6.42.0] - 2026-08-14 — 批 2 防伪面三线三轮盲审收口
 
 批 2 在 6.40.0 上完成 F-10/F-02/F-09 三线施工与三轮盲审，A/B/C 终态均 CLOSED；工程目录与逐轮证据见 `maintenance/repair-20260814-batch2/`。
 
@@ -51,7 +52,20 @@
 - **存量影响**：AKE/B2/MOG/TAG 至少四案仍为 adversarial-review v2；已交付案不重跑发布闸不受影响，未来重发布必须按当前 runner 重做结构化 artifacts、execution receipts 与 v3 finalize，禁止手工补字段迁移。
 - **文档与方法**：两侧 `_meaningful_text` docstring 明列白名单覆盖与刻意双写纪律；A4 对账键诚实声明 Mn/Me 可见组合符取舍，净室协议限制依赖组合符承载语义的文字，超顶用户批复明确要求白名单文字；casebook E-19 固化“实义判定漏网须白名单收严、对账键漏网须黑名单保全”的相反安全方向。
 - **R10 台账**：清账 R10-2/R10-10/R10-11/R10-12；新增 R10-16～27 并逐条绑定三线盲审出处。原 15 条余 11 条，加 12 条后现役保留/接受项 23 条。
-- **6.41.0 冻结基线**：`run_all.py` 共 96 个 suite 入口，其中 88 个 `test_*.py` 业务断言入口、8 个 lint/manifest/env 守卫；终验 96/96 PASS、rc=0。`test_repair_batch_a.py` 44/44，F-02 定向套件全绿；invariant census、docs lint 与终态 SHA 见最终完工记录。
+- **6.42.0 前身冻结基线**：批 2 独立分支收口时 `run_all.py` 共 96 个 suite 入口，其中 88 个 `test_*.py` 业务断言入口、8 个 lint/manifest/env 守卫；终验 96/96 PASS、rc=0。合并批 1 后的 6.42.0 最终分母与验证证据见 `maintenance/repair-20260814-batch2/merge_resolution_done.md`。`test_repair_batch_a.py` 44/44，F-02 定向套件全绿；invariant census、docs lint 与独立分支终态 SHA 见最终完工记录。
+
+## [6.41.0] - 2026-08-14 — repair batch 1 五项共享面收口
+
+按 `maintenance/repair-20260814-batch1/plan.md` 的七步协议收口批 1；本版只汇总已批准的五项修复，不扩张生产范围。
+
+- **RV-07**：`publish_supersede` 成为 receipt kernel 原语，五个出口在失败时都落真实 `FAIL` 产物，旧成功件不再残留冒充当前结果。
+- **RV-04＋RV-17**：`proxy_config` 统一代理解析与大小写/优先级口径；`stake_decode` 对缺失、截断和不完整输入一律 fail-closed。
+- **F-03**：pass1、pass2、DuckDB 三个 replay 引擎统一 gate 失败的退出与正式产物隔离语义，诊断件不得混入可发布序列。
+- **F-01**：图 1 阵营白名单单源化，producer 落 `figure1-legend/v1` 收据；A5 v3 同时绑定 state 与实际报告 PNG，形成发布闸与 seal 的双层信任根。
+- **日期兼容**：图 1 consumer 精确补认 Solana `sol-rows` producer 的正式 UTC 序列格式 `%Y-%m-%dT%H:%M:%SZ`，不扩大其他日期解析面。
+- **F-04**：四个入口移除位置 token，统一显式 token 来源优先级；sentinel 只参与内部控制，不进入正式输出。
+- **质量**：新增 `test_repair_batch1.py` 已手动挂入 `run_all.py`；共享 invariant、P1-05 new-analysis 夹具、版本四锚与最终全量 suite 在步骤⑦统一验收。
+- **盲审消化**：supersede 锁崩溃恢复原语＋token-file 回显抑制。
 
 ## [6.40.0] - 2026-08-13 — 六视角 BLOCK 修复工程四批收口（codex 13 findings＋GPT 5.6 Pro 交叉对账）
 

@@ -125,7 +125,7 @@
 
 ### 3.2 判断主序
 
-casebook C/E 册过闸 → 聚类合并裁决 → 临时实体 → **ET-2 无下限成员完整性扫描** → **EF-3A/EF-3B 候选进入 EF-3C 裁决与溯源闭环** → `handoff_manifest.py freeze` 校验 **EF-3C-P1～P4**，并在存在 `distribution_adjudications.json` 时绑定当前分布裁决 → G8 identity_gate_v3 → 判级 → 阵营演变重放 → A3 落 findings/facts/analysis-state/identity → A4 register/finalize 产 `a4-seal/v4` → final 分布扫描写 `dist_rounds/round_N/` → 新簇回流 A4；已覆盖异常跑解释五判据，未解释进入成员或机制闭环后回流 A4 → 唯一终态物化 `charts/final/holder_distribution_current.png` → `a5-report-seal/v2` → G11 → A5。两轮仍未终态时必须让用户选择第三轮或标准 waiver。A6 仅用户要求时执行。
+casebook C/E 册过闸 → 聚类合并裁决 → 临时实体 → **ET-2 无下限成员完整性扫描** → **EF-3A/EF-3B 候选进入 EF-3C 裁决与溯源闭环** → `handoff_manifest.py freeze` 校验 **EF-3C-P1～P4**，并在存在 `distribution_adjudications.json` 时绑定当前分布裁决 → G8 identity_gate_v3 → 判级 → 阵营演变重放 → A3 落 findings/facts/analysis-state/identity → A4 register/finalize 产 `a4-seal/v4` → final 分布扫描写 `dist_rounds/round_N/` → 新簇回流 A4；已覆盖异常跑解释五判据，未解释进入成员或机制闭环后回流 A4 → 唯一终态物化 `charts/final/holder_distribution_current.png` → `a5-report-seal/v3` → G11 → A5。两轮仍未终态时必须让用户选择第三轮或标准 waiver。A6 仅用户要求时执行。
 
 ### 3.3 A4 外部异构路收紧条款（分段模式专属，兼容 codex 侧 c1.1.0 禁自审令）
 

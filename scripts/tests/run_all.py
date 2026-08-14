@@ -91,7 +91,10 @@ SUITE += ['test_apu_legacy_gaps.py']
 # v6.40.0 六视角 BLOCK 修复工程批 D（F-06/F-07/GPT-F-06＋台账 A-1/A-3/A-5/B-1/B-2/B-4/B-5/B-7）
 SUITE += ['test_repair_batch_d.py']
 
-# 2026-08-14 工单 B：F-02 对抗复核 v3 结构与绑定闭环。
+# v6.41.0 批1 步骤1 RV-07：真 FAIL 收据显式归档旧 PASS 后成为 canonical。
+SUITE += ['test_repair_batch1.py']
+
+# v6.42.0 批2 工单 B：F-02 对抗复核 v3 结构与绑定闭环。
 SUITE += ['test_repair_batch2_f02.py']
 
 

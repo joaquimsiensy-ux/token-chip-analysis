@@ -7,9 +7,9 @@
       --out-dir data_alchemy [--from-block N --to-block M]
   config.json 字段：
     alchemy_key      Alchemy API key（从 ~/.claude/api-keys.md 登记文件取用）
-    alchemy_network  eth-mainnet / bnb-mainnet / base-mainnet 等（*.g.alchemy.com 国内须走 clash 代理）
+    alchemy_network  eth-mainnet / bnb-mainnet / base-mainnet 等（受限网络需代理）
     token            目标代币合约地址
-    proxy            可选，如 http://127.0.0.1:7897（不填则用系统/环境变量代理）
+    proxy            可选代理 URL；推荐由 CHIP_PROXY 统一配置后写入本字段
 
 块段接力（Base 双通道拓扑，见 data-pipeline-evm §8.1）：
   多进程各管一段：用 --from-block/--to-block 划互斥块段并行拉，各段独立 --out-dir；

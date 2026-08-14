@@ -11,6 +11,21 @@ from pathlib import Path
 DEFAULT_TOKEN_FILE = "~/.config/hypersync/token"
 
 
+class SafeParser(argparse.ArgumentParser):
+    def parse_args(self, args=None, namespace=None):
+        parsed, extras = self.parse_known_args(args, namespace)
+        if extras:
+            self.error("存在未识别参数（输入值已隐去）")
+        return parsed
+
+
+def _safe_int(value):
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        raise argparse.ArgumentTypeError("须为整数（输入值已隐去）") from None
+
+
 def _load_token(ap, token_file):
     if token_file is not None:
         path = os.path.expanduser(token_file)
@@ -24,12 +39,13 @@ def _load_token(ap, token_file):
     except OSError:
         token = ""
     if not token:
-        ap.error(f"HyperSync token 文件缺失或为空：{path}；key 登记见 ~/.claude/api-keys.md §1")
+        ap.error("HyperSync token 文件缺失或为空（路径已隐去）；"
+                 "默认路径 ~/.config/hypersync/token，或设 HYPERSYNC_TOKEN")
     return token
 
 def parse_args(argv=None):
-    ap = argparse.ArgumentParser()
-    ap.add_argument("from_block", type=int)
+    ap = SafeParser()
+    ap.add_argument("from_block", type=_safe_int)
     ap.add_argument("--token-file", default=None,
                     help="token 文件；显式给出时优先于 HYPERSYNC_TOKEN")
     ap.add_argument("--url", required=True)

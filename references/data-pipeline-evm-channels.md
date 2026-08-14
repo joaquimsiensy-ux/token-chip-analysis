@@ -150,7 +150,7 @@ size 与 SHA-256；全部通过后才原子将旧 done 升为 `hypersync-v2-done
 - POST `https://bsc.hypersync.xyz/query`；header `Authorization: Bearer {TOKEN}`；body 含 `from_block`、`logs: [{address, topics}]`、`field_selection`。（SIREN，07）
 - 匿名（无 token）已不可用；token 让用户到 app.envio.dev 注册——控制台在用户（中国）网络打不开需 VPN，但 API 端点直连可用，"控制台打不开 ≠ API 不可用"。（SIREN，07）
 - archive_height 到最新块，全史无缺口；换 token 地址与链子域名即可用于其他 HyperSync 支持链。（SIREN，07）
-- token 取用优先级为：显式 `--token-file` > `HYPERSYNC_TOKEN` > 默认 `~/.config/hypersync/token`；三支 v1 脚本都禁止位置参数明文 token。换 key 时原始存放文件与 `~/.claude/api-keys.md` §1 登记同步。
+- token 取用优先级为：显式 `--token-file` > `HYPERSYNC_TOKEN` > 默认 `~/.config/hypersync/token`；三支 v1 脚本与现役 v2 入口都禁止位置参数明文 token，非法输入也不得把 secret 回显到 stdout/stderr。换 key 时原始存放文件与 `~/.claude/api-keys.md` §1 登记同步。
 - **transactions 端点做 BNB 注资溯源**：body `{"transactions":[{"to":[addr]}],"field_selection":{"transaction":["block_number","from","to","value"]}}`（value 为 hex）——单址全链入金一次查询 ~2.3s 到 tip，比逐块扫快几个量级；⚠25 址×全链批量会 10 分钟超时，可用姿势=关键地址单址逐查 / 发射窗小块段批量（from/to_block 圈定）。（哈基米，07-18）
 - 【历史降级·新案禁用】分段多进程姿势：复制脚本改 OUT 与 to_block 边界（`if nxt >= BOUND: break`）、sleep 提至 0.5s，各进程独立 CSV 事后按 (tx,log_index) 去重合并；改 config 后重启前删本地缓存的段清单文件。（哈基米，07-18）现行主线为 v2 Parquet/done manifest。
 - **多会话共享 key 限速冲突**：并行分析会话同打一个 HyperSync key/端点会互相触发 429（SQD 案与另一标的采集会话撞车实测）——开工前 `ps aux | grep fetch_hypersync` 查有无在跑进程；撞车时不必停工，调低单会话吞吐预期、靠 429 退避共存。（SQD，07-20）**限流是 key 级共享、不是端点独立**——同 key 打不同链子域（eth+arbitrum）并发同样互抢限额；多链标的的分链采集按链串行或错峰，别指望换端点绕开限额。（LPT，07-21）
@@ -189,7 +189,7 @@ size 与 SHA-256；全部通过后才原子将旧 done 升为 `hypersync-v2-done
 ### 3.6 记账模型 gate 的通道实测（accounting_gate.py，3.19）
 
 - **BSC dataseed**：eth_call 历史 state 窗口 **~128 块且节点池深浅抖动**（150 块探测过、边缘偶发 missing trie node——gate 的 rebase 两时点已收缩到 64 块保命中）；支持 **eth_simulateV1**（模拟转账读实收的兜底路）；getLogs 拒(-32005)。bsc/eth publicnode 全 archive 墙（128 块内也拒）；dRPC 免费层限速凶只配兜底。
-- **Alchemy ETH 免费层：eth_call 全历史 archive**（100 万块前实测通）→ ETH 侧 gate 事件窗口自动放大到 1 万块、rebase 窗口 7200 块，检测强度远超 BSC；但 getLogs 限 10 块——事件一律走 HyperSync。`.g.alchemy.com` 走 clash 代理（脚本内置）。
+- **Alchemy ETH 免费层：eth_call 全历史 archive**（100 万块前实测通）→ ETH 侧 gate 事件窗口自动放大到 1 万块、rebase 窗口 7200 块，检测强度远超 BSC；但 getLogs 限 10 块——事件一律走 HyperSync。`.g.alchemy.com` 的代理经 `CHIP_PROXY`/`--proxy` 解析（`scripts/lib/proxy_config.py`），不再内置固定端口。
 - **fee-on-transfer 双路互补**：事件差值覆盖池路径，`eth_simulateV1` 兜底低活跃场景；事件差值只取单侧干净样本。（判例：casebook/supply-accounting.md S-05）
 - **PAXG 链上转账费现役为 0**（曾经 0.02% 是老黄历）——勿再当税币验收样本；**HOGE 2% 税硬编码在合约里，是稳定的 BLOCK 回归样本**。
 - Helius getAccountInfo(jsonParsed) 对 Token-2022 扩展解析完整（BERN transferFeeConfig 全字段直出），无需手动解 TLV。

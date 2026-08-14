@@ -30,8 +30,9 @@
          图 2 的时间序列本身无法从快照型 state 重建（需重放中间序列），故此处
          做终值对账而非生成——序列中间值的正确性仍由重放脚本+对账关卡负责。
 
-退出码：0=成功/对账过；1=失败（宏残留/对账超差/输入缺失）；
-        2=check 容差政策拒（正式模式改 --tol-pp 未加 --exploration，F-04 钳制）。
+退出码：0=成功/对账过；1=数据、渲染或对账失败（宏残留/超差/输入缺失等）；
+        2=机器政策拒（fig1 阵营白名单；check 正式容差被改且未加
+          --exploration）。
 check 留痕（F-C5）：每次对账（PASS/FAIL、formal/exploration）都落
   figure2_check_receipt.json（mode/tol_pp/verdict/facts+series sha）到工作目录；
   发布闸 new-analysis 复验其在场且 mode=formal、tol_pp=默认、verdict=PASS——
@@ -42,13 +43,20 @@ import csv
 import datetime as dt
 import hashlib
 import json
+import math
 import os
 import sys
+import tempfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 
 from facts_gate import Facts, MACRO_RE  # noqa: E402
+import standard_charts as charts  # noqa: E402
+
+
+FIG1_LEGEND_RECEIPT_NAME = "fig1_legend_receipt.json"
+FIG1_LEGEND_RECEIPT_SCHEMA = "figure1-legend/v1"
 
 
 def _load(p):
@@ -58,7 +66,7 @@ def _load(p):
 
 def _parse_date(s):
     s = str(s).strip()
-    for fmt in ("%Y-%m-%d", "%Y-%m-%d %H:%M:%S", "%Y/%m/%d"):
+    for fmt in ("%Y-%m-%d", "%Y-%m-%d %H:%M:%S", "%Y/%m/%d", "%Y-%m-%dT%H:%M:%SZ"):
         try:
             return dt.datetime.strptime(s, fmt)
         except ValueError:
@@ -102,14 +110,36 @@ def mode_fig1(a):
     dates, series_by_camp = css.get("dates"), css.get("series")
     if not dates or not series_by_camp:
         raise SystemExit("FAIL: state 缺 camp_share_series.dates/series，无法直出图 1")
+    rendered_camps, excluded_keys, rejected_keys = charts.select_fig1_series(
+        series_by_camp)
+    if rejected_keys:
+        available = list(charts.CAMP_ORDER) + list(charts.FIG1_EXCLUDED_SERIES)
+        print(
+            f"FAIL: camp_share_series 含白名单外桶名 {rejected_keys}——图 1 "
+            f"可用集合是 standard_charts.CAMP_ORDER 加结构化豁免键"
+            f" {available}。存量案迁移口径见 scan-schemas.md §13「存量迁移」："
+            f"legacy 名与实体级自造桶重编译前须按案内证据归入现代名，"
+            f"映射是分析判断非机械替换",
+            file=sys.stderr,
+        )
+        raise SystemExit(2)
+
     series = {"ts": [_parse_date(d) for d in dates]}
     n = len(series["ts"])
     for camp, vals in series_by_camp.items():
-        if len(vals) != n:
-            raise SystemExit(f"FAIL: 阵营「{camp}」长度 {len(vals)} ≠ dates {n}")
+        if not isinstance(vals, list) or len(vals) != n:
+            got = len(vals) if isinstance(vals, list) else "非列表"
+            raise SystemExit(f"FAIL: 阵营「{camp}」长度 {got} ≠ dates {n}")
+        if camp in excluded_keys:
+            for i, value in enumerate(vals):
+                if isinstance(value, bool) or not isinstance(value, (int, float)) \
+                        or not math.isfinite(value):
+                    raise SystemExit(
+                        f"FAIL: 豁免键「{camp}」[{i}] 为非有限数值 {value!r}")
         series[camp] = vals
     price = _read_price_csv(a.price_csv, a.price_cols) if a.price_csv else None
     overlay = None
+    overlay_receipt = []
     if a.overlay:
         overlay = []
         for spec in a.overlay:
@@ -117,17 +147,34 @@ def mode_fig1(a):
             if not sep:
                 raise SystemExit(f'FAIL: --overlay 格式应为 "标签=阵营A+阵营B"，收到 {spec!r}')
             names = [c.strip() for c in expr.split("+") if c.strip()]
-            missing = [c for c in names if c not in series_by_camp]
+            missing = [c for c in names if c not in rendered_camps]
             if missing:
-                raise SystemExit(f"FAIL: --overlay 引用了不存在的阵营 {missing}；"
-                                 f"可用阵营：{list(series_by_camp)}")
+                raise SystemExit(f"FAIL: --overlay 引用了不存在的阵营或非实绘键 {missing}；"
+                                 f"可用实绘阵营：{rendered_camps}")
             overlay.append({"label": label.strip(),
                             "pct": [sum(series_by_camp[c][i] for c in names) for i in range(n)]})
-    from standard_charts import plot_camp_evolution
-    plot_camp_evolution(series, a.out, a.token or
-                        (state.get("token") or {}).get("symbol", "?"),
-                        price_series=price, overlay=overlay)
-    print(f"OK fig1: {len(series['ts'])} 点 × {len(series_by_camp)} 阵营 → {a.out}"
+            overlay_receipt.append({"label": label.strip(), "camps": names})
+    # 不直写旧的正式 PNG：同目录唯一临时文件渲染成功后再
+    # replace，否则“绘图函数本次没产出＋目标处恰有旧 PNG”会被误当成功。
+    out_dir = os.path.dirname(os.path.abspath(a.out))
+    fd, staged_png = tempfile.mkstemp(prefix=".fig1-render-", suffix=".png",
+                                      dir=out_dir)
+    os.close(fd)
+    try:
+        charts.plot_camp_evolution(
+            series, staged_png,
+            a.token or (state.get("token") or {}).get("symbol", "?"),
+            price_series=price, overlay=overlay)
+        if not os.path.isfile(staged_png) or os.path.getsize(staged_png) == 0:
+            raise SystemExit(
+                f"FAIL: 图 1 渲染结束但 PNG 未生成或为空: {a.out}")
+        os.replace(staged_png, a.out)
+    finally:
+        if os.path.exists(staged_png):
+            os.unlink(staged_png)
+    _write_fig1_legend_receipt(
+        a, rendered_camps, excluded_keys, overlay_receipt)
+    print(f"OK fig1: {len(series['ts'])} 点 × {len(rendered_camps)} 实绘阵营 → {a.out}"
           + (f"（价格 {len(price['ts'])} 点）" if price else "（无价格轴）"))
     return 0
 
@@ -167,9 +214,36 @@ CHECK_RECEIPT_NAME = "figure2_check_receipt.json"
 
 
 def _file_ref(path):
-    data = open(path, "rb").read()
+    with open(path, "rb") as fh:
+        data = fh.read()
     return {"path": os.path.basename(str(path)),
             "sha256": hashlib.sha256(data).hexdigest(), "size": len(data)}
+
+
+def _write_fig1_legend_receipt(a, rendered_camps, excluded_keys, overlays):
+    """F-01：图 1 实绘集合与输入/输出实物绑定，tmp+fsync+replace。"""
+    doc = {
+        "schema": FIG1_LEGEND_RECEIPT_SCHEMA,
+        "rendered_camps": list(rendered_camps),
+        "excluded_series": [
+            {"key": key, "reason": charts.FIG1_EXCLUDED_SERIES[key]}
+            for key in excluded_keys
+        ],
+        "overlays": list(overlays),
+        "price_csv": _file_ref(a.price_csv) if a.price_csv else None,
+        "output_png": _file_ref(a.out),
+        "state": _file_ref(a.state),
+        "generated_at_utc": dt.datetime.now(dt.timezone.utc)
+                              .strftime("%Y-%m-%dT%H:%M:%SZ"),
+    }
+    out = os.path.join(os.path.dirname(os.path.abspath(a.state)),
+                       FIG1_LEGEND_RECEIPT_NAME)
+    tmp = out + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as fh:
+        fh.write(json.dumps(doc, ensure_ascii=False, indent=1) + "\n")
+        fh.flush()
+        os.fsync(fh.fileno())
+    os.replace(tmp, out)
 
 
 def _write_check_receipt(a, verdict, okc, errs):

@@ -20,7 +20,7 @@
            --min-context-slot N --replay-stats stats.json
   绕过 stats 文件直接传数: --replay-net-raw <最小单位整数>
   --rpc URL          不给时用链默认免 key 端点（DEFAULT_RPC，与 accounting_gate 同表）
-  --proxy URL        只作用于 RPC（Alchemy 国内走 clash 时传 http://127.0.0.1:7897）
+  --proxy URL        只作用于 RPC；代理地址统一从 CHIP_PROXY 取得或显式传入
   --tolerance-bps N  容差，默认 10（0.1%）；正式模式（不加 --exploration）上限就是 10
   --tolerance-waiver PATH  正式模式容差要超过 10bps 时唯一的合法通道：一份人工裁决
                      收据 tolerance-waiver/v1，必须写明批准容差、裁决人、UTC 决定时间、
@@ -38,6 +38,7 @@ replay-stats 字段识别（依次尝试，值可为 int 或十进制字符串�
 退出码: 0 = PASS
         2 = 两种语义，看有没有落收据来分辨：
             ①落了收据 → FAIL（终态供给或 sink 逐地址归因不闭合——硬停，处置见上）；
+              真 FAIL 会显式归档同 target/schema 家族的旧 PASS，再替换 canonical；
             ②没落收据 → 容差政策拒绝（正式模式超 10bps 却无 waiver，或 waiver 本身
               不合法／没覆盖住本次实际偏差）——补齐人工裁决收据再跑，别当 FAIL 读；
               批 D（A-1）起政策拒绝先把上一轮旧收据作废归档
@@ -54,7 +55,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from receipt_kernel import (build_envelope, finalize_envelope, publish_error_receipt,
-                            publish_overwrite)
+                            publish_overwrite, publish_supersede)
 from chain_registry import formal_reconciliation_chains
 from net import attested_rpc_pool
 from solana_observation import (assert_declared_slot,
@@ -82,6 +83,7 @@ FORMAL_TOLERANCE_BPS_MAX = 10
 WAIVER_TOLERANCE_BPS_CAP = 100
 TOLERANCE_WAIVER_SCHEMA = "tolerance-waiver/v1"
 OVER_CAP_APPROVAL_SCHEMA = "over-cap-approval/v1"
+SCHEMA_FAMILY = "supply-truth-receipt/"
 
 
 class TolerancePolicyError(ValueError):
@@ -390,18 +392,21 @@ def assert_waiver_covers_diff(waiver: dict, diff_bps) -> None:
             "——裁决人没见过这么大的偏差，该收据失效，须重新人工裁决")
 
 
-def invalidate_stale_receipt(out_path) -> str | None:
+def invalidate_stale_receipt(out_path, *, schema_family) -> str | None:
     """政策拒绝时把上一轮旧收据显式作废（A-1，F-D 后半）。
 
     背景：政策拒绝（exit 2 不落收据）时，上一轮 PASS 收据原地不动——文档把"有没有落
     收据"当成分辨 exit 2 两种语义的唯一线索，这条线索恰恰被旧收据污染；而
     publish_overwrite 拒绝 PASS→非 PASS 降级覆盖，想用一份拒绝记录顶掉旧 PASS 也写
     不进去。做法＝原子改名归档（`<out>.superseded-<UTC>`，不销毁不覆盖），案内不再有
-    supply_truth 收据，下游 fail-closed 缺件即停。只作废本 gate 自己的收据
-    （schema 以 supply-truth-receipt/ 开头），别的文件占着 --out 位置不动（避免误伤）。
+    supply_truth 收据，下游 fail-closed 缺件即停。只作废调用出口声明 schema 家族的
+    收据，别的文件占着 --out 位置不动（避免误伤）。
     归档失败由调用方升格 exit 1（作废是政策拒绝的义务副作用，副作用失败＝环境故障）。
     返回归档路径（无旧收据/非本 gate 收据时返回 None）。
     """
+    if (not isinstance(schema_family, str) or not schema_family
+            or not schema_family.endswith("/")):
+        raise ValueError("schema_family 必须是以 / 结尾的非空 schema 前缀")
     path = Path(out_path)
     if not path.exists() or path.is_symlink() or not path.is_file():
         return None
@@ -410,7 +415,7 @@ def invalidate_stale_receipt(out_path) -> str | None:
     except (OSError, ValueError):
         return None
     if not isinstance(old, dict) or not str(old.get("schema", "")).startswith(
-            "supply-truth-receipt/"):
+            schema_family):
         return None
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     archived = path.with_name(f"{path.name}.superseded-{stamp}")
@@ -549,7 +554,7 @@ def main(argv=None):
         """政策拒绝统一出口（A-1）：先把上一轮旧收据作废归档，再 exit 2。
         归档失败＝作废义务没完成，升格 exit 1（环境故障，修完重跑）。"""
         try:
-            archived = invalidate_stale_receipt(a.out)
+            archived = invalidate_stale_receipt(a.out, schema_family=SCHEMA_FAMILY)
         except OSError as exc:
             print(f"检测自身失败（exit 1，修通道重跑）: 政策拒绝时旧收据作废失败——"
                   f"旧 supply_truth 收据仍在原地，不得当本轮结果引用: {exc}", file=sys.stderr)
@@ -729,7 +734,10 @@ def main(argv=None):
         on_fail=("余额禁用重放结果改链上实时直查；地址全集/转账历史仍可用重放；"
                  "重放余额仅可作≥阈值超集筛选" if verdict == "FAIL" else None))
     try:
-        publish_overwrite(a.out, result)
+        if verdict == "FAIL":
+            publish_supersede(a.out, result, schema_family=SCHEMA_FAMILY)
+        else:
+            publish_overwrite(a.out, result)
     except Exception as exc:
         print(f"[supply_truth] receipt 写入失败: {exc}", file=sys.stderr)
         return 1

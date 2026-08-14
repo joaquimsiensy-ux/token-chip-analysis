@@ -155,7 +155,7 @@ def main() -> int:
         ROOT / "scripts/report/handoff_manifest.py": ('SCHEMA_VERSION = "handoff/v3"',
                                                         'SUPPORTED_SCHEMAS = {"handoff/v3"}'),
         ROOT / "scripts/report/a4_gate.py": ('"schema": "a4-seal/v4"',),
-        ROOT / "scripts/report/a5_report_seal.py": ('SCHEMA="a5-report-seal/v2"',),
+        ROOT / "scripts/report/a5_report_seal.py": ('SCHEMA="a5-report-seal/v3"',),
     }
     for path, needles in contracts.items():
         text = path.read_text(encoding="utf-8")
