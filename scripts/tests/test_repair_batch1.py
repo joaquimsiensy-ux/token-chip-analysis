@@ -8,6 +8,7 @@ fail-closed completeness, and F-03 replay gate propagation.
 from __future__ import annotations
 
 import contextlib
+import hashlib
 import importlib.util
 import io
 import json
@@ -24,6 +25,7 @@ sys.path[:0] = [
     str(ROOT / "scripts/lib"),
     str(ROOT / "scripts/evm"),
     str(ROOT / "scripts/solana"),
+    str(ROOT / "scripts/report"),
     str(ROOT / "scripts/tests"),
 ]
 
@@ -31,6 +33,7 @@ import supply_truth_gate as supply  # noqa: E402
 import receipt_kernel as kernel  # noqa: E402
 from test_repair_batch_a import SupplyPool, TOKEN  # noqa: E402
 from evm_channel_fixture import write_csv_channel_receipt  # noqa: E402
+import standard_charts as charts  # noqa: E402
 
 
 EVM = ROOT / "scripts/evm"
@@ -681,6 +684,141 @@ def test_f03_pass1_toctou_disappearance_is_immediate(root: Path):
     assert rc != 0 and "preflight 后消失" in text and "[warn] 缺文件" not in text, text
 
 
+# --------------------------------------------------------------------- F-01
+
+F01_SCRIPT = ROOT / "scripts/report/figures_from_facts.py"
+F01_RECEIPT = "fig1_legend_receipt.json"
+
+
+def _f01_sha256(path: Path):
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def _f01_write_state(root: Path, series, *, dates=None):
+    root.mkdir(parents=True, exist_ok=True)
+    path = root / "analysis-state.json"
+    path.write_text(json.dumps({
+        "token": {"symbol": "F01"},
+        "camp_share_series": {
+            "dates": dates or ["2026-01-01"],
+            "series": series,
+        },
+    }, ensure_ascii=False), encoding="utf-8")
+    return path
+
+
+def _f01_run(work: Path, state: Path, out: Path, *extra):
+    return subprocess.run(
+        [sys.executable, str(F01_SCRIPT), "fig1", "--state", str(state),
+         "--out", str(out), *map(str, extra)], cwd=work,
+        capture_output=True, text=True, timeout=120,
+    )
+
+
+def test_f01_selector_triple_and_whitelist_rejection(root: Path):
+    assert hasattr(charts, "select_fig1_series"), \
+        "F-01 requires one shared pure selector"
+    rendered, excluded, rejected = charts.select_fig1_series({
+        "ts": [object()], "散户": [40.0], "burn_cum_pct": [5.0],
+        "未知阵营": [1.0], "大庄": [59.0], "销毁": [0.0],
+    })
+    assert rendered == ["大庄", "散户", "销毁"], rendered
+    assert excluded == ["burn_cum_pct"], excluded
+    assert rejected == ["未知阵营"], rejected
+
+    case = root / "unknown"
+    state = _f01_write_state(case, {"大庄": [60.0], "未知阵营": [40.0]})
+    out = case / "fig1.png"
+    p = _f01_run(case, state, out)
+    text = p.stdout + p.stderr
+    print(f"F01 UNKNOWN observed_rc={p.returncode} png={out.exists()} "
+          f"bad_key={'未知阵营' in text}")
+    assert p.returncode == 2 and "未知阵营" in text, text
+    assert "可用集合" in text and "scan-schemas.md" in text, text
+    assert not out.exists() and not (case / F01_RECEIPT).exists()
+
+
+def test_f01_receipt_fields_and_shared_render_set(root: Path):
+    case = root / "receipt"
+    state = _f01_write_state(case, {
+        "散户": [35.0], "销毁": [5.0], "大庄": [60.0],
+        "burn_cum_pct": [7.5],
+    })
+    price = case / "price.csv"
+    price.write_text("date,close\n2026-01-01,1.5\n", encoding="utf-8")
+    out = case / "charts/final/fig1.png"
+    out.parent.mkdir(parents=True)
+
+    figures = _load_module(F01_SCRIPT, "f01_figures")
+    args = mock.Mock(
+        state=str(state), token="F01", out=str(out), price_csv=str(price),
+        price_cols=None, overlay=["合并=大庄+散户"],
+    )
+    real_selector = charts.select_fig1_series
+    with mock.patch.object(charts, "select_fig1_series", wraps=real_selector) as selector:
+        assert figures.mode_fig1(args) == 0
+    # mode receipt and plot must both consume the exact same selector, never
+    # maintain a second ordered-set implementation.
+    assert selector.call_count == 2, selector.call_args_list
+    selected_results = [real_selector(call.args[0]) for call in selector.call_args_list]
+    assert selected_results[0] == selected_results[1], selected_results
+
+    receipt_path = case / F01_RECEIPT
+    receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+    assert receipt["schema"] == "figure1-legend/v1"
+    assert receipt["rendered_camps"] == ["大庄", "散户", "销毁"]
+    assert receipt["rendered_camps"] == selected_results[0][0]
+    assert receipt["excluded_series"] == [
+        {"key": "burn_cum_pct", "reason": "non_stacked_metric"},
+    ]
+    assert receipt["overlays"] == [
+        {"label": "合并", "camps": ["大庄", "散户"]},
+    ]
+    for field, path in (("state", state), ("output_png", out), ("price_csv", price)):
+        ref = receipt[field]
+        assert set(ref) == {"path", "size", "sha256"}, (field, ref)
+        assert ref["size"] == path.stat().st_size
+        assert ref["sha256"] == _f01_sha256(path)
+    assert "销毁" in charts.CAMP_COLORS
+
+    # no burn + no overlay is represented by empty lists, never omitted/null.
+    empty = root / "empty-optionals"
+    empty_state = _f01_write_state(empty, {"大庄": [100.0]})
+    empty_out = empty / "fig1.png"
+    p = _f01_run(empty, empty_state, empty_out)
+    assert p.returncode == 0, p.stdout + p.stderr
+    empty_receipt = json.loads((empty / F01_RECEIPT).read_text(encoding="utf-8"))
+    assert empty_receipt["excluded_series"] == []
+    assert empty_receipt["overlays"] == [] and empty_receipt["price_csv"] is None
+
+
+def test_f01_excluded_nonfinite_and_png_failure_leave_no_receipt(root: Path):
+    nonfinite = root / "nonfinite"
+    state = _f01_write_state(nonfinite, {
+        "大庄": [100.0], "burn_cum_pct": [float("inf")],
+    })
+    out = nonfinite / "fig1.png"
+    p = _f01_run(nonfinite, state, out)
+    assert p.returncode != 0 and "burn_cum_pct" in (p.stdout + p.stderr)
+    assert "非有限" in (p.stdout + p.stderr)
+    assert not out.exists() and not (nonfinite / F01_RECEIPT).exists()
+
+    no_png = root / "no-png"
+    no_png_state = _f01_write_state(no_png, {"大庄": [100.0]})
+    no_png_out = no_png / "fig1.png"
+    no_png_out.write_bytes(b"old-png-must-not-count-as-current-run")
+    old_png = no_png_out.read_bytes()
+    figures = _load_module(F01_SCRIPT, "f01_no_png")
+    args = mock.Mock(
+        state=str(no_png_state), token="F01", out=str(no_png_out),
+        price_csv=None, price_cols=None, overlay=None,
+    )
+    with mock.patch.object(charts, "plot_camp_evolution", return_value=str(no_png_out)):
+        _expect_error(lambda: figures.mode_fig1(args), "PNG")
+    assert no_png_out.read_bytes() == old_png
+    assert not (no_png / F01_RECEIPT).exists()
+
+
 def main():
     with tempfile.TemporaryDirectory(prefix="repair-batch1-", dir="/private/tmp") as raw:
         root = Path(raw)
@@ -700,7 +838,10 @@ def main():
         test_f03_original_counterexample_and_gate_isolation(root)
         test_f03_pass2_stats_schema_fail_closed(root)
         test_f03_pass1_toctou_disappearance_is_immediate(root)
-    print("PASS v6.41.0 batch1 steps 1-3 RV-07/RV-04/RV-17/F-03")
+        test_f01_selector_triple_and_whitelist_rejection(root)
+        test_f01_receipt_fields_and_shared_render_set(root)
+        test_f01_excluded_nonfinite_and_png_failure_leave_no_receipt(root)
+    print("PASS v6.41.0 batch1 steps 1-4 RV-07/RV-04/RV-17/F-03/F-01")
     return 0
 
 

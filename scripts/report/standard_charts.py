@@ -47,13 +47,16 @@ from chart_style import setup
 # ── 阵营标准配色与堆叠顺序（图1，v2.0 标签体系）────────────────
 # F-04（2026-08-13）：拆两段导出——现代段是新报告唯一合法阵营名集合
 # （state_from_facts.py 的 camp_share_series 白名单直接 import 本段，禁手抄第二份清单）；
-# legacy 段仅旧数据重绘兼容。CAMP_ORDER = 两段合并，与拆分前逐项同序（plot 行为零变化）。
+# legacy 段仅旧数据重绘兼容。CAMP_ORDER = 两段合并；“销毁”是
+# EVM CHIP_LEGACY_CAMP_DENOM=1 真实产出的旧堆叠桶，F-01 起显式纳入。
 CAMP_ORDER_MODERN = ["项目方", "大庄", "小庄", "离场庄", "刷量地址",
                      "CEX资金通道", "CEX托管", "疑似CEX托管", "流动性池", "其他大户",
                      "历史大户", "散户", "桥锁仓", "锁仓/销毁"]
 # 旧体系键（旧报告基线重绘兼容用，新报告禁用；"狙击集团"v5.0 起废止归此类）：
-CAMP_ORDER_LEGACY = ["狙击集团", "庄家TOP1", "庄家其他组", "首30分钟狙击者", "其他散户"]
+CAMP_ORDER_LEGACY = ["狙击集团", "庄家TOP1", "庄家其他组", "首30分钟狙击者", "其他散户", "销毁"]
 CAMP_ORDER = CAMP_ORDER_MODERN + CAMP_ORDER_LEGACY
+# 图 1 唯一允许不进堆叠图的 series 键；value 是图例收据理由码。
+FIG1_EXCLUDED_SERIES = {"burn_cum_pct": "non_stacked_metric"}
 # 阵营互斥优先级：设施/CEX 类判定优先于"历史大户"归属——同址两属时归 CEX/设施桶
 #（SPX6900 2026-07-25：4 个 CEX 仓错分历史层致曲线返工的教训）
 CAMP_COLORS = {
@@ -77,6 +80,7 @@ CAMP_COLORS = {
     "狙击集团": "tab:purple",
     "庄家TOP1": "tab:red", "庄家其他组": "tab:orange",
     "首30分钟狙击者": "tab:purple", "其他散户": "tab:green",
+    "销毁": "#969696",  # EVM legacy 堆叠桶；与“锁仓/销毁”同灰色系
 }
 # 图2 实体线条：标签前缀 → 语义色（与图1 同色系）；匹配不到按轮换色
 ENTITY_COLOR_HINT = [("项目方", "tab:red"), ("大庄", "tab:orange"), ("小庄", "#d4a017"),
@@ -142,6 +146,21 @@ PRICE_LOG_SWITCH_RATIO = 30  # 图1 价格右轴：max/min 超此倍数自动切
 OVERLAY_COLORS = ["#4A148C", "#880E4F", "#004D40"]
 
 
+def select_fig1_series(series):
+    """纯函数：把图 1 series 键分为（实绘有序列表, 豁免键, 拒绝键）。
+
+    ``ts`` 是时间轴元数据，不属于阵营键。实绘顺序唯一来自
+    ``CAMP_ORDER``；豁免键唯一来自 ``FIG1_EXCLUDED_SERIES``。
+    函数不做 IO、不修改输入，供绘图、收据与后续发布闸同源消费。
+    """
+    keys = list(series)
+    rendered = [camp for camp in CAMP_ORDER if camp in series]
+    excluded = [key for key in FIG1_EXCLUDED_SERIES if key in series]
+    allowed = set(CAMP_ORDER) | set(FIG1_EXCLUDED_SERIES) | {"ts"}
+    rejected = [key for key in keys if key not in allowed]
+    return rendered, excluded, rejected
+
+
 def plot_camp_evolution(series, out_png, token, note_supply="占总供应量", price_series=None,
                         overlay=None):
     """图1：各阵营持仓占比演变（全量转账重放后的快照序列）。
@@ -169,7 +188,9 @@ def plot_camp_evolution(series, out_png, token, note_supply="占总供应量", p
     """
     setup()
     ts = series["ts"]
-    camps = [c for c in CAMP_ORDER if c in series]
+    camps, _excluded, rejected = select_fig1_series(series)
+    if rejected:
+        raise ValueError(f"图 1 series 含白名单外键 {rejected}")
     fig, ax = plt.subplots(figsize=(12, 5.6))
     ax.stackplot(ts, [series[c] for c in camps],
                  labels=camps, colors=[CAMP_COLORS[c] for c in camps],

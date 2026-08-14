@@ -3,6 +3,7 @@
 
 契约：fig1 从 state 直出成图 / flow spec 宏渲染同源且宏错必炸 / check 图2终值对账。
 """
+import hashlib
 import json
 import os
 import subprocess
@@ -11,6 +12,8 @@ import tempfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 FFF = os.path.join(HERE, "..", "report", "figures_from_facts.py")
+REPORT_DIR = os.path.join(HERE, "..", "report")
+LEGEND_RECEIPT = "fig1_legend_receipt.json"
 
 FACTS = {
     "token": {"symbol": "TT", "decimals": 18, "total_supply_raw": str(10**9 * 10**18)},
@@ -47,6 +50,19 @@ def run(args):
                           capture_output=True, text=True)
 
 
+def sha256(path):
+    return hashlib.sha256(open(path, "rb").read()).hexdigest()
+
+
+def write_state(root, name, series, dates=None):
+    os.makedirs(root, exist_ok=True)
+    path = os.path.join(root, name)
+    json.dump({"token": {"symbol": "TT"}, "camp_share_series": {
+        "dates": dates or ["2026-01-01"], "series": series,
+    }}, open(path, "w"), ensure_ascii=False)
+    return path
+
+
 def main():
     with tempfile.TemporaryDirectory() as td:
         fp = os.path.join(td, "facts.json")
@@ -59,6 +75,78 @@ def main():
         r = run(["fig1", "--state", sp, "--token", "TT", "--out", out1])
         assert r.returncode == 0 and os.path.getsize(out1) > 10_000, \
             f"fig1 直出失败: {r.stdout} {r.stderr}"
+        receipt_p = os.path.join(td, LEGEND_RECEIPT)
+        receipt = json.load(open(receipt_p))
+        assert receipt["schema"] == "figure1-legend/v1"
+        assert receipt["rendered_camps"] == ["大庄", "散户"]
+        assert receipt["excluded_series"] == [] and receipt["overlays"] == []
+        assert receipt["price_csv"] is None
+        assert receipt["state"]["sha256"] == sha256(sp)
+        assert receipt["output_png"]["sha256"] == sha256(out1)
+
+        # F-01 原反例：旧实现接受未知阵营并报“2 阵营”，
+        # plot_camp_evolution 却只画 CAMP_ORDER 交集中的“大庄”。修复后
+        # fig1 入口必须 exit 2，且列出坏键与迁移口径。
+        unknown_state = {
+            "token": {"symbol": "TT"},
+            "camp_share_series": {
+                "dates": ["2026-01-01"],
+                "series": {"大庄": [60.0], "未知阵营": [40.0]},
+            },
+        }
+        unknown_sp = os.path.join(td, "unknown-state.json")
+        json.dump(unknown_state, open(unknown_sp, "w"), ensure_ascii=False)
+        unknown_out = os.path.join(td, "unknown.png")
+        r = run(["fig1", "--state", unknown_sp, "--token", "TT",
+                 "--out", unknown_out])
+        assert r.returncode == 2 \
+            and "未知阵营" in (r.stdout + r.stderr) \
+            and "scan-schemas.md" in (r.stdout + r.stderr), \
+            ("F-01 未知阵营应 exit 2 并列出坏键／迁移口径；"
+             f" observed rc={r.returncode}: {r.stdout} {r.stderr}")
+        assert not os.path.exists(unknown_out), "未知阵营拒绝时不得出 PNG"
+
+        # F-01 legacy 绿例：EVM legacy 分母模式真实产出的“销毁”
+        # 是显式可绘键，必须有配色并进图例收据实绘集合。
+        legacy_dir = os.path.join(td, "legacy")
+        legacy_sp = write_state(legacy_dir, "state.json", {
+            "大庄": [60.0], "销毁": [40.0],
+        })
+        legacy_out = os.path.join(legacy_dir, "fig1.png")
+        r = run(["fig1", "--state", legacy_sp, "--out", legacy_out])
+        assert r.returncode == 0 and os.path.getsize(legacy_out) > 10_000, \
+            f"销毁 legacy 键应可画: {r.stdout} {r.stderr}"
+        legacy_receipt = json.load(open(os.path.join(legacy_dir, LEGEND_RECEIPT)))
+        assert legacy_receipt["rendered_camps"] == ["大庄", "销毁"]
+        sys.path.insert(0, REPORT_DIR)
+        import standard_charts
+        assert "销毁" in standard_charts.CAMP_COLORS
+
+        # burn_cum_pct 在场：验长度/有限值后结构化豁免；不在场
+        # 已由基准用例证明 excluded_series=[]。
+        burn_dir = os.path.join(td, "burn")
+        burn_sp = write_state(burn_dir, "state.json", {
+            "大庄": [60.0], "散户": [40.0], "burn_cum_pct": [5.0],
+        })
+        burn_out = os.path.join(burn_dir, "fig1.png")
+        r = run(["fig1", "--state", burn_sp, "--out", burn_out])
+        assert r.returncode == 0, r.stdout + r.stderr
+        burn_receipt = json.load(open(os.path.join(burn_dir, LEGEND_RECEIPT)))
+        assert burn_receipt["rendered_camps"] == ["大庄", "散户"]
+        assert burn_receipt["excluded_series"] == [
+            {"key": "burn_cum_pct", "reason": "non_stacked_metric"},
+        ]
+
+        nonfinite_dir = os.path.join(td, "burn-nonfinite")
+        nonfinite_sp = write_state(nonfinite_dir, "state.json", {
+            "大庄": [100.0], "burn_cum_pct": [float("nan")],
+        })
+        nonfinite_out = os.path.join(nonfinite_dir, "fig1.png")
+        r = run(["fig1", "--state", nonfinite_sp, "--out", nonfinite_out])
+        assert r.returncode != 0 and "burn_cum_pct" in (r.stdout + r.stderr) \
+            and "非有限" in (r.stdout + r.stderr), r.stdout + r.stderr
+        assert not os.path.exists(nonfinite_out)
+        assert not os.path.exists(os.path.join(nonfinite_dir, LEGEND_RECEIPT))
 
         # 2) flow：宏渲染同源出图；lifecycle_flow 的 nodes/edges 结构由绘图函数
         #    自行校验，这里核心契约=宏全渲染（数字同源）
@@ -96,6 +184,10 @@ def main():
         assert r.returncode == 0 and os.path.getsize(out5) > 10_000, \
             f"overlay 出图失败: {r.stdout} {r.stderr}"
         assert os.path.getsize(out5) != os.path.getsize(out1), "带 overlay 的图应与不带的不同"
+        overlay_receipt = json.load(open(receipt_p))
+        assert overlay_receipt["overlays"] == [
+            {"label": "合并", "camps": ["大庄", "散户"]},
+        ]
         # SystemExit 的消息走 stderr（与 mode_fig1 内其他 fail 一致），两路都收
         r = run(["fig1", "--state", sp, "--out", os.path.join(td, "x.png"),
                  "--overlay", "X=大庄+查无此阵营"])
@@ -106,8 +198,24 @@ def main():
         assert r.returncode != 0 and "格式应为" in (r.stdout + r.stderr), \
             f"格式错应 fail-closed: {r.stdout} {r.stderr}"
 
-    print("PASS: figures_from_facts fig1直出/flow宏同源/宏错必炸/check终值对账/"
-          "overlay合并线(含双fail-closed)，五契约全过")
+        # 价格轴输入必须以 path/size/sha256 三元组绑定。
+        price_dir = os.path.join(td, "price")
+        price_sp = write_state(price_dir, "state.json", {"大庄": [100.0]})
+        price_csv = os.path.join(price_dir, "price.csv")
+        with open(price_csv, "w", encoding="utf-8") as fh:
+            fh.write("date,close\n2026-01-01,1.25\n")
+        price_out = os.path.join(price_dir, "fig1.png")
+        r = run(["fig1", "--state", price_sp, "--out", price_out,
+                 "--price-csv", price_csv])
+        assert r.returncode == 0, r.stdout + r.stderr
+        price_receipt = json.load(open(os.path.join(price_dir, LEGEND_RECEIPT)))
+        assert price_receipt["price_csv"] == {
+            "path": "price.csv", "sha256": sha256(price_csv),
+            "size": os.path.getsize(price_csv),
+        }
+
+    print("PASS: figures_from_facts fig1白名单/legacy销毁键/legend receipt/"
+          "burn豁免/overlay组成/价格绑定/flow宏同源/check终值对账全过")
     return 0
 
 

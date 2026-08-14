@@ -291,6 +291,6 @@ schema 全部细节（report-extract 四键与 `id="report-extract"` 硬约定�
 12. `build_html.py` 退出码 0（6.7.0 起有 [WARN] 直接不写出文件）；阵营图 `id="chart-camps"` 自动嵌入目检存在
 13. **【买入后监控包交付时追加】**：观察哨与两档监控建议齐且逐条有原因、与 JSON monitoring_advice 的 mode/alert_threshold_pct 一一对应；JSON 顶层四键齐、addresses 与附录 B 一致且完整地址、sentinel 纪律复查（周期性会动的地址必须 false）、round_target/watch_return 该填的填了；重跑 build_html 零 WARN、`id="report-extract"` 目检存在
 14. 浏览器打开 HTML 目检：图片全显示、表格无错位、蓝红框正常、（带监控包时）JSON 折叠块可展开
-15. 图 1 的图例条数是否等于传入阵营数，且全部阵营名逐字取自 `CAMP_ORDER`；非标准名会静默漏图（判例：casebook/supply-accounting.md S-10）。
+15. 图 1 是否已经 `select_fig1_series()` 白名单机器闸并产生 `fig1_legend_receipt.json`：收据的实绘 camps 必须与绘图函数同源，非标准名 exit 2，仅 `burn_cum_pct` 可以 `non_stacked_metric` 结构化豁免，overlay 必须记标签与组成 camps（判例：casebook/supply-accounting.md S-10）。
 16. 留存率、人均持仓和分发集中度是否先剔除质押合约、DEX 池、归属池、桥等设施收款方；否则口径与叙事可能反转（判例：casebook/supply-accounting.md S-05）。
 17. 正文点名参与实体动作的地址是否与阵营表逐址同归属；互斥时必须修归属或改叙事，否则实体与散户占比失真（判例：casebook/entity-clustering.md E-18）。
