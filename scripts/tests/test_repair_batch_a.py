@@ -77,10 +77,10 @@ class SinkPool(SupplyPool):
 # 夹具固定跑 mint=1/burn=0 对链上 100 → decide() 算出的实际偏差恒为 9900.0bps。
 FIXTURE_DIFF_BPS = 9900.0
 WAIVER_REASON = "特殊迁移币已人工核对，批准本次供给真值容差。"
-BLINDREVIEW_RESIDUAL_INVISIBLES = tuple(chr(codepoint) for codepoint in (
-    0x3164, 0x2800, 0x115F, 0xFFA0, 0x0301, 0x034F, 0xE000,
-    0x0378, 0x0300, 0x1160, 0x17B4, 0x17B5, 0x2065,
-))
+BLINDREVIEW_RESIDUAL_INVISIBLES = tuple(
+    "\u3164\u2800\u115f\uffa0\u0301\u034f\ue000"
+    "\u0378\u0300\u1160\u17b4\u17b5\u2065\u0591"
+)
 
 
 def utc_z(value: datetime) -> str:

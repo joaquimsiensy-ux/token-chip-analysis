@@ -152,7 +152,7 @@ def production_files():
     return sorted(set(files))
 
 
-def _constants(tree: ast.AST) -> dict[str, str]:
+def _constants(tree: ast.AST, path: Path | None = None) -> dict[str, str]:
     values = {}
     for node in ast.walk(tree):
         if isinstance(node, (ast.Assign, ast.AnnAssign)):
@@ -162,6 +162,22 @@ def _constants(tree: ast.AST) -> dict[str, str]:
                 for target in targets:
                     if isinstance(target, ast.Name):
                         values[target.id] = value.value
+    if path is not None:
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.ImportFrom) or node.level or not node.module:
+                continue
+            candidate = path.parent / (node.module.replace(".", "/") + ".py")
+            if not candidate.is_file():
+                continue
+            imported_tree = ast.parse(candidate.read_text(encoding="utf-8"),
+                                      filename=str(candidate))
+            imported_values = _constants(imported_tree)
+            for alias in node.names:
+                # Imported schema constants are normally producer-local and scanning
+                # them in every importer creates false producer edges.  The adversarial
+                # aggregate is deliberately shared by its producer and two consumers.
+                if alias.name == "AGGREGATE_SCHEMA" and alias.name in imported_values:
+                    values[alias.asname or alias.name] = imported_values[alias.name]
     return values
 
 
@@ -1061,7 +1077,7 @@ class AtomicVisitor(ast.NodeVisitor):
 def scan_python(path: Path):
     text = path.read_text(encoding="utf-8")
     tree = ast.parse(text, filename=str(path))
-    constants = _constants(tree)
+    constants = _constants(tree, path)
     producers = set()
     consumers = set()
     has_requests = False

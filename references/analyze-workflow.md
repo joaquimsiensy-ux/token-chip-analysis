@@ -159,7 +159,7 @@
 2. **扰动敏感度前置**（EVM 案，`cluster_sensitivity.py --dir <案目录>`，sensitivity_report.md 作复核输入；FRAGILE/STABLE 字样只进复核材料禁进报告正文）。
 3. **惯犯揭盲**（实体冻结后 `label_lookup.py --unseal` 取封存命中，与实体划分互证/互斥）。
 4. 本地反例自查脚本前置。
-5. **N 路怀疑者 agent**＋1 完整性批评角色查 findings/结论清单缺口（必查全史极值清单）＋1 路**外部异构怀疑者**（codex/GPT 单进程横扫全部结论）——重算义务、备择解释与分组细则按 §10＋research-workflows §二执行，不在此复述。所有落盘件必须使用 `adversarial-review-artifact/v1` 绑定当前 `a4_claims.json` sha；claim-review 的 claim_id 并集全覆盖且证据非空，之后只可由 runner `finalize` 原子产出 `adversarial-review/v3`。
+5. **N 路怀疑者 agent**＋1 完整性批评角色查 findings/结论清单缺口（必查全史极值清单）＋1 路**外部异构怀疑者**（codex/GPT 单进程横扫全部结论）——重算义务、备择解释与分组细则按 §10＋research-workflows §二执行，不在此复述。所有落盘件必须使用 `adversarial-review-artifact/v1` 绑定当前 `a4_claims.json` sha；claim-review 的 claim_id 并集全覆盖且证据含实义字符（不可见字符不算），之后只可由 runner `finalize` 原子产出 `adversarial-review/v3`。
 6. 判定三档 CONFIRMED/WEAKENED/REFUTED（**必须实际核查，"理论上可能"不算推翻**）→ 修订顺序先修数据管线再修文案 → 修正记录印进报告附录。
 7. **封口收尾**：A3 已先落 `findings.md`、`facts.json`、`analysis-state.json`、`identity_gate.json`。运行 `a4_gate.py finalize ... --workflow-type new-analysis|independent-audit --seal-files findings.md,analysis-state.json,facts.json,identity_gate.json`，产 `a4-seal/v4`。新分析会重验当前分布 claim source，并要求 `dist-*` claims 与异常簇严格相等。每次重封都追加 revision 和 previous seal 哈希。净室复核继续机器对账两套 claim registry，但 v1 分布闸不挂 analysis-audit。路径经 containment 校验，`charts/final/` 为空且 exit 0 才准进入终判环。
 

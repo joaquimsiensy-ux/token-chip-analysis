@@ -658,11 +658,13 @@ def validate_adversarial_review(root, expected_target=None):
     """Deeply revalidate the v3 aggregate from registry and artifact bytes."""
     root = Path(root).resolve()
     try:
-        adversarial = json.loads(regular(root, "adversarial_review.json").read_text())
+        adversarial = json.loads(
+            regular(root, "adversarial_review.json").read_text(),
+            parse_constant=_reject_constant)
     except (OSError, json.JSONDecodeError) as exc:
         raise ValueError(f"adversarial review JSON invalid: {exc}") from exc
     schema = adversarial.get("schema") if isinstance(adversarial, dict) else None
-    if schema != "adversarial-review/v3":
+    if schema != AGGREGATE_SCHEMA:
         if schema == "adversarial-review/v2":
             raise ValueError(V3_RERUN_HINT)
         raise ValueError(f"adversarial review must use {AGGREGATE_SCHEMA}；{V3_RERUN_HINT}")
@@ -679,7 +681,8 @@ def validate_adversarial_review(root, expected_target=None):
     if not isinstance(registry_ref, dict):
         raise ValueError("adversarial claim_registry ref missing")
     _, _, claim_ids, actual_registry_ref = load_claim_registry(
-        root, registry_ref.get("path", ""))
+        root, registry_ref.get("path", ""), meaningful_text=_meaningful_text,
+        reject_constant=_reject_constant)
     if registry_ref != actual_registry_ref:
         raise ValueError("adversarial claim_registry size/sha256/schema binding invalid")
     registry_sha256 = actual_registry_ref["sha256"]
@@ -689,6 +692,8 @@ def validate_adversarial_review(root, expected_target=None):
         raise ValueError("adversarial reviews must be a non-empty array")
     roles = set()
     reviewed_sets = []
+    execution_sha256s = set()
+    artifact_sha256s = set()
     for item in reviews:
         if not isinstance(item, dict) or item.get("exit_code") != 0:
             raise ValueError("review lacks successful execution receipt")
@@ -700,18 +705,30 @@ def validate_adversarial_review(root, expected_target=None):
         artifact_path = ref_ok(root, artifact)
         if artifact.get("size") != artifact_path.stat().st_size:
             raise ValueError("review artifact size binding invalid")
+        artifact_sha256 = artifact.get("sha256")
+        if artifact_sha256 in artifact_sha256s:
+            raise ValueError("duplicate review artifact content")
+        artifact_sha256s.add(artifact_sha256)
         repo_ref_ok(item.get("runner"), ADVERSARIAL_RUNNERS, f"adversarial {role}")
         execution = item.get("execution_receipt")
-        ref_ok(root, execution)
+        execution_path = ref_ok(root, execution)
+        if execution.get("size") != execution_path.stat().st_size:
+            raise ValueError("review execution receipt size binding invalid")
+        execution_sha256 = execution.get("sha256")
+        if execution_sha256 in execution_sha256s:
+            raise ValueError("duplicate review execution receipt content")
+        execution_sha256s.add(execution_sha256)
         _, _, reviewed = validate_review_receipt(
             root, execution.get("path"), role, artifact,
-            registry_sha256=registry_sha256, claim_ids=claim_ids)
+            registry_sha256=registry_sha256, claim_ids=claim_ids,
+            meaningful_text=_meaningful_text, reject_constant=_reject_constant)
         if role in CLAIM_REVIEW_ROLES:
             reviewed_sets.append(reviewed)
     if not ROLES.issubset(roles):
         raise ValueError(f"required adversarial roles missing: {sorted(ROLES - roles)}")
     validate_union_coverage(claim_ids, reviewed_sets)
-    blockers = validate_blocking_findings(adversarial.get("blocking_findings"))
+    blockers = validate_blocking_findings(
+        adversarial.get("blocking_findings"), meaningful_text=_meaningful_text)
     unresolved = [item for item in blockers if not item["resolved"]]
     if unresolved:
         raise ValueError(f"对抗复核仍有 {len(unresolved)} 个未关闭发布否决项")
@@ -723,7 +740,9 @@ def validate_adversarial_review(root, expected_target=None):
 def validate_sources(root):
     root = Path(root).resolve()
     accounting = json.loads(regular(root, "accounting_mode.json").read_text())
-    adversarial = json.loads(regular(root, "adversarial_review.json").read_text())
+    adversarial = json.loads(
+        regular(root, "adversarial_review.json").read_text(),
+        parse_constant=_reject_constant)
     if (accounting.get("schema") != "accounting-gate/v1" or accounting.get("exit_code") != 0
             or str(accounting.get("verdict", "")).upper() not in {"PASS", "WARN"}
             or not accounting.get("chain") or not (accounting.get("token") or accounting.get("mint"))

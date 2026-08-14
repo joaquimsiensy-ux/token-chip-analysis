@@ -151,11 +151,26 @@ def validate_formal_case_chain(case_dir):
 
 
 def _norm_text(value):
-    return " ".join(str(value or "").split())
+    from adversarial_review_runner import _meaningful_text
+    filtered = "".join(
+        char for char in str(value or "")
+        if char == " " or _meaningful_text(char)
+    )
+    return " ".join(filtered.split())
 
 
 def check_audit_registry_alignment(case_dir, reg, verdicts, fails):
     """Bidirectionally align the A4 registry with the clean-room registry."""
+    from adversarial_review_runner import _meaningful_text
+
+    def claim_id(value):
+        if not isinstance(value, str):
+            return None
+        stripped = value.strip()
+        if not stripped or not all(_meaningful_text(char) for char in stripped):
+            return None
+        return stripped
+
     try:
         path = safe_case_file(case_dir, "claim_registry.json")
         audit = json.loads(path.read_text(encoding="utf-8"))
@@ -170,13 +185,19 @@ def check_audit_registry_alignment(case_dir, reg, verdicts, fails):
     if not isinstance(a4_claims, list):
         fails.append("a4_claims.json claims 非数组")
         return path
-    a4_map = {str(c.get("id", "")).strip(): c for c in a4_claims if isinstance(c, dict)}
-    audit_ids = [str(c.get("claim_id", "")).strip() for c in audit_claims
-                 if isinstance(c, dict)]
-    audit_map = {str(c.get("claim_id", "")).strip(): c
-                 for c in audit_claims if isinstance(c, dict)}
-    verdict_map = {str(v.get("id", "")).strip(): str(v.get("verdict", "")).upper()
-                   for v in verdicts if isinstance(v, dict)}
+    a4_rows = [c for c in a4_claims if isinstance(c, dict)]
+    audit_rows = [c for c in audit_claims if isinstance(c, dict)]
+    verdict_rows = [v for v in verdicts if isinstance(v, dict)]
+    a4_ids = [claim_id(c.get("id")) for c in a4_rows]
+    audit_ids = [claim_id(c.get("claim_id")) for c in audit_rows]
+    verdict_ids = [claim_id(v.get("id")) for v in verdict_rows]
+    if any(cid is None for cid in a4_ids + audit_ids + verdict_ids):
+        fails.append("A4/净室/verdict claim id 非法")
+        return path
+    a4_map = dict(zip(a4_ids, a4_rows))
+    audit_map = dict(zip(audit_ids, audit_rows))
+    verdict_map = {cid: str(row.get("verdict", "")).upper()
+                   for cid, row in zip(verdict_ids, verdict_rows)}
     if len(audit_ids) != len(set(audit_ids)) or not all(audit_ids):
         fails.append("净室 claim_registry claim_id 缺失或重复")
     if set(a4_map) != set(audit_map):

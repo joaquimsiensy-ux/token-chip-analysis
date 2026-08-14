@@ -19,6 +19,7 @@ LIB = Path(__file__).resolve().parents[1] / "lib"
 sys.path.insert(0, str(LIB))
 from chain_registry import (formal_ready, known_chains_for_release,
                             missing_formal_capabilities, release_tier_for, resolve_alias)
+from adversarial_review_runner import AGGREGATE_SCHEMA, V3_RERUN_HINT
 
 
 SHARED_REQUIRED = (
@@ -818,16 +819,30 @@ def check_claims(case_dir: Path, d: dict, report: Path | None, errors: list[str]
     return claim_types
 
 
+def load_adversarial_json(path: Path, errors: list[str]):
+    def reject_constant(value):
+        import shared_release_receipt
+        return shared_release_receipt._reject_constant(value)
+
+    try:
+        return json.loads(
+            path.read_text(encoding="utf-8"),
+            parse_constant=reject_constant)
+    except Exception as exc:
+        errors.append(f"JSON无法读取 {path.name}: {exc}")
+        return {}
+
+
 def check_adversarial(case_dir: Path, d: dict, errors: list[str], expected_target=None):
     """Use the same v3 byte-level validator as the shared receipt consumer."""
     if not isinstance(d, dict):
         errors.append("对抗复核 v3 校验失败: schema 非法；存量须按 v3 重跑对抗复核")
         return
     schema = d.get("schema")
-    if schema != "adversarial-review/v3":
-        hint = "存量 adversarial-review/v2 须按 v3 重跑对抗复核"
-        errors.append(f"对抗复核 v3 校验失败: {hint}" if schema == "adversarial-review/v2"
-                      else f"对抗复核 v3 校验失败: schema 非法；{hint}")
+    if schema != AGGREGATE_SCHEMA:
+        errors.append(f"对抗复核 v3 校验失败: {V3_RERUN_HINT}"
+                      if schema == "adversarial-review/v2"
+                      else f"对抗复核 v3 校验失败: schema 非法；{V3_RERUN_HINT}")
         return
     try:
         import shared_release_receipt
@@ -1096,7 +1111,8 @@ def run(case_dir: Path, report: Path | None, *, profile="independent-audit"):
     for name in required:
         p = case_dir / name
         if p.suffix == ".json" and p.is_file():
-            data[name] = load_json(p, errors)
+            data[name] = (load_adversarial_json(p, errors)
+                          if name == "adversarial_review.json" else load_json(p, errors))
     case_chain = check_formal_case_chain(data, errors)
     if "audit_input_manifest.json" in data:
         check_manifest(case_dir, data["audit_input_manifest.json"], errors)

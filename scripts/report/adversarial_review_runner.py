@@ -7,9 +7,14 @@ import hashlib
 import json
 import os
 import secrets
+import shutil
 import subprocess
 import sys
 from pathlib import Path
+
+HERE = Path(__file__).resolve().parent
+sys.path.insert(0, str(HERE.parent / "lib"))
+from supply_truth_gate import _meaningful_text, _reject_constant
 
 ROLES = {"entity_attribution_skeptic", "completeness_critic"}
 CLAIM_REVIEW_ROLES = ROLES - {"completeness_critic"}
@@ -67,18 +72,25 @@ def ref(root, path):
             "size": path.stat().st_size, "sha256": sha(path)}
 
 
-def _nonempty_string(value):
-    return isinstance(value, str) and bool(value.strip())
+def _valid_identifier(value, meaningful_text=_meaningful_text):
+    if not isinstance(value, str):
+        return False
+    stripped = value.strip()
+    return bool(stripped) and all(meaningful_text(char) for char in stripped)
 
 
-def _string_array(value, label, *, nonempty=False):
+def _loads_json(text, reject_constant=_reject_constant):
+    return json.loads(text, parse_constant=reject_constant)
+
+
+def _string_array(value, label, *, nonempty=False, meaningful_text=_meaningful_text):
     if not isinstance(value, list) or (nonempty and not value):
         raise ValueError(f"{label} must be {'a non-empty ' if nonempty else 'an '}array")
-    if any(not _nonempty_string(item) for item in value):
+    if any(not meaningful_text(item) for item in value):
         raise ValueError(f"{label} must contain only non-empty strings")
 
 
-def validate_claim_registry_data(data):
+def validate_claim_registry_data(data, *, meaningful_text=_meaningful_text):
     """Pure validation of the A4 execution-time authority table."""
     if not isinstance(data, dict) or data.get("schema") != REGISTRY_SCHEMA:
         raise ValueError(f"claim registry must use {REGISTRY_SCHEMA}")
@@ -87,31 +99,35 @@ def validate_claim_registry_data(data):
         raise ValueError("claim registry claims must be a non-empty array")
     ids = []
     for index, claim in enumerate(claims):
-        if not isinstance(claim, dict) or not _nonempty_string(claim.get("id")):
-            raise ValueError(f"claim registry claims[{index}].id must be non-empty")
+        if not isinstance(claim, dict) \
+                or not _valid_identifier(claim.get("id"), meaningful_text):
+            raise ValueError(f"claim registry claims[{index}].id is invalid")
         ids.append(claim["id"].strip())
     if len(ids) != len(set(ids)):
         raise ValueError("claim registry contains duplicate claim id")
     return set(ids)
 
 
-def load_claim_registry(case_dir, registry="a4_claims.json"):
+def load_claim_registry(case_dir, registry="a4_claims.json", *,
+                        meaningful_text=_meaningful_text,
+                        reject_constant=_reject_constant):
     path = contained_regular(case_dir, registry, "claim registry")
     if path.relative_to(Path(case_dir).resolve()).as_posix() != "a4_claims.json":
         raise ValueError("claim registry authority must be case-root a4_claims.json")
     try:
-        data = json.loads(path.read_text(encoding="utf-8"))
+        data = _loads_json(path.read_text(encoding="utf-8"), reject_constant)
     except (OSError, json.JSONDecodeError) as exc:
         raise ValueError(f"claim registry JSON invalid: {exc}") from exc
-    claim_ids = validate_claim_registry_data(data)
+    claim_ids = validate_claim_registry_data(data, meaningful_text=meaningful_text)
     registry_ref = ref(case_dir, path)
     registry_ref["schema"] = REGISTRY_SCHEMA
     return path, data, claim_ids, registry_ref
 
 
-def validate_review_artifact(data, role, registry_sha256, claim_ids=None):
+def validate_review_artifact(data, role, registry_sha256, claim_ids=None, *,
+                             meaningful_text=_meaningful_text):
     """Pure role-specific artifact validator shared by runner and both consumers."""
-    if role not in ROLES:
+    if not meaningful_text(role) or role not in ROLES:
         raise ValueError(f"unsupported adversarial role: {role}")
     if not isinstance(data, dict) or data.get("schema") != ARTIFACT_SCHEMA:
         raise ValueError(f"review artifact must use {ARTIFACT_SCHEMA}")
@@ -120,10 +136,10 @@ def validate_review_artifact(data, role, registry_sha256, claim_ids=None):
     if data.get("registry_sha256") != registry_sha256:
         raise ValueError("review artifact registry_sha256 differs from claim registry")
     if role == "completeness_critic":
-        if not isinstance(data.get("findings"), list):
-            raise ValueError("completeness_critic findings array must be present")
-        if not isinstance(data.get("non_covered"), list):
-            raise ValueError("completeness_critic non_covered array must be present")
+        _string_array(data.get("findings"), "completeness_critic findings",
+                      meaningful_text=meaningful_text)
+        _string_array(data.get("non_covered"), "completeness_critic non_covered",
+                      meaningful_text=meaningful_text)
         return set()
 
     results = data.get("results")
@@ -134,14 +150,16 @@ def validate_review_artifact(data, role, registry_sha256, claim_ids=None):
         if not isinstance(item, dict):
             raise ValueError(f"results[{index}] must be an object")
         claim_id = item.get("claim_id")
-        if not _nonempty_string(claim_id):
-            raise ValueError(f"results[{index}].claim_id must be non-empty")
+        if not _valid_identifier(claim_id, meaningful_text):
+            raise ValueError(f"results[{index}].claim_id is invalid")
         claim_id = claim_id.strip()
         if item.get("verdict") not in VERDICTS:
             raise ValueError(f"results[{index}].verdict is outside the three-value enum")
-        _string_array(item.get("evidence"), f"results[{index}].evidence", nonempty=True)
+        _string_array(item.get("evidence"), f"results[{index}].evidence", nonempty=True,
+                      meaningful_text=meaningful_text)
         _string_array(item.get("alternative_explanations"),
-                      f"results[{index}].alternative_explanations")
+                      f"results[{index}].alternative_explanations",
+                      meaningful_text=meaningful_text)
         reviewed.append(claim_id)
     if len(reviewed) != len(set(reviewed)):
         raise ValueError("review artifact contains duplicate claim_id")
@@ -153,17 +171,18 @@ def validate_review_artifact(data, role, registry_sha256, claim_ids=None):
     return reviewed_set
 
 
-def validate_blocking_findings(blockers):
+def validate_blocking_findings(blockers, *, meaningful_text=_meaningful_text):
     """Pure blocker structure validator; unresolved blockers are valid but not releasable."""
     if not isinstance(blockers, list):
         raise ValueError("blocking_findings must be an array")
     ids = []
     for index, item in enumerate(blockers):
-        if not isinstance(item, dict) or not _nonempty_string(item.get("id")):
-            raise ValueError(f"blocking_findings[{index}].id must be non-empty")
+        if not isinstance(item, dict) \
+                or not _valid_identifier(item.get("id"), meaningful_text):
+            raise ValueError(f"blocking_findings[{index}].id is invalid")
         if not isinstance(item.get("resolved"), bool):
             raise ValueError(f"blocking_findings[{index}].resolved must be bool")
-        if item["resolved"] and not _nonempty_string(item.get("resolution")):
+        if item["resolved"] and not meaningful_text(item.get("resolution")):
             raise ValueError(
                 f"blocking_findings[{index}] resolved=true requires non-empty resolution")
         ids.append(item["id"].strip())
@@ -185,7 +204,9 @@ def validate_union_coverage(claim_ids, reviewed_sets):
     return covered
 
 
-def _load_artifact(case_dir, artifact_ref, role, registry_sha256, claim_ids):
+def _load_artifact(case_dir, artifact_ref, role, registry_sha256, claim_ids, *,
+                   meaningful_text=_meaningful_text,
+                   reject_constant=_reject_constant):
     if not isinstance(artifact_ref, dict):
         raise ValueError("review artifact ref missing")
     path = contained_regular(case_dir, artifact_ref.get("path", ""), "review artifact")
@@ -193,10 +214,11 @@ def _load_artifact(case_dir, artifact_ref, role, registry_sha256, claim_ids):
             or artifact_ref.get("sha256") != sha(path)):
         raise ValueError("review artifact binding invalid")
     try:
-        data = json.loads(path.read_text(encoding="utf-8"))
+        data = _loads_json(path.read_text(encoding="utf-8"), reject_constant)
     except (OSError, json.JSONDecodeError) as exc:
         raise ValueError(f"review artifact JSON invalid: {exc}") from exc
-    reviewed = validate_review_artifact(data, role, registry_sha256, claim_ids)
+    reviewed = validate_review_artifact(
+        data, role, registry_sha256, claim_ids, meaningful_text=meaningful_text)
     return data, reviewed
 
 
@@ -232,7 +254,7 @@ def run_review(case_dir, role, entrypoint, artifact, receipt,
         if staging.is_symlink() or not staging.is_file() or staging.stat().st_size == 0:
             raise ValueError("review entrypoint did not create a non-empty controlled artifact")
         try:
-            artifact_data = json.loads(staging.read_text(encoding="utf-8"))
+            artifact_data = _loads_json(staging.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError) as exc:
             raise ValueError(f"review artifact JSON invalid: {exc}") from exc
         validate_review_artifact(
@@ -255,9 +277,13 @@ def run_review(case_dir, role, entrypoint, artifact, receipt,
         receipt_published = True
         return payload
     except Exception:
-        if staging.is_file() or staging.is_symlink():
+        if staging.is_dir() and not staging.is_symlink():
+            shutil.rmtree(staging)
+        elif staging.is_file() or staging.is_symlink():
             staging.unlink()
-        if tmp.is_file() or tmp.is_symlink():
+        if tmp.is_dir() and not tmp.is_symlink():
+            shutil.rmtree(tmp)
+        elif tmp.is_file() or tmp.is_symlink():
             tmp.unlink()
         if artifact_published and not receipt_published and final.is_file():
             final.unlink()
@@ -265,11 +291,13 @@ def run_review(case_dir, role, entrypoint, artifact, receipt,
 
 
 def validate_review_receipt(case_dir, receipt, role, artifact_ref,
-                            registry_sha256=None, claim_ids=None):
+                            registry_sha256=None, claim_ids=None, *,
+                            meaningful_text=_meaningful_text,
+                            reject_constant=_reject_constant):
     root = Path(case_dir).resolve()
     receipt_path = contained_regular(root, receipt, "review execution receipt")
     try:
-        data = json.loads(receipt_path.read_text(encoding="utf-8"))
+        data = _loads_json(receipt_path.read_text(encoding="utf-8"), reject_constant)
     except (OSError, json.JSONDecodeError) as exc:
         raise ValueError(f"review execution receipt JSON invalid: {exc}") from exc
     if (data.get("schema") != EXECUTION_SCHEMA
@@ -290,20 +318,21 @@ def validate_review_receipt(case_dir, receipt, role, artifact_ref,
     if data.get("registry_sha256") != registry_sha256:
         raise ValueError("review execution receipt registry_sha256 is torn")
     artifact_data, reviewed = _load_artifact(
-        root, artifact_ref, role, registry_sha256, claim_ids)
+        root, artifact_ref, role, registry_sha256, claim_ids,
+        meaningful_text=meaningful_text, reject_constant=reject_constant)
     return data, artifact_data, reviewed
 
 
 def _target_from_accounting(case_dir):
     path = contained_regular(case_dir, "accounting_mode.json", "accounting target")
     try:
-        data = json.loads(path.read_text(encoding="utf-8"))
+        data = _loads_json(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
         raise ValueError(f"accounting target JSON invalid: {exc}") from exc
     chain = data.get("chain")
     token = data.get("token") or data.get("mint")
     block = data.get("as_of_block")
-    if not _nonempty_string(chain) or not _nonempty_string(token) \
+    if not _meaningful_text(chain) or not _meaningful_text(token) \
             or isinstance(block, bool) or not isinstance(block, int):
         raise ValueError("accounting target lacks chain/token/as_of_block")
     if str(chain).strip().lower() != "solana":
@@ -322,7 +351,7 @@ def finalize_review(case_dir, receipts, blockers="blockers.json",
         _, _, claim_ids, registry_ref = load_claim_registry(root, claim_registry)
         blockers_path = contained_regular(root, blockers, "blocking findings input")
         try:
-            blocking_findings = json.loads(blockers_path.read_text(encoding="utf-8"))
+            blocking_findings = _loads_json(blockers_path.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError) as exc:
             raise ValueError(f"blocking findings JSON invalid: {exc}") from exc
         validate_blocking_findings(blocking_findings)
@@ -335,9 +364,11 @@ def finalize_review(case_dir, receipts, blockers="blockers.json",
         reviews = []
         reviewed_sets = []
         roles = set()
+        execution_sha256s = set()
+        artifact_sha256s = set()
         for receipt_path in receipt_paths:
             try:
-                execution = json.loads(receipt_path.read_text(encoding="utf-8"))
+                execution = _loads_json(receipt_path.read_text(encoding="utf-8"))
             except (OSError, json.JSONDecodeError) as exc:
                 raise ValueError(f"review execution receipt JSON invalid: {exc}") from exc
             role = execution.get("role")
@@ -345,6 +376,15 @@ def finalize_review(case_dir, receipts, blockers="blockers.json",
             execution, _, reviewed = validate_review_receipt(
                 root, receipt_path, role, artifact_ref,
                 registry_sha256=registry_ref["sha256"], claim_ids=claim_ids)
+            execution_ref = ref(root, receipt_path)
+            execution_sha256 = execution_ref["sha256"]
+            artifact_sha256 = artifact_ref.get("sha256")
+            if execution_sha256 in execution_sha256s:
+                raise ValueError("duplicate review execution receipt content")
+            if artifact_sha256 in artifact_sha256s:
+                raise ValueError("duplicate review artifact content")
+            execution_sha256s.add(execution_sha256)
+            artifact_sha256s.add(artifact_sha256)
             roles.add(role)
             if role in CLAIM_REVIEW_ROLES:
                 reviewed_sets.append(reviewed)
@@ -353,7 +393,7 @@ def finalize_review(case_dir, receipts, blockers="blockers.json",
                 "exit_code": execution["exit_code"],
                 "artifact": artifact_ref,
                 "runner": execution["producer"],
-                "execution_receipt": ref(root, receipt_path),
+                "execution_receipt": execution_ref,
             })
         if not ROLES.issubset(roles):
             raise ValueError(f"required adversarial roles missing: {sorted(ROLES - roles)}")

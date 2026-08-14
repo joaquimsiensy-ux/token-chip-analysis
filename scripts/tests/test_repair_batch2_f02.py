@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -115,6 +116,22 @@ def residue(root: Path):
                   if ".staging" in p.name or ".tmp." in p.name)
 
 
+def rejected(callable_):
+    try:
+        callable_()
+    except (OSError, ValueError):
+        return True
+    return False
+
+
+def rejection_message(callable_):
+    try:
+        callable_()
+    except (OSError, ValueError) as exc:
+        return str(exc)
+    return ""
+
+
 def build_valid(root: Path):
     registry_sha = make_case(root)
     p1, _, r1 = run_role(
@@ -126,6 +143,54 @@ def build_valid(root: Path):
                          stem="critic")
     proc = finalize(root, [r1, r2]) if p1.returncode == p2.returncode == 0 else None
     return p1, p2, proc, r1, r2
+
+
+def rewrite_aggregate_claim_id(root: Path, old: str, new: str):
+    """Rebind a valid aggregate after changing one id, without invoking the producer."""
+    aggregate_path = root / "adversarial_review.json"
+    aggregate = json.loads(aggregate_path.read_text(encoding="utf-8"))
+    registry_path = root / "a4_claims.json"
+    registry = json.loads(registry_path.read_text(encoding="utf-8"))
+    for claim in registry["claims"]:
+        if claim.get("id") == old:
+            claim["id"] = new
+            break
+    write_json(registry_path, registry)
+    registry_sha = sha(registry_path)
+    aggregate["claim_registry"] = {
+        "path": registry_path.name,
+        "size": registry_path.stat().st_size,
+        "sha256": registry_sha,
+        "schema": "a4-claims/v2",
+    }
+
+    for review in aggregate["reviews"]:
+        artifact_path = root / review["artifact"]["path"]
+        artifact = json.loads(artifact_path.read_text(encoding="utf-8"))
+        artifact["registry_sha256"] = registry_sha
+        for item in artifact.get("results", []):
+            if item.get("claim_id") == old:
+                item["claim_id"] = new
+                break
+        write_json(artifact_path, artifact)
+        artifact_ref = {
+            "path": artifact_path.name,
+            "size": artifact_path.stat().st_size,
+            "sha256": sha(artifact_path),
+        }
+
+        execution_path = root / review["execution_receipt"]["path"]
+        execution = json.loads(execution_path.read_text(encoding="utf-8"))
+        execution["registry_sha256"] = registry_sha
+        execution["artifact"] = artifact_ref
+        write_json(execution_path, execution)
+        review["artifact"] = artifact_ref
+        review["execution_receipt"] = {
+            "path": execution_path.name,
+            "size": execution_path.stat().st_size,
+            "sha256": sha(execution_path),
+        }
+    write_json(aggregate_path, aggregate)
 
 
 def t_original_two_byte_shell():
@@ -170,6 +235,455 @@ def t_runner_variants_and_cleanup():
               proc.returncode == 2 and not artifact.exists() and not receipt.exists()
               and residue(root) == [],
               (proc.returncode, proc.stderr[-160:], residue(root)))
+
+
+def t_meaningful_text_and_claim_identity():
+    import adversarial_review_runner as runner
+    import shared_release_receipt as shared
+    import supply_truth_gate as supply
+
+    check("runner 人工文本判定单源复用 supply_truth_gate._meaningful_text",
+          getattr(runner, "_meaningful_text", None) is supply._meaningful_text
+          and not hasattr(runner, "_nonempty_string"))
+
+    for label, invisible in (("U+200B", "\u200b"), ("U+3164", "\u3164"),
+                             ("U+2800", "\u2800")):
+        with tempfile.TemporaryDirectory(prefix="f02-meaningful-") as td:
+            root = Path(td)
+            registry_sha = make_case(root)
+            proc, artifact, receipt = run_role(
+                root, "entity_attribution_skeptic",
+                claim_artifact(registry_sha, [result("C1", evidence=[invisible]), result("C2")]),
+                stem="invisible")
+            check(f"{label} evidence 端到端拒绝且零残留",
+                  proc.returncode == 2 and not artifact.exists() and not receipt.exists()
+                  and residue(root) == [], (proc.returncode, proc.stderr[-180:], residue(root)))
+
+    critic_variants = (("findings", {"findings": ["\u3164"], "non_covered": []}),
+                       ("non_covered", {"findings": [], "non_covered": ["\u2800"]}))
+    for label, fields in critic_variants:
+        with tempfile.TemporaryDirectory(prefix="f02-critic-text-") as td:
+            root = Path(td)
+            registry_sha = make_case(root)
+            payload = critic_artifact(registry_sha)
+            payload.update(fields)
+            proc, artifact, receipt = run_role(
+                root, "completeness_critic", payload, stem="critic_bad")
+            check(f"critic {label} 元素须含实义字符",
+                  proc.returncode == 2 and not artifact.exists() and not receipt.exists(),
+                  (proc.returncode, proc.stderr[-180:]))
+
+    for label, invisible in (("U+2060", "\u2060"), ("U+3164", "\u3164")):
+        with tempfile.TemporaryDirectory(prefix="f02-resolution-") as td:
+            root = Path(td)
+            p1, p2, _, r1, r2 = build_valid(root)
+            (root / "adversarial_review.json").unlink(missing_ok=True)
+            write_json(root / "bad_blockers.json", [
+                {"id": "B1", "resolved": True, "resolution": invisible},
+            ])
+            proc = finalize(root, [r1, r2], blockers="bad_blockers.json") \
+                if p1.returncode == p2.returncode == 0 else p1
+            check(f"resolved blocker 的 {label} 空壳 resolution 端到端拒绝",
+                  proc.returncode == 2 and not (root / "adversarial_review.json").exists(),
+                  (proc.returncode, proc.stderr[-180:]))
+
+    id_variants = (("U+200B", "C1\u200b"), ("U+3164", "C1\u3164"),
+                   ("U+0591", "C1\u0591"))
+    for label, invalid_id in id_variants:
+        registry_message = rejection_message(lambda invalid_id=invalid_id:
+            runner.validate_claim_registry_data({
+                "schema": "a4-claims/v2", "claims": [{"id": invalid_id}],
+            }))
+        artifact_message = rejection_message(lambda invalid_id=invalid_id:
+            runner.validate_review_artifact(
+                claim_artifact("registry", [result(invalid_id)]),
+                "entity_attribution_skeptic", "registry"))
+        blocker_message = rejection_message(lambda invalid_id=invalid_id:
+            runner.validate_blocking_findings([
+                {"id": invalid_id, "resolved": False},
+            ]))
+        check(f"runner {label} claim/blocker id 按 all 语义判非法",
+              all("id is invalid" in message for message in
+                  (registry_message, artifact_message, blocker_message)),
+              (registry_message, artifact_message, blocker_message))
+
+        with tempfile.TemporaryDirectory(prefix="f02-consumer-id-") as td:
+            root = Path(td)
+            p1, p2, proc, _, _ = build_valid(root)
+            if p1.returncode == p2.returncode == 0 and proc is not None \
+                    and proc.returncode == 0:
+                rewrite_aggregate_claim_id(root, "C1", invalid_id)
+                shared_message = rejection_message(lambda:
+                    shared.validate_adversarial_review(
+                        root, {"chain": "bsc", "token": "0xtoken", "as_of_block": 123}))
+            else:
+                shared_message = "fixture build failed"
+            check(f"shared {label} claim_id 按消费侧 all 语义判非法",
+                  "id is invalid" in shared_message, shared_message)
+
+        with tempfile.TemporaryDirectory(prefix="f02-consumer-blocker-id-") as td:
+            root = Path(td)
+            p1, p2, proc, _, _ = build_valid(root)
+            if p1.returncode == p2.returncode == 0 and proc is not None \
+                    and proc.returncode == 0:
+                aggregate_path = root / "adversarial_review.json"
+                aggregate = json.loads(aggregate_path.read_text(encoding="utf-8"))
+                aggregate["blocking_findings"] = [{
+                    "id": invalid_id, "resolved": True, "resolution": "closed",
+                }]
+                write_json(aggregate_path, aggregate)
+                shared_blocker_message = rejection_message(lambda:
+                    shared.validate_adversarial_review(
+                        root, {"chain": "bsc", "token": "0xtoken", "as_of_block": 123}))
+            else:
+                shared_blocker_message = "fixture build failed"
+            check(f"shared {label} blocker id 按消费侧 all 语义判非法",
+                  "id is invalid" in shared_blocker_message, shared_blocker_message)
+
+    duplicate_registry = {
+        "schema": "a4-claims/v2",
+        "claims": [{"id": "C1"}, {"id": "C1\u0591"}],
+    }
+    duplicate_message = rejection_message(
+        lambda: runner.validate_claim_registry_data(duplicate_registry))
+    check("registry 的 C1 与 C1+U+0591 因后者 id 非法拒绝而非判重复",
+          "id is invalid" in duplicate_message and "duplicate" not in duplicate_message,
+          duplicate_message)
+
+    stripped_duplicate_message = rejection_message(
+        lambda: runner.validate_claim_registry_data({
+            "schema": "a4-claims/v2",
+            "claims": [{"id": "C1"}, {"id": " C1 "}],
+        }))
+    check("registry 重复检测仅按 strip 后精确相等",
+          "duplicate claim id" in stripped_duplicate_message,
+          stripped_duplicate_message)
+
+    normal_ids = tuple(f"C{index}" for index in range(1, 100)) + ("C-1", "C_1")
+    check("正常 C1-C99 及含连字符/下划线 id 照常通过",
+          runner.validate_claim_registry_data({
+              "schema": "a4-claims/v2",
+              "claims": [{"id": claim_id} for claim_id in normal_ids],
+          }) == set(normal_ids))
+
+    import a4_gate
+    with tempfile.TemporaryDirectory(prefix="f02-a4-normalize-") as td:
+        root = Path(td)
+        write_json(root / "claim_registry.json", {"claims": [{
+            "claim_id": "C1", "statement": "claim\u0591 text",
+            "evidence_files": [], "report_locations": [], "verdict": "confirmed",
+        }]})
+        fails = []
+        a4_gate.check_audit_registry_alignment(
+            root, {"claims": [{"id": "C1", "text": "claim text", "files": [],
+                               "report_locations": []}]},
+            [{"id": "C1", "verdict": "CONFIRMED"}], fails)
+        check("a4_gate 自由文本比较键逐字符过滤 U+0591",
+              fails == [], fails)
+
+    for label, invalid_id in id_variants:
+        with tempfile.TemporaryDirectory(prefix="f02-a4-invalid-id-") as td:
+            root = Path(td)
+            write_json(root / "claim_registry.json", {"claims": [{
+                "claim_id": invalid_id, "statement": "claim text",
+                "evidence_files": [], "report_locations": [], "verdict": "confirmed",
+            }]})
+            fails = []
+            a4_gate.check_audit_registry_alignment(
+                root, {"claims": [{"id": "C1", "text": "claim text", "files": [],
+                                   "report_locations": []}]},
+                [{"id": "C1", "verdict": "CONFIRMED"}], fails)
+            check(f"a4_gate {label} claim_id 按 all 语义拒绝",
+                  any("claim id 非法" in failure for failure in fails), fails)
+
+
+def t_directory_cleanup_and_output_guards():
+    with tempfile.TemporaryDirectory(prefix="f02-dir-residue-") as td:
+        root = Path(td)
+        make_case(root)
+        script = root / "mkdir_output.py"
+        script.write_text(
+            "import os\nfrom pathlib import Path\n"
+            "out = Path(os.environ['CHIP_REVIEW_OUTPUT'])\n"
+            "out.mkdir()\n"
+            "(out.parent / f'.dir_execution.json.tmp.{os.getppid()}').mkdir()\n",
+            encoding="utf-8")
+        proc = subprocess.run([
+            sys.executable, str(RUNNER), str(root), "--role", "completeness_critic",
+            "--entrypoint", script.name, "--artifact", "dir.json",
+            "--receipt", "dir_execution.json",
+        ], capture_output=True, text=True)
+        check("entrypoint 建 staging 目录＋receipt tmp 目录后 rc=2 且目录零残留",
+              proc.returncode == 2 and residue(root) == []
+              and not (root / "dir.json").exists() and not (root / "dir_execution.json").exists(),
+              (proc.returncode, proc.stderr[-180:], residue(root)))
+
+    for label, link_name, victim_name in (
+            ("artifact", "linked.json", "artifact_victim.json"),
+            ("receipt", "linked_execution.json", "receipt_victim.json")):
+        with tempfile.TemporaryDirectory(prefix="f02-output-link-") as td:
+            root = Path(td)
+            registry_sha = make_case(root)
+            entry = entrypoint(root, "valid.py", critic_artifact(registry_sha))
+            artifact = root / "linked.json"
+            receipt = root / "linked_execution.json"
+            selected = artifact if label == "artifact" else receipt
+            selected.symlink_to(victim_name)
+            proc = subprocess.run([
+                sys.executable, str(RUNNER), str(root), "--role", "completeness_critic",
+                "--entrypoint", entry.name, "--artifact", artifact.name,
+                "--receipt", receipt.name,
+            ], capture_output=True, text=True)
+            check(f"{label} 输出位 symlink 必须拒绝且不得写 victim",
+                  proc.returncode == 2 and selected.is_symlink()
+                  and not (root / victim_name).exists(),
+                  (proc.returncode, proc.stderr[-180:], (root / victim_name).exists()))
+
+    for label in ("artifact", "receipt"):
+        with tempfile.TemporaryDirectory(prefix="f02-preexisting-role-") as td:
+            root = Path(td)
+            registry_sha = make_case(root)
+            entry = entrypoint(root, "valid.py", critic_artifact(registry_sha))
+            artifact = root / "formal.json"
+            receipt = root / "formal_execution.json"
+            protected = artifact if label == "artifact" else receipt
+            protected.write_text("sentinel", encoding="utf-8")
+            proc = subprocess.run([
+                sys.executable, str(RUNNER), str(root), "--role", "completeness_critic",
+                "--entrypoint", entry.name, "--artifact", artifact.name,
+                "--receipt", receipt.name,
+            ], capture_output=True, text=True)
+            check(f"run_review {label} 正式位预存在须拒绝且原件不覆盖",
+                  proc.returncode == 2 and protected.read_text(encoding="utf-8") == "sentinel",
+                  (proc.returncode, proc.stderr[-180:], protected.read_text(encoding="utf-8")))
+
+    with tempfile.TemporaryDirectory(prefix="f02-preexisting-final-") as td:
+        root = Path(td)
+        p1, p2, proc, r1, r2 = build_valid(root)
+        aggregate = root / "adversarial_review.json"
+        before = aggregate.read_bytes() if aggregate.is_file() else b""
+        again = finalize(root, [r1, r2]) if p1.returncode == p2.returncode == 0 else p1
+        check("finalize 输出预存在须拒绝且原件不覆盖",
+              proc is not None and proc.returncode == 0 and again.returncode == 2
+              and aggregate.read_bytes() == before,
+              (again.returncode, again.stderr[-180:]))
+
+
+def t_content_identity_and_consumer_bindings():
+    from shared_release_receipt import validate_adversarial_review
+    target = {"chain": "bsc", "token": "0xtoken", "as_of_block": 123}
+
+    with tempfile.TemporaryDirectory(prefix="f02-receipt-copy-") as td:
+        root = Path(td)
+        p1, p2, proc, r1, r2 = build_valid(root)
+        (root / "adversarial_review.json").unlink(missing_ok=True)
+        copied = root / "skeptic_execution_copy.json"
+        shutil.copyfile(r1, copied)
+        injected = finalize(root, [r1, r2, copied]) if p1.returncode == p2.returncode == 0 else p1
+        check("finalize 按 execution receipt 内容 sha 去重复本注水",
+              proc is not None and proc.returncode == 0 and injected.returncode == 2
+              and not (root / "adversarial_review.json").exists(),
+              (injected.returncode, injected.stderr[-180:]))
+
+    with tempfile.TemporaryDirectory(prefix="f02-artifact-copy-") as td:
+        root = Path(td)
+        registry_sha = make_case(root)
+        payload = claim_artifact(registry_sha, [result("C1"), result("C2")])
+        p1, _, r1 = run_role(root, "entity_attribution_skeptic", payload, stem="skeptic_a")
+        p2, _, r2 = run_role(root, "entity_attribution_skeptic", payload, stem="skeptic_b")
+        p3, _, r3 = run_role(root, "completeness_critic", critic_artifact(registry_sha),
+                             stem="critic")
+        proc = finalize(root, [r1, r2, r3]) if not any(
+            p.returncode for p in (p1, p2, p3)) else p1
+        check("finalize 按 artifact 内容 sha 去重复读注水",
+              proc.returncode == 2 and not (root / "adversarial_review.json").exists(),
+              (proc.returncode, proc.stderr[-180:]))
+
+    with tempfile.TemporaryDirectory(prefix="f02-consumer-injection-") as td:
+        root = Path(td)
+        p1, p2, proc, _, _ = build_valid(root)
+        aggregate = json.loads((root / "adversarial_review.json").read_text())
+        aggregate["reviews"] = aggregate["reviews"] * 3
+        write_json(root / "adversarial_review.json", aggregate)
+        check("消费侧拒绝手抄六路同内容 reviews 注水",
+              p1.returncode == p2.returncode == 0 and proc is not None
+              and proc.returncode == 0
+              and rejected(lambda: validate_adversarial_review(root, target)))
+
+    with tempfile.TemporaryDirectory(prefix="f02-consumer-ref-") as td:
+        root = Path(td)
+        p1, p2, proc, _, _ = build_valid(root)
+        aggregate = json.loads((root / "adversarial_review.json").read_text())
+        aggregate["claim_registry"].update(sha256="0" * 64, size=1)
+        write_json(root / "adversarial_review.json", aggregate)
+        check("消费侧聚合 claim_registry 自报假 ref 必须拒绝",
+              p1.returncode == p2.returncode == 0 and proc is not None
+              and proc.returncode == 0
+              and rejected(lambda: validate_adversarial_review(root, target)))
+
+    with tempfile.TemporaryDirectory(prefix="f02-consumer-size-") as td:
+        root = Path(td)
+        p1, p2, proc, _, _ = build_valid(root)
+        aggregate = json.loads((root / "adversarial_review.json").read_text())
+        aggregate["reviews"][0]["execution_receipt"]["size"] = 999999
+        write_json(root / "adversarial_review.json", aggregate)
+        check("消费侧 execution receipt ref 的 size=999999 必须拒绝",
+              p1.returncode == p2.returncode == 0 and proc is not None
+              and proc.returncode == 0
+              and rejected(lambda: validate_adversarial_review(root, target)))
+
+
+def _poison_object(path: Path):
+    text = path.read_text(encoding="utf-8").rstrip()
+    if not text.endswith("}"):
+        raise AssertionError(path)
+    path.write_text(text[:-1] + ', "poison": NaN}\n', encoding="utf-8")
+
+
+def t_nonfinite_json_mounts_and_constant_sources():
+    import adversarial_review_runner as runner
+    import audit_release_gate as audit
+    import shared_release_receipt as shared
+
+    check("shared/audit 的 v3 schema 与迁移提示均从 runner 单源导入",
+          shared.AGGREGATE_SCHEMA == runner.AGGREGATE_SCHEMA
+          and shared.V3_RERUN_HINT == runner.V3_RERUN_HINT
+          and getattr(audit, "AGGREGATE_SCHEMA", None) == runner.AGGREGATE_SCHEMA
+          and getattr(audit, "V3_RERUN_HINT", None) == runner.V3_RERUN_HINT)
+
+    with tempfile.TemporaryDirectory(prefix="f02-nan-registry-") as td:
+        root = Path(td)
+        make_case(root)
+        _poison_object(root / "a4_claims.json")
+        proc, artifact, receipt = run_role(
+            root, "completeness_critic", critic_artifact(sha(root / "a4_claims.json")),
+            stem="nan_registry")
+        check("NaN claim registry 解析点拒绝", proc.returncode == 2
+              and not artifact.exists() and not receipt.exists(), proc.stderr[-180:])
+
+        registry = root / "a4_claims.json"
+        write_json(root / "adversarial_review.json", {
+            "schema": runner.AGGREGATE_SCHEMA,
+            "target": {"chain": "bsc", "token": "0xtoken", "as_of_block": 123},
+            "producer": runner.repo_producer(),
+            "claim_registry": {"path": registry.name, "size": registry.stat().st_size,
+                               "sha256": sha(registry), "schema": runner.REGISTRY_SCHEMA},
+            "reviews": [], "blocking_findings": [], "release_decision": "PASS",
+        })
+        original_reject = shared._reject_constant
+
+        def consumer_marker(value):
+            raise ValueError(f"consumer-side reject marker: {value}")
+
+        shared._reject_constant = consumer_marker
+        try:
+            try:
+                shared.validate_adversarial_review(
+                    root, {"chain": "bsc", "token": "0xtoken", "as_of_block": 123})
+            except ValueError as exc:
+                marker = str(exc)
+            else:
+                marker = ""
+        finally:
+            shared._reject_constant = original_reject
+        check("shared 深层 registry 解析显式使用消费侧 reject_constant",
+              "consumer-side reject marker" in marker, marker)
+
+    with tempfile.TemporaryDirectory(prefix="f02-nan-staging-") as td:
+        root = Path(td)
+        registry_sha = make_case(root)
+        raw = json.dumps(critic_artifact(registry_sha), ensure_ascii=False)[:-1] \
+            + ', "poison": NaN}'
+        proc, artifact, receipt = run_role(
+            root, "completeness_critic", raw=raw, stem="nan_artifact")
+        check("NaN controlled artifact 解析点拒绝", proc.returncode == 2
+              and not artifact.exists() and not receipt.exists(), proc.stderr[-180:])
+
+    with tempfile.TemporaryDirectory(prefix="f02-nan-finalize-") as td:
+        root = Path(td)
+        p1, p2, _, r1, r2 = build_valid(root)
+        (root / "adversarial_review.json").unlink(missing_ok=True)
+        _poison_object(root / "accounting_mode.json")
+        proc = finalize(root, [r1, r2]) if p1.returncode == p2.returncode == 0 else p1
+        check("NaN accounting target 解析点拒绝", proc.returncode == 2, proc.stderr[-180:])
+
+    with tempfile.TemporaryDirectory(prefix="f02-nan-blockers-") as td:
+        root = Path(td)
+        p1, p2, _, r1, r2 = build_valid(root)
+        (root / "adversarial_review.json").unlink(missing_ok=True)
+        (root / "blockers.json").write_text('[{"id":"B1","resolved":false,"poison":NaN}]\n',
+                                             encoding="utf-8")
+        proc = finalize(root, [r1, r2]) if p1.returncode == p2.returncode == 0 else p1
+        check("NaN blockers 解析点拒绝", proc.returncode == 2, proc.stderr[-180:])
+
+    with tempfile.TemporaryDirectory(prefix="f02-nan-receipt-") as td:
+        root = Path(td)
+        registry_sha = make_case(root)
+        p1, artifact, receipt = run_role(
+            root, "entity_attribution_skeptic",
+            claim_artifact(registry_sha, [result("C1"), result("C2")]), stem="skeptic")
+        receipt_data = json.loads(receipt.read_text()) if p1.returncode == 0 else {}
+        _poison_object(receipt) if p1.returncode == 0 else None
+        artifact_ref = receipt_data.get("artifact")
+        direct_rejected = rejected(lambda: runner.validate_review_receipt(
+            root, receipt.name, "entity_attribution_skeptic", artifact_ref,
+            registry_sha256=registry_sha, claim_ids={"C1", "C2"}))
+        p2, _, r2 = run_role(root, "completeness_critic", critic_artifact(registry_sha),
+                             stem="critic")
+        proc = finalize(root, [receipt, r2]) if p1.returncode == p2.returncode == 0 else p1
+        check("NaN execution receipt 的直接校验与 finalize 预解析点均拒绝",
+              direct_rejected and proc.returncode == 2,
+              (direct_rejected, proc.returncode, proc.stderr[-180:]))
+
+    with tempfile.TemporaryDirectory(prefix="f02-nan-artifact-load-") as td:
+        root = Path(td)
+        registry_sha = make_case(root)
+        artifact = write_json(root / "artifact.json", claim_artifact(
+            registry_sha, [result("C1"), result("C2")]))
+        _poison_object(artifact)
+        artifact_ref = {"path": artifact.name, "size": artifact.stat().st_size,
+                        "sha256": sha(artifact)}
+        check("NaN bound artifact 重载解析点拒绝",
+              rejected(lambda: runner._load_artifact(
+                  root, artifact_ref, "entity_attribution_skeptic",
+                  registry_sha, {"C1", "C2"})))
+
+    with tempfile.TemporaryDirectory(prefix="f02-nan-consumers-") as td:
+        root = Path(td)
+        p1, p2, proc, _, _ = build_valid(root)
+        _poison_object(root / "adversarial_review.json")
+        target = {"chain": "bsc", "token": "0xtoken", "as_of_block": 123}
+        shared_rejected = rejected(lambda: shared.validate_adversarial_review(root, target))
+        errors = []
+        audit.check_adversarial(
+            root, json.loads((root / "adversarial_review.json").read_text()), errors, target)
+        audit_load_errors = []
+        audit_loaded = audit.load_adversarial_json(
+            root / "adversarial_review.json", audit_load_errors)
+        check("NaN aggregate 在 shared 与 audit 两消费解析点均拒绝",
+              p1.returncode == p2.returncode == 0 and proc is not None
+              and proc.returncode == 0 and shared_rejected and bool(errors)
+              and audit_loaded == {} and bool(audit_load_errors),
+              (shared_rejected, errors, audit_load_errors))
+
+
+def t_documentation_contract():
+    protocol = (REPO / "references/independent-audit-protocol.md").read_text(encoding="utf-8")
+    workflow = (REPO / "references/analyze-workflow.md").read_text(encoding="utf-8")
+    required = (
+        "公开可算的完整性锚，不是签名",
+        "finalize 不是唯一物理路径",
+        "删除该角色 artifact",
+        "execution receipt",
+        "entrypoint 脚本必须随案保留",
+        "review_completeness.py",
+        '"resolved": bool',
+    )
+    check("独立复核协议补齐免责、TOCTOU、entrypoint、critic 命令与 blockers 结构",
+          all(item in protocol for item in required),
+          [item for item in required if item not in protocol])
+    check("analyze-workflow A4 §5 明确 evidence 必须含实义字符",
+          "证据含实义字符（不可见字符不算）" in workflow)
 
 
 def t_finalize_failures():
@@ -348,9 +862,14 @@ def t_consumer_and_green_chain():
 def main():
     t_original_two_byte_shell()
     t_runner_variants_and_cleanup()
+    t_meaningful_text_and_claim_identity()
+    t_directory_cleanup_and_output_guards()
     t_finalize_failures()
     t_finalize_variants()
+    t_content_identity_and_consumer_bindings()
+    t_nonfinite_json_mounts_and_constant_sources()
     t_consumer_and_green_chain()
+    t_documentation_contract()
     if FAILS:
         print(f"FAIL workorder B F-02 regressions: {len(FAILS)}")
         return 1
