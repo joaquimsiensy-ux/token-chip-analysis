@@ -2,8 +2,8 @@
 """v6.41.0 repair batch 1 regression tests.
 
 Sections are appended as the approved repair steps are implemented.  Covered:
-RV-07 receipt supersede, RV-04 unified proxy resolution, and RV-17 stake ledger
-fail-closed completeness.
+RV-07 receipt supersede, RV-04 unified proxy resolution, RV-17 stake ledger
+fail-closed completeness, and F-03 replay gate propagation.
 """
 from __future__ import annotations
 
@@ -12,6 +12,7 @@ import importlib.util
 import io
 import json
 import os
+import subprocess
 import sys
 import tempfile
 from pathlib import Path
@@ -29,6 +30,12 @@ sys.path[:0] = [
 import supply_truth_gate as supply  # noqa: E402
 import receipt_kernel as kernel  # noqa: E402
 from test_repair_batch_a import SupplyPool, TOKEN  # noqa: E402
+from evm_channel_fixture import write_csv_channel_receipt  # noqa: E402
+
+
+EVM = ROOT / "scripts/evm"
+F03_ZERO = "0x" + "0" * 40
+F03_A, F03_B, F03_C = ("0x" + c * 40 for c in "abc")
 
 
 @contextlib.contextmanager
@@ -532,6 +539,148 @@ def test_rv04_collection_and_net_wiring():
     assert command[command.index("-x") + 1] == "socks5://127.0.0.1:1080"
 
 
+# --------------------------------------------------------------------- F-03
+
+F03_FORMAL_SERIES = (
+    "camp_series.json",
+    "entity_series.json",
+    "camp_series.provenance.json",
+    "entity_series.provenance.json",
+)
+
+
+def _f03_fixture(work: Path):
+    work.mkdir(parents=True, exist_ok=True)
+    source = work / "transfers.csv"
+    source.write_text(
+        "block,ts,tx,from,to,value,uniqueId\n"
+        f"100,2026-01-01T00:00:00Z,0xt0,{F03_ZERO},{F03_A},100,0xt0:log:0\n"
+        # B 从未持币却转出：代数供给仍闭合，但 B=-10，gate 必须 FAIL。
+        f"110,2026-01-02T00:00:00Z,0xt1,{F03_B},{F03_C},10,0xt1:log:0\n",
+        encoding="utf-8",
+    )
+    receipt = write_csv_channel_receipt(work, "f03", source, F03_A, 0, 200)
+    channels = work / "channels.json"
+    channels.write_text(json.dumps({
+        "schema": "evm-channels/v2", "token": F03_A,
+        "expected_from": 0, "expected_to": 200,
+        "channels": [{"path": str(source), "lo": 0, "hi": 200,
+                      "tag": "f03", "format": "v1csv", "receipt": receipt}],
+    }), encoding="utf-8")
+    camps = work / "camps.json"
+    camps.write_text(json.dumps({
+        "camps": {"项目方": [F03_A], "其他大户": [F03_B, F03_C]},
+        "entities": {"实体F03": [F03_A, F03_B]},
+    }, ensure_ascii=False), encoding="utf-8")
+    return source, channels, camps
+
+
+def _f03_run(work: Path, script: str, *args):
+    return subprocess.run(
+        [sys.executable, str(EVM / script), *map(str, args)], cwd=work,
+        capture_output=True, text=True, timeout=120,
+    )
+
+
+def _f03_absent(root: Path, names=F03_FORMAL_SERIES):
+    return [name for name in names if (root / name).exists()]
+
+
+def test_f03_original_counterexample_and_gate_isolation(root: Path):
+    """One negative-balance ledger exercises all three approved gate boundaries."""
+    work = root / "f03-gate"
+    _, channels, camps = _f03_fixture(work)
+    pass1_out, duck_out = work / "pass1", work / "duck"
+
+    p1 = _f03_run(work, "replay_pass1.py", "--channels", channels,
+                  "--out-dir", pass1_out)
+    p2 = _f03_run(work, "replay_pass2.py", camps, "--data-dir", pass1_out)
+    duck = _f03_run(work, "replay_duck.py", "--channels", channels,
+                    "--out-dir", duck_out, "--camps", camps, "--emit-csv",
+                    "--threads", "2", "--mem-limit", "2GB")
+
+    pass1_products = [
+        "merged.csv", "balances_final.json", "peaks.json",
+        "mint_ledger.json", "replay_stats.json",
+    ]
+    p1_present = [name for name in pass1_products if (pass1_out / name).is_file()]
+    p2_formal = _f03_absent(pass1_out)
+    duck_formal = _f03_absent(duck_out)
+    diag = duck_out / "diagnostics/gate-failed"
+    diag_present = [name for name in ("camp_series.json", "entity_series.json")
+                    if (diag / name).is_file()]
+    print("F03 OBSERVED "
+          f"pass1_rc={p1.returncode} pass1_products={len(p1_present)}/5 "
+          f"pass2_rc={p2.returncode} pass2_formal={p2_formal} "
+          f"duck_rc={duck.returncode} duck_formal={duck_formal} "
+          f"duck_diagnostics={diag_present}")
+
+    assert p1.returncode == 4, p1.stdout + p1.stderr
+    assert p1_present == pass1_products, p1_present
+    assert p2.returncode == 4 and p2_formal == [], p2.stdout + p2.stderr
+    assert duck.returncode == 4 and duck_formal == [], duck.stdout + duck.stderr
+    assert diag_present == ["camp_series.json", "entity_series.json"], diag_present
+    for name in diag_present:
+        payload = json.loads((diag / name).read_text(encoding="utf-8"))
+        assert payload.get("status") == "DIAGNOSTIC_GATE_FAILED", (name, payload)
+    assert list(diag.glob("*.provenance.json")) == [], \
+        "diagnostic gate-failed series must never carry formal consumer sidecars"
+
+
+def test_f03_pass2_stats_schema_fail_closed(root: Path):
+    work = root / "f03-schema"
+    work.mkdir(parents=True)
+    camps = work / "camps.json"
+    camps.write_text('{"camps":{},"entities":{}}', encoding="utf-8")
+    cases = {
+        "missing": {"mint_total_wei": "100"},
+        "nonbool": {"mint_total_wei": "100", "gate_pass": "false"},
+        "malformed": None,
+    }
+    observed = {}
+    for label, stats in cases.items():
+        out = work / label
+        out.mkdir()
+        if stats is None:
+            (out / "replay_stats.json").write_text('{"gate_pass":', encoding="utf-8")
+        else:
+            (out / "replay_stats.json").write_text(json.dumps(stats), encoding="utf-8")
+        p = _f03_run(work, "replay_pass2.py", camps, "--data-dir", out)
+        observed[label] = p.returncode
+        assert _f03_absent(out) == [], (label, _f03_absent(out))
+    print(f"F03 SCHEMA observed_rc={observed}")
+    assert observed == {"missing": 2, "nonbool": 2, "malformed": 2}, observed
+
+
+def test_f03_pass1_toctou_disappearance_is_immediate(root: Path):
+    work = root / "f03-toctou"
+    source, channels, _ = _f03_fixture(work)
+    out = work / "out"
+    replay = _load_module(EVM / "replay_pass1.py", "f03_replay_pass1")
+    real_preflight = replay.preflight_channels
+
+    def preflight_then_remove(*args, **kwargs):
+        normalized = real_preflight(*args, **kwargs)
+        source.unlink()
+        return normalized
+
+    stdout, stderr = io.StringIO(), io.StringIO()
+    argv = ["replay_pass1.py", "--channels", str(channels), "--out-dir", str(out)]
+    with mock.patch.object(replay, "preflight_channels", side_effect=preflight_then_remove), \
+            mock.patch.object(sys, "argv", argv), contextlib.redirect_stdout(stdout), \
+            contextlib.redirect_stderr(stderr):
+        try:
+            replay.main()
+        except SystemExit as exc:
+            rc = exc.code if isinstance(exc.code, int) else 1
+            detail = str(exc)
+        else:
+            rc, detail = 0, ""
+    text = stdout.getvalue() + stderr.getvalue() + detail
+    print(f"F03 TOCTOU observed_rc={rc} immediate={'preflight 后消失' in text}")
+    assert rc != 0 and "preflight 后消失" in text and "[warn] 缺文件" not in text, text
+
+
 def main():
     with tempfile.TemporaryDirectory(prefix="repair-batch1-", dir="/private/tmp") as raw:
         root = Path(raw)
@@ -548,7 +697,10 @@ def main():
         test_rv04_probe_hint_and_invalid_scheme()
         test_rv04_no_active_hardcoded_fallback_port()
         test_rv04_collection_and_net_wiring()
-    print("PASS v6.41.0 batch1 steps 1-2 RV-07/RV-04/RV-17")
+        test_f03_original_counterexample_and_gate_isolation(root)
+        test_f03_pass2_stats_schema_fail_closed(root)
+        test_f03_pass1_toctou_disappearance_is_immediate(root)
+    print("PASS v6.41.0 batch1 steps 1-3 RV-07/RV-04/RV-17/F-03")
     return 0
 
 

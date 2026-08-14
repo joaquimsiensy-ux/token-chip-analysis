@@ -59,7 +59,7 @@
 
 ## 12. DuckDB 重放/缩图引擎（亿级样本主路径，2026-07-22 三样本对表定版）
 
-**定位（选型决策）**：`replay_duck.py`（pass1+pass2 合一）与 `cluster_prep_duck.py`+`cluster.py --prep` 是**千万行以上样本的重放与聚类主路径**；旧引擎（replay_pass1/2 纯 Python 逐事件）保留为小样本快速路径与黄金基准。动机=旧引擎内存随事件数线性涨（140 万行实测 1.22GB → 亿级外推 ~90GB，16GB 机器不可行）；DuckDB 路径内存设上限、超限落盘外排。
+**定位（选型决策）**：`replay_duck.py`（pass1+pass2 合一）与 `cluster_prep_duck.py`+`cluster.py --prep` 是**千万行以上样本的重放与聚类主路径**；旧引擎（replay_pass1/2 纯 Python 逐事件）保留为小样本快速路径与黄金基准。三种 pass1 引擎算出 `gate_pass=false` 时均保留各自基础重放产物并以 exit 4 终止；独立 `replay_pass2.py` 也必须先验该字段，只有布尔 `true` 才能编译正式序列。动机=旧引擎内存随事件数线性涨（140 万行实测 1.22GB → 亿级外推 ~90GB，16GB 机器不可行）；DuckDB 路径内存设上限、超限落盘外排。
 
 **等价性实证（改任何引擎前先读这段的验收口径）**：三样本七项全等——ASTEROID(ETH,140 万行,v1 CSV 单通道)、SIREN(BSC,2169 万行,三通道段拼接)与旧引擎产物 **7 项逐字段全等**（replay_stats 契约 8 键 / merged.csv 逐字节哈希含 \r\n / balances_final / peaks / mint_ledger / camp_series / entity_series）；QUQ(BSC,1.03 亿行,v2 parquet) 与 replay_pass1_quq 原产物 **stats 11 键 + balances 51,871 址 + daily_delta 1,959,664 键逐键逐值全等**（peaks 口径不同：QUQ=事件级、标准=块末级，弱验证"事件级≥块末"零违例、98.3% 相等）。聚类侧 ASTEROID 沙盘老路 vs --prep **四类判定产物全等**（clusters/gatekeeper_blocked/label_excluded_nodes/team_downstream）。
 
@@ -119,7 +119,7 @@ KOGE 一级 inflow 预筛（≥0.1% 供应）后**仍剩 157,459 个候选**，�
 - **附带收获**：产出的 daily_delta 同时就是阵营/实体日序列的原料，一举两得。
 （KOGE，07-25）
 
-**fail-closed 强化（新引擎内建，比旧引擎严）**：坏行 reject 记账（n_source_rows/n_bad_fields/n_out_of_segment/n_dedup_removed 进 stats）；同去重键不同事件内容=数据损坏硬退（旧引擎静默 keep-last）；空 ts 硬退（旧引擎归上一有效日的未定义行为）；供给闭合 gate 挂 → exit 4。同批修复旧引擎三缺口：replay_pass1 坏行计数+`--allow-bad-rows`（默认 0 即退）、cluster R1/准入阈值整数交叉乘法（曾浮点累计）、transfers_lib dedup 重组冲突检测（同 (block,tx,li) 双 hash 硬退,曾双计）。cluster 输出排序加确定性 tiebreaker（并列余额曾致同数据两跑输出不同）。
+**fail-closed 强化（三引擎 gate 语义统一）**：三种 pass1 引擎均将供给闭合与负余额合成为 `gate_pass`，FAIL 保留基础重放证据后 exit 4；正式 pass2 不消费 FAIL stats。DuckDB 路径另记坏行 reject（n_source_rows/n_bad_fields/n_out_of_segment/n_dedup_removed 进 stats），同去重键不同事件内容按数据损坏硬退，空 ts 硬退；纯 Python 路径对坏行计数并以 `--allow-bad-rows`（默认 0）控制硬退。既有同族修复还包括 cluster R1/准入阈值整数交叉乘法、transfers_lib dedup 重组冲突检测（同 (block,tx,li) 双 hash 硬退）与 cluster 并列余额的确定性 tiebreaker。
 
 通用环境坑（macOS SSL 证书、reportlab 中文字体、前台 sleep 被 Block 等）不在本文重复，见 skill 其他参考文档与 memory（mac-python-pdf-environment.md、onchain-data-accounts.md）。
 
