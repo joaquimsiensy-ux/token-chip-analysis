@@ -72,6 +72,16 @@ def ref(root, path):
             "size": path.stat().st_size, "sha256": sha(path)}
 
 
+def remove_any(path):
+    """Remove any existing path shape, including broken symlinks and special files."""
+    path = Path(path)
+    if os.path.lexists(path):
+        if path.is_dir() and not path.is_symlink():
+            shutil.rmtree(path)
+        else:
+            path.unlink()
+
+
 def _valid_identifier(value, meaningful_text=_meaningful_text):
     if not isinstance(value, str):
         return False
@@ -277,14 +287,8 @@ def run_review(case_dir, role, entrypoint, artifact, receipt,
         receipt_published = True
         return payload
     except Exception:
-        if staging.is_dir() and not staging.is_symlink():
-            shutil.rmtree(staging)
-        elif staging.is_file() or staging.is_symlink():
-            staging.unlink()
-        if tmp.is_dir() and not tmp.is_symlink():
-            shutil.rmtree(tmp)
-        elif tmp.is_file() or tmp.is_symlink():
-            tmp.unlink()
+        remove_any(staging)
+        remove_any(tmp)
         if artifact_published and not receipt_published and final.is_file():
             final.unlink()
         raise
@@ -366,6 +370,7 @@ def finalize_review(case_dir, receipts, blockers="blockers.json",
         roles = set()
         execution_sha256s = set()
         artifact_sha256s = set()
+        claim_review_entrypoints = set()
         for receipt_path in receipt_paths:
             try:
                 execution = _loads_json(receipt_path.read_text(encoding="utf-8"))
@@ -387,6 +392,10 @@ def finalize_review(case_dir, receipts, blockers="blockers.json",
             artifact_sha256s.add(artifact_sha256)
             roles.add(role)
             if role in CLAIM_REVIEW_ROLES:
+                entrypoint_key = (role, execution["entrypoint"]["sha256"])
+                if entrypoint_key in claim_review_entrypoints:
+                    raise ValueError("duplicate claim-review role and entrypoint content")
+                claim_review_entrypoints.add(entrypoint_key)
                 reviewed_sets.append(reviewed)
             reviews.append({
                 "role": role,
@@ -416,8 +425,7 @@ def finalize_review(case_dir, receipts, blockers="blockers.json",
         os.replace(tmp, final)
         return payload
     except Exception:
-        if tmp.is_file() or tmp.is_symlink():
-            tmp.unlink()
+        remove_any(tmp)
         raise
 
 

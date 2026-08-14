@@ -694,6 +694,7 @@ def validate_adversarial_review(root, expected_target=None):
     reviewed_sets = []
     execution_sha256s = set()
     artifact_sha256s = set()
+    claim_review_entrypoints = set()
     for item in reviews:
         if not isinstance(item, dict) or item.get("exit_code") != 0:
             raise ValueError("review lacks successful execution receipt")
@@ -718,11 +719,15 @@ def validate_adversarial_review(root, expected_target=None):
         if execution_sha256 in execution_sha256s:
             raise ValueError("duplicate review execution receipt content")
         execution_sha256s.add(execution_sha256)
-        _, _, reviewed = validate_review_receipt(
+        execution_data, _, reviewed = validate_review_receipt(
             root, execution.get("path"), role, artifact,
             registry_sha256=registry_sha256, claim_ids=claim_ids,
             meaningful_text=_meaningful_text, reject_constant=_reject_constant)
         if role in CLAIM_REVIEW_ROLES:
+            entrypoint_key = (role, execution_data["entrypoint"]["sha256"])
+            if entrypoint_key in claim_review_entrypoints:
+                raise ValueError("duplicate claim-review role and entrypoint content")
+            claim_review_entrypoints.add(entrypoint_key)
             reviewed_sets.append(reviewed)
     if not ROLES.issubset(roles):
         raise ValueError(f"required adversarial roles missing: {sorted(ROLES - roles)}")

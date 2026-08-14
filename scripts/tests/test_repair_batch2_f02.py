@@ -102,6 +102,17 @@ def run_role(root: Path, role: str, payload=None, raw=None, stem=None):
     return proc, artifact, receipt
 
 
+def run_existing_role(root: Path, role: str, entry: Path, stem: str):
+    artifact = root / f"{stem}.json"
+    receipt = root / f"{stem}_execution.json"
+    proc = subprocess.run([
+        sys.executable, str(RUNNER), str(root), "--role", role,
+        "--entrypoint", entry.name, "--artifact", artifact.name,
+        "--receipt", receipt.name,
+    ], capture_output=True, text=True)
+    return proc, artifact, receipt
+
+
 def finalize(root: Path, receipts, *, blockers="blockers.json", out="adversarial_review.json"):
     argv = [sys.executable, str(RUNNER), "finalize", str(root),
             "--claim-registry", "a4_claims.json"]
@@ -367,6 +378,38 @@ def t_meaningful_text_and_claim_identity():
           }) == set(normal_ids))
 
     import a4_gate
+    semantic_pairs = (
+        ("数学关系符", "净流入 ≥ 10%", "净流入 ≤ 10%"),
+        ("方向箭头", "持仓 ↑", "持仓 ↓"),
+        ("近似/不等", "误差 ≈ 0", "误差 ≠ 0"),
+        ("俄文实义", "Статус подтверждён", "Статус опровергнут"),
+    )
+    for label, left, right in semantic_pairs:
+        check(f"a4_gate 对账键保留{label}差异", a4_gate._norm_text(left) != a4_gate._norm_text(right),
+              (a4_gate._norm_text(left), a4_gate._norm_text(right)))
+    for label, left, right in (
+            ("显式零渲染点名集", "claim\u3164\u115f\u1160\uffa0\u2800 text", "claim text"),
+            ("Cf", "claim\u200b text", "claim text"),
+            ("NFC 后残留 Mn", "claim\u0591 text", "claim text"),
+            ("NFC/NFD", "á", "a\u0301"),
+            ("Zs 折叠", "claim\u00a0\u3000text", "claim text")):
+        check(f"a4_gate 对账键归一：{label}", a4_gate._norm_text(left) == a4_gate._norm_text(right),
+              (a4_gate._norm_text(left), a4_gate._norm_text(right)))
+
+    with tempfile.TemporaryDirectory(prefix="f02-a4-symbol-e2e-") as td:
+        root = Path(td)
+        write_json(root / "claim_registry.json", {"claims": [{
+            "claim_id": "C1", "statement": "净流入 ≤ 10%",
+            "evidence_files": [], "report_locations": [], "verdict": "confirmed",
+        }]})
+        fails = []
+        a4_gate.check_audit_registry_alignment(
+            root, {"claims": [{"id": "C1", "text": "净流入 ≥ 10%", "files": [],
+                               "report_locations": []}]},
+            [{"id": "C1", "verdict": "CONFIRMED"}], fails)
+        check("check_audit_registry_alignment 端到端拒绝 ≥/≤ 命题反转",
+              any("命题文本不一致" in failure for failure in fails), fails)
+
     with tempfile.TemporaryDirectory(prefix="f02-a4-normalize-") as td:
         root = Path(td)
         write_json(root / "claim_registry.json", {"claims": [{
@@ -398,6 +441,27 @@ def t_meaningful_text_and_claim_identity():
 
 
 def t_directory_cleanup_and_output_guards():
+    with tempfile.TemporaryDirectory(prefix="f02-fifo-residue-") as td:
+        root = Path(td)
+        make_case(root)
+        script = root / "fifo_output.py"
+        script.write_text(
+            "import os\nfrom pathlib import Path\n"
+            "out = Path(os.environ['CHIP_REVIEW_OUTPUT'])\n"
+            "os.mkfifo(out)\n"
+            "os.mkfifo(out.parent / f'.fifo_execution.json.tmp.{os.getppid()}')\n",
+            encoding="utf-8")
+        proc = subprocess.run([
+            sys.executable, str(RUNNER), str(root), "--role", "completeness_critic",
+            "--entrypoint", script.name, "--artifact", "fifo.json",
+            "--receipt", "fifo_execution.json",
+        ], capture_output=True, text=True)
+        check("entrypoint 建 staging/receipt tmp FIFO 后 rc=2 且零残留",
+              proc.returncode == 2 and residue(root) == []
+              and not (root / "fifo.json").exists()
+              and not (root / "fifo_execution.json").exists(),
+              (proc.returncode, proc.stderr[-180:], residue(root)))
+
     with tempfile.TemporaryDirectory(prefix="f02-dir-residue-") as td:
         root = Path(td)
         make_case(root)
@@ -472,6 +536,88 @@ def t_directory_cleanup_and_output_guards():
 def t_content_identity_and_consumer_bindings():
     from shared_release_receipt import validate_adversarial_review
     target = {"chain": "bsc", "token": "0xtoken", "as_of_block": 123}
+
+    with tempfile.TemporaryDirectory(prefix="f02-entrypoint-repeat-") as td:
+        root = Path(td)
+        registry_sha = make_case(root)
+        repeated_payload = claim_artifact(
+            registry_sha, [result("C1"), result("C2", "WEAKENED")])
+        payloads = {
+            "review_a.json": repeated_payload,
+            "review_b.json": repeated_payload,
+        }
+        entry = root / "same_reviewer.py"
+        entry.write_text(
+            "import json, os\nfrom pathlib import Path\n"
+            f"payloads = {payloads!r}\n"
+            "out = Path(os.environ['CHIP_REVIEW_OUTPUT'])\n"
+            "marker = out.parent / '.same-reviewer-second'\n"
+            "key = 'review_b.json' if marker.exists() else 'review_a.json'\n"
+            "out.write_text(json.dumps(payloads[key], ensure_ascii=False, "
+            "indent=2 if marker.exists() else None), encoding='utf-8')\n"
+            "marker.touch(exist_ok=True)\n",
+            encoding="utf-8")
+        p1, _, r1 = run_existing_role(root, "entity_attribution_skeptic", entry, "review_a")
+        p2, _, r2 = run_existing_role(root, "entity_attribution_skeptic", entry, "review_b")
+        p3, _, r3 = run_role(root, "completeness_critic", critic_artifact(registry_sha),
+                             stem="critic")
+        proc = finalize(root, [r1, r2, r3]) if not any(
+            p.returncode for p in (p1, p2, p3)) else p1
+        (root / ".same-reviewer-second").unlink(missing_ok=True)
+        check("finalize 拒绝同 role+同 entrypoint sha 的重排版语义副本",
+              proc.returncode == 2 and not (root / "adversarial_review.json").exists(),
+              (proc.returncode, proc.stderr[-180:]))
+
+    with tempfile.TemporaryDirectory(prefix="f02-entrypoint-distinct-") as td:
+        root = Path(td)
+        registry_sha = make_case(root)
+        p1, _, r1 = run_role(root, "entity_attribution_skeptic",
+                             claim_artifact(registry_sha, [result("C1")]), stem="review_a")
+        p2, _, r2 = run_role(root, "entity_attribution_skeptic",
+                             claim_artifact(registry_sha, [result("C2")]),
+                             raw=json.dumps(claim_artifact(registry_sha, [result("C2")]),
+                                            ensure_ascii=False, indent=2), stem="review_b")
+        p3, _, r3 = run_role(root, "completeness_critic", critic_artifact(registry_sha),
+                             stem="critic")
+        proc = finalize(root, [r1, r2, r3]) if not any(
+            p.returncode for p in (p1, p2, p3)) else p1
+        check("绿例：同 role 的两个不同 entrypoint 真两路照常通过",
+              proc.returncode == 0 and (root / "adversarial_review.json").is_file(),
+              (proc.returncode, proc.stderr[-180:]))
+
+    with tempfile.TemporaryDirectory(prefix="f02-consumer-entrypoint-repeat-") as td:
+        root = Path(td)
+        registry_sha = make_case(root)
+        p1, _, r1 = run_role(root, "entity_attribution_skeptic",
+                             claim_artifact(registry_sha, [result("C1")]), stem="review_a")
+        p2, _, r2 = run_role(root, "entity_attribution_skeptic",
+                             claim_artifact(registry_sha, [result("C2")]),
+                             raw=json.dumps(claim_artifact(registry_sha, [result("C2")]),
+                                            ensure_ascii=False, indent=2), stem="review_b")
+        p3, _, r3 = run_role(root, "completeness_critic", critic_artifact(registry_sha),
+                             stem="critic")
+        proc = finalize(root, [r1, r2, r3]) if not any(
+            p.returncode for p in (p1, p2, p3)) else p1
+        if proc.returncode == 0:
+            aggregate_path = root / "adversarial_review.json"
+            aggregate = json.loads(aggregate_path.read_text(encoding="utf-8"))
+            first, second = aggregate["reviews"][:2]
+            second_receipt_path = root / second["execution_receipt"]["path"]
+            second_receipt = json.loads(second_receipt_path.read_text(encoding="utf-8"))
+            first_receipt = json.loads(
+                (root / first["execution_receipt"]["path"]).read_text(encoding="utf-8"))
+            second_receipt["entrypoint"] = first_receipt["entrypoint"]
+            write_json(second_receipt_path, second_receipt)
+            second["execution_receipt"] = {
+                "path": second_receipt_path.name,
+                "size": second_receipt_path.stat().st_size,
+                "sha256": sha(second_receipt_path),
+            }
+            write_json(aggregate_path, aggregate)
+        check("消费侧拒绝手抄同 role+同 entrypoint sha 的重复路数",
+              proc.returncode == 0 and rejected(
+                  lambda: validate_adversarial_review(root, target)),
+              (proc.returncode, proc.stderr[-180:]))
 
     with tempfile.TemporaryDirectory(prefix="f02-receipt-copy-") as td:
         root = Path(td)
@@ -682,8 +828,11 @@ def t_documentation_contract():
     check("独立复核协议补齐免责、TOCTOU、entrypoint、critic 命令与 blockers 结构",
           all(item in protocol for item in required),
           [item for item in required if item not in protocol])
-    check("analyze-workflow A4 §5 明确 evidence 必须含实义字符",
-          "证据含实义字符（不可见字符不算）" in workflow)
+    scope_terms = ("ASCII 可打印", "拉丁补充与扩展", "通用标点", "CJK", "假名",
+                   "韩文音节", "全角", "俄文", "阿拉伯文", "纯 emoji", "claim_id 不得含空格")
+    check("两份协议写清实义白名单覆盖、拒绝边界与 claim_id 空格禁令",
+          all(term in workflow and term in protocol for term in scope_terms),
+          [term for term in scope_terms if term not in workflow or term not in protocol])
 
 
 def t_finalize_failures():

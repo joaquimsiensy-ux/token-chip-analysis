@@ -80,7 +80,7 @@
 
 `claim_registry.json` 每条命题必须包含：
 
-- `claim_id`、原命题、命题类型和报告位置；
+- `claim_id`、原命题、命题类型和报告位置；claim_id 不得含空格。存量案重跑时若遇 `A4 01` 这类含空格 id，须先改 `claim_registry.json`、`a4_claims.json` 及其引用，不能沿用旧 id；
 - `verdict`：`confirmed` / `weakened` / `refuted` / `unverified`；
 - 原始证据文件、受控复算 receipt、反例和备择解释；命令文本只作说明，不作放行证据；
 - 未解决事项及其是否阻断发布；
@@ -161,7 +161,7 @@ review_completeness.py
 `accounting_mode.json` 必须是当前 `scripts/evm/accounting_gate.py`（Solana 为 `scripts/solana/accounting_gate_sol.py`）的 `accounting-gate/v1` exit 0 产物，并带脚本自身的 `producer.path/sha256`。
   `reconciliation_report.json` 必须由当前 `scripts/report/reconciliation_report.py` 读取 job spec 后受控启动四查生产者生成：balance/supply=`verify_recon.py`、supply_truth=`supply_truth_gate.py`、time=`time_spotcheck.py`（Solana 对应 anchor sampler 与 holder snapshot）。runner 要求 receipt 执行前不存在，逐项记录子进程 exit，并绑定 v2 target、生产者与输入/receipt 哈希；wrapper 顶层绑定 runner 自身路径与当前 SHA-256。聚合器逐类解析 schema、target、观测和 verdict，并拒绝无 runner 绑定或绑定哈希不符的 wrapper；旧案须重跑对应生产者与 runner。这里是内容绑定，不是单机执行证明：蓄意手拼者若正确填写当前 runner path/SHA-256 并伪造相互自洽的观测，聚合器无法仅凭 wrapper 识别；防线的实际作用是把“疏忽即可绕过”提高为必须显式填哈希、编造观测的主动造假，并由仓库 git 历史追踪代码变更。案目录里的同名/复制脚本即使 SHA-256 相同也不是生产者。
   **一条明示局限（EVM 侧链上供给）**：`supply_truth` 收据里的三个数，`replay_net`（以及形态②的 `mint_total`/`burn_total`）都会被消费侧拿去和案内那份哈希绑定的 `replay_stats` 实物逐一对账，Solana 的 `onchain_total_supply` 也会和同案 `observation bundle` 的 `supply.amount` 对账；**唯独 EVM 的 `onchain_total_supply` 是 RPC 现场观测的自报值，案内没有第二份冻结块 totalSupply 实物可以交叉**——`accounting_gate` 记的是 tip 与 tip−W 两点、不是冻结块，`verify_recon` 的 `nominal_supply_raw` 来自 config 人工声明、不是链上观测。所以在 EVM 上，"重放净供给对得上链上总量"这个结论的链上那一半只能靠复跑生产者与 git 历史追责，读者不要误以为消费侧四个数都对过账了。要闭合这一条，得让 supply_truth 额外落一份可绑定的链上观测件（像 Solana 的 bundle 那样），属批 D 待议项。
-  `adversarial_review.json` 必须为 `adversarial-review/v3`：`claim_registry` 以 path/size/sha256/schema 绑定案内 `a4_claims.json`；每路 `adversarial-review-artifact/v1` 都绑定同一 registry sha。实体归因怀疑者的 `results[]` 逐条携带 claim_id、三档 verdict、非空 evidence 与 alternative_explanations，全部 claim-review artifacts 的 claim_id 并集必须覆盖 registry 且不得越界；完整性批评者改交全局 `findings[]`＋`non_covered[]`。两类角色都必须通过当前 runner 启动并留下 `adversarial-review-execution/v1`。
+  `adversarial_review.json` 必须为 `adversarial-review/v3`：`claim_registry` 以 path/size/sha256/schema 绑定案内 `a4_claims.json`；每路 `adversarial-review-artifact/v1` 都绑定同一 registry sha。实体归因怀疑者的 `results[]` 逐条携带 claim_id、三档 verdict、非空 evidence 与 alternative_explanations，全部 claim-review artifacts 的 claim_id 并集必须覆盖 registry 且不得越界；完整性批评者改交全局 `findings[]`＋`non_covered[]`。人工文本须至少含一个实义白名单字符：覆盖 ASCII 可打印、拉丁补充与扩展、通用标点、CJK、假名、韩文音节和全角段；不在覆盖面的语种（如俄文、阿拉伯文）与纯 emoji 文本会被拒。外语原文证据应附一行中文说明，或保留 URL/数字等覆盖面内字符；中英文工作流不受影响。两类角色都必须通过当前 runner 启动并留下 `adversarial-review-execution/v1`。
   两个角色的完整命令行如下：
 
   ```bash

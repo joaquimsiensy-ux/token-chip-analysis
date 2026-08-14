@@ -34,6 +34,7 @@ import os
 import shutil
 import subprocess
 import sys
+import unicodedata
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -150,13 +151,24 @@ def validate_formal_case_chain(case_dir):
     return state_chain, errors
 
 
+_ZERO_RENDERING_EXTRAS = {"\u3164", "\u115f", "\u1160", "\uffa0", "\u2800"}
+
+
 def _norm_text(value):
-    from adversarial_review_runner import _meaningful_text
-    filtered = "".join(
-        char for char in str(value or "")
-        if char == " " or _meaningful_text(char)
-    )
-    return " ".join(filtered.split())
+    """Build a fail-closed reconciliation key without deleting unknown semantics."""
+    normalized = unicodedata.normalize("NFC", str(value or ""))
+    kept = []
+    for char in normalized:
+        category = unicodedata.category(char)
+        if category in {"Cf", "Cc", "Zl", "Zp", "Mn", "Me"} \
+                or char in _ZERO_RENDERING_EXTRAS:
+            continue
+        kept.append(" " if category == "Zs" else char)
+    # The meaningful-text gate is an allowlist because an unknown character there
+    # could make an empty shell pass.  Reconciliation keys need the opposite safety
+    # direction: only known zero-rendering characters are denied, so an unknown
+    # symbol/script remains visible and causes a fail-closed mismatch for review.
+    return " ".join("".join(kept).split())
 
 
 def check_audit_registry_alignment(case_dir, reg, verdicts, fails):
