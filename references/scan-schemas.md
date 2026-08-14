@@ -298,7 +298,8 @@ TERMINAL = {
   "entity_file": {"path","size","sha256"},  # 名册绑定：收据同目录内相对路径三验，
                                             #   且 sha 必须＝本次运行 --entity-file 内容
   "evidence_refs": [{"path","size","sha256"}…],  # ≥1 份独立人工核对证据（收据同目录内，
-                                            #   拒绝绝对路径/越界/符号链接；不得是名册自身）
+                                            #   拒绝绝对路径/越界/符号链接；不得是名册自身；
+                                            #   实物 ≥16 字节——形式下限，内容真伪机器验不了）
   "adjudications": [{
     "entity_id": str, "anchor": "peak|current",
     "reason": str,                          # ≥10 字符
@@ -316,7 +317,7 @@ TERMINAL = {
 消费面三处同源（实现共享在 `handoff_manifest.py`，不手抄）：
 - **trace**（producer）：重算当前运行每个真实翻转锚点的指纹与三策略 top/份额，与收据行逐项相等才 `publishable`；收据行指向非真实翻转锚点＝不许预防性豁免，exit 2。**底层数据一变 → 明细变 → 指纹失配 → 收据自动失效，必须重裁**。
 - **freeze 前置 3**（`recompute_provenance_sensitivity`）：只认 `input_binding.algorithm_params.flip_adjudications` 绑定的收据文件（三验＋指纹重算），**不再信 ledger 内嵌自报的 `acknowledged_flips`**；重放参数装配同收据还原。
-- **A5 seal**（new-analysis）：报告 Markdown 实文必须含每个翻转锚点三策略的 top 终点标识串与份额数字（多策略并列披露落到消费者核对）；同时校验 `provenance_ledger.json` 哈希＝`entity_freeze` 记录的 `provenance_ledger_sha256`（封死 freeze 后删/换 ledger 旁路）。
+- **A5 seal**（new-analysis）：披露核对**锚定 report_locations**（消化轮 1，F-D1）——位置串必须命中报告某一 Markdown 标题行，该标题切片内须同时含三策略名（pro_rata/fifo/lifo）、每策略 top 终点标识串与份额数字（同段并列披露，全文他处偶然同串不作数）；收据实物按 ledger `input_binding` 绑定的 path＋sha 定位（与 freeze 同一份，F-D7）；同时校验 `provenance_ledger.json` 哈希＝`entity_freeze` 记录的 `provenance_ledger_sha256`（封死**单边改动**：改/删 ledger 而 freeze 记录在场必拒；`entity_freeze.json` 自身无上位 sha 锚，"连 freeze 一起改写"属 §13 批 C 终验定性的自洽小件残余边界——完整 new-analysis 案的双删由 final scan 的 `final_bindings.entity_freeze` 绑定拦截）。
 
 **存量迁移声明**：6.39.4 后用过旧式 `--acknowledge-flip` 字符串确认的案子（已知：MOG），其 ledger `algorithm_params.acknowledged_flips` 为旧格式——重 freeze 时前置 3 与重放装配均按"旧确认不再受理"拒绝，**必须造 flip-adjudications/v1 收据后重跑 trace**；已冻结终态不受追溯影响。
 

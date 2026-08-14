@@ -333,11 +333,13 @@ def refresh_manifests(outdir):
             tmp = path.with_name("." + path.name + f".refresh-tmp.{os.getpid()}")
             bak = path.with_name("." + path.name + f".refresh-bak.{os.getpid()}")
             original_sha = sha256_file(path)
+            # F-D6：先登记再写——写到一半抛错的那个临时件必须在清理循环的遍历范围内，
+            # 否则 prepare 期失败会把正在写的 tmp 泄漏在 run_*/ 下（卫生问题，正式件无恙）。
+            staged.append((path, tmp, bak, original_sha))
             with tmp.open("w", encoding="utf-8") as f:
                 json.dump(payload, f, ensure_ascii=False, indent=1)
                 f.flush()
                 os.fsync(f.fileno())
-            staged.append((path, tmp, bak, original_sha))
     except BaseException:
         for _, tmp, _, _ in staged:
             if tmp.exists():

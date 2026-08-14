@@ -33,7 +33,7 @@ import os
 import subprocess
 import sys
 import tempfile
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 _LIB = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "lib"))
 sys.path.insert(0, _LIB)
@@ -676,15 +676,23 @@ def load_flip_adjudications(path, *, current_entity_file=None):
         doc = json.load(fh)
     if not isinstance(doc, dict) or doc.get("schema") != FLIP_ADJUDICATIONS_SCHEMA:
         raise ValueError(f"flip 裁决收据 schema 必须是 {FLIP_ADJUDICATIONS_SCHEMA}")
-    if not isinstance(doc.get("approved_by"), str) or not doc["approved_by"].strip():
-        raise ValueError("flip 裁决收据缺裁决主体 approved_by")
+    # F-D4：人工裁决面的形式 sanity 闸。机器验不了"裁决实质真伪"（谁批的、批得对不对
+    # ——与 tolerance-waiver 同款设计边界，见工单残余边界声明），但单字符占位主体、
+    # 荒谬时间、垃圾字节证据这类"形式上就不是裁决"的收据必须当场拒。
+    approved_by = doc.get("approved_by")
+    if not isinstance(approved_by, str) or len(approved_by.strip()) < 2:
+        raise ValueError("flip 裁决收据 approved_by 缺失或为单字符占位（裁决主体须可辨识）")
     decided = doc.get("user_decided_at_utc")
     try:
         if not isinstance(decided, str) or not decided.endswith("Z"):
             raise ValueError
-        datetime.fromisoformat(decided[:-1] + "+00:00")
+        decided_dt = datetime.fromisoformat(decided[:-1] + "+00:00")
     except ValueError as exc:
         raise ValueError("flip 裁决收据 user_decided_at_utc 必须是有效 UTC 时间") from exc
+    earliest = datetime(2026, 1, 1, tzinfo=timezone.utc)  # 本收据制诞生于 2026-08
+    if not earliest <= decided_dt <= datetime.now(timezone.utc) + timedelta(days=1):
+        raise ValueError("flip 裁决收据 user_decided_at_utc 超出合理时间范围"
+                         "（1970/未来时间戳不是真实裁决时间）")
 
     receipt_dir = os.path.dirname(receipt_path)
 
@@ -725,6 +733,11 @@ def load_flip_adjudications(path, *, current_entity_file=None):
         if evidence_path == entity_path:
             raise ValueError(f"flip 裁决收据 evidence_refs[{index}] 不得就是名册自身"
                              "——人工核对证据必须独立")
+        # F-D4：最低实物强度——1 字节垃圾文件不构成"人工核对证据"。16 字节是形式下限，
+        # 证据内容真伪仍属机器验不了的残余边界（工单如实声明）。
+        if os.path.getsize(evidence_path) < 16:
+            raise ValueError(f"flip 裁决收据 evidence_refs[{index}] 实物过小（<16 字节），"
+                             "不构成可核对的证据文件")
     rows = doc.get("adjudications")
     if not isinstance(rows, list) or not rows:
         raise ValueError("flip 裁决收据 adjudications 必须是非空数组")
@@ -1086,6 +1099,11 @@ def cmd_freeze(a):
                 for key in ("entity_file", "labels_file"):
                     if binding.get(key) is not None:
                         bound_records.append(binding.get(key))
+                # F-D2：flip 裁决收据与 labels_file 同待遇——冻结后改写/删除裁决存证
+                # （裁决主体/时间/理由/证据）必须被揭盲把关抓住，不能只靠 A5 兜底。
+                flips_rec = (binding.get("algorithm_params") or {}).get("flip_adjudications")
+                if flips_rec is not None:
+                    bound_records.append(flips_rec)
                 for key in ("handoff_manifest", "data_map"):
                     if isinstance(binding.get(key), dict) and binding[key].get("file"):
                         bound_records.append(binding[key]["file"])

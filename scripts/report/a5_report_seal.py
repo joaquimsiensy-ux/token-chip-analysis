@@ -38,14 +38,38 @@ def entry(root,path):
  return {"path":path.relative_to(Path(root).resolve()).as_posix(),"size":path.stat().st_size,"sha256":sha(path)}
 
 
+def _disclosure_slice(report_text,locations):
+ """F-D1：report_locations 的消费者——把披露核对锚定到收据声明的章节切片。
+
+ 约定：每个 location 串必须命中报告中某一行 Markdown 标题（该行含此子串）；
+ 切片＝命中标题行至下一个任意级标题行之前。返回 (切片文本, 命中的 location)。
+ 一个 location 都定位不到＝收据声称的披露位置在报告中不存在，拒。"""
+ lines=report_text.splitlines()
+ heads=[(i,line) for i,line in enumerate(lines) if re.match(r"^#{1,6}\s",line)]
+ for loc in locations:
+  needle=str(loc).strip()
+  if not needle: continue
+  # 容忍 "report.md §xx" 形态：取最后一个空格后的段名再试一次
+  candidates=[needle]
+  if " " in needle: candidates.append(needle.rsplit(" ",1)[-1])
+  for cand in candidates:
+   for pos,(i,line) in enumerate(heads):
+    if cand and cand in line:
+     end=heads[pos+1][0] if pos+1<len(heads) else len(lines)
+     return "\n".join(lines[i:end]),loc
+ raise ValueError(f"flip 披露位置在报告中不存在（report_locations={locations!r} 未命中任何 Markdown 标题行）")
+
+
 def provenance_flip_bundle(root,report_text,a4obj):
- """F-06 批 D：溯源翻转披露实文核对＋ledger 与 freeze 的 sha 绑定（new-analysis）。
+ """F-06 批 D（消化轮 1 强化）：溯源翻转披露锚定核对＋ledger/freeze/收据三方绑定（new-analysis）。
 
  ①entity_freeze 记录了 provenance_ledger_sha256 时，案根 ledger 必须在场且哈希一致
- （封死"freeze 后删/换 ledger"旁路；哈希算法与 freeze 同款＝handoff_manifest.sha256_file）。
- ②ledger 存在真实翻转锚点（三策略明细独立重算，尘埃线豁免）时：案根必须有合法
- flip-adjudications/v1 收据、逐锚点指纹匹配，且报告 Markdown 实文含每锚点三策略的
- top 终点标识串与份额数字（多策略并列披露不再是无人执行的承诺）。"""
+ （封死**单边改动**——改/删 ledger 而 freeze 记录在场必拒；freeze 自身无上位 sha 锚，
+ "连 freeze 一起改写"属批 C 终验定性的自洽小件残余边界，见 scan-schemas §13 与 r10 台账）。
+ ②ledger 存在真实翻转锚点时：收据按 **ledger input_binding 绑定的那份**定位（path＋sha
+ 三验，与 freeze 前置 3 同一实物——F-D7 封"甲收据过 freeze、乙收据过 A5"）；披露核对
+ 锚定到 report_locations 声明的章节切片内（F-D1）：该切片须同时含三策略名、每策略的
+ top 终点标识串与份额数字——同段并列披露，全文他处的偶然同串不作数。"""
  if a4obj.get("workflow_type")!="new-analysis":
   return {"status":"NOT_APPLICABLE","reason":"independent-audit 单段流程暂不承载溯源披露链"}
  import handoff_manifest
@@ -57,7 +81,7 @@ def provenance_flip_bundle(root,report_text,a4obj):
   recorded=freeze.get("provenance_ledger_sha256")
  if recorded:
   if not ledger_path.is_file() or ledger_path.is_symlink():
-   raise ValueError("entity_freeze 记录了 provenance_ledger_sha256 但案根 ledger 缺失——freeze 后删/换 ledger 旁路拒绝")
+   raise ValueError("entity_freeze 记录了 provenance_ledger_sha256 但案根 ledger 缺失——freeze 后删/换 ledger 的单边改动拒绝")
   _,actual,_=handoff_manifest.sha256_file(ledger_path)
   if actual!=recorded:
    raise ValueError("provenance_ledger.json 与 entity_freeze 记录的哈希不一致——freeze 后换 ledger 拒绝")
@@ -69,9 +93,22 @@ def provenance_flip_bundle(root,report_text,a4obj):
  real=handoff_manifest.ledger_real_flips(pl)
  if not real:
   return {"status":"NO_FLIPS","ledger":entry(root,ledger_path)}
- receipt_path=Path(root)/"flip_adjudications.json"
- if not receipt_path.is_file() or receipt_path.is_symlink():
-  raise ValueError("溯源存在真实翻转锚点但案根缺 flip_adjudications.json 裁决收据")
+ # F-D7：收据实物＝ledger input_binding 绑定的那份（path 相对案根解析＋sha/size 三验），
+ # 不再硬编码案根文件名——与 freeze 前置 3 消费同一实物，改名案不误伤、换收据必失配。
+ flips_ref=((pl.get("input_binding") or {}).get("algorithm_params") or {}).get("flip_adjudications")
+ if not isinstance(flips_ref,dict) or not flips_ref.get("path"):
+  raise ValueError("溯源存在真实翻转锚点但 ledger input_binding 未绑定 flip-adjudications 裁决收据"
+                   "（须 --acknowledge-flip <收据> 重跑 trace）")
+ shown=Path(str(flips_ref["path"]))
+ receipt_path=(shown if shown.is_absolute() else Path(root)/shown).resolve()
+ try: receipt_path.relative_to(Path(root).resolve())
+ except ValueError as exc:
+  raise ValueError("ledger 绑定的 flip 裁决收据不在案根内") from exc
+ if receipt_path.is_symlink() or not receipt_path.is_file():
+  raise ValueError("ledger 绑定的 flip 裁决收据实物缺失或非普通文件")
+ _,receipt_sha,receipt_size=handoff_manifest.sha256_file(receipt_path)
+ if receipt_sha!=flips_ref.get("sha256") or receipt_size!=flips_ref.get("bytes"):
+  raise ValueError("flip 裁决收据实物与 ledger 绑定的 sha256/size 不符（换收据/改写后必须重跑 trace）")
  entity_ref=(pl.get("input_binding") or {}).get("entity_file") or {}
  entity_rel=entity_ref.get("path")
  current_entity=None
@@ -86,15 +123,24 @@ def provenance_flip_bundle(root,report_text,a4obj):
  anchors=[]
  for key in sorted(real):
   info=real[key]
+  row=rows.get(key) or {}
+  locations=((row.get("disclosure") or {}).get("report_locations")) or []
+  section,matched_loc=_disclosure_slice(report_text,locations)
   for policy in handoff_manifest.FLIP_POLICIES:
    terminal=info["tops"].get(policy) or []
    share=info["shares"].get(policy)
    ident=str(terminal[2] if len(terminal)>2 and terminal[2] else (terminal[1] if len(terminal)>1 else ""))
    if not ident:
     raise ValueError(f"翻转锚点 {key} {policy} top 终点无可核标识串")
-   if ident not in report_text or (share and share not in report_text):
-    raise ValueError(f"报告缺翻转多策略并列披露: {key[0]} {key[1]} {policy} 须含终点标识 {ident!r} 与份额 {share!r}")
-  anchors.append({"entity_id":key[0],"anchor":key[1],"flip_fingerprint":info["fingerprint"]})
+   # F-D1：三项都必须落在**同一披露切片**内——策略名（并列披露的骨架）、终点标识、份额。
+   if policy not in section:
+    raise ValueError(f"报告披露段（{matched_loc}）缺策略名 {policy}: {key[0]} {key[1]} 须按多策略并列披露")
+   if ident not in section:
+    raise ValueError(f"报告披露段（{matched_loc}）缺 {policy} 终点标识 {ident!r}: {key[0]} {key[1]}")
+   if share and share not in section:
+    raise ValueError(f"报告披露段（{matched_loc}）缺 {policy} 份额数字 {share!r}: {key[0]} {key[1]}")
+  anchors.append({"entity_id":key[0],"anchor":key[1],"flip_fingerprint":info["fingerprint"],
+                  "report_location":matched_loc})
  return {"status":"DISCLOSED","ledger":entry(root,ledger_path),
          "receipt":entry(root,receipt_path),"anchors":anchors}
 

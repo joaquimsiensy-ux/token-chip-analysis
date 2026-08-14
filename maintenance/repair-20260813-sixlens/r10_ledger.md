@@ -36,6 +36,13 @@
 | R10-12（A-2） | `approved_tolerance_bps` 硬顶＋`observed_diff_bps` 预先虚报 | **未被现行钳制实质覆盖，且属政策决定——待用户裁决，本轮不做**。核证：`FORMAL_TOLERANCE_BPS_MAX=10` 只钳"无 waiver 时容差 ≤10"；有 waiver 时 `approved_tolerance_bps` 无上限（写 100000 照过），`observed_diff_bps` 可预先写大值覆盖未来一切偏差——两个数合起来 waiver 可变万能通行证。复核者原话："这是政策问题不是工程问题（谁有权批多大偏差、要不要二人复核），该由用户裁决；落地时连 observed_diff_bps 的预先虚报一起管，只钳一个数没用。"待用户给出硬顶数值与复核规则后一并落地。 |
 | R10-13（A-4） | EVM `onchain_total_supply` 链上观测件锚定 | **属新功能面设计活，与 A-3（路径语义改造）不顺手，本轮不做**；批 A 已有"明示局限"写入 `independent-audit-protocol.md` 兜底。设计要点留档：①对标 Solana observation bundle，造 EVM 链上观测收据 producer（attested eth_call totalSupply@as_of_block，经 net.attested_rpc_pool 出 attestation）；②supply_truth 额外落该观测件并入 inputs 绑定；③消费侧（shared_release_receipt supply_truth 分支）比对收据自报 onchain 与观测件数值——对齐 Solana 侧 N-2 修复的强度；④观测件须绑定端点指纹与 genesis/chainId 证明，防"观测件也自报"。 |
 
+## 四b、批 D 消化轮 1 追加
+
+| # | 条目 | 一句话 |
+|---|---|---|
+| R10-14（F-D8 余项） | `entity_freeze.json` 自身完整性锚 | 单边改动已封（A5 ledger-sha 绑定＋发布闸 A5 重验的 final scan 绑定链）；"连 freeze 一起改写"在无分布链案上仍属自洽小件族。设计方向：freeze 落盘时向案外/上位（如 handoff manifest revision 或 git 对象）登记 sha——与 C-R1（as_of_block 对锚）同族，锚到案内件只是多一个可伪造件，需真实外锚设计 |
+| R10-15（F-D7 余项） | `check_bound_file` 绝对路径绑定无案根强制 | trace 侧已限案根（新产 ledger 无此形态）；存量绝对路径 ledger 兼容面的收紧（freeze/check-unseal 消费点统一案根语义）留此 |
+
 ## 五、状态
 
 - 建档：2026-08-13（批 D 收口时）。本轮（6.40.0）未修上述任何一条，CHANGELOG 已显式注明。

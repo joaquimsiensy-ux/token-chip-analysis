@@ -375,7 +375,11 @@ def main(argv=None):
         return 2
 
     if mode == "formal" and a.tolerance_bps < 0:
-        return policy_reject("正式模式 --tolerance-bps 必须满足 0 <= 值")
+        # F-D8：负容差是**参数打错**不是政策拒绝——不作废旧收据（作废语义只属于
+        # "本轮政策判定拒绝了这次放大请求"，手滑传负数不构成对上一轮结论的否定）。
+        print("正式模式 --tolerance-bps 必须满足 0 <= 值（参数错误，不作废旧收据）",
+              file=sys.stderr)
+        return 2
     if (mode == "formal" and a.tolerance_bps > FORMAL_TOLERANCE_BPS_MAX
             and not a.tolerance_waiver):
         return policy_reject("正式模式 --tolerance-bps 上限为 10；超出必须提供 --tolerance-waiver")

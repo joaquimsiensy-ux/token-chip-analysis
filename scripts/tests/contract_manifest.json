@@ -146,6 +146,6 @@
     {"id":"CT-SEMANTIC-53","kind":"required","authority_file":"references/report-template.md","needle":"figure2-check-receipt/v1","stages":["A3","A5"]},
     {"id":"CT-SEMANTIC-54","kind":"required","authority_file":"references/scan-schemas.md","needle":"flip-adjudications/v1","stages":["A3","A5"]},
     {"id":"CT-SEMANTIC-55","kind":"required","authority_file":"references/data-pipeline-solana-capture.md","needle":"NO_CLOSED_SAMPLED","stages":["A1-A2"]},
-    {"id":"CT-SEMANTIC-56","kind":"required","authority_file":"references/analyze-workflow.md","needle":"superseded","stages":["A2"]}
+    {"id":"CT-SEMANTIC-56","kind":"required","authority_file":"references/analyze-workflow.md","needle":"supply_truth.json.superseded-","stages":["A2"]}
   ]
 }

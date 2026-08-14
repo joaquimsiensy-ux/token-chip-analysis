@@ -46,6 +46,12 @@
 
 批 C 残余边界准确口径（终验更正，已同步 scan-schemas §13）：控制案目录者手写一组互相自洽的案内小件（实测约 1.5KB、无需运行 producer）即可通过全部一致性校验——validator 是一致性校验器不是真实性证明器；此链上已无可机器闭合的下一层（终验逐个查证 channels_preflight 自身收据链/identity_gate 实物两个候选锚，均只是"多一个可伪造件"）。
 
+## 二d、批 D 消化轮 1 遗留（盲审记账项，非 finding）
+
+- **报错换岗致断言精度下降**：test_repair_batch_a N-1 用例（二选一 needle）与 test_handoff_manifest 两处（needle 放宽到"三策略主导终点翻转"共同串）——被拒面不减，但断言从"区分具体拦截分支"退化为"区分拒绝类别"，**将来旧闸被误删不会红**。若需恢复精度：为新旧两闸各立独立定向用例（分别只中和另一道）。
+- **Solana 同案连续端到端差额（F-D3）**：EVM 已建同案连续链（t_fd3）；Solana 的 state→figures 段仍由批 C 另案链承载，同案接入的夹具成本（sol-rows replay 产物嫁接完整发布案）超消化轮预算——下轮或 R10 一并补（与 r10 C-R3 的 sol 真实案端到端同批做最省）。
+- **check_bound_file 绝对路径无案根强制**：见 r10_ledger R10-15。
+
 ## 三、状态
 
 - 批 A：已收口（f575472/78d1c4c/8b089c3 系列，终复核零实质新 finding）

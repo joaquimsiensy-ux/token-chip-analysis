@@ -702,15 +702,22 @@ def main():
     # 覆盖判定在 ledger 组装后按当前明细重算指纹。
     from handoff_manifest import (ledger_real_flips, load_flip_adjudications,
                                   verify_flip_receipt_against_ledger)
+    case_dir = os.path.dirname(os.path.abspath(a.out))
     receipt_rows = {}
     if a.acknowledge_flip:
+        # F-D7：三处收据口径统一为"案根内＋sha 绑定"——trace 不收案外收据（案根检查
+        # 先于结构验证：案外收据先报位置错，不报它同目录缺名册一类的次生错）。
+        receipt_real = os.path.realpath(os.path.expanduser(a.acknowledge_flip))
+        rel = os.path.relpath(receipt_real, os.path.realpath(case_dir))
+        if rel == ".." or rel.startswith(".." + os.sep):
+            log(f"--acknowledge-flip 裁决收据必须在案根（--out 所在目录）内: {a.acknowledge_flip}")
+            sys.exit(2)
         try:
             _, receipt_rows = load_flip_adjudications(
                 a.acknowledge_flip, current_entity_file=a.entity_file)
         except (OSError, ValueError, TypeError) as exc:
             log(f"--acknowledge-flip 裁决收据不合法: {exc}")
             sys.exit(2)
-    case_dir = os.path.dirname(os.path.abspath(a.out))
     binding = source_binding(a, case_dir)
 
     con = duckdb.connect()

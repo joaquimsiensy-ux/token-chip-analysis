@@ -326,8 +326,9 @@ def _make_flip_receipt(tmp: Path, ledger, *, fingerprint=None, share_mutate=None
         rows.append({"entity_id": eid, "anchor": anchor,
                      "reason": "真实双来源结构：CEX 与 DEX 两路进货体量相当。",
                      "flip_fingerprint": fingerprint or info["fingerprint"],
+                     # F-D1 起 location 串必须命中报告某一 Markdown 标题行（子串匹配）
                      "disclosure": {"top_by_policy": tbp,
-                                    "report_locations": ["report.md §翻转披露"]}})
+                                    "report_locations": ["翻转披露"]}})
     rows.extend(extra_rows)
     entity_path = tmp / "entities.json"
     receipt = {
@@ -479,22 +480,69 @@ def t_f06_a5_disclosure():
                                                 "revisions": []})
         real = hm.ledger_real_flips(ledger)
         a4obj = {"workflow_type": "new-analysis"}
-        # 报告含全部披露值 → DISCLOSED
+        # 报告在披露章节内含全部披露值 → DISCLOSED（F-D1 起核对锚定该章节切片）
         parts = ["# 报告", "## 翻转披露"]
         for info in real.values():
             for policy in hm.FLIP_POLICIES:
                 terminal = info["tops"][policy]
                 parts.append(f"{policy}: {terminal[2]} 占 {info['shares'][policy]}%")
+        parts.append("## 其他章节")
+        parts.append("正文其他内容。")
         good_text = "\n".join(parts)
         bundle = a5.provenance_flip_bundle(tmp, good_text, a4obj)
-        check("F-06 A5 绿例：报告实文含三策略 top 与份额 → DISCLOSED",
+        check("F-06 A5 绿例：披露章节内含三策略名＋top＋份额 → DISCLOSED",
               bundle["status"] == "DISCLOSED" and bundle["anchors"], bundle)
-        # 报告缺份额数字 → 拒（原反例：只验 claim 在场挡不住无关文本）
+        # 报告缺披露段 → 拒（原反例：只字未提翻转）
         try:
             a5.provenance_flip_bundle(tmp, "# 报告\n只字未提翻转。", a4obj)
-            check("F-06 A5 原反例：报告缺披露值被拒", False, "放行了")
+            check("F-06 A5 原反例：报告缺披露段被拒", False, "放行了")
         except ValueError as exc:
-            check("F-06 A5 原反例：报告缺披露值被拒", "并列披露" in str(exc), exc)
+            check("F-06 A5 原反例：报告缺披露段被拒",
+                  "披露位置在报告中不存在" in str(exc), exc)
+        # F-D1 盲审攻击原样重放：无关附录含相同地址串＋占位数字（不提翻转/策略）→ 必拒
+        attack_text = ("# 某代币筹码分析报告\n"
+                       "## 附录 F：随机抽样校验串\n"
+                       "本次抽样校验串为 AAAA、BBBB、CCCC，用于比对采集完整性，与结论无关。\n"
+                       "## 附录 G：占位数值\n"
+                       "下表为排版占位，非真实数据：50.00 / 100.00 / 12.34。\n")
+        try:
+            a5.provenance_flip_bundle(tmp, attack_text, a4obj)
+            check("F-D1 无关附录攻击（同地址串＋同数字）被拒", False, "放行了＝原攻击仍成立")
+        except ValueError as exc:
+            check("F-D1 无关附录攻击（同地址串＋同数字）被拒",
+                  "披露位置在报告中不存在" in str(exc), exc)
+        # F-D1 变体：附录标题恰与 location 同名（切片命中）但无策略名——仍拒
+        sneaky = ("# 报告\n## 翻转披露\n"
+                  "本段仅有地址 AAAA、BBBB 与数字 50.00、100.00，无任何策略并列。\n")
+        try:
+            a5.provenance_flip_bundle(tmp, sneaky, a4obj)
+            check("F-D1 切片命中但缺策略名骨架被拒", False, "放行了")
+        except ValueError as exc:
+            check("F-D1 切片命中但缺策略名骨架被拒", "缺策略名" in str(exc), exc)
+        # F-D1 份额半边独立红例（M2 变异锁）：切片含策略名＋ident 但份额数字错
+        wrong_share_parts = ["# 报告", "## 翻转披露"]
+        for info in real.values():
+            for policy in hm.FLIP_POLICIES:
+                terminal = info["tops"][policy]
+                wrong_share_parts.append(f"{policy}: {terminal[2]} 占 99.99%")
+        try:
+            a5.provenance_flip_bundle(tmp, "\n".join(wrong_share_parts), a4obj)
+            check("F-D1 份额半边独立红例（ident 在场、份额错）被拒", False, "放行了")
+        except ValueError as exc:
+            check("F-D1 份额半边独立红例（ident 在场、份额错）被拒",
+                  "份额数字" in str(exc), exc)
+        # F-D1 披露值散落在另一章节（切片外）→ 拒（全文偶然同串不作数）
+        split_parts = ["# 报告", "## 翻转披露", "见下方附录。", "## 附录"]
+        for info in real.values():
+            for policy in hm.FLIP_POLICIES:
+                terminal = info["tops"][policy]
+                split_parts.append(f"{policy}: {terminal[2]} 占 {info['shares'][policy]}%")
+        try:
+            a5.provenance_flip_bundle(tmp, "\n".join(split_parts), a4obj)
+            check("F-D1 披露值落在切片外章节被拒（同段要求）", False, "放行了")
+        except ValueError as exc:
+            check("F-D1 披露值落在切片外章节被拒（同段要求）",
+                  "披露段" in str(exc), exc)
         # freeze 后换 ledger → sha 绑定拒
         ledger_mut = json.loads((tmp / "provenance_ledger.json").read_text())
         ledger_mut["generated_at"] = "2001-01-01T00:00:00Z"
@@ -958,6 +1006,389 @@ def t_b1_b2_solana_new_analysis():
             check("B-1 缺件：owners 实物不存在被拒", "not found" in str(exc), exc)
 
 
+# ================= 消化轮 1（F-D1~F-D8；F-D1 用例并入 t_f06_a5_disclosure）=================
+
+def t_fd2_unseal_binds_flip_receipt():
+    """F-D2：冻结绑定清单含 flip 裁决收据——冻结后改写/删除收据 check-unseal 必拒。"""
+    import handoff_manifest as hm
+    with tempfile.TemporaryDirectory(prefix="d-fd2-", dir="/private/tmp") as raw:
+        root = Path(raw)
+        receipt = write_json(root / "flip_adjudications.json", {"schema": "flip-adjudications/v1",
+                                                                "marker": "frozen-content"})
+        members = write_json(root / "analysis-state.json", {"m": 1})
+        entity = write_json(root / "entities.json", {"E1": ["a"]})
+        manifest = write_json(root / "handoff_manifest.json", {"run_id": "x"})
+        data_map = write_json(root / "data_map.json", {"files": []})
+        receipt_digest, receipt_size = hm.full_sha256_file(str(receipt))
+        ledger = write_json(root / "provenance_ledger.json", {
+            "schema": "provenance-ledger/v2",
+            "input_binding": {"algorithm_params": {
+                "flip_adjudications": {"path": "flip_adjudications.json",
+                                       "bytes": receipt_size,
+                                       "sha256": receipt_digest}}}})
+        def digest(p):
+            return hm.sha256_file(p)[1]
+        write_json(root / "entity_freeze.json", {
+            "schema": "entity-freeze/v1",
+            "members_source": "analysis-state.json", "members_sha256": digest(members),
+            "entity_file": "entities.json", "entity_file_sha256": digest(entity),
+            "provenance_ledger_sha256": digest(ledger),
+            "manifest_sha256": digest(manifest), "data_map_sha256": digest(data_map),
+            "frozen_at_utc": "2026-08-13T00:00:00Z", "revisions": []})
+
+        def unseal():
+            proc = subprocess.run([sys.executable,
+                                   str(HERE.parent / "report/handoff_manifest.py"),
+                                   "freeze", "--case-dir", str(root), "--check-unseal"],
+                                  capture_output=True, text=True)
+            return proc.returncode, proc.stdout + proc.stderr
+        rc, out = unseal()
+        check("F-D2 基线：收据原样 check-unseal 放行", rc == 0, out[-200:])
+        original = receipt.read_bytes()
+        doc = json.loads(original)
+        doc["marker"] = "冻结后偷偷换的内容"
+        write_json(receipt, doc)
+        rc, out = unseal()
+        check("F-D2 原反例①：冻结后改写收据 → check-unseal rc=2",
+              rc == 2 and ("漂移" in out or "flip" in out), out[-200:])
+        receipt.unlink()
+        rc, out = unseal()
+        check("F-D2 原反例②：冻结后删除收据 → check-unseal rc=2",
+              rc == 2 and "不存在" in out, out[-200:])
+        receipt.write_bytes(original)
+        rc, _ = unseal()
+        check("F-D2 复原后再放行（绑定即字节）", rc == 0, rc)
+
+
+def t_fd4_receipt_sanity():
+    """F-D4：裁决面形式 sanity——占位主体/荒谬时间/垃圾字节证据三红例。"""
+    import handoff_manifest as hm
+    with tempfile.TemporaryDirectory(prefix="d-fd4-", dir="/private/tmp") as raw:
+        tmp = Path(raw)
+        _flip_case(tmp)
+        _, ledger = _run_trace(tmp)
+        receipt_path = _make_flip_receipt(tmp, ledger)
+        base = json.loads(receipt_path.read_text())
+        scenarios = [
+            ("裁决主体单字符占位 x", lambda d: d.update(approved_by="x"), "占位"),
+            ("时间 1970（荒谬时间戳）",
+             lambda d: d.update(user_decided_at_utc="1970-01-01T00:00:00Z"), "时间范围"),
+            ("未来一年（预签收据）",
+             lambda d: d.update(user_decided_at_utc="2027-12-31T00:00:00Z"), "时间范围"),
+        ]
+        for label, mutate, needle in scenarios:
+            doc = json.loads(json.dumps(base))
+            mutate(doc)
+            write_json(receipt_path, doc)
+            try:
+                hm.load_flip_adjudications(receipt_path,
+                                           current_entity_file=tmp / "entities.json")
+                check(f"F-D4 被拒：{label}", False, "放行了")
+            except ValueError as exc:
+                check(f"F-D4 被拒：{label}", needle in str(exc), exc)
+        # 1 字节垃圾证据
+        junk = tmp / "junk.bin"
+        junk.write_bytes(b"j")
+        doc = json.loads(json.dumps(base))
+        doc["evidence_refs"] = [{"path": "junk.bin", "size": 1, "sha256": sha_file(junk)}]
+        write_json(receipt_path, doc)
+        try:
+            hm.load_flip_adjudications(receipt_path, current_entity_file=tmp / "entities.json")
+            check("F-D4 被拒：1 字节垃圾证据文件", False, "放行了")
+        except ValueError as exc:
+            check("F-D4 被拒：1 字节垃圾证据文件", "过小" in str(exc), exc)
+
+
+def t_fd5_gptf06_two_missing_cells():
+    """F-D5：deep 全 fetch_failed 独立判据锁＋CLEAN 正例格。"""
+    with tempfile.TemporaryDirectory(prefix="d-fd5-", dir="/private/tmp") as raw:
+        tmp = Path(raw)
+        _fake_edges(tmp / "edges.jsonl.gz",
+                    [[1, 100, "OWN1", "OWN2", 5], [2, 150, "OWN1", "OWN3", 5],
+                     [3, 200, "OWN2", "OWN3", 5]])
+
+        # deep 全 fetch_failed：签名史直接失败（返回 None）
+        def rpc_deep_fetch_fail(self, method, params, retries=4):
+            if method == "getBlock":
+                return _block_with_init(params[0])
+            if method == "getMultipleAccounts":
+                return {"value": [None for _ in params[0]]}  # 全销户
+            if method == "getSignaturesForAddress":
+                return None  # 深挖拉取失败 → fetch_failed
+            return None
+        rc, report = _run_closed_audit(tmp, rpc_deep_fetch_fail)
+        check("F-D5 深挖全 fetch_failed → exit 1（独立判据，有测试锁）",
+              rc == 1 and report["status"] == "INVALID_SAMPLE"
+              and any("全部 fetch_failed" in x for x in report["invalid_reasons"]),
+              (rc, report and report.get("invalid_reasons")))
+
+        # CLEAN：销户账户深挖到区间内事件且边集覆盖 → exit 0 充分零漏
+        def rpc_clean(self, method, params, retries=4):
+            if method == "getBlock":
+                return _block_with_init(params[0])
+            if method == "getMultipleAccounts":
+                return {"value": [None for _ in params[0]]}
+            if method == "getSignaturesForAddress":
+                return [{"signature": "SIGC", "slot": 150, "err": None}]
+            if method == "getTransaction":
+                return {"meta": {"err": None,
+                                 "preTokenBalances": [{"mint": "MINTx", "accountIndex": 0,
+                                                        "owner": "OWN1",
+                                                        "uiTokenAmount": {"amount": "9"}}],
+                                 "postTokenBalances": [{"mint": "MINTx", "accountIndex": 0,
+                                                         "owner": "OWN1",
+                                                         "uiTokenAmount": {"amount": "2"}}]},
+                        "transaction": {"message": {"accountKeys": ["ACC1"],
+                                                     "instructions": []}}}
+            return None
+        rc, report = _run_closed_audit(tmp, rpc_clean)
+        check("F-D5 CLEAN 正例格：checked>0 零漏 → exit 0 status=CLEAN",
+              rc == 0 and report["status"] == "CLEAN"
+              and report["events"] == {"checked": 1, "covered": 1, "missing": 0,
+                                        "out_of_range": 0}
+              and report["invalid_reasons"] == [],
+              (rc, report and report.get("status"), report and report.get("events")))
+
+
+def t_fd6_prepare_leak():
+    """F-D6：prepare 期失败不泄漏临时件（写到一半的 tmp 也在清理范围内）。"""
+    import fetch_hypersync_v2 as fh
+    from test_apu_legacy_gaps import _make_prehistoric_v2_run
+
+    def log_row(block):
+        return (0, "0x" + "1" * 64, "0x" + "2" * 64, block,
+                "0x" + format(7, "x").rjust(64, "0"),
+                "0x" + "a" * 64, "0x" + "b" * 64)
+
+    with tempfile.TemporaryDirectory(prefix="d-fd6-", dir="/private/tmp") as raw:
+        root = Path(raw)
+        _make_prehistoric_v2_run(root, 0, rows=[log_row(5)], blocks=[(5, hex(1000))])
+        _make_prehistoric_v2_run(root, 100, rows=[log_row(105)], blocks=[(105, hex(2000))])
+        dones = sorted(root.glob("run_*/done.json"))
+        originals = {p: p.read_bytes() for p in dones}
+        real_dump = json.dump
+        calls = {"n": 0}
+
+        def inject(obj, fp, **kw):
+            calls["n"] += 1
+            if calls["n"] == 2:  # prepare 第二个 tmp 写到一半
+                fp.write("{\"half\":")  # 先污染半截再抛——逼清理面对半成品
+                raise OSError("prepare io injected")
+            return real_dump(obj, fp, **kw)
+
+        with mock.patch.object(fh.json, "dump", inject), \
+                contextlib.redirect_stderr(io.StringIO()) as err:
+            rc = fh.refresh_manifests_cli(["--refresh-manifests", "--outdir", str(root)])
+        residue = list(root.rglob(".*refresh-tmp*")) + list(root.rglob(".*refresh-bak*"))
+        after = {p: p.read_bytes() for p in dones}
+        check("F-D6 prepare 注入命中标志（第 2 次 json.dump）",
+              calls["n"] == 2 and "prepare io injected" in err.getvalue(),
+              (calls["n"], err.getvalue()[:150]))
+        check("F-D6 prepare 期失败：正式件原样＋零临时件泄漏＋exit 2",
+              rc == 2 and after == originals and residue == [],
+              (rc, [x.name for x in residue]))
+
+
+def t_fd7_receipt_path_unification():
+    """F-D7：收据三处口径统一（案根内＋ledger sha 互绑）——改名不误伤、换收据必失配。"""
+    import a5_report_seal as a5
+    import handoff_manifest as hm
+    with tempfile.TemporaryDirectory(prefix="d-fd7-", dir="/private/tmp") as raw:
+        tmp = Path(raw)
+        _flip_case(tmp)
+        _, ledger0 = _run_trace(tmp)
+        # 改名收据（案根内）：trace 放行、A5 按 ledger 绑定定位——不误伤
+        receipt = _make_flip_receipt(tmp, ledger0)
+        renamed = tmp / "flips_receipt.json"
+        renamed.write_bytes(receipt.read_bytes())
+        receipt.unlink()
+        proc, ledger = _run_trace(tmp, "--acknowledge-flip", str(renamed))
+        assert proc.returncode == 0, proc.stdout + proc.stderr
+        _, ledger_sha, _ = hm.sha256_file(tmp / "provenance_ledger.json")
+        write_json(tmp / "entity_freeze.json", {"schema": "entity-freeze/v1",
+                                                "provenance_ledger_sha256": ledger_sha,
+                                                "revisions": []})
+        real = hm.ledger_real_flips(ledger)
+        parts = ["# 报告", "## 翻转披露"]
+        for info in real.values():
+            for policy in hm.FLIP_POLICIES:
+                parts.append(f"{policy}: {info['tops'][policy][2]} 占 {info['shares'][policy]}%")
+        good_text = "\n".join(parts)
+        a4obj = {"workflow_type": "new-analysis"}
+        bundle = a5.provenance_flip_bundle(tmp, good_text, a4obj)
+        check("F-D7 改名收据合法案不再被 A5 误伤（按 ledger 绑定定位）",
+              bundle["status"] == "DISCLOSED"
+              and bundle["receipt"]["path"] == "flips_receipt.json", bundle.get("receipt"))
+        # 换收据（同名另一份、裁决人被换）→ A5 sha 互绑拒（封"甲过 freeze 乙过 A5"）
+        doc = json.loads(renamed.read_text())
+        doc["approved_by"] = "完全没参与过的另一个人"
+        write_json(renamed, doc)
+        try:
+            a5.provenance_flip_bundle(tmp, good_text, a4obj)
+            check("F-D7 换收据（改裁决人）被 A5 sha 互绑拒", False, "放行了")
+        except ValueError as exc:
+            check("F-D7 换收据（改裁决人）被 A5 sha 互绑拒", "不符" in str(exc), exc)
+        # trace 拒案外收据（口径统一第三角）
+        with tempfile.TemporaryDirectory(prefix="d-fd7-out-", dir="/private/tmp") as outer:
+            outside = Path(outer) / "receipt.json"
+            outside.write_bytes(json.dumps(json.loads(
+                renamed.read_text()) | {"approved_by": "用户"},
+                ensure_ascii=False).encode())
+            proc2, _ = _run_trace(tmp, "--acknowledge-flip", str(outside))
+            check("F-D7 trace 拒案外收据（三处口径＝案根内）",
+                  proc2.returncode == 2 and "案根" in proc2.stdout + proc2.stderr,
+                  (proc2.returncode, (proc2.stdout + proc2.stderr)[-150:]))
+
+
+def t_fd8_boundaries():
+    """F-D8：双删由发布闸 final_bindings 锚拦截＋审计早退落报告＋A-1 参数错不归档。"""
+    import audit_release_gate as gate
+    # ① 完整 new-analysis 案删 freeze → 发布闸红（F-D8 落点＝发布闸重验 A5 seal，
+    #    A5 的 final scan 绑定链把 entity_freeze 钉进发布必经路；单元层 NO_LEDGER
+    #    是无溯源案语义，双删的机器锚在这一层）
+    with tempfile.TemporaryDirectory(prefix="d-fd8-", dir="/private/tmp") as raw:
+        root = Path(raw)
+        report = build_solana_case(root)
+        assert gate.run(root, report, profile="new-analysis") == []
+        (root / "entity_freeze.json").unlink()
+        errors = gate.run(root, report, profile="new-analysis")
+        check("F-D8 双删绕路：删 entity_freeze 后发布闸拒（A5 seal 重验接入发布必经路）",
+              any("A5 seal 重验" in x and ("entity_freeze" in x or "final 绑定" in x)
+                  for x in errors), errors[:4])
+        # 缺 --report 时 fail-closed（A5 seal 在场却无法重验＝拒）
+        errors = gate.run(root, None, profile="new-analysis")
+        check("F-D8 new-analysis 缺 --report 无法重验 A5 → fail-closed",
+              any("--report" in x for x in errors), errors[:3])
+    # ② 审计早退也落 status 报告
+    with tempfile.TemporaryDirectory(prefix="d-fd8b-", dir="/private/tmp") as raw:
+        tmp = Path(raw)
+
+        def rpc_never(self, method, params, retries=4):
+            return None
+        rc, report = _run_closed_audit(tmp, rpc_never)  # 边集文件不存在
+        check("F-D8 早退（边集缺失）也落 INVALID_SAMPLE 报告",
+              rc == 1 and report and report["status"] == "INVALID_SAMPLE"
+              and any("边集不存在" in x for x in report["invalid_reasons"]),
+              (rc, report))
+    # ③ A-1 参数错（负容差）不归档旧收据
+    with tempfile.TemporaryDirectory(prefix="d-fd8c-", dir="/private/tmp") as raw:
+        root = Path(raw)
+        rc = _run_supply_pass(root)
+        assert rc == 0
+        from test_repair_batch_a import run_supply
+        rc2, _, stderr2 = run_supply(root, tolerance=-5)
+        archived = list(root.glob("supply_truth.json.superseded-*"))
+        check("F-D8 参数错误（负容差）exit 2 且**不**作废旧收据",
+              rc2 == 2 and archived == [] and (root / "supply_truth.json").is_file()
+              and "参数错误" in stderr2, (rc2, archived, stderr2[-150:]))
+
+
+def t_fd3_e2e_single_case_evm():
+    """F-D3：同一案内连续走完 state_from_facts→figures check→A4 finalize→A5 seal（EVM）。
+
+    数据面＝批 C 真实 replay（replay_duck 产 series/sidecar/balances_final，含 burn
+    ——mint 1000/burn 50 的 dead-sink 形态）；接缝＝figures 真实产物
+    （figure2_check_receipt.json）与 state 编译产物（analysis-state.json）被 A4 finalize
+    在**同案**封口，A5 在**同案**收口。plan :95 的连续链不再由两案拼接冒充。"""
+    import test_repair_batch_c as batch_c
+    from formal_ready_test_harness import run_formal_script
+    with tempfile.TemporaryDirectory(prefix="d-fd3-", dir="/private/tmp") as raw:
+        root = Path(raw)
+        spec = {"camps": {"项目方": [batch_c.A], "大庄": [batch_c.B]},
+                "entities": {"e1": [batch_c.B]}}
+        batch_c.build_evm_case(root, spec)          # ① 真跑 replay_duck（series+sidecar）
+        batch_c.write_supply_truth(root)
+        batch_c.write_facts_source(root)
+        p = batch_c.compile_state_cli(root, "--series-source", "data/camp_series.json")
+        check("F-D3 ① state_from_facts formal 编译（series 绑定链）",
+              p.returncode == 0
+              and json.loads((root / "analysis-state.json").read_text())
+              ["provenance"]["series_binding"] == "producer-sidecar",
+              (p.returncode, (p.stdout + p.stderr)[-300:]))
+        # ② figures check：图 2 装配数据对 facts 终值（e1 current 350/950）
+        want = 350 / 950 * 100
+        write_json(root / "whale_series.json",
+                   [{"entity_id": "e1", "label": "大庄#1", "pct": [round(want, 4)]}])
+        fff = HERE.parent / "report/figures_from_facts.py"
+        p = subprocess.run([sys.executable, str(fff), "check", "--facts", "facts.json",
+                            "--series", "whale_series.json"], cwd=root,
+                           capture_output=True, text=True)
+        receipt = root / "figure2_check_receipt.json"
+        check("F-D3 ② figures check 末点对账＋留痕收据（同案）",
+              p.returncode == 0 and receipt.is_file()
+              and json.loads(receipt.read_text()).get("verdict") == "PASS",
+              (p.returncode, p.stdout + p.stderr))
+        # 分布 initial（A4 finalize 的 new-analysis 分布源要求）：快照＝真实 replay 终态
+        write_json(root / "data_map.json", {"files": [
+            {"path": "data/balances_final.json",
+             "sha256": sha_file(root / "data/balances_final.json")}]})
+        write_json(root / "candidate_screening.json", {"auto_excluded_candidate": []})
+        dist = HERE.parent / "report/holder_distribution_scan.py"
+        p = run_formal_script(dist, ["--case-dir", str(root), "--stage", "initial"])
+        assert p.returncode == 0, p.stdout + p.stderr
+        # ③ A4 register→finalize：真封 figures/state 两件产物（接缝在同案传递）。
+        # MANDATORY_SEAL_FILES 四件（findings/state/facts/identity_gate）补齐后，
+        # figure2 收据作为第五件一并封口。
+        (root / "findings.md").write_text("# findings\n大庄#1 现仓 350。\n", encoding="utf-8")
+        write_json(root / "identity_gate.json", {"chain": "bsc", "verdict": "PASS"})
+        gate_cli = HERE.parent / "report/a4_gate.py"
+        claims = write_json(root / "claims_in.json", [
+            {"id": "C1", "text": "大庄#1 现仓 350（36.84% 供应）",
+             "files": ["data/balances_final.json"], "report_locations": ["report.md:1"]}])
+        p = subprocess.run([sys.executable, str(gate_cli), "register", "--case-dir",
+                            str(root), "--claims-file", str(claims)],
+                           capture_output=True, text=True)
+        assert p.returncode == 0, p.stdout + p.stderr
+        verdicts = write_json(root / "verdicts.json", [{"id": "C1", "verdict": "CONFIRMED"}])
+        p = subprocess.run([sys.executable, str(gate_cli), "finalize", "--case-dir",
+                            str(root), "--verdicts-file", str(verdicts),
+                            "--seal-files",
+                            "findings.md,analysis-state.json,facts.json,identity_gate.json,"
+                            "figure2_check_receipt.json",
+                            "--workflow-type", "new-analysis"],
+                           capture_output=True, text=True)
+        seal = root / "a4_seal.json"
+        check("F-D3 ③ A4 finalize 同案封口 figures/state 产物",
+              p.returncode == 0 and seal.is_file()
+              and json.loads(seal.read_text()).get("workflow_type") == "new-analysis",
+              (p.returncode, (p.stdout + p.stderr)[-400:]))
+        # 分布终态链（final scan→record-round→LOW_SAMPLE terminal）
+        for name, value in {
+            "handoff_manifest.json": {"consumer_min_schema": "handoff/v3",
+                                      "status": "READY", "run_id": "fd3"},
+            "identity_snapshot_receipt.json": {"schema": "identity-snapshot-receipt/v1"},
+            "entity_freeze.json": {"schema": "entity-freeze/v1", "revisions": []},
+            "membership_ledger.json": {"rows": []},
+            "position_ledger.json": {"rows": []},
+            "economic_control_ledger.json": {"rows": []},
+            "address_classification.json": {"rows": []},
+        }.items():
+            write_json(root / name, value)
+        p = run_formal_script(dist, ["--case-dir", str(root), "--stage", "final",
+                                     "--round", "1"])
+        assert p.returncode == 0, p.stdout + p.stderr
+        p = run_formal_script(dist, ["record-round", "--case-dir", str(root),
+                                     "--scan", "dist_rounds/round_1/distribution_scan.json"])
+        assert p.returncode == 0, p.stdout + p.stderr
+        final_scan = json.loads(
+            (root / "dist_rounds/round_1/distribution_scan.json").read_text())
+        sentence = ("形态统计因样本不足未做,以逐址集中度事实替代"
+                    if final_scan.get("not_evaluable_reason") == "low_sample"
+                    else "当前快照呈正常形态;这只表示本闸未检出结构性畸形,不等于没有庄。")
+        report = root / "report.md"
+        report.write_text("# 同案端到端报告\n大庄#1 现仓 350。\n" + sentence
+                          + "\n\n![持仓分布](charts/final/holder_distribution_current.png)\n",
+                          encoding="utf-8")
+        # ④ A5 seal 同案收口
+        a5 = HERE.parent / "report/a5_report_seal.py"
+        p = run_formal_script(a5, ["--case-dir", str(root), "--report", str(report),
+                                   "--a4-seal", str(seal),
+                                   "--out", str(root / "a5_report_seal.json")])
+        check("F-D3 ④ A5 seal 同案收口（state→figures→A4→A5 全链一案贯通）",
+              p.returncode == 0 and (root / "a5_report_seal.json").is_file(),
+              (p.returncode, (p.stdout + p.stderr)[-400:]))
+
+
 def main():
     t_f07_refresh_transaction()
     t_gptf06_closed_audit()
@@ -970,6 +1401,14 @@ def main():
     t_a5_same_source_negative()
     t_b7_ledger_snapshot_binding()
     t_b1_b2_solana_new_analysis()
+    # 消化轮 1
+    t_fd2_unseal_binds_flip_receipt()
+    t_fd4_receipt_sanity()
+    t_fd5_gptf06_two_missing_cells()
+    t_fd6_prepare_leak()
+    t_fd7_receipt_path_unification()
+    t_fd8_boundaries()
+    t_fd3_e2e_single_case_evm()
     print("=" * 48)
     if FAILS:
         print(f"BATCH D FAIL {len(FAILS)}: {FAILS}")

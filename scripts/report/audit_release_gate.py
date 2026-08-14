@@ -1138,6 +1138,21 @@ def run(case_dir: Path, report: Path | None, *, profile="independent-audit"):
         state_path = case_dir / "analysis-state.json"
         if state_path.is_file():
             check_series_binding(case_dir, load_json(state_path, errors), errors)
+        # F-D8（批 D 消化轮 1）：A5 seal 在发布闸**重验**，不只查存在——A5 的
+        # distribution_bundle 绑定链（final scan → final_bindings.entity_freeze 等三验）
+        # 与 provenance_flip_bundle 由此接入发布必经路：双删 freeze＋ledger、冻结后改
+        # 终态件在这里现形。重验需要待发布报告实物，缺 --report 即 fail-closed。
+        seal_path = case_dir / "a5_report_seal.json"
+        if seal_path.is_file():
+            if report is None:
+                errors.append("new-analysis 发布必须带 --report 以重验 A5 seal（fail-closed）")
+            else:
+                try:
+                    import a5_report_seal
+                    errors.extend("A5 seal 重验: " + x for x in a5_report_seal.validate_seal(
+                        seal_path, report, case_dir / "a4_seal.json"))
+                except Exception as exc:
+                    errors.append(f"A5 seal 重验器失败: {exc}")
     if "historical_chart" in claim_types:
         chart_path = case_dir / "chart_reconciliation.json"
         if not chart_path.is_file():

@@ -48,6 +48,23 @@ def log(msg):
     print(f"[audit] {msg}", file=sys.stderr, flush=True)
 
 
+def bail_invalid(out_path, mint, edges_path, reason):
+    """F-D8：早退路径也必须落带 status 的报告——"无报告"会让 status 契约的四态无从分辨。
+    精简报告只含身份与失败原因（样本统计彼时尚不存在，不编造）。"""
+    report = {"mint": mint, "edges_file": str(edges_path),
+              "status": "INVALID_SAMPLE", "exit_code": 1,
+              "invalid_reasons": [reason],
+              "generated": time.strftime("%Y-%m-%d %H:%M:%S")}
+    try:
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        out_path.write_text(json.dumps(report, ensure_ascii=False, indent=1))
+        log(f"INVALID_SAMPLE 报告 → {out_path}")
+    except OSError as exc:
+        log(f"早退报告写入失败（不改变 exit 1 语义）: {exc}")
+    log(reason)
+    sys.exit(1)
+
+
 class Rpc:
     def __init__(self, url, proxy, interval):
         self.url, self.proxy, self.interval = url, proxy, interval
@@ -226,7 +243,7 @@ def main():
     edges_path = Path(args.edges or f"data/soltx-{mint.lower()}.jsonl.gz")
     out_path = Path(args.out or f"data/closed_audit-{mint.lower()}.json")
     if not edges_path.exists():
-        log(f"边集不存在：{edges_path}"); sys.exit(1)
+        bail_invalid(out_path, mint, edges_path, f"边集不存在：{edges_path}")
 
     rpc = Rpc(args.rpc, args.proxy, args.interval)
     idx, lo, hi, n_edges = load_edge_index(edges_path)
@@ -248,7 +265,7 @@ def main():
                                                    stop_below=lo)
         wall_flag["hit"] = wall_flag["hit"] or wall_hit
         if not sigs:
-            log("mint 签名史为空/拉取失败"); sys.exit(1)
+            bail_invalid(out_path, mint, edges_path, "mint 签名史为空/拉取失败")
         in_range = [s for s in sigs if lo <= s[1] <= hi]
         sig_stat = {"total": len(sigs), "complete": complete, "in_range": len(in_range)}
         log(f"mint 签名史 {len(sigs)} 条（complete={complete}），边集区间内 {len(in_range)} 条")
@@ -273,7 +290,8 @@ def main():
         inits = sample_inits_from_blocks(rpc, mint, lo, hi, args.block_samples,
                                          args.sample_inits, wall_dl, wall_flag)
     if not inits:
-        log("抽样未命中任何初始化事件（样本过小或池全为非初始化笔）"); sys.exit(1)
+        bail_invalid(out_path, mint, edges_path,
+                     "抽样未命中任何初始化事件（样本过小或池全为非初始化笔）")
 
     # 存活/销户判定（getMultipleAccounts 批 100；publicnode 屏蔽此法，须 mainnet-beta）
     accs = list(inits.keys())
