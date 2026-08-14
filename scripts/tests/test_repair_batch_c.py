@@ -75,6 +75,15 @@ def write_json(path: Path, value):
     return path
 
 
+def write_sol_edges(path: Path, edges):
+    """Write the canonical gzip edge object used by reconcile-chain tests."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with gzip.open(path, "wt", encoding="utf-8") as fh:
+        for edge in edges:
+            fh.write(json.dumps(list(edge), ensure_ascii=False) + "\n")
+    return path
+
+
 # ── F-05：共享校验单元面 ─────────────────────────────────────────
 
 
@@ -354,6 +363,8 @@ def t_f05_f04_solana_chain():
             import replay_edges as re_mod
             importlib.reload(re_mod)
             Path("data").mkdir()
+            edge_key = hashlib.sha256(SA.encode("utf-8")).hexdigest()
+            write_sol_edges(Path(f"data/soltx-{edge_key}.jsonl.gz"), edges)
             Path("data/holders_owners.json").write_text(
                 json.dumps({SA: 600, SB: 300}))
             owners_ref = file_ref(Path("data/holders_owners.json"))
@@ -1222,12 +1233,614 @@ def t_f09_importer_fail_closed():
               not (root / "migration_receipt.json").exists())
 
 
+def t_blindreview_c_fixround1():
+    """BC-01~09 + 16 项假覆盖 + O1/O5 的破坏性负向锚。"""
+    import importlib
+    import replay_edges as re_mod
+    from camp_series_provenance import (SeriesProvenanceError,
+                                        load_series_with_sidecar,
+                                        registry_anchor_check)
+
+    failures = []
+
+    def probe(name, condition, detail=""):
+        if condition:
+            PASSED.append(name)
+        else:
+            failures.append(f"{name}: {detail}")
+
+    edges = [
+        [3600, 1, Z, SA, 1000],
+        [7200, 2, SA, SB, 300],
+        [10800, 3, SA, Z, 100],
+    ]
+    old_cwd = os.getcwd()
+    with tempfile.TemporaryDirectory(prefix="c-blind-fix1-", dir="/private/tmp") as raw:
+        td = Path(raw)
+        os.chdir(td)
+        try:
+            importlib.reload(re_mod)
+            data = Path("data")
+            data.mkdir()
+            edge_key = hashlib.sha256(SA.encode("utf-8")).hexdigest()
+            edge_path = write_sol_edges(data / f"soltx-{edge_key}.jsonl.gz", edges)
+            meta_path = data / f"soltx-{edge_key}.meta.json"
+            owners_path = data / "holders_owners.json"
+            snapshot_path = data / "holders_snapshot_meta.json"
+            owners_path.write_text(json.dumps({SA: 600, SB: 300}))
+
+            def good_snapshot():
+                return {
+                    "schema": "solana-holder-snapshot-v2", "mint": SA,
+                    "target": {"chain": "solana", "token": SA,
+                               "as_of_block": 3},
+                    "closed": True, "supply_raw": "900",
+                    "outputs": {"holders_owners": file_ref(owners_path)},
+                }
+
+            def good_meta():
+                return {"schema": "sqd-solana-cache/v3", "mint": SA,
+                        "from_slot": 1, "collection_upper_slot": 3}
+
+            write_json(snapshot_path, good_snapshot())
+            write_json(meta_path, good_meta())
+            probe("BC fixture producer green",
+                  re_mod.cmd_reconcile(edges, 1, mint=SA,
+                                       cache_meta_path=meta_path) is True)
+            Path("camps.json").write_text(
+                json.dumps({"项目方": [SA], "大庄": [SB]}, ensure_ascii=False))
+            re_mod.cmd_evolution(edges, 1, "camps.json", set())
+            Path("facts.json").write_text(json.dumps(
+                {"token": {"symbol": "ST", "decimals": 0,
+                           "total_supply_raw": "900"},
+                 "entities": {"e1": {"label": "大庄#1", "addresses": [SB],
+                                       "current_raw": "300", "peak_raw": "300"}}}))
+
+            def source_doc(mint=SA, cutoff=3):
+                return {
+                    "schema": "analysis-state-source/v1",
+                    "token": {"chain": "solana", "mint": mint,
+                              "data_cutoff_slot": cutoff,
+                              "data_cutoff": "2026-01-05T00:00:00Z",
+                              "skill_version": "6.39.5"},
+                    "entity_annotations": {"e1": {"type": "single",
+                                                    "status": "holding"}},
+                    "address_balances": {SB: "300"}, "vault_addresses": [],
+                    "provenance": {"skill_commit": "batchc-blind",
+                                   "data_sources": ["sqd"]},
+                }
+
+            write_json(Path("source.json"), source_doc())
+            rr_path = data / "reconcile_receipt.json"
+
+            def compile_now():
+                return compile_state_cli(td, "--series-source",
+                                         "data/camp_share_series.json")
+
+            def bind_receipt(doc):
+                write_json(rr_path, doc)
+                re_mod.cmd_evolution(edges, 1, "camps.json", set())
+
+            def restore_chain(*, rewrite_series=False):
+                owners_path.write_text(json.dumps({SA: 600, SB: 300}))
+                write_json(snapshot_path, good_snapshot())
+                write_json(meta_path, meta_good)
+                write_json(rr_path, rr_good)
+                if rewrite_series:
+                    re_mod.cmd_evolution(edges, 1, "camps.json", set())
+                write_json(Path("source.json"), source_doc())
+                return True
+
+            probe("BC fixture consumer green", compile_now().returncode == 0)
+            rr_good = json.loads(rr_path.read_text())
+            meta_good = json.loads(meta_path.read_text())
+            compiled_good = json.loads(
+                (data / "camp_share_series.json").read_text())
+            from camp_series_provenance import series_to_state_form, endpoint_reconcile
+            compiled_good = series_to_state_form(compiled_good, "sol-rows")
+
+            def direct_receipt_result(doc, *, needle=None,
+                                      verify_edge_physical_sha=False):
+                write_json(rr_path, doc)
+                direct_sidecar = {"series_format": "sol-rows",
+                                  "denominator": "net_supply"}
+                direct_resolved = {
+                    "inputs.reconcile_receipt": rr_path,
+                    "camps_spec": Path("camps.json"),
+                    "final_balances": data / "effective_balances.json",
+                }
+                try:
+                    kwargs = {
+                        "expected_chain": "solana", "expected_mint": SA,
+                        "expected_cutoff_slot": 3,
+                    }
+                    import inspect
+                    if verify_edge_physical_sha:
+                        if "verify_edge_physical_sha" not in inspect.signature(
+                                registry_anchor_check).parameters:
+                            return False, "registry has no physical-sha release mode"
+                        kwargs["verify_edge_physical_sha"] = True
+                    registry_anchor_check(
+                        direct_sidecar, direct_resolved,
+                        data / "camp_share_series.json",
+                        **kwargs)
+                    endpoint_reconcile(direct_sidecar, compiled_good,
+                                       direct_resolved)
+                    return False, ""
+                except (SeriesProvenanceError, TypeError) as exc:
+                    text = str(exc)
+                    return (needle is None or needle in text), text
+
+            # BC-01/i25: truthy but not literal True must all fail closed.
+            truthy_non_true = ["false", "FAIL", "0", [False], 1, 0.1]
+            for idx, value in enumerate(truthy_non_true):
+                doc = json.loads(json.dumps(rr_good))
+                doc["gate_pass"] = value
+                rejected, detail = direct_receipt_result(doc, needle="gate_pass")
+                probe(f"BC01 gate_pass truthy-nonTrue #{idx + 1}",
+                      rejected, f"value={value!r} {detail}")
+            write_json(rr_path, rr_good)
+
+            # BC-03 and the independent numeric conclusions under gate_pass.
+            for field, value in (("net_supply_raw", None),
+                                 ("negative_balance_count", 1),
+                                 ("snapshot_mismatch_count", 1)):
+                doc = json.loads(json.dumps(rr_good))
+                if value is None:
+                    doc.pop(field)
+                else:
+                    doc[field] = value
+                    doc["gate_pass"] = True
+                rejected, detail = direct_receipt_result(doc, needle=field)
+                probe(f"BC01/03 consumer independent {field}",
+                      rejected, detail)
+            write_json(rr_path, rr_good)
+            for field in ("negative_balance_count", "snapshot_mismatch_count"):
+                for idx, value in enumerate((False, "0", 0.0)):
+                    doc = json.loads(json.dumps(rr_good))
+                    doc[field] = value
+                    rejected, detail = direct_receipt_result(doc, needle=field)
+                    probe(f"BC01 exact-int-zero {field} #{idx + 1}",
+                          rejected, detail)
+            doc = json.loads(json.dumps(rr_good))
+            doc["net_supply_raw"] = str(doc["net_supply_raw"])
+            rejected, detail = direct_receipt_result(doc, needle="net_supply_raw")
+            probe("BC03 net_supply_raw literal nonnegative int", rejected, detail)
+            write_json(rr_path, rr_good)
+
+            # BC-04/i10: direct call cannot omit independently supplied identity.
+            sidecar, _raw, resolved = load_series_with_sidecar(
+                data / "camp_share_series.json")
+            try:
+                registry_anchor_check(sidecar, resolved,
+                                      data / "camp_share_series.json")
+                direct_rejected = False
+            except SeriesProvenanceError as exc:
+                direct_rejected = "expected_chain" in str(exc)
+            probe("BC04 registry direct-call identity None rejects", direct_rejected)
+
+            # BC-05: consumer must touch the canonical edge object.
+            edge_backup = edge_path.with_name(edge_path.name + ".bak")
+            edge_path.rename(edge_backup)
+            rejected, detail = direct_receipt_result(rr_good, needle="边文件")
+            probe("BC05 missing edge object rejects",
+                  rejected, detail)
+            edge_backup.rename(edge_path)
+
+            # Same-size physical tamper: compile may skip the expensive hash, release must not.
+            original_edge_bytes = edge_path.read_bytes()
+            tampered = bytearray(original_edge_bytes)
+            tampered[-1] ^= 1
+            edge_path.write_bytes(bytes(tampered))
+            compile_rejected, compile_detail = direct_receipt_result(rr_good)
+            probe("BC05 compile point documents physical-sha skip",
+                  not compile_rejected, compile_detail)
+            release_rejected, release_detail = direct_receipt_result(
+                rr_good, needle="物理 sha256", verify_edge_physical_sha=True)
+            probe("BC05 release point verifies physical sha",
+                  release_rejected, release_detail)
+            edge_path.write_bytes(original_edge_bytes)
+
+            # Producer must reject a meta summary that disagrees with replayed rows.
+            bad_meta = json.loads(meta_path.read_text())
+            bad_meta["edge_logical_sha256"] = "0" * 64
+            write_json(meta_path, bad_meta)
+            try:
+                re_mod.cmd_reconcile(edges, 1, mint=SA,
+                                     cache_meta_path=meta_path)
+                summary_rejected = False
+            except ValueError as exc:
+                summary_rejected = "摘要" in str(exc)
+            probe("BC05 i14/i19 bad meta summary rejects", summary_rejected)
+            restore_chain()
+
+            # BC-02 + BC-06/i28: every snapshot_ok component gets a negative anchor.
+            for idx, value in enumerate(truthy_non_true):
+                snap = good_snapshot()
+                snap["closed"] = value
+                write_json(snapshot_path, snap)
+                try:
+                    accepted = re_mod.cmd_reconcile(
+                        edges, 1, mint=SA, cache_meta_path=meta_path) is True
+                except (ValueError, SystemExit):
+                    accepted = False
+                probe(f"BC02 closed truthy-nonTrue #{idx + 1}", not accepted,
+                      f"value={value!r} accepted={accepted}")
+                restore_chain()
+
+            snap = good_snapshot()
+            snap.pop("supply_raw")
+            write_json(snapshot_path, snap)
+            try:
+                re_mod.cmd_reconcile(edges, 1, mint=SA,
+                                     cache_meta_path=meta_path)
+                missing_supply_loud = False
+            except ValueError as exc:
+                missing_supply_loud = "supply_raw" in str(exc)
+            probe("BC02 missing snapshot supply_raw explicitly rejects",
+                  missing_supply_loud)
+            restore_chain()
+
+            snapshot_mutations = [
+                ("schema", lambda d: d.update(schema="bad")),
+                ("mint", lambda d: d.update(mint=SB)),
+                ("closed", lambda d: d.update(closed=False)),
+                ("supply", lambda d: d.update(supply_raw="901")),
+                ("cutoff", lambda d: d["target"].update(as_of_block=2)),
+                ("owners-ref", lambda d: d["outputs"]["holders_owners"].update(
+                    sha256="0" * 64)),
+            ]
+            for name, mutate in snapshot_mutations:
+                snap = good_snapshot()
+                mutate(snap)
+                write_json(snapshot_path, snap)
+                try:
+                    accepted = re_mod.cmd_reconcile(
+                        edges, 1, mint=SA, cache_meta_path=meta_path) is True
+                except (ValueError, SystemExit):
+                    accepted = False
+                probe(f"BC06 snapshot_ok negative {name}", not accepted,
+                      f"accepted={accepted}")
+                restore_chain()
+            write_json(owners_path, {SA: 599, SB: 301})
+            snap = good_snapshot()
+            snap["outputs"]["holders_owners"] = file_ref(owners_path)
+            write_json(snapshot_path, snap)
+            probe("BC06 owner mismatch independently rejects",
+                  re_mod.cmd_reconcile(edges, 1, mint=SA,
+                                       cache_meta_path=meta_path) is False)
+            restore_chain()
+            write_json(rr_path, rr_good)
+
+            def receipt_case(name, mutate, needle):
+                doc = json.loads(json.dumps(rr_good))
+                mutate(doc)
+                rejected, detail = direct_receipt_result(doc, needle=needle)
+                probe(name, rejected, detail)
+                write_json(rr_path, rr_good)
+
+            receipt_case("i02 wrong chain", lambda d: d.update(chain="ethereum"),
+                         "chain")
+            receipt_case("i04 window.to above cutoff",
+                         lambda d: d["collection_window"].update(to_slot=4),
+                         "cutoff")
+            receipt_case("i09 v2 dedicated rerun guidance",
+                         lambda d: d.update(schema="solana-reconcile/v2"),
+                         "重跑 replay_edges reconcile")
+            receipt_case("i17 third schema rejects",
+                         lambda d: d.update(schema="solana-reconcile/v999"),
+                         "schema 必须")
+            receipt_case("i22 window from greater than to",
+                         lambda d: d["collection_window"].update(from_slot=4),
+                         "from_slot 大于")
+            for idx, value in enumerate((0, -1, True, 1.5)):
+                receipt_case(f"i23 edge_count invalid #{idx + 1}",
+                             lambda d, value=value: d.update(edge_count=value),
+                             "正整数")
+            receipt_case("i23 digest uppercase rejects",
+                         lambda d: d.update(edge_digest=d["edge_digest"].upper()),
+                         "小写 sha256")
+            # i13 producer meta legality (schema/mint/window) is independently anchored.
+            producer_meta_cases = [
+                ("schema", lambda d: d.update(schema="bad")),
+                ("mint", lambda d: d.update(mint=SB)),
+                ("window", lambda d: d.update(from_slot=4,
+                                               collection_upper_slot=3)),
+            ]
+            for name, mutate in producer_meta_cases:
+                doc = good_meta()
+                mutate(doc)
+                write_json(meta_path, doc)
+                try:
+                    re_mod.cmd_reconcile(edges, 1, mint=SA,
+                                         cache_meta_path=meta_path)
+                    rejected = False
+                except ValueError as exc:
+                    rejected = "缓存 meta" in str(exc)
+                probe(f"i13 producer meta {name} rejects", rejected)
+                restore_chain()
+
+            def consumer_file_case(name, path, doc, receipt_key, needle):
+                write_json(path, doc)
+                receipt = json.loads(rr_path.read_text())
+                receipt["inputs"][receipt_key] = file_ref(path)
+                if receipt_key == "holders_owners":
+                    snap = json.loads(snapshot_path.read_text())
+                    snap["outputs"]["holders_owners"] = file_ref(path)
+                    write_json(snapshot_path, snap)
+                    receipt["inputs"]["holders_snapshot_meta"] = file_ref(snapshot_path)
+                rejected, detail = direct_receipt_result(receipt, needle=needle)
+                probe(name, rejected, detail)
+                restore_chain()
+
+            bad = json.loads(meta_path.read_text())
+            bad["schema"] = "bad"
+            consumer_file_case("i21 soltx meta schema", meta_path, bad,
+                               "soltx_meta", "schema/mint")
+            bad = good_meta()
+            bad["mint"] = SB
+            consumer_file_case("i21 soltx meta mint", meta_path, bad,
+                               "soltx_meta", "schema/mint")
+            bad = json.loads(json.dumps(meta_good))
+            bad["from_slot"] = 0
+            consumer_file_case("i26 receipt/meta window mismatch", meta_path, bad,
+                               "soltx_meta", "采集窗口撕裂")
+            bad = json.loads(snapshot_path.read_text())
+            bad["schema"] = "bad"
+            consumer_file_case("i27 snapshot schema", snapshot_path, bad,
+                               "holders_snapshot_meta", "schema/mint/target")
+            bad = good_snapshot()
+            bad["mint"] = SB
+            consumer_file_case("i27 snapshot mint", snapshot_path, bad,
+                               "holders_snapshot_meta", "schema/mint/target")
+            bad = good_snapshot()
+            bad["target"]["token"] = SB
+            consumer_file_case("i27 snapshot target", snapshot_path, bad,
+                               "holders_snapshot_meta", "schema/mint/target")
+            bad = good_snapshot()
+            bad["outputs"]["holders_owners"]["size"] += 1
+            write_json(snapshot_path, bad)
+            receipt = json.loads(rr_path.read_text())
+            receipt["inputs"]["holders_snapshot_meta"] = file_ref(snapshot_path)
+            receipt["inputs"]["holders_owners"] = dict(
+                bad["outputs"]["holders_owners"])
+            rejected, detail = direct_receipt_result(receipt, needle="size")
+            probe("i24 owners physical size mismatch",
+                  rejected, detail)
+            restore_chain()
+
+            # BC-O5: every formal JSON mount rejects non-finite constants.
+            rr_good = json.loads(rr_path.read_text())
+            receipt_nan = dict(rr_good)
+            receipt_nan["unused_nonfinite_probe"] = float("nan")
+            rejected, detail = direct_receipt_result(receipt_nan, needle="非有限数")
+            probe("BCO5 receipt NaN parse_constant", rejected, detail)
+            restore_chain()
+
+            meta_nan = json.loads(meta_path.read_text())
+            meta_nan["unused_nonfinite_probe"] = float("nan")
+            write_json(meta_path, meta_nan)
+            receipt = json.loads(rr_path.read_text())
+            receipt["inputs"]["soltx_meta"] = file_ref(meta_path)
+            rejected, detail = direct_receipt_result(receipt, needle="非有限数")
+            probe("BCO5 soltx meta NaN parse_constant", rejected, detail)
+            restore_chain()
+
+            snap_nan = good_snapshot()
+            snap_nan["unused_nonfinite_probe"] = float("nan")
+            consumer_file_case("BCO5 snapshot meta NaN parse_constant",
+                               snapshot_path, snap_nan,
+                               "holders_snapshot_meta", "非有限数")
+
+            owners_path.write_text(
+                '{"%s":600,"%s":300,"probe":NaN}' % (SA, SB))
+            snap = good_snapshot()
+            snap["outputs"]["holders_owners"] = file_ref(owners_path)
+            write_json(snapshot_path, snap)
+            receipt = json.loads(rr_path.read_text())
+            receipt["inputs"]["holders_owners"] = file_ref(owners_path)
+            receipt["inputs"]["holders_snapshot_meta"] = file_ref(snapshot_path)
+            rejected, detail = direct_receipt_result(receipt, needle="非有限数")
+            probe("BCO5 owners NaN parse_constant", rejected, detail)
+            restore_chain()
+
+            sc_path = data / "camp_share_series.provenance.json"
+            sc_doc = json.loads(sc_path.read_text())
+            sc_doc["unused_nonfinite_probe"] = float("nan")
+            write_json(sc_path, sc_doc)
+            try:
+                load_series_with_sidecar(data / "camp_share_series.json")
+                sidecar_nan_rejected = False
+                sidecar_nan_detail = "accepted"
+            except SeriesProvenanceError as exc:
+                sidecar_nan_rejected = "非有限数" in str(exc)
+                sidecar_nan_detail = str(exc)
+            probe("BCO5 sidecar NaN parse_constant", sidecar_nan_rejected,
+                  sidecar_nan_detail)
+            re_mod.cmd_evolution(edges, 1, "camps.json", set())
+
+            importer_path = (ROOT / "maintenance/repair-20260814-batch2/"
+                             "import_pythia_legacy.py")
+            spec = importlib.util.spec_from_file_location(
+                "bc_pythia_importer", importer_path)
+            importer = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(importer)
+            manifest_nan = td / "manifest_nan.json"
+            manifest_nan.write_text('{"schema":"x","probe":NaN}')
+            try:
+                importer.read_object(manifest_nan, "collect_manifest")
+                manifest_nan_rejected = False
+            except importer.ImportFailure as exc:
+                manifest_nan_rejected = "非有限数" in str(exc)
+            probe("BCO5 collect_manifest NaN parse_constant",
+                  manifest_nan_rejected)
+
+            # RecursionError at the decoder boundary is policy rejection rc=2.
+            import state_from_facts as state_mod
+            original_state_loads = state_mod.json.loads
+            state_mod.json.loads = lambda *a, **k: (_ for _ in ()).throw(
+                RecursionError("deep JSON"))
+            try:
+                try:
+                    state_rc = state_mod.main([
+                        "--facts", "facts.json", "--source", "source.json",
+                        "--out", "deep-state.json", "--series-source",
+                        "data/camp_share_series.json"])
+                except RecursionError:
+                    state_rc = 1
+            finally:
+                state_mod.json.loads = original_state_loads
+            probe("BCO5 state RecursionError -> rc2", state_rc == 2,
+                  f"rc={state_rc}")
+
+            original_load_edges = re_mod.load_edges
+            original_argv = sys.argv[:]
+            re_mod.load_edges = lambda mint: (_ for _ in ()).throw(
+                RecursionError("deep JSON"))
+            sys.argv = ["replay_edges.py", "reconcile", "--mint", SA,
+                        "--no-labels"]
+            try:
+                try:
+                    replay_rc = re_mod.main()
+                    replay_rc = 0 if replay_rc is None else replay_rc
+                except RecursionError:
+                    replay_rc = 1
+                except SystemExit as exc:
+                    replay_rc = exc.code
+            finally:
+                re_mod.load_edges = original_load_edges
+                sys.argv = original_argv
+            probe("BCO5 producer RecursionError -> rc2", replay_rc == 2,
+                  f"rc={replay_rc}")
+
+            # BC-08: missing cutoff gives the migration instruction, not a generic None error.
+            src = source_doc()
+            del src["token"]["data_cutoff_slot"]
+            write_json(Path("source.json"), src)
+            got = compile_now()
+            probe("BC08 missing data_cutoff_slot migration guidance",
+                  got.returncode == 2 and "scan-schemas.md 存量迁移段" in got.stdout,
+                  got.stdout[-220:])
+            write_json(Path("source.json"), source_doc())
+
+            # BC-07: producer and consumer independently reject the full malformed mint family.
+            malformed_mints = [
+                "   ", SA + "\u200b", SA + "\ufeff", SA + "\u3164",
+                SA + "\u2800", SA[:-4] + "0OIl", "1" * 900,
+            ]
+            for idx, bad_mint in enumerate(malformed_mints):
+                with tempfile.TemporaryDirectory(prefix="c-mint-", dir="/private/tmp") as mint_raw:
+                    mint_td = Path(mint_raw)
+                    os.chdir(mint_td)
+                    Path("data").mkdir()
+                    bad_edge_key = hashlib.sha256(bad_mint.encode("utf-8")).hexdigest()
+                    bad_edge = write_sol_edges(
+                        Path(f"data/soltx-{bad_edge_key}.jsonl.gz"), edges)
+                    bad_meta_path = Path(f"data/soltx-{bad_edge_key}.meta.json")
+                    bad_owners = Path("data/holders_owners.json")
+                    write_json(bad_owners, {SA: 600, SB: 300})
+                    bad_snapshot = Path("data/holders_snapshot_meta.json")
+                    write_json(bad_snapshot, {
+                        "schema": "solana-holder-snapshot-v2", "mint": bad_mint,
+                        "target": {"chain": "solana", "token": bad_mint,
+                                   "as_of_block": 3},
+                        "closed": True, "supply_raw": "900",
+                        "outputs": {"holders_owners": file_ref(bad_owners)}})
+                    write_json(bad_meta_path, {
+                        "schema": "sqd-solana-cache/v3", "mint": bad_mint,
+                        "from_slot": 1, "collection_upper_slot": 3})
+                    try:
+                        re_mod.cmd_reconcile(edges, 1, mint=bad_mint,
+                                             cache_meta_path=bad_meta_path)
+                        producer_rejected = False
+                    except (ValueError, SystemExit) as exc:
+                        producer_rejected = "mint" in str(exc)
+                    probe(f"BC07 producer malformed mint #{idx + 1}",
+                          producer_rejected, repr(bad_mint[-12:]))
+
+                    digest = hashlib.sha256()
+                    for edge in edges:
+                        digest.update((json.dumps(edge, ensure_ascii=False) + "\n").encode())
+                    meta_doc = json.loads(bad_meta_path.read_text())
+                    meta_doc.update({
+                        "edge_logical_sha256": digest.hexdigest(),
+                        "edge_rows": len(edges),
+                        "edge_file_size": bad_edge.stat().st_size,
+                        "edge_file_sha256": hashlib.sha256(bad_edge.read_bytes()).hexdigest(),
+                    })
+                    write_json(bad_meta_path, meta_doc)
+                    receipt = {
+                        "schema": "solana-reconcile/v3", "chain": "solana",
+                        "mint": bad_mint,
+                        "collection_window": {"from_slot": 1, "to_slot": 3},
+                        "edge_extrema": {"first": {"slot": 1, "ts": 3600},
+                                         "last": {"slot": 3, "ts": 10800}},
+                        "edge_digest": digest.hexdigest(), "edge_count": 3,
+                        "producer": {
+                            "path": "scripts/solana/replay_edges.py",
+                            "sha256": hashlib.sha256(
+                                (ROOT / "scripts/solana/replay_edges.py").read_bytes()
+                            ).hexdigest()},
+                        "inputs": {"soltx_meta": file_ref(bad_meta_path),
+                                   "holders_owners": file_ref(bad_owners),
+                                   "holders_snapshot_meta": file_ref(bad_snapshot)},
+                        "minted_raw": "1000", "burned_raw": "100",
+                        "net_supply_raw": 900, "negative_balance_count": 0,
+                        "snapshot_mismatch_count": 0, "gate_pass": True,
+                    }
+                    bad_rr = write_json(Path("data/reconcile_receipt.json"), receipt)
+                    try:
+                        registry_anchor_check(
+                            {"series_format": "sol-rows"},
+                            {"inputs.reconcile_receipt": bad_rr},
+                            Path("data/camp_share_series.json"),
+                            expected_chain="solana", expected_mint=bad_mint,
+                            expected_cutoff_slot=3)
+                        consumer_rejected = False
+                    except SeriesProvenanceError as exc:
+                        consumer_rejected = "mint" in str(exc)
+                    probe(f"BC07 consumer malformed mint #{idx + 1}",
+                          consumer_rejected, repr(bad_mint[-12:]))
+                os.chdir(td)
+
+            # BC-O1: importer digest is the normalized replay_edges logical form.
+            compact_edge = td / "compact.jsonl.gz"
+            compact_row = [1, 1, Z, SA, 1]
+            with gzip.open(compact_edge, "wt", encoding="utf-8") as fh:
+                fh.write(json.dumps(compact_row, separators=(",", ":")) + "\n")
+            expected_digest = hashlib.sha256(
+                (json.dumps(compact_row, ensure_ascii=False) + "\n").encode()
+            ).hexdigest()
+            old_rows = importer.EXPECTED_ROWS
+            old_digest = importer.EXPECTED_EDGE_DIGEST
+            old_cutoff = importer.EXPECTED_CUTOFF
+            importer.EXPECTED_ROWS = 1
+            importer.EXPECTED_EDGE_DIGEST = expected_digest
+            importer.EXPECTED_CUTOFF = 1
+            try:
+                facts = importer.replay_edge_facts(compact_edge)
+                normalized = facts["sha256"] == expected_digest
+            except importer.ImportFailure:
+                normalized = False
+            finally:
+                importer.EXPECTED_ROWS = old_rows
+                importer.EXPECTED_EDGE_DIGEST = old_digest
+                importer.EXPECTED_CUTOFF = old_cutoff
+            probe("BCO1 importer normalized logical digest", normalized)
+        finally:
+            os.chdir(old_cwd)
+
+    if failures:
+        raise AssertionError("BC blind fixround1 failures:\n" + "\n".join(failures))
+
+
 def main():
     try:
         import duckdb  # noqa: F401
     except ImportError:
-        print("SKIP: duckdb 未安装，批 C 回归依赖 replay_duck 真实产物")
-        return 0
+        print("FAIL: duckdb 未安装，批 C 回归依赖不可静默跳过")
+        return 2
+    t_blindreview_c_fixround1()
     t_f05_unit()
     t_f05_evm_engines()
     t_f04_evm_chain()

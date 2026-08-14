@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """2026-08-02 review regressions: H-02 through H-06."""
 import csv
+import gzip
 import hashlib
 import json
 import os
@@ -223,25 +224,31 @@ def test_h06(tmp):
     os.chdir(tmp)
     try:
         Path("data").mkdir()
+        mint = "MintCaseSensitive" + "1" * 15
         edges = [[100, 1, ZERO_SOL, "A", 100], [3700, 2, ZERO_SOL, "B", 100]]
+        edge_key = hashlib.sha256(mint.encode("utf-8")).hexdigest()
+        edge_path = Path(f"data/soltx-{edge_key}.jsonl.gz")
+        with gzip.open(edge_path, "wt", encoding="utf-8") as fh:
+            for edge in edges:
+                fh.write(json.dumps(edge, ensure_ascii=False) + "\n")
         owners = Path("data/holders_owners.json")
         owners.write_text(json.dumps({"A": 100, "B": 100}))
         owner_ref = {"path": owners.name, "size": owners.stat().st_size,
                      "sha256": hashlib.sha256(owners.read_bytes()).hexdigest()}
         Path("data/holders_snapshot_meta.json").write_text(json.dumps({
-            "schema": "solana-holder-snapshot-v2", "mint": "MintCaseSensitive",
-            "target": {"chain": "solana", "token": "MintCaseSensitive",
+            "schema": "solana-holder-snapshot-v2", "mint": mint,
+            "target": {"chain": "solana", "token": mint,
                        "as_of_block": 2},
             "closed": True, "supply_raw": "200",
             "outputs": {"holders_owners": owner_ref}}))
-        cache_meta = Path("data/soltx-test.meta.json")
+        cache_meta = Path(f"data/soltx-{edge_key}.meta.json")
         cache_meta.write_text(json.dumps({
-            "schema": "sqd-solana-cache/v3", "mint": "MintCaseSensitive",
+            "schema": "sqd-solana-cache/v3", "mint": mint,
             "from_slot": 1, "collection_upper_slot": 2}))
-        assert cmd_reconcile(edges, 1, mint="MintCaseSensitive",
+        assert cmd_reconcile(edges, 1, mint=mint,
                              cache_meta_path=cache_meta)
         Path("data/holders_snapshot_meta.json").unlink()
-        assert not cmd_reconcile(edges, 1, mint="MintCaseSensitive",
+        assert not cmd_reconcile(edges, 1, mint=mint,
                                  cache_meta_path=cache_meta)
         Path("camps.json").write_text(json.dumps({"A营": ["A"], "B营": ["B"]}))
         cmd_evolution(edges, 1, "camps.json", set())

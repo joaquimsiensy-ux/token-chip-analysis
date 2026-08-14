@@ -17,6 +17,10 @@ import shutil
 import sys
 from pathlib import Path
 
+LIB_DIR = Path(__file__).resolve().parents[2] / "scripts" / "lib"
+sys.path.insert(0, str(LIB_DIR))
+from supply_truth_gate import _reject_constant
+
 
 EXPECTED_MINT = "CreiuhfwdWCN5mJbMJtA9bBpYQrQF2tCBuZwSPWfpump"
 EXPECTED_ROWS = 4_857_654
@@ -47,8 +51,9 @@ def read_object(path: Path, label: str):
     if path.is_symlink() or not path.is_file():
         raise ImportFailure(f"{label} 缺失、非普通文件或为 symlink: {path}")
     try:
-        value = json.loads(path.read_text(encoding="utf-8"))
-    except Exception as exc:
+        value = json.loads(path.read_text(encoding="utf-8"),
+                           parse_constant=_reject_constant)
+    except (json.JSONDecodeError, ValueError, RecursionError, OSError) as exc:
         raise ImportFailure(f"{label} JSON 非法: {exc}") from exc
     if not isinstance(value, dict):
         raise ImportFailure(f"{label} 顶层必须是对象")
@@ -103,8 +108,7 @@ def replay_edge_facts(edge_path: Path):
             for raw in fh:
                 if not raw.strip():
                     continue
-                logical.update(raw)
-                row = json.loads(raw)
+                row = json.loads(raw, parse_constant=_reject_constant)
                 if not isinstance(row, list) or len(row) != 5:
                     raise ImportFailure(f"edge line {rows + 1} 不是五元组")
                 ts, slot, src, dst, amount = row
@@ -112,6 +116,8 @@ def replay_edge_facts(edge_path: Path):
                        for v in (ts, slot, amount)) or amount < 0 \
                         or not isinstance(src, str) or not isinstance(dst, str):
                     raise ImportFailure(f"edge line {rows + 1} 字段类型非法")
+                logical.update((json.dumps(row, ensure_ascii=False) + "\n").encode(
+                    "utf-8"))
                 order = (slot, ts, src, dst, str(amount))
                 if previous is not None and order < previous:
                     raise ImportFailure(f"edge line {rows + 1} 未按 collector 契约排序")
@@ -289,6 +295,8 @@ def import_case(source_root: Path, staging_case: Path):
             "launch_covered": True, "gaps": [],
             "edge_logical_sha256": edge_facts["sha256"],
             "edge_rows": edge_facts["rows"],
+            "edge_file_size": staged_edge.stat().st_size,
+            "edge_file_sha256": edge_physical_sha,
             "collector": "legacy-import/workorder-C",
             "migration_source_schema": MANIFEST_SCHEMA,
         }

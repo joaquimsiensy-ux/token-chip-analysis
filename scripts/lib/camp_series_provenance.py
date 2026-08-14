@@ -65,10 +65,32 @@ SOL_DYNAMIC_BUCKET_MERGE = {"其他散户": "散户", "首30分钟狙击者": "�
 SERIES_FORMATS = ("evm-dict", "sol-rows", "sol-anchor-rows", "evm-entity-dict")
 DENOMINATORS = ("current_net_supply", "mint_total_legacy", "net_supply",
                 "config_total_supply")
+SOLANA_MINT_RE = re.compile(r"[1-9A-HJ-NP-Za-km-z]{32,44}")
 
 
 class SeriesProvenanceError(ValueError):
     """sidecar 缺失/不匹配/序列数值面非法/末点对账失败（调用方按 exit 2 处理）。"""
+
+
+def _reject_constant(value: str):
+    raise SeriesProvenanceError(f"JSON 非有限数值 {value} 不允许")
+
+
+def _json_loads(value, label="JSON"):
+    try:
+        return json.loads(value, parse_constant=_reject_constant)
+    except SeriesProvenanceError:
+        raise
+    except (json.JSONDecodeError, ValueError, RecursionError) as exc:
+        raise SeriesProvenanceError(f"{label} 非法: {exc}") from exc
+
+
+def _validate_solana_mint(mint, label="mint"):
+    if not isinstance(mint, str) or mint != mint.strip() \
+            or SOLANA_MINT_RE.fullmatch(mint) is None:
+        raise SeriesProvenanceError(
+            f"{label} 必须是 strip 后非空、32~44 字符的 Solana base58 地址")
+    return mint
 
 
 def sha256_file(path) -> str:
@@ -174,7 +196,7 @@ def load_series_with_sidecar(series_path):
         raise SeriesProvenanceError(
             f"序列缺 provenance sidecar: {sc_path.name}——正式编译只认四族重放 "
             f"producer 落盘的序列（旧案重绘不经 compile_state，不受影响）")
-    sidecar = json.loads(sc_path.read_text(encoding="utf-8"))
+    sidecar = _json_loads(sc_path.read_text(encoding="utf-8"), "series sidecar")
     if sidecar.get("schema") != SIDECAR_SCHEMA:
         raise SeriesProvenanceError(
             f"sidecar schema 必须是 {SIDECAR_SCHEMA}，收到 {sidecar.get('schema')!r}")
@@ -196,7 +218,7 @@ def load_series_with_sidecar(series_path):
                                                   "final_balances", search_dirs)
     for name, ref in (sidecar.get("inputs") or {}).items():
         resolved[f"inputs.{name}"] = _resolve_ref(ref, f"inputs.{name}", search_dirs)
-    raw = json.loads(series_path.read_text(encoding="utf-8"))
+    raw = _json_loads(series_path.read_text(encoding="utf-8"), "series payload")
     return sidecar, raw, resolved
 
 
@@ -396,7 +418,8 @@ def _snapshot_cutoff(meta):
 
 def registry_anchor_check(sidecar: dict, resolved: dict, series_path, *,
                           expected_chain=None, expected_mint=None,
-                          expected_cutoff_slot=None):
+                          expected_cutoff_slot=None,
+                          verify_edge_physical_sha=False):
     """sidecar 的 inputs 必须命中案内已对账的登记面（把序列锚进案内数据链）。
 
     F-C3（消化轮）：登记面命中是**结构化校验**，不是"文件里含某个 sha 字符串"——
@@ -424,7 +447,7 @@ def registry_anchor_check(sidecar: dict, resolved: dict, series_path, *,
         stats_ref = (sidecar.get("inputs") or {}).get("replay_stats")
         if not stats_ref:
             raise SeriesProvenanceError("evm-dict sidecar 必须登记 inputs.replay_stats")
-        truth = json.loads(st.read_text(encoding="utf-8"))
+        truth = _json_loads(st.read_text(encoding="utf-8"), "supply_truth.json")
         if not isinstance(truth, dict) \
                 or truth.get("schema") != SUPPLY_TRUTH_SCHEMA:
             raise SeriesProvenanceError(
@@ -460,8 +483,9 @@ def registry_anchor_check(sidecar: dict, resolved: dict, series_path, *,
             raise SeriesProvenanceError(
                 "案内找不到 channels_preflight.json——EVM 序列的采集链身份件缺席，"
                 "target.token 无从对锚")
-        preflight_token = str(json.loads(
-            preflight.read_text(encoding="utf-8")).get("token") or "").lower()
+        preflight_token = str(_json_loads(
+            preflight.read_text(encoding="utf-8"),
+            "channels_preflight.json").get("token") or "").lower()
         if str(target.get("token")).lower() != preflight_token:
             raise SeriesProvenanceError(
                 f"supply_truth.json target.token 与案内 channels_preflight.json "
@@ -483,7 +507,8 @@ def registry_anchor_check(sidecar: dict, resolved: dict, series_path, *,
             raise SeriesProvenanceError(
                 "sol-rows sidecar 必须登记 inputs.reconcile_receipt"
                 "（replay_edges reconcile 是阶段 2 硬关卡，先跑 reconcile 再跑 evolution）")
-        receipt = json.loads(Path(rr).read_text(encoding="utf-8"))
+        receipt = _json_loads(Path(rr).read_text(encoding="utf-8"),
+                              "reconcile_receipt")
         if isinstance(receipt, dict) and receipt.get("schema") == LEGACY_RECONCILE_SCHEMA:
             raise SeriesProvenanceError(
                 "solana-reconcile/v2 无链上身份键，已 fail-closed；"
@@ -492,12 +517,23 @@ def registry_anchor_check(sidecar: dict, resolved: dict, series_path, *,
             raise SeriesProvenanceError(
                 f"reconcile_receipt 不是合法对账收据（schema 必须是 "
                 f"{RECONCILE_SCHEMA}）——重跑 replay_edges reconcile 重新生成 v3 收据")
-        if not receipt.get("gate_pass"):
+        if receipt.get("gate_pass") is not True:
             raise SeriesProvenanceError("reconcile_receipt gate_pass 非 true，序列不入正式编译")
+        for field in ("negative_balance_count", "snapshot_mismatch_count"):
+            value = receipt.get(field)
+            if isinstance(value, bool) or not isinstance(value, int) or value != 0:
+                raise SeriesProvenanceError(
+                    f"reconcile_receipt.{field} 必须是在场的精确 int 0")
+        net_value = receipt.get("net_supply_raw")
+        if isinstance(net_value, bool) or not isinstance(net_value, int) \
+                or net_value < 0:
+            raise SeriesProvenanceError(
+                "reconcile_receipt.net_supply_raw 必须在场且为非负 int")
         if expected_chain is None or expected_mint is None or expected_cutoff_slot is None:
             raise SeriesProvenanceError(
                 "sol-rows 身份校验缺案 target 的 expected_chain/expected_mint/"
                 "expected_cutoff_slot；禁止用收据自报身份补空")
+        _validate_solana_mint(expected_mint, "案 target mint")
         if receipt.get("chain") != expected_chain or expected_chain != "solana":
             raise SeriesProvenanceError(
                 f"reconcile_receipt.chain={receipt.get('chain')!r} 与案 target.chain="
@@ -517,11 +553,12 @@ def registry_anchor_check(sidecar: dict, resolved: dict, series_path, *,
         last = extrema.get("last") or {}
         fs = _slot(first.get("slot"), "edge_extrema.first.slot")
         ls = _slot(last.get("slot"), "edge_extrema.last.slot")
-        ft = _slot(first.get("ts"), "edge_extrema.first.ts")
-        lt = _slot(last.get("ts"), "edge_extrema.last.ts")
-        if (fs, ft) > (ls, lt) or fs < frm or ls > to:
+        # ts 仅为人读时间参考的记录字段；身份与排序校验只认 slot。
+        _slot(first.get("ts"), "edge_extrema.first.ts")
+        _slot(last.get("ts"), "edge_extrema.last.ts")
+        if fs > ls or fs < frm or ls > to:
             raise SeriesProvenanceError(
-                "edge_extrema 未按 slot/ts 有序包含于 collection_window")
+                "edge_extrema 未按 slot 有序包含于 collection_window")
         if to > cutoff:
             raise SeriesProvenanceError(
                 f"collection_window.to_slot={to} 超过案 target cutoff={cutoff}")
@@ -548,7 +585,8 @@ def registry_anchor_check(sidecar: dict, resolved: dict, series_path, *,
                                    "reconcile.inputs.holders_owners", receipt_dirs)
         snapshot_path = _resolve_ref(inputs.get("holders_snapshot_meta"),
                                      "reconcile.inputs.holders_snapshot_meta", receipt_dirs)
-        cache_meta = json.loads(meta_path.read_text(encoding="utf-8"))
+        cache_meta = _json_loads(meta_path.read_text(encoding="utf-8"),
+                                 "soltx meta")
         if cache_meta.get("schema") != "sqd-solana-cache/v3" \
                 or cache_meta.get("mint") != expected_mint:
             raise SeriesProvenanceError(
@@ -561,7 +599,30 @@ def registry_anchor_check(sidecar: dict, resolved: dict, series_path, *,
                 or cache_meta.get("edge_rows") != edge_count:
             raise SeriesProvenanceError(
                 "reconcile edge_digest/edge_count 与实测回填的 soltx meta 不一致")
-        snapshot = json.loads(snapshot_path.read_text(encoding="utf-8"))
+        edge_key = hashlib.sha256(expected_mint.encode("utf-8")).hexdigest()
+        edge_path = meta_path.with_name(f"soltx-{edge_key}.jsonl.gz")
+        edge_size = cache_meta.get("edge_file_size")
+        edge_sha = cache_meta.get("edge_file_sha256")
+        if not edge_path.is_file() or edge_path.stat().st_size <= 0:
+            raise SeriesProvenanceError(
+                f"Solana 边文件缺失或为空: {edge_path.name}")
+        if isinstance(edge_size, bool) or not isinstance(edge_size, int) \
+                or edge_size <= 0 or edge_path.stat().st_size != edge_size:
+            raise SeriesProvenanceError(
+                "Solana 边文件实物 size 与 soltx meta.edge_file_size 不一致")
+        if not isinstance(edge_sha, str) \
+                or re.fullmatch(r"[0-9a-f]{64}", edge_sha) is None:
+            raise SeriesProvenanceError(
+                "soltx meta.edge_file_sha256 必须为小写 sha256")
+        if verify_edge_physical_sha and sha256_file(edge_path) != edge_sha:
+            raise SeriesProvenanceError(
+                "Solana 边文件物理 sha256 与 soltx meta 登记不一致")
+        owners_obj = _json_loads(owners_path.read_text(encoding="utf-8"),
+                                 "holders_owners.json")
+        if not isinstance(owners_obj, dict):
+            raise SeriesProvenanceError("holders_owners.json 顶层必须为对象")
+        snapshot = _json_loads(snapshot_path.read_text(encoding="utf-8"),
+                               "holders_snapshot_meta.json")
         snap_target = snapshot.get("target") or {}
         if snapshot.get("schema") != "solana-holder-snapshot-v2" \
                 or snapshot.get("mint") != expected_mint \
@@ -591,7 +652,7 @@ def _load_camps_spec(resolved: dict, series_format: str, chain_family: str):
     spec_path = resolved.get("camps_spec")
     if spec_path is None:
         raise SeriesProvenanceError("sidecar 未绑定 camps_spec，无法做末点对账")
-    obj = json.loads(Path(spec_path).read_text(encoding="utf-8"))
+    obj = _json_loads(Path(spec_path).read_text(encoding="utf-8"), "camps spec")
     if series_format == "evm-dict":
         obj = obj.get("camps", {})
     return validate_camp_spec(obj, chain_family=chain_family,
@@ -617,7 +678,8 @@ def endpoint_reconcile(sidecar: dict, css: dict, resolved: dict,
         raise SeriesProvenanceError("sidecar 未绑定 final_balances（同源终态快照），"
                                     "无法做末点对账")
     balances = {k: int(v) for k, v in
-                json.loads(Path(fb_path).read_text(encoding="utf-8")).items()}
+                _json_loads(Path(fb_path).read_text(encoding="utf-8"),
+                            "final_balances").items()}
     if fmt == "evm-dict":
         spec = _load_camps_spec(resolved, fmt, "evm")
         total = sum(balances.values())
@@ -629,9 +691,14 @@ def endpoint_reconcile(sidecar: dict, css: dict, resolved: dict,
         spec = _load_camps_spec(resolved, fmt, "solana")
         den = sum(balances.values())
         rr = resolved.get("inputs.reconcile_receipt")
-        receipt = json.loads(Path(rr).read_text(encoding="utf-8")) if rr else {}
+        receipt = _json_loads(Path(rr).read_text(encoding="utf-8"),
+                              "reconcile_receipt") if rr else {}
         net_registered = receipt.get("net_supply_raw")
-        if net_registered is not None and int(net_registered) != den:
+        if isinstance(net_registered, bool) or not isinstance(net_registered, int) \
+                or net_registered < 0:
+            raise SeriesProvenanceError(
+                "reconcile_receipt.net_supply_raw 必须在场且为非负 int")
+        if net_registered != den:
             raise SeriesProvenanceError(
                 f"终态快照合计 {den} ≠ reconcile_receipt.net_supply_raw "
                 f"{net_registered}——快照与对账收据不是同一条数据链")

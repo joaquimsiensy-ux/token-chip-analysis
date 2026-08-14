@@ -1036,9 +1036,11 @@ def check_series_binding(case_dir: Path, d: dict, errors: list[str],
             # 内容重转换逐点比对（F-C1 终关的关键一步）：sha 相符只证明文件没被改，
             # 不证明 state 里的序列是它转换来的
             try:
-                from camp_series_provenance import series_to_state_form
+                from camp_series_provenance import (_json_loads,
+                                                    series_to_state_form)
                 compiled = series_to_state_form(
-                    json.loads(cand.read_text(encoding="utf-8")), fmt)
+                    _json_loads(cand.read_text(encoding="utf-8"),
+                                "release series payload"), fmt)
             except Exception as exc:
                 errors.append(f"案内序列实物 {name} 重转换失败（format={fmt}）：{exc}")
                 return
@@ -1070,7 +1072,8 @@ def check_series_binding(case_dir: Path, d: dict, errors: list[str],
                     sidecar, resolved, cand,
                     expected_chain=expected_target.get("chain"),
                     expected_mint=expected_target.get("token"),
-                    expected_cutoff_slot=expected_target.get("as_of_block"))
+                    expected_cutoff_slot=expected_target.get("as_of_block"),
+                    verify_edge_physical_sha=True)
                 endpoint_reconcile(sidecar, compiled, resolved)
             except SeriesProvenanceError as exc:
                 errors.append(f"发布期来源链复算失败：{exc}")

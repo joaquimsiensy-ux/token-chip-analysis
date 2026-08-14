@@ -41,14 +41,14 @@ from decimal import Decimal
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
-from camp_series_provenance import (closure_mode_for, endpoint_reconcile,
+from camp_series_provenance import (_json_loads, closure_mode_for, endpoint_reconcile,
                                     load_series_with_sidecar,
                                     registry_anchor_check, series_to_state_form,
                                     validate_series_payload)
 
 
 def load_object(path: Path, label: str) -> dict:
-    value = json.loads(path.read_text(encoding="utf-8"))
+    value = _json_loads(path.read_text(encoding="utf-8"), label)
     if not isinstance(value, dict):
         raise ValueError(f"{label} 顶层必须是对象")
     return value
@@ -154,6 +154,10 @@ def bind_series_source(source: dict, series_source: Path) -> dict:
     validate_series_payload(compiled,
                             closure_mode=closure_mode_for(sidecar["denominator"]))
     target = source.get("token") or {}
+    if target.get("chain") == "solana" and "data_cutoff_slot" not in target:
+        raise ValueError(
+            "source.token 缺 data_cutoff_slot；存量案补填方法见 "
+            "scan-schemas.md 存量迁移段")
     registry_anchor_check(
         sidecar, resolved, series_source,
         expected_chain=target.get("chain"),
@@ -218,7 +222,7 @@ def main(argv=None):
                 "formal 编译必须 --series-source（camp_share_series 来源绑定是"
                 "必经之路，闸不挂可选参数）；探索运行显式加 --exploration")
         result = compile_state(load_object(args.facts, "facts"), source)
-    except (OSError, ValueError, json.JSONDecodeError) as exc:
+    except (OSError, ValueError, json.JSONDecodeError, RecursionError) as exc:
         print(f"BLOCK: {exc}")
         return 2
     args.out.parent.mkdir(parents=True, exist_ok=True)
