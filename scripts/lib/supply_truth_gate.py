@@ -50,7 +50,6 @@ import json
 import math
 import re
 import sys
-import unicodedata
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -107,12 +106,28 @@ def _finite_number(value, *, integer=False, minimum=0) -> bool:
 
 
 def _meaningful_text(value) -> bool:
-    """文本至少含一个非空白、非 Unicode 控制/格式/分隔符字符。"""
+    """文本至少含一个本工程明确允许的可渲染字符。"""
     if not isinstance(value, str):
         return False
-    excluded = {"Cf", "Cc", "Zs", "Zl", "Zp"}
-    return any(not char.isspace() and unicodedata.category(char) not in excluded
-               for char in value)
+    for char in value:
+        codepoint = ord(char)
+        if 0x21 <= codepoint <= 0x7E:
+            return True
+        if 0x00A1 <= codepoint <= 0x024F and codepoint != 0x00AD:
+            return True
+        if 0x2010 <= codepoint <= 0x2027:
+            return True
+        if 0x3001 <= codepoint <= 0x3029 or 0x3030 <= codepoint <= 0x303D:
+            return True
+        if 0x3041 <= codepoint <= 0x3096 or 0x309B <= codepoint <= 0x30FF:
+            return True
+        if 0x3400 <= codepoint <= 0x4DBF or 0x4E00 <= codepoint <= 0x9FFF:
+            return True
+        if 0xAC00 <= codepoint <= 0xD7A3:
+            return True
+        if 0xFF01 <= codepoint <= 0xFF5E:
+            return True
+    return False
 
 
 def _canonical_request_sha256(request: dict) -> str:
@@ -167,6 +182,18 @@ def _waiver_file_ref(waiver_path: Path, ref, label: str) -> Path:
     if ref.get("sha256") != actual_sha:
         raise TolerancePolicyError(f"waiver {label} sha256 不匹配")
     return path
+
+
+def _validate_evidence_content(path: Path, label: str) -> None:
+    content = path.read_bytes()  # OSError 归 exit 1
+    if not content:
+        raise TolerancePolicyError(f"waiver {label} 不得是空文件")
+    try:
+        text = content.decode("utf-8")
+    except UnicodeDecodeError:
+        return
+    if not _meaningful_text(text):
+        raise TolerancePolicyError(f"waiver {label} UTF-8 文本必须含实义字符")
 
 
 def _validate_over_cap_approval(waiver_path: Path, waiver: dict, ref,
@@ -297,13 +324,19 @@ def load_tolerance_waiver(path, *, target: dict, tolerance_bps: int,
     if not isinstance(refs, list) or not refs:
         raise TolerancePolicyError("waiver evidence_refs 必须是非空数组")
     evidence_paths = []
+    evidence_shas = []
+    replay_sha = _sha256_file(replay_ref_path)
     for index, ref in enumerate(refs):
-        evidence_path = _waiver_file_ref(waiver_path, ref, f"evidence_refs[{index}]")
+        label = f"evidence_refs[{index}]"
+        evidence_path = _waiver_file_ref(waiver_path, ref, label)
         evidence_paths.append(evidence_path)
+        _validate_evidence_content(evidence_path, label)
+        evidence_sha = _sha256_file(evidence_path)
+        evidence_shas.append(evidence_sha)
         # "人工核对证据"不能就是被豁免的那份输入自身，否则等于自己给自己作证（F-E）。
-        if evidence_path == replay_ref_path:
+        if evidence_path == replay_ref_path or evidence_sha == replay_sha:
             raise TolerancePolicyError(
-                f"waiver evidence_refs[{index}] 不得指向本次 replay_stats 输入自身，"
+                f"waiver evidence_refs[{index}] 不得与本次 replay_stats 内容相同，"
                 "人工核对证据必须是独立文件")
     over_cap_ref = waiver.get("over_cap_approval")
     over_cap = any(value > WAIVER_TOLERANCE_BPS_CAP for value in
@@ -314,9 +347,11 @@ def load_tolerance_waiver(path, *, target: dict, tolerance_bps: int,
     if over_cap_ref is not None:
         approval_path = _waiver_file_ref(
             waiver_path, over_cap_ref, "over_cap_approval")
-        if approval_path in evidence_paths:
+        if (approval_path in evidence_paths
+                or _sha256_file(approval_path) in evidence_shas):
             raise TolerancePolicyError(
-                "waiver evidence_refs 不得指向 over_cap_approval；人工核对证据必须独立")
+                "waiver evidence_refs 不得与 over_cap_approval 内容相同；"
+                "人工核对证据必须独立")
         _validate_over_cap_approval(
             waiver_path, waiver, over_cap_ref, tolerance_bps=tolerance_bps,
             replay_ref_path=replay_ref_path)

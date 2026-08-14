@@ -8,7 +8,6 @@ import json
 import math
 import os
 import sys
-import unicodedata
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -123,12 +122,38 @@ def _finite_number(value, *, integer=False, minimum=0) -> bool:
 
 
 def _meaningful_text(value) -> bool:
-    """文本至少含一个非空白、非 Unicode 控制/格式/分隔符字符。"""
+    """文本至少含一个消费侧明确批准的可渲染字符。"""
     if not isinstance(value, str):
         return False
-    excluded = {"Cf", "Cc", "Zs", "Zl", "Zp"}
-    return any(not char.isspace() and unicodedata.category(char) not in excluded
-               for char in value)
+    for char in value:
+        point = ord(char)
+        if 0x21 <= point <= 0x7E:
+            return True
+        if 0x00A1 <= point <= 0x024F and point != 0x00AD:
+            return True
+        if 0x2010 <= point <= 0x2027:
+            return True
+        if 0x3001 <= point <= 0x3029 or 0x3030 <= point <= 0x303D:
+            return True
+        if 0x3041 <= point <= 0x3096 or 0x309B <= point <= 0x30FF:
+            return True
+        if 0x3400 <= point <= 0x4DBF or 0x4E00 <= point <= 0x9FFF:
+            return True
+        if 0xAC00 <= point <= 0xD7A3:
+            return True
+        if 0xFF01 <= point <= 0xFF5E:
+            return True
+    return False
+
+
+def _validate_evidence_content(path: Path, label: str) -> None:
+    content = path.read_bytes()
+    _require(bool(content), f"{label} must not be empty")
+    try:
+        text = content.decode("utf-8")
+    except UnicodeDecodeError:
+        return
+    _require(_meaningful_text(text), f"{label} UTF-8 text lacks meaningful characters")
 
 
 def _canonical_request_sha256(request: dict) -> str:
@@ -393,14 +418,20 @@ def _validate_tolerance_policy(root, receipt, target):
     _require(isinstance(evidence_refs, list) and bool(evidence_refs),
              "tolerance waiver evidence_refs invalid")
     evidence_paths = []
+    evidence_shas = []
+    replay_sha = sha(waiver_replay)
     for index, ref in enumerate(evidence_refs):
+        label = f"tolerance waiver evidence_refs[{index}]"
         evidence_path = _bound_case_ref(
-            root, ref, f"tolerance waiver evidence_refs[{index}]",
+            root, ref, label,
             base=waiver_path.parent)
         evidence_paths.append(evidence_path)
+        _validate_evidence_content(evidence_path, label)
+        evidence_sha = sha(evidence_path)
+        evidence_shas.append(evidence_sha)
         # 人工核对证据不能就是被豁免的那份输入自身（F-E）。
-        _require(evidence_path != waiver_replay,
-                 f"tolerance waiver evidence_refs[{index}] 不得指向 replay_stats 输入自身")
+        _require(evidence_path != waiver_replay and evidence_sha != replay_sha,
+                 f"tolerance waiver evidence_refs[{index}] 不得与 replay_stats 内容相同")
     over_cap_ref = waiver.get("over_cap_approval")
     over_cap = any(value > WAIVER_TOLERANCE_BPS_CAP for value in
                    (approved, observed_diff, tolerance, actual_diff))
@@ -410,8 +441,9 @@ def _validate_tolerance_policy(root, receipt, target):
         approval_path = _bound_case_ref(
             root, over_cap_ref, "tolerance waiver over-cap approval",
             base=waiver_path.parent)
-        _require(approval_path not in evidence_paths,
-                 "tolerance waiver evidence_refs must be independent of over-cap approval")
+        _require(approval_path not in evidence_paths
+                 and sha(approval_path) not in evidence_shas,
+                 "tolerance waiver evidence_refs content must be independent of over-cap approval")
         approval_input = inputs.get("over_cap_approval")
         _require(isinstance(approval_input, dict),
                  "supply_truth receipt inputs missing over_cap_approval")

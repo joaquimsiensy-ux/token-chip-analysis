@@ -77,6 +77,10 @@ class SinkPool(SupplyPool):
 # 夹具固定跑 mint=1/burn=0 对链上 100 → decide() 算出的实际偏差恒为 9900.0bps。
 FIXTURE_DIFF_BPS = 9900.0
 WAIVER_REASON = "特殊迁移币已人工核对，批准本次供给真值容差。"
+BLINDREVIEW_RESIDUAL_INVISIBLES = tuple(chr(codepoint) for codepoint in (
+    0x3164, 0x2800, 0x115F, 0xFFA0, 0x0301, 0x034F, 0xE000,
+    0x0378, 0x0300, 0x1160, 0x17B4, 0x17B5, 0x2065,
+))
 
 
 def utc_z(value: datetime) -> str:
@@ -502,6 +506,31 @@ def _rewrite_approval_and_rebind(root: Path, receipt: dict, raw: str):
         json.dumps(receipt, ensure_ascii=False), encoding="utf-8")
 
 
+def _rebind_evidence(root: Path, receipt: dict | None = None):
+    waiver_path = root / "waiver.json"
+    waiver = json.loads(waiver_path.read_text(encoding="utf-8"))
+    waiver["evidence_refs"] = [file_ref(root, "evidence.txt")]
+    waiver_path.write_text(json.dumps(waiver, ensure_ascii=False), encoding="utf-8")
+    if receipt is not None:
+        receipt["inputs"]["tolerance_waiver"].update(
+            size=waiver_path.stat().st_size, sha256=sha256(waiver_path))
+        (root / "supply_truth.json").write_text(
+            json.dumps(receipt, ensure_ascii=False), encoding="utf-8")
+
+
+def _replace_evidence(root: Path, *, source: str | None = None,
+                      hardlink=False, payload: bytes | None = None):
+    evidence = root / "evidence.txt"
+    if hardlink:
+        evidence.unlink()
+        os.link(root / str(source), evidence)
+    elif source is not None:
+        evidence.write_bytes((root / source).read_bytes())
+    else:
+        assert payload is not None
+        evidence.write_bytes(payload)
+
+
 def test_f10_original_approved_over_cap_without_approval():
     with tempfile.TemporaryDirectory(prefix="f10-red-approved-p-", dir="/private/tmp") as raw:
         _assert_policy_reject(_f10_producer_case(
@@ -751,7 +780,7 @@ def test_fc_producer_waiver_field_level_negatives():
          lambda w: w.update(observed_diff_bps=FIXTURE_DIFF_BPS - 1), "observed_diff_bps"),
         ("人工核对证据就是 replay_stats 自身",
          lambda w: w.update(evidence_refs=[dict(w["replay_stats"])]),
-         "replay_stats 输入自身"),
+         "replay_stats 内容相同"),
     ]
     for index, (label, mutate, needle) in enumerate(variants):
         with tempfile.TemporaryDirectory(
@@ -798,7 +827,7 @@ def test_fc_consumer_side_waiver_negatives():
          {"observed": FIXTURE_DIFF_BPS - 1}, "实际偏差超过"),
         ("F-E 证据就是 replay_stats 自身",
          lambda w, r: w.update(evidence_refs=[dict(w["replay_stats"])]), None,
-         {}, "不得指向 replay_stats 输入自身"),
+         {}, "不得与 replay_stats 内容相同"),
     ]
     for index, (label, mutate, prepare, kwargs, needle) in enumerate(variants):
         with tempfile.TemporaryDirectory(
@@ -1069,8 +1098,8 @@ def _seed_old_pass(root: Path):
 
 
 def test_fixround_fa1_zero_width_text_end_to_end():
-    """F-A1：三种 Cf 字符逐字段打生产/消费链，waiver 同族字段也覆盖。"""
-    invisible = ("\u200b", "\ufeff", "\u2060")
+    """F-A1/R-01：旧三种 Cf 与盲审 13 码位逐字段打生产/消费链。"""
+    invisible = ("\u200b", "\ufeff", "\u2060") + BLINDREVIEW_RESIDUAL_INVISIBLES
     approval_fields = ("nonce", "user_approval", "reported_to_user", "approved_by")
     for char in invisible:
         for field in approval_fields:
@@ -1104,7 +1133,13 @@ def test_fixround_fa1_meaningful_text_green_controls():
     for module in (supply, shared):
         assert module._meaningful_text("  中文批复  ")
         assert module._meaningful_text("  English approval  ")
+        assert module._meaningful_text(" 승인 ")
+        assert module._meaningful_text("a\u0301")
         assert not module._meaningful_text("\u3000")
+        assert not module._meaningful_text("\u200b\u3164")
+        assert not module._meaningful_text("\u3164\u3164")
+        assert not module._meaningful_text("\u2800" * 20)
+        assert not module._meaningful_text("\u200b" * 3)
 
 
 def test_fixround_fa2_giant_integer_end_to_end_and_archive():
@@ -1211,6 +1246,44 @@ def test_fixround_fa5_nan_defenses_are_independently_anchored():
         assert not module._finite_number(float("inf"))
 
 
+def test_fixround_r02_producer_waiver_parse_constant_mount():
+    with tempfile.TemporaryDirectory(prefix="fixround-r02-waiver-p-", dir="/private/tmp") as raw:
+        root = Path(raw)
+        result = _f10_producer_case(
+            root, mutate=lambda waiver: waiver.update(parser_probe=float("nan")))
+        stderr = _assert_policy_reject(result, "producer waiver parse_constant mount")
+        assert "JSON" in stderr and "NaN" in stderr, stderr
+
+
+def test_fixround_r02_producer_approval_parse_constant_mount():
+    with tempfile.TemporaryDirectory(prefix="fixround-r02-approval-p-", dir="/private/tmp") as raw:
+        root = Path(raw)
+        result = _f10_producer_case(
+            root, approval_mutate=lambda approval, _: approval.update(
+                parser_probe=float("nan")))
+        stderr = _assert_policy_reject(result, "producer approval parse_constant mount")
+        assert "JSON" in stderr and "NaN" in stderr, stderr
+
+
+def test_fixround_r02_consumer_waiver_parse_constant_mount():
+    with tempfile.TemporaryDirectory(prefix="fixround-r02-waiver-c-", dir="/private/tmp") as raw:
+        root = Path(raw)
+        consumer_case(
+            root, mutate=lambda waiver, _: waiver.update(parser_probe=float("nan")))
+        message = expect_check_rejection(root, "JSON")
+        assert "NaN" in message, message
+
+
+def test_fixround_r02_consumer_approval_parse_constant_mount():
+    with tempfile.TemporaryDirectory(prefix="fixround-r02-approval-c-", dir="/private/tmp") as raw:
+        root = Path(raw)
+        consumer_case(
+            root, approval_mutate=lambda approval, _: approval.update(
+                parser_probe=float("nan")))
+        message = expect_check_rejection(root, "JSON")
+        assert "NaN" in message, message
+
+
 def test_fixround_fa6_workflow_wording_matches_contract():
     text = (ROOT / "references/analyze-workflow.md").read_text(encoding="utf-8")
     for needle in (
@@ -1315,6 +1388,79 @@ def test_fixround_fa9_approval_cannot_double_as_evidence():
         expect_check_rejection(root, ("approval", "独立"))
 
 
+def test_fixround_r03_evidence_content_identity_both_sides():
+    scenarios = (
+        ("hardlink-approval", "over_cap_approval.json", True),
+        ("hardlink-replay", "replay_stats.json", True),
+        ("copy-approval", "over_cap_approval.json", False),
+    )
+    for label, source, hardlink in scenarios:
+        with tempfile.TemporaryDirectory(
+                prefix=f"fixround-r03-{label}-p-", dir="/private/tmp") as raw:
+            root = Path(raw)
+            (root / "replay_stats.json").write_text(
+                json.dumps({"mint_total_raw": "1", "burn_total_raw": "0"}),
+                encoding="utf-8")
+            waiver_path = write_waiver(root)
+            _replace_evidence(root, source=source, hardlink=hardlink)
+            _rebind_evidence(root)
+            _assert_policy_reject(
+                run_supply(root, waiver=waiver_path), f"producer {label}")
+
+        with tempfile.TemporaryDirectory(
+                prefix=f"fixround-r03-{label}-c-", dir="/private/tmp") as raw:
+            root = Path(raw)
+            receipt = consumer_case(root)
+            _replace_evidence(root, source=source, hardlink=hardlink)
+            _rebind_evidence(root, receipt)
+            expect_check_rejection(root, ("evidence", "独立", "replay_stats", "approval"))
+
+    with tempfile.TemporaryDirectory(prefix="fixround-r03-independent-p-", dir="/private/tmp") as raw:
+        rc, receipt, stderr = _f10_producer_case(Path(raw))
+        assert rc == 0 and receipt is not None, (rc, receipt, stderr)
+    with tempfile.TemporaryDirectory(prefix="fixround-r03-independent-c-", dir="/private/tmp") as raw:
+        root = Path(raw)
+        consumer_case(root)
+        _assert_consumer_pass(root)
+
+
+def test_fixround_r04_evidence_minimum_content_both_sides():
+    cases = (
+        ("empty", b"", False),
+        ("zero-width", "\u200b".encode("utf-8"), False),
+        ("hangul-filler", "\u3164".encode("utf-8"), False),
+        ("text", "人工复核证据\n".encode("utf-8"), True),
+        ("binary", b"\x00\xff\x10", True),
+    )
+    for label, payload, should_pass in cases:
+        with tempfile.TemporaryDirectory(
+                prefix=f"fixround-r04-{label}-p-", dir="/private/tmp") as raw:
+            root = Path(raw)
+            (root / "replay_stats.json").write_text(
+                json.dumps({"mint_total_raw": "1", "burn_total_raw": "0"}),
+                encoding="utf-8")
+            waiver_path = write_waiver(root)
+            _replace_evidence(root, payload=payload)
+            _rebind_evidence(root)
+            result = run_supply(root, waiver=waiver_path)
+            if should_pass:
+                rc, receipt, stderr = result
+                assert rc == 0 and receipt is not None, (label, rc, receipt, stderr)
+            else:
+                _assert_policy_reject(result, f"producer evidence {label}")
+
+        with tempfile.TemporaryDirectory(
+                prefix=f"fixround-r04-{label}-c-", dir="/private/tmp") as raw:
+            root = Path(raw)
+            receipt = consumer_case(root)
+            _replace_evidence(root, payload=payload)
+            _rebind_evidence(root, receipt)
+            if should_pass:
+                _assert_consumer_pass(root)
+            else:
+                expect_check_rejection(root, ("evidence", "实义", "empty", "空"))
+
+
 def test_fixround_fa10_two_side_behavior_vectors():
     finite_vectors = (
         (0, {}, True), (10.5, {}, True), (-1, {}, False),
@@ -1330,7 +1476,11 @@ def test_fixround_fa10_two_side_behavior_vectors():
     text_vectors = (
         ("", False), ("   ", False), ("\u3000", False),
         ("\u200b", False), ("\ufeff", False), ("\u2060", False),
-        (" 中文 ", True), (" English ", True),
+        *((char, False) for char in BLINDREVIEW_RESIDUAL_INVISIBLES),
+        ("\u200b\u3164", False), ("\u3164\u3164", False),
+        ("\u2800" * 20, False), ("\u200b" * 3, False),
+        ("a\u0301", True), (" 中文 ", True), (" English ", True),
+        (" 승인 ", True),
     )
     for value, expected in text_vectors:
         producer = supply._meaningful_text(value)
@@ -1383,10 +1533,16 @@ def main():
         test_fixround_fa3_three_value_primary_gate_anchor,
         test_fixround_fa4_library_fourth_value_anchor,
         test_fixround_fa5_nan_defenses_are_independently_anchored,
+        test_fixround_r02_producer_waiver_parse_constant_mount,
+        test_fixround_r02_producer_approval_parse_constant_mount,
+        test_fixround_r02_consumer_waiver_parse_constant_mount,
+        test_fixround_r02_consumer_approval_parse_constant_mount,
         test_fixround_fa6_workflow_wording_matches_contract,
         test_fixround_fa7_approval_lifetime_both_sides,
         test_fixround_fa8_approval_receipt_input_binding,
         test_fixround_fa9_approval_cannot_double_as_evidence,
+        test_fixround_r03_evidence_content_identity_both_sides,
+        test_fixround_r04_evidence_minimum_content_both_sides,
         test_fixround_fa10_two_side_behavior_vectors,
     ]
     failed = []
