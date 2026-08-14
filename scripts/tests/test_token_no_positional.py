@@ -17,6 +17,19 @@ ROOT = Path(__file__).resolve().parents[2]
 EVM = ROOT / "scripts" / "evm"
 MANIFEST = ROOT / "scripts" / "tests" / "invariant_manifest.json"
 SENTINEL = "plaintext-secret"
+ENDPOINT_EXCLUSIONS = {
+    "accounting_gate.py": "HyperSync endpoint policy consumer; it does not accept credentials",
+}
+
+
+def _is_hypersync_entrypoint(path, source, registered):
+    sdk_import = re.search(
+        r"(?m)^\s*(?:import\s+hypersync\b|from\s+hypersync\b)", source)
+    endpoint_collector = (
+        "hypersync.xyz" in source and path.name not in ENDPOINT_EXCLUSIONS)
+    named_collector = path.name.startswith("fetch_") and "hypersync" in path.stem.lower()
+    registered_hypersync = path in registered and "hypersync" in path.stem.lower()
+    return bool(sdk_import or endpoint_collector or named_collector or registered_hypersync)
 
 
 def enumerate_hypersync_entrypoints():
@@ -29,11 +42,7 @@ def enumerate_hypersync_entrypoints():
     found = set()
     for path in EVM.glob("*.py"):
         source = path.read_text(encoding="utf-8")
-        sdk_import = re.search(r"(?m)^\s*(?:import\s+hypersync\b|from\s+hypersync\b)", source)
-        endpoint_collector = path.name.startswith("fetch_") and (
-            "hypersync.xyz" in source or "hypersync" in path.stem.lower())
-        registered_hypersync = path in registered and "hypersync" in path.stem.lower()
-        if sdk_import or endpoint_collector or registered_hypersync:
+        if _is_hypersync_entrypoint(path, source, registered):
             found.add(path)
     return sorted(found)
 
@@ -61,6 +70,10 @@ def expect_parse_fail_without_secret(mod, args):
 
 
 def main():
+    assert _is_hypersync_entrypoint(
+        Path("collect_direct.py"), 'URL = "https://eth.hypersync.xyz"', set())
+    assert not _is_hypersync_entrypoint(
+        Path("accounting_gate.py"), 'URL = "https://eth.hypersync.xyz"', set())
     paths = enumerate_hypersync_entrypoints()
     assert len(paths) >= 4, [str(path.relative_to(ROOT)) for path in paths]
     modules = {path.stem: load(path) for path in paths}
@@ -105,6 +118,8 @@ def main():
             empty = root / f"{name}.empty"
             empty.write_text("", encoding="utf-8")
             with mock.patch.dict(os.environ, {}, clear=True):
+                expect_parse_fail_without_secret(
+                    mod, [*common[name], "--token-file", SENTINEL])
                 for bad_path in (empty, root / f"{name}.missing"):
                     with contextlib.redirect_stdout(io.StringIO()), \
                             contextlib.redirect_stderr(io.StringIO()):

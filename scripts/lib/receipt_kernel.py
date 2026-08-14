@@ -8,11 +8,16 @@ normalisation or hashing helpers with this emitter.
 """
 from __future__ import annotations
 
+import argparse
 import copy
+import fcntl
 import hashlib
 import json
 import os
+import re
+import shlex
 import stat
+import sys
 from contextlib import ExitStack, contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -314,11 +319,13 @@ def _reject_pass_downgrade(target: _SecureTarget, payload):
     old = _existing_json(target)
     if (isinstance(old, Mapping) and old.get("verdict") == "PASS"
             and isinstance(payload, Mapping) and payload.get("verdict") != "PASS"):
-        raise ReceiptKernelError(f"existing PASS artifact cannot be downgraded: {target.path}")
+        raise ReceiptKernelError(
+            f"PASS_DOWNGRADE_REJECTED: existing PASS artifact cannot be downgraded: "
+            f"{target.path}")
 
 
-def _stage(target: _SecureTarget, payload) -> str:
-    tmp_name = f".{target.name}.tmp.{_run_id()}"
+def _stage(target: _SecureTarget, payload, *, run_id=None) -> str:
+    tmp_name = f".{target.name}.tmp.{run_id or _run_id()}"
     flags = (os.O_WRONLY | os.O_CREAT | os.O_EXCL
              | getattr(os, "O_NOFOLLOW", 0))
     try:
@@ -345,32 +352,201 @@ def _same_entry(left, right) -> bool:
         right.st_dev, right.st_ino, right.st_size, right.st_mtime_ns)
 
 
-@contextmanager
-def _supersede_lock(target: _SecureTarget):
-    """Fail closed when another supersede of this canonical is in progress.
+def _lock_metadata(target: _SecureTarget, run_id: str, payload) -> dict:
+    return {
+        "schema": "receipt-supersede-lock/v1",
+        "canonical": str(target.path),
+        "run_id": run_id,
+        "pid": os.getpid(),
+        # The held advisory lock is the verifiable owner evidence.  Unlike a
+        # timestamp lookup it is released by the kernel on crash and cannot be
+        # confused by PID reuse; recovery must acquire it non-blocking first.
+        "owner_evidence": "fcntl-flock/v1",
+        "payload_sha256": hashlib.sha256(_json_bytes(payload)).hexdigest(),
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
 
-    O_EXCL makes the check cross-process.  A crash can leave the lock behind;
-    treating that as a hard failure is intentional because silently guessing
-    whether the interrupted publication committed would weaken the receipt.
-    """
+
+def _supersede_lock_path(target: _SecureTarget) -> Path:
+    return target.path.with_name(f".{target.name}.supersede.lock")
+
+
+@contextmanager
+def _supersede_lock(target: _SecureTarget, *, run_id: str, payload):
+    """Create an O_EXCL lock with verifiable owner and intended-payload evidence."""
     lock_name = f".{target.name}.supersede.lock"
+    lock_path = _supersede_lock_path(target)
     flags = (os.O_WRONLY | os.O_CREAT | os.O_EXCL
              | getattr(os, "O_NOFOLLOW", 0))
     try:
         fd = os.open(lock_name, flags, 0o600, dir_fd=target.parent_fd)
     except FileExistsError as exc:
         raise ReceiptKernelError(
-            f"concurrent or interrupted supersede detected: {target.path}") from exc
-    os.close(fd)
+            f"SUPERSEDE_LOCK_PRESENT: concurrent or interrupted supersede 锁位于 "
+            f"{lock_path}；禁止自动恢复。确认原进程已退出后运行："
+            f"python3 scripts/lib/receipt_kernel.py --recover "
+            f"{shlex.quote(str(target.path))}") from exc
     try:
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        raw = _json_bytes(_lock_metadata(target, run_id, payload))
+        os.write(fd, raw)
+        os.fsync(fd)
+        _fsync_parent(target)
         yield
     finally:
         try:
             os.unlink(lock_name, dir_fd=target.parent_fd)
         except FileNotFoundError as exc:
+            os.close(fd)
             raise ReceiptKernelError(
                 f"supersede lock disappeared during publication: {target.path}") from exc
         _fsync_parent(target)
+        fcntl.flock(fd, fcntl.LOCK_UN)
+        os.close(fd)
+
+
+def _entry_stat(target: _SecureTarget, name: str):
+    try:
+        info = os.stat(name, dir_fd=target.parent_fd, follow_symlinks=False)
+    except FileNotFoundError:
+        return None
+    if not stat.S_ISREG(info.st_mode):
+        raise ReceiptKernelError(
+            f"SUPERSEDE_RECOVERY_MANUAL: 恢复相关目录项不是普通文件："
+            f"{target.path.with_name(name)}")
+    return info
+
+
+def _entry_digest(target: _SecureTarget, name: str) -> str:
+    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
+    fd = os.open(name, flags, dir_fd=target.parent_fd)
+    hasher = hashlib.sha256()
+    try:
+        while True:
+            chunk = os.read(fd, 1 << 20)
+            if not chunk:
+                break
+            hasher.update(chunk)
+    finally:
+        os.close(fd)
+    return hasher.hexdigest()
+
+
+def _read_recovery_lock(target: _SecureTarget, fd: int) -> dict:
+    try:
+        os.lseek(fd, 0, os.SEEK_SET)
+        chunks = []
+        while True:
+            chunk = os.read(fd, 1 << 16)
+            if not chunk:
+                break
+            chunks.append(chunk)
+        metadata = json.loads(b"".join(chunks))
+    except (OSError, TypeError, ValueError) as exc:
+        raise ReceiptKernelError(
+            f"SUPERSEDE_RECOVERY_MANUAL: 锁元数据损坏，盘面未改："
+            f"{_supersede_lock_path(target)}") from exc
+    required = {"schema", "canonical", "run_id", "pid", "owner_evidence",
+                "payload_sha256"}
+    if (not isinstance(metadata, Mapping)
+            or metadata.get("schema") != "receipt-supersede-lock/v1"
+            or not required.issubset(metadata)
+            or metadata.get("canonical") != str(target.path)
+            or not isinstance(metadata.get("pid"), int)
+            or metadata["pid"] <= 0
+            or metadata.get("owner_evidence") != "fcntl-flock/v1"
+            or not isinstance(metadata.get("run_id"), str)
+            or re.fullmatch(r"[A-Za-z0-9_.-]+", metadata["run_id"]) is None
+            or re.fullmatch(r"[0-9a-f]{64}", str(metadata.get("payload_sha256"))) is None):
+        raise ReceiptKernelError(
+            f"SUPERSEDE_RECOVERY_MANUAL: 锁元数据不满足恢复契约，盘面未改："
+            f"{_supersede_lock_path(target)}")
+    return dict(metadata)
+
+
+def recover_stale_supersede(canonical_path) -> dict:
+    """Explicitly recover one dead supersede lock using two provable states only.
+
+    The function never runs from a publication path.  It refuses a live owner,
+    a PID-reuse ambiguity, a damaged canonical, or any disk layout outside the
+    exact committed / pre-replace rollback states.
+    """
+    with _secure_target(canonical_path, create_parents=False) as out:
+        lock_name = f".{out.name}.supersede.lock"
+        lock_path = _supersede_lock_path(out)
+        flags = os.O_RDWR | getattr(os, "O_NOFOLLOW", 0)
+        try:
+            fd = os.open(lock_name, flags, dir_fd=out.parent_fd)
+        except FileNotFoundError as exc:
+            raise ReceiptKernelError(
+                f"SUPERSEDE_RECOVERY_NO_LOCK: 未找到 supersede 锁：{lock_path}") from exc
+        try:
+            info = os.fstat(fd)
+            if not stat.S_ISREG(info.st_mode):
+                raise ReceiptKernelError(
+                    f"SUPERSEDE_RECOVERY_MANUAL: 锁不是普通文件，盘面未改：{lock_path}")
+            try:
+                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError as exc:
+                raise ReceiptKernelError(
+                    f"SUPERSEDE_RECOVERY_ACTIVE: 活进程仍持有锁，拒绝恢复：{lock_path}") from exc
+            metadata = _read_recovery_lock(out, fd)
+            run_id = metadata["run_id"]
+            tmp_name = f".{out.name}.tmp.{run_id}"
+            archive_name = f"{out.name}.superseded-{run_id}"
+            canonical_before = _target_stat(out)
+            canonical = _existing_json(out)
+            canonical_after = _target_stat(out)
+            if not _same_entry(canonical_before, canonical_after) or canonical is None:
+                raise ReceiptKernelError(
+                    f"SUPERSEDE_RECOVERY_MANUAL: canonical 缺失、损坏或读取期间变化，"
+                    f"盘面未改：{out.path}")
+            tmp_info = _entry_stat(out, tmp_name)
+            archive_info = _entry_stat(out, archive_name)
+
+            committed = (
+                isinstance(canonical, Mapping)
+                and canonical.get("verdict") == "FAIL"
+                and canonical.get("exit_code") == VERDICT_EXITS["FAIL"]
+                and _entry_digest(out, out.name) == metadata["payload_sha256"])
+            if committed:
+                if (tmp_info is not None
+                        and _entry_digest(out, tmp_name) != metadata["payload_sha256"]):
+                    raise ReceiptKernelError(
+                        f"SUPERSEDE_RECOVERY_MANUAL: 同 run 临时件与目标 FAIL 不匹配，"
+                        f"盘面未改：{out.path.with_name(tmp_name)}")
+                if tmp_info is not None:
+                    _unlink_at(out, tmp_name)
+                os.unlink(lock_name, dir_fd=out.parent_fd)
+                _fsync_parent(out)
+                return {"status": "COMMITTED", "message": "上次已提交；遗留锁与孤儿临时件已清理",
+                        "canonical": str(out.path), "lock": str(lock_path)}
+
+            rolled_back = (
+                isinstance(canonical, Mapping)
+                and canonical.get("verdict") == "PASS"
+                and canonical.get("exit_code") == VERDICT_EXITS["PASS"]
+                and tmp_info is not None
+                and archive_info is not None
+                and _same_entry(canonical_before, archive_info)
+                and _entry_digest(out, tmp_name) == metadata["payload_sha256"])
+            if rolled_back:
+                _unlink_at(out, tmp_name)
+                _unlink_at(out, archive_name)
+                os.unlink(lock_name, dir_fd=out.parent_fd)
+                _fsync_parent(out)
+                return {"status": "ROLLED_BACK", "message": "上次未提交已回滚；孤儿归档、临时件与锁已清理",
+                        "canonical": str(out.path), "lock": str(lock_path)}
+
+            raise ReceiptKernelError(
+                f"SUPERSEDE_RECOVERY_MANUAL: 状态不属于“目标 FAIL 已提交”或"
+                f"“PASS 未提交且同 run 归档可回滚”，盘面未改；请人工介入：{lock_path}")
+        finally:
+            try:
+                fcntl.flock(fd, fcntl.LOCK_UN)
+            except OSError:
+                pass
+            os.close(fd)
 
 
 def _checked_schema_family(schema_family) -> str:
@@ -438,8 +614,10 @@ def publish_supersede(path, payload, *, schema_family) -> Path:
     """
     family = _checked_schema_family(schema_family)
     _validate_supersede_payload(payload, family)
-    with _secure_target(path) as out, _supersede_lock(out):
-        tmp = _stage(out, payload)
+    run_id = _run_id()
+    with _secure_target(path) as out, _supersede_lock(
+            out, run_id=run_id, payload=payload):
+        tmp = _stage(out, payload, run_id=run_id)
         archive = None
         try:
             before = _target_stat(out)
@@ -476,7 +654,7 @@ def publish_supersede(path, payload, *, schema_family) -> Path:
                     raise ReceiptKernelError(
                         f"existing PASS target differs from new FAIL target: {out.path}")
 
-                archive = f"{out.name}.superseded-{_run_id()}"
+                archive = f"{out.name}.superseded-{run_id}"
                 try:
                     os.link(out.name, archive, src_dir_fd=out.parent_fd,
                             dst_dir_fd=out.parent_fd, follow_symlinks=False)
@@ -710,3 +888,24 @@ def publish_error_receipt(receipt_path, envelope, error, *, run_id=None) -> Path
     error_path = canonical.with_name(f"{stem}.error.{unique}{suffix}")
     payload = finalize_envelope(envelope, "ERROR", 1, error=str(error))
     return publish_exclusive(error_path, payload)
+
+
+def _main(argv=None) -> int:
+    parser = argparse.ArgumentParser(
+        description="receipt kernel 显式维护入口（发布路径从不自动恢复 supersede 锁）")
+    parser.add_argument("--recover", metavar="CANONICAL",
+                        help="校验进程身份与崩溃盘面后恢复一个 supersede 锁")
+    args = parser.parse_args(argv)
+    if not args.recover:
+        parser.error("必须指定 --recover CANONICAL")
+    try:
+        result = recover_stale_supersede(args.recover)
+    except ReceiptKernelError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+    print(f"{result['status']}: {result['message']}；canonical={result['canonical']}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(_main())

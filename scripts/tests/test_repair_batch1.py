@@ -14,9 +14,11 @@ import importlib.util
 import io
 import json
 import os
+import signal
 import subprocess
 import sys
 import tempfile
+import time
 from pathlib import Path
 from unittest import mock
 
@@ -258,14 +260,146 @@ def test_rv07_concurrency_and_ordinary_guard(root: Path):
     before = out.read_bytes()
     lock = case / ".receipt.json.supersede.lock"
     lock.write_text("held\n", encoding="utf-8")
-    _expect_error(lambda: kernel.publish_supersede(
+    lock_exc = _expect_error(lambda: kernel.publish_supersede(
         out, failed, schema_family="fixture-receipt/"), "concurrent")
+    assert str(lock.resolve()) in str(lock_exc) and "--recover" in str(lock_exc)
     assert out.read_bytes() == before and list(case.glob("receipt.json.superseded-*")) == []
     lock.unlink()
 
     # Keep-red proof: ordinary overwrite still rejects an unarchived downgrade.
-    _expect_error(lambda: kernel.publish_overwrite(out, failed), "cannot be downgraded")
+    downgrade_exc = _expect_error(
+        lambda: kernel.publish_overwrite(out, failed), "cannot be downgraded")
+    assert str(lock_exc).split(":", 1)[0] != str(downgrade_exc).split(":", 1)[0]
     assert out.read_bytes() == before and list(case.glob("receipt.json.superseded-*")) == []
+
+
+def _crash_supersede(case: Path, mode: str):
+    """Run the real kernel in a child and SIGKILL at one publication boundary."""
+    case.mkdir(parents=True, exist_ok=True)
+    canonical = case / "receipt.json"
+    candidate = case / "candidate.json"
+    kernel.publish_overwrite(canonical, _payload(case, "PASS"))
+    candidate.write_text(json.dumps(_payload(case, "FAIL")), encoding="utf-8")
+    code = f"""
+import json, os, signal, sys
+sys.path.insert(0, {str(ROOT / 'scripts/lib')!r})
+import receipt_kernel as kernel
+canonical = {str(canonical)!r}
+payload = json.load(open({str(candidate)!r}, encoding='utf-8'))
+mode = {mode!r}
+real_replace = kernel.os.replace
+real_link = kernel.os.link
+if mode == 'before_replace':
+    def replace(*args, **kwargs):
+        os.kill(os.getpid(), signal.SIGKILL)
+    kernel.os.replace = replace
+elif mode == 'after_replace':
+    def replace(*args, **kwargs):
+        real_replace(*args, **kwargs)
+        os.kill(os.getpid(), signal.SIGKILL)
+    kernel.os.replace = replace
+elif mode == 'before_archive':
+    def link(*args, **kwargs):
+        os.kill(os.getpid(), signal.SIGKILL)
+    kernel.os.link = link
+else:
+    raise AssertionError(mode)
+kernel.publish_supersede(canonical, payload, schema_family='fixture-receipt/')
+"""
+    run = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True)
+    assert run.returncode == -signal.SIGKILL, (run.returncode, run.stdout, run.stderr)
+    return canonical, json.loads(candidate.read_text(encoding="utf-8"))
+
+
+def test_rv07_sigkill_recovery_state_machine(root: Path):
+    # 第八条：replace 前 SIGKILL 留下 PASS+archive+tmp+lock。合法 supersede
+    # 先被明确拒绝，显式恢复回滚本轮孤儿后才允许同一 FAIL 正式落盘。
+    rollback_case = root / "sigkill-rollback"
+    canonical, failed = _crash_supersede(rollback_case, "before_replace")
+    lock = rollback_case / ".receipt.json.supersede.lock"
+    assert lock.is_file() and json.loads(canonical.read_text())["verdict"] == "PASS"
+    assert len(list(rollback_case.glob("receipt.json.superseded-*"))) == 1
+    assert len(list(rollback_case.glob(".receipt.json.tmp.*"))) == 1
+    exc = _expect_error(lambda: kernel.publish_supersede(
+        canonical, failed, schema_family="fixture-receipt/"), "SUPERSEDE_LOCK")
+    assert str(lock.resolve()) in str(exc) and "--recover" in str(exc)
+    recovered = subprocess.run(
+        [sys.executable, str(ROOT / "scripts/lib/receipt_kernel.py"),
+         "--recover", str(canonical)], capture_output=True, text=True)
+    assert recovered.returncode == 0 and "ROLLED_BACK" in recovered.stdout
+    assert "未提交已回滚" in recovered.stdout
+    assert not lock.exists()
+    assert list(rollback_case.glob("receipt.json.superseded-*")) == []
+    assert list(rollback_case.glob(".receipt.json.tmp.*")) == []
+    kernel.publish_supersede(canonical, failed, schema_family="fixture-receipt/")
+    assert json.loads(canonical.read_text())["verdict"] == "FAIL"
+    print("RV07 SIGKILL RED lock_rejected=1; RECOVERED rollback=1; GREEN canonical=FAIL")
+
+    # replace 后 SIGKILL：canonical 必须精确匹配锁绑定的目标 FAIL 才判已提交；
+    # 只清锁/同 run tmp，已落盘的 PASS 审计归档继续保留。
+    committed_case = root / "sigkill-committed"
+    committed, _ = _crash_supersede(committed_case, "after_replace")
+    assert json.loads(committed.read_text())["verdict"] == "FAIL"
+    archives = list(committed_case.glob("receipt.json.superseded-*"))
+    recovered = kernel.recover_stale_supersede(committed)
+    assert recovered["status"] == "COMMITTED" and "上次已提交" in recovered["message"]
+    assert not (committed_case / ".receipt.json.supersede.lock").exists()
+    assert len(archives) == 1 and archives[0].exists()
+
+    # 锁+tmp 但没有 archive 不属于两种可判定模式：字节和目录项均不动。
+    manual_case = root / "sigkill-manual"
+    manual, _ = _crash_supersede(manual_case, "before_archive")
+    before = {path.name: path.read_bytes() for path in manual_case.iterdir()}
+    refused = subprocess.run(
+        [sys.executable, str(ROOT / "scripts/lib/receipt_kernel.py"),
+         "--recover", str(manual)], capture_output=True, text=True)
+    assert refused.returncode == 2 and "MANUAL" in refused.stderr
+    after = {path.name: path.read_bytes() for path in manual_case.iterdir()}
+    assert after == before
+
+
+def test_rv07_live_lock_recovery_rejected(root: Path):
+    case = root / "live-lock"
+    case.mkdir(parents=True)
+    canonical = case / "receipt.json"
+    candidate = case / "candidate.json"
+    signal_path = case / "lock-held"
+    release_path = case / "release"
+    kernel.publish_overwrite(canonical, _payload(case, "PASS"))
+    candidate.write_text(json.dumps(_payload(case, "FAIL")), encoding="utf-8")
+    code = f"""
+import json, os, sys, time
+sys.path.insert(0, {str(ROOT / 'scripts/lib')!r})
+import receipt_kernel as kernel
+real_stage = kernel._stage
+def stage(*args, **kwargs):
+    open({str(signal_path)!r}, 'w').write('held')
+    while not os.path.exists({str(release_path)!r}):
+        time.sleep(0.01)
+    return real_stage(*args, **kwargs)
+kernel._stage = stage
+kernel.publish_supersede(
+    {str(canonical)!r}, json.load(open({str(candidate)!r}, encoding='utf-8')),
+    schema_family='fixture-receipt/')
+"""
+    proc = subprocess.Popen(
+        [sys.executable, "-c", code], stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE, text=True)
+    deadline = time.monotonic() + 10
+    while not signal_path.exists() and proc.poll() is None and time.monotonic() < deadline:
+        time.sleep(0.01)
+    assert signal_path.exists(), proc.communicate(timeout=1)
+    try:
+        refused = subprocess.run(
+            [sys.executable, str(ROOT / "scripts/lib/receipt_kernel.py"),
+             "--recover", str(canonical)], capture_output=True, text=True)
+        assert refused.returncode == 2 and "ACTIVE" in refused.stderr
+        assert "活进程" in refused.stderr
+    finally:
+        release_path.write_text("continue", encoding="utf-8")
+    stdout, stderr = proc.communicate(timeout=10)
+    assert proc.returncode == 0, (stdout, stderr)
+    assert not (case / ".receipt.json.supersede.lock").exists()
 
 
 def test_rv07_schema_family_invalidation_and_exit_wiring(root: Path):
@@ -337,8 +471,22 @@ def test_rv07_window_fail_transaction(root: Path):
         assert list(work.glob("window.jsonl.stale.*")) == []
         assert list(work.glob("window.jsonl.gaps.json.failed-*")) == []
 
-        # Real FAIL commit: receipt switches first, then old data canonical is
-        # removed while its hard-link archive remains.
+        # Crash-equivalent mixed state after receipt commit but before old data
+        # cleanup: canonical=FAIL while old data and its .stale link both exist.
+        # A normal rerun must be idempotent and finish that cleanup.
+        real_unlink = Path.unlink
+
+        def fail_old_data_unlink(path, *args, **kwargs):
+            if path == out:
+                raise OSError("post-receipt data cleanup injected")
+            return real_unlink(path, *args, **kwargs)
+
+        with mock.patch.object(window, "scan_seg", return_value=bad), \
+                mock.patch.object(Path, "unlink", fail_old_data_unlink):
+            assert window.main(argv) == 1
+        assert json.loads(receipt.read_text())["verdict"] == "FAIL" and out.exists()
+        assert list(work.glob("window.jsonl.stale.*"))
+
         with mock.patch.object(window, "scan_seg", return_value=bad):
             assert window.main(argv) == 2
         current = json.loads(receipt.read_text(encoding="utf-8"))
@@ -346,7 +494,8 @@ def test_rv07_window_fail_transaction(root: Path):
         data_archives = list(work.glob("window.jsonl.stale.*"))
         assert current["verdict"] == "FAIL" and not out.exists()
         assert len(receipt_archives) == 1 and receipt_archives[0].read_bytes() == old_receipt
-        assert len(data_archives) == 1 and data_archives[0].read_bytes() == old_data
+        assert len(data_archives) >= 2
+        assert all(path.read_bytes() == old_data for path in data_archives)
         bound_gaps = Path(current["inputs"]["gaps"]["path"])
         assert bound_gaps.exists() and bound_gaps.name.startswith(
             "window.jsonl.gaps.json.failed-")
@@ -390,6 +539,35 @@ def test_rv17_rpc_failure_is_not_false_closure(root: Path):
     assert receipt["complete"] is False and receipt["verdict"] == "ERROR", receipt
     assert "[闭合]" not in text, text
     print("RV17 FIXED rc=1 verdict=ERROR complete=false false_closure=no")
+
+
+def test_rv17_signature_cap_is_explicit_incomplete(root: Path):
+    work = root / "rv17-cap"
+    work.mkdir(parents=True)
+    owner, mint, ata = "pool-owner", "mint-address", "pool-ata"
+    stake = _load_module(ROOT / "scripts/solana/stake_decode.py", "stake_decode_cap")
+
+    def fake_rpc(method, _params, retries=5):
+        del retries
+        if method == "getSignaturesForAddress":
+            return [{"signature": "sig-1", "err": None},
+                    {"signature": "sig-2", "err": None}]
+        if method == "getTransaction":
+            return {"meta": {"preTokenBalances": [], "postTokenBalances": []},
+                    "transaction": {"message": {"accountKeys": []}}, "blockTime": 1}
+        if method == "getTokenAccountBalance":
+            return {"value": {"amount": "0"}}
+        raise AssertionError(method)
+
+    with chdir(work), mock.patch.object(stake, "find_pool_atas", return_value=[ata]), \
+            mock.patch.object(stake, "rpc", side_effect=fake_rpc), \
+            mock.patch.object(stake, "resolve_proxy", return_value=None), \
+            mock.patch.object(stake.time, "sleep", return_value=None), \
+            contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+        rc = stake.main([owner, "--mint", mint, "--cap", "1"])
+    result = json.loads((work / "data/stake_ledger.json").read_text(encoding="utf-8"))
+    assert rc == 1 and result["complete"] is False and result["verdict"] == "ERROR", result
+    assert "截断" in result["error"]
 
 
 def test_rv17_decode_and_balance_failures_are_errors(root: Path):
@@ -1059,9 +1237,12 @@ def main():
         test_rv07_link_replace_and_rollback_failures(root)
         test_rv07_collision_cycle_and_identity(root)
         test_rv07_concurrency_and_ordinary_guard(root)
+        test_rv07_sigkill_recovery_state_machine(root)
+        test_rv07_live_lock_recovery_rejected(root)
         test_rv07_schema_family_invalidation_and_exit_wiring(root)
         test_rv07_window_fail_transaction(root)
         test_rv17_rpc_failure_is_not_false_closure(root)
+        test_rv17_signature_cap_is_explicit_incomplete(root)
         test_rv17_decode_and_balance_failures_are_errors(root)
         test_rv04_resolve_proxy_precedence()
         test_rv04_probe_hint_and_invalid_scheme()

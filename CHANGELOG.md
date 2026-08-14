@@ -52,6 +52,7 @@
 - **日期兼容**：图 1 consumer 精确补认 Solana `sol-rows` producer 的正式 UTC 序列格式 `%Y-%m-%dT%H:%M:%SZ`，不扩大其他日期解析面。
 - **F-04**：四个入口移除位置 token，统一显式 token 来源优先级；sentinel 只参与内部控制，不进入正式输出。
 - **质量**：新增 `test_repair_batch1.py` 已手动挂入 `run_all.py`；共享 invariant、P1-05 new-analysis 夹具、版本四锚与最终全量 suite 在步骤⑦统一验收。
+- **盲审消化**：supersede 锁崩溃恢复原语＋token-file 回显抑制。
 
 ## [6.40.0] - 2026-08-13 — 六视角 BLOCK 修复工程四批收口（codex 13 findings＋GPT 5.6 Pro 交叉对账）
 

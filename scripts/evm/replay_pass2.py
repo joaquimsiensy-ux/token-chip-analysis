@@ -34,6 +34,8 @@ def main():
         print(f"[camp-series] {stats_path} 不可读或 JSON 损坏: {exc}——先重跑"
               " pass1 再跑 pass2", file=sys.stderr)
         sys.exit(2)
+    # 信任边界：pass2 消费 pass1 的 gate_pass，不在此重算 merged.csv；防篡改由
+    # camp-series provenance 对 replay_stats 的绑定及下游 supply_truth 哈希链兜底。
     gate_pass = stats.get("gate_pass") if isinstance(stats, dict) else None
     if type(gate_pass) is not bool:
         print(f"[camp-series] {stats_path} schema 故障：gate_pass 必须是布尔值，"

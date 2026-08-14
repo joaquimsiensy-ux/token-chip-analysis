@@ -11,8 +11,8 @@
   "scripts/*.py"
  ],
  "minimum_counts": {
-  "receipt_producers": 49,
-  "receipt_consumers": 53,
+  "receipt_producers": 50,
+  "receipt_consumers": 54,
   "transport_calls": 58,
   "atomic_writes": 39,
   "formal_entrypoints": 58
@@ -87,6 +87,12 @@
     "camp-series-provenance/v1"
    ],
    "script": "scripts/lib/camp_series_provenance.py"
+  },
+  {
+   "schemas": [
+    "receipt-supersede-lock/v1"
+   ],
+   "script": "scripts/lib/receipt_kernel.py"
   },
   {
    "schemas": [
@@ -275,6 +281,12 @@
   }
  ],
  "receipt_consumers": [
+  {
+   "schemas": [
+    "receipt-supersede-lock/v1"
+   ],
+   "script": "scripts/lib/receipt_kernel.py"
+  },
   {
    "schemas": [
     "solana-observation-bundle/v1",

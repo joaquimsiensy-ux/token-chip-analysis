@@ -68,8 +68,12 @@ def resolve_mint(cli):
 
 def all_sigs(addr, cap):
     sigs, before = [], None
-    while len(sigs) < cap:
-        params = [addr, {"limit": 1000}]
+    truncated = False
+    while len(sigs) <= cap:
+        # Probe exactly one signature beyond cap.  A full final page at the
+        # boundary is not proof of exhaustion; only a short page is.
+        limit = min(1000, cap + 1 - len(sigs))
+        params = [addr, {"limit": limit}]
         if before:
             params[1]["before"] = before
         res = rpc("getSignaturesForAddress", params)
@@ -78,11 +82,14 @@ def all_sigs(addr, cap):
         if not res:
             break
         sigs.extend(res)
+        if len(sigs) > cap:
+            truncated = True
+            break
         before = res[-1]["signature"]
         time.sleep(0.15)
-        if len(res) < 1000:
+        if len(res) < limit:
             break
-    return [s for s in sigs if s.get("err") is None]
+    return [s for s in sigs[:cap] if s.get("err") is None], truncated
 
 
 def decode(sig, self_owner, mint):
@@ -146,6 +153,8 @@ def main(argv=None):
     ap.add_argument("--proxy", default=None,
                     help="代理 URL；空字符串或 none 显式直连（默认经 CHIP_PROXY/端口探测解析）")
     args = ap.parse_args(argv)
+    if args.cap < 1:
+        ap.error("--cap 必须为正整数")
     global PROXY
     try:
         PROXY = resolve_proxy(args.proxy)
@@ -160,7 +169,10 @@ def main(argv=None):
             raise ObservationError(f"未找到 {args.pool_owner} 的 token account，闭合不可计算")
         print(f"池 token accounts: {atas}")
         for ata in atas:
-            sigs = all_sigs(ata, args.cap)
+            sigs, truncated = all_sigs(ata, args.cap)
+            if truncated:
+                raise ObservationError(
+                    f"签名史命中 cap={args.cap} 并发生截断：{ata}")
             print(f"  {ata} 有效签名 {len(sigs)}")
             for s in sigs:
                 r = decode(s["signature"], args.pool_owner, mint)

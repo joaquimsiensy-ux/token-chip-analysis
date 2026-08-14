@@ -60,7 +60,8 @@ def _load_token(ap, token_file):
     except OSError:
         token = ""
     if not token:
-        ap.error(f"HyperSync token 文件缺失或为空：{path}；key 登记见 ~/.claude/api-keys.md §1")
+        ap.error("HyperSync token 文件缺失或为空（路径已隐去）；"
+                 "默认路径 ~/.config/hypersync/token，或设 HYPERSYNC_TOKEN")
     return token
 
 
