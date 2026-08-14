@@ -141,6 +141,8 @@ def load_edges(mint):
     if meta.get("schema") != "sqd-solana-cache/v3" or meta.get("mint") != mint \
             or meta.get("collection_upper_slot") is None:
         sys.exit("SQD 缓存 meta 未绑定原始 mint/endpoint/采集上界，拒绝重放")
+    if f.is_symlink():
+        sys.exit(f"边文件是符号链接，拒绝重放：{f}")
     if not f.exists():
         sys.exit(f"边文件不存在：{f}（先跑 fetch_sqd_transfers_v2.py）")
     edges = []
@@ -242,6 +244,8 @@ def cmd_reconcile(edges, dec, *, mint, cache_meta_path):
         raise ValueError("SQD 缓存 meta.edge_rows 与实际边数不一致")
     edge_key = hashlib.sha256(mint.encode("utf-8")).hexdigest()
     edge_path = cache_meta_path.with_name(f"soltx-{edge_key}.jsonl.gz")
+    if edge_path.is_symlink():
+        raise ValueError(f"SQD 边文件是符号链接，拒绝 reconcile: {edge_path}")
     if not edge_path.is_file() or edge_path.stat().st_size <= 0:
         raise ValueError(f"SQD 边文件缺失或为空: {edge_path}")
     cache_meta["edge_logical_sha256"] = edge_digest

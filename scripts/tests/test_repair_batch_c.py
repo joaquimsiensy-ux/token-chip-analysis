@@ -1834,6 +1834,244 @@ def t_blindreview_c_fixround1():
         raise AssertionError("BC blind fixround1 failures:\n" + "\n".join(failures))
 
 
+def t_fixround2():
+    """N-01~N-05：边文件等深、发布接线与严格 JSON 挂载点回归锚。"""
+    import importlib
+    import audit_release_gate as gate_mod
+    import replay_edges as re_mod
+
+    failures = []
+
+    def probe(name, condition, detail=""):
+        if condition:
+            PASSED.append(name)
+        else:
+            failures.append(f"{name}: {detail}")
+
+    edges = [
+        [3600, 1, Z, SA, 1000],
+        [7200, 2, SA, SB, 300],
+        [10800, 3, SA, Z, 100],
+    ]
+    old_cwd = os.getcwd()
+    with tempfile.TemporaryDirectory(prefix="c-fixround2-", dir="/private/tmp") as raw, \
+            tempfile.TemporaryDirectory(prefix="c-fixround2-link-",
+                                        dir="/private/tmp") as link_raw:
+        td = Path(raw)
+        link_dir = Path(link_raw)
+        os.chdir(td)
+        try:
+            importlib.reload(re_mod)
+            data = Path("data")
+            data.mkdir()
+            edge_key = hashlib.sha256(SA.encode("utf-8")).hexdigest()
+            edge_path = write_sol_edges(
+                data / f"soltx-{edge_key}.jsonl.gz", edges)
+            edge_bytes = edge_path.read_bytes()
+            meta_path = data / f"soltx-{edge_key}.meta.json"
+            owners_path = write_json(data / "holders_owners.json",
+                                     {SA: 600, SB: 300})
+            snapshot_path = data / "holders_snapshot_meta.json"
+            write_json(snapshot_path, {
+                "schema": "solana-holder-snapshot-v2", "mint": SA,
+                "target": {"chain": "solana", "token": SA,
+                           "as_of_block": 3},
+                "closed": True, "supply_raw": "900",
+                "outputs": {"holders_owners": file_ref(owners_path)},
+            })
+            write_json(meta_path, {
+                "schema": "sqd-solana-cache/v3", "mint": SA,
+                "from_slot": 1, "collection_upper_slot": 3,
+            })
+            assert re_mod.cmd_reconcile(
+                edges, 1, mint=SA, cache_meta_path=meta_path) is True
+            Path("camps.json").write_text(
+                json.dumps({"项目方": [SA], "大庄": [SB]}, ensure_ascii=False))
+            re_mod.cmd_evolution(edges, 1, "camps.json", set())
+            write_json(Path("facts.json"), {
+                "token": {"symbol": "ST", "decimals": 0,
+                          "total_supply_raw": "900"},
+                "entities": {"e1": {"label": "大庄#1", "addresses": [SB],
+                                      "current_raw": "300", "peak_raw": "300"}},
+            })
+            source_good = {
+                "schema": "analysis-state-source/v1",
+                "token": {"chain": "solana", "mint": SA,
+                          "data_cutoff_slot": 3,
+                          "data_cutoff": "2026-01-05T00:00:00Z",
+                          "skill_version": "6.39.5"},
+                "entity_annotations": {"e1": {"type": "single",
+                                                "status": "holding"}},
+                "address_balances": {SB: "300"}, "vault_addresses": [],
+                "provenance": {"skill_commit": "batchc-fixround2",
+                               "data_sources": ["sqd"]},
+            }
+            write_json(Path("source.json"), source_good)
+            rr_path = data / "reconcile_receipt.json"
+            rr_good = json.loads(rr_path.read_text())
+            meta_good = json.loads(meta_path.read_text())
+
+            def compile_now():
+                return compile_state_cli(
+                    td, "--series-source", "data/camp_share_series.json")
+
+            assert compile_now().returncode == 0
+
+            def restore_chain(*, compile_state=False):
+                if edge_path.is_symlink() or edge_path.exists():
+                    edge_path.unlink()
+                edge_path.write_bytes(edge_bytes)
+                write_json(meta_path, meta_good)
+                write_json(rr_path, rr_good)
+                re_mod.cmd_evolution(edges, 1, "camps.json", set())
+                write_json(Path("source.json"), source_good)
+                if compile_state:
+                    return compile_now()
+                return None
+
+            def install_external_link(kind):
+                target = link_dir / f"{kind}-same-content.gz"
+                target.write_bytes(edge_bytes)
+                edge_path.unlink()
+                if kind == "symlink":
+                    edge_path.symlink_to(target)
+                else:
+                    os.link(target, edge_path)
+
+            # N-01 consumer：边实物换成案外同内容 symlink，size/sha 均仍相符。
+            install_external_link("symlink")
+            got = compile_now()
+            probe("N01 consumer symlink edge rejects",
+                  got.returncode == 2 and "符号链接" in got.stdout,
+                  got.stdout + got.stderr)
+            restore_chain()
+
+            # N-01 producer：直走 reconcile 入口，同一 symlink 必须在打开前拒绝。
+            install_external_link("symlink")
+            try:
+                re_mod.cmd_reconcile(edges, 1, mint=SA,
+                                     cache_meta_path=meta_path)
+                producer_symlink_rejected = False
+                producer_symlink_detail = "accepted"
+            except (ValueError, SystemExit) as exc:
+                producer_symlink_rejected = "符号链接" in str(exc)
+                producer_symlink_detail = str(exc)
+            probe("N01 producer symlink edge rejects",
+                  producer_symlink_rejected, producer_symlink_detail)
+            restore_chain()
+
+            # hard link 是 importer 的既定落盘方式，两侧均不可误杀。
+            install_external_link("hardlink")
+            try:
+                producer_hardlink_green = re_mod.cmd_reconcile(
+                    edges, 1, mint=SA, cache_meta_path=meta_path) is True
+            except (ValueError, SystemExit):
+                producer_hardlink_green = False
+            if producer_hardlink_green:
+                re_mod.cmd_evolution(edges, 1, "camps.json", set())
+                hardlink_compile = compile_now()
+            else:
+                hardlink_compile = None
+            probe("N01 hardlink producer+consumer green",
+                  producer_hardlink_green and hardlink_compile is not None
+                  and hardlink_compile.returncode == 0,
+                  "producer rejected" if hardlink_compile is None
+                  else hardlink_compile.stdout + hardlink_compile.stderr)
+            restore_chain(compile_state=True)
+
+            def bind_bad_meta(meta_doc):
+                write_json(meta_path, meta_doc)
+                receipt = json.loads(json.dumps(rr_good))
+                receipt["inputs"]["soltx_meta"] = file_ref(meta_path)
+                write_json(rr_path, receipt)
+                re_mod.cmd_evolution(edges, 1, "camps.json", set())
+                return compile_now()
+
+            # N-03：编译点登记 size 与实物不一致必须直拒。
+            bad_meta = json.loads(json.dumps(meta_good))
+            bad_meta["edge_file_size"] = edge_path.stat().st_size + 1
+            got = bind_bad_meta(bad_meta)
+            probe("N03 compile edge_file_size mismatch rejects",
+                  got.returncode == 2 and "edge_file_size" in got.stdout,
+                  got.stdout + got.stderr)
+            restore_chain()
+
+            # N-03：sha 形态分别锚定大写与长度错误。
+            for label, bad_sha in (
+                    ("uppercase", meta_good["edge_file_sha256"].upper()),
+                    ("short", "a" * 63)):
+                bad_meta = json.loads(json.dumps(meta_good))
+                bad_meta["edge_file_sha256"] = bad_sha
+                got = bind_bad_meta(bad_meta)
+                probe(f"N03 compile edge_file_sha256 {label} rejects",
+                      got.returncode == 2 and "小写 sha256" in got.stdout,
+                      got.stdout + got.stderr)
+                restore_chain()
+
+            # N-04：producer 正式 meta 解析挂载点必须拒绝 NaN；字段故意未被业务读取。
+            meta_text = json.dumps(meta_good, ensure_ascii=False)
+            meta_path.write_text(meta_text[:-1] + ', "unused_probe": NaN}')
+            try:
+                re_mod.cmd_reconcile(edges, 1, mint=SA,
+                                     cache_meta_path=meta_path)
+                producer_nan_rejected = False
+                producer_nan_detail = "accepted"
+            except (ValueError, SystemExit) as exc:
+                producer_nan_rejected = "非有限数" in str(exc)
+                producer_nan_detail = str(exc)
+            probe("N04 producer parse_constant mount rejects NaN",
+                  producer_nan_rejected, producer_nan_detail)
+            restore_chain(compile_state=True)
+
+            # N-02：直接走 audit_release_gate.run 的 new-analysis 发布入口。
+            # 同 size 篡改只有 registry_anchor_check 的物理 sha 模式能抓到。
+            write_json(Path("reconciliation_report.json"), {
+                "target": {"chain": "solana", "token": SA,
+                           "as_of_block": 3},
+            })
+            tampered = bytearray(edge_bytes)
+            tampered[-1] ^= 1
+            edge_path.write_bytes(tampered)
+            release_errors = gate_mod.run(td, None, profile="new-analysis")
+            probe("N02 release entry wires physical edge sha",
+                  any("物理 sha256" in item for item in release_errors),
+                  "\n".join(release_errors))
+            restore_chain(compile_state=True)
+
+            # N-05：主入口 state 的 NaN 必须在 JSON 层归类，而非落到逐点比较。
+            state_path = Path("analysis-state.json")
+            state_good = state_path.read_text()
+            state_path.write_text('{"camp_share_series": NaN}')
+            release_errors = gate_mod.run(td, None, profile="new-analysis")
+            probe("N05 release state NaN classified as invalid JSON",
+                  any("JSON无法读取 analysis-state.json" in item
+                      and ("non-finite" in item or "非有限" in item)
+                      for item in release_errors),
+                  "\n".join(release_errors))
+            state_path.write_text(state_good)
+
+            # 同一 loader 对 RecursionError 归类为 policy BLOCK，不向外冒泡。
+            original_loads = gate_mod.json.loads
+            gate_mod.json.loads = lambda *a, **k: (_ for _ in ()).throw(
+                RecursionError("deep release JSON"))
+            recursion_errors = []
+            try:
+                loaded = gate_mod.load_json(state_path, recursion_errors)
+            except RecursionError:
+                loaded = None
+            finally:
+                gate_mod.json.loads = original_loads
+            probe("N05 release loader classifies RecursionError",
+                  loaded == {} and any("JSON无法读取 analysis-state.json" in item
+                                       for item in recursion_errors),
+                  str(recursion_errors))
+        finally:
+            os.chdir(old_cwd)
+
+    if failures:
+        raise AssertionError("BC fixround2 failures:\n" + "\n".join(failures))
+
+
 def main():
     try:
         import duckdb  # noqa: F401
@@ -1851,7 +2089,9 @@ def main():
     t_f09_importer_fail_closed()
     t_fixround1()
     t_fc5_receipt_chain()
-    print(f"PASS: repair batch C (F-05+F-04+fixround1) {len(PASSED)} checks")
+    t_fixround2()
+    print(f"PASS: repair batch C (F-05+F-04+fixround1+fixround2) "
+          f"{len(PASSED)} checks")
     return 0
 
 

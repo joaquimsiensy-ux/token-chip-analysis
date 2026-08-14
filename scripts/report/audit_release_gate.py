@@ -105,11 +105,8 @@ def check_formal_case_chain(data, errors):
 
 
 def load_json(path: Path, errors: list[str]):
-    try:
-        return json.loads(path.read_text(encoding="utf-8"))
-    except Exception as exc:
-        errors.append(f"JSON无法读取 {path.name}: {exc}")
-        return {}
+    """All release JSON mounts share the strict non-finite/depth policy loader."""
+    return load_adversarial_json(path, errors)
 
 
 def status_pass(value, extra=frozenset()) -> bool:
@@ -755,7 +752,7 @@ def check_reproduce_receipt(case_dir: Path, rel, cid, errors: list[str]):
     if output.get("size") != out_path.stat().st_size or output.get("sha256") != sha256_file(out_path):
         errors.append(f"命题 {cid} reproduce 输出大小/哈希漂移")
     try:
-        out_json = json.loads(out_path.read_text(encoding="utf-8"))
+        out_json = load_json(out_path, errors)
         summary = out_json.get("summary") if isinstance(out_json, dict) and "summary" in out_json \
             else out_json
         if receipt.get("summary_sha256") != canonical_json_sha(summary):

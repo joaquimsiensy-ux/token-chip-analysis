@@ -603,6 +603,9 @@ def registry_anchor_check(sidecar: dict, resolved: dict, series_path, *,
         edge_path = meta_path.with_name(f"soltx-{edge_key}.jsonl.gz")
         edge_size = cache_meta.get("edge_file_size")
         edge_sha = cache_meta.get("edge_file_sha256")
+        if edge_path.is_symlink():
+            raise SeriesProvenanceError(
+                f"Solana 边文件是符号链接，拒收: {edge_path.name}")
         if not edge_path.is_file() or edge_path.stat().st_size <= 0:
             raise SeriesProvenanceError(
                 f"Solana 边文件缺失或为空: {edge_path.name}")
