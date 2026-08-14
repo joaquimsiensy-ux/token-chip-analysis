@@ -243,6 +243,10 @@ def consumer_case(root: Path, *, mutate=None, approved=10000,
     bound = receipt["inputs"]["tolerance_waiver"]
     bound["size"] = waiver.stat().st_size
     bound["sha256"] = sha256(waiver)
+    approval = root / "over_cap_approval.json"
+    if "over_cap_approval" in receipt["inputs"] and approval.exists():
+        receipt["inputs"]["over_cap_approval"].update(
+            size=approval.stat().st_size, sha256=sha256(approval))
     (root / "supply_truth.json").write_text(
         json.dumps(receipt, ensure_ascii=False), encoding="utf-8")
     return receipt
@@ -491,6 +495,9 @@ def _rewrite_approval_and_rebind(root: Path, receipt: dict, raw: str):
     waiver_path.write_text(json.dumps(waiver, ensure_ascii=False), encoding="utf-8")
     receipt["inputs"]["tolerance_waiver"].update(
         size=waiver_path.stat().st_size, sha256=sha256(waiver_path))
+    if "over_cap_approval" in receipt["inputs"]:
+        receipt["inputs"]["over_cap_approval"].update(
+            size=approval.stat().st_size, sha256=sha256(approval))
     (root / "supply_truth.json").write_text(
         json.dumps(receipt, ensure_ascii=False), encoding="utf-8")
 
@@ -1046,6 +1053,301 @@ def test_fd_unreadable_files_all_land_on_exit_1():
     assert codes == {"waiver": 1, "evidence": 1}, codes
 
 
+def _assert_archived_policy_reject(root: Path, result, label: str):
+    rc, receipt, stderr = result
+    archives = list(root.glob("supply_truth.json.superseded-*"))
+    assert rc == 2 and receipt is None and len(archives) == 1, (
+        label, rc, receipt, len(archives), stderr)
+    assert "JSON" in stderr or "数值" in stderr or "approval" in stderr, (
+        label, stderr)
+
+
+def _seed_old_pass(root: Path):
+    rc, receipt, stderr = _f10_producer_case(root)
+    assert rc == 0 and receipt is not None, (rc, receipt, stderr)
+    assert (root / "supply_truth.json").exists()
+
+
+def test_fixround_fa1_zero_width_text_end_to_end():
+    """F-A1：三种 Cf 字符逐字段打生产/消费链，waiver 同族字段也覆盖。"""
+    invisible = ("\u200b", "\ufeff", "\u2060")
+    approval_fields = ("nonce", "user_approval", "reported_to_user", "approved_by")
+    for char in invisible:
+        for field in approval_fields:
+            with tempfile.TemporaryDirectory(
+                    prefix="fixround-fa1-approval-p-", dir="/private/tmp") as raw:
+                result = _f10_producer_case(
+                    Path(raw), approval_mutate=lambda a, r, f=field, c=char: a.update({f: c}))
+                _assert_policy_reject(result, f"producer {field} U+{ord(char):04X}")
+            with tempfile.TemporaryDirectory(
+                    prefix="fixround-fa1-approval-c-", dir="/private/tmp") as raw:
+                root = Path(raw)
+                consumer_case(
+                    root, approval_mutate=lambda a, r, f=field, c=char: a.update({f: c}))
+                expect_check_rejection(root, field)
+
+        for field in ("approved_by", "reason"):
+            with tempfile.TemporaryDirectory(
+                    prefix="fixround-fa1-waiver-p-", dir="/private/tmp") as raw:
+                result = _f10_producer_case(
+                    Path(raw), mutate=lambda w, f=field, c=char: w.update({f: c}))
+                _assert_policy_reject(result, f"producer waiver {field} U+{ord(char):04X}")
+            with tempfile.TemporaryDirectory(
+                    prefix="fixround-fa1-waiver-c-", dir="/private/tmp") as raw:
+                root = Path(raw)
+                consumer_case(
+                    root, mutate=lambda w, r, f=field, c=char: w.update({f: c}))
+                expect_check_rejection(root, field)
+
+
+def test_fixround_fa1_meaningful_text_green_controls():
+    for module in (supply, shared):
+        assert module._meaningful_text("  中文批复  ")
+        assert module._meaningful_text("  English approval  ")
+        assert not module._meaningful_text("\u3000")
+
+
+def test_fixround_fa2_giant_integer_end_to_end_and_archive():
+    giant = 10 ** 400
+    with tempfile.TemporaryDirectory(prefix="fixround-fa2-giant-p-", dir="/private/tmp") as raw:
+        root = Path(raw)
+        _seed_old_pass(root)
+        waiver = write_waiver(root, observed=giant, requested=10000)
+        try:
+            result = run_supply(root, waiver=waiver)
+        except OverflowError as exc:
+            raise AssertionError(
+                f"producer escaped OverflowError; live={root.joinpath('supply_truth.json').exists()} "
+                f"archives={len(list(root.glob('supply_truth.json.superseded-*')))}") from exc
+        _assert_archived_policy_reject(root, result, "producer giant integer")
+
+    with tempfile.TemporaryDirectory(prefix="fixround-fa2-giant-c-", dir="/private/tmp") as raw:
+        root = Path(raw)
+        consumer_case(root, observed=giant)
+        expect_check_rejection(root, ("observed_diff_bps", "finite"))
+
+
+def _deep_json() -> str:
+    return "[" * 200_000 + "0" + "]" * 200_000
+
+
+def test_fixround_fa2_deep_waiver_json_both_sides():
+    deep = _deep_json()
+    with tempfile.TemporaryDirectory(prefix="fixround-fa2-waiver-depth-p-", dir="/private/tmp") as raw:
+        root = Path(raw)
+        _seed_old_pass(root)
+        waiver = root / "waiver.json"
+        waiver.write_text(deep, encoding="utf-8")
+        result = run_supply(root, waiver=waiver)
+        _assert_archived_policy_reject(root, result, "producer deep waiver JSON")
+
+    with tempfile.TemporaryDirectory(prefix="fixround-fa2-waiver-depth-c-", dir="/private/tmp") as raw:
+        root = Path(raw)
+        receipt = consumer_case(root)
+        waiver = root / "waiver.json"
+        waiver.write_text(deep, encoding="utf-8")
+        receipt["inputs"]["tolerance_waiver"].update(
+            size=waiver.stat().st_size, sha256=sha256(waiver))
+        (root / "supply_truth.json").write_text(
+            json.dumps(receipt, ensure_ascii=False), encoding="utf-8")
+        expect_check_rejection(root, "JSON")
+
+
+def test_fixround_fa2_deep_approval_json_both_sides():
+    deep = _deep_json()
+    with tempfile.TemporaryDirectory(prefix="fixround-fa2-approval-depth-p-", dir="/private/tmp") as raw:
+        root = Path(raw)
+        _seed_old_pass(root)
+        waiver_path = write_waiver(root)
+        approval = root / "over_cap_approval.json"
+        approval.write_text(deep, encoding="utf-8")
+        waiver = json.loads(waiver_path.read_text(encoding="utf-8"))
+        waiver["over_cap_approval"] = file_ref(root, approval.name)
+        waiver_path.write_text(json.dumps(waiver, ensure_ascii=False), encoding="utf-8")
+        result = run_supply(root, waiver=waiver_path)
+        _assert_archived_policy_reject(root, result, "producer deep approval JSON")
+
+    with tempfile.TemporaryDirectory(prefix="fixround-fa2-approval-depth-c-", dir="/private/tmp") as raw:
+        root = Path(raw)
+        receipt = consumer_case(root)
+        _rewrite_approval_and_rebind(root, receipt, deep)
+        expect_check_rejection(root, "JSON")
+
+
+def test_fixround_fa3_three_value_primary_gate_anchor():
+    """approved=150 是唯一超顶值；actual/observed/tolerance 都是 50。"""
+    with tempfile.TemporaryDirectory(prefix="fixround-fa3-p-", dir="/private/tmp") as raw:
+        _assert_policy_reject(_f10_producer_case(
+            Path(raw), approved=150, observed=50, tolerance=50,
+            replay_mint=9950, total_supply=10000, include_approval=False),
+            "approved-only over-cap")
+
+
+def test_fixround_fa4_library_fourth_value_anchor():
+    waiver = {"observed_diff_bps": 300, "over_cap_approval": None}
+    try:
+        supply.assert_waiver_covers_diff(waiver, 200.0)
+    except supply.TolerancePolicyError:
+        pass
+    else:
+        raise AssertionError("库函数直调未拦 actual diff > 100 且无 over-cap approval")
+
+
+def test_fixround_fa5_nan_defenses_are_independently_anchored():
+    for module in (supply, shared):
+        try:
+            module._reject_constant("NaN")
+        except ValueError:
+            pass
+        else:
+            raise AssertionError(f"{module.__name__}._reject_constant accepted NaN")
+        try:
+            json.loads('{"x": NaN}', parse_constant=module._reject_constant)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError(f"{module.__name__} json.loads accepted NaN")
+        assert not module._finite_number(float("nan"))
+        assert not module._finite_number(float("inf"))
+
+
+def test_fixround_fa6_workflow_wording_matches_contract():
+    text = (ROOT / "references/analyze-workflow.md").read_text(encoding="utf-8")
+    for needle in (
+        "含超出 float 范围的巨整数",
+        "须含实义字符（不可见字符不算）",
+        "凭据内容导致的解析异常归 exit 2",
+        "旧收据自动作废归档",
+    ):
+        assert needle in text, needle
+
+
+def _approval_window(a: dict, days: int):
+    now = datetime.now(timezone.utc)
+    a["user_decided_at_utc"] = utc_z(now - timedelta(hours=1))
+    a["expires_at_utc"] = utc_z(now - timedelta(hours=1) + timedelta(days=days))
+
+
+def test_fixround_fa7_approval_lifetime_both_sides():
+    for days, should_pass in ((29, True), (31, False)):
+        mutate = lambda a, r, d=days: _approval_window(a, d)
+        with tempfile.TemporaryDirectory(prefix=f"fixround-fa7-{days}-p-", dir="/private/tmp") as raw:
+            result = _f10_producer_case(Path(raw), approval_mutate=mutate)
+            if should_pass:
+                rc, receipt, stderr = result
+                assert rc == 0 and receipt is not None, (rc, receipt, stderr)
+            else:
+                _assert_policy_reject(result, f"producer lifetime {days}d")
+        with tempfile.TemporaryDirectory(prefix=f"fixround-fa7-{days}-c-", dir="/private/tmp") as raw:
+            root = Path(raw)
+            consumer_case(root, approval_mutate=mutate)
+            if should_pass:
+                _assert_consumer_pass(root)
+            else:
+                expect_check_rejection(root, ("30", "lifetime", "有效期"))
+
+    def year_9999(a, _root):
+        now = datetime.now(timezone.utc)
+        a["user_decided_at_utc"] = utc_z(now - timedelta(hours=1))
+        a["expires_at_utc"] = "9999-12-31T23:59:59Z"
+
+    with tempfile.TemporaryDirectory(prefix="fixround-fa7-9999-p-", dir="/private/tmp") as raw:
+        _assert_policy_reject(
+            _f10_producer_case(Path(raw), approval_mutate=year_9999), "producer year 9999")
+    with tempfile.TemporaryDirectory(prefix="fixround-fa7-9999-c-", dir="/private/tmp") as raw:
+        root = Path(raw)
+        consumer_case(root, approval_mutate=year_9999)
+        expect_check_rejection(root, ("30", "lifetime", "有效期"))
+
+
+def test_fixround_fa8_approval_receipt_input_binding():
+    with tempfile.TemporaryDirectory(prefix="fixround-fa8-producer-", dir="/private/tmp") as raw:
+        root = Path(raw)
+        rc, receipt, stderr = _f10_producer_case(root)
+        assert rc == 0 and receipt is not None, (rc, receipt, stderr)
+        bound = receipt["inputs"].get("over_cap_approval")
+        assert isinstance(bound, dict), receipt["inputs"]
+        approval = root / "over_cap_approval.json"
+        assert bound["size"] == approval.stat().st_size and bound["sha256"] == sha256(approval)
+
+    with tempfile.TemporaryDirectory(prefix="fixround-fa8-consumer-missing-", dir="/private/tmp") as raw:
+        root = Path(raw)
+        receipt = consumer_case(root)
+        receipt["inputs"].pop("over_cap_approval", None)
+        (root / "supply_truth.json").write_text(
+            json.dumps(receipt, ensure_ascii=False), encoding="utf-8")
+        expect_check_rejection(root, "over_cap_approval")
+
+    with tempfile.TemporaryDirectory(prefix="fixround-fa8-consumer-other-", dir="/private/tmp") as raw:
+        root = Path(raw)
+        receipt = consumer_case(root)
+        source = root / "over_cap_approval.json"
+        other = root / "other_approval.json"
+        other.write_bytes(source.read_bytes())
+        receipt["inputs"]["over_cap_approval"] = file_ref(root, other.name)
+        (root / "supply_truth.json").write_text(
+            json.dumps(receipt, ensure_ascii=False), encoding="utf-8")
+        expect_check_rejection(root, ("same file", "同一实物", "does not bind"))
+
+
+def test_fixround_fa9_approval_cannot_double_as_evidence():
+    with tempfile.TemporaryDirectory(prefix="fixround-fa9-p-", dir="/private/tmp") as raw:
+        root = Path(raw)
+        (root / "replay_stats.json").write_text(
+            json.dumps({"mint_total_raw": "1", "burn_total_raw": "0"}), encoding="utf-8")
+        waiver_path = write_waiver(root)
+        waiver = json.loads(waiver_path.read_text(encoding="utf-8"))
+        waiver["evidence_refs"] = [dict(waiver["over_cap_approval"])]
+        waiver_path.write_text(json.dumps(waiver, ensure_ascii=False), encoding="utf-8")
+        _assert_policy_reject(run_supply(root, waiver=waiver_path), "approval as evidence")
+
+    with tempfile.TemporaryDirectory(prefix="fixround-fa9-c-", dir="/private/tmp") as raw:
+        root = Path(raw)
+        receipt = consumer_case(root)
+        waiver_path = root / "waiver.json"
+        waiver = json.loads(waiver_path.read_text(encoding="utf-8"))
+        waiver["evidence_refs"] = [dict(waiver["over_cap_approval"])]
+        waiver_path.write_text(json.dumps(waiver, ensure_ascii=False), encoding="utf-8")
+        receipt["inputs"]["tolerance_waiver"].update(
+            size=waiver_path.stat().st_size, sha256=sha256(waiver_path))
+        (root / "supply_truth.json").write_text(
+            json.dumps(receipt, ensure_ascii=False), encoding="utf-8")
+        expect_check_rejection(root, ("approval", "独立"))
+
+
+def test_fixround_fa10_two_side_behavior_vectors():
+    finite_vectors = (
+        (0, {}, True), (10.5, {}, True), (-1, {}, False),
+        (True, {}, False), (float("nan"), {}, False), (float("inf"), {}, False),
+        (10 ** 400, {}, False), (3, {"integer": True}, True),
+        (3.0, {"integer": True}, False),
+    )
+    for value, kwargs, expected in finite_vectors:
+        producer = supply._finite_number(value, **kwargs)
+        consumer = shared._finite_number(value, **kwargs)
+        assert producer == consumer == expected, (value, kwargs, producer, consumer)
+
+    text_vectors = (
+        ("", False), ("   ", False), ("\u3000", False),
+        ("\u200b", False), ("\ufeff", False), ("\u2060", False),
+        (" 中文 ", True), (" English ", True),
+    )
+    for value, expected in text_vectors:
+        producer = supply._meaningful_text(value)
+        consumer = shared._meaningful_text(value)
+        assert producer == consumer == expected, (repr(value), producer, consumer)
+
+    requests = (
+        {"a": 1, "b": "中文"},
+        {"target": TARGET, "observed_diff_bps": 50,
+         "requested_tolerance_bps": 50, "replay_stats": {"path": "x"},
+         "reason": "r"},
+    )
+    for request in requests:
+        assert (supply._canonical_request_sha256(request)
+                == shared._canonical_request_sha256(request))
+
+
 def main():
     tests = [
         test_f01_no_code_failure_receipt_keeps_tip,
@@ -1073,6 +1375,19 @@ def main():
         test_n1_replay_stats_must_live_inside_case_root,
         test_n2_solana_onchain_bound_to_bundle_amount,
         test_n2_solana_honest_receipt_still_passes,
+        test_fixround_fa1_zero_width_text_end_to_end,
+        test_fixround_fa1_meaningful_text_green_controls,
+        test_fixround_fa2_giant_integer_end_to_end_and_archive,
+        test_fixround_fa2_deep_waiver_json_both_sides,
+        test_fixround_fa2_deep_approval_json_both_sides,
+        test_fixround_fa3_three_value_primary_gate_anchor,
+        test_fixround_fa4_library_fourth_value_anchor,
+        test_fixround_fa5_nan_defenses_are_independently_anchored,
+        test_fixround_fa6_workflow_wording_matches_contract,
+        test_fixround_fa7_approval_lifetime_both_sides,
+        test_fixround_fa8_approval_receipt_input_binding,
+        test_fixround_fa9_approval_cannot_double_as_evidence,
+        test_fixround_fa10_two_side_behavior_vectors,
     ]
     failed = []
     for test in tests:

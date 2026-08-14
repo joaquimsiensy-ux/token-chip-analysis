@@ -65,7 +65,7 @@
    `casebook/supply-accounting-methods.md` 的触发现象与区分检验。
 3. **供给真值闸（v6 新增，重放收尾必跑）**：`python3 scripts/lib/supply_truth_gate.py --chain <链> --token 0x…|--mint <mint> --as-of-block <冻结块或slot> --replay-stats <replay_stats.json> --out supply_truth.json`——产 `supply-truth-receipt/v3` 并绑定 target。主规则按形态①对比 `mint−burn` 与链上 `totalSupply()`；EVM 主 FAIL 且拆分统计齐全时，形态②自动要求 `mint==totalSupply`、ZERO/dead 各自与冻结块 `balanceOf` 逐地址相等、两 sink 合计与 burn 闭合。这里只证明终态标量与 sink 逐地址归因闭合；混合形态、旧 stats 或任一观测失败均维持 fail-closed（见 casebook S-01/S-11）。
 
-   容差政策按以下三段执行；`approved_tolerance_bps`、`observed_diff_bps`、本次申请 `tolerance_bps` 与消费侧独立重算的实际偏差四值取最大值定区，所有 waiver/approval 数值必须有限，JSON 中 `NaN`、`Infinity`、`-Infinity` 一律拒绝。
+   容差政策按以下三段执行；`approved_tolerance_bps`、`observed_diff_bps`、本次申请 `tolerance_bps` 与消费侧独立重算的实际偏差四值取最大值定区，所有 waiver/approval 数值必须有限（含超出 float 范围的巨整数一律拒绝），JSON 中 `NaN`、`Infinity`、`-Infinity` 一律拒绝。
 
    | 最大值 | 放行凭据 |
    |---|---|
@@ -73,11 +73,11 @@
    | >10bps 且 ≤100bps | 必须有合法 `tolerance-waiver/v1` 普通人工豁免单 |
    | >100bps | waiver 之外，必须再绑定独立 `over-cap-approval/v1` 用户特批收据；缺件或验不过即政策拒绝 |
 
-   `tolerance-waiver/v1` 必须写明批准容差、裁决人、UTC 决定时间、本次实际偏差 `observed_diff_bps`、与本次全等的 target、绑定本次 `--replay-stats` 的 path/size/sha256，以及至少一份独立于 replay_stats 自身的人工核对证据与理由。`over-cap-approval/v1` 必须以安全相对 path/size/sha256 绑定在 waiver 同目录，request 逐项绑定 target、记录偏差、申请容差、replay_stats 实物与理由；生产侧和消费侧都独立重算 request 规范 JSON 的 `request_sha256`，并校验非空 nonce、有效期、用户批复原文、已向用户报告的偏差原因、批准主体与决定时间。非超顶区若主动挂了 approval 引用，也必须完整验真。
+   `tolerance-waiver/v1` 必须写明批准容差、裁决人、UTC 决定时间、本次实际偏差 `observed_diff_bps`、与本次全等的 target、绑定本次 `--replay-stats` 的 path/size/sha256，以及至少一份独立于 replay_stats 和 over-cap approval 的人工核对证据与理由；所有人工文本字段须含实义字符（不可见字符不算）。`over-cap-approval/v1` 必须以安全相对 path/size/sha256 绑定在 waiver 同目录，并同时进入 supply truth 收据 `inputs`；request 逐项绑定 target、记录偏差、申请容差、replay_stats 实物与理由；生产侧和消费侧都独立重算 request 规范 JSON 的 `request_sha256`，并校验 nonce、有效期不超过 30 天、用户批复原文、已向用户报告的偏差原因、批准主体与决定时间。非超顶区若主动挂了 approval 引用，也必须完整验真。
 
    **流程要求**：Fable 必须在当前会话内向用户如实报告偏差原因并取得明确批复后，才可写 `over-cap-approval/v1`；不得把普通 waiver 自行升级成用户特批。此设计防工作流走捷径/误操作，不防持同用户权限的恶意进程。
 
-   **退出语义**：exit 0＝PASS。exit 2 有两种情况，看有没有落收据来分：落了收据＝FAIL，该币余额禁用重放结果并改 Multicall3/RPC 实时直查（地址全集与转账历史仍可用重放，重放余额仅作 ≥阈值超集筛选）；没落收据＝容差政策拒绝（缺 waiver/approval、凭据不合法或未覆盖本次实际偏差），不是 FAIL。政策拒绝会把上一轮旧收据自动作废归档为 `supply_truth.json.superseded-<UTC>`，归档失败升格 exit 1。exit 1＝检测自身失败（含凭据文件读不动等通道故障），修通道重跑，禁当 PASS。
+   **退出语义**：exit 0＝PASS。exit 2 有两种情况，看有没有落收据来分：落了收据＝FAIL，该币余额禁用重放结果并改 Multicall3/RPC 实时直查（地址全集与转账历史仍可用重放，重放余额仅作 ≥阈值超集筛选）；没落收据＝容差政策拒绝（缺 waiver/approval、凭据不合法或未覆盖本次实际偏差），不是 FAIL。政策拒绝会把上一轮旧收据自动作废归档为 `supply_truth.json.superseded-<UTC>`，归档失败升格 exit 1；凭据内容导致的解析异常归 exit 2，同样履行旧收据自动作废归档。exit 1＝检测自身失败（含凭据文件读不动等通道故障），修通道重跑，禁当 PASS。
 4. **时间抽查**：EVM 走分层计划制——先跑 `scripts/lib/anchor_plan.py` 出抽样计划，再跑 `scripts/lib/time_spotcheck.py --chain <链> --final-block <冻结块>` 对独立第二源逐锚点核对，产绑定 target 的 `time-spotcheck/v2`；纯随机锚点容易漏高风险位置。Solana 走 `anchor_sampler.py --as-of-slot <冻结slot> --receipt <回执>`，任一失败日 exit 2。第二源分层选型与全史重拉例外见 evm-recon §13。注意本查不替代供给闭合。
 
 对不上＝数据有洞＝回去补，不许"差不多就行"。

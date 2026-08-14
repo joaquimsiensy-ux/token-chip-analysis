@@ -8,6 +8,7 @@ import json
 import math
 import os
 import sys
+import unicodedata
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -111,9 +112,23 @@ def _reject_constant(value: str):
 def _finite_number(value, *, integer=False, minimum=0) -> bool:
     if isinstance(value, bool) or not isinstance(value, int if integer else (int, float)):
         return False
+    if isinstance(value, int):
+        try:
+            float(value)
+        except OverflowError:
+            return False
     if isinstance(value, float) and not math.isfinite(value):
         return False
     return value >= minimum
+
+
+def _meaningful_text(value) -> bool:
+    """文本至少含一个非空白、非 Unicode 控制/格式/分隔符字符。"""
+    if not isinstance(value, str):
+        return False
+    excluded = {"Cf", "Cc", "Zs", "Zl", "Zp"}
+    return any(not char.isspace() and unicodedata.category(char) not in excluded
+               for char in value)
 
 
 def _canonical_request_sha256(request: dict) -> str:
@@ -144,7 +159,7 @@ def _validate_over_cap_approval(root, waiver_path: Path, waiver: dict, ref,
             f"over-cap approval file read failed (channel failure): {exc}") from exc
     try:
         approval = json.loads(approval_text, parse_constant=_reject_constant)
-    except (json.JSONDecodeError, ValueError) as exc:
+    except (json.JSONDecodeError, ValueError, RecursionError) as exc:
         raise ValueError(f"over-cap approval JSON invalid: {exc}") from exc
     required = {
         "schema", "request", "request_sha256", "nonce", "expires_at_utc",
@@ -186,8 +201,7 @@ def _validate_over_cap_approval(root, waiver_path: Path, waiver: dict, ref,
     _require(approval_replay == replay_path,
              "over-cap approval request.replay_stats does not bind waiver input")
     for label in ("nonce", "user_approval", "reported_to_user", "approved_by"):
-        _require(isinstance(approval.get(label), str)
-                 and bool(approval[label].strip()),
+        _require(_meaningful_text(approval.get(label)),
                  f"over-cap approval {label} invalid")
     decided_at = _utc_datetime(
         approval.get("user_decided_at_utc"),
@@ -199,6 +213,8 @@ def _validate_over_cap_approval(root, waiver_path: Path, waiver: dict, ref,
              "over-cap approval user_decided_at_utc later than now+1d")
     _require(expires_at > decided_at,
              "over-cap approval expires_at_utc must follow user_decided_at_utc")
+    _require(expires_at - decided_at <= timedelta(days=30),
+             "over-cap approval lifetime must not exceed 30 days")
     _require(expires_at > now, "over-cap approval expired")
     return approval
 
@@ -334,7 +350,7 @@ def _validate_tolerance_policy(root, receipt, target):
             f"tolerance waiver 文件读取失败（通道故障，非政策问题）: {exc}") from exc
     try:
         waiver = json.loads(waiver_text, parse_constant=_reject_constant)
-    except (json.JSONDecodeError, ValueError) as exc:
+    except (json.JSONDecodeError, ValueError, RecursionError) as exc:
         raise ValueError(f"tolerance waiver JSON invalid: {exc}") from exc
     required = {
         "schema", "approved_tolerance_bps", "approved_by", "user_decided_at_utc",
@@ -360,14 +376,13 @@ def _validate_tolerance_policy(root, receipt, target):
     _require(actual_diff <= float(observed_diff),
              "supply_truth 实际偏差超过 tolerance waiver 记录的 observed_diff_bps"
              "——裁决人没见过这么大的偏差，该收据失效须重新人工裁决")
-    _require(isinstance(waiver.get("approved_by"), str)
-             and bool(waiver["approved_by"].strip()),
+    _require(_meaningful_text(waiver.get("approved_by")),
              "tolerance waiver approved_by invalid")
     _utc_datetime(waiver.get("user_decided_at_utc"),
                   "tolerance waiver user_decided_at_utc")
     _require(waiver.get("target") == target,
              "tolerance waiver target mismatch")
-    _require(isinstance(waiver.get("reason"), str) and bool(waiver["reason"].strip()),
+    _require(_meaningful_text(waiver.get("reason")),
              "tolerance waiver reason invalid")
     waiver_replay = _bound_case_ref(
         root, waiver.get("replay_stats"), "tolerance waiver replay_stats",
@@ -377,10 +392,12 @@ def _validate_tolerance_policy(root, receipt, target):
     evidence_refs = waiver.get("evidence_refs")
     _require(isinstance(evidence_refs, list) and bool(evidence_refs),
              "tolerance waiver evidence_refs invalid")
+    evidence_paths = []
     for index, ref in enumerate(evidence_refs):
         evidence_path = _bound_case_ref(
             root, ref, f"tolerance waiver evidence_refs[{index}]",
             base=waiver_path.parent)
+        evidence_paths.append(evidence_path)
         # 人工核对证据不能就是被豁免的那份输入自身（F-E）。
         _require(evidence_path != waiver_replay,
                  f"tolerance waiver evidence_refs[{index}] 不得指向 replay_stats 输入自身")
@@ -390,6 +407,18 @@ def _validate_tolerance_policy(root, receipt, target):
     _require(not over_cap or over_cap_ref is not None,
              f"tolerance waiver above {WAIVER_TOLERANCE_BPS_CAP}bps lacks over-cap approval")
     if over_cap_ref is not None:
+        approval_path = _bound_case_ref(
+            root, over_cap_ref, "tolerance waiver over-cap approval",
+            base=waiver_path.parent)
+        _require(approval_path not in evidence_paths,
+                 "tolerance waiver evidence_refs must be independent of over-cap approval")
+        approval_input = inputs.get("over_cap_approval")
+        _require(isinstance(approval_input, dict),
+                 "supply_truth receipt inputs missing over_cap_approval")
+        receipt_approval_path = _bound_case_ref(
+            root, approval_input, "supply_truth receipt over_cap_approval")
+        _require(receipt_approval_path == approval_path,
+                 "supply_truth receipt over_cap_approval does not bind waiver same file")
         _validate_over_cap_approval(
             root, waiver_path, waiver, over_cap_ref, tolerance=tolerance,
             replay_path=waiver_replay)
