@@ -5,9 +5,10 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import math
 import os
 import sys
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -17,7 +18,8 @@ sys.path.insert(0, str(HERE.parent / "lib"))
 from adversarial_review_runner import validate_review_receipt
 from chain_registry import recon_adapter_for, resolve_alias
 from receipt_validate import validate_receipt
-from supply_truth_gate import (FORMAL_TOLERANCE_BPS_MAX, decide,
+from supply_truth_gate import (FORMAL_TOLERANCE_BPS_MAX,
+                               WAIVER_TOLERANCE_BPS_CAP, decide,
                                parse_replay_stats)
 
 FILES = ("accounting_mode.json", "reconciliation_report.json", "adversarial_review.json")
@@ -91,6 +93,105 @@ def chain_family(chain):
 def _require(condition, message):
     if not condition:
         raise ValueError(message)
+
+
+def _reject_constant(value: str):
+    raise ValueError(f"JSON non-finite number {value} is forbidden")
+
+
+def _finite_number(value, *, integer=False, minimum=0) -> bool:
+    if isinstance(value, bool) or not isinstance(value, int if integer else (int, float)):
+        return False
+    if isinstance(value, float) and not math.isfinite(value):
+        return False
+    return value >= minimum
+
+
+def _canonical_request_sha256(request: dict) -> str:
+    canonical = json.dumps(request, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def _utc_datetime(value, label: str) -> datetime:
+    try:
+        if not isinstance(value, str) or not value.endswith("Z"):
+            raise ValueError
+        parsed = datetime.fromisoformat(value[:-1] + "+00:00")
+        if parsed.utcoffset() != timedelta(0):
+            raise ValueError
+        return parsed
+    except ValueError as exc:
+        raise ValueError(f"{label} invalid") from exc
+
+
+def _validate_over_cap_approval(root, waiver_path: Path, waiver: dict, ref,
+                                *, tolerance: int, replay_path: Path):
+    approval_path = _bound_case_ref(
+        root, ref, "tolerance waiver over-cap approval", base=waiver_path.parent)
+    try:
+        approval_text = approval_path.read_text(encoding="utf-8")
+    except OSError as exc:
+        raise ValueError(
+            f"over-cap approval file read failed (channel failure): {exc}") from exc
+    try:
+        approval = json.loads(approval_text, parse_constant=_reject_constant)
+    except (json.JSONDecodeError, ValueError) as exc:
+        raise ValueError(f"over-cap approval JSON invalid: {exc}") from exc
+    required = {
+        "schema", "request", "request_sha256", "nonce", "expires_at_utc",
+        "user_approval", "reported_to_user", "approved_by", "user_decided_at_utc",
+    }
+    _require(isinstance(approval, dict)
+             and all(key in approval and approval.get(key) is not None
+                     for key in required),
+             "over-cap approval schema or required fields incomplete")
+    _require(approval.get("schema") == "over-cap-approval/v1",
+             "over-cap approval schema invalid")
+    request = approval.get("request")
+    request_keys = {
+        "target", "observed_diff_bps", "requested_tolerance_bps",
+        "replay_stats", "reason",
+    }
+    _require(isinstance(request, dict) and set(request) == request_keys,
+             "over-cap approval request fields invalid")
+    request_observed = request.get("observed_diff_bps")
+    request_tolerance = request.get("requested_tolerance_bps")
+    _require(_finite_number(request_observed),
+             "over-cap approval request.observed_diff_bps must be finite and non-negative")
+    _require(_finite_number(request_tolerance, integer=True),
+             "over-cap approval request.requested_tolerance_bps must be finite non-negative integer")
+    recomputed_sha = _canonical_request_sha256(request)
+    _require(approval.get("request_sha256") == recomputed_sha,
+             "over-cap approval request_sha256 mismatch against independent recomputation")
+    _require(request.get("target") == waiver.get("target"),
+             "over-cap approval request.target mismatch")
+    _require(request_observed == waiver.get("observed_diff_bps"),
+             "over-cap approval request.observed_diff_bps mismatch")
+    _require(request_tolerance == tolerance,
+             "over-cap approval request.requested_tolerance_bps mismatch")
+    _require(request.get("reason") == waiver.get("reason"),
+             "over-cap approval request.reason mismatch")
+    approval_replay = _bound_case_ref(
+        root, request.get("replay_stats"),
+        "over-cap approval request.replay_stats", base=approval_path.parent)
+    _require(approval_replay == replay_path,
+             "over-cap approval request.replay_stats does not bind waiver input")
+    for label in ("nonce", "user_approval", "reported_to_user", "approved_by"):
+        _require(isinstance(approval.get(label), str)
+                 and bool(approval[label].strip()),
+                 f"over-cap approval {label} invalid")
+    decided_at = _utc_datetime(
+        approval.get("user_decided_at_utc"),
+        "over-cap approval user_decided_at_utc")
+    expires_at = _utc_datetime(
+        approval.get("expires_at_utc"), "over-cap approval expires_at_utc")
+    now = datetime.now(timezone.utc)
+    _require(decided_at <= now + timedelta(days=1),
+             "over-cap approval user_decided_at_utc later than now+1d")
+    _require(expires_at > decided_at,
+             "over-cap approval expires_at_utc must follow user_decided_at_utc")
+    _require(expires_at > now, "over-cap approval expired")
+    return approval
 
 
 def canonical_target(target):
@@ -223,8 +324,8 @@ def _validate_tolerance_policy(root, receipt, target):
         raise ValueError(
             f"tolerance waiver 文件读取失败（通道故障，非政策问题）: {exc}") from exc
     try:
-        waiver = json.loads(waiver_text)
-    except json.JSONDecodeError as exc:
+        waiver = json.loads(waiver_text, parse_constant=_reject_constant)
+    except (json.JSONDecodeError, ValueError) as exc:
         raise ValueError(f"tolerance waiver JSON invalid: {exc}") from exc
     required = {
         "schema", "approved_tolerance_bps", "approved_by", "user_decided_at_utc",
@@ -237,29 +338,24 @@ def _validate_tolerance_policy(root, receipt, target):
     _require(waiver.get("schema") == "tolerance-waiver/v1",
              "tolerance waiver schema invalid")
     approved = waiver.get("approved_tolerance_bps")
-    _require(not isinstance(approved, bool) and isinstance(approved, int)
-             and 0 <= tolerance <= approved,
-             "supply_truth tolerance exceeds waiver approved_tolerance_bps")
+    _require(_finite_number(approved, integer=True),
+             "tolerance waiver approved_tolerance_bps invalid")
     observed_diff = waiver.get("observed_diff_bps")
-    _require(not isinstance(observed_diff, bool)
-             and isinstance(observed_diff, (int, float)) and observed_diff >= 0,
+    _require(_finite_number(observed_diff),
              "tolerance waiver observed_diff_bps invalid")
     # 本次实际偏差必须落在裁决人签字时看到的偏差之内；比较值取自同一个 decide()，
     # 与生产侧同源，不会在浮点边界上分叉（F-E）。
-    _require(float(0.0 if recomputed_diff_bps is None else recomputed_diff_bps)
-             <= float(observed_diff),
+    actual_diff = float(0.0 if recomputed_diff_bps is None else recomputed_diff_bps)
+    _require(math.isfinite(actual_diff),
+             "supply_truth recomputed actual diff must be finite")
+    _require(actual_diff <= float(observed_diff),
              "supply_truth 实际偏差超过 tolerance waiver 记录的 observed_diff_bps"
              "——裁决人没见过这么大的偏差，该收据失效须重新人工裁决")
     _require(isinstance(waiver.get("approved_by"), str)
              and bool(waiver["approved_by"].strip()),
              "tolerance waiver approved_by invalid")
-    decided_at = waiver.get("user_decided_at_utc")
-    try:
-        if not isinstance(decided_at, str) or not decided_at.endswith("Z"):
-            raise ValueError
-        datetime.fromisoformat(decided_at[:-1] + "+00:00")
-    except ValueError as exc:
-        raise ValueError("tolerance waiver user_decided_at_utc invalid") from exc
+    _utc_datetime(waiver.get("user_decided_at_utc"),
+                  "tolerance waiver user_decided_at_utc")
     _require(waiver.get("target") == target,
              "tolerance waiver target mismatch")
     _require(isinstance(waiver.get("reason"), str) and bool(waiver["reason"].strip()),
@@ -279,6 +375,17 @@ def _validate_tolerance_policy(root, receipt, target):
         # 人工核对证据不能就是被豁免的那份输入自身（F-E）。
         _require(evidence_path != waiver_replay,
                  f"tolerance waiver evidence_refs[{index}] 不得指向 replay_stats 输入自身")
+    over_cap_ref = waiver.get("over_cap_approval")
+    over_cap = any(value > WAIVER_TOLERANCE_BPS_CAP for value in
+                   (approved, observed_diff, tolerance, actual_diff))
+    _require(not over_cap or over_cap_ref is not None,
+             f"tolerance waiver above {WAIVER_TOLERANCE_BPS_CAP}bps lacks over-cap approval")
+    if over_cap_ref is not None:
+        _validate_over_cap_approval(
+            root, waiver_path, waiver, over_cap_ref, tolerance=tolerance,
+            replay_path=waiver_replay)
+    _require(tolerance <= approved,
+             "supply_truth tolerance exceeds waiver approved_tolerance_bps")
 
 
 def validate_reconciliation_check(root, key, item, target, family):

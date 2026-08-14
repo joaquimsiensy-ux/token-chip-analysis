@@ -283,6 +283,7 @@
   },
   {
    "schemas": [
+    "over-cap-approval/v1",
     "tolerance-waiver/v1"
    ],
    "script": "scripts/lib/supply_truth_gate.py"
@@ -420,6 +421,7 @@
     "solana-observation-bundle/v1",
     "supply-truth-receipt/v3",
     "time-spotcheck/v2",
+    "over-cap-approval/v1",
     "tolerance-waiver/v1"
    ],
    "script": "scripts/report/shared_release_receipt.py"

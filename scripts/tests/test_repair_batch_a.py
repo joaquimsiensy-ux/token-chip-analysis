@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""2026-08-13 修复批 A：F-01/F-02 先红后绿回归。"""
+"""2026-08-13 修复批 A＋2026-08-14 F-10 先红后绿回归。"""
 from __future__ import annotations
 
 import contextlib
@@ -10,6 +10,7 @@ import os
 import subprocess
 import sys
 import tempfile
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest import mock
 
@@ -75,10 +76,49 @@ class SinkPool(SupplyPool):
 
 # 夹具固定跑 mint=1/burn=0 对链上 100 → decide() 算出的实际偏差恒为 9900.0bps。
 FIXTURE_DIFF_BPS = 9900.0
+WAIVER_REASON = "特殊迁移币已人工核对，批准本次供给真值容差。"
+
+
+def utc_z(value: datetime) -> str:
+    return value.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+
+
+def request_sha256(request: dict) -> str:
+    canonical = json.dumps(request, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def write_over_cap_approval(root: Path, waiver: dict, *, requested: int,
+                            mutate=None, name="over_cap_approval.json") -> Path:
+    now = datetime.now(timezone.utc)
+    request = {
+        "target": dict(waiver["target"]),
+        "observed_diff_bps": waiver["observed_diff_bps"],
+        "requested_tolerance_bps": requested,
+        "replay_stats": dict(waiver["replay_stats"]),
+        "reason": waiver["reason"],
+    }
+    approval = {
+        "schema": "over-cap-approval/v1",
+        "request": request,
+        "request_sha256": request_sha256(request),
+        "nonce": "f10-test-nonce-" + hashlib.sha256(str(root).encode()).hexdigest()[:16],
+        "expires_at_utc": utc_z(now + timedelta(days=1)),
+        "user_approval": "用户已看到偏差原因并批准本次超顶容差。",
+        "reported_to_user": "本次重放与链上供给存在迁移期静默改账偏差。",
+        "approved_by": "risk-committee@example.test",
+        "user_decided_at_utc": utc_z(now - timedelta(hours=1)),
+    }
+    if mutate:
+        mutate(approval, root)
+    path = root / name
+    path.write_text(json.dumps(approval, ensure_ascii=False), encoding="utf-8")
+    return path
 
 
 def write_waiver(root: Path, *, approved=10000, observed=FIXTURE_DIFF_BPS,
-                 mutate=None) -> Path:
+                 requested=10000, mutate=None, include_approval=None,
+                 approval_mutate=None, approval_ref_mutate=None) -> Path:
     (root / "evidence.txt").write_text("human adjudication evidence\n", encoding="utf-8")
     waiver = {
         "schema": "tolerance-waiver/v1",
@@ -89,19 +129,34 @@ def write_waiver(root: Path, *, approved=10000, observed=FIXTURE_DIFF_BPS,
         "target": dict(TARGET),
         "replay_stats": file_ref(root, "replay_stats.json"),
         "evidence_refs": [file_ref(root, "evidence.txt")],
-        "reason": "特殊迁移币已人工核对，批准本次供给真值容差。",
+        "reason": WAIVER_REASON,
     }
     if mutate:
         mutate(waiver)
+    if include_approval is None:
+        finite = [value for value in (approved, observed, requested)
+                  if isinstance(value, (int, float)) and not isinstance(value, bool)]
+        approval_fields_present = all(
+            key in waiver for key in ("target", "observed_diff_bps", "replay_stats", "reason"))
+        include_approval = approval_fields_present and bool(finite) and max(finite) > 100
+    if include_approval:
+        approval = write_over_cap_approval(
+            root, waiver, requested=requested, mutate=approval_mutate)
+        approval_ref = file_ref(root, approval.name)
+        if approval_ref_mutate:
+            approval_ref_mutate(approval_ref)
+        waiver["over_cap_approval"] = approval_ref
     path = root / "waiver.json"
     path.write_text(json.dumps(waiver, ensure_ascii=False), encoding="utf-8")
     return path
 
 
 def run_supply(root: Path, *, tolerance=10000, waiver: Path | None = None,
-               exploration=False):
+               exploration=False, replay_mint=1, replay_burn=0,
+               total_supply=100):
     stats = root / "replay_stats.json"
-    stats.write_text(json.dumps({"mint_total_raw": "1", "burn_total_raw": "0"}),
+    stats.write_text(json.dumps({"mint_total_raw": str(replay_mint),
+                                 "burn_total_raw": str(replay_burn)}),
                      encoding="utf-8")
     out = root / "supply_truth.json"
     argv = [
@@ -117,7 +172,7 @@ def run_supply(root: Path, *, tolerance=10000, waiver: Path | None = None,
         argv += ["--tolerance-waiver", str(waiver)]
     stderr = __import__("io").StringIO()
     with chdir(root), mock.patch.object(
-            supply, "attested_rpc_pool", return_value=SupplyPool(100)), \
+            supply, "attested_rpc_pool", return_value=SupplyPool(total_supply)), \
             contextlib.redirect_stderr(stderr):
         try:
             rc = supply.main(argv)
@@ -156,7 +211,11 @@ def expect_check_rejection(root: Path, needle, family: str = "evm"):
 
 
 def consumer_case(root: Path, *, mutate=None, approved=10000,
-                  observed=FIXTURE_DIFF_BPS, prepare=None):
+                  observed=FIXTURE_DIFF_BPS, prepare=None, tolerance=10000,
+                  replay_mint=1, replay_burn=0, total_supply=100,
+                  include_approval=None, approval_mutate=None,
+                  approval_ref_mutate=None, initial_approved=None,
+                  initial_observed=None):
     """先用一张合法 waiver 跑通 producer，再把案根里的 waiver 换成变异版，
     并把收据 inputs 的 size/sha 重新绑到新实物上。
 
@@ -164,14 +223,23 @@ def consumer_case(root: Path, *, mutate=None, approved=10000,
     根本轮不到消费侧这批新校验出手——F-C 指出的正是这种"看着有测其实没测"。
     """
     (root / "replay_stats.json").write_text(
-        json.dumps({"mint_total_raw": "1", "burn_total_raw": "0"}), encoding="utf-8")
-    waiver = write_waiver(root)
-    rc, receipt, stderr = run_supply(root, waiver=waiver)
+        json.dumps({"mint_total_raw": str(replay_mint),
+                    "burn_total_raw": str(replay_burn)}), encoding="utf-8")
+    seed_approved = 10000 if initial_approved is None else initial_approved
+    seed_observed = FIXTURE_DIFF_BPS if initial_observed is None else initial_observed
+    waiver = write_waiver(root, approved=seed_approved, observed=seed_observed,
+                          requested=tolerance, include_approval=True)
+    rc, receipt, stderr = run_supply(
+        root, waiver=waiver, tolerance=tolerance, replay_mint=replay_mint,
+        replay_burn=replay_burn, total_supply=total_supply)
     assert rc == 0 and receipt is not None, (rc, stderr)
     if prepare is not None:
         prepare(root)
-    write_waiver(root, approved=approved, observed=observed,
-                 mutate=(lambda body: mutate(body, root)) if mutate else None)
+    write_waiver(root, approved=approved, observed=observed, requested=tolerance,
+                 mutate=(lambda body: mutate(body, root)) if mutate else None,
+                 include_approval=include_approval,
+                 approval_mutate=approval_mutate,
+                 approval_ref_mutate=approval_ref_mutate)
     bound = receipt["inputs"]["tolerance_waiver"]
     bound["size"] = waiver.stat().st_size
     bound["sha256"] = sha256(waiver)
@@ -382,6 +450,280 @@ def test_f02_waiver_swap_integrity_counterexample():
 def test_f02_tolerance_cap_uses_producer_constant():
     assert (shared.FORMAL_TOLERANCE_BPS_MAX
             == supply.FORMAL_TOLERANCE_BPS_MAX)
+    assert (shared.WAIVER_TOLERANCE_BPS_CAP
+            == supply.WAIVER_TOLERANCE_BPS_CAP == 100)
+
+
+def _f10_producer_case(root: Path, *, approved=10000, observed=FIXTURE_DIFF_BPS,
+                       tolerance=10000, replay_mint=1, replay_burn=0,
+                       total_supply=100, include_approval=None, mutate=None,
+                       approval_mutate=None, approval_ref_mutate=None):
+    (root / "replay_stats.json").write_text(
+        json.dumps({"mint_total_raw": str(replay_mint),
+                    "burn_total_raw": str(replay_burn)}), encoding="utf-8")
+    waiver = write_waiver(
+        root, approved=approved, observed=observed, requested=tolerance,
+        include_approval=include_approval, mutate=mutate,
+        approval_mutate=approval_mutate,
+        approval_ref_mutate=approval_ref_mutate)
+    return run_supply(
+        root, waiver=waiver, tolerance=tolerance, replay_mint=replay_mint,
+        replay_burn=replay_burn, total_supply=total_supply)
+
+
+def _assert_policy_reject(result, label):
+    rc, receipt, stderr = result
+    assert rc == 2 and receipt is None, (label, rc, receipt, stderr)
+    return stderr
+
+
+def _assert_consumer_pass(root: Path):
+    shared.validate_reconciliation_check(
+        root, "supply_truth", supply_item(root), TARGET, "evm")
+
+
+def _rewrite_approval_and_rebind(root: Path, receipt: dict, raw: str):
+    approval = root / "over_cap_approval.json"
+    approval.write_text(raw, encoding="utf-8")
+    waiver_path = root / "waiver.json"
+    waiver = json.loads(waiver_path.read_text(encoding="utf-8"))
+    waiver["over_cap_approval"] = file_ref(root, approval.name)
+    waiver_path.write_text(json.dumps(waiver, ensure_ascii=False), encoding="utf-8")
+    receipt["inputs"]["tolerance_waiver"].update(
+        size=waiver_path.stat().st_size, sha256=sha256(waiver_path))
+    (root / "supply_truth.json").write_text(
+        json.dumps(receipt, ensure_ascii=False), encoding="utf-8")
+
+
+def test_f10_original_approved_over_cap_without_approval():
+    with tempfile.TemporaryDirectory(prefix="f10-red-approved-p-", dir="/private/tmp") as raw:
+        _assert_policy_reject(_f10_producer_case(
+            Path(raw), approved=100000, include_approval=False), "producer approved=100000")
+    with tempfile.TemporaryDirectory(prefix="f10-red-approved-c-", dir="/private/tmp") as raw:
+        root = Path(raw)
+        consumer_case(root, approved=100000, include_approval=False)
+        expect_check_rejection(root, "over-cap approval")
+
+
+def test_f10_original_observed_over_cap_without_approval():
+    with tempfile.TemporaryDirectory(prefix="f10-red-observed-p-", dir="/private/tmp") as raw:
+        _assert_policy_reject(_f10_producer_case(
+            Path(raw), observed=100000, include_approval=False), "producer observed=100000")
+    with tempfile.TemporaryDirectory(prefix="f10-red-observed-c-", dir="/private/tmp") as raw:
+        root = Path(raw)
+        consumer_case(root, observed=100000, include_approval=False)
+        expect_check_rejection(root, "over-cap approval")
+
+
+def test_f10_original_nonfinite_waiver_numbers():
+    variants = (("NaN", float("nan")), ("Infinity", float("inf")),
+                ("-Infinity", float("-inf")))
+    for label, value in variants:
+        with tempfile.TemporaryDirectory(
+                prefix=f"f10-red-{label.lower()}-p-", dir="/private/tmp") as raw:
+            _assert_policy_reject(_f10_producer_case(
+                Path(raw), observed=value, include_approval=False), f"producer {label}")
+        with tempfile.TemporaryDirectory(
+                prefix=f"f10-red-{label.lower()}-c-", dir="/private/tmp") as raw:
+            root = Path(raw)
+            consumer_case(
+                root, mutate=lambda w, r, v=value: w.update(observed_diff_bps=v),
+                include_approval=False)
+            expect_check_rejection(root, ("JSON", "observed_diff_bps"))
+
+
+def test_f10_boundaries_and_four_value_max():
+    # 100 是普通 waiver 的闭区间上界；100.0001 与 101 已属超顶区。
+    with tempfile.TemporaryDirectory(prefix="f10-boundary-100-p-", dir="/private/tmp") as raw:
+        rc, receipt, stderr = _f10_producer_case(
+            Path(raw), approved=100, observed=100, tolerance=100,
+            replay_mint=99, total_supply=100, include_approval=False)
+        assert rc == 0 and receipt is not None, (rc, receipt, stderr)
+    with tempfile.TemporaryDirectory(prefix="f10-boundary-100-c-", dir="/private/tmp") as raw:
+        root = Path(raw)
+        consumer_case(root, approved=100, observed=100, tolerance=100,
+                      replay_mint=99, total_supply=100, include_approval=False)
+        _assert_consumer_pass(root)
+
+    over_cap = [
+        ("100.0001", {"approved": 100, "observed": 100.0001,
+                      "tolerance": 100, "replay_mint": 99, "total_supply": 100}),
+        ("101", {"approved": 101, "observed": 101,
+                 "tolerance": 100, "replay_mint": 99, "total_supply": 100}),
+        ("approved50-observed5000", {"approved": 50, "observed": 5000,
+                                     "tolerance": 50, "replay_mint": 9950,
+                                     "total_supply": 10000}),
+        ("approved5000-observed50", {"approved": 5000, "observed": 50,
+                                     "tolerance": 50, "replay_mint": 9950,
+                                     "total_supply": 10000}),
+    ]
+    for label, kwargs in over_cap:
+        with tempfile.TemporaryDirectory(
+                prefix=f"f10-max-{label}-p-", dir="/private/tmp") as raw:
+            _assert_policy_reject(_f10_producer_case(
+                Path(raw), include_approval=False, **kwargs), label)
+        with tempfile.TemporaryDirectory(
+                prefix=f"f10-max-{label}-c-", dir="/private/tmp") as raw:
+            root = Path(raw)
+            consumer_case(root, include_approval=False, **kwargs)
+            expect_check_rejection(root, "over-cap approval")
+
+    # 申请 200、waiver 只批 90：消费侧先用 10000 的合法初始批准生成收据，再独立换件。
+    combo = {"approved": 90, "observed": 50, "tolerance": 200,
+             "replay_mint": 9950, "total_supply": 10000}
+    with tempfile.TemporaryDirectory(prefix="f10-max-request-p-", dir="/private/tmp") as raw:
+        _assert_policy_reject(_f10_producer_case(
+            Path(raw), include_approval=False, **combo), "requested=200 approved=90")
+    with tempfile.TemporaryDirectory(prefix="f10-max-request-c-", dir="/private/tmp") as raw:
+        root = Path(raw)
+        consumer_case(root, include_approval=False, initial_approved=10000, **combo)
+        expect_check_rejection(root, ("over-cap approval", "approved_tolerance_bps"))
+
+
+def test_f10_approval_receipt_variants_both_sides():
+    now = datetime.now(timezone.utc)
+
+    def request_changed(a, _root):
+        a["request"]["reason"] = "批复后被替换的另一项请求"
+
+    def expired(a, _root):
+        a["user_decided_at_utc"] = utc_z(now - timedelta(days=2))
+        a["expires_at_utc"] = utc_z(now - timedelta(days=1))
+
+    def future_decision(a, _root):
+        a["user_decided_at_utc"] = utc_z(now + timedelta(days=2))
+        a["expires_at_utc"] = utc_z(now + timedelta(days=3))
+
+    def other_replay(a, root):
+        (root / "other_stats.json").write_text(
+            json.dumps({"mint_total_raw": "2", "burn_total_raw": "0"}),
+            encoding="utf-8")
+        a["request"]["replay_stats"] = file_ref(root, "other_stats.json")
+        a["request_sha256"] = request_sha256(a["request"])
+
+    variants = [
+        ("request_sha256", lambda a, r: a.update(request_sha256="0" * 64),
+         "request_sha256"),
+        ("request changed after approval", request_changed, "request_sha256"),
+        ("nonce empty", lambda a, r: a.update(nonce=""), "nonce"),
+        ("expired", expired, "expired"),
+        ("future decision", future_decision, "user_decided_at_utc"),
+        ("user approval empty", lambda a, r: a.update(user_approval=""),
+         "user_approval"),
+        ("replay_stats mismatch", other_replay, "replay_stats"),
+    ]
+    for index, (label, mutate, needle) in enumerate(variants):
+        with tempfile.TemporaryDirectory(
+                prefix=f"f10-approval-p-{index}-", dir="/private/tmp") as raw:
+            _assert_policy_reject(_f10_producer_case(
+                Path(raw), approval_mutate=mutate), label)
+        with tempfile.TemporaryDirectory(
+                prefix=f"f10-approval-c-{index}-", dir="/private/tmp") as raw:
+            root = Path(raw)
+            consumer_case(root, approval_mutate=mutate)
+            expect_check_rejection(root, needle)
+
+    # 非超顶区即使不需要 approval，只要挂了引用也必须三验，不能挂空壳。
+    bad_ref = lambda ref: ref.update(sha256="0" * 64)
+    low = {"approved": 100, "observed": 100, "tolerance": 100,
+           "replay_mint": 99, "total_supply": 100}
+    with tempfile.TemporaryDirectory(prefix="f10-low-bad-ref-p-", dir="/private/tmp") as raw:
+        _assert_policy_reject(_f10_producer_case(
+            Path(raw), include_approval=True, approval_ref_mutate=bad_ref, **low),
+            "low-zone bad approval ref")
+    with tempfile.TemporaryDirectory(prefix="f10-low-bad-ref-c-", dir="/private/tmp") as raw:
+        root = Path(raw)
+        consumer_case(root, include_approval=True, approval_ref_mutate=bad_ref, **low)
+        expect_check_rejection(root, "sha256")
+
+
+def test_f10_approval_nonfinite_numbers_both_sides():
+    variants = (
+        ("NaN", lambda a, r: a["request"].update(observed_diff_bps=float("nan"))),
+        ("Infinity", lambda a, r: a["request"].update(
+            requested_tolerance_bps=float("inf"))),
+        ("-Infinity", lambda a, r: a["request"].update(
+            observed_diff_bps=float("-inf"))),
+    )
+    for index, (label, mutate) in enumerate(variants):
+        with tempfile.TemporaryDirectory(
+                prefix=f"f10-approval-number-p-{index}-", dir="/private/tmp") as raw:
+            _assert_policy_reject(_f10_producer_case(
+                Path(raw), approval_mutate=mutate), label)
+        with tempfile.TemporaryDirectory(
+                prefix=f"f10-approval-number-c-{index}-", dir="/private/tmp") as raw:
+            root = Path(raw)
+            consumer_case(root, approval_mutate=mutate)
+            expect_check_rejection(root, ("JSON", "finite", "数值"))
+
+
+def test_f10_approval_failure_classification_and_broken_json():
+    # 文件不存在＝政策错 exit 2。
+    missing_ref = {"path": "missing-approval.json", "size": 1, "sha256": "0" * 64}
+    with tempfile.TemporaryDirectory(prefix="f10-approval-missing-", dir="/private/tmp") as raw:
+        root = Path(raw)
+        result = _f10_producer_case(
+            root, include_approval=False,
+            mutate=lambda w: w.update(over_cap_approval=dict(missing_ref)))
+        _assert_policy_reject(result, "missing approval")
+
+    # JSON 损坏但引用 size/sha 正确＝内容政策错 exit 2；消费侧也须独立拒绝。
+    with tempfile.TemporaryDirectory(prefix="f10-approval-json-p-", dir="/private/tmp") as raw:
+        root = Path(raw)
+        (root / "replay_stats.json").write_text(
+            json.dumps({"mint_total_raw": "1", "burn_total_raw": "0"}),
+            encoding="utf-8")
+        waiver_path = write_waiver(root)
+        approval = root / "over_cap_approval.json"
+        approval.write_text("{broken", encoding="utf-8")
+        waiver = json.loads(waiver_path.read_text(encoding="utf-8"))
+        waiver["over_cap_approval"] = file_ref(root, approval.name)
+        waiver_path.write_text(json.dumps(waiver, ensure_ascii=False), encoding="utf-8")
+        _assert_policy_reject(run_supply(root, waiver=waiver_path), "broken approval JSON")
+    with tempfile.TemporaryDirectory(prefix="f10-approval-json-c-", dir="/private/tmp") as raw:
+        root = Path(raw)
+        receipt = consumer_case(root)
+        _rewrite_approval_and_rebind(root, receipt, "{broken")
+        expect_check_rejection(root, "JSON")
+
+    # chmod 000＝检测通道故障 exit 1；root 用户下按既有同族测试语义跳过。
+    if os.getuid() != 0:
+        with tempfile.TemporaryDirectory(prefix="f10-approval-unreadable-", dir="/private/tmp") as raw:
+            root = Path(raw)
+            (root / "replay_stats.json").write_text(
+                json.dumps({"mint_total_raw": "1", "burn_total_raw": "0"}),
+                encoding="utf-8")
+            waiver = write_waiver(root)
+            approval = root / "over_cap_approval.json"
+            os.chmod(approval, 0o000)
+            try:
+                rc, receipt, stderr = run_supply(root, waiver=waiver)
+            finally:
+                os.chmod(approval, 0o644)
+            assert rc == 1 and receipt is None and "检测自身失败" in stderr, (
+                rc, receipt, stderr)
+
+
+def test_f10_green_ordinary_and_valid_over_cap_both_sides():
+    # ≤100bps 的现行九字段 waiver 不带特批照常放行。
+    low = {"approved": 100, "observed": 100, "tolerance": 100,
+           "replay_mint": 99, "total_supply": 100, "include_approval": False}
+    with tempfile.TemporaryDirectory(prefix="f10-green-low-p-", dir="/private/tmp") as raw:
+        rc, receipt, stderr = _f10_producer_case(Path(raw), **low)
+        assert rc == 0 and receipt is not None, (rc, receipt, stderr)
+    with tempfile.TemporaryDirectory(prefix="f10-green-low-c-", dir="/private/tmp") as raw:
+        root = Path(raw)
+        consumer_case(root, **low)
+        _assert_consumer_pass(root)
+
+    # >100bps 带完整且与本次请求绑定的独立特批收据仍须放行。
+    with tempfile.TemporaryDirectory(prefix="f10-green-high-p-", dir="/private/tmp") as raw:
+        rc, receipt, stderr = _f10_producer_case(Path(raw))
+        assert rc == 0 and receipt is not None, (rc, receipt, stderr)
+    with tempfile.TemporaryDirectory(prefix="f10-green-high-c-", dir="/private/tmp") as raw:
+        root = Path(raw)
+        consumer_case(root)
+        _assert_consumer_pass(root)
 
 
 def test_fc_producer_waiver_field_level_negatives():
@@ -714,6 +1056,14 @@ def main():
         test_f02_valid_waiver_and_shared_recompute,
         test_f02_waiver_swap_integrity_counterexample,
         test_f02_tolerance_cap_uses_producer_constant,
+        test_f10_original_approved_over_cap_without_approval,
+        test_f10_original_observed_over_cap_without_approval,
+        test_f10_original_nonfinite_waiver_numbers,
+        test_f10_boundaries_and_four_value_max,
+        test_f10_approval_receipt_variants_both_sides,
+        test_f10_approval_nonfinite_numbers_both_sides,
+        test_f10_approval_failure_classification_and_broken_json,
+        test_f10_green_ordinary_and_valid_over_cap_both_sides,
         test_fc_producer_waiver_field_level_negatives,
         test_fc_consumer_side_waiver_negatives,
         test_fa_consumer_reconciles_replay_net_against_bound_stats,

@@ -26,7 +26,9 @@
                      收据 tolerance-waiver/v1，必须写明批准容差、裁决人、UTC 决定时间、
                      本次实际偏差 observed_diff_bps、与本次全等的 target、
                      绑定本次 --replay-stats 的 path/size/sha256、
-                     以及至少一份独立于 replay_stats 的人工核对证据与理由
+                     以及至少一份独立于 replay_stats 的人工核对证据与理由。waiver 最多
+                     覆盖 100bps；批准值、记录偏差、申请值或实算偏差任一超过 100bps，
+                     还须绑定独立 over-cap-approval/v1 用户特批收据
   --as-of-block N    v3 receipt target 的冻结块/slot；正式发布必填
   --out PATH         结果 JSON 落盘（默认 supply_truth.json，写工作目录）
 
@@ -45,9 +47,10 @@ replay-stats 字段识别（依次尝试，值可为 int 或十进制字符串�
 import argparse
 import hashlib
 import json
+import math
 import re
 import sys
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from receipt_kernel import (build_envelope, finalize_envelope, publish_error_receipt,
@@ -76,11 +79,42 @@ FIELD_PAIRS = [("mint_total_wei", "burn_total_wei"),
                ("mint_total_raw", "burn_total_raw"),
                ("mint_total", "burn_total")]
 FORMAL_TOLERANCE_BPS_MAX = 10
+WAIVER_TOLERANCE_BPS_CAP = 100
 TOLERANCE_WAIVER_SCHEMA = "tolerance-waiver/v1"
+OVER_CAP_APPROVAL_SCHEMA = "over-cap-approval/v1"
 
 
 class TolerancePolicyError(ValueError):
     """正式容差政策或 waiver 不合法（调用错误，exit 2）。"""
+
+
+def _reject_constant(value: str):
+    raise ValueError(f"JSON 非有限数值 {value} 不允许")
+
+
+def _finite_number(value, *, integer=False, minimum=0) -> bool:
+    if isinstance(value, bool) or not isinstance(value, int if integer else (int, float)):
+        return False
+    if isinstance(value, float) and not math.isfinite(value):
+        return False
+    return value >= minimum
+
+
+def _canonical_request_sha256(request: dict) -> str:
+    canonical = json.dumps(request, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def _utc_datetime(value, label: str) -> datetime:
+    try:
+        if not isinstance(value, str) or not value.endswith("Z"):
+            raise ValueError
+        parsed = datetime.fromisoformat(value[:-1] + "+00:00")
+        if parsed.utcoffset() != timedelta(0):
+            raise ValueError
+        return parsed
+    except ValueError as exc:
+        raise TolerancePolicyError(f"{label} 必须是有效的 Z 结尾 UTC 时间") from exc
 
 
 def _sha256_file(path: Path) -> str:
@@ -120,6 +154,80 @@ def _waiver_file_ref(waiver_path: Path, ref, label: str) -> Path:
     return path
 
 
+def _validate_over_cap_approval(waiver_path: Path, waiver: dict, ref,
+                                *, tolerance_bps: int,
+                                replay_ref_path: Path) -> dict:
+    approval_path = _waiver_file_ref(waiver_path, ref, "over_cap_approval")
+    approval_text = approval_path.read_text(encoding="utf-8")  # OSError → exit 1
+    try:
+        approval = json.loads(approval_text, parse_constant=_reject_constant)
+    except (json.JSONDecodeError, ValueError) as exc:
+        raise TolerancePolicyError(f"over-cap approval JSON 损坏: {exc}") from exc
+    required = {
+        "schema", "request", "request_sha256", "nonce", "expires_at_utc",
+        "user_approval", "reported_to_user", "approved_by", "user_decided_at_utc",
+    }
+    if not isinstance(approval, dict) or any(
+            key not in approval or approval.get(key) is None for key in required):
+        raise TolerancePolicyError("over-cap approval schema 或必填字段不完整")
+    if approval.get("schema") != OVER_CAP_APPROVAL_SCHEMA:
+        raise TolerancePolicyError(
+            f"over-cap approval schema 必须是 {OVER_CAP_APPROVAL_SCHEMA}")
+    request = approval.get("request")
+    request_keys = {
+        "target", "observed_diff_bps", "requested_tolerance_bps",
+        "replay_stats", "reason",
+    }
+    if not isinstance(request, dict) or set(request) != request_keys:
+        raise TolerancePolicyError("over-cap approval request 字段必须完整且无额外项")
+    request_observed = request.get("observed_diff_bps")
+    request_tolerance = request.get("requested_tolerance_bps")
+    if not _finite_number(request_observed):
+        raise TolerancePolicyError(
+            "over-cap approval request.observed_diff_bps 必须是有限非负数值")
+    if not _finite_number(request_tolerance, integer=True):
+        raise TolerancePolicyError(
+            "over-cap approval request.requested_tolerance_bps 必须是有限非负整数")
+    supplied_sha = approval.get("request_sha256")
+    recomputed_sha = _canonical_request_sha256(request)
+    if supplied_sha != recomputed_sha:
+        raise TolerancePolicyError(
+            "over-cap approval request_sha256 与 request 独立重算值不一致")
+    if request.get("target") != waiver.get("target"):
+        raise TolerancePolicyError("over-cap approval request.target 与 waiver 不全等")
+    if request_observed != waiver.get("observed_diff_bps"):
+        raise TolerancePolicyError(
+            "over-cap approval request.observed_diff_bps 与 waiver 不一致")
+    if request_tolerance != tolerance_bps:
+        raise TolerancePolicyError(
+            "over-cap approval request.requested_tolerance_bps 与本次申请不一致")
+    if request.get("reason") != waiver.get("reason"):
+        raise TolerancePolicyError("over-cap approval request.reason 与 waiver 不一致")
+    approval_replay = _waiver_file_ref(
+        approval_path, request.get("replay_stats"), "over_cap_approval.request.replay_stats")
+    if approval_replay != replay_ref_path:
+        raise TolerancePolicyError(
+            "over-cap approval request.replay_stats 未绑定 waiver 的同一实物")
+    for label in ("nonce", "user_approval", "reported_to_user", "approved_by"):
+        if not isinstance(approval.get(label), str) or not approval[label].strip():
+            raise TolerancePolicyError(f"over-cap approval {label} 必须是非空文本")
+    decided_at = _utc_datetime(
+        approval.get("user_decided_at_utc"),
+        "over-cap approval user_decided_at_utc")
+    expires_at = _utc_datetime(
+        approval.get("expires_at_utc"), "over-cap approval expires_at_utc")
+    now = datetime.now(timezone.utc)
+    if decided_at > now + timedelta(days=1):
+        raise TolerancePolicyError(
+            "over-cap approval user_decided_at_utc 不得晚于当前时间 1 天")
+    if expires_at <= decided_at:
+        raise TolerancePolicyError(
+            "over-cap approval expires_at_utc 必须晚于 user_decided_at_utc")
+    if expires_at <= now:
+        raise TolerancePolicyError("over-cap approval expired（已过期）")
+    return approval
+
+
 def load_tolerance_waiver(path, *, target: dict, tolerance_bps: int,
                           replay_stats_path) -> tuple[Path, dict]:
     """加载并验证仅放大 supply truth 容差的输入侧人工裁决收据。"""
@@ -134,8 +242,8 @@ def load_tolerance_waiver(path, *, target: dict, tolerance_bps: int,
     # 内容不合法（exit 2）。两类别再合并（F-D）。
     waiver_text = waiver_path.read_text(encoding="utf-8")
     try:
-        waiver = json.loads(waiver_text)
-    except json.JSONDecodeError as exc:
+        waiver = json.loads(waiver_text, parse_constant=_reject_constant)
+    except (json.JSONDecodeError, ValueError) as exc:
         raise TolerancePolicyError(f"tolerance waiver JSON 损坏: {exc}") from exc
     required = {
         "schema", "approved_tolerance_bps", "approved_by", "user_decided_at_utc",
@@ -147,25 +255,15 @@ def load_tolerance_waiver(path, *, target: dict, tolerance_bps: int,
     if waiver.get("schema") != TOLERANCE_WAIVER_SCHEMA:
         raise TolerancePolicyError("tolerance waiver schema 必须是 tolerance-waiver/v1")
     approved = waiver.get("approved_tolerance_bps")
-    if isinstance(approved, bool) or not isinstance(approved, int) or approved < 0:
+    if not _finite_number(approved, integer=True):
         raise TolerancePolicyError("waiver 批准容差必须是非负整数")
-    if tolerance_bps < 0 or tolerance_bps > approved:
-        raise TolerancePolicyError(
-            f"实际容差 {tolerance_bps}bps 超出 waiver 批准值 {approved}bps")
     observed_diff = waiver.get("observed_diff_bps")
-    if (isinstance(observed_diff, bool) or not isinstance(observed_diff, (int, float))
-            or observed_diff < 0):
+    if not _finite_number(observed_diff):
         raise TolerancePolicyError(
-            "waiver observed_diff_bps 必须是非负数值（裁决人签字时看到的本次实际偏差）")
+            "waiver observed_diff_bps 必须是有限非负数值（裁决人签字时看到的本次实际偏差）")
     if not isinstance(waiver.get("approved_by"), str) or not waiver["approved_by"].strip():
         raise TolerancePolicyError("waiver 裁决主体 approved_by 必填")
-    decided_at = waiver.get("user_decided_at_utc")
-    try:
-        if not isinstance(decided_at, str) or not decided_at.endswith("Z"):
-            raise ValueError
-        datetime.fromisoformat(decided_at[:-1] + "+00:00")
-    except ValueError as exc:
-        raise TolerancePolicyError("waiver user_decided_at_utc 必须是有效 UTC 时间") from exc
+    _utc_datetime(waiver.get("user_decided_at_utc"), "waiver user_decided_at_utc")
     if waiver.get("target") != target:
         raise TolerancePolicyError("waiver target 的 chain/token/as_of_block 与本次运行不全等")
     if not isinstance(waiver.get("reason"), str) or not waiver["reason"].strip():
@@ -187,6 +285,19 @@ def load_tolerance_waiver(path, *, target: dict, tolerance_bps: int,
             raise TolerancePolicyError(
                 f"waiver evidence_refs[{index}] 不得指向本次 replay_stats 输入自身，"
                 "人工核对证据必须是独立文件")
+    over_cap_ref = waiver.get("over_cap_approval")
+    over_cap = any(value > WAIVER_TOLERANCE_BPS_CAP for value in
+                   (approved, observed_diff, tolerance_bps))
+    if over_cap and over_cap_ref is None:
+        raise TolerancePolicyError(
+            f"waiver 超过 {WAIVER_TOLERANCE_BPS_CAP}bps，缺少 over-cap approval 引用")
+    if over_cap_ref is not None:
+        _validate_over_cap_approval(
+            waiver_path, waiver, over_cap_ref, tolerance_bps=tolerance_bps,
+            replay_ref_path=replay_ref_path)
+    if tolerance_bps < 0 or tolerance_bps > approved:
+        raise TolerancePolicyError(
+            f"实际容差 {tolerance_bps}bps 超出 waiver 批准值 {approved}bps")
     return waiver_path, waiver
 
 
@@ -199,6 +310,12 @@ def assert_waiver_covers_diff(waiver: dict, diff_bps) -> None:
     """
     observed = waiver.get("observed_diff_bps")
     actual = 0.0 if diff_bps is None else float(diff_bps)
+    if not math.isfinite(actual):
+        raise TolerancePolicyError("本次实际偏差必须是有限数值")
+    if (actual > WAIVER_TOLERANCE_BPS_CAP
+            and waiver.get("over_cap_approval") is None):
+        raise TolerancePolicyError(
+            f"本次实际偏差超过 {WAIVER_TOLERANCE_BPS_CAP}bps，缺少 over-cap approval")
     if actual > float(observed):
         raise TolerancePolicyError(
             f"本次实际偏差 {actual}bps 超过 waiver 记录的 observed_diff_bps {observed}bps"
