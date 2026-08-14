@@ -6,9 +6,8 @@
 用法: python3 fetch_hypersync_v2.py <from_block> \
         --url https://bsc.hypersync.xyz --token-addr 0x标的 --outdir data/v2 \
         [--to-block N] [--concurrency 10] [--token-file ~/.config/hypersync/token]
-  - API token 读取优先级（C3 密钥治理，2026-07-22——**不要把 token 放进命令行**，
-    ps 进程列表可见）：位置参数（仅旧用法兼容，勿新用）> 环境变量 HYPERSYNC_TOKEN
-    > --token-file 文件（默认 ~/.config/hypersync/token，chmod 600）
+  - API token 读取优先级（C3 密钥治理）：显式 --token-file > HYPERSYNC_TOKEN
+    > 默认 ~/.config/hypersync/token；禁止位置参数明文传入，避免 secret 进入 argv/ps
   - --url 注意是裸域名（官方客户端自己拼路径，不要带 /query）
   - --concurrency 官方默认 10；高密度合约建议 20 起调；免费层别超 4（限流）
   - 断点续传：--outdir 已有 run_*/ 时自动从最大 next_block 续拉，新数据落新 run_<from>/ 子目录
@@ -29,6 +28,22 @@ LEGACY_MANIFEST_SCHEMAS = {"hypersync-v2-done/v2"}
 QUERY_SCHEMA = "erc20-transfer-fields/v2"
 IDENTITY_SCHEMA = "hypersync-capture-identity/v1"
 IDENTITY_NAME = "capture_identity.json"
+DEFAULT_TOKEN_FILE = "~/.config/hypersync/token"
+
+
+class SafeParser(argparse.ArgumentParser):
+    def parse_args(self, args=None, namespace=None):
+        parsed, extras = self.parse_known_args(args, namespace)
+        if extras:
+            self.error("存在未识别参数（输入值已隐去）")
+        return parsed
+
+
+def _safe_int(value):
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        raise argparse.ArgumentTypeError("须为整数（输入值已隐去）") from None
 
 
 def sha256_file(path):
@@ -411,39 +426,42 @@ def refresh_manifests(outdir):
             "already_v3": len(done_paths) - len(pending)}
 
 
-def resolve_token(a):
-    """C3：token 优先级 位置参数(旧兼容) > $HYPERSYNC_TOKEN > --token-file 文件。"""
-    if a.api_token:
-        print("[warn] token 经命令行传入（ps 可见）——建议改用 --token-file/环境变量",
-              flush=True)
-        return a.api_token
-    env = os.environ.get("HYPERSYNC_TOKEN", "").strip()
-    if env:
-        return env
+def _load_token(ap, token_file):
+    """C3：显式 token 文件 > HYPERSYNC_TOKEN > 默认 token 文件。"""
+    if token_file is not None:
+        path = os.path.expanduser(token_file)
+    else:
+        env_token = os.environ.get("HYPERSYNC_TOKEN", "").strip()
+        if env_token:
+            return env_token
+        path = os.path.expanduser(DEFAULT_TOKEN_FILE)
     try:
-        tok = open(os.path.expanduser(a.token_file)).read().strip()
+        token = Path(path).read_text(encoding="utf-8").strip()
     except OSError:
-        sys.exit(f"[fatal] 读不到 HyperSync token 文件: {a.token_file}"
-                 "（也可设环境变量 HYPERSYNC_TOKEN）")
-    if not tok:
-        sys.exit(f"[fatal] token 文件为空: {a.token_file}")
-    return tok
+        token = ""
+    if not token:
+        ap.error(f"HyperSync token 文件缺失或为空：{path}；key 登记见 ~/.claude/api-keys.md §1")
+    return token
 
 
-async def main():
-    ap = argparse.ArgumentParser()
-    ap.add_argument("api_token", nargs="?", default=None,
-                    help="（旧用法兼容，勿新用——token 会进 ps）留空则读 env/文件")
-    ap.add_argument("from_block", type=int)
+def parse_args(argv=None):
+    ap = SafeParser()
+    ap.add_argument("from_block", type=_safe_int)
     ap.add_argument("--url", default="https://bsc.hypersync.xyz")
     ap.add_argument("--token-addr", required=True)
     ap.add_argument("--outdir", default="data/v2")
     ap.add_argument("--to-block", type=int, default=None)
     ap.add_argument("--concurrency", type=int, default=10)
-    ap.add_argument("--token-file", default="~/.config/hypersync/token",
-                    help="API token 文件路径（默认 ~/.config/hypersync/token）")
-    a = ap.parse_args()
-    token = resolve_token(a)
+    ap.add_argument("--token-file", default=None,
+                    help="token 文件；显式给出时优先于 HYPERSYNC_TOKEN")
+    a = ap.parse_args(argv)
+    a.token = _load_token(ap, a.token_file)
+    return a
+
+
+async def main():
+    a = parse_args()
+    token = a.token
     url = re.sub(r"/query/?$", "", a.url.rstrip("/"))  # 容错：v1 习惯带 /query
     client = hypersync.HypersyncClient(ClientConfig(url=url, bearer_token=token))
     height = await client.get_height()

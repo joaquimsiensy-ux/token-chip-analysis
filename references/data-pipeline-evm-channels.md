@@ -150,7 +150,7 @@ size 与 SHA-256；全部通过后才原子将旧 done 升为 `hypersync-v2-done
 - POST `https://bsc.hypersync.xyz/query`；header `Authorization: Bearer {TOKEN}`；body 含 `from_block`、`logs: [{address, topics}]`、`field_selection`。（SIREN，07）
 - 匿名（无 token）已不可用；token 让用户到 app.envio.dev 注册——控制台在用户（中国）网络打不开需 VPN，但 API 端点直连可用，"控制台打不开 ≠ API 不可用"。（SIREN，07）
 - archive_height 到最新块，全史无缺口；换 token 地址与链子域名即可用于其他 HyperSync 支持链。（SIREN，07）
-- token 取用优先级为：显式 `--token-file` > `HYPERSYNC_TOKEN` > 默认 `~/.config/hypersync/token`；三支 v1 脚本都禁止位置参数明文 token。换 key 时原始存放文件与 `~/.claude/api-keys.md` §1 登记同步。
+- token 取用优先级为：显式 `--token-file` > `HYPERSYNC_TOKEN` > 默认 `~/.config/hypersync/token`；三支 v1 脚本与现役 v2 入口都禁止位置参数明文 token，非法输入也不得把 secret 回显到 stdout/stderr。换 key 时原始存放文件与 `~/.claude/api-keys.md` §1 登记同步。
 - **transactions 端点做 BNB 注资溯源**：body `{"transactions":[{"to":[addr]}],"field_selection":{"transaction":["block_number","from","to","value"]}}`（value 为 hex）——单址全链入金一次查询 ~2.3s 到 tip，比逐块扫快几个量级；⚠25 址×全链批量会 10 分钟超时，可用姿势=关键地址单址逐查 / 发射窗小块段批量（from/to_block 圈定）。（哈基米，07-18）
 - 【历史降级·新案禁用】分段多进程姿势：复制脚本改 OUT 与 to_block 边界（`if nxt >= BOUND: break`）、sleep 提至 0.5s，各进程独立 CSV 事后按 (tx,log_index) 去重合并；改 config 后重启前删本地缓存的段清单文件。（哈基米，07-18）现行主线为 v2 Parquet/done manifest。
 - **多会话共享 key 限速冲突**：并行分析会话同打一个 HyperSync key/端点会互相触发 429（SQD 案与另一标的采集会话撞车实测）——开工前 `ps aux | grep fetch_hypersync` 查有无在跑进程；撞车时不必停工，调低单会话吞吐预期、靠 429 退避共存。（SQD，07-20）**限流是 key 级共享、不是端点独立**——同 key 打不同链子域（eth+arbitrum）并发同样互抢限额；多链标的的分链采集按链串行或错峰，别指望换端点绕开限额。（LPT，07-21）

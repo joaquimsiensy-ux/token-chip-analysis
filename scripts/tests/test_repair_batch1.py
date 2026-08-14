@@ -4,7 +4,7 @@
 Sections are appended as the approved repair steps are implemented.  Covered:
 RV-07 receipt supersede, RV-04 unified proxy resolution, RV-17 stake ledger
 fail-closed completeness, F-03 replay gate propagation, and F-01/A5 v3
-legend receipt binding.
+legend receipt binding, and F-04 HyperSync v2 token precedence.
 """
 from __future__ import annotations
 
@@ -1015,6 +1015,35 @@ def test_f01b_release_semantic_recompute(root: Path):
     assert errors and any("豁免" in item or "排除" in item for item in errors), errors
 
 
+# ---------------------------------------------------------------------- F-04
+
+def test_f04_v2_token_precedence(root: Path):
+    """No explicit --token-file must use env; an explicit file must override it."""
+    case = root / "f04"
+    case.mkdir(parents=True)
+    explicit = case / "explicit.token"
+    explicit.write_text("file-token\n", encoding="utf-8")
+    default = case / "default.token"
+    default.write_text("default-token\n", encoding="utf-8")
+    v2 = _load_module(EVM / "fetch_hypersync_v2.py", "fetch_hypersync_v2")
+    common = [
+        "0", "--url", "http://fixture", "--token-addr", "0x" + "1" * 40,
+        "--outdir", str(case / "out"),
+    ]
+
+    with mock.patch.object(v2, "DEFAULT_TOKEN_FILE", str(default)), \
+            mock.patch.dict(os.environ, {"HYPERSYNC_TOKEN": "env-token"}, clear=True):
+        args = v2.parse_args(common)
+        assert args.token_file is None and args.token == "env-token"
+        args = v2.parse_args([*common, "--token-file", str(explicit)])
+        assert args.token == "file-token"
+
+    with mock.patch.object(v2, "DEFAULT_TOKEN_FILE", str(default)), \
+            mock.patch.dict(os.environ, {}, clear=True):
+        args = v2.parse_args(common)
+        assert args.token == "default-token"
+
+
 def main():
     with tempfile.TemporaryDirectory(prefix="repair-batch1-", dir="/private/tmp") as raw:
         root = Path(raw)
@@ -1042,7 +1071,8 @@ def main():
         test_f01b_a5_v3_green_and_cross_checks(root)
         test_f01b_independent_na_and_v2_rejected(root)
         test_f01b_release_semantic_recompute(root)
-    print("PASS v6.41.0 batch1 steps 1-5 RV-07/RV-04/RV-17/F-03/F-01/A5v3")
+        test_f04_v2_token_precedence(root)
+    print("PASS v6.41.0 batch1 steps 1-6 RV-07/RV-04/RV-17/F-03/F-01/A5v3/F-04")
     return 0
 
 

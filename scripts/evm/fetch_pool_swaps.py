@@ -32,6 +32,21 @@ PANCAKE_V3 = "0x19b47279256b2a23a1665c810c8d55a1758940ee09377d4f8d26497a3577dc83
 DEFAULT_TOKEN_FILE = "~/.config/hypersync/token"
 RECEIPT_SCHEMA = "pool-swaps-collector-receipt/v1"
 
+
+class SafeParser(argparse.ArgumentParser):
+    def parse_args(self, args=None, namespace=None):
+        parsed, extras = self.parse_known_args(args, namespace)
+        if extras:
+            self.error("存在未识别参数（输入值已隐去）")
+        return parsed
+
+
+def _safe_int(value):
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        raise argparse.ArgumentTypeError("须为整数（输入值已隐去）") from None
+
 def _load_token(ap, token_file):
     if token_file is not None:
         path = os.path.expanduser(token_file)
@@ -50,11 +65,11 @@ def _load_token(ap, token_file):
 
 
 def parse_args(argv=None):
-    ap = argparse.ArgumentParser()
+    ap = SafeParser()
     ap.add_argument("--token-file", default=None,
                     help="token 文件；显式给出时优先于 HYPERSYNC_TOKEN")
     ap.add_argument("--pool", required=True)
-    ap.add_argument("--from-block", type=int, required=True)
+    ap.add_argument("--from-block", type=_safe_int, required=True)
     ap.add_argument("--to-block", type=int, required=True)
     ap.add_argument("--out", required=True)
     ap.add_argument("--topic", default=PANCAKE_V3, help="Swap event topic0（默认 Pancake V3）")
