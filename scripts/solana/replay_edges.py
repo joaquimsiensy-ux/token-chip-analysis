@@ -89,6 +89,31 @@ def resolve_mint(cli):
     sys.exit("mint 未指定：--mint / MINT 环境变量 / config.json:mint")
 
 
+def sha256_file(path):
+    h = hashlib.sha256()
+    with open(path, "rb") as fh:
+        for chunk in iter(lambda: fh.read(1024 * 1024), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def _file_ref(path):
+    path = Path(path)
+    return {"path": path.name, "size": path.stat().st_size,
+            "sha256": sha256_file(path)}
+
+
+def _atomic_json(path, value):
+    path = Path(path)
+    tmp = path.with_name(path.name + ".tmp")
+    with open(tmp, "w", encoding="utf-8") as fh:
+        json.dump(value, fh, ensure_ascii=False, indent=2)
+        fh.write("\n")
+        fh.flush()
+        os.fsync(fh.fileno())
+    os.replace(tmp, path)
+
+
 def load_edges(mint):
     key = hashlib.sha256(mint.encode("utf-8")).hexdigest()
     f = Path(f"data/soltx-{key}.jsonl.gz")
@@ -107,7 +132,7 @@ def load_edges(mint):
             if line.strip():
                 edges.append(json.loads(line))
     edges.sort(key=lambda e: (e[1], e[0]))  # slot 序
-    return edges
+    return edges, meta_f
 
 
 def replay(edges):
@@ -138,8 +163,67 @@ def launch_ts_of(edges, override):
     return edges[0][0]
 
 
-def cmd_reconcile(edges, dec):
-    bal, minted, burned = replay(edges)
+def _replay_with_evidence(edges):
+    """同一次重放计算余额、逻辑边摘要与首末边；不对大边文件做第二次 IO。"""
+    bal = defaultdict(int)
+    minted = burned = 0
+    digest = hashlib.sha256()
+    first = last = None
+    for edge in edges:
+        if not isinstance(edge, (list, tuple)) or len(edge) != 5:
+            raise ValueError("边必须是 [ts,slot,src,dst,amount_raw] 五元组")
+        ts, slot, src, dst, amt = edge
+        if isinstance(ts, bool) or not isinstance(ts, int) \
+                or isinstance(slot, bool) or not isinstance(slot, int) \
+                or isinstance(amt, bool) or not isinstance(amt, int) or amt < 0 \
+                or not isinstance(src, str) or not isinstance(dst, str):
+            raise ValueError("边 ts/slot/amount_raw 必须为合法整数且地址必须为字符串")
+        digest.update((json.dumps(list(edge), ensure_ascii=False) + "\n").encode("utf-8"))
+        point = {"slot": slot, "ts": ts}
+        if first is None:
+            first = point
+        last = point
+        if src == ZERO:
+            minted += amt
+        else:
+            bal[src] -= amt
+        if dst == ZERO:
+            burned += amt
+        else:
+            bal[dst] += amt
+    if first is None:
+        raise ValueError("边文件为空，无法生成正式 reconcile 收据")
+    return bal, minted, burned, digest.hexdigest(), first, last
+
+
+def _snapshot_target(meta):
+    target = meta.get("target") or {}
+    return target.get("as_of_block") if isinstance(target, dict) else None
+
+
+def cmd_reconcile(edges, dec, *, mint, cache_meta_path):
+    """重放并发布 solana-reconcile/v3；mint 按 Solana base58 原文比较。"""
+    cache_meta_path = Path(cache_meta_path)
+    cache_meta = json.loads(cache_meta_path.read_text(encoding="utf-8"))
+    frm = cache_meta.get("from_slot")
+    to = cache_meta.get("collection_upper_slot")
+    if cache_meta.get("schema") != "sqd-solana-cache/v3" \
+            or cache_meta.get("mint") != mint \
+            or isinstance(frm, bool) or not isinstance(frm, int) or frm < 0 \
+            or isinstance(to, bool) or not isinstance(to, int) or to < frm:
+        raise ValueError("SQD 缓存 meta 缺合法原始 mint/from_slot/collection_upper_slot")
+    bal, minted, burned, edge_digest, first, last = _replay_with_evidence(edges)
+    # 将本次真实遍历得到的逻辑摘要回填缓存 meta，消费侧可独立对锚收据字段；
+    # 已有值若不等即说明 meta 与边文件撕裂，拒绝覆盖掩盖。
+    old_digest = cache_meta.get("edge_logical_sha256")
+    old_count = cache_meta.get("edge_rows")
+    if old_digest is not None and old_digest != edge_digest:
+        raise ValueError("SQD 缓存 meta.edge_logical_sha256 与实际边重放摘要不一致")
+    if old_count is not None and old_count != len(edges):
+        raise ValueError("SQD 缓存 meta.edge_rows 与实际边数不一致")
+    cache_meta["edge_logical_sha256"] = edge_digest
+    cache_meta["edge_rows"] = len(edges)
+    _atomic_json(cache_meta_path, cache_meta)
     print(f"边数={len(edges):,}  时间范围 {fmt_ts(edges[0][0])} → {fmt_ts(edges[-1][0])}")
     print(f"铸造={minted:,}  销毁={burned:,}  净={minted-burned:,}")
     neg = {a: v for a, v in bal.items() if v < 0}  # 任意负余额=数据洞
@@ -148,11 +232,21 @@ def cmd_reconcile(edges, dec):
     snap_f = Path("data/holders_owners.json")
     meta_f = Path("data/holders_snapshot_meta.json")
     mismatch, snapshot_ok, supply = [], False, None
+    owners_ref = _file_ref(snap_f) if snap_f.exists() else None
+    snap_meta = None
     if snap_f.exists() and meta_f.exists():
         snap = {a: int(v) for a, v in json.loads(snap_f.read_text()).items()}
         snap_meta = json.loads(meta_f.read_text())
         supply = sum(snap.values())
-        snapshot_ok = bool(snap_meta.get("closed")) and int(snap_meta.get("supply_raw", -1)) == supply
+        out_ref = ((snap_meta.get("outputs") or {}).get("holders_owners") or {})
+        snapshot_slot = _snapshot_target(snap_meta)
+        snapshot_ok = (snap_meta.get("schema") == "solana-holder-snapshot-v2"
+                       and snap_meta.get("mint") == mint
+                       and bool(snap_meta.get("closed"))
+                       and int(snap_meta.get("supply_raw", -1)) == supply
+                       and isinstance(snapshot_slot, int) and not isinstance(snapshot_slot, bool)
+                       and snapshot_slot >= to
+                       and out_ref == owners_ref)
         print(f"快照 supply={supply:,}  重放净-快照差={minted-burned-supply:,}")
         for a in sorted(set(snap) | set(rb)):
             if rb.get(a, 0) != snap.get(a, 0):
@@ -163,14 +257,23 @@ def cmd_reconcile(edges, dec):
     else:
         print("[FAIL] 缺 holders_owners.json 或 holders_snapshot_meta.json，快照关卡不完整")
     gate_pass = (not neg and snapshot_ok and supply == minted - burned and not mismatch)
-    receipt = {"schema": "solana-reconcile/v2", "edge_count": len(edges),
+    producer_path = Path(__file__).resolve()
+    receipt = {"schema": "solana-reconcile/v3", "chain": "solana", "mint": mint,
+               "collection_window": {"from_slot": frm, "to_slot": to},
+               "edge_extrema": {"first": first, "last": last},
+               "edge_digest": edge_digest, "edge_count": len(edges),
+               "producer": {"path": "scripts/solana/replay_edges.py",
+                            "sha256": sha256_file(producer_path)},
+               "inputs": {"soltx_meta": _file_ref(cache_meta_path),
+                          "holders_owners": owners_ref,
+                          "holders_snapshot_meta": _file_ref(meta_f) if meta_f.exists() else None},
                "minted_raw": str(minted), "burned_raw": str(burned),
                "net_supply_raw": str(minted - burned),
                "negative_balance_count": len(neg), "snapshot_present": snap_f.exists(),
                "snapshot_meta_present": meta_f.exists(), "snapshot_closed": snapshot_ok,
                "snapshot_supply_raw": str(supply) if supply is not None else None,
                "snapshot_mismatch_count": len(mismatch), "gate_pass": gate_pass}
-    json.dump(receipt, open("data/reconcile_receipt.json", "w"), indent=2)
+    _atomic_json("data/reconcile_receipt.json", receipt)
     json.dump(dict(sorted(rb.items(), key=lambda kv: -kv[1])),
               open("data/replay_final_balances.json", "w"))
     print("重放末态已写 data/replay_final_balances.json")
@@ -374,14 +477,14 @@ def main():
         print("[labels][degraded_mode] labels_resolver 导入失败——本次运行无标签兜底", file=sys.stderr)
     mint = resolve_mint(args.mint)
     dec = 10 ** args.decimals
-    edges = load_edges(mint)
+    edges, cache_meta_path = load_edges(mint)
     stake_pools = set(args.stake_pool)
     cfg = Path("config.json")
     if cfg.exists():
         stake_pools |= set(json.loads(cfg.read_text()).get("stake_pools", []))
 
     if args.cmd == "reconcile":
-        if not cmd_reconcile(edges, dec):
+        if not cmd_reconcile(edges, dec, mint=mint, cache_meta_path=cache_meta_path):
             sys.exit(2)
     elif args.cmd == "trace":
         if not args.arg:

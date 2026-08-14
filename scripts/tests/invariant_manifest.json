@@ -254,7 +254,7 @@
   },
   {
    "schemas": [
-    "solana-reconcile/v2"
+    "solana-reconcile/v3"
    ],
    "script": "scripts/solana/replay_edges.py"
   },
@@ -299,7 +299,10 @@
   {
    "schemas": [
     "camp-series-provenance/v1",
+    "solana-holder-snapshot-v2",
     "solana-reconcile/v2",
+    "solana-reconcile/v3",
+    "sqd-solana-cache/v3",
     "supply-truth-receipt/v3"
    ],
    "script": "scripts/lib/camp_series_provenance.py"
@@ -445,6 +448,7 @@
   },
   {
    "schemas": [
+    "solana-holder-snapshot-v2",
     "sqd-solana-cache/v3"
    ],
    "script": "scripts/solana/replay_edges.py"
@@ -924,6 +928,11 @@
   {
    "locator": "run",
    "script": "scripts/solana/fetch_sqd_transfers_v2.py",
+   "semantics": "overwrite_single"
+  },
+  {
+   "locator": "_atomic_json",
+   "script": "scripts/solana/replay_edges.py",
    "semantics": "overwrite_single"
   },
   {

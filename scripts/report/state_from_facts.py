@@ -153,7 +153,12 @@ def bind_series_source(source: dict, series_source: Path) -> dict:
     # 没有口径信息，compile_state 内保留双式）
     validate_series_payload(compiled,
                             closure_mode=closure_mode_for(sidecar["denominator"]))
-    registry_anchor_check(sidecar, resolved, series_source)
+    target = source.get("token") or {}
+    registry_anchor_check(
+        sidecar, resolved, series_source,
+        expected_chain=target.get("chain"),
+        expected_mint=target.get("mint"),
+        expected_cutoff_slot=target.get("data_cutoff_slot"))
     endpoint_reconcile(sidecar, compiled, resolved)
     manual = source.get("camp_share_series")
     if manual is not None and manual != compiled:

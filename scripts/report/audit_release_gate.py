@@ -977,7 +977,8 @@ def check_figure2_receipt(case_dir: Path, d: dict, errors: list[str]):
     _figure2_input_check(case_dir, d.get("facts"), "facts", errors)
 
 
-def check_series_binding(case_dir: Path, d: dict, errors: list[str]):
+def check_series_binding(case_dir: Path, d: dict, errors: list[str],
+                         expected_target=None):
     """F-C1 下游闸（消化轮 2 终关：自证式→内容重转换比对）。
 
     轮 1 版只验"state 自报的 sidecar 块与案内同名文件 sha 自洽"——盲审两攻击放行
@@ -1049,7 +1050,12 @@ def check_series_binding(case_dir: Path, d: dict, errors: list[str]):
                         "analysis-state 绑定块的 producer 与磁盘 sidecar 实物"
                         "不一致——绑定块不是对这份 sidecar 编译出来的")
                     return
-                registry_anchor_check(sidecar, resolved, cand)
+                expected_target = expected_target or {}
+                registry_anchor_check(
+                    sidecar, resolved, cand,
+                    expected_chain=expected_target.get("chain"),
+                    expected_mint=expected_target.get("token"),
+                    expected_cutoff_slot=expected_target.get("as_of_block"))
                 endpoint_reconcile(sidecar, compiled, resolved)
             except SeriesProvenanceError as exc:
                 errors.append(f"发布期来源链复算失败：{exc}")
@@ -1141,7 +1147,10 @@ def run(case_dir: Path, report: Path | None, *, profile="independent-audit"):
             check_figure2_receipt(case_dir, data["figure2_check_receipt.json"], errors)
         state_path = case_dir / "analysis-state.json"
         if state_path.is_file():
-            check_series_binding(case_dir, load_json(state_path, errors), errors)
+            release_target = ((data.get("reconciliation_report.json") or {})
+                              .get("target") or {})
+            check_series_binding(case_dir, load_json(state_path, errors), errors,
+                                 expected_target=release_target)
         # F-D8（批 D 消化轮 1）：A5 seal 在发布闸**重验**，不只查存在——A5 的
         # distribution_bundle 绑定链（final scan → final_bindings.entity_freeze 等三验）
         # 与 provenance_flip_bundle 由此接入发布必经路：双删 freeze＋ledger、冻结后改

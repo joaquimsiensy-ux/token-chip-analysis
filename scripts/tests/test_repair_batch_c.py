@@ -22,6 +22,9 @@ replay_edges reconcile+evolution 真跑产出（含 锁仓/销毁 行内桶真�
 from __future__ import annotations
 
 import csv
+import gzip
+import hashlib
+import importlib.util
 import json
 import os
 import subprocess
@@ -59,6 +62,17 @@ def run(cmd, cwd, env=None):
     return subprocess.run([sys.executable] + [str(x) for x in cmd],
                           cwd=str(cwd), capture_output=True, text=True,
                           timeout=300, env=e)
+
+
+def file_ref(path: Path):
+    return {"path": path.name, "size": path.stat().st_size,
+            "sha256": hashlib.sha256(path.read_bytes()).hexdigest()}
+
+
+def write_json(path: Path, value):
+    path.write_text(json.dumps(value, ensure_ascii=False, indent=2) + "\n",
+                    encoding="utf-8")
+    return path
 
 
 # ── F-05：共享校验单元面 ─────────────────────────────────────────
@@ -332,7 +346,7 @@ def t_f05_f04_solana_chain():
         [10800, 3, SA, Z, 100],      # burn 100 → net 900
     ]
     old = os.getcwd()
-    with tempfile.TemporaryDirectory() as s:
+    with tempfile.TemporaryDirectory(prefix="c-f09-sol-", dir="/private/tmp") as s:
         td = Path(s)
         os.chdir(td)
         try:
@@ -342,10 +356,20 @@ def t_f05_f04_solana_chain():
             Path("data").mkdir()
             Path("data/holders_owners.json").write_text(
                 json.dumps({SA: 600, SB: 300}))
+            owners_ref = file_ref(Path("data/holders_owners.json"))
             Path("data/holders_snapshot_meta.json").write_text(
-                json.dumps({"closed": True, "supply_raw": "900"}))
+                json.dumps({"schema": "solana-holder-snapshot-v2", "mint": SA,
+                            "target": {"chain": "solana", "token": SA,
+                                       "as_of_block": 3},
+                            "closed": True, "supply_raw": "900",
+                            "outputs": {"holders_owners": owners_ref}}))
+            cache_meta = Path("data/soltx-fixture.meta.json")
+            cache_meta.write_text(json.dumps(
+                {"schema": "sqd-solana-cache/v3", "mint": SA,
+                 "from_slot": 1, "collection_upper_slot": 3}))
             check("SOL reconcile gate_pass",
-                  re_mod.cmd_reconcile(edges, 1) is True)
+                  re_mod.cmd_reconcile(edges, 1, mint=SA,
+                                       cache_meta_path=cache_meta) is True)
 
             # F-05：缺 camps 文件硬拒（rg 定案）；显式空 spec {} 合法
             try:
@@ -391,6 +415,7 @@ def t_f05_f04_solana_chain():
             Path("source.json").write_text(json.dumps(
                 {"schema": "analysis-state-source/v1",
                  "token": {"chain": "solana",
+                           "mint": SA, "data_cutoff_slot": 3,
                            "data_cutoff": "2026-01-05T00:00:00Z",
                            "skill_version": "6.39.5"},
                  "entity_annotations": {"e1": {"type": "single",
@@ -408,9 +433,82 @@ def t_f05_f04_solana_chain():
                   and "_supply_raw" not in st["camp_share_series"]["series"]
                   and st["camp_share_series"]["dates"][0].endswith("Z"))
 
-            # 反例：reconcile_receipt gate_pass=false → 拒
+            # F-09 原反例：净供给相同的乙案只改 target mint，甲案 v3 receipt/sidecar
+            # 整体复制（sidecar 哈希已自洽）也必须由编译调用点的预期身份拒绝。
+            source_path = Path("source.json")
+            source_orig = source_path.read_text()
+            other = json.loads(source_orig)
+            other["token"]["mint"] = SA.lower()
+            source_path.write_text(json.dumps(other))
+            p = compile_state_cli(td, "--series-source", "data/camp_share_series.json")
+            check("F09 state_from_facts 跨案 receipt 复制拒",
+                  p.returncode == 2 and "大小写敏感" in p.stdout, p.stdout)
+            source_path.write_text(source_orig)
+
+            # 发布调用点独立取 reconciliation target；不能复用编译时 source 自报。
+            from audit_release_gate import check_series_binding
+            errors = []
+            check_series_binding(td, st, errors, expected_target={
+                "chain": "solana", "token": SA.lower(), "as_of_block": 3})
+            check("F09 audit_release_gate 独立身份校验命中",
+                  any("大小写敏感" in x for x in errors), errors)
+
             rr = Path("data/reconcile_receipt.json")
             rr_orig = rr.read_text()
+
+            def receipt_rejected(name, mutate, needle):
+                doc = json.loads(rr_orig)
+                mutate(doc)
+                rr.write_text(json.dumps(doc))
+                re_mod.cmd_evolution(edges, 1, "camps.json", set())
+                got = compile_state_cli(td, "--series-source",
+                                        "data/camp_share_series.json")
+                check(name, got.returncode == 2 and needle in got.stdout, got.stdout)
+                rr.write_text(rr_orig)
+                re_mod.cmd_evolution(edges, 1, "camps.json", set())
+
+            receipt_rejected("F09 身份键缺失拒", lambda d: d.pop("mint"), "mint")
+            receipt_rejected("F09 mint 不符拒", lambda d: d.update(mint=SB), "mint")
+            receipt_rejected("F09 mint 大小写变体拒",
+                             lambda d: d.update(mint=SA.lower()), "大小写敏感")
+            receipt_rejected("F09 producer path 错拒",
+                             lambda d: d["producer"].update(path="replay_edges.py"),
+                             "producer")
+            receipt_rejected("F09 producer sha 错拒",
+                             lambda d: d["producer"].update(sha256="0" * 64),
+                             "producer")
+            receipt_rejected("F09 edge digest 改写拒",
+                             lambda d: d.update(edge_digest="0" * 64),
+                             "edge_digest")
+            receipt_rejected("F09 edge count 改写拒",
+                             lambda d: d.update(edge_count=d["edge_count"] + 1),
+                             "edge_digest/edge_count")
+            receipt_rejected("F09 extrema 越窗拒",
+                             lambda d: d["edge_extrema"]["last"].update(slot=4),
+                             "edge_extrema")
+            receipt_rejected("F09 v2 存量 fail-closed",
+                             lambda d: d.update(schema="solana-reconcile/v2"),
+                             "重跑 replay_edges reconcile")
+
+            # 同 mint 不同 cutoff：收据窗口本身可早于 cutoff，但 snapshot 必须是
+            # 同一案 target；这里只改编译案 target，必须拒绝。
+            other = json.loads(source_orig)
+            other["token"]["data_cutoff_slot"] = 4
+            source_path.write_text(json.dumps(other))
+            p = compile_state_cli(td, "--series-source", "data/camp_share_series.json")
+            check("F09 同 mint 不同 cutoff 拒",
+                  p.returncode == 2 and "cutoff" in p.stdout, p.stdout)
+            source_path.write_text(source_orig)
+
+            # meta 与 owners 分属两快照：inputs 虽各自三验可过，snapshot 内绑定必须拒。
+            other_owners = Path("data/holders_owners_other.json")
+            other_owners.write_text(json.dumps({SA: 600, SB: 300}))
+            receipt_rejected(
+                "F09 meta/owners 快照撕裂拒",
+                lambda d: d["inputs"].update(holders_owners=file_ref(other_owners)),
+                "撕裂")
+
+            # 反例：reconcile_receipt gate_pass=false → 拒
             bad = json.loads(rr_orig)
             bad["gate_pass"] = False
             rr.write_text(json.dumps(bad))
@@ -424,6 +522,97 @@ def t_f05_f04_solana_chain():
             p = compile_state_cli(td, "--series-source",
                                   "data/camp_share_series.json")
             check("F04 sol 反例还原后复绿", p.returncode == 0, p.stdout + p.stderr)
+
+            # F-09 层 a：同一 Solana 夹具案继续走 figures→A4 finalize→A5 seal。
+            # 不另建第二案，也不复制别案 seal/figure 产物。
+            from formal_ready_test_harness import run_formal_script
+            want = 300 / 900 * 100
+            write_json(Path("whale_series.json"), [
+                {"entity_id": "e1", "label": "大庄#1", "pct": [round(want, 4)]}])
+            figures = ROOT / "scripts/report/figures_from_facts.py"
+            p = run([figures, "check", "--facts", "facts.json",
+                     "--series", "whale_series.json"], td)
+            fig_receipt = Path("figure2_check_receipt.json")
+            check("F09 Solana 同案 ② figures check",
+                  p.returncode == 0 and fig_receipt.is_file()
+                  and json.loads(fig_receipt.read_text()).get("verdict") == "PASS",
+                  p.stdout + p.stderr)
+
+            write_json(Path("supply_truth.json"), {
+                "schema": "supply-truth-receipt/v3", "verdict": "PASS",
+                "exit_code": 0, "chain": "solana",
+                "target": {"chain": "solana", "token": SA, "as_of_block": 3},
+                "onchain_total_supply": "900", "replay_net": "900"})
+            write_json(Path("data_map.json"), {"files": [{
+                "path": "data/holders_owners.json",
+                "sha256": hashlib.sha256(
+                    Path("data/holders_owners.json").read_bytes()).hexdigest()}]})
+            write_json(Path("candidate_screening.json"),
+                       {"auto_excluded_candidate": []})
+            dist = ROOT / "scripts/report/holder_distribution_scan.py"
+            p = run_formal_script(dist, ["--case-dir", str(td), "--stage", "initial"])
+            assert p.returncode == 0, p.stdout + p.stderr
+
+            Path("findings.md").write_text("# findings\n大庄#1 现仓 300。\n",
+                                           encoding="utf-8")
+            write_json(Path("identity_gate.json"),
+                       {"chain": "solana", "verdict": "PASS"})
+            gate = ROOT / "scripts/report/a4_gate.py"
+            claims = write_json(Path("claims_in.json"), [{
+                "id": "C1", "text": "大庄#1 现仓 300（33.33% 供应）",
+                "files": ["data/effective_balances.json"],
+                "report_locations": ["report.md:1"]}])
+            p = run([gate, "register", "--case-dir", str(td),
+                     "--claims-file", str(claims)], td)
+            assert p.returncode == 0, p.stdout + p.stderr
+            verdicts = write_json(Path("verdicts.json"),
+                                  [{"id": "C1", "verdict": "CONFIRMED"}])
+            p = run([gate, "finalize", "--case-dir", str(td),
+                     "--verdicts-file", verdicts.name, "--seal-files",
+                     "findings.md,analysis-state.json,facts.json,identity_gate.json,"
+                     "figure2_check_receipt.json", "--workflow-type", "new-analysis"], td)
+            seal = Path("a4_seal.json")
+            check("F09 Solana 同案 ③ A4 finalize",
+                  p.returncode == 0 and seal.is_file()
+                  and json.loads(seal.read_text()).get("workflow_type") == "new-analysis",
+                  p.stdout + p.stderr)
+
+            for name, value in {
+                "handoff_manifest.json": {"consumer_min_schema": "handoff/v3",
+                                          "status": "READY", "run_id": "f09-sol"},
+                "identity_snapshot_receipt.json": {
+                    "schema": "identity-snapshot-receipt/v1"},
+                "entity_freeze.json": {"schema": "entity-freeze/v1", "revisions": []},
+                "membership_ledger.json": {"rows": []},
+                "position_ledger.json": {"rows": []},
+                "economic_control_ledger.json": {"rows": []},
+                "address_classification.json": {"rows": []},
+            }.items():
+                write_json(Path(name), value)
+            p = run_formal_script(dist, ["--case-dir", str(td), "--stage", "final",
+                                         "--round", "1"])
+            assert p.returncode == 0, p.stdout + p.stderr
+            p = run_formal_script(dist, [
+                "record-round", "--case-dir", str(td), "--scan",
+                "dist_rounds/round_1/distribution_scan.json"])
+            assert p.returncode == 0, p.stdout + p.stderr
+            final_scan = json.loads(
+                Path("dist_rounds/round_1/distribution_scan.json").read_text())
+            sentence = ("形态统计因样本不足未做,以逐址集中度事实替代"
+                        if final_scan.get("not_evaluable_reason") == "low_sample"
+                        else "当前快照呈正常形态;这只表示本闸未检出结构性畸形,不等于没有庄。")
+            report = Path("report.md")
+            report.write_text(
+                "# Solana 同案端到端报告\n大庄#1 现仓 300。\n" + sentence
+                + "\n\n![持仓分布](charts/final/holder_distribution_current.png)\n",
+                encoding="utf-8")
+            a5 = ROOT / "scripts/report/a5_report_seal.py"
+            p = run_formal_script(a5, ["--case-dir", str(td), "--report", str(report),
+                                       "--a4-seal", str(seal), "--out",
+                                       str(Path("a5_report_seal.json"))])
+            check("F09 Solana 同案 ④ A5 seal（state→figures→A4→A5）",
+                  p.returncode == 0 and Path("a5_report_seal.json").is_file(),
+                  p.stdout + p.stderr)
         finally:
             os.chdir(old)
 
@@ -982,6 +1171,57 @@ def t_f04_tolpp_clamp():
         check("F04 formal 显式默认值绿例", p.returncode == 0, p.stdout)
 
 
+def t_f09_importer_fail_closed():
+    """legacy importer 三条失败分支：坏 meta／缺 GPA／逻辑摘要不符。"""
+    importer_path = (ROOT / "maintenance/repair-20260814-batch2/"
+                     "import_pythia_legacy.py")
+    spec = importlib.util.spec_from_file_location("f09_pythia_importer", importer_path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    with tempfile.TemporaryDirectory(prefix="c-f09-import-", dir="/private/tmp") as raw:
+        root = Path(raw)
+        (root / "data").mkdir()
+        edge = root / "data/edge.jsonl.gz"
+        with gzip.open(edge, "wt") as fh:
+            fh.write(json.dumps([1, 1, Z, SA, 1]) + "\n")
+        meta = root / "data/legacy.meta.json"
+        meta.write_text(json.dumps({"version": 1, "from_slot": 1,
+                                    "launch_covered": True}))
+        manifest = {
+            "schema": mod.MANIFEST_SCHEMA, "chain": "solana",
+            "mint": mod.EXPECTED_MINT, "edge_rows": mod.EXPECTED_ROWS,
+            "edge_logical_sha256": mod.EXPECTED_EDGE_DIGEST,
+            "frozen_cutoff_slot": mod.EXPECTED_CUTOFF,
+            "coverage_front_slot": mod.EXPECTED_CUTOFF, "gaps": [],
+            "edge_source": "data/edge.jsonl.gz",
+            "collector_meta_path": "data/legacy.meta.json",
+            "supply_raw": "1",
+        }
+        (root / "collect_manifest.json").write_text(json.dumps(manifest))
+        try:
+            mod.validate_manifest(root)
+            check("F09 importer 坏 meta fail-closed", False, "坏 meta 被接受")
+        except mod.ImportFailure as exc:
+            check("F09 importer 坏 meta fail-closed", "version=2" in str(exc), str(exc))
+
+        meta.write_text(json.dumps({"version": 2, "from_slot": 1,
+                                    "launch_covered": True}))
+        try:
+            mod.replay_gpa(root, manifest)
+            check("F09 importer 缺 GPA fail-closed", False, "缺 GPA 被接受")
+        except mod.ImportFailure as exc:
+            check("F09 importer 缺 GPA fail-closed", "raw GPA" in str(exc), str(exc))
+
+        try:
+            mod.replay_edge_facts(edge)
+            check("F09 importer 逻辑哈希不符 fail-closed", False, "坏摘要被接受")
+        except mod.ImportFailure as exc:
+            check("F09 importer 逻辑哈希不符 fail-closed",
+                  "edge 逻辑事实差异" in str(exc), str(exc))
+        check("F09 importer 失败分支零 migration receipt",
+              not (root / "migration_receipt.json").exists())
+
+
 def main():
     try:
         import duckdb  # noqa: F401
@@ -995,6 +1235,7 @@ def main():
     t_f05_f04_build_evolution()
     t_f04_payload_unit()
     t_f04_tolpp_clamp()
+    t_f09_importer_fail_closed()
     t_fixround1()
     t_fc5_receipt_chain()
     print(f"PASS: repair batch C (F-05+F-04+fixround1) {len(PASSED)} checks")

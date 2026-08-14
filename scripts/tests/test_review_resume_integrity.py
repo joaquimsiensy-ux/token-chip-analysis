@@ -224,11 +224,25 @@ def test_h06(tmp):
     try:
         Path("data").mkdir()
         edges = [[100, 1, ZERO_SOL, "A", 100], [3700, 2, ZERO_SOL, "B", 100]]
-        Path("data/holders_owners.json").write_text(json.dumps({"A": 100, "B": 100}))
-        Path("data/holders_snapshot_meta.json").write_text(json.dumps({"closed": True, "supply_raw": "200"}))
-        assert cmd_reconcile(edges, 1)
+        owners = Path("data/holders_owners.json")
+        owners.write_text(json.dumps({"A": 100, "B": 100}))
+        owner_ref = {"path": owners.name, "size": owners.stat().st_size,
+                     "sha256": hashlib.sha256(owners.read_bytes()).hexdigest()}
+        Path("data/holders_snapshot_meta.json").write_text(json.dumps({
+            "schema": "solana-holder-snapshot-v2", "mint": "MintCaseSensitive",
+            "target": {"chain": "solana", "token": "MintCaseSensitive",
+                       "as_of_block": 2},
+            "closed": True, "supply_raw": "200",
+            "outputs": {"holders_owners": owner_ref}}))
+        cache_meta = Path("data/soltx-test.meta.json")
+        cache_meta.write_text(json.dumps({
+            "schema": "sqd-solana-cache/v3", "mint": "MintCaseSensitive",
+            "from_slot": 1, "collection_upper_slot": 2}))
+        assert cmd_reconcile(edges, 1, mint="MintCaseSensitive",
+                             cache_meta_path=cache_meta)
         Path("data/holders_snapshot_meta.json").unlink()
-        assert not cmd_reconcile(edges, 1)
+        assert not cmd_reconcile(edges, 1, mint="MintCaseSensitive",
+                                 cache_meta_path=cache_meta)
         Path("camps.json").write_text(json.dumps({"A营": ["A"], "B营": ["B"]}))
         cmd_evolution(edges, 1, "camps.json", set())
         series = json.loads(Path("data/camp_share_series.json").read_text())
