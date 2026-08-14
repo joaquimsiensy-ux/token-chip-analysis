@@ -47,11 +47,12 @@ from anchor_selection import (EXPECTED_PLAN_PRODUCER, REPLAY_PARAMETER_FIELDS,
 from chain_registry import formal_evm_chains
 from receipt_validate import validate_receipt
 from receipt_kernel import (build_envelope, finalize_envelope, publish_error_receipt,
-                            publish_overwrite)
+                            publish_overwrite, publish_supersede)
 
 TRANSFER_TOPIC = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
 BALANCEOF_SELECTOR = "0x70a08231"
 SCHEMA = "time-spotcheck/v2"
+SCHEMA_FAMILY = "time-spotcheck/"
 PLAN_SCHEMA = "anchor-plan/v2"
 PLAN_RECEIPT_SCHEMA = "anchor-plan-receipt/v2"
 
@@ -298,7 +299,7 @@ def main():
             envelope, "FAIL", 2, gate="time_spotcheck", error=(
                 f"anchor_plan target {plan_chain}/{plan_token} 与 CLI {a.chain}/{token} 不一致"))
         try:
-            publish_overwrite(a.out, result)
+            publish_supersede(a.out, result, schema_family=SCHEMA_FAMILY)
         except Exception as exc:
             print(f"[time_spotcheck] FAIL receipt 写入失败: {exc}", file=sys.stderr)
             return 1
@@ -399,7 +400,10 @@ def main():
         return 1
     out = finalize_envelope(envelope, verdict, exit_code, **fields)
     try:
-        publish_overwrite(a.out, out)
+        if verdict == "FAIL":
+            publish_supersede(a.out, out, schema_family=SCHEMA_FAMILY)
+        else:
+            publish_overwrite(a.out, out)
     except Exception as exc:
         print(f"[time_spotcheck] receipt 写入失败: {exc}", file=sys.stderr)
         return 1

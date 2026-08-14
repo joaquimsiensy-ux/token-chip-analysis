@@ -146,16 +146,73 @@ def add_distribution_initial(d):
     align_ledgers_to_owner_snapshot(Path(d), snap)
     wj(d, "candidate_screening.json", {"schema": "candidate-screening/v1",
                                          "auto_excluded_candidate": []})
-    wj(d, "supply_truth.json", {"verdict": "PASS", "exit_code": 0,
-                                  "chain": "bsc", "onchain_total_supply": str(total),
-                                  "replay_net": str(total), "mint_total": str(total),
-                                  "burn_total": "0", "decision_rule": "primary_form1",
-                                  "total_supply_raw": str(total), "net_supply_raw": str(total)})
+    replay_stats = Path(d, "replay_stats.json")
+    preflight = json.loads(Path(d, "channels_preflight.json").read_text(encoding="utf-8"))
+    wj(d, "supply_truth.json", {
+        "schema": "supply-truth-receipt/v3",
+        "target": {"chain": "bsc", "token": preflight["token"], "as_of_block": 123},
+        "verdict": "PASS", "exit_code": 0, "chain": "bsc",
+        "onchain_total_supply": str(total), "replay_net": str(total),
+        "mint_total": str(total), "burn_total": "0",
+        "decision_rule": "primary_form1", "total_supply_raw": str(total),
+        "net_supply_raw": str(total),
+        "inputs": {"replay_stats": {
+            "path": replay_stats.name, "size": replay_stats.stat().st_size,
+            "sha256": sha(replay_stats),
+        }},
+    })
     wj(d, "data_map.json", {"files": [{"path": "data/holders_owners.json",
                                           "sha256": hashlib.sha256(snap.read_bytes()).hexdigest()}]})
     # 案根 replay_stats.json 保持不动（mint=100 与本快照同源），闭合锚点走它。
     p = run_formal_script(DIST, ["--case-dir", d, "--stage", "initial"])
     assert p.returncode == 0, p.stdout + p.stderr
+
+
+def add_camp_series(d):
+    """P1-05 new-analysis fixture: bind state to a real sidecar-shaped series."""
+    root = Path(d)
+    balances = json.loads((root / "balances_final.json").read_text(encoding="utf-8"))
+    holder = next(iter(balances))
+    total = sum(int(value) for value in balances.values())
+    holder_pct = int(balances[holder]) / total * 100
+    camps = {"camps": {"大庄": [holder]}, "entities": {}}
+    wj(d, "camps.json", camps)
+    series = {"dates": ["2026-01-01"], "大庄": [holder_pct],
+              "散户": [100.0 - holder_pct]}
+    series_path = root / "data/camp_series.json"
+    series_path.write_text(json.dumps(series, ensure_ascii=False), encoding="utf-8")
+
+    lib_dir = str(Path(HERE).parent / "lib")
+    if lib_dir not in sys.path:
+        sys.path.insert(0, lib_dir)
+    from camp_series_provenance import series_to_state_form, write_series_sidecar
+    sidecar_path = write_series_sidecar(
+        series_path, producer="scripts/tests/test_a4_gate.py",
+        series_format="evm-dict", denominator="current_net_supply",
+        camps_spec_path=root / "camps.json",
+        final_balances_path=root / "balances_final.json",
+        inputs={"replay_stats": root / "replay_stats.json"},
+    )
+    sidecar = json.loads(sidecar_path.read_text(encoding="utf-8"))
+    state_path = root / "analysis-state.json"
+    state = json.loads(state_path.read_text(encoding="utf-8"))
+    state["camp_share_series"] = series_to_state_form(series, "evm-dict")
+    provenance = dict(state.get("provenance") or {})
+    provenance.update({
+        "series_binding": "producer-sidecar",
+        "camp_series_sidecar": {
+            "producer": sidecar["producer"],
+            "series_file": sidecar["series_file"],
+            "series_sha256": sidecar["series_sha256"],
+            "series_format": sidecar["series_format"],
+        },
+    })
+    state["provenance"] = provenance
+    state_path.write_text(json.dumps(state, ensure_ascii=False), encoding="utf-8")
+    identity_path = root / "identity_gate.json"
+    identity = json.loads(identity_path.read_text(encoding="utf-8"))
+    identity["state_sha256"] = sha(state_path)
+    identity_path.write_text(json.dumps(identity, ensure_ascii=False), encoding="utf-8")
 
 
 def finish_distribution_normal(d):
@@ -187,6 +244,7 @@ def finish_distribution_normal(d):
 
 def main():
     root = tempfile.mkdtemp(prefix="a4_gate_test_")
+    os.environ.setdefault("MPLCONFIGDIR", os.path.join(root, "matplotlib-cache"))
     d = os.path.join(root, "case")
     os.makedirs(d)
     report_path = build_case(Path(d), historical=False)
@@ -329,6 +387,7 @@ def main():
                  "reproduce_receipt.json", "reproduce_output.json", "a5_report_seal.json"):
         Path(new_d, name).unlink(missing_ok=True)
     add_distribution_initial(new_d)
+    add_camp_series(new_d)
     p = run(GATE, ["finalize", "--case-dir", new_d,
                    "--seal-files", "findings.md,analysis-state.json",
                    "--verdicts-file", os.path.join(new_d, "v_ok.json"),
@@ -344,11 +403,26 @@ def main():
     assert p_chk.returncode == 0 and os.path.isfile(
         os.path.join(new_d, "figure2_check_receipt.json")), \
         f"figure2 收据生成失败: {p_chk.stdout} {p_chk.stderr}"
+    fig1 = os.path.join(new_d, "charts", "final", "fig1.png")
+    p_fig1 = run(os.path.join(HERE, "..", "report", "figures_from_facts.py"),
+                 ["fig1", "--state", os.path.join(new_d, "analysis-state.json"),
+                  "--out", fig1])
+    assert p_fig1.returncode == 0 and os.path.isfile(fig1) \
+        and os.path.isfile(os.path.join(new_d, "fig1_legend_receipt.json")), \
+        f"fig1/legend 收据生成失败: {p_fig1.stdout} {p_fig1.stderr}"
+    with Path(new_d, "report.md").open("a", encoding="utf-8") as fh:
+        fh.write("\n![阵营演变](charts/final/fig1.png)\n")
+    a5_seal = os.path.join(new_d, "a5_report_seal.json")
+    p_a5 = run_formal_script(A5, ["--case-dir", new_d,
+                                  "--report", os.path.join(new_d, "report.md"),
+                                  "--a4-seal", new_seal, "--out", a5_seal])
+    assert p_a5.returncode == 0 and json.load(open(a5_seal))["schema"] == "a5-report-seal/v3", \
+        f"A5 v3 seal 生成失败: {p_a5.stdout} {p_a5.stderr}"
     new_out = os.path.join(new_d, "new.html")
     p_build = run(BUILD, ["--mode", "analysis-new", "--md", os.path.join(new_d, "report.md"),
                           "--out", new_out, "--facts", os.path.join(new_d, "facts.json"),
                           "--state", os.path.join(new_d, "analysis-state.json"),
-                          "--a4-seal", new_seal])
+                          "--a4-seal", new_seal, "--a5-seal", a5_seal])
     check("P1-05 全新分析无净室资产仍过必经共享门禁",
           p.returncode == 0 and p_build.returncode == 0 and os.path.isfile(new_out),
           p.stdout + p.stderr + p_build.stdout + p_build.stderr)

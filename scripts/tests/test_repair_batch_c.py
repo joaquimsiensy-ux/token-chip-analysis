@@ -496,7 +496,7 @@ def t_f04_payload_unit():
     expected = ["项目方", "大庄", "小庄", "离场庄", "刷量地址", "CEX资金通道",
                 "CEX托管", "疑似CEX托管", "流动性池", "其他大户", "历史大户",
                 "散户", "桥锁仓", "锁仓/销毁", "狙击集团", "庄家TOP1",
-                "庄家其他组", "首30分钟狙击者", "其他散户"]
+                "庄家其他组", "首30分钟狙击者", "其他散户", "销毁"]
     check("F04 CAMP_ORDER 合并保原序", scharts.CAMP_ORDER == expected,
           str(scharts.CAMP_ORDER))
     check("F04 两段无重叠且并集=全量",

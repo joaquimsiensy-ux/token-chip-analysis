@@ -43,8 +43,9 @@ def main():
         try:
             f = open(c["path"])
         except FileNotFoundError:
-            print(f"[warn] 缺文件 {c['path']}（tag={c['tag']}），跳过")
-            continue
+            print(f"[fail-closed] 通道文件在 preflight 后消失: {c['path']}"
+                  f"（tag={c['tag']}）", file=sys.stderr)
+            raise SystemExit(2)
         r = csv.DictReader(f)
         header = set(r.fieldnames or [])
         legacy = {"block", "ts", "tx", "from", "to", "uniqueId"} <= header \
@@ -158,6 +159,8 @@ def main():
     print("终态top15（%按总铸量）:")
     for ad, v in top:
         print(f"  {ad} {v/1e18/1e6:.2f}M ({v/mint_total*100 if mint_total else 0:.3f}%)")
+    print("[gate]", "PASS" if stats["gate_pass"] else "FAIL——禁止进入下游分析")
+    sys.exit(0 if stats["gate_pass"] else 4)
 
 
 if __name__ == "__main__":

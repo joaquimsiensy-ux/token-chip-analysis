@@ -37,8 +37,11 @@ LEAK_FOUND（exit 2）/ INVALID_SAMPLE（exit 1）。
 import argparse, gzip, json, random, subprocess, sys, time
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
+from proxy_config import resolve_proxy
+
 DEF_RPC = "https://api.mainnet-beta.solana.com"
-DEF_PROXY = "http://127.0.0.1:7897"
+DEF_PROXY = None
 INIT_TYPES = {"initializeAccount", "initializeAccount2", "initializeAccount3"}
 ATA_TYPES = {"create", "createIdempotent"}
 T0 = time.time()
@@ -235,8 +238,13 @@ def main():
     ap.add_argument("--wall-min", type=float, default=25.0, help="总墙钟保险丝（分钟）")
     ap.add_argument("--seed", type=int, default=42)
     ap.add_argument("--rpc", default=DEF_RPC)
-    ap.add_argument("--proxy", default=DEF_PROXY, help="传 '' 关闭代理")
+    ap.add_argument("--proxy", default=None,
+                    help="代理 URL；空字符串或 none 显式直连（默认经 CHIP_PROXY/端口探测解析）")
     args = ap.parse_args()
+    try:
+        args.proxy = resolve_proxy(args.proxy)
+    except ValueError as exc:
+        ap.error(str(exc))
     random.seed(args.seed)
     wall_dl = T0 + args.wall_min * 60
     mint = args.mint

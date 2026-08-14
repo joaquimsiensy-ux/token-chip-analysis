@@ -18,11 +18,11 @@
 
 用法:
   python3 accounting_gate.py --token 0x... --chain bsc [--rpc URL] [--out accounting_mode.json]
-  python3 accounting_gate.py --token 0x... --chain eth --rpc https://eth-mainnet.g.alchemy.com/v2/<key> \
-      --proxy http://127.0.0.1:7897
+  CHIP_PROXY=<proxy-url> python3 accounting_gate.py --token 0x... --chain eth \
+      --rpc https://eth-mainnet.g.alchemy.com/v2/<key>
   --rpc      不给时用链默认免 key 端点（见 DEFAULT_RPC；eth/base 建议传 Alchemy=archive）
   --hypersync / --hypersync-token-file  事件通道（默认从 ~/.config/hypersync/token 读取）
-  --proxy    只作用于 RPC（Alchemy *.g.alchemy.com 国内必须走 clash）；HyperSync/Sourcify 国内直连
+  --proxy    只作用于 RPC；经 scripts/lib/proxy_config.py 按 CLI/CHIP_PROXY/探测解析
   --samples  事件差值法样本数上限（默认 8）
 
 输出: accounting_mode.json（mode/verdict/exit_code/checks 逐项证据+抽样明细）
@@ -53,6 +53,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
 from endpoint_identity import public_endpoint
 from chain_registry import evm_chain_id_for, formal_evm_chains
 from net import RpcAttestationError, attested_rpc_pool
+from proxy_config import resolve_proxy
 
 TRANSFER = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
 ZERO32 = "0x" + "0" * 64
@@ -384,7 +385,8 @@ def main():
     ap.add_argument("--hypersync", default=None, help="HyperSync 裸域名（默认按链）")
     ap.add_argument("--hypersync-token-file",
                     default=os.path.expanduser("~/.config/hypersync/token"))
-    ap.add_argument("--proxy", default=None, help="RPC 代理（Alchemy 国内必须 clash）")
+    ap.add_argument("--proxy", default=None,
+                    help="RPC 代理；空字符串或 none 显式直连（默认经 CHIP_PROXY/端口探测解析）")
     ap.add_argument("--samples", type=int, default=8)
     ap.add_argument("--sourcify", default="https://sourcify.dev/server")
     ap.add_argument("--out", default="accounting_mode.json")
@@ -398,9 +400,12 @@ def main():
 
     token = a.token.lower()
     rpc_url = a.rpc or DEFAULT_RPC[a.chain]
-    proxy = a.proxy
-    if proxy is None and ".g.alchemy.com" in rpc_url:
-        proxy = "http://127.0.0.1:7897"  # 登记文件既定坑：Alchemy 国内直连被墙
+    should_resolve_proxy = (a.proxy is not None or "CHIP_PROXY" in os.environ
+                            or ".g.alchemy.com" in rpc_url)
+    try:
+        proxy = resolve_proxy(a.proxy) if should_resolve_proxy else None
+    except ValueError as exc:
+        ap.error(str(exc))
     hs_url = a.hypersync or DEFAULT_HS[a.chain]
     bearer = None
     if os.path.exists(a.hypersync_token_file):

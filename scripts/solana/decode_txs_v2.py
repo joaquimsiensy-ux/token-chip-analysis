@@ -11,7 +11,7 @@
      JSON-RPC batch，须改用 --workers 单笔并发并遵守账号级 10 RPS
 
 用法: python3 decode_txs_v2.py --sigs <jsonl> --out <jsonl> [--mint M] [--pool P]
-      [--batch 8] [--interval 0.8] [--proxy http://127.0.0.1:7897]
+      [--batch 8] [--interval 0.8] [--proxy <proxy-url>]
       [--cache-dir data/txcache] [--rpc <url>]
 输出行与 v1 逐字段一致({sig, slot, ts, deltas} / {sig, decode_fail});断点续传兼容 v1 输出。
 """

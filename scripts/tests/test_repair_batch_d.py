@@ -970,12 +970,40 @@ def build_solana_case(root: Path):
     from formal_ready_test_harness import run_formal_script
     p = run_formal_script(dist, ["--case-dir", str(root), "--stage", "initial"])
     assert p.returncode == 0, p.stdout + p.stderr
+    write_json(root / "camp_spec.json", {})
+    camp_reconcile = write_json(root / "camp_reconcile_receipt.json", {
+        "schema": "solana-reconcile/v2", "gate_pass": True,
+        "net_supply_raw": "100", "burned_raw": "0",
+    })
+    series_path = write_json(root / "data/camp_series.json", [
+        {"ts": 1767225600, "散户": 100.0, "_supply_raw": "100"},
+    ])
+    from camp_series_provenance import series_to_state_form, write_series_sidecar
+    sidecar_path = write_series_sidecar(
+        series_path, producer="scripts/tests/test_repair_batch_d.py",
+        series_format="sol-rows", denominator="net_supply",
+        camps_spec_path=root / "camp_spec.json", final_balances_path=owners_path,
+        inputs={"reconcile_receipt": camp_reconcile},
+    )
+    sidecar = json.loads(sidecar_path.read_text(encoding="utf-8"))
+    state = {
+        "chain": "solana", "whale_groups": [],
+        "camp_share_series": series_to_state_form(
+            json.loads(series_path.read_text(encoding="utf-8")), "sol-rows"),
+        "provenance": {"series_binding": "producer-sidecar",
+                       "camp_series_sidecar": {
+                           "producer": sidecar["producer"],
+                           "series_file": sidecar["series_file"],
+                           "series_sha256": sidecar["series_sha256"],
+                           "series_format": sidecar["series_format"],
+                       }},
+    }
     for name, value in {
         "handoff_manifest.json": {"consumer_min_schema": "handoff/v3", "status": "READY",
                                   "run_id": "fixture-sol"},
         "identity_snapshot_receipt.json": {"schema": "identity-snapshot-receipt/v1"},
         "entity_freeze.json": {"schema": "entity-freeze/v1", "revisions": []},
-        "analysis-state.json": {"chain": "solana", "whale_groups": []},
+        "analysis-state.json": state,
         "facts.json": {"token": {"symbol": "SOLX", "decimals": 0,
                                  "total_supply_raw": "100"}, "entities": {}},
         "evidence.json": {"source": "fixture"},
@@ -1005,6 +1033,13 @@ def build_solana_case(root: Path):
     report.write_text(report.read_text(encoding="utf-8") + "\n" + sentence
                       + "\n\n![持仓分布](charts/final/holder_distribution_current.png)\n",
                       encoding="utf-8")
+    p = subprocess.run([sys.executable, str(fff), "fig1", "--state",
+                        "analysis-state.json", "--out", "charts/final/fig1.png"],
+                       cwd=root, capture_output=True, text=True)
+    assert p.returncode == 0 and (root / "fig1_legend_receipt.json").is_file(), \
+        p.stdout + p.stderr
+    report.write_text(report.read_text(encoding="utf-8")
+                      + "\n![阵营演变](charts/final/fig1.png)\n", encoding="utf-8")
     a5 = HERE.parent / "report/a5_report_seal.py"
     p = run_formal_script(a5, ["--case-dir", str(root), "--report", str(report),
                                "--a4-seal", str(root / "a4_seal.json"),
@@ -1421,6 +1456,15 @@ def t_fd3_e2e_single_case_evm():
         report.write_text("# 同案端到端报告\n大庄#1 现仓 350。\n" + sentence
                           + "\n\n![持仓分布](charts/final/holder_distribution_current.png)\n",
                           encoding="utf-8")
+        fff = HERE.parent / "report/figures_from_facts.py"
+        p = subprocess.run([sys.executable, str(fff), "fig1", "--state",
+                            "analysis-state.json", "--out", "charts/final/fig1.png"],
+                           cwd=root, capture_output=True, text=True)
+        check("F-D3 ④前置：fig1 producer 落 legend receipt",
+              p.returncode == 0 and (root / "fig1_legend_receipt.json").is_file(),
+              (p.returncode, (p.stdout + p.stderr)[-400:]))
+        report.write_text(report.read_text(encoding="utf-8")
+                          + "\n![阵营演变](charts/final/fig1.png)\n", encoding="utf-8")
         # ④ A5 seal 同案收口
         a5 = HERE.parent / "report/a5_report_seal.py"
         p = run_formal_script(a5, ["--case-dir", str(root), "--report", str(report),

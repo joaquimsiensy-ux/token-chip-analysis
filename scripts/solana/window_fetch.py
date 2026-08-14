@@ -13,14 +13,15 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
 import net
 from receipt_kernel import (RawBytes, assert_distinct_paths, build_envelope,
-                            finalize_envelope, publish_error_receipt, publish_overwrite,
-                            publish_txn)
+                            finalize_envelope, publish_error_receipt, publish_exclusive,
+                            publish_overwrite, publish_supersede, publish_txn)
 
 SQD = "https://portal.sqd.dev/datasets/solana-mainnet/stream"
 MINT = json.loads(Path("config.json").read_text())["mint"]
 ZERO = "0x" + "0" * 40
 CHUNK = 2000
 SCHEMA = "solana-window-fetch-receipt/v2"
+SCHEMA_FAMILY = "solana-window-fetch-receipt/"
 
 
 def pair_tx(delta):
@@ -130,6 +131,38 @@ def _publish_error(receipt_path, envelope, error, run_id):
         print(f"[window_fetch] ERROR receipt 发布失败: {exc}", file=sys.stderr)
 
 
+def _fsync_directory(path: Path):
+    flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)
+    fd = os.open(path, flags)
+    try:
+        os.fsync(fd)
+    finally:
+        os.close(fd)
+
+
+def _rollback_fail_precommit(data_archive: Path | None, gaps_evidence: Path | None):
+    """Undo links/files created before a FAIL receipt becomes canonical."""
+    failures = []
+    for path in (data_archive, gaps_evidence):
+        if path is None:
+            continue
+        try:
+            path.unlink()
+        except FileNotFoundError:
+            pass
+        except OSError as exc:
+            failures.append((path, exc))
+    parents = {path.parent for path in (data_archive, gaps_evidence) if path is not None}
+    for parent in parents:
+        try:
+            _fsync_directory(parent)
+        except OSError as exc:
+            failures.append((parent, exc))
+    if failures:
+        detail = "; ".join(f"{path}: {exc}" for path, exc in failures)
+        raise RuntimeError(f"FAIL receipt 发布前状态回滚失败: {detail}")
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("frm", type=int)
@@ -144,8 +177,9 @@ def main(argv=None):
     out_path = Path(args.out).resolve()
     partial = Path(str(out_path) + ".partial")
     gaps_path = Path(str(out_path) + ".gaps.json")
+    gaps_evidence = Path(f"{gaps_path}.failed-{run_id}")
     try:
-        assert_distinct_paths(out_path, args.receipt, partial, gaps_path)
+        assert_distinct_paths(out_path, args.receipt, partial, gaps_path, gaps_evidence)
     except Exception as exc:
         print(f"[window_fetch] 发布路径冲突: {exc}", file=sys.stderr)
         return 2
@@ -200,19 +234,17 @@ def main(argv=None):
                 item["min"] is None or item["max"] is None
                 for item in segment_timestamps)):
             raise RuntimeError("complete segment 缺少 timestamp min/max 证据")
-        publish_overwrite(gaps_path, gaps)
         if gaps:
             verdict, exit_code = "FAIL", 2
-            if out_path.exists():
-                stale = out_path.with_name(f"{out_path.name}.stale.{run_id}")
-                if stale.exists():
-                    raise RuntimeError(f"stale destination already exists: {stale}")
-                os.replace(out_path, stale)
+            publish_exclusive(gaps_evidence, gaps)
+            _fsync_directory(gaps_evidence.parent)
             envelope = build_envelope(
-                SCHEMA, target, __file__, "formal", {"output": partial, "gaps": gaps_path})
+                SCHEMA, target, __file__, "formal",
+                {"output": partial, "gaps": gaps_evidence})
             published = envelope["inputs"]["output"]
         else:
             verdict, exit_code = "PASS", 0
+            publish_overwrite(gaps_path, gaps)
             envelope = build_envelope(
                 SCHEMA, target, __file__, "formal", {"gaps": gaps_path})
             data_bytes = partial.read_bytes()
@@ -230,7 +262,40 @@ def main(argv=None):
             timestamps={"segments": sorted(segment_timestamps,
                                             key=lambda item: item["from_slot"])})
         if gaps:
-            publish_overwrite(args.receipt, receipt)
+            data_archive = None
+            old_data_stat = None
+            try:
+                if out_path.exists():
+                    data_archive = out_path.with_name(f"{out_path.name}.stale.{run_id}")
+                    if data_archive.exists():
+                        raise RuntimeError(f"stale destination already exists: {data_archive}")
+                    old_data_stat = out_path.stat()
+                    os.link(out_path, data_archive, follow_symlinks=False)
+                    _fsync_directory(out_path.parent)
+                publish_supersede(
+                    args.receipt, receipt, schema_family=SCHEMA_FAMILY)
+            except BaseException as primary:
+                try:
+                    _rollback_fail_precommit(data_archive, gaps_evidence)
+                except BaseException as rollback_exc:
+                    raise RuntimeError(
+                        f"FAIL receipt 发布失败 ({primary}); 前置状态回滚也失败: "
+                        f"{rollback_exc}") from rollback_exc
+                raise
+            if data_archive is not None:
+                current = out_path.stat()
+                archived = data_archive.stat()
+                identity = lambda item: (item.st_dev, item.st_ino, item.st_size,
+                                         item.st_mtime_ns)
+                if identity(current) != identity(old_data_stat) or identity(archived) != identity(
+                        old_data_stat):
+                    raise RuntimeError("旧正式 window 数据在 FAIL 提交期间发生并发变化")
+                out_path.unlink()
+                _fsync_directory(out_path.parent)
+            # Canonical gaps is an operator-facing mirror.  The FAIL receipt
+            # binds the immutable run-specific evidence above, so this update
+            # cannot invalidate either the old PASS or the new FAIL receipt.
+            publish_overwrite(gaps_path, gaps)
         else:
             publish_txn(out_path, RawBytes(data_bytes), args.receipt, receipt)
             try:

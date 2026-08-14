@@ -27,8 +27,31 @@ def main():
     ap.add_argument("camps", help="camps.json（阵营与实体定义）")
     ap.add_argument("--data-dir", default="data")
     a = ap.parse_args()
+    stats_path = f"{a.data_dir}/replay_stats.json"
+    try:
+        stats = json.load(open(stats_path))
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        print(f"[camp-series] {stats_path} 不可读或 JSON 损坏: {exc}——先重跑"
+              " pass1 再跑 pass2", file=sys.stderr)
+        sys.exit(2)
+    # 信任边界：pass2 消费 pass1 的 gate_pass，不在此重算 merged.csv；防篡改由
+    # camp-series provenance 对 replay_stats 的绑定及下游 supply_truth 哈希链兜底。
+    gate_pass = stats.get("gate_pass") if isinstance(stats, dict) else None
+    if type(gate_pass) is not bool:
+        print(f"[camp-series] {stats_path} schema 故障：gate_pass 必须是布尔值，"
+              f"实得 {gate_pass!r}——先重跑 pass1 再跑 pass2", file=sys.stderr)
+        sys.exit(2)
+    if gate_pass is False:
+        print(f"[camp-series] {stats_path} gate_pass=false（pass1 对账 gate 未通过）"
+              "——禁止编译正式阵营/实体序列", file=sys.stderr)
+        sys.exit(4)
+    try:
+        total = int(stats["mint_total_wei"])
+    except (KeyError, TypeError, ValueError) as exc:
+        print(f"[camp-series] {stats_path} schema 故障：mint_total_wei 缺失或非法: "
+              f"{exc}——先重跑 pass1 再跑 pass2", file=sys.stderr)
+        sys.exit(2)
     spec = json.load(open(a.camps))
-    total = int(json.load(open(f"{a.data_dir}/replay_stats.json"))["mint_total_wei"])
     # F-05：互斥校验（同营内+跨营重复硬拒 exit 2）在 set() 化之前、规范化之后做；
     # 校验实现四入口共享（scripts/lib/camp_spec.py），禁再各自手写
     camps_valid = validate_camp_spec(spec.get("camps", {}), chain_family="evm",

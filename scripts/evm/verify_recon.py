@@ -18,9 +18,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
 from chain_registry import formal_evm_chains
 from net import RpcChainMismatch, attested_rpc_pool
 from receipt_kernel import (build_envelope, finalize_envelope, publish_error_receipt,
-                            publish_overwrite)
+                            publish_overwrite, publish_supersede)
 from supply_semantics import DEAD, ZERO
 SCHEMA = "evm-reconciliation-receipt/v2"
+SCHEMA_FAMILY = "evm-reconciliation-receipt/"
 
 
 class ReconFailure(ValueError):
@@ -162,7 +163,10 @@ def main(argv=None):
             print(f"[verify_recon] ERROR receipt 写入失败: {write_exc}", file=sys.stderr)
         return 1
     try:
-        publish_overwrite(a.out, receipt)
+        if receipt["verdict"] == "FAIL":
+            publish_supersede(a.out, receipt, schema_family=SCHEMA_FAMILY)
+        else:
+            publish_overwrite(a.out, receipt)
     except Exception as exc:
         print(f"[verify_recon] receipt 写入失败: {exc}", file=sys.stderr)
         return 1

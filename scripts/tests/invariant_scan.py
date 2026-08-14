@@ -32,7 +32,8 @@ SCOPE = (
     "scripts/*.py",
 )
 ATOMIC_SEMANTICS = {
-    "exclusive_new", "overwrite_single", "dual_file_txn", "restore_on_fail",
+    "exclusive_new", "overwrite_single", "supersede_single", "dual_file_txn",
+    "restore_on_fail",
     # 批 D F-07：N 文件真事务（prepare 全写临时件 → commit 逐个备份+替换；
     # commit 失败逐文件回滚并验证字节，回滚失败保留 .recover）——refresh_manifests。
     "multi_file_txn",
@@ -956,7 +957,8 @@ def standalone_failure_artifact_producers():
     a newly added publisher with the same semantics joins the denominator.
     """
     found = set()
-    success_primitives = {"publish_txn", "publish_overwrite", "os.replace"}
+    success_primitives = {
+        "publish_txn", "publish_overwrite", "publish_supersede", "os.replace"}
     for path in production_files():
         if path.suffix != ".py":
             continue

@@ -41,6 +41,7 @@ NEW_ANALYSIS_REQUIRED = (
     "distribution_scan.json",
     "distribution_rounds.json",
     "a5_report_seal.json",
+    "fig1_legend_receipt.json",
     # F-C5：图 2 末点对账留痕收据（figures_from_facts check 每跑必写）——
     # 发布闸复验 mode==formal、tol_pp==默认、verdict==PASS
     "figure2_check_receipt.json",
@@ -980,6 +981,73 @@ def check_figure2_receipt(case_dir: Path, d: dict, errors: list[str]):
     _figure2_input_check(case_dir, d.get("facts"), "facts", errors)
 
 
+def check_figure1_legend_receipt(case_dir: Path, d: dict, state: dict,
+                                 errors: list[str]):
+    """F-01 trust-root check: recompute figure-1 semantics from current state.
+
+    A5 freezes the receipt bytes and checks its physical state/PNG bindings.
+    This release-layer check independently consumes the current state and the
+    shared pure selector, so a self-consistent forged receipt cannot define its
+    own rendered/excluded universe.  State cannot infer which optional overlay
+    the author chose; it can and does prove every declared component is a
+    current rendered camp.
+    """
+    from figures_from_facts import FIG1_LEGEND_RECEIPT_SCHEMA
+    if d.get("schema") != FIG1_LEGEND_RECEIPT_SCHEMA:
+        errors.append(f"图 1 legend receipt schema 必须是 {FIG1_LEGEND_RECEIPT_SCHEMA}")
+        return
+    series = ((state.get("camp_share_series") or {}).get("series"))
+    if not isinstance(series, dict) or not series:
+        errors.append("当前 analysis-state 缺 camp_share_series.series，"
+                      "发布闸无法重算图 1 实绘集合")
+        return
+    try:
+        import standard_charts
+        rendered, excluded_keys, rejected = standard_charts.select_fig1_series(series)
+    except Exception as exc:
+        errors.append(f"发布闸重算图 1 实绘集合失败: {exc}")
+        return
+    if rejected:
+        errors.append(f"当前 analysis-state 图 1 series 含白名单外键: {rejected}")
+        return
+    whitelist = standard_charts.FIG1_EXCLUDED_SERIES
+    expected_excluded = [
+        {"key": key, "reason": whitelist[key]} for key in excluded_keys
+    ]
+    if d.get("rendered_camps") != rendered:
+        errors.append(f"图 1 legend 实绘集合与发布闸从 state 重算不一致"
+                      f"（期望 {rendered}）")
+    declared = d.get("excluded_series")
+    if not isinstance(declared, list):
+        errors.append("图 1 legend 排除键必须是列表")
+    else:
+        outside = [row.get("key") if isinstance(row, dict) else f"<non-object:{i}>"
+                   for i, row in enumerate(declared)
+                   if not isinstance(row, dict) or row.get("key") not in whitelist]
+        if outside:
+            errors.append(f"图 1 legend 排除键超出 FIG1_EXCLUDED_SERIES 白名单: {outside}")
+        if declared != expected_excluded:
+            errors.append("图 1 legend 排除键与发布闸从 state 重算不一致"
+                          f"（期望 {expected_excluded}）")
+    overlays = d.get("overlays")
+    if not isinstance(overlays, list):
+        errors.append("图 1 legend overlays 必须是列表")
+        return
+    for i, row in enumerate(overlays):
+        if not isinstance(row, dict) or set(row) != {"label", "camps"}:
+            errors.append(f"图 1 legend overlay[{i}] 必须只含 label/camps")
+            continue
+        camps = row.get("camps")
+        if not isinstance(row.get("label"), str) or not row["label"].strip() \
+                or not isinstance(camps, list) or not camps \
+                or len(camps) != len(set(camps)):
+            errors.append(f"图 1 legend overlay[{i}] 标签或组成 camps 非法")
+            continue
+        outside = [camp for camp in camps if camp not in rendered]
+        if outside:
+            errors.append(f"图 1 legend overlay[{i}] 含 state 非实绘 camp: {outside}")
+
+
 def check_series_binding(case_dir: Path, d: dict, errors: list[str]):
     """F-C1 下游闸（消化轮 2 终关：自证式→内容重转换比对）。
 
@@ -1137,7 +1205,13 @@ def run(case_dir: Path, report: Path | None, *, profile="independent-audit"):
             check_figure2_receipt(case_dir, data["figure2_check_receipt.json"], errors)
         state_path = case_dir / "analysis-state.json"
         if state_path.is_file():
-            check_series_binding(case_dir, load_json(state_path, errors), errors)
+            state_obj = load_json(state_path, errors)
+            check_series_binding(case_dir, state_obj, errors)
+            if "fig1_legend_receipt.json" in data:
+                check_figure1_legend_receipt(
+                    case_dir, data["fig1_legend_receipt.json"], state_obj, errors)
+        elif "fig1_legend_receipt.json" in data:
+            errors.append("new-analysis 有图 1 legend receipt 但缺标准 analysis-state.json")
         # F-D8（批 D 消化轮 1）：A5 seal 在发布闸**重验**，不只查存在——A5 的
         # distribution_bundle 绑定链（final scan → final_bindings.entity_freeze 等三验）
         # 与 provenance_flip_bundle 由此接入发布必经路：双删 freeze＋ledger、冻结后改
