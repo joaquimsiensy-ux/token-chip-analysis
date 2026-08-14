@@ -8,6 +8,11 @@
 **写入前必跑 `python3 scripts/tests/changelog_lint.py`**（防撞号/倒排——两者都实际发生过）。
 本文件只保留最近 ~10 版（整编时滚动）；更早的完整迭代史在 `archive/CHANGELOG-archive.md`，考古规则来源先 grep 该文件。
 
+### 2026-08-14 — 批 2 工单 B（待 6.41.0 汇总发布）
+
+- **F-02 对抗复核结构化闭环**：`adversarial-review/v2` 升 `v3`，以 `a4_claims.json` 的 path/size/sha256/schema 为权威锚；每路 artifact 升为 `adversarial-review-artifact/v1`，机器验证三档 verdict、非空 evidence、逐 artifact 去重、registry 内 id 与全部 claim-review 并集覆盖。runner 对结构坏件 fail-closed 清理 staging，新增原子 `finalize` 聚合器；shared receipt 与 audit release gate 两侧从 artifact 实物独立重建覆盖并重算 registry sha，blocker id/布尔/resolution 结构同时收口。
+- **存量影响**：已知 AKE/B2/MOG/TAG 至少四案仍为 v2；已交付案不重跑发布闸不受影响，未来重发布必须按当前 runner 重做结构化 artifacts、execution receipts 与 v3 finalize，禁止手工补字段迁移。
+
 ## 版本索引（活跃窗口，新在上；每版一行，详情见下方对应条目）
 
 - **6.40.0**（2026-08-13）六视角 BLOCK 修复工程 A-D 四批收口：发布收据验证链（F-01/02）＋分布扫描族（F-03/08）＋阵营序列 producer 链（F-04/05）＋flip 裁决收据制（F-06）/refresh 真事务（F-07）/销户审计收口（GPT-F-06）＋台账八项＋distribution-scan/v2；R10 存量台账本轮未修、台账保留（r10_ledger.md）

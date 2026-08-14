@@ -94,6 +94,49 @@ def align_ledgers_to_owner_snapshot(root, snap):
                     write_json(root, "reproduce_receipt.json", receipt)
 
 
+def refresh_adversarial(root):
+    """重跑当前 a4_claims.json 对应的结构化复核夹具与 v3 finalize。"""
+    root = Path(root)
+    runner = REPO / "scripts/report/adversarial_review_runner.py"
+    receipts = []
+    for role in ("entity_attribution_skeptic", "completeness_critic"):
+        entry = root / f"review_{role}.py"
+        entry.write_text(
+            "import json, os\n"
+            "role=os.environ['CHIP_REVIEW_ROLE']\n"
+            "payload={'schema':'adversarial-review-artifact/v1','role':role,"
+            "'registry_sha256':os.environ['CHIP_REVIEW_REGISTRY_SHA256']}\n"
+            "if role == 'completeness_critic':\n"
+            " payload.update({'findings':[],'non_covered':[]})\n"
+            "else:\n"
+            " claims=json.load(open('a4_claims.json'))['claims']\n"
+            " payload['results']=[{'claim_id':c['id'],'verdict':'CONFIRMED',"
+            "'evidence':['fixture recomputation'],'alternative_explanations':[]} for c in claims]\n"
+            "with open(os.environ['CHIP_REVIEW_OUTPUT'],'w') as fh: json.dump(payload,fh)\n",
+            encoding="utf-8")
+        artifact = root / f"review_{role}.json"
+        execution = root / f"review_{role}_execution.json"
+        for stale in (artifact, execution):
+            if stale.exists():
+                stale.unlink()
+        proc = subprocess.run([sys.executable, str(runner), str(root), "--role", role,
+                               "--entrypoint", entry.name, "--artifact", artifact.name,
+                               "--receipt", execution.name], capture_output=True, text=True)
+        assert proc.returncode == 0, proc.stdout + proc.stderr
+        receipts.append(execution.name)
+    write_json(root, "adversarial_blockers.json", [])
+    aggregate = root / "adversarial_review.json"
+    if aggregate.exists():
+        aggregate.unlink()
+    argv = [sys.executable, str(runner), "finalize", str(root),
+            "--claim-registry", "a4_claims.json"]
+    for receipt in receipts:
+        argv += ["--receipt", receipt]
+    argv += ["--blockers", "adversarial_blockers.json", "--out", "adversarial_review.json"]
+    proc = subprocess.run(argv, capture_output=True, text=True)
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+
+
 def build_case(root, historical=True):
     raw = root / "raw_transfers.jsonl"
     raw.write_text('{"from":"a","to":"b","raw":"1"}\n', encoding="utf-8")
@@ -267,33 +310,12 @@ def build_case(root, historical=True):
             "blocking_unresolved": False,
         }],
     })
-    reviews = []
-    runner = REPO / "scripts/report/adversarial_review_runner.py"
-    for role in ("entity_attribution_skeptic", "completeness_critic"):
-        entry = root / f"review_{role}.py"
-        entry.write_text("import os\nfrom pathlib import Path\n"
-                         "Path(os.environ['CHIP_REVIEW_OUTPUT']).write_text("
-                         "'review evidence for '+os.environ['CHIP_REVIEW_ROLE']+'\\n')\n",
-                         encoding="utf-8")
-        artifact = root / f"review_{role}.md"
-        execution = root / f"review_{role}_execution.json"
-        for stale in (artifact, execution):
-            if stale.exists():
-                stale.unlink()
-        proc = subprocess.run([sys.executable, str(runner), str(root), "--role", role,
-                               "--entrypoint", entry.name, "--artifact", artifact.name,
-                               "--receipt", execution.name], capture_output=True, text=True)
-        assert proc.returncode == 0, proc.stdout + proc.stderr
-        reviews.append({"role": role, "exit_code": 0,
-                        "artifact": {"path": artifact.name, "size": artifact.stat().st_size,
-                                     "sha256": sha(artifact)},
-                        "runner": repo_ref("scripts/report/adversarial_review_runner.py"),
-                        "execution_receipt": {"path": execution.name,
-                                              "sha256": sha(execution)}})
-    write_json(root, "adversarial_review.json", {
-        "schema": "adversarial-review/v2", "target": target, "reviews": reviews,
-        "blocking_findings": [], "release_decision": "PASS",
+    write_json(root, "a4_claims.json", {
+        "schema": "a4-claims/v2",
+        "claims": [{"id": "C1", "text": "重算命题", "files": [raw.name],
+                    "report_locations": ["report.md:1"]}],
     })
+    refresh_adversarial(root)
     if historical:
         write_json(root, "chart_reconciliation.json", {
             "series_method": "full_event_replay",

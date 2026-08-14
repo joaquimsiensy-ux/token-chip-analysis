@@ -15,7 +15,16 @@ HERE = Path(__file__).resolve().parent
 REPO = HERE.parent.parent
 sys.path.insert(0, str(HERE.parent / "lib"))
 
-from adversarial_review_runner import validate_review_receipt
+from adversarial_review_runner import (
+    AGGREGATE_SCHEMA,
+    CLAIM_REVIEW_ROLES,
+    ROLES,
+    V3_RERUN_HINT,
+    load_claim_registry,
+    validate_blocking_findings,
+    validate_review_receipt,
+    validate_union_coverage,
+)
 from chain_registry import recon_adapter_for, resolve_alias
 from receipt_validate import validate_receipt
 from supply_truth_gate import (FORMAL_TOLERANCE_BPS_MAX,
@@ -584,6 +593,72 @@ def validate_reconciliation_report(root, expected_target=None):
     return target
 
 
+def validate_adversarial_review(root, expected_target=None):
+    """Deeply revalidate the v3 aggregate from registry and artifact bytes."""
+    root = Path(root).resolve()
+    try:
+        adversarial = json.loads(regular(root, "adversarial_review.json").read_text())
+    except (OSError, json.JSONDecodeError) as exc:
+        raise ValueError(f"adversarial review JSON invalid: {exc}") from exc
+    schema = adversarial.get("schema") if isinstance(adversarial, dict) else None
+    if schema != "adversarial-review/v3":
+        if schema == "adversarial-review/v2":
+            raise ValueError(V3_RERUN_HINT)
+        raise ValueError(f"adversarial review must use {AGGREGATE_SCHEMA}；{V3_RERUN_HINT}")
+    target = adversarial.get("target")
+    if not isinstance(target, dict):
+        raise ValueError("adversarial target missing")
+    if expected_target is not None \
+            and canonical_target(target) != canonical_target(expected_target):
+        raise ValueError("adversarial target mismatch")
+    repo_ref_ok(adversarial.get("producer"), ADVERSARIAL_RUNNERS,
+                "adversarial aggregate")
+
+    registry_ref = adversarial.get("claim_registry")
+    if not isinstance(registry_ref, dict):
+        raise ValueError("adversarial claim_registry ref missing")
+    _, _, claim_ids, actual_registry_ref = load_claim_registry(
+        root, registry_ref.get("path", ""))
+    if registry_ref != actual_registry_ref:
+        raise ValueError("adversarial claim_registry size/sha256/schema binding invalid")
+    registry_sha256 = actual_registry_ref["sha256"]
+
+    reviews = adversarial.get("reviews")
+    if not isinstance(reviews, list) or not reviews:
+        raise ValueError("adversarial reviews must be a non-empty array")
+    roles = set()
+    reviewed_sets = []
+    for item in reviews:
+        if not isinstance(item, dict) or item.get("exit_code") != 0:
+            raise ValueError("review lacks successful execution receipt")
+        role = item.get("role")
+        if role not in ROLES:
+            raise ValueError(f"unsupported adversarial role in aggregate: {role!r}")
+        roles.add(role)
+        artifact = item.get("artifact")
+        artifact_path = ref_ok(root, artifact)
+        if artifact.get("size") != artifact_path.stat().st_size:
+            raise ValueError("review artifact size binding invalid")
+        repo_ref_ok(item.get("runner"), ADVERSARIAL_RUNNERS, f"adversarial {role}")
+        execution = item.get("execution_receipt")
+        ref_ok(root, execution)
+        _, _, reviewed = validate_review_receipt(
+            root, execution.get("path"), role, artifact,
+            registry_sha256=registry_sha256, claim_ids=claim_ids)
+        if role in CLAIM_REVIEW_ROLES:
+            reviewed_sets.append(reviewed)
+    if not ROLES.issubset(roles):
+        raise ValueError(f"required adversarial roles missing: {sorted(ROLES - roles)}")
+    validate_union_coverage(claim_ids, reviewed_sets)
+    blockers = validate_blocking_findings(adversarial.get("blocking_findings"))
+    unresolved = [item for item in blockers if not item["resolved"]]
+    if unresolved:
+        raise ValueError(f"对抗复核仍有 {len(unresolved)} 个未关闭发布否决项")
+    if adversarial.get("release_decision") != "PASS":
+        raise ValueError("adversarial release_decision is not PASS")
+    return target
+
+
 def validate_sources(root):
     root = Path(root).resolve()
     accounting = json.loads(regular(root, "accounting_mode.json").read_text())
@@ -636,28 +711,7 @@ def validate_sources(root):
         _require(accounting.get("observed_context_slot") == bundle["snapshot"]["slot"],
                  "solana accounting slot is not bundle snapshot slot")
     validate_reconciliation_report(root, target)
-    if (adversarial.get("schema") != "adversarial-review/v2"
-            or canonical_target(adversarial.get("target")) != canonical_target(target)
-            or adversarial.get("release_decision") != "PASS"):
-        raise ValueError("adversarial target/schema/decision invalid")
-    roles = set()
-    for item in adversarial.get("reviews") or []:
-        if not isinstance(item, dict) or item.get("exit_code") != 0:
-            raise ValueError("review lacks successful execution receipt")
-        role = str(item.get("role", "")).lower()
-        roles.add(role)
-        artifact = item.get("artifact")
-        ref_ok(root, artifact)
-        repo_ref_ok(item.get("runner"), ADVERSARIAL_RUNNERS, f"adversarial {role}")
-        execution = item.get("execution_receipt")
-        ref_ok(root, execution)
-        validate_review_receipt(root, execution.get("path"), role, artifact)
-    if (not any("completeness" in role for role in roles)
-            or not any("entity" in role or "attribution" in role for role in roles)):
-        raise ValueError("required adversarial roles missing")
-    if any(not isinstance(item, dict) or not item.get("resolved")
-           for item in adversarial.get("blocking_findings", [])):
-        raise ValueError("unresolved adversarial blocker")
+    validate_adversarial_review(root, target)
     return target
 
 

@@ -818,25 +818,22 @@ def check_claims(case_dir: Path, d: dict, report: Path | None, errors: list[str]
     return claim_types
 
 
-def check_adversarial(d: dict, errors: list[str]):
-    if d.get("schema") != "adversarial-review/v2" or not isinstance(d.get("target"), dict):
-        errors.append("对抗复核缺 v2 target/runner receipts")
+def check_adversarial(case_dir: Path, d: dict, errors: list[str], expected_target=None):
+    """Use the same v3 byte-level validator as the shared receipt consumer."""
+    if not isinstance(d, dict):
+        errors.append("对抗复核 v3 校验失败: schema 非法；存量须按 v3 重跑对抗复核")
         return
-    reviews = d.get("reviews")
-    if not isinstance(reviews, list):
-        errors.append("对抗复核缺 reviews 数组")
+    schema = d.get("schema")
+    if schema != "adversarial-review/v3":
+        hint = "存量 adversarial-review/v2 须按 v3 重跑对抗复核"
+        errors.append(f"对抗复核 v3 校验失败: {hint}" if schema == "adversarial-review/v2"
+                      else f"对抗复核 v3 校验失败: schema 非法；{hint}")
         return
-    roles = {str(r.get("role", "")).lower() for r in reviews if isinstance(r, dict)}
-    if not any("completeness" in x for x in roles):
-        errors.append("对抗复核缺完整性批评角色")
-    if not any(("attribution" in x or "entity" in x) for x in roles):
-        errors.append("对抗复核缺实体归因怀疑者")
-    blockers = d.get("blocking_findings", [])
-    unresolved = [x for x in blockers if not isinstance(x, dict) or not x.get("resolved")]
-    if unresolved:
-        errors.append(f"对抗复核仍有 {len(unresolved)} 个未关闭发布否决项")
-    if not status_pass(d.get("release_decision")):
-        errors.append("对抗复核 release_decision 未放行")
+    try:
+        import shared_release_receipt
+        shared_release_receipt.validate_adversarial_review(case_dir, expected_target)
+    except Exception as exc:
+        errors.append(f"对抗复核 v3 校验失败: {exc}")
 
 
 # F-B7：链族→四查快照绑定口径的分派表提成模块常量，取值前做成员检查，
@@ -1120,7 +1117,14 @@ def run(case_dir: Path, report: Path | None, *, profile="independent-audit"):
     if "claim_registry.json" in data:
         claim_types = check_claims(case_dir, data["claim_registry.json"], report, errors)
     if "adversarial_review.json" in data:
-        check_adversarial(data["adversarial_review.json"], errors)
+        accounting = data.get("accounting_mode.json") or {}
+        expected_adversarial_target = {
+            "chain": accounting.get("chain"),
+            "token": accounting.get("token") or accounting.get("mint"),
+            "as_of_block": accounting.get("as_of_block"),
+        }
+        check_adversarial(case_dir, data["adversarial_review.json"], errors,
+                          expected_adversarial_target)
     if profile == "new-analysis" and "distribution_scan.json" in data:
         try:
             import holder_distribution_scan

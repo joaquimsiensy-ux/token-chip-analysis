@@ -83,6 +83,11 @@ def add_new_analysis_distribution(root: Path, report: Path) -> None:
         "a4_claims.json": {"schema": "a4-claims/v2", "claims": [{"id": "C1"}]},
     }.items():
         write_json(root / name, value)
+    # a4_claims 是对抗复核 v3 的权威锚；夹具改 registry 后必须真重跑 runner/finalize，
+    # 不得手补 aggregate 的 sha 自证。
+    fixture.refresh_adversarial(root)
+    from shared_release_receipt import create_bundle
+    create_bundle(root)
     # F-C5：figure2 对账收据由真实生产者产出（figures_from_facts check 真跑，
     # 防手搓影子形态假绿）——空 whale_series 对空 entities 合法 PASS
     write_json(root / "whale_series.json", [])

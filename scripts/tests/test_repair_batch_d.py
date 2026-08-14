@@ -933,15 +933,25 @@ def build_solana_case(root: Path):
         "candidates": [{"candidate_address": "ownersol1", "boundary_decision": "strict",
                         "decision_reason": "夹具裁决：owner1 为策略成员"}]})
     # adversarial review 真跑 runner（与 EVM build_case 同法）
+    write_json(root / "a4_claims.json", {
+        "schema": "a4-claims/v2", "claims": [{"id": "C1"}]})
     runner = REPO / "scripts/report/adversarial_review_runner.py"
     reviews = []
     for role in ("entity_attribution_skeptic", "completeness_critic"):
         entry = root / f"review_{role}.py"
-        entry.write_text("import os\nfrom pathlib import Path\n"
-                         "Path(os.environ['CHIP_REVIEW_OUTPUT']).write_text("
-                         "'review evidence for '+os.environ['CHIP_REVIEW_ROLE']+'\\n')\n",
-                         encoding="utf-8")
-        artifact = root / f"review_{role}.md"
+        entry.write_text(
+            "import json, os\n"
+            "role=os.environ['CHIP_REVIEW_ROLE']\n"
+            "payload={'schema':'adversarial-review-artifact/v1','role':role,"
+            "'registry_sha256':os.environ['CHIP_REVIEW_REGISTRY_SHA256']}\n"
+            "if role == 'completeness_critic':\n"
+            " payload.update({'findings':[],'non_covered':[]})\n"
+            "else:\n"
+            " payload['results']=[{'claim_id':'C1','verdict':'CONFIRMED',"
+            "'evidence':['fixture recomputation'],'alternative_explanations':[]}]\n"
+            "with open(os.environ['CHIP_REVIEW_OUTPUT'],'w') as fh: json.dump(payload,fh)\n",
+            encoding="utf-8")
+        artifact = root / f"review_{role}.json"
         execution = root / f"review_{role}_execution.json"
         proc = subprocess.run([sys.executable, str(runner), str(root), "--role", role,
                                "--entrypoint", entry.name, "--artifact", artifact.name,
@@ -954,9 +964,18 @@ def build_solana_case(root: Path):
                         "runner": _repo_ref("scripts/report/adversarial_review_runner.py"),
                         "execution_receipt": {"path": execution.name,
                                               "sha256": sha_file(execution)}})
-    write_json(root / "adversarial_review.json", {
-        "schema": "adversarial-review/v2", "target": target, "reviews": reviews,
-        "blocking_findings": [], "release_decision": "PASS"})
+    write_json(root / "adversarial_blockers.json", [])
+    aggregate = root / "adversarial_review.json"
+    if aggregate.exists():
+        aggregate.unlink()
+    proc = subprocess.run([
+        sys.executable, str(runner), "finalize", str(root),
+        "--claim-registry", "a4_claims.json",
+        "--receipt", "review_entity_attribution_skeptic_execution.json",
+        "--receipt", "review_completeness_critic_execution.json",
+        "--blockers", "adversarial_blockers.json", "--out", "adversarial_review.json",
+    ], capture_output=True, text=True)
+    assert proc.returncode == 0, proc.stdout + proc.stderr
     import shared_release_receipt
     shared_release_receipt.create_bundle(root)
     # ---- new-analysis 资产：分布链（快照＝bundle owners 同一份）＋figure2＋A4/A5

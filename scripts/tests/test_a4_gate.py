@@ -27,7 +27,7 @@ import hashlib
 import shutil
 from pathlib import Path
 
-from test_audit_release_gate import build_case, sha
+from test_audit_release_gate import build_case, refresh_adversarial, sha
 from formal_ready_test_harness import run_formal_script
 from identity_gate_fixture import augment_gate
 
@@ -238,6 +238,10 @@ def main():
                    "--seal-files", "raw_transfers.jsonl"])
     check("Round4 P1-02 同族空文本失败分支", p.returncode == 2 and "空 text" in p.stderr)
     reg_path.write_text(original_reg, encoding="utf-8")
+    # register 已替换执行态权威表；重跑结构化复核及共享 receipt，保持真实 A4 顺序。
+    refresh_adversarial(Path(d))
+    from shared_release_receipt import create_bundle
+    create_bundle(Path(d))
 
     # 3. finalize 未 register（新目录）
     d3 = os.path.join(root, "case_noreg")
