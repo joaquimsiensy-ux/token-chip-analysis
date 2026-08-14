@@ -36,7 +36,7 @@
 | counterexamples 三新脚本独立可重放 rc=0 | **属实**（连同存量两脚本共 5 个全 rc=0） |
 | R10 弱闸旁证：三命令 staging/部署 SHA 全等、Python 3.14.6 | **属实**，我独立重跑 `shasum -a 256`，三条 SHA 与工单逐字符相同；解释器版本一致（21 依赖未逐个复验） |
 | 工单末行"未 git commit（HEAD 仍 97b2c65）" | **与落盘不符**：`b3ee352` 已带批 D 全文 message 落在 main。技术结论不受影响，记录以免引用工单文字时误判节拍（批 C 同一现象已记过一次） |
-| A-2／A-4 评估结论（不做，留 R10-12／R10-13） | **理据成立**：A-2 确实是政策决定（现行 `FORMAL_TOLERANCE_BPS_MAX` 只管无 waiver 路径，有 waiver 时 `approved_tolerance_bps` 无上限属实）；A-4 确属新功能面。r10_ledger 13 条与 CHANGELOG 的"6＋2＋3＋2"口径对得上 |
+| A-2／A-4 评估结论（不做，留 R10-12／R10-13） | **理据成立**：A-2 确实是政策决定（现行 `FORMAL_TOLERANCE_BPS_MAX` 只管无 waiver 路径，有 waiver 时 `approved_tolerance_bps` 无上限属实）；A-4 确属新功能面。r10_ledger 13 条与 CHANGELOG 的"6＋2＋3＋2"口径对得上【终验勘误（BLOCKER-1）：本断言落盘晚于消化轮 1 追加 R10-14/15，写下时已失真——实为 15 条，CHANGELOG 已订正为"6＋2＋3＋2＋2"】 |
 
 ### 五处披露的逐处判定（任务点名项）
 

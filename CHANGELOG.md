@@ -55,7 +55,7 @@
   - **schema 升版（B-3）**：`distribution-scan/v1`→`v2`，`denominators.total_supply_raw`→`mint_total_raw`（旧键名在真 `_burn` 案语义误导，IQ 差 34.9%）。
 - **流程债追认（D-1）**：`11193f6`/`b9f8871` 两笔无版本号提交在此追认（B2 案 freeze 分母键修复系列，内容已含于 6.39.x 线，禁止倒插历史版本号）。
 - **存量迁移后果（D-3）**：①6.39.4 后用过旧式 `--acknowledge-flip` 字符串的案（已知 MOG）重 freeze 会被"旧确认不再受理"拦下，须造 flip-adjudications/v1 收据重跑 trace（已冻结终态不追溯）；②6.39.5 及以前的 `distribution_scan.json` 是 v1 产物，重验必拒须重跑 initial/final scan（与"改扫描器即重跑"的既有算法绑定语义同款）；③存量绝对路径收据整案复制后被案根约束拒（原 N-1 语义，本就该拒），原地重验不受影响；新收据记相对路径可搬家。
-- **R10 台账（本轮未修，台账保留）**：存量 6 条（F-09/10/11/13、GPT-F-07 deploy-sync 弱闸、GPT-F-09 env_check 覆盖）＋加深 2 条（A5 图例集合绑定、F-12 改名降权）＋批 C 终验 3 条（C-R1/2/3）＋批 D 评估 2 条（A-2 approved_tolerance_bps 硬顶待用户裁决、A-4 EVM 链上观测件锚定设计留档）→ `maintenance/repair-20260813-sixlens/r10_ledger.md`。
+- **R10 台账（本轮未修，台账保留）**：存量 6 条（F-09/10/11/13、GPT-F-07 deploy-sync 弱闸、GPT-F-09 env_check 覆盖）＋加深 2 条（A5 图例集合绑定、F-12 改名降权）＋批 C 终验 3 条（C-R1/2/3）＋批 D 评估 2 条（A-2 approved_tolerance_bps 硬顶待用户裁决、A-4 EVM 链上观测件锚定设计留档）＋批 D 消化轮 1 追加 2 条（R10-14 entity_freeze 案外 sha 锚设计、R10-15 check_bound_file 绝对路径案根强制），合计 15 条 → `maintenance/repair-20260813-sixlens/r10_ledger.md`（终验 BLOCKER-1 勘误：此前枚举漏计消化轮追加两条）。
 - 成本：批 D 单会话施工（前三批 codex 分批施工＋对抗审查另计）；质量：run_all 全量绿、契约 146 条双向闭合、invariant 46 原子写登记、反例矩阵落 counterexamples/ 可重放。
 
 ## [6.39.5] - 2026-08-12 — distribution 语义重验假阳性修复（split-run 三闸死环）
