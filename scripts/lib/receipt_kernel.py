@@ -2,7 +2,7 @@
 """Small receipt envelope and publication kernel.
 
 This module deliberately does not know any receipt family's business fields.  It
-only binds identity, inputs and verdict semantics, then provides four explicit
+only binds identity, inputs and verdict semantics, then provides five explicit
 publication primitives.  Validation lives in receipt_validate.py and shares no
 normalisation or hashing helpers with this emitter.
 """
@@ -333,6 +333,68 @@ def _stage(target: _SecureTarget, payload) -> str:
         raise
 
 
+def _fsync_parent(target: _SecureTarget) -> None:
+    """Persist directory-entry changes made by a publication primitive."""
+    os.fsync(target.parent_fd)
+
+
+def _same_entry(left, right) -> bool:
+    if left is None or right is None:
+        return left is right
+    return (left.st_dev, left.st_ino, left.st_size, left.st_mtime_ns) == (
+        right.st_dev, right.st_ino, right.st_size, right.st_mtime_ns)
+
+
+@contextmanager
+def _supersede_lock(target: _SecureTarget):
+    """Fail closed when another supersede of this canonical is in progress.
+
+    O_EXCL makes the check cross-process.  A crash can leave the lock behind;
+    treating that as a hard failure is intentional because silently guessing
+    whether the interrupted publication committed would weaken the receipt.
+    """
+    lock_name = f".{target.name}.supersede.lock"
+    flags = (os.O_WRONLY | os.O_CREAT | os.O_EXCL
+             | getattr(os, "O_NOFOLLOW", 0))
+    try:
+        fd = os.open(lock_name, flags, 0o600, dir_fd=target.parent_fd)
+    except FileExistsError as exc:
+        raise ReceiptKernelError(
+            f"concurrent or interrupted supersede detected: {target.path}") from exc
+    os.close(fd)
+    try:
+        yield
+    finally:
+        try:
+            os.unlink(lock_name, dir_fd=target.parent_fd)
+        except FileNotFoundError as exc:
+            raise ReceiptKernelError(
+                f"supersede lock disappeared during publication: {target.path}") from exc
+        _fsync_parent(target)
+
+
+def _checked_schema_family(schema_family) -> str:
+    if (not isinstance(schema_family, str) or not schema_family
+            or not schema_family.endswith("/")):
+        raise ReceiptKernelError("schema_family must be a non-empty prefix ending in '/'")
+    return schema_family
+
+
+def _validate_supersede_payload(payload, schema_family: str) -> None:
+    if not isinstance(payload, Mapping):
+        raise ReceiptKernelError("supersede payload must be a receipt object")
+    verdict = payload.get("verdict")
+    exit_code = payload.get("exit_code")
+    if verdict != "FAIL" or exit_code != VERDICT_EXITS["FAIL"]:
+        raise ReceiptKernelError(
+            f"supersede only accepts a consistent FAIL/2 payload: {verdict!r}/{exit_code!r}")
+    schema = payload.get("schema")
+    if not isinstance(schema, str) or not schema.startswith(schema_family):
+        raise ReceiptKernelError(
+            f"new receipt schema is outside allowed family {schema_family!r}: {schema!r}")
+    _checked_target(payload.get("target"))
+
+
 def publish_exclusive(path, payload) -> Path:
     """Publish a new file atomically; an existing destination is always an error."""
     with _secure_target(path) as out:
@@ -361,6 +423,132 @@ def publish_overwrite(path, payload) -> Path:
         finally:
             _unlink_at(out, tmp)
         return out.path
+
+
+def publish_supersede(path, payload, *, schema_family) -> Path:
+    """Publish a true FAIL, explicitly archiving an old PASS when one exists.
+
+    A previous PASS is hard-linked to ``<canonical>.superseded-<run_id>`` before
+    the staged FAIL atomically replaces the canonical, so the canonical path is
+    never absent.  An absent canonical or a prior non-PASS needs no archive and
+    is published with the same fail-closed concurrency checks.  Only an old
+    PASS in the same allowed schema family and with an exactly equal target may
+    be superseded; all ordinary publication primitives retain their downgrade
+    rejection semantics.
+    """
+    family = _checked_schema_family(schema_family)
+    _validate_supersede_payload(payload, family)
+    with _secure_target(path) as out, _supersede_lock(out):
+        tmp = _stage(out, payload)
+        archive = None
+        try:
+            before = _target_stat(out)
+            old = _existing_json(out)
+            after_read = _target_stat(out)
+            if not _same_entry(before, after_read):
+                raise ReceiptKernelError(
+                    f"canonical changed while preparing supersede: {out.path}")
+
+            if before is None:
+                try:
+                    os.link(tmp, out.name, src_dir_fd=out.parent_fd,
+                            dst_dir_fd=out.parent_fd, follow_symlinks=False)
+                except FileExistsError as exc:
+                    raise ReceiptKernelError(
+                        f"canonical appeared during supersede: {out.path}") from exc
+                _unlink_at(out, tmp)
+                tmp = None
+                _fsync_parent(out)
+                return out.path
+
+            if isinstance(old, Mapping) and old.get("verdict") == "PASS":
+                if old.get("exit_code") != VERDICT_EXITS["PASS"]:
+                    raise ReceiptKernelError(
+                        f"existing PASS receipt has inconsistent exit_code: {out.path}")
+                old_schema = old.get("schema")
+                if (not isinstance(old_schema, str)
+                        or not old_schema.startswith(family)):
+                    raise ReceiptKernelError(
+                        f"existing PASS schema is outside allowed family {family!r}: "
+                        f"{old_schema!r}")
+                old_target = _checked_target(old.get("target"))
+                if old_target != dict(payload["target"]):
+                    raise ReceiptKernelError(
+                        f"existing PASS target differs from new FAIL target: {out.path}")
+
+                archive = f"{out.name}.superseded-{_run_id()}"
+                try:
+                    os.link(out.name, archive, src_dir_fd=out.parent_fd,
+                            dst_dir_fd=out.parent_fd, follow_symlinks=False)
+                except FileExistsError as exc:
+                    raise ReceiptKernelError(
+                        f"supersede archive already exists: {out.path.with_name(archive)}") from exc
+                try:
+                    _fsync_parent(out)
+                except BaseException as primary:
+                    try:
+                        _unlink_at(out, archive)
+                        _fsync_parent(out)
+                    except BaseException as rollback_exc:
+                        raise ReceiptKernelError(
+                            f"supersede archive fsync failed ({primary}); rollback also failed; "
+                            f"archive preserved at {out.path.with_name(archive)}: "
+                            f"{rollback_exc}") from rollback_exc
+                    raise
+                if not _same_entry(before, _target_stat(out)):
+                    try:
+                        _unlink_at(out, archive)
+                        _fsync_parent(out)
+                    except BaseException as rollback_exc:
+                        raise ReceiptKernelError(
+                            f"canonical changed during supersede and archive rollback failed; "
+                            f"archive preserved at {out.path.with_name(archive)}: "
+                            f"{rollback_exc}") from rollback_exc
+                    raise ReceiptKernelError(
+                        f"canonical changed during supersede: {out.path}")
+                try:
+                    os.replace(tmp, out.name,
+                               src_dir_fd=out.parent_fd, dst_dir_fd=out.parent_fd)
+                    tmp = None
+                except BaseException as primary:
+                    try:
+                        _unlink_at(out, archive)
+                        _fsync_parent(out)
+                    except BaseException as rollback_exc:
+                        raise ReceiptKernelError(
+                            f"supersede replace failed ({primary}); archive rollback also failed; "
+                            f"archive preserved at {out.path.with_name(archive)}: "
+                            f"{rollback_exc}") from rollback_exc
+                    raise
+                try:
+                    _fsync_parent(out)
+                except BaseException as primary:
+                    try:
+                        os.replace(archive, out.name,
+                                   src_dir_fd=out.parent_fd, dst_dir_fd=out.parent_fd)
+                        archive = None
+                        _fsync_parent(out)
+                    except BaseException as rollback_exc:
+                        raise ReceiptKernelError(
+                            f"supersede directory fsync failed ({primary}); rollback also failed; "
+                            f"old PASS preserved at {out.path.with_name(archive)}: "
+                            f"{rollback_exc}") from rollback_exc
+                    raise
+                return out.path
+
+            # No PASS is being displaced, so no audit archive is required.  A
+            # second identity check still rejects a concurrent ordinary write.
+            if not _same_entry(before, _target_stat(out)):
+                raise ReceiptKernelError(
+                    f"canonical changed during FAIL publication: {out.path}")
+            os.replace(tmp, out.name,
+                       src_dir_fd=out.parent_fd, dst_dir_fd=out.parent_fd)
+            tmp = None
+            _fsync_parent(out)
+            return out.path
+        finally:
+            if tmp is not None:
+                _unlink_at(out, tmp)
 
 
 def assert_distinct_paths(*paths) -> None:

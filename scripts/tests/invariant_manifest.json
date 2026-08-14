@@ -14,7 +14,7 @@
   "receipt_producers": 49,
   "receipt_consumers": 53,
   "transport_calls": 58,
-  "atomic_writes": 38,
+  "atomic_writes": 39,
   "formal_entrypoints": 58
  },
  "receipt_producers": [
@@ -788,6 +788,11 @@
    "locator": "publish_restore_on_fail",
    "script": "scripts/lib/receipt_kernel.py",
    "semantics": "restore_on_fail"
+  },
+  {
+   "locator": "publish_supersede",
+   "script": "scripts/lib/receipt_kernel.py",
+   "semantics": "supersede_single"
   },
   {
    "locator": "publish_txn",
