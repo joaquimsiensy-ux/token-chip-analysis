@@ -56,6 +56,7 @@ import standard_charts as charts  # noqa: E402
 
 
 FIG1_LEGEND_RECEIPT_NAME = "fig1_legend_receipt.json"
+FIG1_LEGEND_RECEIPT_SCHEMA = "figure1-legend/v1"
 
 
 def _load(p):
@@ -222,7 +223,7 @@ def _file_ref(path):
 def _write_fig1_legend_receipt(a, rendered_camps, excluded_keys, overlays):
     """F-01：图 1 实绘集合与输入/输出实物绑定，tmp+fsync+replace。"""
     doc = {
-        "schema": "figure1-legend/v1",
+        "schema": FIG1_LEGEND_RECEIPT_SCHEMA,
         "rendered_camps": list(rendered_camps),
         "excluded_series": [
             {"key": key, "reason": charts.FIG1_EXCLUDED_SERIES[key]}

@@ -3,7 +3,8 @@
 
 Sections are appended as the approved repair steps are implemented.  Covered:
 RV-07 receipt supersede, RV-04 unified proxy resolution, RV-17 stake ledger
-fail-closed completeness, and F-03 replay gate propagation.
+fail-closed completeness, F-03 replay gate propagation, and F-01/A5 v3
+legend receipt binding.
 """
 from __future__ import annotations
 
@@ -819,6 +820,201 @@ def test_f01_excluded_nonfinite_and_png_failure_leave_no_receipt(root: Path):
     assert not (no_png / F01_RECEIPT).exists()
 
 
+# -------------------------------------------------------------- F-01b / A5v3
+
+def _f01b_write_json(path: Path, value):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(value, ensure_ascii=False, indent=2) + "\n",
+                    encoding="utf-8")
+    return path
+
+
+def _f01b_ref(path: Path):
+    return {"path": path.name, "size": path.stat().st_size,
+            "sha256": _f01_sha256(path)}
+
+
+def _f01b_case(root: Path, *, workflow="new-analysis", receipt=True):
+    root.mkdir(parents=True, exist_ok=True)
+    charts_dir = root / "charts/final"
+    charts_dir.mkdir(parents=True, exist_ok=True)
+    state = _f01b_write_json(root / "analysis-state.json", {
+        "chain": "bsc",
+        "camp_share_series": {
+            "dates": ["2026-01-01"],
+            "series": {"散户": [35.0], "大庄": [60.0],
+                       "burn_cum_pct": [5.0]},
+        },
+    })
+    png = charts_dir / "fig1.png"
+    png.write_bytes(b"f01b-fig1-png")
+    report = root / "report.md"
+    report.write_text("# F-01b\n![fig1](charts/final/fig1.png)\n",
+                      encoding="utf-8")
+    a4 = _f01b_write_json(root / "a4_seal.json", {
+        "schema": "a4-seal/v4", "verdict": "PASS", "chain": "bsc",
+        "workflow_type": workflow, "revision": 1, "previous_seal": None,
+        "charts_dir": "charts/final", "claims": [{"id": "C1"}],
+    })
+    if receipt:
+        _f01b_write_json(root / F01_RECEIPT, {
+            "schema": "figure1-legend/v1",
+            "rendered_camps": ["大庄", "散户"],
+            "excluded_series": [
+                {"key": "burn_cum_pct", "reason": "non_stacked_metric"},
+            ],
+            "overlays": [{"label": "庄散合计", "camps": ["大庄", "散户"]}],
+            "price_csv": None,
+            "output_png": _f01b_ref(png),
+            "state": _f01b_ref(state),
+            "generated_at_utc": "2026-08-14T00:00:00Z",
+        })
+    return state, png, report, a4
+
+
+@contextlib.contextmanager
+def _f01b_a5_stubs(a5):
+    """Keep this section focused on legend binding, not distribution/A4 fixtures."""
+    with mock.patch.object(a5, "distribution_bundle",
+                           return_value={"status": "FIXTURE"}), \
+            mock.patch.object(a5, "provenance_flip_bundle",
+                              return_value={"status": "FIXTURE"}), \
+            mock.patch("a4_gate.validate_revision_chain", return_value=[]):
+        yield
+
+
+def _f01b_create_seal(case: Path):
+    import a5_report_seal as a5
+    out = case / "a5_report_seal.json"
+    with _f01b_a5_stubs(a5):
+        payload = a5.create_seal(case, case / "report.md", case / "a4_seal.json", out)
+    return a5, out, payload
+
+
+def test_f01b_a5_missing_receipt_rejected(root: Path):
+    case = root / "a5-missing"
+    _f01b_case(case, receipt=False)
+    import a5_report_seal as a5
+    with _f01b_a5_stubs(a5):
+        exc = _expect_error(lambda: a5.create_seal(
+            case, case / "report.md", case / "a4_seal.json",
+            case / "a5_report_seal.json"))
+    text = str(exc)
+    print(f"F01b PRE/POST A5 missing receipt rejected={'fig1' in text.lower() or 'legend' in text.lower()}")
+    assert "fig1" in text.lower() or "legend" in text.lower(), text
+
+
+def test_f01b_release_missing_receipt_rejected(root: Path):
+    import audit_release_gate as gate
+    import shared_release_receipt
+    case = root / "release-missing"
+    case.mkdir(parents=True)
+    # Exercise run()'s real required-asset path while neutralizing unrelated
+    # accounting/reconciliation fixtures.  Before the repair the filtered
+    # required tuple is empty and the gate passes; after it, the missing asset
+    # is reported by the production missing-file loop.
+    legend_required = tuple(
+        x for x in gate.NEW_ANALYSIS_REQUIRED if x == F01_RECEIPT)
+    required = dict(gate.REQUIRED_BY_PROFILE)
+    required["new-analysis"] = legend_required
+    with mock.patch.object(gate, "REQUIRED_BY_PROFILE", required), \
+            mock.patch.object(gate, "check_formal_case_chain", return_value=None), \
+            mock.patch.object(gate, "check_three_ledgers"), \
+            mock.patch.object(gate, "check_daily_peaks"), \
+            mock.patch.object(shared_release_receipt, "validate_bundle", return_value=[]):
+        errors = gate.run(case, None, profile="new-analysis")
+    print(f"F01b PRE/POST release missing receipt errors={errors}")
+    assert any(F01_RECEIPT in item for item in errors), errors
+
+
+def test_f01b_a5_v3_green_and_cross_checks(root: Path):
+    import a5_report_seal as a5
+    valid = root / "a5-valid"
+    _f01b_case(valid)
+    a5, seal_path, payload = _f01b_create_seal(valid)
+    assert payload["schema"] == "a5-report-seal/v3"
+    assert payload["producer"] == "a5_report_seal.py/v3"
+    assert set(payload["fig1_legend_receipt"]) == {"path", "size", "sha256"}
+    with _f01b_a5_stubs(a5):
+        assert a5.validate_seal(seal_path, valid / "report.md",
+                                valid / "a4_seal.json") == []
+
+    def malicious_case(label, mutate):
+        case = root / label
+        _, _, _, _ = _f01b_case(case)
+        _, seal, _ = _f01b_create_seal(case)
+        receipt_path = case / F01_RECEIPT
+        receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+        mutate(case, receipt)
+        _f01b_write_json(receipt_path, receipt)
+        sealed = json.loads(seal.read_text(encoding="utf-8"))
+        sealed["fig1_legend_receipt"] = a5.entry(case, receipt_path)
+        _f01b_write_json(seal, sealed)
+        with _f01b_a5_stubs(a5):
+            errors = a5.validate_seal(seal, case / "report.md", case / "a4_seal.json")
+        assert errors, label
+        return errors
+
+    def alien_png(case, receipt):
+        alien = case / "charts/final/not-in-report.png"
+        alien.write_bytes(b"alien-png")
+        receipt["output_png"] = _f01b_ref(alien)
+
+    cases = {
+        "a5-png-not-images": malicious_case("a5-png-not-images", alien_png),
+        "a5-state-hash": malicious_case(
+            "a5-state-hash", lambda _c, r: r["state"].update(sha256="0" * 64)),
+        "a5-png-hash": malicious_case(
+            "a5-png-hash", lambda _c, r: r["output_png"].update(sha256="1" * 64)),
+        "a5-camps": malicious_case(
+            "a5-camps", lambda _c, r: r.update(rendered_camps=["散户", "大庄"])),
+    }
+    print("F01b A5 cross-check rejects=" + ",".join(
+        f"{name}:{len(errors)}" for name, errors in cases.items()))
+
+
+def test_f01b_independent_na_and_v2_rejected(root: Path):
+    import a5_report_seal as a5
+    audit = root / "audit-na"
+    _f01b_case(audit, workflow="independent-audit", receipt=False)
+    a5, seal, payload = _f01b_create_seal(audit)
+    assert payload["fig1_legend_receipt"]["status"] == "NOT_APPLICABLE"
+    with _f01b_a5_stubs(a5):
+        assert a5.validate_seal(seal, audit / "report.md", audit / "a4_seal.json") == []
+
+    old = dict(payload)
+    old["schema"] = "a5-report-seal/v2"
+    old["producer"] = "a5_report_seal.py/v2"
+    _f01b_write_json(seal, old)
+    with _f01b_a5_stubs(a5):
+        errors = a5.validate_seal(seal, audit / "report.md", audit / "a4_seal.json")
+    assert errors and any("schema" in item for item in errors), errors
+
+
+def test_f01b_release_semantic_recompute(root: Path):
+    import audit_release_gate as gate
+    assert hasattr(gate, "check_figure1_legend_receipt")
+    case = root / "release-semantics"
+    state, _, _, _ = _f01b_case(case)
+    state_obj = json.loads(state.read_text(encoding="utf-8"))
+    receipt = json.loads((case / F01_RECEIPT).read_text(encoding="utf-8"))
+    errors = []
+    gate.check_figure1_legend_receipt(case, receipt, state_obj, errors)
+    assert errors == [], errors
+
+    mismatch = json.loads(json.dumps(receipt, ensure_ascii=False))
+    mismatch["rendered_camps"] = ["散户", "大庄"]
+    errors = []
+    gate.check_figure1_legend_receipt(case, mismatch, state_obj, errors)
+    assert errors and any("实绘" in item or "rendered" in item for item in errors), errors
+
+    outside = json.loads(json.dumps(receipt, ensure_ascii=False))
+    outside["excluded_series"].append({"key": "未知豁免", "reason": "forged"})
+    errors = []
+    gate.check_figure1_legend_receipt(case, outside, state_obj, errors)
+    assert errors and any("豁免" in item or "排除" in item for item in errors), errors
+
+
 def main():
     with tempfile.TemporaryDirectory(prefix="repair-batch1-", dir="/private/tmp") as raw:
         root = Path(raw)
@@ -841,7 +1037,12 @@ def main():
         test_f01_selector_triple_and_whitelist_rejection(root)
         test_f01_receipt_fields_and_shared_render_set(root)
         test_f01_excluded_nonfinite_and_png_failure_leave_no_receipt(root)
-    print("PASS v6.41.0 batch1 steps 1-4 RV-07/RV-04/RV-17/F-03/F-01")
+        test_f01b_a5_missing_receipt_rejected(root)
+        test_f01b_release_missing_receipt_rejected(root)
+        test_f01b_a5_v3_green_and_cross_checks(root)
+        test_f01b_independent_na_and_v2_rejected(root)
+        test_f01b_release_semantic_recompute(root)
+    print("PASS v6.41.0 batch1 steps 1-5 RV-07/RV-04/RV-17/F-03/F-01/A5v3")
     return 0
 
 

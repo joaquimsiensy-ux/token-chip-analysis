@@ -116,7 +116,7 @@
   },
   {
    "schemas": [
-    "a5-report-seal/v2"
+    "a5-report-seal/v3"
    ],
    "script": "scripts/report/a5_report_seal.py"
   },
@@ -326,7 +326,7 @@
   {
    "schemas": [
     "a4-seal/v4",
-    "a5-report-seal/v2",
+    "a5-report-seal/v3",
     "distribution-exception-receipt/v1",
     "distribution-rounds/v1",
     "provenance-ledger/v2"

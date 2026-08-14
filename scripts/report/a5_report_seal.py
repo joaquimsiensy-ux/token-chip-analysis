@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
-"""A5 报告封口：绑定 A4 v4、Markdown、报告图和分布终态链。"""
+"""A5 报告封口：绑定 A4 v4、Markdown、报告图和分布终态链。
+
+v2 -> v3 迁移：已经生成的旧 HTML 不受影响，但 v2 seal 不能冒充 v3 通过
+正式验证。存量案若要维持正式身份，必须重出 ``fig1_legend_receipt.json`` 和
+v3 seal；无法重出的只能走带可见水印的 ``legacy-recompile``。
+"""
 from __future__ import annotations
 import argparse
 import hashlib
@@ -9,7 +14,8 @@ import re
 import sys
 from pathlib import Path
 
-SCHEMA="a5-report-seal/v2"
+SCHEMA="a5-report-seal/v3"
+FIG1_LEGEND_NAME="fig1_legend_receipt.json"
 IMG_RE=re.compile(r"!\[[^]]*\]\(([^)]+)\)")
 NORMAL_SENTENCE="当前快照呈正常形态;这只表示本闸未检出结构性畸形,不等于没有庄。"
 ABNORMAL_SENTENCE="当前快照检出结构性畸形"
@@ -36,6 +42,108 @@ def safe_file(root,value,label):
 def entry(root,path):
  path=Path(path).resolve()
  return {"path":path.relative_to(Path(root).resolve()).as_posix(),"size":path.stat().st_size,"sha256":sha(path)}
+
+
+def _fig1_expected_from_state(root):
+ state=safe_file(root,"analysis-state.json","标准 analysis-state")
+ state_obj=json.loads(state.read_text(encoding="utf-8"))
+ series=((state_obj.get("camp_share_series") or {}).get("series"))
+ if not isinstance(series,dict) or not series:
+  raise ValueError("analysis-state 缺 camp_share_series.series，无法重算图 1 实绘集合")
+ import standard_charts
+ rendered,excluded,rejected=standard_charts.select_fig1_series(series)
+ if rejected:
+  raise ValueError(f"analysis-state 图 1 series 含白名单外键: {rejected}")
+ expected_excluded=[{"key":key,"reason":standard_charts.FIG1_EXCLUDED_SERIES[key]}
+                    for key in excluded]
+ return state,rendered,expected_excluded,set(standard_charts.FIG1_EXCLUDED_SERIES)
+
+
+def _fig1_legend_errors(root,receipt,images):
+ """Cross-check the v1 legend receipt against current state and report images."""
+ errors=[]
+ from figures_from_facts import FIG1_LEGEND_RECEIPT_SCHEMA
+ if not isinstance(receipt,dict) or receipt.get("schema")!=FIG1_LEGEND_RECEIPT_SCHEMA:
+  return [f"图 1 legend receipt schema 必须是 {FIG1_LEGEND_RECEIPT_SCHEMA}"]
+ try:
+  state_path,rendered,excluded,excluded_whitelist=_fig1_expected_from_state(root)
+ except Exception as exc:
+  return [f"图 1 legend 无法从当前 state 重算: {exc}"]
+
+ state_ref=receipt.get("state")
+ state_shown=Path(str((state_ref or {}).get("path") or "")) if isinstance(state_ref,dict) else Path("")
+ if not isinstance(state_ref,dict) or state_shown.is_absolute() \
+       or state_shown.as_posix()!="analysis-state.json":
+  errors.append("图 1 legend 未绑定标准 analysis-state.json")
+ else:
+  if state_ref.get("sha256")!=sha(state_path):
+   errors.append("图 1 legend state sha256 与当前 analysis-state.json 不一致")
+  if state_ref.get("size")!=state_path.stat().st_size:
+   errors.append("图 1 legend state size 与当前 analysis-state.json 不一致")
+
+ png_ref=receipt.get("output_png")
+ if not isinstance(png_ref,dict) or not png_ref.get("path"):
+  errors.append("图 1 legend 缺 output_png 绑定")
+ else:
+  shown=Path(str(png_ref["path"]))
+  if shown.is_absolute() or shown.name!=shown.as_posix():
+   errors.append("图 1 legend output_png.path 必须是 producer 写出的安全 basename")
+  candidates=[item for item in images
+              if isinstance(item,dict) and Path(str(item.get("path") or "")).name==shown.name]
+  if len(candidates)!=1:
+   errors.append("图 1 legend 绑定的 PNG 不属于报告 images 唯一集合")
+  else:
+   current=candidates[0]
+   if png_ref.get("sha256")!=current.get("sha256"):
+    errors.append("图 1 legend PNG sha256 与当前报告 PNG 不一致")
+   if png_ref.get("size")!=current.get("size"):
+    errors.append("图 1 legend PNG size 与当前报告 PNG 不一致")
+
+ if receipt.get("rendered_camps")!=rendered:
+  errors.append(f"图 1 legend rendered_camps 与当前 state 重算不一致（期望 {rendered}）")
+ declared_excluded=receipt.get("excluded_series")
+ if not isinstance(declared_excluded,list):
+  errors.append("图 1 legend excluded_series 必须是列表")
+ else:
+  outside=[row.get("key") if isinstance(row,dict) else f"<non-object:{i}>"
+           for i,row in enumerate(declared_excluded)
+           if not isinstance(row,dict) or row.get("key") not in excluded_whitelist]
+  if outside:
+   errors.append(f"图 1 legend 排除键超出 FIG1_EXCLUDED_SERIES 白名单: {outside}")
+  if declared_excluded!=excluded:
+   errors.append(f"图 1 legend excluded_series 与当前 state 重算不一致（期望 {excluded}）")
+
+ overlays=receipt.get("overlays")
+ if not isinstance(overlays,list):
+  errors.append("图 1 legend overlays 必须是列表")
+ else:
+  for i,row in enumerate(overlays):
+   if not isinstance(row,dict) or set(row)!={"label","camps"}:
+    errors.append(f"图 1 legend overlay[{i}] 必须只含 label/camps")
+    continue
+   camps=row.get("camps")
+   if not isinstance(row.get("label"),str) or not row["label"].strip() \
+          or not isinstance(camps,list) or not camps or len(camps)!=len(set(camps)):
+    errors.append(f"图 1 legend overlay[{i}] 标签或组成 camps 非法")
+    continue
+   outside=[camp for camp in camps if camp not in rendered]
+   if outside:
+    errors.append(f"图 1 legend overlay[{i}] 含当前 state 非实绘 camp: {outside}")
+ return errors
+
+
+def fig1_legend_bundle(root,a4obj,images):
+ """Freeze the receipt for new analysis; record structured N/A for audits."""
+ workflow=a4obj.get("workflow_type")
+ if workflow=="independent-audit":
+  return {"status":"NOT_APPLICABLE",
+          "reason":"independent-audit profile does not require figure 1 legend receipt"}
+ if workflow!="new-analysis": raise ValueError("A4 workflow_type 非法")
+ receipt=safe_file(root,FIG1_LEGEND_NAME,"图 1 legend receipt")
+ obj=json.loads(receipt.read_text(encoding="utf-8"))
+ errors=_fig1_legend_errors(root,obj,images)
+ if errors: raise ValueError("图 1 legend receipt 交叉核对失败: "+"; ".join(errors))
+ return entry(root,receipt)
 
 
 def _disclosure_slice(report_text,locations):
@@ -231,10 +339,11 @@ def create_seal(case_dir,report,a4_seal,out):
   try: img.relative_to(charts)
   except ValueError: raise ValueError(f"报告图不在 A4 charts_dir: {rel}")
   images.append(entry(root,img))
- payload={"schema":SCHEMA,"status":"PASS","producer":"a5_report_seal.py/v2",
+ payload={"schema":SCHEMA,"status":"PASS","producer":"a5_report_seal.py/v3",
   "chain":a4obj.get("chain"),"workflow_type":a4obj.get("workflow_type"),
   "a4_seal":entry(root,a4),
   "report":entry(root,report),"images":images,
+  "fig1_legend_receipt":fig1_legend_bundle(root,a4obj,images),
   "distribution":distribution_bundle(root,report,a4obj),
   "provenance_flips":provenance_flip_bundle(root,report.read_text(encoding="utf-8"),a4obj)}
  target=Path(out).resolve()
@@ -248,7 +357,9 @@ def validate_seal(seal_path,report_path,a4_path):
  errors=[]
  try:
   seal=Path(seal_path).resolve(); root=seal.parent; d=json.loads(seal.read_text()); report=safe_file(root,report_path,"Markdown"); a4=safe_file(root,a4_path,"A4 seal")
-  if d.get("schema")!=SCHEMA or d.get("status")!="PASS": return ["A5 report seal schema/status 非 PASS"]
+  if d.get("schema")!=SCHEMA or d.get("status")!="PASS" \
+       or d.get("producer")!="a5_report_seal.py/v3":
+   return ["A5 report seal schema/status/producer 非 v3 PASS"]
   a4obj=json.loads(a4.read_text())
   if d.get("chain")!=a4obj.get("chain"): errors.append("A5 seal chain 未绑定当前 A4 seal")
   if a4obj.get("schema")!="a4-seal/v4": errors.append("A5 seal 只接受 a4-seal/v4")
@@ -262,6 +373,11 @@ def validate_seal(seal_path,report_path,a4_path):
    if item!=entry(root,img): errors.append(f"A5 seal 报告图哈希变化: {item.get('path')}")
   current={x.split()[0].strip("<>") for x in IMG_RE.findall(report.read_text(encoding="utf-8"))}
   if current!={x.get("path") for x in d.get("images",[])}: errors.append("A5 seal 报告图集合变化")
+  try:
+   actual_legend=fig1_legend_bundle(root,a4obj,d.get("images",[]))
+   if d.get("fig1_legend_receipt")!=actual_legend:
+    errors.append("A5 seal 图 1 legend receipt 实物绑定变化")
+  except Exception as exc: errors.append(f"A5 seal 图 1 legend receipt 不可重验: {exc}")
   try:
    actual_distribution=distribution_bundle(root,report,a4obj)
    if d.get("distribution")!=actual_distribution: errors.append("A5 seal 分布终态绑定变化")

@@ -71,7 +71,7 @@
     {"id":"CT-DISTRIBUTION-08","authority_file":"references/scan-schemas.md","needle":"launch_covered=false","stages":["A3","A4.5","A5"],"kind":"required"},
     {"id":"CT-DISTRIBUTION-09","authority_file":"references/analyze-workflow.md","needle":"当前持仓分布初判","stages":["A3","A4.5","A5"],"kind":"required"},
     {"id":"CT-DISTRIBUTION-10","authority_file":"references/analyze-workflow.md","needle":"当前持仓分布终判环","stages":["A3","A4.5","A5"],"kind":"required"},
-    {"id":"CT-DISTRIBUTION-11","authority_file":"references/analyze-workflow.md","needle":"a5-report-seal/v2","stages":["A3","A4.5","A5"],"kind":"required"},
+    {"id":"CT-DISTRIBUTION-11","authority_file":"references/analyze-workflow.md","needle":"a5-report-seal/v3","stages":["A3","A4.5","A5"],"kind":"required"},
     {"id":"CT-DISTRIBUTION-12","authority_file":"references/analyze-workflow.md","needle":"G11","stages":["A3","A4.5","A5"],"kind":"required"},
     {"id":"CT-DISTRIBUTION-13","authority_file":"references/split-run.md","needle":"distribution_scan.json","stages":["A3","A4.5","A5"],"kind":"required"},
     {"id":"CT-DISTRIBUTION-14","authority_file":"references/split-run.md","needle":"handoff/v3","stages":["A3","A4.5","A5"],"kind":"required"},
