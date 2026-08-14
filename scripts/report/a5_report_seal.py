@@ -133,8 +133,11 @@ def provenance_flip_bundle(root,report_text,a4obj):
    if not ident:
     raise ValueError(f"翻转锚点 {key} {policy} top 终点无可核标识串")
    # F-D1：三项都必须落在**同一披露切片**内——策略名（并列披露的骨架）、终点标识、份额。
-   if policy not in section:
-    raise ValueError(f"报告披露段（{matched_loc}）缺策略名 {policy}: {key[0]} {key[1]} 须按多策略并列披露")
+   # N-D1：策略名按中英文别名族匹配（pro_rata|按比例 等），中文真实披露写法不误伤。
+   aliases=handoff_manifest.FLIP_POLICY_ALIASES.get(policy,(policy,))
+   if not any(alias in section for alias in aliases):
+    raise ValueError(f"报告披露段（{matched_loc}）缺策略名 {policy}"
+                     f"（可写 {' / '.join(aliases)} 任一）: {key[0]} {key[1]} 须按多策略并列披露")
    if ident not in section:
     raise ValueError(f"报告披露段（{matched_loc}）缺 {policy} 终点标识 {ident!r}: {key[0]} {key[1]}")
    if share and share not in section:

@@ -593,6 +593,14 @@ def provenance_semantic_payload(report):
 
 FLIP_ADJUDICATIONS_SCHEMA = "flip-adjudications/v1"
 FLIP_POLICIES = ("pro_rata", "fifo", "lifo")
+# N-D1（批 D 收口补丁）：披露段的策略名判据＝中英文别名族——纯中文真实披露写法
+# （"按比例/先进先出/后进先出"）是合格的并列披露，不得逼作者在中文报告里塞英文
+# 标识符。每策略一组等价词，切片内命中任一即算该策略在场（契约见 scan-schemas §4a）。
+FLIP_POLICY_ALIASES = {
+    "pro_rata": ("pro_rata", "按比例"),
+    "fifo": ("fifo", "先进先出"),
+    "lifo": ("lifo", "后进先出"),
+}
 
 
 def canonical_json_sha(value):

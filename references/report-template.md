@@ -218,6 +218,7 @@ python3 scripts/report/build_html.py --mode analysis-new --md 报告.md --out �
 - **图层同源（3.19，`scripts/report/figures_from_facts.py`）**：编译化延伸到图——①图 1 直接 `figures_from_facts.py fig1 --state analysis-state.json --out charts/final/fig1.png [--price-csv 价格.csv]` 从 state 的 camp_share_series 直出（6.7.0 起报告图一律输出 charts/final/，G9 只认此目录），禁止再现场手写装配脚本；
   ②每张流转图写 spec JSON（nodes/edges 结构同 lifecycle_flow docstring），**卡片与边标签里的持仓/份额数字一律写 facts 宏**（`{{e_x.amount_share}}` 等），`figures_from_facts.py flow --facts facts.json --spec flow_x.json --out ...` 渲染出图（残留宏必炸，同 G4）；
   ③图 2 装配数据落 whale_series.json 后必跑 `figures_from_facts.py check --facts facts.json --series whale_series.json` 终值对账（各实体线末点 vs facts 当前持仓，超 0.05pp 拒绝）——checklist 4b"图表脚本喂的名单与 facts 同源仍须人工确认"中数值部分就此自动化。**`--tol-pp` 正式模式写死 0.05**（它直接决定对账 PASS/FAIL，是判定翻转参数，F-04 批 C 与 supply_truth `--tolerance-bps` 同族钳制）：改动必须同时加 `--exploration` 显式声明探索运行（正式发布禁用），否则 exit 2 政策拒。**每次 check（PASS/FAIL、formal/exploration）都落 `figure2_check_receipt.json` 留痕收据**（schema `figure2-check-receipt/v1`：mode/tol_pp/verdict/facts+series sha，F-C5），new-analysis 发布闸复验其在场且 mode=formal、tol_pp=0.05、verdict=PASS——exploration 放宽的对账在发布闸现形。
+  ④溯源存在真实三策略翻转（flip-adjudications/v1 裁决）时，报告必须有**披露章节**：标题须含收据 `report_locations` 声明的位置串，该章节内同段写全三策略（英文 `pro_rata/fifo/lifo` 或中文对照"按比例/先进先出/后进先出"任一）、每策略主导终点标识与两位小数份额（如 `按比例口径主导终点为 0xabc…（50.00%）`）——A5 seal 逐项核对该章节切片，写在别处不算数。
 - 渐进接入：**新报告必用**；旧报告重编译不强制回填。
 
 ## JSON 附录与买入后监控包（v3.3 起独立成册）

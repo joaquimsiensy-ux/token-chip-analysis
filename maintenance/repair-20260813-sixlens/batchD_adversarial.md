@@ -211,3 +211,89 @@ F-D6／F-D7／F-D8 可入台账或随手带上，不阻塞。
 另外三件与技术无关但要记：①工单末行"未 commit"与落盘不符（第二次出现，建议节拍文案统一改成"由裁判代 commit"）；②CT-SEMANTIC-56 的裸单词 needle 建议换成更长的锚串；③`test_repair_batch_a`／`test_handoff_manifest` 的报错换岗虽然被拒面不减，但断言精度确有下降，值得在台账留一句，免得将来旧闸被误删时没人红。
 
 对抗审查完成
+
+---
+
+# 消化轮 1 复核（对象 `da8da71`，基线 `b3ee352`）
+
+- **方式**：只读＋副本变异。副本 `/private/tmp/batchD_probe/repo2/`（`git rev-parse HEAD = da8da71`），7 条变异逐条注入后 `p.write_text(orig)` 还原，收工 `git status --porcelain` 为空；生产树全程零改动
+- **基线独立复跑**：`run_all.py` **EXIT=0**；`invariant_scan.py` rc=0（producers=54／consumers=63／atomic=46，与轮 0 一致）
+- **攻击重放脚本**：`attack_r1_fd1.py`（F-D1 六例）、`attack_r1_others.py`（F-D2/4/7/8 十例）、`/tmp/mut_r1.py`（7 条变异）
+
+## 1. F-D1~F-D8 逐条判定
+
+| 编号 | 判定 | 复核证据（我自己重放的，不引用工单自报） |
+|---|---|---|
+| F-D1 | **CLOSED** | 原攻击（无关附录散落全文）→ 拒「披露位置在报告中不存在」；裁判点名的"标题同名但内容在别章"→ 拒「缺策略名 pro_rata」；绿例真披露段照过。存活变异 M2（份额半边）**转红**；位置锚整体中和（切片退化全文）**转红**。`report_locations` 从装饰字段变成真消费者 |
+| F-D2 | **CLOSED** | 冻结后改写收据（换裁决人＋换理由）→ rc=2「绑定文件哈希/大小漂移: flip_adjudications.json」；删收据 → rc=2「绑定文件不存在」；复原 → rc=0。变异（`bound_records.append` 改 pass）**转红** |
+| F-D3 | **CLOSED（EVM 一条，Solana 差额已如实入账）** | 逐段核 `t_fd3`：①`build_evm_case` 真跑 replay_duck→`compile_state` formal（断言 `series_binding=="producer-sidecar"`）②同案 `figures_from_facts check` 真产 `figure2_check_receipt.json` ③**A4 finalize 的 `--seal-files` 真封 `analysis-state.json`＋`figure2_check_receipt.json`**——①②的真实产物在同案被 A4 封口，这就是原 finding 指的那道接缝 ④A5 同案收口绑 A4。①→②无直接数据流是**生产架构本身如此**（`figures check` 吃 facts＋whale_series，不吃 state，`report-template.md:220` 为证），不是测试偷工。Solana 同案链未建已写进工单 §一并落 `batchD_ledger` 二d |
+| F-D4 | **CLOSED** | sanity 闸实测：`x`/1970/1 字节 → 拒（approved_by 占位）；仅抬时间、仅抬证据仍拒；**全部踩线（`xy`/2026/16 字节垃圾）→ 通过**——这正是工单 §四1 与 §4a 声明的边界（"机器验不了裁决实质真伪，只拦形式上就不是裁决的收据"）。**声明与实现一致，我原 finding 的核心诉求（未声明）已闭合** |
+| F-D5 | **CLOSED** | 存活变异 M1（删「深挖全 fetch_failed」判据）**转红**，红在新用例「F-D5 深挖全 fetch_failed → exit 1（独立判据，有测试锁）」；CLEAN 格已补用例；工单主动更正了"由②一并覆盖"的错误自报 |
+| F-D6 | **CLOSED** | 变异（`staged.append` 挪回写后）**转红**，红在「正式件原样＋零临时件泄漏」并打印出泄漏的 `.done.json.refresh-tmp.31086`——正是我轮 0 抓的那个文件名 |
+| F-D7 | **CLOSED** | 案外收据 → trace rc=2「必须在案根内」；改名收据 `flips_receipt.json` → A5 **DISCLOSED 不再误伤**；A5 侧换收据（裁决人换人）→ 拒「sha256/size 不符」，"甲收据过 freeze、乙收据过 A5"封死；变异（互绑改 `if False`）**转红** |
+| F-D8 | **CLOSED（三小项全落地，无台账搪塞）** | ①表述改准：`scan-schemas §4a:320`／a5 docstring／CHANGELOG 均改成"封死**单边改动**"并点名 freeze 无上位 sha 锚属批 C 残余边界；**评估落点真落地**——发布闸 new-analysis 段接入 A5 seal 重验，变异删除该段 → **转红**（完整案删 `entity_freeze` 后发布闸不再报错）。单元层双删仍 `NO_LEDGER` 通过，但已声明为"无溯源案语义、机器锚在发布闸层"，与实现一致 ②早退落 `INVALID_SAMPLE` 报告（边集缺失用例 rc=1＋报告在场）③负容差实测 rc=2、旧 PASS 收据字节原地未动、零归档件 |
+
+**变异电池 7/7 全红**（含轮 0 的两条存活变异 M1／M2 双双转红）：M1 fetch_failed 判据／M2 份额半边／MD1 位置锚／MD2 冻结绑定／MD3 prepare append／MD4 收据 sha 互绑／MD5 发布闸 A5 重验。
+
+## 2. 新 finding（3 条，全部轮 1 新引入）
+
+| 编号 | 严重度 | 轮 1 新引入 | 一句话 |
+|---|---|---|---|
+| N-D1 | P2 | 是 | 披露核对要求报告实文里出现**英文策略名** `pro_rata/fifo/lifo`——纯中文真实写法实测被拒，而 `report-template.md` 对此零提及 |
+| N-D2 | P3 | 是 | 切片内仍是三项独立子串搜、location 由收据自填可指向任意标题：**否认性术语段**与**通用词 location** 两例实测通过；工单"那这段事实上就是披露本身"表述强于实现 |
+| N-D3 | P3 | 是 | new-analysis 发布闸新增"必须带 `--report`"硬性要求未进 `analyze-workflow.md`／`independent-audit-protocol.md` 的命令描述 |
+
+### N-D1（P2）中文报告被新闸误伤
+
+实测（`attack_r1_fd1.py` 变体 D）：报告段落写成真实交付形态——
+
+```
+## 翻转披露
+本实体存在双来源结构，三种库存消耗口径给出的主导终点不一致：
+按比例口径主导终点为 AAAA（50.00%）；先进先出口径为 BBBB（100.00%）；
+后进先出口径为 AAAA（100.00%）。结论按多口径并列披露。
+→ 被拒：报告披露段（翻转披露）缺策略名 pro_rata
+```
+
+这是**真正合格的并列披露**，却过不了闸。契约只写在 `scan-schemas.md §4a:320`（schema 页），`report-template.md` grep `pro_rata|fifo|lifo|并列披露` **零命中**——写报告的人按模板写就必卡。报错文案会指路（"缺策略名 pro_rata"），所以不会静默出错，但"为过闸在中文报告里塞英文标识符"是个坏的产品决定。
+
+修法建议（择一）：①策略名接受英文标识符**或**其中文对照词（`pro_rata|按比例`、`fifo|先进先出`、`lifo|后进先出`）；②去掉策略名检查，改为要求三个 `(ident, share)` 对**全部**落在同一切片（并列性由"三组不同终点/份额同段出现"体现）；③保留现状但同批把要求写进 `report-template.md` 的图表/披露章节。无论哪种，都要补一条中文真实披露的绿例。
+
+### N-D2（P3）切片内的残余绕路，且工单表述又强于实现
+
+工单 §一 F-D1 段写：「攻击者若想伪装：得在报告里造一个被收据 locations 点名的章节、里面同段写全三策略名＋正确终点＋正确份额——**那这段事实上就是披露本身**」。两个反例证伪：
+
+```
+[变体B] ## 翻转披露
+        （本节为脚本自检占位，与结论无关）内部标识 pro_rata / fifo / lifo；
+        校验串 AAAA、BBBB；占位数值 50.00、100.00。以上均非分析结论。
+        → 通过 DISCLOSED
+
+[变体C] 收据 report_locations 写通用词 "附录"，命中报告里任意一个附录标题
+        ## 附录 A：术语
+        pro_rata / fifo / lifo 为内部标识；AAAA、BBBB 为校验串；50.00 与 100.00 为占位数值。
+        → 通过 DISCLOSED
+```
+
+即"一段明确写着与结论无关的术语表"就能满足披露义务。这一层残余本身可接受（属作者蓄意伪装＝F-12 同族），**问题是表述**：F-D8 刚整改完"表述强于实现"，同一类问题在轮 1 的工单里复发。建议把这句改成"剩余可绕路＝作者在被点名章节里堆砌三项串但不作真实披露，属 F-12 边界同族"，与 §4a 同步。
+
+### N-D3（P3）新硬性要求没进工作流文档
+
+`audit_release_gate.run()` 的 new-analysis 段新增 `report is None → errors`。`analyze-workflow.md:166` 只写「强制 `audit_release_gate --profile new-analysis`」，没有 `--report` 字样；`independent-audit-protocol.md:163` 的完整命令带 `--report` 但那是另一条 profile。既有测试全绿（都带 `--report`），所以只是文档欠账，不是线上缺陷。
+
+## 3. 批 A/B/C 已收口实现的抽查（裁判点名 4）
+
+- 轮 1 共 16 文件，其中生产文件 7 个：`a5_report_seal`／`handoff_manifest`／`entity_source_trace`／`audit_release_gate`／`fetch_hypersync_v2`／`supply_truth_gate`／`audit_closed_accounts`。逐 hunk 对 diff-finding-map，**全部落在 F-D1~F-D8 的 owner 范围内**，无游离 hunk
+- **既有测试文件零改动**：`test_repair_batch_a/b/c`、`test_handoff_manifest`、`test_a4_gate`、`test_review_20260804_p105`、两个 batch3 切片本轮**一个字没动**，`run_all` 仍全绿——本轮没有出现"为让新闸过而改既有测试"
+- 批 A 的 F-02 容差钳制未被削弱：`supply_truth_gate` 只把 `--tolerance-bps < 0`（参数错）从 `policy_reject` 摘出来，`> FORMAL_TOLERANCE_BPS_MAX and not waiver` 分支原样走 `policy_reject`（作废语义保留），实测负容差 rc=2 且不归档、超钳容差路径未动
+- 批 B 的 B-7／B-1 与批 C 的序列链本轮未被触及（`audit_release_gate` 的改动只在 `run()` 尾部新增 A5 重验块，`check_three_ledgers` 一行未改）
+
+## 4. 终判
+
+**批 D 可收口。**
+
+八条 finding 全部 CLOSED 且逐条有我自己重放的转拒/转红证据，7 条变异全红（含轮 0 两条存活变异转红），没有一条走"台账搪塞"。F-D3 的接缝、F-D8 的评估落点这两处最容易糊弄的地方，施工方都做成了真机器件（A4 同案封口真实产物、A5 重验进发布必经路），变异删掉即红。
+
+三条新 finding 无一是安全洞：**N-D1 是纯误伤面，建议随收口一并改掉**（改一行判据＋补一条中文绿例＋`report-template.md` 补一句，成本约 30 分钟），否则下一个带 flip 的真实 new-analysis 案会在 A5 卡住；N-D2／N-D3 属改口与文档欠账，入台账即可。若裁判希望零遗留收口，把 N-D1 并进本轮再复跑一次 `run_all` 即可，不必单开消化轮 2。
+
+消化轮 1 复核完成

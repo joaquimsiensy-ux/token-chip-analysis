@@ -531,6 +531,48 @@ def t_f06_a5_disclosure():
         except ValueError as exc:
             check("F-D1 份额半边独立红例（ident 在场、份额错）被拒",
                   "份额数字" in str(exc), exc)
+        # N-D1（收口补丁）：纯中文真实披露写法（盲审变体 D 原文形态）——别名族判据下绿
+        zh_parts = ["# 报告", "## 翻转披露",
+                    "本实体存在双来源结构，三种库存消耗口径给出的主导终点不一致："]
+        zh_names = {"pro_rata": "按比例", "fifo": "先进先出", "lifo": "后进先出"}
+        for info in real.values():
+            for policy in hm.FLIP_POLICIES:
+                zh_parts.append(f"{zh_names[policy]}口径主导终点为 {info['tops'][policy][2]}"
+                                f"（{info['shares'][policy]}%）；")
+        zh_parts.append("结论按多口径并列披露。")
+        bundle_zh = a5.provenance_flip_bundle(tmp, "\n".join(zh_parts), a4obj)
+        check("N-D1 绿例①：纯中文披露（按比例/先进先出/后进先出）→ DISCLOSED",
+              bundle_zh["status"] == "DISCLOSED", bundle_zh.get("status"))
+        # N-D1 绿例②：中英混排（中文段落里保留英文标识符）
+        mixed_parts = ["# 报告", "## 翻转披露"]
+        for info in real.values():
+            mixed_parts.append(f"按比例（pro_rata）口径：{info['tops']['pro_rata'][2]} "
+                               f"占 {info['shares']['pro_rata']}%；")
+            mixed_parts.append(f"fifo 口径：{info['tops']['fifo'][2]} "
+                               f"占 {info['shares']['fifo']}%；")
+            mixed_parts.append(f"后进先出（lifo）口径：{info['tops']['lifo'][2]} "
+                               f"占 {info['shares']['lifo']}%。")
+        bundle_mixed = a5.provenance_flip_bundle(tmp, "\n".join(mixed_parts), a4obj)
+        check("N-D1 绿例②：中英混排披露 → DISCLOSED",
+              bundle_mixed["status"] == "DISCLOSED", bundle_mixed.get("status"))
+        # （绿例③＝上方既有英文 good_text 用例，本补丁零回归——继续在场）
+        # N-D1 回归：无关附录攻击在别名族判据下**仍拒**（别名族不放宽位置锚）
+        try:
+            a5.provenance_flip_bundle(tmp, attack_text, a4obj)
+            check("N-D1 回归：无关附录攻击仍拒（别名族不放宽位置锚）", False, "放行了")
+        except ValueError as exc:
+            check("N-D1 回归：无关附录攻击仍拒（别名族不放宽位置锚）",
+                  "披露位置在报告中不存在" in str(exc), exc)
+        # N-D1 红例：切片含中文策略词但缺份额（别名族不吞掉份额半边）
+        zh_noshare = ["# 报告", "## 翻转披露",
+                      "按比例、先进先出、后进先出三口径主导终点分别为 "
+                      + "、".join(info["tops"][p][2] for p in hm.FLIP_POLICIES
+                                  for info in [next(iter(real.values()))]) + "。"]
+        try:
+            a5.provenance_flip_bundle(tmp, "\n".join(zh_noshare), a4obj)
+            check("N-D1 红例：中文策略词在场但缺份额仍拒", False, "放行了")
+        except ValueError as exc:
+            check("N-D1 红例：中文策略词在场但缺份额仍拒", "份额数字" in str(exc), exc)
         # F-D1 披露值散落在另一章节（切片外）→ 拒（全文偶然同串不作数）
         split_parts = ["# 报告", "## 翻转披露", "见下方附录。", "## 附录"]
         for info in real.values():
