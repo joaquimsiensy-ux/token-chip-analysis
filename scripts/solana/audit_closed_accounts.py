@@ -23,8 +23,16 @@
 判定与退出码：事件覆盖=边集中存在 slot 相同且 from/to 含该 owner 的边（SQD 边是 owner 级
 同 tx 净变动聚合，无 sig 字段，slot+owner 是可用最细粒度）；边集覆盖区间外的事件计
 out_of_range 不算漏。深挖账户按结果分类（events_found / all_zero_delta=undetermined /
-fetch_failed），undetermined 不算"无漏"——占比过高时告警并建议加大 --deep-sigs。
+fetch_failed），undetermined 不算"无漏"——占比过高即样本无效（exit 1，不再只告警）。
 退出码 0=抽样零漏边；2=发现漏边（对账 gate 语义）；1=运行失败/样本无效。
+样本无效的机器判据（GPT-F-06 收口，任一命中→exit 1，报告 status=INVALID_SAMPLE）：
+任一 getMultipleAccounts 批失败／深挖账户全部 fetch_failed／checked=0 且 closed>0／
+墙钟截断／undetermined（all_zero_delta+fetch_failed）过半。
+边界显式定案：closed=0（抽样内无销户账户，审计对象为空）不是查询失败——
+如实报弱结论 status=NO_CLOSED_SAMPLED、exit 0，但它只证明"这批样本里没有销户账户"，
+不构成"销户路径零漏"的强证明，引用时按弱结论对待。
+报告 JSON 的 status 字段：CLEAN（checked>0 零漏）/ NO_CLOSED_SAMPLED（弱结论）/
+LEAK_FOUND（exit 2）/ INVALID_SAMPLE（exit 1）。
 """
 import argparse, gzip, json, random, subprocess, sys, time
 from pathlib import Path
@@ -84,12 +92,13 @@ def load_edge_index(path):
 
 
 def fetch_mint_sigs(rpc, mint, max_pages, wall_dl, stop_below=None):
-    """mint 签名史 [(sig, slot)]（滤失败笔），新→老翻页。stop_below：翻过该 slot 即停。"""
+    """mint 签名史 [(sig, slot)]（滤失败笔），新→老翻页。stop_below：翻过该 slot 即停。
+    返回 (rows, complete, wall_hit)——wall_hit=True 表示因墙钟截断（样本无效判据之一）。"""
     out, before = [], None
     for page in range(max_pages):
         if time.time() > wall_dl:
             log(f"签名史拉取触墙钟保险丝，截断于 {len(out)} 条")
-            break
+            return out, False, True
         params = [mint, {"limit": 1000}]
         if before:
             params[1]["before"] = before
@@ -99,20 +108,25 @@ def fetch_mint_sigs(rpc, mint, max_pages, wall_dl, stop_below=None):
             break
         out += [(r["signature"], r["slot"]) for r in rows if r.get("err") is None]
         if len(rows) < 1000:
-            return out, True
+            return out, True, False
         before = rows[-1]["signature"]
         if stop_below is not None and rows[-1]["slot"] < stop_below:
-            return out, True
-    return out, False
+            return out, True, False
+    return out, False, False
 
 
-def sample_inits_from_blocks(rpc, mint, lo, hi, n_blocks, target, wall_dl):
-    """blocks 模式：区间内均匀抽 slot，getBlock 整块提取目标 mint 初始化事件。"""
+def sample_inits_from_blocks(rpc, mint, lo, hi, n_blocks, target, wall_dl, wall_flag):
+    """blocks 模式：区间内均匀抽 slot，getBlock 整块提取目标 mint 初始化事件。
+    因墙钟提前收数时置位 wall_flag["hit"]（样本无效判据）。"""
     inits, blocks_read = {}, 0
     step = max(1, (hi - lo) // max(1, n_blocks))
     slots = list(range(lo, hi + 1, step))[:n_blocks]
     for s in slots:
-        if len(inits) >= target or time.time() > wall_dl:
+        if len(inits) >= target:
+            break
+        if time.time() > wall_dl:
+            wall_flag["hit"] = True
+            log("blocks 抽样触墙钟保险丝，提前收数（样本无效）")
             break
         blk = None
         for try_slot in range(s, min(s + 4, hi + 1)):  # 空块（skipped slot）顺移重试
@@ -221,15 +235,18 @@ def main():
     # 样本发现：sigs / blocks / auto（3 页探路未进区间即切 blocks）
     mode, decoded, sig_stat = args.mode, 0, {"total": 0, "complete": None, "in_range": 0}
     inits = {}  # account -> {owner, init_slot}
+    wall_flag = {"hit": False}  # GPT-F-06：任何一处因墙钟截断＝样本无效
     if mode == "auto":
-        probe, _ = fetch_mint_sigs(rpc, mint, 3, wall_dl, stop_below=lo)
+        probe, _, _ = fetch_mint_sigs(rpc, mint, 3, wall_dl, stop_below=lo)
         if probe and any(lo <= s <= hi for _, s in probe):
             mode = "sigs"
         else:
             log("auto：3 页签名史未进入边集区间（历史定向段），切 blocks 模式")
             mode = "blocks"
     if mode == "sigs":
-        sigs, complete = fetch_mint_sigs(rpc, mint, args.max_sig_pages, wall_dl, stop_below=lo)
+        sigs, complete, wall_hit = fetch_mint_sigs(rpc, mint, args.max_sig_pages, wall_dl,
+                                                   stop_below=lo)
+        wall_flag["hit"] = wall_flag["hit"] or wall_hit
         if not sigs:
             log("mint 签名史为空/拉取失败"); sys.exit(1)
         in_range = [s for s in sigs if lo <= s[1] <= hi]
@@ -238,7 +255,11 @@ def main():
         pool = in_range if in_range else sigs
         random.shuffle(pool)
         for sig, slot in pool:
-            if len(inits) >= args.sample_inits or time.time() > wall_dl:
+            if len(inits) >= args.sample_inits:
+                break
+            if time.time() > wall_dl:
+                wall_flag["hit"] = True
+                log("初始化事件抽样触墙钟保险丝（样本无效）")
                 break
             tx = rpc.call("getTransaction", [sig, {"encoding": "jsonParsed",
                                                    "maxSupportedTransactionVersion": 0}])
@@ -250,21 +271,26 @@ def main():
         log(f"decode {decoded} 笔 → 初始化事件 {len(inits)} 个")
     else:
         inits = sample_inits_from_blocks(rpc, mint, lo, hi, args.block_samples,
-                                         args.sample_inits, wall_dl)
+                                         args.sample_inits, wall_dl, wall_flag)
     if not inits:
         log("抽样未命中任何初始化事件（样本过小或池全为非初始化笔）"); sys.exit(1)
 
     # 存活/销户判定（getMultipleAccounts 批 100；publicnode 屏蔽此法，须 mainnet-beta）
     accs = list(inits.keys())
     alive, closed = set(), set()
+    gma_batch_failed = 0
     for i in range(0, len(accs), 100):
         batch = accs[i:i + 100]
         res = rpc.call("getMultipleAccounts", [batch, {"encoding": "base64"}])
         if res is None:
-            log("getMultipleAccounts 失败，跳过该批"); continue
+            # GPT-F-06：批失败＝存活/销户判定对这批账户是盲的，样本无效（后面统一 exit 1），
+            # 不再静默 continue 冒充"这批没有销户账户"。
+            log("getMultipleAccounts 失败（样本无效，将按 INVALID_SAMPLE exit 1）")
+            gma_batch_failed += 1
+            continue
         for a, v in zip(batch, res.get("value", [])):
             (alive if v else closed).add(a)
-    log(f"存活 {len(alive)} / 销户 {len(closed)}")
+    log(f"存活 {len(alive)} / 销户 {len(closed)}（批失败 {gma_batch_failed}）")
 
     # 深挖销户账户：自身签名史（翻页）decode 实际转账 → 对照边集；结果按账户分类
     events = {"checked": 0, "covered": 0, "missing": 0, "out_of_range": 0}
@@ -272,7 +298,8 @@ def main():
     missing_detail, deep_done = [], 0
     for acc in list(closed)[: args.deep_accounts]:
         if time.time() > wall_dl:
-            log("深挖触墙钟保险丝，提前收数"); break
+            wall_flag["hit"] = True
+            log("深挖触墙钟保险丝，提前收数（样本无效）"); break
         owner = inits[acc]["owner"]
         rows, before = [], None
         while len(rows) < args.deep_sigs:
@@ -315,18 +342,50 @@ def main():
                 missing_detail.append({"token_account": acc, "owner": own, "slot": slot,
                                        "sig": r["signature"], "delta_raw": str(delta)})
         acct_cls["events_found" if found_any else "all_zero_delta"] += 1
-    if deep_done and acct_cls["all_zero_delta"] + acct_cls["fetch_failed"] > deep_done // 2:
+    undetermined_over_half = bool(
+        deep_done and acct_cls["all_zero_delta"] + acct_cls["fetch_failed"] > deep_done // 2)
+    if undetermined_over_half:
         log(f"⚠ 深挖账户过半无有效事件（{acct_cls}）——签名窗口可能没盖住 delta 笔，"
-            f"建议加大 --deep-sigs 或检查代理/限速；此类账户计 undetermined，不构成'无漏'证据")
+            f"建议加大 --deep-sigs 或检查代理/限速；undetermined 过半＝样本无效（exit 1）")
+
+    # ── GPT-F-06 收口：退出码对齐脚本自身契约（0=零漏；2=发现漏边；1=运行失败/样本无效）。
+    # 样本无效判据（任一命中即 exit 1，不再 fail-open 冒充零漏）：
+    invalid_reasons = []
+    if gma_batch_failed:
+        invalid_reasons.append(f"getMultipleAccounts 批失败 {gma_batch_failed} 批"
+                               "（存活/销户判定对这些账户是盲的）")
+    if deep_done and acct_cls["fetch_failed"] == deep_done:
+        invalid_reasons.append("深挖账户全部 fetch_failed（一个转账都没核到）")
+    if closed and not events["checked"]:
+        invalid_reasons.append(f"抽到 {len(closed)} 个销户账户但核到的区间内事件为 0"
+                               "（checked=0 且 closed>0，覆盖率无从谈起）")
+    if wall_flag["hit"]:
+        invalid_reasons.append("墙钟截断（样本被保险丝提前收数，不完整）")
+    if undetermined_over_half:
+        invalid_reasons.append("undetermined（all_zero_delta+fetch_failed）过半")
+    # 边界显式定案：closed=0＝抽样内无销户账户（审计对象为空）——是弱结论不是查询失败，
+    # 如实报 NO_CLOSED_SAMPLED / exit 0，不冒充"销户路径零漏"的强证明。
+    if events["missing"]:
+        status, exit_code = "LEAK_FOUND", 2
+    elif invalid_reasons:
+        status, exit_code = "INVALID_SAMPLE", 1
+    elif not closed:
+        status, exit_code = "NO_CLOSED_SAMPLED", 0
+    else:
+        status, exit_code = "CLEAN", 0
 
     cov = events["covered"] / events["checked"] if events["checked"] else None
     report = {
         "mint": mint, "edges_file": str(edges_path), "edges": n_edges,
         "edge_slot_range": [lo, hi], "mode": mode,
+        "status": status, "exit_code": exit_code,
+        "invalid_reasons": invalid_reasons,
         "mint_sig_history": sig_stat,
         "sampled": {"decoded_txs": decoded, "init_events": len(inits),
                     "alive": len(alive), "closed": len(closed), "deep_checked": deep_done,
-                    "deep_account_classes": acct_cls},
+                    "deep_account_classes": acct_cls,
+                    "gma_batch_failed": gma_batch_failed,
+                    "wall_truncated": wall_flag["hit"]},
         "events": events, "coverage_rate": cov, "missing_detail": missing_detail[:200],
         "params": {k: getattr(args, k.replace("-", "_")) for k in
                    ["sample-inits", "deep-accounts", "deep-sigs", "block-samples",
@@ -337,12 +396,17 @@ def main():
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(json.dumps(report, ensure_ascii=False, indent=1))
     log(f"报告 → {out_path}")
-    print(json.dumps({"mode": mode, "closed_sampled": len(closed), "deep_checked": deep_done,
+    print(json.dumps({"mode": mode, "status": status,
+                      "closed_sampled": len(closed), "deep_checked": deep_done,
                       "deep_account_classes": acct_cls,
                       "events_checked": events["checked"], "covered": events["covered"],
                       "missing": events["missing"], "out_of_range": events["out_of_range"],
-                      "coverage_rate": cov}, ensure_ascii=False))
-    sys.exit(2 if events["missing"] else 0)
+                      "coverage_rate": cov,
+                      "invalid_reasons": invalid_reasons}, ensure_ascii=False))
+    if invalid_reasons and status == "INVALID_SAMPLE":
+        for reason in invalid_reasons:
+            log(f"样本无效: {reason}")
+    sys.exit(exit_code)
 
 
 if __name__ == "__main__":

@@ -38,6 +38,67 @@ def entry(root,path):
  return {"path":path.relative_to(Path(root).resolve()).as_posix(),"size":path.stat().st_size,"sha256":sha(path)}
 
 
+def provenance_flip_bundle(root,report_text,a4obj):
+ """F-06 批 D：溯源翻转披露实文核对＋ledger 与 freeze 的 sha 绑定（new-analysis）。
+
+ ①entity_freeze 记录了 provenance_ledger_sha256 时，案根 ledger 必须在场且哈希一致
+ （封死"freeze 后删/换 ledger"旁路；哈希算法与 freeze 同款＝handoff_manifest.sha256_file）。
+ ②ledger 存在真实翻转锚点（三策略明细独立重算，尘埃线豁免）时：案根必须有合法
+ flip-adjudications/v1 收据、逐锚点指纹匹配，且报告 Markdown 实文含每锚点三策略的
+ top 终点标识串与份额数字（多策略并列披露不再是无人执行的承诺）。"""
+ if a4obj.get("workflow_type")!="new-analysis":
+  return {"status":"NOT_APPLICABLE","reason":"independent-audit 单段流程暂不承载溯源披露链"}
+ import handoff_manifest
+ ledger_path=Path(root)/"provenance_ledger.json"
+ freeze_path=Path(root)/"entity_freeze.json"
+ recorded=None
+ if freeze_path.is_file() and not freeze_path.is_symlink():
+  freeze=json.loads(freeze_path.read_text(encoding="utf-8"))
+  recorded=freeze.get("provenance_ledger_sha256")
+ if recorded:
+  if not ledger_path.is_file() or ledger_path.is_symlink():
+   raise ValueError("entity_freeze 记录了 provenance_ledger_sha256 但案根 ledger 缺失——freeze 后删/换 ledger 旁路拒绝")
+  _,actual,_=handoff_manifest.sha256_file(ledger_path)
+  if actual!=recorded:
+   raise ValueError("provenance_ledger.json 与 entity_freeze 记录的哈希不一致——freeze 后换 ledger 拒绝")
+ if not ledger_path.is_file():
+  return {"status":"NO_LEDGER"}
+ pl=json.loads(ledger_path.read_text(encoding="utf-8"))
+ if pl.get("schema")!="provenance-ledger/v2":
+  raise ValueError(f"provenance_ledger schema 非法: {pl.get('schema')!r}")
+ real=handoff_manifest.ledger_real_flips(pl)
+ if not real:
+  return {"status":"NO_FLIPS","ledger":entry(root,ledger_path)}
+ receipt_path=Path(root)/"flip_adjudications.json"
+ if not receipt_path.is_file() or receipt_path.is_symlink():
+  raise ValueError("溯源存在真实翻转锚点但案根缺 flip_adjudications.json 裁决收据")
+ entity_ref=(pl.get("input_binding") or {}).get("entity_file") or {}
+ entity_rel=entity_ref.get("path")
+ current_entity=None
+ if isinstance(entity_rel,str) and entity_rel:
+  cand=Path(entity_rel)
+  cand=cand if cand.is_absolute() else Path(root)/cand
+  if cand.is_file(): current_entity=cand
+ _,rows=handoff_manifest.load_flip_adjudications(receipt_path,current_entity_file=current_entity)
+ fails=handoff_manifest.verify_flip_receipt_against_ledger(rows,real)
+ if fails:
+  raise ValueError("flip 裁决收据与 ledger 明细对账失败: "+"; ".join(fails))
+ anchors=[]
+ for key in sorted(real):
+  info=real[key]
+  for policy in handoff_manifest.FLIP_POLICIES:
+   terminal=info["tops"].get(policy) or []
+   share=info["shares"].get(policy)
+   ident=str(terminal[2] if len(terminal)>2 and terminal[2] else (terminal[1] if len(terminal)>1 else ""))
+   if not ident:
+    raise ValueError(f"翻转锚点 {key} {policy} top 终点无可核标识串")
+   if ident not in report_text or (share and share not in report_text):
+    raise ValueError(f"报告缺翻转多策略并列披露: {key[0]} {key[1]} {policy} 须含终点标识 {ident!r} 与份额 {share!r}")
+  anchors.append({"entity_id":key[0],"anchor":key[1],"flip_fingerprint":info["fingerprint"]})
+ return {"status":"DISCLOSED","ledger":entry(root,ledger_path),
+         "receipt":entry(root,receipt_path),"anchors":anchors}
+
+
 def distribution_bundle(root,report,a4obj):
  if a4obj.get("workflow_type")=="independent-audit":
   return {"status":"NOT_APPLICABLE","reason":"analysis-audit single-stage distribution semantics pending"}
@@ -125,7 +186,8 @@ def create_seal(case_dir,report,a4_seal,out):
   "chain":a4obj.get("chain"),"workflow_type":a4obj.get("workflow_type"),
   "a4_seal":entry(root,a4),
   "report":entry(root,report),"images":images,
-  "distribution":distribution_bundle(root,report,a4obj)}
+  "distribution":distribution_bundle(root,report,a4obj),
+  "provenance_flips":provenance_flip_bundle(root,report.read_text(encoding="utf-8"),a4obj)}
  target=Path(out).resolve()
  if target.parent!=root: raise ValueError("A5 seal 必须写在案目录根")
  target.parent.mkdir(parents=True,exist_ok=True); tmp=target.with_name(f".{target.name}.tmp.{os.getpid()}")
@@ -155,6 +217,10 @@ def validate_seal(seal_path,report_path,a4_path):
    actual_distribution=distribution_bundle(root,report,a4obj)
    if d.get("distribution")!=actual_distribution: errors.append("A5 seal 分布终态绑定变化")
   except Exception as exc: errors.append(f"A5 seal 分布终态不可重验: {exc}")
+  try:
+   actual_flips=provenance_flip_bundle(root,report.read_text(encoding="utf-8"),a4obj)
+   if d.get("provenance_flips")!=actual_flips: errors.append("A5 seal 溯源翻转披露绑定变化")
+  except Exception as exc: errors.append(f"A5 seal 溯源翻转披露不可重验: {exc}")
  except Exception as exc: errors.append(f"A5 report seal 不可验证: {exc}")
  return errors
 

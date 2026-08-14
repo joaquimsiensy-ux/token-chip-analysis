@@ -141,6 +141,9 @@ def add_distribution_initial(d):
     snap = Path(d, "data/holders_owners.json")
     snap.write_text(json.dumps(balances), encoding="utf-8")
     bind_balance_receipt_to_snapshot(d, snap)
+    # B-7（批 D）：三账成员同步到本案真实 owner 世界（等值绑定后 0xabc 型编造成员必拦）
+    from test_audit_release_gate import align_ledgers_to_owner_snapshot
+    align_ledgers_to_owner_snapshot(Path(d), snap)
     wj(d, "candidate_screening.json", {"schema": "candidate-screening/v1",
                                          "auto_excluded_candidate": []})
     wj(d, "supply_truth.json", {"verdict": "PASS", "exit_code": 0,

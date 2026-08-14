@@ -153,7 +153,9 @@ def _bound_replay_totals(root, receipt):
     replay_input = inputs.get("replay_stats")
     _require(isinstance(replay_input, dict),
              "supply_truth receipt must bind replay_stats input")
-    replay_path = Path(str(replay_input.get("path") or "")).resolve()
+    shown = Path(str(replay_input.get("path") or ""))
+    # A-3：收据可记案根相对路径（可搬家）；相对路径基于案根解析，绝对路径照旧收紧。
+    replay_path = (shown if shown.is_absolute() else Path(root) / shown).resolve()
     try:
         replay_path.relative_to(Path(root).resolve())
     except ValueError as exc:
@@ -204,7 +206,9 @@ def _validate_tolerance_policy(root, receipt, target):
     if waiver_input is None:
         return
 
-    waiver_path = Path(str(waiver_input.get("path") or "")).resolve()
+    waiver_shown = Path(str(waiver_input.get("path") or ""))
+    waiver_path = (waiver_shown if waiver_shown.is_absolute()
+                   else Path(root) / waiver_shown).resolve()
     try:
         waiver_path.relative_to(Path(root).resolve())
     except ValueError as exc:
@@ -287,7 +291,9 @@ def validate_reconciliation_check(root, key, item, target, family):
     except Exception as exc:
         raise ValueError(f"reconciliation {key} receipt JSON invalid: {exc}") from exc
     migration = "存量案例须重跑对应生产者获取当前回执"
-    envelope_errors = validate_receipt(receipt)
+    # A-3/B-6：正式消费线对全部 envelope inputs 强制案根约束（相对路径基于案根解析；
+    # 绝对路径解析后也必须在案根内）——EVM inputs.balances 等同族输入不再可绑案外实物。
+    envelope_errors = validate_receipt(receipt, case_root=root)
     if envelope_errors:
         raise ValueError(
             f"reconciliation {key} receipt envelope invalid: {envelope_errors[0]}；{migration}")
@@ -388,7 +394,9 @@ def validate_reconciliation_check(root, key, item, target, family):
             bundle_ref = (receipt.get("inputs") or {}).get("observation_bundle")
             _require(isinstance(bundle_ref, dict),
                      "solana supply_truth does not bind observation bundle")
-            bundle_path = Path(bundle_ref.get("path", "")).resolve()
+            bundle_shown = Path(str(bundle_ref.get("path") or ""))
+            bundle_path = (bundle_shown if bundle_shown.is_absolute()
+                           else Path(root) / bundle_shown).resolve()
             bundle_path.relative_to(root)
             bundle = json.loads(bundle_path.read_text(encoding="utf-8"))
             from solana_observation import validate_observation_bundle
@@ -441,6 +449,7 @@ def validate_reconciliation_report(root, expected_target=None):
     checks = recon.get("checks")
     if not isinstance(checks, dict) or set(checks) != {"balance", "supply", "supply_truth", "time"}:
         raise ValueError("reconciliation wrapper must contain exactly four checks")
+    receipts = {}
     for key in ("balance", "supply", "supply_truth", "time"):
         item = checks[key]
         if (not isinstance(item, dict) or item.get("status") != "PASS"
@@ -448,7 +457,23 @@ def validate_reconciliation_report(root, expected_target=None):
             raise ValueError(f"reconciliation {key} lacks PASS execution receipt")
         repo_ref_ok(item.get("producer"), RECON_PRODUCERS[family][key],
                     f"reconciliation {key}")
-        validate_reconciliation_check(root, key, item, target, family)
+        receipts[key] = validate_reconciliation_check(root, key, item, target, family)
+    if family == "evm":
+        # A-5（N-1 第二建议）：EVM 的 balance/supply（verify_recon）与 supply_truth 三份
+        # 收据绑定的 replay_stats 必须是同一份实物（sha256 全等）。案根约束（上面
+        # case_root）只保证"账本在案内"，同源校验补上"三查核的是同一本账"——
+        # 否则可在案内放两本账，各查各的、互相印证不了。
+        stats_shas = {}
+        for key in ("balance", "supply", "supply_truth"):
+            ref = (receipts[key].get("inputs") or {}).get("replay_stats")
+            if not isinstance(ref, dict) or not ref.get("sha256"):
+                raise ValueError(
+                    f"reconciliation {key} receipt does not bind replay_stats input；{MIGRATION_HINT}")
+            stats_shas[key] = str(ref["sha256"]).lower()
+        if len(set(stats_shas.values())) != 1:
+            raise ValueError(
+                "reconciliation balance/supply/supply_truth 绑定的 replay_stats 不同源"
+                f"（sha256 不一致: {stats_shas}）——三查必须核同一份重放账本；{MIGRATION_HINT}")
     return target
 
 
@@ -490,7 +515,9 @@ def validate_sources(root):
         bundle_ref = accounting.get("observation_bundle")
         _require(isinstance(bundle_ref, dict),
                  "solana accounting does not bind observation bundle")
-        bundle_path = Path(bundle_ref.get("path", "")).resolve()
+        acc_shown = Path(str(bundle_ref.get("path") or ""))
+        bundle_path = (acc_shown if acc_shown.is_absolute()
+                       else Path(root) / acc_shown).resolve()
         bundle_path.relative_to(root)
         _require(bundle_path.is_file() and bundle_ref.get("size") == bundle_path.stat().st_size
                  and bundle_ref.get("sha256") == sha(bundle_path),

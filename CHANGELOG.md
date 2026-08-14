@@ -10,6 +10,7 @@
 
 ## 版本索引（活跃窗口，新在上；每版一行，详情见下方对应条目）
 
+- **6.40.0**（2026-08-13）六视角 BLOCK 修复工程 A-D 四批收口：发布收据验证链（F-01/02）＋分布扫描族（F-03/08）＋阵营序列 producer 链（F-04/05）＋flip 裁决收据制（F-06）/refresh 真事务（F-07）/销户审计收口（GPT-F-06）＋台账八项＋distribution-scan/v2；R10 存量台账本轮未修、台账保留（r10_ledger.md）
 - **6.39.5**（2026-08-12）distribution 语义重验剔除记录性 upstream_receipts（split-run G8/audit_release_gate 三闸死环修复，TAG 案实撞；同步补 6.39.4 漏 bump 的 pyproject）
 - **6.39.4**（2026-08-11）provenance 敏感性闸粒度修复：尘埃锚点线（<0.01% 供应不入翻转判定）＋ --acknowledge-flip 翻转书面确认通道（freeze 重放同参还原）
 - **6.39.3**（2026-08-09）accounting_gate 加 --as-of-block 目标块绑定（存量案重跑 tip 漂移死锁修复）
@@ -38,6 +39,24 @@
 - **6.20.1** 2026-08-05 修 5 处阻断级文档漂移（A4 前禁写报告冲突/easy 残留/惯犯回灌 docstring/批量预采集残留/旧 Par 路线历史降级）＋docs_lint 增中文禁词与 Python module docstring 扫描
 
 更早版本（6.20.0 及以前）详见 `archive/CHANGELOG-archive.md`。
+
+## [6.40.0] - 2026-08-13 — 六视角 BLOCK 修复工程四批收口（codex 13 findings＋GPT 5.6 Pro 交叉对账）
+
+外部双审查（codex 六视角 13 findings 判 BLOCK＋GPT 5.6 Pro 11 findings 交叉对账）后，按用户定案范围（5 P0＋6.39.x 新引入 F-06/07/08＋GPT-F-06 用户裁决纳入＋流程债）分 A→B→C→D 四批修复，硬闸人工出口统一改**裁决收据**模式。工程目录 `maintenance/repair-20260813-sixlens/`（plan/工单/对抗审查/反例全落盘）。
+
+- **批 A（发布收据验证链）**：F-01 EVM `tip_block` 双时点诚实记录（`model_probe_block==tip_block` 消费侧双字段验）；F-02 supply_truth formal 容差钳 ≤10bps、超出唯一通道＝`tolerance-waiver/v1` 人工裁决收据（裁决主体/UTC 时间/target 全等/replay_stats 与证据 sha 绑定/`observed_diff_bps` 覆盖检查）；消费侧 `decide()` 同源重算不手抄公式。
+- **批 B（分布扫描族）**：F-03 快照对铸造总量 mint 逐 wei 闭合（分母绝不取影子键）＋发布闸快照 sha 与四查等值绑定（EVM=balance 收据 inputs.balances / Solana=bundle holder_outputs.owners，initial 与终态 final 双绑）；F-08 记录性 `upstream_receipts` 在场即三验＋path 白名单。
+- **批 C（阵营序列 producer→consumer 链）**：F-05 四族 `validate_camp_spec` 共享互斥（跨阵营重复/大小写变体/JSON 重复键硬拒）；F-04 producer sidecar（`camp-series-provenance/v1`）＋burn 桶闭合口径分族＋camps spec 末点机械对账＋`--tol-pp` formal 写死 0.05（`figure2-check-receipt/v1` 留痕，发布闸复验）。
+- **批 D（本批收口）**：
+  - **F-06 flip 裁决收据制**：`--acknowledge-flip` 从"任意 10 字符理由"升级为 `flip-adjudications/v1` 收据文件（scan-schemas §4a）——每锚点行 `flip_fingerprint`＝三策略 policy_details 规范化 sha（底层数据一变收据自动失效必须重裁）＋三策略 top/份额披露；freeze 前置 3 只认 input_binding 绑定收据（不再信 ledger 自报 `acknowledged_flips`），重放装配同收据还原；A5 对报告 Markdown 实文核对披露值＋ledger sha 与 freeze 记录绑定（删/换 ledger 旁路封死）。
+  - **F-07 refresh 真事务**：`fetch_hypersync_v2 --refresh-manifests` 两阶段提交（prepare 全写临时件+fsync → commit 逐个备份+os.replace）；commit 失败逐文件回滚并按字节哈希验证，回滚失败保留 `.recover` 且 exit 1；CLI 补捕 OSError。全有或全无恢复由注入测试断言**字节回滚原样**。
+  - **GPT-F-06 销户审计收口**：`audit_closed_accounts` 报告加 `status` 契约（CLEAN/NO_CLOSED_SAMPLED/LEAK_FOUND/INVALID_SAMPLE）；五类样本无效（gma 批失败/深挖全 fetch_failed/checked=0 且 closed>0/墙钟截断/undetermined 过半）一律 exit 1；closed=0 边界显式定案＝弱结论非查询失败。
+  - **台账八项**：A-1 政策拒绝时旧收据作废归档（`supply_truth.json.superseded-<UTC>`，归档失败升格 exit 1）；A-3 envelope inputs 相对路径根治（`build_envelope(input_base=…)` 案内输入记相对路径＋消费侧 `validate_receipt(case_root=…)` 全部 inputs 强制解析在案根内，B-6 EVM `inputs.balances` 同族一并收口）；A-5 EVM balance/supply/supply_truth 三查 replay_stats sha 同源强制；B-1 Solana `holder_outputs` 文件级三验（validate_observation_bundle 消费侧，与 EVM 等深）；B-2 Solana new-analysis 发布闸 run() 完整端到端夹具落地；B-4 扫描器对绑定 replay_stats 补 sha/size 自验＋docstring 过度宣称改准；B-5 案根遏制分支定向红线；B-7 三账 `balance_source` 与四查 owner 快照等值绑定（冻结时点一致＋逐址数值等值，两链族）。
+  - **schema 升版（B-3）**：`distribution-scan/v1`→`v2`，`denominators.total_supply_raw`→`mint_total_raw`（旧键名在真 `_burn` 案语义误导，IQ 差 34.9%）。
+- **流程债追认（D-1）**：`11193f6`/`b9f8871` 两笔无版本号提交在此追认（B2 案 freeze 分母键修复系列，内容已含于 6.39.x 线，禁止倒插历史版本号）。
+- **存量迁移后果（D-3）**：①6.39.4 后用过旧式 `--acknowledge-flip` 字符串的案（已知 MOG）重 freeze 会被"旧确认不再受理"拦下，须造 flip-adjudications/v1 收据重跑 trace（已冻结终态不追溯）；②6.39.5 及以前的 `distribution_scan.json` 是 v1 产物，重验必拒须重跑 initial/final scan（与"改扫描器即重跑"的既有算法绑定语义同款）；③存量绝对路径收据整案复制后被案根约束拒（原 N-1 语义，本就该拒），原地重验不受影响；新收据记相对路径可搬家。
+- **R10 台账（本轮未修，台账保留）**：存量 6 条（F-09/10/11/13、GPT-F-07 deploy-sync 弱闸、GPT-F-09 env_check 覆盖）＋加深 2 条（A5 图例集合绑定、F-12 改名降权）＋批 C 终验 3 条（C-R1/2/3）＋批 D 评估 2 条（A-2 approved_tolerance_bps 硬顶待用户裁决、A-4 EVM 链上观测件锚定设计留档）→ `maintenance/repair-20260813-sixlens/r10_ledger.md`。
+- 成本：批 D 单会话施工（前三批 codex 分批施工＋对抗审查另计）；质量：run_all 全量绿、契约 146 条双向闭合、invariant 46 原子写登记、反例矩阵落 counterexamples/ 可重放。
 
 ## [6.39.5] - 2026-08-12 — distribution 语义重验假阳性修复（split-run 三闸死环）
 

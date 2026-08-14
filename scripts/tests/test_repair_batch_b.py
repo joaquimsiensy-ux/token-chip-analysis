@@ -164,7 +164,7 @@ def test_p1b3_form1_real_receipt() -> None:
         binding = out.get("input_binding") or {}
         check("P1-B3 form1 真实收据对 mint_total 精确闭合放行", p.returncode == 0
               and out.get("exit_code") == 0
-              and den.get("total_supply_raw") == str(IQ_MINT)          # 展示口径=mint
+              and den.get("mint_total_raw") == str(IQ_MINT)          # 展示口径=mint
               and den.get("net_supply_raw") == str(onchain)            # 流通=onchain
               and isinstance(binding.get("mint_closure_anchor"), dict)
               and binding["mint_closure_anchor"].get("source") == "bound_replay_mint",
@@ -200,7 +200,7 @@ def test_p1b3_form2_real_receipt() -> None:
         burn = (out.get("bucket_coverage") or {}).get("burn_sentinel") or {}
         check("P1-B3 form2 真实收据（dead-sink）精确闭合放行", p.returncode == 0
               and out.get("exit_code") == 0
-              and den.get("total_supply_raw") == str(APU_MINT)
+              and den.get("mint_total_raw") == str(APU_MINT)
               and den.get("net_supply_raw") == str(flow)
               and burn.get("raw") == str(APU_BURN),
               f"rc={p.returncode} den={den} burn={burn} {p.stdout}{p.stderr}")
@@ -448,11 +448,11 @@ def _solana_case(root: Path, owners_sha: str, *, initial_sha: str = "b" * 64,
                                            "owners": {"path": "holders_owners.json",
                                                       "size": 2, "sha256": owners_sha}}})
     final_scan = root / "dist_rounds/round_1/distribution_scan.json"
-    write_json(final_scan, {"schema": "distribution-scan/v1", "stage": "final",
+    write_json(final_scan, {"schema": "distribution-scan/v2", "stage": "final",
                             "input_binding": {"snapshot": {"path": "data/holders_owners.json",
                                                            "sha256": final_sha, "size": 3}}})
     return {
-        "distribution_scan.json": {"schema": "distribution-scan/v1", "stage": "initial",
+        "distribution_scan.json": {"schema": "distribution-scan/v2", "stage": "initial",
                                    "input_binding": {"snapshot": {
                                        "path": "data/holders_owners.json",
                                        "sha256": initial_sha, "size": 3}}},
@@ -712,12 +712,17 @@ def test_fb5_docs_retro_not_deadlock_wording() -> None:
 
 
 def test_fb6_docs_binding_strength_diff() -> None:
-    """F-B6③：scan-schemas 如实写出 EVM/Solana 两侧绑定强度差异。"""
+    """F-B6③：scan-schemas 如实写出 EVM/Solana 两侧绑定强度实况。
+
+    批 B 时实况＝Solana 无实物锚（文档如实写差异）；批 D B-1 落地
+    validate_observation_bundle 的 holder_outputs 文件级三验后实况变了——
+    文档义务随之变为"如实写已对齐＋三验语义"。守的不变量是"文档与实况一致"，
+    不是把旧差异描述钉死成永久事实。"""
     text = (ROOT / "references/scan-schemas.md").read_text(encoding="utf-8")
-    check("F-B6③ scan-schemas 写明 Solana holder_outputs.owners 暂无 validator 实物锚",
+    check("F-B6③ scan-schemas 如实写明两侧绑定强度实况（批 D B-1 后＝已对齐＋文件级三验）",
           "receipt_validate" in text and "holder_outputs" in text
-          and ("无 validator" in text or "无实物锚" in text or "尚无实物锚" in text),
-          "scan-schemas.md 未写明两侧绑定强度差异")
+          and "已对齐" in text and "文件级三验" in text,
+          "scan-schemas.md 未如实写明 holder_outputs 绑定强度实况")
 
 
 def test_c_deadsink_synthetic_green_under_mint_anchor() -> None:
@@ -740,7 +745,7 @@ def test_c_deadsink_synthetic_green_under_mint_anchor() -> None:
         den = out.get("denominators") or {}
         check("锚点c 合成 dead-sink 20%（sum=mint≠net）在 mint 锚点下仍绿",
               p.returncode == 0 and out.get("exit_code") == 0
-              and den.get("total_supply_raw") == str(mint)
+              and den.get("mint_total_raw") == str(mint)
               and den.get("net_supply_raw") == str(flow) and mint != flow,
               f"rc={p.returncode} den={den} {p.stdout}{p.stderr}")
 

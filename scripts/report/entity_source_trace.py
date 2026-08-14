@@ -164,8 +164,11 @@ def source_binding(a, case_dir):
         "algorithm_params": {"depth_limit": a.depth_limit,
                              "facility_min_degree": a.facility_min_degree,
                              "node_budget": a.node_budget, "edge_budget": a.edge_budget,
-                             # 翻转确认随绑定传递：freeze 重放用同一参数还原同一 exit 语义
-                             "acknowledged_flips": sorted(a.acknowledge_flip or [])},
+                             # F-06：翻转裁决收据（flip-adjudications/v1）以文件引用随绑定
+                             # 传递——freeze 重放用同一份收据实物还原同一 exit 语义；
+                             # 收据内容一变（sha 失配）重放自动拒。
+                             "flip_adjudications": (full_file_record(a.acknowledge_flip, case_dir)
+                                                    if a.acknowledge_flip else None)},
     }
 
 
@@ -663,10 +666,14 @@ def main():
     ap.add_argument("--allow-no-labels", action="store_true",
                     help="仅探索：允许无标签运行；产物带 exploration 标记且禁止 freeze")
     ap.add_argument("--out", default="provenance_ledger.json")
-    ap.add_argument("--acknowledge-flip", action="append", metavar="ENTITY:ANCHOR:REASON",
-                    help="显式确认某锚点的三策略主导翻转是真实多来源结构（构成结论必须按"
-                         "多策略并列披露）。格式 entity_id:anchor:理由（理由 ≥10 字符）；"
-                         "可重复。确认随 input_binding 传递，freeze 重放同参还原。")
+    ap.add_argument("--acknowledge-flip", metavar="RECEIPT.json",
+                    help="flip-adjudications/v1 裁决收据文件路径（F-06 起唯一合法通道；"
+                         "6.39.4 的 ENTITY:ANCHOR:REASON 字符串格式已废除）。收据必须含"
+                         "裁决主体、UTC 决定时间、名册与证据 sha 绑定，且每锚点行携带"
+                         "flip_fingerprint（该锚点三策略明细的规范化 sha）与三策略 top"
+                         "名称/份额披露——本工具重算当前运行同款指纹并要求相等，底层数据"
+                         "一变收据自动失效必须重裁。收据引用随 input_binding 传递，"
+                         "freeze 重放同收据还原。")
     ap.add_argument("--mem-limit", default="8GB")
     ap.add_argument("--depth-limit", type=int, default=10, help="BFS 深度上限（距实体最短跳数）")
     ap.add_argument("--facility-min-degree", type=int, default=1000, help="设施启发式：双向对手方 ≥此数")
@@ -691,6 +698,18 @@ def main():
     if a.labels_file and not labels:
         log("正式模式 --labels-file 有效标签数为 0——空标签快照禁止进入 provenance/freeze")
         return 2
+    # F-06：裁决收据先行验证（文件不存在/结构不合法＝调用错误 exit 2，不落 exit 1）；
+    # 覆盖判定在 ledger 组装后按当前明细重算指纹。
+    from handoff_manifest import (ledger_real_flips, load_flip_adjudications,
+                                  verify_flip_receipt_against_ledger)
+    receipt_rows = {}
+    if a.acknowledge_flip:
+        try:
+            _, receipt_rows = load_flip_adjudications(
+                a.acknowledge_flip, current_entity_file=a.entity_file)
+        except (OSError, ValueError, TypeError) as exc:
+            log(f"--acknowledge-flip 裁决收据不合法: {exc}")
+            sys.exit(2)
     case_dir = os.path.dirname(os.path.abspath(a.out))
     binding = source_binding(a, case_dir)
 
@@ -769,28 +788,7 @@ def main():
         unresolved_total += sum(float(c["raw"]) for c in e["anchors"]["peak"]["composition"]
                                 if c["kind"] == "UNRESOLVED")
     all_stable = all(s["stable"] for s in sens_all.values()) if sens_all else True
-    # 翻转确认解析与覆盖判定：确认不改变 stable 真实值，只决定可发布性（exit 码）
-    ack_flips = []
-    for spec in (a.acknowledge_flip or []):
-        parts = spec.split(":", 2)
-        if len(parts) != 3 or not parts[0] or parts[1] not in ("peak", "current") \
-                or len(parts[2].strip()) < 10:
-            log(f"--acknowledge-flip 格式错误（需 entity:anchor:理由≥10字符）: {spec!r}")
-            sys.exit(2)
-        ack_flips.append({"entity_id": parts[0], "anchor": parts[1],
-                          "reason": parts[2].strip()})
-    ack_keys = {(x["entity_id"], x["anchor"]) for x in ack_flips}
-    real_flips = set()
-    for eid, s in sens_all.items():
-        for anc, d in (s.get("anchors") or {}).items():
-            if not d.get("agree", True) and not d.get("negligible_stock"):
-                real_flips.add((eid, anc))
-    unknown_acks = ack_keys - real_flips
-    if unknown_acks:
-        log(f"--acknowledge-flip 指向不存在的翻转锚点（不许预防性豁免）: {sorted(unknown_acks)}")
-        sys.exit(2)
     ordering_bad = any(not s.get("ordering_stable", True) for s in sens_all.values())
-    publishable = (not ordering_bad) and real_flips <= ack_keys
     report = {
         "schema": SCHEMA,
         "exploration": bool(a.allow_no_labels),
@@ -805,23 +803,37 @@ def main():
             "methods": list(POLICIES),
             "per_entity": {eid: s for eid, s in sens_all.items()},
             "conservative_vs_aggressive_verdict_stable": all_stable,
-            "acknowledged_flips": sorted(ack_flips, key=lambda x: (x["entity_id"], x["anchor"])),
-            "publishable": publishable,
+            "acknowledged_flips": [],
+            "publishable": None,
             "note": "两维独立敏感性：三种库存消耗策略逐锚点比对完整明细；缺精确链上位置时，"
                     "同一最细粒度桶内既收又发的来源记 UNRESOLVED/order_ambiguous。尘埃锚点"
-                    "（<总供应 0.01%）不入判定；真实消费翻转须 --acknowledge-flip 书面确认"
-                    "且构成结论按多策略并列披露，顺序未决量 >0.5% 锚点库存无豁免，exit 2"},
+                    "（<总供应 0.01%）不入判定；真实消费翻转须 flip-adjudications/v1 裁决"
+                    "收据（--acknowledge-flip <收据>）逐锚点指纹绑定覆盖且构成结论按多策略"
+                    "并列披露（A5 对报告实文核对），顺序未决量 >0.5% 锚点库存无豁免，exit 2"},
     }
+    # 真实翻转与覆盖判定走与 freeze 同一条重算路径（指纹/份额同函数），不留两份口径。
+    real_flips = ledger_real_flips(report)
+    flip_fails = verify_flip_receipt_against_ledger(receipt_rows, real_flips)
+    covered = set(receipt_rows) & set(real_flips)
+    report["bounds_sensitivity"]["acknowledged_flips"] = sorted(
+        ({"entity_id": key[0], "anchor": key[1],
+          "reason": str(receipt_rows[key].get("reason", "")).strip(),
+          "flip_fingerprint": receipt_rows[key].get("flip_fingerprint"),
+          "source": "flip-adjudications/v1"} for key in covered),
+        key=lambda x: (x["entity_id"], x["anchor"]))
+    publishable = (not ordering_bad) and not flip_fails
+    report["bounds_sensitivity"]["publishable"] = publishable
     report["replay_semantic_sha256"] = semantic_sha256(report)
     with open(a.out, "w", encoding="utf-8") as fh:
         json.dump(report, fh, ensure_ascii=False, indent=1)
     log(f"{len(entities)} 实体溯源完成 → {a.out}")
     if not publishable:
-        pending = sorted(real_flips - ack_keys)
-        log("敏感性不稳：消费策略主导翻转或事件顺序未决量达到实质线——结论不得发布"
-            f"（exit 2）；未确认翻转锚点: {pending or '无'}。真实多来源结构可用 "
-            "--acknowledge-flip entity:anchor:理由 书面确认后重跑（构成结论必须按多策略"
-            "并列披露）；顺序未决须补齐 block/slot + tx + log/instruction 序号")
+        for x in flip_fails:
+            log(f"  ✗ {x}")
+        log("敏感性不稳：消费策略主导翻转未获合法裁决收据覆盖，或事件顺序未决量达到实质线"
+            "——结论不得发布（exit 2）。真实多来源结构须造 flip-adjudications/v1 裁决收据"
+            "（含逐锚点 flip_fingerprint 与三策略披露）后 --acknowledge-flip <收据> 重跑；"
+            "顺序未决须补齐 block/slot + tx + log/instruction 序号")
         sys.exit(2)
     return 0
 

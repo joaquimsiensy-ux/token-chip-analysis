@@ -37,7 +37,9 @@ replay-stats 字段识别（依次尝试，值可为 int 或十进制字符串�
         2 = 两种语义，看有没有落收据来分辨：
             ①落了收据 → FAIL（终态供给或 sink 逐地址归因不闭合——硬停，处置见上）；
             ②没落收据 → 容差政策拒绝（正式模式超 10bps 却无 waiver，或 waiver 本身
-              不合法／没覆盖住本次实际偏差）——补齐人工裁决收据再跑，别当 FAIL 读
+              不合法／没覆盖住本次实际偏差）——补齐人工裁决收据再跑，别当 FAIL 读；
+              批 D（A-1）起政策拒绝先把上一轮旧收据作废归档
+              （supply_truth.json.superseded-<UTC>），归档失败升格 exit 1
         1 = 检测自身失败（网络/字段缺失/文件读不动等通道故障）——修通道重跑，禁当 PASS
 （来源：GNT replay-silent-burn-trap 2026-07-28；v6.0.0 唯一批准代码例外）"""
 import argparse
@@ -45,7 +47,7 @@ import hashlib
 import json
 import re
 import sys
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 from receipt_kernel import (build_envelope, finalize_envelope, publish_error_receipt,
@@ -203,6 +205,34 @@ def assert_waiver_covers_diff(waiver: dict, diff_bps) -> None:
             "——裁决人没见过这么大的偏差，该收据失效，须重新人工裁决")
 
 
+def invalidate_stale_receipt(out_path) -> str | None:
+    """政策拒绝时把上一轮旧收据显式作废（A-1，F-D 后半）。
+
+    背景：政策拒绝（exit 2 不落收据）时，上一轮 PASS 收据原地不动——文档把"有没有落
+    收据"当成分辨 exit 2 两种语义的唯一线索，这条线索恰恰被旧收据污染；而
+    publish_overwrite 拒绝 PASS→非 PASS 降级覆盖，想用一份拒绝记录顶掉旧 PASS 也写
+    不进去。做法＝原子改名归档（`<out>.superseded-<UTC>`，不销毁不覆盖），案内不再有
+    supply_truth 收据，下游 fail-closed 缺件即停。只作废本 gate 自己的收据
+    （schema 以 supply-truth-receipt/ 开头），别的文件占着 --out 位置不动（避免误伤）。
+    归档失败由调用方升格 exit 1（作废是政策拒绝的义务副作用，副作用失败＝环境故障）。
+    返回归档路径（无旧收据/非本 gate 收据时返回 None）。
+    """
+    path = Path(out_path)
+    if not path.exists() or path.is_symlink() or not path.is_file():
+        return None
+    try:
+        old = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    if not isinstance(old, dict) or not str(old.get("schema", "")).startswith(
+            "supply-truth-receipt/"):
+        return None
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    archived = path.with_name(f"{path.name}.superseded-{stamp}")
+    path.replace(archived)
+    return str(archived)
+
+
 def parse_replay_stats(stats: dict):
     """从 replay_stats 字典取 (mint_total, burn_total)，找不到抛 KeyError。"""
     for mk, bk in FIELD_PAIRS:
@@ -330,14 +360,25 @@ def main(argv=None):
         ap.error("--min-context-slot must be non-negative")
     if a.chain == "solana" and not a.mint:
         ap.error("solana 链必须给 --mint")
-    if mode == "formal" and a.tolerance_bps < 0:
-        print("正式模式 --tolerance-bps 必须满足 0 <= 值", file=sys.stderr)
+    def policy_reject(message):
+        """政策拒绝统一出口（A-1）：先把上一轮旧收据作废归档，再 exit 2。
+        归档失败＝作废义务没完成，升格 exit 1（环境故障，修完重跑）。"""
+        try:
+            archived = invalidate_stale_receipt(a.out)
+        except OSError as exc:
+            print(f"检测自身失败（exit 1，修通道重跑）: 政策拒绝时旧收据作废失败——"
+                  f"旧 supply_truth 收据仍在原地，不得当本轮结果引用: {exc}", file=sys.stderr)
+            return 1
+        if archived:
+            print(f"[supply_truth] 上一轮旧收据已作废归档 → {archived}", file=sys.stderr)
+        print(message, file=sys.stderr)
         return 2
+
+    if mode == "formal" and a.tolerance_bps < 0:
+        return policy_reject("正式模式 --tolerance-bps 必须满足 0 <= 值")
     if (mode == "formal" and a.tolerance_bps > FORMAL_TOLERANCE_BPS_MAX
             and not a.tolerance_waiver):
-        print("正式模式 --tolerance-bps 上限为 10；超出必须提供 --tolerance-waiver",
-              file=sys.stderr)
-        return 2
+        return policy_reject("正式模式 --tolerance-bps 上限为 10；超出必须提供 --tolerance-waiver")
     try:
         observed_snapshot_slot = a.as_of_block
         if a.chain == "solana":
@@ -360,9 +401,12 @@ def main(argv=None):
                 a.tolerance_waiver, target=target, tolerance_bps=a.tolerance_bps,
                 replay_stats_path=a.replay_stats)
             envelope_inputs["tolerance_waiver"] = waiver_path
+        # A-3：inputs 记案根相对路径（案根＝收据落盘目录）——案目录整体搬家后
+        # 收据仍指向案内实物；消费侧配合案根约束强制解析在案根内。
         envelope = build_envelope(
             "supply-truth-receipt/v3", target, __file__, mode,
-            inputs=envelope_inputs or None)
+            inputs=envelope_inputs or None,
+            input_base=Path(a.out).expanduser().resolve().parent)
         if a.chain == "solana":
             assert_declared_slot(a.as_of_block, observed_snapshot_slot, "--as-of-block")
             if observed_snapshot_slot < a.min_context_slot:
@@ -370,8 +414,7 @@ def main(argv=None):
                     f"bundle snapshot slot {observed_snapshot_slot} < "
                     f"--min-context-slot {a.min_context_slot}")
     except TolerancePolicyError as exc:
-        print(f"正式容差政策拒绝（exit 2）: {exc}", file=sys.stderr)
-        return 2
+        return policy_reject(f"正式容差政策拒绝（exit 2）: {exc}")
     except Exception as exc:
         print(f"检测自身失败（exit 1，修通道重跑）: {exc}", file=sys.stderr)
         if envelope is not None:
@@ -428,8 +471,7 @@ def main(argv=None):
         try:
             assert_waiver_covers_diff(waiver_doc, diff_bps)
         except TolerancePolicyError as exc:
-            print(f"正式容差政策拒绝（exit 2）: {exc}", file=sys.stderr)
-            return 2
+            return policy_reject(f"正式容差政策拒绝（exit 2）: {exc}")
     verdict = primary_verdict
     decision_rule = "primary_form1"
     burn_form = None

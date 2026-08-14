@@ -594,4 +594,44 @@ def validate_observation_bundle(bundle, *, bundle_path=None, expected_mint=None,
         if canonical_json_sha256(json.loads(path.read_text(encoding="utf-8"))) \
                 != canonical_json_sha256(bundle):
             raise ValueError("observation bundle path bytes do not match supplied object")
+        # B-1（F-B6①）：holder_outputs 文件级三验（存在＋sha256＋size）。此前该锚点只有
+        # 对象里的自报 ref、无 validator 实物锚（弱 EVM 一档）；消费侧（bundle_path 在场）
+        # 起必须能在磁盘上找到并验中这两份 holder 产物。查找目录＝收据 inputs 实物所在
+        # 目录（work_dir，inputs 已过 envelope 三验）→ bundle 同目录 → 同目录 data/。
+        holder_outputs = bundle.get("holder_outputs")
+        if not isinstance(holder_outputs, dict) \
+                or set(holder_outputs) != {"accounts", "owners"}:
+            raise ValueError("observation bundle holder_outputs missing accounts/owners")
+        search_dirs = []
+        gpa_ref = (bundle.get("inputs") or {}).get("gpa_rpc") or {}
+        gpa_shown = str(gpa_ref.get("path") or "")
+        if gpa_shown:
+            gpa_path = Path(gpa_shown)
+            search_dirs.append((gpa_path if gpa_path.is_absolute()
+                                else path.parent / gpa_path).parent)
+        search_dirs += [path.parent, path.parent / "data"]
+        for key in ("accounts", "owners"):
+            ref = holder_outputs.get(key)
+            if not isinstance(ref, dict) or not {"path", "size", "sha256"} <= set(ref):
+                raise ValueError(f"observation bundle holder_outputs.{key} must bind "
+                                 "path/size/sha256")
+            name = Path(str(ref.get("path") or "")).name
+            if not name:
+                raise ValueError(f"observation bundle holder_outputs.{key} path empty")
+            actual = None
+            for directory in search_dirs:
+                candidate = directory / name
+                if candidate.is_symlink():
+                    raise ValueError(
+                        f"observation bundle holder_outputs.{key} is a symlink: {candidate}")
+                if candidate.is_file():
+                    actual = candidate
+                    break
+            if actual is None:
+                raise ValueError(
+                    f"observation bundle holder_outputs.{key} file not found near bundle: {name}")
+            if (ref.get("size") != actual.stat().st_size
+                    or ref.get("sha256") != sha256_bytes(actual.read_bytes())):
+                raise ValueError(
+                    f"observation bundle holder_outputs.{key} sha256/size mismatch: {name}")
     return bundle

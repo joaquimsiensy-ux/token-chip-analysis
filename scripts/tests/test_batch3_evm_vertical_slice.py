@@ -244,6 +244,10 @@ def full_chain(chain, endpoint):
         adversarial["target"] = {"chain": chain, "token": TOKEN, "as_of_block": 123}
         (case / "adversarial_review.json").write_text(json.dumps(adversarial))
         execute_real_slice(case, chain, endpoint, 100)
+        # B-7（批 D）：三账 balance_source 须与真实四查 owner 快照同时点等值——
+        # build_case 编造的三账（0xabc@123）对齐到本切片 verify_recon 真吃的余额文件。
+        from test_audit_release_gate import align_ledgers_to_owner_snapshot
+        align_ledgers_to_owner_snapshot(case, case / "balances_evm.json")
         run([sys.executable, str(ROOT / "scripts/report/shared_release_receipt.py"), str(case)], case)
         run([sys.executable, str(ROOT / "scripts/report/audit_release_gate.py"),
              str(case), "--report", str(report)], case)

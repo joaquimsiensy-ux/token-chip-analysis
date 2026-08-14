@@ -82,7 +82,7 @@
 | `unlock_evidence.json` | −1 | vesting 事实（按需） |
 | `wave_scan_report.json` | −1 | 全体持仓四指纹波次扫描（wave_scan.py，wave-scan/v3）候选波次＋等额组＋scan_universe 全集；READY 必产件，−2 逐条裁决完毕前历史大户兜底桶不准关闸 |
 | `flow_anomaly_report.json` | −1 | 资金流异常扫描（flow_anomaly_scan.py，flow-anomaly/v2 三口径多命中）汇集点＋分发点候选；READY 必产件 |
-| `distribution_scan.json` | −1 | 当前 cutoff 的 initial 分布扫描（distribution-scan/v1）；READY 必产件，verify 独立重算 |
+| `distribution_scan.json` | −1 | 当前 cutoff 的 initial 分布扫描（distribution-scan/v2）；READY 必产件，verify 独立重算 |
 | `candidate_adjudications.json` | −2 | wave/flow 全候选成员级裁决台账（candidate-adjudications/v1；`adjudication_validator.py template` 起草、`validate` 校验）——freeze 机器前置，缺漏即拒 |
 | `distribution_adjudications.json` | −2 | final 异常簇成员级裁决台账；存在时 freeze 必须校验并绑定当前实体名册 |
 | `pattern_resolutions.json` | −2 | 盘面机制解释台账；路径 A 被书面排除后才使用，未决项阻断 |

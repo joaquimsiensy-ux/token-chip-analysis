@@ -321,7 +321,98 @@ def raw_int(value, label, errors):
     return 0 if n is None else n
 
 
-def check_three_ledgers(case_dir: Path, data: dict, errors: list[str]):
+def _recon_owner_snapshot(case_dir: Path, data: dict, chain, errors: list[str]):
+    """B-7：取四查真正核过的那份 owner 余额映射与冻结时点，作三账 balance_source 的对账源。
+
+    EVM＝四查 balance 收据（verify_recon）inputs.balances 实物；Solana＝observation
+    bundle 的 holder_outputs.owners 实物（B-1 起有文件级三验与定位）。返回
+    (owners{addr:int}|None, as_of_block|None)；解析失败已 append error，返回 (None, None)
+    ——fail-loud，不静默降级为"跳过比对"。
+    """
+    recon = data.get("reconciliation_report.json")
+    if not isinstance(recon, dict):
+        errors.append("三账 balance_source 对账源缺失: 无 reconciliation_report.json")
+        return None, None
+    target = recon.get("target") or {}
+    as_of = target.get("as_of_block")
+    try:
+        from shared_release_receipt import chain_family
+        family = chain_family(chain)
+    except Exception as exc:
+        errors.append(f"三账 balance_source 对账源: 无法判定链族 {chain!r}: {exc}")
+        return None, as_of
+    checks = recon.get("checks") if isinstance(recon, dict) else None
+    key = "balance" if family == "evm" else "supply"
+    item = checks.get(key) if isinstance(checks, dict) else None
+    ref = item.get("receipt") if isinstance(item, dict) else None
+    rel = ref.get("path") if isinstance(ref, dict) else None
+    path = regular_case_path(case_dir, rel) if isinstance(rel, str) and rel else None
+    if path is None:
+        errors.append(f"三账 balance_source 对账源: 找不到四查 {key} 收据文件")
+        return None, as_of
+    receipt = load_json(path, errors)
+    if family == "evm":
+        bal_ref = (receipt.get("inputs") or {}).get("balances") if isinstance(receipt, dict) else None
+        rel_bal = bal_ref.get("path") if isinstance(bal_ref, dict) else None
+        shown = Path(str(rel_bal or ""))
+        bal_path = None
+        if str(shown):
+            if shown.is_absolute():
+                # 收据可能记绝对路径（存量形态）：先证明它落在案内，再按相对路径走
+                # 同一条防符号链接通道。
+                try:
+                    shown = shown.resolve().relative_to(case_dir.resolve())
+                except (OSError, ValueError):
+                    shown = None
+            if shown is not None:
+                bal_path = regular_case_path(case_dir, shown.as_posix())
+        if bal_path is None:
+            errors.append("三账 balance_source 对账源: 四查 balance 收据 inputs.balances "
+                          "实物不在案内")
+            return None, as_of
+        raw_map = load_json(bal_path, errors)
+        if not isinstance(raw_map, dict):
+            return None, as_of
+        if isinstance(raw_map.get("balances"), dict):
+            raw_map = raw_map["balances"]
+        try:
+            return ({str(k).lower(): int(str(v)) for k, v in raw_map.items()}, as_of)
+        except (TypeError, ValueError):
+            errors.append("三账 balance_source 对账源: 四查 balances 实物不是 addr->raw 映射")
+            return None, as_of
+    # Solana：从 supply 收据（observation bundle）拿 holder_outputs.owners 实物
+    try:
+        import sys as _sys
+        lib = str(Path(__file__).resolve().parents[1] / "lib")
+        if lib not in _sys.path:
+            _sys.path.insert(0, lib)
+        from solana_observation import validate_observation_bundle
+        bundle = validate_observation_bundle(receipt, bundle_path=path)
+    except Exception as exc:
+        errors.append(f"三账 balance_source 对账源: observation bundle 不可验: {exc}")
+        return None, as_of
+    ref = (bundle.get("holder_outputs") or {}).get("owners") or {}
+    name = Path(str(ref.get("path") or "")).name
+    gpa_ref = (bundle.get("inputs") or {}).get("gpa_rpc") or {}
+    search = []
+    if gpa_ref.get("path"):
+        gp = Path(str(gpa_ref["path"]))
+        search.append((gp if gp.is_absolute() else path.parent / gp).parent)
+    search += [path.parent, path.parent / "data"]
+    for directory in search:
+        candidate = directory / name
+        if candidate.is_file() and not candidate.is_symlink():
+            owners = load_json(candidate, errors)
+            if isinstance(owners, dict):
+                try:
+                    return ({str(k): int(str(v)) for k, v in owners.items()}, as_of)
+                except (TypeError, ValueError):
+                    break
+    errors.append("三账 balance_source 对账源: holders_owners 实物不可用")
+    return None, as_of
+
+
+def check_three_ledgers(case_dir: Path, data: dict, errors: list[str], chain=None):
     """Recompute membership -> position -> economic control closure from details."""
     md = data.get("membership_ledger.json", {})
     pd = data.get("position_ledger.json", {})
@@ -331,6 +422,11 @@ def check_three_ledgers(case_dir: Path, data: dict, errors: list[str]):
     economics = ed.get("entries", ed.get("entities", []))
     if not all(isinstance(x, list) and x for x in (members, positions, economics)):
         return
+
+    # B-7：三账 balance_source 从此不再游离——与四查核过的 owner 快照等值绑定。
+    recon_owners, recon_as_of = (None, None)
+    if chain:
+        recon_owners, recon_as_of = _recon_owner_snapshot(case_dir, data, chain, errors)
 
     member_map = {}
     snapshot_cache = {}
@@ -367,6 +463,11 @@ def check_three_ledgers(case_dir: Path, data: dict, errors: list[str]):
             errors.append(f"{label}.balance_source entries 非数组")
             snapshot_cache[cache_key] = None
             return None
+        # B-7：时点绑定——三账余额快照必须与四查同一冻结时点，不得拿任意历史块的快照
+        # 冒充 as_of 余额（此前 as_of_block 只要求"有"，与四查 target 无任何绑定）。
+        if recon_as_of is not None and as_of_block != recon_as_of:
+            errors.append(f"{label}.balance_source as_of_block={as_of_block} 与四查冻结时点 "
+                          f"{recon_as_of} 不一致（三账快照必须核在同一冻结块）")
         balances = {}
         for j, item in enumerate(rows):
             if not isinstance(item, dict) or not str(item.get("address", "")).strip():
@@ -379,6 +480,17 @@ def check_three_ledgers(case_dir: Path, data: dict, errors: list[str]):
             balances[key] = raw_int(item.get("balance_raw"),
                                     f"{label}.balance_source.entries[{j}].balance_raw",
                                     errors)
+        # B-7：数值绑定——快照每个条目的余额必须与四查核过的 owner 快照等值
+        # （零余额条目要求四查快照确实没有该址；非零条目要求在场且相等）。
+        if recon_owners is not None:
+            for key, value in balances.items():
+                if value == 0:
+                    if key in recon_owners:
+                        errors.append(f"{label}.balance_source 声明 {key} 零余额，"
+                                      "但四查 owner 快照里它非零")
+                elif recon_owners.get(key) != value:
+                    errors.append(f"{label}.balance_source 地址 {key} 余额 {value} 与四查 "
+                                  f"owner 快照 {recon_owners.get(key)} 不等值")
         snapshot_cache[cache_key] = balances
         return balances
 
@@ -1000,7 +1112,7 @@ def run(case_dir: Path, report: Path | None, *, profile="independent-audit"):
                  "economic_control_ledger.json"):
         if name in data:
             check_ledger(name, data[name], errors)
-    check_three_ledgers(case_dir, data, errors)
+    check_three_ledgers(case_dir, data, errors, chain=case_chain)
     if "dormant_warehouse_audit.json" in data:
         check_dormant(case_dir, data["dormant_warehouse_audit.json"], errors)
     check_daily_peaks(case_dir, errors)

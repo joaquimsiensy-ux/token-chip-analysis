@@ -412,7 +412,7 @@ def main() -> int:
 
     with tempfile.TemporaryDirectory() as td:
         d = Path(td) / "waiver"; d.mkdir()
-        write_json(d / "scan.json", {"schema": "distribution-scan/v1"})
+        write_json(d / "scan.json", {"schema": "distribution-scan/v1"})  # 旧版 schema 作负例：升 v2 后 v1 必拒
         write_json(d / "a4_seal.json", {"schema": "a4-seal/v4"})
         errors = distribution_scan.validate_waiver(d, {"schema": "distribution-exception-receipt/v1"},
                                                     d / "scan.json", "0" * 64, 2)

@@ -74,9 +74,19 @@ def _resolved_input(raw_path) -> Path:
     return path
 
 
-def _file_ref(raw_path) -> dict:
+def _file_ref(raw_path, input_base=None) -> dict:
+    """输入文件引用。input_base 给定且实物落在其内时记相对路径（POSIX 形态）——
+    案目录整体搬家/复制后收据仍指向案内实物（A-3 根治；消费侧配合
+    receipt_validate.validate_receipt(case_root=…) 强制解析在案根内）。
+    实物在 base 外（如仓库级配置件）保留绝对路径，由消费侧案根约束把关。"""
     path = _resolved_input(raw_path)
-    return {"path": str(path), "size": path.stat().st_size, "sha256": _digest(path)}
+    shown = str(path)
+    if input_base is not None:
+        try:
+            shown = path.relative_to(Path(input_base).resolve()).as_posix()
+        except ValueError:
+            shown = str(path)
+    return {"path": shown, "size": path.stat().st_size, "sha256": _digest(path)}
 
 
 def _producer_ref(producer_file) -> dict:
@@ -108,8 +118,11 @@ def _checked_target(target) -> dict:
     return dict(target)
 
 
-def build_envelope(schema, target, producer_file, mode, inputs=None) -> dict:
-    """Build identity/input layers only; verdict fields are added by finalize_envelope."""
+def build_envelope(schema, target, producer_file, mode, inputs=None, input_base=None) -> dict:
+    """Build identity/input layers only; verdict fields are added by finalize_envelope.
+
+    input_base：案根/收据落盘目录。给定时 base 内的输入记相对路径（收据可随案搬家，
+    A-3）；省略保持绝对路径（既有 producer 向后兼容）。"""
     if not isinstance(schema, str) or not schema.strip():
         raise ReceiptKernelError("schema must be non-empty")
     if mode not in MODES:
@@ -122,7 +135,7 @@ def build_envelope(schema, target, producer_file, mode, inputs=None) -> dict:
         for name, raw_path in inputs.items():
             if not isinstance(name, str) or not name:
                 raise ReceiptKernelError("input names must be non-empty strings")
-            ref = _file_ref(raw_path)
+            ref = _file_ref(raw_path, input_base=input_base)
             if ref["path"] in seen:
                 raise ReceiptKernelError(f"duplicate input path: {ref['path']}")
             seen.add(ref["path"])

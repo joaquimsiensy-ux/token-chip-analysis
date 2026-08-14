@@ -13,7 +13,7 @@ sqrt(2)，平移复算使用半档。私人主箱低于 100 个 owner 时切换�
 等额组落在基础 33-35 档和平移 32-34 档，成员 Jaccard=0.852。旧案只用于探索性
 定标，不构成现役防伪链 fixture。TROLL soltx 元数据 launch_covered=false，未纳入保留集。
 
-scan 重新派生五桶并生成 distribution-scan/v1；validate 从 input_binding 读取上游文件，
+scan 重新派生五桶并生成 distribution-scan/v2；validate 从 input_binding 读取上游文件，
 重新派生、重新分箱并逐项比对，不信产物自报。owner 快照必须对**铸造总量 mint_total**
 （replay 侧产物，EVM 取 replay_stats、Solana 取 onchain）逐 wei 精确闭合——replay 记账
 不抹除，sum(快照含 dead/zero)==mint 恒成立，对 onchain 闭合会误杀整类 form1 销毁币。
@@ -37,7 +37,7 @@ import zlib
 from datetime import datetime, timezone
 from pathlib import Path
 
-SCHEMA = "distribution-scan/v1"
+SCHEMA = "distribution-scan/v2"
 ROUNDS_SCHEMA = "distribution-rounds/v1"
 WAIVER_SCHEMA = "distribution-exception-receipt/v1"
 BIN_MIN_PCT = 0.000001
@@ -247,8 +247,10 @@ def load_supply(case_dir: Path) -> tuple[Path, int, int, str, dict]:
 def _bound_replay_stats(case_dir: Path, supply_obj: dict) -> Path | None:
     """取 supply_truth 收据 inputs.replay_stats **绑定的那份**实物（不是案根硬编码文件名）。
 
-    这条路径与 shared_release_receipt._bound_replay_totals 同源同口径：收据 inputs 已由
-    receipt_validate 做过存在＋size＋sha256 三验，且实物必须落在案根内。绑定缺席返回 None。
+    这条路径与 shared_release_receipt._bound_replay_totals 同口径：案根遏制＋本函数自带
+    sha256/size 三验（B-4：本扫描器可在发布闸之外独立运行，receipt_validate 的三验只在
+    发布链路上有人跑——这里不引用别人的检查作自己的证据，绑定登记的 sha/size 与实物
+    不符即拒）。绑定缺席返回 None。
     """
     ref = (supply_obj.get("inputs") or {}).get("replay_stats")
     if not isinstance(ref, dict) or not str(ref.get("path") or ""):
@@ -262,6 +264,10 @@ def _bound_replay_stats(case_dir: Path, supply_obj: dict) -> Path | None:
         raise ValueError("收据绑定的 replay_stats 实物不在当前案根内，不得作闭合锚点") from exc
     if path.is_symlink() or not path.is_file():
         raise ValueError(f"收据绑定的 replay_stats 实物缺失或非普通文件: {ref['path']}")
+    # B-4：收据登记的 sha256/size 必须与实物一致——换包/陈旧实物不得作闭合锚点。
+    if ref.get("sha256") != sha256_file(path) or ref.get("size") != path.stat().st_size:
+        raise ValueError(f"收据绑定的 replay_stats 实物 sha256/size 与登记不符（换包或陈旧）: "
+                         f"{ref['path']}")
     return path
 
 
@@ -556,7 +562,9 @@ def analyze(partition, bucket_raw, private_supply, total_supply, net_supply):
     main_rows = partition["private_main"]
     coverage = {k: {"raw": str(v), "net_supply_pct": v * 100.0 / net_supply}
                 for k, v in bucket_raw.items()}
-    denominators = {"total_supply_raw": str(total_supply), "net_supply_raw": str(net_supply),
+    # B-3（批 D，schema 升 v2）：铸造总量键名改 mint_total_raw——旧名 total_supply_raw 在
+    # 真 _burn 案上语义误导（IQ 案与流通量差 34.9%）；net_supply_raw 语义不变。
+    denominators = {"mint_total_raw": str(total_supply), "net_supply_raw": str(net_supply),
                     "private_boxable_supply_raw": str(private_supply)}
     if len(main_rows) < SAMPLE_LINE:
         ranked = sorted(main_rows, key=lambda x: (-int(x["raw"]), x["owner"]))
@@ -889,7 +897,7 @@ def validate_scan(case: Path, scan_rel: str, expected_stage: str | None = None) 
         path = safe_file(case, scan_rel, "scan")
         scan = load_json(path)
         if scan.get("schema") != SCHEMA or scan.get("exit_code") != 0:
-            return ["scan schema 非 distribution-scan/v1 或 exit_code 非 0"]
+            return ["scan schema 非 distribution-scan/v2 或 exit_code 非 0"]
         if expected_stage and scan.get("stage") != expected_stage:
             return [f"scan stage={scan.get('stage')} 不能冒充 {expected_stage}"]
         binding = scan.get("input_binding")

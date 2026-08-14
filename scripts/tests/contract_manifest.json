@@ -61,7 +61,7 @@
     {"id":"CT-SIMULT-04","authority_file":"references/playbook-entity-cluster-methods.md","needle":"③ 跨币强证据档","stages":["A3"],"kind":"required"},
     {"id":"CT-SIMULT-05","authority_file":"references/playbook-entity-cluster-methods.md","needle":"高度疑似同一执行端","stages":["A3"],"kind":"required"},
     {"id":"CT-SIMULT-06","authority_file":"references/playbook-entity-cluster-methods.md","needle":"持仓画像旁证","stages":["A3"],"kind":"required"},
-    {"id":"CT-DISTRIBUTION-01","authority_file":"references/scan-schemas.md","needle":"distribution-scan/v1","stages":["A3","A4.5","A5"],"kind":"required"},
+    {"id":"CT-DISTRIBUTION-01","authority_file":"references/scan-schemas.md","needle":"distribution-scan/v2","stages":["A3","A4.5","A5"],"kind":"required"},
     {"id":"CT-DISTRIBUTION-02","authority_file":"references/scan-schemas.md","needle":"distribution-explanation/v1","stages":["A3","A4.5","A5"],"kind":"required"},
     {"id":"CT-DISTRIBUTION-03","authority_file":"references/scan-schemas.md","needle":"distribution-adjudications/v1","stages":["A3","A4.5","A5"],"kind":"required"},
     {"id":"CT-DISTRIBUTION-04","authority_file":"references/scan-schemas.md","needle":"pattern-resolutions/v1","stages":["A3","A4.5","A5"],"kind":"required"},
@@ -138,6 +138,14 @@
     {"id":"CT-BANNED-11","kind":"banned","authority_file":"commands-staging/token-analyze-2.md","needle":"三问框架","stages":["A3-A5"]},
     {"id":"CT-BANNED-12","kind":"banned","authority_file":"scripts/solana/decode_txs_v2.py","needle":"默认 20 笔/POST","stages":["A1"]},
     {"id":"CT-BANNED-13","kind":"banned","authority_file":"scripts/solana/decode_txs_v2.py","needle":"[--batch 20]","stages":["A1"]},
-    {"id":"CT-BANNED-14","kind":"banned","authority_file":"scripts/solana/decode_txs_v2.py","needle":"免代理且 50 RPS","stages":["A1"]}
+    {"id":"CT-BANNED-14","kind":"banned","authority_file":"scripts/solana/decode_txs_v2.py","needle":"免代理且 50 RPS","stages":["A1"]},
+    {"id":"CT-SEMANTIC-49","kind":"required","authority_file":"references/analyze-workflow.md","needle":"tolerance-waiver/v1","stages":["A2","A5"]},
+    {"id":"CT-SEMANTIC-50","kind":"required","authority_file":"references/analyze-workflow.md","needle":"model_probe_block","stages":["A2","A5"]},
+    {"id":"CT-SEMANTIC-51","kind":"required","authority_file":"references/scan-schemas.md","needle":"mint_total_raw","stages":["A3","A4.5","A5"]},
+    {"id":"CT-SEMANTIC-52","kind":"required","authority_file":"references/scan-schemas.md","needle":"camp-series-provenance/v1","stages":["A3","A5"]},
+    {"id":"CT-SEMANTIC-53","kind":"required","authority_file":"references/report-template.md","needle":"figure2-check-receipt/v1","stages":["A3","A5"]},
+    {"id":"CT-SEMANTIC-54","kind":"required","authority_file":"references/scan-schemas.md","needle":"flip-adjudications/v1","stages":["A3","A5"]},
+    {"id":"CT-SEMANTIC-55","kind":"required","authority_file":"references/data-pipeline-solana-capture.md","needle":"NO_CLOSED_SAMPLED","stages":["A1-A2"]},
+    {"id":"CT-SEMANTIC-56","kind":"required","authority_file":"references/analyze-workflow.md","needle":"superseded","stages":["A2"]}
   ]
 }

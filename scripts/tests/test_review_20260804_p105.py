@@ -55,6 +55,9 @@ def add_new_analysis_distribution(root: Path, report: Path) -> None:
     balances = {f"owner-{i:03d}": max(1, int(2_000_000 / (1.035 ** i))) for i in range(240)}
     snap = root / "data/holders_owners.json"; write_json(snap, balances)
     bind_balance_receipt_to_snapshot(root, snap)
+    # B-7（批 D）：三账 balance_source 与四查快照等值绑定后，夹具三账须落在同一 owner 世界
+    from test_audit_release_gate import align_ledgers_to_owner_snapshot
+    align_ledgers_to_owner_snapshot(root, snap)
     total = sum(balances.values())
     write_json(root / "supply_truth.json", {"verdict": "PASS", "exit_code": 0,
                                                 "chain": "bsc", "onchain_total_supply": str(total),

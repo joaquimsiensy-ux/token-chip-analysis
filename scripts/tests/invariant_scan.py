@@ -33,6 +33,9 @@ SCOPE = (
 )
 ATOMIC_SEMANTICS = {
     "exclusive_new", "overwrite_single", "dual_file_txn", "restore_on_fail",
+    # 批 D F-07：N 文件真事务（prepare 全写临时件 → commit 逐个备份+替换；
+    # commit 失败逐文件回滚并验证字节，回滚失败保留 .recover）——refresh_manifests。
+    "multi_file_txn",
 }
 DENOMINATOR_KEYS = {
     "receipt_producers", "receipt_consumers", "transport_calls",

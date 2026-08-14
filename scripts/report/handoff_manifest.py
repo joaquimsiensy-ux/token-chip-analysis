@@ -587,18 +587,228 @@ def provenance_semantic_payload(report):
                                         "entities", "unresolved_total_pct", "bounds_sensitivity")}
 
 
+# ---------------- flip 裁决收据（flip-adjudications/v1，F-06）----------------
+# 共享实现：entity_source_trace（producer 消费收据）、本文件 freeze 前置 3（重验）、
+# a5_report_seal（披露实文核对）三处同源，不手抄三份。
+
+FLIP_ADJUDICATIONS_SCHEMA = "flip-adjudications/v1"
+FLIP_POLICIES = ("pro_rata", "fifo", "lifo")
+
+
+def canonical_json_sha(value):
+    return hashlib.sha256(json.dumps(value, ensure_ascii=False, sort_keys=True,
+                                     separators=(",", ":")).encode()).hexdigest()
+
+
+def flip_fingerprint(policy_details):
+    """翻转指纹＝该锚点三策略 policy_details 的规范化子集 sha。
+
+    底层数据（边表/名册/参数）一变，三策略明细必变，指纹随之失配——旧收据自动失效，
+    必须重新人工裁决。这是收据的必选绑定件，不接受"只按 entity:anchor 键豁免"。"""
+    subset = {policy: policy_details.get(policy) for policy in FLIP_POLICIES}
+    return canonical_json_sha({"policy_details": subset})
+
+
+def format_share_pct(raw, stock):
+    """披露用份额字符串（两位小数），trace 生成与 A5 核对同一函数——无浮点边界分叉。"""
+    return f"{int(raw) * 100.0 / int(stock):.2f}"
+
+
+def ledger_real_flips(pl):
+    """从 ledger 的三策略完整明细独立重算真实翻转锚点（不读 agree/stable 自报值）。
+
+    返回 {(entity_id, anchor): {"fingerprint", "tops": {policy: terminal list},
+    "shares": {policy: "12.34"}, "stock": int}}；尘埃锚点（<总供应 0.01%）不入。"""
+    out = {}
+    try:
+        total_supply = int(pl.get("total_supply_raw") or 0)
+    except (TypeError, ValueError):
+        total_supply = 0
+    per = ((pl.get("bounds_sensitivity") or {}).get("per_entity")) or {}
+    for ent in pl.get("entities") or []:
+        eid = ent.get("entity_id")
+        anchors_detail = ((per.get(eid) or {}).get("anchors")) or {}
+        for anchor_name in ("current", "peak"):
+            stock = int(((ent.get("anchors") or {}).get(anchor_name) or {}).get("stock_raw", 0))
+            if stock <= 0:
+                continue
+            if total_supply > 0 and stock * 10000 < total_supply:
+                continue  # 尘埃锚点
+            pd = (anchors_detail.get(anchor_name) or {}).get("policy_details")
+            if not isinstance(pd, dict):
+                continue  # 明细缺失由 recompute 的既有检查报错，这里不重复
+            tops, shares = {}, {}
+            for policy in FLIP_POLICIES:
+                rows = pd.get(policy) or []
+                ranked = []
+                for row in rows:
+                    try:
+                        ranked.append((tuple(row["terminal"]), int(row["raw"])))
+                    except (KeyError, TypeError, ValueError):
+                        continue
+                if not ranked:
+                    tops[policy] = None
+                    continue
+                # 独立重排取第一大（与 trace.top_entry 同键），不信 producer 行序自报
+                terminal, raw = sorted(ranked, key=lambda kv: (-kv[1], str(kv[0])))[0]
+                tops[policy] = list(terminal)
+                shares[policy] = format_share_pct(raw, stock)
+            if len({json.dumps(t, ensure_ascii=False) for t in tops.values()}) != 1:
+                out[(eid, anchor_name)] = {
+                    "fingerprint": flip_fingerprint(pd),
+                    "tops": tops, "shares": shares, "stock": stock}
+    return out
+
+
+def load_flip_adjudications(path, *, current_entity_file=None):
+    """加载并验证 flip-adjudications/v1 裁决收据（强度对齐 distribution/tolerance waiver 先例）。
+
+    验：schema／裁决主体 approved_by／user_decided_at_utc（UTC Z）／entity_file 三验＋与
+    本次运行名册 sha 相等（给了 current_entity_file 时）／evidence_refs 非空逐项三验
+    （收据同目录内、拒绝绝对路径・越界・符号链接）／每行 entity_id・anchor・reason≥10・
+    flip_fingerprint（64 hex）・disclosure（三策略 terminal＋share_pct＋report_locations）。
+    返回 (收据对象, {(entity_id, anchor): 行})。任何不合法抛 ValueError。"""
+    shown = os.path.expanduser(str(path))
+    receipt_path = os.path.realpath(shown)
+    if os.path.islink(shown) or not os.path.isfile(receipt_path):
+        raise ValueError("flip 裁决收据必须是普通文件且不得为符号链接")
+    with open(receipt_path, encoding="utf-8") as fh:
+        doc = json.load(fh)
+    if not isinstance(doc, dict) or doc.get("schema") != FLIP_ADJUDICATIONS_SCHEMA:
+        raise ValueError(f"flip 裁决收据 schema 必须是 {FLIP_ADJUDICATIONS_SCHEMA}")
+    if not isinstance(doc.get("approved_by"), str) or not doc["approved_by"].strip():
+        raise ValueError("flip 裁决收据缺裁决主体 approved_by")
+    decided = doc.get("user_decided_at_utc")
+    try:
+        if not isinstance(decided, str) or not decided.endswith("Z"):
+            raise ValueError
+        datetime.fromisoformat(decided[:-1] + "+00:00")
+    except ValueError as exc:
+        raise ValueError("flip 裁决收据 user_decided_at_utc 必须是有效 UTC 时间") from exc
+
+    receipt_dir = os.path.dirname(receipt_path)
+
+    def bound_ref(ref, label):
+        if not isinstance(ref, dict) or not {"path", "size", "sha256"} <= set(ref):
+            raise ValueError(f"flip 裁决收据 {label} 必须绑定 path/size/sha256")
+        raw = str(ref.get("path") or "")
+        parts = raw.split("/")
+        if os.path.isabs(raw) or not raw or ".." in parts:
+            raise ValueError(f"flip 裁决收据 {label} path 必须是收据同目录内的安全相对路径")
+        lexical = receipt_dir
+        for part in parts:
+            lexical = os.path.join(lexical, part)
+            if os.path.islink(lexical):
+                raise ValueError(f"flip 裁决收据 {label} 不得引用符号链接")
+        target = os.path.realpath(lexical)
+        if not os.path.isfile(target) \
+                or os.path.commonpath([target, os.path.realpath(receipt_dir)]) \
+                != os.path.realpath(receipt_dir):
+            raise ValueError(f"flip 裁决收据 {label} 文件不存在或越界")
+        digest, size = full_sha256_file(target)
+        if ref.get("size") != size or ref.get("sha256") != digest:
+            raise ValueError(f"flip 裁决收据 {label} sha256/size 不匹配")
+        return target
+
+    entity_ref = doc.get("entity_file")
+    entity_path = bound_ref(entity_ref, "entity_file")
+    if current_entity_file is not None:
+        current_digest, _ = full_sha256_file(str(current_entity_file))
+        if entity_ref.get("sha256") != current_digest:
+            raise ValueError("flip 裁决收据 entity_file 与本次运行名册内容不一致"
+                             "——名册改动后旧裁决失效，须重新裁决")
+    refs = doc.get("evidence_refs")
+    if not isinstance(refs, list) or not refs:
+        raise ValueError("flip 裁决收据 evidence_refs 必须是非空数组")
+    for index, ref in enumerate(refs):
+        evidence_path = bound_ref(ref, f"evidence_refs[{index}]")
+        if evidence_path == entity_path:
+            raise ValueError(f"flip 裁决收据 evidence_refs[{index}] 不得就是名册自身"
+                             "——人工核对证据必须独立")
+    rows = doc.get("adjudications")
+    if not isinstance(rows, list) or not rows:
+        raise ValueError("flip 裁决收据 adjudications 必须是非空数组")
+    by_key = {}
+    for index, row in enumerate(rows):
+        if not isinstance(row, dict):
+            raise ValueError(f"flip 裁决收据 adjudications[{index}] 不是对象")
+        eid = row.get("entity_id")
+        anchor = row.get("anchor")
+        if not isinstance(eid, str) or not eid or anchor not in ("peak", "current"):
+            raise ValueError(f"flip 裁决收据 adjudications[{index}] entity_id/anchor 非法")
+        if len(str(row.get("reason", "")).strip()) < 10:
+            raise ValueError(f"flip 裁决收据 adjudications[{index}] reason 须 ≥10 字符")
+        fp = row.get("flip_fingerprint")
+        if not isinstance(fp, str) or len(fp) != 64 \
+                or any(c not in "0123456789abcdef" for c in fp.lower()):
+            raise ValueError(f"flip 裁决收据 adjudications[{index}] flip_fingerprint 非法")
+        disclosure = row.get("disclosure")
+        tbp = (disclosure or {}).get("top_by_policy") if isinstance(disclosure, dict) else None
+        if not isinstance(tbp, dict) or set(tbp) != set(FLIP_POLICIES):
+            raise ValueError(f"flip 裁决收据 adjudications[{index}] disclosure 缺三策略 "
+                             "top_by_policy")
+        for policy in FLIP_POLICIES:
+            cell = tbp.get(policy)
+            if not isinstance(cell, dict) or not isinstance(cell.get("terminal"), list) \
+                    or not isinstance(cell.get("share_pct"), str) or not cell["share_pct"]:
+                raise ValueError(f"flip 裁决收据 adjudications[{index}] {policy} 披露单元 "
+                                 "缺 terminal/share_pct")
+        locations = (disclosure or {}).get("report_locations")
+        if not isinstance(locations, list) or not locations \
+                or not all(isinstance(x, str) and x.strip() for x in locations):
+            raise ValueError(f"flip 裁决收据 adjudications[{index}] 缺报告可核位置 "
+                             "report_locations")
+        key = (eid, anchor)
+        if key in by_key:
+            raise ValueError(f"flip 裁决收据 adjudications 重复锚点行: {key}")
+        by_key[key] = row
+    return doc, by_key
+
+
+def verify_flip_receipt_against_ledger(receipt_rows, real_flips):
+    """收据行 × ledger 真实翻转逐锚点对账。返回失败列表（空＝覆盖成立）。
+
+    要求：①每个真实翻转锚点有收据行；②行指纹＝当前明细重算指纹（数据一变自动失效）；
+    ③行披露的三策略 top terminal 与份额＝当前明细重算值（防收据写假数）；
+    ④收据不得含指向非真实翻转锚点的行（不许预防性豁免）。"""
+    fails = []
+    for key, info in sorted(real_flips.items()):
+        row = receipt_rows.get(key)
+        if row is None:
+            fails.append(f"{key[0]} {key[1]} 三策略主导终点翻转未获裁决收据覆盖"
+                         "——真实多来源结构须 flip-adjudications/v1 书面裁决后重跑")
+            continue
+        if row.get("flip_fingerprint") != info["fingerprint"]:
+            fails.append(f"{key[0]} {key[1]} 裁决收据指纹与当前三策略明细不符"
+                         "——底层数据已变化，旧裁决失效，须重新裁决")
+            continue
+        tbp = (row.get("disclosure") or {}).get("top_by_policy") or {}
+        for policy in FLIP_POLICIES:
+            cell = tbp.get(policy) or {}
+            want_terminal = info["tops"].get(policy)
+            want_share = info["shares"].get(policy)
+            if list(cell.get("terminal") or []) != (want_terminal or []) \
+                    or cell.get("share_pct") != want_share:
+                fails.append(f"{key[0]} {key[1]} 裁决收据 {policy} 披露值与明细重算不符"
+                             f"（应为 terminal={want_terminal} share={want_share}）")
+    extra = set(receipt_rows) - set(real_flips)
+    if extra:
+        fails.append(f"flip 裁决收据含指向非真实翻转锚点的行（不许预防性豁免）: {sorted(extra)}")
+    return fails
+
+
 def provenance_semantic_sha(report):
     return hashlib.sha256(json.dumps(provenance_semantic_payload(report), sort_keys=True,
                                      ensure_ascii=False, separators=(",", ":")).encode()).hexdigest()
 
 
-def recompute_provenance_sensitivity(pl):
+def recompute_provenance_sensitivity(case_dir, pl):
     """只读各策略完整明细重算，不读取 stable/agree/top_by_policy 汇总布尔值作裁决。
 
-    与 entity_source_trace 同步的两条豁免（v6.39.4）：
-    ①尘埃锚点（<总供应 0.01%）不入翻转判定；②真实翻转若被 ledger 的
-    acknowledged_flips（--acknowledge-flip 书面确认，理由 ≥10 字符）精确覆盖则放行——
-    确认不改变 stable 真实布尔，只解除发布阻断；顺序未决无豁免。"""
+    两条豁免（v6.39.4 尘埃线；F-06 批 D 起裁决收据制）：
+    ①尘埃锚点（<总供应 0.01%）不入翻转判定；②真实翻转必须被 input_binding 绑定的
+    flip-adjudications/v1 裁决收据精确覆盖（本函数重验收据三验＋逐锚点指纹＋披露值，
+    **不再信 ledger 内嵌自报的 acknowledged_flips**）；顺序未决无豁免。"""
     fails = []
     bs = pl.get("bounds_sensitivity") or {}
     per = bs.get("per_entity")
@@ -608,11 +818,26 @@ def recompute_provenance_sensitivity(pl):
         total_supply = int(pl.get("total_supply_raw") or 0)
     except (TypeError, ValueError):
         total_supply = 0
-    acks = {}
-    for x in (bs.get("acknowledged_flips") or []):
-        if isinstance(x, dict) and x.get("entity_id") and x.get("anchor") in ("peak", "current") \
-                and len(str(x.get("reason", "")).strip()) >= 10:
-            acks[(x["entity_id"], x["anchor"])] = str(x["reason"]).strip()
+    # F-06：acks 只认 manifest/ledger input_binding 绑定的裁决收据文件——三验＋名册绑定
+    # ＋逐锚点指纹重算。ledger 自报 acknowledged_flips（6.39.4 旧格式）不再作数：
+    # 存量用过旧 ack 的案（MOG）重 freeze 会在此拦下，须重跑 trace（迁移声明见文档）。
+    binding = pl.get("input_binding") or {}
+    receipt_rows = {}
+    flips_ref = (binding.get("algorithm_params") or {}).get("flip_adjudications")
+    if flips_ref is not None:
+        fpath, err = check_bound_file(case_dir, flips_ref)
+        if err:
+            fails.append(f"flip 裁决收据绑定 {err}")
+        else:
+            try:
+                entity_path, entity_err = check_bound_file(case_dir, binding.get("entity_file"))
+                _, receipt_rows = load_flip_adjudications(
+                    fpath, current_entity_file=None if entity_err else entity_path)
+            except (OSError, ValueError, TypeError) as exc:
+                fails.append(f"flip 裁决收据不可验: {exc}")
+    real_flips = ledger_real_flips(pl)
+    fails += verify_flip_receipt_against_ledger(receipt_rows, real_flips)
+    acks = set(receipt_rows) & set(real_flips)
     entity_ids = {e.get("entity_id") for e in pl.get("entities") or []}
     if set(per) != entity_ids:
         fails.append("敏感性实体集与 provenance entities 不一致")
@@ -655,8 +880,9 @@ def recompute_provenance_sensitivity(pl):
             if len(set(tops)) != 1:
                 all_stable = False
                 if (eid, anchor_name) not in acks:
-                    fails.append(f"{eid} {anchor_name} 三策略主导终点翻转（机器从明细重算）"
-                                 "——真实多来源结构须 --acknowledge-flip 书面确认后重跑 trace")
+                    fails.append(f"{eid} {anchor_name} 三策略主导终点翻转（机器从明细独立重算）"
+                                 "——真实多来源结构须 flip-adjudications/v1 裁决收据覆盖"
+                                 "（--acknowledge-flip <收据文件> 重跑 trace）")
             order_rows = pd.get("pro_rata") or []
             order_raw = sum(int(r.get("raw", 0)) for r in order_rows
                             if r.get("terminal") == ["UNRESOLVED", "order_ambiguous", None])
@@ -764,7 +990,7 @@ def validate_and_replay_provenance(case_dir, pl, pl_path, ep, manifest):
             if os.path.isabs(str(rel)) or rel not in data_paths or rel not in art_paths:
                 fails.append(f"source {rel} 未同时绑定 verified manifest.artifacts 与 data_map")
 
-    fails += recompute_provenance_sensitivity(pl)
+    fails += recompute_provenance_sensitivity(case_dir, pl)
     if fails:
         return fails
 
@@ -793,8 +1019,18 @@ def validate_and_replay_provenance(case_dir, pl, pl_path, ep, manifest):
                 "--facility-min-degree", str(params["facility_min_degree"]),
                 "--node-budget", str(params["node_budget"]),
                 "--edge-budget", str(params["edge_budget"])]
-        for spec in (params.get("acknowledged_flips") or []):
-            cmd += ["--acknowledge-flip", str(spec)]
+        # F-06：翻转裁决改收据文件制——重放装配传绑定的收据文件引用（三验后原路径），
+        # 与 trace 消费同一份实物；旧 acknowledged_flips 字符串参数不再受理（同批同 hunk 组，
+        # 否则 freeze 重放当场断裂自卡死）。
+        flips_ref = params.get("flip_adjudications")
+        if flips_ref is not None:
+            flips_path, flips_err = check_bound_file(case_dir, flips_ref)
+            if flips_err:
+                return [f"flip 裁决收据绑定 {flips_err}"]
+            cmd += ["--acknowledge-flip", flips_path]
+        if params.get("acknowledged_flips"):
+            return ["provenance 携带 6.39.4 旧式 acknowledged_flips 字符串参数——"
+                    "裁决收据制（flip-adjudications/v1）起旧确认不再受理，须重跑 trace"]
         if labels_path:
             cmd += ["--labels-file", labels_path]
         env = dict(os.environ)

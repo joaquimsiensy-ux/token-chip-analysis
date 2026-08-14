@@ -92,8 +92,9 @@
 
 - **两种样本发现模式**（`--mode auto|sigs|blocks`，默认 auto）：sigs=mint 签名史抽样（全程边集适用；签名史新→老翻页，历史定向段边集会翻不到区间）；blocks=边集 slot 区间内均匀抽 getBlock 整块提取（定向段正解，免翻页）。auto 3 页探路未进区间自动切 blocks。
 - **判定粒度声明**：覆盖=边集存在 slot 相同且 from/to 含该 owner 的边。SQD 边是 owner 级同 tx 净变动聚合、无 sig 字段，slot+owner 是可用最细粒度（同 slot 同 owner 多笔时有极低概率误判为覆盖，审计是抽查性质，接受）。边集区间外事件计 out_of_range 不算漏。
-- **undetermined 语义（诚实纪律）**：深挖账户按结果分类 events_found / all_zero_delta / fetch_failed——后两类是"没查出来"不是"没事件"（高频中转户 delta 笔可能在 --deep-sigs 窗口外），不构成"无漏"证据；过半 undetermined 时脚本自动告警。
-- **退出码**：0=抽样零漏边；2=发现漏边（对账 gate 语义，报告 missing_detail 带 tx 级证据）；1=运行失败/样本无效。
+- **undetermined 语义（诚实纪律）**：深挖账户按结果分类 events_found / all_zero_delta / fetch_failed——后两类是"没查出来"不是"没事件"（高频中转户 delta 笔可能在 --deep-sigs 窗口外），不构成"无漏"证据；过半 undetermined＝样本无效（批 D GPT-F-06 起 exit 1，不再只告警）。
+- **退出码**：0=抽样零漏边；2=发现漏边（对账 gate 语义，报告 missing_detail 带 tx 级证据）；1=运行失败/样本无效。**样本无效机器判据（批 D GPT-F-06 收口，任一命中即 exit 1）**：任一 getMultipleAccounts 批失败／深挖账户全部 fetch_failed／checked=0 且 closed>0／墙钟截断／undetermined 过半。
+- **报告 status 契约（批 D）**：`CLEAN`（checked>0 零漏，exit 0）／`NO_CLOSED_SAMPLED`（抽样内无销户账户，审计对象为空——**弱结论**，exit 0，只证明"这批样本没有销户账户"，不冒充"销户路径零漏"强证明）／`LEAK_FOUND`（exit 2）／`INVALID_SAMPLE`（exit 1，`invalid_reasons` 逐条列明）。
 - **定位**：SQD 全量重放路线的对账**补充抽查项**（非硬 gate）——阶段 2 四查过后例行跑一次，发现 missing 才升级为堵漏行动（用 window_fetch 补拉缺口段）。
 
 （Helius vs SQD 采集通道交叉复核——codex 第二意见提议"用 mint 初始化历史反向审计数据湖"，本脚本为其工程化落地并经 PUB/USELESS 双案冒烟；07-21）

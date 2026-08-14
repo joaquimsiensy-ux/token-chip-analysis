@@ -62,9 +62,11 @@ def main(argv=None):
             raise ValueError("end-block 必须非负且 top-n 必须为正")
         config_path, balances_path = Path(a.config), Path(a.balances)
         stats_path, gmgn_path = Path(a.replay_stats), Path(a.gmgn)
+        # A-3：inputs 记相对路径（相对收据落盘目录＝案根），案目录可整体搬家。
         envelope = build_envelope(SCHEMA, target, __file__, "formal", inputs={
             "config": config_path, "balances": balances_path,
-            "replay_stats": stats_path, "gmgn": gmgn_path})
+            "replay_stats": stats_path, "gmgn": gmgn_path},
+            input_base=Path(a.out).expanduser().resolve().parent)
         cfg = json.loads(config_path.read_text(encoding="utf-8"))
         balances_raw = json.loads(balances_path.read_text(encoding="utf-8"))
         stats = json.loads(stats_path.read_text(encoding="utf-8"))

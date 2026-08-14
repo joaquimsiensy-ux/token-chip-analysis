@@ -88,6 +88,9 @@ SUITE += ['test_distribution_gate.py']
 # 太古 done 官方迁移全链、旧 −1 产物格式迁移命令。
 SUITE += ['test_apu_legacy_gaps.py']
 
+# v6.40.0 六视角 BLOCK 修复工程批 D（F-06/F-07/GPT-F-06＋台账 A-1/A-3/A-5/B-1/B-2/B-4/B-5/B-7）
+SUITE += ['test_repair_batch_d.py']
+
 
 def main():
     results = []

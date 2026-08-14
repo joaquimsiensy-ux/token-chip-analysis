@@ -43,6 +43,57 @@ def repo_ref(rel):
     return {"path": rel, "sha256": sha(path)}
 
 
+def align_ledgers_to_owner_snapshot(root, snap):
+    """B-7（批 D）起三账 balance_source 必须与四查核过的 owner 快照等值——
+    夹具把 balance 收据换绑到新快照后，同步三账成员到快照里真实存在的 owner。
+    这是修夹具失真（三账 0xabc 从不在案子的 owner 世界里），不是放宽断言。"""
+    root = Path(root)
+    owners = json.loads(Path(snap).read_text(encoding="utf-8"))
+    if isinstance(owners.get("balances"), dict):
+        owners = owners["balances"]
+    addr, raw = next(iter(owners.items()))
+    raw = str(int(str(raw)))
+    recon = json.loads((root / "reconciliation_report.json").read_text(encoding="utf-8"))
+    as_of = (recon.get("target") or {}).get("as_of_block", 123)
+    write_json(root, "balances_snapshot.json", {
+        "schema": "address-balance-snapshot/v1", "as_of_block": as_of,
+        "entries": [{"address": addr, "balance_raw": raw}]})
+    write_json(root, "membership_ledger.json", {"entries": [
+        {"entity_id": "e1", "address": addr, "membership": "strict",
+         "as_of_balance_raw": raw,
+         "balance_source": {"path": "balances_snapshot.json",
+                            "sha256": sha(root / "balances_snapshot.json"),
+                            "as_of_block": as_of}}]})
+    write_json(root, "position_ledger.json", {"entries": [
+        {"entity_id": "e1", "address": addr, "location_id": f"wallet:{addr}",
+         "amount_raw": raw}]})
+    write_json(root, "economic_control_ledger.json", {
+        "entries": [{"entity_id": "e1", "wallet_self_held_raw": raw,
+                     "confirmed_facility_claims": [],
+                     "confirmed_economic_control_raw": raw,
+                     "unresolved_facility_exposure": []}],
+        "double_count_check_passed": True, "unresolved_count": 0, "unresolved": []})
+    # balances_snapshot.json 被重写：同步 audit_input_manifest 的登记（若在场且登记过），
+    # 以及绑定该 manifest 的 reproduce receipt（其 input_manifest.sha256 记录冻结输入清单）。
+    manifest_path = root / "audit_input_manifest.json"
+    if manifest_path.is_file():
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        changed = False
+        for entry in manifest.get("files", []):
+            if entry.get("path") == "balances_snapshot.json":
+                entry["size"] = (root / "balances_snapshot.json").stat().st_size
+                entry["sha256"] = sha(root / "balances_snapshot.json")
+                changed = True
+        if changed:
+            write_json(root, "audit_input_manifest.json", manifest)
+            receipt_path = root / "reproduce_receipt.json"
+            if receipt_path.is_file():
+                receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+                if isinstance(receipt.get("input_manifest"), dict):
+                    receipt["input_manifest"]["sha256"] = sha(manifest_path)
+                    write_json(root, "reproduce_receipt.json", receipt)
+
+
 def build_case(root, historical=True):
     raw = root / "raw_transfers.jsonl"
     raw.write_text('{"from":"a","to":"b","raw":"1"}\n', encoding="utf-8")
@@ -87,6 +138,12 @@ def build_case(root, historical=True):
     stats = (root / "fixture_replay_stats.json").resolve()
     replay_input = {"path": str(stats), "size": stats.stat().st_size,
                     "sha256": sha(stats)}
+    # B-7（批 D）：真实 verify_recon 的 balance 收据 inputs 绑它吃的 owner 余额快照；
+    # 三账 balance_source 的数值从此要与这份四查快照等值。夹具补成真实形态。
+    write_json(root, "fixture_balances.json", {"0xabc": "100"})
+    balances_file = (root / "fixture_balances.json").resolve()
+    balances_input = {"path": str(balances_file), "size": balances_file.stat().st_size,
+                      "sha256": sha(balances_file)}
     for key in ("balance", "supply", "supply_truth", "time"):
         evidence = root / f"{key}_receipt.json"
         if key in {"balance", "supply"}:
@@ -108,9 +165,19 @@ def build_case(root, historical=True):
             receipt_doc = {"schema": "time-spotcheck/v2", "target": target,
                 "points": 1, "exact_match": 1, "mismatch": 0, "rpc_err": 0,
                 "verdict": "PASS", "exit_code": 0}
+        # A-5（批 D）：真实 verify_recon 的 balance/supply 收据 inputs 本就绑 replay_stats
+        # （四件套之一）；夹具补成合规真实形态——三查绑同一份账本，消费侧同源校验才有账可对。
+        if key == "balance":
+            key_inputs = {**envelope_input, "replay_stats": replay_input,
+                          "balances": balances_input}
+        elif key == "supply":
+            key_inputs = {**envelope_input, "replay_stats": replay_input}
+        elif key == "supply_truth":
+            key_inputs = {"replay_stats": replay_input}
+        else:
+            key_inputs = envelope_input
         receipt_doc.update({"producer": repo_ref(producers[key]), "mode": "formal",
-                            "inputs": ({"replay_stats": replay_input}
-                                       if key == "supply_truth" else envelope_input)})
+                            "inputs": key_inputs})
         write_json(root, evidence.name, receipt_doc)
         checks[key] = {"status": "PASS", "exit_code": 0,
                        "receipt": {"path": evidence.name, "sha256": sha(evidence)},

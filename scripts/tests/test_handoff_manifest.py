@@ -145,9 +145,16 @@ def make_case(d, chain="bsc", token="0x0", as_of_block=999):
         else:
             receipt = {"schema": "time-spotcheck/v2", "target": target,
                        "points": 1, "exact_match": 1, "mismatch": 0, "rpc_err": 0}
+        # A-5（批 D）：真实 verify_recon 的 balance/supply 收据本就绑 replay_stats，
+        # 夹具补成真实形态——消费侧三查同源校验（sha 全等）才有账可对。
+        if key in {"balance", "supply"}:
+            key_inputs = {**bound_input, "replay_stats": replay_input}
+        elif key == "supply_truth":
+            key_inputs = {"replay_stats": replay_input}
+        else:
+            key_inputs = bound_input
         receipt.update({"producer": repo_ref(producers[key]), "mode": "formal",
-                        "inputs": ({"replay_stats": replay_input}
-                                   if key == "supply_truth" else bound_input),
+                        "inputs": key_inputs,
                         "verdict": "PASS", "exit_code": 0})
         write_json(d, receipt_name, receipt)
         recon_checks[key] = {"status": "PASS", "exit_code": 0,
@@ -596,7 +603,7 @@ def main():
         write_json(d18, "provenance_ledger.json", fake_stable)
         p = run(["freeze", "--case-dir", d18] + FRZ)
         check("策略明细翻转但 stable=true 仍由 freeze 重算拒绝",
-              p.returncode == 2 and "机器从明细重算" in (p.stderr + p.stdout))
+              p.returncode == 2 and "三策略主导终点翻转" in (p.stderr + p.stdout))
 
         # 尘埃锚点（<0.01% 供应）的明细翻转不再触发翻转拒——由重放语义摘要兜底伪造
         dust_flip = make_provenance(d18, emap)
@@ -605,7 +612,7 @@ def main():
         write_json(d18, "provenance_ledger.json", dust_flip)
         p = run(["freeze", "--case-dir", d18] + FRZ)
         check("尘埃锚点翻转豁免（不因翻转拒；伪造由重放语义摘要兜底）",
-              "机器从明细重算" not in (p.stderr + p.stdout)
+              "三策略主导终点翻转" not in (p.stderr + p.stdout)
               and p.returncode == 2 and "重放语义摘要" in (p.stderr + p.stdout))
 
         # closure/敏感性都保持自洽，只篡改来源类别；唯有从当前原始边重放才能识别。

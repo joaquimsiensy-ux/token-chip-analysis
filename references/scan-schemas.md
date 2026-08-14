@@ -2,7 +2,7 @@
 
 扫描、溯源和分布形态产物的**唯一权威字段定义**。实现脚本与契约测试对本文件写；改字段先改这里再改代码。
 适用脚本：`wave_scan.py`（wave-scan/v3）、`flow_anomaly_scan.py`（flow-anomaly/v2）、
-`entity_source_trace.py`（provenance-ledger/v2）、`holder_distribution_scan.py`（distribution-scan/v1）、
+`entity_source_trace.py`（provenance-ledger/v2）、`holder_distribution_scan.py`（distribution-scan/v2）、
 `distribution_explanation_check.py`（distribution-explanation/v1）和两类裁决台账。
 
 ## 本册路由
@@ -221,7 +221,10 @@ wave/flow/eqg 全部候选的**成员级**裁决台账。freeze 前 validator �
     "handoff_manifest": {"file": {…}, "run_id": str, "scope": object},
     "data_map": {"file": {…}, "paths": [str…]},
     "total_supply_raw": str,
-    "algorithm_params": {"depth_limit", "facility_min_degree", "node_budget", "edge_budget"}
+    "algorithm_params": {"depth_limit", "facility_min_degree", "node_budget", "edge_budget",
+                         "flip_adjudications": {"path","bytes","sha256"}|null}
+                        # flip_adjudications＝翻转裁决收据文件引用（§4a，批 D F-06）；
+                        # 6.39.4 旧式 acknowledged_flips 字符串数组已废除，freeze 见之即拒
   },
   "entities": [{
     "entity_id": str,
@@ -283,6 +286,40 @@ TERMINAL = {
 - **双维敏感性阻断**：pro_rata 主法出数，fifo/lifo 上下界同跑；任一 stock>0 锚点的第一大终点条目在三策略间不一致，或 `order_ambiguous` >0.5% 锚点库存 → 汇总 false、脚本 exit 2。freeze 不读取 stable 自报作裁决，而从 `policy_details` 重算，并核验 `input_binding` 后以当前代码和当前原始边真实重放；语义摘要不一致即拒。
 - **freeze 可复现绑定**：source files 必须同时出现在已 verify 的 manifest artifacts 与 data_map；标签、实体文件、完整源边、total supply、manifest run/scope（cutoff/block/denominators）、算法脚本与参数逐项哈希绑定。任一变化都必须重跑 provenance 并追加 freeze revision；`check-unseal` 复核所有当前绑定文件哈希。
 
+### 4a. flip-adjudications/v1（翻转裁决收据，批 D F-06）
+
+真实三策略主导翻转（多来源结构）的**唯一**人工放行通道。6.39.4 的 `--acknowledge-flip ENTITY:ANCHOR:REASON` 字符串格式**已废除**——任意 10 字符理由即可解除发布阻断、且无任何消费者核对披露，是被审查判死的口子。现行 `--acknowledge-flip <收据文件路径>`。
+
+```
+{
+  "schema": "flip-adjudications/v1",
+  "approved_by": str,                       # 裁决主体（非空）
+  "user_decided_at_utc": ISO8601Z,          # 用户裁决时间（UTC，必须 Z 结尾）
+  "entity_file": {"path","size","sha256"},  # 名册绑定：收据同目录内相对路径三验，
+                                            #   且 sha 必须＝本次运行 --entity-file 内容
+  "evidence_refs": [{"path","size","sha256"}…],  # ≥1 份独立人工核对证据（收据同目录内，
+                                            #   拒绝绝对路径/越界/符号链接；不得是名册自身）
+  "adjudications": [{
+    "entity_id": str, "anchor": "peak|current",
+    "reason": str,                          # ≥10 字符
+    "flip_fingerprint": sha256,             # ＝该锚点三策略 policy_details 规范化子集 sha
+                                            #   （canonical JSON of {"policy_details": {pro_rata,fifo,lifo}}）
+    "disclosure": {
+      "top_by_policy": {"pro_rata": {"terminal": [kind,sub,via], "share_pct": "12.34"},
+                        "fifo": {…}, "lifo": {…}},   # 与明细重算值逐项相等（防收据写假数）
+      "report_locations": [str…]            # 报告可核位置（非空）
+    }
+  }…]
+}
+```
+
+消费面三处同源（实现共享在 `handoff_manifest.py`，不手抄）：
+- **trace**（producer）：重算当前运行每个真实翻转锚点的指纹与三策略 top/份额，与收据行逐项相等才 `publishable`；收据行指向非真实翻转锚点＝不许预防性豁免，exit 2。**底层数据一变 → 明细变 → 指纹失配 → 收据自动失效，必须重裁**。
+- **freeze 前置 3**（`recompute_provenance_sensitivity`）：只认 `input_binding.algorithm_params.flip_adjudications` 绑定的收据文件（三验＋指纹重算），**不再信 ledger 内嵌自报的 `acknowledged_flips`**；重放参数装配同收据还原。
+- **A5 seal**（new-analysis）：报告 Markdown 实文必须含每个翻转锚点三策略的 top 终点标识串与份额数字（多策略并列披露落到消费者核对）；同时校验 `provenance_ledger.json` 哈希＝`entity_freeze` 记录的 `provenance_ledger_sha256`（封死 freeze 后删/换 ledger 旁路）。
+
+**存量迁移声明**：6.39.4 后用过旧式 `--acknowledge-flip` 字符串确认的案子（已知：MOG），其 ledger `algorithm_params.acknowledged_flips` 为旧格式——重 freeze 时前置 3 与重放装配均按"旧确认不再受理"拒绝，**必须造 flip-adjudications/v1 收据后重跑 trace**；已冻结终态不受追溯影响。
+
 ## 5. PYTHIA 回测锚点（fixture 权威值；实现落地时实测填入 tests/fixtures/pythia_anchors.json）
 
 | 闸 | 锚点义务 |
@@ -296,7 +333,7 @@ TERMINAL = {
 
 回测仅 PYTHIA 单案（用户拍板）；flow 参数初值与误报水平缺第二币对照校准——未来首个新案实战时如实标注此局限。
 
-## 6. distribution-scan/v1
+## 6. distribution-scan/v2
 
 本产物只计算冻结 cutoff 的当前 owner 快照。owner 快照必须对**铸造总量 `mint_total`（闭合锚点）逐 wei 精确闭合**（缺口和超发同拦，零容差，与供给真值那把 `--tolerance-bps` 各是各的旋钮）。
 
@@ -306,13 +343,13 @@ TERMINAL = {
 
 **闭合锚点的取值顺序（已绑定已验证的链路优先）**：① `supply_truth` 收据 `inputs.replay_stats` **绑定**的那份实物（已过 receipt 三验＋案根遏制，取值后再交叉验 `mint−burn == replay_net`）；② 收据的 `mint_total` 字段；③ `onchain_total_supply`。**案根裸 `replay_stats.json` 永远不是锚点来源**——真案 9/10 把它放 `data/`／`out/`／`replay/` 子目录并由收据绑定，把案根硬编码文件名排在第一，既让"抹平快照＋伪造一份未绑定案根件"直接过闸，又让"案根留一份陈旧件"把合法案误杀。合法但未绑定的案根同名件**忽略**（未绑定的文件不是证据，不该被采用，也不该有一票否决权）；它若**在场却非法**（符号链接／非普通文件）则 fail-closed 拒，与上面"在场非法不得静默漂白"同一把尺子。
 
-产物里 `denominators.total_supply_raw` 因此＝**铸造总量 `mint_total`（含已销毁）**，不是链上流通量；真 `_burn` 案两者可差三成以上（IQ 差 34.9%）。引用该字段描述"总量"时必须按此口径，链上流通量看 `net_supply_raw`。（改键名为 `mint_total_raw` 属 schema 升版，留批 D。）
+产物里 `denominators.mint_total_raw`＝**铸造总量 `mint_total`（含已销毁）**，不是链上流通量；真 `_burn` 案两者可差三成以上（IQ 差 34.9%）。引用该字段描述"总量"时必须按此口径，链上流通量看 `net_supply_raw`。（批 D schema 升 v2 落地：旧键名 `total_supply_raw` 语义误导已废除；6.39.5 及以前的存量 `distribution_scan.json` 是 v1 产物，重验必拒，须用当前扫描器重跑 initial/final——这与"扫描器算法哈希绑定、改代码即重跑"的既有迁移语义同款。）
 
 `initial` 记录上游收据但不绑定 handoff manifest。上游收据是 **optional 的记录性收据**：案根没有那份文件就不记（split-run 下 −1 出 initial scan 时，−2 还没把 preflight 副本拷进案根），**在场即三验**——凡是记进 `upstream_receipts` 的条目，validate 都要核实文件存在且 sha256／size 与记录一致。校验方向只有"记录项 → 磁盘"这一条，反过来要求"磁盘上有的都得记"会把 6.39.5 修掉的三闸死环修回来。文件在场却非法（符号链接、指到案外、不是普通文件）时生产侧直接 exit 2，不做静默跳过。
 
 分布扫描吃的那份 owner 快照，必须就是四查真正核过的那一份：EVM 比对四查 `balance` 收据的 `inputs.balances.sha256`，Solana 比对 observation bundle 的 `holder_outputs.owners.sha256`，**只比 sha256 不比 path**（两边路径形态本来就不同）。**initial 扫描与进报告的终态 final 扫描（`distribution_rounds.json` 的 `terminal.final_scan_path`）两份都要落在同一个四查 sha 上**——只绑 initial 挡不住 final 轮换一份同值换仓快照产终态判定（F-B1）。该交叉检查由 `audit_release_gate.py --profile new-analysis` 执行，**只放发布闸、不放进 validate**（终态 scan 是本轮新产，不涉及存量案追溯）。
 
-**两侧绑定强度目前不等（F-B6，如实标注）**：EVM 的 `inputs.balances` 由 `receipt_validate.validate_receipt` 拿案内实物文件做 path/size/sha 三验，有实物锚；Solana 的 `holder_outputs.owners` **目前全库无 validator 做过实物三验、无实物锚**（`validate_observation_bundle` 只校验 `inputs`、不碰 `holder_outputs`），只有本闸这一处 sha 等值比对。给 `holder_outputs` 补文件级三验列在批 D 台账，未落地前 Solana 侧强度弱 EVM 一档。
+**两侧绑定强度已对齐（批 D B-1 落地）**：EVM 的 `inputs.balances` 由 `receipt_validate.validate_receipt` 拿案内实物文件做 path/size/sha 三验；Solana 的 `holder_outputs.accounts/owners` 自批 D 起由 `validate_observation_bundle`（bundle_path 在场的消费侧）做同款文件级三验（查找目录＝收据 inputs 实物所在 work_dir → bundle 同目录 → 同目录 data/），缺件/换包/符号链接均拒。
 
 `final` 绑定 READY `handoff/v3`、身份快照收据、当前 A4 seal、当前 entity freeze revision、三账、initial scan 和上一轮 final scan。
 
@@ -322,7 +359,7 @@ TERMINAL = {
 
 ```
 {
-  "schema": "distribution-scan/v1",
+  "schema": "distribution-scan/v2",
   "stage": "initial|final",
   "generated_at_utc": ISO8601,
   "exit_code": 0|2,
@@ -366,7 +403,7 @@ TERMINAL = {
   "verdict": "NORMAL_SHAPE|ABNORMAL_SHAPE|NOT_EVALUABLE",
   "not_evaluable_reason": null|"low_sample|data_broken",
   "errors": [str],
-  "denominators": {"total_supply_raw": str,   // ＝mint_total 铸造总量（含已销毁），非链上流通量
+  "denominators": {"mint_total_raw": str,     // ＝mint_total 铸造总量（含已销毁），非链上流通量
                      "net_supply_raw": str,     // ＝replay_net 链上流通量
                      "private_boxable_supply_raw": str},
   "bucket_coverage": {bucket: {"raw": str, "net_supply_pct": float}},

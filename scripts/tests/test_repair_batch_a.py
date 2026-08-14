@@ -144,14 +144,15 @@ def supply_item(root: Path, name: str = "supply_truth.json") -> dict:
                         "sha256": sha256(path)}}
 
 
-def expect_check_rejection(root: Path, needle: str, family: str = "evm"):
+def expect_check_rejection(root: Path, needle, family: str = "evm"):
+    needles = (needle,) if isinstance(needle, str) else tuple(needle)
     try:
         shared.validate_reconciliation_check(root, "supply_truth", supply_item(root),
                                              TARGET, family)
     except ValueError as exc:
-        assert needle.lower() in str(exc).lower(), (needle, exc)
+        assert any(n.lower() in str(exc).lower() for n in needles), (needles, exc)
         return str(exc)
-    raise AssertionError(f"消费侧放行了应被拒的收据：{needle}")
+    raise AssertionError(f"消费侧放行了应被拒的收据：{needles}")
 
 
 def consumer_case(root: Path, *, mutate=None, approved=10000,
@@ -588,7 +589,11 @@ def test_n1_replay_stats_must_live_inside_case_root():
                 json.dumps(receipt, ensure_ascii=False), encoding="utf-8")
             # 案根里那本真账原封不动，正是它该被读到的那一份。
             assert json.loads((root / "replay_stats.json").read_text())["mint_total_raw"] == "1"
-            expect_check_rejection(root, "不在当前案根内")
+            # 批 D 报错换岗（如实记录）：A-3/B-6 给全部 envelope inputs 上了统一案根约束，
+            # 案外绑定被更靠前的 validate_receipt(case_root=…) 先拦（"input escapes case
+            # root"）；旧闸 "_bound_replay_totals 不在当前案根内" 仍在其后兜底。两条话术
+            # 给的处置指引一致（重跑生产者），同一攻击仍被拒。
+            expect_check_rejection(root, ("不在当前案根内", "escapes case root"))
 
     # 案内软链指向案外同样进不来——这一条由**上游既有**的 receipt_validate 先拦
     # （"path is a symlink"），不是本轮新代码的功劳，如实记在这里，免得日后误以为

@@ -274,8 +274,30 @@ def _prehistoric_refresh_candidate(path, d):
     return payload
 
 
+class RefreshRollbackError(Exception):
+    """F-07：commit 期失败且回滚也失败——磁盘处于混合状态，恢复件已保留。
+
+    CLI 对本异常 exit 1（脚本/环境故障，人工按 .recover 件恢复后重跑）；
+    普通 ValueError/OSError（含回滚成功后的原始错误重抛）仍走 exit 2。
+    """
+
+
+def _fsync_file_and_dir(path):
+    with open(path, "rb") as f:
+        os.fsync(f.fileno())
+    dir_fd = os.open(Path(path).parent, os.O_RDONLY)
+    try:
+        os.fsync(dir_fd)
+    finally:
+        os.close(dir_fd)
+
+
 def refresh_manifests(outdir):
-    """Two-phase refresh: validate every run first; write none if any run is bad."""
+    """真事务迁移（F-07）：validate 全部 → prepare（全部新 manifest 各写临时件＋fsync）
+    → commit（先备份原件，逐个 os.replace）。commit 期任一失败→逐文件从备份回滚
+    ＋按字节哈希验证回滚结果；回滚失败保留 `<done>.recover` 恢复件并抛
+    RefreshRollbackError（CLI exit 1）。不变量＝全有或全无：任何失败路径上，
+    要么所有 done.json 都是新版，要么所有 done.json 字节回滚原样。"""
     root = Path(outdir).resolve()
     done_paths = sorted(root.glob("run_*/done.json"))
     if not done_paths:
@@ -301,8 +323,84 @@ def refresh_manifests(outdir):
     token, url, query_schema = next(iter(identities))
     if not token or not url or query_schema != QUERY_SCHEMA:
         raise ValueError("存量 run 缺 token/url 或 query_schema 非现行版")
-    for path, payload in pending:
-        atomic_write_json(path, payload)
+
+    # ── prepare：全部新 manifest 先写各自临时件＋fsync；此阶段任何失败都没有动过
+    # 任何正式件，清理临时件后原样抛错（天然全无）。同时记录每个原件的字节哈希，
+    # 供 commit 失败回滚后逐文件验证"字节回滚原样"。
+    staged = []   # (done_path, tmp_path, bak_path, original_sha256)
+    try:
+        for path, payload in pending:
+            tmp = path.with_name("." + path.name + f".refresh-tmp.{os.getpid()}")
+            bak = path.with_name("." + path.name + f".refresh-bak.{os.getpid()}")
+            original_sha = sha256_file(path)
+            with tmp.open("w", encoding="utf-8") as f:
+                json.dump(payload, f, ensure_ascii=False, indent=1)
+                f.flush()
+                os.fsync(f.fileno())
+            staged.append((path, tmp, bak, original_sha))
+    except BaseException:
+        for _, tmp, _, _ in staged:
+            if tmp.exists():
+                tmp.unlink()
+        raise
+
+    # ── commit：逐个先备份原件（os.replace 到 .refresh-bak），再把临时件替换上位。
+    committed = []  # 已完成新件上位的 (path, tmp, bak, sha)
+    moved_only = None  # 原件已移走成备份、新件尚未上位的那一条
+    committed_all = False
+    try:
+        for entry in staged:
+            path, tmp, bak, _ = entry
+            os.replace(path, bak)
+            moved_only = entry
+            os.replace(tmp, path)
+            moved_only = None
+            committed.append(entry)
+        committed_all = True
+        # 全部新件已上位＝事务已提交；此后的持久化收尾/备份清理失败不再回滚
+        # （对齐 receipt_kernel.publish_txn 先例：committed 后保留备份报错）。
+        for path, _, bak, _ in committed:
+            _fsync_file_and_dir(path)
+            if bak.exists():
+                bak.unlink()
+    except BaseException as primary:
+        if committed_all:
+            kept = [str(b) for _, _, b, _ in committed if b.exists()]
+            raise ValueError(
+                f"迁移已提交但收尾（fsync/备份清理）失败——done.json 均为新版，"
+                f"备份保留于 {kept}: {primary}") from primary
+        # 回滚：半途那条（原件在 bak、新件没上位）与已提交各条全部从备份复位。
+        rollback_failures = []
+        to_restore = list(committed) + ([moved_only] if moved_only else [])
+        for path, tmp, bak, original_sha in to_restore:
+            try:
+                os.replace(bak, path)
+                if sha256_file(path) != original_sha:
+                    raise OSError(f"回滚后字节与原件不一致: {path}")
+            except BaseException as exc:
+                rollback_failures.append((path, bak, exc))
+        for _, tmp, _, _ in staged:
+            try:
+                if tmp.exists():
+                    tmp.unlink()
+            except OSError:
+                pass
+        if rollback_failures:
+            preserved = []
+            for path, bak, _ in rollback_failures:
+                recover = path.with_name(path.name + ".recover")
+                try:
+                    if bak.exists():
+                        os.replace(bak, recover)
+                        preserved.append(str(recover))
+                except OSError:
+                    if bak.exists():
+                        preserved.append(str(bak))
+            detail = "; ".join(f"{p}: {e}" for p, _, e in rollback_failures)
+            raise RefreshRollbackError(
+                f"迁移提交失败（{primary}）且回滚也失败——磁盘处于混合状态，"
+                f"恢复件已保留: {preserved}；失败明细: {detail}") from primary
+        raise
     # identity 必须建在 done 升级之后：其迁移预检要求磁盘上每个 done 已带现行
     # query_schema，太古 done 升级前不满足。唯一性上面已验；ensure 幂等，此处
     # 失败时重跑 refresh 自愈（done 已 v3 走 already_v3 路径）。
@@ -419,7 +517,13 @@ def refresh_manifests_cli(argv):
     a = ap.parse_args(argv)
     try:
         result = refresh_manifests(a.outdir)
-    except ValueError as exc:
+    except RefreshRollbackError as exc:
+        # 回滚失败＝磁盘混合状态＋.recover 恢复件在场：exit 1（环境故障，人工恢复后重跑）。
+        print(f"[rollback-failed] {exc}", file=sys.stderr)
+        return 1
+    except (ValueError, OSError) as exc:
+        # OSError 一并捕获（F-07）：罩住 ensure_outdir_identity 与提交期 IO 故障，
+        # 不再裸 traceback；此路径上事务已回滚或从未动过正式件。
         print(f"[fail-closed] {exc}", file=sys.stderr)
         return 2
     print(f"[refreshed] checked={result['checked']} upgraded={result['upgraded']} "
