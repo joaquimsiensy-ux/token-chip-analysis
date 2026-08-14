@@ -106,7 +106,12 @@ def _finite_number(value, *, integer=False, minimum=0) -> bool:
 
 
 def _meaningful_text(value) -> bool:
-    """文本至少含一个本工程明确允许的可渲染字符。"""
+    """文本至少含一个本工程明确允许的可渲染字符。
+
+    白名单覆盖 ASCII、拉丁补充/扩展、通用/CJK 标点、日文假名、CJK 统一表意文字、
+    韩文音节与全角可打印形式。两侧刻意双写（独立重验纪律），改动须两处同步并过
+    行为向量守卫。
+    """
     if not isinstance(value, str):
         return False
     for char in value:

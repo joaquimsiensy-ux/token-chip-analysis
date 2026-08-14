@@ -86,6 +86,9 @@
 - 未解决事项及其是否阻断发布；
 - 对下游结论的依赖关系。
 
+命题文本不得依赖泰文、阿拉伯文、天城文、藏文或希伯来文的附加符（组合符）承载
+语义差异；对账键会移除这些组合符，需改写为不依赖附加符的明确文本后再登记。
+
 `confirmed` 命题必须有原始证据和 `reproduce_receipt`。用
 `scripts/report/reproduce_receipt.py <案目录>` 运行案内固定入口 `reproduce_audit.py`；
 receipt 绑定入口脚本哈希、`audit_input_manifest.json` 哈希、参数、exit code 0、

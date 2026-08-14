@@ -77,7 +77,13 @@ def remove_any(path):
     path = Path(path)
     if os.path.lexists(path):
         if path.is_dir() and not path.is_symlink():
-            shutil.rmtree(path)
+            def repair_and_retry(func, failed_name, _exc):
+                failed = Path(failed_name)
+                writable = failed if failed.is_dir() else failed.parent
+                writable.chmod(writable.stat().st_mode | 0o700)
+                func(failed_name)
+
+            shutil.rmtree(path, onexc=repair_and_retry)
         else:
             path.unlink()
 
@@ -370,7 +376,7 @@ def finalize_review(case_dir, receipts, blockers="blockers.json",
         roles = set()
         execution_sha256s = set()
         artifact_sha256s = set()
-        claim_review_entrypoints = set()
+        review_entrypoints = set()
         for receipt_path in receipt_paths:
             try:
                 execution = _loads_json(receipt_path.read_text(encoding="utf-8"))
@@ -391,11 +397,11 @@ def finalize_review(case_dir, receipts, blockers="blockers.json",
             execution_sha256s.add(execution_sha256)
             artifact_sha256s.add(artifact_sha256)
             roles.add(role)
+            entrypoint_key = (role, execution["entrypoint"]["sha256"])
+            if entrypoint_key in review_entrypoints:
+                raise ValueError("duplicate review role and entrypoint content")
+            review_entrypoints.add(entrypoint_key)
             if role in CLAIM_REVIEW_ROLES:
-                entrypoint_key = (role, execution["entrypoint"]["sha256"])
-                if entrypoint_key in claim_review_entrypoints:
-                    raise ValueError("duplicate claim-review role and entrypoint content")
-                claim_review_entrypoints.add(entrypoint_key)
                 reviewed_sets.append(reviewed)
             reviews.append({
                 "role": role,

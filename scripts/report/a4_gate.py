@@ -165,9 +165,11 @@ def _norm_text(value):
             continue
         kept.append(" " if category == "Zs" else char)
     # The meaningful-text gate is an allowlist because an unknown character there
-    # could make an empty shell pass.  Reconciliation keys need the opposite safety
-    # direction: only known zero-rendering characters are denied, so an unknown
-    # symbol/script remains visible and causes a fail-closed mismatch for review.
+    # could make an empty shell pass.  Reconciliation keys deliberately remove the
+    # named zero-rendering set plus all Cf/Cc/Zl/Zp/Mn/Me characters; the latter
+    # include visible combining marks.  This tradeoff had zero collisions after NFC
+    # in the project's Chinese/English/Japanese/Korean/Latin corpus.  Everything else
+    # remains visible and therefore causes a fail-closed mismatch for review.
     return " ".join("".join(kept).split())
 
 

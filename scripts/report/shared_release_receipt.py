@@ -122,7 +122,12 @@ def _finite_number(value, *, integer=False, minimum=0) -> bool:
 
 
 def _meaningful_text(value) -> bool:
-    """文本至少含一个消费侧明确批准的可渲染字符。"""
+    """文本至少含一个消费侧明确批准的可渲染字符。
+
+    白名单覆盖 ASCII、拉丁补充/扩展、通用/CJK 标点、日文假名、CJK 统一表意文字、
+    韩文音节与全角可打印形式。两侧刻意双写（独立重验纪律），改动须两处同步并过
+    行为向量守卫。
+    """
     if not isinstance(value, str):
         return False
     for char in value:
@@ -694,7 +699,7 @@ def validate_adversarial_review(root, expected_target=None):
     reviewed_sets = []
     execution_sha256s = set()
     artifact_sha256s = set()
-    claim_review_entrypoints = set()
+    review_entrypoints = set()
     for item in reviews:
         if not isinstance(item, dict) or item.get("exit_code") != 0:
             raise ValueError("review lacks successful execution receipt")
@@ -723,11 +728,11 @@ def validate_adversarial_review(root, expected_target=None):
             root, execution.get("path"), role, artifact,
             registry_sha256=registry_sha256, claim_ids=claim_ids,
             meaningful_text=_meaningful_text, reject_constant=_reject_constant)
+        entrypoint_key = (role, execution_data["entrypoint"]["sha256"])
+        if entrypoint_key in review_entrypoints:
+            raise ValueError("duplicate review role and entrypoint content")
+        review_entrypoints.add(entrypoint_key)
         if role in CLAIM_REVIEW_ROLES:
-            entrypoint_key = (role, execution_data["entrypoint"]["sha256"])
-            if entrypoint_key in claim_review_entrypoints:
-                raise ValueError("duplicate claim-review role and entrypoint content")
-            claim_review_entrypoints.add(entrypoint_key)
             reviewed_sets.append(reviewed)
     if not ROLES.issubset(roles):
         raise ValueError(f"required adversarial roles missing: {sorted(ROLES - roles)}")

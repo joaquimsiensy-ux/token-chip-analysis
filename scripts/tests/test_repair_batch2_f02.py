@@ -482,6 +482,35 @@ def t_directory_cleanup_and_output_guards():
               and not (root / "dir.json").exists() and not (root / "dir_execution.json").exists(),
               (proc.returncode, proc.stderr[-180:], residue(root)))
 
+    with tempfile.TemporaryDirectory(prefix="f02-readonly-residue-") as td:
+        root = Path(td)
+        make_case(root)
+        script = root / "readonly_output.py"
+        script.write_text(
+            "import os, sys\nfrom pathlib import Path\n"
+            "out = Path(os.environ['CHIP_REVIEW_OUTPUT'])\n"
+            "out.mkdir()\n"
+            "(out / 'locked.txt').write_text('locked', encoding='utf-8')\n"
+            "out.chmod(0o500)\n"
+            "print('ORIGINAL_REVIEW_REJECTION', file=sys.stderr)\n"
+            "raise SystemExit(7)\n",
+            encoding="utf-8")
+        proc = subprocess.run([
+            sys.executable, str(RUNNER), str(root), "--role", "completeness_critic",
+            "--entrypoint", script.name, "--artifact", "readonly.json",
+            "--receipt", "readonly_execution.json",
+        ], capture_output=True, text=True)
+        staging = root / ".readonly.json.staging"
+        clean = residue(root) == [] and not staging.exists()
+        original_reason = ("review entrypoint failed rc=7" in proc.stderr
+                           and "ORIGINAL_REVIEW_REJECTION" in proc.stderr)
+        check("只读 staging 清理后 rc=2＋零残留＋保留原始拒绝理由",
+              proc.returncode == 2 and clean and original_reason,
+              (proc.returncode, proc.stderr[-240:], residue(root)))
+        if staging.exists():
+            staging.chmod(0o700)
+            shutil.rmtree(staging)
+
     for label, link_name, victim_name in (
             ("artifact", "linked.json", "artifact_victim.json"),
             ("receipt", "linked_execution.json", "receipt_victim.json")):
@@ -584,6 +613,76 @@ def t_content_identity_and_consumer_bindings():
         check("绿例：同 role 的两个不同 entrypoint 真两路照常通过",
               proc.returncode == 0 and (root / "adversarial_review.json").is_file(),
               (proc.returncode, proc.stderr[-180:]))
+
+    with tempfile.TemporaryDirectory(prefix="f02-critic-entrypoint-repeat-") as td:
+        root = Path(td)
+        registry_sha = make_case(root)
+        p1, _, r1 = run_role(
+            root, "entity_attribution_skeptic",
+            claim_artifact(registry_sha, [result("C1"), result("C2")]),
+            stem="skeptic")
+        critic_payloads = [
+            {**critic_artifact(registry_sha), "findings": ["finding a"]},
+            {**critic_artifact(registry_sha), "findings": ["finding b"]},
+            {**critic_artifact(registry_sha), "findings": ["finding c"]},
+        ]
+        critic_entry = root / "same_critic.py"
+        critic_entry.write_text(
+            "import json, os\nfrom pathlib import Path\n"
+            f"payloads = {critic_payloads!r}\n"
+            "out = Path(os.environ['CHIP_REVIEW_OUTPUT'])\n"
+            "counter = out.parent / '.critic-entrypoint-count'\n"
+            "index = int(counter.read_text()) if counter.exists() else 0\n"
+            "out.write_text(json.dumps(payloads[index], ensure_ascii=False), encoding='utf-8')\n"
+            "counter.write_text(str(index + 1))\n",
+            encoding="utf-8")
+        critic_runs = [run_existing_role(
+            root, "completeness_critic", critic_entry, f"critic_{suffix}")
+                       for suffix in ("a", "b", "c")]
+        receipts = [item[2] for item in critic_runs]
+        runs_ok = p1.returncode == 0 and all(
+            item[0].returncode == 0 for item in critic_runs)
+        proc = finalize(root, [r1, *receipts]) if runs_ok else next(
+            (item[0] for item in critic_runs if item[0].returncode), p1)
+        check("finalize 拒绝同一 completeness_critic entrypoint 三次注水",
+              proc.returncode == 2 and not (root / "adversarial_review.json").exists(),
+              (proc.returncode, proc.stderr[-220:]))
+
+        # 绕过 producer 手抄聚合，消费侧仍须独立拒绝同一 critic entrypoint 注水。
+        if runs_ok and proc.returncode == 0:
+            aggregate = json.loads((root / "adversarial_review.json").read_text())
+        elif runs_ok:
+            aggregate = {
+                "schema": "adversarial-review/v3",
+                "target": target,
+                "producer": {"path": "scripts/report/adversarial_review_runner.py",
+                             "sha256": sha(RUNNER)},
+                "claim_registry": {"path": "a4_claims.json",
+                                   "size": (root / "a4_claims.json").stat().st_size,
+                                   "sha256": registry_sha, "schema": "a4-claims/v2"},
+                "reviews": [], "blocking_findings": [], "release_decision": "PASS",
+            }
+            for receipt_path in [r1, *receipts]:
+                execution = json.loads(receipt_path.read_text())
+                aggregate["reviews"].append({
+                    "role": execution["role"], "exit_code": 0,
+                    "artifact": execution["artifact"], "runner": execution["producer"],
+                    "execution_receipt": {"path": receipt_path.name,
+                                          "size": receipt_path.stat().st_size,
+                                          "sha256": sha(receipt_path)},
+                })
+            write_json(root / "adversarial_review.json", aggregate)
+        else:
+            aggregate = None
+        shared_rejected = aggregate is not None and rejected(
+            lambda: validate_adversarial_review(root, target))
+        audit_errors = []
+        if aggregate is not None:
+            from audit_release_gate import check_adversarial
+            check_adversarial(root, aggregate, audit_errors, target)
+        check("消费侧独立拒绝同一 completeness_critic entrypoint 三次注水",
+              shared_rejected and bool(audit_errors),
+              (shared_rejected, audit_errors))
 
     with tempfile.TemporaryDirectory(prefix="f02-consumer-entrypoint-repeat-") as td:
         root = Path(td)
@@ -1008,6 +1107,41 @@ def t_consumer_and_green_chain():
               joined)
 
 
+def t_reproduce_output_strict_loader_mount():
+    import audit_release_gate as gate
+
+    with tempfile.TemporaryDirectory(prefix="f02-reproduce-nan-") as td:
+        root = Path(td).resolve()
+        entry = root / "reproduce_audit.py"
+        entry.write_text("raise SystemExit(0)\n", encoding="utf-8")
+        manifest = write_json(root / "audit_input_manifest.json", {"inputs": []})
+        output = root / "reproduce_output.json"
+        summary = {"claim": "C1", "value": 1}
+        output.write_text(
+            '{"summary":{"claim":"C1","value":1},"unused_probe":NaN}\n',
+            encoding="utf-8")
+        write_json(root / "reproduce_receipt.json", {
+            "schema": "reproduce-receipt/v2", "status": "PASS", "exit_code": 0,
+            "freshness": {"nonce": "n", "staging_created_by_controller": True,
+                          "inode_preserved": True, "output_absent_before_run": True},
+            "started_at_utc": "2026-08-14T00:00:00Z",
+            "finished_at_utc": "2026-08-14T00:00:01Z",
+            "entrypoint": {"path": "reproduce_audit.py", "sha256": sha(entry)},
+            "input_manifest": {"path": "audit_input_manifest.json",
+                               "sha256": sha(manifest)},
+            "args": [],
+            "output": {"path": "reproduce_output.json", "size": output.stat().st_size,
+                       "sha256": sha(output)},
+            "summary_sha256": gate.canonical_json_sha(summary),
+        })
+        errors = []
+        gate.check_reproduce_receipt(root, "reproduce_receipt.json", "C1", errors)
+        check("reproduce output 严格 loader 接线拒绝未消费字段 NaN",
+              any("JSON无法读取 reproduce_output.json" in item
+                  and ("non-finite" in item or "非有限" in item)
+                  for item in errors), errors)
+
+
 def main():
     t_original_two_byte_shell()
     t_runner_variants_and_cleanup()
@@ -1018,6 +1152,7 @@ def main():
     t_content_identity_and_consumer_bindings()
     t_nonfinite_json_mounts_and_constant_sources()
     t_consumer_and_green_chain()
+    t_reproduce_output_strict_loader_mount()
     t_documentation_contract()
     if FAILS:
         print(f"FAIL workorder B F-02 regressions: {len(FAILS)}")

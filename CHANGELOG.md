@@ -8,13 +8,9 @@
 **写入前必跑 `python3 scripts/tests/changelog_lint.py`**（防撞号/倒排——两者都实际发生过）。
 本文件只保留最近 ~10 版（整编时滚动）；更早的完整迭代史在 `archive/CHANGELOG-archive.md`，考古规则来源先 grep 该文件。
 
-### 2026-08-14 — 批 2 工单 B（待 6.41.0 汇总发布）
-
-- **F-02 对抗复核结构化闭环**：`adversarial-review/v2` 升 `v3`，以 `a4_claims.json` 的 path/size/sha256/schema 为权威锚；每路 artifact 升为 `adversarial-review-artifact/v1`，机器验证三档 verdict、非空 evidence、逐 artifact 去重、registry 内 id 与全部 claim-review 并集覆盖。runner 对结构坏件 fail-closed 清理 staging，新增原子 `finalize` 聚合器；shared receipt 与 audit release gate 两侧从 artifact 实物独立重建覆盖并重算 registry sha，blocker id/布尔/resolution 结构同时收口。
-- **存量影响**：已知 AKE/B2/MOG/TAG 至少四案仍为 v2；已交付案不重跑发布闸不受影响，未来重发布必须按当前 runner 重做结构化 artifacts、execution receipts 与 v3 finalize，禁止手工补字段迁移。
-
 ## 版本索引（活跃窗口，新在上；每版一行，详情见下方对应条目）
 
+- **6.41.0**（2026-08-14）批 2 三线收口：F-10 waiver 三段硬顶＋用户超顶批复、F-02 对抗复核结构化 v3、F-09 solana-reconcile/v3 身份链与 PYTHIA 实证；三轮盲审残留锚、R10 清账/新登记及文档边界统一封口
 - **6.40.0**（2026-08-13）六视角 BLOCK 修复工程 A-D 四批收口：发布收据验证链（F-01/02）＋分布扫描族（F-03/08）＋阵营序列 producer 链（F-04/05）＋flip 裁决收据制（F-06）/refresh 真事务（F-07）/销户审计收口（GPT-F-06）＋台账八项＋distribution-scan/v2；R10 存量台账本轮未修、台账保留（r10_ledger.md）
 - **6.39.5**（2026-08-12）distribution 语义重验剔除记录性 upstream_receipts（split-run G8/audit_release_gate 三闸死环修复，TAG 案实撞；同步补 6.39.4 漏 bump 的 pyproject）
 - **6.39.4**（2026-08-11）provenance 敏感性闸粒度修复：尘埃锚点线（<0.01% 供应不入翻转判定）＋ --acknowledge-flip 翻转书面确认通道（freeze 重放同参还原）
@@ -44,6 +40,18 @@
 - **6.20.1** 2026-08-05 修 5 处阻断级文档漂移（A4 前禁写报告冲突/easy 残留/惯犯回灌 docstring/批量预采集残留/旧 Par 路线历史降级）＋docs_lint 增中文禁词与 Python module docstring 扫描
 
 更早版本（6.20.0 及以前）详见 `archive/CHANGELOG-archive.md`。
+
+## [6.41.0] - 2026-08-14 — 批 2 防伪面三线三轮盲审收口
+
+批 2 在 6.40.0 上完成 F-10/F-02/F-09 三线施工与三轮盲审，A/B/C 终态均 CLOSED；工程目录与逐轮证据见 `maintenance/repair-20260814-batch2/`。
+
+- **F-10 waiver 政策硬顶（工单 A）**：以 approved/observed/request/消费侧实算四值最大值执行 ≤10bps 自动、>10 且 ≤100bps 普通 waiver、>100bps 再强制独立 `over-cap-approval/v1` 的三段政策；approval 绑定 target、replay_stats、request 规范哈希、nonce、30 天有效期、用户批复和独立 evidence，生产/消费两侧独立重验。三轮盲审从零宽击穿扩到 13 码位，再翻转为正向白名单并以全码位差分/行为向量闭合。
+- **F-02 对抗复核结构化闭环（工单 B）**：`adversarial-review/v2` 升 `v3`，以 `a4_claims.json` 的 path/size/sha256/schema 为权威锚；每路 `adversarial-review-artifact/v1` 机器验证三档 verdict、非空 evidence、registry 内 id、全部 claim-review 并集覆盖及 execution/artifact/entrypoint 内容身份。受控 runner 对坏件 fail-closed 清理 staging，原子 `finalize` 与 shared/audit 消费侧分别重验。三轮盲审从零宽击穿族推进到 claim_id all 语义、对账键黑名单方向；收口再封同一 completeness critic entrypoint 三次注水及 0o500 staging 清理吞原拒绝理由。
+- **F-09 Solana 身份链与真实案（工单 C）**：`solana-reconcile/v2` 升 `v3`，绑定 chain/mint/collection window、producer 与三份输入；补同案 `state→figures→A4→A5` 连续链及 PYTHIA 真实案纵向复验。三轮盲审从布尔精确判定族、16 项假覆盖清零推进到 symlink/物理 SHA/严格 JSON 接线锚；收口补 reproduce output 未消费字段 NaN 的严格 loader 接线锚。
+- **存量影响**：AKE/B2/MOG/TAG 至少四案仍为 adversarial-review v2；已交付案不重跑发布闸不受影响，未来重发布必须按当前 runner 重做结构化 artifacts、execution receipts 与 v3 finalize，禁止手工补字段迁移。
+- **文档与方法**：两侧 `_meaningful_text` docstring 明列白名单覆盖与刻意双写纪律；A4 对账键诚实声明 Mn/Me 可见组合符取舍，净室协议限制依赖组合符承载语义的文字，超顶用户批复明确要求白名单文字；casebook E-19 固化“实义判定漏网须白名单收严、对账键漏网须黑名单保全”的相反安全方向。
+- **R10 台账**：清账 R10-2/R10-10/R10-11/R10-12；新增 R10-16～27 并逐条绑定三线盲审出处。原 15 条余 11 条，加 12 条后现役保留/接受项 23 条。
+- **6.41.0 冻结基线**：`run_all.py` 共 96 个 suite 入口，其中 88 个 `test_*.py` 业务断言入口、8 个 lint/manifest/env 守卫；终验 96/96 PASS、rc=0。`test_repair_batch_a.py` 44/44，F-02 定向套件全绿；invariant census、docs lint 与终态 SHA 见最终完工记录。
 
 ## [6.40.0] - 2026-08-13 — 六视角 BLOCK 修复工程四批收口（codex 13 findings＋GPT 5.6 Pro 交叉对账）
 
