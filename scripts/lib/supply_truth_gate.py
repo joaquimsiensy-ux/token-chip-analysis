@@ -20,7 +20,7 @@
            --min-context-slot N --replay-stats stats.json
   绕过 stats 文件直接传数: --replay-net-raw <最小单位整数>
   --rpc URL          不给时用链默认免 key 端点（DEFAULT_RPC，与 accounting_gate 同表）
-  --proxy URL        只作用于 RPC（Alchemy 国内走 clash 时传 http://127.0.0.1:7897）
+  --proxy URL        只作用于 RPC；代理地址统一从 CHIP_PROXY 取得或显式传入
   --tolerance-bps N  容差，默认 10（0.1%）；正式模式（不加 --exploration）上限就是 10
   --tolerance-waiver PATH  正式模式容差要超过 10bps 时唯一的合法通道：一份人工裁决
                      收据 tolerance-waiver/v1，必须写明批准容差、裁决人、UTC 决定时间、

@@ -189,7 +189,7 @@ size 与 SHA-256；全部通过后才原子将旧 done 升为 `hypersync-v2-done
 ### 3.6 记账模型 gate 的通道实测（accounting_gate.py，3.19）
 
 - **BSC dataseed**：eth_call 历史 state 窗口 **~128 块且节点池深浅抖动**（150 块探测过、边缘偶发 missing trie node——gate 的 rebase 两时点已收缩到 64 块保命中）；支持 **eth_simulateV1**（模拟转账读实收的兜底路）；getLogs 拒(-32005)。bsc/eth publicnode 全 archive 墙（128 块内也拒）；dRPC 免费层限速凶只配兜底。
-- **Alchemy ETH 免费层：eth_call 全历史 archive**（100 万块前实测通）→ ETH 侧 gate 事件窗口自动放大到 1 万块、rebase 窗口 7200 块，检测强度远超 BSC；但 getLogs 限 10 块——事件一律走 HyperSync。`.g.alchemy.com` 走 clash 代理（脚本内置）。
+- **Alchemy ETH 免费层：eth_call 全历史 archive**（100 万块前实测通）→ ETH 侧 gate 事件窗口自动放大到 1 万块、rebase 窗口 7200 块，检测强度远超 BSC；但 getLogs 限 10 块——事件一律走 HyperSync。`.g.alchemy.com` 的代理经 `CHIP_PROXY`/`--proxy` 解析（`scripts/lib/proxy_config.py`），不再内置固定端口。
 - **fee-on-transfer 双路互补**：事件差值覆盖池路径，`eth_simulateV1` 兜底低活跃场景；事件差值只取单侧干净样本。（判例：casebook/supply-accounting.md S-05）
 - **PAXG 链上转账费现役为 0**（曾经 0.02% 是老黄历）——勿再当税币验收样本；**HOGE 2% 税硬编码在合约里，是稳定的 BLOCK 回归样本**。
 - Helius getAccountInfo(jsonParsed) 对 Token-2022 扩展解析完整（BERN transferFeeConfig 全字段直出），无需手动解 TLV。

@@ -19,18 +19,30 @@ import argparse, json, os, subprocess, sys, time
 from datetime import datetime, timezone
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
+from proxy_config import resolve_proxy
+
 RPC = "https://api.mainnet-beta.solana.com"
-PROXY = "http://127.0.0.1:7897"
+PROXY = None
+
+
+class ObservationError(RuntimeError):
+    pass
 
 
 def rpc(method, params, retries=5):
     body = json.dumps({"jsonrpc": "2.0", "id": 1, "method": method, "params": params})
     for i in range(retries):
-        p = subprocess.run(["curl", "-s", "-m", "30", "-x", PROXY, RPC, "-X", "POST",
-                            "-H", "Content-Type: application/json", "-d", body],
-                           capture_output=True, text=True, timeout=45)
+        cmd = ["curl", "-s", "-m", "30"]
+        if PROXY:
+            cmd += ["-x", PROXY]
+        cmd += [RPC, "-X", "POST", "-H", "Content-Type: application/json", "-d", body]
         try:
-            d = json.loads(p.stdout)
+            p = subprocess.run(cmd, capture_output=True, text=True, timeout=45)
+        except (OSError, subprocess.TimeoutExpired):
+            p = None
+        try:
+            d = json.loads(p.stdout) if p is not None else {}
             if "result" in d:
                 return d["result"]
             if "error" in d:
@@ -62,8 +74,7 @@ def all_sigs(addr, cap):
             params[1]["before"] = before
         res = rpc("getSignaturesForAddress", params)
         if res is None:
-            print(f"  签名拉取失败 {addr}", file=sys.stderr)
-            break
+            raise ObservationError(f"签名页观测失败：{addr}")
         if not res:
             break
         sigs.extend(res)
@@ -77,7 +88,7 @@ def all_sigs(addr, cap):
 def decode(sig, self_owner, mint):
     tx = rpc("getTransaction", [sig, {"encoding": "jsonParsed", "maxSupportedTransactionVersion": 0}])
     if tx is None:
-        return None
+        raise ObservationError(f"交易解码观测失败：{sig}")
     meta = tx.get("meta") or {}
     msg = tx["transaction"]["message"]
 
@@ -110,57 +121,88 @@ def find_pool_atas(pool_owner, mint):
                 atas.append(r["account"])
     if not atas:
         res = rpc("getTokenAccountsByOwner", [pool_owner, {"mint": mint}, {"encoding": "jsonParsed"}])
-        for v in (res or {}).get("value", []):
+        if res is None:
+            raise ObservationError(f"池 token account 观测失败：{pool_owner}")
+        for v in res.get("value", []):
             atas.append(v["pubkey"])
     return atas
 
 
-def main():
+def _write_result(ledger, rows, *, complete, verdict, error=None):
+    out = {"complete": complete, "verdict": verdict,
+           "ledger": ledger, "raw_rows": rows}
+    if error is not None:
+        out["error"] = str(error)
+    path = Path("data/stake_ledger.json")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(out, ensure_ascii=False), encoding="utf-8")
+
+
+def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("pool_owner")
     ap.add_argument("--mint")
     ap.add_argument("--cap", type=int, default=2500, help="每 ATA 签名上限")
-    args = ap.parse_args()
+    ap.add_argument("--proxy", default=None,
+                    help="代理 URL；空字符串或 none 显式直连（默认经 CHIP_PROXY/端口探测解析）")
+    args = ap.parse_args(argv)
+    global PROXY
+    try:
+        PROXY = resolve_proxy(args.proxy)
+    except ValueError as exc:
+        ap.error(str(exc))
     mint = resolve_mint(args.mint)
 
-    atas = find_pool_atas(args.pool_owner, mint)
-    if not atas:
-        sys.exit(f"未找到 {args.pool_owner} 的 token account")
-    print(f"池 token accounts: {atas}")
     ledger, rows = {}, []
-    for ata in atas:
-        sigs = all_sigs(ata, args.cap)
-        print(f"  {ata} 有效签名 {len(sigs)}")
-        for s in sigs:
-            r = decode(s["signature"], args.pool_owner, mint)
+    try:
+        atas = find_pool_atas(args.pool_owner, mint)
+        if not atas:
+            raise ObservationError(f"未找到 {args.pool_owner} 的 token account，闭合不可计算")
+        print(f"池 token accounts: {atas}")
+        for ata in atas:
+            sigs = all_sigs(ata, args.cap)
+            print(f"  {ata} 有效签名 {len(sigs)}")
+            for s in sigs:
+                r = decode(s["signature"], args.pool_owner, mint)
+                time.sleep(0.15)
+                if r["delta_raw"] == 0:
+                    continue
+                rows.append(r)
+                # 池 delta>0 = 用户存入；对手方 = 用户
+                for u, v in r["counterparties"].items():
+                    e = ledger.setdefault(u, {"staked": 0, "unstaked": 0, "n": 0})
+                    if r["delta_raw"] > 0 and v < 0:
+                        e["staked"] += -v
+                        e["n"] += 1
+                    elif r["delta_raw"] < 0 and v > 0:
+                        e["unstaked"] += v
+                        e["n"] += 1
+        for e in ledger.values():
+            e["net"] = e["staked"] - e["unstaked"]
+        tot = sum(e["net"] for e in ledger.values())
+        # 闭合验证：账本净额合计 vs 池链上当前余额；任何缺测都禁止默认 0。
+        onchain = 0
+        for ata in atas:
+            res = rpc("getTokenAccountBalance", [ata])
+            if res is None:
+                raise ObservationError(f"余额观测失败：{ata}")
+            try:
+                onchain += int(res["value"]["amount"])
+            except (KeyError, TypeError, ValueError) as exc:
+                raise ObservationError(f"余额观测响应非法：{ata}") from exc
             time.sleep(0.15)
-            if r is None or r["delta_raw"] == 0:
-                continue
-            rows.append(r)
-            # 池 delta>0 = 用户存入；对手方 = 用户
-            for u, v in r["counterparties"].items():
-                e = ledger.setdefault(u, {"staked": 0, "unstaked": 0, "n": 0})
-                if r["delta_raw"] > 0 and v < 0:
-                    e["staked"] += -v
-                    e["n"] += 1
-                elif r["delta_raw"] < 0 and v > 0:
-                    e["unstaked"] += v
-                    e["n"] += 1
-    for u, e in ledger.items():
-        e["net"] = e["staked"] - e["unstaked"]
-    json.dump({"ledger": ledger, "raw_rows": rows}, open("data/stake_ledger.json", "w"))
+    except (ObservationError, KeyError, TypeError, ValueError) as exc:
+        _write_result(ledger, rows, complete=False, verdict="ERROR", error=exc)
+        print(f"ERROR：{exc}；闭合结论不可计算", file=sys.stderr)
+        print("已写 data/stake_ledger.json（complete=false, verdict=ERROR）")
+        return 1
 
-    tot = sum(e["net"] for e in ledger.values())
-    # 闭合验证：账本净额合计 vs 池链上当前余额
-    onchain = 0
-    for ata in atas:
-        res = rpc("getTokenAccountBalance", [ata])
-        if res:
-            onchain += int(res["value"]["amount"])
-        time.sleep(0.15)
+    closed = abs(onchain - tot) <= 2
+    _write_result(ledger, rows, complete=True,
+                  verdict="PASS" if closed else "FAIL")
     print(f"\n账本：{len(ledger)} 个用户，{len(rows)} 笔有效变动，净存合计 {tot:,} raw")
     print(f"池链上余额 {onchain:,} raw  差={onchain - tot:,}"
-          + ("  [闭合]" if abs(onchain - tot) <= 2 else "  [不闭合：签名史没拉全或有非常规边，勿进分析]"))
+          + ("  [闭合]" if closed else "  [不闭合：签名史没拉全或有非常规边，勿进分析]"))
     over = [(u, e) for u, e in ledger.items() if e["unstaked"] > e["staked"]]
     if over:
         print(f"取回>存入的用户 {len(over)} 个（若为池支付奖励，是排除归集仓伪装的证据）：")
@@ -170,7 +212,8 @@ def main():
     for u, e in sorted(ledger.items(), key=lambda kv: -kv[1]["net"])[:15]:
         print(f"  {u}  净 {e['net']:>16,}（存 {e['staked']:,}/取 {e['unstaked']:,}，{e['n']} 笔）")
     print("已写 data/stake_ledger.json")
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())
