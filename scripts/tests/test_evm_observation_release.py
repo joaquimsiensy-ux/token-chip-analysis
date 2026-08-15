@@ -20,7 +20,10 @@ import handoff_manifest as handoff  # noqa: E402
 import shared_release_receipt as shared  # noqa: E402
 import audit_release_gate as audit_release  # noqa: E402
 from endpoint_identity import endpoint_fingerprint  # noqa: E402
-from test_supply_truth_gate import TOKEN, write_evm_bundle  # noqa: E402
+from test_supply_truth_gate import (  # noqa: E402
+    TOKEN,
+    write_evm_bundle as _write_evm_bundle_fixture,
+)
 
 
 AS_OF = 123
@@ -45,6 +48,29 @@ def repo_ref(rel: str) -> dict:
 def file_ref(path: Path, *, shown: str | None = None) -> dict:
     return {"path": shown if shown is not None else path.name,
             "size": path.stat().st_size, "sha256": sha(path)}
+
+
+def write_evm_bundle(root: Path, **kwargs) -> Path:
+    """Adapt the shared legacy fixture to the strict F-04 wire contract."""
+    bundle_path = _write_evm_bundle_fixture(root, **kwargs)
+    bundle = json.loads(bundle_path.read_text(encoding="utf-8"))
+    transcript_ref = bundle["inputs"]["transcript"]
+    transcript_path = Path(transcript_ref["path"])
+    if not transcript_path.is_absolute():
+        transcript_path = root / transcript_path
+    transcript = json.loads(transcript_path.read_text(encoding="utf-8"))
+    for row in transcript[3:6]:
+        row["result"] = f"0x{int(row['result'], 16):064x}"
+    selector = {
+        "blockHash": bundle["anchor"]["block_hash"],
+        "requireCanonical": True,
+    }
+    transcript[6]["params"] = [bundle["target"]["token"], selector]
+    write(transcript_path, transcript)
+    bundle["inputs"]["transcript"] = file_ref(
+        transcript_path, shown=transcript_ref["path"])
+    write(bundle_path, bundle)
+    return bundle_path
 
 
 def receipt_ref(path: Path) -> dict:

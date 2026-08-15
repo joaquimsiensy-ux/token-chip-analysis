@@ -1,0 +1,22 @@
+补充轮施工完成，仅修改两个授权测试文件，未执行任何 git 操作。
+
+- [test_supply_truth_gate.py](/Users/uravvv/.claude/tca-repair-g2/scripts/tests/test_supply_truth_gate.py:87)
+  - 三笔 `eth_call` 改为 66 字符 ABI word。
+  - getCode 改用 EIP-1898 selector。
+  - 非空 runtime code 及其 SHA256 保持一致。
+
+- [test_batch3_evm_vertical_slice.py](/Users/uravvv/.claude/tca-repair-g2/scripts/tests/test_batch3_evm_vertical_slice.py:63)
+  - `eth_call` 返回 32 字节 ABI word。
+  - getCode 校验冻结块 selector，同时保留 accounting gate 所需的 `"latest"`。
+  - 拒绝旧块号形态，返回非空 code。
+
+验收：
+
+- `test_supply_truth_gate.py`：PASS
+- `test_evm_observation.py`：PASS，10/10
+- `test_evm_observation_release.py`：PASS，11/11
+- `test_evm_observation_nonempty_code.py`：PASS，5/5
+- AST 与直接驱动 `FixtureHandler` 协议检查：PASS
+- `test_batch3_evm_vertical_slice.py`：沙箱在 `socket.bind(127.0.0.1)` 返回 `EPERM`，未进入业务验证，需调度方本机复跑。
+
+按你的“只改两个测试文件”要求，未追加修改 `workorder_F04_done.md`。
