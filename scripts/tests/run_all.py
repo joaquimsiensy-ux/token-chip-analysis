@@ -97,6 +97,9 @@ SUITE += ['test_repair_batch1.py']
 # v6.42.0 批2 工单 B：F-02 对抗复核 v3 结构与绑定闭环。
 SUITE += ['test_repair_batch2_f02.py']
 
+# 批3 工单 F01：A4 blocker 语义联动、文本门槛与 entrypoint 身份闭环。
+SUITE += ['test_repair_batch3_f01.py']
+
 
 def main():
     results = []

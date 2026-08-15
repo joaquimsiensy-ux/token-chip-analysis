@@ -136,7 +136,7 @@
   {
    "schemas": [
     "adversarial-review-execution/v1",
-    "adversarial-review/v3"
+    "adversarial-review/v4"
    ],
    "script": "scripts/report/adversarial_review_runner.py"
   },
@@ -364,7 +364,7 @@
   {
    "schemas": [
     "a4-claims/v2",
-    "adversarial-review-artifact/v1",
+    "adversarial-review-artifact/v2",
     "adversarial-review-execution/v1"
    ],
    "script": "scripts/report/adversarial_review_runner.py"
@@ -375,6 +375,7 @@
     "address-balance-snapshot/v1",
     "adversarial-review/v2",
     "adversarial-review/v3",
+    "adversarial-review/v4",
     "figure2-check-receipt/v1",
     "reconciliation-report/v2",
     "reproduce-receipt/v2"
@@ -435,6 +436,7 @@
     "accounting-gate/v1",
     "adversarial-review/v2",
     "adversarial-review/v3",
+    "adversarial-review/v4",
     "evm-reconciliation-receipt/v2",
     "reconciliation-report/v2",
     "shared-release-receipt/v1",
