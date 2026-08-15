@@ -24,6 +24,7 @@ from test_supply_truth_gate import (  # noqa: E402
     TOKEN,
     write_evm_bundle as _write_evm_bundle_fixture,
 )
+from test_audit_release_gate import write_deep_recon_fixtures  # noqa: E402
 
 
 AS_OF = 123
@@ -92,12 +93,12 @@ def build_case(root: Path) -> dict:
     bundle_rel = file_ref(bundle_path)
     bundle_abs = file_ref(bundle_path, shown=str(bundle_path.resolve()))
 
-    replay_path = root / "replay_stats.json"
-    write(replay_path, {"mint_total_raw": TOTAL, "burn_total_raw": 0})
-    replay_ref = file_ref(replay_path)
     fixture_path = root / "fixture.json"
     write(fixture_path, {"fixture": True})
-    fixture_ref = file_ref(fixture_path)
+    recon_v3, time_v3 = write_deep_recon_fixtures(
+        root, target, fixture_path, total=TOTAL, address="0x" + "b" * 40)
+    replay_path = root / "fixture_replay_stats.json"
+    replay_ref = file_ref(replay_path)
 
     accounting = {
         "schema": "accounting-gate/v2", "chain": "eth", "token": TOKEN,
@@ -121,15 +122,7 @@ def build_case(root: Path) -> dict:
     receipts = {}
     for key, producer in producer_paths.items():
         if key in {"balance", "supply"}:
-            body = {
-                "schema": "evm-reconciliation-receipt/v2",
-                "observations": {
-                    "balance_reconciliation": {"checked": 1, "matched": 1,
-                                                "mismatched": 0, "rpc_errors": 0},
-                    "supply_closure": {"closed": True, "negative_count": 0},
-                },
-                "inputs": {"replay_stats": replay_ref},
-            }
+            body = copy.deepcopy(recon_v3)
         elif key == "supply_truth":
             body = {
                 "schema": "supply-truth-receipt/v4", "gate": "supply_truth",
@@ -143,10 +136,7 @@ def build_case(root: Path) -> dict:
                 "observation_bundle": bundle_abs,
             }
         else:
-            body = {
-                "schema": "time-spotcheck/v2", "points": 1, "exact_match": 1,
-                "mismatch": 0, "rpc_err": 0, "inputs": {"fixture": fixture_ref},
-            }
+            body = copy.deepcopy(time_v3)
         body.update({"target": target, "producer": repo_ref(producer),
                      "mode": "formal", "verdict": "PASS", "exit_code": 0})
         path = root / f"reconciliation_{key}_receipt.json"
@@ -295,8 +285,10 @@ def test_handoff_rejects_accounting_missing_anchor_and_source_split():
             lambda obj: (obj.pop("observation_bundle"),
                          write(root / "accounting_mode.json", obj)))(
                 json.loads((root / "accounting_mode.json").read_text())), "does not bind"),
+        # F-07 now rejects the relabelled wrapper at the bound replay cutoff before
+        # the later accounting/bundle anchor comparison; either layer is fail-closed.
         ("anchor", lambda root, case: _lift_handoff_accounting_anchor(root),
-         "anchor mismatch"),
+         "cutoff does not match"),
         ("source", lambda root, case: _bind_alt_supply_bundle(root, case), "same source"),
     )
     for label, mutate, needle in mutations:

@@ -78,7 +78,7 @@
    **流程要求**：Fable 必须在当前会话内向用户如实报告偏差原因并取得明确批复后，才可写 `over-cap-approval/v1`；不得把普通 waiver 自行升级成用户特批。用户批复必须含文字（中英文等白名单语种），纯表情符号不构成有效批复文本。此设计防工作流走捷径/误操作，不防持同用户权限的恶意进程。
 
    **退出语义**：exit 0＝PASS。exit 2 有两种情况，看有没有落收据来分：落了收据＝FAIL；若同 target、同 schema 家族的旧 PASS 在场，kernel 会先以同目录 hard-link 将它归档为 `.superseded-<UTC微秒>.<PID>`，再原子替换 canonical，FAIL 仍返回 exit 2，不得误报通道故障 exit 1。该币余额禁用重放结果并改 Multicall3/RPC 实时直查（地址全集与转账历史仍可用重放，重放余额仅作 ≥阈值超集筛选）；没落收据＝容差政策拒绝（缺 waiver/approval、凭据不合法或未覆盖本次实际偏差），不是 FAIL。政策拒绝会把上一轮旧收据自动作废归档为 `supply_truth.json.superseded-<UTC>`，案内不再有现役收据，下游缺件即停；归档失败升格 exit 1；凭据内容导致的解析异常归 exit 2，同样履行旧收据自动作废归档。exit 1＝检测自身失败（含凭据文件读不动等通道故障），修通道重跑，禁当 PASS。
-4. **时间抽查**：EVM 走分层计划制——先跑 `scripts/lib/anchor_plan.py` 出抽样计划，再跑 `scripts/lib/time_spotcheck.py --chain <链> --final-block <冻结块>` 对独立第二源逐锚点核对，产绑定 target 的 `time-spotcheck/v2`；纯随机锚点容易漏高风险位置。Solana 走 `anchor_sampler.py --as-of-slot <冻结slot> --receipt <回执>`，任一失败日 exit 2。第二源分层选型与全史重拉例外见 evm-recon §13。注意本查不替代供给闭合。
+4. **时间抽查**：EVM 走分层计划制——先跑 `scripts/lib/anchor_plan.py` 出抽样计划，再跑 `scripts/lib/time_spotcheck.py --chain <链> --final-block <冻结块>` 对独立第二源逐锚点核对，产绑定 target、计划链与逐笔调用 transcript 的 `time-spotcheck/v3`；纯随机锚点容易漏高风险位置。Solana 走 `anchor_sampler.py --as-of-slot <冻结slot> --receipt <回执>`，任一失败日 exit 2。第二源分层选型与全史重拉例外见 evm-recon §13。注意本查不替代供给闭合。
 
 对不上＝数据有洞＝回去补，不许"差不多就行"。
 

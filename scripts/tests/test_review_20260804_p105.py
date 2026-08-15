@@ -40,12 +40,99 @@ def bind_balance_receipt_to_snapshot(root: Path, snap: Path) -> None:
     """
     receipt_path = root / "balance_receipt.json"
     receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
-    receipt["inputs"]["balances"] = {"path": str(snap.resolve()),
-                                     "size": snap.stat().st_size, "sha256": sha(snap)}
-    write_json(receipt_path, receipt)
+    raw_balances = json.loads(snap.read_text(encoding="utf-8"))
+    if isinstance(raw_balances, dict) and isinstance(raw_balances.get("balances"), dict):
+        raw_balances = raw_balances["balances"]
+    assert isinstance(raw_balances, dict) and raw_balances, raw_balances
+    balances = {str(address).lower(): int(str(raw))
+                for address, raw in raw_balances.items()}
+    total = sum(balances.values())
+    target = receipt["target"]
+    requested = receipt["observations"]["balance_reconciliation"].get(
+        "requested_top_n", 1)
+    sinks = {"0x" + "0" * 40, "0x000000000000000000000000000000000000dead"}
+    selected = [address for address, _ in
+                sorted(balances.items(), key=lambda item: (-item[1], item[0]))[:requested]
+                if address not in sinks]
+    assert selected, "fixture owner snapshot must contain a non-sink balance"
+
+    # v3 三查强制同源 replay_stats；换绑 owner 世界时必须把 balance/supply/
+    # supply_truth 与 accounting bundle 一起机械重建，不能只给 balance 私造旁路账本。
+    receipt, time_receipt = fixture.write_deep_recon_fixtures(
+        root, target, root / "raw_transfers.jsonl", total=total,
+        address=selected[0])
+    transcript = root / "fixture_recon_transcript.json"
+    gmgn = root / "fixture_gmgn.csv"
+    rows = [{"address": address, "replay_raw": str(balances[address]),
+             "chain_raw": str(balances[address]), "diff_raw": "0", "status": "OK"}
+            for address in selected]
+    calls = [{"seq": seq, "method": "eth_call",
+              "params": [{"to": target["token"].lower(),
+                          "data": "0x70a08231" + "0" * 24
+                                  + address.replace("0x", "")},
+                         hex(target["as_of_block"])],
+              "result": hex(balances[address])}
+             for seq, address in enumerate(selected)]
+    write_json(transcript, calls)
+    gmgn.write_text("address,pct\n", encoding="utf-8")
+
+    receipt["inputs"].update({
+        "balances": {"path": str(snap.resolve()), "size": snap.stat().st_size,
+                     "sha256": sha(snap)},
+        "transcript": {"path": transcript.name, "size": transcript.stat().st_size,
+                       "sha256": sha(transcript)},
+        "gmgn": {"path": gmgn.name, "size": gmgn.stat().st_size,
+                 "sha256": sha(gmgn)},
+    })
+    observations = receipt["observations"]
+    observations["supply_closure"] = {
+        "mint_total_raw": str(total), "burn_total_raw": "0",
+        "nominal_supply_raw": str(total), "balance_sum_raw": str(total),
+        "negative_count": 0, "negative_addresses": [], "closed": True,
+    }
+    observations["balance_reconciliation"] = {
+        "requested_top_n": requested, "selection": "top_n_then_skip_sinks",
+        "checked": len(rows), "matched": len(rows), "mismatched": 0,
+        "rpc_errors": 0, "rows": rows,
+    }
+    observations["gmgn_comparison"] = {
+        "checked": 0, "diff_count": 0, "tolerance_pp": 0.15, "rows": [],
+    }
+
+    bundle_path = fixture.write_evm_bundle(
+        root, token=target["token"], chain=target["chain"],
+        as_of=target["as_of_block"], total=total, zero=0, dead=0)
+    bundle = json.loads(bundle_path.read_text(encoding="utf-8"))
+    bundle_rel = {"path": bundle_path.name, "size": bundle_path.stat().st_size,
+                  "sha256": sha(bundle_path)}
+    bundle_abs = {**bundle_rel, "path": str(bundle_path.resolve())}
+
     recon = json.loads((root / "reconciliation_report.json").read_text(encoding="utf-8"))
-    recon["checks"]["balance"]["receipt"]["sha256"] = sha(receipt_path)
+    for key in ("balance", "supply"):
+        path = root / recon["checks"][key]["receipt"]["path"]
+        write_json(path, receipt)
+        recon["checks"][key]["receipt"]["sha256"] = sha(path)
+    time_path = root / recon["checks"]["time"]["receipt"]["path"]
+    write_json(time_path, time_receipt)
+    recon["checks"]["time"]["receipt"]["sha256"] = sha(time_path)
+
+    truth_path = root / recon["checks"]["supply_truth"]["receipt"]["path"]
+    truth = json.loads(truth_path.read_text(encoding="utf-8"))
+    truth.update({"target": target, "replay_net": str(total),
+                  "onchain_total_supply": str(total), "diff": "0",
+                  "observation_bundle": bundle_abs})
+    truth["inputs"]["replay_stats"] = receipt["inputs"]["replay_stats"]
+    truth["inputs"]["observation_bundle"] = bundle_rel
+    write_json(truth_path, truth)
+    recon["checks"]["supply_truth"]["receipt"]["sha256"] = sha(truth_path)
     write_json(root / "reconciliation_report.json", recon)
+
+    accounting_path = root / "accounting_mode.json"
+    accounting = json.loads(accounting_path.read_text(encoding="utf-8"))
+    accounting["observation_bundle"] = bundle_abs
+    accounting["observed_anchor"] = {
+        "block": target["as_of_block"], "block_hash": bundle["anchor"]["block_hash"]}
+    write_json(accounting_path, accounting)
     sys.path.insert(0, str(HERE.parent / "report"))
     from shared_release_receipt import create_bundle
     create_bundle(root)

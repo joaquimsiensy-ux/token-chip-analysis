@@ -46,6 +46,101 @@ def repo_ref(rel):
     return {"path": rel, "sha256": sha(path)}
 
 
+def artifact_ref(root, path):
+    root = Path(root).resolve()
+    path = Path(path).resolve()
+    return {"path": path.relative_to(root).as_posix(), "size": path.stat().st_size,
+            "sha256": sha(path)}
+
+
+def write_deep_recon_fixtures(root, target, raw_input, *, total=100, address="0xabc"):
+    """F-07: emit truthful v3 verify/time fixtures bound to real case artifacts."""
+    root = Path(root)
+    write_json(root, "fixture_recon_config.json", {
+        "token": target["token"], "decimals": 0, "total_supply_human": str(total)})
+    write_json(root, "fixture_balances.json", {address: str(total)})
+    write_json(root, "fixture_replay_stats.json", {
+        "mint_total_raw": str(total), "burn_total_raw": "0",
+        "max_block": target["as_of_block"]})
+    gmgn = root / "fixture_gmgn.csv"
+    gmgn.write_text(f"address,pct\n{address},1\n", encoding="utf-8")
+    call_data = "0x70a08231" + "0" * 24 + address.lower().replace("0x", "")
+    transcript = [{"seq": 0, "method": "eth_call",
+                   "params": [{"to": target["token"].lower(), "data": call_data},
+                              hex(target["as_of_block"])],
+                   "result": hex(total)}]
+    write_json(root, "fixture_recon_transcript.json", transcript)
+    inputs = {
+        "config": artifact_ref(root, root / "fixture_recon_config.json"),
+        "balances": artifact_ref(root, root / "fixture_balances.json"),
+        "replay_stats": artifact_ref(root, root / "fixture_replay_stats.json"),
+        "gmgn": artifact_ref(root, gmgn),
+        "transcript": artifact_ref(root, root / "fixture_recon_transcript.json"),
+    }
+    recon = {
+        "schema": "evm-reconciliation-receipt/v3", "target": target,
+        "producer": repo_ref("scripts/evm/verify_recon.py"), "mode": "formal",
+        "inputs": inputs, "verdict": "PASS", "exit_code": 0,
+        "observations": {
+            "supply_closure": {
+                "mint_total_raw": str(total), "burn_total_raw": "0",
+                "nominal_supply_raw": str(total), "balance_sum_raw": str(total),
+                "negative_count": 0, "negative_addresses": [], "closed": True},
+            "balance_reconciliation": {
+                "requested_top_n": 1, "selection": "top_n_then_skip_sinks",
+                "checked": 1, "matched": 1, "mismatched": 0, "rpc_errors": 0,
+                "rows": [{"address": address, "replay_raw": str(total),
+                          "chain_raw": str(total), "diff_raw": "0", "status": "OK"}]},
+            "gmgn_comparison": {
+                "checked": 1, "diff_count": 0, "tolerance_pp": 0.15,
+                "rows": [{"address": address, "gmgn_pct": "100",
+                          "replay_pct": "100", "diff_pp": "0", "status": "OK"}]},
+        },
+    }
+
+    raw_input = Path(raw_input)
+    identity = {"path": str(raw_input.resolve()), "size": raw_input.stat().st_size,
+                "sha256": sha(raw_input)}
+    write_json(root, "fixture_anchor_input_manifest.json", {
+        "schema": "anchor-plan-input/v1", "input": identity, "files": [identity]})
+    plan_inputs = {"input_manifest": artifact_ref(
+        root, root / "fixture_anchor_input_manifest.json")}
+    plan_producer = repo_ref("scripts/lib/anchor_plan.py")
+    plan = {"schema": "anchor-plan/v2", "target": target, "input": identity,
+            "matrix_points": [{"kind": "fixture", "addr": address,
+                               "day_end_block": target["as_of_block"],
+                               "expected_balance_raw": str(total)}],
+            "forced_points": []}
+    write_json(root, "fixture_anchor_plan.json", plan)
+    plan_receipt = {
+        "schema": "anchor-plan-receipt/v2", "target": target,
+        "producer": plan_producer, "mode": "formal", "inputs": plan_inputs,
+        "input_identity": identity, "verdict": "PASS", "exit_code": 0}
+    write_json(root, "fixture_anchor_plan_receipt.json", plan_receipt)
+    time_data = "0x70a08231" + address.lower().replace("0x", "").rjust(64, "0")
+    time_transcript = [{"seq": 0, "method": "eth_call",
+                        "params": [{"to": target["token"].lower(), "data": time_data},
+                                   hex(target["as_of_block"])],
+                        "result": hex(total)}]
+    write_json(root, "fixture_time_transcript.json", time_transcript)
+    time_receipt = {
+        "schema": "time-spotcheck/v3", "target": target,
+        "producer": repo_ref("scripts/lib/time_spotcheck.py"), "mode": "formal",
+        "inputs": {
+            "plan": artifact_ref(root, root / "fixture_anchor_plan.json"),
+            "plan_receipt": artifact_ref(root, root / "fixture_anchor_plan_receipt.json"),
+            "input": artifact_ref(root, raw_input),
+            "transcript": artifact_ref(root, root / "fixture_time_transcript.json")},
+        "verdict": "PASS", "exit_code": 0, "gate": "time_spotcheck",
+        "points": 1, "balance_points": 1, "tx_points": 0,
+        "exact_match": 1, "mismatch": 0, "rpc_err": 0,
+        "rows": [{"type": "balance", "kind": "fixture", "addr": address,
+                  "block": target["as_of_block"], "expect_raw": str(total),
+                  "chain_raw": str(total), "diff_raw": "0", "status": "OK"}],
+    }
+    return recon, time_receipt
+
+
 def align_ledgers_to_owner_snapshot(root, snap):
     """B-7（批 D）起三账 balance_source 必须与四查核过的 owner 快照等值——
     夹具把 balance 收据换绑到新快照后，同步三账成员到快照里真实存在的 owner。
@@ -201,15 +296,14 @@ def build_case(root, historical=True):
     balances_file = (root / "fixture_balances.json").resolve()
     balances_input = {"path": str(balances_file), "size": balances_file.stat().st_size,
                       "sha256": sha(balances_file)}
+    recon_v3, time_v3 = write_deep_recon_fixtures(root, target, raw)
+    stats = (root / "fixture_replay_stats.json").resolve()
+    replay_input = {"path": str(stats), "size": stats.stat().st_size,
+                    "sha256": sha(stats)}
     for key in ("balance", "supply", "supply_truth", "time"):
         evidence = root / f"{key}_receipt.json"
         if key in {"balance", "supply"}:
-            receipt_doc = {"schema": "evm-reconciliation-receipt/v2", "target": target,
-                "verdict": "PASS", "exit_code": 0, "observations": {
-                    "supply_closure": {"closed": True, "negative_count": 0},
-                    "balance_reconciliation": {"checked": 1, "matched": 1,
-                        "mismatched": 0, "rpc_errors": 0},
-                    "gmgn_comparison": {"checked": 1, "diff_count": 0}}}
+            receipt_doc = json.loads(json.dumps(recon_v3))
         elif key == "supply_truth":
             receipt_doc = {"schema": "supply-truth-receipt/v4", "target": target,
                 "gate": "supply_truth", "replay_net": "100",
@@ -220,21 +314,18 @@ def build_case(root, historical=True):
                 "observation_bundle": bundle_abs,
                 "verdict": "PASS", "exit_code": 0}
         else:
-            receipt_doc = {"schema": "time-spotcheck/v2", "target": target,
-                "points": 1, "exact_match": 1, "mismatch": 0, "rpc_err": 0,
-                "verdict": "PASS", "exit_code": 0}
+            receipt_doc = json.loads(json.dumps(time_v3))
         # A-5（批 D）：真实 verify_recon 的 balance/supply 收据 inputs 本就绑 replay_stats
         # （四件套之一）；夹具补成合规真实形态——三查绑同一份账本，消费侧同源校验才有账可对。
         if key == "balance":
-            key_inputs = {**envelope_input, "replay_stats": replay_input,
-                          "balances": balances_input}
+            key_inputs = receipt_doc["inputs"]
         elif key == "supply":
-            key_inputs = {**envelope_input, "replay_stats": replay_input}
+            key_inputs = receipt_doc["inputs"]
         elif key == "supply_truth":
             key_inputs = {"replay_stats": replay_input,
                           "observation_bundle": bundle_rel}
         else:
-            key_inputs = envelope_input
+            key_inputs = receipt_doc["inputs"]
         receipt_doc.update({"producer": repo_ref(producers[key]), "mode": "formal",
                             "inputs": key_inputs})
         write_json(root, evidence.name, receipt_doc)

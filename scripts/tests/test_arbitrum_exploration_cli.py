@@ -14,6 +14,8 @@ import tempfile
 from pathlib import Path
 from unittest import mock
 
+from test_audit_release_gate import write_deep_recon_fixtures
+
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path[:0] = [str(ROOT / "scripts/report"), str(ROOT / "scripts/lib")]
@@ -39,23 +41,8 @@ def receipt_item(root, *, chain, mode):
     source = root / "fixture.txt"
     source.write_text("fixture\n", encoding="utf-8")
     receipt_path = root / f"{chain}-{mode}.json"
-    producer = ROOT / "scripts/evm/verify_recon.py"
-    receipt = {
-        "schema": "evm-reconciliation-receipt/v2",
-        "target": target,
-        "producer": {"path": "scripts/evm/verify_recon.py", "sha256": sha(producer)},
-        "mode": mode,
-        "inputs": {"fixture": {"path": source.name, "size": source.stat().st_size,
-                                 "sha256": sha(source)}},
-        "verdict": "PASS",
-        "exit_code": 0,
-        "observations": {
-            "supply_closure": {"closed": True, "negative_count": 0},
-            "balance_reconciliation": {"checked": 1, "matched": 1,
-                                       "mismatched": 0, "rpc_errors": 0},
-            "gmgn_comparison": {"checked": 1, "diff_count": 0},
-        },
-    }
+    receipt, _ = write_deep_recon_fixtures(root, target, source)
+    receipt["mode"] = mode
     write_json(receipt_path, receipt)
     item = {"status": "PASS", "exit_code": 0,
             "receipt": {"path": receipt_path.name, "sha256": sha(receipt_path)}}

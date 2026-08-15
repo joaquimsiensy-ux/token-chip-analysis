@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""EVM 对账生产器：余额、供给闭合与 GMGN 对表，产绑定目标的 v2 回执。
+"""EVM 对账生产器：余额、供给闭合与 GMGN 对表，产绑定目标的 v3 回执。
 
 退出码：0=全部硬检查 PASS；2=供给/余额硬不一致；1=输入、RPC 或写入失败。
 """
@@ -17,10 +17,10 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
 from chain_registry import (executable_evm_chains, resolve_execution_mode)
 from net import RpcChainMismatch, attested_rpc_pool
-from receipt_kernel import (build_envelope, finalize_envelope, publish_error_receipt,
-                            publish_overwrite, publish_supersede)
+from receipt_kernel import (assert_distinct_paths, build_envelope, finalize_envelope,
+                            publish_error_receipt, publish_txn)
 from supply_semantics import DEAD, ZERO
-SCHEMA = "evm-reconciliation-receipt/v2"
+SCHEMA = "evm-reconciliation-receipt/v3"
 SCHEMA_FAMILY = "evm-reconciliation-receipt/"
 
 
@@ -28,12 +28,31 @@ class ReconFailure(ValueError):
     """A completed hard check failed (exit 2), as distinct from producer ERROR."""
 
 
-def rpc_balance_of(pool, token, address, block):
+def _json_bytes(payload):
+    return (json.dumps(payload, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
+
+
+def _future_input_ref(path, case_root, payload):
+    resolved = Path(path).expanduser().resolve()
+    root = Path(case_root).expanduser().resolve()
+    try:
+        shown = resolved.relative_to(root).as_posix()
+    except ValueError as exc:
+        raise ValueError("--transcript-out 必须落在 receipt 案根目录内") from exc
+    data = _json_bytes(payload)
+    return {"path": shown, "size": len(data), "sha256": hashlib.sha256(data).hexdigest()}
+
+
+def rpc_balance_of(pool, token, address, block, transcript):
     data = "0x70a08231" + "0" * 24 + address.lower().replace("0x", "")
-    result = pool.call("eth_call", [{"to": token, "data": data}, hex(int(block))])
-    if not result.get("ok") or result.get("result") in (None, "0x"):
-        raise ValueError(f"eth_call 无有效 result: {result.get('error') or result.get('result')!r}")
-    return int(result["result"], 16)
+    params = [{"to": token, "data": data}, hex(int(block))]
+    response = pool.call("eth_call", params)
+    raw = response.get("result")
+    if not response.get("ok") or not isinstance(raw, str) or raw in ("", "0x"):
+        raise ValueError(f"eth_call 无有效 result: {response.get('error') or raw!r}")
+    transcript.append({"seq": len(transcript), "method": "eth_call",
+                       "params": params, "result": raw})
+    return int(raw, 16)
 
 
 def parse_args(argv=None):
@@ -49,6 +68,7 @@ def parse_args(argv=None):
     ap.add_argument("--token", required=True)
     ap.add_argument("--end-block", required=True, type=int)
     ap.add_argument("--out", required=True)
+    ap.add_argument("--transcript-out")
     ap.add_argument("--rpc")
     ap.add_argument("--proxy")
     ap.add_argument("--top-n", type=int, default=15)
@@ -63,9 +83,18 @@ def parse_args(argv=None):
 
 def main(argv=None):
     a = parse_args(argv)
+    if a.transcript_out is None:
+        a.transcript_out = str(Path(a.out).expanduser().resolve().parent
+                               / "verify_recon_transcript.json")
+    try:
+        assert_distinct_paths(a.out, a.transcript_out)
+    except Exception as exc:
+        print(f"[verify_recon] output/transcript 路径冲突: {exc}", file=sys.stderr)
+        return 1
     target = {"chain": a.chain, "token": a.token.lower(), "as_of_block": a.end_block}
     base_envelope = build_envelope(SCHEMA, target, __file__, a.execution_mode)
     envelope = base_envelope
+    transcript = []
     try:
         if a.end_block < 0 or a.top_n <= 0:
             raise ValueError("end-block 必须非负且 top-n 必须为正")
@@ -110,13 +139,13 @@ def main(argv=None):
         except RpcChainMismatch as exc:
             raise ReconFailure(str(exc)) from exc
         rows, matched, mismatched, rpc_errors = [], 0, 0, 0
-        top = sorted(balances.items(), key=lambda kv: -kv[1])[:a.top_n]
+        top = sorted(balances.items(), key=lambda kv: (-kv[1], kv[0]))[:a.top_n]
         for address, replay_raw in top:
             if address in {ZERO, DEAD}:
                 continue
             try:
                 chain_raw = int(rpc_balance_of(pool, target["token"], address,
-                                               a.end_block))
+                                               a.end_block, transcript))
                 ok = chain_raw == replay_raw
                 matched += int(ok); mismatched += int(not ok)
                 rows.append({"address": address, "replay_raw": str(replay_raw),
@@ -127,19 +156,29 @@ def main(argv=None):
                 rows.append({"address": address, "replay_raw": str(replay_raw),
                              "status": "RPC_ERROR", "error": str(exc)[:300]})
 
-        gmgn_rows, gmgn_diff = [], 0
+        gmgn_rows, gmgn_diff, gmgn_seen = [], 0, set()
         with gmgn_path.open(newline="", encoding="utf-8") as f:
             for row in list(csv.DictReader(f))[:10]:
                 address = str(row.get("address") or "").lower()
                 if not address:
                     continue
-                gmgn_pct = float(row.get("pct") or 0) * 100
-                replay_pct = balances.get(address, 0) * 100 / nominal if nominal else 0.0
+                if address in gmgn_seen:
+                    raise ValueError(f"GMGN 前 10 行地址重复: {address}")
+                gmgn_seen.add(address)
+                try:
+                    gmgn_fraction = Decimal(str(row.get("pct") or "0"))
+                except Exception as exc:
+                    raise ValueError(f"GMGN pct 非法: {row.get('pct')!r}") from exc
+                if not gmgn_fraction.is_finite():
+                    raise ValueError(f"GMGN pct 必须为有限数: {row.get('pct')!r}")
+                gmgn_pct = gmgn_fraction * Decimal(100)
+                replay_pct = (Decimal(balances.get(address, 0)) * Decimal(100)
+                              / Decimal(nominal) if nominal else Decimal(0))
                 diff_pp = abs(gmgn_pct - replay_pct)
-                gmgn_diff += int(diff_pp >= 0.15)
-                gmgn_rows.append({"address": address, "gmgn_pct": gmgn_pct,
-                                  "replay_pct": replay_pct, "diff_pp": diff_pp,
-                                  "status": "OK" if diff_pp < 0.15 else "DIFF"})
+                gmgn_diff += int(diff_pp >= Decimal("0.15"))
+                gmgn_rows.append({"address": address, "gmgn_pct": str(gmgn_pct),
+                                  "replay_pct": str(replay_pct), "diff_pp": str(diff_pp),
+                                  "status": "OK" if diff_pp < Decimal("0.15") else "DIFF"})
 
         observations = {
             "supply_closure": {"mint_total_raw": str(mint), "burn_total_raw": str(burn),
@@ -147,12 +186,16 @@ def main(argv=None):
                                "balance_sum_raw": str(balance_sum),
                                "negative_count": len(negatives), "negative_addresses": negatives,
                                "closed": supply_closed},
-            "balance_reconciliation": {"checked": len(rows), "matched": matched,
+            "balance_reconciliation": {"requested_top_n": a.top_n,
+                                       "selection": "top_n_then_skip_sinks",
+                                       "checked": len(rows), "matched": matched,
                                        "mismatched": mismatched, "rpc_errors": rpc_errors,
                                        "rows": rows},
             "gmgn_comparison": {"checked": len(gmgn_rows), "diff_count": gmgn_diff,
                                 "tolerance_pp": 0.15, "rows": gmgn_rows},
         }
+        envelope["inputs"]["transcript"] = _future_input_ref(
+            a.transcript_out, Path(a.out).expanduser().resolve().parent, transcript)
         if rpc_errors:
             raise ValueError(f"{rpc_errors} 个 RPC 观测失败")
         elif not supply_closed or mismatched:
@@ -162,6 +205,8 @@ def main(argv=None):
             receipt = finalize_envelope(envelope, "PASS", 0,
                                         observations=observations, error=None)
     except ReconFailure as exc:
+        envelope["inputs"]["transcript"] = _future_input_ref(
+            a.transcript_out, Path(a.out).expanduser().resolve().parent, transcript)
         receipt = finalize_envelope(envelope, "FAIL", 2, observations={}, error=str(exc))
     except Exception as exc:
         try:
@@ -171,10 +216,7 @@ def main(argv=None):
             print(f"[verify_recon] ERROR receipt 写入失败: {write_exc}", file=sys.stderr)
         return 1
     try:
-        if receipt["verdict"] == "FAIL":
-            publish_supersede(a.out, receipt, schema_family=SCHEMA_FAMILY)
-        else:
-            publish_overwrite(a.out, receipt)
+        publish_txn(a.transcript_out, transcript, a.out, receipt)
     except Exception as exc:
         print(f"[verify_recon] receipt 写入失败: {exc}", file=sys.stderr)
         return 1

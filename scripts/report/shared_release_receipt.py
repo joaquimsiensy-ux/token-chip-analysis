@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 import argparse
+from collections import Counter
+import csv
 import hashlib
 import json
 import math
 import os
 import sys
 from datetime import datetime, timedelta, timezone
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -296,6 +299,8 @@ def _bound_case_ref(root, ref, label, *, base=None):
 
 
 MIGRATION_HINT = "存量案例须重跑对应生产者获取当前回执"
+VERIFY_RECON_V3_HINT = "存量案须以 verify_recon v3 重跑对账"
+TIME_SPOTCHECK_V3_HINT = "存量案须以 time_spotcheck v3 重跑时间抽查"
 
 
 def _bound_replay_totals(root, receipt):
@@ -469,6 +474,408 @@ def _validate_tolerance_policy(root, receipt, target):
              "supply_truth tolerance exceeds waiver approved_tolerance_bps")
 
 
+def _bound_json_input(root, receipt, name, label):
+    ref = (receipt.get("inputs") or {}).get(name)
+    path = _bound_case_ref(root, ref, label)
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"),
+                           parse_constant=_reject_constant)
+    except (OSError, json.JSONDecodeError, ValueError, RecursionError) as exc:
+        raise ValueError(f"{label} JSON invalid: {exc}") from exc
+    return path, value
+
+
+def _integer(value, label):
+    if isinstance(value, bool) or isinstance(value, float):
+        raise ValueError(f"{label} must be an integer")
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{label} must be an integer") from exc
+    if str(value).strip() != str(parsed):
+        raise ValueError(f"{label} must use canonical integer spelling")
+    return parsed
+
+
+def _decimal(value, label):
+    try:
+        parsed = Decimal(str(value))
+    except (InvalidOperation, TypeError, ValueError) as exc:
+        raise ValueError(f"{label} must be decimal") from exc
+    if not parsed.is_finite():
+        raise ValueError(f"{label} must be finite")
+    return parsed
+
+
+def _recon_bound_reality(root, receipt, target):
+    _, config = _bound_json_input(root, receipt, "config", "verify_recon config")
+    _, balances_raw = _bound_json_input(
+        root, receipt, "balances", "verify_recon balances")
+    _, stats = _bound_json_input(
+        root, receipt, "replay_stats", "verify_recon replay_stats")
+    _require(isinstance(config, dict), "verify_recon config must be an object")
+    _require(isinstance(balances_raw, dict) and bool(balances_raw),
+             "verify_recon balances must be a non-empty object")
+    _require(isinstance(stats, dict), "verify_recon replay_stats must be an object")
+    config_token = str(config.get("token") or "").lower()
+    _require(config_token == str(target["token"]).lower(),
+             "verify_recon config token does not match target token")
+    decimals = config.get("decimals")
+    _require(isinstance(decimals, int) and not isinstance(decimals, bool) and decimals >= 0,
+             "verify_recon config decimals invalid")
+    supply_human = _decimal(config.get("total_supply_human"),
+                            "verify_recon total_supply_human")
+    nominal = int(supply_human * (Decimal(10) ** decimals))
+    balances = {}
+    for raw_address, raw_value in balances_raw.items():
+        address = str(raw_address).lower()
+        _require(bool(address) and address not in balances,
+                 f"verify_recon balances duplicate/empty address: {address!r}")
+        balances[address] = _integer(raw_value, f"verify_recon balance {address}")
+    stats_end = stats.get("max_block")
+    if stats_end is None:
+        stats_end = stats.get("last_block")
+    _require(_integer(stats_end, "verify_recon replay_stats cutoff")
+             == canonical_target(target)["as_of_block"],
+             "verify_recon replay_stats cutoff does not match target.as_of_block")
+    try:
+        mint, burn = parse_replay_stats(stats)
+    except Exception as exc:
+        raise ValueError(f"verify_recon replay_stats mint/burn invalid: {exc}") from exc
+    balance_sum = sum(balances.values())
+    negatives = sorted(address for address, value in balances.items() if value < 0)
+    closed = mint == nominal and balance_sum == mint and not negatives
+    return balances, {
+        "mint_total_raw": str(mint), "burn_total_raw": str(burn),
+        "nominal_supply_raw": str(nominal), "balance_sum_raw": str(balance_sum),
+        "negative_count": len(negatives), "negative_addresses": negatives,
+        "closed": closed,
+    }, nominal
+
+
+def _validate_recon_supply(observations, expected):
+    shown = observations.get("supply_closure")
+    _require(isinstance(shown, dict), "supply_closure missing")
+    for field, value in expected.items():
+        _require(shown.get(field) == value,
+                 f"supply_closure {field} differs from bound artifacts")
+
+
+def _validate_balance_transcript(root, receipt, rows, target):
+    _, transcript = _bound_json_input(
+        root, receipt, "transcript", "verify_recon transcript")
+    _require(isinstance(transcript, list) and len(transcript) == len(rows),
+             "verify_recon transcript length does not match balance rows")
+    token = str(target["token"]).lower()
+    block = hex(canonical_target(target)["as_of_block"])
+    for seq, (call, row) in enumerate(zip(transcript, rows)):
+        _require(isinstance(call, dict) and call.get("seq") == seq,
+                 f"verify_recon transcript seq {seq} is not continuous")
+        _require(call.get("method") == "eth_call",
+                 f"verify_recon transcript method {seq} must be eth_call")
+        address = str(row.get("address") or "").lower()
+        data = "0x70a08231" + "0" * 24 + address.replace("0x", "")
+        _require(call.get("params") == [{"to": token, "data": data}, block],
+                 f"verify_recon transcript params {seq} do not bind row address/block")
+        raw = call.get("result")
+        _require(isinstance(raw, str) and raw.startswith("0x") and len(raw) > 2,
+                 f"verify_recon transcript result {seq} is not hex")
+        try:
+            chain_raw = int(raw, 16)
+        except ValueError as exc:
+            raise ValueError(
+                f"verify_recon transcript result {seq} is not hex") from exc
+        _require(str(chain_raw) == row.get("chain_raw"),
+                 f"verify_recon transcript result {seq} differs from row.chain_raw")
+
+
+def _validate_recon_balance(root, receipt, observations, balances, target):
+    shown = observations.get("balance_reconciliation")
+    _require(isinstance(shown, dict), "balance_reconciliation missing")
+    requested = shown.get("requested_top_n")
+    _require(isinstance(requested, int) and not isinstance(requested, bool)
+             and requested > 0,
+             "balance_reconciliation requested_top_n must be a positive integer")
+    _require(shown.get("selection") == "top_n_then_skip_sinks",
+             "balance_reconciliation selection semantics invalid")
+    rows = shown.get("rows")
+    _require(isinstance(rows, list) and all(isinstance(row, dict) for row in rows),
+             "balance_reconciliation rows invalid")
+    from supply_semantics import DEAD, ZERO
+    expected_addresses = [
+        address for address, _ in
+        sorted(balances.items(), key=lambda item: (-item[1], item[0]))[:requested]
+        if address not in {ZERO, DEAD}
+    ]
+    addresses = [str(row.get("address") or "").lower() for row in rows]
+    _require(addresses == expected_addresses,
+             "balance_reconciliation address sequence differs from bound balances")
+    counts = Counter()
+    for index, (row, address) in enumerate(zip(rows, addresses)):
+        _require(row.get("replay_raw") == str(balances[address]),
+                 f"balance row {index} replay_raw differs from bound balances")
+        status = row.get("status")
+        _require(status in {"OK", "MISMATCH", "RPC_ERROR"},
+                 f"balance row {index} status invalid")
+        counts[status] += 1
+        if status == "RPC_ERROR":
+            _require("chain_raw" not in row and "diff_raw" not in row,
+                     f"balance row {index} RPC_ERROR carries chain values")
+            continue
+        chain_raw = _integer(row.get("chain_raw"), f"balance row {index} chain_raw")
+        diff_raw = chain_raw - balances[address]
+        _require(row.get("diff_raw") == str(diff_raw),
+                 f"balance row {index} diff_raw is not recomputed")
+        _require(status == ("OK" if diff_raw == 0 else "MISMATCH"),
+                 f"balance row {index} status is inconsistent with diff_raw")
+    _require(shown.get("checked") == len(rows),
+             "balance_reconciliation checked differs from rows")
+    _require(shown.get("matched") == counts["OK"],
+             "balance_reconciliation matched differs from rows")
+    _require(shown.get("mismatched") == counts["MISMATCH"],
+             "balance_reconciliation mismatched differs from rows")
+    _require(shown.get("rpc_errors") == counts["RPC_ERROR"],
+             "balance_reconciliation rpc_errors differs from rows")
+    _require(not counts["MISMATCH"] and not counts["RPC_ERROR"],
+             "PASS balance receipt contains MISMATCH/RPC_ERROR row")
+    _require(bool(rows), "balance_reconciliation must check at least one non-sink row")
+    _validate_balance_transcript(root, receipt, rows, target)
+
+
+def _validate_recon_gmgn(root, receipt, observations, balances, nominal):
+    gmgn_ref = (receipt.get("inputs") or {}).get("gmgn")
+    gmgn_path = _bound_case_ref(root, gmgn_ref, "verify_recon gmgn")
+    expected = []
+    seen = set()
+    try:
+        with gmgn_path.open(newline="", encoding="utf-8") as stream:
+            source_rows = list(csv.DictReader(stream))[:10]
+    except (OSError, csv.Error) as exc:
+        raise ValueError(f"verify_recon gmgn CSV invalid: {exc}") from exc
+    for index, source in enumerate(source_rows):
+        address = str(source.get("address") or "").lower()
+        if not address:
+            continue
+        _require(address not in seen, f"verify_recon gmgn duplicate address: {address}")
+        seen.add(address)
+        fraction = _decimal(source.get("pct") or "0", f"gmgn row {index} pct")
+        gmgn_pct = fraction * Decimal(100)
+        replay_pct = (Decimal(balances.get(address, 0)) * Decimal(100)
+                      / Decimal(nominal) if nominal else Decimal(0))
+        diff = abs(gmgn_pct - replay_pct)
+        expected.append({
+            "address": address, "gmgn_pct": str(gmgn_pct),
+            "replay_pct": str(replay_pct), "diff_pp": str(diff),
+            "status": "OK" if diff < Decimal("0.15") else "DIFF",
+        })
+    shown = observations.get("gmgn_comparison")
+    _require(isinstance(shown, dict), "gmgn_comparison missing")
+    _require(_decimal(shown.get("tolerance_pp"), "gmgn tolerance_pp")
+             == Decimal("0.15"), "gmgn tolerance_pp invalid")
+    rows = shown.get("rows")
+    _require(rows == expected, "gmgn rows differ from bound CSV/balances")
+    _require(shown.get("checked") == len(expected),
+             "gmgn checked differs from bound CSV")
+    _require(shown.get("diff_count") == sum(row["status"] == "DIFF" for row in expected),
+             "gmgn diff_count differs from recomputed rows")
+
+
+def _validate_evm_reconciliation_receipt(root, receipt, target):
+    observations = receipt.get("observations")
+    _require(isinstance(observations, dict), "verify_recon observations missing")
+    balances, supply, nominal = _recon_bound_reality(root, receipt, target)
+    _validate_recon_supply(observations, supply)
+    _validate_recon_balance(root, receipt, observations, balances, target)
+    _validate_recon_gmgn(root, receipt, observations, balances, nominal)
+
+
+def _plan_point(row):
+    if row.get("expected_balance_raw") is not None and row.get("addr"):
+        return ("balance", row.get("kind"), row.get("addr"),
+                row.get("day_end_block"), str(row.get("expected_balance_raw")))
+    if row.get("tx") and row.get("expected_value_raw") is not None:
+        return ("tx", row.get("kind"), row.get("tx"), row.get("from"),
+                row.get("to"), row.get("block"), str(row.get("expected_value_raw")))
+    raise ValueError("time plan contains unclassifiable point")
+
+
+def _time_row_point(row):
+    if row.get("type") == "balance":
+        return ("balance", row.get("kind"), row.get("addr"), row.get("block"),
+                str(row.get("expect_raw")))
+    if row.get("type") == "tx":
+        return ("tx", row.get("kind"), row.get("tx"), row.get("from"),
+                row.get("to"), row.get("block"), str(row.get("expect_raw")))
+    raise ValueError("time row type invalid")
+
+
+def _tx_transcript_matches(raw_receipt, row, token):
+    if not isinstance(raw_receipt, dict):
+        return False, 0
+    try:
+        receipt_block = int(raw_receipt.get("blockNumber", "0x0"), 16)
+        expected_value = _integer(row.get("expect_raw"), "time tx expect_raw")
+    except (TypeError, ValueError):
+        return False, 0
+    topic = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
+    expected_from = str(row.get("from") or "").lower().replace("0x", "").rjust(40, "0")[-40:]
+    expected_to = str(row.get("to") or "").lower().replace("0x", "").rjust(40, "0")[-40:]
+    hit = False
+    for log in raw_receipt.get("logs") or []:
+        topics = log.get("topics") or [] if isinstance(log, dict) else []
+        try:
+            matches = (str(log.get("address") or "").lower() == token
+                       and len(topics) >= 3 and str(topics[0]).lower() == topic
+                       and str(topics[1])[-40:].lower() == expected_from
+                       and str(topics[2])[-40:].lower() == expected_to
+                       and int(log.get("data", "0x0"), 16) == expected_value)
+        except (TypeError, ValueError):
+            matches = False
+        if matches:
+            hit = True
+            break
+    block_ok = row.get("block") is None or receipt_block == row.get("block")
+    return hit and block_ok, receipt_block
+
+
+def _validate_time_receipt(root, receipt, target):
+    _, plan = _bound_json_input(root, receipt, "plan", "time plan")
+    _, plan_receipt = _bound_json_input(
+        root, receipt, "plan_receipt", "time plan receipt")
+    input_ref = (receipt.get("inputs") or {}).get("input")
+    _bound_case_ref(root, input_ref, "time merged input")
+    _require(isinstance(plan, dict) and isinstance(plan_receipt, dict),
+             "time plan/receipt must be objects")
+    plan_errors = validate_receipt(plan_receipt, case_root=root)
+    _require(not plan_errors, f"time plan receipt envelope invalid: {plan_errors[:1]}")
+    _require(plan_receipt.get("schema") == "anchor-plan-receipt/v2"
+             and plan_receipt.get("verdict") == "PASS"
+             and plan_receipt.get("exit_code") == 0,
+             "time plan receipt schema/verdict invalid")
+    _require(canonical_target(plan_receipt.get("target")) == canonical_target(target),
+             "time plan receipt target mismatch")
+    identity = plan_receipt.get("input_identity")
+    _require(isinstance(identity, dict) and identity.get("sha256") == input_ref.get("sha256"),
+             "time plan receipt bound input differs from time receipt input")
+    _require(isinstance(plan.get("input"), dict)
+             and plan["input"].get("sha256") == input_ref.get("sha256"),
+             "time plan input differs from time receipt input")
+    expected_points = []
+    for field in ("matrix_points", "forced_points"):
+        rows = plan.get(field)
+        _require(isinstance(rows, list), f"time plan {field} invalid")
+        expected_points.extend(_plan_point(row) for row in rows)
+    rows = receipt.get("rows")
+    _require(isinstance(rows, list) and bool(rows)
+             and all(isinstance(row, dict) for row in rows), "time rows invalid")
+    _require(Counter(_time_row_point(row) for row in rows) == Counter(expected_points),
+             "time rows do not correspond one-to-one with plan points")
+    _, transcript = _bound_json_input(root, receipt, "transcript", "time transcript")
+    _require(isinstance(transcript, list) and len(transcript) == len(rows),
+             "time transcript length differs from rows")
+    counts = Counter()
+    token = str(target["token"]).lower()
+    for seq, (row, call) in enumerate(zip(rows, transcript)):
+        _require(isinstance(call, dict) and call.get("seq") == seq,
+                 f"time transcript seq {seq} is not continuous")
+        status = row.get("status")
+        _require(status in {"OK", "MISMATCH", "RPC_ERR"},
+                 f"time row {seq} status invalid")
+        counts[status] += 1
+        if row.get("type") == "balance":
+            data = "0x70a08231" + str(row["addr"]).lower().replace("0x", "").rjust(64, "0")
+            _require(call.get("method") == "eth_call"
+                     and call.get("params") == [{"to": token, "data": data}, hex(row["block"])],
+                     f"time balance transcript params {seq} mismatch")
+            raw = call.get("result")
+            _require(isinstance(raw, str) and raw.startswith("0x"),
+                     f"time balance transcript result {seq} invalid")
+            try:
+                chain_raw = int(raw, 16)
+            except ValueError as exc:
+                raise ValueError(f"time balance transcript result {seq} invalid") from exc
+            expected_raw = _integer(row.get("expect_raw"), f"time row {seq} expect_raw")
+            _require(row.get("chain_raw") == str(chain_raw)
+                     and row.get("diff_raw") == str(chain_raw - expected_raw)
+                     and status == ("OK" if chain_raw == expected_raw else "MISMATCH"),
+                     f"time balance row {seq} differs from transcript/expectation")
+        else:
+            _require(call.get("method") == "eth_getTransactionReceipt"
+                     and call.get("params") == [row.get("tx")],
+                     f"time tx transcript params {seq} mismatch")
+            matched, receipt_block = _tx_transcript_matches(call.get("result"), row, token)
+            _require(row.get("receipt_block") == receipt_block
+                     and status == ("OK" if matched else "MISMATCH"),
+                     f"time tx row {seq} differs from transcript")
+    balance_count = sum(row.get("type") == "balance" for row in rows)
+    tx_count = sum(row.get("type") == "tx" for row in rows)
+    _require(receipt.get("points") == len(rows)
+             and receipt.get("balance_points") == balance_count
+             and receipt.get("tx_points") == tx_count
+             and receipt.get("exact_match") == counts["OK"]
+             and receipt.get("mismatch") == counts["MISMATCH"]
+             and receipt.get("rpc_err") == counts["RPC_ERR"],
+             "time receipt counters differ from rows")
+    _require(not counts["MISMATCH"] and not counts["RPC_ERR"],
+             "PASS time receipt contains MISMATCH/RPC_ERR row")
+
+
+def _validate_anchor_receipt(root, receipt, target):
+    output_path = _bound_case_ref(root, receipt.get("output"), "anchor output")
+    rows = []
+    try:
+        for line_no, line in enumerate(output_path.read_text(encoding="utf-8").splitlines(), 1):
+            if not line.strip():
+                continue
+            value = json.loads(line, parse_constant=_reject_constant)
+            _require(isinstance(value, dict), f"anchor output row {line_no} invalid")
+            rows.append(value)
+    except (OSError, json.JSONDecodeError, ValueError) as exc:
+        raise ValueError(f"anchor output invalid: {exc}") from exc
+    date_range = receipt.get("date_range")
+    _require(isinstance(date_range, dict)
+             and set(date_range) == {"start", "end"}, "anchor date_range invalid")
+    try:
+        start = datetime.fromisoformat(date_range["start"]).date()
+        end = datetime.fromisoformat(date_range["end"]).date()
+    except (TypeError, ValueError) as exc:
+        raise ValueError("anchor date_range invalid") from exc
+    _require(start <= end, "anchor date_range start exceeds end")
+    dates = []
+    failures = []
+    covered = 0
+    for index, row in enumerate(rows):
+        try:
+            day = datetime.fromisoformat(str(row.get("date"))).date()
+        except ValueError as exc:
+            raise ValueError(f"anchor row {index} date invalid") from exc
+        _require(start <= day <= end, f"anchor row {index} date outside target range")
+        dates.append(day.isoformat())
+        _require(row.get("chain") == "solana"
+                 and str(row.get("mint") or "").lower() == str(target["token"]).lower()
+                 and row.get("as_of_slot") == target["as_of_block"]
+                 and isinstance(row.get("endpoint"), str) and bool(row.get("endpoint")),
+                 f"anchor row {index} identity differs from target")
+        if row.get("error"):
+            failures.append({"date": row.get("date"), "error": row.get("error"),
+                             "from_slot": row.get("from_slot"),
+                             "to_slot": row.get("to_slot")})
+        else:
+            covered += 1
+    _require(len(dates) == len(set(dates)), "anchor output contains duplicate dates")
+    requested = (end - start).days + 1
+    _require(len(rows) == requested, "anchor output row count differs from requested days")
+    coverage = receipt.get("coverage")
+    _require(isinstance(coverage, dict)
+             and coverage.get("requested_days") == requested
+             and coverage.get("covered_days") == covered
+             and coverage.get("failed_days") == len(failures),
+             "anchor coverage differs from output rows")
+    _require(receipt.get("failures") == failures,
+             "anchor failures differ from output error rows")
+    _require(not failures, "PASS anchor receipt contains error rows")
+
+
 def validate_reconciliation_check(root, key, item, target, family):
     """Validate one producer receipt semantically; wrapper fields are comparisons, not truth."""
     if not isinstance(item, dict):
@@ -500,18 +907,10 @@ def validate_reconciliation_check(root, key, item, target, family):
                  f"reconciliation {key} receipt must be formal；{migration}")
         _require(formal_ready(target["chain"]),
                  f"正式对账消费面只接受 formal-ready 链；{migration}")
-        _require(schema == "evm-reconciliation-receipt/v2",
-                 f"reconciliation {key} unknown schema {schema!r}；{migration}")
-        if key == "balance":
-            bal = obs.get("balance_reconciliation") or {}
-            _require(isinstance(bal.get("checked"), int) and bal["checked"] > 0
-                     and bal.get("matched") == bal["checked"]
-                     and bal.get("mismatched") == 0 and bal.get("rpc_errors") == 0,
-                     "balance receipt observations incomplete or non-PASS")
-        else:
-            supply = obs.get("supply_closure") or {}
-            _require(supply.get("closed") is True and supply.get("negative_count") == 0,
-                     "supply receipt observations incomplete or non-closed")
+        _require(schema == "evm-reconciliation-receipt/v3",
+                 f"reconciliation {key} unknown schema {schema!r}; expected "
+                 f"evm-reconciliation-receipt/v3；{VERIFY_RECON_V3_HINT}")
+        _validate_evm_reconciliation_receipt(root, receipt, target)
     elif family == "solana" and key in {"balance", "time"}:
         _require(receipt.get("mode") == "formal",
                  f"reconciliation {key} receipt must be formal；{migration}")
@@ -519,12 +918,7 @@ def validate_reconciliation_check(root, key, item, target, family):
                  f"正式对账消费面只接受 formal-ready 链；{migration}")
         _require(schema == "solana-anchor-sampler-receipt/v2",
                  f"reconciliation {key} unknown schema {schema!r}；{migration}")
-        coverage = receipt.get("coverage") or {}
-        _require(isinstance(coverage.get("requested_days"), int)
-                 and coverage["requested_days"] > 0
-                 and coverage.get("covered_days") == coverage["requested_days"]
-                 and coverage.get("failed_days") == 0 and receipt.get("failures") == [],
-                 "anchor receipt coverage incomplete")
+        _validate_anchor_receipt(root, receipt, target)
     elif family == "solana" and key == "supply":
         _require(schema == "solana-observation-bundle/v1",
                  f"reconciliation supply unknown schema {schema!r}；{migration}")
@@ -667,12 +1061,10 @@ def validate_reconciliation_check(root, key, item, target, family):
                  f"reconciliation time receipt must be formal；{migration}")
         _require(formal_ready(target["chain"]),
                  f"正式对账消费面只接受 formal-ready 链；{migration}")
-        _require(schema == "time-spotcheck/v2",
-                 f"reconciliation time unknown schema {schema!r}；{migration}")
-        _require(isinstance(receipt.get("points"), int) and receipt["points"] > 0
-                 and receipt.get("exact_match") == receipt["points"]
-                 and receipt.get("mismatch") == 0 and receipt.get("rpc_err") == 0,
-                 "time receipt observations incomplete or non-PASS")
+        _require(schema == "time-spotcheck/v3",
+                 f"reconciliation time unknown schema {schema!r}; expected "
+                 f"time-spotcheck/v3；{TIME_SPOTCHECK_V3_HINT}")
+        _validate_time_receipt(root, receipt, target)
     else:
         raise ValueError(f"reconciliation {key} has no validator for family={family}；{migration}")
     return receipt
