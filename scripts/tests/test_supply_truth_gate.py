@@ -84,8 +84,8 @@ def split_stats(mint=APU_MINT, burn=APU_DEAD, zero=0, dead=APU_DEAD):
     }
 
 
-def write_evm_bundle(root, *, token=TOKEN, as_of=123, total=APU_MINT,
-                     zero=0, dead=APU_DEAD):
+def write_evm_bundle(root, *, token=TOKEN, chain="eth", as_of=123,
+                     total=APU_MINT, zero=0, dead=APU_DEAD):
     """落一份通过工单 A 公共 validator 的 EVM 观测实物。"""
     endpoint = "https://rpc.example.test"
     block = {
@@ -95,8 +95,9 @@ def write_evm_bundle(root, *, token=TOKEN, as_of=123, total=APU_MINT,
     selector = {"blockHash": BLOCK_HASH, "requireCanonical": True}
     balance = lambda address: (  # noqa: E731
         "0x70a08231" + "0" * 24 + address.removeprefix("0x").lower())
+    chain_id = {"eth": 1, "bsc": 56, "base": 8453}[chain]
     transcript = [
-        {"seq": 0, "method": "eth_chainId", "params": [], "result": 1},
+        {"seq": 0, "method": "eth_chainId", "params": [], "result": chain_id},
         {"seq": 1, "method": "eth_getBlockByNumber",
          "params": [hex(as_of), False], "result": block},
         {"seq": 2, "method": "eth_blockNumber", "params": [],
@@ -119,7 +120,7 @@ def write_evm_bundle(root, *, token=TOKEN, as_of=123, total=APU_MINT,
     transcript_path.write_text(json.dumps(transcript), encoding="utf-8")
     core = {
         "attestation": {
-            "expected_chain_id": 1, "observed_chain_id": 1,
+            "expected_chain_id": chain_id, "observed_chain_id": chain_id,
             "endpoint": endpoint_fingerprint(endpoint),
         },
         "anchor": {
@@ -136,7 +137,7 @@ def write_evm_bundle(root, *, token=TOKEN, as_of=123, total=APU_MINT,
         "code": {"runtime_code_sha256": hashlib.sha256(
             bytes.fromhex(RUNTIME_CODE[2:])).hexdigest()},
     }
-    target = {"chain": "eth", "token": token, "as_of_block": as_of}
+    target = {"chain": chain, "token": token, "as_of_block": as_of}
     bundle = build_evm_observation_bundle(
         core, transcript_path, target, "scripts/evm/observe_supply.py",
         input_base=root)

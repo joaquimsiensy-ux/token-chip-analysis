@@ -608,12 +608,17 @@ def t_f06_a5_disclosure():
 def _run_supply_pass(root: Path):
     """先跑出一份诚实 PASS 收据（replay==onchain==100，容差 10 之内）。"""
     from test_repair_batch_a import SupplyPool, TOKEN, chdir
+    from test_supply_truth_gate import write_evm_bundle
     import supply_truth_gate as supply
     (root / "replay_stats.json").write_text(
         json.dumps({"mint_total_raw": "100", "burn_total_raw": "0"}), encoding="utf-8")
+    bundle = write_evm_bundle(
+        root, token=TOKEN, as_of=123, total=100, zero=0, dead=0)
     argv = ["--chain", "eth", "--token", TOKEN, "--as-of-block", "123",
             "--rpc", "offline://fixture", "--tolerance-bps", "10",
-            "--replay-stats", "replay_stats.json", "--out", str(root / "supply_truth.json")]
+            "--replay-stats", "replay_stats.json",
+            "--observation-bundle", str(bundle),
+            "--out", str(root / "supply_truth.json")]
     with chdir(root), mock.patch.object(supply, "attested_rpc_pool",
                                         return_value=SupplyPool(100)), \
             contextlib.redirect_stderr(io.StringIO()):

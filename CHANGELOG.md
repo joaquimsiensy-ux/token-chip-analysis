@@ -10,6 +10,7 @@
 
 ## 版本索引（活跃窗口，新在上；每版一行，详情见下方对应条目）
 
+- **6.43.0**（2026-08-14）EVM 链上观测锚：三链正式纵切片真跑 bundle producer，accounting v2/supply_truth v4 双收据与 shared/handoff N-2 闭合；F-02 CLOSED、F-03/R10-9 MITIGATED 仍 OPEN
 - **6.42.0**（2026-08-14）批 2 三线收口：F-10 waiver 三段硬顶＋用户超顶批复、F-02 对抗复核结构化 v3、F-09 solana-reconcile/v3 身份链与 PYTHIA 实证；三轮盲审残留锚、R10 清账/新登记及文档边界统一封口
 - **6.41.0**（2026-08-14）批 1 五项修复收口：RV-07 receipt supersede＋五出口真 FAIL 落盘；RV-04/RV-17 proxy 单源解析＋stake_decode fail-closed；F-03 replay 三引擎 gate 语义统一；F-01 图 1 白名单/legend receipt/A5 v3 双层信任根；F-04 四入口位置 token 移除且 sentinel 不进输出
 - **6.40.0**（2026-08-13）六视角 BLOCK 修复工程 A-D 四批收口：发布收据验证链（F-01/02）＋分布扫描族（F-03/08）＋阵营序列 producer 链（F-04/05）＋flip 裁决收据制（F-06）/refresh 真事务（F-07）/销户审计收口（GPT-F-06）＋台账八项＋distribution-scan/v2；R10 存量台账本轮未修、台账保留（r10_ledger.md）
@@ -41,6 +42,15 @@
 - **6.20.1** 2026-08-05 修 5 处阻断级文档漂移（A4 前禁写报告冲突/easy 残留/惯犯回灌 docstring/批量预采集残留/旧 Par 路线历史降级）＋docs_lint 增中文禁词与 Python module docstring 扫描
 
 更早版本（6.20.0 及以前）详见 `archive/CHANGELOG-archive.md`。
+
+## [6.43.0] - 2026-08-14 — EVM 链上观测锚（F-02 闭合/F-03 缓解）
+
+工程目录：`maintenance/repair-20260814-evmobs/`。ETH/BSC/Base 正式纵切片在 reconciliation 前真跑 `scripts/evm/observe_supply.py`，落 `evm-observation-bundle/v1` 与规范化 RPC transcript；accounting 与 supply_truth 分别升 `accounting-gate/v2`、`supply-truth-receipt/v4` 并绑定同一冻结块观测件，Solana 继续使用 v1/v3。shared 发布与 READY handoff 共用 validator，对锚块、bundle 文件三验、供给/sink N-2 和两收据同源做等深复验。
+
+- **正式能力与失败产物**：三链 E2E producer 集合和 `evm-accounting-supply-v2` capability 加入 observation producer；错链回归证明只发生 `eth_chainId`，业务调用为零；双件 producer 的 failure coverage/contract 明确 `canonical_artifacts=2`，旧 bundle/transcript 均先 quarantine。
+- **诚实边界与 R10**：R10-13/F-02 由裸标量升级为案内可复算观测实物，标 CLOSED；R10-9/F-03 仅标 MITIGATED 且仍 OPEN。bundle 提高同步伪造成本并给第三方留下 blockHash/transcript 外验材料，但不证明块头案外真实或 producer 真执行。
+- **存量影响**：QUQ/AKE/B2/TAG/MOG/APU/EGL1 等已交付 EVM 案不重跑发布闸时不受影响；未来重发布必须先跑 `observe_supply.py`，再按 v2/v4 重做 accounting 与 supply_truth，禁止手工补字段或只改 schema。QUQ posthold 独立监控体系不受影响。
+- **suite 分母**：`run_all.py` 共 99 个入口；本版收口标准为 99/99 PASS、rc=0，包含 eth/bsc/base 三链纵切片、Solana 控制组、契约双向守卫、版本/CHANGELOG/docs/invariant 守卫及 F-02/F-03 原反例。
 
 ## [6.42.0] - 2026-08-14 — 批 2 防伪面三线三轮盲审收口
 

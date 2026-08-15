@@ -15,12 +15,12 @@
 4. **时间抽查（分层计划制）**：`anchor_plan.py` 出分层抽样计划（矩阵点＋四类强制覆盖点），`scripts/lib/time_spotcheck.py` 对独立第二源逐锚点核对（balance 型 archive balanceOf 直查＋tx 型收据五元组，产 time_spotcheck.json）；第二源分层选型与全史重拉例外条款见 §13。（旧"固定块距插值抽几笔对浏览器"形态已由本制取代；OPN/SIREN 07 → 2026-08-01 改版）
 5. **重放前置完整性检查（快照缺块防护，重放开跑前做）**：核对全部采集 run 的 done.json——next_block 全部达到目标块、mtime 晚于最后一次采集启动，才允许重放（实锤：重放跑在尾部 run 拉完前 13 分钟，快照缺尾部 ~980 块/682 条）。**机制警示：供给闭合恒等式（上面第 2/3 查）对"缺整行"免疫**——整行缺失时借贷两边同时缺、sum 恒等于 TOTAL 照样通过，此类洞只有 RPC 抽查负余额能暴露；增量重放出现"期初为 0 的地址转出变负"=上游快照有洞的指纹，见到即停下补数据。（QUQ 完整版分析，07-22）
 
-**供给真值闸的两种销毁形态（`supply-truth-receipt/v3`）**：主规则继续按形态①校验
-`mint_total − burn_total` 与冻结块 `totalSupply()`；只有主规则 FAIL、EVM replay_stats
+**供给真值闸的两种销毁形态（EVM `supply-truth-receipt/v4`，Solana `supply-truth-receipt/v3`）**：EVM formal 必须先运行 `scripts/evm/observe_supply.py`，在冻结块以 EIP-1898 `blockHash` 选择器读取 `totalSupply()`、`balanceOf(ZERO)` 与 `balanceOf(dead)`，落 `evm-observation-bundle/v1`＋调用 transcript；`accounting-gate/v2` 与 supply_truth v4 必须绑定同一 bundle，正式消费阶段不再现场 RPC。主规则继续按形态①校验
+`mint_total − burn_total` 与 bundle 的冻结块 `totalSupply()`；只有主规则 FAIL、EVM replay_stats
 同时带齐 ZERO/dead 的流入、流出与净额拆分时，才自动尝试形态②。形态②必须 wei 级同时满足：
 `mint_total == totalSupply()`、ZERO 事件流入等于链上 `balanceOf(ZERO)`、dead 事件净流入
 等于链上 `balanceOf(dead)`、两处 sink 重放值之和等于 `burn_total`。这只证明
-**终态标量与 sink 逐地址归因闭合**；混合形态、旧 stats、任一 RPC/格式异常都不放行，且不提供人工 override。
+**终态标量与 sink 逐地址归因闭合**；混合形态、旧 stats、任一观测/格式异常都不放行，且不提供人工 override。bundle 同时绑定前后两次块头、规范化调用 transcript 与 runtime code 指纹；它证明案内内容闭合，不证明块头案外真实或 producer 确实执行，第三方应使用 bundle 的 blockHash 与 transcript 在独立节点复验。
 重放侧对 sink 收方余额照加，所以 `verify_recon` 的余额恒等式是 `sum_balances == mint_total`；
 `burn_total` 保留为独立观测，不从终态余额和再次扣除。
 

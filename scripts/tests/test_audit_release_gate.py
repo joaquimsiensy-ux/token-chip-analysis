@@ -16,6 +16,7 @@ REPO = HERE.parent.parent
 GATE = HERE.parent / "report" / "audit_release_gate.py"
 REPRODUCE = HERE.parent / "report" / "reproduce_receipt.py"
 from formal_ready_test_harness import test_vertical_slices
+from test_supply_truth_gate import write_evm_bundle
 spec = importlib.util.spec_from_file_location("audit_release_gate", GATE)
 gate = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(gate)
@@ -28,6 +29,8 @@ def _run_with_test_vertical_slices(*args, **kwargs):
 
 
 gate.run = _run_with_test_vertical_slices
+
+CASE_TOKEN = "0x" + "a" * 40
 
 
 def write_json(root, name, value):
@@ -159,12 +162,22 @@ def build_case(root, historical=True):
         ],
         "late_additions": [],
     })
-    target = {"chain": "bsc", "token": "0xtoken", "as_of_block": 123}
-    write_json(root, "accounting_mode.json", {"schema": "accounting-gate/v1",
-        "chain": "bsc", "token": "0xtoken", "as_of_block": 123,
-        "tip_block": 123, "model_probe_block": 123,
+    target = {"chain": "bsc", "token": CASE_TOKEN, "as_of_block": 123}
+    bundle_path = write_evm_bundle(
+        root, token=CASE_TOKEN, chain="bsc", as_of=123,
+        total=100, zero=0, dead=0)
+    bundle = json.loads(bundle_path.read_text(encoding="utf-8"))
+    bundle_rel = {"path": bundle_path.name, "size": bundle_path.stat().st_size,
+                  "sha256": sha(bundle_path)}
+    bundle_abs = {**bundle_rel, "path": str(bundle_path.resolve())}
+    write_json(root, "accounting_mode.json", {"schema": "accounting-gate/v2",
+        "chain": "bsc", "token": CASE_TOKEN, "as_of_block": 123,
+        "tip_block": 135, "model_probe_block": 135,
         "producer": repo_ref("scripts/evm/accounting_gate.py"),
         "verdict": "PASS", "exit_code": 0, "mode": "standard",
+        "execution_mode": "formal", "observation_bundle": bundle_abs,
+        "observed_anchor": {"block": 123,
+                            "block_hash": bundle["anchor"]["block_hash"]},
         "checks": {"fot": {"status": "clean"}}})
     producers = {"balance": "scripts/evm/verify_recon.py",
                  "supply": "scripts/evm/verify_recon.py",
@@ -197,12 +210,13 @@ def build_case(root, historical=True):
                         "mismatched": 0, "rpc_errors": 0},
                     "gmgn_comparison": {"checked": 1, "diff_count": 0}}}
         elif key == "supply_truth":
-            receipt_doc = {"schema": "supply-truth-receipt/v3", "target": target,
+            receipt_doc = {"schema": "supply-truth-receipt/v4", "target": target,
                 "gate": "supply_truth", "replay_net": "100",
                 "onchain_total_supply": "100", "diff": "0",
                 "diff_bps": 0.0, "tolerance_bps": 10,
                 "decision_rule": "primary_form1", "burn_form": None,
                 "primary_verdict": "PASS", "sink_reconciliation": None,
+                "observation_bundle": bundle_abs,
                 "verdict": "PASS", "exit_code": 0}
         else:
             receipt_doc = {"schema": "time-spotcheck/v2", "target": target,
@@ -216,7 +230,8 @@ def build_case(root, historical=True):
         elif key == "supply":
             key_inputs = {**envelope_input, "replay_stats": replay_input}
         elif key == "supply_truth":
-            key_inputs = {"replay_stats": replay_input}
+            key_inputs = {"replay_stats": replay_input,
+                          "observation_bundle": bundle_rel}
         else:
             key_inputs = envelope_input
         receipt_doc.update({"producer": repo_ref(producers[key]), "mode": "formal",

@@ -237,11 +237,24 @@ def test_each_formal_callsite_wrong_chain_zero_business():
         methods = []
         argv = ["supply_truth_gate.py", "--chain", "bsc", "--token", token,
                 "--as-of-block", "10", "--replay-stats", str(stats),
-                "--rpc", "http://wrong", "--out", str(root / "supply.json")]
+                "--rpc", "http://wrong", "--exploration",
+                "--out", str(root / "supply.json")]
         with mock.patch.object(sys, "argv", argv), mock.patch.object(
                 net, "_request_json", side_effect=_wrong_chain_backend(methods)):
             rc = supply.main()
         assert rc != 0 and methods == ["eth_chainId"], ("supply_truth_gate", rc, methods)
+
+        # observe_supply: the bundle producer itself must attest before block/supply calls.
+        observe = load("scripts/evm/observe_supply.py", "batch1_observe_supply")
+        methods = []
+        argv = ["observe_supply.py", "--chain", "bsc", "--token", token,
+                "--as-of-block", "10", "--rpc", "http://wrong",
+                "--out", str(root / "observation.json"),
+                "--transcript-out", str(root / "observation-transcript.json")]
+        with mock.patch.object(sys, "argv", argv), mock.patch.object(
+                net, "_request_json", side_effect=_wrong_chain_backend(methods)):
+            rc = observe.main()
+        assert rc != 0 and methods == ["eth_chainId"], ("observe_supply", rc, methods)
 
         # accounting_gate: first requested business method is eth_blockNumber.
         accounting = load("scripts/evm/accounting_gate.py", "batch1_accounting_gate")
@@ -249,7 +262,8 @@ def test_each_formal_callsite_wrong_chain_zero_business():
         secret_rpc = "https://mainnet.infura.io/v3/FAKEKEY123"
         accounting_out = root / "accounting.json"
         argv = ["accounting_gate.py", "--chain", "bsc", "--token", token,
-                "--rpc", secret_rpc, "--out", str(accounting_out)]
+                "--rpc", secret_rpc, "--exploration",
+                "--out", str(accounting_out)]
         with mock.patch.object(sys, "argv", argv), mock.patch.object(
                 net, "_request_json", side_effect=_wrong_chain_backend(methods)):
             try:

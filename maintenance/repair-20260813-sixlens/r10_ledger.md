@@ -25,7 +25,7 @@
 
 | # | 条目 | 一句话 |
 |---|---|---|
-| R10-9（C-R1） | `target.as_of_block` 无真实对锚 | 改成任意正整数照过全部一致性校验；锚到案外链上证据属 F-12 地盘，锚到案内件只是多一个可伪造件——修法待设计 |
+| R10-9（C-R1） | `target.as_of_block` 无真实对锚【MITIGATED 6.43.0，案内观测缓解，外部真实性锚仍 OPEN】 | EVM bundle 已把锚块、调用 transcript 与双收据内容绑定；但案内件仍可同步伪造，独立 RPC 复验/案外签署/git 上位登记未落。见 `maintenance/repair-20260814-evmobs/workorder_D_done.md`。 |
 | R10-10（C-R2） | sol 侧 `solana-reconcile/v2` 收据 schema 无身份键【CLOSED 6.42.0】 | 已升 `solana-reconcile/v3`，绑定 chain/mint/window/producer/三输入；见 `maintenance/repair-20260814-batch2/workorder_C_f09.md` 与 `workorder_C_done.md` |
 | R10-11（C-R3） | sol 分支发布期复算路径未经真实案端到端验证【CLOSED 6.42.0】 | 已完成同案夹具链与 PYTHIA 真实案纵向复验；见 `maintenance/repair-20260814-batch2/workorder_C_done.md`、`blindreview_C_round3.md` |
 
@@ -34,7 +34,7 @@
 | # | 条目 | 评估结论 |
 |---|---|---|
 | R10-12（A-2） | `approved_tolerance_bps` 硬顶＋`observed_diff_bps` 预先虚报【CLOSED 6.42.0】 | 用户已定三段政策；四值取最大值定区，>100bps 强制独立 `over-cap-approval/v1`，生产/消费双重验。见 `maintenance/repair-20260814-batch2/workorder_A_f10.md` 与 `workorder_A_fixround2_done.md`。 |
-| R10-13（A-4） | EVM `onchain_total_supply` 链上观测件锚定 | **属新功能面设计活，与 A-3（路径语义改造）不顺手，本轮不做**；批 A 已有"明示局限"写入 `independent-audit-protocol.md` 兜底。设计要点留档：①对标 Solana observation bundle，造 EVM 链上观测收据 producer（attested eth_call totalSupply@as_of_block，经 net.attested_rpc_pool 出 attestation）；②supply_truth 额外落该观测件并入 inputs 绑定；③消费侧（shared_release_receipt supply_truth 分支）比对收据自报 onchain 与观测件数值——对齐 Solana 侧 N-2 修复的强度；④观测件须绑定端点指纹与 genesis/chainId 证明，防"观测件也自报"。 |
+| R10-13（A-4） | EVM `onchain_total_supply` 链上观测件锚定【CLOSED 6.43.0】 | `evm-observation-bundle/v1` 已由正式 producer 落块头、EIP-1898 三笔供给调用与 transcript，并由 accounting v2/supply_truth v4/shared/handoff 双路线 N-2 重验；见 `maintenance/repair-20260814-evmobs/workorder_D_done.md`。 |
 
 ## 四b、批 D 消化轮 1 追加
 

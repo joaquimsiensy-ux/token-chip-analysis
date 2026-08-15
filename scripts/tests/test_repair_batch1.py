@@ -35,6 +35,7 @@ sys.path[:0] = [
 import supply_truth_gate as supply  # noqa: E402
 import receipt_kernel as kernel  # noqa: E402
 from test_repair_batch_a import SupplyPool, TOKEN  # noqa: E402
+from test_supply_truth_gate import write_evm_bundle  # noqa: E402
 from evm_channel_fixture import write_csv_channel_receipt  # noqa: E402
 import figures_from_facts as figures  # noqa: E402
 import standard_charts as charts  # noqa: E402
@@ -64,10 +65,13 @@ def _run_supply(root: Path, mint: int, onchain: int):
         encoding="utf-8",
     )
     out = root / "supply_truth.json"
+    bundle = write_evm_bundle(
+        root, token=TOKEN, as_of=123, total=onchain, zero=0, dead=0)
     argv = [
         "--chain", "eth", "--token", TOKEN, "--as-of-block", "123",
         "--rpc", "offline://fixture", "--tolerance-bps", "10",
-        "--replay-stats", stats.name, "--out", str(out),
+        "--replay-stats", stats.name,
+        "--observation-bundle", str(bundle), "--out", str(out),
     ]
     stderr = io.StringIO()
     with chdir(root), mock.patch.object(

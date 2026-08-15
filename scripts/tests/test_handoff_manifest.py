@@ -85,8 +85,10 @@ def make_case(d, chain="eth", token=TOKEN, as_of_block=999):
     with open(os.path.join(d, "data", "edges.jsonl"), "w") as f:
         f.write(json.dumps([86400, 1, 0, 0, Z, "0xabc", 100]) + "\n")
         f.write(json.dumps([86400, 1, 1, 0, Z, "0xdef", 100]) + "\n")
+    bundle_chain = chain if chain in {"eth", "bsc", "base"} else "eth"
     bundle_path = write_evm_bundle(
-        Path(d), token=token, as_of=as_of_block, total=100, zero=0, dead=0)
+        Path(d), token=token, chain=bundle_chain, as_of=as_of_block,
+        total=100, zero=0, dead=0)
     bundle = json.loads(bundle_path.read_text(encoding="utf-8"))
     write_json(d, "supply_truth.json", {"verdict": "PASS", "exit_code": 0,
                                          "chain": "bsc" if chain != "solana" else "solana",

@@ -103,11 +103,26 @@ def rebind_case_inputs(old_root, new_root):
             receipt_path.write_text(json.dumps(receipt, ensure_ascii=False),
                                     encoding="utf-8")
             item["receipt"]["sha256"] = sha(receipt_path)
+        bundle_ref = receipt.get("observation_bundle")
+        if isinstance(bundle_ref, dict):
+            raw = str(bundle_ref.get("path", ""))
+            if raw.startswith(old_root + os.sep):
+                bundle_ref["path"] = new_root + raw[len(old_root):]
+                receipt_path.write_text(json.dumps(receipt, ensure_ascii=False),
+                                        encoding="utf-8")
+                item["receipt"]["sha256"] = sha(receipt_path)
     recon_path.write_text(json.dumps(recon, ensure_ascii=False), encoding="utf-8")
-    shared_path = Path(new_root, "shared_release_receipt.json")
-    shared = json.loads(shared_path.read_text(encoding="utf-8"))
-    shared["inputs"]["reconciliation_report.json"]["sha256"] = sha(recon_path)
-    shared_path.write_text(json.dumps(shared, ensure_ascii=False), encoding="utf-8")
+    accounting_path = Path(new_root, "accounting_mode.json")
+    accounting = json.loads(accounting_path.read_text(encoding="utf-8"))
+    bundle_ref = accounting.get("observation_bundle")
+    if isinstance(bundle_ref, dict):
+        raw = str(bundle_ref.get("path", ""))
+        if raw.startswith(old_root + os.sep):
+            bundle_ref["path"] = new_root + raw[len(old_root):]
+            accounting_path.write_text(json.dumps(accounting, ensure_ascii=False),
+                                       encoding="utf-8")
+    from shared_release_receipt import create_bundle
+    create_bundle(Path(new_root))
 
 
 def bind_balance_receipt_to_snapshot(d, snap):

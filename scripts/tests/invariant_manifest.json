@@ -11,10 +11,10 @@
   "scripts/*.py"
  ],
  "minimum_counts": {
-  "receipt_producers": 54,
-  "receipt_consumers": 56,
-  "transport_calls": 59,
-  "atomic_writes": 40,
+  "receipt_producers": 61,
+  "receipt_consumers": 78,
+  "transport_calls": 63,
+  "atomic_writes": 52,
   "formal_entrypoints": 58
  },
  "receipt_producers": [

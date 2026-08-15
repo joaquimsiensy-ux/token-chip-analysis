@@ -84,7 +84,7 @@ def _formal_evm(vertical_slice_evidence):
         reconciliation_consumer=True, identity_adapter="evm", labels_table=True,
         handoff=True, audit_release=True, chain_attestation="evm-chain-id",
         freeze_target_adapter="entity-freeze-v2",
-        accounting_supply_adapter="evm-accounting-supply-v1",
+        accounting_supply_adapter="evm-accounting-supply-v2",
         vertical_slice_evidence=vertical_slice_evidence,
         wrong_chain_test="evm-chain-id-zero-business-r9",
         failure_artifact_gate="formal-failure-artifact-v1",

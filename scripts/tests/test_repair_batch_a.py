@@ -172,7 +172,10 @@ def run_supply(root: Path, *, tolerance=10000, waiver: Path | None = None,
     if exploration:
         argv += ["--exploration", "--replay-net-raw", "1"]
     else:
-        argv += ["--replay-stats", "replay_stats.json"]
+        bundle = write_evm_bundle(
+            root, token=TOKEN, as_of=123, total=total_supply, zero=0, dead=0)
+        argv += ["--replay-stats", "replay_stats.json",
+                 "--observation-bundle", str(bundle)]
     if waiver is not None:
         argv += ["--tolerance-waiver", str(waiver)]
     stderr = __import__("io").StringIO()
@@ -362,8 +365,29 @@ def test_workorder_b_accounting_mode_and_bundle_contract():
         assert exploration["as_of_block"] == 77
 
 
-def _retarget_evm_case(root: Path, as_of: int, tip: int | None):
+def _retarget_evm_case(root: Path, as_of: int, tip: int | None, *,
+                       retarget_bundle: bool = True):
     accounting = json.loads((root / "accounting_mode.json").read_text())
+    token = accounting["token"]
+    chain = accounting["chain"]
+    bundle_path = root / "evm_observation_bundle.json"
+    if retarget_bundle:
+        old_bundle = json.loads(bundle_path.read_text(encoding="utf-8"))
+        supply_values = old_bundle["supply"]
+        write_evm_bundle(
+            root, token=token, chain=chain, as_of=as_of,
+            total=int(supply_values["total_supply_raw"]),
+            zero=int(supply_values["zero_balance_raw"]),
+            dead=int(supply_values["dead_balance_raw"]),
+        )
+        bundle = json.loads(bundle_path.read_text(encoding="utf-8"))
+        accounting["observation_bundle"] = {
+            "path": str(bundle_path.resolve()),
+            "size": bundle_path.stat().st_size,
+            "sha256": sha256(bundle_path),
+        }
+        accounting["observed_anchor"] = {
+            "block": as_of, "block_hash": bundle["anchor"]["block_hash"]}
     accounting["as_of_block"] = as_of
     accounting["model_probe_block"] = tip
     if tip is None:
@@ -372,13 +396,20 @@ def _retarget_evm_case(root: Path, as_of: int, tip: int | None):
         accounting["tip_block"] = tip
     (root / "accounting_mode.json").write_text(json.dumps(accounting), encoding="utf-8")
 
-    target = {"chain": "bsc", "token": "0xtoken", "as_of_block": as_of}
+    target = {"chain": chain, "token": token, "as_of_block": as_of}
     recon = json.loads((root / "reconciliation_report.json").read_text())
     recon["target"] = target
     for item in recon["checks"].values():
         receipt_path = root / item["receipt"]["path"]
         receipt = json.loads(receipt_path.read_text())
         receipt["target"] = target
+        if retarget_bundle and item["receipt"]["path"] == "supply_truth_receipt.json":
+            bundle_ref = {"path": bundle_path.name,
+                          "size": bundle_path.stat().st_size,
+                          "sha256": sha256(bundle_path)}
+            receipt["inputs"]["observation_bundle"] = bundle_ref
+            receipt["observation_bundle"] = {
+                **bundle_ref, "path": str(bundle_path.resolve())}
         receipt_path.write_text(json.dumps(receipt), encoding="utf-8")
         item["receipt"]["sha256"] = sha256(receipt_path)
     (root / "reconciliation_report.json").write_text(json.dumps(recon), encoding="utf-8")
@@ -949,10 +980,13 @@ def test_fa_sink_fallback_scalars_bound_to_stats():
 
     def run_sink(root: Path):
         (root / "replay_stats.json").write_text(json.dumps(stats_doc), encoding="utf-8")
+        bundle = write_evm_bundle(
+            root, token=TOKEN, as_of=123, total=100, zero=25, dead=15)
         out = root / "supply_truth.json"
         argv = ["--chain", "eth", "--token", TOKEN, "--as-of-block", "123",
                 "--rpc", "offline://fixture", "--tolerance-bps", "10",
-                "--replay-stats", "replay_stats.json", "--out", str(out)]
+                "--replay-stats", "replay_stats.json",
+                "--observation-bundle", str(bundle), "--out", str(out)]
         with chdir(root), mock.patch.object(
                 supply, "attested_rpc_pool", return_value=SinkPool(100, 25, 15)):
             rc = supply.main(argv)
@@ -1011,6 +1045,18 @@ def test_fb_model_probe_block_has_a_consumer():
                 assert needle in str(exc), (label, exc)
             else:
                 raise AssertionError(f"时点闸放行了：{label}")
+
+    with tempfile.TemporaryDirectory(
+            prefix="batch-a-fb-bundle-anchor-", dir="/private/tmp") as raw:
+        root = Path(raw)
+        build_case(root, historical=False)
+        _retarget_evm_case(root, 124, 124, retarget_bundle=False)
+        try:
+            shared.validate_sources(root)
+        except ValueError as exc:
+            assert "anchor" in str(exc) or "observed_anchor" in str(exc), exc
+        else:
+            raise AssertionError("改 target/tip/probe 不改 observation bundle 被放行")
 
 
 def test_n1_replay_stats_must_live_inside_case_root():

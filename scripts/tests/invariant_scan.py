@@ -62,16 +62,19 @@ VERTICAL_SLICE_TESTS = {
 FORMAL_E2E_REQUIRED_PRODUCERS = {
     "eth": frozenset({
         "scripts/lib/anchor_plan.py", "scripts/evm/accounting_gate.py",
+        "scripts/evm/observe_supply.py",
         "scripts/evm/verify_recon.py", "scripts/lib/supply_truth_gate.py",
         "scripts/lib/time_spotcheck.py",
     }),
     "bsc": frozenset({
         "scripts/lib/anchor_plan.py", "scripts/evm/accounting_gate.py",
+        "scripts/evm/observe_supply.py",
         "scripts/evm/verify_recon.py", "scripts/lib/supply_truth_gate.py",
         "scripts/lib/time_spotcheck.py",
     }),
     "base": frozenset({
         "scripts/lib/anchor_plan.py", "scripts/evm/accounting_gate.py",
+        "scripts/evm/observe_supply.py",
         "scripts/evm/verify_recon.py", "scripts/lib/supply_truth_gate.py",
         "scripts/lib/time_spotcheck.py",
     }),
