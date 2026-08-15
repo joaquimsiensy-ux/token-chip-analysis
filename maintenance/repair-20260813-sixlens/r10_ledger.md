@@ -34,7 +34,7 @@
 | # | 条目 | 评估结论 |
 |---|---|---|
 | R10-12（A-2） | `approved_tolerance_bps` 硬顶＋`observed_diff_bps` 预先虚报【CLOSED 6.42.0】 | 用户已定三段政策；四值取最大值定区，>100bps 强制独立 `over-cap-approval/v1`，生产/消费双重验。见 `maintenance/repair-20260814-batch2/workorder_A_f10.md` 与 `workorder_A_fixround2_done.md`。 |
-| R10-13（A-4） | EVM `onchain_total_supply` 链上观测件锚定【CLOSED 6.43.0】 | `evm-observation-bundle/v1` 已由正式 producer 落块头、EIP-1898 三笔供给调用与 transcript，并由 accounting v2/supply_truth v4/shared/handoff 双路线 N-2 重验；见 `maintenance/repair-20260814-evmobs/workorder_D_done.md`。 |
+| R10-13（A-4） | EVM `onchain_total_supply` 链上观测件锚定【CLOSED 6.43.0】 | `evm-observation-bundle/v1` 已由正式 producer 落块头、EIP-1898 三笔供给调用与 transcript，并由 accounting v2/supply_truth v4/shared/handoff 双路线 N-2 重验；见 `maintenance/repair-20260814-evmobs/workorder_D_done.md`。CLOSED 仅指案内锚定建设完成，外部真实性锚见 R10-9（MITIGATED）。 |
 
 ## 四b、批 D 消化轮 1 追加
 
