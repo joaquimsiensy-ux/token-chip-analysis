@@ -1,0 +1,12 @@
+baseline_sha=ddba1871e27777cae347a2eae107a295b06376b4
+command=python3 scripts/tests/test_g3_alt_collectors.py
+exit=1
+FAIL: R1 SQD empty response cannot complete or sign -- AssertionError: empty SQD response exited 0: '[COMPLETE] 0 rows -> /var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/tmpg4iw5daq/sqd-empty.csv, [10,12] 0s\n'
+FAIL: R2 Alchemy empty result is a protocol error -- AssertionError: missing transfers exited 0: '[COMPLETE] 0 transfers this run, 1 pages, 0s\n'
+FAIL: R3 SQD partial progress cannot hide a later anomaly -- AssertionError: partially advanced SQD run exited 0: '[COMPLETE] 0 rows -> /var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/tmpg4iw5daq/sqd-partial.csv, [10,12] 0s\n'
+FAIL: D1 receipt emitter rejects Alchemy -- AssertionError: receipt emitter accepted removed Alchemy collector
+FAIL: D2 channels preflight rejects Alchemy receipt -- AssertionError: channels preflight accepted removed Alchemy collector
+FAIL: D3 Alchemy CLI rejects --receipt -- FileNotFoundError: [Errno 2] No such file or directory: '/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/tmpg4iw5daq/does-not-exist.json'
+SKIP-RED: SQD parse_stream_response missing
+SKIP-RED: Alchemy validate_transfers_page missing
+SUMMARY: 0 passed, 6 failed, 2 skip-red

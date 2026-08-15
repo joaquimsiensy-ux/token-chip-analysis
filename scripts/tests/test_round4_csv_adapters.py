@@ -11,7 +11,7 @@ def main():
     with tempfile.TemporaryDirectory() as td:
         root=Path(td); data=root/"data.csv"
         data.write_text("block,ts,tx,log_index,from,to,value_raw,block_hash\n5,1,0xt,0,0xa,0xb,1,0xh\n")
-        for name in ("fetch_sqd_evm.py","fetch_alchemy.py"):
+        for name in ("fetch_sqd_evm.py",):
             out=root/(name+".json")
             emit_native_receipt(data,out,EVM/name,"0x"+"a"*40,"https://provider",0,10,10, fresh_output=True)
             d=json.loads(out.read_text())
@@ -23,7 +23,7 @@ def main():
             pass
         else:
             raise AssertionError("alternate formal adapter must reject unreceipted prefixes")
-    for name in ("fetch_bigquery.py","scan_transfers.py","fetch_etherscan.py"):
+    for name in ("fetch_bigquery.py","scan_transfers.py","fetch_etherscan.py","fetch_alchemy.py"):
         text=(EVM/name).read_text()
         assert "FORMAL_CHANNEL_ELIGIBLE = False" in text, name
     print("PASS: alternate adapters are native-receipted or explicit nonformal")

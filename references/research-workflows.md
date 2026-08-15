@@ -99,7 +99,7 @@
 - 「理论上可能但无证据」不算推翻，最多算 WEAKENED 的理由。
 - REFUTED 必须给出你重算出的硬证据。
 
-[输出 JSON schema（落盘前由受控 runner 补入 role 与 registry_sha256）]
+[输出 JSON schema（entrypoint 必须从 `CHIP_REVIEW_ROLE` 与 `CHIP_REVIEW_REGISTRY_SHA256` 读取值，逐字写入 `CHIP_REVIEW_OUTPUT` 指定的 artifact；runner 在发布前校验一致，不会静默覆盖或补入）]
 { "schema": "adversarial-review-artifact/v2", "role": "entity_attribution_skeptic",
   "registry_sha256": "<a4_claims.json sha256>",
   "results": [{"claim_id": "...", "verdict": "CONFIRMED|WEAKENED|REFUTED",
@@ -107,6 +107,8 @@
 ```
 
 完整性批评角色不用逐 claim 投票，改交同 schema/role/registry_sha256 外加 `findings[]` 与 `non_covered[]`。全部 claim-review 产物的 claim_id 并集必须覆盖当前 `a4_claims.json`；任何越界 id、少于 10 个实义白名单字符的 evidence、registry sha 撕裂，或 findings/non_covered/REFUTED 与 blocker 的双向联动缺失、幽灵多记，均由 runner/finalize 拒绝。每次成功 run-role 还必须在案根追加 `adversarial_review_ledger.jsonl` 的 `review-ledger/v1` 行；同 receipt 路径只取末行有效，finalize 精确对账 ledger 有效 receipt SHA 集与传入清单，`adversarial-review/v4` 必填 `review_ledger.entries/active/tip_sha`。这只封住已运行路次在 finalize 时被事后省略的面，不证明本地文件未被整套重造。
+
+**机器化边界**：机器已强制两类角色在场（≥1 claim 怀疑者＋≥1 完整性批评）、claim_id 并集精确覆盖注册表、entrypoint 内容去重、execution ledger 哈希链精确对账、每条 evidence ≥10 实义白名单字符、findings/non_covered/REFUTED 与 blocker 双向联动。机器未强制（依执行纪律与独立盲审落实）：怀疑者路数 N、每条结论的分档路数、外部路是否真为异构模型、外部异构路成功与否（该路失败不阻塞交付，见本册既有条款）。机器闸 PASS 不等于 N 路已落实——路数与异构性的核验责任在执行纪律与盲审，不在发布闸。
 
 （骨架合成自：OPN 5 路审计员+强制备择解释；SIREN「必须实际核查」标准与三档裁决；FIL 附数据文件符号约定与去重规则；HYPE verdict schema 字段。）
 
