@@ -185,7 +185,8 @@ def _constants(tree: ast.AST, path: Path | None = None) -> dict[str, str]:
                 # Imported schema constants are normally producer-local and scanning
                 # them in every importer creates false producer edges.  The adversarial
                 # aggregate is deliberately shared by its producer and two consumers.
-                if alias.name == "AGGREGATE_SCHEMA" and alias.name in imported_values:
+                if alias.name in {"AGGREGATE_SCHEMA", "LEDGER_SCHEMA"} \
+                        and alias.name in imported_values:
                     values[alias.asname or alias.name] = imported_values[alias.name]
     return values
 

@@ -124,11 +124,11 @@ controller 会先确认正式输出不存在，再独占创建 staging 文件、
 - 结论依赖抽样范围外事实；
 - 阴性结论存在尚未排除的合理备择解释。
 
-`adversarial_review.json` 的 `blocking_findings` 非空或未逐项关闭时，不得发布肯定性实体判级、完整阴性结论和历史图。
+`adversarial_review.json` 的机械联动不全（应记未记或多记幽灵账），或 `blocking_findings` 存在任何 `resolved=false` 时，不得发布肯定性实体判级、完整阴性结论和历史图。
 
-producer/runner 哈希是公开可算的完整性锚，不是签名——它防走捷径与误操作，不防持同用户权限的恶意进程；finalize 不是唯一物理路径，消费侧始终以当前案内实物的内容重验为准。
+producer/runner 哈希是公开可算的完整性锚，不是签名——它防走捷径与误操作，不防持同用户权限的恶意进程；finalize 不是唯一物理路径，消费侧始终以当前案内实物的内容重验为准。entrypoint 的 SHA-256 全局唯一闸用于防止误复用和一人分饰两角，不构成复核独立性的证明。
 
-若 entrypoint 执行期间 `a4_claims.json` 被改写，runner 可能已经占用该角色正式位，而下游会因 registry 绑定撕裂拒绝。恢复时删除该角色 artifact＋execution receipt，再按当前 registry 重跑该角色；不得手改旧 receipt 或聚合件续跑。
+若 entrypoint 执行期间 `a4_claims.json` 被改写，runner 可能已经占用该角色正式位，而下游会因 registry 绑定撕裂拒绝。恢复时按当前 registry 重跑该角色；现在不再要求删除该角色 artifact，同一 artifact/receipt 正式位允许受控 runner 覆盖重跑，但每次成功 receipt 都会向 execution ledger 追加新行，旧行不删除、同 `receipt_path` 只取末行有效。不得手改旧 receipt、ledger 或聚合件续跑。
 
 ## 9. 强制交付资产与发布命令
 
@@ -144,6 +144,7 @@ position_ledger.json
 economic_control_ledger.json
 dormant_warehouse_audit.json
 claim_registry.json
+adversarial_review_ledger.jsonl
 adversarial_review.json
 shared_release_receipt.json
 reproduce_audit.py
@@ -164,7 +165,11 @@ review_completeness.py
 `accounting_mode.json` 必须是当前 `scripts/evm/accounting_gate.py` 的 `accounting-gate/v2`（Solana 为 `scripts/solana/accounting_gate_sol.py` 的 `accounting-gate/v1`）exit 0 产物，并带脚本自身的 `producer.path/sha256`。
   `reconciliation_report.json` 必须由当前 `scripts/report/reconciliation_report.py` 读取 job spec 后受控启动四查生产者生成：balance/supply=`verify_recon.py`、supply_truth=`supply_truth_gate.py`、time=`time_spotcheck.py`（Solana 对应 anchor sampler 与 holder snapshot）。runner 要求 receipt 执行前不存在，逐项记录子进程 exit，并绑定 v2 target、生产者与输入/receipt 哈希；wrapper 顶层绑定 runner 自身路径与当前 SHA-256。聚合器逐类解析 schema、target、观测和 verdict，并拒绝无 runner 绑定或绑定哈希不符的 wrapper；旧案须重跑对应生产者与 runner。这里是内容绑定，不是单机执行证明：蓄意手拼者若正确填写当前 runner path/SHA-256 并伪造相互自洽的观测，聚合器无法仅凭 wrapper 识别；防线的实际作用是把“疏忽即可绕过”提高为必须显式填哈希、编造观测的主动造假，并由仓库 git 历史追踪代码变更。案目录里的同名/复制脚本即使 SHA-256 相同也不是生产者。
   **明示局限（EVM 侧链上供给）**：EVM formal 先由 `observe_supply.py` 在同一冻结块哈希上读取 `totalSupply`、ZERO 与 dead 余额，落 `evm-observation-bundle/v1` 和调用 transcript；随后 `accounting-gate/v2` 与 `supply-truth-receipt/v4` 绑定同一 bundle，消费侧再把 `onchain_total_supply`、锚块和 sink 数值对回 bundle，达到与 Solana `accounting-gate/v1`＋`supply-truth-receipt/v3` 的案内 N-2 对账等深。shared 发布与 stage-1 READY handoff 都调用同一公共 validator，不能从 split 路线绕过。**bundle 是内容绑定，不是块真实性或 producer 真执行证明**：蓄意手拼者仍可同步伪造案内块头、响应和哈希链；`blockHash` 与 transcript 的价值是让第三方可拿到独立公共节点外部验真，不能把案内自洽写成案外真实。故 F-02 的裸标量缺口已闭合，外部真实性锚仍是开放边界。
-  `adversarial_review.json` 必须为 `adversarial-review/v3`：`claim_registry` 以 path/size/sha256/schema 绑定案内 `a4_claims.json`；每路 `adversarial-review-artifact/v1` 都绑定同一 registry sha。实体归因怀疑者的 `results[]` 逐条携带 claim_id、三档 verdict、非空 evidence 与 alternative_explanations，全部 claim-review artifacts 的 claim_id 并集必须覆盖 registry 且不得越界；完整性批评者改交全局 `findings[]`＋`non_covered[]`。人工文本须至少含一个实义白名单字符：覆盖 ASCII 可打印、拉丁补充与扩展、通用标点、CJK、假名、韩文音节和全角段；不在覆盖面的语种（如俄文、阿拉伯文）与纯 emoji 文本会被拒。外语原文证据应附一行中文说明，或保留 URL/数字等覆盖面内字符；中英文工作流不受影响。两类角色都必须通过当前 runner 启动并留下 `adversarial-review-execution/v1`。
+  `adversarial_review.json` 必须为 `adversarial-review/v4`：`claim_registry` 以 path/size/sha256/schema 绑定案内 `a4_claims.json`；每路 `adversarial-review-artifact/v2` 都绑定同一 registry sha。实体归因怀疑者的 `results[]` 逐条携带 claim_id、三档 verdict、evidence 与 alternative_explanations；每条 evidence 至少 10 个实义白名单字符，全部 claim-review artifacts 的 claim_id 并集必须覆盖 registry 且不得越界。完整性批评者改交全局 `findings[]`＋`non_covered[]`，这两类文本及 alternative_explanations 仍只要求至少一个实义字符。实义白名单覆盖 ASCII 可打印、拉丁补充与扩展、通用标点、CJK、假名、韩文音节和全角段；不在覆盖面的语种（如俄文、阿拉伯文）与纯 emoji 文本会被拒。外语原文证据应附一行中文说明，或保留 URL/数字等覆盖面内字符；中英文工作流不受影响，claim_id 不得含空格。两类角色都必须通过当前 runner 启动并留下 `adversarial-review-execution/v1`。
+
+  每份 execution receipt 成功落盘后，runner 立即向案根 `adversarial_review_ledger.jsonl` 追加一行 `review-ledger/v1`；`seq` 从 1 连续，`prev_line_sha` 绑定前一行原始字节 SHA-256，首行写 `GENESIS`。同 `receipt_path` 重跑时保留历史行、末行作为有效行。ledger 拒绝多个不同 `receipt_path` 字符串指向同一实物文件，receipt 文件名只允许 ASCII 字母、数字、点、下划线与连字符。finalize 在 blocker 联动校验之后验证整条链，并要求有效行数量、有效 receipt SHA 数量与传入 receipts 数量相等，且 receipt SHA 集与传入 receipts 的磁盘字节 SHA 集精确相等；有效行还必须绑定当前 receipt 字节、角色和 artifact SHA。聚合件必填 `review_ledger={entries,active,tip_sha}`，shared validator 与委托它的 audit gate 会从 ledger 实物重算链、有效集、entries/active/tip_sha，并对有效行数量、有效 receipt SHA 数量与 aggregate reviews 数量做基数对账后再核 receipt SHA 集。
+
+  该机制关死的是“多路已经跑完，finalize 时悄悄少传不利 receipt”的事后省略面；“用同一 receipt_path 重跑覆盖不利结果”及“把整册 ledger、receipt 与 aggregate 全套重造”仍是纯本地文件无外锚时无法阻止的蓄意伪造面。它是防呆和提高伪造成本的约束，不是完整性证明。
   两个角色的完整命令行如下：
 
   ```bash
@@ -175,11 +180,13 @@ review_completeness.py
   `--blockers` 输入是 JSON 数组；即使没有阻断项也必须显式写 `[]`。字段结构为：
 
   ```text
-  [{"id": "B1", "resolved": bool, "resolution": "resolved=true 时填写含实义字符的处置说明"}]
+  [{"id": "B1", "resolved": bool, "source": {"kind": "completeness_finding|non_covered|refuted_claim|manual", "ref": "机械定位符或人工说明"}, "resolution": "存在时至少 10 个实义白名单字符；resolved=true 时必填"}]
   ```
 
-  准备 `adversarial_blockers.json` 后运行 `python3 scripts/report/adversarial_review_runner.py finalize <案目录> --claim-registry a4_claims.json --receipt review_entity_execution.json --receipt review_completeness_execution.json --blockers adversarial_blockers.json --out adversarial_review.json`；最后才运行 `python3 scripts/report/shared_release_receipt.py <案目录>` 生成 `shared-release-receipt/v1`。runner 会向 entrypoint 提供 `CHIP_REVIEW_ROLE`、`CHIP_REVIEW_OUTPUT` 与 `CHIP_REVIEW_REGISTRY_SHA256`。
-  存量裸布尔、无 producer 的 accounting、任意 producer/runner、无 execution receipt 或 `adversarial-review/v2` 的旧文件都不得手工补字段迁移。存量 EVM 案重发布须先运行 `scripts/evm/observe_supply.py` 生成 bundle＋transcript，再以该 bundle 重跑 accounting v2 与 supply_truth v4；禁止只改 schema 或手工补 observation 字段。之后才以 job spec 运行 `python3 scripts/report/reconciliation_report.py <job-spec.json>`、按 v3 重跑固定对抗复核 runner 与 finalize，再运行共享聚合器；任何 receipt、artifact、bundle、transcript 或 a4_claims.json 后替换都会阻断。
+  非 `manual` blocker 的 `source.ref` 是机械定位符：`<artifact相对路径>#/findings/<idx>`、`<artifact相对路径>#/non_covered/<idx>` 或 `<artifact相对路径>#/results/<idx>:<claim_id>`。每条 finding、non_covered 和 REFUTED verdict 都必须恰好记一账；少记和多记幽灵账都拒绝，`manual` 仅用于不参与机械对账的自由阻断项。
+
+  准备 `adversarial_blockers.json` 后运行 `python3 scripts/report/adversarial_review_runner.py finalize <案目录> --claim-registry a4_claims.json --receipt review_entity_execution.json --receipt review_completeness_execution.json --blockers adversarial_blockers.json --out adversarial_review.json`；所有成功 run-role receipt 都必须仍在 execution ledger 的有效集中并全部传入。最后才运行 `python3 scripts/report/shared_release_receipt.py <案目录>` 生成 `shared-release-receipt/v1`。runner 会向 entrypoint 提供 `CHIP_REVIEW_ROLE`、`CHIP_REVIEW_OUTPUT` 与 `CHIP_REVIEW_REGISTRY_SHA256`。
+  存量裸布尔、无 producer 的 accounting、任意 producer/runner、无 execution receipt、无 `review-ledger/v1` 或 `adversarial-review/v2`、`adversarial-review/v3` 的旧文件都不得手工补字段迁移。存量 EVM 案重发布须先运行 `scripts/evm/observe_supply.py` 生成 bundle＋transcript，再以该 bundle 重跑 accounting v2 与 supply_truth v4；禁止只改 schema 或手工补 observation 字段。之后才以 job spec 运行 `python3 scripts/report/reconciliation_report.py <job-spec.json>`、按 v4 重跑两角色 runner 与 finalize 全程，最后运行共享聚合器。runner 改版后的存量 execution receipt 会先报 `producer is not current runner`，不得手改；任何 receipt、artifact、bundle、transcript、ledger 或 a4_claims.json 后替换都会阻断。
 
 涉及历史图时另需 `chart_reconciliation.json`。发布前运行：
 

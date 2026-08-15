@@ -1,4 +1,4 @@
-# R10 台账（六视角修复工程 2026-08-13 建档；6.42.0 批 2 状态同步）
+# R10 台账（六视角修复工程 2026-08-13 建档；6.43.0 批 3 收官同步）
 
 > 来源：plan.md 定案范围之外的存量/加深/评估项。下一轮修复工程（R10）开工时以本文件为完整候选清单。
 > 引用纪律：每条的原始证据与最强反例在 `input_codex_review.md` / `input_gpt56_review.md` / 各批工单，动工前必读原文。
@@ -7,25 +7,25 @@
 
 | # | 条目 | 一句话 | 修法线索 |
 |---|---|---|---|
-| R10-1 | F-09（=GPT-F-03）图 1 对未知阵营静默漏画 | figures wrapper 接受任意阵营，绘图层只取 CAMP_ORDER 交集，未知阵营无警告无非零退出 | 批 C 已在 compile_state 路径装白名单硬拒；**旧 state 直喂 fig1 的重绘路径不经 compile_state**，该路径仍开着——按 GPT-F-03 修法连 A5 图例集合绑定（R10-7）一起做 |
+| R10-1 | F-09（=GPT-F-03）图 1 对未知阵营静默漏画【CLOSED 6.41.0】 | figures wrapper 接受任意阵营，绘图层只取 CAMP_ORDER 交集，未知阵营无警告无非零退出 | 已闭合——standard_charts.select_fig1_series 白名单外键 raise ValueError（commit c5f3458）；A5 图例绑定并入 R10-7 同批闭合。 |
 | R10-2 | F-10 对抗复核可空壳【CLOSED 6.42.0】 | adversarial_review 的 reviews 只验角色名与 exit_code，内容可为空洞文本 | 批 2 工单 B 已落结构化 v3、受控 runner/finalize 与双消费重验；见 `maintenance/repair-20260814-batch2/workorder_B_done.md` 及三轮盲审 |
-| R10-3 | F-11 replay gate fail-open 残留 | 历史漏检家族（同族采集器已修，个别入口未等深） | 按 GPT-F-05 证据点逐入口收口 |
-| R10-4 | F-13 v2 采集器保留可选位置 api_token 且优先于环境变量/文件 | 令牌可进 ps；F-07 回归只列三支 v1 脚本 | 移除位置参数或降级其优先序，回归补 v2 |
-| R10-5 | GPT-F-07 deploy-sync 两条假绿（弱闸） | 部署目录缺失打 SKIP 但 return 0；MIGRATION_CHANGED 豁免无期限 | 豁免加期限＋缺目录 fail；**本轮旁证**：批 D 工单附三命令 staging/部署 SHA 实测全等记录（不引用该弱闸 rc=0 作证据） |
-| R10-6 | GPT-F-09 env_check 覆盖不足 | 不查 Python 版本（pyproject 要求 >=3.14）、KEY_PKGS 手写 14 个漏 7 个直接依赖 | KEY_PKGS 从 pyproject 机械生成＋requires-python 检查；**本轮旁证**：批 D 工单附解释器版本与全部直接依赖 version/import 实测记录 |
+| R10-3 | F-11 replay gate fail-open 残留【CLOSED 6.41.0】 | 历史漏检家族（同族采集器已修，个别入口未等深） | 已闭合——replay_pass1/stream/duck gate false 全 exit 4、pass2 消费 gate_pass fail-closed（commit d78e210）。 |
+| R10-4 | F-13 v2 采集器保留可选位置 api_token 且优先于环境变量/文件【CLOSED 6.41.0】 | 令牌可进 ps；F-07 回归只列三支 v1 脚本 | 已闭合——fetch_hypersync_v2 移除位置 api_token，唯一位置参数 from_block，token 走 --token-file/HYPERSYNC_TOKEN/默认文件（commit 253ac79）。 |
+| R10-5 | GPT-F-07 deploy-sync 两条假绿（弱闸）【CLOSED 6.43.0】 | 部署目录缺失打 SKIP 但 return 0；MIGRATION_CHANGED 豁免无期限 | 已闭合——无界豁免删除+canonical fail-closed（消化轮 1 再收 HOME 环境缝隙改 getpwuid），三轮盲审+addendum PASS；见 `maintenance/repair-20260814-batch3/workorder_F04_done.md` 与 `blindreview_round3_addendum.md`。 |
+| R10-6 | GPT-F-09 env_check 覆盖不足【CLOSED 6.43.0】 | 不查 Python 版本（pyproject 要求 >=3.14）、KEY_PKGS 手写 14 个漏 7 个直接依赖 | 已闭合——pyproject 机械派生三层闭合+requires-python，pre-commit 联动实证，三轮盲审+addendum PASS；见 `maintenance/repair-20260814-batch3/workorder_F05_done.md`。已知边界：平面 lock 判不了已删直接依赖残留。 |
 
 ## 二、GPT 交叉对账加深两条
 
 | # | 条目 | 一句话 |
 |---|---|---|
-| R10-7 | A5 seal 增图例集合绑定（GPT-F-03 修法后半） | A5 只绑最终 PNG 哈希，不重验图例集合——与 R10-1 同一威胁面，修图 1 白名单时同批把"图例集合"纳入 A5 绑定 |
+| R10-7 | A5 seal 增图例集合绑定（GPT-F-03 修法后半）【CLOSED 6.41.0】 | 已闭合——a5_report_seal 生成并重验 fig1_legend_receipt（commit e5c8043）。 |
 | R10-8 | F-12 改名降权（GPT-F-10 修法） | `formal_ready` 静态声明可伪造属已接受边界；建议把字段名改为不承载"已验证"语义的中性名并在文档降权，消除"名字看起来像证明"的误导面 |
 
 ## 三、批 C 终验沉淀三条（batchD_ledger 二c 节转入）
 
 | # | 条目 | 一句话 |
 |---|---|---|
-| R10-9（C-R1） | `target.as_of_block` 无真实对锚【MITIGATED 6.43.0，案内观测缓解，外部真实性锚仍 OPEN】 | EVM bundle 已把锚块、调用 transcript 与双收据内容绑定；但案内件仍可同步伪造，独立 RPC 复验/案外签署/git 上位登记未落。见 `maintenance/repair-20260814-evmobs/workorder_D_done.md`。 |
+| R10-9（C-R1） | `target.as_of_block` 无真实对锚 | 6.44.0 案内观测缓解（MITIGATED，仍 OPEN 计现役）：EVM bundle 已把锚块、调用 transcript 与双收据内容绑定；但案内件仍可同步伪造，独立 RPC 复验/案外签署/git 上位登记未落。见 `maintenance/repair-20260814-evmobs/workorder_D_done.md`。 |
 | R10-10（C-R2） | sol 侧 `solana-reconcile/v2` 收据 schema 无身份键【CLOSED 6.42.0】 | 已升 `solana-reconcile/v3`，绑定 chain/mint/window/producer/三输入；见 `maintenance/repair-20260814-batch2/workorder_C_f09.md` 与 `workorder_C_done.md` |
 | R10-11（C-R3） | sol 分支发布期复算路径未经真实案端到端验证【CLOSED 6.42.0】 | 已完成同案夹具链与 PYTHIA 真实案纵向复验；见 `maintenance/repair-20260814-batch2/workorder_C_done.md`、`blindreview_C_round3.md` |
 
@@ -34,7 +34,7 @@
 | # | 条目 | 评估结论 |
 |---|---|---|
 | R10-12（A-2） | `approved_tolerance_bps` 硬顶＋`observed_diff_bps` 预先虚报【CLOSED 6.42.0】 | 用户已定三段政策；四值取最大值定区，>100bps 强制独立 `over-cap-approval/v1`，生产/消费双重验。见 `maintenance/repair-20260814-batch2/workorder_A_f10.md` 与 `workorder_A_fixround2_done.md`。 |
-| R10-13（A-4） | EVM `onchain_total_supply` 链上观测件锚定【CLOSED 6.43.0】 | `evm-observation-bundle/v1` 已由正式 producer 落块头、EIP-1898 三笔供给调用与 transcript，并由 accounting v2/supply_truth v4/shared/handoff 双路线 N-2 重验；见 `maintenance/repair-20260814-evmobs/workorder_D_done.md`。CLOSED 仅指案内锚定建设完成，外部真实性锚见 R10-9（MITIGATED）。 |
+| R10-13（A-4） | EVM `onchain_total_supply` 链上观测件锚定【CLOSED 6.44.0】 | `evm-observation-bundle/v1` 已由正式 producer 落块头、EIP-1898 三笔供给调用与 transcript，并由 accounting v2/supply_truth v4/shared/handoff 双路线 N-2 重验；见 `maintenance/repair-20260814-evmobs/workorder_D_done.md`。CLOSED 仅指案内锚定建设完成，外部真实性锚见 R10-9（MITIGATED 仍计现役）。 |
 
 ## 四b、批 D 消化轮 1 追加
 
@@ -47,8 +47,8 @@
 
 | # | 条目 | 状态与出处 |
 |---|---|---|
-| R10-16 | B-09 blocker 存在性仍由输入自报、未与 artifact 语义联动 | 待用户裁；来源：`workorder_B_fixround1_done.md` §七、`blindreview_B.md` B-09 |
-| R10-17 | any 语义“证据够不够”阈值 | 待策略定案；来源：`blindreview_B_round2.md` 残留观察、`workorder_B_fixround2_done.md` §发现未修 |
+| R10-16 | B-09 blocker 存在性仍由输入自报、未与 artifact 语义联动 | 【CLOSED 6.43.0】用户 08-14 裁决方案 B（findings/non_covered/REFUTED 机械转 blocker 逐条处置），工单 F01 落地；盲审 R1 抓"省略整份 receipt"上层绕口，消化轮 1 补 execution ledger 哈希链+消化轮 2 补实物身份/基数闸，addendum PASS；见 `workorder_F01_done.md`、`workorder_digest_round1_done.md`。防伪边界：防事后省略，不防整册重造（无外锚定性同 R10-8）。 |
+| R10-17 | any 语义“证据够不够”阈值 | 【CLOSED 6.43.0】用户裁决装 10 实义字符门槛，工单 F01 落地，addendum PASS。本批只关“空壳/极短 evidence”形式面（防呆不防伪）；“结构化 evidence（证据类型/引用对象/复算产物绑定）”不在本批，残余保留在案。 |
 | R10-18 | `risk_flags.py::_strip_invisible_space` 黑名单版存量 | 留批 4 守卫收尾轮；来源：`workorder_B_fixround1.md` §10、`workorder_B_fixround1_done.md` §七 |
 | R10-19 | BC-O2 migration collector 身份无消费者 | 待产品语义裁决；来源：`workorder_C_fixround1_done.md` §七 BC-O2 |
 | R10-20 | BC-O3 series binding 仅 new-analysis profile | 待存量复核影响裁决；来源：`workorder_C_fixround1_done.md` §七 BC-O3 |
@@ -64,3 +64,5 @@
 
 - 建档：2026-08-13（批 D 收口时）。6.42.0 清账 R10-2/R10-10/R10-11/R10-12；原 15 条余 11 条，新增 12 条，现役保留/接受项合计 23 条。
 - 弱闸旁证（R10-5/6 相关）：见 `batchD_workorder.md` §旁证——三命令 staging/部署 SHA 实测全等记录＋解释器与直接依赖 version/import 实测记录，均为实测输出，不引用弱闸 rc=0。
+- 2026-08-14 批 3 收官：批 1 补账 CLOSED 4 条（R10-1/3/4/7，v6.41.0 已修当时未记，F-07 集成漂移修正）；批 3 修复 4 条（R10-5/6/16/17）经三轮盲审（R1 BLOCK 1P1+3P2 → R2 CONDITIONAL 2P2 → R3 CONDITIONAL 1P2）+三轮消化+addendum PASS 转 CLOSED；批 3 收官时现役 15。盲审全程证据见 `maintenance/repair-20260814-batch3/blindreview_round{1,2,3}.md` 与 `blindreview_round3_addendum.md`。
+- 2026-08-15 EVM 观测锚工程（6.44.0）收官：R10-13 转 CLOSED、R10-9 案内观测 MITIGATED 仍计现役；当前现役 = 27 − 13 = **14**。独立盲审（opus 线程）31 伪造向量全拒 PASS，证据见 `maintenance/repair-20260814-evmobs/blindreview_OBS_round1.md`。

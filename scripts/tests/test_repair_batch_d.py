@@ -948,8 +948,9 @@ def build_solana_case(root: Path):
         entry = root / f"review_{role}.py"
         entry.write_text(
             "import json, os\n"
+            f"# adversarial fixture role: {role}\n"
             "role=os.environ['CHIP_REVIEW_ROLE']\n"
-            "payload={'schema':'adversarial-review-artifact/v1','role':role,"
+            "payload={'schema':'adversarial-review-artifact/v2','role':role,"
             "'registry_sha256':os.environ['CHIP_REVIEW_REGISTRY_SHA256']}\n"
             "if role == 'completeness_critic':\n"
             " payload.update({'findings':[],'non_covered':[]})\n"

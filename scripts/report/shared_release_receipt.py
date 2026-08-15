@@ -18,11 +18,15 @@ sys.path.insert(0, str(HERE.parent / "lib"))
 from adversarial_review_runner import (
     AGGREGATE_SCHEMA,
     CLAIM_REVIEW_ROLES,
+    LEDGER_SCHEMA,
     ROLES,
-    V3_RERUN_HINT,
+    V4_RERUN_HINT,
+    build_required_refs,
     load_claim_registry,
+    validate_blocker_linkage,
     validate_blocking_findings,
     validate_review_receipt,
+    validate_review_ledger,
     validate_union_coverage,
 )
 from chain_registry import evm_chain_id_for, recon_adapter_for, resolve_alias
@@ -705,7 +709,7 @@ def validate_reconciliation_report(root, expected_target=None, *, return_receipt
 
 
 def validate_adversarial_review(root, expected_target=None):
-    """Deeply revalidate the v3 aggregate from registry and artifact bytes."""
+    """Deeply revalidate the v4 aggregate from registry and artifact bytes."""
     root = Path(root).resolve()
     try:
         adversarial = json.loads(
@@ -715,9 +719,9 @@ def validate_adversarial_review(root, expected_target=None):
         raise ValueError(f"adversarial review JSON invalid: {exc}") from exc
     schema = adversarial.get("schema") if isinstance(adversarial, dict) else None
     if schema != AGGREGATE_SCHEMA:
-        if schema == "adversarial-review/v2":
-            raise ValueError(V3_RERUN_HINT)
-        raise ValueError(f"adversarial review must use {AGGREGATE_SCHEMA}；{V3_RERUN_HINT}")
+        if schema in {"adversarial-review/v2", "adversarial-review/v3"}:
+            raise ValueError(V4_RERUN_HINT)
+        raise ValueError(f"adversarial review must use {AGGREGATE_SCHEMA}；{V4_RERUN_HINT}")
     target = adversarial.get("target")
     if not isinstance(target, dict):
         raise ValueError("adversarial target missing")
@@ -745,6 +749,7 @@ def validate_adversarial_review(root, expected_target=None):
     execution_sha256s = set()
     artifact_sha256s = set()
     review_entrypoints = set()
+    review_entries = []
     for item in reviews:
         if not isinstance(item, dict) or item.get("exit_code") != 0:
             raise ValueError("review lacks successful execution receipt")
@@ -769,14 +774,15 @@ def validate_adversarial_review(root, expected_target=None):
         if execution_sha256 in execution_sha256s:
             raise ValueError("duplicate review execution receipt content")
         execution_sha256s.add(execution_sha256)
-        execution_data, _, reviewed = validate_review_receipt(
+        execution_data, artifact_data, reviewed = validate_review_receipt(
             root, execution.get("path"), role, artifact,
             registry_sha256=registry_sha256, claim_ids=claim_ids,
             meaningful_text=_meaningful_text, reject_constant=_reject_constant)
-        entrypoint_key = (role, execution_data["entrypoint"]["sha256"])
+        entrypoint_key = execution_data["entrypoint"]["sha256"]
         if entrypoint_key in review_entrypoints:
-            raise ValueError("duplicate review role and entrypoint content")
+            raise ValueError("duplicate review entrypoint content")
         review_entrypoints.add(entrypoint_key)
+        review_entries.append((role, artifact["path"], artifact_data))
         if role in CLAIM_REVIEW_ROLES:
             reviewed_sets.append(reviewed)
     if not ROLES.issubset(roles):
@@ -784,6 +790,30 @@ def validate_adversarial_review(root, expected_target=None):
     validate_union_coverage(claim_ids, reviewed_sets)
     blockers = validate_blocking_findings(
         adversarial.get("blocking_findings"), meaningful_text=_meaningful_text)
+    required_refs = build_required_refs(review_entries)
+    validate_blocker_linkage(blockers, required_refs)
+    ledger_binding, active_ledger = validate_review_ledger(root)
+    aggregate_ledger = adversarial.get("review_ledger")
+    if (not isinstance(aggregate_ledger, dict)
+            or set(aggregate_ledger) != {"entries", "active", "tip_sha"}
+            or type(aggregate_ledger.get("entries")) is not int
+            or type(aggregate_ledger.get("active")) is not int
+            or not isinstance(aggregate_ledger.get("tip_sha"), str)
+            or aggregate_ledger != ledger_binding):
+        raise ValueError("adversarial review_ledger binding invalid")
+    if any(item.get("schema") != LEDGER_SCHEMA for item in active_ledger.values()):
+        raise ValueError("active review ledger row schema invalid")
+    active_receipt_sha256s = {
+        item["receipt_sha"] for item in active_ledger.values()
+    }
+    if not (len(active_ledger) == len(active_receipt_sha256s) == len(reviews)):
+        raise ValueError(
+            "review ledger cardinality differs from aggregate reviews: "
+            f"active={len(active_ledger)} "
+            f"active_receipt_sha256s={len(active_receipt_sha256s)} "
+            f"aggregate_reviews={len(reviews)}")
+    if active_receipt_sha256s != execution_sha256s:
+        raise ValueError("review ledger active receipt set differs from aggregate reviews")
     unresolved = [item for item in blockers if not item["resolved"]]
     if unresolved:
         raise ValueError(f"对抗复核仍有 {len(unresolved)} 个未关闭发布否决项")
