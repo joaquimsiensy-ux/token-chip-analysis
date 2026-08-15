@@ -11,8 +11,8 @@
   "scripts/*.py"
  ],
  "minimum_counts": {
-  "receipt_producers": 52,
-  "receipt_consumers": 55,
+  "receipt_producers": 54,
+  "receipt_consumers": 56,
   "transport_calls": 59,
   "atomic_writes": 40,
   "formal_entrypoints": 58
@@ -20,7 +20,8 @@
  "receipt_producers": [
   {
    "schemas": [
-    "accounting-gate/v1"
+    "accounting-gate/v1",
+    "accounting-gate/v2"
    ],
    "script": "scripts/evm/accounting_gate.py"
   },
@@ -115,7 +116,8 @@
   },
   {
    "schemas": [
-    "supply-truth-receipt/v3"
+    "supply-truth-receipt/v3",
+    "supply-truth-receipt/v4"
    ],
    "script": "scripts/lib/supply_truth_gate.py"
   },
@@ -296,6 +298,12 @@
  "receipt_consumers": [
   {
    "schemas": [
+    "evm-observation-bundle/v1"
+   ],
+   "script": "scripts/evm/accounting_gate.py"
+  },
+  {
+   "schemas": [
     "evm-channel-receipt/v2",
     "evm-channels/v2",
     "evm-collector-run/v2"
@@ -314,8 +322,7 @@
     "solana-holder-snapshot-v2",
     "solana-reconcile/v2",
     "solana-reconcile/v3",
-    "sqd-solana-cache/v3",
-    "supply-truth-receipt/v3"
+    "sqd-solana-cache/v3"
    ],
    "script": "scripts/lib/camp_series_provenance.py"
   },
@@ -340,6 +347,7 @@
   },
   {
    "schemas": [
+    "evm-observation-bundle/v1",
     "over-cap-approval/v1",
     "tolerance-waiver/v1"
    ],

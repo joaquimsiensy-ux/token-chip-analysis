@@ -26,6 +26,7 @@ sys.path[:0] = [
 import accounting_gate  # noqa: E402
 import shared_release_receipt as shared  # noqa: E402
 import supply_truth_gate as supply  # noqa: E402
+from test_supply_truth_gate import BLOCK_HASH, write_evm_bundle  # noqa: E402
 
 
 TOKEN = "0x" + "9" * 40
@@ -271,8 +272,10 @@ def test_f01_no_code_failure_receipt_keeps_tip():
     with tempfile.TemporaryDirectory(prefix="batch-a-f01-no-code-", dir="/private/tmp") as raw:
         root = Path(raw)
         out = root / "accounting_mode.json"
+        bundle = write_evm_bundle(root, token=TOKEN, as_of=1, total=1000, zero=0, dead=0)
         argv = ["accounting_gate.py", "--chain", "eth", "--token", TOKEN,
                 "--rpc", "offline://fixture", "--as-of-block", "1",
+                "--bundle", str(bundle),
                 "--out", str(out)]
         with mock.patch.object(accounting_gate, "Rpc", return_value=NoCodeRpc()), \
                 mock.patch.object(accounting_gate.os.path, "exists", return_value=False), \
@@ -287,6 +290,76 @@ def test_f01_no_code_failure_receipt_keeps_tip():
         assert receipt["as_of_block"] == 1
         assert receipt["tip_block"] == 100
         assert receipt["model_probe_block"] == 100
+
+
+def _run_accounting_cli(argv, *, rpc=None):
+    with mock.patch.object(sys, "argv", ["accounting_gate.py", *argv]), \
+            mock.patch.object(accounting_gate.os.path, "exists", return_value=False), \
+            mock.patch.object(accounting_gate, "Rpc", return_value=rpc or NoCodeRpc()):
+        try:
+            accounting_gate.main()
+        except SystemExit as exc:
+            return exc.code
+    raise AssertionError("accounting_gate.main did not exit")
+
+
+class NoCodeRpc:
+    n_calls = 0
+
+    def call(self, method, params):
+        self.n_calls += 1
+        if method == "eth_blockNumber":
+            return hex(200)
+        if method == "eth_getCode":
+            return "0x"
+        raise AssertionError((method, params))
+
+
+def test_workorder_b_accounting_mode_and_bundle_contract():
+    base = ["--chain", "eth", "--token", TOKEN, "--rpc", "offline://fixture"]
+    missing_rc = _run_accounting_cli(base)
+    assert missing_rc == 2, f"formal missing --bundle returned {missing_rc}, expected argparse 2"
+
+    with tempfile.TemporaryDirectory(prefix="workorder-b-accounting-", dir="/private/tmp") as raw:
+        root = Path(raw)
+        bundle = write_evm_bundle(root, token=TOKEN, as_of=123, total=1000, zero=0, dead=0)
+        both_rc = _run_accounting_cli([*base, "--bundle", str(bundle), "--exploration"])
+        assert both_rc == 2, both_rc
+
+        mismatch_out = root / "mismatch.json"
+        mismatch_rc = _run_accounting_cli([
+            *base, "--bundle", str(bundle), "--as-of-block", "124",
+            "--out", str(mismatch_out),
+        ])
+        assert mismatch_rc == 1 and mismatch_out.is_file(), mismatch_rc
+        mismatch = json.loads(mismatch_out.read_text(encoding="utf-8"))
+        assert "assertion mismatch" in " ".join(mismatch.get("reasons") or []), mismatch
+
+        formal_out = root / "formal.json"
+        formal_rc = _run_accounting_cli([
+            *base, "--bundle", str(bundle), "--out", str(formal_out),
+        ])
+        assert formal_rc == 1 and formal_out.is_file(), formal_rc
+        formal = json.loads(formal_out.read_text(encoding="utf-8"))
+        assert formal["schema"] == "accounting-gate/v2"
+        assert formal["execution_mode"] == "formal"
+        assert formal["as_of_block"] == 123
+        assert formal["tip_block"] == formal["model_probe_block"] == 200
+        assert formal["observed_anchor"] == {"block": 123, "block_hash": BLOCK_HASH}
+        assert formal["observation_bundle"]["path"] == str(bundle.resolve())
+        assert formal["observation_bundle"]["size"] == bundle.stat().st_size
+        assert formal["observation_bundle"]["sha256"] == sha256(bundle)
+
+        exploration_out = root / "exploration.json"
+        exploration_rc = _run_accounting_cli([
+            *base, "--exploration", "--as-of-block", "77",
+            "--out", str(exploration_out),
+        ])
+        assert exploration_rc == 1 and exploration_out.is_file(), exploration_rc
+        exploration = json.loads(exploration_out.read_text(encoding="utf-8"))
+        assert exploration["schema"] == "accounting-gate/v1"
+        assert exploration["execution_mode"] == "exploration"
+        assert exploration["as_of_block"] == 77
 
 
 def _retarget_evm_case(root: Path, as_of: int, tip: int | None):
@@ -1501,6 +1574,7 @@ def test_fixround_fa10_two_side_behavior_vectors():
 def main():
     tests = [
         test_f01_no_code_failure_receipt_keeps_tip,
+        test_workorder_b_accounting_mode_and_bundle_contract,
         test_f01_shared_evm_timing_and_legal_dual_time,
         test_f01_solana_not_subject_to_tip_check,
         test_f02_formal_cap_and_exploration,

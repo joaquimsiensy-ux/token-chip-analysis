@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""供给真值闸（supply truth gate）——重放终态对链上 totalSupply 的硬校验。
+"""供给真值闸（supply truth gate）——重放终态对冻结观测供给的硬校验。
 
 背景（GNT 实测，2026-07-28）：老合约 migrate() 直接改账本、不发任何 Transfer/Burn
 事件，全量重放余额虚高 10 倍，而 mint/burn 闭合、负余额、accounting_gate 全部检测项
@@ -14,7 +14,9 @@
   重放余额仅可作"≥阈值超集"筛选（migrate 只减不增，数学严格）。
 
 用法:
-  EVM:    python3 supply_truth_gate.py --chain bsc --token 0x... --as-of-block N --replay-stats replay_stats.json
+  EVM formal: python3 supply_truth_gate.py --chain bsc --token 0x... --as-of-block N \
+              --observation-bundle evm_observation_bundle.json \
+              --replay-stats replay_stats.json
   Solana: python3 supply_truth_gate.py --chain solana --mint <mint> \
            --observation-bundle <bundle.json> --as-of-block <slot> \
            --min-context-slot N --replay-stats stats.json
@@ -29,7 +31,7 @@
                      以及至少一份独立于 replay_stats 的人工核对证据与理由。waiver 最多
                      覆盖 100bps；批准值、记录偏差、申请值或实算偏差任一超过 100bps，
                      还须绑定独立 over-cap-approval/v1 用户特批收据
-  --as-of-block N    v3 receipt target 的冻结块/slot；正式发布必填
+  --as-of-block N    收据 target 的冻结块/slot；正式发布必填
   --out PATH         结果 JSON 落盘（默认 supply_truth.json，写工作目录）
 
 replay-stats 字段识别（依次尝试，值可为 int 或十进制字符串）:
@@ -56,7 +58,8 @@ from pathlib import Path
 
 from receipt_kernel import (build_envelope, finalize_envelope, publish_error_receipt,
                             publish_overwrite, publish_supersede)
-from chain_registry import formal_reconciliation_chains
+from chain_registry import evm_chain_id_for, formal_reconciliation_chains
+from evm_observation import validate_evm_observation_bundle
 from net import attested_rpc_pool
 from solana_observation import (assert_declared_slot,
                                 validate_observation_bundle)
@@ -84,6 +87,11 @@ WAIVER_TOLERANCE_BPS_CAP = 100
 TOLERANCE_WAIVER_SCHEMA = "tolerance-waiver/v1"
 OVER_CAP_APPROVAL_SCHEMA = "over-cap-approval/v1"
 SCHEMA_FAMILY = "supply-truth-receipt/"
+EVM_OBSERVATION_SCHEMA = "evm-observation-bundle/v1"
+RECEIPT_SCHEMA_BY_MODE = {
+    "formal_evm": {"schema": "supply-truth-receipt/v4"},
+    "other": {"schema": "supply-truth-receipt/v3"},
+}
 
 
 class TolerancePolicyError(ValueError):
@@ -527,7 +535,8 @@ def main(argv=None):
     ap.add_argument("--rpc")
     ap.add_argument("--proxy")
     ap.add_argument("--observation-bundle",
-                    help="Solana formal solana-observation-bundle/v1 from scan_token_accounts")
+                    help="formal 模式观测件：Solana=solana-observation-bundle/v1，"
+                         "EVM=evm-observation-bundle/v1")
     ap.add_argument("--min-context-slot", type=int, default=0,
                     help="Solana bundle snapshot lower-bound assertion")
     ap.add_argument("--tolerance-bps", type=int, default=10)
@@ -583,6 +592,20 @@ def main(argv=None):
             validate_observation_bundle(
                 bundle, bundle_path=bundle_path, expected_mint=a.mint)
             observed_snapshot_slot = bundle["snapshot"]["slot"]
+        elif mode == "formal":
+            if not a.token:
+                raise ValueError("EVM 链必须给 --token")
+            if not a.observation_bundle:
+                raise ValueError("EVM formal 模式必须给 --observation-bundle")
+            bundle_path = Path(a.observation_bundle).resolve(strict=True)
+            bundle = json.loads(bundle_path.read_text(encoding="utf-8"))
+            if bundle.get("schema") != EVM_OBSERVATION_SCHEMA:
+                raise ValueError(
+                    f"EVM observation bundle schema 必须是 {EVM_OBSERVATION_SCHEMA}")
+            validate_evm_observation_bundle(
+                bundle, bundle_path=bundle_path, expected_token=a.token,
+                expected_chain_id=evm_chain_id_for(a.chain))
+            observed_snapshot_slot = bundle["anchor"]["number"]
         target = {"chain": a.chain, "token": (a.token or a.mint or "").lower(),
                   "as_of_block": observed_snapshot_slot}
         envelope_inputs = {}
@@ -600,8 +623,11 @@ def main(argv=None):
                     waiver_path, waiver_doc["over_cap_approval"], "over_cap_approval")
         # A-3：inputs 记案根相对路径（案根＝收据落盘目录）——案目录整体搬家后
         # 收据仍指向案内实物；消费侧配合案根约束强制解析在案根内。
+        receipt_schema = RECEIPT_SCHEMA_BY_MODE[
+            "formal_evm" if a.chain != "solana" and mode == "formal" else "other"
+        ]["schema"]
         envelope = build_envelope(
-            "supply-truth-receipt/v3", target, __file__, mode,
+            receipt_schema, target, __file__, mode,
             inputs=envelope_inputs or None,
             input_base=Path(a.out).expanduser().resolve().parent)
         if a.chain == "solana":
@@ -610,6 +636,8 @@ def main(argv=None):
                 raise ValueError(
                     f"bundle snapshot slot {observed_snapshot_slot} < "
                     f"--min-context-slot {a.min_context_slot}")
+        elif mode == "formal":
+            assert_declared_slot(a.as_of_block, observed_snapshot_slot, "--as-of-block")
     except TolerancePolicyError as exc:
         return policy_reject(f"正式容差政策拒绝（exit 2）: {exc}")
     except Exception as exc:
@@ -643,6 +671,8 @@ def main(argv=None):
         if a.chain == "solana":
             onchain = int(bundle["supply"]["amount"])
             observed_context_slot = int(bundle["supply"]["slot"])
+        elif mode == "formal":
+            onchain = int(bundle["supply"]["total_supply_raw"])
         else:
             evm_pool = attested_rpc_pool(
                 a.rpc or DEFAULT_RPC[a.chain], a.chain, formal=True, proxy=a.proxy,
@@ -681,11 +711,16 @@ def main(argv=None):
     )
     if fallback_ready:
         try:
-            batched_supply, onchain_zero, onchain_dead = fetch_sink_reconciliation(
-                evm_pool, a.token, a.as_of_block)
-            if batched_supply != onchain:
-                raise ValueError(
-                    "同一冻结块的 totalSupply 单查与 sink 批量观测不一致")
+            if mode == "formal":
+                batched_supply = int(bundle["supply"]["total_supply_raw"])
+                onchain_zero = int(bundle["supply"]["zero_balance_raw"])
+                onchain_dead = int(bundle["supply"]["dead_balance_raw"])
+            else:
+                batched_supply, onchain_zero, onchain_dead = fetch_sink_reconciliation(
+                    evm_pool, a.token, a.as_of_block)
+                if batched_supply != onchain:
+                    raise ValueError(
+                        "同一冻结块的 totalSupply 单查与 sink 批量观测不一致")
             split_values = {
                 field: int(str(replay_stats[field])) for field in SINK_STATS_FIELDS
             }
@@ -730,7 +765,10 @@ def main(argv=None):
         supply_observation_semantics=(
             "bundle getTokenSupply cross-check observed at observed_context_slot; "
             "canonical freeze remains target.as_of_block from GPA context"
-            if a.chain == "solana" else "historical eth_call at target.as_of_block"),
+            if a.chain == "solana" else (
+                "frozen-block eth_call via evm-observation-bundle "
+                "(EIP-1898 block-hash binding)"
+                if mode == "formal" else "historical eth_call at target.as_of_block")),
         on_fail=("余额禁用重放结果改链上实时直查；地址全集/转账历史仍可用重放；"
                  "重放余额仅可作≥阈值超集筛选" if verdict == "FAIL" else None))
     try:

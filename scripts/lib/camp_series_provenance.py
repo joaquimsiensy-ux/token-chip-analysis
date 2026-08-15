@@ -398,7 +398,9 @@ def validate_series_payload(css: dict, *, tol_pp: float = CLOSURE_TOL_PP,
 # ── 登记面命中与末点对账（--series-source 模式）─────────────────────
 
 
-SUPPLY_TRUTH_SCHEMA = "supply-truth-receipt/v3"
+SUPPLY_TRUTH_SCHEMAS = {
+    "supply-truth-receipt/v3", "supply-truth-receipt/v4",
+}
 RECONCILE_SCHEMA = "solana-reconcile/v3"
 LEGACY_RECONCILE_SCHEMA = "solana-reconcile/v2"
 
@@ -426,7 +428,7 @@ def registry_anchor_check(sidecar: dict, resolved: dict, series_path, *,
     修前的全文包含式实测被 46 字节任意 JSON（{"sha256": "..."}）伪造通过。修后：
 
     evm-dict：案内 supply_truth.json 必须在场且本身过合法性三验（真实生产者
-      supply_truth_gate.py 的收据形态：schema==supply-truth-receipt/v3、
+      supply_truth_gate.py 的分链现役收据形态：Solana/legacy EVM v3、EVM formal v4，
       verdict==PASS、exit_code==0，参照 holder_distribution_scan.load_supply
       先例），且 sidecar 登记的 replay_stats sha256 必须命中收据的**特定字段位置**
       inputs.replay_stats.sha256（批 A 起哈希绑定的那一格，非任意位置）。
@@ -449,10 +451,10 @@ def registry_anchor_check(sidecar: dict, resolved: dict, series_path, *,
             raise SeriesProvenanceError("evm-dict sidecar 必须登记 inputs.replay_stats")
         truth = _json_loads(st.read_text(encoding="utf-8"), "supply_truth.json")
         if not isinstance(truth, dict) \
-                or truth.get("schema") != SUPPLY_TRUTH_SCHEMA:
+                or truth.get("schema") not in SUPPLY_TRUTH_SCHEMAS:
             raise SeriesProvenanceError(
-                f"supply_truth.json 不是合法供给真值收据（schema 必须是 "
-                f"{SUPPLY_TRUTH_SCHEMA}）——任意 JSON 冒充登记面不算数")
+                "supply_truth.json 不是合法供给真值收据（schema 必须属于 "
+                f"{sorted(SUPPLY_TRUTH_SCHEMAS)}）——任意 JSON 冒充登记面不算数")
         if str(truth.get("verdict", "")).upper() != "PASS" \
                 or truth.get("exit_code") != 0:
             raise SeriesProvenanceError(

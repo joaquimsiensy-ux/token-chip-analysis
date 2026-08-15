@@ -16,6 +16,8 @@ sys.path.insert(0, str(ROOT / "scripts/lib"))
 sys.path.insert(0, str(ROOT / "scripts/report"))
 import supply_truth_gate as gate  # noqa: E402
 import shared_release_receipt as shared  # noqa: E402
+from endpoint_identity import endpoint_fingerprint  # noqa: E402
+from evm_observation import build_evm_observation_bundle  # noqa: E402
 
 FAILS = []
 ZERO = "0x0000000000000000000000000000000000000000"
@@ -23,6 +25,9 @@ DEAD = "0x000000000000000000000000000000000000dead"
 TOKEN = "0x" + "9" * 40
 APU_MINT = 420690000000000000000000000000
 APU_DEAD = 82800853653911207346039942180
+BLOCK_HASH = "0x" + "1" * 64
+PARENT_HASH = "0x" + "2" * 64
+RUNTIME_CODE = "0x6001600055"
 
 
 def check(name, cond):
@@ -79,19 +84,92 @@ def split_stats(mint=APU_MINT, burn=APU_DEAD, zero=0, dead=APU_DEAD):
     }
 
 
-def run_evm(stats, pool, *, tolerance=10):
+def write_evm_bundle(root, *, token=TOKEN, as_of=123, total=APU_MINT,
+                     zero=0, dead=APU_DEAD):
+    """落一份通过工单 A 公共 validator 的 EVM 观测实物。"""
+    endpoint = "https://rpc.example.test"
+    block = {
+        "number": hex(as_of), "hash": BLOCK_HASH,
+        "parentHash": PARENT_HASH, "timestamp": hex(1_700_000_000),
+    }
+    selector = {"blockHash": BLOCK_HASH, "requireCanonical": True}
+    balance = lambda address: (  # noqa: E731
+        "0x70a08231" + "0" * 24 + address.removeprefix("0x").lower())
+    transcript = [
+        {"seq": 0, "method": "eth_chainId", "params": [], "result": 1},
+        {"seq": 1, "method": "eth_getBlockByNumber",
+         "params": [hex(as_of), False], "result": block},
+        {"seq": 2, "method": "eth_blockNumber", "params": [],
+         "result": hex(as_of + 12)},
+        {"seq": 3, "method": "eth_call",
+         "params": [{"to": token, "data": "0x18160ddd"}, selector],
+         "result": hex(total)},
+        {"seq": 4, "method": "eth_call",
+         "params": [{"to": token, "data": balance(ZERO)}, selector],
+         "result": hex(zero)},
+        {"seq": 5, "method": "eth_call",
+         "params": [{"to": token, "data": balance(DEAD)}, selector],
+         "result": hex(dead)},
+        {"seq": 6, "method": "eth_getCode", "params": [token, hex(as_of)],
+         "result": RUNTIME_CODE},
+        {"seq": 7, "method": "eth_getBlockByNumber",
+         "params": [hex(as_of), False], "result": block},
+    ]
+    transcript_path = root / "evm_observation_transcript.json"
+    transcript_path.write_text(json.dumps(transcript), encoding="utf-8")
+    core = {
+        "attestation": {
+            "expected_chain_id": 1, "observed_chain_id": 1,
+            "endpoint": endpoint_fingerprint(endpoint),
+        },
+        "anchor": {
+            "number": as_of, "block_hash": BLOCK_HASH,
+            "parent_hash": PARENT_HASH, "timestamp": 1_700_000_000,
+            "recheck_block_hash": BLOCK_HASH, "tip_block": as_of + 12,
+            "confirmations": 12,
+        },
+        "supply": {
+            "total_supply_raw": str(total), "zero_balance_raw": str(zero),
+            "dead_balance_raw": str(dead),
+            "block_binding": "eip1898-block-hash",
+        },
+        "code": {"runtime_code_sha256": hashlib.sha256(
+            bytes.fromhex(RUNTIME_CODE[2:])).hexdigest()},
+    }
+    target = {"chain": "eth", "token": token, "as_of_block": as_of}
+    bundle = build_evm_observation_bundle(
+        core, transcript_path, target, "scripts/evm/observe_supply.py",
+        input_base=root)
+    bundle_path = root / "evm_observation_bundle.json"
+    bundle_path.write_text(json.dumps(bundle), encoding="utf-8")
+    return bundle_path
+
+
+def run_evm(stats, pool, *, tolerance=10, with_bundle=True, bundle_token=TOKEN,
+            bundle_as_of=123, exploration=False):
     with tempfile.TemporaryDirectory(prefix="supply-truth-test-", dir="/private/tmp") as td:
         root = Path(td)
         (root / "stats.json").write_text(json.dumps(stats), encoding="utf-8")
+        bundle = write_evm_bundle(
+            root, token=bundle_token, as_of=bundle_as_of,
+            total=pool.values[0], zero=pool.values[1], dead=pool.values[2]) \
+            if with_bundle else None
         out = root / "supply_truth.json"
+        argv = [
+            "--chain", "eth", "--token", TOKEN, "--as-of-block", "123",
+            "--replay-stats", "stats.json", "--rpc", "offline://mock",
+            "--tolerance-bps", str(tolerance), "--out", str(out),
+        ]
+        if bundle is not None:
+            argv.extend(["--observation-bundle", str(bundle)])
+        if exploration:
+            argv.append("--exploration")
         with chdir(root), patch.object(gate, "attested_rpc_pool", return_value=pool):
-            rc = gate.main([
-                "--chain", "eth", "--token", TOKEN, "--as-of-block", "123",
-                "--replay-stats", "stats.json", "--rpc", "offline://mock",
-                "--tolerance-bps", str(tolerance), "--out", str(out),
-            ])
-        receipt_path = out if out.exists() else sorted(root.glob("supply_truth.error.*.json"))[-1]
-        return rc, json.loads(receipt_path.read_text(encoding="utf-8"))
+            rc = gate.main(argv)
+        candidates = [out] if out.exists() else sorted(root.glob("supply_truth.error.*.json"))
+        receipt = (json.loads(candidates[-1].read_text(encoding="utf-8"))
+                   if candidates else None)
+        return rc, receipt
 
 
 def fallback(*args):
@@ -151,7 +229,7 @@ def test_apu_main_and_receipt():
     pool = FakePool(APU_MINT, 0, APU_DEAD)
     rc, receipt = run_evm(split_stats(), pool)
     check("APU main PASS", rc == 0 and receipt.get("verdict") == "PASS")
-    check("APU receipt v3", receipt.get("schema") == "supply-truth-receipt/v3")
+    check("APU EVM formal receipt v4", receipt.get("schema") == "supply-truth-receipt/v4")
     check("APU receipt fallback semantics", receipt.get("burn_form") == "dead_sink"
           and receipt.get("decision_rule") == "sink_fallback_form2"
           and receipt.get("primary_verdict") == "FAIL")
@@ -160,9 +238,51 @@ def test_apu_main_and_receipt():
         "zero": {"replay_raw": "0", "onchain_raw": "0"},
         "dead": {"replay_raw": str(APU_DEAD), "onchain_raw": str(APU_DEAD)},
     })
-    check("fallback uses one call_many of three at frozen block",
-          len(pool.many_calls) == 1 and len(pool.many_calls[0]) == 3
-          and all(call[1][-1] == hex(123) for call in pool.many_calls[0]))
+    check("formal fallback uses bundle and zero RPC",
+          pool.calls == [] and pool.many_calls == [])
+
+
+def test_evm_formal_bundle_contract_and_exploration_regression():
+    missing_pool = FakePool(1000)
+    rc, missing = run_evm(
+        split_stats(mint=1000, burn=0, zero=0, dead=0), missing_pool,
+        with_bundle=False)
+    check("EVM formal missing observation bundle rejected",
+          rc == 1 and missing is None)
+
+    mismatch_pool = FakePool(1000)
+    rc, mismatch = run_evm(
+        split_stats(mint=1000, burn=0, zero=0, dead=0), mismatch_pool,
+        bundle_token="0x" + "8" * 40)
+    check("EVM formal bundle token mismatch rejected",
+          rc == 1 and mismatch is None)
+
+    block_pool = FakePool(1000)
+    rc, block_mismatch = run_evm(
+        split_stats(mint=1000, burn=0, zero=0, dead=0), block_pool,
+        bundle_as_of=124)
+    check("EVM formal declared as_of mismatch rejected",
+          rc == 1 and block_mismatch.get("verdict") == "ERROR")
+
+    formal_pool = FakePool(1000)
+    rc, formal = run_evm(
+        split_stats(mint=1000, burn=0, zero=0, dead=0), formal_pool)
+    check("EVM formal main path zero RPC", rc == 0
+          and formal_pool.calls == [] and formal_pool.many_calls == [])
+    check("EVM formal bundle binding and semantics", formal.get("schema")
+          == "supply-truth-receipt/v4"
+          and (formal.get("inputs") or {}).get("observation_bundle")
+          and formal.get("observation_bundle")
+          and formal.get("supply_observation_semantics")
+          == "frozen-block eth_call via evm-observation-bundle (EIP-1898 block-hash binding)")
+
+    exploration_pool = FakePool(1000)
+    rc, exploration = run_evm(
+        split_stats(mint=1000, burn=0, zero=0, dead=0), exploration_pool,
+        with_bundle=False, exploration=True)
+    check("EVM exploration retains v3 live RPC behavior", rc == 0
+          and exploration.get("schema") == "supply-truth-receipt/v3"
+          and len(exploration_pool.calls) == 1)
 
 
 def test_fail_closed_main_branches():
@@ -189,7 +309,8 @@ def test_fail_closed_main_branches():
 
     # fallback 的三个观测任一失败都是检测自身失败 exit 1。
     broken_pool = FakePool(APU_MINT, 0, APU_DEAD, fail_many_index=1)
-    rc, broken = run_evm(split_stats(), broken_pool)
+    rc, broken = run_evm(
+        split_stats(), broken_pool, with_bundle=False, exploration=True)
     check("partial fallback RPC failure is ERROR", rc == 1
           and broken.get("verdict") == "ERROR" and broken.get("exit_code") == 1)
 
@@ -256,6 +377,7 @@ def main():
     test_primary_decide_and_parser()
     test_sink_fallback_pure_cases()
     test_apu_main_and_receipt()
+    test_evm_formal_bundle_contract_and_exploration_regression()
     test_fail_closed_main_branches()
     test_solana_never_falls_back()
     test_legacy_v2_fixture_rejected()
