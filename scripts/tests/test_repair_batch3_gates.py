@@ -25,6 +25,7 @@ R10_ROW_RE = re.compile(r"^\|[ \t]*(R10-(\d+))(?:（[^|\n]+）)?[ \t]*\|")
 R10_STATUS_RE = re.compile(
     r"【(?:CLOSED \d+\.\d+\.\d+|FIXED_PENDING_REVIEW \d+\.\d+\.\d+ 批\d+)】"
 )
+R10_STATUS_CARRIER_RE = re.compile(r"【[^】]*】")
 R10_STATUSISH_RE = re.compile(
     r"【[ \t　]*(?:CLOSED|FIXED_PENDING_REVIEW)\b[^】]*】"
 )
@@ -357,6 +358,28 @@ def r10_ledger_failures(path: Path) -> list[str]:
             continue
         expected_cell_count = layout["cell_count"]
         status_cell_index = layout["status_cell_index"]
+        carriers_by_cell = [
+            (index, carrier)
+            for index, cell in enumerate(cells)
+            for carrier in R10_STATUS_CARRIER_RE.findall(cell)
+        ]
+        carrier_open = False
+        carrier_brackets_malformed = False
+        for character in line:
+            if character == "【":
+                if carrier_open:
+                    carrier_brackets_malformed = True
+                carrier_open = True
+            elif character == "】":
+                if not carrier_open:
+                    carrier_brackets_malformed = True
+                carrier_open = False
+        if carrier_open or carrier_brackets_malformed:
+            failures.append(f"{entry_id} 状态载体括号不配对")
+        for _, carrier in carriers_by_cell:
+            if R10_STATUS_RE.fullmatch(carrier) is None:
+                failures.append(
+                    f"{entry_id} 状态载体无法识别为枚举：{carrier!r}")
         statusish_by_cell = [
             (index, marker)
             for index, cell in enumerate(cells)
@@ -379,7 +402,11 @@ def r10_ledger_failures(path: Path) -> list[str]:
             entries.append((entry_id, "OPEN"))
             continue
         status_cell = cells[status_cell_index]
-        status_markers = R10_STATUS_RE.findall(status_cell)
+        status_markers = [
+            carrier for index, carrier in carriers_by_cell
+            if index == status_cell_index
+            and R10_STATUS_RE.fullmatch(carrier) is not None
+        ]
         statusish = R10_STATUSISH_RE.findall(status_cell)
         if len(status_markers) > 1:
             failures.append(f"{entry_id} 状态标记不唯一：{status_markers}")
@@ -540,6 +567,49 @@ def t_f07_r10_ledger() -> None:
         check("F07 所有非状态列扫描宽松 statusish 变体",
               any("正文列出现状态样式标记" in item
                   for item in body_statusish_failures), body_statusish_failures)
+
+        carrier_cases = {
+            "零宽字符插词": "【CLO\u200bSED 6.41.0】",
+            "未知状态关键字": "【CLOSED_PENDING 6.41.0】",
+            "HTML 实体": "【CLO&#83;ED 6.41.0】",
+        }
+        for case_name, carrier in carrier_cases.items():
+            carrier_copy = root / f"r10_ledger_bad_carrier_{case_name}.md"
+            carrier_text = source.replace(
+                "【CLOSED 6.41.0】", carrier, 1,
+            ).replace(
+                "当前现役 = 23 − 4 = **19**",
+                "当前现役 = 23 − 4 = **20**",
+                1,
+            )
+            carrier_copy.write_text(carrier_text, encoding="utf-8")
+            carrier_failures = r10_ledger_failures(carrier_copy)
+            check(f"F07 BR3-01 {case_name}状态载体必须 FAIL",
+                  any("状态载体无法识别为枚举" in item
+                      for item in carrier_failures), carrier_failures)
+
+        unclosed_copy = root / "r10_ledger_unclosed_carrier.md"
+        unclosed_text = source.replace(
+            "【CLOSED 6.41.0】", "【CLOSED 6.41.0", 1,
+        ).replace(
+            "当前现役 = 23 − 4 = **19**",
+            "当前现役 = 23 − 4 = **20**",
+            1,
+        )
+        unclosed_copy.write_text(unclosed_text, encoding="utf-8")
+        unclosed_failures = r10_ledger_failures(unclosed_copy)
+        check("F07 BR3-01 未闭合状态载体括号必须 FAIL",
+              any("状态载体括号不配对" in item
+                  for item in unclosed_failures), unclosed_failures)
+
+        nested_copy = root / "r10_ledger_nested_carrier.md"
+        nested_copy.write_text(source.replace(
+            "【CLOSED 6.41.0】", "【CLO【SED 6.41.0】】", 1,
+        ), encoding="utf-8")
+        nested_failures = r10_ledger_failures(nested_copy)
+        check("F07 BR3-01 嵌套状态载体括号必须 FAIL",
+              any("状态载体括号不配对" in item
+                  for item in nested_failures), nested_failures)
 
 
 def main() -> int:
