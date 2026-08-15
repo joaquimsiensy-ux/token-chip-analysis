@@ -11,7 +11,8 @@ import hashlib
 import json
 import os
 import sys
-from decimal import Decimal
+from datetime import datetime, timedelta, timezone
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
@@ -22,10 +23,20 @@ from receipt_kernel import (assert_distinct_paths, build_envelope, finalize_enve
 from supply_semantics import DEAD, ZERO
 SCHEMA = "evm-reconciliation-receipt/v3"
 SCHEMA_FAMILY = "evm-reconciliation-receipt/"
+GMGN_DIVERGENCE_NOTE_SCHEMA = "gmgn-divergence-note/v1"
+GMGN_DIVERGENCE_WARNING = "gmgn_divergence"
+GMGN_EXPLANATION_MIN_CHARS = 30
+GMGN_DIVERGENCE_CAUSES = {
+    "gmgn_data_lag", "methodology_diff", "gmgn_upstream_error",
+}
 
 
 class ReconFailure(ValueError):
     """A completed hard check failed (exit 2), as distinct from producer ERROR."""
+
+
+class DivergenceNoteError(ValueError):
+    """A supplied GMGN investigation note is invalid and must not replace output."""
 
 
 def _json_bytes(payload):
@@ -41,6 +52,208 @@ def _future_input_ref(path, case_root, payload):
         raise ValueError("--transcript-out 必须落在 receipt 案根目录内") from exc
     data = _json_bytes(payload)
     return {"path": shown, "size": len(data), "sha256": hashlib.sha256(data).hexdigest()}
+
+
+def _file_input_ref(path, case_root):
+    root = Path(case_root).expanduser().resolve()
+    raw = Path(path).expanduser()
+    lexical = raw if raw.is_absolute() else root / raw
+    try:
+        relative = lexical.relative_to(root)
+    except ValueError as exc:
+        raise ValueError("GMGN 查证说明必须落在 receipt 案根目录内") from exc
+    if not relative.parts or ".." in relative.parts:
+        raise ValueError("GMGN 查证说明必须使用案根内安全路径")
+    current = root
+    for part in relative.parts:
+        current = current / part
+        if current.is_symlink():
+            raise ValueError("GMGN 查证说明不得是符号链接")
+    try:
+        resolved = lexical.resolve(strict=True)
+        resolved.relative_to(root)
+    except (OSError, ValueError) as exc:
+        raise ValueError("GMGN 查证说明不存在或越出案根") from exc
+    if not resolved.is_file():
+        raise ValueError("GMGN 查证说明必须是普通文件")
+    data = resolved.read_bytes()
+    return {"path": relative.as_posix(), "size": len(data),
+            "sha256": hashlib.sha256(data).hexdigest()}
+
+
+def _meaningful_codepoint(char):
+    point = ord(char)
+    return (
+        0x21 <= point <= 0x7E
+        or (0x00A1 <= point <= 0x024F and point != 0x00AD)
+        or 0x2010 <= point <= 0x2027
+        or 0x3001 <= point <= 0x3029
+        or 0x3030 <= point <= 0x303D
+        or 0x3041 <= point <= 0x3096
+        or 0x309B <= point <= 0x30FF
+        or 0x3400 <= point <= 0x4DBF
+        or 0x4E00 <= point <= 0x9FFF
+        or 0xAC00 <= point <= 0xD7A3
+        or 0xFF01 <= point <= 0xFF5E
+    )
+
+
+def _meaningful_text(value):
+    return isinstance(value, str) and any(_meaningful_codepoint(char) for char in value)
+
+
+def _meaningful_length(value):
+    if not isinstance(value, str):
+        return 0
+    return sum(_meaningful_codepoint(char) for char in value)
+
+
+def _reject_constant(value):
+    raise ValueError(f"JSON 非有限数值 {value} 不允许")
+
+
+def _canonical_request_sha256(request):
+    raw = json.dumps(request, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
+def _strict_utc(value, label):
+    try:
+        if not isinstance(value, str) or len(value) != 20:
+            raise ValueError
+        parsed = datetime.strptime(value, "%Y-%m-%dT%H:%M:%SZ").replace(
+            tzinfo=timezone.utc)
+    except ValueError as exc:
+        raise ValueError(f"{label} 必须是 YYYY-MM-DDTHH:MM:SSZ") from exc
+    if parsed > datetime.now(timezone.utc) + timedelta(days=1):
+        raise ValueError(f"{label} 不得晚于当前时间 1 天")
+    return parsed
+
+
+def _decimal_string(value, label):
+    if not isinstance(value, str):
+        raise ValueError(f"{label} 必须是 Decimal 规范字符串")
+    try:
+        parsed = Decimal(value)
+    except (InvalidOperation, ValueError) as exc:
+        raise ValueError(f"{label} 不是合法 Decimal") from exc
+    if not parsed.is_finite() or str(parsed) != value:
+        raise ValueError(f"{label} 必须是有限 Decimal 规范字符串")
+    return value
+
+
+def _validate_divergences(value, label):
+    if not isinstance(value, list):
+        raise ValueError(f"{label} 必须是有序数组")
+    normalized = []
+    seen = set()
+    keys = {"address", "gmgn_pct", "replay_pct", "diff_pp"}
+    for index, row in enumerate(value):
+        if not isinstance(row, dict) or set(row) != keys:
+            raise ValueError(f"{label}[{index}] 字段不完整或含额外项")
+        address = row.get("address")
+        if not isinstance(address, str) or not address or address != address.lower():
+            raise ValueError(f"{label}[{index}].address 必须是非空小写字符串")
+        if address in seen:
+            raise ValueError(f"{label} 地址重复: {address}")
+        seen.add(address)
+        normalized.append({
+            "address": address,
+            "gmgn_pct": _decimal_string(row.get("gmgn_pct"),
+                                         f"{label}[{index}].gmgn_pct"),
+            "replay_pct": _decimal_string(row.get("replay_pct"),
+                                           f"{label}[{index}].replay_pct"),
+            "diff_pp": _decimal_string(row.get("diff_pp"),
+                                        f"{label}[{index}].diff_pp"),
+        })
+    return normalized
+
+
+def _validate_gmgn_divergence_note(case_root, note_path, target, input_refs,
+                                   divergences):
+    """Producer-side independent validator for the manual GMGN note."""
+    root = Path(case_root).expanduser().resolve()
+    note_ref = _file_input_ref(note_path, root)
+    path = root / note_ref["path"]
+    try:
+        note = json.loads(path.read_text(encoding="utf-8"),
+                          parse_constant=_reject_constant)
+    except (OSError, json.JSONDecodeError, ValueError, RecursionError) as exc:
+        raise ValueError(f"GMGN 查证说明 JSON 非法: {exc}") from exc
+    required = {
+        "schema", "request", "request_sha256", "findings", "conclusion",
+        "investigator", "investigated_at_utc",
+    }
+    if not isinstance(note, dict) or set(note) != required:
+        raise ValueError("GMGN 查证说明字段必须完整且无额外项")
+    if note.get("schema") != GMGN_DIVERGENCE_NOTE_SCHEMA:
+        raise ValueError(f"GMGN 查证说明 schema 必须是 {GMGN_DIVERGENCE_NOTE_SCHEMA}")
+    request = note.get("request")
+    if not isinstance(request, dict) or set(request) != {
+            "target", "inputs_sha256", "divergences"}:
+        raise ValueError("GMGN 查证说明 request 字段必须完整且无额外项")
+    if request.get("target") != target:
+        raise ValueError("GMGN 查证说明 request.target 与本次目标不全等")
+    hashes = request.get("inputs_sha256")
+    hash_keys = {"config", "balances", "replay_stats", "gmgn"}
+    if not isinstance(hashes, dict) or set(hashes) != hash_keys:
+        raise ValueError("GMGN 查证说明 inputs_sha256 字段不完整")
+    for key in sorted(hash_keys):
+        shown = hashes.get(key)
+        expected = (input_refs.get(key) or {}).get("sha256")
+        if (not isinstance(shown, str) or len(shown) != 64
+                or any(char not in "0123456789abcdef" for char in shown)
+                or shown != expected):
+            raise ValueError(f"GMGN 查证说明 inputs_sha256.{key} 与本次输入不一致")
+    shown_divergences = _validate_divergences(
+        request.get("divergences"), "GMGN 查证说明 request.divergences")
+    expected_divergences = _validate_divergences(divergences, "本次 GMGN divergences")
+    if shown_divergences != expected_divergences:
+        raise ValueError("GMGN 查证说明未完整覆盖当前重算差异集合")
+    if note.get("request_sha256") != _canonical_request_sha256(request):
+        raise ValueError("GMGN 查证说明 request_sha256 与 request 重算不一致")
+    findings = note.get("findings")
+    if not isinstance(findings, list) or len(findings) != len(expected_divergences):
+        raise ValueError("GMGN 查证说明 findings 未逐项覆盖 divergences")
+    for index, (finding, divergence) in enumerate(zip(findings, expected_divergences)):
+        if not isinstance(finding, dict) or set(finding) not in (
+                {"address", "cause", "explanation"},
+                {"address", "cause", "explanation", "evidence_refs"}):
+            raise ValueError(f"GMGN 查证说明 findings[{index}] 字段非法")
+        if finding.get("address") != divergence["address"]:
+            raise ValueError(f"GMGN 查证说明 findings[{index}] 地址覆盖不一致")
+        if finding.get("cause") not in GMGN_DIVERGENCE_CAUSES:
+            raise ValueError(f"GMGN 查证说明 findings[{index}].cause 非法")
+        explanation = finding.get("explanation")
+        if (not _meaningful_text(explanation)
+                or _meaningful_length(explanation) < GMGN_EXPLANATION_MIN_CHARS):
+            raise ValueError(
+                f"GMGN 查证说明 findings[{index}].explanation 至少需 "
+                f"{GMGN_EXPLANATION_MIN_CHARS} 个实义字符")
+        if "evidence_refs" in finding:
+            refs = finding["evidence_refs"]
+            if not isinstance(refs, list):
+                raise ValueError(f"GMGN 查证说明 findings[{index}].evidence_refs 非法")
+            for ref_index, ref in enumerate(refs):
+                evidence_raw = Path(str((ref or {}).get("path") or ""))
+                if evidence_raw.is_absolute() or not evidence_raw.parts or ".." in evidence_raw.parts:
+                    raise ValueError("GMGN 查证说明 evidence_refs 必须是安全相对路径")
+                evidence_path = path.parent / evidence_raw
+                actual = _file_input_ref(evidence_path, root)
+                if (not isinstance(ref, dict) or not {"path", "size", "sha256"} <= set(ref)
+                        or ref.get("size") != actual["size"]
+                        or ref.get("sha256") != actual["sha256"]):
+                    raise ValueError(
+                        f"GMGN 查证说明 findings[{index}].evidence_refs[{ref_index}] 绑定不一致")
+    conclusion = note.get("conclusion")
+    if (not _meaningful_text(conclusion)
+            or "重放数据经查证无误" not in conclusion):
+        raise ValueError("GMGN 查证说明 conclusion 缺少重放数据经查证无误承诺")
+    if not _meaningful_text(note.get("investigator")):
+        raise ValueError("GMGN 查证说明 investigator 必须含实义字符")
+    _strict_utc(note.get("investigated_at_utc"),
+                "GMGN 查证说明 investigated_at_utc")
+    return note
 
 
 def rpc_balance_of(pool, token, address, block, transcript):
@@ -69,6 +282,8 @@ def parse_args(argv=None):
     ap.add_argument("--end-block", required=True, type=int)
     ap.add_argument("--out", required=True)
     ap.add_argument("--transcript-out")
+    ap.add_argument("--divergence-note",
+                    help="GMGN 黄灯人工查证说明（gmgn_divergence_note.json）")
     ap.add_argument("--rpc")
     ap.add_argument("--proxy")
     ap.add_argument("--top-n", type=int, default=15)
@@ -196,18 +411,44 @@ def main(argv=None):
         }
         envelope["inputs"]["transcript"] = _future_input_ref(
             a.transcript_out, Path(a.out).expanduser().resolve().parent, transcript)
+        divergences = [
+            {key: row[key] for key in ("address", "gmgn_pct", "replay_pct", "diff_pp")}
+            for row in gmgn_rows if row["status"] == "DIFF"
+        ]
+        if a.divergence_note is not None:
+            if not gmgn_diff:
+                raise DivergenceNoteError(
+                    "GMGN 零差异时禁止预填 --divergence-note；无需人工说明")
+            note_path = Path(a.divergence_note).expanduser()
+            try:
+                _validate_gmgn_divergence_note(
+                    Path(a.out).expanduser().resolve().parent, note_path, target,
+                    envelope.get("inputs") or {}, divergences)
+                envelope["inputs"]["divergence_note"] = _file_input_ref(
+                    note_path, Path(a.out).expanduser().resolve().parent)
+            except ValueError as exc:
+                raise DivergenceNoteError(str(exc)) from exc
         if rpc_errors:
             raise ValueError(f"{rpc_errors} 个 RPC 观测失败")
         elif not supply_closed or mismatched:
             receipt = finalize_envelope(envelope, "FAIL", 2,
-                                        observations=observations, error=None)
+                                        observations=observations, error=None,
+                                        warnings=[])
         else:
+            warnings = [GMGN_DIVERGENCE_WARNING] if gmgn_diff else []
             receipt = finalize_envelope(envelope, "PASS", 0,
-                                        observations=observations, error=None)
+                                        observations=observations, error=None,
+                                        warnings=warnings)
     except ReconFailure as exc:
         envelope["inputs"]["transcript"] = _future_input_ref(
             a.transcript_out, Path(a.out).expanduser().resolve().parent, transcript)
-        receipt = finalize_envelope(envelope, "FAIL", 2, observations={}, error=str(exc))
+        receipt = finalize_envelope(envelope, "FAIL", 2, observations={}, error=str(exc),
+                                    warnings=[])
+    except DivergenceNoteError as exc:
+        # 人工说明无效属于调用错误；保留此前黄灯收据，不写 ERROR 回执覆盖证据。
+        print(f"[verify_recon] divergence note ERROR exit=1（原黄灯收据未覆盖）: {exc}",
+              file=sys.stderr)
+        return 1
     except Exception as exc:
         try:
             error_path = publish_error_receipt(a.out, envelope, exc)
@@ -221,6 +462,14 @@ def main(argv=None):
         print(f"[verify_recon] receipt 写入失败: {exc}", file=sys.stderr)
         return 1
     print(f"[verify_recon] {receipt['verdict']} exit={receipt['exit_code']} → {a.out}")
+    if GMGN_DIVERGENCE_WARNING in receipt.get("warnings", []):
+        if "divergence_note" in (receipt.get("inputs") or {}):
+            print("[verify_recon] 黄灯 gmgn_divergence：查证说明已绑定；发布侧将独立重验")
+        else:
+            print("[verify_recon] 黄灯 gmgn_divergence：收据 PASS，但发布前必须补 "
+                  "gmgn_divergence_note.json")
+            print("[verify_recon] 查证后按原命令追加 "
+                  "--divergence-note gmgn_divergence_note.json 重跑绑定")
     return receipt["exit_code"]
 
 

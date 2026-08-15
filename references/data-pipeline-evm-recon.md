@@ -9,11 +9,27 @@
 ## 5. 对账 gate（数据不闭合不进分析）
 
 对账清单＝**标准四件套＋1 项重放前置检查**（下列 1–4 为对表查，5 为采集完整性前置），全过才允许跑下游分析。与 analyze-workflow A2 现行"四查"的对应：本节 1＝余额对账、2/3＝供给闭合、4＝时间抽查；A2 第 3 查**供给真值闸**挂 `scripts/lib/supply_truth_gate.py`，不在本清单内：
-1. **重建余额 vs GMGN top10 精确对表**：全量转账逐笔累加重建每地址余额，与 GMGN top10 逐个对到个位数。曾在扫块进度 97% 时 4/10 MISMATCH、补扫 remaining=0 后 10/10 全 OK——证明该 gate 能兜住数据缺口；预跑一次有提前暴露口径问题的价值，但通过判定只认补扫完成之后。（OPN，07）
+1. **余额硬对账＋GMGN 黄灯对表（两件事，不得混写）**：`verify_recon.py` 先按绑定的 `balances` 确定性选出 top-N（先截取、再跳过 ZERO/dead），逐地址用冻结块 RPC `balanceOf` 与重放 raw balance 精确相等核对；任一 MISMATCH/RPC_ERROR 都是硬 FAIL。GMGN top10 是另一个第三方比例对表：以 0.15pp 为容差，差异不改变收据的 PASS/0，但收据必须带 `warnings:["gmgn_divergence"]`，发布链在合格人工查证说明绑定前保持阻断。曾在扫块进度 97% 时 4/10 MISMATCH、补扫 remaining=0 后 10/10 全 OK；该历史现象只说明提前对表能暴露未补扫完成或口径问题，不把 GMGN 比例差异误写成 RPC 个位数硬对账。（OPN，07；2026-08-15 黄灯制）
 2. **全网余额和=0**：所有地址重建余额求和应为零（mint/burn 计入），不为零即漏了转账段。（SIREN，07）
 3. **总量恒等式 wei 级闭合**：跨链代币各链余量之和 ≈ 总供应，精确到 wei。（OPN，07）
 4. **时间抽查（分层计划制）**：`anchor_plan.py` 出分层抽样计划（矩阵点＋四类强制覆盖点），`scripts/lib/time_spotcheck.py` 对独立第二源逐锚点核对（balance 型 archive balanceOf 直查＋tx 型收据五元组，产 time_spotcheck.json）；第二源分层选型与全史重拉例外条款见 §13。（旧"固定块距插值抽几笔对浏览器"形态已由本制取代；OPN/SIREN 07 → 2026-08-01 改版）
 5. **重放前置完整性检查（快照缺块防护，重放开跑前做）**：核对全部采集 run 的 done.json——next_block 全部达到目标块、mtime 晚于最后一次采集启动，才允许重放（实锤：重放跑在尾部 run 拉完前 13 分钟，快照缺尾部 ~980 块/682 条）。**机制警示：供给闭合恒等式（上面第 2/3 查）对"缺整行"免疫**——整行缺失时借贷两边同时缺、sum 恒等于 TOTAL 照样通过，此类洞只有 RPC 抽查负余额能暴露；增量重放出现"期初为 0 的地址转出变负"=上游快照有洞的指纹，见到即停下补数据。（QUQ 完整版分析，07-22）
+
+**GMGN 黄灯查证说明（`gmgn-divergence-note/v1`）**：第一次不带说明运行 `verify_recon.py`，让程序根据本次绑定的 config/balances/replay_stats/gmgn 四实物重算差异。若出现黄灯，人工查证后在案根手写 `gmgn_divergence_note.json`，再把原命令原参数重跑，并追加：
+
+```bash
+python3 scripts/evm/verify_recon.py <原参数> \
+  --divergence-note gmgn_divergence_note.json
+```
+
+说明件顶层字段为 `schema/request/request_sha256/findings/conclusion/investigator/investigated_at_utc`。`request` 必须精确绑定 target、四输入 sha256 与程序输出顺序一致的完整 divergences；每个 address 在 `findings` 中恰有一条说明，`cause` 只允许 `gmgn_data_lag`、`methodology_diff`、`gmgn_upstream_error`，`explanation` 至少 30 个实义字符。`evidence_refs` 可选，提供时必须是案根内普通文件的 path/size/sha256 绑定。标准结论句式：**“重放数据经查证无误，差异来自上述第三方时效或方法口径原因。”** `self_error` 故意不在可放行枚举中：若查证发现自己算错，必须修数据并从头重跑，不能写说明放行。
+
+| 当前重算状态 | producer 结果 | 发布消费侧结果 |
+|---|---|---|
+| 有差异、无说明 | PASS/0，带 `gmgn_divergence` 黄灯 | 阻断，要求绑定说明 |
+| 有差异、说明合格 | 带 `--divergence-note` 重跑并绑定，仍 PASS/0＋黄灯 | 独立重验说明与实物后放行 |
+| 有差异、说明不合格 | exit 1，且不覆盖原黄灯收据 | 原黄灯仍阻断 |
+| 无差异、却给说明 | exit 1，拒绝预填说明 | 无说明的干净 PASS 收据正常放行 |
 
 **供给真值闸的两种销毁形态（EVM `supply-truth-receipt/v4`，Solana `supply-truth-receipt/v3`）**：EVM formal 必须先运行 `scripts/evm/observe_supply.py`，在冻结块以 EIP-1898 `blockHash` 选择器读取 `totalSupply()`、`balanceOf(ZERO)` 与 `balanceOf(dead)`，落 `evm-observation-bundle/v1`＋调用 transcript；`accounting-gate/v2` 与 supply_truth v4 必须绑定同一 bundle，正式消费阶段不再现场 RPC。主规则继续按形态①校验
 `mint_total − burn_total` 与 bundle 的冻结块 `totalSupply()`；只有主规则 FAIL、EVM replay_stats

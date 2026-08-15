@@ -60,6 +60,12 @@ RECON_PRODUCERS = {
 }
 RECON_RUNNERS = {"scripts/report/reconciliation_report.py"}
 ADVERSARIAL_RUNNERS = {"scripts/report/adversarial_review_runner.py"}
+GMGN_DIVERGENCE_NOTE_SCHEMA = "gmgn-divergence-note/v1"
+GMGN_DIVERGENCE_WARNING = "gmgn_divergence"
+GMGN_EXPLANATION_MIN_CHARS = 30
+GMGN_DIVERGENCE_CAUSES = {
+    "gmgn_data_lag", "methodology_diff", "gmgn_upstream_error",
+}
 
 
 def sha(path):
@@ -157,6 +163,43 @@ def _meaningful_text(value) -> bool:
         if 0xFF01 <= point <= 0xFF5E:
             return True
     return False
+
+
+def _meaningful_length(value) -> int:
+    """Count only the consumer whitelist's meaningful characters."""
+    if not isinstance(value, str):
+        return 0
+    count = 0
+    for char in value:
+        point = ord(char)
+        allowed = (
+            0x21 <= point <= 0x7E
+            or (0x00A1 <= point <= 0x024F and point != 0x00AD)
+            or 0x2010 <= point <= 0x2027
+            or 0x3001 <= point <= 0x3029
+            or 0x3030 <= point <= 0x303D
+            or 0x3041 <= point <= 0x3096
+            or 0x309B <= point <= 0x30FF
+            or 0x3400 <= point <= 0x4DBF
+            or 0x4E00 <= point <= 0x9FFF
+            or 0xAC00 <= point <= 0xD7A3
+            or 0xFF01 <= point <= 0xFF5E
+        )
+        count += int(allowed)
+    return count
+
+
+def _strict_utc_datetime(value, label: str) -> datetime:
+    try:
+        if not isinstance(value, str) or len(value) != 20:
+            raise ValueError
+        parsed = datetime.strptime(value, "%Y-%m-%dT%H:%M:%SZ").replace(
+            tzinfo=timezone.utc)
+    except ValueError as exc:
+        raise ValueError(f"{label} must use YYYY-MM-DDTHH:MM:SSZ") from exc
+    _require(parsed <= datetime.now(timezone.utc) + timedelta(days=1),
+             f"{label} later than now+1d")
+    return parsed
 
 
 def _validate_evidence_content(path: Path, label: str) -> None:
@@ -642,6 +685,118 @@ def _validate_recon_balance(root, receipt, observations, balances, target):
     _validate_balance_transcript(root, receipt, rows, target)
 
 
+def _validate_gmgn_divergences(value, label):
+    _require(isinstance(value, list), f"{label} must be an ordered list")
+    normalized = []
+    seen = set()
+    keys = {"address", "gmgn_pct", "replay_pct", "diff_pp"}
+    for index, row in enumerate(value):
+        _require(isinstance(row, dict) and set(row) == keys,
+                 f"{label}[{index}] fields invalid")
+        address = row.get("address")
+        _require(isinstance(address, str) and bool(address) and address == address.lower(),
+                 f"{label}[{index}].address invalid")
+        _require(address not in seen, f"{label} duplicate address: {address}")
+        seen.add(address)
+        item = {"address": address}
+        for key in ("gmgn_pct", "replay_pct", "diff_pp"):
+            raw = row.get(key)
+            parsed = _decimal(raw, f"{label}[{index}].{key}")
+            _require(isinstance(raw, str) and str(parsed) == raw,
+                     f"{label}[{index}].{key} must use canonical Decimal spelling")
+            item[key] = raw
+        normalized.append(item)
+    return normalized
+
+
+def _validate_gmgn_divergence_note(case_root, note_path, target, input_refs,
+                                   divergences):
+    """Consumer-side independent validator for gmgn-divergence-note/v1."""
+    root = Path(case_root).resolve()
+    path = Path(note_path)
+    try:
+        path = path.resolve(strict=True)
+        relative = path.relative_to(root)
+    except (OSError, ValueError) as exc:
+        raise ValueError("GMGN divergence note escapes case root") from exc
+    lexical = root
+    for part in relative.parts:
+        lexical = lexical / part
+        _require(not lexical.is_symlink(), "GMGN divergence note path is a symlink")
+    _require(path.is_file(), "GMGN divergence note is not a regular file")
+    try:
+        note = json.loads(path.read_text(encoding="utf-8"),
+                          parse_constant=_reject_constant)
+    except (OSError, json.JSONDecodeError, ValueError, RecursionError) as exc:
+        raise ValueError(f"GMGN divergence note JSON invalid: {exc}") from exc
+    required = {
+        "schema", "request", "request_sha256", "findings", "conclusion",
+        "investigator", "investigated_at_utc",
+    }
+    _require(isinstance(note, dict) and set(note) == required,
+             "GMGN divergence note fields invalid")
+    _require(note.get("schema") == GMGN_DIVERGENCE_NOTE_SCHEMA,
+             f"GMGN divergence note schema must be {GMGN_DIVERGENCE_NOTE_SCHEMA}")
+    request = note.get("request")
+    _require(isinstance(request, dict)
+             and set(request) == {"target", "inputs_sha256", "divergences"},
+             "GMGN divergence note request fields invalid")
+    _require(request.get("target") == target,
+             "GMGN divergence note request.target mismatch")
+    hashes = request.get("inputs_sha256")
+    hash_keys = {"config", "balances", "replay_stats", "gmgn"}
+    _require(isinstance(hashes, dict) and set(hashes) == hash_keys,
+             "GMGN divergence note inputs_sha256 fields invalid")
+    for key in sorted(hash_keys):
+        shown = hashes.get(key)
+        expected = (input_refs.get(key) or {}).get("sha256")
+        _require(isinstance(shown, str) and len(shown) == 64
+                 and all(char in "0123456789abcdef" for char in shown)
+                 and shown == expected,
+                 f"GMGN divergence note inputs_sha256.{key} mismatch")
+    shown_divergences = _validate_gmgn_divergences(
+        request.get("divergences"), "GMGN divergence note request.divergences")
+    expected_divergences = _validate_gmgn_divergences(
+        divergences, "recomputed GMGN divergences")
+    _require(shown_divergences == expected_divergences,
+             "GMGN divergence note does not cover recomputed divergences")
+    _require(note.get("request_sha256") == _canonical_request_sha256(request),
+             "GMGN divergence note request_sha256 mismatch")
+    findings = note.get("findings")
+    _require(isinstance(findings, list) and len(findings) == len(expected_divergences),
+             "GMGN divergence note findings coverage invalid")
+    for index, (finding, divergence) in enumerate(zip(findings, expected_divergences)):
+        _require(isinstance(finding, dict) and set(finding) in (
+            {"address", "cause", "explanation"},
+            {"address", "cause", "explanation", "evidence_refs"}),
+            f"GMGN divergence note findings[{index}] fields invalid")
+        _require(finding.get("address") == divergence["address"],
+                 f"GMGN divergence note findings[{index}] address mismatch")
+        _require(finding.get("cause") in GMGN_DIVERGENCE_CAUSES,
+                 f"GMGN divergence note findings[{index}].cause invalid")
+        explanation = finding.get("explanation")
+        _require(_meaningful_text(explanation)
+                 and _meaningful_length(explanation) >= GMGN_EXPLANATION_MIN_CHARS,
+                 f"GMGN divergence note findings[{index}].explanation too short")
+        if "evidence_refs" in finding:
+            refs = finding.get("evidence_refs")
+            _require(isinstance(refs, list),
+                     f"GMGN divergence note findings[{index}].evidence_refs invalid")
+            for ref_index, ref in enumerate(refs):
+                _bound_case_ref(
+                    root, ref,
+                    f"GMGN divergence note findings[{index}].evidence_refs[{ref_index}]",
+                    base=path.parent)
+    conclusion = note.get("conclusion")
+    _require(_meaningful_text(conclusion) and "重放数据经查证无误" in conclusion,
+             "GMGN divergence note conclusion lacks required attestation")
+    _require(_meaningful_text(note.get("investigator")),
+             "GMGN divergence note investigator invalid")
+    _strict_utc_datetime(note.get("investigated_at_utc"),
+                         "GMGN divergence note investigated_at_utc")
+    return note
+
+
 def _validate_recon_gmgn(root, receipt, observations, balances, nominal):
     gmgn_ref = (receipt.get("inputs") or {}).get("gmgn")
     gmgn_path = _bound_case_ref(root, gmgn_ref, "verify_recon gmgn")
@@ -678,6 +833,29 @@ def _validate_recon_gmgn(root, receipt, observations, balances, nominal):
              "gmgn checked differs from bound CSV")
     _require(shown.get("diff_count") == sum(row["status"] == "DIFF" for row in expected),
              "gmgn diff_count differs from recomputed rows")
+    divergences = [
+        {key: row[key] for key in ("address", "gmgn_pct", "replay_pct", "diff_pp")}
+        for row in expected if row["status"] == "DIFF"
+    ]
+    warnings = receipt.get("warnings")
+    _require(isinstance(warnings, list)
+             and all(item == GMGN_DIVERGENCE_WARNING for item in warnings)
+             and len(warnings) == len(set(warnings)),
+             "verify_recon warnings must be a duplicate-free known-string array")
+    _require((GMGN_DIVERGENCE_WARNING in warnings) == bool(divergences),
+             "verify_recon warnings do not interlock with recomputed GMGN divergences")
+    inputs = receipt.get("inputs") or {}
+    if divergences:
+        note_ref = inputs.get("divergence_note")
+        _require(isinstance(note_ref, dict),
+                 "recomputed GMGN divergence requires inputs.divergence_note")
+        note_path = _bound_case_ref(root, note_ref, "GMGN divergence note")
+        _validate_gmgn_divergence_note(
+            root, note_path, receipt.get("target"), inputs, divergences)
+    else:
+        _require("divergence_note" not in inputs,
+                 "zero GMGN divergence must not bind inputs.divergence_note")
+    return divergences
 
 
 def _validate_evm_reconciliation_receipt(root, receipt, target):

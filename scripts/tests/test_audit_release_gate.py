@@ -80,7 +80,7 @@ def write_deep_recon_fixtures(root, target, raw_input, *, total=100, address="0x
     recon = {
         "schema": "evm-reconciliation-receipt/v3", "target": target,
         "producer": repo_ref("scripts/evm/verify_recon.py"), "mode": "formal",
-        "inputs": inputs, "verdict": "PASS", "exit_code": 0,
+        "inputs": inputs, "warnings": [], "verdict": "PASS", "exit_code": 0,
         "observations": {
             "supply_closure": {
                 "mint_total_raw": str(total), "burn_total_raw": "0",

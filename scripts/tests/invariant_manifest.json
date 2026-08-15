@@ -12,7 +12,7 @@
  ],
  "minimum_counts": {
   "receipt_producers": 61,
-  "receipt_consumers": 78,
+  "receipt_consumers": 80,
   "transport_calls": 63,
   "atomic_writes": 54,
   "formal_entrypoints": 58
@@ -319,6 +319,12 @@
   },
   {
    "schemas": [
+    "gmgn-divergence-note/v1"
+   ],
+   "script": "scripts/evm/verify_recon.py"
+  },
+  {
+   "schemas": [
     "camp-series-provenance/v1",
     "solana-holder-snapshot-v2",
     "solana-reconcile/v2",
@@ -468,6 +474,7 @@
     "anchor-plan-receipt/v2",
     "evm-observation-bundle/v1",
     "evm-reconciliation-receipt/v3",
+    "gmgn-divergence-note/v1",
     "reconciliation-report/v2",
     "review-ledger/v1",
     "shared-release-receipt/v1",
