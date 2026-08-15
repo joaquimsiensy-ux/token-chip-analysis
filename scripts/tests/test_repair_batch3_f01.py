@@ -2,7 +2,11 @@
 """批3工单 F01：A4 blocker 联动、文本门槛、entrypoint 身份与迁移回归。"""
 from __future__ import annotations
 
+import hashlib
 import json
+import os
+import shutil
+import subprocess
 import sys
 import tempfile
 from pathlib import Path
@@ -433,6 +437,54 @@ def _ledger_lines(root: Path) -> list[bytes]:
     return path.read_bytes().splitlines(keepends=True) if path.is_file() else []
 
 
+def _run_exact_review(root: Path, role: str, review_entrypoint: Path,
+                      artifact_name: str, receipt_name: str):
+    return subprocess.run([
+        sys.executable, str(REPO / "scripts/report/adversarial_review_runner.py"),
+        str(root), "--role", role, "--entrypoint", review_entrypoint.name,
+        "--artifact", artifact_name, "--receipt", receipt_name,
+    ], capture_output=True, text=True)
+
+
+def _write_manual_ledger_aggregate(root: Path, receipts: list[Path]) -> dict:
+    """手抄旧式聚合，专测 shared/audit 不得依赖 finalize 代挡。"""
+    import adversarial_review_runner as runner
+
+    reviews = []
+    for receipt_path in receipts:
+        execution = json.loads(receipt_path.read_text(encoding="utf-8"))
+        reviews.append({
+            "role": execution["role"], "exit_code": execution["exit_code"],
+            "artifact": execution["artifact"], "runner": execution["producer"],
+            "execution_receipt": artifact_ref(receipt_path),
+        })
+    ledger_lines = _ledger_lines(root)
+    active_names = {
+        json.loads(raw_line.decode("utf-8"))["receipt_path"]
+        for raw_line in ledger_lines
+    }
+    registry = root / "a4_claims.json"
+    aggregate = {
+        "schema": runner.AGGREGATE_SCHEMA,
+        "target": TARGET,
+        "producer": runner.repo_producer(),
+        "claim_registry": {
+            "path": registry.name, "size": registry.stat().st_size,
+            "sha256": sha(registry), "schema": "a4-claims/v2",
+        },
+        "reviews": reviews,
+        "review_ledger": {
+            "entries": len(ledger_lines),
+            "active": len(active_names),
+            "tip_sha": hashlib.sha256(ledger_lines[-1]).hexdigest(),
+        },
+        "blocking_findings": [],
+        "release_decision": "PASS",
+    }
+    write_json(root / "adversarial_review.json", aggregate)
+    return aggregate
+
+
 def t_f_execution_ledger():
     with tempfile.TemporaryDirectory(prefix="f01-ledger-omit-") as td:
         root = Path(td)
@@ -599,6 +651,99 @@ def t_f_execution_ledger():
               (proc.returncode, aggregate.get("review_ledger"), proc.stderr[-260:]))
 
 
+def t_f_ledger_identity_and_cardinality():
+    with tempfile.TemporaryDirectory(prefix="f01-ledger-alias-") as td:
+        root = Path(td)
+        probe = root / "CaseProbe"
+        probe.write_text("probe", encoding="utf-8")
+        case_insensitive = (root / "caseprobe").exists() and os.path.samefile(
+            probe, root / "caseprobe")
+        probe.unlink()
+
+        registry_sha = make_case(root, ("C1",))
+        p1, _, claim_receipt = run_role(
+            root, "entity_attribution_skeptic",
+            claim_artifact(registry_sha, [result("C1", evidence=["abcdefghij"])]),
+            stem="claim")
+        critic_entrypoint = entrypoint(
+            root, "critic.py", payload=critic_artifact(registry_sha))
+        upper_name = "Critic_execution.json"
+        lower_name = "critic_execution.json"
+        p2 = _run_exact_review(
+            root, "completeness_critic", critic_entrypoint, "critic.json", upper_name)
+        p3 = _run_exact_review(
+            root, "completeness_critic", critic_entrypoint, "critic.json", lower_name)
+        upper_receipt = root / upper_name
+        lower_receipt = root / lower_name
+        same_inode = (upper_receipt.is_file() and lower_receipt.is_file()
+                      and os.path.samefile(upper_receipt, lower_receipt))
+        proc = finalize(root, [claim_receipt, lower_receipt]) if all(
+            item.returncode == 0 for item in (p1, p2, p3)) else p1
+        check("F ledger 路径身份：大小写别名/独立实物均不得以 SHA set 折叠过闸",
+              p1.returncode == p2.returncode == p3.returncode == 0
+              and same_inode is case_insensitive and proc.returncode == 2
+              and not (root / "adversarial_review.json").exists(),
+              (case_insensitive, same_inode, p1.returncode, p2.returncode,
+               p3.returncode, proc.returncode, proc.stderr[-320:]))
+        if all(item.returncode == 0 for item in (p1, p2, p3)):
+            _write_manual_ledger_aggregate(root, [claim_receipt, lower_receipt])
+            message, errors = consume(root)
+        else:
+            message, errors = p1.stderr + p2.stderr + p3.stderr, []
+        check("F ledger 路径身份：手抄 aggregate 后 shared/audit 双拒",
+              bool(message) and bool(errors), (message, errors))
+        if case_insensitive:
+            joined = proc.stderr + message + " ".join(errors)
+            check("F ledger 路径身份：别名拒绝消息同时列出两个路径名",
+                  upper_name in joined and lower_name in joined, joined[-500:])
+
+    with tempfile.TemporaryDirectory(prefix="f01-ledger-cardinality-") as td:
+        root = Path(td)
+        registry_sha = make_case(root, ("C1",))
+        p1, _, claim_receipt = run_role(
+            root, "entity_attribution_skeptic",
+            claim_artifact(registry_sha, [result("C1")]), stem="claim")
+        p2, critic_artifact_path, critic_receipt = run_role(
+            root, "completeness_critic", critic_artifact(registry_sha), stem="critic")
+        duplicate_receipt = root / "critic_duplicate_execution.json"
+        shutil.copyfile(critic_receipt, duplicate_receipt)
+        import adversarial_review_runner as runner
+        runner.append_review_ledger_entry(
+            root, duplicate_receipt, "completeness_critic", sha(critic_artifact_path))
+        proc = finalize(root, [claim_receipt, critic_receipt]) if (
+            p1.returncode == p2.returncode == 0) else p1
+        check("F ledger 基数：active=3/SHA=2/receipts=2 必须拒绝",
+              p1.returncode == p2.returncode == 0
+              and not os.path.samefile(critic_receipt, duplicate_receipt)
+              and proc.returncode == 2,
+              (p1.returncode, p2.returncode, proc.returncode, proc.stderr[-320:]))
+        if p1.returncode == p2.returncode == 0:
+            _write_manual_ledger_aggregate(root, [claim_receipt, critic_receipt])
+            message, errors = consume(root)
+        else:
+            message, errors = p1.stderr + p2.stderr, []
+        check("F ledger 基数：手抄 aggregate 后 shared/audit 双拒",
+              bool(message) and bool(errors), (message, errors))
+
+    with tempfile.TemporaryDirectory(prefix="f01-ledger-path-syntax-") as td:
+        root = Path(td)
+        registry_sha = make_case(root, ("C1",))
+        proc, artifact, receipt = run_role(
+            root, "completeness_critic", critic_artifact(registry_sha), stem="critic")
+        spaced_receipt = root / "critic execution copy.json"
+        shutil.copyfile(receipt, spaced_receipt)
+        append_rejected = rejected(lambda: runner.append_review_ledger_entry(
+            root, spaced_receipt, "completeness_critic", sha(artifact)))
+        row = json.loads(_ledger_lines(root)[0])
+        row["receipt_path"] = spaced_receipt.name
+        raw_line = (json.dumps(
+            row, ensure_ascii=False, separators=(",", ":")) + "\n").encode("utf-8")
+        parse_rejected = rejected(lambda: runner._parse_review_ledger_bytes(raw_line))
+        check("F ledger receipt_path：append 与 ledger parser 均拒空格 basename",
+              proc.returncode == 0 and append_rejected and parse_rejected,
+              (proc.returncode, append_rejected, parse_rejected))
+
+
 def main():
     t_a_linkage()
     t_b_thresholds()
@@ -606,6 +751,7 @@ def main():
     t_d_migration()
     t_e_documentation()
     t_f_execution_ledger()
+    t_f_ledger_identity_and_cardinality()
     if FAILS:
         print(f"\n{len(FAILS)} failures: " + "; ".join(FAILS))
         return 1

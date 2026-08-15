@@ -761,6 +761,12 @@ def validate_adversarial_review(root, expected_target=None):
     active_receipt_sha256s = {
         item["receipt_sha"] for item in active_ledger.values()
     }
+    if not (len(active_ledger) == len(active_receipt_sha256s) == len(reviews)):
+        raise ValueError(
+            "review ledger cardinality differs from aggregate reviews: "
+            f"active={len(active_ledger)} "
+            f"active_receipt_sha256s={len(active_receipt_sha256s)} "
+            f"aggregate_reviews={len(reviews)}")
     if active_receipt_sha256s != execution_sha256s:
         raise ValueError("review ledger active receipt set differs from aggregate reviews")
     unresolved = [item for item in blockers if not item["resolved"]]

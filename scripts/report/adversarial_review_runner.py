@@ -7,6 +7,7 @@ import fcntl
 import hashlib
 import json
 import os
+import re
 import secrets
 import shutil
 import stat
@@ -36,6 +37,7 @@ LEDGER_KEYS = frozenset({
     "schema", "seq", "prev_line_sha", "receipt_path", "receipt_sha", "role",
     "artifact_sha",
 })
+RECEIPT_BASENAME_RE = re.compile(r"^[A-Za-z0-9._-]+$")
 V4_RERUN_HINT = "存量 adversarial-review/v2、v3 须按 v4 重跑对抗复核"
 
 
@@ -114,7 +116,7 @@ def _parse_review_ledger_bytes(data):
             raise ValueError(f"review ledger prev_line_sha mismatch at seq {expected_seq}")
         receipt_name = item.get("receipt_path")
         if (not isinstance(receipt_name, str) or not receipt_name
-                or Path(receipt_name).name != receipt_name):
+                or RECEIPT_BASENAME_RE.fullmatch(receipt_name) is None):
             raise ValueError(f"review ledger receipt_path invalid at seq {expected_seq}")
         if not _valid_sha256(item.get("receipt_sha")):
             raise ValueError(f"review ledger receipt_sha invalid at seq {expected_seq}")
@@ -136,8 +138,17 @@ def validate_review_ledger(case_dir):
     active = {}
     for item, _ in rows:
         active[item["receipt_path"]] = item
+    physical_receipts = {}
     for receipt_name, item in active.items():
         receipt_path = contained_regular(root, receipt_name, "ledger review receipt")
+        receipt_stat = receipt_path.stat()
+        physical_identity = (receipt_stat.st_dev, receipt_stat.st_ino)
+        prior_name = physical_receipts.get(physical_identity)
+        if prior_name is not None and prior_name != receipt_name:
+            raise ValueError(
+                "review ledger receipt paths identify the same physical file: "
+                f"{prior_name} and {receipt_name}")
+        physical_receipts[physical_identity] = receipt_name
         if sha(receipt_path) != item["receipt_sha"]:
             raise ValueError(f"review ledger active receipt bytes changed: {receipt_name}")
         try:
@@ -161,8 +172,9 @@ def append_review_ledger_entry(case_dir, receipt, role, artifact_sha):
     root = Path(case_dir).resolve()
     receipt_path = contained_regular(root, receipt, "review execution receipt")
     receipt_name = receipt_path.relative_to(root).as_posix()
-    if Path(receipt_name).name != receipt_name:
-        raise ValueError("review execution receipt must be in case root")
+    if RECEIPT_BASENAME_RE.fullmatch(receipt_name) is None:
+        raise ValueError(
+            "review execution receipt basename must match ^[A-Za-z0-9._-]+$")
     if role not in ROLES or not _valid_sha256(artifact_sha):
         raise ValueError("review ledger role/artifact binding invalid")
     ledger_path = root / LEDGER_FILENAME
@@ -641,6 +653,13 @@ def finalize_review(case_dir, receipts, blockers="blockers.json",
         active_receipt_sha256s = {
             item["receipt_sha"] for item in active_ledger.values()
         }
+        if not (len(active_ledger) == len(active_receipt_sha256s)
+                == len(receipt_paths)):
+            raise ValueError(
+                "review ledger cardinality differs from finalize receipts: "
+                f"active={len(active_ledger)} "
+                f"active_receipt_sha256s={len(active_receipt_sha256s)} "
+                f"finalize_receipts={len(receipt_paths)}")
         if active_receipt_sha256s != execution_sha256s:
             raise ValueError(
                 "review ledger active receipt set differs from finalize receipts: "

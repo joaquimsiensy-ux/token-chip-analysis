@@ -20,16 +20,32 @@ REPO = HERE.parent.parent
 FAILS: list[str] = []
 COMMANDS = ("token-analyze-1.md", "token-analyze-2.md", "token-analyze.md")
 R10_LEDGER = REPO / "maintenance" / "repair-20260813-sixlens" / "r10_ledger.md"
-R10_ROW_RE = re.compile(r"^\|\s*(R10-(\d+))(?:（[^|\n]+）)?\s*\|")
+R10_ROW_CANDIDATE_RE = re.compile(r"^\|[ \t　]*R10-")
+R10_ROW_RE = re.compile(r"^\|[ \t]*(R10-(\d+))(?:（[^|\n]+）)?[ \t]*\|")
 R10_STATUS_RE = re.compile(
     r"【(?:CLOSED \d+\.\d+\.\d+|FIXED_PENDING_REVIEW \d+\.\d+\.\d+ 批\d+)】"
 )
-R10_STATUSISH_RE = re.compile(r"【(?:CLOSED|FIXED_PENDING_REVIEW)\b[^】]*】")
-R10_BARE_STATUS_RE = re.compile(
-    r"(?<!【)(?<![A-Za-z_])(?:CLOSED \d+\.\d+\.\d+|"
-    r"FIXED_PENDING_REVIEW \d+\.\d+\.\d+(?: 批\d+)?)"
+R10_STATUSISH_RE = re.compile(
+    r"【[ \t　]*(?:CLOSED|FIXED_PENDING_REVIEW)\b[^】]*】"
 )
-ACTIVE_DECLARATION_RE = re.compile(r"当前现役\s*=.*?=\s*\*\*(\d+)\*\*")
+R10_BARE_STATUS_RE = re.compile(
+    r"(?<!【)(?<![A-Za-z_])(?:CLOSED[ \t　]+\d+\.\d+\.\d+|"
+    r"FIXED_PENDING_REVIEW[ \t　]+\d+\.\d+\.\d+"
+    r"(?:[ \t　]+批\d+)?)"
+)
+ACTIVE_DECLARATION_RE = re.compile(
+    r"当前现役[ \t]*=.*?=[ \t]*\*\*(\d+)\*\*"
+)
+R10_SECTION_LAYOUTS = {
+    "## 一、": {"cell_count": 6, "status_cell_index": 2},
+    "## 二、": {"cell_count": 5, "status_cell_index": 2},
+    "## 三、": {"cell_count": 5, "status_cell_index": 2},
+    "## 四、": {"cell_count": 5, "status_cell_index": 2},
+    "## 四b、": {"cell_count": 5, "status_cell_index": 2},
+    "## 五、": {"cell_count": 5, "status_cell_index": 3},
+}
+R10_TABLE_HEADER_RE = re.compile(r"^\|[ \t]*#[ \t]*\|")
+R10_TABLE_SEPARATOR_RE = re.compile(r"^\|[ \t]*---")
 
 
 def check(name: str, condition: bool, detail="") -> None:
@@ -308,10 +324,24 @@ def r10_ledger_failures(path: Path) -> list[str]:
     failures: list[str] = []
     entries: list[tuple[str, str]] = []
     section = ""
+    layout = None
     for lineno, line in enumerate(text.splitlines(), start=1):
         if line.startswith("## "):
             section = line
-        if not re.match(r"^\|\s*R10-", line):
+            layout = next(
+                (item for prefix, item in R10_SECTION_LAYOUTS.items()
+                 if section.startswith(prefix)),
+                None,
+            )
+        if layout is not None and (
+                R10_TABLE_HEADER_RE.match(line)
+                or R10_TABLE_SEPARATOR_RE.match(line)):
+            if (not line.endswith("|")
+                    or len(line.split("|")) != layout["cell_count"]):
+                failures.append(
+                    f"第 {lineno} 行表头/分隔行列数与所在节表结构不符")
+            continue
+        if R10_ROW_CANDIDATE_RE.match(line) is None:
             continue
         match = R10_ROW_RE.match(line)
         if match is None:
@@ -319,23 +349,38 @@ def r10_ledger_failures(path: Path) -> list[str]:
             continue
         entry_id = match.group(1)
         cells = line.split("|")
-        status_cell_index = 3 if section.startswith("## 五、") else 2
-        if len(cells) <= status_cell_index:
-            failures.append(f"{entry_id} 状态列缺失")
+        if r"\|" in line:
+            failures.append(f"{entry_id} cell 内竖线不受支持")
+        if layout is None:
+            failures.append(f"{entry_id} 所在节无受控表结构")
+            entries.append((entry_id, "OPEN"))
+            continue
+        expected_cell_count = layout["cell_count"]
+        status_cell_index = layout["status_cell_index"]
+        statusish_by_cell = [
+            (index, marker)
+            for index, cell in enumerate(cells)
+            for marker in R10_STATUSISH_RE.findall(cell)
+        ]
+        body_statusish = [
+            marker for index, marker in statusish_by_cell
+            if index != status_cell_index
+        ]
+        if body_statusish:
+            failures.append(
+                f"{entry_id} 正文列出现状态样式标记：{body_statusish}")
+        if (not line.startswith("|") or not line.endswith("|")
+                or len(cells) != expected_cell_count):
+            failures.append(f"{entry_id} 列数与所在节表结构不符")
+            bare_markers = R10_BARE_STATUS_RE.findall(line)
+            if bare_markers:
+                failures.append(
+                    f"{entry_id} 状态字样未按枚举格式：{bare_markers}")
             entries.append((entry_id, "OPEN"))
             continue
         status_cell = cells[status_cell_index]
         status_markers = R10_STATUS_RE.findall(status_cell)
         statusish = R10_STATUSISH_RE.findall(status_cell)
-        body_markers = [
-            marker
-            for index, cell in enumerate(cells)
-            if index != status_cell_index
-            for marker in R10_STATUS_RE.findall(cell)
-        ]
-        if body_markers:
-            failures.append(
-                f"{entry_id} 正文列出现状态样式标记：{body_markers}")
         if len(status_markers) > 1:
             failures.append(f"{entry_id} 状态标记不唯一：{status_markers}")
         elif statusish != status_markers:
@@ -437,6 +482,64 @@ def t_f07_r10_ledger() -> None:
               any("当前现役声明必须恰好一条" in item
                   for item in duplicate_active_failures),
               duplicate_active_failures)
+
+        combined_copy = root / "r10_ledger_pipe_fullwidth_combo.md"
+        combined_text = source.replace(
+            "图 1 对未知阵营静默漏画【CLOSED 6.41.0】",
+            "图 1 对未知阵营静默漏画 | 【CLOSED　6.41.0】",
+            1,
+        ).replace(
+            "当前现役 = 23 − 4 = **19**",
+            "当前现役 = 23 − 4 = **20**",
+            1,
+        )
+        combined_copy.write_text(combined_text, encoding="utf-8")
+        combined_failures = r10_ledger_failures(combined_copy)
+        check("F07 BR2-02 竖线推列＋全角状态组合必须 FAIL",
+              any("列数与所在节表结构不符" in item
+                  for item in combined_failures), combined_failures)
+
+        escaped_pipe_copy = root / "r10_ledger_escaped_pipe.md"
+        escaped_pipe_copy.write_text(source.replace(
+            "F-12 改名降权（GPT-F-10 修法）",
+            r"F-12 改名降权\|（GPT-F-10 修法）",
+            1,
+        ), encoding="utf-8")
+        escaped_pipe_failures = r10_ledger_failures(escaped_pipe_copy)
+        check("F07 cell 内转义竖线不受支持必须 FAIL",
+              any("cell 内竖线" in item for item in escaped_pipe_failures),
+              escaped_pipe_failures)
+
+        fullwidth_structure_copy = root / "r10_ledger_fullwidth_structure.md"
+        fullwidth_structure_copy.write_text(
+            source.replace("| R10-1 |", "|　R10-1　|", 1), encoding="utf-8")
+        fullwidth_structure_failures = r10_ledger_failures(fullwidth_structure_copy)
+        check("F07 ID cell 结构位全角空格必须 fail-closed",
+              any("条目格式无法识别" in item
+                  for item in fullwidth_structure_failures),
+              fullwidth_structure_failures)
+
+        raw_body_pipe_copy = root / "r10_ledger_raw_body_pipe.md"
+        raw_body_pipe_copy.write_text(source.replace(
+            "消除\"名字看起来像证明\"的误导面",
+            "消除\"名字看起来像证明\" | 的误导面",
+            1,
+        ), encoding="utf-8")
+        raw_body_pipe_failures = r10_ledger_failures(raw_body_pipe_copy)
+        check("F07 正文格原始竖线改变列数必须 FAIL",
+              any("列数与所在节表结构不符" in item
+                  for item in raw_body_pipe_failures), raw_body_pipe_failures)
+
+        body_statusish_copy = root / "r10_ledger_body_statusish.md"
+        body_statusish_copy.write_text(source.replace(
+            "消除\"名字看起来像证明\"的误导面",
+            "消除\"名字看起来像证明\"的误导面【CLOSED　6.41.0】",
+            1,
+        ), encoding="utf-8")
+        body_statusish_failures = r10_ledger_failures(body_statusish_copy)
+        check("F07 所有非状态列扫描宽松 statusish 变体",
+              any("正文列出现状态样式标记" in item
+                  for item in body_statusish_failures), body_statusish_failures)
 
 
 def main() -> int:
