@@ -1,0 +1,18 @@
+不能宣称 105/105 全绿：末刀施工已完成，但全量测试因沙箱禁止 loopback `socket.bind`，结果为 **103/105 PASS**。
+
+完成内容：
+
+- `run_all.py` 挂载四个新测试，SUITE 共 105 项。
+- 新增 CT-RECON-01～03，manifest 与排序快照均为 152 项。
+- 权威文档补入 `evm-reconciliation-receipt/v3`。
+- 五条验收命令及退出码已完整记录。
+- 两个本轮生成的忽略态 `.pyc` 缓存已逐一清理。
+- 全程未执行任何 git 命令。
+
+交付文件：
+
+- [施工报告](/Users/uravvv/.claude/tca-repair-g2/maintenance/repair-20260815-g2/workorder_FINAL_done.md)
+- [完整验收日志](/Users/uravvv/.claude/tca-repair-g2/maintenance/repair-20260815-g2/final_center_green.log)
+
+仅余融合方在允许 loopback 的环境复跑两个纵切片测试；其余 103 项全部通过。
+

@@ -109,6 +109,14 @@ SUITE += ['test_evm_observation.py']
 # EVM 观测锚工程工单 C：shared/handoff/audit 公共消费、N-2 与原 F-02/F-03 反例。
 SUITE += ['test_evm_observation_release.py']
 
+# repair-20260815-g2（F-04/F-07/F-09/F-10）：观测件收紧/对账深重验/GMGN 黄灯/探索档 CLI
+SUITE += [
+    'test_evm_observation_nonempty_code.py',
+    'test_arbitrum_exploration_cli.py',
+    'test_recon_deep_reverify.py',
+    'test_gmgn_divergence_note.py',
+]
+
 
 def main():
     results = []

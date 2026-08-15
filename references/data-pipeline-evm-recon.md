@@ -15,6 +15,8 @@
 4. **时间抽查（分层计划制）**：`anchor_plan.py` 出分层抽样计划（矩阵点＋四类强制覆盖点），`scripts/lib/time_spotcheck.py` 对独立第二源逐锚点核对（balance 型 archive balanceOf 直查＋tx 型收据五元组，产 time_spotcheck.json）；第二源分层选型与全史重拉例外条款见 §13。（旧"固定块距插值抽几笔对浏览器"形态已由本制取代；OPN/SIREN 07 → 2026-08-01 改版）
 5. **重放前置完整性检查（快照缺块防护，重放开跑前做）**：核对全部采集 run 的 done.json——next_block 全部达到目标块、mtime 晚于最后一次采集启动，才允许重放（实锤：重放跑在尾部 run 拉完前 13 分钟，快照缺尾部 ~980 块/682 条）。**机制警示：供给闭合恒等式（上面第 2/3 查）对"缺整行"免疫**——整行缺失时借贷两边同时缺、sum 恒等于 TOTAL 照样通过，此类洞只有 RPC 抽查负余额能暴露；增量重放出现"期初为 0 的地址转出变负"=上游快照有洞的指纹，见到即停下补数据。（QUQ 完整版分析，07-22）
 
+标准 EVM 对账结果落为 `evm-reconciliation-receipt/v3`，由发布消费侧按本节四查语义独立重验后决定是否放行。
+
 **GMGN 黄灯查证说明（`gmgn-divergence-note/v1`）**：第一次不带说明运行 `verify_recon.py`，让程序根据本次绑定的 config/balances/replay_stats/gmgn 四实物重算差异。若出现黄灯，人工查证后在案根手写 `gmgn_divergence_note.json`，再把原命令原参数重跑，并追加：
 
 ```bash
