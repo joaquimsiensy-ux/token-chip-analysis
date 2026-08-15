@@ -97,6 +97,9 @@ SUITE += ['test_repair_batch1.py']
 # v6.42.0 批2 工单 B：F-02 对抗复核 v3 结构与绑定闭环。
 SUITE += ['test_repair_batch2_f02.py']
 
+# EVM 观测锚工程工单 A：bundle/transcript 协议、producer 与 fail-closed 负测。
+SUITE += ['test_evm_observation.py']
+
 
 def main():
     results = []

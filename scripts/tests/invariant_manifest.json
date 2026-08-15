@@ -11,10 +11,10 @@
   "scripts/*.py"
  ],
  "minimum_counts": {
-  "receipt_producers": 50,
-  "receipt_consumers": 54,
-  "transport_calls": 58,
-  "atomic_writes": 39,
+  "receipt_producers": 52,
+  "receipt_consumers": 55,
+  "transport_calls": 59,
+  "atomic_writes": 40,
   "formal_entrypoints": 58
  },
  "receipt_producers": [
@@ -58,6 +58,12 @@
   },
   {
    "schemas": [
+    "evm-observation-bundle/v1"
+   ],
+   "script": "scripts/evm/observe_supply.py"
+  },
+  {
+   "schemas": [
     "trigger-days-replay/v1"
    ],
    "script": "scripts/evm/peaks_daily.py"
@@ -87,6 +93,12 @@
     "camp-series-provenance/v1"
    ],
    "script": "scripts/lib/camp_series_provenance.py"
+  },
+  {
+   "schemas": [
+    "evm-observation-bundle/v1"
+   ],
+   "script": "scripts/lib/evm_observation.py"
   },
   {
    "schemas": [
@@ -284,6 +296,37 @@
  "receipt_consumers": [
   {
    "schemas": [
+    "evm-channel-receipt/v2",
+    "evm-channels/v2",
+    "evm-collector-run/v2"
+   ],
+   "script": "scripts/evm/channels_preflight.py"
+  },
+  {
+   "schemas": [
+    "hypersync-v2-done/v3"
+   ],
+   "script": "scripts/evm/fetch_hypersync_v2.py"
+  },
+  {
+   "schemas": [
+    "camp-series-provenance/v1",
+    "solana-holder-snapshot-v2",
+    "solana-reconcile/v2",
+    "solana-reconcile/v3",
+    "sqd-solana-cache/v3",
+    "supply-truth-receipt/v3"
+   ],
+   "script": "scripts/lib/camp_series_provenance.py"
+  },
+  {
+   "schemas": [
+    "evm-observation-bundle/v1"
+   ],
+   "script": "scripts/lib/evm_observation.py"
+  },
+  {
+   "schemas": [
     "receipt-supersede-lock/v1"
    ],
    "script": "scripts/lib/receipt_kernel.py"
@@ -308,31 +351,6 @@
     "anchor-plan/v2"
    ],
    "script": "scripts/lib/time_spotcheck.py"
-  },
-  {
-   "schemas": [
-    "camp-series-provenance/v1",
-    "solana-holder-snapshot-v2",
-    "solana-reconcile/v2",
-    "solana-reconcile/v3",
-    "sqd-solana-cache/v3",
-    "supply-truth-receipt/v3"
-   ],
-   "script": "scripts/lib/camp_series_provenance.py"
-  },
-  {
-   "schemas": [
-    "evm-channel-receipt/v2",
-    "evm-channels/v2",
-    "evm-collector-run/v2"
-   ],
-   "script": "scripts/evm/channels_preflight.py"
-  },
-  {
-   "schemas": [
-    "hypersync-v2-done/v3"
-   ],
-   "script": "scripts/evm/fetch_hypersync_v2.py"
   },
   {
    "schemas": [
@@ -469,11 +487,11 @@
  ],
  "transport_calls": [
   {
-   "kind": "requests",
+   "kind": "net.py",
    "script": "scripts/evm/accounting_gate.py"
   },
   {
-   "kind": "net.py",
+   "kind": "requests",
    "script": "scripts/evm/accounting_gate.py"
   },
   {
@@ -507,6 +525,10 @@
   {
    "kind": "net.py",
    "script": "scripts/evm/multicall_balances.py"
+  },
+  {
+   "kind": "net.py",
+   "script": "scripts/evm/observe_supply.py"
   },
   {
    "kind": "net.py",
@@ -637,16 +659,16 @@
    "script": "scripts/robinhood/pull_weth_pool.py"
   },
   {
-   "kind": "curl",
-   "script": "scripts/solana/audit_closed_accounts.py"
+   "kind": "solana-attested-session",
+   "script": "scripts/solana/accounting_gate_sol.py"
   },
   {
    "kind": "net.py",
    "script": "scripts/solana/anchor_sampler.py"
   },
   {
-   "kind": "solana-attested-session",
-   "script": "scripts/solana/accounting_gate_sol.py"
+   "kind": "curl",
+   "script": "scripts/solana/audit_closed_accounts.py"
   },
   {
    "kind": "requests",
@@ -770,6 +792,11 @@
   },
   {
    "locator": "main",
+   "script": "scripts/evm/observe_supply.py",
+   "semantics": "dual_file_txn"
+  },
+  {
+   "locator": "main",
    "script": "scripts/labels/add_labels.py",
    "semantics": "restore_on_fail"
   },
@@ -839,12 +866,12 @@
    "semantics": "overwrite_single"
   },
   {
-   "locator": "run_review",
+   "locator": "finalize_review",
    "script": "scripts/report/adversarial_review_runner.py",
    "semantics": "exclusive_new"
   },
   {
-   "locator": "finalize_review",
+   "locator": "run_review",
    "script": "scripts/report/adversarial_review_runner.py",
    "semantics": "exclusive_new"
   },

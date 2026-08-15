@@ -86,6 +86,8 @@ FORMAL_E2E_REQUIRED_PRODUCERS = {
 FAILURE_ARTIFACT_CONTRACTS = (
     {"script": "scripts/evm/fetch_pool_swaps.py", "entrypoint": "main",
      "canonical_artifacts": 2},
+    {"script": "scripts/evm/observe_supply.py", "entrypoint": "main",
+     "canonical_artifacts": 2},
     {"script": "scripts/lib/anchor_plan.py", "entrypoint": "main",
      "canonical_artifacts": 2},
     {"script": "scripts/solana/scan_token_accounts.py", "entrypoint": "main",
@@ -119,6 +121,9 @@ FAILURE_ARTIFACT_COVERAGE = {
         "error": "unique ERROR side receipt", "protections": ("self_quarantine",)},
     "scripts/evm/fetch_pool_swaps.py": {
         "canonical": "pool swap CSV", "marker": "pool collector receipt",
+        "error": "unique ERROR side receipt", "protections": ("self_quarantine",)},
+    "scripts/evm/observe_supply.py": {
+        "canonical": "EVM observation transcript", "marker": "EVM observation bundle",
         "error": "unique ERROR side receipt", "protections": ("self_quarantine",)},
     "scripts/solana/window_fetch.py": {
         "canonical": "window data", "marker": "window receipt",
