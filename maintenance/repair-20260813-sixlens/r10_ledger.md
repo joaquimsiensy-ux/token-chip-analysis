@@ -1,4 +1,4 @@
-# R10 台账（六视角修复工程 2026-08-13 建档；6.43.0 批 3 施工状态同步）
+# R10 台账（六视角修复工程 2026-08-13 建档；6.43.0 批 3 收官同步）
 
 > 来源：plan.md 定案范围之外的存量/加深/评估项。下一轮修复工程（R10）开工时以本文件为完整候选清单。
 > 引用纪律：每条的原始证据与最强反例在 `input_codex_review.md` / `input_gpt56_review.md` / 各批工单，动工前必读原文。
@@ -11,8 +11,8 @@
 | R10-2 | F-10 对抗复核可空壳【CLOSED 6.42.0】 | adversarial_review 的 reviews 只验角色名与 exit_code，内容可为空洞文本 | 批 2 工单 B 已落结构化 v3、受控 runner/finalize 与双消费重验；见 `maintenance/repair-20260814-batch2/workorder_B_done.md` 及三轮盲审 |
 | R10-3 | F-11 replay gate fail-open 残留【CLOSED 6.41.0】 | 历史漏检家族（同族采集器已修，个别入口未等深） | 已闭合——replay_pass1/stream/duck gate false 全 exit 4、pass2 消费 gate_pass fail-closed（commit d78e210）。 |
 | R10-4 | F-13 v2 采集器保留可选位置 api_token 且优先于环境变量/文件【CLOSED 6.41.0】 | 令牌可进 ps；F-07 回归只列三支 v1 脚本 | 已闭合——fetch_hypersync_v2 移除位置 api_token，唯一位置参数 from_block，token 走 --token-file/HYPERSYNC_TOKEN/默认文件（commit 253ac79）。 |
-| R10-5 | GPT-F-07 deploy-sync 两条假绿（弱闸）【FIXED_PENDING_REVIEW 6.43.0 批3】 | 部署目录缺失打 SKIP 但 return 0；MIGRATION_CHANGED 豁免无期限 | 工单 F04 已落地（无界豁免删除+canonical fail-closed），待批 3 盲审转 CLOSED；见 `maintenance/repair-20260814-batch3/workorder_F04_done.md`。 |
-| R10-6 | GPT-F-09 env_check 覆盖不足【FIXED_PENDING_REVIEW 6.43.0 批3】 | 不查 Python 版本（pyproject 要求 >=3.14）、KEY_PKGS 手写 14 个漏 7 个直接依赖 | 工单 F05 已落地（pyproject 机械派生三层闭合+requires-python），待盲审转 CLOSED；见 `maintenance/repair-20260814-batch3/workorder_F05_done.md`。 |
+| R10-5 | GPT-F-07 deploy-sync 两条假绿（弱闸）【CLOSED 6.43.0】 | 部署目录缺失打 SKIP 但 return 0；MIGRATION_CHANGED 豁免无期限 | 已闭合——无界豁免删除+canonical fail-closed（消化轮 1 再收 HOME 环境缝隙改 getpwuid），三轮盲审+addendum PASS；见 `maintenance/repair-20260814-batch3/workorder_F04_done.md` 与 `blindreview_round3_addendum.md`。 |
+| R10-6 | GPT-F-09 env_check 覆盖不足【CLOSED 6.43.0】 | 不查 Python 版本（pyproject 要求 >=3.14）、KEY_PKGS 手写 14 个漏 7 个直接依赖 | 已闭合——pyproject 机械派生三层闭合+requires-python，pre-commit 联动实证，三轮盲审+addendum PASS；见 `maintenance/repair-20260814-batch3/workorder_F05_done.md`。已知边界：平面 lock 判不了已删直接依赖残留。 |
 
 ## 二、GPT 交叉对账加深两条
 
@@ -47,8 +47,8 @@
 
 | # | 条目 | 状态与出处 |
 |---|---|---|
-| R10-16 | B-09 blocker 存在性仍由输入自报、未与 artifact 语义联动 | 【FIXED_PENDING_REVIEW 6.43.0 批3】用户 08-14 裁决方案 B（findings/non_covered/REFUTED 机械转 blocker 逐条处置），工单 F01 已落地；见 `maintenance/repair-20260814-batch3/workorder_F01_done.md`。 |
-| R10-17 | any 语义“证据够不够”阈值 | 【FIXED_PENDING_REVIEW 6.43.0 批3】用户裁决装 10 实义字符门槛，工单 F01 已落地。本批只关“空壳/极短 evidence”形式面（防呆不防伪）；“结构化 evidence（证据类型/引用对象/复算产物绑定）”不在本批，残余保留在案。 |
+| R10-16 | B-09 blocker 存在性仍由输入自报、未与 artifact 语义联动 | 【CLOSED 6.43.0】用户 08-14 裁决方案 B（findings/non_covered/REFUTED 机械转 blocker 逐条处置），工单 F01 落地；盲审 R1 抓"省略整份 receipt"上层绕口，消化轮 1 补 execution ledger 哈希链+消化轮 2 补实物身份/基数闸，addendum PASS；见 `workorder_F01_done.md`、`workorder_digest_round1_done.md`。防伪边界：防事后省略，不防整册重造（无外锚定性同 R10-8）。 |
+| R10-17 | any 语义“证据够不够”阈值 | 【CLOSED 6.43.0】用户裁决装 10 实义字符门槛，工单 F01 落地，addendum PASS。本批只关“空壳/极短 evidence”形式面（防呆不防伪）；“结构化 evidence（证据类型/引用对象/复算产物绑定）”不在本批，残余保留在案。 |
 | R10-18 | `risk_flags.py::_strip_invisible_space` 黑名单版存量 | 留批 4 守卫收尾轮；来源：`workorder_B_fixround1.md` §10、`workorder_B_fixround1_done.md` §七 |
 | R10-19 | BC-O2 migration collector 身份无消费者 | 待产品语义裁决；来源：`workorder_C_fixround1_done.md` §七 BC-O2 |
 | R10-20 | BC-O3 series binding 仅 new-analysis profile | 待存量复核影响裁决；来源：`workorder_C_fixround1_done.md` §七 BC-O3 |
@@ -64,4 +64,4 @@
 
 - 建档：2026-08-13（批 D 收口时）。6.42.0 清账 R10-2/R10-10/R10-11/R10-12；原 15 条余 11 条，新增 12 条，现役保留/接受项合计 23 条。
 - 弱闸旁证（R10-5/6 相关）：见 `batchD_workorder.md` §旁证——三命令 staging/部署 SHA 实测全等记录＋解释器与直接依赖 version/import 实测记录，均为实测输出，不引用弱闸 rc=0。
-- 2026-08-14 批 3 状态：批 1 补账 CLOSED 4 条（R10-1/3/4/7，v6.41.0 已修当时未记，F-07 集成漂移修正）；批 3 施工 FIXED_PENDING_REVIEW 4 条（R10-5/6/16/17）；当前现役 = 23 − 4 = **19**（其中 4 条待盲审转 CLOSED 后 → 15）。
+- 2026-08-14 批 3 收官：批 1 补账 CLOSED 4 条（R10-1/3/4/7，v6.41.0 已修当时未记，F-07 集成漂移修正）；批 3 修复 4 条（R10-5/6/16/17）经三轮盲审（R1 BLOCK 1P1+3P2 → R2 CONDITIONAL 2P2 → R3 CONDITIONAL 1P2）+三轮消化+addendum PASS 转 CLOSED；当前现役 = 27 − 12 = **15**。盲审全程证据见 `maintenance/repair-20260814-batch3/blindreview_round{1,2,3}.md` 与 `blindreview_round3_addendum.md`。
