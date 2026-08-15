@@ -6,7 +6,11 @@ import contextlib
 import importlib.util
 import io
 import json
+import os
+import pwd
 import re
+import subprocess
+import sys
 import tempfile
 from pathlib import Path
 
@@ -20,11 +24,12 @@ R10_ROW_RE = re.compile(r"^\|\s*(R10-(\d+))(?:（[^|\n]+）)?\s*\|")
 R10_STATUS_RE = re.compile(
     r"【(?:CLOSED \d+\.\d+\.\d+|FIXED_PENDING_REVIEW \d+\.\d+\.\d+ 批\d+)】"
 )
-R10_ANY_MARKER_RE = re.compile(r"【[^】]+】")
-ACTIVE_DECLARATION_RES = (
-    re.compile(r"当前现役\s*=.*?=\s*\*\*(\d+)\*\*"),
-    re.compile(r"现役保留/接受项合计\s*(\d+)\s*条"),
+R10_STATUSISH_RE = re.compile(r"【(?:CLOSED|FIXED_PENDING_REVIEW)\b[^】]*】")
+R10_BARE_STATUS_RE = re.compile(
+    r"(?<!【)(?<![A-Za-z_])(?:CLOSED \d+\.\d+\.\d+|"
+    r"FIXED_PENDING_REVIEW \d+\.\d+\.\d+(?: 批\d+)?)"
 )
+ACTIVE_DECLARATION_RE = re.compile(r"当前现役\s*=.*?=\s*\*\*(\d+)\*\*")
 
 
 def check(name: str, condition: bool, detail="") -> None:
@@ -144,6 +149,21 @@ def t_f04_deploy_sync() -> None:
         rc, output = invoke_deploy_main(canonical, missing, home)
         check("F04 canonical 部署机缺部署目录 FAIL rc1",
               rc == 1 and "FAIL:" in output and str(missing) in output, (rc, output))
+
+    with tempfile.TemporaryDirectory(prefix="batch3-f04-shadow-home-") as fake_home:
+        account_home = Path(pwd.getpwuid(os.getuid()).pw_dir)
+        deployed = account_home / ".claude" / "commands"
+        expected_failures = DEPLOY.check_deploy_sync(REPO, deployed)
+        env = os.environ.copy()
+        env["HOME"] = fake_home
+        proc = subprocess.run(
+            [sys.executable, str(HERE / "test_commands_deploy_sync.py")],
+            cwd=REPO, env=env, capture_output=True, text=True, check=False)
+        expected_rc = 1 if expected_failures else 0
+        check("F04 真实 canonical checkout 不受伪 HOME 改写",
+              "SKIP_NON_CANONICAL_CHECKOUT" not in proc.stdout
+              and proc.returncode == expected_rc,
+              (proc.returncode, expected_rc, proc.stdout, proc.stderr))
 
 
 def normalize_name(name: str) -> str:
@@ -287,7 +307,10 @@ def r10_ledger_failures(path: Path) -> list[str]:
     text = path.read_text(encoding="utf-8")
     failures: list[str] = []
     entries: list[tuple[str, str]] = []
+    section = ""
     for lineno, line in enumerate(text.splitlines(), start=1):
+        if line.startswith("## "):
+            section = line
         if not re.match(r"^\|\s*R10-", line):
             continue
         match = R10_ROW_RE.match(line)
@@ -295,12 +318,32 @@ def r10_ledger_failures(path: Path) -> list[str]:
             failures.append(f"第 {lineno} 行 R10 条目格式无法识别")
             continue
         entry_id = match.group(1)
-        status_markers = R10_STATUS_RE.findall(line)
-        all_markers = R10_ANY_MARKER_RE.findall(line)
+        cells = line.split("|")
+        status_cell_index = 3 if section.startswith("## 五、") else 2
+        if len(cells) <= status_cell_index:
+            failures.append(f"{entry_id} 状态列缺失")
+            entries.append((entry_id, "OPEN"))
+            continue
+        status_cell = cells[status_cell_index]
+        status_markers = R10_STATUS_RE.findall(status_cell)
+        statusish = R10_STATUSISH_RE.findall(status_cell)
+        body_markers = [
+            marker
+            for index, cell in enumerate(cells)
+            if index != status_cell_index
+            for marker in R10_STATUS_RE.findall(cell)
+        ]
+        if body_markers:
+            failures.append(
+                f"{entry_id} 正文列出现状态样式标记：{body_markers}")
         if len(status_markers) > 1:
             failures.append(f"{entry_id} 状态标记不唯一：{status_markers}")
-        elif all_markers != status_markers:
-            failures.append(f"{entry_id} 状态标记不属于枚举：{all_markers}")
+        elif statusish != status_markers:
+            failures.append(f"{entry_id} 状态标记不属于枚举：{statusish}")
+        bare_markers = R10_BARE_STATUS_RE.findall(line)
+        if bare_markers:
+            failures.append(
+                f"{entry_id} 状态字样未按枚举格式：{bare_markers}")
         status = status_markers[0] if status_markers else "OPEN"
         entries.append((entry_id, status))
 
@@ -316,15 +359,10 @@ def r10_ledger_failures(path: Path) -> list[str]:
             f"多出={sorted(actual_ids - expected_ids)}"
         )
 
-    declared_active: list[int] = []
-    for line in text.splitlines():
-        for pattern in ACTIVE_DECLARATION_RES:
-            match = pattern.search(line)
-            if match is not None:
-                declared_active.append(int(match.group(1)))
-                break
-    if not declared_active:
-        failures.append("第六节当前现役数字无法识别")
+    declared_active = [int(match.group(1))
+                       for match in ACTIVE_DECLARATION_RE.finditer(text)]
+    if len(declared_active) != 1:
+        failures.append(f"第六节当前现役声明必须恰好一条：实际 {len(declared_active)} 条")
     else:
         closed_count = sum(status.startswith("【CLOSED ") for _, status in entries)
         computed_active = len(entries) - closed_count
@@ -356,27 +394,49 @@ def t_f07_r10_ledger() -> None:
               duplicate_failures)
 
         count_copy = root / "r10_ledger_bad_count.md"
-        matches = list(ACTIVE_DECLARATION_RES[0].finditer(source))
-        if matches:
-            declared = int(matches[-1].group(1))
-            count_text = (
-                source[:matches[-1].start(1)] + str(declared + 1)
-                + source[matches[-1].end(1):]
-            )
-        else:
-            matches = list(ACTIVE_DECLARATION_RES[1].finditer(source))
-            declared = int(matches[-1].group(1)) if matches else -1
-            count_text = (
-                source[:matches[-1].start(1)] + str(declared + 1)
-                + source[matches[-1].end(1):]
-                if matches else source
-            )
+        matches = list(ACTIVE_DECLARATION_RE.finditer(source))
+        declared = int(matches[-1].group(1)) if matches else -1
+        count_text = (
+            source[:matches[-1].start(1)] + str(declared + 1)
+            + source[matches[-1].end(1):]
+            if matches else source
+        )
         check("F07 计数不一致反例成功注入", declared >= 0)
         count_copy.write_text(count_text, encoding="utf-8")
         count_failures = r10_ledger_failures(count_copy)
         check("F07 计数不一致反例 FAIL",
               any("当前现役数不一致" in item for item in count_failures),
               count_failures)
+
+        body_copy = root / "r10_ledger_body_marker.md"
+        body_text = source.replace(
+            "建议把字段名改为不承载",
+            "代码示例 `【CLOSED 9.9.9】`，不是状态；建议把字段名改为不承载",
+            1,
+        ).replace("当前现役 = 23 − 4 = **19**", "当前现役 = 23 − 4 = **18**", 1)
+        body_copy.write_text(body_text, encoding="utf-8")
+        body_failures = r10_ledger_failures(body_copy)
+        check("F07 正文列状态样式标记不得冒充条目状态",
+              any("正文列出现状态样式标记" in item for item in body_failures),
+              body_failures)
+
+        bare_copy = root / "r10_ledger_bare_status.md"
+        bare_text = source.replace("【CLOSED 6.41.0】", "CLOSED 6.41.0", 1).replace(
+            "当前现役 = 23 − 4 = **19**", "当前现役 = 23 − 4 = **20**", 1)
+        bare_copy.write_text(bare_text, encoding="utf-8")
+        bare_failures = r10_ledger_failures(bare_copy)
+        check("F07 裸 CLOSED/FIXED_PENDING_REVIEW 版本状态 fail-closed",
+              any("状态字样未按枚举格式" in item for item in bare_failures),
+              bare_failures)
+
+        duplicate_active_copy = root / "r10_ledger_duplicate_active.md"
+        duplicate_active_copy.write_text(
+            source + "\n- 当前现役 = 重复伪造 = **18**\n", encoding="utf-8")
+        duplicate_active_failures = r10_ledger_failures(duplicate_active_copy)
+        check("F07 当前现役声明重复即 FAIL",
+              any("当前现役声明必须恰好一条" in item
+                  for item in duplicate_active_failures),
+              duplicate_active_failures)
 
 
 def main() -> int:

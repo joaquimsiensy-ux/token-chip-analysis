@@ -136,7 +136,8 @@
   {
    "schemas": [
     "adversarial-review-execution/v1",
-    "adversarial-review/v4"
+    "adversarial-review/v4",
+    "review-ledger/v1"
    ],
    "script": "scripts/report/adversarial_review_runner.py"
   },
@@ -365,7 +366,8 @@
    "schemas": [
     "a4-claims/v2",
     "adversarial-review-artifact/v2",
-    "adversarial-review-execution/v1"
+    "adversarial-review-execution/v1",
+    "review-ledger/v1"
    ],
    "script": "scripts/report/adversarial_review_runner.py"
   },
@@ -439,6 +441,7 @@
     "adversarial-review/v4",
     "evm-reconciliation-receipt/v2",
     "reconciliation-report/v2",
+    "review-ledger/v1",
     "shared-release-receipt/v1",
     "solana-anchor-sampler-receipt/v2",
     "solana-observation-bundle/v1",

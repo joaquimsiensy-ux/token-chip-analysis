@@ -4,12 +4,15 @@
 from __future__ import annotations
 
 import hashlib
+import os
 from pathlib import Path
+import pwd
 import sys
 
 
 ROOT = Path(__file__).resolve().parents[2]
-DEPLOYED = Path.home() / ".claude" / "commands"
+ACCOUNT_HOME = Path(pwd.getpwuid(os.getuid()).pw_dir)
+DEPLOYED = ACCOUNT_HOME / ".claude" / "commands"
 EXPECTED = {
     "token-analyze-1.md",
     "token-analyze-2.md",
@@ -28,7 +31,7 @@ def sha256(path: Path) -> str:
 
 def is_canonical_checkout(root: Path, home: Path | None = None) -> bool:
     """精确识别正式部署机上的规范 skill checkout。"""
-    resolved_home = Path.home() if home is None else home
+    resolved_home = ACCOUNT_HOME if home is None else home
     canonical = resolved_home / ".claude" / "skills" / "token-chip-analysis"
     return root.resolve() == canonical.resolve()
 

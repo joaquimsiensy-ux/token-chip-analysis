@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import argparse
+import fcntl
 import hashlib
 import json
 import os
 import secrets
 import shutil
+import stat
 import subprocess
 import sys
 from pathlib import Path
@@ -28,6 +30,12 @@ ARTIFACT_SCHEMA = "adversarial-review-artifact/v2"
 REGISTRY_SCHEMA = "a4-claims/v2"
 AGGREGATE_SCHEMA = "adversarial-review/v4"
 EXECUTION_SCHEMA = "adversarial-review-execution/v1"
+LEDGER_SCHEMA = "review-ledger/v1"
+LEDGER_FILENAME = "adversarial_review_ledger.jsonl"
+LEDGER_KEYS = frozenset({
+    "schema", "seq", "prev_line_sha", "receipt_path", "receipt_sha", "role",
+    "artifact_sha",
+})
 V4_RERUN_HINT = "存量 adversarial-review/v2、v3 须按 v4 重跑对抗复核"
 
 
@@ -75,6 +83,129 @@ def ref(root, path):
     path = contained_regular(root, path, "artifact")
     return {"path": str(path.relative_to(Path(root).resolve())),
             "size": path.stat().st_size, "sha256": sha(path)}
+
+
+def _valid_sha256(value):
+    return (isinstance(value, str) and len(value) == 64
+            and all(char in "0123456789abcdef" for char in value))
+
+
+def _parse_review_ledger_bytes(data):
+    if not data:
+        raise ValueError("adversarial review ledger is missing or empty")
+    rows = []
+    predecessor = "GENESIS"
+    for expected_seq, raw_line in enumerate(data.splitlines(keepends=True), start=1):
+        if not raw_line.strip():
+            raise ValueError(f"review ledger line {expected_seq} is empty")
+        try:
+            item = _loads_json(raw_line.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise ValueError(f"review ledger line {expected_seq} JSON invalid: {exc}") from exc
+        if not isinstance(item, dict) or set(item) != LEDGER_KEYS:
+            raise ValueError(f"review ledger line {expected_seq} keys invalid")
+        if item.get("schema") != LEDGER_SCHEMA:
+            raise ValueError(f"review ledger line {expected_seq} schema invalid")
+        if isinstance(item.get("seq"), bool) or item.get("seq") != expected_seq:
+            raise ValueError(
+                f"review ledger seq is not contiguous: expected {expected_seq}, "
+                f"got {item.get('seq')!r}")
+        if item.get("prev_line_sha") != predecessor:
+            raise ValueError(f"review ledger prev_line_sha mismatch at seq {expected_seq}")
+        receipt_name = item.get("receipt_path")
+        if (not isinstance(receipt_name, str) or not receipt_name
+                or Path(receipt_name).name != receipt_name):
+            raise ValueError(f"review ledger receipt_path invalid at seq {expected_seq}")
+        if not _valid_sha256(item.get("receipt_sha")):
+            raise ValueError(f"review ledger receipt_sha invalid at seq {expected_seq}")
+        if item.get("role") not in ROLES:
+            raise ValueError(f"review ledger role invalid at seq {expected_seq}")
+        if not _valid_sha256(item.get("artifact_sha")):
+            raise ValueError(f"review ledger artifact_sha invalid at seq {expected_seq}")
+        line_sha = hashlib.sha256(raw_line).hexdigest()
+        rows.append((item, line_sha))
+        predecessor = line_sha
+    return rows
+
+
+def validate_review_ledger(case_dir):
+    """Validate the append-only ledger and bind every active row to current bytes."""
+    root = Path(case_dir).resolve()
+    ledger_path = contained_regular(root, LEDGER_FILENAME, "adversarial review ledger")
+    rows = _parse_review_ledger_bytes(ledger_path.read_bytes())
+    active = {}
+    for item, _ in rows:
+        active[item["receipt_path"]] = item
+    for receipt_name, item in active.items():
+        receipt_path = contained_regular(root, receipt_name, "ledger review receipt")
+        if sha(receipt_path) != item["receipt_sha"]:
+            raise ValueError(f"review ledger active receipt bytes changed: {receipt_name}")
+        try:
+            execution = _loads_json(receipt_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            raise ValueError(f"ledger review receipt JSON invalid: {receipt_name}: {exc}") from exc
+        artifact = execution.get("artifact") if isinstance(execution, dict) else None
+        if (execution.get("role") != item["role"] or not isinstance(artifact, dict)
+                or artifact.get("sha256") != item["artifact_sha"]):
+            raise ValueError(f"review ledger row differs from active receipt: {receipt_name}")
+    binding = {
+        "entries": len(rows),
+        "active": len(active),
+        "tip_sha": rows[-1][1],
+    }
+    return binding, active
+
+
+def append_review_ledger_entry(case_dir, receipt, role, artifact_sha):
+    """Append one hash-chained JSONL row with a single O_APPEND write."""
+    root = Path(case_dir).resolve()
+    receipt_path = contained_regular(root, receipt, "review execution receipt")
+    receipt_name = receipt_path.relative_to(root).as_posix()
+    if Path(receipt_name).name != receipt_name:
+        raise ValueError("review execution receipt must be in case root")
+    if role not in ROLES or not _valid_sha256(artifact_sha):
+        raise ValueError("review ledger role/artifact binding invalid")
+    ledger_path = root / LEDGER_FILENAME
+    if ledger_path.is_symlink() or (ledger_path.exists() and not ledger_path.is_file()):
+        raise ValueError("adversarial review ledger must be a regular case-root file")
+    flags = os.O_RDWR | os.O_CREAT | os.O_APPEND
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    fd = os.open(ledger_path, flags, 0o600)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX)
+        if not stat.S_ISREG(os.fstat(fd).st_mode):
+            raise ValueError("adversarial review ledger must be a regular file")
+        os.lseek(fd, 0, os.SEEK_SET)
+        chunks = []
+        while True:
+            chunk = os.read(fd, 1024 * 1024)
+            if not chunk:
+                break
+            chunks.append(chunk)
+        existing = b"".join(chunks)
+        rows = _parse_review_ledger_bytes(existing) if existing else []
+        payload = {
+            "schema": LEDGER_SCHEMA,
+            "seq": len(rows) + 1,
+            "prev_line_sha": rows[-1][1] if rows else "GENESIS",
+            "receipt_path": receipt_name,
+            "receipt_sha": sha(receipt_path),
+            "role": role,
+            "artifact_sha": artifact_sha,
+        }
+        raw_line = (json.dumps(
+            payload, ensure_ascii=False, separators=(",", ":")) + "\n").encode("utf-8")
+        written = os.write(fd, raw_line)
+        if written != len(raw_line):
+            raise OSError(f"short review ledger append: {written}/{len(raw_line)}")
+        os.fsync(fd)
+    finally:
+        try:
+            fcntl.flock(fd, fcntl.LOCK_UN)
+        finally:
+            os.close(fd)
+    return payload
 
 
 def remove_any(path):
@@ -337,11 +468,9 @@ def run_review(case_dir, role, entrypoint, artifact, receipt,
     registry_sha256 = registry_ref["sha256"]
     entry = contained_regular(root, entrypoint, "review entrypoint")
     final = contained_output(root, artifact, "review artifact path")
-    if final.exists():
-        raise ValueError("review artifact must be absent before controlled execution")
     receipt_path = contained_output(root, receipt, "review execution receipt path")
-    if receipt_path.exists():
-        raise ValueError("review execution receipt must be absent before controlled execution")
+    if final.exists() != receipt_path.exists():
+        raise ValueError("review rerun requires the prior artifact and receipt to both exist")
     staging = root / f".review-{role}-{secrets.token_hex(12)}.staging"
     tmp = receipt_path.with_name(f".{receipt_path.name}.tmp.{os.getpid()}")
     artifact_published = False
@@ -381,6 +510,7 @@ def run_review(case_dir, role, entrypoint, artifact, receipt,
             os.fsync(fh.fileno())
         os.replace(tmp, receipt_path)
         receipt_published = True
+        append_review_ledger_entry(root, receipt_path, role, payload["artifact"]["sha256"])
         return payload
     except Exception:
         remove_any(staging)
@@ -507,6 +637,15 @@ def finalize_review(case_dir, receipts, blockers="blockers.json",
         validate_union_coverage(claim_ids, reviewed_sets)
         required_refs = build_required_refs(review_entries)
         validate_blocker_linkage(blocking_findings, required_refs)
+        ledger_binding, active_ledger = validate_review_ledger(root)
+        active_receipt_sha256s = {
+            item["receipt_sha"] for item in active_ledger.values()
+        }
+        if active_receipt_sha256s != execution_sha256s:
+            raise ValueError(
+                "review ledger active receipt set differs from finalize receipts: "
+                f"ledger_only={sorted(active_receipt_sha256s - execution_sha256s)} "
+                f"finalize_only={sorted(execution_sha256s - active_receipt_sha256s)}")
         unresolved = [item for item in blocking_findings if not item["resolved"]]
         payload = {
             "schema": AGGREGATE_SCHEMA,
@@ -514,6 +653,7 @@ def finalize_review(case_dir, receipts, blockers="blockers.json",
             "producer": repo_producer(),
             "claim_registry": registry_ref,
             "reviews": reviews,
+            "review_ledger": ledger_binding,
             "blocking_findings": blocking_findings,
             "release_decision": "PASS" if not unresolved else "BLOCKED",
         }

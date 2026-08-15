@@ -74,6 +74,9 @@ def assemble_aggregate(root: Path, receipts, blockers, *, schema=None):
         "reviews": reviews, "blocking_findings": blockers,
         "release_decision": "PASS",
     }
+    ledger_validator = getattr(runner, "validate_review_ledger", None)
+    if callable(ledger_validator):
+        aggregate["review_ledger"] = ledger_validator(root)[0]
     write_json(root / "adversarial_review.json", aggregate)
     return aggregate
 
@@ -425,12 +428,184 @@ def t_e_documentation():
           "adversarial-review-artifact/v2" in research and "联动" in research)
 
 
+def _ledger_lines(root: Path) -> list[bytes]:
+    path = root / "adversarial_review_ledger.jsonl"
+    return path.read_bytes().splitlines(keepends=True) if path.is_file() else []
+
+
+def t_f_execution_ledger():
+    with tempfile.TemporaryDirectory(prefix="f01-ledger-omit-") as td:
+        root = Path(td)
+        registry_sha = make_case(root, ("C1",))
+        p1, _, r1 = run_role(
+            root, "entity_attribution_skeptic",
+            claim_artifact(registry_sha, [result("C1", evidence=["abcdefghij"])]),
+            stem="claim")
+        p2, _, r2 = run_role(
+            root, "completeness_critic", critic_artifact(registry_sha), stem="clean")
+        bad = critic_artifact(registry_sha)
+        bad["findings"] = ["UNFAVORABLE FINDING"]
+        p3, bad_artifact, r3 = run_role(
+            root, "completeness_critic", bad, stem="bad")
+        proc = finalize(root, [r1, r2]) if p1.returncode == p2.returncode == p3.returncode == 0 else p1
+        check("F ledger 本尊：三路已落账但 finalize 省略不利 receipt → rc2 不落盘",
+              p1.returncode == p2.returncode == p3.returncode == 0
+              and bad_artifact.is_file() and r3.is_file()
+              and proc.returncode == 2 and not (root / "adversarial_review.json").exists(),
+              (p1.returncode, p2.returncode, p3.returncode, proc.returncode,
+               proc.stderr[-260:], _ledger_lines(root)))
+
+    for mutation in ("delete-middle", "edit-line"):
+        with tempfile.TemporaryDirectory(prefix="f01-ledger-chain-") as td:
+            root = Path(td)
+            registry_sha = make_case(root, ("C1",))
+            p1, _, r1 = run_role(
+                root, "entity_attribution_skeptic",
+                claim_artifact(registry_sha, [result("C1")]), stem="claim")
+            critic_a = critic_artifact(registry_sha)
+            critic_a["fixture_nonce"] = "a"
+            critic_b = critic_artifact(registry_sha)
+            critic_b["fixture_nonce"] = "b"
+            p2, _, r2 = run_role(
+                root, "completeness_critic", critic_a, stem="critic_a")
+            p3, _, r3 = run_role(
+                root, "completeness_critic", critic_b, stem="critic_b")
+            lines = _ledger_lines(root)
+            if len(lines) == 3:
+                if mutation == "delete-middle":
+                    changed = [lines[0], lines[2]]
+                else:
+                    row = json.loads(lines[0])
+                    old = row["artifact_sha"]
+                    row["artifact_sha"] = ("0" if old[0] != "0" else "1") + old[1:]
+                    changed = [
+                        (json.dumps(row, ensure_ascii=False, separators=(",", ":")) + "\n").encode(),
+                        lines[1], lines[2],
+                    ]
+                (root / "adversarial_review_ledger.jsonl").write_bytes(b"".join(changed))
+            proc = finalize(root, [r1, r2, r3]) if all(
+                item.returncode == 0 for item in (p1, p2, p3)) else p1
+            label = "手删中间行" if mutation == "delete-middle" else "手改前行内容未重算后继 prev"
+            check(f"F ledger 链：{label} → rc2", len(lines) == 3 and proc.returncode == 2,
+                  (len(lines), proc.returncode, proc.stderr[-260:]))
+
+    with tempfile.TemporaryDirectory(prefix="f01-ledger-unregistered-") as td:
+        root = Path(td)
+        registry_sha = make_case(root, ("C1",))
+        p1, _, r1 = run_role(
+            root, "entity_attribution_skeptic",
+            claim_artifact(registry_sha, [result("C1")]), stem="claim")
+        critic_a = critic_artifact(registry_sha)
+        critic_a["fixture_nonce"] = "registered"
+        critic_b = critic_artifact(registry_sha)
+        critic_b["fixture_nonce"] = "unregistered"
+        p2, _, r2 = run_role(
+            root, "completeness_critic", critic_a, stem="critic")
+        p3, _, r3 = run_role(
+            root, "completeness_critic", critic_b, stem="unregistered")
+        lines = _ledger_lines(root)
+        if len(lines) == 3:
+            (root / "adversarial_review_ledger.jsonl").write_bytes(b"".join(lines[:-1]))
+        proc = finalize(root, [r1, r2, r3]) if all(
+            item.returncode == 0 for item in (p1, p2, p3)) else p1
+        check("F ledger 集合：传入格式合法但 ledger 未登记的 receipt → rc2",
+              len(lines) == 3 and proc.returncode == 2,
+              (len(lines), proc.returncode, proc.stderr[-260:]))
+
+    with tempfile.TemporaryDirectory(prefix="f01-ledger-rerun-") as td:
+        root = Path(td)
+        registry_sha = make_case(root, ("C1",))
+        p1, _, r1 = run_role(
+            root, "entity_attribution_skeptic",
+            claim_artifact(registry_sha, [result("C1")]), stem="claim")
+        bad = critic_artifact(registry_sha)
+        bad["findings"] = ["REPLACED BAD FINDING"]
+        p2, _, _ = run_role(root, "completeness_critic", bad, stem="critic")
+        p3, _, r3 = run_role(
+            root, "completeness_critic", critic_artifact(registry_sha), stem="critic")
+        proc = finalize(root, [r1, r3]) if p1.returncode == p2.returncode == p3.returncode == 0 else p3
+        aggregate = (json.loads((root / "adversarial_review.json").read_text())
+                     if proc.returncode == 0 else {})
+        check("F ledger 重跑：同 receipt_path clean 覆盖 bad，末行有效且全链绿",
+              p1.returncode == p2.returncode == p3.returncode == proc.returncode == 0
+              and aggregate.get("review_ledger", {}).get("entries") == 3
+              and aggregate.get("review_ledger", {}).get("active") == 2
+              and consume(root) == ("", []),
+              (p1.returncode, p2.returncode, p3.returncode, proc.returncode,
+               aggregate.get("review_ledger"), p3.stderr[-260:]))
+
+    with tempfile.TemporaryDirectory(prefix="f01-ledger-missing-") as td:
+        root = Path(td)
+        registry_sha = make_case(root, ("C1",))
+        p1, _, r1 = run_role(
+            root, "entity_attribution_skeptic",
+            claim_artifact(registry_sha, [result("C1")]), stem="claim")
+        p2, _, r2 = run_role(
+            root, "completeness_critic", critic_artifact(registry_sha), stem="critic")
+        ledger = root / "adversarial_review_ledger.jsonl"
+        if ledger.is_file():
+            ledger.unlink()
+        proc = finalize(root, [r1, r2]) if p1.returncode == p2.returncode == 0 else p1
+        check("F ledger 缺失：finalize rc2 不落盘",
+              proc.returncode == 2 and not (root / "adversarial_review.json").exists(),
+              (proc.returncode, proc.stderr[-260:]))
+
+    for mutation in ("aggregate-tip", "ledger-tip"):
+        with tempfile.TemporaryDirectory(prefix="f01-ledger-consumer-") as td:
+            root = Path(td)
+            registry_sha = make_case(root, ("C1",))
+            p1, _, r1 = run_role(
+                root, "entity_attribution_skeptic",
+                claim_artifact(registry_sha, [result("C1")]), stem="claim")
+            p2, _, r2 = run_role(
+                root, "completeness_critic", critic_artifact(registry_sha), stem="critic")
+            proc = finalize(root, [r1, r2]) if p1.returncode == p2.returncode == 0 else p1
+            ready = proc.returncode == 0
+            if ready and mutation == "aggregate-tip":
+                aggregate = json.loads((root / "adversarial_review.json").read_text())
+                tip = aggregate.get("review_ledger", {}).get("tip_sha", "")
+                if tip:
+                    aggregate["review_ledger"]["tip_sha"] = (
+                        ("0" if tip[0] != "0" else "1") + tip[1:])
+                    write_json(root / "adversarial_review.json", aggregate)
+            elif ready:
+                lines = _ledger_lines(root)
+                if lines:
+                    lines[-1] = lines[-1].rstrip(b"\n") + b" \n"
+                    (root / "adversarial_review_ledger.jsonl").write_bytes(b"".join(lines))
+            if ready:
+                message, errors = consume(root)
+            else:
+                message, errors = proc.stderr, []
+            label = "aggregate review_ledger.tip_sha 改一位" if mutation == "aggregate-tip" else "ledger 末行字节改写"
+            check(f"F ledger 消费独立性：{label} → shared/audit 双拒",
+                  ready and bool(message) and bool(errors),
+                  (proc.returncode, message, errors))
+
+    with tempfile.TemporaryDirectory(prefix="f01-ledger-green-") as td:
+        root = Path(td)
+        registry_sha = make_case(root, ("C1",))
+        p1, _, r1 = run_role(
+            root, "entity_attribution_skeptic",
+            claim_artifact(registry_sha, [result("C1")]), stem="claim")
+        p2, _, r2 = run_role(
+            root, "completeness_critic", critic_artifact(registry_sha), stem="critic")
+        proc = finalize(root, [r1, r2]) if p1.returncode == p2.returncode == 0 else p1
+        aggregate = (json.loads((root / "adversarial_review.json").read_text())
+                     if proc.returncode == 0 else {})
+        check("F ledger 绿例：全传全登记，aggregate 绑定且双消费全绿",
+              proc.returncode == 0 and set(aggregate.get("review_ledger", {}))
+              == {"entries", "active", "tip_sha"} and consume(root) == ("", []),
+              (proc.returncode, aggregate.get("review_ledger"), proc.stderr[-260:]))
+
+
 def main():
     t_a_linkage()
     t_b_thresholds()
     t_c_entrypoint_identity()
     t_d_migration()
     t_e_documentation()
+    t_f_execution_ledger()
     if FAILS:
         print(f"\n{len(FAILS)} failures: " + "; ".join(FAILS))
         return 1

@@ -18,6 +18,7 @@ sys.path.insert(0, str(HERE.parent / "lib"))
 from adversarial_review_runner import (
     AGGREGATE_SCHEMA,
     CLAIM_REVIEW_ROLES,
+    LEDGER_SCHEMA,
     ROLES,
     V4_RERUN_HINT,
     build_required_refs,
@@ -25,6 +26,7 @@ from adversarial_review_runner import (
     validate_blocker_linkage,
     validate_blocking_findings,
     validate_review_receipt,
+    validate_review_ledger,
     validate_union_coverage,
 )
 from chain_registry import recon_adapter_for, resolve_alias
@@ -745,6 +747,22 @@ def validate_adversarial_review(root, expected_target=None):
         adversarial.get("blocking_findings"), meaningful_text=_meaningful_text)
     required_refs = build_required_refs(review_entries)
     validate_blocker_linkage(blockers, required_refs)
+    ledger_binding, active_ledger = validate_review_ledger(root)
+    aggregate_ledger = adversarial.get("review_ledger")
+    if (not isinstance(aggregate_ledger, dict)
+            or set(aggregate_ledger) != {"entries", "active", "tip_sha"}
+            or type(aggregate_ledger.get("entries")) is not int
+            or type(aggregate_ledger.get("active")) is not int
+            or not isinstance(aggregate_ledger.get("tip_sha"), str)
+            or aggregate_ledger != ledger_binding):
+        raise ValueError("adversarial review_ledger binding invalid")
+    if any(item.get("schema") != LEDGER_SCHEMA for item in active_ledger.values()):
+        raise ValueError("active review ledger row schema invalid")
+    active_receipt_sha256s = {
+        item["receipt_sha"] for item in active_ledger.values()
+    }
+    if active_receipt_sha256s != execution_sha256s:
+        raise ValueError("review ledger active receipt set differs from aggregate reviews")
     unresolved = [item for item in blockers if not item["resolved"]]
     if unresolved:
         raise ValueError(f"对抗复核仍有 {len(unresolved)} 个未关闭发布否决项")
