@@ -103,8 +103,9 @@ def refresh_adversarial(root):
         entry = root / f"review_{role}.py"
         entry.write_text(
             "import json, os\n"
+            f"# adversarial fixture role: {role}\n"
             "role=os.environ['CHIP_REVIEW_ROLE']\n"
-            "payload={'schema':'adversarial-review-artifact/v1','role':role,"
+            "payload={'schema':'adversarial-review-artifact/v2','role':role,"
             "'registry_sha256':os.environ['CHIP_REVIEW_REGISTRY_SHA256']}\n"
             "if role == 'completeness_critic':\n"
             " payload.update({'findings':[],'non_covered':[]})\n"
@@ -505,7 +506,10 @@ def main():
         root = Path(td)
         report = build_case(root, historical=False)
         review = json.loads((root / "adversarial_review.json").read_text())
-        review["blocking_findings"] = [{"id": "B1", "resolved": False}]
+        review["blocking_findings"] = [{
+            "id": "B1", "resolved": False,
+            "source": {"kind": "manual", "ref": "fixture unresolved"},
+        }]
         write_json(root, "adversarial_review.json", review)
         errors = gate.run(root, report)
         assert any("发布否决项" in x for x in errors), errors

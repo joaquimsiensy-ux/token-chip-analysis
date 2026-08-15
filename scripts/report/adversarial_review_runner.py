@@ -19,11 +19,16 @@ from supply_truth_gate import _meaningful_text, _reject_constant
 ROLES = {"entity_attribution_skeptic", "completeness_critic"}
 CLAIM_REVIEW_ROLES = ROLES - {"completeness_critic"}
 VERDICTS = {"CONFIRMED", "WEAKENED", "REFUTED"}
-ARTIFACT_SCHEMA = "adversarial-review-artifact/v1"
+BLOCKER_REQUIRED_KEYS = frozenset({"id", "resolved", "source"})
+BLOCKER_ALLOWED_KEYS = BLOCKER_REQUIRED_KEYS | {"resolution"}
+BLOCKER_SOURCE_KINDS = frozenset(
+    {"completeness_finding", "non_covered", "refuted_claim", "manual"})
+MIN_MEANINGFUL_CHARS = 10
+ARTIFACT_SCHEMA = "adversarial-review-artifact/v2"
 REGISTRY_SCHEMA = "a4-claims/v2"
-AGGREGATE_SCHEMA = "adversarial-review/v3"
+AGGREGATE_SCHEMA = "adversarial-review/v4"
 EXECUTION_SCHEMA = "adversarial-review-execution/v1"
-V3_RERUN_HINT = "存量 adversarial-review/v2 须按 v3 重跑对抗复核"
+V4_RERUN_HINT = "存量 adversarial-review/v2、v3 须按 v4 重跑对抗复核"
 
 
 def sha(path):
@@ -99,11 +104,25 @@ def _loads_json(text, reject_constant=_reject_constant):
     return json.loads(text, parse_constant=reject_constant)
 
 
-def _string_array(value, label, *, nonempty=False, meaningful_text=_meaningful_text):
+def _has_min_meaningful_chars(value, minimum=MIN_MEANINGFUL_CHARS, *,
+                              meaningful_text=_meaningful_text):
+    if not isinstance(value, str):
+        return False
+    return sum(1 for char in value if meaningful_text(char)) >= minimum
+
+
+def _string_array(value, label, *, nonempty=False, min_meaningful=None,
+                  meaningful_text=_meaningful_text):
     if not isinstance(value, list) or (nonempty and not value):
         raise ValueError(f"{label} must be {'a non-empty ' if nonempty else 'an '}array")
     if any(not meaningful_text(item) for item in value):
         raise ValueError(f"{label} must contain only non-empty strings")
+    if min_meaningful is not None and any(
+            not _has_min_meaningful_chars(
+                item, min_meaningful, meaningful_text=meaningful_text)
+            for item in value):
+        raise ValueError(
+            f"{label} entries require at least {min_meaningful} meaningful characters")
 
 
 def validate_claim_registry_data(data, *, meaningful_text=_meaningful_text):
@@ -172,6 +191,7 @@ def validate_review_artifact(data, role, registry_sha256, claim_ids=None, *,
         if item.get("verdict") not in VERDICTS:
             raise ValueError(f"results[{index}].verdict is outside the three-value enum")
         _string_array(item.get("evidence"), f"results[{index}].evidence", nonempty=True,
+                      min_meaningful=MIN_MEANINGFUL_CHARS,
                       meaningful_text=meaningful_text)
         _string_array(item.get("alternative_explanations"),
                       f"results[{index}].alternative_explanations",
@@ -192,19 +212,89 @@ def validate_blocking_findings(blockers, *, meaningful_text=_meaningful_text):
     if not isinstance(blockers, list):
         raise ValueError("blocking_findings must be an array")
     ids = []
+    booked_sources = set()
     for index, item in enumerate(blockers):
         if not isinstance(item, dict) \
                 or not _valid_identifier(item.get("id"), meaningful_text):
             raise ValueError(f"blocking_findings[{index}].id is invalid")
         if not isinstance(item.get("resolved"), bool):
             raise ValueError(f"blocking_findings[{index}].resolved must be bool")
-        if item["resolved"] and not meaningful_text(item.get("resolution")):
+        unknown = set(item) - BLOCKER_ALLOWED_KEYS
+        missing = BLOCKER_REQUIRED_KEYS - set(item)
+        if unknown:
             raise ValueError(
-                f"blocking_findings[{index}] resolved=true requires non-empty resolution")
+                f"blocking_findings[{index}] contains unsupported keys: {sorted(unknown)}")
+        if missing:
+            raise ValueError(
+                f"blocking_findings[{index}] missing required keys: {sorted(missing)}")
+        source = item.get("source")
+        if not isinstance(source, dict) or set(source) != {"kind", "ref"}:
+            raise ValueError(
+                f"blocking_findings[{index}].source must contain exactly kind and ref")
+        kind = source.get("kind")
+        if kind not in BLOCKER_SOURCE_KINDS:
+            raise ValueError(f"blocking_findings[{index}].source.kind is invalid")
+        ref_value = source.get("ref")
+        if not meaningful_text(ref_value):
+            raise ValueError(f"blocking_findings[{index}].source.ref is invalid")
+        if item["resolved"] and "resolution" not in item:
+            raise ValueError(
+                f"blocking_findings[{index}] resolved=true requires resolution")
+        if "resolution" in item and not _has_min_meaningful_chars(
+                item.get("resolution"), meaningful_text=meaningful_text):
+            raise ValueError(
+                f"blocking_findings[{index}].resolution requires at least "
+                f"{MIN_MEANINGFUL_CHARS} meaningful characters")
         ids.append(item["id"].strip())
+        if kind != "manual":
+            source_key = (kind, ref_value)
+            if source_key in booked_sources:
+                raise ValueError("blocking_findings contains duplicate non-manual source")
+            booked_sources.add(source_key)
     if len(ids) != len(set(ids)):
         raise ValueError("blocking_findings id must be unique within aggregate")
     return blockers
+
+
+def build_required_refs(review_entries):
+    """Build every mechanically required blocker source from validated artifacts."""
+    required = {}
+    for role, artifact_relpath, artifact_data in review_entries:
+        if role == "completeness_critic":
+            for field, kind in (("findings", "completeness_finding"),
+                                ("non_covered", "non_covered")):
+                for index, text in enumerate(artifact_data[field]):
+                    required[(kind, f"{artifact_relpath}#/{field}/{index}")] = text
+        elif role in CLAIM_REVIEW_ROLES:
+            for index, item in enumerate(artifact_data["results"]):
+                if item["verdict"] == "REFUTED":
+                    claim_id = item["claim_id"].strip()
+                    required[("refuted_claim",
+                              f"{artifact_relpath}#/results/{index}:{claim_id}")] = claim_id
+    return required
+
+
+def validate_blocker_linkage(blockers, required_refs):
+    """Require exact two-way agreement between artifact-derived refs and blocker rows."""
+    required = set(required_refs)
+    booked = {
+        (item["source"]["kind"], item["source"]["ref"])
+        for item in blockers if item["source"]["kind"] != "manual"
+    }
+    missing = required - booked
+    ghost = booked - required
+    if missing or ghost:
+        details = []
+        if missing:
+            rendered = [
+                f"{kind}:{ref} ({required_refs.get((kind, ref), '')})"
+                for kind, ref in sorted(missing)
+            ]
+            details.append(f"missing blocker refs: {rendered}")
+        if ghost:
+            details.append(f"ghost blocker refs: {sorted(ghost)}")
+        raise ValueError("blocker linkage mismatch；" + "；".join(details))
+    return booked
 
 
 def validate_union_coverage(claim_ids, reviewed_sets):
@@ -377,6 +467,7 @@ def finalize_review(case_dir, receipts, blockers="blockers.json",
         execution_sha256s = set()
         artifact_sha256s = set()
         review_entrypoints = set()
+        review_entries = []
         for receipt_path in receipt_paths:
             try:
                 execution = _loads_json(receipt_path.read_text(encoding="utf-8"))
@@ -384,7 +475,7 @@ def finalize_review(case_dir, receipts, blockers="blockers.json",
                 raise ValueError(f"review execution receipt JSON invalid: {exc}") from exc
             role = execution.get("role")
             artifact_ref = execution.get("artifact")
-            execution, _, reviewed = validate_review_receipt(
+            execution, artifact_data, reviewed = validate_review_receipt(
                 root, receipt_path, role, artifact_ref,
                 registry_sha256=registry_ref["sha256"], claim_ids=claim_ids)
             execution_ref = ref(root, receipt_path)
@@ -397,10 +488,11 @@ def finalize_review(case_dir, receipts, blockers="blockers.json",
             execution_sha256s.add(execution_sha256)
             artifact_sha256s.add(artifact_sha256)
             roles.add(role)
-            entrypoint_key = (role, execution["entrypoint"]["sha256"])
+            entrypoint_key = execution["entrypoint"]["sha256"]
             if entrypoint_key in review_entrypoints:
-                raise ValueError("duplicate review role and entrypoint content")
+                raise ValueError("duplicate review entrypoint content")
             review_entrypoints.add(entrypoint_key)
+            review_entries.append((role, artifact_ref["path"], artifact_data))
             if role in CLAIM_REVIEW_ROLES:
                 reviewed_sets.append(reviewed)
             reviews.append({
@@ -413,6 +505,8 @@ def finalize_review(case_dir, receipts, blockers="blockers.json",
         if not ROLES.issubset(roles):
             raise ValueError(f"required adversarial roles missing: {sorted(ROLES - roles)}")
         validate_union_coverage(claim_ids, reviewed_sets)
+        required_refs = build_required_refs(review_entries)
+        validate_blocker_linkage(blocking_findings, required_refs)
         unresolved = [item for item in blocking_findings if not item["resolved"]]
         payload = {
             "schema": AGGREGATE_SCHEMA,

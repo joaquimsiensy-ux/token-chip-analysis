@@ -100,13 +100,13 @@
 - REFUTED 必须给出你重算出的硬证据。
 
 [输出 JSON schema（落盘前由受控 runner 补入 role 与 registry_sha256）]
-{ "schema": "adversarial-review-artifact/v1", "role": "entity_attribution_skeptic",
+{ "schema": "adversarial-review-artifact/v2", "role": "entity_attribution_skeptic",
   "registry_sha256": "<a4_claims.json sha256>",
   "results": [{"claim_id": "...", "verdict": "CONFIRMED|WEAKENED|REFUTED",
-    "evidence": ["非空重算证据"], "alternative_explanations": [...]}] }
+    "evidence": ["每条至少 10 个实义白名单字符的重算证据"], "alternative_explanations": [...]}] }
 ```
 
-完整性批评角色不用逐 claim 投票，改交同 schema/role/registry_sha256 外加 `findings[]` 与 `non_covered[]`。全部 claim-review 产物的 claim_id 并集必须覆盖当前 `a4_claims.json`，任何越界 id、空 evidence 或 registry sha 撕裂都由 runner/finalize 拒绝。
+完整性批评角色不用逐 claim 投票，改交同 schema/role/registry_sha256 外加 `findings[]` 与 `non_covered[]`。全部 claim-review 产物的 claim_id 并集必须覆盖当前 `a4_claims.json`；任何越界 id、少于 10 个实义白名单字符的 evidence、registry sha 撕裂，或 findings/non_covered/REFUTED 与 blocker 的双向联动缺失、幽灵多记，均由 runner/finalize 拒绝。
 
 （骨架合成自：OPN 5 路审计员+强制备择解释；SIREN「必须实际核查」标准与三档裁决；FIL 附数据文件符号约定与去重规则；HYPE verdict schema 字段。）
 

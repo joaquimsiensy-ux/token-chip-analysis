@@ -63,7 +63,7 @@ def entrypoint(root: Path, name: str, payload=None, raw=None) -> Path:
 
 def claim_artifact(registry_sha: str, results, role="entity_attribution_skeptic"):
     return {
-        "schema": "adversarial-review-artifact/v1",
+        "schema": "adversarial-review-artifact/v2",
         "role": role,
         "registry_sha256": registry_sha,
         "results": results,
@@ -81,7 +81,7 @@ def result(cid="C1", verdict="CONFIRMED", evidence=None, alternatives=None):
 
 def critic_artifact(registry_sha: str):
     return {
-        "schema": "adversarial-review-artifact/v1",
+        "schema": "adversarial-review-artifact/v2",
         "role": "completeness_critic",
         "registry_sha256": registry_sha,
         "findings": [],
@@ -290,7 +290,8 @@ def t_meaningful_text_and_claim_identity():
             p1, p2, _, r1, r2 = build_valid(root)
             (root / "adversarial_review.json").unlink(missing_ok=True)
             write_json(root / "bad_blockers.json", [
-                {"id": "B1", "resolved": True, "resolution": invisible},
+                {"id": "B1", "resolved": True, "resolution": invisible,
+                 "source": {"kind": "manual", "ref": "fixture negative"}},
             ])
             proc = finalize(root, [r1, r2], blockers="bad_blockers.json") \
                 if p1.returncode == p2.returncode == 0 else p1
@@ -340,7 +341,9 @@ def t_meaningful_text_and_claim_identity():
                 aggregate_path = root / "adversarial_review.json"
                 aggregate = json.loads(aggregate_path.read_text(encoding="utf-8"))
                 aggregate["blocking_findings"] = [{
-                    "id": invalid_id, "resolved": True, "resolution": "closed",
+                    "id": invalid_id, "resolved": True,
+                    "resolution": "fixture closure complete",
+                    "source": {"kind": "manual", "ref": "fixture negative"},
                 }]
                 write_json(aggregate_path, aggregate)
                 shared_blocker_message = rejection_message(lambda:
@@ -563,6 +566,7 @@ def t_directory_cleanup_and_output_guards():
 
 
 def t_content_identity_and_consumer_bindings():
+    import adversarial_review_runner as runner
     from shared_release_receipt import validate_adversarial_review
     target = {"chain": "bsc", "token": "0xtoken", "as_of_block": 123}
 
@@ -653,7 +657,7 @@ def t_content_identity_and_consumer_bindings():
             aggregate = json.loads((root / "adversarial_review.json").read_text())
         elif runs_ok:
             aggregate = {
-                "schema": "adversarial-review/v3",
+                "schema": runner.AGGREGATE_SCHEMA,
                 "target": target,
                 "producer": {"path": "scripts/report/adversarial_review_runner.py",
                              "sha256": sha(RUNNER)},
@@ -790,11 +794,11 @@ def t_nonfinite_json_mounts_and_constant_sources():
     import audit_release_gate as audit
     import shared_release_receipt as shared
 
-    check("shared/audit 的 v3 schema 与迁移提示均从 runner 单源导入",
+    check("shared/audit 的 v4 schema 与迁移提示均从 runner 单源导入",
           shared.AGGREGATE_SCHEMA == runner.AGGREGATE_SCHEMA
-          and shared.V3_RERUN_HINT == runner.V3_RERUN_HINT
+          and shared.V4_RERUN_HINT == runner.V4_RERUN_HINT
           and getattr(audit, "AGGREGATE_SCHEMA", None) == runner.AGGREGATE_SCHEMA
-          and getattr(audit, "V3_RERUN_HINT", None) == runner.V3_RERUN_HINT)
+          and getattr(audit, "V4_RERUN_HINT", None) == runner.V4_RERUN_HINT)
 
     with tempfile.TemporaryDirectory(prefix="f02-nan-registry-") as td:
         root = Path(td)
@@ -1008,9 +1012,14 @@ def t_finalize_variants():
 
     blockers = [
         ("blocker 空 id", [{"id": "", "resolved": False}]),
-        ("blocker 重复 id", [{"id": "B1", "resolved": False},
-                             {"id": "B1", "resolved": False}]),
-        ("resolved=true 缺 resolution", [{"id": "B1", "resolved": True}]),
+        ("blocker 重复 id", [
+            {"id": "B1", "resolved": False,
+             "source": {"kind": "manual", "ref": "fixture one"}},
+            {"id": "B1", "resolved": False,
+             "source": {"kind": "manual", "ref": "fixture two"}}]),
+        ("resolved=true 缺 resolution", [
+            {"id": "B1", "resolved": True,
+             "source": {"kind": "manual", "ref": "fixture negative"}}]),
     ]
     for label, rows in blockers:
         with tempfile.TemporaryDirectory(prefix="f02-blocker-") as td:
@@ -1102,8 +1111,8 @@ def t_consumer_and_green_chain():
         errors = []
         check_adversarial(root, json.loads((root / "adversarial_review.json").read_text()), errors)
         joined = shared_msg + " " + " ".join(errors)
-        check("v2 旧件 fail-closed 且错误信息含 v3 重跑指引",
-              bool(shared_msg) and bool(errors) and "v3" in joined and "重跑" in joined,
+        check("v2 旧件 fail-closed 且错误信息含 v4 重跑指引",
+              bool(shared_msg) and bool(errors) and "v4" in joined and "重跑" in joined,
               joined)
 
 

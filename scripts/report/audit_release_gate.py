@@ -19,7 +19,7 @@ LIB = Path(__file__).resolve().parents[1] / "lib"
 sys.path.insert(0, str(LIB))
 from chain_registry import (formal_ready, known_chains_for_release,
                             missing_formal_capabilities, release_tier_for, resolve_alias)
-from adversarial_review_runner import AGGREGATE_SCHEMA, V3_RERUN_HINT
+from adversarial_review_runner import AGGREGATE_SCHEMA, V4_RERUN_HINT
 
 
 SHARED_REQUIRED = (
@@ -832,21 +832,21 @@ def load_adversarial_json(path: Path, errors: list[str]):
 
 
 def check_adversarial(case_dir: Path, d: dict, errors: list[str], expected_target=None):
-    """Use the same v3 byte-level validator as the shared receipt consumer."""
+    """Use the same v4 byte-level validator as the shared receipt consumer."""
     if not isinstance(d, dict):
-        errors.append("对抗复核 v3 校验失败: schema 非法；存量须按 v3 重跑对抗复核")
+        errors.append(f"对抗复核 v4 校验失败: schema 非法；{V4_RERUN_HINT}")
         return
     schema = d.get("schema")
     if schema != AGGREGATE_SCHEMA:
-        errors.append(f"对抗复核 v3 校验失败: {V3_RERUN_HINT}"
-                      if schema == "adversarial-review/v2"
-                      else f"对抗复核 v3 校验失败: schema 非法；{V3_RERUN_HINT}")
+        errors.append(f"对抗复核 v4 校验失败: {V4_RERUN_HINT}"
+                      if schema in {"adversarial-review/v2", "adversarial-review/v3"}
+                      else f"对抗复核 v4 校验失败: schema 非法；{V4_RERUN_HINT}")
         return
     try:
         import shared_release_receipt
         shared_release_receipt.validate_adversarial_review(case_dir, expected_target)
     except Exception as exc:
-        errors.append(f"对抗复核 v3 校验失败: {exc}")
+        errors.append(f"对抗复核 v4 校验失败: {exc}")
 
 
 # F-B7：链族→四查快照绑定口径的分派表提成模块常量，取值前做成员检查，
