@@ -217,15 +217,18 @@ def check_formal_case_chain(case_dir, data, errors):
 
     state = data.get("analysis-state.json")
     if isinstance(state, dict):
-        source_chains["state"] = _claim_chain(
+        state_chain = _claim_chain(
             chain_claims, "analysis-state.json.chain", state.get("chain"), errors)
+        source_chains["state"] = state_chain
         token_obj = state.get("token")
         if not isinstance(token_obj, dict):
             _target_error(errors,
                           "analysis-state.json.token 缺失或不是对象，token.chain 无法收集")
         else:
-            _claim_chain(chain_claims, "analysis-state.json.token.chain",
-                         token_obj.get("chain"), errors)
+            token_chain = _claim_chain(
+                chain_claims, "analysis-state.json.token.chain",
+                token_obj.get("chain"), errors)
+            source_chains["state"] = state_chain or token_chain
 
     identity = data.get("identity_gate.json")
     if isinstance(identity, dict):
@@ -277,6 +280,18 @@ def check_formal_case_chain(case_dir, data, errors):
 
     token_claims = []
     block_claims = []
+    if isinstance(state, dict):
+        state_token = state.get("token")
+        if isinstance(state_token, dict):
+            # State 的 token 值字段遵循“在场即比”：存量 state 可以只有
+            # token.chain，但 address/mint 任一出现就必须与证据分区唯一。
+            # 两字段并存时分别入 claims，禁止用 or 折叠掉内部矛盾。
+            for field in ("address", "mint"):
+                if field in state_token:
+                    _claim_token(
+                        token_claims,
+                        f"analysis-state.json.token.{field}",
+                        state_token.get(field), source_chains.get("state"), errors)
     if isinstance(accounting, dict):
         accounting_token = (accounting.get("token") if accounting.get("token") is not None
                             else accounting.get("mint"))

@@ -299,13 +299,49 @@ def r7_state_dual_chain_conflict(root: Path, report: Path) -> list[str]:
     return run_new(root, report)
 
 
-def r8_solana_mint_case_is_semantic(root: Path, report: Path) -> list[str]:
+def r8a_solana_state_address_case_is_semantic(root: Path, report: Path) -> list[str]:
     set_conclusion_chain(root, "sol")
     state = read_json(root / "analysis-state.json")
     state["token"]["address"] = SOL_MINT_CASE_VARIANT
     write_json(root / "analysis-state.json", state)
     receipt = read_json(root / "identity_holders_receipt.json")
+    receipt["token"] = SOL_MINT
+    write_json(root / "identity_holders_receipt.json", receipt)
+    refresh_identity_bindings(root)
+    set_evidence_target(root, chain="solana", token=SOL_MINT)
+    return run_new(root, report)
+
+
+def r8b_solana_identity_receipt_case_is_semantic(root: Path,
+                                                  report: Path) -> list[str]:
+    set_conclusion_chain(root, "sol")
+    state = read_json(root / "analysis-state.json")
+    state["token"]["address"] = SOL_MINT
+    write_json(root / "analysis-state.json", state)
+    receipt = read_json(root / "identity_holders_receipt.json")
     receipt["token"] = SOL_MINT_CASE_VARIANT
+    write_json(root / "identity_holders_receipt.json", receipt)
+    refresh_identity_bindings(root)
+    set_evidence_target(root, chain="solana", token=SOL_MINT)
+    return run_new(root, report)
+
+
+def r9_only_state_evm_address_drifts(root: Path, report: Path) -> list[str]:
+    state = read_json(root / "analysis-state.json")
+    state["token"]["address"] = ALT_TOKEN
+    write_json(root / "analysis-state.json", state)
+    refresh_identity_bindings(root)
+    return run_new(root, report)
+
+
+def r10_only_state_solana_mint_drifts(root: Path, report: Path) -> list[str]:
+    set_conclusion_chain(root, "sol")
+    state = read_json(root / "analysis-state.json")
+    state["token"]["address"] = SOL_MINT
+    state["token"]["mint"] = SOL_MINT_CASE_VARIANT
+    write_json(root / "analysis-state.json", state)
+    receipt = read_json(root / "identity_holders_receipt.json")
+    receipt["token"] = SOL_MINT
     write_json(root / "identity_holders_receipt.json", receipt)
     refresh_identity_bindings(root)
     set_evidence_target(root, chain="solana", token=SOL_MINT)
@@ -336,6 +372,15 @@ def g3_a4_requires_identity(root: Path, report: Path) -> list[str]:
     return run_new(root, report)
 
 
+def g4_state_token_value_fields_absent(root: Path, report: Path) -> list[str]:
+    state = read_json(root / "analysis-state.json")
+    state["token"].pop("address", None)
+    state["token"].pop("mint", None)
+    write_json(root / "analysis-state.json", state)
+    refresh_identity_bindings(root)
+    return run_new(root, report)
+
+
 NEGATIVE_CASES = (
     ("r1", "结论分区 eth、证据分区 bsc", r1_conclusion_eth_evidence_bsc),
     ("r2", "证据分区 eth、结论分区 bsc", r2_evidence_eth_conclusion_bsc),
@@ -344,7 +389,14 @@ NEGATIVE_CASES = (
     ("r5", "仅 A5 seal.chain 漂移", r5_only_a5_chain_drifts),
     ("r6", "仅 shared receipt target.chain 漂移", r6_only_shared_chain_drifts),
     ("r7", "state.chain 与 state.token.chain 矛盾", r7_state_dual_chain_conflict),
-    ("r8", "Solana mint 仅大小写不同", r8_solana_mint_case_is_semantic),
+    ("r8a", "仅 state.token.address 的 Solana mint 大小写漂移",
+     r8a_solana_state_address_case_is_semantic),
+    ("r8b", "仅 identity receipt 的 Solana mint 大小写漂移",
+     r8b_solana_identity_receipt_case_is_semantic),
+    ("r9", "仅 state.token.address 换成另一 EVM 代币",
+     r9_only_state_evm_address_drifts),
+    ("r10", "仅 state.token.mint 漂移且与 address 矛盾",
+     r10_only_state_solana_mint_drifts),
 )
 
 
@@ -395,6 +447,17 @@ def main() -> int:
             detail = f"errors={errors[:4]!r}"
             print(f"FAIL g3: A4 在场仍可删除 identity 旁路; {detail}")
             failures.append(("g3", "A4 implies identity receipt", detail))
+
+    with tempfile.TemporaryDirectory(prefix="repair-g1-g4-") as td:
+        root = Path(td)
+        report = build_new_analysis_case(root)
+        errors = g4_state_token_value_fields_absent(root, report)
+        matched = cross_target_errors(errors)
+        if matched:
+            print(f"FAIL g4: state.token 无 address/mint 被误报: {matched!r}")
+            failures.append(("g4", "state token 值字段缺席不硬要", repr(matched)))
+        else:
+            print("PASS g4: state.token 无 address/mint 仍按在场即比原则通过")
 
     if failures:
         print(f"EXPECTED TEST-ONLY RED: {len(failures)} case(s) missing F-03 enforcement")

@@ -1,7 +1,7 @@
 # 包 3 fix 第二轮施工报告（F-03 / F-14）
 
-日期：2026-08-15  
-状态：**BLOCKED，生产缺陷已修，但冻结 fixture / manifest 仍与新 target 等式冲突**  
+日期：2026-08-15
+状态：**BLOCKED，生产缺陷已修，但冻结 fixture / manifest 仍与新 target 等式冲突**
 结论：`canonical_target()` 与 Solana reconciliation producer 链已改为按链族处理 token；EVM 继续小写归一，Solana base58 从 observation、四查、window 到 shared 全程保留原串。`test_a4_gate.py` 的三项旧正例已转绿，包 3 两项测试已登记 `run_all.py`。但 `test_batch3_solana_vertical_slice.py` 自身仍把 adversarial target 写成 `MINT.lower()`，另有三组未获解冻的存量 fixture / manifest 回归继续失败；因此不得声称全绿或 fix complete。全程未执行任何 git 命令。
 
 ## 1. 本轮改动文件与边界

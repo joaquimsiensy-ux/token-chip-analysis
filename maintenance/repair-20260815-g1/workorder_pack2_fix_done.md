@@ -1,7 +1,7 @@
 # AI-1 Pack 2 fix 施工报告
 
-日期：2026-08-15  
-范围：F-01 handoff 案根 containment 的 fix 阶段  
+日期：2026-08-15
+范围：F-01 handoff 案根 containment 的 fix 阶段
 结论：生产代码已完成 generate、verify、freeze/check-unseal 全入口收口；冻结 test-only 基线由 12/14 红转为 14/14 绿。指定回归全部 rc=0，`run_all.py` 只做 import 级登记检查，未运行会受 deploy-sync 预期红干扰的全量 suite。施工期间未执行任何 git 操作。
 
 ## 改动文件与行号
@@ -22,7 +22,7 @@
 
 ### 先红基线
 
-命令：`PYTHONDONTWRITEBYTECODE=1 python3 scripts/tests/test_repair_g1_handoff_containment.py`  
+命令：`PYTHONDONTWRITEBYTECODE=1 python3 scripts/tests/test_repair_g1_handoff_containment.py`
 修复前结果：rc=1，12/14 checks failed；与 `workorder_pack2_testonly_done.md` 的 a1-a3、b1-b6、c1 红因一致，c2/c3 防误伤基线为绿。
 
 ### 本包目标

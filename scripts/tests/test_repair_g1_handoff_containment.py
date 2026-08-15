@@ -26,6 +26,7 @@ from test_handoff_manifest import FRZ, GEN, make_case, setup_freezeable
 
 HERE = Path(__file__).resolve().parent
 SCRIPT = HERE.parent / "report" / "handoff_manifest.py"
+ADJUDICATION_SCRIPT = HERE.parent / "report" / "adjudication_validator.py"
 FAILS: list[str] = []
 CHECKS: list[str] = []
 PATH_REJECTION_NEEDLES = (
@@ -35,6 +36,10 @@ PATH_REJECTION_NEEDLES = (
 
 def run(args):
     return run_formal_script(str(SCRIPT), args)
+
+
+def run_adjudication(args):
+    return run_formal_script(str(ADJUDICATION_SCRIPT), args)
 
 
 def write_json(path: Path, obj) -> None:
@@ -225,6 +230,25 @@ def test_b6_raw_string_edges(root: Path) -> None:
               path_rejected(proc), observed(proc))
 
 
+def test_b7_adjudication_entity_file_containment(root: Path) -> None:
+    case = ready_case(root, "b7_case")
+    setup_freezeable(str(case))
+    outside = root / "b7_outside_entity.json"
+    shutil.copyfile(case / "s2_entity_members.json", outside)
+    variants = (
+        ("绝对路径", str(outside.resolve())),
+        ("../ 越界", "../b7_outside_entity.json"),
+    )
+    for label, shown in variants:
+        proc = run_adjudication([
+            "validate", "--case-dir", str(case),
+            "--adjudications", "candidate_adjudications.json",
+            "--entity-file", shown,
+        ])
+        check(f"b7 adjudication_validator --entity-file {label} 非零拒绝",
+              path_rejected(proc), observed(proc))
+
+
 def test_c1_safe_case_file_vectors(root: Path) -> None:
     case = root / "c1_case"
     case.mkdir()
@@ -304,6 +328,7 @@ def main() -> int:
         test_b4_freeze_absolute_members(root)
         test_b5_check_unseal_dotdot_binding(root)
         test_b6_raw_string_edges(root)
+        test_b7_adjudication_entity_file_containment(root)
         test_c1_safe_case_file_vectors(root)
         test_c2_normal_ready_chain(root)
         test_c3_optional_contract_missing_partial(root)

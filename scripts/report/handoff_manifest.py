@@ -1262,7 +1262,7 @@ def cmd_freeze(a):
     # 旧案 revision 追加同样过此闸：改成员表＝新结论，必须先重跑 v2 扫描器补裁决。
     validator = os.path.join(os.path.dirname(os.path.abspath(__file__)), "adjudication_validator.py")
     pv = subprocess.run([sys.executable, validator, "validate", "--case-dir", case_dir,
-                         "--entity-file", ep],
+                         "--entity-file", a.entity_file],
                         capture_output=True, text=True)
     if pv.returncode != 0:
         print("[freeze] 候选裁决闭环未通过——禁止冻结（validator 输出如下）:", file=sys.stderr)
@@ -1273,7 +1273,7 @@ def cmd_freeze(a):
     distribution_adj_digest = None
     if os.path.isfile(distribution_adj_path):
         pd = subprocess.run([sys.executable, validator, "distribution-validate",
-                             "--case-dir", case_dir, "--entity-file", ep],
+                             "--case-dir", case_dir, "--entity-file", a.entity_file],
                             capture_output=True, text=True)
         if pd.returncode != 0:
             print("[freeze] 分布异常裁决闭环未通过——禁止冻结:", file=sys.stderr)

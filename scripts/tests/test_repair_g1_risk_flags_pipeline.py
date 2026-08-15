@@ -140,11 +140,33 @@ def test_analyze_holdings_no_partial_artifacts(root: Path) -> None:
     )
 
 
+def test_writer_cli_stable_block(root: Path) -> None:
+    additions = root / "dirty-additions.csv"
+    write_labels(additions, [label_row("0x" + "3" * 40, DIRTY_FLAG)])
+    proc = subprocess.run(
+        [sys.executable, str(LABELS_DIR / "add_labels.py"), str(additions), "--dry"],
+        cwd=LABELS_DIR,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    stderr = proc.stderr or ""
+    check(
+        "D4 写入侧脏 risk_flags 稳定 BLOCK 且无裸 traceback",
+        proc.returncode != 0
+        and "BLOCK" in stderr
+        and "risk_flags 脏数据" in stderr
+        and "Traceback" not in stderr,
+        (proc.returncode, proc.stdout, proc.stderr),
+    )
+
+
 def main() -> int:
     with tempfile.TemporaryDirectory(prefix="repair-g1-f12-") as td:
         root = Path(td)
         test_lint_and_eager_consumer(root / "labels")
         test_analyze_holdings_no_partial_artifacts(root / "artifact")
+        test_writer_cli_stable_block(root / "writer")
     if FAILURES:
         print(f"FAIL: F-12 pipeline 共 {len(FAILURES)} 项未满足")
         return 1

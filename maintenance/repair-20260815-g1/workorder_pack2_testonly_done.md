@@ -1,7 +1,7 @@
 # AI-1 Pack 2 test-only 施工报告
 
-日期：2026-08-15  
-范围：F-01 handoff 案根 containment 的 test-only 阶段  
+日期：2026-08-15
+范围：F-01 handoff 案根 containment 的 test-only 阶段
 结论：新增负向测试在未修复生产代码上得到目标先红证据：12/14 checks 红，a1-a3、b1-b6 与 c1 全部暴露缺口；c2、c3 两条防误伤基线为绿。既有 `test_handoff_manifest.py` 68/68 通过。未修改生产代码，未创建 `scripts/lib/case_paths.py`，未执行 git 操作。
 
 ## 改动文件
@@ -9,14 +9,14 @@
 - `scripts/tests/test_repair_g1_handoff_containment.py`：新增 F-01 原反例、同族变体、helper 单元向量及两条防误伤基线；所有 handoff CLI 调用均走 `run_formal_script`，READY/freeze 夹具复用 `test_handoff_manifest.py` 的真实上游产物惯例。
 - `maintenance/repair-20260815-g1/workorder_pack2_testonly_done.md`：本报告。
 
-生产文件改动：0。  
+生产文件改动：0。
 `scripts/lib/case_paths.py`：仍不存在，符合 test-only 边界。
 
 ## 验证实况
 
 ### 新测试
 
-命令：`PYTHONDONTWRITEBYTECODE=1 python3 scripts/tests/test_repair_g1_handoff_containment.py`  
+命令：`PYTHONDONTWRITEBYTECODE=1 python3 scripts/tests/test_repair_g1_handoff_containment.py`
 结果：预期红，rc=1；12/14 checks failed。
 
 | 编号 | 状态 | 当前未修复代码实况与红因 |
@@ -38,7 +38,7 @@
 
 ### 既有回归
 
-命令：`PYTHONDONTWRITEBYTECODE=1 python3 scripts/tests/test_handoff_manifest.py`  
+命令：`PYTHONDONTWRITEBYTECODE=1 python3 scripts/tests/test_handoff_manifest.py`
 结果：rc=0，68/68 checks 通过。READY、PARTIAL、BLOCKED、verify、freeze、check-unseal、哈希漂移、schema、gate、provenance 重放及 legacy 路径的既有契约均无回归。
 
 ## Hunk 映射

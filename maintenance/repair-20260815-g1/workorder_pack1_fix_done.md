@@ -1,7 +1,7 @@
 # AI-1 Pack 1 fix 阶段施工报告
 
-日期：2026-08-15  
-范围：F-02、F-11、F-12 生产修复  
+日期：2026-08-15
+范围：F-02、F-11、F-12 生产修复
 结论：五项应转绿测试均为 rc=0；真实装机目录未部署，`test_commands_deploy_sync.py` 按计划保持 rc=1，且注入部署夹具的 `test_repair_batch3_gates.py` 为 rc=0。指定防退化与 A4/A5 无关回归全部为 rc=0。
 
 施工期间未执行任何 git 操作，未修改 `scripts/tests/` 下的测试源文件，也未改 `/Users/uravvv/.claude/commands/` 部署副本。
@@ -58,4 +58,3 @@ F-12 移除未使用的 `canonical_risk_flags` import 后，`test_batch2_p3_hard
 - resolver eager 校验落在 CSV loader，而不是首次 `risk_partition()`。这样即使脏行从未被地址查询命中，也会在构造阶段拒绝；同时覆盖 privacy、EVM fallback 和生成的手工标签层。
 - `validate_labels.py` 在脏行上继续执行其余规则，可能同时报告“tier=risk 无 risk_flags”等次级错误；首要脏字符错误保留违规 token 的 `repr`，且不会妨碍后续行扫描。
 - `analyze_holdings.py` 无需最小补丁：真实管线负测已实证 resolver 构造阶段非零退出，四个目标产物均未生成。
-
