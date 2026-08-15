@@ -135,6 +135,7 @@ def _load_csv(labels_dir, chain):
     table = {}
     for suffix in ('-privacy', ''):
         for r in _read_rows(os.path.join(labels_dir, f'labels-{chain}{suffix}.csv')):
+            parse_risk_flags(r.get('risk_flags'))
             table[r['address']] = r
     return table
 
@@ -170,6 +171,7 @@ def _load_address_book(labels_dir, chain):
         return {}
     table = {}
     for raw in _read_rows(path):
+        parse_risk_flags(raw.get('risk_flags'))
         if (raw.get('chain') or '').strip() != chain:
             continue
         addr = norm_addr(raw.get('address'), chain)

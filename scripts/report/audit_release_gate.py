@@ -1168,6 +1168,8 @@ def run(case_dir: Path, report: Path | None, *, profile="independent-audit"):
     case_dir = case_dir.resolve()
     if profile not in REQUIRED_BY_PROFILE:
         raise ValueError(f"未知发布 profile: {profile}")
+    if profile == "independent-audit" and report is None:
+        errors.append("independent-audit 发布必须带 --report 以重验报告哈希绑定（fail-closed）")
     legacy_marker = case_dir / LEGACY_READONLY_RECEIPT
     if legacy_marker.exists() or legacy_marker.is_symlink():
         errors.append("只读降级 legacy 案不得编译新正式 analysis")

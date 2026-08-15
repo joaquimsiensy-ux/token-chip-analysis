@@ -194,4 +194,6 @@ review_completeness.py
 python3 scripts/report/audit_release_gate.py <案目录> --report <报告.md>
 ```
 
+独立复核发布闸缺 `--report` 即拒（fail-closed），不得跳过报告实物与 `claim_registry.report_sha256` 的哈希绑定重验。
+
 退出码0才可交付。退出码2表示硬闸失败：保留已复算事实，但把实体判级、历史峰值、历史图和完整阴性结论统一降为“本轮无法裁决”。

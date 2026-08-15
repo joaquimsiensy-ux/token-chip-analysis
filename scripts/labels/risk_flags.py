@@ -2,6 +2,7 @@
 """Canonical parser for the labels ``risk_flags`` decision field."""
 from __future__ import annotations
 
+import re
 import unicodedata
 
 
@@ -26,8 +27,15 @@ def parse_risk_flags(raw) -> tuple[str, ...]:
         return ()
     if not isinstance(raw, str):
         raise TypeError("risk_flags must be a string or None")
-    return tuple(sorted({cleaned for part in raw.split("|")
-                         if (cleaned := _strip_invisible_space(part))}))
+    flags = set()
+    for part in raw.split("|"):
+        cleaned = _strip_invisible_space(part)
+        if not cleaned:
+            continue
+        if re.fullmatch(r"[a-z0-9-]+", cleaned) is None:
+            raise ValueError(f"risk_flags token 含非法字符: {cleaned!r}")
+        flags.add(cleaned)
+    return tuple(sorted(flags))
 
 
 def canonical_risk_flags(raw) -> str:
