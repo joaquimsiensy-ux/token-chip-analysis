@@ -100,6 +100,9 @@ SUITE += ['test_repair_batch2_f02.py']
 # EVM 观测锚工程工单 A：bundle/transcript 协议、producer 与 fail-closed 负测。
 SUITE += ['test_evm_observation.py']
 
+# EVM 观测锚工程工单 C：shared/handoff/audit 公共消费、N-2 与原 F-02/F-03 反例。
+SUITE += ['test_evm_observation_release.py']
+
 
 def main():
     results = []

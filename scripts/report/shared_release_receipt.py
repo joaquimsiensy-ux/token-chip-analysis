@@ -25,7 +25,7 @@ from adversarial_review_runner import (
     validate_review_receipt,
     validate_union_coverage,
 )
-from chain_registry import recon_adapter_for, resolve_alias
+from chain_registry import evm_chain_id_for, recon_adapter_for, resolve_alias
 from receipt_validate import validate_receipt
 from supply_truth_gate import (FORMAL_TOLERANCE_BPS_MAX,
                                WAIVER_TOLERANCE_BPS_CAP, decide,
@@ -268,12 +268,13 @@ def _bound_case_ref(root, ref, label, *, base=None):
     case_root = Path(root).resolve()
     base = Path(base or case_root).resolve()
     raw = Path(str(ref.get("path") or ""))
-    if raw.is_absolute() or not raw.parts or ".." in raw.parts:
-        raise ValueError(f"{label} path must be a safe relative path")
-    lexical = base
-    for part in raw.parts:
-        lexical = lexical / part
-        if lexical.is_symlink():
+    if not raw.parts or ".." in raw.parts:
+        raise ValueError(f"{label} path must be a safe contained path")
+    lexical = raw if raw.is_absolute() else base / raw
+    current = Path(lexical.anchor) if lexical.is_absolute() else Path()
+    for part in lexical.parts[1:] if lexical.is_absolute() else lexical.parts:
+        current = current / part
+        if current.is_symlink():
             raise ValueError(f"{label} path is a symlink")
     try:
         path = lexical.resolve(strict=True)
@@ -522,8 +523,18 @@ def validate_reconciliation_check(root, key, item, target, family):
         validate_observation_bundle(receipt, expected_mint=target["token"])
         ref_ok(root, receipt["output"])
     elif key == "supply_truth":
-        _require(schema == "supply-truth-receipt/v3",
-                 f"reconciliation supply_truth unknown schema {schema!r}；{migration}")
+        schema_migration = (
+            "存量 EVM 案须以 observe_supply.py 生成观测件，并以 "
+            "supply_truth_gate --observation-bundle 重跑"
+            if family == "evm" else migration)
+        if family == "evm":
+            _require(schema == "supply-truth-receipt/v4",
+                     f"reconciliation supply_truth unknown schema {schema!r}; "
+                     f"expected supply-truth-receipt/v4；{schema_migration}")
+        else:
+            _require(schema == "supply-truth-receipt/v3",
+                     f"reconciliation supply_truth unknown schema {schema!r}; "
+                     f"expected supply-truth-receipt/v3；{schema_migration}")
         _require(receipt.get("gate") == "supply_truth"
                  and receipt.get("replay_net") is not None
                  and receipt.get("onchain_total_supply") is not None
@@ -601,6 +612,40 @@ def validate_reconciliation_check(root, key, item, target, family):
             _require(receipt_supply == bundle_supply,
                      "solana supply_truth onchain_total_supply is not bound to "
                      "bundle supply amount")
+        elif family == "evm":
+            bundle_ref = (receipt.get("inputs") or {}).get("observation_bundle")
+            _require(isinstance(bundle_ref, dict),
+                     "EVM supply_truth does not bind observation bundle")
+            bundle_path = _bound_case_ref(
+                root, bundle_ref, "EVM supply_truth observation bundle")
+            bundle = json.loads(bundle_path.read_text(encoding="utf-8"))
+            _require(bundle.get("schema") == "evm-observation-bundle/v1",
+                     "EVM supply_truth observation bundle schema invalid")
+            from evm_observation import validate_evm_observation_bundle
+            validate_evm_observation_bundle(
+                bundle, bundle_path=bundle_path, expected_token=target["token"],
+                expected_chain_id=evm_chain_id_for(target["chain"]))
+            _require(bundle["anchor"]["number"]
+                     == canonical_target(target)["as_of_block"],
+                     "EVM supply_truth bundle anchor mismatch against target.as_of_block")
+            try:
+                bundle_supply = int(str(bundle["supply"]["total_supply_raw"]))
+                receipt_supply = int(str(receipt.get("onchain_total_supply")))
+            except (KeyError, TypeError, ValueError) as exc:
+                raise ValueError(
+                    f"EVM supply_truth N-2 onchain/bundle total supply is not an "
+                    f"integer；{schema_migration}") from exc
+            _require(receipt_supply == bundle_supply,
+                     "EVM supply_truth N-2 mismatch: onchain_total_supply is not "
+                     "bound to bundle.supply.total_supply_raw")
+            if rule == "sink_fallback_form2":
+                sink = receipt["sink_reconciliation"]
+                _require(str(sink["zero"]["onchain_raw"])
+                         == str(bundle["supply"]["zero_balance_raw"]),
+                         "EVM supply_truth ZERO sink is not bound to bundle supply")
+                _require(str(sink["dead"]["onchain_raw"])
+                         == str(bundle["supply"]["dead_balance_raw"]),
+                         "EVM supply_truth DEAD sink is not bound to bundle supply")
     elif family == "evm" and key == "time":
         _require(schema == "time-spotcheck/v2",
                  f"reconciliation time unknown schema {schema!r}；{migration}")
@@ -613,7 +658,7 @@ def validate_reconciliation_check(root, key, item, target, family):
     return receipt
 
 
-def validate_reconciliation_report(root, expected_target=None):
+def validate_reconciliation_report(root, expected_target=None, *, return_receipts=False):
     """Deeply validate the controlled wrapper and all four bound receipts."""
     root = Path(root).resolve()
     recon = json.loads(regular(root, "reconciliation_report.json").read_text())
@@ -656,7 +701,7 @@ def validate_reconciliation_report(root, expected_target=None):
             raise ValueError(
                 "reconciliation balance/supply/supply_truth 绑定的 replay_stats 不同源"
                 f"（sha256 不一致: {stats_shas}）——三查必须核同一份重放账本；{MIGRATION_HINT}")
-    return target
+    return (target, receipts) if return_receipts else target
 
 
 def validate_adversarial_review(root, expected_target=None):
@@ -747,18 +792,49 @@ def validate_adversarial_review(root, expected_target=None):
     return target
 
 
-def validate_sources(root):
+def validate_accounting_receipt(root, accounting=None, expected_target=None):
+    """Validate the production accounting receipt and its observation source.
+
+    This is the sole accounting validator consumed by shared release, stage-1
+    handoff READY, and the independent audit release gate.
+    """
     root = Path(root).resolve()
-    accounting = json.loads(regular(root, "accounting_mode.json").read_text())
-    adversarial = json.loads(
-        regular(root, "adversarial_review.json").read_text(),
-        parse_constant=_reject_constant)
-    if (accounting.get("schema") != "accounting-gate/v1" or accounting.get("exit_code") != 0
+    if accounting is None:
+        accounting = json.loads(
+            regular(root, "accounting_mode.json").read_text(encoding="utf-8"))
+    if (not isinstance(accounting, dict) or accounting.get("exit_code") != 0
             or str(accounting.get("verdict", "")).upper() not in {"PASS", "WARN"}
-            or not accounting.get("chain") or not (accounting.get("token") or accounting.get("mint"))
-            or not isinstance(accounting.get("checks"), dict) or not accounting["checks"]):
+            or not accounting.get("chain")
+            or not (accounting.get("token") or accounting.get("mint"))
+            or not isinstance(accounting.get("checks"), dict)
+            or not accounting["checks"]):
         raise ValueError("accounting evidence is not a production gate receipt")
+
     family = chain_family(accounting["chain"])
+    if family == "evm":
+        if accounting.get("schema") != "accounting-gate/v2":
+            raise ValueError(
+                f"EVM accounting schema {accounting.get('schema')!r} is not "
+                "accounting-gate/v2; 存量案须以 observe_supply.py + "
+                "accounting_gate --bundle 重跑")
+    elif accounting.get("schema") != "accounting-gate/v1":
+        raise ValueError(
+            f"solana accounting schema {accounting.get('schema')!r} is not "
+            f"accounting-gate/v1；{MIGRATION_HINT}")
+    _require(accounting.get("execution_mode") == "formal",
+             f"{family} accounting exploration evidence is not releasable")
+
+    repo_ref_ok(accounting.get("producer"), {ACCOUNTING_PRODUCERS[family]},
+                "accounting")
+    token = accounting.get("token") or accounting.get("mint")
+    target = canonical_target({
+        "chain": accounting["chain"], "token": str(token).lower(),
+        "as_of_block": accounting.get("as_of_block"),
+    })
+    if expected_target is not None \
+            and target != canonical_target(expected_target):
+        raise ValueError("accounting target mismatch")
+
     if family == "evm":
         tip = accounting.get("tip_block")
         as_of = accounting.get("as_of_block")
@@ -767,8 +843,6 @@ def validate_sources(root):
         _require(not isinstance(as_of, bool) and isinstance(as_of, int) and as_of >= 0
                  and as_of <= tip,
                  "EVM accounting as_of_block must be <= tip_block")
-        # 时点闸不能只挂在 tip_block 一个自报字段上：生产侧把同一个 tip 同时写进
-        # model_probe_block，消费侧就得两个都验，想抬时点必须同时改两处（F-B）。
         probe = accounting.get("model_probe_block")
         _require(not isinstance(probe, bool) and isinstance(probe, int) and probe >= 0,
                  "EVM accounting model_probe_block missing or invalid")
@@ -776,32 +850,76 @@ def validate_sources(root):
                  "EVM accounting model_probe_block must equal tip_block")
         _require(as_of <= probe,
                  "EVM accounting as_of_block must be <= model_probe_block")
-    expected_accounting = ACCOUNTING_PRODUCERS[family]
-    repo_ref_ok(accounting.get("producer"), {expected_accounting}, "accounting")
-    token = accounting.get("token") or accounting.get("mint")
-    target = {"chain": accounting["chain"], "token": str(token).lower(),
-              "as_of_block": accounting.get("as_of_block")}
-    if family == "solana":
-        _require(accounting.get("execution_mode") == "formal",
-                 "solana accounting exploration evidence is not releasable")
+
         bundle_ref = accounting.get("observation_bundle")
         _require(isinstance(bundle_ref, dict),
-                 "solana accounting does not bind observation bundle")
-        acc_shown = Path(str(bundle_ref.get("path") or ""))
-        bundle_path = (acc_shown if acc_shown.is_absolute()
-                       else Path(root) / acc_shown).resolve()
-        bundle_path.relative_to(root)
-        _require(bundle_path.is_file() and bundle_ref.get("size") == bundle_path.stat().st_size
-                 and bundle_ref.get("sha256") == sha(bundle_path),
-                 "solana accounting observation bundle ref invalid")
+                 "EVM accounting does not bind observation bundle")
+        bundle_path = _bound_case_ref(
+            root, bundle_ref, "EVM accounting observation bundle")
         bundle = json.loads(bundle_path.read_text(encoding="utf-8"))
-        from solana_observation import validate_observation_bundle
-        validate_observation_bundle(bundle, bundle_path=bundle_path,
-                                    expected_mint=token)
-        _require(accounting.get("observed_context_slot") == bundle["snapshot"]["slot"],
-                 "solana accounting slot is not bundle snapshot slot")
-    validate_reconciliation_report(root, target)
-    validate_adversarial_review(root, target)
+        _require(bundle.get("schema") == "evm-observation-bundle/v1",
+                 "EVM accounting observation bundle schema invalid")
+        from evm_observation import validate_evm_observation_bundle
+        validate_evm_observation_bundle(
+            bundle, bundle_path=bundle_path, expected_token=target["token"],
+            expected_chain_id=evm_chain_id_for(target["chain"]))
+        _require(as_of == bundle["anchor"]["number"],
+                 "EVM accounting bundle anchor mismatch: as_of_block != "
+                 "bundle anchor.number")
+        observed = accounting.get("observed_anchor")
+        _require(isinstance(observed, dict)
+                 and observed.get("block") == bundle["anchor"]["number"],
+                 "EVM accounting observed anchor block mismatch")
+        _require(observed.get("block_hash") == bundle["anchor"]["block_hash"],
+                 "EVM accounting observed anchor block_hash mismatch")
+        return target, accounting, sha(bundle_path)
+
+    bundle_ref = accounting.get("observation_bundle")
+    _require(isinstance(bundle_ref, dict),
+             "solana accounting does not bind observation bundle")
+    bundle_path = _bound_case_ref(
+        root, bundle_ref, "solana accounting observation bundle")
+    bundle = json.loads(bundle_path.read_text(encoding="utf-8"))
+    from solana_observation import validate_observation_bundle
+    validate_observation_bundle(
+        bundle, bundle_path=bundle_path, expected_mint=token)
+    _require(accounting.get("observed_context_slot") == bundle["snapshot"]["slot"],
+             "solana accounting slot is not bundle snapshot slot")
+    return target, accounting, sha(bundle_path)
+
+
+def validate_evm_observation_source_chain(root, accounting, supply_truth_receipt):
+    """Require accounting and supply-truth to bind identical observation bytes."""
+    if chain_family(accounting.get("chain")) != "evm":
+        return None
+    accounting_ref = accounting.get("observation_bundle")
+    supply_ref = (supply_truth_receipt.get("inputs") or {}).get(
+        "observation_bundle")
+    _require(isinstance(accounting_ref, dict),
+             "EVM accounting does not bind observation bundle")
+    _require(isinstance(supply_ref, dict),
+             "EVM supply_truth does not bind observation bundle")
+    accounting_path = _bound_case_ref(
+        root, accounting_ref, "EVM accounting observation bundle")
+    supply_path = _bound_case_ref(
+        root, supply_ref, "EVM supply_truth observation bundle")
+    accounting_sha = sha(accounting_path).lower()
+    supply_sha = sha(supply_path).lower()
+    _require(accounting_sha == supply_sha,
+             "EVM accounting and supply_truth observation bundles are not the "
+             f"same source (sha256 mismatch: accounting={accounting_sha}, "
+             f"supply_truth={supply_sha})")
+    return accounting_sha
+
+
+def validate_sources(root):
+    root = Path(root).resolve()
+    target, accounting, _ = validate_accounting_receipt(root)
+    recon_target, receipts = validate_reconciliation_report(
+        root, target, return_receipts=True)
+    validate_evm_observation_source_chain(
+        root, accounting, receipts["supply_truth"])
+    validate_adversarial_review(root, recon_target)
     return target
 
 

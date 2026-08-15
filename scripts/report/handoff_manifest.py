@@ -39,6 +39,9 @@ _LIB = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)),
 sys.path.insert(0, _LIB)
 from chain_registry import (evm_family, formal_ready_chains, get_chain_config,
                             release_tier_for, resolve_alias)
+from shared_release_receipt import (validate_accounting_receipt,
+                                    validate_evm_observation_source_chain,
+                                    validate_reconciliation_report)
 
 SCHEMA_VERSION = "handoff/v3"
 # verify 端支持集；consumer_min_schema 不在集内即拒收。
@@ -64,7 +67,8 @@ CONTRACT_FILES = [
     "accounting_mode.json", "supply_truth.json", "wave_scan_report.json",
     "flow_anomaly_report.json", ADJUDICATIONS_NAME, "provenance_ledger.json",
     "time_spotcheck.json", "distribution_scan.json", DISTRIBUTION_ADJUDICATIONS_NAME,
-    "reconciliation_report.json",
+    "reconciliation_report.json", "evm_observation_bundle.json",
+    "evm_observation_transcript.json",
 ]
 REQUIRED_FOR_READY = ["candidate_universe.json", "candidate_screening.json",
                       "identity_preflight.json", "anomalies.json", "data_map.json",
@@ -85,7 +89,8 @@ REQUIRED_FOR_READY = ["candidate_universe.json", "candidate_screening.json",
 # 或又走了自由发挥老路。Solana（anchor_sampler 通道）等非 EVM 链时间抽查形态不同，
 # 不进本硬闸（白名单法：链名命中才强制，未知新链不误伤）。
 READY_CHAINS = formal_ready_chains()
-REQUIRED_FOR_READY_EVM = ["time_spotcheck.json"]
+REQUIRED_FOR_READY_EVM = ["time_spotcheck.json", "evm_observation_bundle.json",
+                          "evm_observation_transcript.json"]
 # 自动 gate 适配：从产物 JSON 读 verdict/exit_code（防手报）；verify 时重读比对
 AUTO_GATES = {"accounting_gate": "accounting_mode.json", "supply_truth_gate": "supply_truth.json",
               "time_spotcheck": "time_spotcheck.json",
@@ -336,16 +341,21 @@ def _verify_light_schema(case_dir, fails, manifest, legacy=False):
                        or os.path.isfile(os.path.join(case_dir, "reconciliation_report.json")))
     if not legacy or wrapper_present:
         try:
-            from shared_release_receipt import validate_reconciliation_report
-            target = validate_reconciliation_report(case_dir)
+            target, recon_receipts = validate_reconciliation_report(
+                case_dir, return_receipts=True)
             scope = manifest.get("scope") or {}
             chains = {resolve_alias(chain) for chain in scope.get("chains") or []}
             if len(chains) != 1 or resolve_alias(target.get("chain")) not in chains:
                 fails.append("reconciliation target.chain 未与唯一 READY scope 链绑定")
             if str(target.get("token") or "").lower() != str(scope.get("contract") or "").lower():
                 fails.append("reconciliation target.token 未与 READY scope.contract 绑定")
+            if not legacy:
+                _, accounting, _ = validate_accounting_receipt(
+                    case_dir, expected_target=target)
+                validate_evm_observation_source_chain(
+                    case_dir, accounting, recon_receipts["supply_truth"])
         except Exception as exc:
-            fails.append(f"reconciliation_report.json 深验失败: {exc}")
+            fails.append(f"reconciliation/accounting 公共深验失败: {exc}")
     if legacy:
         return
     try:

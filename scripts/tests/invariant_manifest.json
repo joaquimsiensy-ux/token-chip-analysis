@@ -397,7 +397,6 @@
   },
   {
    "schemas": [
-    "accounting-gate/v1",
     "address-balance-snapshot/v1",
     "adversarial-review/v2",
     "adversarial-review/v3",
@@ -459,14 +458,17 @@
   {
    "schemas": [
     "accounting-gate/v1",
+    "accounting-gate/v2",
     "adversarial-review/v2",
     "adversarial-review/v3",
+    "evm-observation-bundle/v1",
     "evm-reconciliation-receipt/v2",
     "reconciliation-report/v2",
     "shared-release-receipt/v1",
     "solana-anchor-sampler-receipt/v2",
     "solana-observation-bundle/v1",
     "supply-truth-receipt/v3",
+    "supply-truth-receipt/v4",
     "time-spotcheck/v2",
     "over-cap-approval/v1",
     "tolerance-waiver/v1"

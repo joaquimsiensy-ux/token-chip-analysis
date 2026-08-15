@@ -236,14 +236,13 @@ def check_manifest(case_dir: Path, d: dict, errors: list[str]):
         errors.append("late_additions 必须逐项记录 path 与 added_at")
 
 
-def check_accounting(d: dict, errors: list[str]):
-    if d.get("schema") != "accounting-gate/v1" or d.get("exit_code") != 0 \
-            or not isinstance(d.get("checks"), dict) or not d.get("checks"):
-        errors.append("记账模型缺生产 gate schema/exit/checks receipt")
-        return
-    verdict = d.get("status", d.get("verdict", d.get("mode")))
-    if not status_pass(verdict, ACCOUNTING_EXTRA):
-        errors.append(f"记账模型未放行: {verdict!r}")
+def check_accounting(case_dir: Path, d: dict, errors: list[str]):
+    """Use the same chain-aware accounting validator as shared and handoff."""
+    try:
+        from shared_release_receipt import validate_accounting_receipt
+        validate_accounting_receipt(case_dir, accounting=d)
+    except Exception as exc:
+        errors.append(f"记账模型公共 validator 未通过: {exc}")
 
 
 def check_reconciliation(d: dict, errors: list[str]):
@@ -1190,7 +1189,7 @@ def run(case_dir: Path, report: Path | None, *, profile="independent-audit"):
     except Exception as exc:
         errors.append(f"共享发布 receipt validator 失败: {exc}")
     if "accounting_mode.json" in data:
-        check_accounting(data["accounting_mode.json"], errors)
+        check_accounting(case_dir, data["accounting_mode.json"], errors)
     if "reconciliation_report.json" in data:
         check_reconciliation(data["reconciliation_report.json"], errors)
     if "address_classification.json" in data:
