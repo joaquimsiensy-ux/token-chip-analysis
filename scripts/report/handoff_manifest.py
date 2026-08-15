@@ -39,6 +39,7 @@ _LIB = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)),
 sys.path.insert(0, _LIB)
 from chain_registry import (evm_family, formal_ready_chains, get_chain_config,
                             release_tier_for, resolve_alias)
+from case_paths import safe_case_file
 from shared_release_receipt import (validate_accounting_receipt,
                                     validate_evm_observation_source_chain,
                                     validate_reconciliation_report)
@@ -191,11 +192,8 @@ def cmd_generate(a):
     artifacts, missing_required = [], []
     seen = set()
 
-    def add(rel):
+    def add_path(rel):
         if rel in seen:
-            return
-        p = os.path.join(case_dir, rel)
-        if not os.path.isfile(p):
             return
         base = os.path.basename(rel)
         if base in EXCLUDE_NAMES or base.endswith(EXCLUDE_SUFFIXES):
@@ -203,30 +201,60 @@ def cmd_generate(a):
         artifacts.append(file_entry(case_dir, rel))
         seen.add(rel)
 
+    def discover(rel):
+        path = safe_case_file(case_dir, rel, must_exist=False)
+        if path.exists():
+            add_path(rel)
+
+    def add_explicit(rel):
+        path = safe_case_file(case_dir, rel)
+        add_path(rel)
+
     for name in CONTRACT_FILES:
-        add(name)
+        discover(name)
     # data_map 里登记的数据文件并入 allowlist（避免 glob 大杂烩，索引即白名单）
     dm_path = os.path.join(case_dir, "data_map.json")
     if os.path.isfile(dm_path):
         try:
             dm = load_json(dm_path)
-            for ent in dm.get("files", []):
-                rel = ent.get("path")
-                if rel and not os.path.isabs(rel):
-                    add(rel)
         except Exception as e:
             print(f"[generate] data_map.json 解析失败（将继续，但 READY 会被 verify 拒）: {e}", file=sys.stderr)
+        else:
+            try:
+                for ent in dm.get("files", []):
+                    add_explicit(ent.get("path"))
+            except ValueError as e:
+                print(f"[generate] data_map.json 显式文件路径非法: {e}", file=sys.stderr)
+                return 2
+            except Exception as e:
+                print(f"[generate] data_map.json 解析失败（将继续，但 READY 会被 verify 拒）: {e}", file=sys.stderr)
     for extra in a.include or []:
-        add(extra)
+        try:
+            add_explicit(extra)
+        except ValueError as e:
+            print(f"[generate] --include 路径非法: {e}", file=sys.stderr)
+            return 2
     # sealed/ 只记哈希（密封纪律：manifest 记哈希不记内容，读取由 --check-unseal 把关）
     sealed_dir = os.path.join(case_dir, "sealed")
     sealed = []
+    if os.path.islink(sealed_dir):
+        print("[generate] sealed/ 目录不得是符号链接", file=sys.stderr)
+        return 2
     if os.path.isdir(sealed_dir):
         for name in sorted(os.listdir(sealed_dir)):
             p = os.path.join(sealed_dir, name)
+            if os.path.islink(p):
+                print(f"[generate] sealed/ 条目不得是符号链接: {name}", file=sys.stderr)
+                return 2
             if os.path.isfile(p):
-                algo, digest, size = sha256_file(p)
-                sealed.append({"path": f"sealed/{name}", "bytes": size, "hash_algo": algo, "sha256": digest})
+                rel = f"sealed/{name}"
+                try:
+                    safe_path = safe_case_file(case_dir, rel)
+                except ValueError as e:
+                    print(f"[generate] sealed/ 条目路径非法: {e}", file=sys.stderr)
+                    return 2
+                algo, digest, size = sha256_file(safe_path)
+                sealed.append({"path": rel, "bytes": size, "hash_algo": algo, "sha256": digest})
 
     if a.status == "READY":
         required = list(REQUIRED_FOR_READY)
@@ -256,7 +284,11 @@ def cmd_generate(a):
             print(f"[generate] --gate {gname} 已有 AUTO_GATES 适配，禁止 declared 覆盖机器读数",
                   file=sys.stderr)
             return 2
-        add(rel)
+        try:
+            add_explicit(rel)
+        except ValueError as e:
+            print(f"[generate] --gate {gname} 绑定路径非法: {e}", file=sys.stderr)
+            return 2
         if rel not in seen:
             print(f"[generate] --gate {gname} 绑定的产物不存在: {rel}", file=sys.stderr)
             return 2
@@ -458,7 +490,24 @@ def verify_case(case_dir, legacy_read_only=False):
             fails.append("READY scope.contract 为空")
 
     if not fails:  # schema/状态硬伤先报，避免在坏 manifest 上白跑哈希
-        art_paths = {ent.get("path") for ent in m.get("artifacts", [])}
+        artifacts = m.get("artifacts", [])
+        safe_artifacts = []
+        art_paths = set()
+        if not isinstance(artifacts, list):
+            fails.append("manifest artifacts 不是数组")
+            artifacts = []
+        for index, ent in enumerate(artifacts):
+            if not isinstance(ent, dict):
+                fails.append(f"manifest artifacts[{index}] 不是对象")
+                continue
+            rel = ent.get("path")
+            try:
+                path = safe_case_file(case_dir, rel)
+            except ValueError as e:
+                fails.append(f"artifact 路径非法: {e}")
+                continue
+            safe_artifacts.append((ent, path))
+            art_paths.add(rel)
         # READY 必备件独立重算（v6.8.1：不信 generate 曾正确执行——手改 manifest 的
         # artifacts/gates 列表同样过不了这道重查）
         if not legacy_mode:
@@ -476,15 +525,19 @@ def verify_case(case_dir, legacy_read_only=False):
         elif "reconciliation_report.json" in art_paths \
                 and "reconciliation_four_checks" not in (m.get("gates") or {}):
             fails.append("legacy 案在场 reconciliation_report.json 缺对应 gate 记录")
-        for ent in m.get("artifacts", []):
-            p = os.path.join(case_dir, ent["path"])
-            if not os.path.isfile(p):
-                fails.append(f"缺件: {ent['path']}")
-                continue
+        for ent, p in safe_artifacts:
             algo, digest, size = sha256_file(p)
             if size != ent["bytes"] or digest != ent["sha256"] or algo != ent.get("hash_algo"):
                 fails.append(f"哈希/大小漂移: {ent['path']}")
         for gname, g in (m.get("gates") or {}).items():
+            if not isinstance(g, dict):
+                fails.append(f"gate {gname} 记录不是对象")
+                continue
+            try:
+                safe_case_file(case_dir, g.get("artifact"))
+            except ValueError as e:
+                fails.append(f"gate {gname} artifact 路径非法: {e}")
+                continue
             if g.get("source") == "auto":
                 try:
                     now = read_gate_artifact(case_dir, g["artifact"])
@@ -570,9 +623,8 @@ def full_sha256_file(path):
 
 
 def resolve_bound_path(case_dir, shown):
-    if not isinstance(shown, str) or not shown:
-        raise ValueError("绑定 path 为空")
-    return os.path.normpath(shown if os.path.isabs(shown) else os.path.join(case_dir, shown))
+    safe_case_file(case_dir, shown)
+    return os.path.join(case_dir, shown)
 
 
 def check_bound_file(case_dir, rec, expected_path=None):
@@ -590,6 +642,32 @@ def check_bound_file(case_dir, rec, expected_path=None):
         return p, None
     except (OSError, ValueError, TypeError) as e:
         return None, f"文件绑定校验失败: {e}"
+
+
+def check_algorithm_file(rec, expected_path):
+    """Validate a repository code dependency against one fixed trusted path.
+
+    Algorithm files are intentionally outside the case root, so they cannot use
+    the case-artifact resolver.  No arbitrary absolute path is accepted: the
+    record must name the exact dependency selected by this verifier.
+    """
+    if not isinstance(rec, dict):
+        return None, "算法文件绑定不是对象"
+    shown = rec.get("path")
+    if not isinstance(shown, str) or not shown or not os.path.isabs(shown):
+        return None, "算法文件 path 必须是验证器指定实物的绝对路径"
+    expected = os.path.realpath(expected_path)
+    if os.path.realpath(shown) != expected:
+        return None, f"算法文件绑定路径 {shown} ≠ 当前验证器依赖 {expected_path}"
+    if os.path.islink(shown) or not os.path.isfile(expected):
+        return None, f"算法文件不存在、非普通文件或为符号链接: {shown}"
+    try:
+        digest, size = full_sha256_file(expected)
+    except OSError as e:
+        return None, f"算法文件读取失败: {e}"
+    if digest != rec.get("sha256") or size != rec.get("bytes"):
+        return None, f"算法文件哈希/大小漂移: {shown}"
+    return expected, None
 
 
 def provenance_semantic_payload(report):
@@ -946,7 +1024,7 @@ def validate_and_replay_provenance(case_dir, pl, pl_path, ep, manifest):
     algo_files = algorithm.get("files") or {}
     loader = os.path.join(os.path.dirname(os.path.abspath(__file__)), "wave_scan.py")
     for name, expected in (("entity_source_trace.py", script), ("wave_scan.py", loader)):
-        _, err = check_bound_file(case_dir, algo_files.get(name), expected_path=expected)
+        _, err = check_algorithm_file(algo_files.get(name), expected)
         if err:
             fails.append(f"算法依赖 {name} {err}")
 
@@ -1113,7 +1191,12 @@ def cmd_freeze(a):
                 binding = pl_now.get("input_binding") or {}
                 bound_records = []
                 bound_records += list(((binding.get("source") or {}).get("files") or []))
-                bound_records += list(((binding.get("algorithm") or {}).get("files") or {}).values())
+                algo_files = ((binding.get("algorithm") or {}).get("files") or {})
+                script_dir = os.path.dirname(os.path.abspath(__file__))
+                for name in ("entity_source_trace.py", "wave_scan.py"):
+                    _, err = check_algorithm_file(algo_files.get(name), os.path.join(script_dir, name))
+                    if err:
+                        drift.append(f"算法依赖 {name} {err}")
                 for key in ("entity_file", "labels_file"):
                     if binding.get(key) is not None:
                         bound_records.append(binding.get(key))
@@ -1148,13 +1231,13 @@ def cmd_freeze(a):
         print("[freeze] 需要 --entity-file <实体名册 {entity_id:[addr…]}>——裁决 linked_entity 绑定"
               "与溯源台账逐实体比对都以它为准（v6.8.1 无跳过通道）", file=sys.stderr)
         return 1
-    mp = os.path.join(case_dir, a.members) if not os.path.isabs(a.members) else a.members
-    ep = os.path.join(case_dir, a.entity_file) if not os.path.isabs(a.entity_file) else a.entity_file
-    if not os.path.isfile(mp):
-        print(f"[freeze] 成员表不存在: {mp}", file=sys.stderr)
-        return 2
-    if not os.path.isfile(ep):
-        print(f"[freeze] 实体名册不存在: {ep}", file=sys.stderr)
+    try:
+        safe_case_file(case_dir, a.members)
+        safe_case_file(case_dir, a.entity_file)
+        mp = os.path.join(case_dir, a.members)
+        ep = os.path.join(case_dir, a.entity_file)
+    except ValueError as e:
+        print(f"[freeze] 成员表/实体名册路径非法: {e}", file=sys.stderr)
         return 2
     try:
         entity_map = load_json(ep)

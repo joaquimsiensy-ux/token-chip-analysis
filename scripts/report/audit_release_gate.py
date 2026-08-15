@@ -20,6 +20,7 @@ sys.path.insert(0, str(LIB))
 from chain_registry import (formal_ready, known_chains_for_release,
                             missing_formal_capabilities, release_tier_for, resolve_alias)
 from adversarial_review_runner import AGGREGATE_SCHEMA, V4_RERUN_HINT
+from case_paths import safe_case_file
 
 
 SHARED_REQUIRED = (
@@ -181,20 +182,10 @@ def safe_case_path(case_dir: Path, rel: str) -> Path | None:
 
 
 def regular_case_path(case_dir: Path, rel: str) -> Path | None:
-    """Return a contained regular file and reject symlinks in every path component."""
-    rel_path = Path(rel)
-    if rel_path.is_absolute() or not rel_path.parts \
-            or any(part in {"", ".", ".."} for part in rel_path.parts):
-        return None
-    lexical = case_dir
+    """Compatibility wrapper around the shared regular-file containment helper."""
     try:
-        for part in rel_path.parts:
-            lexical = lexical / part
-            if lexical.is_symlink():
-                return None
-        resolved = safe_case_path(case_dir, rel)
-        return resolved if resolved is not None and resolved.is_file() else None
-    except OSError:
+        return safe_case_file(case_dir, rel)
+    except ValueError:
         return None
 
 
