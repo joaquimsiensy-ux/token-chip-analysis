@@ -209,7 +209,7 @@ def main(argv=None):
     out_path.parent.mkdir(parents=True, exist_ok=True)
     outf = partial.open("w", encoding="utf-8")
     lock = __import__("threading").Lock()
-    target = {"chain": "solana", "token": MINT.lower(), "as_of_block": args.to}
+    target = {"chain": "solana", "token": MINT, "as_of_block": args.to}
     base_envelope = build_envelope(SCHEMA, target, __file__, "formal")
 
     def work(seg):

@@ -124,7 +124,7 @@ def run(command, cwd):
 
 
 def runner_spec(case, endpoint):
-    target = {"chain": "solana", "token": MINT.lower(), "as_of_block": None}
+    target = {"chain": "solana", "token": MINT, "as_of_block": None}
     observed = "{observed_as_of_block}"
     anchor = ["--start", "2025-01-01", "--end", "2025-01-01",
               "--ref-slot", observed, "--ref-ts", "1735689600",
@@ -213,7 +213,7 @@ def test_handoff_and_release(endpoint):
             path.unlink(missing_ok=True)
         adversarial = json.loads((case / "adversarial_review.json").read_text())
         total, slot = execute_real_slice(case, endpoint)
-        adversarial["target"] = {"chain": "solana", "token": MINT.lower(),
+        adversarial["target"] = {"chain": "solana", "token": MINT,
                                  "as_of_block": slot}
         (case / "adversarial_review.json").write_text(json.dumps(adversarial))
         # B-7（批 D）：三账 balance_source 须与真实四查 owner 快照同时点等值——

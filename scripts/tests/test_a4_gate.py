@@ -325,7 +325,7 @@ def main():
     # 准备终版结论文件
     with open(os.path.join(d, "findings.md"), "w") as f:
         f.write("# findings\n复核后终版结论\n")
-    state = {"chain": "bsc", "whale_groups": [
+    state = {"chain": "bsc", "token": {"chain": "bsc"}, "whale_groups": [
                  {"entity_id": "e1", "label": "实体1", "addresses": [ENTITY_ADDR]}],
              "provenance": {"schema_version": "2", "skill_commit": "test",
                             "data_sources": ["fixture"]}}

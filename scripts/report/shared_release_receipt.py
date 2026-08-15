@@ -29,7 +29,8 @@ from adversarial_review_runner import (
     validate_review_ledger,
     validate_union_coverage,
 )
-from chain_registry import evm_chain_id_for, recon_adapter_for, resolve_alias
+from chain_registry import (evm_chain_id_for, evm_family, recon_adapter_for,
+                            resolve_alias)
 from receipt_validate import validate_receipt
 from supply_truth_gate import (FORMAL_TOLERANCE_BPS_MAX,
                                WAIVER_TOLERANCE_BPS_CAP, decide,
@@ -260,7 +261,9 @@ def canonical_target(target):
     if isinstance(slot, bool) or not isinstance(slot, int) or slot < 0:
         raise ValueError("target as_of_block/slot must be a non-negative integer")
     chain = resolve_alias(target.get("chain"))
-    token = str(target.get("token") or "").strip().lower()
+    token = str(target.get("token") or "").strip()
+    if chain in evm_family():
+        token = token.lower()
     if not chain or not token:
         raise ValueError("target chain/token must be non-empty")
     return {"chain": chain, "token": token, "as_of_block": slot}
@@ -858,7 +861,7 @@ def validate_accounting_receipt(root, accounting=None, expected_target=None):
                 "accounting")
     token = accounting.get("token") or accounting.get("mint")
     target = canonical_target({
-        "chain": accounting["chain"], "token": str(token).lower(),
+        "chain": accounting["chain"], "token": str(token),
         "as_of_block": accounting.get("as_of_block"),
     })
     if expected_target is not None \

@@ -12,7 +12,7 @@
  ],
  "minimum_counts": {
   "receipt_producers": 61,
-  "receipt_consumers": 78,
+  "receipt_consumers": 79,
   "transport_calls": 63,
   "atomic_writes": 52,
   "formal_entrypoints": 58
@@ -404,6 +404,7 @@
     "adversarial-review/v3",
     "adversarial-review/v4",
     "figure2-check-receipt/v1",
+    "identity-holder-snapshot/v2",
     "reconciliation-report/v2",
     "reproduce-receipt/v2"
    ],

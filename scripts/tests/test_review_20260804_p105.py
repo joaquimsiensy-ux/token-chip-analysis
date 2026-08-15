@@ -93,7 +93,7 @@ def add_new_analysis_distribution(root: Path, report: Path) -> None:
     )
     sidecar = json.loads(sidecar_path.read_text(encoding="utf-8"))
     state = {
-        "chain": "bsc", "whale_groups": [],
+        "chain": "bsc", "token": {"chain": "bsc"}, "whale_groups": [],
         "camp_share_series": series_to_state_form(
             json.loads(series_path.read_text(encoding="utf-8")), "evm-dict"),
         "provenance": {"series_binding": "producer-sidecar",
@@ -116,6 +116,17 @@ def add_new_analysis_distribution(root: Path, report: Path) -> None:
         "a4_claims.json": {"schema": "a4-claims/v2", "claims": [{"id": "C1"}]},
     }.items():
         write_json(root / name, value)
+    from identity_gate_fixture import augment_gate
+    bridge_root = root / "identity_bridge"
+    bridge_root.mkdir()
+    identity = augment_gate(bridge_root, {
+        "verdict": "PASS", "state_file": "analysis-state.json",
+        "state_sha256": sha(root / "analysis-state.json"),
+    }, chain="bsc", token=fixture.CASE_TOKEN)
+    for key in ("snapshot_file", "receipt_file"):
+        identity["snapshot_binding"][key] = \
+            f"identity_bridge/{identity['snapshot_binding'][key]}"
+    write_json(root / "identity_gate.json", identity)
     # a4_claims 是对抗复核 v3 的权威锚；夹具改 registry 后必须真重跑 runner/finalize，
     # 不得手补 aggregate 的 sha 自证。
     fixture.refresh_adversarial(root)

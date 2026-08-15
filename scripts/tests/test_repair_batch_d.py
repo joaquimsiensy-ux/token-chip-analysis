@@ -1037,7 +1037,7 @@ def build_solana_case(root: Path):
     )
     sidecar = json.loads(sidecar_path.read_text(encoding="utf-8"))
     state = {
-        "chain": "solana", "whale_groups": [],
+        "chain": "solana", "token": {"chain": "solana"}, "whale_groups": [],
         "camp_share_series": series_to_state_form(
             json.loads(series_path.read_text(encoding="utf-8")), "sol-rows"),
         "provenance": {"series_binding": "producer-sidecar",
@@ -1060,6 +1060,40 @@ def build_solana_case(root: Path):
         "a4_claims.json": {"schema": "a4-claims/v2", "claims": [{"id": "C1"}]},
     }.items():
         write_json(root / name, value)
+    import scan_token_accounts
+    from identity_snapshot_receipt import emit_solana
+    from test_r9_batch3_solana_observation import SolanaTransportFake
+    identity_root = root / "identity_bridge"
+    identity_root.mkdir()
+    identity_transport = SolanaTransportFake()
+    identity_transport.slot = SOL_SLOT - 3
+    with contextlib.chdir(identity_root):
+        identity_rc = scan_token_accounts.main([
+            SOL_MINT, "--program", "spl", "--rpc", "fixture://solana",
+            "--out", "snapshot.json", "--bundle", "snapshot_receipt.json",
+            "--work-dir", "data",
+        ], request_json=identity_transport)
+    assert identity_rc == 0
+    identity_snapshot = identity_root / "data/holders_owners.json"
+    identity_meta = identity_root / "data/holders_snapshot_meta.json"
+    identity_receipt = identity_root / "data/identity_holders_receipt.json"
+    emit_solana(SOL_MINT, SOL_SLOT, identity_snapshot, identity_meta, 100,
+                identity_receipt)
+    identity_binding = {
+        "snapshot_file": "identity_bridge/data/holders_owners.json",
+        "snapshot_sha256": sha_file(identity_snapshot),
+        "receipt_file": "identity_bridge/data/identity_holders_receipt.json",
+        "receipt_sha256": sha_file(identity_receipt),
+        "as_of_block": SOL_SLOT, "complete_owner_universe": True,
+        "receipt_schema": "identity-holder-snapshot/v2", "adapter": "sol",
+    }
+    write_json(root / "identity_gate.json", {
+        "schema": "identity_gate_v3", "chain": "solana", "verdict": "PASS",
+        "state_file": "analysis-state.json",
+        "state_sha256": sha_file(root / "analysis-state.json"),
+        "share_basis": "total_supply", "total_supply_raw": "100",
+        "snapshot_binding": identity_binding, "rows": [],
+    })
     write_json(root / "whale_series.json", [])
     fff = HERE.parent / "report/figures_from_facts.py"
     p = subprocess.run([sys.executable, str(fff), "check", "--facts", "facts.json",
@@ -1149,10 +1183,20 @@ def t_fd2_unseal_binds_flip_receipt():
         receipt_digest, receipt_size = hm.full_sha256_file(str(receipt))
         ledger = write_json(root / "provenance_ledger.json", {
             "schema": "provenance-ledger/v2",
-            "input_binding": {"algorithm_params": {
-                "flip_adjudications": {"path": "flip_adjudications.json",
-                                       "bytes": receipt_size,
-                                       "sha256": receipt_digest}}}})
+            "input_binding": {
+                "algorithm": {"files": {
+                    "entity_source_trace.py": {
+                        "path": str(HERE.parent / "report/entity_source_trace.py"),
+                        "bytes": 42583,
+                        "sha256": "73f1cd6a8590eeecb2bddb18868f8d16b858dd4e913de508eb636e9a3763bcef"},
+                    "wave_scan.py": {
+                        "path": str(HERE.parent / "report/wave_scan.py"),
+                        "bytes": 40711,
+                        "sha256": "4d8f999406287c32258c9d834928b5b176ddb2c34b9461489d80550262f6638e"}}},
+                "algorithm_params": {
+                    "flip_adjudications": {"path": "flip_adjudications.json",
+                                           "bytes": receipt_size,
+                                           "sha256": receipt_digest}}}})
         def digest(p):
             return hm.sha256_file(p)[1]
         write_json(root / "entity_freeze.json", {

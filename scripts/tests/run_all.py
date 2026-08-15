@@ -114,6 +114,10 @@ SUITE += ['test_repair_g1_audit_report.py',
           'test_repair_g1_risk_flags_pipeline.py',
           'test_repair_g1_handoff_containment.py']
 
+# AI-1 包3 F-03/F-14：跨分区 target 等式与现役文本卫生（2026-08-15 修复计划）。
+SUITE += ['test_repair_g1_cross_target.py',
+          'test_repair_g1_text_hygiene.py']
+
 
 def main():
     results = []
