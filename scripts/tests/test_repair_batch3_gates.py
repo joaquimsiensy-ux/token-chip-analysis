@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""批3工单 F04/F05：部署同步与环境覆盖回归。"""
+"""批3工单 F04/F05/F07：部署同步、环境覆盖与 R10 台账回归。"""
 from __future__ import annotations
 
 import contextlib
@@ -15,6 +15,16 @@ HERE = Path(__file__).resolve().parent
 REPO = HERE.parent.parent
 FAILS: list[str] = []
 COMMANDS = ("token-analyze-1.md", "token-analyze-2.md", "token-analyze.md")
+R10_LEDGER = REPO / "maintenance" / "repair-20260813-sixlens" / "r10_ledger.md"
+R10_ROW_RE = re.compile(r"^\|\s*(R10-(\d+))(?:（[^|\n]+）)?\s*\|")
+R10_STATUS_RE = re.compile(
+    r"【(?:CLOSED \d+\.\d+\.\d+|FIXED_PENDING_REVIEW \d+\.\d+\.\d+ 批\d+)】"
+)
+R10_ANY_MARKER_RE = re.compile(r"【[^】]+】")
+ACTIVE_DECLARATION_RES = (
+    re.compile(r"当前现役\s*=.*?=\s*\*\*(\d+)\*\*"),
+    re.compile(r"现役保留/接受项合计\s*(\d+)\s*条"),
+)
 
 
 def check(name: str, condition: bool, detail="") -> None:
@@ -272,13 +282,111 @@ def t_f05_env_check() -> None:
                               for item in failures), (failures, output))
 
 
+def r10_ledger_failures(path: Path) -> list[str]:
+    """机械核对 R10 条目唯一性、状态枚举和第六节现役数。"""
+    text = path.read_text(encoding="utf-8")
+    failures: list[str] = []
+    entries: list[tuple[str, str]] = []
+    for lineno, line in enumerate(text.splitlines(), start=1):
+        if not re.match(r"^\|\s*R10-", line):
+            continue
+        match = R10_ROW_RE.match(line)
+        if match is None:
+            failures.append(f"第 {lineno} 行 R10 条目格式无法识别")
+            continue
+        entry_id = match.group(1)
+        status_markers = R10_STATUS_RE.findall(line)
+        all_markers = R10_ANY_MARKER_RE.findall(line)
+        if len(status_markers) > 1:
+            failures.append(f"{entry_id} 状态标记不唯一：{status_markers}")
+        elif all_markers != status_markers:
+            failures.append(f"{entry_id} 状态标记不属于枚举：{all_markers}")
+        status = status_markers[0] if status_markers else "OPEN"
+        entries.append((entry_id, status))
+
+    ids = [entry_id for entry_id, _ in entries]
+    duplicate_ids = sorted({entry_id for entry_id in ids if ids.count(entry_id) > 1})
+    if duplicate_ids:
+        failures.append(f"R10 条目 ID 重复：{duplicate_ids}")
+    expected_ids = {f"R10-{number}" for number in range(1, 28)}
+    actual_ids = set(ids)
+    if actual_ids != expected_ids:
+        failures.append(
+            f"R10 条目集合不完整：缺失={sorted(expected_ids - actual_ids)}，"
+            f"多出={sorted(actual_ids - expected_ids)}"
+        )
+
+    declared_active: list[int] = []
+    for line in text.splitlines():
+        for pattern in ACTIVE_DECLARATION_RES:
+            match = pattern.search(line)
+            if match is not None:
+                declared_active.append(int(match.group(1)))
+                break
+    if not declared_active:
+        failures.append("第六节当前现役数字无法识别")
+    else:
+        closed_count = sum(status.startswith("【CLOSED ") for _, status in entries)
+        computed_active = len(entries) - closed_count
+        if declared_active[-1] != computed_active:
+            failures.append(
+                f"当前现役数不一致：台账声明 {declared_active[-1]}，"
+                f"机械计算 {computed_active}"
+            )
+    return failures
+
+
+def t_f07_r10_ledger() -> None:
+    real_failures = r10_ledger_failures(R10_LEDGER)
+    check("F07 真实 R10 台账自洽 PASS", real_failures == [], real_failures)
+
+    source = R10_LEDGER.read_text(encoding="utf-8")
+    with tempfile.TemporaryDirectory(prefix="batch3-f07-") as td:
+        root = Path(td)
+
+        duplicate_copy = root / "r10_ledger_duplicate.md"
+        duplicate_text, replacements = re.subn(
+            r"^\| R10-27 ", "| R10-1 ", source, count=1, flags=re.MULTILINE
+        )
+        check("F07 重复 ID 反例成功注入", replacements == 1)
+        duplicate_copy.write_text(duplicate_text, encoding="utf-8")
+        duplicate_failures = r10_ledger_failures(duplicate_copy)
+        check("F07 重复 ID 反例 FAIL",
+              any("ID 重复" in item for item in duplicate_failures),
+              duplicate_failures)
+
+        count_copy = root / "r10_ledger_bad_count.md"
+        matches = list(ACTIVE_DECLARATION_RES[0].finditer(source))
+        if matches:
+            declared = int(matches[-1].group(1))
+            count_text = (
+                source[:matches[-1].start(1)] + str(declared + 1)
+                + source[matches[-1].end(1):]
+            )
+        else:
+            matches = list(ACTIVE_DECLARATION_RES[1].finditer(source))
+            declared = int(matches[-1].group(1)) if matches else -1
+            count_text = (
+                source[:matches[-1].start(1)] + str(declared + 1)
+                + source[matches[-1].end(1):]
+                if matches else source
+            )
+        check("F07 计数不一致反例成功注入", declared >= 0)
+        count_copy.write_text(count_text, encoding="utf-8")
+        count_failures = r10_ledger_failures(count_copy)
+        check("F07 计数不一致反例 FAIL",
+              any("当前现役数不一致" in item for item in count_failures),
+              count_failures)
+
+
 def main() -> int:
     t_f04_deploy_sync()
     t_f05_env_check()
+    t_f07_r10_ledger()
     if FAILS:
         print(f"FAIL: {len(FAILS)} 项批3 gates 回归失败：{FAILS}")
         return 1
-    print("PASS: 批3 deploy-sync/env-check gates 回归全部通过")
+    print("PASS: 批3 deploy-sync/env-check/R10-ledger gates 回归全部通过")
     return 0
 
 

@@ -1,6 +1,6 @@
 # 修复批 3 计划（repair-20260814-batch3）
 
-基线：main@411bf18（= 83394ab 六视角 review 冻结基线 + evmobs 开工提交，生产代码与 83394ab 逐字节一致）。
+基线：main@83394ab（六视角 review 冻结基线）。开工时曾误从 evmobs 分支 tip 411bf18 切出，四 commit 已 rebase --onto 83394ab 剥离，与 evmobs 工程彻底解耦（本句为事后修正记录）。
 来源：codex 六视角全量 review（`maintenance/review-20260814/`，BLOCK，8 findings）→ Fable 逐条验证全部属实 → 用户裁决分工与两个策略点 → 本 plan 经 Plan agent 评审 + codex @CX 复核（CONDITIONAL BLOCK 四条必改已全部融合）。
 
 ## 用户裁决（2026-08-14）

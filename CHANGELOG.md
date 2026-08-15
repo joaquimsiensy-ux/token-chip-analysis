@@ -10,6 +10,7 @@
 
 ## 版本索引（活跃窗口，新在上；每版一行，详情见下方对应条目）
 
+- **6.43.0**（2026-08-14）批 3 弱闸三线收口：A4 blocker 语义联动+10 门槛+entrypoint 身份（F-01→R10-16/17）、deploy-sync 严判（F-04→R10-5）、env_check 机械派生（F-05→R10-6）、R10 台账同步+自洽守卫（F-07）
 - **6.42.0**（2026-08-14）批 2 三线收口：F-10 waiver 三段硬顶＋用户超顶批复、F-02 对抗复核结构化 v3、F-09 solana-reconcile/v3 身份链与 PYTHIA 实证；三轮盲审残留锚、R10 清账/新登记及文档边界统一封口
 - **6.41.0**（2026-08-14）批 1 五项修复收口：RV-07 receipt supersede＋五出口真 FAIL 落盘；RV-04/RV-17 proxy 单源解析＋stake_decode fail-closed；F-03 replay 三引擎 gate 语义统一；F-01 图 1 白名单/legend receipt/A5 v3 双层信任根；F-04 四入口位置 token 移除且 sentinel 不进输出
 - **6.40.0**（2026-08-13）六视角 BLOCK 修复工程 A-D 四批收口：发布收据验证链（F-01/02）＋分布扫描族（F-03/08）＋阵营序列 producer 链（F-04/05）＋flip 裁决收据制（F-06）/refresh 真事务（F-07）/销户审计收口（GPT-F-06）＋台账八项＋distribution-scan/v2；R10 存量台账本轮未修、台账保留（r10_ledger.md）
@@ -41,6 +42,16 @@
 - **6.20.1** 2026-08-05 修 5 处阻断级文档漂移（A4 前禁写报告冲突/easy 残留/惯犯回灌 docstring/批量预采集残留/旧 Par 路线历史降级）＋docs_lint 增中文禁词与 Python module docstring 扫描
 
 更早版本（6.20.0 及以前）详见 `archive/CHANGELOG-archive.md`。
+
+## [6.43.0] - 2026-08-14 — 批 3 弱闸三线收口（六视角 review F-01/04/05/07）
+
+批 3 按用户裁决完成 A4 语义联动、deploy-sync 严判、env_check 机械派生与 R10 台账同步，并为集成漂移补上可执行自洽守卫。
+
+- **F-01 A4 语义联动（工单 F01）**：blocker 必填 source={kind,ref} 机械定位符；validate_blocker_linkage 双向对账（缺账/幽灵/重复拒）两侧独立执行；finalize 账不全 rc2 不落盘、账全未决落盘 BLOCKED；evidence/resolution 10 实义字符门槛（_has_min_meaningful_chars，防呆不防伪）；entrypoint sha 跨角色全局唯一（防误复用，非独立性证明）；adversarial-review/v4 + artifact/v2，存量 v2/v3 须重跑（先报 producer 失效属预期）。先红 25 项。
+- **F-04 deploy-sync 严判（工单 F04）**：删 MIGRATION_CHANGED 无界豁免（归因 ede24d7 解耦隐式过期）；canonical 安装路径缺部署目录 fail-closed rc1，非 canonical checkout 打 SKIP_NON_CANONICAL_CHECKOUT rc0；校验主体纯函数化。先红 4 项。
+- **F-05 env_check 机械派生（工单 F05）**：受检集合唯一来源 pyproject 21 直接依赖；三层闭合（direct→lock 唯一 pin→installed 全等）+ lock pin 须满足 pyproject 下限；PEP503 规范化；受控说明符白名单 fail-closed；requires-python 检查；pre-commit 第二挂载点联动实证。先红 8 项。已知边界：平面 lock 无法判已删直接依赖残留。
+- **R10 台账（F-07）**：批 1 已修 4 条补记 CLOSED 6.41.0（集成漂移修正）；批 3 四条 FIXED_PENDING_REVIEW；现役 23→19（盲审后→15）；新增台账自洽守卫（ID 唯一/状态枚举/计数一致）。
+- **6.43.0 前身冻结基线**：main@83394ab 97 项全绿 rc0；本批收口时 SUITE 99 项（+test_repair_batch3_f01+test_repair_batch3_gates）全绿 rc0。
 
 ## [6.42.0] - 2026-08-14 — 批 2 防伪面三线三轮盲审收口
 
