@@ -100,6 +100,9 @@ SUITE += ['test_repair_batch2_f02.py']
 # 批3 工单 F01：A4 blocker 语义联动、文本门槛与 entrypoint 身份闭环。
 SUITE += ['test_repair_batch3_f01.py']
 
+# 批3工单 F04/F05：deploy-sync 与 env_check fail-closed 注入回归。
+SUITE += ['test_repair_batch3_gates.py']
+
 
 def main():
     results = []
