@@ -44,7 +44,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from anchor_selection import (EXPECTED_PLAN_PRODUCER, REPLAY_PARAMETER_FIELDS,
                               generate_anchor_selection, input_identity,
                               sha256_file, validate_anchor_coverage_parameters)
-from chain_registry import formal_evm_chains
+from chain_registry import (executable_evm_chains, resolve_execution_mode)
 from receipt_validate import validate_receipt
 from receipt_kernel import (build_envelope, finalize_envelope, publish_error_receipt,
                             publish_overwrite, publish_supersede)
@@ -217,8 +217,10 @@ def main():
                     help="生成 plan 所用的真实 merged 转账数据；consumer 会全量重放")
     ap.add_argument("--plan-receipt",
                     help="anchor plan receipt；默认取 plan 同目录的 anchor_plan.receipt.json")
-    ap.add_argument("--chain", choices=sorted(formal_evm_chains("time_producer")),
+    ap.add_argument("--chain", choices=sorted(executable_evm_chains("time_producer")),
                     help="正式回执目标链；非 dry-run 必填")
+    ap.add_argument("--exploration", action="store_true",
+                    help="探索模式；正式聚合器拒收 exploration 回执")
     ap.add_argument("--rpc", help="独立第二源 archive RPC（--dry-run 时可省）")
     ap.add_argument("--token", required=True, help="代币合约地址")
     ap.add_argument("--out", required=True, help="输出 time_spotcheck.json")
@@ -229,6 +231,12 @@ def main():
     ap.add_argument("--threads", type=int, default=4, help="DuckDB 重放线程数")
     ap.add_argument("--dry-run", action="store_true", help="只解析分型统计，不打网")
     a = ap.parse_args()
+    execution_mode = None
+    if a.chain:
+        try:
+            execution_mode = resolve_execution_mode(a.chain, a.exploration, "time")
+        except ValueError as exc:
+            ap.error(str(exc))
 
     plan_receipt = a.plan_receipt or _default_plan_receipt(a.plan)
     try:
@@ -287,7 +295,7 @@ def main():
     token = a.token.lower()
     target = {"chain": a.chain, "token": token, "as_of_block": a.final_block}
     try:
-        envelope = build_envelope(SCHEMA, target, __file__, "formal",
+        envelope = build_envelope(SCHEMA, target, __file__, execution_mode,
                                   inputs={"plan": a.plan})
     except Exception as exc:
         print(f"[fatal] receipt envelope 构建失败: {exc}", file=sys.stderr)

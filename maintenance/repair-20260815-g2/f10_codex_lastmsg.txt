@@ -1,0 +1,17 @@
+F-10 已按强制顺序完成：
+
+- 先建立消费面负例，基线准确复现两项放行缺口。
+- 完成 A 部分正式消费面双断言后，负例转绿。
+- 随后完成 B 部分统一策略及四个 CLI 的 Arbitrum 探索档放宽。
+- 工单列出的 6 组验收测试整体 exit 0。
+- 全程未运行任何 git 命令，未修改授权范围外文件。
+
+交付物：
+
+- [完工报告](/Users/uravvv/.claude/tca-repair-g2/maintenance/repair-20260815-g2/workorder_F10_done.md)
+- [红证据日志](/Users/uravvv/.claude/tca-repair-g2/maintenance/repair-20260815-g2/f10_red.log)
+- [绿证据日志](/Users/uravvv/.claude/tca-repair-g2/maintenance/repair-20260815-g2/f10_green.log)
+- [新增专项测试](/Users/uravvv/.claude/tca-repair-g2/scripts/tests/test_arbitrum_exploration_cli.py)
+
+绿日志中的 `disk full`、FAIL/ERROR/BLOCK 是既有 fail-closed 反例的预期输出；所属测试最终均为 PASS。
+

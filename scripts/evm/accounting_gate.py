@@ -54,7 +54,8 @@ import requests
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
 from endpoint_identity import public_endpoint
-from chain_registry import evm_chain_id_for, formal_evm_chains
+from chain_registry import (evm_chain_id_for, executable_evm_chains,
+                            resolve_execution_mode)
 from evm_observation import validate_evm_observation_bundle
 from net import RpcAttestationError, attested_rpc_pool
 from proxy_config import resolve_proxy
@@ -390,7 +391,7 @@ def main(argv=None):
     ap = argparse.ArgumentParser(description="EVM 记账模型准入 gate")
     ap.add_argument("--token", required=True)
     ap.add_argument("--chain", required=True,
-                    choices=sorted(formal_evm_chains("accounting_adapter")))
+                    choices=sorted(executable_evm_chains("accounting_adapter")))
     ap.add_argument("--rpc", default=None, help="JSON-RPC 端点（默认见 DEFAULT_RPC）")
     ap.add_argument("--hypersync", default=None, help="HyperSync 裸域名（默认按链）")
     ap.add_argument("--hypersync-token-file",
@@ -409,6 +410,11 @@ def main(argv=None):
                          "（tip_block/model_probe_block 忠实记录探测时点）；"
                          "exploration 不给则 as_of_block=tip（旧行为）。")
     a = ap.parse_args(argv)
+    try:
+        execution_mode = resolve_execution_mode(
+            a.chain, a.exploration, "accounting_adapter")
+    except ValueError as exc:
+        ap.error(str(exc))
     if not a.bundle and not a.exploration:
         ap.error("正式模式必须给 --bundle；独跑须显式 --exploration")
     if a.bundle and a.exploration:
@@ -428,7 +434,6 @@ def main(argv=None):
         bearer = open(a.hypersync_token_file).read().strip()
     rpc = Rpc(rpc_url, a.chain, proxy=proxy)
 
-    execution_mode = "exploration" if a.exploration else "formal"
     result = {"schema": RECEIPT_SCHEMA_BY_MODE[execution_mode]["schema"],
               "chain": a.chain, "token": token,
               "producer": {"path": "scripts/evm/accounting_gate.py",

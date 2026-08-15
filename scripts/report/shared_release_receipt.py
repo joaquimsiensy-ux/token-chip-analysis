@@ -29,7 +29,8 @@ from adversarial_review_runner import (
     validate_review_ledger,
     validate_union_coverage,
 )
-from chain_registry import evm_chain_id_for, recon_adapter_for, resolve_alias
+from chain_registry import (evm_chain_id_for, formal_ready, recon_adapter_for,
+                            resolve_alias)
 from receipt_validate import validate_receipt
 from supply_truth_gate import (FORMAL_TOLERANCE_BPS_MAX,
                                WAIVER_TOLERANCE_BPS_CAP, decide,
@@ -495,6 +496,10 @@ def validate_reconciliation_check(root, key, item, target, family):
     schema = receipt.get("schema")
     obs = receipt.get("observations") or {}
     if family == "evm" and key in {"balance", "supply"}:
+        _require(receipt.get("mode") == "formal",
+                 f"reconciliation {key} receipt must be formal；{migration}")
+        _require(formal_ready(target["chain"]),
+                 f"正式对账消费面只接受 formal-ready 链；{migration}")
         _require(schema == "evm-reconciliation-receipt/v2",
                  f"reconciliation {key} unknown schema {schema!r}；{migration}")
         if key == "balance":
@@ -508,6 +513,10 @@ def validate_reconciliation_check(root, key, item, target, family):
             _require(supply.get("closed") is True and supply.get("negative_count") == 0,
                      "supply receipt observations incomplete or non-closed")
     elif family == "solana" and key in {"balance", "time"}:
+        _require(receipt.get("mode") == "formal",
+                 f"reconciliation {key} receipt must be formal；{migration}")
+        _require(formal_ready(target["chain"]),
+                 f"正式对账消费面只接受 formal-ready 链；{migration}")
         _require(schema == "solana-anchor-sampler-receipt/v2",
                  f"reconciliation {key} unknown schema {schema!r}；{migration}")
         coverage = receipt.get("coverage") or {}
@@ -583,9 +592,12 @@ def validate_reconciliation_check(root, key, item, target, family):
             _require(mint_raw == stats_mint and burn_raw == stats_burn,
                      f"sink_fallback_form2 mint_total/burn_total 与绑定 replay_stats "
                      f"实物不一致；{migration}")
-        _require(receipt.get("mode") == "formal" and isinstance(receipt.get("inputs"), dict)
-                 and bool(receipt["inputs"]),
-                 "supply_truth receipt must be formal and bind replay_stats input")
+        _require(receipt.get("mode") == "formal",
+                 f"supply_truth receipt must be formal；{migration}")
+        _require(formal_ready(target["chain"]),
+                 f"正式对账消费面只接受 formal-ready 链；{migration}")
+        _require(isinstance(receipt.get("inputs"), dict) and bool(receipt["inputs"]),
+                 "supply_truth receipt must bind replay_stats input")
         _validate_tolerance_policy(root, receipt, target)
         if family == "solana":
             bundle_ref = (receipt.get("inputs") or {}).get("observation_bundle")
@@ -651,6 +663,10 @@ def validate_reconciliation_check(root, key, item, target, family):
                          == str(bundle["supply"]["dead_balance_raw"]),
                          "EVM supply_truth DEAD sink is not bound to bundle supply")
     elif family == "evm" and key == "time":
+        _require(receipt.get("mode") == "formal",
+                 f"reconciliation time receipt must be formal；{migration}")
+        _require(formal_ready(target["chain"]),
+                 f"正式对账消费面只接受 formal-ready 链；{migration}")
         _require(schema == "time-spotcheck/v2",
                  f"reconciliation time unknown schema {schema!r}；{migration}")
         _require(isinstance(receipt.get("points"), int) and receipt["points"] > 0
@@ -673,6 +689,9 @@ def validate_reconciliation_report(root, expected_target=None, *, return_receipt
             or not target.get("chain") or not target.get("token")
             or recon.get("verdict") != "PASS" or recon.get("exit_code") != 0):
         raise ValueError("reconciliation target/schema/verdict invalid")
+    _require(formal_ready(target["chain"]),
+             "正式对账消费面只接受 formal-ready 链；迁移指引："
+             "请在 formal-ready 链重跑四项对账生产者并重建 reconciliation_report.json")
     if expected_target is not None and canonical_target(target) != canonical_target(expected_target):
         raise ValueError("reconciliation target/schema mismatch")
     family = chain_family(target["chain"])

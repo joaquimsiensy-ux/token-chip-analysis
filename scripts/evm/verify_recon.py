@@ -15,7 +15,7 @@ from decimal import Decimal
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
-from chain_registry import formal_evm_chains
+from chain_registry import (executable_evm_chains, resolve_execution_mode)
 from net import RpcChainMismatch, attested_rpc_pool
 from receipt_kernel import (build_envelope, finalize_envelope, publish_error_receipt,
                             publish_overwrite, publish_supersede)
@@ -43,20 +43,28 @@ def parse_args(argv=None):
     ap.add_argument("--replay-stats", required=True)
     ap.add_argument("--gmgn", required=True)
     ap.add_argument("--chain", required=True,
-                    choices=sorted(formal_evm_chains("balance_producer")))
+                    choices=sorted(executable_evm_chains("balance_producer")))
+    ap.add_argument("--exploration", action="store_true",
+                    help="探索模式；正式聚合器拒收 exploration 回执")
     ap.add_argument("--token", required=True)
     ap.add_argument("--end-block", required=True, type=int)
     ap.add_argument("--out", required=True)
     ap.add_argument("--rpc")
     ap.add_argument("--proxy")
     ap.add_argument("--top-n", type=int, default=15)
-    return ap.parse_args(argv)
+    args = ap.parse_args(argv)
+    try:
+        args.execution_mode = resolve_execution_mode(
+            args.chain, args.exploration, "balance")
+    except ValueError as exc:
+        ap.error(str(exc))
+    return args
 
 
 def main(argv=None):
     a = parse_args(argv)
     target = {"chain": a.chain, "token": a.token.lower(), "as_of_block": a.end_block}
-    base_envelope = build_envelope(SCHEMA, target, __file__, "formal")
+    base_envelope = build_envelope(SCHEMA, target, __file__, a.execution_mode)
     envelope = base_envelope
     try:
         if a.end_block < 0 or a.top_n <= 0:
@@ -64,7 +72,7 @@ def main(argv=None):
         config_path, balances_path = Path(a.config), Path(a.balances)
         stats_path, gmgn_path = Path(a.replay_stats), Path(a.gmgn)
         # A-3：inputs 记相对路径（相对收据落盘目录＝案根），案目录可整体搬家。
-        envelope = build_envelope(SCHEMA, target, __file__, "formal", inputs={
+        envelope = build_envelope(SCHEMA, target, __file__, a.execution_mode, inputs={
             "config": config_path, "balances": balances_path,
             "replay_stats": stats_path, "gmgn": gmgn_path},
             input_base=Path(a.out).expanduser().resolve().parent)
