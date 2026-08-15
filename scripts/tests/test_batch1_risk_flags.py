@@ -57,6 +57,13 @@ def test_variants():
         assert canonical_risk_flags(raw) == "|".join(expected), raw
     assert merge_risk_flags(" b|a", "a||c ") == "a|b|c"
 
+    try:
+        LabelResolver.risk_partition({"risk_flags": "torna\u200bdo-user"})
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("resolver 未传播内嵌零宽 risk_flags 的 ValueError")
+
 
 def test_legacy_and_live_tables(root):
     # Legacy non-canonical storage is read-compatible and reported as a warning,

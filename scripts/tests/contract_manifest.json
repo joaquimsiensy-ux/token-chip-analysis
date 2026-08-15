@@ -149,6 +149,8 @@
     {"id":"CT-SEMANTIC-56","kind":"required","authority_file":"references/analyze-workflow.md","needle":"supply_truth.json.superseded-","stages":["A2"]},
     {"id":"CT-SEMANTIC-57","kind":"required","authority_file":"references/data-pipeline-evm-recon.md","needle":"evm-observation-bundle/v1","stages":["A2","A5"]},
     {"id":"CT-SEMANTIC-58","kind":"required","authority_file":"references/data-pipeline-evm-recon.md","needle":"supply-truth-receipt/v4","stages":["A2","A5"]},
-    {"id":"CT-SEMANTIC-59","kind":"required","authority_file":"references/data-pipeline-evm-recon.md","needle":"accounting-gate/v2","stages":["A2","A5"]}
+    {"id":"CT-SEMANTIC-59","kind":"required","authority_file":"references/data-pipeline-evm-recon.md","needle":"accounting-gate/v2","stages":["A2","A5"]},
+    {"id":"CT-SEMANTIC-60","kind":"required","authority_file":"commands-staging/token-analyze-2.md","needle":"a5-report-seal/v3","stages":["A3-A5"]},
+    {"id":"CT-BANNED-15","kind":"banned","authority_file":"commands-staging/token-analyze-2.md","needle":"A5 seal v2","stages":["A3-A5"]}
   ]
 }
