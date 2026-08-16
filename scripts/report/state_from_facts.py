@@ -130,6 +130,9 @@ def compile_state(facts: dict, source: dict) -> dict:
     token.update({"symbol": token_facts.get("symbol"),
                   "total_supply": format(total_human, "f")})
     return {
+        # 顶层 chain 与 token.chain 同值：audit_release_gate 跨分区 target 检查
+        # 读 state 顶层 chain（缺失即 WARN 拒发布），编译产物必须自带（NES 首案，2026-08-16）
+        "chain": token.get("chain"),
         "token": token,
         "whale_groups": whale_groups,
         "vault_addresses": source.get("vault_addresses") or [],
