@@ -85,7 +85,7 @@ class FakePool:
                 return {"ok": False, "error": "rpc -32602: unsupported blockHash selector"}
             selector = params[0]["data"][:10]
             values = {"0x18160ddd": 1_000_000, "0x70a08231": 7}
-            raw = "not-hex" if self.invalid_call else hex(values[selector])
+            raw = "not-hex" if self.invalid_call else f"0x{values[selector]:064x}"
             return {"ok": True, "result": raw}
         if method == "eth_getCode":
             return {"ok": True, "result": RUNTIME_CODE}

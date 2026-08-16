@@ -12,9 +12,9 @@
  ],
  "minimum_counts": {
   "receipt_producers": 61,
-  "receipt_consumers": 79,
+  "receipt_consumers": 82,
   "transport_calls": 63,
-  "atomic_writes": 52,
+  "atomic_writes": 54,
   "formal_entrypoints": 58
  },
  "receipt_producers": [
@@ -77,7 +77,7 @@
   },
   {
    "schemas": [
-    "evm-reconciliation-receipt/v2"
+    "evm-reconciliation-receipt/v3"
    ],
    "script": "scripts/evm/verify_recon.py"
   },
@@ -123,7 +123,7 @@
   },
   {
    "schemas": [
-    "time-spotcheck/v2"
+    "time-spotcheck/v3"
    ],
    "script": "scripts/lib/time_spotcheck.py"
   },
@@ -319,6 +319,12 @@
   },
   {
    "schemas": [
+    "gmgn-divergence-note/v1"
+   ],
+   "script": "scripts/evm/verify_recon.py"
+  },
+  {
+   "schemas": [
     "camp-series-provenance/v1",
     "solana-holder-snapshot-v2",
     "solana-reconcile/v2",
@@ -466,8 +472,11 @@
     "adversarial-review/v2",
     "adversarial-review/v3",
     "adversarial-review/v4",
+    "anchor-plan-receipt/v2",
+    "anchor-plan/v2",
     "evm-observation-bundle/v1",
-    "evm-reconciliation-receipt/v2",
+    "evm-reconciliation-receipt/v3",
+    "gmgn-divergence-note/v1",
     "reconciliation-report/v2",
     "review-ledger/v1",
     "shared-release-receipt/v1",
@@ -475,7 +484,7 @@
     "solana-observation-bundle/v1",
     "supply-truth-receipt/v3",
     "supply-truth-receipt/v4",
-    "time-spotcheck/v2",
+    "time-spotcheck/v3",
     "over-cap-approval/v1",
     "tolerance-waiver/v1"
    ],
@@ -813,6 +822,11 @@
   },
   {
    "locator": "main",
+   "script": "scripts/evm/verify_recon.py",
+   "semantics": "dual_file_txn"
+  },
+  {
+   "locator": "main",
    "script": "scripts/labels/add_labels.py",
    "semantics": "restore_on_fail"
   },
@@ -870,6 +884,11 @@
    "locator": "main",
    "script": "scripts/lib/rpc_batch.py",
    "semantics": "overwrite_single"
+  },
+  {
+   "locator": "main",
+   "script": "scripts/lib/time_spotcheck.py",
+   "semantics": "dual_file_txn"
   },
   {
    "locator": "cmd_series",

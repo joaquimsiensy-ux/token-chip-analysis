@@ -421,18 +421,19 @@ def test_rv07_schema_family_invalidation_and_exit_wiring(root: Path):
         unrelated, schema_family="time-spotcheck/") is None
     assert unrelated.is_file()
 
-    # Five approved true-FAIL exits must call the explicit primitive.  This is
-    # a source-wiring guard; behavioral tests above cover kernel + supply + the
-    # multi-file window transaction.
+    # Single-artifact true-FAIL exits retain supersede. F-07 moved verify/time
+    # receipts to the stronger transcript+receipt transaction primitive.
     surfaces = {
         ROOT / "scripts/lib/supply_truth_gate.py": 1,
-        ROOT / "scripts/evm/verify_recon.py": 1,
-        ROOT / "scripts/lib/time_spotcheck.py": 2,
         ROOT / "scripts/solana/window_fetch.py": 1,
     }
     for path, minimum in surfaces.items():
         text = path.read_text(encoding="utf-8")
         assert text.count("publish_supersede(") >= minimum, (path, minimum)
+    for path in (ROOT / "scripts/evm/verify_recon.py",
+                 ROOT / "scripts/lib/time_spotcheck.py"):
+        text = path.read_text(encoding="utf-8")
+        assert "publish_txn(" in text, path
 
 
 def _load_window_module(work: Path):

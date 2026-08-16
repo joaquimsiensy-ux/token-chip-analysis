@@ -32,6 +32,8 @@ import sys
 import tempfile
 from pathlib import Path
 
+from test_audit_release_gate import write_deep_recon_fixtures
+
 from formal_ready_test_harness import run_formal_script
 from test_supply_truth_gate import TOKEN, write_evm_bundle
 
@@ -105,7 +107,7 @@ def make_case(d, chain="eth", token=TOKEN, as_of_block=999):
     write_json(d, "flow_anomaly_report.json", {"schema": "flow-anomaly/v2", "eligible_universe_count": 0,
                                                "sinks": [], "sprays": [],
                                                "requires_adjudication": False})
-    write_json(d, "time_spotcheck.json", {"gate": "time_spotcheck", "schema": "time-spotcheck/v2",
+    write_json(d, "time_spotcheck.json", {"gate": "time_spotcheck", "schema": "time-spotcheck/v3",
                                           "points": 2, "exact_match": 2, "mismatch": 0,
                                           "rpc_err": 0, "verdict": "PASS", "exit_code": 0})
     repo = Path(HERE).parents[1]
@@ -145,15 +147,16 @@ def make_case(d, chain="eth", token=TOKEN, as_of_block=999):
     stats_path = Path(d, "fixture_replay_stats.json").resolve()
     replay_input = {"path": str(stats_path), "size": stats_path.stat().st_size,
                     "sha256": file_sha(stats_path)}
+    recon_v3, time_v3 = write_deep_recon_fixtures(
+        Path(d), target, input_path, total=100, address="0xabc")
+    stats_path = Path(d, "fixture_replay_stats.json").resolve()
+    replay_input = {"path": str(stats_path), "size": stats_path.stat().st_size,
+                    "sha256": file_sha(stats_path)}
     recon_checks = {}
     for key in ("balance", "supply", "supply_truth", "time"):
         receipt_name = f"reconciliation_{key}_receipt.json"
         if key in {"balance", "supply"}:
-            receipt = {"schema": "evm-reconciliation-receipt/v2", "target": target,
-                       "observations": {
-                           "supply_closure": {"closed": True, "negative_count": 0},
-                           "balance_reconciliation": {"checked": 1, "matched": 1,
-                                                       "mismatched": 0, "rpc_errors": 0}}}
+            receipt = json.loads(json.dumps(recon_v3))
         elif key == "supply_truth":
             receipt = {"schema": "supply-truth-receipt/v4", "target": target,
                        "gate": "supply_truth", "replay_net": "100",
@@ -162,12 +165,11 @@ def make_case(d, chain="eth", token=TOKEN, as_of_block=999):
                        "decision_rule": "primary_form1", "burn_form": None,
                        "primary_verdict": "PASS", "sink_reconciliation": None}
         else:
-            receipt = {"schema": "time-spotcheck/v2", "target": target,
-                       "points": 1, "exact_match": 1, "mismatch": 0, "rpc_err": 0}
+            receipt = json.loads(json.dumps(time_v3))
         # A-5（批 D）：真实 verify_recon 的 balance/supply 收据本就绑 replay_stats，
         # 夹具补成真实形态——消费侧三查同源校验（sha 全等）才有账可对。
         if key in {"balance", "supply"}:
-            key_inputs = {**bound_input, "replay_stats": replay_input}
+            key_inputs = receipt["inputs"]
         elif key == "supply_truth":
             key_inputs = {"replay_stats": replay_input,
                           "observation_bundle": {
@@ -175,7 +177,7 @@ def make_case(d, chain="eth", token=TOKEN, as_of_block=999):
                               "size": bundle_path.stat().st_size,
                               "sha256": file_sha(bundle_path)}}
         else:
-            key_inputs = bound_input
+            key_inputs = receipt["inputs"]
         receipt.update({"producer": repo_ref(producers[key]), "mode": "formal",
                         "inputs": key_inputs,
                         "verdict": "PASS", "exit_code": 0})

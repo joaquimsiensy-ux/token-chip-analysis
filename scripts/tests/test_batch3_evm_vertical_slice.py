@@ -61,6 +61,12 @@ class FixtureHandler(BaseHTTPRequestHandler):
                     "parentHash": PARENT_HASH, "timestamp": hex(1_700_000_000),
                 }
             elif method == "eth_getCode":
+                block = params[1]
+                if isinstance(block, dict):
+                    assert block == {"blockHash": BLOCK_HASH,
+                                     "requireCanonical": True}, block
+                else:
+                    assert block == "latest", block
                 result = "0x6000"
             elif method == "eth_getStorageAt":
                 result = "0x" + "0" * 64
@@ -87,7 +93,7 @@ class FixtureHandler(BaseHTTPRequestHandler):
                         amount = type(self).supply - type(self).dead_balance
                     else:
                         amount = type(self).supply
-                result = hex(amount)
+                result = f"0x{amount:064x}"
             elif method == "eth_getTransactionReceipt":
                 result = {"blockNumber": hex(123), "logs": [{
                     "address": TOKEN,

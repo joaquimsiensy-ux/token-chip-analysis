@@ -65,7 +65,7 @@ def _call_value(response, label):
 
 def _eth_call_value(response, label) -> tuple[int, str]:
     raw = _call_value(response, f"eth_call {label}")
-    if not isinstance(raw, str) or not _HEX_VALUE.fullmatch(raw):
+    if not isinstance(raw, str) or not _HEX_VALUE.fullmatch(raw) or len(raw) != 66:
         raise EvmObservationError(f"eth_call {label} returned invalid value: {raw!r}")
     return int(raw, 16), raw
 
@@ -188,13 +188,15 @@ def observe_evm_supply(pool, chain, token, as_of_block, *, expected_chain_id):
         _record(transcript, method, params, raw)
         values.append(value)
 
-    code_params = [canonical_token, hex(as_of_block)]
+    code_params = [canonical_token, block_selector]
     code_response = pool.call("eth_getCode", code_params)
     _assert_endpoint(pool, attested_endpoint)
     code_raw = _call_value(code_response, "eth_getCode")
     _record(transcript, "eth_getCode", code_params, code_raw)
     if not isinstance(code_raw, str) or not _HEX_DATA.fullmatch(code_raw):
         raise EvmObservationError(f"eth_getCode returned invalid bytecode: {code_raw!r}")
+    if code_raw == "0x":
+        raise EvmObservationError("eth_getCode returned empty runtime bytecode")
     runtime_code_sha256 = hashlib.sha256(bytes.fromhex(code_raw[2:])).hexdigest()
 
     recheck_response = pool.call("eth_getBlockByNumber", block_params)
@@ -295,7 +297,7 @@ def _validate_transcript(bundle, transcript):
     for offset, expected in enumerate(expected_call_params, start=3):
         if transcript[offset]["params"] != expected:
             raise ValueError(f"transcript eth_call params mismatch at seq {offset}")
-    if transcript[6]["params"] != [token, hex(as_of)]:
+    if transcript[6]["params"] != [token, selector]:
         raise ValueError("transcript eth_getCode params mismatch")
 
     attestation = bundle["attestation"]
@@ -312,10 +314,11 @@ def _validate_transcript(bundle, transcript):
             ("total_supply_raw", "zero_balance_raw", "dead_balance_raw"), start=3):
         raw = transcript[offset]["result"]
         if not isinstance(raw, str) or not _HEX_VALUE.fullmatch(raw) \
-                or int(raw, 16) != int(supply[field]):
+                or len(raw) != 66 or int(raw, 16) != int(supply[field]):
             raise ValueError(f"transcript {field} result mismatch")
     code_raw = transcript[6]["result"]
-    if not isinstance(code_raw, str) or not _HEX_DATA.fullmatch(code_raw):
+    if not isinstance(code_raw, str) or not _HEX_DATA.fullmatch(code_raw) \
+            or code_raw == "0x":
         raise ValueError("transcript eth_getCode result invalid")
     if hashlib.sha256(bytes.fromhex(code_raw[2:])).hexdigest() \
             != bundle["code"]["runtime_code_sha256"]:
@@ -393,6 +396,8 @@ def validate_evm_observation_bundle(
     if not isinstance(code.get("runtime_code_sha256"), str) \
             or not re.fullmatch(r"[0-9a-f]{64}", code["runtime_code_sha256"]):
         raise ValueError("EVM observation bundle runtime code sha256 invalid")
+    if code["runtime_code_sha256"] == hashlib.sha256(b"").hexdigest():
+        raise ValueError("EVM observation bundle runtime code sha256 identifies empty bytecode")
 
     if bundle_path is not None:
         path = Path(bundle_path).resolve(strict=True)

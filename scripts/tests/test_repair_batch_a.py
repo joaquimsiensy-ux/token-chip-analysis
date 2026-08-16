@@ -367,6 +367,11 @@ def test_workorder_b_accounting_mode_and_bundle_contract():
 
 def _retarget_evm_case(root: Path, as_of: int, tip: int | None, *,
                        retarget_bundle: bool = True):
+    # F-07 v3 深重验后，改 target 不能再只改 envelope：replay cutoff、
+    # balance transcript、time plan/receipt/transcript 都是冻结块的一部分。
+    # 这里重建 build_case 的真实深夹具，避免旧浅夹具先死在 cutoff 层。
+    from test_audit_release_gate import write_deep_recon_fixtures
+
     accounting = json.loads((root / "accounting_mode.json").read_text())
     token = accounting["token"]
     chain = accounting["chain"]
@@ -397,12 +402,23 @@ def _retarget_evm_case(root: Path, as_of: int, tip: int | None, *,
     (root / "accounting_mode.json").write_text(json.dumps(accounting), encoding="utf-8")
 
     target = {"chain": chain, "token": token, "as_of_block": as_of}
+    recon_v3, time_v3 = write_deep_recon_fixtures(
+        root, target, root / "raw_transfers.jsonl")
     recon = json.loads((root / "reconciliation_report.json").read_text())
     recon["target"] = target
-    for item in recon["checks"].values():
+    for key, item in recon["checks"].items():
         receipt_path = root / item["receipt"]["path"]
-        receipt = json.loads(receipt_path.read_text())
-        receipt["target"] = target
+        if key in {"balance", "supply"}:
+            receipt = json.loads(json.dumps(recon_v3))
+        elif key == "time":
+            receipt = json.loads(json.dumps(time_v3))
+        else:
+            receipt = json.loads(receipt_path.read_text())
+            receipt["target"] = target
+            if key == "supply_truth":
+                stats = root / "fixture_replay_stats.json"
+                receipt["inputs"]["replay_stats"].update(
+                    size=stats.stat().st_size, sha256=sha256(stats))
         if retarget_bundle and item["receipt"]["path"] == "supply_truth_receipt.json":
             bundle_ref = {"path": bundle_path.name,
                           "size": bundle_path.stat().st_size,

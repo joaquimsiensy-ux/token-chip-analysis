@@ -95,6 +95,7 @@ def write_evm_bundle(root, *, token=TOKEN, chain="eth", as_of=123,
     selector = {"blockHash": BLOCK_HASH, "requireCanonical": True}
     balance = lambda address: (  # noqa: E731
         "0x70a08231" + "0" * 24 + address.removeprefix("0x").lower())
+    word = lambda value: f"0x{value:064x}"  # noqa: E731
     chain_id = {"eth": 1, "bsc": 56, "base": 8453}[chain]
     transcript = [
         {"seq": 0, "method": "eth_chainId", "params": [], "result": chain_id},
@@ -104,14 +105,14 @@ def write_evm_bundle(root, *, token=TOKEN, chain="eth", as_of=123,
          "result": hex(as_of + 12)},
         {"seq": 3, "method": "eth_call",
          "params": [{"to": token, "data": "0x18160ddd"}, selector],
-         "result": hex(total)},
+         "result": word(total)},
         {"seq": 4, "method": "eth_call",
          "params": [{"to": token, "data": balance(ZERO)}, selector],
-         "result": hex(zero)},
+         "result": word(zero)},
         {"seq": 5, "method": "eth_call",
          "params": [{"to": token, "data": balance(DEAD)}, selector],
-         "result": hex(dead)},
-        {"seq": 6, "method": "eth_getCode", "params": [token, hex(as_of)],
+         "result": word(dead)},
+        {"seq": 6, "method": "eth_getCode", "params": [token, selector],
          "result": RUNTIME_CODE},
         {"seq": 7, "method": "eth_getBlockByNumber",
          "params": [hex(as_of), False], "result": block},

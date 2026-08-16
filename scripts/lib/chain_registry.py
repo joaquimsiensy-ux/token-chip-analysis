@@ -275,12 +275,46 @@ def formal_evm_chains(capability):
             and CHAIN_REGISTRY[key]["evm_chain_id"] is not None}
 
 
+def executable_evm_chains(capability):
+    return {key for key in capability_chains(
+                capability, release_tiers={"formal", "exploration"})
+            if CHAIN_REGISTRY[key]["capture_evm_family"]
+            and CHAIN_REGISTRY[key]["evm_chain_id"] is not None}
+
+
 def formal_reconciliation_chains(kind):
     fact = {"balance": "balance_producer", "supply": "supply_producer",
             "time": "time_producer"}.get(kind)
     if fact is None:
         raise ValueError(f"unknown reconciliation producer kind: {kind}")
     return capability_chains(fact, release_tiers={"formal"})
+
+
+def executable_reconciliation_chains(kind):
+    fact = {"balance": "balance_producer", "supply": "supply_producer",
+            "time": "time_producer"}.get(kind)
+    if fact is None:
+        raise ValueError(f"unknown reconciliation producer kind: {kind}")
+    return capability_chains(fact, release_tiers={"formal", "exploration"})
+
+
+def resolve_execution_mode(chain, exploration, capability_kind):
+    """Resolve formal/exploration mode against one registered execution set."""
+    canonical = resolve_alias(chain)
+    if capability_kind in {"balance", "supply", "time"}:
+        formal = formal_reconciliation_chains(capability_kind)
+        executable = executable_reconciliation_chains(capability_kind)
+    else:
+        formal = formal_evm_chains(capability_kind)
+        executable = executable_evm_chains(capability_kind)
+    if canonical not in executable:
+        raise ValueError(
+            f"链 {chain!r} 不在 {capability_kind} 可执行集")
+    if canonical in formal:
+        return "exploration" if exploration else "formal"
+    if exploration:
+        return "exploration"
+    raise ValueError(f"{canonical} 是探索档链；探索档链必须显式 --exploration")
 
 
 def attested_evm_chains():

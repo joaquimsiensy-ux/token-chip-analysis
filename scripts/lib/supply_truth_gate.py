@@ -59,7 +59,8 @@ from pathlib import Path
 from receipt_kernel import (build_envelope, finalize_envelope, publish_error_receipt,
                             publish_overwrite, publish_supersede)
 from chain_registry import (evm_chain_id_for, evm_family,
-                            formal_reconciliation_chains, resolve_alias)
+                            executable_reconciliation_chains,
+                            resolve_alias, resolve_execution_mode)
 from evm_observation import validate_evm_observation_bundle
 from net import attested_rpc_pool
 from solana_observation import (assert_declared_slot,
@@ -524,7 +525,7 @@ def fetch_onchain_supply(chain, token=None, mint=None, rpc=None, proxy=None,
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description="供给真值闸：重放净供给 vs 链上 totalSupply")
-    supply_chains = formal_reconciliation_chains("supply")
+    supply_chains = executable_reconciliation_chains("supply")
     supply_choices = sorted((supply_chains - {"sol"}) | ({"solana"} if "sol" in supply_chains else set()))
     ap.add_argument("--chain", required=True, choices=supply_choices)
     ap.add_argument("--token", help="EVM 合约地址")
@@ -548,7 +549,10 @@ def main(argv=None):
     ap.add_argument("--out", default="supply_truth.json")
     a = ap.parse_args(argv)
 
-    mode = "exploration" if a.exploration else "formal"
+    try:
+        mode = resolve_execution_mode(a.chain, a.exploration, "supply")
+    except ValueError as exc:
+        ap.error(str(exc))
     bundle = None
     bundle_path = None
     observed_context_slot = None

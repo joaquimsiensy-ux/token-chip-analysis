@@ -118,6 +118,14 @@ SUITE += ['test_repair_g1_audit_report.py',
 SUITE += ['test_repair_g1_cross_target.py',
           'test_repair_g1_text_hygiene.py']
 
+# repair-20260815-g2（F-04/F-07/F-09/F-10）：观测件收紧/对账深重验/GMGN 黄灯/探索档 CLI
+SUITE += [
+    'test_evm_observation_nonempty_code.py',
+    'test_arbitrum_exploration_cli.py',
+    'test_recon_deep_reverify.py',
+    'test_gmgn_divergence_note.py',
+]
+
 
 def main():
     results = []

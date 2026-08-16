@@ -1,0 +1,12 @@
+F-04 生产修复与专属先红后绿测试已完成，但存量验收未全部通过，不能声明全绿。
+
+- 新测试：PASS 5/5
+- 授权回归：PASS 10/10、11/11
+- `test_supply_truth_gate.py`：旧夹具不兼容，因未获授权已停止扩改
+- EVM 纵切片：loopback `socket.bind` 被沙箱 EPERM 阻断
+- 未执行任何 git 命令或 git 写操作
+
+完整结果：[workorder_F04_done.md](/Users/uravvv/.claude/tca-repair-g2/maintenance/repair-20260815-g2/workorder_F04_done.md)
+
+证据：[红灯日志](/Users/uravvv/.claude/tca-repair-g2/maintenance/repair-20260815-g2/f04_red.log)｜[绿灯日志](/Users/uravvv/.claude/tca-repair-g2/maintenance/repair-20260815-g2/f04_green.log)
+

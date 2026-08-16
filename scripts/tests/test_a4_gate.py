@@ -90,6 +90,17 @@ def rebind_case_inputs(old_root, new_root):
     new_root = str(Path(new_root).resolve())
     recon_path = Path(new_root, "reconciliation_report.json")
     recon = json.loads(recon_path.read_text(encoding="utf-8"))
+
+    def case_path(ref):
+        raw = Path(str(ref["path"]))
+        return raw if raw.is_absolute() else Path(new_root, raw)
+
+    def refreshed_ref(ref, path):
+        updated = dict(ref)
+        updated["size"] = path.stat().st_size
+        updated["sha256"] = sha(path)
+        return updated
+
     for item in recon["checks"].values():
         receipt_path = Path(new_root, item["receipt"]["path"])
         receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
@@ -99,6 +110,50 @@ def rebind_case_inputs(old_root, new_root):
             if raw.startswith(old_root + os.sep):
                 ref["path"] = new_root + raw[len(old_root):]
                 moved = True
+
+        # time 收据多了一层 anchor-plan 权威链。copytree 后须等价于在新案根
+        # 重跑 anchor_plan：重绑 input identity，并由内向外刷新 manifest、plan、
+        # plan receipt 与 time receipt 的逐字节 size/sha 链。
+        if receipt.get("schema") == "time-spotcheck/v3":
+            time_inputs = receipt["inputs"]
+            input_path = case_path(time_inputs["input"]).resolve()
+            plan_path = case_path(time_inputs["plan"])
+            plan_receipt_path = case_path(time_inputs["plan_receipt"])
+            plan = json.loads(plan_path.read_text(encoding="utf-8"))
+            plan_receipt = json.loads(plan_receipt_path.read_text(encoding="utf-8"))
+
+            old_identity = plan_receipt["input_identity"]
+            identity = dict(old_identity)
+            identity.update({"path": str(input_path),
+                             "size": input_path.stat().st_size,
+                             "sha256": sha(input_path)})
+
+            manifest_ref = plan_receipt["inputs"]["input_manifest"]
+            manifest_path = case_path(manifest_ref)
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            manifest["input"] = identity
+            manifest["files"] = [
+                identity if entry == old_identity else entry
+                for entry in manifest.get("files", [])
+            ]
+            manifest_path.write_text(json.dumps(manifest, ensure_ascii=False),
+                                     encoding="utf-8")
+            manifest_ref = refreshed_ref(manifest_ref, manifest_path)
+
+            plan["input"] = identity
+            plan["input_manifest"] = manifest_ref
+            plan_path.write_text(json.dumps(plan, ensure_ascii=False), encoding="utf-8")
+
+            plan_receipt["input_identity"] = identity
+            plan_receipt["inputs"]["input_manifest"] = manifest_ref
+            plan_receipt["output"] = refreshed_ref(plan_receipt["output"], plan_path)
+            plan_receipt_path.write_text(json.dumps(plan_receipt, ensure_ascii=False),
+                                         encoding="utf-8")
+
+            time_inputs["plan"] = refreshed_ref(time_inputs["plan"], plan_path)
+            time_inputs["plan_receipt"] = refreshed_ref(
+                time_inputs["plan_receipt"], plan_receipt_path)
+            moved = True
         if moved:
             receipt_path.write_text(json.dumps(receipt, ensure_ascii=False),
                                     encoding="utf-8")
@@ -127,19 +182,9 @@ def rebind_case_inputs(old_root, new_root):
 
 def bind_balance_receipt_to_snapshot(d, snap):
     """四查 balance 收据与分布扫描必须吃同一份 owner 快照（发布闸 F-03 第二层交叉检查）。"""
-    receipt_path = Path(d, "balance_receipt.json")
-    receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
-    receipt["inputs"]["balances"] = {"path": str(snap.resolve()),
-                                     "size": snap.stat().st_size, "sha256": sha(snap)}
-    receipt_path.write_text(json.dumps(receipt, ensure_ascii=False), encoding="utf-8")
-    recon_path = Path(d, "reconciliation_report.json")
-    recon = json.loads(recon_path.read_text(encoding="utf-8"))
-    recon["checks"]["balance"]["receipt"]["sha256"] = sha(receipt_path)
-    recon_path.write_text(json.dumps(recon, ensure_ascii=False), encoding="utf-8")
-    shared_path = Path(d, "shared_release_receipt.json")
-    shared = json.loads(shared_path.read_text(encoding="utf-8"))
-    shared["inputs"]["reconciliation_report.json"]["sha256"] = sha(recon_path)
-    shared_path.write_text(json.dumps(shared, ensure_ascii=False), encoding="utf-8")
+    # 与 P105/F-03 共用同一套 v3 深夹具适配，避免本调用链继续保留只换 sha 的浅副本。
+    from test_review_20260804_p105 import bind_balance_receipt_to_snapshot as bind_v3
+    bind_v3(Path(d), Path(snap))
 
 
 def add_distribution_initial(d):

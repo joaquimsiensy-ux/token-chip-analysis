@@ -1,0 +1,17 @@
+不能称为 101/101 全绿：最终是 **99/101 PASS**，仅两个纵切片因沙箱 loopback `socket.bind EPERM` 失败，符合工单预期；其余业务测试全部通过。
+
+- `batch_a` 红因：旧 retarget 夹具未同步 v3 replay cutoff 等深实物，已修复为 45/45。
+- `batch_b`：41/41。
+- 调用链追加 `test_a4_gate.py`：23 项通过。
+- 三项指定回归全部通过。
+- 未改生产文件，未执行任何 git 操作。
+
+改动位于：
+
+- [test_repair_batch_a.py](/Users/uravvv/.claude/tca-repair-g2/scripts/tests/test_repair_batch_a.py:368)
+- [test_review_20260804_p105.py](/Users/uravvv/.claude/tca-repair-g2/scripts/tests/test_review_20260804_p105.py:35)
+- [test_a4_gate.py](/Users/uravvv/.claude/tca-repair-g2/scripts/tests/test_a4_gate.py:128)
+- [workorder_F07_done.md](/Users/uravvv/.claude/tca-repair-g2/maintenance/repair-20260815-g2/workorder_F07_done.md:110)
+
+最终文档 lint 也通过：58 个文档无断链、格式正常。
+

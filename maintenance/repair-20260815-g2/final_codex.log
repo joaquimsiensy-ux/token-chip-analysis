@@ -1,0 +1,1903 @@
+Reading additional input from stdin...
+2026-08-15T15:24:29.755124Z ERROR codex_models_manager::cache: failed to load models cache: missing field `base_instructions` at line 95 column 5
+OpenAI Codex v0.144.1
+--------
+workdir: /Users/uravvv/.claude/tca-repair-g2
+model: gpt-5.6-sol
+provider: openai
+approval: on-request
+sandbox: workspace-write [workdir, /tmp, $TMPDIR]
+reasoning effort: high
+reasoning summaries: none
+session id: 01a00606-5338-7b50-b858-c544e7dad974
+--------
+user
+你是修复工程的施工执行者。读取并严格执行工单文件 maintenance/repair-20260815-g2/workorder_FINAL.md（中心登记独立收口刀）。只改三个授权中心文件，验收命令逐条落日志，完成后写 workorder_FINAL_done.md。禁止一切 git 操作。
+codex
+我先只读核对工单、授权白名单和验收口径；全程不运行任何 `git` 命令。随后严格按工单施工，逐条把验收输出落盘，最后生成完成单。
+  → 读取工单与相关历史约束，冻结授权文件和验收命令
+  • 仅修改三个授权中心文件
+  • 逐条执行验收命令并落日志
+  • 核对变更范围并写 workorder_FINAL_done.md
+exec
+/bin/zsh -lc "rg -n \"repair-20260815-g2|中心登记|独立收口刀|maintenance-review-repair|G2\" /Users/uravvv/.codex/memories/MEMORY.md && sed -n '1,260p' maintenance/repair-20260815-g2/workorder_FINAL.md" in /Users/uravvv/.claude/tca-repair-g2
+ succeeded in 0ms:
+587:- token-chip-analysis, root-cause fix, no P0/P1, maintenance-review-repair.md, batch closure, fix/r10-root-cause-closure-20260809, config_key_inventory, raw config bytes, Pro review, QA12, false-green, blocked
+657:- when the user says `收口标准回写 maintenance-review-repair.md，保持单一事实源` and `验收物增加 diff→finding 映射表，无主改动=夹带=BLOCK` -> update the canonical methodology doc and require a diff-to-finding map as a hard acceptance artifact. [Task 21]
+701:- `references/maintenance-review-repair.md` is the single source of truth for R9 repair doctrine; update it when batch closure, diff→finding mapping, transport-only fake boundaries, or stop rules change. [Task 21]
+889:- token-chip-analysis, review-only, main branch, six-lens, forced attribution, 83394ab, v6.42.0, 535 tracked blobs, SHA256 ledger, 95/97 PASS, PermissionError EPERM, 97/97 PASS, temporary clone, standalone Markdown, maintenance-review-repair.md, adversarial_review_runner.py, supply_truth_gate.py, shared_release_receipt.py, risk_flags.py, BLOCK
+899:- token-chip-analysis, read-only, six perspectives, fca61ad, maintenance-review-repair.md, apply_patch, git status --short, fix_sixlens_progress.md, test_sixlens_docs.py, test_sixlens_receipts.py
+924:- when the user additionally names `maintenance-review-repair.md` 的 “标准 review 指令模板（六视角逐条过+强制归因）” and says `将review结果沉淀为一个文档` -> structure the report by the six lenses with explicit attribution on every finding and make the markdown artifact, not chat, the primary deliverable. [Task 5]
+935:- For strict in-place read-only reviews on the real repo, the durable opening sequence is: read the named task book and `references/maintenance-review-repair.md`; record branch/HEAD/cleanliness with `git branch --show-current && git rev-parse HEAD && git status --short --branch`; then keep a second `git status --short` check for the end of the run. Any later `M`/`??` means the review contract was broken. [Task 6][Task 7]
+950:- The package-internal review authority for this workflow is `references/maintenance-review-repair.md`, specifically the `六视角逐条过+强制归因` block. Use the repo’s own ledgers and prior reports only as triangulation; re-verify against live code, docs, tests, and git history before carrying a finding forward. [Task 5]
+# 工单 末刀：中心登记独立收口
+
+> 执行者：codex（纯施工，**禁止任何 git 操作**）
+> 前置：四刀（F-04/F-10/F-07/F-09 含补充轮）已全部合入本分支。
+> 本刀是集中所有"中心文件"改动的独立收口刀，融合方可整刀重放或丢弃自行统一。
+
+## A. run_all.py 挂载新测试
+
+在 `scripts/tests/run_all.py` **文件末尾**按仓库近版惯例新增一个带注释的追加块（不动主列表），挂本工程 4 个新测试：
+
+```python
+# repair-20260815-g2（F-04/F-07/F-09/F-10）：观测件收紧/对账深重验/GMGN 黄灯/探索档 CLI
+SUITE += [
+    'test_evm_observation_nonempty_code.py',
+    'test_arbitrum_exploration_cli.py',
+    'test_recon_deep_reverify.py',
+    'test_gmgn_divergence_note.py',
+]
+```
+
+## B. 契约注册表新增三条（本组专属前缀 CT-RECON-xx，防并行撞号）
+
+先 `rg -n "gmgn-divergence-note/v1|evm-reconciliation-receipt/v3|time-spotcheck/v3" references/` 确认各串实际所在的权威文档，然后：
+
+1. `scripts/tests/contract_manifest.json` 新增三条 `kind:"required"`：
+   - `CT-RECON-01`：needle `gmgn-divergence-note/v1`，authority_file 按 rg 实况（预期 `references/data-pipeline-evm-recon.md`），stages `["A2"]`；
+   - `CT-RECON-02`：needle `evm-reconciliation-receipt/v3`，authority_file 按 rg 实况，stages `["A2"]`；
+   - `CT-RECON-03`：needle `time-spotcheck/v3`，authority_file 按 rg 实况（若在多个文档中出现，挂语义权威的一处），stages `["A2"]`。
+   条目字段严格按既有白名单形状（id/kind/authority_file/needle/stages，不多不少）。
+2. `scripts/tests/contract_ids_snapshot.json`：把三个新 ID 插入并**保持整体排序**。
+
+## C. 验收（全部本地命令，逐条落输出到 `final_center_green.log`）
+
+- `python3 scripts/tests/docs_lint.py --all`
+- `python3 scripts/tests/test_contract_routes.py`
+- `python3 scripts/tests/invariant_scan.py` 与 `python3 scripts/tests/invariant_scan.py --self-test`
+- `python3 scripts/tests/run_all.py`（预期 105 项，仅两个 loopback 纵切片在你沙箱内 EPERM，如实记录留调度方）
+
+## D. done 报告
+
+`workorder_FINAL_done.md`：A/B 改动清单、rg 定位结果、验收输出摘要、给融合方的说明（本刀可整刀 cherry-pick/重放；与他组的 run_all 追加块/契约 ID 若冲突按 union 合并，CT-RECON 前缀不会撞号）。
+
+## 硬约束
+
+- 只改：`scripts/tests/run_all.py`（限末尾追加块）、`scripts/tests/contract_manifest.json`、`scripts/tests/contract_ids_snapshot.json`。
+- 禁碰：其余一切文件（含 invariant_manifest——四刀已跟刀登记完毕）。
+- 禁止一切 git 操作。
+
+codex
+工单边界已冻结：中心登记只动 3 个代码/清单文件；另外按工单产出 `final_center_green.log` 和 `workorder_FINAL_done.md`。现在先执行指定 `rg` 定位权威文档，并核对现有注册表形状与排序。
+exec
+/bin/zsh -lc "rg -n \"gmgn-divergence-note/v1|evm-reconciliation-receipt/v3|time-spotcheck/v3\" references/; tail -n 90 scripts/tests/run_all.py; sed -n '1,260p' scripts/tests/contract_manifest.json; sed -n '1,220p' scripts/tests/contract_ids_snapshot.json; ls -la maintenance/repair-20260815-g2" in /Users/uravvv/.claude/tca-repair-g2
+ succeeded in 0ms:
+references/data-pipeline-evm-recon.md:18:**GMGN 黄灯查证说明（`gmgn-divergence-note/v1`）**：第一次不带说明运行 `verify_recon.py`，让程序根据本次绑定的 config/balances/replay_stats/gmgn 四实物重算差异。若出现黄灯，人工查证后在案根手写 `gmgn_divergence_note.json`，再把原命令原参数重跑，并追加：
+references/data-pipeline-evm-recon.md:156:- 产物 `time_spotcheck.json`（`time-spotcheck/v3`，target 绑定 chain/token/final-block，并绑定 plan、plan receipt、merged input 与逐笔 RPC transcript；verdict/exit_code 为 0 PASS/2 FAIL/1 检测自身失败禁当 PASS）；split-run 案是 READY 必备件＋AUTO_GATES（handoff_manifest 重读防手报）。
+references/analyze-workflow.md:81:4. **时间抽查**：EVM 走分层计划制——先跑 `scripts/lib/anchor_plan.py` 出抽样计划，再跑 `scripts/lib/time_spotcheck.py --chain <链> --final-block <冻结块>` 对独立第二源逐锚点核对，产绑定 target、计划链与逐笔调用 transcript 的 `time-spotcheck/v3`；纯随机锚点容易漏高风险位置。Solana 走 `anchor_sampler.py --as-of-slot <冻结slot> --receipt <回执>`，任一失败日 exit 2。第二源分层选型与全史重拉例外见 evm-recon §13。注意本查不替代供给闭合。
+         'test_entity_identity_gate.py',
+         'test_review_chain_collectors.py',
+         'test_labels_resolver_guards.py',
+         'test_batch1_risk_flags.py',
+         'test_roundtrip_check.py', 'test_benchmark_labels.py',
+         'test_add_labels_rollback.py',
+         'test_fetch_failclosed.py', 'test_fetch_gmgn_sh.py', 'test_sixlens_receipts.py',
+         'test_sixlens_docs.py',
+         'test_token_no_positional.py',
+         'test_contract_routes.py',
+         'test_version_consistency.py',
+         'test_chain_support_matrix.py',
+         'test_formal_chain_support.py',
+         'test_review_scale_guards.py',
+         'test_figures_from_facts.py', 'test_cluster_quality.py',
+         'test_sqd_merge_equiv.py', 'test_supply_truth_gate.py',
+         'test_repair_batch_a.py',
+         'test_repair_batch_b.py',
+         'test_repair_batch_c.py',
+         'test_handoff_manifest.py', 'test_audit_release_gate.py',
+         'test_review_20260804_p0.py',
+         'test_review_20260804_p101.py',
+         'test_review_20260804_p104.py',
+         'test_review_20260804_p105.py',
+         'test_review_20260804_p106.py',
+         'test_review_20260804_p201.py',
+         'test_review_20260804_p202.py',
+         'test_round4_csv_adapters.py',
+         'test_param_scripts.py',
+         'test_round4_a5_seal.py',
+         'test_round4_identity_emitter.py', 'test_round4b_provenance.py',
+         'test_round4c_solana_provenance.py',
+         'test_state_from_facts.py',
+         'test_a4_gate.py', 'test_time_spotcheck.py', 'test_peaks_daily.py',
+         'test_wave_scan.py', 'test_flow_anomaly.py',
+         'test_entity_source_trace.py', 'test_adjudication_validator.py']
+
+# v6.20.0 持仓分布形态硬闸。单列在扫描器与封口链测试之后，任何新绕过都会阻断全量 suite。
+SUITE += ['test_distribution_gate.py']
+
+# v6.39.0 APU 案（ANOM-012）存量迁移三工单：replay_stats 覆盖截止块契约、
+# 太古 done 官方迁移全链、旧 −1 产物格式迁移命令。
+SUITE += ['test_apu_legacy_gaps.py']
+
+# v6.40.0 六视角 BLOCK 修复工程批 D（F-06/F-07/GPT-F-06＋台账 A-1/A-3/A-5/B-1/B-2/B-4/B-5/B-7）
+SUITE += ['test_repair_batch_d.py']
+
+# v6.41.0 批1 步骤1 RV-07：真 FAIL 收据显式归档旧 PASS 后成为 canonical。
+SUITE += ['test_repair_batch1.py']
+
+# v6.42.0 批2 工单 B：F-02 对抗复核 v3 结构与绑定闭环。
+SUITE += ['test_repair_batch2_f02.py']
+
+# 批3 工单 F01：A4 blocker 语义联动、文本门槛与 entrypoint 身份闭环。
+SUITE += ['test_repair_batch3_f01.py']
+
+# 批3工单 F04/F05：deploy-sync 与 env_check fail-closed 注入回归。
+SUITE += ['test_repair_batch3_gates.py']
+
+# EVM 观测锚工程工单 A：bundle/transcript 协议、producer 与 fail-closed 负测。
+SUITE += ['test_evm_observation.py']
+
+# EVM 观测锚工程工单 C：shared/handoff/audit 公共消费、N-2 与原 F-02/F-03 反例。
+SUITE += ['test_evm_observation_release.py']
+
+
+def main():
+    results = []
+    for item in SUITE:
+        args = item if isinstance(item, list) else [item]
+        name = ' '.join(args)
+        p = subprocess.run([sys.executable, os.path.join(HERE, args[0])] + args[1:],
+                           capture_output=True, text=True)
+        tail = (p.stdout.strip().splitlines() or ['(无输出)'])[-1]
+        results.append((name, p.returncode, tail))
+        if p.returncode != 0:
+            print(f'--- {name} 完整输出 ---')
+            print(p.stdout + p.stderr)
+    print('=' * 56)
+    bad = 0
+    for name, rc, tail in results:
+        mark = 'PASS' if rc == 0 else f'FAIL(rc={rc})'
+        bad += rc != 0
+        print(f'{mark:>10}  {name:<24} {tail[:70]}')
+    print(f'{"=" * 56}\n{"全部通过" if not bad else str(bad) + " 项失败——修完再收工"}')
+    return 1 if bad else 0
+
+
+if __name__ == '__main__':
+    sys.exit(main())
+{
+  "schema": "contract-manifest/v2",
+  "contracts": [
+    {"id":"CT-METHOD-01","authority_file":"SKILL.md","needle":"EF-2 历史静置仓反扫","stages":["A3","A5"],"kind":"required"},
+    {"id":"CT-METHOD-02","authority_file":"SKILL.md","needle":"dormant_warehouse_audit.json","stages":["A3","A5"],"kind":"required"},
+    {"id":"CT-METHOD-03","authority_file":"SKILL.md","needle":"不允许冻结实体","stages":["A3","A5"],"kind":"required"},
+    {"id":"CT-METHOD-04","authority_file":"references/playbook-entity-cluster-methods.md","needle":"候选全集从三条现役机械通道取齐","stages":["A3","A5"],"kind":"required"},
+    {"id":"CT-METHOD-05","authority_file":"references/playbook-entity-cluster-methods.md","needle":"strict ∪ expanded","stages":["A3","A5"],"kind":"required"},
+    {"id":"CT-METHOD-06","authority_file":"references/playbook-entity-cluster-methods.md","needle":"同一交易末快照","stages":["A3","A5"],"kind":"required"},
+    {"id":"CT-METHOD-07","authority_file":"references/playbook-entity-cluster-methods.md","needle":"universe_ref","stages":["A3","A5"],"kind":"required"},
+    {"id":"CT-METHOD-08","authority_file":"references/playbook-entity-cluster-methods.md","needle":"must_adjudicate","stages":["A3","A5"],"kind":"required"},
+    {"id":"CT-METHOD-09","authority_file":"references/playbook-entity-cluster-methods.md","needle":"OTC 排除检验","stages":["A3","A5"],"kind":"required"},
+    {"id":"CT-METHOD-10","authority_file":"references/playbook-entity-cluster-tiering.md","needle":"历史静置仓反向扫描后的双边界峰值","stages":["A3","A5"],"kind":"required"},
+    {"id":"CT-METHOD-11","authority_file":"references/playbook-entity-cluster-tiering.md","needle":"严格下限","stages":["A3","A5"],"kind":"required"},
+    {"id":"CT-METHOD-12","authority_file":"references/playbook-entity-cluster-tiering.md","needle":"扩展上限","stages":["A3","A5"],"kind":"required"},
+    {"id":"CT-METHOD-13","authority_file":"references/playbook-entity-cluster-tiering.md","needle":"prev_close_plus_gross_in/v2","stages":["A3","A5"],"kind":"required"},
+    {"id":"CT-METHOD-14","authority_file":"references/playbook-entity-cluster-tiering.md","needle":"trigger_days.json","stages":["A3","A5"],"kind":"required"},
+    {"id":"CT-CONTROL-01","authority_file":"SKILL.md","needle":"控盘看最终经济控制","stages":["A3","A5"],"kind":"required"},
+    {"id":"CT-CONTROL-02","authority_file":"SKILL.md","needle":"economic_control_ledger.json","stages":["A3","A5"],"kind":"required"},
+    {"id":"CT-CONTROL-03","authority_file":"SKILL.md","needle":"公共设施不进永久成员表","stages":["A3","A5"],"kind":"required"},
+    {"id":"CT-CONTROL-04","authority_file":"references/economic-control-accounting.md","needle":"实体成员表","stages":["A3","A5"],"kind":"required"},
+    {"id":"CT-CONTROL-05","authority_file":"references/economic-control-accounting.md","needle":"链上位置账","stages":["A3","A5"],"kind":"required"},
+    {"id":"CT-CONTROL-06","authority_file":"references/economic-control-accounting.md","needle":"经济控制账","stages":["A3","A5"],"kind":"required"},
+    {"id":"CT-CONTROL-07","authority_file":"references/economic-control-accounting.md","needle":"unresolved_facility_exposure","stages":["A3","A5"],"kind":"required"},
+    {"id":"CT-CONTROL-08","authority_file":"references/playbook-entity-cluster-tiering.md","needle":"判级的\"持仓\"强制解释为可证经济控制量","stages":["A3","A5"],"kind":"required"},
+    {"id":"CT-CONTROL-09","authority_file":"references/playbook-entity-cluster-tiering.md","needle":"严格/扩展是确权边界","stages":["A3","A5"],"kind":"required"},
+    {"id":"CT-WAVE-01","authority_file":"SKILL.md","needle":"EF-3 覆盖发现闸","stages":["A3"],"kind":"required"},
+    {"id":"CT-WAVE-02","authority_file":"SKILL.md","needle":"EF-3A 波次扫描","stages":["A3"],"kind":"required"},
+    {"id":"CT-WAVE-03","authority_file":"SKILL.md","needle":"EF-3B 资金流异常扫描","stages":["A3"],"kind":"required"},
+    {"id":"CT-WAVE-04","authority_file":"SKILL.md","needle":"EF-3C 候选裁决与实体溯源","stages":["A3"],"kind":"required"},
+    {"id":"CT-WAVE-05","authority_file":"SKILL.md","needle":"EF-3C-P1","stages":["A3"],"kind":"required"},
+    {"id":"CT-WAVE-06","authority_file":"SKILL.md","needle":"P4 原始输入及算法绑定重放","stages":["A3"],"kind":"required"},
+    {"id":"CT-WAVE-07","authority_file":"references/analyze-workflow.md","needle":"EF-3A 全体持仓波次扫描","stages":["A3"],"kind":"required"},
+    {"id":"CT-WAVE-08","authority_file":"references/analyze-workflow.md","needle":"EF-3B 资金流异常扫描","stages":["A3"],"kind":"required"},
+    {"id":"CT-WAVE-09","authority_file":"references/analyze-workflow.md","needle":"EF-3C 候选裁决与实体溯源","stages":["A3"],"kind":"required"},
+    {"id":"CT-WAVE-10","authority_file":"references/analyze-workflow.md","needle":"entity_source_trace.py","stages":["A3"],"kind":"required"},
+    {"id":"CT-WAVE-11","authority_file":"references/analyze-workflow.md","needle":"adjudication_validator.py","stages":["A3"],"kind":"required"},
+    {"id":"CT-WAVE-12","authority_file":"references/analyze-workflow.md","needle":"覆盖真空声明","stages":["A3"],"kind":"required"},
+    {"id":"CT-WAVE-13","authority_file":"references/analyze-workflow.md","needle":"EF-3C-P1","stages":["A3"],"kind":"required"},
+    {"id":"CT-WAVE-14","authority_file":"references/split-run.md","needle":"wave_scan_report.json","stages":["A3"],"kind":"required"},
+    {"id":"CT-WAVE-15","authority_file":"references/split-run.md","needle":"flow_anomaly_report.json","stages":["A3"],"kind":"required"},
+    {"id":"CT-WAVE-16","authority_file":"references/split-run.md","needle":"EF-3A/EF-3B","stages":["A3"],"kind":"required"},
+    {"id":"CT-WAVE-17","authority_file":"references/split-run.md","needle":"EF-3C","stages":["A3"],"kind":"required"},
+    {"id":"CT-WAVE-18","authority_file":"references/split-run.md","needle":"EF-3C-P1～P4","stages":["A3"],"kind":"required"},
+    {"id":"CT-WAVE-19","authority_file":"references/split-run.md","needle":"provenance_ledger.json","stages":["A3"],"kind":"required"},
+    {"id":"CT-WAVE-20","authority_file":"references/casebook/supply-accounting.md","needle":"wave_scan.py","stages":["A3"],"kind":"required"},
+    {"id":"CT-WAVE-21","authority_file":"references/casebook/supply-accounting.md","needle":"桶存在≠桶内被检验过","stages":["A3"],"kind":"required"},
+    {"id":"CT-WAVE-22","authority_file":"references/casebook/supply-accounting.md","needle":"闸外的人来试着绕它","stages":["A3"],"kind":"required"},
+    {"id":"CT-WAVE-23","authority_file":"references/scan-schemas.md","needle":"wave-scan/v3","stages":["A3"],"kind":"required"},
+    {"id":"CT-WAVE-24","authority_file":"references/scan-schemas.md","needle":"flow-anomaly/v2","stages":["A3"],"kind":"required"},
+    {"id":"CT-WAVE-25","authority_file":"references/scan-schemas.md","needle":"candidate-adjudications/v1","stages":["A3"],"kind":"required"},
+    {"id":"CT-WAVE-26","authority_file":"references/scan-schemas.md","needle":"provenance-ledger/v2","stages":["A3"],"kind":"required"},
+    {"id":"CT-WAVE-27","authority_file":"references/scan-schemas.md","needle":"正向模拟","stages":["A3"],"kind":"required"},
+    {"id":"CT-WAVE-28","authority_file":"references/scan-schemas.md","needle":"members_sha256","stages":["A3"],"kind":"required"},
+    {"id":"CT-WAVE-29","authority_file":"references/scan-schemas.md","needle":"完整字段登记","stages":["A3"],"kind":"required"},
+    {"id":"CT-WAVE-30","authority_file":"references/scan-schemas.md","needle":"scan_universe","stages":["A3"],"kind":"required"},
+    {"id":"CT-WAVE-31","authority_file":"references/scan-schemas.md","needle":"must_adjudicate","stages":["A3"],"kind":"required"},
+    {"id":"CT-SIMULT-01","authority_file":"references/playbook-entity-cluster-methods.md","needle":"同时性共现（同秒/同块）家族","stages":["A3"],"kind":"required"},
+    {"id":"CT-SIMULT-02","authority_file":"references/playbook-entity-cluster-methods.md","needle":"① 候选发现档","stages":["A3"],"kind":"required"},
+    {"id":"CT-SIMULT-03","authority_file":"references/playbook-entity-cluster-methods.md","needle":"② 单币强指纹档","stages":["A3"],"kind":"required"},
+    {"id":"CT-SIMULT-04","authority_file":"references/playbook-entity-cluster-methods.md","needle":"③ 跨币强证据档","stages":["A3"],"kind":"required"},
+    {"id":"CT-SIMULT-05","authority_file":"references/playbook-entity-cluster-methods.md","needle":"高度疑似同一执行端","stages":["A3"],"kind":"required"},
+    {"id":"CT-SIMULT-06","authority_file":"references/playbook-entity-cluster-methods.md","needle":"持仓画像旁证","stages":["A3"],"kind":"required"},
+    {"id":"CT-DISTRIBUTION-01","authority_file":"references/scan-schemas.md","needle":"distribution-scan/v2","stages":["A3","A4.5","A5"],"kind":"required"},
+    {"id":"CT-DISTRIBUTION-02","authority_file":"references/scan-schemas.md","needle":"distribution-explanation/v1","stages":["A3","A4.5","A5"],"kind":"required"},
+    {"id":"CT-DISTRIBUTION-03","authority_file":"references/scan-schemas.md","needle":"distribution-adjudications/v1","stages":["A3","A4.5","A5"],"kind":"required"},
+    {"id":"CT-DISTRIBUTION-04","authority_file":"references/scan-schemas.md","needle":"pattern-resolutions/v1","stages":["A3","A4.5","A5"],"kind":"required"},
+    {"id":"CT-DISTRIBUTION-05","authority_file":"references/scan-schemas.md","needle":"distribution-rounds/v1","stages":["A3","A4.5","A5"],"kind":"required"},
+    {"id":"CT-DISTRIBUTION-06","authority_file":"references/scan-schemas.md","needle":"distribution-exception-receipt/v1","stages":["A3","A4.5","A5"],"kind":"required"},
+    {"id":"CT-DISTRIBUTION-07","authority_file":"references/scan-schemas.md","needle":"Holm-Bonferroni","stages":["A3","A4.5","A5"],"kind":"required"},
+    {"id":"CT-DISTRIBUTION-08","authority_file":"references/scan-schemas.md","needle":"launch_covered=false","stages":["A3","A4.5","A5"],"kind":"required"},
+    {"id":"CT-DISTRIBUTION-09","authority_file":"references/analyze-workflow.md","needle":"当前持仓分布初判","stages":["A3","A4.5","A5"],"kind":"required"},
+    {"id":"CT-DISTRIBUTION-10","authority_file":"references/analyze-workflow.md","needle":"当前持仓分布终判环","stages":["A3","A4.5","A5"],"kind":"required"},
+    {"id":"CT-DISTRIBUTION-11","authority_file":"references/analyze-workflow.md","needle":"a5-report-seal/v3","stages":["A3","A4.5","A5"],"kind":"required"},
+    {"id":"CT-DISTRIBUTION-12","authority_file":"references/analyze-workflow.md","needle":"G11","stages":["A3","A4.5","A5"],"kind":"required"},
+    {"id":"CT-DISTRIBUTION-13","authority_file":"references/split-run.md","needle":"distribution_scan.json","stages":["A3","A4.5","A5"],"kind":"required"},
+    {"id":"CT-DISTRIBUTION-14","authority_file":"references/split-run.md","needle":"handoff/v3","stages":["A3","A4.5","A5"],"kind":"required"},
+    {"id":"CT-DISTRIBUTION-15","authority_file":"references/split-run.md","needle":"holder_distribution_current.png","stages":["A3","A4.5","A5"],"kind":"required"},
+    {"id":"CT-DISTRIBUTION-16","authority_file":"references/split-run.md","needle":"a4-seal/v4","stages":["A3","A4.5","A5"],"kind":"required"},
+    {"id":"CT-SEMANTIC-01","kind":"required","authority_file":"SKILL.md","needle":"Arbitrum 仅保留探索支持","stages":["A0-A5"]},
+    {"id":"CT-SEMANTIC-02","kind":"required","authority_file":"SKILL.md","needle":"三问一异常","stages":["A0-A5"]},
+    {"id":"CT-SEMANTIC-03","kind":"required","authority_file":"SKILL.md","needle":"A3 实体冻结门禁编号","stages":["A0-A5"]},
+    {"id":"CT-SEMANTIC-04","kind":"required","authority_file":"SKILL.md","needle":"链内 collection_manifest/receipt","stages":["A0-A5"]},
+    {"id":"CT-SEMANTIC-05","kind":"required","authority_file":"references/independent-audit-protocol.md","needle":"--profile new-analysis","stages":["audit"]},
+    {"id":"CT-SEMANTIC-06","kind":"required","authority_file":"references/independent-audit-protocol.md","needle":"--profile independent-audit","stages":["audit"]},
+    {"id":"CT-SEMANTIC-07","kind":"required","authority_file":"references/independent-audit-protocol.md","needle":"id、规范化文本、最终 verdict、证据文件集合和报告位置","stages":["audit"]},
+    {"id":"CT-SEMANTIC-08","kind":"required","authority_file":"references/independent-audit-protocol.md","needle":"CHIP_REPRODUCE_OUTPUT","stages":["audit"]},
+    {"id":"CT-SEMANTIC-09","kind":"required","authority_file":"references/independent-audit-protocol.md","needle":"存量 reproduce-receipt/v1 迁移","stages":["audit"]},
+    {"id":"CT-SEMANTIC-10","kind":"required","authority_file":"references/independent-audit-protocol.md","needle":"不得原地升级","stages":["audit"]},
+    {"id":"CT-SEMANTIC-11","kind":"required","authority_file":"references/independent-audit-protocol.md","needle":"adversarial-review-execution/v1","stages":["audit"]},
+    {"id":"CT-SEMANTIC-12","kind":"required","authority_file":"references/independent-audit-protocol.md","needle":"案目录里的同名/复制脚本","stages":["audit"]},
+    {"id":"CT-SEMANTIC-13","kind":"required","authority_file":"references/independent-audit-protocol.md","needle":"无 producer 的 accounting","stages":["audit"]},
+    {"id":"CT-SEMANTIC-14","kind":"required","authority_file":"references/report-template.md","needle":"state_from_facts.py","stages":["A5"]},
+    {"id":"CT-SEMANTIC-15","kind":"required","authority_file":"references/report-template.md","needle":"--mode analysis-new","stages":["A5"]},
+    {"id":"CT-SEMANTIC-16","kind":"required","authority_file":"references/report-template.md","needle":"--mode analysis-audit","stages":["A5"]},
+    {"id":"CT-SEMANTIC-17","kind":"required","authority_file":"references/report-template.md","needle":"a4-seal/v4","stages":["A5"]},
+    {"id":"CT-SEMANTIC-18","kind":"required","authority_file":"references/report-template.md","needle":"ET-1/ET-2","stages":["A5"]},
+    {"id":"CT-SEMANTIC-19","kind":"required","authority_file":"references/analyze-workflow.md","needle":"Arbitrum（探索）","stages":["A0-A5"]},
+    {"id":"CT-SEMANTIC-20","kind":"required","authority_file":"references/analyze-workflow.md","needle":"identity_gate_v3","stages":["A0-A5"]},
+    {"id":"CT-SEMANTIC-21","kind":"required","authority_file":"references/analyze-workflow.md","needle":"--snapshot-receipt","stages":["A0-A5"]},
+    {"id":"CT-SEMANTIC-22","kind":"required","authority_file":"references/analyze-workflow.md","needle":"--total-supply-raw","stages":["A0-A5"]},
+    {"id":"CT-SEMANTIC-23","kind":"required","authority_file":"references/analyze-workflow.md","needle":"a4-seal/v4","stages":["A0-A5"]},
+    {"id":"CT-SEMANTIC-24","kind":"required","authority_file":"references/analyze-workflow.md","needle":"不得手工补字段","stages":["A0-A5"]},
+    {"id":"CT-SEMANTIC-25","kind":"required","authority_file":"references/analyze-workflow.md","needle":"GPA raw/meta","stages":["A0-A5"]},
+    {"id":"CT-SEMANTIC-26","kind":"required","authority_file":"references/analyze-workflow.md","needle":"跨 scan pubkey 去重函数","stages":["A0-A5"]},
+    {"id":"CT-SEMANTIC-27","kind":"required","authority_file":"references/analyze-workflow.md","needle":"既有采集产物复用","stages":["A0-A5"]},
+    {"id":"CT-SEMANTIC-28","kind":"required","authority_file":"references/analyze-workflow.md","needle":"data/v2/run_*/done.json","stages":["A0-A5"]},
+    {"id":"CT-SEMANTIC-29","kind":"required","authority_file":"references/analyze-workflow.md","needle":"data/soltx-*.jsonl.gz","stages":["A0-A5"]},
+    {"id":"CT-SEMANTIC-30","kind":"required","authority_file":"references/analyze-workflow.md","needle":"done_with_gaps","stages":["A0-A5"]},
+    {"id":"CT-SEMANTIC-31","kind":"required","authority_file":"references/analyze-workflow.md","needle":"collection_manifest.json","stages":["A0-A5"]},
+    {"id":"CT-SEMANTIC-32","kind":"required","authority_file":"references/data-pipeline-evm-channels.md","needle":"evm-channel-receipt/v2","stages":["A1-A2"]},
+    {"id":"CT-SEMANTIC-33","kind":"required","authority_file":"references/data-pipeline-evm-channels.md","needle":"evm-collector-run/v2","stages":["A1-A2"]},
+    {"id":"CT-SEMANTIC-34","kind":"required","authority_file":"references/data-pipeline-evm-channels.md","needle":"--collector-receipt","stages":["A1-A2"]},
+    {"id":"CT-SEMANTIC-35","kind":"required","authority_file":"references/data-pipeline-evm-channels.md","needle":"--resume-receipt","stages":["A1-A2"]},
+    {"id":"CT-SEMANTIC-36","kind":"required","authority_file":"references/data-pipeline-evm-channels.md","needle":"存量 legacy CSV","stages":["A1-A2"]},
+    {"id":"CT-SEMANTIC-37","kind":"required","authority_file":"references/data-pipeline-evm-channels.md","needle":"channels_preflight.py` producer","stages":["A1-A2"]},
+    {"id":"CT-SEMANTIC-38","kind":"required","authority_file":"references/data-pipeline-evm-channels.md","needle":"完全相同的 inputs","stages":["A1-A2"]},
+    {"id":"CT-SEMANTIC-39","kind":"required","authority_file":"references/data-pipeline-evm-channels.md","needle":"不能把两份互相咬合的 JSON","stages":["A1-A2"]},
+    {"id":"CT-SEMANTIC-40","kind":"required","authority_file":"references/data-pipeline-solana-capture.md","needle":"免费层不支持 batch","stages":["A1-A2"]},
+    {"id":"CT-SEMANTIC-41","kind":"required","authority_file":"references/data-pipeline-solana-capture.md","needle":"10 RPS","stages":["A1-A2"]},
+    {"id":"CT-SEMANTIC-42","kind":"required","authority_file":"references/data-pipeline-solana-scan.md","needle":"G8 离线重放契约","stages":["A1-A3"]},
+    {"id":"CT-SEMANTIC-43","kind":"required","authority_file":"references/data-pipeline-solana-scan.md","needle":"parse_gpa_response","stages":["A1-A3"]},
+    {"id":"CT-SEMANTIC-44","kind":"required","authority_file":"references/data-pipeline-solana-scan.md","needle":"result.value.amount","stages":["A1-A3"]},
+    {"id":"CT-SEMANTIC-45","kind":"required","authority_file":"references/data-pipeline-solana-scan.md","needle":"禁止手补 meta/hash","stages":["A1-A3"]},
+    {"id":"CT-SEMANTIC-46","kind":"required","authority_file":"references/analysis-playbook.md","needle":"三问一异常","stages":["A3"]},
+    {"id":"CT-SEMANTIC-47","kind":"required","authority_file":"commands-staging/token-analyze.md","needle":"三问一异常","stages":["A0-A5"]},
+    {"id":"CT-SEMANTIC-48","kind":"required","authority_file":"commands-staging/token-analyze-2.md","needle":"三问一异常","stages":["A3-A5"]},
+    {"id":"CT-BANNED-01","kind":"banned","authority_file":"references/playbook-entity-cluster-methods.md","needle":"程序化跟单不是同一人","stages":["A3"]},
+    {"id":"CT-BANNED-02","kind":"banned","authority_file":"SKILL.md","needle":"对任意链上代币","stages":["A0-A5"]},
+    {"id":"CT-BANNED-03","kind":"banned","authority_file":"SKILL.md","needle":"v5.0 三问框架","stages":["A0-A5"]},
+    {"id":"CT-BANNED-04","kind":"banned","authority_file":"SKILL.md","needle":"实体冻结前三硬闸","stages":["A0-A5"]},
+    {"id":"CT-BANNED-05","kind":"banned","authority_file":"references/report-template.md","needle":"手写 15 行","stages":["A5"]},
+    {"id":"CT-BANNED-06","kind":"banned","authority_file":"references/report-template.md","needle":"a4-seal/v2","stages":["A5"]},
+    {"id":"CT-BANNED-07","kind":"banned","authority_file":"references/data-pipeline-evm-channels.md","needle":"evm-channel-receipt/v1","stages":["A1-A2"]},
+    {"id":"CT-BANNED-08","kind":"banned","authority_file":"references/data-pipeline-evm-channels.md","needle":"--empty-proof","stages":["A1-A2"]},
+    {"id":"CT-BANNED-09","kind":"banned","authority_file":"references/analysis-playbook.md","needle":"三问框架","stages":["A3"]},
+    {"id":"CT-BANNED-10","kind":"banned","authority_file":"commands-staging/token-analyze.md","needle":"三问框架","stages":["A0-A5"]},
+    {"id":"CT-BANNED-11","kind":"banned","authority_file":"commands-staging/token-analyze-2.md","needle":"三问框架","stages":["A3-A5"]},
+    {"id":"CT-BANNED-12","kind":"banned","authority_file":"scripts/solana/decode_txs_v2.py","needle":"默认 20 笔/POST","stages":["A1"]},
+    {"id":"CT-BANNED-13","kind":"banned","authority_file":"scripts/solana/decode_txs_v2.py","needle":"[--batch 20]","stages":["A1"]},
+    {"id":"CT-BANNED-14","kind":"banned","authority_file":"scripts/solana/decode_txs_v2.py","needle":"免代理且 50 RPS","stages":["A1"]},
+    {"id":"CT-SEMANTIC-49","kind":"required","authority_file":"references/analyze-workflow.md","needle":"tolerance-waiver/v1","stages":["A2","A5"]},
+    {"id":"CT-SEMANTIC-50","kind":"required","authority_file":"references/analyze-workflow.md","needle":"model_probe_block","stages":["A2","A5"]},
+    {"id":"CT-SEMANTIC-51","kind":"required","authority_file":"references/scan-schemas.md","needle":"mint_total_raw","stages":["A3","A4.5","A5"]},
+    {"id":"CT-SEMANTIC-52","kind":"required","authority_file":"references/scan-schemas.md","needle":"camp-series-provenance/v1","stages":["A3","A5"]},
+    {"id":"CT-SEMANTIC-53","kind":"required","authority_file":"references/report-template.md","needle":"figure2-check-receipt/v1","stages":["A3","A5"]},
+    {"id":"CT-SEMANTIC-54","kind":"required","authority_file":"references/scan-schemas.md","needle":"flip-adjudications/v1","stages":["A3","A5"]},
+    {"id":"CT-SEMANTIC-55","kind":"required","authority_file":"references/data-pipeline-solana-capture.md","needle":"NO_CLOSED_SAMPLED","stages":["A1-A2"]},
+    {"id":"CT-SEMANTIC-56","kind":"required","authority_file":"references/analyze-workflow.md","needle":"supply_truth.json.superseded-","stages":["A2"]},
+    {"id":"CT-SEMANTIC-57","kind":"required","authority_file":"references/data-pipeline-evm-recon.md","needle":"evm-observation-bundle/v1","stages":["A2","A5"]},
+    {"id":"CT-SEMANTIC-58","kind":"required","authority_file":"references/data-pipeline-evm-recon.md","needle":"supply-truth-receipt/v4","stages":["A2","A5"]},
+    {"id":"CT-SEMANTIC-59","kind":"required","authority_file":"references/data-pipeline-evm-recon.md","needle":"accounting-gate/v2","stages":["A2","A5"]}
+  ]
+}
+[
+ "CT-BANNED-01",
+ "CT-BANNED-02",
+ "CT-BANNED-03",
+ "CT-BANNED-04",
+ "CT-BANNED-05",
+ "CT-BANNED-06",
+ "CT-BANNED-07",
+ "CT-BANNED-08",
+ "CT-BANNED-09",
+ "CT-BANNED-10",
+ "CT-BANNED-11",
+ "CT-BANNED-12",
+ "CT-BANNED-13",
+ "CT-BANNED-14",
+ "CT-CONTROL-01",
+ "CT-CONTROL-02",
+ "CT-CONTROL-03",
+ "CT-CONTROL-04",
+ "CT-CONTROL-05",
+ "CT-CONTROL-06",
+ "CT-CONTROL-07",
+ "CT-CONTROL-08",
+ "CT-CONTROL-09",
+ "CT-DISTRIBUTION-01",
+ "CT-DISTRIBUTION-02",
+ "CT-DISTRIBUTION-03",
+ "CT-DISTRIBUTION-04",
+ "CT-DISTRIBUTION-05",
+ "CT-DISTRIBUTION-06",
+ "CT-DISTRIBUTION-07",
+ "CT-DISTRIBUTION-08",
+ "CT-DISTRIBUTION-09",
+ "CT-DISTRIBUTION-10",
+ "CT-DISTRIBUTION-11",
+ "CT-DISTRIBUTION-12",
+ "CT-DISTRIBUTION-13",
+ "CT-DISTRIBUTION-14",
+ "CT-DISTRIBUTION-15",
+ "CT-DISTRIBUTION-16",
+ "CT-METHOD-01",
+ "CT-METHOD-02",
+ "CT-METHOD-03",
+ "CT-METHOD-04",
+ "CT-METHOD-05",
+ "CT-METHOD-06",
+ "CT-METHOD-07",
+ "CT-METHOD-08",
+ "CT-METHOD-09",
+ "CT-METHOD-10",
+ "CT-METHOD-11",
+ "CT-METHOD-12",
+ "CT-METHOD-13",
+ "CT-METHOD-14",
+ "CT-SEMANTIC-01",
+ "CT-SEMANTIC-02",
+ "CT-SEMANTIC-03",
+ "CT-SEMANTIC-04",
+ "CT-SEMANTIC-05",
+ "CT-SEMANTIC-06",
+ "CT-SEMANTIC-07",
+ "CT-SEMANTIC-08",
+ "CT-SEMANTIC-09",
+ "CT-SEMANTIC-10",
+ "CT-SEMANTIC-11",
+ "CT-SEMANTIC-12",
+ "CT-SEMANTIC-13",
+ "CT-SEMANTIC-14",
+ "CT-SEMANTIC-15",
+ "CT-SEMANTIC-16",
+ "CT-SEMANTIC-17",
+ "CT-SEMANTIC-18",
+ "CT-SEMANTIC-19",
+ "CT-SEMANTIC-20",
+ "CT-SEMANTIC-21",
+ "CT-SEMANTIC-22",
+ "CT-SEMANTIC-23",
+ "CT-SEMANTIC-24",
+ "CT-SEMANTIC-25",
+ "CT-SEMANTIC-26",
+ "CT-SEMANTIC-27",
+ "CT-SEMANTIC-28",
+ "CT-SEMANTIC-29",
+ "CT-SEMANTIC-30",
+ "CT-SEMANTIC-31",
+ "CT-SEMANTIC-32",
+ "CT-SEMANTIC-33",
+ "CT-SEMANTIC-34",
+ "CT-SEMANTIC-35",
+ "CT-SEMANTIC-36",
+ "CT-SEMANTIC-37",
+ "CT-SEMANTIC-38",
+ "CT-SEMANTIC-39",
+ "CT-SEMANTIC-40",
+ "CT-SEMANTIC-41",
+ "CT-SEMANTIC-42",
+ "CT-SEMANTIC-43",
+ "CT-SEMANTIC-44",
+ "CT-SEMANTIC-45",
+ "CT-SEMANTIC-46",
+ "CT-SEMANTIC-47",
+ "CT-SEMANTIC-48",
+ "CT-SEMANTIC-49",
+ "CT-SEMANTIC-50",
+ "CT-SEMANTIC-51",
+ "CT-SEMANTIC-52",
+ "CT-SEMANTIC-53",
+ "CT-SEMANTIC-54",
+ "CT-SEMANTIC-55",
+ "CT-SEMANTIC-56",
+ "CT-SEMANTIC-57",
+ "CT-SEMANTIC-58",
+ "CT-SEMANTIC-59",
+ "CT-SIMULT-01",
+ "CT-SIMULT-02",
+ "CT-SIMULT-03",
+ "CT-SIMULT-04",
+ "CT-SIMULT-05",
+ "CT-SIMULT-06",
+ "CT-WAVE-01",
+ "CT-WAVE-02",
+ "CT-WAVE-03",
+ "CT-WAVE-04",
+ "CT-WAVE-05",
+ "CT-WAVE-06",
+ "CT-WAVE-07",
+ "CT-WAVE-08",
+ "CT-WAVE-09",
+ "CT-WAVE-10",
+ "CT-WAVE-11",
+ "CT-WAVE-12",
+ "CT-WAVE-13",
+ "CT-WAVE-14",
+ "CT-WAVE-15",
+ "CT-WAVE-16",
+ "CT-WAVE-17",
+ "CT-WAVE-18",
+ "CT-WAVE-19",
+ "CT-WAVE-20",
+ "CT-WAVE-21",
+ "CT-WAVE-22",
+ "CT-WAVE-23",
+ "CT-WAVE-24",
+ "CT-WAVE-25",
+ "CT-WAVE-26",
+ "CT-WAVE-27",
+ "CT-WAVE-28",
+ "CT-WAVE-29",
+ "CT-WAVE-30",
+ "CT-WAVE-31"
+]
+total 32664
+drwxr-xr-x@ 38 uravvv  staff     1216 Aug 15 11:24 .
+drwxr-xr-x@ 12 uravvv  staff      384 Aug 15 09:05 ..
+-rw-r--r--@  1 uravvv  staff   371076 Aug 15 09:12 f04_codex.log
+-rw-r--r--@  1 uravvv  staff      700 Aug 15 09:12 f04_codex_lastmsg.txt
+-rw-r--r--@  1 uravvv  staff       53 Aug 15 09:10 f04_green.log
+-rw-r--r--@  1 uravvv  staff      901 Aug 15 09:10 f04_red.log
+-rw-r--r--@  1 uravvv  staff   154919 Aug 15 09:16 f04b_codex.log
+-rw-r--r--@  1 uravvv  staff     1150 Aug 15 09:16 f04b_codex_lastmsg.txt
+-rw-r--r--@  1 uravvv  staff  8813180 Aug 15 10:07 f07_codex.log
+-rw-r--r--@  1 uravvv  staff     1074 Aug 15 10:07 f07_codex_lastmsg.txt
+-rw-r--r--@  1 uravvv  staff     2264 Aug 15 10:06 f07_green.log
+-rw-r--r--@  1 uravvv  staff      920 Aug 15 09:46 f07_red.log
+-rw-r--r--@  1 uravvv  staff  1546512 Aug 15 10:44 f07b_codex.log
+-rw-r--r--@  1 uravvv  staff      972 Aug 15 10:44 f07b_codex_lastmsg.txt
+-rw-r--r--@  1 uravvv  staff  1231706 Aug 15 11:00 f09_codex.log
+-rw-r--r--@  1 uravvv  staff      767 Aug 15 11:00 f09_codex_lastmsg.txt
+-rw-r--r--@  1 uravvv  staff     2230 Aug 15 11:00 f09_green.log
+-rw-r--r--@  1 uravvv  staff      824 Aug 15 10:56 f09_red.log
+-rw-r--r--@  1 uravvv  staff   162160 Aug 15 11:17 f09b_codex.log
+-rw-r--r--@  1 uravvv  staff      599 Aug 15 11:17 f09b_codex_lastmsg.txt
+-rw-r--r--@  1 uravvv  staff  1179237 Aug 15 09:35 f10_codex.log
+-rw-r--r--@  1 uravvv  staff      929 Aug 15 09:35 f10_codex_lastmsg.txt
+-rw-r--r--@  1 uravvv  staff     8137 Aug 15 09:33 f10_green.log
+-rw-r--r--@  1 uravvv  staff      326 Aug 15 09:28 f10_red.log
+-rw-r--r--@  1 uravvv  staff     6798 Aug 15 11:25 final_codex.log
+-rw-r--r--@  1 uravvv  staff    21121 Aug 15 09:05 plan.md
+-rw-r--r--@  1 uravvv  staff     5372 Aug 15 09:07 workorder_F04.md
+-rw-r--r--@  1 uravvv  staff     1835 Aug 15 09:13 workorder_F04_addendum.md
+-rw-r--r--@  1 uravvv  staff     4676 Aug 15 09:11 workorder_F04_done.md
+-rw-r--r--@  1 uravvv  staff     9254 Aug 15 09:27 workorder_F07.md
+-rw-r--r--@  1 uravvv  staff     1977 Aug 15 10:08 workorder_F07_addendum.md
+-rw-r--r--@  1 uravvv  staff    10754 Aug 15 10:44 workorder_F07_done.md
+-rw-r--r--@  1 uravvv  staff     8043 Aug 15 09:46 workorder_F09.md
+-rw-r--r--@  1 uravvv  staff      982 Aug 15 11:01 workorder_F09_addendum.md
+-rw-r--r--@  1 uravvv  staff     6661 Aug 15 11:24 workorder_F09_done.md
+-rw-r--r--@  1 uravvv  staff     6422 Aug 15 09:09 workorder_F10.md
+-rw-r--r--@  1 uravvv  staff     5085 Aug 15 09:34 workorder_F10_done.md
+-rw-r--r--@  1 uravvv  staff     2715 Aug 15 11:02 workorder_FINAL.md
+
+codex
+定位出现一处必须先核清的异常：`gmgn-divergence-note/v1` 与 `time-spotcheck/v3` 都落在 `references/data-pipeline-evm-recon.md`，但指定的 `evm-reconciliation-receipt/v3` 在 `references/` 中没有命中。直接登记一个不存在的 required needle 会造成必然红灯；我继续只读追查其真实拼写及前刀交付记录。
+exec
+/bin/zsh -lc "rg -n \"evm-reconciliation|reconciliation-receipt|recon.*receipt|receipt/v3\" references/ scripts/ maintenance/repair-20260815-g2/workorder_F07*.md maintenance/repair-20260815-g2/f07*_green.log; rg -n \"test_evm_observation_nonempty_code.py|test_arbitrum_exploration_cli.py|test_recon_deep_reverify.py|test_gmgn_divergence_note.py\" scripts/tests/run_all.py scripts/tests; sed -n '1,220p' maintenance/repair-20260815-g2/workorder_F07_done.md; sed -n '1,210p' references/data-pipeline-evm-recon.md" in /Users/uravvv/.claude/tca-repair-g2
+ succeeded in 0ms:
+maintenance/repair-20260815-g2/workorder_F07_done.md:13:- schema 升为 `evm-reconciliation-receipt/v3`；family 不变。
+maintenance/repair-20260815-g2/workorder_F07_addendum.md:19:- 重跑 `test_recon_deep_reverify.py`、`test_audit_release_gate.py`、`test_sixlens_receipts.py` 确认不回归；
+maintenance/repair-20260815-g2/workorder_F07.md:15:1. **schema 升版**：`SCHEMA = "evm-reconciliation-receipt/v2"` → `"/v3"`（SCHEMA_FAMILY 不变）。
+maintenance/repair-20260815-g2/workorder_F07.md:49:执行 `rg -n "evm-reconciliation-receipt/" --type py` 与 `rg -n "time-spotcheck/" --type py`（含 md），逐个处置：
+maintenance/repair-20260815-g2/workorder_F07.md:83:- 只改：`scripts/evm/verify_recon.py`、`scripts/lib/time_spotcheck.py`、`scripts/report/shared_release_receipt.py`（限对账区）、新测试、C/D 节授权文件。
+scripts/report/handoff_manifest.py:344:            target, recon_receipts = validate_reconciliation_report(
+scripts/report/handoff_manifest.py:356:                    case_dir, accounting, recon_receipts["supply_truth"])
+references/data-pipeline-evm-recon.md:34:**供给真值闸的两种销毁形态（EVM `supply-truth-receipt/v4`，Solana `supply-truth-receipt/v3`）**：EVM formal 必须先运行 `scripts/evm/observe_supply.py`，在冻结块以 EIP-1898 `blockHash` 选择器读取 `totalSupply()`、`balanceOf(ZERO)` 与 `balanceOf(dead)`，落 `evm-observation-bundle/v1`＋调用 transcript；`accounting-gate/v2` 与 supply_truth v4 必须绑定同一 bundle，正式消费阶段不再现场 RPC。主规则继续按形态①校验
+scripts/report/shared_release_receipt.py:553:def _recon_bound_reality(root, receipt, target):
+scripts/report/shared_release_receipt.py:635:def _validate_recon_balance(root, receipt, observations, balances, target):
+scripts/report/shared_release_receipt.py:800:def _validate_recon_gmgn(root, receipt, observations, balances, nominal):
+scripts/report/shared_release_receipt.py:861:def _validate_evm_reconciliation_receipt(root, receipt, target):
+scripts/report/shared_release_receipt.py:864:    balances, supply, nominal = _recon_bound_reality(root, receipt, target)
+scripts/report/shared_release_receipt.py:866:    _validate_recon_balance(root, receipt, observations, balances, target)
+scripts/report/shared_release_receipt.py:867:    _validate_recon_gmgn(root, receipt, observations, balances, nominal)
+scripts/report/shared_release_receipt.py:1065:        raise ValueError(f"reconciliation {key} receipt JSON invalid: {exc}") from exc
+scripts/report/shared_release_receipt.py:1072:            f"reconciliation {key} receipt envelope invalid: {envelope_errors[0]}；{migration}")
+scripts/report/shared_release_receipt.py:1074:             f"reconciliation {key} receipt target mismatch；{migration}")
+scripts/report/shared_release_receipt.py:1077:             f"reconciliation {key} wrapper/receipt verdict mismatch")
+scripts/report/shared_release_receipt.py:1079:             f"reconciliation {key} receipt is not PASS/0")
+scripts/report/shared_release_receipt.py:1085:                 f"reconciliation {key} receipt must be formal；{migration}")
+scripts/report/shared_release_receipt.py:1088:        _require(schema == "evm-reconciliation-receipt/v3",
+scripts/report/shared_release_receipt.py:1090:                 f"evm-reconciliation-receipt/v3；{VERIFY_RECON_V3_HINT}")
+scripts/report/shared_release_receipt.py:1091:        _validate_evm_reconciliation_receipt(root, receipt, target)
+scripts/report/shared_release_receipt.py:1094:                 f"reconciliation {key} receipt must be formal；{migration}")
+scripts/report/shared_release_receipt.py:1120:            _require(schema == "supply-truth-receipt/v3",
+scripts/report/shared_release_receipt.py:1122:                     f"expected supply-truth-receipt/v3；{schema_migration}")
+scripts/report/shared_release_receipt.py:1239:                 f"reconciliation time receipt must be formal；{migration}")
+scripts/report/shared_release_receipt.py:1251:def validate_reconciliation_report(root, expected_target=None, *, return_receipts=False):
+scripts/report/shared_release_receipt.py:1277:            raise ValueError(f"reconciliation {key} lacks PASS execution receipt")
+scripts/report/shared_release_receipt.py:1291:                    f"reconciliation {key} receipt does not bind replay_stats input；{MIGRATION_HINT}")
+scripts/report/shared_release_receipt.py:1537:    recon_target, receipts = validate_reconciliation_report(
+references/independent-audit-protocol.md:166:  `reconciliation_report.json` 必须由当前 `scripts/report/reconciliation_report.py` 读取 job spec 后受控启动四查生产者生成：balance/supply=`verify_recon.py`、supply_truth=`supply_truth_gate.py`、time=`time_spotcheck.py`（Solana 对应 anchor sampler 与 holder snapshot）。runner 要求 receipt 执行前不存在，逐项记录子进程 exit，并绑定 v2 target、生产者与输入/receipt 哈希；wrapper 顶层绑定 runner 自身路径与当前 SHA-256。聚合器逐类解析 schema、target、观测和 verdict，并拒绝无 runner 绑定或绑定哈希不符的 wrapper；旧案须重跑对应生产者与 runner。这里是内容绑定，不是单机执行证明：蓄意手拼者若正确填写当前 runner path/SHA-256 并伪造相互自洽的观测，聚合器无法仅凭 wrapper 识别；防线的实际作用是把“疏忽即可绕过”提高为必须显式填哈希、编造观测的主动造假，并由仓库 git 历史追踪代码变更。案目录里的同名/复制脚本即使 SHA-256 相同也不是生产者。
+references/independent-audit-protocol.md:167:  **明示局限（EVM 侧链上供给）**：EVM formal 先由 `observe_supply.py` 在同一冻结块哈希上读取 `totalSupply`、ZERO 与 dead 余额，落 `evm-observation-bundle/v1` 和调用 transcript；随后 `accounting-gate/v2` 与 `supply-truth-receipt/v4` 绑定同一 bundle，消费侧再把 `onchain_total_supply`、锚块和 sink 数值对回 bundle，达到与 Solana `accounting-gate/v1`＋`supply-truth-receipt/v3` 的案内 N-2 对账等深。shared 发布与 stage-1 READY handoff 都调用同一公共 validator，不能从 split 路线绕过。**bundle 是内容绑定，不是块真实性或 producer 真执行证明**：蓄意手拼者仍可同步伪造案内块头、响应和哈希链；`blockHash` 与 transcript 的价值是让第三方可拿到独立公共节点外部验真，不能把案内自洽写成案外真实。故 F-02 的裸标量缺口已闭合，外部真实性锚仍是开放边界。
+references/independent-audit-protocol.md:189:  存量裸布尔、无 producer 的 accounting、任意 producer/runner、无 execution receipt、无 `review-ledger/v1` 或 `adversarial-review/v2`、`adversarial-review/v3` 的旧文件都不得手工补字段迁移。存量 EVM 案重发布须先运行 `scripts/evm/observe_supply.py` 生成 bundle＋transcript，再以该 bundle 重跑 accounting v2 与 supply_truth v4；禁止只改 schema 或手工补 observation 字段。之后才以 job spec 运行 `python3 scripts/report/reconciliation_report.py <job-spec.json>`、按 v4 重跑两角色 runner 与 finalize 全程，最后运行共享聚合器。runner 改版后的存量 execution receipt 会先报 `producer is not current runner`，不得手改；任何 receipt、artifact、bundle、transcript、ledger 或 a4_claims.json 后替换都会阻断。
+references/scan-schemas.md:563:| `inputs` | `{语义名: {path, sha256, size}}`：EVM 必含 `replay_stats`；sol-rows 必含 `reconcile_receipt`（正式链）；Solana 收据 v3 自带同次重放实算的逻辑边摘要/行数并对锚 cache meta；cache meta 另登记 `edge_file_size`＋`edge_file_sha256` 物理指纹 |
+references/analyze-workflow.md:66:3. **供给真值闸（v6 新增，重放收尾必跑）**：EVM 先运行 `python3 scripts/evm/observe_supply.py --chain <eth|bsc|base> --token 0x… --as-of-block <冻结块> --out evm_observation_bundle.json --transcript-out evm_observation_transcript.json`，再运行 `python3 scripts/lib/supply_truth_gate.py --chain <链> --token 0x… --as-of-block <冻结块> --replay-stats <replay_stats.json> --observation-bundle evm_observation_bundle.json --out supply_truth.json`，产 `supply-truth-receipt/v4`；Solana 仍产 `supply-truth-receipt/v3`。两者均绑定 target。主规则按形态①对比 `mint−burn` 与链上 `totalSupply()`；EVM 主 FAIL 且拆分统计齐全时，形态②自动要求 `mint==totalSupply`、ZERO/dead 各自与冻结块 `balanceOf` 逐地址相等、两 sink 合计与 burn 闭合。这里只证明终态标量与 sink 逐地址归因闭合；混合形态、旧 stats 或任一观测失败均维持 fail-closed（见 casebook S-01/S-11）。
+scripts/evm/verify_recon.py:24:SCHEMA = "evm-reconciliation-receipt/v3"
+scripts/evm/verify_recon.py:25:SCHEMA_FAMILY = "evm-reconciliation-receipt/"
+scripts/evm/verify_recon.py:457:            print(f"[verify_recon] ERROR receipt 写入失败: {write_exc}", file=sys.stderr)
+scripts/evm/verify_recon.py:462:        print(f"[verify_recon] receipt 写入失败: {exc}", file=sys.stderr)
+scripts/evm/verify_recon.py:464:    print(f"[verify_recon] {receipt['verdict']} exit={receipt['exit_code']} → {a.out}")
+references/split-run.md:39:- **A2 全部**：四查对账 fail-closed，四个生产者必须由 `scripts/report/reconciliation_report.py` 接收 job spec 后受控启动；runner 校验新鲜 receipt、target、生产者和输入/receipt 哈希，再原子生成 `reconciliation_report.json`，禁止手拼 wrapper。时间抽查跑 `scripts/lib/time_spotcheck.py`（EVM 案 `time_spotcheck.json` 为 READY 必备件＋AUTO_GATES，6.7.0）——**默认锚点级直查即闭环，全史第二源重拉是例外动作**（触发条件与 pilot 报 ETA 纪律见 evm-recon §13；APU 案照旧模板全史重拉 103 分钟纯冗余教训）。
+references/split-run.md:51:  9. **当前持仓分布初判**：运行 `holder_distribution_scan.py --stage initial`，产 `distribution_scan.json` 和 `charts/distribution_stage1.png`。JSON 是 READY 必产件，工作图只供 −2 查看，不进 seal 或报告。initial 不绑定 handoff manifest。**快照单一来源硬性**：这一步吃的 owner 快照必须与 A2 四查 `verify_recon --balances` 吃的是同一个文件，别另存一份"内容一样"的副本——发布闸 new-analysis 拿 sha256 做等值比对（EVM 对四查 balance 收据的 `inputs.balances`，Solana 对 observation bundle 的 `holder_outputs.owners`），两份文件哪怕总和相同也会被判"同值换仓"直接拒。initial 记录的 `upstream_receipts` 是 optional 记录性收据：案根还没有 preflight 副本时不记是合法的，但记了就会被逐项三验。
+references/split-run.md:93:| 既有产物 | −1 | accounting_mode、链内 done.json/collection_manifest/receipt、四查 producer receipt、由 `reconciliation_report.py` 生成的 `reconciliation_report.json`、cluster_prep、address_bucket_series、价格序列；四查 receipt 格式零改动，wrapper 禁止手拼 |
+references/split-run.md:101:- **gate 记录**：每个 gate 的命令＋exit＋语义状态。`accounting_mode.json`、`supply_truth.json`、`time_spotcheck.json` 与 `reconciliation_report.json` 均由 AUTO_GATES 从产物 JSON 自动读 `verdict/exit_code`，禁止 declared 覆盖；其余 declared gate 也必须同时满足 `verdict=PASS|OK` 且 `exit_code=0`，generate 后 verify 会重查。四查必须运行 `reconciliation_report.py`，由 runner 记录四个子进程 exit 并绑定 producer receipt，不接受 −1 手报四查 wrapper。
+scripts/lib/supply_truth_gate.py:94:    "other": {"schema": "supply-truth-receipt/v3"},
+scripts/lib/camp_series_provenance.py:123:    reconcile_receipt/sniper_set 等）；亿级边数据本体不进 sidecar（其完整性由
+scripts/lib/camp_series_provenance.py:402:    "supply-truth-receipt/v3", "supply-truth-receipt/v4",
+scripts/lib/camp_series_provenance.py:507:        rr = resolved.get("inputs.reconcile_receipt")
+scripts/lib/camp_series_provenance.py:510:                "sol-rows sidecar 必须登记 inputs.reconcile_receipt"
+scripts/lib/camp_series_provenance.py:513:                              "reconcile_receipt")
+scripts/lib/camp_series_provenance.py:520:                f"reconcile_receipt 不是合法对账收据（schema 必须是 "
+scripts/lib/camp_series_provenance.py:523:            raise SeriesProvenanceError("reconcile_receipt gate_pass 非 true，序列不入正式编译")
+scripts/lib/camp_series_provenance.py:528:                    f"reconcile_receipt.{field} 必须是在场的精确 int 0")
+scripts/lib/camp_series_provenance.py:533:                "reconcile_receipt.net_supply_raw 必须在场且为非负 int")
+scripts/lib/camp_series_provenance.py:541:                f"reconcile_receipt.chain={receipt.get('chain')!r} 与案 target.chain="
+scripts/lib/camp_series_provenance.py:546:                "reconcile_receipt.mint 与案 target mint 不一致（Solana base58 大小写敏感）")
+scripts/lib/camp_series_provenance.py:570:            raise SeriesProvenanceError("reconcile_receipt.edge_count 必须为正整数")
+scripts/lib/camp_series_provenance.py:572:            raise SeriesProvenanceError("reconcile_receipt.edge_digest 必须为小写 sha256")
+scripts/lib/camp_series_provenance.py:580:                "reconcile_receipt producer path/sha256 与当前 replay_edges.py 不一致")
+scripts/lib/camp_series_provenance.py:585:                                 "reconcile.inputs.soltx_meta", receipt_dirs)
+scripts/lib/camp_series_provenance.py:587:                                   "reconcile.inputs.holders_owners", receipt_dirs)
+scripts/lib/camp_series_provenance.py:589:                                     "reconcile.inputs.holders_snapshot_meta", receipt_dirs)
+scripts/lib/camp_series_provenance.py:677:               并与 reconcile_receipt.net_supply_raw 交叉相等。
+scripts/lib/camp_series_provenance.py:698:        rr = resolved.get("inputs.reconcile_receipt")
+scripts/lib/camp_series_provenance.py:700:                              "reconcile_receipt") if rr else {}
+scripts/lib/camp_series_provenance.py:705:                "reconcile_receipt.net_supply_raw 必须在场且为非负 int")
+scripts/lib/camp_series_provenance.py:708:                f"终态快照合计 {den} ≠ reconcile_receipt.net_supply_raw "
+scripts/solana/replay_edges.py:8:  reconcile             全量重放 → 供给闭合 + 全 owner 快照对账（机器 receipt；阶段2硬关卡）
+scripts/solana/replay_edges.py:312:    _atomic_json("data/reconcile_receipt.json", receipt)
+scripts/solana/replay_edges.py:479:    # （末点对账锚）；reconcile_receipt 在场即绑（正式编译链要求其在场且 gate_pass）
+scripts/solana/replay_edges.py:482:    if Path("data/reconcile_receipt.json").exists():
+scripts/solana/replay_edges.py:483:        _inputs["reconcile_receipt"] = "data/reconcile_receipt.json"
+scripts/tests/test_a4_gate.py:157:        "schema": "supply-truth-receipt/v3",
+scripts/tests/test_sixlens_receipts.py:111:    assert receipt["schema"] == "evm-reconciliation-receipt/v3"
+scripts/tests/test_batch3_solana_vertical_slice.py:188:        for name in ("reconciliation_report.json", "reconciliation_balance_receipt.json",
+scripts/tests/test_batch3_solana_vertical_slice.py:189:                     "reconciliation_supply_receipt.json",
+scripts/tests/test_batch3_solana_vertical_slice.py:190:                     "reconciliation_supply_truth_receipt.json",
+scripts/tests/test_batch3_solana_vertical_slice.py:191:                     "reconciliation_time_receipt.json", "supply_truth.json",
+scripts/tests/invariant_manifest.json:80:    "evm-reconciliation-receipt/v3"
+scripts/tests/invariant_manifest.json:119:    "supply-truth-receipt/v3",
+scripts/tests/invariant_manifest.json:476:    "evm-reconciliation-receipt/v3",
+scripts/tests/invariant_manifest.json:483:    "supply-truth-receipt/v3",
+scripts/tests/test_evm_observation_release.py:142:        path = root / f"reconciliation_{key}_receipt.json"
+scripts/tests/test_evm_observation_release.py:148:              "receipt": receipt_ref(root / f"reconciliation_{key}_receipt.json"),
+scripts/tests/test_evm_observation_release.py:175:    path = root / "reconciliation_supply_truth_receipt.json"
+scripts/tests/test_evm_observation_release.py:229:        write(root / "reconciliation_supply_truth_receipt.json", receipt)
+scripts/tests/test_evm_observation_release.py:241:        write(root / "reconciliation_supply_truth_receipt.json", receipt)
+scripts/tests/test_evm_observation_release.py:261:        write(root / "reconciliation_supply_truth_receipt.json", receipt)
+scripts/tests/test_evm_observation_release.py:275:        receipt["schema"] = "supply-truth-receipt/v3"
+scripts/tests/test_evm_observation_release.py:276:        write(root / "reconciliation_supply_truth_receipt.json", receipt)
+scripts/tests/test_evm_observation_release.py:312:    path = root / "reconciliation_supply_truth_receipt.json"
+scripts/tests/test_evm_observation_release.py:350:            path = root / f"reconciliation_{key}_receipt.json"
+scripts/tests/test_evm_observation_release.py:354:                receipt["schema"] = "supply-truth-receipt/v3"
+scripts/tests/test_evm_observation_release.py:409:        assert bundle_sha is not None and receipt["schema"] == "supply-truth-receipt/v3"
+scripts/tests/test_audit_release_gate.py:81:        "schema": "evm-reconciliation-receipt/v3", "target": target,
+scripts/tests/test_audit_release_gate.py:141:    return recon, time_receipt
+scripts/tests/test_batch2_ready_reconciliation.py:2:"""B2-D regression: READY cannot omit the reconciliation wrapper/receipts."""
+scripts/tests/test_batch2_ready_reconciliation.py:21:    print("PASS B2-D: READY rejects missing reconciliation wrapper and bound receipts")
+scripts/tests/test_repair_batch_d.py:740:        recon["checks"]["supply"]["receipt"]["sha256"] = fixture_sha(receipt_path)
+scripts/tests/test_repair_batch_d.py:915:            doc = {"schema": "supply-truth-receipt/v3", "target": target,
+scripts/tests/test_repair_batch_d.py:1041:    camp_reconcile = root / "data/reconcile_receipt.json"
+scripts/tests/test_repair_batch_d.py:1050:        inputs={"reconcile_receipt": camp_reconcile},
+scripts/tests/test_distribution_gate.py:36:        "schema": "supply-truth-receipt/v3", "verdict": "PASS", "exit_code": 0,
+scripts/tests/test_arbitrum_exploration_cli.py:58:        raise AssertionError("formal reconciliation consumer accepted forbidden receipt")
+scripts/tests/test_supply_truth_gate.py:238:    recon = receipt.get("sink_reconciliation") or {}
+scripts/tests/test_supply_truth_gate.py:286:          and exploration.get("schema") == "supply-truth-receipt/v3"
+scripts/tests/test_r7_findings.py:359:        root = Path(td).resolve(); paths = recon_fixture(root, closed=True); receipt = root / "receipt.json"
+scripts/tests/test_r7_findings.py:362:            rc = mod.main(recon_args(paths, receipt))
+scripts/tests/test_apu_legacy_gaps.py:73:    """跑 verify_recon 到早期检查段（config 不带 RPC）；返回 (proc, receipt|None)。"""
+scripts/tests/test_handoff_manifest.py:157:        receipt_name = f"reconciliation_{key}_receipt.json"
+scripts/tests/test_repair_batch_b.py:88:        supply = {"schema": "supply-truth-receipt/v3", "verdict": "PASS", "exit_code": 0,
+scripts/tests/test_repair_batch_b.py:499:        data["reconciliation_report.json"]["checks"]["supply"]["receipt"]["sha256"] = \
+scripts/tests/test_repair_batch_b.py:563:            "schema": "supply-truth-receipt/v3", "verdict": "PASS", "exit_code": 0,
+scripts/tests/invariant_scan.py:107:        "canonical": "reconciliation check receipt", "marker": "runner wrapper",
+scripts/tests/invariant_scan.py:137:    "reconciliation_consumer": "scripts/report/shared_release_receipt.py",
+scripts/tests/invariant_scan.py:1042:        if script in reconciliation and "runner_fresh_receipt" not in protections:
+scripts/tests/test_batch3_evm_vertical_slice.py:242:        for name in ("reconciliation_report.json", "reconciliation_balance_receipt.json",
+scripts/tests/test_batch3_evm_vertical_slice.py:243:                     "reconciliation_supply_receipt.json",
+scripts/tests/test_batch3_evm_vertical_slice.py:244:                     "reconciliation_supply_truth_receipt.json",
+scripts/tests/test_batch3_evm_vertical_slice.py:245:                     "reconciliation_time_receipt.json", "supply_truth.json",
+scripts/tests/test_repair_batch_c.py:178:        {"schema": "supply-truth-receipt/v3", "verdict": "PASS", "exit_code": 0,
+scripts/tests/test_repair_batch_c.py:416:                  and doc["inputs"].get("reconcile_receipt")
+scripts/tests/test_repair_batch_c.py:467:            rr = Path("data/reconcile_receipt.json")
+scripts/tests/test_repair_batch_c.py:522:            # 反例：reconcile_receipt gate_pass=false → 拒
+scripts/tests/test_repair_batch_c.py:553:                "schema": "supply-truth-receipt/v3", "verdict": "PASS",
+scripts/tests/test_repair_batch_c.py:964:            {"schema": "supply-truth-receipt/v3", "verdict": "PASS",
+scripts/tests/test_repair_batch_c.py:1324:            rr_path = data / "reconcile_receipt.json"
+scripts/tests/test_repair_batch_c.py:1358:                    "inputs.reconcile_receipt": rr_path,
+scripts/tests/test_repair_batch_c.py:1801:                    bad_rr = write_json(Path("data/reconcile_receipt.json"), receipt)
+scripts/tests/test_repair_batch_c.py:1805:                            {"inputs.reconcile_receipt": bad_rr},
+scripts/tests/test_repair_batch_c.py:1920:            rr_path = data / "reconcile_receipt.json"
+scripts/tests/test_review_20260804_p105.py:112:        path = root / recon["checks"][key]["receipt"]["path"]
+scripts/tests/test_review_20260804_p105.py:114:        recon["checks"][key]["receipt"]["sha256"] = sha(path)
+scripts/tests/test_review_20260804_p105.py:115:    time_path = root / recon["checks"]["time"]["receipt"]["path"]
+scripts/tests/test_review_20260804_p105.py:117:    recon["checks"]["time"]["receipt"]["sha256"] = sha(time_path)
+scripts/tests/test_review_20260804_p105.py:119:    truth_path = root / recon["checks"]["supply_truth"]["receipt"]["path"]
+scripts/tests/test_review_20260804_p105.py:127:    recon["checks"]["supply_truth"]["receipt"]["sha256"] = sha(truth_path)
+scripts/tests/test_review_20260804_p105.py:153:        "schema": "supply-truth-receipt/v3",
+scripts/tests/contract_manifest.json:151:    {"id":"CT-SEMANTIC-58","kind":"required","authority_file":"references/data-pipeline-evm-recon.md","needle":"supply-truth-receipt/v4","stages":["A2","A5"]},
+scripts/tests/test_recon_deep_reverify.py:2:"""F-07 deep re-verification regressions for all reconciliation sub-receipts."""
+scripts/tests/test_recon_deep_reverify.py:113:def _test_recon_mutations(root: Path, out: Path, receipt: dict) -> None:
+scripts/tests/test_recon_deep_reverify.py:142:        ("old_schema.json", lambda v: v.__setitem__("schema", "evm-reconciliation-receipt/v2"),
+scripts/tests/test_recon_deep_reverify.py:287:        recon_out, recon_receipt = _produce_recon(recon_dir)
+scripts/tests/test_recon_deep_reverify.py:288:        _test_recon_mutations(recon_dir, recon_out, recon_receipt)
+scripts/tests/test_arbitrum_exploration_cli.py:256:        raise SystemExit("usage: test_arbitrum_exploration_cli.py [--consumer-only]")
+# 工单 F-07 施工报告（停在名单外测试决策点）
+
+## 状态
+
+**BLOCKED — 工单主体与红名单已完成，但全量验收命中名单外失败，已按工单停止扩面。**
+
+没有运行任何 git 命令。没有修改 VERSION、CHANGELOG、SKILL.md、r10_ledger.md、pyproject、run_all.py、audit_release_gate.py、handoff_manifest.py、anchor_sampler.py、contract_ids_snapshot.json，也没有触碰 shared 的 A4/adversarial 函数区。
+
+## A. producer 最小补齐
+
+### `scripts/evm/verify_recon.py`
+
+- schema 升为 `evm-reconciliation-receipt/v3`；family 不变。
+- top-N 排序改为 `(-balance, address)`；收据新增正整数 `requested_top_n` 与固定语义 `top_n_then_skip_sinks`。
+- GMGN 前 10 行改用 Decimal；拒非有限值、非法数值和重复地址；行内百分比/差值写 Decimal 规范字符串，阈值使用 `Decimal("0.15")`。
+- 每次成功的 `balanceOf` 调用落 `{seq,method,params,result}` transcript；默认 `verify_recon_transcript.json`，支持 `--transcript-out`。
+- transcript 被 `inputs.transcript` 的 path/size/sha256 绑定；receipt 与 transcript 通过 `publish_txn` 双件发布。
+
+### `scripts/lib/time_spotcheck.py`
+
+- schema 升为 `time-spotcheck/v3`。
+- `inputs` 同时绑定 plan、plan_receipt、merged input 与 transcript。
+- balance/tx 两类 RPC 调用均落连续 transcript；默认 `time_spotcheck_transcript.json`，支持 `--transcript-out`。
+- receipt 与 transcript 通过 `publish_txn` 双件发布。
+
+## B. consumer 深重验
+
+仅在 `shared_release_receipt.py` 对账区新增私有 helper，并接入 `validate_reconciliation_check`：
+
+- EVM supply：从 config、replay_stats、balances 重算 nominal、mint、burn、balance sum、负值全列与 closed；校验 config token 与 replay cutoff。
+- EVM balance：按绑定余额重算 top-N 有序地址全集；逐行核 replay_raw、chain_raw、diff_raw、status 与四计数；PASS 禁 MISMATCH/RPC_ERROR。
+- EVM balance transcript：校验连续 seq、eth_call、holder calldata、冻结块与原始 hex result。
+- GMGN：从绑定 CSV 与 balances/nominal 用 Decimal 重算全部 rows、状态与 diff_count。
+- EVM time：plan 点与 rows 做 multiset 一一对应；核 plan receipt 的 input identity；重算六计数；balance 与 tx 均对 transcript 重放。
+- Solana anchor：顶层 output 做 path/size/sha256 三验；逐行核日期范围、日期唯一、target 身份、失败行；重算 coverage/failures。
+- v2 正式拒收并给出 `verify_recon v3` / `time_spotcheck v3` 重跑迁移文案。
+
+## C. schema 级联收口
+
+| 命中位置 | 处置 |
+|---|---|
+| `verify_recon.py` producer | v2 -> v3 |
+| `time_spotcheck.py` producer | v2 -> v3 |
+| `shared_release_receipt.py` consumer | 只接受 v3；v2 留给负测 |
+| `invariant_manifest.json` producer/consumer schema | v3 |
+| `invariant_manifest.json` atomic writes | 新增两个 dual_file_txn，minimum 52 -> 54 |
+| `references/data-pipeline-evm-recon.md` | 当前产物说明改 v3，并写明新增绑定 |
+| `references/analyze-workflow.md` | 当前时间抽查路由改 v3 |
+| `contract_manifest.json` | 无旧 schema needle，无需修改 |
+| 维修计划、历史 review、archive/CHANGELOG | 历史事实，保留 v2 原文 |
+| `test_repair_batch1.py` 的 v2 | schema-family 失效测试的历史输入，保留 |
+| `test_recon_deep_reverify.py` 的 v2 | 明确迁移拒收负测，保留 |
+
+扫描结果：`invariant_scan.py` PASS，计数为 producers=62、consumers=83、transport=63、atomic=54、formal=58、exceptions=0；self-test 两个注入均按预期转红。
+
+## D. 存量适配及理由
+
+| 文件 | 适配理由 |
+|---|---|
+| `test_audit_release_gate.py` | 公共 EVM 案夹具升级为真实 v3 config/balances/stats/gmgn/transcript 与 v3 time plan 链；被多个红名单 suite 复用 |
+| `test_sixlens_receipts.py` | 浅 v2 正例升级为公共深语义夹具；producer schema 断言改 v3 |
+| `test_handoff_manifest.py` | READY 案四查夹具升级 v3；直接 time artifact schema 改 v3 |
+| `test_evm_observation_release.py` | EVM release 案升级 v3；旧“只改 target”攻击现在更早死于 replay cutoff 深验，断言改认新的首个拒绝层 |
+| `test_repair_batch_d.py` | A-5 异源账本补合法 cutoff，使反例继续抵达同源断言；Solana anchor 夹具补真实 output/date/identity |
+| `test_repair_batch1.py` | verify/time 已改双件事务，source-wiring guard 从 supersede 改验 publish_txn |
+| `test_arbitrum_exploration_cli.py` | C 节 schema 级联：formal 正例改为完整 v3；exploration/formal-tier 拒收语义不变 |
+
+红名单结果：除 `test_batch3_evm_vertical_slice.py` 在沙箱内因 loopback bind EPERM 外，其余全部通过；该纵切片在沙箱外复跑通过。详见 `f07_green.log`。
+
+## E. 新测试与红绿证据
+
+`scripts/tests/test_recon_deep_reverify.py` 使用离线 fake transport 跑真实 verify_recon/time producer，另构造最小 Solana output。覆盖：
+
+- supply 实物和与自报 closed 冲突；
+- balance 少行、replay_raw 错、matched 虚报、缺 requested_top_n、地址乱序；
+- transcript result 错、缺 transcript；
+- GMGN diff_count 虚报；
+- time plan 不对应、tx from 改动、计数虚报、缺 plan_receipt；
+- anchor output 少行、日期重复；
+- recon/time v2 迁移拒收；
+- 三类真实绿例。
+
+施工前 `f07_red.log`：旧 consumer 放行 `balances sum=80` 但自报 `balance_sum=100, closed=true` 的收据，新测试因此红。
+
+施工后新测试 PASS；证据见 `f07_green.log`。
+
+## 全量验收阻断（需调度方裁决）
+
+`python3 scripts/tests/run_all.py` 尚未完成全绿。运行中出现以下名单外失败后，已立即中断，未修改名单外文件：
+
+1. `test_repair_batch_b.py`：`test_f03_gate_evm_same_total_swap` 的旧夹具在 `bind_balance_receipt_to_snapshot` 换绑余额实物后，仅刷新输入引用，没有同步 v3 收据自报的 `supply_closure.balance_sum_raw`；新 consumer 在 `_validate_recon_supply` 正确拒绝。该文件不在 D 节红名单。
+2. `test_repair_batch_a.py`：全量汇总显示 `BATCH A FAIL 1/45`，但当前截获尾段没有该 case 名。按“名单外打红即停”没有再单跑定位。
+3. Solana/EVM 两个纵切片在沙箱内均为 `socket.bind EPERM`；EVM 已沙箱外单测通过。它们是环境能力限制，不定性为业务红灯。
+
+### 请求裁决
+
+请明确是否授权扩展 D 节名单，至少纳入：
+
+- `scripts/tests/test_review_20260804_p105.py`（实际换绑 helper 所在）；
+- `scripts/tests/test_repair_batch_b.py`（触发方）；
+- `scripts/tests/test_repair_batch_a.py`（先只读定位其 1/45，再按同族夹具规则最小适配）；
+- 若上述测试复用其他旧浅夹具，仅允许沿调用链追加必要的测试文件白名单，不改生产语义。
+
+未获授权前，本工单保持 BLOCKED，不声称全量 suite 全绿。
+
+## 如实定性
+
+本刀已把 F-07 关闭到“案内实物哈希绑定 + transcript 调用记录绑定 + 消费侧独立重算”的深度，原最小反例及同族单点变异均被拒绝。transcript 仍是调用记录，不是远端节点真执行证明；完整 job spec、远端执行身份与抗伪造外部锚定仍属于 R10-9/14 台账范围，本刀没有声称关闭这些剩余面。
+
+## 补充轮（调度方裁决后）
+
+### 状态
+
+**DONE — 所有业务测试通过；全量仅余两个工单已声明由调度方本机复跑的 loopback `EPERM`。**
+
+本轮没有运行任何 git 命令，没有修改生产文件。`references/analyze-workflow.md` 的 v3 串级联越界披露按补充裁决保留，本轮未回退、未改写。
+
+### batch_a 1/45 只读定位结论
+
+先单跑 `python3 scripts/tests/test_repair_batch_a.py`，唯一失败为：
+
+- case：`test_f01_shared_evm_timing_and_legal_dual_time`；
+- 首个错误：`verify_recon replay_stats cutoff does not match target.as_of_block`；
+- 红因：`_retarget_evm_case` 把案子从块 123 改到 1/101 时，只改了 envelope target 与部分 bundle 字段，没有同步 v3 深夹具的 `fixture_replay_stats.max_block`，也没有同步 balance transcript、time plan/receipt/transcript；
+- 定性：同族旧浅夹具，不是生产语义问题。按补充裁决做最小测试适配后，`test_repair_batch_a.py` 为 `45/45 PASS`。
+
+### 适配文件、红因与最小改动
+
+| 文件 | 红因 | 最小改动 |
+|---|---|---|
+| `scripts/tests/test_repair_batch_a.py` | retarget helper 只改自报 target，未重建冻结块相关深实物；首次适配后又暴露 supply_truth 仍绑定旧 replay_stats size/sha | 调用既有 `write_deep_recon_fixtures` 重建 balance/supply/time 深夹具，并同步 supply_truth 的 replay_stats 引用；不改任何生产断言 |
+| `scripts/tests/test_review_20260804_p105.py` | `bind_balance_receipt_to_snapshot` 只换 balances 引用；新 consumer 先在 supply_closure、三查 replay_stats 同源和 rows/transcript 层拒绝 | 换绑 owner 世界时机械重建 balance/supply/supply_truth 的同源 stats、rows、transcript、GMGN 空比较及 observation bundle，并刷新 accounting/reconciliation 哈希；测试意图仍是同一快照跨层绑定 |
+| `scripts/tests/test_repair_batch_b.py` | 触发 P105 helper 的旧浅夹具问题 | 无需改文件；P105 helper 修复后原测试 `41/41 PASS` |
+| `scripts/tests/test_a4_gate.py`（调用链追加） | 全量首轮命中本地同名浅 helper，`balance_reconciliation address sequence differs from bound balances` | 本地 helper 改为复用 P105 的 v3 深夹具适配；原 P1-05/F-03 断言层不变，定向 `23 项 PASS` |
+
+### 最终测试输出
+
+- `python3 scripts/tests/test_repair_batch_a.py`：`PASS batch A F-01/F-02 regressions 45/45`；
+- `python3 scripts/tests/test_repair_batch_b.py`：`PASS batch B F-03/F-08 regressions 41/41`；
+- `python3 scripts/tests/test_a4_gate.py`：`a4_gate 契约测试全部通过（23 项）`；
+- `python3 scripts/tests/test_recon_deep_reverify.py`：`PASS test_recon_deep_reverify`；
+- `python3 scripts/tests/test_audit_release_gate.py`：PASS；
+- `python3 scripts/tests/test_sixlens_receipts.py`：`PASS: 六视角批①结构化回执与 fail-closed`；
+- 最终 `python3 scripts/tests/run_all.py`：101 项中 99 项 PASS；唯一两项失败为：
+  - `test_batch3_solana_vertical_slice.py`：`ThreadingHTTPServer(("127.0.0.1", 0), ...)` 在 `socket.bind` 报 `PermissionError: [Errno 1] Operation not permitted`；
+  - `test_batch3_evm_vertical_slice.py`：同一 loopback `socket.bind EPERM`；
+- 除上述两项沙箱能力限制外无业务失败；调用链追加的 `test_a4_gate.py` 已在最终全量中 PASS。
+# EVM 链数据管道 · 对账与重放引擎（data-pipeline-evm 分册 3/3）
+
+> 母文档：`data-pipeline-evm.md`（薄路由索引页，文档级引言与时效纪律见索引页）。本册覆盖 **§5 对账 gate / §11 公共数仓准入实证与分工定稿 / §12 DuckDB 重放/缩图引擎**；§1/§2/§3/§6/§7 见 `data-pipeline-evm-channels.md`，§4/§8/§9/§10 见 `data-pipeline-evm-sources.md`。正文 §N 交叉引用一律为母文档节号。
+
+## 本册路由
+
+- §5 对账 gate；§11 公共数仓准入；§12 DuckDB 重放；§13 时间抽查第二源。
+
+## 5. 对账 gate（数据不闭合不进分析）
+
+对账清单＝**标准四件套＋1 项重放前置检查**（下列 1–4 为对表查，5 为采集完整性前置），全过才允许跑下游分析。与 analyze-workflow A2 现行"四查"的对应：本节 1＝余额对账、2/3＝供给闭合、4＝时间抽查；A2 第 3 查**供给真值闸**挂 `scripts/lib/supply_truth_gate.py`，不在本清单内：
+1. **余额硬对账＋GMGN 黄灯对表（两件事，不得混写）**：`verify_recon.py` 先按绑定的 `balances` 确定性选出 top-N（先截取、再跳过 ZERO/dead），逐地址用冻结块 RPC `balanceOf` 与重放 raw balance 精确相等核对；任一 MISMATCH/RPC_ERROR 都是硬 FAIL。GMGN top10 是另一个第三方比例对表：以 0.15pp 为容差，差异不改变收据的 PASS/0，但收据必须带 `warnings:["gmgn_divergence"]`，发布链在合格人工查证说明绑定前保持阻断。曾在扫块进度 97% 时 4/10 MISMATCH、补扫 remaining=0 后 10/10 全 OK；该历史现象只说明提前对表能暴露未补扫完成或口径问题，不把 GMGN 比例差异误写成 RPC 个位数硬对账。（OPN，07；2026-08-15 黄灯制）
+2. **全网余额和=0**：所有地址重建余额求和应为零（mint/burn 计入），不为零即漏了转账段。（SIREN，07）
+3. **总量恒等式 wei 级闭合**：跨链代币各链余量之和 ≈ 总供应，精确到 wei。（OPN，07）
+4. **时间抽查（分层计划制）**：`anchor_plan.py` 出分层抽样计划（矩阵点＋四类强制覆盖点），`scripts/lib/time_spotcheck.py` 对独立第二源逐锚点核对（balance 型 archive balanceOf 直查＋tx 型收据五元组，产 time_spotcheck.json）；第二源分层选型与全史重拉例外条款见 §13。（旧"固定块距插值抽几笔对浏览器"形态已由本制取代；OPN/SIREN 07 → 2026-08-01 改版）
+5. **重放前置完整性检查（快照缺块防护，重放开跑前做）**：核对全部采集 run 的 done.json——next_block 全部达到目标块、mtime 晚于最后一次采集启动，才允许重放（实锤：重放跑在尾部 run 拉完前 13 分钟，快照缺尾部 ~980 块/682 条）。**机制警示：供给闭合恒等式（上面第 2/3 查）对"缺整行"免疫**——整行缺失时借贷两边同时缺、sum 恒等于 TOTAL 照样通过，此类洞只有 RPC 抽查负余额能暴露；增量重放出现"期初为 0 的地址转出变负"=上游快照有洞的指纹，见到即停下补数据。（QUQ 完整版分析，07-22）
+
+**GMGN 黄灯查证说明（`gmgn-divergence-note/v1`）**：第一次不带说明运行 `verify_recon.py`，让程序根据本次绑定的 config/balances/replay_stats/gmgn 四实物重算差异。若出现黄灯，人工查证后在案根手写 `gmgn_divergence_note.json`，再把原命令原参数重跑，并追加：
+
+```bash
+python3 scripts/evm/verify_recon.py <原参数> \
+  --divergence-note gmgn_divergence_note.json
+```
+
+说明件顶层字段为 `schema/request/request_sha256/findings/conclusion/investigator/investigated_at_utc`。`request` 必须精确绑定 target、四输入 sha256 与程序输出顺序一致的完整 divergences；每个 address 在 `findings` 中恰有一条说明，`cause` 只允许 `gmgn_data_lag`、`methodology_diff`、`gmgn_upstream_error`，`explanation` 至少 30 个实义字符。`evidence_refs` 可选，提供时必须是案根内普通文件的 path/size/sha256 绑定。标准结论句式：**“重放数据经查证无误，差异来自上述第三方时效或方法口径原因。”** `self_error` 故意不在可放行枚举中：若查证发现自己算错，必须修数据并从头重跑，不能写说明放行。
+
+| 当前重算状态 | producer 结果 | 发布消费侧结果 |
+|---|---|---|
+| 有差异、无说明 | PASS/0，带 `gmgn_divergence` 黄灯 | 阻断，要求绑定说明 |
+| 有差异、说明合格 | 带 `--divergence-note` 重跑并绑定，仍 PASS/0＋黄灯 | 独立重验说明与实物后放行 |
+| 有差异、说明不合格 | exit 1，且不覆盖原黄灯收据 | 原黄灯仍阻断 |
+| 无差异、却给说明 | exit 1，拒绝预填说明 | 无说明的干净 PASS 收据正常放行 |
+
+**供给真值闸的两种销毁形态（EVM `supply-truth-receipt/v4`，Solana `supply-truth-receipt/v3`）**：EVM formal 必须先运行 `scripts/evm/observe_supply.py`，在冻结块以 EIP-1898 `blockHash` 选择器读取 `totalSupply()`、`balanceOf(ZERO)` 与 `balanceOf(dead)`，落 `evm-observation-bundle/v1`＋调用 transcript；`accounting-gate/v2` 与 supply_truth v4 必须绑定同一 bundle，正式消费阶段不再现场 RPC。主规则继续按形态①校验
+`mint_total − burn_total` 与 bundle 的冻结块 `totalSupply()`；只有主规则 FAIL、EVM replay_stats
+同时带齐 ZERO/dead 的流入、流出与净额拆分时，才自动尝试形态②。形态②必须 wei 级同时满足：
+`mint_total == totalSupply()`、ZERO 事件流入等于链上 `balanceOf(ZERO)`、dead 事件净流入
+等于链上 `balanceOf(dead)`、两处 sink 重放值之和等于 `burn_total`。这只证明
+**终态标量与 sink 逐地址归因闭合**；混合形态、旧 stats、任一观测/格式异常都不放行，且不提供人工 override。bundle 同时绑定前后两次块头、规范化调用 transcript 与 runtime code 指纹；它证明案内内容闭合，不证明块头案外真实或 producer 确实执行，第三方应使用 bundle 的 blockHash 与 transcript 在独立节点复验。
+重放侧对 sink 收方余额照加，所以 `verify_recon` 的余额恒等式是 `sum_balances == mint_total`；
+`burn_total` 保留为独立观测，不从终态余额和再次扣除。
+
+**对账比对的 DuckDB 两坑（2026-07-25 实测，两个都会静默产生错误结论）**：
+- **`read_csv` 把 wei 值推断成 DOUBLE → 制造全量假差集**：独立源 CSV 与主数据做六元组比对时，`read_csv`/`read_csv_auto` 会把 20+ 位的 wei 十进制串推断为 DOUBLE，精度丢失导致**每一行都对不上**（看起来像"数据源完全不一致"的灾难性结论）。对账读 CSV 一律 `all_varchar=true` 后显式 `CAST(... AS HUGEINT)`。
+- **`others` 是保留字，不可作列别名**：`SUM(...) AS others` 直接语法错误（`Parser Error: syntax error at or near "others"`）。聚合列命名避开 `others`/`day`/`filter` 等保留字。
+（BUILDon，07-25）
+- **区块号区间不可用于估算时间分布（传播级错误源）**：据"96% 的转账落在块 50M–72M"推出"96% 发生在
+  2025 上半年"，实测**只有 32.78%**（H2 反而占 61.64%）——BSC 2025 年把出块时间从 3 秒压到 0.75 秒，
+  **同样块跨度对应的真实时长差 4 倍**。任何"某时期占比"类结论一律 join 区块时间戳按日/月归集后再统计，
+  禁止块号线性外推。对所有近年提速过的链（BSC/Arbitrum/opBNB…）都成立。（KOGE，07-25）
+
+**对账差额排查步骤（供给恒等式不闭合时按序查）——查完常规漏段后必查 Burn/Mint 独立事件**：2017 老版 OpenZeppelin `burn()` 只发 `Burn(address,uint256)` **不发 Transfer**——只采 Transfer topic 重放会出现"重放净供给 > 链上 totalSupply"的幽灵差额（LPT 案 604 枚，burner 主力=治理合约每次投票烧 100）。排查法：web3_sha3 算 Burn/Mint topic0 后 HyperSync 定向拉（几秒）；注意新链侧可能是"Burn 事件+Transfer(to=0x0) 双发"路径（此时 Burn 事件是 Transfer 的子集，不另计，勿双扣）。链无关坑，凡 2018 前老合约必查。（LPT，07-21）
+
+加分项：重建结果与第三方链上分析师独立披露的同口径数字对表，独立吻合是结论可信度的最强背书（具体数字属于当次报告，不进本手册）。（SIREN，07）
+
+## 11. 公共数仓准入实证与分工定稿（ASTEROID(ETH) 三源对账,2026-07-21）
+
+**准入实证**：ASTEROID(ETH,22 个月史) 抽 5 代表日——部署日(14,447)/低活日(47)/极稀日(全天 1 条)/峰值日(Musk 事件 114,010)/近期日(3,966)——合计 132,471 行,AWS 公共数据湖 v1.0/eth 与 BigQuery goog 官方版**双双与 HyperSync 基准逐行字节级等价**（键 (block,tx,log_index) 零差集、值 (from,to,value) 零不一致）。"HyperSync vs 公共数仓谁的质量高"在 ETH 段的实证答案：三源等价。
+
+**分工定稿（用户 2026-07-21 拍板）**：
+- **采集主力=HyperSync Starter + v2 官方客户端**（不变,见 §1 首选）。
+- **BigQuery=备用+出错复核源**（`fetch_bigquery.py`,仅 ETH——goog 数据集无 BSC/Base）：HyperSync 结果可疑、对账 gate 挂了、或平台级故障时上。**成本实测推翻旧估**：按币活跃日限定日期分区后单次只扫 ~12GiB（旧悲观估算 200-500GiB 是无日期限定的全表扫）,免费 1TiB/月≈85 次复核。
+- **AWS 数据湖=已验证等价但 pass 掉**（用户拍板：太慢）：S3 无服务端过滤,单币复核也必须整分区下载（99%+ 流量是无关合约数据）,宽带 1.7MB/s 实测 5 分区 4.9GB/60 分钟。**不做采集器**;仅当需要"与 Google/Envio 都无利益关系的第三独立源"或前两家全挂时手工走。
+- BSC 的独立对照源仍只有 SQD Portal（AWS bnb 无 logs 表、BigQuery 无 BSC——格局未变）;Base 的 sonarx 表(T+7)未做准入测试。
+
+**BigQuery 操作要点**（细节见 fetch_bigquery.py docstring）：
+- 表 `bigquery-public-data.goog_blockchain_ethereum_mainnet_us.logs`（列含 topics REPEATED/block_hash/removed）,raw logs 自解码,**禁用现成 token_transfers 解码表**（AWS 侧同名表有浮点精度事故公开前科,规则跨仓通用）。
+- 查询必带日期条件（脚本强制,防全史扫爆额度）+ dry run 熔断（config `max_scan_gib`）。
+- 一次性前置已完成态：GCP sandbox 项目+OAuth 凭据缓存见 api-keys.md 第 17 节「Google Cloud / BigQuery」;**新 Google 账号首次用 GCP 必须网页接受 ToS**,否则 API 建项目 403 `Callers must accept Terms of Service`（2026-07-21 实测,console.cloud.google.com 勾一次即解）。
+- 产物=标准 8 列 CSV(与 fetch_sqd_evm 同款),对账走 `transfers_lib.py merge`（fail-closed）。
+
+**AWS 手工方法留档**（pass 但方法保号,应急可复活）：匿名公开桶 `aws-public-blockchain.s3.us-east-2.amazonaws.com`（免账号,list-type=2 列目录）,`v1.0/eth/logs/date=YYYY-MM-DD/` 每日单 parquet 0.5-1.15GB;**新鲜度实测 T+1~T+2**（优于 sonarx base/arbitrum 的 T+7）;逐 row-group 读+address/topic0 过滤自解码（本次验证脚本逻辑存 CHANGELOG v3.12.1 条目所述会话,核心=pyarrow read_row_group 选列+topics array 解 from/to/value）。
+
+**新源准入通用纪律**（本次定型,适用任何未来数据源）：抽代表日分区（部署/极稀/峰值/近期四型必含）→ 与主通道按 (block,tx,log_index) 键+(from,to,value) 值集合对账 → 全等才准入该链该历史段;禁止拿"品牌可信"替代逐行对账。
+
+## 12. DuckDB 重放/缩图引擎（亿级样本主路径，2026-07-22 三样本对表定版）
+
+**定位（选型决策）**：`replay_duck.py`（pass1+pass2 合一）与 `cluster_prep_duck.py`+`cluster.py --prep` 是**千万行以上样本的重放与聚类主路径**；旧引擎（replay_pass1/2 纯 Python 逐事件）保留为小样本快速路径与黄金基准。三种 pass1 引擎算出 `gate_pass=false` 时均保留各自基础重放产物并以 exit 4 终止；独立 `replay_pass2.py` 也必须先验该字段，只有布尔 `true` 才能编译正式序列。动机=旧引擎内存随事件数线性涨（140 万行实测 1.22GB → 亿级外推 ~90GB，16GB 机器不可行）；DuckDB 路径内存设上限、超限落盘外排。
+
+**等价性实证（改任何引擎前先读这段的验收口径）**：三样本七项全等——ASTEROID(ETH,140 万行,v1 CSV 单通道)、SIREN(BSC,2169 万行,三通道段拼接)与旧引擎产物 **7 项逐字段全等**（replay_stats 契约 8 键 / merged.csv 逐字节哈希含 \r\n / balances_final / peaks / mint_ledger / camp_series / entity_series）；QUQ(BSC,1.03 亿行,v2 parquet) 与 replay_pass1_quq 原产物 **stats 11 键 + balances 51,871 址 + daily_delta 1,959,664 键逐键逐值全等**（peaks 口径不同：QUQ=事件级、标准=块末级，弱验证"事件级≥块末"零违例、98.3% 相等）。聚类侧 ASTEROID 沙盘老路 vs --prep **四类判定产物全等**（clusters/gatekeeper_blocked/label_excluded_nodes/team_downstream）。
+
+**性能基准（M3/16GB 实测）**：
+| 样本 | 旧引擎 | DuckDB 路径 |
+|---|---|---|
+| ASTEROID 140 万行 | pass1 6.7s/1.22GB + pass2 2.1s | 合一 6.1s/1.4GB（小样本无优势,CSV 解析占大头） |
+| SIREN 2169 万行 | 外推 ~19GB 内存（不可行边缘） | 167s / 峰值 7.1GB（守 8GB 限） |
+| QUQ 1.03 亿行 | 纯 Python 专用变体数十分钟级 | 核心重放(余额+daily) **31s**；含块末峰值窗口 7.8min/8.1GB |
+| QUQ 缩图 | cluster 老路四容器不可行 | **19.5s/1.35GB** → 76.2 万聚合边；rustworkx 连通分量 0.35s |
+
+**用法**：
+- 重放：`python3 scripts/evm/replay_duck.py --channels channels.json --out-dir data [--camps camps.json] [--emit-csv] [--mem-limit 8GB]`。目录走 v2 parquet，CSV 以 header 区分 legacy7 与标准 8 列；collector→replay 契约测试覆盖两者。
+- 缩图：`python3 scripts/evm/cluster_prep_duck.py <chain> [--dir 工作目录 | --v2 <v2目录>]` → data/cluster_prep/ 三件（edges_agg/bal/profile 全整数 parquet）→ `python3 scripts/evm/cluster.py <chain> --prep`。千万行以下 cluster.py 老路照旧。
+- 长跑守护：`python3 scripts/run_guarded.py --name X --mem-ceiling-gb 12 --detach -- <命令>`（脱管+双内存水位+状态 JSON 原子写；替代裸 nohup，防沙箱连带清理与 OOM 假死）。
+- **回归门禁（A1 纪律，硬性）**：动引擎/换库版本后必跑 ①`scripts/tests/run_all.py`（含 hypothesis 等价性测试+env_check 版本锁）②`scripts/bench/golden_baseline.py snapshot+compare` 对 ASTEROID 重跑对表。基线快照与对比口径见该脚本 docstring。
+
+**DuckDB 1.5.4 实测坑清单（数字正确性级，逐条都踩过）**：
+- **UHUGEINT 的 SUM 静默退化 DOUBLE**（返回 1e+32 的 float）——无符号 128 位不可用于聚合；用 **HUGEINT**（SUM 精确返 int，溢出硬报错不环绕，窗口 SUM 同）。
+- **VARINT（=BIGNUM）乘法退化 DOUBLE**（`'2'::VARINT*'3'::VARINT` → DOUBLE）；加法/SUM 精确。VARINT 只作超 37 位十进制的 SUM 慢路径（~5x 慢），**任何乘法场景禁用**。
+- **hex 字符串 cast 有位宽限制**：`'0xff'::UBIGINT` 可用，64-hex 全串 cast 任何整数型都报错——32 字节 value 用**两段法**：`('0x'||substr(data,35,16))::UBIGINT::HUGEINT * 2^64 + ('0x'||substr(data,51,16))::UBIGINT::HUGEINT`（前提高 32 hex 全零，物化前必探测，QUQ 28 位安全）。
+- **hex cast 的位宽限制按目标类型而定，`HUGEINT` 比 `UBIGINT` 更严**（TOSHI 案补测，2026-07-26）：上条说的 `'0xff'::UBIGINT` 可用，但 **`'0x…'::HUGEINT` 一律报错**（`Could not convert string '0x00000046d1…' to INT128`），**截短到 24 hex 仍报错**——即"带 `0x` 前缀转 HUGEINT"这条路根本不通，别浪费时间试截长度。中等规模（≤ 千万行级）的省事解法：**DuckDB 只做过滤/投影，把 `data` 原样取回 Python 侧用 `int(d,16)` 转**（TOSHI 1660 万行 fetchmany(1e6) 分批处理，分钟级完成，内存可控）；亿级仍走上条两段 UBIGINT 法。
+- **余额重放禁用浮点：float 累加会造出假的供给闭合残差**（TOSHI 案，2026-07-26）：以 `int(d,16)/1e18` 逐条累加 1660.9 万条后，重放正余额合计比 `totalSupply` 多 **181,938.49 枚**，一度被当成"漏采/重复事件"排查（外部复核也据此质疑重放逻辑有系统性缺陷）；改用**整数 raw units** 累加、最后一步才除 1e18，**全部余额代数和精确 = 0、非零地址代数和与 totalSupply 差 0.000000**。纪律：①对账口径一律用整数 raw；②报"闭合"时必须报**含负余额的代数和**而不是"正余额合计"——只报正余额会把负余额地址的缺口藏起来（该案确有一址重放 −181,938.49 而链上实查 +13.12，即约 18.2 万枚转入未被事件捕获，占供应 0.000043%，是真实数据缺口，需单列而非被浮点残差掩盖）。
+- `make_timestamp()` 不吃 UBIGINT，参数先 `::BIGINT`；`day` 是保留字，列别名必须 `"day"`。
+- **temp 磁盘是亿级聚合的真瓶颈**（非内存）：`SET max_temp_directory_size` 按十进制解析（40GB=37.2GiB）；(tx,li) 全局去重 shuffle 1 亿行需 >37GB temp——**v2 输入用块界感知去重**（per-run min/max 元数据秒查→仅重叠区间 GROUP BY，非重叠直通零 shuffle；QUQ 4 段零重叠 19.5s 完成）；派生表一律从 edges_agg 算（(f,t) 聚合保和），禁止对原始行做 (a,p) 双向 2 亿行聚合（首跑 46.5GB 爆仓教训）。
+- 块末峰值窗口（PARTITION BY addr ORDER BY block 亿级）是最重一环——**3.19 已上两级候选预筛**（replay_duck 内置默认开）：一级=累计流入恒等上界（峰值≤Σ入账，不达 `peak_min×0.8` 者必不进 peaks），二级=正块净增更紧上界（峰值≤Σmax(dd,0)，同块进出抵消地址被精准滤掉）；两级全整数恒等推理只多收不漏收，精确窗口 SQL 逐字未动只缩输入集合，QUQ/ASTEROID 逐键全等实证。实测：QUQ 峰值段 657s→~330s（**2.0x**；刷量盘是最不利盘型——真达标 21,826 址刚性占 ab 45%，收益天花板 ~2.5x）；ASTEROID 常规盘型筛除 92.8% 地址。⚠**终态余额预筛不完备**（峰值高后清仓者终态=0 会漏），只有流量口径上界可用；HUGEINT SUM 溢出自动回退 VARINT 重算。新参数 `--no-merged`（亿级基准跑省盘）；`[peak]` 分段计时打印。
+- **build_events 亿级全局宽键去重是当前真瓶颈（3.19 顺带发现，待修）**：QUQ v2 直读 1.03 亿行 temp 需求 >114.5GiB 本机三跑三败——而 v2 五 run 块段实测**零重叠**，全局去重对其是纯开销恒等映射（上表 QUQ "7.8min/8.1GB" 实为 events 层起算）。修复方向=build_events 引入块界感知去重（重叠区间才 GROUP BY，非重叠直通，同 cluster_prep_duck 既有做法）；巨分区（单址 1,443 万行）窗口 DuckDB 疑似串行，是预筛后剩余耗时大头。
+
+**§12b 亿级流式重放（`replay_stream.py`，2026-07-25 收编）——上条"待修瓶颈"的现成出路**：
+样本达**亿级、或可用磁盘不足样本体积 4 倍**时，replay_duck 的两次物化不可行，改走
+`scripts/evm/replay_stream.py`：字段解码与产物口径逐字对齐 replay_duck，但**不物化任何中间表**，
+每个 channel 先在自己的 `[lo,hi)` 内过滤再 UNION；目录中落入其他通道责任区的额外行计入 `n_out_of_segment` 并 fail-closed，不能再按全局 min/max 混入。
+直接对 parquet 流式聚合——hash aggregate 内存需求由"行数级"降到"唯一地址数级"。
+实测 KOGE(BSC) **3.595 亿行 185 秒**完成（bal 55s/supply 20s/meta+inflow 63s/落盘 28s），
+峰值内存 2.4GB、**temp 全程 0 字节**；同机 replay_duck 无法完成。
+- **合法性前提＝去重可跳过，必须先验证**：`(block,tx,log_index)` 的 block 分量决定分段 →
+  跨段不可能重复，故"把全块空间切 N 段逐段 GROUP BY 查重"**等价于全局查重但零 shuffle**
+  （8 段扫 3.6 亿行 87 秒）。脚本内置 `--verify-dedup`（默认开），发现重复即 fail-closed 退回 replay_duck；
+  通道块区间重叠同样直接拒跑。单 run 采集通常零重复，多 run 拼接/断点续拉过的必须验。
+- 用法同 replay_duck：`--channels channels.json --out-dir data`；产物同名同格式（balances_final/
+  mint_ledger/replay_stats/inflow/addr_meta/blockts.parquet），供给闭合挂同样 exit 4。
+- ⚠**等价性回归待补**：尚未与 replay_duck 做黄金基准对表（KOGE 案无小样本基准）。首次用于新标的时，
+  取一个 ≤200 万行块区间两引擎各跑一次、比对 balances_final/mint_ledger/supply 三键后再放量。
+- **峰值不由它产**（亿级块末窗口同样爆盘）——配套 `peaks_daily.py`，见 §12c。
+（KOGE，07-25）
+
+**§12c 峰值日级两级口径（`peaks_daily.py`）——刷量盘块末窗口的替代件**：
+块级 `(addr,block)` 聚合 + `PARTITION BY addr ORDER BY block` 窗口在刷量盘上是灾难：
+KOGE 一级 inflow 预筛（≥0.1% 供应）后**仍剩 157,459 个候选**，块级 dd 表 3 分钟吃 19GB temp 直奔爆盘。
+改日级后 6,217 候选 / 734,079 行 / **164 秒**完成。两级口径保证判级不失真：
+`L1 日末峰值`（主口径）+ `L2 日内上界＝昨日日终余额+当日毛流入`（恒等：日内任意时刻持仓 ≤ 昨收+当日全部进账）；
+凡 L1 未达门槛但 L2 达标者落 `needs_block_precision.json`，对这批再补块级精确值——**只多查不漏查**。
+⚠ 旧公式 `Σmax(day_delta,0)` 已废（2026-08-02 codex 复核反例：同日等额进出被日净对冲成 0，同日建仓又清仓的地址两级全盲）；产物 peaks_summary.json 带 `ub_formula=prev_close_plus_gross_in/v2` 标记，audit_release_gate 见旧公式产物即拒。新公式下快进快出的刷量地址会成批入名单（当日毛流入巨大），按 (addr,block) 聚合批量精查消化。
+- **四类触发日强制逐笔（2026-08-02 用户定；同日 codex 复核补机器闭环）**：发射日、毕业日、价格单日 ±50%、单日阵营变动 ≥10pp 的日子，无论 L2 是否报警都对当日活跃地址补块级逐笔回放。清单走机器产物：日期整理成 JSON 喂 `peaks_daily.py --trigger-days`，产出 `trigger_days.json`（逐触发日活跃候选名单；零触发日也须 empty_reason 显式声明）；阵营变动类触发日判级后才算得出——发现新触发日必须回头重跑并重验判级；发布闸对带 peaks_summary.json 的案子强制校验该产物在位。判级口径权威见 tiering"峰值判级口径"条。
+- **候选门槛跟现行判级线走，禁止照抄历史案数字**：恒等式保证峰值 ≥pct 的地址必在 `inflow ≥pct` 内，
+  故预筛线取**现行判级体系的最低线＝其他大户线（0.1% 总供应 / 0.2% 流通，权威见 tiering §6a，两口径换算后取更低枚数）**——预筛门槛与判级门槛分开：预筛只保证"达线者必在候选内"，判级仍按 §6a 各档阈值走，两级口径只多查不漏查。KOGE 实测（07-25，当时其他大户线尚为 1%）：≥0.1% 有 131,833 址、≥1% 只有 6,217 址，差 21 倍——量级规律仍可参考，但 v5.0 已降线，**今按 1% 预筛会把 0.1%–1% 区间候选不可逆滤掉**。
+- **附带收获**：产出的 daily_delta 同时就是阵营/实体日序列的原料，一举两得。
+（KOGE，07-25）
+
+**fail-closed 强化（三引擎 gate 语义统一）**：三种 pass1 引擎均将供给闭合与负余额合成为 `gate_pass`，FAIL 保留基础重放证据后 exit 4；正式 pass2 不消费 FAIL stats。DuckDB 路径另记坏行 reject（n_source_rows/n_bad_fields/n_out_of_segment/n_dedup_removed 进 stats），同去重键不同事件内容按数据损坏硬退，空 ts 硬退；纯 Python 路径对坏行计数并以 `--allow-bad-rows`（默认 0）控制硬退。既有同族修复还包括 cluster R1/准入阈值整数交叉乘法、transfers_lib dedup 重组冲突检测（同 (block,tx,li) 双 hash 硬退）与 cluster 并列余额的确定性 tiebreaker。
+
+通用环境坑（macOS SSL 证书、reportlab 中文字体、前台 sleep 被 Block 等）不在本文重复，见 skill 其他参考文档与 memory（mac-python-pdf-environment.md、onchain-data-accounts.md）。
+
+---
+
+## 13. 时间抽查的第二源：分层选型——默认锚点直查，全史重拉仅例外（2026-08-01 改版；原 GMX 版 2026-07-26）
+
+**背景**：对账关卡四查的"时间抽查"需要一个**独立于主采集通道**的第二源核对锚点。两代教训：①GMX 案实测 Etherscan `tokentx` 对大地址静默给错误答案（下述禁令仍有效）；②APU(ETH) 案照抄本节旧版的全史区间示范命令，SQD 全史重拉 94 万行——ETH 链实测仅 169 行/s（Arbitrum 的 1/15），103 分钟仍未拉全（末段 503 频发、覆盖不完整），而锚点直查早已 15/15 PASS 闭环——**全史重拉是纯冗余，大币按此速率要十几小时完全不可行**。故改分层制：
+
+**层 1（默认，有 archive 通道的链：ETH/Base/Arbitrum/Polygon 等）——锚点直查，跑固化脚本**：
+```bash
+python3 scripts/lib/time_spotcheck.py --plan anchor_plan.json --rpc <独立archive节点> \
+    --chain <eth|bsc|base|arbitrum> --token 0x标的 --out time_spotcheck.json \
+    --final-block <数据截止块>
+```
+- balance 型锚点走 archive `eth_call balanceOf`（历史块状态直查），tx 型锚点（最大单笔/交界块）走 `eth_getTransactionReceipt` 核五元组——**两型都查**，只查 balance 型等于四类强制覆盖点漏验两类。O(锚点数) 秒级完成，APU 案 Alchemy archive 15/15 精确一致实证。
+- 独立性口径（措辞纪律）：状态直查对"余额结果"的验证比换一家事件索引商更直接；但**不能替代事件集合完整性验证**——等额进出抵消、零余额中转层、tx/logIndex/时间戳元数据错误它天然验不出（这些去层 3）。
+- 产物 `time_spotcheck.json`（`time-spotcheck/v3`，target 绑定 chain/token/final-block，并绑定 plan、plan receipt、merged input 与逐笔 RPC transcript；verdict/exit_code 为 0 PASS/2 FAIL/1 检测自身失败禁当 PASS）；split-run 案是 READY 必备件＋AUTO_GATES（handoff_manifest 重读防手报）。
+
+**层 2（BSC 等无免费 archive balanceOf 通道的链）——SQD 只拉锚点窄窗，禁止默认全史**：SQD Portal 仍是 BSC 唯一独立对照源（§11 格局未变），但只拉**锚点所在代表日/窄块窗**（BANANAS31 先例：4 代表日 67,731 行零差集）。窗口覆盖规则：所有锚点日＋早/中/晚三段＋峰值日＋数据源交界＋门槛边缘各至少一窗；逐窗断点续传；逐事件比键 `(block,tx,log_index)` 与值 `(from,to,value)`。主通道本身是 SQD 时它不算独立第二源（换 BigQuery 等，见 §11）。
+
+**层 3（全史双源重拉＝例外动作，做前必报）**——仅限三种情形：①A2 其他查项挂了/主通道数据被怀疑有洞；②翻案排查需独立重建**事件明细**；③结论依赖精确事件拓扑、逐笔归因、零余额中转层（层 1 天然验不出的维度）且出现异常信号。做前**先跑 1–2 分钟 pilot 实测当前链当前时段速率**再外推 ETA（禁用历史速率常数调度——Arbitrum 2,600 行/s vs ETH 169 行/s 差 15 倍，仅作量级示例留档），预计超 30 分钟摆给用户选（30 分钟是交互阈值，不是"允许降正确性"的豁免阈值）。命令模板：
+```bash
+python3 scripts/evm/fetch_sqd_evm.py <链> <from_block>   --token-addr 0x标的 --out data/sqd_recheck.csv --to-block <to_block> --sleep 0.5
+```
+- GMX 实测（例外场景样例）：Arbitrum `[320000000, 420000000]` 区间 1,644,700 行 / 622 秒，键差集 0/0、字段不一致 0、金额总和精确相同。
+- 比对口径（DuckDB）：按 `(tx, log_index)` 双向 `EXCEPT` 取键差集，再对共有键逐字段比 `from/to/value`，最后比金额总和。
+- ⚠ **读 SQD 的 CSV 必须显式指定列类型**（见下条），否则 wei 值被推断成 DOUBLE，会造出几十万行假差异。
+
+**Etherscan V2 免费层的两个实测缺陷（禁令不变，都会静默给出错误答案）**：
+1. **`tokentx` 不返回 `logIndex`** → 去重键退化为 `(hash,from,to,value)`，同一 tx 内多笔相同金额的转账会被误并（少算）。
+2. **对超万笔地址的滚动分页会中途返回不满页而提前终止** → 实测某地址 `endblock=414,173,883`，滚动 119 轮后在第 996 条短页处停止，**最大块只到 329,620,841＝块覆盖率 79.59%**，且无任何错误提示。少掉的多为后段流出记录，**结果是余额虚高**（该地址实测虚高 17.9 万枚）。
+   - 另一个必须绕开的硬限制：不滚动 `startblock` 时 `PageNo × Offset ≤ 10000`，超过报 `Result window is too large`；滚动可绕过窗口上限但绕不过上面这个提前终止。
+
+⇒ **纪律：Etherscan 系 API 只适合查"某地址最早一笔入账"（gas 溯源，只需首条记录，安全）与小地址核对；禁止用它单方面推翻本地重建的大地址余额。**
+
+**★DuckDB 读 wei 列的类型陷阱（GMX 实测，极具误导性）**
+```python
+# 错：AUTO_DETECT 把 value_raw 推断为 DOUBLE，53 位有效位装不下 1e18~1e24 的 wei
+con.execute("... from read_csv('sqd.csv', header=true, AUTO_DETECT=true)")
+# 对：显式全 VARCHAR，取值时再 CAST(... AS HUGEINT)
+COLS={'block':'VARCHAR','ts':'VARCHAR','tx':'VARCHAR','log_index':'VARCHAR',
+      'from':'VARCHAR','to':'VARCHAR','value_raw':'VARCHAR','block_hash':'VARCHAR'}
+con.execute(f"... from read_csv('sqd.csv', header=true, columns={COLS})")
+```
+症状很像"双源真的不一致"：**文本比较 `s.v <> h.v` 返回 0 条，而 `CAST(s.v AS HUGEINT) <> CAST(h.v AS HUGEINT)` 返回 51.4 万条**。见到这种"文本一致而数值不等"的组合，先怀疑类型推断而不是数据。
+
+**anchor_plan 下游校验的两个注意点**
+- `anchor_plan.json` 的键名是 **`matrix_points` / `forced_points`**（不是 `matrix` / `forced`）；写错会静默取到空列表。
+- 任何抽查校验脚本必须在"抽查点数为 0"时 `assert` 硬失败——否则 0 个点循环零次、`bad==0`，直接打印 PASS（GMX 案实际发生过一次假 PASS）。**time_spotcheck.py 已内置本 assert 与两型分类硬校验**（两型都不匹配的锚点、缺 --final-block 的边缘点均 fail-closed）；自写临时校验脚本时本条仍适用。
+
+exec
+/bin/zsh -lc "sed -n '1,150p' maintenance/repair-20260815-g2/workorder_F07_done.md; sed -n '1,130p' maintenance/repair-20260815-g2/workorder_F07.md; sed -n '1,120p' maintenance/repair-20260815-g2/workorder_F07_addendum.md; sed -n '1,220p' scripts/tests/test_contract_routes.py" in /Users/uravvv/.claude/tca-repair-g2
+ succeeded in 0ms:
+# 工单 F-07 施工报告（停在名单外测试决策点）
+
+## 状态
+
+**BLOCKED — 工单主体与红名单已完成，但全量验收命中名单外失败，已按工单停止扩面。**
+
+没有运行任何 git 命令。没有修改 VERSION、CHANGELOG、SKILL.md、r10_ledger.md、pyproject、run_all.py、audit_release_gate.py、handoff_manifest.py、anchor_sampler.py、contract_ids_snapshot.json，也没有触碰 shared 的 A4/adversarial 函数区。
+
+## A. producer 最小补齐
+
+### `scripts/evm/verify_recon.py`
+
+- schema 升为 `evm-reconciliation-receipt/v3`；family 不变。
+- top-N 排序改为 `(-balance, address)`；收据新增正整数 `requested_top_n` 与固定语义 `top_n_then_skip_sinks`。
+- GMGN 前 10 行改用 Decimal；拒非有限值、非法数值和重复地址；行内百分比/差值写 Decimal 规范字符串，阈值使用 `Decimal("0.15")`。
+- 每次成功的 `balanceOf` 调用落 `{seq,method,params,result}` transcript；默认 `verify_recon_transcript.json`，支持 `--transcript-out`。
+- transcript 被 `inputs.transcript` 的 path/size/sha256 绑定；receipt 与 transcript 通过 `publish_txn` 双件发布。
+
+### `scripts/lib/time_spotcheck.py`
+
+- schema 升为 `time-spotcheck/v3`。
+- `inputs` 同时绑定 plan、plan_receipt、merged input 与 transcript。
+- balance/tx 两类 RPC 调用均落连续 transcript；默认 `time_spotcheck_transcript.json`，支持 `--transcript-out`。
+- receipt 与 transcript 通过 `publish_txn` 双件发布。
+
+## B. consumer 深重验
+
+仅在 `shared_release_receipt.py` 对账区新增私有 helper，并接入 `validate_reconciliation_check`：
+
+- EVM supply：从 config、replay_stats、balances 重算 nominal、mint、burn、balance sum、负值全列与 closed；校验 config token 与 replay cutoff。
+- EVM balance：按绑定余额重算 top-N 有序地址全集；逐行核 replay_raw、chain_raw、diff_raw、status 与四计数；PASS 禁 MISMATCH/RPC_ERROR。
+- EVM balance transcript：校验连续 seq、eth_call、holder calldata、冻结块与原始 hex result。
+- GMGN：从绑定 CSV 与 balances/nominal 用 Decimal 重算全部 rows、状态与 diff_count。
+- EVM time：plan 点与 rows 做 multiset 一一对应；核 plan receipt 的 input identity；重算六计数；balance 与 tx 均对 transcript 重放。
+- Solana anchor：顶层 output 做 path/size/sha256 三验；逐行核日期范围、日期唯一、target 身份、失败行；重算 coverage/failures。
+- v2 正式拒收并给出 `verify_recon v3` / `time_spotcheck v3` 重跑迁移文案。
+
+## C. schema 级联收口
+
+| 命中位置 | 处置 |
+|---|---|
+| `verify_recon.py` producer | v2 -> v3 |
+| `time_spotcheck.py` producer | v2 -> v3 |
+| `shared_release_receipt.py` consumer | 只接受 v3；v2 留给负测 |
+| `invariant_manifest.json` producer/consumer schema | v3 |
+| `invariant_manifest.json` atomic writes | 新增两个 dual_file_txn，minimum 52 -> 54 |
+| `references/data-pipeline-evm-recon.md` | 当前产物说明改 v3，并写明新增绑定 |
+| `references/analyze-workflow.md` | 当前时间抽查路由改 v3 |
+| `contract_manifest.json` | 无旧 schema needle，无需修改 |
+| 维修计划、历史 review、archive/CHANGELOG | 历史事实，保留 v2 原文 |
+| `test_repair_batch1.py` 的 v2 | schema-family 失效测试的历史输入，保留 |
+| `test_recon_deep_reverify.py` 的 v2 | 明确迁移拒收负测，保留 |
+
+扫描结果：`invariant_scan.py` PASS，计数为 producers=62、consumers=83、transport=63、atomic=54、formal=58、exceptions=0；self-test 两个注入均按预期转红。
+
+## D. 存量适配及理由
+
+| 文件 | 适配理由 |
+|---|---|
+| `test_audit_release_gate.py` | 公共 EVM 案夹具升级为真实 v3 config/balances/stats/gmgn/transcript 与 v3 time plan 链；被多个红名单 suite 复用 |
+| `test_sixlens_receipts.py` | 浅 v2 正例升级为公共深语义夹具；producer schema 断言改 v3 |
+| `test_handoff_manifest.py` | READY 案四查夹具升级 v3；直接 time artifact schema 改 v3 |
+| `test_evm_observation_release.py` | EVM release 案升级 v3；旧“只改 target”攻击现在更早死于 replay cutoff 深验，断言改认新的首个拒绝层 |
+| `test_repair_batch_d.py` | A-5 异源账本补合法 cutoff，使反例继续抵达同源断言；Solana anchor 夹具补真实 output/date/identity |
+| `test_repair_batch1.py` | verify/time 已改双件事务，source-wiring guard 从 supersede 改验 publish_txn |
+| `test_arbitrum_exploration_cli.py` | C 节 schema 级联：formal 正例改为完整 v3；exploration/formal-tier 拒收语义不变 |
+
+红名单结果：除 `test_batch3_evm_vertical_slice.py` 在沙箱内因 loopback bind EPERM 外，其余全部通过；该纵切片在沙箱外复跑通过。详见 `f07_green.log`。
+
+## E. 新测试与红绿证据
+
+`scripts/tests/test_recon_deep_reverify.py` 使用离线 fake transport 跑真实 verify_recon/time producer，另构造最小 Solana output。覆盖：
+
+- supply 实物和与自报 closed 冲突；
+- balance 少行、replay_raw 错、matched 虚报、缺 requested_top_n、地址乱序；
+- transcript result 错、缺 transcript；
+- GMGN diff_count 虚报；
+- time plan 不对应、tx from 改动、计数虚报、缺 plan_receipt；
+- anchor output 少行、日期重复；
+- recon/time v2 迁移拒收；
+- 三类真实绿例。
+
+施工前 `f07_red.log`：旧 consumer 放行 `balances sum=80` 但自报 `balance_sum=100, closed=true` 的收据，新测试因此红。
+
+施工后新测试 PASS；证据见 `f07_green.log`。
+
+## 全量验收阻断（需调度方裁决）
+
+`python3 scripts/tests/run_all.py` 尚未完成全绿。运行中出现以下名单外失败后，已立即中断，未修改名单外文件：
+
+1. `test_repair_batch_b.py`：`test_f03_gate_evm_same_total_swap` 的旧夹具在 `bind_balance_receipt_to_snapshot` 换绑余额实物后，仅刷新输入引用，没有同步 v3 收据自报的 `supply_closure.balance_sum_raw`；新 consumer 在 `_validate_recon_supply` 正确拒绝。该文件不在 D 节红名单。
+2. `test_repair_batch_a.py`：全量汇总显示 `BATCH A FAIL 1/45`，但当前截获尾段没有该 case 名。按“名单外打红即停”没有再单跑定位。
+3. Solana/EVM 两个纵切片在沙箱内均为 `socket.bind EPERM`；EVM 已沙箱外单测通过。它们是环境能力限制，不定性为业务红灯。
+
+### 请求裁决
+
+请明确是否授权扩展 D 节名单，至少纳入：
+
+- `scripts/tests/test_review_20260804_p105.py`（实际换绑 helper 所在）；
+- `scripts/tests/test_repair_batch_b.py`（触发方）；
+- `scripts/tests/test_repair_batch_a.py`（先只读定位其 1/45，再按同族夹具规则最小适配）；
+- 若上述测试复用其他旧浅夹具，仅允许沿调用链追加必要的测试文件白名单，不改生产语义。
+
+未获授权前，本工单保持 BLOCKED，不声称全量 suite 全绿。
+
+## 如实定性
+
+本刀已把 F-07 关闭到“案内实物哈希绑定 + transcript 调用记录绑定 + 消费侧独立重算”的深度，原最小反例及同族单点变异均被拒绝。transcript 仍是调用记录，不是远端节点真执行证明；完整 job spec、远端执行身份与抗伪造外部锚定仍属于 R10-9/14 台账范围，本刀没有声称关闭这些剩余面。
+
+## 补充轮（调度方裁决后）
+
+### 状态
+
+**DONE — 所有业务测试通过；全量仅余两个工单已声明由调度方本机复跑的 loopback `EPERM`。**
+
+本轮没有运行任何 git 命令，没有修改生产文件。`references/analyze-workflow.md` 的 v3 串级联越界披露按补充裁决保留，本轮未回退、未改写。
+
+### batch_a 1/45 只读定位结论
+
+先单跑 `python3 scripts/tests/test_repair_batch_a.py`，唯一失败为：
+
+- case：`test_f01_shared_evm_timing_and_legal_dual_time`；
+- 首个错误：`verify_recon replay_stats cutoff does not match target.as_of_block`；
+- 红因：`_retarget_evm_case` 把案子从块 123 改到 1/101 时，只改了 envelope target 与部分 bundle 字段，没有同步 v3 深夹具的 `fixture_replay_stats.max_block`，也没有同步 balance transcript、time plan/receipt/transcript；
+- 定性：同族旧浅夹具，不是生产语义问题。按补充裁决做最小测试适配后，`test_repair_batch_a.py` 为 `45/45 PASS`。
+
+### 适配文件、红因与最小改动
+
+| 文件 | 红因 | 最小改动 |
+|---|---|---|
+| `scripts/tests/test_repair_batch_a.py` | retarget helper 只改自报 target，未重建冻结块相关深实物；首次适配后又暴露 supply_truth 仍绑定旧 replay_stats size/sha | 调用既有 `write_deep_recon_fixtures` 重建 balance/supply/time 深夹具，并同步 supply_truth 的 replay_stats 引用；不改任何生产断言 |
+| `scripts/tests/test_review_20260804_p105.py` | `bind_balance_receipt_to_snapshot` 只换 balances 引用；新 consumer 先在 supply_closure、三查 replay_stats 同源和 rows/transcript 层拒绝 | 换绑 owner 世界时机械重建 balance/supply/supply_truth 的同源 stats、rows、transcript、GMGN 空比较及 observation bundle，并刷新 accounting/reconciliation 哈希；测试意图仍是同一快照跨层绑定 |
+| `scripts/tests/test_repair_batch_b.py` | 触发 P105 helper 的旧浅夹具问题 | 无需改文件；P105 helper 修复后原测试 `41/41 PASS` |
+| `scripts/tests/test_a4_gate.py`（调用链追加） | 全量首轮命中本地同名浅 helper，`balance_reconciliation address sequence differs from bound balances` | 本地 helper 改为复用 P105 的 v3 深夹具适配；原 P1-05/F-03 断言层不变，定向 `23 项 PASS` |
+
+### 最终测试输出
+
+- `python3 scripts/tests/test_repair_batch_a.py`：`PASS batch A F-01/F-02 regressions 45/45`；
+- `python3 scripts/tests/test_repair_batch_b.py`：`PASS batch B F-03/F-08 regressions 41/41`；
+- `python3 scripts/tests/test_a4_gate.py`：`a4_gate 契约测试全部通过（23 项）`；
+- `python3 scripts/tests/test_recon_deep_reverify.py`：`PASS test_recon_deep_reverify`；
+- `python3 scripts/tests/test_audit_release_gate.py`：PASS；
+- `python3 scripts/tests/test_sixlens_receipts.py`：`PASS: 六视角批①结构化回执与 fail-closed`；
+- 最终 `python3 scripts/tests/run_all.py`：101 项中 99 项 PASS；唯一两项失败为：
+  - `test_batch3_solana_vertical_slice.py`：`ThreadingHTTPServer(("127.0.0.1", 0), ...)` 在 `socket.bind` 报 `PermissionError: [Errno 1] Operation not permitted`；
+  - `test_batch3_evm_vertical_slice.py`：同一 loopback `socket.bind EPERM`；
+- 除上述两项沙箱能力限制外无业务失败；调用链追加的 `test_a4_gate.py` 已在最终全量中 PASS。
+# 工单 F-07：四查子收据消费侧深重验 + producer 最小补齐 + schema 升版（本工程最大刀）
+
+> 执行者：codex（纯施工，**禁止任何 git 操作**）
+> 前置：第 1 刀（F-04）、第 2 刀（F-10）已合入本分支——shared 的对账分支已带 mode+formal_ready 双断言，本刀在其上加深观测语义。
+> 总计划：同目录 plan.md 第 3 刀节。
+
+## 背景
+
+外部审查 F-07（P1）：A2 四查的 balance/supply/time/anchor 子收据，消费侧（`shared_release_receipt.py::validate_reconciliation_check`）只看自报计数（balance :检查 checked/matched/mismatched/rpc_errors 四计数；supply :只看 closed 布尔；time :只看 points/exact_match/mismatch/rpc_err；anchor :只看 coverage 三计数）——绑定真实 input 却人为构造计数字段的收据能过发布链。同文件 supply_truth 分支（:529-652）已是深重验样板（`_bound_replay_totals` 对回绑定实物、N-2 交叉），本刀把其余分支做到等深。
+
+## A. producer 最小补齐
+
+### A1. `scripts/evm/verify_recon.py`
+
+1. **schema 升版**：`SCHEMA = "evm-reconciliation-receipt/v2"` → `"/v3"`（SCHEMA_FAMILY 不变）。
+2. **top-N 语义可重算化**：排序键从 `-balance` 改为 `(-balance, address)` 确定性 tie-break；`observations.balance_reconciliation` 新增 `requested_top_n`（= CLI `--top-n` 实参）与 `selection`（固定串 `"top_n_then_skip_sinks"`，声明"先截 top_n 再跳过 ZERO/DEAD"的现语义）。
+3. **gmgn 解析收紧**：csv 前 10 行解析改用 `decimal.Decimal`（拒 NaN/Inf/非数值 pct，非法即 raise）；重复地址 raise；`gmgn_pct`/`replay_pct`/`diff_pp` 写入 rows 时用 Decimal 规范字符串（`str()`），阈值比较用 Decimal("0.15")。
+4. **RPC transcript 落盘绑定**（参照 `scripts/lib/evm_observation.py` 的 `_record`/transcript 模式与 `scripts/evm/observe_supply.py` 的双件 publish 写法）：
+   - 每笔 balanceOf 调用记 `{seq, method:"eth_call", params, result}`（result 为原始 hex 字符串）；
+   - 落 sidecar 文件（默认 `--out` 同目录 `verify_recon_transcript.json`，可加 `--transcript-out` 参数）；
+   - 绑进 envelope `inputs.transcript`；receipt 与 transcript 用与 observe_supply 同级的原子双件发布语义。
+
+### A2. `scripts/lib/time_spotcheck.py`
+
+1. **schema 升版**：`time-spotcheck/v2` → `"/v3"`。
+2. **inputs 补绑**：envelope inputs 从只绑 `plan` 扩为绑 `plan` + `plan_receipt`（现 `--plan-receipt` 已解析并验证但未绑）+ `input`（`--input` merged 数据文件）。
+3. **RPC transcript 落盘绑定**：calls 的 (method, params, result) 逐笔落 sidecar（`--transcript-out`，默认 out 同目录 `time_spotcheck_transcript.json`）并绑进 inputs。
+
+### A3. `scripts/solana/anchor_sampler.py` 不动。
+
+## B. consumer 深重验（`shared_release_receipt.py::validate_reconciliation_check` + 新私有 helper）
+
+照 supply_truth 分支既有样板（实物重读、`_bound_case_ref`、逐字段对照）。新增的 helper 一律私有函数放本文件对账区，**不碰 A4/adversarial 函数区**。
+
+1. **EVM balance/supply 分支**（schema 断言改 `/v3`，v2 拒收并给迁移文案"存量案须以 verify_recon v3 重跑对账"）：
+   - **supply_closure 全字段重算**：从 `inputs.config` 重算 nominal（`total_supply_human×10^decimals`）并核 config token==target token；从 `inputs.replay_stats` 重算 mint/burn（复用 `_bound_replay_totals`）并核 stats 截止块==target.as_of_block；从 `inputs.balances` 重算 balance_sum、negative_count、negative_addresses 全列；closed 语义独立重算（mint==nominal && balance_sum==mint && 无负值）；与 observations.supply_closure 自报值逐一对照。
+   - **balance_reconciliation rows 重验**：requested_top_n 存在且为正 int；按绑定 balances 实物以 `(-balance, address)` 排序重算"先截 requested_top_n 再跳 ZERO/DEAD"的期望地址序列，与 rows 地址序列**有序相等**；每行 replay_raw==balances 实物值；每行 status/diff_raw 与 chain_raw−replay_raw 自洽；checked==len(rows)，matched/mismatched/rpc_errors 与逐行 status 重计一致；PASS 收据不得含 MISMATCH/RPC_ERROR 行。
+   - **chain_raw 对 transcript**：从 `inputs.transcript` 读实物，seq 连续、method 全 eth_call、params 的地址/块与 rows 逐行对应、result 解析值==rows.chain_raw。
+   - **gmgn_comparison 重验**：从 `inputs.gmgn` csv 前 10 行以 Decimal 重算 gmgn_pct（拒重复地址/NaN/Inf），从 balances/nominal 重算 replay_pct，diff_pp/status/diff_count 逐项自洽。
+2. **EVM time 分支**（schema 断言改 `/v3`，v2 拒收带迁移文案）：
+   - 从 `inputs.plan` 实物做 **multiset 一一对应**：balance 点比 kind/addr/block/expect_raw，tx 点比 kind/tx/from/to/block/expect_raw；
+   - `inputs.plan_receipt` 存在且其绑定的 input 与本收据 `inputs.input` 同一实物（sha 相等）；
+   - points/balance_points/tx_points/exact_match/mismatch/rpc_err 六计数与 rows 逐行重计一致；PASS 收据不得含 MISMATCH/RPC_ERR 行；balance 行 status 与 chain_raw/expect_raw 自洽；
+   - rows 的 chain 实测值对 `inputs.transcript` 逐笔绑定（同 balance 分支手法）。
+3. **Solana anchor 分支**：从顶层 `output`（{path,size,sha256}，size+sha 双验，`ref_ok` 先例）读采样产物逐行重验——日期在 target 范围内、日期唯一、身份字段与 target 一致、error 行与 failures 数组对应；covered_days/failed_days 重计与 coverage 对照。（anchor 收据 schema 不升版。）
+
+## C. schema 升版全库级联收口（十层元规则：升 schema 必连下游一起升）
+
+执行 `rg -n "evm-reconciliation-receipt/" --type py` 与 `rg -n "time-spotcheck/" --type py`（含 md），逐个处置：
+
+- 生产/消费代码与测试中的串：升 v3（或按用例语义保留 v2 作拒收负测）；
+- `scripts/tests/invariant_manifest.json`：**本刀授权改动**——把本组两个 schema 串按新实况替换/并列（v2 若仍被拒收路径比较则两串都列，以 `invariant_scan.py` 的 diff 输出为准），`minimum_counts` 只升不降；
+- `scripts/tests/contract_manifest.json` 若有旧串 needle：同步改串（ID 不变则 snapshot 不动）；权威文档正文若含旧串同步；
+- 其余中心登记（run_all 挂载、新契约条目）仍归末刀，本刀不做。
+
+## D. 存量测试适配（授权范围）
+
+因 schema 升版与深重验语义**必然打红**的存量测试与夹具授权适配（夹具升为带实物绑定的真语义形态，每处在 done 报告列理由）。已预计的红名单：`test_sixlens_receipts.py`（:53,120 硬编码 v2）、`test_handoff_manifest.py`、`test_audit_release_gate.py`、`test_evm_observation_release.py`、`test_batch3_evm_vertical_slice.py`、`test_repair_batch_d.py`、`test_batch1_rpc_attestation.py`、`test_reconciliation_runner.py`、`test_r7_findings.py`、`test_repair_batch1.py`。名单外打红：停下写进 done 报告请示，不扩面。
+
+## E. 新测试 `scripts/tests/test_recon_deep_reverify.py`
+
+自建 main() runner。夹具：构造完整案根（config/balances/replay_stats/gmgn/plan/transcript 实物+真 producer 逻辑生成的绿收据），负向用例用"复制绿收据后单点篡改"法：
+
+- supply：自报 closed=true 但 balances 实物和≠nominal → 拒（审查报告的最小反例）；
+- balance：rows 少一行/replay_raw 与实物不符/matched 计数虚报/requested_top_n 缺失/地址序列与重算不符 → 各拒；
+- transcript：result 与 chain_raw 不一致/缺 transcript → 拒；
+- time：rows 与 plan 不对应/tx 行 from-to 改动/计数虚报/plan_receipt 缺失 → 各拒；
+- anchor：output 行数与 covered 不符/日期重复 → 拒；
+- gmgn：diff_count 与实物重算不符 → 拒；
+- 绿例：真 producer 全链生成的收据全部通过（EVM 用离线夹具；Solana anchor 用最小 output 实物）。
+
+## 先红后绿纪律
+
+新测试对基线（本刀施工前）跑：深重验负向用例应体现"基线只看计数、不拒篡改件"（红），落 `f07_red.log`；施工后全绿落 `f07_green.log`。
+
+## 验收标准
+
+- 新测试绿；D 节红名单逐个转绿；`python3 scripts/tests/run_all.py` 期望全绿（loopback 沙箱 EPERM 项如实记录留调度方）；
+- done 报告 `workorder_F07_done.md`：改动清单、红绿证据、级联收口清单（rg 结果逐项处置表）、存量适配理由表、"如实定性"段（本刀关闭至 transcript/实物绑定深度；远端真执行证明与完整 job spec 契约属外部锚定族 R10-9/14，剩余面留台账）。
+
+## 硬约束
+
+- 只改：`scripts/evm/verify_recon.py`、`scripts/lib/time_spotcheck.py`、`scripts/report/shared_release_receipt.py`（限对账区）、新测试、C/D 节授权文件。
+- 禁碰：VERSION、CHANGELOG、SKILL.md、r10_ledger.md、pyproject、`run_all.py`、`audit_release_gate.py`、`handoff_manifest.py`、`anchor_sampler.py`、shared 的 A4/adversarial 函数区、`contract_ids_snapshot.json`（除非 C 节 rg 确需，先在 done 报告说明）。
+- 禁止一切 git 操作。
+# 工单 F-07 补充轮：调度方裁决——扩展存量适配名单，收全量绿
+
+> 前置：workorder_F07.md 主体 BLOCKED 于名单外测试（done 报告"全量验收阻断"节）。
+> 调度方裁决如下，按此收口。
+
+## 裁决
+
+1. **授权适配**（同族旧夹具规则，只改测试夹具形态、不改生产语义）：
+   - `scripts/tests/test_review_20260804_p105.py`（`bind_balance_receipt_to_snapshot` 换绑 helper 所在）：helper 换绑余额实物后须同步收据自报的 supply_closure 相关标量（balance_sum_raw 等），使反例继续抵达其原本要测的断言层而不是提前死于深重验；
+   - `scripts/tests/test_repair_batch_b.py`（触发方）：随 helper 修复联动，必要处最小适配；
+   - `scripts/tests/test_repair_batch_a.py`：**先只读单跑定位那 1/45 的具体 case 与红因**，写进 done 报告；若红因是同族旧浅夹具 → 最小适配；若红因指向生产语义问题 → 停下，只报告不改。
+2. **调用链白名单追加**：上述测试若复用其他旧浅夹具，允许沿调用链追加必要的测试文件适配，每个追加文件在 done 报告单独列明"文件+红因+最小改动"。
+3. `references/analyze-workflow.md` 的 v3 串级联越界披露：调度方复核为最小机械级联，**保留**，无需回退。
+4. 纵切片 EPERM 属沙箱环境限制，你不用处理，调度方本机复跑。
+
+## 收口目标
+
+- `python3 scripts/tests/run_all.py` 在你的沙箱内除两个 loopback EPERM 纵切片外全部通过；
+- 重跑 `test_recon_deep_reverify.py`、`test_audit_release_gate.py`、`test_sixlens_receipts.py` 确认不回归；
+- 在 `workorder_F07_done.md` 末尾追加"补充轮"一节：batch_a 1/45 的定位结论、各文件适配理由、最终测试输出。
+
+## 硬约束（同主工单）
+
+仅改本补充轮授权的测试文件；禁碰一切生产文件；名单外再打红仍旧停下请示；禁止 git 操作。
+#!/usr/bin/env python3
+"""R-01/R-02：契约注册表与运行时文档两跳路由的负向回归。"""
+import copy
+import importlib.util
+import json
+import os
+import re
+import tempfile
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+SPEC = importlib.util.spec_from_file_location('docs_lint', os.path.join(HERE, 'docs_lint.py'))
+DOCS_LINT = importlib.util.module_from_spec(SPEC)
+SPEC.loader.exec_module(DOCS_LINT)
+
+
+def write(path, text):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, 'w', encoding='utf-8') as f:
+        f.write(text)
+
+
+def contract_manifest(authority='references/authority.md'):
+    return {
+        'schema': 'contract-manifest/v2',
+        'contracts': [{
+            'id': 'CT-TEST-01',
+            'kind': 'required',
+            'authority_file': authority,
+            'needle': '完整权威规则',
+            'stages': ['A3'],
+        }],
+    }
+
+
+def runtime_manifest():
+    return {
+        'schema': 'runtime-docs-manifest/v2',
+        'scope': ['references/*.md', 'references/labels/*.md', 'references/casebook/*.md'],
+        'listed': [
+            {'path': 'entry.md', 'entry': 'entry.md', 'stages': ['A0-A6']},
+            {'path': 'leaf.md', 'entry': 'entry.md', 'stages': ['A3']},
+        ],
+        'maintenance': ['authority.md'],
+    }
+
+
+def assert_contract_ids_match(actual_ids, snapshot_ids):
+    missing = sorted(snapshot_ids - actual_ids)
+    extra = sorted(actual_ids - snapshot_ids)
+    assert not missing and not extra, (
+        f'契约 ID 快照漂移：快照有但 manifest 缺失={missing}；'
+        f'manifest 多出但快照未登记={extra}。'
+        '增删契约须同步更新 contract_ids_snapshot.json 并在 CHANGELOG 留记录')
+
+
+def assert_skill_route_stages(skill_text):
+    """全流程路由表必须覆盖全部原子阶段，也不得私生未知阶段号。"""
+    start = skill_text.index('## 全流程路由')
+    end = skill_text.index('\n## ', start + 3)
+    table = skill_text[start:end]
+    routed = set()
+    for line in table.splitlines():
+        match = re.match(r'^\|\s*(A\d+(?:\.\d+)?(?:[–-]A\d+(?:\.\d+)?)?)\b', line)
+        if match:
+            routed.add(match.group(1))
+    atomic = {'A0', 'A1', 'A2', 'A3', 'A4', 'A4.5', 'A5', 'A6'}
+    missing = sorted(atomic - routed)
+    assert not missing, f'SKILL.md 全流程路由表缺原子阶段: {missing}'
+    unknown = sorted(stage for stage in routed
+                     if stage not in DOCS_LINT.RUNTIME_STAGES
+                     and not re.fullmatch(r'A\d+(?:\.\d+)?[–-]A\d+(?:\.\d+)?', stage))
+    assert not unknown, f'SKILL.md 全流程路由表出现未知阶段: {unknown}'
+
+
+def main():
+    with tempfile.TemporaryDirectory() as root:
+        write(os.path.join(root, 'SKILL.md'), '路由：`entry.md`\n')
+        write(os.path.join(root, 'references', 'entry.md'), '下钻：`leaf.md`\n')
+        write(os.path.join(root, 'references', 'leaf.md'), '叶子规则。\n')
+        write(os.path.join(root, 'references', 'authority.md'), '完整权威规则。\n')
+        write(os.path.join(root, 'notes.md'), '引用契约 CT-TEST-01。\n')
+
+        cm = contract_manifest()
+        assert not DOCS_LINT.validate_contract_manifest(root, cm), '合法契约注册表应通过'
+
+        write(os.path.join(root, 'references', 'authority.md'), '规则被删。\n')
+        failures = DOCS_LINT.validate_contract_manifest(root, cm)
+        assert any('权威 needle 缺失' in f for f in failures), failures
+        write(os.path.join(root, 'references', 'authority.md'), '完整权威规则。\n')
+
+        write(os.path.join(root, 'notes.md'), '引用契约 CT-NOT-FOUND-99。\n')
+        failures = DOCS_LINT.validate_contract_manifest(root, cm)
+        assert any('悬空契约引用' in f for f in failures), failures
+        write(os.path.join(root, 'notes.md'), '引用契约 CT-TEST-01。\n')
+
+        missing = contract_manifest('references/missing.md')
+        failures = DOCS_LINT.validate_contract_manifest(root, missing)
+        assert any('权威文件不存在' in f for f in failures), failures
+
+        banned_missing = contract_manifest('references/banned-missing.md')
+        banned_missing['contracts'][0]['kind'] = 'banned'
+        failures = DOCS_LINT.validate_contract_manifest(root, banned_missing)
+        assert any('权威文件不存在' in f for f in failures), failures
+
+        banned = contract_manifest()
+        banned['contracts'][0]['kind'] = 'banned'
+        failures = DOCS_LINT.validate_contract_manifest(root, banned)
+        assert any('禁用 needle 回捡' in f for f in failures), failures
+
+        with_summary = contract_manifest()
+        with_summary['contracts'][0]['summary'] = 'v2 禁止回潜的人读复述。'
+        failures = DOCS_LINT.validate_contract_manifest(root, with_summary)
+        assert any('未知字段' in f and 'summary' in f for f in failures), failures
+
+        rm = runtime_manifest()
+        assert not DOCS_LINT.validate_runtime_docs_manifest(root, rm), '合法两跳路由应通过'
+
+        on_hit = copy.deepcopy(rm)
+        on_hit['listed'][1]['stages'] = ['on-hit']
+        assert not DOCS_LINT.validate_runtime_docs_manifest(root, on_hit), \
+            'on-hit 只改变加载时机，不应影响两跳可达性'
+
+        ghost = copy.deepcopy(rm)
+        ghost['listed'].append({'path': 'ghost.md', 'entry': 'entry.md', 'stages': ['A3']})
+        failures = DOCS_LINT.validate_runtime_docs_manifest(root, ghost)
+        assert any('幽灵条目' in f for f in failures), failures
+
+        unknown_stage = copy.deepcopy(rm)
+        unknown_stage['listed'][0]['stages'] = ['A7']
+        failures = DOCS_LINT.validate_runtime_docs_manifest(root, unknown_stage)
+        assert any('stages 含未知值' in f and 'A7' in f for f in failures), failures
+
+        legacy_all = copy.deepcopy(rm)
+        legacy_all['listed'][0]['stages'] = ['all']
+        failures = DOCS_LINT.validate_runtime_docs_manifest(root, legacy_all)
+        assert any('stages 含未知值' in f and 'all' in f for f in failures), failures
+
+        write(os.path.join(root, 'references', 'entry.md'), '入口不再引用叶子。\n')
+        failures = DOCS_LINT.validate_runtime_docs_manifest(root, rm)
+        assert any('两跳内不可达' in f for f in failures), failures
+
+    # 第六类负向：真实注册表条目可被静默增删——完整 ID 集合快照双向闭合。
+    real = json.load(open(os.path.join(HERE, 'contract_manifest.json'), encoding='utf-8'))
+    real_ids = {c['id'] for c in real['contracts']}
+    snapshot_list = json.load(open(os.path.join(HERE, 'contract_ids_snapshot.json'), encoding='utf-8'))
+    assert (isinstance(snapshot_list, list) and snapshot_list
+            and all(isinstance(contract_id, str) and contract_id for contract_id in snapshot_list)), \
+        'contract_ids_snapshot.json 必须是非空字符串数组'
+    assert snapshot_list == sorted(set(snapshot_list)), \
+        'contract_ids_snapshot.json 必须按 ID 排序且不得重复'
+    snapshot_ids = set(snapshot_list)
+    assert_contract_ids_match(real_ids, snapshot_ids)
+
+    # 内存反例：删一条与加一条必须分别落入 missing / extra，禁止仅守数量。
+    removed_id = snapshot_list[0]
+    without_one = set(snapshot_ids)
+    without_one.remove(removed_id)
+    try:
+        assert_contract_ids_match(without_one, snapshot_ids)
+    except AssertionError as exc:
+        assert removed_id in str(exc) and 'manifest 缺失' in str(exc), exc
+    else:
+        raise AssertionError('删除一条契约 ID 未被快照守卫捕获')
+    fake_id = 'CT-SNAPSHOT-FAKE-99'
+    with_extra = set(snapshot_ids) | {fake_id}
+    try:
+        assert_contract_ids_match(with_extra, snapshot_ids)
+    except AssertionError as exc:
+        assert fake_id in str(exc) and 'manifest 多出' in str(exc), exc
+    else:
+        raise AssertionError('新增一条假契约 ID 未被快照守卫捕获')
+
+    anchors = {'CT-METHOD-01', 'CT-CONTROL-01', 'CT-WAVE-01', 'CT-SIMULT-01', 'CT-DISTRIBUTION-01'}
+    lost = anchors - real_ids
+    assert not lost, f'契约注册表缺五组锚 ID: {sorted(lost)}'
+
+    skill_text = open(os.path.join(HERE, '..', '..', 'SKILL.md'), encoding='utf-8').read()
+    assert_skill_route_stages(skill_text)
+
+    print('PASS: R-01/R-02 注册表、ID 快照、五组锚与 SKILL 原子阶段双向闭合')
+    return 0
+
+
+if __name__ == '__main__':
+    raise SystemExit(main())
+
+exec
+/bin/zsh -lc "rg -n \"def validate_contract_manifest|authority_file|contract_manifest\" scripts/tests/docs_lint.py | head -n 80; sed -n '360,470p' scripts/tests/docs_lint.py; rg -n -C 3 \"gmgn-divergence-note/v1|time-spotcheck/v3|verify_recon|对账收据\" references/data-pipeline-evm-recon.md" in /Users/uravvv/.claude/tca-repair-g2
+ succeeded in 0ms:
+59:def validate_contract_manifest(root, manifest):
+80:    required = {'id', 'kind', 'authority_file', 'needle', 'stages'}
+112:        authority = contract['authority_file']
+376:    contract_manifest_rel = 'scripts/tests/contract_manifest.json'
+377:    contract_manifest_path = os.path.join(ROOT, contract_manifest_rel)
+379:        with open(contract_manifest_path, encoding='utf-8') as f:
+380:            contract_manifest = json.load(f)
+382:        fails.append(f'契约注册表无法解析 {contract_manifest_rel}: {exc}')
+383:        contract_manifest = None
+384:    if contract_manifest is not None:
+385:        fails.extend(validate_contract_manifest(ROOT, contract_manifest))
+
+    def manifest_failure(message):
+        fails.append(f'{message}（{manifest_hint}）')
+
+    try:
+        with open(manifest_path, encoding='utf-8') as f:
+            manifest = json.load(f)
+    except (OSError, json.JSONDecodeError) as exc:
+        manifest_failure(f'运行时文档 manifest 无法解析: {exc}')
+        manifest = None
+
+    if manifest is not None:
+        for failure in validate_runtime_docs_manifest(ROOT, manifest):
+            manifest_failure(failure)
+
+    # 5) required/banned 契约由 canonical manifest 单点登记；复述层不再被 lint 强迫复制。
+    contract_manifest_rel = 'scripts/tests/contract_manifest.json'
+    contract_manifest_path = os.path.join(ROOT, contract_manifest_rel)
+    try:
+        with open(contract_manifest_path, encoding='utf-8') as f:
+            contract_manifest = json.load(f)
+    except (OSError, json.JSONDecodeError) as exc:
+        fails.append(f'契约注册表无法解析 {contract_manifest_rel}: {exc}')
+        contract_manifest = None
+    if contract_manifest is not None:
+        fails.extend(validate_contract_manifest(ROOT, contract_manifest))
+
+    # 9) 2026-08-04 一致性复核的 required/banned 语义针脚已并入上方 manifest。
+    active_workflows = ['SKILL.md', 'references/analyze-workflow.md',
+                        'references/report-template.md', 'references/split-run.md']
+    generic_mode = re.compile(r'--mode analysis(?=[\s`])')
+    for rel in active_workflows:
+        text = open(os.path.join(ROOT, rel), encoding='utf-8').read()
+        if generic_mode.search(text):
+            fails.append(f'2026-08-04 generic analysis 模式回退 {rel}')
+
+    # 10) 执行文档只能从 VERSION 读取当前版本，禁止重新把大 CHANGELOG 拉回开工阅读链。
+    version_instruction = re.compile(
+        r'读[^。\n]{0,24}CHANGELOG[^。\n]{0,24}版本号|CHANGELOG[^。\n]{0,16}首(?:个)?版本号')
+    execution_docs = ['SKILL.md', 'references/analyze-workflow.md',
+                      'references/split-run.md', 'references/context-discipline.md']
+    for rel in execution_docs:
+        text = open(os.path.join(ROOT, rel), encoding='utf-8').read()
+        if version_instruction.search(text):
+            fails.append(f'版本读取回退 {rel}: 执行文档必须读 VERSION，不得读 CHANGELOG 首版本号')
+
+    # 11) 已下线的轻量筛查/增量更新/批量预采集/API key 周巡检功能不得重回现役文档。
+    for retained_term in RETAINED_FEATURE_TERMS:
+        if REMOVED_FEATURE_TERMS.search(retained_term):
+            fails.append(f'已删功能禁词误伤保留概念: {retained_term}')
+    active_docs = [p for p in md_files(all_mode=True)
+                   if os.path.relpath(p, ROOT) not in {'CHANGELOG.md', 'archive/CHANGELOG-archive.md'}
+                   and os.path.relpath(p, ROOT) != 'references/attic.md'
+                   and not os.path.relpath(p, ROOT).startswith('references/casebook/')]
+    for path in active_docs:
+        rel = os.path.relpath(path, ROOT)
+        text = open(path, encoding='utf-8').read()
+        match = REMOVED_FEATURE_TERMS.search(text)
+        if match:
+            fails.append(f'已删功能回捡 {rel}: 出现 {match.group(0)}')
+    python_files = sorted(glob.glob(os.path.join(ROOT, 'scripts', '**', '*.py'), recursive=True))
+    for path in python_files:
+        rel = os.path.relpath(path, ROOT)
+        if rel.startswith(f'scripts{os.sep}tests{os.sep}'):
+            continue
+        failure = removed_feature_in_module_docstring(open(path, encoding='utf-8').read(), rel)
+        if failure:
+            fails.append(failure)
+
+    if fails:
+        for f in fails[:30]:
+            print('FAIL:', f)
+        if len(fails) > 30:
+            print(f'…共 {len(fails)} 处')
+        if warn_broken >= 3:
+            print(f'⚠ 断链 ≥3 处——按 retrospective 2b 触发整编条件')
+        return 1
+    print(f'PASS: {len(md_files(all_mode))} 个文档，引用无断链、粗体配对完整'
+          + ('（--all 全量模式）' if all_mode else ''))
+    return 0
+
+if __name__ == '__main__':
+    sys.exit(main('--all' in sys.argv[1:]))
+9-## 5. 对账 gate（数据不闭合不进分析）
+10-
+11-对账清单＝**标准四件套＋1 项重放前置检查**（下列 1–4 为对表查，5 为采集完整性前置），全过才允许跑下游分析。与 analyze-workflow A2 现行"四查"的对应：本节 1＝余额对账、2/3＝供给闭合、4＝时间抽查；A2 第 3 查**供给真值闸**挂 `scripts/lib/supply_truth_gate.py`，不在本清单内：
+12:1. **余额硬对账＋GMGN 黄灯对表（两件事，不得混写）**：`verify_recon.py` 先按绑定的 `balances` 确定性选出 top-N（先截取、再跳过 ZERO/dead），逐地址用冻结块 RPC `balanceOf` 与重放 raw balance 精确相等核对；任一 MISMATCH/RPC_ERROR 都是硬 FAIL。GMGN top10 是另一个第三方比例对表：以 0.15pp 为容差，差异不改变收据的 PASS/0，但收据必须带 `warnings:["gmgn_divergence"]`，发布链在合格人工查证说明绑定前保持阻断。曾在扫块进度 97% 时 4/10 MISMATCH、补扫 remaining=0 后 10/10 全 OK；该历史现象只说明提前对表能暴露未补扫完成或口径问题，不把 GMGN 比例差异误写成 RPC 个位数硬对账。（OPN，07；2026-08-15 黄灯制）
+13-2. **全网余额和=0**：所有地址重建余额求和应为零（mint/burn 计入），不为零即漏了转账段。（SIREN，07）
+14-3. **总量恒等式 wei 级闭合**：跨链代币各链余量之和 ≈ 总供应，精确到 wei。（OPN，07）
+15-4. **时间抽查（分层计划制）**：`anchor_plan.py` 出分层抽样计划（矩阵点＋四类强制覆盖点），`scripts/lib/time_spotcheck.py` 对独立第二源逐锚点核对（balance 型 archive balanceOf 直查＋tx 型收据五元组，产 time_spotcheck.json）；第二源分层选型与全史重拉例外条款见 §13。（旧"固定块距插值抽几笔对浏览器"形态已由本制取代；OPN/SIREN 07 → 2026-08-01 改版）
+16-5. **重放前置完整性检查（快照缺块防护，重放开跑前做）**：核对全部采集 run 的 done.json——next_block 全部达到目标块、mtime 晚于最后一次采集启动，才允许重放（实锤：重放跑在尾部 run 拉完前 13 分钟，快照缺尾部 ~980 块/682 条）。**机制警示：供给闭合恒等式（上面第 2/3 查）对"缺整行"免疫**——整行缺失时借贷两边同时缺、sum 恒等于 TOTAL 照样通过，此类洞只有 RPC 抽查负余额能暴露；增量重放出现"期初为 0 的地址转出变负"=上游快照有洞的指纹，见到即停下补数据。（QUQ 完整版分析，07-22）
+17-
+18:**GMGN 黄灯查证说明（`gmgn-divergence-note/v1`）**：第一次不带说明运行 `verify_recon.py`，让程序根据本次绑定的 config/balances/replay_stats/gmgn 四实物重算差异。若出现黄灯，人工查证后在案根手写 `gmgn_divergence_note.json`，再把原命令原参数重跑，并追加：
+19-
+20-```bash
+21:python3 scripts/evm/verify_recon.py <原参数> \
+22-  --divergence-note gmgn_divergence_note.json
+23-```
+24-
+--
+37-`mint_total == totalSupply()`、ZERO 事件流入等于链上 `balanceOf(ZERO)`、dead 事件净流入
+38-等于链上 `balanceOf(dead)`、两处 sink 重放值之和等于 `burn_total`。这只证明
+39-**终态标量与 sink 逐地址归因闭合**；混合形态、旧 stats、任一观测/格式异常都不放行，且不提供人工 override。bundle 同时绑定前后两次块头、规范化调用 transcript 与 runtime code 指纹；它证明案内内容闭合，不证明块头案外真实或 producer 确实执行，第三方应使用 bundle 的 blockHash 与 transcript 在独立节点复验。
+40:重放侧对 sink 收方余额照加，所以 `verify_recon` 的余额恒等式是 `sum_balances == mint_total`；
+41-`burn_total` 保留为独立观测，不从终态余额和再次扣除。
+42-
+43-**对账比对的 DuckDB 两坑（2026-07-25 实测，两个都会静默产生错误结论）**：
+--
+153-```
+154-- balance 型锚点走 archive `eth_call balanceOf`（历史块状态直查），tx 型锚点（最大单笔/交界块）走 `eth_getTransactionReceipt` 核五元组——**两型都查**，只查 balance 型等于四类强制覆盖点漏验两类。O(锚点数) 秒级完成，APU 案 Alchemy archive 15/15 精确一致实证。
+155-- 独立性口径（措辞纪律）：状态直查对"余额结果"的验证比换一家事件索引商更直接；但**不能替代事件集合完整性验证**——等额进出抵消、零余额中转层、tx/logIndex/时间戳元数据错误它天然验不出（这些去层 3）。
+156:- 产物 `time_spotcheck.json`（`time-spotcheck/v3`，target 绑定 chain/token/final-block，并绑定 plan、plan receipt、merged input 与逐笔 RPC transcript；verdict/exit_code 为 0 PASS/2 FAIL/1 检测自身失败禁当 PASS）；split-run 案是 READY 必备件＋AUTO_GATES（handoff_manifest 重读防手报）。
+157-
+158-**层 2（BSC 等无免费 archive balanceOf 通道的链）——SQD 只拉锚点窄窗，禁止默认全史**：SQD Portal 仍是 BSC 唯一独立对照源（§11 格局未变），但只拉**锚点所在代表日/窄块窗**（BANANAS31 先例：4 代表日 67,731 行零差集）。窗口覆盖规则：所有锚点日＋早/中/晚三段＋峰值日＋数据源交界＋门槛边缘各至少一窗；逐窗断点续传；逐事件比键 `(block,tx,log_index)` 与值 `(from,to,value)`。主通道本身是 SQD 时它不算独立第二源（换 BigQuery 等，见 §11）。
+159-
+
+exec
+/bin/zsh -lc "sed -n '1,145p' scripts/tests/docs_lint.py" in /Users/uravvv/.claude/tca-repair-g2
+ succeeded in 0ms:
+#!/usr/bin/env python3
+"""文档守护：引用断链 + 粗体配对 + SKILL.md 引用漂移哨。
+
+背景：追加式迭代下文档互引会漂移。本脚本抓"结构可查"的那部分：
+1. md 里引用的本仓库文件路径必须存在（references/*.md、scripts/**.py、labels/*.csv|md）
+2. 每行 ** 配对（奇数个 ** 的行=残缺粗体，渲染会烂）
+3. runtime docs manifest v2 的文档必须从 SKILL.md 经入口两跳可达
+4. canonical contract manifest 的权威 needle、路径与契约 ID 引用必须闭合
+复盘写入后必跑（retrospective 步骤 3）；整编触发条件之一=本脚本抓出漂移 ≥3 处。
+
+用法：python3 scripts/tests/docs_lint.py [--all]    退出码：0=PASS；1=FAIL。
+  --all＝全量模式（v6.3.1）：额外纳入 commands-staging/*.md 与 archive/evals/**/*.md——
+  此前 44/66 文档的覆盖盲区（"三查→四查""SKILL.md 阶段 N"类漂移在这两处存活过）。
+"""
+import ast, glob, json, os, re, sys
+
+ROOT = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..'))
+
+# 引用模式：仓库内相对路径（含 ` 包裹或裸写两种）；排除占位符 <chain> 与缩写 ...
+REF_RE = re.compile(r'(?<![\w/~])(?:references/[\w./-]+\.(?:md|csv|png)|scripts/[\w./-]+\.(?:py|sh)|labels/[\w.-]+\.(?:md|csv))')
+# 负向后顾排除长路径尾段（如 ~/Desktop/xx/scripts/chip_analysis.py 的历史出处说明——那不是仓库内引用）
+REMOVED_FEATURE_TERMS = re.compile(
+    r'easy-workflow|update-workflow|token-easy-analysis|token-update|'
+    r'collect-data|collect-workflow|\bcollect_queue\b|\bnightly_collect\b|'
+    r'\bcollect_manifest\b|\bprobe_keys\b|\bweekly-probe\b|'
+    r'批量预采集|预采集衔接|easy 初筛|easy E5|'
+    r'\bE0b?\b|\bU[0-6]\b',
+    re.I)
+RETAINED_FEATURE_TERMS = ('collector', 'collection_manifest', 'csv_collector_receipt', 'probe')
+CONTRACT_REF_RE = re.compile(r'契约\s+(CT-[A-Z][A-Z0-9-]*-\d{2,})')
+MD_NAME_RE = re.compile(r'(?<![\w/])(?:references/)?([\w./-]+\.md)')
+RUNTIME_STAGES = {
+    'preflight', 'on-hit', 'A0', 'A1', 'A2', 'A3', 'A4', 'A4.5', 'A5', 'A6', 'post-A5',
+    'A0-A2', 'A0-A3', 'A0-A5', 'A0-A6',
+}
+
+
+def _safe_repo_path(root, rel):
+    """只接受仓库内相对路径，避免 manifest 用绝对路径或 .. 逃逸。"""
+    if not isinstance(rel, str) or not rel or os.path.isabs(rel):
+        return None
+    path = os.path.normpath(os.path.join(root, rel))
+    try:
+        inside = os.path.commonpath([os.path.abspath(root), os.path.abspath(path)]) == os.path.abspath(root)
+    except ValueError:
+        inside = False
+    return path if inside else None
+
+
+def _markdown_targets(text):
+    """抽取文档引用并统一成 references/ 根下的相对路径。"""
+    out = set()
+    for target in MD_NAME_RE.findall(text):
+        target = target.removeprefix('references/')
+        out.add(os.path.normpath(target))
+    return out
+
+
+def validate_contract_manifest(root, manifest):
+    """R-02：校验 required/banned needle、路径和全库契约 ID 引用。"""
+    failures = []
+    if not isinstance(manifest, dict):
+        return ['契约注册表顶层必须是对象']
+    top_fields = {'schema', 'contracts'}
+    unknown_top = sorted(set(manifest) - top_fields)
+    missing_top = sorted(top_fields - set(manifest))
+    if missing_top:
+        failures.append(f'契约注册表缺字段: {missing_top}')
+    if unknown_top:
+        failures.append(f'契约注册表未知字段: {unknown_top}')
+    if manifest.get('schema') != 'contract-manifest/v2':
+        failures.append(f'契约注册表 schema 非法: {manifest.get("schema")!r}')
+    contracts = manifest.get('contracts')
+    if not isinstance(contracts, list) or not contracts:
+        failures.append('契约注册表 contracts 必须是非空数组')
+        return failures
+
+    known_ids = set()
+    authority_needles = set()
+    required = {'id', 'kind', 'authority_file', 'needle', 'stages'}
+    for index, contract in enumerate(contracts, 1):
+        label = f'contracts[{index}]'
+        if not isinstance(contract, dict):
+            failures.append(f'{label} 必须是对象')
+            continue
+        missing = sorted(required - set(contract))
+        unknown = sorted(set(contract) - required)
+        if missing:
+            failures.append(f'{label} 缺字段: {missing}')
+            continue
+        if unknown:
+            failures.append(f'{label} 未知字段: {unknown}')
+            continue
+        contract_id = contract['id']
+        if not isinstance(contract_id, str) or not re.fullmatch(r'CT-[A-Z][A-Z0-9-]*-\d{2,}', contract_id):
+            failures.append(f'{label} 契约 ID 非法: {contract_id!r}')
+        elif contract_id in known_ids:
+            failures.append(f'重复契约 ID: {contract_id}')
+        else:
+            known_ids.add(contract_id)
+        kind = contract['kind']
+        if kind not in {'required', 'banned'}:
+            failures.append(f'{label} kind 非法: {kind!r}')
+        stages = contract['stages']
+        if (not isinstance(stages, list) or not stages
+                or any(not isinstance(stage, str) or not stage for stage in stages)):
+            failures.append(f'{label} stages 必须是非空字符串数组')
+        needle = contract['needle']
+        if not isinstance(needle, str) or not needle:
+            failures.append(f'{label} needle 必须是非空字符串')
+            continue
+        authority = contract['authority_file']
+        authority_path = _safe_repo_path(root, authority)
+        if authority_path is None or not os.path.isfile(authority_path):
+            failures.append(f'权威文件不存在 {contract_id}: {authority}')
+            continue
+        pair = (os.path.normpath(authority), needle)
+        if pair in authority_needles:
+            failures.append(f'重复权威 needle {contract_id}: {authority} → {needle}')
+        authority_needles.add(pair)
+        with open(authority_path, encoding='utf-8') as f:
+            authority_text = f.read()
+        if kind == 'required' and needle not in authority_text:
+            failures.append(f'权威 needle 缺失 {contract_id}: {authority} → {needle}')
+        if kind == 'banned' and needle in authority_text:
+            failures.append(f'禁用 needle 回捡 {contract_id}: {authority} → {needle}')
+
+    # 引用只在 Markdown 中具有契约语义；JSON 中的 ID 是定义，不算引用。
+    for path in sorted(glob.glob(os.path.join(root, '**', '*.md'), recursive=True)):
+        rel = os.path.relpath(path, root)
+        if rel.startswith(f'.git{os.sep}'):
+            continue
+        with open(path, encoding='utf-8') as f:
+            for line_no, line in enumerate(f, 1):
+                for contract_id in CONTRACT_REF_RE.findall(line):
+                    if contract_id not in known_ids:
+                        failures.append(f'悬空契约引用 {rel}:{line_no}: {contract_id}')
+    return failures
+
+
+def validate_runtime_docs_manifest(root, manifest):
+    """R-01：校验 v2 分类结构和 SKILL→入口→分册两跳可达性。"""
+    failures = []
+    if not isinstance(manifest, dict):
+        return ['运行时文档 manifest 顶层必须是对象']
+
+codex
+前刀完成单声称该文档已登记 v3，但当前实文件并没有该 needle；而 `docs_lint.py` 明确要求 required needle 必须真实存在于 `authority_file`。我再做一次纯内存校验，确认这不是搜索遗漏；若仍失败，就必须停在白名单冲突处，不能伪造绿灯。
+exec
+/bin/zsh -lc "python3 -c 'import copy,json; from scripts.tests.docs_lint import validate_contract_manifest; root=\".\"; base=json.load(open(\"scripts/tests/contract_manifest.json\")); c={\"id\":\"CT-RECON-02\",\"kind\":\"required\",\"authority_file\":\"references/data-pipeline-evm-recon.md\",\"needle\":\"evm-reconciliation-receipt/v3\",\"stages\":[\"A2\"]}; m=copy.deepcopy(base); m[\"contracts\"].append(c); print(\"expected_doc=\", [x for x in validate_contract_manifest(root,m) if \"CT-RECON-02\" in x]); c2=dict(c, authority_file=\"scripts/evm/verify_recon.py\"); m2=copy.deepcopy(base); m2[\"contracts\"].append(c2); print(\"producer_script=\", [x for x in validate_contract_manifest(root,m2) if \"CT-RECON-02\" in x])'" in /Users/uravvv/.claude/tca-repair-g2
+ succeeded in 0ms:
+expected_doc= ['权威 needle 缺失 CT-RECON-02: references/data-pipeline-evm-recon.md → evm-reconciliation-receipt/v3']
+producer_script= []
+
+2026-08-15T15:26:11.742893Z ERROR codex_models_manager::manager: failed to renew cache TTL: missing field `base_instructions` at line 95 column 5
+exec
+/bin/zsh -lc "nl -ba maintenance/repair-20260815-g2/workorder_FINAL.md | sed -n '20,70p'; nl -ba references/data-pipeline-evm-recon.md | sed -n '8,22p'; nl -ba scripts/tests/docs_lint.py | sed -n '108,130p'; nl -ba /Users/uravvv/.codex/memories/MEMORY.md | sed -n '650,706p'" in /Users/uravvv/.claude/tca-repair-g2
+ succeeded in 0ms:
+    20	
+    21	## B. 契约注册表新增三条（本组专属前缀 CT-RECON-xx，防并行撞号）
+    22	
+    23	先 `rg -n "gmgn-divergence-note/v1|evm-reconciliation-receipt/v3|time-spotcheck/v3" references/` 确认各串实际所在的权威文档，然后：
+    24	
+    25	1. `scripts/tests/contract_manifest.json` 新增三条 `kind:"required"`：
+    26	   - `CT-RECON-01`：needle `gmgn-divergence-note/v1`，authority_file 按 rg 实况（预期 `references/data-pipeline-evm-recon.md`），stages `["A2"]`；
+    27	   - `CT-RECON-02`：needle `evm-reconciliation-receipt/v3`，authority_file 按 rg 实况，stages `["A2"]`；
+    28	   - `CT-RECON-03`：needle `time-spotcheck/v3`，authority_file 按 rg 实况（若在多个文档中出现，挂语义权威的一处），stages `["A2"]`。
+    29	   条目字段严格按既有白名单形状（id/kind/authority_file/needle/stages，不多不少）。
+    30	2. `scripts/tests/contract_ids_snapshot.json`：把三个新 ID 插入并**保持整体排序**。
+    31	
+    32	## C. 验收（全部本地命令，逐条落输出到 `final_center_green.log`）
+    33	
+    34	- `python3 scripts/tests/docs_lint.py --all`
+    35	- `python3 scripts/tests/test_contract_routes.py`
+    36	- `python3 scripts/tests/invariant_scan.py` 与 `python3 scripts/tests/invariant_scan.py --self-test`
+    37	- `python3 scripts/tests/run_all.py`（预期 105 项，仅两个 loopback 纵切片在你沙箱内 EPERM，如实记录留调度方）
+    38	
+    39	## D. done 报告
+    40	
+    41	`workorder_FINAL_done.md`：A/B 改动清单、rg 定位结果、验收输出摘要、给融合方的说明（本刀可整刀 cherry-pick/重放；与他组的 run_all 追加块/契约 ID 若冲突按 union 合并，CT-RECON 前缀不会撞号）。
+    42	
+    43	## 硬约束
+    44	
+    45	- 只改：`scripts/tests/run_all.py`（限末尾追加块）、`scripts/tests/contract_manifest.json`、`scripts/tests/contract_ids_snapshot.json`。
+    46	- 禁碰：其余一切文件（含 invariant_manifest——四刀已跟刀登记完毕）。
+    47	- 禁止一切 git 操作。
+     8	
+     9	## 5. 对账 gate（数据不闭合不进分析）
+    10	
+    11	对账清单＝**标准四件套＋1 项重放前置检查**（下列 1–4 为对表查，5 为采集完整性前置），全过才允许跑下游分析。与 analyze-workflow A2 现行"四查"的对应：本节 1＝余额对账、2/3＝供给闭合、4＝时间抽查；A2 第 3 查**供给真值闸**挂 `scripts/lib/supply_truth_gate.py`，不在本清单内：
+    12	1. **余额硬对账＋GMGN 黄灯对表（两件事，不得混写）**：`verify_recon.py` 先按绑定的 `balances` 确定性选出 top-N（先截取、再跳过 ZERO/dead），逐地址用冻结块 RPC `balanceOf` 与重放 raw balance 精确相等核对；任一 MISMATCH/RPC_ERROR 都是硬 FAIL。GMGN top10 是另一个第三方比例对表：以 0.15pp 为容差，差异不改变收据的 PASS/0，但收据必须带 `warnings:["gmgn_divergence"]`，发布链在合格人工查证说明绑定前保持阻断。曾在扫块进度 97% 时 4/10 MISMATCH、补扫 remaining=0 后 10/10 全 OK；该历史现象只说明提前对表能暴露未补扫完成或口径问题，不把 GMGN 比例差异误写成 RPC 个位数硬对账。（OPN，07；2026-08-15 黄灯制）
+    13	2. **全网余额和=0**：所有地址重建余额求和应为零（mint/burn 计入），不为零即漏了转账段。（SIREN，07）
+    14	3. **总量恒等式 wei 级闭合**：跨链代币各链余量之和 ≈ 总供应，精确到 wei。（OPN，07）
+    15	4. **时间抽查（分层计划制）**：`anchor_plan.py` 出分层抽样计划（矩阵点＋四类强制覆盖点），`scripts/lib/time_spotcheck.py` 对独立第二源逐锚点核对（balance 型 archive balanceOf 直查＋tx 型收据五元组，产 time_spotcheck.json）；第二源分层选型与全史重拉例外条款见 §13。（旧"固定块距插值抽几笔对浏览器"形态已由本制取代；OPN/SIREN 07 → 2026-08-01 改版）
+    16	5. **重放前置完整性检查（快照缺块防护，重放开跑前做）**：核对全部采集 run 的 done.json——next_block 全部达到目标块、mtime 晚于最后一次采集启动，才允许重放（实锤：重放跑在尾部 run 拉完前 13 分钟，快照缺尾部 ~980 块/682 条）。**机制警示：供给闭合恒等式（上面第 2/3 查）对"缺整行"免疫**——整行缺失时借贷两边同时缺、sum 恒等于 TOTAL 照样通过，此类洞只有 RPC 抽查负余额能暴露；增量重放出现"期初为 0 的地址转出变负"=上游快照有洞的指纹，见到即停下补数据。（QUQ 完整版分析，07-22）
+    17	
+    18	**GMGN 黄灯查证说明（`gmgn-divergence-note/v1`）**：第一次不带说明运行 `verify_recon.py`，让程序根据本次绑定的 config/balances/replay_stats/gmgn 四实物重算差异。若出现黄灯，人工查证后在案根手写 `gmgn_divergence_note.json`，再把原命令原参数重跑，并追加：
+    19	
+    20	```bash
+    21	python3 scripts/evm/verify_recon.py <原参数> \
+    22	  --divergence-note gmgn_divergence_note.json
+   108	        needle = contract['needle']
+   109	        if not isinstance(needle, str) or not needle:
+   110	            failures.append(f'{label} needle 必须是非空字符串')
+   111	            continue
+   112	        authority = contract['authority_file']
+   113	        authority_path = _safe_repo_path(root, authority)
+   114	        if authority_path is None or not os.path.isfile(authority_path):
+   115	            failures.append(f'权威文件不存在 {contract_id}: {authority}')
+   116	            continue
+   117	        pair = (os.path.normpath(authority), needle)
+   118	        if pair in authority_needles:
+   119	            failures.append(f'重复权威 needle {contract_id}: {authority} → {needle}')
+   120	        authority_needles.add(pair)
+   121	        with open(authority_path, encoding='utf-8') as f:
+   122	            authority_text = f.read()
+   123	        if kind == 'required' and needle not in authority_text:
+   124	            failures.append(f'权威 needle 缺失 {contract_id}: {authority} → {needle}')
+   125	        if kind == 'banned' and needle in authority_text:
+   126	            failures.append(f'禁用 needle 回捡 {contract_id}: {authority} → {needle}')
+   127	
+   128	    # 引用只在 Markdown 中具有契约语义；JSON 中的 ID 是定义，不算引用。
+   129	    for path in sorted(glob.glob(os.path.join(root, '**', '*.md'), recursive=True)):
+   130	        rel = os.path.relpath(path, root)
+   650	- when the user says `shared 侧改为 from supply_truth_gate import 该常量并引用` and asks for `没有第三处手抄这个 10bps 上限的运行时代码` -> prefer single-source imports plus a runtime-code grep sweep, and record “exit 1, 0 matches” as positive evidence rather than a tool failure. [Task 22]
+   651	- when the user says `照案执行，不重新设计` and `纯改文件，禁 git commit` for a repair batch -> follow the approved plan and file boundaries without scope expansion or a git commit. [Task 23]
+   652	- when the user requires a `batchC_workorder.md`, red-to-green counterexamples, “删掉即红” mutation checks, and real-case measurements -> create and maintain the workorder before construction; do not substitute planned checks for evidence. [Task 23]
+   653	- when the user says Codex CLI rejection or stall exceeds two attempts -> stop and report the exact initialization failure; do not bypass the sandbox or invent code/test progress. [Task 23]
+   654	- when the user requires `每条裁决必须引用代码证据（file:line）` and `只写入一个文件` for a plan review -> keep the review strictly read-only except for the named report file, and ground every verdict in exact code evidence rather than plan prose alone. [Task 24]
+   655	- when the user fixes the file contract to four sections plus a last line `盲审完成` -> deliver that exact structure in the file instead of substituting a chat summary. [Task 24]
+   656	- when the user says `计划不批准` and replaces the draft with a concrete closure checklist -> rewrite the plan to match the named closure criteria instead of defending a generic strategy. [Task 21]
+   657	- when the user says `收口标准回写 maintenance-review-repair.md，保持单一事实源` and `验收物增加 diff→finding 映射表，无主改动=夹带=BLOCK` -> update the canonical methodology doc and require a diff-to-finding map as a hard acceptance artifact. [Task 21]
+   658	- when the user says `增加存量测试 fixture 审计步` and `业务全真、仅 transport 可 fake、注入点登记在案` -> audit existing positive fixtures and state the transport-only fake boundary explicitly in any E2E repair plan. [Task 21]
+   659	- when the user names `opus4.8` for batch-internal adversarial review and rejects a temporary manual Solana READY toggle -> make reviewer roles explicit and derive readiness from the capability matrix rather than an ad hoc switch. [Task 21]
+   660	- when the user says `连续三个修复循环未达标即停手`, narrows the counter to `新引入/半修残留/历史 P0P1/同 INV 再穿/豁免回流`, and says no extra confirmation is needed -> count those classes automatically, not by raw finding totals. [Task 21]
+   661	- when the user points out `G3-0 预演载体选 USDC，会把批三错误卡死` and asks for `G3-0 改双载体` -> separate activity-stress preflight from GPA/supply-closure feasibility, and scope the batch-three stop clause only to the realistic meme-mint carrier. [Task 21]
+   662	- when repair planning stays read-only until approval -> do not start edits early; keep revising the control plane until batch structure, reviewer role, stop-loss accounting, and carrier feasibility are explicit. [Task 21]
+   663	- when the user says “总结为什么会修了3轮，问题仍然存在” and “怎么把已知问题修复，而不是‘修完还有残留’” -> default to root-cause classification, same-family closure, and invariant maps rather than flat defect lists. [Task 21]
+   664	- when the user requires “每轮修复时不能光打补丁，不能只修‘被抓到的那个例子’，而应该修问题的根” -> bind producer/consumer contracts to the real invariant, not just the observed counterexample. [Task 21]
+   665	- when the user requires a new branch and says the loop continues “直到明确的 PASS 条件：没有任何P0.P1问题” -> use a hard-gated plan -> fix -> review loop on the approved branch and stop for independent review rather than self-certifying after a green suite. [Task 21]
+   666	
+   667	## Reusable knowledge
+   668	
+   669	- The real reading order for this skill is `SKILL.md` -> selected workflow docs -> chain/data-pipeline docs -> stage-specific playbooks -> scripts/tests only when needed. `commands-staging/*.md` are staging wrappers, `scripts/` are usually executable tools/evidence sources, and `references/labels/*.csv` are data assets rather than context to ingest wholesale. The meaningful tracked surface at the audited 6.15.0 snapshot was `373` files, not the raw `2069` path count. [Task 14]
+   670	- `scripts/tests/docs_lint.py` is a first-class doc contract guard, not just style lint: it now scans `scripts/**/*.py` module docstrings with `ast.get_docstring`, excludes `scripts/tests/`, and catches banned deleted-feature phrases such as `批量预采集`, `预采集衔接`, and exact `easy E5`. Preserve legitimate tokens like `collector`, `collection_manifest`, `csv_collector_receipt`, and macros such as `{{e1.*}}`. [Task 10]
+   671	- The authoritative split for A4/case-history slimming is: `analyze-workflow.md` for A4 execution order / entry-exit / hard gates, `playbook-evidence-wording.md §10` for `CONFIRMED/WEAKENED/REFUTED` wording and correction propagation, `research-workflows.md §二` for N-route review organization, and `independent-audit-protocol.md` for clean-room audit deltas. Casebook volumes are append-only, use the six-field structure, and remain under `25KB` / `25` entries per volume. [Task 9]
+   672	- For batch doc slimming in live files, the stable workflow is: approved inventory or ruling -> exact quote search in source -> smallest authorized file set -> `docs_lint.py` plus any relevant narrow lints (`changelog_lint.py`, `casebook_lint.py`) -> root or `/tmp` report with file/byte/line deltas. This repo’s `CHANGELOG.md` accepted a `6.21.0` archive section with `47` bullets after lint passed. [Task 7][Task 8]
+   673	- The batch-2 casebook migration proved a reusable replacement pattern: move B-class history into `references/casebook/supply-accounting.md`, `entity-clustering.md`, or `cex-custody.md`, then replace the pipeline prose with short authority rules plus explicit casebook pointers. In the cited run, `39/39` old quotes were cleared, EVM retained `25` pointers, Solana retained `14`, and the expanded high-value families were `S-04`, `S-05`, `S-06`, `S-07`, `E-01`, `E-02`, `E-04`, `E-05`, `E-10`, `E-12`, `C-01`, `C-04`, `C-06`. [Task 7]
+   674	- `archive/README.md` is the local boundary note for historical assets. `archive/CHANGELOG-archive.md`, archived evals, and archived serial-conflict snapshots should stay outside the execution context, while `scripts/tests/runtime_docs_manifest.json` governs which runtime docs remain reachable from `SKILL.md`. `docs_lint.py` validates schema, bidirectional equality, and the one permitted boundary-line mention for `attic.md`. [Task 6]
+   675	- Formatting-only repo work still needs semantic guards. The reliable sequence for long-line splitting was per-file whitespace-stripped diff against HEAD, then `python3 scripts/tests/run_all.py`, then a whole-repo long-line scan, then `git diff --check`. Markdown table rows are structural no-split exemptions, and `docs_lint.py --all` catches broken emphasis even when char streams otherwise match. [Task 5]
+   676	- `references/address-book.md` is now the machine-readable source for manual-label sync: `gen_manual_from_addressbook.py --check` validates the generated CSV block without rewriting, `check_manual_sync.py` gates both content equality and set-level sync, `run_all.py` includes that guard, and the runtime resolver still reads `scripts/labels/sources/manual_labels.csv` rather than parsing Markdown at runtime. [Task 4]
+   677	- `split-run.md §3.2` is the authority for A3 order. `analyze-workflow.md` should mirror it exactly, with `holder_distribution_scan.py --stage initial` only after `EF-3A/B`, `EF-1/EF-2` gate before freeze, and audit routing kept distinct from new-analysis routing. `build_html.py --mode analysis-audit`, `audit_release_gate --profile independent-audit`, and `a4_gate.py finalize --workflow-type independent-audit` are the clean-room audit compile rails. [Task 4]
+   678	- Formal chain support is now explicitly split from exploratory support. `KNOWN_CHAINS` can include exploratory chains like Arbitrum for collection/replay/identity, while `FORMAL_CHAINS` controls whether `build_html.py`, `audit_release_gate.py`, `a4_gate.py`, and `a5_report_seal.py` may compile a formal report. The three-way closure check is SKILL/frontmatter claim + release-gate formal set + actual label capability / non-degraded resolver behavior; missing `labels-arbitrum.csv` is the concrete fail-closed signal that keeps Arbitrum exploratory-only. [Task 3]
+   679	- `test_commands_deploy_sync.py` remains the durable guard for slash-command drift: compare `commands-staging/*.md` to `~/.claude/commands/*.md` by SHA-256, `SKIP` when the deployed dir is absent, and `FAIL` on missing/mismatched deployed files. Validate it with a shadow HOME when the live deployed path is not writable. [Task 11]
+   680	- The 6.17.0–6.19.0 work established the durable doc-shaping rule for this repo: move examples and case history into casebook/archive, preserve active rules in place, treat feature retirement as cross-surface deletion of command/doc/script/test entrypoints, and derive final suite counts from live `scripts/tests/run_all.py` instead of memory. [Task 12][Task 13]
+   681	- `contract_manifest.json` is live source of truth. Count guards are insufficient: `scripts/tests/contract_ids_snapshot.json` plus `assert_contract_ids_match(actual_ids, snapshot_ids)` must report missing and extra IDs separately, and a manifest add/remove requires snapshot + CHANGELOG update. The 6.31.0 run had 138 IDs and passed 53/53; recheck live values before reuse. [Task 15]
+   682	- The active `CHANGELOG.md` window is rolling (12 entries in the 6.31.0 run). On a version bump, inspect the live window first; migrate only the oldest required entry and preserve its archived body byte-for-byte. `VERSION`, `pyproject.toml`, and the single `SKILL.md` version comment are synchronized anchors; finish with an `rg` sweep for stale current-version assertions. [Task 15]
+   683	- Batch C’s v6.39.5 acceptance surface is explicitly bounded: preserve `VERSION`, the `SKILL.md` version line, `pyproject.toml` version, both contract JSONs, batch D, and already-closed batch A/B anchors; completion requires `test_repair_batch_c.py`, `invariant_scan.py`, and the contract tests selected from an `rg` call-surface audit. [Task 23]
+   684	- The v6.39.5 plan blind review identified a fifth coupling beyond the nominal finding list: burn accounting. `holder_distribution_scan.py` mixes total/net supply semantics while also bucketizing `burn_sentinel`, so owner-snapshot closure cannot be repaired safely until the burn bucket, denominator, and dead-sink semantics are unified across producer and consumer. [Task 24]
+   685	- The same blind review tightened three durable acceptance rules: Solana distribution cannot skip `holders_owners` same-artifact binding; `--series-source` byte equality is content binding, not producer execution proof; and `audit_closed_accounts.py` fail-open behavior must be fixed rather than left under an R10 debt note because it can still exit 0 after RPC failure. [Task 24]
+   686	- Label publication now fails closed: missing formal-chain tables are exit 2; row comparison covers `category/tier/merge_policy/balance_policy/status/name`; `--dump` includes degraded rows. `benchmark_labels.py` requires formal main tables complete/nonempty, and `add_labels.py` restores a `.bak` for pre-existing tables but deletes a newly created bad table. [Task 16]
+   687	- Collection must not report normal completion after request exhaustion, missing/stalled `next_block`, or an invalid GMGN subcommand result. `fetch_gmgn.sh` stages `.tmp`, JSON-validates before atomic move, retains `.err`, aggregates failures, and exits nonzero. Test shell stderr with `encoding='utf-8', errors='replace'` when bytes may be invalid UTF-8. [Task 16]
+   688	- For the three HyperSync EVM collectors, the secure interface is explicit `--token-file`, then `HYPERSYNC_TOKEN`, then default token file; positionals are rejected. Keep parsing testable and synchronize active docs/prompts/tests; archive text is historical and excluded. [Task 16]
+   689	- A runtime-doc scope expansion is a three-way change: `runtime_docs_manifest.json`, `docs_lint.py`, and `test_contract_routes.py`. Route-table tests should cover atomic stages such as `A4.5`; check `SKILL.md` byte size (8192-byte hard gate) after doc changes. [Task 16]
+   690	- `scripts/tests/invariant_scan.py` and `scripts/tests/invariant_manifest.json` are the stage-1 implementation-surface baseline: scan `scripts/report`, `scripts/evm`, `scripts/solana`, `scripts/lib`, `scripts/robinhood`, `scripts/labels`, `scripts/prices`, plus root-level `scripts/*.py`, while excluding `scripts/tests`. Consumer detection must cover direct schema access, local-variable comparisons, and whole-dict identity checks; counts changed from 43/51/35/35/53 to 44/51/35/39/54 as later stages landed. [Task 18][Task 19][Task 20]
+   691	- `scripts/tests/test_r7_findings.py` is an expected-red quarantine, not a one-off test file: findings stay labeled `EXPECTED_RED` until fixed, then must be removed from the quarantine list or the suite fails. The stage sequence was `15/15 observed red` in stage 1, `12/15` after stage 2, `3/15` after stage 3, and fully closed by stage 4. [Task 17][Task 18][Task 19][Task 20]
+   692	- `scripts/report/reconciliation_report.py` is the canonical controlled producer for `reconciliation-report/v2`: it launches only whitelisted producers, rejects stale/prebuilt receipts and target/input drift, and atomically publishes the wrapper. `shared_release_receipt.py` verifies current runner path/SHA-256 plus top-level `verdict=PASS` and `exit_code=0`, but this remains content binding rather than proof the producer really ran on the claimed host. [Task 19]
+   693	- `scripts/lib/chain_registry.py` became the single fact source for formal/recon/identity chain capability. `identity_snapshot_receipt.py`, `entity_identity_gate.py`, and `shared_release_receipt.chain_family()` now derive from registry helpers such as `identity_adapter`, `identity_chains()`, and `recon_adapter_for()`. When doing similar migrations, search all `KNOWN_CHAINS|EVM_CHAINS|FORMAL_CHAINS|CHAIN_ALIASES`-style sets and keep a written reason for any remaining non-registry mapping. [Task 19]
+   694	- `scripts/lib/receipt_kernel.py` plus the independent `scripts/lib/receipt_validate.py` form the durable receipt publication kernel. Preserve reserved envelope fields (`schema`, `target`, `producer`, `mode`, `inputs`, `verdict`, `exit_code`) from caller override, and treat rollback semantics as first-class: `publish_txn`/`publish_restore_on_fail` must preserve recovery backups if rollback itself fails. [Task 18]
+   695	- `shared_release_receipt.validate_reconciliation_check()` calls `validate_receipt()` before waiver-content parsing, so a post-generation `inputs.tolerance_waiver` swap can already fail closed at the envelope binding layer with `reconciliation supply_truth receipt envelope invalid: input tolerance_waiver size mismatch；存量案例须重跑对应生产者获取当前回执`. For similar replacement concerns, check path/size/sha256 binding first. [Task 22]
+   696	- The durable single source for the formal tolerance cap is `scripts/lib/supply_truth_gate.py: FORMAL_TOLERANCE_BPS_MAX = 10`; `scripts/report/shared_release_receipt.py` should import that constant rather than hand-copying `10`, and `scripts/tests/test_repair_batch_a.py` now guards equality between producer and shared consumers. [Task 22]
+   697	- Batch-A acceptance now has a reusable pattern: append a `## 边界外验收（裁判出题）` block directly into `maintenance/repair-20260813-sixlens/batchA_workorder.md`, include the real rejection string, diff summary, grep evidence, and exact test exit codes, and finish the file with `边界外验收完成`. [Task 22]
+   698	- `python3 scripts/tests/test_repair_batch_a.py` now covers 8 subtests including the waiver-swap replay and tolerance-cap equality guard; the designated acceptance set also included `invariant_scan.py`, `test_a4_gate.py`, `test_supply_truth_gate.py`, `test_audit_release_gate.py`, `test_handoff_manifest.py`, and `git diff --check`, all green in this run. The broad suite evidence was `90/92 PASS`, with only the two vertical-slice loopback-bind tests blocked by sandbox `PermissionError: [Errno 1] Operation not permitted` before business assertions. [Task 22]
+   699	- Shared-network migration: `Result` must be checked via `.ok` because implicit truth testing raises `TypeError`; `curl_json` classifies curl failure as `transport` (with rc=22 as `http_status`) and empty/bad JSON/NDJSON as `decode`. Business-level empty-data meaning stays in adapters. [Task 17]
+   700	- Solana `anchor_sampler.py` must issue a nonzero ERROR-side receipt on transport/decode/unprovable-empty activity and may resume only rows bound to `chain/mint/endpoint/as_of_slot` with valid date/slot/failure state. `window_fetch.py` rejects invalid/zero-segment windows, isolates gaps as `.stale.<run_id>`, and restores the old official file on receipt/data publication failure. [Task 17]
+   701	- `references/maintenance-review-repair.md` is the single source of truth for R9 repair doctrine; update it when batch closure, diff→finding mapping, transport-only fake boundaries, or stop rules change. [Task 21]
+   702	- The repeated R9 failure pattern was not “one more missed edge case”; it was a boundary mismatch where local green checks observed helper return values or hand-built outputs instead of the real production contract. For this repo, repair planning has to be invariant-centered rather than filename-centered. [Task 21]
+   703	- In repair plans, treat capability matrices as executable evidence, not declarative prose. A manual “temporary disable Solana READY” switch is weaker than deriving readiness directly from the actual capability matrix and formal-path evidence. [Task 21]
+   704	- The G3-0 preflight should be split into two carriers: use USDC only for activity-volume stress, and use a real analysis-sized meme mint such as TROLL or PYTHIA for GPA snapshot plus three-way closure feasibility. Reusing one synthetic carrier for both can deadlock the batch for the wrong reason. [Task 21]
+   705	- PYTHIA has local historical artifacts (`PYTHIA分析/anchor_plan.json`, `supply_truth.json`, `stage1_receipts.json`, `collect_manifest.json`) and is a plausible GPA/three-way-closure feasibility carrier; USDC is the activity/threshold stress carrier, not the closure carrier. [Task 21]
+   706	- The concrete root-cause closure fix bound `config_key_inventory` to raw config bytes and required the consumer to independently re-derive the canonical inventory from those bytes. A strict closed config subset now makes producer and consumer parse the same constrained syntax, and anything outside that subset fails closed. [Task 21]
+
+2026-08-15T15:26:18.208690Z ERROR codex_models_manager::manager: failed to renew cache TTL: missing field `base_instructions` at line 95 column 5
+codex
+不能继续施工：工单本身存在白名单冲突。
+
+- `evm-reconciliation-receipt/v3` 在 `references/` 中无任何命中，仅存在于 [verify_recon.py](/Users/uravvv/.claude/tca-repair-g2/scripts/evm/verify_recon.py:24) 等代码中。
+- 工单要求 CT-RECON-02 指向实际权威文档，同时禁止修改文档：[workorder_FINAL.md](/Users/uravvv/.claude/tca-repair-g2/maintenance/repair-20260815-g2/workorder_FINAL.md:23)。
+- 若按预期指向 `references/data-pipeline-evm-recon.md`，内存校验确定报错：`权威 needle 缺失 CT-RECON-02`。这是 [docs_lint.py](/Users/uravvv/.claude/tca-repair-g2/scripts/tests/docs_lint.py:123) 的硬失败。
+
+因此尚未修改三个中心文件，未生成伪绿日志或 done 报告，也未运行任何 git 操作。
+
+需要你明确授权二选一：
+
+1. 推荐：追加授权修改 `references/data-pipeline-evm-recon.md`，补入该 v3 契约说明。
+2. 修改工单口径，允许 CT-RECON-02 的 `authority_file` 指向 `scripts/evm/verify_recon.py`。
+
+
+tokens used
+71,738
+不能继续施工：工单本身存在白名单冲突。
+
+- `evm-reconciliation-receipt/v3` 在 `references/` 中无任何命中，仅存在于 [verify_recon.py](/Users/uravvv/.claude/tca-repair-g2/scripts/evm/verify_recon.py:24) 等代码中。
+- 工单要求 CT-RECON-02 指向实际权威文档，同时禁止修改文档：[workorder_FINAL.md](/Users/uravvv/.claude/tca-repair-g2/maintenance/repair-20260815-g2/workorder_FINAL.md:23)。
+- 若按预期指向 `references/data-pipeline-evm-recon.md`，内存校验确定报错：`权威 needle 缺失 CT-RECON-02`。这是 [docs_lint.py](/Users/uravvv/.claude/tca-repair-g2/scripts/tests/docs_lint.py:123) 的硬失败。
+
+因此尚未修改三个中心文件，未生成伪绿日志或 done 报告，也未运行任何 git 操作。
+
+需要你明确授权二选一：
+
+1. 推荐：追加授权修改 `references/data-pipeline-evm-recon.md`，补入该 v3 契约说明。
+2. 修改工单口径，允许 CT-RECON-02 的 `authority_file` 指向 `scripts/evm/verify_recon.py`。
+
+

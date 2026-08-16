@@ -1,0 +1,4 @@
+FAIL test_consumer_rejects_exploration_mode: AssertionError: formal reconciliation consumer accepted forbidden receipt
+FAIL test_consumer_rejects_exploration_tier_relabelled_formal: AssertionError: formal reconciliation consumer accepted forbidden receipt
+PASS test_formal_receipt_regression
+FAIL F-10: 2 regression(s) failed

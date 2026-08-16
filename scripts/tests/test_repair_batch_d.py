@@ -728,7 +728,8 @@ def t_a5_same_source_negative():
         build_case(root, historical=False)
         # 给 supply 收据换绑另一本账（内容自洽、sha 合法登记）——三查不再同源
         alt = root / "alt_stats.json"
-        write_json(alt, {"mint_total_raw": "100", "burn_total_raw": "0", "alt": True})
+        write_json(alt, {"mint_total_raw": "100", "burn_total_raw": "0",
+                         "max_block": 123, "alt": True})
         receipt_path = root / "supply_receipt.json"
         doc = json.loads(receipt_path.read_text())
         doc["inputs"]["replay_stats"] = {"path": "alt_stats.json",
@@ -880,6 +881,17 @@ def build_solana_case(root: Path):
                  "supply": "scripts/solana/scan_token_accounts.py",
                  "supply_truth": "scripts/lib/supply_truth_gate.py",
                  "time": "scripts/solana/anchor_sampler.py"}
+    anchor_output = root / "fixture_anchors.jsonl"
+    anchor_rows = [
+        {"date": f"2026-01-0{day}", "chain": "solana", "mint": SOL_MINT,
+         "endpoint": "https://portal.sqd.dev", "as_of_slot": SOL_SLOT,
+         "from_slot": day, "to_slot": day + 10, "n_rows": 1, "accounts": {}}
+        for day in (1, 2, 3)
+    ]
+    anchor_output.write_text(
+        "".join(json.dumps(row) + "\n" for row in anchor_rows), encoding="utf-8")
+    anchor_ref = {"path": anchor_output.name, "size": anchor_output.stat().st_size,
+                  "sha256": sha_file(anchor_output)}
     checks = {}
     for key in ("balance", "supply", "supply_truth", "time"):
         name = f"{key}_receipt.json"
@@ -891,6 +903,8 @@ def build_solana_case(root: Path):
             continue
         if key in {"balance", "time"}:
             doc = {"schema": "solana-anchor-sampler-receipt/v2", "target": target,
+                   "date_range": {"start": "2026-01-01", "end": "2026-01-03"},
+                   "output": anchor_ref,
                    "coverage": {"requested_days": 3, "covered_days": 3, "failed_days": 0},
                    "failures": [], "verdict": "PASS", "exit_code": 0,
                    "producer": _repo_ref(producers[key]), "mode": "formal",

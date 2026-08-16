@@ -1,0 +1,2377 @@
+Reading additional input from stdin...
+2026-08-15T15:01:25.563150Z ERROR codex_models_manager::cache: failed to load models cache: missing field `base_instructions` at line 95 column 5
+OpenAI Codex v0.144.1
+--------
+workdir: /Users/uravvv/.claude/tca-repair-g2
+model: gpt-5.6-sol
+provider: openai
+approval: on-request
+sandbox: workspace-write [workdir, /tmp, $TMPDIR]
+reasoning effort: high
+reasoning summaries: none
+session id: 01a005f1-3582-72f0-9858-52746845c7d8
+--------
+user
+你是修复工程的施工执行者。读取并严格执行补充工单 maintenance/repair-20260815-g2/workorder_F09_addendum.md。只改三个授权测试文件的 fixture，禁止 git 操作。
+codex
+我先按补充工单逐条核对授权范围、验收命令和停机条件；整个过程不执行任何 git 命令，只会修改工单列明的三个测试 fixture 文件。
+exec
+/bin/zsh -lc 'rg -n "F09|g2|workorder_F09|fixture|repair-20260815" /Users/uravvv/.codex/memories/MEMORY.md' in /Users/uravvv/.claude/tca-repair-g2
+ succeeded in 0ms:
+34:- PROGRESS.md, RUN_D1.md, HANDOFF.md, HANDOFF_D1.md, inventory shrinkage, 不生成假榜单, 库存收缩, 提币量, 庄家提币, secret-scan, static compile, local fixtures, structural validator
+59:- Treat `RUN_D1.md` as authoritative live execution order and `HANDOFF_D1.md` as the first status read. Layer validation as static compile -> local fixtures -> structural validator -> live runbook. `scripts/test_d1_local.py` is the lightweight D1 regression target; the recorded local state is 14/14 PASS, while live inputs remain explicitly `PENDING`. [Task 2][Task 3]
+639:- when the user says `测试一律在临时目录构造 fixture，禁止污染真实 references/labels/ 与 data 产物` -> inject temp paths and fixtures; never use the live labels/data tree as a test scratchpad. [Task 16]
+658:- when the user says `增加存量测试 fixture 审计步` and `业务全真、仅 transport 可 fake、注入点登记在案` -> audit existing positive fixtures and state the transport-only fake boundary explicitly in any E2E repair plan. [Task 21]
+731:- Symptom: a repair plan claims closure because the suite is green. Cause: local helper returns, hand-written positive fixtures, or direct `main()` calls were treated as system evidence. Fix: require real subprocess exit propagation, real producer execution, explicit negative fixtures, and diff-to-finding traceability before calling the batch closed. [Task 21]
+826:- Symptom: an upgraded release profile breaks an old fixture although new gate tests pass. Cause: existing consumers were not updated for new distribution assets. Fix: after new targeted tests turn green, update every affected legacy fixture and run the complete suite. [Task 5]
+964:- Symptom: `run_all.py` and labels checks are green but the release chain is unsafe. Cause: hand-authored fixtures and unit contracts do not prove real producer/consumer field closure or source completeness. Fix: inspect production JSON against consumer expectations and treat actual mismatches/manual-sync omissions as blockers. [Task 4]
+1084:- The requested repair scope was broader than test-fixture cleanup: EVM receipt provenance/freshness, HyperSync identity isolation, Filecoin truncation/smoke semantics, strict release-gate parsing, separate new-analysis/audit gates, canonical claim registry reconciliation, identity share semantics, stable `BLOCK` behavior for missing manifests, plus `arbitrum` whitelist coverage and dead `--skip-identity-gate` removal. [Task 1]
+1493:- when a schema fix only improves fixtures, the user corrected that “生产通道一起升” -> ship the real generator/call path, migration path, documentation, and drift regressions; hand-written test receipts are not completion. [Task 2]
+1506:- Symptom: a receipt integrity test passes but production users must hand-write rows/hash. Cause: the schema changed only in fixtures. Fix: make the test invoke the production generator, then mutate the data and assert preflight rejection. [Task 2]
+1508:- Symptom: an apparent red-green test never went red. Cause: the test fixture did not construct the entity-member condition that reaches the vulnerable logic. Fix: repair the fixture/trigger first, then accept the regression as evidence. [Task 1]
+1638:- `analysis-state.json` contained a notable omitted structural outlier outside the claim list: `hx_hub` address `2Q5w9tWTwLTxZAg2KjMS2ktXcCTLAHLBvAXP5TFMnsBj` peaked at `90729347866833` raw (`9.08967759340726%`) with 480 senders and 474 receivers. [Task 1]
+
+exec
+/bin/zsh -lc "sed -n '1478,1514p' /Users/uravvv/.codex/memories/MEMORY.md
+sed -n '620,666p' /Users/uravvv/.codex/memories/MEMORY.md
+pwd
+rg --files -g 'AGENTS.md' -g 'workorder_F09_addendum.md' -g '"'!**/.git/**'"' ." in /Users/uravvv/.claude/tca-repair-g2
+ succeeded in 0ms:
+
+## Task 2: Add production EVM receipt generation and fail-closed legacy HyperSync migration, success
+
+### rollout_summary_files
+
+- rollout_summaries/2026-08-02T13-16-11-c54F-token_chip_analysis_rereview_fixes_and_manifest_migration.md (cwd=/Users/uravvv/Desktop/老公用/fable筹码分析, rollout_path=/Users/uravvv/.codex/sessions/2026/08/02/rollout-2026-08-02T09-16-11-019fc29e-23bb-77c3-9934-17acabea6405.jsonl, updated_at=2026-08-02T14:26:57+00:00, thread_id=019fc29e-23bb-77c3-9934-17acabea6405, Fable acceptance rework R1/R2/R3)
+
+### keywords
+
+- make_channel_receipt.py, channels_preflight.json, --empty-proof, SHA-256, fsync, --refresh-manifests, fetch_hypersync_v2.py, done.json, Parquet, identity_gate_v1, 4c442be, 8c7ca6f
+
+## User preferences
+
+- when maintaining review fixes, the user required “每项先红后绿、每项独立commit、一路做到完成” -> construct and run the minimal counterexample first, commit each independently, and continue through the requested scope rather than batching work or pausing for confirmation. [Task 1]
+- when ownership boundaries are explicit, “原仓库只读” and “验收与合并由 Claude 负责” -> work only on the candidate branch, provide commits and validation evidence, and do not merge or claim the original repository changed. [Task 1]
+- when a schema fix only improves fixtures, the user corrected that “生产通道一起升” -> ship the real generator/call path, migration path, documentation, and drift regressions; hand-written test receipts are not completion. [Task 2]
+- when a schema upgrade affects live cases such as QUQ/PYTHIA/TROLL -> inventory legacy production directories and provide a fail-closed migration before requiring the new schema. [Task 2]
+
+## Reusable knowledge
+
+- In the repaired EVM channels v2 schema, require top-level `token/expected_from/expected_to`; each segment requires `path/format/lo/hi/tag/receipt`, adjacent segments require `next.lo == prev.hi`, and a missing file, interval hole, uncovered endpoint, or empty segment without `empty_proof` must BLOCK before event reading. The shared `channels_preflight.py` protects all three replay engines. [Task 1]
+- Formal HTML must consume the A4 seal case directory's standard `facts.json`, `analysis-state.json`, and related inputs, not merely verify the seal then render a different CLI path; mismatch or unsealed JSON rejects without writing HTML. [Task 1]
+- `scripts/evm/make_channel_receipt.py` is the production receipt emitter: scan the real CSV/v2 Parquet, bind rows/min-max blocks/size/SHA-256, require `--empty-proof` for an empty segment, and use atomic fsync+rename. Any later bound-file change must make preflight BLOCK. [Task 2]
+- Use `python3 scripts/evm/fetch_hypersync_v2.py --refresh-manifests --outdir <case>/data/v2` before incremental collection for legacy cases. It is offline/no-token, validates all run Parquet schemas, rows, block range, logs-to-blocks linkage, size, and hash before atomically changing v2 `done.json` to v3; any bad run leaves all manifests byte-identical and resume remains BLOCK. [Task 2]
+- `identity_gate_v1` may support an update without state, but a formal-analysis rebuild needs the current v2 gate and resolution for every newly required flag. Filecoin collectors should receive `--data-dir`/configuration; import must not create a source-tree `data/` directory. [Task 1][Task 2]
+
+## Failures and how to do differently
+
+- Symptom: a receipt integrity test passes but production users must hand-write rows/hash. Cause: the schema changed only in fixtures. Fix: make the test invoke the production generator, then mutate the data and assert preflight rejection. [Task 2]
+- Symptom: legacy HyperSync data is permanently blocked after hardening. Cause: a new manifest invariant was added without a validated migration. Fix: refresh every run in a two-phase read/validate pass and atomically upgrade only when all pass; never delete `done.json` to bypass the gate. [Task 2]
+- Symptom: an apparent red-green test never went red. Cause: the test fixture did not construct the entity-member condition that reaches the vulnerable logic. Fix: repair the fixture/trigger first, then accept the regression as evidence. [Task 1]
+- Symptom: clone creation fails with `Operation not permitted`. Cause: the requested Documents target is not writable in the restricted environment. Fix: verify write permission first and, after user authorization, use the approved writable workspace path. [Task 1]
+
+# Task Group: Token-Chip-Analysis 24-Finding Repair In An Isolated Clone
+
+scope: repair a frozen token-chip-analysis review without touching `main` or `codex`; use for numbered B/H/M security and integrity fixes that require hard counterexamples and full-suite proof.
+applies_to: cwd=/Users/uravvv/Desktop/老公用/fable筹码分析/token-chip-analysis-fix-review-20260802; reuse_rule=the clone, `f8ce099` baseline, commit IDs, and 6.9.4 result are checkout-specific; reuse the isolation, test, and verification workflow after checking the live target
+
+## User preferences
+
+- when the user asks “像一本书的目录一样给我展示” and wants “先读哪些后读哪些，哪些是按需加载” -> answer with a hierarchical reading-order map, not a vague repo summary. [Task 14]
+- when the user says `只改文件，禁止任何 git 操作` or `只改 5 个文件` -> keep the file set minimal, do no git work, and treat commit/push as out of scope unless explicitly reauthorized. [Task 4][Task 7][Task 8][Task 10]
+- when the user says `不得自行扩大或改判` or `按已验收盘点执行` -> execute strictly against the approved ledger or ruling; store ambiguity in the report instead of expanding the fix. [Task 7][Task 8][Task 10]
+- when the user says `逐字引句全文搜索定位` and `禁止按行号定位` -> use quote search against live content rather than trusting drifted line numbers. [Task 7]
+- when the user changes course to `分步落盘,每步一个文件独立 apply` or warns `绝不积攒` -> split large text migrations into single-file batches with immediate verification so interrupted sessions do not strand half-applied work. [Task 7][Task 12]
+- when the user says `触发现象必须保持可操作锋利度，禁止泛化成“注意数据质量”式空话` -> preserve concrete trigger phenomena and executable checks in casebook entries instead of abstracting them. [Task 7]
+- when the user says `CHANGELOG 只记工具性知识，禁记代币分析结论` -> classify prospective archive text before moving it; if it contains token verdicts or conclusion language, stop and keep it out of `CHANGELOG.md`. [Task 8]
+- when the user says `只读、严禁改任何仓库文件` and later says `不要尝试写文件，把完整方案作为最终答复直接输出` -> respect read-only mode strictly and switch to direct content delivery after the first confirmed write failure. [Task 9]
+- when the user requires `38 项 P 编号` / `逐条文件/行区间/摘要/处置/守卫/风险` -> keep the output fully auditable and line-itemed; do not collapse it into a soft summary. [Task 9]
+- when the user says `分组执行,每组完成立即落盘` -> execute maintenance in small semantic batches with verification at each boundary. [Task 6]
+- when the user says archive history is off-limits (`历史一字不改`, `archive/ 全部历史条目零触碰`, `历史内容只做原样迁移`) -> preserve archive, casebook, and historical CHANGELOG text verbatim and narrow guards instead of rewriting evidence. [Task 2][Task 3][Task 12][Task 13]
+- when the user wants natural-language routing for audit work instead of another slash command -> add a human-language route and keep `independent-audit-protocol.md` as the sole authority for clean-room audit flow. [Task 4]
+- when the user says `清单外文件一律不改`, `禁删除任何文件`, or excludes a specific section like `SKILL.md 第 3 行 frontmatter description` -> treat scope and untouched-file constraints as hard boundaries, even in formatting-only work. [Task 5]
+- when the user requires `每根 needle 的权威/复述判定` and allows summaries only as `摘要＋契约 ID` -> keep a canonical authority layer and let repeated docs point to stable contract IDs instead of duplicating prose. [Task 1]
+- when the user says SKILL may modify only a specific section and must stay `≤8192B` -> constrain edits to the approved SKILL surface and machine-check byte size after every doc/routing change. [Task 1][Task 3][Task 4][Task 5]
+- when the user requires `先写红反例（先证明缺陷存在、测试失败），修复后转绿` and asks for four batches -> make each batch independently red-green, run the full suite before advancing, and append its files/tests to `codex_fix_progress.md` immediately. [Task 16]
+- when the user says `测试一律在临时目录构造 fixture，禁止污染真实 references/labels/ 与 data 产物` -> inject temp paths and fixtures; never use the live labels/data tree as a test scratchpad. [Task 16]
+- when the user says `移除 api_token 位置参数` and `禁止任何命令行明文 token 传参形态` -> use `--token-file > HYPERSYNC_TOKEN > ~/.config/hypersync/token`, reject positional-token forms, and update active invocation docs but not `archive/`. [Task 16]
+- when a task book names a whitelist, says `禁 git`, and requires `invariant_scan` / full suite PASS -> read the full task book first, keep changes inside the listed files, preserve old contracts, and treat machine gates as delivery blockers. [Task 17]
+- when the user says `不改任何生产脚本` but still wants stage work to proceed -> keep edits inside the allowed test/manifest/worklog files, and use expected-red plus invariant counts as the acceptance surface until production changes are explicitly authorized. [Task 20]
+- when the user requires `expected-red 转绿必须摘牌` and `支持 --show R7-xx` -> keep each finding as an individually named counterexample with anti-zombie behavior rather than merging them into one coarse regression. [Task 20]
+- when the user says `禁 git，禁改 VERSION/CHANGELOG/pyproject/SKILL` across a staged maintenance task -> keep a running boundary check on those files and use non-git evidence such as hashes, invariant counts, and full-suite output for acceptance. [Task 18][Task 19]
+- when the user points out that docs must distinguish `内容绑定` from `执行证明` -> state the runner/hash-binding guarantee honestly and do not claim single-machine wrapper self-consistency proves real execution. [Task 19]
+- when the user provides an adversarial replay and says `先复现 Fable 攻击、补先红后绿反例、攻击脚本应全 SAFE` -> replay the exact attack first, then add named regressions, then rerun the attack script and the full suite. [Task 18]
+- when the user says `先证明校验命中，不许只跑绿` and asks for the actual rejection string -> build a reproducible counterexample first, assert rejection, and capture the exact error text before deciding whether any production fix is needed. [Task 22]
+- when the user says `若校验器放行（未检测到）：这是真缺口，立即补` -> treat “did it really pass?” as the fork point, and do not speculate about a hole before replaying the real execution path. [Task 22]
+- when batch A starts with existing uncommitted changes and the user says they must be preserved -> do boundary/diff checks before editing; do not reset, sync over, or otherwise roll back the worktree. [Task 22]
+- when the user says `shared 侧改为 from supply_truth_gate import 该常量并引用` and asks for `没有第三处手抄这个 10bps 上限的运行时代码` -> prefer single-source imports plus a runtime-code grep sweep, and record “exit 1, 0 matches” as positive evidence rather than a tool failure. [Task 22]
+- when the user says `照案执行，不重新设计` and `纯改文件，禁 git commit` for a repair batch -> follow the approved plan and file boundaries without scope expansion or a git commit. [Task 23]
+- when the user requires a `batchC_workorder.md`, red-to-green counterexamples, “删掉即红” mutation checks, and real-case measurements -> create and maintain the workorder before construction; do not substitute planned checks for evidence. [Task 23]
+- when the user says Codex CLI rejection or stall exceeds two attempts -> stop and report the exact initialization failure; do not bypass the sandbox or invent code/test progress. [Task 23]
+- when the user requires `每条裁决必须引用代码证据（file:line）` and `只写入一个文件` for a plan review -> keep the review strictly read-only except for the named report file, and ground every verdict in exact code evidence rather than plan prose alone. [Task 24]
+- when the user fixes the file contract to four sections plus a last line `盲审完成` -> deliver that exact structure in the file instead of substituting a chat summary. [Task 24]
+- when the user says `计划不批准` and replaces the draft with a concrete closure checklist -> rewrite the plan to match the named closure criteria instead of defending a generic strategy. [Task 21]
+- when the user says `收口标准回写 maintenance-review-repair.md，保持单一事实源` and `验收物增加 diff→finding 映射表，无主改动=夹带=BLOCK` -> update the canonical methodology doc and require a diff-to-finding map as a hard acceptance artifact. [Task 21]
+- when the user says `增加存量测试 fixture 审计步` and `业务全真、仅 transport 可 fake、注入点登记在案` -> audit existing positive fixtures and state the transport-only fake boundary explicitly in any E2E repair plan. [Task 21]
+- when the user names `opus4.8` for batch-internal adversarial review and rejects a temporary manual Solana READY toggle -> make reviewer roles explicit and derive readiness from the capability matrix rather than an ad hoc switch. [Task 21]
+- when the user says `连续三个修复循环未达标即停手`, narrows the counter to `新引入/半修残留/历史 P0P1/同 INV 再穿/豁免回流`, and says no extra confirmation is needed -> count those classes automatically, not by raw finding totals. [Task 21]
+- when the user points out `G3-0 预演载体选 USDC，会把批三错误卡死` and asks for `G3-0 改双载体` -> separate activity-stress preflight from GPA/supply-closure feasibility, and scope the batch-three stop clause only to the realistic meme-mint carrier. [Task 21]
+- when repair planning stays read-only until approval -> do not start edits early; keep revising the control plane until batch structure, reviewer role, stop-loss accounting, and carrier feasibility are explicit. [Task 21]
+- when the user says “总结为什么会修了3轮，问题仍然存在” and “怎么把已知问题修复，而不是‘修完还有残留’” -> default to root-cause classification, same-family closure, and invariant maps rather than flat defect lists. [Task 21]
+- when the user requires “每轮修复时不能光打补丁，不能只修‘被抓到的那个例子’，而应该修问题的根” -> bind producer/consumer contracts to the real invariant, not just the observed counterexample. [Task 21]
+- when the user requires a new branch and says the loop continues “直到明确的 PASS 条件：没有任何P0.P1问题” -> use a hard-gated plan -> fix -> review loop on the approved branch and stop for independent review rather than self-certifying after a green suite. [Task 21]
+
+/Users/uravvv/.claude/tca-repair-g2
+./maintenance/repair-20260815-g2/workorder_F09_addendum.md
+
+exec
+/bin/zsh -lc "sed -n '1,260p' maintenance/repair-20260815-g2/workorder_F09_addendum.md" in /Users/uravvv/.claude/tca-repair-g2
+ succeeded in 0ms:
+# 工单 F-09 补充轮：调度方裁决——授权三个 fixture 补 warnings 字段
+
+> 前置：workorder_F09.md 主体 STOPPED_AWAITING_SCOPE_DECISION（done 报告"名单外打红与请示"节）。
+
+## 裁决
+
+授权按你请示的最小方案执行：`test_sixlens_receipts.py`、`test_handoff_manifest.py`、`test_audit_release_gate.py` 三个文件，仅给其手造的零差异 `evm-reconciliation-receipt/v3` fixture 补 `warnings: []`。不放宽 consumer（你"缺字段视为空数组会让旧 v3 静默绕过新契约"的定性正确）。
+
+## 收口目标
+
+- 三个测试转绿；重跑 `test_gmgn_divergence_note.py`、`test_recon_deep_reverify.py` 不回归；
+- 沙箱内 `run_all.py` 除两个 loopback EPERM 外全绿；
+- `workorder_F09_done.md` 末尾追加"补充轮"一节：三处改动位置、最终测试输出。
+
+## 硬约束（同主工单）
+
+仅改上述三个测试文件的 fixture 字段；名单外再打红停下请示；禁止 git 操作。
+
+codex
+补充工单的边界很窄：只给三个文件中手造的零差异 v3 receipt 增加 `warnings: []`，consumer 与其他文件都不能动。下一步我会先定位所有符合条件的 fixture，并对照主工单确定测试命令；若发现名单外失败，只记录并停下。
+exec
+/bin/zsh -lc "sed -n '1,280p' maintenance/repair-20260815-g2/workorder_F09.md
+sed -n '1,320p' maintenance/repair-20260815-g2/workorder_F09_done.md
+rg -n -C 8 'evm-reconciliation-receipt/v3|warnings|diff|difference|delta' scripts/tests/test_sixlens_receipts.py scripts/tests/test_handoff_manifest.py scripts/tests/test_audit_release_gate.py
+rg -n 'test_sixlens_receipts|test_handoff_manifest|test_audit_release_gate|test_gmgn_divergence_note|test_recon_deep_reverify|run_all.py' maintenance/repair-20260815-g2/workorder_F09.md maintenance/repair-20260815-g2/workorder_F09_done.md" in /Users/uravvv/.claude/tca-repair-g2
+ succeeded in 0ms:
+# 工单 F-09：GMGN 对表黄灯制 + 查证说明放行（骑在 F-07 之上）
+
+> 执行者：codex（纯施工，**禁止任何 git 操作**）
+> 前置：第 3 刀（F-07）已合入——verify_recon 已是 `evm-reconciliation-receipt/v3`、gmgn rows 已 Decimal 化、consumer 已有 gmgn_comparison 实物重算。本刀在其上加黄灯语义。
+> 总计划：同目录 plan.md 第 4 刀节。用户产品裁决：**差异不停工打警告；带警告的案发布前必须附合格人工查证说明才放行；查证发现自己算错必须修数据重跑，不得写说明放行。**
+
+## A. producer `scripts/evm/verify_recon.py`
+
+1. **黄灯标记**：gmgn_diff>0 且其他硬检查通过时，verdict 仍 PASS/exit 0（不动 receipt_kernel 的 VERDICT_EXITS），`finalize_envelope` 附加顶层 `warnings: ["gmgn_divergence"]`；零差异时 `warnings: []`。stdout 打印黄灯提示与补说明指引（含说明文件名与重跑命令形态）。
+2. **新增可选参数 `--divergence-note <path>`**（先跑出黄灯收据 → 人工查证写说明 → 带参重跑绑定，与 supply_truth 的 tolerance-waiver 同款时序）：
+   - 生产侧验证说明件（验证规则见 B 节，生产侧为第一份实现）；
+   - 合格 → 绑进 envelope `inputs.divergence_note`，收据仍 PASS+warnings；
+   - 说明覆盖不了**当前重算**的差异集合（多、少、数值不符都算）→ 硬退 exit 1（producer ERROR 路径），**不得覆盖已存在的黄灯收据**；
+   - 零差异却给了 `--divergence-note` → 硬退（防预填空说明）。
+
+## B. 新件 `gmgn-divergence-note/v1`（人工手写，无 producer 脚本——over-cap-approval 先例）
+
+案根文件（惯例名 `gmgn_divergence_note.json`）。字段与验证规则（**生产/消费两侧各自独立实现验证器，刻意双写；只共享 schema 常量与阈值常量**——照 `supply_truth_gate._validate_over_cap_approval`（生产侧）与 `shared_release_receipt._validate_over_cap_approval`（消费侧）的双写纪律）：
+
+- `schema`: 恰为 `"gmgn-divergence-note/v1"`；
+- `request`: 恰好键集 `{target, inputs_sha256, divergences}`：
+  - `target`：chain/token/as_of_block，与收据 target 全等；
+  - `inputs_sha256`：恰好键集 `{config, balances, replay_stats, gmgn}`，四个 64hex——必须与收据 `inputs` 四实物的 sha256 逐一相等（同一说明不可跨输入版本复用）；
+  - `divergences`：**有序列表**，与消费侧从实物重算的 DIFF 集合逐项相等（address 唯一、gmgn_pct/replay_pct/diff_pp 为 Decimal 规范字符串，解析层拒 NaN/Inf——`_reject_constant` 先例）；
+- `request_sha256`：对 request 规范 JSON（sort_keys+紧凑分隔符）的 sha256 独立重算相等；
+- `findings[]`：与 divergences 按 address 一一对应，每条：
+  - `cause` ∈ `{gmgn_data_lag, methodology_diff, gmgn_upstream_error}`（**枚举故意不含 self_error**：查证发现重放侧算错时唯一出路是修数据重跑）；
+  - `explanation`：过 `_meaningful_text` 同款实义判定（Unicode 白名单，防不可见字符充数）且 ≥30 实义字符；
+  - `evidence_refs`：可选；若给，逐个按案根安全相对路径解析（拒 `..`/symlink/越根，`_bound_case_ref` 同款）且为普通文件；
+- `conclusion`：实义文本，必须含"重放数据经查证无误"承诺语义（子串锚定即可，文档同步给标准句式）；
+- `investigator`：实义文本；
+- `investigated_at_utc`：严格 UTC 格式 `YYYY-MM-DDTHH:MM:SSZ`，不得晚于当前时间+1 天。
+
+## C. consumer `scripts/report/shared_release_receipt.py`（EVM balance 分支内衔接 F-07 已有的 gmgn 重算）
+
+1. `warnings` 字段合法性：数组、元素为已知串、无重复；
+2. **互锁**：重算 diff_count>0 ⟺ `"gmgn_divergence" ∈ warnings`（两方向都拒：抹警告拒、假警告也拒）；
+3. diff_count>0 → `inputs.divergence_note` 必须存在：案根内实物（路径安全同款）、B 节全部规则的**消费侧独立实现**重验、divergences 与消费侧自己重算的 DIFF 集合有序相等；
+4. diff_count==0 → `inputs.divergence_note` 必须不存在；
+5. handoff/audit 经调用链自动继承，不改那两个文件。
+
+## D. 文档 `references/data-pipeline-evm-recon.md` §5 第 1 条改写
+
+1. 黄灯制四态真值表写清：有差异无说明=收据 PASS 带警告但发布链阻断；有差异合格说明=带参重跑绑定后放行；说明不合格=生产侧硬退不覆盖原收据；无差异给说明=硬退。写明说明怎么写（字段、cause 三枚举、self_error 必须重跑）、标准 conclusion 句式、重跑命令形态。
+2. **顺手修正既有文档-代码落差**：现第 12 行把"top-N RPC 直查"（判 FAIL 的 balance_reconciliation）与"GMGN top10 百分比对表"（0.15pp 容差）混写成一件"逐个对到个位数"的 gate——拆成两件如实写。
+3. ⚠️ 本册正文三条契约 needle 必须原样保住：`evm-observation-bundle/v1`、`supply-truth-receipt/v4`、`accounting-gate/v2`（docs_lint 会拦）。若 F-07 已把本册某串升版并同步契约表，以当前树状态为准不回退。
+4. 不动 `references/analyze-workflow.md`。
+
+## E. 中心登记（跟刀走的部分）
+
+- `scripts/tests/invariant_manifest.json`：`gmgn-divergence-note/v1` 的 schema 比较会被 AST 扫描器在 verify_recon.py（生产侧验证）与 shared_release_receipt.py（消费侧）两处抽为 consumer 点——按 `python3 scripts/tests/invariant_scan.py` 实际 diff 输出登记（勿手拍），`minimum_counts` 只升不降。
+- 契约 needle 新条目（`CT-RECON-xx`）与 run_all 挂载仍归末刀，本刀不做。
+
+## F. 新测试 `scripts/tests/test_gmgn_divergence_note.py`
+
+自建 main() runner，夹具复用/仿照 F-07 的案根夹具：
+
+- **四态真值表逐态**（每态明确断言拒绝方）：
+  1. 有差异无说明：producer 出 PASS+warnings 收据（exit 0）；消费侧拒（发布链阻断）；
+  2. 有差异合格说明：带参重跑绑定成功；消费侧全链绿；
+  3. 说明不合格（覆盖缺一条/数值不符/inputs_sha256 有一个不匹配/cause 非法/explanation 26 字符/investigated_at 非法/request_sha256 错）：producer 侧硬退且原黄灯收据未被覆盖（文件对比断言）；
+  4. 无差异给说明：producer 硬退；无差异收据 warnings 为空、消费侧不要求说明（绿）；
+- 消费侧独立负例：绑定合格说明后人为抹 warnings → 拒；无差异收据人为加 warnings → 拒；inputs.divergence_note 指向案外 → 拒；
+- **两侧行为向量等价守卫**（照 `scripts/tests/test_repair_batch_a.py:1583` 的 `test_fixround_fa10_two_side_behavior_vectors` 同款）：对同一组固定向量（合法件、各字段单点变异件）逐值断言生产侧与消费侧验证器判定一致，防双写漂移。
+
+## 先红后绿纪律
+
+新测试对基线（F-07 后、本刀前）跑：黄灯负例应体现"基线对 diff>0 静默放行、无说明也过消费面"（红），落 `f09_red.log`；施工后全绿落 `f09_green.log`。
+
+## 验收标准
+
+- 新测试绿；`test_recon_deep_reverify.py`、`test_sixlens_receipts.py`、`test_handoff_manifest.py`、`test_audit_release_gate.py` 回归绿；`invariant_scan.py` 绿；`docs_lint.py --all` 绿；
+- done 报告 `workorder_F09_done.md`：改动清单、四态证据、双写等价守卫说明、manifest 登记 diff、存量影响。
+
+## 硬约束
+
+- 只改：`scripts/evm/verify_recon.py`、`scripts/report/shared_release_receipt.py`（限对账区）、`references/data-pipeline-evm-recon.md`、`scripts/tests/invariant_manifest.json`（限 E 节）、新测试文件；名单外打红停下请示。
+- 禁碰：VERSION、CHANGELOG、SKILL.md、r10_ledger.md、pyproject、run_all.py、contract_manifest/snapshot、audit_release_gate.py、handoff_manifest.py、shared 的 A4/adversarial 区、analyze-workflow.md。
+- 禁止一切 git 操作。
+# 工单 F-09 施工报告
+
+## 状态
+
+**STOPPED_AWAITING_SCOPE_DECISION**。
+
+F-09 白名单内实现与专属验证已完成；工单点名的三项存量回归因名单外 fixture 缺少新 v3 必填字段 `warnings: []` 打红。依工单“名单外打红停下请示”，未修改这些测试，未继续扩大测试或施工范围，未宣称整体验收完成。
+
+全程未运行任何 git 命令。
+
+## A. producer 完成项
+
+- `scripts/evm/verify_recon.py` 新增 `--divergence-note <path>`。
+- GMGN 重算差异大于 0、其他硬检查通过时保持 PASS/0，并写顶层 `warnings:["gmgn_divergence"]`；零差异写 `warnings:[]`。
+- 无说明黄灯 stdout 明示 `gmgn_divergence_note.json` 与追加 `--divergence-note` 的重跑形态。
+- 合法说明绑定到 `inputs.divergence_note`。
+- 说明不覆盖当前差异、输入哈希不符、字段不合法或零差异预填说明时 exit 1；该专用错误路径不调用 ERROR receipt 写入，原收据逐字节保持不变。
+
+## B. 新说明件契约完成项
+
+生产侧独立实现了 `gmgn-divergence-note/v1` 验证器：
+
+- 顶层与 request 精确键集；target 全等。
+- config/balances/replay_stats/gmgn 四输入 sha256 全绑定。
+- divergences 有序、地址唯一、Decimal 有限且使用规范字符串，并与本次重算集合逐项全等。
+- request 规范 JSON 的 sha256 独立重算。
+- findings 按地址一一覆盖；cause 只接受 `gmgn_data_lag`、`methodology_diff`、`gmgn_upstream_error`。
+- explanation 至少 30 个白名单实义字符；可选 evidence_refs 约束为案根内非 symlink 普通文件并核 size/sha256。
+- conclusion 必含“重放数据经查证无误”；investigator 有实义；时间严格为 `YYYY-MM-DDTHH:MM:SSZ` 且不晚于当前时间加一天。
+- JSON NaN/Infinity 拒收。
+
+## C. consumer 完成项
+
+- `scripts/report/shared_release_receipt.py` 对账区新增刻意双写的独立说明验证器，未调用 producer 验证器。
+- `warnings` 必须是无重复已知字符串数组。
+- 实物重算 `diff_count>0` 与 `gmgn_divergence` 双向互锁。
+- 有差异必须绑定并完整重验案根说明；无差异禁止绑定说明。
+- handoff/audit 文件本身零修改，语义继续由 shared 调用链继承。
+- shared 的 A4/adversarial 区未修改。
+
+## D. 文档完成项
+
+- `references/data-pipeline-evm-recon.md` §5 已把 top-N 冻结块 RPC raw balance 硬对账与 GMGN 0.15pp 黄灯对表拆开。
+- 已写四态真值表、说明字段、三种 cause、`self_error` 必须修数据重跑、标准 conclusion 与重跑命令形态。
+- `evm-observation-bundle/v1`、`supply-truth-receipt/v4`、`accounting-gate/v2` 三条 needle 保留。
+- `references/analyze-workflow.md` 未修改。
+
+## E. invariant 登记
+
+首次扫描精确报告：
+
+- 新 consumer 点：`scripts/evm/verify_recon.py` → `gmgn-divergence-note/v1`。
+- `scripts/report/shared_release_receipt.py` 既有 consumer 集合新增同 schema。
+
+据此只把 `receipt_consumers` 下限从 78 升到 80，并登记上述两处；未调整其他 minimum。复跑结果：
+
+`PASS invariant manifest: receipt_producers=62, receipt_consumers=85, transport_calls=63, atomic_writes=54, formal_entrypoints=58, exceptions=0`
+
+## F. 先红后绿与四态证据
+
+红测见 `f09_red.log`：F-07 基线对差异返回 PASS/0，但访问 `warnings` 触发 `KeyError`，证明黄灯字段缺失。
+
+专属绿测见 `f09_green.log`：
+
+1. 有差异无说明：producer PASS/0＋黄灯；consumer 因缺说明拒绝。
+2. 有差异合法说明：producer 带参重跑绑定成功；consumer 独立重验通过。
+3. 缺覆盖、数值不符、输入哈希不符、非法 cause、26 字符说明、非法时间、错误 request sha：producer 均 exit 1，输出文件逐字节不变。
+4. 无差异无说明：`warnings:[]` 且 consumer 通过；无差异带说明：producer exit 1 且不覆写。
+
+消费侧另验了抹警告、假警告和案外说明引用。两侧行为向量覆盖合法件与 schema/target/input/divergence/request_sha/cause/explanation/conclusion/investigator/time 单点变异，逐项判定一致。
+
+## 改动清单
+
+白名单内：
+
+- `scripts/evm/verify_recon.py`
+- `scripts/report/shared_release_receipt.py`（仅对账相关 helper/路径）
+- `references/data-pipeline-evm-recon.md`
+- `scripts/tests/invariant_manifest.json`（仅 E 节登记）
+- `scripts/tests/test_gmgn_divergence_note.py`（新文件）
+
+工单证据：
+
+- `maintenance/repair-20260815-g2/f09_red.log`
+- `maintenance/repair-20260815-g2/f09_green.log`
+- 本报告
+
+禁碰文件未施工：VERSION、CHANGELOG、SKILL.md、r10_ledger.md、pyproject、run_all.py、contract manifests、audit_release_gate.py、handoff_manifest.py、analyze-workflow.md。
+
+## 已通过验收项
+
+- `python3 scripts/tests/test_gmgn_divergence_note.py`：exit 0。
+- `python3 scripts/tests/test_recon_deep_reverify.py`：exit 0。
+- `python3 scripts/tests/invariant_scan.py`：exit 0。
+- `python3 scripts/tests/docs_lint.py --all`：exit 0。
+
+## 名单外打红与请示
+
+以下三项都在消费手造的零差异 `evm-reconciliation-receipt/v3` 时因缺少 `warnings:[]` 被拒：
+
+| 名单外文件 | 结果 | 首个根因 |
+|---|---:|---|
+| `scripts/tests/test_sixlens_receipts.py` | exit 1 | 手造 v3 fixture 缺 `warnings:[]` |
+| `scripts/tests/test_handoff_manifest.py` | exit 1 | READY/冻结调用链 fixture 缺 `warnings:[]`；后续 `entity_freeze.json` 不存在是前置失败的连锁结果 |
+| `scripts/tests/test_audit_release_gate.py` | exit 1 | audit fixture 缺 `warnings:[]` |
+
+这是 F-09 合同变更必然引发的 fixture 升级，不应通过“缺字段视为空数组”放宽 consumer，否则会违反 C 节“warnings 字段必须为数组”并让旧 v3 静默绕过新契约。
+
+**请示：是否授权把白名单最小扩到上述 3 个测试文件，仅给其零差异 v3 fixture 补 `warnings: []`，随后重跑工单全部验收命令？** 若授权后出现新的名单外失败，将再次停工，不自行扩大范围。
+scripts/tests/test_sixlens_receipts.py-103-    pool = mock.Mock()
+scripts/tests/test_sixlens_receipts.py-104-    pool.attest.return_value = 56
+scripts/tests/test_sixlens_receipts.py-105-    paths = recon_fixture(root / "closed", closed=True)
+scripts/tests/test_sixlens_receipts.py-106-    out = root / "closed" / "receipt.json"
+scripts/tests/test_sixlens_receipts.py-107-    with mock.patch.object(mod, "attested_rpc_pool", return_value=pool), \
+scripts/tests/test_sixlens_receipts.py-108-            mock.patch.object(mod, "rpc_balance_of", return_value=100):
+scripts/tests/test_sixlens_receipts.py-109-        assert mod.main(recon_args(paths, out)) == 0
+scripts/tests/test_sixlens_receipts.py-110-    receipt = json.loads(out.read_text())
+scripts/tests/test_sixlens_receipts.py:111:    assert receipt["schema"] == "evm-reconciliation-receipt/v3"
+scripts/tests/test_sixlens_receipts.py-112-    assert receipt["target"] == {"chain": "bsc", "token": "0xtoken", "as_of_block": 123}
+scripts/tests/test_sixlens_receipts.py-113-
+scripts/tests/test_sixlens_receipts.py-114-    paths = recon_fixture(root / "supply-fail", closed=False)
+scripts/tests/test_sixlens_receipts.py-115-    out = root / "supply-fail" / "receipt.json"
+scripts/tests/test_sixlens_receipts.py-116-    with mock.patch.object(mod, "attested_rpc_pool", return_value=pool), \
+scripts/tests/test_sixlens_receipts.py-117-            mock.patch.object(mod, "rpc_balance_of", return_value=90):
+scripts/tests/test_sixlens_receipts.py-118-        assert mod.main(recon_args(paths, out)) == 2
+scripts/tests/test_sixlens_receipts.py-119-    assert json.loads(out.read_text())["verdict"] == "FAIL"
+--
+scripts/tests/test_handoff_manifest.py-155-    recon_checks = {}
+scripts/tests/test_handoff_manifest.py-156-    for key in ("balance", "supply", "supply_truth", "time"):
+scripts/tests/test_handoff_manifest.py-157-        receipt_name = f"reconciliation_{key}_receipt.json"
+scripts/tests/test_handoff_manifest.py-158-        if key in {"balance", "supply"}:
+scripts/tests/test_handoff_manifest.py-159-            receipt = json.loads(json.dumps(recon_v3))
+scripts/tests/test_handoff_manifest.py-160-        elif key == "supply_truth":
+scripts/tests/test_handoff_manifest.py-161-            receipt = {"schema": "supply-truth-receipt/v4", "target": target,
+scripts/tests/test_handoff_manifest.py-162-                       "gate": "supply_truth", "replay_net": "100",
+scripts/tests/test_handoff_manifest.py:163:                       "onchain_total_supply": "100", "diff": "0",
+scripts/tests/test_handoff_manifest.py:164:                       "diff_bps": 0.0, "tolerance_bps": 10,
+scripts/tests/test_handoff_manifest.py-165-                       "decision_rule": "primary_form1", "burn_form": None,
+scripts/tests/test_handoff_manifest.py-166-                       "primary_verdict": "PASS", "sink_reconciliation": None}
+scripts/tests/test_handoff_manifest.py-167-        else:
+scripts/tests/test_handoff_manifest.py-168-            receipt = json.loads(json.dumps(time_v3))
+scripts/tests/test_handoff_manifest.py-169-        # A-5（批 D）：真实 verify_recon 的 balance/supply 收据本就绑 replay_stats，
+scripts/tests/test_handoff_manifest.py-170-        # 夹具补成真实形态——消费侧三查同源校验（sha 全等）才有账可对。
+scripts/tests/test_handoff_manifest.py-171-        if key in {"balance", "supply"}:
+scripts/tests/test_handoff_manifest.py-172-            key_inputs = receipt["inputs"]
+--
+scripts/tests/test_audit_release_gate.py-73-    inputs = {
+scripts/tests/test_audit_release_gate.py-74-        "config": artifact_ref(root, root / "fixture_recon_config.json"),
+scripts/tests/test_audit_release_gate.py-75-        "balances": artifact_ref(root, root / "fixture_balances.json"),
+scripts/tests/test_audit_release_gate.py-76-        "replay_stats": artifact_ref(root, root / "fixture_replay_stats.json"),
+scripts/tests/test_audit_release_gate.py-77-        "gmgn": artifact_ref(root, gmgn),
+scripts/tests/test_audit_release_gate.py-78-        "transcript": artifact_ref(root, root / "fixture_recon_transcript.json"),
+scripts/tests/test_audit_release_gate.py-79-    }
+scripts/tests/test_audit_release_gate.py-80-    recon = {
+scripts/tests/test_audit_release_gate.py:81:        "schema": "evm-reconciliation-receipt/v3", "target": target,
+scripts/tests/test_audit_release_gate.py-82-        "producer": repo_ref("scripts/evm/verify_recon.py"), "mode": "formal",
+scripts/tests/test_audit_release_gate.py-83-        "inputs": inputs, "verdict": "PASS", "exit_code": 0,
+scripts/tests/test_audit_release_gate.py-84-        "observations": {
+scripts/tests/test_audit_release_gate.py-85-            "supply_closure": {
+scripts/tests/test_audit_release_gate.py-86-                "mint_total_raw": str(total), "burn_total_raw": "0",
+scripts/tests/test_audit_release_gate.py-87-                "nominal_supply_raw": str(total), "balance_sum_raw": str(total),
+scripts/tests/test_audit_release_gate.py-88-                "negative_count": 0, "negative_addresses": [], "closed": True},
+scripts/tests/test_audit_release_gate.py-89-            "balance_reconciliation": {
+scripts/tests/test_audit_release_gate.py-90-                "requested_top_n": 1, "selection": "top_n_then_skip_sinks",
+scripts/tests/test_audit_release_gate.py-91-                "checked": 1, "matched": 1, "mismatched": 0, "rpc_errors": 0,
+scripts/tests/test_audit_release_gate.py-92-                "rows": [{"address": address, "replay_raw": str(total),
+scripts/tests/test_audit_release_gate.py:93:                          "chain_raw": str(total), "diff_raw": "0", "status": "OK"}]},
+scripts/tests/test_audit_release_gate.py-94-            "gmgn_comparison": {
+scripts/tests/test_audit_release_gate.py:95:                "checked": 1, "diff_count": 0, "tolerance_pp": 0.15,
+scripts/tests/test_audit_release_gate.py-96-                "rows": [{"address": address, "gmgn_pct": "100",
+scripts/tests/test_audit_release_gate.py:97:                          "replay_pct": "100", "diff_pp": "0", "status": "OK"}]},
+scripts/tests/test_audit_release_gate.py-98-        },
+scripts/tests/test_audit_release_gate.py-99-    }
+scripts/tests/test_audit_release_gate.py-100-
+scripts/tests/test_audit_release_gate.py-101-    raw_input = Path(raw_input)
+scripts/tests/test_audit_release_gate.py-102-    identity = {"path": str(raw_input.resolve()), "size": raw_input.stat().st_size,
+scripts/tests/test_audit_release_gate.py-103-                "sha256": sha(raw_input)}
+scripts/tests/test_audit_release_gate.py-104-    write_json(root, "fixture_anchor_input_manifest.json", {
+scripts/tests/test_audit_release_gate.py-105-        "schema": "anchor-plan-input/v1", "input": identity, "files": [identity]})
+--
+scripts/tests/test_audit_release_gate.py-131-            "plan_receipt": artifact_ref(root, root / "fixture_anchor_plan_receipt.json"),
+scripts/tests/test_audit_release_gate.py-132-            "input": artifact_ref(root, raw_input),
+scripts/tests/test_audit_release_gate.py-133-            "transcript": artifact_ref(root, root / "fixture_time_transcript.json")},
+scripts/tests/test_audit_release_gate.py-134-        "verdict": "PASS", "exit_code": 0, "gate": "time_spotcheck",
+scripts/tests/test_audit_release_gate.py-135-        "points": 1, "balance_points": 1, "tx_points": 0,
+scripts/tests/test_audit_release_gate.py-136-        "exact_match": 1, "mismatch": 0, "rpc_err": 0,
+scripts/tests/test_audit_release_gate.py-137-        "rows": [{"type": "balance", "kind": "fixture", "addr": address,
+scripts/tests/test_audit_release_gate.py-138-                  "block": target["as_of_block"], "expect_raw": str(total),
+scripts/tests/test_audit_release_gate.py:139:                  "chain_raw": str(total), "diff_raw": "0", "status": "OK"}],
+scripts/tests/test_audit_release_gate.py-140-    }
+scripts/tests/test_audit_release_gate.py-141-    return recon, time_receipt
+scripts/tests/test_audit_release_gate.py-142-
+scripts/tests/test_audit_release_gate.py-143-
+scripts/tests/test_audit_release_gate.py-144-def align_ledgers_to_owner_snapshot(root, snap):
+scripts/tests/test_audit_release_gate.py-145-    """B-7（批 D）起三账 balance_source 必须与四查核过的 owner 快照等值——
+scripts/tests/test_audit_release_gate.py-146-    夹具把 balance 收据换绑到新快照后，同步三账成员到快照里真实存在的 owner。
+scripts/tests/test_audit_release_gate.py-147-    这是修夹具失真（三账 0xabc 从不在案子的 owner 世界里），不是放宽断言。"""
+--
+scripts/tests/test_audit_release_gate.py-302-                    "sha256": sha(stats)}
+scripts/tests/test_audit_release_gate.py-303-    for key in ("balance", "supply", "supply_truth", "time"):
+scripts/tests/test_audit_release_gate.py-304-        evidence = root / f"{key}_receipt.json"
+scripts/tests/test_audit_release_gate.py-305-        if key in {"balance", "supply"}:
+scripts/tests/test_audit_release_gate.py-306-            receipt_doc = json.loads(json.dumps(recon_v3))
+scripts/tests/test_audit_release_gate.py-307-        elif key == "supply_truth":
+scripts/tests/test_audit_release_gate.py-308-            receipt_doc = {"schema": "supply-truth-receipt/v4", "target": target,
+scripts/tests/test_audit_release_gate.py-309-                "gate": "supply_truth", "replay_net": "100",
+scripts/tests/test_audit_release_gate.py:310:                "onchain_total_supply": "100", "diff": "0",
+scripts/tests/test_audit_release_gate.py:311:                "diff_bps": 0.0, "tolerance_bps": 10,
+scripts/tests/test_audit_release_gate.py-312-                "decision_rule": "primary_form1", "burn_form": None,
+scripts/tests/test_audit_release_gate.py-313-                "primary_verdict": "PASS", "sink_reconciliation": None,
+scripts/tests/test_audit_release_gate.py-314-                "observation_bundle": bundle_abs,
+scripts/tests/test_audit_release_gate.py-315-                "verdict": "PASS", "exit_code": 0}
+scripts/tests/test_audit_release_gate.py-316-        else:
+scripts/tests/test_audit_release_gate.py-317-            receipt_doc = json.loads(json.dumps(time_v3))
+scripts/tests/test_audit_release_gate.py-318-        # A-5（批 D）：真实 verify_recon 的 balance/supply 收据 inputs 本就绑 replay_stats
+scripts/tests/test_audit_release_gate.py-319-        # （四件套之一）；夹具补成合规真实形态——三查绑同一份账本，消费侧同源校验才有账可对。
+--
+scripts/tests/test_audit_release_gate.py-727-        write_json(root, "dormant_warehouse_audit.json", da_v2)
+scripts/tests/test_audit_release_gate.py-728-        errors = gate.run(root, report)
+scripts/tests/test_audit_release_gate.py-729-        assert any("scan_universe" in x for x in errors), errors
+scripts/tests/test_audit_release_gate.py-730-
+scripts/tests/test_audit_release_gate.py-731-    # 6.9.1 修复反例（codex 复核）：日级峰值口径闭环；6.9.2 补咬合（codex 验收 P2）。
+scripts/tests/test_audit_release_gate.py-732-    with tempfile.TemporaryDirectory() as td:
+scripts/tests/test_audit_release_gate.py-733-        root = Path(td)
+scripts/tests/test_audit_release_gate.py-734-        report = build_case(root, historical=False)
+scripts/tests/test_audit_release_gate.py:735:        # e) 旧上界公式产物 → BLOCK（Σmax(day_delta,0) 同日对冲漏检）
+scripts/tests/test_audit_release_gate.py-736-        write_json(root, "peaks_summary.json", {"engine": "peaks_daily.py"})
+scripts/tests/test_audit_release_gate.py-737-        errors = gate.run(root, report)
+scripts/tests/test_audit_release_gate.py-738-        assert any("旧上界公式" in x for x in errors), errors
+scripts/tests/test_audit_release_gate.py-739-        # f) 本次运行未带 --trigger-days、目录残留旧 trigger_days.json → BLOCK（陈旧不作数）
+scripts/tests/test_audit_release_gate.py-740-        write_json(root, "trigger_days.json",
+scripts/tests/test_audit_release_gate.py-741-                   {"schema": "trigger-days-replay/v1", "days": {},
+scripts/tests/test_audit_release_gate.py-742-                    "empty_reason": "上一轮运行的残留产物"})
+scripts/tests/test_audit_release_gate.py-743-        write_json(root, "peaks_summary.json",
+maintenance/repair-20260815-g2/workorder_F09_done.md:80:- `scripts/tests/test_gmgn_divergence_note.py`（新文件）
+maintenance/repair-20260815-g2/workorder_F09_done.md:88:禁碰文件未施工：VERSION、CHANGELOG、SKILL.md、r10_ledger.md、pyproject、run_all.py、contract manifests、audit_release_gate.py、handoff_manifest.py、analyze-workflow.md。
+maintenance/repair-20260815-g2/workorder_F09_done.md:92:- `python3 scripts/tests/test_gmgn_divergence_note.py`：exit 0。
+maintenance/repair-20260815-g2/workorder_F09_done.md:93:- `python3 scripts/tests/test_recon_deep_reverify.py`：exit 0。
+maintenance/repair-20260815-g2/workorder_F09_done.md:103:| `scripts/tests/test_sixlens_receipts.py` | exit 1 | 手造 v3 fixture 缺 `warnings:[]` |
+maintenance/repair-20260815-g2/workorder_F09_done.md:104:| `scripts/tests/test_handoff_manifest.py` | exit 1 | READY/冻结调用链 fixture 缺 `warnings:[]`；后续 `entity_freeze.json` 不存在是前置失败的连锁结果 |
+maintenance/repair-20260815-g2/workorder_F09_done.md:105:| `scripts/tests/test_audit_release_gate.py` | exit 1 | audit fixture 缺 `warnings:[]` |
+maintenance/repair-20260815-g2/workorder_F09.md:54:## F. 新测试 `scripts/tests/test_gmgn_divergence_note.py`
+maintenance/repair-20260815-g2/workorder_F09.md:72:- 新测试绿；`test_recon_deep_reverify.py`、`test_sixlens_receipts.py`、`test_handoff_manifest.py`、`test_audit_release_gate.py` 回归绿；`invariant_scan.py` 绿；`docs_lint.py --all` 绿；
+maintenance/repair-20260815-g2/workorder_F09.md:78:- 禁碰：VERSION、CHANGELOG、SKILL.md、r10_ledger.md、pyproject、run_all.py、contract_manifest/snapshot、audit_release_gate.py、handoff_manifest.py、shared 的 A4/adversarial 区、analyze-workflow.md。
+
+exec
+/bin/zsh -lc "sed -n '1,230p' scripts/tests/test_sixlens_receipts.py
+sed -n '1,230p' scripts/tests/test_handoff_manifest.py
+sed -n '1,130p' scripts/tests/test_audit_release_gate.py
+rg -n 'recon_v3\\s*=|recon\\s*=\\s*\\{|\"schema\"\\s*:\\s*\"evm-reconciliation-receipt/v3\"' scripts/tests/test_sixlens_receipts.py scripts/tests/test_handoff_manifest.py scripts/tests/test_audit_release_gate.py" in /Users/uravvv/.claude/tca-repair-g2
+ succeeded in 0ms:
+#!/usr/bin/env python3
+"""第六轮批①：结构化回执、语义校验与 fail-closed 离线反例。"""
+import csv
+import hashlib
+import importlib.util
+import json
+import os
+import sys
+import tempfile
+from pathlib import Path
+from unittest import mock
+
+ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT / "scripts/report"))
+sys.path.insert(0, str(ROOT / "scripts/evm"))
+sys.path.insert(0, str(ROOT / "scripts/solana"))
+sys.path.insert(0, str(ROOT / "scripts/tests"))
+
+from test_audit_release_gate import write_deep_recon_fixtures
+
+
+def load(path, name):
+    spec = importlib.util.spec_from_file_location(name, path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def write_json(path, value):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(value), encoding="utf-8")
+
+
+def sha(path):
+    return hashlib.sha256(Path(path).read_bytes()).hexdigest()
+
+
+def test_shared_receipt_semantics(root):
+    shared = load(ROOT / "scripts/report/shared_release_receipt.py", "sixlens_shared")
+    root.mkdir(parents=True, exist_ok=True)
+    target = {"chain": "bsc", "token": "0xtoken", "as_of_block": 123}
+    fake = root / "fake.json"
+    source = root / "source.txt"
+    source.write_text("fixture\n", encoding="utf-8")
+    write_json(fake, {"anything": True})
+    item = {"status": "PASS", "exit_code": 0,
+            "receipt": {"path": fake.name, "sha256": sha(fake)}}
+    try:
+        shared.validate_reconciliation_check(root, "balance", item, target, "evm")
+    except ValueError as exc:
+        assert "v2" in str(exc) or "schema" in str(exc), exc
+    else:
+        raise AssertionError("任意 JSON 伪回执被接受")
+
+    good, _ = write_deep_recon_fixtures(root, target, source)
+    write_json(fake, good)
+    item["receipt"]["sha256"] = sha(fake)
+    shared.validate_reconciliation_check(root, "balance", item, target, "evm")
+    bad_target = dict(good, target={**target, "token": "0xother"})
+    write_json(fake, bad_target); item["receipt"]["sha256"] = sha(fake)
+    try:
+        shared.validate_reconciliation_check(root, "balance", item, target, "evm")
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("target 漂移被接受")
+    bad_verdict = dict(good, verdict="FAIL", exit_code=2)
+    write_json(fake, bad_verdict); item["receipt"]["sha256"] = sha(fake)
+    try:
+        shared.validate_reconciliation_check(root, "balance", item, target, "evm")
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("wrapper PASS 与 receipt FAIL 矛盾被接受")
+
+
+def recon_fixture(root, closed=True):
+    cfg = root / "config.json"
+    balances = root / "balances.json"
+    stats = root / "stats.json"
+    gmgn = root / "gmgn.csv"
+    write_json(cfg, {"total_supply_human": 100, "decimals": 0,
+                     "alchemy": {"url": "http://fixture/", "key": "key"},
+                     "proxy": "", "token": "0xtoken"})
+    write_json(balances, {"0x" + "1" * 40: 100 if closed else 90})
+    write_json(stats, {"mint_total_wei": 100, "burn_total_wei": 0, "max_block": 123})
+    with gmgn.open("w", newline="", encoding="utf-8") as f:
+        w = csv.DictWriter(f, fieldnames=["address", "pct"]); w.writeheader()
+        w.writerow({"address": "0x" + "1" * 40, "pct": "1"})
+    return cfg, balances, stats, gmgn
+
+
+def recon_args(paths, out):
+    cfg, balances, stats, gmgn = paths
+    return ["--config", str(cfg), "--balances", str(balances),
+            "--replay-stats", str(stats), "--gmgn", str(gmgn),
+            "--chain", "bsc", "--token", "0xtoken", "--end-block", "123",
+            "--out", str(out)]
+
+
+def test_verify_recon(root):
+    mod = load(ROOT / "scripts/evm/verify_recon.py", "sixlens_verify_recon")
+    pool = mock.Mock()
+    pool.attest.return_value = 56
+    paths = recon_fixture(root / "closed", closed=True)
+    out = root / "closed" / "receipt.json"
+    with mock.patch.object(mod, "attested_rpc_pool", return_value=pool), \
+            mock.patch.object(mod, "rpc_balance_of", return_value=100):
+        assert mod.main(recon_args(paths, out)) == 0
+    receipt = json.loads(out.read_text())
+    assert receipt["schema"] == "evm-reconciliation-receipt/v3"
+    assert receipt["target"] == {"chain": "bsc", "token": "0xtoken", "as_of_block": 123}
+
+    paths = recon_fixture(root / "supply-fail", closed=False)
+    out = root / "supply-fail" / "receipt.json"
+    with mock.patch.object(mod, "attested_rpc_pool", return_value=pool), \
+            mock.patch.object(mod, "rpc_balance_of", return_value=90):
+        assert mod.main(recon_args(paths, out)) == 2
+    assert json.loads(out.read_text())["verdict"] == "FAIL"
+
+    paths = recon_fixture(root / "balance-fail", closed=True)
+    out = root / "balance-fail" / "receipt.json"
+    with mock.patch.object(mod, "attested_rpc_pool", return_value=pool), \
+            mock.patch.object(mod, "rpc_balance_of", return_value=99):
+        assert mod.main(recon_args(paths, out)) == 2
+
+    paths = recon_fixture(root / "rpc-fail", closed=True)
+    out = root / "rpc-fail" / "receipt.json"
+    with mock.patch.object(mod, "attested_rpc_pool", return_value=pool), \
+            mock.patch.object(mod, "rpc_balance_of", side_effect=RuntimeError("rpc down")):
+        assert mod.main(recon_args(paths, out)) == 1
+    assert not out.exists()
+    errors = list(out.parent.glob("receipt.error.*.json"))
+    assert len(errors) == 1 and json.loads(errors[0].read_text())["verdict"] == "ERROR"
+
+
+def test_anchor_sampler(root):
+    work = root / "anchor"; work.mkdir()
+    write_json(work / "config.json", {"mint": "mint1", "ref_slot": 10000, "ref_ts": 1767225600})
+    old = Path.cwd(); os.chdir(work)
+    try:
+        mod = load(ROOT / "scripts/solana/anchor_sampler.py", "sixlens_anchor")
+        args = ["--start", "2026-01-01", "--end", "2026-01-01",
+                "--as-of-slot", "10000", "--out", str(work / "anchors.jsonl"),
+                "--receipt", str(work / "anchor_receipt.json"), "--endpoint",
+                "https://portal.sqd.dev/datasets/solana-mainnet/stream?api-key=SECRET#private"]
+        with mock.patch.object(mod, "fetch_window", return_value=None), \
+                mock.patch.object(mod.time, "sleep"):
+            assert mod.main(args) != 0
+        assert not (work / "anchor_receipt.json").exists()
+        errors = list(work.glob("anchor_receipt.error.*.json"))
+        assert len(errors) == 1 and json.loads(errors[0].read_text())["verdict"] == "ERROR"
+
+        def no_converge(frm, to, endpoint):
+            return [{"header": {"timestamp": 1, "number": frm}, "transactions": [],
+                     "tokenBalances": []}]
+        (work / "anchors.jsonl").unlink(missing_ok=True)
+        with mock.patch.object(mod, "fetch_window", side_effect=no_converge):
+            assert mod.main(args) != 0
+        assert not (work / "anchor_receipt.json").exists()
+        assert len(list(work.glob("anchor_receipt.error.*.json"))) == 2
+
+        (work / "anchors.jsonl").unlink(missing_ok=True)
+        with mock.patch.object(mod, "fetch_window", return_value=[]), \
+                mock.patch.object(mod, "publish_txn", side_effect=OSError("disk full")):
+            assert mod.main(args) == 1
+        assert not (work / "anchor_receipt.json").exists(), "写回失败留下 PASS receipt"
+
+        (work / "anchors.jsonl").unlink(missing_ok=True)
+        with mock.patch.object(mod, "fetch_window", return_value=[]):
+            assert mod.main(args) == 0
+        receipt = json.loads((work / "anchor_receipt.json").read_text())
+        row = json.loads((work / "anchors.jsonl").read_text())
+        assert receipt["verdict"] == "PASS" and receipt["mode"] == "formal"
+        assert {"path", "size", "sha256"} <= set(receipt["output"])
+        assert {"chain", "mint", "endpoint", "as_of_slot"} <= set(row)
+        assert row["chain"] == "solana" and row["mint"] == "mint1"
+        assert row["endpoint"] == "https://portal.sqd.dev/datasets/solana-mainnet/stream"
+        assert "api-key" not in (work / "anchors.jsonl").read_text()
+        assert "SECRET" not in (work / "anchors.jsonl").read_text()
+        validator = load(ROOT / "scripts/lib/receipt_validate.py", "sixlens_anchor_validator")
+        assert validator.validate_receipt(receipt) == []
+        shared = load(ROOT / "scripts/report/shared_release_receipt.py", "sixlens_anchor_shared")
+        item = {"status": "PASS", "exit_code": 0,
+                "receipt": {"path": "anchor_receipt.json",
+                            "sha256": sha(work / "anchor_receipt.json")}}
+        target = {"chain": "solana", "token": "mint1", "as_of_block": 10000}
+        shared.validate_reconciliation_check(work, "balance", item, target, "solana")
+        shared.validate_reconciliation_check(work, "time", item, target, "solana")
+
+        (work / "anchor_receipt.json").unlink()
+        variants = [
+            {**row, "chain": "ethereum"},
+            {**row, "mint": "other-mint"},
+            {**row, "endpoint": "https://other.invalid"},
+            {**row, "as_of_slot": 9999},
+            {**row, "to_slot": 10001},
+        ]
+        for bad_row in variants:
+            (work / "anchors.jsonl").write_text(json.dumps(bad_row) + "\n", encoding="utf-8")
+            with mock.patch.object(mod, "fetch_window") as fetch:
+                assert mod.main(args) == 2
+            fetch.assert_not_called()
+    finally:
+        os.chdir(old)
+
+
+def test_window_fetch(root):
+    work = root / "window"; work.mkdir()
+    write_json(work / "config.json", {"mint": "mint1"})
+    old = Path.cwd(); os.chdir(work)
+    try:
+        mod = load(ROOT / "scripts/solana/window_fetch.py", "sixlens_window")
+        out = work / "window.jsonl"; receipt = work / "window_receipt.json"
+        args = ["0", "10", str(out), "--conc", "1", "--receipt", str(receipt)]
+
+        reverse = work / "reverse.jsonl"; reverse_receipt = work / "reverse_receipt.json"
+        assert mod.main(["10", "0", str(reverse), "--conc", "1",
+                         "--receipt", str(reverse_receipt)]) == 2
+        assert not reverse.exists() and not reverse_receipt.exists()
+        negative = work / "negative.jsonl"; negative_receipt = work / "negative_receipt.json"
+        assert mod.main(["-1", "0", str(negative), "--conc", "1",
+                         "--receipt", str(negative_receipt)]) == 2
+        assert not negative.exists() and not negative_receipt.exists()
+
+        out.write_text("old-formal\n", encoding="utf-8")
+        with mock.patch.object(mod, "scan_seg", return_value=([(1, 1, "a", "b", 1)], False, [1])):
+            assert mod.main(args) == 2
+        assert not out.exists() and Path(str(out) + ".partial").exists()
+        failed_receipt = json.loads(receipt.read_text())
+#!/usr/bin/env python3
+"""handoff_manifest 契约测试（离线，黑盒 subprocess 调 CLI）。
+
+覆盖（split-run §2 交接契约的反例集）：
+  1. READY 正例全链路：generate → verify exit 0
+  2. BLOCKED 拒收：status=BLOCKED → verify exit 2；freeze 对 BLOCKED 案同拒（前置 0）
+  3. 哈希漂移：产物被改 → verify exit 2；freeze 同拒（前置 0 内联 verify）
+  4. schema 不兼容：consumer_min_schema 超出支持集 → verify exit 2
+  5. freeze 前揭盲拒绝：--check-unseal 无 entity_freeze.json → exit 2；freeze 后 → exit 0
+  6. gate 语义漂移：accounting_mode.json verdict 被改 → verify exit 2
+  7. blocking 异常未解决却报 READY → verify exit 2
+  8. generate READY 缺必备契约件 → exit 2
+  9. receipt 追加两条且 blind_mode 跟随环境变量
+ 10. supersede：二次 generate 归档旧 manifest
+ 12. READY 缺 wave_scan_report.json 即拒（W1 漏检复盘 2026-08-01：波次扫描是 READY 必产件）
+ 13. wave_scan_report.json 空壳（缺 requires_adjudication 等字段）→ verify exit 2
+  18+. freeze 溯源闸内容级反例集（v6.8.1 codex 复核 P0-2/P0-7 修复——旧版把空壳台账当
+      正例是在给漏洞背书，本版全部翻成必拒）：v1 schema 拒／空 composition 拒／closure
+      自报造假（按 composition 重算）拒／成员哈希错配拒／实体集不一致拒／敏感性不稳拒／
+      与边表脱离的人工台账拒／策略明细翻转但 stable=true 拒／重放语义漂移拒／
+      provenance-only 变化追加 revision／check-unseal 全绑定哈希复核／
+      READY 必备件被手改出 manifest 拒／legacy receipt 机器落盘
+用法：python3 scripts/tests/test_handoff_manifest.py   退出码 0=PASS / 1=FAIL
+"""
+import hashlib
+import copy
+import json
+import os
+import shutil
+import subprocess
+import sys
+import tempfile
+from pathlib import Path
+
+from test_audit_release_gate import write_deep_recon_fixtures
+
+from formal_ready_test_harness import run_formal_script
+from test_supply_truth_gate import TOKEN, write_evm_bundle
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+SCRIPT = os.path.join(HERE, "..", "report", "handoff_manifest.py")
+DIST_SCAN = os.path.join(HERE, "..", "report", "holder_distribution_scan.py")
+FAILS = []
+CHECKS = []
+
+
+def check(name, cond):
+    CHECKS.append(name)
+    if not cond:
+        FAILS.append(name)
+        print(f"FAIL  {name}")
+    else:
+        print(f"ok    {name}")
+
+
+def run(args, env=None):
+    """Run handoff inside the backward-compatible immutable registry context."""
+    return run_formal_script(SCRIPT, args, env=env)
+
+
+def write_json(d, name, obj):
+    with open(os.path.join(d, name), "w", encoding="utf-8") as f:
+        json.dump(obj, f, ensure_ascii=False)
+
+
+def make_case(d, chain="eth", token=TOKEN, as_of_block=999):
+    """最小合法 −1 案目录。"""
+    write_json(d, "candidate_universe.json", {"candidates": [
+        {"id": "c1", "address": "0xabc", "reasons": ["threshold_current"]},
+        {"id": "c2", "address": "0xdef", "reasons": ["dormant"]}]})
+    write_json(d, "candidate_screening.json", {"screened": [
+        {"id": "c1", "observed_type": "contract", "source": "getCode", "conflict_flags": []},
+        {"id": "c2", "observed_type": None, "source": None, "conflict_flags": [], "needs_adjudication": True}]})
+    write_json(d, "identity_preflight.json", {"addresses": [{"address": "0xabc", "labels": [], "code": True}]})
+    write_json(d, "anomalies.json", [])
+    os.makedirs(os.path.join(d, "data"), exist_ok=True)
+    balances = {f"owner-{i:03d}": max(1, int(2_000_000 / (1.035 ** i))) for i in range(240)}
+    total = sum(balances.values())
+    write_json(d, "data/holders_owners.json", balances)
+    snapshot_sha = hashlib.sha256(open(os.path.join(d, "data/holders_owners.json"), "rb").read()).hexdigest()
+    write_json(d, "data_map.json", {"files": [
+        {"path": "data/transfers.csv", "rows": 2, "source": "test"},
+        {"path": "data/edges.jsonl", "rows": 2, "source": "test"},
+        {"path": "data/holders_owners.json", "sha256": snapshot_sha, "source": "test"}]})
+    with open(os.path.join(d, "data", "transfers.csv"), "w") as f:
+        f.write("a,b\n1,2\n")
+    with open(os.path.join(d, "data", "edges.jsonl"), "w") as f:
+        f.write(json.dumps([86400, 1, 0, 0, Z, "0xabc", 100]) + "\n")
+        f.write(json.dumps([86400, 1, 1, 0, Z, "0xdef", 100]) + "\n")
+    bundle_chain = chain if chain in {"eth", "bsc", "base"} else "eth"
+    bundle_path = write_evm_bundle(
+        Path(d), token=token, chain=bundle_chain, as_of=as_of_block,
+        total=100, zero=0, dead=0)
+    bundle = json.loads(bundle_path.read_text(encoding="utf-8"))
+    write_json(d, "supply_truth.json", {"verdict": "PASS", "exit_code": 0,
+                                         "chain": "bsc" if chain != "solana" else "solana",
+                                         "onchain_total_supply": str(total), "replay_net": str(total),
+                                         "mint_total": str(total), "burn_total": "0",
+                                         "decision_rule": "primary_form1",
+                                         "total_supply_raw": str(total), "net_supply_raw": str(total)})
+    write_json(d, "wave_scan_report.json", {"schema": "wave-scan/v3", "scan_universe_count": 0,
+                                            "scan_universe": [], "must_adjudicate_count": 0,
+                                            "retention_buckets": {"cleared": 0, "partial_exit": 0, "retained": 0},
+                                            "negative_balance_addrs": 0,
+                                            "waves": [], "equal_amount_groups": [],
+                                            "requires_adjudication": False})
+    write_json(d, "flow_anomaly_report.json", {"schema": "flow-anomaly/v2", "eligible_universe_count": 0,
+                                               "sinks": [], "sprays": [],
+                                               "requires_adjudication": False})
+    write_json(d, "time_spotcheck.json", {"gate": "time_spotcheck", "schema": "time-spotcheck/v3",
+                                          "points": 2, "exact_match": 2, "mismatch": 0,
+                                          "rpc_err": 0, "verdict": "PASS", "exit_code": 0})
+    repo = Path(HERE).parents[1]
+    input_path = Path(d, "data", "holders_owners.json").resolve()
+
+    def file_sha(path):
+        return hashlib.sha256(Path(path).read_bytes()).hexdigest()
+
+    def repo_ref(rel):
+        return {"path": rel, "sha256": file_sha(repo / rel)}
+
+    bundle_ref = {"path": str(bundle_path.resolve()), "size": bundle_path.stat().st_size,
+                  "sha256": file_sha(bundle_path)}
+    write_json(d, "accounting_mode.json", {
+        "schema": "accounting-gate/v2", "chain": chain, "token": token.lower(),
+        "producer": repo_ref("scripts/evm/accounting_gate.py"),
+        "execution_mode": "formal", "as_of_block": as_of_block,
+        "tip_block": as_of_block + 20, "model_probe_block": as_of_block + 20,
+        "observation_bundle": bundle_ref,
+        "observed_anchor": {"block": as_of_block,
+                            "block_hash": bundle["anchor"]["block_hash"]},
+        "checks": {"proxy": {"is_proxy": False}},
+        "verdict": "PASS", "exit_code": 0,
+    })
+
+    target = {"chain": chain, "token": token.lower(), "as_of_block": as_of_block}
+    producers = {"balance": "scripts/evm/verify_recon.py",
+                 "supply": "scripts/evm/verify_recon.py",
+                 "supply_truth": "scripts/lib/supply_truth_gate.py",
+                 "time": "scripts/lib/time_spotcheck.py"}
+    bound_input = {"fixture": {"path": str(input_path), "size": input_path.stat().st_size,
+                                "sha256": file_sha(input_path)}}
+    # supply_truth 的 replay_stats 要能被消费侧重算 mint−burn 对账，必须是真的重放统计；
+    # 文件名避开正牌 replay_stats.json，免得跟真跑出来的重放产物撞名互相覆盖。
+    write_json(d, "fixture_replay_stats.json",
+               {"mint_total_raw": "100", "burn_total_raw": "0"})
+    stats_path = Path(d, "fixture_replay_stats.json").resolve()
+    replay_input = {"path": str(stats_path), "size": stats_path.stat().st_size,
+                    "sha256": file_sha(stats_path)}
+    recon_v3, time_v3 = write_deep_recon_fixtures(
+        Path(d), target, input_path, total=100, address="0xabc")
+    stats_path = Path(d, "fixture_replay_stats.json").resolve()
+    replay_input = {"path": str(stats_path), "size": stats_path.stat().st_size,
+                    "sha256": file_sha(stats_path)}
+    recon_checks = {}
+    for key in ("balance", "supply", "supply_truth", "time"):
+        receipt_name = f"reconciliation_{key}_receipt.json"
+        if key in {"balance", "supply"}:
+            receipt = json.loads(json.dumps(recon_v3))
+        elif key == "supply_truth":
+            receipt = {"schema": "supply-truth-receipt/v4", "target": target,
+                       "gate": "supply_truth", "replay_net": "100",
+                       "onchain_total_supply": "100", "diff": "0",
+                       "diff_bps": 0.0, "tolerance_bps": 10,
+                       "decision_rule": "primary_form1", "burn_form": None,
+                       "primary_verdict": "PASS", "sink_reconciliation": None}
+        else:
+            receipt = json.loads(json.dumps(time_v3))
+        # A-5（批 D）：真实 verify_recon 的 balance/supply 收据本就绑 replay_stats，
+        # 夹具补成真实形态——消费侧三查同源校验（sha 全等）才有账可对。
+        if key in {"balance", "supply"}:
+            key_inputs = receipt["inputs"]
+        elif key == "supply_truth":
+            key_inputs = {"replay_stats": replay_input,
+                          "observation_bundle": {
+                              "path": "evm_observation_bundle.json",
+                              "size": bundle_path.stat().st_size,
+                              "sha256": file_sha(bundle_path)}}
+        else:
+            key_inputs = receipt["inputs"]
+        receipt.update({"producer": repo_ref(producers[key]), "mode": "formal",
+                        "inputs": key_inputs,
+                        "verdict": "PASS", "exit_code": 0})
+        write_json(d, receipt_name, receipt)
+        recon_checks[key] = {"status": "PASS", "exit_code": 0,
+                             "receipt": {"path": receipt_name,
+                                         "sha256": file_sha(Path(d, receipt_name))},
+                             "producer": repo_ref(producers[key])}
+    write_json(d, "reconciliation_report.json", {
+        "schema": "reconciliation-report/v2", "target": target,
+        "producer": repo_ref("scripts/report/reconciliation_report.py"),
+        "verdict": "PASS", "exit_code": 0, "checks": recon_checks})
+    os.makedirs(os.path.join(d, "sealed"), exist_ok=True)
+    with open(os.path.join(d, "sealed", "stage1_hypotheses.sealed.md"), "w") as f:
+        f.write("> −2 实体冻结前禁读\n假说：无\n")
+    p = subprocess.run([sys.executable, DIST_SCAN, "--case-dir", d, "--stage", "initial"],
+                       capture_output=True, text=True)
+    if p.returncode != 0:
+        raise RuntimeError(f"distribution fixture 生成失败: {p.stdout}{p.stderr}")
+
+
+Z = "0x0000000000000000000000000000000000000000"
+GEN = ["--mode", "full", "--producer-model", "test-model", "--chain", "eth", "--contract", TOKEN,
+       "--cutoff", "2026-08-01T00:00:00Z", "--frozen-block", "999",
+       "--denominators", json.dumps({"total_supply_raw": str(10 ** 12)})]
+
+
+def members_sha(addrs):
+    return hashlib.sha256(",".join(sorted(set(addrs))).encode()).hexdigest()
+
+
+def make_provenance(d, entity_map, schema="provenance-ledger/v2", stable=True,
+                    hollow=False, bad_closure=False, wrong_sha=False, depth_limit=10):
+    """从 manifest 绑定的真实边重跑合法台账，再按开关损坏成对应反例。"""
+    entity_path = os.path.join(d, "s2_entity_members.json")
+    out = os.path.join(d, ".fixture_provenance.json")
+    prior = open(entity_path, "rb").read() if os.path.isfile(entity_path) else None
+    write_json(d, "s2_entity_members.json", entity_map)
+    trace = os.path.join(HERE, "..", "report", "entity_source_trace.py")
+    labels_path = os.path.join(d, "fixture_labels.json")
+    write_json(d, "fixture_labels.json", {"0xfacility": {"kind": "facility", "name": "fixture"}})
+    p = subprocess.run([sys.executable, trace, "--edges-sol", os.path.join(d, "data", "edges.jsonl"),
+                        "--total-supply", str(10 ** 12), "--entity-file", entity_path,
+                        "--labels-file", labels_path, "--out", out,
+                        "--depth-limit", str(depth_limit)],
+                       capture_output=True, text=True)
+    if p.returncode != 0:
+        raise RuntimeError(f"fixture provenance 生成失败: {p.stdout}{p.stderr}")
+    obj = json.load(open(out))
+    os.unlink(out)
+#!/usr/bin/env python3
+"""独立复核发布硬闸离线契约测试。"""
+
+import hashlib
+import importlib.util
+import json
+import os
+import subprocess
+import sys
+import tempfile
+from pathlib import Path
+
+
+HERE = Path(__file__).resolve().parent
+REPO = HERE.parent.parent
+GATE = HERE.parent / "report" / "audit_release_gate.py"
+REPRODUCE = HERE.parent / "report" / "reproduce_receipt.py"
+from formal_ready_test_harness import test_vertical_slices
+from test_supply_truth_gate import write_evm_bundle
+spec = importlib.util.spec_from_file_location("audit_release_gate", GATE)
+gate = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(gate)
+_gate_run = gate.run
+
+
+def _run_with_test_vertical_slices(*args, **kwargs):
+    with test_vertical_slices():
+        return _gate_run(*args, **kwargs)
+
+
+gate.run = _run_with_test_vertical_slices
+
+CASE_TOKEN = "0x" + "a" * 40
+
+
+def write_json(root, name, value):
+    (root / name).write_text(json.dumps(value, ensure_ascii=False), encoding="utf-8")
+
+
+def sha(path):
+    return hashlib.sha256(Path(path).read_bytes()).hexdigest()
+
+
+def repo_ref(rel):
+    path = REPO / rel
+    return {"path": rel, "sha256": sha(path)}
+
+
+def artifact_ref(root, path):
+    root = Path(root).resolve()
+    path = Path(path).resolve()
+    return {"path": path.relative_to(root).as_posix(), "size": path.stat().st_size,
+            "sha256": sha(path)}
+
+
+def write_deep_recon_fixtures(root, target, raw_input, *, total=100, address="0xabc"):
+    """F-07: emit truthful v3 verify/time fixtures bound to real case artifacts."""
+    root = Path(root)
+    write_json(root, "fixture_recon_config.json", {
+        "token": target["token"], "decimals": 0, "total_supply_human": str(total)})
+    write_json(root, "fixture_balances.json", {address: str(total)})
+    write_json(root, "fixture_replay_stats.json", {
+        "mint_total_raw": str(total), "burn_total_raw": "0",
+        "max_block": target["as_of_block"]})
+    gmgn = root / "fixture_gmgn.csv"
+    gmgn.write_text(f"address,pct\n{address},1\n", encoding="utf-8")
+    call_data = "0x70a08231" + "0" * 24 + address.lower().replace("0x", "")
+    transcript = [{"seq": 0, "method": "eth_call",
+                   "params": [{"to": target["token"].lower(), "data": call_data},
+                              hex(target["as_of_block"])],
+                   "result": hex(total)}]
+    write_json(root, "fixture_recon_transcript.json", transcript)
+    inputs = {
+        "config": artifact_ref(root, root / "fixture_recon_config.json"),
+        "balances": artifact_ref(root, root / "fixture_balances.json"),
+        "replay_stats": artifact_ref(root, root / "fixture_replay_stats.json"),
+        "gmgn": artifact_ref(root, gmgn),
+        "transcript": artifact_ref(root, root / "fixture_recon_transcript.json"),
+    }
+    recon = {
+        "schema": "evm-reconciliation-receipt/v3", "target": target,
+        "producer": repo_ref("scripts/evm/verify_recon.py"), "mode": "formal",
+        "inputs": inputs, "verdict": "PASS", "exit_code": 0,
+        "observations": {
+            "supply_closure": {
+                "mint_total_raw": str(total), "burn_total_raw": "0",
+                "nominal_supply_raw": str(total), "balance_sum_raw": str(total),
+                "negative_count": 0, "negative_addresses": [], "closed": True},
+            "balance_reconciliation": {
+                "requested_top_n": 1, "selection": "top_n_then_skip_sinks",
+                "checked": 1, "matched": 1, "mismatched": 0, "rpc_errors": 0,
+                "rows": [{"address": address, "replay_raw": str(total),
+                          "chain_raw": str(total), "diff_raw": "0", "status": "OK"}]},
+            "gmgn_comparison": {
+                "checked": 1, "diff_count": 0, "tolerance_pp": 0.15,
+                "rows": [{"address": address, "gmgn_pct": "100",
+                          "replay_pct": "100", "diff_pp": "0", "status": "OK"}]},
+        },
+    }
+
+    raw_input = Path(raw_input)
+    identity = {"path": str(raw_input.resolve()), "size": raw_input.stat().st_size,
+                "sha256": sha(raw_input)}
+    write_json(root, "fixture_anchor_input_manifest.json", {
+        "schema": "anchor-plan-input/v1", "input": identity, "files": [identity]})
+    plan_inputs = {"input_manifest": artifact_ref(
+        root, root / "fixture_anchor_input_manifest.json")}
+    plan_producer = repo_ref("scripts/lib/anchor_plan.py")
+    plan = {"schema": "anchor-plan/v2", "target": target, "input": identity,
+            "matrix_points": [{"kind": "fixture", "addr": address,
+                               "day_end_block": target["as_of_block"],
+                               "expected_balance_raw": str(total)}],
+            "forced_points": []}
+    write_json(root, "fixture_anchor_plan.json", plan)
+    plan_receipt = {
+        "schema": "anchor-plan-receipt/v2", "target": target,
+        "producer": plan_producer, "mode": "formal", "inputs": plan_inputs,
+        "input_identity": identity, "verdict": "PASS", "exit_code": 0}
+    write_json(root, "fixture_anchor_plan_receipt.json", plan_receipt)
+    time_data = "0x70a08231" + address.lower().replace("0x", "").rjust(64, "0")
+    time_transcript = [{"seq": 0, "method": "eth_call",
+                        "params": [{"to": target["token"].lower(), "data": time_data},
+                                   hex(target["as_of_block"])],
+                        "result": hex(total)}]
+    write_json(root, "fixture_time_transcript.json", time_transcript)
+    time_receipt = {
+        "schema": "time-spotcheck/v3", "target": target,
+        "producer": repo_ref("scripts/lib/time_spotcheck.py"), "mode": "formal",
+        "inputs": {
+            "plan": artifact_ref(root, root / "fixture_anchor_plan.json"),
+scripts/tests/test_audit_release_gate.py:80:    recon = {
+scripts/tests/test_audit_release_gate.py:81:        "schema": "evm-reconciliation-receipt/v3", "target": target,
+
+exec
+/bin/zsh -lc 'env PYTHONDONTWRITEBYTECODE=1 python3 scripts/tests/test_sixlens_receipts.py' in /Users/uravvv/.claude/tca-repair-g2
+ exited 1 in 124ms:
+Traceback (most recent call last):
+  File "/Users/uravvv/.claude/tca-repair-g2/scripts/tests/test_sixlens_receipts.py", line 272, in <module>
+    main()
+    ~~~~^^
+  File "/Users/uravvv/.claude/tca-repair-g2/scripts/tests/test_sixlens_receipts.py", line 264, in main
+    test_shared_receipt_semantics(root / "shared")
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "/Users/uravvv/.claude/tca-repair-g2/scripts/tests/test_sixlens_receipts.py", line 58, in test_shared_receipt_semantics
+    shared.validate_reconciliation_check(root, "balance", item, target, "evm")
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/uravvv/.claude/tca-repair-g2/scripts/report/shared_release_receipt.py", line 1091, in validate_reconciliation_check
+    _validate_evm_reconciliation_receipt(root, receipt, target)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/uravvv/.claude/tca-repair-g2/scripts/report/shared_release_receipt.py", line 867, in _validate_evm_reconciliation_receipt
+    _validate_recon_gmgn(root, receipt, observations, balances, nominal)
+    ~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/uravvv/.claude/tca-repair-g2/scripts/report/shared_release_receipt.py", line 841, in _validate_recon_gmgn
+    _require(isinstance(warnings, list)
+    ~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^
+             and all(item == GMGN_DIVERGENCE_WARNING for item in warnings)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+             and len(warnings) == len(set(warnings)),
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+             "verify_recon warnings must be a duplicate-free known-string array")
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/uravvv/.claude/tca-repair-g2/scripts/report/shared_release_receipt.py", line 118, in _require
+    raise ValueError(message)
+ValueError: verify_recon warnings must be a duplicate-free known-string array
+
+codex
+已复现首个失败，错误正是 consumer 拒绝缺失 `warnings` 的 v3 fixture。三个测试实际共用 `test_audit_release_gate.py` 里的 `write_deep_recon_fixtures()`；因此最小且不重复的修复是在这个共享手造 receipt 中补一次 `warnings: []`，它会同时覆盖另外两个测试的 fixture，不需要在调用处写冗余赋值。
+apply patch
+patch: completed
+/Users/uravvv/.claude/tca-repair-g2/scripts/tests/test_audit_release_gate.py
+diff --git a/scripts/tests/test_audit_release_gate.py b/scripts/tests/test_audit_release_gate.py
+index 64ea4f0eb54ee4ae9ffd2da0d2a4264e20cd7ca7..296b511f7ce6994b9cb36e5bec85e280a8b3134b
+--- a/scripts/tests/test_audit_release_gate.py
++++ b/scripts/tests/test_audit_release_gate.py
+@@ -80,7 +80,7 @@
+     recon = {
+         "schema": "evm-reconciliation-receipt/v3", "target": target,
+         "producer": repo_ref("scripts/evm/verify_recon.py"), "mode": "formal",
+-        "inputs": inputs, "verdict": "PASS", "exit_code": 0,
++        "inputs": inputs, "warnings": [], "verdict": "PASS", "exit_code": 0,
+         "observations": {
+             "supply_closure": {
+                 "mint_total_raw": str(total), "burn_total_raw": "0",
+
+diff --git a/scripts/tests/test_audit_release_gate.py b/scripts/tests/test_audit_release_gate.py
+index 64ea4f0eb54ee4ae9ffd2da0d2a4264e20cd7ca7..296b511f7ce6994b9cb36e5bec85e280a8b3134b
+--- a/scripts/tests/test_audit_release_gate.py
++++ b/scripts/tests/test_audit_release_gate.py
+@@ -80,7 +80,7 @@
+     recon = {
+         "schema": "evm-reconciliation-receipt/v3", "target": target,
+         "producer": repo_ref("scripts/evm/verify_recon.py"), "mode": "formal",
+-        "inputs": inputs, "verdict": "PASS", "exit_code": 0,
++        "inputs": inputs, "warnings": [], "verdict": "PASS", "exit_code": 0,
+         "observations": {
+             "supply_closure": {
+                 "mint_total_raw": str(total), "burn_total_raw": "0",
+
+codex
+共享 fixture 已补上唯一必需字段。现在并行跑三项原失败测试及两项指定回归；均设置禁写 `.pyc`，避免在授权范围外产生 Python 缓存文件。
+exec
+/bin/zsh -lc 'env PYTHONDONTWRITEBYTECODE=1 python3 scripts/tests/test_handoff_manifest.py' in /Users/uravvv/.claude/tca-repair-g2
+exec
+/bin/zsh -lc 'env PYTHONDONTWRITEBYTECODE=1 python3 scripts/tests/test_audit_release_gate.py' in /Users/uravvv/.claude/tca-repair-g2
+exec
+/bin/zsh -lc 'env PYTHONDONTWRITEBYTECODE=1 python3 scripts/tests/test_gmgn_divergence_note.py' in /Users/uravvv/.claude/tca-repair-g2
+exec
+/bin/zsh -lc 'env PYTHONDONTWRITEBYTECODE=1 python3 scripts/tests/test_sixlens_receipts.py' in /Users/uravvv/.claude/tca-repair-g2
+exec
+/bin/zsh -lc 'env PYTHONDONTWRITEBYTECODE=1 python3 scripts/tests/test_recon_deep_reverify.py' in /Users/uravvv/.claude/tca-repair-g2
+ succeeded in 214ms:
+[verify_recon] divergence note ERROR exit=1（原黄灯收据未覆盖）: GMGN 查证说明未完整覆盖当前重算差异集合
+[verify_recon] divergence note ERROR exit=1（原黄灯收据未覆盖）: GMGN 查证说明未完整覆盖当前重算差异集合
+[verify_recon] divergence note ERROR exit=1（原黄灯收据未覆盖）: GMGN 查证说明 inputs_sha256.gmgn 与本次输入不一致
+[verify_recon] divergence note ERROR exit=1（原黄灯收据未覆盖）: GMGN 查证说明 findings[0].cause 非法
+[verify_recon] divergence note ERROR exit=1（原黄灯收据未覆盖）: GMGN 查证说明 findings[0].explanation 至少需 30 个实义字符
+[verify_recon] divergence note ERROR exit=1（原黄灯收据未覆盖）: GMGN 查证说明 investigated_at_utc 必须是 YYYY-MM-DDTHH:MM:SSZ
+[verify_recon] divergence note ERROR exit=1（原黄灯收据未覆盖）: GMGN 查证说明 request_sha256 与 request 重算不一致
+[verify_recon] divergence note ERROR exit=1（原黄灯收据未覆盖）: GMGN 零差异时禁止预填 --divergence-note；无需人工说明
+[verify_recon] PASS exit=0 → /private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/f09-gmgn-note-jt1bywgu/divergent/verify_recon.json
+[verify_recon] 黄灯 gmgn_divergence：收据 PASS，但发布前必须补 gmgn_divergence_note.json
+[verify_recon] 查证后按原命令追加 --divergence-note gmgn_divergence_note.json 重跑绑定
+[verify_recon] PASS exit=0 → /private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/f09-gmgn-note-jt1bywgu/divergent/verify_recon.json
+[verify_recon] 黄灯 gmgn_divergence：查证说明已绑定；发布侧将独立重验
+[verify_recon] PASS exit=0 → /private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/f09-gmgn-note-jt1bywgu/clean/verify_recon.json
+PASS test_gmgn_divergence_note
+
+ succeeded in 236ms:
+[verify_recon] PASS exit=0 → /private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/tmpic29jwxx/recon/closed/receipt.json
+[verify_recon] FAIL exit=2 → /private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/tmpic29jwxx/recon/supply-fail/receipt.json
+[verify_recon] FAIL exit=2 → /private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/tmpic29jwxx/recon/balance-fail/receipt.json
+[verify_recon] ERROR exit=1 → /private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/tmpic29jwxx/recon/rpc-fail/receipt.error.20260815T150240.255811Z.86922.json
+target days: 1 (skip 0), order new->old
+DONE 1 days, fails=1, 0s
+[anchor_sampler] ERROR → /private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/tmpic29jwxx/anchor/anchor_receipt.error.20260815T150240.258492Z.86922.json
+target days: 1 (skip 0), order new->old
+DONE 1 days, fails=1, 0s
+[anchor_sampler] ERROR → /private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/tmpic29jwxx/anchor/anchor_receipt.error.20260815T150240.260274Z.86922.json
+target days: 1 (skip 0), order new->old
+DONE 1 days, fails=0, 0s
+[anchor_sampler] ERROR → /private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/tmpic29jwxx/anchor/anchor_receipt.error.20260815T150240.262754Z.86922.json
+[anchor_sampler] receipt 生成失败（exit 1）: disk full
+target days: 1 (skip 0), order new->old
+DONE 1 days, fails=0, 0s
+[anchor_sampler] ERROR → /private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/tmpic29jwxx/anchor/anchor_receipt.error.20260815T150240.273277Z.86922.json
+[anchor_sampler] resume 第 1 行: resume 身份不匹配 ['chain']，拒绝复用；请重采
+[anchor_sampler] ERROR → /private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/tmpic29jwxx/anchor/anchor_receipt.error.20260815T150240.275746Z.86922.json
+[anchor_sampler] resume 第 1 行: resume 身份不匹配 ['mint']，拒绝复用；请重采
+[anchor_sampler] ERROR → /private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/tmpic29jwxx/anchor/anchor_receipt.error.20260815T150240.279707Z.86922.json
+[anchor_sampler] resume 第 1 行: resume 身份不匹配 ['endpoint']，拒绝复用；请重采
+[anchor_sampler] ERROR → /private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/tmpic29jwxx/anchor/anchor_receipt.error.20260815T150240.282005Z.86922.json
+[anchor_sampler] resume 第 1 行: resume 身份不匹配 ['as_of_slot']，拒绝复用；请重采
+[anchor_sampler] ERROR → /private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/tmpic29jwxx/anchor/anchor_receipt.error.20260815T150240.283592Z.86922.json
+[anchor_sampler] resume 第 1 行: resume to_slot=10001 越过 cutoff=10000 或不是非负整数
+[window_fetch] 正式窗口要求 0 <= from_slot <= to_slot 且 conc >= 1
+[window_fetch] 正式窗口要求 0 <= from_slot <= to_slot 且 conc >= 1
+segments: 1 x 2000 slots, conc=1
+FAIL 1 segs (1 gaps) in 0s -> /private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/tmpic29jwxx/window/window.jsonl.partial
+segments: 1 x 2000 slots, conc=1
+PASS 1 segs (0 gaps) in 0s -> /private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/tmpic29jwxx/window/window.jsonl
+segments: 1 x 2000 slots, conc=1
+[window_fetch] ERROR → /private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/tmpic29jwxx/window/window_receipt.error.20260815T150240.299453Z.86922.json
+[window_fetch] 检测/提交失败（exit 1）: disk full
+segments: 1 x 2000 slots, conc=1
+[window_fetch] ERROR → /private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/tmpic29jwxx/window/window_receipt.error.20260815T150240.302439Z.86922.json
+[window_fetch] 检测/提交失败（exit 1）: disk full
+PASS: 六视角批①结构化回执与 fail-closed
+
+ succeeded in 248ms:
+[verify_recon] PASS exit=0 → /private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/f07-deep-reverify-xjzs7o82/recon/verify_recon.json
+[time_spotcheck] PASS  2/2 一致（balance 1 + tx 1；mismatch 0，rpc_err 0）→ /private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/f07-deep-reverify-xjzs7o82/time/time_spotcheck.json
+PASS test_recon_deep_reverify
+
+diff --git a/scripts/tests/test_audit_release_gate.py b/scripts/tests/test_audit_release_gate.py
+index 64ea4f0eb54ee4ae9ffd2da0d2a4264e20cd7ca7..296b511f7ce6994b9cb36e5bec85e280a8b3134b
+--- a/scripts/tests/test_audit_release_gate.py
++++ b/scripts/tests/test_audit_release_gate.py
+@@ -80,7 +80,7 @@
+     recon = {
+         "schema": "evm-reconciliation-receipt/v3", "target": target,
+         "producer": repo_ref("scripts/evm/verify_recon.py"), "mode": "formal",
+-        "inputs": inputs, "verdict": "PASS", "exit_code": 0,
++        "inputs": inputs, "warnings": [], "verdict": "PASS", "exit_code": 0,
+         "observations": {
+             "supply_closure": {
+                 "mint_total_raw": str(total), "burn_total_raw": "0",
+
+ succeeded in 13076ms:
+PASS: audit_release_gate 净室资产/哈希/CEX受益权/阴性结论/图表封口与负钳零/对抗复核否决/四查WARN拦截/双线阈值/嵌套未决暴露/静置仓全集对账/日级峰值口径闭环十一类契约全过
+
+diff --git a/scripts/tests/test_audit_release_gate.py b/scripts/tests/test_audit_release_gate.py
+index 64ea4f0eb54ee4ae9ffd2da0d2a4264e20cd7ca7..296b511f7ce6994b9cb36e5bec85e280a8b3134b
+--- a/scripts/tests/test_audit_release_gate.py
++++ b/scripts/tests/test_audit_release_gate.py
+@@ -80,7 +80,7 @@
+     recon = {
+         "schema": "evm-reconciliation-receipt/v3", "target": target,
+         "producer": repo_ref("scripts/evm/verify_recon.py"), "mode": "formal",
+-        "inputs": inputs, "verdict": "PASS", "exit_code": 0,
++        "inputs": inputs, "warnings": [], "verdict": "PASS", "exit_code": 0,
+         "observations": {
+             "supply_closure": {
+                 "mint_total_raw": str(total), "burn_total_raw": "0",
+
+ succeeded in 28672ms:
+ok    generate READY exit 0
+ok    manifest 收录 data_map 索引文件
+ok    EVM manifest 收录 bundle 与 transcript
+ok    manifest sealed 只记哈希
+ok    manifest 自动 gate 四个
+ok    verify READY exit 0
+ok    accounting WARN + exit 0 按记账 gate 契约放行
+ok    READY 缺 chain generate 拒
+ok    READY 缺 contract generate 拒
+ok    READY 未知 chain generate 拒
+ok    PARTIAL 不强制正式 scope
+ok    scope 独立正例生成
+ok    verify 空 chains scope 拒
+ok    EVM 链缺 time_spotcheck 拒 READY exit 2
+ok    solana 不得复用 bsc reconciliation
+ok    READY 缺 reconciliation 拒
+ok    receipt 追加两条
+ok    receipt blind_mode 跟随环境
+ok    freeze 前揭盲拒绝 exit 2
+ok    freeze 缺 --entity-file 拒
+ok    无裁决台账 freeze 拒 exit 2
+ok    exploration/null-label provenance freeze 拒
+ok    四重前置齐备 freeze 初次 exit 0
+ok    冻结记录绑定成员/名册/provenance/manifest/data_map 全套哈希
+ok    freeze 后揭盲放行 exit 0
+ok    名册改动后复用旧溯源台账 freeze 拒 exit 2
+ok    重跑溯源后 freeze 变更走 revision 追加
+ok    supersede 归档旧 manifest
+ok    generate BLOCKED_CEX_GATE exit 0
+ok    verify BLOCKED 拒收 exit 2
+ok    BLOCKED 案 freeze 同拒 exit 2（前置 0 内联 verify）
+ok    哈希漂移拒收 exit 2
+ok    哈希漂移案 freeze 同拒 exit 2（前置 0）
+ok    schema 不兼容拒收 exit 2
+ok    gate 语义漂移拒收 exit 2
+ok    blocking 异常未解决拒收 exit 2
+ok    READY 缺必备件 generate 即拒 exit 2
+ok    同目录报 PARTIAL 可出 manifest
+ok    READY 缺 supply_truth gate 即拒 exit 2
+ok    READY 缺 wave_scan_report 即拒 exit 2
+ok    wave_scan_report 空壳 verify 拒收 exit 2
+ok    READY 缺 flow_anomaly_report 即拒 exit 2
+ok    wave-scan/v1 旧版产物 verify 拒收 exit 2
+ok    wave-scan/v2 旧版产物 verify 拒收 exit 2
+ok    v3 标签缺 scan_universe 全集 verify 拒收 exit 2
+ok    v3 count 与逐条 must 标记矛盾 verify 拒收 exit 2
+ok    handoff/v2 默认拒收 exit 2
+ok    handoff/v1 默认拒收 exit 2
+ok    handoff/v1 --legacy-read-only 放行且带只读警告
+ok    legacy 降级落机器 receipt
+ok    legacy 案 freeze 必拒 exit 2
+ok    溯源台账 v1（数学错误版）freeze 拒 exit 2
+ok    stock>0 而 composition 空壳 freeze 拒 exit 2
+ok    closure 自报 100 但按 composition 重算不闭合 freeze 拒 exit 2
+ok    成员集哈希错配 freeze 拒 exit 2
+ok    台账实体集与名册不一致 freeze 拒 exit 2
+ok    敏感性不稳 freeze 拒 exit 2
+ok    与边表脱离的人工合法台账 freeze 拒 exit 2
+ok    策略明细翻转但 stable=true 仍由 freeze 重算拒绝
+ok    尘埃锚点翻转豁免（不因翻转拒；伪造由重放语义摘要兜底）
+ok    内容自洽但与当前原始边重放不一致 freeze 拒
+ok    台账修复后 freeze 放行 exit 0
+ok    仅 provenance 变化也追加 freeze revision
+ok    check-unseal 复核 provenance 当前哈希漂移并拒绝
+ok    check-unseal 全绑定恢复后放行
+ok    check-unseal 直接复核原始边绑定漂移并拒绝
+ok    原始边恢复后 check-unseal 放行
+ok    手改 manifest 摘掉必备件 verify 拒 exit 2
+========================================
+handoff_manifest 契约测试全部通过（68 项）
+
+codex
+五项定向验收全部转绿：三项 fixture 消费链和两项 F-09/F-07 回归均 exit 0。接着执行沙箱内全量 `run_all.py`；按补充工单，允许的唯一例外是两个已知 loopback `EPERM`，出现任何其他红项就停止，不再改文件。
+exec
+/bin/zsh -lc 'env PYTHONDONTWRITEBYTECODE=1 python3 scripts/tests/run_all.py' in /Users/uravvv/.claude/tca-repair-g2
+diff --git a/scripts/tests/test_audit_release_gate.py b/scripts/tests/test_audit_release_gate.py
+index 64ea4f0eb54ee4ae9ffd2da0d2a4264e20cd7ca7..296b511f7ce6994b9cb36e5bec85e280a8b3134b
+--- a/scripts/tests/test_audit_release_gate.py
++++ b/scripts/tests/test_audit_release_gate.py
+@@ -80,7 +80,7 @@
+     recon = {
+         "schema": "evm-reconciliation-receipt/v3", "target": target,
+         "producer": repo_ref("scripts/evm/verify_recon.py"), "mode": "formal",
+-        "inputs": inputs, "verdict": "PASS", "exit_code": 0,
++        "inputs": inputs, "warnings": [], "verdict": "PASS", "exit_code": 0,
+         "observations": {
+             "supply_closure": {
+                 "mint_total_raw": str(total), "burn_total_raw": "0",
+
+diff --git a/scripts/tests/test_audit_release_gate.py b/scripts/tests/test_audit_release_gate.py
+index 64ea4f0eb54ee4ae9ffd2da0d2a4264e20cd7ca7..296b511f7ce6994b9cb36e5bec85e280a8b3134b
+--- a/scripts/tests/test_audit_release_gate.py
++++ b/scripts/tests/test_audit_release_gate.py
+@@ -80,7 +80,7 @@
+     recon = {
+         "schema": "evm-reconciliation-receipt/v3", "target": target,
+         "producer": repo_ref("scripts/evm/verify_recon.py"), "mode": "formal",
+-        "inputs": inputs, "verdict": "PASS", "exit_code": 0,
++        "inputs": inputs, "warnings": [], "verdict": "PASS", "exit_code": 0,
+         "observations": {
+             "supply_closure": {
+                 "mint_total_raw": str(total), "burn_total_raw": "0",
+
+diff --git a/scripts/tests/test_audit_release_gate.py b/scripts/tests/test_audit_release_gate.py
+index 64ea4f0eb54ee4ae9ffd2da0d2a4264e20cd7ca7..296b511f7ce6994b9cb36e5bec85e280a8b3134b
+--- a/scripts/tests/test_audit_release_gate.py
++++ b/scripts/tests/test_audit_release_gate.py
+@@ -80,7 +80,7 @@
+     recon = {
+         "schema": "evm-reconciliation-receipt/v3", "target": target,
+         "producer": repo_ref("scripts/evm/verify_recon.py"), "mode": "formal",
+-        "inputs": inputs, "verdict": "PASS", "exit_code": 0,
++        "inputs": inputs, "warnings": [], "verdict": "PASS", "exit_code": 0,
+         "observations": {
+             "supply_closure": {
+                 "mint_total_raw": str(total), "burn_total_raw": "0",
+
+diff --git a/scripts/tests/test_audit_release_gate.py b/scripts/tests/test_audit_release_gate.py
+index 64ea4f0eb54ee4ae9ffd2da0d2a4264e20cd7ca7..296b511f7ce6994b9cb36e5bec85e280a8b3134b
+--- a/scripts/tests/test_audit_release_gate.py
++++ b/scripts/tests/test_audit_release_gate.py
+@@ -80,7 +80,7 @@
+     recon = {
+         "schema": "evm-reconciliation-receipt/v3", "target": target,
+         "producer": repo_ref("scripts/evm/verify_recon.py"), "mode": "formal",
+-        "inputs": inputs, "verdict": "PASS", "exit_code": 0,
++        "inputs": inputs, "warnings": [], "verdict": "PASS", "exit_code": 0,
+         "observations": {
+             "supply_closure": {
+                 "mint_total_raw": str(total), "burn_total_raw": "0",
+
+codex
+全量套件仍在运行，当前没有提前输出，也没有出现新失败；我继续等待其最终汇总，不做并行改动。
+diff --git a/scripts/tests/test_audit_release_gate.py b/scripts/tests/test_audit_release_gate.py
+index 64ea4f0eb54ee4ae9ffd2da0d2a4264e20cd7ca7..296b511f7ce6994b9cb36e5bec85e280a8b3134b
+--- a/scripts/tests/test_audit_release_gate.py
++++ b/scripts/tests/test_audit_release_gate.py
+@@ -80,7 +80,7 @@
+     recon = {
+         "schema": "evm-reconciliation-receipt/v3", "target": target,
+         "producer": repo_ref("scripts/evm/verify_recon.py"), "mode": "formal",
+-        "inputs": inputs, "verdict": "PASS", "exit_code": 0,
++        "inputs": inputs, "warnings": [], "verdict": "PASS", "exit_code": 0,
+         "observations": {
+             "supply_closure": {
+                 "mint_total_raw": str(total), "burn_total_raw": "0",
+
+2026-08-15T15:04:31.093665Z ERROR codex_models_manager::manager: failed to renew cache TTL: missing field `base_instructions` at line 95 column 5
+diff --git a/scripts/tests/test_audit_release_gate.py b/scripts/tests/test_audit_release_gate.py
+index 64ea4f0eb54ee4ae9ffd2da0d2a4264e20cd7ca7..296b511f7ce6994b9cb36e5bec85e280a8b3134b
+--- a/scripts/tests/test_audit_release_gate.py
++++ b/scripts/tests/test_audit_release_gate.py
+@@ -80,7 +80,7 @@
+     recon = {
+         "schema": "evm-reconciliation-receipt/v3", "target": target,
+         "producer": repo_ref("scripts/evm/verify_recon.py"), "mode": "formal",
+-        "inputs": inputs, "verdict": "PASS", "exit_code": 0,
++        "inputs": inputs, "warnings": [], "verdict": "PASS", "exit_code": 0,
+         "observations": {
+             "supply_closure": {
+                 "mint_total_raw": str(total), "burn_total_raw": "0",
+
+diff --git a/scripts/tests/test_audit_release_gate.py b/scripts/tests/test_audit_release_gate.py
+index 64ea4f0eb54ee4ae9ffd2da0d2a4264e20cd7ca7..296b511f7ce6994b9cb36e5bec85e280a8b3134b
+--- a/scripts/tests/test_audit_release_gate.py
++++ b/scripts/tests/test_audit_release_gate.py
+@@ -80,7 +80,7 @@
+     recon = {
+         "schema": "evm-reconciliation-receipt/v3", "target": target,
+         "producer": repo_ref("scripts/evm/verify_recon.py"), "mode": "formal",
+-        "inputs": inputs, "verdict": "PASS", "exit_code": 0,
++        "inputs": inputs, "warnings": [], "verdict": "PASS", "exit_code": 0,
+         "observations": {
+             "supply_closure": {
+                 "mint_total_raw": str(total), "burn_total_raw": "0",
+
+diff --git a/scripts/tests/test_audit_release_gate.py b/scripts/tests/test_audit_release_gate.py
+index 64ea4f0eb54ee4ae9ffd2da0d2a4264e20cd7ca7..296b511f7ce6994b9cb36e5bec85e280a8b3134b
+--- a/scripts/tests/test_audit_release_gate.py
++++ b/scripts/tests/test_audit_release_gate.py
+@@ -80,7 +80,7 @@
+     recon = {
+         "schema": "evm-reconciliation-receipt/v3", "target": target,
+         "producer": repo_ref("scripts/evm/verify_recon.py"), "mode": "formal",
+-        "inputs": inputs, "verdict": "PASS", "exit_code": 0,
++        "inputs": inputs, "warnings": [], "verdict": "PASS", "exit_code": 0,
+         "observations": {
+             "supply_closure": {
+                 "mint_total_raw": str(total), "burn_total_raw": "0",
+
+diff --git a/scripts/tests/test_audit_release_gate.py b/scripts/tests/test_audit_release_gate.py
+index 64ea4f0eb54ee4ae9ffd2da0d2a4264e20cd7ca7..296b511f7ce6994b9cb36e5bec85e280a8b3134b
+--- a/scripts/tests/test_audit_release_gate.py
++++ b/scripts/tests/test_audit_release_gate.py
+@@ -80,7 +80,7 @@
+     recon = {
+         "schema": "evm-reconciliation-receipt/v3", "target": target,
+         "producer": repo_ref("scripts/evm/verify_recon.py"), "mode": "formal",
+-        "inputs": inputs, "verdict": "PASS", "exit_code": 0,
++        "inputs": inputs, "warnings": [], "verdict": "PASS", "exit_code": 0,
+         "observations": {
+             "supply_closure": {
+                 "mint_total_raw": str(total), "burn_total_raw": "0",
+
+diff --git a/scripts/tests/test_audit_release_gate.py b/scripts/tests/test_audit_release_gate.py
+index 64ea4f0eb54ee4ae9ffd2da0d2a4264e20cd7ca7..296b511f7ce6994b9cb36e5bec85e280a8b3134b
+--- a/scripts/tests/test_audit_release_gate.py
++++ b/scripts/tests/test_audit_release_gate.py
+@@ -80,7 +80,7 @@
+     recon = {
+         "schema": "evm-reconciliation-receipt/v3", "target": target,
+         "producer": repo_ref("scripts/evm/verify_recon.py"), "mode": "formal",
+-        "inputs": inputs, "verdict": "PASS", "exit_code": 0,
++        "inputs": inputs, "warnings": [], "verdict": "PASS", "exit_code": 0,
+         "observations": {
+             "supply_closure": {
+                 "mint_total_raw": str(total), "burn_total_raw": "0",
+
+codex
+全量 runner 采用集中汇总输出，因此仍无中间日志；进程会话仍存活。定向测试已证明本次 fixture 修复有效，现在只剩全量门禁结果待收。
+diff --git a/scripts/tests/test_audit_release_gate.py b/scripts/tests/test_audit_release_gate.py
+index 64ea4f0eb54ee4ae9ffd2da0d2a4264e20cd7ca7..296b511f7ce6994b9cb36e5bec85e280a8b3134b
+--- a/scripts/tests/test_audit_release_gate.py
++++ b/scripts/tests/test_audit_release_gate.py
+@@ -80,7 +80,7 @@
+     recon = {
+         "schema": "evm-reconciliation-receipt/v3", "target": target,
+         "producer": repo_ref("scripts/evm/verify_recon.py"), "mode": "formal",
+-        "inputs": inputs, "verdict": "PASS", "exit_code": 0,
++        "inputs": inputs, "warnings": [], "verdict": "PASS", "exit_code": 0,
+         "observations": {
+             "supply_closure": {
+                 "mint_total_raw": str(total), "burn_total_raw": "0",
+
+diff --git a/scripts/tests/test_audit_release_gate.py b/scripts/tests/test_audit_release_gate.py
+index 64ea4f0eb54ee4ae9ffd2da0d2a4264e20cd7ca7..296b511f7ce6994b9cb36e5bec85e280a8b3134b
+--- a/scripts/tests/test_audit_release_gate.py
++++ b/scripts/tests/test_audit_release_gate.py
+@@ -80,7 +80,7 @@
+     recon = {
+         "schema": "evm-reconciliation-receipt/v3", "target": target,
+         "producer": repo_ref("scripts/evm/verify_recon.py"), "mode": "formal",
+-        "inputs": inputs, "verdict": "PASS", "exit_code": 0,
++        "inputs": inputs, "warnings": [], "verdict": "PASS", "exit_code": 0,
+         "observations": {
+             "supply_closure": {
+                 "mint_total_raw": str(total), "burn_total_raw": "0",
+
+diff --git a/scripts/tests/test_audit_release_gate.py b/scripts/tests/test_audit_release_gate.py
+index 64ea4f0eb54ee4ae9ffd2da0d2a4264e20cd7ca7..296b511f7ce6994b9cb36e5bec85e280a8b3134b
+--- a/scripts/tests/test_audit_release_gate.py
++++ b/scripts/tests/test_audit_release_gate.py
+@@ -80,7 +80,7 @@
+     recon = {
+         "schema": "evm-reconciliation-receipt/v3", "target": target,
+         "producer": repo_ref("scripts/evm/verify_recon.py"), "mode": "formal",
+-        "inputs": inputs, "verdict": "PASS", "exit_code": 0,
++        "inputs": inputs, "warnings": [], "verdict": "PASS", "exit_code": 0,
+         "observations": {
+             "supply_closure": {
+                 "mint_total_raw": str(total), "burn_total_raw": "0",
+
+diff --git a/scripts/tests/test_audit_release_gate.py b/scripts/tests/test_audit_release_gate.py
+index 64ea4f0eb54ee4ae9ffd2da0d2a4264e20cd7ca7..296b511f7ce6994b9cb36e5bec85e280a8b3134b
+--- a/scripts/tests/test_audit_release_gate.py
++++ b/scripts/tests/test_audit_release_gate.py
+@@ -80,7 +80,7 @@
+     recon = {
+         "schema": "evm-reconciliation-receipt/v3", "target": target,
+         "producer": repo_ref("scripts/evm/verify_recon.py"), "mode": "formal",
+-        "inputs": inputs, "verdict": "PASS", "exit_code": 0,
++        "inputs": inputs, "warnings": [], "verdict": "PASS", "exit_code": 0,
+         "observations": {
+             "supply_closure": {
+                 "mint_total_raw": str(total), "burn_total_raw": "0",
+
+diff --git a/scripts/tests/test_audit_release_gate.py b/scripts/tests/test_audit_release_gate.py
+index 64ea4f0eb54ee4ae9ffd2da0d2a4264e20cd7ca7..296b511f7ce6994b9cb36e5bec85e280a8b3134b
+--- a/scripts/tests/test_audit_release_gate.py
++++ b/scripts/tests/test_audit_release_gate.py
+@@ -80,7 +80,7 @@
+     recon = {
+         "schema": "evm-reconciliation-receipt/v3", "target": target,
+         "producer": repo_ref("scripts/evm/verify_recon.py"), "mode": "formal",
+-        "inputs": inputs, "verdict": "PASS", "exit_code": 0,
++        "inputs": inputs, "warnings": [], "verdict": "PASS", "exit_code": 0,
+         "observations": {
+             "supply_closure": {
+                 "mint_total_raw": str(total), "burn_total_raw": "0",
+
+diff --git a/scripts/tests/test_audit_release_gate.py b/scripts/tests/test_audit_release_gate.py
+index 64ea4f0eb54ee4ae9ffd2da0d2a4264e20cd7ca7..296b511f7ce6994b9cb36e5bec85e280a8b3134b
+--- a/scripts/tests/test_audit_release_gate.py
++++ b/scripts/tests/test_audit_release_gate.py
+@@ -80,7 +80,7 @@
+     recon = {
+         "schema": "evm-reconciliation-receipt/v3", "target": target,
+         "producer": repo_ref("scripts/evm/verify_recon.py"), "mode": "formal",
+-        "inputs": inputs, "verdict": "PASS", "exit_code": 0,
++        "inputs": inputs, "warnings": [], "verdict": "PASS", "exit_code": 0,
+         "observations": {
+             "supply_closure": {
+                 "mint_total_raw": str(total), "burn_total_raw": "0",
+
+codex
+全量门禁已运行约 5 分钟，仍未结束且未返回失败输出。为保持工单边界，我不会中断、重启或改用跳项模式；继续等待同一会话完成。
+diff --git a/scripts/tests/test_audit_release_gate.py b/scripts/tests/test_audit_release_gate.py
+index 64ea4f0eb54ee4ae9ffd2da0d2a4264e20cd7ca7..296b511f7ce6994b9cb36e5bec85e280a8b3134b
+--- a/scripts/tests/test_audit_release_gate.py
++++ b/scripts/tests/test_audit_release_gate.py
+@@ -80,7 +80,7 @@
+     recon = {
+         "schema": "evm-reconciliation-receipt/v3", "target": target,
+         "producer": repo_ref("scripts/evm/verify_recon.py"), "mode": "formal",
+-        "inputs": inputs, "verdict": "PASS", "exit_code": 0,
++        "inputs": inputs, "warnings": [], "verdict": "PASS", "exit_code": 0,
+         "observations": {
+             "supply_closure": {
+                 "mint_total_raw": str(total), "burn_total_raw": "0",
+
+diff --git a/scripts/tests/test_audit_release_gate.py b/scripts/tests/test_audit_release_gate.py
+index 64ea4f0eb54ee4ae9ffd2da0d2a4264e20cd7ca7..296b511f7ce6994b9cb36e5bec85e280a8b3134b
+--- a/scripts/tests/test_audit_release_gate.py
++++ b/scripts/tests/test_audit_release_gate.py
+@@ -80,7 +80,7 @@
+     recon = {
+         "schema": "evm-reconciliation-receipt/v3", "target": target,
+         "producer": repo_ref("scripts/evm/verify_recon.py"), "mode": "formal",
+-        "inputs": inputs, "verdict": "PASS", "exit_code": 0,
++        "inputs": inputs, "warnings": [], "verdict": "PASS", "exit_code": 0,
+         "observations": {
+             "supply_closure": {
+                 "mint_total_raw": str(total), "burn_total_raw": "0",
+
+diff --git a/scripts/tests/test_audit_release_gate.py b/scripts/tests/test_audit_release_gate.py
+index 64ea4f0eb54ee4ae9ffd2da0d2a4264e20cd7ca7..296b511f7ce6994b9cb36e5bec85e280a8b3134b
+--- a/scripts/tests/test_audit_release_gate.py
++++ b/scripts/tests/test_audit_release_gate.py
+@@ -80,7 +80,7 @@
+     recon = {
+         "schema": "evm-reconciliation-receipt/v3", "target": target,
+         "producer": repo_ref("scripts/evm/verify_recon.py"), "mode": "formal",
+-        "inputs": inputs, "verdict": "PASS", "exit_code": 0,
++        "inputs": inputs, "warnings": [], "verdict": "PASS", "exit_code": 0,
+         "observations": {
+             "supply_closure": {
+                 "mint_total_raw": str(total), "burn_total_raw": "0",
+
+diff --git a/scripts/tests/test_audit_release_gate.py b/scripts/tests/test_audit_release_gate.py
+index 64ea4f0eb54ee4ae9ffd2da0d2a4264e20cd7ca7..296b511f7ce6994b9cb36e5bec85e280a8b3134b
+--- a/scripts/tests/test_audit_release_gate.py
++++ b/scripts/tests/test_audit_release_gate.py
+@@ -80,7 +80,7 @@
+     recon = {
+         "schema": "evm-reconciliation-receipt/v3", "target": target,
+         "producer": repo_ref("scripts/evm/verify_recon.py"), "mode": "formal",
+-        "inputs": inputs, "verdict": "PASS", "exit_code": 0,
++        "inputs": inputs, "warnings": [], "verdict": "PASS", "exit_code": 0,
+         "observations": {
+             "supply_closure": {
+                 "mint_total_raw": str(total), "burn_total_raw": "0",
+
+diff --git a/scripts/tests/test_audit_release_gate.py b/scripts/tests/test_audit_release_gate.py
+index 64ea4f0eb54ee4ae9ffd2da0d2a4264e20cd7ca7..296b511f7ce6994b9cb36e5bec85e280a8b3134b
+--- a/scripts/tests/test_audit_release_gate.py
++++ b/scripts/tests/test_audit_release_gate.py
+@@ -80,7 +80,7 @@
+     recon = {
+         "schema": "evm-reconciliation-receipt/v3", "target": target,
+         "producer": repo_ref("scripts/evm/verify_recon.py"), "mode": "formal",
+-        "inputs": inputs, "verdict": "PASS", "exit_code": 0,
++        "inputs": inputs, "warnings": [], "verdict": "PASS", "exit_code": 0,
+         "observations": {
+             "supply_closure": {
+                 "mint_total_raw": str(total), "burn_total_raw": "0",
+
+diff --git a/scripts/tests/test_audit_release_gate.py b/scripts/tests/test_audit_release_gate.py
+index 64ea4f0eb54ee4ae9ffd2da0d2a4264e20cd7ca7..296b511f7ce6994b9cb36e5bec85e280a8b3134b
+--- a/scripts/tests/test_audit_release_gate.py
++++ b/scripts/tests/test_audit_release_gate.py
+@@ -80,7 +80,7 @@
+     recon = {
+         "schema": "evm-reconciliation-receipt/v3", "target": target,
+         "producer": repo_ref("scripts/evm/verify_recon.py"), "mode": "formal",
+-        "inputs": inputs, "verdict": "PASS", "exit_code": 0,
++        "inputs": inputs, "warnings": [], "verdict": "PASS", "exit_code": 0,
+         "observations": {
+             "supply_closure": {
+                 "mint_total_raw": str(total), "burn_total_raw": "0",
+
+diff --git a/scripts/tests/test_audit_release_gate.py b/scripts/tests/test_audit_release_gate.py
+index 64ea4f0eb54ee4ae9ffd2da0d2a4264e20cd7ca7..296b511f7ce6994b9cb36e5bec85e280a8b3134b
+--- a/scripts/tests/test_audit_release_gate.py
++++ b/scripts/tests/test_audit_release_gate.py
+@@ -80,7 +80,7 @@
+     recon = {
+         "schema": "evm-reconciliation-receipt/v3", "target": target,
+         "producer": repo_ref("scripts/evm/verify_recon.py"), "mode": "formal",
+-        "inputs": inputs, "verdict": "PASS", "exit_code": 0,
++        "inputs": inputs, "warnings": [], "verdict": "PASS", "exit_code": 0,
+         "observations": {
+             "supply_closure": {
+                 "mint_total_raw": str(total), "burn_total_raw": "0",
+
+diff --git a/scripts/tests/test_audit_release_gate.py b/scripts/tests/test_audit_release_gate.py
+index 64ea4f0eb54ee4ae9ffd2da0d2a4264e20cd7ca7..296b511f7ce6994b9cb36e5bec85e280a8b3134b
+--- a/scripts/tests/test_audit_release_gate.py
++++ b/scripts/tests/test_audit_release_gate.py
+@@ -80,7 +80,7 @@
+     recon = {
+         "schema": "evm-reconciliation-receipt/v3", "target": target,
+         "producer": repo_ref("scripts/evm/verify_recon.py"), "mode": "formal",
+-        "inputs": inputs, "verdict": "PASS", "exit_code": 0,
++        "inputs": inputs, "warnings": [], "verdict": "PASS", "exit_code": 0,
+         "observations": {
+             "supply_closure": {
+                 "mint_total_raw": str(total), "burn_total_raw": "0",
+
+diff --git a/scripts/tests/test_audit_release_gate.py b/scripts/tests/test_audit_release_gate.py
+index 64ea4f0eb54ee4ae9ffd2da0d2a4264e20cd7ca7..296b511f7ce6994b9cb36e5bec85e280a8b3134b
+--- a/scripts/tests/test_audit_release_gate.py
++++ b/scripts/tests/test_audit_release_gate.py
+@@ -80,7 +80,7 @@
+     recon = {
+         "schema": "evm-reconciliation-receipt/v3", "target": target,
+         "producer": repo_ref("scripts/evm/verify_recon.py"), "mode": "formal",
+-        "inputs": inputs, "verdict": "PASS", "exit_code": 0,
++        "inputs": inputs, "warnings": [], "verdict": "PASS", "exit_code": 0,
+         "observations": {
+             "supply_closure": {
+                 "mint_total_raw": str(total), "burn_total_raw": "0",
+
+codex
+我核对了 runner：它顺序执行约百个脚本并在末尾一次性汇总，没有单项超时；当前静默属于其实现方式。沙箱拒绝了只读 `ps` 诊断（`operation not permitted`），但不影响正在运行的测试会话，也不是套件测试结果。
+diff --git a/scripts/tests/test_audit_release_gate.py b/scripts/tests/test_audit_release_gate.py
+index 64ea4f0eb54ee4ae9ffd2da0d2a4264e20cd7ca7..296b511f7ce6994b9cb36e5bec85e280a8b3134b
+--- a/scripts/tests/test_audit_release_gate.py
++++ b/scripts/tests/test_audit_release_gate.py
+@@ -80,7 +80,7 @@
+     recon = {
+         "schema": "evm-reconciliation-receipt/v3", "target": target,
+         "producer": repo_ref("scripts/evm/verify_recon.py"), "mode": "formal",
+-        "inputs": inputs, "verdict": "PASS", "exit_code": 0,
++        "inputs": inputs, "warnings": [], "verdict": "PASS", "exit_code": 0,
+         "observations": {
+             "supply_closure": {
+                 "mint_total_raw": str(total), "burn_total_raw": "0",
+
+diff --git a/scripts/tests/test_audit_release_gate.py b/scripts/tests/test_audit_release_gate.py
+index 64ea4f0eb54ee4ae9ffd2da0d2a4264e20cd7ca7..296b511f7ce6994b9cb36e5bec85e280a8b3134b
+--- a/scripts/tests/test_audit_release_gate.py
++++ b/scripts/tests/test_audit_release_gate.py
+@@ -80,7 +80,7 @@
+     recon = {
+         "schema": "evm-reconciliation-receipt/v3", "target": target,
+         "producer": repo_ref("scripts/evm/verify_recon.py"), "mode": "formal",
+-        "inputs": inputs, "verdict": "PASS", "exit_code": 0,
++        "inputs": inputs, "warnings": [], "verdict": "PASS", "exit_code": 0,
+         "observations": {
+             "supply_closure": {
+                 "mint_total_raw": str(total), "burn_total_raw": "0",
+
+diff --git a/scripts/tests/test_audit_release_gate.py b/scripts/tests/test_audit_release_gate.py
+index 64ea4f0eb54ee4ae9ffd2da0d2a4264e20cd7ca7..296b511f7ce6994b9cb36e5bec85e280a8b3134b
+--- a/scripts/tests/test_audit_release_gate.py
++++ b/scripts/tests/test_audit_release_gate.py
+@@ -80,7 +80,7 @@
+     recon = {
+         "schema": "evm-reconciliation-receipt/v3", "target": target,
+         "producer": repo_ref("scripts/evm/verify_recon.py"), "mode": "formal",
+-        "inputs": inputs, "verdict": "PASS", "exit_code": 0,
++        "inputs": inputs, "warnings": [], "verdict": "PASS", "exit_code": 0,
+         "observations": {
+             "supply_closure": {
+                 "mint_total_raw": str(total), "burn_total_raw": "0",
+
+diff --git a/scripts/tests/test_audit_release_gate.py b/scripts/tests/test_audit_release_gate.py
+index 64ea4f0eb54ee4ae9ffd2da0d2a4264e20cd7ca7..296b511f7ce6994b9cb36e5bec85e280a8b3134b
+--- a/scripts/tests/test_audit_release_gate.py
++++ b/scripts/tests/test_audit_release_gate.py
+@@ -80,7 +80,7 @@
+     recon = {
+         "schema": "evm-reconciliation-receipt/v3", "target": target,
+         "producer": repo_ref("scripts/evm/verify_recon.py"), "mode": "formal",
+-        "inputs": inputs, "verdict": "PASS", "exit_code": 0,
++        "inputs": inputs, "warnings": [], "verdict": "PASS", "exit_code": 0,
+         "observations": {
+             "supply_closure": {
+                 "mint_total_raw": str(total), "burn_total_raw": "0",
+
+diff --git a/scripts/tests/test_audit_release_gate.py b/scripts/tests/test_audit_release_gate.py
+index 64ea4f0eb54ee4ae9ffd2da0d2a4264e20cd7ca7..296b511f7ce6994b9cb36e5bec85e280a8b3134b
+--- a/scripts/tests/test_audit_release_gate.py
++++ b/scripts/tests/test_audit_release_gate.py
+@@ -80,7 +80,7 @@
+     recon = {
+         "schema": "evm-reconciliation-receipt/v3", "target": target,
+         "producer": repo_ref("scripts/evm/verify_recon.py"), "mode": "formal",
+-        "inputs": inputs, "verdict": "PASS", "exit_code": 0,
++        "inputs": inputs, "warnings": [], "verdict": "PASS", "exit_code": 0,
+         "observations": {
+             "supply_closure": {
+                 "mint_total_raw": str(total), "burn_total_raw": "0",
+
+diff --git a/scripts/tests/test_audit_release_gate.py b/scripts/tests/test_audit_release_gate.py
+index 64ea4f0eb54ee4ae9ffd2da0d2a4264e20cd7ca7..296b511f7ce6994b9cb36e5bec85e280a8b3134b
+--- a/scripts/tests/test_audit_release_gate.py
++++ b/scripts/tests/test_audit_release_gate.py
+@@ -80,7 +80,7 @@
+     recon = {
+         "schema": "evm-reconciliation-receipt/v3", "target": target,
+         "producer": repo_ref("scripts/evm/verify_recon.py"), "mode": "formal",
+-        "inputs": inputs, "verdict": "PASS", "exit_code": 0,
++        "inputs": inputs, "warnings": [], "verdict": "PASS", "exit_code": 0,
+         "observations": {
+             "supply_closure": {
+                 "mint_total_raw": str(total), "burn_total_raw": "0",
+
+codex
+全量测试仍在同一会话执行，约 8 分钟，尚无最终汇总。没有触碰名单外文件；也没有根据静默状态臆断“全绿”。
+diff --git a/scripts/tests/test_audit_release_gate.py b/scripts/tests/test_audit_release_gate.py
+index 64ea4f0eb54ee4ae9ffd2da0d2a4264e20cd7ca7..296b511f7ce6994b9cb36e5bec85e280a8b3134b
+--- a/scripts/tests/test_audit_release_gate.py
++++ b/scripts/tests/test_audit_release_gate.py
+@@ -80,7 +80,7 @@
+     recon = {
+         "schema": "evm-reconciliation-receipt/v3", "target": target,
+         "producer": repo_ref("scripts/evm/verify_recon.py"), "mode": "formal",
+-        "inputs": inputs, "verdict": "PASS", "exit_code": 0,
++        "inputs": inputs, "warnings": [], "verdict": "PASS", "exit_code": 0,
+         "observations": {
+             "supply_closure": {
+                 "mint_total_raw": str(total), "burn_total_raw": "0",
+
+diff --git a/scripts/tests/test_audit_release_gate.py b/scripts/tests/test_audit_release_gate.py
+index 64ea4f0eb54ee4ae9ffd2da0d2a4264e20cd7ca7..296b511f7ce6994b9cb36e5bec85e280a8b3134b
+--- a/scripts/tests/test_audit_release_gate.py
++++ b/scripts/tests/test_audit_release_gate.py
+@@ -80,7 +80,7 @@
+     recon = {
+         "schema": "evm-reconciliation-receipt/v3", "target": target,
+         "producer": repo_ref("scripts/evm/verify_recon.py"), "mode": "formal",
+-        "inputs": inputs, "verdict": "PASS", "exit_code": 0,
++        "inputs": inputs, "warnings": [], "verdict": "PASS", "exit_code": 0,
+         "observations": {
+             "supply_closure": {
+                 "mint_total_raw": str(total), "burn_total_raw": "0",
+
+diff --git a/scripts/tests/test_audit_release_gate.py b/scripts/tests/test_audit_release_gate.py
+index 64ea4f0eb54ee4ae9ffd2da0d2a4264e20cd7ca7..296b511f7ce6994b9cb36e5bec85e280a8b3134b
+--- a/scripts/tests/test_audit_release_gate.py
++++ b/scripts/tests/test_audit_release_gate.py
+@@ -80,7 +80,7 @@
+     recon = {
+         "schema": "evm-reconciliation-receipt/v3", "target": target,
+         "producer": repo_ref("scripts/evm/verify_recon.py"), "mode": "formal",
+-        "inputs": inputs, "verdict": "PASS", "exit_code": 0,
++        "inputs": inputs, "warnings": [], "verdict": "PASS", "exit_code": 0,
+         "observations": {
+             "supply_closure": {
+                 "mint_total_raw": str(total), "burn_total_raw": "0",
+
+diff --git a/scripts/tests/test_audit_release_gate.py b/scripts/tests/test_audit_release_gate.py
+index 64ea4f0eb54ee4ae9ffd2da0d2a4264e20cd7ca7..296b511f7ce6994b9cb36e5bec85e280a8b3134b
+--- a/scripts/tests/test_audit_release_gate.py
++++ b/scripts/tests/test_audit_release_gate.py
+@@ -80,7 +80,7 @@
+     recon = {
+         "schema": "evm-reconciliation-receipt/v3", "target": target,
+         "producer": repo_ref("scripts/evm/verify_recon.py"), "mode": "formal",
+-        "inputs": inputs, "verdict": "PASS", "exit_code": 0,
++        "inputs": inputs, "warnings": [], "verdict": "PASS", "exit_code": 0,
+         "observations": {
+             "supply_closure": {
+                 "mint_total_raw": str(total), "burn_total_raw": "0",
+
+diff --git a/scripts/tests/test_audit_release_gate.py b/scripts/tests/test_audit_release_gate.py
+index 64ea4f0eb54ee4ae9ffd2da0d2a4264e20cd7ca7..296b511f7ce6994b9cb36e5bec85e280a8b3134b
+--- a/scripts/tests/test_audit_release_gate.py
++++ b/scripts/tests/test_audit_release_gate.py
+@@ -80,7 +80,7 @@
+     recon = {
+         "schema": "evm-reconciliation-receipt/v3", "target": target,
+         "producer": repo_ref("scripts/evm/verify_recon.py"), "mode": "formal",
+-        "inputs": inputs, "verdict": "PASS", "exit_code": 0,
++        "inputs": inputs, "warnings": [], "verdict": "PASS", "exit_code": 0,
+         "observations": {
+             "supply_closure": {
+                 "mint_total_raw": str(total), "burn_total_raw": "0",
+
+diff --git a/scripts/tests/test_audit_release_gate.py b/scripts/tests/test_audit_release_gate.py
+index 64ea4f0eb54ee4ae9ffd2da0d2a4264e20cd7ca7..296b511f7ce6994b9cb36e5bec85e280a8b3134b
+--- a/scripts/tests/test_audit_release_gate.py
++++ b/scripts/tests/test_audit_release_gate.py
+@@ -80,7 +80,7 @@
+     recon = {
+         "schema": "evm-reconciliation-receipt/v3", "target": target,
+         "producer": repo_ref("scripts/evm/verify_recon.py"), "mode": "formal",
+-        "inputs": inputs, "verdict": "PASS", "exit_code": 0,
++        "inputs": inputs, "warnings": [], "verdict": "PASS", "exit_code": 0,
+         "observations": {
+             "supply_closure": {
+                 "mint_total_raw": str(total), "burn_total_raw": "0",
+
+exec
+/bin/zsh -lc "sed -n '108,155p' scripts/tests/run_all.py
+wc -l scripts/tests/run_all.py" in /Users/uravvv/.claude/tca-repair-g2
+ succeeded in 0ms:
+
+# EVM 观测锚工程工单 C：shared/handoff/audit 公共消费、N-2 与原 F-02/F-03 反例。
+SUITE += ['test_evm_observation_release.py']
+
+
+def main():
+    results = []
+    for item in SUITE:
+        args = item if isinstance(item, list) else [item]
+        name = ' '.join(args)
+        p = subprocess.run([sys.executable, os.path.join(HERE, args[0])] + args[1:],
+                           capture_output=True, text=True)
+        tail = (p.stdout.strip().splitlines() or ['(无输出)'])[-1]
+        results.append((name, p.returncode, tail))
+        if p.returncode != 0:
+            print(f'--- {name} 完整输出 ---')
+            print(p.stdout + p.stderr)
+    print('=' * 56)
+    bad = 0
+    for name, rc, tail in results:
+        mark = 'PASS' if rc == 0 else f'FAIL(rc={rc})'
+        bad += rc != 0
+        print(f'{mark:>10}  {name:<24} {tail[:70]}')
+    print(f'{"=" * 56}\n{"全部通过" if not bad else str(bad) + " 项失败——修完再收工"}')
+    return 1 if bad else 0
+
+
+if __name__ == '__main__':
+    sys.exit(main())
+     136 scripts/tests/run_all.py
+
+diff --git a/scripts/tests/test_audit_release_gate.py b/scripts/tests/test_audit_release_gate.py
+index 64ea4f0eb54ee4ae9ffd2da0d2a4264e20cd7ca7..296b511f7ce6994b9cb36e5bec85e280a8b3134b
+--- a/scripts/tests/test_audit_release_gate.py
++++ b/scripts/tests/test_audit_release_gate.py
+@@ -80,7 +80,7 @@
+     recon = {
+         "schema": "evm-reconciliation-receipt/v3", "target": target,
+         "producer": repo_ref("scripts/evm/verify_recon.py"), "mode": "formal",
+-        "inputs": inputs, "verdict": "PASS", "exit_code": 0,
++        "inputs": inputs, "warnings": [], "verdict": "PASS", "exit_code": 0,
+         "observations": {
+             "supply_closure": {
+                 "mint_total_raw": str(total), "burn_total_raw": "0",
+
+codex
+runner 对失败会立即打印完整输出；目前连失败输出也没有，说明至少尚未遇到非零子测试。它没有内置超时，当前仍需等待剩余脚本完成。
+diff --git a/scripts/tests/test_audit_release_gate.py b/scripts/tests/test_audit_release_gate.py
+index 64ea4f0eb54ee4ae9ffd2da0d2a4264e20cd7ca7..296b511f7ce6994b9cb36e5bec85e280a8b3134b
+--- a/scripts/tests/test_audit_release_gate.py
++++ b/scripts/tests/test_audit_release_gate.py
+@@ -80,7 +80,7 @@
+     recon = {
+         "schema": "evm-reconciliation-receipt/v3", "target": target,
+         "producer": repo_ref("scripts/evm/verify_recon.py"), "mode": "formal",
+-        "inputs": inputs, "verdict": "PASS", "exit_code": 0,
++        "inputs": inputs, "warnings": [], "verdict": "PASS", "exit_code": 0,
+         "observations": {
+             "supply_closure": {
+                 "mint_total_raw": str(total), "burn_total_raw": "0",
+
+diff --git a/scripts/tests/test_audit_release_gate.py b/scripts/tests/test_audit_release_gate.py
+index 64ea4f0eb54ee4ae9ffd2da0d2a4264e20cd7ca7..296b511f7ce6994b9cb36e5bec85e280a8b3134b
+--- a/scripts/tests/test_audit_release_gate.py
++++ b/scripts/tests/test_audit_release_gate.py
+@@ -80,7 +80,7 @@
+     recon = {
+         "schema": "evm-reconciliation-receipt/v3", "target": target,
+         "producer": repo_ref("scripts/evm/verify_recon.py"), "mode": "formal",
+-        "inputs": inputs, "verdict": "PASS", "exit_code": 0,
++        "inputs": inputs, "warnings": [], "verdict": "PASS", "exit_code": 0,
+         "observations": {
+             "supply_closure": {
+                 "mint_total_raw": str(total), "burn_total_raw": "0",
+
+diff --git a/scripts/tests/test_audit_release_gate.py b/scripts/tests/test_audit_release_gate.py
+index 64ea4f0eb54ee4ae9ffd2da0d2a4264e20cd7ca7..296b511f7ce6994b9cb36e5bec85e280a8b3134b
+--- a/scripts/tests/test_audit_release_gate.py
++++ b/scripts/tests/test_audit_release_gate.py
+@@ -80,7 +80,7 @@
+     recon = {
+         "schema": "evm-reconciliation-receipt/v3", "target": target,
+         "producer": repo_ref("scripts/evm/verify_recon.py"), "mode": "formal",
+-        "inputs": inputs, "verdict": "PASS", "exit_code": 0,
++        "inputs": inputs, "warnings": [], "verdict": "PASS", "exit_code": 0,
+         "observations": {
+             "supply_closure": {
+                 "mint_total_raw": str(total), "burn_total_raw": "0",
+
+diff --git a/scripts/tests/test_audit_release_gate.py b/scripts/tests/test_audit_release_gate.py
+index 64ea4f0eb54ee4ae9ffd2da0d2a4264e20cd7ca7..296b511f7ce6994b9cb36e5bec85e280a8b3134b
+--- a/scripts/tests/test_audit_release_gate.py
++++ b/scripts/tests/test_audit_release_gate.py
+@@ -80,7 +80,7 @@
+     recon = {
+         "schema": "evm-reconciliation-receipt/v3", "target": target,
+         "producer": repo_ref("scripts/evm/verify_recon.py"), "mode": "formal",
+-        "inputs": inputs, "verdict": "PASS", "exit_code": 0,
++        "inputs": inputs, "warnings": [], "verdict": "PASS", "exit_code": 0,
+         "observations": {
+             "supply_closure": {
+                 "mint_total_raw": str(total), "burn_total_raw": "0",
+
+diff --git a/scripts/tests/test_audit_release_gate.py b/scripts/tests/test_audit_release_gate.py
+index 64ea4f0eb54ee4ae9ffd2da0d2a4264e20cd7ca7..296b511f7ce6994b9cb36e5bec85e280a8b3134b
+--- a/scripts/tests/test_audit_release_gate.py
++++ b/scripts/tests/test_audit_release_gate.py
+@@ -80,7 +80,7 @@
+     recon = {
+         "schema": "evm-reconciliation-receipt/v3", "target": target,
+         "producer": repo_ref("scripts/evm/verify_recon.py"), "mode": "formal",
+-        "inputs": inputs, "verdict": "PASS", "exit_code": 0,
++        "inputs": inputs, "warnings": [], "verdict": "PASS", "exit_code": 0,
+         "observations": {
+             "supply_closure": {
+                 "mint_total_raw": str(total), "burn_total_raw": "0",
+
+diff --git a/scripts/tests/test_audit_release_gate.py b/scripts/tests/test_audit_release_gate.py
+index 64ea4f0eb54ee4ae9ffd2da0d2a4264e20cd7ca7..296b511f7ce6994b9cb36e5bec85e280a8b3134b
+--- a/scripts/tests/test_audit_release_gate.py
++++ b/scripts/tests/test_audit_release_gate.py
+@@ -80,7 +80,7 @@
+     recon = {
+         "schema": "evm-reconciliation-receipt/v3", "target": target,
+         "producer": repo_ref("scripts/evm/verify_recon.py"), "mode": "formal",
+-        "inputs": inputs, "verdict": "PASS", "exit_code": 0,
++        "inputs": inputs, "warnings": [], "verdict": "PASS", "exit_code": 0,
+         "observations": {
+             "supply_closure": {
+                 "mint_total_raw": str(total), "burn_total_raw": "0",
+
+diff --git a/scripts/tests/test_audit_release_gate.py b/scripts/tests/test_audit_release_gate.py
+index 64ea4f0eb54ee4ae9ffd2da0d2a4264e20cd7ca7..296b511f7ce6994b9cb36e5bec85e280a8b3134b
+--- a/scripts/tests/test_audit_release_gate.py
++++ b/scripts/tests/test_audit_release_gate.py
+@@ -80,7 +80,7 @@
+     recon = {
+         "schema": "evm-reconciliation-receipt/v3", "target": target,
+         "producer": repo_ref("scripts/evm/verify_recon.py"), "mode": "formal",
+-        "inputs": inputs, "verdict": "PASS", "exit_code": 0,
++        "inputs": inputs, "warnings": [], "verdict": "PASS", "exit_code": 0,
+         "observations": {
+             "supply_closure": {
+                 "mint_total_raw": str(total), "burn_total_raw": "0",
+
+diff --git a/scripts/tests/test_audit_release_gate.py b/scripts/tests/test_audit_release_gate.py
+index 64ea4f0eb54ee4ae9ffd2da0d2a4264e20cd7ca7..296b511f7ce6994b9cb36e5bec85e280a8b3134b
+--- a/scripts/tests/test_audit_release_gate.py
++++ b/scripts/tests/test_audit_release_gate.py
+@@ -80,7 +80,7 @@
+     recon = {
+         "schema": "evm-reconciliation-receipt/v3", "target": target,
+         "producer": repo_ref("scripts/evm/verify_recon.py"), "mode": "formal",
+-        "inputs": inputs, "verdict": "PASS", "exit_code": 0,
++        "inputs": inputs, "warnings": [], "verdict": "PASS", "exit_code": 0,
+         "observations": {
+             "supply_closure": {
+                 "mint_total_raw": str(total), "burn_total_raw": "0",
+
+codex
+全量套件已超过 12 分钟但会话仍存活，且没有任何失败输出。主工单未规定超时停机条件，我继续等待，避免把“运行中”误报成通过或失败。
+diff --git a/scripts/tests/test_audit_release_gate.py b/scripts/tests/test_audit_release_gate.py
+index 64ea4f0eb54ee4ae9ffd2da0d2a4264e20cd7ca7..296b511f7ce6994b9cb36e5bec85e280a8b3134b
+--- a/scripts/tests/test_audit_release_gate.py
++++ b/scripts/tests/test_audit_release_gate.py
+@@ -80,7 +80,7 @@
+     recon = {
+         "schema": "evm-reconciliation-receipt/v3", "target": target,
+         "producer": repo_ref("scripts/evm/verify_recon.py"), "mode": "formal",
+-        "inputs": inputs, "verdict": "PASS", "exit_code": 0,
++        "inputs": inputs, "warnings": [], "verdict": "PASS", "exit_code": 0,
+         "observations": {
+             "supply_closure": {
+                 "mint_total_raw": str(total), "burn_total_raw": "0",
+
+diff --git a/scripts/tests/test_audit_release_gate.py b/scripts/tests/test_audit_release_gate.py
+index 64ea4f0eb54ee4ae9ffd2da0d2a4264e20cd7ca7..296b511f7ce6994b9cb36e5bec85e280a8b3134b
+--- a/scripts/tests/test_audit_release_gate.py
++++ b/scripts/tests/test_audit_release_gate.py
+@@ -80,7 +80,7 @@
+     recon = {
+         "schema": "evm-reconciliation-receipt/v3", "target": target,
+         "producer": repo_ref("scripts/evm/verify_recon.py"), "mode": "formal",
+-        "inputs": inputs, "verdict": "PASS", "exit_code": 0,
++        "inputs": inputs, "warnings": [], "verdict": "PASS", "exit_code": 0,
+         "observations": {
+             "supply_closure": {
+                 "mint_total_raw": str(total), "burn_total_raw": "0",
+
+diff --git a/scripts/tests/test_audit_release_gate.py b/scripts/tests/test_audit_release_gate.py
+index 64ea4f0eb54ee4ae9ffd2da0d2a4264e20cd7ca7..296b511f7ce6994b9cb36e5bec85e280a8b3134b
+--- a/scripts/tests/test_audit_release_gate.py
++++ b/scripts/tests/test_audit_release_gate.py
+@@ -80,7 +80,7 @@
+     recon = {
+         "schema": "evm-reconciliation-receipt/v3", "target": target,
+         "producer": repo_ref("scripts/evm/verify_recon.py"), "mode": "formal",
+-        "inputs": inputs, "verdict": "PASS", "exit_code": 0,
++        "inputs": inputs, "warnings": [], "verdict": "PASS", "exit_code": 0,
+         "observations": {
+             "supply_closure": {
+                 "mint_total_raw": str(total), "burn_total_raw": "0",
+
+ exited 1 in 786935ms:
+--- test_batch3_solana_vertical_slice.py 完整输出 ---
+Traceback (most recent call last):
+  File "/Users/uravvv/.claude/tca-repair-g2/scripts/tests/test_batch3_solana_vertical_slice.py", line 249, in <module>
+    raise SystemExit(main())
+                     ~~~~^^
+  File "/Users/uravvv/.claude/tca-repair-g2/scripts/tests/test_batch3_solana_vertical_slice.py", line 244, in main
+    test_r9_solana_pythia_mainnet_vertical_slice()
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "/Users/uravvv/.claude/tca-repair-g2/scripts/lib/formal_capability_probes.py", line 145, in guarded
+    return function(*args, **kwargs)
+  File "/Users/uravvv/.claude/tca-repair-g2/scripts/tests/test_batch3_solana_vertical_slice.py", line 232, in test_r9_solana_pythia_mainnet_vertical_slice
+    server = ThreadingHTTPServer(("127.0.0.1", 0), FixtureHandler)
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/socketserver.py", line 457, in __init__
+    self.server_bind()
+    ~~~~~~~~~~~~~~~~^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/http/server.py", line 148, in server_bind
+    socketserver.TCPServer.server_bind(self)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/socketserver.py", line 478, in server_bind
+    self.socket.bind(self.server_address)
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^
+PermissionError: [Errno 1] Operation not permitted
+
+--- test_batch3_evm_vertical_slice.py 完整输出 ---
+Traceback (most recent call last):
+  File "/Users/uravvv/.claude/tca-repair-g2/scripts/tests/test_batch3_evm_vertical_slice.py", line 353, in <module>
+    raise SystemExit(main())
+                     ~~~~^^
+  File "/Users/uravvv/.claude/tca-repair-g2/scripts/tests/test_batch3_evm_vertical_slice.py", line 344, in main
+    test_r9_eth_mainnet_vertical_slice()
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "/Users/uravvv/.claude/tca-repair-g2/scripts/lib/formal_capability_probes.py", line 145, in guarded
+    return function(*args, **kwargs)
+  File "/Users/uravvv/.claude/tca-repair-g2/scripts/tests/test_batch3_evm_vertical_slice.py", line 330, in test_r9_eth_mainnet_vertical_slice
+    _run_registered_chain("eth")
+    ~~~~~~~~~~~~~~~~~~~~~^^^^^^^
+  File "/Users/uravvv/.claude/tca-repair-g2/scripts/tests/test_batch3_evm_vertical_slice.py", line 281, in _run_registered_chain
+    server = ThreadingHTTPServer(("127.0.0.1", 0), FixtureHandler)
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/socketserver.py", line 457, in __init__
+    self.server_bind()
+    ~~~~~~~~~~~~~~~~^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/http/server.py", line 148, in server_bind
+    socketserver.TCPServer.server_bind(self)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/socketserver.py", line 478, in server_bind
+    self.socket.bind(self.server_address)
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^
+PermissionError: [Errno 1] Operation not permitted
+
+========================================================
+      PASS  changelog_lint.py        PASS: 版本号唯一（豁免 2 组历史撞号存档）、顺序正确；活跃 30 条 + 归档 139 条
+      PASS  docs_lint.py --all       PASS: 58 个文档，引用无断链、粗体配对完整（--all 全量模式）
+      PASS  labels_manifest.py       PASS: 8 个发布表与 manifest（2026-08-04 23:38:43）指纹一致
+      PASS  invariant_scan.py        PASS invariant manifest: receipt_producers=62, receipt_consumers=85, t
+      PASS  test_r7_findings.py      PASS R7 regression suite: 15/15 observed green; EXPECTED_RED=0
+      PASS  test_net_result.py       PASS: net Result 显式状态与 curl_json 失败分类
+      PASS  test_batch1_rpc_attestation.py PASS B1-B RPC session: wrong-chain zero business/fail-closed/correct/f
+      PASS  test_batch2_p3_hardening.py PASS B2-G0: invisible/type risk flags + producer symlink + OB-2 canoni
+      PASS  test_batch2_capability_matrix.py PASS B2-D: immutable release tier + capability closure + derived CLI c
+      PASS  test_batch2_ready_reconciliation.py PASS B2-D: READY rejects missing reconciliation wrapper and bound rece
+      PASS  test_batch2_robinhood_exploration.py PASS B2-E: RH exploration is blocked by READY/A4/A5/build/audit and ex
+      PASS  test_batch2_legacy_hardening.py PASS B2F2-G1: B2F-LG-01..05 + duplicate-chain canonicalization
+      PASS  test_batch2_registry_harness_hardening.py PASS B2F-G2: string-only readiness API + reversible immutable harness
+      PASS  test_batch3_solana_producers.py PASS B3-G2: Solana slot/envelope/txn/timestamp producer guards
+FAIL(rc=1)  test_batch3_solana_vertical_slice.py (无输出)
+FAIL(rc=1)  test_batch3_evm_vertical_slice.py (无输出)
+      PASS  test_r9_batch1_boundaries.py PASS R9 batch1 process-boundary suite: 3/3
+      PASS  test_r9_solana_attested_session.py PASS R9 SolanaAttestedSession: 10/10
+      PASS  test_r9_batch2_attestation_adapters.py PASS R9 B2-G1: attestation keys resolve to callable factories
+      PASS  test_r9_batch2_executable_capabilities.py PASS R9 B3-G3/G4: six probes ready; deleting one slice drops its chain
+      PASS  test_r9_batch2_solana_sqd_adapter.py PASS R9 B2-G3: SQD dataset scope fixed and Solana mainnet RPC anchored
+      PASS  test_r9_batch3_solana_observation.py PASS R9 B3-G1/G4: Solana observation protocol and negative variants
+      PASS  test_r9_batch3_dynamic_runner.py PASS R9 B3-G2: Solana runner adopts observed supply snapshot slot
+      PASS  test_r9_batch3_preflight.py PASS R9 B3-G5: both preflight shells execute production observation co
+      PASS  test_r9_batch3_release_guards.py PASS R9 B3F3-G3: Solana release negatives 6/6
+      PASS  test_batch4_invariant_guards.py PASS B4-G1: bare pool / labels / vertical slice / denominator injectio
+      PASS  test_exemption_guards.py PASS: exemption guards (EX-01 full-F-03)
+      PASS  test_receipt_kernel.py   PASS receipt kernel: golden + target/hash/disk/concurrency/error/path/
+      PASS  test_batch1_receipt_paths.py PASS B1-A receipt paths: symlink/alias/rollback/fail-closed/PASS prote
+      PASS  test_reconciliation_runner.py PASS: reconciliation runner rejected all 7 controlled-execution counte
+      PASS  test_chain_registry.py   PASS: six executable probes drive release/identity consumers; R9 verti
+      PASS  ../labels/check_manual_sync.py   一致 ✓
+      PASS  env_check.py             PASS: 21 个直接依赖逐项满足 pyproject→lock→installed；Python 3.14.6 满足 requires-
+      PASS  test_commands_deploy_sync.py PASS: 3 份 staging/部署命令 SHA-256 逐文件一致
+      PASS  casebook_lint.py         casebook lint 通过：6 册 37 条，ID 唯一、六字段齐全
+      PASS  fixtures_lint.py         fixtures_lint PASS：pythia_anchors.json 结构完整（数值以文件为权威，回测后人工更新）
+      PASS  test_build_html.py       PASS: build_html 九条契约全过（含 analysis/legacy 模式边界）
+      PASS  test_engine_equivalence.py PASS: 三引擎 gate/退出码 10 例 hypothesis 全等；gate PASS 六产物全等；gate FAIL 正式序列零产
+      PASS  test_report_facts.py     PASS: facts 宏渲染/附录B同源/G1集合gate(含entity_id主键)/G4宏名gate/G5手写检出/G2上界/G6归并
+      PASS  test_fault_injection.py  PASS: 故障注入 F0–F5 + P0-02 四类通道完整性×三引擎 + R1 receipt 生成/漂移
+      PASS  test_review_evm_integrity.py PASS: B-01 payload mismatches and B-02 rejected rows fail closed
+      PASS  test_review_solana_integrity.py PASS: B-06/B-07/B-08 + P1-03 v1/v2 decode retry, identity and failure 
+      PASS  test_review_labels.py    PASS: B-09 manual address-book rows are chain-scoped; composite sync k
+      PASS  test_review_robinhood_integrity.py PASS: B-10 decimal conversions/V3 scaling and H-01 truncated gzip pres
+      PASS  test_review_resume_integrity.py PASS: H-02/H-03 + R2 legacy manifest refresh + H-04/H-05/H-06
+      PASS  test_entity_identity_gate.py PASS: P1-01 无标签实体成员 + 严格 identity gate schema/计数/唯一性/实体绑定
+      PASS  test_review_chain_collectors.py PASS: H-10 overlap resume integrity
+      PASS  test_labels_resolver_guards.py PASS: M-02 strict addresses and empty-file schema
+      PASS  test_batch1_risk_flags.py PASS B1-C risk_flags: canonical parser + four-consumer/live-table agre
+      PASS  test_roundtrip_check.py  PASS: round-trip 缺表与行内退化均 fail-closed
+      PASS  test_benchmark_labels.py PASS: benchmark 五表完整性与 manual 召回硬闸生效
+      PASS  test_add_labels_rollback.py PASS: add_labels validate/benchmark/manifest 三闸与失败回滚
+      PASS  test_fetch_failclosed.py PASS: HyperSync 采集器失败与游标异常均 fail-closed
+      PASS  test_fetch_gmgn_sh.py    PASS: GMGN 临时文件、JSON 校验和失败聚合生效
+      PASS  test_sixlens_receipts.py PASS: 六视角批①结构化回执与 fail-closed
+      PASS  test_sixlens_docs.py     PASS: 六视角批⑤大小口径与 archive 路由
+      PASS  test_token_no_positional.py PASS: 自动枚举 4 个 HyperSync 入口；拒绝位置 token、输出无 secret、优先序三层闭合: fetch_hyper
+      PASS  test_contract_routes.py  PASS: R-01/R-02 注册表、ID 快照、五组锚与 SKILL 原子阶段双向闭合
+      PASS  test_version_consistency.py PASS: M-03 version metadata consistent at 6.44.0
+      PASS  test_chain_support_matrix.py PASS: formal-candidate matrix closes frontmatter + labels capability: 
+      PASS  test_formal_chain_support.py PASS: Arbitrum collection/G8 capability retained; release/A4/A5/formal
+      PASS  test_review_scale_guards.py PASS: M-04 bounded helpers, streaming parquet batches, and bound input
+      PASS  test_figures_from_facts.py PASS: figures_from_facts fig1白名单/legacy销毁键/legend receipt/burn豁免/overl
+      PASS  test_cluster_quality.py  PASS: test_cluster_quality 3/3（盲化/冲突阳性/敏感度冒烟）
+      PASS  test_sqd_merge_equiv.py  PASS: fetch_sqd_transfers_v2 六条契约全过
+      PASS  test_supply_truth_gate.py supply_truth_gate 形态①/②离线契约测试全部通过
+      PASS  test_repair_batch_a.py   PASS batch A F-01/F-02 regressions 45/45
+      PASS  test_repair_batch_b.py   PASS batch B F-03/F-08 regressions 41/41
+      PASS  test_repair_batch_c.py   PASS: repair batch C (F-05+F-04+fixround1+fixround2) 227 checks
+      PASS  test_handoff_manifest.py handoff_manifest 契约测试全部通过（68 项）
+      PASS  test_audit_release_gate.py PASS: audit_release_gate 净室资产/哈希/CEX受益权/阴性结论/图表封口与负钳零/对抗复核否决/四查WARN拦截/
+      PASS  test_review_20260804_p0.py PASS: P0-01 collector provenance + P0-02 reproduce freshness regressio
+      PASS  test_review_20260804_p101.py PASS: P1-01 immutable HyperSync outdir identity and legal capture coex
+      PASS  test_review_20260804_p104.py PASS: P1-04 strict finite percentages/raw integers/unresolved counts
+      PASS  test_review_20260804_p105.py PASS: P1-05 mandatory new-analysis vs independent-audit release profil
+      PASS  test_review_20260804_p106.py PASS: P1-06 claim registry id/text/verdict/evidence/location alignment
+      PASS  test_review_20260804_p201.py PASS: P2-01 total-supply share binding + Arbitrum G8 support
+      PASS  test_review_20260804_p202.py PASS: P2-02 12 required-asset deletions return exit 2 JSON BLOCK
+      PASS  test_round4_csv_adapters.py PASS: alternate adapters are native-receipted or explicit nonformal
+      PASS  test_param_scripts.py    PASS: 三脚本参数反例、旧案字面量与 cadence identity 绑定
+      PASS  test_round4_a5_seal.py   PASS: A5 seal binds A4, Markdown and every report image
+      PASS  test_round4_identity_emitter.py PASS: real EVM collector+preflight+replay and Solana scan chains; copi
+      PASS  test_round4b_provenance.py PASS: copied-hash identity self-reports, producers and runners blocked
+      PASS  test_round4c_solana_provenance.py PASS: raw GPA replay rejects six-file/owner/supply forgeries; pubkey d
+      PASS  test_state_from_facts.py PASS: D-05 state_from_facts compiler owns membership and raw-derived s
+      PASS  test_a4_gate.py          a4_gate 契约测试全部通过（23 项）
+      PASS  test_time_spotcheck.py   time_spotcheck 契约测试全部通过（20 项）
+      PASS  test_peaks_daily.py      PASS：0 项失败
+      PASS  test_wave_scan.py        PASS：0 项失败
+      PASS  test_flow_anomaly.py     PASS：0 项失败
+      PASS  test_entity_source_trace.py PASS：0 项失败
+      PASS  test_adjudication_validator.py PASS：0 项失败
+      PASS  test_distribution_gate.py PASS: distribution gate red-green contract
+      PASS  test_apu_legacy_gaps.py  PASS: APU 存量缺口工单契约测试全绿
+      PASS  test_repair_batch_d.py   BATCH D 全部通过
+      PASS  test_repair_batch1.py    PASS v6.41.0 batch1 steps 1-6 RV-07/RV-04/RV-17/F-03/F-01/A5v3/F-04
+      PASS  test_repair_batch2_f02.py PASS workorder B F-02 regressions
+      PASS  test_repair_batch3_f01.py all batch3 F01 tests passed
+      PASS  test_repair_batch3_gates.py PASS: 批3 deploy-sync/env-check/R10-ledger gates 回归全部通过
+      PASS  test_evm_observation.py  PASS EVM observation bundle protocol: 10/10
+      PASS  test_evm_observation_release.py PASS workorder C EVM observation release: 11/11
+========================================================
+2 项失败——修完再收工
+
+diff --git a/scripts/tests/test_audit_release_gate.py b/scripts/tests/test_audit_release_gate.py
+index 64ea4f0eb54ee4ae9ffd2da0d2a4264e20cd7ca7..296b511f7ce6994b9cb36e5bec85e280a8b3134b
+--- a/scripts/tests/test_audit_release_gate.py
++++ b/scripts/tests/test_audit_release_gate.py
+@@ -80,7 +80,7 @@
+     recon = {
+         "schema": "evm-reconciliation-receipt/v3", "target": target,
+         "producer": repo_ref("scripts/evm/verify_recon.py"), "mode": "formal",
+-        "inputs": inputs, "verdict": "PASS", "exit_code": 0,
++        "inputs": inputs, "warnings": [], "verdict": "PASS", "exit_code": 0,
+         "observations": {
+             "supply_closure": {
+                 "mint_total_raw": str(total), "burn_total_raw": "0",
+
+codex
+全量结果与工单预期完全一致：仅 `test_batch3_solana_vertical_slice.py` 和 `test_batch3_evm_vertical_slice.py` 因 loopback `socket.bind` 被沙箱拒绝（`PermissionError: [Errno 1] Operation not permitted`）；其余全部 PASS。最后做一次非 git 的范围核验和改动定位。
+exec
+/bin/zsh -lc "rg -n -C 2 '\"inputs\": inputs, \"warnings\": \\[\\]' scripts/tests/test_audit_release_gate.py
+rg -n 'write_deep_recon_fixtures' scripts/tests/test_sixlens_receipts.py scripts/tests/test_handoff_manifest.py scripts/tests/test_audit_release_gate.py
+find . -path './.git' -prune -o -type f -mmin -30 -print | sort
+shasum -a 256 scripts/tests/test_sixlens_receipts.py scripts/tests/test_handoff_manifest.py scripts/tests/test_audit_release_gate.py" in /Users/uravvv/.claude/tca-repair-g2
+ succeeded in 0ms:
+81-        "schema": "evm-reconciliation-receipt/v3", "target": target,
+82-        "producer": repo_ref("scripts/evm/verify_recon.py"), "mode": "formal",
+83:        "inputs": inputs, "warnings": [], "verdict": "PASS", "exit_code": 0,
+84-        "observations": {
+85-            "supply_closure": {
+scripts/tests/test_audit_release_gate.py:56:def write_deep_recon_fixtures(root, target, raw_input, *, total=100, address="0xabc"):
+scripts/tests/test_audit_release_gate.py:299:    recon_v3, time_v3 = write_deep_recon_fixtures(root, target, raw)
+scripts/tests/test_sixlens_receipts.py:19:from test_audit_release_gate import write_deep_recon_fixtures
+scripts/tests/test_sixlens_receipts.py:55:    good, _ = write_deep_recon_fixtures(root, target, source)
+scripts/tests/test_handoff_manifest.py:35:from test_audit_release_gate import write_deep_recon_fixtures
+scripts/tests/test_handoff_manifest.py:150:    recon_v3, time_v3 = write_deep_recon_fixtures(
+./maintenance/repair-20260815-g2/f09_codex.log
+./maintenance/repair-20260815-g2/f09_codex_lastmsg.txt
+./maintenance/repair-20260815-g2/f09_green.log
+./maintenance/repair-20260815-g2/f09_red.log
+./maintenance/repair-20260815-g2/f09b_codex.log
+./maintenance/repair-20260815-g2/workorder_F09_addendum.md
+./maintenance/repair-20260815-g2/workorder_F09_done.md
+./maintenance/repair-20260815-g2/workorder_FINAL.md
+./references/data-pipeline-evm-recon.md
+./scripts/evm/__pycache__/verify_recon.cpython-314.pyc
+./scripts/evm/verify_recon.py
+./scripts/report/__pycache__/shared_release_receipt.cpython-314.pyc
+./scripts/report/shared_release_receipt.py
+./scripts/tests/invariant_manifest.json
+./scripts/tests/test_audit_release_gate.py
+./scripts/tests/test_gmgn_divergence_note.py
+a5b106bc7aee40df8ee7d112f675649669b132245d621fe3ec0281044bc81d81  scripts/tests/test_sixlens_receipts.py
+357c85274c02a6985216fbfe20f2a3da2a2c7aabcabce22d000fbb66ec3047bf  scripts/tests/test_handoff_manifest.py
+99cbaa0e074baf2ea2ae95e1c12ffe888cc01ee43ca28084c05ec7400b765a90  scripts/tests/test_audit_release_gate.py
+
+diff --git a/scripts/tests/test_audit_release_gate.py b/scripts/tests/test_audit_release_gate.py
+index 64ea4f0eb54ee4ae9ffd2da0d2a4264e20cd7ca7..296b511f7ce6994b9cb36e5bec85e280a8b3134b
+--- a/scripts/tests/test_audit_release_gate.py
++++ b/scripts/tests/test_audit_release_gate.py
+@@ -80,7 +80,7 @@
+     recon = {
+         "schema": "evm-reconciliation-receipt/v3", "target": target,
+         "producer": repo_ref("scripts/evm/verify_recon.py"), "mode": "formal",
+-        "inputs": inputs, "verdict": "PASS", "exit_code": 0,
++        "inputs": inputs, "warnings": [], "verdict": "PASS", "exit_code": 0,
+         "observations": {
+             "supply_closure": {
+                 "mint_total_raw": str(total), "burn_total_raw": "0",
+
+exec
+/bin/zsh -lc "date '+%Y-%m-%d %H:%M:%S %Z'
+stat -f '%Sm  %N' -t '%Y-%m-%d %H:%M:%S %Z' scripts/tests/test_sixlens_receipts.py scripts/tests/test_handoff_manifest.py scripts/tests/test_audit_release_gate.py maintenance/repair-20260815-g2/workorder_F09_done.md scripts/evm/__pycache__/verify_recon.cpython-314.pyc scripts/report/__pycache__/shared_release_receipt.cpython-314.pyc" in /Users/uravvv/.claude/tca-repair-g2
+ succeeded in 0ms:
+2026-08-15 11:16:47 EDT
+2026-08-15 09:54:39 EDT  scripts/tests/test_sixlens_receipts.py
+2026-08-15 09:54:54 EDT  scripts/tests/test_handoff_manifest.py
+2026-08-15 11:02:32 EDT  scripts/tests/test_audit_release_gate.py
+2026-08-15 11:00:15 EDT  maintenance/repair-20260815-g2/workorder_F09_done.md
+2026-08-15 10:58:21 EDT  scripts/evm/__pycache__/verify_recon.cpython-314.pyc
+2026-08-15 10:58:20 EDT  scripts/report/__pycache__/shared_release_receipt.cpython-314.pyc
+
+diff --git a/scripts/tests/test_audit_release_gate.py b/scripts/tests/test_audit_release_gate.py
+index 64ea4f0eb54ee4ae9ffd2da0d2a4264e20cd7ca7..296b511f7ce6994b9cb36e5bec85e280a8b3134b
+--- a/scripts/tests/test_audit_release_gate.py
++++ b/scripts/tests/test_audit_release_gate.py
+@@ -80,7 +80,7 @@
+     recon = {
+         "schema": "evm-reconciliation-receipt/v3", "target": target,
+         "producer": repo_ref("scripts/evm/verify_recon.py"), "mode": "formal",
+-        "inputs": inputs, "verdict": "PASS", "exit_code": 0,
++        "inputs": inputs, "warnings": [], "verdict": "PASS", "exit_code": 0,
+         "observations": {
+             "supply_closure": {
+                 "mint_total_raw": str(total), "burn_total_raw": "0",
+
+exec
+/bin/zsh -lc "nl -ba /Users/uravvv/.codex/memories/MEMORY.md | sed -n '628,642p'" in /Users/uravvv/.claude/tca-repair-g2
+ succeeded in 0ms:
+   628	- when the user says `触发现象必须保持可操作锋利度，禁止泛化成“注意数据质量”式空话` -> preserve concrete trigger phenomena and executable checks in casebook entries instead of abstracting them. [Task 7]
+   629	- when the user says `CHANGELOG 只记工具性知识，禁记代币分析结论` -> classify prospective archive text before moving it; if it contains token verdicts or conclusion language, stop and keep it out of `CHANGELOG.md`. [Task 8]
+   630	- when the user says `只读、严禁改任何仓库文件` and later says `不要尝试写文件，把完整方案作为最终答复直接输出` -> respect read-only mode strictly and switch to direct content delivery after the first confirmed write failure. [Task 9]
+   631	- when the user requires `38 项 P 编号` / `逐条文件/行区间/摘要/处置/守卫/风险` -> keep the output fully auditable and line-itemed; do not collapse it into a soft summary. [Task 9]
+   632	- when the user says `分组执行,每组完成立即落盘` -> execute maintenance in small semantic batches with verification at each boundary. [Task 6]
+   633	- when the user says archive history is off-limits (`历史一字不改`, `archive/ 全部历史条目零触碰`, `历史内容只做原样迁移`) -> preserve archive, casebook, and historical CHANGELOG text verbatim and narrow guards instead of rewriting evidence. [Task 2][Task 3][Task 12][Task 13]
+   634	- when the user wants natural-language routing for audit work instead of another slash command -> add a human-language route and keep `independent-audit-protocol.md` as the sole authority for clean-room audit flow. [Task 4]
+   635	- when the user says `清单外文件一律不改`, `禁删除任何文件`, or excludes a specific section like `SKILL.md 第 3 行 frontmatter description` -> treat scope and untouched-file constraints as hard boundaries, even in formatting-only work. [Task 5]
+   636	- when the user requires `每根 needle 的权威/复述判定` and allows summaries only as `摘要＋契约 ID` -> keep a canonical authority layer and let repeated docs point to stable contract IDs instead of duplicating prose. [Task 1]
+   637	- when the user says SKILL may modify only a specific section and must stay `≤8192B` -> constrain edits to the approved SKILL surface and machine-check byte size after every doc/routing change. [Task 1][Task 3][Task 4][Task 5]
+   638	- when the user requires `先写红反例（先证明缺陷存在、测试失败），修复后转绿` and asks for four batches -> make each batch independently red-green, run the full suite before advancing, and append its files/tests to `codex_fix_progress.md` immediately. [Task 16]
+   639	- when the user says `测试一律在临时目录构造 fixture，禁止污染真实 references/labels/ 与 data 产物` -> inject temp paths and fixtures; never use the live labels/data tree as a test scratchpad. [Task 16]
+   640	- when the user says `移除 api_token 位置参数` and `禁止任何命令行明文 token 传参形态` -> use `--token-file > HYPERSYNC_TOKEN > ~/.config/hypersync/token`, reject positional-token forms, and update active invocation docs but not `archive/`. [Task 16]
+   641	- when a task book names a whitelist, says `禁 git`, and requires `invariant_scan` / full suite PASS -> read the full task book first, keep changes inside the listed files, preserve old contracts, and treat machine gates as delivery blockers. [Task 17]
+   642	- when the user says `不改任何生产脚本` but still wants stage work to proceed -> keep edits inside the allowed test/manifest/worklog files, and use expected-red plus invariant counts as the acceptance surface until production changes are explicitly authorized. [Task 20]
+
+diff --git a/scripts/tests/test_audit_release_gate.py b/scripts/tests/test_audit_release_gate.py
+index 64ea4f0eb54ee4ae9ffd2da0d2a4264e20cd7ca7..296b511f7ce6994b9cb36e5bec85e280a8b3134b
+--- a/scripts/tests/test_audit_release_gate.py
++++ b/scripts/tests/test_audit_release_gate.py
+@@ -80,7 +80,7 @@
+     recon = {
+         "schema": "evm-reconciliation-receipt/v3", "target": target,
+         "producer": repo_ref("scripts/evm/verify_recon.py"), "mode": "formal",
+-        "inputs": inputs, "verdict": "PASS", "exit_code": 0,
++        "inputs": inputs, "warnings": [], "verdict": "PASS", "exit_code": 0,
+         "observations": {
+             "supply_closure": {
+                 "mint_total_raw": str(total), "burn_total_raw": "0",
+
+codex
+施工完成，未执行任何 git 操作。
+
+- 在共享 fixture [test_audit_release_gate.py](/Users/uravvv/.claude/tca-repair-g2/scripts/tests/test_audit_release_gate.py:83) 补入 `warnings: []`。另外两个测试复用此 fixture，无冗余修改。
+- 三项目标测试全部 exit 0。
+- `test_gmgn_divergence_note.py`、`test_recon_deep_reverify.py` 均 exit 0。
+- `run_all.py` 除两个 loopback `socket.bind` 的预期 `EPERM` 外全部 PASS，符合补充工单验收口径。
+- 按你“只改三个授权测试文件”的更严格限制，未追加修改 `workorder_F09_done.md`。
+
+
+diff --git a/scripts/tests/test_audit_release_gate.py b/scripts/tests/test_audit_release_gate.py
+index 64ea4f0eb54ee4ae9ffd2da0d2a4264e20cd7ca7..296b511f7ce6994b9cb36e5bec85e280a8b3134b
+--- a/scripts/tests/test_audit_release_gate.py
++++ b/scripts/tests/test_audit_release_gate.py
+@@ -80,7 +80,7 @@
+     recon = {
+         "schema": "evm-reconciliation-receipt/v3", "target": target,
+         "producer": repo_ref("scripts/evm/verify_recon.py"), "mode": "formal",
+-        "inputs": inputs, "verdict": "PASS", "exit_code": 0,
++        "inputs": inputs, "warnings": [], "verdict": "PASS", "exit_code": 0,
+         "observations": {
+             "supply_closure": {
+                 "mint_total_raw": str(total), "burn_total_raw": "0",
+
+tokens used
+102,824
+施工完成，未执行任何 git 操作。
+
+- 在共享 fixture [test_audit_release_gate.py](/Users/uravvv/.claude/tca-repair-g2/scripts/tests/test_audit_release_gate.py:83) 补入 `warnings: []`。另外两个测试复用此 fixture，无冗余修改。
+- 三项目标测试全部 exit 0。
+- `test_gmgn_divergence_note.py`、`test_recon_deep_reverify.py` 均 exit 0。
+- `run_all.py` 除两个 loopback `socket.bind` 的预期 `EPERM` 外全部 PASS，符合补充工单验收口径。
+- 按你“只改三个授权测试文件”的更严格限制，未追加修改 `workorder_F09_done.md`。
+
+
