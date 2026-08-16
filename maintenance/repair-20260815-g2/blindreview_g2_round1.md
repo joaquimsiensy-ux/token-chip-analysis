@@ -3,8 +3,10 @@
 - 复核对象：`ddba187..861a234`（4577106 F-04 / 9d2f97c F-10 / 4a43234 F-07 / daaed16 F-09 / 861a234 中心登记）
 - 复核方式：只读复核。**未复用仓库自带测试**（那是被测对象），全部向量由独立探针脚本现造现跑。
 - 探针位置：`/private/tmp/g2probe/`（不入仓库树）。仓库 tracked 文件零改动，无 git 写操作。
-- 向量总数：**184**（round1 主轮 134 + time 补充轮 50）；BREACH **7**；PARTIAL **6**；其余 blocked 或合法预期接受。
-- ⚠ **补充轮改变了总判定**：主轮（F-04/F-07 balance 面/F-09/F-10）零 BREACH，但按调度方要求补做的 time 查攻击轮（§八·补充）打出 7 个 BREACH，根因是 plan 与 plan_receipt 之间缺内容绑定。总判定由 CONDITIONAL 改为 **BLOCK**。
+- 向量总数：**209**（round1 主轮 134 + time 补充轮 50 + round2 复验 25）；BREACH **7（均已于消化轮关闭）**；PARTIAL **8**。
+- ⚠ **补充轮曾改变总判定**：主轮（F-04/F-07 balance 面/F-09/F-10）零 BREACH，但 time 查攻击轮（§八·补充）打出 7 个 BREACH，根因是 plan 与 plan_receipt 之间缺内容绑定 → 当时判 **BLOCK**。
+- ✅ **消化轮 `55f2c44` 后经 round2 复验（见文末 round2 节）**：7 条 BREACH 逐条关闭，边界外 17 个新向量无新 BREACH。**现行总判定：CONDITIONAL —— 可交付。**
+- 阅读顺序提示：下面 §一～§九 是 round1 当时的记录（总判定栏仍写 BLOCK，属历史状态）；**以文末 round2 节的判定为准**。
 
 ---
 
@@ -442,4 +444,105 @@
 
 ---
 
-*复核员：独立红队（Opus 5）。探针脚本保留在 `/private/tmp/g2probe/`：`fixtures.py`（自洽基线夹具生成器）、`f04_probe.py`、`f07_probe.py`、`f07b_probe.py`、`f07c_crossdepth.py`、`f07d_time.py`（time 补充轮）、`f09_probe.py`、`f10_probe.py`。仓库 tracked 文件零改动，全程无 git 写操作。*
+*复核员：独立红队（Opus 5）。探针脚本保留在 `/private/tmp/g2probe/`：`fixtures.py`（自洽基线夹具生成器）、`f04_probe.py`、`f07_probe.py`、`f07b_probe.py`、`f07c_crossdepth.py`、`f07d_time.py`（time 补充轮）、`f09_probe.py`、`f10_probe.py`、`f07e_round2.py`（round2 复验）。仓库 tracked 文件零改动，全程无 git 写操作。*
+
+---
+
+# round2 复验（消化轮 `55f2c44` 之后）
+
+- 复核对象：`55f2c44` 的 `_validated_time_plan_authority`（12 项绑定平移）+ 六计数 bool 拒绝
+- 探针：`/private/tmp/g2probe/f07e_round2.py`（复现：`cd /private/tmp/g2probe && python3 f07e_round2.py`）
+- 新增向量 **25**（重放 8 + 边界外 17）；累计 **209**
+- **结果：round1 的 7 条 BREACH 全部关闭，round2 无新 BREACH。总判定 BLOCK → CONDITIONAL。**
+
+## 十、方法说明：为什么先造 J0 基线
+
+我原 round1 的 time 夹具没有 `plan.producer`、`plan.input_manifest`、`plan_receipt.inputs.input_manifest` 这些字段——直接拿旧夹具重跑，新代码会因**字段缺失**而拒，那样得到的"全部 blocked"是假象，什么都证明不了。
+
+所以 round2 先重建了一份**在新代码下能通过的完整权威链基线 J0**（12 项绑定全部满足，3 个点位全 OK）。J0 实测 **ACCEPTED** —— 有了这个前提，后面每一条 blocked 才能归因到攻击本身。
+
+## 十一、重放 round1 的 BREACH 向量（8 向量，全部关闭）
+
+| 编号 | 原 BREACH | 重放结果 | 拦截点 |
+|---|---|---|---|
+| J0 | （基线） | ACCEPTED | 完整权威链可通过，前提成立 |
+| H1 | T1 plan 砍成 1 点、签发件仍报 3 点 | **blocked** | `probe_count differs from consumed plan` |
+| H2 | T2 plan 1 点 + probe_count 谎报 3 | **blocked** | 同上 |
+| H3 | T3 签发件 output 指向另一份 plan | **blocked** | `signed plan output file invalid or escapes case root` |
+| H4 | T4 plan.schema 随便写 | **blocked** | `plan schema must be anchor-plan/v2` |
+| H5 | T5 plan.target 指向别的币 | **blocked** | `plan target differs from signed receipt target` |
+| H6 | （round1 本就 blocked，调度方清单多列了一条） | **blocked** | `plan input identity differs from signed receipt` |
+| H10 | T6 签发者冒充（用 time 脚本当 plan 签发者） | **blocked** | `producer/runner path is not whitelisted` |
+| H40 | T7 六计数用 bool `True` | **blocked** | `counter points must be an integer, not a boolean` |
+
+**结论：round1 的 T1–T7 七条 BREACH 逐条复验关闭**（H6 本轮一并验，保持 blocked）。修复方向与我的建议一致，且做得更彻底——我提了 6 条，实现平移了 12 条（多做了 `plan.producer == 签发件 producer`、`input_manifest` 双向绑定、`identity_path == input_path` 对象身份三项）。
+
+## 十二、边界外再一步：攻新函数本身（17 向量）
+
+| 编号 | 攻击面 | 构造方法 | 预期 | 实际 | 判定 |
+|---|---|---|---|---|---|
+| I1 | **信任根** | 全套离线自造权威链：plan + plan_receipt 全部字段自洽，plan 只放 1 个自选点 | 拒 | **接受** | **PARTIAL-R2A**（见下） |
+| I2 | 白名单归一 | producer.path 写 `./scripts/lib/anchor_plan.py` | 拒 | 拒：not whitelisted | blocked |
+| I3 | 白名单归一 | producer.path 写 `scripts/lib/../lib/anchor_plan.py` | 拒 | 拒：envelope invalid（traversal） | blocked |
+| I4 | 类型 | 六计数用 float `1.0`（bool 已拒，float 呢） | 拒 | 拒：must be an integer | blocked |
+| I5 | 类型 | probe_count 用 float `3.0` | 拒 | 拒：probe_count differs | blocked |
+| I6 | 路径身份 | 签发件 output 指向**同内容**的副本 `plan_copy.json` | 拒 | 拒：signed output is not the consumed plan object | blocked |
+| I7 | 别名 | plan 与签发件 target 都用 `ethereum`，time 收据用 `eth` | — | 接受 | **合法**（我预期设错，见下） |
+| I8 | 覆盖面灌水 | 3 个**完全相同**的点凑够 probe_count=3 | — | 接受 | **PARTIAL-R2B**（前瞻） |
+| I9 | 实义字符 | generated_at 两边都写 `"   "`（三个空格） | 拒 | **接受** | **P3-R2C** |
+| I10 | 类型 | matrix_points = None | 拒 | 拒：plan matrix_points invalid | blocked |
+| I11 | 路径 | 签发件 output 用案内绝对路径 | 接受 | 接受 | 合法（同 round1 PARTIAL-3 同族） |
+| I12 | 绑定 | plan.producer 哈希与签发件不符 | 拒 | 拒：plan producer differs | blocked |
+| I13 | 绑定 | 签发件缺 inputs.input_manifest | 拒 | 拒：must bind path/size/sha256 | blocked |
+| I14 | 绑定 | plan.input_manifest 哈希与签发件不符 | 拒 | 拒：input manifest differs | blocked |
+| I15 | 降版 | 签发件 plan_schema 降到 v1 | 拒 | 拒：plan_schema mismatch | blocked |
+| I16 | 兼容字段 | plan.final_block 与 target.as_of_block 不符 | 拒 | 拒：compatibility target fields diverge | blocked |
+
+### PARTIAL-R2A（P2）：修复关掉了"混搭"，但关不掉"全套自造"
+
+- **现象**：I1 里我离线自造了 plan 与 plan_receipt 的**全部**字段（producer 写 `scripts/lib/anchor_plan.py` 并抄上仓库里那个文件的真实哈希），plan 里只放 1 个自选点位，12 项绑定全部自洽 → 通过。原 T1 想达到的效果（把 time 抽查砍到 1 个自选点）仍可达成。
+- **但这不是消化轮的锅，修复确实有效**，理由要说清楚：
+  - `repo_ref_ok` 校验的是"producer 字段声明的脚本在白名单里、且该脚本文件的哈希对得上"——这是一条**声明**，不是密码学**签名**。整个 receipt 体系里没有任何一份收据是防伪造的（我 round1 判 F-04/F-09/F-10 为 PASS 时，用的基线夹具同样全是自造的）。
+  - 修复的实质收益是**把攻击门槛从"拿到任意一份真实签发件即可混搭"提升到"必须伪造整条签发链"**。前者在"攻击者无法伪造签发件"这个更严格的假设下依然成立，后者不成立。这是实质性提升，T1 判为已关闭是站得住的。
+- **剩余风险**：这条与 round1 的 **PARTIAL-T1（plan 点位数量本身无下限）实为同一件事**，round2 予以确认并升格描述：plan 说查几个点就查几个点，**没有任何外部事实约束它**，也**没有纵深兜底**。对比 balance 面——那里的"标准答案"（balances.json）被 replay_stats 三查同源、supply_truth 的 decide 重算、observation bundle 的 N-2 绑定交叉锁死（主轮 E2/E4/E5 实证），伪造一处就炸；plan 没有任何等价的交叉锁。
+- **建议**（不阻断本次融合，下一轮排期）：给 plan 点位规模设可核验的下限或与案子事实挂钩，例如按 `date_range` 天数/`per_cell` 推出应有点数并在消费侧重算，或把 anchor_plan 的参数纳入 `audit_input_manifest` 一并锁定。
+
+### PARTIAL-R2B（P2，前瞻性）：probe_count 可被重复点灌水
+
+- **现象**：I8 用 3 个**完全相同**的点位凑满 `probe_count=3`，rows 给 3 行相同记录，通过。表面"抽查了 3 个点"，实际只覆盖 1 个不同点位。
+- **为什么现在无独立危害**：既然 I1 证明 plan 可自造，攻击者直接写 1 个点即可，不必灌水。
+- **为什么仍要记**：这是对**未来修复**的前瞻攻击——一旦按 PARTIAL-R2A 的建议加"点位数下限"，重复点填充就是绕过那个下限的现成手法。**修下限时必须用去重后的点位数（`len(set(...))`），不能用 `len()`。**
+
+### P3-R2C（I9）：generated_at 只验非空，不验实义字符
+
+- **位置**：`shared_release_receipt.py`，`_require(isinstance(generated_at, str) and bool(generated_at) and ...)`
+- `bool("   ")` 为真，所以三个空格能过。无安全危害（该字段只用于两边一致性比对），但与 F-09 面对人工文本一律走 `_meaningful_text` 的严格标准不一致。
+- **建议**：改用 `_meaningful_text(generated_at)`，或至少 `generated_at.strip()`。
+
+### I7 说明：这是我的向量预期设错，不是缺陷
+
+plan 与签发件的 target 都写 `ethereum`、time 收据写 `eth` 时通过——这是**正确行为**：`plan.target == plan_receipt.target` 走全等（两边一致），跨到 time 收据时走 `canonical_target` 归一（`ethereum` 是注册表认可的 `eth` 别名）。如实留档：本向量应判"合法接受"。附带一条 P3 观察——生产侧 `time_spotcheck.py` 主流程另有 `plan_chain != a.chain` 的字面比较，对别名比消费侧更严，属无害的双写差异。
+
+## 十三、round2 总判定
+
+**CONDITIONAL —— 可交付（BLOCK 解除）。**
+
+| 项 | round1 | round2 |
+|---|---|---|
+| 累计向量 | 184 | **209** |
+| BREACH | 7（全在 time 面） | **0 新增；原 7 条逐条复验关闭** |
+| PARTIAL | 6 | **8**（新增 R2A、R2B；R2A 与原 PARTIAL-T1 合并计为同一件事的确认） |
+
+- 消化轮 `55f2c44` 的修复**有效且超出我的建议**（我提 6 条，实现平移 12 条），重放 8 向量全部被拦，且拦截理由逐条对得上预期拦截点
+- 边界外 17 个新向量中 13 条被拦；4 条通过里，1 条是我预期设错（I7）、1 条是合法路径形态（I11）、2 条归入 PARTIAL（R2A 信任根边界、R2B 前瞻灌水）
+- **剩余待办（不阻断）**：PARTIAL-R2A/R2B（plan 点位规模无外部约束，修下限时须用去重计数）、P3-R2C（generated_at 实义字符），以及 round1 未消化的 PARTIAL-1/2/3/4
+
+## 十四、round2 复核边界
+
+1. 本轮只打 time 面。消化轮 done 报告称"balance/supply/anchor 三分支同族排查零缺口"，**我未独立复验该结论**——建议下一轮针对这三个分支的"标准答案来源"各打一轮（尤其 anchor 那一查的 output 绑定）。
+2. 未复验 SUITE 105 全绿、未跑固化的回归负测（按调度方要求不信其自报，全部结论来自我自己的探针）。
+3. §八 复核边界的其余各条（真实 RPC 纵切片、Solana 侧、端到端发布流程、并发竞态、anchor_plan 生产端）本轮仍未覆盖。
+
+---
+
+*round2 复核员：独立红队（Opus 5）。探针 `/private/tmp/g2probe/f07e_round2.py`。仓库 tracked 文件零改动，无 git 写操作。*
