@@ -869,10 +869,13 @@ def _validate_evm_reconciliation_receipt(root, receipt, target):
     _validate_recon_gmgn(root, receipt, observations, balances, nominal)
 
 
-def _plan_point(row):
+def _plan_point(row, final_block):
     if row.get("expected_balance_raw") is not None and row.get("addr"):
+        block = row.get("day_end_block")
+        if block is None:
+            block = final_block
         return ("balance", row.get("kind"), row.get("addr"),
-                row.get("day_end_block"), str(row.get("expected_balance_raw")))
+                block, str(row.get("expected_balance_raw")))
     if row.get("tx") and row.get("expected_value_raw") is not None:
         return ("tx", row.get("kind"), row.get("tx"), row.get("from"),
                 row.get("to"), row.get("block"), str(row.get("expected_value_raw")))
@@ -992,7 +995,7 @@ def _validate_time_receipt(root, receipt, target):
     for field in ("matrix_points", "forced_points"):
         rows = plan.get(field)
         _require(isinstance(rows, list), f"time plan {field} invalid")
-        expected_points.extend(_plan_point(row) for row in rows)
+        expected_points.extend(_plan_point(row, plan.get("final_block")) for row in rows)
     rows = receipt.get("rows")
     _require(isinstance(rows, list) and bool(rows)
              and all(isinstance(row, dict) for row in rows), "time rows invalid")

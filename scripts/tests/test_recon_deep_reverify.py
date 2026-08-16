@@ -174,13 +174,17 @@ def _plan_fixture(root: Path):
         "input_manifest": plan_envelope["inputs"]["input_manifest"],
         "matrix_points": [{"kind": "matrix", "addr": HOLDERS[0],
                            "day_end_block": 100, "expected_balance_raw": "60"}],
-        "forced_points": [{"kind": "largest_tx", "tx": "0xabc", "from": HOLDERS[1],
-                           "to": HOLDERS[2], "block": 110, "expected_value_raw": "7"}],
+        "forced_points": [
+            {"kind": "edge_at_final", "addr": HOLDERS[1],
+             "expected_balance_raw": "30"},
+            {"kind": "largest_tx", "tx": "0xabc", "from": HOLDERS[1],
+             "to": HOLDERS[2], "block": 110, "expected_value_raw": "7"},
+        ],
     }
     plan_path = _write_json(root / "anchor_plan.json", plan)
     plan_receipt = finalize_envelope(
         plan_envelope, "PASS", 0, plan_schema="anchor-plan/v2",
-        generated_at=plan["generated_at"], input_identity=identity, probe_count=2,
+        generated_at=plan["generated_at"], input_identity=identity, probe_count=3,
         output={"path": str(plan_path.resolve()), "size": plan_path.stat().st_size,
                 "sha256": _sha(plan_path)})
     plan_receipt_path = _write_json(root / "anchor_plan.receipt.json", plan_receipt)
@@ -189,7 +193,7 @@ def _plan_fixture(root: Path):
 
 class _TimePool:
     def call_many(self, calls):
-        assert len(calls) == 2
+        assert len(calls) == 3
         log = {"address": TARGET["token"],
                "topics": [
                    "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef",
@@ -197,6 +201,7 @@ class _TimePool:
                    "0x" + "0" * 24 + HOLDERS[2][2:]],
                "data": hex(7)}
         return [{"ok": True, "result": hex(60)},
+                {"ok": True, "result": hex(30)},
                 {"ok": True, "result": {"blockNumber": hex(110), "logs": [log]}}]
 
 
@@ -212,6 +217,8 @@ def _produce_time(root: Path):
             mock.patch.object(sys, "argv", argv):
         assert producer.main() == 0
     receipt = json.loads(out.read_text(encoding="utf-8"))
+    edge_row = next(row for row in receipt["rows"] if row["kind"] == "edge_at_final")
+    assert edge_row["block"] == TARGET["as_of_block"]
     shared.validate_reconciliation_check(root, "time", _item(out, root), TARGET, "evm")
     return out, receipt
 
@@ -354,7 +361,7 @@ def _test_time_mutations(root: Path, receipt: dict) -> None:
     mutations = [
         ("time_bad_plan_row.json", lambda v: v["rows"][0].__setitem__("addr", HOLDERS[1]),
          "one-to-one"),
-        ("time_bad_from.json", lambda v: v["rows"][1].__setitem__("from", HOLDERS[0]),
+        ("time_bad_from.json", lambda v: v["rows"][2].__setitem__("from", HOLDERS[0]),
          "one-to-one"),
         ("time_bad_count.json", lambda v: v.__setitem__("exact_match", 99), "counters"),
         ("time_no_plan_receipt.json", lambda v: v["inputs"].pop("plan_receipt"),
