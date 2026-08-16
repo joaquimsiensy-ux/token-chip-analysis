@@ -107,6 +107,11 @@ _HISTORICAL_COLLECTOR_HASHES = {
         "d8113c590fe78e497364b15089215e82d0b061c413f80bb4600913f334f36b6d",
     },
     "fetch_sqd_evm.py": set(),
+    "fetch_hypersync_v2.py": {
+        # v6.39.5（commit 2ebd885d1a1364779338e02f8f30e991eec2302d）——NES 案
+        # −1 段 BSC v2 通道 capture_identity 的采集版本
+        "d229a1c200554708560f8eab4bed1ccaf378b65cd9fe852d57bcf75b7569fe16",
+    },
 }
 
 
@@ -223,7 +228,17 @@ def _v2_provenance(path, token, lo, hi):
         from fetch_hypersync_v2 import capture_identity, validate_done_manifest
         identity_manifest = json.loads(identity_path.read_text(encoding="utf-8"))
         first_url = identity_manifest.get("url") if isinstance(identity_manifest, dict) else None
-        if identity_manifest != capture_identity(token, first_url):
+        expected = capture_identity(token, first_url)
+        # collector.sha256 允许"当前哈希或 git 考证的历史登记哈希"（存量数据由正版
+        # 历史版本采集器产出的场景，语义同 _historical_script_hashes；其余字段严判）。
+        actual_collector = (identity_manifest.get("collector")
+                            if isinstance(identity_manifest, dict) else None)
+        if isinstance(actual_collector, dict) and \
+                actual_collector.get("path") == "fetch_hypersync_v2.py" and \
+                actual_collector.get("sha256") in _historical_script_hashes(
+                    "fetch_hypersync_v2.py"):
+            expected = dict(expected, collector=actual_collector)
+        if identity_manifest != expected:
             raise ValueError("capture_identity.json 与 token/url/query/collector 不一致")
     except Exception as exc:
         raise ChannelsPreflightError(f"v2 capture identity 校验失败: {exc}") from exc
