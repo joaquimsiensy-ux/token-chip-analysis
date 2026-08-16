@@ -869,10 +869,16 @@ def _validate_evm_reconciliation_receipt(root, receipt, target):
     _validate_recon_gmgn(root, receipt, observations, balances, nominal)
 
 
-def _plan_point(row):
+def _plan_point(row, final_block=None):
     if row.get("expected_balance_raw") is not None and row.get("addr"):
+        # 边缘地址型余额点不落 day_end_block，执行侧（time_spotcheck.py）按
+        # final_block 查询；final_block 已在权威链校验中与签名目标 as_of_block
+        # 绑定，此处补位保持元组全字段严格匹配，不放宽任何篡改检测。
+        block = row.get("day_end_block")
+        if block is None:
+            block = final_block
         return ("balance", row.get("kind"), row.get("addr"),
-                row.get("day_end_block"), str(row.get("expected_balance_raw")))
+                block, str(row.get("expected_balance_raw")))
     if row.get("tx") and row.get("expected_value_raw") is not None:
         return ("tx", row.get("kind"), row.get("tx"), row.get("from"),
                 row.get("to"), row.get("block"), str(row.get("expected_value_raw")))
@@ -989,10 +995,11 @@ def _validated_time_plan_authority(root, receipt, target):
 def _validate_time_receipt(root, receipt, target):
     plan = _validated_time_plan_authority(root, receipt, target)
     expected_points = []
+    final_block = plan.get("final_block")
     for field in ("matrix_points", "forced_points"):
         rows = plan.get(field)
         _require(isinstance(rows, list), f"time plan {field} invalid")
-        expected_points.extend(_plan_point(row) for row in rows)
+        expected_points.extend(_plan_point(row, final_block) for row in rows)
     rows = receipt.get("rows")
     _require(isinstance(rows, list) and bool(rows)
              and all(isinstance(row, dict) for row in rows), "time rows invalid")
