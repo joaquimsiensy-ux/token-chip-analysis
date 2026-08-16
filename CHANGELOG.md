@@ -10,6 +10,7 @@
 
 ## 版本索引（活跃窗口，新在上；每版一行，详情见下方对应条目）
 
+- **6.45.0**（2026-08-15）三 AI 并行修复 v6.44.0 review 14 findings 全处置：g1 边界守卫六项（handoff 案根 containment/审计闸 report 必填/跨分区三元组等式/command v3/risk_flags 白名单/文本卫生守卫＋Solana 原串保真）、g2 证据链四项（观测拒空 code/对账五路深重验/GMGN 黄灯查证说明制/Arbitrum 探索档恢复）、g3 通道与文档四项（A0 探索预检两阶段/SQD 收紧＋Alchemy 正式除名/F-05 用户裁决不加闸如实写边界/F-13 文档对齐）；R10-15/18 转 CLOSED 现役 12；三组独立 opus 盲审全收口
 - **6.44.0**（2026-08-15）EVM 链上观测锚：三链正式纵切片真跑 bundle producer，accounting v2/supply_truth v4 双收据与 shared/handoff N-2 闭合；F-02 CLOSED、F-03/R10-9 MITIGATED 仍 OPEN；独立盲审 31 伪造向量全拒 PASS
 - **6.43.0**（2026-08-14）批 3 弱闸三线收口：A4 blocker 语义联动+10 门槛+entrypoint 身份（F-01→R10-16/17）、deploy-sync 严判（F-04→R10-5）、env_check 机械派生（F-05→R10-6）、R10 台账同步+自洽守卫（F-07）；三轮盲审+三轮消化全闭（execution ledger 哈希链等 7 项收编），R10-5/6/16/17 转 CLOSED 现役 15
 - **6.42.0**（2026-08-14）批 2 三线收口：F-10 waiver 三段硬顶＋用户超顶批复、F-02 对抗复核结构化 v3、F-09 solana-reconcile/v3 身份链与 PYTHIA 实证；三轮盲审残留锚、R10 清账/新登记及文档边界统一封口
@@ -43,6 +44,16 @@
 - **6.20.1** 2026-08-05 修 5 处阻断级文档漂移（A4 前禁写报告冲突/easy 残留/惯犯回灌 docstring/批量预采集残留/旧 Par 路线历史降级）＋docs_lint 增中文禁词与 Python module docstring 扫描
 
 更早版本（6.20.0 及以前）详见 `archive/CHANGELOG-archive.md`。
+
+## [6.45.0] - 2026-08-15 — 三 AI 并行修复工程融合（v6.44.0 review 14 findings 全处置）
+
+工程目录：`maintenance/repair-20260815-g1/`、`repair-20260815-g2/`、`repair-20260815-g3/`（三组各含 plan/工单/盲审/done 报告全档案）。三组从同一基线 ddba187 并行施工（调度铁三角：Fable 调度验收 commit／codex 纯施工／opus 攻击型盲审），融合方按 g1→g2→g3 顺序合并，5 处冲突全部 union 解决（run_all 注册／契约 manifest／invariant floor／两处 chain_registry import）。
+
+- **g1 正式边界与守卫**（F-01/02/03/11/12/14）：`safe_case_file` 案根 containment 全入口（handoff generate/verify/data_map/include/freeze＋adjudication_validator，R10-15 关账）；审计闸 independent-audit 缺 `--report` 直接 errors；`check_formal_case_chain` 升 `{chain, token, as_of_block}` 三元组跨分区等式并抓出 Solana target 小写化真实生产缺陷（六写出点原串保真＋shared canonical_target 链族归一）；command 文本 a5-report-seal/v3＋CT-SEMANTIC-60/CT-BANNED-15 契约；risk_flags 正向白名单 `[a-z0-9-]+`（R10-18 关账）；F-14 政策替代＝历史证据零改动＋现役文本卫生守卫。opus 两轮盲审 PASS。
+- **g2 对账与观测证据链**（F-04/07/09/10）：观测件拒空 runtime code＋66 字符 ABI word 三层等深；recon/time schema 升 v3，consumer 五路深重验（supply 实物重算/balance top-N 逐笔/time plan multiset/anchor 逐行/gmgn Decimal）；**GMGN 黄灯制（用户裁决）**＝差异不硬停、receipt 落 `warnings`＋必须附 `gmgn-divergence-note/v1` 查证说明（cause 枚举 gmgn_data_lag/methodology_diff/gmgn_upstream_error，自算错误不在枚举内＝必须修数据不可说明放行），发布闸重算差异并强制说明件在场且逐项覆盖；Arbitrum 探索档四 CLI 恢复（executable helper＋resolve_execution_mode，正式消费面双断言先钉死）。opus 盲审 209 向量 BREACH 终态 0。
+- **g3 采集通道与复核契约**（F-05/06/08/13）：A0 改 `--exploration` 预检产 `accounting_mode.exploration.json`，A2 三步 observe_supply→accounting `--bundle` formal 重跑→supply_truth（formal 唯一 canonical，工作流断裂修复）；SQD 区间闭校验＋log 逐字段 66 位 hex＋空响应五连硬退＋receipt 游标 provider 派生；**Alchemy 正式资格除名（用户裁决选型 B）**——无 provider 侧完成证据，`--receipt` argparse 拒绝，恢复候选＝升分型收据；**F-05 用户裁决不加闸（ACCEPTED_RISK）**，两分册"机器化边界"段如实写明六项已强制/四项未强制，机器闸 PASS 不等于 N 路已落实；F-13 文档对齐 entrypoint 环境变量读取现实。盲审 round1 BLOCK（SQD 上界缺失 P0）→消化→round2 PASS。
+- **存量影响**：EVM 案重发布须以 verify_recon v3/time_spotcheck v3 重跑对账（v2 收据消费面拒收）；旧 SQD/Alchemy 备用通道 receipt 重验必拒（按契约应零正式存量）；含 abs/`../` 绑定的旧案 check-unseal fail-closed 属期望行为；已交付案不重跑均不受影响。Solana 原串保真对"老案部分重跑致大小写混存"有硬失配面，存量清点结论见融合记录。
+- **suite 分母**：融合树 `run_all.py` 共 112 个入口（101＋g1 五测试＋g2 四测试＋g3 两测试），收口标准 112/112 PASS、rc=0；invariant consumers floor 82（g1+1/g2+3 增量之和）。
 
 ## [6.44.0] - 2026-08-15 — EVM 链上观测锚（F-02 闭合/F-03 缓解）
 

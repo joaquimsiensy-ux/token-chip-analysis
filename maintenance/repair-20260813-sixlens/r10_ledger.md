@@ -41,7 +41,7 @@
 | # | 条目 | 一句话 |
 |---|---|---|
 | R10-14（F-D8 余项） | `entity_freeze.json` 自身完整性锚 | 单边改动已封（A5 ledger-sha 绑定＋发布闸 A5 重验的 final scan 绑定链）；"连 freeze 一起改写"在无分布链案上仍属自洽小件族。设计方向：freeze 落盘时向案外/上位（如 handoff manifest revision 或 git 对象）登记 sha——与 C-R1（as_of_block 对锚）同族，锚到案内件只是多一个可伪造件，需真实外锚设计 |
-| R10-15（F-D7 余项） | `check_bound_file` 绝对路径绑定无案根强制 | trace 侧已限案根（新产 ledger 无此形态）；存量绝对路径 ledger 兼容面的收紧（freeze/check-unseal 消费点统一案根语义）留此 |
+| R10-15（F-D7 余项） | `check_bound_file` 绝对路径绑定无案根强制【CLOSED 6.45.0】 | 已闭合——g1 组 F-01 工单：新建 `scripts/lib/case_paths.py::safe_case_file`（拒空段/`.`/`..`/abs＋逐段 symlink＋realpath containment），handoff generate/verify/data_map/`--include`/freeze 与 `resolve_bound_path` 全入口接入，adjudication_validator 同族收口（消化轮 D3）；含 abs/`../` 的旧案 check-unseal fail-closed 属期望行为。见 `maintenance/repair-20260815-g1/done_report.md` |
 
 ## 五、批 2 三线盲审新增登记（6.42.0）
 
@@ -49,7 +49,7 @@
 |---|---|---|
 | R10-16 | B-09 blocker 存在性仍由输入自报、未与 artifact 语义联动 | 【CLOSED 6.43.0】用户 08-14 裁决方案 B（findings/non_covered/REFUTED 机械转 blocker 逐条处置），工单 F01 落地；盲审 R1 抓"省略整份 receipt"上层绕口，消化轮 1 补 execution ledger 哈希链+消化轮 2 补实物身份/基数闸，addendum PASS；见 `workorder_F01_done.md`、`workorder_digest_round1_done.md`。防伪边界：防事后省略，不防整册重造（无外锚定性同 R10-8）。 |
 | R10-17 | any 语义“证据够不够”阈值 | 【CLOSED 6.43.0】用户裁决装 10 实义字符门槛，工单 F01 落地，addendum PASS。本批只关“空壳/极短 evidence”形式面（防呆不防伪）；“结构化 evidence（证据类型/引用对象/复算产物绑定）”不在本批，残余保留在案。 |
-| R10-18 | `risk_flags.py::_strip_invisible_space` 黑名单版存量 | 留批 4 守卫收尾轮；来源：`workorder_B_fixround1.md` §10、`workorder_B_fixround1_done.md` §七 |
+| R10-18 | `risk_flags.py::_strip_invisible_space` 黑名单版存量 | 【CLOSED 6.45.0】g1 组 F-12 工单已闭合：裁剪后 `fullmatch [a-z0-9-]+` 正向白名单否则 raise（内部不可见字符一并拒绝），resolver 四装载口 eager parse，label_lookup 及三写入侧稳定 `BLOCK: risk_flags 脏数据` 非零退出。见 `maintenance/repair-20260815-g1/done_report.md` |
 | R10-19 | BC-O2 migration collector 身份无消费者 | 待产品语义裁决；来源：`workorder_C_fixround1_done.md` §七 BC-O2 |
 | R10-20 | BC-O3 series binding 仅 new-analysis profile | 待存量复核影响裁决；来源：`workorder_C_fixround1_done.md` §七 BC-O3 |
 | R10-21 | BC-O4 sidecar producer 字段无身份锚 | 接受“公开哈希不是签名”边界；来源：`workorder_C_fixround1_done.md` §七 BC-O4 |
@@ -65,4 +65,5 @@
 - 建档：2026-08-13（批 D 收口时）。6.42.0 清账 R10-2/R10-10/R10-11/R10-12；原 15 条余 11 条，新增 12 条，现役保留/接受项合计 23 条。
 - 弱闸旁证（R10-5/6 相关）：见 `batchD_workorder.md` §旁证——三命令 staging/部署 SHA 实测全等记录＋解释器与直接依赖 version/import 实测记录，均为实测输出，不引用弱闸 rc=0。
 - 2026-08-14 批 3 收官：批 1 补账 CLOSED 4 条（R10-1/3/4/7，v6.41.0 已修当时未记，F-07 集成漂移修正）；批 3 修复 4 条（R10-5/6/16/17）经三轮盲审（R1 BLOCK 1P1+3P2 → R2 CONDITIONAL 2P2 → R3 CONDITIONAL 1P2）+三轮消化+addendum PASS 转 CLOSED；批 3 收官时现役 15。盲审全程证据见 `maintenance/repair-20260814-batch3/blindreview_round{1,2,3}.md` 与 `blindreview_round3_addendum.md`。
-- 2026-08-15 EVM 观测锚工程（6.44.0）收官：R10-13 转 CLOSED、R10-9 案内观测 MITIGATED 仍计现役；当前现役 = 27 − 13 = **14**。独立盲审（opus 线程）31 伪造向量全拒 PASS，证据见 `maintenance/repair-20260814-evmobs/blindreview_OBS_round1.md`。
+- 2026-08-15 EVM 观测锚工程（6.44.0）收官：R10-13 转 CLOSED、R10-9 案内观测 MITIGATED 仍计现役；收官时现役计 14。独立盲审（opus 线程）31 伪造向量全拒 PASS，证据见 `maintenance/repair-20260814-evmobs/blindreview_OBS_round1.md`。
+- 2026-08-15 三 AI 并行修复工程（6.45.0，v6.44.0 review 14 findings 全处置）收官：g1 清账 R10-15/R10-18；当前现役 = 27 − 15 = **12**。14 findings 逐条处置与状态见三组 done 报告（`maintenance/repair-20260815-g{1,2,3}/`）；其中 review F-05 经用户 08-15 裁决不加闸（ACCEPTED_RISK，机器化边界如实写入 analyze/research 两分册，本台账 R10-17 残余定性不变仍在案）；review F-07 关至 transcript/实物绑定深度，远端真执行证明仍属 R10-9/14 外锚族；g2 盲审 PARTIAL-1（抽查覆盖面无下限＋去重计数要点）与 g3 的 SQD data 长度取舍（G3R2-01）列 R11 候选。

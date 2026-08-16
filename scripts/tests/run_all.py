@@ -126,6 +126,12 @@ SUITE += [
     'test_gmgn_divergence_note.py',
 ]
 
+# repair-20260815-g3（F-05/F-06/F-08/F-13）：文档守卫与备用采集器（融合方登记）
+SUITE += [
+    'test_g3_docs_guards.py',
+    'test_g3_alt_collectors.py',
+]
+
 
 def main():
     results = []

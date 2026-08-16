@@ -12,7 +12,7 @@
 
 [project]
 name = "token-chip-analysis"
-version = "6.44.0"
+version = "6.45.0"
 description = "链上代币筹码分析工作流（数据引擎与工具脚本）"
 requires-python = ">=3.14"
 dependencies = [

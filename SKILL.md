@@ -20,7 +20,7 @@ description: >-
   只查价格/K线/热榜/新币列表不要用本 skill。
 ---
 
-<!-- skill-version-source: VERSION; skill-version: 6.44.0 -->
+<!-- skill-version-source: VERSION; skill-version: 6.45.0 -->
 
 # 代币筹码分析（Token Chip Analysis）
 
@@ -40,7 +40,7 @@ description: >-
 
 | 阶段 | 核心动作 | 必读/产物 | 阻断语义 |
 |---|---|---|---|
-| A0 画像与路由 | 合约、多链、分母、链路由 | A0＋当链 pipeline；accounting_mode.json | accounting_gate：0 放行/2 硬停/1 修通道重跑 |
+| A0 画像与路由 | 合约、多链、分母、链路由 | A0＋当链 pipeline；accounting_mode.exploration.json（A0 预检）/ accounting_mode.json（A2 formal） | accounting_gate：0 放行/2 硬停/1 修通道重跑 |
 | A1 并行采集 | 完整数据＋标签＋价格 | A1＋当链 pipeline；data/、链内 collection_manifest/receipt | — |
 | A2 对账关卡 | 余额/供给闭合/供给真值/时间抽查 | A2＋recon；supply_truth.json、anchor_plan.json、time_spotcheck.json | 四查不过不进 A3；gate 0 PASS/2 FAIL/1 修通道重跑 |
 | A3 分析 | 标注/归因→casebook→聚类裁决→临时实体→ET-2→EF/freeze→G8→判级/ET-1→演变→facts/state | A3＋casebook C/E＋playbook；findings.md、facts.json、analysis-state.json、identity_gate.json | EF-1～EF-3 或 G8 未闭合即拒编译 |
