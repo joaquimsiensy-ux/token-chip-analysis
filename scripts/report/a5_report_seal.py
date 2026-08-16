@@ -30,6 +30,8 @@ def sha(path):
 
 
 def safe_file(root,value,label):
+ # abs 入参为 build_html resolve 后传入的合法调用形态，案根围栏由下方 relative_to 强制；
+ # 2026-08-16 用户裁决豁免定性（r10_ledger.md 状态节），审查勿再报收紧候选。
  root=Path(root).resolve(); raw=Path(value)
  if raw.is_absolute(): p=raw.resolve()
  else: p=(root/raw).resolve()

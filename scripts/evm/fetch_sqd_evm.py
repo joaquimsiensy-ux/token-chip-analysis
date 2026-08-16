@@ -75,6 +75,9 @@ def parse_stream_response(text, req_from, req_to):
                            or re.fullmatch(r"0x[0-9a-fA-F]{64}", topic) is None
                            for topic in topics):
                 raise ValueError(f"SQD stream log[{index}] has invalid topics")
+            # data 长度不设限（2026-08-16 用户裁决 G3R2-01，r10_ledger 状态节）：兼容
+            # 非标 ERC20 优先；代价=截断后仍为偶数位合法 hex 时此层抓不住、金额量级
+            # 静默变小，兜底依赖 A2 供给对账闸。标准 Transfer 应为 0x+64 hex。
             data = lg.get("data")
             if not isinstance(data, str) \
                     or re.fullmatch(r"0x(?:[0-9a-fA-F]*)", data) is None:
