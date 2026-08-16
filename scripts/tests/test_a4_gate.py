@@ -90,6 +90,17 @@ def rebind_case_inputs(old_root, new_root):
     new_root = str(Path(new_root).resolve())
     recon_path = Path(new_root, "reconciliation_report.json")
     recon = json.loads(recon_path.read_text(encoding="utf-8"))
+
+    def case_path(ref):
+        raw = Path(str(ref["path"]))
+        return raw if raw.is_absolute() else Path(new_root, raw)
+
+    def refreshed_ref(ref, path):
+        updated = dict(ref)
+        updated["size"] = path.stat().st_size
+        updated["sha256"] = sha(path)
+        return updated
+
     for item in recon["checks"].values():
         receipt_path = Path(new_root, item["receipt"]["path"])
         receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
@@ -99,6 +110,50 @@ def rebind_case_inputs(old_root, new_root):
             if raw.startswith(old_root + os.sep):
                 ref["path"] = new_root + raw[len(old_root):]
                 moved = True
+
+        # time 收据多了一层 anchor-plan 权威链。copytree 后须等价于在新案根
+        # 重跑 anchor_plan：重绑 input identity，并由内向外刷新 manifest、plan、
+        # plan receipt 与 time receipt 的逐字节 size/sha 链。
+        if receipt.get("schema") == "time-spotcheck/v3":
+            time_inputs = receipt["inputs"]
+            input_path = case_path(time_inputs["input"]).resolve()
+            plan_path = case_path(time_inputs["plan"])
+            plan_receipt_path = case_path(time_inputs["plan_receipt"])
+            plan = json.loads(plan_path.read_text(encoding="utf-8"))
+            plan_receipt = json.loads(plan_receipt_path.read_text(encoding="utf-8"))
+
+            old_identity = plan_receipt["input_identity"]
+            identity = dict(old_identity)
+            identity.update({"path": str(input_path),
+                             "size": input_path.stat().st_size,
+                             "sha256": sha(input_path)})
+
+            manifest_ref = plan_receipt["inputs"]["input_manifest"]
+            manifest_path = case_path(manifest_ref)
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            manifest["input"] = identity
+            manifest["files"] = [
+                identity if entry == old_identity else entry
+                for entry in manifest.get("files", [])
+            ]
+            manifest_path.write_text(json.dumps(manifest, ensure_ascii=False),
+                                     encoding="utf-8")
+            manifest_ref = refreshed_ref(manifest_ref, manifest_path)
+
+            plan["input"] = identity
+            plan["input_manifest"] = manifest_ref
+            plan_path.write_text(json.dumps(plan, ensure_ascii=False), encoding="utf-8")
+
+            plan_receipt["input_identity"] = identity
+            plan_receipt["inputs"]["input_manifest"] = manifest_ref
+            plan_receipt["output"] = refreshed_ref(plan_receipt["output"], plan_path)
+            plan_receipt_path.write_text(json.dumps(plan_receipt, ensure_ascii=False),
+                                         encoding="utf-8")
+
+            time_inputs["plan"] = refreshed_ref(time_inputs["plan"], plan_path)
+            time_inputs["plan_receipt"] = refreshed_ref(
+                time_inputs["plan_receipt"], plan_receipt_path)
+            moved = True
         if moved:
             receipt_path.write_text(json.dumps(receipt, ensure_ascii=False),
                                     encoding="utf-8")

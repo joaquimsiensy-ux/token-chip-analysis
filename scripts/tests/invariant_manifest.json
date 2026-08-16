@@ -12,7 +12,7 @@
  ],
  "minimum_counts": {
   "receipt_producers": 61,
-  "receipt_consumers": 80,
+  "receipt_consumers": 81,
   "transport_calls": 63,
   "atomic_writes": 54,
   "formal_entrypoints": 58
@@ -472,6 +472,7 @@
     "adversarial-review/v3",
     "adversarial-review/v4",
     "anchor-plan-receipt/v2",
+    "anchor-plan/v2",
     "evm-observation-bundle/v1",
     "evm-reconciliation-receipt/v3",
     "gmgn-divergence-note/v1",

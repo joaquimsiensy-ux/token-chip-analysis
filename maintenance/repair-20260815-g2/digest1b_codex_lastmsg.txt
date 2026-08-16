@@ -1,0 +1,9 @@
+已按补充裁决完成施工并验收：
+
+- [invariant_manifest.json](/Users/uravvv/.claude/tca-repair-g2/scripts/tests/invariant_manifest.json:13)：登记 `anchor-plan/v2`，`receipt_consumers` 底线由 80 升至 81。
+- `invariant_scan.py`：PASS，实际消费者计数 86。
+- [test_a4_gate.py](/Users/uravvv/.claude/tca-repair-g2/scripts/tests/test_a4_gate.py:79)：补齐复制案根后的 plan 权威链夹具重绑，23 项全绿。
+- `run_all.py`：除两个预期 loopback `socket.bind EPERM` 外，其余全部 PASS，无业务断言失败。
+- [workorder_DIGEST1_done.md](/Users/uravvv/.claude/tca-repair-g2/maintenance/repair-20260815-g2/workorder_DIGEST1_done.md:98)：已追加完整 diff、夹具适配经过和最终验收输出。
+- 全程未执行任何 git 操作。
+

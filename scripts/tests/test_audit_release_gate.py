@@ -99,14 +99,18 @@ def write_deep_recon_fixtures(root, target, raw_input, *, total=100, address="0x
     }
 
     raw_input = Path(raw_input)
-    identity = {"path": str(raw_input.resolve()), "size": raw_input.stat().st_size,
-                "sha256": sha(raw_input)}
+    identity = {"kind": "file", "path": str(raw_input.resolve()),
+                "size": raw_input.stat().st_size, "sha256": sha(raw_input)}
     write_json(root, "fixture_anchor_input_manifest.json", {
         "schema": "anchor-plan-input/v1", "input": identity, "files": [identity]})
     plan_inputs = {"input_manifest": artifact_ref(
         root, root / "fixture_anchor_input_manifest.json")}
     plan_producer = repo_ref("scripts/lib/anchor_plan.py")
-    plan = {"schema": "anchor-plan/v2", "target": target, "input": identity,
+    generated_at = "2026-08-15T00:00:00Z"
+    plan = {"schema": "anchor-plan/v2", "generated_at": generated_at,
+            "target": target, "input": identity, "chain": target["chain"],
+            "token": target["token"], "final_block": target["as_of_block"],
+            "producer": plan_producer, "input_manifest": plan_inputs["input_manifest"],
             "matrix_points": [{"kind": "fixture", "addr": address,
                                "day_end_block": target["as_of_block"],
                                "expected_balance_raw": str(total)}],
@@ -115,7 +119,10 @@ def write_deep_recon_fixtures(root, target, raw_input, *, total=100, address="0x
     plan_receipt = {
         "schema": "anchor-plan-receipt/v2", "target": target,
         "producer": plan_producer, "mode": "formal", "inputs": plan_inputs,
-        "input_identity": identity, "verdict": "PASS", "exit_code": 0}
+        "plan_schema": "anchor-plan/v2", "generated_at": generated_at,
+        "input_identity": identity, "probe_count": 1,
+        "output": artifact_ref(root, root / "fixture_anchor_plan.json"),
+        "verdict": "PASS", "exit_code": 0}
     write_json(root, "fixture_anchor_plan_receipt.json", plan_receipt)
     time_data = "0x70a08231" + address.lower().replace("0x", "").rjust(64, "0")
     time_transcript = [{"seq": 0, "method": "eth_call",

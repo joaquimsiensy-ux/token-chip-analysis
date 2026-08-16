@@ -1,0 +1,12 @@
+[verify_recon] PASS exit=0 → /private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/f07-deep-reverify-9y7cu457/recon/verify_recon.json
+[time_spotcheck] PASS  2/2 一致（balance 1 + tx 1；mismatch 0，rpc_err 0）→ /private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/f07-deep-reverify-9y7cu457/time/time_spotcheck.json
+Traceback (most recent call last):
+  File "/Users/uravvv/.claude/tca-repair-g2/scripts/tests/test_recon_deep_reverify.py", line 432, in <module>
+    main()
+    ~~~~^^
+  File "/Users/uravvv/.claude/tca-repair-g2/scripts/tests/test_recon_deep_reverify.py", line 423, in main
+    _test_time_authority_vectors(time_dir, time_receipt)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/uravvv/.claude/tca-repair-g2/scripts/tests/test_recon_deep_reverify.py", line 348, in _test_time_authority_vectors
+    raise AssertionError("authority mutation unexpectedly passed: " + "; ".join(accepted))
+AssertionError: authority mutation unexpectedly passed: H1 self-written one-point plan with another signed receipt; H2 probe_count differs from the one-point plan; H3 receipt output binds a different plan; H4 plan schema is not anchor-plan/v2; H5 plan target differs from the signed receipt target; H6 plan identity is rebound to a different same-content input; H10 unrelated repository script impersonates the plan producer; H40 boolean counter points; H40 boolean counter balance_points; H40 boolean counter tx_points; H40 boolean counter exact_match; H40 boolean counter mismatch; H40 boolean counter rpc_err

@@ -916,28 +916,76 @@ def _tx_transcript_matches(raw_receipt, row, token):
     return hit and block_ok, receipt_block
 
 
+def _validated_time_plan_authority(root, receipt, target):
+    """Independently bind the consumed plan to its anchor_plan authority chain."""
+    try:
+        plan_path, plan = _bound_json_input(root, receipt, "plan", "time plan")
+        _, plan_receipt = _bound_json_input(
+            root, receipt, "plan_receipt", "time plan receipt")
+        input_ref = (receipt.get("inputs") or {}).get("input")
+        input_path = _bound_case_ref(root, input_ref, "time merged input")
+        _require(isinstance(plan, dict) and isinstance(plan_receipt, dict),
+                 "plan/receipt must be objects")
+
+        plan_errors = validate_receipt(plan_receipt, case_root=root)
+        _require(not plan_errors, f"plan receipt envelope invalid: {plan_errors[:1]}")
+        _require(plan_receipt.get("schema") == "anchor-plan-receipt/v2"
+                 and plan_receipt.get("verdict") == "PASS"
+                 and plan_receipt.get("exit_code") == 0,
+                 "plan receipt schema/verdict invalid")
+        producer = plan_receipt.get("producer")
+        repo_ref_ok(producer, {"scripts/lib/anchor_plan.py"}, "time anchor plan")
+
+        _require(plan.get("schema") == "anchor-plan/v2",
+                 "plan schema must be anchor-plan/v2")
+        _require(plan.get("target") == plan_receipt.get("target"),
+                 "plan target differs from signed receipt target")
+        _require(canonical_target(plan_receipt.get("target")) == canonical_target(target),
+                 "signed target differs from time receipt target")
+        signed_target = plan["target"]
+        _require(plan.get("chain") == signed_target.get("chain")
+                 and plan.get("token") == signed_target.get("token")
+                 and plan.get("final_block") == signed_target.get("as_of_block"),
+                 "plan compatibility target fields diverge")
+        _require(plan.get("producer") == producer,
+                 "plan producer differs from signed receipt producer")
+
+        identity = plan_receipt.get("input_identity")
+        _require(isinstance(identity, dict) and plan.get("input") == identity,
+                 "plan input identity differs from signed receipt")
+        identity_path = _bound_case_ref(root, identity, "time plan input identity")
+        _require(identity_path == input_path,
+                 "signed input identity is not the time receipt input object")
+
+        manifest = (plan_receipt.get("inputs") or {}).get("input_manifest")
+        _bound_case_ref(root, manifest, "time plan input manifest")
+        _require(isinstance(manifest, dict) and plan.get("input_manifest") == manifest,
+                 "plan input manifest differs from signed receipt binding")
+
+        output = plan_receipt.get("output")
+        output_path = _bound_case_ref(root, output, "time signed plan output")
+        _require(output_path == plan_path,
+                 "signed output is not the consumed plan object")
+        _require(plan_receipt.get("plan_schema") == "anchor-plan/v2",
+                 "plan receipt plan_schema mismatch")
+        generated_at = plan.get("generated_at")
+        _require(isinstance(generated_at, str) and bool(generated_at)
+                 and plan_receipt.get("generated_at") == generated_at,
+                 "plan generated_at differs from signed receipt")
+        for field in ("matrix_points", "forced_points"):
+            _require(isinstance(plan.get(field), list), f"plan {field} invalid")
+        point_count = sum(len(plan[field]) for field in ("matrix_points", "forced_points"))
+        probe_count = plan_receipt.get("probe_count")
+        _require(not isinstance(probe_count, bool) and isinstance(probe_count, int)
+                 and probe_count == point_count,
+                 "plan receipt probe_count differs from consumed plan")
+        return plan
+    except ValueError as exc:
+        raise ValueError(f"time plan authority chain broken: {exc}") from exc
+
+
 def _validate_time_receipt(root, receipt, target):
-    _, plan = _bound_json_input(root, receipt, "plan", "time plan")
-    _, plan_receipt = _bound_json_input(
-        root, receipt, "plan_receipt", "time plan receipt")
-    input_ref = (receipt.get("inputs") or {}).get("input")
-    _bound_case_ref(root, input_ref, "time merged input")
-    _require(isinstance(plan, dict) and isinstance(plan_receipt, dict),
-             "time plan/receipt must be objects")
-    plan_errors = validate_receipt(plan_receipt, case_root=root)
-    _require(not plan_errors, f"time plan receipt envelope invalid: {plan_errors[:1]}")
-    _require(plan_receipt.get("schema") == "anchor-plan-receipt/v2"
-             and plan_receipt.get("verdict") == "PASS"
-             and plan_receipt.get("exit_code") == 0,
-             "time plan receipt schema/verdict invalid")
-    _require(canonical_target(plan_receipt.get("target")) == canonical_target(target),
-             "time plan receipt target mismatch")
-    identity = plan_receipt.get("input_identity")
-    _require(isinstance(identity, dict) and identity.get("sha256") == input_ref.get("sha256"),
-             "time plan receipt bound input differs from time receipt input")
-    _require(isinstance(plan.get("input"), dict)
-             and plan["input"].get("sha256") == input_ref.get("sha256"),
-             "time plan input differs from time receipt input")
+    plan = _validated_time_plan_authority(root, receipt, target)
     expected_points = []
     for field in ("matrix_points", "forced_points"):
         rows = plan.get(field)
@@ -987,6 +1035,12 @@ def _validate_time_receipt(root, receipt, target):
                      f"time tx row {seq} differs from transcript")
     balance_count = sum(row.get("type") == "balance" for row in rows)
     tx_count = sum(row.get("type") == "tx" for row in rows)
+    counter_fields = ("points", "balance_points", "tx_points",
+                      "exact_match", "mismatch", "rpc_err")
+    for field in counter_fields:
+        value = receipt.get(field)
+        _require(not isinstance(value, bool) and isinstance(value, int),
+                 f"time receipt counter {field} must be an integer, not a boolean")
     _require(receipt.get("points") == len(rows)
              and receipt.get("balance_points") == balance_count
              and receipt.get("tx_points") == tx_count

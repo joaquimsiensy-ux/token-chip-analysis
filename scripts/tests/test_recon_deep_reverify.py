@@ -216,6 +216,138 @@ def _produce_time(root: Path):
     return out, receipt
 
 
+def _time_authority_variant(root: Path, receipt: dict, name: str, *,
+                            mutate_plan=None, mutate_plan_receipt=None,
+                            bind_output=True, one_point=False, mutate_time=None) -> dict:
+    """Build one H-vector while keeping every unrelated binding internally valid."""
+    plan_source = root / receipt["inputs"]["plan"]["path"]
+    plan_receipt_source = root / receipt["inputs"]["plan_receipt"]["path"]
+    transcript_source = root / receipt["inputs"]["transcript"]["path"]
+    plan = json.loads(plan_source.read_text(encoding="utf-8"))
+    plan_receipt = json.loads(plan_receipt_source.read_text(encoding="utf-8"))
+    changed = copy.deepcopy(receipt)
+
+    if mutate_plan:
+        mutate_plan(plan)
+    plan_path = _write_json(root / f"{name}_plan.json", plan)
+    if bind_output:
+        plan_receipt["output"] = _ref(plan_path, root)
+    if mutate_plan_receipt:
+        mutate_plan_receipt(plan_receipt)
+    plan_receipt_path = _write_json(root / f"{name}_plan_receipt.json", plan_receipt)
+    changed["inputs"]["plan"] = _ref(plan_path, root)
+    changed["inputs"]["plan_receipt"] = _ref(plan_receipt_path, root)
+
+    if one_point:
+        changed["rows"] = changed["rows"][:1]
+        changed.update({
+            "points": 1, "balance_points": 1, "tx_points": 0,
+            "exact_match": 1, "mismatch": 0, "rpc_err": 0,
+        })
+        transcript = json.loads(transcript_source.read_text(encoding="utf-8"))[:1]
+        transcript_path = _write_json(root / f"{name}_transcript.json", transcript)
+        changed["inputs"]["transcript"] = _ref(transcript_path, root)
+    if mutate_time:
+        mutate_time(changed)
+    path = _write_json(root / f"{name}_time_receipt.json", changed)
+    return _item(path, root)
+
+
+def _test_time_authority_vectors(root: Path, receipt: dict) -> None:
+    """H1-H6/H10 authority-chain attacks and H40 bool counters must fail closed."""
+    validate = lambda item: shared.validate_reconciliation_check(
+        root, "time", item, TARGET, "evm")
+
+    def one_point(plan):
+        plan["forced_points"] = []
+
+    other_plan = copy.deepcopy(json.loads(
+        (root / receipt["inputs"]["plan"]["path"]).read_text(encoding="utf-8")))
+    other_plan["forced_points"] = []
+    other_plan_path = _write_json(root / "h3_other_plan.json", other_plan)
+
+    other_input = root / "h6_same_bytes_other_input.csv"
+    original_input = root / receipt["inputs"]["input"]["path"]
+    other_input.write_bytes(original_input.read_bytes())
+    other_identity = {
+        "kind": "file", "path": str(other_input.resolve()),
+        "size": other_input.stat().st_size, "sha256": _sha(other_input),
+    }
+
+    fake_producer = {
+        "path": "scripts/lib/time_spotcheck.py",
+        "sha256": _sha(ROOT / "scripts" / "lib" / "time_spotcheck.py"),
+    }
+    wrong_target = {
+        "chain": "bsc", "token": "0x" + "f" * 40, "as_of_block": 999,
+    }
+    vectors = [
+        ("H1 self-written one-point plan with another signed receipt",
+         _time_authority_variant(root, receipt, "h1", mutate_plan=one_point,
+                                 bind_output=False, one_point=True)),
+        ("H2 probe_count differs from the one-point plan",
+         _time_authority_variant(root, receipt, "h2", mutate_plan=one_point,
+                                 one_point=True)),
+        ("H3 receipt output binds a different plan",
+         _time_authority_variant(
+             root, receipt, "h3",
+             mutate_plan_receipt=lambda value: value.__setitem__(
+                 "output", _ref(other_plan_path, root)))),
+        ("H4 plan schema is not anchor-plan/v2",
+         _time_authority_variant(
+             root, receipt, "h4",
+             mutate_plan=lambda value: value.__setitem__("schema", "attacker-freestyle/v9"))),
+        ("H5 plan target differs from the signed receipt target",
+         _time_authority_variant(
+             root, receipt, "h5",
+             mutate_plan=lambda value: value.__setitem__("target", wrong_target))),
+        ("H6 plan identity is rebound to a different same-content input",
+         _time_authority_variant(
+             root, receipt, "h6",
+             mutate_plan=lambda value: value.__setitem__("input", other_identity),
+             mutate_plan_receipt=lambda value: value.__setitem__(
+                 "input_identity", other_identity))),
+        ("H10 unrelated repository script impersonates the plan producer",
+         _time_authority_variant(
+             root, receipt, "h10",
+             mutate_plan=lambda value: value.__setitem__("producer", fake_producer),
+             mutate_plan_receipt=lambda value: value.__setitem__(
+                 "producer", fake_producer))),
+    ]
+
+    accepted = []
+    for label, item in vectors:
+        try:
+            validate(item)
+        except ValueError as exc:
+            if "time plan authority chain broken" not in str(exc):
+                raise AssertionError(
+                    f"{label}: expected authority-chain rejection, got {exc!r}") from exc
+        else:
+            accepted.append(label)
+
+    bool_fields = ("points", "balance_points", "tx_points",
+                   "exact_match", "mismatch", "rpc_err")
+    for field in bool_fields:
+        bool_item = _time_authority_variant(
+            root, receipt, f"h40_{field}", mutate_plan=one_point,
+            mutate_plan_receipt=lambda value: value.__setitem__("probe_count", 1),
+            one_point=True,
+            mutate_time=lambda value, field=field: value.__setitem__(
+                field, bool(value[field])))
+        try:
+            validate(bool_item)
+        except ValueError as exc:
+            if "boolean" not in str(exc):
+                raise AssertionError(
+                    f"H40 {field}: expected boolean rejection, got {exc!r}") from exc
+        else:
+            accepted.append(f"H40 boolean counter {field}")
+
+    if accepted:
+        raise AssertionError("authority mutation unexpectedly passed: " + "; ".join(accepted))
+
+
 def _test_time_mutations(root: Path, receipt: dict) -> None:
     validate = lambda item: shared.validate_reconciliation_check(
         root, "time", item, TARGET, "evm")
@@ -288,6 +420,7 @@ def main() -> None:
         _test_recon_mutations(recon_dir, recon_out, recon_receipt)
         time_dir = root / "time"; time_dir.mkdir()
         _, time_receipt = _produce_time(time_dir)
+        _test_time_authority_vectors(time_dir, time_receipt)
         _test_time_mutations(time_dir, time_receipt)
         anchor_dir = root / "anchor"; anchor_dir.mkdir()
         anchor_target, anchor_receipt = _anchor_fixture(anchor_dir)
