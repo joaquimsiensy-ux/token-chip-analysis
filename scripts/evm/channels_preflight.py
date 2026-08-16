@@ -94,6 +94,26 @@ def _sha256_file(path: Path):
     return h.hexdigest()
 
 
+# 采集器脚本升级后，正版历史版本采的存量数据不应被"当前哈希"白名单追溯否定
+# （NES 案实证：v6.39.5 正版 fetch_hypersync.py 产的 169 份 receipt 在脚本升级后
+# 全数被拒，而数据完整性另有四查/供给闭合/时间抽查独立证明）。本表是显式静态
+# 登记：每个哈希必须先在 skill 仓库 git 历史中考证到具体 commit 才准入表——
+# `git show <rev>:scripts/evm/<name> | shasum -a 256` 逐条可复验；不提供任何
+# 运行时扩表通道，伪造采集器仍然无法过闸。
+_HISTORICAL_COLLECTOR_HASHES = {
+    "fetch_hypersync.py": {
+        # v6.39.5（commit 2ebd885d1a1364779338e02f8f30e991eec2302d）——NES 案
+        # −1 段（2026-08-12）BSC/ETH 全量 CSV 通道的采集版本
+        "d8113c590fe78e497364b15089215e82d0b061c413f80bb4600913f334f36b6d",
+    },
+    "fetch_sqd_evm.py": set(),
+}
+
+
+def _historical_script_hashes(name):
+    return _HISTORICAL_COLLECTOR_HASHES.get(name, set())
+
+
 def _sha256_prefix(path: Path, size: int):
     if isinstance(size, bool) or not isinstance(size, int) or size < 0 or size > path.stat().st_size:
         raise ChannelsPreflightError("collector segment prefix size 非法")
@@ -144,7 +164,9 @@ def _csv_collector_provenance(receipt_path, data_path, token, lo, hi):
     allowed = {x.name: x for x in (Path(__file__).with_name("fetch_hypersync.py"),
                                       Path(__file__).with_name("fetch_sqd_evm.py"))}
     expected_script = allowed.get(name)
-    if expected_script is None or collector.get("sha256") != _sha256_file(expected_script):
+    if expected_script is None or (
+            collector.get("sha256") != _sha256_file(expected_script)
+            and collector.get("sha256") not in _historical_script_hashes(name)):
         raise ChannelsPreflightError("CSV 采集回执未绑定当前受支持采集器")
     q = d.get("query")
     if not isinstance(q, dict) or str(q.get("token", "")).lower() != str(token).lower() \
