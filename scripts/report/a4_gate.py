@@ -38,6 +38,10 @@ import unicodedata
 from datetime import datetime, timezone
 from pathlib import Path
 
+_LIB = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "lib"))
+sys.path.insert(0, _LIB)
+from case_paths import safe_case_file
+
 CLAIMS_NAME = "a4_claims.json"
 SEAL_NAME = "a4_seal.json"
 VERDICTS = {"CONFIRMED", "WEAKENED", "REFUTED"}
@@ -57,24 +61,26 @@ def sha256_file(path):
     return h.hexdigest()
 
 
-def safe_case_file(case_dir, rel, must_exist=True):
-    """Resolve a relative regular file inside case_dir; reject abs/.. and symlink escape."""
+def safe_case_dir(case_dir, rel, must_exist=True):
+    """Resolve a relative directory inside case_dir for charts-only semantics."""
     if not isinstance(rel, str) or not rel.strip() or os.path.isabs(rel):
         raise ValueError(f"路径必须是案目录内相对路径: {rel!r}")
-    raw = Path(rel)
-    if ".." in raw.parts:
-        raise ValueError(f"路径含 ..: {rel}")
+    parts = rel.split("/")
+    if any(part in {"", ".", ".."} for part in parts):
+        raise ValueError(f"目录路径含空段、. 或 ..: {rel}")
     root = Path(case_dir).resolve()
-    unresolved = root / raw
-    if unresolved.is_symlink():
-        raise ValueError(f"拒绝符号链接文件: {rel}")
+    unresolved = root
+    for part in parts:
+        unresolved /= part
+        if unresolved.is_symlink():
+            raise ValueError(f"拒绝符号链接目录: {rel}")
     p = unresolved.resolve()
     try:
         p.relative_to(root)
     except ValueError:
         raise ValueError(f"路径越出案目录: {rel}")
-    if must_exist and not p.is_file():
-        raise ValueError(f"文件不存在、非普通文件或为符号链接: {rel}")
+    if must_exist and not p.is_dir():
+        raise ValueError(f"目录不存在、非目录或为符号链接: {rel}")
     return p
 
 
@@ -403,7 +409,7 @@ def cmd_finalize(a):
 
     charts_dir = a.charts_dir
     try:
-        cd_abs = safe_case_file(case_dir, charts_dir, must_exist=False)
+        cd_abs = safe_case_dir(case_dir, charts_dir, must_exist=False)
         if cd_abs.exists() and (not cd_abs.is_dir() or cd_abs.is_symlink()):
             raise ValueError(f"charts_dir 非普通目录或为符号链接: {charts_dir}")
     except ValueError as e:

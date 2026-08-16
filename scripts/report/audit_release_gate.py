@@ -18,8 +18,10 @@ from pathlib import Path
 LIB = Path(__file__).resolve().parents[1] / "lib"
 sys.path.insert(0, str(LIB))
 from chain_registry import (formal_ready, known_chains_for_release,
-                            missing_formal_capabilities, release_tier_for, resolve_alias)
+                            missing_formal_capabilities, release_tier_for,
+                            resolve_alias, evm_family)
 from adversarial_review_runner import AGGREGATE_SCHEMA, V4_RERUN_HINT
+from case_paths import safe_case_file
 
 
 SHARED_REQUIRED = (
@@ -78,28 +80,254 @@ def formal_chain_error(value):
     return f"chain={chain or '<missing>'} 未进入正式支持矩阵，不得编译正式 analysis"
 
 
-def check_formal_case_chain(data, errors):
-    """Bind formal release to one chain declared by both accounting and reconciliation."""
-    claims = []
+TARGET_MISMATCH_PREFIX = "正式发布跨分区 target 不一致"
+
+
+def _target_error(errors, detail):
+    errors.append(f"{TARGET_MISMATCH_PREFIX}: {detail}")
+
+
+def _load_present_target_json(case_dir, data, name, errors):
+    """Mount an optional target claimant strictly when it exists on disk."""
+    path = case_dir / name
+    if not (path.exists() or path.is_symlink()):
+        return None
+    try:
+        safe_path = safe_case_file(case_dir, name)
+    except ValueError as exc:
+        _target_error(errors, f"{name} 在场但不是可读案内常规文件: {exc}")
+        return {}
+    value = data.get(name) if name in data else load_json(safe_path, errors)
+    data[name] = value
+    if not isinstance(value, dict):
+        _target_error(errors, f"{name} 在场但 JSON 顶层不是对象")
+        return {}
+    return value
+
+
+def _target_object(owner, source, errors):
+    if not isinstance(owner, dict):
+        return None
+    target = owner.get("target")
+    if not isinstance(target, dict):
+        _target_error(errors, f"{source}.target 缺失或不是对象，无法证明 target 一致")
+        return None
+    return target
+
+
+def _claim_chain(claims, source, value, errors):
+    if not isinstance(value, str) or not value.strip():
+        _target_error(errors, f"{source}=<missing>，跨分区 chain 声明缺失")
+        return None
+    normalized = normalize_chain(value)
+    if not normalized:
+        _target_error(errors, f"{source}={value!r} 无法归一，跨分区 chain 声明缺失")
+        return None
+    claims.append((source, value, normalized))
+    return normalized
+
+
+def _claim_token(claims, source, value, chain, errors):
+    if not isinstance(value, str) or not value.strip():
+        _target_error(errors, f"{source}=<missing>，跨分区 token 声明缺失")
+        return
+    normalized = value.strip().lower() if chain in evm_family() else value.strip()
+    claims.append((source, value, normalized))
+
+
+def _claim_block(claims, source, value, errors):
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        _target_error(errors, f"{source}={value!r}，跨分区 as_of_block 缺失或非法")
+        return
+    claims.append((source, value, value))
+
+
+def _check_unique_target_claims(kind, claims, errors):
+    if len({normalized for _, _, normalized in claims}) <= 1:
+        return True
+    detail = ", ".join(f"{source}={raw!r}" for source, raw, _ in claims)
+    _target_error(errors, f"{kind} 声明矛盾: {detail}")
+    return False
+
+
+def _identity_receipt_target(case_dir, identity, errors):
+    """Rebind identity-holder-snapshot/v2 bytes before exporting token/block."""
+    binding = identity.get("snapshot_binding") if isinstance(identity, dict) else None
+    if not isinstance(binding, dict):
+        _target_error(errors, "identity_gate.json.snapshot_binding 缺失，identity target 无法导出")
+        return None
+    receipt_file = binding.get("receipt_file")
+    try:
+        receipt_path = safe_case_file(case_dir, receipt_file)
+    except ValueError as exc:
+        _target_error(errors,
+                      f"identity_gate.json.snapshot_binding.receipt_file="
+                      f"{receipt_file!r} 无法定位 identity receipt: {exc}")
+        return None
+    expected_sha = binding.get("receipt_sha256")
+    actual_sha = sha256_file(receipt_path)
+    if not isinstance(expected_sha, str) or expected_sha.lower() != actual_sha:
+        _target_error(errors,
+                      f"identity_gate.json receipt_sha256={expected_sha!r} 与 "
+                      f"{receipt_file}.sha256={actual_sha!r} 漂移")
+        return None
+    receipt = load_json(receipt_path, errors)
+    if not isinstance(receipt, dict):
+        _target_error(errors, f"{receipt_file} 在场但 JSON 顶层不是对象")
+        return None
+    if receipt.get("schema") != "identity-holder-snapshot/v2":
+        _target_error(errors,
+                      f"{receipt_file}.schema={receipt.get('schema')!r} 与 "
+                      "identity-holder-snapshot/v2 不一致")
+        return None
+    binding_pairs = (
+        ("receipt_schema", "schema"),
+        ("adapter", "adapter"),
+        ("as_of_block", "as_of_block"),
+    )
+    drift = [
+        f"snapshot_binding.{bound_key}={binding.get(bound_key)!r} "
+        f"{receipt_file}.{receipt_key}={receipt.get(receipt_key)!r}"
+        for bound_key, receipt_key in binding_pairs
+        if binding.get(bound_key) != receipt.get(receipt_key)
+    ]
+    if drift:
+        _target_error(errors, "identity receipt binding 漂移: " + ", ".join(drift))
+        return None
+    token = receipt.get("token")
+    block = receipt.get("as_of_block")
+    if not isinstance(token, str) or not token.strip():
+        _target_error(errors, f"{receipt_file}.token=<missing>，identity target 无法导出")
+        return None
+    if isinstance(block, bool) or not isinstance(block, int) or block < 0:
+        _target_error(errors,
+                      f"{receipt_file}.as_of_block={block!r}，identity target 无法导出")
+        return None
+    return receipt_file, token, block
+
+
+def check_formal_case_chain(case_dir, data, errors):
+    """Bind every present conclusion/evidence partition to one formal target."""
+    for name in ("analysis-state.json", "identity_gate.json",
+                 "a4_seal.json", "a5_report_seal.json"):
+        _load_present_target_json(case_dir, data, name, errors)
+
+    chain_claims = []
+    source_chains = {}
+
+    state = data.get("analysis-state.json")
+    if isinstance(state, dict):
+        state_chain = _claim_chain(
+            chain_claims, "analysis-state.json.chain", state.get("chain"), errors)
+        source_chains["state"] = state_chain
+        token_obj = state.get("token")
+        if not isinstance(token_obj, dict):
+            _target_error(errors,
+                          "analysis-state.json.token 缺失或不是对象，token.chain 无法收集")
+        else:
+            token_chain = _claim_chain(
+                chain_claims, "analysis-state.json.token.chain",
+                token_obj.get("chain"), errors)
+            source_chains["state"] = state_chain or token_chain
+
+    identity = data.get("identity_gate.json")
+    if isinstance(identity, dict):
+        source_chains["identity"] = _claim_chain(
+            chain_claims, "identity_gate.json.chain", identity.get("chain"), errors)
+
+    for key, name in (("a4", "a4_seal.json"), ("a5", "a5_report_seal.json")):
+        obj = data.get(name)
+        if isinstance(obj, dict):
+            source_chains[key] = _claim_chain(
+                chain_claims, f"{name}.chain", obj.get("chain"), errors)
+
     accounting = data.get("accounting_mode.json")
     if isinstance(accounting, dict):
-        claims.append(("accounting_mode.json", normalize_chain(accounting.get("chain"))))
+        source_chains["accounting"] = _claim_chain(
+            chain_claims, "accounting_mode.json.chain", accounting.get("chain"), errors)
+
     reconciliation = data.get("reconciliation_report.json")
-    if isinstance(reconciliation, dict):
-        target = reconciliation.get("target") or {}
-        claims.append(("reconciliation_report.json", normalize_chain(target.get("chain"))))
-    missing = [name for name, chain in claims if not chain]
-    if missing:
-        errors.append("正式发布链声明缺失: " + ", ".join(missing))
+    reconciliation_target = _target_object(
+        reconciliation, "reconciliation_report.json", errors)
+    if reconciliation_target is not None:
+        source_chains["reconciliation"] = _claim_chain(
+            chain_claims, "reconciliation_report.json.target.chain",
+            reconciliation_target.get("chain"), errors)
+
+    shared = data.get("shared_release_receipt.json")
+    shared_target = _target_object(shared, "shared_release_receipt.json", errors)
+    if shared_target is not None:
+        source_chains["shared"] = _claim_chain(
+            chain_claims, "shared_release_receipt.json.target.chain",
+            shared_target.get("chain"), errors)
+
+    chain_ok = _check_unique_target_claims("chain", chain_claims, errors)
+    unique_chains = {normalized for _, _, normalized in chain_claims}
+    # A mixed target can still contain an independently forbidden exploration
+    # chain.  Preserve that formal-support diagnosis alongside the equality
+    # failure so callers do not lose the stricter release-tier reason.
+    for claimed_chain in sorted(unique_chains):
+        reason = formal_chain_error(claimed_chain)
+        if reason and reason not in errors:
+            errors.append(reason)
+
+    a4_present = "a4_seal.json" in data
+    identity_present = "identity_gate.json" in data
+    if a4_present and not identity_present:
+        _target_error(errors,
+                      "a4_seal.json 在场但 identity_gate.json 缺失，"
+                      "结论与证据 target 无法证明一致")
+
+    token_claims = []
+    block_claims = []
+    if isinstance(state, dict):
+        state_token = state.get("token")
+        if isinstance(state_token, dict):
+            # State 的 token 值字段遵循“在场即比”：存量 state 可以只有
+            # token.chain，但 address/mint 任一出现就必须与证据分区唯一。
+            # 两字段并存时分别入 claims，禁止用 or 折叠掉内部矛盾。
+            for field in ("address", "mint"):
+                if field in state_token:
+                    _claim_token(
+                        token_claims,
+                        f"analysis-state.json.token.{field}",
+                        state_token.get(field), source_chains.get("state"), errors)
+    if isinstance(accounting, dict):
+        accounting_token = (accounting.get("token") if accounting.get("token") is not None
+                            else accounting.get("mint"))
+        _claim_token(token_claims, "accounting_mode.json.token|mint",
+                     accounting_token, source_chains.get("accounting"), errors)
+        _claim_block(block_claims, "accounting_mode.json.as_of_block",
+                     accounting.get("as_of_block"), errors)
+    if reconciliation_target is not None:
+        _claim_token(token_claims, "reconciliation_report.json.target.token",
+                     reconciliation_target.get("token"),
+                     source_chains.get("reconciliation"), errors)
+        _claim_block(block_claims, "reconciliation_report.json.target.as_of_block",
+                     reconciliation_target.get("as_of_block"), errors)
+    if shared_target is not None:
+        _claim_token(token_claims, "shared_release_receipt.json.target.token",
+                     shared_target.get("token"), source_chains.get("shared"), errors)
+        _claim_block(block_claims, "shared_release_receipt.json.target.as_of_block",
+                     shared_target.get("as_of_block"), errors)
+
+    if isinstance(identity, dict):
+        receipt_target = _identity_receipt_target(case_dir, identity, errors)
+        if receipt_target is not None:
+            receipt_file, token, block = receipt_target
+            _claim_token(token_claims, f"{receipt_file}.token", token,
+                         source_chains.get("identity"), errors)
+            _claim_block(block_claims, f"{receipt_file}.as_of_block", block, errors)
+
+    token_ok = _check_unique_target_claims("token", token_claims, errors)
+    block_ok = _check_unique_target_claims("as_of_block", block_claims, errors)
+    if not (chain_ok and token_ok and block_ok):
         return None
-    unique = {chain for _, chain in claims}
-    if len(unique) != 1:
-        errors.append("正式发布链声明不一致: "
-                      + ", ".join(f"{name}={chain}" for name, chain in claims))
+    chain = next(iter(unique_chains), "")
+    if not chain:
         return None
-    chain = next(iter(unique), "")
     reason = formal_chain_error(chain)
-    if reason:
+    if reason and reason not in errors:
         errors.append(reason)
         return None
     return chain
@@ -181,20 +409,10 @@ def safe_case_path(case_dir: Path, rel: str) -> Path | None:
 
 
 def regular_case_path(case_dir: Path, rel: str) -> Path | None:
-    """Return a contained regular file and reject symlinks in every path component."""
-    rel_path = Path(rel)
-    if rel_path.is_absolute() or not rel_path.parts \
-            or any(part in {"", ".", ".."} for part in rel_path.parts):
-        return None
-    lexical = case_dir
+    """Compatibility wrapper around the shared regular-file containment helper."""
     try:
-        for part in rel_path.parts:
-            lexical = lexical / part
-            if lexical.is_symlink():
-                return None
-        resolved = safe_case_path(case_dir, rel)
-        return resolved if resolved is not None and resolved.is_file() else None
-    except OSError:
+        return safe_case_file(case_dir, rel)
+    except ValueError:
         return None
 
 
@@ -1168,6 +1386,8 @@ def run(case_dir: Path, report: Path | None, *, profile="independent-audit"):
     case_dir = case_dir.resolve()
     if profile not in REQUIRED_BY_PROFILE:
         raise ValueError(f"未知发布 profile: {profile}")
+    if profile == "independent-audit" and report is None:
+        errors.append("independent-audit 发布必须带 --report 以重验报告哈希绑定（fail-closed）")
     legacy_marker = case_dir / LEGACY_READONLY_RECEIPT
     if legacy_marker.exists() or legacy_marker.is_symlink():
         errors.append("只读降级 legacy 案不得编译新正式 analysis")
@@ -1180,7 +1400,7 @@ def run(case_dir: Path, report: Path | None, *, profile="independent-audit"):
         if p.suffix == ".json" and p.is_file():
             data[name] = (load_adversarial_json(p, errors)
                           if name == "adversarial_review.json" else load_json(p, errors))
-    case_chain = check_formal_case_chain(data, errors)
+    case_chain = check_formal_case_chain(case_dir, data, errors)
     if "audit_input_manifest.json" in data:
         check_manifest(case_dir, data["audit_input_manifest.json"], errors)
     try:

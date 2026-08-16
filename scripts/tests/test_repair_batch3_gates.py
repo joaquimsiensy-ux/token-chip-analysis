@@ -81,12 +81,25 @@ def seed_commands(root: Path, deployed: Path) -> None:
     deployed.mkdir(parents=True)
     contents = {
         "token-analyze-1.md": "distribution_scan.json handoff/v3\n",
-        "token-analyze-2.md": "a4-seal/v4 G11 只支持 full\n",
+        "token-analyze-2.md": "a4-seal/v4 a5-report-seal/v3 G11 只支持 full\n",
         "token-analyze.md": "full command\n",
     }
     for name, content in contents.items():
         (staging / name).write_text(content, encoding="utf-8")
         (deployed / name).write_text(content, encoding="utf-8")
+    manifest = root / "scripts/tests/contract_manifest.json"
+    manifest.parent.mkdir(parents=True)
+    manifest.write_text(json.dumps({
+        "schema": "contract-manifest/v2",
+        "contracts": [
+            {"id": "CT-TEST-REQUIRED-01", "kind": "required",
+             "authority_file": "commands-staging/token-analyze-2.md",
+             "needle": "a5-report-seal/v3", "stages": ["A3-A5"]},
+            {"id": "CT-TEST-BANNED-01", "kind": "banned",
+             "authority_file": "commands-staging/token-analyze-2.md",
+             "needle": "A5 seal v2", "stages": ["A3-A5"]},
+        ],
+    }), encoding="utf-8")
 
 
 def invoke_deploy_main(root: Path, deployed: Path, home: Path) -> tuple[int, str]:
@@ -126,6 +139,28 @@ def t_f04_deploy_sync() -> None:
         check("F04 三文件逐字节一致 PASS", failures == [] and rc == 0,
               (failures, rc, output))
 
+        # F-11 主变异：双侧字节完全相同但都回退旧语义，SHA 层为绿、语义层必须红。
+        old_text = "a4-seal/v4 A5 seal v2 G11 只支持 full\n"
+        for side in (root / "commands-staging", deployed):
+            (side / "token-analyze-2.md").write_text(old_text, encoding="utf-8")
+        failures, _, _ = deploy_failures(root, deployed, base / "home")
+        check("F11 双侧同旧文本 SHA 相等仍被语义层拒绝",
+              not any("SHA-256 不一致" in item for item in failures)
+              and any("required needle 缺失" in item for item in failures)
+              and any("banned needle 回捡" in item for item in failures), failures)
+        clean_text = "a4-seal/v4 a5-report-seal/v3 G11 只支持 full\n"
+        for side in (root / "commands-staging", deployed):
+            (side / "token-analyze-2.md").write_text(clean_text, encoding="utf-8")
+
+        # 同族变体：deployed 单侧回捡 banned，SHA 与语义两层都不得被豁免。
+        (deployed / "token-analyze-2.md").write_text(old_text, encoding="utf-8")
+        failures, _, _ = deploy_failures(root, deployed, base / "home")
+        check("F11 deployed banned 与 SHA 双层同时拒绝",
+              any("SHA-256 不一致" in item for item in failures)
+              and any("banned needle 回捡" in item and "deployed" in item
+                      for item in failures), failures)
+        (deployed / "token-analyze-2.md").write_text(clean_text, encoding="utf-8")
+
         (deployed / "token-analyze.md").unlink()
         failures, _, _ = deploy_failures(root, deployed, base / "home")
         check("F04 deployed 缺一文件 FAIL",
@@ -152,12 +187,14 @@ def t_f04_deploy_sync() -> None:
         (root / "commands-staging").mkdir(parents=True)
         missing = base / "missing-commands"
         rc, output = invoke_deploy_main(root, missing, base / "home")
-        check("F04 非 canonical checkout 缺部署目录明确 SKIP rc0",
-              rc == 0 and "SKIP_NON_CANONICAL_CHECKOUT:" in output, (rc, output))
+        check("F04 manifest 缺失不得借非 canonical SKIP",
+              rc == 1 and "契约注册表" in output
+              and "SKIP_NON_CANONICAL_CHECKOUT:" not in output, (rc, output))
 
         home = base / "canonical-home"
         canonical = home / ".claude" / "skills" / "token-chip-analysis"
         canonical.mkdir(parents=True)
+        seed_commands(canonical, base / "unused-deployed")
         canonical_predicate = getattr(DEPLOY, "is_canonical_checkout", None)
         check("F04 canonical 精确判定纯函数可参数化",
               callable(canonical_predicate)

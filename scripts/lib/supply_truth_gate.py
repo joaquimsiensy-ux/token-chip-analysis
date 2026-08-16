@@ -58,7 +58,8 @@ from pathlib import Path
 
 from receipt_kernel import (build_envelope, finalize_envelope, publish_error_receipt,
                             publish_overwrite, publish_supersede)
-from chain_registry import evm_chain_id_for, formal_reconciliation_chains
+from chain_registry import (evm_chain_id_for, evm_family,
+                            formal_reconciliation_chains, resolve_alias)
 from evm_observation import validate_evm_observation_bundle
 from net import attested_rpc_pool
 from solana_observation import (assert_declared_slot,
@@ -606,7 +607,10 @@ def main(argv=None):
                 bundle, bundle_path=bundle_path, expected_token=a.token,
                 expected_chain_id=evm_chain_id_for(a.chain))
             observed_snapshot_slot = bundle["anchor"]["number"]
-        target = {"chain": a.chain, "token": (a.token or a.mint or "").lower(),
+        token = (a.token or a.mint or "").strip()
+        if resolve_alias(a.chain) in evm_family():
+            token = token.lower()
+        target = {"chain": a.chain, "token": token,
                   "as_of_block": observed_snapshot_slot}
         envelope_inputs = {}
         if a.replay_stats:

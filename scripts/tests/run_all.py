@@ -109,6 +109,15 @@ SUITE += ['test_evm_observation.py']
 # EVM 观测锚工程工单 C：shared/handoff/audit 公共消费、N-2 与原 F-02/F-03 反例。
 SUITE += ['test_evm_observation_release.py']
 
+# AI-1 正式边界与守卫组 test-only 包1/包2/包4 登记（2026-08-15 修复计划）。
+SUITE += ['test_repair_g1_audit_report.py',
+          'test_repair_g1_risk_flags_pipeline.py',
+          'test_repair_g1_handoff_containment.py']
+
+# AI-1 包3 F-03/F-14：跨分区 target 等式与现役文本卫生（2026-08-15 修复计划）。
+SUITE += ['test_repair_g1_cross_target.py',
+          'test_repair_g1_text_hygiene.py']
+
 
 def main():
     results = []

@@ -451,7 +451,7 @@ def _observe_once(session, mint, program, min_context_slot, deadline_seconds):
     raw_hash = sha256_bytes(pre_raw)
     return {
         "schema": "solana-observation-core/v1",
-        "canonical_target": {"chain": "solana", "token": mint.lower(),
+        "canonical_target": {"chain": "solana", "token": mint,
                              "as_of_block": snapshot_slot},
         "attestation": {
             "expected_genesis": SOLANA_MAINNET_GENESIS_HASH,
@@ -540,7 +540,7 @@ def validate_observation_bundle(bundle, *, bundle_path=None, expected_mint=None,
     if producer.get("path") != expected_producer:
         raise ValueError("observation bundle producer binding invalid")
     target = bundle.get("target") or {}
-    if expected_mint is not None and target.get("token") != expected_mint.lower():
+    if expected_mint is not None and target.get("token") != expected_mint.strip():
         raise ValueError("observation bundle mint target mismatch")
     snapshot = bundle.get("snapshot") or {}
     pre = bundle.get("mint_pre") or {}
