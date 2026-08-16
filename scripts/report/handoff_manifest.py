@@ -33,12 +33,16 @@ import os
 import subprocess
 import sys
 import tempfile
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 _LIB = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "lib"))
 sys.path.insert(0, _LIB)
 from chain_registry import (evm_family, formal_ready_chains, get_chain_config,
                             release_tier_for, resolve_alias)
+from case_paths import safe_case_file
+from shared_release_receipt import (validate_accounting_receipt,
+                                    validate_evm_observation_source_chain,
+                                    validate_reconciliation_report)
 
 SCHEMA_VERSION = "handoff/v3"
 # verify 端支持集；consumer_min_schema 不在集内即拒收。
@@ -64,7 +68,8 @@ CONTRACT_FILES = [
     "accounting_mode.json", "supply_truth.json", "wave_scan_report.json",
     "flow_anomaly_report.json", ADJUDICATIONS_NAME, "provenance_ledger.json",
     "time_spotcheck.json", "distribution_scan.json", DISTRIBUTION_ADJUDICATIONS_NAME,
-    "reconciliation_report.json",
+    "reconciliation_report.json", "evm_observation_bundle.json",
+    "evm_observation_transcript.json",
 ]
 REQUIRED_FOR_READY = ["candidate_universe.json", "candidate_screening.json",
                       "identity_preflight.json", "anomalies.json", "data_map.json",
@@ -85,7 +90,8 @@ REQUIRED_FOR_READY = ["candidate_universe.json", "candidate_screening.json",
 # 或又走了自由发挥老路。Solana（anchor_sampler 通道）等非 EVM 链时间抽查形态不同，
 # 不进本硬闸（白名单法：链名命中才强制，未知新链不误伤）。
 READY_CHAINS = formal_ready_chains()
-REQUIRED_FOR_READY_EVM = ["time_spotcheck.json"]
+REQUIRED_FOR_READY_EVM = ["time_spotcheck.json", "evm_observation_bundle.json",
+                          "evm_observation_transcript.json"]
 # 自动 gate 适配：从产物 JSON 读 verdict/exit_code（防手报）；verify 时重读比对
 AUTO_GATES = {"accounting_gate": "accounting_mode.json", "supply_truth_gate": "supply_truth.json",
               "time_spotcheck": "time_spotcheck.json",
@@ -186,11 +192,8 @@ def cmd_generate(a):
     artifacts, missing_required = [], []
     seen = set()
 
-    def add(rel):
+    def add_path(rel):
         if rel in seen:
-            return
-        p = os.path.join(case_dir, rel)
-        if not os.path.isfile(p):
             return
         base = os.path.basename(rel)
         if base in EXCLUDE_NAMES or base.endswith(EXCLUDE_SUFFIXES):
@@ -198,30 +201,60 @@ def cmd_generate(a):
         artifacts.append(file_entry(case_dir, rel))
         seen.add(rel)
 
+    def discover(rel):
+        path = safe_case_file(case_dir, rel, must_exist=False)
+        if path.exists():
+            add_path(rel)
+
+    def add_explicit(rel):
+        path = safe_case_file(case_dir, rel)
+        add_path(rel)
+
     for name in CONTRACT_FILES:
-        add(name)
+        discover(name)
     # data_map 里登记的数据文件并入 allowlist（避免 glob 大杂烩，索引即白名单）
     dm_path = os.path.join(case_dir, "data_map.json")
     if os.path.isfile(dm_path):
         try:
             dm = load_json(dm_path)
-            for ent in dm.get("files", []):
-                rel = ent.get("path")
-                if rel and not os.path.isabs(rel):
-                    add(rel)
         except Exception as e:
             print(f"[generate] data_map.json 解析失败（将继续，但 READY 会被 verify 拒）: {e}", file=sys.stderr)
+        else:
+            try:
+                for ent in dm.get("files", []):
+                    add_explicit(ent.get("path"))
+            except ValueError as e:
+                print(f"[generate] data_map.json 显式文件路径非法: {e}", file=sys.stderr)
+                return 2
+            except Exception as e:
+                print(f"[generate] data_map.json 解析失败（将继续，但 READY 会被 verify 拒）: {e}", file=sys.stderr)
     for extra in a.include or []:
-        add(extra)
+        try:
+            add_explicit(extra)
+        except ValueError as e:
+            print(f"[generate] --include 路径非法: {e}", file=sys.stderr)
+            return 2
     # sealed/ 只记哈希（密封纪律：manifest 记哈希不记内容，读取由 --check-unseal 把关）
     sealed_dir = os.path.join(case_dir, "sealed")
     sealed = []
+    if os.path.islink(sealed_dir):
+        print("[generate] sealed/ 目录不得是符号链接", file=sys.stderr)
+        return 2
     if os.path.isdir(sealed_dir):
         for name in sorted(os.listdir(sealed_dir)):
             p = os.path.join(sealed_dir, name)
+            if os.path.islink(p):
+                print(f"[generate] sealed/ 条目不得是符号链接: {name}", file=sys.stderr)
+                return 2
             if os.path.isfile(p):
-                algo, digest, size = sha256_file(p)
-                sealed.append({"path": f"sealed/{name}", "bytes": size, "hash_algo": algo, "sha256": digest})
+                rel = f"sealed/{name}"
+                try:
+                    safe_path = safe_case_file(case_dir, rel)
+                except ValueError as e:
+                    print(f"[generate] sealed/ 条目路径非法: {e}", file=sys.stderr)
+                    return 2
+                algo, digest, size = sha256_file(safe_path)
+                sealed.append({"path": rel, "bytes": size, "hash_algo": algo, "sha256": digest})
 
     if a.status == "READY":
         required = list(REQUIRED_FOR_READY)
@@ -251,7 +284,11 @@ def cmd_generate(a):
             print(f"[generate] --gate {gname} 已有 AUTO_GATES 适配，禁止 declared 覆盖机器读数",
                   file=sys.stderr)
             return 2
-        add(rel)
+        try:
+            add_explicit(rel)
+        except ValueError as e:
+            print(f"[generate] --gate {gname} 绑定路径非法: {e}", file=sys.stderr)
+            return 2
         if rel not in seen:
             print(f"[generate] --gate {gname} 绑定的产物不存在: {rel}", file=sys.stderr)
             return 2
@@ -336,16 +373,21 @@ def _verify_light_schema(case_dir, fails, manifest, legacy=False):
                        or os.path.isfile(os.path.join(case_dir, "reconciliation_report.json")))
     if not legacy or wrapper_present:
         try:
-            from shared_release_receipt import validate_reconciliation_report
-            target = validate_reconciliation_report(case_dir)
+            target, recon_receipts = validate_reconciliation_report(
+                case_dir, return_receipts=True)
             scope = manifest.get("scope") or {}
             chains = {resolve_alias(chain) for chain in scope.get("chains") or []}
             if len(chains) != 1 or resolve_alias(target.get("chain")) not in chains:
                 fails.append("reconciliation target.chain 未与唯一 READY scope 链绑定")
             if str(target.get("token") or "").lower() != str(scope.get("contract") or "").lower():
                 fails.append("reconciliation target.token 未与 READY scope.contract 绑定")
+            if not legacy:
+                _, accounting, _ = validate_accounting_receipt(
+                    case_dir, expected_target=target)
+                validate_evm_observation_source_chain(
+                    case_dir, accounting, recon_receipts["supply_truth"])
         except Exception as exc:
-            fails.append(f"reconciliation_report.json 深验失败: {exc}")
+            fails.append(f"reconciliation/accounting 公共深验失败: {exc}")
     if legacy:
         return
     try:
@@ -448,7 +490,24 @@ def verify_case(case_dir, legacy_read_only=False):
             fails.append("READY scope.contract 为空")
 
     if not fails:  # schema/状态硬伤先报，避免在坏 manifest 上白跑哈希
-        art_paths = {ent.get("path") for ent in m.get("artifacts", [])}
+        artifacts = m.get("artifacts", [])
+        safe_artifacts = []
+        art_paths = set()
+        if not isinstance(artifacts, list):
+            fails.append("manifest artifacts 不是数组")
+            artifacts = []
+        for index, ent in enumerate(artifacts):
+            if not isinstance(ent, dict):
+                fails.append(f"manifest artifacts[{index}] 不是对象")
+                continue
+            rel = ent.get("path")
+            try:
+                path = safe_case_file(case_dir, rel)
+            except ValueError as e:
+                fails.append(f"artifact 路径非法: {e}")
+                continue
+            safe_artifacts.append((ent, path))
+            art_paths.add(rel)
         # READY 必备件独立重算（v6.8.1：不信 generate 曾正确执行——手改 manifest 的
         # artifacts/gates 列表同样过不了这道重查）
         if not legacy_mode:
@@ -466,15 +525,19 @@ def verify_case(case_dir, legacy_read_only=False):
         elif "reconciliation_report.json" in art_paths \
                 and "reconciliation_four_checks" not in (m.get("gates") or {}):
             fails.append("legacy 案在场 reconciliation_report.json 缺对应 gate 记录")
-        for ent in m.get("artifacts", []):
-            p = os.path.join(case_dir, ent["path"])
-            if not os.path.isfile(p):
-                fails.append(f"缺件: {ent['path']}")
-                continue
+        for ent, p in safe_artifacts:
             algo, digest, size = sha256_file(p)
             if size != ent["bytes"] or digest != ent["sha256"] or algo != ent.get("hash_algo"):
                 fails.append(f"哈希/大小漂移: {ent['path']}")
         for gname, g in (m.get("gates") or {}).items():
+            if not isinstance(g, dict):
+                fails.append(f"gate {gname} 记录不是对象")
+                continue
+            try:
+                safe_case_file(case_dir, g.get("artifact"))
+            except ValueError as e:
+                fails.append(f"gate {gname} artifact 路径非法: {e}")
+                continue
             if g.get("source") == "auto":
                 try:
                     now = read_gate_artifact(case_dir, g["artifact"])
@@ -560,9 +623,8 @@ def full_sha256_file(path):
 
 
 def resolve_bound_path(case_dir, shown):
-    if not isinstance(shown, str) or not shown:
-        raise ValueError("绑定 path 为空")
-    return os.path.normpath(shown if os.path.isabs(shown) else os.path.join(case_dir, shown))
+    safe_case_file(case_dir, shown)
+    return os.path.join(case_dir, shown)
 
 
 def check_bound_file(case_dir, rec, expected_path=None):
@@ -582,9 +644,266 @@ def check_bound_file(case_dir, rec, expected_path=None):
         return None, f"文件绑定校验失败: {e}"
 
 
+def check_algorithm_file(rec, expected_path):
+    """Validate a repository code dependency against one fixed trusted path.
+
+    Algorithm files are intentionally outside the case root, so they cannot use
+    the case-artifact resolver.  No arbitrary absolute path is accepted: the
+    record must name the exact dependency selected by this verifier.
+    """
+    if not isinstance(rec, dict):
+        return None, "算法文件绑定不是对象"
+    shown = rec.get("path")
+    if not isinstance(shown, str) or not shown or not os.path.isabs(shown):
+        return None, "算法文件 path 必须是验证器指定实物的绝对路径"
+    expected = os.path.realpath(expected_path)
+    if os.path.realpath(shown) != expected:
+        return None, f"算法文件绑定路径 {shown} ≠ 当前验证器依赖 {expected_path}"
+    if os.path.islink(shown) or not os.path.isfile(expected):
+        return None, f"算法文件不存在、非普通文件或为符号链接: {shown}"
+    try:
+        digest, size = full_sha256_file(expected)
+    except OSError as e:
+        return None, f"算法文件读取失败: {e}"
+    if digest != rec.get("sha256") or size != rec.get("bytes"):
+        return None, f"算法文件哈希/大小漂移: {shown}"
+    return expected, None
+
+
 def provenance_semantic_payload(report):
     return {k: report.get(k) for k in ("schema", "total_supply_raw", "input_binding",
                                         "entities", "unresolved_total_pct", "bounds_sensitivity")}
+
+
+# ---------------- flip 裁决收据（flip-adjudications/v1，F-06）----------------
+# 共享实现：entity_source_trace（producer 消费收据）、本文件 freeze 前置 3（重验）、
+# a5_report_seal（披露实文核对）三处同源，不手抄三份。
+
+FLIP_ADJUDICATIONS_SCHEMA = "flip-adjudications/v1"
+FLIP_POLICIES = ("pro_rata", "fifo", "lifo")
+# N-D1（批 D 收口补丁）：披露段的策略名判据＝中英文别名族——纯中文真实披露写法
+# （"按比例/先进先出/后进先出"）是合格的并列披露，不得逼作者在中文报告里塞英文
+# 标识符。每策略一组等价词，切片内命中任一即算该策略在场（契约见 scan-schemas §4a）。
+FLIP_POLICY_ALIASES = {
+    "pro_rata": ("pro_rata", "按比例"),
+    "fifo": ("fifo", "先进先出"),
+    "lifo": ("lifo", "后进先出"),
+}
+
+
+def canonical_json_sha(value):
+    return hashlib.sha256(json.dumps(value, ensure_ascii=False, sort_keys=True,
+                                     separators=(",", ":")).encode()).hexdigest()
+
+
+def flip_fingerprint(policy_details):
+    """翻转指纹＝该锚点三策略 policy_details 的规范化子集 sha。
+
+    底层数据（边表/名册/参数）一变，三策略明细必变，指纹随之失配——旧收据自动失效，
+    必须重新人工裁决。这是收据的必选绑定件，不接受"只按 entity:anchor 键豁免"。"""
+    subset = {policy: policy_details.get(policy) for policy in FLIP_POLICIES}
+    return canonical_json_sha({"policy_details": subset})
+
+
+def format_share_pct(raw, stock):
+    """披露用份额字符串（两位小数），trace 生成与 A5 核对同一函数——无浮点边界分叉。"""
+    return f"{int(raw) * 100.0 / int(stock):.2f}"
+
+
+def ledger_real_flips(pl):
+    """从 ledger 的三策略完整明细独立重算真实翻转锚点（不读 agree/stable 自报值）。
+
+    返回 {(entity_id, anchor): {"fingerprint", "tops": {policy: terminal list},
+    "shares": {policy: "12.34"}, "stock": int}}；尘埃锚点（<总供应 0.01%）不入。"""
+    out = {}
+    try:
+        total_supply = int(pl.get("total_supply_raw") or 0)
+    except (TypeError, ValueError):
+        total_supply = 0
+    per = ((pl.get("bounds_sensitivity") or {}).get("per_entity")) or {}
+    for ent in pl.get("entities") or []:
+        eid = ent.get("entity_id")
+        anchors_detail = ((per.get(eid) or {}).get("anchors")) or {}
+        for anchor_name in ("current", "peak"):
+            stock = int(((ent.get("anchors") or {}).get(anchor_name) or {}).get("stock_raw", 0))
+            if stock <= 0:
+                continue
+            if total_supply > 0 and stock * 10000 < total_supply:
+                continue  # 尘埃锚点
+            pd = (anchors_detail.get(anchor_name) or {}).get("policy_details")
+            if not isinstance(pd, dict):
+                continue  # 明细缺失由 recompute 的既有检查报错，这里不重复
+            tops, shares = {}, {}
+            for policy in FLIP_POLICIES:
+                rows = pd.get(policy) or []
+                ranked = []
+                for row in rows:
+                    try:
+                        ranked.append((tuple(row["terminal"]), int(row["raw"])))
+                    except (KeyError, TypeError, ValueError):
+                        continue
+                if not ranked:
+                    tops[policy] = None
+                    continue
+                # 独立重排取第一大（与 trace.top_entry 同键），不信 producer 行序自报
+                terminal, raw = sorted(ranked, key=lambda kv: (-kv[1], str(kv[0])))[0]
+                tops[policy] = list(terminal)
+                shares[policy] = format_share_pct(raw, stock)
+            if len({json.dumps(t, ensure_ascii=False) for t in tops.values()}) != 1:
+                out[(eid, anchor_name)] = {
+                    "fingerprint": flip_fingerprint(pd),
+                    "tops": tops, "shares": shares, "stock": stock}
+    return out
+
+
+def load_flip_adjudications(path, *, current_entity_file=None):
+    """加载并验证 flip-adjudications/v1 裁决收据（强度对齐 distribution/tolerance waiver 先例）。
+
+    验：schema／裁决主体 approved_by／user_decided_at_utc（UTC Z）／entity_file 三验＋与
+    本次运行名册 sha 相等（给了 current_entity_file 时）／evidence_refs 非空逐项三验
+    （收据同目录内、拒绝绝对路径・越界・符号链接）／每行 entity_id・anchor・reason≥10・
+    flip_fingerprint（64 hex）・disclosure（三策略 terminal＋share_pct＋report_locations）。
+    返回 (收据对象, {(entity_id, anchor): 行})。任何不合法抛 ValueError。"""
+    shown = os.path.expanduser(str(path))
+    receipt_path = os.path.realpath(shown)
+    if os.path.islink(shown) or not os.path.isfile(receipt_path):
+        raise ValueError("flip 裁决收据必须是普通文件且不得为符号链接")
+    with open(receipt_path, encoding="utf-8") as fh:
+        doc = json.load(fh)
+    if not isinstance(doc, dict) or doc.get("schema") != FLIP_ADJUDICATIONS_SCHEMA:
+        raise ValueError(f"flip 裁决收据 schema 必须是 {FLIP_ADJUDICATIONS_SCHEMA}")
+    # F-D4：人工裁决面的形式 sanity 闸。机器验不了"裁决实质真伪"（谁批的、批得对不对
+    # ——与 tolerance-waiver 同款设计边界，见工单残余边界声明），但单字符占位主体、
+    # 荒谬时间、垃圾字节证据这类"形式上就不是裁决"的收据必须当场拒。
+    approved_by = doc.get("approved_by")
+    if not isinstance(approved_by, str) or len(approved_by.strip()) < 2:
+        raise ValueError("flip 裁决收据 approved_by 缺失或为单字符占位（裁决主体须可辨识）")
+    decided = doc.get("user_decided_at_utc")
+    try:
+        if not isinstance(decided, str) or not decided.endswith("Z"):
+            raise ValueError
+        decided_dt = datetime.fromisoformat(decided[:-1] + "+00:00")
+    except ValueError as exc:
+        raise ValueError("flip 裁决收据 user_decided_at_utc 必须是有效 UTC 时间") from exc
+    earliest = datetime(2026, 1, 1, tzinfo=timezone.utc)  # 本收据制诞生于 2026-08
+    if not earliest <= decided_dt <= datetime.now(timezone.utc) + timedelta(days=1):
+        raise ValueError("flip 裁决收据 user_decided_at_utc 超出合理时间范围"
+                         "（1970/未来时间戳不是真实裁决时间）")
+
+    receipt_dir = os.path.dirname(receipt_path)
+
+    def bound_ref(ref, label):
+        if not isinstance(ref, dict) or not {"path", "size", "sha256"} <= set(ref):
+            raise ValueError(f"flip 裁决收据 {label} 必须绑定 path/size/sha256")
+        raw = str(ref.get("path") or "")
+        parts = raw.split("/")
+        if os.path.isabs(raw) or not raw or ".." in parts:
+            raise ValueError(f"flip 裁决收据 {label} path 必须是收据同目录内的安全相对路径")
+        lexical = receipt_dir
+        for part in parts:
+            lexical = os.path.join(lexical, part)
+            if os.path.islink(lexical):
+                raise ValueError(f"flip 裁决收据 {label} 不得引用符号链接")
+        target = os.path.realpath(lexical)
+        if not os.path.isfile(target) \
+                or os.path.commonpath([target, os.path.realpath(receipt_dir)]) \
+                != os.path.realpath(receipt_dir):
+            raise ValueError(f"flip 裁决收据 {label} 文件不存在或越界")
+        digest, size = full_sha256_file(target)
+        if ref.get("size") != size or ref.get("sha256") != digest:
+            raise ValueError(f"flip 裁决收据 {label} sha256/size 不匹配")
+        return target
+
+    entity_ref = doc.get("entity_file")
+    entity_path = bound_ref(entity_ref, "entity_file")
+    if current_entity_file is not None:
+        current_digest, _ = full_sha256_file(str(current_entity_file))
+        if entity_ref.get("sha256") != current_digest:
+            raise ValueError("flip 裁决收据 entity_file 与本次运行名册内容不一致"
+                             "——名册改动后旧裁决失效，须重新裁决")
+    refs = doc.get("evidence_refs")
+    if not isinstance(refs, list) or not refs:
+        raise ValueError("flip 裁决收据 evidence_refs 必须是非空数组")
+    for index, ref in enumerate(refs):
+        evidence_path = bound_ref(ref, f"evidence_refs[{index}]")
+        if evidence_path == entity_path:
+            raise ValueError(f"flip 裁决收据 evidence_refs[{index}] 不得就是名册自身"
+                             "——人工核对证据必须独立")
+        # F-D4：最低实物强度——1 字节垃圾文件不构成"人工核对证据"。16 字节是形式下限，
+        # 证据内容真伪仍属机器验不了的残余边界（工单如实声明）。
+        if os.path.getsize(evidence_path) < 16:
+            raise ValueError(f"flip 裁决收据 evidence_refs[{index}] 实物过小（<16 字节），"
+                             "不构成可核对的证据文件")
+    rows = doc.get("adjudications")
+    if not isinstance(rows, list) or not rows:
+        raise ValueError("flip 裁决收据 adjudications 必须是非空数组")
+    by_key = {}
+    for index, row in enumerate(rows):
+        if not isinstance(row, dict):
+            raise ValueError(f"flip 裁决收据 adjudications[{index}] 不是对象")
+        eid = row.get("entity_id")
+        anchor = row.get("anchor")
+        if not isinstance(eid, str) or not eid or anchor not in ("peak", "current"):
+            raise ValueError(f"flip 裁决收据 adjudications[{index}] entity_id/anchor 非法")
+        if len(str(row.get("reason", "")).strip()) < 10:
+            raise ValueError(f"flip 裁决收据 adjudications[{index}] reason 须 ≥10 字符")
+        fp = row.get("flip_fingerprint")
+        if not isinstance(fp, str) or len(fp) != 64 \
+                or any(c not in "0123456789abcdef" for c in fp.lower()):
+            raise ValueError(f"flip 裁决收据 adjudications[{index}] flip_fingerprint 非法")
+        disclosure = row.get("disclosure")
+        tbp = (disclosure or {}).get("top_by_policy") if isinstance(disclosure, dict) else None
+        if not isinstance(tbp, dict) or set(tbp) != set(FLIP_POLICIES):
+            raise ValueError(f"flip 裁决收据 adjudications[{index}] disclosure 缺三策略 "
+                             "top_by_policy")
+        for policy in FLIP_POLICIES:
+            cell = tbp.get(policy)
+            if not isinstance(cell, dict) or not isinstance(cell.get("terminal"), list) \
+                    or not isinstance(cell.get("share_pct"), str) or not cell["share_pct"]:
+                raise ValueError(f"flip 裁决收据 adjudications[{index}] {policy} 披露单元 "
+                                 "缺 terminal/share_pct")
+        locations = (disclosure or {}).get("report_locations")
+        if not isinstance(locations, list) or not locations \
+                or not all(isinstance(x, str) and x.strip() for x in locations):
+            raise ValueError(f"flip 裁决收据 adjudications[{index}] 缺报告可核位置 "
+                             "report_locations")
+        key = (eid, anchor)
+        if key in by_key:
+            raise ValueError(f"flip 裁决收据 adjudications 重复锚点行: {key}")
+        by_key[key] = row
+    return doc, by_key
+
+
+def verify_flip_receipt_against_ledger(receipt_rows, real_flips):
+    """收据行 × ledger 真实翻转逐锚点对账。返回失败列表（空＝覆盖成立）。
+
+    要求：①每个真实翻转锚点有收据行；②行指纹＝当前明细重算指纹（数据一变自动失效）；
+    ③行披露的三策略 top terminal 与份额＝当前明细重算值（防收据写假数）；
+    ④收据不得含指向非真实翻转锚点的行（不许预防性豁免）。"""
+    fails = []
+    for key, info in sorted(real_flips.items()):
+        row = receipt_rows.get(key)
+        if row is None:
+            fails.append(f"{key[0]} {key[1]} 三策略主导终点翻转未获裁决收据覆盖"
+                         "——真实多来源结构须 flip-adjudications/v1 书面裁决后重跑")
+            continue
+        if row.get("flip_fingerprint") != info["fingerprint"]:
+            fails.append(f"{key[0]} {key[1]} 裁决收据指纹与当前三策略明细不符"
+                         "——底层数据已变化，旧裁决失效，须重新裁决")
+            continue
+        tbp = (row.get("disclosure") or {}).get("top_by_policy") or {}
+        for policy in FLIP_POLICIES:
+            cell = tbp.get(policy) or {}
+            want_terminal = info["tops"].get(policy)
+            want_share = info["shares"].get(policy)
+            if list(cell.get("terminal") or []) != (want_terminal or []) \
+                    or cell.get("share_pct") != want_share:
+                fails.append(f"{key[0]} {key[1]} 裁决收据 {policy} 披露值与明细重算不符"
+                             f"（应为 terminal={want_terminal} share={want_share}）")
+    extra = set(receipt_rows) - set(real_flips)
+    if extra:
+        fails.append(f"flip 裁决收据含指向非真实翻转锚点的行（不许预防性豁免）: {sorted(extra)}")
+    return fails
 
 
 def provenance_semantic_sha(report):
@@ -592,13 +911,13 @@ def provenance_semantic_sha(report):
                                      ensure_ascii=False, separators=(",", ":")).encode()).hexdigest()
 
 
-def recompute_provenance_sensitivity(pl):
+def recompute_provenance_sensitivity(case_dir, pl):
     """只读各策略完整明细重算，不读取 stable/agree/top_by_policy 汇总布尔值作裁决。
 
-    与 entity_source_trace 同步的两条豁免（v6.39.4）：
-    ①尘埃锚点（<总供应 0.01%）不入翻转判定；②真实翻转若被 ledger 的
-    acknowledged_flips（--acknowledge-flip 书面确认，理由 ≥10 字符）精确覆盖则放行——
-    确认不改变 stable 真实布尔，只解除发布阻断；顺序未决无豁免。"""
+    两条豁免（v6.39.4 尘埃线；F-06 批 D 起裁决收据制）：
+    ①尘埃锚点（<总供应 0.01%）不入翻转判定；②真实翻转必须被 input_binding 绑定的
+    flip-adjudications/v1 裁决收据精确覆盖（本函数重验收据三验＋逐锚点指纹＋披露值，
+    **不再信 ledger 内嵌自报的 acknowledged_flips**）；顺序未决无豁免。"""
     fails = []
     bs = pl.get("bounds_sensitivity") or {}
     per = bs.get("per_entity")
@@ -608,11 +927,26 @@ def recompute_provenance_sensitivity(pl):
         total_supply = int(pl.get("total_supply_raw") or 0)
     except (TypeError, ValueError):
         total_supply = 0
-    acks = {}
-    for x in (bs.get("acknowledged_flips") or []):
-        if isinstance(x, dict) and x.get("entity_id") and x.get("anchor") in ("peak", "current") \
-                and len(str(x.get("reason", "")).strip()) >= 10:
-            acks[(x["entity_id"], x["anchor"])] = str(x["reason"]).strip()
+    # F-06：acks 只认 manifest/ledger input_binding 绑定的裁决收据文件——三验＋名册绑定
+    # ＋逐锚点指纹重算。ledger 自报 acknowledged_flips（6.39.4 旧格式）不再作数：
+    # 存量用过旧 ack 的案（MOG）重 freeze 会在此拦下，须重跑 trace（迁移声明见文档）。
+    binding = pl.get("input_binding") or {}
+    receipt_rows = {}
+    flips_ref = (binding.get("algorithm_params") or {}).get("flip_adjudications")
+    if flips_ref is not None:
+        fpath, err = check_bound_file(case_dir, flips_ref)
+        if err:
+            fails.append(f"flip 裁决收据绑定 {err}")
+        else:
+            try:
+                entity_path, entity_err = check_bound_file(case_dir, binding.get("entity_file"))
+                _, receipt_rows = load_flip_adjudications(
+                    fpath, current_entity_file=None if entity_err else entity_path)
+            except (OSError, ValueError, TypeError) as exc:
+                fails.append(f"flip 裁决收据不可验: {exc}")
+    real_flips = ledger_real_flips(pl)
+    fails += verify_flip_receipt_against_ledger(receipt_rows, real_flips)
+    acks = set(receipt_rows) & set(real_flips)
     entity_ids = {e.get("entity_id") for e in pl.get("entities") or []}
     if set(per) != entity_ids:
         fails.append("敏感性实体集与 provenance entities 不一致")
@@ -655,8 +989,9 @@ def recompute_provenance_sensitivity(pl):
             if len(set(tops)) != 1:
                 all_stable = False
                 if (eid, anchor_name) not in acks:
-                    fails.append(f"{eid} {anchor_name} 三策略主导终点翻转（机器从明细重算）"
-                                 "——真实多来源结构须 --acknowledge-flip 书面确认后重跑 trace")
+                    fails.append(f"{eid} {anchor_name} 三策略主导终点翻转（机器从明细独立重算）"
+                                 "——真实多来源结构须 flip-adjudications/v1 裁决收据覆盖"
+                                 "（--acknowledge-flip <收据文件> 重跑 trace）")
             order_rows = pd.get("pro_rata") or []
             order_raw = sum(int(r.get("raw", 0)) for r in order_rows
                             if r.get("terminal") == ["UNRESOLVED", "order_ambiguous", None])
@@ -689,7 +1024,7 @@ def validate_and_replay_provenance(case_dir, pl, pl_path, ep, manifest):
     algo_files = algorithm.get("files") or {}
     loader = os.path.join(os.path.dirname(os.path.abspath(__file__)), "wave_scan.py")
     for name, expected in (("entity_source_trace.py", script), ("wave_scan.py", loader)):
-        _, err = check_bound_file(case_dir, algo_files.get(name), expected_path=expected)
+        _, err = check_algorithm_file(algo_files.get(name), expected)
         if err:
             fails.append(f"算法依赖 {name} {err}")
 
@@ -764,7 +1099,7 @@ def validate_and_replay_provenance(case_dir, pl, pl_path, ep, manifest):
             if os.path.isabs(str(rel)) or rel not in data_paths or rel not in art_paths:
                 fails.append(f"source {rel} 未同时绑定 verified manifest.artifacts 与 data_map")
 
-    fails += recompute_provenance_sensitivity(pl)
+    fails += recompute_provenance_sensitivity(case_dir, pl)
     if fails:
         return fails
 
@@ -793,8 +1128,18 @@ def validate_and_replay_provenance(case_dir, pl, pl_path, ep, manifest):
                 "--facility-min-degree", str(params["facility_min_degree"]),
                 "--node-budget", str(params["node_budget"]),
                 "--edge-budget", str(params["edge_budget"])]
-        for spec in (params.get("acknowledged_flips") or []):
-            cmd += ["--acknowledge-flip", str(spec)]
+        # F-06：翻转裁决改收据文件制——重放装配传绑定的收据文件引用（三验后原路径），
+        # 与 trace 消费同一份实物；旧 acknowledged_flips 字符串参数不再受理（同批同 hunk 组，
+        # 否则 freeze 重放当场断裂自卡死）。
+        flips_ref = params.get("flip_adjudications")
+        if flips_ref is not None:
+            flips_path, flips_err = check_bound_file(case_dir, flips_ref)
+            if flips_err:
+                return [f"flip 裁决收据绑定 {flips_err}"]
+            cmd += ["--acknowledge-flip", flips_path]
+        if params.get("acknowledged_flips"):
+            return ["provenance 携带 6.39.4 旧式 acknowledged_flips 字符串参数——"
+                    "裁决收据制（flip-adjudications/v1）起旧确认不再受理，须重跑 trace"]
         if labels_path:
             cmd += ["--labels-file", labels_path]
         env = dict(os.environ)
@@ -846,10 +1191,20 @@ def cmd_freeze(a):
                 binding = pl_now.get("input_binding") or {}
                 bound_records = []
                 bound_records += list(((binding.get("source") or {}).get("files") or []))
-                bound_records += list(((binding.get("algorithm") or {}).get("files") or {}).values())
+                algo_files = ((binding.get("algorithm") or {}).get("files") or {})
+                script_dir = os.path.dirname(os.path.abspath(__file__))
+                for name in ("entity_source_trace.py", "wave_scan.py"):
+                    _, err = check_algorithm_file(algo_files.get(name), os.path.join(script_dir, name))
+                    if err:
+                        drift.append(f"算法依赖 {name} {err}")
                 for key in ("entity_file", "labels_file"):
                     if binding.get(key) is not None:
                         bound_records.append(binding.get(key))
+                # F-D2：flip 裁决收据与 labels_file 同待遇——冻结后改写/删除裁决存证
+                # （裁决主体/时间/理由/证据）必须被揭盲把关抓住，不能只靠 A5 兜底。
+                flips_rec = (binding.get("algorithm_params") or {}).get("flip_adjudications")
+                if flips_rec is not None:
+                    bound_records.append(flips_rec)
                 for key in ("handoff_manifest", "data_map"):
                     if isinstance(binding.get(key), dict) and binding[key].get("file"):
                         bound_records.append(binding[key]["file"])
@@ -876,13 +1231,13 @@ def cmd_freeze(a):
         print("[freeze] 需要 --entity-file <实体名册 {entity_id:[addr…]}>——裁决 linked_entity 绑定"
               "与溯源台账逐实体比对都以它为准（v6.8.1 无跳过通道）", file=sys.stderr)
         return 1
-    mp = os.path.join(case_dir, a.members) if not os.path.isabs(a.members) else a.members
-    ep = os.path.join(case_dir, a.entity_file) if not os.path.isabs(a.entity_file) else a.entity_file
-    if not os.path.isfile(mp):
-        print(f"[freeze] 成员表不存在: {mp}", file=sys.stderr)
-        return 2
-    if not os.path.isfile(ep):
-        print(f"[freeze] 实体名册不存在: {ep}", file=sys.stderr)
+    try:
+        safe_case_file(case_dir, a.members)
+        safe_case_file(case_dir, a.entity_file)
+        mp = os.path.join(case_dir, a.members)
+        ep = os.path.join(case_dir, a.entity_file)
+    except ValueError as e:
+        print(f"[freeze] 成员表/实体名册路径非法: {e}", file=sys.stderr)
         return 2
     try:
         entity_map = load_json(ep)
@@ -907,7 +1262,7 @@ def cmd_freeze(a):
     # 旧案 revision 追加同样过此闸：改成员表＝新结论，必须先重跑 v2 扫描器补裁决。
     validator = os.path.join(os.path.dirname(os.path.abspath(__file__)), "adjudication_validator.py")
     pv = subprocess.run([sys.executable, validator, "validate", "--case-dir", case_dir,
-                         "--entity-file", ep],
+                         "--entity-file", a.entity_file],
                         capture_output=True, text=True)
     if pv.returncode != 0:
         print("[freeze] 候选裁决闭环未通过——禁止冻结（validator 输出如下）:", file=sys.stderr)
@@ -918,7 +1273,7 @@ def cmd_freeze(a):
     distribution_adj_digest = None
     if os.path.isfile(distribution_adj_path):
         pd = subprocess.run([sys.executable, validator, "distribution-validate",
-                             "--case-dir", case_dir, "--entity-file", ep],
+                             "--case-dir", case_dir, "--entity-file", a.entity_file],
                             capture_output=True, text=True)
         if pd.returncode != 0:
             print("[freeze] 分布异常裁决闭环未通过——禁止冻结:", file=sys.stderr)

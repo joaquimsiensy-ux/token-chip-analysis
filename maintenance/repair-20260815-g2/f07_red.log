@@ -1,0 +1,21 @@
+COMMAND: python3 scripts/tests/test_recon_deep_reverify.py
+EXIT_CODE: 1
+
+Traceback (most recent call last):
+  File "/Users/uravvv/.claude/tca-repair-g2/scripts/tests/test_recon_deep_reverify.py", line 95, in <module>
+    main()
+    ~~~~^^
+  File "/Users/uravvv/.claude/tca-repair-g2/scripts/tests/test_recon_deep_reverify.py", line 86, in main
+    _expect_error(
+    ~~~~~~~~~~~~~^
+        lambda: shared.validate_reconciliation_check(
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+            root, "supply", item, TARGET, "evm"),
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        "balance_sum_raw",
+        ^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/Users/uravvv/.claude/tca-repair-g2/scripts/tests/test_recon_deep_reverify.py", line 45, in _expect_error
+    raise AssertionError("tampered receipt unexpectedly passed deep validation")
+AssertionError: tampered receipt unexpectedly passed deep validation

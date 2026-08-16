@@ -62,7 +62,7 @@ python3 ../tests/labels_manifest.py --write      # 发布落印（校验和 mani
 - 大文件源（accounts.csv/tokens.csv/brianleect）不在本地长存，重建前重下载：
 
 ```bash
-P=http://127.0.0.1:7897   # GitHub raw 国内走代理
+P="${CHIP_PROXY:?请先设置 CHIP_PROXY}"   # 代理地址不写死；脚本统一由 proxy_config.py 解析
 curl -sL -x $P -o accounts.csv https://raw.githubusercontent.com/dawsbot/eth-labels/v1/data/csv/accounts.csv
 curl -sL -x $P -o tokens.csv   https://raw.githubusercontent.com/dawsbot/eth-labels/v1/data/csv/tokens.csv
 curl -sL -x $P -o brianleect_eth.json https://raw.githubusercontent.com/brianleect/etherscan-labels/main/data/etherscan/combined/combinedAllLabels.json

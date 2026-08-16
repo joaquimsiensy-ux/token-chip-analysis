@@ -1,0 +1,31 @@
+工单 C 先红证据（2026-08-15）
+
+基线 HEAD（工单明确要求的唯一只读 Git 命令 `git rev-parse HEAD`）：
+ddba1871e27777cae347a2eae107a295b06376b4
+
+命令：python3 scripts/tests/test_g3_alt_collectors.py
+退出码：1
+
+PASS: R1 SQD empty response cannot complete or sign
+PASS: R2 Alchemy empty result is a protocol error
+PASS: R3 SQD partial progress cannot hide a later anomaly
+FAIL: R4 SQD overshoot-only sentinel cannot complete or sign -- AssertionError: overshoot-only SQD response exited 0 and signed completion
+FAIL: R5 SQD real row plus overshoot sentinel cannot complete or sign -- AssertionError: mixed real+overshoot SQD response exited 0 and signed completion
+FAIL: R6 SQD half-log response cannot complete or sign -- AssertionError: half-log SQD response exited 0 and signed completion
+FAIL: P1 SQD stream parser protocol contract -- TypeError: parse_stream_response() takes 1 positional argument but 3 were given
+FAIL: P2 Alchemy transfer page protocol contract -- AssertionError: invalid Alchemy rawContract.value '-0x5' was accepted
+PASS: D1 receipt emitter rejects Alchemy
+FAIL: D1b receipt emitter rejects provider overshoot -- AssertionError: provider_next_block above requested_to was accepted
+PASS: D2 channels preflight rejects Alchemy receipt
+PASS: D3 Alchemy CLI rejects --receipt
+SUMMARY: 6 passed, 6 failed, 0 skip-red
+
+命令：python3 scripts/tests/test_g3_docs_guards.py
+退出码：0
+
+PASS: F-08 A0 exploration command
+PASS: F-08 A2 formal rerun order
+PASS: F-13 runner injection boundary
+PASS: F-05 machine boundary
+
+说明：文档守卫在当前未变异文案上本来即绿，符合工单；M1/M2/M3/M4 的变异红灯在施工完成后以临时内存副本单独自证。

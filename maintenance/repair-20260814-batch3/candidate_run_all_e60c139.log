@@ -1,0 +1,108 @@
+# candidate run_all @ e60c139 (batch3 final production state, pre-merge)
+# commit: e60c139ea12200461374c789a15f2d26ae99076a
+# command: python3 scripts/tests/run_all.py
+# date: 2026-08-15 04:06:54 -0400
+# note: 本 log 由其后的证据登记 commit 追加，所测对象为上列 commit 的生产内容
+========================================================
+      PASS  changelog_lint.py        PASS: 版本号唯一（豁免 2 组历史撞号存档）、顺序正确；活跃 29 条 + 归档 139 条
+      PASS  docs_lint.py --all       PASS: 58 个文档，引用无断链、粗体配对完整（--all 全量模式）
+      PASS  labels_manifest.py       PASS: 8 个发布表与 manifest（2026-08-04 23:38:43）指纹一致
+      PASS  invariant_scan.py        PASS invariant manifest: receipt_producers=58, receipt_consumers=78, t
+      PASS  test_r7_findings.py      PASS R7 regression suite: 15/15 observed green; EXPECTED_RED=0
+      PASS  test_net_result.py       PASS: net Result 显式状态与 curl_json 失败分类
+      PASS  test_batch1_rpc_attestation.py PASS B1-B RPC session: wrong-chain zero business/fail-closed/correct/f
+      PASS  test_batch2_p3_hardening.py PASS B2-G0: invisible/type risk flags + producer symlink + OB-2 canoni
+      PASS  test_batch2_capability_matrix.py PASS B2-D: immutable release tier + capability closure + derived CLI c
+      PASS  test_batch2_ready_reconciliation.py PASS B2-D: READY rejects missing reconciliation wrapper and bound rece
+      PASS  test_batch2_robinhood_exploration.py PASS B2-E: RH exploration is blocked by READY/A4/A5/build/audit and ex
+      PASS  test_batch2_legacy_hardening.py PASS B2F2-G1: B2F-LG-01..05 + duplicate-chain canonicalization
+      PASS  test_batch2_registry_harness_hardening.py PASS B2F-G2: string-only readiness API + reversible immutable harness
+      PASS  test_batch3_solana_producers.py PASS B3-G2: Solana slot/envelope/txn/timestamp producer guards
+      PASS  test_batch3_solana_vertical_slice.py PASS B3-SOL-E2E: real producer->runner->aggregator->READY->release
+      PASS  test_batch3_evm_vertical_slice.py PASS B3-EVM-E2E: eth/bsc/base slices + nonzero dead vertical closure
+      PASS  test_r9_batch1_boundaries.py PASS R9 batch1 process-boundary suite: 3/3
+      PASS  test_r9_solana_attested_session.py PASS R9 SolanaAttestedSession: 10/10
+      PASS  test_r9_batch2_attestation_adapters.py PASS R9 B2-G1: attestation keys resolve to callable factories
+      PASS  test_r9_batch2_executable_capabilities.py PASS R9 B3-G3/G4: six probes ready; deleting one slice drops its chain
+      PASS  test_r9_batch2_solana_sqd_adapter.py PASS R9 B2-G3: SQD dataset scope fixed and Solana mainnet RPC anchored
+      PASS  test_r9_batch3_solana_observation.py PASS R9 B3-G1/G4: Solana observation protocol and negative variants
+      PASS  test_r9_batch3_dynamic_runner.py PASS R9 B3-G2: Solana runner adopts observed supply snapshot slot
+      PASS  test_r9_batch3_preflight.py PASS R9 B3-G5: both preflight shells execute production observation co
+      PASS  test_r9_batch3_release_guards.py PASS R9 B3F3-G3: Solana release negatives 6/6
+      PASS  test_batch4_invariant_guards.py PASS B4-G1: bare pool / labels / vertical slice / denominator injectio
+      PASS  test_exemption_guards.py PASS: exemption guards (EX-01 full-F-03)
+      PASS  test_receipt_kernel.py   PASS receipt kernel: golden + target/hash/disk/concurrency/error/path/
+      PASS  test_batch1_receipt_paths.py PASS B1-A receipt paths: symlink/alias/rollback/fail-closed/PASS prote
+      PASS  test_reconciliation_runner.py PASS: reconciliation runner rejected all 7 controlled-execution counte
+      PASS  test_chain_registry.py   PASS: six executable probes drive release/identity consumers; R9 verti
+      PASS  ../labels/check_manual_sync.py   一致 ✓
+      PASS  env_check.py             PASS: 21 个直接依赖逐项满足 pyproject→lock→installed；Python 3.14.6 满足 requires-
+      PASS  test_commands_deploy_sync.py PASS: 3 份 staging/部署命令 SHA-256 逐文件一致
+      PASS  casebook_lint.py         casebook lint 通过：6 册 37 条，ID 唯一、六字段齐全
+      PASS  fixtures_lint.py         fixtures_lint PASS：pythia_anchors.json 结构完整（数值以文件为权威，回测后人工更新）
+      PASS  test_build_html.py       PASS: build_html 九条契约全过（含 analysis/legacy 模式边界）
+      PASS  test_engine_equivalence.py PASS: 三引擎 gate/退出码 10 例 hypothesis 全等；gate PASS 六产物全等；gate FAIL 正式序列零产
+      PASS  test_report_facts.py     PASS: facts 宏渲染/附录B同源/G1集合gate(含entity_id主键)/G4宏名gate/G5手写检出/G2上界/G6归并
+      PASS  test_fault_injection.py  PASS: 故障注入 F0–F5 + P0-02 四类通道完整性×三引擎 + R1 receipt 生成/漂移
+      PASS  test_review_evm_integrity.py PASS: B-01 payload mismatches and B-02 rejected rows fail closed
+      PASS  test_review_solana_integrity.py PASS: B-06/B-07/B-08 + P1-03 v1/v2 decode retry, identity and failure 
+      PASS  test_review_labels.py    PASS: B-09 manual address-book rows are chain-scoped; composite sync k
+      PASS  test_review_robinhood_integrity.py PASS: B-10 decimal conversions/V3 scaling and H-01 truncated gzip pres
+      PASS  test_review_resume_integrity.py PASS: H-02/H-03 + R2 legacy manifest refresh + H-04/H-05/H-06
+      PASS  test_entity_identity_gate.py PASS: P1-01 无标签实体成员 + 严格 identity gate schema/计数/唯一性/实体绑定
+      PASS  test_review_chain_collectors.py PASS: H-10 overlap resume integrity
+      PASS  test_labels_resolver_guards.py PASS: M-02 strict addresses and empty-file schema
+      PASS  test_batch1_risk_flags.py PASS B1-C risk_flags: canonical parser + four-consumer/live-table agre
+      PASS  test_roundtrip_check.py  PASS: round-trip 缺表与行内退化均 fail-closed
+      PASS  test_benchmark_labels.py PASS: benchmark 五表完整性与 manual 召回硬闸生效
+      PASS  test_add_labels_rollback.py PASS: add_labels validate/benchmark/manifest 三闸与失败回滚
+      PASS  test_fetch_failclosed.py PASS: HyperSync 采集器失败与游标异常均 fail-closed
+      PASS  test_fetch_gmgn_sh.py    PASS: GMGN 临时文件、JSON 校验和失败聚合生效
+      PASS  test_sixlens_receipts.py PASS: 六视角批①结构化回执与 fail-closed
+      PASS  test_sixlens_docs.py     PASS: 六视角批⑤大小口径与 archive 路由
+      PASS  test_token_no_positional.py PASS: 自动枚举 4 个 HyperSync 入口；拒绝位置 token、输出无 secret、优先序三层闭合: fetch_hyper
+      PASS  test_contract_routes.py  PASS: R-01/R-02 注册表、ID 快照、五组锚与 SKILL 原子阶段双向闭合
+      PASS  test_version_consistency.py PASS: M-03 version metadata consistent at 6.43.0
+      PASS  test_chain_support_matrix.py PASS: formal-candidate matrix closes frontmatter + labels capability: 
+      PASS  test_formal_chain_support.py PASS: Arbitrum collection/G8 capability retained; release/A4/A5/formal
+      PASS  test_review_scale_guards.py PASS: M-04 bounded helpers, streaming parquet batches, and bound input
+      PASS  test_figures_from_facts.py PASS: figures_from_facts fig1白名单/legacy销毁键/legend receipt/burn豁免/overl
+      PASS  test_cluster_quality.py  PASS: test_cluster_quality 3/3（盲化/冲突阳性/敏感度冒烟）
+      PASS  test_sqd_merge_equiv.py  PASS: fetch_sqd_transfers_v2 六条契约全过
+      PASS  test_supply_truth_gate.py supply_truth_gate 形态①/②离线契约测试全部通过
+      PASS  test_repair_batch_a.py   PASS batch A F-01/F-02 regressions 44/44
+      PASS  test_repair_batch_b.py   PASS batch B F-03/F-08 regressions 41/41
+      PASS  test_repair_batch_c.py   PASS: repair batch C (F-05+F-04+fixround1+fixround2) 227 checks
+      PASS  test_handoff_manifest.py handoff_manifest 契约测试全部通过（67 项）
+      PASS  test_audit_release_gate.py PASS: audit_release_gate 净室资产/哈希/CEX受益权/阴性结论/图表封口与负钳零/对抗复核否决/四查WARN拦截/
+      PASS  test_review_20260804_p0.py PASS: P0-01 collector provenance + P0-02 reproduce freshness regressio
+      PASS  test_review_20260804_p101.py PASS: P1-01 immutable HyperSync outdir identity and legal capture coex
+      PASS  test_review_20260804_p104.py PASS: P1-04 strict finite percentages/raw integers/unresolved counts
+      PASS  test_review_20260804_p105.py PASS: P1-05 mandatory new-analysis vs independent-audit release profil
+      PASS  test_review_20260804_p106.py PASS: P1-06 claim registry id/text/verdict/evidence/location alignment
+      PASS  test_review_20260804_p201.py PASS: P2-01 total-supply share binding + Arbitrum G8 support
+      PASS  test_review_20260804_p202.py PASS: P2-02 12 required-asset deletions return exit 2 JSON BLOCK
+      PASS  test_round4_csv_adapters.py PASS: alternate adapters are native-receipted or explicit nonformal
+      PASS  test_param_scripts.py    PASS: 三脚本参数反例、旧案字面量与 cadence identity 绑定
+      PASS  test_round4_a5_seal.py   PASS: A5 seal binds A4, Markdown and every report image
+      PASS  test_round4_identity_emitter.py PASS: real EVM collector+preflight+replay and Solana scan chains; copi
+      PASS  test_round4b_provenance.py PASS: copied-hash identity self-reports, producers and runners blocked
+      PASS  test_round4c_solana_provenance.py PASS: raw GPA replay rejects six-file/owner/supply forgeries; pubkey d
+      PASS  test_state_from_facts.py PASS: D-05 state_from_facts compiler owns membership and raw-derived s
+      PASS  test_a4_gate.py          a4_gate 契约测试全部通过（23 项）
+      PASS  test_time_spotcheck.py   time_spotcheck 契约测试全部通过（20 项）
+      PASS  test_peaks_daily.py      PASS：0 项失败
+      PASS  test_wave_scan.py        PASS：0 项失败
+      PASS  test_flow_anomaly.py     PASS：0 项失败
+      PASS  test_entity_source_trace.py PASS：0 项失败
+      PASS  test_adjudication_validator.py PASS：0 项失败
+      PASS  test_distribution_gate.py PASS: distribution gate red-green contract
+      PASS  test_apu_legacy_gaps.py  PASS: APU 存量缺口工单契约测试全绿
+      PASS  test_repair_batch_d.py   BATCH D 全部通过
+      PASS  test_repair_batch1.py    PASS v6.41.0 batch1 steps 1-6 RV-07/RV-04/RV-17/F-03/F-01/A5v3/F-04
+      PASS  test_repair_batch2_f02.py PASS workorder B F-02 regressions
+      PASS  test_repair_batch3_f01.py all batch3 F01 tests passed
+      PASS  test_repair_batch3_gates.py PASS: 批3 deploy-sync/env-check/R10-ledger gates 回归全部通过
+========================================================
+全部通过
+# rc=0

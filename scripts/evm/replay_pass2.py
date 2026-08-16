@@ -12,8 +12,12 @@ camps.json 格式：{"camps": {"阵营名": [地址...]}, "entities": {"实体�
   阵营且确有烧毁时自动增列）。修复前烧毁量残留在散户残差里（SQD 案散户虚高 2.65pp）。
   mint（from=0x0）不记账；全程无烧毁时"销毁"曲线不输出。0xdead 类烧毁地址仍需在 camps.json 显式归入"销毁"。
 """
-import csv, json, argparse, os
+import csv, json, argparse, os, sys
 from collections import defaultdict
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
+from camp_spec import validate_camp_spec
 
 Z = '0x0000000000000000000000000000000000000000'
 
@@ -23,9 +27,36 @@ def main():
     ap.add_argument("camps", help="camps.json（阵营与实体定义）")
     ap.add_argument("--data-dir", default="data")
     a = ap.parse_args()
+    stats_path = f"{a.data_dir}/replay_stats.json"
+    try:
+        stats = json.load(open(stats_path))
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        print(f"[camp-series] {stats_path} 不可读或 JSON 损坏: {exc}——先重跑"
+              " pass1 再跑 pass2", file=sys.stderr)
+        sys.exit(2)
+    # 信任边界：pass2 消费 pass1 的 gate_pass，不在此重算 merged.csv；防篡改由
+    # camp-series provenance 对 replay_stats 的绑定及下游 supply_truth 哈希链兜底。
+    gate_pass = stats.get("gate_pass") if isinstance(stats, dict) else None
+    if type(gate_pass) is not bool:
+        print(f"[camp-series] {stats_path} schema 故障：gate_pass 必须是布尔值，"
+              f"实得 {gate_pass!r}——先重跑 pass1 再跑 pass2", file=sys.stderr)
+        sys.exit(2)
+    if gate_pass is False:
+        print(f"[camp-series] {stats_path} gate_pass=false（pass1 对账 gate 未通过）"
+              "——禁止编译正式阵营/实体序列", file=sys.stderr)
+        sys.exit(4)
+    try:
+        total = int(stats["mint_total_wei"])
+    except (KeyError, TypeError, ValueError) as exc:
+        print(f"[camp-series] {stats_path} schema 故障：mint_total_wei 缺失或非法: "
+              f"{exc}——先重跑 pass1 再跑 pass2", file=sys.stderr)
+        sys.exit(2)
     spec = json.load(open(a.camps))
-    total = int(json.load(open(f"{a.data_dir}/replay_stats.json"))["mint_total_wei"])
-    camps = {k: set(x.lower() for x in v) for k, v in spec.get("camps", {}).items()}
+    # F-05：互斥校验（同营内+跨营重复硬拒 exit 2）在 set() 化之前、规范化之后做；
+    # 校验实现四入口共享（scripts/lib/camp_spec.py），禁再各自手写
+    camps_valid = validate_camp_spec(spec.get("camps", {}), chain_family="evm",
+                                     source_label=a.camps)
+    camps = {k: set(v) for k, v in camps_valid.items()}
     camps.setdefault("销毁", set())
     ents = {k: set(x.lower() for x in v) for k, v in spec.get("entities", {}).items()}
     addr2camp = {}
@@ -114,6 +145,28 @@ def main():
         out["burn_cum_pct"] = burn_pct
     json.dump(out, open(f"{a.data_dir}/camp_series.json", "w"))
     json.dump({"dates": dates, **{k: v for k, v in eseries.items()}}, open(f"{a.data_dir}/entity_series.json", "w"))
+    # F-04：producer sidecar——序列落盘即同步写 provenance（spec/输入/输出 sha 绑定），
+    # state_from_facts --series-source 只认带 sidecar 的序列（camp_series_provenance.py）
+    from camp_series_provenance import write_series_sidecar
+    _den = "mint_total_legacy" if legacy else "current_net_supply"
+    _sidecar_inputs = {"replay_stats": f"{a.data_dir}/replay_stats.json"}
+    _fb = f"{a.data_dir}/balances_final.json"
+    if not os.path.exists(_fb):
+        # F-C6：缺终态快照当场硬拒（与缺 camps 同口径 fail-loud），不许静默少绑
+        # sidecar 拖到编译期才炸——balances_final 与 replay_stats 同为 pass1 四件产物
+        print(f"[camp-series] 缺 {_fb}（pass1 终态快照，末点对账的锚）——先跑"
+              f" pass1/replay_duck 再跑 pass2", file=sys.stderr)
+        sys.exit(2)
+    write_series_sidecar(f"{a.data_dir}/camp_series.json",
+                         producer="scripts/evm/replay_pass2.py",
+                         series_format="evm-dict", denominator=_den,
+                         camps_spec_path=a.camps,
+                         final_balances_path=_fb,
+                         inputs=_sidecar_inputs)
+    write_series_sidecar(f"{a.data_dir}/entity_series.json",
+                         producer="scripts/evm/replay_pass2.py",
+                         series_format="evm-entity-dict", denominator=_den,
+                         camps_spec_path=a.camps, inputs=_sidecar_inputs)
     print(f"天数={len(dates)} 阵营={[k for k in series]} 实体={list(ents)}")
     print("末日阵营占比:", {k: series[k][-1] for k in series})
     print("末日实体占比:", {k: eseries[k][-1] for k in eseries})

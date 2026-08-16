@@ -17,6 +17,16 @@ v4 2026-07-17（codex 交叉复核第二轮融合）：
 import csv, json, os, re, sys
 from collections import Counter
 
+
+def _stable_risk_flags_excepthook(exc_type, exc, traceback):
+    if issubclass(exc_type, ValueError):
+        print(f'BLOCK: risk_flags 脏数据: {exc}', file=sys.stderr)
+        return
+    sys.__excepthook__(exc_type, exc, traceback)
+
+
+sys.excepthook = _stable_risk_flags_excepthook
+
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from labels_resolver import norm_addr   # 全链统一地址规范化
 from risk_flags import canonical_risk_flags, merge_risk_flags, parse_risk_flags

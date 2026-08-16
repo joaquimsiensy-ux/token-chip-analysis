@@ -99,6 +99,8 @@ def test_adversarial_runner_failure_is_fail_closed():
     runner = ROOT / "scripts/report/adversarial_review_runner.py"
     with tempfile.TemporaryDirectory() as td:
         root = Path(td)
+        (root / "a4_claims.json").write_text(json.dumps({
+            "schema": "a4-claims/v2", "claims": [{"id": "C1"}]}))
         entry = root / "fail_review.py"
         entry.write_text("raise SystemExit(7)\n")
         proc = subprocess.run([

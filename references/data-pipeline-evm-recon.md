@@ -9,18 +9,36 @@
 ## 5. 对账 gate（数据不闭合不进分析）
 
 对账清单＝**标准四件套＋1 项重放前置检查**（下列 1–4 为对表查，5 为采集完整性前置），全过才允许跑下游分析。与 analyze-workflow A2 现行"四查"的对应：本节 1＝余额对账、2/3＝供给闭合、4＝时间抽查；A2 第 3 查**供给真值闸**挂 `scripts/lib/supply_truth_gate.py`，不在本清单内：
-1. **重建余额 vs GMGN top10 精确对表**：全量转账逐笔累加重建每地址余额，与 GMGN top10 逐个对到个位数。曾在扫块进度 97% 时 4/10 MISMATCH、补扫 remaining=0 后 10/10 全 OK——证明该 gate 能兜住数据缺口；预跑一次有提前暴露口径问题的价值，但通过判定只认补扫完成之后。（OPN，07）
+1. **余额硬对账＋GMGN 黄灯对表（两件事，不得混写）**：`verify_recon.py` 先按绑定的 `balances` 确定性选出 top-N（先截取、再跳过 ZERO/dead），逐地址用冻结块 RPC `balanceOf` 与重放 raw balance 精确相等核对；任一 MISMATCH/RPC_ERROR 都是硬 FAIL。GMGN top10 是另一个第三方比例对表：以 0.15pp 为容差，差异不改变收据的 PASS/0，但收据必须带 `warnings:["gmgn_divergence"]`，发布链在合格人工查证说明绑定前保持阻断。曾在扫块进度 97% 时 4/10 MISMATCH、补扫 remaining=0 后 10/10 全 OK；该历史现象只说明提前对表能暴露未补扫完成或口径问题，不把 GMGN 比例差异误写成 RPC 个位数硬对账。（OPN，07；2026-08-15 黄灯制）
 2. **全网余额和=0**：所有地址重建余额求和应为零（mint/burn 计入），不为零即漏了转账段。（SIREN，07）
 3. **总量恒等式 wei 级闭合**：跨链代币各链余量之和 ≈ 总供应，精确到 wei。（OPN，07）
 4. **时间抽查（分层计划制）**：`anchor_plan.py` 出分层抽样计划（矩阵点＋四类强制覆盖点），`scripts/lib/time_spotcheck.py` 对独立第二源逐锚点核对（balance 型 archive balanceOf 直查＋tx 型收据五元组，产 time_spotcheck.json）；第二源分层选型与全史重拉例外条款见 §13。（旧"固定块距插值抽几笔对浏览器"形态已由本制取代；OPN/SIREN 07 → 2026-08-01 改版）
 5. **重放前置完整性检查（快照缺块防护，重放开跑前做）**：核对全部采集 run 的 done.json——next_block 全部达到目标块、mtime 晚于最后一次采集启动，才允许重放（实锤：重放跑在尾部 run 拉完前 13 分钟，快照缺尾部 ~980 块/682 条）。**机制警示：供给闭合恒等式（上面第 2/3 查）对"缺整行"免疫**——整行缺失时借贷两边同时缺、sum 恒等于 TOTAL 照样通过，此类洞只有 RPC 抽查负余额能暴露；增量重放出现"期初为 0 的地址转出变负"=上游快照有洞的指纹，见到即停下补数据。（QUQ 完整版分析，07-22）
 
-**供给真值闸的两种销毁形态（`supply-truth-receipt/v3`）**：主规则继续按形态①校验
-`mint_total − burn_total` 与冻结块 `totalSupply()`；只有主规则 FAIL、EVM replay_stats
+标准 EVM 对账结果落为 `evm-reconciliation-receipt/v3`，由发布消费侧按本节四查语义独立重验后决定是否放行。
+
+**GMGN 黄灯查证说明（`gmgn-divergence-note/v1`）**：第一次不带说明运行 `verify_recon.py`，让程序根据本次绑定的 config/balances/replay_stats/gmgn 四实物重算差异。若出现黄灯，人工查证后在案根手写 `gmgn_divergence_note.json`，再把原命令原参数重跑，并追加：
+
+```bash
+python3 scripts/evm/verify_recon.py <原参数> \
+  --divergence-note gmgn_divergence_note.json
+```
+
+说明件顶层字段为 `schema/request/request_sha256/findings/conclusion/investigator/investigated_at_utc`。`request` 必须精确绑定 target、四输入 sha256 与程序输出顺序一致的完整 divergences；每个 address 在 `findings` 中恰有一条说明，`cause` 只允许 `gmgn_data_lag`、`methodology_diff`、`gmgn_upstream_error`，`explanation` 至少 30 个实义字符。`evidence_refs` 可选，提供时必须是案根内普通文件的 path/size/sha256 绑定。标准结论句式：**“重放数据经查证无误，差异来自上述第三方时效或方法口径原因。”** `self_error` 故意不在可放行枚举中：若查证发现自己算错，必须修数据并从头重跑，不能写说明放行。
+
+| 当前重算状态 | producer 结果 | 发布消费侧结果 |
+|---|---|---|
+| 有差异、无说明 | PASS/0，带 `gmgn_divergence` 黄灯 | 阻断，要求绑定说明 |
+| 有差异、说明合格 | 带 `--divergence-note` 重跑并绑定，仍 PASS/0＋黄灯 | 独立重验说明与实物后放行 |
+| 有差异、说明不合格 | exit 1，且不覆盖原黄灯收据 | 原黄灯仍阻断 |
+| 无差异、却给说明 | exit 1，拒绝预填说明 | 无说明的干净 PASS 收据正常放行 |
+
+**供给真值闸的两种销毁形态（EVM `supply-truth-receipt/v4`，Solana `supply-truth-receipt/v3`）**：EVM formal 必须先运行 `scripts/evm/observe_supply.py`，在冻结块以 EIP-1898 `blockHash` 选择器读取 `totalSupply()`、`balanceOf(ZERO)` 与 `balanceOf(dead)`，落 `evm-observation-bundle/v1`＋调用 transcript；`accounting-gate/v2` 与 supply_truth v4 必须绑定同一 bundle，正式消费阶段不再现场 RPC。主规则继续按形态①校验
+`mint_total − burn_total` 与 bundle 的冻结块 `totalSupply()`；只有主规则 FAIL、EVM replay_stats
 同时带齐 ZERO/dead 的流入、流出与净额拆分时，才自动尝试形态②。形态②必须 wei 级同时满足：
 `mint_total == totalSupply()`、ZERO 事件流入等于链上 `balanceOf(ZERO)`、dead 事件净流入
 等于链上 `balanceOf(dead)`、两处 sink 重放值之和等于 `burn_total`。这只证明
-**终态标量与 sink 逐地址归因闭合**；混合形态、旧 stats、任一 RPC/格式异常都不放行，且不提供人工 override。
+**终态标量与 sink 逐地址归因闭合**；混合形态、旧 stats、任一观测/格式异常都不放行，且不提供人工 override。bundle 同时绑定前后两次块头、规范化调用 transcript 与 runtime code 指纹；它证明案内内容闭合，不证明块头案外真实或 producer 确实执行，第三方应使用 bundle 的 blockHash 与 transcript 在独立节点复验。
 重放侧对 sink 收方余额照加，所以 `verify_recon` 的余额恒等式是 `sum_balances == mint_total`；
 `burn_total` 保留为独立观测，不从终态余额和再次扣除。
 
@@ -59,7 +77,7 @@
 
 ## 12. DuckDB 重放/缩图引擎（亿级样本主路径，2026-07-22 三样本对表定版）
 
-**定位（选型决策）**：`replay_duck.py`（pass1+pass2 合一）与 `cluster_prep_duck.py`+`cluster.py --prep` 是**千万行以上样本的重放与聚类主路径**；旧引擎（replay_pass1/2 纯 Python 逐事件）保留为小样本快速路径与黄金基准。动机=旧引擎内存随事件数线性涨（140 万行实测 1.22GB → 亿级外推 ~90GB，16GB 机器不可行）；DuckDB 路径内存设上限、超限落盘外排。
+**定位（选型决策）**：`replay_duck.py`（pass1+pass2 合一）与 `cluster_prep_duck.py`+`cluster.py --prep` 是**千万行以上样本的重放与聚类主路径**；旧引擎（replay_pass1/2 纯 Python 逐事件）保留为小样本快速路径与黄金基准。三种 pass1 引擎算出 `gate_pass=false` 时均保留各自基础重放产物并以 exit 4 终止；独立 `replay_pass2.py` 也必须先验该字段，只有布尔 `true` 才能编译正式序列。动机=旧引擎内存随事件数线性涨（140 万行实测 1.22GB → 亿级外推 ~90GB，16GB 机器不可行）；DuckDB 路径内存设上限、超限落盘外排。
 
 **等价性实证（改任何引擎前先读这段的验收口径）**：三样本七项全等——ASTEROID(ETH,140 万行,v1 CSV 单通道)、SIREN(BSC,2169 万行,三通道段拼接)与旧引擎产物 **7 项逐字段全等**（replay_stats 契约 8 键 / merged.csv 逐字节哈希含 \r\n / balances_final / peaks / mint_ledger / camp_series / entity_series）；QUQ(BSC,1.03 亿行,v2 parquet) 与 replay_pass1_quq 原产物 **stats 11 键 + balances 51,871 址 + daily_delta 1,959,664 键逐键逐值全等**（peaks 口径不同：QUQ=事件级、标准=块末级，弱验证"事件级≥块末"零违例、98.3% 相等）。聚类侧 ASTEROID 沙盘老路 vs --prep **四类判定产物全等**（clusters/gatekeeper_blocked/label_excluded_nodes/team_downstream）。
 
@@ -119,7 +137,7 @@ KOGE 一级 inflow 预筛（≥0.1% 供应）后**仍剩 157,459 个候选**，�
 - **附带收获**：产出的 daily_delta 同时就是阵营/实体日序列的原料，一举两得。
 （KOGE，07-25）
 
-**fail-closed 强化（新引擎内建，比旧引擎严）**：坏行 reject 记账（n_source_rows/n_bad_fields/n_out_of_segment/n_dedup_removed 进 stats）；同去重键不同事件内容=数据损坏硬退（旧引擎静默 keep-last）；空 ts 硬退（旧引擎归上一有效日的未定义行为）；供给闭合 gate 挂 → exit 4。同批修复旧引擎三缺口：replay_pass1 坏行计数+`--allow-bad-rows`（默认 0 即退）、cluster R1/准入阈值整数交叉乘法（曾浮点累计）、transfers_lib dedup 重组冲突检测（同 (block,tx,li) 双 hash 硬退,曾双计）。cluster 输出排序加确定性 tiebreaker（并列余额曾致同数据两跑输出不同）。
+**fail-closed 强化（三引擎 gate 语义统一）**：三种 pass1 引擎均将供给闭合与负余额合成为 `gate_pass`，FAIL 保留基础重放证据后 exit 4；正式 pass2 不消费 FAIL stats。DuckDB 路径另记坏行 reject（n_source_rows/n_bad_fields/n_out_of_segment/n_dedup_removed 进 stats），同去重键不同事件内容按数据损坏硬退，空 ts 硬退；纯 Python 路径对坏行计数并以 `--allow-bad-rows`（默认 0）控制硬退。既有同族修复还包括 cluster R1/准入阈值整数交叉乘法、transfers_lib dedup 重组冲突检测（同 (block,tx,li) 双 hash 硬退）与 cluster 并列余额的确定性 tiebreaker。
 
 通用环境坑（macOS SSL 证书、reportlab 中文字体、前台 sleep 被 Block 等）不在本文重复，见 skill 其他参考文档与 memory（mac-python-pdf-environment.md、onchain-data-accounts.md）。
 
@@ -137,7 +155,7 @@ python3 scripts/lib/time_spotcheck.py --plan anchor_plan.json --rpc <独立archi
 ```
 - balance 型锚点走 archive `eth_call balanceOf`（历史块状态直查），tx 型锚点（最大单笔/交界块）走 `eth_getTransactionReceipt` 核五元组——**两型都查**，只查 balance 型等于四类强制覆盖点漏验两类。O(锚点数) 秒级完成，APU 案 Alchemy archive 15/15 精确一致实证。
 - 独立性口径（措辞纪律）：状态直查对"余额结果"的验证比换一家事件索引商更直接；但**不能替代事件集合完整性验证**——等额进出抵消、零余额中转层、tx/logIndex/时间戳元数据错误它天然验不出（这些去层 3）。
-- 产物 `time_spotcheck.json`（`time-spotcheck/v2`，target 绑定 chain/token/final-block；verdict/exit_code 为 0 PASS/2 FAIL/1 检测自身失败禁当 PASS）；split-run 案是 READY 必备件＋AUTO_GATES（handoff_manifest 重读防手报）。
+- 产物 `time_spotcheck.json`（`time-spotcheck/v3`，target 绑定 chain/token/final-block，并绑定 plan、plan receipt、merged input 与逐笔 RPC transcript；verdict/exit_code 为 0 PASS/2 FAIL/1 检测自身失败禁当 PASS）；split-run 案是 READY 必备件＋AUTO_GATES（handoff_manifest 重读防手报）。
 
 **层 2（BSC 等无免费 archive balanceOf 通道的链）——SQD 只拉锚点窄窗，禁止默认全史**：SQD Portal 仍是 BSC 唯一独立对照源（§11 格局未变），但只拉**锚点所在代表日/窄块窗**（BANANAS31 先例：4 代表日 67,731 行零差集）。窗口覆盖规则：所有锚点日＋早/中/晚三段＋峰值日＋数据源交界＋门槛边缘各至少一窗；逐窗断点续传；逐事件比键 `(block,tx,log_index)` 与值 `(from,to,value)`。主通道本身是 SQD 时它不算独立第二源（换 BigQuery 等，见 §11）。
 

@@ -23,14 +23,17 @@ evolution 的阵营定义读 --camps camps.json：{"阵营名": [完整地址...
 发射时刻默认取首条铸造边 ts，--launch-ts 可覆盖。
 来源：PUB(Solana) 分析 2026-07-14 收编（replay+camp_evolution 合并参数化）。
 """
-import argparse, gzip, hashlib, json, os, sys
+import argparse, gzip, hashlib, json, os, re, sys
 from collections import defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
 
 # 批量标签库共享内核（v4 2026-07-17 接入 SOL 主流程；--no-labels 关闭）：
 # top/sniper/trace 输出带标签标注（CEX/桥/程序/惯犯高亮），top 未命中大户落 miss 队列
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "lib"))
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "labels"))
+from camp_spec import validate_camp_spec
+from supply_truth_gate import _reject_constant
 try:
     from labels_resolver import LabelResolver, append_misses
 except Exception:
@@ -72,40 +75,83 @@ def _flush_sealed():
         blind_notice(p)
 
 ZERO = "0x" + "0" * 40
+SOLANA_MINT_RE = re.compile(r"[1-9A-HJ-NP-Za-km-z]{32,44}")
+
+
+def _json_loads(value, label="JSON"):
+    try:
+        return json.loads(value, parse_constant=_reject_constant)
+    except (json.JSONDecodeError, ValueError, RecursionError) as exc:
+        raise ValueError(f"{label} 非法: {exc}") from exc
+
+
+def _validate_mint(mint):
+    if not isinstance(mint, str) or mint != mint.strip() \
+            or SOLANA_MINT_RE.fullmatch(mint) is None:
+        raise ValueError("mint 必须是 strip 后非空、32~44 字符的 Solana base58 地址")
+    return mint
 
 
 def resolve_mint(cli):
     if cli:
-        return cli
+        return _validate_mint(cli)
     if os.environ.get("MINT"):
-        return os.environ["MINT"]
+        return _validate_mint(os.environ["MINT"])
     p = Path("config.json")
     if p.exists():
-        m = json.loads(p.read_text()).get("mint")
+        m = _json_loads(p.read_text(), "config.json").get("mint")
         if m:
-            return m
+            return _validate_mint(m)
     sys.exit("mint 未指定：--mint / MINT 环境变量 / config.json:mint")
 
 
+def sha256_file(path):
+    h = hashlib.sha256()
+    with open(path, "rb") as fh:
+        for chunk in iter(lambda: fh.read(1024 * 1024), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def _file_ref(path):
+    path = Path(path)
+    return {"path": path.name, "size": path.stat().st_size,
+            "sha256": sha256_file(path)}
+
+
+def _atomic_json(path, value):
+    path = Path(path)
+    tmp = path.with_name(path.name + ".tmp")
+    with open(tmp, "w", encoding="utf-8") as fh:
+        json.dump(value, fh, ensure_ascii=False, indent=2)
+        fh.write("\n")
+        fh.flush()
+        os.fsync(fh.fileno())
+    os.replace(tmp, path)
+
+
 def load_edges(mint):
+    _validate_mint(mint)
     key = hashlib.sha256(mint.encode("utf-8")).hexdigest()
     f = Path(f"data/soltx-{key}.jsonl.gz")
     meta_f = Path(f"data/soltx-{key}.meta.json")
     if not meta_f.exists():
         sys.exit(f"缓存 meta 不存在：{meta_f}")
-    meta = json.loads(meta_f.read_text())
+    meta = _json_loads(meta_f.read_text(), "soltx meta")
     if meta.get("schema") != "sqd-solana-cache/v3" or meta.get("mint") != mint \
             or meta.get("collection_upper_slot") is None:
         sys.exit("SQD 缓存 meta 未绑定原始 mint/endpoint/采集上界，拒绝重放")
+    if f.is_symlink():
+        sys.exit(f"边文件是符号链接，拒绝重放：{f}")
     if not f.exists():
         sys.exit(f"边文件不存在：{f}（先跑 fetch_sqd_transfers_v2.py）")
     edges = []
     with gzip.open(f, "rt") as fh:
         for line in fh:
             if line.strip():
-                edges.append(json.loads(line))
+                edges.append(_json_loads(line, "soltx edge row"))
     edges.sort(key=lambda e: (e[1], e[0]))  # slot 序
-    return edges
+    return edges, meta_f
 
 
 def replay(edges):
@@ -136,8 +182,77 @@ def launch_ts_of(edges, override):
     return edges[0][0]
 
 
-def cmd_reconcile(edges, dec):
-    bal, minted, burned = replay(edges)
+def _replay_with_evidence(edges):
+    """同一次重放计算余额、逻辑边摘要与首末边；不对大边文件做第二次 IO。"""
+    bal = defaultdict(int)
+    minted = burned = 0
+    digest = hashlib.sha256()
+    first = last = None
+    for edge in edges:
+        if not isinstance(edge, (list, tuple)) or len(edge) != 5:
+            raise ValueError("边必须是 [ts,slot,src,dst,amount_raw] 五元组")
+        ts, slot, src, dst, amt = edge
+        if isinstance(ts, bool) or not isinstance(ts, int) \
+                or isinstance(slot, bool) or not isinstance(slot, int) \
+                or isinstance(amt, bool) or not isinstance(amt, int) or amt < 0 \
+                or not isinstance(src, str) or not isinstance(dst, str):
+            raise ValueError("边 ts/slot/amount_raw 必须为合法整数且地址必须为字符串")
+        digest.update((json.dumps(list(edge), ensure_ascii=False) + "\n").encode("utf-8"))
+        point = {"slot": slot, "ts": ts}
+        if first is None:
+            first = point
+        last = point
+        if src == ZERO:
+            minted += amt
+        else:
+            bal[src] -= amt
+        if dst == ZERO:
+            burned += amt
+        else:
+            bal[dst] += amt
+    if first is None:
+        raise ValueError("边文件为空，无法生成正式 reconcile 收据")
+    return bal, minted, burned, digest.hexdigest(), first, last
+
+
+def _snapshot_target(meta):
+    target = meta.get("target") or {}
+    return target.get("as_of_block") if isinstance(target, dict) else None
+
+
+def cmd_reconcile(edges, dec, *, mint, cache_meta_path):
+    """重放并发布 solana-reconcile/v3；mint 按 Solana base58 原文比较。"""
+    _validate_mint(mint)
+    cache_meta_path = Path(cache_meta_path)
+    cache_meta = _json_loads(cache_meta_path.read_text(encoding="utf-8"),
+                             "SQD 缓存 meta")
+    frm = cache_meta.get("from_slot")
+    to = cache_meta.get("collection_upper_slot")
+    if cache_meta.get("schema") != "sqd-solana-cache/v3" \
+            or cache_meta.get("mint") != mint \
+            or isinstance(frm, bool) or not isinstance(frm, int) or frm < 0 \
+            or isinstance(to, bool) or not isinstance(to, int) or to < frm:
+        raise ValueError("SQD 缓存 meta 缺合法原始 mint/from_slot/collection_upper_slot")
+    bal, minted, burned, edge_digest, first, last = _replay_with_evidence(edges)
+    # 将本次真实遍历得到的逻辑摘要回填缓存 meta，消费侧可独立对锚收据字段；
+    # 已有值若不等即说明 meta 与边文件撕裂，拒绝覆盖掩盖。
+    old_digest = cache_meta.get("edge_logical_sha256")
+    old_count = cache_meta.get("edge_rows")
+    if old_digest is not None and old_digest != edge_digest:
+        raise ValueError("SQD 缓存 meta.edge_logical_sha256 与实际边重放摘要不一致")
+    if old_count is not None and old_count != len(edges):
+        raise ValueError("SQD 缓存 meta.edge_rows 与实际边数不一致")
+    edge_key = hashlib.sha256(mint.encode("utf-8")).hexdigest()
+    edge_path = cache_meta_path.with_name(f"soltx-{edge_key}.jsonl.gz")
+    if edge_path.is_symlink():
+        raise ValueError(f"SQD 边文件是符号链接，拒绝 reconcile: {edge_path}")
+    if not edge_path.is_file() or edge_path.stat().st_size <= 0:
+        raise ValueError(f"SQD 边文件缺失或为空: {edge_path}")
+    cache_meta["edge_logical_sha256"] = edge_digest
+    cache_meta["edge_rows"] = len(edges)
+    cache_meta["edge_file_size"] = edge_path.stat().st_size
+    cache_meta["edge_file_sha256"] = sha256_file(edge_path)
+    _atomic_json(cache_meta_path, cache_meta)
     print(f"边数={len(edges):,}  时间范围 {fmt_ts(edges[0][0])} → {fmt_ts(edges[-1][0])}")
     print(f"铸造={minted:,}  销毁={burned:,}  净={minted-burned:,}")
     neg = {a: v for a, v in bal.items() if v < 0}  # 任意负余额=数据洞
@@ -146,11 +261,28 @@ def cmd_reconcile(edges, dec):
     snap_f = Path("data/holders_owners.json")
     meta_f = Path("data/holders_snapshot_meta.json")
     mismatch, snapshot_ok, supply = [], False, None
+    owners_ref = _file_ref(snap_f) if snap_f.exists() else None
+    snap_meta = None
     if snap_f.exists() and meta_f.exists():
-        snap = {a: int(v) for a, v in json.loads(snap_f.read_text()).items()}
-        snap_meta = json.loads(meta_f.read_text())
+        snap_obj = _json_loads(snap_f.read_text(), "holders_owners.json")
+        snap = {a: int(v) for a, v in snap_obj.items()}
+        snap_meta = _json_loads(meta_f.read_text(), "holders_snapshot_meta.json")
+        if "supply_raw" not in snap_meta:
+            raise ValueError("holders_snapshot_meta.supply_raw 缺失，拒绝静默默认")
+        try:
+            registered_supply = int(snap_meta["supply_raw"])
+        except (TypeError, ValueError) as exc:
+            raise ValueError("holders_snapshot_meta.supply_raw 必须为整数") from exc
         supply = sum(snap.values())
-        snapshot_ok = bool(snap_meta.get("closed")) and int(snap_meta.get("supply_raw", -1)) == supply
+        out_ref = ((snap_meta.get("outputs") or {}).get("holders_owners") or {})
+        snapshot_slot = _snapshot_target(snap_meta)
+        snapshot_ok = (snap_meta.get("schema") == "solana-holder-snapshot-v2"
+                       and snap_meta.get("mint") == mint
+                       and snap_meta.get("closed") is True
+                       and registered_supply == supply
+                       and isinstance(snapshot_slot, int) and not isinstance(snapshot_slot, bool)
+                       and snapshot_slot >= to
+                       and out_ref == owners_ref)
         print(f"快照 supply={supply:,}  重放净-快照差={minted-burned-supply:,}")
         for a in sorted(set(snap) | set(rb)):
             if rb.get(a, 0) != snap.get(a, 0):
@@ -161,14 +293,23 @@ def cmd_reconcile(edges, dec):
     else:
         print("[FAIL] 缺 holders_owners.json 或 holders_snapshot_meta.json，快照关卡不完整")
     gate_pass = (not neg and snapshot_ok and supply == minted - burned and not mismatch)
-    receipt = {"schema": "solana-reconcile/v2", "edge_count": len(edges),
+    producer_path = Path(__file__).resolve()
+    receipt = {"schema": "solana-reconcile/v3", "chain": "solana", "mint": mint,
+               "collection_window": {"from_slot": frm, "to_slot": to},
+               "edge_extrema": {"first": first, "last": last},
+               "edge_digest": edge_digest, "edge_count": len(edges),
+               "producer": {"path": "scripts/solana/replay_edges.py",
+                            "sha256": sha256_file(producer_path)},
+               "inputs": {"soltx_meta": _file_ref(cache_meta_path),
+                          "holders_owners": owners_ref,
+                          "holders_snapshot_meta": _file_ref(meta_f) if meta_f.exists() else None},
                "minted_raw": str(minted), "burned_raw": str(burned),
-               "net_supply_raw": str(minted - burned),
+               "net_supply_raw": minted - burned,
                "negative_balance_count": len(neg), "snapshot_present": snap_f.exists(),
                "snapshot_meta_present": meta_f.exists(), "snapshot_closed": snapshot_ok,
                "snapshot_supply_raw": str(supply) if supply is not None else None,
                "snapshot_mismatch_count": len(mismatch), "gate_pass": gate_pass}
-    json.dump(receipt, open("data/reconcile_receipt.json", "w"), indent=2)
+    _atomic_json("data/reconcile_receipt.json", receipt)
     json.dump(dict(sorted(rb.items(), key=lambda kv: -kv[1])),
               open("data/replay_final_balances.json", "w"))
     print("重放末态已写 data/replay_final_balances.json")
@@ -235,7 +376,19 @@ def cmd_mints(edges, dec):
 
 
 def cmd_evolution(edges, dec, camps_file, stake_pools):
-    camps_def = json.loads(Path(camps_file).read_text()) if Path(camps_file).exists() else {}
+    # F-05 定案（rg 调用面：main --camps 默认 camps.json + test_review_resume_integrity，
+    # 文档与真实案均无"无 camps 跑 evolution"的用法）：缺文件从"静默空 spec"改为硬拒——
+    # 静默空 spec 的效果是全部地址落散户/狙击者两桶，序列外观正常实际零阵营。
+    # 确需无阵营定义的探索跑，显式建一份内容为 {} 的 camps 文件表达意图。
+    if not Path(camps_file).exists():
+        print(f"[camp-spec] 阵营定义文件不存在：{camps_file}——evolution 必须显式给"
+              f" camps（无阵营定义就放一份 {{}}），拒绝静默按空 spec 重放", file=sys.stderr)
+        raise SystemExit(2)
+    camps_def = _json_loads(Path(camps_file).read_text(), "camps spec")
+    # 互斥校验（同营内+跨营重复硬拒 exit 2；Solana base58 原样不改写大小写），
+    # 与 EVM 两引擎同一共享实现（scripts/lib/camp_spec.py）
+    camps_def = validate_camp_spec(camps_def, chain_family="solana",
+                                   source_label=str(camps_file))
     addr2camp = {}
     pools = set()
     for camp, addrs in camps_def.items():
@@ -322,6 +475,18 @@ def cmd_evolution(edges, dec, camps_file, stake_pools):
     json.dump({a: v for a, v in sorted(eff.items(), key=lambda kv: -kv[1]) if v != 0},
               open("data/effective_balances.json", "w"))
     print("有效持仓末态已写 data/effective_balances.json")
+    # F-04：producer sidecar——effective_balances 是与本序列同一次重放的终态快照
+    # （末点对账锚）；reconcile_receipt 在场即绑（正式编译链要求其在场且 gate_pass）
+    from camp_series_provenance import write_series_sidecar
+    _inputs = {"sniper_set": "data/sniper_set.json"}
+    if Path("data/reconcile_receipt.json").exists():
+        _inputs["reconcile_receipt"] = "data/reconcile_receipt.json"
+    write_series_sidecar("data/camp_share_series.json",
+                         producer="scripts/solana/replay_edges.py",
+                         series_format="sol-rows", denominator="net_supply",
+                         camps_spec_path=camps_file,
+                         final_balances_path="data/effective_balances.json",
+                         inputs=_inputs)
 
 
 def main():
@@ -337,39 +502,47 @@ def main():
                     help="质押/托管池 owner 地址（可多次；也可 config.json:stake_pools）")
     ap.add_argument("--no-labels", action="store_true", help="关闭批量标签库兜底")
     args = ap.parse_args()
-    global RESV
-    if LabelResolver is not None and "--no-labels" not in sys.argv:
-        RESV = LabelResolver("sol")
-        RESV.warn_if_degraded()     # 降级=显式 stderr 警告（"没命中"≠"没加载"，v4）
-        if blind_serial_env():
-            import atexit
-            atexit.register(_flush_sealed)   # A2–A3：serial 命中在进程尾封存，A4 揭盲
-    elif LabelResolver is None:
-        print("[labels][degraded_mode] labels_resolver 导入失败——本次运行无标签兜底", file=sys.stderr)
-    mint = resolve_mint(args.mint)
-    dec = 10 ** args.decimals
-    edges = load_edges(mint)
-    stake_pools = set(args.stake_pool)
-    cfg = Path("config.json")
-    if cfg.exists():
-        stake_pools |= set(json.loads(cfg.read_text()).get("stake_pools", []))
+    try:
+        global RESV
+        if LabelResolver is not None and "--no-labels" not in sys.argv:
+            RESV = LabelResolver("sol")
+            RESV.warn_if_degraded()     # 降级=显式 stderr 警告（"没命中"≠"没加载"，v4）
+            if blind_serial_env():
+                import atexit
+                atexit.register(_flush_sealed)   # A2–A3：serial 命中在进程尾封存，A4 揭盲
+        elif LabelResolver is None:
+            print("[labels][degraded_mode] labels_resolver 导入失败——本次运行无标签兜底", file=sys.stderr)
+        mint = resolve_mint(args.mint)
+        dec = 10 ** args.decimals
+        edges, cache_meta_path = load_edges(mint)
+        stake_pools = set(args.stake_pool)
+        cfg = Path("config.json")
+        if cfg.exists():
+            stake_pools |= set(_json_loads(
+                cfg.read_text(), "config.json").get("stake_pools", []))
 
-    if args.cmd == "reconcile":
-        if not cmd_reconcile(edges, dec):
-            sys.exit(2)
-    elif args.cmd == "trace":
-        if not args.arg:
-            sys.exit("trace 需要地址参数")
-        cmd_trace(edges, args.arg, dec, int(args.arg2) if args.arg2 else 200)
-    elif args.cmd == "top":
-        cmd_top(edges, dec, int(args.arg) if args.arg else 30)
-    elif args.cmd == "sniper":
-        cmd_sniper(edges, dec, int(args.arg) if args.arg else 30, launch_ts_of(edges, args.launch_ts))
-    elif args.cmd == "mints":
-        cmd_mints(edges, dec)
-    elif args.cmd == "evolution":
-        cmd_evolution(edges, dec, args.camps, stake_pools)
+        if args.cmd == "reconcile":
+            if not cmd_reconcile(edges, dec, mint=mint,
+                                 cache_meta_path=cache_meta_path):
+                return 2
+        elif args.cmd == "trace":
+            if not args.arg:
+                raise ValueError("trace 需要地址参数")
+            cmd_trace(edges, args.arg, dec, int(args.arg2) if args.arg2 else 200)
+        elif args.cmd == "top":
+            cmd_top(edges, dec, int(args.arg) if args.arg else 30)
+        elif args.cmd == "sniper":
+            cmd_sniper(edges, dec, int(args.arg) if args.arg else 30,
+                       launch_ts_of(edges, args.launch_ts))
+        elif args.cmd == "mints":
+            cmd_mints(edges, dec)
+        elif args.cmd == "evolution":
+            cmd_evolution(edges, dec, args.camps, stake_pools)
+    except (OSError, ValueError, json.JSONDecodeError, RecursionError) as exc:
+        print(f"BLOCK: {exc}", file=sys.stderr)
+        return 2
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

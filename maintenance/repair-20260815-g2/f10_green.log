@@ -1,0 +1,130 @@
+PASS test_consumer_rejects_exploration_mode
+PASS test_consumer_rejects_exploration_tier_relabelled_formal
+PASS test_wrapper_target_rejects_exploration_tier
+PASS test_formal_receipt_regression
+PASS test_accounting_cli_policy
+PASS test_verify_recon_cli_policy
+PASS test_time_spotcheck_cli_policy
+PASS test_supply_truth_cli_policy
+PASS test_formal_cli_defaults_regression
+PASS F-10: exploration CLI execution + formal consumer isolation
+PASS B2-D: immutable release tier + capability closure + derived CLI choices
+[verify_recon] PASS exit=0 → /private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/tmp2vtwy0em/recon/closed/receipt.json
+[verify_recon] FAIL exit=2 → /private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/tmp2vtwy0em/recon/supply-fail/receipt.json
+[verify_recon] FAIL exit=2 → /private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/tmp2vtwy0em/recon/balance-fail/receipt.json
+[verify_recon] ERROR exit=1 → /private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/tmp2vtwy0em/recon/rpc-fail/receipt.error.20260815T133257.140879Z.38788.json
+target days: 1 (skip 0), order new->old
+DONE 1 days, fails=1, 0s
+[anchor_sampler] ERROR → /private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/tmp2vtwy0em/anchor/anchor_receipt.error.20260815T133257.144683Z.38788.json
+target days: 1 (skip 0), order new->old
+DONE 1 days, fails=1, 0s
+[anchor_sampler] ERROR → /private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/tmp2vtwy0em/anchor/anchor_receipt.error.20260815T133257.146634Z.38788.json
+target days: 1 (skip 0), order new->old
+DONE 1 days, fails=0, 0s
+[anchor_sampler] ERROR → /private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/tmp2vtwy0em/anchor/anchor_receipt.error.20260815T133257.148309Z.38788.json
+[anchor_sampler] receipt 生成失败（exit 1）: disk full
+target days: 1 (skip 0), order new->old
+DONE 1 days, fails=0, 0s
+[anchor_sampler] ERROR → /private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/tmp2vtwy0em/anchor/anchor_receipt.error.20260815T133257.159025Z.38788.json
+[anchor_sampler] resume 第 1 行: resume 身份不匹配 ['chain']，拒绝复用；请重采
+[anchor_sampler] ERROR → /private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/tmp2vtwy0em/anchor/anchor_receipt.error.20260815T133257.160605Z.38788.json
+[anchor_sampler] resume 第 1 行: resume 身份不匹配 ['mint']，拒绝复用；请重采
+[anchor_sampler] ERROR → /private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/tmp2vtwy0em/anchor/anchor_receipt.error.20260815T133257.162071Z.38788.json
+[anchor_sampler] resume 第 1 行: resume 身份不匹配 ['endpoint']，拒绝复用；请重采
+[anchor_sampler] ERROR → /private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/tmp2vtwy0em/anchor/anchor_receipt.error.20260815T133257.163594Z.38788.json
+[anchor_sampler] resume 第 1 行: resume 身份不匹配 ['as_of_slot']，拒绝复用；请重采
+[anchor_sampler] ERROR → /private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/tmp2vtwy0em/anchor/anchor_receipt.error.20260815T133257.164999Z.38788.json
+[anchor_sampler] resume 第 1 行: resume to_slot=10001 越过 cutoff=10000 或不是非负整数
+[window_fetch] 正式窗口要求 0 <= from_slot <= to_slot 且 conc >= 1
+[window_fetch] 正式窗口要求 0 <= from_slot <= to_slot 且 conc >= 1
+segments: 1 x 2000 slots, conc=1
+FAIL 1 segs (1 gaps) in 0s -> /private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/tmp2vtwy0em/window/window.jsonl.partial
+segments: 1 x 2000 slots, conc=1
+PASS 1 segs (0 gaps) in 0s -> /private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/tmp2vtwy0em/window/window.jsonl
+segments: 1 x 2000 slots, conc=1
+[window_fetch] ERROR → /private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/tmp2vtwy0em/window/window_receipt.error.20260815T133257.178666Z.38788.json
+[window_fetch] 检测/提交失败（exit 1）: disk full
+segments: 1 x 2000 slots, conc=1
+[window_fetch] ERROR → /private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/tmp2vtwy0em/window/window_receipt.error.20260815T133257.180750Z.38788.json
+[window_fetch] 检测/提交失败（exit 1）: disk full
+PASS: 六视角批①结构化回执与 fail-closed
+ok    generate READY exit 0
+ok    manifest 收录 data_map 索引文件
+ok    EVM manifest 收录 bundle 与 transcript
+ok    manifest sealed 只记哈希
+ok    manifest 自动 gate 四个
+ok    verify READY exit 0
+ok    accounting WARN + exit 0 按记账 gate 契约放行
+ok    READY 缺 chain generate 拒
+ok    READY 缺 contract generate 拒
+ok    READY 未知 chain generate 拒
+ok    PARTIAL 不强制正式 scope
+ok    scope 独立正例生成
+ok    verify 空 chains scope 拒
+ok    EVM 链缺 time_spotcheck 拒 READY exit 2
+ok    solana 不得复用 bsc reconciliation
+ok    READY 缺 reconciliation 拒
+ok    receipt 追加两条
+ok    receipt blind_mode 跟随环境
+ok    freeze 前揭盲拒绝 exit 2
+ok    freeze 缺 --entity-file 拒
+ok    无裁决台账 freeze 拒 exit 2
+ok    exploration/null-label provenance freeze 拒
+ok    四重前置齐备 freeze 初次 exit 0
+ok    冻结记录绑定成员/名册/provenance/manifest/data_map 全套哈希
+ok    freeze 后揭盲放行 exit 0
+ok    名册改动后复用旧溯源台账 freeze 拒 exit 2
+ok    重跑溯源后 freeze 变更走 revision 追加
+ok    supersede 归档旧 manifest
+ok    generate BLOCKED_CEX_GATE exit 0
+ok    verify BLOCKED 拒收 exit 2
+ok    BLOCKED 案 freeze 同拒 exit 2（前置 0 内联 verify）
+ok    哈希漂移拒收 exit 2
+ok    哈希漂移案 freeze 同拒 exit 2（前置 0）
+ok    schema 不兼容拒收 exit 2
+ok    gate 语义漂移拒收 exit 2
+ok    blocking 异常未解决拒收 exit 2
+ok    READY 缺必备件 generate 即拒 exit 2
+ok    同目录报 PARTIAL 可出 manifest
+ok    READY 缺 supply_truth gate 即拒 exit 2
+ok    READY 缺 wave_scan_report 即拒 exit 2
+ok    wave_scan_report 空壳 verify 拒收 exit 2
+ok    READY 缺 flow_anomaly_report 即拒 exit 2
+ok    wave-scan/v1 旧版产物 verify 拒收 exit 2
+ok    wave-scan/v2 旧版产物 verify 拒收 exit 2
+ok    v3 标签缺 scan_universe 全集 verify 拒收 exit 2
+ok    v3 count 与逐条 must 标记矛盾 verify 拒收 exit 2
+ok    handoff/v2 默认拒收 exit 2
+ok    handoff/v1 默认拒收 exit 2
+ok    handoff/v1 --legacy-read-only 放行且带只读警告
+ok    legacy 降级落机器 receipt
+ok    legacy 案 freeze 必拒 exit 2
+ok    溯源台账 v1（数学错误版）freeze 拒 exit 2
+ok    stock>0 而 composition 空壳 freeze 拒 exit 2
+ok    closure 自报 100 但按 composition 重算不闭合 freeze 拒 exit 2
+ok    成员集哈希错配 freeze 拒 exit 2
+ok    台账实体集与名册不一致 freeze 拒 exit 2
+ok    敏感性不稳 freeze 拒 exit 2
+ok    与边表脱离的人工合法台账 freeze 拒 exit 2
+ok    策略明细翻转但 stable=true 仍由 freeze 重算拒绝
+ok    尘埃锚点翻转豁免（不因翻转拒；伪造由重放语义摘要兜底）
+ok    内容自洽但与当前原始边重放不一致 freeze 拒
+ok    台账修复后 freeze 放行 exit 0
+ok    仅 provenance 变化也追加 freeze revision
+ok    check-unseal 复核 provenance 当前哈希漂移并拒绝
+ok    check-unseal 全绑定恢复后放行
+ok    check-unseal 直接复核原始边绑定漂移并拒绝
+ok    原始边恢复后 check-unseal 放行
+ok    手改 manifest 摘掉必备件 verify 拒 exit 2
+========================================
+handoff_manifest 契约测试全部通过（68 项）
+PASS: audit_release_gate 净室资产/哈希/CEX受益权/阴性结论/图表封口与负钳零/对抗复核否决/四查WARN拦截/双线阈值/嵌套未决暴露/静置仓全集对账/日级峰值口径闭环十一类契约全过
+BLOCK: reconciliation wrapper publish failed: disk full
+PASS test_01_preexisting_receipt_rejected
+PASS test_02_wrong_target_rejected
+PASS test_03_unlisted_producer_rejected
+PASS test_04_declared_input_drift_rejected
+PASS test_05_hand_composed_wrapper_rejected
+PASS test_06_nonzero_producer_exit_rejected
+PASS test_07_atomic_publish_failure_leaves_no_formal_file
+PASS: reconciliation runner rejected all 7 controlled-execution counterexamples

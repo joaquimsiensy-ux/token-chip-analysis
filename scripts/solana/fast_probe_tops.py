@@ -9,11 +9,14 @@
   PROBE_SKIP  逗号分隔，跳过不探测（如已确认的基础设施地址）
   PROBE_EXTRA 逗号分隔，top N 之外追加探测的地址
 """
-import json, subprocess, sys, time
+import argparse, json, subprocess, sys, time
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
+from proxy_config import resolve_proxy
+
 RPC = "https://api.mainnet-beta.solana.com"
-PROXY = "http://127.0.0.1:7897"
+PROXY = None
 import os as _os, json as _json
 def _load_mint():
     m = _os.environ.get("MINT")
@@ -22,7 +25,7 @@ def _load_mint():
     if p.exists():
         return _json.loads(p.read_text()).get("mint")
     raise SystemExit("需要 mint：设 MINT 环境变量或工作目录 config.json 里给 mint 字段")
-MINT = _load_mint()
+MINT = None
 
 SKIP = set(filter(None, _os.environ.get("PROBE_SKIP", "").split(",")))
 EXTRA = list(filter(None, _os.environ.get("PROBE_EXTRA", "").split(",")))
@@ -31,9 +34,11 @@ EXTRA = list(filter(None, _os.environ.get("PROBE_EXTRA", "").split(",")))
 def rpc(method, params, retries=4):
     body = json.dumps({"jsonrpc": "2.0", "id": 1, "method": method, "params": params})
     for i in range(retries):
-        p = subprocess.run(["curl", "-s", "-m", "30", "-x", PROXY, RPC, "-X", "POST",
-                            "-H", "Content-Type: application/json", "-d", body],
-                           capture_output=True, text=True, timeout=45)
+        cmd = ["curl", "-s", "-m", "30"]
+        if PROXY:
+            cmd += ["-x", PROXY]
+        cmd += [RPC, "-X", "POST", "-H", "Content-Type: application/json", "-d", body]
+        p = subprocess.run(cmd, capture_output=True, text=True, timeout=45)
         try:
             d = json.loads(p.stdout)
             if "result" in d:
@@ -75,8 +80,19 @@ def probe_tx(sig, owner):
             "bt": tx.get("blockTime")}
 
 
-def main():
-    n = int(sys.argv[1]) if len(sys.argv) > 1 else 30
+def main(argv=None):
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("n", nargs="?", type=int, default=30, help="探测 top owner 数（默认 30）")
+    parser.add_argument("--proxy", default=None,
+                        help="代理 URL；空字符串或 none 显式直连（默认经 CHIP_PROXY/端口探测解析）")
+    args = parser.parse_args(argv)
+    global MINT, PROXY
+    try:
+        PROXY = resolve_proxy(args.proxy)
+    except ValueError as exc:
+        parser.error(str(exc))
+    MINT = _load_mint()
+    n = args.n
     owners = json.load(open("data/holders_owners.json"))
     accounts = json.load(open("data/holders_accounts.json"))
     rc = json.load(open("data/rugcheck_report.json"))
@@ -141,4 +157,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

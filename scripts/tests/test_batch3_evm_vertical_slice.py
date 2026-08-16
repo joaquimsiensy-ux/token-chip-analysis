@@ -22,6 +22,8 @@ B = "0x" + "2" * 40
 ZERO = "0x" + "0" * 40
 DEAD = "0x000000000000000000000000000000000000dead"
 CHAIN_IDS = {"eth": 1, "bsc": 56, "base": 8453}
+BLOCK_HASH = "0x" + "a" * 64
+PARENT_HASH = "0x" + "b" * 64
 
 
 class FixtureHandler(BaseHTTPRequestHandler):
@@ -53,7 +55,18 @@ class FixtureHandler(BaseHTTPRequestHandler):
                 result = hex(type(self).chain_id)
             elif method == "eth_blockNumber":
                 result = hex(123)
+            elif method == "eth_getBlockByNumber":
+                result = {
+                    "number": hex(123), "hash": BLOCK_HASH,
+                    "parentHash": PARENT_HASH, "timestamp": hex(1_700_000_000),
+                }
             elif method == "eth_getCode":
+                block = params[1]
+                if isinstance(block, dict):
+                    assert block == {"blockHash": BLOCK_HASH,
+                                     "requireCanonical": True}, block
+                else:
+                    assert block == "latest", block
                 result = "0x6000"
             elif method == "eth_getStorageAt":
                 result = "0x" + "0" * 64
@@ -65,6 +78,9 @@ class FixtureHandler(BaseHTTPRequestHandler):
                 else:
                     address = "0x" + data[-40:]
                     block = params[1]
+                    if isinstance(block, dict):
+                        assert block == {"blockHash": BLOCK_HASH,
+                                         "requireCanonical": True}, block
                     if address.lower() == B and block == hex(121):
                         amount = 0
                     elif address.lower() == A and block != hex(121):
@@ -77,7 +93,7 @@ class FixtureHandler(BaseHTTPRequestHandler):
                         amount = type(self).supply - type(self).dead_balance
                     else:
                         amount = type(self).supply
-                result = hex(amount)
+                result = f"0x{amount:064x}"
             elif method == "eth_getTransactionReceipt":
                 result = {"blockNumber": hex(123), "logs": [{
                     "address": TOKEN,
@@ -154,7 +170,8 @@ def spec(case, chain, endpoint):
             "inputs": {name: name for name in
                        ("config_evm.json", "balances_evm.json", "stats_evm.json",
                         "gmgn_evm.csv", "transfers_evm.csv", "anchor_plan.json",
-                        "anchor_plan.receipt.json")},
+                        "anchor_plan.receipt.json", "evm_observation_bundle.json",
+                        "evm_observation_transcript.json")},
             "checks": {
                 "balance": {"producer": "scripts/evm/verify_recon.py",
                             "argv": [*common, "--out", "balance_receipt.json"],
@@ -166,6 +183,8 @@ def spec(case, chain, endpoint):
                                  "argv": ["--chain", chain, "--token", TOKEN,
                                           "--as-of-block", "123", "--replay-stats",
                                           "stats_evm.json", "--rpc", endpoint,
+                                          "--observation-bundle",
+                                          "evm_observation_bundle.json",
                                           "--out", "supply_truth.json"],
                                  "receipt": "supply_truth.json"},
                 "time": {"producer": "scripts/lib/time_spotcheck.py",
@@ -181,9 +200,14 @@ def execute_real_slice(case, chain, endpoint, total, dead_balance=0):
     FixtureHandler.supply = total
     FixtureHandler.dead_balance = dead_balance
     prepare_inputs(case, chain, total, dead_balance)
+    run([sys.executable, str(ROOT / "scripts/evm/observe_supply.py"),
+         "--chain", chain, "--token", TOKEN, "--as-of-block", "123",
+         "--rpc", endpoint, "--out", "evm_observation_bundle.json",
+         "--transcript-out", "evm_observation_transcript.json"], case)
     run([sys.executable, str(ROOT / "scripts/evm/accounting_gate.py"),
          "--chain", chain, "--token", TOKEN, "--rpc", endpoint,
          "--hypersync", endpoint, "--sourcify", endpoint, "--samples", "1",
+         "--as-of-block", "123", "--bundle", "evm_observation_bundle.json",
          "--out", "accounting_mode.json"], case)
     job = case / "reconciliation_job.json"
     job.write_text(json.dumps(spec(case, chain, endpoint)))
@@ -244,6 +268,10 @@ def full_chain(chain, endpoint):
         adversarial["target"] = {"chain": chain, "token": TOKEN, "as_of_block": 123}
         (case / "adversarial_review.json").write_text(json.dumps(adversarial))
         execute_real_slice(case, chain, endpoint, 100)
+        # B-7（批 D）：三账 balance_source 须与真实四查 owner 快照同时点等值——
+        # build_case 编造的三账（0xabc@123）对齐到本切片 verify_recon 真吃的余额文件。
+        from test_audit_release_gate import align_ledgers_to_owner_snapshot
+        align_ledgers_to_owner_snapshot(case, case / "balances_evm.json")
         run([sys.executable, str(ROOT / "scripts/report/shared_release_receipt.py"), str(case)], case)
         run([sys.executable, str(ROOT / "scripts/report/audit_release_gate.py"),
              str(case), "--report", str(report)], case)
@@ -287,7 +315,7 @@ def test_nonzero_dead_vertical_slice():
             supply = json.loads((case / "supply_receipt.json").read_text())
             truth = json.loads((case / "supply_truth.json").read_text())
             assert supply["observations"]["supply_closure"]["closed"] is True
-            assert truth["schema"] == "supply-truth-receipt/v3"
+            assert truth["schema"] == "supply-truth-receipt/v4"
             assert truth["decision_rule"] == "sink_fallback_form2"
             assert truth["burn_form"] == "dead_sink"
             run([sys.executable, str(ROOT / "scripts/report/shared_release_receipt.py"),

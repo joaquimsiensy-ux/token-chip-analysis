@@ -1,0 +1,3 @@
+[verify_recon] PASS exit=0 → /private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/f07-deep-reverify-_ykp5gqk/recon/verify_recon.json
+[time_spotcheck] PASS  2/2 一致（balance 1 + tx 1；mismatch 0，rpc_err 0）→ /private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/f07-deep-reverify-_ykp5gqk/time/time_spotcheck.json
+PASS test_recon_deep_reverify

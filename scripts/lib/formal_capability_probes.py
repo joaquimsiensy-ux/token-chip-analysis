@@ -26,7 +26,8 @@ FREEZE_TARGET_ADAPTER_TARGETS = MappingProxyType({
     "entity-freeze-v2": ("scripts.report.handoff_manifest:cmd_freeze",),
 })
 ACCOUNTING_SUPPLY_ADAPTER_TARGETS = MappingProxyType({
-    "evm-accounting-supply-v1": (
+    "evm-accounting-supply-v2": (
+        "scripts.evm.observe_supply:main",
         "scripts.evm.accounting_gate:main",
         "scripts.lib.supply_truth_gate:main",
     ),

@@ -11,7 +11,7 @@
 | 用途 | 通道 | 要点 |
 |---|---|---|
 | **全量持仓快照（getProgramAccounts 大扫描）** | 公共 RPC `https://solana-rpc.publicnode.com` | 免 key；实测放行 99–117MB 级全量响应（IO 8.5 万账户约 45s，timeout 给 90s+） |
-| 账户历史 / 钱包持仓画像 | 公共 RPC `https://api.mainnet-beta.solana.com` | 免 key；限速紧（间隔 ≥0.12s、退避重试），本机走 clash 代理 `[实测·他场景]` |
+| 账户历史 / 钱包持仓画像 | 公共 RPC `https://api.mainnet-beta.solana.com` | 免 key；限速紧（间隔 ≥0.12s、退避重试），代理经 `CHIP_PROXY`/`--proxy` 解析（`scripts/lib/proxy_config.py`）`[实测·他场景]` |
 | 单地址 / 单笔交易核验、公开标签 | Solscan 网页（`solscan.io/token/<MINT>`、`/account/<ADDR>`） | 免 key；浏览器可看，**WebFetch 直读被 Cloudflare 拦**（见死亡名单）；作报告可验证性背书 |
 | 全量历史转账（archive 回放） | SQD portal（见 §8，后续实战补入） | 免 key 免代理，补公共 RPC 无历史回放的洞 `[实测·他场景]` |
 | 深挖升级通道（增强 API） | Helius | 运行前检测 `~/.config/helius/api-key`：存在则按 Helius 参数跑，缺失则降级公共 RPC（key 注册沿革见 CHANGELOG） `[实测·他场景]` |
@@ -155,7 +155,7 @@ meme/微盘"庄"（多钱包控盘团伙）的关联硬证据（任一即可，�
   - `/api/v1/token_stat/sol/<mint>`：holder_count/top_10_holder_rate/dev_team_hold_rate；`/api/v1/token_holder_stat/sol/<mint>`：dev_count/**sniper_count/bundler_count/fresh_wallet_count**（一眼看清庄家结构）
   - `/defi/quotation/v1/tokens/kline/sol/<mint>?resolution=1d`：日 K
   - **口径坑**：GMGN holders 是**当前**持仓口径，与 RugCheck（账户总数口径）可差 2–20 倍，两者交叉验证不互替。GMGN 的 bundler/sniper 标签是线索不是定论，仍须落链上 §3b 指纹确认（二见实证：某 top 大户带 bundler 标签、链上实为毕业+6h 才进场的外盘买家——直接采信会把建仓时点/成本全判错；来源：USELESS(Solana) 分析，2026-07-21）。
-- **pump.fun coin API**：v1（frontend-api）已死（530）；**v3 可用**——`frontend-api-v3.pump.fun` 拿代币元数据/creator/description（外部 CLAW 考古，07）。**v3 的 creator 履历三端点**（走 clash 代理，dev 前科调查核心通道）：①`/coins?creator=<addr>&limit=100&includeNsfw=true` = creator 名下全部发币记录；②`/users/<addr>` = 平台账号画像（用户名/关注数/是否绑定 X）——**x_username=null 可证明"链上 creator 与官推无平台级绑定"**（官推侦查的链上侧交叉证据）；③`/balances/<addr>` = 站内持仓视角（不含毕业后链上 SPL 持仓，引用须注明口径）（PUB，07-14）。
+- **pump.fun coin API**：v1（frontend-api）已死（530）；**v3 可用**——`frontend-api-v3.pump.fun` 拿代币元数据/creator/description（外部 CLAW 考古，07）。**v3 的 creator 履历三端点**（代理经 `CHIP_PROXY`/`--proxy` 解析，见 `scripts/lib/proxy_config.py`；dev 前科调查核心通道）：①`/coins?creator=<addr>&limit=100&includeNsfw=true` = creator 名下全部发币记录；②`/users/<addr>` = 平台账号画像（用户名/关注数/是否绑定 X）——**x_username=null 可证明"链上 creator 与官推无平台级绑定"**（官推侦查的链上侧交叉证据）；③`/balances/<addr>` = 站内持仓视角（不含毕业后链上 SPL 持仓，引用须注明口径）（PUB，07-14）。
 - **RugCheck `api.rugcheck.xyz/v1/tokens/<mint>/report`（免 key）**（外部 SGL/CLAW 分析实测，2026-07）：一次拿 topHolders（含 owner+pct+**insider 标记**）+ markets（LP 名单）+ **insiderNetworks**（转账关联的内幕簇，直接给出关联地址网络）+ launchpad——**是 `getTokenLargestAccounts` 恒 429 的最佳替代**（§0a），insider 关联比自建聚类省事，但仍按 analysis-playbook §6 硬规则复核。
   **坑：免费层 insiderNetworks 的 size 字段有值但 accounts 成员列表可为空**——只能当线索计数用，成员名单要自建聚类复现（PUB，07-14；USELESS 案 07-21 再确认免费层 accounts=None）。**knownAccounts 字段实测 388 条 AMM 池/基础设施标签，可直接作算集中度前的剔除表**（USELESS，07-21）。
   **坑：`detectedAt` 是 RugCheck 索引器首见时间，不是发射时间**——老币可差出几个月（TROLL 实测差 145 天：真实创建 2024-03-10，detectedAt 2024-08-02），据此定"发射窗"会漏掉整段早期历史（TROLL 案初稿因此漏了创建 tx 的 dev 闪电轮与 2024-08 做量集群所在的整个时段）。**发射时点唯一正解=curve/mint ATA 最早签名核实到秒**（getSignaturesForAddress 翻到最老；
@@ -186,7 +186,7 @@ meme/微盘"庄"（多钱包控盘团伙）的关联硬证据（任一即可，�
   2. 近 90 天逐笔交易追踪（`getSignaturesForAddress` + `getTransaction`）；
   3. 更早的筹码变迁依赖第三方图表平台口径。
   **2026-07-12 起此限制已被 §8 的 SQD portal 全量转账通道解决**——三问一异常框架的全历史演变重放（问 3）走 SQD；三段式仍是 SQD 不可用时的降级架构，届时第 3 段依赖必须写进局限声明。
-- 公共 RPC 实测参数 `[实测·他场景]`：请求间隔 ≥0.12s、走 clash 代理；退避重试 + 断点续传是采集脚本标配（IO 实录：逐笔 decode 配 1.2–1.5s 间隔 + 每请求最多 4 次重试稳定跑通）。
+- 公共 RPC 实测参数 `[实测·他场景]`：请求间隔 ≥0.12s，代理经 `CHIP_PROXY`/`--proxy` 解析（`scripts/lib/proxy_config.py`）；退避重试 + 断点续传是采集脚本标配（IO 实录：逐笔 decode 配 1.2–1.5s 间隔 + 每请求最多 4 次重试稳定跑通）。
 - **CEX 内部账本不上链**：所内换手、做市商行为完全不可见。只能靠量价结构 + 衍生品指标（OI/费率）间接推断，不对 CEX 内行为下强结论；措辞永远带"链上可观测范围内"限定。
 - **Solana CEX 标签覆盖缺口**：OKX/Bitget/Upbit 等所的 Solana 钱包免费源基本查不到 → CEX 托管总量可能被系统性低估，合计数旁必须注明。
 - **集群判定 = 强推断非确权**：共用中转 + 时序同步是图谱强推断，不构成确权；证据链逐条列出让读者自判，局限性单列一条。

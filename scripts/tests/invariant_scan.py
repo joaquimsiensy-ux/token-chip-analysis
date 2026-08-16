@@ -32,7 +32,11 @@ SCOPE = (
     "scripts/*.py",
 )
 ATOMIC_SEMANTICS = {
-    "exclusive_new", "overwrite_single", "dual_file_txn", "restore_on_fail",
+    "exclusive_new", "overwrite_single", "supersede_single", "dual_file_txn",
+    "restore_on_fail",
+    # 批 D F-07：N 文件真事务（prepare 全写临时件 → commit 逐个备份+替换；
+    # commit 失败逐文件回滚并验证字节，回滚失败保留 .recover）——refresh_manifests。
+    "multi_file_txn",
 }
 DENOMINATOR_KEYS = {
     "receipt_producers", "receipt_consumers", "transport_calls",
@@ -58,16 +62,19 @@ VERTICAL_SLICE_TESTS = {
 FORMAL_E2E_REQUIRED_PRODUCERS = {
     "eth": frozenset({
         "scripts/lib/anchor_plan.py", "scripts/evm/accounting_gate.py",
+        "scripts/evm/observe_supply.py",
         "scripts/evm/verify_recon.py", "scripts/lib/supply_truth_gate.py",
         "scripts/lib/time_spotcheck.py",
     }),
     "bsc": frozenset({
         "scripts/lib/anchor_plan.py", "scripts/evm/accounting_gate.py",
+        "scripts/evm/observe_supply.py",
         "scripts/evm/verify_recon.py", "scripts/lib/supply_truth_gate.py",
         "scripts/lib/time_spotcheck.py",
     }),
     "base": frozenset({
         "scripts/lib/anchor_plan.py", "scripts/evm/accounting_gate.py",
+        "scripts/evm/observe_supply.py",
         "scripts/evm/verify_recon.py", "scripts/lib/supply_truth_gate.py",
         "scripts/lib/time_spotcheck.py",
     }),
@@ -81,6 +88,8 @@ FORMAL_E2E_REQUIRED_PRODUCERS = {
 }
 FAILURE_ARTIFACT_CONTRACTS = (
     {"script": "scripts/evm/fetch_pool_swaps.py", "entrypoint": "main",
+     "canonical_artifacts": 2},
+    {"script": "scripts/evm/observe_supply.py", "entrypoint": "main",
      "canonical_artifacts": 2},
     {"script": "scripts/lib/anchor_plan.py", "entrypoint": "main",
      "canonical_artifacts": 2},
@@ -116,6 +125,9 @@ FAILURE_ARTIFACT_COVERAGE = {
     "scripts/evm/fetch_pool_swaps.py": {
         "canonical": "pool swap CSV", "marker": "pool collector receipt",
         "error": "unique ERROR side receipt", "protections": ("self_quarantine",)},
+    "scripts/evm/observe_supply.py": {
+        "canonical": "EVM observation transcript", "marker": "EVM observation bundle",
+        "error": "unique ERROR side receipt", "protections": ("self_quarantine",)},
     "scripts/solana/window_fetch.py": {
         "canonical": "window data", "marker": "window receipt",
         "error": "unique ERROR side receipt", "protections": ("manual_stale_move",)},
@@ -149,7 +161,7 @@ def production_files():
     return sorted(set(files))
 
 
-def _constants(tree: ast.AST) -> dict[str, str]:
+def _constants(tree: ast.AST, path: Path | None = None) -> dict[str, str]:
     values = {}
     for node in ast.walk(tree):
         if isinstance(node, (ast.Assign, ast.AnnAssign)):
@@ -159,6 +171,23 @@ def _constants(tree: ast.AST) -> dict[str, str]:
                 for target in targets:
                     if isinstance(target, ast.Name):
                         values[target.id] = value.value
+    if path is not None:
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.ImportFrom) or node.level or not node.module:
+                continue
+            candidate = path.parent / (node.module.replace(".", "/") + ".py")
+            if not candidate.is_file():
+                continue
+            imported_tree = ast.parse(candidate.read_text(encoding="utf-8"),
+                                      filename=str(candidate))
+            imported_values = _constants(imported_tree)
+            for alias in node.names:
+                # Imported schema constants are normally producer-local and scanning
+                # them in every importer creates false producer edges.  The adversarial
+                # aggregate is deliberately shared by its producer and two consumers.
+                if alias.name in {"AGGREGATE_SCHEMA", "LEDGER_SCHEMA"} \
+                        and alias.name in imported_values:
+                    values[alias.asname or alias.name] = imported_values[alias.name]
     return values
 
 
@@ -953,7 +982,8 @@ def standalone_failure_artifact_producers():
     a newly added publisher with the same semantics joins the denominator.
     """
     found = set()
-    success_primitives = {"publish_txn", "publish_overwrite", "os.replace"}
+    success_primitives = {
+        "publish_txn", "publish_overwrite", "publish_supersede", "os.replace"}
     for path in production_files():
         if path.suffix != ".py":
             continue
@@ -1058,7 +1088,7 @@ class AtomicVisitor(ast.NodeVisitor):
 def scan_python(path: Path):
     text = path.read_text(encoding="utf-8")
     tree = ast.parse(text, filename=str(path))
-    constants = _constants(tree)
+    constants = _constants(tree, path)
     producers = set()
     consumers = set()
     has_requests = False

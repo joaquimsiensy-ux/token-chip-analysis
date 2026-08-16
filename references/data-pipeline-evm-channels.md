@@ -39,7 +39,9 @@ channels.json 的 path 字段语义（2026-07-25 SPX6900 实测坑）：hypersyn
 必须等于全局边界，相邻段必须 `next.lo == prev.hi`。通道 receipt schema 为
 `evm-channel-receipt/v2`，必须绑定同一 token/tag/区间、数据统计及当前文件哈希。CSV 还必须
 引用 adapter 成功收尾时原生生成的 `evm-collector-run/v2`：collector 当前脚本哈希、provider、
-冻结块界、严格前进且到达目标的 cursor，以及连续 segment output-prefix hash chain 全部重验。
+冻结块界、SQD provider 哨兵行给出的严格前进且到达目标的扫描前沿，以及连续 segment
+output-prefix hash chain 全部重验。SQD 实测在零匹配区间也返回首末 header-only 哨兵，故空正文
+属于协议异常，不能推进扫描前沿；Alchemy 仅有分页 pageKey，没有 provider 侧块进度证据。
 空段不接受操作者文字证明；同一 native receipt chain 本身必须证明扫描到冻结上界。预检成功或
 阻断都落 `<out-dir>/channels_preflight.json`，BLOCK 必须非零退出。PASS 产物还必须记录当前
 `channels_preflight.py` producer、manifest 哈希、每段 channel/native collector receipt 哈希以及
@@ -61,8 +63,8 @@ python3 scripts/evm/make_channel_receipt.py \
 
 延长冻结上界时，collector 必须带 `--resume-receipt data/full.collector.json`；它先重验旧
 CSV 的每个历史 prefix，再从前一 `requested_to` 续采并发布加长 chain。没有前驱 receipt 的
-**存量 legacy CSV** 不可补签或手工迁移：另名归档，重新从冻结 `lo` 采到 `hi`。SQD/Alchemy
-的正式 fresh-output 命令同样带 `--receipt`；BigQuery/bloXroute/Etherscan 只作诊断或补充。
+**存量 legacy CSV** 不可补签或手工迁移：另名归档，重新从冻结 `lo` 采到 `hi`。SQD 的正式
+fresh-output 命令同样带 `--receipt`；Alchemy/BigQuery/bloXroute/Etherscan 只作诊断或补充。
 数据变化后必须由生产 collector 重采/续采，再重跑 `make_channel_receipt.py`；测试 fixture 或
 手搓 JSON 不构成迁移工具。v2 Parquet 通道则继续由 native done v3 +
 `make_channel_receipt.py --format v2` 生成，无 `--collector-receipt` 参数。
@@ -111,12 +113,12 @@ size 与 SHA-256；全部通过后才原子将旧 done 升为 `hypersync-v2-done
 | envio HyperSync v1 手写轮询（兜底） | 同上 key 通用 | 付费买到的是高峰稳定性,大标的提速必须换 v2 | — | from_block 起点 + 增量写 CSV（v3.11.2 起新文件 8 列含 block_hash,老 7 列续拉自动兼容） | fetch_hypersync.py | （SIREN 07；哈基米 429 实测 07-18；v3.11.2 付费实测 07-21） |
 | SQD Portal 薄采集器（故障预案+正式替代；须 `--receipt`） | 免 key 免注册（portal.sqd.dev 公共端点;注册 gateway key 免费可选更稳） | 公共限流 20 请求/10s,sleep 0.5 保守;无自助付费档（官网 pricing coming soon,2026-07-21 核实） | ~280 条/s——平时不跑,HyperSync 平台级故障或数仓切源准入对照时才上;**对账关卡（余额对账/时间抽查）的代表日双源对照亦用它**（独立索引商） | CSV 末行块+1 | fetch_sqd_evm.py | （v3.11.2,2026-07-21） |
 | BigQuery goog 官方公共数据集（诊断复核、**非正式 channel，仅 ETH**） | Google 账号 OAuth 一次(凭据缓存后免弹窗)+GCP sandbox 项目(免绑卡,见 api-keys.md 第 17 节「Google Cloud / BigQuery」) | 免费 1 TiB/月查询量;熔断线 config max_scan_gib(默认 200GiB) | 服务端过滤只回传命中行,13 万行 ~1 分钟;定向日期查询 ~12GiB/次≈月额度可复核 85 次 | 无需(按日期范围幂等重查) | fetch_bigquery.py | （v3.12.1 准入实证,2026-07-21） |
-| Alchemy getAssetTransfers（正式使用须 fresh 输出 + `--receipt`） | 免费 key（dashboard.alchemy.com 国内直连） | 平台级 429 全局限流，高峰期可整夜不可用 | 1000 条/页 | 读 CSV 末行区块置 fromBlock（勿依赖 pageKey） | fetch_alchemy.py | （SIREN，07） |
+| Alchemy getAssetTransfers（仅探索采集，不支持正式 receipt） | 免费 key（dashboard.alchemy.com 国内直连） | 平台级 429 全局限流，高峰期可整夜不可用 | 1000 条/页 | 读 CSV 末行区块置 fromBlock（勿依赖 pageKey） | fetch_alchemy.py | （SIREN，07） |
 | bloXroute getLogs（近期原始分片，**非正式 channel**） | 免注册 | ⚠**并发承受力已变**（2026-07-19 SIREN 实测）：8 并发 curl 线程池整体挂死零产出、requests 3 线程 0.5s 间隔稳定；历史窗口比 07-18 更宽（下界块 100.1M~101.5M ≈55-60 天，二分探测）——**窗口是动态的，用前必二分**。降级为"近期段快扫" | requests 3 线程 万块段 ~50 段/4 分钟（SIREN 396 万条约 30 分钟）；旧 8 并发数字已不可复现 | done-segments 清单 + 失败段补扫 | scan_bloxroute_seg.py（requests.Session） | （OPN 07；哈基米 窗口实测 07-18；SIREN 并发/窗口实测 07-19） |
 | Etherscan V2（补充证据、**非正式 channel，仅 ETH 主网**） | 用户免费 key | 免费层限速未成瓶颈 | tokentx 每页 10000 条 | 按返回末行 block 续页 | fetch_etherscan.py | （OPN，07） |
 | envio HyperSync **ETH 主网**（eth.hypersync.xyz） | 同上免费 token | — | — | 同 BSC 版（fetch_hypersync 断点续传版） | fetch_hypersync.py | — |
 
-**替代 CSV 正式资格**：只有 `fetch_sqd_evm.py` 与 `fetch_alchemy.py` 在显式冻结块界、输出运行前不存在并成功收尾时，可用 `--receipt` 产生 `evm-collector-run/v2`；preflight 会校验当前 adapter 脚本哈希。BigQuery 是日期切片复核，bloXroute 是近期分片，Etherscan 是补充 API，三者代码均声明 `FORMAL_CHANNEL_ELIGIBLE = False`，不得写入正式 `channels.json`。旧 CSV 无法升级：另名归档后由上述生产 adapter 从冻结下界重采。
+**替代 CSV 正式资格**：只有 `fetch_sqd_evm.py` 在显式冻结块界、输出与 receipt 路径运行前均不存在并成功收尾时，可用 `--receipt` 产生 `evm-collector-run/v2`；preflight 会校验当前 adapter 脚本哈希。Alchemy 仅有分页 pageKey、没有 provider 侧块进度证据，v2 块游标语义不成立，故已降级为仅探索采集并除名正式通道；恢复资格需升版为分型收据。BigQuery 是日期切片复核，bloXroute 是近期分片，Etherscan 是补充 API；这些非正式采集器代码均声明 `FORMAL_CHANNEL_ELIGIBLE = False`，不得写入正式 `channels.json`。旧 CSV 无法升级：另名归档后由 SQD 生产 adapter 从冻结下界重采。
 
 ## 2. 死亡名单（实测不可用，3 个月内禁止重探）
 
@@ -150,7 +152,7 @@ size 与 SHA-256；全部通过后才原子将旧 done 升为 `hypersync-v2-done
 - POST `https://bsc.hypersync.xyz/query`；header `Authorization: Bearer {TOKEN}`；body 含 `from_block`、`logs: [{address, topics}]`、`field_selection`。（SIREN，07）
 - 匿名（无 token）已不可用；token 让用户到 app.envio.dev 注册——控制台在用户（中国）网络打不开需 VPN，但 API 端点直连可用，"控制台打不开 ≠ API 不可用"。（SIREN，07）
 - archive_height 到最新块，全史无缺口；换 token 地址与链子域名即可用于其他 HyperSync 支持链。（SIREN，07）
-- token 取用优先级为：显式 `--token-file` > `HYPERSYNC_TOKEN` > 默认 `~/.config/hypersync/token`；三支 v1 脚本都禁止位置参数明文 token。换 key 时原始存放文件与 `~/.claude/api-keys.md` §1 登记同步。
+- token 取用优先级为：显式 `--token-file` > `HYPERSYNC_TOKEN` > 默认 `~/.config/hypersync/token`；三支 v1 脚本与现役 v2 入口都禁止位置参数明文 token，非法输入也不得把 secret 回显到 stdout/stderr。换 key 时原始存放文件与 `~/.claude/api-keys.md` §1 登记同步。
 - **transactions 端点做 BNB 注资溯源**：body `{"transactions":[{"to":[addr]}],"field_selection":{"transaction":["block_number","from","to","value"]}}`（value 为 hex）——单址全链入金一次查询 ~2.3s 到 tip，比逐块扫快几个量级；⚠25 址×全链批量会 10 分钟超时，可用姿势=关键地址单址逐查 / 发射窗小块段批量（from/to_block 圈定）。（哈基米，07-18）
 - 【历史降级·新案禁用】分段多进程姿势：复制脚本改 OUT 与 to_block 边界（`if nxt >= BOUND: break`）、sleep 提至 0.5s，各进程独立 CSV 事后按 (tx,log_index) 去重合并；改 config 后重启前删本地缓存的段清单文件。（哈基米，07-18）现行主线为 v2 Parquet/done manifest。
 - **多会话共享 key 限速冲突**：并行分析会话同打一个 HyperSync key/端点会互相触发 429（SQD 案与另一标的采集会话撞车实测）——开工前 `ps aux | grep fetch_hypersync` 查有无在跑进程；撞车时不必停工，调低单会话吞吐预期、靠 429 退避共存。（SQD，07-20）**限流是 key 级共享、不是端点独立**——同 key 打不同链子域（eth+arbitrum）并发同样互抢限额；多链标的的分链采集按链串行或错峰，别指望换端点绕开限额。（LPT，07-21）
@@ -165,6 +167,7 @@ size 与 SHA-256；全部通过后才原子将旧 done 升为 `hypersync-v2-done
 - POST `https://bnb-mainnet.g.alchemy.com/v2/{KEY}`，method=`alchemy_getAssetTransfers`，params 含 `contractAddresses`、`category:["erc20"]`、`maxCount:"0x3e8"`、`pageKey` 分页；返回自带时间戳。（SIREN，07）
 - pageKey 有有效期，长任务中断后必过期：断点续拉一律读 CSV 末行区块号置 fromBlock 重开游标，容忍少量重复、下游按 tx hash 去重。（SIREN，07）
 - 会遇平台级 429（"global traffic"，与自身配额无关、恢复时间不可控）：脚本内置指数退避（最长 20 分钟）+ 外层 while 冷却重启；卡点超 1-2 小时必须并行准备第二通道并用 AskUserQuestion 摆路径，绝不单通道死等。（SIREN，07）
+- **正式资格已除名**：该协议的 pageKey 只证明分页关系，不能证明 provider 已扫描到某个块上界，因此不支持 `evm-collector-run/v2` 正式 receipt，仅可探索采集。恢复资格需先升版为能表达分页完成证据的分型收据。
 
 ### 3.3 bloXroute getLogs 扫块
 
@@ -189,7 +192,7 @@ size 与 SHA-256；全部通过后才原子将旧 done 升为 `hypersync-v2-done
 ### 3.6 记账模型 gate 的通道实测（accounting_gate.py，3.19）
 
 - **BSC dataseed**：eth_call 历史 state 窗口 **~128 块且节点池深浅抖动**（150 块探测过、边缘偶发 missing trie node——gate 的 rebase 两时点已收缩到 64 块保命中）；支持 **eth_simulateV1**（模拟转账读实收的兜底路）；getLogs 拒(-32005)。bsc/eth publicnode 全 archive 墙（128 块内也拒）；dRPC 免费层限速凶只配兜底。
-- **Alchemy ETH 免费层：eth_call 全历史 archive**（100 万块前实测通）→ ETH 侧 gate 事件窗口自动放大到 1 万块、rebase 窗口 7200 块，检测强度远超 BSC；但 getLogs 限 10 块——事件一律走 HyperSync。`.g.alchemy.com` 走 clash 代理（脚本内置）。
+- **Alchemy ETH 免费层：eth_call 全历史 archive**（100 万块前实测通）→ ETH 侧 gate 事件窗口自动放大到 1 万块、rebase 窗口 7200 块，检测强度远超 BSC；但 getLogs 限 10 块——事件一律走 HyperSync。`.g.alchemy.com` 的代理经 `CHIP_PROXY`/`--proxy` 解析（`scripts/lib/proxy_config.py`），不再内置固定端口。
 - **fee-on-transfer 双路互补**：事件差值覆盖池路径，`eth_simulateV1` 兜底低活跃场景；事件差值只取单侧干净样本。（判例：casebook/supply-accounting.md S-05）
 - **PAXG 链上转账费现役为 0**（曾经 0.02% 是老黄历）——勿再当税币验收样本；**HOGE 2% 税硬编码在合约里，是稳定的 BLOCK 回归样本**。
 - Helius getAccountInfo(jsonParsed) 对 Token-2022 扩展解析完整（BERN transferFeeConfig 全字段直出），无需手动解 TLV。

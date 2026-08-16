@@ -53,7 +53,32 @@ def _regular_file(shown, *, root=None):
     return path
 
 
-def validate_receipt(receipt, repo_root=None) -> list[str]:
+def _input_file(shown, case_root):
+    """inputs 文件解析（A-3/B-6）。case_root 给定＝正式消费线：相对路径基于案根解析、
+    绝对路径解析后也必须落在案根内（案外绑定＝N-1 型伪造面，一律拒）；symlink 拒。
+    case_root=None＝独立 CLI/生产自验旧行为（绝对路径不设案根约束）。"""
+    if case_root is None:
+        return _regular_file(shown)
+    if not isinstance(shown, str) or not shown:
+        raise ValueError("path is missing")
+    raw = Path(shown).expanduser()
+    if ".." in raw.parts:
+        raise ValueError("path contains traversal")
+    root = Path(case_root).resolve()
+    candidate = raw if raw.is_absolute() else root / raw
+    if candidate.is_symlink():
+        raise ValueError("path is a symlink")
+    path = candidate.resolve(strict=True)
+    try:
+        path.relative_to(root)
+    except ValueError as exc:
+        raise ValueError("input escapes case root") from exc
+    if not path.is_file():
+        raise ValueError("path is not a regular file")
+    return path
+
+
+def validate_receipt(receipt, repo_root=None, case_root=None) -> list[str]:
     errors = []
     root = Path(repo_root or REPOSITORY).resolve()
     if not isinstance(receipt, dict):
@@ -94,7 +119,7 @@ def validate_receipt(receipt, repo_root=None) -> list[str]:
                 errors.append(f"input {name!r} invalid")
                 continue
             try:
-                path = _regular_file(ref.get("path"))
+                path = _input_file(ref.get("path"), case_root)
                 canonical = str(path)
                 if canonical in seen:
                     errors.append(f"input {name} duplicates another path")

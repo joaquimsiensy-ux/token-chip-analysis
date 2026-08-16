@@ -25,7 +25,7 @@ import csv, glob, os, re, sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from labels_resolver import (BASE_FIELDS, V4_OPTIONAL_FIELDS, norm_addr,
                              _classify_flag, SERIAL_CATEGORY)
-from risk_flags import canonical_risk_flags, parse_risk_flags
+from risk_flags import parse_risk_flags
 
 TIERS = {'exclude', 'identity', 'risk'}
 BEHAVIORAL_FLAGS = {'tornado-user'}
@@ -90,12 +90,17 @@ def validate_file(path, *, strict_canonical=None):
         if not cat:
             errs.append(f'行{i} category 为空: {a}')
         raw_flags = r.get('risk_flags') or ''
-        flags = list(parse_risk_flags(raw_flags))
-        canonical_flags = canonical_risk_flags(raw_flags)
-        if raw_flags != canonical_flags:
-            message = (f'行{i} risk_flags 非 canonical（读取按 {canonical_flags!r} '
-                       f'解释；新写入须规范化）: {a}')
-            (errs if strict_canonical else warns).append(message)
+        try:
+            flags = list(parse_risk_flags(raw_flags))
+            canonical_flags = '|'.join(flags)
+        except ValueError as exc:
+            errs.append(f'行{i} risk_flags 脏字符: {exc}: {a}')
+            flags = []
+        else:
+            if raw_flags != canonical_flags:
+                message = (f'行{i} risk_flags 非 canonical（读取按 {canonical_flags!r} '
+                           f'解释；新写入须规范化）: {a}')
+                (errs if strict_canonical else warns).append(message)
         if cat == 'burn' and flags:
             errs.append(f'行{i} burn 地址带 risk_flags({r["risk_flags"]}): {a}')
         if r.get('tier') == 'exclude' and (set(flags) & BEHAVIORAL_FLAGS):

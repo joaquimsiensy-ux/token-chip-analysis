@@ -1,0 +1,2694 @@
+Reading additional input from stdin...
+OpenAI Codex v0.144.1
+--------
+workdir: /Users/uravvv/.claude/tca-repair-g2
+model: gpt-5.6-sol
+provider: openai
+approval: on-request
+sandbox: workspace-write [workdir, /tmp, $TMPDIR]
+reasoning effort: high
+reasoning summaries: none
+session id: 01a0058e-d97c-7722-a3c3-0581eda8a0a5
+--------
+user
+你是修复工程的施工执行者。读取并严格执行补充工单 maintenance/repair-20260815-g2/workorder_F04_addendum.md（背景见同目录 workorder_F04.md 与 workorder_F04_done.md）。只改补充工单授权的两个测试文件，禁止 git 操作。
+codex
+我先读取补充工单、背景工单和既有完成记录，核对允许修改的两个文件与验收命令；随后只在白名单内施工，全程不执行任何 git 命令。
+exec
+/bin/zsh -lc 'rg -n "repair-20260815-g2|workorder_F04|F04" /Users/uravvv/.codex/memories/MEMORY.md' in /Users/uravvv/.claude/tca-repair-g2
+ exited 1 in 0ms:
+exec
+/bin/zsh -lc "sed -n '1,240p' maintenance/repair-20260815-g2/workorder_F04_addendum.md
+sed -n '1,280p' maintenance/repair-20260815-g2/workorder_F04.md
+sed -n '1,280p' maintenance/repair-20260815-g2/workorder_F04_done.md" in /Users/uravvv/.claude/tca-repair-g2
+ succeeded in 0ms:
+# 工单 F-04 补充轮：调度方裁决——授权适配两个存量夹具
+
+> 前置：workorder_F04.md 主体已完成（done 报告在案）。本补充轮处理其"遗留问题"第 1/2 项。
+> 调度方已本机复核两项红因，均为存量夹具生成本刀明确拒绝的旧协议形态，裁决授权适配。
+
+## 授权适配范围（仅此两文件，仅夹具形态）
+
+1. `scripts/tests/test_supply_truth_gate.py` 的 `write_evm_bundle` 共享夹具 helper：
+   - 三笔 eth_call 结果从短 `hex(...)` 补成 66 字符 32 字节 ABI word；
+   - transcript 第 7 笔 getCode params 改为 EIP-1898 block selector 形态（与生产 `_validate_transcript` 新期望一致）；
+   - getCode 结果保证非空 code；
+   - 若 bundle 的 `code.runtime_code_sha256` 由夹具计算，保持与 transcript code 一致且非空字节串哈希。
+2. `scripts/tests/test_batch3_evm_vertical_slice.py` 的 FixtureHandler：
+   - eth_call 供给三值改为 66 字符 word（本机复核确认现返回 `hex(amount)` 短值被拒）；
+   - eth_getCode 分发按新 selector 参数形态响应且返回非空 code；
+   - ⚠️ 不改动该测试的其他业务断言与场景旋钮（错链负测、methods 录音带等）。
+
+## 验收
+
+- `python3 scripts/tests/test_supply_truth_gate.py` 绿（你可直接跑）；
+- `test_batch3_evm_vertical_slice.py` 你的沙箱 loopback EPERM 跑不了——做完静态适配即可，由调度方本机复跑验收；
+- 重跑 `test_evm_observation.py`、`test_evm_observation_release.py`、`test_evm_observation_nonempty_code.py` 确认不回归；
+- 在 `workorder_F04_done.md` 末尾追加"补充轮"一节：改动点、理由、验收输出。
+
+## 硬约束（同主工单）
+
+仅改上述两个测试文件；禁碰一切生产文件与其他测试；禁止 git 操作。
+# 工单 F-04：EVM 观测件拒空 runtime code / 拒短值 / getCode 分叉对齐
+
+> 执行者：codex（纯施工，改文件+跑测试，**禁止任何 git 操作**——commit 由调度方完成）
+> 工作目录：本 worktree 根（分支 repair-20260815-g2，基线 ddba1871 v6.44.0）
+> 总计划：同目录 plan.md 第 1 刀节（本工单为其可执行展开，冲突时以本工单为准）
+
+## 背景
+
+外部审查 F-04（P1）：`scripts/lib/evm_observation.py` 的正式 supply 观测 bundle 会接受"冻结块上 runtime code 为空"的目标（EOA 或该块尚未部署的地址），产 PASS bundle、供给 0——把不存在的 token 状态当权威冻结锚。同时 totalSupply/balanceOf 的 eth_call 返回值只用 `_HEX_VALUE`（`0x[0-9a-fA-F]+`）校验，接受 `0x0` 这类短值，不符合 ERC-20 ABI 定长 32 字节 returndata。另有一处分叉缝隙：三笔 eth_call 用 EIP-1898 blockHash selector，而 eth_getCode 用块号 `hex(as_of_block)`——code 指纹与供给读数可能属于不同分叉。
+
+## 修改点（全部在 `scripts/lib/evm_observation.py`）
+
+1. **`_eth_call_value`（约 :66-70）**：在现有 `_HEX_VALUE.fullmatch` 之后追加长度断言——返回值必须**恰为 66 字符**（`0x`+64 hex，严格 32 字节 ABI word）。零值合法形态是 `0x` 加 64 个 `0`，`0x0` 短值必须拒。⚠️ 不要改 `_HEX_VALUE` 正则本身——它还被 `_quantity` 用于块号/chainId 等 QUANTITY 类型，短 hex 在那里是 JSON-RPC 规范合法形态。
+2. **producer `observe_evm_supply` 的 getCode 段（约 :191-198）**：
+   a. `code_params` 从 `[canonical_token, hex(as_of_block)]` 改为 `[canonical_token, block_selector]`（复用 :169 已构造的 `{"blockHash": …, "requireCanonical": True}`），使 code 读数与三笔供给调用锚定同一条已确认分叉；
+   b. 在现有 `_HEX_DATA.fullmatch` 校验后追加：`code_raw == "0x"` → raise `EvmObservationError`（正式观测目标必须是已部署合约；零供应合约合法但 code 必非空）。
+3. **`_validate_transcript`（约 :260-326）对称收紧**：
+   a. :298 处 getCode params 期望从 `[token, hex(as_of)]` 改为 `[token, selector]`（selector 已在 :289 构造）；
+   b. :311-316 三笔 eth_call 结果值追加 66 字符断言；
+   c. :317-319 getCode 结果追加拒 `"0x"`。
+4. **`validate_evm_observation_bundle`（约 :392-395）**：`runtime_code_sha256` 不得等于空字节串的 SHA256 常量 `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855`（用 `hashlib.sha256(b"").hexdigest()` 计算比对，不要硬编码字符串字面量）。
+
+## 新测试文件 `scripts/tests/test_evm_observation_nonempty_code.py`
+
+仿照 `scripts/tests/test_evm_observation.py` 的 FakePool + `mock.patch.object` 手法（可 import 复用其 FakePool，若不可直接 import 则本地精简复制并注明来源）。用例至少覆盖：
+
+- 负向：getCode 返回 `0x`（EOA 形态）→ producer raise；
+- 负向：totalSupply 返回 `0x0` 短值 → raise；
+- 负向：人为构造 bundle，`code.runtime_code_sha256` 为空字节串哈希 → validator raise；
+- 负向：transcript 第 7 笔（getCode）params 用旧块号形态 → transcript 校验 raise；
+- 绿例：零供应但已部署合约（三笔返回 66 字符全零 word、code 非空）→ 全链通过。
+
+测试文件风格对齐仓库惯例：自建 `main()` runner、非 pytest、退出码 0/1。
+
+## 先红后绿纪律（必须按此顺序）
+
+1. 先写测试文件，对**未修改的基线代码**运行：负向用例应体现"基线不拒绝"（测试 FAIL）。把完整输出保存到 `maintenance/repair-20260815-g2/f04_red.log`。
+2. 再改生产代码，重跑测试全绿，输出保存到 `maintenance/repair-20260815-g2/f04_green.log`。
+
+## 存量测试适配（授权范围，仅限因本刀语义变更必然打红的）
+
+getCode selector 与 66 字符收紧会打红既有夹具/断言。**只允许**适配以下文件中与本刀语义直接相关的断言与夹具（每处修改在 done 报告列明理由）：
+- `scripts/tests/test_evm_observation.py`（FakePool 的 getCode params 处理、transcript 期望）
+- `scripts/tests/test_evm_observation_release.py`
+- 其他测试若因本刀打红：**停下，把红名单写进 done 报告，不要扩大修改**——由调度方裁决。
+
+## 验收标准（codex 自查后在 done 报告声明）
+
+- `python3 scripts/tests/test_evm_observation_nonempty_code.py` 绿；
+- `python3 scripts/tests/test_evm_observation.py`、`test_evm_observation_release.py`、`test_supply_truth_gate.py`、`test_batch3_evm_vertical_slice.py` 绿（最后一项需本机 loopback，若沙箱 EPERM 则如实记录留调度方复跑）；
+- 未触碰授权清单之外的任何生产文件。
+
+## 硬约束
+
+- 只改：`scripts/lib/evm_observation.py` + 新测试文件 + 上述授权存量测试。
+- 禁碰：VERSION、CHANGELOG、SKILL.md、r10_ledger.md、pyproject、`scripts/report/`、`scripts/evm/`、`scripts/tests/run_all.py`、invariant/contract manifest（中心登记归末刀）。
+- 禁止 git add/commit/push/branch 等一切 git 写操作。
+- 完成后写 `maintenance/repair-20260815-g2/workorder_F04_done.md`：改动清单（文件+函数+行为）、红绿证据文件指引、存量适配清单及理由、遗留问题。
+# 工单 F-04 施工结果
+
+## 状态
+
+生产修复和专属先红后绿测试已完成；工单点名的存量验收未全部通过，已按“其他测试打红即停止、不得扩大修改”约束停止施工。
+
+- 专属 F-04 测试：PASS，5/5。
+- 授权存量测试：2 组 PASS。
+- 未授权存量测试：`test_supply_truth_gate.py` 因旧 EVM bundle 夹具与本刀新协议不兼容而 FAIL；未修改。
+- loopback 纵切片：沙箱在 `socket.bind` 处返回 EPERM，未进入业务验证；留调度方在允许 loopback 的环境复跑。
+
+## 改动清单
+
+### `scripts/lib/evm_observation.py`
+
+- `_eth_call_value`：保留 `_HEX_VALUE` 原正则，仅对 `eth_call` returndata 增加严格 66 字符断言，拒绝 `0x0` 等非 32 字节 ABI word。
+- `observe_evm_supply`：`eth_getCode` 改用已经构造的 EIP-1898 `block_selector`，与三笔 `eth_call` 锚定同一 block hash；合法 hex data 后再拒绝空 runtime code `0x`。
+- `_validate_transcript`：对称要求 getCode 使用相同 block selector、三笔 `eth_call` 结果恰为 66 字符、getCode 结果不得为 `0x`。
+- `validate_evm_observation_bundle`：用 `hashlib.sha256(b"").hexdigest()` 计算并拒绝空字节串 runtime code 哈希，未硬编码哈希字面量。
+
+### `scripts/tests/test_evm_observation_nonempty_code.py`（新增）
+
+独立 `main()` runner，覆盖：
+
+1. producer 拒绝 getCode=`0x`；
+2. producer 拒绝 totalSupply=`0x0`；
+3. validator 拒绝与空 code transcript 一致的空字节串哈希 bundle；
+4. transcript validator 拒绝第 7 笔 getCode 的旧块号参数；
+5. 零供应、非空 runtime code 合约从 producer 到持久化 bundle validator 全链通过。
+
+## 先红后绿证据
+
+- 红灯：`maintenance/repair-20260815-g2/f04_red.log`
+  - 在生产代码未修改时运行 `python3 scripts/tests/test_evm_observation_nonempty_code.py`。
+  - 4 个负向用例均因“基线接受了无效观测”而 FAIL；零供应合约绿例通过。
+- 绿灯：`maintenance/repair-20260815-g2/f04_green.log`
+  - 修复后运行同一命令。
+  - 输出：`PASS F-04 EVM nonempty code and ABI word checks: 5/5`。
+
+两次命令均设置 `PYTHONDONTWRITEBYTECODE=1`，避免测试在仓库生成缓存文件。
+
+## 授权存量测试适配
+
+- `scripts/tests/test_evm_observation.py`
+  - FakePool 的三笔 `eth_call` 成功值改为 32 字节 ABI word。
+  - 理由：原 `hex(value)` 是本刀明确拒绝的短 returndata；不改变 transport fake 的测试语义。
+- `scripts/tests/test_evm_observation_release.py`
+  - 对该测试复用的旧共享 bundle fixture 做本地适配：三笔调用结果补成 32 字节、getCode 参数改为 EIP-1898 selector，并刷新 transcript 输入绑定。
+  - 理由：共享 helper 位于未授权文件 `test_supply_truth_gate.py`，不能直接修改；release 测试本身在授权范围内。
+
+## 验收运行结果
+
+- `python3 scripts/tests/test_evm_observation_nonempty_code.py`：PASS，5/5。
+- `python3 scripts/tests/test_evm_observation.py`：PASS，10/10。
+- `python3 scripts/tests/test_evm_observation_release.py`：PASS，11/11。
+- `python3 scripts/tests/test_supply_truth_gate.py`：FAIL，exit 1。首个协议错误为 `transcript eth_getCode params mismatch`；其 `write_evm_bundle` 仍生成旧块号 getCode 参数，且三笔结果仍为短 `hex(...)`。该文件不在授权适配清单，故未修改并停止扩面。
+- `python3 scripts/tests/test_batch3_evm_vertical_slice.py`：未完成，`ThreadingHTTPServer` 绑定 `127.0.0.1` 时触发 `PermissionError: [Errno 1] Operation not permitted`。静态检查同时可见其 fixture 仍以 `hex(amount)` 返回短 `eth_call` 值；调度方在可用环境复跑后预计仍需裁决该未授权夹具适配，本文不把未实际到达的业务结果写成已验证失败。
+
+## 遗留问题与调度方事项
+
+1. 决定是否另行授权适配 `scripts/tests/test_supply_truth_gate.py` 的 `write_evm_bundle` 夹具；当前该验收项确定为红。
+2. 在允许 loopback 的本机环境复跑 `test_batch3_evm_vertical_slice.py`，并根据实际结果裁决其短 returndata fixture 是否授权适配。
+3. 在上述两项收口前，不应声明本工单全部验收全绿。
+
+## 约束自查
+
+- 仅修改 1 个授权生产文件、1 个新增专属测试和 2 个授权存量测试；另新增工单要求的红绿日志与本 done 报告。
+- 未触碰授权清单之外的任何生产文件。
+- 未修改 VERSION、CHANGELOG、SKILL.md、r10_ledger.md、pyproject、`scripts/report/`、`scripts/evm/`、`scripts/tests/run_all.py` 或任何 manifest。
+- 未执行任何 git 命令或 git 写操作。
+
+2026-08-15T13:14:26.600107Z ERROR codex_models_manager::manager: failed to renew cache TTL: missing field `base_instructions` at line 95 column 5
+codex
+约束有一处直接冲突：补充工单要求追加 `workorder_F04_done.md`，但你本轮明确限定“只改两个测试文件”。我按你的最新指令执行，不修改 done 报告；验收结果会在最终回复中完整给出。现在先定位两个夹具及生产校验的精确协议形态。
+exec
+/bin/zsh -lc 'rg -n -C 12 "def write_evm_bundle|eth_call|eth_getCode|runtime_code_sha256|class FixtureHandler|FixtureHandler" scripts/tests/test_supply_truth_gate.py scripts/tests/test_batch3_evm_vertical_slice.py scripts/lib/evm_observation.py' in /Users/uravvv/.claude/tca-repair-g2
+ succeeded in 0ms:
+scripts/tests/test_batch3_evm_vertical_slice.py-17-from formal_ready_test_harness import run_formal_script  # noqa: E402
+scripts/tests/test_batch3_evm_vertical_slice.py-18-from formal_capability_probes import formal_evidence_target  # noqa: E402
+scripts/tests/test_batch3_evm_vertical_slice.py-19-TOKEN = "0x" + "9" * 40
+scripts/tests/test_batch3_evm_vertical_slice.py-20-A = "0x" + "1" * 40
+scripts/tests/test_batch3_evm_vertical_slice.py-21-B = "0x" + "2" * 40
+scripts/tests/test_batch3_evm_vertical_slice.py-22-ZERO = "0x" + "0" * 40
+scripts/tests/test_batch3_evm_vertical_slice.py-23-DEAD = "0x000000000000000000000000000000000000dead"
+scripts/tests/test_batch3_evm_vertical_slice.py-24-CHAIN_IDS = {"eth": 1, "bsc": 56, "base": 8453}
+scripts/tests/test_batch3_evm_vertical_slice.py-25-BLOCK_HASH = "0x" + "a" * 64
+scripts/tests/test_batch3_evm_vertical_slice.py-26-PARENT_HASH = "0x" + "b" * 64
+scripts/tests/test_batch3_evm_vertical_slice.py-27-
+scripts/tests/test_batch3_evm_vertical_slice.py-28-
+scripts/tests/test_batch3_evm_vertical_slice.py:29:class FixtureHandler(BaseHTTPRequestHandler):
+scripts/tests/test_batch3_evm_vertical_slice.py-30-    chain_id = 1
+scripts/tests/test_batch3_evm_vertical_slice.py-31-    supply = 100
+scripts/tests/test_batch3_evm_vertical_slice.py-32-    dead_balance = 0
+scripts/tests/test_batch3_evm_vertical_slice.py-33-    methods = []
+scripts/tests/test_batch3_evm_vertical_slice.py-34-
+scripts/tests/test_batch3_evm_vertical_slice.py-35-    def log_message(self, *_args):
+scripts/tests/test_batch3_evm_vertical_slice.py-36-        return
+scripts/tests/test_batch3_evm_vertical_slice.py-37-
+scripts/tests/test_batch3_evm_vertical_slice.py-38-    def do_GET(self):
+scripts/tests/test_batch3_evm_vertical_slice.py-39-        self.send_response(404)
+scripts/tests/test_batch3_evm_vertical_slice.py-40-        self.end_headers()
+scripts/tests/test_batch3_evm_vertical_slice.py-41-
+--
+scripts/tests/test_batch3_evm_vertical_slice.py-51-            method = body.get("method")
+scripts/tests/test_batch3_evm_vertical_slice.py-52-            type(self).methods.append(method)
+scripts/tests/test_batch3_evm_vertical_slice.py-53-            params = body.get("params") or []
+scripts/tests/test_batch3_evm_vertical_slice.py-54-            if method == "eth_chainId":
+scripts/tests/test_batch3_evm_vertical_slice.py-55-                result = hex(type(self).chain_id)
+scripts/tests/test_batch3_evm_vertical_slice.py-56-            elif method == "eth_blockNumber":
+scripts/tests/test_batch3_evm_vertical_slice.py-57-                result = hex(123)
+scripts/tests/test_batch3_evm_vertical_slice.py-58-            elif method == "eth_getBlockByNumber":
+scripts/tests/test_batch3_evm_vertical_slice.py-59-                result = {
+scripts/tests/test_batch3_evm_vertical_slice.py-60-                    "number": hex(123), "hash": BLOCK_HASH,
+scripts/tests/test_batch3_evm_vertical_slice.py-61-                    "parentHash": PARENT_HASH, "timestamp": hex(1_700_000_000),
+scripts/tests/test_batch3_evm_vertical_slice.py-62-                }
+scripts/tests/test_batch3_evm_vertical_slice.py:63:            elif method == "eth_getCode":
+scripts/tests/test_batch3_evm_vertical_slice.py-64-                result = "0x6000"
+scripts/tests/test_batch3_evm_vertical_slice.py-65-            elif method == "eth_getStorageAt":
+scripts/tests/test_batch3_evm_vertical_slice.py-66-                result = "0x" + "0" * 64
+scripts/tests/test_batch3_evm_vertical_slice.py:67:            elif method == "eth_call":
+scripts/tests/test_batch3_evm_vertical_slice.py-68-                call = params[0]
+scripts/tests/test_batch3_evm_vertical_slice.py-69-                data = call.get("data", "")
+scripts/tests/test_batch3_evm_vertical_slice.py-70-                if data.startswith("0x18160ddd"):
+scripts/tests/test_batch3_evm_vertical_slice.py-71-                    amount = type(self).supply
+scripts/tests/test_batch3_evm_vertical_slice.py-72-                else:
+scripts/tests/test_batch3_evm_vertical_slice.py-73-                    address = "0x" + data[-40:]
+scripts/tests/test_batch3_evm_vertical_slice.py-74-                    block = params[1]
+scripts/tests/test_batch3_evm_vertical_slice.py-75-                    if isinstance(block, dict):
+scripts/tests/test_batch3_evm_vertical_slice.py-76-                        assert block == {"blockHash": BLOCK_HASH,
+scripts/tests/test_batch3_evm_vertical_slice.py-77-                                         "requireCanonical": True}, block
+scripts/tests/test_batch3_evm_vertical_slice.py-78-                    if address.lower() == B and block == hex(121):
+scripts/tests/test_batch3_evm_vertical_slice.py-79-                        amount = 0
+--
+scripts/tests/test_batch3_evm_vertical_slice.py-181-                                          "evm_observation_bundle.json",
+scripts/tests/test_batch3_evm_vertical_slice.py-182-                                          "--out", "supply_truth.json"],
+scripts/tests/test_batch3_evm_vertical_slice.py-183-                                 "receipt": "supply_truth.json"},
+scripts/tests/test_batch3_evm_vertical_slice.py-184-                "time": {"producer": "scripts/lib/time_spotcheck.py",
+scripts/tests/test_batch3_evm_vertical_slice.py-185-                         "argv": ["--plan", "anchor_plan.json", "--input", "transfers_evm.csv",
+scripts/tests/test_batch3_evm_vertical_slice.py-186-                                  "--chain", chain,
+scripts/tests/test_batch3_evm_vertical_slice.py-187-                                  "--token", TOKEN, "--final-block", "123", "--rpc", endpoint,
+scripts/tests/test_batch3_evm_vertical_slice.py-188-                                  "--out", "time_spotcheck.json"],
+scripts/tests/test_batch3_evm_vertical_slice.py-189-                         "receipt": "time_spotcheck.json"}}}
+scripts/tests/test_batch3_evm_vertical_slice.py-190-
+scripts/tests/test_batch3_evm_vertical_slice.py-191-
+scripts/tests/test_batch3_evm_vertical_slice.py-192-def execute_real_slice(case, chain, endpoint, total, dead_balance=0):
+scripts/tests/test_batch3_evm_vertical_slice.py:193:    FixtureHandler.chain_id = CHAIN_IDS[chain]
+scripts/tests/test_batch3_evm_vertical_slice.py:194:    FixtureHandler.supply = total
+scripts/tests/test_batch3_evm_vertical_slice.py:195:    FixtureHandler.dead_balance = dead_balance
+scripts/tests/test_batch3_evm_vertical_slice.py-196-    prepare_inputs(case, chain, total, dead_balance)
+scripts/tests/test_batch3_evm_vertical_slice.py-197-    run([sys.executable, str(ROOT / "scripts/evm/observe_supply.py"),
+scripts/tests/test_batch3_evm_vertical_slice.py-198-         "--chain", chain, "--token", TOKEN, "--as-of-block", "123",
+scripts/tests/test_batch3_evm_vertical_slice.py-199-         "--rpc", endpoint, "--out", "evm_observation_bundle.json",
+scripts/tests/test_batch3_evm_vertical_slice.py-200-         "--transcript-out", "evm_observation_transcript.json"], case)
+scripts/tests/test_batch3_evm_vertical_slice.py-201-    run([sys.executable, str(ROOT / "scripts/evm/accounting_gate.py"),
+scripts/tests/test_batch3_evm_vertical_slice.py-202-         "--chain", chain, "--token", TOKEN, "--rpc", endpoint,
+scripts/tests/test_batch3_evm_vertical_slice.py-203-         "--hypersync", endpoint, "--sourcify", endpoint, "--samples", "1",
+scripts/tests/test_batch3_evm_vertical_slice.py-204-         "--as-of-block", "123", "--bundle", "evm_observation_bundle.json",
+scripts/tests/test_batch3_evm_vertical_slice.py-205-         "--out", "accounting_mode.json"], case)
+scripts/tests/test_batch3_evm_vertical_slice.py-206-    job = case / "reconciliation_job.json"
+scripts/tests/test_batch3_evm_vertical_slice.py-207-    job.write_text(json.dumps(spec(case, chain, endpoint)))
+scripts/tests/test_batch3_evm_vertical_slice.py-208-    run([sys.executable, str(ROOT / "scripts/report/reconciliation_report.py"), str(job)], case)
+scripts/tests/test_batch3_evm_vertical_slice.py-209-
+scripts/tests/test_batch3_evm_vertical_slice.py-210-
+scripts/tests/test_batch3_evm_vertical_slice.py-211-def wrong_chain_zero_business(case, chain, endpoint):
+scripts/tests/test_batch3_evm_vertical_slice.py-212-    prepare_inputs(case, chain, 100)
+scripts/tests/test_batch3_evm_vertical_slice.py:213:    FixtureHandler.chain_id = 999
+scripts/tests/test_batch3_evm_vertical_slice.py:214:    FixtureHandler.methods.clear()
+scripts/tests/test_batch3_evm_vertical_slice.py-215-    proc = run([sys.executable, str(ROOT / "scripts/lib/time_spotcheck.py"),
+scripts/tests/test_batch3_evm_vertical_slice.py-216-                "--plan", "anchor_plan.json", "--input", "transfers_evm.csv",
+scripts/tests/test_batch3_evm_vertical_slice.py-217-                "--chain", chain, "--token", TOKEN,
+scripts/tests/test_batch3_evm_vertical_slice.py-218-                "--final-block", "123", "--rpc", endpoint,
+scripts/tests/test_batch3_evm_vertical_slice.py-219-                "--out", "wrong_chain.json"], case, expect=1)
+scripts/tests/test_batch3_evm_vertical_slice.py-220-    assert proc.returncode != 0
+scripts/tests/test_batch3_evm_vertical_slice.py:221:    assert FixtureHandler.methods and set(FixtureHandler.methods) == {"eth_chainId"}, \
+scripts/tests/test_batch3_evm_vertical_slice.py:222:        (chain, FixtureHandler.methods)
+scripts/tests/test_batch3_evm_vertical_slice.py-223-
+scripts/tests/test_batch3_evm_vertical_slice.py-224-
+scripts/tests/test_batch3_evm_vertical_slice.py-225-def full_chain(chain, endpoint):
+scripts/tests/test_batch3_evm_vertical_slice.py-226-    from test_handoff_manifest import make_case
+scripts/tests/test_batch3_evm_vertical_slice.py-227-    from test_audit_release_gate import build_case
+scripts/tests/test_batch3_evm_vertical_slice.py-228-
+scripts/tests/test_batch3_evm_vertical_slice.py-229-    with tempfile.TemporaryDirectory(prefix=f"b3-{chain}-wrong-", dir="/private/tmp") as td:
+scripts/tests/test_batch3_evm_vertical_slice.py-230-        wrong_chain_zero_business(Path(td), chain, endpoint)
+scripts/tests/test_batch3_evm_vertical_slice.py-231-
+scripts/tests/test_batch3_evm_vertical_slice.py-232-    with tempfile.TemporaryDirectory(prefix=f"b3-{chain}-handoff-", dir="/private/tmp") as td:
+scripts/tests/test_batch3_evm_vertical_slice.py-233-        case = Path(td)
+scripts/tests/test_batch3_evm_vertical_slice.py-234-        make_case(str(case), chain=chain, token=TOKEN, as_of_block=123)
+--
+scripts/tests/test_batch3_evm_vertical_slice.py-263-        (case / "adversarial_review.json").write_text(json.dumps(adversarial))
+scripts/tests/test_batch3_evm_vertical_slice.py-264-        execute_real_slice(case, chain, endpoint, 100)
+scripts/tests/test_batch3_evm_vertical_slice.py-265-        # B-7（批 D）：三账 balance_source 须与真实四查 owner 快照同时点等值——
+scripts/tests/test_batch3_evm_vertical_slice.py-266-        # build_case 编造的三账（0xabc@123）对齐到本切片 verify_recon 真吃的余额文件。
+scripts/tests/test_batch3_evm_vertical_slice.py-267-        from test_audit_release_gate import align_ledgers_to_owner_snapshot
+scripts/tests/test_batch3_evm_vertical_slice.py-268-        align_ledgers_to_owner_snapshot(case, case / "balances_evm.json")
+scripts/tests/test_batch3_evm_vertical_slice.py-269-        run([sys.executable, str(ROOT / "scripts/report/shared_release_receipt.py"), str(case)], case)
+scripts/tests/test_batch3_evm_vertical_slice.py-270-        run([sys.executable, str(ROOT / "scripts/report/audit_release_gate.py"),
+scripts/tests/test_batch3_evm_vertical_slice.py-271-             str(case), "--report", str(report)], case)
+scripts/tests/test_batch3_evm_vertical_slice.py-272-
+scripts/tests/test_batch3_evm_vertical_slice.py-273-
+scripts/tests/test_batch3_evm_vertical_slice.py-274-def _run_registered_chain(chain):
+scripts/tests/test_batch3_evm_vertical_slice.py:275:    server = ThreadingHTTPServer(("127.0.0.1", 0), FixtureHandler)
+scripts/tests/test_batch3_evm_vertical_slice.py-276-    thread = threading.Thread(target=server.serve_forever, daemon=True)
+scripts/tests/test_batch3_evm_vertical_slice.py-277-    thread.start()
+scripts/tests/test_batch3_evm_vertical_slice.py-278-    try:
+scripts/tests/test_batch3_evm_vertical_slice.py-279-        endpoint = f"http://127.0.0.1:{server.server_port}"
+scripts/tests/test_batch3_evm_vertical_slice.py-280-        full_chain(chain, endpoint)
+scripts/tests/test_batch3_evm_vertical_slice.py-281-    finally:
+scripts/tests/test_batch3_evm_vertical_slice.py-282-        server.shutdown()
+scripts/tests/test_batch3_evm_vertical_slice.py-283-        thread.join()
+scripts/tests/test_batch3_evm_vertical_slice.py-284-
+scripts/tests/test_batch3_evm_vertical_slice.py-285-
+scripts/tests/test_batch3_evm_vertical_slice.py-286-def test_nonzero_dead_vertical_slice():
+scripts/tests/test_batch3_evm_vertical_slice.py-287-    """burn>0: verify sum==mint, supply-truth v3 fallback, shared validator all PASS."""
+scripts/tests/test_batch3_evm_vertical_slice.py-288-    from test_audit_release_gate import build_case
+scripts/tests/test_batch3_evm_vertical_slice.py-289-
+scripts/tests/test_batch3_evm_vertical_slice.py:290:    server = ThreadingHTTPServer(("127.0.0.1", 0), FixtureHandler)
+scripts/tests/test_batch3_evm_vertical_slice.py-291-    thread = threading.Thread(target=server.serve_forever, daemon=True)
+scripts/tests/test_batch3_evm_vertical_slice.py-292-    thread.start()
+scripts/tests/test_batch3_evm_vertical_slice.py-293-    try:
+scripts/tests/test_batch3_evm_vertical_slice.py-294-        endpoint = f"http://127.0.0.1:{server.server_port}"
+scripts/tests/test_batch3_evm_vertical_slice.py-295-        with tempfile.TemporaryDirectory(prefix="b3-eth-dead-", dir="/private/tmp") as td:
+scripts/tests/test_batch3_evm_vertical_slice.py-296-            case = Path(td)
+scripts/tests/test_batch3_evm_vertical_slice.py-297-            build_case(case, historical=False)
+scripts/tests/test_batch3_evm_vertical_slice.py-298-            for path in [*(case / f"{key}_receipt.json"
+scripts/tests/test_batch3_evm_vertical_slice.py-299-                           for key in ("balance", "supply", "supply_truth", "time")),
+scripts/tests/test_batch3_evm_vertical_slice.py-300-                         case / "reconciliation_report.json", case / "accounting_mode.json",
+scripts/tests/test_batch3_evm_vertical_slice.py-301-                         case / "shared_release_receipt.json"]:
+scripts/tests/test_batch3_evm_vertical_slice.py-302-                path.unlink(missing_ok=True)
+--
+scripts/lib/evm_observation.py-54-    if not isinstance(value, str) or not _HEX_VALUE.fullmatch(value):
+scripts/lib/evm_observation.py-55-        raise EvmObservationError(f"{label} is not a hexadecimal quantity: {value!r}")
+scripts/lib/evm_observation.py-56-    return int(value, 16)
+scripts/lib/evm_observation.py-57-
+scripts/lib/evm_observation.py-58-
+scripts/lib/evm_observation.py-59-def _call_value(response, label):
+scripts/lib/evm_observation.py-60-    if not isinstance(response, dict) or response.get("ok") is not True:
+scripts/lib/evm_observation.py-61-        error = response.get("error") if isinstance(response, dict) else response
+scripts/lib/evm_observation.py-62-        raise EvmObservationError(f"{label} RPC failed: {error}")
+scripts/lib/evm_observation.py-63-    return response.get("result")
+scripts/lib/evm_observation.py-64-
+scripts/lib/evm_observation.py-65-
+scripts/lib/evm_observation.py:66:def _eth_call_value(response, label) -> tuple[int, str]:
+scripts/lib/evm_observation.py:67:    raw = _call_value(response, f"eth_call {label}")
+scripts/lib/evm_observation.py-68-    if not isinstance(raw, str) or not _HEX_VALUE.fullmatch(raw) or len(raw) != 66:
+scripts/lib/evm_observation.py:69:        raise EvmObservationError(f"eth_call {label} returned invalid value: {raw!r}")
+scripts/lib/evm_observation.py-70-    return int(raw, 16), raw
+scripts/lib/evm_observation.py-71-
+scripts/lib/evm_observation.py-72-
+scripts/lib/evm_observation.py-73-def _balance_of_data(address):
+scripts/lib/evm_observation.py-74-    return SEL_BALANCE + "0" * 24 + address.removeprefix("0x").lower()
+scripts/lib/evm_observation.py-75-
+scripts/lib/evm_observation.py-76-
+scripts/lib/evm_observation.py-77-def _block(value, label):
+scripts/lib/evm_observation.py-78-    if not isinstance(value, dict):
+scripts/lib/evm_observation.py-79-        raise EvmObservationError(f"{label} result must be a block object")
+scripts/lib/evm_observation.py-80-    number = _quantity(value.get("number"), f"{label}.number")
+scripts/lib/evm_observation.py-81-    block_hash = value.get("hash")
+--
+scripts/lib/evm_observation.py-160-    tip_response = pool.call("eth_blockNumber", [])
+scripts/lib/evm_observation.py-161-    _assert_endpoint(pool, attested_endpoint)
+scripts/lib/evm_observation.py-162-    tip_raw = _call_value(tip_response, "eth_blockNumber")
+scripts/lib/evm_observation.py-163-    _record(transcript, "eth_blockNumber", [], tip_raw)
+scripts/lib/evm_observation.py-164-    tip = _quantity(tip_raw, "eth_blockNumber result")
+scripts/lib/evm_observation.py-165-    if tip < first["number"]:
+scripts/lib/evm_observation.py-166-        raise EvmObservationError(
+scripts/lib/evm_observation.py-167-            f"tip block {tip} precedes anchor block {first['number']}")
+scripts/lib/evm_observation.py-168-
+scripts/lib/evm_observation.py-169-    block_selector = {
+scripts/lib/evm_observation.py-170-        "blockHash": first["block_hash"], "requireCanonical": True,
+scripts/lib/evm_observation.py-171-    }
+scripts/lib/evm_observation.py:172:    eth_calls = [
+scripts/lib/evm_observation.py:173:        ("eth_call", [{"to": canonical_token, "data": SEL_TOTSUP}, block_selector]),
+scripts/lib/evm_observation.py:174:        ("eth_call", [{"to": canonical_token,
+scripts/lib/evm_observation.py-175-                       "data": _balance_of_data(ZERO)}, block_selector]),
+scripts/lib/evm_observation.py:176:        ("eth_call", [{"to": canonical_token,
+scripts/lib/evm_observation.py-177-                       "data": _balance_of_data(DEAD)}, block_selector]),
+scripts/lib/evm_observation.py-178-    ]
+scripts/lib/evm_observation.py:179:    responses = pool.call_many(eth_calls, progress=False)
+scripts/lib/evm_observation.py-180-    _assert_endpoint(pool, attested_endpoint)
+scripts/lib/evm_observation.py:181:    if not isinstance(responses, list) or len(responses) != len(eth_calls):
+scripts/lib/evm_observation.py:182:        raise EvmObservationError("eth_call supply response count is incomplete")
+scripts/lib/evm_observation.py-183-    values = []
+scripts/lib/evm_observation.py-184-    for (method, params), response, label in zip(
+scripts/lib/evm_observation.py:185:            eth_calls, responses,
+scripts/lib/evm_observation.py-186-            ("totalSupply", "balanceOf(ZERO)", "balanceOf(DEAD)")):
+scripts/lib/evm_observation.py:187:        value, raw = _eth_call_value(response, label)
+scripts/lib/evm_observation.py-188-        _record(transcript, method, params, raw)
+scripts/lib/evm_observation.py-189-        values.append(value)
+scripts/lib/evm_observation.py-190-
+scripts/lib/evm_observation.py-191-    code_params = [canonical_token, block_selector]
+scripts/lib/evm_observation.py:192:    code_response = pool.call("eth_getCode", code_params)
+scripts/lib/evm_observation.py-193-    _assert_endpoint(pool, attested_endpoint)
+scripts/lib/evm_observation.py:194:    code_raw = _call_value(code_response, "eth_getCode")
+scripts/lib/evm_observation.py:195:    _record(transcript, "eth_getCode", code_params, code_raw)
+scripts/lib/evm_observation.py-196-    if not isinstance(code_raw, str) or not _HEX_DATA.fullmatch(code_raw):
+scripts/lib/evm_observation.py:197:        raise EvmObservationError(f"eth_getCode returned invalid bytecode: {code_raw!r}")
+scripts/lib/evm_observation.py-198-    if code_raw == "0x":
+scripts/lib/evm_observation.py:199:        raise EvmObservationError("eth_getCode returned empty runtime bytecode")
+scripts/lib/evm_observation.py:200:    runtime_code_sha256 = hashlib.sha256(bytes.fromhex(code_raw[2:])).hexdigest()
+scripts/lib/evm_observation.py-201-
+scripts/lib/evm_observation.py-202-    recheck_response = pool.call("eth_getBlockByNumber", block_params)
+scripts/lib/evm_observation.py-203-    _assert_endpoint(pool, attested_endpoint)
+scripts/lib/evm_observation.py-204-    recheck_raw = _call_value(recheck_response, "eth_getBlockByNumber(recheck)")
+scripts/lib/evm_observation.py-205-    _record(transcript, "eth_getBlockByNumber", block_params, recheck_raw)
+scripts/lib/evm_observation.py-206-    recheck = _block(recheck_raw, "recheck block")
+scripts/lib/evm_observation.py-207-    if recheck["number"] != first["number"]:
+scripts/lib/evm_observation.py-208-        raise EvmObservationError("block number recheck mismatch")
+scripts/lib/evm_observation.py-209-    if recheck["block_hash"] != first["block_hash"]:
+scripts/lib/evm_observation.py-210-        raise EvmObservationError("block hash recheck mismatch")
+scripts/lib/evm_observation.py-211-
+scripts/lib/evm_observation.py-212-    return {
+--
+scripts/lib/evm_observation.py-218-        "anchor": {
+scripts/lib/evm_observation.py-219-            **first,
+scripts/lib/evm_observation.py-220-            "recheck_block_hash": recheck["block_hash"],
+scripts/lib/evm_observation.py-221-            "tip_block": tip,
+scripts/lib/evm_observation.py-222-            "confirmations": tip - first["number"],
+scripts/lib/evm_observation.py-223-        },
+scripts/lib/evm_observation.py-224-        "supply": {
+scripts/lib/evm_observation.py-225-            "total_supply_raw": str(values[0]),
+scripts/lib/evm_observation.py-226-            "zero_balance_raw": str(values[1]),
+scripts/lib/evm_observation.py-227-            "dead_balance_raw": str(values[2]),
+scripts/lib/evm_observation.py-228-            "block_binding": BLOCK_BINDING,
+scripts/lib/evm_observation.py-229-        },
+scripts/lib/evm_observation.py:230:        "code": {"runtime_code_sha256": runtime_code_sha256},
+scripts/lib/evm_observation.py-231-        "_transcript": transcript,
+scripts/lib/evm_observation.py-232-    }
+scripts/lib/evm_observation.py-233-
+scripts/lib/evm_observation.py-234-
+scripts/lib/evm_observation.py-235-def build_evm_observation_bundle(core, transcript_path, target, producer_file, *, input_base):
+scripts/lib/evm_observation.py-236-    if not isinstance(core, dict):
+scripts/lib/evm_observation.py-237-        raise ValueError("EVM observation core must be an object")
+scripts/lib/evm_observation.py-238-    required = {"attestation", "anchor", "supply", "code"}
+scripts/lib/evm_observation.py-239-    if not required <= set(core):
+scripts/lib/evm_observation.py-240-        raise ValueError("EVM observation core fields are incomplete")
+scripts/lib/evm_observation.py-241-    envelope = build_envelope(
+scripts/lib/evm_observation.py-242-        BUNDLE_SCHEMA, target, producer_file, "formal",
+--
+scripts/lib/evm_observation.py-255-def _transcript_path(bundle, bundle_path):
+scripts/lib/evm_observation.py-256-    ref = (bundle.get("inputs") or {}).get("transcript") or {}
+scripts/lib/evm_observation.py-257-    shown = ref.get("path")
+scripts/lib/evm_observation.py-258-    raw = Path(str(shown or ""))
+scripts/lib/evm_observation.py-259-    return raw if raw.is_absolute() else Path(bundle_path).resolve().parent / raw
+scripts/lib/evm_observation.py-260-
+scripts/lib/evm_observation.py-261-
+scripts/lib/evm_observation.py-262-def _validate_transcript(bundle, transcript):
+scripts/lib/evm_observation.py-263-    if not isinstance(transcript, list) or len(transcript) != 8:
+scripts/lib/evm_observation.py-264-        raise ValueError("observation transcript must contain exactly 8 calls")
+scripts/lib/evm_observation.py-265-    methods = [
+scripts/lib/evm_observation.py-266-        "eth_chainId", "eth_getBlockByNumber", "eth_blockNumber",
+scripts/lib/evm_observation.py:267:        "eth_call", "eth_call", "eth_call", "eth_getCode",
+scripts/lib/evm_observation.py-268-        "eth_getBlockByNumber",
+scripts/lib/evm_observation.py-269-    ]
+scripts/lib/evm_observation.py-270-    for index, (row, method) in enumerate(zip(transcript, methods)):
+scripts/lib/evm_observation.py-271-        if not isinstance(row, dict) or set(row) != {"seq", "method", "params", "result"}:
+scripts/lib/evm_observation.py-272-            raise ValueError(f"transcript row {index} shape invalid")
+scripts/lib/evm_observation.py-273-        if isinstance(row.get("seq"), bool) or row.get("seq") != index:
+scripts/lib/evm_observation.py-274-            raise ValueError(f"transcript seq {index} is not continuous")
+scripts/lib/evm_observation.py-275-        if row.get("method") != method:
+scripts/lib/evm_observation.py-276-            raise ValueError(f"transcript method sequence mismatch at seq {index}")
+scripts/lib/evm_observation.py-277-
+scripts/lib/evm_observation.py-278-    target = bundle["target"]
+scripts/lib/evm_observation.py-279-    anchor = bundle["anchor"]
+--
+scripts/lib/evm_observation.py-287-            or transcript[7]["params"] != expected_block_params:
+scripts/lib/evm_observation.py-288-        raise ValueError("transcript block params mismatch")
+scripts/lib/evm_observation.py-289-    if transcript[2]["params"] != []:
+scripts/lib/evm_observation.py-290-        raise ValueError("transcript eth_blockNumber params mismatch")
+scripts/lib/evm_observation.py-291-    selector = {"blockHash": anchor["block_hash"], "requireCanonical": True}
+scripts/lib/evm_observation.py-292-    expected_call_params = [
+scripts/lib/evm_observation.py-293-        [{"to": token, "data": SEL_TOTSUP}, selector],
+scripts/lib/evm_observation.py-294-        [{"to": token, "data": _balance_of_data(ZERO)}, selector],
+scripts/lib/evm_observation.py-295-        [{"to": token, "data": _balance_of_data(DEAD)}, selector],
+scripts/lib/evm_observation.py-296-    ]
+scripts/lib/evm_observation.py-297-    for offset, expected in enumerate(expected_call_params, start=3):
+scripts/lib/evm_observation.py-298-        if transcript[offset]["params"] != expected:
+scripts/lib/evm_observation.py:299:            raise ValueError(f"transcript eth_call params mismatch at seq {offset}")
+scripts/lib/evm_observation.py-300-    if transcript[6]["params"] != [token, selector]:
+scripts/lib/evm_observation.py:301:        raise ValueError("transcript eth_getCode params mismatch")
+scripts/lib/evm_observation.py-302-
+scripts/lib/evm_observation.py-303-    attestation = bundle["attestation"]
+scripts/lib/evm_observation.py-304-    if _quantity(transcript[0]["result"], "transcript chainId") \
+scripts/lib/evm_observation.py-305-            != attestation["observed_chain_id"]:
+scripts/lib/evm_observation.py-306-        raise ValueError("transcript chainId result mismatch")
+scripts/lib/evm_observation.py-307-    first = _block(transcript[1]["result"], "transcript anchor block")
+scripts/lib/evm_observation.py-308-    if first != {key: anchor[key] for key in
+scripts/lib/evm_observation.py-309-                 ("number", "block_hash", "parent_hash", "timestamp")}:
+scripts/lib/evm_observation.py-310-        raise ValueError("transcript anchor block result mismatch")
+scripts/lib/evm_observation.py-311-    if _quantity(transcript[2]["result"], "transcript tip") != anchor["tip_block"]:
+scripts/lib/evm_observation.py-312-        raise ValueError("transcript tip result mismatch")
+scripts/lib/evm_observation.py-313-    for offset, field in enumerate(
+scripts/lib/evm_observation.py-314-            ("total_supply_raw", "zero_balance_raw", "dead_balance_raw"), start=3):
+scripts/lib/evm_observation.py-315-        raw = transcript[offset]["result"]
+scripts/lib/evm_observation.py-316-        if not isinstance(raw, str) or not _HEX_VALUE.fullmatch(raw) \
+scripts/lib/evm_observation.py-317-                or len(raw) != 66 or int(raw, 16) != int(supply[field]):
+scripts/lib/evm_observation.py-318-            raise ValueError(f"transcript {field} result mismatch")
+scripts/lib/evm_observation.py-319-    code_raw = transcript[6]["result"]
+scripts/lib/evm_observation.py-320-    if not isinstance(code_raw, str) or not _HEX_DATA.fullmatch(code_raw) \
+scripts/lib/evm_observation.py-321-            or code_raw == "0x":
+scripts/lib/evm_observation.py:322:        raise ValueError("transcript eth_getCode result invalid")
+scripts/lib/evm_observation.py-323-    if hashlib.sha256(bytes.fromhex(code_raw[2:])).hexdigest() \
+scripts/lib/evm_observation.py:324:            != bundle["code"]["runtime_code_sha256"]:
+scripts/lib/evm_observation.py-325-        raise ValueError("transcript runtime code result mismatch")
+scripts/lib/evm_observation.py-326-    recheck = _block(transcript[7]["result"], "transcript recheck block")
+scripts/lib/evm_observation.py-327-    if recheck["number"] != anchor["number"] \
+scripts/lib/evm_observation.py-328-            or recheck["block_hash"] != anchor["recheck_block_hash"]:
+scripts/lib/evm_observation.py-329-        raise ValueError("transcript recheck block result mismatch")
+scripts/lib/evm_observation.py-330-
+scripts/lib/evm_observation.py-331-
+scripts/lib/evm_observation.py-332-def validate_evm_observation_bundle(
+scripts/lib/evm_observation.py-333-        bundle, *, bundle_path=None, expected_token=None, expected_chain_id=None,
+scripts/lib/evm_observation.py-334-        expected_producer="scripts/evm/observe_supply.py"):
+scripts/lib/evm_observation.py-335-    if not isinstance(bundle, dict) or bundle.get("schema") != BUNDLE_SCHEMA:
+scripts/lib/evm_observation.py-336-        raise ValueError("EVM observation bundle schema invalid")
+--
+scripts/lib/evm_observation.py-384-    timestamp = anchor.get("timestamp")
+scripts/lib/evm_observation.py-385-    if any(isinstance(item, bool) or not isinstance(item, int)
+scripts/lib/evm_observation.py-386-           for item in (tip, confirmations, timestamp)) \
+scripts/lib/evm_observation.py-387-            or tip < as_of or confirmations != tip - as_of or timestamp <= 0:
+scripts/lib/evm_observation.py-388-        raise ValueError("EVM observation bundle anchor heights/timestamp invalid")
+scripts/lib/evm_observation.py-389-
+scripts/lib/evm_observation.py-390-    supply = bundle.get("supply") or {}
+scripts/lib/evm_observation.py-391-    for field in ("total_supply_raw", "zero_balance_raw", "dead_balance_raw"):
+scripts/lib/evm_observation.py-392-        _non_negative_decimal(supply.get(field), f"supply.{field}")
+scripts/lib/evm_observation.py-393-    if supply.get("block_binding") != BLOCK_BINDING:
+scripts/lib/evm_observation.py-394-        raise ValueError("EVM observation bundle supply block binding invalid")
+scripts/lib/evm_observation.py-395-    code = bundle.get("code") or {}
+scripts/lib/evm_observation.py:396:    if not isinstance(code.get("runtime_code_sha256"), str) \
+scripts/lib/evm_observation.py:397:            or not re.fullmatch(r"[0-9a-f]{64}", code["runtime_code_sha256"]):
+scripts/lib/evm_observation.py-398-        raise ValueError("EVM observation bundle runtime code sha256 invalid")
+scripts/lib/evm_observation.py:399:    if code["runtime_code_sha256"] == hashlib.sha256(b"").hexdigest():
+scripts/lib/evm_observation.py-400-        raise ValueError("EVM observation bundle runtime code sha256 identifies empty bytecode")
+scripts/lib/evm_observation.py-401-
+scripts/lib/evm_observation.py-402-    if bundle_path is not None:
+scripts/lib/evm_observation.py-403-        path = Path(bundle_path).resolve(strict=True)
+scripts/lib/evm_observation.py-404-        disk = json.loads(path.read_text(encoding="utf-8"))
+scripts/lib/evm_observation.py-405-        if canonical_json_sha256(disk) != canonical_json_sha256(bundle):
+scripts/lib/evm_observation.py-406-            raise ValueError("EVM observation bundle path bytes do not match supplied object")
+scripts/lib/evm_observation.py-407-        transcript_path = _transcript_path(bundle, path).resolve(strict=True)
+scripts/lib/evm_observation.py-408-        transcript = json.loads(transcript_path.read_text(encoding="utf-8"))
+scripts/lib/evm_observation.py-409-        _validate_transcript(bundle, transcript)
+scripts/lib/evm_observation.py-410-    return bundle
+--
+scripts/tests/test_supply_truth_gate.py-75-def split_stats(mint=APU_MINT, burn=APU_DEAD, zero=0, dead=APU_DEAD):
+scripts/tests/test_supply_truth_gate.py-76-    return {
+scripts/tests/test_supply_truth_gate.py-77-        "mint_total_wei": str(mint),
+scripts/tests/test_supply_truth_gate.py-78-        "burn_total_wei": str(burn),
+scripts/tests/test_supply_truth_gate.py-79-        "sum_balances_wei": str(mint),
+scripts/tests/test_supply_truth_gate.py-80-        "zero_event_inflow_wei": str(zero),
+scripts/tests/test_supply_truth_gate.py-81-        "dead_event_inflow_wei": str(dead),
+scripts/tests/test_supply_truth_gate.py-82-        "dead_event_outflow_wei": "0",
+scripts/tests/test_supply_truth_gate.py-83-        "dead_sink_net_wei": str(dead),
+scripts/tests/test_supply_truth_gate.py-84-    }
+scripts/tests/test_supply_truth_gate.py-85-
+scripts/tests/test_supply_truth_gate.py-86-
+scripts/tests/test_supply_truth_gate.py:87:def write_evm_bundle(root, *, token=TOKEN, chain="eth", as_of=123,
+scripts/tests/test_supply_truth_gate.py-88-                     total=APU_MINT, zero=0, dead=APU_DEAD):
+scripts/tests/test_supply_truth_gate.py-89-    """落一份通过工单 A 公共 validator 的 EVM 观测实物。"""
+scripts/tests/test_supply_truth_gate.py-90-    endpoint = "https://rpc.example.test"
+scripts/tests/test_supply_truth_gate.py-91-    block = {
+scripts/tests/test_supply_truth_gate.py-92-        "number": hex(as_of), "hash": BLOCK_HASH,
+scripts/tests/test_supply_truth_gate.py-93-        "parentHash": PARENT_HASH, "timestamp": hex(1_700_000_000),
+scripts/tests/test_supply_truth_gate.py-94-    }
+scripts/tests/test_supply_truth_gate.py-95-    selector = {"blockHash": BLOCK_HASH, "requireCanonical": True}
+scripts/tests/test_supply_truth_gate.py-96-    balance = lambda address: (  # noqa: E731
+scripts/tests/test_supply_truth_gate.py-97-        "0x70a08231" + "0" * 24 + address.removeprefix("0x").lower())
+scripts/tests/test_supply_truth_gate.py-98-    chain_id = {"eth": 1, "bsc": 56, "base": 8453}[chain]
+scripts/tests/test_supply_truth_gate.py-99-    transcript = [
+scripts/tests/test_supply_truth_gate.py-100-        {"seq": 0, "method": "eth_chainId", "params": [], "result": chain_id},
+scripts/tests/test_supply_truth_gate.py-101-        {"seq": 1, "method": "eth_getBlockByNumber",
+scripts/tests/test_supply_truth_gate.py-102-         "params": [hex(as_of), False], "result": block},
+scripts/tests/test_supply_truth_gate.py-103-        {"seq": 2, "method": "eth_blockNumber", "params": [],
+scripts/tests/test_supply_truth_gate.py-104-         "result": hex(as_of + 12)},
+scripts/tests/test_supply_truth_gate.py:105:        {"seq": 3, "method": "eth_call",
+scripts/tests/test_supply_truth_gate.py-106-         "params": [{"to": token, "data": "0x18160ddd"}, selector],
+scripts/tests/test_supply_truth_gate.py-107-         "result": hex(total)},
+scripts/tests/test_supply_truth_gate.py:108:        {"seq": 4, "method": "eth_call",
+scripts/tests/test_supply_truth_gate.py-109-         "params": [{"to": token, "data": balance(ZERO)}, selector],
+scripts/tests/test_supply_truth_gate.py-110-         "result": hex(zero)},
+scripts/tests/test_supply_truth_gate.py:111:        {"seq": 5, "method": "eth_call",
+scripts/tests/test_supply_truth_gate.py-112-         "params": [{"to": token, "data": balance(DEAD)}, selector],
+scripts/tests/test_supply_truth_gate.py-113-         "result": hex(dead)},
+scripts/tests/test_supply_truth_gate.py:114:        {"seq": 6, "method": "eth_getCode", "params": [token, hex(as_of)],
+scripts/tests/test_supply_truth_gate.py-115-         "result": RUNTIME_CODE},
+scripts/tests/test_supply_truth_gate.py-116-        {"seq": 7, "method": "eth_getBlockByNumber",
+scripts/tests/test_supply_truth_gate.py-117-         "params": [hex(as_of), False], "result": block},
+scripts/tests/test_supply_truth_gate.py-118-    ]
+scripts/tests/test_supply_truth_gate.py-119-    transcript_path = root / "evm_observation_transcript.json"
+scripts/tests/test_supply_truth_gate.py-120-    transcript_path.write_text(json.dumps(transcript), encoding="utf-8")
+scripts/tests/test_supply_truth_gate.py-121-    core = {
+scripts/tests/test_supply_truth_gate.py-122-        "attestation": {
+scripts/tests/test_supply_truth_gate.py-123-            "expected_chain_id": chain_id, "observed_chain_id": chain_id,
+scripts/tests/test_supply_truth_gate.py-124-            "endpoint": endpoint_fingerprint(endpoint),
+scripts/tests/test_supply_truth_gate.py-125-        },
+scripts/tests/test_supply_truth_gate.py-126-        "anchor": {
+scripts/tests/test_supply_truth_gate.py-127-            "number": as_of, "block_hash": BLOCK_HASH,
+scripts/tests/test_supply_truth_gate.py-128-            "parent_hash": PARENT_HASH, "timestamp": 1_700_000_000,
+scripts/tests/test_supply_truth_gate.py-129-            "recheck_block_hash": BLOCK_HASH, "tip_block": as_of + 12,
+scripts/tests/test_supply_truth_gate.py-130-            "confirmations": 12,
+scripts/tests/test_supply_truth_gate.py-131-        },
+scripts/tests/test_supply_truth_gate.py-132-        "supply": {
+scripts/tests/test_supply_truth_gate.py-133-            "total_supply_raw": str(total), "zero_balance_raw": str(zero),
+scripts/tests/test_supply_truth_gate.py-134-            "dead_balance_raw": str(dead),
+scripts/tests/test_supply_truth_gate.py-135-            "block_binding": "eip1898-block-hash",
+scripts/tests/test_supply_truth_gate.py-136-        },
+scripts/tests/test_supply_truth_gate.py:137:        "code": {"runtime_code_sha256": hashlib.sha256(
+scripts/tests/test_supply_truth_gate.py-138-            bytes.fromhex(RUNTIME_CODE[2:])).hexdigest()},
+scripts/tests/test_supply_truth_gate.py-139-    }
+scripts/tests/test_supply_truth_gate.py-140-    target = {"chain": chain, "token": token, "as_of_block": as_of}
+scripts/tests/test_supply_truth_gate.py-141-    bundle = build_evm_observation_bundle(
+scripts/tests/test_supply_truth_gate.py-142-        core, transcript_path, target, "scripts/evm/observe_supply.py",
+scripts/tests/test_supply_truth_gate.py-143-        input_base=root)
+scripts/tests/test_supply_truth_gate.py-144-    bundle_path = root / "evm_observation_bundle.json"
+scripts/tests/test_supply_truth_gate.py-145-    bundle_path.write_text(json.dumps(bundle), encoding="utf-8")
+scripts/tests/test_supply_truth_gate.py-146-    return bundle_path
+scripts/tests/test_supply_truth_gate.py-147-
+scripts/tests/test_supply_truth_gate.py-148-
+scripts/tests/test_supply_truth_gate.py-149-def run_evm(stats, pool, *, tolerance=10, with_bundle=True, bundle_token=TOKEN,
+--
+scripts/tests/test_supply_truth_gate.py-266-          rc == 1 and block_mismatch.get("verdict") == "ERROR")
+scripts/tests/test_supply_truth_gate.py-267-
+scripts/tests/test_supply_truth_gate.py-268-    formal_pool = FakePool(1000)
+scripts/tests/test_supply_truth_gate.py-269-    rc, formal = run_evm(
+scripts/tests/test_supply_truth_gate.py-270-        split_stats(mint=1000, burn=0, zero=0, dead=0), formal_pool)
+scripts/tests/test_supply_truth_gate.py-271-    check("EVM formal main path zero RPC", rc == 0
+scripts/tests/test_supply_truth_gate.py-272-          and formal_pool.calls == [] and formal_pool.many_calls == [])
+scripts/tests/test_supply_truth_gate.py-273-    check("EVM formal bundle binding and semantics", formal.get("schema")
+scripts/tests/test_supply_truth_gate.py-274-          == "supply-truth-receipt/v4"
+scripts/tests/test_supply_truth_gate.py-275-          and (formal.get("inputs") or {}).get("observation_bundle")
+scripts/tests/test_supply_truth_gate.py-276-          and formal.get("observation_bundle")
+scripts/tests/test_supply_truth_gate.py-277-          and formal.get("supply_observation_semantics")
+scripts/tests/test_supply_truth_gate.py:278:          == "frozen-block eth_call via evm-observation-bundle (EIP-1898 block-hash binding)")
+scripts/tests/test_supply_truth_gate.py-279-
+scripts/tests/test_supply_truth_gate.py-280-    exploration_pool = FakePool(1000)
+scripts/tests/test_supply_truth_gate.py-281-    rc, exploration = run_evm(
+scripts/tests/test_supply_truth_gate.py-282-        split_stats(mint=1000, burn=0, zero=0, dead=0), exploration_pool,
+scripts/tests/test_supply_truth_gate.py-283-        with_bundle=False, exploration=True)
+scripts/tests/test_supply_truth_gate.py-284-    check("EVM exploration retains v3 live RPC behavior", rc == 0
+scripts/tests/test_supply_truth_gate.py-285-          and exploration.get("schema") == "supply-truth-receipt/v3"
+scripts/tests/test_supply_truth_gate.py-286-          and len(exploration_pool.calls) == 1)
+scripts/tests/test_supply_truth_gate.py-287-
+scripts/tests/test_supply_truth_gate.py-288-
+scripts/tests/test_supply_truth_gate.py-289-def test_fail_closed_main_branches():
+scripts/tests/test_supply_truth_gate.py-290-    # 旧 stats 缺拆分字段：不触发回退，保留 primary FAIL。
+
+exec
+/bin/zsh -lc "sed -n '1,165p' scripts/tests/test_supply_truth_gate.py
+sed -n '1,115p' scripts/tests/test_batch3_evm_vertical_slice.py
+sed -n '115,350p' scripts/tests/test_batch3_evm_vertical_slice.py" in /Users/uravvv/.claude/tca-repair-g2
+ succeeded in 0ms:
+#!/usr/bin/env python3
+"""supply_truth_gate 离线契约测试：形态①保持、形态②回退与 fail-closed。"""
+from __future__ import annotations
+
+import hashlib
+import json
+import os
+import sys
+import tempfile
+from contextlib import contextmanager
+from pathlib import Path
+from unittest.mock import patch
+
+ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT / "scripts/lib"))
+sys.path.insert(0, str(ROOT / "scripts/report"))
+import supply_truth_gate as gate  # noqa: E402
+import shared_release_receipt as shared  # noqa: E402
+from endpoint_identity import endpoint_fingerprint  # noqa: E402
+from evm_observation import build_evm_observation_bundle  # noqa: E402
+
+FAILS = []
+ZERO = "0x0000000000000000000000000000000000000000"
+DEAD = "0x000000000000000000000000000000000000dead"
+TOKEN = "0x" + "9" * 40
+APU_MINT = 420690000000000000000000000000
+APU_DEAD = 82800853653911207346039942180
+BLOCK_HASH = "0x" + "1" * 64
+PARENT_HASH = "0x" + "2" * 64
+RUNTIME_CODE = "0x6001600055"
+
+
+def check(name, cond):
+    if not cond:
+        FAILS.append(name)
+        print(f"FAIL  {name}")
+    else:
+        print(f"ok    {name}")
+
+
+class FakePool:
+    """严格离线 RPC pool；记录 primary call 与 fallback call_many。"""
+
+    def __init__(self, supply, zero=0, dead=0, fail_many_index=None):
+        self.values = [supply, zero, dead]
+        self.fail_many_index = fail_many_index
+        self.calls = []
+        self.many_calls = []
+
+    def call(self, method, params):
+        self.calls.append((method, params))
+        return {"ok": True, "result": hex(self.values[0])}
+
+    def call_many(self, calls, progress=True):
+        self.many_calls.append(calls)
+        out = []
+        for index, value in enumerate(self.values):
+            if index == self.fail_many_index:
+                out.append({"ok": False, "error": "offline injected RPC failure"})
+            else:
+                out.append({"ok": True, "result": hex(value)})
+        return out
+
+
+@contextmanager
+def chdir(path):
+    previous = os.getcwd()
+    os.chdir(path)
+    try:
+        yield
+    finally:
+        os.chdir(previous)
+
+
+def split_stats(mint=APU_MINT, burn=APU_DEAD, zero=0, dead=APU_DEAD):
+    return {
+        "mint_total_wei": str(mint),
+        "burn_total_wei": str(burn),
+        "sum_balances_wei": str(mint),
+        "zero_event_inflow_wei": str(zero),
+        "dead_event_inflow_wei": str(dead),
+        "dead_event_outflow_wei": "0",
+        "dead_sink_net_wei": str(dead),
+    }
+
+
+def write_evm_bundle(root, *, token=TOKEN, chain="eth", as_of=123,
+                     total=APU_MINT, zero=0, dead=APU_DEAD):
+    """落一份通过工单 A 公共 validator 的 EVM 观测实物。"""
+    endpoint = "https://rpc.example.test"
+    block = {
+        "number": hex(as_of), "hash": BLOCK_HASH,
+        "parentHash": PARENT_HASH, "timestamp": hex(1_700_000_000),
+    }
+    selector = {"blockHash": BLOCK_HASH, "requireCanonical": True}
+    balance = lambda address: (  # noqa: E731
+        "0x70a08231" + "0" * 24 + address.removeprefix("0x").lower())
+    chain_id = {"eth": 1, "bsc": 56, "base": 8453}[chain]
+    transcript = [
+        {"seq": 0, "method": "eth_chainId", "params": [], "result": chain_id},
+        {"seq": 1, "method": "eth_getBlockByNumber",
+         "params": [hex(as_of), False], "result": block},
+        {"seq": 2, "method": "eth_blockNumber", "params": [],
+         "result": hex(as_of + 12)},
+        {"seq": 3, "method": "eth_call",
+         "params": [{"to": token, "data": "0x18160ddd"}, selector],
+         "result": hex(total)},
+        {"seq": 4, "method": "eth_call",
+         "params": [{"to": token, "data": balance(ZERO)}, selector],
+         "result": hex(zero)},
+        {"seq": 5, "method": "eth_call",
+         "params": [{"to": token, "data": balance(DEAD)}, selector],
+         "result": hex(dead)},
+        {"seq": 6, "method": "eth_getCode", "params": [token, hex(as_of)],
+         "result": RUNTIME_CODE},
+        {"seq": 7, "method": "eth_getBlockByNumber",
+         "params": [hex(as_of), False], "result": block},
+    ]
+    transcript_path = root / "evm_observation_transcript.json"
+    transcript_path.write_text(json.dumps(transcript), encoding="utf-8")
+    core = {
+        "attestation": {
+            "expected_chain_id": chain_id, "observed_chain_id": chain_id,
+            "endpoint": endpoint_fingerprint(endpoint),
+        },
+        "anchor": {
+            "number": as_of, "block_hash": BLOCK_HASH,
+            "parent_hash": PARENT_HASH, "timestamp": 1_700_000_000,
+            "recheck_block_hash": BLOCK_HASH, "tip_block": as_of + 12,
+            "confirmations": 12,
+        },
+        "supply": {
+            "total_supply_raw": str(total), "zero_balance_raw": str(zero),
+            "dead_balance_raw": str(dead),
+            "block_binding": "eip1898-block-hash",
+        },
+        "code": {"runtime_code_sha256": hashlib.sha256(
+            bytes.fromhex(RUNTIME_CODE[2:])).hexdigest()},
+    }
+    target = {"chain": chain, "token": token, "as_of_block": as_of}
+    bundle = build_evm_observation_bundle(
+        core, transcript_path, target, "scripts/evm/observe_supply.py",
+        input_base=root)
+    bundle_path = root / "evm_observation_bundle.json"
+    bundle_path.write_text(json.dumps(bundle), encoding="utf-8")
+    return bundle_path
+
+
+def run_evm(stats, pool, *, tolerance=10, with_bundle=True, bundle_token=TOKEN,
+            bundle_as_of=123, exploration=False):
+    with tempfile.TemporaryDirectory(prefix="supply-truth-test-", dir="/private/tmp") as td:
+        root = Path(td)
+        (root / "stats.json").write_text(json.dumps(stats), encoding="utf-8")
+        bundle = write_evm_bundle(
+            root, token=bundle_token, as_of=bundle_as_of,
+            total=pool.values[0], zero=pool.values[1], dead=pool.values[2]) \
+            if with_bundle else None
+        out = root / "supply_truth.json"
+        argv = [
+            "--chain", "eth", "--token", TOKEN, "--as-of-block", "123",
+            "--replay-stats", "stats.json", "--rpc", "offline://mock",
+            "--tolerance-bps", str(tolerance), "--out", str(out),
+        ]
+        if bundle is not None:
+            argv.extend(["--observation-bundle", str(bundle)])
+#!/usr/bin/env python3
+"""B3-EVM-E2E: eth/bsc/base real CLIs with loopback transport only."""
+from __future__ import annotations
+
+import json
+import os
+import subprocess
+import sys
+import tempfile
+import threading
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[2]
+sys.path[:0] = [str(ROOT / "scripts/report"), str(ROOT / "scripts/tests"),
+                str(ROOT / "scripts/lib")]
+from formal_ready_test_harness import run_formal_script  # noqa: E402
+from formal_capability_probes import formal_evidence_target  # noqa: E402
+TOKEN = "0x" + "9" * 40
+A = "0x" + "1" * 40
+B = "0x" + "2" * 40
+ZERO = "0x" + "0" * 40
+DEAD = "0x000000000000000000000000000000000000dead"
+CHAIN_IDS = {"eth": 1, "bsc": 56, "base": 8453}
+BLOCK_HASH = "0x" + "a" * 64
+PARENT_HASH = "0x" + "b" * 64
+
+
+class FixtureHandler(BaseHTTPRequestHandler):
+    chain_id = 1
+    supply = 100
+    dead_balance = 0
+    methods = []
+
+    def log_message(self, *_args):
+        return
+
+    def do_GET(self):
+        self.send_response(404)
+        self.end_headers()
+
+    def do_POST(self):
+        body = json.loads(self.rfile.read(int(self.headers.get("Content-Length", "0"))))
+        if self.path.endswith("/query"):
+            log = {"block_number": 122, "log_index": 0, "transaction_hash": "0xabc",
+                   "topic1": "0x" + "0" * 24 + A[2:],
+                   "topic2": "0x" + "0" * 24 + B[2:],
+                   "data": hex(self.supply - self.dead_balance)}
+            value = {"data": [{"logs": [log]}], "next_block": body["to_block"]}
+        else:
+            method = body.get("method")
+            type(self).methods.append(method)
+            params = body.get("params") or []
+            if method == "eth_chainId":
+                result = hex(type(self).chain_id)
+            elif method == "eth_blockNumber":
+                result = hex(123)
+            elif method == "eth_getBlockByNumber":
+                result = {
+                    "number": hex(123), "hash": BLOCK_HASH,
+                    "parentHash": PARENT_HASH, "timestamp": hex(1_700_000_000),
+                }
+            elif method == "eth_getCode":
+                result = "0x6000"
+            elif method == "eth_getStorageAt":
+                result = "0x" + "0" * 64
+            elif method == "eth_call":
+                call = params[0]
+                data = call.get("data", "")
+                if data.startswith("0x18160ddd"):
+                    amount = type(self).supply
+                else:
+                    address = "0x" + data[-40:]
+                    block = params[1]
+                    if isinstance(block, dict):
+                        assert block == {"blockHash": BLOCK_HASH,
+                                         "requireCanonical": True}, block
+                    if address.lower() == B and block == hex(121):
+                        amount = 0
+                    elif address.lower() == A and block != hex(121):
+                        amount = 0
+                    elif address.lower() == ZERO:
+                        amount = 0
+                    elif address.lower() == DEAD:
+                        amount = type(self).dead_balance
+                    elif address.lower() == B:
+                        amount = type(self).supply - type(self).dead_balance
+                    else:
+                        amount = type(self).supply
+                result = hex(amount)
+            elif method == "eth_getTransactionReceipt":
+                result = {"blockNumber": hex(123), "logs": [{
+                    "address": TOKEN,
+                    "topics": [
+                        "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef",
+                        "0x" + "0" * 64,
+                        "0x" + "0" * 24 + B[2:],
+                    ],
+                    "data": hex(type(self).supply - type(self).dead_balance),
+                }]}
+            elif method == "eth_simulateV1":
+                sent = int(params[0]["blockStateCalls"][0]["calls"][0]["data"][-64:], 16)
+                result = [{"calls": [{"status": "0x1"}, {"returnData": hex(sent)}]}]
+            else:
+                self.send_error(400, method)
+                return
+            value = {"jsonrpc": "2.0", "id": body.get("id", 1), "result": result}
+        encoded = json.dumps(value).encode()
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(encoded)))
+        self.end_headers()
+        self.wfile.write(encoded)
+
+
+
+def run(command, cwd, *, expect=0):
+    env = os.environ.copy()
+    env["PYTHONDONTWRITEBYTECODE"] = "1"
+    formal_fixture = Path(command[1]).name in {
+        "handoff_manifest.py", "audit_release_gate.py",
+    }
+    if formal_fixture:
+        proc = run_formal_script(command[1], command[2:], env=env, cwd=cwd)
+    else:
+        proc = subprocess.run(command, cwd=cwd, capture_output=True, text=True, env=env)
+    if (proc.returncode == 0) != (expect == 0):
+        wrapper = Path(cwd) / "reconciliation_report.json"
+        detail = wrapper.read_text() if wrapper.is_file() else ""
+        raise AssertionError(f"{command}\n{proc.stdout}\n{proc.stderr}\n{detail}")
+    return proc
+
+
+def prepare_inputs(case, chain, total, dead_balance=0):
+    (case / "config_evm.json").write_text(json.dumps(
+        {"token": TOKEN, "decimals": 0, "total_supply_human": str(total)}))
+    balances = {B: str(total - dead_balance)}
+    if dead_balance:
+        balances[DEAD] = str(dead_balance)
+    (case / "balances_evm.json").write_text(json.dumps(balances))
+    (case / "stats_evm.json").write_text(json.dumps(
+        {"max_block": 123, "mint_total_raw": str(total),
+         "burn_total_raw": str(dead_balance),
+         "zero_event_inflow_wei": "0",
+         "dead_event_inflow_wei": str(dead_balance),
+         "dead_event_outflow_wei": "0",
+         "dead_sink_net_wei": str(dead_balance)}))
+    (case / "gmgn_evm.csv").write_text("address,pct\n")
+    (case / "transfers_evm.csv").write_text(
+        "block,ts,tx,from,to,value\n"
+        f"123,2025-01-01T00:00:00Z,0xt1,0x{'0' * 40},{B},{total - dead_balance}\n")
+    run([sys.executable, str(ROOT / "scripts/lib/anchor_plan.py"),
+         "--input", "transfers_evm.csv", "--chain", chain, "--token", TOKEN,
+         "--total-supply", str(total), "--decimals", "0", "--min-pct", "0",
+         "--final-block", "123", "--out-dir", "."], case)
+
+
+def spec(case, chain, endpoint):
+    common = ["--config", "config_evm.json", "--balances", "balances_evm.json",
+              "--replay-stats", "stats_evm.json", "--gmgn", "gmgn_evm.csv",
+              "--chain", chain, "--token", TOKEN, "--end-block", "123",
+              "--rpc", endpoint, "--top-n", "1"]
+    return {"family": "evm", "case_dir": str(case),
+            "target": {"chain": chain, "token": TOKEN, "as_of_block": 123},
+            "inputs": {name: name for name in
+                       ("config_evm.json", "balances_evm.json", "stats_evm.json",
+                        "gmgn_evm.csv", "transfers_evm.csv", "anchor_plan.json",
+                        "anchor_plan.receipt.json", "evm_observation_bundle.json",
+                        "evm_observation_transcript.json")},
+            "checks": {
+                "balance": {"producer": "scripts/evm/verify_recon.py",
+                            "argv": [*common, "--out", "balance_receipt.json"],
+                            "receipt": "balance_receipt.json"},
+                "supply": {"producer": "scripts/evm/verify_recon.py",
+                           "argv": [*common, "--out", "supply_receipt.json"],
+                           "receipt": "supply_receipt.json"},
+                "supply_truth": {"producer": "scripts/lib/supply_truth_gate.py",
+                                 "argv": ["--chain", chain, "--token", TOKEN,
+                                          "--as-of-block", "123", "--replay-stats",
+                                          "stats_evm.json", "--rpc", endpoint,
+                                          "--observation-bundle",
+                                          "evm_observation_bundle.json",
+                                          "--out", "supply_truth.json"],
+                                 "receipt": "supply_truth.json"},
+                "time": {"producer": "scripts/lib/time_spotcheck.py",
+                         "argv": ["--plan", "anchor_plan.json", "--input", "transfers_evm.csv",
+                                  "--chain", chain,
+                                  "--token", TOKEN, "--final-block", "123", "--rpc", endpoint,
+                                  "--out", "time_spotcheck.json"],
+                         "receipt": "time_spotcheck.json"}}}
+
+
+def execute_real_slice(case, chain, endpoint, total, dead_balance=0):
+    FixtureHandler.chain_id = CHAIN_IDS[chain]
+    FixtureHandler.supply = total
+    FixtureHandler.dead_balance = dead_balance
+    prepare_inputs(case, chain, total, dead_balance)
+    run([sys.executable, str(ROOT / "scripts/evm/observe_supply.py"),
+         "--chain", chain, "--token", TOKEN, "--as-of-block", "123",
+         "--rpc", endpoint, "--out", "evm_observation_bundle.json",
+         "--transcript-out", "evm_observation_transcript.json"], case)
+    run([sys.executable, str(ROOT / "scripts/evm/accounting_gate.py"),
+         "--chain", chain, "--token", TOKEN, "--rpc", endpoint,
+         "--hypersync", endpoint, "--sourcify", endpoint, "--samples", "1",
+         "--as-of-block", "123", "--bundle", "evm_observation_bundle.json",
+         "--out", "accounting_mode.json"], case)
+    job = case / "reconciliation_job.json"
+    job.write_text(json.dumps(spec(case, chain, endpoint)))
+    run([sys.executable, str(ROOT / "scripts/report/reconciliation_report.py"), str(job)], case)
+
+
+def wrong_chain_zero_business(case, chain, endpoint):
+    prepare_inputs(case, chain, 100)
+    FixtureHandler.chain_id = 999
+    FixtureHandler.methods.clear()
+    proc = run([sys.executable, str(ROOT / "scripts/lib/time_spotcheck.py"),
+                "--plan", "anchor_plan.json", "--input", "transfers_evm.csv",
+                "--chain", chain, "--token", TOKEN,
+                "--final-block", "123", "--rpc", endpoint,
+                "--out", "wrong_chain.json"], case, expect=1)
+    assert proc.returncode != 0
+    assert FixtureHandler.methods and set(FixtureHandler.methods) == {"eth_chainId"}, \
+        (chain, FixtureHandler.methods)
+
+
+def full_chain(chain, endpoint):
+    from test_handoff_manifest import make_case
+    from test_audit_release_gate import build_case
+
+    with tempfile.TemporaryDirectory(prefix=f"b3-{chain}-wrong-", dir="/private/tmp") as td:
+        wrong_chain_zero_business(Path(td), chain, endpoint)
+
+    with tempfile.TemporaryDirectory(prefix=f"b3-{chain}-handoff-", dir="/private/tmp") as td:
+        case = Path(td)
+        make_case(str(case), chain=chain, token=TOKEN, as_of_block=123)
+        total = sum(json.loads((case / "data/holders_owners.json").read_text()).values())
+        for name in ("reconciliation_report.json", "reconciliation_balance_receipt.json",
+                     "reconciliation_supply_receipt.json",
+                     "reconciliation_supply_truth_receipt.json",
+                     "reconciliation_time_receipt.json", "supply_truth.json",
+                     "time_spotcheck.json"):
+            (case / name).unlink(missing_ok=True)
+        execute_real_slice(case, chain, endpoint, total)
+        run([sys.executable, str(ROOT / "scripts/report/holder_distribution_scan.py"),
+             "--case-dir", str(case), "--stage", "initial"], case)
+        run([sys.executable, str(ROOT / "scripts/report/handoff_manifest.py"), "generate",
+             "--case-dir", str(case), "--status", "READY", "--mode", "full",
+             "--producer-model", "batch3", "--chain", chain, "--contract", TOKEN,
+             "--cutoff", "2025-01-01T00:00:00Z", "--frozen-block", "123",
+             "--denominators", json.dumps({"total_supply_raw": str(total)})], case)
+        run([sys.executable, str(ROOT / "scripts/report/handoff_manifest.py"), "verify",
+             "--case-dir", str(case)], case)
+
+    with tempfile.TemporaryDirectory(prefix=f"b3-{chain}-release-", dir="/private/tmp") as td:
+        case = Path(td)
+        report = build_case(case, historical=False)
+        for path in [*(case / f"{key}_receipt.json"
+                       for key in ("balance", "supply", "supply_truth", "time")),
+                     case / "reconciliation_report.json", case / "accounting_mode.json",
+                     case / "shared_release_receipt.json"]:
+            path.unlink(missing_ok=True)
+        adversarial = json.loads((case / "adversarial_review.json").read_text())
+        adversarial["target"] = {"chain": chain, "token": TOKEN, "as_of_block": 123}
+        (case / "adversarial_review.json").write_text(json.dumps(adversarial))
+        execute_real_slice(case, chain, endpoint, 100)
+        # B-7（批 D）：三账 balance_source 须与真实四查 owner 快照同时点等值——
+        # build_case 编造的三账（0xabc@123）对齐到本切片 verify_recon 真吃的余额文件。
+        from test_audit_release_gate import align_ledgers_to_owner_snapshot
+        align_ledgers_to_owner_snapshot(case, case / "balances_evm.json")
+        run([sys.executable, str(ROOT / "scripts/report/shared_release_receipt.py"), str(case)], case)
+        run([sys.executable, str(ROOT / "scripts/report/audit_release_gate.py"),
+             str(case), "--report", str(report)], case)
+
+
+def _run_registered_chain(chain):
+    server = ThreadingHTTPServer(("127.0.0.1", 0), FixtureHandler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        endpoint = f"http://127.0.0.1:{server.server_port}"
+        full_chain(chain, endpoint)
+    finally:
+        server.shutdown()
+        thread.join()
+
+
+def test_nonzero_dead_vertical_slice():
+    """burn>0: verify sum==mint, supply-truth v3 fallback, shared validator all PASS."""
+    from test_audit_release_gate import build_case
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), FixtureHandler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        endpoint = f"http://127.0.0.1:{server.server_port}"
+        with tempfile.TemporaryDirectory(prefix="b3-eth-dead-", dir="/private/tmp") as td:
+            case = Path(td)
+            build_case(case, historical=False)
+            for path in [*(case / f"{key}_receipt.json"
+                           for key in ("balance", "supply", "supply_truth", "time")),
+                         case / "reconciliation_report.json", case / "accounting_mode.json",
+                         case / "shared_release_receipt.json"]:
+                path.unlink(missing_ok=True)
+            adversarial = json.loads((case / "adversarial_review.json").read_text())
+            adversarial["target"] = {"chain": "eth", "token": TOKEN,
+                                     "as_of_block": 123}
+            (case / "adversarial_review.json").write_text(json.dumps(adversarial))
+            execute_real_slice(case, "eth", endpoint, 100, dead_balance=20)
+
+            supply = json.loads((case / "supply_receipt.json").read_text())
+            truth = json.loads((case / "supply_truth.json").read_text())
+            assert supply["observations"]["supply_closure"]["closed"] is True
+            assert truth["schema"] == "supply-truth-receipt/v4"
+            assert truth["decision_rule"] == "sink_fallback_form2"
+            assert truth["burn_form"] == "dead_sink"
+            run([sys.executable, str(ROOT / "scripts/report/shared_release_receipt.py"),
+                 str(case)], case)
+    finally:
+        server.shutdown()
+        thread.join()
+
+
+@formal_evidence_target("eth")
+def test_r9_eth_mainnet_vertical_slice():
+    _run_registered_chain("eth")
+
+
+@formal_evidence_target("bsc")
+def test_r9_bsc_mainnet_vertical_slice():
+    _run_registered_chain("bsc")
+
+
+@formal_evidence_target("base")
+def test_r9_base_mainnet_vertical_slice():
+    _run_registered_chain("base")
+
+
+def main():
+    test_r9_eth_mainnet_vertical_slice()
+    test_r9_bsc_mainnet_vertical_slice()
+    test_r9_base_mainnet_vertical_slice()
+    test_nonzero_dead_vertical_slice()
+    print("PASS B3-EVM-E2E: eth/bsc/base slices + nonzero dead vertical closure")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
+
+exec
+/bin/zsh -lc "rg -n \"eth_getCode\" scripts/evm scripts/lib scripts/report scripts/tests/test_batch3_evm_vertical_slice.py | head -120
+rg -n \"hex\\(amount\\)|0x\\{.*064x|:064x\" scripts/tests/test_evm_observation.py scripts/tests/test_evm_observation_nonempty_code.py scripts/tests/test_evm_observation_release.py scripts/tests | head -100" in /Users/uravvv/.claude/tca-repair-g2
+ succeeded in 0ms:
+scripts/tests/test_batch3_evm_vertical_slice.py:63:            elif method == "eth_getCode":
+scripts/lib/evm_observation.py:192:    code_response = pool.call("eth_getCode", code_params)
+scripts/lib/evm_observation.py:194:    code_raw = _call_value(code_response, "eth_getCode")
+scripts/lib/evm_observation.py:195:    _record(transcript, "eth_getCode", code_params, code_raw)
+scripts/lib/evm_observation.py:197:        raise EvmObservationError(f"eth_getCode returned invalid bytecode: {code_raw!r}")
+scripts/lib/evm_observation.py:199:        raise EvmObservationError("eth_getCode returned empty runtime bytecode")
+scripts/lib/evm_observation.py:267:        "eth_call", "eth_call", "eth_call", "eth_getCode",
+scripts/lib/evm_observation.py:301:        raise ValueError("transcript eth_getCode params mismatch")
+scripts/lib/evm_observation.py:322:        raise ValueError("transcript eth_getCode result invalid")
+scripts/lib/net.py:22:    results = pool.call_many([("eth_getCode", [addr, "latest"]), ...])
+scripts/lib/rpc_batch.py:79:        res = pool.call_many([("eth_getCode", [x, "latest"]) for x in addrs])
+scripts/evm/cadence_rank.py:45:  EGL1 实测确实卷进过 1 个 DEX 流动性池（1/192）——**产出必须逐个核 eth_getCode
+scripts/evm/accounting_gate.py:487:        code_ = rpc.call("eth_getCode", [token, "latest"])
+scripts/evm/scan_transfers.py:13:     起点用块时间戳二分（eth_getCode 查历史需归档节点，公共节点会误报未部署）；
+scripts/tests/test_evm_observation.py:88:            raw = "not-hex" if self.invalid_call else f"0x{values[selector]:064x}"
+scripts/tests/test_evm_observation_release.py:63:        row["result"] = f"0x{int(row['result'], 16):064x}"
+scripts/tests/test_evm_observation.py:88:            raw = "not-hex" if self.invalid_call else f"0x{values[selector]:064x}"
+scripts/tests/test_review_resume_integrity.py:47:                    "0x" + f"{100:064x}"])
+scripts/tests/test_engine_equivalence.py:52:        tx = f"0x{li:064x}"
+scripts/tests/test_engine_equivalence.py:97:        tx = f"0x{li:064x}"
+scripts/tests/test_engine_equivalence.py:99:            blk, f"0x{blk:064x}", li, tx,
+scripts/tests/test_engine_equivalence.py:101:            "0x" + f"{val:064x}",
+scripts/tests/test_evm_observation_release.py:63:        row["result"] = f"0x{int(row['result'], 16):064x}"
+scripts/tests/test_peaks_daily.py:35:    return f"0x{v:064x}"
+scripts/tests/test_batch3_evm_vertical_slice.py:90:                result = hex(amount)
+
+codex
+已确认改法：共享 bundle 用统一 32 字节 word helper，并让 getCode transcript 复用同一个 EIP-1898 selector；纵切片保留 `"latest"` 等既有调用，只对字典型冻结块 selector 做精确断言，同时将所有 `eth_call` 数值编码为 ABI word。不会改错链旋钮、methods 录音带或其他业务断言。
+apply patch
+patch: completed
+/Users/uravvv/.claude/tca-repair-g2/scripts/tests/test_batch3_evm_vertical_slice.py
+/Users/uravvv/.claude/tca-repair-g2/scripts/tests/test_supply_truth_gate.py
+diff --git a/scripts/tests/test_batch3_evm_vertical_slice.py b/scripts/tests/test_batch3_evm_vertical_slice.py
+index f213ec628db47083ea8ac5ff9b5a79665457b613..26ddeb8d669c668194a4288fab50f2c211e8b3cb
+--- a/scripts/tests/test_batch3_evm_vertical_slice.py
++++ b/scripts/tests/test_batch3_evm_vertical_slice.py
+@@ -61,6 +61,10 @@
+                     "parentHash": PARENT_HASH, "timestamp": hex(1_700_000_000),
+                 }
+             elif method == "eth_getCode":
++                block = params[1]
++                if isinstance(block, dict):
++                    assert block == {"blockHash": BLOCK_HASH,
++                                     "requireCanonical": True}, block
+                 result = "0x6000"
+             elif method == "eth_getStorageAt":
+                 result = "0x" + "0" * 64
+@@ -87,7 +91,7 @@
+                         amount = type(self).supply - type(self).dead_balance
+                     else:
+                         amount = type(self).supply
+-                result = hex(amount)
++                result = f"0x{amount:064x}"
+             elif method == "eth_getTransactionReceipt":
+                 result = {"blockNumber": hex(123), "logs": [{
+                     "address": TOKEN,
+diff --git a/scripts/tests/test_supply_truth_gate.py b/scripts/tests/test_supply_truth_gate.py
+index a0624fb3e6bca2e6f225fd69caa9e0ce632d0a51..4533a978881ae7a17a4499544a0a4947a403b3c9
+--- a/scripts/tests/test_supply_truth_gate.py
++++ b/scripts/tests/test_supply_truth_gate.py
+@@ -95,6 +95,7 @@
+     selector = {"blockHash": BLOCK_HASH, "requireCanonical": True}
+     balance = lambda address: (  # noqa: E731
+         "0x70a08231" + "0" * 24 + address.removeprefix("0x").lower())
++    word = lambda value: f"0x{value:064x}"  # noqa: E731
+     chain_id = {"eth": 1, "bsc": 56, "base": 8453}[chain]
+     transcript = [
+         {"seq": 0, "method": "eth_chainId", "params": [], "result": chain_id},
+@@ -104,14 +105,14 @@
+          "result": hex(as_of + 12)},
+         {"seq": 3, "method": "eth_call",
+          "params": [{"to": token, "data": "0x18160ddd"}, selector],
+-         "result": hex(total)},
++         "result": word(total)},
+         {"seq": 4, "method": "eth_call",
+          "params": [{"to": token, "data": balance(ZERO)}, selector],
+-         "result": hex(zero)},
++         "result": word(zero)},
+         {"seq": 5, "method": "eth_call",
+          "params": [{"to": token, "data": balance(DEAD)}, selector],
+-         "result": hex(dead)},
+-        {"seq": 6, "method": "eth_getCode", "params": [token, hex(as_of)],
++         "result": word(dead)},
++        {"seq": 6, "method": "eth_getCode", "params": [token, selector],
+          "result": RUNTIME_CODE},
+         {"seq": 7, "method": "eth_getBlockByNumber",
+          "params": [hex(as_of), False], "result": block},
+
+diff --git a/scripts/tests/test_batch3_evm_vertical_slice.py b/scripts/tests/test_batch3_evm_vertical_slice.py
+index f213ec628db47083ea8ac5ff9b5a79665457b613..26ddeb8d669c668194a4288fab50f2c211e8b3cb
+--- a/scripts/tests/test_batch3_evm_vertical_slice.py
++++ b/scripts/tests/test_batch3_evm_vertical_slice.py
+@@ -61,6 +61,10 @@
+                     "parentHash": PARENT_HASH, "timestamp": hex(1_700_000_000),
+                 }
+             elif method == "eth_getCode":
++                block = params[1]
++                if isinstance(block, dict):
++                    assert block == {"blockHash": BLOCK_HASH,
++                                     "requireCanonical": True}, block
+                 result = "0x6000"
+             elif method == "eth_getStorageAt":
+                 result = "0x" + "0" * 64
+@@ -87,7 +91,7 @@
+                         amount = type(self).supply - type(self).dead_balance
+                     else:
+                         amount = type(self).supply
+-                result = hex(amount)
++                result = f"0x{amount:064x}"
+             elif method == "eth_getTransactionReceipt":
+                 result = {"blockNumber": hex(123), "logs": [{
+                     "address": TOKEN,
+diff --git a/scripts/tests/test_supply_truth_gate.py b/scripts/tests/test_supply_truth_gate.py
+index a0624fb3e6bca2e6f225fd69caa9e0ce632d0a51..4533a978881ae7a17a4499544a0a4947a403b3c9
+--- a/scripts/tests/test_supply_truth_gate.py
++++ b/scripts/tests/test_supply_truth_gate.py
+@@ -95,6 +95,7 @@
+     selector = {"blockHash": BLOCK_HASH, "requireCanonical": True}
+     balance = lambda address: (  # noqa: E731
+         "0x70a08231" + "0" * 24 + address.removeprefix("0x").lower())
++    word = lambda value: f"0x{value:064x}"  # noqa: E731
+     chain_id = {"eth": 1, "bsc": 56, "base": 8453}[chain]
+     transcript = [
+         {"seq": 0, "method": "eth_chainId", "params": [], "result": chain_id},
+@@ -104,14 +105,14 @@
+          "result": hex(as_of + 12)},
+         {"seq": 3, "method": "eth_call",
+          "params": [{"to": token, "data": "0x18160ddd"}, selector],
+-         "result": hex(total)},
++         "result": word(total)},
+         {"seq": 4, "method": "eth_call",
+          "params": [{"to": token, "data": balance(ZERO)}, selector],
+-         "result": hex(zero)},
++         "result": word(zero)},
+         {"seq": 5, "method": "eth_call",
+          "params": [{"to": token, "data": balance(DEAD)}, selector],
+-         "result": hex(dead)},
+-        {"seq": 6, "method": "eth_getCode", "params": [token, hex(as_of)],
++         "result": word(dead)},
++        {"seq": 6, "method": "eth_getCode", "params": [token, selector],
+          "result": RUNTIME_CODE},
+         {"seq": 7, "method": "eth_getBlockByNumber",
+          "params": [hex(as_of), False], "result": block},
+
+codex
+两处白名单修改已完成。现在并行跑工单要求的 5 项验收；纵切片若在 loopback `bind` 被沙箱拒绝，我会保留原始错误并转为静态校验，不把它误报成业务失败。
+exec
+/bin/zsh -lc 'PYTHONDONTWRITEBYTECODE=1 python3 scripts/tests/test_batch3_evm_vertical_slice.py' in /Users/uravvv/.claude/tca-repair-g2
+exec
+/bin/zsh -lc 'PYTHONDONTWRITEBYTECODE=1 python3 scripts/tests/test_evm_observation_release.py' in /Users/uravvv/.claude/tca-repair-g2
+exec
+/bin/zsh -lc 'PYTHONDONTWRITEBYTECODE=1 python3 scripts/tests/test_evm_observation_nonempty_code.py' in /Users/uravvv/.claude/tca-repair-g2
+exec
+/bin/zsh -lc 'PYTHONDONTWRITEBYTECODE=1 python3 scripts/tests/test_evm_observation.py' in /Users/uravvv/.claude/tca-repair-g2
+exec
+/bin/zsh -lc 'PYTHONDONTWRITEBYTECODE=1 python3 scripts/tests/test_supply_truth_gate.py' in /Users/uravvv/.claude/tca-repair-g2
+diff --git a/scripts/tests/test_batch3_evm_vertical_slice.py b/scripts/tests/test_batch3_evm_vertical_slice.py
+index f213ec628db47083ea8ac5ff9b5a79665457b613..26ddeb8d669c668194a4288fab50f2c211e8b3cb
+--- a/scripts/tests/test_batch3_evm_vertical_slice.py
++++ b/scripts/tests/test_batch3_evm_vertical_slice.py
+@@ -61,6 +61,10 @@
+                     "parentHash": PARENT_HASH, "timestamp": hex(1_700_000_000),
+                 }
+             elif method == "eth_getCode":
++                block = params[1]
++                if isinstance(block, dict):
++                    assert block == {"blockHash": BLOCK_HASH,
++                                     "requireCanonical": True}, block
+                 result = "0x6000"
+             elif method == "eth_getStorageAt":
+                 result = "0x" + "0" * 64
+@@ -87,7 +91,7 @@
+                         amount = type(self).supply - type(self).dead_balance
+                     else:
+                         amount = type(self).supply
+-                result = hex(amount)
++                result = f"0x{amount:064x}"
+             elif method == "eth_getTransactionReceipt":
+                 result = {"blockNumber": hex(123), "logs": [{
+                     "address": TOKEN,
+diff --git a/scripts/tests/test_supply_truth_gate.py b/scripts/tests/test_supply_truth_gate.py
+index a0624fb3e6bca2e6f225fd69caa9e0ce632d0a51..4533a978881ae7a17a4499544a0a4947a403b3c9
+--- a/scripts/tests/test_supply_truth_gate.py
++++ b/scripts/tests/test_supply_truth_gate.py
+@@ -95,6 +95,7 @@
+     selector = {"blockHash": BLOCK_HASH, "requireCanonical": True}
+     balance = lambda address: (  # noqa: E731
+         "0x70a08231" + "0" * 24 + address.removeprefix("0x").lower())
++    word = lambda value: f"0x{value:064x}"  # noqa: E731
+     chain_id = {"eth": 1, "bsc": 56, "base": 8453}[chain]
+     transcript = [
+         {"seq": 0, "method": "eth_chainId", "params": [], "result": chain_id},
+@@ -104,14 +105,14 @@
+          "result": hex(as_of + 12)},
+         {"seq": 3, "method": "eth_call",
+          "params": [{"to": token, "data": "0x18160ddd"}, selector],
+-         "result": hex(total)},
++         "result": word(total)},
+         {"seq": 4, "method": "eth_call",
+          "params": [{"to": token, "data": balance(ZERO)}, selector],
+-         "result": hex(zero)},
++         "result": word(zero)},
+         {"seq": 5, "method": "eth_call",
+          "params": [{"to": token, "data": balance(DEAD)}, selector],
+-         "result": hex(dead)},
+-        {"seq": 6, "method": "eth_getCode", "params": [token, hex(as_of)],
++         "result": word(dead)},
++        {"seq": 6, "method": "eth_getCode", "params": [token, selector],
+          "result": RUNTIME_CODE},
+         {"seq": 7, "method": "eth_getBlockByNumber",
+          "params": [hex(as_of), False], "result": block},
+
+ exited 1 in 339ms:
+Traceback (most recent call last):
+  File "/Users/uravvv/.claude/tca-repair-g2/scripts/tests/test_batch3_evm_vertical_slice.py", line 351, in <module>
+    raise SystemExit(main())
+                     ~~~~^^
+  File "/Users/uravvv/.claude/tca-repair-g2/scripts/tests/test_batch3_evm_vertical_slice.py", line 342, in main
+    test_r9_eth_mainnet_vertical_slice()
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "/Users/uravvv/.claude/tca-repair-g2/scripts/lib/formal_capability_probes.py", line 145, in guarded
+    return function(*args, **kwargs)
+  File "/Users/uravvv/.claude/tca-repair-g2/scripts/tests/test_batch3_evm_vertical_slice.py", line 328, in test_r9_eth_mainnet_vertical_slice
+    _run_registered_chain("eth")
+    ~~~~~~~~~~~~~~~~~~~~~^^^^^^^
+  File "/Users/uravvv/.claude/tca-repair-g2/scripts/tests/test_batch3_evm_vertical_slice.py", line 279, in _run_registered_chain
+    server = ThreadingHTTPServer(("127.0.0.1", 0), FixtureHandler)
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/socketserver.py", line 457, in __init__
+    self.server_bind()
+    ~~~~~~~~~~~~~~~~^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/http/server.py", line 148, in server_bind
+    socketserver.TCPServer.server_bind(self)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/socketserver.py", line 478, in server_bind
+    self.socket.bind(self.server_address)
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^
+PermissionError: [Errno 1] Operation not permitted
+
+ succeeded in 343ms:
+PASS F-04 EVM nonempty code and ABI word checks: 5/5
+
+ succeeded in 344ms:
+FATAL: EVM observation failed: eth_call totalSupply RPC failed: rpc -32602: unsupported blockHash selector
+[observe_supply] ERROR -> /private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/evm-observe-eip1898-p0px9zn2/bundle.error.1786799714158035000.31688.json
+FATAL: EVM observation failed: injected producer self-validation failure
+[observe_supply] ERROR -> /private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/evm-observe-self-validate-p2_q2f7r/bundle.error.1786799714163638000.31688.json
+chain=eth block=100 confirmations=12 -> bundle.json
+PASS EVM observation bundle protocol: 10/10
+
+ succeeded in 372ms:
+PASS test_accounting_missing_bundle_rejected
+PASS test_accounting_anchor_mismatch_rejected
+PASS test_supply_missing_bundle_rejected
+PASS test_supply_n2_mismatch_rejected
+PASS test_accounting_supply_bundle_same_source_rejected
+PASS test_evm_legacy_schemas_rejected_with_migration
+PASS test_handoff_rejects_accounting_missing_anchor_and_source_split
+PASS test_f02_original_scalar_rewrite_rejected
+F03_LAYER=EVM accounting bundle anchor mismatch: as_of_block != bundle anchor.number
+PASS test_f03_retarget_dies_at_bundle_anchor_not_target
+snapshot_slot=103 accounts=1 owners=1 supply=100 activity=complete -> supply_snapshot.json
+[GATE] mode=standard verdict=PASS exit=0 -> accounting_mode.json
+[supply_truth] PASS  重放净供给=100  链上=100  差=0（0.0bps，容差 10bps）→ supply_truth.json
+PASS test_solana_accounting_and_supply_paths_unchanged
+PASS test_audit_release_reuses_public_accounting_validator
+PASS workorder C EVM observation release: 11/11
+
+ succeeded in 372ms:
+检测自身失败（exit 1，修通道重跑）: EVM formal 模式必须给 --observation-bundle
+检测自身失败（exit 1，修通道重跑）: EVM observation bundle token target mismatch
+检测自身失败（exit 1，修通道重跑）: --as-of-block assertion mismatch: declared=123, observed=124
+[supply_truth] ERROR → /private/tmp/supply-truth-test-1ibxrkac/supply_truth.error.20260815T131514.195543Z.31689.json
+[supply_truth] FAIL：终态供给或 sink 逐地址归因不闭合。余额改走链上实时直查，重放余额仅作超集筛选。
+检测自身失败（exit 1，修通道重跑）: eth_call balanceOf(ZERO) RPC 失败: offline injected RPC failure
+[supply_truth] ERROR → /private/tmp/supply-truth-test-_pv6jm_5/supply_truth.error.20260815T131514.205705Z.31689.json
+[supply_truth] FAIL：终态供给或 sink 逐地址归因不闭合。余额改走链上实时直查，重放余额仅作超集筛选。
+ok    primary exact-equal PASS
+ok    primary GNT silent-migration FAIL
+ok    primary tolerance 9bps PASS
+ok    primary tolerance 11bps FAIL
+ok    primary negative-diff FAIL
+ok    primary both-zero PASS
+ok    primary replay>0/onchain=0 FAIL
+ok    parse wei fields
+ok    parse raw fields
+ok    parse plain fields
+ok    parse missing fields raises
+ok    APU fallback pure PASS
+ok    GNT fallback C1 FAIL
+ok    mixed burn forms FAIL
+ok    dead sink differs by 1 wei FAIL
+ok    cross-address compensation FAIL
+ok    None component fail-closed
+[supply_truth] PASS  重放净供给=337889146346088792653960057820  链上=420690000000000000000000000000  差=-82800853653911207346039942180（1968.2bps，容差 10bps）→ /private/tmp/supply-truth-test-e244qv7n/supply_truth.json
+ok    APU main PASS
+ok    APU EVM formal receipt v4
+ok    APU receipt fallback semantics
+ok    APU sink reconciliation exact strings
+ok    formal fallback uses bundle and zero RPC
+ok    EVM formal missing observation bundle rejected
+ok    EVM formal bundle token mismatch rejected
+ok    EVM formal declared as_of mismatch rejected
+[supply_truth] PASS  重放净供给=1000  链上=1000  差=0（0.0bps，容差 10bps）→ /private/tmp/supply-truth-test-nfkzyjm_/supply_truth.json
+ok    EVM formal main path zero RPC
+ok    EVM formal bundle binding and semantics
+[supply_truth] PASS  重放净供给=1000  链上=1000  差=0（0.0bps，容差 10bps）→ /private/tmp/supply-truth-test-6zdjj1b6/supply_truth.json
+ok    EVM exploration retains v3 live RPC behavior
+[supply_truth] FAIL  重放净供给=337889146346088792653960057820  链上=420690000000000000000000000000  差=-82800853653911207346039942180（1968.2bps，容差 10bps）→ /private/tmp/supply-truth-test-4qx6ubsg/supply_truth.json
+ok    legacy stats remain FAIL
+[supply_truth] PASS  重放净供给=1000  链上=1000  差=0（0.0bps，容差 10bps）→ /private/tmp/supply-truth-test-a1jerurt/supply_truth.json
+ok    primary form1 receipt unchanged values
+ok    partial fallback RPC failure is ERROR
+[supply_truth] FAIL  重放净供给=337889146346088792653960057820  链上=100  差=337889146346088792653960057720（33788914634608878389067253809152.0bps，容差 10bps）→ /private/tmp/supply-truth-sol-bymmcwrc/supply_truth.json
+ok    Solana fallback disabled
+ok    legacy v2 fixture explicitly rejected
+========================================================
+supply_truth_gate 形态①/②离线契约测试全部通过
+
+codex
+四项可运行验收已全绿；纵切片如工单预期在创建 `127.0.0.1` 服务时被 `EPERM` 阻断，尚未进入业务逻辑。接下来我会绕过 socket，直接驱动 `FixtureHandler.do_POST` 验证三笔 66 字符 word、正确 selector、非空 code，以及错误 selector 被断言拒绝；同时做两文件 AST 语法检查。
+exec
+/bin/zsh -lc "PYTHONDONTWRITEBYTECODE=1 python3 -c '
+import ast
+import io
+import json
+from pathlib import Path
+from scripts.tests.test_batch3_evm_vertical_slice import BLOCK_HASH, DEAD, TOKEN, ZERO, FixtureHandler
+
+for name in (\"scripts/tests/test_supply_truth_gate.py\", \"scripts/tests/test_batch3_evm_vertical_slice.py\"):
+    ast.parse(Path(name).read_text(encoding=\"utf-8\"), filename=name)
+
+selector = {\"blockHash\": BLOCK_HASH, \"requireCanonical\": True}
+
+def dispatch(method, params):
+    handler = FixtureHandler.__new__(FixtureHandler)
+    request = json.dumps({\"jsonrpc\": \"2.0\", \"id\": 1, \"method\": method, \"params\": params}).encode()
+    handler.path = \"/\"
+    handler.headers = {\"Content-Length\": str(len(request))}
+    handler.rfile = io.BytesIO(request)
+    handler.wfile = io.BytesIO()
+    handler.send_response = lambda *_args: None
+    handler.send_header = lambda *_args: None
+    handler.end_headers = lambda: None
+    handler.send_error = lambda code, message=None: (_ for _ in ()).throw(AssertionError((code, message)))
+    handler.do_POST()
+    return json.loads(handler.wfile.getvalue())[\"result\"]
+
+FixtureHandler.supply = 100
+FixtureHandler.dead_balance = 20
+calls = [
+    [{\"to\": TOKEN, \"data\": \"0x18160ddd\"}, selector],
+    [{\"to\": TOKEN, \"data\": \"0x70a08231\" + \"0\" * 24 + ZERO[2:]}, selector],
+    [{\"to\": TOKEN, \"data\": \"0x70a08231\" + \"0\" * 24 + DEAD[2:]}, selector],
+]
+results = [dispatch(\"eth_call\", params) for params in calls]
+assert results == [f\"0x{100:064x}\", f\"0x{0:064x}\", f\"0x{20:064x}\"], results
+code = dispatch(\"eth_getCode\", [TOKEN, selector])
+assert code == \"0x6000\" and code "'!= "0x", code
+try:
+    dispatch("eth_getCode", [TOKEN, {"blockHash": "0x" + "f" * 64, "requireCanonical": True}])
+except AssertionError:
+    pass
+else:
+    raise AssertionError("wrong EIP-1898 selector was accepted")
+print("PASS static syntax + direct FixtureHandler protocol checks")
+'"'" in /Users/uravvv/.claude/tca-repair-g2
+ succeeded in 0ms:
+PASS static syntax + direct FixtureHandler protocol checks
+
+diff --git a/scripts/tests/test_batch3_evm_vertical_slice.py b/scripts/tests/test_batch3_evm_vertical_slice.py
+index f213ec628db47083ea8ac5ff9b5a79665457b613..26ddeb8d669c668194a4288fab50f2c211e8b3cb
+--- a/scripts/tests/test_batch3_evm_vertical_slice.py
++++ b/scripts/tests/test_batch3_evm_vertical_slice.py
+@@ -61,6 +61,10 @@
+                     "parentHash": PARENT_HASH, "timestamp": hex(1_700_000_000),
+                 }
+             elif method == "eth_getCode":
++                block = params[1]
++                if isinstance(block, dict):
++                    assert block == {"blockHash": BLOCK_HASH,
++                                     "requireCanonical": True}, block
+                 result = "0x6000"
+             elif method == "eth_getStorageAt":
+                 result = "0x" + "0" * 64
+@@ -87,7 +91,7 @@
+                         amount = type(self).supply - type(self).dead_balance
+                     else:
+                         amount = type(self).supply
+-                result = hex(amount)
++                result = f"0x{amount:064x}"
+             elif method == "eth_getTransactionReceipt":
+                 result = {"blockNumber": hex(123), "logs": [{
+                     "address": TOKEN,
+diff --git a/scripts/tests/test_supply_truth_gate.py b/scripts/tests/test_supply_truth_gate.py
+index a0624fb3e6bca2e6f225fd69caa9e0ce632d0a51..4533a978881ae7a17a4499544a0a4947a403b3c9
+--- a/scripts/tests/test_supply_truth_gate.py
++++ b/scripts/tests/test_supply_truth_gate.py
+@@ -95,6 +95,7 @@
+     selector = {"blockHash": BLOCK_HASH, "requireCanonical": True}
+     balance = lambda address: (  # noqa: E731
+         "0x70a08231" + "0" * 24 + address.removeprefix("0x").lower())
++    word = lambda value: f"0x{value:064x}"  # noqa: E731
+     chain_id = {"eth": 1, "bsc": 56, "base": 8453}[chain]
+     transcript = [
+         {"seq": 0, "method": "eth_chainId", "params": [], "result": chain_id},
+@@ -104,14 +105,14 @@
+          "result": hex(as_of + 12)},
+         {"seq": 3, "method": "eth_call",
+          "params": [{"to": token, "data": "0x18160ddd"}, selector],
+-         "result": hex(total)},
++         "result": word(total)},
+         {"seq": 4, "method": "eth_call",
+          "params": [{"to": token, "data": balance(ZERO)}, selector],
+-         "result": hex(zero)},
++         "result": word(zero)},
+         {"seq": 5, "method": "eth_call",
+          "params": [{"to": token, "data": balance(DEAD)}, selector],
+-         "result": hex(dead)},
+-        {"seq": 6, "method": "eth_getCode", "params": [token, hex(as_of)],
++         "result": word(dead)},
++        {"seq": 6, "method": "eth_getCode", "params": [token, selector],
+          "result": RUNTIME_CODE},
+         {"seq": 7, "method": "eth_getBlockByNumber",
+          "params": [hex(as_of), False], "result": block},
+
+apply patch
+patch: completed
+/Users/uravvv/.claude/tca-repair-g2/scripts/tests/test_batch3_evm_vertical_slice.py
+diff --git a/scripts/tests/test_batch3_evm_vertical_slice.py b/scripts/tests/test_batch3_evm_vertical_slice.py
+index f213ec628db47083ea8ac5ff9b5a79665457b613..bfe4bbcd42dabc9da78b5736ddafdf84f9602227
+--- a/scripts/tests/test_batch3_evm_vertical_slice.py
++++ b/scripts/tests/test_batch3_evm_vertical_slice.py
+@@ -61,6 +61,12 @@
+                     "parentHash": PARENT_HASH, "timestamp": hex(1_700_000_000),
+                 }
+             elif method == "eth_getCode":
++                block = params[1]
++                if isinstance(block, dict):
++                    assert block == {"blockHash": BLOCK_HASH,
++                                     "requireCanonical": True}, block
++                else:
++                    assert block == "latest", block
+                 result = "0x6000"
+             elif method == "eth_getStorageAt":
+                 result = "0x" + "0" * 64
+@@ -87,7 +93,7 @@
+                         amount = type(self).supply - type(self).dead_balance
+                     else:
+                         amount = type(self).supply
+-                result = hex(amount)
++                result = f"0x{amount:064x}"
+             elif method == "eth_getTransactionReceipt":
+                 result = {"blockNumber": hex(123), "logs": [{
+                     "address": TOKEN,
+diff --git a/scripts/tests/test_supply_truth_gate.py b/scripts/tests/test_supply_truth_gate.py
+index a0624fb3e6bca2e6f225fd69caa9e0ce632d0a51..4533a978881ae7a17a4499544a0a4947a403b3c9
+--- a/scripts/tests/test_supply_truth_gate.py
++++ b/scripts/tests/test_supply_truth_gate.py
+@@ -95,6 +95,7 @@
+     selector = {"blockHash": BLOCK_HASH, "requireCanonical": True}
+     balance = lambda address: (  # noqa: E731
+         "0x70a08231" + "0" * 24 + address.removeprefix("0x").lower())
++    word = lambda value: f"0x{value:064x}"  # noqa: E731
+     chain_id = {"eth": 1, "bsc": 56, "base": 8453}[chain]
+     transcript = [
+         {"seq": 0, "method": "eth_chainId", "params": [], "result": chain_id},
+@@ -104,14 +105,14 @@
+          "result": hex(as_of + 12)},
+         {"seq": 3, "method": "eth_call",
+          "params": [{"to": token, "data": "0x18160ddd"}, selector],
+-         "result": hex(total)},
++         "result": word(total)},
+         {"seq": 4, "method": "eth_call",
+          "params": [{"to": token, "data": balance(ZERO)}, selector],
+-         "result": hex(zero)},
++         "result": word(zero)},
+         {"seq": 5, "method": "eth_call",
+          "params": [{"to": token, "data": balance(DEAD)}, selector],
+-         "result": hex(dead)},
+-        {"seq": 6, "method": "eth_getCode", "params": [token, hex(as_of)],
++         "result": word(dead)},
++        {"seq": 6, "method": "eth_getCode", "params": [token, selector],
+          "result": RUNTIME_CODE},
+         {"seq": 7, "method": "eth_getBlockByNumber",
+          "params": [hex(as_of), False], "result": block},
+
+diff --git a/scripts/tests/test_batch3_evm_vertical_slice.py b/scripts/tests/test_batch3_evm_vertical_slice.py
+index f213ec628db47083ea8ac5ff9b5a79665457b613..bfe4bbcd42dabc9da78b5736ddafdf84f9602227
+--- a/scripts/tests/test_batch3_evm_vertical_slice.py
++++ b/scripts/tests/test_batch3_evm_vertical_slice.py
+@@ -61,6 +61,12 @@
+                     "parentHash": PARENT_HASH, "timestamp": hex(1_700_000_000),
+                 }
+             elif method == "eth_getCode":
++                block = params[1]
++                if isinstance(block, dict):
++                    assert block == {"blockHash": BLOCK_HASH,
++                                     "requireCanonical": True}, block
++                else:
++                    assert block == "latest", block
+                 result = "0x6000"
+             elif method == "eth_getStorageAt":
+                 result = "0x" + "0" * 64
+@@ -87,7 +93,7 @@
+                         amount = type(self).supply - type(self).dead_balance
+                     else:
+                         amount = type(self).supply
+-                result = hex(amount)
++                result = f"0x{amount:064x}"
+             elif method == "eth_getTransactionReceipt":
+                 result = {"blockNumber": hex(123), "logs": [{
+                     "address": TOKEN,
+diff --git a/scripts/tests/test_supply_truth_gate.py b/scripts/tests/test_supply_truth_gate.py
+index a0624fb3e6bca2e6f225fd69caa9e0ce632d0a51..4533a978881ae7a17a4499544a0a4947a403b3c9
+--- a/scripts/tests/test_supply_truth_gate.py
++++ b/scripts/tests/test_supply_truth_gate.py
+@@ -95,6 +95,7 @@
+     selector = {"blockHash": BLOCK_HASH, "requireCanonical": True}
+     balance = lambda address: (  # noqa: E731
+         "0x70a08231" + "0" * 24 + address.removeprefix("0x").lower())
++    word = lambda value: f"0x{value:064x}"  # noqa: E731
+     chain_id = {"eth": 1, "bsc": 56, "base": 8453}[chain]
+     transcript = [
+         {"seq": 0, "method": "eth_chainId", "params": [], "result": chain_id},
+@@ -104,14 +105,14 @@
+          "result": hex(as_of + 12)},
+         {"seq": 3, "method": "eth_call",
+          "params": [{"to": token, "data": "0x18160ddd"}, selector],
+-         "result": hex(total)},
++         "result": word(total)},
+         {"seq": 4, "method": "eth_call",
+          "params": [{"to": token, "data": balance(ZERO)}, selector],
+-         "result": hex(zero)},
++         "result": word(zero)},
+         {"seq": 5, "method": "eth_call",
+          "params": [{"to": token, "data": balance(DEAD)}, selector],
+-         "result": hex(dead)},
+-        {"seq": 6, "method": "eth_getCode", "params": [token, hex(as_of)],
++         "result": word(dead)},
++        {"seq": 6, "method": "eth_getCode", "params": [token, selector],
+          "result": RUNTIME_CODE},
+         {"seq": 7, "method": "eth_getBlockByNumber",
+          "params": [hex(as_of), False], "result": block},
+
+exec
+/bin/zsh -lc "PYTHONDONTWRITEBYTECODE=1 python3 -c '
+import ast
+import io
+import json
+from pathlib import Path
+from scripts.tests.test_batch3_evm_vertical_slice import BLOCK_HASH, DEAD, TOKEN, ZERO, FixtureHandler
+
+for name in (\"scripts/tests/test_supply_truth_gate.py\", \"scripts/tests/test_batch3_evm_vertical_slice.py\"):
+    ast.parse(Path(name).read_text(encoding=\"utf-8\"), filename=name)
+
+selector = {\"blockHash\": BLOCK_HASH, \"requireCanonical\": True}
+
+def dispatch(method, params):
+    handler = FixtureHandler.__new__(FixtureHandler)
+    request = json.dumps({\"jsonrpc\": \"2.0\", \"id\": 1, \"method\": method, \"params\": params}).encode()
+    handler.path = \"/\"
+    handler.headers = {\"Content-Length\": str(len(request))}
+    handler.rfile = io.BytesIO(request)
+    handler.wfile = io.BytesIO()
+    handler.send_response = lambda *_args: None
+    handler.send_header = lambda *_args: None
+    handler.end_headers = lambda: None
+    handler.send_error = lambda code, message=None: (_ for _ in ()).throw(AssertionError((code, message)))
+    handler.do_POST()
+    return json.loads(handler.wfile.getvalue())[\"result\"]
+
+FixtureHandler.supply = 100
+FixtureHandler.dead_balance = 20
+calls = [
+    [{\"to\": TOKEN, \"data\": \"0x18160ddd\"}, selector],
+    [{\"to\": TOKEN, \"data\": \"0x70a08231\" + \"0\" * 24 + ZERO[2:]}, selector],
+    [{\"to\": TOKEN, \"data\": \"0x70a08231\" + \"0\" * 24 + DEAD[2:]}, selector],
+]
+results = [dispatch(\"eth_call\", params) for params in calls]
+assert results == [f\"0x{100:064x}\", f\"0x{0:064x}\", f\"0x{20:064x}\"], results
+for block in (selector, \"latest\"):
+    code = dispatch(\"eth_getCode\", [TOKEN, block])
+    assert code == \"0x6000\" and code "'!= "0x", code
+for bad_block in (hex(123), {"blockHash": "0x" + "f" * 64, "requireCanonical": True}):
+    try:
+        dispatch("eth_getCode", [TOKEN, bad_block])
+    except AssertionError:
+        pass
+    else:
+        raise AssertionError(f"invalid getCode selector was accepted: {bad_block!r}")
+print("PASS static syntax + direct FixtureHandler protocol checks")
+'"'" in /Users/uravvv/.claude/tca-repair-g2
+ succeeded in 0ms:
+PASS static syntax + direct FixtureHandler protocol checks
+
+diff --git a/scripts/tests/test_batch3_evm_vertical_slice.py b/scripts/tests/test_batch3_evm_vertical_slice.py
+index f213ec628db47083ea8ac5ff9b5a79665457b613..bfe4bbcd42dabc9da78b5736ddafdf84f9602227
+--- a/scripts/tests/test_batch3_evm_vertical_slice.py
++++ b/scripts/tests/test_batch3_evm_vertical_slice.py
+@@ -61,6 +61,12 @@
+                     "parentHash": PARENT_HASH, "timestamp": hex(1_700_000_000),
+                 }
+             elif method == "eth_getCode":
++                block = params[1]
++                if isinstance(block, dict):
++                    assert block == {"blockHash": BLOCK_HASH,
++                                     "requireCanonical": True}, block
++                else:
++                    assert block == "latest", block
+                 result = "0x6000"
+             elif method == "eth_getStorageAt":
+                 result = "0x" + "0" * 64
+@@ -87,7 +93,7 @@
+                         amount = type(self).supply - type(self).dead_balance
+                     else:
+                         amount = type(self).supply
+-                result = hex(amount)
++                result = f"0x{amount:064x}"
+             elif method == "eth_getTransactionReceipt":
+                 result = {"blockNumber": hex(123), "logs": [{
+                     "address": TOKEN,
+diff --git a/scripts/tests/test_supply_truth_gate.py b/scripts/tests/test_supply_truth_gate.py
+index a0624fb3e6bca2e6f225fd69caa9e0ce632d0a51..4533a978881ae7a17a4499544a0a4947a403b3c9
+--- a/scripts/tests/test_supply_truth_gate.py
++++ b/scripts/tests/test_supply_truth_gate.py
+@@ -95,6 +95,7 @@
+     selector = {"blockHash": BLOCK_HASH, "requireCanonical": True}
+     balance = lambda address: (  # noqa: E731
+         "0x70a08231" + "0" * 24 + address.removeprefix("0x").lower())
++    word = lambda value: f"0x{value:064x}"  # noqa: E731
+     chain_id = {"eth": 1, "bsc": 56, "base": 8453}[chain]
+     transcript = [
+         {"seq": 0, "method": "eth_chainId", "params": [], "result": chain_id},
+@@ -104,14 +105,14 @@
+          "result": hex(as_of + 12)},
+         {"seq": 3, "method": "eth_call",
+          "params": [{"to": token, "data": "0x18160ddd"}, selector],
+-         "result": hex(total)},
++         "result": word(total)},
+         {"seq": 4, "method": "eth_call",
+          "params": [{"to": token, "data": balance(ZERO)}, selector],
+-         "result": hex(zero)},
++         "result": word(zero)},
+         {"seq": 5, "method": "eth_call",
+          "params": [{"to": token, "data": balance(DEAD)}, selector],
+-         "result": hex(dead)},
+-        {"seq": 6, "method": "eth_getCode", "params": [token, hex(as_of)],
++         "result": word(dead)},
++        {"seq": 6, "method": "eth_getCode", "params": [token, selector],
+          "result": RUNTIME_CODE},
+         {"seq": 7, "method": "eth_getBlockByNumber",
+          "params": [hex(as_of), False], "result": block},
+
+codex
+施工与可执行验收已收口。我最后做一次非 git 的范围核对，确认工作区近期写入只落在授权的两个测试文件；done 报告保持未改。
+exec
+/bin/zsh -lc "find . -path './.git' -prune -o -type f -mmin -15 -print
+nl -ba scripts/tests/test_supply_truth_gate.py | sed -n '87,145p'
+nl -ba scripts/tests/test_batch3_evm_vertical_slice.py | sed -n '53,100p'" in /Users/uravvv/.claude/tca-repair-g2
+ succeeded in 0ms:
+./archive/case-history-notes.md
+./archive/evals/cases/01-pythia-alpha-inventory.md
+./archive/evals/cases/07-gmx-mirror-supply.md
+./archive/evals/cases/03-iq-upbit-custody.md
+./archive/evals/cases/02-troll-ata-constant.md
+./archive/evals/cases/04-iq-eip7702-clustering.md
+./archive/evals/cases/08-iq-denominator.md
+./archive/evals/cases/09-pythia-cleared-wave.md
+./archive/evals/cases/06-silent-migration.md
+./archive/evals/cases/05-quq-infra-in-entity.md
+./archive/evals/README.md
+./archive/solana-readme-history/README-2026-08-05.md
+./archive/README.md
+./archive/serial-conflicts/serial_conflicts_2026-07-26.md
+./archive/serial-conflicts/serial_conflicts_2026-07-22.md
+./archive/serial-conflicts/serial_conflicts_2026-07-29.md
+./archive/serial-conflicts/serial_conflicts_2026-07-26.json
+./archive/serial-conflicts/serial_conflicts_2026-07-28.md
+./archive/serial-conflicts/serial_conflicts_2026-07-28.json
+./archive/serial-conflicts/serial_conflicts_2026-07-29.json
+./archive/serial-conflicts/serial_conflicts_2026-07-25.json
+./archive/serial-conflicts/serial_conflicts_2026-07-25.md
+./archive/serial-conflicts/serial_conflicts_2026-07-22.json
+./archive/scripts/trace_network.py
+./archive/scripts/fetch_fundedby.py
+./archive/scripts/gas_fast.py
+./archive/CHANGELOG-archive.md
+./archive/solana-sqd-v1/README.md
+./archive/solana-sqd-v1/fetch_sqd_transfers.py
+./archive/evm-par-route/test_progress_guards.py
+./archive/evm-par-route/merge_parts.py
+./archive/evm-par-route/README.md
+./archive/evm-par-route/fetch_hypersync_par.py
+./archive/evm-par-route/watchdog_dual.py
+./archive/casebook-pre-6.28-snapshots.md
+./archive/fix-worklogs/fix_v636_stage4_20260806.md
+./archive/fix-worklogs/fix_v635_stage1_20260806.md
+./archive/fix-worklogs/fix_v635_stage2_20260806.md
+./archive/fix-worklogs/fix_v635_stage3_20260806.md
+./archive/fix-worklogs/fix_sixlens_20260806.md
+./CHANGELOG.md
+./commands-staging/token-analyze-2.md
+./commands-staging/token-analyze.md
+./commands-staging/token-analyze-1.md
+./references/analyze-workflow.md
+./references/scan-schemas.md
+./references/analysis-playbook.md
+./references/data-pipeline-evm-sources.md
+./references/address-book.md
+./references/attic.md
+./references/environment.md
+./references/split-run.md
+./references/data-pipeline-robinhood-traps.md
+./references/monitoring-package.md
+./references/research-workflows.md
+./references/playbook-entity-cluster-cost.md
+./references/labels/benchmark/result-2026-07-18.json
+./references/labels/benchmark/result-2026-07-17.json
+./references/labels/benchmark/result-2026-07-16.json
+./references/labels/benchmark/goldset.csv
+./references/labels/miss-queue/base.csv
+./references/labels/miss-queue/bsc.csv
+./references/labels/miss-queue/eth.csv
+./references/labels/miss-queue/sol.csv
+./references/labels/labels-bsc-privacy.csv
+./references/labels/labels-bsc.csv
+./references/labels/README.md
+./references/labels/labels-eth.csv
+./references/labels/manifest.json
+./references/labels/labels-robinhood.csv
+./references/labels/labels-base.csv
+./references/labels/labels-eth-privacy.csv
+./references/labels/codehash-robinhood.csv
+./references/labels/labels-sol.csv
+./references/labels/MAINTENANCE.md
+./references/report-template.md
+./references/data-pipeline-evm-channels.md
+./references/lp-fee-accounting.md
+./references/playbook-supply-recon.md
+./references/data-pipeline-robinhood.md
+./references/data-pipeline-evm.md
+./references/data-pipeline-solana.md
+./references/independent-audit-protocol.md
+./references/data-pipeline-robinhood-methods.md
+./references/examples/lifecycle-flow-sample.png
+./references/data-pipeline-solana-scan.md
+./references/playbook-entity-cluster-methods.md
+./references/playbook-entity-cluster-tiering.md
+./references/casebook/entity-clustering-methods.md
+./references/casebook/entity-clustering.md
+./references/casebook/README.md
+./references/casebook/cex-custody.md
+./references/casebook/supply-accounting-methods.md
+./references/casebook/cex-custody-methods.md
+./references/casebook/supply-accounting.md
+./references/playbook-state-anomaly.md
+./references/data-pipeline-evm-recon.md
+./references/playbook-evidence-wording.md
+./references/economic-control-accounting.md
+./references/retrospective.md
+./references/context-discipline.md
+./references/maintenance-review-repair.md
+./references/data-pipeline-robinhood-channels.md
+./references/data-pipeline-solana-capture.md
+./pyproject.toml
+./blind-reviews/r9/45bf8f3/round-a-sixlens.md
+./blind-reviews/r9/45bf8f3/round-b-ledger-replay.md
+./.gitignore
+./VERSION
+./scripts/run_guarded.py
+./scripts/bench/scan_script_forks.py
+./scripts/bench/golden_baseline.py
+./scripts/prices/price_check.py
+./scripts/prices/llama_price.py
+./scripts/tests/labels_manifest.py
+./scripts/tests/test_review_chain_collectors.py
+./scripts/tests/evm_channel_fixture.py
+./scripts/tests/test_r9_batch2_attestation_adapters.py
+./scripts/tests/test_review_scale_guards.py
+./scripts/tests/test_batch2_capability_matrix.py
+./scripts/tests/test_benchmark_labels.py
+./scripts/tests/test_token_no_positional.py
+./scripts/tests/contract_manifest.json
+./scripts/tests/formal_ready_test_harness.py
+./scripts/tests/test_entity_source_trace.py
+./scripts/tests/test_round4_csv_adapters.py
+./scripts/tests/test_time_spotcheck.py
+./scripts/tests/test_r9_batch3_preflight.py
+./scripts/tests/test_repair_batch3_f01.py
+./scripts/tests/docs_lint.py
+./scripts/tests/runtime_docs_manifest.json
+./scripts/tests/test_batch3_evm_vertical_slice.py
+./scripts/tests/test_chain_registry.py
+./scripts/tests/test_figures_from_facts.py
+./scripts/tests/invariant_scan.py
+./scripts/tests/test_batch2_legacy_hardening.py
+./scripts/tests/test_handoff_manifest.py
+./scripts/tests/test_apu_legacy_gaps.py
+./scripts/tests/test_review_resume_integrity.py
+./scripts/tests/test_round4b_provenance.py
+./scripts/tests/test_supply_truth_gate.py
+./scripts/tests/test_batch2_p3_hardening.py
+./scripts/tests/test_repair_batch1.py
+./scripts/tests/test_repair_batch3_gates.py
+./scripts/tests/test_chain_support_matrix.py
+./scripts/tests/test_review_20260804_p104.py
+./scripts/tests/test_flow_anomaly.py
+./scripts/tests/test_param_scripts.py
+./scripts/tests/test_peaks_daily.py
+./scripts/tests/test_fetch_failclosed.py
+./scripts/tests/test_repair_batch_c.py
+./scripts/tests/contract_ids_snapshot.json
+./scripts/tests/test_review_robinhood_integrity.py
+./scripts/tests/test_review_20260804_p105.py
+./scripts/tests/test_review_20260804_p202.py
+./scripts/tests/test_repair_batch2_f02.py
+./scripts/tests/test_batch3_solana_producers.py
+./scripts/tests/test_sixlens_docs.py
+./scripts/tests/test_batch1_rpc_attestation.py
+./scripts/tests/test_wave_scan.py
+./scripts/tests/test_repair_batch_b.py
+./scripts/tests/test_review_labels.py
+./scripts/tests/test_review_evm_integrity.py
+./scripts/tests/test_r9_batch3_dynamic_runner.py
+./scripts/tests/test_review_20260804_p101.py
+./scripts/tests/test_r7_findings.py
+./scripts/tests/casebook_lint.py
+./scripts/tests/test_report_facts.py
+./scripts/tests/test_cluster_quality.py
+./scripts/tests/test_review_20260804_p106.py
+./scripts/tests/test_sqd_merge_equiv.py
+./scripts/tests/test_r9_solana_attested_session.py
+./scripts/tests/test_review_20260804_p201.py
+./scripts/tests/test_round4_a5_seal.py
+./scripts/tests/test_formal_chain_support.py
+./scripts/tests/test_batch1_receipt_paths.py
+./scripts/tests/test_exemption_guards.py
+./scripts/tests/test_distribution_gate.py
+./scripts/tests/test_version_consistency.py
+./scripts/tests/test_repair_batch_a.py
+./scripts/tests/test_fetch_gmgn_sh.py
+./scripts/tests/test_roundtrip_check.py
+./scripts/tests/test_commands_deploy_sync.py
+./scripts/tests/test_entity_identity_gate.py
+./scripts/tests/changelog_lint.py
+./scripts/tests/test_fault_injection.py
+./scripts/tests/test_r9_batch3_release_guards.py
+./scripts/tests/test_round4c_solana_provenance.py
+./scripts/tests/test_review_solana_integrity.py
+./scripts/tests/test_adjudication_validator.py
+./scripts/tests/test_engine_equivalence.py
+./scripts/tests/test_labels_resolver_guards.py
+./scripts/tests/test_r9_batch1_boundaries.py
+./scripts/tests/test_batch2_robinhood_exploration.py
+./scripts/tests/test_repair_batch_d.py
+./scripts/tests/test_r9_batch2_executable_capabilities.py
+./scripts/tests/test_review_20260804_p0.py
+./scripts/tests/test_r9_batch2_solana_sqd_adapter.py
+./scripts/tests/test_batch2_ready_reconciliation.py
+./scripts/tests/fixtures_lint.py
+./scripts/tests/test_r9_batch3_solana_observation.py
+./scripts/tests/test_net_result.py
+./scripts/tests/fixtures/pythia_anchors.json
+./scripts/tests/test_build_html.py
+./scripts/tests/test_audit_release_gate.py
+./scripts/tests/test_evm_observation_release.py
+./scripts/tests/test_reconciliation_runner.py
+./scripts/tests/test_receipt_kernel.py
+./scripts/tests/test_contract_routes.py
+./scripts/tests/invariant_manifest.json
+./scripts/tests/run_all.py
+./scripts/tests/test_evm_observation.py
+./scripts/tests/env_check.py
+./scripts/tests/test_add_labels_rollback.py
+./scripts/tests/identity_gate_fixture.py
+./scripts/tests/test_batch3_solana_vertical_slice.py
+./scripts/tests/test_sixlens_receipts.py
+./scripts/tests/test_batch2_registry_harness_hardening.py
+./scripts/tests/test_round4_identity_emitter.py
+./scripts/tests/test_state_from_facts.py
+./scripts/tests/test_a4_gate.py
+./scripts/tests/test_evm_observation_nonempty_code.py
+./scripts/tests/test_batch4_invariant_guards.py
+./scripts/tests/test_batch1_risk_flags.py
+./scripts/labels/risk_flags.py
+./scripts/labels/goplus_check.py
+./scripts/labels/roundtrip_check.py
+./scripts/labels/probe_codetype.py
+./scripts/labels/accumulate_offenders.py
+./scripts/labels/label_lookup.py
+./scripts/labels/fingerprint_check.py
+./scripts/labels/dune_fetch_results.py
+./scripts/labels/build_labels.py
+./scripts/labels/labels_resolver.py
+./scripts/labels/build_goldset.py
+./scripts/labels/sourcify_check.py
+./scripts/labels/gatekeeper.py
+./scripts/labels/sources/ofac_bsc.txt
+./scripts/labels/sources/scamsniffer_address.json
+./scripts/labels/sources/tornado_bsc_contracts.csv
+./scripts/labels/sources/official_registry.csv
+./scripts/labels/sources/sol_programs_verified.json
+./scripts/labels/sources/kolscan_wallets.json
+./scripts/labels/sources/hypurrscan_aliases.json
+./scripts/labels/sources/additions/curation_overrides_20260718_asteroid.csv
+./scripts/labels/sources/additions/curation_overrides_20260724_goat.csv
+./scripts/labels/sources/additions/serial_actors_2026-07-29.csv
+./scripts/labels/sources/additions/base_aa_paymasters.csv
+./scripts/labels/sources/additions/serial_actors_2026-07-28.csv
+./scripts/labels/sources/additions/curation_overrides_20260722.csv
+./scripts/labels/sources/additions/safe_family.csv
+./scripts/labels/sources/additions/curation_overrides_20260718.csv
+./scripts/labels/sources/additions/curation_overrides_20260724_quq.csv
+./scripts/labels/sources/additions/serial_actors_2026-07-23_from_codex.csv
+./scripts/labels/sources/additions/serial_actors.csv
+./scripts/labels/sources/additions/base_aa_bundlers.csv
+./scripts/labels/sources/additions/curation_overrides_20260717.csv
+./scripts/labels/sources/additions/curation_overrides_20260724_siren.csv
+./scripts/labels/sources/additions/sol_cex_p0.csv
+./scripts/labels/sources/additions/bsc_bridges_p0.csv
+./scripts/labels/sources/additions/bsc_routers_p1.csv
+./scripts/labels/sources/additions/sol_lockers_launchpads_p1.csv
+./scripts/labels/sources/additions/sol_kr_cex_p0.csv
+./scripts/labels/sources/additions/solver_intent_p0.csv
+./scripts/labels/sources/additions/serial_actors_2026-07-25.csv
+./scripts/labels/sources/additions/serial_actors_2026-07-24.csv
+./scripts/labels/sources/additions/bsc_lockers_p0.csv
+./scripts/labels/sources/additions/serial_actors_2026-07-26.csv
+./scripts/labels/sources/additions/recovered_increments_20260717.csv
+./scripts/labels/sources/additions/serial_actors_2026-07-22.csv
+./scripts/labels/sources/spellbook_parsed.csv
+./scripts/labels/sources/sol_cex_cleanup_20260717.json
+./scripts/labels/sources/dune_labels_v2.csv.gz
+./scripts/labels/sources/gmgn_additions.csv
+./scripts/labels/sources/gmgn_wallets.jsonl
+./scripts/labels/sources/spellbook_cex_codetype_eth.json
+./scripts/labels/sources/serial_actors.csv
+./scripts/labels/sources/ofac_sol.txt
+./scripts/labels/sources/dune_tornado.csv.gz
+./scripts/labels/sources/manual_labels.csv
+./scripts/labels/sources/spellbook_cex_codetype_base.json
+./scripts/labels/sources/spellbook_cex_codetype_bsc.json
+./scripts/labels/sources/ofac_eth_codetype.json
+./scripts/labels/sources/ofac_eth.txt
+./scripts/labels/sources/jup_labels.json
+./scripts/labels/sources/scamsniffer_codetype.json
+./scripts/labels/sources/spellbook_cex_addrs.txt
+./scripts/labels/pull_verified_contracts.py
+./scripts/labels/check_manual_sync.py
+./scripts/labels/benchmark_labels.py
+./scripts/labels/gen_manual_from_addressbook.py
+./scripts/labels/add_labels.py
+./scripts/labels/validate_labels.py
+./scripts/solana/decode_txs_v2.py
+./scripts/solana/probe_window_moves.py
+./scripts/solana/squads_members.py
+./scripts/solana/window_fetch.py
+./scripts/solana/fast_probe_tops.py
+./scripts/solana/scan_sharded.py
+./scripts/solana/curve_cost.py
+./scripts/solana/scan_token_accounts.py
+./scripts/solana/build_evolution.py
+./scripts/solana/decode_txs.py
+./scripts/solana/replay_edges.py
+./scripts/solana/audit_closed_accounts.py
+./scripts/solana/accounting_gate_sol.py
+./scripts/solana/hypersync_recon.py
+./scripts/solana/snapshot_diff.py
+./scripts/solana/README.md
+./scripts/solana/anchor_sampler.py
+./scripts/solana/whale_deep.py
+./scripts/solana/fetch_pool_sigs.py
+./scripts/solana/fetch_sqd_transfers_v2.py
+./scripts/solana/probe_escrows.py
+./scripts/solana/gas_origin.py
+./scripts/solana/stake_decode.py
+./scripts/solana/trace_wallet.py
+./scripts/robinhood/pull_swaps.py
+./scripts/robinhood/pull_swaps_v4.py
+./scripts/robinhood/pull_transfers_rpc.py
+./scripts/robinhood/pull_lp_events.py
+./scripts/robinhood/resume_guard.py
+./scripts/robinhood/pull_ohlcv.py
+./scripts/robinhood/pull_weth_pool.py
+./scripts/robinhood/config.example.json
+./scripts/robinhood/merge_hs_rpc.py
+./scripts/robinhood/pull_block_ts_anchors.py
+./scripts/robinhood/build_price.py
+./scripts/robinhood/pull_transfers.py
+./scripts/robinhood/cost_engine.py
+./scripts/robinhood/gas_trace_bs.py
+./scripts/robinhood/gas_trace.py
+./scripts/robinhood/amounts.py
+./scripts/hooks/guard_file_ops.py
+./scripts/proclock.py
+./scripts/lib/receipt_kernel.py
+./scripts/lib/solana_sqd_dataset.py
+./scripts/lib/supply_semantics.py
+./scripts/lib/solana_attested_session.py
+./scripts/lib/rpc_batch.py
+./scripts/lib/proxy_config.py
+./scripts/lib/solana_observation.py
+./scripts/lib/receipt_validate.py
+./scripts/lib/net.py
+./scripts/lib/evm_observation.py
+./scripts/lib/formal_capability_probes.py
+./scripts/lib/anchor_plan.py
+./scripts/lib/camp_spec.py
+./scripts/lib/attestation_adapters.py
+./scripts/lib/artifact_quarantine.py
+./scripts/lib/camp_series_provenance.py
+./scripts/lib/supply_truth_gate.py
+./scripts/lib/anchor_selection.py
+./scripts/lib/time_spotcheck.py
+./scripts/lib/endpoint_identity.py
+./scripts/lib/chain_registry.py
+./scripts/evm/replay_pass1.py
+./scripts/evm/peaks_daily.py
+./scripts/evm/fetch_pool_swaps.py
+./scripts/evm/fetch_hypersync_logs.py
+./scripts/evm/accounting_gate.py
+./scripts/evm/csv_collector_receipt.py
+./scripts/evm/analyze_holdings.py
+./scripts/evm/make_channel_receipt.py
+./scripts/evm/scan_transfers.py
+./scripts/evm/lp_positions.py
+./scripts/evm/fetch_hypersync_v2.py
+./scripts/evm/scan_bloxroute_seg.py
+./scripts/evm/fetch_etherscan.py
+./scripts/evm/replay_stream.py
+./scripts/evm/verify_recon.py
+./scripts/evm/fetch_bigquery.py
+./scripts/evm/replay_duck.py
+./scripts/evm/channels_preflight.py
+./scripts/evm/fetch_hypersync.py
+./scripts/evm/observe_supply.py
+./scripts/evm/config.example.json
+./scripts/evm/cluster.py
+./scripts/evm/staged_capture.sh
+./scripts/evm/cadence_fingerprint.py
+./scripts/evm/cadence_rank.py
+./scripts/evm/prep_cluster_inputs.py
+./scripts/evm/fetch_alchemy.py
+./scripts/evm/cluster_sensitivity.py
+./scripts/evm/pierce_stake.py
+./scripts/evm/cluster_prep_duck.py
+./scripts/evm/transfers_lib.py
+./scripts/evm/multicall_balances.py
+./scripts/evm/replay_pass2.py
+./scripts/evm/fetch_gmgn.sh
+./scripts/evm/fetch_sqd_evm.py
+./scripts/report/chart_style.py
+./scripts/report/flow_anomaly_scan.py
+./scripts/report/adjudication_validator.py
+./scripts/report/md2pdf.py
+./scripts/report/a5_report_seal.py
+./scripts/report/distribution_explanation_check.py
+./scripts/report/state_from_facts.py
+./scripts/report/identity_snapshot_receipt.py
+./scripts/report/adversarial_review_runner.py
+./scripts/report/facts_gate.py
+./scripts/report/entity_identity_gate.py
+./scripts/report/reproduce_receipt.py
+./scripts/report/entity_source_trace.py
+./scripts/report/build_html.py
+./scripts/report/audit_release_gate.py
+./scripts/report/standard_charts.py
+./scripts/report/shared_release_receipt.py
+./scripts/report/holder_distribution_scan.py
+./scripts/report/migrate_legacy_case.py
+./scripts/report/lifecycle_flow.py
+./scripts/report/retro_draft.py
+./scripts/report/a4_gate.py
+./scripts/report/wave_scan.py
+./scripts/report/reconciliation_report.py
+./scripts/report/figures_from_facts.py
+./scripts/report/handoff_manifest.py
+./SKILL.md
+./maintenance/review-20260814/review-report.md
+./maintenance/review-20260814/findings-draft.md
+./maintenance/repair-20260814-batch1/step5_a5v3_report.md
+./maintenance/repair-20260814-batch1/final_acceptance.md
+./maintenance/repair-20260814-batch1/batch1_digest.md
+./maintenance/repair-20260814-batch1/step4_f01_report.md
+./maintenance/repair-20260814-batch1/step6_f04_report.md
+./maintenance/repair-20260814-batch1/step2_rv04_rv17_report.md
+./maintenance/repair-20260814-batch1/step7_closeout_report.md
+./maintenance/repair-20260814-batch1/plan.md
+./maintenance/repair-20260814-batch1/batch1_adversarial.md
+./maintenance/repair-20260814-batch1/step3_f03_report.md
+./maintenance/repair-20260814-batch1/step1_rv07_report.md
+./maintenance/repair-20260809-apu-legacy/run_all_final.txt
+./maintenance/repair-20260809-apu-legacy/WORKORDER_apu_legacy_gaps.md
+./maintenance/repair-20260815-g2/workorder_F04_done.md
+./maintenance/repair-20260815-g2/f04_codex.log
+./maintenance/repair-20260815-g2/f04_red.log
+./maintenance/repair-20260815-g2/workorder_F04_addendum.md
+./maintenance/repair-20260815-g2/f04_green.log
+./maintenance/repair-20260815-g2/workorder_F10.md
+./maintenance/repair-20260815-g2/workorder_F04.md
+./maintenance/repair-20260815-g2/plan.md
+./maintenance/repair-20260815-g2/f04_codex_lastmsg.txt
+./maintenance/repair-20260815-g2/f04b_codex.log
+./maintenance/repair-20260814-batch3/workorder_F04_done.md
+./maintenance/repair-20260814-batch3/workorder_digest_round2.md
+./maintenance/repair-20260814-batch3/workorder_digest_round1_done.md
+./maintenance/repair-20260814-batch3/baseline_run_all.log
+./maintenance/repair-20260814-batch3/workorder_digest_round3.md
+./maintenance/repair-20260814-batch3/workorder_F05_done.md
+./maintenance/repair-20260814-batch3/workorder_closeout.md
+./maintenance/repair-20260814-batch3/workorder_digest_round2_done.md
+./maintenance/repair-20260814-batch3/blindreview_round3.md
+./maintenance/repair-20260814-batch3/workorder_closeout_done.md
+./maintenance/repair-20260814-batch3/blindreview_round2.md
+./maintenance/repair-20260814-batch3/candidate_run_all_e60c139.log
+./maintenance/repair-20260814-batch3/blindreview_round3_addendum.md
+./maintenance/repair-20260814-batch3/workorder_digest_round3_done.md
+./maintenance/repair-20260814-batch3/blindreview_round1.md
+./maintenance/repair-20260814-batch3/workorder_F04.md
+./maintenance/repair-20260814-batch3/workorder_F05.md
+./maintenance/repair-20260814-batch3/plan.md
+./maintenance/repair-20260814-batch3/workorder_F01.md
+./maintenance/repair-20260814-batch3/workorder_digest_round1.md
+./maintenance/repair-20260814-batch3/br104_evidence_rebuild.md
+./maintenance/repair-20260814-batch3/baseline_run_all_83394ab.log
+./maintenance/repair-20260814-batch3/workorder_F01_done.md
+./maintenance/repair-20260814-batch2/blindreview_B.md
+./maintenance/repair-20260814-batch2/blindreview_C.md
+./maintenance/repair-20260814-batch2/workorder_B_f02.md
+./maintenance/repair-20260814-batch2/baseline_run_all.log
+./maintenance/repair-20260814-batch2/workorder_A_f10.md
+./maintenance/repair-20260814-batch2/workorder_final_closure.md
+./maintenance/repair-20260814-batch2/workorder_B_fixround1_amendment.md
+./maintenance/repair-20260814-batch2/workorder_B_fixround2.md
+./maintenance/repair-20260814-batch2/blindreview_A_round2.md
+./maintenance/repair-20260814-batch2/workorder_C_fixround2.md
+./maintenance/repair-20260814-batch2/workorder_A_fixround1.md
+./maintenance/repair-20260814-batch2/workorder_B_done.md
+./maintenance/repair-20260814-batch2/workorder_A_fixround2_done.md
+./maintenance/repair-20260814-batch2/workorder_C_fixround1.md
+./maintenance/repair-20260814-batch2/workorder_A_fixround2.md
+./maintenance/repair-20260814-batch2/blindreview_B_round3.md
+./maintenance/repair-20260814-batch2/workorder_C_fixround1_done.md
+./maintenance/repair-20260814-batch2/blindreview_B_round2.md
+./maintenance/repair-20260814-batch2/workorder_C_done.md
+./maintenance/repair-20260814-batch2/workorder_B_fixround1.md
+./maintenance/repair-20260814-batch2/workorder_B_fixround1_done.md
+./maintenance/repair-20260814-batch2/plan.md
+./maintenance/repair-20260814-batch2/import_pythia_legacy.py
+./maintenance/repair-20260814-batch2/workorder_C_fixround2_done.md
+./maintenance/repair-20260814-batch2/workorder_A_done.md
+./maintenance/repair-20260814-batch2/blindreview_C_round3.md
+./maintenance/repair-20260814-batch2/workorder_A_fixround1_done.md
+./maintenance/repair-20260814-batch2/workorder_C_f09.md
+./maintenance/repair-20260814-batch2/blindreview_C_round2.md
+./maintenance/repair-20260814-batch2/workorder_B_fixround2_done.md
+./maintenance/repair-20260814-batch2/merge_resolution_done.md
+./maintenance/repair-20260814-batch2/workorder_final_closure_done.md
+./maintenance/repair-20260814-batch2/blindreview_A.md
+./maintenance/repair-20260806/batch3-report.md
+./maintenance/repair-20260806/final_acceptance.md
+./maintenance/repair-20260806/robinhood-impact.md
+./maintenance/repair-20260806/batch2-report.md
+./maintenance/repair-20260806/b3_progress.md
+./maintenance/repair-20260806/batch4-report.md
+./maintenance/repair-20260806/invariant-merge.md
+./maintenance/repair-20260806/transport-injections.json
+./maintenance/repair-20260806/batch1-report.md
+./maintenance/repair-20260806/b1_progress.md
+./maintenance/repair-20260806/g3_preflight/g3_0b_pythia_gpa.py
+./maintenance/repair-20260806/g3_preflight/g3_0a_usdc_activity.json
+./maintenance/repair-20260806/g3_preflight/smoke-20260808/solana_observation_bundle.json
+./maintenance/repair-20260806/g3_preflight/smoke-20260808/supply_truth.json
+./maintenance/repair-20260806/g3_preflight/smoke-20260808/accounting_mode.json
+./maintenance/repair-20260806/g3_preflight/g3_0a_usdc_activity.py
+./maintenance/repair-20260806/g3_preflight/g3_0b_pythia_gpa.json
+./maintenance/repair-20260806/exemptions.md
+./maintenance/repair-20260806/sha_replay.py
+./maintenance/repair-20260806/b4_progress.md
+./maintenance/repair-20260806/ledger.md
+./maintenance/repair-20260806/diff-finding-map.md
+./maintenance/repair-20260806/b2_progress.md
+./maintenance/repair-20260806/reviews/batch1-review.md
+./maintenance/repair-20260806/reviews/batch2-rereview.md
+./maintenance/repair-20260806/reviews/batch2-review3.md
+./maintenance/repair-20260806/reviews/r9-batch4-rereview.md
+./maintenance/repair-20260806/reviews/r9-batch1-rereview.md
+./maintenance/repair-20260806/reviews/r9-batch4-rereview2.md
+./maintenance/repair-20260806/reviews/r9-batch1-review.md
+./maintenance/repair-20260806/reviews/batch4-rereview.md
+./maintenance/repair-20260806/reviews/batch3-rereview.md
+./maintenance/repair-20260806/reviews/r9-batch3-rereview3-mutants.md
+./maintenance/repair-20260806/reviews/r9-batch1-rereview2.md
+./maintenance/repair-20260806/reviews/batch3-review.md
+./maintenance/repair-20260806/reviews/r9-batch4-review.md
+./maintenance/repair-20260806/reviews/batch2-review.md
+./maintenance/repair-20260806/reviews/r9-batch3-review.md
+./maintenance/repair-20260806/reviews/r9-batch3-rereview-partial.md
+./maintenance/repair-20260806/reviews/batch4-review.md
+./maintenance/repair-20260813-sixlens/batchB_adversarial.md
+./maintenance/repair-20260813-sixlens/final_acceptance.md
+./maintenance/repair-20260813-sixlens/counterexamples/fake_series_dualfeed.py
+./maintenance/repair-20260813-sixlens/counterexamples/waiver_swap_integrity.py
+./maintenance/repair-20260813-sixlens/counterexamples/flip_receipt_chain.py
+./maintenance/repair-20260813-sixlens/counterexamples/refresh_txn_rollback.py
+./maintenance/repair-20260813-sixlens/counterexamples/closed_audit_failopen.py
+./maintenance/repair-20260813-sixlens/batchC_fixround1_workorder.md
+./maintenance/repair-20260813-sixlens/batchD_adversarial.md
+./maintenance/repair-20260813-sixlens/r10_ledger.md
+./maintenance/repair-20260813-sixlens/batchD_fixround1_workorder.md
+./maintenance/repair-20260813-sixlens/batchC_adversarial.md
+./maintenance/repair-20260813-sixlens/batchA_workorder.md
+./maintenance/repair-20260813-sixlens/input_gpt56_review.md
+./maintenance/repair-20260813-sixlens/batchA_adversarial.md
+./maintenance/repair-20260813-sixlens/batchB_fixround1_workorder.md
+./maintenance/repair-20260813-sixlens/batchA_fixround1_workorder.md
+./maintenance/repair-20260813-sixlens/batchB_workorder.md
+./maintenance/repair-20260813-sixlens/batchB_fixround2_workorder.md
+./maintenance/repair-20260813-sixlens/batchA_adversarial_recheck.md
+./maintenance/repair-20260813-sixlens/batchD_ledger.md
+./maintenance/repair-20260813-sixlens/input_codex_review.md
+./maintenance/repair-20260813-sixlens/batchC_workorder.md
+./maintenance/repair-20260813-sixlens/batchD_workorder.md
+./maintenance/repair-20260813-sixlens/batchA_fixround2_workorder.md
+./maintenance/repair-20260813-sixlens/plan.md
+./maintenance/repair-20260813-sixlens/plan_review_codex.md
+./maintenance/repair-20260813-sixlens/batchA_final_recheck.md
+./maintenance/repair-20260813-sixlens/batchC_fixround3_workorder.md
+./maintenance/repair-20260813-sixlens/batchC_fixround2_workorder.md
+./maintenance/repair-20260809-supplytruth/WORKLOG_codex.md
+./maintenance/repair-20260809-supplytruth/run_all_final.txt
+./maintenance/repair-20260809-supplytruth/WORKORDER_supplytruth.md
+./maintenance/repair-20260809-supplytruth/acceptance_rerun_fable.txt
+./maintenance/repair-20260809-supplytruth/red_phase.txt
+./maintenance/repair-20260814-evmobs/workorder_B.md
+./maintenance/repair-20260814-evmobs/workorder_D_done.md
+./maintenance/repair-20260814-evmobs/workorder_C.md
+./maintenance/repair-20260814-evmobs/baseline_run_all.log
+./maintenance/repair-20260814-evmobs/workorder_B_done.md
+./maintenance/repair-20260814-evmobs/workorder_C_done.md
+./maintenance/repair-20260814-evmobs/plan.md
+./maintenance/repair-20260814-evmobs/workorder_D.md
+./maintenance/repair-20260814-evmobs/workorder_A_done.md
+./maintenance/repair-20260814-evmobs/blindreview_OBS_round1.md
+./maintenance/repair-20260814-evmobs/workorder_A.md
+./requirements.lock
+    87	def write_evm_bundle(root, *, token=TOKEN, chain="eth", as_of=123,
+    88	                     total=APU_MINT, zero=0, dead=APU_DEAD):
+    89	    """落一份通过工单 A 公共 validator 的 EVM 观测实物。"""
+    90	    endpoint = "https://rpc.example.test"
+    91	    block = {
+    92	        "number": hex(as_of), "hash": BLOCK_HASH,
+    93	        "parentHash": PARENT_HASH, "timestamp": hex(1_700_000_000),
+    94	    }
+    95	    selector = {"blockHash": BLOCK_HASH, "requireCanonical": True}
+    96	    balance = lambda address: (  # noqa: E731
+    97	        "0x70a08231" + "0" * 24 + address.removeprefix("0x").lower())
+    98	    word = lambda value: f"0x{value:064x}"  # noqa: E731
+    99	    chain_id = {"eth": 1, "bsc": 56, "base": 8453}[chain]
+   100	    transcript = [
+   101	        {"seq": 0, "method": "eth_chainId", "params": [], "result": chain_id},
+   102	        {"seq": 1, "method": "eth_getBlockByNumber",
+   103	         "params": [hex(as_of), False], "result": block},
+   104	        {"seq": 2, "method": "eth_blockNumber", "params": [],
+   105	         "result": hex(as_of + 12)},
+   106	        {"seq": 3, "method": "eth_call",
+   107	         "params": [{"to": token, "data": "0x18160ddd"}, selector],
+   108	         "result": word(total)},
+   109	        {"seq": 4, "method": "eth_call",
+   110	         "params": [{"to": token, "data": balance(ZERO)}, selector],
+   111	         "result": word(zero)},
+   112	        {"seq": 5, "method": "eth_call",
+   113	         "params": [{"to": token, "data": balance(DEAD)}, selector],
+   114	         "result": word(dead)},
+   115	        {"seq": 6, "method": "eth_getCode", "params": [token, selector],
+   116	         "result": RUNTIME_CODE},
+   117	        {"seq": 7, "method": "eth_getBlockByNumber",
+   118	         "params": [hex(as_of), False], "result": block},
+   119	    ]
+   120	    transcript_path = root / "evm_observation_transcript.json"
+   121	    transcript_path.write_text(json.dumps(transcript), encoding="utf-8")
+   122	    core = {
+   123	        "attestation": {
+   124	            "expected_chain_id": chain_id, "observed_chain_id": chain_id,
+   125	            "endpoint": endpoint_fingerprint(endpoint),
+   126	        },
+   127	        "anchor": {
+   128	            "number": as_of, "block_hash": BLOCK_HASH,
+   129	            "parent_hash": PARENT_HASH, "timestamp": 1_700_000_000,
+   130	            "recheck_block_hash": BLOCK_HASH, "tip_block": as_of + 12,
+   131	            "confirmations": 12,
+   132	        },
+   133	        "supply": {
+   134	            "total_supply_raw": str(total), "zero_balance_raw": str(zero),
+   135	            "dead_balance_raw": str(dead),
+   136	            "block_binding": "eip1898-block-hash",
+   137	        },
+   138	        "code": {"runtime_code_sha256": hashlib.sha256(
+   139	            bytes.fromhex(RUNTIME_CODE[2:])).hexdigest()},
+   140	    }
+   141	    target = {"chain": chain, "token": token, "as_of_block": as_of}
+   142	    bundle = build_evm_observation_bundle(
+   143	        core, transcript_path, target, "scripts/evm/observe_supply.py",
+   144	        input_base=root)
+   145	    bundle_path = root / "evm_observation_bundle.json"
+    53	            params = body.get("params") or []
+    54	            if method == "eth_chainId":
+    55	                result = hex(type(self).chain_id)
+    56	            elif method == "eth_blockNumber":
+    57	                result = hex(123)
+    58	            elif method == "eth_getBlockByNumber":
+    59	                result = {
+    60	                    "number": hex(123), "hash": BLOCK_HASH,
+    61	                    "parentHash": PARENT_HASH, "timestamp": hex(1_700_000_000),
+    62	                }
+    63	            elif method == "eth_getCode":
+    64	                block = params[1]
+    65	                if isinstance(block, dict):
+    66	                    assert block == {"blockHash": BLOCK_HASH,
+    67	                                     "requireCanonical": True}, block
+    68	                else:
+    69	                    assert block == "latest", block
+    70	                result = "0x6000"
+    71	            elif method == "eth_getStorageAt":
+    72	                result = "0x" + "0" * 64
+    73	            elif method == "eth_call":
+    74	                call = params[0]
+    75	                data = call.get("data", "")
+    76	                if data.startswith("0x18160ddd"):
+    77	                    amount = type(self).supply
+    78	                else:
+    79	                    address = "0x" + data[-40:]
+    80	                    block = params[1]
+    81	                    if isinstance(block, dict):
+    82	                        assert block == {"blockHash": BLOCK_HASH,
+    83	                                         "requireCanonical": True}, block
+    84	                    if address.lower() == B and block == hex(121):
+    85	                        amount = 0
+    86	                    elif address.lower() == A and block != hex(121):
+    87	                        amount = 0
+    88	                    elif address.lower() == ZERO:
+    89	                        amount = 0
+    90	                    elif address.lower() == DEAD:
+    91	                        amount = type(self).dead_balance
+    92	                    elif address.lower() == B:
+    93	                        amount = type(self).supply - type(self).dead_balance
+    94	                    else:
+    95	                        amount = type(self).supply
+    96	                result = f"0x{amount:064x}"
+    97	            elif method == "eth_getTransactionReceipt":
+    98	                result = {"blockNumber": hex(123), "logs": [{
+    99	                    "address": TOKEN,
+   100	                    "topics": [
+
+diff --git a/scripts/tests/test_batch3_evm_vertical_slice.py b/scripts/tests/test_batch3_evm_vertical_slice.py
+index f213ec628db47083ea8ac5ff9b5a79665457b613..bfe4bbcd42dabc9da78b5736ddafdf84f9602227
+--- a/scripts/tests/test_batch3_evm_vertical_slice.py
++++ b/scripts/tests/test_batch3_evm_vertical_slice.py
+@@ -61,6 +61,12 @@
+                     "parentHash": PARENT_HASH, "timestamp": hex(1_700_000_000),
+                 }
+             elif method == "eth_getCode":
++                block = params[1]
++                if isinstance(block, dict):
++                    assert block == {"blockHash": BLOCK_HASH,
++                                     "requireCanonical": True}, block
++                else:
++                    assert block == "latest", block
+                 result = "0x6000"
+             elif method == "eth_getStorageAt":
+                 result = "0x" + "0" * 64
+@@ -87,7 +93,7 @@
+                         amount = type(self).supply - type(self).dead_balance
+                     else:
+                         amount = type(self).supply
+-                result = hex(amount)
++                result = f"0x{amount:064x}"
+             elif method == "eth_getTransactionReceipt":
+                 result = {"blockNumber": hex(123), "logs": [{
+                     "address": TOKEN,
+diff --git a/scripts/tests/test_supply_truth_gate.py b/scripts/tests/test_supply_truth_gate.py
+index a0624fb3e6bca2e6f225fd69caa9e0ce632d0a51..4533a978881ae7a17a4499544a0a4947a403b3c9
+--- a/scripts/tests/test_supply_truth_gate.py
++++ b/scripts/tests/test_supply_truth_gate.py
+@@ -95,6 +95,7 @@
+     selector = {"blockHash": BLOCK_HASH, "requireCanonical": True}
+     balance = lambda address: (  # noqa: E731
+         "0x70a08231" + "0" * 24 + address.removeprefix("0x").lower())
++    word = lambda value: f"0x{value:064x}"  # noqa: E731
+     chain_id = {"eth": 1, "bsc": 56, "base": 8453}[chain]
+     transcript = [
+         {"seq": 0, "method": "eth_chainId", "params": [], "result": chain_id},
+@@ -104,14 +105,14 @@
+          "result": hex(as_of + 12)},
+         {"seq": 3, "method": "eth_call",
+          "params": [{"to": token, "data": "0x18160ddd"}, selector],
+-         "result": hex(total)},
++         "result": word(total)},
+         {"seq": 4, "method": "eth_call",
+          "params": [{"to": token, "data": balance(ZERO)}, selector],
+-         "result": hex(zero)},
++         "result": word(zero)},
+         {"seq": 5, "method": "eth_call",
+          "params": [{"to": token, "data": balance(DEAD)}, selector],
+-         "result": hex(dead)},
+-        {"seq": 6, "method": "eth_getCode", "params": [token, hex(as_of)],
++         "result": word(dead)},
++        {"seq": 6, "method": "eth_getCode", "params": [token, selector],
+          "result": RUNTIME_CODE},
+         {"seq": 7, "method": "eth_getBlockByNumber",
+          "params": [hex(as_of), False], "result": block},
+
+codex
+补充轮施工完成，仅修改两个授权测试文件，未执行任何 git 操作。
+
+- [test_supply_truth_gate.py](/Users/uravvv/.claude/tca-repair-g2/scripts/tests/test_supply_truth_gate.py:87)
+  - 三笔 `eth_call` 改为 66 字符 ABI word。
+  - getCode 改用 EIP-1898 selector。
+  - 非空 runtime code 及其 SHA256 保持一致。
+
+- [test_batch3_evm_vertical_slice.py](/Users/uravvv/.claude/tca-repair-g2/scripts/tests/test_batch3_evm_vertical_slice.py:63)
+  - `eth_call` 返回 32 字节 ABI word。
+  - getCode 校验冻结块 selector，同时保留 accounting gate 所需的 `"latest"`。
+  - 拒绝旧块号形态，返回非空 code。
+
+验收：
+
+- `test_supply_truth_gate.py`：PASS
+- `test_evm_observation.py`：PASS，10/10
+- `test_evm_observation_release.py`：PASS，11/11
+- `test_evm_observation_nonempty_code.py`：PASS，5/5
+- AST 与直接驱动 `FixtureHandler` 协议检查：PASS
+- `test_batch3_evm_vertical_slice.py`：沙箱在 `socket.bind(127.0.0.1)` 返回 `EPERM`，未进入业务验证，需调度方本机复跑。
+
+按你的“只改两个测试文件”要求，未追加修改 `workorder_F04_done.md`。
+diff --git a/scripts/tests/test_batch3_evm_vertical_slice.py b/scripts/tests/test_batch3_evm_vertical_slice.py
+index f213ec628db47083ea8ac5ff9b5a79665457b613..bfe4bbcd42dabc9da78b5736ddafdf84f9602227
+--- a/scripts/tests/test_batch3_evm_vertical_slice.py
++++ b/scripts/tests/test_batch3_evm_vertical_slice.py
+@@ -61,6 +61,12 @@
+                     "parentHash": PARENT_HASH, "timestamp": hex(1_700_000_000),
+                 }
+             elif method == "eth_getCode":
++                block = params[1]
++                if isinstance(block, dict):
++                    assert block == {"blockHash": BLOCK_HASH,
++                                     "requireCanonical": True}, block
++                else:
++                    assert block == "latest", block
+                 result = "0x6000"
+             elif method == "eth_getStorageAt":
+                 result = "0x" + "0" * 64
+@@ -87,7 +93,7 @@
+                         amount = type(self).supply - type(self).dead_balance
+                     else:
+                         amount = type(self).supply
+-                result = hex(amount)
++                result = f"0x{amount:064x}"
+             elif method == "eth_getTransactionReceipt":
+                 result = {"blockNumber": hex(123), "logs": [{
+                     "address": TOKEN,
+diff --git a/scripts/tests/test_supply_truth_gate.py b/scripts/tests/test_supply_truth_gate.py
+index a0624fb3e6bca2e6f225fd69caa9e0ce632d0a51..4533a978881ae7a17a4499544a0a4947a403b3c9
+--- a/scripts/tests/test_supply_truth_gate.py
++++ b/scripts/tests/test_supply_truth_gate.py
+@@ -95,6 +95,7 @@
+     selector = {"blockHash": BLOCK_HASH, "requireCanonical": True}
+     balance = lambda address: (  # noqa: E731
+         "0x70a08231" + "0" * 24 + address.removeprefix("0x").lower())
++    word = lambda value: f"0x{value:064x}"  # noqa: E731
+     chain_id = {"eth": 1, "bsc": 56, "base": 8453}[chain]
+     transcript = [
+         {"seq": 0, "method": "eth_chainId", "params": [], "result": chain_id},
+@@ -104,14 +105,14 @@
+          "result": hex(as_of + 12)},
+         {"seq": 3, "method": "eth_call",
+          "params": [{"to": token, "data": "0x18160ddd"}, selector],
+-         "result": hex(total)},
++         "result": word(total)},
+         {"seq": 4, "method": "eth_call",
+          "params": [{"to": token, "data": balance(ZERO)}, selector],
+-         "result": hex(zero)},
++         "result": word(zero)},
+         {"seq": 5, "method": "eth_call",
+          "params": [{"to": token, "data": balance(DEAD)}, selector],
+-         "result": hex(dead)},
+-        {"seq": 6, "method": "eth_getCode", "params": [token, hex(as_of)],
++         "result": word(dead)},
++        {"seq": 6, "method": "eth_getCode", "params": [token, selector],
+          "result": RUNTIME_CODE},
+         {"seq": 7, "method": "eth_getBlockByNumber",
+          "params": [hex(as_of), False], "result": block},
+
+tokens used
+60,998
+补充轮施工完成，仅修改两个授权测试文件，未执行任何 git 操作。
+
+- [test_supply_truth_gate.py](/Users/uravvv/.claude/tca-repair-g2/scripts/tests/test_supply_truth_gate.py:87)
+  - 三笔 `eth_call` 改为 66 字符 ABI word。
+  - getCode 改用 EIP-1898 selector。
+  - 非空 runtime code 及其 SHA256 保持一致。
+
+- [test_batch3_evm_vertical_slice.py](/Users/uravvv/.claude/tca-repair-g2/scripts/tests/test_batch3_evm_vertical_slice.py:63)
+  - `eth_call` 返回 32 字节 ABI word。
+  - getCode 校验冻结块 selector，同时保留 accounting gate 所需的 `"latest"`。
+  - 拒绝旧块号形态，返回非空 code。
+
+验收：
+
+- `test_supply_truth_gate.py`：PASS
+- `test_evm_observation.py`：PASS，10/10
+- `test_evm_observation_release.py`：PASS，11/11
+- `test_evm_observation_nonempty_code.py`：PASS，5/5
+- AST 与直接驱动 `FixtureHandler` 协议检查：PASS
+- `test_batch3_evm_vertical_slice.py`：沙箱在 `socket.bind(127.0.0.1)` 返回 `EPERM`，未进入业务验证，需调度方本机复跑。
+
+按你的“只改两个测试文件”要求，未追加修改 `workorder_F04_done.md`。

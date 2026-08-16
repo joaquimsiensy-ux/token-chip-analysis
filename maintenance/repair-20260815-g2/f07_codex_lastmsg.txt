@@ -1,0 +1,23 @@
+已按工单停工规则中止，当前不能宣称全量验收完成。
+
+已完成：
+
+- F-07 producer、consumer 深重验、schema v3 级联和红名单适配。
+- 新测试及工单红名单测试均通过。
+- EVM 回环纵切片在沙箱外通过。
+- 全程未运行任何 `git` 命令。
+
+阻断原因：
+
+- 名单外 `test_repair_batch_b.py` 被新深重验正确打红：旧夹具换绑余额后未同步 `supply_closure.balance_sum_raw`。
+- 名单外 `test_repair_batch_a.py` 显示 `1/45` 失败；依工单未继续定位。
+- 因此 `run_all.py` 已立即中止。
+
+请确认是否授权扩面修改 `test_review_20260804_p105.py`、`test_repair_batch_b.py`，并只读定位后最小适配 `test_repair_batch_a.py`。
+
+详细报告与证据：
+
+- [workorder_F07_done.md](/Users/uravvv/.claude/tca-repair-g2/maintenance/repair-20260815-g2/workorder_F07_done.md)
+- [f07_red.log](/Users/uravvv/.claude/tca-repair-g2/maintenance/repair-20260815-g2/f07_red.log)
+- [f07_green.log](/Users/uravvv/.claude/tca-repair-g2/maintenance/repair-20260815-g2/f07_green.log)
+

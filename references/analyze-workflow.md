@@ -47,7 +47,7 @@
 
 **通道实测探路**：写任何采集脚本前，先用 1–2 分钟小请求逐个实测候选数据源（可用性/返回结构/分页/上限/限速）；拿到任何新 key 先做 1 分钟能力探测再承诺方案；禁止基于文档想象设计方案。
 
-**记账模型准入 gate（链路由定型后、采集开工前必跑）**：fee-on-transfer/rebase/Token-2022 扩展会让"Transfer 流水重建余额"整体算错且供给闭合发现不了（模型错但自洽）。一条命令 1 分钟出裁决，产物 `accounting_mode.json` 落工作目录——EVM `python3 scripts/evm/accounting_gate.py --token 0x… --chain <链> --out accounting_mode.json`（eth 侧 --rpc 传 Alchemy 检测更强）；Solana `python3 scripts/solana/accounting_gate_sol.py --mint <mint> --out accounting_mode.json`。**exit 0（standard/WARN 级）＝放行**，WARN 逐条抄进报告数据底座节；**exit 2（BLOCK）＝硬停**——向用户报模式与证据，要继续必须人工定制记账模型，禁止套标准管线；**exit 1（检测自身失败）＝修通道重跑，禁止当 standard 放行**。检测原理与判定表见脚本头注。
+**记账模型准入 gate（链路由定型后、采集开工前必跑）**：fee-on-transfer/rebase/Token-2022 扩展会让"Transfer 流水重建余额"整体算错且供给闭合发现不了（模型错但自洽）。一条命令 1 分钟出裁决——EVM `python3 scripts/evm/accounting_gate.py --token 0x… --chain <链> --exploration --out accounting_mode.exploration.json`（eth 侧 --rpc 传 Alchemy 检测更强）；Solana `python3 scripts/solana/accounting_gate_sol.py --mint <mint> --out accounting_mode.json`。A0 是模型预检：EVM 使用探索档并产 `accounting-gate/v1`，文件名固定为 `accounting_mode.exploration.json`，不得占用正式名；正式 `accounting_mode.json` 在 A2 生成 observation bundle 后重跑产出（见 A2 第 3 查）。**exit 0（standard/WARN 级）＝放行**，WARN 逐条抄进报告数据底座节；**exit 2（BLOCK）＝硬停**——向用户报模式与证据，要继续必须人工定制记账模型，禁止套标准管线；**exit 1（检测自身失败）＝修通道重跑，禁止当 standard 放行**。检测原理与判定表见脚本头注。EVM 正式发布产物须带**双时点诚实记录**（批 A F-01/F-B）：`tip_block`（探测时链头）必填且 `as_of_block <= tip_block`，探测块另记 `model_probe_block` 且必须等于 `tip_block`——消费侧两个字段都验，想抬时点必须同时改两处且保持自洽。
 
 ## A1 并行采集（一次性全部启动）
 
@@ -63,8 +63,22 @@
 2. **供给闭合**：总量恒等式/mint−burn 配平（内部自洽检验）。
    分母定夺与重放收尾先过 `casebook/supply-accounting.md` 和
    `casebook/supply-accounting-methods.md` 的触发现象与区分检验。
-3. **供给真值闸（v6 新增，重放收尾必跑）**：`python3 scripts/lib/supply_truth_gate.py --chain <链> --token 0x…|--mint <mint> --as-of-block <冻结块或slot> --replay-stats <replay_stats.json> --out supply_truth.json`——产 `supply-truth-receipt/v3` 并绑定 target。主规则按形态①对比 `mint−burn` 与链上 `totalSupply()`；EVM 主 FAIL 且拆分统计齐全时，形态②自动要求 `mint==totalSupply`、ZERO/dead 各自与冻结块 `balanceOf` 逐地址相等、两 sink 合计与 burn 闭合。这里只证明终态标量与 sink 逐地址归因闭合；混合形态、旧 stats 或任一观测失败均维持 fail-closed（见 casebook S-01/S-11）。**exit 0 PASS／exit 2 FAIL＝该币余额禁用重放结果改 Multicall3/RPC 实时直查（地址全集与转账历史仍可用重放，重放余额仅作 ≥阈值超集筛选）／exit 1 检测自身失败修通道重跑，禁当 PASS**。
-4. **时间抽查**：EVM 走分层计划制——先跑 `scripts/lib/anchor_plan.py` 出抽样计划，再跑 `scripts/lib/time_spotcheck.py --chain <链> --final-block <冻结块>` 对独立第二源逐锚点核对，产绑定 target 的 `time-spotcheck/v2`；纯随机锚点容易漏高风险位置。Solana 走 `anchor_sampler.py --as-of-slot <冻结slot> --receipt <回执>`，任一失败日 exit 2。第二源分层选型与全史重拉例外见 evm-recon §13。注意本查不替代供给闭合。
+3. **供给真值闸（v6 新增，重放收尾必跑）**：EVM 先运行 `python3 scripts/evm/observe_supply.py --chain <eth|bsc|base> --token 0x… --as-of-block <冻结块> --out evm_observation_bundle.json --transcript-out evm_observation_transcript.json`，再运行 `python3 scripts/evm/accounting_gate.py --token 0x… --chain <链> --bundle evm_observation_bundle.json --as-of-block <冻结块> --out accounting_mode.json`，最后运行 `python3 scripts/lib/supply_truth_gate.py --chain <链> --token 0x… --as-of-block <冻结块> --replay-stats <replay_stats.json> --observation-bundle evm_observation_bundle.json --out supply_truth.json`，产 `supply-truth-receipt/v4`；Solana 仍产 `supply-truth-receipt/v3`。正式记账重跑产 `accounting-gate/v2`，是发布消费面唯一认可的记账收据；A2 formal 结果为唯一 canonical，与 A0 预检结论不同时以 formal 为准并停止后续阶段等待人工裁决。两者均绑定 target。主规则按形态①对比 `mint−burn` 与链上 `totalSupply()`；EVM 主 FAIL 且拆分统计齐全时，形态②自动要求 `mint==totalSupply`、ZERO/dead 各自与冻结块 `balanceOf` 逐地址相等、两 sink 合计与 burn 闭合。这里只证明终态标量与 sink 逐地址归因闭合；混合形态、旧 stats 或任一观测失败均维持 fail-closed（见 casebook S-01/S-11）。
+
+   容差政策按以下三段执行；`approved_tolerance_bps`、`observed_diff_bps`、本次申请 `tolerance_bps` 与消费侧独立重算的实际偏差四值取最大值定区，所有 waiver/approval 数值必须有限（含超出 float 范围的巨整数一律拒绝），JSON 中 `NaN`、`Infinity`、`-Infinity` 一律拒绝。
+
+   | 最大值 | 放行凭据 |
+   |---|---|
+   | ≤10bps | 自动容差区，不需要 waiver |
+   | >10bps 且 ≤100bps | 必须有合法 `tolerance-waiver/v1` 普通人工豁免单 |
+   | >100bps | waiver 之外，必须再绑定独立 `over-cap-approval/v1` 用户特批收据；缺件或验不过即政策拒绝 |
+
+   `tolerance-waiver/v1` 必须写明批准容差、裁决人、UTC 决定时间、本次实际偏差 `observed_diff_bps`、与本次全等的 target、绑定本次 `--replay-stats` 的 path/size/sha256，以及至少一份独立于 replay_stats 和 over-cap approval 的人工核对证据与理由；所有人工文本字段须含实义字符（不可见字符不算）。`over-cap-approval/v1` 必须以安全相对 path/size/sha256 绑定在 waiver 同目录，并同时进入 supply truth 收据 `inputs`；request 逐项绑定 target、记录偏差、申请容差、replay_stats 实物与理由；生产侧和消费侧都独立重算 request 规范 JSON 的 `request_sha256`，并校验 nonce、有效期不超过 30 天、用户批复原文、已向用户报告的偏差原因、批准主体与决定时间。非超顶区若主动挂了 approval 引用，也必须完整验真。
+
+   **流程要求**：Fable 必须在当前会话内向用户如实报告偏差原因并取得明确批复后，才可写 `over-cap-approval/v1`；不得把普通 waiver 自行升级成用户特批。用户批复必须含文字（中英文等白名单语种），纯表情符号不构成有效批复文本。此设计防工作流走捷径/误操作，不防持同用户权限的恶意进程。
+
+   **退出语义**：exit 0＝PASS。exit 2 有两种情况，看有没有落收据来分：落了收据＝FAIL；若同 target、同 schema 家族的旧 PASS 在场，kernel 会先以同目录 hard-link 将它归档为 `.superseded-<UTC微秒>.<PID>`，再原子替换 canonical，FAIL 仍返回 exit 2，不得误报通道故障 exit 1。该币余额禁用重放结果并改 Multicall3/RPC 实时直查（地址全集与转账历史仍可用重放，重放余额仅作 ≥阈值超集筛选）；没落收据＝容差政策拒绝（缺 waiver/approval、凭据不合法或未覆盖本次实际偏差），不是 FAIL。政策拒绝会把上一轮旧收据自动作废归档为 `supply_truth.json.superseded-<UTC>`，案内不再有现役收据，下游缺件即停；归档失败升格 exit 1；凭据内容导致的解析异常归 exit 2，同样履行旧收据自动作废归档。exit 1＝检测自身失败（含凭据文件读不动等通道故障），修通道重跑，禁当 PASS。
+4. **时间抽查**：EVM 走分层计划制——先跑 `scripts/lib/anchor_plan.py` 出抽样计划，再跑 `scripts/lib/time_spotcheck.py --chain <链> --final-block <冻结块>` 对独立第二源逐锚点核对，产绑定 target、计划链与逐笔调用 transcript 的 `time-spotcheck/v3`；纯随机锚点容易漏高风险位置。Solana 走 `anchor_sampler.py --as-of-slot <冻结slot> --receipt <回执>`，任一失败日 exit 2。第二源分层选型与全史重拉例外见 evm-recon §13。注意本查不替代供给闭合。
 
 对不上＝数据有洞＝回去补，不许"差不多就行"。
 
@@ -93,6 +107,11 @@
    `charts/distribution_stage1.png`。JSON 进入 READY `handoff/v3`，verify 会重新派生五桶并重算；
    工作图不进 seal，也不进报告。initial 只绑定快照、来源收据、排除派生链、算法和阈值，
    不绑定 handoff manifest。
+   **喂它的 owner 快照必须与 A2 四查里 `verify_recon --balances` 吃的是同一个文件**
+   （EVM 通常是 `balances_final.json`，Solana 是 scanner 自己产的
+   `data/holders_owners.json`）：发布闸 new-analysis 会拿分布快照的 sha256 去对四查
+   `balance` 收据的 `inputs.balances`（Solana 对 observation bundle 的
+   `holder_outputs.owners`），喂两份不同的文件即便总和相同也会被判"同值换仓"而拒。
 6. **EF-3C 候选裁决与实体溯源**：两扫描器全部候选经 `adjudication_validator.py`
    成员级裁决，再对临时实体表跑 `entity_source_trace.py`；新支路回裁决环，EF-3C 归 −2。
 7. **EF-1／EF-2 门禁**：临时实体成形后、freeze 前落
@@ -136,11 +155,13 @@
 
 执行序（细则与 prompt 骨架的唯一权威源＝playbook-evidence-wording §10＋research-workflows §2，此处只列主干）：
 
-1. **claim 注册表登记**：`python3 scripts/report/a4_gate.py register --case-dir . --claims-file <claims.json>`——把 A3 全部核心结论写成稳定 id 的 claims 清单（与 adversarial-review skill 的 args.claims 及 split-run §3.3 外部异构路输入同构），产 `a4_claims.json`。initial scan 中每个异常簇必须登记对应 `dist-<cluster_id>` claim；漏登或多登时 finalize 双向对账拒绝。
+1. **claim 注册表登记**：`python3 scripts/report/a4_gate.py register --case-dir . --claims-file <claims.json>`——把 A3 全部核心结论写成稳定 id 的 claims 清单（与 adversarial-review skill 的 args.claims 及 split-run §3.3 外部异构路输入同构），产 `a4_claims.json`。claim_id 不得含空格；仓库现役 fixtures 也必须遵守。存量案重跑时若遇 `A4 01` 这类含空格 id，须先改两套 registry 及其引用，不能把旧 id 直接送入 runner。initial scan 中每个异常簇必须登记对应 `dist-<cluster_id>` claim；漏登或多登时 finalize 双向对账拒绝。
 2. **扰动敏感度前置**（EVM 案，`cluster_sensitivity.py --dir <案目录>`，sensitivity_report.md 作复核输入；FRAGILE/STABLE 字样只进复核材料禁进报告正文）。
 3. **惯犯揭盲**（实体冻结后 `label_lookup.py --unseal` 取封存命中，与实体划分互证/互斥）。
 4. 本地反例自查脚本前置。
-5. **N 路怀疑者 agent**＋1 完整性批评角色查 findings/结论清单缺口（必查全史极值清单）＋1 路**外部异构怀疑者**（codex/GPT 单进程横扫全部结论）——重算义务、备择解释与分组细则按 §10＋research-workflows §二执行，不在此复述。
+5. **N 路怀疑者 agent**＋1 完整性批评角色查 findings/结论清单缺口（必查全史极值清单）＋1 路**外部异构怀疑者**（codex/GPT 单进程横扫全部结论）——重算义务、备择解释与分组细则按 §10＋research-workflows §二执行，不在此复述。所有落盘件必须使用 `adversarial-review-artifact/v2` 绑定当前 `a4_claims.json` sha；claim-review 的 claim_id 并集全覆盖，且每条 evidence 至少 10 个实义白名单字符。白名单覆盖 ASCII 可打印、拉丁补充与扩展、通用标点、CJK、假名、韩文音节和全角段；不在覆盖面的语种（如俄文、阿拉伯文）与纯 emoji 文本会被拒。外语原文证据应附一行中文说明，或保留 URL/数字等覆盖面内字符；中英文工作流不受影响。每条 findings、non_covered 与 REFUTED verdict 必须以机械定位符对应唯一 blocker，少记、多记或未处置均阻断。每路成功 execution receipt 同时追加到案根 `adversarial_review_ledger.jsonl`（`review-ledger/v1` 哈希链）；finalize 要求 ledger 当前有效 receipt SHA 集与传入清单精确相等，并把 `entries/active/tip_sha` 写入 `adversarial-review/v4.review_ledger`。之后只可由 runner `finalize` 原子产出 `adversarial-review/v4`。
+
+   **机器化边界**：机器已强制两类角色在场（≥1 claim 怀疑者＋≥1 完整性批评）、claim_id 并集精确覆盖注册表、entrypoint 内容去重、execution ledger 哈希链精确对账、每条 evidence ≥10 实义白名单字符、findings/non_covered/REFUTED 与 blocker 双向联动。机器未强制（依执行纪律与独立盲审落实）：怀疑者路数 N、每条结论的分档路数、外部路是否真为异构模型、外部异构路成功与否（该路失败不阻塞交付，见本册既有条款）。机器闸 PASS 不等于 N 路已落实——路数与异构性的核验责任在执行纪律与盲审，不在发布闸。
 6. 判定三档 CONFIRMED/WEAKENED/REFUTED（**必须实际核查，"理论上可能"不算推翻**）→ 修订顺序先修数据管线再修文案 → 修正记录印进报告附录。
 7. **封口收尾**：A3 已先落 `findings.md`、`facts.json`、`analysis-state.json`、`identity_gate.json`。运行 `a4_gate.py finalize ... --workflow-type new-analysis|independent-audit --seal-files findings.md,analysis-state.json,facts.json,identity_gate.json`，产 `a4-seal/v4`。新分析会重验当前分布 claim source，并要求 `dist-*` claims 与异常簇严格相等。每次重封都追加 revision 和 previous seal 哈希。净室复核继续机器对账两套 claim registry，但 v1 分布闸不挂 analysis-audit。路径经 containment 校验，`charts/final/` 为空且 exit 0 才准进入终判环。
 
@@ -154,11 +175,11 @@ A4 finalize 后，用同一 cutoff 快照运行 `holder_distribution_scan.py --s
 
 ## A5 报告
 
-**进入本阶段的前置＝`a4_seal.json` 已由 A4 第 7 步产出，分布轮次已到唯一终态，终版分布图已物化。** 报告本体先写 `报告.md`＋`charts/final/*.png`，再运行 `a5_report_seal.py --case-dir . --report 报告.md --a4-seal a4_seal.json --out a5_report_seal.json`，产 `a5-report-seal/v2`。A5 seal 会绑定 rounds 台账、terminal final scan、解释或 waiver 收据和唯一分布图。build_html 的 G11 会重新计算这些绑定。**报告图一律输出到 `charts/final/`**。复核过程草稿图放 charts/ 根或 `dist_rounds/`，不进报告。**三张标准图必配**（阵营占比演变/庄级实体 vs 价格/价格与关键事件），直接调 `scripts/report/standard_charts.py` 三个函数。持仓分布终版图另放第二章，不作为第二张分布图重复绘制。**每个当前持仓 ≥20% 总供应或 ≥20% 流通的大庄/项目方必配一张全周期流转路径图**。
+**进入本阶段的前置＝`a4_seal.json` 已由 A4 第 7 步产出，分布轮次已到唯一终态，终版分布图已物化。** 报告本体先写 `报告.md`＋`charts/final/*.png`，再运行 `a5_report_seal.py --case-dir . --report 报告.md --a4-seal a4_seal.json --out a5_report_seal.json`，产 `a5-report-seal/v3`。A5 seal 会绑定 rounds 台账、terminal final scan、解释或 waiver 收据和唯一分布图。build_html 的 G11 会重新计算这些绑定。**报告图一律输出到 `charts/final/`**。复核过程草稿图放 charts/ 根或 `dist_rounds/`，不进报告。**三张标准图必配**（阵营占比演变/庄级实体 vs 价格/价格与关键事件），直接调 `scripts/report/standard_charts.py` 三个函数。持仓分布终版图另放第二章，不作为第二张分布图重复绘制。**每个当前持仓 ≥20% 总供应或 ≥20% 流通的大庄/项目方必配一张全周期流转路径图**。
 
-出图纪律：`standard_charts.plot_camp_evolution` 按 CAMP_ORDER 白名单过滤 series 键，非标准阵营名**静默跳过不报错**——阵营名必须逐字取自 `standard_charts.py` 的 `CAMP_ORDER`（唯一权威；现行 14 键：项目方、大庄、小庄、离场庄、刷量地址、CEX资金通道、CEX托管、疑似CEX托管、流动性池、其他大户、历史大户、散户、桥锁仓、锁仓/销毁；"狙击集团"等仅旧数据重绘 legacy）；**出图后必须目检图例条数 == 传入阵营数**。
+出图纪律：`figures_from_facts.py fig1` 与 `standard_charts.plot_camp_evolution` 共用 `select_fig1_series()` 机器闸。阵营名必须逐字取自 `standard_charts.py` 的 `CAMP_ORDER`（唯一权威；现行 14 键：项目方、大庄、小庄、离场庄、刷量地址、CEX资金通道、CEX托管、疑似CEX托管、流动性池、其他大户、历史大户、散户、桥锁仓、锁仓/销毁；"狙击集团"与 EVM legacy `销毁`等仅旧数据重绘 legacy）。白名单外键 exit 2 硬拒；`burn_cum_pct` 只能以 `non_stacked_metric` 结构化豁免；出图后必须落 `fig1_legend_receipt.json`，绑定实绘集合、豁免键、overlay 组成及输入/输出哈希，不再以人工目检替代闸口。
 
-结构与措辞纪律见 `report-template.md`。正式报告只有两个入口：全新分析用 `build_html.py --mode analysis-new ... --a5-seal a5_report_seal.json`，净室复核用 `--mode analysis-audit ...`；二者都会核对 seal.workflow_type，并分别强制 `audit_release_gate --profile new-analysis|independent-audit`。不存在 generic analysis 或 skip gate。历史重编译必须显式用 `--mode legacy-recompile --degrade-reason "<理由>"`，产物带可见非正式水印。PDF 仅用户点名。
+结构与措辞纪律见 `report-template.md`。正式报告只有两个入口：全新分析用 `build_html.py --mode analysis-new ... --a5-seal a5_report_seal.json`，净室复核用 `--mode analysis-audit ...`；二者都会核对 seal.workflow_type，并分别强制 `audit_release_gate --profile new-analysis|independent-audit`。**new-analysis 发布闸必须带 `--report <最终 Markdown>`**——A5 seal 自批 D 消化轮 1 起在发布闸内重验（分布终态链与翻转披露都要对报告实物核），缺 `--report` 时 A5 seal 在场即 fail-closed 拒。不存在 generic analysis 或 skip gate。历史重编译必须显式用 `--mode legacy-recompile --degrade-reason "<理由>"`，产物带可见非正式水印。PDF 仅用户点名。
 
 **附录四件套**（验证步骤/标签↔地址对照/复核修正记录/来源）——附录 B 地址对照任何情况下不可省（正文零地址的可验证性支点）。**监控包默认不做**：观察哨/两档监控建议/appendix.json 在用户确认买入后按 monitoring-package.md「买入后监控包」节补生成（新会话可执行，材料全在落盘产物），报告末尾带固定句"如决定买入，回复一声即可补生成监控包"。**默认交付另落一份 `analysis-state.json`**（appendix 的机器子集：token/whale_groups/vault_addresses/addresses 骨架＋camp_share_series，无监控文案；schema 见 report-template「默认交付的机器状态文件」节）。交付前 checklist 见 report-template.md 末节。
 

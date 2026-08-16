@@ -39,6 +39,7 @@ from pathlib import Path
 import duckdb
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
+from camp_spec import validate_camp_spec
 from channels_preflight import preflight_channels, replay_provenance
 from supply_semantics import DEAD, ZERO as Z
 
@@ -368,16 +369,20 @@ def emit_merged(con, out_dir, emit_csv, merged_parquet):
         print(f"merged.csv 写出（旧格式兼容模式）", flush=True)
 
 
-def replay_pass2(con, camps_path, out_dir, mint_total, vt):
+def replay_pass2(con, camps_path, out_dir, mint_total, vt, *, diagnostic_gate_failed=False):
     """日度阵营/实体序列——known 累加按 camps.json 键序，与旧 snap() 逐表达式同构。"""
     spec = json.load(open(camps_path))
-    camps_order = list(spec.get("camps", {}).keys())
+    # F-05：互斥校验（同营内+跨营重复硬拒 exit 2）在原始列表上、lower 规范化之后做；
+    # 与 replay_pass2.py 同一共享实现（scripts/lib/camp_spec.py），两 EVM 引擎同深
+    camps_valid = validate_camp_spec(spec.get("camps", {}), chain_family="evm",
+                                     source_label=str(camps_path))
+    camps_order = list(camps_valid.keys())
     if "销毁" not in camps_order:
         camps_order.append("销毁")
     addr2camp = {}
-    for c, addrs in spec.get("camps", {}).items():
+    for c, addrs in camps_valid.items():
         for ad in addrs:
-            addr2camp[ad.lower()] = c          # 后配置覆盖先前（复刻 dict 语义）
+            addr2camp[ad] = c
     addr2camp.pop(Z, None)                     # 0x0 永不走阵营映射（销毁另算）
     ent_pairs = [(ad.lower(), e) for e, addrs in spec.get("entities", {}).items()
                  for ad in addrs]
@@ -474,8 +479,38 @@ def replay_pass2(con, camps_path, out_dir, mint_total, vt):
         out["_meta"] = {"denominator": "current_net_supply",
                         "note": "分母=当期净供应(累计mint−累计burn)；burn_cum_pct 不参与堆叠"}
         out["burn_cum_pct"] = burn_pct
+    if diagnostic_gate_failed:
+        out["status"] = "DIAGNOSTIC_GATE_FAILED"
+    entity_out = {"dates": dates, **eseries}
+    if diagnostic_gate_failed:
+        entity_out["status"] = "DIAGNOSTIC_GATE_FAILED"
     json.dump(out, open(f"{out_dir}/camp_series.json", "w"))
-    json.dump({"dates": dates, **eseries}, open(f"{out_dir}/entity_series.json", "w"))
+    json.dump(entity_out, open(f"{out_dir}/entity_series.json", "w"))
+    if diagnostic_gate_failed:
+        print(f"[camp-series] gate FAIL：诊断序列已隔离到 {out_dir}；"
+              "不生成正式 provenance sidecar", flush=True)
+        return
+    # F-04：producer sidecar——与 replay_pass2.py 同族同深（同一共享实现），
+    # balances_final.json 由同进程 pass1 刚写出（同一次重放同源，末点对账的快照锚）
+    from camp_series_provenance import write_series_sidecar
+    _den = "mint_total_legacy" if legacy else "current_net_supply"
+    _sidecar_inputs = {"replay_stats": f"{out_dir}/replay_stats.json"}
+    _fb = f"{out_dir}/balances_final.json"
+    if not os.path.exists(_fb):
+        # F-C6：缺终态快照当场硬拒（同 replay_pass2 口径 exit 2），不许静默少绑拖到编译期
+        print(f"[camp-series] 缺 {_fb}（pass1 终态快照，末点对账的锚）"
+              f"——同进程 pass1 应已写出，缺失即数据链断裂", file=sys.stderr)
+        raise SystemExit(2)
+    write_series_sidecar(f"{out_dir}/camp_series.json",
+                         producer="scripts/evm/replay_duck.py",
+                         series_format="evm-dict", denominator=_den,
+                         camps_spec_path=camps_path,
+                         final_balances_path=_fb,
+                         inputs=_sidecar_inputs)
+    write_series_sidecar(f"{out_dir}/entity_series.json",
+                         producer="scripts/evm/replay_duck.py",
+                         series_format="evm-entity-dict", denominator=_den,
+                         camps_spec_path=camps_path, inputs=_sidecar_inputs)
     print(f"天数={len(dates)} 分母={'mint_total(legacy)' if legacy else '当期净供应'} "
           f"阵营={[k for k in series]} 实体={ents_order}", flush=True)
 
@@ -557,7 +592,13 @@ def main():
     if not a.no_merged:
         emit_merged(con, a.out_dir, a.emit_csv, a.merged_parquet)
     if a.camps:
-        replay_pass2(con, a.camps, a.out_dir, mint_total, vt)
+        if stats["gate_pass"]:
+            replay_pass2(con, a.camps, a.out_dir, mint_total, vt)
+        else:
+            diagnostic_dir = os.path.join(a.out_dir, "diagnostics", "gate-failed")
+            os.makedirs(diagnostic_dir, exist_ok=True)
+            replay_pass2(con, a.camps, diagnostic_dir, mint_total, vt,
+                         diagnostic_gate_failed=True)
     print("[gate]", "PASS" if stats["gate_pass"] else "FAIL——禁止进入下游分析")
     sys.exit(0 if stats["gate_pass"] else 4)
 

@@ -33,7 +33,9 @@ def make_case(root: Path, balances: dict[str, int], *, duplicate_partition=False
                       for owner, raw in balances.items()])
     total = sum(balances.values())
     write_json(root / "supply_truth.json", {
-        "schema": "supply-truth/v1", "verdict": "PASS", "exit_code": 0,
+        "schema": "supply-truth-receipt/v3", "verdict": "PASS", "exit_code": 0,
+        "chain": "bsc", "onchain_total_supply": str(total), "replay_net": str(total),
+        "mint_total": str(total), "burn_total": "0", "decision_rule": "primary_form1",
         "total_supply_raw": str(total), "net_supply_raw": str(total),
     })
     write_json(root / "data_map.json", {
@@ -153,7 +155,7 @@ def main() -> int:
         ROOT / "scripts/report/handoff_manifest.py": ('SCHEMA_VERSION = "handoff/v3"',
                                                         'SUPPORTED_SCHEMAS = {"handoff/v3"}'),
         ROOT / "scripts/report/a4_gate.py": ('"schema": "a4-seal/v4"',),
-        ROOT / "scripts/report/a5_report_seal.py": ('SCHEMA="a5-report-seal/v2"',),
+        ROOT / "scripts/report/a5_report_seal.py": ('SCHEMA="a5-report-seal/v3"',),
     }
     for path, needles in contracts.items():
         text = path.read_text(encoding="utf-8")
@@ -410,7 +412,7 @@ def main() -> int:
 
     with tempfile.TemporaryDirectory() as td:
         d = Path(td) / "waiver"; d.mkdir()
-        write_json(d / "scan.json", {"schema": "distribution-scan/v1"})
+        write_json(d / "scan.json", {"schema": "distribution-scan/v1"})  # 旧版 schema 作负例：升 v2 后 v1 必拒
         write_json(d / "a4_seal.json", {"schema": "a4-seal/v4"})
         errors = distribution_scan.validate_waiver(d, {"schema": "distribution-exception-receipt/v1"},
                                                     d / "scan.json", "0" * 64, 2)

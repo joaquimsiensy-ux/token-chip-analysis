@@ -36,20 +36,34 @@
          图 2 的时间序列本身无法从快照型 state 重建（需重放中间序列），故此处
          做终值对账而非生成——序列中间值的正确性仍由重放脚本+对账关卡负责。
 
-退出码：0=成功/对账过；1=失败（宏残留/对账超差/输入缺失）。
+退出码：0=成功/对账过；1=数据、渲染或对账失败（宏残留/超差/输入缺失等）；
+        2=机器政策拒（fig1 阵营白名单；check 正式容差被改且未加
+          --exploration）。
+check 留痕（F-C5）：每次对账（PASS/FAIL、formal/exploration）都落
+  figure2_check_receipt.json（mode/tol_pp/verdict/facts+series sha）到工作目录；
+  发布闸 new-analysis 复验其在场且 mode=formal、tol_pp=默认、verdict=PASS——
+  exploration 放宽的运行有痕、且过不了发布闸。
 """
 import argparse
 import csv
 import datetime as dt
+import hashlib
 import json
+import math
 import os
 import re
 import sys
+import tempfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 
 from facts_gate import Facts, MACRO_RE  # noqa: E402
+import standard_charts as charts  # noqa: E402
+
+
+FIG1_LEGEND_RECEIPT_NAME = "fig1_legend_receipt.json"
+FIG1_LEGEND_RECEIPT_SCHEMA = "figure1-legend/v1"
 
 
 def _load(p):
@@ -59,7 +73,7 @@ def _load(p):
 
 def _parse_date(s):
     s = str(s).strip()
-    for fmt in ("%Y-%m-%d", "%Y-%m-%d %H:%M:%S", "%Y/%m/%d"):
+    for fmt in ("%Y-%m-%d", "%Y-%m-%d %H:%M:%S", "%Y/%m/%d", "%Y-%m-%dT%H:%M:%SZ"):
         try:
             return dt.datetime.strptime(s, fmt)
         except ValueError:
@@ -108,14 +122,36 @@ def mode_fig1(a):
     dates, series_by_camp = css.get("dates"), css.get("series")
     if not dates or not isinstance(series_by_camp, dict) or not series_by_camp:
         raise SystemExit("FAIL: state 缺 camp_share_series.dates/series，无法直出图 1")
+    rendered_camps, excluded_keys, rejected_keys = charts.select_fig1_series(
+        series_by_camp)
+    if rejected_keys:
+        available = list(charts.CAMP_ORDER) + list(charts.FIG1_EXCLUDED_SERIES)
+        print(
+            f"FAIL: camp_share_series 含白名单外桶名 {rejected_keys}——图 1 "
+            f"可用集合是 standard_charts.CAMP_ORDER 加结构化豁免键"
+            f" {available}。存量案迁移口径见 scan-schemas.md §13「存量迁移」："
+            f"legacy 名与实体级自造桶重编译前须按案内证据归入现代名，"
+            f"映射是分析判断非机械替换",
+            file=sys.stderr,
+        )
+        raise SystemExit(2)
+
     series = {"ts": [_parse_date(d) for d in dates]}
     n = len(series["ts"])
     for camp, vals in series_by_camp.items():
-        if len(vals) != n:
-            raise SystemExit(f"FAIL: 阵营「{camp}」长度 {len(vals)} ≠ dates {n}")
+        if not isinstance(vals, list) or len(vals) != n:
+            got = len(vals) if isinstance(vals, list) else "非列表"
+            raise SystemExit(f"FAIL: 阵营「{camp}」长度 {got} ≠ dates {n}")
+        if camp in excluded_keys:
+            for i, value in enumerate(vals):
+                if isinstance(value, bool) or not isinstance(value, (int, float)) \
+                        or not math.isfinite(value):
+                    raise SystemExit(
+                        f"FAIL: 豁免键「{camp}」[{i}] 为非有限数值 {value!r}")
         series[camp] = vals
     price = _read_price_csv(a.price_csv, a.price_cols) if a.price_csv else None
     overlay = None
+    overlay_receipt = []
     if a.overlay:
         overlay = []
         for spec in a.overlay:
@@ -123,17 +159,34 @@ def mode_fig1(a):
             if not sep:
                 raise SystemExit(f'FAIL: --overlay 格式应为 "标签=阵营A+阵营B"，收到 {spec!r}')
             names = [c.strip() for c in expr.split("+") if c.strip()]
-            missing = [c for c in names if c not in series_by_camp]
+            missing = [c for c in names if c not in rendered_camps]
             if missing:
-                raise SystemExit(f"FAIL: --overlay 引用了不存在的阵营 {missing}；"
-                                 f"可用阵营：{list(series_by_camp)}")
+                raise SystemExit(f"FAIL: --overlay 引用了不存在的阵营或非实绘键 {missing}；"
+                                 f"可用实绘阵营：{rendered_camps}")
             overlay.append({"label": label.strip(),
                             "pct": [sum(series_by_camp[c][i] for c in names) for i in range(n)]})
-    from standard_charts import plot_camp_evolution
-    plot_camp_evolution(series, a.out, a.token or
-                        (state.get("token") or {}).get("symbol", "?"),
-                        price_series=price, overlay=overlay)
-    print(f"OK fig1: {len(series['ts'])} 点 × {len(series_by_camp)} 阵营 → {a.out}"
+            overlay_receipt.append({"label": label.strip(), "camps": names})
+    # 不直写旧的正式 PNG：同目录唯一临时文件渲染成功后再
+    # replace，否则“绘图函数本次没产出＋目标处恰有旧 PNG”会被误当成功。
+    out_dir = os.path.dirname(os.path.abspath(a.out))
+    fd, staged_png = tempfile.mkstemp(prefix=".fig1-render-", suffix=".png",
+                                      dir=out_dir)
+    os.close(fd)
+    try:
+        charts.plot_camp_evolution(
+            series, staged_png,
+            a.token or (state.get("token") or {}).get("symbol", "?"),
+            price_series=price, overlay=overlay)
+        if not os.path.isfile(staged_png) or os.path.getsize(staged_png) == 0:
+            raise SystemExit(
+                f"FAIL: 图 1 渲染结束但 PNG 未生成或为空: {a.out}")
+        os.replace(staged_png, a.out)
+    finally:
+        if os.path.exists(staged_png):
+            os.unlink(staged_png)
+    _write_fig1_legend_receipt(
+        a, rendered_camps, excluded_keys, overlay_receipt)
+    print(f"OK fig1: {len(series['ts'])} 点 × {len(rendered_camps)} 实绘阵营 → {a.out}"
           + (f"（价格 {len(price['ts'])} 点）" if price else "（无价格轴）"))
     return 0
 
@@ -200,7 +253,75 @@ def mode_flow(a):
     return 0
 
 
+DEFAULT_TOL_PP = 0.05  # 图 2 末点对账容差；formal 写死本值，仅 --exploration 可覆盖
+CHECK_RECEIPT_NAME = "figure2_check_receipt.json"
+
+
+def _file_ref(path):
+    with open(path, "rb") as fh:
+        data = fh.read()
+    return {"path": os.path.basename(str(path)),
+            "sha256": hashlib.sha256(data).hexdigest(), "size": len(data)}
+
+
+def _write_fig1_legend_receipt(a, rendered_camps, excluded_keys, overlays):
+    """F-01：图 1 实绘集合与输入/输出实物绑定，tmp+fsync+replace。"""
+    doc = {
+        "schema": FIG1_LEGEND_RECEIPT_SCHEMA,
+        "rendered_camps": list(rendered_camps),
+        "excluded_series": [
+            {"key": key, "reason": charts.FIG1_EXCLUDED_SERIES[key]}
+            for key in excluded_keys
+        ],
+        "overlays": list(overlays),
+        "price_csv": _file_ref(a.price_csv) if a.price_csv else None,
+        "output_png": _file_ref(a.out),
+        "state": _file_ref(a.state),
+        "generated_at_utc": dt.datetime.now(dt.timezone.utc)
+                              .strftime("%Y-%m-%dT%H:%M:%SZ"),
+    }
+    out = os.path.join(os.path.dirname(os.path.abspath(a.state)),
+                       FIG1_LEGEND_RECEIPT_NAME)
+    tmp = out + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as fh:
+        fh.write(json.dumps(doc, ensure_ascii=False, indent=1) + "\n")
+        fh.flush()
+        os.fsync(fh.fileno())
+    os.replace(tmp, out)
+
+
+def _write_check_receipt(a, verdict, okc, errs):
+    """F-C5：check 的留痕收据（写 --series 文件同目录；whale_series 惯例在案根，
+    收据即落案根供发布闸复验）。PASS/FAIL 都写（exploration 运行同样留痕，mode
+    字段如实记录）；发布闸（audit_release_gate new-analysis）复验在场且
+    mode==formal、tol_pp==默认、verdict==PASS。政策拒（exit 2）在此之前发生，
+    不产收据。写法=tmp+fsync+os.replace（对齐 receipt_kernel 先例）。"""
+    doc = {"schema": "figure2-check-receipt/v1",
+           "mode": "exploration" if a.exploration else "formal",
+           "tol_pp": a.tol_pp, "verdict": verdict,
+           "facts": _file_ref(a.facts), "series": _file_ref(a.series),
+           "lines_checked": okc, "mismatches": errs,
+           "generated_at_utc": dt.datetime.now(dt.timezone.utc)
+                                 .strftime("%Y-%m-%dT%H:%M:%SZ")}
+    out = os.path.join(os.path.dirname(os.path.abspath(a.series)),
+                       CHECK_RECEIPT_NAME)
+    tmp = out + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as fh:
+        fh.write(json.dumps(doc, ensure_ascii=False, indent=1) + "\n")
+        fh.flush()
+        os.fsync(fh.fileno())
+    os.replace(tmp, out)
+
+
 def mode_check(a):
+    # F-04 同族钳制（同 supply_truth_gate --tolerance-bps 的 F-02 模式）：--tol-pp 直接
+    # 决定图 2 末点对账 PASS/FAIL，是判定翻转参数——正式模式写死默认值，探索放宽必须
+    # 显式声明 --exploration（fail-loud，不静默夹回默认值）。exit 2=容差政策拒
+    # （调用方式非法，与对账 FAIL 的 exit 1 区分，同 supply_truth_gate 口径）
+    if not a.exploration and a.tol_pp != DEFAULT_TOL_PP:
+        print(f"FAIL: 正式模式 --tol-pp 写死 {DEFAULT_TOL_PP}pp（收到 {a.tol_pp}）"
+              f"——探索性放宽必须显式加 --exploration", file=sys.stderr)
+        raise SystemExit(2)
     facts = Facts(_load(a.facts))
     series = _load(a.series)
     if not isinstance(series, list):
@@ -222,10 +343,13 @@ def mode_check(a):
             continue
         pct = line.get("pct") or []
         ts = line.get("ts") or []
+        custody_checks = line.get("temporary_custody_checks") or []
         if not pct:
             errs.append(f"{key} 线无 pct 数据")
             continue
-        if len(ts) != len(pct):
+        # 旧版 whale_series 只含 pct，仍足以完成末点对账；只有显式提供 ts，
+        # 或请求临时托管区间检查时，才要求 ts 与 pct 严格一一对应。
+        if (ts or custody_checks) and len(ts) != len(pct):
             errs.append(f"{key} ts 长度 {len(ts)} ≠ pct 长度 {len(pct)}")
             continue
         last = float(pct[-1])
@@ -236,7 +360,7 @@ def mode_check(a):
                         f"（差 {abs(last-want):.4f}pp > 容差 {a.tol_pp}pp）")
         else:
             okc += 1
-        for check in line.get("temporary_custody_checks") or []:
+        for check in custody_checks:
             cname = str(check.get("label") or "临时托管区间")
             start_s = check.get("start_date")
             end_s = check.get("end_date")
@@ -272,10 +396,15 @@ def mode_check(a):
     if errs:
         for e in errs:
             print(f"[CHECK-FAIL] {e}")
-        print(f"FAIL: 图 2 装配数据与 facts 终值 {len(errs)} 处不同源")
+        _write_check_receipt(a, "FAIL", okc, errs)
+        print(f"FAIL: 图 2 装配数据与 facts 终值 {len(errs)} 处不同源"
+              f"（收据 {CHECK_RECEIPT_NAME}）")
         return 1
-    print(f"PASS: 图 2 全部 {okc} 条实体线末点与 facts 当前持仓同源"
-          f"（容差 {a.tol_pp}pp）；临时托管连续性检查 {custody_okc} 条通过")
+    _write_check_receipt(a, "PASS", okc, [])
+    tag = "[exploration] " if a.exploration else ""
+    print(f"{tag}PASS: 图 2 全部 {okc} 条实体线末点与 facts 当前持仓同源"
+          f"（容差 {a.tol_pp}pp，收据 {CHECK_RECEIPT_NAME}）；"
+          f"临时托管连续性检查 {custody_okc} 条通过")
     return 0
 
 
@@ -307,7 +436,11 @@ def main():
     p3 = sub.add_parser("check", help="图2 装配数据与 facts 终值对账")
     p3.add_argument("--facts", required=True)
     p3.add_argument("--series", required=True)
-    p3.add_argument("--tol-pp", type=float, default=0.05)
+    p3.add_argument("--tol-pp", type=float, default=DEFAULT_TOL_PP,
+                    help=f"末点对账容差 pp；正式模式写死 {DEFAULT_TOL_PP}，"
+                         "改动必须同时加 --exploration")
+    p3.add_argument("--exploration", action="store_true",
+                    help="显式声明探索运行，才允许覆盖 --tol-pp（正式发布禁用）")
     p3.set_defaults(fn=mode_check)
     a = ap.parse_args()
     return a.fn(a)

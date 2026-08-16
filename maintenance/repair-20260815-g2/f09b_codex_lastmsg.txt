@@ -1,0 +1,8 @@
+施工完成，未执行任何 git 操作。
+
+- 在共享 fixture [test_audit_release_gate.py](/Users/uravvv/.claude/tca-repair-g2/scripts/tests/test_audit_release_gate.py:83) 补入 `warnings: []`。另外两个测试复用此 fixture，无冗余修改。
+- 三项目标测试全部 exit 0。
+- `test_gmgn_divergence_note.py`、`test_recon_deep_reverify.py` 均 exit 0。
+- `run_all.py` 除两个 loopback `socket.bind` 的预期 `EPERM` 外全部 PASS，符合补充工单验收口径。
+- 按你“只改三个授权测试文件”的更严格限制，未追加修改 `workorder_F09_done.md`。
+

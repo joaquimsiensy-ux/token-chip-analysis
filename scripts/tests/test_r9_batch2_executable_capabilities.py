@@ -69,6 +69,20 @@ def test_five_non_slice_probes_resolve_to_callables():
                 chain, capability, resolved)
 
 
+def test_evm_accounting_supply_v2_resolves_observation_producer():
+    import formal_capability_probes
+
+    key = "evm-accounting-supply-v2"
+    assert formal_capability_probes.ACCOUNTING_SUPPLY_ADAPTER_TARGETS[key] == (
+        "scripts.evm.observe_supply:main",
+        "scripts.evm.accounting_gate:main",
+        "scripts.lib.supply_truth_gate:main",
+    )
+    for chain in ("eth", "bsc", "base"):
+        assert chain_registry.CHAIN_REGISTRY[chain]["capabilities"][
+            "accounting_supply_adapter"] == key
+
+
 def test_bool_vertical_slice_claim_does_not_satisfy_probe():
     forged = mutable_record("eth")
     forged["capabilities"]["vertical_slice_evidence"] = True
@@ -128,6 +142,7 @@ def main():
     test_exact_six_capabilities_and_natural_not_ready()
     test_deleting_one_evidence_target_drops_only_its_chain()
     test_five_non_slice_probes_resolve_to_callables()
+    test_evm_accounting_supply_v2_resolves_observation_producer()
     test_bool_vertical_slice_claim_does_not_satisfy_probe()
     test_unknown_probe_key_is_missing_not_truthy()
     test_solana_evidence_function_has_no_same_named_shadow()

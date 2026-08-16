@@ -10,6 +10,13 @@
 
 ## 版本索引（活跃窗口，新在上；每版一行，详情见下方对应条目）
 
+- **6.45.0**（2026-08-15）三 AI 并行修复 v6.44.0 review 14 findings 全处置：g1 边界守卫六项（handoff 案根 containment/审计闸 report 必填/跨分区三元组等式/command v3/risk_flags 白名单/文本卫生守卫＋Solana 原串保真）、g2 证据链四项（观测拒空 code/对账五路深重验/GMGN 黄灯查证说明制/Arbitrum 探索档恢复）、g3 通道与文档四项（A0 探索预检两阶段/SQD 收紧＋Alchemy 正式除名/F-05 用户裁决不加闸如实写边界/F-13 文档对齐）；R10-15/18 转 CLOSED 现役 12；三组独立 opus 盲审全收口
+- **6.44.0**（2026-08-15）EVM 链上观测锚：三链正式纵切片真跑 bundle producer，accounting v2/supply_truth v4 双收据与 shared/handoff N-2 闭合；F-02 CLOSED、F-03/R10-9 MITIGATED 仍 OPEN；独立盲审 31 伪造向量全拒 PASS
+- **6.43.0**（2026-08-14）批 3 弱闸三线收口：A4 blocker 语义联动+10 门槛+entrypoint 身份（F-01→R10-16/17）、deploy-sync 严判（F-04→R10-5）、env_check 机械派生（F-05→R10-6）、R10 台账同步+自洽守卫（F-07）；三轮盲审+三轮消化全闭（execution ledger 哈希链等 7 项收编），R10-5/6/16/17 转 CLOSED 现役 15
+- **6.42.0**（2026-08-14）批 2 三线收口：F-10 waiver 三段硬顶＋用户超顶批复、F-02 对抗复核结构化 v3、F-09 solana-reconcile/v3 身份链与 PYTHIA 实证；三轮盲审残留锚、R10 清账/新登记及文档边界统一封口
+- **6.41.0**（2026-08-14）批 1 五项修复收口：RV-07 receipt supersede＋五出口真 FAIL 落盘；RV-04/RV-17 proxy 单源解析＋stake_decode fail-closed；F-03 replay 三引擎 gate 语义统一；F-01 图 1 白名单/legend receipt/A5 v3 双层信任根；F-04 四入口位置 token 移除且 sentinel 不进输出
+- **6.40.0**（2026-08-13）六视角 BLOCK 修复工程 A-D 四批收口：发布收据验证链（F-01/02）＋分布扫描族（F-03/08）＋阵营序列 producer 链（F-04/05）＋flip 裁决收据制（F-06）/refresh 真事务（F-07）/销户审计收口（GPT-F-06）＋台账八项＋distribution-scan/v2；R10 存量台账本轮未修、台账保留（r10_ledger.md）
+- **6.39.5**（2026-08-12）distribution 语义重验剔除记录性 upstream_receipts（split-run G8/audit_release_gate 三闸死环修复，TAG 案实撞；同步补 6.39.4 漏 bump 的 pyproject）
 - **6.39.4**（2026-08-11）provenance 敏感性闸粒度修复：尘埃锚点线（<0.01% 供应不入翻转判定）＋ --acknowledge-flip 翻转书面确认通道（freeze 重放同参还原）
 - **6.39.3**（2026-08-09）accounting_gate 加 --as-of-block 目标块绑定（存量案重跑 tip 漂移死锁修复）
 - **6.39.2**（2026-08-09）entity_source_trace 进货单并列序非确定性修复（freeze 重放对账假阴性）
@@ -37,6 +44,88 @@
 - **6.20.1** 2026-08-05 修 5 处阻断级文档漂移（A4 前禁写报告冲突/easy 残留/惯犯回灌 docstring/批量预采集残留/旧 Par 路线历史降级）＋docs_lint 增中文禁词与 Python module docstring 扫描
 
 更早版本（6.20.0 及以前）详见 `archive/CHANGELOG-archive.md`。
+
+## [6.45.0] - 2026-08-15 — 三 AI 并行修复工程融合（v6.44.0 review 14 findings 全处置）
+
+工程目录：`maintenance/repair-20260815-g1/`、`repair-20260815-g2/`、`repair-20260815-g3/`（三组各含 plan/工单/盲审/done 报告全档案）。三组从同一基线 ddba187 并行施工（调度铁三角：Fable 调度验收 commit／codex 纯施工／opus 攻击型盲审），融合方按 g1→g2→g3 顺序合并，5 处冲突全部 union 解决（run_all 注册／契约 manifest／invariant floor／两处 chain_registry import）。
+
+- **g1 正式边界与守卫**（F-01/02/03/11/12/14）：`safe_case_file` 案根 containment 全入口（handoff generate/verify/data_map/include/freeze＋adjudication_validator，R10-15 关账）；审计闸 independent-audit 缺 `--report` 直接 errors；`check_formal_case_chain` 升 `{chain, token, as_of_block}` 三元组跨分区等式并抓出 Solana target 小写化真实生产缺陷（六写出点原串保真＋shared canonical_target 链族归一）；command 文本 a5-report-seal/v3＋CT-SEMANTIC-60/CT-BANNED-15 契约；risk_flags 正向白名单 `[a-z0-9-]+`（R10-18 关账）；F-14 政策替代＝历史证据零改动＋现役文本卫生守卫。opus 两轮盲审 PASS。
+- **g2 对账与观测证据链**（F-04/07/09/10）：观测件拒空 runtime code＋66 字符 ABI word 三层等深；recon/time schema 升 v3，consumer 五路深重验（supply 实物重算/balance top-N 逐笔/time plan multiset/anchor 逐行/gmgn Decimal）；**GMGN 黄灯制（用户裁决）**＝差异不硬停、receipt 落 `warnings`＋必须附 `gmgn-divergence-note/v1` 查证说明（cause 枚举 gmgn_data_lag/methodology_diff/gmgn_upstream_error，自算错误不在枚举内＝必须修数据不可说明放行），发布闸重算差异并强制说明件在场且逐项覆盖；Arbitrum 探索档四 CLI 恢复（executable helper＋resolve_execution_mode，正式消费面双断言先钉死）。opus 盲审 209 向量 BREACH 终态 0。
+- **g3 采集通道与复核契约**（F-05/06/08/13）：A0 改 `--exploration` 预检产 `accounting_mode.exploration.json`，A2 三步 observe_supply→accounting `--bundle` formal 重跑→supply_truth（formal 唯一 canonical，工作流断裂修复）；SQD 区间闭校验＋log 逐字段 66 位 hex＋空响应五连硬退＋receipt 游标 provider 派生；**Alchemy 正式资格除名（用户裁决选型 B）**——无 provider 侧完成证据，`--receipt` argparse 拒绝，恢复候选＝升分型收据；**F-05 用户裁决不加闸（ACCEPTED_RISK）**，两分册"机器化边界"段如实写明六项已强制/四项未强制，机器闸 PASS 不等于 N 路已落实；F-13 文档对齐 entrypoint 环境变量读取现实。盲审 round1 BLOCK（SQD 上界缺失 P0）→消化→round2 PASS。
+- **存量影响**：EVM 案重发布须以 verify_recon v3/time_spotcheck v3 重跑对账（v2 收据消费面拒收）；旧 SQD/Alchemy 备用通道 receipt 重验必拒（按契约应零正式存量）；含 abs/`../` 绑定的旧案 check-unseal fail-closed 属期望行为；已交付案不重跑均不受影响。Solana 原串保真对"老案部分重跑致大小写混存"有硬失配面，存量清点结论见融合记录。
+- **suite 分母**：融合树 `run_all.py` 共 112 个入口（101＋g1 五测试＋g2 四测试＋g3 两测试），收口标准 112/112 PASS、rc=0；invariant consumers floor 82（g1+1/g2+3 增量之和）。
+
+## [6.44.0] - 2026-08-15 — EVM 链上观测锚（F-02 闭合/F-03 缓解）
+
+工程目录：`maintenance/repair-20260814-evmobs/`。ETH/BSC/Base 正式纵切片在 reconciliation 前真跑 `scripts/evm/observe_supply.py`，落 `evm-observation-bundle/v1` 与规范化 RPC transcript；accounting 与 supply_truth 分别升 `accounting-gate/v2`、`supply-truth-receipt/v4` 并绑定同一冻结块观测件，Solana 继续使用 v1/v3。shared 发布与 READY handoff 共用 validator，对锚块、bundle 文件三验、供给/sink N-2 和两收据同源做等深复验。
+
+- **正式能力与失败产物**：三链 E2E producer 集合和 `evm-accounting-supply-v2` capability 加入 observation producer；错链回归证明只发生 `eth_chainId`，业务调用为零；双件 producer 的 failure coverage/contract 明确 `canonical_artifacts=2`，旧 bundle/transcript 均先 quarantine。
+- **诚实边界与 R10**：R10-13/F-02 由裸标量升级为案内可复算观测实物，标 CLOSED；R10-9/F-03 仅标 MITIGATED 且仍 OPEN。bundle 提高同步伪造成本并给第三方留下 blockHash/transcript 外验材料，但不证明块头案外真实或 producer 真执行。
+- **独立盲审（opus 线程）**：31 个伪造/篡改向量全部 fail-closed（transcript 逐位/信封哈希/bundle 自洽三道防线）；消费第三条旁路、exploration 冒充 formal、legacy 逃逸门、夹具直拼绕闸、登记装样五路攻击均未得手；0 P0/P1/P2、2 P3 消化完毕（R10-13 措辞缀句采纳、camp_series 双接受确认为设计）。证据 `maintenance/repair-20260814-evmobs/blindreview_OBS_round1.md`。
+- **存量影响**：QUQ/AKE/B2/TAG/MOG/APU/EGL1 等已交付 EVM 案不重跑发布闸时不受影响；未来重发布必须先跑 `observe_supply.py`，再按 v2/v4 重做 accounting 与 supply_truth，禁止手工补字段或只改 schema。QUQ posthold 独立监控体系不受影响。
+- **suite 分母**：与批 3（6.43.0）融合后 `run_all.py` 共 101 个入口；本版收口标准为 101/101 PASS、rc=0，包含 eth/bsc/base 三链纵切片、Solana 控制组、契约双向守卫、版本/CHANGELOG/docs/invariant 守卫及 F-02/F-03 原反例。
+
+
+## [6.43.0] - 2026-08-14 — 批 3 弱闸三线收口（六视角 review F-01/04/05/07）
+
+批 3 按用户裁决完成 A4 语义联动、deploy-sync 严判、env_check 机械派生与 R10 台账同步，并为集成漂移补上可执行自洽守卫。
+
+- **F-01 A4 语义联动（工单 F01）**：blocker 必填 source={kind,ref} 机械定位符；validate_blocker_linkage 双向对账（缺账/幽灵/重复拒）两侧独立执行；finalize 账不全 rc2 不落盘、账全未决落盘 BLOCKED；evidence/resolution 10 实义字符门槛（_has_min_meaningful_chars，防呆不防伪）；entrypoint sha 跨角色全局唯一（防误复用，非独立性证明）；adversarial-review/v4 + artifact/v2，存量 v2/v3 须重跑（先报 producer 失效属预期）。先红 25 项。
+- **F-04 deploy-sync 严判（工单 F04）**：删 MIGRATION_CHANGED 无界豁免（归因 ede24d7 解耦隐式过期）；canonical 安装路径缺部署目录 fail-closed rc1，非 canonical checkout 打 SKIP_NON_CANONICAL_CHECKOUT rc0；校验主体纯函数化。先红 4 项。
+- **F-05 env_check 机械派生（工单 F05）**：受检集合唯一来源 pyproject 21 直接依赖；三层闭合（direct→lock 唯一 pin→installed 全等）+ lock pin 须满足 pyproject 下限；PEP503 规范化；受控说明符白名单 fail-closed；requires-python 检查；pre-commit 第二挂载点联动实证。先红 8 项。已知边界：平面 lock 无法判已删直接依赖残留。
+- **R10 台账（F-07）**：批 1 已修 4 条补记 CLOSED 6.41.0（集成漂移修正）；批 3 四条修复经盲审转 CLOSED；现役 23→19→15；新增台账自洽守卫（ID 唯一/状态枚举/计数一致，消化轮迭代为按节列解析+统一状态载体规则 fail-closed）。
+- **三轮盲审+三轮消化+addendum（全程 codex 独立线程）**：R1 判 BLOCK（BR1-01 P1 finalize 可省略不利 receipt+BR1-02 假 HOME 逃逸 canonical+BR1-03 台账守卫可伪+BR1-04 基线证据漂移）→消化轮 1 落 execution ledger 哈希链（run-role 落账 O_APPEND+flock、finalize/消费侧有效集精确对账；防事后省略不防整册重造，边界如实）、canonical 改 getpwuid、守卫收紧、83394ab 真基线重建（`br104_evidence_rebuild.md`）；R2 判 CONDITIONAL（BR2-01 大小写别名计数失真+BR2-02 竖线全角组合绕）→消化轮 2 落实物 inode 判重+三方基数闸+receipt basename 受控字符集+按节列数 fail-closed；R3 判 CONDITIONAL（BR3-01 未知/隐形状态载体静默归 OPEN）→消化轮 3 统一载体规则（全行【...】载体须合法列+fullmatch 枚举否则 FAIL）；addendum 终判 PASS。全程证据 `maintenance/repair-20260814-batch3/blindreview_round{1,2,3}.md`+`blindreview_round3_addendum.md`。
+- **6.43.0 前身冻结基线**：main@83394ab 97 项全绿 rc0（重建证据 `baseline_run_all_83394ab.log` 带 SHA 头）；本批收口时 SUITE 99 项（+test_repair_batch3_f01+test_repair_batch3_gates）全绿 rc0。
+
+## [6.42.0] - 2026-08-14 — 批 2 防伪面三线三轮盲审收口
+
+批 2 在 6.40.0 上完成 F-10/F-02/F-09 三线施工与三轮盲审，A/B/C 终态均 CLOSED；工程目录与逐轮证据见 `maintenance/repair-20260814-batch2/`。
+
+- **F-10 waiver 政策硬顶（工单 A）**：以 approved/observed/request/消费侧实算四值最大值执行 ≤10bps 自动、>10 且 ≤100bps 普通 waiver、>100bps 再强制独立 `over-cap-approval/v1` 的三段政策；approval 绑定 target、replay_stats、request 规范哈希、nonce、30 天有效期、用户批复和独立 evidence，生产/消费两侧独立重验。三轮盲审从零宽击穿扩到 13 码位，再翻转为正向白名单并以全码位差分/行为向量闭合。
+- **F-02 对抗复核结构化闭环（工单 B）**：`adversarial-review/v2` 升 `v3`，以 `a4_claims.json` 的 path/size/sha256/schema 为权威锚；每路 `adversarial-review-artifact/v1` 机器验证三档 verdict、非空 evidence、registry 内 id、全部 claim-review 并集覆盖及 execution/artifact/entrypoint 内容身份。受控 runner 对坏件 fail-closed 清理 staging，原子 `finalize` 与 shared/audit 消费侧分别重验。三轮盲审从零宽击穿族推进到 claim_id all 语义、对账键黑名单方向；收口再封同一 completeness critic entrypoint 三次注水及 0o500 staging 清理吞原拒绝理由。
+- **F-09 Solana 身份链与真实案（工单 C）**：`solana-reconcile/v2` 升 `v3`，绑定 chain/mint/collection window、producer 与三份输入；补同案 `state→figures→A4→A5` 连续链及 PYTHIA 真实案纵向复验。三轮盲审从布尔精确判定族、16 项假覆盖清零推进到 symlink/物理 SHA/严格 JSON 接线锚；收口补 reproduce output 未消费字段 NaN 的严格 loader 接线锚。
+- **存量影响**：AKE/B2/MOG/TAG 至少四案仍为 adversarial-review v2；已交付案不重跑发布闸不受影响，未来重发布必须按当前 runner 重做结构化 artifacts、execution receipts 与 v3 finalize，禁止手工补字段迁移。
+- **文档与方法**：两侧 `_meaningful_text` docstring 明列白名单覆盖与刻意双写纪律；A4 对账键诚实声明 Mn/Me 可见组合符取舍，净室协议限制依赖组合符承载语义的文字，超顶用户批复明确要求白名单文字；casebook E-19 固化“实义判定漏网须白名单收严、对账键漏网须黑名单保全”的相反安全方向。
+- **R10 台账**：清账 R10-2/R10-10/R10-11/R10-12；新增 R10-16～27 并逐条绑定三线盲审出处。原 15 条余 11 条，加 12 条后现役保留/接受项 23 条。
+- **6.42.0 前身冻结基线**：批 2 独立分支收口时 `run_all.py` 共 96 个 suite 入口，其中 88 个 `test_*.py` 业务断言入口、8 个 lint/manifest/env 守卫；终验 96/96 PASS、rc=0。合并批 1 后的 6.42.0 最终分母与验证证据见 `maintenance/repair-20260814-batch2/merge_resolution_done.md`。`test_repair_batch_a.py` 44/44，F-02 定向套件全绿；invariant census、docs lint 与独立分支终态 SHA 见最终完工记录。
+
+## [6.41.0] - 2026-08-14 — repair batch 1 五项共享面收口
+
+按 `maintenance/repair-20260814-batch1/plan.md` 的七步协议收口批 1；本版只汇总已批准的五项修复，不扩张生产范围。
+
+- **RV-07**：`publish_supersede` 成为 receipt kernel 原语，五个出口在失败时都落真实 `FAIL` 产物，旧成功件不再残留冒充当前结果。
+- **RV-04＋RV-17**：`proxy_config` 统一代理解析与大小写/优先级口径；`stake_decode` 对缺失、截断和不完整输入一律 fail-closed。
+- **F-03**：pass1、pass2、DuckDB 三个 replay 引擎统一 gate 失败的退出与正式产物隔离语义，诊断件不得混入可发布序列。
+- **F-01**：图 1 阵营白名单单源化，producer 落 `figure1-legend/v1` 收据；A5 v3 同时绑定 state 与实际报告 PNG，形成发布闸与 seal 的双层信任根。
+- **日期兼容**：图 1 consumer 精确补认 Solana `sol-rows` producer 的正式 UTC 序列格式 `%Y-%m-%dT%H:%M:%SZ`，不扩大其他日期解析面。
+- **F-04**：四个入口移除位置 token，统一显式 token 来源优先级；sentinel 只参与内部控制，不进入正式输出。
+- **质量**：新增 `test_repair_batch1.py` 已手动挂入 `run_all.py`；共享 invariant、P1-05 new-analysis 夹具、版本四锚与最终全量 suite 在步骤⑦统一验收。
+- **盲审消化**：supersede 锁崩溃恢复原语＋token-file 回显抑制。
+
+## [6.40.0] - 2026-08-13 — 六视角 BLOCK 修复工程四批收口（codex 13 findings＋GPT 5.6 Pro 交叉对账）
+
+外部双审查（codex 六视角 13 findings 判 BLOCK＋GPT 5.6 Pro 11 findings 交叉对账）后，按用户定案范围（5 P0＋6.39.x 新引入 F-06/07/08＋GPT-F-06 用户裁决纳入＋流程债）分 A→B→C→D 四批修复，硬闸人工出口统一改**裁决收据**模式。工程目录 `maintenance/repair-20260813-sixlens/`（plan/工单/对抗审查/反例全落盘）。
+
+- **批 A（发布收据验证链）**：F-01 EVM `tip_block` 双时点诚实记录（`model_probe_block==tip_block` 消费侧双字段验）；F-02 supply_truth formal 容差钳 ≤10bps、超出唯一通道＝`tolerance-waiver/v1` 人工裁决收据（裁决主体/UTC 时间/target 全等/replay_stats 与证据 sha 绑定/`observed_diff_bps` 覆盖检查）；消费侧 `decide()` 同源重算不手抄公式。
+- **批 B（分布扫描族）**：F-03 快照对铸造总量 mint 逐 wei 闭合（分母绝不取影子键）＋发布闸快照 sha 与四查等值绑定（EVM=balance 收据 inputs.balances / Solana=bundle holder_outputs.owners，initial 与终态 final 双绑）；F-08 记录性 `upstream_receipts` 在场即三验＋path 白名单。
+- **批 C（阵营序列 producer→consumer 链）**：F-05 四族 `validate_camp_spec` 共享互斥（跨阵营重复/大小写变体/JSON 重复键硬拒）；F-04 producer sidecar（`camp-series-provenance/v1`）＋burn 桶闭合口径分族＋camps spec 末点机械对账＋`--tol-pp` formal 写死 0.05（`figure2-check-receipt/v1` 留痕，发布闸复验）。
+- **批 D（本批收口）**：
+  - **F-06 flip 裁决收据制**：`--acknowledge-flip` 从"任意 10 字符理由"升级为 `flip-adjudications/v1` 收据文件（scan-schemas §4a）——每锚点行 `flip_fingerprint`＝三策略 policy_details 规范化 sha（底层数据一变收据自动失效必须重裁）＋三策略 top/份额披露；freeze 前置 3 只认 input_binding 绑定收据（不再信 ledger 自报 `acknowledged_flips`），重放装配同收据还原；A5 对报告 Markdown 实文核对披露值（消化轮 1 起锚定 report_locations 章节切片）＋ledger sha 与 freeze 记录绑定（封死单边改/删 ledger）。
+  - **F-07 refresh 真事务**：`fetch_hypersync_v2 --refresh-manifests` 两阶段提交（prepare 全写临时件+fsync → commit 逐个备份+os.replace）；commit 失败逐文件回滚并按字节哈希验证，回滚失败保留 `.recover` 且 exit 1；CLI 补捕 OSError。全有或全无恢复由注入测试断言**字节回滚原样**。
+  - **GPT-F-06 销户审计收口**：`audit_closed_accounts` 报告加 `status` 契约（CLEAN/NO_CLOSED_SAMPLED/LEAK_FOUND/INVALID_SAMPLE）；五类样本无效（gma 批失败/深挖全 fetch_failed/checked=0 且 closed>0/墙钟截断/undetermined 过半）一律 exit 1；closed=0 边界显式定案＝弱结论非查询失败。
+  - **台账八项**：A-1 政策拒绝时旧收据作废归档（`supply_truth.json.superseded-<UTC>`，归档失败升格 exit 1）；A-3 envelope inputs 相对路径根治（`build_envelope(input_base=…)` 案内输入记相对路径＋消费侧 `validate_receipt(case_root=…)` 全部 inputs 强制解析在案根内，B-6 EVM `inputs.balances` 同族一并收口）；A-5 EVM balance/supply/supply_truth 三查 replay_stats sha 同源强制；B-1 Solana `holder_outputs` 文件级三验（validate_observation_bundle 消费侧，与 EVM 等深）；B-2 Solana new-analysis 发布闸 run() 完整端到端夹具落地；B-4 扫描器对绑定 replay_stats 补 sha/size 自验＋docstring 过度宣称改准；B-5 案根遏制分支定向红线；B-7 三账 `balance_source` 与四查 owner 快照等值绑定（冻结时点一致＋逐址数值等值，两链族）。
+  - **schema 升版（B-3）**：`distribution-scan/v1`→`v2`，`denominators.total_supply_raw`→`mint_total_raw`（旧键名在真 `_burn` 案语义误导，IQ 差 34.9%）。
+- **流程债追认（D-1）**：`11193f6`/`b9f8871` 两笔无版本号提交在此追认（B2 案 freeze 分母键修复系列，内容已含于 6.39.x 线，禁止倒插历史版本号）。
+- **存量迁移后果（D-3）**：①6.39.4 后用过旧式 `--acknowledge-flip` 字符串的案（已知 MOG）重 freeze 会被"旧确认不再受理"拦下，须造 flip-adjudications/v1 收据重跑 trace（已冻结终态不追溯）；②6.39.5 及以前的 `distribution_scan.json` 是 v1 产物，重验必拒须重跑 initial/final scan（与"改扫描器即重跑"的既有算法绑定语义同款）；③存量绝对路径收据整案复制后被案根约束拒（原 N-1 语义，本就该拒），原地重验不受影响；新收据记相对路径可搬家。
+- **R10 台账（本轮未修，台账保留）**：存量 6 条（F-09/10/11/13、GPT-F-07 deploy-sync 弱闸、GPT-F-09 env_check 覆盖）＋加深 2 条（A5 图例集合绑定、F-12 改名降权）＋批 C 终验 3 条（C-R1/2/3）＋批 D 评估 2 条（A-2 approved_tolerance_bps 硬顶待用户裁决、A-4 EVM 链上观测件锚定设计留档）＋批 D 消化轮 1 追加 2 条（R10-14 entity_freeze 案外 sha 锚设计、R10-15 check_bound_file 绝对路径案根强制），合计 15 条 → `maintenance/repair-20260813-sixlens/r10_ledger.md`（终验 BLOCKER-1 勘误：此前枚举漏计消化轮追加两条）。
+- 成本：批 D 单会话施工（前三批 codex 分批施工＋对抗审查另计）；质量：run_all 全量绿、契约 146 条双向闭合、invariant 46 原子写登记、反例矩阵落 counterexamples/ 可重放。
+
+## [6.39.5] - 2026-08-12 — distribution 语义重验假阳性修复（split-run 三闸死环）
+
+- **坑**：initial `distribution_scan.json` 由 −1 生成（案根尚无 preflight 副本）；−2 按 G8 同目录要求把 `channels_preflight.json` 拷入案根；A5 `audit_release_gate` 重验 initial 时重算收录该副本 → `upstream_receipts` 与存档漂移报"语义与独立重算不一致"。G8 与该重验对同一文件的案根存在性要求相反，`build_html --state` 又锁死案根布局——三闸物理互斥，split-run 案必卡（TAG 案实撞，用户批准修复）。
+- **修**：`holder_distribution_scan.semantic_payload()` 把记录性收据 `input_binding.upstream_receipts` 剔出语义比较（同款先例=labels_manifest.path 剔除）。收据不参与五桶分区/阈值/判定计算；final 对 handoff_manifest 的强绑定由 validate_scan 显式检查承担，不受影响。
+- 顺手修存量断链：6.39.4 漏 bump pyproject（test_version_consistency 红）。
+- 成本：A5 卡闸排查约 20 轮 Bash；质量：SUITE 全绿后案子交付恢复，无判定语义变化。
 
 ## [6.39.4] - 2026-08-11 — provenance 敏感性闸粒度修复（MOG 案随案落地）
 

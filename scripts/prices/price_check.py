@@ -18,7 +18,7 @@
   时间戳 >1e12 自动判毫秒。
 
 网络：DefiLlama 与 data-api.binance.vision 均实测直连通（api-keys.md 免注册通道节）；
-个别网络环境不通时加 --proxy http://127.0.0.1:7897。
+个别网络环境不通时加 --proxy <proxy-url>，代理地址推荐统一放在 CHIP_PROXY。
 
 用法:
   python3 price_check.py --price-file data/cg_price_365d.json --source coingecko \
@@ -133,7 +133,7 @@ def main():
                     help="显式指定第二源（缺省自动：主源非 defillama → defillama，否则 binance）")
     ap.add_argument("--binance-symbol", default=None, help="币安现货交易对（如 CAKEUSDT）")
     ap.add_argument("--points", type=int, default=3, help="抽点数（默认 3=首/中/尾）")
-    ap.add_argument("--proxy", default=None, help="如 http://127.0.0.1:7897（两端点默认直连通）")
+    ap.add_argument("--proxy", default=None, help="代理 URL（两端点默认直连通；推荐取 CHIP_PROXY）")
     ap.add_argument("--out", default=None, help="结果 JSON 落盘路径（可选）")
     a = ap.parse_args()
 

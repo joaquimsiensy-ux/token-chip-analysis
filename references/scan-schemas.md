@@ -2,12 +2,12 @@
 
 扫描、溯源和分布形态产物的**唯一权威字段定义**。实现脚本与契约测试对本文件写；改字段先改这里再改代码。
 适用脚本：`wave_scan.py`（wave-scan/v3）、`flow_anomaly_scan.py`（flow-anomaly/v2）、
-`entity_source_trace.py`（provenance-ledger/v2）、`holder_distribution_scan.py`（distribution-scan/v1）、
+`entity_source_trace.py`（provenance-ledger/v2）、`holder_distribution_scan.py`（distribution-scan/v2）、
 `distribution_explanation_check.py`（distribution-explanation/v1）和两类裁决台账。
 
 ## 本册路由
 
-- §0 公共纪律；§1 wave-scan；§2 flow-anomaly；§3 裁决台账；§4 provenance-ledger；§5 PYTHIA fixture；§6 至 §11 是分布形态契约。
+- §0 公共纪律；§1 wave-scan；§2 flow-anomaly；§3 裁决台账；§4 provenance-ledger；§5 PYTHIA fixture；§6 至 §11 是分布形态契约；§13 阵营序列 sidecar 与 burn 闭合口径。
 
 ## 0. 四条公共纪律
 
@@ -221,7 +221,10 @@ wave/flow/eqg 全部候选的**成员级**裁决台账。freeze 前 validator �
     "handoff_manifest": {"file": {…}, "run_id": str, "scope": object},
     "data_map": {"file": {…}, "paths": [str…]},
     "total_supply_raw": str,
-    "algorithm_params": {"depth_limit", "facility_min_degree", "node_budget", "edge_budget"}
+    "algorithm_params": {"depth_limit", "facility_min_degree", "node_budget", "edge_budget",
+                         "flip_adjudications": {"path","bytes","sha256"}|null}
+                        # flip_adjudications＝翻转裁决收据文件引用（§4a，批 D F-06）；
+                        # 6.39.4 旧式 acknowledged_flips 字符串数组已废除，freeze 见之即拒
   },
   "entities": [{
     "entity_id": str,
@@ -283,6 +286,41 @@ TERMINAL = {
 - **双维敏感性阻断**：pro_rata 主法出数，fifo/lifo 上下界同跑；任一 stock>0 锚点的第一大终点条目在三策略间不一致，或 `order_ambiguous` >0.5% 锚点库存 → 汇总 false、脚本 exit 2。freeze 不读取 stable 自报作裁决，而从 `policy_details` 重算，并核验 `input_binding` 后以当前代码和当前原始边真实重放；语义摘要不一致即拒。
 - **freeze 可复现绑定**：source files 必须同时出现在已 verify 的 manifest artifacts 与 data_map；标签、实体文件、完整源边、total supply、manifest run/scope（cutoff/block/denominators）、算法脚本与参数逐项哈希绑定。任一变化都必须重跑 provenance 并追加 freeze revision；`check-unseal` 复核所有当前绑定文件哈希。
 
+### 4a. flip-adjudications/v1（翻转裁决收据，批 D F-06）
+
+真实三策略主导翻转（多来源结构）的**唯一**人工放行通道。6.39.4 的 `--acknowledge-flip ENTITY:ANCHOR:REASON` 字符串格式**已废除**——任意 10 字符理由即可解除发布阻断、且无任何消费者核对披露，是被审查判死的口子。现行 `--acknowledge-flip <收据文件路径>`。
+
+```
+{
+  "schema": "flip-adjudications/v1",
+  "approved_by": str,                       # 裁决主体（非空）
+  "user_decided_at_utc": ISO8601Z,          # 用户裁决时间（UTC，必须 Z 结尾）
+  "entity_file": {"path","size","sha256"},  # 名册绑定：收据同目录内相对路径三验，
+                                            #   且 sha 必须＝本次运行 --entity-file 内容
+  "evidence_refs": [{"path","size","sha256"}…],  # ≥1 份独立人工核对证据（收据同目录内，
+                                            #   拒绝绝对路径/越界/符号链接；不得是名册自身；
+                                            #   实物 ≥16 字节——形式下限，内容真伪机器验不了）
+  "adjudications": [{
+    "entity_id": str, "anchor": "peak|current",
+    "reason": str,                          # ≥10 字符
+    "flip_fingerprint": sha256,             # ＝该锚点三策略 policy_details 规范化子集 sha
+                                            #   （canonical JSON of {"policy_details": {pro_rata,fifo,lifo}}）
+    "disclosure": {
+      "top_by_policy": {"pro_rata": {"terminal": [kind,sub,via], "share_pct": "12.34"},
+                        "fifo": {…}, "lifo": {…}},   # 与明细重算值逐项相等（防收据写假数）
+      "report_locations": [str…]            # 报告可核位置（非空）
+    }
+  }…]
+}
+```
+
+消费面三处同源（实现共享在 `handoff_manifest.py`，不手抄）：
+- **trace**（producer）：重算当前运行每个真实翻转锚点的指纹与三策略 top/份额，与收据行逐项相等才 `publishable`；收据行指向非真实翻转锚点＝不许预防性豁免，exit 2。**底层数据一变 → 明细变 → 指纹失配 → 收据自动失效，必须重裁**。
+- **freeze 前置 3**（`recompute_provenance_sensitivity`）：只认 `input_binding.algorithm_params.flip_adjudications` 绑定的收据文件（三验＋指纹重算），**不再信 ledger 内嵌自报的 `acknowledged_flips`**；重放参数装配同收据还原。
+- **A5 seal**（new-analysis）：披露核对**锚定 report_locations**（消化轮 1，F-D1）——位置串必须命中报告某一 Markdown 标题行，该标题切片内须同时含三策略名（**中英文别名族**任一即可：`pro_rata`｜按比例、`fifo`｜先进先出、`lifo`｜后进先出——中文报告不必塞英文标识符，N-D1）、每策略 top 终点标识串与份额数字（同段并列披露，全文他处偶然同串不作数）；收据实物按 ledger `input_binding` 绑定的 path＋sha 定位（与 freeze 同一份，F-D7）；同时校验 `provenance_ledger.json` 哈希＝`entity_freeze` 记录的 `provenance_ledger_sha256`（封死**单边改动**：改/删 ledger 而 freeze 记录在场必拒；`entity_freeze.json` 自身无上位 sha 锚，"连 freeze 一起改写"属 §13 批 C 终验定性的自洽小件残余边界——完整 new-analysis 案的双删由 final scan 的 `final_bindings.entity_freeze` 绑定拦截）。
+
+**存量迁移声明**：6.39.4 后用过旧式 `--acknowledge-flip` 字符串确认的案子（已知：MOG），其 ledger `algorithm_params.acknowledged_flips` 为旧格式——重 freeze 时前置 3 与重放装配均按"旧确认不再受理"拒绝，**必须造 flip-adjudications/v1 收据后重跑 trace**；已冻结终态不受追溯影响。
+
 ## 5. PYTHIA 回测锚点（fixture 权威值；实现落地时实测填入 tests/fixtures/pythia_anchors.json）
 
 | 闸 | 锚点义务 |
@@ -296,9 +334,25 @@ TERMINAL = {
 
 回测仅 PYTHIA 单案（用户拍板）；flow 参数初值与误报水平缺第二币对照校准——未来首个新案实战时如实标注此局限。
 
-## 6. distribution-scan/v1
+## 6. distribution-scan/v2
 
-本产物只计算冻结 cutoff 的当前 owner 快照。`initial` 绑定上游收据但不绑定 handoff manifest。`final` 绑定 READY `handoff/v3`、身份快照收据、当前 A4 seal、当前 entity freeze revision、三账、initial scan 和上一轮 final scan。
+本产物只计算冻结 cutoff 的当前 owner 快照。owner 快照必须对**铸造总量 `mint_total`（闭合锚点）逐 wei 精确闭合**（缺口和超发同拦，零容差，与供给真值那把 `--tolerance-bps` 各是各的旋钮）。
+
+闭合分母是 `mint_total` 不是 `onchain_total_supply`／`total_supply_raw`：replay 引擎对 sink 是记账不抹除，`sum(快照含 dead/zero) == mint_total` 恒成立——form2（转 dead 不减供给，`onchain==mint`）与 form1（真 `_burn`，`onchain==mint−burn`）都如此（APU／IQ／KOGE 真案逐 wei 实测）。若对 `onchain` 闭合，整类 form1 销毁币会被误杀。分母取值分链：EVM 取 `replay_stats.json` 的 `mint_total`（replay 产物，收据里有），Solana 取 `onchain_total_supply`（scanner `require_snapshot_closed` 已保证 `sum==supply` 精确，不套 EVM 的 replay mint 语义）。
+
+`total_supply_raw`／`frozen_total_supply_raw` 是**调用者可注入的影子键**（真实生产者 `supply_truth_gate` 只写 `onchain_total_supply`／`replay_net`／`mint_total`／`burn_total`）——闭合分母绝不取影子键，`net`（分布百分比分母）也优先取真实键 `replay_net`／`onchain_total_supply`。EVM formal 的 `onchain_total_supply` 来自已验证 `evm-observation-bundle/v1` 的冻结块 `total_supply_raw` 并由 `supply-truth-receipt/v4` 绑定，不再是消费时现场 RPC 自报；`net` 仍只用于分布百分比。
+
+**闭合锚点的取值顺序（已绑定已验证的链路优先）**：① `supply_truth` 收据 `inputs.replay_stats` **绑定**的那份实物（已过 receipt 三验＋案根遏制，取值后再交叉验 `mint−burn == replay_net`）；② 收据的 `mint_total` 字段；③ `onchain_total_supply`。**案根裸 `replay_stats.json` 永远不是锚点来源**——真案 9/10 把它放 `data/`／`out/`／`replay/` 子目录并由收据绑定，把案根硬编码文件名排在第一，既让"抹平快照＋伪造一份未绑定案根件"直接过闸，又让"案根留一份陈旧件"把合法案误杀。合法但未绑定的案根同名件**忽略**（未绑定的文件不是证据，不该被采用，也不该有一票否决权）；它若**在场却非法**（符号链接／非普通文件）则 fail-closed 拒，与上面"在场非法不得静默漂白"同一把尺子。
+
+产物里 `denominators.mint_total_raw`＝**铸造总量 `mint_total`（含已销毁）**，不是链上流通量；真 `_burn` 案两者可差三成以上（IQ 差 34.9%）。引用该字段描述"总量"时必须按此口径，链上流通量看 `net_supply_raw`。（批 D schema 升 v2 落地：旧键名 `total_supply_raw` 语义误导已废除；6.39.5 及以前的存量 `distribution_scan.json` 是 v1 产物，重验必拒，须用当前扫描器重跑 initial/final——这与"扫描器算法哈希绑定、改代码即重跑"的既有迁移语义同款。）
+
+`initial` 记录上游收据但不绑定 handoff manifest。上游收据是 **optional 的记录性收据**：案根没有那份文件就不记（split-run 下 −1 出 initial scan 时，−2 还没把 preflight 副本拷进案根），**在场即三验**——凡是记进 `upstream_receipts` 的条目，validate 都要核实文件存在且 sha256／size 与记录一致。校验方向只有"记录项 → 磁盘"这一条，反过来要求"磁盘上有的都得记"会把 6.39.5 修掉的三闸死环修回来。文件在场却非法（符号链接、指到案外、不是普通文件）时生产侧直接 exit 2，不做静默跳过。
+
+分布扫描吃的那份 owner 快照，必须就是四查真正核过的那一份：EVM 比对四查 `balance` 收据的 `inputs.balances.sha256`，Solana 比对 observation bundle 的 `holder_outputs.owners.sha256`，**只比 sha256 不比 path**（两边路径形态本来就不同）。**initial 扫描与进报告的终态 final 扫描（`distribution_rounds.json` 的 `terminal.final_scan_path`）两份都要落在同一个四查 sha 上**——只绑 initial 挡不住 final 轮换一份同值换仓快照产终态判定（F-B1）。该交叉检查由 `audit_release_gate.py --profile new-analysis` 执行，**只放发布闸、不放进 validate**（终态 scan 是本轮新产，不涉及存量案追溯）。
+
+**两侧绑定强度已对齐（批 D B-1 落地）**：EVM 的 `inputs.balances` 由 `receipt_validate.validate_receipt` 拿案内实物文件做 path/size/sha 三验；Solana 的 `holder_outputs.accounts/owners` 自批 D 起由 `validate_observation_bundle`（bundle_path 在场的消费侧）做同款文件级三验（查找目录＝收据 inputs 实物所在 work_dir → bundle 同目录 → 同目录 data/），缺件/换包/符号链接均拒。
+
+`final` 绑定 READY `handoff/v3`、身份快照收据、当前 A4 seal、当前 entity freeze revision、三账、initial scan 和上一轮 final scan。
 
 固定阈值如下：分箱倍率为 `sqrt(2)`，范围为私人可入箱供应的 `0.000001%` 至 `100%`，dust 线等于最低分箱边界，经济门为净供应 `2%`，低计数档至少 `5` 个 owner，基础分箱与平移分箱成员 Jaccard 至少 `0.8`，样本线为 `100` 个私人主箱 owner，未识别合约披露线为净供应 `1%`。鼓包检验的族错误率为 `1%`。头部基线为 top-1 `20%`、top-3 `30%`、top-5 `40%`、top-10 `50%`、HHI `0.05` 和相邻质量比 `8`。
 
@@ -306,7 +360,7 @@ TERMINAL = {
 
 ```
 {
-  "schema": "distribution-scan/v1",
+  "schema": "distribution-scan/v2",
   "stage": "initial|final",
   "generated_at_utc": ISO8601,
   "exit_code": 0|2,
@@ -333,7 +387,7 @@ TERMINAL = {
     "thresholds_sha256": sha256,
     "recognition_rules": {"version", "sha256"},
     "labels_manifest": {"path", "sha256", "size"}|null,
-    "upstream_receipts": [{"path", "sha256", "size"}],
+    "upstream_receipts": [{"path", "sha256", "size"}],   // optional 记录性收据，在场即三验
     "handoff_manifest": null|{"path", "sha256", "size", "run_id"},
     "final_bindings": {filename: {"path", "sha256", "size"}},
     "entity_freeze_revision": int, "a4_seal_revision": int
@@ -350,7 +404,8 @@ TERMINAL = {
   "verdict": "NORMAL_SHAPE|ABNORMAL_SHAPE|NOT_EVALUABLE",
   "not_evaluable_reason": null|"low_sample|data_broken",
   "errors": [str],
-  "denominators": {"total_supply_raw": str, "net_supply_raw": str,
+  "denominators": {"mint_total_raw": str,     // ＝mint_total 铸造总量（含已销毁），非链上流通量
+                     "net_supply_raw": str,     // ＝replay_net 链上流通量
                      "private_boxable_supply_raw": str},
   "bucket_coverage": {bucket: {"raw": str, "net_supply_pct": float}},
   "owner_count_private_main": int,
@@ -376,7 +431,9 @@ TERMINAL = {
 }
 ```
 
-`data_broken` 产物只保留 schema、stage、时间、exit code、阈值、verdict、reason、errors 和空异常簇，脚本返回 2。`low_sample` 必须带完整逐址分类、top-k、HHI、等额组和分区闭合结果，脚本返回 0。validate 会从绑定文件重新派生五桶、重新计算全部统计量并比较语义字段。
+`data_broken` 产物只保留 schema、stage、时间、exit code、阈值、verdict、reason、errors 和空异常簇，脚本返回 2。`low_sample` 必须带完整逐址分类、top-k、HHI、等额组和分区闭合结果，脚本返回 0。validate 会从绑定文件重新派生五桶、重新计算全部统计量并比较语义字段，并对 `upstream_receipts` 里**已记录**的每一项做存在＋sha256＋size 三验（记录性收据，缺席合法、在场即验）；`upstream_receipts` 本身不进语义逐位比较（6.39.5 三闸死环修复）。
+
+**重验须重跑当前版本生产者（F-B5，修正旧口径）**：validate 内部经 `build_scan` 重算，闭合闸也在这条追溯路径上，且 `input_binding.algorithm.sha256` 绑脚本自身哈希——脚本改过一个字节，旧产物就对不上。所以存量案在 A5 重验前无论如何都要重跑对应生产者获取当前回执（与仓内既有的"存量案例须重跑对应生产者"一致），这**不是死锁**。重跑后仍不对铸造总量精确闭合的存量案按 `data_broken` 拒收，这是**刻意收紧不是回归**（基线时代只拦超发，残缺快照能过）。第二层交叉检查禁入 validate 只是不让"快照↔四查绑定"这一条追溯卡死，闭合闸的追溯收紧另算。
 
 ## 7. distribution-explanation/v1
 
@@ -487,3 +544,30 @@ validator 对候选文件、schema、ID 集、重复 ID、候选哈希、成员�
 | 合成盘 | 覆盖正常长尾、鼓包、等额组、头部集中、粉尘长尾、设施分桶、黑箱披露、经济门边界、99-owner 小样本、分箱平移和多簇。 |
 
 QUQ 与 PYTHIA 只用于算法层探索定标。防伪链测试使用合成 fixture。阈值出身是两案探索定标和合成盘，缺少完整保留集与多案校准。
+
+## 13. camp-series-provenance/v1（阵营序列 producer sidecar，camp_series_provenance.py）
+
+**要解决的事**（F-04，2026-08-13）：图 1 的阵营序列此前是编报告的人自己填进 state 的数字，编译器不问出处——伪造序列能一路走到封章。本节把序列钉回重放产物：谁产的、用什么输入产的、产物本体的指纹是什么，全部落在序列文件旁边的 sidecar 里。
+
+**producer 侧**：四族重放入口（`evm/replay_pass2.py`、`evm/replay_duck.py`、`solana/replay_edges.py evolution`、`solana/build_evolution.py`）写序列文件时**同步**写 `<序列名去 .json>.provenance.json`（如 `camp_series.json` → `camp_series.provenance.json`），共享实现 `scripts/lib/camp_series_provenance.py`（写法＝tmp＋os.replace 原子替换）。字段：
+
+| 字段 | 含义 |
+|---|---|
+| `schema` | 恒 `camp-series-provenance/v1` |
+| `producer` | 产者脚本仓库相对路径（如 `scripts/evm/replay_duck.py`） |
+| `series_file` / `series_sha256` / `series_size` | 序列文件名与本体指纹（输出绑定） |
+| `series_format` | `evm-dict`（EVM 两引擎）/ `sol-rows`（replay_edges）/ `sol-anchor-rows`（build_evolution，小样本辅助）/ `evm-entity-dict`（entity_series，图 2 原料） |
+| `denominator` | `current_net_supply` / `mint_total_legacy` / `net_supply` / `config_total_supply`——只作口径声明，consumer 重算分母不信此处自报数字 |
+| `camps_spec` | 阵营定义文件 `{path(basename), sha256, size}` |
+| `final_balances` | 与本序列**同一次重放**落盘的终态余额快照（EVM＝`balances_final.json`；sol-rows＝`effective_balances.json`）——末点对账的快照锚 |
+| `inputs` | `{语义名: {path, sha256, size}}`：EVM 必含 `replay_stats`；sol-rows 必含 `reconcile_receipt`（正式链）；Solana 收据 v3 自带同次重放实算的逻辑边摘要/行数并对锚 cache meta；cache meta 另登记 `edge_file_size`＋`edge_file_sha256` 物理指纹 |
+
+**consumer 侧**（`state_from_facts.py --series-source <序列文件>`，正式编译必给）：①序列 sha 对 sidecar（落盘后改一字节即拒）；②camps_spec/final_balances/inputs 逐项三验（存在＋sha＋size，basename 只在序列目录与案根两层内找，符号链接拒）；③登记面命中——`evm-dict` 要求案内 `supply_truth.json` 在场且 sidecar 的 replay_stats sha 命中其绑定集合；`sol-rows` 只认 `solana-reconcile/v3`，由编译案 target 和发布 target 两处分别传入大小写敏感且满足 32~44 位 base58 形态的 mint/chain/cutoff，验收据 producer、三输入实物、`edge_extrema.slot ⊆ collection_window ≤ snapshot/target cutoff`，并将 `edge_digest/edge_count` 对锚 soltx meta；同时要求 `gate_pass is true`、`negative_balance_count` 与 `snapshot_mismatch_count` 均为精确整数 0、`net_supply_raw` 为在场的非负整数，且终态快照合计必须等于 `net_supply_raw`。v2 明确拒绝并要求重跑 `replay_edges reconcile`；④Solana 边完整性只声称到实际强度：编译点要求 canonical 边文件实物在场且非空，并与 meta 的 `edge_file_size` 对锚；发布点在此基础上再重算物理 sha256 对锚 `edge_file_sha256`。消费侧**不重放边内容**，逻辑内容完整性仍由 producer 同次重放得到的 digest/count 与 meta 拒绝记账、供给真值链和快照闭合共同保证；⑤**末点对账**＝从 camps spec＋final_balances 机械重算各 spec 阵营终点份额，与序列末点逐桶比对（容差 0.05pp，formal 写死）——spec 外动态桶（散户残差等）用恒等式 `100−Σspec` 比对，不是单向下界；⑥state 的 `camp_share_series` 由编译器从原生文件转换生成（sol-rows 的 `其他散户`/`首30分钟狙击者` 两个动态桶并入 `散户`，狙击窗明细在 `sniper_set.json` 不丢），source 手填了该字段就必须与转换结果逐点相等。`edge_extrema.ts` 仅是人读时间参考的记录字段；机器身份、窗口和顺序判定只认 slot，ts 不参与机器判定。`sol-anchor-rows` 不入正式编译链（锚点法小样本辅助、无对账链锚，正式序列走 replay_edges/replay_duck）。旧案无 sidecar → 不经 compile_state 的重绘路径照旧，无追溯卡死。
+
+**camp_share_series 数值面（compile_state 无条件校验，与 --series-source 无关）**：桶名白名单＝`standard_charts.CAMP_ORDER_MODERN`（∪ `burn_cum_pct` 豁免键；legacy 名与实体级自造桶名新报告一律拒）；全值有限；非 burn 桶值域 [0,100]；日期轴统一 UTC 解析后严格递增无重复（naive 视为 UTC，带时区先换算再比）。
+
+**formal 必经与探索豁免（F-C1 消化轮，轮 2 终关）**：`state_from_facts.py` 默认（formal）编译 **--series-source 必填**——缺席 BLOCK exit 2，来源绑定不挂可选参数；显式 `--exploration` 才可不带，产物 provenance 落 `series_binding="exploration-unbound"` 非正式标记。formal 绑定产物落 `series_binding="producer-sidecar"`＋`camp_series_sidecar` 块（producer/series_file/series_sha256/**series_format**）；`source.provenance` 不得预置这两个键（只能编译器按验证结果生成）。下游 `audit_release_gate`（new-analysis）复验：state 含 camp_share_series 就必须是 producer-sidecar 绑定、绑定的序列实物（案根与 data/ 两层）sha 一致，**且发布闸用编译器同一转换器（series_to_state_form）把序列实物重转换一遍与 state 的 camp_share_series 逐点比对**——sha 相符只证明文件没被改，重转换比对才证明 state 里的序列真是它转换来的（轮 2 终关：手改标记自补绑定块、formal 编译后篡改 series 两类攻击同死）；**发布期还复算整条来源链**（轮 3 N-C4：复用编译期同三件纯函数——sidecar 实物强制在场＋输出 sha＋输入三验 → supply_truth/target/preflight 登记面锚 → camps spec 末点对账，且绑定块 producer 须与磁盘 sidecar 实物一致）——"自造原生格式文件＋state 用它的转换结果＋绑定块自填"的同步一致造假在此拦死，剩余残余=控制案目录者手写一组互相自洽的案内小件（终验实测约 1.5KB、无需运行 producer 即可自洽——validator 是一致性校验器不是真实性证明器，F-12 已接受边界同族，此链上不再有可机器闭合的下一层）。绑定路径的闭合按 sidecar `denominator` 单式严判（净分母族只认非 burn 之和、total 族只认全桶之和，两族不得互救；无口径信息的手填路径保留双式宽判）。登记面命中是结构化校验：EVM supply_truth.json 须过 schema/verdict/exit_code 与 target/preflight 锚；Solana reconcile v3 则由编译与发布两处各自传入案 target，逐项验证大小写敏感 mint、窗口、producer、三输入和边摘要对锚——"含某个 sha 字符串的任意 JSON"不算登记面。figure2 对账收据的 series 与 facts 两个输入实物**无条件**三段验（缺席/符号链接/sha 不符均拒，N-C1：不跑 check 手写收据不再可行）。
+
+**存量迁移（F-C2 定口径，2026-08-13 全库普查 34 个含 series 的 state）**：数值面白名单对存量案是**硬迁移**——"旧案无追溯卡死"只对 sidecar 链成立（不经 compile_state 的 fig1 旧案重绘可使用 CAMP_ORDER legacy 键，但 fig1 入口已由 `select_fig1_series()` 白名单硬拒覆盖，不再允许白名单外键静默漏图），任何存量案**重编译 state 即撞新闸**。三类处置：①旧标签体系/自造桶名（狙击集团、大庄Gate、W系做市体系一类，数值面本身干净）＝口径不兼容——不重编译不受影响；重编译须先按**案内证据**把桶归入 `CAMP_ORDER_MODERN` 现代名，**映射是分析判断不是机械替换**（同名"狙击集团"在不同案里可能是散户层也可能是庄，禁全局映射表）；②旧 schema 形态（camp_share_series 非 {dates,series}，21 例）＝本批之前 compile_state 的结构检查就拒，非本批引入，不适用新口径；③真数据问题（日期轴重复、单点闭合超差）＝刻意收紧，重编译须先修数据或用当前版 producer 重出序列（F-B5 模式）。Solana 案重编译还要求 `source.json.token.data_cutoff_slot` 必填：它是本案采集上界 slot，必须与 reconcile 收据 `collection_window.to_slot` 和 snapshot cutoff 同源；存量案从案内采集清单的冻结/采集上界字段或 `holders_snapshot_meta.target.as_of_block` 查得，二者不一致时先停止并修复采集链，不得任选一个补填。
+
+**burn 口径定案（rg 全库落锤，防 100% 闭合闸误杀 burn 案）**：三族产物的 burn 表达不同——EVM 现代口径 `burn_cum_pct` 顶层单列（分母＝当期净供应，可 >100%，不参与堆叠）；replay_edges 行内 `锁仓/销毁`（分母＝净供应，不参与闭合，有 burn 时全桶合计 >100% 是**合法形态**）；build_evolution 行内 `锁仓/销毁`（分母＝total_supply，**参与** 100% 闭合）。故同点合计闭合＝**双式**：非 burn 桶之和≈100 **或** 全桶之和≈100（容差 0.05pp），二中其一即过；burn 桶单独验非负有限、不设 100 上界；全桶全零的点（供应尚未产生）豁免。轴/元数据键（`dates`/`ts`/`_meta`/`_supply_raw`）不是桶，转换层剔除或转为 dates。

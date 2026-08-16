@@ -17,12 +17,15 @@
   4. 权限面     Sourcify v2 ABI 扫 mint/pause/blacklist/setFee 类函数名——只记录不定级
 
 用法:
-  python3 accounting_gate.py --token 0x... --chain bsc [--rpc URL] [--out accounting_mode.json]
-  python3 accounting_gate.py --token 0x... --chain eth --rpc https://eth-mainnet.g.alchemy.com/v2/<key> \
-      --proxy http://127.0.0.1:7897
+  formal: python3 accounting_gate.py --token 0x... --chain bsc \
+      --bundle evm_observation_bundle.json [--rpc URL] [--out accounting_mode.json]
+  exploration: python3 accounting_gate.py --token 0x... --chain bsc --exploration \
+      [--rpc URL] [--out accounting_mode.json]
+  CHIP_PROXY=<proxy-url> python3 accounting_gate.py --token 0x... --chain eth \
+      --rpc https://eth-mainnet.g.alchemy.com/v2/<key>
   --rpc      不给时用链默认免 key 端点（见 DEFAULT_RPC；eth/base 建议传 Alchemy=archive）
   --hypersync / --hypersync-token-file  事件通道（默认从 ~/.config/hypersync/token 读取）
-  --proxy    只作用于 RPC（Alchemy *.g.alchemy.com 国内必须走 clash）；HyperSync/Sourcify 国内直连
+  --proxy    只作用于 RPC；经 scripts/lib/proxy_config.py 按 CLI/CHIP_PROXY/探测解析
   --samples  事件差值法样本数上限（默认 8）
 
 输出: accounting_mode.json（mode/verdict/exit_code/checks 逐项证据+抽样明细）
@@ -51,8 +54,12 @@ import requests
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
 from endpoint_identity import public_endpoint
-from chain_registry import evm_chain_id_for, formal_evm_chains
+from chain_registry import (evm_chain_id_for, executable_evm_chains,
+                            resolve_execution_mode)
+from evm_observation import validate_evm_observation_bundle
 from net import RpcAttestationError, attested_rpc_pool
+from proxy_config import resolve_proxy
+from solana_observation import assert_declared_slot
 
 TRANSFER = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
 ZERO32 = "0x" + "0" * 64
@@ -66,6 +73,11 @@ SEL_TOTSUP = "0x18160ddd"    # totalSupply()
 SEL_TRANSFER = "0xa9059cbb"  # transfer(address,uint256)
 SEL_DECIMALS = "0x313ce567"  # decimals()
 PROBE_ADDR = "0x0000000000000000000000000000000000012345"  # 模拟转账收款探针（无私钥地址）
+EVM_OBSERVATION_SCHEMA = "evm-observation-bundle/v1"
+RECEIPT_SCHEMA_BY_MODE = {
+    "formal": {"schema": "accounting-gate/v2"},
+    "exploration": {"schema": "accounting-gate/v1"},
+}
 
 DEFAULT_RPC = {
     "bsc": "https://bsc-dataseed.bnbchain.org",
@@ -375,42 +387,60 @@ def check_permissions(chain, token, sourcify_url="https://sourcify.dev/server"):
         return {"available": False, "err": f"{type(e).__name__}: {str(e)[:80]}"}
 
 
-def main():
+def main(argv=None):
     ap = argparse.ArgumentParser(description="EVM 记账模型准入 gate")
     ap.add_argument("--token", required=True)
     ap.add_argument("--chain", required=True,
-                    choices=sorted(formal_evm_chains("accounting_adapter")))
+                    choices=sorted(executable_evm_chains("accounting_adapter")))
     ap.add_argument("--rpc", default=None, help="JSON-RPC 端点（默认见 DEFAULT_RPC）")
     ap.add_argument("--hypersync", default=None, help="HyperSync 裸域名（默认按链）")
     ap.add_argument("--hypersync-token-file",
                     default=os.path.expanduser("~/.config/hypersync/token"))
-    ap.add_argument("--proxy", default=None, help="RPC 代理（Alchemy 国内必须 clash）")
+    ap.add_argument("--proxy", default=None,
+                    help="RPC 代理；空字符串或 none 显式直连（默认经 CHIP_PROXY/端口探测解析）")
     ap.add_argument("--samples", type=int, default=8)
     ap.add_argument("--sourcify", default="https://sourcify.dev/server")
     ap.add_argument("--out", default="accounting_mode.json")
+    ap.add_argument("--bundle", help="formal evm-observation-bundle/v1")
+    ap.add_argument("--exploration", action="store_true",
+                    help="允许独立现场探测；formal 聚合器拒收 exploration")
     ap.add_argument("--as-of-block", type=int, default=None,
-                    help="收据 target 绑定块（分析冻结块）。模型探测仍在当前 tip 执行"
-                         "（tip_block 字段忠实记录探测时点）；不给则 as_of_block=tip（旧行为）。"
-                         "存量案重跑 accounting 时必给：shared_release_receipt 要求三键 target"
-                         "与 reconciliation（冻结块）全等，tip 漂移会死锁升级路径。")
-    a = ap.parse_args()
+                    help="formal 下仅作 bundle.anchor.number 一致性断言；"
+                         "exploration 下仍是收据 target 绑定块。模型探测仍在当前 tip 执行"
+                         "（tip_block/model_probe_block 忠实记录探测时点）；"
+                         "exploration 不给则 as_of_block=tip（旧行为）。")
+    a = ap.parse_args(argv)
+    try:
+        execution_mode = resolve_execution_mode(
+            a.chain, a.exploration, "accounting_adapter")
+    except ValueError as exc:
+        ap.error(str(exc))
+    if not a.bundle and not a.exploration:
+        ap.error("正式模式必须给 --bundle；独跑须显式 --exploration")
+    if a.bundle and a.exploration:
+        ap.error("--bundle 与 --exploration 互斥")
 
     token = a.token.lower()
     rpc_url = a.rpc or DEFAULT_RPC[a.chain]
-    proxy = a.proxy
-    if proxy is None and ".g.alchemy.com" in rpc_url:
-        proxy = "http://127.0.0.1:7897"  # 登记文件既定坑：Alchemy 国内直连被墙
+    should_resolve_proxy = (a.proxy is not None or "CHIP_PROXY" in os.environ
+                            or ".g.alchemy.com" in rpc_url)
+    try:
+        proxy = resolve_proxy(a.proxy) if should_resolve_proxy else None
+    except ValueError as exc:
+        ap.error(str(exc))
     hs_url = a.hypersync or DEFAULT_HS[a.chain]
     bearer = None
     if os.path.exists(a.hypersync_token_file):
         bearer = open(a.hypersync_token_file).read().strip()
     rpc = Rpc(rpc_url, a.chain, proxy=proxy)
 
-    result = {"schema": "accounting-gate/v1", "chain": a.chain, "token": token,
+    result = {"schema": RECEIPT_SCHEMA_BY_MODE[execution_mode]["schema"],
+              "chain": a.chain, "token": token,
               "producer": {"path": "scripts/evm/accounting_gate.py",
                            "sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest()},
               "checked_at": now_iso(), "rpc": public_endpoint(rpc_url),
-              "hypersync": hs_url, "checks": {}, "warnings": [], "reasons": []}
+              "hypersync": hs_url, "execution_mode": execution_mode,
+              "checks": {}, "warnings": [], "reasons": []}
 
     def finish(mode, verdict, code):
         result.update({"mode": mode, "verdict": verdict, "exit_code": code,
@@ -426,15 +456,43 @@ def main():
             print(f"  warn:   {w_}")
         sys.exit(code)
 
+    # ---- formal 冻结锚 ----
+    if a.bundle:
+        try:
+            bundle_path = Path(a.bundle).resolve(strict=True)
+            bundle = json.loads(bundle_path.read_text(encoding="utf-8"))
+            if bundle.get("schema") != EVM_OBSERVATION_SCHEMA:
+                raise ValueError(
+                    f"EVM observation bundle schema 必须是 {EVM_OBSERVATION_SCHEMA}")
+            validate_evm_observation_bundle(
+                bundle, bundle_path=bundle_path, expected_token=token,
+                expected_chain_id=evm_chain_id_for(a.chain))
+            anchor = bundle["anchor"]
+            assert_declared_slot(a.as_of_block, anchor["number"], "--as-of-block")
+            result["as_of_block"] = anchor["number"]
+            result["observation_bundle"] = {
+                "path": str(bundle_path), "size": bundle_path.stat().st_size,
+                "sha256": hashlib.sha256(bundle_path.read_bytes()).hexdigest(),
+            }
+            result["observed_anchor"] = {
+                "block": anchor["number"], "block_hash": anchor["block_hash"],
+            }
+        except Exception as exc:  # noqa: BLE001 - 观测件非法统一落同路径 FAIL 状态
+            result["reasons"].append(str(exc))
+            finish("unknown", "FAIL", 1)
+
     # ---- 基础与代理 ----
     try:
         tip = int(rpc.call("eth_blockNumber", []), 16)
-        result["as_of_block"] = a.as_of_block if a.as_of_block is not None else tip
+        # tip 一旦取得，后续所有 finish 路径（含无代码/基础 RPC 失败）都必须带上。
+        result["tip_block"] = tip
+        result["model_probe_block"] = tip
+        if a.exploration:
+            result["as_of_block"] = a.as_of_block if a.as_of_block is not None else tip
         code_ = rpc.call("eth_getCode", [token, "latest"])
         if not code_ or code_ == "0x":
             result["reasons"].append("目标地址无合约代码（EOA/错链）")
             finish("unknown", "FAIL", 1)
-        result["tip_block"] = tip
         result["checks"]["proxy"] = check_proxy(rpc, token)
     except (RpcNetError, RpcSemanticError) as e:
         result["reasons"].append(f"RPC 基础调用失败: {e}")

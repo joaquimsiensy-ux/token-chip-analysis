@@ -32,7 +32,10 @@ import sys
 import tempfile
 from pathlib import Path
 
+from test_audit_release_gate import write_deep_recon_fixtures
+
 from formal_ready_test_harness import run_formal_script
+from test_supply_truth_gate import TOKEN, write_evm_bundle
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 SCRIPT = os.path.join(HERE, "..", "report", "handoff_manifest.py")
@@ -60,7 +63,7 @@ def write_json(d, name, obj):
         json.dump(obj, f, ensure_ascii=False)
 
 
-def make_case(d, chain="bsc", token="0x0", as_of_block=999):
+def make_case(d, chain="eth", token=TOKEN, as_of_block=999):
     """最小合法 −1 案目录。"""
     write_json(d, "candidate_universe.json", {"candidates": [
         {"id": "c1", "address": "0xabc", "reasons": ["threshold_current"]},
@@ -84,8 +87,16 @@ def make_case(d, chain="bsc", token="0x0", as_of_block=999):
     with open(os.path.join(d, "data", "edges.jsonl"), "w") as f:
         f.write(json.dumps([86400, 1, 0, 0, Z, "0xabc", 100]) + "\n")
         f.write(json.dumps([86400, 1, 1, 0, Z, "0xdef", 100]) + "\n")
-    write_json(d, "accounting_mode.json", {"schema": "accounting-gate/v1", "verdict": "PASS", "exit_code": 0})
+    bundle_chain = chain if chain in {"eth", "bsc", "base"} else "eth"
+    bundle_path = write_evm_bundle(
+        Path(d), token=token, chain=bundle_chain, as_of=as_of_block,
+        total=100, zero=0, dead=0)
+    bundle = json.loads(bundle_path.read_text(encoding="utf-8"))
     write_json(d, "supply_truth.json", {"verdict": "PASS", "exit_code": 0,
+                                         "chain": "bsc" if chain != "solana" else "solana",
+                                         "onchain_total_supply": str(total), "replay_net": str(total),
+                                         "mint_total": str(total), "burn_total": "0",
+                                         "decision_rule": "primary_form1",
                                          "total_supply_raw": str(total), "net_supply_raw": str(total)})
     write_json(d, "wave_scan_report.json", {"schema": "wave-scan/v3", "scan_universe_count": 0,
                                             "scan_universe": [], "must_adjudicate_count": 0,
@@ -96,7 +107,7 @@ def make_case(d, chain="bsc", token="0x0", as_of_block=999):
     write_json(d, "flow_anomaly_report.json", {"schema": "flow-anomaly/v2", "eligible_universe_count": 0,
                                                "sinks": [], "sprays": [],
                                                "requires_adjudication": False})
-    write_json(d, "time_spotcheck.json", {"gate": "time_spotcheck", "schema": "time-spotcheck/v2",
+    write_json(d, "time_spotcheck.json", {"gate": "time_spotcheck", "schema": "time-spotcheck/v3",
                                           "points": 2, "exact_match": 2, "mismatch": 0,
                                           "rpc_err": 0, "verdict": "PASS", "exit_code": 0})
     repo = Path(HERE).parents[1]
@@ -108,6 +119,20 @@ def make_case(d, chain="bsc", token="0x0", as_of_block=999):
     def repo_ref(rel):
         return {"path": rel, "sha256": file_sha(repo / rel)}
 
+    bundle_ref = {"path": str(bundle_path.resolve()), "size": bundle_path.stat().st_size,
+                  "sha256": file_sha(bundle_path)}
+    write_json(d, "accounting_mode.json", {
+        "schema": "accounting-gate/v2", "chain": chain, "token": token.lower(),
+        "producer": repo_ref("scripts/evm/accounting_gate.py"),
+        "execution_mode": "formal", "as_of_block": as_of_block,
+        "tip_block": as_of_block + 20, "model_probe_block": as_of_block + 20,
+        "observation_bundle": bundle_ref,
+        "observed_anchor": {"block": as_of_block,
+                            "block_hash": bundle["anchor"]["block_hash"]},
+        "checks": {"proxy": {"is_proxy": False}},
+        "verdict": "PASS", "exit_code": 0,
+    })
+
     target = {"chain": chain, "token": token.lower(), "as_of_block": as_of_block}
     producers = {"balance": "scripts/evm/verify_recon.py",
                  "supply": "scripts/evm/verify_recon.py",
@@ -115,26 +140,47 @@ def make_case(d, chain="bsc", token="0x0", as_of_block=999):
                  "time": "scripts/lib/time_spotcheck.py"}
     bound_input = {"fixture": {"path": str(input_path), "size": input_path.stat().st_size,
                                 "sha256": file_sha(input_path)}}
+    # supply_truth 的 replay_stats 要能被消费侧重算 mint−burn 对账，必须是真的重放统计；
+    # 文件名避开正牌 replay_stats.json，免得跟真跑出来的重放产物撞名互相覆盖。
+    write_json(d, "fixture_replay_stats.json",
+               {"mint_total_raw": "100", "burn_total_raw": "0"})
+    stats_path = Path(d, "fixture_replay_stats.json").resolve()
+    replay_input = {"path": str(stats_path), "size": stats_path.stat().st_size,
+                    "sha256": file_sha(stats_path)}
+    recon_v3, time_v3 = write_deep_recon_fixtures(
+        Path(d), target, input_path, total=100, address="0xabc")
+    stats_path = Path(d, "fixture_replay_stats.json").resolve()
+    replay_input = {"path": str(stats_path), "size": stats_path.stat().st_size,
+                    "sha256": file_sha(stats_path)}
     recon_checks = {}
     for key in ("balance", "supply", "supply_truth", "time"):
         receipt_name = f"reconciliation_{key}_receipt.json"
         if key in {"balance", "supply"}:
-            receipt = {"schema": "evm-reconciliation-receipt/v2", "target": target,
-                       "observations": {
-                           "supply_closure": {"closed": True, "negative_count": 0},
-                           "balance_reconciliation": {"checked": 1, "matched": 1,
-                                                       "mismatched": 0, "rpc_errors": 0}}}
+            receipt = json.loads(json.dumps(recon_v3))
         elif key == "supply_truth":
-            receipt = {"schema": "supply-truth-receipt/v3", "target": target,
+            receipt = {"schema": "supply-truth-receipt/v4", "target": target,
                        "gate": "supply_truth", "replay_net": "100",
                        "onchain_total_supply": "100", "diff": "0",
+                       "diff_bps": 0.0, "tolerance_bps": 10,
                        "decision_rule": "primary_form1", "burn_form": None,
                        "primary_verdict": "PASS", "sink_reconciliation": None}
         else:
-            receipt = {"schema": "time-spotcheck/v2", "target": target,
-                       "points": 1, "exact_match": 1, "mismatch": 0, "rpc_err": 0}
+            receipt = json.loads(json.dumps(time_v3))
+        # A-5（批 D）：真实 verify_recon 的 balance/supply 收据本就绑 replay_stats，
+        # 夹具补成真实形态——消费侧三查同源校验（sha 全等）才有账可对。
+        if key in {"balance", "supply"}:
+            key_inputs = receipt["inputs"]
+        elif key == "supply_truth":
+            key_inputs = {"replay_stats": replay_input,
+                          "observation_bundle": {
+                              "path": "evm_observation_bundle.json",
+                              "size": bundle_path.stat().st_size,
+                              "sha256": file_sha(bundle_path)}}
+        else:
+            key_inputs = receipt["inputs"]
         receipt.update({"producer": repo_ref(producers[key]), "mode": "formal",
-                        "inputs": bound_input, "verdict": "PASS", "exit_code": 0})
+                        "inputs": key_inputs,
+                        "verdict": "PASS", "exit_code": 0})
         write_json(d, receipt_name, receipt)
         recon_checks[key] = {"status": "PASS", "exit_code": 0,
                              "receipt": {"path": receipt_name,
@@ -154,7 +200,7 @@ def make_case(d, chain="bsc", token="0x0", as_of_block=999):
 
 
 Z = "0x0000000000000000000000000000000000000000"
-GEN = ["--mode", "full", "--producer-model", "test-model", "--chain", "bsc", "--contract", "0x0",
+GEN = ["--mode", "full", "--producer-model", "test-model", "--chain", "eth", "--contract", TOKEN,
        "--cutoff", "2026-08-01T00:00:00Z", "--frozen-block", "999",
        "--denominators", json.dumps({"total_supply_raw": str(10 ** 12)})]
 
@@ -228,6 +274,10 @@ def main():
         check("generate READY exit 0", p.returncode == 0)
         m = json.load(open(os.path.join(d, "handoff_manifest.json")))
         check("manifest 收录 data_map 索引文件", any(a["path"] == "data/transfers.csv" for a in m["artifacts"]))
+        artifact_paths = {a["path"] for a in m["artifacts"]}
+        check("EVM manifest 收录 bundle 与 transcript",
+              {"evm_observation_bundle.json", "evm_observation_transcript.json"}
+              <= artifact_paths)
         check("manifest sealed 只记哈希", m["sealed"] and "sha256" in m["sealed"][0])
         check("manifest 自动 gate 四个", set(m["gates"]) == {"accounting_gate", "supply_truth_gate",
                                                             "time_spotcheck", "reconciliation_four_checks"})
@@ -239,9 +289,10 @@ def main():
         dwarn = os.path.join(root, "case_accounting_warn")
         os.makedirs(dwarn)
         make_case(dwarn)
-        write_json(dwarn, "accounting_mode.json", {
-            "schema": "accounting-gate/v1", "mode": "upgradeable-proxy",
-            "verdict": "WARN", "exit_code": 0})
+        warn_accounting = json.load(open(os.path.join(dwarn, "accounting_mode.json")))
+        warn_accounting.update({"mode": "upgradeable-proxy", "verdict": "WARN",
+                                "exit_code": 0})
+        write_json(dwarn, "accounting_mode.json", warn_accounting)
         p = run(["generate", "--case-dir", dwarn, "--status", "READY"] + GEN)
         p_verify = run(["verify", "--case-dir", dwarn]) if p.returncode == 0 else p
         check("accounting WARN + exit 0 按记账 gate 契约放行", p_verify.returncode == 0)
@@ -582,7 +633,7 @@ def main():
         write_json(d18, "provenance_ledger.json", fake_stable)
         p = run(["freeze", "--case-dir", d18] + FRZ)
         check("策略明细翻转但 stable=true 仍由 freeze 重算拒绝",
-              p.returncode == 2 and "机器从明细重算" in (p.stderr + p.stdout))
+              p.returncode == 2 and "三策略主导终点翻转" in (p.stderr + p.stdout))
 
         # 尘埃锚点（<0.01% 供应）的明细翻转不再触发翻转拒——由重放语义摘要兜底伪造
         dust_flip = make_provenance(d18, emap)
@@ -591,7 +642,7 @@ def main():
         write_json(d18, "provenance_ledger.json", dust_flip)
         p = run(["freeze", "--case-dir", d18] + FRZ)
         check("尘埃锚点翻转豁免（不因翻转拒；伪造由重放语义摘要兜底）",
-              "机器从明细重算" not in (p.stderr + p.stdout)
+              "三策略主导终点翻转" not in (p.stderr + p.stdout)
               and p.returncode == 2 and "重放语义摘要" in (p.stderr + p.stdout))
 
         # closure/敏感性都保持自洽，只篡改来源类别；唯有从当前原始边重放才能识别。

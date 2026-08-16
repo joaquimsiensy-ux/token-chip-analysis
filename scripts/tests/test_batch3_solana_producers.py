@@ -241,7 +241,7 @@ def test_supply_cli_has_runner_bound_outputs(root):
     assert int(rc or 0) == 0
     payload = json.loads(receipt.read_text())
     assert payload["schema"] == "solana-observation-bundle/v1"
-    assert payload["target"]["token"] == MINT.lower()
+    assert payload["target"]["token"] == MINT
     assert payload["target"]["as_of_block"] == payload["snapshot"]["slot"]
     assert payload["closed"] is True
     assert json.loads(out.read_text())["target"] == payload["target"]

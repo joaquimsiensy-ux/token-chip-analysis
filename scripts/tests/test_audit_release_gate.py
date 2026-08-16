@@ -16,6 +16,7 @@ REPO = HERE.parent.parent
 GATE = HERE.parent / "report" / "audit_release_gate.py"
 REPRODUCE = HERE.parent / "report" / "reproduce_receipt.py"
 from formal_ready_test_harness import test_vertical_slices
+from test_supply_truth_gate import write_evm_bundle
 spec = importlib.util.spec_from_file_location("audit_release_gate", GATE)
 gate = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(gate)
@@ -29,6 +30,8 @@ def _run_with_test_vertical_slices(*args, **kwargs):
 
 gate.run = _run_with_test_vertical_slices
 
+CASE_TOKEN = "0x" + "a" * 40
+
 
 def write_json(root, name, value):
     (root / name).write_text(json.dumps(value, ensure_ascii=False), encoding="utf-8")
@@ -41,6 +44,203 @@ def sha(path):
 def repo_ref(rel):
     path = REPO / rel
     return {"path": rel, "sha256": sha(path)}
+
+
+def artifact_ref(root, path):
+    root = Path(root).resolve()
+    path = Path(path).resolve()
+    return {"path": path.relative_to(root).as_posix(), "size": path.stat().st_size,
+            "sha256": sha(path)}
+
+
+def write_deep_recon_fixtures(root, target, raw_input, *, total=100, address="0xabc"):
+    """F-07: emit truthful v3 verify/time fixtures bound to real case artifacts."""
+    root = Path(root)
+    write_json(root, "fixture_recon_config.json", {
+        "token": target["token"], "decimals": 0, "total_supply_human": str(total)})
+    write_json(root, "fixture_balances.json", {address: str(total)})
+    write_json(root, "fixture_replay_stats.json", {
+        "mint_total_raw": str(total), "burn_total_raw": "0",
+        "max_block": target["as_of_block"]})
+    gmgn = root / "fixture_gmgn.csv"
+    gmgn.write_text(f"address,pct\n{address},1\n", encoding="utf-8")
+    call_data = "0x70a08231" + "0" * 24 + address.lower().replace("0x", "")
+    transcript = [{"seq": 0, "method": "eth_call",
+                   "params": [{"to": target["token"].lower(), "data": call_data},
+                              hex(target["as_of_block"])],
+                   "result": hex(total)}]
+    write_json(root, "fixture_recon_transcript.json", transcript)
+    inputs = {
+        "config": artifact_ref(root, root / "fixture_recon_config.json"),
+        "balances": artifact_ref(root, root / "fixture_balances.json"),
+        "replay_stats": artifact_ref(root, root / "fixture_replay_stats.json"),
+        "gmgn": artifact_ref(root, gmgn),
+        "transcript": artifact_ref(root, root / "fixture_recon_transcript.json"),
+    }
+    recon = {
+        "schema": "evm-reconciliation-receipt/v3", "target": target,
+        "producer": repo_ref("scripts/evm/verify_recon.py"), "mode": "formal",
+        "inputs": inputs, "warnings": [], "verdict": "PASS", "exit_code": 0,
+        "observations": {
+            "supply_closure": {
+                "mint_total_raw": str(total), "burn_total_raw": "0",
+                "nominal_supply_raw": str(total), "balance_sum_raw": str(total),
+                "negative_count": 0, "negative_addresses": [], "closed": True},
+            "balance_reconciliation": {
+                "requested_top_n": 1, "selection": "top_n_then_skip_sinks",
+                "checked": 1, "matched": 1, "mismatched": 0, "rpc_errors": 0,
+                "rows": [{"address": address, "replay_raw": str(total),
+                          "chain_raw": str(total), "diff_raw": "0", "status": "OK"}]},
+            "gmgn_comparison": {
+                "checked": 1, "diff_count": 0, "tolerance_pp": 0.15,
+                "rows": [{"address": address, "gmgn_pct": "100",
+                          "replay_pct": "100", "diff_pp": "0", "status": "OK"}]},
+        },
+    }
+
+    raw_input = Path(raw_input)
+    identity = {"kind": "file", "path": str(raw_input.resolve()),
+                "size": raw_input.stat().st_size, "sha256": sha(raw_input)}
+    write_json(root, "fixture_anchor_input_manifest.json", {
+        "schema": "anchor-plan-input/v1", "input": identity, "files": [identity]})
+    plan_inputs = {"input_manifest": artifact_ref(
+        root, root / "fixture_anchor_input_manifest.json")}
+    plan_producer = repo_ref("scripts/lib/anchor_plan.py")
+    generated_at = "2026-08-15T00:00:00Z"
+    plan = {"schema": "anchor-plan/v2", "generated_at": generated_at,
+            "target": target, "input": identity, "chain": target["chain"],
+            "token": target["token"], "final_block": target["as_of_block"],
+            "producer": plan_producer, "input_manifest": plan_inputs["input_manifest"],
+            "matrix_points": [{"kind": "fixture", "addr": address,
+                               "day_end_block": target["as_of_block"],
+                               "expected_balance_raw": str(total)}],
+            "forced_points": []}
+    write_json(root, "fixture_anchor_plan.json", plan)
+    plan_receipt = {
+        "schema": "anchor-plan-receipt/v2", "target": target,
+        "producer": plan_producer, "mode": "formal", "inputs": plan_inputs,
+        "plan_schema": "anchor-plan/v2", "generated_at": generated_at,
+        "input_identity": identity, "probe_count": 1,
+        "output": artifact_ref(root, root / "fixture_anchor_plan.json"),
+        "verdict": "PASS", "exit_code": 0}
+    write_json(root, "fixture_anchor_plan_receipt.json", plan_receipt)
+    time_data = "0x70a08231" + address.lower().replace("0x", "").rjust(64, "0")
+    time_transcript = [{"seq": 0, "method": "eth_call",
+                        "params": [{"to": target["token"].lower(), "data": time_data},
+                                   hex(target["as_of_block"])],
+                        "result": hex(total)}]
+    write_json(root, "fixture_time_transcript.json", time_transcript)
+    time_receipt = {
+        "schema": "time-spotcheck/v3", "target": target,
+        "producer": repo_ref("scripts/lib/time_spotcheck.py"), "mode": "formal",
+        "inputs": {
+            "plan": artifact_ref(root, root / "fixture_anchor_plan.json"),
+            "plan_receipt": artifact_ref(root, root / "fixture_anchor_plan_receipt.json"),
+            "input": artifact_ref(root, raw_input),
+            "transcript": artifact_ref(root, root / "fixture_time_transcript.json")},
+        "verdict": "PASS", "exit_code": 0, "gate": "time_spotcheck",
+        "points": 1, "balance_points": 1, "tx_points": 0,
+        "exact_match": 1, "mismatch": 0, "rpc_err": 0,
+        "rows": [{"type": "balance", "kind": "fixture", "addr": address,
+                  "block": target["as_of_block"], "expect_raw": str(total),
+                  "chain_raw": str(total), "diff_raw": "0", "status": "OK"}],
+    }
+    return recon, time_receipt
+
+
+def align_ledgers_to_owner_snapshot(root, snap):
+    """B-7（批 D）起三账 balance_source 必须与四查核过的 owner 快照等值——
+    夹具把 balance 收据换绑到新快照后，同步三账成员到快照里真实存在的 owner。
+    这是修夹具失真（三账 0xabc 从不在案子的 owner 世界里），不是放宽断言。"""
+    root = Path(root)
+    owners = json.loads(Path(snap).read_text(encoding="utf-8"))
+    if isinstance(owners.get("balances"), dict):
+        owners = owners["balances"]
+    addr, raw = next(iter(owners.items()))
+    raw = str(int(str(raw)))
+    recon = json.loads((root / "reconciliation_report.json").read_text(encoding="utf-8"))
+    as_of = (recon.get("target") or {}).get("as_of_block", 123)
+    write_json(root, "balances_snapshot.json", {
+        "schema": "address-balance-snapshot/v1", "as_of_block": as_of,
+        "entries": [{"address": addr, "balance_raw": raw}]})
+    write_json(root, "membership_ledger.json", {"entries": [
+        {"entity_id": "e1", "address": addr, "membership": "strict",
+         "as_of_balance_raw": raw,
+         "balance_source": {"path": "balances_snapshot.json",
+                            "sha256": sha(root / "balances_snapshot.json"),
+                            "as_of_block": as_of}}]})
+    write_json(root, "position_ledger.json", {"entries": [
+        {"entity_id": "e1", "address": addr, "location_id": f"wallet:{addr}",
+         "amount_raw": raw}]})
+    write_json(root, "economic_control_ledger.json", {
+        "entries": [{"entity_id": "e1", "wallet_self_held_raw": raw,
+                     "confirmed_facility_claims": [],
+                     "confirmed_economic_control_raw": raw,
+                     "unresolved_facility_exposure": []}],
+        "double_count_check_passed": True, "unresolved_count": 0, "unresolved": []})
+    # balances_snapshot.json 被重写：同步 audit_input_manifest 的登记（若在场且登记过），
+    # 以及绑定该 manifest 的 reproduce receipt（其 input_manifest.sha256 记录冻结输入清单）。
+    manifest_path = root / "audit_input_manifest.json"
+    if manifest_path.is_file():
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        changed = False
+        for entry in manifest.get("files", []):
+            if entry.get("path") == "balances_snapshot.json":
+                entry["size"] = (root / "balances_snapshot.json").stat().st_size
+                entry["sha256"] = sha(root / "balances_snapshot.json")
+                changed = True
+        if changed:
+            write_json(root, "audit_input_manifest.json", manifest)
+            receipt_path = root / "reproduce_receipt.json"
+            if receipt_path.is_file():
+                receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+                if isinstance(receipt.get("input_manifest"), dict):
+                    receipt["input_manifest"]["sha256"] = sha(manifest_path)
+                    write_json(root, "reproduce_receipt.json", receipt)
+
+
+def refresh_adversarial(root):
+    """重跑当前 a4_claims.json 对应的结构化复核夹具与 v3 finalize。"""
+    root = Path(root)
+    runner = REPO / "scripts/report/adversarial_review_runner.py"
+    receipts = []
+    for role in ("entity_attribution_skeptic", "completeness_critic"):
+        entry = root / f"review_{role}.py"
+        entry.write_text(
+            "import json, os\n"
+            f"# adversarial fixture role: {role}\n"
+            "role=os.environ['CHIP_REVIEW_ROLE']\n"
+            "payload={'schema':'adversarial-review-artifact/v2','role':role,"
+            "'registry_sha256':os.environ['CHIP_REVIEW_REGISTRY_SHA256']}\n"
+            "if role == 'completeness_critic':\n"
+            " payload.update({'findings':[],'non_covered':[]})\n"
+            "else:\n"
+            " claims=json.load(open('a4_claims.json'))['claims']\n"
+            " payload['results']=[{'claim_id':c['id'],'verdict':'CONFIRMED',"
+            "'evidence':['fixture recomputation'],'alternative_explanations':[]} for c in claims]\n"
+            "with open(os.environ['CHIP_REVIEW_OUTPUT'],'w') as fh: json.dump(payload,fh)\n",
+            encoding="utf-8")
+        artifact = root / f"review_{role}.json"
+        execution = root / f"review_{role}_execution.json"
+        for stale in (artifact, execution):
+            if stale.exists():
+                stale.unlink()
+        proc = subprocess.run([sys.executable, str(runner), str(root), "--role", role,
+                               "--entrypoint", entry.name, "--artifact", artifact.name,
+                               "--receipt", execution.name], capture_output=True, text=True)
+        assert proc.returncode == 0, proc.stdout + proc.stderr
+        receipts.append(execution.name)
+    write_json(root, "adversarial_blockers.json", [])
+    aggregate = root / "adversarial_review.json"
+    if aggregate.exists():
+        aggregate.unlink()
+    argv = [sys.executable, str(runner), "finalize", str(root),
+            "--claim-registry", "a4_claims.json"]
+    for receipt in receipts:
+        argv += ["--receipt", receipt]
+    argv += ["--blockers", "adversarial_blockers.json", "--out", "adversarial_review.json"]
+    proc = subprocess.run(argv, capture_output=True, text=True)
+    assert proc.returncode == 0, proc.stdout + proc.stderr
 
 
 def build_case(root, historical=True):
@@ -65,11 +265,22 @@ def build_case(root, historical=True):
         ],
         "late_additions": [],
     })
-    target = {"chain": "bsc", "token": "0xtoken", "as_of_block": 123}
-    write_json(root, "accounting_mode.json", {"schema": "accounting-gate/v1",
-        "chain": "bsc", "token": "0xtoken", "as_of_block": 123,
+    target = {"chain": "bsc", "token": CASE_TOKEN, "as_of_block": 123}
+    bundle_path = write_evm_bundle(
+        root, token=CASE_TOKEN, chain="bsc", as_of=123,
+        total=100, zero=0, dead=0)
+    bundle = json.loads(bundle_path.read_text(encoding="utf-8"))
+    bundle_rel = {"path": bundle_path.name, "size": bundle_path.stat().st_size,
+                  "sha256": sha(bundle_path)}
+    bundle_abs = {**bundle_rel, "path": str(bundle_path.resolve())}
+    write_json(root, "accounting_mode.json", {"schema": "accounting-gate/v2",
+        "chain": "bsc", "token": CASE_TOKEN, "as_of_block": 123,
+        "tip_block": 135, "model_probe_block": 135,
         "producer": repo_ref("scripts/evm/accounting_gate.py"),
         "verdict": "PASS", "exit_code": 0, "mode": "standard",
+        "execution_mode": "formal", "observation_bundle": bundle_abs,
+        "observed_anchor": {"block": 123,
+                            "block_hash": bundle["anchor"]["block_hash"]},
         "checks": {"fot": {"status": "clean"}}})
     producers = {"balance": "scripts/evm/verify_recon.py",
                  "supply": "scripts/evm/verify_recon.py",
@@ -78,28 +289,52 @@ def build_case(root, historical=True):
     checks = {}
     envelope_input = {"fixture": {"path": str(raw.resolve()), "size": raw.stat().st_size,
                                     "sha256": sha(raw)}}
+    # supply_truth 的 replay_stats 必须是真的重放统计：消费侧要拿它重算 mint−burn 对账，
+    # 绑一份 raw_transfers 之类的无关文件属于夹具失真。文件名特意避开正牌
+    # replay_stats.json——test_a4_gate 那条链会真跑一遍 replay_pass1 覆盖同名文件。
+    write_json(root, "fixture_replay_stats.json",
+               {"mint_total_raw": "100", "burn_total_raw": "0"})
+    stats = (root / "fixture_replay_stats.json").resolve()
+    replay_input = {"path": str(stats), "size": stats.stat().st_size,
+                    "sha256": sha(stats)}
+    # B-7（批 D）：真实 verify_recon 的 balance 收据 inputs 绑它吃的 owner 余额快照；
+    # 三账 balance_source 的数值从此要与这份四查快照等值。夹具补成真实形态。
+    write_json(root, "fixture_balances.json", {"0xabc": "100"})
+    balances_file = (root / "fixture_balances.json").resolve()
+    balances_input = {"path": str(balances_file), "size": balances_file.stat().st_size,
+                      "sha256": sha(balances_file)}
+    recon_v3, time_v3 = write_deep_recon_fixtures(root, target, raw)
+    stats = (root / "fixture_replay_stats.json").resolve()
+    replay_input = {"path": str(stats), "size": stats.stat().st_size,
+                    "sha256": sha(stats)}
     for key in ("balance", "supply", "supply_truth", "time"):
         evidence = root / f"{key}_receipt.json"
         if key in {"balance", "supply"}:
-            receipt_doc = {"schema": "evm-reconciliation-receipt/v2", "target": target,
-                "verdict": "PASS", "exit_code": 0, "observations": {
-                    "supply_closure": {"closed": True, "negative_count": 0},
-                    "balance_reconciliation": {"checked": 1, "matched": 1,
-                        "mismatched": 0, "rpc_errors": 0},
-                    "gmgn_comparison": {"checked": 1, "diff_count": 0}}}
+            receipt_doc = json.loads(json.dumps(recon_v3))
         elif key == "supply_truth":
-            receipt_doc = {"schema": "supply-truth-receipt/v3", "target": target,
+            receipt_doc = {"schema": "supply-truth-receipt/v4", "target": target,
                 "gate": "supply_truth", "replay_net": "100",
                 "onchain_total_supply": "100", "diff": "0",
+                "diff_bps": 0.0, "tolerance_bps": 10,
                 "decision_rule": "primary_form1", "burn_form": None,
                 "primary_verdict": "PASS", "sink_reconciliation": None,
+                "observation_bundle": bundle_abs,
                 "verdict": "PASS", "exit_code": 0}
         else:
-            receipt_doc = {"schema": "time-spotcheck/v2", "target": target,
-                "points": 1, "exact_match": 1, "mismatch": 0, "rpc_err": 0,
-                "verdict": "PASS", "exit_code": 0}
+            receipt_doc = json.loads(json.dumps(time_v3))
+        # A-5（批 D）：真实 verify_recon 的 balance/supply 收据 inputs 本就绑 replay_stats
+        # （四件套之一）；夹具补成合规真实形态——三查绑同一份账本，消费侧同源校验才有账可对。
+        if key == "balance":
+            key_inputs = receipt_doc["inputs"]
+        elif key == "supply":
+            key_inputs = receipt_doc["inputs"]
+        elif key == "supply_truth":
+            key_inputs = {"replay_stats": replay_input,
+                          "observation_bundle": bundle_rel}
+        else:
+            key_inputs = receipt_doc["inputs"]
         receipt_doc.update({"producer": repo_ref(producers[key]), "mode": "formal",
-                            "inputs": envelope_input})
+                            "inputs": key_inputs})
         write_json(root, evidence.name, receipt_doc)
         checks[key] = {"status": "PASS", "exit_code": 0,
                        "receipt": {"path": evidence.name, "sha256": sha(evidence)},
@@ -189,33 +424,12 @@ def build_case(root, historical=True):
             "blocking_unresolved": False,
         }],
     })
-    reviews = []
-    runner = REPO / "scripts/report/adversarial_review_runner.py"
-    for role in ("entity_attribution_skeptic", "completeness_critic"):
-        entry = root / f"review_{role}.py"
-        entry.write_text("import os\nfrom pathlib import Path\n"
-                         "Path(os.environ['CHIP_REVIEW_OUTPUT']).write_text("
-                         "'review evidence for '+os.environ['CHIP_REVIEW_ROLE']+'\\n')\n",
-                         encoding="utf-8")
-        artifact = root / f"review_{role}.md"
-        execution = root / f"review_{role}_execution.json"
-        for stale in (artifact, execution):
-            if stale.exists():
-                stale.unlink()
-        proc = subprocess.run([sys.executable, str(runner), str(root), "--role", role,
-                               "--entrypoint", entry.name, "--artifact", artifact.name,
-                               "--receipt", execution.name], capture_output=True, text=True)
-        assert proc.returncode == 0, proc.stdout + proc.stderr
-        reviews.append({"role": role, "exit_code": 0,
-                        "artifact": {"path": artifact.name, "size": artifact.stat().st_size,
-                                     "sha256": sha(artifact)},
-                        "runner": repo_ref("scripts/report/adversarial_review_runner.py"),
-                        "execution_receipt": {"path": execution.name,
-                                              "sha256": sha(execution)}})
-    write_json(root, "adversarial_review.json", {
-        "schema": "adversarial-review/v2", "target": target, "reviews": reviews,
-        "blocking_findings": [], "release_decision": "PASS",
+    write_json(root, "a4_claims.json", {
+        "schema": "a4-claims/v2",
+        "claims": [{"id": "C1", "text": "重算命题", "files": [raw.name],
+                    "report_locations": ["report.md:1"]}],
     })
+    refresh_adversarial(root)
     if historical:
         write_json(root, "chart_reconciliation.json", {
             "series_method": "full_event_replay",
@@ -405,7 +619,10 @@ def main():
         root = Path(td)
         report = build_case(root, historical=False)
         review = json.loads((root / "adversarial_review.json").read_text())
-        review["blocking_findings"] = [{"id": "B1", "resolved": False}]
+        review["blocking_findings"] = [{
+            "id": "B1", "resolved": False,
+            "source": {"kind": "manual", "ref": "fixture unresolved"},
+        }]
         write_json(root, "adversarial_review.json", review)
         errors = gate.run(root, report)
         assert any("发布否决项" in x for x in errors), errors

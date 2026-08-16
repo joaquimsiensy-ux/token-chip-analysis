@@ -1,7 +1,7 @@
 #!/bin/bash
 # 分段采集驱动（HyperSync v2 官方客户端）：规避代理长连接劣化 stall——段级几分钟短跑，
 # 每段独立 run_*/done.json 幂等可续；失败段清残迹 retry-once 再 FATAL。
-# 适用场景：v2 直连被掐 / clash 代理长连接偶发 stall（详见 data-pipeline-evm-channels §3.1）。
+# 适用场景：v2 直连被掐 / 已解析代理长连接偶发 stall（详见 data-pipeline-evm-channels §3.1）。
 # 用法：staged_capture.sh <token_addr> <hypersync_url> <outdir> <bound1> <bound2> [bound3 ...]
 #   bounds=段边界块号（升序 ≥2 个；首个=起始块，末个=终止块；相邻两个为一段 [from,to)）
 #   例：staged_capture.sh 0x3d4f0513... https://bsc.hypersync.xyz data/v2 44000000 50000000 60000000 111481700

@@ -27,7 +27,7 @@ import hashlib
 import shutil
 from pathlib import Path
 
-from test_audit_release_gate import build_case
+from test_audit_release_gate import build_case, refresh_adversarial, sha
 from formal_ready_test_harness import run_formal_script
 from identity_gate_fixture import augment_gate
 
@@ -76,20 +76,203 @@ def wj(d, name, obj):
     return p
 
 
+def rebind_case_inputs(old_root, new_root):
+    """把 copytree 复制出来的案子的收据输入，重新指到它自己那份拷贝上。
+
+    发布校验器要求 supply_truth 绑定的 replay_stats 实物落在**当前**案根内
+    （见 shared_release_receipt._bound_replay_totals：案外实物人工翻案子时看不见，
+    是伪造账本的天然藏身处）；同一个校验器对 Solana 的 observation bundle 和
+    tolerance waiver 早就是这个要求。复制出来的案子照理该"重跑生产者"，
+    这个帮手就是把重跑会得到的结果直接摆好：文件是逐字节拷贝，size/sha 都不变，
+    只有收据里记的绝对路径要跟着搬家。
+    """
+    old_root = str(Path(old_root).resolve())
+    new_root = str(Path(new_root).resolve())
+    recon_path = Path(new_root, "reconciliation_report.json")
+    recon = json.loads(recon_path.read_text(encoding="utf-8"))
+
+    def case_path(ref):
+        raw = Path(str(ref["path"]))
+        return raw if raw.is_absolute() else Path(new_root, raw)
+
+    def refreshed_ref(ref, path):
+        updated = dict(ref)
+        updated["size"] = path.stat().st_size
+        updated["sha256"] = sha(path)
+        return updated
+
+    for item in recon["checks"].values():
+        receipt_path = Path(new_root, item["receipt"]["path"])
+        receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+        moved = False
+        for ref in (receipt.get("inputs") or {}).values():
+            raw = str(ref.get("path", ""))
+            if raw.startswith(old_root + os.sep):
+                ref["path"] = new_root + raw[len(old_root):]
+                moved = True
+
+        # time 收据多了一层 anchor-plan 权威链。copytree 后须等价于在新案根
+        # 重跑 anchor_plan：重绑 input identity，并由内向外刷新 manifest、plan、
+        # plan receipt 与 time receipt 的逐字节 size/sha 链。
+        if receipt.get("schema") == "time-spotcheck/v3":
+            time_inputs = receipt["inputs"]
+            input_path = case_path(time_inputs["input"]).resolve()
+            plan_path = case_path(time_inputs["plan"])
+            plan_receipt_path = case_path(time_inputs["plan_receipt"])
+            plan = json.loads(plan_path.read_text(encoding="utf-8"))
+            plan_receipt = json.loads(plan_receipt_path.read_text(encoding="utf-8"))
+
+            old_identity = plan_receipt["input_identity"]
+            identity = dict(old_identity)
+            identity.update({"path": str(input_path),
+                             "size": input_path.stat().st_size,
+                             "sha256": sha(input_path)})
+
+            manifest_ref = plan_receipt["inputs"]["input_manifest"]
+            manifest_path = case_path(manifest_ref)
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            manifest["input"] = identity
+            manifest["files"] = [
+                identity if entry == old_identity else entry
+                for entry in manifest.get("files", [])
+            ]
+            manifest_path.write_text(json.dumps(manifest, ensure_ascii=False),
+                                     encoding="utf-8")
+            manifest_ref = refreshed_ref(manifest_ref, manifest_path)
+
+            plan["input"] = identity
+            plan["input_manifest"] = manifest_ref
+            plan_path.write_text(json.dumps(plan, ensure_ascii=False), encoding="utf-8")
+
+            plan_receipt["input_identity"] = identity
+            plan_receipt["inputs"]["input_manifest"] = manifest_ref
+            plan_receipt["output"] = refreshed_ref(plan_receipt["output"], plan_path)
+            plan_receipt_path.write_text(json.dumps(plan_receipt, ensure_ascii=False),
+                                         encoding="utf-8")
+
+            time_inputs["plan"] = refreshed_ref(time_inputs["plan"], plan_path)
+            time_inputs["plan_receipt"] = refreshed_ref(
+                time_inputs["plan_receipt"], plan_receipt_path)
+            moved = True
+        if moved:
+            receipt_path.write_text(json.dumps(receipt, ensure_ascii=False),
+                                    encoding="utf-8")
+            item["receipt"]["sha256"] = sha(receipt_path)
+        bundle_ref = receipt.get("observation_bundle")
+        if isinstance(bundle_ref, dict):
+            raw = str(bundle_ref.get("path", ""))
+            if raw.startswith(old_root + os.sep):
+                bundle_ref["path"] = new_root + raw[len(old_root):]
+                receipt_path.write_text(json.dumps(receipt, ensure_ascii=False),
+                                        encoding="utf-8")
+                item["receipt"]["sha256"] = sha(receipt_path)
+    recon_path.write_text(json.dumps(recon, ensure_ascii=False), encoding="utf-8")
+    accounting_path = Path(new_root, "accounting_mode.json")
+    accounting = json.loads(accounting_path.read_text(encoding="utf-8"))
+    bundle_ref = accounting.get("observation_bundle")
+    if isinstance(bundle_ref, dict):
+        raw = str(bundle_ref.get("path", ""))
+        if raw.startswith(old_root + os.sep):
+            bundle_ref["path"] = new_root + raw[len(old_root):]
+            accounting_path.write_text(json.dumps(accounting, ensure_ascii=False),
+                                       encoding="utf-8")
+    from shared_release_receipt import create_bundle
+    create_bundle(Path(new_root))
+
+
+def bind_balance_receipt_to_snapshot(d, snap):
+    """四查 balance 收据与分布扫描必须吃同一份 owner 快照（发布闸 F-03 第二层交叉检查）。"""
+    # 与 P105/F-03 共用同一套 v3 深夹具适配，避免本调用链继续保留只换 sha 的浅副本。
+    from test_review_20260804_p105 import bind_balance_receipt_to_snapshot as bind_v3
+    bind_v3(Path(d), Path(snap))
+
+
 def add_distribution_initial(d):
     Path(d, "data").mkdir(exist_ok=True)
-    balances = {f"owner-{i:03d}": max(1, int(2_000_000 / (1.035 ** i))) for i in range(240)}
-    total = sum(balances.values())
+    # 分布快照必须与案根真实 replay 产物同源：这个案子的 replay_stats.json（mint=100）、
+    # balances_final.json（sum=100）、identity_gate（total=100）是 audit 链真跑 replay_pass1
+    # 得到的一整套自洽产物，G8 identity_gate 靠它们互证。分布闭合锚点走 replay 侧 mint_total，
+    # 所以直接用案内 balances_final.json 当 owner 快照，全案同一个 100——不再另造 240-owner
+    # 快照制造两套冲突的供给量。owner 少落 low_sample 是合法终态。
+    bf = json.loads(Path(d, "balances_final.json").read_text(encoding="utf-8"))
+    balances = bf if isinstance(bf, dict) else {r.get("owner", r.get("address")):
+                                                r.get("balance_raw", r.get("raw")) for r in bf}
+    total = sum(int(v) for v in balances.values())
     snap = Path(d, "data/holders_owners.json")
     snap.write_text(json.dumps(balances), encoding="utf-8")
+    bind_balance_receipt_to_snapshot(d, snap)
+    # B-7（批 D）：三账成员同步到本案真实 owner 世界（等值绑定后 0xabc 型编造成员必拦）
+    from test_audit_release_gate import align_ledgers_to_owner_snapshot
+    align_ledgers_to_owner_snapshot(Path(d), snap)
     wj(d, "candidate_screening.json", {"schema": "candidate-screening/v1",
                                          "auto_excluded_candidate": []})
-    wj(d, "supply_truth.json", {"verdict": "PASS", "exit_code": 0,
-                                  "total_supply_raw": str(total), "net_supply_raw": str(total)})
+    replay_stats = Path(d, "replay_stats.json")
+    preflight = json.loads(Path(d, "channels_preflight.json").read_text(encoding="utf-8"))
+    wj(d, "supply_truth.json", {
+        "schema": "supply-truth-receipt/v3",
+        "target": {"chain": "bsc", "token": preflight["token"], "as_of_block": 123},
+        "verdict": "PASS", "exit_code": 0, "chain": "bsc",
+        "onchain_total_supply": str(total), "replay_net": str(total),
+        "mint_total": str(total), "burn_total": "0",
+        "decision_rule": "primary_form1", "total_supply_raw": str(total),
+        "net_supply_raw": str(total),
+        "inputs": {"replay_stats": {
+            "path": replay_stats.name, "size": replay_stats.stat().st_size,
+            "sha256": sha(replay_stats),
+        }},
+    })
     wj(d, "data_map.json", {"files": [{"path": "data/holders_owners.json",
                                           "sha256": hashlib.sha256(snap.read_bytes()).hexdigest()}]})
+    # 案根 replay_stats.json 保持不动（mint=100 与本快照同源），闭合锚点走它。
     p = run_formal_script(DIST, ["--case-dir", d, "--stage", "initial"])
     assert p.returncode == 0, p.stdout + p.stderr
+
+
+def add_camp_series(d):
+    """P1-05 new-analysis fixture: bind state to a real sidecar-shaped series."""
+    root = Path(d)
+    balances = json.loads((root / "balances_final.json").read_text(encoding="utf-8"))
+    holder = next(iter(balances))
+    total = sum(int(value) for value in balances.values())
+    holder_pct = int(balances[holder]) / total * 100
+    camps = {"camps": {"大庄": [holder]}, "entities": {}}
+    wj(d, "camps.json", camps)
+    series = {"dates": ["2026-01-01"], "大庄": [holder_pct],
+              "散户": [100.0 - holder_pct]}
+    series_path = root / "data/camp_series.json"
+    series_path.write_text(json.dumps(series, ensure_ascii=False), encoding="utf-8")
+
+    lib_dir = str(Path(HERE).parent / "lib")
+    if lib_dir not in sys.path:
+        sys.path.insert(0, lib_dir)
+    from camp_series_provenance import series_to_state_form, write_series_sidecar
+    sidecar_path = write_series_sidecar(
+        series_path, producer="scripts/tests/test_a4_gate.py",
+        series_format="evm-dict", denominator="current_net_supply",
+        camps_spec_path=root / "camps.json",
+        final_balances_path=root / "balances_final.json",
+        inputs={"replay_stats": root / "replay_stats.json"},
+    )
+    sidecar = json.loads(sidecar_path.read_text(encoding="utf-8"))
+    state_path = root / "analysis-state.json"
+    state = json.loads(state_path.read_text(encoding="utf-8"))
+    state["camp_share_series"] = series_to_state_form(series, "evm-dict")
+    provenance = dict(state.get("provenance") or {})
+    provenance.update({
+        "series_binding": "producer-sidecar",
+        "camp_series_sidecar": {
+            "producer": sidecar["producer"],
+            "series_file": sidecar["series_file"],
+            "series_sha256": sidecar["series_sha256"],
+            "series_format": sidecar["series_format"],
+        },
+    })
+    state["provenance"] = provenance
+    state_path.write_text(json.dumps(state, ensure_ascii=False), encoding="utf-8")
+    identity_path = root / "identity_gate.json"
+    identity = json.loads(identity_path.read_text(encoding="utf-8"))
+    identity["state_sha256"] = sha(state_path)
+    identity_path.write_text(json.dumps(identity, ensure_ascii=False), encoding="utf-8")
 
 
 def finish_distribution_normal(d):
@@ -106,15 +289,22 @@ def finish_distribution_normal(d):
     p = run_formal_script(DIST, ["record-round", "--case-dir", d,
                                  "--scan", "dist_rounds/round_1/distribution_scan.json"])
     assert p.returncode == 0, p.stdout + p.stderr
+    # 分布终态可能是 NORMAL_SHAPE 或 low_sample（本案 owner 少落 low_sample）——
+    # A5 seal 对两者要求不同的强制披露句，按 final scan verdict 选对应句。
+    final_scan = json.loads(Path(d, "dist_rounds/round_1/distribution_scan.json").read_text(encoding="utf-8"))
+    sentence = ("形态统计因样本不足未做,以逐址集中度事实替代"
+                if final_scan.get("not_evaluable_reason") == "low_sample"
+                else "当前快照呈正常形态;这只表示本闸未检出结构性畸形,不等于没有庄。")
     report = Path(d, "report.md")
     report.write_text(report.read_text(encoding="utf-8")
-                      + "\n当前快照呈正常形态;这只表示本闸未检出结构性畸形,不等于没有庄。\n"
+                      + f"\n{sentence}\n"
                       + "\n![持仓分布](charts/final/holder_distribution_current.png)\n",
                       encoding="utf-8")
 
 
 def main():
     root = tempfile.mkdtemp(prefix="a4_gate_test_")
+    os.environ.setdefault("MPLCONFIGDIR", os.path.join(root, "matplotlib-cache"))
     d = os.path.join(root, "case")
     os.makedirs(d)
     report_path = build_case(Path(d), historical=False)
@@ -166,6 +356,10 @@ def main():
                    "--seal-files", "raw_transfers.jsonl"])
     check("Round4 P1-02 同族空文本失败分支", p.returncode == 2 and "空 text" in p.stderr)
     reg_path.write_text(original_reg, encoding="utf-8")
+    # register 已替换执行态权威表；重跑结构化复核及共享 receipt，保持真实 A4 顺序。
+    refresh_adversarial(Path(d))
+    from shared_release_receipt import create_bundle
+    create_bundle(Path(d))
 
     # 3. finalize 未 register（新目录）
     d3 = os.path.join(root, "case_noreg")
@@ -176,7 +370,7 @@ def main():
     # 准备终版结论文件
     with open(os.path.join(d, "findings.md"), "w") as f:
         f.write("# findings\n复核后终版结论\n")
-    state = {"chain": "bsc", "whale_groups": [
+    state = {"chain": "bsc", "token": {"chain": "bsc"}, "whale_groups": [
                  {"entity_id": "e1", "label": "实体1", "addresses": [ENTITY_ADDR]}],
              "provenance": {"schema_version": "2", "skill_commit": "test",
                             "data_sources": ["fixture"]}}
@@ -252,21 +446,47 @@ def main():
     # P1-05：全新分析走共享门禁，不伪造净室资产；seal 轨道不可互换。
     new_d = os.path.join(root, "case_new")
     shutil.copytree(d, new_d)
+    rebind_case_inputs(d, new_d)
     for name in ("audit_input_manifest.json", "claim_registry.json", "reproduce_audit.py",
                  "reproduce_receipt.json", "reproduce_output.json", "a5_report_seal.json"):
         Path(new_d, name).unlink(missing_ok=True)
     add_distribution_initial(new_d)
+    add_camp_series(new_d)
     p = run(GATE, ["finalize", "--case-dir", new_d,
                    "--seal-files", "findings.md,analysis-state.json",
                    "--verdicts-file", os.path.join(new_d, "v_ok.json"),
                    "--workflow-type", "new-analysis"])
     new_seal = os.path.join(new_d, "a4_seal.json")
     finish_distribution_normal(new_d)
+    # F-C5（批 C 消化轮）：figure2 对账收据成为 new-analysis 必经资产——
+    # 由真实生产者（figures_from_facts check）产出，空 whale_series 合法 PASS
+    Path(new_d, "whale_series.json").write_text("[]", encoding="utf-8")
+    p_chk = run(os.path.join(HERE, "..", "report", "figures_from_facts.py"),
+                ["check", "--facts", os.path.join(new_d, "facts.json"),
+                 "--series", os.path.join(new_d, "whale_series.json")])
+    assert p_chk.returncode == 0 and os.path.isfile(
+        os.path.join(new_d, "figure2_check_receipt.json")), \
+        f"figure2 收据生成失败: {p_chk.stdout} {p_chk.stderr}"
+    fig1 = os.path.join(new_d, "charts", "final", "fig1.png")
+    p_fig1 = run(os.path.join(HERE, "..", "report", "figures_from_facts.py"),
+                 ["fig1", "--state", os.path.join(new_d, "analysis-state.json"),
+                  "--out", fig1])
+    assert p_fig1.returncode == 0 and os.path.isfile(fig1) \
+        and os.path.isfile(os.path.join(new_d, "fig1_legend_receipt.json")), \
+        f"fig1/legend 收据生成失败: {p_fig1.stdout} {p_fig1.stderr}"
+    with Path(new_d, "report.md").open("a", encoding="utf-8") as fh:
+        fh.write("\n![阵营演变](charts/final/fig1.png)\n")
+    a5_seal = os.path.join(new_d, "a5_report_seal.json")
+    p_a5 = run_formal_script(A5, ["--case-dir", new_d,
+                                  "--report", os.path.join(new_d, "report.md"),
+                                  "--a4-seal", new_seal, "--out", a5_seal])
+    assert p_a5.returncode == 0 and json.load(open(a5_seal))["schema"] == "a5-report-seal/v3", \
+        f"A5 v3 seal 生成失败: {p_a5.stdout} {p_a5.stderr}"
     new_out = os.path.join(new_d, "new.html")
     p_build = run(BUILD, ["--mode", "analysis-new", "--md", os.path.join(new_d, "report.md"),
                           "--out", new_out, "--facts", os.path.join(new_d, "facts.json"),
                           "--state", os.path.join(new_d, "analysis-state.json"),
-                          "--a4-seal", new_seal])
+                          "--a4-seal", new_seal, "--a5-seal", a5_seal])
     check("P1-05 全新分析无净室资产仍过必经共享门禁",
           p.returncode == 0 and p_build.returncode == 0 and os.path.isfile(new_out),
           p.stdout + p.stderr + p_build.stdout + p_build.stderr)

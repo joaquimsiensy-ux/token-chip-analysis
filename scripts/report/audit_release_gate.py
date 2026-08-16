@@ -18,7 +18,10 @@ from pathlib import Path
 LIB = Path(__file__).resolve().parents[1] / "lib"
 sys.path.insert(0, str(LIB))
 from chain_registry import (formal_ready, known_chains_for_release,
-                            missing_formal_capabilities, release_tier_for, resolve_alias)
+                            missing_formal_capabilities, release_tier_for,
+                            resolve_alias, evm_family)
+from adversarial_review_runner import AGGREGATE_SCHEMA, V4_RERUN_HINT
+from case_paths import safe_case_file
 
 
 SHARED_REQUIRED = (
@@ -41,6 +44,10 @@ NEW_ANALYSIS_REQUIRED = (
     "distribution_scan.json",
     "distribution_rounds.json",
     "a5_report_seal.json",
+    "fig1_legend_receipt.json",
+    # F-C5：图 2 末点对账留痕收据（figures_from_facts check 每跑必写）——
+    # 发布闸复验 mode==formal、tol_pp==默认、verdict==PASS
+    "figure2_check_receipt.json",
 )
 LEGACY_READONLY_RECEIPT = "legacy_readonly_receipt.json"
 REQUIRED_BY_PROFILE = {
@@ -73,39 +80,262 @@ def formal_chain_error(value):
     return f"chain={chain or '<missing>'} 未进入正式支持矩阵，不得编译正式 analysis"
 
 
-def check_formal_case_chain(data, errors):
-    """Bind formal release to one chain declared by both accounting and reconciliation."""
-    claims = []
+TARGET_MISMATCH_PREFIX = "正式发布跨分区 target 不一致"
+
+
+def _target_error(errors, detail):
+    errors.append(f"{TARGET_MISMATCH_PREFIX}: {detail}")
+
+
+def _load_present_target_json(case_dir, data, name, errors):
+    """Mount an optional target claimant strictly when it exists on disk."""
+    path = case_dir / name
+    if not (path.exists() or path.is_symlink()):
+        return None
+    try:
+        safe_path = safe_case_file(case_dir, name)
+    except ValueError as exc:
+        _target_error(errors, f"{name} 在场但不是可读案内常规文件: {exc}")
+        return {}
+    value = data.get(name) if name in data else load_json(safe_path, errors)
+    data[name] = value
+    if not isinstance(value, dict):
+        _target_error(errors, f"{name} 在场但 JSON 顶层不是对象")
+        return {}
+    return value
+
+
+def _target_object(owner, source, errors):
+    if not isinstance(owner, dict):
+        return None
+    target = owner.get("target")
+    if not isinstance(target, dict):
+        _target_error(errors, f"{source}.target 缺失或不是对象，无法证明 target 一致")
+        return None
+    return target
+
+
+def _claim_chain(claims, source, value, errors):
+    if not isinstance(value, str) or not value.strip():
+        _target_error(errors, f"{source}=<missing>，跨分区 chain 声明缺失")
+        return None
+    normalized = normalize_chain(value)
+    if not normalized:
+        _target_error(errors, f"{source}={value!r} 无法归一，跨分区 chain 声明缺失")
+        return None
+    claims.append((source, value, normalized))
+    return normalized
+
+
+def _claim_token(claims, source, value, chain, errors):
+    if not isinstance(value, str) or not value.strip():
+        _target_error(errors, f"{source}=<missing>，跨分区 token 声明缺失")
+        return
+    normalized = value.strip().lower() if chain in evm_family() else value.strip()
+    claims.append((source, value, normalized))
+
+
+def _claim_block(claims, source, value, errors):
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        _target_error(errors, f"{source}={value!r}，跨分区 as_of_block 缺失或非法")
+        return
+    claims.append((source, value, value))
+
+
+def _check_unique_target_claims(kind, claims, errors):
+    if len({normalized for _, _, normalized in claims}) <= 1:
+        return True
+    detail = ", ".join(f"{source}={raw!r}" for source, raw, _ in claims)
+    _target_error(errors, f"{kind} 声明矛盾: {detail}")
+    return False
+
+
+def _identity_receipt_target(case_dir, identity, errors):
+    """Rebind identity-holder-snapshot/v2 bytes before exporting token/block."""
+    binding = identity.get("snapshot_binding") if isinstance(identity, dict) else None
+    if not isinstance(binding, dict):
+        _target_error(errors, "identity_gate.json.snapshot_binding 缺失，identity target 无法导出")
+        return None
+    receipt_file = binding.get("receipt_file")
+    try:
+        receipt_path = safe_case_file(case_dir, receipt_file)
+    except ValueError as exc:
+        _target_error(errors,
+                      f"identity_gate.json.snapshot_binding.receipt_file="
+                      f"{receipt_file!r} 无法定位 identity receipt: {exc}")
+        return None
+    expected_sha = binding.get("receipt_sha256")
+    actual_sha = sha256_file(receipt_path)
+    if not isinstance(expected_sha, str) or expected_sha.lower() != actual_sha:
+        _target_error(errors,
+                      f"identity_gate.json receipt_sha256={expected_sha!r} 与 "
+                      f"{receipt_file}.sha256={actual_sha!r} 漂移")
+        return None
+    receipt = load_json(receipt_path, errors)
+    if not isinstance(receipt, dict):
+        _target_error(errors, f"{receipt_file} 在场但 JSON 顶层不是对象")
+        return None
+    if receipt.get("schema") != "identity-holder-snapshot/v2":
+        _target_error(errors,
+                      f"{receipt_file}.schema={receipt.get('schema')!r} 与 "
+                      "identity-holder-snapshot/v2 不一致")
+        return None
+    binding_pairs = (
+        ("receipt_schema", "schema"),
+        ("adapter", "adapter"),
+        ("as_of_block", "as_of_block"),
+    )
+    drift = [
+        f"snapshot_binding.{bound_key}={binding.get(bound_key)!r} "
+        f"{receipt_file}.{receipt_key}={receipt.get(receipt_key)!r}"
+        for bound_key, receipt_key in binding_pairs
+        if binding.get(bound_key) != receipt.get(receipt_key)
+    ]
+    if drift:
+        _target_error(errors, "identity receipt binding 漂移: " + ", ".join(drift))
+        return None
+    token = receipt.get("token")
+    block = receipt.get("as_of_block")
+    if not isinstance(token, str) or not token.strip():
+        _target_error(errors, f"{receipt_file}.token=<missing>，identity target 无法导出")
+        return None
+    if isinstance(block, bool) or not isinstance(block, int) or block < 0:
+        _target_error(errors,
+                      f"{receipt_file}.as_of_block={block!r}，identity target 无法导出")
+        return None
+    return receipt_file, token, block
+
+
+def check_formal_case_chain(case_dir, data, errors):
+    """Bind every present conclusion/evidence partition to one formal target."""
+    for name in ("analysis-state.json", "identity_gate.json",
+                 "a4_seal.json", "a5_report_seal.json"):
+        _load_present_target_json(case_dir, data, name, errors)
+
+    chain_claims = []
+    source_chains = {}
+
+    state = data.get("analysis-state.json")
+    if isinstance(state, dict):
+        state_chain = _claim_chain(
+            chain_claims, "analysis-state.json.chain", state.get("chain"), errors)
+        source_chains["state"] = state_chain
+        token_obj = state.get("token")
+        if not isinstance(token_obj, dict):
+            _target_error(errors,
+                          "analysis-state.json.token 缺失或不是对象，token.chain 无法收集")
+        else:
+            token_chain = _claim_chain(
+                chain_claims, "analysis-state.json.token.chain",
+                token_obj.get("chain"), errors)
+            source_chains["state"] = state_chain or token_chain
+
+    identity = data.get("identity_gate.json")
+    if isinstance(identity, dict):
+        source_chains["identity"] = _claim_chain(
+            chain_claims, "identity_gate.json.chain", identity.get("chain"), errors)
+
+    for key, name in (("a4", "a4_seal.json"), ("a5", "a5_report_seal.json")):
+        obj = data.get(name)
+        if isinstance(obj, dict):
+            source_chains[key] = _claim_chain(
+                chain_claims, f"{name}.chain", obj.get("chain"), errors)
+
     accounting = data.get("accounting_mode.json")
     if isinstance(accounting, dict):
-        claims.append(("accounting_mode.json", normalize_chain(accounting.get("chain"))))
+        source_chains["accounting"] = _claim_chain(
+            chain_claims, "accounting_mode.json.chain", accounting.get("chain"), errors)
+
     reconciliation = data.get("reconciliation_report.json")
-    if isinstance(reconciliation, dict):
-        target = reconciliation.get("target") or {}
-        claims.append(("reconciliation_report.json", normalize_chain(target.get("chain"))))
-    missing = [name for name, chain in claims if not chain]
-    if missing:
-        errors.append("正式发布链声明缺失: " + ", ".join(missing))
+    reconciliation_target = _target_object(
+        reconciliation, "reconciliation_report.json", errors)
+    if reconciliation_target is not None:
+        source_chains["reconciliation"] = _claim_chain(
+            chain_claims, "reconciliation_report.json.target.chain",
+            reconciliation_target.get("chain"), errors)
+
+    shared = data.get("shared_release_receipt.json")
+    shared_target = _target_object(shared, "shared_release_receipt.json", errors)
+    if shared_target is not None:
+        source_chains["shared"] = _claim_chain(
+            chain_claims, "shared_release_receipt.json.target.chain",
+            shared_target.get("chain"), errors)
+
+    chain_ok = _check_unique_target_claims("chain", chain_claims, errors)
+    unique_chains = {normalized for _, _, normalized in chain_claims}
+    # A mixed target can still contain an independently forbidden exploration
+    # chain.  Preserve that formal-support diagnosis alongside the equality
+    # failure so callers do not lose the stricter release-tier reason.
+    for claimed_chain in sorted(unique_chains):
+        reason = formal_chain_error(claimed_chain)
+        if reason and reason not in errors:
+            errors.append(reason)
+
+    a4_present = "a4_seal.json" in data
+    identity_present = "identity_gate.json" in data
+    if a4_present and not identity_present:
+        _target_error(errors,
+                      "a4_seal.json 在场但 identity_gate.json 缺失，"
+                      "结论与证据 target 无法证明一致")
+
+    token_claims = []
+    block_claims = []
+    if isinstance(state, dict):
+        state_token = state.get("token")
+        if isinstance(state_token, dict):
+            # State 的 token 值字段遵循“在场即比”：存量 state 可以只有
+            # token.chain，但 address/mint 任一出现就必须与证据分区唯一。
+            # 两字段并存时分别入 claims，禁止用 or 折叠掉内部矛盾。
+            for field in ("address", "mint"):
+                if field in state_token:
+                    _claim_token(
+                        token_claims,
+                        f"analysis-state.json.token.{field}",
+                        state_token.get(field), source_chains.get("state"), errors)
+    if isinstance(accounting, dict):
+        accounting_token = (accounting.get("token") if accounting.get("token") is not None
+                            else accounting.get("mint"))
+        _claim_token(token_claims, "accounting_mode.json.token|mint",
+                     accounting_token, source_chains.get("accounting"), errors)
+        _claim_block(block_claims, "accounting_mode.json.as_of_block",
+                     accounting.get("as_of_block"), errors)
+    if reconciliation_target is not None:
+        _claim_token(token_claims, "reconciliation_report.json.target.token",
+                     reconciliation_target.get("token"),
+                     source_chains.get("reconciliation"), errors)
+        _claim_block(block_claims, "reconciliation_report.json.target.as_of_block",
+                     reconciliation_target.get("as_of_block"), errors)
+    if shared_target is not None:
+        _claim_token(token_claims, "shared_release_receipt.json.target.token",
+                     shared_target.get("token"), source_chains.get("shared"), errors)
+        _claim_block(block_claims, "shared_release_receipt.json.target.as_of_block",
+                     shared_target.get("as_of_block"), errors)
+
+    if isinstance(identity, dict):
+        receipt_target = _identity_receipt_target(case_dir, identity, errors)
+        if receipt_target is not None:
+            receipt_file, token, block = receipt_target
+            _claim_token(token_claims, f"{receipt_file}.token", token,
+                         source_chains.get("identity"), errors)
+            _claim_block(block_claims, f"{receipt_file}.as_of_block", block, errors)
+
+    token_ok = _check_unique_target_claims("token", token_claims, errors)
+    block_ok = _check_unique_target_claims("as_of_block", block_claims, errors)
+    if not (chain_ok and token_ok and block_ok):
         return None
-    unique = {chain for _, chain in claims}
-    if len(unique) != 1:
-        errors.append("正式发布链声明不一致: "
-                      + ", ".join(f"{name}={chain}" for name, chain in claims))
+    chain = next(iter(unique_chains), "")
+    if not chain:
         return None
-    chain = next(iter(unique), "")
     reason = formal_chain_error(chain)
-    if reason:
+    if reason and reason not in errors:
         errors.append(reason)
         return None
     return chain
 
 
 def load_json(path: Path, errors: list[str]):
-    try:
-        return json.loads(path.read_text(encoding="utf-8"))
-    except Exception as exc:
-        errors.append(f"JSON无法读取 {path.name}: {exc}")
-        return {}
+    """All release JSON mounts share the strict non-finite/depth policy loader."""
+    return load_adversarial_json(path, errors)
 
 
 def status_pass(value, extra=frozenset()) -> bool:
@@ -179,20 +409,10 @@ def safe_case_path(case_dir: Path, rel: str) -> Path | None:
 
 
 def regular_case_path(case_dir: Path, rel: str) -> Path | None:
-    """Return a contained regular file and reject symlinks in every path component."""
-    rel_path = Path(rel)
-    if rel_path.is_absolute() or not rel_path.parts \
-            or any(part in {"", ".", ".."} for part in rel_path.parts):
-        return None
-    lexical = case_dir
+    """Compatibility wrapper around the shared regular-file containment helper."""
     try:
-        for part in rel_path.parts:
-            lexical = lexical / part
-            if lexical.is_symlink():
-                return None
-        resolved = safe_case_path(case_dir, rel)
-        return resolved if resolved is not None and resolved.is_file() else None
-    except OSError:
+        return safe_case_file(case_dir, rel)
+    except ValueError:
         return None
 
 
@@ -234,14 +454,13 @@ def check_manifest(case_dir: Path, d: dict, errors: list[str]):
         errors.append("late_additions 必须逐项记录 path 与 added_at")
 
 
-def check_accounting(d: dict, errors: list[str]):
-    if d.get("schema") != "accounting-gate/v1" or d.get("exit_code") != 0 \
-            or not isinstance(d.get("checks"), dict) or not d.get("checks"):
-        errors.append("记账模型缺生产 gate schema/exit/checks receipt")
-        return
-    verdict = d.get("status", d.get("verdict", d.get("mode")))
-    if not status_pass(verdict, ACCOUNTING_EXTRA):
-        errors.append(f"记账模型未放行: {verdict!r}")
+def check_accounting(case_dir: Path, d: dict, errors: list[str]):
+    """Use the same chain-aware accounting validator as shared and handoff."""
+    try:
+        from shared_release_receipt import validate_accounting_receipt
+        validate_accounting_receipt(case_dir, accounting=d)
+    except Exception as exc:
+        errors.append(f"记账模型公共 validator 未通过: {exc}")
 
 
 def check_reconciliation(d: dict, errors: list[str]):
@@ -318,7 +537,98 @@ def raw_int(value, label, errors):
     return 0 if n is None else n
 
 
-def check_three_ledgers(case_dir: Path, data: dict, errors: list[str]):
+def _recon_owner_snapshot(case_dir: Path, data: dict, chain, errors: list[str]):
+    """B-7：取四查真正核过的那份 owner 余额映射与冻结时点，作三账 balance_source 的对账源。
+
+    EVM＝四查 balance 收据（verify_recon）inputs.balances 实物；Solana＝observation
+    bundle 的 holder_outputs.owners 实物（B-1 起有文件级三验与定位）。返回
+    (owners{addr:int}|None, as_of_block|None)；解析失败已 append error，返回 (None, None)
+    ——fail-loud，不静默降级为"跳过比对"。
+    """
+    recon = data.get("reconciliation_report.json")
+    if not isinstance(recon, dict):
+        errors.append("三账 balance_source 对账源缺失: 无 reconciliation_report.json")
+        return None, None
+    target = recon.get("target") or {}
+    as_of = target.get("as_of_block")
+    try:
+        from shared_release_receipt import chain_family
+        family = chain_family(chain)
+    except Exception as exc:
+        errors.append(f"三账 balance_source 对账源: 无法判定链族 {chain!r}: {exc}")
+        return None, as_of
+    checks = recon.get("checks") if isinstance(recon, dict) else None
+    key = "balance" if family == "evm" else "supply"
+    item = checks.get(key) if isinstance(checks, dict) else None
+    ref = item.get("receipt") if isinstance(item, dict) else None
+    rel = ref.get("path") if isinstance(ref, dict) else None
+    path = regular_case_path(case_dir, rel) if isinstance(rel, str) and rel else None
+    if path is None:
+        errors.append(f"三账 balance_source 对账源: 找不到四查 {key} 收据文件")
+        return None, as_of
+    receipt = load_json(path, errors)
+    if family == "evm":
+        bal_ref = (receipt.get("inputs") or {}).get("balances") if isinstance(receipt, dict) else None
+        rel_bal = bal_ref.get("path") if isinstance(bal_ref, dict) else None
+        shown = Path(str(rel_bal or ""))
+        bal_path = None
+        if str(shown):
+            if shown.is_absolute():
+                # 收据可能记绝对路径（存量形态）：先证明它落在案内，再按相对路径走
+                # 同一条防符号链接通道。
+                try:
+                    shown = shown.resolve().relative_to(case_dir.resolve())
+                except (OSError, ValueError):
+                    shown = None
+            if shown is not None:
+                bal_path = regular_case_path(case_dir, shown.as_posix())
+        if bal_path is None:
+            errors.append("三账 balance_source 对账源: 四查 balance 收据 inputs.balances "
+                          "实物不在案内")
+            return None, as_of
+        raw_map = load_json(bal_path, errors)
+        if not isinstance(raw_map, dict):
+            return None, as_of
+        if isinstance(raw_map.get("balances"), dict):
+            raw_map = raw_map["balances"]
+        try:
+            return ({str(k).lower(): int(str(v)) for k, v in raw_map.items()}, as_of)
+        except (TypeError, ValueError):
+            errors.append("三账 balance_source 对账源: 四查 balances 实物不是 addr->raw 映射")
+            return None, as_of
+    # Solana：从 supply 收据（observation bundle）拿 holder_outputs.owners 实物
+    try:
+        import sys as _sys
+        lib = str(Path(__file__).resolve().parents[1] / "lib")
+        if lib not in _sys.path:
+            _sys.path.insert(0, lib)
+        from solana_observation import validate_observation_bundle
+        bundle = validate_observation_bundle(receipt, bundle_path=path)
+    except Exception as exc:
+        errors.append(f"三账 balance_source 对账源: observation bundle 不可验: {exc}")
+        return None, as_of
+    ref = (bundle.get("holder_outputs") or {}).get("owners") or {}
+    name = Path(str(ref.get("path") or "")).name
+    gpa_ref = (bundle.get("inputs") or {}).get("gpa_rpc") or {}
+    search = []
+    if gpa_ref.get("path"):
+        gp = Path(str(gpa_ref["path"]))
+        search.append((gp if gp.is_absolute() else path.parent / gp).parent)
+    search += [path.parent, path.parent / "data"]
+    for directory in search:
+        candidate = directory / name
+        if candidate.is_file() and not candidate.is_symlink():
+            owners = load_json(candidate, errors)
+            if isinstance(owners, dict):
+                try:
+                    return ({str(k): int(str(v)) for k, v in owners.items()}, as_of)
+                except (TypeError, ValueError):
+                    break
+    errors.append("三账 balance_source 对账源: holders_owners 实物不可用")
+    return None, as_of
+
+
+def check_three_ledgers(case_dir: Path, data: dict, errors: list[str], chain=None):
     """Recompute membership -> position -> economic control closure from details."""
     md = data.get("membership_ledger.json", {})
     pd = data.get("position_ledger.json", {})
@@ -328,6 +638,11 @@ def check_three_ledgers(case_dir: Path, data: dict, errors: list[str]):
     economics = ed.get("entries", ed.get("entities", []))
     if not all(isinstance(x, list) and x for x in (members, positions, economics)):
         return
+
+    # B-7：三账 balance_source 从此不再游离——与四查核过的 owner 快照等值绑定。
+    recon_owners, recon_as_of = (None, None)
+    if chain:
+        recon_owners, recon_as_of = _recon_owner_snapshot(case_dir, data, chain, errors)
 
     member_map = {}
     snapshot_cache = {}
@@ -364,6 +679,11 @@ def check_three_ledgers(case_dir: Path, data: dict, errors: list[str]):
             errors.append(f"{label}.balance_source entries 非数组")
             snapshot_cache[cache_key] = None
             return None
+        # B-7：时点绑定——三账余额快照必须与四查同一冻结时点，不得拿任意历史块的快照
+        # 冒充 as_of 余额（此前 as_of_block 只要求"有"，与四查 target 无任何绑定）。
+        if recon_as_of is not None and as_of_block != recon_as_of:
+            errors.append(f"{label}.balance_source as_of_block={as_of_block} 与四查冻结时点 "
+                          f"{recon_as_of} 不一致（三账快照必须核在同一冻结块）")
         balances = {}
         for j, item in enumerate(rows):
             if not isinstance(item, dict) or not str(item.get("address", "")).strip():
@@ -376,6 +696,17 @@ def check_three_ledgers(case_dir: Path, data: dict, errors: list[str]):
             balances[key] = raw_int(item.get("balance_raw"),
                                     f"{label}.balance_source.entries[{j}].balance_raw",
                                     errors)
+        # B-7：数值绑定——快照每个条目的余额必须与四查核过的 owner 快照等值
+        # （零余额条目要求四查快照确实没有该址；非零条目要求在场且相等）。
+        if recon_owners is not None:
+            for key, value in balances.items():
+                if value == 0:
+                    if key in recon_owners:
+                        errors.append(f"{label}.balance_source 声明 {key} 零余额，"
+                                      "但四查 owner 快照里它非零")
+                elif recon_owners.get(key) != value:
+                    errors.append(f"{label}.balance_source 地址 {key} 余额 {value} 与四查 "
+                                  f"owner 快照 {recon_owners.get(key)} 不等值")
         snapshot_cache[cache_key] = balances
         return balances
 
@@ -639,7 +970,7 @@ def check_reproduce_receipt(case_dir: Path, rel, cid, errors: list[str]):
     if output.get("size") != out_path.stat().st_size or output.get("sha256") != sha256_file(out_path):
         errors.append(f"命题 {cid} reproduce 输出大小/哈希漂移")
     try:
-        out_json = json.loads(out_path.read_text(encoding="utf-8"))
+        out_json = load_json(out_path, errors)
         summary = out_json.get("summary") if isinstance(out_json, dict) and "summary" in out_json \
             else out_json
         if receipt.get("summary_sha256") != canonical_json_sha(summary):
@@ -703,25 +1034,336 @@ def check_claims(case_dir: Path, d: dict, report: Path | None, errors: list[str]
     return claim_types
 
 
-def check_adversarial(d: dict, errors: list[str]):
-    if d.get("schema") != "adversarial-review/v2" or not isinstance(d.get("target"), dict):
-        errors.append("对抗复核缺 v2 target/runner receipts")
+def load_adversarial_json(path: Path, errors: list[str]):
+    def reject_constant(value):
+        import shared_release_receipt
+        return shared_release_receipt._reject_constant(value)
+
+    try:
+        return json.loads(
+            path.read_text(encoding="utf-8"),
+            parse_constant=reject_constant)
+    except Exception as exc:
+        errors.append(f"JSON无法读取 {path.name}: {exc}")
+        return {}
+
+
+def check_adversarial(case_dir: Path, d: dict, errors: list[str], expected_target=None):
+    """Use the same v4 byte-level validator as the shared receipt consumer."""
+    if not isinstance(d, dict):
+        errors.append(f"对抗复核 v4 校验失败: schema 非法；{V4_RERUN_HINT}")
         return
-    reviews = d.get("reviews")
-    if not isinstance(reviews, list):
-        errors.append("对抗复核缺 reviews 数组")
+    schema = d.get("schema")
+    if schema != AGGREGATE_SCHEMA:
+        errors.append(f"对抗复核 v4 校验失败: {V4_RERUN_HINT}"
+                      if schema in {"adversarial-review/v2", "adversarial-review/v3"}
+                      else f"对抗复核 v4 校验失败: schema 非法；{V4_RERUN_HINT}")
         return
-    roles = {str(r.get("role", "")).lower() for r in reviews if isinstance(r, dict)}
-    if not any("completeness" in x for x in roles):
-        errors.append("对抗复核缺完整性批评角色")
-    if not any(("attribution" in x or "entity" in x) for x in roles):
-        errors.append("对抗复核缺实体归因怀疑者")
-    blockers = d.get("blocking_findings", [])
-    unresolved = [x for x in blockers if not isinstance(x, dict) or not x.get("resolved")]
-    if unresolved:
-        errors.append(f"对抗复核仍有 {len(unresolved)} 个未关闭发布否决项")
-    if not status_pass(d.get("release_decision")):
-        errors.append("对抗复核 release_decision 未放行")
+    try:
+        import shared_release_receipt
+        shared_release_receipt.validate_adversarial_review(case_dir, expected_target)
+    except Exception as exc:
+        errors.append(f"对抗复核 v4 校验失败: {exc}")
+
+
+# F-B7：链族→四查快照绑定口径的分派表提成模块常量，取值前做成员检查，
+# 绝不裸下标（将来加第三个链族时 KeyError 会逃出闸函数、连 --json-out 都不落盘）。
+SNAPSHOT_BINDING_BY_FAMILY = {
+    "evm": {"check_key": "balance", "label": "四查 balance 收据的 inputs.balances",
+            "reader": lambda r: ((r.get("inputs") or {}).get("balances") or {}).get("sha256")},
+    "solana": {"check_key": "supply", "label": "observation bundle 的 holder_outputs.owners",
+               "reader": lambda r: ((r.get("holder_outputs") or {}).get("owners") or {}).get("sha256")},
+}
+
+
+def _scan_snapshot_sha(case_dir: Path, rel: str, errors: list[str], label: str):
+    """读案内某份 distribution scan 的 input_binding.snapshot.sha256。"""
+    path = regular_case_path(case_dir, rel) if isinstance(rel, str) and rel else None
+    if path is None:
+        errors.append(f"分布快照未绑定对账 owner 快照: 找不到{label} {rel!r}")
+        return None
+    scan = load_json(path, errors)
+    binding = scan.get("input_binding") if isinstance(scan, dict) else None
+    snapshot = binding.get("snapshot") if isinstance(binding, dict) else None
+    sha = snapshot.get("sha256") if isinstance(snapshot, dict) else None
+    if not isinstance(sha, str) or not sha:
+        errors.append(f"分布快照未绑定对账 owner 快照: {label}缺 input_binding.snapshot.sha256")
+        return None
+    return sha.lower()
+
+
+def check_distribution_snapshot_binding(case_dir: Path, data: dict, chain, errors: list[str]):
+    """分布扫描用的 owner 快照，必须就是四查真正核过的那一份——initial 与终态 final 两份都绑。
+
+    只对 sha256，不对 path：Solana 的 observation bundle 里记的是文件名（basename），
+    EVM 的四查收据里记的是喂给 verify_recon 的绝对路径，两边路径形态天生不同，
+    比 path 只会误伤。data_map 只能证明"这份文件被登记过"，登记多份就绕过去了；
+    真正堵住"同值换仓"（总和对得上、owner 分配是编的）只能靠这一条哈希等值。
+
+    F-B1：进报告的是 dist_rounds/round_N 的终态 final scan，不是 initial——两份都要落在
+    同一个四查 sha 上。只在 new-analysis profile 跑（发布闸路径，不进 validate_scan）：
+    存量终态案走 independent-audit，不会被追溯卡死。
+    """
+    scan = data.get("distribution_scan.json")
+    binding = scan.get("input_binding") if isinstance(scan, dict) else None
+    snapshot = binding.get("snapshot") if isinstance(binding, dict) else None
+    snapshot_sha = snapshot.get("sha256") if isinstance(snapshot, dict) else None
+    if not isinstance(snapshot_sha, str) or not snapshot_sha:
+        errors.append("分布快照未绑定对账 owner 快照: initial distribution_scan 缺 "
+                      "input_binding.snapshot.sha256")
+        return
+    snapshot_sha = snapshot_sha.lower()
+    try:
+        from shared_release_receipt import chain_family
+        family = chain_family(chain)
+    except Exception as exc:
+        errors.append(f"分布快照未绑定对账 owner 快照: 无法判定链族 {chain!r}: {exc}")
+        return
+    if family not in SNAPSHOT_BINDING_BY_FAMILY:
+        errors.append(f"分布快照未绑定对账 owner 快照: 未登记链族 {family!r} 的快照绑定口径")
+        return
+    spec = SNAPSHOT_BINDING_BY_FAMILY[family]
+    key, label, reader = spec["check_key"], spec["label"], spec["reader"]
+    recon = data.get("reconciliation_report.json")
+    checks = recon.get("checks") if isinstance(recon, dict) else None
+    item = checks.get(key) if isinstance(checks, dict) else None
+    ref = item.get("receipt") if isinstance(item, dict) else None
+    rel = ref.get("path") if isinstance(ref, dict) else None
+    path = regular_case_path(case_dir, rel) if isinstance(rel, str) and rel else None
+    if path is None:
+        errors.append(f"分布快照未绑定对账 owner 快照: 找不到四查 {key} 收据文件")
+        return
+    receipt = load_json(path, errors)
+    bound = reader(receipt) if isinstance(receipt, dict) else None
+    if not isinstance(bound, str) or not bound:
+        errors.append(f"分布快照未绑定对账 owner 快照: {label} 缺 sha256")
+        return
+    bound = bound.lower()
+    if bound != snapshot_sha:
+        errors.append(f"分布快照未绑定对账 owner 快照: initial distribution_scan 的快照 sha256 "
+                      f"与{label}不一致（同值换仓也逃不掉）")
+    # F-B1：终态 final scan（进报告/图/A5 的那份）也必须落在同一个四查 sha 上。
+    rounds = data.get("distribution_rounds.json")
+    terminal = rounds.get("terminal") if isinstance(rounds, dict) else None
+    final_rel = terminal.get("final_scan_path") if isinstance(terminal, dict) else None
+    if not final_rel:
+        errors.append("分布快照未绑定对账 owner 快照: distribution_rounds 缺 terminal.final_scan_path")
+        return
+    final_sha = _scan_snapshot_sha(case_dir, final_rel, errors, "终态 final scan")
+    if final_sha is None:
+        return
+    if final_sha != bound:
+        errors.append(f"分布快照未绑定对账 owner 快照: 终态 final scan 的快照 sha256 "
+                      f"与{label}不一致（final 轮换仓/抹平快照逃不掉）")
+
+
+FIGURE2_RECEIPT_SCHEMA = "figure2-check-receipt/v1"
+FIGURE2_DEFAULT_TOL_PP = 0.05
+
+
+def _figure2_input_check(case_dir: Path, ref, label: str, errors: list[str]):
+    """N-C1：收据引用的输入实物**无条件**三段验——收据宣称对账过就必须能验：
+    basename 在案根找不到=拒（不许条件式跳过）、符号链接=拒、sha 不符=拒。"""
+    ref = ref or {}
+    name = Path(str(ref.get("path") or "")).name
+    if not name:
+        errors.append(f"figure2 收据缺 {label} 绑定（path/sha256）")
+        return
+    cand = case_dir / name
+    if cand.is_symlink():
+        errors.append(f"figure2 收据绑定的 {label}（{name}）是符号链接，拒收")
+        return
+    if not cand.is_file():
+        errors.append(f"figure2 收据绑定的 {label}（{name}）不在案根——"
+                      "收据宣称对账过的输入必须随案可验")
+        return
+    actual = hashlib.sha256(cand.read_bytes()).hexdigest()
+    if actual != str(ref.get("sha256", "")).lower():
+        errors.append(f"figure2 收据绑定的 {label}（{name}）sha256 与案内实物"
+                      "不一致——收据不是对当前案内文件跑出来的")
+
+
+def check_figure2_receipt(case_dir: Path, d: dict, errors: list[str]):
+    """F-C5：图 2 末点对账收据复验（new-analysis 必经）。
+
+    figures_from_facts check 每次运行（含 exploration）都落收据；发布闸只放行
+    formal＋默认容差＋PASS——exploration 放宽的对账在这里现形。
+    N-C1（消化轮 2）：series 与 facts 两个输入实物**无条件**验（轮 1 的 series
+    条件式验证＋facts 不验被盲审"纯手写收据"攻击穿透——path 写个不存在的名字
+    就整段跳过）。
+    """
+    if d.get("schema") != FIGURE2_RECEIPT_SCHEMA:
+        errors.append(f"figure2 收据 schema 必须是 {FIGURE2_RECEIPT_SCHEMA}")
+        return
+    if d.get("mode") != "formal":
+        errors.append(f"figure2 对账收据 mode={d.get('mode')!r}——exploration "
+                      "运行的产物不得进正式发布")
+    if d.get("tol_pp") != FIGURE2_DEFAULT_TOL_PP:
+        errors.append(f"figure2 对账收据 tol_pp={d.get('tol_pp')!r} ≠ 默认 "
+                      f"{FIGURE2_DEFAULT_TOL_PP}（判定翻转参数不得放宽）")
+    if d.get("verdict") != "PASS":
+        errors.append(f"figure2 对账收据 verdict={d.get('verdict')!r} 非 PASS")
+    _figure2_input_check(case_dir, d.get("series"), "series", errors)
+    _figure2_input_check(case_dir, d.get("facts"), "facts", errors)
+
+
+def check_figure1_legend_receipt(case_dir: Path, d: dict, state: dict,
+                                 errors: list[str]):
+    """F-01 trust-root check: recompute figure-1 semantics from current state.
+
+    A5 freezes the receipt bytes and checks its physical state/PNG bindings.
+    This release-layer check independently consumes the current state and the
+    shared pure selector, so a self-consistent forged receipt cannot define its
+    own rendered/excluded universe.  State cannot infer which optional overlay
+    the author chose; it can and does prove every declared component is a
+    current rendered camp.
+    """
+    from figures_from_facts import FIG1_LEGEND_RECEIPT_SCHEMA
+    if d.get("schema") != FIG1_LEGEND_RECEIPT_SCHEMA:
+        errors.append(f"图 1 legend receipt schema 必须是 {FIG1_LEGEND_RECEIPT_SCHEMA}")
+        return
+    series = ((state.get("camp_share_series") or {}).get("series"))
+    if not isinstance(series, dict) or not series:
+        errors.append("当前 analysis-state 缺 camp_share_series.series，"
+                      "发布闸无法重算图 1 实绘集合")
+        return
+    try:
+        import standard_charts
+        rendered, excluded_keys, rejected = standard_charts.select_fig1_series(series)
+    except Exception as exc:
+        errors.append(f"发布闸重算图 1 实绘集合失败: {exc}")
+        return
+    if rejected:
+        errors.append(f"当前 analysis-state 图 1 series 含白名单外键: {rejected}")
+        return
+    whitelist = standard_charts.FIG1_EXCLUDED_SERIES
+    expected_excluded = [
+        {"key": key, "reason": whitelist[key]} for key in excluded_keys
+    ]
+    if d.get("rendered_camps") != rendered:
+        errors.append(f"图 1 legend 实绘集合与发布闸从 state 重算不一致"
+                      f"（期望 {rendered}）")
+    declared = d.get("excluded_series")
+    if not isinstance(declared, list):
+        errors.append("图 1 legend 排除键必须是列表")
+    else:
+        outside = [row.get("key") if isinstance(row, dict) else f"<non-object:{i}>"
+                   for i, row in enumerate(declared)
+                   if not isinstance(row, dict) or row.get("key") not in whitelist]
+        if outside:
+            errors.append(f"图 1 legend 排除键超出 FIG1_EXCLUDED_SERIES 白名单: {outside}")
+        if declared != expected_excluded:
+            errors.append("图 1 legend 排除键与发布闸从 state 重算不一致"
+                          f"（期望 {expected_excluded}）")
+    overlays = d.get("overlays")
+    if not isinstance(overlays, list):
+        errors.append("图 1 legend overlays 必须是列表")
+        return
+    for i, row in enumerate(overlays):
+        if not isinstance(row, dict) or set(row) != {"label", "camps"}:
+            errors.append(f"图 1 legend overlay[{i}] 必须只含 label/camps")
+            continue
+        camps = row.get("camps")
+        if not isinstance(row.get("label"), str) or not row["label"].strip() \
+                or not isinstance(camps, list) or not camps \
+                or len(camps) != len(set(camps)):
+            errors.append(f"图 1 legend overlay[{i}] 标签或组成 camps 非法")
+            continue
+        outside = [camp for camp in camps if camp not in rendered]
+        if outside:
+            errors.append(f"图 1 legend overlay[{i}] 含 state 非实绘 camp: {outside}")
+
+
+def check_series_binding(case_dir: Path, d: dict, errors: list[str],
+                         expected_target=None):
+    """F-C1 下游闸（消化轮 2 终关：自证式→内容重转换比对）。
+
+    轮 1 版只验"state 自报的 sidecar 块与案内同名文件 sha 自洽"——盲审两攻击放行
+    （exploration 产物手改标记＋自补块指向任意序列文件；formal 产物编译后篡改
+    camp_share_series）。终关＝发布闸自己用编译器同一转换器（series_to_state_form，
+    纯函数）把案内序列实物重转换一遍，与 state 的 camp_share_series **逐点比对**：
+    state 里的序列不是这个文件转换来的就拒——两攻击同死。exploration 编译产物
+    （exploration-unbound）与无标记手编 state 照旧拦。
+    """
+    if "camp_share_series" not in d:
+        return  # 无序列即无绑定对象（旧简报型 state），不强加
+    provenance = d.get("provenance") or {}
+    binding = provenance.get("series_binding")
+    if binding != "producer-sidecar":
+        errors.append(
+            f"analysis-state 含 camp_share_series 但 series_binding="
+            f"{binding!r}——正式发布只认 producer-sidecar 绑定"
+            "（exploration-unbound 是非正式产物；缺标记=旧口径手编，须用 "
+            "state_from_facts --series-source 重编译）")
+        return
+    sidecar_ref = provenance.get("camp_series_sidecar") or {}
+    name = Path(str(sidecar_ref.get("series_file") or "")).name
+    registered = str(sidecar_ref.get("series_sha256") or "").lower()
+    fmt = sidecar_ref.get("series_format")
+    if not name or not registered or not fmt:
+        errors.append("series_binding=producer-sidecar 但 camp_series_sidecar "
+                      "缺 series_file/series_sha256/series_format")
+        return
+    for base in (case_dir, case_dir / "data"):
+        cand = base / name
+        if cand.is_symlink():
+            errors.append(f"案内序列实物 {cand.name} 是符号链接，拒收")
+            return
+        if cand.is_file():
+            actual = hashlib.sha256(cand.read_bytes()).hexdigest()
+            if actual != registered:
+                errors.append(f"案内序列实物 {name} sha256 与 analysis-state 绑定"
+                              "不一致——编译后序列被改动")
+                return
+            # 内容重转换逐点比对（F-C1 终关的关键一步）：sha 相符只证明文件没被改，
+            # 不证明 state 里的序列是它转换来的
+            try:
+                from camp_series_provenance import (_json_loads,
+                                                    series_to_state_form)
+                compiled = series_to_state_form(
+                    _json_loads(cand.read_text(encoding="utf-8"),
+                                "release series payload"), fmt)
+            except Exception as exc:
+                errors.append(f"案内序列实物 {name} 重转换失败（format={fmt}）：{exc}")
+                return
+            if compiled != d["camp_share_series"]:
+                errors.append(
+                    "analysis-state 的 camp_share_series 与案内序列实物的重转换"
+                    "结果不一致——state 里的序列不是该 producer 文件产出的"
+                    "（编译后篡改或伪造绑定块）")
+                return
+            # N-C4（消化轮 3 止损轮）：发布期复算整条来源链——轮 2 只关掉了
+            # "state 与文件不一致"的篡改，对"自造原生格式文件＋state 用它的转换
+            # 结果＋绑定块自填"的同步一致造假无效（案内不需要 sidecar 实物也不
+            # 需要 supply_truth 就能过）。复用编译期同三件纯函数：sidecar 实物
+            # 强制在场＋输出 sha＋输入三验 → 登记面锚 → camps spec 末点对账。
+            # 剩余残余=伪造整案原始数据后真跑 producer（F-12 已接受边界同族）。
+            try:
+                from camp_series_provenance import (SeriesProvenanceError,
+                                                    endpoint_reconcile,
+                                                    load_series_with_sidecar,
+                                                    registry_anchor_check)
+                sidecar, _raw, resolved = load_series_with_sidecar(cand)
+                if sidecar.get("producer") != sidecar_ref.get("producer"):
+                    errors.append(
+                        "analysis-state 绑定块的 producer 与磁盘 sidecar 实物"
+                        "不一致——绑定块不是对这份 sidecar 编译出来的")
+                    return
+                expected_target = expected_target or {}
+                registry_anchor_check(
+                    sidecar, resolved, cand,
+                    expected_chain=expected_target.get("chain"),
+                    expected_mint=expected_target.get("token"),
+                    expected_cutoff_slot=expected_target.get("as_of_block"),
+                    verify_edge_physical_sha=True)
+                endpoint_reconcile(sidecar, compiled, resolved)
+            except SeriesProvenanceError as exc:
+                errors.append(f"发布期来源链复算失败：{exc}")
+            except Exception as exc:
+                errors.append(f"发布期来源链复算异常：{exc}")
+            return
+    errors.append(f"analysis-state 绑定的序列实物 {name} 在案根与 data/ 两层内"
+                  "都找不到——正式案序列文件必须随案在档")
 
 
 def check_chart(d: dict, errors: list[str]):
@@ -744,6 +1386,8 @@ def run(case_dir: Path, report: Path | None, *, profile="independent-audit"):
     case_dir = case_dir.resolve()
     if profile not in REQUIRED_BY_PROFILE:
         raise ValueError(f"未知发布 profile: {profile}")
+    if profile == "independent-audit" and report is None:
+        errors.append("independent-audit 发布必须带 --report 以重验报告哈希绑定（fail-closed）")
     legacy_marker = case_dir / LEGACY_READONLY_RECEIPT
     if legacy_marker.exists() or legacy_marker.is_symlink():
         errors.append("只读降级 legacy 案不得编译新正式 analysis")
@@ -754,8 +1398,9 @@ def run(case_dir: Path, report: Path | None, *, profile="independent-audit"):
     for name in required:
         p = case_dir / name
         if p.suffix == ".json" and p.is_file():
-            data[name] = load_json(p, errors)
-    check_formal_case_chain(data, errors)
+            data[name] = (load_adversarial_json(p, errors)
+                          if name == "adversarial_review.json" else load_json(p, errors))
+    case_chain = check_formal_case_chain(case_dir, data, errors)
     if "audit_input_manifest.json" in data:
         check_manifest(case_dir, data["audit_input_manifest.json"], errors)
     try:
@@ -764,7 +1409,7 @@ def run(case_dir: Path, report: Path | None, *, profile="independent-audit"):
     except Exception as exc:
         errors.append(f"共享发布 receipt validator 失败: {exc}")
     if "accounting_mode.json" in data:
-        check_accounting(data["accounting_mode.json"], errors)
+        check_accounting(case_dir, data["accounting_mode.json"], errors)
     if "reconciliation_report.json" in data:
         check_reconciliation(data["reconciliation_report.json"], errors)
     if "address_classification.json" in data:
@@ -773,7 +1418,7 @@ def run(case_dir: Path, report: Path | None, *, profile="independent-audit"):
                  "economic_control_ledger.json"):
         if name in data:
             check_ledger(name, data[name], errors)
-    check_three_ledgers(case_dir, data, errors)
+    check_three_ledgers(case_dir, data, errors, chain=case_chain)
     if "dormant_warehouse_audit.json" in data:
         check_dormant(case_dir, data["dormant_warehouse_audit.json"], errors)
     check_daily_peaks(case_dir, errors)
@@ -781,7 +1426,14 @@ def run(case_dir: Path, report: Path | None, *, profile="independent-audit"):
     if "claim_registry.json" in data:
         claim_types = check_claims(case_dir, data["claim_registry.json"], report, errors)
     if "adversarial_review.json" in data:
-        check_adversarial(data["adversarial_review.json"], errors)
+        accounting = data.get("accounting_mode.json") or {}
+        expected_adversarial_target = {
+            "chain": accounting.get("chain"),
+            "token": accounting.get("token") or accounting.get("mint"),
+            "as_of_block": accounting.get("as_of_block"),
+        }
+        check_adversarial(case_dir, data["adversarial_review.json"], errors,
+                          expected_adversarial_target)
     if profile == "new-analysis" and "distribution_scan.json" in data:
         try:
             import holder_distribution_scan
@@ -790,6 +1442,39 @@ def run(case_dir: Path, report: Path | None, *, profile="independent-audit"):
                               case_dir, "distribution_scan.json", "initial"))
         except Exception as exc:
             errors.append(f"持仓分布 initial scan validator 失败: {exc}")
+        if case_chain:
+            check_distribution_snapshot_binding(case_dir, data, case_chain, errors)
+    if profile == "new-analysis":
+        # F-C5/F-C1（批 C 消化轮）：图 2 对账收据复验＋阵营序列 producer 绑定复验
+        if "figure2_check_receipt.json" in data:
+            check_figure2_receipt(case_dir, data["figure2_check_receipt.json"], errors)
+        state_path = case_dir / "analysis-state.json"
+        if state_path.is_file():
+            state_obj = load_json(state_path, errors)
+            release_target = ((data.get("reconciliation_report.json") or {})
+                              .get("target") or {})
+            check_series_binding(case_dir, state_obj, errors,
+                                 expected_target=release_target)
+            if "fig1_legend_receipt.json" in data:
+                check_figure1_legend_receipt(
+                    case_dir, data["fig1_legend_receipt.json"], state_obj, errors)
+        elif "fig1_legend_receipt.json" in data:
+            errors.append("new-analysis 有图 1 legend receipt 但缺标准 analysis-state.json")
+        # F-D8（批 D 消化轮 1）：A5 seal 在发布闸**重验**，不只查存在——A5 的
+        # distribution_bundle 绑定链（final scan → final_bindings.entity_freeze 等三验）
+        # 与 provenance_flip_bundle 由此接入发布必经路：双删 freeze＋ledger、冻结后改
+        # 终态件在这里现形。重验需要待发布报告实物，缺 --report 即 fail-closed。
+        seal_path = case_dir / "a5_report_seal.json"
+        if seal_path.is_file():
+            if report is None:
+                errors.append("new-analysis 发布必须带 --report 以重验 A5 seal（fail-closed）")
+            else:
+                try:
+                    import a5_report_seal
+                    errors.extend("A5 seal 重验: " + x for x in a5_report_seal.validate_seal(
+                        seal_path, report, case_dir / "a4_seal.json"))
+                except Exception as exc:
+                    errors.append(f"A5 seal 重验器失败: {exc}")
     if "historical_chart" in claim_types:
         chart_path = case_dir / "chart_reconciliation.json"
         if not chart_path.is_file():

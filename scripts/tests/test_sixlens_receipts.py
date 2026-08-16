@@ -14,6 +14,9 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts/report"))
 sys.path.insert(0, str(ROOT / "scripts/evm"))
 sys.path.insert(0, str(ROOT / "scripts/solana"))
+sys.path.insert(0, str(ROOT / "scripts/tests"))
+
+from test_audit_release_gate import write_deep_recon_fixtures
 
 
 def load(path, name):
@@ -49,19 +52,7 @@ def test_shared_receipt_semantics(root):
     else:
         raise AssertionError("任意 JSON 伪回执被接受")
 
-    producer = ROOT / "scripts/evm/verify_recon.py"
-    good = {"schema": "evm-reconciliation-receipt/v2", "target": target,
-            "producer": {"path": "scripts/evm/verify_recon.py", "sha256": sha(producer)},
-            "mode": "formal",
-            "inputs": {"fixture": {"path": str(source.resolve()),
-                                      "size": source.stat().st_size, "sha256": sha(source)}},
-            "verdict": "PASS", "exit_code": 0,
-            "observations": {
-                "supply_closure": {"closed": True, "negative_count": 0},
-                "balance_reconciliation": {"checked": 1, "matched": 1,
-                                             "mismatched": 0, "rpc_errors": 0},
-                "gmgn_comparison": {"checked": 1, "diff_count": 0},
-            }}
+    good, _ = write_deep_recon_fixtures(root, target, source)
     write_json(fake, good)
     item["receipt"]["sha256"] = sha(fake)
     shared.validate_reconciliation_check(root, "balance", item, target, "evm")
@@ -117,7 +108,7 @@ def test_verify_recon(root):
             mock.patch.object(mod, "rpc_balance_of", return_value=100):
         assert mod.main(recon_args(paths, out)) == 0
     receipt = json.loads(out.read_text())
-    assert receipt["schema"] == "evm-reconciliation-receipt/v2"
+    assert receipt["schema"] == "evm-reconciliation-receipt/v3"
     assert receipt["target"] == {"chain": "bsc", "token": "0xtoken", "as_of_block": 123}
 
     paths = recon_fixture(root / "supply-fail", closed=False)

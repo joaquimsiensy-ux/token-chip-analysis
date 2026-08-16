@@ -80,7 +80,8 @@ def _decode_curl_json(raw: str):
         return values
 
 
-def curl_json(url, *, post_json=None, headers=None, timeout=45.0, attempts=4) -> Result:
+def curl_json(url, *, post_json=None, headers=None, proxy=None,
+              timeout=45.0, attempts=4) -> Result:
     """Run the registered curl backend and return an explicit :class:`Result`.
 
     ``curl --fail-with-body`` maps HTTP failures to return code 22.  Other non-zero
@@ -97,6 +98,8 @@ def curl_json(url, *, post_json=None, headers=None, timeout=45.0, attempts=4) ->
 
     command = ["curl", "--silent", "--show-error", "--fail-with-body",
                "--max-time", str(float(timeout))]
+    if proxy:
+        command.extend(["-x", str(proxy)])
     header_map = dict(headers or {})
     if post_json is not None:
         command.extend(["--request", "POST"])
@@ -387,7 +390,7 @@ def attested_rpc_pool(url, chain, *, formal=True, **kwargs):
 
 
 def http_get_many(urls, *, rps=5.0, concurrency=6, headers=None,
-                  timeout=45.0, attempts=5, browser_ua=False):
+                  timeout=45.0, attempts=5, browser_ua=False, proxy=None):
     """通用 GET JSON 批量：-> 同序 [{ok,data|error}, ...]"""
     hdrs = dict(headers or {})
     if browser_ua:
@@ -407,7 +410,8 @@ def http_get_many(urls, *, rps=5.0, concurrency=6, headers=None,
     async def run():
         bucket = _Bucket(rps)
         sem = asyncio.Semaphore(concurrency)
-        async with httpx.AsyncClient(headers=hdrs, timeout=timeout) as client:
+        async with httpx.AsyncClient(
+                headers=hdrs, timeout=timeout, proxy=proxy) as client:
             return list(await asyncio.gather(*[one(client, bucket, sem, u) for u in urls]))
 
     return asyncio.run(run())

@@ -1,0 +1,13 @@
+不能继续施工：工单本身存在白名单冲突。
+
+- `evm-reconciliation-receipt/v3` 在 `references/` 中无任何命中，仅存在于 [verify_recon.py](/Users/uravvv/.claude/tca-repair-g2/scripts/evm/verify_recon.py:24) 等代码中。
+- 工单要求 CT-RECON-02 指向实际权威文档，同时禁止修改文档：[workorder_FINAL.md](/Users/uravvv/.claude/tca-repair-g2/maintenance/repair-20260815-g2/workorder_FINAL.md:23)。
+- 若按预期指向 `references/data-pipeline-evm-recon.md`，内存校验确定报错：`权威 needle 缺失 CT-RECON-02`。这是 [docs_lint.py](/Users/uravvv/.claude/tca-repair-g2/scripts/tests/docs_lint.py:123) 的硬失败。
+
+因此尚未修改三个中心文件，未生成伪绿日志或 done 报告，也未运行任何 git 操作。
+
+需要你明确授权二选一：
+
+1. 推荐：追加授权修改 `references/data-pipeline-evm-recon.md`，补入该 v3 契约说明。
+2. 修改工单口径，允许 CT-RECON-02 的 `authority_file` 指向 `scripts/evm/verify_recon.py`。
+

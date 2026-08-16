@@ -5,9 +5,30 @@ The source file carries only fields facts.json cannot own: analysis cutoff/versi
 per-address snapshot balances, entity type/status annotations, vaults and camp series.
 Entity ids, labels, membership and current/peak amounts always come from facts.json.
 
-Usage:
+用法（唯一生成入口，report-template.md「analysis-state 编译」节同步）：
   python3 state_from_facts.py --facts facts.json --source state_source.json \
-    --out analysis-state.json
+    --out analysis-state.json \
+    [--series-source data/camp_series.json]
+
+camp_share_series 的两道闸（F-04，2026-08-13；F-C1 消化轮把第二道焊成必经）：
+  ①无条件数值面（camp_series_provenance.validate_series_payload）：桶名白名单
+    =standard_charts.CAMP_ORDER_MODERN、有限数、非 burn 桶值域 [0,100]、同点合计
+    闭合（burn 桶豁免口径见该模块 docstring）、日期轴 UTC 严格递增——手填
+    series 至少过数值面；
+  ②来源绑定＝formal 必经（F-C1）：默认（formal）编译 **--series-source 必填**，
+    缺席直接 BLOCK exit 2——闸不许挂在可选参数上（v6.11.0 B-03 元规则第八层）。
+    --series-source 指向四族重放 producer 落盘的原生序列文件，必须带
+    `<序列名>.provenance.json` sidecar——验输出 sha＋输入实物三验＋登记面命中
+    （supply_truth/reconcile）＋按 sidecar 口径的单式闭合严判＋camps spec 末点
+    对账；state 的 series 由本编译器从原生文件转换生成（source 里可省略
+    camp_share_series；写了就必须与转换结果完全一致，防双源分叉）。产物
+    provenance 落 series_binding="producer-sidecar"＋camp_series_sidecar 绑定块，
+    发布闸（audit_release_gate new-analysis）复验。
+  探索豁免：显式 --exploration 才可不带 --series-source，产物 provenance 落
+    series_binding="exploration-unbound" 非正式标记——带该标记的 state 进
+    new-analysis 发布闸必拒（非正式产物不得进正式发布）。source.provenance 不得
+    预置 series_binding/camp_series_sidecar（只能由编译器生成，预置即拒）。
+    旧案无 sidecar → 不经 compile_state 的重绘不受影响。
 """
 
 from __future__ import annotations
@@ -15,12 +36,19 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import sys
 from decimal import Decimal
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
+from camp_series_provenance import (_json_loads, closure_mode_for, endpoint_reconcile,
+                                    load_series_with_sidecar,
+                                    registry_anchor_check, series_to_state_form,
+                                    validate_series_payload)
+
 
 def load_object(path: Path, label: str) -> dict:
-    value = json.loads(path.read_text(encoding="utf-8"))
+    value = _json_loads(path.read_text(encoding="utf-8"), label)
     if not isinstance(value, dict):
         raise ValueError(f"{label} 顶层必须是对象")
     return value
@@ -90,6 +118,9 @@ def compile_state(facts: dict, source: dict) -> dict:
     if any(not isinstance(values, list) or len(values) != n_dates
            for values in series["series"].values()):
         raise ValueError("camp_share_series 序列长度与 dates 不一致")
+    # F-04 无条件数值面：白名单/有限数/值域/同点闭合/日期轴（与 --series-source 无关，
+    # 手填 series 注入 -899/999 之类的自报数字在这里就被拒）
+    validate_series_payload(series)
     provenance = source.get("provenance") or {}
     if not provenance.get("skill_commit") or not provenance.get("data_sources"):
         raise ValueError("source.provenance 缺 skill_commit/data_sources")
@@ -108,16 +139,90 @@ def compile_state(facts: dict, source: dict) -> dict:
     }
 
 
+def bind_series_source(source: dict, series_source: Path) -> dict:
+    """--series-source：producer 原生序列（带 sidecar）→ 验证链 → 注入 source。
+
+    验证链＝输出 sha 绑定＋输入实物三验＋登记面命中＋末点对账（全在
+    camp_series_provenance，失败=SeriesProvenanceError→exit 2）。state 的 series
+    由转换器生成；source 手填了 camp_share_series 时必须与生成结果完全一致。
+    """
+    sidecar, raw, resolved = load_series_with_sidecar(series_source)
+    compiled = series_to_state_form(raw, sidecar["series_format"])
+    # F-C4：绑定路径有 sidecar 的 denominator 口径，闭合按口径单式严判——
+    # 净分母族 burn 桶不得蹭进合计救缺口，total 族反之（无 sidecar 的手填路径
+    # 没有口径信息，compile_state 内保留双式）
+    validate_series_payload(compiled,
+                            closure_mode=closure_mode_for(sidecar["denominator"]))
+    target = source.get("token") or {}
+    if target.get("chain") == "solana" and "data_cutoff_slot" not in target:
+        raise ValueError(
+            "source.token 缺 data_cutoff_slot；存量案补填方法见 "
+            "scan-schemas.md 存量迁移段")
+    registry_anchor_check(
+        sidecar, resolved, series_source,
+        expected_chain=target.get("chain"),
+        expected_mint=target.get("mint"),
+        expected_cutoff_slot=target.get("data_cutoff_slot"))
+    endpoint_reconcile(sidecar, compiled, resolved)
+    manual = source.get("camp_share_series")
+    if manual is not None and manual != compiled:
+        raise ValueError(
+            "source.camp_share_series 与 --series-source 转换结果不一致——"
+            "series 只有一个事实源（producer 序列文件），source 里要么省略该字段"
+            "要么逐点相等")
+    bound = dict(source)
+    bound["camp_share_series"] = compiled
+    provenance = dict(bound.get("provenance") or {})
+    provenance["series_binding"] = "producer-sidecar"
+    provenance["camp_series_sidecar"] = {
+        "producer": sidecar.get("producer"),
+        "series_file": sidecar.get("series_file"),
+        "series_sha256": sidecar.get("series_sha256"),
+        # 消化轮 2（F-C1 终关）：发布闸要用同一转换器把案内序列实物重转换一遍
+        # 与 state 的 camp_share_series 逐点比对——format 必须随绑定块落盘
+        "series_format": sidecar.get("series_format"),
+    }
+    bound["provenance"] = provenance
+    return bound
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description="facts.json -> analysis-state.json compiler")
     ap.add_argument("--facts", type=Path, required=True)
     ap.add_argument("--source", type=Path, required=True)
     ap.add_argument("--out", type=Path, required=True)
+    ap.add_argument("--series-source", type=Path,
+                    help="四族重放 producer 落盘的原生序列文件（须带 .provenance.json "
+                         "sidecar）。formal（默认）路径必填，缺席 BLOCK exit 2")
+    ap.add_argument("--exploration", action="store_true",
+                    help="显式声明探索编译，才允许不带 --series-source；产物 provenance "
+                         "落 series_binding=exploration-unbound 非正式标记，"
+                         "new-analysis 发布闸必拒")
     args = ap.parse_args(argv)
     try:
-        result = compile_state(load_object(args.facts, "facts"),
-                               load_object(args.source, "source"))
-    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        source = load_object(args.source, "source")
+        # F-C1：绑定标记只能由本编译器生成——source 预置即拒（防手编 source 伪装
+        # formal 绑定绕过来源链）
+        preset = source.get("provenance") or {}
+        if "series_binding" in preset or "camp_series_sidecar" in preset:
+            raise ValueError(
+                "source.provenance 不得预置 series_binding/camp_series_sidecar"
+                "——绑定标记只能由编译器按验证结果生成")
+        if args.series_source:
+            source = bind_series_source(source, args.series_source)
+        elif args.exploration:
+            source = dict(source)
+            provenance = dict(source.get("provenance") or {})
+            provenance["series_binding"] = "exploration-unbound"
+            source["provenance"] = provenance
+            print("[exploration] series 无来源绑定——产物带非正式标记，"
+                  "不得进正式发布链")
+        else:
+            raise ValueError(
+                "formal 编译必须 --series-source（camp_share_series 来源绑定是"
+                "必经之路，闸不挂可选参数）；探索运行显式加 --exploration")
+        result = compile_state(load_object(args.facts, "facts"), source)
+    except (OSError, ValueError, json.JSONDecodeError, RecursionError) as exc:
         print(f"BLOCK: {exc}")
         return 2
     args.out.parent.mkdir(parents=True, exist_ok=True)

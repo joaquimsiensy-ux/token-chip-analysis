@@ -124,7 +124,7 @@ def run(command, cwd):
 
 
 def runner_spec(case, endpoint):
-    target = {"chain": "solana", "token": MINT.lower(), "as_of_block": None}
+    target = {"chain": "solana", "token": MINT, "as_of_block": None}
     observed = "{observed_as_of_block}"
     anchor = ["--start", "2025-01-01", "--end", "2025-01-01",
               "--ref-slot", observed, "--ref-ts", "1735689600",
@@ -213,9 +213,13 @@ def test_handoff_and_release(endpoint):
             path.unlink(missing_ok=True)
         adversarial = json.loads((case / "adversarial_review.json").read_text())
         total, slot = execute_real_slice(case, endpoint)
-        adversarial["target"] = {"chain": "solana", "token": MINT.lower(),
+        adversarial["target"] = {"chain": "solana", "token": MINT,
                                  "as_of_block": slot}
         (case / "adversarial_review.json").write_text(json.dumps(adversarial))
+        # B-7（批 D）：三账 balance_source 须与真实四查 owner 快照同时点等值——
+        # build_case 的 EVM 编造三账（0xabc@123）在真实 Solana 切片里是夹具失真，对齐之。
+        from test_audit_release_gate import align_ledgers_to_owner_snapshot
+        align_ledgers_to_owner_snapshot(case, case / "solana_scan_work/holders_owners.json")
         run([sys.executable, str(ROOT / "scripts/report/shared_release_receipt.py"), str(case)], case)
         run([sys.executable, str(ROOT / "scripts/report/audit_release_gate.py"),
              str(case), "--report", str(report)], case)

@@ -1,0 +1,18 @@
+未完成全量验收：核心修复和红绿回归已完成，但 invariant 扫描因禁改 manifest 缺少 `anchor-plan/v2` 登记而失败，已按工单立即停止。
+
+已完成：
+
+- 消费侧完整绑定 plan 权威链。
+- 固化 H1/H2/H3/H4/H5/H6/H10 及六个 H40 bool 负测。
+- 先红后绿，目标测试通过。
+- 四组授权存量测试全部通过。
+- 未执行任何 git 操作。
+
+阻塞详情及建议 manifest 差异已写入 [workorder_DIGEST1_done.md](/Users/uravvv/.claude/tca-repair-g2/maintenance/repair-20260815-g2/workorder_DIGEST1_done.md)。
+
+证据：
+
+- [digest1_red.log](/Users/uravvv/.claude/tca-repair-g2/maintenance/repair-20260815-g2/digest1_red.log)
+- [digest1_green.log](/Users/uravvv/.claude/tca-repair-g2/maintenance/repair-20260815-g2/digest1_green.log)
+
+需要授权融合方在 `invariant_manifest.json` 的消费 schema 集合中加入 `anchor-plan/v2`，之后才能继续跑 invariant 和全量 `run_all.py`。

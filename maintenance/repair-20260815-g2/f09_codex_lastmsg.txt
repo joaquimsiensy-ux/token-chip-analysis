@@ -1,0 +1,19 @@
+未完成整体验收；已按工单在名单外测试打红后停工，未擅自扩范围，也未执行任何 git 操作。
+
+已完成 F-09 白名单内实现，以下通过：
+
+- 专属四态与双写等价测试
+- F-07 深重验回归
+- invariant scan
+- docs lint
+
+阻断项：3 个名单外测试的手造零差异 v3 收据缺少新必填 `warnings: []`：
+
+- `test_sixlens_receipts.py`
+- `test_handoff_manifest.py`
+- `test_audit_release_gate.py`
+
+完整证据和请示已写入 [workorder_F09_done.md](/Users/uravvv/.claude/tca-repair-g2/maintenance/repair-20260815-g2/workorder_F09_done.md)，红绿日志也已落盘。
+
+请确认：是否授权仅修改上述 3 个测试文件，为零差异 fixture 补 `warnings: []`，然后重跑全部工单验收？
+

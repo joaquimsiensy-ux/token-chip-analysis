@@ -214,4 +214,8 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    try:
+        main()
+    except ValueError as exc:
+        print(f'BLOCK: risk_flags 脏数据: {exc}', file=sys.stderr)
+        raise SystemExit(2)

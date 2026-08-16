@@ -1,0 +1,10 @@
+Traceback (most recent call last):
+  File "/Users/uravvv/.claude/tca-repair-g2/scripts/tests/test_evm_observation_nonempty_code.py", line 166, in <module>
+    raise SystemExit(main())
+                     ~~~~^^
+  File "/Users/uravvv/.claude/tca-repair-g2/scripts/tests/test_evm_observation_nonempty_code.py", line 160, in main
+    raise AssertionError("\n".join(failures))
+AssertionError: test_empty_runtime_code_rejected_by_producer: AssertionError: invalid EVM observation accepted; expected 'bytecode'
+test_short_total_supply_word_rejected_by_producer: AssertionError: invalid EVM observation accepted; expected 'invalid value'
+test_empty_runtime_code_hash_rejected_by_validator: AssertionError: invalid EVM observation accepted; expected 'runtime code'
+test_legacy_getcode_block_number_rejected_by_transcript_validator: AssertionError: invalid EVM observation accepted; expected 'getcode params'

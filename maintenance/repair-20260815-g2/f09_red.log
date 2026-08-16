@@ -1,0 +1,17 @@
+command: python3 scripts/tests/test_gmgn_divergence_note.py
+exit_code: 1
+
+[verify_recon] PASS exit=0 -> <temporary-case-root>/divergent/verify_recon.json
+Traceback (most recent call last):
+  File "scripts/tests/test_gmgn_divergence_note.py", line 297, in <module>
+    main()
+  File "scripts/tests/test_gmgn_divergence_note.py", line 288, in main
+    producer, yellow, valid = _test_divergent_four_states(divergent)
+  File "scripts/tests/test_gmgn_divergence_note.py", line 164, in _test_divergent_four_states
+    assert yellow["warnings"] == ["gmgn_divergence"]
+KeyError: 'warnings'
+
+RED interpretation: the F-07 baseline returns PASS/0 for a recomputed GMGN
+divergence but omits the required yellow-light warnings field. The test stops
+before the release-consumer assertion; no production file was changed before
+this run.

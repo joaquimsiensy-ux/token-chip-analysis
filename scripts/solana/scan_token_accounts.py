@@ -189,7 +189,7 @@ def main(argv=None, *, request_json=None):
     data_dir = Path(args.work_dir).resolve()
     data_dir.mkdir(parents=True, exist_ok=True)
     endpoints = args.rpcs or [_default_rpc()]
-    error_target = {"chain": "solana", "token": args.mint.lower(),
+    error_target = {"chain": "solana", "token": args.mint,
                     "as_of_block": (args.as_of_slot if args.as_of_slot is not None
                                     else args.min_context_slot)}
     error_envelope = None
@@ -217,7 +217,7 @@ def main(argv=None, *, request_json=None):
         snapshot_slot = core["snapshot"]["slot"]
         error_envelope = build_envelope(
             "solana-observation-bundle/v1",
-            {"chain": "solana", "token": args.mint.lower(),
+            {"chain": "solana", "token": args.mint,
              "as_of_block": snapshot_slot},
             __file__, "formal")
         assert_declared_slot(args.as_of_slot, snapshot_slot, "--as-of-slot")

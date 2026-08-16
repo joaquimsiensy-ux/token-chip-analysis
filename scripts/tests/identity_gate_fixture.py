@@ -12,8 +12,9 @@ def sha(path):
     return hashlib.sha256(Path(path).read_bytes()).hexdigest()
 
 
-def write_binding(root, balances, *, as_of_block=123, chain="bsc"):
-    root = Path(root); token = "0x" + "e" * 40
+def write_binding(root, balances, *, as_of_block=123, chain="bsc",
+                  token="0x" + "a" * 40):
+    root = Path(root)
     csv_path = root / "identity_events.csv"
     lines = ["block,ts,tx,log_index,from,to,value_raw,block_hash"]
     zero = "0x" + "0" * 40
@@ -48,13 +49,13 @@ def write_binding(root, balances, *, as_of_block=123, chain="bsc"):
     }
 
 
-def augment_gate(root, gate_obj, *, chain):
+def augment_gate(root, gate_obj, *, chain, token="0x" + "a" * 40):
     gate = dict(gate_obj)
     rows = [dict(row) for row in gate.get("rows", [])]
     balances = {row["address"]: 100 for row in rows}
     if not balances:
         balances = {"0x" + "f" * 40: 100}
-    total, binding = write_binding(root, balances, chain=chain)
+    total, binding = write_binding(root, balances, chain=chain, token=token)
     for row in rows:
         row["share_pct"] = round(balances[row["address"]] / int(total) * 100, 3)
     gate.update({"schema": "identity_gate_v3", "chain": chain,

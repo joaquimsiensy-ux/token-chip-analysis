@@ -34,8 +34,13 @@ import os
 import shutil
 import subprocess
 import sys
+import unicodedata
 from datetime import datetime, timezone
 from pathlib import Path
+
+_LIB = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "lib"))
+sys.path.insert(0, _LIB)
+from case_paths import safe_case_file
 
 CLAIMS_NAME = "a4_claims.json"
 SEAL_NAME = "a4_seal.json"
@@ -56,24 +61,26 @@ def sha256_file(path):
     return h.hexdigest()
 
 
-def safe_case_file(case_dir, rel, must_exist=True):
-    """Resolve a relative regular file inside case_dir; reject abs/.. and symlink escape."""
+def safe_case_dir(case_dir, rel, must_exist=True):
+    """Resolve a relative directory inside case_dir for charts-only semantics."""
     if not isinstance(rel, str) or not rel.strip() or os.path.isabs(rel):
         raise ValueError(f"路径必须是案目录内相对路径: {rel!r}")
-    raw = Path(rel)
-    if ".." in raw.parts:
-        raise ValueError(f"路径含 ..: {rel}")
+    parts = rel.split("/")
+    if any(part in {"", ".", ".."} for part in parts):
+        raise ValueError(f"目录路径含空段、. 或 ..: {rel}")
     root = Path(case_dir).resolve()
-    unresolved = root / raw
-    if unresolved.is_symlink():
-        raise ValueError(f"拒绝符号链接文件: {rel}")
+    unresolved = root
+    for part in parts:
+        unresolved /= part
+        if unresolved.is_symlink():
+            raise ValueError(f"拒绝符号链接目录: {rel}")
     p = unresolved.resolve()
     try:
         p.relative_to(root)
     except ValueError:
         raise ValueError(f"路径越出案目录: {rel}")
-    if must_exist and not p.is_file():
-        raise ValueError(f"文件不存在、非普通文件或为符号链接: {rel}")
+    if must_exist and not p.is_dir():
+        raise ValueError(f"目录不存在、非目录或为符号链接: {rel}")
     return p
 
 
@@ -150,12 +157,40 @@ def validate_formal_case_chain(case_dir):
     return state_chain, errors
 
 
+_ZERO_RENDERING_EXTRAS = {"\u3164", "\u115f", "\u1160", "\uffa0", "\u2800"}
+
+
 def _norm_text(value):
-    return " ".join(str(value or "").split())
+    """Build a fail-closed reconciliation key without deleting unknown semantics."""
+    normalized = unicodedata.normalize("NFC", str(value or ""))
+    kept = []
+    for char in normalized:
+        category = unicodedata.category(char)
+        if category in {"Cf", "Cc", "Zl", "Zp", "Mn", "Me"} \
+                or char in _ZERO_RENDERING_EXTRAS:
+            continue
+        kept.append(" " if category == "Zs" else char)
+    # The meaningful-text gate is an allowlist because an unknown character there
+    # could make an empty shell pass.  Reconciliation keys deliberately remove the
+    # named zero-rendering set plus all Cf/Cc/Zl/Zp/Mn/Me characters; the latter
+    # include visible combining marks.  This tradeoff had zero collisions after NFC
+    # in the project's Chinese/English/Japanese/Korean/Latin corpus.  Everything else
+    # remains visible and therefore causes a fail-closed mismatch for review.
+    return " ".join("".join(kept).split())
 
 
 def check_audit_registry_alignment(case_dir, reg, verdicts, fails):
     """Bidirectionally align the A4 registry with the clean-room registry."""
+    from adversarial_review_runner import _meaningful_text
+
+    def claim_id(value):
+        if not isinstance(value, str):
+            return None
+        stripped = value.strip()
+        if not stripped or not all(_meaningful_text(char) for char in stripped):
+            return None
+        return stripped
+
     try:
         path = safe_case_file(case_dir, "claim_registry.json")
         audit = json.loads(path.read_text(encoding="utf-8"))
@@ -170,13 +205,19 @@ def check_audit_registry_alignment(case_dir, reg, verdicts, fails):
     if not isinstance(a4_claims, list):
         fails.append("a4_claims.json claims 非数组")
         return path
-    a4_map = {str(c.get("id", "")).strip(): c for c in a4_claims if isinstance(c, dict)}
-    audit_ids = [str(c.get("claim_id", "")).strip() for c in audit_claims
-                 if isinstance(c, dict)]
-    audit_map = {str(c.get("claim_id", "")).strip(): c
-                 for c in audit_claims if isinstance(c, dict)}
-    verdict_map = {str(v.get("id", "")).strip(): str(v.get("verdict", "")).upper()
-                   for v in verdicts if isinstance(v, dict)}
+    a4_rows = [c for c in a4_claims if isinstance(c, dict)]
+    audit_rows = [c for c in audit_claims if isinstance(c, dict)]
+    verdict_rows = [v for v in verdicts if isinstance(v, dict)]
+    a4_ids = [claim_id(c.get("id")) for c in a4_rows]
+    audit_ids = [claim_id(c.get("claim_id")) for c in audit_rows]
+    verdict_ids = [claim_id(v.get("id")) for v in verdict_rows]
+    if any(cid is None for cid in a4_ids + audit_ids + verdict_ids):
+        fails.append("A4/净室/verdict claim id 非法")
+        return path
+    a4_map = dict(zip(a4_ids, a4_rows))
+    audit_map = dict(zip(audit_ids, audit_rows))
+    verdict_map = {cid: str(row.get("verdict", "")).upper()
+                   for cid, row in zip(verdict_ids, verdict_rows)}
     if len(audit_ids) != len(set(audit_ids)) or not all(audit_ids):
         fails.append("净室 claim_registry claim_id 缺失或重复")
     if set(a4_map) != set(audit_map):
@@ -368,7 +409,7 @@ def cmd_finalize(a):
 
     charts_dir = a.charts_dir
     try:
-        cd_abs = safe_case_file(case_dir, charts_dir, must_exist=False)
+        cd_abs = safe_case_dir(case_dir, charts_dir, must_exist=False)
         if cd_abs.exists() and (not cd_abs.is_dir() or cd_abs.is_symlink()):
             raise ValueError(f"charts_dir 非普通目录或为符号链接: {charts_dir}")
     except ValueError as e:

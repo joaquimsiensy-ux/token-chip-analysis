@@ -1,0 +1,50 @@
+F-09 post-repair verification log
+status: scoped implementation GREEN; acceptance STOPPED by out-of-whitelist fixture regressions
+
+command: python3 scripts/tests/test_gmgn_divergence_note.py
+exit_code: 0
+evidence:
+- divergent/no-note producer: PASS/0 + warnings=["gmgn_divergence"]
+- divergent/no-note consumer: rejected for missing inputs.divergence_note
+- divergent/valid-note producer rerun: PASS/0 + bound divergence_note
+- divergent/valid-note consumer: PASS
+- invalid producer vectors: exit 1 and prior receipt byte-for-byte preserved
+- zero-diff/no-note: warnings=[] and consumer PASS
+- zero-diff/with-note: exit 1 and prior receipt preserved
+- producer/consumer fixed-vector verdicts remained equal
+terminal: PASS test_gmgn_divergence_note
+
+command: python3 scripts/tests/test_recon_deep_reverify.py
+exit_code: 0
+terminal: PASS test_recon_deep_reverify
+
+command: python3 scripts/tests/invariant_scan.py
+exit_code: 0
+terminal: PASS invariant manifest: receipt_producers=62, receipt_consumers=85,
+          transport_calls=63, atomic_writes=54, formal_entrypoints=58, exceptions=0
+
+command: python3 scripts/tests/docs_lint.py --all
+exit_code: 0
+terminal: PASS: 58 docs; no broken references; emphasis balanced
+
+OUT-OF-WHITELIST STOP CONDITIONS
+
+command: python3 scripts/tests/test_sixlens_receipts.py
+exit_code: 1
+error: ValueError: verify_recon warnings must be a duplicate-free known-string array
+cause: the test's hand-built zero-divergence v3 receipt omits mandatory warnings=[]
+
+command: python3 scripts/tests/test_handoff_manifest.py
+exit_code: 1
+first failures: verify READY exit 0; accounting WARN + exit 0 release path;
+                four-prerequisite freeze initial exit 0
+downstream error: FileNotFoundError entity_freeze.json after the release prerequisite failed
+cause: the handoff fixture path consumes a hand-built zero-divergence v3 receipt that omits
+       mandatory warnings=[]
+
+command: python3 scripts/tests/test_audit_release_gate.py
+exit_code: 1
+error: ValueError: verify_recon warnings must be a duplicate-free known-string array
+cause: the audit fixture's hand-built zero-divergence v3 receipt omits mandatory warnings=[]
+
+No out-of-whitelist test file was modified. No full-suite claim was made.

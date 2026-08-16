@@ -19,8 +19,11 @@ import argparse, json, os, subprocess, sys, time
 from datetime import datetime, timezone
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
+from proxy_config import resolve_proxy
+
 RPC = "https://api.mainnet-beta.solana.com"
-PROXY = "http://127.0.0.1:7897"
+PROXY = None
 
 
 def rpc(method, params, retries=5):
@@ -118,14 +121,17 @@ def main():
     ap.add_argument("--mint")
     ap.add_argument("--known-sig", help="ATA 已销户且账本无记录时，手动给一笔含该 owner 的交易签名")
     ap.add_argument("--rpc", help="覆盖 RPC 端点（如 Helius，免代理时配 --proxy none）")
-    ap.add_argument("--proxy", help="覆盖代理，传 none 禁用")
+    ap.add_argument("--proxy", default=None,
+                    help="代理 URL；空字符串或 none 显式直连（默认经 CHIP_PROXY/端口探测解析）")
     ap.add_argument("--out", default="data/whale_deep.json", help="输出文件（并行分组时各组独立文件防写冲突）")
     args = ap.parse_args()
     global RPC, PROXY
     if args.rpc:
         RPC = args.rpc
-    if args.proxy:
-        PROXY = None if args.proxy == "none" else args.proxy
+    try:
+        PROXY = resolve_proxy(args.proxy)
+    except ValueError as exc:
+        ap.error(str(exc))
     mint = resolve_mint(args.mint)
     Path("data").mkdir(exist_ok=True)
     out_f = Path(args.out)

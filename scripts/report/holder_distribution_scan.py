@@ -13,9 +13,14 @@ sqrt(2)，平移复算使用半档。私人主箱低于 100 个 owner 时切换�
 等额组落在基础 33-35 档和平移 32-34 档，成员 Jaccard=0.852。旧案只用于探索性
 定标，不构成现役防伪链 fixture。TROLL soltx 元数据 launch_covered=false，未纳入保留集。
 
-scan 重新派生五桶并生成 distribution-scan/v1；validate 从 input_binding 读取上游文件，
-重新派生、重新分箱并逐项比对，不信产物自报。initial 不绑定 handoff manifest；final
-才绑定 READY manifest、身份收据、A4 seal、entity_freeze revision 和三账。
+scan 重新派生五桶并生成 distribution-scan/v2；validate 从 input_binding 读取上游文件，
+重新派生、重新分箱并逐项比对，不信产物自报。owner 快照必须对**铸造总量 mint_total**
+（replay 侧产物，EVM 取 replay_stats、Solana 取 onchain）逐 wei 精确闭合——replay 记账
+不抹除，sum(快照含 dead/zero)==mint 恒成立，对 onchain 闭合会误杀整类 form1 销毁币。
+闭合分母绝不取 total_supply_raw/frozen 影子键。initial 不绑定 handoff manifest，其
+upstream_receipts 是记录性收据（可缺席不记，记了就逐项三验＋path 白名单）；final 绑定
+READY manifest、身份收据、A4 seal、entity_freeze revision、三账，且其 owner 快照必须与
+initial scan 是同一份（跨轮不得更换）。
 """
 from __future__ import annotations
 
@@ -32,7 +37,7 @@ import zlib
 from datetime import datetime, timezone
 from pathlib import Path
 
-SCHEMA = "distribution-scan/v1"
+SCHEMA = "distribution-scan/v2"
 ROUNDS_SCHEMA = "distribution-rounds/v1"
 WAIVER_SCHEMA = "distribution-exception-receipt/v1"
 BIN_MIN_PCT = 0.000001
@@ -43,6 +48,19 @@ MIN_BIN_OWNERS = 5
 SHIFT_JACCARD_MIN = 0.8
 SAMPLE_LINE = 100
 DISCLOSURE_PCT = 1.0
+# 快照对冻结 total supply 的闭合容差，单位 bps（万分之一）。
+# 消化循环第 1 轮（P2-B4）收回到 0＝逐 wei 精确：闭合锚点改用 replay 侧 mint_total 后，
+# sum(快照含 dead/zero) == mint_total 在真实 form1/form2 案上均逐 wei 成立（APU/IQ/KOGE 实测），
+# 且快照与 totalSupply 同 as_of_block 冻结不存在块高漂移，故不再留任何容差窗口——
+# 留窗口会被"删掉几个刚过 dust 线的 owner 翻 low_sample"这类判定翻转攻击钻空（P2-B4 反例）。
+# 这是本闸自己的旋钮，独立写死，**不读 supply_truth 收据里的 tolerance_bps**。
+SNAPSHOT_CLOSURE_TOLERANCE_BPS = 0
+# replay_stats 里 mint/burn 的字段名（与 supply_truth_gate.FIELD_PAIRS 同口径，此处内联避免依赖）。
+MINT_BURN_FIELD_PAIRS = (("mint_total_wei", "burn_total_wei"),
+                         ("mint_total_raw", "burn_total_raw"),
+                         ("mint_total", "burn_total"))
+# 记录性上游收据的合法 path 白名单（build_scan 只会记这两个名，见 P2-B5）。
+UPSTREAM_RECEIPT_WHITELIST = ("channels_preflight.json", "holders_snapshot_meta.json")
 FAMILY_ALPHA = 0.01
 TOP_K_BASELINES = {1: 20.0, 3: 30.0, 5: 40.0, 10: 50.0}
 HHI_BASELINE = 0.05
@@ -204,19 +222,111 @@ def verify_data_map(case_dir: Path, snapshot_rel: str, snapshot: Path) -> Path:
     return path
 
 
-def load_supply(case_dir: Path) -> tuple[Path, int, int]:
+def load_supply(case_dir: Path) -> tuple[Path, int, int, str, dict]:
+    """读 supply_truth，返回 (path, onchain, net, chain, obj)。
+
+    onchain（链上流通总量）与 net（分布百分比分母）都**优先取真实生产键**
+    onchain_total_supply/replay_net；只有真实键缺席时才回退影子键
+    total_supply_raw/net_supply_raw（P1-B2：真实案永远走真实键，注入影子键翻不动结果）。
+    闭合分母不在这里取，见 mint_closure_anchor。
+    """
     path = safe_file(case_dir, "supply_truth.json", "供给真值")
     obj = load_json(path)
     if str(obj.get("verdict", "")).upper() != "PASS" or obj.get("exit_code") != 0:
         raise ValueError("supply_truth 非 PASS/exit 0")
-    total = strict_raw(obj.get("total_supply_raw", obj.get(
-        "frozen_total_supply_raw", obj.get("onchain_total_supply"))),
-                       "total_supply_raw")
-    net = strict_raw(obj.get("net_supply_raw", obj.get("replay_net", total)),
+    onchain = strict_raw(obj.get("onchain_total_supply", obj.get(
+        "total_supply_raw", obj.get("frozen_total_supply_raw"))), "onchain_total_supply")
+    net = strict_raw(obj.get("replay_net", obj.get("net_supply_raw", onchain)),
                      "net_supply_raw")
-    if not total or not net or net > total:
-        raise ValueError("供给真值 total/net 非法")
-    return path, total, net
+    if not onchain or not net or net > onchain:
+        raise ValueError("供给真值 onchain/net 非法")
+    chain = str(obj.get("chain", "")).strip().lower()
+    return path, onchain, net, chain, obj
+
+
+def _bound_replay_stats(case_dir: Path, supply_obj: dict) -> Path | None:
+    """取 supply_truth 收据 inputs.replay_stats **绑定的那份**实物（不是案根硬编码文件名）。
+
+    这条路径与 shared_release_receipt._bound_replay_totals 同口径：案根遏制＋本函数自带
+    sha256/size 三验（B-4：本扫描器可在发布闸之外独立运行，receipt_validate 的三验只在
+    发布链路上有人跑——这里不引用别人的检查作自己的证据，绑定登记的 sha/size 与实物
+    不符即拒）。绑定缺席返回 None。
+    """
+    ref = (supply_obj.get("inputs") or {}).get("replay_stats")
+    if not isinstance(ref, dict) or not str(ref.get("path") or ""):
+        return None
+    path = Path(str(ref["path"]))
+    path = path if path.is_absolute() else (case_dir / path)
+    path = path.resolve()
+    try:
+        path.relative_to(Path(case_dir).resolve())
+    except ValueError as exc:
+        raise ValueError("收据绑定的 replay_stats 实物不在当前案根内，不得作闭合锚点") from exc
+    if path.is_symlink() or not path.is_file():
+        raise ValueError(f"收据绑定的 replay_stats 实物缺失或非普通文件: {ref['path']}")
+    # B-4：收据登记的 sha256/size 必须与实物一致——换包/陈旧实物不得作闭合锚点。
+    if ref.get("sha256") != sha256_file(path) or ref.get("size") != path.stat().st_size:
+        raise ValueError(f"收据绑定的 replay_stats 实物 sha256/size 与登记不符（换包或陈旧）: "
+                         f"{ref['path']}")
+    return path
+
+
+def _mint_from_stats(stats: dict, label: str) -> tuple[int, int]:
+    for mk, bk in MINT_BURN_FIELD_PAIRS:
+        if mk in stats:
+            return (strict_raw(stats[mk], f"{label}.{mk}"),
+                    strict_raw(stats.get(bk, 0), f"{label}.{bk}"))
+    raise ValueError(f"{label} 缺 mint 字段（认 {[m for m, _ in MINT_BURN_FIELD_PAIRS]}）")
+
+
+def mint_closure_anchor(case_dir: Path, supply_obj: dict, chain: str,
+                        onchain: int) -> tuple[int, str, dict | None]:
+    """快照闭合分母＝铸造总量 mint_total（replay 侧），分链且绝不依赖影子键。
+
+    replay 对 sink 是记账不抹除：sum(balances_final 含 dead/zero) == mint_total 恒成立，
+    form1（真 _burn，onchain==mint−burn）与 form2（转 dead 不减供给，onchain==mint）都如此
+    （APU/IQ/KOGE 真案逐 wei 实测）。对 onchain/total 闭合会把整类 form1 币误杀（P1-B3）。
+
+    取值顺序（N-B1：**已绑定已验证的链路优先**，案根裸件永不作锚点来源）：
+      Solana：== onchain（scanner require_snapshot_closed 已保证 sum==supply，另一套精确等式，
+              不套 EVM 的 replay mint 语义）。
+      EVM：① supply_truth 收据 inputs.replay_stats **绑定**的那份实物（已过三验＋案根遏制，
+              且这里再交叉验 mint−burn == replay_net，与四查同一口径）
+           ② supply_truth 收据的 mint_total 字段（同样受四查链约束）
+           ③ supply_truth 的 onchain_total_supply（无 burn 的简单真实案）
+    绝不取 total_supply_raw/frozen_total_supply_raw 影子键。
+
+    **案根裸 replay_stats.json 不是锚点来源**（N-B1）：真案 9/10 把 replay_stats 放
+    data/、out/、replay/ 等子目录，只有 APU 在案根——把案根硬编码文件名排在第一，既让
+    "抹平快照＋伪造一份未绑定案根件"直接过闸（攻击面），又让"案根留一份陈旧件"把合法案
+    打成 data_broken（误伤面，对 8/9 真案成立）。未绑定的文件不是证据，既不该被采用，
+    也不该有一票否决权，故合法但未绑定的案根件**忽略**（理由见工单）。但它若**在场却非法**
+    （符号链接／非普通文件）仍 fail-closed 拒（N-B2）——与本文件 F-08 "在场非法不得静默
+    漂白"同一把尺子，案目录被动过手脚是完整性信号，不因该文件不参与计算而豁免。
+    """
+    if chain == "solana":
+        return onchain, "solana_onchain", None
+    # N-B2：案根同名件在场即验，非法即拒；它不参与取值，只做完整性闸。
+    root_stats = Path(case_dir) / "replay_stats.json"
+    if root_stats.is_symlink() or (root_stats.exists() and not root_stats.is_file()):
+        raise ValueError("案根 replay_stats.json 在场但非法（符号链接或非普通文件），"
+                         "拒绝静默换档：请移除或换成真实 replay 产物")
+    bound = _bound_replay_stats(case_dir, supply_obj)
+    if bound is not None:
+        mint, burn = _mint_from_stats(load_json(bound), "绑定 replay_stats")
+        replay_net = supply_obj.get("replay_net")
+        if replay_net not in (None, "") and mint - burn != strict_raw(replay_net, "replay_net"):
+            raise ValueError("绑定 replay_stats 的 mint−burn 与收据 replay_net 不一致，"
+                             "闭合锚点不可信")
+        return mint, "bound_replay_mint", rel_entry(case_dir, bound)
+    if supply_obj.get("mint_total") not in (None, ""):
+        return strict_raw(supply_obj.get("mint_total"), "supply_truth.mint_total"), \
+            "supply_truth_mint", None
+    if supply_obj.get("onchain_total_supply") not in (None, ""):
+        return strict_raw(supply_obj.get("onchain_total_supply"), "onchain_total_supply"), \
+            "supply_truth_onchain", None
+    raise ValueError("无法确定快照闭合锚点：缺收据绑定的 replay_stats / supply_truth.mint_total "
+                     "/ onchain_total_supply（total_supply_raw 影子键不作闭合分母）")
 
 
 def threshold_snapshot() -> dict:
@@ -452,7 +562,9 @@ def analyze(partition, bucket_raw, private_supply, total_supply, net_supply):
     main_rows = partition["private_main"]
     coverage = {k: {"raw": str(v), "net_supply_pct": v * 100.0 / net_supply}
                 for k, v in bucket_raw.items()}
-    denominators = {"total_supply_raw": str(total_supply), "net_supply_raw": str(net_supply),
+    # B-3（批 D，schema 升 v2）：铸造总量键名改 mint_total_raw——旧名 total_supply_raw 在
+    # 真 _burn 案上语义误导（IQ 案与流通量差 34.9%）；net_supply_raw 语义不变。
+    denominators = {"mint_total_raw": str(total_supply), "net_supply_raw": str(net_supply),
                     "private_boxable_supply_raw": str(private_supply)}
     if len(main_rows) < SAMPLE_LINE:
         ranked = sorted(main_rows, key=lambda x: (-int(x["raw"]), x["owner"]))
@@ -499,15 +611,25 @@ def build_scan(case_dir: Path, stage: str, snapshot_arg: str | None):
     snapshot, snapshot_rel = find_snapshot(case_dir, snapshot_arg)
     balances = parse_snapshot(snapshot)
     data_map = verify_data_map(case_dir, snapshot_rel, snapshot)
-    supply, total, net = load_supply(case_dir)
-    if sum(balances.values()) > total:
-        raise ValueError("快照 raw 和大于冻结 total supply")
+    supply, onchain, net, chain, supply_obj = load_supply(case_dir)
+    anchor, anchor_source, replay_ref = mint_closure_anchor(case_dir, supply_obj, chain, onchain)
+    snapshot_sum = sum(balances.values())
+    # 快照必须对**铸造总量 mint_total（闭合锚点）逐 wei 精确闭合**：缺口和超发同拦。
+    # 锚点是 mint 不是 onchain——replay 记账不抹除，sum(快照含 dead/zero) == mint 恒成立；
+    # 对 onchain(=mint−burn) 闭合会把整类 form1 销毁币误杀（P1-B3，APU/IQ/KOGE 真案实测）。
+    # 零容差：块高同点冻结无漂移，留窗口会被"抹平快照翻 low_sample"攻击钻空（P2-B4）。
+    if abs(snapshot_sum - anchor) * 10000 > anchor * SNAPSHOT_CLOSURE_TOLERANCE_BPS:
+        raise ValueError(f"快照 raw 和未对铸造总量 mint 精确闭合: 快照={snapshot_sum} "
+                         f"mint={anchor}（{anchor_source}）容差={SNAPSHOT_CLOSURE_TOLERANCE_BPS}bps")
     partition, bucket_raw, private_supply, dust_raw, derivation = derive_partition(
         case_dir, balances, stage)
-    result = analyze(partition, bucket_raw, private_supply, total, net)
+    # denominators：total_supply_raw 展示口径＝mint（铸造总量），net＝onchain 流通量
+    result = analyze(partition, bucket_raw, private_supply, anchor, net)
     script = Path(__file__).resolve()
     common = {"snapshot": rel_entry(case_dir, snapshot), "data_map": rel_entry(case_dir, data_map),
               "supply_truth": rel_entry(case_dir, supply),
+              "mint_closure_anchor": {"source": anchor_source, "raw": str(anchor),
+                                      **({"replay_stats": replay_ref} if replay_ref else {})},
               "exclusion_sources": derivation["sources"],
               "exclusion_derivation_sha256": canonical_sha(derivation),
               "algorithm": {"name": "holder-distribution-gate/v1",
@@ -520,8 +642,14 @@ def build_scan(case_dir: Path, stage: str, snapshot_arg: str | None):
     if stage == "initial":
         receipts = []
         for rel in ("channels_preflight.json", "holders_snapshot_meta.json"):
-            try: receipts.append(rel_entry(case_dir, safe_file(case_dir, rel, "上游收据")))
-            except ValueError: pass
+            candidate = case_dir / rel
+            # 记录性收据：案根压根没有这份文件＝合法缺席，跳过不记（split-run 下 −1 出
+            # initial scan 时，−2 还没把 preflight 副本拷进案根）。但文件**在场却非法**
+            # （符号链接、指到案外、不是普通文件）必须炸——旧版一律 except: pass 会把
+            # 掉包过的收据静默漂白成"没记"。
+            if not candidate.exists() and not candidate.is_symlink():
+                continue
+            receipts.append(rel_entry(case_dir, safe_file(case_dir, rel, "上游收据")))
         common["upstream_receipts"] = receipts
         common["handoff_manifest"] = None
     else:
@@ -537,6 +665,15 @@ def build_scan(case_dir: Path, stage: str, snapshot_arg: str | None):
         seal = load_json(case_dir / "a4_seal.json")
         if seal.get("schema") != "a4-seal/v4" or seal.get("verdict") != "PASS":
             raise ValueError("final scan 只接受 PASS a4-seal/v4")
+        # P0-B1：final 轮吃的 owner 快照必须与它绑定的 initial scan 是同一份。
+        # 否则可以 initial 喂真快照过第二层交叉检查、final 换一份"抹平/换仓"快照产终态判定，
+        # 终版图/A5 seal/发布闸全程放行（盲审端到端复现）。两个 sha 本已在场，直接比对。
+        initial_scan = load_json(case_dir / "distribution_scan.json")
+        initial_snapshot = ((initial_scan.get("input_binding") or {}).get("snapshot") or {})
+        if initial_snapshot.get("sha256") != common["snapshot"]["sha256"]:
+            raise ValueError(
+                "final scan 快照与绑定的 initial scan 快照不一致（final 轮不得更换 owner 快照）: "
+                f"initial={initial_snapshot.get('sha256')} final={common['snapshot']['sha256']}")
         common["final_bindings"] = final_files
         common["handoff_manifest"] = {"run_id": manifest.get("run_id"),
                                       **final_files["handoff_manifest.json"]}
@@ -558,12 +695,19 @@ def semantic_payload(scan: dict):
             "base_bins", "shifted_bins", "concentration", "disclosure_required")
     payload = {k: scan.get(k) for k in keys}
     binding = payload.get("input_binding")
-    if isinstance(binding, dict) and isinstance(binding.get("labels_manifest"), dict):
-        # labels_manifest 的语义身份是内容哈希；path 是宿主 checkout 的绝对路径，
-        # 换 checkout 位置验证同一案目录时会漂移，不得进语义比较（内容漂移仍由 sha256 抓）
+    if isinstance(binding, dict):
         binding = dict(binding)
-        binding["labels_manifest"] = {k: v for k, v in binding["labels_manifest"].items()
-                                      if k != "path"}
+        if isinstance(binding.get("labels_manifest"), dict):
+            # labels_manifest 的语义身份是内容哈希；path 是宿主 checkout 的绝对路径，
+            # 换 checkout 位置验证同一案目录时会漂移，不得进语义比较（内容漂移仍由 sha256 抓）
+            binding["labels_manifest"] = {k: v for k, v in binding["labels_manifest"].items()
+                                          if k != "path"}
+        # upstream_receipts 是记录性收据（initial 专有）：split-run 下 initial scan 由 −1 生成，
+        # 彼时案根尚无 −2 为 G8 拷入的 channels_preflight.json 副本；A5 重验时副本被重算收录，
+        # 造成"分区语义逐位一致、仅收据清单漂移"的假阳性，且与 G8 的案根同目录要求物理互斥
+        # （TAG 2026-08-12 实撞，用户批准修复）。收据不参与分区/阈值/判定计算，剔出语义比较；
+        # final 阶段对 handoff_manifest 的强绑定由 validate_scan 的显式检查承担，不经此路径。
+        binding.pop("upstream_receipts", None)
         payload["input_binding"] = binding
     return payload
 
@@ -610,12 +754,17 @@ def validate_rounds_ledger(ledger: dict) -> list[str]:
     if ledger.get("schema") != ROUNDS_SCHEMA or not isinstance(ledger.get("rounds"), list):
         return ["rounds 台账 schema 或 rounds 非法"]
     rounds = ledger["rounds"]
+    first_snapshot_sha = rounds[0].get("snapshot_sha") if rounds else None
     for index, row in enumerate(rounds, 1):
         if row.get("round_n") != index:
             errors.append(f"rounds 第 {index} 项 round_n 不连续")
         expected = canonical_sha(rounds[index - 2]) if index > 1 else None
         if row.get("previous_entry_sha256") != expected:
             errors.append(f"rounds 第 {index} 项前向哈希断裂")
+        # P0-B1：同一 cutoff 的当前快照跨轮必须是同一份——各轮 snapshot_sha 必须一致，
+        # 否则某一轮偷换 owner 快照（抹平/换仓）而台账照样连续。现在只记不比＝漏洞。
+        if row.get("snapshot_sha") != first_snapshot_sha:
+            errors.append(f"rounds 第 {index} 项 snapshot_sha 与首轮不一致（当前快照跨轮被更换）")
     terminal = ledger.get("terminal")
     if terminal is not None:
         matched = [row for row in rounds if row.get("round_n") == terminal.get("round_n")]
@@ -748,7 +897,7 @@ def validate_scan(case: Path, scan_rel: str, expected_stage: str | None = None) 
         path = safe_file(case, scan_rel, "scan")
         scan = load_json(path)
         if scan.get("schema") != SCHEMA or scan.get("exit_code") != 0:
-            return ["scan schema 非 distribution-scan/v1 或 exit_code 非 0"]
+            return ["scan schema 非 distribution-scan/v2 或 exit_code 非 0"]
         if expected_stage and scan.get("stage") != expected_stage:
             return [f"scan stage={scan.get('stage')} 不能冒充 {expected_stage}"]
         binding = scan.get("input_binding")
@@ -759,6 +908,22 @@ def validate_scan(case: Path, scan_rel: str, expected_stage: str | None = None) 
         _verify_bound(case, binding["supply_truth"], "供给真值")
         for entry in binding.get("exclusion_sources", []):
             _verify_bound(case, entry, "排除来源")
+        # 上游收据是"记录性收据"：可以不记，但**记了就得逐项三验**（存在＋sha256＋size）。
+        # 校验对象是 scan 里已记录的条目，**不是磁盘上现有的文件**——方向写反（要求磁盘上
+        # 有的都必须被记）会把 6.39.5 修掉的 split-run 三闸死环原样修回来。
+        receipts = binding.get("upstream_receipts")
+        if receipts is not None:
+            if not isinstance(receipts, list):
+                raise ValueError("upstream_receipts 不是数组")
+            for entry in receipts:
+                if not isinstance(entry, dict):
+                    raise ValueError("upstream_receipts 条目不是对象")
+                # P2-B5：path 钉白名单——build_scan 只会记这两个名，记别的（哪怕文件真存在、
+                # sha/size 都对）也是伪造记录项，直接拒。
+                if entry.get("path") not in UPSTREAM_RECEIPT_WHITELIST:
+                    raise ValueError(f"上游收据 path 不在白名单 {UPSTREAM_RECEIPT_WHITELIST}: "
+                                     f"{entry.get('path')}")
+                _verify_bound(case, entry, "上游收据")
         if binding.get("thresholds_sha256") != canonical_sha(threshold_snapshot()):
             errors.append("阈值快照哈希不符")
         if binding.get("recognition_rules") != {"version": RECOGNITION_RULE_VERSION,

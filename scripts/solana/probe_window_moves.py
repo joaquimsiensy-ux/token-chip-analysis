@@ -8,7 +8,7 @@
 用法:
   python3 probe_window_moves.py --targets targets.json --cutoff 2026-07-13T04:00:00Z \
       --mint <MINT> [--pools 池地址,逗号分隔] [--accounts data/holders_accounts.json,data/holders_accounts_旧.json] \
-      [--max-parse 8] [--out data/window_moves.json] [--proxy http://127.0.0.1:7897]
+      [--max-parse 8] [--out data/window_moves.json] [--proxy <proxy-url>]
 
   targets.json = {地址: "为什么查"};cutoff 用 ISO 字符串(内部 datetime 解析——
   ⚠️ 禁止手算 unix 时间戳,CLUDE 实战手算错 2 天导致首跑作废)。
@@ -18,9 +18,12 @@
 - 每址解析上限 --max-parse 笔,超出只记 window_tx_count;净额一律以快照 diff 为权威。
 来源:CLUDE(Solana) 增量更新 2026-07-15(补扫 38 址全覆盖版,修正首版金额聚合虚高)。
 """
-import argparse, json, subprocess, time
+import argparse, json, subprocess, sys, time
 from datetime import datetime, timezone
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
+from proxy_config import resolve_proxy
 
 
 def rpc(url, proxy, method, params, timeout=30):
@@ -62,10 +65,15 @@ def main():
     ap.add_argument("--decimals", type=int, default=6)
     ap.add_argument("--max-parse", type=int, default=8)
     ap.add_argument("--rpc", default="https://api.mainnet-beta.solana.com")
-    ap.add_argument("--proxy", default="http://127.0.0.1:7897")
+    ap.add_argument("--proxy", default=None,
+                    help="代理 URL；空字符串或 none 显式直连（默认经 CHIP_PROXY/端口探测解析）")
     ap.add_argument("--pause", type=float, default=0.26)
     ap.add_argument("--out", default="data/window_moves.json")
     args = ap.parse_args()
+    try:
+        args.proxy = resolve_proxy(args.proxy)
+    except ValueError as exc:
+        ap.error(str(exc))
 
     cutoff = parse_cutoff(args.cutoff)
     print(f"cutoff={cutoff} ({datetime.fromtimestamp(cutoff, timezone.utc).isoformat()})")

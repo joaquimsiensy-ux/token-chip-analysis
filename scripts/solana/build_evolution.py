@@ -19,6 +19,9 @@ from decimal import Decimal
 from datetime import datetime, timezone
 from pathlib import Path
 
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "lib"))
+from camp_spec import load_addr_camp_json
+
 # 标的参数从工作目录 config.json 读（铁律5：不写死进 skill）
 # config.json 需含：total_supply, decimals, launch_ts, data_cutoff_ts, burn_amount(可选,单列锁仓/销毁)
 CONFIG_PATH = Path("config.json")
@@ -73,7 +76,10 @@ def main():
     if oversized:
         sys.exit(f"小样本输入文件超过 {MAX_INPUT_BYTES} bytes: {oversized}")
     deep = json.load(open(input_paths[0]))
-    camps = json.load(open(input_paths[2]))  # {addr: camp_name}
+    # F-05 第四族补漏：{addr: camp} 形态的 JSON 重复键（同址写两遍）解析后永远查不到
+    # （后键静默覆盖前键），必须在解析层用 object_pairs_hook 拒收；解析后再反转过一遍
+    # validate_camp_spec，与其余三族入口同一深度（scripts/lib/camp_spec.py 共享实现）
+    camps = load_addr_camp_json(input_paths[2], chain_family="solana")  # {addr: camp_name}
     if not isinstance(deep, dict) or not deep:
         sys.exit("data/whale_deep.json 必须是非空对象")
     if not isinstance(camps, dict) or not camps:
@@ -198,6 +204,18 @@ def main():
     with open('data/camp_series.input_manifest.json', 'w', encoding='utf-8') as f:
         json.dump(manifest, f, ensure_ascii=False, indent=2, sort_keys=True)
         f.write('\n')
+    # F-04：producer sidecar（四族等深记录）。本件是锚点法小样本辅助入口、无对账链锚，
+    # sol-anchor-rows 在 state_from_facts --series-source 端被拒（正式序列走 replay_edges/
+    # replay_duck）——sidecar 仍写，供探索链复核与来源追溯
+    from camp_series_provenance import write_series_sidecar
+    write_series_sidecar(result_path,
+                         producer="scripts/solana/build_evolution.py",
+                         series_format="sol-anchor-rows",
+                         denominator="config_total_supply",
+                         camps_spec_path=input_paths[2],
+                         inputs={"whale_deep": input_paths[0],
+                                 "decoded_anchors": input_paths[1],
+                                 "config": CONFIG_PATH})
     print(f"演变序列 {len(series)} 点，阵营: {all_camps}")
     # 末点各阵营占比
     last = series[-1]

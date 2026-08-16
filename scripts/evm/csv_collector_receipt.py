@@ -4,7 +4,8 @@ from __future__ import annotations
 import json, os
 from pathlib import Path
 from channels_preflight import _csv_stats, _sha256_file
-SUPPORTED={"fetch_sqd_evm.py","fetch_alchemy.py"}
+SUPPORTED={"fetch_sqd_evm.py"}
+# fetch_alchemy.py 已除名：其协议无 provider 侧块进度证据，v2 块游标语义不成立；恢复需升分型收据
 
 def emit_native_receipt(data_path, receipt_path, collector_path, token, provider_url,
                         requested_from, requested_to, provider_next_block, *, fresh_output):
@@ -15,7 +16,9 @@ def emit_native_receipt(data_path, receipt_path, collector_path, token, provider
         raise ValueError("formal alternate adapter cannot sign an existing unreceipted prefix")
     if any(isinstance(x,bool) or not isinstance(x,int) for x in
            (requested_from,requested_to,provider_next_block)) \
-            or requested_from >= requested_to or provider_next_block < requested_to:
+            or requested_from >= requested_to \
+            or provider_next_block < requested_to \
+            or provider_next_block > requested_to:
         raise ValueError("collector bounds/cursor do not prove completion")
     rows,lo,hi=_csv_stats(data)
     if rows and (lo < requested_from or hi >= requested_to):

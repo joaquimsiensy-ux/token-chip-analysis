@@ -150,7 +150,7 @@ def main(argv=None):
     ap.add_argument("--endpoint", default=SQD)
     args = ap.parse_args(argv)
 
-    target = {"chain": "solana", "token": MINT.lower(), "as_of_block": args.as_of_slot}
+    target = {"chain": "solana", "token": MINT, "as_of_block": args.as_of_slot}
     base_envelope = build_envelope(SCHEMA, target, __file__, "formal")
 
     if not args.ref_slot or not args.ref_ts:

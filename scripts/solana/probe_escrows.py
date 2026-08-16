@@ -13,11 +13,15 @@ import argparse
 import base64
 import json
 import subprocess
+import sys
 import time
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
+from proxy_config import resolve_proxy
+
 RPC = "https://api.mainnet-beta.solana.com"
-PROXY = "http://127.0.0.1:7897"
+PROXY = None
 import os as _os, json as _json
 def _load_mint():
     m = _os.environ.get("MINT")
@@ -55,9 +59,11 @@ def b58d(s: str) -> bytes:
 def rpc(method, params, retries=4):
     body = json.dumps({"jsonrpc": "2.0", "id": 1, "method": method, "params": params})
     for i in range(retries):
-        p = subprocess.run(["curl", "-s", "-m", "30", "-x", PROXY, RPC, "-X", "POST",
-                            "-H", "Content-Type: application/json", "-d", body],
-                           capture_output=True, text=True, timeout=45)
+        cmd = ["curl", "-s", "-m", "30"]
+        if PROXY:
+            cmd += ["-x", PROXY]
+        cmd += [RPC, "-X", "POST", "-H", "Content-Type: application/json", "-d", body]
+        p = subprocess.run(cmd, capture_output=True, text=True, timeout=45)
         try:
             d = json.loads(p.stdout)
             if "result" in d: return d["result"]
@@ -105,7 +111,8 @@ def parse_args():
     parser = argparse.ArgumentParser(description="探查 Solana escrow/PDA 与 Streamflow 元数据")
     parser.add_argument("--targets-file", help='JSON 数组文件，元素为 {"address", "label"}')
     parser.add_argument("--rpc", default=RPC, help=f"Solana RPC（默认：{RPC}）")
-    parser.add_argument("--proxy", default=PROXY, help=f"curl 代理（默认：{PROXY}）")
+    parser.add_argument("--proxy", default=None,
+                        help="代理 URL；空字符串或 none 显式直连（默认经 CHIP_PROXY/端口探测解析）")
     args = parser.parse_args()
     if not args.targets_file:
         parser.error("缺少必填参数：--targets-file")
@@ -127,7 +134,11 @@ def load_targets(path):
 def main():
     global MINT, RPC, PROXY
     args = parse_args()
-    RPC, PROXY = args.rpc, args.proxy
+    RPC = args.rpc
+    try:
+        PROXY = resolve_proxy(args.proxy)
+    except ValueError as exc:
+        raise SystemExit(f"--proxy: {exc}") from exc
     MINT = _load_mint()
     targets = load_targets(args.targets_file)
     out = []

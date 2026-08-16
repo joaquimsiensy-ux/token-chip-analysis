@@ -25,7 +25,10 @@ def main():
         "entity_annotations": {"e1": {"type": "single", "status": "holding"}},
         "address_balances": {"0xabc": "25"},
         "vault_addresses": [],
-        "camp_share_series": {"dates": ["2026-08-04"], "series": {"大庄": [25.0]}},
+        # F-04 起 compile_state 无条件校验数值面（白名单/值域/同点闭合/日期轴），
+        # fixture 须为闭合形态：大庄+散户=100
+        "camp_share_series": {"dates": ["2026-08-04"],
+                              "series": {"大庄": [25.0], "散户": [75.0]}},
         "provenance": {"skill_commit": "fixture", "data_sources": ["snapshot"]},
     }
     state = mod.compile_state(facts, source)

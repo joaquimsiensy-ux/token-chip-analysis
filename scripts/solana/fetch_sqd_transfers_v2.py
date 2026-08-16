@@ -61,6 +61,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
 from endpoint_identity import endpoint_fingerprint
+from proxy_config import redact_proxy, resolve_proxy
 from solana_attested_session import SolanaAttestedSession
 from solana_sqd_dataset import (SOLANA_SQD_DATASET_ID,
                                 SolanaSqdDatasetAdapter)
@@ -98,7 +99,7 @@ MERGE_THREADS = 4
 # ---- HyperSync 第二引擎常量（schema 实测 2026-07-22，见 data-pipeline-solana.md §13d）----
 HS_DEF_URL = "https://solana.hypersync.xyz/query"
 HS_DEF_TOKEN = os.path.expanduser("~/.config/hypersync/token")
-HS_CLASH_PROXY = "http://127.0.0.1:7897"   # 直连间歇 SSL 断时自动切 clash
+HS_FALLBACK_PROXY = None       # 由 resolve_proxy() 解析；直连异常后才允许切换并粘住
 HS_HEAD_SAFETY = 50_000       # tb 索引前沿探测命中点再回退的安全边距（防前沿附近索引洞）
 HS_HEAD_LAG_FALLBACK = 600_000  # 前沿探测失败时的保守上界回退（实测滞后 ~13 万，×4.6 余量）
 HS_STRIPE_MAX = 100_000       # 双引擎交替条带宽上限（下限按窗内总量/8 自适应，保证两边都有活）
@@ -338,7 +339,8 @@ class HyperSyncFetcher:
           "block": ["slot", "block_time"],
           "transaction": ["slot", "transaction_index", "success"]}
 
-    def __init__(self, url, mint, token, bucket):
+    def __init__(self, url, mint, token, bucket,
+                 fallback_proxy=HS_FALLBACK_PROXY):
         self.url = url
         self.height_url = url.rsplit("/", 1)[0] + "/height"
         self.mint = mint
@@ -346,7 +348,8 @@ class HyperSyncFetcher:
         self.local = threading.local()
         self.headers = {"Content-Type": "application/json",
                         "Authorization": f"Bearer {token}"}
-        self.proxies = None       # 直连失败一次后自动切 clash 并粘住（幂等写，无锁风险）
+        self.fallback_proxy = fallback_proxy
+        self.proxies = None       # 直连失败一次后切候选代理并粘住（幂等写，无锁风险）
 
     def _sess(self):
         if not hasattr(self.local, "s"):
@@ -355,16 +358,18 @@ class HyperSyncFetcher:
         return self.local.s
 
     def _req(self, method, url, **kw):
-        """统一请求入口：直连失败（SSL/连接层）自动切 clash 代理重试一次并粘住。"""
+        """统一请求入口：直连失败后切已解析候选代理重试一次并粘住。"""
         try:
             return self._sess().request(method, url, proxies=self.proxies, **kw)
         except (requests.exceptions.SSLError, requests.exceptions.ConnectionError):
             if self.proxies:
                 raise
-            alt = {"https": HS_CLASH_PROXY, "http": HS_CLASH_PROXY}
+            if not self.fallback_proxy:
+                raise
+            alt = {"https": self.fallback_proxy, "http": self.fallback_proxy}
             r = self._sess().request(method, url, proxies=alt, **kw)
             self.proxies = alt
-            log("HyperSync 直连断——已切 clash 代理")
+            log(f"HyperSync 直连断——已切解析代理 {redact_proxy(self.fallback_proxy)}")
             return r
 
     def height(self):
@@ -882,7 +887,7 @@ def run(mint, launch_ts, wall_min, conc, rps, base_url, key,
         log("⚠ HyperSync 完备性验收不通过（历史区缺行 3.6-22%、近端有暂态洞，2026-07-22 "
             "实测）——本开关仅限吞吐实验/对照，正式采集产物必须用纯 SQD 重采或逐段复核")
         cand = HyperSyncFetcher(hs_cfg["url"], mint, hs_cfg["token"],
-                                TokenBucket(hs_cfg["rps"]))
+                                TokenBucket(hs_cfg["rps"]), hs_cfg["proxy"])
         hs_head = cand.height()
         if hs_head:
             # ceiling 探测必须基于 HS 自己的链头（tb 索引前沿是 HS 服务端属性），
@@ -1143,6 +1148,9 @@ def main(argv=None, *, request_json=None):
     ap.add_argument("--hs-conc", type=int, default=2,
                     help="HS 并发段数（POC 实测双通道叠加即近 2 倍，保守默认 2）")
     ap.add_argument("--hs-rps", type=float, default=4.0, help="HS 请求速率护栏/秒")
+    ap.add_argument("--proxy", default=HS_FALLBACK_PROXY,
+                    help="HyperSync 直连异常后的候选代理；空字符串或 none 禁用切换"
+                         "（默认经 CHIP_PROXY/端口探测解析）")
     ap.add_argument("--from-slot", type=int, default=0,
                     help="调试/定段采集：直接指定起点 slot（仅首采无 meta 时生效）")
     ap.add_argument("--to-slot", type=int, default=0,
@@ -1176,7 +1184,12 @@ def main(argv=None, *, request_json=None):
                 raise ValueError("token 文件为空")
         except Exception as e:
             sys.exit(f"[fatal] --hypersync 需要有效 token（{a.hs_token_file}）：{e}")
-        hs_cfg = {"url": a.hs_url, "token": hs_token, "conc": a.hs_conc, "rps": a.hs_rps}
+        try:
+            hs_proxy = resolve_proxy(a.proxy)
+        except ValueError as exc:
+            ap.error(str(exc))
+        hs_cfg = {"url": a.hs_url, "token": hs_token, "conc": a.hs_conc,
+                  "rps": a.hs_rps, "proxy": hs_proxy}
     edges, gap = run(a.mint, a.launch_ts or None, a.wall_min, a.conc, a.rps, a.url, key,
                      hs_cfg=hs_cfg, from_slot_cli=a.from_slot or None,
                      to_slot_cli=a.to_slot or None, empty_max=a.empty_max,

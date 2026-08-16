@@ -1,0 +1,55 @@
+F-07 GREEN / BLOCKED ACCEPTANCE EVIDENCE
+Date: 2026-08-15
+
+COMMAND: python3 scripts/tests/test_recon_deep_reverify.py
+EXIT_CODE: 0
+OUTPUT:
+[verify_recon] PASS exit=0 -> <temp>/recon/verify_recon.json
+[time_spotcheck] PASS  2/2 一致（balance 1 + tx 1；mismatch 0，rpc_err 0）-> <temp>/time/time_spotcheck.json
+PASS test_recon_deep_reverify
+
+COMMAND: python3 scripts/tests/invariant_scan.py
+EXIT_CODE: 0
+OUTPUT:
+PASS invariant manifest: receipt_producers=62, receipt_consumers=83, transport_calls=63, atomic_writes=54, formal_entrypoints=58, exceptions=0
+
+COMMAND: python3 scripts/tests/invariant_scan.py --self-test
+EXIT_CODE: 0
+OUTPUT:
+SELFTEST delete scripts/evm/accounting_gate.py:net.py -> RED (rc=1)
+SELFTEST add scripts/report/does_not_exist.py:requests -> RED (rc=1)
+
+D SECTION ALLOWLIST RESULTS:
+- test_sixlens_receipts.py: PASS
+- test_handoff_manifest.py: PASS (68 items)
+- test_audit_release_gate.py: PASS
+- test_evm_observation_release.py: PASS (11/11)
+- test_batch3_evm_vertical_slice.py: sandbox socket.bind EPERM; unsandboxed rerun PASS
+- test_repair_batch_d.py: PASS (BATCH D all passed)
+- test_batch1_rpc_attestation.py: PASS
+- test_reconciliation_runner.py: PASS (7/7)
+- test_r7_findings.py: PASS (15/15)
+- test_repair_batch1.py: PASS
+
+UNSANDBOXED LOOPBACK RERUN:
+COMMAND: python3 scripts/tests/test_batch3_evm_vertical_slice.py
+EXIT_CODE: 0
+OUTPUT:
+PASS B3-EVM-E2E: eth/bsc/base slices + nonzero dead vertical closure
+
+FULL SUITE ATTEMPT:
+COMMAND: python3 scripts/tests/run_all.py
+FINAL STATUS: INTERRUPTED AFTER OUT-OF-ALLOWLIST FAILURES (required stop rule)
+
+Known sandbox-only failures before interruption:
+- test_batch3_solana_vertical_slice.py: PermissionError [Errno 1] socket.bind
+- test_batch3_evm_vertical_slice.py: PermissionError [Errno 1] socket.bind
+
+Out-of-allowlist business failures that triggered immediate stop:
+- test_repair_batch_a.py: BATCH A FAIL 1/45 (captured run_all tail omitted the case name)
+- test_repair_batch_b.py: supply_closure balance_sum_raw differs from bound artifacts
+  Call path: test_f03_gate_evm_same_total_swap -> add_new_analysis_distribution
+  -> bind_balance_receipt_to_snapshot -> create_bundle ->
+  validate_reconciliation_check -> _validate_recon_supply
+
+No claim of full-suite green is made.

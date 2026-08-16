@@ -134,7 +134,7 @@ def test_b2f_lg_05_disk_wrapper_cannot_fake_absence(root: Path):
 def test_duplicate_generate_chain_is_canonical(root: Path):
     case_dir = root / "duplicate-chain"
     case_dir.mkdir()
-    handoff_fixture.make_case(str(case_dir))
+    handoff_fixture.make_case(str(case_dir), chain="bsc")
     args = list(handoff_fixture.GEN)
     args[args.index("--chain") + 1] = "bsc,bsc"
     generated = handoff_fixture.run([

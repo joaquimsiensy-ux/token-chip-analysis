@@ -42,6 +42,10 @@ import os
 import sys
 from datetime import datetime, timezone
 
+_LIB = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "lib"))
+sys.path.insert(0, _LIB)
+from case_paths import safe_case_file
+
 SCHEMA = "candidate-adjudications/v1"
 DISTRIBUTION_SCHEMA = "distribution-adjudications/v1"
 VERDICTS = {"pattern_confirmed", "excluded", "unresolved"}
@@ -185,9 +189,7 @@ def machine_tier_impact(scale_pct):
 
 
 def distribution_candidates(case_dir, scan_rel):
-    scan_path = os.path.join(case_dir, scan_rel)
-    if not os.path.isfile(scan_path):
-        raise ValueError(f"缺 {scan_rel}")
+    scan_path = str(safe_case_file(case_dir, scan_rel))
     script = os.path.join(os.path.dirname(os.path.abspath(__file__)), "holder_distribution_scan.py")
     import subprocess
     pv = subprocess.run([sys.executable, script, "validate", "--case-dir", case_dir,
@@ -218,7 +220,10 @@ def cmd_distribution_template(a):
         scan_path, _, cands = distribution_candidates(case_dir, a.scan)
     except ValueError as exc:
         return _report([str(exc)])
-    out_path = os.path.join(case_dir, a.out)
+    try:
+        out_path = str(safe_case_file(case_dir, a.out, must_exist=False))
+    except ValueError as exc:
+        return _report([str(exc)])
     if os.path.isfile(out_path) and not a.force:
         return _report([f"{a.out} 已存在，防止覆盖已填裁决"])
     obj = {"schema": DISTRIBUTION_SCHEMA, "case": os.path.basename(case_dir),
@@ -238,9 +243,10 @@ def cmd_distribution_template(a):
 
 def cmd_distribution_validate(a):
     case_dir = os.path.abspath(a.case_dir); fails = []
-    path = os.path.join(case_dir, a.adjudications)
-    if not os.path.isfile(path):
-        return _report([f"缺 {a.adjudications}"])
+    try:
+        path = str(safe_case_file(case_dir, a.adjudications))
+    except ValueError as exc:
+        return _report([str(exc)])
     try:
         obj = load_json(path)
         if obj.get("schema") != DISTRIBUTION_SCHEMA:
@@ -253,8 +259,12 @@ def cmd_distribution_validate(a):
         return _report([str(exc)])
     entity_map = None
     if a.entity_file:
-        entity_map, err = load_entity_map_strict(
-            a.entity_file if os.path.isabs(a.entity_file) else os.path.join(case_dir, a.entity_file))
+        try:
+            entity_path = safe_case_file(case_dir, a.entity_file)
+        except ValueError as exc:
+            fails.append(str(exc))
+            entity_path = None
+        entity_map, err = load_entity_map_strict(str(entity_path)) if entity_path else (None, None)
         if err: fails.append(err)
     rows = obj.get("adjudications")
     if not isinstance(rows, list) or not isinstance(obj.get("adjudicated_at"), str) \
@@ -309,8 +319,11 @@ def cmd_distribution_validate(a):
 
 
 def cmd_pattern_validate(a):
-    case_dir = os.path.abspath(a.case_dir); path = os.path.join(case_dir, a.resolutions); fails = []
-    if not os.path.isfile(path): return _report([f"缺 {a.resolutions}"])
+    case_dir = os.path.abspath(a.case_dir); fails = []
+    try:
+        path = str(safe_case_file(case_dir, a.resolutions))
+    except ValueError as exc:
+        return _report([str(exc)])
     obj = load_json(path)
     if obj.get("schema") != "pattern-resolutions/v1":
         return _report(["pattern resolutions schema 必须 pattern-resolutions/v1"])
@@ -347,8 +360,13 @@ def cmd_pattern_validate(a):
         refs = row.get("evidence_refs")
         if not isinstance(refs, list) or not refs:
             fails.append(f"{cid}: evidence_refs 为空")
-        elif any(not os.path.isfile(os.path.join(case_dir, str(rel))) for rel in refs):
-            fails.append(f"{cid}: evidence_refs 存在缺件")
+        else:
+            for rel in refs:
+                try:
+                    safe_case_file(case_dir, str(rel))
+                except ValueError as exc:
+                    fails.append(f"{cid}: evidence_refs 存在非法路径或缺件: {exc}")
+                    break
         if verdict == "UNRESOLVED": fails.append(f"{cid}: pattern mechanism 仍 UNRESOLVED")
     return _report(fails) if fails else (log(f"PASS pattern resolutions {len(rows)} 条") or 0)
 
@@ -370,7 +388,10 @@ def cmd_template(a):
     cands, dups = collect_candidates(wave, flow)
     if dups:
         return _report([f"源报告含重复候选 ID: {sorted(dups)[:5]}——扫描器产物异常，先排查"])
-    out_path = os.path.join(case_dir, a.out)
+    try:
+        out_path = str(safe_case_file(case_dir, a.out, must_exist=False))
+    except ValueError as exc:
+        return _report([str(exc)])
     if os.path.isfile(out_path) and not a.force:
         log(f"{a.out} 已存在（防覆盖已填裁决；确要重生成加 --force）")
         return 2
@@ -406,8 +427,11 @@ def cmd_validate(a):
     case_dir = os.path.abspath(a.case_dir)
     wp = os.path.join(case_dir, "wave_scan_report.json")
     fp = os.path.join(case_dir, "flow_anomaly_report.json")
-    jp = os.path.join(case_dir, a.adjudications)
     fails = []
+    try:
+        jp = str(safe_case_file(case_dir, a.adjudications))
+    except ValueError as exc:
+        return _report([str(exc)])
     # ① 缺文件
     for p, hint in ((wp, "wave_scan.py"), (fp, "flow_anomaly_scan.py"),
                     (jp, "adjudication_validator.py template 后由 −2 填写")):
@@ -434,8 +458,12 @@ def cmd_validate(a):
     # ⑧ 实体名册（linked_entity 绑定校验；freeze 强制传入）
     entity_map = None
     if a.entity_file:
-        entity_map, err = load_entity_map_strict(
-            a.entity_file if os.path.isabs(a.entity_file) else os.path.join(case_dir, a.entity_file))
+        try:
+            entity_path = safe_case_file(case_dir, a.entity_file)
+        except ValueError as exc:
+            fails.append(str(exc))
+            return _report(fails)
+        entity_map, err = load_entity_map_strict(str(entity_path))
         if err:
             fails.append(err)
             return _report(fails)

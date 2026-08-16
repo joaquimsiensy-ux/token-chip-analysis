@@ -60,6 +60,9 @@ SUITE = ['changelog_lint.py', ['docs_lint.py', '--all'], 'labels_manifest.py',
          'test_review_scale_guards.py',
          'test_figures_from_facts.py', 'test_cluster_quality.py',
          'test_sqd_merge_equiv.py', 'test_supply_truth_gate.py',
+         'test_repair_batch_a.py',
+         'test_repair_batch_b.py',
+         'test_repair_batch_c.py',
          'test_handoff_manifest.py', 'test_audit_release_gate.py',
          'test_review_20260804_p0.py',
          'test_review_20260804_p101.py',
@@ -84,6 +87,50 @@ SUITE += ['test_distribution_gate.py']
 # v6.39.0 APU 案（ANOM-012）存量迁移三工单：replay_stats 覆盖截止块契约、
 # 太古 done 官方迁移全链、旧 −1 产物格式迁移命令。
 SUITE += ['test_apu_legacy_gaps.py']
+
+# v6.40.0 六视角 BLOCK 修复工程批 D（F-06/F-07/GPT-F-06＋台账 A-1/A-3/A-5/B-1/B-2/B-4/B-5/B-7）
+SUITE += ['test_repair_batch_d.py']
+
+# v6.41.0 批1 步骤1 RV-07：真 FAIL 收据显式归档旧 PASS 后成为 canonical。
+SUITE += ['test_repair_batch1.py']
+
+# v6.42.0 批2 工单 B：F-02 对抗复核 v3 结构与绑定闭环。
+SUITE += ['test_repair_batch2_f02.py']
+
+# 批3 工单 F01：A4 blocker 语义联动、文本门槛与 entrypoint 身份闭环。
+SUITE += ['test_repair_batch3_f01.py']
+
+# 批3工单 F04/F05：deploy-sync 与 env_check fail-closed 注入回归。
+SUITE += ['test_repair_batch3_gates.py']
+
+# EVM 观测锚工程工单 A：bundle/transcript 协议、producer 与 fail-closed 负测。
+SUITE += ['test_evm_observation.py']
+
+# EVM 观测锚工程工单 C：shared/handoff/audit 公共消费、N-2 与原 F-02/F-03 反例。
+SUITE += ['test_evm_observation_release.py']
+
+# AI-1 正式边界与守卫组 test-only 包1/包2/包4 登记（2026-08-15 修复计划）。
+SUITE += ['test_repair_g1_audit_report.py',
+          'test_repair_g1_risk_flags_pipeline.py',
+          'test_repair_g1_handoff_containment.py']
+
+# AI-1 包3 F-03/F-14：跨分区 target 等式与现役文本卫生（2026-08-15 修复计划）。
+SUITE += ['test_repair_g1_cross_target.py',
+          'test_repair_g1_text_hygiene.py']
+
+# repair-20260815-g2（F-04/F-07/F-09/F-10）：观测件收紧/对账深重验/GMGN 黄灯/探索档 CLI
+SUITE += [
+    'test_evm_observation_nonempty_code.py',
+    'test_arbitrum_exploration_cli.py',
+    'test_recon_deep_reverify.py',
+    'test_gmgn_divergence_note.py',
+]
+
+# repair-20260815-g3（F-05/F-06/F-08/F-13）：文档守卫与备用采集器（融合方登记）
+SUITE += [
+    'test_g3_docs_guards.py',
+    'test_g3_alt_collectors.py',
+]
 
 
 def main():

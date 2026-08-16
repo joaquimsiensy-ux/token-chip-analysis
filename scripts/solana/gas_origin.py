@@ -11,20 +11,25 @@ gas_fast 的加固能力于 v6.24.0 全部并入本脚本：默认最多翻 2 �
 与 mint 无关，纯 SOL 层，任何 Solana 标的直接复用。
 来源：PUB(Solana) 分析 2026-07-14 收编；gas_fast 于 v6.24.0 并入。
 """
-import argparse, json, subprocess, time
+import argparse, json, subprocess, sys, time
 from datetime import datetime, timezone
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
+from proxy_config import resolve_proxy
+
 RPC = "https://api.mainnet-beta.solana.com"
-PROXY = "http://127.0.0.1:7897"
+PROXY = None
 
 
 def rpc(method, params, retries=5):
     body = json.dumps({"jsonrpc": "2.0", "id": 1, "method": method, "params": params})
     for i in range(retries):
-        p = subprocess.run(["curl", "-s", "-m", "30", "-x", PROXY, RPC, "-X", "POST",
-                            "-H", "Content-Type: application/json", "-d", body],
-                           capture_output=True, text=True, timeout=45)
+        cmd = ["curl", "-s", "-m", "30"]
+        if PROXY:
+            cmd += ["-x", PROXY]
+        cmd += [RPC, "-X", "POST", "-H", "Content-Type: application/json", "-d", body]
+        p = subprocess.run(cmd, capture_output=True, text=True, timeout=45)
         try:
             d = json.loads(p.stdout)
             if "result" in d:
@@ -104,12 +109,19 @@ def parse_args(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--full", action="store_true",
                         help="取消默认 2 页上限，一直翻到最老签名；已有 approx 记录会重查")
+    parser.add_argument("--proxy", default=None,
+                        help="代理 URL；空字符串或 none 显式直连（默认经 CHIP_PROXY/端口探测解析）")
     parser.add_argument("addresses", nargs="+", metavar="ADDR", help="待溯源的 Solana 地址")
     return parser.parse_args(argv)
 
 
 def main(argv=None):
     args = parse_args(argv)
+    global PROXY
+    try:
+        PROXY = resolve_proxy(args.proxy)
+    except ValueError as exc:
+        raise SystemExit(f"--proxy: {exc}") from exc
     targets = args.addresses
     max_pages = None if args.full else 2
     Path("data").mkdir(exist_ok=True)
@@ -140,4 +152,4 @@ def main(argv=None):
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())
