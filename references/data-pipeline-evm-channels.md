@@ -109,12 +109,22 @@ python3 scripts/evm/fetch_hypersync_v2.py \
 `run_*/done.json` 做两阶段重验，
 逐 run 实读 logs/blocks Parquet 的 schema、行数、块范围、logs→blocks 关联完整性、
 size 与 SHA-256；全部通过后才原子将 v2/v3/pre-schema done 升为
-`hypersync-v2-done/v4`，旧段明确记为 `legacy-unattributed` 并绑定迁移前整份 done 字节哈希
-及 migrator 身份。多段 pre-schema 目录须显式加 `--capture-from <冻结下界>`，禁止猜测
+`hypersync-v2-done/v4`，旧段明确记为 `legacy-unattributed`；`pre_migration_sha256`
+只是迁移时点留痕（self-reported at migration time），原件被覆盖后事后不可独立复验，
+判别联合只校验该键存在且为 64 位十六进制，不把它称为可验证闸；另记录 migrator 身份。
+多段 pre-schema 目录须显式加 `--capture-from <冻结下界>`，禁止猜测
 共同起点。任一 run
 缺文件、截断、schema 错或区间/关联异常时，命令列出具体 `run_*` 并非零退出，
 **不改写任何 done.json**。只有迁移 PASS 后才运行常规 fetch 命令从最大已验
 `next_block` 续拉；迁移失败不得删 done 绕过，应重拉损坏 run。
+
+**遗留目录残件处置手册（recover/refresh/preflight 一律先拒绝，机器不自动清理）**：
+
+- 根目录 `quarantine/` 是 `staged_capture.sh` 为失败或残缺分段保留的隔离现场；人工检视后把整个目录移出采集根，再继续恢复或预检。
+- `*.recover` 是 refresh 回滚失败时保留的恢复件；先核对同名 `done.json` 原件完整，再手动把恢复件移出采集根。
+- `.done.json.refresh-tmp.*` / `.done.json.refresh-bak.*` 是刷新被中断或提交收尾失败留下的临时件/备份；确认正式 `done.json` 状态后手动移出采集根。
+- 其他未识别残件逐一检视后移出采集根；APU 0801 的 `partial_run_19368487_wrongurl_bsc` 诊断目录也按此处理。不得删除 done 或用自动清理跳过人工核对。
+- macOS Finder 的 `.DS_Store` 是唯一显式豁免项，可留在根目录或 `run_*` 内；其他隐藏文件（例如 `.foo`）仍按未识别残件拒绝。
 
 | 通道 | 注册要求 | 限速实测 | 吞吐实测 | 断点续传 | 脚本 | 来源 |
 |---|---|---|---|---|---|---|
@@ -165,12 +175,12 @@ size 与 SHA-256；全部通过后才原子将 v2/v3/pre-schema done 升为
 - **transactions 端点做 BNB 注资溯源**：body `{"transactions":[{"to":[addr]}],"field_selection":{"transaction":["block_number","from","to","value"]}}`（value 为 hex）——单址全链入金一次查询 ~2.3s 到 tip，比逐块扫快几个量级；⚠25 址×全链批量会 10 分钟超时，可用姿势=关键地址单址逐查 / 发射窗小块段批量（from/to_block 圈定）。（哈基米，07-18）
 - 【历史降级·新案禁用】分段多进程姿势：复制脚本改 OUT 与 to_block 边界（`if nxt >= BOUND: break`）、sleep 提至 0.5s，各进程独立 CSV 事后按 (tx,log_index) 去重合并；改 config 后重启前删本地缓存的段清单文件。（哈基米，07-18）现行主线为 v2 Parquet/done manifest。
 - **多会话共享 key 限速冲突**：并行分析会话同打一个 HyperSync key/端点会互相触发 429（SQD 案与另一标的采集会话撞车实测）——开工前 `ps aux | grep fetch_hypersync` 查有无在跑进程；撞车时不必停工，调低单会话吞吐预期、靠 429 退避共存。（SQD，07-20）**限流是 key 级共享、不是端点独立**——同 key 打不同链子域（eth+arbitrum）并发同样互抢限额；多链标的的分链采集按链串行或错峰，别指望换端点绕开限额。（LPT，07-21）
-- **分段采集**：`staged_capture.sh` 进入 skip 循环前先要求根 `capture_identity.json` 在场，缺失即 FATAL 并指向 `--recover-identity`；只在 done manifest 的 token/url/from/to/query/collector 全字段及 Parquet 实物一致时跳段。残段移入 `outdir/quarantine/` 保留诊断现场，不再递归删除；正式 preflight 前须把该诊断目录移出采集根。失败 retry-once 后仍失败即停。
+- **分段采集**：`staged_capture.sh` 对不存在或真空（只忽略 `.DS_Store`）的根放行首采，由 fetch 自建 `capture_identity.json`；已有非真空目录仍要求 identity 为普通文件，缺失即 FATAL 并指向 `--recover-identity`。只在 done manifest 的 token/url/from/to/query/collector 全字段及 Parquet 实物一致时跳段。残段移入 `outdir/quarantine/` 保留诊断现场，不再递归删除；后续按上方“遗留目录残件处置手册”人工移出。失败 retry-once 后仍失败即停。
 
 - **★稀疏事件（单池单 topic）别用 HyperSync 全链扫，改「已有 Transfer 反查 tx → 打回执」**：HyperSync 按"扫过的块量"分批返回，对稀疏匹配（如某一个池的 `Mint` 事件）实测每次只推进 **~5,400 块 / 12 秒**——扫 1.1 亿块要几十小时，且中途看不出异常（进程活着、只是慢）。**正解**：从已落盘的全量 Transfer 里筛出"该合约 ↔ 任意地址、金额 ≥ 门槛"的交易去重得 tx 列表，再并发 `eth_getTransactionReceipt` 逐个解析。**反过来**：块区间已知的小范围精确查询（如追某个 tokenId 的 ERC721 Transfer）用 HyperSync **一次返回**，比公共 RPC 的 `eth_getLogs` 省事——后者在 BSC 公共节点超 5,000 块即 `-32005 limit exceeded`。选型口诀：**大范围稀疏→反查回执；小范围精确→HyperSync**。（KOGE 第二轮追加取证，07-25）
 - **v2 响应里的 log 字段是 `topic0/topic1/topic2/topic3` 分列，不是 `topics` 数组**：按 `l['topics'][0]` 取会直接 `KeyError`（与 `eth_getLogs` 的 RPC 返回结构不同，混用两套代码时高发）；`field_selection.log` 里也要逐个列名申请。同理 `transaction`/`block` 的字段名各自独立申请。（KOGE 第二轮追加取证，07-25）
 
-- **v2 resume 语义**：只消费同 `capture_from` 且身份完全一致的 manifests；边界必须满足 `capture_from<=from<to=next<=本次to`。`hypersync-v2-done/v4` 将 `logs.parquet` 与 `blocks.parquet` 的 size/rows/min_block/max_block/sha256 分别落盘，并逐段记录 collector。collector 哈希在进程启动时冻结、写 done 前复验；这是防误漂移的自报绑定，不宣称抵抗能同时伪造脚本与收据的攻击者。原生 v4 必须有可验 collector；迁移 v4 必须是 `collector=null`、`collector_provenance=legacy-unattributed` 与完整迁移记录，下游显示 `UNKNOWN_LEGACY`，不得渲染为已验证。done 经临时文件、fsync、rename 原子发布；`find_resume_block` 与 `staged_capture.sh` skip 前重读两个 Parquet 并重算全部字段。遇 v2/v3/pre-schema 存量 done 先 recover 再 refresh，禁止手改 `files`。跨标的、跨端点、坏边界、缺文件、截断或 hash 漂移、`start>=to` 全部 fail-closed，禁止“空完成”。
+- **v2 resume 语义**：只消费同 `capture_from` 且身份完全一致的 manifests；边界必须满足 `capture_from<=from<to=next<=本次to`。`hypersync-v2-done/v4` 将 `logs.parquet` 与 `blocks.parquet` 的 size/rows/min_block/max_block/sha256 分别落盘，并逐段记录 collector。collector 哈希在进程启动时冻结、写 done 前复验；这是防误漂移的自报绑定，不宣称抵抗能同时伪造脚本与收据的攻击者。原生 v4 必须有合法 collector，但下游只标 `SELF_REPORTED` 并透传哈希，不渲染成“已验证”；迁移 v4 必须是 `collector=null`、`collector_provenance=legacy-unattributed` 与完整迁移记录，下游显示 `UNKNOWN_LEGACY`。其中 `pre_migration_sha256` 仅为迁移时点自报留痕，旧字节被覆盖后事后不可独立复验。done 经临时文件、fsync、rename 原子发布；`find_resume_block` 与 `staged_capture.sh` skip 前重读两个 Parquet 并重算全部字段。遇 v2/v3/pre-schema 存量 done 先 recover 再 refresh，禁止手改 `files`。跨标的、跨端点、坏边界、缺文件、截断或 hash 漂移、`start>=to` 全部 fail-closed，禁止“空完成”。
 
 ### 3.2 Alchemy getAssetTransfers（scripts/evm/fetch_alchemy.py）
 - POST `https://bnb-mainnet.g.alchemy.com/v2/{KEY}`，method=`alchemy_getAssetTransfers`，params 含 `contractAddresses`、`category:["erc20"]`、`maxCount:"0x3e8"`、`pageKey` 分页；返回自带时间戳。（SIREN，07）

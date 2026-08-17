@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import csv
 import hashlib
 import json
 import subprocess
@@ -20,7 +21,9 @@ sys.path[:0] = [str(EVM), str(HERE.parent / "lib")]
 
 import collector_history
 import fetch_hypersync_v2 as fetch_v2
-from channels_preflight import ChannelsPreflightError, _v2_provenance
+from channels_preflight import (ChannelsPreflightError, _csv_collector_provenance,
+                                _v2_provenance)
+from evm_channel_fixture import write_csv_channel_receipt
 
 
 TOKEN = "0x" + "a" * 40
@@ -374,6 +377,188 @@ def test_17_collector_provenance_type_rejected(tmp):
     path.write_text(json.dumps(done), encoding="utf-8")
     _assert_reject(ValueError, lambda: fetch_v2.validate_done_manifest(
         path, 10, 20, TOKEN, URL))
+
+
+def test_18_preflight_labels_are_self_reported_and_identity_lineage_is_visible(tmp):
+    native = Path(tmp) / "native-label"
+    _make_done(native, schema=fetch_v2.MANIFEST_SCHEMA)
+    _write_v1_identity(native)
+    native_proof = _v2_provenance(native, TOKEN, 10, 20)
+    native_receipt = native_proof["done_receipts"][0]
+    assert native_receipt["collector"] == "SELF_REPORTED"
+    assert native_receipt["collector_sha256"] == fetch_v2.sha256_file(fetch_v2.__file__)
+    assert native_proof["identity"]["identity_schema"] == fetch_v2.IDENTITY_SCHEMA
+    assert native_proof["identity"]["recovered"] is False
+    assert native_proof["identity"]["lineage"] is None
+
+    migrated = Path(tmp) / "migrated-label"
+    migrated_path, _ = _make_done(migrated, schema="hypersync-v2-done/v3")
+    fetch_v2.recover_identity(migrated)
+    fetch_v2.refresh_manifests(migrated)
+    migrated_proof = _v2_provenance(migrated, TOKEN, 10, 20)
+    migrated_receipt = migrated_proof["done_receipts"][0]
+    assert migrated_receipt["collector"] == "UNKNOWN_LEGACY"
+    assert migrated_receipt["collector_sha256"] is None
+    assert migrated_proof["identity"]["identity_schema"] == fetch_v2.RECOVERED_IDENTITY_SCHEMA
+    assert migrated_proof["identity"]["recovered"] is True
+    assert migrated_proof["identity"]["lineage"] == "unknown"
+
+    # B-01 exact wash: delete legacy discriminator keys and insert the public current hash.
+    washed = json.loads(migrated_path.read_text(encoding="utf-8"))
+    for key in ("collector_provenance", "refreshed_from_schema",
+                "pre_migration_sha256", "migrator"):
+        washed.pop(key)
+    washed["collector"] = {"path": SCRIPT_PATH,
+                            "sha256": fetch_v2.sha256_file(fetch_v2.__file__)}
+    migrated_path.write_text(json.dumps(washed), encoding="utf-8")
+    washed_receipt = _v2_provenance(migrated, TOKEN, 10, 20)["done_receipts"][0]
+    assert washed_receipt["collector"] == "SELF_REPORTED"
+    assert washed_receipt["collector_sha256"] == washed["collector"]["sha256"]
+
+
+def test_19_script_upgrade_breaks_each_unsigned_protocol_boundary(tmp):
+    """Lock references/maintenance-review-repair.md section 8 per-protocol discipline."""
+    native = Path(tmp) / "upgrade-native"
+    _make_done(native, schema=fetch_v2.MANIFEST_SCHEMA)
+    _write_v1_identity(native)
+    recovered = Path(tmp) / "upgrade-recovered"
+    _make_done(recovered, schema="hypersync-v2-done/v3")
+    fetch_v2.recover_identity(recovered)
+    fetch_v2.refresh_manifests(recovered)
+
+    real_sha = fetch_v2.sha256_file
+    script = Path(fetch_v2.__file__).resolve()
+
+    def upgraded(path):
+        return "d" * 64 if Path(path).resolve() == script else real_sha(path)
+
+    with mock.patch.object(fetch_v2, "sha256_file", side_effect=upgraded):
+        _assert_reject(ChannelsPreflightError,
+                       lambda: _v2_provenance(native, TOKEN, 10, 20))
+        _assert_reject(ChannelsPreflightError,
+                       lambda: _v2_provenance(recovered, TOKEN, 10, 20))
+
+
+def test_20_owned_inventory_residues_are_classified_but_still_rejected(tmp):
+    cases = (
+        ("quarantine", True, "staged_capture 隔离区 quarantine/"),
+        ("done.json.recover", False, "refresh 回滚保留件"),
+        (".done.json.refresh-tmp.123", False, "刷新中断残留临时件"),
+        (".done.json.refresh-bak.123", False, "刷新中断残留临时件"),
+    )
+    for index, (name, at_root, needle) in enumerate(cases):
+        root = Path(tmp) / f"owned-residue-{index}"
+        done_path, _ = _make_done(root, schema="hypersync-v2-done/v3")
+        residue = root / name if at_root else done_path.parent / name
+        if at_root:
+            residue.mkdir()
+        else:
+            residue.write_text("preserved", encoding="utf-8")
+        _assert_reject(ValueError, lambda root=root: fetch_v2.recover_identity(root), needle)
+
+    unknown = Path(tmp) / "unknown-residue"
+    _make_done(unknown, schema="hypersync-v2-done/v3")
+    (unknown / ".foo").write_text("not exempt", encoding="utf-8")
+    _assert_reject(ValueError, lambda: fetch_v2.recover_identity(unknown),
+                   "逐一检视后移出采集根")
+
+
+def test_21_ds_store_is_the_only_inventory_and_vacuum_exemption(tmp):
+    vacuum = Path(tmp) / "finder-vacuum"
+    vacuum.mkdir()
+    (vacuum / ".DS_Store").write_text("finder", encoding="utf-8")
+    fetch_v2.ensure_outdir_identity(vacuum, TOKEN, URL)
+    assert (vacuum / fetch_v2.IDENTITY_NAME).is_file()
+
+    root = Path(tmp) / "finder-inventory"
+    done_path, _ = _make_done(root, schema="hypersync-v2-done/v3")
+    (root / ".DS_Store").write_text("finder", encoding="utf-8")
+    (done_path.parent / ".DS_Store").write_text("finder", encoding="utf-8")
+    fetch_v2.recover_identity(root)
+    fetch_v2.refresh_manifests(root)
+    assert _v2_provenance(root, TOKEN, 10, 20)["done_receipts"]
+
+    hidden_root = Path(tmp) / "hidden-root"
+    _make_done(hidden_root, schema="hypersync-v2-done/v3")
+    (hidden_root / ".foo").write_text("reject", encoding="utf-8")
+    _assert_reject(ValueError, lambda: fetch_v2.recover_identity(hidden_root), ".foo")
+    hidden_run = Path(tmp) / "hidden-run"
+    hidden_done, _ = _make_done(hidden_run, schema="hypersync-v2-done/v3")
+    (hidden_done.parent / ".foo").write_text("reject", encoding="utf-8")
+    _assert_reject(ValueError, lambda: fetch_v2.recover_identity(hidden_run), ".foo")
+
+
+def test_22_current_script_revocation_beats_current_hash_injection(tmp):
+    root = Path(tmp) / "revoked-current"
+    _make_done(root, schema=fetch_v2.MANIFEST_SCHEMA)
+    _write_v1_identity(root)
+    current = fetch_v2.sha256_file(fetch_v2.__file__)
+    revoked = {
+        "script": fetch_v2.SCRIPT_NAME, "sha256": current, "commit": "test",
+        "protocol": fetch_v2.MANIFEST_SCHEMA, "status": "REVOKED", "reason": "test",
+    }
+    original = collector_history.COLLECTOR_HISTORY
+    collector_history.COLLECTOR_HISTORY = original + (revoked,)
+    try:
+        _assert_reject(ValueError,
+                       lambda: fetch_v2._allowed_script_hashes(fetch_v2.MANIFEST_SCHEMA),
+                       "当前脚本版本已被吊销")
+        _assert_reject(ChannelsPreflightError,
+                       lambda: _v2_provenance(root, TOKEN, 10, 20),
+                       "当前脚本版本已被吊销")
+    finally:
+        collector_history.COLLECTOR_HISTORY = original
+
+
+def test_23_symlink_capture_roots_are_rejected_by_recover_and_refresh(tmp):
+    recover_real = Path(tmp) / "recover-real"
+    _make_done(recover_real, schema="hypersync-v2-done/v3")
+    recover_alias = Path(tmp) / "recover-alias"
+    recover_alias.symlink_to(recover_real, target_is_directory=True)
+    _assert_reject(ValueError, lambda: fetch_v2.recover_identity(recover_alias), "符号链接")
+
+    refresh_real = Path(tmp) / "refresh-real"
+    _make_done(refresh_real, schema="hypersync-v2-done/v3")
+    fetch_v2.recover_identity(refresh_real)
+    refresh_alias = Path(tmp) / "refresh-alias"
+    refresh_alias.symlink_to(refresh_real, target_is_directory=True)
+    _assert_reject(ValueError, lambda: fetch_v2.refresh_manifests(refresh_alias), "符号链接")
+
+
+def test_24_csv_collector_receipt_is_strict_and_current_revocation_wins(tmp):
+    root = Path(tmp)
+    data = root / "strict.csv"
+    with data.open("w", newline="", encoding="utf-8") as handle:
+        writer = csv.writer(handle)
+        writer.writerow(["block", "ts", "tx", "log_index", "from", "to",
+                         "value_raw", "block_hash"])
+        writer.writerow([1, "2026-08-17", "0xtx", 0, "0x" + "0" * 40,
+                         TOKEN, 1, "0xhash"])
+    write_csv_channel_receipt(root, "strict", data, TOKEN, 0, 2)
+    source = root / "strict.collector.json"
+    original_text = source.read_text(encoding="utf-8")
+    duplicate = original_text.replace('"collector": {',
+                                      '"collector": null, "collector": {', 1)
+    source.write_text(duplicate, encoding="utf-8")
+    _assert_reject(ChannelsPreflightError,
+                   lambda: _csv_collector_provenance(source, data, TOKEN, 0, 2),
+                   "duplicate JSON key")
+
+    source.write_text(original_text, encoding="utf-8")
+    csv_script = EVM / "fetch_hypersync.py"
+    current = fetch_v2.sha256_file(csv_script)
+    revoked = {
+        "script": csv_script.name, "sha256": current, "commit": "test",
+        "protocol": "evm-collector-run/v2", "status": "REVOKED", "reason": "test",
+    }
+    original_history = collector_history.COLLECTOR_HISTORY
+    collector_history.COLLECTOR_HISTORY = original_history + (revoked,)
+    try:
+        _assert_reject(ChannelsPreflightError,
+                       lambda: _csv_collector_provenance(source, data, TOKEN, 0, 2),
+                       "当前脚本版本已被吊销")
+    finally:
+        collector_history.COLLECTOR_HISTORY = original_history
 
 
 CASES = tuple(value for name, value in sorted(globals().items())

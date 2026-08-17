@@ -164,6 +164,52 @@ def test_h03(tmp):
     assert p.returncode != 0 and "FATAL" in p.stdout + p.stderr
 
 
+def test_u2b_staged_capture_first_run(tmp):
+    fake_bin = Path(tmp) / "fake-bin"
+    fake_bin.mkdir()
+    fake_python = fake_bin / "python3"
+    fake_python.write_text(
+        "#!/bin/sh\nprintf '%s\\n' \"$*\" >> \"$U2B_CALLS\"\nexit 7\n",
+        encoding="utf-8",
+    )
+    fake_python.chmod(0o755)
+    env = os.environ.copy()
+    env["PATH"] = str(fake_bin) + os.pathsep + env.get("PATH", "")
+
+    # All three first-capture states must reach the fetch loop; the fake transport then fails.
+    for tag in ("absent", "empty", "ds-store"):
+        root = Path(tmp) / f"first-{tag}"
+        if tag != "absent":
+            root.mkdir()
+        if tag == "ds-store":
+            (root / ".DS_Store").write_text("finder", encoding="utf-8")
+        calls = Path(tmp) / f"{tag}.calls"
+        env["U2B_CALLS"] = str(calls)
+        proc = subprocess.run(
+            [str(EVM / "staged_capture.sh"), A_EVM, "https://invalid.example",
+             str(root), "10", "20"],
+            capture_output=True, text=True, env=env,
+        )
+        output = proc.stdout + proc.stderr
+        assert proc.returncode == 1, output
+        assert "outdir 缺普通文件 capture_identity.json" not in output
+        assert len(calls.read_text(encoding="utf-8").splitlines()) == 2
+
+    # Any other hidden file proves the root is not a vacuum and keeps the recovery gate closed.
+    legacy = Path(tmp) / "first-hidden"
+    legacy.mkdir()
+    (legacy / ".foo").write_text("not exempt", encoding="utf-8")
+    calls = Path(tmp) / "hidden.calls"
+    env["U2B_CALLS"] = str(calls)
+    proc = subprocess.run(
+        [str(EVM / "staged_capture.sh"), A_EVM, "https://invalid.example",
+         str(legacy), "10", "20"],
+        capture_output=True, text=True, env=env,
+    )
+    assert proc.returncode == 2 and "--recover-identity" in proc.stdout + proc.stderr
+    assert not calls.exists()
+
+
 def test_r2_refresh_manifests(tmp):
     good_out = Path(tmp) / "legacy_good"
     _, old = make_legacy_done(good_out)
@@ -277,13 +323,16 @@ def main():
     with tempfile.TemporaryDirectory() as tmp:
         test_h03(tmp)
     with tempfile.TemporaryDirectory() as tmp:
+        test_u2b_staged_capture_first_run(tmp)
+    with tempfile.TemporaryDirectory() as tmp:
         test_r2_refresh_manifests(tmp)
     with tempfile.TemporaryDirectory() as tmp:
         test_h04(tmp)
     test_h05()
     with tempfile.TemporaryDirectory() as tmp:
         test_h06(tmp)
-    print("PASS: H-02/H-03 + R2 legacy manifest refresh + H-04/H-05/H-06")
+    print("PASS: H-02/H-03 + U2b staged first capture + R2 legacy manifest refresh + "
+          "H-04/H-05/H-06")
     return 0
 
 

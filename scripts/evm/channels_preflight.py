@@ -16,7 +16,9 @@ import sys
 import tempfile
 from pathlib import Path
 
-from collector_history import historical_script_hashes
+import collector_history
+
+historical_script_hashes = collector_history.historical_script_hashes
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
 from anchor_point_contract import strict_json_loads
@@ -100,6 +102,18 @@ def _sha256_file(path: Path):
     return h.hexdigest()
 
 
+def _allowed_current_script_hashes(name, protocol, path):
+    revoked = {
+        entry["sha256"]
+        for entry in collector_history.COLLECTOR_HISTORY
+        if entry["status"] == "REVOKED"
+    }
+    current = _sha256_file(Path(path))
+    if current in revoked:
+        raise ChannelsPreflightError("当前脚本版本已被吊销，禁止继续签发/校验")
+    return historical_script_hashes(name, protocol=protocol) | {current}
+
+
 def _sha256_prefix(path: Path, size: int):
     if isinstance(size, bool) or not isinstance(size, int) or size < 0 or size > path.stat().st_size:
         raise ChannelsPreflightError("collector segment prefix size 非法")
@@ -138,7 +152,7 @@ def _csv_collector_provenance(receipt_path, data_path, token, lo, hi):
     if rp.is_symlink() or not rp.is_file():
         raise ChannelsPreflightError(f"CSV 采集回执不存在或为符号链接: {rp}")
     try:
-        d = json.loads(rp.read_text(encoding="utf-8"))
+        d = strict_json_loads(rp.read_text(encoding="utf-8"))
     except Exception as exc:
         raise ChannelsPreflightError(f"CSV 采集回执不可读: {exc}") from exc
     if d.get("schema") != COLLECTOR_RECEIPT_SCHEMA or d.get("status") != "PASS":
@@ -153,10 +167,11 @@ def _csv_collector_provenance(receipt_path, data_path, token, lo, hi):
     allowed = {x.name: x for x in (Path(__file__).with_name("fetch_hypersync.py"),
                                       Path(__file__).with_name("fetch_sqd_evm.py"))}
     expected_script = allowed.get(name)
-    if expected_script is None or (
-            collector_hash != _sha256_file(expected_script)
-            and collector_hash not in historical_script_hashes(
-                name, protocol=COLLECTOR_RECEIPT_SCHEMA)):
+    if expected_script is None:
+        raise ChannelsPreflightError("CSV 采集回执未绑定当前受支持采集器")
+    allowed_hashes = _allowed_current_script_hashes(
+        name, COLLECTOR_RECEIPT_SCHEMA, expected_script)
+    if collector_hash not in allowed_hashes:
         raise ChannelsPreflightError("CSV 采集回执未绑定当前受支持采集器")
     q = d.get("query")
     if not isinstance(q, dict) or str(q.get("token", "")).lower() != str(token).lower() \
@@ -238,8 +253,8 @@ def _v2_provenance(path, token, lo, hi):
         if identity_schema == IDENTITY_SCHEMA:
             actual_collector = identity_manifest.get("collector")
             expected_collector = expected["collector"]
-            allowed_collector_hashes = historical_script_hashes(
-                SCRIPT_NAME, protocol=IDENTITY_SCHEMA) | {expected_collector["sha256"]}
+            allowed_collector_hashes = _allowed_current_script_hashes(
+                SCRIPT_NAME, IDENTITY_SCHEMA, Path(__file__).with_name(SCRIPT_NAME))
             actual_path = (actual_collector.get("path")
                            if isinstance(actual_collector, dict) else None)
             actual_hash = (actual_collector.get("sha256")
@@ -293,11 +308,14 @@ def _v2_provenance(path, token, lo, hi):
         except (KeyError, TypeError, ValueError) as exc:
             raise ChannelsPreflightError(f"v2 done 回执校验失败 {done_path}: {exc}") from exc
         intervals.append((frm, end))
+        collector = validated.get("collector")
         receipts.append({"path": str(done_path.relative_to(root)),
                          "sha256": _sha256_file(done_path),
                          "from_block": frm, "to_block": end,
-                         "collector": ("UNKNOWN_LEGACY"
-                                       if validated.get("collector") is None else "VERIFIED")})
+                         "collector": ("UNKNOWN_LEGACY" if collector is None
+                                       else "SELF_REPORTED"),
+                         "collector_sha256": (None if collector is None
+                                              else collector["sha256"])})
     intervals.sort()
     if intervals[0][0] != lo or intervals[-1][1] != hi:
         raise ChannelsPreflightError(
@@ -308,7 +326,10 @@ def _v2_provenance(path, token, lo, hi):
     return {"kind": "hypersync-v2-native",
             "identity_manifest": {"path": "capture_identity.json",
                                   "sha256": _sha256_file(identity_path)}, "identity": {
-                "token": identity[0], "provider_url": identity[1], "query_schema": identity[2]},
+                "token": identity[0], "provider_url": identity[1], "query_schema": identity[2],
+                "identity_schema": identity_schema,
+                "recovered": identity_schema == RECOVERED_IDENTITY_SCHEMA,
+                "lineage": ("unknown" if identity_schema == RECOVERED_IDENTITY_SCHEMA else None)},
             "completion": {"reason": "contiguous_done_receipts", "lo": lo, "hi": hi},
             "done_receipts": receipts}
 

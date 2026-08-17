@@ -24,7 +24,8 @@ from hypersync import (BlockField, ClientConfig, FieldSelection, HexOutput,
                        LogField, LogSelection, Query, StreamConfig)
 
 try:
-    from collector_history import historical_script_hashes
+    import collector_history as _collector_history
+    historical_script_hashes = _collector_history.historical_script_hashes
 except ModuleNotFoundError as exc:
     if exc.name != "collector_history":
         raise
@@ -38,6 +39,7 @@ except ModuleNotFoundError as exc:
         raise
     _history_module = importlib.util.module_from_spec(_history_spec)
     _history_spec.loader.exec_module(_history_module)
+    _collector_history = _history_module
     historical_script_hashes = _history_module.historical_script_hashes
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
@@ -90,8 +92,24 @@ def _read_strict_json(path, label):
     return value, raw, hashlib.sha256(raw).hexdigest()
 
 
+def _revoked_script_hashes():
+    """Return the registry-wide deny set; REVOKED beats a current worktree hash."""
+    return {
+        entry["sha256"]
+        for entry in _collector_history.COLLECTOR_HISTORY
+        if entry["status"] == "REVOKED"
+    }
+
+
+def _current_script_hash():
+    current = sha256_file(__file__)
+    if current in _revoked_script_hashes():
+        raise ValueError("当前脚本版本已被吊销，禁止继续签发/校验")
+    return current
+
+
 def _allowed_script_hashes(protocol):
-    return historical_script_hashes(SCRIPT_NAME, protocol=protocol) | {sha256_file(__file__)}
+    return historical_script_hashes(SCRIPT_NAME, protocol=protocol) | {_current_script_hash()}
 
 
 def _validate_script_actor(actor, protocol, label, *, path=SCRIPT_PATH):
@@ -117,7 +135,7 @@ def _validate_done_v4_shape(d):
         if "collector_provenance" in d or migration_keys & set(d):
             raise ValueError("原生 v4 done 禁止携带 legacy provenance/迁移记录")
         _validate_script_actor(collector, MANIFEST_SCHEMA, "collector")
-        return "VERIFIED"
+        return "SELF_REPORTED"
     if collector is not None:
         raise ValueError("done collector 必须为对象或 null")
     if "collector" not in d or provenance != "legacy-unattributed" \
@@ -126,6 +144,8 @@ def _validate_done_v4_shape(d):
     source = d.get("refreshed_from_schema")
     if not isinstance(source, str) or source not in LEGACY_MANIFEST_SCHEMAS | {"pre-schema-v1"}:
         raise ValueError("refreshed_from_schema 不是受支持的旧 schema")
+    # Migration-time self-report only: after source bytes are replaced this trace cannot be
+    # independently reverified.  The union checks presence/shape, not historical truth.
     pre_hash = d.get("pre_migration_sha256")
     if not isinstance(pre_hash, str) or not re.fullmatch(r"[0-9a-f]{64}", pre_hash):
         raise ValueError("pre_migration_sha256 非 64 位十六进制")
@@ -241,24 +261,45 @@ def capture_identity(token_addr, url):
     return {"schema": IDENTITY_SCHEMA, "token": token_addr.lower(), "url": url,
             "query_schema": QUERY_SCHEMA, "network": host.split(".", 1)[0],
             "collector": {"path": SCRIPT_NAME,
-                          "sha256": sha256_file(__file__)}}
+                          "sha256": _current_script_hash()}}
+
+
+def _inventory_residue_error(name, *, location, is_directory=False):
+    """Classify owned crash/rollback artifacts without turning rejection into cleanup."""
+    display = f"{location}/{name}" if location else name
+    if not location and name == "quarantine" and is_directory:
+        return ("存在 staged_capture 隔离区 quarantine/；"
+                "人工检视其内容后整体移出采集根再继续")
+    if name.endswith(".recover"):
+        return (f"{display} 是 refresh 回滚保留件；"
+                "确认同名 done 原件完好后手动移除")
+    if re.fullmatch(r"\..+\.refresh-(?:tmp|bak)\.[^.]+", name):
+        return f"{display} 是刷新中断残留临时件；确认后手动移除"
+    return f"v2 采集根目录有未识别残件: {display}；逐一检视后移出采集根再继续"
 
 
 def validate_capture_inventory(outdir, *, identity_required=True):
     """Require the exact root/run inventory shared by recovery and preflight."""
-    root = Path(outdir).resolve()
-    if root.is_symlink() or not root.is_dir():
+    raw_root = Path(outdir)
+    if raw_root.is_symlink():
+        raise ValueError("v2 采集根目录不存在、非目录或为符号链接")
+    root = raw_root.resolve()
+    if not root.is_dir():
         raise ValueError("v2 采集根目录不存在、非目录或为符号链接")
     allowed_root_file = {IDENTITY_NAME} if identity_required else set()
     runs = []
     for entry in root.iterdir():
+        if entry.name == ".DS_Store":
+            continue
         if entry.name in allowed_root_file:
             if entry.is_symlink() or not entry.is_file():
                 raise ValueError(f"{IDENTITY_NAME} 不是普通文件")
             continue
         if not re.fullmatch(r"run_[0-9]+", entry.name) or entry.is_symlink() \
                 or not entry.is_dir():
-            raise ValueError(f"v2 采集根目录有未识别残件: {entry.name}")
+            raise ValueError(_inventory_residue_error(
+                entry.name, location="",
+                is_directory=entry.is_dir() and not entry.is_symlink()))
         runs.append(entry)
     if identity_required and not (root / IDENTITY_NAME).is_file():
         raise ValueError(f"v2 采集根目录缺 {IDENTITY_NAME}")
@@ -267,9 +308,12 @@ def validate_capture_inventory(outdir, *, identity_required=True):
     expected = {"done.json", "logs.parquet", "blocks.parquet"}
     done_paths = []
     for run in sorted(runs):
-        entries = list(run.iterdir())
+        entries = [entry for entry in run.iterdir() if entry.name != ".DS_Store"]
         names = {entry.name for entry in entries}
         if names != expected:
+            extras = sorted(names - expected)
+            if extras:
+                raise ValueError(_inventory_residue_error(extras[0], location=run.name))
             raise ValueError(f"{run.name} inventory 非精确三件套: {sorted(names)}")
         for entry in entries:
             if entry.is_symlink() or not entry.is_file():
@@ -337,7 +381,7 @@ def ensure_outdir_identity(outdir, token_addr, url):
         return actual
     # Auto-signing is safe only for a vacuum root. Any hidden file, partial run, or legacy
     # segment requires the explicit read-only recovery audit; deleting identity cannot re-sign.
-    if any(root.iterdir()):
+    if any(entry.name != ".DS_Store" for entry in root.iterdir()):
         raise ValueError(f"遗留 outdir 缺 {IDENTITY_NAME}；先运行 --recover-identity")
     atomic_write_json(path, expected)
     return expected
@@ -345,12 +389,15 @@ def ensure_outdir_identity(outdir, token_addr, url):
 
 def recover_identity(outdir):
     """Read-only audit every legacy run, then issue an explicit unknown-lineage identity."""
-    root = Path(outdir).resolve()
+    raw_root = Path(outdir)
+    if raw_root.is_symlink():
+        raise ValueError("v2 采集根目录不存在、非目录或为符号链接")
+    root = raw_root.resolve()
     identity_path = root / IDENTITY_NAME
     if identity_path.exists() or identity_path.is_symlink():
         raise ValueError(f"{IDENTITY_NAME} 已存在；拒绝覆盖恢复")
-    recoverer_hash = sha256_file(__file__)
-    done_paths = validate_capture_inventory(root, identity_required=False)
+    recoverer_hash = _current_script_hash()
+    done_paths = validate_capture_inventory(raw_root, identity_required=False)
     identities = set()
     for done_path in done_paths:
         d, _, _ = _read_strict_json(done_path, "done manifest")
@@ -564,11 +611,15 @@ def refresh_manifests(outdir, capture_from=None):
     ＋按字节哈希验证回滚结果；回滚失败保留 `<done>.recover` 恢复件并抛
     RefreshRollbackError（CLI exit 1）。不变量＝全有或全无：任何失败路径上，
     要么所有 done.json 都是新版，要么所有 done.json 字节回滚原样。"""
-    root = Path(outdir).resolve()
+    raw_root = Path(outdir)
+    if raw_root.is_symlink():
+        raise ValueError("v2 采集根目录不存在、非目录或为符号链接")
+    root = raw_root.resolve()
     identity_path = root / IDENTITY_NAME
     if identity_path.is_symlink() or not identity_path.is_file():
         raise ValueError(f"遗留 outdir 缺 {IDENTITY_NAME}；先运行 --recover-identity")
-    done_paths = validate_capture_inventory(root, identity_required=True)
+    _current_script_hash()
+    done_paths = validate_capture_inventory(raw_root, identity_required=True)
     prehistoric_count = 0
     for path in done_paths:
         preview, _, _ = _read_strict_json(path, "done manifest")
@@ -725,7 +776,7 @@ def parse_args(argv=None):
 
 async def main():
     a = parse_args()
-    collector_start_hash = sha256_file(__file__)
+    collector_start_hash = _current_script_hash()
     token = a.token
     url = re.sub(r"/query/?$", "", a.url.rstrip("/"))  # 容错：v1 习惯带 /query
     client = hypersync.HypersyncClient(ClientConfig(url=url, bearer_token=token))

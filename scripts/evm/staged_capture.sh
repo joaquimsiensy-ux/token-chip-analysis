@@ -18,7 +18,31 @@ fi
 TOK=$1; URL=$2; OUTDIR=$3; shift 3
 BOUNDS=("$@")
 n=${#BOUNDS[@]}
-if [ ! -f "$OUTDIR/capture_identity.json" ] || [ -L "$OUTDIR/capture_identity.json" ]; then
+
+outdir_is_vacuum() {
+  local entry
+  shopt -s dotglob nullglob
+  for entry in "$OUTDIR"/*; do
+    [ "$(basename "$entry")" = ".DS_Store" ] && continue
+    shopt -u dotglob nullglob
+    return 1
+  done
+  shopt -u dotglob nullglob
+  return 0
+}
+
+# 首采由 fetch 自建目录与 identity；已有真空目录（仅显式忽略 .DS_Store）同样放行。
+# 非真空遗留目录仍须先走显式 recovery，不因首采便利而洗白存量。
+if [ ! -e "$OUTDIR" ] && [ ! -L "$OUTDIR" ]; then
+  :
+elif [ -L "$OUTDIR" ] || [ ! -d "$OUTDIR" ]; then
+  echo "[FATAL] outdir 缺普通文件 capture_identity.json；先运行 fetch_hypersync_v2.py --recover-identity --outdir '$OUTDIR'" >&2
+  exit 2
+elif [ -f "$OUTDIR/capture_identity.json" ] && [ ! -L "$OUTDIR/capture_identity.json" ]; then
+  :
+elif outdir_is_vacuum; then
+  :
+else
   echo "[FATAL] outdir 缺普通文件 capture_identity.json；先运行 fetch_hypersync_v2.py --recover-identity --outdir '$OUTDIR'" >&2
   exit 2
 fi

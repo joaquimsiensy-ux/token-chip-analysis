@@ -10,6 +10,7 @@
 
 ## 版本索引（活跃窗口，新在上；每版一行，详情见下方对应条目）
 
+- **6.47.1**（2026-08-17）单元2 盲审消化轮：4 BREACH 关洞（收据标签去"验证"语义防零成本洗白、维护纪律按 protocol 逐条补登+断链固化测试、inventory 残件分类报错给人工出路、staged_capture 首采三态放行）＋5 WEAK 修复（.DS_Store 唯一豁免三处等深、REVOKED 压过当前脚本、recovered 身份收据透传、symlink 根死代码、CSV 回执接严格 JSON）＋1 注（迁移哈希定性留痕）；APU 0801 原始形态全链重演练闭环
 - **6.47.0**（2026-08-17）HyperSync Parquet done v4 逐段采集者归属＋C12 显式恢复（三单元收口工程·单元2）：每段 done 带 collector{path,sha256} 启动冻结哈希+写前 TOCTOU 复验；旧段迁移 legacy-unattributed 三件套（源 schema/迁移前哈希/migrator 可验）+原生/迁移判别联合互斥；identity 自动签发收严至真空目录、遗留目录走 --recover-identity 签 hypersync-capture-identity/v2（recoverer 取代 collector、lineage=unknown），先 recover 后 refresh；collector_history 按 protocol 过滤（REVOKED 保持 hash-wide）；U1 盲审三条跨单元传染修复随单落地；APU/EGL1/NES 实件演练三态闭合
 - **6.46.1**（2026-08-17）单元1 盲审消化轮：2 BREACH 关洞（重复 JSON 键人机分裂伪装、producer 历史 protocol 硬编码致 v3 plan 可挂 v2 时代签名）＋7 WEAK 修复（schema 分派 fail-open 转显式白名单、v2 点拒 v3 说谎字段、单源守卫恢复全局语义等）；五项维持两项旧账另立裁决在案；NES 存量与盲审向量回打全绿
 - **6.46.0**（2026-08-17）anchor-plan v3 机器字段与 producer 历史登记（三单元收口工程·单元1）：余额点必带 balance_block_source 正向白名单、balance/tx 严格 XOR，kind 中文文案退出一切语义判定；新建 producer_history 六字段登记表修复存量 receipt producer 哈希深验基线即断；v2 存量不重签，语义重放 schema-aware 投影兼容，NES 三份存量件先红后绿实证
@@ -48,6 +49,17 @@
 - **6.20.1** 2026-08-05 修 5 处阻断级文档漂移（A4 前禁写报告冲突/easy 残留/惯犯回灌 docstring/批量预采集残留/旧 Par 路线历史降级）＋docs_lint 增中文禁词与 Python module docstring 扫描
 
 更早版本（6.20.0 及以前）详见 `archive/CHANGELOG-archive.md`。
+
+## [6.47.1] - 2026-08-17 — 单元2 盲审消化轮（4 BREACH＋5 WEAK 修复＋1 注）
+
+- **源起**：6.47.0 收口后独立 opus 盲审（20 攻击向量实跑＋基线对照＋27 个真实采集根扫描）判 BLOCK：4 BREACH／6 WEAK／2 NOTE／11 DEFENDED；按裁决消化，施工 codex（工单 U2b）。
+- **B-01 收据标签去"验证"语义**：迁移段删 legacy 键＋填公开可算的当前脚本哈希即可把 preflight 收据从 UNKNOWN_LEGACY 洗成 VERIFIED（零成本，无需伪造脚本）。修＝原生段标签改 `SELF_REPORTED`＋`collector_sha256` 哈希透传，迁移段保持 UNKNOWN_LEGACY；闸只做自报绑定核对，置信判定交上层，`scripts/` 内 VERIFIED 字样清零。声明边界：改写后的联合仍被判别闸放行（自报绑定的既有边界），本项修标签语义不加真伪鉴别。
+- **B-02 升级断链纪律补齐**：done/v4 与 identity/v2 两条新 protocol 线历史集为空，脚本一升级存量全误拦——NES 0816「169 份正版 receipt 误拦」同族，本单元新挖两个。修＝maintenance-review-repair 纪律条款改写（被替换版本按其生前签发过的**每个 protocol 各补一条**，一版多 protocol＝多条目）＋断链固化测试（模拟升级后未补登的原生 v4 done 与 recovered identity 双双被拒，测试注释指向纪律条款）。附带边界：6.47.0 版脚本被本消化轮替换，其在世期间无正式签发产物（仅临时演练件），按纪律无需补登；盲审期间的临时演练副本重验被拒属预期。
+- **B-03 inventory 残件分类出路**：quarantine/（staged_capture 自建）、`*.recover`（refresh 回滚特意保留件）、`.refresh-tmp/.refresh-bak` 崩溃残件全被"未识别残件"一刀拒且无指引；真实回归＝APU 0801 案主目录（基线 PASS）被人工诊断目录卡死。修＝分类报错逐类给人工处置指引（全部仍拒、不提供自动清理防洗白）＋数据管线文档新增"遗留目录残件处置手册"。
+- **B-04 staged_capture 首采死路**：identity 检查一刀切，全新目录 FATAL→指向 recover→recover 对空目录又拒。修＝三态放行（outdir 不存在/真空目录/identity 普通文件在场），非真空遗留缺 identity 仍 FATAL。
+- **WEAK 五修一注**：`.DS_Store` 唯一豁免（精确名，无通配）在 inventory/C12 真空/staged shell 三处等深，其他隐藏文件仍拒；REVOKED 压过当前脚本哈希（吊销当前版本即拒签发/校验，fetch＋preflight v2/CSV 三线同步）；recovered 身份透传收据（identity_schema/recovered/lineage，恢复目录不再与原生同形）；symlink 采集根修死代码（resolve 前判定，recover/refresh 双入口拒）；CSV collector receipt 读入接 strict_json_loads（重复键跨通道等深，U2 传染修复漏网点）；pre_migration_sha256 定性"迁移时点自报留痕、原件覆盖后事后不可独立复验"（仅改口，逻辑不动）。
+- **NOTE 两条落账**：N-01 盲审实测证明 U2 工单 §13"consumer 替换 v4"判断有误、施工方保留 v3 是机器必需（invariant_scan 依赖），维持现状；N-02 演练样本选择性批评成立——本轮以 APU 0801 案主目录原始形态重演练闭环（诊断目录在场被拒且报错带分类指引，移出后 refresh 升 v4 全通，原目录零改动）。
+- **回归**：test_done_v4_collector 17→24 用例全绿；suite 分母 116 不变，116/116 PASS rc=0（本机含两项 loopback）。盲审 opus，调度验收 Fable。
 
 ## [6.47.0] - 2026-08-17 — HyperSync Parquet done v4 逐段采集者归属＋C12 显式恢复（三单元收口工程·单元2）
 
