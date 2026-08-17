@@ -34,9 +34,11 @@ from adversarial_review_runner import (
 )
 from chain_registry import (evm_chain_id_for, evm_family, formal_ready,
                             recon_adapter_for, resolve_alias)
-from anchor_point_contract import (LEGACY_FINAL_BLOCK_EDGE_KIND,
+from anchor_point_contract import (LEGACY_FINAL_BLOCK_EDGE_KIND, V2_SCHEMA,
+                                   V3_SCHEMA,
                                    balance_block_source_of,
-                                   is_legacy_final_block_edge_point)
+                                   is_legacy_final_block_edge_point,
+                                   strict_json_loads)
 from producer_history import historical_producer_hashes
 from receipt_validate import validate_receipt
 from supply_truth_gate import (FORMAL_TOLERANCE_BPS_MAX,
@@ -877,7 +879,8 @@ def _validate_evm_reconciliation_receipt(root, receipt, target):
 
 
 def _plan_point(row, family, plan):
-    if plan.get("schema") == "anchor-plan/v3":
+    schema = plan.get("schema")
+    if schema == V3_SCHEMA:
         source = balance_block_source_of(row, family, plan)
         if source is not None:
             block = (row["day_end_block"] if source == "day_end_block"
@@ -888,25 +891,28 @@ def _plan_point(row, family, plan):
             raise ValueError("time plan tx point missing block")
         return ("tx", row.get("kind"), row.get("tx"), row.get("from"),
                 row.get("to"), row.get("block"), str(row.get("expected_value_raw")))
-    if row.get("expected_balance_raw") is not None and row.get("addr"):
-        legacy_edge = is_legacy_final_block_edge_point(row, family, plan)
-        if row.get("kind") == LEGACY_FINAL_BLOCK_EDGE_KIND and not legacy_edge:
-            raise ValueError("time plan contains malformed legacy final-block edge point")
-        block = row.get("day_end_block")
-        if block is None:
-            if not legacy_edge:
-                raise ValueError("time plan balance point missing day_end_block")
-            block = plan.get("final_block")
-        return ("balance", row.get("kind"), row.get("addr"),
-                block, str(row.get("expected_balance_raw")))
-    if row.get("tx") and row.get("expected_value_raw") is not None:
-        if row.get("kind") == LEGACY_FINAL_BLOCK_EDGE_KIND:
-            raise ValueError("time plan tx point carries legacy final-block edge kind")
-        if row.get("block") is None:
-            raise ValueError("time plan tx point missing block")
-        return ("tx", row.get("kind"), row.get("tx"), row.get("from"),
-                row.get("to"), row.get("block"), str(row.get("expected_value_raw")))
-    raise ValueError("time plan contains unclassifiable point")
+    elif schema == V2_SCHEMA:
+        if row.get("expected_balance_raw") is not None and row.get("addr"):
+            legacy_edge = is_legacy_final_block_edge_point(row, family, plan)
+            if row.get("kind") == LEGACY_FINAL_BLOCK_EDGE_KIND and not legacy_edge:
+                raise ValueError("time plan contains malformed legacy final-block edge point")
+            block = row.get("day_end_block")
+            if block is None:
+                if not legacy_edge:
+                    raise ValueError("time plan balance point missing day_end_block")
+                block = plan.get("final_block")
+            return ("balance", row.get("kind"), row.get("addr"),
+                    block, str(row.get("expected_balance_raw")))
+        if row.get("tx") and row.get("expected_value_raw") is not None:
+            if row.get("kind") == LEGACY_FINAL_BLOCK_EDGE_KIND:
+                raise ValueError("time plan tx point carries legacy final-block edge kind")
+            if row.get("block") is None:
+                raise ValueError("time plan tx point missing block")
+            return ("tx", row.get("kind"), row.get("tx"), row.get("from"),
+                    row.get("to"), row.get("block"), str(row.get("expected_value_raw")))
+        raise ValueError("time plan contains unclassifiable point")
+    else:
+        raise ValueError(f"unsupported plan schema: {schema!r}")
 
 
 def _time_row_point(row):
@@ -953,16 +959,25 @@ def _tx_transcript_matches(raw_receipt, row, token):
 def _validated_time_plan_authority(root, receipt, target):
     """Independently bind the consumed plan to its anchor_plan authority chain."""
     try:
-        plan_path, plan = _bound_json_input(root, receipt, "plan", "time plan")
-        _, plan_receipt = _bound_json_input(
+        plan_path, _ = _bound_json_input(root, receipt, "plan", "time plan")
+        plan_receipt_path, _ = _bound_json_input(
             root, receipt, "plan_receipt", "time plan receipt")
+        plan = strict_json_loads(
+            plan_path.read_text(encoding="utf-8"), parse_constant=_reject_constant)
+        plan_receipt = strict_json_loads(
+            plan_receipt_path.read_text(encoding="utf-8"),
+            parse_constant=_reject_constant)
         input_ref = (receipt.get("inputs") or {}).get("input")
         input_path = _bound_case_ref(root, input_ref, "time merged input")
         _require(isinstance(plan, dict) and isinstance(plan_receipt, dict),
                  "plan/receipt must be objects")
 
+        plan_schema = plan.get("schema")
+        allowed_plan_schemas = {V2_SCHEMA, V3_SCHEMA}
+        _require(plan_schema in allowed_plan_schemas,
+                 "plan schema must be anchor-plan/v2 or anchor-plan/v3")
         historical_hashes = historical_producer_hashes(
-            "scripts/lib/anchor_plan.py", "anchor-plan/v2")
+            "scripts/lib/anchor_plan.py", plan_schema)
         plan_errors = validate_receipt(
             plan_receipt, case_root=root,
             allowed_producer_hashes=historical_hashes)
@@ -975,10 +990,6 @@ def _validated_time_plan_authority(root, receipt, target):
         repo_ref_ok(producer, {"scripts/lib/anchor_plan.py"}, "time anchor plan",
                     allowed_hashes=historical_hashes)
 
-        plan_schema = plan.get("schema")
-        allowed_plan_schemas = {"anchor-plan/v2", "anchor-plan/v3"}
-        _require(plan_schema == "anchor-plan/v2" or plan_schema == "anchor-plan/v3",
-                 "plan schema must be anchor-plan/v2 or anchor-plan/v3")
         _require(plan.get("target") == plan_receipt.get("target"),
                  "plan target differs from signed receipt target")
         _require(canonical_target(plan_receipt.get("target")) == canonical_target(target),

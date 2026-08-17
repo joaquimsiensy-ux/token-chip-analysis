@@ -10,6 +10,7 @@
 
 ## 版本索引（活跃窗口，新在上；每版一行，详情见下方对应条目）
 
+- **6.46.1**（2026-08-17）单元1 盲审消化轮：2 BREACH 关洞（重复 JSON 键人机分裂伪装、producer 历史 protocol 硬编码致 v3 plan 可挂 v2 时代签名）＋7 WEAK 修复（schema 分派 fail-open 转显式白名单、v2 点拒 v3 说谎字段、单源守卫恢复全局语义等）；五项维持两项旧账另立裁决在案；NES 存量与盲审向量回打全绿
 - **6.46.0**（2026-08-17）anchor-plan v3 机器字段与 producer 历史登记（三单元收口工程·单元1）：余额点必带 balance_block_source 正向白名单、balance/tx 严格 XOR，kind 中文文案退出一切语义判定；新建 producer_history 六字段登记表修复存量 receipt producer 哈希深验基线即断；v2 存量不重签，语义重放 schema-aware 投影兼容，NES 三份存量件先红后绿实证
 - **6.45.1**（2026-08-17）NES 双链首案实证后四修复、四批收口：R-1 anchor_point_contract 四处等深与 block_of fail-fast；R-2 collector_history 六字段迁表并按 HEAD 祖先定案；R-3 identity 三入口认历史、两键规范形与维护补登；R-4 producer 真件直过发布闸及缺失/矛盾负例
 - **6.45.0**（2026-08-15）三 AI 并行修复 v6.44.0 review 14 findings 全处置：g1 边界守卫六项（handoff 案根 containment/审计闸 report 必填/跨分区三元组等式/command v3/risk_flags 白名单/文本卫生守卫＋Solana 原串保真）、g2 证据链四项（观测拒空 code/对账五路深重验/GMGN 黄灯查证说明制/Arbitrum 探索档恢复）、g3 通道与文档四项（A0 探索预检两阶段/SQD 收紧＋Alchemy 正式除名/F-05 用户裁决不加闸如实写边界/F-13 文档对齐）；R10-15/18 转 CLOSED 现役 12；三组独立 opus 盲审全收口
@@ -46,6 +47,15 @@
 - **6.20.1** 2026-08-05 修 5 处阻断级文档漂移（A4 前禁写报告冲突/easy 残留/惯犯回灌 docstring/批量预采集残留/旧 Par 路线历史降级）＋docs_lint 增中文禁词与 Python module docstring 扫描
 
 更早版本（6.20.0 及以前）详见 `archive/CHANGELOG-archive.md`。
+
+## [6.46.1] - 2026-08-17 — 单元1 盲审消化轮（2 BREACH＋7 WEAK 修复）
+
+- **源起**：6.46.0 收口后独立 opus 盲审 38 向量实跑，判 2 BREACH／16 WEAK／20 DEFENDED；按"BREACH 必修、WEAK 逐条裁决"消化，施工 codex（工单 U1b，maintenance/closure-20260817-threeunit/）。
+- **BREACH ①重复 JSON 键人机分裂**：同一 plan 对象里 `balance_block_source` 键写两遍（前值给人看、`json.loads` 取后值），重签 receipt 后深验、语义重放、发布闸全链绿灯。修法＝`anchor_point_contract` 新增 `strict_json_loads`（object_pairs_hook 逐层拒重复键），接入 anchor plan/receipt 消费链全部读入点（执行侧 `load_validated_plan`＋发布侧 `_validated_time_plan_authority`）；范围仅 anchor plan 链，未全库扩散。
+- **BREACH ②protocol 硬编码**：producer 历史查询两调用点硬编码 `anchor-plan/v2`，"v3 plan 挂 v2 时代 producer 签名"这一逻辑上不可能的组合被接受。修法＝先严格解析 plan→schema 白名单校验→按被验 plan 实际 schema 动态取历史集→再验 receipt（执行/发布两侧同序）。
+- **WEAK 七修**：schema 分派三处（classify／balance_query_block／发布 `_plan_point`）fail-open else 改显式白名单＋未知 schema 拒；v2 点携带 `balance_block_source` 说谎字段即拒（共享谓词收口，签发/执行/发布/分型四路等深）；枚举判定前 isinstance 收类型（list 型由 TypeError 统一为 ValueError）；单源对账守卫恢复全 manifest 全局语义＋显式豁免表带理由（字面量收敛到共享常量后扫描器不再误列 time_spotcheck，manifest 同步真实扫描面）；producer_history status 枚举运行时守卫（错拼即抛不静默失效）；登记表 commit 统一 40 位全哈希＋守卫正则收紧；`validate_receipt` 补 `allowed_producer_hashes` 调用方责任 docstring。
+- **维持与遗留**：五项维持裁决在案（REVOKED 不认当前哈希＝设计语义、无 .git 自禁用＝部署边界、闸严于执行器＝安全侧等）；发布闸不重放/不查探测块越界经 6.45.1 基线复跑证实为旧账，语义重放入发布闸另行立项，本轮不动其校验深度。
+- **回归**：NES 三份存量深验＋dry-run 重放继续全绿；盲审攻击脚本回打六向量全部由过转拒、kind 文案免疫正例仍过；suite 分母 115（test_anchor_plan_v3 12→15 用例）115/115 PASS。盲审 opus，调度验收 Fable。
 
 ## [6.46.0] - 2026-08-17 — anchor-plan v3 机器字段与 producer 历史登记（三单元收口工程·单元1）
 

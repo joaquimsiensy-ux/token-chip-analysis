@@ -80,6 +80,13 @@ def _input_file(shown, case_root):
 
 def validate_receipt(receipt, repo_root=None, case_root=None,
                      allowed_producer_hashes=None) -> list[str]:
+    """Validate a receipt envelope and its repository-bound producer.
+
+    Callers must pass the registered hash set for the script named by
+    ``receipt.producer.path`` when using ``allowed_producer_hashes``.  This
+    function does not validate that script-to-set correspondence; the caller
+    owns that responsibility.
+    """
     errors = []
     root = Path(repo_root or REPOSITORY).resolve()
     if not isinstance(receipt, dict):

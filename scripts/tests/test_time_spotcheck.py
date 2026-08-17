@@ -303,14 +303,24 @@ def main():
               and "--input" in p.stderr)
 
         # 12. 登记 producer 的唯一常量必须与机器 manifest 双向对账。
+        # time_spotcheck 引用 plan schema 但只产 time receipt。共享常量收敛后扫描器
+        # 已不再误列；仍保留显式豁免，以防扫描规则未来再次把消费者归入 producer。
         manifest = json.loads((ROOT / "scripts/tests/invariant_manifest.json").read_text(
             encoding="utf-8"))
+        non_plan_producer_exemptions = {
+            "scripts/lib/time_spotcheck.py":
+                "consumes anchor-plan/v3 and produces only time-spotcheck/v3",
+        }
         registered = [entry for entry in manifest["receipt_producers"]
-                      if entry.get("script") == EXPECTED_PLAN_PRODUCER
-                      and "anchor-plan/v3" in entry.get("schemas", [])]
+                      if "anchor-plan/v3" in entry.get("schemas", [])
+                      and entry.get("script") not in non_plan_producer_exemptions]
+        exempted = {entry.get("script") for entry in manifest["receipt_producers"]
+                    if "anchor-plan/v3" in entry.get("schemas", [])
+                    and entry.get("script") in non_plan_producer_exemptions}
         check("EXPECTED_PLAN_PRODUCER 与 invariant_manifest 单源对账",
               len(registered) == 1
-              and registered[0].get("script") == EXPECTED_PLAN_PRODUCER)
+              and registered[0].get("script") == EXPECTED_PLAN_PRODUCER
+              and exempted.issubset(set(non_plan_producer_exemptions)))
 
         # 13. 同 schema/路径类型但内容不同的真实输入必须在 SQL 重放前由身份哈希拒绝。
         wrong_source = Path(d) / "wrong-transfers.csv"

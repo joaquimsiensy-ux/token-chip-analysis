@@ -123,7 +123,6 @@
   },
   {
    "schemas": [
-    "anchor-plan/v3",
     "time-spotcheck/v3"
    ],
    "script": "scripts/lib/time_spotcheck.py"
@@ -332,6 +331,7 @@
   },
   {
    "schemas": [
+    "anchor-plan/v2",
     "anchor-plan/v3"
    ],
    "script": "scripts/lib/anchor_point_contract.py"
@@ -375,9 +375,7 @@
   },
   {
    "schemas": [
-    "anchor-plan-receipt/v2",
-    "anchor-plan/v2",
-    "anchor-plan/v3"
+    "anchor-plan-receipt/v2"
    ],
    "script": "scripts/lib/time_spotcheck.py"
   },
@@ -487,11 +485,10 @@
     "adversarial-review/v3",
     "adversarial-review/v4",
     "anchor-plan-receipt/v2",
-    "anchor-plan/v2",
-    "anchor-plan/v3",
     "evm-observation-bundle/v1",
     "evm-reconciliation-receipt/v3",
     "gmgn-divergence-note/v1",
+    "over-cap-approval/v1",
     "reconciliation-report/v2",
     "review-ledger/v1",
     "shared-release-receipt/v1",
@@ -500,7 +497,6 @@
     "supply-truth-receipt/v3",
     "supply-truth-receipt/v4",
     "time-spotcheck/v3",
-    "over-cap-approval/v1",
     "tolerance-waiver/v1"
    ],
    "script": "scripts/report/shared_release_receipt.py"

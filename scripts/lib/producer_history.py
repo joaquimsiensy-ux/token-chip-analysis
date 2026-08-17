@@ -19,7 +19,7 @@ PRODUCER_HISTORY = (
     {
         "script": "scripts/lib/anchor_plan.py",
         "sha256": "1a461169f0770c7a4b8d74eb185f68ae225906cf1ec49b9ad04154e340ebebb2",
-        "commit": "0ec6d1e",
+        "commit": "0ec6d1e2365c339d200fc26d17344f962fbdb7a9",
         "protocol": "anchor-plan/v2",
         "status": "ACTIVE",
         "reason": "v6.45.1 pre-v3 producer replaced by the U1 anchor-plan/v3 upgrade.",
@@ -29,6 +29,11 @@ PRODUCER_HISTORY = (
 
 def historical_producer_hashes(script, protocol):
     """Return matching ACTIVE hashes after hash-wide REVOKED precedence."""
+    for index, entry in enumerate(PRODUCER_HISTORY):
+        status = entry.get("status")
+        if status not in {"ACTIVE", "REVOKED"}:
+            raise ValueError(
+                f"producer history entry[{index}] status invalid: {status!r}")
     revoked = {
         entry["sha256"]
         for entry in PRODUCER_HISTORY

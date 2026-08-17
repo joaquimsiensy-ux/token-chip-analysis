@@ -1,4 +1,4 @@
-"""Shared machine contracts for anchor-plan point shapes.
+"""Shared machine contracts for anchor-plan JSON and point shapes.
 
 The v2 legacy edge point has no machine-readable block-source field.  V3 uses
 ``balance_block_source`` and never derives semantics from human-facing ``kind``.
@@ -10,16 +10,41 @@ an adversary able to re-sign a replacement plan.  The external anchor lives at
 execution: ``validate_semantic_replay`` and ``verify_recon`` couple the cutoff
 across independently bound partitions.
 """
+import json
 
 LEGACY_FINAL_BLOCK_EDGE_KIND = "门槛±10% 边缘地址"
+V2_SCHEMA = "anchor-plan/v2"
 V3_SCHEMA = "anchor-plan/v3"
 BALANCE_BLOCK_SOURCES = {"day_end_block", "final_block"}
+
+
+def reject_duplicate_keys_object_pairs_hook(pairs):
+    """Build one JSON object while rejecting duplicate keys at every depth."""
+    value = {}
+    for key, item in pairs:
+        if key in value:
+            raise ValueError(f"duplicate JSON key rejected: {key!r}")
+        value[key] = item
+    return value
+
+
+def strict_json_loads(text, **kwargs):
+    """Parse JSON with duplicate-key rejection while preserving caller options."""
+    if "object_pairs_hook" in kwargs:
+        raise TypeError("strict_json_loads owns object_pairs_hook")
+    return json.loads(
+        text,
+        object_pairs_hook=reject_duplicate_keys_object_pairs_hook,
+        **kwargs,
+    )
 
 
 def is_legacy_final_block_edge_point(point, family, plan):
     """Return whether *point* is the exact legacy forced final-block edge shape."""
     if not isinstance(point, dict) or not isinstance(plan, dict):
         return False
+    if plan.get("schema") == V2_SCHEMA and "balance_block_source" in point:
+        raise ValueError("v2 plan point carries v3 machine field")
     date_range = plan.get("date_range")
     return (
         family == "forced_points"
@@ -61,7 +86,7 @@ def balance_block_source_of(point, family, plan):
                 "anchor-plan/v3 balance point carries forbidden keys: "
                 + ", ".join(forbidden))
         source = point.get("balance_block_source")
-        if source not in BALANCE_BLOCK_SOURCES:
+        if not isinstance(source, str) or source not in BALANCE_BLOCK_SOURCES:
             raise ValueError(
                 f"anchor-plan/v3 balance_block_source invalid: {source!r}")
         if source == "day_end_block":

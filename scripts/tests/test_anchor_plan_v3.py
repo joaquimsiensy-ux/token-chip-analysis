@@ -359,7 +359,7 @@ def test_12_producer_history_and_default_boundary():
     for index, entry in enumerate(producer_history.PRODUCER_HISTORY):
         assert set(entry) == FIELDS, f"entry[{index}] field drift"
         assert re.fullmatch(r"[0-9a-f]{64}", entry["sha256"])
-        assert re.fullmatch(r"[0-9a-f]{7,40}", entry["commit"])
+        assert re.fullmatch(r"[0-9a-f]{40}", entry["commit"])
         assert entry["status"] in {"ACTIVE", "REVOKED"}
         assert entry["script"] and entry["protocol"] and entry["reason"].strip()
 
@@ -393,6 +393,23 @@ def test_12_producer_history_and_default_boundary():
     finally:
         producer_history.PRODUCER_HISTORY = original
 
+    producer_history.PRODUCER_HISTORY = original + ({
+        "script": "other.py",
+        "sha256": old_hash,
+        "commit": "0" * 40,
+        "protocol": "other/v1",
+        "status": "Revoked",
+        "reason": "test-only invalid status",
+    },)
+    try:
+        _expect_reject(lambda: producer_history.historical_producer_hashes(
+            "scripts/lib/anchor_plan.py", "anchor-plan/v2"), "status invalid")
+    finally:
+        producer_history.PRODUCER_HISTORY = original
+
+    doc = receipt_validate.validate_receipt.__doc__ or ""
+    assert "receipt.producer.path" in doc and "caller" in doc.lower()
+
     if (ROOT / ".git").exists():
         for entry in producer_history.PRODUCER_HISTORY:
             proc = subprocess.run(
@@ -402,6 +419,103 @@ def test_12_producer_history_and_default_boundary():
             )
             assert proc.returncode == 0, proc.stderr.decode(errors="replace")
             assert hashlib.sha256(proc.stdout).hexdigest() == entry["sha256"]
+
+
+def test_13_duplicate_keys_rejected_on_both_authority_paths():
+    for attacked in ("plan", "receipt"):
+        with tempfile.TemporaryDirectory(prefix=f"anchor_dup_{attacked}_") as td:
+            source, plan_path, receipt_path = _produce_plan(Path(td))
+            if attacked == "plan":
+                raw = plan_path.read_text(encoding="utf-8")
+                needle = '"balance_block_source": "day_end_block"'
+                plan_path.write_text(
+                    raw.replace(
+                        needle,
+                        '"balance_block_source": "final_block",\n      ' + needle,
+                        1,
+                    ),
+                    encoding="utf-8",
+                )
+                _refresh_receipt(plan_path, receipt_path)
+            else:
+                raw = receipt_path.read_text(encoding="utf-8")
+                needle = '"plan_schema": "anchor-plan/v3"'
+                receipt_path.write_text(
+                    raw.replace(
+                        needle,
+                        '"plan_schema": "anchor-plan/v2",\n  ' + needle,
+                        1,
+                    ),
+                    encoding="utf-8",
+                )
+            _expect_reject(
+                lambda: time_spotcheck.load_validated_plan(plan_path, receipt_path),
+                "duplicate JSON key",
+            )
+            _expect_reject(
+                lambda: _shared_authority(Path(td), source, plan_path, receipt_path),
+                "duplicate JSON key",
+            )
+
+
+def test_14_v3_rejects_v2_historical_producer_hash():
+    with tempfile.TemporaryDirectory(prefix="anchor_protocol_history_") as td:
+        source, plan_path, receipt_path = _produce_plan(Path(td))
+        old_hash = "e5168a455d53bb5163722ea7f2a67c42b20bd3dd8ef6c3ae5e588014842cc1d9"
+        plan = json.loads(plan_path.read_text(encoding="utf-8"))
+        plan["producer"]["sha256"] = old_hash
+        plan_path.write_text(json.dumps(plan, ensure_ascii=False, indent=2) + "\n",
+                             encoding="utf-8")
+        receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+        receipt["producer"]["sha256"] = old_hash
+        receipt_path.write_text(json.dumps(receipt, ensure_ascii=False, indent=2) + "\n",
+                                encoding="utf-8")
+        _refresh_receipt(plan_path, receipt_path)
+        _expect_reject(
+            lambda: time_spotcheck.load_validated_plan(plan_path, receipt_path),
+            "producer hash mismatch",
+        )
+        _expect_reject(
+            lambda: _shared_authority(Path(td), source, plan_path, receipt_path),
+            "producer hash mismatch",
+        )
+
+
+def test_15_schema_dispatch_v2_field_and_enum_type_fail_closed():
+    unsupported = _plan("anchor-plan/v9")
+    unsupported["matrix_points"] = [_balance()]
+    _expect_all_reject([
+        ("classify-v9", lambda: time_spotcheck.classify(unsupported),
+         "unsupported plan schema"),
+        ("balance-block-v9", lambda: time_spotcheck.balance_query_block(
+            unsupported, unsupported["matrix_points"][0]), "unsupported plan schema"),
+        ("release-point-v9", lambda: shared._plan_point(
+            unsupported["matrix_points"][0], "matrix_points", unsupported),
+         "unsupported plan schema"),
+    ])
+
+    legacy = _plan("anchor-plan/v2")
+    legacy_point = _balance(source="final_block")
+    legacy_point["day_end_block"] = 100
+    legacy["matrix_points"] = [legacy_point]
+    _expect_all_reject([
+        ("sign-v2-machine-field", lambda: anchor_plan._validate_probe_blocks(legacy, 300),
+         "v2 plan point carries v3 machine field"),
+        ("classify-v2-machine-field", lambda: time_spotcheck.classify(legacy),
+         "v2 plan point carries v3 machine field"),
+        ("balance-block-v2-machine-field", lambda: time_spotcheck.balance_query_block(
+            legacy, legacy_point), "v2 plan point carries v3 machine field"),
+        ("release-point-v2-machine-field", lambda: shared._plan_point(
+            legacy_point, "matrix_points", legacy),
+         "v2 plan point carries v3 machine field"),
+    ])
+
+    malformed = _plan()
+    malformed_point = _balance()
+    malformed_point["balance_block_source"] = ["day_end_block"]
+    malformed["matrix_points"] = [malformed_point]
+    _expect_reject(lambda: time_spotcheck.classify(malformed),
+                   "balance_block_source invalid")
 
 
 def main():
