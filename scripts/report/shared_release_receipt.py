@@ -34,6 +34,8 @@ from adversarial_review_runner import (
 )
 from chain_registry import (evm_chain_id_for, evm_family, formal_ready,
                             recon_adapter_for, resolve_alias)
+from anchor_point_contract import (LEGACY_FINAL_BLOCK_EDGE_KIND,
+                                   is_legacy_final_block_edge_point)
 from receipt_validate import validate_receipt
 from supply_truth_gate import (FORMAL_TOLERANCE_BPS_MAX,
                                WAIVER_TOLERANCE_BPS_CAP, decide,
@@ -869,14 +871,16 @@ def _validate_evm_reconciliation_receipt(root, receipt, target):
     _validate_recon_gmgn(root, receipt, observations, balances, nominal)
 
 
-def _plan_point(row, final_block=None):
+def _plan_point(row, family, plan):
     if row.get("expected_balance_raw") is not None and row.get("addr"):
-        # 边缘地址型余额点不落 day_end_block，执行侧（time_spotcheck.py）按
-        # final_block 查询；final_block 已在权威链校验中与签名目标 as_of_block
-        # 绑定，此处补位保持元组全字段严格匹配，不放宽任何篡改检测。
+        legacy_edge = is_legacy_final_block_edge_point(row, family, plan)
+        if row.get("kind") == LEGACY_FINAL_BLOCK_EDGE_KIND and not legacy_edge:
+            raise ValueError("time plan contains malformed legacy final-block edge point")
         block = row.get("day_end_block")
         if block is None:
-            block = final_block
+            if not legacy_edge:
+                raise ValueError("time plan balance point missing day_end_block")
+            block = plan.get("final_block")
         return ("balance", row.get("kind"), row.get("addr"),
                 block, str(row.get("expected_balance_raw")))
     if row.get("tx") and row.get("expected_value_raw") is not None:
@@ -995,11 +999,10 @@ def _validated_time_plan_authority(root, receipt, target):
 def _validate_time_receipt(root, receipt, target):
     plan = _validated_time_plan_authority(root, receipt, target)
     expected_points = []
-    final_block = plan.get("final_block")
     for field in ("matrix_points", "forced_points"):
         rows = plan.get(field)
         _require(isinstance(rows, list), f"time plan {field} invalid")
-        expected_points.extend(_plan_point(row, final_block) for row in rows)
+        expected_points.extend(_plan_point(row, field, plan) for row in rows)
     rows = receipt.get("rows")
     _require(isinstance(rows, list) and bool(rows)
              and all(isinstance(row, dict) for row in rows), "time rows invalid")

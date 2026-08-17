@@ -8,6 +8,8 @@ from pathlib import Path
 
 import duckdb
 
+from anchor_point_contract import LEGACY_FINAL_BLOCK_EDGE_KIND
+
 Z = "0x0000000000000000000000000000000000000000"
 DEAD = "0x000000000000000000000000000000000000dead"
 EXPECTED_PLAN_PRODUCER = "scripts/lib/anchor_plan.py"
@@ -235,10 +237,14 @@ def generate_anchor_selection(*, input_path, chain, token, total_supply, decimal
                 [addr, day]).fetchone()
             return int(row[0])
 
-        def block_of(day):
-            row = con.execute("SELECT day_end_block FROM dayblk WHERE d<=? "
-                              "ORDER BY d DESC LIMIT 1", [day]).fetchone()
-            return int(row[0]) if row else None
+        def block_of(day, kind, addr):
+            row = con.execute(
+                "SELECT day_end_block FROM dayblk WHERE d=?", [day]).fetchone()
+            if row is None:
+                raise ValueError(
+                    "day_end_block missing for "
+                    f"kind={kind!r} addr={addr!r} day={day!r}")
+            return int(row[0])
 
         def final_pct(addr):
             row = con.execute("SELECT bal::VARCHAR FROM bal WHERE addr=?", [addr]).fetchone()
@@ -247,7 +253,7 @@ def generate_anchor_selection(*, input_path, chain, token, total_supply, decimal
         def point(addr, day, kind, note=""):
             raw = day_end_balance(addr, day)
             return {"kind": kind, "addr": addr, "day": day,
-                    "day_end_block": block_of(day),
+                    "day_end_block": block_of(day, kind, addr),
                     "expected_balance_raw": str(raw),
                     "expected_balance_human": human(raw), "expected_pct": pct(raw),
                     "final_pct": final_pct(addr), "note": note,
@@ -305,7 +311,7 @@ def generate_anchor_selection(*, input_path, chain, token, total_supply, decimal
             ORDER BY hash(addr || '{seed}'), addr LIMIT {edge_max}""").fetchall()
         for addr, balance in edges:
             forced.append({
-                "kind": "门槛±10% 边缘地址", "addr": addr, "day": d1,
+                "kind": LEGACY_FINAL_BLOCK_EDGE_KIND, "addr": addr, "day": d1,
                 "expected_balance_raw": balance,
                 "expected_balance_human": human(balance), "expected_pct": pct(balance),
                 "note": f"最终余额贴 {threshold_pct}% 门槛（±10%）——错一笔就跨档，重点核对",

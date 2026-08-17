@@ -33,6 +33,8 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from anchor_point_contract import (LEGACY_FINAL_BLOCK_EDGE_KIND,
+                                   is_legacy_final_block_edge_point)
 from anchor_selection import (MIN_EDGE_MAX, MIN_PER_CELL, generate_anchor_selection,
                               input_identity as compute_input_identity,
                               validate_anchor_coverage_parameters)
@@ -46,6 +48,19 @@ RECEIPT_SCHEMA = "anchor-plan-receipt/v2"
 def _validate_probe_blocks(plan, final_block):
     for family in ("matrix_points", "forced_points"):
         for index, point in enumerate(plan.get(family) or []):
+            legacy_edge = is_legacy_final_block_edge_point(point, family, plan)
+            if point.get("kind") == LEGACY_FINAL_BLOCK_EDGE_KIND and not legacy_edge:
+                raise ValueError(
+                    f"{family}[{index}] malformed legacy final-block edge point")
+            is_balance = (point.get("expected_balance_raw") is not None
+                          and bool(point.get("addr")))
+            is_tx = (bool(point.get("tx"))
+                     and point.get("expected_value_raw") is not None)
+            if is_balance and point.get("day_end_block") is None and not legacy_edge:
+                raise ValueError(
+                    f"{family}[{index}].day_end_block missing for non-edge balance point")
+            if is_tx and point.get("block") is None:
+                raise ValueError(f"{family}[{index}].block missing for tx point")
             for key in ("day_end_block", "block"):
                 value = point.get(key)
                 if value is None:

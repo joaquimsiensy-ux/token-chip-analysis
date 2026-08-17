@@ -14,6 +14,7 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parents[2]
 sys.path[:0] = [str(ROOT / "scripts" / "lib"), str(ROOT / "scripts" / "report")]
 
+from anchor_point_contract import LEGACY_FINAL_BLOCK_EDGE_KIND
 from receipt_kernel import build_envelope, finalize_envelope
 import net
 import shared_release_receipt as shared
@@ -24,6 +25,8 @@ TARGET = {
     "token": "0x1111111111111111111111111111111111111111",
     "as_of_block": 123,
 }
+EDGE_KIND = LEGACY_FINAL_BLOCK_EDGE_KIND
+DATE_RANGE = ["2026-08-14", "2026-08-15"]
 HOLDERS = [f"0x{value:040x}" for value in (2, 3, 4)]
 BALANCES = {HOLDERS[0]: 60, HOLDERS[1]: 30, HOLDERS[2]: 10}
 
@@ -172,15 +175,24 @@ def _plan_fixture(root: Path):
         "target": TARGET, "input": identity, "chain": "eth", "token": TARGET["token"],
         "final_block": 123, "producer": plan_envelope["producer"],
         "input_manifest": plan_envelope["inputs"]["input_manifest"],
+        "date_range": DATE_RANGE,
         "matrix_points": [{"kind": "matrix", "addr": HOLDERS[0],
-                           "day_end_block": 100, "expected_balance_raw": "60"}],
-        "forced_points": [{"kind": "largest_tx", "tx": "0xabc", "from": HOLDERS[1],
-                           "to": HOLDERS[2], "block": 110, "expected_value_raw": "7"}],
+                           "day": DATE_RANGE[0], "day_end_block": 100,
+                           "expected_balance_raw": "60"}],
+        "forced_points": [
+            {"kind": EDGE_KIND, "addr": HOLDERS[1], "day": DATE_RANGE[-1],
+             "expected_balance_raw": "30"},
+            {"kind": "最大单日净变动地址-日", "addr": HOLDERS[2],
+             "day": DATE_RANGE[0], "day_end_block": 105,
+             "expected_balance_raw": "10"},
+            {"kind": "largest_tx", "tx": "0xabc", "from": HOLDERS[1],
+             "to": HOLDERS[2], "block": 110, "expected_value_raw": "7"},
+        ],
     }
     plan_path = _write_json(root / "anchor_plan.json", plan)
     plan_receipt = finalize_envelope(
         plan_envelope, "PASS", 0, plan_schema="anchor-plan/v2",
-        generated_at=plan["generated_at"], input_identity=identity, probe_count=2,
+        generated_at=plan["generated_at"], input_identity=identity, probe_count=4,
         output={"path": str(plan_path.resolve()), "size": plan_path.stat().st_size,
                 "sha256": _sha(plan_path)})
     plan_receipt_path = _write_json(root / "anchor_plan.receipt.json", plan_receipt)
@@ -189,7 +201,7 @@ def _plan_fixture(root: Path):
 
 class _TimePool:
     def call_many(self, calls):
-        assert len(calls) == 2
+        assert len(calls) == 4
         log = {"address": TARGET["token"],
                "topics": [
                    "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef",
@@ -197,6 +209,8 @@ class _TimePool:
                    "0x" + "0" * 24 + HOLDERS[2][2:]],
                "data": hex(7)}
         return [{"ok": True, "result": hex(60)},
+                {"ok": True, "result": hex(30)},
+                {"ok": True, "result": hex(10)},
                 {"ok": True, "result": {"blockNumber": hex(110), "logs": [log]}}]
 
 
@@ -212,6 +226,8 @@ def _produce_time(root: Path):
             mock.patch.object(sys, "argv", argv):
         assert producer.main() == 0
     receipt = json.loads(out.read_text(encoding="utf-8"))
+    edge_row = next(row for row in receipt["rows"] if row["kind"] == EDGE_KIND)
+    assert edge_row["block"] == TARGET["as_of_block"]
     shared.validate_reconciliation_check(root, "time", _item(out, root), TARGET, "evm")
     return out, receipt
 
@@ -348,13 +364,159 @@ def _test_time_authority_vectors(root: Path, receipt: dict) -> None:
         raise AssertionError("authority mutation unexpectedly passed: " + "; ".join(accepted))
 
 
+def _r1_time_variant(root: Path, receipt: dict, name: str, *, mutate_plan,
+                     mutate_evidence=None) -> dict:
+    """Keep plan authority and RPC evidence bound while mutating the R-1 contract."""
+    plan_source = root / receipt["inputs"]["plan"]["path"]
+    plan_receipt_source = root / receipt["inputs"]["plan_receipt"]["path"]
+    transcript_source = root / receipt["inputs"]["transcript"]["path"]
+    plan = json.loads(plan_source.read_text(encoding="utf-8"))
+    plan_receipt = json.loads(plan_receipt_source.read_text(encoding="utf-8"))
+    transcript = json.loads(transcript_source.read_text(encoding="utf-8"))
+    changed = copy.deepcopy(receipt)
+
+    mutate_plan(plan)
+    plan_path = _write_json(root / f"{name}_plan.json", plan)
+    plan_receipt["output"] = {
+        "path": str(plan_path.resolve()), "size": plan_path.stat().st_size,
+        "sha256": _sha(plan_path),
+    }
+    plan_receipt_path = _write_json(root / f"{name}_plan_receipt.json", plan_receipt)
+    changed["inputs"]["plan"] = _ref(plan_path, root)
+    changed["inputs"]["plan_receipt"] = _ref(plan_receipt_path, root)
+    if mutate_evidence:
+        mutate_evidence(changed, transcript)
+    transcript_path = _write_json(root / f"{name}_transcript.json", transcript)
+    changed["inputs"]["transcript"] = _ref(transcript_path, root)
+    receipt_path = _write_json(root / f"{name}_time_receipt.json", changed)
+    return _item(receipt_path, root)
+
+
+def _set_balance_evidence_block(receipt: dict, transcript: list, kind: str,
+                                block: int) -> None:
+    index = next(index for index, row in enumerate(receipt["rows"])
+                 if row["kind"] == kind)
+    receipt["rows"][index]["block"] = block
+    transcript[index]["params"][1] = hex(block)
+
+
+def _r1_bound_plan(root: Path, receipt: dict, name: str, mutate_plan):
+    plan_source = root / receipt["inputs"]["plan"]["path"]
+    plan_receipt_source = root / receipt["inputs"]["plan_receipt"]["path"]
+    plan = json.loads(plan_source.read_text(encoding="utf-8"))
+    plan_receipt = json.loads(plan_receipt_source.read_text(encoding="utf-8"))
+    mutate_plan(plan)
+    plan_path = _write_json(root / f"{name}_exec_plan.json", plan)
+    plan_receipt["output"] = {
+        "path": str(plan_path.resolve()), "size": plan_path.stat().st_size,
+        "sha256": _sha(plan_path),
+    }
+    plan_receipt_path = _write_json(
+        root / f"{name}_exec_plan_receipt.json", plan_receipt)
+    return plan_path, plan_receipt_path
+
+
+def _run_r1_time_variant(root: Path, receipt: dict, name: str, mutate_plan) -> int:
+    producer = _load(ROOT / "scripts" / "lib" / "time_spotcheck.py", f"r1_{name}")
+    plan_path, plan_receipt_path = _r1_bound_plan(
+        root, receipt, name, mutate_plan)
+    input_path = root / receipt["inputs"]["input"]["path"]
+    out = root / f"{name}_exec_time.json"
+    argv = ["time_spotcheck.py", "--plan", str(plan_path),
+            "--plan-receipt", str(plan_receipt_path), "--input", str(input_path),
+            "--chain", "eth", "--token", TARGET["token"], "--rpc", "http://offline/",
+            "--out", str(out), "--final-block", "123"]
+    with mock.patch.object(producer, "validate_semantic_replay", return_value=None), \
+            mock.patch.object(net, "attested_rpc_pool", return_value=_TimePool()), \
+            mock.patch.object(sys, "argv", argv):
+        return producer.main()
+
+
+def _test_r1_final_block_contract(root: Path, receipt: dict) -> None:
+    """R-1: only the exact legacy forced edge shape may resolve to final_block."""
+    validate = lambda item: shared.validate_reconciliation_check(
+        root, "time", item, TARGET, "evm")
+
+    def missing_matrix(plan):
+        plan["matrix_points"][0].pop("day_end_block")
+
+    def missing_daily(plan):
+        point = next(point for point in plan["forced_points"]
+                     if point["kind"] == "最大单日净变动地址-日")
+        point.pop("day_end_block")
+
+    def edge_with_tx(plan):
+        point = next(point for point in plan["forced_points"]
+                     if point["kind"] == EDGE_KIND)
+        point["tx"] = "0xfeed"
+
+    def edge_with_day_block(plan):
+        point = next(point for point in plan["forced_points"]
+                     if point["kind"] == EDGE_KIND)
+        point["day_end_block"] = TARGET["as_of_block"]
+
+    deep_vectors = [
+        ("deep missing matrix day_end_block", missing_matrix,
+         lambda value, transcript: _set_balance_evidence_block(
+             value, transcript, "matrix", TARGET["as_of_block"])),
+        ("deep missing max-daily day_end_block", missing_daily,
+         lambda value, transcript: _set_balance_evidence_block(
+             value, transcript, "最大单日净变动地址-日", TARGET["as_of_block"])),
+        ("deep disguised edge carrying tx", edge_with_tx, None),
+        ("deep disguised edge carrying day_end_block", edge_with_day_block, None),
+    ]
+    accepted = []
+    for index, (label, mutate_plan, mutate_evidence) in enumerate(deep_vectors):
+        item = _r1_time_variant(
+            root, receipt, f"r1_deep_{index}", mutate_plan=mutate_plan,
+            mutate_evidence=mutate_evidence)
+        try:
+            validate(item)
+        except ValueError:
+            pass
+        else:
+            accepted.append(label)
+
+    block_mismatch = _r1_time_variant(
+        root, receipt, "r1_block_mismatch", mutate_plan=lambda plan: None,
+        mutate_evidence=lambda value, transcript: _set_balance_evidence_block(
+            value, transcript, "matrix", 101))
+    try:
+        validate(block_mismatch)
+    except ValueError:
+        pass
+    else:
+        accepted.append("deep receipt/transcript block jointly diverges from plan")
+
+    for index, (label, mutate_plan, _) in enumerate(deep_vectors):
+        if _run_r1_time_variant(root, receipt, f"r1_exec_{index}", mutate_plan) != 2:
+            accepted.append(label.replace("deep ", "executor "))
+
+    planner = _load(ROOT / "scripts" / "lib" / "anchor_plan.py", "r1_anchor_plan")
+    unsigned = {
+        "date_range": DATE_RANGE,
+        "matrix_points": [{"kind": "matrix", "addr": HOLDERS[0],
+                           "day": DATE_RANGE[0], "expected_balance_raw": "60"}],
+        "forced_points": [],
+    }
+    try:
+        planner._validate_probe_blocks(unsigned, TARGET["as_of_block"])
+    except ValueError:
+        pass
+    else:
+        accepted.append("anchor_plan signs missing non-edge day_end_block")
+
+    if accepted:
+        raise AssertionError("R-1 pre-fix acceptance: " + "; ".join(accepted))
+
+
 def _test_time_mutations(root: Path, receipt: dict) -> None:
     validate = lambda item: shared.validate_reconciliation_check(
         root, "time", item, TARGET, "evm")
     mutations = [
         ("time_bad_plan_row.json", lambda v: v["rows"][0].__setitem__("addr", HOLDERS[1]),
          "one-to-one"),
-        ("time_bad_from.json", lambda v: v["rows"][1].__setitem__("from", HOLDERS[0]),
+        ("time_bad_from.json", lambda v: v["rows"][-1].__setitem__("from", HOLDERS[0]),
          "one-to-one"),
         ("time_bad_count.json", lambda v: v.__setitem__("exact_match", 99), "counters"),
         ("time_no_plan_receipt.json", lambda v: v["inputs"].pop("plan_receipt"),
@@ -421,6 +583,7 @@ def main() -> None:
         time_dir = root / "time"; time_dir.mkdir()
         _, time_receipt = _produce_time(time_dir)
         _test_time_authority_vectors(time_dir, time_receipt)
+        _test_r1_final_block_contract(time_dir, time_receipt)
         _test_time_mutations(time_dir, time_receipt)
         anchor_dir = root / "anchor"; anchor_dir.mkdir()
         anchor_target, anchor_receipt = _anchor_fixture(anchor_dir)

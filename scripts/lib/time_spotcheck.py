@@ -42,6 +42,8 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from anchor_point_contract import (LEGACY_FINAL_BLOCK_EDGE_KIND,
+                                   is_legacy_final_block_edge_point)
 from anchor_selection import (EXPECTED_PLAN_PRODUCER, REPLAY_PARAMETER_FIELDS,
                               generate_anchor_selection, input_identity,
                               sha256_file, validate_anchor_coverage_parameters)
@@ -203,6 +205,24 @@ def classify(plan):
     return bal, txp, odd
 
 
+def balance_query_block(plan, point):
+    """Resolve a balance point block under the shared legacy-edge contract."""
+    family = next(
+        (name for name in ("matrix_points", "forced_points")
+         if any(candidate is point for candidate in (plan.get(name) or []))),
+        None,
+    )
+    legacy_edge = is_legacy_final_block_edge_point(point, family, plan)
+    if point.get("kind") == LEGACY_FINAL_BLOCK_EDGE_KIND and not legacy_edge:
+        raise ValueError("malformed legacy final-block edge point")
+    block = point.get("day_end_block")
+    if block is None:
+        if not legacy_edge:
+            raise ValueError("non-edge balance point missing day_end_block")
+        block = plan.get("final_block")
+    return block
+
+
 def hexblock(n):
     return hex(int(n))
 
@@ -274,18 +294,22 @@ def main():
     if odd_pts:
         sys.exit(f"[fatal] {len(odd_pts)} 个锚点两型都不匹配（缺 expected_balance_raw 且缺 tx）——"
                  f"anchor_plan 格式漂移，先修计划再跑: {json.dumps(odd_pts[0], ensure_ascii=False)[:120]}")
-    need_final = [p for p in bal_pts if p.get("day_end_block") is None]
-    if need_final and a.final_block is None:
-        sys.exit(f"[fatal] {len(need_final)} 个 balance 锚点无 day_end_block（门槛边缘地址型），"
-                 "必须传 --final-block <数据截止块>——静默跳点=覆盖缩水，fail-closed")
     plan_final = plan.get("final_block")
     if (isinstance(plan_final, bool) or not isinstance(plan_final, int)
             or a.final_block is None or plan_final != a.final_block):
         print("[fatal] anchor_plan final_block 必须与 CLI --final-block 精确一致", file=sys.stderr)
         return 2
-    query_blocks = [p.get("day_end_block") for p in bal_pts
-                    if p.get("day_end_block") is not None]
-    query_blocks += [p.get("block") for p in tx_pts if p.get("block") is not None]
+    try:
+        balance_blocks = [balance_query_block(plan, point) for point in bal_pts]
+    except ValueError as exc:
+        print(f"[fatal] anchor_plan balance block contract invalid: {exc}", file=sys.stderr)
+        return 2
+    need_final = [point for point in bal_pts
+                  if point.get("day_end_block") is None]
+    if any(point.get("block") is None for point in tx_pts):
+        print("[fatal] anchor_plan tx 锚点缺 block", file=sys.stderr)
+        return 2
+    query_blocks = balance_blocks + [point.get("block") for point in tx_pts]
     if any(isinstance(block, bool) or not isinstance(block, int)
            or block < 0 or block > a.final_block for block in query_blocks):
         print("[fatal] anchor_plan 查询块非法或越过 final_block", file=sys.stderr)
@@ -356,9 +380,8 @@ def main():
             a.rpc, a.chain, formal=True, rps=a.rps, concurrency=min(a.rps, 8))
 
         calls = []
-        for p in bal_pts:
-            blk = p.get("day_end_block")
-            blk = int(blk) if blk is not None else a.final_block
+        for p, blk in zip(bal_pts, balance_blocks):
+            blk = int(blk)
             calls.append(("eth_call", [{"to": token,
                                         "data": BALANCEOF_SELECTOR + addr_word(p["addr"])},
                                        hexblock(blk)]))
@@ -384,9 +407,8 @@ def main():
         a.transcript_out, Path(a.out).expanduser().resolve().parent, transcript)
 
     rows, exact, mism, rpc_err = [], 0, 0, 0
-    for p, r in zip(bal_pts, results[:len(bal_pts)]):
-        blk = p.get("day_end_block")
-        blk = int(blk) if blk is not None else a.final_block
+    for p, blk, r in zip(bal_pts, balance_blocks, results[:len(bal_pts)]):
+        blk = int(blk)
         row = {"type": "balance", "kind": p.get("kind"), "addr": p["addr"], "block": blk,
                "expect_raw": str(p["expected_balance_raw"])}
         if not r.get("ok"):
