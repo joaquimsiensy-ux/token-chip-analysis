@@ -10,6 +10,7 @@
 
 ## 版本索引（活跃窗口，新在上；每版一行，详情见下方对应条目）
 
+- **6.45.1**（2026-08-17）NES 双链首案实证后四修复、四批收口：R-1 anchor_point_contract 四处等深与 block_of fail-fast；R-2 collector_history 六字段迁表并按 HEAD 祖先定案；R-3 identity 三入口认历史、两键规范形与维护补登；R-4 producer 真件直过发布闸及缺失/矛盾负例
 - **6.45.0**（2026-08-15）三 AI 并行修复 v6.44.0 review 14 findings 全处置：g1 边界守卫六项（handoff 案根 containment/审计闸 report 必填/跨分区三元组等式/command v3/risk_flags 白名单/文本卫生守卫＋Solana 原串保真）、g2 证据链四项（观测拒空 code/对账五路深重验/GMGN 黄灯查证说明制/Arbitrum 探索档恢复）、g3 通道与文档四项（A0 探索预检两阶段/SQD 收紧＋Alchemy 正式除名/F-05 用户裁决不加闸如实写边界/F-13 文档对齐）；R10-15/18 转 CLOSED 现役 12；三组独立 opus 盲审全收口
 - **6.44.0**（2026-08-15）EVM 链上观测锚：三链正式纵切片真跑 bundle producer，accounting v2/supply_truth v4 双收据与 shared/handoff N-2 闭合；F-02 CLOSED、F-03/R10-9 MITIGATED 仍 OPEN；独立盲审 31 伪造向量全拒 PASS
 - **6.43.0**（2026-08-14）批 3 弱闸三线收口：A4 blocker 语义联动+10 门槛+entrypoint 身份（F-01→R10-16/17）、deploy-sync 严判（F-04→R10-5）、env_check 机械派生（F-05→R10-6）、R10 台账同步+自洽守卫（F-07）；三轮盲审+三轮消化全闭（execution ledger 哈希链等 7 项收编），R10-5/6/16/17 转 CLOSED 现役 15
@@ -44,6 +45,15 @@
 - **6.20.1** 2026-08-05 修 5 处阻断级文档漂移（A4 前禁写报告冲突/easy 残留/惯犯回灌 docstring/批量预采集残留/旧 Par 路线历史降级）＋docs_lint 增中文禁词与 Python module docstring 扫描
 
 更早版本（6.20.0 及以前）详见 `archive/CHANGELOG-archive.md`。
+
+## [6.45.1] - 2026-08-17 — NES 双链首案四修复、四批收口
+
+- **源起与审查**：NES 双链首案实证触发四笔修复 commit（`dd248ca`/`0cbda66`/`08c5b09`/`af816d1`）；codex 全量审查结论为 2 缺陷、1 疑点、1 缺测试，原修复零测试。随后按 codex 施工、Fable 调度验收分四批收口。
+- **批 A／R-1 补位收窄**：`anchor_point_contract` 契约化边缘点判定在签发、执行、深验、构造四处等深；`block_of` 改精确匹配并 fail-fast；保留 9 条红实证。
+- **批 B／R-2 登记表迁移**：历史采集器登记表迁入 `collector_history.py`，改为条目式六字段；按 HEAD 祖先口径定案为 4/5/2 条 ACTIVE，先前 `--all` 口径的 19 条预算含未合并分支版本，已排除；文档 121 行改口并保留契约 needle，维护纪律写入 maintenance 文档。
+- **批 C／R-3 identity 维护链闭合**：`ensure_outdir_identity` 三入口识别历史版本，两侧都只接受两键规范形并拒绝额外键；collector 语义修正为目录 lineage 签发者（done v4 逐段 collector 列为后续立项）；维护纪律首次适用补登 `887c0f58`。
+- **批 D／R-4 producer→gate 真件对测**：`compile_state` 的真实返回产物落盘后直接调用 `audit_release_gate.check_formal_case_chain`；正式 BSC 正例必须无错误过闸，删除顶层 `chain` 与顶层/token 链矛盾两负例必须被闸拒绝，封住 producer 与 consumer 各自自洽却组合断链的测试逃逸面。
+- **成本与质量**：四批线性施工；批 D 新增 3 条 producer-consumer 端到端回归，版本登记统一至 6.45.1。施工署名 codex，调度验收 Fable。
 
 ## [6.45.0] - 2026-08-15 — 三 AI 并行修复工程融合（v6.44.0 review 14 findings 全处置）
 
