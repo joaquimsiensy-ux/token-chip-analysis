@@ -118,7 +118,7 @@ size 与 SHA-256；全部通过后才原子将旧 done 升为 `hypersync-v2-done
 | Etherscan V2（补充证据、**非正式 channel，仅 ETH 主网**） | 用户免费 key | 免费层限速未成瓶颈 | tokentx 每页 10000 条 | 按返回末行 block 续页 | fetch_etherscan.py | （OPN，07） |
 | envio HyperSync **ETH 主网**（eth.hypersync.xyz） | 同上免费 token | — | — | 同 BSC 版（fetch_hypersync 断点续传版） | fetch_hypersync.py | — |
 
-**替代 CSV 正式资格**：只有 `fetch_sqd_evm.py` 在显式冻结块界、输出与 receipt 路径运行前均不存在并成功收尾时，可用 `--receipt` 产生 `evm-collector-run/v2`；preflight 会校验当前 adapter 脚本哈希。Alchemy 仅有分页 pageKey、没有 provider 侧块进度证据，v2 块游标语义不成立，故已降级为仅探索采集并除名正式通道；恢复资格需升版为分型收据。BigQuery 是日期切片复核，bloXroute 是近期分片，Etherscan 是补充 API；这些非正式采集器代码均声明 `FORMAL_CHANNEL_ELIGIBLE = False`，不得写入正式 `channels.json`。旧 CSV 无法升级：另名归档后由 SQD 生产 adapter 从冻结下界重采。
+**替代 CSV 正式资格**：只有 `fetch_sqd_evm.py` 在显式冻结块界、输出与 receipt 路径运行前均不存在并成功收尾时，可用 `--receipt` 产生 `evm-collector-run/v2`；preflight 会校验当前或 git 考证的历史登记 adapter 脚本哈希（`collector_history.py`）。Alchemy 仅有分页 pageKey、没有 provider 侧块进度证据，v2 块游标语义不成立，故已降级为仅探索采集并除名正式通道；恢复资格需升版为分型收据。BigQuery 是日期切片复核，bloXroute 是近期分片，Etherscan 是补充 API；这些非正式采集器代码均声明 `FORMAL_CHANNEL_ELIGIBLE = False`，不得写入正式 `channels.json`。旧 CSV 无法升级：另名归档后由 SQD 生产 adapter 从冻结下界重采。
 
 ## 2. 死亡名单（实测不可用，3 个月内禁止重探）
 

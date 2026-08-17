@@ -15,6 +15,8 @@ import os
 import tempfile
 from pathlib import Path
 
+from collector_history import historical_script_hashes
+
 
 SCHEMA = "evm-channels/v2"
 RECEIPT_SCHEMA = "evm-channel-receipt/v2"
@@ -94,31 +96,6 @@ def _sha256_file(path: Path):
     return h.hexdigest()
 
 
-# 采集器脚本升级后，正版历史版本采的存量数据不应被"当前哈希"白名单追溯否定
-# （NES 案实证：v6.39.5 正版 fetch_hypersync.py 产的 169 份 receipt 在脚本升级后
-# 全数被拒，而数据完整性另有四查/供给闭合/时间抽查独立证明）。本表是显式静态
-# 登记：每个哈希必须先在 skill 仓库 git 历史中考证到具体 commit 才准入表——
-# `git show <rev>:scripts/evm/<name> | shasum -a 256` 逐条可复验；不提供任何
-# 运行时扩表通道，伪造采集器仍然无法过闸。
-_HISTORICAL_COLLECTOR_HASHES = {
-    "fetch_hypersync.py": {
-        # v6.39.5（commit 2ebd885d1a1364779338e02f8f30e991eec2302d）——NES 案
-        # −1 段（2026-08-12）BSC/ETH 全量 CSV 通道的采集版本
-        "d8113c590fe78e497364b15089215e82d0b061c413f80bb4600913f334f36b6d",
-    },
-    "fetch_sqd_evm.py": set(),
-    "fetch_hypersync_v2.py": {
-        # v6.39.5（commit 2ebd885d1a1364779338e02f8f30e991eec2302d）——NES 案
-        # −1 段 BSC v2 通道 capture_identity 的采集版本
-        "d229a1c200554708560f8eab4bed1ccaf378b65cd9fe852d57bcf75b7569fe16",
-    },
-}
-
-
-def _historical_script_hashes(name):
-    return _HISTORICAL_COLLECTOR_HASHES.get(name, set())
-
-
 def _sha256_prefix(path: Path, size: int):
     if isinstance(size, bool) or not isinstance(size, int) or size < 0 or size > path.stat().st_size:
         raise ChannelsPreflightError("collector segment prefix size 非法")
@@ -171,7 +148,7 @@ def _csv_collector_provenance(receipt_path, data_path, token, lo, hi):
     expected_script = allowed.get(name)
     if expected_script is None or (
             collector.get("sha256") != _sha256_file(expected_script)
-            and collector.get("sha256") not in _historical_script_hashes(name)):
+            and collector.get("sha256") not in historical_script_hashes(name)):
         raise ChannelsPreflightError("CSV 采集回执未绑定当前受支持采集器")
     q = d.get("query")
     if not isinstance(q, dict) or str(q.get("token", "")).lower() != str(token).lower() \
@@ -230,12 +207,12 @@ def _v2_provenance(path, token, lo, hi):
         first_url = identity_manifest.get("url") if isinstance(identity_manifest, dict) else None
         expected = capture_identity(token, first_url)
         # collector.sha256 允许"当前哈希或 git 考证的历史登记哈希"（存量数据由正版
-        # 历史版本采集器产出的场景，语义同 _historical_script_hashes；其余字段严判）。
+        # 历史版本采集器产出的场景，语义同 historical_script_hashes；其余字段严判）。
         actual_collector = (identity_manifest.get("collector")
                             if isinstance(identity_manifest, dict) else None)
         if isinstance(actual_collector, dict) and \
                 actual_collector.get("path") == "fetch_hypersync_v2.py" and \
-                actual_collector.get("sha256") in _historical_script_hashes(
+                actual_collector.get("sha256") in historical_script_hashes(
                     "fetch_hypersync_v2.py"):
             expected = dict(expected, collector=actual_collector)
         if identity_manifest != expected:

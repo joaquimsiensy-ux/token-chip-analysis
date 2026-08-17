@@ -169,3 +169,4 @@
 - **Opus 复审工单四预案。** 禁止对大 worktree 做 `du/find` 全盘扫描；第一条命令建最小镜像，脱离大 worktree 后再审；连续 2 次无响应即交付已完成证据与未完项，不无限重发；每次 Write 后立即 `ls` 确认产物真已落盘。
 - **密钥/脱敏边界降档纪律。** 先保证真实密钥不进命令日志、异常、receipt 和台账；安全边界达标后，纯诊断文字美化或启发式优化按质量残留降档，不借安全名义无限扩大施工面。
 - **producer/validator 约束机器同源。** 不靠两份手写条件“看起来一样”；producer 在发布 canonical 产物前，对即将落盘的内存对象直接运行 consumer 同一 validator。这把“声明式校验一致”变成可执行事实，也让 producer 能为“我发出的正式件必能被 consumer 接受”负责。
+- **正式采集器升级必须登记被替换版本。** 升级 `fetch_hypersync.py`、`fetch_hypersync_v2.py` 或 `fetch_sqd_evm.py` 的 commit 时，必须同步把被替换版本的哈希与 git 考证依据登入 `collector_history.py`；否则该版本采集的存量数据会在升级后被 preflight 追溯误拦。本条源自 NES 案 0816 实证：169 份正版 receipt 被当前哈希白名单追溯否定。

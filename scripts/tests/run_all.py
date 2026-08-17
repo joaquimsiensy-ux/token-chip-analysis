@@ -132,6 +132,9 @@ SUITE += [
     'test_g3_alt_collectors.py',
 ]
 
+# R-2 采集器历史哈希登记表：状态过滤、CSV provenance 与 git 考证守卫。
+SUITE += ['test_collector_history.py']
+
 
 def main():
     results = []
