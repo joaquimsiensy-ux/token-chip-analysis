@@ -10,6 +10,7 @@
 
 ## 版本索引（活跃窗口，新在上；每版一行，详情见下方对应条目）
 
+- **6.46.0**（2026-08-17）anchor-plan v3 机器字段与 producer 历史登记（三单元收口工程·单元1）：余额点必带 balance_block_source 正向白名单、balance/tx 严格 XOR，kind 中文文案退出一切语义判定；新建 producer_history 六字段登记表修复存量 receipt producer 哈希深验基线即断；v2 存量不重签，语义重放 schema-aware 投影兼容，NES 三份存量件先红后绿实证
 - **6.45.1**（2026-08-17）NES 双链首案实证后四修复、四批收口：R-1 anchor_point_contract 四处等深与 block_of fail-fast；R-2 collector_history 六字段迁表并按 HEAD 祖先定案；R-3 identity 三入口认历史、两键规范形与维护补登；R-4 producer 真件直过发布闸及缺失/矛盾负例
 - **6.45.0**（2026-08-15）三 AI 并行修复 v6.44.0 review 14 findings 全处置：g1 边界守卫六项（handoff 案根 containment/审计闸 report 必填/跨分区三元组等式/command v3/risk_flags 白名单/文本卫生守卫＋Solana 原串保真）、g2 证据链四项（观测拒空 code/对账五路深重验/GMGN 黄灯查证说明制/Arbitrum 探索档恢复）、g3 通道与文档四项（A0 探索预检两阶段/SQD 收紧＋Alchemy 正式除名/F-05 用户裁决不加闸如实写边界/F-13 文档对齐）；R10-15/18 转 CLOSED 现役 12；三组独立 opus 盲审全收口
 - **6.44.0**（2026-08-15）EVM 链上观测锚：三链正式纵切片真跑 bundle producer，accounting v2/supply_truth v4 双收据与 shared/handoff N-2 闭合；F-02 CLOSED、F-03/R10-9 MITIGATED 仍 OPEN；独立盲审 31 伪造向量全拒 PASS
@@ -45,6 +46,15 @@
 - **6.20.1** 2026-08-05 修 5 处阻断级文档漂移（A4 前禁写报告冲突/easy 残留/惯犯回灌 docstring/批量预采集残留/旧 Par 路线历史降级）＋docs_lint 增中文禁词与 Python module docstring 扫描
 
 更早版本（6.20.0 及以前）详见 `archive/CHANGELOG-archive.md`。
+
+## [6.46.0] - 2026-08-17 — anchor-plan v3 机器字段与 producer 历史登记（三单元收口工程·单元1）
+
+- **源起**：NES 收口工程（6.45.1）遗留立项经 @CX 复核融合定案三单元；本单元关闭两笔账——锚点计划靠 kind 中文文案精确匹配推断块源（改措辞即误拦），以及存量 receipt 的 producer 哈希被强制等于当前脚本（6.45.1 批 A 改动后 NES 三份存量件深验已断，`producer hash mismatch` 基线即红）。
+- **v3 契约**：`anchor-plan/v3` 起余额点必带 `balance_block_source ∈ {day_end_block, final_block}` 正向白名单；balance/tx 点型严格 XOR（互斥判据+各自禁键，混合点拒）；`final_block` 源仅限 forced_points 且日期锚保留；kind 降纯展示（本轮文案一字未改）。契约入口 `anchor_point_contract.balance_block_source_of` 四处消费方（签发/执行/发布深验/classify）按 plan.schema 分派，v2 存量走原文案兼容路径零变化、一律不重签。
+- **producer 历史登记**：新建 `scripts/lib/producer_history.py`（六字段条目式，git show 可复现考证纪律，REVOKED hash-wide 跨 protocol 否决）；登记 `e5168a…`（NES 签发者，考证至 3b76db8）与 `1a461169…`（6.45.1 被替换版本）。`receipt_validate.validate_receipt` 增可选参 `allowed_producer_hashes`（默认 None 行为逐字不变，仅 anchor plan receipt 消费点传入登记集），time_spotcheck 与 shared_release_receipt（含 repo_ref_ok）三处共用单源。
+- **重放兼容**：`validate_semantic_replay` 改 schema-aware——生成器只产 v3 形态；重放 v2 plan 时仅投影重算结果（先逐点过 v3 XOR 断言再剥 balance_block_source 单键，禁静默 pop），逐点 multiset 比对语义不变。receipt schema 保持 anchor-plan-receipt/v2，配对矩阵收紧为 receipt.plan_schema 必须与 plan.schema 精确相等。
+- **存量实证**：NES 三份真实 v2 plan/receipt 深验+完整 dry-run 语义重放先红后绿（施工前三份全部 `producer hash mismatch`，施工后全 exit 0），只读验证未重签。
+- **suite 分母**：`run_all.py` 115 个入口（114＋test_anchor_plan_v3 十二用例，先红 0/12 后绿 12/12），收口标准 115/115 PASS、rc=0（本机含两项 loopback 纵切片）。施工 codex（开工门禁自查抓获工单一处行号笔误后勘误放行），调度验收 Fable。
 
 ## [6.45.1] - 2026-08-17 — NES 双链首案四修复、四批收口
 

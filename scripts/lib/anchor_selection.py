@@ -253,6 +253,7 @@ def generate_anchor_selection(*, input_path, chain, token, total_supply, decimal
         def point(addr, day, kind, note=""):
             raw = day_end_balance(addr, day)
             return {"kind": kind, "addr": addr, "day": day,
+                    "balance_block_source": "day_end_block",
                     "day_end_block": block_of(day, kind, addr),
                     "expected_balance_raw": str(raw),
                     "expected_balance_human": human(raw), "expected_pct": pct(raw),
@@ -312,6 +313,7 @@ def generate_anchor_selection(*, input_path, chain, token, total_supply, decimal
         for addr, balance in edges:
             forced.append({
                 "kind": LEGACY_FINAL_BLOCK_EDGE_KIND, "addr": addr, "day": d1,
+                "balance_block_source": "final_block",
                 "expected_balance_raw": balance,
                 "expected_balance_human": human(balance), "expected_pct": pct(balance),
                 "note": f"最终余额贴 {threshold_pct}% 门槛（±10%）——错一笔就跨档，重点核对",

@@ -306,7 +306,8 @@ def main():
         manifest = json.loads((ROOT / "scripts/tests/invariant_manifest.json").read_text(
             encoding="utf-8"))
         registered = [entry for entry in manifest["receipt_producers"]
-                      if "anchor-plan/v2" in entry.get("schemas", [])]
+                      if entry.get("script") == EXPECTED_PLAN_PRODUCER
+                      and "anchor-plan/v3" in entry.get("schemas", [])]
         check("EXPECTED_PLAN_PRODUCER 与 invariant_manifest 单源对账",
               len(registered) == 1
               and registered[0].get("script") == EXPECTED_PLAN_PRODUCER)

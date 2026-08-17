@@ -203,7 +203,7 @@ def test_r9_02_real_anchor_producer_consumer(root):
     assert plan_path.is_file() and receipt_path.is_file()
     plan = json.loads(plan_path.read_text(encoding="utf-8"))
     receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
-    assert plan["schema"] == "anchor-plan/v2" and plan["final_block"] == 300
+    assert plan["schema"] == "anchor-plan/v3" and plan["final_block"] == 300
     assert receipt["schema"] == "anchor-plan-receipt/v2" and receipt["verdict"] == "PASS"
     consumer = run([
         sys.executable, str(SPOTCHECK), "--plan", str(plan_path), "--dry-run",

@@ -138,6 +138,9 @@ SUITE += ['test_collector_history.py']
 # R-3 v2 identity 历史兼容：维护/消费链同判定、严格形状与混合目录边界。
 SUITE += ['test_v2_identity_history.py']
 
+# U1 anchor-plan/v3：机器块源/XOR 契约、v2 重放投影与 producer 历史兼容。
+SUITE += ['test_anchor_plan_v3.py']
+
 
 def main():
     results = []
