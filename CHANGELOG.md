@@ -10,6 +10,7 @@
 
 ## 版本索引（活跃窗口，新在上；每版一行，详情见下方对应条目）
 
+- **6.48.0**（2026-08-17）HyperSync CSV 同哈希续采闸·方案B（三单元收口工程·单元3）：正式 CSV 仅允许同一启动冻结哈希续采（脚本升级须封盘另开新 channel 段，preflight 多 channel 拼接既有支持）；TOCTOU 启动冻结+写前漂移拒签+receipt 用启动哈希；hash-wide REVOKED 拒启动；resume 读入接严格 JSON+全字段类型收口；cea82c77 按唯一签发 protocol 补登（考证 2d69373）；全盘清点 105 份存量回执全单段零迁移
 - **6.47.1**（2026-08-17）单元2 盲审消化轮：4 BREACH 关洞（收据标签去"验证"语义防零成本洗白、维护纪律按 protocol 逐条补登+断链固化测试、inventory 残件分类报错给人工出路、staged_capture 首采三态放行）＋5 WEAK 修复（.DS_Store 唯一豁免三处等深、REVOKED 压过当前脚本、recovered 身份收据透传、symlink 根死代码、CSV 回执接严格 JSON）＋1 注（迁移哈希定性留痕）；APU 0801 原始形态全链重演练闭环
 - **6.47.0**（2026-08-17）HyperSync Parquet done v4 逐段采集者归属＋C12 显式恢复（三单元收口工程·单元2）：每段 done 带 collector{path,sha256} 启动冻结哈希+写前 TOCTOU 复验；旧段迁移 legacy-unattributed 三件套（源 schema/迁移前哈希/migrator 可验）+原生/迁移判别联合互斥；identity 自动签发收严至真空目录、遗留目录走 --recover-identity 签 hypersync-capture-identity/v2（recoverer 取代 collector、lineage=unknown），先 recover 后 refresh；collector_history 按 protocol 过滤（REVOKED 保持 hash-wide）；U1 盲审三条跨单元传染修复随单落地；APU/EGL1/NES 实件演练三态闭合
 - **6.46.1**（2026-08-17）单元1 盲审消化轮：2 BREACH 关洞（重复 JSON 键人机分裂伪装、producer 历史 protocol 硬编码致 v3 plan 可挂 v2 时代签名）＋7 WEAK 修复（schema 分派 fail-open 转显式白名单、v2 点拒 v3 说谎字段、单源守卫恢复全局语义等）；五项维持两项旧账另立裁决在案；NES 存量与盲审向量回打全绿
@@ -49,6 +50,16 @@
 - **6.20.1** 2026-08-05 修 5 处阻断级文档漂移（A4 前禁写报告冲突/easy 残留/惯犯回灌 docstring/批量预采集残留/旧 Par 路线历史降级）＋docs_lint 增中文禁词与 Python module docstring 扫描
 
 更早版本（6.20.0 及以前）详见 `archive/CHANGELOG-archive.md`。
+
+## [6.48.0] - 2026-08-17 — HyperSync CSV 同哈希续采闸·方案B（三单元收口工程·单元3）
+
+- **源起**：三单元收口方案第 3 单元，关 CSV 通道归属重写账——`--resume-receipt` 跨版本续采会把旧段整体收进当前脚本署名的新回执。定案方案 B（@CX 复核在案）：同一 CSV 只许同 collector 哈希续采，脚本升级后以前驱覆盖终点另开新 CSV 作为新 channel 段接入（preflight 多 channel 连续性拼接为既有生产路线）。施工 codex（工单 U3），基线 aadbe59。
+- **生产侧闸**：resume 分支在既有 `_csv_collector_provenance` 重验之后独立校验前驱 `collector.sha256 == 启动冻结哈希`，不等 fail-closed 且错误信息含"另开 CSV/新 channel 段"指引全文；prior receipt 顶层/schema/collector/query/边界/segments 全字段先收类型（含 bool≠int 边界），schema 白名单仅 evm-collector-run/v2、未知值拒；不改 `_csv_collector_provenance` 本体（消费场景历史哈希放行是合法语义）。
+- **TOCTOU 与吊销**：进程入口计算 `collector_start_hash` 并按 collector_history 全表 hash-wide REVOKED 拒启动（"当前脚本版本已被吊销"，U2b/R6 等深延伸）；写 receipt 前重算哈希，运行期漂移即删临时 CSV 拒签；receipt 的 collector.sha256 一律用启动冻结哈希（替换写时即时哈希）。
+- **U1 盲审传染修复**：resume 读入接 `strict_json_loads`（重复 collector 键人机分裂拒于读入层，引用共享件勿复制）。
+- **登记与考证**：被替换的 `cea82c77…` 版本补登 collector_history（protocol=evm-collector-run/v2，commit=2d69373 全哈希，git blob 复算闭环）；按 U2b/B-02 纪律核证该版本生前唯一签发 protocol 即此一线，一条即全。SQD 通道单 segment＋fresh_output 既有保证固化为防退化断言（如实标注为既有正确行为，非旧代码漏过）。
+- **存量清点**：Desktop 工作区＋Documents 归档区全盘清点 105 份 evm-collector-run/v2 存量回执，segments 全部单段、零多段件——方案 B"零迁移"前提在全量口径成立，无需 legacy confidence 标注；文档语义声明为前瞻性闭合、不宣称修复历史。
+- **suite 分母**：117 个入口（116＋test_csv_resume_collector_gate 九用例，先红 6 漏过后绿 9/9），117/117 PASS rc=0（本机含两项 loopback）。调度验收 Fable。
 
 ## [6.47.1] - 2026-08-17 — 单元2 盲审消化轮（4 BREACH＋5 WEAK 修复＋1 注）
 

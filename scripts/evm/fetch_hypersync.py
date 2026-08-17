@@ -13,11 +13,53 @@
 断点续传：--out 已存在且非空时自动从末行块续拉（重叠由下游按 uniqueId 去重）；
   老 7 列 CSV 续拉时自动维持 7 列，新文件起手为 8 列（尾列 block_hash，供防重组去重键）。
 """
-import requests, json, csv, os, sys, time, datetime, argparse, shutil
+import requests, json, csv, os, sys, time, datetime, argparse, shutil, hashlib, importlib.util
 from pathlib import Path
+
+try:
+    import collector_history
+except ModuleNotFoundError as exc:
+    if exc.name != "collector_history":
+        raise
+    _history_spec = importlib.util.spec_from_file_location(
+        "fetch_hypersync_collector_history",
+        Path(__file__).resolve().with_name("collector_history.py"),
+    )
+    if _history_spec is None or _history_spec.loader is None:
+        raise
+    collector_history = importlib.util.module_from_spec(_history_spec)
+    _history_spec.loader.exec_module(collector_history)
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
+from anchor_point_contract import strict_json_loads
 
 TRANSFER = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
 DEFAULT_TOKEN_FILE = "~/.config/hypersync/token"
+COLLECTOR_RECEIPT_SCHEMA = "evm-collector-run/v2"
+RESUME_SPLIT_GUIDANCE = (
+    "采集脚本已升级，禁止跨版本续采同一 CSV；请以前驱 receipt 覆盖终点为新起点另开 "
+    "CSV/receipt，作为新 channel 段接入 channels.json"
+)
+
+
+def _sha256_file(path):
+    h = hashlib.sha256()
+    with Path(path).open("rb") as f:
+        for block in iter(lambda: f.read(8 * 1024 * 1024), b""):
+            h.update(block)
+    return h.hexdigest()
+
+
+def _collector_start_hash():
+    current = _sha256_file(Path(__file__))
+    revoked = {
+        entry["sha256"]
+        for entry in collector_history.COLLECTOR_HISTORY
+        if entry["status"] == "REVOKED"
+    }
+    if current in revoked:
+        raise ValueError("当前脚本版本已被吊销")
+    return current
 
 
 class SafeParser(argparse.ArgumentParser):
@@ -79,6 +121,11 @@ def parse_args(argv=None):
 
 
 def main():
+    try:
+        collector_start_hash = _collector_start_hash()
+    except ValueError as exc:
+        print(f"[fatal] {exc}", file=sys.stderr, flush=True)
+        return 2
     a = parse_args()
     ap = a._parser
     headers = {"Authorization": f"Bearer {a.token}", "Content-Type": "application/json"}
@@ -92,14 +139,40 @@ def main():
             ap.error("正式输出已有前缀但缺 --resume-receipt；存量 legacy CSV 必须另名归档后从冻结下界重采")
         try:
             from channels_preflight import _csv_collector_provenance
-            prev = json.loads(Path(a.resume_receipt).read_text(encoding="utf-8"))
-            pq = prev.get("query") or {}
-            if pq.get("requested_from") != a.from_block or pq.get("requested_to") >= a.to_block:
+            prev = strict_json_loads(Path(a.resume_receipt).read_text(encoding="utf-8"))
+            if not isinstance(prev, dict):
+                raise ValueError("前驱 receipt 顶层必须是对象")
+            schema = prev.get("schema")
+            if not isinstance(schema, str):
+                raise ValueError(f"前驱 receipt schema 必须是 {COLLECTOR_RECEIPT_SCHEMA}")
+            try:
+                {COLLECTOR_RECEIPT_SCHEMA: True}[schema]
+            except KeyError:
+                raise ValueError(f"前驱 receipt schema 必须是 {COLLECTOR_RECEIPT_SCHEMA}")
+            prior_collector = prev.get("collector")
+            if not isinstance(prior_collector, dict):
+                raise ValueError("前驱 receipt collector 必须是对象")
+            prior_collector_hash = prior_collector.get("sha256")
+            if not isinstance(prior_collector_hash, str):
+                raise ValueError("前驱 receipt collector.sha256 必须是字符串")
+            pq = prev.get("query")
+            if not isinstance(pq, dict):
+                raise ValueError("前驱 receipt query 必须是对象")
+            requested_from, requested_to = pq.get("requested_from"), pq.get("requested_to")
+            if any(isinstance(value, bool) or not isinstance(value, int)
+                   for value in (requested_from, requested_to)):
+                raise ValueError("前驱 receipt 请求边界必须是整数")
+            if requested_from != a.from_block or requested_to >= a.to_block:
                 raise ValueError("前驱 receipt 起点不同或新上界未前移")
             _csv_collector_provenance(a.resume_receipt, out_path, a.token_addr,
-                                      a.from_block, pq["requested_to"])
-            resume, mode = pq["requested_to"], "a"
-            prior_segments = list(prev["segments"])
+                                      a.from_block, requested_to)
+            if prior_collector_hash != collector_start_hash:
+                raise ValueError(RESUME_SPLIT_GUIDANCE)
+            segments = prev.get("segments")
+            if not isinstance(segments, list):
+                raise ValueError("前驱 receipt segments 必须是数组")
+            resume, mode = requested_to, "a"
+            prior_segments = list(segments)
             with open(out_path, encoding="utf-8") as fh:
                 with_bh = "block_hash" in fh.readline()
         except Exception as exc:
@@ -194,10 +267,14 @@ def main():
     f.flush(); os.fsync(f.fileno()); f.close()
     receipt_stage = None
     if a.receipt:
-        from channels_preflight import _csv_stats, _sha256_file
+        from channels_preflight import _csv_stats
+        if _sha256_file(Path(__file__)) != collector_start_hash:
+            tmp_path.unlink(missing_ok=True)
+            print("[fatal] 采集脚本运行期间发生漂移，拒绝签发 receipt",
+                  file=sys.stderr, flush=True)
+            return 2
         out = os.path.realpath(os.path.abspath(a.out))
         rows, min_block, max_block = _csv_stats(tmp_path)
-        collector = os.path.realpath(os.path.abspath(__file__))
         segment = {"requested_from": int(segment_from), "requested_to": int(a.to_block),
                    "provider_next_block": int(nxt),
                    "output_prefix": {"size": tmp_path.stat().st_size,
@@ -205,7 +282,7 @@ def main():
         payload = {"schema": "evm-collector-run/v2", "status": "PASS",
                    "producer": "fetch_hypersync.py/v3",
                    "collector": {"path": "fetch_hypersync.py",
-                                 "sha256": _sha256_file(Path(collector))},
+                                 "sha256": collector_start_hash},
                    "query": {"token": a.token_addr.lower(),
                              "query_schema": "erc20-transfer-fields/v2",
                              "provider_url": a.url, "requested_from": a.from_block,

@@ -41,6 +41,14 @@ COLLECTOR_HISTORY = (
         "reason": "2026-08-14 移除位置 token 后用于正式 HyperSync v1 CSV 采集。",
     },
     {
+        "script": "fetch_hypersync.py",
+        "sha256": "cea82c7743f413555af0b913b1cb0662d52dbdd8e1686bc2443b2ca701266e84",
+        "commit": "2d69373a2a2e0fdc08615e41c8a3dc9676cff22c",
+        "protocol": "evm-collector-run/v2",
+        "status": "ACTIVE",
+        "reason": "6.47.1 U3 同哈希续采闸升级前的现役 HyperSync v1 CSV 签发版本。",
+    },
+    {
         "script": "fetch_hypersync_v2.py",
         "sha256": "7fecfd30f358afb6f39cc137683948a587c29f25ec9e5512c66bb16cbb995fe8",
         "commit": "8a7c6709252f4593c6e5bb05f046047c5171ad31",

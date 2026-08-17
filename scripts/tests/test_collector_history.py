@@ -104,6 +104,20 @@ def test_structure():
             f"entry[{index}] reason empty"
 
 
+def test_u3_replaced_csv_collector_registration():
+    import collector_history
+
+    predecessor = "cea82c7743f413555af0b913b1cb0662d52dbdd8e1686bc2443b2ca701266e84"
+    matches = [
+        entry for entry in collector_history.COLLECTOR_HISTORY
+        if entry["script"] == "fetch_hypersync.py" and entry["sha256"] == predecessor
+    ]
+    assert len(matches) == 1, "U3 predecessor must have exactly one protocol registration"
+    assert matches[0]["commit"] == "2d69373a2a2e0fdc08615e41c8a3dc9676cff22c"
+    assert matches[0]["protocol"] == "evm-collector-run/v2"
+    assert matches[0]["status"] == "ACTIVE"
+
+
 def test_active_historical_hash_passes(root):
     import channels_preflight
 
@@ -220,6 +234,8 @@ def main():
             checks.append((name, True, ""))
 
     check("registry entries have all six fields", test_structure)
+    check("U3 replaced CSV collector has its sole signing protocol registered",
+          test_u3_replaced_csv_collector_registration)
     with tempfile.TemporaryDirectory() as td:
         root = Path(td)
         check("ACTIVE historical hash passes CSV provenance", lambda: test_active_historical_hash_passes(root))

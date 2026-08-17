@@ -69,6 +69,11 @@ fresh-output 命令同样带 `--receipt`；Alchemy/BigQuery/bloXroute/Etherscan 
 手搓 JSON 不构成迁移工具。v2 Parquet 通道则继续由 native done v3 +
 `make_channel_receipt.py --format v2` 生成，无 `--collector-receipt` 参数。
 
+自本版本起，同一 `evm-collector-run/v2` receipt 的顶层 collector 保证覆盖其全部 segments：
+续采只允许前驱 collector 哈希与本次进程启动时冻结的脚本哈希相同。采集脚本升级后，必须以前驱
+receipt 的覆盖终点为新起点另开 CSV/receipt，再作为新的 channel 段接入 `channels.json`。此前
+签发的多段 receipt（如存在）只能把顶层自报归属标为 **legacy confidence**；本规则不声称修复历史。
+
 ```json
 {"schema":"evm-channels/v2","token":"0x...","expected_from":0,"expected_to":200,
  "channels":[

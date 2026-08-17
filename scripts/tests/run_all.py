@@ -143,6 +143,7 @@ SUITE += ['test_anchor_plan_v3.py']
 
 # U2 done/v4：逐段 collector 归属、legacy-unattributed 迁移与 C12 显式恢复。
 SUITE += ['test_done_v4_collector.py']
+SUITE += ['test_csv_resume_collector_gate.py']
 
 
 def main():
