@@ -173,6 +173,7 @@ def test_same_hash_resume_passes():
         )
         assert code == 0, transcript
         result = json.loads(receipt.read_text(encoding="utf-8"))
+        assert result["schema"] == PROTOCOL
         assert len(result["segments"]) == 2
         assert result["collector"]["sha256"] == sha256(FETCH)
 
@@ -231,18 +232,33 @@ def test_duplicate_collector_key_rejected_by_resume_reader():
 
 
 def test_unknown_schema_rejected_before_dispatch():
+    expected = f"前驱 receipt schema 必须是 {PROTOCOL}"
+    for schema, label in (("evm-collector-run/v3", "future"), ("foo", "unknown")):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            out, prior, receipt, _ = resume_fixture(
+                root, sha256(FETCH), schema=schema
+            )
+            module = load(FETCH, f"u3_unknown_schema_{label}")
+            code, transcript = invoke(
+                module, argv(root, out, receipt, resume_receipt=prior),
+                response_to=20, provenance_stub=True,
+            )
+            assert code == 2 and expected in transcript, (schema, transcript)
+            assert not receipt.exists()
+
+
+def test_out_and_receipt_same_path_rejected_without_temp_residue():
     with tempfile.TemporaryDirectory() as td:
         root = Path(td)
-        out, prior, receipt, _ = resume_fixture(
-            root, sha256(FETCH), schema="evm-collector-run/future"
-        )
-        module = load(FETCH, "u3_unknown_schema")
+        collide = root / "collide.csv"
+        module = load(FETCH, "u3_same_output_receipt_path")
         code, transcript = invoke(
-            module, argv(root, out, receipt, resume_receipt=prior),
-            response_to=20, provenance_stub=True,
+            module, argv(root, collide, collide, frm=0, to=10), response_to=10
         )
-        assert code == 2 and "schema" in transcript, transcript
-        assert not receipt.exists()
+        assert code == 2 and "正式输出与 receipt 路径不得相同" in transcript, transcript
+        assert not collide.exists()
+        assert not list(root.glob(".collide.csv.tmp.*"))
 
 
 def test_sqd_emitter_is_single_segment_and_fresh_only():
@@ -378,6 +394,8 @@ def main():
          test_duplicate_collector_key_rejected_by_resume_reader),
         ("unknown prior schema rejects before dispatch",
          test_unknown_schema_rejected_before_dispatch),
+        ("same output/receipt path rejects without temp residue",
+         test_out_and_receipt_same_path_rejected_without_temp_residue),
         ("SQD receipt remains one segment and fresh-only",
          test_sqd_emitter_is_single_segment_and_fresh_only),
         ("collector upgrade continues through a new channel",

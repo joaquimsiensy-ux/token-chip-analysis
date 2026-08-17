@@ -36,6 +36,7 @@ from anchor_point_contract import strict_json_loads
 TRANSFER = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
 DEFAULT_TOKEN_FILE = "~/.config/hypersync/token"
 COLLECTOR_RECEIPT_SCHEMA = "evm-collector-run/v2"
+# channels_preflight.py:29 另有一份 COLLECTOR_RECEIPT_SCHEMA 副本，升 schema 版本时两处必须同步。
 RESUME_SPLIT_GUIDANCE = (
     "采集脚本已升级，禁止跨版本续采同一 CSV；请以前驱 receipt 覆盖终点为新起点另开 "
     "CSV/receipt，作为新 channel 段接入 channels.json"
@@ -131,6 +132,8 @@ def main():
     headers = {"Authorization": f"Bearer {a.token}", "Content-Type": "application/json"}
     resume, mode, with_bh, prior_segments = a.from_block, "w", True, []
     out_path = Path(a.out).resolve()
+    if a.receipt and os.path.realpath(a.out) == os.path.realpath(a.receipt):
+        ap.error("正式输出与 receipt 路径不得相同")
     out_path.parent.mkdir(parents=True, exist_ok=True)
     tmp_path = out_path.with_name(f".{out_path.name}.tmp.{os.getpid()}")
     exists_nonempty = out_path.exists() and out_path.stat().st_size > 0
@@ -142,12 +145,10 @@ def main():
             prev = strict_json_loads(Path(a.resume_receipt).read_text(encoding="utf-8"))
             if not isinstance(prev, dict):
                 raise ValueError("前驱 receipt 顶层必须是对象")
-            schema = prev.get("schema")
+            schema = dict.get(prev, "schema")
             if not isinstance(schema, str):
                 raise ValueError(f"前驱 receipt schema 必须是 {COLLECTOR_RECEIPT_SCHEMA}")
-            try:
-                {COLLECTOR_RECEIPT_SCHEMA: True}[schema]
-            except KeyError:
+            if schema != COLLECTOR_RECEIPT_SCHEMA:
                 raise ValueError(f"前驱 receipt schema 必须是 {COLLECTOR_RECEIPT_SCHEMA}")
             prior_collector = prev.get("collector")
             if not isinstance(prior_collector, dict):
@@ -279,7 +280,7 @@ def main():
                    "provider_next_block": int(nxt),
                    "output_prefix": {"size": tmp_path.stat().st_size,
                                      "sha256": _sha256_file(tmp_path)}}
-        payload = {"schema": "evm-collector-run/v2", "status": "PASS",
+        payload = {"schema": COLLECTOR_RECEIPT_SCHEMA, "status": "PASS",
                    "producer": "fetch_hypersync.py/v3",
                    "collector": {"path": "fetch_hypersync.py",
                                  "sha256": collector_start_hash},

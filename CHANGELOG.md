@@ -10,6 +10,7 @@
 
 ## 版本索引（活跃窗口，新在上；每版一行，详情见下方对应条目）
 
+- **6.48.1**（2026-08-17）单元3 盲审消化轮＝三单元收口工程收官：盲审判 CONDITIONAL（闸体 9 项 DEFENDED 全攻不破），消化本单元引入债（签发点 schema 字面量收敛、怪写法等价重构、--out/--receipt 同路径前置拒、文档"保证覆盖全部 segments"过度声称收窄到 hypersync 签发者＋方案B 永久登记维护债申明）；BREACH-01（SQD 侧同 schema 签发者无 TOCTOU，非本单元引入）等四项移交第四单元候选清单
 - **6.48.0**（2026-08-17）HyperSync CSV 同哈希续采闸·方案B（三单元收口工程·单元3）：正式 CSV 仅允许同一启动冻结哈希续采（脚本升级须封盘另开新 channel 段，preflight 多 channel 拼接既有支持）；TOCTOU 启动冻结+写前漂移拒签+receipt 用启动哈希；hash-wide REVOKED 拒启动；resume 读入接严格 JSON+全字段类型收口；cea82c77 按唯一签发 protocol 补登（考证 2d69373）；全盘清点 105 份存量回执全单段零迁移
 - **6.47.1**（2026-08-17）单元2 盲审消化轮：4 BREACH 关洞（收据标签去"验证"语义防零成本洗白、维护纪律按 protocol 逐条补登+断链固化测试、inventory 残件分类报错给人工出路、staged_capture 首采三态放行）＋5 WEAK 修复（.DS_Store 唯一豁免三处等深、REVOKED 压过当前脚本、recovered 身份收据透传、symlink 根死代码、CSV 回执接严格 JSON）＋1 注（迁移哈希定性留痕）；APU 0801 原始形态全链重演练闭环
 - **6.47.0**（2026-08-17）HyperSync Parquet done v4 逐段采集者归属＋C12 显式恢复（三单元收口工程·单元2）：每段 done 带 collector{path,sha256} 启动冻结哈希+写前 TOCTOU 复验；旧段迁移 legacy-unattributed 三件套（源 schema/迁移前哈希/migrator 可验）+原生/迁移判别联合互斥；identity 自动签发收严至真空目录、遗留目录走 --recover-identity 签 hypersync-capture-identity/v2（recoverer 取代 collector、lineage=unknown），先 recover 后 refresh；collector_history 按 protocol 过滤（REVOKED 保持 hash-wide）；U1 盲审三条跨单元传染修复随单落地；APU/EGL1/NES 实件演练三态闭合
@@ -50,6 +51,14 @@
 - **6.20.1** 2026-08-05 修 5 处阻断级文档漂移（A4 前禁写报告冲突/easy 残留/惯犯回灌 docstring/批量预采集残留/旧 Par 路线历史降级）＋docs_lint 增中文禁词与 Python module docstring 扫描
 
 更早版本（6.20.0 及以前）详见 `archive/CHANGELOG-archive.md`。
+
+## [6.48.1] - 2026-08-17 — 单元3 盲审消化轮（三单元收口工程收官）
+
+- **源起**：6.48.0 收口后独立 opus 盲审（9 攻击向量实跑＋基线对照＋破坏性注入三连验测试非装死）判 CONDITIONAL：1 BREACH／3 WEAK／4 NOTE／9 DEFENDED，**闸体本身攻不破**——跨版本续采拒、10 个类型向量全拒、"另开新 channel 段"出路经真实 replay+gate 端到端验证可达；所有得手攻击落在单元3 射程外。施工 codex（工单 U3b）。
+- **BREACH-01 归属裁决**：`evm-collector-run/v2` 全库两个签发者，单元3 焊死了 fetch_hypersync.py，但 SQD 侧 `csv_collector_receipt.py/emit_native_receipt` 仍为写时实时哈希、无启动冻结/写前复验/REVOKED 拒启动，采集期改档可致归属谎报端到端假 PASS——**非本单元引入**（工单明文将该文件划为不改），代码修复另立第四单元；本轮只收窄其被单元3 文档过度涵盖的声称面。
+- **本轮消化（本单元引入债）**：签发点 schema 字面量收敛到 COLLECTOR_RECEIPT_SCHEMA 常量＋channels_preflight 副本维护路标；`{CONST: True}[schema]` 怪写法改常规比较（四次实跑错误面逐字一致的等价重构；重构撞出 invariant 扫描器把 `.get("schema")` 比较识别为消费面的边界，暂以 `dict.get(prev,…)` 等价形式绕行，正名归第四单元）；`--out` 与 `--receipt` 同路径前置拒（对齐 SQD 既有范式，修前未捕获 FileExistsError＋临时件残留）；文档"顶层 collector 保证覆盖全部 segments"**过度声称收窄**——保证主语仅限 fetch_hypersync.py 签发且受同哈希闸＋TOCTOU 保护者，SQD 侧签发不在保证内（置信度＝顶层自报）；方案 B 永久维护债申明（历史哈希从续采瞬时依赖升级为 preflight 永久依赖，升级漏登＝该版本存量段全拒）。
+- **第四单元候选清单（待用户裁决）**：①SQD 侧 TOCTOU 收口（emit_native_receipt 收启动冻结哈希参数＋fetch_sqd_evm 入口冻结/写前复验/REVOKED 拒启动）；②反向断链守卫（"HEAD 前一版必须已登记"回归）；③跨文件 schema 常量统一＋扫描器 `.get("schema")` 消费面模式正名；④SQD REVOKED 前置拒（现仅消费侧兜底）。N-03/N-04 记录不修。
+- **回归**：test_csv_resume_collector_gate 9→10 用例全绿；suite 分母 117 不变，117/117 PASS rc=0（本机含两项 loopback）。盲审 opus，调度验收 Fable。
 
 ## [6.48.0] - 2026-08-17 — HyperSync CSV 同哈希续采闸·方案B（三单元收口工程·单元3）
 

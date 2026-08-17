@@ -69,10 +69,19 @@ fresh-output 命令同样带 `--receipt`；Alchemy/BigQuery/bloXroute/Etherscan 
 手搓 JSON 不构成迁移工具。v2 Parquet 通道则继续由 native done v3 +
 `make_channel_receipt.py --format v2` 生成，无 `--collector-receipt` 参数。
 
+下述“保证”的主语仅限 `fetch_hypersync.py` 签发、且受同哈希续采闸与 TOCTOU 启动冻结/写前
+复验保护的 CSV receipt。同 schema 由 `csv_collector_receipt.py`/`emit_native_receipt` 签发的
+SQD receipt 不在该保证内：其 collector 哈希目前按写 receipt 时的实时文件值记录，采集期间改档
+可造成归属漂移；第四单元收口前，其 collector 归属仅为顶层自报，置信度=顶层自报。
+
 自本版本起，同一 `evm-collector-run/v2` receipt 的顶层 collector 保证覆盖其全部 segments：
 续采只允许前驱 collector 哈希与本次进程启动时冻结的脚本哈希相同。采集脚本升级后，必须以前驱
 receipt 的覆盖终点为新起点另开 CSV/receipt，再作为新的 channel 段接入 `channels.json`。此前
 签发的多段 receipt（如存在）只能把顶层自报归属标为 **legacy confidence**；本规则不声称修复历史。
+
+采用方案 B 强制分段后，历史 collector 哈希已从续采瞬时依赖升级为每次 preflight 的永久依赖，
+必须登记在册；采集器每次升级都必须补登被替换版本，漏登会使该版本采集的全部存量段被 preflight
+拒绝。验证“HEAD 前一版必须已登记”的反向断链守卫待第四单元补齐。
 
 ```json
 {"schema":"evm-channels/v2","token":"0x...","expected_from":0,"expected_to":200,
