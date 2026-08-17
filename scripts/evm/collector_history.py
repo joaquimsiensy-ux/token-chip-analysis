@@ -81,6 +81,14 @@ COLLECTOR_HISTORY = (
         "reason": "2026-08-14 移除位置 token 后用于正式 HyperSync v2 采集。",
     },
     {
+        "script": "fetch_hypersync_v2.py",
+        "sha256": "887c0f58ad938ed17d562b9c0abe05645d8bccac9e43cd3d676cd63a22875b82",
+        "commit": "2d69373a2a2e0fdc08615e41c8a3dc9676cff22c",
+        "protocol": "hypersync-capture-identity/v1",
+        "status": "ACTIVE",
+        "reason": "2026-08-14 批1锁修复版本；批C 升级该脚本时按维护纪律同步登记的被替换版本。",
+    },
+    {
         "script": "fetch_sqd_evm.py",
         "sha256": "042fe44eb1f8aea703f195707d91a9ad89e239ba94414b1dc03c0b837ff55a4b",
         "commit": "a620fd91f9e82fa8b52a960acb6ae2d4bcfc8db8",

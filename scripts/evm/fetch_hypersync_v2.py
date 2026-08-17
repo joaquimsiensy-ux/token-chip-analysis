@@ -15,12 +15,29 @@
 输出: <outdir>/run_<from>/logs.parquet + blocks.parquet
   下游用 transfers_lib.py 的 read_transfers() 合成标准 8 列表（自动 join 时间戳）。
 （来源：v3.11.2 采集加速工程，2026-07-21）"""
-import argparse, asyncio, glob, hashlib, json, os, re, sys, time
+import argparse, asyncio, glob, hashlib, importlib.util, json, os, re, sys, time
 from pathlib import Path
 
 import hypersync
 from hypersync import (BlockField, ClientConfig, FieldSelection, HexOutput,
                        LogField, LogSelection, Query, StreamConfig)
+
+try:
+    from collector_history import historical_script_hashes
+except ModuleNotFoundError as exc:
+    if exc.name != "collector_history":
+        raise
+    # 审计守卫会以 spec_from_file_location 单文件加载入口，此时脚本邻接目录不在
+    # sys.path；仍从固定邻接文件消费同一零依赖登记表，不开放运行时扩展路径。
+    _history_spec = importlib.util.spec_from_file_location(
+        "fetch_hypersync_v2_collector_history",
+        Path(__file__).resolve().with_name("collector_history.py"),
+    )
+    if _history_spec is None or _history_spec.loader is None:
+        raise
+    _history_module = importlib.util.module_from_spec(_history_spec)
+    _history_spec.loader.exec_module(_history_module)
+    historical_script_hashes = _history_module.historical_script_hashes
 
 TRANSFER = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
 MANIFEST_SCHEMA = "hypersync-v2-done/v3"
@@ -166,6 +183,20 @@ def ensure_outdir_identity(outdir, token_addr, url):
             actual = json.loads(path.read_text(encoding="utf-8"))
         except Exception as exc:
             raise ValueError(f"{IDENTITY_NAME} 不可读: {exc}") from exc
+        # collector 是 capture_identity.json 的目录 lineage/identity 签发者，不是
+        # 每个数据段的采集者证明：旧目录迁移时由当时的当前脚本补签 identity，且
+        # done v3 不记录逐段 collector，所以混合版本目录不能据此证明逐段同源。
+        actual_collector = (actual.get("collector") if isinstance(actual, dict) else None)
+        expected_collector = expected["collector"]
+        allowed_collector_hashes = historical_script_hashes(
+            "fetch_hypersync_v2.py") | {expected_collector["sha256"]}
+        if isinstance(actual_collector, dict) and \
+                actual_collector.get("path") == "fetch_hypersync_v2.py" and \
+                actual_collector.get("sha256") in allowed_collector_hashes:
+            expected = dict(expected, collector={
+                "path": actual_collector["path"],
+                "sha256": actual_collector["sha256"],
+            })
         if actual != expected:
             raise ValueError(f"{IDENTITY_NAME} 与本次 token/url/query/collector 不一致")
         return actual

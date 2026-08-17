@@ -135,6 +135,9 @@ SUITE += [
 # R-2 采集器历史哈希登记表：状态过滤、CSV provenance 与 git 考证守卫。
 SUITE += ['test_collector_history.py']
 
+# R-3 v2 identity 历史兼容：维护/消费链同判定、严格形状与混合目录边界。
+SUITE += ['test_v2_identity_history.py']
+
 
 def main():
     results = []

@@ -206,15 +206,21 @@ def _v2_provenance(path, token, lo, hi):
         identity_manifest = json.loads(identity_path.read_text(encoding="utf-8"))
         first_url = identity_manifest.get("url") if isinstance(identity_manifest, dict) else None
         expected = capture_identity(token, first_url)
-        # collector.sha256 允许"当前哈希或 git 考证的历史登记哈希"（存量数据由正版
-        # 历史版本采集器产出的场景，语义同 historical_script_hashes；其余字段严判）。
+        # collector 是 capture_identity.json 的目录 lineage/identity 签发者，不是
+        # 每个数据段的采集者证明：旧目录迁移时由当时的当前脚本补签 identity，且
+        # done v3 不记录逐段 collector，所以混合版本目录不能据此证明逐段同源。
         actual_collector = (identity_manifest.get("collector")
                             if isinstance(identity_manifest, dict) else None)
+        expected_collector = expected["collector"]
+        allowed_collector_hashes = historical_script_hashes(
+            "fetch_hypersync_v2.py") | {expected_collector["sha256"]}
         if isinstance(actual_collector, dict) and \
                 actual_collector.get("path") == "fetch_hypersync_v2.py" and \
-                actual_collector.get("sha256") in historical_script_hashes(
-                    "fetch_hypersync_v2.py"):
-            expected = dict(expected, collector=actual_collector)
+                actual_collector.get("sha256") in allowed_collector_hashes:
+            expected = dict(expected, collector={
+                "path": actual_collector["path"],
+                "sha256": actual_collector["sha256"],
+            })
         if identity_manifest != expected:
             raise ValueError("capture_identity.json 与 token/url/query/collector 不一致")
     except Exception as exc:
