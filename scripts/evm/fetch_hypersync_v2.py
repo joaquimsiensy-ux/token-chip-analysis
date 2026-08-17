@@ -16,6 +16,7 @@
   下游用 transfers_lib.py 的 read_transfers() 合成标准 8 列表（自动 join 时间戳）。
 （来源：v3.11.2 采集加速工程，2026-07-21）"""
 import argparse, asyncio, glob, hashlib, importlib.util, json, os, re, sys, time
+from datetime import datetime, timezone
 from pathlib import Path
 
 import hypersync
@@ -39,12 +40,19 @@ except ModuleNotFoundError as exc:
     _history_spec.loader.exec_module(_history_module)
     historical_script_hashes = _history_module.historical_script_hashes
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
+from anchor_point_contract import strict_json_loads
+
+
 TRANSFER = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
-MANIFEST_SCHEMA = "hypersync-v2-done/v3"
-LEGACY_MANIFEST_SCHEMAS = {"hypersync-v2-done/v2"}
+MANIFEST_SCHEMA = "hypersync-v2-done/v4"
+LEGACY_MANIFEST_SCHEMAS = {"hypersync-v2-done/v2", "hypersync-v2-done/v3"}
 QUERY_SCHEMA = "erc20-transfer-fields/v2"
 IDENTITY_SCHEMA = "hypersync-capture-identity/v1"
+RECOVERED_IDENTITY_SCHEMA = "hypersync-capture-identity/v2"
 IDENTITY_NAME = "capture_identity.json"
+SCRIPT_NAME = "fetch_hypersync_v2.py"
+SCRIPT_PATH = "scripts/evm/fetch_hypersync_v2.py"
 DEFAULT_TOKEN_FILE = "~/.config/hypersync/token"
 
 
@@ -69,6 +77,60 @@ def sha256_file(path):
         for block in iter(lambda: f.read(4 * 1024 * 1024), b""):
             h.update(block)
     return h.hexdigest()
+
+
+def _read_strict_json(path, label):
+    """Read one immutable byte snapshot and reject duplicate keys at every depth."""
+    source = Path(path)
+    raw = source.read_bytes()
+    try:
+        value = strict_json_loads(raw.decode("utf-8"))
+    except Exception as exc:
+        raise ValueError(f"{label} 不可读: {exc}") from exc
+    return value, raw, hashlib.sha256(raw).hexdigest()
+
+
+def _allowed_script_hashes(protocol):
+    return historical_script_hashes(SCRIPT_NAME, protocol=protocol) | {sha256_file(__file__)}
+
+
+def _validate_script_actor(actor, protocol, label, *, path=SCRIPT_PATH):
+    if not isinstance(actor, dict) or set(actor) != {"path", "sha256"}:
+        raise ValueError(f"{label} 形态非法")
+    actor_path, actor_hash = actor.get("path"), actor.get("sha256")
+    if not isinstance(actor_path, str) or not isinstance(actor_hash, str) \
+            or actor_path != path or actor_hash not in _allowed_script_hashes(protocol):
+        raise ValueError(f"{label} 未绑定当前或历史 ACTIVE {protocol} 采集器")
+    return actor
+
+
+def _validate_done_v4_shape(d):
+    """Validate the mutually exclusive native and legacy-unattributed v4 states."""
+    if not isinstance(d, dict):
+        raise ValueError("done manifest 顶层必须是对象")
+    provenance = d.get("collector_provenance")
+    if "collector_provenance" in d and not isinstance(provenance, str):
+        raise ValueError("collector_provenance 必须是字符串枚举")
+    migration_keys = {"refreshed_from_schema", "pre_migration_sha256", "migrator"}
+    collector = d.get("collector")
+    if isinstance(collector, dict):
+        if "collector_provenance" in d or migration_keys & set(d):
+            raise ValueError("原生 v4 done 禁止携带 legacy provenance/迁移记录")
+        _validate_script_actor(collector, MANIFEST_SCHEMA, "collector")
+        return "VERIFIED"
+    if collector is not None:
+        raise ValueError("done collector 必须为对象或 null")
+    if "collector" not in d or provenance != "legacy-unattributed" \
+            or not migration_keys <= set(d):
+        raise ValueError("迁移 v4 done 的 legacy-unattributed 判别联合不完整")
+    source = d.get("refreshed_from_schema")
+    if not isinstance(source, str) or source not in LEGACY_MANIFEST_SCHEMAS | {"pre-schema-v1"}:
+        raise ValueError("refreshed_from_schema 不是受支持的旧 schema")
+    pre_hash = d.get("pre_migration_sha256")
+    if not isinstance(pre_hash, str) or not re.fullmatch(r"[0-9a-f]{64}", pre_hash):
+        raise ValueError("pre_migration_sha256 非 64 位十六进制")
+    _validate_script_actor(d.get("migrator"), MANIFEST_SCHEMA, "migrator")
+    return "UNKNOWN_LEGACY"
 
 
 def inspect_run_files(run_dir, from_block, to_block):
@@ -123,9 +185,21 @@ def inspect_run_files(run_dir, from_block, to_block):
 def validate_done_manifest(done_path, default_from, to_block, token_addr, url):
     """Revalidate manifest identity, bounds, Parquet schemas, ranges, sizes and hashes."""
     try:
-        d = json.load(open(done_path, encoding="utf-8"))
+        d, _, _ = _read_strict_json(done_path, "done manifest")
     except Exception as exc:
         raise ValueError(f"unreadable done manifest {done_path}: {exc}") from exc
+    if not isinstance(d, dict):
+        raise ValueError(f"done manifest 顶层必须是对象: {done_path}")
+    schema = d.get("schema")
+    if not isinstance(schema, str):
+        if "schema" not in d:
+            raise ValueError("pre-schema done 未迁移；先运行 --refresh-manifests")
+        raise ValueError("done schema 必须是字符串")
+    if schema in LEGACY_MANIFEST_SCHEMAS:
+        raise ValueError(f"legacy done {schema} 未迁移；先运行 --refresh-manifests")
+    if schema != MANIFEST_SCHEMA:
+        raise ValueError(f"不认识的 done schema: {schema!r}")
+    _validate_done_v4_shape(d)
     expected = {"schema": MANIFEST_SCHEMA, "query_schema": QUERY_SCHEMA,
                 "token": token_addr.lower(), "url": url}
     if any(d.get(k) != v for k, v in expected.items()):
@@ -166,8 +240,42 @@ def capture_identity(token_addr, url):
     host = re.sub(r"^https?://", "", url).split("/", 1)[0]
     return {"schema": IDENTITY_SCHEMA, "token": token_addr.lower(), "url": url,
             "query_schema": QUERY_SCHEMA, "network": host.split(".", 1)[0],
-            "collector": {"path": "fetch_hypersync_v2.py",
+            "collector": {"path": SCRIPT_NAME,
                           "sha256": sha256_file(__file__)}}
+
+
+def validate_capture_inventory(outdir, *, identity_required=True):
+    """Require the exact root/run inventory shared by recovery and preflight."""
+    root = Path(outdir).resolve()
+    if root.is_symlink() or not root.is_dir():
+        raise ValueError("v2 采集根目录不存在、非目录或为符号链接")
+    allowed_root_file = {IDENTITY_NAME} if identity_required else set()
+    runs = []
+    for entry in root.iterdir():
+        if entry.name in allowed_root_file:
+            if entry.is_symlink() or not entry.is_file():
+                raise ValueError(f"{IDENTITY_NAME} 不是普通文件")
+            continue
+        if not re.fullmatch(r"run_[0-9]+", entry.name) or entry.is_symlink() \
+                or not entry.is_dir():
+            raise ValueError(f"v2 采集根目录有未识别残件: {entry.name}")
+        runs.append(entry)
+    if identity_required and not (root / IDENTITY_NAME).is_file():
+        raise ValueError(f"v2 采集根目录缺 {IDENTITY_NAME}")
+    if not runs:
+        raise ValueError("v2 采集根目录没有 run_* 数据段")
+    expected = {"done.json", "logs.parquet", "blocks.parquet"}
+    done_paths = []
+    for run in sorted(runs):
+        entries = list(run.iterdir())
+        names = {entry.name for entry in entries}
+        if names != expected:
+            raise ValueError(f"{run.name} inventory 非精确三件套: {sorted(names)}")
+        for entry in entries:
+            if entry.is_symlink() or not entry.is_file():
+                raise ValueError(f"{run.name}/{entry.name} 不是普通文件")
+        done_paths.append(run / "done.json")
+    return done_paths
 
 
 def ensure_outdir_identity(outdir, token_addr, url):
@@ -180,44 +288,128 @@ def ensure_outdir_identity(outdir, token_addr, url):
         if path.is_symlink() or not path.is_file():
             raise ValueError(f"{IDENTITY_NAME} 不是普通文件")
         try:
-            actual = json.loads(path.read_text(encoding="utf-8"))
+            actual, _, _ = _read_strict_json(path, IDENTITY_NAME)
         except Exception as exc:
             raise ValueError(f"{IDENTITY_NAME} 不可读: {exc}") from exc
-        # collector 是 capture_identity.json 的目录 lineage/identity 签发者，不是
-        # 每个数据段的采集者证明：旧目录迁移时由当时的当前脚本补签 identity，且
-        # done v3 不记录逐段 collector，所以混合版本目录不能据此证明逐段同源。
-        actual_collector = (actual.get("collector") if isinstance(actual, dict) else None)
-        expected_collector = expected["collector"]
-        allowed_collector_hashes = historical_script_hashes(
-            "fetch_hypersync_v2.py") | {expected_collector["sha256"]}
-        actual_path = (actual_collector.get("path")
-                       if isinstance(actual_collector, dict) else None)
-        actual_hash = (actual_collector.get("sha256")
-                       if isinstance(actual_collector, dict) else None)
-        if isinstance(actual_path, str) and isinstance(actual_hash, str) and \
-                actual_path == "fetch_hypersync_v2.py" and \
-                actual_hash in allowed_collector_hashes:
-            expected = dict(expected, collector={
-                "path": actual_path,
-                "sha256": actual_hash,
-            })
+        if not isinstance(actual, dict):
+            raise ValueError(f"{IDENTITY_NAME} 顶层必须是对象")
+        identity_schema = actual.get("schema")
+        if not isinstance(identity_schema, str):
+            raise ValueError(f"{IDENTITY_NAME} schema 必须是字符串")
+        # v1 is a native lineage identity: collector is its issuer, not proof for each segment.
+        # v2 is an explicit recovery identity: recoverer replaces collector and lineage is unknown.
+        if identity_schema == IDENTITY_SCHEMA:
+            actual_collector = actual.get("collector")
+            expected_collector = expected["collector"]
+            allowed_collector_hashes = historical_script_hashes(
+                SCRIPT_NAME, protocol=IDENTITY_SCHEMA) | {expected_collector["sha256"]}
+            actual_path = (actual_collector.get("path")
+                           if isinstance(actual_collector, dict) else None)
+            actual_hash = (actual_collector.get("sha256")
+                           if isinstance(actual_collector, dict) else None)
+            if isinstance(actual_path, str) and isinstance(actual_hash, str) and \
+                    actual_path == SCRIPT_NAME and actual_hash in allowed_collector_hashes:
+                expected = dict(expected, collector={
+                    "path": actual_path,
+                    "sha256": actual_hash,
+                })
+        elif identity_schema == RECOVERED_IDENTITY_SCHEMA:
+            recoverer = actual.get("recoverer")
+            recovery_time = actual.get("recovery_time")
+            if actual.get("recovered") is True and actual.get("lineage") == "unknown" \
+                    and isinstance(recovery_time, str) and recovery_time:
+                _validate_script_actor(recoverer, RECOVERED_IDENTITY_SCHEMA, "recoverer")
+                expected = {
+                    "schema": RECOVERED_IDENTITY_SCHEMA,
+                    "token": token_addr.lower(),
+                    "url": url,
+                    "query_schema": QUERY_SCHEMA,
+                    "network": expected["network"],
+                    "recovered": True,
+                    "lineage": "unknown",
+                    "recovery_time": recovery_time,
+                    "recoverer": recoverer,
+                }
+        else:
+            raise ValueError(f"不认识的 capture identity schema: {identity_schema!r}")
         if actual != expected:
-            raise ValueError(f"{IDENTITY_NAME} 与本次 token/url/query/collector 不一致")
+            raise ValueError(f"{IDENTITY_NAME} 与本次 token/url/query/签发形态不一致")
         return actual
-    # Migrating an existing root is allowed only when every native done has the same identity.
-    # Deleting identity and rebuilding it re-signs lineage with the current script, leaving an
-    # ownership-laundering window; closing that window requires done v4 per-segment collectors.
-    for done_path in sorted(root.glob("run_*/done.json")):
-        try:
-            d = json.loads(done_path.read_text(encoding="utf-8"))
-        except Exception as exc:
-            raise ValueError(f"done manifest 不可读 {done_path}: {exc}") from exc
-        observed = (str(d.get("token", "")).lower(), d.get("url"), d.get("query_schema"))
-        wanted = (expected["token"], expected["url"], expected["query_schema"])
-        if observed != wanted:
-            raise ValueError(f"旧 run capture identity 与本次请求不一致: {done_path}")
+    # Auto-signing is safe only for a vacuum root. Any hidden file, partial run, or legacy
+    # segment requires the explicit read-only recovery audit; deleting identity cannot re-sign.
+    if any(root.iterdir()):
+        raise ValueError(f"遗留 outdir 缺 {IDENTITY_NAME}；先运行 --recover-identity")
     atomic_write_json(path, expected)
     return expected
+
+
+def recover_identity(outdir):
+    """Read-only audit every legacy run, then issue an explicit unknown-lineage identity."""
+    root = Path(outdir).resolve()
+    identity_path = root / IDENTITY_NAME
+    if identity_path.exists() or identity_path.is_symlink():
+        raise ValueError(f"{IDENTITY_NAME} 已存在；拒绝覆盖恢复")
+    recoverer_hash = sha256_file(__file__)
+    done_paths = validate_capture_inventory(root, identity_required=False)
+    identities = set()
+    for done_path in done_paths:
+        d, _, _ = _read_strict_json(done_path, "done manifest")
+        if not isinstance(d, dict):
+            raise ValueError(f"done manifest 顶层必须是对象: {done_path}")
+        schema = d.get("schema")
+        if "schema" in d and not isinstance(schema, str):
+            raise ValueError(f"done schema 必须是字符串: {done_path}")
+        if schema is not None and schema != MANIFEST_SCHEMA and schema not in LEGACY_MANIFEST_SCHEMAS:
+            raise ValueError(f"不认识的 done schema: {schema!r}")
+        token = str(d.get("token", "")).strip().lower()
+        url = re.sub(r"/query/?$", "", str(d.get("url", "")).strip().rstrip("/"))
+        if not token or not url:
+            raise ValueError(f"done token/url 身份字段缺失: {done_path}")
+        if schema is not None and "query_schema" not in d:
+            raise ValueError(f"带 schema done 缺 query_schema: {done_path}")
+        if "query_schema" in d:
+            query_schema = d.get("query_schema")
+            if not isinstance(query_schema, str) or query_schema != QUERY_SCHEMA:
+                raise ValueError(f"done query_schema 不是现行 {QUERY_SCHEMA}: {done_path}")
+        identities.add((token, url))
+        try:
+            if schema is None:
+                frm, end = int(d["from_block"]), int(d["next_block"])
+                capture, nb = frm, end
+            else:
+                capture = int(d["capture_from"])
+                frm, end, nb = (int(d[key])
+                                for key in ("from_block", "to_block", "next_block"))
+        except (KeyError, TypeError, ValueError) as exc:
+            raise ValueError(f"done 边界缺失/非整数: {done_path}") from exc
+        if not 0 <= capture <= frm < end == nb:
+            raise ValueError(f"done 边界非法: {done_path}")
+        actual_files = inspect_run_files(done_path.parent, frm, end)
+        if schema in {"hypersync-v2-done/v3", MANIFEST_SCHEMA} \
+                and d.get("files") != actual_files:
+            raise ValueError(f"done files 与当前 Parquet 不一致: {done_path}")
+        if schema == MANIFEST_SCHEMA:
+            capture = int(d.get("capture_from", frm))
+            validate_done_manifest(done_path, capture, end, token, url)
+    if len(identities) != 1:
+        raise ValueError(f"存量 run token/url identity 不唯一: {sorted(identities)!r}")
+    token, url = next(iter(identities))
+    if sha256_file(__file__) != recoverer_hash:
+        raise ValueError("recoverer 脚本在恢复期间发生漂移；拒绝签发 identity")
+    host = re.sub(r"^https?://", "", url).split("/", 1)[0]
+    identity = {
+        "schema": RECOVERED_IDENTITY_SCHEMA,
+        "token": token,
+        "url": url,
+        "query_schema": QUERY_SCHEMA,
+        "network": host.split(".", 1)[0],
+        "recovered": True,
+        "lineage": "unknown",
+        "recovery_time": datetime.now(timezone.utc).isoformat(),
+        "recoverer": {"path": SCRIPT_PATH, "sha256": recoverer_hash},
+    }
+    atomic_write_json(identity_path, identity)
+    return identity
 
 
 def find_resume_block(outdir, default_from, to_block, token_addr, url):
@@ -230,7 +422,7 @@ def find_resume_block(outdir, default_from, to_block, token_addr, url):
     intervals = []
     for f in glob.glob(os.path.join(outdir, "run_*", "done.json")):
         try:
-            raw = json.load(open(f, encoding="utf-8"))
+            raw, _, _ = _read_strict_json(f, "done manifest")
         except Exception as exc:
             raise SystemExit(f"[fail-closed] unreadable done manifest {f}: {exc}")
         try:
@@ -251,25 +443,33 @@ def find_resume_block(outdir, default_from, to_block, token_addr, url):
     return best
 
 
-def _manifest_refresh_candidate(done_path):
-    """重验单个旧 run，返回待原子写入的 v3 payload。"""
+def _manifest_refresh_candidate(done_path, *, prehistoric_capture_from=None,
+                                migrator_hash=None):
+    """重验单个 run；从同一原始字节快照解析并生成待写 v4 payload。"""
     path = Path(done_path)
-    try:
-        d = json.loads(path.read_text(encoding="utf-8"))
-    except Exception as exc:
-        raise ValueError(f"done manifest 不可读: {exc}") from exc
+    d, _, source_sha = _read_strict_json(path, "done manifest")
+    if not isinstance(d, dict):
+        raise ValueError("done manifest 顶层必须是对象")
     schema = d.get("schema")
+    if "schema" in d and not isinstance(schema, str):
+        raise ValueError("done schema 必须是字符串")
     if schema == MANIFEST_SCHEMA:
+        _validate_done_v4_shape(d)
         try:
             frm, end = int(d["from_block"]), int(d["to_block"])
         except (KeyError, TypeError, ValueError) as exc:
-            raise ValueError("v3 done manifest 边界缺失/非整数") from exc
+            raise ValueError("v4 done manifest 边界缺失/非整数") from exc
         actual = inspect_run_files(path.parent, frm, end)
         if d.get("files") != actual:
-            raise ValueError("v3 done manifest files 与当前 Parquet 不一致")
-        return None
+            raise ValueError("v4 done manifest files 与当前 Parquet 不一致")
+        return None, source_sha, d
     if "schema" not in d:
-        return _prehistoric_refresh_candidate(path, d)
+        payload = _prehistoric_refresh_candidate(
+            path, d, source_sha=source_sha,
+            capture_from=prehistoric_capture_from,
+            migrator_hash=migrator_hash,
+        )
+        return payload, source_sha, d
     if schema not in LEGACY_MANIFEST_SCHEMAS:
         raise ValueError(f"不支持迁移的旧 schema: {schema!r}")
     if d.get("query_schema") != QUERY_SCHEMA:
@@ -287,15 +487,22 @@ def _manifest_refresh_candidate(done_path):
         raise ValueError(
             f"旧 manifest 边界非法: capture={capture} run=[{frm},{end}) next={nb}")
     files = inspect_run_files(path.parent, frm, end)
-    return {**d, "schema": MANIFEST_SCHEMA, "token": token, "url": url,
-            "files": files, "refreshed_from_schema": schema}
+    actor_hash = migrator_hash or sha256_file(__file__)
+    payload = {**d, "schema": MANIFEST_SCHEMA, "token": token, "url": url,
+               "files": files, "collector": None,
+               "collector_provenance": "legacy-unattributed",
+               "refreshed_from_schema": schema,
+               "pre_migration_sha256": source_sha,
+               "migrator": {"path": SCRIPT_PATH, "sha256": actor_hash}}
+    return payload, source_sha, d
 
 
 PREHISTORIC_KEYS = {"from_block", "next_block", "token", "url"}
 
 
-def _prehistoric_refresh_candidate(path, d):
-    """无 schema 字段的太古 done（v1 采集时代五键格式）→ 现行 v3 payload。
+def _prehistoric_refresh_candidate(path, d, *, source_sha, capture_from=None,
+                                   migrator_hash=None):
+    """无 schema 字段的太古 done（v1 采集时代五键格式）→ 现行 v4 payload。
 
     太古 done 无任何回执可信，全部边界/文件指纹从数据实物重验重建；显式写
     "schema": null 的畸形件不走本分支（调用方按不支持 schema 拒绝）。
@@ -316,11 +523,18 @@ def _prehistoric_refresh_candidate(path, d):
         raise ValueError("pre-schema done 边界非整数") from exc
     if not 0 <= frm < nb:
         raise ValueError(f"pre-schema done 边界非法: from={frm} next={nb}")
+    capture = frm if capture_from is None else capture_from
+    if isinstance(capture, bool) or not isinstance(capture, int) or not 0 <= capture <= frm:
+        raise ValueError(f"--capture-from 非法: {capture!r}（须 <= 段起点 {frm}）")
     files = inspect_run_files(path.parent, frm, nb)
     payload = {"schema": MANIFEST_SCHEMA, "query_schema": QUERY_SCHEMA,
-               "capture_from": frm, "from_block": frm, "to_block": nb,
+               "capture_from": capture, "from_block": frm, "to_block": nb,
                "next_block": nb, "token": token, "url": url, "files": files,
-               "refreshed_from_schema": "pre-schema-v1"}
+               "collector": None, "collector_provenance": "legacy-unattributed",
+               "refreshed_from_schema": "pre-schema-v1",
+               "pre_migration_sha256": source_sha,
+               "migrator": {"path": SCRIPT_PATH,
+                            "sha256": migrator_hash or sha256_file(__file__)}}
     if "elapsed_s" in d:
         payload["elapsed_s"] = d["elapsed_s"]
     return payload
@@ -344,25 +558,37 @@ def _fsync_file_and_dir(path):
         os.close(dir_fd)
 
 
-def refresh_manifests(outdir):
+def refresh_manifests(outdir, capture_from=None):
     """真事务迁移（F-07）：validate 全部 → prepare（全部新 manifest 各写临时件＋fsync）
     → commit（先备份原件，逐个 os.replace）。commit 期任一失败→逐文件从备份回滚
     ＋按字节哈希验证回滚结果；回滚失败保留 `<done>.recover` 恢复件并抛
     RefreshRollbackError（CLI exit 1）。不变量＝全有或全无：任何失败路径上，
     要么所有 done.json 都是新版，要么所有 done.json 字节回滚原样。"""
     root = Path(outdir).resolve()
-    done_paths = sorted(root.glob("run_*/done.json"))
-    if not done_paths:
-        raise ValueError(f"outdir 下没有 run_*/done.json: {root}")
+    identity_path = root / IDENTITY_NAME
+    if identity_path.is_symlink() or not identity_path.is_file():
+        raise ValueError(f"遗留 outdir 缺 {IDENTITY_NAME}；先运行 --recover-identity")
+    done_paths = validate_capture_inventory(root, identity_required=True)
+    prehistoric_count = 0
+    for path in done_paths:
+        preview, _, _ = _read_strict_json(path, "done manifest")
+        if isinstance(preview, dict) and "schema" not in preview:
+            prehistoric_count += 1
+    if prehistoric_count > 1 and capture_from is None:
+        raise ValueError("同目录多段 pre-schema run 无法唯一推导同源 capture；"
+                         "须显式传 --capture-from")
+    migrator_start_hash = sha256_file(__file__)
     pending, failures, identities = [], [], set()
     for path in done_paths:
         try:
-            payload = _manifest_refresh_candidate(path)
+            payload, original_sha, current = _manifest_refresh_candidate(
+                path,
+                prehistoric_capture_from=capture_from,
+                migrator_hash=migrator_start_hash,
+            )
             if payload is not None:
-                pending.append((path, payload))
+                pending.append((path, payload, original_sha))
                 current = payload
-            else:
-                current = json.loads(path.read_text(encoding="utf-8"))
             identities.add((str(current.get("token", "")).lower(), current.get("url"),
                             current.get("query_schema")))
         except (OSError, ValueError) as exc:
@@ -375,16 +601,16 @@ def refresh_manifests(outdir):
     token, url, query_schema = next(iter(identities))
     if not token or not url or query_schema != QUERY_SCHEMA:
         raise ValueError("存量 run 缺 token/url 或 query_schema 非现行版")
+    ensure_outdir_identity(root, token, url)
 
     # ── prepare：全部新 manifest 先写各自临时件＋fsync；此阶段任何失败都没有动过
     # 任何正式件，清理临时件后原样抛错（天然全无）。同时记录每个原件的字节哈希，
     # 供 commit 失败回滚后逐文件验证"字节回滚原样"。
     staged = []   # (done_path, tmp_path, bak_path, original_sha256)
     try:
-        for path, payload in pending:
+        for path, payload, original_sha in pending:
             tmp = path.with_name("." + path.name + f".refresh-tmp.{os.getpid()}")
             bak = path.with_name("." + path.name + f".refresh-bak.{os.getpid()}")
-            original_sha = sha256_file(path)
             # F-D6：先登记再写——写到一半抛错的那个临时件必须在清理循环的遍历范围内，
             # 否则 prepare 期失败会把正在写的 tmp 泄漏在 run_*/ 下（卫生问题，正式件无恙）。
             staged.append((path, tmp, bak, original_sha))
@@ -405,6 +631,10 @@ def refresh_manifests(outdir):
     try:
         for entry in staged:
             path, tmp, bak, _ = entry
+            if sha256_file(__file__) != migrator_start_hash:
+                raise ValueError("migrator 脚本在迁移期间发生漂移；拒绝提交")
+            if sha256_file(path) != entry[3]:
+                raise ValueError(f"done.json 自解析后发生漂移；拒绝提交: {path}")
             os.replace(path, bak)
             moved_only = entry
             os.replace(tmp, path)
@@ -455,12 +685,8 @@ def refresh_manifests(outdir):
                 f"迁移提交失败（{primary}）且回滚也失败——磁盘处于混合状态，"
                 f"恢复件已保留: {preserved}；失败明细: {detail}") from primary
         raise
-    # identity 必须建在 done 升级之后：其迁移预检要求磁盘上每个 done 已带现行
-    # query_schema，太古 done 升级前不满足。唯一性上面已验；ensure 幂等，此处
-    # 失败时重跑 refresh 自愈（done 已 v3 走 already_v3 路径）。
-    ensure_outdir_identity(root, token, url)
     return {"checked": len(done_paths), "upgraded": len(pending),
-            "already_v3": len(done_paths) - len(pending)}
+            "already_v4": len(done_paths) - len(pending)}
 
 
 def _load_token(ap, token_file):
@@ -499,6 +725,7 @@ def parse_args(argv=None):
 
 async def main():
     a = parse_args()
+    collector_start_hash = sha256_file(__file__)
     token = a.token
     url = re.sub(r"/query/?$", "", a.url.rstrip("/"))  # 容错：v1 习惯带 /query
     client = hypersync.HypersyncClient(ClientConfig(url=url, bearer_token=token))
@@ -544,7 +771,12 @@ async def main():
                "from_block": start, "to_block": to_block, "elapsed_s": round(el, 1),
                "token": a.token_addr.lower(), "url": url,
                "client_version": getattr(hypersync, "__version__", "unknown"),
+               "collector": {"path": SCRIPT_PATH, "sha256": collector_start_hash},
                "files": files}
+    # Self-reported binding detects accidental/runtime drift, not a malicious forger that can
+    # rewrite both the collector and its receipt. Freeze at startup and recheck before publish.
+    if sha256_file(__file__) != collector_start_hash:
+        sys.exit("[fail-closed] collector 脚本在采集期间发生漂移；拒绝写 done.json")
     atomic_write_json(os.path.join(run_dir, "done.json"), done)
     print(f"[COMPLETE] [{start},{to_block}) -> {run_dir} 用时 {el:.0f}s", flush=True)
 
@@ -572,9 +804,10 @@ def refresh_manifests_cli(argv):
         description="Revalidate legacy HyperSync Parquets and atomically upgrade done manifests")
     ap.add_argument("--refresh-manifests", action="store_true", required=True)
     ap.add_argument("--outdir", required=True)
+    ap.add_argument("--capture-from", type=_safe_int)
     a = ap.parse_args(argv)
     try:
-        result = refresh_manifests(a.outdir)
+        result = refresh_manifests(a.outdir, capture_from=a.capture_from)
     except RefreshRollbackError as exc:
         # 回滚失败＝磁盘混合状态＋.recover 恢复件在场：exit 1（环境故障，人工恢复后重跑）。
         print(f"[rollback-failed] {exc}", file=sys.stderr)
@@ -585,7 +818,23 @@ def refresh_manifests_cli(argv):
         print(f"[fail-closed] {exc}", file=sys.stderr)
         return 2
     print(f"[refreshed] checked={result['checked']} upgraded={result['upgraded']} "
-          f"already_v3={result['already_v3']}")
+          f"already_v4={result['already_v4']}")
+    return 0
+
+
+def recover_identity_cli(argv):
+    ap = argparse.ArgumentParser(
+        description="Audit every legacy HyperSync run and issue an unknown-lineage identity")
+    ap.add_argument("--recover-identity", action="store_true", required=True)
+    ap.add_argument("--outdir", required=True)
+    a = ap.parse_args(argv)
+    try:
+        identity = recover_identity(a.outdir)
+    except (ValueError, OSError) as exc:
+        print(f"[fail-closed] {exc}", file=sys.stderr)
+        return 2
+    print(f"[recovered] schema={identity['schema']} lineage={identity['lineage']} "
+          f"outdir={Path(a.outdir).resolve()}")
     return 0
 
 
@@ -594,4 +843,6 @@ if __name__ == "__main__":
         sys.exit(verify_done_cli(sys.argv[2:]))
     if "--refresh-manifests" in sys.argv[1:]:
         sys.exit(refresh_manifests_cli(sys.argv[1:]))
+    if "--recover-identity" in sys.argv[1:]:
+        sys.exit(recover_identity_cli(sys.argv[1:]))
     asyncio.run(main())

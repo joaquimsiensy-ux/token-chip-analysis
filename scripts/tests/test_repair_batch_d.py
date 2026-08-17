@@ -65,15 +65,17 @@ def t_f07_refresh_transaction():
                                  blocks=[(5, hex(1000))])
         _make_prehistoric_v2_run(root, 100, rows=[log_row(105)],
                                  blocks=[(105, hex(2000))])
+        fh.recover_identity(root)
         return sorted(root.glob("run_*/done.json"))
 
-    # 绿例：正常迁移全部升 v3 且 identity 建立
+    # 绿例：先恢复 identity，正常迁移全部升 v4。
     with tempfile.TemporaryDirectory(prefix="d-f07-green-", dir="/private/tmp") as raw:
         root = Path(raw)
         dones = make_two_prehistoric(root)
-        rc = fh.refresh_manifests_cli(["--refresh-manifests", "--outdir", str(root)])
+        rc = fh.refresh_manifests_cli(["--refresh-manifests", "--outdir", str(root),
+                                       "--capture-from", "0"])
         upgraded = [json.loads(p.read_text())["schema"] for p in dones]
-        check("F-07 绿例：太古双 run 迁移 exit 0 全升 v3",
+        check("F-07 绿例：太古双 run 迁移 exit 0 全升 v4",
               rc == 0 and upgraded == [fh.MANIFEST_SCHEMA] * 2
               and (root / fh.IDENTITY_NAME).is_file(), (rc, upgraded))
 
@@ -94,7 +96,8 @@ def t_f07_refresh_transaction():
 
         with mock.patch.object(fh.os, "replace", inject), \
                 contextlib.redirect_stderr(io.StringIO()) as err:
-            rc = fh.refresh_manifests_cli(["--refresh-manifests", "--outdir", str(root)])
+            rc = fh.refresh_manifests_cli(["--refresh-manifests", "--outdir", str(root),
+                                           "--capture-from", "0"])
         # 命中标志：确证注入到达目标分支（提交期，不是 prepare 期）
         check("F-07 注入命中标志（第 4 次 os.replace＝第二文件提交）",
               calls["n"] >= 4 and "disk full injected" in err.getvalue(), err.getvalue()[:200])
@@ -120,24 +123,30 @@ def t_f07_refresh_transaction():
 
         with mock.patch.object(fh.os, "replace", inject), \
                 contextlib.redirect_stderr(io.StringIO()) as err:
-            rc = fh.refresh_manifests_cli(["--refresh-manifests", "--outdir", str(root)])
+            rc = fh.refresh_manifests_cli(["--refresh-manifests", "--outdir", str(root),
+                                           "--capture-from", "0"])
         recover = list(root.rglob("*.recover"))
         check("F-07 回滚失败：exit 1＋.recover 恢复件保留＋stderr 指认混合状态",
               rc == 1 and len(recover) == 1 and "rollback-failed" in err.getvalue(),
               (rc, [x.name for x in recover], err.getvalue()[:200]))
 
-    # CLI 捕 OSError（罩住 ensure_outdir_identity 的 IO 故障）：只读 outdir 写 identity 失败
+    # CLI 捕 OSError：只读 outdir 的迁移 staging 失败不裸 traceback。
     if os.geteuid() != 0:
         with tempfile.TemporaryDirectory(prefix="d-f07-oserr-", dir="/private/tmp") as raw:
             root = Path(raw)
             make_two_prehistoric(root)
             os.chmod(root, 0o500)
+            for run_dir in root.glob("run_*"):
+                os.chmod(run_dir, 0o500)
             try:
                 with contextlib.redirect_stderr(io.StringIO()) as err:
                     rc = fh.refresh_manifests_cli(
-                        ["--refresh-manifests", "--outdir", str(root)])
+                        ["--refresh-manifests", "--outdir", str(root),
+                         "--capture-from", "0"])
             finally:
                 os.chmod(root, 0o700)
+                for run_dir in root.glob("run_*"):
+                    os.chmod(run_dir, 0o700)
             check("F-07 CLI 捕 OSError：只读目录 exit 2 不裸 traceback",
                   rc == 2 and "fail-closed" in err.getvalue(), (rc, err.getvalue()[:200]))
     else:
@@ -1349,6 +1358,7 @@ def t_fd6_prepare_leak():
         root = Path(raw)
         _make_prehistoric_v2_run(root, 0, rows=[log_row(5)], blocks=[(5, hex(1000))])
         _make_prehistoric_v2_run(root, 100, rows=[log_row(105)], blocks=[(105, hex(2000))])
+        fh.recover_identity(root)
         dones = sorted(root.glob("run_*/done.json"))
         originals = {p: p.read_bytes() for p in dones}
         real_dump = json.dump
@@ -1363,7 +1373,8 @@ def t_fd6_prepare_leak():
 
         with mock.patch.object(fh.json, "dump", inject), \
                 contextlib.redirect_stderr(io.StringIO()) as err:
-            rc = fh.refresh_manifests_cli(["--refresh-manifests", "--outdir", str(root)])
+            rc = fh.refresh_manifests_cli(["--refresh-manifests", "--outdir", str(root),
+                                           "--capture-from", "0"])
         residue = list(root.rglob(".*refresh-tmp*")) + list(root.rglob(".*refresh-bak*"))
         after = {p: p.read_bytes() for p in dones}
         check("F-D6 prepare 注入命中标志（第 2 次 json.dump）",

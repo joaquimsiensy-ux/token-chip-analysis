@@ -47,7 +47,8 @@
   {
    "schemas": [
     "hypersync-capture-identity/v1",
-    "hypersync-v2-done/v3"
+    "hypersync-capture-identity/v2",
+    "hypersync-v2-done/v4"
    ],
    "script": "scripts/evm/fetch_hypersync_v2.py"
   },
@@ -313,7 +314,10 @@
   },
   {
    "schemas": [
-    "hypersync-v2-done/v3"
+    "hypersync-capture-identity/v1",
+    "hypersync-capture-identity/v2",
+    "hypersync-v2-done/v3",
+    "hypersync-v2-done/v4"
    ],
    "script": "scripts/evm/fetch_hypersync_v2.py"
   },

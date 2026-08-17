@@ -23,7 +23,8 @@ from collector_history import historical_script_hashes
 
 TOKEN = "0x" + "a" * 40
 URL = "https://bsc.hypersync.xyz"
-HISTORICAL_HASH = sorted(historical_script_hashes("fetch_hypersync_v2.py"))[0]
+HISTORICAL_HASH = sorted(historical_script_hashes(
+    "fetch_hypersync_v2.py", protocol=fetch_v2.IDENTITY_SCHEMA))[0]
 UNKNOWN_HASH = "f" * 64
 
 
@@ -93,6 +94,10 @@ def _make_done(outdir, start=10, end=20, *, schema=fetch_v2.MANIFEST_SCHEMA,
         done["files"] = {
             "logs.parquet": _file_meta(run_dir / "logs.parquet", "block_number"),
             "blocks.parquet": _file_meta(run_dir / "blocks.parquet", "number"),
+        }
+        done["collector"] = {
+            "path": fetch_v2.SCRIPT_PATH,
+            "sha256": fetch_v2.sha256_file(fetch_v2.__file__),
         }
     (run_dir / "done.json").write_text(json.dumps(done), encoding="utf-8")
     return run_dir
@@ -202,9 +207,7 @@ def test_mixed_directory_preflight_positive(tmp):
     _make_done(root, 20, 30, capture_from=10)
     _write_identity(root, HISTORICAL_HASH)
 
-    # Mixed-version directories prove contiguous range and bound file receipts only.
-    # capture_identity.json names the directory lineage issuer; it does not prove that
-    # every done segment was collected by the same collector version.
+    # Identity history and per-segment collector history are independently verified.
     proof = _v2_provenance(root, TOKEN, 10, 30)
     assert proof["completion"] == {
         "reason": "contiguous_done_receipts", "lo": 10, "hi": 30,

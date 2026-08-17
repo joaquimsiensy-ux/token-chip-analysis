@@ -10,6 +10,7 @@
 
 ## 版本索引（活跃窗口，新在上；每版一行，详情见下方对应条目）
 
+- **6.47.0**（2026-08-17）HyperSync Parquet done v4 逐段采集者归属＋C12 显式恢复（三单元收口工程·单元2）：每段 done 带 collector{path,sha256} 启动冻结哈希+写前 TOCTOU 复验；旧段迁移 legacy-unattributed 三件套（源 schema/迁移前哈希/migrator 可验）+原生/迁移判别联合互斥；identity 自动签发收严至真空目录、遗留目录走 --recover-identity 签 hypersync-capture-identity/v2（recoverer 取代 collector、lineage=unknown），先 recover 后 refresh；collector_history 按 protocol 过滤（REVOKED 保持 hash-wide）；U1 盲审三条跨单元传染修复随单落地；APU/EGL1/NES 实件演练三态闭合
 - **6.46.1**（2026-08-17）单元1 盲审消化轮：2 BREACH 关洞（重复 JSON 键人机分裂伪装、producer 历史 protocol 硬编码致 v3 plan 可挂 v2 时代签名）＋7 WEAK 修复（schema 分派 fail-open 转显式白名单、v2 点拒 v3 说谎字段、单源守卫恢复全局语义等）；五项维持两项旧账另立裁决在案；NES 存量与盲审向量回打全绿
 - **6.46.0**（2026-08-17）anchor-plan v3 机器字段与 producer 历史登记（三单元收口工程·单元1）：余额点必带 balance_block_source 正向白名单、balance/tx 严格 XOR，kind 中文文案退出一切语义判定；新建 producer_history 六字段登记表修复存量 receipt producer 哈希深验基线即断；v2 存量不重签，语义重放 schema-aware 投影兼容，NES 三份存量件先红后绿实证
 - **6.45.1**（2026-08-17）NES 双链首案实证后四修复、四批收口：R-1 anchor_point_contract 四处等深与 block_of fail-fast；R-2 collector_history 六字段迁表并按 HEAD 祖先定案；R-3 identity 三入口认历史、两键规范形与维护补登；R-4 producer 真件直过发布闸及缺失/矛盾负例
@@ -47,6 +48,16 @@
 - **6.20.1** 2026-08-05 修 5 处阻断级文档漂移（A4 前禁写报告冲突/easy 残留/惯犯回灌 docstring/批量预采集残留/旧 Par 路线历史降级）＋docs_lint 增中文禁词与 Python module docstring 扫描
 
 更早版本（6.20.0 及以前）详见 `archive/CHANGELOG-archive.md`。
+
+## [6.47.0] - 2026-08-17 — HyperSync Parquet done v4 逐段采集者归属＋C12 显式恢复（三单元收口工程·单元2）
+
+- **源起**：三单元收口方案第 2 单元，关闭两笔账——Parquet 通道每段 done.json 无采集脚本指纹（脚本升级续采/删 identity 重建都能把旧数据"改姓"），以及 identity 缺失时自动补签的洗归属窗口（C12，6.45.1 批 C 注释自认）。施工 codex（工单 U2，maintenance/closure-20260817-threeunit/），基线 837baa8。
+- **done v4 逐段归属**：`hypersync-v2-done/v4` 起每段 done 带 `collector{path, sha256}`，哈希为 main() 启动冻结值；写 done 前重算，漂移即拒写（自报绑定防误漂移，不宣称防可同时伪造脚本与收据的攻击者）。v2/v3 入 legacy 集合；旧段经 --refresh-manifests 升 v4 时如实标 `collector: null`＋`collector_provenance: "legacy-unattributed"`＋迁移三件套（`refreshed_from_schema` 沿用既有键名／`pre_migration_sha256` 读一次字节流同时算哈希与解析、commit 前复验原件／`migrator` 身份哈希须∈当前∪protocol 过滤后历史）。validate 侧判别联合互斥：原生 v4 禁 legacy 族键、迁移 v4 必 collector null 且三件套齐全，两态互换即拒；下游展示 UNKNOWN_LEGACY 不渲染成已验证。多段 pre-schema 无法唯一推导公共起点时拒猜、要求显式 --capture-from。
+- **C12 收严＋显式恢复**：identity 自动签发仅限真空目录（`not any(iterdir())`，任何隐藏件/残段都算遗留）；遗留目录走新 CLI `--recover-identity`——共享 inventory 精确闸（每 run 恰普通文件三件套，拒 symlink/孤儿/空 run/残件）＋逐 run 重验同一性后签 `hypersync-capture-identity/v2`（recovered=true、lineage="unknown"、recovery_time、`recoverer` 取代 collector 键，query_schema 记现行值）；先 recover 后 refresh，refresh 不再自动补 identity。staged_capture.sh skip 路径补根 identity 检查（缺失 FATAL 指向 recover，假成功收口）。
+- **protocol 隔离**：`historical_script_hashes(name, protocol)` 按协议过滤，REVOKED 保持 hash-wide 跨 protocol 否决；全部生产调用点显式传 protocol（done v4 新线首版历史集为空／identity v1 线／CSV 线 evm-collector-run/v2）；被替换的 f544a196 版本按维护纪律同单元补登（考证 commit 0ec6d1e 全哈希）。preflight 侧镜像段升级为共享引用（inventory/actor 闸/常量从 fetch 侧 import，判定骨架仍两份）。
+- **U1 盲审跨单元传染修复**：done/identity 全部读入点接 `strict_json_loads` 拒重复键（done v4 判别联合是键存在性判定，重复 collector 键可人机分裂——V-31 同构）；schema 分派显式枚举禁 fail-open；枚举判定前收类型。
+- **实件演练（拷贝到临时区，三源 pristine diff 零改动）**：APU data_lp 单段太古全链走通（recover 签 v2 → refresh 唯一推导升 v4 三件套齐全）；EGL1 三段太古目录被 inventory 闸如实拦截（run_0 真实缺 logs.parquet 的残段）；NES bsc/v2_segments 被拦（源固有空壳 run_100459662，重用该目录前须人工处置）。
+- **suite 分母**：116 个入口（115＋test_done_v4_collector 十七用例，先红 16/17 后绿 17/17），116/116 PASS rc=0（本机含两项 loopback）。调度验收 Fable。
 
 ## [6.46.1] - 2026-08-17 — 单元1 盲审消化轮（2 BREACH＋7 WEAK 修复）
 

@@ -18,6 +18,10 @@ fi
 TOK=$1; URL=$2; OUTDIR=$3; shift 3
 BOUNDS=("$@")
 n=${#BOUNDS[@]}
+if [ ! -f "$OUTDIR/capture_identity.json" ] || [ -L "$OUTDIR/capture_identity.json" ]; then
+  echo "[FATAL] outdir 缺普通文件 capture_identity.json；先运行 fetch_hypersync_v2.py --recover-identity --outdir '$OUTDIR'" >&2
+  exit 2
+fi
 for ((i=0; i<n-1; i++)); do
   FROM=${BOUNDS[$i]}; TO=${BOUNDS[$((i+1))]}
   if [ -f "$OUTDIR/run_${FROM}/done.json" ]; then

@@ -74,11 +74,14 @@ def _v2_run(root: Path, token=TOKEN_A, query_schema="erc20-transfer-fields/v2"):
     con.execute("INSERT INTO blocks VALUES (5,1)")
     con.execute(f"COPY blocks TO '{run_dir / 'blocks.parquet'}' (FORMAT parquet)")
     con.close()
-    done = {"schema": "hypersync-v2-done/v3", "query_schema": query_schema,
+    from fetch_hypersync_v2 import MANIFEST_SCHEMA, SCRIPT_PATH, sha256_file
+    done = {"schema": MANIFEST_SCHEMA, "query_schema": query_schema,
             "capture_from": 0, "from_block": 0, "to_block": 100, "next_block": 100,
             "token": token, "url": "https://bsc.hypersync.xyz",
             "files": {"logs.parquet": _meta(run_dir / "logs.parquet", "block_number"),
-                      "blocks.parquet": _meta(run_dir / "blocks.parquet", "number")}}
+                      "blocks.parquet": _meta(run_dir / "blocks.parquet", "number")},
+            "collector": {"path": SCRIPT_PATH,
+                          "sha256": sha256_file(EVM / "fetch_hypersync_v2.py")}}
     (run_dir / "done.json").write_text(json.dumps(done), encoding="utf-8")
     return run_dir
 
@@ -126,10 +129,10 @@ def test_round4_csv_prefix_and_cursor_fail_closed(root: Path):
 
 def test_p001_v2_done_identity_and_completion(root: Path):
     data = root / "v2"
-    run_dir = _v2_run(data)
     sys.path.insert(0, str(EVM))
     from fetch_hypersync_v2 import ensure_outdir_identity
     ensure_outdir_identity(data, TOKEN_A, "https://bsc.hypersync.xyz")
+    run_dir = _v2_run(data)
     out = root / "v2.receipt.json"
     p = run(MAKE_RECEIPT, "--data", data, "--format", "v2", "--token", TOKEN_A,
             "--lo", 0, "--hi", 100, "--tag", "v2", "--out", out)

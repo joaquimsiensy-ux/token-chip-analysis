@@ -18,7 +18,9 @@ sys.path.insert(0, str(EVM))
 sys.path.insert(0, str(SOL))
 sys.path.insert(0, str(HERE))
 
-from fetch_hypersync_v2 import QUERY_SCHEMA, find_resume_block
+from fetch_hypersync_v2 import (MANIFEST_SCHEMA, QUERY_SCHEMA, SCRIPT_PATH,
+                                ensure_outdir_identity, find_resume_block,
+                                sha256_file)
 from channels_preflight import _csv_stats, _file_fingerprints, _v2_stats
 from fetch_sqd_transfers_v2 import cache_identity, cache_identity_matches, cache_paths
 from replay_edges import cmd_evolution, cmd_reconcile
@@ -66,12 +68,14 @@ def file_meta(path, block_col):
 
 
 def make_done(out, mutate=None):
+    ensure_outdir_identity(out, A_EVM, "https://bsc.hypersync.xyz")
     run_dir = make_parquet(out, [10, 19], "run_10")
-    done = {"schema": "hypersync-v2-done/v3", "query_schema": QUERY_SCHEMA,
+    done = {"schema": MANIFEST_SCHEMA, "query_schema": QUERY_SCHEMA,
             "capture_from": 10, "from_block": 10, "to_block": 20, "next_block": 20,
             "token": A_EVM, "url": "https://bsc.hypersync.xyz",
             "files": {"logs.parquet": file_meta(run_dir / "logs.parquet", "block_number"),
-                      "blocks.parquet": file_meta(run_dir / "blocks.parquet", "number")}}
+                      "blocks.parquet": file_meta(run_dir / "blocks.parquet", "number")},
+            "collector": {"path": SCRIPT_PATH, "sha256": sha256_file(FETCH_V2)}}
     (run_dir / "done.json").write_text(json.dumps(done))
     if mutate == "missing":
         (run_dir / "logs.parquet").unlink()
@@ -169,10 +173,14 @@ def test_r2_refresh_manifests(tmp):
         pass
     else:
         raise AssertionError("R2 旧 manifest 未迁移前必须 BLOCK")
+    p = run([FETCH_V2, "--recover-identity", "--outdir", good_out], tmp)
+    assert p.returncode == 0, p.stdout + p.stderr
     p = run([FETCH_V2, "--refresh-manifests", "--outdir", good_out], tmp)
     assert p.returncode == 0, p.stdout + p.stderr
     upgraded = json.loads((good_out / "run_10" / "done.json").read_text())
-    assert upgraded["schema"] == "hypersync-v2-done/v3"
+    assert upgraded["schema"] == "hypersync-v2-done/v4"
+    assert upgraded["collector"] is None
+    assert upgraded["collector_provenance"] == "legacy-unattributed"
     assert set(upgraded["files"]) == {"logs.parquet", "blocks.parquet"}
     assert (good_out / "capture_identity.json").is_file()
     assert find_resume_block(str(good_out), 10, 30, A_EVM, old["url"]) == 20
@@ -181,7 +189,7 @@ def test_r2_refresh_manifests(tmp):
         bad_out = Path(tmp) / f"legacy_{mutation}"
         _, old = make_legacy_done(bad_out, mutation)
         before = (bad_out / "run_10" / "done.json").read_bytes()
-        p = run([FETCH_V2, "--refresh-manifests", "--outdir", bad_out], tmp)
+        p = run([FETCH_V2, "--recover-identity", "--outdir", bad_out], tmp)
         after = (bad_out / "run_10" / "done.json").read_bytes()
         assert p.returncode != 0 and before == after, p.stdout + p.stderr
         assert "run_10" in p.stdout + p.stderr

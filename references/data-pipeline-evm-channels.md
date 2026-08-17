@@ -91,25 +91,34 @@ fresh-output 命令同样带 `--receipt`；Alchemy/BigQuery/bloXroute/Etherscan 
 `hypersync-v2-done/v2` 没有 `files` 实体回执，不得直接被新续拉器信任；更早的
 太古 done（无 `schema` 字段、只有 from_block/next_block/token/url 五键，APU 案
 ANOM-012 实证形态）同样由本命令迁移——parquet 列集经实读硬验与现行采集器查询
-形态一致后重建全部边界与文件指纹，并补建 `capture_identity.json`。QUQ、
+形态一致后重建全部边界与文件指纹。QUQ、
 PYTHIA、TROLL 类存量币在下次增量采集或投后更新前，先对该币的 v2
-采集根目录执行：
+采集根目录依次执行显式恢复与迁移（存量目录一律不由升级过程自动改动）：
 
 ```bash
+python3 scripts/evm/fetch_hypersync_v2.py \
+  --recover-identity --outdir <案目录/data/v2>
 python3 scripts/evm/fetch_hypersync_v2.py \
   --refresh-manifests --outdir <案目录/data/v2>
 ```
 
-该模式不访问 HyperSync、不需要 API token；它先对全部 `run_*/done.json` 做两阶段重验，
+两种模式都不访问 HyperSync、不需要 API token。recover 先要求根目录只含合法编号的
+`run_*`，且每段恰有普通文件 done.json/logs.parquet/blocks.parquet 三件套；拒绝 symlink、
+孤儿文件、空 run 与未识别残件，并重验 token/url/query 同一性和 Parquet 实物，随后签发
+`hypersync-capture-identity/v2`（`recovered=true`、`lineage=unknown`）。refresh 再对全部
+`run_*/done.json` 做两阶段重验，
 逐 run 实读 logs/blocks Parquet 的 schema、行数、块范围、logs→blocks 关联完整性、
-size 与 SHA-256；全部通过后才原子将旧 done 升为 `hypersync-v2-done/v3`。任一 run
+size 与 SHA-256；全部通过后才原子将 v2/v3/pre-schema done 升为
+`hypersync-v2-done/v4`，旧段明确记为 `legacy-unattributed` 并绑定迁移前整份 done 字节哈希
+及 migrator 身份。多段 pre-schema 目录须显式加 `--capture-from <冻结下界>`，禁止猜测
+共同起点。任一 run
 缺文件、截断、schema 错或区间/关联异常时，命令列出具体 `run_*` 并非零退出，
 **不改写任何 done.json**。只有迁移 PASS 后才运行常规 fetch 命令从最大已验
 `next_block` 续拉；迁移失败不得删 done 绕过，应重拉损坏 run。
 
 | 通道 | 注册要求 | 限速实测 | 吞吐实测 | 断点续传 | 脚本 | 来源 |
 |---|---|---|---|---|---|---|
-| **HyperSync 官方客户端 v2（Starter 付费档,现役首选）** | Starter $70/月 | 官方客户端并发 | — | done manifest v3 绑定 token/url/capture bounds/query/client，并对 logs/blocks Parquet 分别记 size/rows/min/max/sha256；续传与 staged skip 都重验可读性/schema/范围/哈希 | fetch_hypersync_v2.py | （2026-08-02 加固） |
+| **HyperSync 官方客户端 v2（Starter 付费档,现役首选）** | Starter $70/月 | 官方客户端并发 | — | done manifest v4 绑定 token/url/capture bounds/query/client、逐段 collector，并对 logs/blocks Parquet 分别记 size/rows/min/max/sha256；续传与 staged skip 都重验可读性/schema/范围/哈希 | fetch_hypersync_v2.py | （2026-08-17 加固） |
 | envio HyperSync v1 手写轮询（兜底） | 同上 key 通用 | 付费买到的是高峰稳定性,大标的提速必须换 v2 | — | from_block 起点 + 增量写 CSV（v3.11.2 起新文件 8 列含 block_hash,老 7 列续拉自动兼容） | fetch_hypersync.py | （SIREN 07；哈基米 429 实测 07-18；v3.11.2 付费实测 07-21） |
 | SQD Portal 薄采集器（故障预案+正式替代；须 `--receipt`） | 免 key 免注册（portal.sqd.dev 公共端点;注册 gateway key 免费可选更稳） | 公共限流 20 请求/10s,sleep 0.5 保守;无自助付费档（官网 pricing coming soon,2026-07-21 核实） | ~280 条/s——平时不跑,HyperSync 平台级故障或数仓切源准入对照时才上;**对账关卡（余额对账/时间抽查）的代表日双源对照亦用它**（独立索引商） | CSV 末行块+1 | fetch_sqd_evm.py | （v3.11.2,2026-07-21） |
 | BigQuery goog 官方公共数据集（诊断复核、**非正式 channel，仅 ETH**） | Google 账号 OAuth 一次(凭据缓存后免弹窗)+GCP sandbox 项目(免绑卡,见 api-keys.md 第 17 节「Google Cloud / BigQuery」) | 免费 1 TiB/月查询量;熔断线 config max_scan_gib(默认 200GiB) | 服务端过滤只回传命中行,13 万行 ~1 分钟;定向日期查询 ~12GiB/次≈月额度可复核 85 次 | 无需(按日期范围幂等重查) | fetch_bigquery.py | （v3.12.1 准入实证,2026-07-21） |
@@ -156,12 +165,12 @@ size 与 SHA-256；全部通过后才原子将旧 done 升为 `hypersync-v2-done
 - **transactions 端点做 BNB 注资溯源**：body `{"transactions":[{"to":[addr]}],"field_selection":{"transaction":["block_number","from","to","value"]}}`（value 为 hex）——单址全链入金一次查询 ~2.3s 到 tip，比逐块扫快几个量级；⚠25 址×全链批量会 10 分钟超时，可用姿势=关键地址单址逐查 / 发射窗小块段批量（from/to_block 圈定）。（哈基米，07-18）
 - 【历史降级·新案禁用】分段多进程姿势：复制脚本改 OUT 与 to_block 边界（`if nxt >= BOUND: break`）、sleep 提至 0.5s，各进程独立 CSV 事后按 (tx,log_index) 去重合并；改 config 后重启前删本地缓存的段清单文件。（哈基米，07-18）现行主线为 v2 Parquet/done manifest。
 - **多会话共享 key 限速冲突**：并行分析会话同打一个 HyperSync key/端点会互相触发 429（SQD 案与另一标的采集会话撞车实测）——开工前 `ps aux | grep fetch_hypersync` 查有无在跑进程；撞车时不必停工，调低单会话吞吐预期、靠 429 退避共存。（SQD，07-20）**限流是 key 级共享、不是端点独立**——同 key 打不同链子域（eth+arbitrum）并发同样互抢限额；多链标的的分链采集按链串行或错峰，别指望换端点绕开限额。（LPT，07-21）
-- **分段采集**：`staged_capture.sh` 只在 done manifest 的 token/url/from/to/query 全字段一致时跳段；残段移入 `outdir/quarantine/` 保留诊断现场，不再递归删除。失败 retry-once 后仍失败即停。
+- **分段采集**：`staged_capture.sh` 进入 skip 循环前先要求根 `capture_identity.json` 在场，缺失即 FATAL 并指向 `--recover-identity`；只在 done manifest 的 token/url/from/to/query/collector 全字段及 Parquet 实物一致时跳段。残段移入 `outdir/quarantine/` 保留诊断现场，不再递归删除；正式 preflight 前须把该诊断目录移出采集根。失败 retry-once 后仍失败即停。
 
 - **★稀疏事件（单池单 topic）别用 HyperSync 全链扫，改「已有 Transfer 反查 tx → 打回执」**：HyperSync 按"扫过的块量"分批返回，对稀疏匹配（如某一个池的 `Mint` 事件）实测每次只推进 **~5,400 块 / 12 秒**——扫 1.1 亿块要几十小时，且中途看不出异常（进程活着、只是慢）。**正解**：从已落盘的全量 Transfer 里筛出"该合约 ↔ 任意地址、金额 ≥ 门槛"的交易去重得 tx 列表，再并发 `eth_getTransactionReceipt` 逐个解析。**反过来**：块区间已知的小范围精确查询（如追某个 tokenId 的 ERC721 Transfer）用 HyperSync **一次返回**，比公共 RPC 的 `eth_getLogs` 省事——后者在 BSC 公共节点超 5,000 块即 `-32005 limit exceeded`。选型口诀：**大范围稀疏→反查回执；小范围精确→HyperSync**。（KOGE 第二轮追加取证，07-25）
 - **v2 响应里的 log 字段是 `topic0/topic1/topic2/topic3` 分列，不是 `topics` 数组**：按 `l['topics'][0]` 取会直接 `KeyError`（与 `eth_getLogs` 的 RPC 返回结构不同，混用两套代码时高发）；`field_selection.log` 里也要逐个列名申请。同理 `transaction`/`block` 的字段名各自独立申请。（KOGE 第二轮追加取证，07-25）
 
-- **v2 resume 语义**：只消费同 `capture_from` 且身份完全一致的 manifests；边界必须满足 `capture_from<=from<to=next<=本次to`。`hypersync-v2-done/v3` 将 `logs.parquet` 与 `blocks.parquet` 的 size/rows/min_block/max_block/sha256 分别落盘，done 经临时文件、fsync、rename 原子发布；`find_resume_block` 与 `staged_capture.sh` skip 前重读两个 Parquet 并重算全部字段。遇 v2 存量 done 先跑 `--refresh-manifests`，禁止手改 `files`。跨标的、跨端点、坏边界、缺文件、截断或 hash 漂移、`start>=to` 全部 fail-closed，禁止“空完成”。
+- **v2 resume 语义**：只消费同 `capture_from` 且身份完全一致的 manifests；边界必须满足 `capture_from<=from<to=next<=本次to`。`hypersync-v2-done/v4` 将 `logs.parquet` 与 `blocks.parquet` 的 size/rows/min_block/max_block/sha256 分别落盘，并逐段记录 collector。collector 哈希在进程启动时冻结、写 done 前复验；这是防误漂移的自报绑定，不宣称抵抗能同时伪造脚本与收据的攻击者。原生 v4 必须有可验 collector；迁移 v4 必须是 `collector=null`、`collector_provenance=legacy-unattributed` 与完整迁移记录，下游显示 `UNKNOWN_LEGACY`，不得渲染为已验证。done 经临时文件、fsync、rename 原子发布；`find_resume_block` 与 `staged_capture.sh` skip 前重读两个 Parquet 并重算全部字段。遇 v2/v3/pre-schema 存量 done 先 recover 再 refresh，禁止手改 `files`。跨标的、跨端点、坏边界、缺文件、截断或 hash 漂移、`start>=to` 全部 fail-closed，禁止“空完成”。
 
 ### 3.2 Alchemy getAssetTransfers（scripts/evm/fetch_alchemy.py）
 - POST `https://bnb-mainnet.g.alchemy.com/v2/{KEY}`，method=`alchemy_getAssetTransfers`，params 含 `contractAddresses`、`category:["erc20"]`、`maxCount:"0x3e8"`、`pageKey` 分页；返回自带时间戳。（SIREN，07）

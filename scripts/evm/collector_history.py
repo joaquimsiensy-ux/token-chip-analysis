@@ -89,6 +89,14 @@ COLLECTOR_HISTORY = (
         "reason": "2026-08-14 批1锁修复版本；批C 升级该脚本时按维护纪律同步登记的被替换版本。",
     },
     {
+        "script": "fetch_hypersync_v2.py",
+        "sha256": "f544a1968dfa86e1705b2c028b33ad591e869b4194e257313b58519bb12c6d11",
+        "commit": "0ec6d1e2365c339d200fc26d17344f962fbdb7a9",
+        "protocol": "hypersync-capture-identity/v1",
+        "status": "ACTIVE",
+        "reason": "6.46.1 U2 升级 done/v4 前的现役 identity/v1 签发版本。",
+    },
+    {
         "script": "fetch_sqd_evm.py",
         "sha256": "042fe44eb1f8aea703f195707d91a9ad89e239ba94414b1dc03c0b837ff55a4b",
         "commit": "a620fd91f9e82fa8b52a960acb6ae2d4bcfc8db8",
@@ -107,11 +115,13 @@ COLLECTOR_HISTORY = (
 )
 
 
-def historical_script_hashes(name):
-    """Return ACTIVE git-attested hashes, with any REVOKED twin taking precedence.
+def historical_script_hashes(name, protocol=None):
+    """Return matching ACTIVE hashes, with any REVOKED twin taking precedence.
 
     Revocation is hash-wide: one REVOKED registry entry removes that sha256 from every
-    script's allowed set even when another entry still marks the same hash ACTIVE.
+    script/protocol allowed set even when another entry still marks the same hash ACTIVE.
+    ``protocol=None`` retains the registry-inspection API; production callers must bind an
+    exact protocol.
     """
     revoked = {
         entry["sha256"]
@@ -122,5 +132,6 @@ def historical_script_hashes(name):
         entry["sha256"]
         for entry in COLLECTOR_HISTORY
         if entry["script"] == name and entry["status"] == "ACTIVE"
+        and (protocol is None or entry["protocol"] == protocol)
         and entry["sha256"] not in revoked
     }

@@ -141,6 +141,9 @@ SUITE += ['test_v2_identity_history.py']
 # U1 anchor-plan/v3：机器块源/XOR 契约、v2 重放投影与 producer 历史兼容。
 SUITE += ['test_anchor_plan_v3.py']
 
+# U2 done/v4：逐段 collector 归属、legacy-unattributed 迁移与 C12 显式恢复。
+SUITE += ['test_done_v4_collector.py']
+
 
 def main():
     results = []
