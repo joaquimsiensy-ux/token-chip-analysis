@@ -465,8 +465,23 @@ def _test_r1_final_block_contract(root: Path, receipt: dict) -> None:
         ("deep disguised edge carrying tx", edge_with_tx, None),
         ("deep disguised edge carrying day_end_block", edge_with_day_block, None),
     ]
+    deep_only_vectors = [
+        ("deep tx carrying legacy edge kind",
+         lambda plan: next(point for point in plan["forced_points"]
+                           if point.get("tx")).__setitem__("kind", EDGE_KIND),
+         lambda value, transcript: next(
+             row for row in value["rows"] if row["type"] == "tx"
+         ).__setitem__("kind", EDGE_KIND)),
+        ("deep tx missing block",
+         lambda plan: next(point for point in plan["forced_points"]
+                           if point.get("tx")).pop("block"),
+         lambda value, transcript: next(
+             row for row in value["rows"] if row["type"] == "tx"
+         ).__setitem__("block", None)),
+    ]
     accepted = []
-    for index, (label, mutate_plan, mutate_evidence) in enumerate(deep_vectors):
+    for index, (label, mutate_plan, mutate_evidence) in enumerate(
+            deep_vectors + deep_only_vectors):
         item = _r1_time_variant(
             root, receipt, f"r1_deep_{index}", mutate_plan=mutate_plan,
             mutate_evidence=mutate_evidence)
@@ -488,7 +503,8 @@ def _test_r1_final_block_contract(root: Path, receipt: dict) -> None:
     else:
         accepted.append("deep receipt/transcript block jointly diverges from plan")
 
-    for index, (label, mutate_plan, _) in enumerate(deep_vectors):
+    executor_vectors = deep_vectors + [deep_only_vectors[0]]
+    for index, (label, mutate_plan, _) in enumerate(executor_vectors):
         if _run_r1_time_variant(root, receipt, f"r1_exec_{index}", mutate_plan) != 2:
             accepted.append(label.replace("deep ", "executor "))
 

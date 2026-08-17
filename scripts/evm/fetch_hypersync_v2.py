@@ -190,17 +190,23 @@ def ensure_outdir_identity(outdir, token_addr, url):
         expected_collector = expected["collector"]
         allowed_collector_hashes = historical_script_hashes(
             "fetch_hypersync_v2.py") | {expected_collector["sha256"]}
-        if isinstance(actual_collector, dict) and \
-                actual_collector.get("path") == "fetch_hypersync_v2.py" and \
-                actual_collector.get("sha256") in allowed_collector_hashes:
+        actual_path = (actual_collector.get("path")
+                       if isinstance(actual_collector, dict) else None)
+        actual_hash = (actual_collector.get("sha256")
+                       if isinstance(actual_collector, dict) else None)
+        if isinstance(actual_path, str) and isinstance(actual_hash, str) and \
+                actual_path == "fetch_hypersync_v2.py" and \
+                actual_hash in allowed_collector_hashes:
             expected = dict(expected, collector={
-                "path": actual_collector["path"],
-                "sha256": actual_collector["sha256"],
+                "path": actual_path,
+                "sha256": actual_hash,
             })
         if actual != expected:
             raise ValueError(f"{IDENTITY_NAME} 与本次 token/url/query/collector 不一致")
         return actual
     # Migrating an existing root is allowed only when every native done has the same identity.
+    # Deleting identity and rebuilding it re-signs lineage with the current script, leaving an
+    # ownership-laundering window; closing that window requires done v4 per-segment collectors.
     for done_path in sorted(root.glob("run_*/done.json")):
         try:
             d = json.loads(done_path.read_text(encoding="utf-8"))

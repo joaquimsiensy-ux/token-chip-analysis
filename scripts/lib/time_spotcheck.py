@@ -199,6 +199,9 @@ def classify(plan):
             if p.get("expected_balance_raw") is not None and p.get("addr"):
                 bal.append(p)
             elif p.get("tx") and p.get("expected_value_raw") is not None:
+                if p.get("kind") == LEGACY_FINAL_BLOCK_EDGE_KIND:
+                    raise ValueError(
+                        "tx point carries legacy final-block edge kind")
                 txp.append(p)
             else:
                 odd.append(p)
@@ -287,7 +290,11 @@ def main():
     except Exception as e:
         print(f"[fatal] anchor_plan semantic replay failed: {e}", file=sys.stderr)
         return 2
-    bal_pts, tx_pts, odd_pts = classify(plan)
+    try:
+        bal_pts, tx_pts, odd_pts = classify(plan)
+    except ValueError as exc:
+        print(f"[fatal] anchor_plan point contract invalid: {exc}", file=sys.stderr)
+        return 2
     total = len(bal_pts) + len(tx_pts)
     # GMX 案实锤教训：0 个点循环零次 bad==0 直接打 PASS——必须硬失败
     assert total > 0, "[fatal] 抽查点数为 0——anchor_plan 为空或解析失败，禁当 PASS"

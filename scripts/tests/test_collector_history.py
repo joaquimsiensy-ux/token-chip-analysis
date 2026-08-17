@@ -128,6 +128,11 @@ def test_wrong_script_name_rejected(root):
     )
 
 
+def test_non_string_hash_rejected(root):
+    for index, value in enumerate((["f" * 64], 7)):
+        _expect_reject(root, "fetch_hypersync.py", value, f"non-string-{index}")
+
+
 def test_revoked_hash_rejected(root):
     import collector_history
 
@@ -147,6 +152,28 @@ def test_revoked_hash_rejected(root):
         collector_history.COLLECTOR_HISTORY = original
 
 
+def test_revocation_overrides_active(root):
+    import collector_history
+
+    active_hash = _active_hash("fetch_hypersync.py")
+    original = collector_history.COLLECTOR_HISTORY
+    collector_history.COLLECTOR_HISTORY = original + ({
+        "script": "fetch_hypersync.py",
+        "sha256": active_hash,
+        "commit": "test-fixture",
+        "protocol": "evm-collector-run/v2",
+        "status": "REVOKED",
+        "reason": "Test-only twin proving revocation overrides ACTIVE registration.",
+    },)
+    try:
+        assert active_hash not in collector_history.historical_script_hashes(
+            "fetch_hypersync.py"
+        ), "ACTIVE+REVOKED twin hash must be removed from the allowed set"
+        _expect_reject(root, "fetch_hypersync.py", active_hash, "active-revoked-twin")
+    finally:
+        collector_history.COLLECTOR_HISTORY = original
+
+
 def test_git_evidence():
     import collector_history
 
@@ -156,6 +183,15 @@ def test_git_evidence():
         return
     for entry in collector_history.COLLECTOR_HISTORY:
         script_path = f"scripts/evm/{entry['script']}"
+        ancestor = subprocess.run(
+            ["git", "merge-base", "--is-ancestor", entry["commit"], "HEAD"],
+            cwd=ROOT,
+            capture_output=True,
+        )
+        assert ancestor.returncode == 0, (
+            f"collector history commit is not a HEAD ancestor: {entry['commit']}: "
+            f"{ancestor.stderr.decode('utf-8', errors='replace').strip()}"
+        )
         proc = subprocess.run(
             ["git", "show", f"{entry['commit']}:{script_path}"],
             cwd=ROOT,
@@ -189,7 +225,11 @@ def main():
         check("ACTIVE historical hash passes CSV provenance", lambda: test_active_historical_hash_passes(root))
         check("unregistered hash is rejected", lambda: test_unregistered_hash_rejected(root))
         check("wrong script name is rejected", lambda: test_wrong_script_name_rejected(root))
+        check("non-string collector hashes are controlled rejects",
+              lambda: test_non_string_hash_rejected(root))
         check("REVOKED historical hash is rejected", lambda: test_revoked_hash_rejected(root))
+        check("REVOKED overrides an ACTIVE twin hash",
+              lambda: test_revocation_overrides_active(root))
     check("every registry entry is git-verifiable", test_git_evidence)
 
     failed = 0

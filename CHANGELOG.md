@@ -54,6 +54,7 @@
 - **批 C／R-3 identity 维护链闭合**：`ensure_outdir_identity` 三入口识别历史版本，两侧都只接受两键规范形并拒绝额外键；collector 语义修正为目录 lineage 签发者（done v4 逐段 collector 列为后续立项）；维护纪律首次适用补登 `887c0f58`。
 - **批 D／R-4 producer→gate 真件对测**：`compile_state` 的真实返回产物落盘后直接调用 `audit_release_gate.check_formal_case_chain`；正式 BSC 正例必须无错误过闸，删除顶层 `chain` 与顶层/token 链矛盾两负例必须被闸拒绝，封住 producer 与 consumer 各自自洽却组合断链的测试逃逸面。
 - **成本与质量**：四批线性施工；批 D 新增 3 条 producer-consumer 端到端回归，版本登记统一至 6.45.1。施工署名 codex，调度验收 Fable。
+- **独立盲审与批 E 消化**：独立攻击型盲审约 40 向量实跑，终局 0 BREACH / 7 WEAK；五项修码收口 tx 分支等深、collector 类型混淆受控拒绝、REVOKED 压过 ACTIVE、git 考证补 HEAD 祖先机器闸、v2 URL 交叉比对，并补两项诚实边界注释。C14 混版目录续采维持知情放宽，done v4 逐段 collector 另行立项。
 
 ## [6.45.0] - 2026-08-15 — 三 AI 并行修复工程融合（v6.44.0 review 14 findings 全处置）
 

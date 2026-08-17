@@ -108,9 +108,19 @@ COLLECTOR_HISTORY = (
 
 
 def historical_script_hashes(name):
-    """Return ACTIVE git-attested historical hashes for one collector script."""
+    """Return ACTIVE git-attested hashes, with any REVOKED twin taking precedence.
+
+    Revocation is hash-wide: one REVOKED registry entry removes that sha256 from every
+    script's allowed set even when another entry still marks the same hash ACTIVE.
+    """
+    revoked = {
+        entry["sha256"]
+        for entry in COLLECTOR_HISTORY
+        if entry["status"] == "REVOKED"
+    }
     return {
         entry["sha256"]
         for entry in COLLECTOR_HISTORY
         if entry["script"] == name and entry["status"] == "ACTIVE"
+        and entry["sha256"] not in revoked
     }

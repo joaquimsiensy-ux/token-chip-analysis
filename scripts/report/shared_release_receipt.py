@@ -884,6 +884,10 @@ def _plan_point(row, family, plan):
         return ("balance", row.get("kind"), row.get("addr"),
                 block, str(row.get("expected_balance_raw")))
     if row.get("tx") and row.get("expected_value_raw") is not None:
+        if row.get("kind") == LEGACY_FINAL_BLOCK_EDGE_KIND:
+            raise ValueError("time plan tx point carries legacy final-block edge kind")
+        if row.get("block") is None:
+            raise ValueError("time plan tx point missing block")
         return ("tx", row.get("kind"), row.get("tx"), row.get("from"),
                 row.get("to"), row.get("block"), str(row.get("expected_value_raw")))
     raise ValueError("time plan contains unclassifiable point")
@@ -924,7 +928,9 @@ def _tx_transcript_matches(raw_receipt, row, token):
         if matches:
             hit = True
             break
-    block_ok = row.get("block") is None or receipt_block == row.get("block")
+    if row.get("block") is None:
+        raise ValueError("time receipt tx row missing block")
+    block_ok = receipt_block == row.get("block")
     return hit and block_ok, receipt_block
 
 

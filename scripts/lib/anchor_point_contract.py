@@ -3,6 +3,13 @@
 The legacy edge point has no machine-readable block-source field.  When the
 plan schema is next revised, add ``balance_block_source=final_block`` and stop
 depending on the human-facing ``kind`` text entirely.
+
+Signing, construction, and deep validation all read fields inside the plan;
+``date_range`` is an anchor embedded in the object being constrained.  This
+contract therefore catches drift and internal errors, but cannot defend against
+an adversary able to re-sign a replacement plan.  The external anchor lives at
+execution: ``validate_semantic_replay`` and ``verify_recon`` couple the cutoff
+across independently bound partitions.
 """
 
 LEGACY_FINAL_BLOCK_EDGE_KIND = "门槛±10% 边缘地址"

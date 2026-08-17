@@ -98,8 +98,9 @@ def _make_done(outdir, start=10, end=20, *, schema=fetch_v2.MANIFEST_SCHEMA,
     return run_dir
 
 
-def _write_identity(outdir, collector_hash, *, collector_extra=None, top_extra=None):
-    identity = fetch_v2.capture_identity(TOKEN, URL)
+def _write_identity(outdir, collector_hash, *, collector_extra=None, top_extra=None,
+                    identity_url=URL):
+    identity = fetch_v2.capture_identity(TOKEN, identity_url)
     identity["collector"] = {
         "path": "fetch_hypersync_v2.py",
         "sha256": collector_hash,
@@ -244,6 +245,52 @@ def test_top_level_extra_key_rejected_both_sides(tmp):
                    "_v2_provenance must reject top-level extra keys")
 
 
+def test_non_string_collector_fields_rejected_both_sides(tmp):
+    bad_collectors = (
+        {"path": "fetch_hypersync_v2.py", "sha256": [HISTORICAL_HASH]},
+        {"path": "fetch_hypersync_v2.py", "sha256": 7},
+        {"path": ["fetch_hypersync_v2.py"], "sha256": HISTORICAL_HASH},
+    )
+    for index, collector in enumerate(bad_collectors):
+        ensure_root = Path(tmp) / f"non-string-ensure-{index}"
+        _make_done(ensure_root)
+        identity_path = _write_identity(ensure_root, HISTORICAL_HASH)
+        identity = json.loads(identity_path.read_text(encoding="utf-8"))
+        identity["collector"] = collector
+        identity_path.write_text(json.dumps(identity), encoding="utf-8")
+        _assert_raises(
+            ValueError,
+            lambda root=ensure_root: fetch_v2.ensure_outdir_identity(
+                root, TOKEN, URL),
+            "ensure_outdir_identity must control-reject non-string collector fields",
+        )
+
+        preflight_root = Path(tmp) / f"non-string-preflight-{index}"
+        _make_done(preflight_root)
+        identity_path = _write_identity(preflight_root, HISTORICAL_HASH)
+        identity = json.loads(identity_path.read_text(encoding="utf-8"))
+        identity["collector"] = collector
+        identity_path.write_text(json.dumps(identity), encoding="utf-8")
+        _assert_raises(
+            ChannelsPreflightError,
+            lambda root=preflight_root: _v2_provenance(root, TOKEN, 10, 20),
+            "_v2_provenance must control-reject non-string collector fields",
+        )
+
+
+def test_identity_url_must_match_every_done(tmp):
+    root = Path(tmp) / "identity-url-mismatch"
+    _make_done(root)
+    _write_identity(
+        root, HISTORICAL_HASH, identity_url="https://evil.example.invalid"
+    )
+    _assert_raises(
+        ChannelsPreflightError,
+        lambda: _v2_provenance(root, TOKEN, 10, 20),
+        "_v2_provenance must reject identity.url/done.url mismatch",
+    )
+
+
 def test_ensure_preserves_historical_identity_bytes(tmp):
     root = Path(tmp) / "immutable"
     _make_done(root)
@@ -269,6 +316,8 @@ CASES = (
     test_unknown_hash_rejected_everywhere,
     test_collector_extra_key_rejected_both_sides,
     test_top_level_extra_key_rejected_both_sides,
+    test_non_string_collector_fields_rejected_both_sides,
+    test_identity_url_must_match_every_done,
     test_ensure_preserves_historical_identity_bytes,
     test_mixed_directory_preflight_positive,
     test_current_hash_preflight_positive,

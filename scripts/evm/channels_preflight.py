@@ -143,12 +143,15 @@ def _csv_collector_provenance(receipt_path, data_path, token, lo, hi):
     if not isinstance(collector, dict):
         raise ChannelsPreflightError("CSV 采集回执缺 collector")
     name = collector.get("path")
+    collector_hash = collector.get("sha256")
+    if not isinstance(name, str) or not isinstance(collector_hash, str):
+        raise ChannelsPreflightError("CSV 采集回执未绑定当前受支持采集器")
     allowed = {x.name: x for x in (Path(__file__).with_name("fetch_hypersync.py"),
                                       Path(__file__).with_name("fetch_sqd_evm.py"))}
     expected_script = allowed.get(name)
     if expected_script is None or (
-            collector.get("sha256") != _sha256_file(expected_script)
-            and collector.get("sha256") not in historical_script_hashes(name)):
+            collector_hash != _sha256_file(expected_script)
+            and collector_hash not in historical_script_hashes(name)):
         raise ChannelsPreflightError("CSV 采集回执未绑定当前受支持采集器")
     q = d.get("query")
     if not isinstance(q, dict) or str(q.get("token", "")).lower() != str(token).lower() \
@@ -196,7 +199,12 @@ def _csv_collector_provenance(receipt_path, data_path, token, lo, hi):
 
 
 def _v2_provenance(path, token, lo, hi):
-    """Revalidate every native done receipt and exact contiguous requested coverage."""
+    """Revalidate every native done receipt and exact contiguous requested coverage.
+
+    This consumer has no external URL anchor. URL truth is provided by the ensure-side
+    CLI anchor and exact channel-receipt comparison; here every done URL must equal the
+    immutable identity URL so the directory cannot prove itself with two identities.
+    """
     root = Path(path).resolve()
     identity_path = root / "capture_identity.json"
     if identity_path.is_symlink() or not identity_path.is_file():
@@ -214,12 +222,16 @@ def _v2_provenance(path, token, lo, hi):
         expected_collector = expected["collector"]
         allowed_collector_hashes = historical_script_hashes(
             "fetch_hypersync_v2.py") | {expected_collector["sha256"]}
-        if isinstance(actual_collector, dict) and \
-                actual_collector.get("path") == "fetch_hypersync_v2.py" and \
-                actual_collector.get("sha256") in allowed_collector_hashes:
+        actual_path = (actual_collector.get("path")
+                       if isinstance(actual_collector, dict) else None)
+        actual_hash = (actual_collector.get("sha256")
+                       if isinstance(actual_collector, dict) else None)
+        if isinstance(actual_path, str) and isinstance(actual_hash, str) and \
+                actual_path == "fetch_hypersync_v2.py" and \
+                actual_hash in allowed_collector_hashes:
             expected = dict(expected, collector={
-                "path": actual_collector["path"],
-                "sha256": actual_collector["sha256"],
+                "path": actual_path,
+                "sha256": actual_hash,
             })
         if identity_manifest != expected:
             raise ValueError("capture_identity.json 与 token/url/query/collector 不一致")
@@ -236,6 +248,8 @@ def _v2_provenance(path, token, lo, hi):
             raw = json.loads(done_path.read_text(encoding="utf-8"))
             current_identity = (str(raw.get("token", "")).lower(), raw.get("url"),
                                 raw.get("query_schema"))
+            if raw.get("url") != first_url:
+                raise ValueError("done url 与 capture_identity.json url 不一致")
             if identity is None:
                 identity = current_identity
             if current_identity != identity or current_identity[0] != str(token).lower():
