@@ -20,7 +20,7 @@ description: >-
   只查价格/K线/热榜/新币列表不要用本 skill。
 ---
 
-<!-- skill-version-source: VERSION; skill-version: 6.48.1 -->
+<!-- skill-version-source: VERSION; skill-version: 6.50.0 -->
 
 # 代币筹码分析（Token Chip Analysis）
 
@@ -55,17 +55,18 @@ description: >-
 - 阻断：控盘看最终经济控制，EF-1 必须落 `economic_control_ledger.json` 且公共设施不进永久成员表；EF-2 必须落 `dormant_warehouse_audit.json`；任一门禁或候选未闭合，就不允许冻结实体、发布峰值或出图。
 - 权威定义：EF-1 见 `economic-control-accounting.md`；EF-2 与判级边界见 `playbook-entity-cluster-tiering.md`；EF-3、分段分工与 schema 见 `analyze-workflow.md`、`split-run.md`、`scan-schemas.md`。
 
-## 四入口
+## 五入口
 
 - **/token-analyze**：A0–A5 完整版；A6 仅用户要求。
 - **/token-analyze-1**：A0–A2＋A3 机械子层；按 `split-run.md` 交接后完成即停。
-- **/token-analyze-2**：handoff verify 后接 A3 判断层＋A4–A5；仅支持 full，A6 仍须用户要求。
+- **/token-analyze-2**：handoff verify 后接 A3 判断层＋A4/A4.5＋报告正文，收口于装配工单；仅支持 full。
+- **/token-analyze-3**：消费 −2 装配工单跑 A5 装配（图/seal/HTML/发布闸）；建议 Opus 会话，A6 仍须用户要求。
 - **自然语言复核既有报告**：读 `independent-audit-protocol.md` 走净室复核轨；旧报告只拆成
   claim registry 待审命题，不作证据输入，不新增 slash command。
 
 ## 上下文预算
 
-- 峰值 <30 万 tokens（新链首战可放宽）；开局只读本文件＋与用户入口对应的入口页：完整版先读 `analyze-workflow.md`，标的链已明确时再读当链 pipeline（未明确则 A0 确认后再读）；split-run −1/−2 先读 `split-run.md`；净室复核先读 `independent-audit-protocol.md`。其余文档按阶段按需读。大结果落盘，stdout ≤20 行，大文件分页，旧报告禁整读。
+- 峰值 <30 万 tokens（新链首战可放宽）；开局只读本文件＋与用户入口对应的入口页：完整版先读 `analyze-workflow.md`，标的链已明确时再读当链 pipeline（未明确则 A0 确认后再读）；split-run −1/−2/−3 先读 `split-run.md`；净室复核先读 `independent-audit-protocol.md`。其余文档按阶段按需读。大结果落盘，stdout ≤20 行，大文件分页，旧报告禁整读。
 - 机械任务可外包，判断留主线；阶段边界写 findings.md，超预算在阶段边界压缩或新会话续跑。完整纪律见 `context-discipline.md`。
 
 ## 深入阅读（references/）

@@ -1,0 +1,10 @@
+施工完成。
+
+- T1–T11 全部落盘。
+- F-01 新负例先红：`rc=1`，旧宽泛 needle 漏检；收紧执行锚后转绿。
+- 工单 6 项验收命令全部 `rc=0`。
+- `holder_distribution_current.png` 计数为 1；旧措辞已清零。
+- 最终 HEAD 仍为 `e1be99ab25c0a6f60091d7a7b635ab6097e532c8`。
+- 未执行 `git commit`。
+- 完整施工、红取证及验收摘要见 [digest_done.md](/Users/uravvv/.claude/worktrees/tca-splitrun3/maintenance/repair-20260818-splitrun3/digest_done.md:1)。
+

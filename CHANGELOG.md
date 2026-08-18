@@ -10,6 +10,7 @@
 
 ## 版本索引（活跃窗口，新在上；每版一行，详情见下方对应条目）
 
+- **6.50.0**（2026-08-18）split-run 三段化＋刀 1 外包公告：新增 /token-analyze-3 装配段（−2 收口前移至报告正文＋装配工单，A5 装配独立 Opus 会话）；ET-1 报警证据采集前置 −1（停止线拆采集/定性）；刀 1 机械档扩为 14 项公告＋6 条纪律（唯一权威源）；新契约 CT-SEMANTIC-61/62、CT-BANNED-16，命令四元；版本号跳过 6.49.0（已被并行 SQD 工程占用）
 - **6.48.1**（2026-08-17）单元3 盲审消化轮＝三单元收口工程收官：盲审判 CONDITIONAL（闸体 9 项 DEFENDED 全攻不破），消化本单元引入债（签发点 schema 字面量收敛、怪写法等价重构、--out/--receipt 同路径前置拒、文档"保证覆盖全部 segments"过度声称收窄到 hypersync 签发者＋方案B 永久登记维护债申明）；BREACH-01（SQD 侧同 schema 签发者无 TOCTOU，非本单元引入）等四项移交第四单元候选清单
 - **6.48.0**（2026-08-17）HyperSync CSV 同哈希续采闸·方案B（三单元收口工程·单元3）：正式 CSV 仅允许同一启动冻结哈希续采（脚本升级须封盘另开新 channel 段，preflight 多 channel 拼接既有支持）；TOCTOU 启动冻结+写前漂移拒签+receipt 用启动哈希；hash-wide REVOKED 拒启动；resume 读入接严格 JSON+全字段类型收口；cea82c77 按唯一签发 protocol 补登（考证 2d69373）；全盘清点 105 份存量回执全单段零迁移
 - **6.47.1**（2026-08-17）单元2 盲审消化轮：4 BREACH 关洞（收据标签去"验证"语义防零成本洗白、维护纪律按 protocol 逐条补登+断链固化测试、inventory 残件分类报错给人工出路、staged_capture 首采三态放行）＋5 WEAK 修复（.DS_Store 唯一豁免三处等深、REVOKED 压过当前脚本、recovered 身份收据透传、symlink 根死代码、CSV 回执接严格 JSON）＋1 注（迁移哈希定性留痕）；APU 0801 原始形态全链重演练闭环
@@ -51,6 +52,16 @@
 - **6.20.1** 2026-08-05 修 5 处阻断级文档漂移（A4 前禁写报告冲突/easy 残留/惯犯回灌 docstring/批量预采集残留/旧 Par 路线历史降级）＋docs_lint 增中文禁词与 Python module docstring 扫描
 
 更早版本（6.20.0 及以前）详见 `archive/CHANGELOG-archive.md`。
+
+## [6.50.0] - 2026-08-18 — split-run 三段化＋刀 1 外包公告体系
+
+- **−3 装配段**：新增 /token-analyze-3 命令＋split-run §3b（A5 装配执行侧：三图/流转图/双 receipt/a5-report-seal/v3/build_html G11/发布闸；建议 Opus 会话）；−2 收口前移＝报告正文亲笔成稿＋四条收口自查＋产 a5_assembly_workorder.json 即停（非正式件无 validator，兜底=既有 A5 链闸；图表基数与工单完备性属文字纪律，残余风险用户拍板接受、首战后评估）
+- **ET-1 前置**：−1 停止线"大户报警深挖"拆分——证据采集（保守超集分母、观察事实零定性、落 et1_evidence_packs.json，optional 但存在即入 manifest allowlist）归 −1，归属定性深挖留 −2；−2 冻结后与 packs 双向对账
+- **刀 1 公告**：context-discipline 机械档扩为 14 项完整清单＋6 条外包纪律（sealed 禁读/盲化对子代理生效、装配线程不当 A4 怀疑者、非权威中间产物边界、零结果自证、禁手抄、交付自查申报），唯一权威源制；research-workflows §二b 钉法改指针消双源；刀 2/刀 3 编号重号 bug 顺手修复
+- **契约与测试**：新增 CT-SEMANTIC-61（token-analyze-3 required a5-report-seal/v3）/CT-SEMANTIC-62（required G11）/CT-BANNED-16（banned A5 seal v2），contract_ids_snapshot 同步 157 条；deploy-sync EXPECTED 与 batch3 gates COMMANDS 扩四元＋−3 四类负例等深
+- **版本**：跳过 6.49.0（被并行 fix/sqd-solana-v4 工程占用，避免合并撞号）
+- **回归**：run_all 在允许 loopback 环境 116/117 PASS，唯一红项 test_commands_deploy_sync（部署 cp 待合并后执行）；受限沙箱首跑两项 vertical slice 遇 loopback bind EPERM，获准环境全量复跑均转绿（合并 main 后 cp＋复跑绿）
+- **盲审消化**：codex 正常盲审 F-01/02/03＋opus 攻击 7 WEAK 中 5 项修复入盘（契约锚句化＋负例加深、report-template 物化两态、旧完成案分流、sealed 申报回填、三分类收窄、needle 稀释回收、权威源三源化）；W-03（banned 字面变体穿透）与 W-04（契约 needle 值无守卫、快照只锁 ID 集合）属契约体系存量固有形态，接受在案登记为后续升级候选
 
 ## [6.48.1] - 2026-08-17 — 单元3 盲审消化轮（三单元收口工程收官）
 

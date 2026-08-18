@@ -133,6 +133,7 @@
     playbook-entity-cluster-tiering §6a（本处不设数值副本防漂移）。ET-1 对其他大户线逐个过
     标签库/惯犯库/指纹/funder 批量排查，报警才人工深挖；项目方、大庄/小庄、离场庄、
     刷量地址与发射窗协同实体均按该节判级，合并口径含全部疑似关联地址。
+    分段执行时报警地址证据采集归 −1（只记观察事实，split-run §1.3），人工深挖定性归 −2（§1.4）。
 11. **阵营演变重放**：按已冻结且过 G8/判级的名册，重放已声明范围内各阵营占比演变序列；
     分母＝当期净供应序列，**逐时点 assert Σ阵营＝100%±容差**，改过名册跑反向断言
     （casebook S-03）。不得在 EF-3 候选闭环前先跑本步。
@@ -174,6 +175,8 @@ A4 finalize 后，用同一 cutoff 快照运行 `holder_distribution_scan.py --s
 `distribution_rounds.json` 按轮追加并绑定上一条记录哈希。两轮仍未终态时让用户选择第三轮或标准 waiver。只有 `NORMAL`、完整 `LOW_SAMPLE`、`EXPLAINED` 或带完整收据的 `WAIVED` 能成为终态。终态才物化 `charts/final/holder_distribution_current.png`。删除台账后从非首轮继续、终态后追加或同时存在多个 terminal 都会被拒绝。
 
 ## A5 报告
+
+分段执行时本阶段的装配执行归 −3（split-run §3b）；−2 收口于报告正文＋装配工单。
 
 **进入本阶段的前置＝`a4_seal.json` 已由 A4 第 7 步产出，分布轮次已到唯一终态，终版分布图已物化。** 报告本体先写 `报告.md`＋`charts/final/*.png`，再运行 `a5_report_seal.py --case-dir . --report 报告.md --a4-seal a4_seal.json --out a5_report_seal.json`，产 `a5-report-seal/v3`。A5 seal 会绑定 rounds 台账、terminal final scan、解释或 waiver 收据和唯一分布图。build_html 的 G11 会重新计算这些绑定。**报告图一律输出到 `charts/final/`**。复核过程草稿图放 charts/ 根或 `dist_rounds/`，不进报告。**三张标准图必配**（阵营占比演变/庄级实体 vs 价格/价格与关键事件），直接调 `scripts/report/standard_charts.py` 三个函数。持仓分布终版图另放第二章，不作为第二张分布图重复绘制。**每个当前持仓 ≥20% 总供应或 ≥20% 流通的大庄/项目方必配一张全周期流转路径图**。
 

@@ -1,0 +1,13 @@
+已按工单完成 T1～T8。
+
+- 三项 Python 验收全部通过。
+- 先红后绿实证完整：exit 1 → exit 0。
+- 四类 −3 负例均实际执行并命中。
+- `SKILL.md` 为 7961 bytes。
+- 定稿文本逐字比对通过。
+- 白名单外无新增改动。
+- 未执行 `git commit`。
+- 按要求未运行预期红的 `test_commands_deploy_sync.py`。
+
+完整施工与验收记录见 [batchA_done.md](/Users/uravvv/.claude/worktrees/tca-splitrun3/maintenance/repair-20260818-splitrun3/batchA_done.md)。
+
