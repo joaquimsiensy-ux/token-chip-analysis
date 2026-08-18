@@ -213,6 +213,30 @@ def main():
           and legacy_report.get("non_formal") is True
           and legacy_report.get("order_ambiguous") is True)
 
+    exact_edge = os.path.join(d5, "exact.jsonl")
+    with open(exact_edge, "w", encoding="utf-8") as f:
+        f.write(json.dumps([day(0), 1, 0, 0, Z, "ExactOwner", 10 ** 9]) + "\n")
+    exact_out = os.path.join(d5, "exact-report.json")
+    exact_ok = subprocess.run(
+        [sys.executable, SCRIPT, "--edges-sol", exact_edge,
+         "--total-supply", str(TOTAL), "--out", exact_out],
+        capture_output=True, text=True)
+    exact_report = json.load(open(exact_out)) if exact_ok.returncode == 0 else {}
+    check("instr>=0 保持 instruction exact 语义",
+          exact_ok.returncode == 0
+          and exact_report.get("edge_order_granularity") == "instruction"
+          and exact_report.get("order_ambiguous") is False)
+
+    bad_tx_edge = os.path.join(d5, "bad-tx.jsonl")
+    with open(bad_tx_edge, "w", encoding="utf-8") as f:
+        f.write(json.dumps([day(0), 1, "0", -1, Z, "BadOwner", 10 ** 9]) + "\n")
+    bad_tx = subprocess.run(
+        [sys.executable, SCRIPT, "--edges-sol", bad_tx_edge,
+         "--total-supply", str(TOTAL), "--out", os.path.join(d5, "bad.json")],
+        capture_output=True, text=True)
+    check("tx_index 字符串受控 exit 2", bad_tx.returncode == 2
+          and "字段类型非法" in (bad_tx.stdout + bad_tx.stderr))
+
     return finish()
 
 
