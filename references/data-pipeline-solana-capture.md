@@ -31,7 +31,7 @@
 
 以下通道已在真实分析中跑通，标注 [实测·他场景]，直接可用：
 
-1. **全量转账＝SQD portal**（portal.sqd.dev，免 key 免代理）——采集器现役 **v2**（§13b；缓存使用 sha256 路径与 `sqd-solana-cache/v3` meta；旧 v1 缓存不得直接续跑，恢复须先写一次性 importer）。转账边=同 tx 内 owner 级净变动贪心配对，from/to 为 ZERO 哨兵即铸造/销毁；断点续拉增量无缝无重叠（meta 连续完成前缀天然防 off-by-one）。
+1. **全量转账＝SQD portal**（portal.sqd.dev，免 key 免代理）——采集器现役 **v2**，v4 正式边标准为 `[ts,slot,tx_index,-1,from,to,amt]`（§13b；`-1` 表示交易级净额边没有 instruction 顺序）；缓存使用 sha256(原始 mint) 路径。转账边=同 tx 内 owner 级净变动贪心配对，`edge_semantics="owner-net-greedy"`，from/to 为 ZERO 哨兵即铸造/销毁；它证明 owner 净变化，不证明链上精确 from→to。断点续拉按交易身份去重，meta 连续完成前缀防 off-by-one。
    **吞吐与架构选择**：v2 稳态约 255 倍实时（§13a 传输层翻案了旧的 1.5-4x 数字）——2-6 个月币龄全程重放数小时级；§11 混合重建（发射窗精确+核心实体流水+CPMM 重建+快照封口）降级为超长币龄（1 年+）专用。
 2. **发射期精确定价**：GeckoTerminal 分钟 K `/ohlcv/minute?aggregate=1&limit=1000&before_timestamp=`（池创建起就有）；小时 K 翻页可拿全历史。pump.fun"发射即迁移"币无内盘 K 线，内盘成本用 GMGN dev avg_cost 近似。
 3. **资金同源（gas 溯源）**：公共 RPC `getSignaturesForAddress`（翻到最老）+ `getTransaction(jsonParsed)` 找首笔 system transfer 入金 source；0.25s 间隔，代理经 `CHIP_PROXY`/`--proxy` 解析（`scripts/lib/proxy_config.py`）。识别马甲网络最有效的一招（母钱包收敛即实锤）。
@@ -91,7 +91,7 @@
 **脚本**：`scripts/solana/audit_closed_accounts.py <MINT> [--edges <soltx.jsonl.gz>]`（对旧研报目录审计用 `--edges/--out` 指路径）。流程=发现历史账户样本 → getMultipleAccounts 判存活/销户（此法 publicnode 屏蔽，走 api.mainnet-beta+代理）→ 销户账户拉自身签名史（销户后签名史仍可查，§3a 坑 4 同源事实）decode 实际转账 → 逐事件对照边集。
 
 - **两种样本发现模式**（`--mode auto|sigs|blocks`，默认 auto）：sigs=mint 签名史抽样（全程边集适用；签名史新→老翻页，历史定向段边集会翻不到区间）；blocks=边集 slot 区间内均匀抽 getBlock 整块提取（定向段正解，免翻页）。auto 3 页探路未进区间自动切 blocks。
-- **判定粒度声明**：覆盖=边集存在 slot 相同且 from/to 含该 owner 的边。SQD 边是 owner 级同 tx 净变动聚合、无 sig 字段，slot+owner 是可用最细粒度（同 slot 同 owner 多笔时有极低概率误判为覆盖，审计是抽查性质，接受）。边集区间外事件计 out_of_range 不算漏。
+- **判定粒度声明**：覆盖=边集存在 slot 相同且 from/to 含该 owner 的边。当前 `audit_closed_accounts.py` 仍消费 legacy 5 元组，故暂以 slot+owner 为最细粒度（同 slot 同 owner 多笔可能误判为覆盖，审计是抽查性质）。**过渡标注**：v4 边已有 `tx_index`，此“无 sig 只能到 slot”声明随批 3 消费端落地作废；届时审计必须按交易身份核对，不能继续降回 slot+owner。
 - **undetermined 语义（诚实纪律）**：深挖账户按结果分类 events_found / all_zero_delta / fetch_failed——后两类是"没查出来"不是"没事件"（高频中转户 delta 笔可能在 --deep-sigs 窗口外），不构成"无漏"证据；过半 undetermined＝样本无效（批 D GPT-F-06 起 exit 1，不再只告警）。
 - **退出码**：0=抽样零漏边；2=发现漏边（对账 gate 语义，报告 missing_detail 带 tx 级证据）；1=运行失败/样本无效。**样本无效机器判据（批 D GPT-F-06 收口，任一命中即 exit 1）**：任一 getMultipleAccounts 批失败／深挖账户全部 fetch_failed／checked=0 且 closed>0／墙钟截断／undetermined 过半。
 - **报告 status 契约（批 D）**：`CLEAN`（checked>0 零漏，exit 0）／`NO_CLOSED_SAMPLED`（抽样内无销户账户，审计对象为空——**弱结论**，exit 0，只证明"这批样本没有销户账户"，不冒充"销户路径零漏"强证明）／`LEAK_FOUND`（exit 2）／`INVALID_SAMPLE`（exit 1，`invalid_reasons` 逐条列明）。早退路径（边集缺失/签名史拉取失败/抽样零命中）同样落精简 status 报告——不存在"失败无报告"形态（消化轮 1 F-D8）。
@@ -111,7 +111,7 @@
 
 ### 13b. 全程采集器 v2（`fetch_sqd_transfers_v2.py`，全程重放主力）
 
-三刀：requests.Session（连接复用+自动 gzip）/ 自适应区域并发（全局段队列动态领取,区域大小按耗时自动伸缩 1 万-100 万 slot,发射窗自动缩、死亡期自动放大）/ 全局令牌桶（默认 4 rps 防雪崩护栏——高密度段 1.6 会顶死请求数,实测教训）。失败区域重试 2 轮后进 gaps 继续别的段（修旧采集器"第一个未完段之后整体丢弃"缺陷）,gaps 非空退出码 2、清零前不得进重放。现役缓存仅接受绑定原始 mint/endpoint/采集上界的 `sqd-solana-cache/v3` identity；旧 v1 缓存不自动迁移。
+三刀：requests.Session（连接复用+自动 gzip）/ 自适应区域并发（全局段队列动态领取,区域大小按耗时自动伸缩 1 万-100 万 slot,发射窗自动缩、死亡期自动放大）/ 全局令牌桶（默认 4 rps 防雪崩护栏——高密度段 1.6 会顶死请求数,实测教训）。失败区域重试 2 轮后进 gaps 继续别的段（修旧采集器"第一个未完段之后整体丢弃"缺陷）,gaps 非空退出码 2、清零前不得进重放。v4 正式缓存绑定原始 mint/endpoint/采集上界并使用 7 元组；旧 v3 meta 与 5 元组没有交易身份、不可迁移，必须拒绝正式续跑并明示全量重采。**批 1 过渡状态**：本批只冻结共享核与语义，采集器落盘仍保持 v3/5 元组；v4 meta 与 7 元组由批 2 原子落地，在此之前不得把 v3 产物标成 v4。
 普通密度币自适应放大区域后更快——**2-6 个月币龄全程重放=数小时级,夜间挂机稳稳可行**;§11 混合重建降级为超长币龄（1 年+）专用。
 
 #### SQD stream 响应语义（2026-07-26 实测定案,判完备性的地基）
@@ -140,9 +140,16 @@
 
 历史症状与修复经过已由 3.34.0 CHANGELOG 记录，不进入现役执行页。
 
-#### 无 sig 同 slot 同额多笔的去重边界
+#### 无 sig 但有交易身份时的去重边界
 
-无 sig 边不得区分真实同字段多笔与重复采集；重放/快照差异正负成对时，以 ATA tx 级真值对受害地址做替换式修复并复验锚点，禁止追加式补边。（判例：casebook/supply-accounting.md S-04）
+SQD 不落盘签名不等于没有交易身份：请求与响应已有 `transactionIndex`，所以 v4 用
+`(slot,tx_index)` 唯一标识 finalized 区间内的交易，签名需要时可按该位置反查。每笔交易先生成
+完整 transaction-net 边集，再对排序后的边集计算 `tx_digest`；同一身份重复出现且 digest 相同
+只留一份，digest 不同说明数据源对同一交易给出冲突内容，必须硬失败，禁止静默选一份或取并集。
+旧 5 元组无法区分“同 slot、同额、同 owner 的两笔真实交易”与重复采集，按五字段 DISTINCT 会
+误杀；它只允许走显式 legacy 诊断入口，不得生成 v4 meta/reconcile/READY，也不存在补身份迁移。
+重放/快照差异正负成对时，仍以 ATA tx 级真值对受害地址做替换式修复并复验锚点，禁止追加式
+补边。（判例：casebook/supply-accounting.md S-04）
 
 ### 13c. 溯源解码 v2（`decode_txs_v2.py`,三板斧落地）
 

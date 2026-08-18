@@ -14,7 +14,15 @@
 1. **稳定 ID＝内容派生**：候选 ID 由其核心内容（成员集/面额/地址）哈希派生——内容变则 ID 变，旧裁决按 ID 对不上自动失效。
 2. **裁决绑定候选内容哈希**：每条裁决记录 `candidate_sha256`＝裁决时该候选完整 JSON 的规范化哈希（`json.dumps(obj, sort_keys=True, ensure_ascii=False)` 的 sha256）。validator 重验：当前报告同 ID 候选哈希不一致＝候选内容已变＝裁决过期，exit 2。
 3. **零静默截断**：所有成员/收方/来源数组全量落盘，数组长度必须等于对应 `*_count` 字段（闭合断言）；stdout 只显 top 不代表文件截断。
-4. **本文件＝完整字段登记**（v6.8.1，codex 复核 P2 采纳）：脚本实际输出的每个字段都必须在此登记——未登记字段不得输出，登记了的不得静默删除；公共通用字段（`schema/generated_at/params/total_supply_raw/edges/note`）各产物一律在场，下文不再逐一重复。输入边表的唯一性由采集管线（four-check 对账）保证，扫描器不去重——同五元组合法重复真实存在（同秒同额多笔），fail-closed 去重会误杀。
+4. **本文件＝完整字段登记**（v6.8.1，codex 复核 P2 采纳）：脚本实际输出的每个字段都必须在此登记——未登记字段不得输出，登记了的不得静默删除；公共通用字段（`schema/generated_at/params/total_supply_raw/edges/note`）各产物一律在场，下文不再逐一重复。输入边表的唯一性由采集管线（four-check 对账）保证，扫描器不去重。Solana v4 以 `(slot,tx_index)` 标识交易，并对该交易完整边集计算排序后的 `tx_digest`：重复身份且 digest 相同只留一份，digest 不同硬失败。五元组没有交易身份，同字段重复可能是不同真实交易，禁止按五字段去重。
+
+**Solana 输入边现役标准**：正式路径使用 7 元组
+`[ts,slot,tx_index,instr_index,from,to,amt]`。SQD tokenBalances 只提供交易级 pre/post
+快照，因此共享核产出的边固定 `instr_index=-1`、`edge_semantics="owner-net-greedy"`、
+`order_granularity="transaction"`：它证明 owner 级净变化，但贪心配对只是推定关系，
+**不证明链上精确 from→to**，也不能恢复交易内指令顺序；该哨兵必须对应 `order_exact=false`。旧 5 元组
+`[ts,slot,from,to,amt]` 仅是 `legacy-sol5` 诊断格式，标记 `order_ambiguous/non-formal`，无法补回
+交易身份且无迁移路径，正式使用须全量重采。
 
 ## 1. wave-scan/v3（wave_scan.py）
 
@@ -203,8 +211,10 @@ wave/flow/eqg 全部候选的**成员级**裁决台账。freeze 前 validator �
 （closure 降为实现自检）；回环天然良定义（v1 的 `same_slot_scc` 终点类别**废除**）；
 禁止按地址拓扑重排同秒边。缺精确位置时保留 ingest 观察序，但同一最细粒度桶内
 “既收又发”的流出来源整笔记 `UNRESOLVED/order_ambiguous`；占锚点库存 >0.5% 时
-独立顺序敏感性阻断。Solana 旧 5 元组只有 slot，扩展 7 元组
-`[ts,slot,tx_index,instruction_index,from,to,amt]` 才是精确序。
+独立顺序敏感性阻断。Solana 现役 7 元组标准为
+`[ts,slot,tx_index,instr_index,from,to,amt]`；其中 SQD transaction-net 边固定
+`instr_index=-1`，只能确定交易粒度顺序，必须置 `order_exact=false`。只有输入给出真实非负
+instruction index 时，才允许声明可恢复交易内精确执行顺序；旧 5 元组仍是非正式诊断输入。
 
 ```
 {

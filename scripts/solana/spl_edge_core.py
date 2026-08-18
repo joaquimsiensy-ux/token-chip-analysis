@@ -7,6 +7,14 @@ from pathlib import Path
 
 ZERO_OWNER = "0x" + "0" * 40
 
+# v4 transaction-net edge semantics.  Producers and formal consumers import
+# these constants instead of duplicating schema strings.
+EDGE_SCHEMA_FIELDS = ("ts", "slot", "tx_index", "instr_index", "from", "to", "amt")
+EDGE_SEMANTICS = "owner-net-greedy"
+ORDER_GRANULARITY_TX = "transaction"
+INSTR_INDEX_TX_NET = -1
+
+
 def _validated_delta(delta):
     if not isinstance(delta, Mapping):
         raise TypeError("delta must be a mapping of owner to integer amount")

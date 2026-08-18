@@ -10,7 +10,9 @@ from pathlib import Path
 ROOT = Path(os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..")))
 sys.path.insert(0, str(ROOT / "scripts" / "solana"))
 
-from spl_edge_core import (ZERO_OWNER, pair_tx, parse_owner_delta,
+from spl_edge_core import (EDGE_SCHEMA_FIELDS, EDGE_SEMANTICS,
+                           INSTR_INDEX_TX_NET, ORDER_GRANULARITY_TX,
+                           ZERO_OWNER, pair_tx, parse_owner_delta,
                            soltx_cache_paths)
 
 
@@ -97,7 +99,7 @@ def test_migration_equivalence_and_legacy_owner_rule():
     assert parse_owner_delta({"transactionIndex": 6, "postAmount": "bad"}) is None
 
 
-def test_cache_paths():
+def test_cache_paths_and_semantic_constants():
     mint = "AbC"
     data_dir = Path("some-data")
     key = hashlib.sha256(mint.encode("utf-8")).hexdigest()
@@ -107,6 +109,11 @@ def test_cache_paths():
         data_dir / f"soltx-{key}.parts",
     )
     assert soltx_cache_paths("AbC", data_dir) != soltx_cache_paths("aBc", data_dir)
+    assert EDGE_SCHEMA_FIELDS == (
+        "ts", "slot", "tx_index", "instr_index", "from", "to", "amt")
+    assert EDGE_SEMANTICS == "owner-net-greedy"
+    assert ORDER_GRANULARITY_TX == "transaction"
+    assert INSTR_INDEX_TX_NET == -1
 
 
 if __name__ == "__main__":
@@ -114,5 +121,5 @@ if __name__ == "__main__":
     test_random_shuffle_is_byte_deterministic()
     test_invalid_pair_input_fails_closed()
     test_migration_equivalence_and_legacy_owner_rule()
-    test_cache_paths()
-    print("PASS: spl_edge_core T1 三件套 + T2 迁移等价")
+    test_cache_paths_and_semantic_constants()
+    print("PASS: spl_edge_core T1 三件套 + T2 迁移等价 + T3 语义常量")
