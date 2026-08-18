@@ -54,17 +54,20 @@ HyperSync 第二引擎（--hypersync，默认关）：
   SQD worker 在 HS 全忙时可接管 HS 未领段（带礼让条件防抢跑饿死；反向不行——HS 有窗口限制）
 - 两引擎输出行格式/落盘/gaps 语义完全一致；失败交易两边同样剔除（HS 按 success 字段）
 """
-import argparse, gzip, hashlib, json, os, shutil, sys, threading, time
+import argparse, gzip, json, os, shutil, sys, threading, time
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 from endpoint_identity import endpoint_fingerprint
 from proxy_config import redact_proxy, resolve_proxy
 from solana_attested_session import SolanaAttestedSession
 from solana_sqd_dataset import (SOLANA_SQD_DATASET_ID,
                                 SolanaSqdDatasetAdapter)
+from spl_edge_core import (ZERO_OWNER as ZERO, pair_tx, parse_owner_delta,
+                           soltx_cache_paths)
 
 try:
     import requests
@@ -79,7 +82,6 @@ except ImportError:
 DEF_URL = "https://portal.sqd.dev/datasets/solana-mainnet"
 SQD_SLOT_RATE = 2.51          # slot/秒近似斜率（仅起点估算用，回补环兜底精度）
 SQD_LAUNCH_PAD = 150_000      # 发射点前置缓冲（约 16.6 小时）
-ZERO = "0x" + "0" * 40
 AREA_INIT = 100_000           # 初始区域大小（slot）；按耗时自适应
 AREA_MIN, AREA_MAX = 10_000, 1_000_000
 AREA_T_FAST, AREA_T_SLOW = 30, 180   # 区域耗时 <30s 翻倍 / >180s 减半
@@ -146,25 +148,6 @@ class AdaptiveArea:
                 self.size = min(AREA_MAX, self.size * 2)
             elif elapsed > AREA_T_SLOW:
                 self.size = max(AREA_MIN, self.size // 2)
-
-
-def pair_tx(delta):
-    """同一 tx 内 owner 级净变动 → 转账边。"""
-    pos = sorted(([o, d] for o, d in delta.items() if d > 0), key=lambda x: -x[1])
-    neg = sorted(([o, -d] for o, d in delta.items() if d < 0), key=lambda x: -x[1])
-    edges, i, j = [], 0, 0
-    while i < len(pos) and j < len(neg):
-        m = min(pos[i][1], neg[j][1])
-        edges.append((neg[j][0], pos[i][0], m))
-        pos[i][1] -= m
-        neg[j][1] -= m
-        if pos[i][1] == 0:
-            i += 1
-        if neg[j][1] == 0:
-            j += 1
-    edges.extend((ZERO, o, rem) for o, rem in pos[i:] if rem)
-    edges.extend((o, ZERO, rem) for o, rem in neg[j:] if rem)
-    return edges
 
 
 class Fetcher:
@@ -282,15 +265,10 @@ class Fetcher:
                             ti = rec.get("transactionIndex")
                             if errmap.get(ti) is not None:
                                 continue    # 失败交易：余额无真实变化，纯噪声
-                            owner = rec.get("postOwner") or rec.get("preOwner")
-                            if not owner:
-                                continue
-                            try:
-                                dlt = int(rec.get("postAmount") or 0) - int(rec.get("preAmount") or 0)
-                            except (ValueError, TypeError):
-                                continue
-                            if dlt:
-                                by_tx[ti][owner] = by_tx[ti].get(owner, 0) + dlt
+                            parsed = parse_owner_delta(rec)
+                            if parsed is not None:
+                                parsed_ti, owner, dlt = parsed
+                                by_tx[parsed_ti][owner] = by_tx[parsed_ti].get(owner, 0) + dlt
                         for ti, delta in by_tx.items():
                             for f, t, amt in pair_tx(delta):
                                 edges.append((ts, hdr["number"], f, t, amt))
@@ -522,10 +500,7 @@ def split_engine_plan(holes, hs_lo, hs_hi):
 
 
 def cache_paths(address):
-    d = Path("data")
-    key = hashlib.sha256(address.encode("utf-8")).hexdigest()
-    return (d / f"soltx-{key}.jsonl.gz", d / f"soltx-{key}.meta.json",
-            d / f"soltx-{key}.parts")
+    return soltx_cache_paths(address, Path("data"))
 
 
 def load_meta(meta_fp):

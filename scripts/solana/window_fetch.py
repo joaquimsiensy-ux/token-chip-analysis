@@ -11,35 +11,18 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 import net
 from receipt_kernel import (RawBytes, assert_distinct_paths, build_envelope,
                             finalize_envelope, publish_error_receipt, publish_exclusive,
                             publish_overwrite, publish_supersede, publish_txn)
+from spl_edge_core import ZERO_OWNER as ZERO, pair_tx, parse_owner_delta
 
 SQD = "https://portal.sqd.dev/datasets/solana-mainnet/stream"
 MINT = json.loads(Path("config.json").read_text())["mint"]
-ZERO = "0x" + "0" * 40
 CHUNK = 2000
 SCHEMA = "solana-window-fetch-receipt/v2"
 SCHEMA_FAMILY = "solana-window-fetch-receipt/"
-
-
-def pair_tx(delta):
-    pos = sorted(([o, d] for o, d in delta.items() if d > 0), key=lambda x: -x[1])
-    neg = sorted(([o, -d] for o, d in delta.items() if d < 0), key=lambda x: -x[1])
-    edges, i, j = [], 0, 0
-    while i < len(pos) and j < len(neg):
-        m = min(pos[i][1], neg[j][1])
-        edges.append((neg[j][0], pos[i][0], m))
-        pos[i][1] -= m
-        neg[j][1] -= m
-        if pos[i][1] == 0:
-            i += 1
-        if neg[j][1] == 0:
-            j += 1
-    edges.extend((ZERO, o, rem) for o, rem in pos[i:] if rem)
-    edges.extend((o, ZERO, rem) for o, rem in neg[j:] if rem)
-    return edges
 
 
 def scan_seg(frm, to, endpoint=SQD):
@@ -94,15 +77,10 @@ def scan_seg(frm, to, endpoint=SQD):
                 ti = r.get("transactionIndex")
                 if errmap.get(ti) is not None:
                     continue
-                owner = r.get("postOwner") or r.get("preOwner")
-                if not owner:
-                    continue
-                try:
-                    dlt = int(r.get("postAmount") or 0) - int(r.get("preAmount") or 0)
-                except (ValueError, TypeError):
-                    continue
-                if dlt:
-                    by_tx[ti][owner] = by_tx[ti].get(owner, 0) + dlt
+                parsed = parse_owner_delta(r)
+                if parsed is not None:
+                    parsed_ti, owner, dlt = parsed
+                    by_tx[parsed_ti][owner] = by_tx[parsed_ti].get(owner, 0) + dlt
             for ti, delta in by_tx.items():
                 for f, t, amt in pair_tx(delta):
                     page_edges.append((ts, number, f, t, amt))
