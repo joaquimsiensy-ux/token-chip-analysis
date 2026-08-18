@@ -163,3 +163,20 @@ DISTINCT 损失；域内机械可证＝11,502 行/8,487 组）。
 - 六视角①②自审、遗留清单（交 opus 二次盲审的自述风险）。
 
 完成即停，不 merge 不 push，等 opus 二次盲审。
+
+---
+
+## F-08 [验收方发现 · 批 6 补丁] SUITE 新测试硬依赖外部 rg 二进制，无 rg 环境假失败
+
+**定位**：`scripts/tests/test_batch6_sqd_v4_blind_review.py:231`（F-06 用例
+`subprocess.run(["rg", ...])`）。验收方环境 PATH 无 `rg` → `FileNotFoundError` → 该测试
+rc=1「无输出」→ SUITE 120/121 FAIL。施工环境恰好有 rg 才自报全绿——发布门禁测试不可携带
+环境外部二进制依赖。
+
+**修法**：该用例改**纯 Python 实现**（`re` 模块等价扫描目标文件与模式；注意 rg 正则语法与
+Python re 的差异要等价转换并自证——用一个已知命中/一个已知不命中的样例断言扫描器本身有效）。
+**禁止用 `shutil.which('rg')` 缺失即 skip 的降级**——skip 即假覆盖，恰是本工程反对的。
+顺带机器排查批 6 全部新增/改动测试还有无同类外部二进制依赖（`rg`/`fd` 等非 POSIX 必备命令），
+有则一并改纯 Python。修完在**不含 rg 的 PATH** 下亲跑该测试与全量 SUITE 证明可移植
+（如 `env PATH=/usr/bin:/bin python3 ...`）。红→绿纪律照旧（红态=当前 FileNotFoundError 即为
+天然红，绿态 commit 修复）。追加到 `batch6_done.md` 一节「F-08 补丁」，完成即停。
