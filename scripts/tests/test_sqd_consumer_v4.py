@@ -17,6 +17,7 @@ for sub in ("solana", "lib", "labels"):
 
 import replay_edges  # noqa: E402
 import curve_cost  # noqa: E402
+from camp_series_provenance import registry_anchor_check  # noqa: E402
 from spl_edge_core import (  # noqa: E402
     EDGE_SCHEMA_FIELDS,
     EDGE_SEMANTICS,
@@ -144,6 +145,17 @@ def test_reconcile_digest_matches_v4_meta() -> None:
     assert replay_edges.cmd_reconcile(
         rows, 1, mint=MINT, cache_meta_path=meta_path) is True
     assert json.loads(meta_path.read_text())["edge_logical_sha256"] == _logical_digest(rows)
+    series_path = Path("data/camp_share_series.json")
+    series_path.write_text("[]", encoding="utf-8")
+    receipt_path = Path("data/reconcile_receipt.json")
+    assert registry_anchor_check(
+        {"series_format": "sol-rows"},
+        {"inputs.reconcile_receipt": receipt_path},
+        series_path,
+        expected_chain="solana",
+        expected_mint=MINT,
+        expected_cutoff_slot=1,
+    ) == receipt_path
 
     bad = _v4_meta(rows)
     bad["edge_logical_sha256"] = "0" * 64
