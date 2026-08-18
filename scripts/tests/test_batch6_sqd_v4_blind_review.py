@@ -15,6 +15,7 @@ ROOT = HERE.parents[1]
 WAVE = ROOT / "scripts/report/wave_scan.py"
 ADJUDICATION = ROOT / "scripts/report/adjudication_validator.py"
 LEGACY_WHITELIST = ROOT / "maintenance/repair-20260817-sqd-v4/grep_legacy_whitelist.md"
+OLD_BATCH2_WORKORDER = ROOT / "maintenance/repair-20260817-sqd-v4/batch2_workorder.md"
 SQD_COLLECTOR = ROOT / "scripts/solana/fetch_sqd_transfers_v2.py"
 
 sys.path.insert(0, str(HERE))
@@ -241,12 +242,22 @@ def test_f06_legacy_scan_covers_tuple_constructor() -> None:
     assert "HyperSyncFetcher.scan_area" in whitelist and "死代码豁免" in whitelist
 
 
+def test_f07_old_124816_claim_points_to_correction() -> None:
+    lines = OLD_BATCH2_WORKORDER.read_text(encoding="utf-8").splitlines()
+    claims = [line for line in lines if "ARC 案 124,816 条" in line]
+    assert len(claims) == 1, claims
+    claim = claims[0]
+    for marker in ("PLAN.md", "batch4_done.md §6.3", "混合口径", "11,502", "8,487"):
+        assert marker in claim, f"旧 124,816 行缺勘误指向或校正口径: {marker}"
+
+
 def main() -> int:
     test_f01_real_duckdb_wave_reaches_formal_gates()
     test_f02_missing_logical_evidence_is_not_backfilled()
     test_f03_padded_legacy_edges_cannot_claim_formal()
     test_f04_non_formal_dormant_report_is_release_blocked()
     test_f06_legacy_scan_covers_tuple_constructor()
+    test_f07_old_124816_claim_points_to_correction()
     print("PASS: 批6 opus 盲审防回归")
     return 0
 
