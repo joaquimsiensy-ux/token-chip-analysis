@@ -146,9 +146,8 @@ def _validate_formal_edge(row, *, line_no=None):
     if not all(_valid_nonnegative_int(value) for value in (ts, slot, tx_index)):
         raise ValueError(f"{where} ts/slot/tx_index 必须为非布尔非负整数")
     if (not isinstance(instr_index, int) or isinstance(instr_index, bool)
-            or instr_index < INSTR_INDEX_TX_NET):
-        raise ValueError(
-            f"{where} instr_index 必须为 {INSTR_INDEX_TX_NET} 或非负整数")
+            or instr_index != INSTR_INDEX_TX_NET):
+        raise ValueError(f"{where} transaction-net instr_index 必须为 {INSTR_INDEX_TX_NET}")
     if not isinstance(src, str) or not src or not isinstance(dst, str) or not dst:
         raise ValueError(f"{where} from/to 必须为非空字符串")
     if not isinstance(amt, int) or isinstance(amt, bool) or amt <= 0:
