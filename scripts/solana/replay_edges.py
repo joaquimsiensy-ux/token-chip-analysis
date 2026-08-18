@@ -34,10 +34,12 @@ from pathlib import Path
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "lib"))
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "labels"))
 from camp_spec import validate_camp_spec
-from producer_history import historical_producer_hashes
 from supply_truth_gate import _reject_constant
 from spl_edge_core import (EDGE_SCHEMA_FIELDS, EDGE_SEMANTICS,
                            INSTR_INDEX_TX_NET, ORDER_GRANULARITY_TX)
+from sqd_cache_identity import (SQD_CACHE_PROTOCOL, SQD_COLLECTOR_ID,
+                                SQD_COLLECTOR_SCRIPT,
+                                validate_cache_meta as _validate_cache_meta)
 try:
     from labels_resolver import LabelResolver, append_misses
 except Exception:
@@ -80,11 +82,6 @@ def _flush_sealed():
 
 ZERO = "0x" + "0" * 40
 SOLANA_MINT_RE = re.compile(r"[1-9A-HJ-NP-Za-km-z]{32,44}")
-SQD_CACHE_PROTOCOL = "sqd-solana-cache/v4"
-SQD_COLLECTOR_ID = "fetch_sqd_transfers_v2.py/v4"
-SQD_COLLECTOR_SCRIPT = "scripts/solana/fetch_sqd_transfers_v2.py"
-
-
 def _json_loads(value, label="JSON"):
     try:
         return json.loads(value, parse_constant=_reject_constant)
@@ -139,41 +136,6 @@ def _atomic_json(path, value):
 
 def _valid_nonnegative_int(value):
     return isinstance(value, int) and not isinstance(value, bool) and value >= 0
-
-
-def _validate_cache_meta(meta, mint, *, legacy_sol5):
-    frm = meta.get("from_slot")
-    if legacy_sol5:
-        upper = meta.get("collection_upper_slot")
-        valid = (meta.get("schema") == "sqd-solana-cache/v3"
-                 and meta.get("mint") == mint
-                 and _valid_nonnegative_int(frm)
-                 and _valid_nonnegative_int(upper) and upper >= frm)
-        if not valid:
-            raise ValueError(
-                "legacy-sol5 只接受绑定原始 mint/from_slot/collection_upper_slot 的 v3 meta")
-        return frm, upper
-    upper = meta.get("finalized_upper_slot")
-    valid = (meta.get("schema") == SQD_CACHE_PROTOCOL
-             and meta.get("version") == 4
-             and meta.get("mint") == mint
-             and meta.get("collector") == SQD_COLLECTOR_ID
-             and meta.get("edge_schema") == list(EDGE_SCHEMA_FIELDS)
-             and meta.get("edge_semantics") == EDGE_SEMANTICS
-             and meta.get("order_granularity") == ORDER_GRANULARITY_TX
-             and meta.get("order_exact") is False
-             and _valid_nonnegative_int(frm)
-             and _valid_nonnegative_int(upper) and upper >= frm)
-    if not valid:
-        raise ValueError(
-            "正式重放只接受绑定原始 mint、v4 边契约及 finalized_upper_slot 的 v4 meta")
-    collector_sha256 = meta.get("collector_sha256")
-    allowed_hashes = historical_producer_hashes(
-        SQD_COLLECTOR_SCRIPT, SQD_CACHE_PROTOCOL)
-    if collector_sha256 not in allowed_hashes:
-        raise ValueError(
-            "SQD v4 meta.collector_sha256 未命中 fetch_sqd_transfers_v2.py producer 登记")
-    return frm, upper
 
 
 def _validate_formal_edge(row, *, line_no=None):
@@ -307,13 +269,10 @@ def cmd_reconcile(edges, dec, *, mint, cache_meta_path):
                              "SQD 缓存 meta")
     frm, to = _validate_cache_meta(cache_meta, mint, legacy_sol5=False)
     bal, minted, burned, edge_digest, first, last = _replay_with_evidence(edges)
-    # 将本次真实遍历得到的逻辑摘要回填缓存 meta，消费侧可独立对锚收据字段；
-    # 已有值若不等即说明 meta 与边文件撕裂，拒绝覆盖掩盖。
-    old_digest = cache_meta.get("edge_logical_sha256")
-    old_count = cache_meta.get("edge_rows")
-    if old_digest is not None and old_digest != edge_digest:
+    # collector 已绑定逻辑摘要与行数；reconcile 只重算对表，绝不首次建立证据。
+    if cache_meta["edge_logical_sha256"] != edge_digest:
         raise ValueError("SQD 缓存 meta.edge_logical_sha256 与实际边重放摘要不一致")
-    if old_count is not None and old_count != len(edges):
+    if cache_meta["edge_rows"] != len(edges):
         raise ValueError("SQD 缓存 meta.edge_rows 与实际边数不一致")
     edge_key = hashlib.sha256(mint.encode("utf-8")).hexdigest()
     edge_path = cache_meta_path.with_name(f"soltx-{edge_key}.jsonl.gz")
@@ -321,8 +280,6 @@ def cmd_reconcile(edges, dec, *, mint, cache_meta_path):
         raise ValueError(f"SQD 边文件是符号链接，拒绝 reconcile: {edge_path}")
     if not edge_path.is_file() or edge_path.stat().st_size <= 0:
         raise ValueError(f"SQD 边文件缺失或为空: {edge_path}")
-    cache_meta["edge_logical_sha256"] = edge_digest
-    cache_meta["edge_rows"] = len(edges)
     cache_meta["edge_file_size"] = edge_path.stat().st_size
     cache_meta["edge_file_sha256"] = sha256_file(edge_path)
     _atomic_json(cache_meta_path, cache_meta)

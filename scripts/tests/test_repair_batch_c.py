@@ -84,11 +84,16 @@ def write_sol_edges(path: Path, edges):
     return path
 
 
-def formal_sol_meta(mint, from_slot, to_slot):
+def formal_sol_meta(mint, from_slot, to_slot, edges):
     from producer_history import historical_producer_hashes
     collector_hashes = historical_producer_hashes(
         "scripts/solana/fetch_sqd_transfers_v2.py", "sqd-solana-cache/v4")
     assert len(collector_hashes) == 1, collector_hashes
+    logical = hashlib.sha256()
+    for edge in edges:
+        logical.update(
+            (json.dumps(list(edge), ensure_ascii=False) + "\n").encode("utf-8")
+        )
     return {
         "schema": "sqd-solana-cache/v4", "version": 4, "mint": mint,
         "collector": "fetch_sqd_transfers_v2.py/v4",
@@ -97,6 +102,7 @@ def formal_sol_meta(mint, from_slot, to_slot):
         "edge_semantics": "owner-net-greedy",
         "order_granularity": "transaction", "order_exact": False,
         "from_slot": from_slot, "finalized_upper_slot": to_slot,
+        "edge_logical_sha256": logical.hexdigest(), "edge_rows": len(edges),
     }
 
 
@@ -391,7 +397,7 @@ def t_f05_f04_solana_chain():
                             "closed": True, "supply_raw": "900",
                             "outputs": {"holders_owners": owners_ref}}))
             cache_meta = Path("data/soltx-fixture.meta.json")
-            cache_meta.write_text(json.dumps(formal_sol_meta(SA, 1, 3)))
+            cache_meta.write_text(json.dumps(formal_sol_meta(SA, 1, 3, edges)))
             check("SOL reconcile gate_pass",
                   re_mod.cmd_reconcile(edges, 1, mint=SA,
                                        cache_meta_path=cache_meta) is True)
@@ -1303,7 +1309,7 @@ def t_blindreview_c_fixround1():
                 }
 
             def good_meta():
-                return formal_sol_meta(SA, 1, 3)
+                return formal_sol_meta(SA, 1, 3, edges)
 
             write_json(snapshot_path, good_snapshot())
             write_json(meta_path, good_meta())
@@ -1769,7 +1775,7 @@ def t_blindreview_c_fixround1():
                                    "as_of_block": 3},
                         "closed": True, "supply_raw": "900",
                         "outputs": {"holders_owners": file_ref(bad_owners)}})
-                    write_json(bad_meta_path, formal_sol_meta(bad_mint, 1, 3))
+                    write_json(bad_meta_path, formal_sol_meta(bad_mint, 1, 3, edges))
                     try:
                         re_mod.cmd_reconcile(edges, 1, mint=bad_mint,
                                              cache_meta_path=bad_meta_path)
@@ -1900,7 +1906,7 @@ def t_fixround2():
                 "closed": True, "supply_raw": "900",
                 "outputs": {"holders_owners": file_ref(owners_path)},
             })
-            write_json(meta_path, formal_sol_meta(SA, 1, 3))
+            write_json(meta_path, formal_sol_meta(SA, 1, 3, edges))
             assert re_mod.cmd_reconcile(
                 edges, 1, mint=SA, cache_meta_path=meta_path) is True
             Path("camps.json").write_text(

@@ -48,8 +48,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from producer_history import historical_producer_hashes  # noqa: E402
 from supply_semantics import ZERO  # noqa: E402
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "solana"))
+from sqd_cache_identity import validate_cache_meta  # noqa: E402
 
 SIDECAR_SCHEMA = "camp-series-provenance/v1"
 # 净分母族的 burn 桶不参与堆叠闭合；total 分母族"锁仓/销毁"参与——双式闭合见 docstring。
@@ -67,11 +68,6 @@ SERIES_FORMATS = ("evm-dict", "sol-rows", "sol-anchor-rows", "evm-entity-dict")
 DENOMINATORS = ("current_net_supply", "mint_total_legacy", "net_supply",
                 "config_total_supply")
 SOLANA_MINT_RE = re.compile(r"[1-9A-HJ-NP-Za-km-z]{32,44}")
-SQD_CACHE_PROTOCOL = "sqd-solana-cache/v4"
-SQD_COLLECTOR_ID = "fetch_sqd_transfers_v2.py/v4"
-SQD_COLLECTOR_SCRIPT = "scripts/solana/fetch_sqd_transfers_v2.py"
-
-
 class SeriesProvenanceError(ValueError):
     """sidecar 缺失/不匹配/序列数值面非法/末点对账失败（调用方按 exit 2 处理）。"""
 
@@ -593,15 +589,12 @@ def registry_anchor_check(sidecar: dict, resolved: dict, series_path, *,
                                      "reconcile.inputs.holders_snapshot_meta", receipt_dirs)
         cache_meta = _json_loads(meta_path.read_text(encoding="utf-8"),
                                  "soltx meta")
-        if cache_meta.get("schema") != SQD_CACHE_PROTOCOL \
-                or cache_meta.get("mint") != expected_mint:
+        try:
+            validate_cache_meta(cache_meta, expected_mint, legacy_sol5=False)
+        except ValueError as exc:
             raise SeriesProvenanceError(
-                "reconcile 绑定的 soltx meta schema/mint 与案 target 不一致")
-        if cache_meta.get("collector") != SQD_COLLECTOR_ID \
-                or cache_meta.get("collector_sha256") not in historical_producer_hashes(
-                    SQD_COLLECTOR_SCRIPT, SQD_CACHE_PROTOCOL):
-            raise SeriesProvenanceError(
-                "reconcile 绑定的 soltx meta 未命中 fetch_sqd_transfers_v2.py producer 登记")
+                f"reconcile 绑定的 soltx meta schema/mint/producer/contract 身份无效: {exc}"
+            ) from exc
         if cache_meta.get("from_slot") != frm \
                 or cache_meta.get("finalized_upper_slot") != to:
             raise SeriesProvenanceError(
@@ -609,7 +602,7 @@ def registry_anchor_check(sidecar: dict, resolved: dict, series_path, *,
         if cache_meta.get("edge_logical_sha256") != digest \
                 or cache_meta.get("edge_rows") != edge_count:
             raise SeriesProvenanceError(
-                "reconcile edge_digest/edge_count 与实测回填的 soltx meta 不一致")
+                "reconcile edge_digest/edge_count 与 collector 绑定的 soltx meta 不一致")
         edge_key = hashlib.sha256(expected_mint.encode("utf-8")).hexdigest()
         edge_path = meta_path.with_name(f"soltx-{edge_key}.jsonl.gz")
         edge_size = cache_meta.get("edge_file_size")

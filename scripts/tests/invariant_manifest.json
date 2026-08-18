@@ -345,8 +345,7 @@
     "camp-series-provenance/v1",
     "solana-holder-snapshot-v2",
     "solana-reconcile/v2",
-    "solana-reconcile/v3",
-    "sqd-solana-cache/v4"
+    "solana-reconcile/v3"
    ],
    "script": "scripts/lib/camp_series_provenance.py"
   },
@@ -536,11 +535,16 @@
   },
   {
    "schemas": [
-    "solana-holder-snapshot-v2",
+    "solana-holder-snapshot-v2"
+   ],
+   "script": "scripts/solana/replay_edges.py"
+  },
+  {
+   "schemas": [
     "sqd-solana-cache/v3",
     "sqd-solana-cache/v4"
    ],
-   "script": "scripts/solana/replay_edges.py"
+   "script": "scripts/solana/sqd_cache_identity.py"
   }
  ],
  "transport_calls": [
