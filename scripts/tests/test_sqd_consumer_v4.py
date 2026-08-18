@@ -17,6 +17,7 @@ for sub in ("solana", "lib", "labels"):
 
 import replay_edges  # noqa: E402
 import curve_cost  # noqa: E402
+import producer_history  # noqa: E402
 from camp_series_provenance import registry_anchor_check  # noqa: E402
 from spl_edge_core import (  # noqa: E402
     EDGE_SCHEMA_FIELDS,
@@ -28,6 +29,12 @@ from spl_edge_core import (  # noqa: E402
 ZERO = "0x" + "0" * 40
 MINT = "So1AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
 OWNER = "So1BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB"
+FETCH_SCRIPT = "scripts/solana/fetch_sqd_transfers_v2.py"
+FETCH_PROTOCOL = "sqd-solana-cache/v4"
+FETCH_SHA256 = "2589f6a396c262d0747343ef21dee2bc7ba814eaa59eebdfa782fe9253c32212"
+WINDOW_SCRIPT = "scripts/solana/window_fetch.py"
+WINDOW_PROTOCOL = "solana-window-fetch-receipt/v3"
+WINDOW_SHA256 = "56d94cbecf476b632c814a57b245c58397087dd105406e2538cac47c2fa6661c"
 
 
 def _write_edges(path: Path, rows) -> None:
@@ -53,7 +60,7 @@ def _v4_meta(rows) -> dict:
         "endpoint": "https://portal.sqd.dev",
         "endpoint_sha256": "1" * 64,
         "collector": "fetch_sqd_transfers_v2.py/v4",
-        "collector_sha256": "2" * 64,
+        "collector_sha256": FETCH_SHA256,
         "edge_schema": list(EDGE_SCHEMA_FIELDS),
         "edge_semantics": EDGE_SEMANTICS,
         "order_granularity": ORDER_GRANULARITY_TX,
@@ -93,6 +100,12 @@ def test_replay_edges_v4_and_legacy_split() -> None:
 
     loaded, loaded_meta = replay_edges.load_edges(MINT)
     assert loaded == rows and loaded_meta == meta_path
+
+    forged = _v4_meta(rows)
+    forged["collector_sha256"] = "2" * 64
+    meta_path.write_text(json.dumps(forged), encoding="utf-8")
+    _expect_reject(lambda: replay_edges.load_edges(MINT), "producer 登记")
+    meta_path.write_text(json.dumps(_v4_meta(rows)), encoding="utf-8")
 
     mixed = rows + [[102, 2, MINT, OWNER, 1]]
     _write_edges(edge_path, mixed)
@@ -157,6 +170,21 @@ def test_reconcile_digest_matches_v4_meta() -> None:
         expected_cutoff_slot=1,
     ) == receipt_path
 
+    forged = json.loads(meta_path.read_text(encoding="utf-8"))
+    forged["collector_sha256"] = "3" * 64
+    meta_path.write_text(json.dumps(forged), encoding="utf-8")
+    _expect_reject(
+        lambda: registry_anchor_check(
+            {"series_format": "sol-rows"},
+            {"inputs.reconcile_receipt": receipt_path},
+            series_path,
+            expected_chain="solana",
+            expected_mint=MINT,
+            expected_cutoff_slot=1,
+        ),
+        "producer 登记",
+    )
+
     bad = _v4_meta(rows)
     bad["edge_logical_sha256"] = "0" * 64
     meta_path.write_text(json.dumps(bad), encoding="utf-8")
@@ -178,6 +206,13 @@ def test_curve_cost_is_v4_only() -> None:
     _expect_reject(lambda: curve_cost.load_edges(MINT), "第 2 行")
 
 
+def test_solana_producer_history_entries() -> None:
+    assert FETCH_SHA256 in producer_history.historical_producer_hashes(
+        FETCH_SCRIPT, FETCH_PROTOCOL)
+    assert WINDOW_SHA256 in producer_history.historical_producer_hashes(
+        WINDOW_SCRIPT, WINDOW_PROTOCOL)
+
+
 def main() -> int:
     old = Path.cwd()
     with tempfile.TemporaryDirectory(prefix="sqd-consumer-v4-",
@@ -194,6 +229,7 @@ def main() -> int:
                 if path.is_file():
                     path.unlink()
             test_curve_cost_is_v4_only()
+            test_solana_producer_history_entries()
         finally:
             os.chdir(old)
     print("PASS: SQD v4 consumer split-mode regressions")
