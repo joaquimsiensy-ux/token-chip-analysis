@@ -1027,7 +1027,10 @@ def validate_and_replay_provenance(case_dir, pl, pl_path, ep, manifest):
         fails.append("entity_source_trace.py 算法哈希已变化——必须用当前代码重跑 provenance")
     algo_files = algorithm.get("files") or {}
     loader = os.path.join(os.path.dirname(os.path.abspath(__file__)), "wave_scan.py")
-    for name, expected in (("entity_source_trace.py", script), ("wave_scan.py", loader)):
+    identity = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "solana",
+                            "sqd_cache_identity.py")
+    for name, expected in (("entity_source_trace.py", script), ("wave_scan.py", loader),
+                           ("sqd_cache_identity.py", identity)):
         _, err = check_algorithm_file(algo_files.get(name), expected)
         if err:
             fails.append(f"算法依赖 {name} {err}")
@@ -1118,7 +1121,15 @@ def validate_and_replay_provenance(case_dir, pl, pl_path, ep, manifest):
     try:
         cmd = [sys.executable, script]
         if kind == "sol":
-            cmd += ["--edges-sol", arg]
+            try:
+                cache_meta = resolve_bound_path(case_dir, source.get("cache_meta"))
+            except ValueError as exc:
+                return [f"Solana provenance cache meta 异常: {exc}"]
+            mint = source.get("mint")
+            if not isinstance(mint, str) or not mint:
+                return ["Solana provenance 未绑定 mint"]
+            cmd += ["--edges-sol", arg, "--sol-cache-meta", cache_meta,
+                    "--mint", mint]
         elif kind == "evm_v2":
             cmd += ["--edges-evm-v2", arg]
         elif kind == "duckdb":

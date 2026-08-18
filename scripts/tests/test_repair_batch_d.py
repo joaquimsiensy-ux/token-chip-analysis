@@ -25,6 +25,7 @@ HERE = Path(__file__).resolve().parent
 REPO = HERE.parent.parent
 sys.path[:0] = [str(HERE), str(HERE.parent / "report"), str(HERE.parent / "lib"),
                 str(HERE.parent / "evm"), str(HERE.parent / "solana")]
+from sqd_v4_test_fixture import formal_cli_args
 
 FAILS: list[str] = []
 
@@ -335,12 +336,14 @@ def _flip_case(tmp: Path):
 
 
 def _run_trace(tmp: Path, *extra):
+    edge_path = tmp / "edges.jsonl.gz"
     proc = subprocess.run(
         [sys.executable, str(HERE.parent / "report/entity_source_trace.py"),
-         "--edges-sol", str(tmp / "edges.jsonl.gz"), "--total-supply", "1000000",
+         "--edges-sol", str(edge_path), "--total-supply", "1000000",
          "--entity-file", str(tmp / "entities.json"),
          "--labels-file", str(tmp / "labels.json"),
-         "--out", str(tmp / "provenance_ledger.json"), *extra],
+         "--out", str(tmp / "provenance_ledger.json"),
+         *formal_cli_args(edge_path), *extra],
         capture_output=True, text=True, cwd=tmp)
     ledger = None
     if (tmp / "provenance_ledger.json").is_file():
@@ -1067,6 +1070,11 @@ def build_solana_case(root: Path):
     with gzip.open(edge_path, "wt", encoding="utf-8") as fh:
         for row in edges:
             fh.write(json.dumps(row, ensure_ascii=False) + "\n")
+    logical = hashlib.sha256()
+    for row in edges:
+        logical.update(
+            (json.dumps(row, ensure_ascii=False) + "\n").encode("utf-8")
+        )
     collector_hashes = historical_producer_hashes(
         "scripts/solana/fetch_sqd_transfers_v2.py", "sqd-solana-cache/v4")
     assert len(collector_hashes) == 1, collector_hashes
@@ -1078,6 +1086,7 @@ def build_solana_case(root: Path):
         "edge_semantics": "owner-net-greedy",
         "order_granularity": "transaction", "order_exact": False,
         "from_slot": SOL_SLOT - 1, "finalized_upper_slot": SOL_SLOT,
+        "edge_logical_sha256": logical.hexdigest(), "edge_rows": len(edges),
     })
     owners_ref = {"path": owners_path.name, "size": owners_path.stat().st_size,
                   "sha256": sha_file(owners_path)}

@@ -29,7 +29,9 @@ dormant_warehouse_audit.json 以 universe_ref{path,sha256} 绑定本报告做集
 的日子；原始 first_in 保留为审计字段。
 
 输入三选一：
-  --edges-sol "data/soltx-*.jsonl.gz"   Solana v4 7 元组行；旧 5 元组须显式 --legacy-sol5
+  --edges-sol "data/soltx-*.jsonl.gz"   Solana v4 7 元组行；正式路径同时强制
+                                        --sol-cache-meta 与 --mint 做采集身份对表；
+                                        旧 5 元组须显式 --legacy-sol5
   --edges-evm-v2 data/v2                EVM v2 采集目录（run_*/logs.parquet+blocks.parquet；
                                         hex→HUGEINT 两段组合，高 32 hex 非零硬退 exit 2）
   --duckdb path [--edges-table edges]   已物化工作库（表含 f,t,ts,amt 四列）
@@ -68,6 +70,7 @@ from wave_contract import (ORDER_GRANULARITY_INSTRUCTION,
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "solana"))
 from spl_edge_core import (EDGE_SCHEMA_FIELDS, INSTR_INDEX_TX_NET,
                            ORDER_GRANULARITY_TX)
+from sqd_cache_identity import validate_cache_meta
 
 Z = "0x0000000000000000000000000000000000000000"
 DEAD = "0x000000000000000000000000000000000000dead"
@@ -98,16 +101,31 @@ def _nonnegative_int(value):
     return isinstance(value, int) and not isinstance(value, bool) and value >= 0
 
 
-def load_sol(con, pattern, *, legacy_sol5=False):
+def load_sol(con, pattern, *, legacy_sol5=False, cache_meta_path=None,
+             expected_mint=None):
     files = sorted(glob.glob(pattern))
     if not files:
         log(f"探测失败：--edges-sol 无匹配文件: {pattern}")
         sys.exit(2)
+    cache_meta = None
+    if not legacy_sol5:
+        if not cache_meta_path or not expected_mint:
+            log("探测失败：正式 --edges-sol 必须提供 --sol-cache-meta 与 --mint，"
+                "并通过 v4 meta/ACTIVE collector 身份对表")
+            sys.exit(2)
+        try:
+            with open(cache_meta_path, encoding="utf-8") as fh:
+                cache_meta = json.load(fh)
+            validate_cache_meta(cache_meta, expected_mint, legacy_sol5=False)
+        except (OSError, ValueError, TypeError, json.JSONDecodeError) as exc:
+            log(f"探测失败：Solana v4 meta/collector 身份无效: {exc}")
+            sys.exit(2)
     con.execute("""CREATE TABLE edges (
         ts BIGINT, f VARCHAR, t VARCHAR, amt HUGEINT,
         chain_pos1 BIGINT, chain_pos2 BIGINT, chain_pos3 BIGINT,
         order_exact BOOLEAN, ingest_seq BIGINT)""")
     total = 0
+    logical = hashlib.sha256()
     for fp in files:
         rows = []
         opener = gzip.open if fp.endswith(".gz") else open
@@ -153,6 +171,9 @@ def load_sol(con, pattern, *, legacy_sol5=False):
                     rows.append((ts, owner_from, owner_to, amount,
                                  slot, tx_index, instr_index,
                                  instr_index >= 0, seq))
+                    logical.update(
+                        (json.dumps(list(r), ensure_ascii=False) + "\n").encode("utf-8")
+                    )
                 if len(rows) >= 200_000:
                     con.executemany("INSERT INTO edges VALUES (?,?,?,?,?,?,?,?,?)", rows)
                     total += len(rows)
@@ -164,7 +185,13 @@ def load_sol(con, pattern, *, legacy_sol5=False):
     if not total:
         log("探测失败：边表为空")
         sys.exit(2)
-    return total
+    if cache_meta is not None and (
+        cache_meta["edge_rows"] != total
+        or cache_meta["edge_logical_sha256"] != logical.hexdigest()
+    ):
+        log("探测失败：Solana v4 meta 的 edge_rows/edge_logical_sha256 与实际边文件不一致")
+        sys.exit(2)
+    return total, cache_meta is not None
 
 
 def load_evm_v2(con, dir_):
@@ -577,6 +604,9 @@ def main():
     ap.add_argument("--edges-table", default="edges", help="--duckdb 模式的边表名（需 f,t,ts,amt 列）")
     ap.add_argument("--legacy-sol5", action="store_true",
                     help="显式读取旧 5 元组；输出强制 non-formal/order-ambiguous")
+    ap.add_argument("--sol-cache-meta",
+                    help="正式 --edges-sol 对应的 sqd-solana-cache/v4 meta")
+    ap.add_argument("--mint", help="正式 --edges-sol 的预期 Solana mint（与 meta 对表）")
     ap.add_argument("--total-supply", required=True, help="总供应 raw（分母冻结值）")
     ap.add_argument("--decimals", type=int, default=None, help="仅用于展示换算")
     ap.add_argument("--out", default="wave_scan_report.json")
@@ -634,7 +664,9 @@ def main():
     con.execute("SET preserve_insertion_order=false")
     t0 = datetime.now(timezone.utc)
     if a.edges_sol:
-        n_edges = load_sol(con, a.edges_sol, legacy_sol5=a.legacy_sol5)
+        n_edges, sol_formal = load_sol(
+            con, a.edges_sol, legacy_sol5=a.legacy_sol5,
+            cache_meta_path=a.sol_cache_meta, expected_mint=a.mint)
     elif a.edges_evm_v2:
         n_edges = load_evm_v2(con, a.edges_evm_v2)
     else:
@@ -788,7 +820,7 @@ def main():
         "params": {k: v for k, v in vars(a).items() if k not in ("out",)},
         "edge_order_granularity": edge_order_granularity,
         "order_ambiguous": order_ambiguous,
-        "non_formal": bool(a.legacy_sol5),
+        "non_formal": (not sol_formal) if a.edges_sol else False,
         "total_supply_raw": str(total),
         "edges": n_edges,
         "scan_universe_count": len(members),

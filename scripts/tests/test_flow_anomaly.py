@@ -31,6 +31,8 @@ import subprocess
 import sys
 import tempfile
 
+from sqd_v4_test_fixture import formal_cli_args
+
 HERE = os.path.dirname(os.path.abspath(__file__))
 SCRIPT = os.path.join(HERE, "..", "report", "flow_anomaly_scan.py")
 FAILS = []
@@ -53,7 +55,8 @@ def run(edges, out, extra=None):
         for tx_index, (ts, frm, to, amt) in enumerate(edges):
             f.write(json.dumps([ts, 0, tx_index, -1, frm, to, amt]) + "\n")
     args = [sys.executable, SCRIPT, "--edges-sol", ep,
-            "--total-supply", str(TOTAL), "--out", out] + (extra or [])
+            "--total-supply", str(TOTAL), "--out", out] \
+        + formal_cli_args(ep) + (extra or [])
     return subprocess.run(args, capture_output=True, text=True)
 
 

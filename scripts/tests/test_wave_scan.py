@@ -25,6 +25,8 @@ import subprocess
 import sys
 import tempfile
 
+from sqd_v4_test_fixture import formal_cli_args
+
 HERE = os.path.dirname(os.path.abspath(__file__))
 SCRIPT = os.path.join(HERE, "..", "report", "wave_scan.py")
 FAILS = []
@@ -47,7 +49,8 @@ def run(edges, out, extra=None):
         for tx_index, (ts, frm, to, amt) in enumerate(edges):
             f.write(json.dumps([ts, 0, tx_index, -1, frm, to, amt]) + "\n")
     args = [sys.executable, SCRIPT, "--edges-sol", ep,
-            "--total-supply", str(TOTAL), "--out", out] + (extra or [])
+            "--total-supply", str(TOTAL), "--out", out] \
+        + formal_cli_args(ep) + (extra or [])
     return subprocess.run(args, capture_output=True, text=True)
 
 
@@ -219,7 +222,8 @@ def main():
     exact_out = os.path.join(d5, "exact-report.json")
     exact_ok = subprocess.run(
         [sys.executable, SCRIPT, "--edges-sol", exact_edge,
-         "--total-supply", str(TOTAL), "--out", exact_out],
+         "--total-supply", str(TOTAL), "--out", exact_out]
+        + formal_cli_args(exact_edge),
         capture_output=True, text=True)
     exact_report = json.load(open(exact_out)) if exact_ok.returncode == 0 else {}
     check("instr>=0 保持 instruction exact 语义",
@@ -232,7 +236,8 @@ def main():
         f.write(json.dumps([day(0), 1, "0", -1, Z, "BadOwner", 10 ** 9]) + "\n")
     bad_tx = subprocess.run(
         [sys.executable, SCRIPT, "--edges-sol", bad_tx_edge,
-         "--total-supply", str(TOTAL), "--out", os.path.join(d5, "bad.json")],
+         "--total-supply", str(TOTAL), "--out", os.path.join(d5, "bad.json")]
+        + formal_cli_args(bad_tx_edge),
         capture_output=True, text=True)
     check("tx_index 字符串受控 exit 2", bad_tx.returncode == 2
           and "字段类型非法" in (bad_tx.stdout + bad_tx.stderr))

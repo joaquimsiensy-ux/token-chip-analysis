@@ -34,6 +34,9 @@ v4 与 v3 的差异（2026-08-18 SQD v4 消费端分立）：新增 `edge_order_
 `instr_index=-1`，所以 `edge_order_granularity="transaction"`、`order_ambiguous=true`、
 `non_formal=false`；未来真实指令级边才可报 `instruction/false/false`。显式
 `--legacy-sol5` 必须报 `legacy-slot/true/true`，handoff、裁决和发布链一律拒绝它。
+正式 `--edges-sol` 不以 7 列外形判身份：必须同时提供 `--sol-cache-meta` 与 `--mint`，共享
+校验器核对 v4 schema、mint、ACTIVE collector、逻辑摘要及行数；wave/flow/entity 三入口同闸，
+entity 的 meta/mint 还要进入 input binding 并由 freeze 原命令重放。
 
 ```
 {

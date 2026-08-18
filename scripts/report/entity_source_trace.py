@@ -50,7 +50,8 @@ fifo（先进先出，老币先耗）/lifo（后进先出，新币先耗）三�
 输入：--entity-file {entity_id:[addr…]}（强制 {str: 非空 str 数组}，成员跨实体重复即拒）；
 正式模式强制 --labels-file {addr:{"kind":"cex|dex_pool|facility|bridge|launch_alloc|airdrop|vesting",…}}；
 仅显式 --allow-no-labels 可作探索运行，ledger 标 exploration 且 freeze 必拒；
-边表三通道同 wave_scan（--edges-sol/--edges-evm-v2/--duckdb）。
+边表三通道同 wave_scan（--edges-sol/--edges-evm-v2/--duckdb）；正式
+--edges-sol 同时强制 --sol-cache-meta 与 --mint，且两者进入 input_binding/freeze 重放。
 输出：--out provenance_ledger.json。实体条目含 members_sha256；台账另记录原始边/标签/
 实体文件完整哈希、total supply、manifest run/cutoff/block/denominators、算法哈希与参数。
 freeze 不仅比对绑定，还以当前代码从当前原始边真实重放并比较语义摘要。
@@ -125,6 +126,8 @@ def source_binding(a, case_dir):
     if a.edges_sol:
         kind, argument = "sol", a.edges_sol
         files = sorted(glob.glob(a.edges_sol))
+        if a.sol_cache_meta:
+            files.append(a.sol_cache_meta)
     elif a.edges_evm_v2:
         kind, argument = "evm_v2", a.edges_evm_v2
         files = sorted(glob.glob(os.path.join(a.edges_evm_v2, "run_*", "logs.parquet")))
@@ -147,14 +150,21 @@ def source_binding(a, case_dir):
     trace_rec = full_file_record(__file__, case_dir)
     loader_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "wave_scan.py")
     loader_rec = full_file_record(loader_path, case_dir)
+    identity_path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                 "..", "solana", "sqd_cache_identity.py")
+    identity_rec = full_file_record(identity_path, case_dir)
     return {
         "mode": "exploration" if a.allow_no_labels else "formal",
         "algorithm": {"script_sha256": trace_rec["sha256"],
                       "files": {"entity_source_trace.py": trace_rec,
-                                "wave_scan.py": loader_rec},
+                                "wave_scan.py": loader_rec,
+                                "sqd_cache_identity.py": identity_rec},
                       "policies": list(POLICIES), "order_material_pct": ORDER_MATERIAL_PCT},
         "source": {"kind": kind, "argument": bound_path(argument, case_dir),
                    "edges_table": a.edges_table if kind == "duckdb" else None,
+                   "mint": a.mint if kind == "sol" else None,
+                   "cache_meta": (bound_path(a.sol_cache_meta, case_dir)
+                                  if kind == "sol" and a.sol_cache_meta else None),
                    "files": [full_file_record(p, case_dir) for p in files]},
         "entity_file": full_file_record(a.entity_file, case_dir),
         "labels_file": full_file_record(a.labels_file, case_dir) if a.labels_file else None,
@@ -662,6 +672,8 @@ def main():
     ap.add_argument("--edges-table", default="edges")
     ap.add_argument("--legacy-sol5", action="store_true",
                     help="保留显式诊断开关；本实体 provenance 正式链一律拒绝")
+    ap.add_argument("--sol-cache-meta")
+    ap.add_argument("--mint")
     ap.add_argument("--total-supply", required=True)
     ap.add_argument("--entity-file", required=True, help="{entity_id:[addr…]}")
     ap.add_argument("--labels-file", help="{addr:{kind,name}} 确证标签（cex/dex_pool/facility/bridge/…）")
@@ -730,7 +742,9 @@ def main():
     con.execute(f"SET memory_limit='{a.mem_limit}'")
     t0 = datetime.now(timezone.utc)
     if a.edges_sol:
-        n_edges = load_sol(con, a.edges_sol)
+        n_edges, _ = load_sol(
+            con, a.edges_sol, cache_meta_path=a.sol_cache_meta,
+            expected_mint=a.mint)
     elif a.edges_evm_v2:
         n_edges = load_evm_v2(con, a.edges_evm_v2)
     else:

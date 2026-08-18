@@ -35,6 +35,7 @@ from pathlib import Path
 from test_audit_release_gate import write_deep_recon_fixtures
 
 from formal_ready_test_harness import run_formal_script
+from sqd_v4_test_fixture import formal_cli_args, write_v4_meta
 from test_supply_truth_gate import TOKEN, write_evm_bundle
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -84,9 +85,14 @@ def make_case(d, chain="eth", token=TOKEN, as_of_block=999):
         {"path": "data/holders_owners.json", "sha256": snapshot_sha, "source": "test"}]})
     with open(os.path.join(d, "data", "transfers.csv"), "w") as f:
         f.write("a,b\n1,2\n")
-    with open(os.path.join(d, "data", "edges.jsonl"), "w") as f:
+    edge_path = os.path.join(d, "data", "edges.jsonl")
+    with open(edge_path, "w") as f:
         f.write(json.dumps([86400, 1, 0, 0, Z, "0xabc", 100]) + "\n")
         f.write(json.dumps([86400, 1, 1, 0, Z, "0xdef", 100]) + "\n")
+    edge_meta = write_v4_meta(edge_path)
+    data_map = json.load(open(os.path.join(d, "data_map.json")))
+    data_map["files"].append({"path": "data/" + edge_meta.name, "source": "test"})
+    write_json(d, "data_map.json", data_map)
     bundle_chain = chain if chain in {"eth", "bsc", "base"} else "eth"
     bundle_path = write_evm_bundle(
         Path(d), token=token, chain=bundle_chain, as_of=as_of_block,
@@ -222,10 +228,11 @@ def make_provenance(d, entity_map, schema="provenance-ledger/v2", stable=True,
     trace = os.path.join(HERE, "..", "report", "entity_source_trace.py")
     labels_path = os.path.join(d, "fixture_labels.json")
     write_json(d, "fixture_labels.json", {"0xfacility": {"kind": "facility", "name": "fixture"}})
-    p = subprocess.run([sys.executable, trace, "--edges-sol", os.path.join(d, "data", "edges.jsonl"),
+    edge_path = os.path.join(d, "data", "edges.jsonl")
+    p = subprocess.run([sys.executable, trace, "--edges-sol", edge_path,
                         "--total-supply", str(10 ** 12), "--entity-file", entity_path,
                         "--labels-file", labels_path, "--out", out,
-                        "--depth-limit", str(depth_limit)],
+                        "--depth-limit", str(depth_limit)] + formal_cli_args(edge_path),
                        capture_output=True, text=True)
     if p.returncode != 0:
         raise RuntimeError(f"fixture provenance 生成失败: {p.stdout}{p.stderr}")

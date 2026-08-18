@@ -26,6 +26,8 @@ import subprocess
 import sys
 import tempfile
 
+from sqd_v4_test_fixture import formal_cli_args
+
 HERE = os.path.dirname(os.path.abspath(__file__))
 SCRIPT = os.path.join(HERE, "..", "report", "entity_source_trace.py")
 FAILS = []
@@ -65,6 +67,8 @@ def run_trace(d, ep, entities, labels=None, extra=None):
     args = [sys.executable, SCRIPT, "--edges-sol", ep, "--total-supply", str(TOTAL),
             "--entity-file", os.path.join(d, "entities.json"),
             "--out", os.path.join(d, "ledger.json")]
+    if "--legacy-sol5" not in (extra or []):
+        args += formal_cli_args(ep)
     if labels is not None:
         with open(os.path.join(d, "labels.json"), "w") as f:
             json.dump(labels, f)
