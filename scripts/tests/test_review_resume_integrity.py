@@ -24,6 +24,7 @@ from fetch_hypersync_v2 import (MANIFEST_SCHEMA, QUERY_SCHEMA, SCRIPT_PATH,
 from channels_preflight import _csv_stats, _file_fingerprints, _v2_stats
 from fetch_sqd_transfers_v2 import cache_identity, cache_identity_matches, cache_paths
 from replay_edges import cmd_evolution, cmd_reconcile
+from producer_history import historical_producer_hashes
 from evm_channel_fixture import write_csv_channel_receipt
 
 ZERO_EVM = "0x" + "0" * 40
@@ -297,8 +298,13 @@ def test_h06(tmp):
             "closed": True, "supply_raw": "200",
             "outputs": {"holders_owners": owner_ref}}))
         cache_meta = Path(f"data/soltx-{edge_key}.meta.json")
+        collector_hashes = historical_producer_hashes(
+            "scripts/solana/fetch_sqd_transfers_v2.py", "sqd-solana-cache/v4")
+        assert len(collector_hashes) == 1, collector_hashes
         cache_meta.write_text(json.dumps({
             "schema": "sqd-solana-cache/v4", "version": 4, "mint": mint,
+            "collector": "fetch_sqd_transfers_v2.py/v4",
+            "collector_sha256": next(iter(collector_hashes)),
             "edge_schema": ["ts", "slot", "tx_index", "instr_index", "from", "to", "amt"],
             "edge_semantics": "owner-net-greedy",
             "order_granularity": "transaction", "order_exact": False,

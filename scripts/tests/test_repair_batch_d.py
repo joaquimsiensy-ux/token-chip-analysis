@@ -1057,6 +1057,7 @@ def build_solana_case(root: Path):
     # 批 2 F-09 之后 sol-rows 只认 replay_edges 真实生产的 reconcile/v3；
     # 夹具不得再手写 v2 收据绕过身份、窗口、输入与边摘要绑定。
     import replay_edges
+    from producer_history import historical_producer_hashes
     edge_key = hashlib.sha256(SOL_MINT.encode("utf-8")).hexdigest()
     edge_path = root / "data" / f"soltx-{edge_key}.jsonl.gz"
     edges = [
@@ -1066,8 +1067,13 @@ def build_solana_case(root: Path):
     with gzip.open(edge_path, "wt", encoding="utf-8") as fh:
         for row in edges:
             fh.write(json.dumps(row, ensure_ascii=False) + "\n")
+    collector_hashes = historical_producer_hashes(
+        "scripts/solana/fetch_sqd_transfers_v2.py", "sqd-solana-cache/v4")
+    assert len(collector_hashes) == 1, collector_hashes
     cache_meta = write_json(root / "data" / f"soltx-{edge_key}.meta.json", {
         "schema": "sqd-solana-cache/v4", "version": 4, "mint": SOL_MINT,
+        "collector": "fetch_sqd_transfers_v2.py/v4",
+        "collector_sha256": next(iter(collector_hashes)),
         "edge_schema": ["ts", "slot", "tx_index", "instr_index", "from", "to", "amt"],
         "edge_semantics": "owner-net-greedy",
         "order_granularity": "transaction", "order_exact": False,
