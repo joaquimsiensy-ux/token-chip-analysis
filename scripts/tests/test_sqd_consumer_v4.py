@@ -215,6 +215,55 @@ def test_reconcile_digest_matches_v4_meta() -> None:
     )
 
 
+def test_reconcile_binds_one_frozen_edge_image() -> None:
+    rows = [[100, 1, 0, -1, ZERO, MINT, 100]]
+    replacement = [[101, 1, 0, -1, ZERO, MINT, 100]]
+    edge_path, meta_path = _paths()
+    _write_edges(edge_path, rows)
+    frozen_bytes = edge_path.read_bytes()
+    meta_path.write_text(json.dumps(_v4_meta(rows)), encoding="utf-8")
+    Path("data/holders_owners.json").write_text(
+        json.dumps({MINT: 100}), encoding="utf-8"
+    )
+    owners = Path("data/holders_owners.json")
+    owners_ref = {
+        "path": owners.name,
+        "size": owners.stat().st_size,
+        "sha256": hashlib.sha256(owners.read_bytes()).hexdigest(),
+    }
+    Path("data/holders_snapshot_meta.json").write_text(json.dumps({
+        "schema": "solana-holder-snapshot-v2",
+        "mint": MINT,
+        "target": {"chain": "solana", "token": MINT, "as_of_block": 1},
+        "closed": True,
+        "supply_raw": "100",
+        "outputs": {"holders_owners": owners_ref},
+    }), encoding="utf-8")
+
+    original_replay = replay_edges._replay_with_evidence
+
+    def swap_after_replay(in_memory_edges):
+        evidence = original_replay(in_memory_edges)
+        _write_edges(edge_path, replacement)
+        return evidence
+
+    replay_edges._replay_with_evidence = swap_after_replay
+    try:
+        assert replay_edges.cmd_reconcile(
+            rows, 1, mint=MINT, cache_meta_path=meta_path
+        ) is True
+    finally:
+        replay_edges._replay_with_evidence = original_replay
+
+    published = json.loads(meta_path.read_text(encoding="utf-8"))
+    assert published["edge_file_sha256"] == hashlib.sha256(frozen_bytes).hexdigest(), (
+        "reconcile 的逻辑摘要与物理哈希来自两次独立读盘"
+    )
+    assert published["edge_file_sha256"] != hashlib.sha256(
+        edge_path.read_bytes()
+    ).hexdigest()
+
+
 def test_curve_cost_is_v4_only() -> None:
     rows = [[100, 1, 0, -1, MINT, OWNER, 25]]
     edge_path, meta_path = _paths()
@@ -265,6 +314,10 @@ def main() -> int:
                 if path.is_file():
                     path.unlink()
             test_reconcile_digest_matches_v4_meta()
+            for path in Path("data").iterdir():
+                if path.is_file():
+                    path.unlink()
+            test_reconcile_binds_one_frozen_edge_image()
             for path in Path("data").iterdir():
                 if path.is_file():
                     path.unlink()
