@@ -21,7 +21,7 @@ fixtures/pythia_anchors.json）：
   13. 金额边界负例：25 收方合计 1.975% <2% 不报
   14. 浓度反例：1 笔 1.99% 大额＋19 粉尘凑双线可命中，但浓度字段必须暴露
       （meaningful_recipient_count==1、top1_recipient_share_pct==1.99）
-  15. 零值转账不计收方数（25 条 amt=0 边不得凑数）
+  15. v4 producer 不产零值边；仅 5 个真实收方不得凑过收方线
   16. MidSpray 残余缝负例：50 收方匀速 100 天三口径全不中（覆盖真空边界锚定）
 用法：python3 scripts/tests/test_flow_anomaly.py   退出码 0=PASS / 1=FAIL
 """
@@ -50,8 +50,8 @@ def run(edges, out, extra=None):
     d = os.path.dirname(out)
     ep = os.path.join(d, "edges.jsonl")
     with open(ep, "w", encoding="utf-8") as f:
-        for ts, frm, to, amt in edges:
-            f.write(json.dumps([ts, 0, frm, to, amt]) + "\n")
+        for tx_index, (ts, frm, to, amt) in enumerate(edges):
+            f.write(json.dumps([ts, 0, tx_index, -1, frm, to, amt]) + "\n")
     args = [sys.executable, SCRIPT, "--edges-sol", ep,
             "--total-supply", str(TOTAL), "--out", out] + (extra or [])
     return subprocess.run(args, capture_output=True, text=True)
@@ -153,11 +153,9 @@ def main():
     for i in range(19):
         edges.append((day(560), "FakeSpray", f"DustR{i:02d}", 10 ** 6))
 
-    # 15. 零值转账不计收方：ZeroSpray=25 条 amt=0 边＋5 个真实收方各 4.2e9（2.1% 金额
-    #     达标但真实收方仅 5 <20、全史 5 <100）→ 不报（零值若被计数即伪命中 30 收方）
+    # 15. v4 producer 不产零值边：ZeroSpray 只有 5 个真实收方各 4.2e9（2.1% 金额
+    #     达标但真实收方仅 5 <20、全史 5 <100）→ 不报。
     edges.append((day(579), Z, "ZeroSpray", 3 * 10 ** 10))
-    for i in range(25):
-        edges.append((day(580), "ZeroSpray", f"ZR{i:02d}", 0))
     for i in range(5):
         edges.append((day(580), "ZeroSpray", f"ZReal{i}", 42 * 10 ** 8))
 
@@ -246,8 +244,8 @@ def main():
         check("FakeSpray 浓度暴露：meaningful=1、top1=2.0%",
               fs["best_window"]["meaningful_recipient_count"] == 1
               and fs["best_window"]["top1_recipient_share_pct"] == 2.0)
-    # ---- 15/16. 零值与残余缝 ----
-    check("ZeroSpray（25 条零值边）不报——零值不计收方", "ZeroSpray" not in sp)
+    # ---- 15/16. 正式 v4 边与残余缝 ----
+    check("ZeroSpray（仅 5 个真实收方）不报", "ZeroSpray" not in sp)
     check("MidSpray（50 收方匀速）不报——残余缝如实存在", "MidSpray" not in sp)
 
     # 6. 实体内部抵消：SinkA 与其 6 来源同实体 → 内部边不计 → SinkA 不再命中
@@ -277,6 +275,11 @@ def main():
         json.dump({"eA": ["SinkA"], "eB": ["SinkA"]}, f)
     p4 = run(edges, os.path.join(d, "r4.json"), ["--entity-file", ef3])
     check("同址跨实体名册冲突 exit 2", p4.returncode == 2)
+
+    p5 = run(edges, os.path.join(d, "r5.json"), ["--legacy-sol5"])
+    check("正式 anomaly 链显式拒绝 legacy-sol5",
+          p5.returncode == 2
+          and "正式 anomaly 链拒绝 legacy-sol5" in (p5.stdout + p5.stderr))
 
     return finish()
 

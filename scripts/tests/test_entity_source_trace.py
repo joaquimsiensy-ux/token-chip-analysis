@@ -51,7 +51,10 @@ def write_edges(d, edges, name="edges.jsonl", exact=True):
     ep = os.path.join(d, name)
     with open(ep, "w", encoding="utf-8") as f:
         for i, (ts, frm, to, amt) in enumerate(edges):
-            row = [ts, 0, i, 0, frm, to, amt] if exact else [ts, 0, frm, to, amt]
+            # transaction-net fixture 以同 ts 作为同交易身份，使多方交易进入同一未决桶；
+            # exact fixture 则每边独立 tx 且 instr=0。
+            row = ([ts, 0, i, 0, frm, to, amt] if exact
+                   else [ts, 0, ts, -1, frm, to, amt])
             f.write(json.dumps(row) + "\n")
     return ep
 
@@ -208,7 +211,8 @@ def main():
 
     # 13. high-1 反例：真实观察顺序是 X→实体，然后 DEX→X。旧拓扑排序会反向执行成
     # DEX→X→实体并把后到资金错归实体；且 FIFO/pro-rata/LIFO 仍可能同报 mint 为第一大，
-    # 因而旧 sensitivity 假稳定。5 元组只有 slot，没有 tx/instruction 序号，必须降级未决。
+    # 因而旧 sensitivity 假稳定。v4 transaction-net 的 instr=-1 只有交易身份、没有交易内
+    # instruction 顺序，必须降级未决。
     d13 = tempfile.mkdtemp(prefix="trace_order_ambiguous_")
     E13 = [(day(1), Z, "X13", 100), (day(1), Z, "DEX13", 1000),
            (day(2), "X13", "A13", 100), (day(2), "DEX13", "X13", 49)]
@@ -234,6 +238,13 @@ def main():
     check("精确同秒序按 tx/instruction 执行：实体来源 mint 100%",
           p.returncode == 0 and c13e.get(("PROVEN_ORIGIN", "mint")) == 100.0
           and ("BOUNDARY", "dex_pool") not in c13e)
+
+    p = run_trace(d13e, ep13e, {"e13": ["A13"]},
+                  labels={"DEX13": {"kind": "dex_pool"}},
+                  extra=["--legacy-sol5"])
+    check("正式 entity provenance 显式拒绝 legacy-sol5",
+          p.returncode == 2
+          and "正式 entity provenance 拒绝 legacy-sol5" in (p.stdout + p.stderr))
 
     return finish()
 
