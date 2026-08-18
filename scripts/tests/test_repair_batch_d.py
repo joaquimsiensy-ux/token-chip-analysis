@@ -164,6 +164,7 @@ def _fake_edges(path: Path, rows):
 def _run_closed_audit(tmp: Path, rpc_mock, argv_extra=()):
     import audit_closed_accounts as aca
     out = tmp / "audit.json"
+    out.unlink(missing_ok=True)
     argv = ["audit_closed_accounts.py", "MINTx", "--edges", str(tmp / "edges.jsonl.gz"),
             "--out", str(out), "--mode", "blocks", "--interval", "0",
             "--block-samples", "2", "--sample-inits", "2", "--deep-accounts", "2",
@@ -196,7 +197,24 @@ def t_gptf06_closed_audit():
     with tempfile.TemporaryDirectory(prefix="d-gptf06-", dir="/private/tmp") as raw:
         tmp = Path(raw)
         _fake_edges(tmp / "edges.jsonl.gz",
-                    [[1, 100, "OWN1", "OWN2", 5], [2, 200, "OWN2", "OWN3", 5]])
+                    [[1, 100, 0, -1, "OWN1", "OWN2", 5],
+                     [2, 200, 0, -1, "OWN2", "OWN3", 5]])
+
+        # ⓪ 原反例：坏行不得被逐行 except:continue 吞掉后继续审计。
+        import audit_closed_accounts as aca
+        bad_edges = tmp / "bad-edges.jsonl.gz"
+        with gzip.open(bad_edges, "wt") as fh:
+            fh.write(json.dumps([1, 100, 0, -1, "OWN1", "OWN2", 5]) + "\n")
+            fh.write("{bad-json\n")
+        try:
+            aca.load_edge_index(bad_edges)
+            bad_line_rejected = False
+            bad_line_detail = ""
+        except ValueError as exc:
+            bad_line_rejected = "第 2 行" in str(exc)
+            bad_line_detail = str(exc)
+        check("批3 T4 坏边行带行号整次失败（旧版静默 continue）",
+              bad_line_rejected, bad_line_detail)
 
         # ① getMultipleAccounts 批失败 → exit 1 INVALID_SAMPLE
         def rpc_gma_fail(self, method, params, retries=4):
@@ -239,6 +257,19 @@ def t_gptf06_closed_audit():
               rc == 0 and report["status"] == "NO_CLOSED_SAMPLED"
               and report["invalid_reasons"] == [],
               (rc, report.get("status"), report.get("invalid_reasons")))
+
+        _fake_edges(tmp / "edges.jsonl.gz",
+                    [[1, 100, "OWN1", "OWN2", 5], [2, 200, "OWN2", "OWN3", 5]])
+        rc, legacy_report = _run_closed_audit(
+            tmp, rpc_all_alive, argv_extra=("--legacy-sol5",))
+        check("批3 T4 legacy 报告强制 non-formal/order-ambiguous",
+              rc == 0 and legacy_report
+              and legacy_report.get("non_formal") is True
+              and legacy_report.get("order_ambiguous") is True,
+              (rc, legacy_report))
+        _fake_edges(tmp / "edges.jsonl.gz",
+                    [[1, 100, 0, -1, "OWN1", "OWN2", 5],
+                     [2, 200, 0, -1, "OWN2", "OWN3", 5]])
 
         # ④ 发现漏边 → exit 2 LEAK_FOUND
         def rpc_leak(self, method, params, retries=4):
