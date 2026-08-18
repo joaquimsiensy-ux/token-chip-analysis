@@ -267,7 +267,7 @@ def test_h04(tmp):
 
 def test_h05():
     assert cache_paths("AbC")[0] != cache_paths("aBc")[0]
-    meta = {**cache_identity("AbC", "ep"), "collection_upper_slot": 99}
+    meta = {**cache_identity("AbC", "ep"), "finalized_upper_slot": 99}
     assert cache_identity_matches(meta, "AbC", "ep")
     assert not cache_identity_matches(meta, "aBc", "ep")
     assert not cache_identity_matches({**meta, "endpoint": "other"}, "AbC", "ep")
