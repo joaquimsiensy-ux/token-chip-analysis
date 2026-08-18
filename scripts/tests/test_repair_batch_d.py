@@ -980,7 +980,9 @@ def build_solana_case(root: Path):
         "unresolved_count": 0, "unresolved_candidates": []})
     align_ledgers_to_owner_snapshot(root, owners_path)
     write_json(root / "wave_scan_report.json", {
-        "schema": "wave-scan/v3", "scan_universe_count": 1,
+        "schema": "wave-scan/v4", "edge_order_granularity": "transaction",
+        "order_ambiguous": True, "non_formal": False,
+        "scan_universe_count": 1,
         "scan_universe": [{"addr": "ownersol1", "peak_pct": 60.0,
                            "must_adjudicate": True, "must_reasons": ["peak_ge_0.1pct"]}]})
     write_json(root / "dormant_warehouse_audit.json", {
@@ -1058,15 +1060,18 @@ def build_solana_case(root: Path):
     edge_key = hashlib.sha256(SOL_MINT.encode("utf-8")).hexdigest()
     edge_path = root / "data" / f"soltx-{edge_key}.jsonl.gz"
     edges = [
-        [1767225600, SOL_SLOT - 1, replay_edges.ZERO, "ownersol1", 60],
-        [1767225601, SOL_SLOT, replay_edges.ZERO, "ownersol2", 40],
+        [1767225600, SOL_SLOT - 1, 0, -1, replay_edges.ZERO, "ownersol1", 60],
+        [1767225601, SOL_SLOT, 0, -1, replay_edges.ZERO, "ownersol2", 40],
     ]
     with gzip.open(edge_path, "wt", encoding="utf-8") as fh:
         for row in edges:
             fh.write(json.dumps(row, ensure_ascii=False) + "\n")
     cache_meta = write_json(root / "data" / f"soltx-{edge_key}.meta.json", {
-        "schema": "sqd-solana-cache/v3", "mint": SOL_MINT,
-        "from_slot": SOL_SLOT - 1, "collection_upper_slot": SOL_SLOT,
+        "schema": "sqd-solana-cache/v4", "version": 4, "mint": SOL_MINT,
+        "edge_schema": ["ts", "slot", "tx_index", "instr_index", "from", "to", "amt"],
+        "edge_semantics": "owner-net-greedy",
+        "order_granularity": "transaction", "order_exact": False,
+        "from_slot": SOL_SLOT - 1, "finalized_upper_slot": SOL_SLOT,
     })
     owners_ref = {"path": owners_path.name, "size": owners_path.stat().st_size,
                   "sha256": sha_file(owners_path)}
@@ -1235,18 +1240,22 @@ def t_fd2_unseal_binds_flip_receipt():
         manifest = write_json(root / "handoff_manifest.json", {"run_id": "x"})
         data_map = write_json(root / "data_map.json", {"files": []})
         receipt_digest, receipt_size = hm.full_sha256_file(str(receipt))
+        trace_path = HERE.parent / "report/entity_source_trace.py"
+        trace_digest, trace_size = hm.full_sha256_file(str(trace_path))
+        wave_path = HERE.parent / "report/wave_scan.py"
+        wave_digest, wave_size = hm.full_sha256_file(str(wave_path))
         ledger = write_json(root / "provenance_ledger.json", {
             "schema": "provenance-ledger/v2",
             "input_binding": {
                 "algorithm": {"files": {
                     "entity_source_trace.py": {
-                        "path": str(HERE.parent / "report/entity_source_trace.py"),
-                        "bytes": 42583,
-                        "sha256": "73f1cd6a8590eeecb2bddb18868f8d16b858dd4e913de508eb636e9a3763bcef"},
+                        "path": str(trace_path),
+                        "bytes": trace_size,
+                        "sha256": trace_digest},
                     "wave_scan.py": {
-                        "path": str(HERE.parent / "report/wave_scan.py"),
-                        "bytes": 40711,
-                        "sha256": "4d8f999406287c32258c9d834928b5b176ddb2c34b9461489d80550262f6638e"}}},
+                        "path": str(wave_path),
+                        "bytes": wave_size,
+                        "sha256": wave_digest}}},
                 "algorithm_params": {
                     "flip_adjudications": {"path": "flip_adjudications.json",
                                            "bytes": receipt_size,
@@ -1329,8 +1338,9 @@ def t_fd5_gptf06_two_missing_cells():
     with tempfile.TemporaryDirectory(prefix="d-fd5-", dir="/private/tmp") as raw:
         tmp = Path(raw)
         _fake_edges(tmp / "edges.jsonl.gz",
-                    [[1, 100, "OWN1", "OWN2", 5], [2, 150, "OWN1", "OWN3", 5],
-                     [3, 200, "OWN2", "OWN3", 5]])
+                    [[1, 100, 0, -1, "OWN1", "OWN2", 5],
+                     [2, 150, 0, -1, "OWN1", "OWN3", 5],
+                     [3, 200, 0, -1, "OWN2", "OWN3", 5]])
 
         # deep 全 fetch_failed：签名史直接失败（返回 None）
         def rpc_deep_fetch_fail(self, method, params, retries=4):

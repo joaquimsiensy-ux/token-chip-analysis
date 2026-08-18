@@ -279,7 +279,8 @@ def test_h06(tmp):
     try:
         Path("data").mkdir()
         mint = "MintCaseSensitive" + "1" * 15
-        edges = [[100, 1, ZERO_SOL, "A", 100], [3700, 2, ZERO_SOL, "B", 100]]
+        edges = [[100, 1, 0, -1, ZERO_SOL, "A", 100],
+                 [3700, 2, 0, -1, ZERO_SOL, "B", 100]]
         edge_key = hashlib.sha256(mint.encode("utf-8")).hexdigest()
         edge_path = Path(f"data/soltx-{edge_key}.jsonl.gz")
         with gzip.open(edge_path, "wt", encoding="utf-8") as fh:
@@ -297,8 +298,11 @@ def test_h06(tmp):
             "outputs": {"holders_owners": owner_ref}}))
         cache_meta = Path(f"data/soltx-{edge_key}.meta.json")
         cache_meta.write_text(json.dumps({
-            "schema": "sqd-solana-cache/v3", "mint": mint,
-            "from_slot": 1, "collection_upper_slot": 2}))
+            "schema": "sqd-solana-cache/v4", "version": 4, "mint": mint,
+            "edge_schema": ["ts", "slot", "tx_index", "instr_index", "from", "to", "amt"],
+            "edge_semantics": "owner-net-greedy",
+            "order_granularity": "transaction", "order_exact": False,
+            "from_slot": 1, "finalized_upper_slot": 2}))
         assert cmd_reconcile(edges, 1, mint=mint,
                              cache_meta_path=cache_meta)
         Path("data/holders_snapshot_meta.json").unlink()

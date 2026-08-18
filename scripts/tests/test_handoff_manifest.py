@@ -98,7 +98,10 @@ def make_case(d, chain="eth", token=TOKEN, as_of_block=999):
                                          "mint_total": str(total), "burn_total": "0",
                                          "decision_rule": "primary_form1",
                                          "total_supply_raw": str(total), "net_supply_raw": str(total)})
-    write_json(d, "wave_scan_report.json", {"schema": "wave-scan/v3", "scan_universe_count": 0,
+    write_json(d, "wave_scan_report.json", {"schema": "wave-scan/v4",
+                                            "edge_order_granularity": "transaction",
+                                            "order_ambiguous": True, "non_formal": False,
+                                            "scan_universe_count": 0,
                                             "scan_universe": [], "must_adjudicate_count": 0,
                                             "retention_buckets": {"cleared": 0, "partial_exit": 0, "retained": 0},
                                             "negative_balance_addrs": 0,
@@ -480,7 +483,10 @@ def main():
         d13 = os.path.join(root, "case_wavehollow")
         os.makedirs(d13)
         make_case(d13)
-        write_json(d13, "wave_scan_report.json", {"schema": "wave-scan/v3"})
+        write_json(d13, "wave_scan_report.json", {"schema": "wave-scan/v4",
+                                                   "edge_order_granularity": "transaction",
+                                                   "order_ambiguous": True,
+                                                   "non_formal": False})
         run(["generate", "--case-dir", d13, "--status", "READY"] + GEN)
         p = run(["verify", "--case-dir", d13])
         check("wave_scan_report 空壳 verify 拒收 exit 2", p.returncode == 2 and "wave_scan_report" in p.stdout)
@@ -503,7 +509,7 @@ def main():
         run(["generate", "--case-dir", d16, "--status", "READY"] + GEN)
         p = run(["verify", "--case-dir", d16])
         check("wave-scan/v1 旧版产物 verify 拒收 exit 2",
-              p.returncode == 2 and "旧版" in p.stdout and "v3" in p.stdout)
+              p.returncode == 2 and "旧版" in p.stdout and "v4" in p.stdout)
 
         # 16b. wave-scan/v2 旧版产物（缺 scan_universe 逐址全集）→ verify 同拒（6.9.2）
         d16b = os.path.join(root, "case_wavev2")
@@ -517,31 +523,35 @@ def main():
         check("wave-scan/v2 旧版产物 verify 拒收 exit 2",
               p.returncode == 2 and "旧版" in p.stdout and "scan_universe" in p.stdout)
 
-        # 16c. v3 标签但缺 scan_universe 逐址全集（6.9.3：贴标签不带货同属空壳）
+        # 16c. v4 标签但缺 scan_universe 逐址全集（6.9.3：贴标签不带货同属空壳）
         d16c = os.path.join(root, "case_wavev3hollow")
         os.makedirs(d16c)
         make_case(d16c)
-        write_json(d16c, "wave_scan_report.json", {"schema": "wave-scan/v3", "scan_universe_count": 3,
+        write_json(d16c, "wave_scan_report.json", {"schema": "wave-scan/v4",
+                                                   "edge_order_granularity": "transaction",
+                                                   "order_ambiguous": True, "non_formal": False,
+                                                   "scan_universe_count": 3,
                                                    "waves": [], "equal_amount_groups": [],
                                                    "requires_adjudication": False})
         run(["generate", "--case-dir", d16c, "--status", "READY"] + GEN)
         p = run(["verify", "--case-dir", d16c])
-        check("v3 标签缺 scan_universe 全集 verify 拒收 exit 2",
+        check("v4 标签缺 scan_universe 全集 verify 拒收 exit 2",
               p.returncode == 2 and "全集不完整" in p.stdout)
 
-        # 16d. v3 count 与逐条标记矛盾（6.9.4：count=0 配 must=true 自相矛盾拒收）
+        # 16d. v4 count 与逐条标记矛盾（6.9.4：count=0 配 must=true 自相矛盾拒收）
         d16d = os.path.join(root, "case_wavev3contra")
         os.makedirs(d16d)
         make_case(d16d)
         write_json(d16d, "wave_scan_report.json", {
-            "schema": "wave-scan/v3", "scan_universe_count": 1,
+            "schema": "wave-scan/v4", "edge_order_granularity": "transaction",
+            "order_ambiguous": True, "non_formal": False, "scan_universe_count": 1,
             "scan_universe": [{"addr": "DormantW", "must_adjudicate": True,
                                "must_reasons": ["dormant_ge_30d"]}],
             "must_adjudicate_count": 0,
             "waves": [], "equal_amount_groups": [], "requires_adjudication": False})
         run(["generate", "--case-dir", d16d, "--status", "READY"] + GEN)
         p = run(["verify", "--case-dir", d16d])
-        check("v3 count 与逐条 must 标记矛盾 verify 拒收 exit 2",
+        check("v4 count 与逐条 must 标记矛盾 verify 拒收 exit 2",
               p.returncode == 2 and "内部矛盾" in p.stdout)
 
         # 17. handoff/v1 旧 manifest：默认拒；--legacy-read-only 显式降级放行（只读警告）
