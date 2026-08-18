@@ -43,6 +43,7 @@ from case_paths import safe_case_file
 from shared_release_receipt import (validate_accounting_receipt,
                                     validate_evm_observation_source_chain,
                                     validate_reconciliation_report)
+from wave_contract import WAVE_SCHEMA, has_formal_wave_semantics
 
 SCHEMA_VERSION = "handoff/v3"
 # verify 端支持集；consumer_min_schema 不在集内即拒收。
@@ -396,11 +397,9 @@ def _verify_light_schema(case_dir, fails, manifest, legacy=False):
             fails.append(f"wave_scan_report.json 是旧版（{ws.get('schema')}）——v2 及更早缺 scan_universe "
                          "逐址全集，v3 又缺边顺序/legacy 标记，重跑 wave_scan.py（v4）后重 generate；"
                          "已冻结旧案走 verify --legacy-read-only")
-        elif ws.get("schema") != "wave-scan/v4":
+        elif ws.get("schema") != WAVE_SCHEMA:
             fails.append(f"wave_scan_report.json schema 异常: {ws.get('schema')}")
-        elif ws.get("non_formal") is not False \
-                or not isinstance(ws.get("order_ambiguous"), bool) \
-                or ws.get("edge_order_granularity") not in ("transaction", "instruction"):
+        elif not has_formal_wave_semantics(ws):
             fails.append("wave_scan_report.json v4 必须是 formal 且携带合法边顺序语义；"
                          "legacy-sol5 诊断产物不得进入 READY")
         elif not isinstance(ws.get("waves"), list) or not isinstance(ws.get("equal_amount_groups"), list) \

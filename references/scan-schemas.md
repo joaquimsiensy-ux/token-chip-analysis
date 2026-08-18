@@ -42,7 +42,7 @@ v4 与 v3 的差异（2026-08-18 SQD v4 消费端分立）：新增 `edge_order_
   "params": {…全部命令行参数…},
   "total_supply_raw": str,
   "edges": int,
-  "edge_order_granularity": "transaction|instruction|legacy-slot",
+  "edge_order_granularity": "transaction|instruction|log|source-defined|legacy-slot",
   "order_ambiguous": bool,
   "non_formal": bool,
   "scan_universe_count": int,          # 峰值≥门槛的地址总数（不做现仓过滤）

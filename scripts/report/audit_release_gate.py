@@ -22,6 +22,7 @@ from chain_registry import (formal_ready, known_chains_for_release,
                             resolve_alias, evm_family)
 from adversarial_review_runner import AGGREGATE_SCHEMA, V4_RERUN_HINT
 from case_paths import safe_case_file
+from wave_contract import has_formal_wave_semantics
 
 
 SHARED_REQUIRED = (
@@ -843,8 +844,7 @@ def check_dormant(case_dir: Path, d: dict, errors: list[str]):
         return
     wr = load_json(wp, errors)
     universe = wr.get("scan_universe")
-    if str(wr.get("schema")) != "wave-scan/v4" or wr.get("non_formal") is not False \
-            or not isinstance(universe, list):
+    if not has_formal_wave_semantics(wr) or not isinstance(universe, list):
         errors.append("wave_scan 报告缺 formal scan_universe 逐址全集（schema 须 wave-scan/v4，"
                       "旧 v2 产物只有计数无法对账——重跑 wave_scan）")
         return

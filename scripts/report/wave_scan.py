@@ -60,6 +60,11 @@ import os
 import sys
 from datetime import datetime, timezone
 
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "lib"))
+from wave_contract import (ORDER_GRANULARITY_INSTRUCTION,
+                           ORDER_GRANULARITY_LOG,
+                           ORDER_GRANULARITY_SOURCE_DEFINED)
+
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "solana"))
 from spl_edge_core import (EDGE_SCHEMA_FIELDS, INSTR_INDEX_TX_NET,
                            ORDER_GRANULARITY_TX)
@@ -641,11 +646,11 @@ def main():
     if a.edges_sol:
         edge_order_granularity = ("legacy-slot" if a.legacy_sol5
                                   else (ORDER_GRANULARITY_TX
-                                        if order_ambiguous else "instruction"))
+                                        if order_ambiguous else ORDER_GRANULARITY_INSTRUCTION))
     elif a.edges_evm_v2:
-        edge_order_granularity = "log"
+        edge_order_granularity = ORDER_GRANULARITY_LOG
     else:
-        edge_order_granularity = "source-defined"
+        edge_order_granularity = ORDER_GRANULARITY_SOURCE_DEFINED
 
     n_addr = build_addr_summary(con, exclude, a.first_meaningful_ratio)
     log(f"地址概要 {n_addr:,} 址（逐日末余额峰值口径＋抗 dust 首建日）")

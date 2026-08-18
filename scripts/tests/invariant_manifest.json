@@ -385,6 +385,12 @@
   },
   {
    "schemas": [
+    "wave-scan/v4"
+   ],
+   "script": "scripts/lib/wave_contract.py"
+  },
+  {
+   "schemas": [
     "a4-claims/v2",
     "a4-seal/v4"
    ],
@@ -405,8 +411,7 @@
     "candidate-adjudications/v1",
     "distribution-adjudications/v1",
     "flow-anomaly/v2",
-    "pattern-resolutions/v1",
-    "wave-scan/v4"
+    "pattern-resolutions/v1"
    ],
    "script": "scripts/report/adjudication_validator.py"
   },
@@ -461,8 +466,7 @@
     "provenance-ledger/v2",
     "wave-scan/v1",
     "wave-scan/v2",
-    "wave-scan/v3",
-    "wave-scan/v4"
+    "wave-scan/v3"
    ],
    "script": "scripts/report/handoff_manifest.py"
   },

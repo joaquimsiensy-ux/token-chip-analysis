@@ -45,6 +45,7 @@ from datetime import datetime, timezone
 _LIB = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "lib"))
 sys.path.insert(0, _LIB)
 from case_paths import safe_case_file
+from wave_contract import WAVE_SCHEMA, has_formal_wave_semantics
 
 SCHEMA = "candidate-adjudications/v1"
 DISTRIBUTION_SCHEMA = "distribution-adjudications/v1"
@@ -76,7 +77,6 @@ def file_sha(path):
     return h.hexdigest()
 
 
-WAVE_SCHEMA = "wave-scan/v4"
 FLOW_SCHEMA = "flow-anomaly/v2"
 SPRAY_MODES = ("pulse", "pulse_all", "slow_spray")
 
@@ -86,9 +86,7 @@ def check_source_schemas(wave, flow):
     fails = []
     if wave.get("schema") != WAVE_SCHEMA:
         fails.append(f"wave_scan_report schema 异常: {wave.get('schema')}（需要 {WAVE_SCHEMA}——旧版重跑 wave_scan.py v4）")
-    elif wave.get("non_formal") is not False \
-            or not isinstance(wave.get("order_ambiguous"), bool) \
-            or wave.get("edge_order_granularity") not in ("transaction", "instruction"):
+    elif not has_formal_wave_semantics(wave):
         fails.append("wave_scan_report v4 缺 formal 边顺序语义，legacy-sol5 诊断产物不得裁决")
     if flow.get("schema") != FLOW_SCHEMA:
         fails.append(f"flow_anomaly_report schema 异常: {flow.get('schema')}"
