@@ -673,6 +673,27 @@ def _atomic_gz(cache_fp, lines):
         raise
 
 
+def logical_edge_evidence(cache_fp):
+    """Recompute replay-compatible logical SHA-256 and row count from final gz."""
+    digest = hashlib.sha256()
+    rows = 0
+    with gzip.open(cache_fp, "rt", encoding="utf-8") as handle:
+        for line_no, line in enumerate(handle, 1):
+            if not line.strip():
+                continue
+            try:
+                edge = validate_edge_row(json.loads(line))
+            except (json.JSONDecodeError, TypeError, ValueError) as exc:
+                raise ValueError(
+                    f"invalid finalized v4 edge row at line {line_no}: {exc}") from exc
+            digest.update(
+                (json.dumps(list(edge), ensure_ascii=False) + "\n").encode("utf-8"))
+            rows += 1
+    if rows == 0:
+        raise ValueError("finalized v4 edge cache is empty")
+    return digest.hexdigest(), rows
+
+
 class MemMerger:
     """全内存收尾：按来源比较完整交易 digest，不按边内容 DISTINCT。"""
     mode = "inmem"
@@ -1194,6 +1215,10 @@ def run(mint, launch_ts, wall_min, conc, rps, base_url, key,
         final = merger.finalize()
         if not final["rows"]:
             return None, "SQD 拉取无数据（含缓存为空）"
+        edge_logical_sha256, edge_rows = logical_edge_evidence(cache_fp)
+        if edge_rows != final["rows"]:
+            raise RuntimeError(
+                f"finalized edge row count mismatch: merger={final['rows']} scan={edge_rows}")
         has_mint = final["has_mint"]
         covered = sorted(((a["s"], a["e"]) for a in meta["areas"] if a.get("done")),
                          key=lambda x: x[0])
@@ -1209,6 +1234,8 @@ def run(mint, launch_ts, wall_min, conc, rps, base_url, key,
                      "finalized_upper_slot": head,
                      "empty_ok": {"n": len(fx.empty_hits), "max": empty_max,
                                   "intervals": fx.empty_hits[:2000]},
+                     "edge_logical_sha256": edge_logical_sha256,
+                     "edge_rows": edge_rows,
                      "merge_mode": merger.mode,
                      "updated": time.strftime("%Y-%m-%d %H:%M")})
         persist_meta()
