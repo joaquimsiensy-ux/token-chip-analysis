@@ -5,7 +5,7 @@
         [--mint <mint>] [--exclude <迁移收币地址,可逗号分隔>] [--list-buyers n]
         [--vs0 30] [--vt0 1073000191] [--decimals 6]
 mint 来源：--mint / MINT 环境变量 / 工作目录 config.json 的 mint 字段。
-输入：data/soltx-<小写mint>.jsonl.gz（SQD 边）+ data/solusdt_1h.json（币安 SOLUSDT 小时K，
+输入：共享 sha256(mint) 路径的 SQD v4 7 元组边＋meta + data/solusdt_1h.json（币安 SOLUSDT 小时K，
       data-api.binance.vision/api/v3/klines 免 key 直连）
 输出：data/curve_costs.json {buyer: {tokens, sol_paid, n_buys, first_ts, last_ts}}
 
@@ -22,6 +22,10 @@ import argparse, gzip, json, os, sys
 from collections import defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
+
+from spl_edge_core import (EDGE_SCHEMA_FIELDS, EDGE_SEMANTICS,
+                           ORDER_GRANULARITY_TX, soltx_cache_paths,
+                           validate_edge_row)
 
 
 def resolve_mint(cli):
@@ -45,6 +49,42 @@ def sol_price_at(ts, sol_klines):
     return float(sol_klines[-1][4])
 
 
+def load_edges(mint, data_dir=Path("data")):
+    """Load the formal v4 transaction-net cache; legacy rows are not cost evidence."""
+    edge_path, meta_path, _parts_path = soltx_cache_paths(mint, data_dir)
+    if not meta_path.is_file():
+        raise ValueError(f"SQD v4 meta 不存在: {meta_path}")
+    try:
+        meta = json.loads(meta_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError, RecursionError) as exc:
+        raise ValueError(f"SQD v4 meta 非法: {exc}") from exc
+    upper = meta.get("finalized_upper_slot")
+    if (meta.get("schema") != "sqd-solana-cache/v4"
+            or meta.get("version") != 4 or meta.get("mint") != mint
+            or meta.get("edge_schema") != list(EDGE_SCHEMA_FIELDS)
+            or meta.get("edge_semantics") != EDGE_SEMANTICS
+            or meta.get("order_granularity") != ORDER_GRANULARITY_TX
+            or meta.get("order_exact") is not False
+            or not isinstance(upper, int) or isinstance(upper, bool) or upper < 0):
+        raise ValueError("curve_cost 正式链只接受绑定 mint 与 v4 边契约的 SQD meta")
+    if not edge_path.is_file() or edge_path.is_symlink():
+        raise ValueError(f"SQD v4 边文件缺失或为符号链接: {edge_path}")
+    rows = []
+    with gzip.open(edge_path, "rt", encoding="utf-8") as handle:
+        for line_no, line in enumerate(handle, 1):
+            if not line.strip():
+                continue
+            try:
+                row = json.loads(line)
+                rows.append(list(validate_edge_row(row)))
+            except (json.JSONDecodeError, TypeError, ValueError) as exc:
+                raise ValueError(f"SQD v4 边文件第 {line_no} 行非法: {exc}") from exc
+    if not rows:
+        raise ValueError("SQD v4 边文件为空")
+    rows.sort(key=lambda edge: (edge[1], edge[2], edge[4], edge[5], str(edge[6])))
+    return rows
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("curve_owner", help="内盘 bonding curve 的 owner 地址")
@@ -64,19 +104,18 @@ def main():
     exclude = set(filter(None, args.exclude.split(",")))
     ZERO = "0x" + "0" * 40
 
-    edges = []
-    with gzip.open(f"data/soltx-{mint.lower()}.jsonl.gz", "rt") as f:
-        for line in f:
-            if line.strip():
-                edges.append(json.loads(line))
-    edges.sort(key=lambda e: (e[1], e[0]))
+    try:
+        edges = load_edges(mint)
+    except (OSError, ValueError) as exc:
+        print(f"BLOCK: {exc}", file=sys.stderr)
+        return 2
     sol_k = json.load(open("data/solusdt_1h.json"))
 
     sold = 0.0  # curve 已净卖出（raw）
     buyers = defaultdict(lambda: {"tokens": 0.0, "sol_paid": 0.0, "n_buys": 0,
                                   "first_ts": None, "last_ts": None})
     total_out = total_in = skipped = 0.0
-    for ts, slot, src, dst, amt in edges:
+    for ts, slot, _tx_index, _instr_index, src, dst, amt in edges:
         if src == args.curve_owner and dst != ZERO:
             if dst in exclude:
                 skipped += amt
@@ -122,7 +161,8 @@ def main():
     for a, b in list(out.items())[:n]:
         ft = datetime.fromtimestamp(b["first_ts"], tz=timezone.utc).strftime("%m-%d %H:%M")
         print(f"{a}  买 {b['tokens']:>14,.0f} 枚  付 {b['sol_paid']:>8.3f} SOL  {b['n_buys']:>3}笔  首笔 {ft}")
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())
