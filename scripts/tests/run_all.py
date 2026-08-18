@@ -96,6 +96,9 @@ SUITE += ['test_repair_batch_d.py']
 # v6.41.0 批1 步骤1 RV-07：真 FAIL 收据显式归档旧 PASS 后成为 canonical。
 SUITE += ['test_repair_batch1.py']
 
+# SQD Solana v4 批6：opus 攻击型盲审点名的 producer→formal gate 交叉回归。
+SUITE += ['test_batch6_sqd_v4_blind_review.py']
+
 # v6.42.0 批2 工单 B：F-02 对抗复核 v3 结构与绑定闭环。
 SUITE += ['test_repair_batch2_f02.py']
 
