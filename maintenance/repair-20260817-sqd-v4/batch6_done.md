@@ -260,3 +260,59 @@ source_unchanged_after=true
 - 本仓库源树没有 skill 指令所述 `sync-from-cc.sh` 或 `SYNC.md`，因此没有可执行的同步步骤；未伪造同步成功。
 - `batch6_done.md` 为本批最后交付物；其提交完成后停止，等待 opus 二次攻击型盲审。
 - 不 merge，不 push。
+
+## 10. F-08 补丁
+
+### 10.1 复核与红态 — CONFIRMED
+
+在修复前的批 6 完成提交 `87c95e7` 上，以项目当前 Python 解释器运行、同时把 PATH 收窄到
+`/usr/bin:/bin`：
+
+```text
+env PATH=/usr/bin:/bin /usr/local/bin/python3 scripts/tests/test_batch6_sqd_v4_blind_review.py
+FileNotFoundError: [Errno 2] No such file or directory: 'rg'
+```
+
+失败精确落在 F-06 用例的 `subprocess.run(["rg", ...])`，因此是测试环境外部二进制依赖造成的
+假失败，不是生产契约回归。该天然红态没有用 skip、`shutil.which` 或异常吞掉来降级。
+
+### 10.2 修法与扫描器自证
+
+提交 `42d3879` 把 F-06 用例改成纯 Python `re` 逐行扫描，等价实现本用例需要的 `rg -n`
+语义。扫描器先对一个已知 tuple-constructor 命中样例和一个已知不命中样例断言，再扫描真实
+`fetch_sqd_transfers_v2.py`：旧正则零命中，修正正则命中
+`edges.append((ts, slot, f, t, amt))`。因此不是恒真、恒假或跳过式假覆盖。
+
+### 10.3 批 6 测试外部命令排查
+
+以批 6 工单提交 `e78ade0` 为起点，机器枚举截至 `42d3879` 的全部 `scripts/tests` 新增/改动文件，
+检查新增 `subprocess` 调用与 `rg/fd/jq/wget/curl/git/bash/zsh/fish` 字面量：
+
+- 修复前唯一新增的非 Python 可执行程序是本用例两次 `rg`；修复后为零；
+- 其余批 6 新增子进程均以 `sys.executable` 启动仓内 Python；
+- `test_repair_batch_d.py` 中出现的 `"kind": "curl"` 是收据夹具数据字段，不是子进程命令；
+- 没有新增 skip 分支。无 `rg` PATH 下完整 SUITE 进一步覆盖了实际执行路径。
+
+### 10.4 无 rg 环境验收
+
+定向用例：
+
+```text
+env PATH=/usr/bin:/bin /usr/local/bin/python3 scripts/tests/test_batch6_sqd_v4_blind_review.py
+PASS: 批6 opus 盲审防回归
+exit 0
+```
+
+全量 SUITE 首轮在受限沙箱中为 119 PASS + 2 FAIL；两项仍是既有
+`test_batch3_solana_vertical_slice.py` / `test_batch3_evm_vertical_slice.py` 在
+`ThreadingHTTPServer(("127.0.0.1", 0))` 的 `PermissionError: [Errno 1]`，批 6 用例已 PASS。
+允许 loopback 后，在相同无 `rg` PATH 下完整重跑原命令：
+
+```text
+env PATH=/usr/bin:/bin /usr/local/bin/python3 scripts/tests/run_all.py
+121/121 PASS
+全部通过
+exit 0
+```
+
+工作区未把 `rg` 加回 PATH；没有用单测补跑替代完整 SUITE。
