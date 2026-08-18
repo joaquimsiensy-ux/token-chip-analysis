@@ -162,9 +162,45 @@ def test_f02_missing_logical_evidence_is_not_backfilled() -> None:
             os.chdir(old)
 
 
+def test_f03_padded_legacy_edges_cannot_claim_formal() -> None:
+    with tempfile.TemporaryDirectory(prefix="batch6-f03-", dir="/private/tmp") as raw:
+        root = Path(raw)
+        edge_path = root / "padded-legacy.jsonl"
+        padded = [
+            0,
+            1,
+            0,
+            -1,
+            "0x0000000000000000000000000000000000000000",
+            "LegacyOwner",
+            100,
+        ]
+        edge_path.write_text(json.dumps(padded) + "\n", encoding="utf-8")
+        out = root / "wave.json"
+        result = subprocess.run(
+            [
+                sys.executable,
+                str(WAVE),
+                "--edges-sol",
+                str(edge_path),
+                "--total-supply",
+                "100",
+                "--out",
+                str(out),
+            ],
+            capture_output=True,
+            text=True,
+        )
+        combined = result.stdout + result.stderr
+        assert result.returncode == 2, combined
+        assert "v4 meta" in combined and "collector" in combined, combined
+        assert not out.exists()
+
+
 def main() -> int:
     test_f01_real_duckdb_wave_reaches_formal_gates()
     test_f02_missing_logical_evidence_is_not_backfilled()
+    test_f03_padded_legacy_edges_cannot_claim_formal()
     print("PASS: 批6 opus 盲审防回归")
     return 0
 
