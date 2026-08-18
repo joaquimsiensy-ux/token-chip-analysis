@@ -17,6 +17,7 @@ ADJUDICATION = ROOT / "scripts/report/adjudication_validator.py"
 
 sys.path.insert(0, str(HERE))
 import test_handoff_manifest as handoff_fixture  # noqa: E402
+import test_audit_release_gate as release_fixture  # noqa: E402
 import test_sqd_consumer_v4 as sqd_fixture  # noqa: E402
 
 
@@ -197,10 +198,29 @@ def test_f03_padded_legacy_edges_cannot_claim_formal() -> None:
         assert not out.exists()
 
 
+def test_f04_non_formal_dormant_report_is_release_blocked() -> None:
+    with tempfile.TemporaryDirectory(prefix="batch6-f04-", dir="/private/tmp") as raw:
+        root = Path(raw)
+        report = release_fixture.build_case(root, historical=False)
+        baseline = release_fixture.gate.run(root, report)
+        assert baseline == [], baseline
+
+        dormant_path = root / "dormant_warehouse_audit.json"
+        dormant = json.loads(dormant_path.read_text(encoding="utf-8"))
+        dormant["non_formal"] = True
+        dormant["order_ambiguous"] = True
+        release_fixture.write_json(root, dormant_path.name, dormant)
+
+        errors = release_fixture.gate.run(root, report)
+        assert any("静置仓审计" in error and "non_formal" in error for error in errors), errors
+        assert any("静置仓审计" in error and "order_ambiguous" in error for error in errors), errors
+
+
 def main() -> int:
     test_f01_real_duckdb_wave_reaches_formal_gates()
     test_f02_missing_logical_evidence_is_not_backfilled()
     test_f03_padded_legacy_edges_cannot_claim_formal()
+    test_f04_non_formal_dormant_report_is_release_blocked()
     print("PASS: 批6 opus 盲审防回归")
     return 0
 
