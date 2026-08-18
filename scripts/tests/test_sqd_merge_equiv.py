@@ -326,7 +326,7 @@ def main():
     ok &= c4_atomic()
     ok &= c5_empty_ok()
     ok &= c6_scan_area()
-    print('PASS: fetch_sqd_transfers_v2 六条契约全过' if ok else 'FAIL: 见上')
+    print('PASS: fetch_sqd_transfers_v2 v4 七组契约全过' if ok else 'FAIL: 见上')
     return 0 if ok else 1
 
 

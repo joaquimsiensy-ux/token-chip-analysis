@@ -1,11 +1,10 @@
 """SQD 定向窗口拉取:小段(2000 slot)+并发,专攻高密度期(发射窗/事件日)。
 
 用法: python3 window_fetch.py <from_slot> <to_slot> <out.jsonl> --receipt <receipt.json> [--conc 8]
-输出: 每行 [ts, slot, from_owner, to_owner, amount_raw](与 fetch_sqd_transfers_v2.py 边格式兼容)
+输出: 每行 [ts, slot, tx_index, -1, from_owner, to_owner, amount_raw]
      失败段写入 <out>.gaps.json；gaps 非空只留 <out>.partial 并 exit 2。
 """
 import argparse, json, os, sys, time
-from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from pathlib import Path
@@ -16,12 +15,15 @@ import net
 from receipt_kernel import (RawBytes, assert_distinct_paths, build_envelope,
                             finalize_envelope, publish_error_receipt, publish_exclusive,
                             publish_overwrite, publish_supersede, publish_txn)
-from spl_edge_core import ZERO_OWNER as ZERO, pair_tx, parse_owner_delta
+from spl_edge_core import (EDGE_SCHEMA_FIELDS, EDGE_SEMANTICS,
+                           INSTR_INDEX_TX_NET, ORDER_GRANULARITY_TX,
+                           ZERO_OWNER as ZERO, owner_deltas_by_tx, pair_tx,
+                           transaction_status_by_index, validate_tx_index)
 
 SQD = "https://portal.sqd.dev/datasets/solana-mainnet/stream"
 MINT = json.loads(Path("config.json").read_text())["mint"]
 CHUNK = 2000
-SCHEMA = "solana-window-fetch-receipt/v2"
+SCHEMA = "solana-window-fetch-receipt/v3"
 SCHEMA_FAMILY = "solana-window-fetch-receipt/"
 
 
@@ -32,8 +34,10 @@ def scan_seg(frm, to, endpoint=SQD):
         body = {"type": "solana", "fromBlock": cur, "toBlock": to,
                 "fields": {"block": {"number": True, "timestamp": True},
                            "transaction": {"transactionIndex": True, "err": True},
-                           "tokenBalance": {"transactionIndex": True, "preOwner": True,
-                                            "postOwner": True, "preAmount": True, "postAmount": True}},
+                           "tokenBalance": {"transactionIndex": True, "account": True,
+                                            "preMint": True, "postMint": True,
+                                            "preOwner": True, "postOwner": True,
+                                            "preAmount": True, "postAmount": True}},
                 "tokenBalances": [{"postMint": [MINT], "transaction": True},
                                   {"preMint": [MINT], "transaction": True}]}
         result = net.curl_json(endpoint, post_json=body, timeout=60, attempts=1)
@@ -71,19 +75,20 @@ def scan_seg(frm, to, endpoint=SQD):
             tbs = b.get("tokenBalances") or []
             if not tbs:
                 continue
-            errmap = {tx.get("transactionIndex"): tx.get("err") for tx in b.get("transactions") or []}
-            by_tx = defaultdict(dict)
+            errmap = transaction_status_by_index(b.get("transactions") or [])
+            successful = []
             for r in tbs:
-                ti = r.get("transactionIndex")
-                if errmap.get(ti) is not None:
-                    continue
-                parsed = parse_owner_delta(r)
-                if parsed is not None:
-                    parsed_ti, owner, dlt = parsed
-                    by_tx[parsed_ti][owner] = by_tx[parsed_ti].get(owner, 0) + dlt
+                if not isinstance(r, dict):
+                    raise TypeError("tokenBalance record must be an object")
+                ti = validate_tx_index(r.get("transactionIndex"))
+                if ti not in errmap:
+                    raise ValueError(f"tokenBalance tx_index={ti} has no transaction status")
+                if errmap[ti] is None:
+                    successful.append(r)
+            by_tx = owner_deltas_by_tx(successful, MINT)
             for ti, delta in by_tx.items():
                 for f, t, amt in pair_tx(delta):
-                    page_edges.append((ts, number, f, t, amt))
+                    page_edges.append((ts, number, ti, INSTR_INDEX_TX_NET, f, t, amt))
         if not page_valid or last is None:
             fails += 1
             if fails > 5:
@@ -237,6 +242,12 @@ def main(argv=None):
             coverage={"completed_segments": len(segs) - len(gaps),
                       "gap_segments": len(gaps), "gaps": gaps},
             output=published,
+            edge_contract={"schema": list(EDGE_SCHEMA_FIELDS),
+                           "semantics": EDGE_SEMANTICS,
+                           "order_granularity": ORDER_GRANULARITY_TX,
+                           "order_exact": False,
+                           "instr_index": INSTR_INDEX_TX_NET,
+                           "supply_delta_source": "tokenBalances-owner-net"},
             timestamps={"segments": sorted(segment_timestamps,
                                             key=lambda item: item["from_slot"])})
         if gaps:

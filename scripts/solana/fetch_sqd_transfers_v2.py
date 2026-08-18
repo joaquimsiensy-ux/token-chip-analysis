@@ -12,10 +12,11 @@
 用法（cd 到工作目录跑，缓存写入 ./data/）：
   python3 fetch_sqd_transfers_v2.py <mint> [--launch-ts <unix秒>] [--wall-min 100]
       [--conc 6] [--rps 1.6] [--url <端点>] [--key-file ~/.config/sqd/api-key]
-      [--hypersync] [--hs-conc 2] [--hs-rps 4] [--hs-token-file ~/.config/hypersync/token]
-输出（现役 v3 缓存格式）：
-  data/soltx-<sha256(原始mint)>.jsonl.gz   每行 [ts, slot, from_owner, to_owner, amount_raw]
-  data/soltx-<sha256>.meta.json  绑定原始 mint/endpoint/采集上界的 v3 元数据
+      [--hypersync  # v4 下硬拒 exit 2]
+输出（现役 v4 缓存格式）：
+  data/soltx-<sha256(原始mint)>.jsonl.gz
+    每行 [ts, slot, tx_index, -1, from_owner, to_owner, amount_raw]
+  data/soltx-<sha256>.meta.json  绑定 mint/endpoint/采集器哈希/finalized 上界的 v4 元数据
   data/soltx-<sha256>.parts/     区域分片工作目录（合并成功后自动清空）
 
 要点：
@@ -35,24 +36,8 @@
      下次启动触发"重新全量"。现改为规模超限（MERGE_INMEM_MAX_ROWS）自动降级 DuckDB 磁盘
      外排，且两条路径一律"临时文件写完再原子 rename"——中途死也不会留下半截 gz。
 
-HyperSync 第二引擎（--hypersync，默认关）：
-⚠⚠ 完备性验收不通过（2026-07-22 BONK 三区实测）——**禁止用于正式采集，仅限吞吐实验/对照**：
-  - 历史区持久缺行且越老越糟：head-450万 段缺 3.6%、head-1450万 段缺 22%（成功交易的
-    真实转账行，Helius getTransaction 链上终审证实为 HS 缺失而非 SQD 幽灵行）
-  - 近端 head-13~33万 带存在乱序回填暂态洞（静默返回空+next_slot 照常推进，客户端无法
-    从响应区分洞与真空窗；实测吞掉 81 条边后大部回填、洞头 18 slot 残留）
-  - 仅摄取前沿附近（观测点 head-18万）逐行等于 SQD（含失败 tx/关户行/owner 语义全对齐），
-    但"甜蜜区"边界不可探测且随回填漂移
-机制说明（整合已完成，等 HyperSync GA 后重验收即可启用）：
-- 端点 solana.hypersync.xyz（付费 key 按请求计费，量级忽略不计）；开跑前先探可用窗口：
-  ① floor：from_slot=1 的 mint 过滤查询，首批行最小 slot（无行取 next_slot，保证 ≥ 真实窗起点）
-  ② ceiling：token_balances 索引前沿滞后 /height 十几万 slot——空过滤器探针从 HS 链头
-    几何回退找前沿，再减安全边距；探不出则退 head-60万 保守值
-- ⚠ 窗外查询服务端**静默快进 next_slot 不报错**——绝不能靠"失败回落"兜底窗口边界，
-  必须先探窗、窗外段全部派给 SQD
-- 分段：窗内空洞按条带在两引擎交替分配（各采各段），HS 段失败自动回落 SQD 补采；
-  SQD worker 在 HS 全忙时可接管 HS 未领段（带礼让条件防抢跑饿死；反向不行——HS 有窗口限制）
-- 两引擎输出行格式/落盘/gaps 语义完全一致；失败交易两边同样剔除（HS 按 success 字段）
+HyperSync 通道已硬禁：历史实测存在持久缺行和静默前移；v4 的 CLI `--hypersync` 与直接
+`run(hs_cfg=...)` 均在首个业务请求前 exit 2，不签发缓存或 meta。
 """
 import argparse, gzip, hashlib, json, os, shutil, sys, threading, time
 from collections import defaultdict
@@ -71,7 +56,7 @@ from spl_edge_core import (EDGE_SCHEMA_FIELDS, EDGE_SEMANTICS,
                            ZERO_OWNER as ZERO, dedupe_transaction_sources,
                            edge_sort_key, owner_deltas_by_tx, pair_tx,
                            soltx_cache_paths, transaction_status_by_index,
-                           validate_tx_index)
+                           validate_edge_row, validate_tx_index)
 
 try:
     import requests
@@ -315,8 +300,7 @@ def _hs_flat(v):
 
 
 class HyperSyncFetcher:
-    """HyperSync Solana 第二引擎——与 Fetcher(SQD) 同构接口：scan_area(frm, to, deadline)
-    → (edges, done_to, finished)，edges 行格式与 SQD 路径逐字段一致 [ts, slot, from, to, amt]。
+    """历史实验实现，仅保留考证；v4 CLI 与 run() 均在实例化前硬拒。
 
     schema 实测事实（2026-07-22 探测定案）：
     - 查询体 from_slot / to_slot(exclusive)，token_balances 过滤器 mint 键（文档未载、实测有效）
@@ -569,6 +553,49 @@ def normalize_cache_identity(meta, mint, endpoint, frozen_collector_sha256=None)
 def cache_identity_matches(meta, mint, endpoint, frozen_collector_sha256=None):
     return normalize_cache_identity(
         meta, mint, endpoint, frozen_collector_sha256) is not None
+
+
+def _cache_upgrade_required(detail):
+    log("[fail-closed] " + detail
+        + "；格式升级需全量重采，旧缓存请改名归档")
+    raise SystemExit(2)
+
+
+def preflight_v4_cache(cache_fp, meta_fp, parts_dir, mint, endpoint,
+                       frozen_collector_sha256):
+    """Reject every legacy/orphan cache shape before network or parts mutation."""
+    part_files = sorted(parts_dir.glob("*.jsonl")) if parts_dir.exists() else []
+    if meta_fp.exists():
+        try:
+            raw_meta = json.loads(meta_fp.read_text())
+        except Exception as exc:
+            _cache_upgrade_required(f"SQD cache meta 无法解析: {exc}")
+        if (raw_meta.get("schema") != CACHE_SCHEMA
+                or raw_meta.get("version") != CACHE_VERSION):
+            _cache_upgrade_required(
+                f"检测到旧 SQD cache meta {raw_meta.get('schema')!r}")
+        meta = raw_meta
+        if normalize_cache_identity(
+                meta, mint, endpoint, frozen_collector_sha256) is None:
+            log("[fail-closed] SQD v4 cache meta 与 mint/endpoint/采集器身份不一致；"
+                "不得跨标的、跨端点或跨采集器续用")
+            raise SystemExit(2)
+    else:
+        meta = {}
+        if cache_fp.exists() or part_files:
+            _cache_upgrade_required("检测到缺少 v4 meta 的旧缓存或 .parts")
+
+    for part in part_files:
+        line_no = 0
+        try:
+            with part.open() as handle:
+                for line_no, line in enumerate(handle, 1):
+                    if line.strip():
+                        validate_edge_row(json.loads(line))
+        except Exception as exc:
+            _cache_upgrade_required(
+                f"检测到旧/非法 .parts 行 {part}:{line_no}: {exc}")
+    return meta
 
 
 def plan_areas(meta, span_from, head):
@@ -908,6 +935,12 @@ def run(mint, launch_ts, wall_min, conc, rps, base_url, key,
         dataset_id=SOLANA_SQD_DATASET_ID, state_session=None,
         frozen_collector_sha256=None):
     frozen_collector_sha256 = frozen_collector_sha256 or collector_sha256()
+    if hs_cfg is not None:
+        log("[fail-closed] --hypersync 通道已禁用；v4 正式采集只允许 SQD")
+        raise SystemExit(2)
+    cache_fp, meta_fp, parts_dir = cache_paths(mint)
+    meta = preflight_v4_cache(
+        cache_fp, meta_fp, parts_dir, mint, base_url, frozen_collector_sha256)
     fx = Fetcher(base_url, mint, key, TokenBucket(rps), conc, empty_max=empty_max)
     head = fx.head()
     if not head:
@@ -921,22 +954,14 @@ def run(mint, launch_ts, wall_min, conc, rps, base_url, key,
             or finalized_slot < 0):
         raise ValueError(f"invalid finalized Solana slot: {finalized_slot!r}")
     head = min(head, finalized_slot)
-    cache_fp, meta_fp, parts_dir = cache_paths(mint)
     parts_dir.mkdir(parents=True, exist_ok=True)
-    meta = load_meta(meta_fp)
     identity = cache_identity(mint, base_url, frozen_collector_sha256)
     if meta:
         normalized = normalize_cache_identity(
             meta, mint, base_url, frozen_collector_sha256)
         if normalized is None:
-            raise SystemExit("[fail-closed] SQD cache meta 与 mint/endpoint/采集器身份不一致；"
-                             "不得跨标的或跨端点复用，改用新的 data 目录")
-        if normalized != meta:
-            # Old v3 metadata stored the raw endpoint.  Rewrite it before any
-            # resume work so a pre-existing path/query credential is removed.
-            tmp = meta_fp.with_name("." + meta_fp.name + ".identity.tmp")
-            tmp.write_text(json.dumps(normalized, sort_keys=True))
-            os.replace(tmp, meta_fp)
+            log("[fail-closed] SQD v4 cache 身份在启动后发生变化")
+            raise SystemExit(2)
         meta = normalized
 
     def fresh_meta(start):
@@ -1017,7 +1042,16 @@ def run(mint, launch_ts, wall_min, conc, rps, base_url, key,
     def persist_meta():
         with meta_lock:
             meta_fp.parent.mkdir(parents=True, exist_ok=True)
-            meta_fp.write_text(json.dumps(meta))
+            tmp = meta_fp.with_name(f".{meta_fp.name}.tmp.{os.getpid()}")
+            try:
+                with tmp.open("w", encoding="utf-8") as handle:
+                    json.dump(meta, handle, separators=(",", ":"), sort_keys=True)
+                    handle.flush()
+                    os.fsync(handle.fileno())
+                os.replace(tmp, meta_fp)
+            except BaseException:
+                tmp.unlink(missing_ok=True)
+                raise
 
     # 全局段池：worker 每次只领"一个自适应区域"，剩余放回——多 worker 并发消费同一个大
     # 空洞（v2.0 冒烟发现按空洞分配时首扫并发恒为 1，已改）。双引擎时段带 engine 标注：
@@ -1220,7 +1254,7 @@ def _default_state_rpc():
 
 
 def main(argv=None, *, request_json=None):
-    ap = argparse.ArgumentParser(description="SQD portal Solana 转账边采集 v2（压缩+自适应并发+令牌桶+HyperSync 第二引擎）")
+    ap = argparse.ArgumentParser(description="SQD portal Solana v4 交易级净额边采集器")
     ap.add_argument("mint")
     ap.add_argument("--dataset-id", default=SOLANA_SQD_DATASET_ID)
     ap.add_argument("--state-rpc", action="append", dest="state_rpcs",
@@ -1232,9 +1266,7 @@ def main(argv=None, *, request_json=None):
     ap.add_argument("--url", default=DEF_URL, help="数据集端点（拿到 key 专属端点后换这里）")
     ap.add_argument("--key-file", default=os.path.expanduser("~/.config/sqd/api-key"))
     ap.add_argument("--hypersync", action="store_true",
-                    help="启用 HyperSync 第二引擎双引擎分段并行（默认关。⚠完备性验收不通过："
-                         "历史区缺行 3.6-22%%、近端有暂态洞——仅限吞吐实验/对照，禁止正式采集；"
-                         "滚动窗外区间自动全给 SQD，HS 段失败自动回落 SQD）")
+                    help="已禁用；v4 正式采集仅允许 SQD，传入即 exit 2")
     ap.add_argument("--hs-url", default=HS_DEF_URL, help="HyperSync Solana 查询端点")
     ap.add_argument("--hs-token-file", default=HS_DEF_TOKEN,
                     help="HyperSync 付费 token 文件（按请求计费，量级忽略不计）")
@@ -1257,6 +1289,9 @@ def main(argv=None, *, request_json=None):
     a = ap.parse_args(argv)
     if a.from_slot and a.to_slot and a.from_slot > a.to_slot:
         ap.error("--from-slot must not exceed --to-slot")
+    if a.hypersync:
+        log("[fail-closed] --hypersync 通道已禁用；v4 正式采集只允许 SQD")
+        raise SystemExit(2)
     state_session = SolanaAttestedSession(
         a.state_rpcs or [_default_state_rpc()], request_json=request_json, timeout=30)
     # Reject dataset/mint identity before the first SQD business request.  The
@@ -1269,22 +1304,8 @@ def main(argv=None, *, request_json=None):
         key = Path(a.key_file).read_text().strip() or None
     except Exception:
         pass
-    hs_cfg = None
-    if a.hypersync:
-        try:
-            hs_token = Path(a.hs_token_file).read_text().strip()
-            if not hs_token:
-                raise ValueError("token 文件为空")
-        except Exception as e:
-            sys.exit(f"[fatal] --hypersync 需要有效 token（{a.hs_token_file}）：{e}")
-        try:
-            hs_proxy = resolve_proxy(a.proxy)
-        except ValueError as exc:
-            ap.error(str(exc))
-        hs_cfg = {"url": a.hs_url, "token": hs_token, "conc": a.hs_conc,
-                  "rps": a.hs_rps, "proxy": hs_proxy}
     edges, gap = run(a.mint, a.launch_ts or None, a.wall_min, a.conc, a.rps, a.url, key,
-                     hs_cfg=hs_cfg, from_slot_cli=a.from_slot or None,
+                     hs_cfg=None, from_slot_cli=a.from_slot or None,
                      to_slot_cli=a.to_slot or None, empty_max=a.empty_max,
                      merge_max_rows=a.merge_max_rows, dataset_id=a.dataset_id,
                      state_session=state_session)

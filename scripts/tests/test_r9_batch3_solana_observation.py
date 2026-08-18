@@ -522,6 +522,7 @@ def test_sqd_collector_rejects_bad_scope_before_run():
         [MINT, "--dataset-id", "solana-devnet"],
         ["", "--dataset-id", "solana-mainnet"],
         [MINT, "--from-slot", "3", "--to-slot", "2"],
+        [MINT, "--hypersync"],
     )
     with mock.patch.object(
             collector, "run", side_effect=AssertionError("SQD run was reached")) as run:
@@ -551,11 +552,53 @@ def test_sqd_collector_rejects_bad_scope_before_run():
                         dataset_id="solana-mainnet",
                         state_session=session(SolanaTransportFake()))
                 except SystemExit as exc:
-                    assert "mint" in str(exc).lower() or "标的" in str(exc)
+                    assert exc.code == 2
                 else:
                     raise AssertionError("wrong-mint SQD cache identity was consumed")
         finally:
             os.chdir(old)
+
+    for label in ("v3-meta", "old-parts"):
+        with tempfile.TemporaryDirectory(prefix=f"r9-b3-sqd-{label}-") as raw:
+            old = Path.cwd()
+            os.chdir(raw)
+            try:
+                _cache, meta, parts = collector.cache_paths(MINT)
+                meta.parent.mkdir(parents=True, exist_ok=True)
+                if label == "v3-meta":
+                    meta.write_text(json.dumps({
+                        "schema": "sqd-solana-cache/v3", "version": 3,
+                        "mint": MINT,
+                        "collector": "fetch_sqd_transfers_v2.py/v3"}))
+                else:
+                    parts.mkdir(parents=True)
+                    (parts / "1.jsonl").write_text(
+                        json.dumps([1700000000, 1, "A", "B", 1]) + "\n")
+                with mock.patch.object(
+                        collector.Fetcher, "head",
+                        side_effect=AssertionError("network reached before cache preflight")):
+                    try:
+                        collector.run(
+                            MINT, None, 1, 1, 1, "fixture://sqd", None,
+                            dataset_id="solana-mainnet",
+                            state_session=session(SolanaTransportFake()))
+                    except SystemExit as exc:
+                        assert exc.code == 2
+                    else:
+                        raise AssertionError(f"legacy cache accepted: {label}")
+            finally:
+                os.chdir(old)
+
+    with mock.patch.object(
+            collector.Fetcher, "head",
+            side_effect=AssertionError("network reached through direct hs_cfg")):
+        try:
+            collector.run(MINT, None, 1, 1, 1, "fixture://sqd", None,
+                          hs_cfg={}, state_session=session(SolanaTransportFake()))
+        except SystemExit as exc:
+            assert exc.code == 2
+        else:
+            raise AssertionError("direct run(hs_cfg=...) bypassed HyperSync ban")
 
     with tempfile.TemporaryDirectory(prefix="r9-b3-sqd-toctou-") as raw:
         old = Path.cwd()
