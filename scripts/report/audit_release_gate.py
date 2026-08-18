@@ -818,6 +818,12 @@ def check_three_ledgers(case_dir: Path, data: dict, errors: list[str], chain=Non
 
 
 def check_dormant(case_dir: Path, d: dict, errors: list[str]):
+    # 批 6 F-04：audit_closed_accounts 的 legacy 诊断会明确签出这两个标记。
+    # formal 发布必须逐字段证明为 false；缺字段也不允许以旧产物冒充 formal。
+    if d.get("non_formal") is not False:
+        errors.append("静置仓审计 non_formal 非 false（legacy/缺身份产物不得正式发布）")
+    if d.get("order_ambiguous") is not False:
+        errors.append("静置仓审计 order_ambiguous 非 false（顺序歧义产物不得正式发布）")
     if not d.get("full_history_event_replay"):
         errors.append("静置仓审计不是基于全量逐事件重放")
     required = ("historical_peaks", "zeroed_or_drawn_down",

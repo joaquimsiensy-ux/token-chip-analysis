@@ -377,6 +377,8 @@ def build_case(root, historical=True):
         ],
     })
     write_json(root, "dormant_warehouse_audit.json", {
+        "non_formal": False,
+        "order_ambiguous": False,
         "full_history_event_replay": True,
         "coverage": {
             "historical_peaks": "PASS", "zeroed_or_drawn_down": "PASS",

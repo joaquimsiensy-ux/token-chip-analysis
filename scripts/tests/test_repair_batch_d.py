@@ -989,6 +989,8 @@ def build_solana_case(root: Path):
         "scan_universe": [{"addr": "ownersol1", "peak_pct": 60.0,
                            "must_adjudicate": True, "must_reasons": ["peak_ge_0.1pct"]}]})
     write_json(root / "dormant_warehouse_audit.json", {
+        "non_formal": False,
+        "order_ambiguous": False,
         "full_history_event_replay": True,
         "coverage": {k: "PASS" for k in ("historical_peaks", "zeroed_or_drawn_down",
                                           "long_dormant", "critical_window_upstream",
