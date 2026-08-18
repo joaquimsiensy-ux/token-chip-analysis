@@ -68,7 +68,7 @@ from solana_sqd_dataset import (SOLANA_SQD_DATASET_ID,
                                 SolanaSqdDatasetAdapter)
 from spl_edge_core import (EDGE_SCHEMA_FIELDS, INSTR_INDEX_TX_NET,
                            ZERO_OWNER as ZERO, dedupe_transaction_sources,
-                           edge_sort_key, pair_tx, parse_owner_delta,
+                           edge_sort_key, owner_deltas_by_tx, pair_tx,
                            soltx_cache_paths)
 
 try:
@@ -225,8 +225,10 @@ class Fetcher:
         → (edges, done_to, finished)。edges 为 v4 交易身份 7 元组。"""
         body_fields = {"block": {"number": True, "timestamp": True},
                        "transaction": {"transactionIndex": True, "err": True},
-                       "tokenBalance": {"transactionIndex": True, "preOwner": True,
-                                        "postOwner": True, "preAmount": True, "postAmount": True}}
+                       "tokenBalance": {"transactionIndex": True, "account": True,
+                                        "preMint": True, "postMint": True,
+                                        "preOwner": True, "postOwner": True,
+                                        "preAmount": True, "postAmount": True}}
         filt = [{"postMint": [self.mint], "transaction": True},
                 {"preMint": [self.mint], "transaction": True}]
         edges, cur, fails = [], frm, 0
@@ -262,15 +264,9 @@ class Fetcher:
                         ts = hdr.get("timestamp") or 0
                         errmap = {tx.get("transactionIndex"): tx.get("err")
                                   for tx in b.get("transactions") or []}
-                        by_tx = defaultdict(dict)
-                        for rec in tbs:
-                            ti = rec.get("transactionIndex")
-                            if errmap.get(ti) is not None:
-                                continue    # 失败交易：余额无真实变化，纯噪声
-                            parsed = parse_owner_delta(rec)
-                            if parsed is not None:
-                                parsed_ti, owner, dlt = parsed
-                                by_tx[parsed_ti][owner] = by_tx[parsed_ti].get(owner, 0) + dlt
+                        successful = [rec for rec in tbs
+                                      if errmap.get(rec.get("transactionIndex")) is None]
+                        by_tx = owner_deltas_by_tx(successful, self.mint)
                         for ti, delta in by_tx.items():
                             for f, t, amt in pair_tx(delta):
                                 edges.append((ts, hdr["number"], ti,

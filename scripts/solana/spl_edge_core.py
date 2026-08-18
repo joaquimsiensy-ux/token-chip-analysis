@@ -112,24 +112,100 @@ def pair_tx(delta):
     return edges
 
 
-def parse_owner_delta(record):
-    """Return the legacy SQD owner delta tuple, or None for a skipped row.
+def _raw_amount(value, field):
+    if value is None or value == "":
+        return 0
+    if isinstance(value, bool):
+        raise TypeError(f"{field} must be a non-negative raw integer")
+    if isinstance(value, int):
+        amount = value
+    elif isinstance(value, str) and value.isdigit():
+        amount = int(value)
+    else:
+        raise TypeError(f"{field} must be a non-negative raw integer")
+    if amount < 0:
+        raise ValueError(f"{field} must not be negative")
+    return amount
 
-    Batch 1 intentionally preserves ``postOwner or preOwner`` and the existing
-    silent-skip behavior.  Owner-authority and collector failure semantics are
-    tightened together in batch 2.
+
+def _optional_text(value, field):
+    if value is None or value == "":
+        return None
+    if not isinstance(value, str):
+        raise TypeError(f"{field} must be a string or null")
+    return value
+
+
+def parse_owner_delta(record, target_mint):
+    """Validate one tokenBalance row and return its two-sided owner deltas.
+
+    The account authority can change inside one successful transaction.  The
+    pre side therefore always debits ``preOwner`` and the post side credits
+    ``postOwner`` independently; only sides bound to ``target_mint`` enter the
+    ledger.
     """
-    tx_index = record.get("transactionIndex")
-    owner = record.get("postOwner") or record.get("preOwner")
-    if not owner:
-        return None
-    try:
-        amount = int(record.get("postAmount") or 0) - int(record.get("preAmount") or 0)
-    except (ValueError, TypeError):
-        return None
-    if not amount:
-        return None
-    return tx_index, owner, amount
+    if not isinstance(record, Mapping):
+        raise TypeError("tokenBalance record must be a mapping")
+    if not isinstance(target_mint, str) or not target_mint:
+        raise TypeError("target mint must be a non-empty string")
+    required = ("transactionIndex", "account", "preMint", "postMint",
+                "preOwner", "postOwner", "preAmount", "postAmount")
+    missing = [field for field in required if field not in record]
+    if missing:
+        raise ValueError(f"tokenBalance record missing fields: {','.join(missing)}")
+
+    tx_index = record["transactionIndex"]
+    if isinstance(tx_index, bool) or not isinstance(tx_index, int) or tx_index < 0:
+        raise ValueError("transactionIndex must be a non-negative integer")
+    account = record["account"]
+    if not isinstance(account, str) or not account:
+        raise ValueError("tokenBalance account must be a non-empty string")
+
+    pre_mint = _optional_text(record["preMint"], "preMint")
+    post_mint = _optional_text(record["postMint"], "postMint")
+    pre_owner = _optional_text(record["preOwner"], "preOwner")
+    post_owner = _optional_text(record["postOwner"], "postOwner")
+    pre_amount = _raw_amount(record["preAmount"], "preAmount")
+    post_amount = _raw_amount(record["postAmount"], "postAmount")
+
+    if pre_amount and pre_owner is None:
+        raise ValueError("nonzero preAmount requires preOwner")
+    if post_amount and post_owner is None:
+        raise ValueError("nonzero postAmount requires postOwner")
+    if pre_amount and pre_mint is None:
+        raise ValueError("nonzero preAmount requires preMint")
+    if post_amount and post_mint is None:
+        raise ValueError("nonzero postAmount requires postMint")
+    if pre_mint != target_mint and post_mint != target_mint:
+        raise ValueError("tokenBalance record is not bound to the target mint")
+
+    deltas = {}
+    if pre_mint == target_mint and pre_amount:
+        deltas[pre_owner] = deltas.get(pre_owner, 0) - pre_amount
+    if post_mint == target_mint and post_amount:
+        deltas[post_owner] = deltas.get(post_owner, 0) + post_amount
+    return tx_index, account, tuple(
+        (owner, amount) for owner, amount in deltas.items() if amount)
+
+
+def owner_deltas_by_tx(records, target_mint):
+    """Aggregate validated owner deltas and reject duplicate account records."""
+    grouped = {}
+    seen = set()
+    for record in records:
+        tx_index, account, deltas = parse_owner_delta(record, target_mint)
+        identity = (tx_index, account)
+        if identity in seen:
+            raise ValueError(
+                f"duplicate tokenBalance record for tx_index={tx_index} account={account}")
+        seen.add(identity)
+        ledger = grouped.setdefault(tx_index, {})
+        for owner, amount in deltas:
+            ledger[owner] = ledger.get(owner, 0) + amount
+    for ledger in grouped.values():
+        for owner in [owner for owner, amount in ledger.items() if not amount]:
+            del ledger[owner]
+    return grouped
 
 
 def soltx_cache_paths(mint, data_dir):
