@@ -773,8 +773,13 @@ class ExtMerger:
             ),
             parsed AS (
               SELECT src_id, x, j, json_array_length(j) AS width,
+                     json_type(j, '$[0]') AS ts_type,
+                     json_type(j, '$[1]') AS slot_type,
+                     json_type(j, '$[2]') AS tx_type,
+                     json_type(j, '$[3]') AS instr_type,
                      json_type(j, '$[4]') AS f_type,
                      json_type(j, '$[5]') AS t_type,
+                     json_type(j, '$[6]') AS amt_type,
                      json_extract_string(j, '$[0]') AS ts_s,
                      json_extract_string(j, '$[1]') AS slot_s,
                      json_extract_string(j, '$[2]') AS tx_s,
@@ -820,17 +825,21 @@ class ExtMerger:
             WITH {self._ctes()}
             SELECT src_id, x FROM parsed
             WHERE j IS NULL OR width <> {len(EDGE_SCHEMA_FIELDS)}
-               OR NOT coalesce(regexp_full_match(ts_s, '[0-9]+'), false)
-               OR NOT coalesce(regexp_full_match(slot_s, '[0-9]+'), false)
-               OR NOT coalesce(regexp_full_match(tx_s, '[0-9]+'), false)
+               OR ts_type NOT IN ('UBIGINT', 'BIGINT')
+               OR slot_type NOT IN ('UBIGINT', 'BIGINT')
+               OR tx_type NOT IN ('UBIGINT', 'BIGINT')
+               OR instr_type <> 'BIGINT'
+               OR amt_type NOT IN ('UBIGINT', 'BIGINT', 'DOUBLE')
+               OR NOT coalesce(regexp_full_match(ts_s, '(0|[1-9][0-9]*)'), false)
+               OR NOT coalesce(regexp_full_match(slot_s, '(0|[1-9][0-9]*)'), false)
+               OR NOT coalesce(regexp_full_match(tx_s, '(0|[1-9][0-9]*)'), false)
                OR try_cast(ts_s AS BIGINT) IS NULL
                OR try_cast(slot_s AS BIGINT) IS NULL
                OR try_cast(tx_s AS BIGINT) IS NULL
                OR instr_s <> '{INSTR_INDEX_TX_NET}'
                OR f_type <> 'VARCHAR' OR t_type <> 'VARCHAR'
                OR f IS NULL OR f = '' OR t IS NULL OR t = ''
-               OR NOT coalesce(regexp_full_match(amt, '[0-9]+'), false)
-               OR coalesce(regexp_full_match(amt, '0+'), false)
+               OR NOT coalesce(regexp_full_match(amt, '[1-9][0-9]*'), false)
             LIMIT 1
         """).fetchone()
         if invalid:
