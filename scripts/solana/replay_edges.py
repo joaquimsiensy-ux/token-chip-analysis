@@ -24,7 +24,7 @@ evolution 的阵营定义读 --camps camps.json：{"阵营名": [完整地址...
 发射时刻默认取首条铸造边 ts，--launch-ts 可覆盖。
 来源：PUB(Solana) 分析 2026-07-14 收编（replay+camp_evolution 合并参数化）。
 """
-import argparse, gzip, hashlib, json, os, re, sys
+import argparse, gzip, hashlib, io, json, os, re, sys
 from collections import defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
@@ -201,6 +201,35 @@ def load_edges(mint, *, legacy_sol5=False):
     return edges, meta_f
 
 
+def _read_frozen_formal_edges(path):
+    """Read one immutable byte image for both physical identity and formal replay."""
+    path = Path(path)
+    if path.is_symlink():
+        raise ValueError(f"SQD 边文件是符号链接，拒绝 reconcile: {path}")
+    if not path.is_file():
+        raise ValueError(f"SQD 边文件缺失: {path}")
+    try:
+        frozen = path.read_bytes()
+    except OSError as exc:
+        raise ValueError(f"SQD 边文件读取失败: {path}: {exc}") from exc
+    if not frozen:
+        raise ValueError(f"SQD 边文件为空: {path}")
+    edges = []
+    try:
+        with gzip.open(io.BytesIO(frozen), "rt", encoding="utf-8") as fh:
+            for line_no, line in enumerate(fh, 1):
+                if not line.strip():
+                    continue
+                row = _json_loads(line, f"soltx edge row 第 {line_no} 行")
+                edges.append(_validate_formal_edge(row, line_no=line_no))
+    except (OSError, EOFError, UnicodeDecodeError) as exc:
+        raise ValueError(f"SQD 边文件 gzip/UTF-8 非法: {path}: {exc}") from exc
+    if not edges:
+        raise ValueError("边文件为空，无法生成正式 reconcile 收据")
+    edges.sort(key=lambda edge: (edge[1], edge[2], edge[3], edge[0]))
+    return edges, len(frozen), hashlib.sha256(frozen).hexdigest()
+
+
 def replay(edges):
     bal = defaultdict(int)
     minted = burned = 0
@@ -267,20 +296,21 @@ def cmd_reconcile(edges, dec, *, mint, cache_meta_path):
     cache_meta = _json_loads(cache_meta_path.read_text(encoding="utf-8"),
                              "SQD 缓存 meta")
     frm, to = _validate_cache_meta(cache_meta, mint, legacy_sol5=False)
+    edge_key = hashlib.sha256(mint.encode("utf-8")).hexdigest()
+    edge_path = cache_meta_path.with_name(f"soltx-{edge_key}.jsonl.gz")
+    frozen_edges, edge_file_size, edge_file_sha256 = _read_frozen_formal_edges(edge_path)
+    supplied_edges = [_validate_formal_edge(edge) for edge in edges]
+    if supplied_edges != frozen_edges:
+        raise ValueError("reconcile 内存边与冻结边文件不一致")
+    edges = frozen_edges
     bal, minted, burned, edge_digest, first, last = _replay_with_evidence(edges)
     # collector 已绑定逻辑摘要与行数；reconcile 只重算对表，绝不首次建立证据。
     if cache_meta["edge_logical_sha256"] != edge_digest:
         raise ValueError("SQD 缓存 meta.edge_logical_sha256 与实际边重放摘要不一致")
     if cache_meta["edge_rows"] != len(edges):
         raise ValueError("SQD 缓存 meta.edge_rows 与实际边数不一致")
-    edge_key = hashlib.sha256(mint.encode("utf-8")).hexdigest()
-    edge_path = cache_meta_path.with_name(f"soltx-{edge_key}.jsonl.gz")
-    if edge_path.is_symlink():
-        raise ValueError(f"SQD 边文件是符号链接，拒绝 reconcile: {edge_path}")
-    if not edge_path.is_file() or edge_path.stat().st_size <= 0:
-        raise ValueError(f"SQD 边文件缺失或为空: {edge_path}")
-    cache_meta["edge_file_size"] = edge_path.stat().st_size
-    cache_meta["edge_file_sha256"] = sha256_file(edge_path)
+    cache_meta["edge_file_size"] = edge_file_size
+    cache_meta["edge_file_sha256"] = edge_file_sha256
     _atomic_json(cache_meta_path, cache_meta)
     print(f"边数={len(edges):,}  时间范围 {fmt_ts(edges[0][0])} → {fmt_ts(edges[-1][0])}")
     print(f"铸造={minted:,}  销毁={burned:,}  净={minted-burned:,}")
