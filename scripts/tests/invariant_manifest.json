@@ -227,7 +227,7 @@
   },
   {
    "schemas": [
-    "wave-scan/v3"
+    "wave-scan/v4"
    ],
    "script": "scripts/report/wave_scan.py"
   },
@@ -271,7 +271,7 @@
   },
   {
    "schemas": [
-    "sqd-solana-cache/v3"
+    "sqd-solana-cache/v4"
    ],
    "script": "scripts/solana/fetch_sqd_transfers_v2.py"
   },
@@ -292,7 +292,7 @@
   },
   {
    "schemas": [
-    "solana-window-fetch-receipt/v2"
+    "solana-window-fetch-receipt/v3"
    ],
    "script": "scripts/solana/window_fetch.py"
   }
@@ -346,7 +346,7 @@
     "solana-holder-snapshot-v2",
     "solana-reconcile/v2",
     "solana-reconcile/v3",
-    "sqd-solana-cache/v3"
+    "sqd-solana-cache/v4"
    ],
    "script": "scripts/lib/camp_series_provenance.py"
   },
@@ -406,7 +406,7 @@
     "distribution-adjudications/v1",
     "flow-anomaly/v2",
     "pattern-resolutions/v1",
-    "wave-scan/v3"
+    "wave-scan/v4"
    ],
    "script": "scripts/report/adjudication_validator.py"
   },
@@ -461,7 +461,8 @@
     "provenance-ledger/v2",
     "wave-scan/v1",
     "wave-scan/v2",
-    "wave-scan/v3"
+    "wave-scan/v3",
+    "wave-scan/v4"
    ],
    "script": "scripts/report/handoff_manifest.py"
   },
@@ -519,8 +520,21 @@
   },
   {
    "schemas": [
+    "sqd-solana-cache/v4"
+   ],
+   "script": "scripts/solana/curve_cost.py"
+  },
+  {
+   "schemas": [
+    "sqd-solana-cache/v4"
+   ],
+   "script": "scripts/solana/fetch_sqd_transfers_v2.py"
+  },
+  {
+   "schemas": [
     "solana-holder-snapshot-v2",
-    "sqd-solana-cache/v3"
+    "sqd-solana-cache/v3",
+    "sqd-solana-cache/v4"
    ],
    "script": "scripts/solana/replay_edges.py"
   }
@@ -1031,7 +1045,7 @@
    "semantics": "overwrite_single"
   },
   {
-   "locator": "run",
+   "locator": "persist_meta",
    "script": "scripts/solana/fetch_sqd_transfers_v2.py",
    "semantics": "overwrite_single"
   },
