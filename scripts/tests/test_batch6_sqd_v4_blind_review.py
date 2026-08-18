@@ -3,6 +3,7 @@
 
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -31,6 +32,16 @@ def run_checked(label: str, args: list[str]) -> subprocess.CompletedProcess[str]
             f"{label} rc={result.returncode}\nstdout:\n{result.stdout}\nstderr:\n{result.stderr}"
         )
     return result
+
+
+def scan_lines(pattern: str, text: str) -> list[tuple[int, str]]:
+    """以 Python re 逐行实现本测试需要的 rg -n 搜索语义。"""
+    regex = re.compile(pattern)
+    return [
+        (line_number, line)
+        for line_number, line in enumerate(text.splitlines(), start=1)
+        if regex.search(line)
+    ]
 
 
 def test_f01_real_duckdb_wave_reaches_formal_gates() -> None:
@@ -228,14 +239,16 @@ def test_f06_legacy_scan_covers_tuple_constructor() -> None:
         r"len\([^\n]+\)\s*(==|!=)\s*5|ts,\s*slot,\s*(src|from|f),\s*"
         r"(dst|to|t),\s*(amt|amount)\s*(=|\)\))"
     )
-    missed = subprocess.run(
-        ["rg", "-n", old_pattern, str(SQD_COLLECTOR)], capture_output=True, text=True
-    )
-    assert missed.returncode == 1, missed.stdout + missed.stderr
-    covered = subprocess.run(
-        ["rg", "-n", fixed_pattern, str(SQD_COLLECTOR)], capture_output=True, text=True
-    )
-    assert covered.returncode == 0 and "edges.append((ts, slot, f, t, amt))" in covered.stdout
+    known_hit = "edges.append((ts, slot, f, t, amt))"
+    known_miss = "edges.append((ts, block, f, t, amt))"
+    assert scan_lines(fixed_pattern, known_hit) == [(1, known_hit)]
+    assert scan_lines(fixed_pattern, known_miss) == []
+
+    collector = SQD_COLLECTOR.read_text(encoding="utf-8")
+    missed = scan_lines(old_pattern, collector)
+    assert missed == [], missed
+    covered = scan_lines(fixed_pattern, collector)
+    assert any(known_hit in line for _, line in covered), covered
 
     whitelist = LEGACY_WHITELIST.read_text(encoding="utf-8")
     assert fixed_pattern in whitelist, "白名单文档仍登记会漏掉 tuple constructor 的旧扫描正则"
