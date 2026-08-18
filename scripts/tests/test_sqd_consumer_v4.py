@@ -16,6 +16,7 @@ for sub in ("solana", "lib", "labels"):
     sys.path.insert(0, str(ROOT / "scripts" / sub))
 
 import replay_edges  # noqa: E402
+import curve_cost  # noqa: E402
 from spl_edge_core import (  # noqa: E402
     EDGE_SCHEMA_FIELDS,
     EDGE_SEMANTICS,
@@ -154,6 +155,17 @@ def test_reconcile_digest_matches_v4_meta() -> None:
     )
 
 
+def test_curve_cost_is_v4_only() -> None:
+    rows = [[100, 1, 0, -1, MINT, OWNER, 25]]
+    edge_path, meta_path = _paths()
+    _write_edges(edge_path, rows)
+    meta_path.write_text(json.dumps(_v4_meta(rows)), encoding="utf-8")
+    assert curve_cost.load_edges(MINT) == rows
+
+    _write_edges(edge_path, rows + [[101, 2, MINT, OWNER, 1]])
+    _expect_reject(lambda: curve_cost.load_edges(MINT), "第 2 行")
+
+
 def main() -> int:
     old = Path.cwd()
     with tempfile.TemporaryDirectory(prefix="sqd-consumer-v4-",
@@ -166,6 +178,10 @@ def main() -> int:
                 if path.is_file():
                     path.unlink()
             test_reconcile_digest_matches_v4_meta()
+            for path in Path("data").iterdir():
+                if path.is_file():
+                    path.unlink()
+            test_curve_cost_is_v4_only()
         finally:
             os.chdir(old)
     print("PASS: SQD v4 consumer split-mode regressions")
