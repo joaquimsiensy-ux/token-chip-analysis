@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """fetch_sqd_transfers_v2 收尾合并 + 伪 scan-fail 判定的离线守护（2026-07-26 两处缺陷修复的活体门禁）。
 
-覆盖七条契约：
+覆盖八条契约：
   1. 两条收尾路径（全内存 / DuckDB 磁盘外排）产物**逐字节一致**——按
      (slot, tx_index) 交易身份去重、超 int64 金额（10^19）、同 slot 多交易、ts=0
   2. 超 int64 金额全程保真（任何数值 CAST 都会溢出/失真）
@@ -9,6 +9,7 @@
   4. 原子落盘：写入中途异常不留下半截 gz（旧版 OOM 落在写 gz 中途会毁缓存触发全量重扫）
   5. 伪 scan-fail 判定：零行 + 跨度 ≤ EMPTY_MAX → 判完成；跨度超闸门时以块探针实证定夺
   6. scan_area 集成：尾段零行响应 → finished=True 且 done_to=to（旧版返回 False→记 gaps）
+  7. 非法 JSON 标量类型与前导零字符串在两条收尾路径中必须等价拒绝
 
 无网络（HTTP 全 mock）、无外部服务；缺 duckdb 时自动跳过外排相关契约。
 用法：python3 scripts/tests/test_sqd_merge_equiv.py    退出码 0=PASS / 1=FAIL
@@ -157,6 +158,42 @@ def c1b_identity_conflict_and_width():
                 ok = False
     if ok:
         print("PASS: T1b/c 同身份异 digest 与旧/混合行宽均硬失败")
+    return ok
+
+
+def c1d_invalid_scalar_type_equivalence():
+    """F-05：外排路径不得把字符串整数转成合法值或拼出前导零非法 JSON。"""
+    if M.duckdb is None:
+        print('SKIP: 无 duckdb，跳过非法标量两路径等价拒绝契约')
+        return True
+    base = [0, 200, 7, -1, ZERO, "BBB", 5]
+    cases = (
+        ("ts 字符串", 0, "0"),
+        ("slot 字符串", 1, "200"),
+        ("tx_index 字符串", 2, "7"),
+        ("instr_index 字符串", 3, "-1"),
+        ("amt 字符串", 6, "5"),
+        ("amt 前导零字符串", 6, "007"),
+    )
+    ok = True
+    for label, index, value in cases:
+        row = list(base)
+        row[index] = value
+        outcomes = {}
+        for name, cls in (("inmem", M.MemMerger), ("ext", M.ExtMerger)):
+            with tempfile.TemporaryDirectory() as d:
+                cache_fp, parts_dir, files = _mk(d, [[row]], None)
+                try:
+                    cls(cache_fp, parts_dir, files, False).finalize()
+                except (TypeError, ValueError, RuntimeError):
+                    outcomes[name] = "REJECT"
+                else:
+                    outcomes[name] = "ACCEPT"
+        if outcomes != {"inmem": "REJECT", "ext": "REJECT"}:
+            print(f"FAIL: {label} 两路径未等价拒绝: {outcomes}")
+            ok = False
+    if ok:
+        print("PASS: F-05 非法标量类型与前导零字符串两路径等价拒绝")
     return ok
 
 
@@ -319,6 +356,7 @@ def main():
     ok = True
     ok &= c1a_distinct_poison()
     ok &= c1b_identity_conflict_and_width()
+    ok &= c1d_invalid_scalar_type_equivalence()
     ok &= c1c_transaction_status_required()
     eq, _ = c1_c2_equivalence()
     ok &= eq
@@ -326,7 +364,7 @@ def main():
     ok &= c4_atomic()
     ok &= c5_empty_ok()
     ok &= c6_scan_area()
-    print('PASS: fetch_sqd_transfers_v2 v4 七组契约全过' if ok else 'FAIL: 见上')
+    print('PASS: fetch_sqd_transfers_v2 v4 八组契约全过' if ok else 'FAIL: 见上')
     return 0 if ok else 1
 
 
