@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """fetch_sqd_transfers_v2 收尾合并 + 伪 scan-fail 判定的离线守护（2026-07-26 两处缺陷修复的活体门禁）。
 
-覆盖六条契约：
-  1. 两条收尾路径（全内存 / DuckDB 磁盘外排）产物**逐字节一致**——含跨格式去重
-     （part 紧凑分隔符 vs 旧 gz 默认带空格）、超 int64 金额（10^19）、同 (slot,ts) 多行、ts=0
+覆盖七条契约：
+  1. 两条收尾路径（全内存 / DuckDB 磁盘外排）产物**逐字节一致**——按
+     (slot, tx_index) 交易身份去重、超 int64 金额（10^19）、同 slot 多交易、ts=0
   2. 超 int64 金额全程保真（任何数值 CAST 都会溢出/失真）
   3. 路径选择：估算行数超阈值才降级外排，否则全内存（历史行为）
   4. 原子落盘：写入中途异常不留下半截 gz（旧版 OOM 落在写 gz 中途会毁缓存触发全量重扫）
@@ -46,17 +46,18 @@ def _mk(d, parts_rows, old_rows):
     return cache_fp, parts_dir, sorted(files)
 
 
-# 同一批边：故意让 part 与旧 gz 各有一条**同边不同写法**（跨格式重复），
-# 另含同 (slot,ts) 多行、ts=0 的铸造边、超 int64 与 30 位大数
-PARTS = [[[0, 100, ZERO, 'AAA', BIG],
-          [1700000000, 101, 'AAA', 'BBB', 5],
-          [1700000000, 101, 'BBB', 'CCC', 7],
-          [1700000000, 101, 'AAA', 'BBB', 5]],          # 组内重复
-         [[1699999999, 99, 'CCC', ZERO, HUGE],
-          [1700000000, 101, 'AAA', 'BBB', 9],           # 同 (slot,ts,f,t) 仅金额不同
-          [1700000001, 102, 'DDD', 'EEE', 1]]]
-OLD = [[1700000000, 101, 'AAA', 'BBB', 5],              # 与 part 跨格式重复
-       [1699999998, 98, 'EEE', 'FFF', 42]]
+# v4 7 元组。tx=(101,0) 的完整边集同时出现在 part 与旧 gz，必须按交易身份留一份；
+# tx=(101,1) 内容与其中一条边同 owner 但金额不同，是同 slot 的另一笔真实交易，必须保留。
+PARTS = [[[0, 100, 0, -1, ZERO, 'AAA', BIG],
+          [1700000000, 101, 0, -1, 'AAA', 'BBB', 5],
+          [1700000000, 101, 0, -1, 'BBB', 'CCC', 7],
+          [1700000000, 101, 0, -1, 'AAA', 'BBB', 5]],   # 同 source 重复行
+         [[1699999999, 99, 0, -1, 'CCC', ZERO, HUGE],
+          [1700000000, 101, 1, -1, 'AAA', 'BBB', 9],
+          [1700000001, 102, 0, -1, 'DDD', 'EEE', 1]]]
+OLD = [[1700000000, 101, 0, -1, 'AAA', 'BBB', 5],
+       [1700000000, 101, 0, -1, 'BBB', 'CCC', 7],
+       [1699999998, 98, 0, -1, 'EEE', 'FFF', 42]]
 
 
 def c1_c2_equivalence():
@@ -81,9 +82,9 @@ def c1_c2_equivalence():
         if out['inmem'][1][k] != out['ext'][1][k]:
             print(f'FAIL: 统计字段 {k} 不一致 {out["inmem"][1][k]} vs {out["ext"][1][k]}')
             ok = False
-    # 输入 9 条（PARTS 7 + OLD 2），含 1 组内重复 + 1 跨格式重复 → 去重后 7 条
+    # 输入 10 条，tx=(101,0) 跨 source 重复且组内有重复行 → 交易身份去重后 7 条边
     if out['inmem'][1]['rows'] != 7:
-        print(f'FAIL: 去重后行数 {out["inmem"][1]["rows"]} ≠ 7（跨格式/组内去重失效？）')
+        print(f'FAIL: 去重后行数 {out["inmem"][1]["rows"]} ≠ 7（交易身份去重失效？）')
         ok = False
     if str(BIG) not in body or str(HUGE) not in body:
         print('FAIL: 超 int64 金额未保真（被数值 CAST 溢出/失真）')
@@ -96,6 +97,67 @@ def c1_c2_equivalence():
     if ok:
         print(f'PASS: 契约1+2 两路径逐字节一致（{len(slots)} 行，大数保真，slot 单调）')
     return ok, body
+
+
+def c1a_distinct_poison():
+    """T1a 原反例：同 slot 等额不同 tx_index 不能被五字段 DISTINCT 吃掉。"""
+    def rec(ti, account, owner, pre, post):
+        return {"transactionIndex": ti, "account": account,
+                "preMint": "MINT", "postMint": "MINT",
+                "preOwner": owner, "postOwner": owner,
+                "preAmount": str(pre), "postAmount": str(post)}
+
+    block = {"header": {"number": 101, "timestamp": 1700000000},
+             "transactions": [{"transactionIndex": 1, "err": None},
+                              {"transactionIndex": 2, "err": None}],
+             "tokenBalances": [rec(1, "acct-a1", "AAA", 5, 0),
+                               rec(1, "acct-b1", "BBB", 0, 5),
+                               rec(2, "acct-a2", "AAA", 5, 0),
+                               rec(2, "acct-b2", "BBB", 0, 5)]}
+    fx, _ = _fx([_FakeResp(200, json.dumps(block) + '\n')])
+    edges, done_to, finished = fx.scan_area(101, 101, deadline=M.time.time() + 60)
+    with tempfile.TemporaryDirectory() as d:
+        cache_fp, parts_dir, files = _mk(d, [], None)
+        merger = M.MemMerger(cache_fp, parts_dir, files, False)
+        merger.absorb(edges)
+        result = merger.finalize()
+        body = gzip.open(cache_fp, 'rt').read().splitlines() if cache_fp.exists() else []
+    if not finished or done_to != 101 or result["rows"] != 2:
+        print("FAIL: T1a DISTINCT 吃边仍存在：同 slot 等额不同 tx_index 未保留 2 笔"
+              f"（finished={finished} done_to={done_to} rows={result['rows']} body={body}）")
+        return False
+    parsed = [json.loads(line) for line in body]
+    if {row[2] for row in parsed} != {1, 2}:
+        print(f"FAIL: T1a 产物缺失交易身份 tx_index: {parsed}")
+        return False
+    print("PASS: T1a 同 slot 等额不同 tx_index 保留 2 笔")
+    return True
+
+
+def c1b_identity_conflict_and_width():
+    """T1b/c：同身份同 digest 留一，异 digest 与旧/混合行宽必须硬失败。"""
+    ok = True
+    same = [1700000000, 200, 7, -1, "AAA", "BBB", 5]
+    conflict = [1700000000, 200, 7, -1, "AAA", "BBB", 6]
+    old5 = [1700000000, 200, "AAA", "BBB", 5]
+    cases = (
+        ("同交易身份异 digest", [[same], [conflict]]),
+        ("旧 5 元组", [[old5]]),
+        ("5/7 混合行宽", [[same, old5]]),
+    )
+    for label, part_rows in cases:
+        with tempfile.TemporaryDirectory() as d:
+            cache_fp, parts_dir, files = _mk(d, part_rows, None)
+            try:
+                M.MemMerger(cache_fp, parts_dir, files, False).finalize()
+            except (TypeError, ValueError, RuntimeError):
+                pass
+            else:
+                print(f"FAIL: {label} 未 fail-closed")
+                ok = False
+    if ok:
+        print("PASS: T1b/c 同身份异 digest 与旧/混合行宽均硬失败")
+    return ok
 
 
 def c3_route():
@@ -228,6 +290,8 @@ def c6_scan_area():
 
 def main():
     ok = True
+    ok &= c1a_distinct_poison()
+    ok &= c1b_identity_conflict_and_width()
     eq, _ = c1_c2_equivalence()
     ok &= eq
     ok &= c3_route()
