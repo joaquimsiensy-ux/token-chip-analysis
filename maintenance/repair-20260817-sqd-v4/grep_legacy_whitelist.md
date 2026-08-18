@@ -6,11 +6,11 @@
 `len(row) ==/!= 5`、五变量解包与五列构造；再对所有 Python 文件执行结构命中清单：
 
 ```text
-rg -l "len\([^\n]+\)\s*(==|!=)\s*5|ts,\s*slot,\s*(src|from|f),\s*(dst|to|t),\s*(amt|amount)\s*=" \
+rg -l "len\([^\n]+\)\s*(==|!=)\s*5|ts,\s*slot,\s*(src|from|f),\s*(dst|to|t),\s*(amt|amount)\s*(=|\)\))" \
   . --glob '*.py' --glob '!.git/**' --glob '!**/__pycache__/**' | sort
 ```
 
-只有 6 个文件命中：
+只有 8 个文件命中（其中 1 个是守卫测试自身登记的正则）：
 
 ```text
 maintenance/repair-20260814-batch2/import_pythia_legacy.py
@@ -18,16 +18,19 @@ maintenance/repair-20260817-sqd-v4/tools/arc_parts_oracle.py
 maintenance/repair-20260817-sqd-v4/tools/live_window_verify.py
 scripts/report/wave_scan.py
 scripts/solana/audit_closed_accounts.py
+scripts/solana/fetch_sqd_transfers_v2.py
 scripts/solana/replay_edges.py
+scripts/tests/test_batch6_sqd_v4_blind_review.py
 ```
 
 正式非白名单零命令：
 
 ```text
-rg -n "len\([^\n]+\)\s*(==|!=)\s*5|ts,\s*slot,\s*(src|from|f),\s*(dst|to|t),\s*(amt|amount)\s*=" \
+rg -n "len\([^\n]+\)\s*(==|!=)\s*5|ts,\s*slot,\s*(src|from|f),\s*(dst|to|t),\s*(amt|amount)\s*(=|\)\))" \
   scripts --glob '*.py' --glob '!scripts/tests/**' \
   --glob '!scripts/report/wave_scan.py' \
   --glob '!scripts/solana/audit_closed_accounts.py' \
+  --glob '!scripts/solana/fetch_sqd_transfers_v2.py' \
   --glob '!scripts/solana/replay_edges.py'
 ```
 
@@ -44,6 +47,12 @@ PASS: 正式非白名单 Python 路径 5 元组解析/解包命中=0
 | `scripts/solana/replay_edges.py` | `_normalize_legacy_edge` 解析严格 5 元组 | 只有 `--legacy-sol5` 才进入；要求 v3 meta；控制台强制 `non_formal=true order_ambiguous=true`；`reconcile/evolution` 明确 BLOCK；正式分支调用严格 7 元组 `_validate_formal_edge` | 白名单 |
 | `scripts/report/wave_scan.py` | `load_sol(..., legacy_sol5=True)` | 只有 `--legacy-sol5`＋`--edges-sol` 才进入；receipt 强制 `non_formal/order_ambiguous`；默认分支按 `EDGE_SCHEMA_FIELDS` 要求 7 元组 | 白名单 |
 | `scripts/solana/audit_closed_accounts.py` | `load_edge_index(..., legacy_sol5=True)` | 只有 `--legacy-sol5` 才进入；报告强制 `non_formal/order_ambiguous`；默认分支调用 `validate_edge_row` 严格 7 元组；该入口仅保留 slot+owner 旧案覆盖审计 | 白名单 |
+
+## 2.1 HyperSync 五元组构造死代码豁免
+
+| 文件 | 允许点 | 不可达证据 | 结论 |
+|---|---|---|---|
+| `scripts/solana/fetch_sqd_transfers_v2.py:448` | `HyperSyncFetcher.scan_area` 内 `edges.append((ts, slot, f, t, amt))` | `run(hs_cfg=...)` 在 `:967-969` 首个业务请求前 exit 2；CLI `--hypersync` 在 `:1327-1329` 同样前置 exit 2。正式 v4 只走 SQD Fetcher，不能抵达该构造。 | **死代码豁免**；不是现役 legacy 入口。若任一前置拒绝被移除，须先删除或升级此构造并重新登记 producer。 |
 
 另有 4 个现役文件仅出现 legacy 防线文案，不解析 5 元组：
 
@@ -69,11 +78,13 @@ scripts/tests/test_r9_batch3_solana_observation.py
 scripts/tests/test_repair_batch_d.py
 scripts/tests/test_sqd_consumer_v4.py
 scripts/tests/test_wave_scan.py
+scripts/tests/test_batch6_sqd_v4_blind_review.py
 ```
 
 ## 4. 结论
 
-- 现役正式路径 5 元组解析/构造违规：**0**。
+- 现役正式**可达**路径 5 元组解析/构造违规：**0**。
 - 现役 legacy 解析白名单：**3 个文件**，均由显式 CLI 开关隔离并带 non-formal/READY 阻断。
+- HyperSync 不可达五元组构造死代码豁免：**1 个文件、1 处**，两条前置硬拒证据如上。
 - maintenance 一次性读取豁免：**3 个文件**。
 - 为清零数字而改写历史文档/日志：**0**。
