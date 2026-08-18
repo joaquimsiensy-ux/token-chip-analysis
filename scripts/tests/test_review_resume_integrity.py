@@ -300,15 +300,21 @@ def test_h06(tmp):
         cache_meta = Path(f"data/soltx-{edge_key}.meta.json")
         collector_hashes = historical_producer_hashes(
             "scripts/solana/fetch_sqd_transfers_v2.py", "sqd-solana-cache/v4")
-        assert len(collector_hashes) == 1, collector_hashes
+        assert collector_hashes, collector_hashes
+        logical = hashlib.sha256()
+        for edge in edges:
+            logical.update(
+                (json.dumps(edge, ensure_ascii=False) + "\n").encode("utf-8")
+            )
         cache_meta.write_text(json.dumps({
             "schema": "sqd-solana-cache/v4", "version": 4, "mint": mint,
             "collector": "fetch_sqd_transfers_v2.py/v4",
-            "collector_sha256": next(iter(collector_hashes)),
+            "collector_sha256": next(iter(sorted(collector_hashes))),
             "edge_schema": ["ts", "slot", "tx_index", "instr_index", "from", "to", "amt"],
             "edge_semantics": "owner-net-greedy",
             "order_granularity": "transaction", "order_exact": False,
-            "from_slot": 1, "finalized_upper_slot": 2}))
+            "from_slot": 1, "finalized_upper_slot": 2,
+            "edge_logical_sha256": logical.hexdigest(), "edge_rows": len(edges)}))
         assert cmd_reconcile(edges, 1, mint=mint,
                              cache_meta_path=cache_meta)
         Path("data/holders_snapshot_meta.json").unlink()

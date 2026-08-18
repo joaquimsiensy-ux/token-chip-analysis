@@ -33,6 +33,14 @@ PRODUCER_HISTORY = (
         "reason": "Batch 4 T1 producer issues replay-compatible logical edge evidence in v4 cache meta.",
     },
     {
+        "script": "scripts/solana/fetch_sqd_transfers_v2.py",
+        "sha256": "a94b193b94ba8872e4d6aa4915ff7d89ef6cc438d7f2c6c0744ebc33212d9bae",
+        "commit": "47b3620fb2f739b9a609b543572e0b69559038b0",
+        "protocol": "sqd-solana-cache/v4",
+        "status": "ACTIVE",
+        "reason": "Batch 6 F-05 keeps v4 output semantics and rejects scalar-type drift equally in both merge paths.",
+    },
+    {
         "script": "scripts/solana/window_fetch.py",
         "sha256": "56d94cbecf476b632c814a57b245c58397087dd105406e2538cac47c2fa6661c",
         "commit": "75aa622a546755a7848d211739a75f7b31f9e59b",

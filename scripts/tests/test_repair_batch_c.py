@@ -88,7 +88,7 @@ def formal_sol_meta(mint, from_slot, to_slot, edges):
     from producer_history import historical_producer_hashes
     collector_hashes = historical_producer_hashes(
         "scripts/solana/fetch_sqd_transfers_v2.py", "sqd-solana-cache/v4")
-    assert len(collector_hashes) == 1, collector_hashes
+    assert collector_hashes, collector_hashes
     logical = hashlib.sha256()
     for edge in edges:
         logical.update(
@@ -97,7 +97,7 @@ def formal_sol_meta(mint, from_slot, to_slot, edges):
     return {
         "schema": "sqd-solana-cache/v4", "version": 4, "mint": mint,
         "collector": "fetch_sqd_transfers_v2.py/v4",
-        "collector_sha256": next(iter(collector_hashes)),
+        "collector_sha256": next(iter(sorted(collector_hashes))),
         "edge_schema": ["ts", "slot", "tx_index", "instr_index", "from", "to", "amt"],
         "edge_semantics": "owner-net-greedy",
         "order_granularity": "transaction", "order_exact": False,

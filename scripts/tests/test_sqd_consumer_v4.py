@@ -32,6 +32,7 @@ OWNER = "So1BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB"
 FETCH_SCRIPT = "scripts/solana/fetch_sqd_transfers_v2.py"
 FETCH_PROTOCOL = "sqd-solana-cache/v4"
 FETCH_SHA256 = "2589f6a396c262d0747343ef21dee2bc7ba814eaa59eebdfa782fe9253c32212"
+FETCH_BATCH6_SHA256 = "a94b193b94ba8872e4d6aa4915ff7d89ef6cc438d7f2c6c0744ebc33212d9bae"
 WINDOW_SCRIPT = "scripts/solana/window_fetch.py"
 WINDOW_PROTOCOL = "solana-window-fetch-receipt/v3"
 WINDOW_SHA256 = "56d94cbecf476b632c814a57b245c58397087dd105406e2538cac47c2fa6661c"
@@ -227,6 +228,8 @@ def test_curve_cost_is_v4_only() -> None:
 
 def test_solana_producer_history_entries() -> None:
     assert FETCH_SHA256 in producer_history.historical_producer_hashes(
+        FETCH_SCRIPT, FETCH_PROTOCOL)
+    assert FETCH_BATCH6_SHA256 in producer_history.historical_producer_hashes(
         FETCH_SCRIPT, FETCH_PROTOCOL)
     assert WINDOW_SHA256 in producer_history.historical_producer_hashes(
         WINDOW_SCRIPT, WINDOW_PROTOCOL)
