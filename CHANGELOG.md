@@ -10,6 +10,7 @@
 
 ## 版本索引（活跃窗口，新在上；每版一行，详情见下方对应条目）
 
+- **6.49.0**（2026-08-18）Solana SQD transaction-net v4 五批根治：7 元组交易身份＋tx_digest 冲突硬拒、owner 双侧记账与输入卫生、正式/legacy 两态分立、采集摘要/producer 登记/invariant 闭环、ARC 双窗口真采与破坏性注入收口；冻结 parts 域内实证 DISTINCT 损失 11,502 行/8,487 组（最高 23 倍），124,816 更正为两版全史行数差的混合口径
 - **6.48.1**（2026-08-17）单元3 盲审消化轮＝三单元收口工程收官：盲审判 CONDITIONAL（闸体 9 项 DEFENDED 全攻不破），消化本单元引入债（签发点 schema 字面量收敛、怪写法等价重构、--out/--receipt 同路径前置拒、文档"保证覆盖全部 segments"过度声称收窄到 hypersync 签发者＋方案B 永久登记维护债申明）；BREACH-01（SQD 侧同 schema 签发者无 TOCTOU，非本单元引入）等四项移交第四单元候选清单
 - **6.48.0**（2026-08-17）HyperSync CSV 同哈希续采闸·方案B（三单元收口工程·单元3）：正式 CSV 仅允许同一启动冻结哈希续采（脚本升级须封盘另开新 channel 段，preflight 多 channel 拼接既有支持）；TOCTOU 启动冻结+写前漂移拒签+receipt 用启动哈希；hash-wide REVOKED 拒启动；resume 读入接严格 JSON+全字段类型收口；cea82c77 按唯一签发 protocol 补登（考证 2d69373）；全盘清点 105 份存量回执全单段零迁移
 - **6.47.1**（2026-08-17）单元2 盲审消化轮：4 BREACH 关洞（收据标签去"验证"语义防零成本洗白、维护纪律按 protocol 逐条补登+断链固化测试、inventory 残件分类报错给人工出路、staged_capture 首采三态放行）＋5 WEAK 修复（.DS_Store 唯一豁免三处等深、REVOKED 压过当前脚本、recovered 身份收据透传、symlink 根死代码、CSV 回执接严格 JSON）＋1 注（迁移哈希定性留痕）；APU 0801 原始形态全链重演练闭环
@@ -51,6 +52,15 @@
 - **6.20.1** 2026-08-05 修 5 处阻断级文档漂移（A4 前禁写报告冲突/easy 残留/惯犯回灌 docstring/批量预采集残留/旧 Par 路线历史降级）＋docs_lint 增中文禁词与 Python module docstring 扫描
 
 更早版本（6.20.0 及以前）详见 `archive/CHANGELOG-archive.md`。
+
+## [6.49.0] - 2026-08-18 — Solana SQD transaction-net v4 五批根治
+
+- **缺陷与证据边界**：旧 `fetch_sqd_transfers_v2.py` 请求中已有 `transactionIndex`，却落盘为 `[ts,slot,from,to,amt]` 五元组并按五字段 DISTINCT 合并，同 slot/同额/同 owner 的不同真实交易会被误删。批 4 独立 oracle 对 ARC 冻结的 1,348 个 parts 复算：multiset 1,775,858 行、DISTINCT 1,764,356 行，域内机械可证损失为 **11,502 行／8,487 碰撞组／最高 23 倍率**。早期 124,816 是两版全史边表的行数差，混入两次采集间其他差异，**不是纯 DISTINCT 损失**。
+- **@CX 三项设计拦截**：①`pair_tx` 等额时不能继承 SQD 返回序，排序键补 owner 后才字节确定；②transaction-net 没有 instruction 顺序，`instr_index=-1` 必须对应 `order_exact=false`，不得伪造交易内因果；③owner 净额贪心配对只证明 owner 级余额变化，正式声明 `edge_semantics="owner-net-greedy"`，不得冒充链上精确 from→to。
+- **五批结构**：批 1 冻结语义并抽取共享核；批 2 将采集器升为 v4 7 元组、按 `(slot,tx_index)` 完整边集 `tx_digest` 去重，修 owner authority 双侧记账与七条输入硬规则；批 3 把正式 v4 与显式 `--legacy-sol5` 诊断彻底分立，并把交易内未决传导为 `UNRESOLVED/order_ambiguous`；批 4 让采集成功 meta 绑定逻辑摘要/行数，登记 ACTIVE producer、清零 invariant 并完成 ARC parts oracle；批 5 用 ARC 高碰撞窗与无碰撞绿例窗真采、SQD＋Solana `getBlock` 三组抽样、端到端破坏性注入三连和全仓 grep 白名单收口。
+- **纵深防线**：v4 meta 绑定 mint/endpoint/finalized 上界/启动冻结 collector SHA；同交易跨 source 同 digest 留一、异 digest 硬失败；非法 tx/account/mint/owner/amount 整段失败；v3 meta、孤儿 cache 与旧/混合 parts 在网络及 v4 parts 创建前拒绝并要求全量重采；HyperSync 正式入口硬禁；replay/camp 对 ACTIVE producer 登记、逻辑摘要、行数和边实物对表；legacy 产物强制 non-formal/order-ambiguous 且不得进入 reconcile/evolution/READY/发布。
+- **实弹验收**：碰撞窗 16,199 slots 真采 5,696 条 v4 边，5 元组投影与案内 tx-aware 表逐边 multiset 零差，保留 85 组碰撞/114 条额外边/最高 5 倍；绿例窗 12,814 slots 真采 142 条，逐边零差且碰撞为 0。三组碰撞经 SQD 原始 `transactionIndex` 与主网 `getBlock` 六个互异签名确认。边内容单一逻辑字节、未登记 collector hash、v3 meta 三种注入均在各自目标分支拒绝；正式非白名单 5 元组解析残留为 0。
+- **范围**：不追溯改写旧 v3 案或旧缓存；旧缓存留盘但只可显式诊断。ARC owner-authority 全量扫描未发现可用变更窗，因此按工单保留批 2 fixture＋案内扫描证据，不虚构真链实例。施工 codex；验收与 main 合并/push 由 Fable/opus 后续执行。
 
 ## [6.48.1] - 2026-08-17 — 单元3 盲审消化轮（三单元收口工程收官）
 

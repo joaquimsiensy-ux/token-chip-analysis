@@ -91,7 +91,7 @@
 **脚本**：`scripts/solana/audit_closed_accounts.py <MINT> [--edges <soltx.jsonl.gz>]`（对旧研报目录审计用 `--edges/--out` 指路径）。流程=发现历史账户样本 → getMultipleAccounts 判存活/销户（此法 publicnode 屏蔽，走 api.mainnet-beta+代理）→ 销户账户拉自身签名史（销户后签名史仍可查，§3a 坑 4 同源事实）decode 实际转账 → 逐事件对照边集。
 
 - **两种样本发现模式**（`--mode auto|sigs|blocks`，默认 auto）：sigs=mint 签名史抽样（全程边集适用；签名史新→老翻页，历史定向段边集会翻不到区间）；blocks=边集 slot 区间内均匀抽 getBlock 整块提取（定向段正解，免翻页）。auto 3 页探路未进区间自动切 blocks。
-- **判定粒度声明**：覆盖=边集存在 slot 相同且 from/to 含该 owner 的边。当前 `audit_closed_accounts.py` 仍消费 legacy 5 元组，故暂以 slot+owner 为最细粒度（同 slot 同 owner 多笔可能误判为覆盖，审计是抽查性质）。**过渡标注**：v4 边已有 `tx_index`，此“无 sig 只能到 slot”声明随批 3 消费端落地作废；届时审计必须按交易身份核对，不能继续降回 slot+owner。
+- **判定粒度声明（v4 定稿）**：默认正式入口只接受 v4 7 元组并校验 `tx_index/instr_index`；旧 5 元组只允许显式 `--legacy-sol5` 诊断，报告强制 `non_formal=true/order_ambiguous=true`，不得冒充正式输入。当前覆盖谓词仍是“边集中存在同 slot 且 from/to 含该 owner 的边”：独立发现侧拿到的是签名，而 v4 SQD 边不落签名，审计器尚未把签名经 `getBlock` 映射为 `tx_index`，所以同 slot 同 owner 多笔仍可能误判覆盖。7 元组堵住格式降级与 DISTINCT 吃边，但**没有自动把本补充抽查升级为 transaction-exact**；需逐事件精确核对时，必须先做 signature→`(slot,tx_index)` 映射再比较。`CLEAN` 只按这一已声明强度解释。
 - **undetermined 语义（诚实纪律）**：深挖账户按结果分类 events_found / all_zero_delta / fetch_failed——后两类是"没查出来"不是"没事件"（高频中转户 delta 笔可能在 --deep-sigs 窗口外），不构成"无漏"证据；过半 undetermined＝样本无效（批 D GPT-F-06 起 exit 1，不再只告警）。
 - **退出码**：0=抽样零漏边；2=发现漏边（对账 gate 语义，报告 missing_detail 带 tx 级证据）；1=运行失败/样本无效。**样本无效机器判据（批 D GPT-F-06 收口，任一命中即 exit 1）**：任一 getMultipleAccounts 批失败／深挖账户全部 fetch_failed／checked=0 且 closed>0／墙钟截断／undetermined 过半。
 - **报告 status 契约（批 D）**：`CLEAN`（checked>0 零漏，exit 0）／`NO_CLOSED_SAMPLED`（抽样内无销户账户，审计对象为空——**弱结论**，exit 0，只证明"这批样本没有销户账户"，不冒充"销户路径零漏"强证明）／`LEAK_FOUND`（exit 2）／`INVALID_SAMPLE`（exit 1，`invalid_reasons` 逐条列明）。早退路径（边集缺失/签名史拉取失败/抽样零命中）同样落精简 status 报告——不存在"失败无报告"形态（消化轮 1 F-D8）。
@@ -134,9 +134,9 @@
 - **触发条件**：旧缓存与本轮 parts 收尾合并。
 - **必做动作**：预估行数 > MERGE_INMEM_MAX_ROWS（默认 800 万，可用 --merge-max-rows 调整）走 DuckDB 外排，memory_limit=4GB、threads=4、临时目录 data/_merge_tmp；阈值内走内存。无 DuckDB 时明确告警后回退内存。旧缓存只做流式行数、gzip CRC 与前几行抽验，不全量载入。
 - **原子落盘**：内存/外排两条路径都先写临时文件再 os.replace；中断不得破坏旧缓存，零边不改缓存。
-- **等价口径**：amt 可超 int64，外排全程按 VARCHAR；只允许 slot/ts CAST BIGINT。按字段去重，不按序列化整行；排序固定为 (slot,ts,from,to,amt文本)，确保两路径逐字节一致。
+- **等价口径**：amt 可超 int64，外排全程按 VARCHAR；只允许 slot/ts/tx_index/instr_index CAST BIGINT。每个 source 内先规范化完整交易边集，跨 source 按 `(slot,tx_index)` 的 `tx_digest` 去重；同身份同 digest 留一份、异 digest 硬失败。排序固定为 `(slot,tx_index,from,to,amt文本)`，确保内存/外排两路径逐字节一致。
 - **阻断语义/失败码**：临时文件未完整、gzip/JSON 体检失败或合并异常，不得替换旧缓存，命令非零退出。
-- **权威测试**：scripts/tests/test_sqd_merge_equiv.py；覆盖两路径等价、跨格式去重、超 int64、同 (slot,ts) 多行、ts=0、大数保真、路径选择、原子落盘与零行判定。
+- **权威测试**：scripts/tests/test_sqd_merge_equiv.py；覆盖两路径等价、同交易跨 source 去重、同身份异 digest 拒绝、同五字段异 `tx_index` 留二、旧/混合行宽拒绝、超 int64、ts=0、大数保真、路径选择、原子落盘与零行判定。
 
 历史症状与修复经过已由 3.34.0 CHANGELOG 记录，不进入现役执行页。
 
