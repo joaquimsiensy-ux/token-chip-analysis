@@ -141,6 +141,24 @@ def main() -> int:
         and "格式升级需全量重采，旧缓存请改名归档" in v3_collector_result["stderr"]
     )
 
+    case4 = copy_case(temp_root, "missing-logical-evidence")
+    case4_meta = case4 / "data" / META_NAME
+    missing_meta = json.loads(case4_meta.read_text(encoding="utf-8"))
+    removed_fields = {
+        key: missing_meta.pop(key)
+        for key in ("edge_logical_sha256", "edge_rows")
+    }
+    case4_meta.write_text(
+        json.dumps(missing_meta, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    missing_result = run([
+        "python3", str(REPLAY), "top", "1", "--mint", MINT, "--no-labels"
+    ], case4)
+    missing_hit = (
+        missing_result["returncode"] != 0
+        and "edge_logical_sha256" in missing_result["stderr"]
+        and "edge_rows" in missing_result["stderr"]
+    )
+
     originals_unchanged = original_hashes == {
         "edge": sha256(original_edge), "meta": sha256(original_meta)
     }
@@ -173,9 +191,15 @@ def main() -> int:
                 "target_branch_reached": v3_hit,
                 "network_sentinel": "127.0.0.1:9; expected rejection precedes access",
             },
+            "missing_logical_evidence": {
+                "removed_fields": removed_fields,
+                "target_branch": "_validate_cache_meta required logical evidence",
+                "result": missing_result,
+                "target_branch_reached": missing_hit,
+            },
         },
     }
-    passed = originals_unchanged and edge_hit and collector_hit and v3_hit
+    passed = originals_unchanged and edge_hit and collector_hit and v3_hit and missing_hit
     report["status"] = "PASS" if passed else "FAIL"
     print(json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True))
     return 0 if passed else 1

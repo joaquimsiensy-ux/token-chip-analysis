@@ -17,6 +17,7 @@ ADJUDICATION = ROOT / "scripts/report/adjudication_validator.py"
 
 sys.path.insert(0, str(HERE))
 import test_handoff_manifest as handoff_fixture  # noqa: E402
+import test_sqd_consumer_v4 as sqd_fixture  # noqa: E402
 
 
 def run_checked(label: str, args: list[str]) -> subprocess.CompletedProcess[str]:
@@ -97,8 +98,73 @@ def test_f01_real_duckdb_wave_reaches_formal_gates() -> None:
             )
 
 
+def test_f02_missing_logical_evidence_is_not_backfilled() -> None:
+    old = Path.cwd()
+    with tempfile.TemporaryDirectory(prefix="batch6-f02-", dir="/private/tmp") as raw:
+        os.chdir(raw)
+        try:
+            Path("data").mkdir()
+            rows = [[100, 1, 0, -1, sqd_fixture.ZERO, sqd_fixture.MINT, 100]]
+            edge_path, meta_path = sqd_fixture._paths()
+            sqd_fixture._write_edges(edge_path, rows)
+            meta = sqd_fixture._v4_meta(rows)
+            del meta["edge_logical_sha256"]
+            del meta["edge_rows"]
+            meta_path.write_text(json.dumps(meta), encoding="utf-8")
+
+            try:
+                sqd_fixture.replay_edges._validate_cache_meta(
+                    meta, sqd_fixture.MINT, legacy_sol5=False
+                )
+            except ValueError as exc:
+                assert "edge_logical_sha256" in str(exc) and "edge_rows" in str(exc)
+            else:
+                raise AssertionError("缺逻辑摘要/行数的 v4 meta 通过了前置身份闸")
+
+            Path("data/holders_owners.json").write_text(
+                json.dumps({sqd_fixture.MINT: 100}), encoding="utf-8"
+            )
+            owners = Path("data/holders_owners.json")
+            import hashlib
+
+            owners_ref = {
+                "path": owners.name,
+                "size": owners.stat().st_size,
+                "sha256": hashlib.sha256(owners.read_bytes()).hexdigest(),
+            }
+            Path("data/holders_snapshot_meta.json").write_text(
+                json.dumps(
+                    {
+                        "schema": "solana-holder-snapshot-v2",
+                        "mint": sqd_fixture.MINT,
+                        "target": {
+                            "chain": "solana",
+                            "token": sqd_fixture.MINT,
+                            "as_of_block": 1,
+                        },
+                        "closed": True,
+                        "supply_raw": "100",
+                        "outputs": {"holders_owners": owners_ref},
+                    }
+                ),
+                encoding="utf-8",
+            )
+            try:
+                sqd_fixture.replay_edges.cmd_reconcile(
+                    rows, 1, mint=sqd_fixture.MINT, cache_meta_path=meta_path
+                )
+            except ValueError as exc:
+                assert "edge_logical_sha256" in str(exc) and "edge_rows" in str(exc)
+            else:
+                raise AssertionError("reconcile 回填缺失证据并签出了正式结果")
+            assert not Path("data/reconcile_receipt.json").exists()
+        finally:
+            os.chdir(old)
+
+
 def main() -> int:
     test_f01_real_duckdb_wave_reaches_formal_gates()
+    test_f02_missing_logical_evidence_is_not_backfilled()
     print("PASS: 批6 opus 盲审防回归")
     return 0
 
