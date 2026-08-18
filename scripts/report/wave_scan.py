@@ -29,12 +29,14 @@ dormant_warehouse_audit.json 以 universe_ref{path,sha256} 绑定本报告做集
 的日子；原始 first_in 保留为审计字段。
 
 输入三选一：
-  --edges-sol "data/soltx-*.jsonl.gz"   Solana 5 元组行 [ts, slot, from_owner, to_owner, amount_raw]
+  --edges-sol "data/soltx-*.jsonl.gz"   Solana v4 7 元组行；正式路径同时强制
+                                        --sol-cache-meta 与 --mint 做采集身份对表；
+                                        旧 5 元组须显式 --legacy-sol5
   --edges-evm-v2 data/v2                EVM v2 采集目录（run_*/logs.parquet+blocks.parquet；
                                         hex→HUGEINT 两段组合，高 32 hex 非零硬退 exit 2）
   --duckdb path [--edges-table edges]   已物化工作库（表含 f,t,ts,amt 四列）
 
-输出：--out wave_scan_report.json（schema wave-scan/v3，成员/收方/全集数组全量零截断）。
+输出：--out wave_scan_report.json（schema wave-scan/v4，成员/收方/全集数组全量零截断）。
 候选非空时 requires_adjudication=true——−2 必须按 candidate-adjudications/v1 成员级
 逐条裁决（validator 校验），裁决完毕前历史大户兜底桶不准关闸（split-run §3.2）。
 
@@ -60,9 +62,19 @@ import os
 import sys
 from datetime import datetime, timezone
 
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "lib"))
+from wave_contract import (ORDER_GRANULARITY_INSTRUCTION,
+                           ORDER_GRANULARITY_LOG,
+                           ORDER_GRANULARITY_SOURCE_DEFINED)
+
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "solana"))
+from spl_edge_core import (EDGE_SCHEMA_FIELDS, INSTR_INDEX_TX_NET,
+                           ORDER_GRANULARITY_TX)
+from sqd_cache_identity import validate_cache_meta
+
 Z = "0x0000000000000000000000000000000000000000"
 DEAD = "0x000000000000000000000000000000000000dead"
-SCHEMA = "wave-scan/v3"
+SCHEMA = "wave-scan/v4"
 
 
 def log(msg):
@@ -85,38 +97,83 @@ def content_id(prefix, parts, n=12):
 # 采集文件观察顺序，溯源器会把同一最细粒度桶内的因果流转记为 order_ambiguous，不能
 # 把观察顺序伪装成链上真序。
 
-def load_sol(con, pattern):
+def _nonnegative_int(value):
+    return isinstance(value, int) and not isinstance(value, bool) and value >= 0
+
+
+def load_sol(con, pattern, *, legacy_sol5=False, cache_meta_path=None,
+             expected_mint=None):
     files = sorted(glob.glob(pattern))
     if not files:
         log(f"探测失败：--edges-sol 无匹配文件: {pattern}")
         sys.exit(2)
+    cache_meta = None
+    if not legacy_sol5:
+        if not cache_meta_path or not expected_mint:
+            log("探测失败：正式 --edges-sol 必须提供 --sol-cache-meta 与 --mint，"
+                "并通过 v4 meta/ACTIVE collector 身份对表")
+            sys.exit(2)
+        try:
+            with open(cache_meta_path, encoding="utf-8") as fh:
+                cache_meta = json.load(fh)
+            validate_cache_meta(cache_meta, expected_mint, legacy_sol5=False)
+        except (OSError, ValueError, TypeError, json.JSONDecodeError) as exc:
+            log(f"探测失败：Solana v4 meta/collector 身份无效: {exc}")
+            sys.exit(2)
     con.execute("""CREATE TABLE edges (
         ts BIGINT, f VARCHAR, t VARCHAR, amt HUGEINT,
         chain_pos1 BIGINT, chain_pos2 BIGINT, chain_pos3 BIGINT,
         order_exact BOOLEAN, ingest_seq BIGINT)""")
     total = 0
+    logical = hashlib.sha256()
     for fp in files:
         rows = []
         opener = gzip.open if fp.endswith(".gz") else open
         with opener(fp, "rt", encoding="utf-8") as fh:
-            for line in fh:
+            for line_no, line in enumerate(fh, 1):
                 line = line.strip()
                 if not line:
                     continue
-                r = json.loads(line)
-                # 兼容既有 5 元组 [ts,slot,from,to,amt]；它只有 slot、没有 tx/instruction
-                # 序号，slot 内顺序不可证。新 7 元组
-                # [ts,slot,transaction_index,instruction_index,from,to,amt] 才是精确顺序。
+                try:
+                    r = json.loads(line)
+                except (json.JSONDecodeError, ValueError, RecursionError) as exc:
+                    log(f"探测失败：{fp} 第 {line_no} 行 JSON 非法: {exc}")
+                    raise SystemExit(2) from exc
                 seq = total + len(rows)
-                if isinstance(r, list) and len(r) == 5:
-                    rows.append((int(r[0]), r[2], r[3], int(r[4]),
-                                 int(r[1]), None, None, False, seq))
-                elif isinstance(r, list) and len(r) == 7:
-                    rows.append((int(r[0]), r[4], r[5], int(r[6]),
-                                 int(r[1]), int(r[2]), int(r[3]), True, seq))
+                if legacy_sol5:
+                    if not isinstance(r, list) or len(r) != 5:
+                        log(f"探测失败：legacy-sol5 {fp} 第 {line_no} 行必须为 5 元组，混合行宽拒绝")
+                        raise SystemExit(2)
+                    ts, slot, owner_from, owner_to, amount = r
+                    if (not _nonnegative_int(ts) or not _nonnegative_int(slot)
+                            or not isinstance(owner_from, str) or not owner_from
+                            or not isinstance(owner_to, str) or not owner_to
+                            or not _nonnegative_int(amount)):
+                        log(f"探测失败：legacy-sol5 {fp} 第 {line_no} 行字段类型非法")
+                        raise SystemExit(2)
+                    rows.append((ts, owner_from, owner_to, amount,
+                                 slot, None, None, False, seq))
                 else:
-                    log(f"探测失败：Solana 边须为 5 元组或带 tx/instruction 序号的 7 元组，收到 {r!r}")
-                    sys.exit(2)
+                    if not isinstance(r, list) or len(r) != len(EDGE_SCHEMA_FIELDS):
+                        log(f"探测失败：正式 Solana 边 {fp} 第 {line_no} 行必须为 7 元组")
+                        raise SystemExit(2)
+                    ts, slot, tx_index, instr_index, owner_from, owner_to, amount = r
+                    if (not _nonnegative_int(ts) or not _nonnegative_int(slot)
+                            or not _nonnegative_int(tx_index)
+                            or not isinstance(instr_index, int) or isinstance(instr_index, bool)
+                            or instr_index < INSTR_INDEX_TX_NET
+                            or not isinstance(owner_from, str) or not owner_from
+                            or not isinstance(owner_to, str) or not owner_to
+                            or not isinstance(amount, int) or isinstance(amount, bool)
+                            or amount <= 0):
+                        log(f"探测失败：正式 Solana 边 {fp} 第 {line_no} 行字段类型非法")
+                        raise SystemExit(2)
+                    rows.append((ts, owner_from, owner_to, amount,
+                                 slot, tx_index, instr_index,
+                                 instr_index >= 0, seq))
+                    logical.update(
+                        (json.dumps(list(r), ensure_ascii=False) + "\n").encode("utf-8")
+                    )
                 if len(rows) >= 200_000:
                     con.executemany("INSERT INTO edges VALUES (?,?,?,?,?,?,?,?,?)", rows)
                     total += len(rows)
@@ -128,7 +185,13 @@ def load_sol(con, pattern):
     if not total:
         log("探测失败：边表为空")
         sys.exit(2)
-    return total
+    if cache_meta is not None and (
+        cache_meta["edge_rows"] != total
+        or cache_meta["edge_logical_sha256"] != logical.hexdigest()
+    ):
+        log("探测失败：Solana v4 meta 的 edge_rows/edge_logical_sha256 与实际边文件不一致")
+        sys.exit(2)
+    return total, cache_meta is not None
 
 
 def load_evm_v2(con, dir_):
@@ -535,10 +598,15 @@ def equal_amount_groups(con, total, min_amt_raw, win_days, min_win_recv, min_gro
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     src = ap.add_mutually_exclusive_group(required=True)
-    src.add_argument("--edges-sol", help="Solana jsonl.gz glob（行=[ts,slot,from,to,amt]）")
+    src.add_argument("--edges-sol", help="Solana v4 jsonl.gz glob（正式行宽固定为 7）")
     src.add_argument("--edges-evm-v2", help="EVM v2 采集目录（run_*/logs.parquet）")
     src.add_argument("--duckdb", help="已物化 DuckDB 库路径")
     ap.add_argument("--edges-table", default="edges", help="--duckdb 模式的边表名（需 f,t,ts,amt 列）")
+    ap.add_argument("--legacy-sol5", action="store_true",
+                    help="显式读取旧 5 元组；输出强制 non-formal/order-ambiguous")
+    ap.add_argument("--sol-cache-meta",
+                    help="正式 --edges-sol 对应的 sqd-solana-cache/v4 meta")
+    ap.add_argument("--mint", help="正式 --edges-sol 的预期 Solana mint（与 meta 对表）")
     ap.add_argument("--total-supply", required=True, help="总供应 raw（分母冻结值）")
     ap.add_argument("--decimals", type=int, default=None, help="仅用于展示换算")
     ap.add_argument("--out", default="wave_scan_report.json")
@@ -575,6 +643,9 @@ def main():
     a = ap.parse_args()
 
     import duckdb
+    if a.legacy_sol5 and not a.edges_sol:
+        log("参数错误：--legacy-sol5 只能与 --edges-sol 同用")
+        sys.exit(2)
     total = int(a.total_supply)
     if total <= 0:
         log("参数错误：--total-supply 必须为正")
@@ -593,12 +664,25 @@ def main():
     con.execute("SET preserve_insertion_order=false")
     t0 = datetime.now(timezone.utc)
     if a.edges_sol:
-        n_edges = load_sol(con, a.edges_sol)
+        n_edges, sol_formal = load_sol(
+            con, a.edges_sol, legacy_sol5=a.legacy_sol5,
+            cache_meta_path=a.sol_cache_meta, expected_mint=a.mint)
     elif a.edges_evm_v2:
         n_edges = load_evm_v2(con, a.edges_evm_v2)
     else:
         n_edges = attach_duckdb(con, a.duckdb, a.edges_table)
     log(f"边表就绪 {n_edges:,} 条")
+    exact_count = int(con.execute(
+        "SELECT COUNT(*) FROM edges WHERE order_exact IS TRUE").fetchone()[0])
+    order_ambiguous = exact_count != n_edges
+    if a.edges_sol:
+        edge_order_granularity = ("legacy-slot" if a.legacy_sol5
+                                  else (ORDER_GRANULARITY_TX
+                                        if order_ambiguous else ORDER_GRANULARITY_INSTRUCTION))
+    elif a.edges_evm_v2:
+        edge_order_granularity = ORDER_GRANULARITY_LOG
+    else:
+        edge_order_granularity = ORDER_GRANULARITY_SOURCE_DEFINED
 
     n_addr = build_addr_summary(con, exclude, a.first_meaningful_ratio)
     log(f"地址概要 {n_addr:,} 址（逐日末余额峰值口径＋抗 dust 首建日）")
@@ -734,6 +818,9 @@ def main():
         "schema": SCHEMA,
         "generated_at": t0.strftime("%Y-%m-%dT%H:%M:%SZ"),
         "params": {k: v for k, v in vars(a).items() if k not in ("out",)},
+        "edge_order_granularity": edge_order_granularity,
+        "order_ambiguous": order_ambiguous,
+        "non_formal": (not sol_formal) if a.edges_sol else False,
         "total_supply_raw": str(total),
         "edges": n_edges,
         "scan_universe_count": len(members),

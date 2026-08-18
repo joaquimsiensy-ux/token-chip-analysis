@@ -48,6 +48,7 @@ class FixtureHandler(BaseHTTPRequestHandler):
             value = [{"header": {"number": slot, "timestamp": 1735689600},
                       "transactions": [{"transactionIndex": 0, "err": None}],
                       "tokenBalances": [{"transactionIndex": 0, "account": "Account1",
+                                           "preMint": MINT, "postMint": MINT,
                                            "preOwner": "OwnerA", "postOwner": "OwnerB",
                                            "preAmount": "0", "postAmount": "100"}]}]
         else:

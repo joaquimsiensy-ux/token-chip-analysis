@@ -35,6 +35,7 @@ from pathlib import Path
 from test_audit_release_gate import write_deep_recon_fixtures
 
 from formal_ready_test_harness import run_formal_script
+from sqd_v4_test_fixture import formal_cli_args, write_v4_meta
 from test_supply_truth_gate import TOKEN, write_evm_bundle
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -84,9 +85,14 @@ def make_case(d, chain="eth", token=TOKEN, as_of_block=999):
         {"path": "data/holders_owners.json", "sha256": snapshot_sha, "source": "test"}]})
     with open(os.path.join(d, "data", "transfers.csv"), "w") as f:
         f.write("a,b\n1,2\n")
-    with open(os.path.join(d, "data", "edges.jsonl"), "w") as f:
+    edge_path = os.path.join(d, "data", "edges.jsonl")
+    with open(edge_path, "w") as f:
         f.write(json.dumps([86400, 1, 0, 0, Z, "0xabc", 100]) + "\n")
         f.write(json.dumps([86400, 1, 1, 0, Z, "0xdef", 100]) + "\n")
+    edge_meta = write_v4_meta(edge_path)
+    data_map = json.load(open(os.path.join(d, "data_map.json")))
+    data_map["files"].append({"path": "data/" + edge_meta.name, "source": "test"})
+    write_json(d, "data_map.json", data_map)
     bundle_chain = chain if chain in {"eth", "bsc", "base"} else "eth"
     bundle_path = write_evm_bundle(
         Path(d), token=token, chain=bundle_chain, as_of=as_of_block,
@@ -98,7 +104,10 @@ def make_case(d, chain="eth", token=TOKEN, as_of_block=999):
                                          "mint_total": str(total), "burn_total": "0",
                                          "decision_rule": "primary_form1",
                                          "total_supply_raw": str(total), "net_supply_raw": str(total)})
-    write_json(d, "wave_scan_report.json", {"schema": "wave-scan/v3", "scan_universe_count": 0,
+    write_json(d, "wave_scan_report.json", {"schema": "wave-scan/v4",
+                                            "edge_order_granularity": "transaction",
+                                            "order_ambiguous": True, "non_formal": False,
+                                            "scan_universe_count": 0,
                                             "scan_universe": [], "must_adjudicate_count": 0,
                                             "retention_buckets": {"cleared": 0, "partial_exit": 0, "retained": 0},
                                             "negative_balance_addrs": 0,
@@ -219,10 +228,11 @@ def make_provenance(d, entity_map, schema="provenance-ledger/v2", stable=True,
     trace = os.path.join(HERE, "..", "report", "entity_source_trace.py")
     labels_path = os.path.join(d, "fixture_labels.json")
     write_json(d, "fixture_labels.json", {"0xfacility": {"kind": "facility", "name": "fixture"}})
-    p = subprocess.run([sys.executable, trace, "--edges-sol", os.path.join(d, "data", "edges.jsonl"),
+    edge_path = os.path.join(d, "data", "edges.jsonl")
+    p = subprocess.run([sys.executable, trace, "--edges-sol", edge_path,
                         "--total-supply", str(10 ** 12), "--entity-file", entity_path,
                         "--labels-file", labels_path, "--out", out,
-                        "--depth-limit", str(depth_limit)],
+                        "--depth-limit", str(depth_limit)] + formal_cli_args(edge_path),
                        capture_output=True, text=True)
     if p.returncode != 0:
         raise RuntimeError(f"fixture provenance 生成失败: {p.stdout}{p.stderr}")
@@ -480,7 +490,10 @@ def main():
         d13 = os.path.join(root, "case_wavehollow")
         os.makedirs(d13)
         make_case(d13)
-        write_json(d13, "wave_scan_report.json", {"schema": "wave-scan/v3"})
+        write_json(d13, "wave_scan_report.json", {"schema": "wave-scan/v4",
+                                                   "edge_order_granularity": "transaction",
+                                                   "order_ambiguous": True,
+                                                   "non_formal": False})
         run(["generate", "--case-dir", d13, "--status", "READY"] + GEN)
         p = run(["verify", "--case-dir", d13])
         check("wave_scan_report 空壳 verify 拒收 exit 2", p.returncode == 2 and "wave_scan_report" in p.stdout)
@@ -503,7 +516,7 @@ def main():
         run(["generate", "--case-dir", d16, "--status", "READY"] + GEN)
         p = run(["verify", "--case-dir", d16])
         check("wave-scan/v1 旧版产物 verify 拒收 exit 2",
-              p.returncode == 2 and "旧版" in p.stdout and "v3" in p.stdout)
+              p.returncode == 2 and "旧版" in p.stdout and "v4" in p.stdout)
 
         # 16b. wave-scan/v2 旧版产物（缺 scan_universe 逐址全集）→ verify 同拒（6.9.2）
         d16b = os.path.join(root, "case_wavev2")
@@ -517,31 +530,35 @@ def main():
         check("wave-scan/v2 旧版产物 verify 拒收 exit 2",
               p.returncode == 2 and "旧版" in p.stdout and "scan_universe" in p.stdout)
 
-        # 16c. v3 标签但缺 scan_universe 逐址全集（6.9.3：贴标签不带货同属空壳）
+        # 16c. v4 标签但缺 scan_universe 逐址全集（6.9.3：贴标签不带货同属空壳）
         d16c = os.path.join(root, "case_wavev3hollow")
         os.makedirs(d16c)
         make_case(d16c)
-        write_json(d16c, "wave_scan_report.json", {"schema": "wave-scan/v3", "scan_universe_count": 3,
+        write_json(d16c, "wave_scan_report.json", {"schema": "wave-scan/v4",
+                                                   "edge_order_granularity": "transaction",
+                                                   "order_ambiguous": True, "non_formal": False,
+                                                   "scan_universe_count": 3,
                                                    "waves": [], "equal_amount_groups": [],
                                                    "requires_adjudication": False})
         run(["generate", "--case-dir", d16c, "--status", "READY"] + GEN)
         p = run(["verify", "--case-dir", d16c])
-        check("v3 标签缺 scan_universe 全集 verify 拒收 exit 2",
+        check("v4 标签缺 scan_universe 全集 verify 拒收 exit 2",
               p.returncode == 2 and "全集不完整" in p.stdout)
 
-        # 16d. v3 count 与逐条标记矛盾（6.9.4：count=0 配 must=true 自相矛盾拒收）
+        # 16d. v4 count 与逐条标记矛盾（6.9.4：count=0 配 must=true 自相矛盾拒收）
         d16d = os.path.join(root, "case_wavev3contra")
         os.makedirs(d16d)
         make_case(d16d)
         write_json(d16d, "wave_scan_report.json", {
-            "schema": "wave-scan/v3", "scan_universe_count": 1,
+            "schema": "wave-scan/v4", "edge_order_granularity": "transaction",
+            "order_ambiguous": True, "non_formal": False, "scan_universe_count": 1,
             "scan_universe": [{"addr": "DormantW", "must_adjudicate": True,
                                "must_reasons": ["dormant_ge_30d"]}],
             "must_adjudicate_count": 0,
             "waves": [], "equal_amount_groups": [], "requires_adjudication": False})
         run(["generate", "--case-dir", d16d, "--status", "READY"] + GEN)
         p = run(["verify", "--case-dir", d16d])
-        check("v3 count 与逐条 must 标记矛盾 verify 拒收 exit 2",
+        check("v4 count 与逐条 must 标记矛盾 verify 拒收 exit 2",
               p.returncode == 2 and "内部矛盾" in p.stdout)
 
         # 17. handoff/v1 旧 manifest：默认拒；--legacy-read-only 显式降级放行（只读警告）

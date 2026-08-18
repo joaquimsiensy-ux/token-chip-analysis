@@ -59,7 +59,9 @@ SUITE = ['changelog_lint.py', ['docs_lint.py', '--all'], 'labels_manifest.py',
          'test_formal_chain_support.py',
          'test_review_scale_guards.py',
          'test_figures_from_facts.py', 'test_cluster_quality.py',
-         'test_sqd_merge_equiv.py', 'test_supply_truth_gate.py',
+         'test_sqd_merge_equiv.py', 'test_spl_edge_core.py',
+         'test_sqd_collector_meta_v4.py', 'test_sqd_consumer_v4.py',
+         'test_supply_truth_gate.py',
          'test_repair_batch_a.py',
          'test_repair_batch_b.py',
          'test_repair_batch_c.py',
@@ -93,6 +95,9 @@ SUITE += ['test_repair_batch_d.py']
 
 # v6.41.0 批1 步骤1 RV-07：真 FAIL 收据显式归档旧 PASS 后成为 canonical。
 SUITE += ['test_repair_batch1.py']
+
+# SQD Solana v4 批6：opus 攻击型盲审点名的 producer→formal gate 交叉回归。
+SUITE += ['test_batch6_sqd_v4_blind_review.py']
 
 # v6.42.0 批2 工单 B：F-02 对抗复核 v3 结构与绑定闭环。
 SUITE += ['test_repair_batch2_f02.py']

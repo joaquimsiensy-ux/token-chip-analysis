@@ -364,9 +364,10 @@ def build_case(root, historical=True):
                      "confirmed_economic_control_raw": "100",
                      "unresolved_facility_exposure": []}],
         "double_count_check_passed": True, "unresolved_count": 0, "unresolved": []})
-    # v6.9.1：静置仓审计必须绑定 wave-scan/v3 落盘全集并逐址对账（coverage 自报不作数）
+    # v6.9.1：静置仓审计必须绑定 wave-scan/v4 落盘全集并逐址对账（coverage 自报不作数）
     write_json(root, "wave_scan_report.json", {
-        "schema": "wave-scan/v3",
+        "schema": "wave-scan/v4", "edge_order_granularity": "transaction",
+        "order_ambiguous": True, "non_formal": False,
         "scan_universe_count": 2,
         "scan_universe": [
             {"addr": "0xmustaddr", "peak_pct": 3.0, "must_adjudicate": True,
@@ -376,6 +377,8 @@ def build_case(root, historical=True):
         ],
     })
     write_json(root, "dormant_warehouse_audit.json", {
+        "non_formal": False,
+        "order_ambiguous": False,
         "full_history_event_replay": True,
         "coverage": {
             "historical_peaks": "PASS", "zeroed_or_drawn_down": "PASS",

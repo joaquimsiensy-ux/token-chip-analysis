@@ -227,7 +227,7 @@
   },
   {
    "schemas": [
-    "wave-scan/v3"
+    "wave-scan/v4"
    ],
    "script": "scripts/report/wave_scan.py"
   },
@@ -271,7 +271,7 @@
   },
   {
    "schemas": [
-    "sqd-solana-cache/v3"
+    "sqd-solana-cache/v4"
    ],
    "script": "scripts/solana/fetch_sqd_transfers_v2.py"
   },
@@ -292,7 +292,7 @@
   },
   {
    "schemas": [
-    "solana-window-fetch-receipt/v2"
+    "solana-window-fetch-receipt/v3"
    ],
    "script": "scripts/solana/window_fetch.py"
   }
@@ -345,8 +345,7 @@
     "camp-series-provenance/v1",
     "solana-holder-snapshot-v2",
     "solana-reconcile/v2",
-    "solana-reconcile/v3",
-    "sqd-solana-cache/v3"
+    "solana-reconcile/v3"
    ],
    "script": "scripts/lib/camp_series_provenance.py"
   },
@@ -385,6 +384,12 @@
   },
   {
    "schemas": [
+    "wave-scan/v4"
+   ],
+   "script": "scripts/lib/wave_contract.py"
+  },
+  {
+   "schemas": [
     "a4-claims/v2",
     "a4-seal/v4"
    ],
@@ -405,8 +410,7 @@
     "candidate-adjudications/v1",
     "distribution-adjudications/v1",
     "flow-anomaly/v2",
-    "pattern-resolutions/v1",
-    "wave-scan/v3"
+    "pattern-resolutions/v1"
    ],
    "script": "scripts/report/adjudication_validator.py"
   },
@@ -519,10 +523,28 @@
   },
   {
    "schemas": [
-    "solana-holder-snapshot-v2",
-    "sqd-solana-cache/v3"
+    "sqd-solana-cache/v4"
+   ],
+   "script": "scripts/solana/curve_cost.py"
+  },
+  {
+   "schemas": [
+    "sqd-solana-cache/v4"
+   ],
+   "script": "scripts/solana/fetch_sqd_transfers_v2.py"
+  },
+  {
+   "schemas": [
+    "solana-holder-snapshot-v2"
    ],
    "script": "scripts/solana/replay_edges.py"
+  },
+  {
+   "schemas": [
+    "sqd-solana-cache/v3",
+    "sqd-solana-cache/v4"
+   ],
+   "script": "scripts/solana/sqd_cache_identity.py"
   }
  ],
  "transport_calls": [
@@ -1031,7 +1053,7 @@
    "semantics": "overwrite_single"
   },
   {
-   "locator": "run",
+   "locator": "persist_meta",
    "script": "scripts/solana/fetch_sqd_transfers_v2.py",
    "semantics": "overwrite_single"
   },

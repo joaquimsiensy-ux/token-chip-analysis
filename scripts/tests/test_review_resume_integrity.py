@@ -24,6 +24,7 @@ from fetch_hypersync_v2 import (MANIFEST_SCHEMA, QUERY_SCHEMA, SCRIPT_PATH,
 from channels_preflight import _csv_stats, _file_fingerprints, _v2_stats
 from fetch_sqd_transfers_v2 import cache_identity, cache_identity_matches, cache_paths
 from replay_edges import cmd_evolution, cmd_reconcile
+from producer_history import historical_producer_hashes
 from evm_channel_fixture import write_csv_channel_receipt
 
 ZERO_EVM = "0x" + "0" * 40
@@ -267,7 +268,7 @@ def test_h04(tmp):
 
 def test_h05():
     assert cache_paths("AbC")[0] != cache_paths("aBc")[0]
-    meta = {**cache_identity("AbC", "ep"), "collection_upper_slot": 99}
+    meta = {**cache_identity("AbC", "ep"), "finalized_upper_slot": 99}
     assert cache_identity_matches(meta, "AbC", "ep")
     assert not cache_identity_matches(meta, "aBc", "ep")
     assert not cache_identity_matches({**meta, "endpoint": "other"}, "AbC", "ep")
@@ -279,7 +280,8 @@ def test_h06(tmp):
     try:
         Path("data").mkdir()
         mint = "MintCaseSensitive" + "1" * 15
-        edges = [[100, 1, ZERO_SOL, "A", 100], [3700, 2, ZERO_SOL, "B", 100]]
+        edges = [[100, 1, 0, -1, ZERO_SOL, "A", 100],
+                 [3700, 2, 0, -1, ZERO_SOL, "B", 100]]
         edge_key = hashlib.sha256(mint.encode("utf-8")).hexdigest()
         edge_path = Path(f"data/soltx-{edge_key}.jsonl.gz")
         with gzip.open(edge_path, "wt", encoding="utf-8") as fh:
@@ -296,9 +298,23 @@ def test_h06(tmp):
             "closed": True, "supply_raw": "200",
             "outputs": {"holders_owners": owner_ref}}))
         cache_meta = Path(f"data/soltx-{edge_key}.meta.json")
+        collector_hashes = historical_producer_hashes(
+            "scripts/solana/fetch_sqd_transfers_v2.py", "sqd-solana-cache/v4")
+        assert collector_hashes, collector_hashes
+        logical = hashlib.sha256()
+        for edge in edges:
+            logical.update(
+                (json.dumps(edge, ensure_ascii=False) + "\n").encode("utf-8")
+            )
         cache_meta.write_text(json.dumps({
-            "schema": "sqd-solana-cache/v3", "mint": mint,
-            "from_slot": 1, "collection_upper_slot": 2}))
+            "schema": "sqd-solana-cache/v4", "version": 4, "mint": mint,
+            "collector": "fetch_sqd_transfers_v2.py/v4",
+            "collector_sha256": next(iter(sorted(collector_hashes))),
+            "edge_schema": ["ts", "slot", "tx_index", "instr_index", "from", "to", "amt"],
+            "edge_semantics": "owner-net-greedy",
+            "order_granularity": "transaction", "order_exact": False,
+            "from_slot": 1, "finalized_upper_slot": 2,
+            "edge_logical_sha256": logical.hexdigest(), "edge_rows": len(edges)}))
         assert cmd_reconcile(edges, 1, mint=mint,
                              cache_meta_path=cache_meta)
         Path("data/holders_snapshot_meta.json").unlink()

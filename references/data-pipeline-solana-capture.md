@@ -31,7 +31,7 @@
 
 以下通道已在真实分析中跑通，标注 [实测·他场景]，直接可用：
 
-1. **全量转账＝SQD portal**（portal.sqd.dev，免 key 免代理）——采集器现役 **v2**（§13b；缓存使用 sha256 路径与 `sqd-solana-cache/v3` meta；旧 v1 缓存不得直接续跑，恢复须先写一次性 importer）。转账边=同 tx 内 owner 级净变动贪心配对，from/to 为 ZERO 哨兵即铸造/销毁；断点续拉增量无缝无重叠（meta 连续完成前缀天然防 off-by-one）。
+1. **全量转账＝SQD portal**（portal.sqd.dev，免 key 免代理）——采集器现役 **v2**，v4 正式边标准为 `[ts,slot,tx_index,-1,from,to,amt]`（§13b；`-1` 表示交易级净额边没有 instruction 顺序）；缓存使用 sha256(原始 mint) 路径。转账边=同 tx 内 owner 级净变动贪心配对，`edge_semantics="owner-net-greedy"`，from/to 为 ZERO 哨兵即铸造/销毁；它证明 owner 净变化，不证明链上精确 from→to。断点续拉按交易身份去重，meta 连续完成前缀防 off-by-one。
    **吞吐与架构选择**：v2 稳态约 255 倍实时（§13a 传输层翻案了旧的 1.5-4x 数字）——2-6 个月币龄全程重放数小时级；§11 混合重建（发射窗精确+核心实体流水+CPMM 重建+快照封口）降级为超长币龄（1 年+）专用。
 2. **发射期精确定价**：GeckoTerminal 分钟 K `/ohlcv/minute?aggregate=1&limit=1000&before_timestamp=`（池创建起就有）；小时 K 翻页可拿全历史。pump.fun"发射即迁移"币无内盘 K 线，内盘成本用 GMGN dev avg_cost 近似。
 3. **资金同源（gas 溯源）**：公共 RPC `getSignaturesForAddress`（翻到最老）+ `getTransaction(jsonParsed)` 找首笔 system transfer 入金 source；0.25s 间隔，代理经 `CHIP_PROXY`/`--proxy` 解析（`scripts/lib/proxy_config.py`）。识别马甲网络最有效的一招（母钱包收敛即实锤）。
@@ -91,7 +91,7 @@
 **脚本**：`scripts/solana/audit_closed_accounts.py <MINT> [--edges <soltx.jsonl.gz>]`（对旧研报目录审计用 `--edges/--out` 指路径）。流程=发现历史账户样本 → getMultipleAccounts 判存活/销户（此法 publicnode 屏蔽，走 api.mainnet-beta+代理）→ 销户账户拉自身签名史（销户后签名史仍可查，§3a 坑 4 同源事实）decode 实际转账 → 逐事件对照边集。
 
 - **两种样本发现模式**（`--mode auto|sigs|blocks`，默认 auto）：sigs=mint 签名史抽样（全程边集适用；签名史新→老翻页，历史定向段边集会翻不到区间）；blocks=边集 slot 区间内均匀抽 getBlock 整块提取（定向段正解，免翻页）。auto 3 页探路未进区间自动切 blocks。
-- **判定粒度声明**：覆盖=边集存在 slot 相同且 from/to 含该 owner 的边。SQD 边是 owner 级同 tx 净变动聚合、无 sig 字段，slot+owner 是可用最细粒度（同 slot 同 owner 多笔时有极低概率误判为覆盖，审计是抽查性质，接受）。边集区间外事件计 out_of_range 不算漏。
+- **判定粒度声明（v4 定稿）**：默认正式入口只接受 v4 7 元组并校验 `tx_index/instr_index`；旧 5 元组只允许显式 `--legacy-sol5` 诊断，报告强制 `non_formal=true/order_ambiguous=true`，不得冒充正式输入。`audit_release_gate.py` 对 `dormant_warehouse_audit.json` 的这两个字段均要求显式 `false`，字段缺失或任一为真都阻断发布。当前覆盖谓词仍是“边集中存在同 slot 且 from/to 含该 owner 的边”：独立发现侧拿到的是签名，而 v4 SQD 边不落签名，审计器尚未把签名经 `getBlock` 映射为 `tx_index`，所以同 slot 同 owner 多笔仍可能误判覆盖。7 元组堵住格式降级与 DISTINCT 吃边，但**没有自动把本补充抽查升级为 transaction-exact**；需逐事件精确核对时，必须先做 signature→`(slot,tx_index)` 映射再比较。`CLEAN` 只按这一已声明强度解释。
 - **undetermined 语义（诚实纪律）**：深挖账户按结果分类 events_found / all_zero_delta / fetch_failed——后两类是"没查出来"不是"没事件"（高频中转户 delta 笔可能在 --deep-sigs 窗口外），不构成"无漏"证据；过半 undetermined＝样本无效（批 D GPT-F-06 起 exit 1，不再只告警）。
 - **退出码**：0=抽样零漏边；2=发现漏边（对账 gate 语义，报告 missing_detail 带 tx 级证据）；1=运行失败/样本无效。**样本无效机器判据（批 D GPT-F-06 收口，任一命中即 exit 1）**：任一 getMultipleAccounts 批失败／深挖账户全部 fetch_failed／checked=0 且 closed>0／墙钟截断／undetermined 过半。
 - **报告 status 契约（批 D）**：`CLEAN`（checked>0 零漏，exit 0）／`NO_CLOSED_SAMPLED`（抽样内无销户账户，审计对象为空——**弱结论**，exit 0，只证明"这批样本没有销户账户"，不冒充"销户路径零漏"强证明）／`LEAK_FOUND`（exit 2）／`INVALID_SAMPLE`（exit 1，`invalid_reasons` 逐条列明）。早退路径（边集缺失/签名史拉取失败/抽样零命中）同样落精简 status 报告——不存在"失败无报告"形态（消化轮 1 F-D8）。
@@ -111,8 +111,19 @@
 
 ### 13b. 全程采集器 v2（`fetch_sqd_transfers_v2.py`，全程重放主力）
 
-三刀：requests.Session（连接复用+自动 gzip）/ 自适应区域并发（全局段队列动态领取,区域大小按耗时自动伸缩 1 万-100 万 slot,发射窗自动缩、死亡期自动放大）/ 全局令牌桶（默认 4 rps 防雪崩护栏——高密度段 1.6 会顶死请求数,实测教训）。失败区域重试 2 轮后进 gaps 继续别的段（修旧采集器"第一个未完段之后整体丢弃"缺陷）,gaps 非空退出码 2、清零前不得进重放。现役缓存仅接受绑定原始 mint/endpoint/采集上界的 `sqd-solana-cache/v3` identity；旧 v1 缓存不自动迁移。
+三刀：requests.Session（连接复用+自动 gzip）/ 自适应区域并发（全局段队列动态领取,区域大小按耗时自动伸缩 1 万-100 万 slot,发射窗自动缩、死亡期自动放大）/ 全局令牌桶（默认 4 rps 防雪崩护栏——高密度段 1.6 会顶死请求数,实测教训）。失败区域重试 2 轮后进 gaps 继续别的段（修旧采集器"第一个未完段之后整体丢弃"缺陷）,gaps 非空退出码 2、清零前不得进重放。v4 正式缓存绑定原始 mint/endpoint、采集器启动哈希与 finalized 上界并使用 7 元组；按 `(slot,tx_index)` 的完整交易边集 digest 去重，同身份异 digest 硬失败。旧 v3 meta 与 5 元组没有交易身份、不可迁移，必须在任何网络请求及 v4 parts 创建前拒绝续跑并明示全量重采。
 普通密度币自适应放大区域后更快——**2-6 个月币龄全程重放=数小时级,夜间挂机稳稳可行**;§11 混合重建降级为超长币龄（1 年+）专用。
+
+#### v4 provenance 的保护范围与信任前提
+
+`collector_sha256`、producer history、`edge_logical_sha256` 与 `edge_rows` 是完整性和版本对齐防线：
+它们防止版本漂移、旧采集器产物误入正式链，以及未登记改装采集器冒充现役 producer。登记哈希可由
+`git show <commit>:<script> | shasum -a 256` 公开复算，**不是密码学签名**。
+
+这套防线假设工作目录的 `data/` 可信。若对手已经能向该目录同时落盘自洽伪造的边、meta 与快照，
+现有校验只能证明这些本地文件彼此一致，不能证明边确实来自链上采集，也不能阻止伪造件骗过
+`gate_pass`。抵抗这种主动伪造需要签名或独立链上重验，是根治宣告后的独立工程；本轮不实现，也不得
+把当前 provenance 宣称为具备该能力。
 
 #### SQD stream 响应语义（2026-07-26 实测定案,判完备性的地基）
 
@@ -134,15 +145,22 @@
 - **触发条件**：旧缓存与本轮 parts 收尾合并。
 - **必做动作**：预估行数 > MERGE_INMEM_MAX_ROWS（默认 800 万，可用 --merge-max-rows 调整）走 DuckDB 外排，memory_limit=4GB、threads=4、临时目录 data/_merge_tmp；阈值内走内存。无 DuckDB 时明确告警后回退内存。旧缓存只做流式行数、gzip CRC 与前几行抽验，不全量载入。
 - **原子落盘**：内存/外排两条路径都先写临时文件再 os.replace；中断不得破坏旧缓存，零边不改缓存。
-- **等价口径**：amt 可超 int64，外排全程按 VARCHAR；只允许 slot/ts CAST BIGINT。按字段去重，不按序列化整行；排序固定为 (slot,ts,from,to,amt文本)，确保两路径逐字节一致。
+- **等价口径**：amt 可超 int64，外排全程按 VARCHAR；只允许 slot/ts/tx_index/instr_index CAST BIGINT。每个 source 内先规范化完整交易边集，跨 source 按 `(slot,tx_index)` 的 `tx_digest` 去重；同身份同 digest 留一份、异 digest 硬失败。排序固定为 `(slot,tx_index,from,to,amt文本)`，确保内存/外排两路径逐字节一致。
 - **阻断语义/失败码**：临时文件未完整、gzip/JSON 体检失败或合并异常，不得替换旧缓存，命令非零退出。
-- **权威测试**：scripts/tests/test_sqd_merge_equiv.py；覆盖两路径等价、跨格式去重、超 int64、同 (slot,ts) 多行、ts=0、大数保真、路径选择、原子落盘与零行判定。
+- **权威测试**：scripts/tests/test_sqd_merge_equiv.py；覆盖两路径等价、同交易跨 source 去重、同身份异 digest 拒绝、同五字段异 `tx_index` 留二、旧/混合行宽拒绝、超 int64、ts=0、大数保真、路径选择、原子落盘与零行判定。
 
 历史症状与修复经过已由 3.34.0 CHANGELOG 记录，不进入现役执行页。
 
-#### 无 sig 同 slot 同额多笔的去重边界
+#### 无 sig 但有交易身份时的去重边界
 
-无 sig 边不得区分真实同字段多笔与重复采集；重放/快照差异正负成对时，以 ATA tx 级真值对受害地址做替换式修复并复验锚点，禁止追加式补边。（判例：casebook/supply-accounting.md S-04）
+SQD 不落盘签名不等于没有交易身份：请求与响应已有 `transactionIndex`，所以 v4 用
+`(slot,tx_index)` 唯一标识 finalized 区间内的交易，签名需要时可按该位置反查。每笔交易先生成
+完整 transaction-net 边集，再对排序后的边集计算 `tx_digest`；同一身份重复出现且 digest 相同
+只留一份，digest 不同说明数据源对同一交易给出冲突内容，必须硬失败，禁止静默选一份或取并集。
+旧 5 元组无法区分“同 slot、同额、同 owner 的两笔真实交易”与重复采集，按五字段 DISTINCT 会
+误杀；它只允许走显式 legacy 诊断入口，不得生成 v4 meta/reconcile/READY，也不存在补身份迁移。
+重放/快照差异正负成对时，仍以 ATA tx 级真值对受害地址做替换式修复并复验锚点，禁止追加式
+补边。（判例：casebook/supply-accounting.md S-04）
 
 ### 13c. 溯源解码 v2（`decode_txs_v2.py`,三板斧落地）
 
@@ -151,7 +169,7 @@ JSON-RPC batch + 跨地址共享 sig 缓存（`--cache-dir`,按 sig 前 2 字符
 
 ### 13d. Solana HyperSync 通道（**已禁用**——完备性验收不通过，GA 后重验；全量细节见 git 3.18.x 条目）
 
-- **判决（3.18.0，BONK 三区实测+Helius 链上终审，07-22）**：历史区持久缺行越老越糟（head-450 万缺 3.6%、head-1450 万缺 22%）、近端乱序回填暂态洞且**静默快进 next_slot**（单跑无法自知缺数据）——❌全程采集第二引擎**禁用**（fetch_sqd_transfers_v2 `--hypersync` 开关已带硬警示，仅限吞吐实验）；✅摄取前沿附近（约 20h 内）作对照源/指纹查询（fee_payer 服务端过滤是 SQD 没有的能力）仍可用。
+- **判决（3.18.0，BONK 三区实测+Helius 链上终审，07-22；v4 收口 2026-08-17）**：历史区持久缺行越老越糟（head-450 万缺 3.6%、head-1450 万缺 22%）、近端乱序回填暂态洞且**静默快进 next_slot**（单跑无法自知数据洞）——❌全程采集第二引擎**硬禁**；`fetch_sqd_transfers_v2 --hypersync` 与直接 `run(hs_cfg=...)` 均在首个业务请求前 exit 2，不再提供“仅实验”的隐含五元组出口。✅独立工具对摄取前沿附近（约 20h 内）作非正式对照源/指纹查询仍可用，但不得签发 v4 cache/meta。
 - **GA 后重验路径**：对账脚本 `scripts/solana/hypersync_recon.py`（三区各跑一轮+Helius 终审定责）；mint 过滤隐藏能力、跨源对账三工程坑、双引擎吞吐 POC 细节从 git 考古（3.18.x）。
 - **⚠混合分段提议已否决，勿再重议（07-22 @CX）**：滚动窗口是覆盖范围不是准确范围；洞静默→证明某段完整的唯一办法=SQD 重拉对账，HS 等于白跑；供给对账兜不住成对缺行（借贷双缺仍守恒），完备性必须落到边集合一致；SQD 全量恒为关键路径，双引擎不缩短认证耗时。
 
