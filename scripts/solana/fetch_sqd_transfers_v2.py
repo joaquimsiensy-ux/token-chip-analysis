@@ -54,7 +54,7 @@ HyperSync 第二引擎（--hypersync，默认关）：
   SQD worker 在 HS 全忙时可接管 HS 未领段（带礼让条件防抢跑饿死；反向不行——HS 有窗口限制）
 - 两引擎输出行格式/落盘/gaps 语义完全一致；失败交易两边同样剔除（HS 按 success 字段）
 """
-import argparse, gzip, json, os, shutil, sys, threading, time
+import argparse, gzip, hashlib, json, os, shutil, sys, threading, time
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -66,7 +66,8 @@ from proxy_config import redact_proxy, resolve_proxy
 from solana_attested_session import SolanaAttestedSession
 from solana_sqd_dataset import (SOLANA_SQD_DATASET_ID,
                                 SolanaSqdDatasetAdapter)
-from spl_edge_core import (EDGE_SCHEMA_FIELDS, INSTR_INDEX_TX_NET,
+from spl_edge_core import (EDGE_SCHEMA_FIELDS, EDGE_SEMANTICS,
+                           INSTR_INDEX_TX_NET, ORDER_GRANULARITY_TX,
                            ZERO_OWNER as ZERO, dedupe_transaction_sources,
                            edge_sort_key, owner_deltas_by_tx, pair_tx,
                            soltx_cache_paths, transaction_status_by_index,
@@ -100,6 +101,12 @@ EMPTY_MAX = 500
 MERGE_INMEM_MAX_ROWS = 8_000_000
 MERGE_MEM_LIMIT = "4GB"
 MERGE_THREADS = 4
+
+CACHE_SCHEMA = "sqd-solana-cache/v4"
+CACHE_VERSION = 4
+COLLECTOR_ID = "fetch_sqd_transfers_v2.py/v4"
+DEDUPE_IDENTITY = "slot-txindex-digest/v1"
+SUPPLY_DELTA_SOURCE = "tokenBalances-owner-net"
 
 # ---- HyperSync 第二引擎常量（schema 实测 2026-07-22，见 data-pipeline-solana.md §13d）----
 HS_DEF_URL = "https://solana.hypersync.xyz/query"
@@ -511,44 +518,57 @@ def cache_paths(address):
 
 
 def load_meta(meta_fp):
-    """读取已支持的 v2/v3 meta；其他格式不作为有效断点。"""
+    """Read one v4 cache meta; malformed or non-v4 files are not resumable."""
     if not meta_fp.exists():
         return {}
     try:
         m = json.loads(meta_fp.read_text())
-    except Exception:
-        return {}
-    if m.get("version") in (2, 3):
+    except Exception as exc:
+        raise ValueError(f"invalid SQD cache meta: {exc}") from exc
+    if m.get("schema") == CACHE_SCHEMA and m.get("version") == CACHE_VERSION:
         return m
     return {}
 
 
-def cache_identity(mint, endpoint):
+def collector_sha256():
+    return hashlib.sha256(Path(__file__).resolve().read_bytes()).hexdigest()
+
+
+def cache_identity(mint, endpoint, frozen_collector_sha256=None):
     fingerprint = endpoint_fingerprint(endpoint)
-    return {"schema": "sqd-solana-cache/v3", "mint": mint,
+    frozen = frozen_collector_sha256 or collector_sha256()
+    if (not isinstance(frozen, str) or len(frozen) != 64
+            or any(ch not in "0123456789abcdef" for ch in frozen)):
+        raise ValueError("collector_sha256 must be 64 lowercase hex characters")
+    return {"schema": CACHE_SCHEMA, "mint": mint,
             "endpoint": fingerprint["public_origin"],
             "endpoint_sha256": fingerprint["sha256"],
-            "collector": "fetch_sqd_transfers_v2.py/v3"}
+            "collector": COLLECTOR_ID,
+            "collector_sha256": frozen,
+            "edge_schema": list(EDGE_SCHEMA_FIELDS),
+            "edge_semantics": EDGE_SEMANTICS,
+            "order_granularity": ORDER_GRANULARITY_TX,
+            "order_exact": False,
+            "dedupe_identity": DEDUPE_IDENTITY,
+            "supply_delta_source": SUPPLY_DELTA_SOURCE}
 
 
-def normalize_cache_identity(meta, mint, endpoint):
-    """Validate current/legacy endpoint identity and return a secret-safe copy."""
-    if not meta or meta.get("collection_upper_slot") is None:
+def normalize_cache_identity(meta, mint, endpoint, frozen_collector_sha256=None):
+    """Validate a v4 cache identity and return its secret-safe canonical copy."""
+    if not meta or meta.get("finalized_upper_slot") is None:
         return None
-    expected = cache_identity(mint, endpoint)
-    common = (meta.get("schema") == expected["schema"]
-              and meta.get("mint") == expected["mint"]
-              and meta.get("collector") == expected["collector"])
-    current = (meta.get("endpoint") == expected["endpoint"]
-               and meta.get("endpoint_sha256") == expected["endpoint_sha256"])
-    legacy = ("endpoint_sha256" not in meta and meta.get("endpoint") == endpoint)
-    if not common or not (current or legacy):
+    expected = cache_identity(mint, endpoint, frozen_collector_sha256)
+    if any(meta.get(key) != value for key, value in expected.items()):
         return None
-    return {**meta, **expected}
+    upper = meta.get("finalized_upper_slot")
+    if isinstance(upper, bool) or not isinstance(upper, int) or upper < 0:
+        return None
+    return dict(meta)
 
 
-def cache_identity_matches(meta, mint, endpoint):
-    return normalize_cache_identity(meta, mint, endpoint) is not None
+def cache_identity_matches(meta, mint, endpoint, frozen_collector_sha256=None):
+    return normalize_cache_identity(
+        meta, mint, endpoint, frozen_collector_sha256) is not None
 
 
 def plan_areas(meta, span_from, head):
@@ -885,19 +905,29 @@ def make_merger(cache_fp, parts_dir, part_files, old_ok, old_rows, max_rows):
 def run(mint, launch_ts, wall_min, conc, rps, base_url, key,
         hs_cfg=None, from_slot_cli=None, to_slot_cli=None,
         empty_max=EMPTY_MAX, merge_max_rows=MERGE_INMEM_MAX_ROWS,
-        dataset_id=SOLANA_SQD_DATASET_ID, state_session=None):
+        dataset_id=SOLANA_SQD_DATASET_ID, state_session=None,
+        frozen_collector_sha256=None):
+    frozen_collector_sha256 = frozen_collector_sha256 or collector_sha256()
     fx = Fetcher(base_url, mint, key, TokenBucket(rps), conc, empty_max=empty_max)
     head = fx.head()
     if not head:
         return None, "SQD portal head 不可达"
     if to_slot_cli:
         head = min(head, int(to_slot_cli))   # 调试/定段采集：上界压到指定 slot
+    if state_session is None:
+        raise ValueError("formal SQD collection requires an attested Solana state session")
+    finalized_slot = state_session.call("getSlot", [{"commitment": "finalized"}])
+    if (isinstance(finalized_slot, bool) or not isinstance(finalized_slot, int)
+            or finalized_slot < 0):
+        raise ValueError(f"invalid finalized Solana slot: {finalized_slot!r}")
+    head = min(head, finalized_slot)
     cache_fp, meta_fp, parts_dir = cache_paths(mint)
     parts_dir.mkdir(parents=True, exist_ok=True)
     meta = load_meta(meta_fp)
-    identity = cache_identity(mint, base_url)
+    identity = cache_identity(mint, base_url, frozen_collector_sha256)
     if meta:
-        normalized = normalize_cache_identity(meta, mint, base_url)
+        normalized = normalize_cache_identity(
+            meta, mint, base_url, frozen_collector_sha256)
         if normalized is None:
             raise SystemExit("[fail-closed] SQD cache meta 与 mint/endpoint/采集器身份不一致；"
                              "不得跨标的或跨端点复用，改用新的 data 目录")
@@ -910,9 +940,9 @@ def run(mint, launch_ts, wall_min, conc, rps, base_url, key,
         meta = normalized
 
     def fresh_meta(start):
-        return {**identity, "version": 3, "from_slot": start,
+        return {**identity, "version": CACHE_VERSION, "from_slot": start,
                 "launch_covered": False, "areas": [],
-                "collection_upper_slot": head}
+                "finalized_upper_slot": head}
     # 旧缓存只做流式体检拿行数（不载入内存——收尾阶段才按规模选路径读它）
     old_rows, old_ok = 0, False
     if cache_fp.exists() and meta:
@@ -936,8 +966,6 @@ def run(mint, launch_ts, wall_min, conc, rps, base_url, key,
         span_from = from_slot = max(1, head - back)
         meta = fresh_meta(from_slot)
 
-    if state_session is None:
-        raise ValueError("formal SQD collection requires an attested Solana state session")
     dataset_scope = SolanaSqdDatasetAdapter(
         dataset_id=dataset_id, mint=mint, from_slot=span_from, to_slot=head,
         state_session=state_session).attest_state_anchor()
@@ -1127,6 +1155,9 @@ def run(mint, launch_ts, wall_min, conc, rps, base_url, key,
     # 落盘：整写 jsonl.gz（临时文件+原子 rename），meta 记 launch_covered 与 gaps
     final = {"rows": 0, "has_mint": False, "min_ts": None}
     try:
+        if collector_sha256() != frozen_collector_sha256:
+            raise RuntimeError(
+                "collector_sha256 changed after startup; refusing cache finalize")
         final = merger.finalize()
         if not final["rows"]:
             return None, "SQD 拉取无数据（含缓存为空）"
@@ -1142,7 +1173,7 @@ def run(mint, launch_ts, wall_min, conc, rps, base_url, key,
         # 便于事后复验：任取一段做 ±60 包围请求，应能拿到前后块且不含该段本身）
         meta.update({"launch_covered": bool(meta.get("launch_covered")) or has_mint,
                      "next_slot": front + 1, "gaps": gaps,
-                     "collection_upper_slot": head,
+                     "finalized_upper_slot": head,
                      "empty_ok": {"n": len(fx.empty_hits), "max": empty_max,
                                   "intervals": fx.empty_hits[:2000]},
                      "merge_mode": merger.mode,

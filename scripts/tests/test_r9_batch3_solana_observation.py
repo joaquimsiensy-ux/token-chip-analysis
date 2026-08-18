@@ -509,7 +509,7 @@ def test_sqd_collector_rejects_bad_scope_before_run():
     safe_identity = collector.cache_identity(MINT, secret_endpoint)
     assert "FAKEKEY123" not in json.dumps(safe_identity), safe_identity
     assert collector.cache_identity_matches(
-        {**safe_identity, "collection_upper_slot": 10}, MINT, secret_endpoint)
+        {**safe_identity, "finalized_upper_slot": 10}, MINT, secret_endpoint)
     legacy_meta = {
         "schema": "sqd-solana-cache/v3", "version": 3, "mint": MINT,
         "endpoint": secret_endpoint,
@@ -517,7 +517,7 @@ def test_sqd_collector_rejects_bad_scope_before_run():
         "collection_upper_slot": 10,
     }
     normalized = collector.normalize_cache_identity(legacy_meta, MINT, secret_endpoint)
-    assert normalized and "FAKEKEY123" not in json.dumps(normalized), normalized
+    assert normalized is None, normalized
     cases = (
         [MINT, "--dataset-id", "solana-devnet"],
         ["", "--dataset-id", "solana-mainnet"],
@@ -540,13 +540,10 @@ def test_sqd_collector_rejects_bad_scope_before_run():
         try:
             _, meta, _ = collector.cache_paths(MINT)
             meta.parent.mkdir(parents=True, exist_ok=True)
-            meta.write_text(json.dumps({
-                "schema": "sqd-solana-cache/v3", "version": 3,
-                "mint": "wrong-mint",
-                "endpoint": "fixture://sqd",
-                "collector": "fetch_sqd_transfers_v2.py/v3",
-                "collection_upper_slot": 10,
-            }))
+            identity = collector.cache_identity(MINT, "fixture://sqd")
+            meta.write_text(json.dumps({**identity, "version": 4,
+                                        "mint": "wrong-mint",
+                                        "finalized_upper_slot": 10}))
             with mock.patch.object(collector.Fetcher, "head", return_value=10):
                 try:
                     collector.run(
@@ -557,6 +554,27 @@ def test_sqd_collector_rejects_bad_scope_before_run():
                     assert "mint" in str(exc).lower() or "标的" in str(exc)
                 else:
                     raise AssertionError("wrong-mint SQD cache identity was consumed")
+        finally:
+            os.chdir(old)
+
+    with tempfile.TemporaryDirectory(prefix="r9-b3-sqd-toctou-") as raw:
+        old = Path.cwd()
+        os.chdir(raw)
+        try:
+            edge = (1700000000, 10, 0, -1, collector.ZERO, "OwnerA", 5)
+            with (mock.patch.object(collector.Fetcher, "head", return_value=10),
+                  mock.patch.object(collector.Fetcher, "scan_area",
+                                    return_value=([edge], 10, True)),
+                  mock.patch.object(collector, "collector_sha256",
+                                    side_effect=["a" * 64, "b" * 64]),
+                  mock.patch.object(collector.MemMerger, "finalize",
+                                    side_effect=AssertionError("finalize reached")) as finalize):
+                _edges, gap = collector.run(
+                    MINT, None, 1, 1, 1, "fixture://sqd", None,
+                    from_slot_cli=10, dataset_id="solana-mainnet",
+                    state_session=session(SolanaTransportFake()))
+            assert gap and "merge-fail" in gap, gap
+            assert finalize.call_count == 0
         finally:
             os.chdir(old)
 
