@@ -251,6 +251,16 @@ def test_f07_old_124816_claim_points_to_correction() -> None:
         assert marker in claim, f"旧 124,816 行缺勘误指向或校正口径: {marker}"
 
 
+def test_note02_replay_rejects_unproduced_instruction_edges() -> None:
+    row = [0, 1, 0, 0, sqd_fixture.ZERO, sqd_fixture.OWNER, 1]
+    try:
+        sqd_fixture.replay_edges._validate_formal_edge(row)
+    except ValueError as exc:
+        assert "instr_index" in str(exc) and "-1" in str(exc)
+    else:
+        raise AssertionError("replay 接受了当前无 producer 身份的 instruction 级边")
+
+
 def main() -> int:
     test_f01_real_duckdb_wave_reaches_formal_gates()
     test_f02_missing_logical_evidence_is_not_backfilled()
@@ -258,6 +268,7 @@ def main() -> int:
     test_f04_non_formal_dormant_report_is_release_blocked()
     test_f06_legacy_scan_covers_tuple_constructor()
     test_f07_old_124816_claim_points_to_correction()
+    test_note02_replay_rejects_unproduced_instruction_edges()
     print("PASS: 批6 opus 盲审防回归")
     return 0
 
