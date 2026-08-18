@@ -932,9 +932,8 @@ def make_merger(cache_fp, parts_dir, part_files, old_ok, old_rows, max_rows):
 def run(mint, launch_ts, wall_min, conc, rps, base_url, key,
         hs_cfg=None, from_slot_cli=None, to_slot_cli=None,
         empty_max=EMPTY_MAX, merge_max_rows=MERGE_INMEM_MAX_ROWS,
-        dataset_id=SOLANA_SQD_DATASET_ID, state_session=None,
-        frozen_collector_sha256=None):
-    frozen_collector_sha256 = frozen_collector_sha256 or collector_sha256()
+        dataset_id=SOLANA_SQD_DATASET_ID, state_session=None):
+    frozen_collector_sha256 = collector_sha256()
     if hs_cfg is not None:
         log("[fail-closed] --hypersync 通道已禁用；v4 正式采集只允许 SQD")
         raise SystemExit(2)
