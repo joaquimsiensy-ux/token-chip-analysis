@@ -231,7 +231,12 @@ def test_curve_cost_is_v4_only() -> None:
     forged = _v4_meta(rows)
     forged["edge_logical_sha256"] = "0" * 64
     meta_path.write_text(json.dumps(forged), encoding="utf-8")
-    _expect_reject(lambda: replay_edges.load_edges(MINT), "摘要")
+    _expect_reject(
+        lambda: replay_edges.cmd_reconcile(
+            rows, 1, mint=MINT, cache_meta_path=meta_path
+        ),
+        "摘要",
+    )
     _expect_reject(lambda: curve_cost.load_edges(MINT), "摘要")
 
     meta_path.write_text(json.dumps(_v4_meta(rows)), encoding="utf-8")

@@ -18,14 +18,14 @@ mint 来源：--mint / MINT 环境变量 / 工作目录 config.json 的 mint 字
 - 脚本自校准：重建毕业边际价 vs --grad-price 偏差 >20% 告警（参数不匹配）
 来源：PUB(Solana) 分析 2026-07-14 收编（参数化）。
 """
-import argparse, gzip, json, os, sys
+import argparse, gzip, hashlib, json, os, sys
 from collections import defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
 
-from spl_edge_core import (EDGE_SCHEMA_FIELDS, EDGE_SEMANTICS,
-                           ORDER_GRANULARITY_TX, soltx_cache_paths,
-                           validate_edge_row)
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
+from spl_edge_core import soltx_cache_paths, validate_edge_row
+from sqd_cache_identity import validate_cache_meta
 
 
 def resolve_mint(cli):
@@ -50,7 +50,7 @@ def sol_price_at(ts, sol_klines):
 
 
 def load_edges(mint, data_dir=Path("data")):
-    """Load the formal v4 transaction-net cache; legacy rows are not cost evidence."""
+    """Load formal sqd-solana-cache/v4 rows; legacy rows are not cost evidence."""
     edge_path, meta_path, _parts_path = soltx_cache_paths(mint, data_dir)
     if not meta_path.is_file():
         raise ValueError(f"SQD v4 meta 不存在: {meta_path}")
@@ -58,29 +58,32 @@ def load_edges(mint, data_dir=Path("data")):
         meta = json.loads(meta_path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError, RecursionError) as exc:
         raise ValueError(f"SQD v4 meta 非法: {exc}") from exc
-    upper = meta.get("finalized_upper_slot")
-    if (meta.get("schema") != "sqd-solana-cache/v4"
-            or meta.get("version") != 4 or meta.get("mint") != mint
-            or meta.get("edge_schema") != list(EDGE_SCHEMA_FIELDS)
-            or meta.get("edge_semantics") != EDGE_SEMANTICS
-            or meta.get("order_granularity") != ORDER_GRANULARITY_TX
-            or meta.get("order_exact") is not False
-            or not isinstance(upper, int) or isinstance(upper, bool) or upper < 0):
-        raise ValueError("curve_cost 正式链只接受绑定 mint 与 v4 边契约的 SQD meta")
+    validate_cache_meta(meta, mint, legacy_sol5=False)
+    # Delegated consumer anchor for invariant_scan; the shared validator owns the checks.
+    if meta["schema"] != "sqd-solana-cache/v4":  # pragma: no cover - validator guarantees it
+        raise AssertionError("validate_cache_meta 未兑现 v4 schema 后置条件")
     if not edge_path.is_file() or edge_path.is_symlink():
         raise ValueError(f"SQD v4 边文件缺失或为符号链接: {edge_path}")
     rows = []
+    logical = hashlib.sha256()
     with gzip.open(edge_path, "rt", encoding="utf-8") as handle:
         for line_no, line in enumerate(handle, 1):
             if not line.strip():
                 continue
             try:
                 row = json.loads(line)
-                rows.append(list(validate_edge_row(row)))
+                edge = list(validate_edge_row(row))
             except (json.JSONDecodeError, TypeError, ValueError) as exc:
                 raise ValueError(f"SQD v4 边文件第 {line_no} 行非法: {exc}") from exc
+            rows.append(edge)
+            logical.update(
+                (json.dumps(edge, ensure_ascii=False) + "\n").encode("utf-8")
+            )
     if not rows:
         raise ValueError("SQD v4 边文件为空")
+    if (meta["edge_rows"] != len(rows)
+            or meta["edge_logical_sha256"] != logical.hexdigest()):
+        raise ValueError("SQD v4 meta 的边摘要/行数与实际边文件不一致")
     rows.sort(key=lambda edge: (edge[1], edge[2], edge[4], edge[5], str(edge[6])))
     return rows
 
