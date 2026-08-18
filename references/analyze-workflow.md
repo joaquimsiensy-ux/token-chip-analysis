@@ -100,7 +100,7 @@
 3. **ET-2 无下限成员完整性扫描**：对每个临时实体做不设持仓下限的成员完整性扫描。
    ET 是判级筛查层，不与 EF-1～EF-3 顶层冻结门禁混称。
 4. **EF-3A 全体持仓波次扫描／EF-3B 资金流异常扫描**：名册定稿前分别运行
-   `wave_scan.py` 与 `flow_anomaly_scan.py`，产 `wave_scan_report.json`（wave-scan/v3）和
+   `wave_scan.py` 与 `flow_anomaly_scan.py`，产 `wave_scan_report.json`（wave-scan/v4）和
    `flow_anomaly_report.json`（flow-anomaly/v2）。分段执行时 EF-3A/B 跑批归 −1。
 5. **当前持仓分布初判**：仅在 EF-3A 和 EF-3B 之后运行
    `holder_distribution_scan.py --stage initial`。产物是 `distribution_scan.json` 和

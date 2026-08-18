@@ -392,27 +392,32 @@ def _verify_light_schema(case_dir, fails, manifest, legacy=False):
         return
     try:
         ws = load_json(os.path.join(case_dir, "wave_scan_report.json"))
-        if ws.get("schema") in ("wave-scan/v1", "wave-scan/v2"):
+        if ws.get("schema") in ("wave-scan/v1", "wave-scan/v2", "wave-scan/v3"):
             fails.append(f"wave_scan_report.json 是旧版（{ws.get('schema')}）——v2 及更早缺 scan_universe "
-                         "逐址全集（候选对账没账可对），重跑 wave_scan.py（v3）后重 generate；"
+                         "逐址全集，v3 又缺边顺序/legacy 标记，重跑 wave_scan.py（v4）后重 generate；"
                          "已冻结旧案走 verify --legacy-read-only")
-        elif ws.get("schema") != "wave-scan/v3":
+        elif ws.get("schema") != "wave-scan/v4":
             fails.append(f"wave_scan_report.json schema 异常: {ws.get('schema')}")
+        elif ws.get("non_formal") is not False \
+                or not isinstance(ws.get("order_ambiguous"), bool) \
+                or ws.get("edge_order_granularity") not in ("transaction", "instruction"):
+            fails.append("wave_scan_report.json v4 必须是 formal 且携带合法边顺序语义；"
+                         "legacy-sol5 诊断产物不得进入 READY")
         elif not isinstance(ws.get("waves"), list) or not isinstance(ws.get("equal_amount_groups"), list) \
                 or not isinstance(ws.get("requires_adjudication"), bool):
             fails.append("wave_scan_report.json 缺 waves/equal_amount_groups/requires_adjudication——空壳拒收")
         elif not isinstance(ws.get("scan_universe"), list) \
                 or not isinstance(ws.get("must_adjudicate_count"), int) \
                 or len(ws["scan_universe"]) != ws.get("scan_universe_count"):
-            fails.append("wave_scan_report.json v3 全集不完整（scan_universe 须为数组、"
+            fails.append("wave_scan_report.json v4 全集不完整（scan_universe 须为数组、"
                          "must_adjudicate_count 须为整数、len(scan_universe)==scan_universe_count）"
-                         "——贴 v3 标签不带逐址全集同属空壳，拒收")
+                         "——贴 v4 标签不带逐址全集同属空壳，拒收")
         elif any(not isinstance(u, dict) or not str(u.get("addr") or "").strip()
                  or not isinstance(u.get("must_adjudicate"), bool)
                  for u in ws["scan_universe"]) \
                 or sum(1 for u in ws["scan_universe"] if u.get("must_adjudicate")) \
                 != ws["must_adjudicate_count"]:
-            fails.append("wave_scan_report.json v3 全集内部矛盾（每条须有 addr 且 "
+            fails.append("wave_scan_report.json v4 全集内部矛盾（每条须有 addr 且 "
                          "must_adjudicate 为布尔；must_adjudicate_count 必须等于逐条 true 计数"
                          "——count=0 配 must=true 条目这类自相矛盾拒收，v6.9.4）")
     except Exception as e:
@@ -457,7 +462,7 @@ def verify_case(case_dir, legacy_read_only=False):
             legacy_mode = True
         elif schema in LEGACY_SCHEMAS:
             fails.append(f"schema {schema} 是旧版——新运行必须重跑 v6.8.0 生产器"
-                         "（wave-scan/v3、flow-anomaly/v2）后重 generate；只读旧案加 --legacy-read-only")
+                         "（wave-scan/v4、flow-anomaly/v2）后重 generate；只读旧案加 --legacy-read-only")
         else:
             fails.append(f"schema 不兼容: 需要 {schema}，本端支持 {sorted(SUPPORTED_SCHEMAS)}")
     status = m.get("status")

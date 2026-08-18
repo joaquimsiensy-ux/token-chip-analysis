@@ -76,7 +76,7 @@ def file_sha(path):
     return h.hexdigest()
 
 
-WAVE_SCHEMA = "wave-scan/v3"
+WAVE_SCHEMA = "wave-scan/v4"
 FLOW_SCHEMA = "flow-anomaly/v2"
 SPRAY_MODES = ("pulse", "pulse_all", "slow_spray")
 
@@ -85,7 +85,11 @@ def check_source_schemas(wave, flow):
     """源报告 schema 检查（v6.8.1：错版/空壳报告不得形成"零候选已闭环"）。"""
     fails = []
     if wave.get("schema") != WAVE_SCHEMA:
-        fails.append(f"wave_scan_report schema 异常: {wave.get('schema')}（需要 {WAVE_SCHEMA}——旧版重跑 wave_scan.py v3）")
+        fails.append(f"wave_scan_report schema 异常: {wave.get('schema')}（需要 {WAVE_SCHEMA}——旧版重跑 wave_scan.py v4）")
+    elif wave.get("non_formal") is not False \
+            or not isinstance(wave.get("order_ambiguous"), bool) \
+            or wave.get("edge_order_granularity") not in ("transaction", "instruction"):
+        fails.append("wave_scan_report v4 缺 formal 边顺序语义，legacy-sol5 诊断产物不得裁决")
     if flow.get("schema") != FLOW_SCHEMA:
         fails.append(f"flow_anomaly_report schema 异常: {flow.get('schema')}"
                      f"（需要 {FLOW_SCHEMA}——旧 v1 产物重跑 flow_anomaly_scan.py v2）")

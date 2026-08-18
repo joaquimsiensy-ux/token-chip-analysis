@@ -589,12 +589,12 @@ def registry_anchor_check(sidecar: dict, resolved: dict, series_path, *,
                                      "reconcile.inputs.holders_snapshot_meta", receipt_dirs)
         cache_meta = _json_loads(meta_path.read_text(encoding="utf-8"),
                                  "soltx meta")
-        if cache_meta.get("schema") != "sqd-solana-cache/v3" \
+        if cache_meta.get("schema") != "sqd-solana-cache/v4" \
                 or cache_meta.get("mint") != expected_mint:
             raise SeriesProvenanceError(
                 "reconcile 绑定的 soltx meta schema/mint 与案 target 不一致")
         if cache_meta.get("from_slot") != frm \
-                or cache_meta.get("collection_upper_slot") != to:
+                or cache_meta.get("finalized_upper_slot") != to:
             raise SeriesProvenanceError(
                 "reconcile collection_window 与 soltx meta 采集窗口撕裂")
         if cache_meta.get("edge_logical_sha256") != digest \

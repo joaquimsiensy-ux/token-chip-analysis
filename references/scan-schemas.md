@@ -1,7 +1,7 @@
 # scan-schemas — 机械扫描产物 schema 冻结（v6.20.0）
 
 扫描、溯源和分布形态产物的**唯一权威字段定义**。实现脚本与契约测试对本文件写；改字段先改这里再改代码。
-适用脚本：`wave_scan.py`（wave-scan/v3）、`flow_anomaly_scan.py`（flow-anomaly/v2）、
+适用脚本：`wave_scan.py`（wave-scan/v4）、`flow_anomaly_scan.py`（flow-anomaly/v2）、
 `entity_source_trace.py`（provenance-ledger/v2）、`holder_distribution_scan.py`（distribution-scan/v2）、
 `distribution_explanation_check.py`（distribution-explanation/v1）和两类裁决台账。
 
@@ -24,19 +24,27 @@
 `[ts,slot,from,to,amt]` 仅是 `legacy-sol5` 诊断格式，标记 `order_ambiguous/non-formal`，无法补回
 交易身份且无迁移路径，正式使用须全量重采。
 
-## 1. wave-scan/v3（wave_scan.py）
+## 1. wave-scan/v4（wave_scan.py）
 
 与 v1 的语义差异（**不得冒充 v1**，handoff 校验按版本严格匹配）：
 扫描对象从"清零层"改为**全体历史峰值 ≥0.02% 地址**（三桶标签）；A 指纹两层（seed_window 触发→expanded_wave 生长）；C 口径改"峰值→30% 峰值耗时 ≤30 日"；D 参数四条合一；成员零截断；负余额升 exit 2；聚类时间轴用抗 dust 的 `first_meaningful_day`。
 v3 与 v2 的差异（2026-08-02 codex 复核补闸）：**候选全集逐址落盘**——v2 只落 `scan_universe_count` 一个计数，孤仓不成波次/等额组就从产物消失、发布闸无从对账；v3 新增 `scan_universe` 逐址清单＋`must_adjudicate` 四类机械标记＋`must_adjudicate_count`，`dormant_warehouse_audit.json` 以 `universe_ref{path,sha256}` 绑定本报告，audit_release_gate 做哈希＋集合包含对账。
+v4 与 v3 的差异（2026-08-18 SQD v4 消费端分立）：新增 `edge_order_granularity`、
+`order_ambiguous`、`non_formal`。正式 SQD transaction-net 边虽为 v4 7 元组，但
+`instr_index=-1`，所以 `edge_order_granularity="transaction"`、`order_ambiguous=true`、
+`non_formal=false`；未来真实指令级边才可报 `instruction/false/false`。显式
+`--legacy-sol5` 必须报 `legacy-slot/true/true`，handoff、裁决和发布链一律拒绝它。
 
 ```
 {
-  "schema": "wave-scan/v3",
+  "schema": "wave-scan/v4",
   "generated_at": ISO8601,
   "params": {…全部命令行参数…},
   "total_supply_raw": str,
   "edges": int,
+  "edge_order_granularity": "transaction|instruction|legacy-slot",
+  "order_ambiguous": bool,
+  "non_formal": bool,
   "scan_universe_count": int,          # 峰值≥门槛的地址总数（不做现仓过滤）
   "scan_universe": [{                  # v3 新增：全集逐址落盘（len == scan_universe_count，零截断）
     "addr": str, "peak_raw": str, "peak_pct": float, "final_raw": str,

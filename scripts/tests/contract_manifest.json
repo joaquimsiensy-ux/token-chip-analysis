@@ -46,7 +46,7 @@
     {"id":"CT-WAVE-20","authority_file":"references/casebook/supply-accounting.md","needle":"wave_scan.py","stages":["A3"],"kind":"required"},
     {"id":"CT-WAVE-21","authority_file":"references/casebook/supply-accounting.md","needle":"桶存在≠桶内被检验过","stages":["A3"],"kind":"required"},
     {"id":"CT-WAVE-22","authority_file":"references/casebook/supply-accounting.md","needle":"闸外的人来试着绕它","stages":["A3"],"kind":"required"},
-    {"id":"CT-WAVE-23","authority_file":"references/scan-schemas.md","needle":"wave-scan/v3","stages":["A3"],"kind":"required"},
+    {"id":"CT-WAVE-23","authority_file":"references/scan-schemas.md","needle":"wave-scan/v4","stages":["A3"],"kind":"required"},
     {"id":"CT-WAVE-24","authority_file":"references/scan-schemas.md","needle":"flow-anomaly/v2","stages":["A3"],"kind":"required"},
     {"id":"CT-WAVE-25","authority_file":"references/scan-schemas.md","needle":"candidate-adjudications/v1","stages":["A3"],"kind":"required"},
     {"id":"CT-WAVE-26","authority_file":"references/scan-schemas.md","needle":"provenance-ledger/v2","stages":["A3"],"kind":"required"},
