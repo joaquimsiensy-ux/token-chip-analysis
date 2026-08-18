@@ -69,7 +69,8 @@ from solana_sqd_dataset import (SOLANA_SQD_DATASET_ID,
 from spl_edge_core import (EDGE_SCHEMA_FIELDS, INSTR_INDEX_TX_NET,
                            ZERO_OWNER as ZERO, dedupe_transaction_sources,
                            edge_sort_key, owner_deltas_by_tx, pair_tx,
-                           soltx_cache_paths)
+                           soltx_cache_paths, transaction_status_by_index,
+                           validate_tx_index)
 
 try:
     import requests
@@ -262,10 +263,17 @@ class Fetcher:
                         if not tbs:
                             continue
                         ts = hdr.get("timestamp") or 0
-                        errmap = {tx.get("transactionIndex"): tx.get("err")
-                                  for tx in b.get("transactions") or []}
-                        successful = [rec for rec in tbs
-                                      if errmap.get(rec.get("transactionIndex")) is None]
+                        errmap = transaction_status_by_index(b.get("transactions") or [])
+                        successful = []
+                        for rec in tbs:
+                            if not isinstance(rec, dict):
+                                raise TypeError("tokenBalance record must be an object")
+                            ti = validate_tx_index(rec.get("transactionIndex"))
+                            if ti not in errmap:
+                                raise ValueError(
+                                    f"tokenBalance tx_index={ti} has no transaction status")
+                            if errmap[ti] is None:
+                                successful.append(rec)
                         by_tx = owner_deltas_by_tx(successful, self.mint)
                         for ti, delta in by_tx.items():
                             for f, t, amt in pair_tx(delta):

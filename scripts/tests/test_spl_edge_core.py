@@ -144,6 +144,26 @@ def test_owner_input_failures_are_controlled():
         pass
     else:
         raise AssertionError("同 (tx_index, account) 重复记录未拒绝")
+    for value in (None, True, -1, "7"):
+        row = _balance(value, "bad-tx-index", "A", "A", "1", "0")
+        try:
+            parse_owner_delta(row, "MINT")
+        except (TypeError, ValueError):
+            pass
+        else:
+            raise AssertionError(f"非法 transactionIndex 未拒绝: {value!r}")
+    for records in (
+        [{"transactionIndex": 1}],
+        [{"transactionIndex": True, "err": None}],
+        [{"transactionIndex": 1, "err": None},
+         {"transactionIndex": 1, "err": "duplicate"}],
+    ):
+        try:
+            _core.transaction_status_by_index(records)
+        except (TypeError, ValueError):
+            pass
+        else:
+            raise AssertionError(f"非法 transaction 状态表未拒绝: {records!r}")
 
 
 def test_cache_paths_and_semantic_constants():

@@ -136,6 +136,27 @@ def _optional_text(value, field):
     return value
 
 
+def validate_tx_index(value):
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise ValueError("transactionIndex must be a non-negative integer")
+    return value
+
+
+def transaction_status_by_index(records):
+    """Build a complete transaction success map with duplicate detection."""
+    statuses = {}
+    for record in records:
+        if not isinstance(record, Mapping):
+            raise TypeError("transaction record must be a mapping")
+        if "transactionIndex" not in record or "err" not in record:
+            raise ValueError("transaction record requires transactionIndex and err")
+        tx_index = validate_tx_index(record["transactionIndex"])
+        if tx_index in statuses:
+            raise ValueError(f"duplicate transaction status for tx_index={tx_index}")
+        statuses[tx_index] = record["err"]
+    return statuses
+
+
 def parse_owner_delta(record, target_mint):
     """Validate one tokenBalance row and return its two-sided owner deltas.
 
@@ -154,9 +175,7 @@ def parse_owner_delta(record, target_mint):
     if missing:
         raise ValueError(f"tokenBalance record missing fields: {','.join(missing)}")
 
-    tx_index = record["transactionIndex"]
-    if isinstance(tx_index, bool) or not isinstance(tx_index, int) or tx_index < 0:
-        raise ValueError("transactionIndex must be a non-negative integer")
+    tx_index = validate_tx_index(record["transactionIndex"])
     account = record["account"]
     if not isinstance(account, str) or not account:
         raise ValueError("tokenBalance account must be a non-empty string")
