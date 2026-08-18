@@ -160,6 +160,33 @@ def c1b_identity_conflict_and_width():
     return ok
 
 
+def c1c_transaction_status_required():
+    """T3 红例：余额记录没有对应 transaction 状态时不得默认成功。"""
+    def rec(ti, account, owner, pre, post):
+        return {"transactionIndex": ti, "account": account,
+                "preMint": "MINT", "postMint": "MINT",
+                "preOwner": owner, "postOwner": owner,
+                "preAmount": str(pre), "postAmount": str(post)}
+
+    block = {"header": {"number": 301, "timestamp": 1700000000},
+             "transactions": [],
+             "tokenBalances": [rec(3, "acct-a", "AAA", 5, 0),
+                               rec(3, "acct-b", "BBB", 0, 5)]}
+    fx, _ = _fx([_FakeResp(200, json.dumps(block) + '\n')] * 6)
+    original_sleep = M.time.sleep
+    M.time.sleep = lambda _seconds: None
+    try:
+        edges, done_to, finished = fx.scan_area(301, 301, deadline=M.time.time() + 60)
+    finally:
+        M.time.sleep = original_sleep
+    if finished or done_to >= 301 or edges:
+        print("FAIL: T3 缺 transaction 状态的 tokenBalance 被默认成成功交易"
+              f"（finished={finished} done_to={done_to} edges={edges}）")
+        return False
+    print("PASS: T3 缺 transaction 状态触发整段失败")
+    return True
+
+
 def c3_route():
     """契约 3：按预估规模选路径。"""
     ok = True
@@ -292,6 +319,7 @@ def main():
     ok = True
     ok &= c1a_distinct_poison()
     ok &= c1b_identity_conflict_and_width()
+    ok &= c1c_transaction_status_required()
     eq, _ = c1_c2_equivalence()
     ok &= eq
     ok &= c3_route()
