@@ -14,6 +14,8 @@ HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[1]
 WAVE = ROOT / "scripts/report/wave_scan.py"
 ADJUDICATION = ROOT / "scripts/report/adjudication_validator.py"
+LEGACY_WHITELIST = ROOT / "maintenance/repair-20260817-sqd-v4/grep_legacy_whitelist.md"
+SQD_COLLECTOR = ROOT / "scripts/solana/fetch_sqd_transfers_v2.py"
 
 sys.path.insert(0, str(HERE))
 import test_handoff_manifest as handoff_fixture  # noqa: E402
@@ -216,11 +218,35 @@ def test_f04_non_formal_dormant_report_is_release_blocked() -> None:
         assert any("静置仓审计" in error and "order_ambiguous" in error for error in errors), errors
 
 
+def test_f06_legacy_scan_covers_tuple_constructor() -> None:
+    old_pattern = (
+        r"len\([^\n]+\)\s*(==|!=)\s*5|ts,\s*slot,\s*(src|from|f),\s*"
+        r"(dst|to|t),\s*(amt|amount)\s*="
+    )
+    fixed_pattern = (
+        r"len\([^\n]+\)\s*(==|!=)\s*5|ts,\s*slot,\s*(src|from|f),\s*"
+        r"(dst|to|t),\s*(amt|amount)\s*(=|\)\))"
+    )
+    missed = subprocess.run(
+        ["rg", "-n", old_pattern, str(SQD_COLLECTOR)], capture_output=True, text=True
+    )
+    assert missed.returncode == 1, missed.stdout + missed.stderr
+    covered = subprocess.run(
+        ["rg", "-n", fixed_pattern, str(SQD_COLLECTOR)], capture_output=True, text=True
+    )
+    assert covered.returncode == 0 and "edges.append((ts, slot, f, t, amt))" in covered.stdout
+
+    whitelist = LEGACY_WHITELIST.read_text(encoding="utf-8")
+    assert fixed_pattern in whitelist, "白名单文档仍登记会漏掉 tuple constructor 的旧扫描正则"
+    assert "HyperSyncFetcher.scan_area" in whitelist and "死代码豁免" in whitelist
+
+
 def main() -> int:
     test_f01_real_duckdb_wave_reaches_formal_gates()
     test_f02_missing_logical_evidence_is_not_backfilled()
     test_f03_padded_legacy_edges_cannot_claim_formal()
     test_f04_non_formal_dormant_report_is_release_blocked()
+    test_f06_legacy_scan_covers_tuple_constructor()
     print("PASS: 批6 opus 盲审防回归")
     return 0
 
