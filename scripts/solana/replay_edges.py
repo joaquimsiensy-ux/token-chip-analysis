@@ -34,6 +34,7 @@ from pathlib import Path
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "lib"))
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "labels"))
 from camp_spec import validate_camp_spec
+from producer_history import historical_producer_hashes
 from supply_truth_gate import _reject_constant
 from spl_edge_core import (EDGE_SCHEMA_FIELDS, EDGE_SEMANTICS,
                            INSTR_INDEX_TX_NET, ORDER_GRANULARITY_TX)
@@ -79,6 +80,9 @@ def _flush_sealed():
 
 ZERO = "0x" + "0" * 40
 SOLANA_MINT_RE = re.compile(r"[1-9A-HJ-NP-Za-km-z]{32,44}")
+SQD_CACHE_PROTOCOL = "sqd-solana-cache/v4"
+SQD_COLLECTOR_ID = "fetch_sqd_transfers_v2.py/v4"
+SQD_COLLECTOR_SCRIPT = "scripts/solana/fetch_sqd_transfers_v2.py"
 
 
 def _json_loads(value, label="JSON"):
@@ -150,9 +154,10 @@ def _validate_cache_meta(meta, mint, *, legacy_sol5):
                 "legacy-sol5 只接受绑定原始 mint/from_slot/collection_upper_slot 的 v3 meta")
         return frm, upper
     upper = meta.get("finalized_upper_slot")
-    valid = (meta.get("schema") == "sqd-solana-cache/v4"
+    valid = (meta.get("schema") == SQD_CACHE_PROTOCOL
              and meta.get("version") == 4
              and meta.get("mint") == mint
+             and meta.get("collector") == SQD_COLLECTOR_ID
              and meta.get("edge_schema") == list(EDGE_SCHEMA_FIELDS)
              and meta.get("edge_semantics") == EDGE_SEMANTICS
              and meta.get("order_granularity") == ORDER_GRANULARITY_TX
@@ -162,6 +167,12 @@ def _validate_cache_meta(meta, mint, *, legacy_sol5):
     if not valid:
         raise ValueError(
             "正式重放只接受绑定原始 mint、v4 边契约及 finalized_upper_slot 的 v4 meta")
+    collector_sha256 = meta.get("collector_sha256")
+    allowed_hashes = historical_producer_hashes(
+        SQD_COLLECTOR_SCRIPT, SQD_CACHE_PROTOCOL)
+    if collector_sha256 not in allowed_hashes:
+        raise ValueError(
+            "SQD v4 meta.collector_sha256 未命中 fetch_sqd_transfers_v2.py producer 登记")
     return frm, upper
 
 

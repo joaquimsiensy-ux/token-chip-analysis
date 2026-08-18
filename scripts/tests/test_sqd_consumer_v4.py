@@ -101,6 +101,20 @@ def test_replay_edges_v4_and_legacy_split() -> None:
     loaded, loaded_meta = replay_edges.load_edges(MINT)
     assert loaded == rows and loaded_meta == meta_path
 
+    original_history = producer_history.PRODUCER_HISTORY
+    producer_history.PRODUCER_HISTORY = original_history + ({
+        "script": "test-only-other.py",
+        "sha256": FETCH_SHA256,
+        "commit": "0" * 40,
+        "protocol": "test-only/v1",
+        "status": "REVOKED",
+        "reason": "test-only hash-wide revocation",
+    },)
+    try:
+        _expect_reject(lambda: replay_edges.load_edges(MINT), "producer 登记")
+    finally:
+        producer_history.PRODUCER_HISTORY = original_history
+
     forged = _v4_meta(rows)
     forged["collector_sha256"] = "2" * 64
     meta_path.write_text(json.dumps(forged), encoding="utf-8")
@@ -173,6 +187,11 @@ def test_reconcile_digest_matches_v4_meta() -> None:
     forged = json.loads(meta_path.read_text(encoding="utf-8"))
     forged["collector_sha256"] = "3" * 64
     meta_path.write_text(json.dumps(forged), encoding="utf-8")
+    receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+    receipt["inputs"]["soltx_meta"]["size"] = meta_path.stat().st_size
+    receipt["inputs"]["soltx_meta"]["sha256"] = hashlib.sha256(
+        meta_path.read_bytes()).hexdigest()
+    receipt_path.write_text(json.dumps(receipt), encoding="utf-8")
     _expect_reject(
         lambda: registry_anchor_check(
             {"series_format": "sol-rows"},

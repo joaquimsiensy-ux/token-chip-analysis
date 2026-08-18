@@ -1,9 +1,9 @@
-"""Git-verifiable historical hashes for formal anchor-plan producers.
+"""Git-verifiable historical hashes for formal artifact producers.
 
 Admission discipline: every entry must be reproducible with
-`git show <commit>:scripts/lib/anchor_plan.py | shasum -a 256`.  This module has
-no runtime extension channel.  A hash produced from a dirty worktree cannot be
-proven from git history and must not be admitted.
+`git show <commit>:<script> | shasum -a 256`.  This module has no runtime
+extension channel.  A hash produced from a dirty worktree cannot be proven
+from git history and must not be admitted.
 """
 
 
@@ -23,6 +23,22 @@ PRODUCER_HISTORY = (
         "protocol": "anchor-plan/v2",
         "status": "ACTIVE",
         "reason": "v6.45.1 pre-v3 producer replaced by the U1 anchor-plan/v3 upgrade.",
+    },
+    {
+        "script": "scripts/solana/fetch_sqd_transfers_v2.py",
+        "sha256": "2589f6a396c262d0747343ef21dee2bc7ba814eaa59eebdfa782fe9253c32212",
+        "commit": "75aa622a546755a7848d211739a75f7b31f9e59b",
+        "protocol": "sqd-solana-cache/v4",
+        "status": "ACTIVE",
+        "reason": "Batch 4 T1 producer issues replay-compatible logical edge evidence in v4 cache meta.",
+    },
+    {
+        "script": "scripts/solana/window_fetch.py",
+        "sha256": "56d94cbecf476b632c814a57b245c58397087dd105406e2538cac47c2fa6661c",
+        "commit": "75aa622a546755a7848d211739a75f7b31f9e59b",
+        "protocol": "solana-window-fetch-receipt/v3",
+        "status": "ACTIVE",
+        "reason": "Batch 4 registers the v3 formal Solana window producer frozen at the T1 tip.",
     },
 )
 
