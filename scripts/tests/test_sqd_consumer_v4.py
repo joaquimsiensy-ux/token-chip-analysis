@@ -58,8 +58,8 @@ def _v4_meta(rows) -> dict:
         "order_exact": False,
         "dedupe_identity": "slot-txindex-digest/v1",
         "supply_delta_source": "tokenBalances-owner-net",
-        "from_slot": 1,
-        "finalized_upper_slot": 2,
+        "from_slot": min(row[1] for row in rows),
+        "finalized_upper_slot": max(row[1] for row in rows),
         "edge_logical_sha256": _logical_digest(rows),
         "edge_rows": len(rows),
     }
@@ -94,7 +94,7 @@ def test_replay_edges_v4_and_legacy_split() -> None:
 
     mixed = rows + [[102, 2, MINT, OWNER, 1]]
     _write_edges(edge_path, mixed)
-    _expect_reject(lambda: replay_edges.load_edges(MINT), "7")
+    _expect_reject(lambda: replay_edges.load_edges(MINT), "七元组")
 
     legacy_rows = [[100, 1, ZERO, MINT, 100]]
     _write_edges(edge_path, legacy_rows)
