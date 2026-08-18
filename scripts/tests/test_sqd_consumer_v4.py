@@ -222,6 +222,19 @@ def test_curve_cost_is_v4_only() -> None:
     meta_path.write_text(json.dumps(_v4_meta(rows)), encoding="utf-8")
     assert curve_cost.load_edges(MINT) == rows
 
+    forged = _v4_meta(rows)
+    forged["collector_sha256"] = "f" * 64
+    meta_path.write_text(json.dumps(forged), encoding="utf-8")
+    _expect_reject(lambda: replay_edges.load_edges(MINT), "producer 登记")
+    _expect_reject(lambda: curve_cost.load_edges(MINT), "producer 登记")
+
+    forged = _v4_meta(rows)
+    forged["edge_logical_sha256"] = "0" * 64
+    meta_path.write_text(json.dumps(forged), encoding="utf-8")
+    _expect_reject(lambda: replay_edges.load_edges(MINT), "摘要")
+    _expect_reject(lambda: curve_cost.load_edges(MINT), "摘要")
+
+    meta_path.write_text(json.dumps(_v4_meta(rows)), encoding="utf-8")
     _write_edges(edge_path, rows + [[101, 2, MINT, OWNER, 1]])
     _expect_reject(lambda: curve_cost.load_edges(MINT), "第 2 行")
 
