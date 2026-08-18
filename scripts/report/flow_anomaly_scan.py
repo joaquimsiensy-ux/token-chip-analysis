@@ -140,6 +140,8 @@ def main():
     src.add_argument("--edges-evm-v2")
     src.add_argument("--duckdb")
     ap.add_argument("--edges-table", default="edges")
+    ap.add_argument("--legacy-sol5", action="store_true",
+                    help="保留显式诊断开关；本 READY anomaly 链一律拒绝")
     ap.add_argument("--total-supply", required=True)
     ap.add_argument("--out", default="flow_anomaly_report.json")
     ap.add_argument("--exclude-file", help="已知设施地址清单（不参与扫描）")
@@ -162,6 +164,10 @@ def main():
     ap.add_argument("--spray-slow-min-recipients", type=int, default=100,
                     help="慢速批发模式：全史 distinct 收方 ≥此数（高召回初值，用户 2026-08-02 定）")
     a = ap.parse_args()
+
+    if a.legacy_sol5:
+        log("正式 anomaly 链拒绝 legacy-sol5；旧案 slot+owner 覆盖请用 audit_closed_accounts")
+        return 2
 
     import duckdb
     total = int(a.total_supply)

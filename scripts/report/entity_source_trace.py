@@ -660,6 +660,8 @@ def main():
     src.add_argument("--edges-evm-v2")
     src.add_argument("--duckdb")
     ap.add_argument("--edges-table", default="edges")
+    ap.add_argument("--legacy-sol5", action="store_true",
+                    help="保留显式诊断开关；本实体 provenance 正式链一律拒绝")
     ap.add_argument("--total-supply", required=True)
     ap.add_argument("--entity-file", required=True, help="{entity_id:[addr…]}")
     ap.add_argument("--labels-file", help="{addr:{kind,name}} 确证标签（cex/dex_pool/facility/bridge/…）")
@@ -680,6 +682,10 @@ def main():
     ap.add_argument("--node-budget", type=int, default=200_000, help="单实体祖先节点上限（超出记 budget_truncated）")
     ap.add_argument("--edge-budget", type=int, default=3_000_000, help="单实体子图边数上限（超出 exit 2）")
     a = ap.parse_args()
+
+    if a.legacy_sol5:
+        log("正式 entity provenance 拒绝 legacy-sol5；旧数据没有可证交易内顺序")
+        return 2
 
     if not a.labels_file and not a.allow_no_labels:
         log("正式模式必须给 --labels-file；仅探索可显式加 --allow-no-labels")
