@@ -66,7 +66,9 @@ from proxy_config import redact_proxy, resolve_proxy
 from solana_attested_session import SolanaAttestedSession
 from solana_sqd_dataset import (SOLANA_SQD_DATASET_ID,
                                 SolanaSqdDatasetAdapter)
-from spl_edge_core import (ZERO_OWNER as ZERO, pair_tx, parse_owner_delta,
+from spl_edge_core import (EDGE_SCHEMA_FIELDS, INSTR_INDEX_TX_NET,
+                           ZERO_OWNER as ZERO, dedupe_transaction_sources,
+                           edge_sort_key, pair_tx, parse_owner_delta,
                            soltx_cache_paths)
 
 try:
@@ -220,7 +222,7 @@ class Fetcher:
 
     def scan_area(self, frm, to, deadline):
         """扫 [frm, to]，服务端响应上限自动截断、客户端按最后 slot 续拉。
-        → (edges, done_to, finished)。edges=[(ts, slot, from, to, amt)]。"""
+        → (edges, done_to, finished)。edges 为 v4 交易身份 7 元组。"""
         body_fields = {"block": {"number": True, "timestamp": True},
                        "transaction": {"transactionIndex": True, "err": True},
                        "tokenBalance": {"transactionIndex": True, "preOwner": True,
@@ -271,7 +273,8 @@ class Fetcher:
                                 by_tx[parsed_ti][owner] = by_tx[parsed_ti].get(owner, 0) + dlt
                         for ti, delta in by_tx.items():
                             for f, t, amt in pair_tx(delta):
-                                edges.append((ts, hdr["number"], f, t, amt))
+                                edges.append((ts, hdr["number"], ti,
+                                              INSTR_INDEX_TX_NET, f, t, amt))
                     complete = not truncated
             except Exception as e:
                 last = None
@@ -565,13 +568,8 @@ def plan_areas(meta, span_from, head):
 # ============ 收尾合并（2026-07-26 OOM 修复：超限自动降级 DuckDB 磁盘外排）============
 
 def _sort_key(e):
-    """(slot, ts) 主序 + (from, to, amt 文本) 末位定序——与外排的 ORDER BY 同口径。
-
-    历史版只用 (slot, ts)，同键行序取决于 set() 的哈希迭代顺序＝同一份数据两次跑可能不同；
-    补齐末位键后行序确定化，两条收尾路径也才能逐字节对拍（test_sqd_merge_equiv.py）。
-    amt 按**文本**比较（不是数值）：外排侧金额可超 int64 只能以 VARCHAR 取用，
-    两边必须同口径，且这只是末位 tie-breaker，不影响 (slot, ts) 主序。"""
-    return (e[1], e[0], e[2], e[3], str(e[4]))
+    """Compatibility wrapper around the shared v4 canonical order."""
+    return edge_sort_key(e)
 
 
 def probe_cache(cache_fp):
@@ -625,28 +623,32 @@ def _atomic_gz(cache_fp, lines):
 
 
 class MemMerger:
-    """全内存收尾（小样本路径，与历史行为同构，仅补了确定性末位排序键）。"""
+    """全内存收尾：按来源比较完整交易 digest，不按边内容 DISTINCT。"""
     mode = "inmem"
 
     def __init__(self, cache_fp, parts_dir, part_files, old_ok):
         self.cache_fp = cache_fp
-        self.edges = set()
+        self.sources = []
         if old_ok and cache_fp.exists():
             with gzip.open(cache_fp, "rt") as f:
-                self.edges.update(tuple(json.loads(ln)) for ln in f if ln.strip())
+                self.sources.append((str(cache_fp),
+                                     [json.loads(ln) for ln in f if ln.strip()]))
         for pf in part_files:
             with open(pf) as f:
-                self.edges.update(tuple(json.loads(ln)) for ln in f if ln.strip())
+                self.sources.append((str(pf),
+                                     [json.loads(ln) for ln in f if ln.strip()]))
+        self.edges = dedupe_transaction_sources(self.sources)
 
     def rows(self):
         return len(self.edges)
 
     def stats(self):
-        return (any(e[2] == ZERO for e in self.edges),
+        return (any(e[4] == ZERO for e in self.edges),
                 min((e[0] for e in self.edges if e[0]), default=None))
 
     def absorb(self, edges):
-        self.edges.update(edges)
+        self.sources.append((f"backfill-{len(self.sources)}", list(edges)))
+        self.edges = dedupe_transaction_sources(self.sources)
 
     def finalize(self):
         has_mint, min_ts = self.stats()
@@ -658,19 +660,8 @@ class MemMerger:
 
 
 class ExtMerger:
-    """DuckDB 磁盘外排收尾（大样本路径）：内存恒定在 memory_limit，排序落 temp_directory。
-
-    三条与全内存路径的口径对齐（BONK 1.55 亿行实测定案，2026-07-25）：
-    · **金额可超 int64**（BONK 创世铸造边 amt=10^19）——全程 VARCHAR 取用（`x->>'$[i]'`），
-      只有 slot / ts 才 CAST 成 BIGINT 用于排序；对 amt 做任何数值 CAST 都会溢出或失真
-    · **两种写法必须按字段去重**：part 文件是紧凑格式 `separators=(",",":")`、旧缓存 gz 是
-      json.dumps 默认格式（带空格），同一条边的整行字符串不同——按整行 DISTINCT 去不掉，
-      故先 `x->>'$[i]'` 拆字段再 DISTINCT，输出时按 gz 的默认格式逐字段重建
-    · 排序键与 _sort_key 同口径（amt 按文本比较）
-    """
+    """DuckDB 外排收尾：按 source 计算完整交易 digest 并拒绝身份冲突。"""
     mode = "duckdb-external"
-    FIELDS = ("x->>'$[0]' AS ts, x->>'$[1]' AS slot, x->>'$[2]' AS f, "
-              "x->>'$[3]' AS t, x->>'$[4]' AS amt")
     RC = "columns={'x':'VARCHAR'}, header=false, quote='', delim=e'\\x07'"
 
     def __init__(self, cache_fp, parts_dir, part_files, old_ok):
@@ -693,10 +684,96 @@ class ExtMerger:
     def _src(self):
         segs = []
         if self.parts:
-            segs.append(f"SELECT x FROM read_csv({[str(p) for p in self.parts]!r}, {self.RC})")
+            segs.append(
+                f"SELECT filename AS src_id, x FROM read_csv("
+                f"{[str(p) for p in self.parts]!r}, {self.RC}, filename=true)")
         if self.old:
-            segs.append(f"SELECT x FROM read_csv(['{self.old}'], {self.RC}, compression='gzip')")
+            segs.append(
+                f"SELECT {str(self.old)!r} AS src_id, x FROM read_csv("
+                f"{[str(self.old)]!r}, {self.RC}, compression='gzip')")
         return " UNION ALL ".join(segs)
+
+    def _ctes(self):
+        src = self._src()
+        return f"""
+            raw AS (
+              SELECT src_id, x, try_cast(x AS JSON) AS j FROM ({src})
+            ),
+            parsed AS (
+              SELECT src_id, x, j, json_array_length(j) AS width,
+                     json_type(j, '$[4]') AS f_type,
+                     json_type(j, '$[5]') AS t_type,
+                     json_extract_string(j, '$[0]') AS ts_s,
+                     json_extract_string(j, '$[1]') AS slot_s,
+                     json_extract_string(j, '$[2]') AS tx_s,
+                     json_extract_string(j, '$[3]') AS instr_s,
+                     json_extract_string(j, '$[4]') AS f,
+                     json_extract_string(j, '$[5]') AS t,
+                     json_extract_string(j, '$[6]') AS amt
+              FROM raw
+            ),
+            canonical_source_rows AS (
+              SELECT DISTINCT src_id,
+                     CAST(ts_s AS BIGINT) AS ts,
+                     CAST(slot_s AS BIGINT) AS slot,
+                     CAST(tx_s AS BIGINT) AS tx_index,
+                     CAST(instr_s AS BIGINT) AS instr_index,
+                     f, t, amt
+              FROM parsed
+            ),
+            source_tx AS (
+              SELECT src_id, slot, tx_index,
+                     sha256(string_agg(
+                       '[' || ts || ',' || slot || ',' || tx_index || ',' || instr_index
+                       || ',' || to_json(f) || ',' || to_json(t) || ',' || amt || ']',
+                       '\\n' ORDER BY f, t, amt, ts, instr_index)) AS tx_digest
+              FROM canonical_source_rows
+              GROUP BY src_id, slot, tx_index
+            ),
+            tx_choice AS (
+              SELECT slot, tx_index, min(src_id) AS keep_source
+              FROM source_tx
+              GROUP BY slot, tx_index
+            ),
+            canonical AS (
+              SELECT r.ts, r.slot, r.tx_index, r.instr_index, r.f, r.t, r.amt
+              FROM canonical_source_rows r
+              JOIN tx_choice c ON r.slot = c.slot AND r.tx_index = c.tx_index
+                              AND r.src_id = c.keep_source
+            )
+        """
+
+    def _validate(self, con):
+        invalid = con.execute(f"""
+            WITH {self._ctes()}
+            SELECT src_id, x FROM parsed
+            WHERE j IS NULL OR width <> {len(EDGE_SCHEMA_FIELDS)}
+               OR NOT coalesce(regexp_full_match(ts_s, '[0-9]+'), false)
+               OR NOT coalesce(regexp_full_match(slot_s, '[0-9]+'), false)
+               OR NOT coalesce(regexp_full_match(tx_s, '[0-9]+'), false)
+               OR try_cast(ts_s AS BIGINT) IS NULL
+               OR try_cast(slot_s AS BIGINT) IS NULL
+               OR try_cast(tx_s AS BIGINT) IS NULL
+               OR instr_s <> '{INSTR_INDEX_TX_NET}'
+               OR f_type <> 'VARCHAR' OR t_type <> 'VARCHAR'
+               OR f IS NULL OR f = '' OR t IS NULL OR t = ''
+               OR NOT coalesce(regexp_full_match(amt, '[0-9]+'), false)
+               OR coalesce(regexp_full_match(amt, '0+'), false)
+            LIMIT 1
+        """).fetchone()
+        if invalid:
+            raise ValueError(
+                f"invalid v4 edge row in {invalid[0]}; legacy/mixed rows require full recapture")
+        conflict = con.execute(f"""
+            WITH {self._ctes()}
+            SELECT slot, tx_index, count(DISTINCT tx_digest)
+            FROM source_tx GROUP BY slot, tx_index
+            HAVING count(DISTINCT tx_digest) > 1 LIMIT 1
+        """).fetchone()
+        if conflict:
+            raise RuntimeError(
+                "conflicting transaction edge sets for "
+                f"slot={conflict[0]} tx_index={conflict[1]}")
 
     def rows(self):
         return None      # 精确行数要全扫，收尾 COPY 时自然得到
@@ -710,10 +787,13 @@ class ExtMerger:
             return self._cache
         con = self._con()
         try:
-            row = con.execute(
-                f"SELECT max(CASE WHEN f = ? THEN 1 ELSE 0 END), "
-                f"       min(CASE WHEN ts <> '0' THEN CAST(ts AS BIGINT) END) "
-                f"FROM (SELECT {self.FIELDS} FROM ({src}))", [ZERO]).fetchone()
+            self._validate(con)
+            row = con.execute(f"""
+                WITH {self._ctes()}
+                SELECT max(CASE WHEN f = ? THEN 1 ELSE 0 END),
+                       min(CASE WHEN ts <> 0 THEN ts END)
+                FROM canonical
+            """, [ZERO]).fetchone()
         finally:
             con.close()
         self._cache = (bool(row[0]), row[1])
@@ -739,12 +819,15 @@ class ExtMerger:
         tmp = self.cache_fp.parent / (self.cache_fp.name + ".tmp")
         con = self._con()
         try:
+            self._validate(con)
             n = con.execute(f"""
                 COPY (
-                  SELECT '[' || ts || ', ' || slot || ', "' || f || '", "' || t
-                              || '", ' || amt || ']' AS line
-                  FROM (SELECT DISTINCT {self.FIELDS} FROM ({src}))
-                  ORDER BY CAST(slot AS BIGINT), CAST(ts AS BIGINT), f, t, amt
+                  WITH {self._ctes()}
+                  SELECT '[' || ts || ', ' || slot || ', ' || tx_index || ', '
+                              || instr_index || ', ' || to_json(f) || ', '
+                              || to_json(t) || ', ' || amt || ']' AS line
+                  FROM canonical
+                  ORDER BY slot, tx_index, f, t, amt
                 ) TO '{tmp}' (FORMAT csv, HEADER false, QUOTE '', DELIMITER e'\\x07',
                               COMPRESSION gzip)
             """).fetchone()[0]

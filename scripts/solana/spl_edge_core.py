@@ -2,6 +2,7 @@
 """Pure helpers for Solana SPL transaction-net edge collection."""
 from collections.abc import Mapping
 import hashlib
+import json
 from pathlib import Path
 
 
@@ -13,6 +14,65 @@ EDGE_SCHEMA_FIELDS = ("ts", "slot", "tx_index", "instr_index", "from", "to", "am
 EDGE_SEMANTICS = "owner-net-greedy"
 ORDER_GRANULARITY_TX = "transaction"
 INSTR_INDEX_TX_NET = -1
+
+
+def validate_edge_row(row):
+    """Return one canonical v4 edge tuple or reject legacy/malformed rows."""
+    if not isinstance(row, (list, tuple)) or len(row) != len(EDGE_SCHEMA_FIELDS):
+        raise ValueError(
+            "v4 edge row must contain exactly 7 fields; legacy 5-tuples require full recapture")
+    ts, slot, tx_index, instr_index, owner_from, owner_to, amount = row
+    for name, value in (("ts", ts), ("slot", slot), ("tx_index", tx_index)):
+        if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+            raise ValueError(f"edge {name} must be a non-negative integer")
+    if isinstance(instr_index, bool) or instr_index != INSTR_INDEX_TX_NET:
+        raise ValueError(f"transaction-net edge instr_index must be {INSTR_INDEX_TX_NET}")
+    for name, value in (("from", owner_from), ("to", owner_to)):
+        if not isinstance(value, str) or not value:
+            raise ValueError(f"edge {name} must be a non-empty string")
+    if isinstance(amount, bool) or not isinstance(amount, int) or amount <= 0:
+        raise ValueError("edge amt must be a positive integer")
+    return (ts, slot, tx_index, instr_index, owner_from, owner_to, amount)
+
+
+def edge_sort_key(edge):
+    """Canonical v4 output order; amount text keeps external merge lossless."""
+    row = validate_edge_row(edge)
+    return (row[1], row[2], row[4], row[5], str(row[6]))
+
+
+def transaction_digest(edges):
+    """Hash one transaction's complete, order-independent canonical edge set."""
+    rows = tuple(sorted({validate_edge_row(row) for row in edges}, key=edge_sort_key))
+    if not rows:
+        raise ValueError("transaction edge set must not be empty")
+    identities = {(row[1], row[2]) for row in rows}
+    if len(identities) != 1:
+        raise ValueError("transaction digest input mixes slot/tx_index identities")
+    payload = json.dumps(rows, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+    return hashlib.sha256(payload).hexdigest(), rows
+
+
+def dedupe_transaction_sources(sources):
+    """Deduplicate complete transactions across named sources, rejecting conflicts."""
+    versions = {}
+    for source_name, source_rows in sources:
+        grouped = {}
+        for raw in source_rows:
+            row = validate_edge_row(raw)
+            grouped.setdefault((row[1], row[2]), []).append(row)
+        for identity, rows in grouped.items():
+            digest, canonical = transaction_digest(rows)
+            prior = versions.get(identity)
+            if prior is not None and prior[0] != digest:
+                raise RuntimeError(
+                    "conflicting transaction edge sets for "
+                    f"slot={identity[0]} tx_index={identity[1]} "
+                    f"({prior[2]} vs {source_name})")
+            if prior is None:
+                versions[identity] = (digest, canonical, source_name)
+    return [row for _identity, (_digest, rows, _source) in sorted(versions.items())
+            for row in rows]
 
 
 def _validated_delta(delta):
