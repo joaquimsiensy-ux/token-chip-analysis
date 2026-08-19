@@ -12,10 +12,11 @@
 用法（cd 到工作目录跑，缓存写入 ./data/）：
   python3 fetch_sqd_transfers_v2.py <mint> [--launch-ts <unix秒>] [--wall-min 100]
       [--conc 6] [--rps 1.6] [--url <端点>] [--key-file ~/.config/sqd/api-key]
-      [--hypersync] [--hs-conc 2] [--hs-rps 4] [--hs-token-file ~/.config/hypersync/token]
-输出（现役 v3 缓存格式）：
-  data/soltx-<sha256(原始mint)>.jsonl.gz   每行 [ts, slot, from_owner, to_owner, amount_raw]
-  data/soltx-<sha256>.meta.json  绑定原始 mint/endpoint/采集上界的 v3 元数据
+      [--hypersync  # v4 下硬拒 exit 2]
+输出（现役 v4 缓存格式）：
+  data/soltx-<sha256(原始mint)>.jsonl.gz
+    每行 [ts, slot, tx_index, -1, from_owner, to_owner, amount_raw]
+  data/soltx-<sha256>.meta.json  绑定 mint/endpoint/采集器哈希/finalized 上界的 v4 元数据
   data/soltx-<sha256>.parts/     区域分片工作目录（合并成功后自动清空）
 
 要点：
@@ -35,24 +36,8 @@
      下次启动触发"重新全量"。现改为规模超限（MERGE_INMEM_MAX_ROWS）自动降级 DuckDB 磁盘
      外排，且两条路径一律"临时文件写完再原子 rename"——中途死也不会留下半截 gz。
 
-HyperSync 第二引擎（--hypersync，默认关）：
-⚠⚠ 完备性验收不通过（2026-07-22 BONK 三区实测）——**禁止用于正式采集，仅限吞吐实验/对照**：
-  - 历史区持久缺行且越老越糟：head-450万 段缺 3.6%、head-1450万 段缺 22%（成功交易的
-    真实转账行，Helius getTransaction 链上终审证实为 HS 缺失而非 SQD 幽灵行）
-  - 近端 head-13~33万 带存在乱序回填暂态洞（静默返回空+next_slot 照常推进，客户端无法
-    从响应区分洞与真空窗；实测吞掉 81 条边后大部回填、洞头 18 slot 残留）
-  - 仅摄取前沿附近（观测点 head-18万）逐行等于 SQD（含失败 tx/关户行/owner 语义全对齐），
-    但"甜蜜区"边界不可探测且随回填漂移
-机制说明（整合已完成，等 HyperSync GA 后重验收即可启用）：
-- 端点 solana.hypersync.xyz（付费 key 按请求计费，量级忽略不计）；开跑前先探可用窗口：
-  ① floor：from_slot=1 的 mint 过滤查询，首批行最小 slot（无行取 next_slot，保证 ≥ 真实窗起点）
-  ② ceiling：token_balances 索引前沿滞后 /height 十几万 slot——空过滤器探针从 HS 链头
-    几何回退找前沿，再减安全边距；探不出则退 head-60万 保守值
-- ⚠ 窗外查询服务端**静默快进 next_slot 不报错**——绝不能靠"失败回落"兜底窗口边界，
-  必须先探窗、窗外段全部派给 SQD
-- 分段：窗内空洞按条带在两引擎交替分配（各采各段），HS 段失败自动回落 SQD 补采；
-  SQD worker 在 HS 全忙时可接管 HS 未领段（带礼让条件防抢跑饿死；反向不行——HS 有窗口限制）
-- 两引擎输出行格式/落盘/gaps 语义完全一致；失败交易两边同样剔除（HS 按 success 字段）
+HyperSync 通道已硬禁：历史实测存在持久缺行和静默前移；v4 的 CLI `--hypersync` 与直接
+`run(hs_cfg=...)` 均在首个业务请求前 exit 2，不签发缓存或 meta。
 """
 import argparse, gzip, hashlib, json, os, shutil, sys, threading, time
 from collections import defaultdict
@@ -60,11 +45,18 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 from endpoint_identity import endpoint_fingerprint
 from proxy_config import redact_proxy, resolve_proxy
 from solana_attested_session import SolanaAttestedSession
 from solana_sqd_dataset import (SOLANA_SQD_DATASET_ID,
                                 SolanaSqdDatasetAdapter)
+from spl_edge_core import (EDGE_SCHEMA_FIELDS, EDGE_SEMANTICS,
+                           INSTR_INDEX_TX_NET, ORDER_GRANULARITY_TX,
+                           ZERO_OWNER as ZERO, dedupe_transaction_sources,
+                           edge_sort_key, owner_deltas_by_tx, pair_tx,
+                           soltx_cache_paths, transaction_status_by_index,
+                           validate_edge_row, validate_tx_index)
 
 try:
     import requests
@@ -79,7 +71,6 @@ except ImportError:
 DEF_URL = "https://portal.sqd.dev/datasets/solana-mainnet"
 SQD_SLOT_RATE = 2.51          # slot/秒近似斜率（仅起点估算用，回补环兜底精度）
 SQD_LAUNCH_PAD = 150_000      # 发射点前置缓冲（约 16.6 小时）
-ZERO = "0x" + "0" * 40
 AREA_INIT = 100_000           # 初始区域大小（slot）；按耗时自适应
 AREA_MIN, AREA_MAX = 10_000, 1_000_000
 AREA_T_FAST, AREA_T_SLOW = 30, 180   # 区域耗时 <30s 翻倍 / >180s 减半
@@ -95,6 +86,12 @@ EMPTY_MAX = 500
 MERGE_INMEM_MAX_ROWS = 8_000_000
 MERGE_MEM_LIMIT = "4GB"
 MERGE_THREADS = 4
+
+CACHE_SCHEMA = "sqd-solana-cache/v4"
+CACHE_VERSION = 4
+COLLECTOR_ID = "fetch_sqd_transfers_v2.py/v4"
+DEDUPE_IDENTITY = "slot-txindex-digest/v1"
+SUPPLY_DELTA_SOURCE = "tokenBalances-owner-net"
 
 # ---- HyperSync 第二引擎常量（schema 实测 2026-07-22，见 data-pipeline-solana.md §13d）----
 HS_DEF_URL = "https://solana.hypersync.xyz/query"
@@ -146,25 +143,6 @@ class AdaptiveArea:
                 self.size = min(AREA_MAX, self.size * 2)
             elif elapsed > AREA_T_SLOW:
                 self.size = max(AREA_MIN, self.size // 2)
-
-
-def pair_tx(delta):
-    """同一 tx 内 owner 级净变动 → 转账边。"""
-    pos = sorted(([o, d] for o, d in delta.items() if d > 0), key=lambda x: -x[1])
-    neg = sorted(([o, -d] for o, d in delta.items() if d < 0), key=lambda x: -x[1])
-    edges, i, j = [], 0, 0
-    while i < len(pos) and j < len(neg):
-        m = min(pos[i][1], neg[j][1])
-        edges.append((neg[j][0], pos[i][0], m))
-        pos[i][1] -= m
-        neg[j][1] -= m
-        if pos[i][1] == 0:
-            i += 1
-        if neg[j][1] == 0:
-            j += 1
-    edges.extend((ZERO, o, rem) for o, rem in pos[i:] if rem)
-    edges.extend((o, ZERO, rem) for o, rem in neg[j:] if rem)
-    return edges
 
 
 class Fetcher:
@@ -237,11 +215,13 @@ class Fetcher:
 
     def scan_area(self, frm, to, deadline):
         """扫 [frm, to]，服务端响应上限自动截断、客户端按最后 slot 续拉。
-        → (edges, done_to, finished)。edges=[(ts, slot, from, to, amt)]。"""
+        → (edges, done_to, finished)。edges 为 v4 交易身份 7 元组。"""
         body_fields = {"block": {"number": True, "timestamp": True},
                        "transaction": {"transactionIndex": True, "err": True},
-                       "tokenBalance": {"transactionIndex": True, "preOwner": True,
-                                        "postOwner": True, "preAmount": True, "postAmount": True}}
+                       "tokenBalance": {"transactionIndex": True, "account": True,
+                                        "preMint": True, "postMint": True,
+                                        "preOwner": True, "postOwner": True,
+                                        "preAmount": True, "postAmount": True}}
         filt = [{"postMint": [self.mint], "transaction": True},
                 {"preMint": [self.mint], "transaction": True}]
         edges, cur, fails = [], frm, 0
@@ -275,25 +255,22 @@ class Fetcher:
                         if not tbs:
                             continue
                         ts = hdr.get("timestamp") or 0
-                        errmap = {tx.get("transactionIndex"): tx.get("err")
-                                  for tx in b.get("transactions") or []}
-                        by_tx = defaultdict(dict)
+                        errmap = transaction_status_by_index(b.get("transactions") or [])
+                        successful = []
                         for rec in tbs:
-                            ti = rec.get("transactionIndex")
-                            if errmap.get(ti) is not None:
-                                continue    # 失败交易：余额无真实变化，纯噪声
-                            owner = rec.get("postOwner") or rec.get("preOwner")
-                            if not owner:
-                                continue
-                            try:
-                                dlt = int(rec.get("postAmount") or 0) - int(rec.get("preAmount") or 0)
-                            except (ValueError, TypeError):
-                                continue
-                            if dlt:
-                                by_tx[ti][owner] = by_tx[ti].get(owner, 0) + dlt
+                            if not isinstance(rec, dict):
+                                raise TypeError("tokenBalance record must be an object")
+                            ti = validate_tx_index(rec.get("transactionIndex"))
+                            if ti not in errmap:
+                                raise ValueError(
+                                    f"tokenBalance tx_index={ti} has no transaction status")
+                            if errmap[ti] is None:
+                                successful.append(rec)
+                        by_tx = owner_deltas_by_tx(successful, self.mint)
                         for ti, delta in by_tx.items():
                             for f, t, amt in pair_tx(delta):
-                                edges.append((ts, hdr["number"], f, t, amt))
+                                edges.append((ts, hdr["number"], ti,
+                                              INSTR_INDEX_TX_NET, f, t, amt))
                     complete = not truncated
             except Exception as e:
                 last = None
@@ -323,8 +300,7 @@ def _hs_flat(v):
 
 
 class HyperSyncFetcher:
-    """HyperSync Solana 第二引擎——与 Fetcher(SQD) 同构接口：scan_area(frm, to, deadline)
-    → (edges, done_to, finished)，edges 行格式与 SQD 路径逐字段一致 [ts, slot, from, to, amt]。
+    """历史实验实现，仅保留考证；v4 CLI 与 run() 均在实例化前硬拒。
 
     schema 实测事实（2026-07-22 探测定案）：
     - 查询体 from_slot / to_slot(exclusive)，token_balances 过滤器 mint 键（文档未载、实测有效）
@@ -522,51 +498,104 @@ def split_engine_plan(holes, hs_lo, hs_hi):
 
 
 def cache_paths(address):
-    d = Path("data")
-    key = hashlib.sha256(address.encode("utf-8")).hexdigest()
-    return (d / f"soltx-{key}.jsonl.gz", d / f"soltx-{key}.meta.json",
-            d / f"soltx-{key}.parts")
+    return soltx_cache_paths(address, Path("data"))
 
 
 def load_meta(meta_fp):
-    """读取已支持的 v2/v3 meta；其他格式不作为有效断点。"""
+    """Read one v4 cache meta; malformed or non-v4 files are not resumable."""
     if not meta_fp.exists():
         return {}
     try:
         m = json.loads(meta_fp.read_text())
-    except Exception:
-        return {}
-    if m.get("version") in (2, 3):
+    except Exception as exc:
+        raise ValueError(f"invalid SQD cache meta: {exc}") from exc
+    if m.get("schema") == CACHE_SCHEMA and m.get("version") == CACHE_VERSION:
         return m
     return {}
 
 
-def cache_identity(mint, endpoint):
+def collector_sha256():
+    return hashlib.sha256(Path(__file__).resolve().read_bytes()).hexdigest()
+
+
+def cache_identity(mint, endpoint, frozen_collector_sha256=None):
     fingerprint = endpoint_fingerprint(endpoint)
-    return {"schema": "sqd-solana-cache/v3", "mint": mint,
+    frozen = frozen_collector_sha256 or collector_sha256()
+    if (not isinstance(frozen, str) or len(frozen) != 64
+            or any(ch not in "0123456789abcdef" for ch in frozen)):
+        raise ValueError("collector_sha256 must be 64 lowercase hex characters")
+    return {"schema": CACHE_SCHEMA, "mint": mint,
             "endpoint": fingerprint["public_origin"],
             "endpoint_sha256": fingerprint["sha256"],
-            "collector": "fetch_sqd_transfers_v2.py/v3"}
+            "collector": COLLECTOR_ID,
+            "collector_sha256": frozen,
+            "edge_schema": list(EDGE_SCHEMA_FIELDS),
+            "edge_semantics": EDGE_SEMANTICS,
+            "order_granularity": ORDER_GRANULARITY_TX,
+            "order_exact": False,
+            "dedupe_identity": DEDUPE_IDENTITY,
+            "supply_delta_source": SUPPLY_DELTA_SOURCE}
 
 
-def normalize_cache_identity(meta, mint, endpoint):
-    """Validate current/legacy endpoint identity and return a secret-safe copy."""
-    if not meta or meta.get("collection_upper_slot") is None:
+def normalize_cache_identity(meta, mint, endpoint, frozen_collector_sha256=None):
+    """Validate a v4 cache identity and return its secret-safe canonical copy."""
+    if not meta or meta.get("finalized_upper_slot") is None:
         return None
-    expected = cache_identity(mint, endpoint)
-    common = (meta.get("schema") == expected["schema"]
-              and meta.get("mint") == expected["mint"]
-              and meta.get("collector") == expected["collector"])
-    current = (meta.get("endpoint") == expected["endpoint"]
-               and meta.get("endpoint_sha256") == expected["endpoint_sha256"])
-    legacy = ("endpoint_sha256" not in meta and meta.get("endpoint") == endpoint)
-    if not common or not (current or legacy):
+    expected = cache_identity(mint, endpoint, frozen_collector_sha256)
+    if any(meta.get(key) != value for key, value in expected.items()):
         return None
-    return {**meta, **expected}
+    upper = meta.get("finalized_upper_slot")
+    if isinstance(upper, bool) or not isinstance(upper, int) or upper < 0:
+        return None
+    return dict(meta)
 
 
-def cache_identity_matches(meta, mint, endpoint):
-    return normalize_cache_identity(meta, mint, endpoint) is not None
+def cache_identity_matches(meta, mint, endpoint, frozen_collector_sha256=None):
+    return normalize_cache_identity(
+        meta, mint, endpoint, frozen_collector_sha256) is not None
+
+
+def _cache_upgrade_required(detail):
+    log("[fail-closed] " + detail
+        + "；格式升级需全量重采，旧缓存请改名归档")
+    raise SystemExit(2)
+
+
+def preflight_v4_cache(cache_fp, meta_fp, parts_dir, mint, endpoint,
+                       frozen_collector_sha256):
+    """Reject every legacy/orphan cache shape before network or parts mutation."""
+    part_files = sorted(parts_dir.glob("*.jsonl")) if parts_dir.exists() else []
+    if meta_fp.exists():
+        try:
+            raw_meta = json.loads(meta_fp.read_text())
+        except Exception as exc:
+            _cache_upgrade_required(f"SQD cache meta 无法解析: {exc}")
+        if (raw_meta.get("schema") != CACHE_SCHEMA
+                or raw_meta.get("version") != CACHE_VERSION):
+            _cache_upgrade_required(
+                f"检测到旧 SQD cache meta {raw_meta.get('schema')!r}")
+        meta = raw_meta
+        if normalize_cache_identity(
+                meta, mint, endpoint, frozen_collector_sha256) is None:
+            log("[fail-closed] SQD v4 cache meta 与 mint/endpoint/采集器身份不一致；"
+                "不得跨标的、跨端点或跨采集器续用")
+            raise SystemExit(2)
+    else:
+        meta = {}
+        if cache_fp.exists() or part_files:
+            _cache_upgrade_required("检测到缺少 v4 meta 的旧缓存或 .parts")
+
+    for part in part_files:
+        line_no = 0
+        try:
+            with part.open() as handle:
+                for line_no, line in enumerate(handle, 1):
+                    if line.strip():
+                        validate_edge_row(json.loads(line))
+        except Exception as exc:
+            _cache_upgrade_required(
+                f"检测到旧/非法 .parts 行 {part}:{line_no}: {exc}")
+    return meta
 
 
 def plan_areas(meta, span_from, head):
@@ -590,13 +619,8 @@ def plan_areas(meta, span_from, head):
 # ============ 收尾合并（2026-07-26 OOM 修复：超限自动降级 DuckDB 磁盘外排）============
 
 def _sort_key(e):
-    """(slot, ts) 主序 + (from, to, amt 文本) 末位定序——与外排的 ORDER BY 同口径。
-
-    历史版只用 (slot, ts)，同键行序取决于 set() 的哈希迭代顺序＝同一份数据两次跑可能不同；
-    补齐末位键后行序确定化，两条收尾路径也才能逐字节对拍（test_sqd_merge_equiv.py）。
-    amt 按**文本**比较（不是数值）：外排侧金额可超 int64 只能以 VARCHAR 取用，
-    两边必须同口径，且这只是末位 tie-breaker，不影响 (slot, ts) 主序。"""
-    return (e[1], e[0], e[2], e[3], str(e[4]))
+    """Compatibility wrapper around the shared v4 canonical order."""
+    return edge_sort_key(e)
 
 
 def probe_cache(cache_fp):
@@ -649,29 +673,54 @@ def _atomic_gz(cache_fp, lines):
         raise
 
 
+def logical_edge_evidence(cache_fp):
+    """Recompute replay-compatible logical SHA-256 and row count from final gz."""
+    digest = hashlib.sha256()
+    rows = 0
+    with gzip.open(cache_fp, "rt", encoding="utf-8") as handle:
+        for line_no, line in enumerate(handle, 1):
+            if not line.strip():
+                continue
+            try:
+                edge = validate_edge_row(json.loads(line))
+            except (json.JSONDecodeError, TypeError, ValueError) as exc:
+                raise ValueError(
+                    f"invalid finalized v4 edge row at line {line_no}: {exc}") from exc
+            digest.update(
+                (json.dumps(list(edge), ensure_ascii=False) + "\n").encode("utf-8"))
+            rows += 1
+    if rows == 0:
+        raise ValueError("finalized v4 edge cache is empty")
+    return digest.hexdigest(), rows
+
+
 class MemMerger:
-    """全内存收尾（小样本路径，与历史行为同构，仅补了确定性末位排序键）。"""
+    """全内存收尾：按来源比较完整交易 digest，不按边内容 DISTINCT。"""
     mode = "inmem"
 
     def __init__(self, cache_fp, parts_dir, part_files, old_ok):
         self.cache_fp = cache_fp
-        self.edges = set()
+        self.sources = []
         if old_ok and cache_fp.exists():
             with gzip.open(cache_fp, "rt") as f:
-                self.edges.update(tuple(json.loads(ln)) for ln in f if ln.strip())
+                self.sources.append((str(cache_fp),
+                                     [json.loads(ln) for ln in f if ln.strip()]))
         for pf in part_files:
             with open(pf) as f:
-                self.edges.update(tuple(json.loads(ln)) for ln in f if ln.strip())
+                self.sources.append((str(pf),
+                                     [json.loads(ln) for ln in f if ln.strip()]))
+        self.edges = dedupe_transaction_sources(self.sources)
 
     def rows(self):
         return len(self.edges)
 
     def stats(self):
-        return (any(e[2] == ZERO for e in self.edges),
+        return (any(e[4] == ZERO for e in self.edges),
                 min((e[0] for e in self.edges if e[0]), default=None))
 
     def absorb(self, edges):
-        self.edges.update(edges)
+        self.sources.append((f"backfill-{len(self.sources)}", list(edges)))
+        self.edges = dedupe_transaction_sources(self.sources)
 
     def finalize(self):
         has_mint, min_ts = self.stats()
@@ -683,19 +732,8 @@ class MemMerger:
 
 
 class ExtMerger:
-    """DuckDB 磁盘外排收尾（大样本路径）：内存恒定在 memory_limit，排序落 temp_directory。
-
-    三条与全内存路径的口径对齐（BONK 1.55 亿行实测定案，2026-07-25）：
-    · **金额可超 int64**（BONK 创世铸造边 amt=10^19）——全程 VARCHAR 取用（`x->>'$[i]'`），
-      只有 slot / ts 才 CAST 成 BIGINT 用于排序；对 amt 做任何数值 CAST 都会溢出或失真
-    · **两种写法必须按字段去重**：part 文件是紧凑格式 `separators=(",",":")`、旧缓存 gz 是
-      json.dumps 默认格式（带空格），同一条边的整行字符串不同——按整行 DISTINCT 去不掉，
-      故先 `x->>'$[i]'` 拆字段再 DISTINCT，输出时按 gz 的默认格式逐字段重建
-    · 排序键与 _sort_key 同口径（amt 按文本比较）
-    """
+    """DuckDB 外排收尾：按 source 计算完整交易 digest 并拒绝身份冲突。"""
     mode = "duckdb-external"
-    FIELDS = ("x->>'$[0]' AS ts, x->>'$[1]' AS slot, x->>'$[2]' AS f, "
-              "x->>'$[3]' AS t, x->>'$[4]' AS amt")
     RC = "columns={'x':'VARCHAR'}, header=false, quote='', delim=e'\\x07'"
 
     def __init__(self, cache_fp, parts_dir, part_files, old_ok):
@@ -718,10 +756,105 @@ class ExtMerger:
     def _src(self):
         segs = []
         if self.parts:
-            segs.append(f"SELECT x FROM read_csv({[str(p) for p in self.parts]!r}, {self.RC})")
+            segs.append(
+                f"SELECT filename AS src_id, x FROM read_csv("
+                f"{[str(p) for p in self.parts]!r}, {self.RC}, filename=true)")
         if self.old:
-            segs.append(f"SELECT x FROM read_csv(['{self.old}'], {self.RC}, compression='gzip')")
+            segs.append(
+                f"SELECT {str(self.old)!r} AS src_id, x FROM read_csv("
+                f"{[str(self.old)]!r}, {self.RC}, compression='gzip')")
         return " UNION ALL ".join(segs)
+
+    def _ctes(self):
+        src = self._src()
+        return f"""
+            raw AS (
+              SELECT src_id, x, try_cast(x AS JSON) AS j FROM ({src})
+            ),
+            parsed AS (
+              SELECT src_id, x, j, json_array_length(j) AS width,
+                     json_type(j, '$[0]') AS ts_type,
+                     json_type(j, '$[1]') AS slot_type,
+                     json_type(j, '$[2]') AS tx_type,
+                     json_type(j, '$[3]') AS instr_type,
+                     json_type(j, '$[4]') AS f_type,
+                     json_type(j, '$[5]') AS t_type,
+                     json_type(j, '$[6]') AS amt_type,
+                     json_extract_string(j, '$[0]') AS ts_s,
+                     json_extract_string(j, '$[1]') AS slot_s,
+                     json_extract_string(j, '$[2]') AS tx_s,
+                     json_extract_string(j, '$[3]') AS instr_s,
+                     json_extract_string(j, '$[4]') AS f,
+                     json_extract_string(j, '$[5]') AS t,
+                     json_extract_string(j, '$[6]') AS amt
+              FROM raw
+            ),
+            canonical_source_rows AS (
+              SELECT DISTINCT src_id,
+                     CAST(ts_s AS BIGINT) AS ts,
+                     CAST(slot_s AS BIGINT) AS slot,
+                     CAST(tx_s AS BIGINT) AS tx_index,
+                     CAST(instr_s AS BIGINT) AS instr_index,
+                     f, t, amt
+              FROM parsed
+            ),
+            source_tx AS (
+              SELECT src_id, slot, tx_index,
+                     sha256(string_agg(
+                       '[' || ts || ',' || slot || ',' || tx_index || ',' || instr_index
+                       || ',' || to_json(f) || ',' || to_json(t) || ',' || amt || ']',
+                       '\\n' ORDER BY f, t, amt, ts, instr_index)) AS tx_digest
+              FROM canonical_source_rows
+              GROUP BY src_id, slot, tx_index
+            ),
+            tx_choice AS (
+              SELECT slot, tx_index, min(src_id) AS keep_source
+              FROM source_tx
+              GROUP BY slot, tx_index
+            ),
+            canonical AS (
+              SELECT r.ts, r.slot, r.tx_index, r.instr_index, r.f, r.t, r.amt
+              FROM canonical_source_rows r
+              JOIN tx_choice c ON r.slot = c.slot AND r.tx_index = c.tx_index
+                              AND r.src_id = c.keep_source
+            )
+        """
+
+    def _validate(self, con):
+        invalid = con.execute(f"""
+            WITH {self._ctes()}
+            SELECT src_id, x FROM parsed
+            WHERE j IS NULL OR width <> {len(EDGE_SCHEMA_FIELDS)}
+               OR ts_type NOT IN ('UBIGINT', 'BIGINT')
+               OR slot_type NOT IN ('UBIGINT', 'BIGINT')
+               OR tx_type NOT IN ('UBIGINT', 'BIGINT')
+               OR instr_type <> 'BIGINT'
+               OR amt_type NOT IN ('UBIGINT', 'BIGINT', 'DOUBLE')
+               OR NOT coalesce(regexp_full_match(ts_s, '(0|[1-9][0-9]*)'), false)
+               OR NOT coalesce(regexp_full_match(slot_s, '(0|[1-9][0-9]*)'), false)
+               OR NOT coalesce(regexp_full_match(tx_s, '(0|[1-9][0-9]*)'), false)
+               OR try_cast(ts_s AS BIGINT) IS NULL
+               OR try_cast(slot_s AS BIGINT) IS NULL
+               OR try_cast(tx_s AS BIGINT) IS NULL
+               OR instr_s <> '{INSTR_INDEX_TX_NET}'
+               OR f_type <> 'VARCHAR' OR t_type <> 'VARCHAR'
+               OR f IS NULL OR f = '' OR t IS NULL OR t = ''
+               OR NOT coalesce(regexp_full_match(amt, '[1-9][0-9]*'), false)
+            LIMIT 1
+        """).fetchone()
+        if invalid:
+            raise ValueError(
+                f"invalid v4 edge row in {invalid[0]}; legacy/mixed rows require full recapture")
+        conflict = con.execute(f"""
+            WITH {self._ctes()}
+            SELECT slot, tx_index, count(DISTINCT tx_digest)
+            FROM source_tx GROUP BY slot, tx_index
+            HAVING count(DISTINCT tx_digest) > 1 LIMIT 1
+        """).fetchone()
+        if conflict:
+            raise RuntimeError(
+                "conflicting transaction edge sets for "
+                f"slot={conflict[0]} tx_index={conflict[1]}")
 
     def rows(self):
         return None      # 精确行数要全扫，收尾 COPY 时自然得到
@@ -735,10 +868,13 @@ class ExtMerger:
             return self._cache
         con = self._con()
         try:
-            row = con.execute(
-                f"SELECT max(CASE WHEN f = ? THEN 1 ELSE 0 END), "
-                f"       min(CASE WHEN ts <> '0' THEN CAST(ts AS BIGINT) END) "
-                f"FROM (SELECT {self.FIELDS} FROM ({src}))", [ZERO]).fetchone()
+            self._validate(con)
+            row = con.execute(f"""
+                WITH {self._ctes()}
+                SELECT max(CASE WHEN f = ? THEN 1 ELSE 0 END),
+                       min(CASE WHEN ts <> 0 THEN ts END)
+                FROM canonical
+            """, [ZERO]).fetchone()
         finally:
             con.close()
         self._cache = (bool(row[0]), row[1])
@@ -764,12 +900,15 @@ class ExtMerger:
         tmp = self.cache_fp.parent / (self.cache_fp.name + ".tmp")
         con = self._con()
         try:
+            self._validate(con)
             n = con.execute(f"""
                 COPY (
-                  SELECT '[' || ts || ', ' || slot || ', "' || f || '", "' || t
-                              || '", ' || amt || ']' AS line
-                  FROM (SELECT DISTINCT {self.FIELDS} FROM ({src}))
-                  ORDER BY CAST(slot AS BIGINT), CAST(ts AS BIGINT), f, t, amt
+                  WITH {self._ctes()}
+                  SELECT '[' || ts || ', ' || slot || ', ' || tx_index || ', '
+                              || instr_index || ', ' || to_json(f) || ', '
+                              || to_json(t) || ', ' || amt || ']' AS line
+                  FROM canonical
+                  ORDER BY slot, tx_index, f, t, amt
                 ) TO '{tmp}' (FORMAT csv, HEADER false, QUOTE '', DELIMITER e'\\x07',
                               COMPRESSION gzip)
             """).fetchone()[0]
@@ -824,33 +963,40 @@ def run(mint, launch_ts, wall_min, conc, rps, base_url, key,
         hs_cfg=None, from_slot_cli=None, to_slot_cli=None,
         empty_max=EMPTY_MAX, merge_max_rows=MERGE_INMEM_MAX_ROWS,
         dataset_id=SOLANA_SQD_DATASET_ID, state_session=None):
+    frozen_collector_sha256 = collector_sha256()
+    if hs_cfg is not None:
+        log("[fail-closed] --hypersync 通道已禁用；v4 正式采集只允许 SQD")
+        raise SystemExit(2)
+    cache_fp, meta_fp, parts_dir = cache_paths(mint)
+    meta = preflight_v4_cache(
+        cache_fp, meta_fp, parts_dir, mint, base_url, frozen_collector_sha256)
     fx = Fetcher(base_url, mint, key, TokenBucket(rps), conc, empty_max=empty_max)
     head = fx.head()
     if not head:
         return None, "SQD portal head 不可达"
     if to_slot_cli:
         head = min(head, int(to_slot_cli))   # 调试/定段采集：上界压到指定 slot
-    cache_fp, meta_fp, parts_dir = cache_paths(mint)
+    if state_session is None:
+        raise ValueError("formal SQD collection requires an attested Solana state session")
+    finalized_slot = state_session.call("getSlot", [{"commitment": "finalized"}])
+    if (isinstance(finalized_slot, bool) or not isinstance(finalized_slot, int)
+            or finalized_slot < 0):
+        raise ValueError(f"invalid finalized Solana slot: {finalized_slot!r}")
+    head = min(head, finalized_slot)
     parts_dir.mkdir(parents=True, exist_ok=True)
-    meta = load_meta(meta_fp)
-    identity = cache_identity(mint, base_url)
+    identity = cache_identity(mint, base_url, frozen_collector_sha256)
     if meta:
-        normalized = normalize_cache_identity(meta, mint, base_url)
+        normalized = normalize_cache_identity(
+            meta, mint, base_url, frozen_collector_sha256)
         if normalized is None:
-            raise SystemExit("[fail-closed] SQD cache meta 与 mint/endpoint/采集器身份不一致；"
-                             "不得跨标的或跨端点复用，改用新的 data 目录")
-        if normalized != meta:
-            # Old v3 metadata stored the raw endpoint.  Rewrite it before any
-            # resume work so a pre-existing path/query credential is removed.
-            tmp = meta_fp.with_name("." + meta_fp.name + ".identity.tmp")
-            tmp.write_text(json.dumps(normalized, sort_keys=True))
-            os.replace(tmp, meta_fp)
+            log("[fail-closed] SQD v4 cache 身份在启动后发生变化")
+            raise SystemExit(2)
         meta = normalized
 
     def fresh_meta(start):
-        return {**identity, "version": 3, "from_slot": start,
+        return {**identity, "version": CACHE_VERSION, "from_slot": start,
                 "launch_covered": False, "areas": [],
-                "collection_upper_slot": head}
+                "finalized_upper_slot": head}
     # 旧缓存只做流式体检拿行数（不载入内存——收尾阶段才按规模选路径读它）
     old_rows, old_ok = 0, False
     if cache_fp.exists() and meta:
@@ -874,8 +1020,6 @@ def run(mint, launch_ts, wall_min, conc, rps, base_url, key,
         span_from = from_slot = max(1, head - back)
         meta = fresh_meta(from_slot)
 
-    if state_session is None:
-        raise ValueError("formal SQD collection requires an attested Solana state session")
     dataset_scope = SolanaSqdDatasetAdapter(
         dataset_id=dataset_id, mint=mint, from_slot=span_from, to_slot=head,
         state_session=state_session).attest_state_anchor()
@@ -927,7 +1071,16 @@ def run(mint, launch_ts, wall_min, conc, rps, base_url, key,
     def persist_meta():
         with meta_lock:
             meta_fp.parent.mkdir(parents=True, exist_ok=True)
-            meta_fp.write_text(json.dumps(meta))
+            tmp = meta_fp.with_name(f".{meta_fp.name}.tmp.{os.getpid()}")
+            try:
+                with tmp.open("w", encoding="utf-8") as handle:
+                    json.dump(meta, handle, separators=(",", ":"), sort_keys=True)
+                    handle.flush()
+                    os.fsync(handle.fileno())
+                os.replace(tmp, meta_fp)
+            except BaseException:
+                tmp.unlink(missing_ok=True)
+                raise
 
     # 全局段池：worker 每次只领"一个自适应区域"，剩余放回——多 worker 并发消费同一个大
     # 空洞（v2.0 冒烟发现按空洞分配时首扫并发恒为 1，已改）。双引擎时段带 engine 标注：
@@ -1065,9 +1218,16 @@ def run(mint, launch_ts, wall_min, conc, rps, base_url, key,
     # 落盘：整写 jsonl.gz（临时文件+原子 rename），meta 记 launch_covered 与 gaps
     final = {"rows": 0, "has_mint": False, "min_ts": None}
     try:
+        if collector_sha256() != frozen_collector_sha256:
+            raise RuntimeError(
+                "collector_sha256 changed after startup; refusing cache finalize")
         final = merger.finalize()
         if not final["rows"]:
             return None, "SQD 拉取无数据（含缓存为空）"
+        edge_logical_sha256, edge_rows = logical_edge_evidence(cache_fp)
+        if edge_rows != final["rows"]:
+            raise RuntimeError(
+                f"finalized edge row count mismatch: merger={final['rows']} scan={edge_rows}")
         has_mint = final["has_mint"]
         covered = sorted(((a["s"], a["e"]) for a in meta["areas"] if a.get("done")),
                          key=lambda x: x[0])
@@ -1080,9 +1240,11 @@ def run(mint, launch_ts, wall_min, conc, rps, base_url, key,
         # 便于事后复验：任取一段做 ±60 包围请求，应能拿到前后块且不含该段本身）
         meta.update({"launch_covered": bool(meta.get("launch_covered")) or has_mint,
                      "next_slot": front + 1, "gaps": gaps,
-                     "collection_upper_slot": head,
+                     "finalized_upper_slot": head,
                      "empty_ok": {"n": len(fx.empty_hits), "max": empty_max,
                                   "intervals": fx.empty_hits[:2000]},
+                     "edge_logical_sha256": edge_logical_sha256,
+                     "edge_rows": edge_rows,
                      "merge_mode": merger.mode,
                      "updated": time.strftime("%Y-%m-%d %H:%M")})
         persist_meta()
@@ -1127,7 +1289,7 @@ def _default_state_rpc():
 
 
 def main(argv=None, *, request_json=None):
-    ap = argparse.ArgumentParser(description="SQD portal Solana 转账边采集 v2（压缩+自适应并发+令牌桶+HyperSync 第二引擎）")
+    ap = argparse.ArgumentParser(description="SQD portal Solana v4 交易级净额边采集器")
     ap.add_argument("mint")
     ap.add_argument("--dataset-id", default=SOLANA_SQD_DATASET_ID)
     ap.add_argument("--state-rpc", action="append", dest="state_rpcs",
@@ -1139,9 +1301,7 @@ def main(argv=None, *, request_json=None):
     ap.add_argument("--url", default=DEF_URL, help="数据集端点（拿到 key 专属端点后换这里）")
     ap.add_argument("--key-file", default=os.path.expanduser("~/.config/sqd/api-key"))
     ap.add_argument("--hypersync", action="store_true",
-                    help="启用 HyperSync 第二引擎双引擎分段并行（默认关。⚠完备性验收不通过："
-                         "历史区缺行 3.6-22%%、近端有暂态洞——仅限吞吐实验/对照，禁止正式采集；"
-                         "滚动窗外区间自动全给 SQD，HS 段失败自动回落 SQD）")
+                    help="已禁用；v4 正式采集仅允许 SQD，传入即 exit 2")
     ap.add_argument("--hs-url", default=HS_DEF_URL, help="HyperSync Solana 查询端点")
     ap.add_argument("--hs-token-file", default=HS_DEF_TOKEN,
                     help="HyperSync 付费 token 文件（按请求计费，量级忽略不计）")
@@ -1164,6 +1324,9 @@ def main(argv=None, *, request_json=None):
     a = ap.parse_args(argv)
     if a.from_slot and a.to_slot and a.from_slot > a.to_slot:
         ap.error("--from-slot must not exceed --to-slot")
+    if a.hypersync:
+        log("[fail-closed] --hypersync 通道已禁用；v4 正式采集只允许 SQD")
+        raise SystemExit(2)
     state_session = SolanaAttestedSession(
         a.state_rpcs or [_default_state_rpc()], request_json=request_json, timeout=30)
     # Reject dataset/mint identity before the first SQD business request.  The
@@ -1176,22 +1339,8 @@ def main(argv=None, *, request_json=None):
         key = Path(a.key_file).read_text().strip() or None
     except Exception:
         pass
-    hs_cfg = None
-    if a.hypersync:
-        try:
-            hs_token = Path(a.hs_token_file).read_text().strip()
-            if not hs_token:
-                raise ValueError("token 文件为空")
-        except Exception as e:
-            sys.exit(f"[fatal] --hypersync 需要有效 token（{a.hs_token_file}）：{e}")
-        try:
-            hs_proxy = resolve_proxy(a.proxy)
-        except ValueError as exc:
-            ap.error(str(exc))
-        hs_cfg = {"url": a.hs_url, "token": hs_token, "conc": a.hs_conc,
-                  "rps": a.hs_rps, "proxy": hs_proxy}
     edges, gap = run(a.mint, a.launch_ts or None, a.wall_min, a.conc, a.rps, a.url, key,
-                     hs_cfg=hs_cfg, from_slot_cli=a.from_slot or None,
+                     hs_cfg=None, from_slot_cli=a.from_slot or None,
                      to_slot_cli=a.to_slot or None, empty_max=a.empty_max,
                      merge_max_rows=a.merge_max_rows, dataset_id=a.dataset_id,
                      state_session=state_session)

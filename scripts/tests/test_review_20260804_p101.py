@@ -12,7 +12,9 @@ HERE = Path(__file__).resolve().parent
 EVM = HERE.parent / "evm"
 sys.path.insert(0, str(EVM))
 
-from fetch_hypersync_v2 import QUERY_SCHEMA, find_resume_block
+from fetch_hypersync_v2 import (MANIFEST_SCHEMA, QUERY_SCHEMA, SCRIPT_PATH,
+                                ensure_outdir_identity, find_resume_block,
+                                sha256_file)
 
 TOKEN_A = "0x" + "a" * 40
 TOKEN_B = "0x" + "b" * 40
@@ -44,11 +46,13 @@ def make_done(root, *, token=TOKEN_A, url=URL_A, query=QUERY_SCHEMA):
     con.execute("INSERT INTO blocks VALUES (5,1)")
     con.execute(f"COPY blocks TO '{run / 'blocks.parquet'}' (FORMAT parquet)")
     con.close()
-    done = {"schema": "hypersync-v2-done/v3", "query_schema": query,
+    done = {"schema": MANIFEST_SCHEMA, "query_schema": query,
             "capture_from": 0, "from_block": 0, "to_block": 10, "next_block": 10,
             "token": token, "url": url,
             "files": {"logs.parquet": meta(run / "logs.parquet", "block_number"),
-                      "blocks.parquet": meta(run / "blocks.parquet", "number")}}
+                      "blocks.parquet": meta(run / "blocks.parquet", "number")},
+            "collector": {"path": SCRIPT_PATH,
+                          "sha256": sha256_file(EVM / "fetch_hypersync_v2.py")}}
     (run / "done.json").write_text(json.dumps(done), encoding="utf-8")
 
 
@@ -63,18 +67,22 @@ def must_block(root, token, url):
 def main():
     with tempfile.TemporaryDirectory() as td:
         root = Path(td)
+        ensure_outdir_identity(root, TOKEN_A, URL_A)
         make_done(root)
         must_block(root, TOKEN_B, URL_A)
     with tempfile.TemporaryDirectory() as td:
         root = Path(td)
+        ensure_outdir_identity(root, TOKEN_A, URL_A)
         make_done(root)
         must_block(root, TOKEN_A, URL_B)
     with tempfile.TemporaryDirectory() as td:
         root = Path(td)
+        ensure_outdir_identity(root, TOKEN_A, URL_A)
         make_done(root, query="other-query")
         must_block(root, TOKEN_A, URL_A)
     with tempfile.TemporaryDirectory() as td:
         root = Path(td)
+        ensure_outdir_identity(root, TOKEN_A, URL_A)
         make_done(root)
         assert find_resume_block(str(root), 100, 200, TOKEN_A, URL_A) == 100
         identity = json.loads((root / "capture_identity.json").read_text())

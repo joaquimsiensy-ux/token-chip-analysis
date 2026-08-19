@@ -10,6 +10,15 @@
 
 ## 版本索引（活跃窗口，新在上；每版一行，详情见下方对应条目）
 
+- **6.50.0**（2026-08-18）split-run 三段化＋刀 1 外包公告：新增 /token-analyze-3 装配段（−2 收口前移至报告正文＋装配工单，A5 装配独立 Opus 会话）；ET-1 报警证据采集前置 −1（停止线拆采集/定性）；刀 1 机械档扩为 14 项公告＋6 条纪律（唯一权威源）；新契约 CT-SEMANTIC-61/62、CT-BANNED-16，命令四元；版本号跳过 6.49.0（已被并行 SQD 工程占用）
+- **6.49.0**（2026-08-18）Solana SQD transaction-net v4 五批根治：7 元组交易身份＋tx_digest 冲突硬拒、owner 双侧记账与输入卫生、正式/legacy 两态分立、采集摘要/producer 登记/invariant 闭环、ARC 双窗口真采与破坏性注入收口；冻结 parts 域内实证 DISTINCT 损失 11,502 行/8,487 组（最高 23 倍），124,816 更正为两版全史行数差的混合口径
+- **6.48.1**（2026-08-17）单元3 盲审消化轮＝三单元收口工程收官：盲审判 CONDITIONAL（闸体 9 项 DEFENDED 全攻不破），消化本单元引入债（签发点 schema 字面量收敛、怪写法等价重构、--out/--receipt 同路径前置拒、文档"保证覆盖全部 segments"过度声称收窄到 hypersync 签发者＋方案B 永久登记维护债申明）；BREACH-01（SQD 侧同 schema 签发者无 TOCTOU，非本单元引入）等四项移交第四单元候选清单
+- **6.48.0**（2026-08-17）HyperSync CSV 同哈希续采闸·方案B（三单元收口工程·单元3）：正式 CSV 仅允许同一启动冻结哈希续采（脚本升级须封盘另开新 channel 段，preflight 多 channel 拼接既有支持）；TOCTOU 启动冻结+写前漂移拒签+receipt 用启动哈希；hash-wide REVOKED 拒启动；resume 读入接严格 JSON+全字段类型收口；cea82c77 按唯一签发 protocol 补登（考证 2d69373）；全盘清点 105 份存量回执全单段零迁移
+- **6.47.1**（2026-08-17）单元2 盲审消化轮：4 BREACH 关洞（收据标签去"验证"语义防零成本洗白、维护纪律按 protocol 逐条补登+断链固化测试、inventory 残件分类报错给人工出路、staged_capture 首采三态放行）＋5 WEAK 修复（.DS_Store 唯一豁免三处等深、REVOKED 压过当前脚本、recovered 身份收据透传、symlink 根死代码、CSV 回执接严格 JSON）＋1 注（迁移哈希定性留痕）；APU 0801 原始形态全链重演练闭环
+- **6.47.0**（2026-08-17）HyperSync Parquet done v4 逐段采集者归属＋C12 显式恢复（三单元收口工程·单元2）：每段 done 带 collector{path,sha256} 启动冻结哈希+写前 TOCTOU 复验；旧段迁移 legacy-unattributed 三件套（源 schema/迁移前哈希/migrator 可验）+原生/迁移判别联合互斥；identity 自动签发收严至真空目录、遗留目录走 --recover-identity 签 hypersync-capture-identity/v2（recoverer 取代 collector、lineage=unknown），先 recover 后 refresh；collector_history 按 protocol 过滤（REVOKED 保持 hash-wide）；U1 盲审三条跨单元传染修复随单落地；APU/EGL1/NES 实件演练三态闭合
+- **6.46.1**（2026-08-17）单元1 盲审消化轮：2 BREACH 关洞（重复 JSON 键人机分裂伪装、producer 历史 protocol 硬编码致 v3 plan 可挂 v2 时代签名）＋7 WEAK 修复（schema 分派 fail-open 转显式白名单、v2 点拒 v3 说谎字段、单源守卫恢复全局语义等）；五项维持两项旧账另立裁决在案；NES 存量与盲审向量回打全绿
+- **6.46.0**（2026-08-17）anchor-plan v3 机器字段与 producer 历史登记（三单元收口工程·单元1）：余额点必带 balance_block_source 正向白名单、balance/tx 严格 XOR，kind 中文文案退出一切语义判定；新建 producer_history 六字段登记表修复存量 receipt producer 哈希深验基线即断；v2 存量不重签，语义重放 schema-aware 投影兼容，NES 三份存量件先红后绿实证
+- **6.45.1**（2026-08-17）NES 双链首案实证后四修复、四批收口：R-1 anchor_point_contract 四处等深与 block_of fail-fast；R-2 collector_history 六字段迁表并按 HEAD 祖先定案；R-3 identity 三入口认历史、两键规范形与维护补登；R-4 producer 真件直过发布闸及缺失/矛盾负例
 - **6.45.0**（2026-08-15）三 AI 并行修复 v6.44.0 review 14 findings 全处置：g1 边界守卫六项（handoff 案根 containment/审计闸 report 必填/跨分区三元组等式/command v3/risk_flags 白名单/文本卫生守卫＋Solana 原串保真）、g2 证据链四项（观测拒空 code/对账五路深重验/GMGN 黄灯查证说明制/Arbitrum 探索档恢复）、g3 通道与文档四项（A0 探索预检两阶段/SQD 收紧＋Alchemy 正式除名/F-05 用户裁决不加闸如实写边界/F-13 文档对齐）；R10-15/18 转 CLOSED 现役 12；三组独立 opus 盲审全收口
 - **6.44.0**（2026-08-15）EVM 链上观测锚：三链正式纵切片真跑 bundle producer，accounting v2/supply_truth v4 双收据与 shared/handoff N-2 闭合；F-02 CLOSED、F-03/R10-9 MITIGATED 仍 OPEN；独立盲审 31 伪造向量全拒 PASS
 - **6.43.0**（2026-08-14）批 3 弱闸三线收口：A4 blocker 语义联动+10 门槛+entrypoint 身份（F-01→R10-16/17）、deploy-sync 严判（F-04→R10-5）、env_check 机械派生（F-05→R10-6）、R10 台账同步+自洽守卫（F-07）；三轮盲审+三轮消化全闭（execution ledger 哈希链等 7 项收编），R10-5/6/16/17 转 CLOSED 现役 15
@@ -44,6 +53,91 @@
 - **6.20.1** 2026-08-05 修 5 处阻断级文档漂移（A4 前禁写报告冲突/easy 残留/惯犯回灌 docstring/批量预采集残留/旧 Par 路线历史降级）＋docs_lint 增中文禁词与 Python module docstring 扫描
 
 更早版本（6.20.0 及以前）详见 `archive/CHANGELOG-archive.md`。
+
+## [6.50.0] - 2026-08-18 — split-run 三段化＋刀 1 外包公告体系
+
+- **−3 装配段**：新增 /token-analyze-3 命令＋split-run §3b（A5 装配执行侧：三图/流转图/双 receipt/a5-report-seal/v3/build_html G11/发布闸；建议 Opus 会话）；−2 收口前移＝报告正文亲笔成稿＋四条收口自查＋产 a5_assembly_workorder.json 即停（非正式件无 validator，兜底=既有 A5 链闸；图表基数与工单完备性属文字纪律，残余风险用户拍板接受、首战后评估）
+- **ET-1 前置**：−1 停止线"大户报警深挖"拆分——证据采集（保守超集分母、观察事实零定性、落 et1_evidence_packs.json，optional 但存在即入 manifest allowlist）归 −1，归属定性深挖留 −2；−2 冻结后与 packs 双向对账
+- **刀 1 公告**：context-discipline 机械档扩为 14 项完整清单＋6 条外包纪律（sealed 禁读/盲化对子代理生效、装配线程不当 A4 怀疑者、非权威中间产物边界、零结果自证、禁手抄、交付自查申报），唯一权威源制；research-workflows §二b 钉法改指针消双源；刀 2/刀 3 编号重号 bug 顺手修复
+- **契约与测试**：新增 CT-SEMANTIC-61（token-analyze-3 required a5-report-seal/v3）/CT-SEMANTIC-62（required G11）/CT-BANNED-16（banned A5 seal v2），contract_ids_snapshot 同步 157 条；deploy-sync EXPECTED 与 batch3 gates COMMANDS 扩四元＋−3 四类负例等深
+- **版本**：跳过 6.49.0（被并行 fix/sqd-solana-v4 工程占用，避免合并撞号）
+- **回归**：run_all 在允许 loopback 环境 116/117 PASS，唯一红项 test_commands_deploy_sync（部署 cp 待合并后执行）；受限沙箱首跑两项 vertical slice 遇 loopback bind EPERM，获准环境全量复跑均转绿（合并 main 后 cp＋复跑绿）
+- **盲审消化**：codex 正常盲审 F-01/02/03＋opus 攻击 7 WEAK 中 5 项修复入盘（契约锚句化＋负例加深、report-template 物化两态、旧完成案分流、sealed 申报回填、三分类收窄、needle 稀释回收、权威源三源化）；W-03（banned 字面变体穿透）与 W-04（契约 needle 值无守卫、快照只锁 ID 集合）属契约体系存量固有形态，接受在案登记为后续升级候选
+## [6.49.0] - 2026-08-18 — Solana SQD transaction-net v4 五批根治
+
+- **缺陷与证据边界**：旧 `fetch_sqd_transfers_v2.py` 请求中已有 `transactionIndex`，却落盘为 `[ts,slot,from,to,amt]` 五元组并按五字段 DISTINCT 合并，同 slot/同额/同 owner 的不同真实交易会被误删。批 4 独立 oracle 对 ARC 冻结的 1,348 个 parts 复算：multiset 1,775,858 行、DISTINCT 1,764,356 行，域内机械可证损失为 **11,502 行／8,487 碰撞组／最高 23 倍率**。早期 124,816 是两版全史边表的行数差，混入两次采集间其他差异，**不是纯 DISTINCT 损失**。
+- **@CX 三项设计拦截**：①`pair_tx` 等额时不能继承 SQD 返回序，排序键补 owner 后才字节确定；②transaction-net 没有 instruction 顺序，`instr_index=-1` 必须对应 `order_exact=false`，不得伪造交易内因果；③owner 净额贪心配对只证明 owner 级余额变化，正式声明 `edge_semantics="owner-net-greedy"`，不得冒充链上精确 from→to。
+- **五批结构**：批 1 冻结语义并抽取共享核；批 2 将采集器升为 v4 7 元组、按 `(slot,tx_index)` 完整边集 `tx_digest` 去重，修 owner authority 双侧记账与七条输入硬规则；批 3 把正式 v4 与显式 `--legacy-sol5` 诊断彻底分立，并把交易内未决传导为 `UNRESOLVED/order_ambiguous`；批 4 让采集成功 meta 绑定逻辑摘要/行数，登记 ACTIVE producer、清零 invariant 并完成 ARC parts oracle；批 5 用 ARC 高碰撞窗与无碰撞绿例窗真采、SQD＋Solana `getBlock` 三组抽样、端到端破坏性注入三连和全仓 grep 白名单收口。
+- **纵深防线**：v4 meta 绑定 mint/endpoint/finalized 上界/启动冻结 collector SHA；同交易跨 source 同 digest 留一、异 digest 硬失败；非法 tx/account/mint/owner/amount 整段失败；v3 meta、孤儿 cache 与旧/混合 parts 在网络及 v4 parts 创建前拒绝并要求全量重采；HyperSync 正式入口硬禁；replay/camp 对 ACTIVE producer 登记、逻辑摘要、行数和边实物对表；legacy 产物强制 non-formal/order-ambiguous 且不得进入 reconcile/evolution/READY/发布。
+- **实弹验收**：碰撞窗 16,199 slots 真采 5,696 条 v4 边，5 元组投影与案内 tx-aware 表逐边 multiset 零差，保留 85 组碰撞/114 条额外边/最高 5 倍；绿例窗 12,814 slots 真采 142 条，逐边零差且碰撞为 0。三组碰撞经 SQD 原始 `transactionIndex` 与主网 `getBlock` 六个互异签名确认。边内容单一逻辑字节、未登记 collector hash、v3 meta 三种注入均在各自目标分支拒绝；正式非白名单 5 元组解析残留为 0。
+- **范围**：不追溯改写旧 v3 案或旧缓存；旧缓存留盘但只可显式诊断。ARC owner-authority 全量扫描未发现可用变更窗，因此按工单保留批 2 fixture＋案内扫描证据，不虚构真链实例。施工 codex；验收与 main 合并/push 由 Fable/opus 后续执行。
+
+## [6.48.1] - 2026-08-17 — 单元3 盲审消化轮（三单元收口工程收官）
+
+- **源起**：6.48.0 收口后独立 opus 盲审（9 攻击向量实跑＋基线对照＋破坏性注入三连验测试非装死）判 CONDITIONAL：1 BREACH／3 WEAK／4 NOTE／9 DEFENDED，**闸体本身攻不破**——跨版本续采拒、10 个类型向量全拒、"另开新 channel 段"出路经真实 replay+gate 端到端验证可达；所有得手攻击落在单元3 射程外。施工 codex（工单 U3b）。
+- **BREACH-01 归属裁决**：`evm-collector-run/v2` 全库两个签发者，单元3 焊死了 fetch_hypersync.py，但 SQD 侧 `csv_collector_receipt.py/emit_native_receipt` 仍为写时实时哈希、无启动冻结/写前复验/REVOKED 拒启动，采集期改档可致归属谎报端到端假 PASS——**非本单元引入**（工单明文将该文件划为不改），代码修复另立第四单元；本轮只收窄其被单元3 文档过度涵盖的声称面。
+- **本轮消化（本单元引入债）**：签发点 schema 字面量收敛到 COLLECTOR_RECEIPT_SCHEMA 常量＋channels_preflight 副本维护路标；`{CONST: True}[schema]` 怪写法改常规比较（四次实跑错误面逐字一致的等价重构；重构撞出 invariant 扫描器把 `.get("schema")` 比较识别为消费面的边界，暂以 `dict.get(prev,…)` 等价形式绕行，正名归第四单元）；`--out` 与 `--receipt` 同路径前置拒（对齐 SQD 既有范式，修前未捕获 FileExistsError＋临时件残留）；文档"顶层 collector 保证覆盖全部 segments"**过度声称收窄**——保证主语仅限 fetch_hypersync.py 签发且受同哈希闸＋TOCTOU 保护者，SQD 侧签发不在保证内（置信度＝顶层自报）；方案 B 永久维护债申明（历史哈希从续采瞬时依赖升级为 preflight 永久依赖，升级漏登＝该版本存量段全拒）。
+- **第四单元候选清单（待用户裁决）**：①SQD 侧 TOCTOU 收口（emit_native_receipt 收启动冻结哈希参数＋fetch_sqd_evm 入口冻结/写前复验/REVOKED 拒启动）；②反向断链守卫（"HEAD 前一版必须已登记"回归）；③跨文件 schema 常量统一＋扫描器 `.get("schema")` 消费面模式正名；④SQD REVOKED 前置拒（现仅消费侧兜底）。N-03/N-04 记录不修。
+- **回归**：test_csv_resume_collector_gate 9→10 用例全绿；suite 分母 117 不变，117/117 PASS rc=0（本机含两项 loopback）。盲审 opus，调度验收 Fable。
+
+## [6.48.0] - 2026-08-17 — HyperSync CSV 同哈希续采闸·方案B（三单元收口工程·单元3）
+
+- **源起**：三单元收口方案第 3 单元，关 CSV 通道归属重写账——`--resume-receipt` 跨版本续采会把旧段整体收进当前脚本署名的新回执。定案方案 B（@CX 复核在案）：同一 CSV 只许同 collector 哈希续采，脚本升级后以前驱覆盖终点另开新 CSV 作为新 channel 段接入（preflight 多 channel 连续性拼接为既有生产路线）。施工 codex（工单 U3），基线 aadbe59。
+- **生产侧闸**：resume 分支在既有 `_csv_collector_provenance` 重验之后独立校验前驱 `collector.sha256 == 启动冻结哈希`，不等 fail-closed 且错误信息含"另开 CSV/新 channel 段"指引全文；prior receipt 顶层/schema/collector/query/边界/segments 全字段先收类型（含 bool≠int 边界），schema 白名单仅 evm-collector-run/v2、未知值拒；不改 `_csv_collector_provenance` 本体（消费场景历史哈希放行是合法语义）。
+- **TOCTOU 与吊销**：进程入口计算 `collector_start_hash` 并按 collector_history 全表 hash-wide REVOKED 拒启动（"当前脚本版本已被吊销"，U2b/R6 等深延伸）；写 receipt 前重算哈希，运行期漂移即删临时 CSV 拒签；receipt 的 collector.sha256 一律用启动冻结哈希（替换写时即时哈希）。
+- **U1 盲审传染修复**：resume 读入接 `strict_json_loads`（重复 collector 键人机分裂拒于读入层，引用共享件勿复制）。
+- **登记与考证**：被替换的 `cea82c77…` 版本补登 collector_history（protocol=evm-collector-run/v2，commit=2d69373 全哈希，git blob 复算闭环）；按 U2b/B-02 纪律核证该版本生前唯一签发 protocol 即此一线，一条即全。SQD 通道单 segment＋fresh_output 既有保证固化为防退化断言（如实标注为既有正确行为，非旧代码漏过）。
+- **存量清点**：Desktop 工作区＋Documents 归档区全盘清点 105 份 evm-collector-run/v2 存量回执，segments 全部单段、零多段件——方案 B"零迁移"前提在全量口径成立，无需 legacy confidence 标注；文档语义声明为前瞻性闭合、不宣称修复历史。
+- **suite 分母**：117 个入口（116＋test_csv_resume_collector_gate 九用例，先红 6 漏过后绿 9/9），117/117 PASS rc=0（本机含两项 loopback）。调度验收 Fable。
+
+## [6.47.1] - 2026-08-17 — 单元2 盲审消化轮（4 BREACH＋5 WEAK 修复＋1 注）
+
+- **源起**：6.47.0 收口后独立 opus 盲审（20 攻击向量实跑＋基线对照＋27 个真实采集根扫描）判 BLOCK：4 BREACH／6 WEAK／2 NOTE／11 DEFENDED；按裁决消化，施工 codex（工单 U2b）。
+- **B-01 收据标签去"验证"语义**：迁移段删 legacy 键＋填公开可算的当前脚本哈希即可把 preflight 收据从 UNKNOWN_LEGACY 洗成 VERIFIED（零成本，无需伪造脚本）。修＝原生段标签改 `SELF_REPORTED`＋`collector_sha256` 哈希透传，迁移段保持 UNKNOWN_LEGACY；闸只做自报绑定核对，置信判定交上层，`scripts/` 内 VERIFIED 字样清零。声明边界：改写后的联合仍被判别闸放行（自报绑定的既有边界），本项修标签语义不加真伪鉴别。
+- **B-02 升级断链纪律补齐**：done/v4 与 identity/v2 两条新 protocol 线历史集为空，脚本一升级存量全误拦——NES 0816「169 份正版 receipt 误拦」同族，本单元新挖两个。修＝maintenance-review-repair 纪律条款改写（被替换版本按其生前签发过的**每个 protocol 各补一条**，一版多 protocol＝多条目）＋断链固化测试（模拟升级后未补登的原生 v4 done 与 recovered identity 双双被拒，测试注释指向纪律条款）。附带边界：6.47.0 版脚本被本消化轮替换，其在世期间无正式签发产物（仅临时演练件），按纪律无需补登；盲审期间的临时演练副本重验被拒属预期。
+- **B-03 inventory 残件分类出路**：quarantine/（staged_capture 自建）、`*.recover`（refresh 回滚特意保留件）、`.refresh-tmp/.refresh-bak` 崩溃残件全被"未识别残件"一刀拒且无指引；真实回归＝APU 0801 案主目录（基线 PASS）被人工诊断目录卡死。修＝分类报错逐类给人工处置指引（全部仍拒、不提供自动清理防洗白）＋数据管线文档新增"遗留目录残件处置手册"。
+- **B-04 staged_capture 首采死路**：identity 检查一刀切，全新目录 FATAL→指向 recover→recover 对空目录又拒。修＝三态放行（outdir 不存在/真空目录/identity 普通文件在场），非真空遗留缺 identity 仍 FATAL。
+- **WEAK 五修一注**：`.DS_Store` 唯一豁免（精确名，无通配）在 inventory/C12 真空/staged shell 三处等深，其他隐藏文件仍拒；REVOKED 压过当前脚本哈希（吊销当前版本即拒签发/校验，fetch＋preflight v2/CSV 三线同步）；recovered 身份透传收据（identity_schema/recovered/lineage，恢复目录不再与原生同形）；symlink 采集根修死代码（resolve 前判定，recover/refresh 双入口拒）；CSV collector receipt 读入接 strict_json_loads（重复键跨通道等深，U2 传染修复漏网点）；pre_migration_sha256 定性"迁移时点自报留痕、原件覆盖后事后不可独立复验"（仅改口，逻辑不动）。
+- **NOTE 两条落账**：N-01 盲审实测证明 U2 工单 §13"consumer 替换 v4"判断有误、施工方保留 v3 是机器必需（invariant_scan 依赖），维持现状；N-02 演练样本选择性批评成立——本轮以 APU 0801 案主目录原始形态重演练闭环（诊断目录在场被拒且报错带分类指引，移出后 refresh 升 v4 全通，原目录零改动）。
+- **回归**：test_done_v4_collector 17→24 用例全绿；suite 分母 116 不变，116/116 PASS rc=0（本机含两项 loopback）。盲审 opus，调度验收 Fable。
+
+## [6.47.0] - 2026-08-17 — HyperSync Parquet done v4 逐段采集者归属＋C12 显式恢复（三单元收口工程·单元2）
+
+- **源起**：三单元收口方案第 2 单元，关闭两笔账——Parquet 通道每段 done.json 无采集脚本指纹（脚本升级续采/删 identity 重建都能把旧数据"改姓"），以及 identity 缺失时自动补签的洗归属窗口（C12，6.45.1 批 C 注释自认）。施工 codex（工单 U2，maintenance/closure-20260817-threeunit/），基线 837baa8。
+- **done v4 逐段归属**：`hypersync-v2-done/v4` 起每段 done 带 `collector{path, sha256}`，哈希为 main() 启动冻结值；写 done 前重算，漂移即拒写（自报绑定防误漂移，不宣称防可同时伪造脚本与收据的攻击者）。v2/v3 入 legacy 集合；旧段经 --refresh-manifests 升 v4 时如实标 `collector: null`＋`collector_provenance: "legacy-unattributed"`＋迁移三件套（`refreshed_from_schema` 沿用既有键名／`pre_migration_sha256` 读一次字节流同时算哈希与解析、commit 前复验原件／`migrator` 身份哈希须∈当前∪protocol 过滤后历史）。validate 侧判别联合互斥：原生 v4 禁 legacy 族键、迁移 v4 必 collector null 且三件套齐全，两态互换即拒；下游展示 UNKNOWN_LEGACY 不渲染成已验证。多段 pre-schema 无法唯一推导公共起点时拒猜、要求显式 --capture-from。
+- **C12 收严＋显式恢复**：identity 自动签发仅限真空目录（`not any(iterdir())`，任何隐藏件/残段都算遗留）；遗留目录走新 CLI `--recover-identity`——共享 inventory 精确闸（每 run 恰普通文件三件套，拒 symlink/孤儿/空 run/残件）＋逐 run 重验同一性后签 `hypersync-capture-identity/v2`（recovered=true、lineage="unknown"、recovery_time、`recoverer` 取代 collector 键，query_schema 记现行值）；先 recover 后 refresh，refresh 不再自动补 identity。staged_capture.sh skip 路径补根 identity 检查（缺失 FATAL 指向 recover，假成功收口）。
+- **protocol 隔离**：`historical_script_hashes(name, protocol)` 按协议过滤，REVOKED 保持 hash-wide 跨 protocol 否决；全部生产调用点显式传 protocol（done v4 新线首版历史集为空／identity v1 线／CSV 线 evm-collector-run/v2）；被替换的 f544a196 版本按维护纪律同单元补登（考证 commit 0ec6d1e 全哈希）。preflight 侧镜像段升级为共享引用（inventory/actor 闸/常量从 fetch 侧 import，判定骨架仍两份）。
+- **U1 盲审跨单元传染修复**：done/identity 全部读入点接 `strict_json_loads` 拒重复键（done v4 判别联合是键存在性判定，重复 collector 键可人机分裂——V-31 同构）；schema 分派显式枚举禁 fail-open；枚举判定前收类型。
+- **实件演练（拷贝到临时区，三源 pristine diff 零改动）**：APU data_lp 单段太古全链走通（recover 签 v2 → refresh 唯一推导升 v4 三件套齐全）；EGL1 三段太古目录被 inventory 闸如实拦截（run_0 真实缺 logs.parquet 的残段）；NES bsc/v2_segments 被拦（源固有空壳 run_100459662，重用该目录前须人工处置）。
+- **suite 分母**：116 个入口（115＋test_done_v4_collector 十七用例，先红 16/17 后绿 17/17），116/116 PASS rc=0（本机含两项 loopback）。调度验收 Fable。
+
+## [6.46.1] - 2026-08-17 — 单元1 盲审消化轮（2 BREACH＋7 WEAK 修复）
+
+- **源起**：6.46.0 收口后独立 opus 盲审 38 向量实跑，判 2 BREACH／16 WEAK／20 DEFENDED；按"BREACH 必修、WEAK 逐条裁决"消化，施工 codex（工单 U1b，maintenance/closure-20260817-threeunit/）。
+- **BREACH ①重复 JSON 键人机分裂**：同一 plan 对象里 `balance_block_source` 键写两遍（前值给人看、`json.loads` 取后值），重签 receipt 后深验、语义重放、发布闸全链绿灯。修法＝`anchor_point_contract` 新增 `strict_json_loads`（object_pairs_hook 逐层拒重复键），接入 anchor plan/receipt 消费链全部读入点（执行侧 `load_validated_plan`＋发布侧 `_validated_time_plan_authority`）；范围仅 anchor plan 链，未全库扩散。
+- **BREACH ②protocol 硬编码**：producer 历史查询两调用点硬编码 `anchor-plan/v2`，"v3 plan 挂 v2 时代 producer 签名"这一逻辑上不可能的组合被接受。修法＝先严格解析 plan→schema 白名单校验→按被验 plan 实际 schema 动态取历史集→再验 receipt（执行/发布两侧同序）。
+- **WEAK 七修**：schema 分派三处（classify／balance_query_block／发布 `_plan_point`）fail-open else 改显式白名单＋未知 schema 拒；v2 点携带 `balance_block_source` 说谎字段即拒（共享谓词收口，签发/执行/发布/分型四路等深）；枚举判定前 isinstance 收类型（list 型由 TypeError 统一为 ValueError）；单源对账守卫恢复全 manifest 全局语义＋显式豁免表带理由（字面量收敛到共享常量后扫描器不再误列 time_spotcheck，manifest 同步真实扫描面）；producer_history status 枚举运行时守卫（错拼即抛不静默失效）；登记表 commit 统一 40 位全哈希＋守卫正则收紧；`validate_receipt` 补 `allowed_producer_hashes` 调用方责任 docstring。
+- **维持与遗留**：五项维持裁决在案（REVOKED 不认当前哈希＝设计语义、无 .git 自禁用＝部署边界、闸严于执行器＝安全侧等）；发布闸不重放/不查探测块越界经 6.45.1 基线复跑证实为旧账，语义重放入发布闸另行立项，本轮不动其校验深度。
+- **回归**：NES 三份存量深验＋dry-run 重放继续全绿；盲审攻击脚本回打六向量全部由过转拒、kind 文案免疫正例仍过；suite 分母 115（test_anchor_plan_v3 12→15 用例）115/115 PASS。盲审 opus，调度验收 Fable。
+
+## [6.46.0] - 2026-08-17 — anchor-plan v3 机器字段与 producer 历史登记（三单元收口工程·单元1）
+
+- **源起**：NES 收口工程（6.45.1）遗留立项经 @CX 复核融合定案三单元；本单元关闭两笔账——锚点计划靠 kind 中文文案精确匹配推断块源（改措辞即误拦），以及存量 receipt 的 producer 哈希被强制等于当前脚本（6.45.1 批 A 改动后 NES 三份存量件深验已断，`producer hash mismatch` 基线即红）。
+- **v3 契约**：`anchor-plan/v3` 起余额点必带 `balance_block_source ∈ {day_end_block, final_block}` 正向白名单；balance/tx 点型严格 XOR（互斥判据+各自禁键，混合点拒）；`final_block` 源仅限 forced_points 且日期锚保留；kind 降纯展示（本轮文案一字未改）。契约入口 `anchor_point_contract.balance_block_source_of` 四处消费方（签发/执行/发布深验/classify）按 plan.schema 分派，v2 存量走原文案兼容路径零变化、一律不重签。
+- **producer 历史登记**：新建 `scripts/lib/producer_history.py`（六字段条目式，git show 可复现考证纪律，REVOKED hash-wide 跨 protocol 否决）；登记 `e5168a…`（NES 签发者，考证至 3b76db8）与 `1a461169…`（6.45.1 被替换版本）。`receipt_validate.validate_receipt` 增可选参 `allowed_producer_hashes`（默认 None 行为逐字不变，仅 anchor plan receipt 消费点传入登记集），time_spotcheck 与 shared_release_receipt（含 repo_ref_ok）三处共用单源。
+- **重放兼容**：`validate_semantic_replay` 改 schema-aware——生成器只产 v3 形态；重放 v2 plan 时仅投影重算结果（先逐点过 v3 XOR 断言再剥 balance_block_source 单键，禁静默 pop），逐点 multiset 比对语义不变。receipt schema 保持 anchor-plan-receipt/v2，配对矩阵收紧为 receipt.plan_schema 必须与 plan.schema 精确相等。
+- **存量实证**：NES 三份真实 v2 plan/receipt 深验+完整 dry-run 语义重放先红后绿（施工前三份全部 `producer hash mismatch`，施工后全 exit 0），只读验证未重签。
+- **suite 分母**：`run_all.py` 115 个入口（114＋test_anchor_plan_v3 十二用例，先红 0/12 后绿 12/12），收口标准 115/115 PASS、rc=0（本机含两项 loopback 纵切片）。施工 codex（开工门禁自查抓获工单一处行号笔误后勘误放行），调度验收 Fable。
+
+## [6.45.1] - 2026-08-17 — NES 双链首案四修复、四批收口
+
+- **源起与审查**：NES 双链首案实证触发四笔修复 commit（`dd248ca`/`0cbda66`/`08c5b09`/`af816d1`）；codex 全量审查结论为 2 缺陷、1 疑点、1 缺测试，原修复零测试。随后按 codex 施工、Fable 调度验收分四批收口。
+- **批 A／R-1 补位收窄**：`anchor_point_contract` 契约化边缘点判定在签发、执行、深验、构造四处等深；`block_of` 改精确匹配并 fail-fast；保留 9 条红实证。
+- **批 B／R-2 登记表迁移**：历史采集器登记表迁入 `collector_history.py`，改为条目式六字段；按 HEAD 祖先口径定案为 4/5/2 条 ACTIVE，先前 `--all` 口径的 19 条预算含未合并分支版本，已排除；文档 121 行改口并保留契约 needle，维护纪律写入 maintenance 文档。
+- **批 C／R-3 identity 维护链闭合**：`ensure_outdir_identity` 三入口识别历史版本，两侧都只接受两键规范形并拒绝额外键；collector 语义修正为目录 lineage 签发者（done v4 逐段 collector 列为后续立项）；维护纪律首次适用补登 `887c0f58`。
+- **批 D／R-4 producer→gate 真件对测**：`compile_state` 的真实返回产物落盘后直接调用 `audit_release_gate.check_formal_case_chain`；正式 BSC 正例必须无错误过闸，删除顶层 `chain` 与顶层/token 链矛盾两负例必须被闸拒绝，封住 producer 与 consumer 各自自洽却组合断链的测试逃逸面。
+- **成本与质量**：四批线性施工；批 D 新增 3 条 producer-consumer 端到端回归，版本登记统一至 6.45.1。施工署名 codex，调度验收 Fable。
+- **独立盲审与批 E 消化**：独立攻击型盲审约 40 向量实跑，终局 0 BREACH / 7 WEAK；五项修码收口 tx 分支等深、collector 类型混淆受控拒绝、REVOKED 压过 ACTIVE、git 考证补 HEAD 祖先机器闸、v2 URL 交叉比对，并补两项诚实边界注释。C14 混版目录续采维持知情放宽，done v4 逐段 collector 另行立项。
 
 ## [6.45.0] - 2026-08-15 — 三 AI 并行修复工程融合（v6.44.0 review 14 findings 全处置）
 

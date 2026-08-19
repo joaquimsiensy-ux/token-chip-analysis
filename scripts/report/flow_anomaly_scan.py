@@ -36,7 +36,8 @@ v2（2026-08-02 用户拍板补缝＋codex 交叉复核重构，schema flow-anom
 内部边删掉；−1 阶段无实体表时不传）；"新地址/首次有意义建仓"复用 wave_scan 的
 first_meaningful_day 抗 dust 定义（首日末余额 ≥自身峰值×first-meaningful-ratio）。
 
-输入三选一（同 wave_scan）：--edges-sol / --edges-evm-v2 / --duckdb。
+输入三选一（同 wave_scan）：--edges-sol / --edges-evm-v2 / --duckdb；正式
+--edges-sol 同时强制 --sol-cache-meta 与 --mint，复用 v4 meta/collector/digest/rows 身份闸。
 输出：--out flow_anomaly_report.json（schema flow-anomaly/v2，来源/收方数组全量零截断；
 sink 另含历史峰值、当前余额、全史净流入，供 validator 防多窗口累计低估；权威定义
 references/scan-schemas.md）。
@@ -140,6 +141,10 @@ def main():
     src.add_argument("--edges-evm-v2")
     src.add_argument("--duckdb")
     ap.add_argument("--edges-table", default="edges")
+    ap.add_argument("--legacy-sol5", action="store_true",
+                    help="保留显式诊断开关；本 READY anomaly 链一律拒绝")
+    ap.add_argument("--sol-cache-meta")
+    ap.add_argument("--mint")
     ap.add_argument("--total-supply", required=True)
     ap.add_argument("--out", default="flow_anomaly_report.json")
     ap.add_argument("--exclude-file", help="已知设施地址清单（不参与扫描）")
@@ -163,6 +168,10 @@ def main():
                     help="慢速批发模式：全史 distinct 收方 ≥此数（高召回初值，用户 2026-08-02 定）")
     a = ap.parse_args()
 
+    if a.legacy_sol5:
+        log("正式 anomaly 链拒绝 legacy-sol5；旧案 slot+owner 覆盖请用 audit_closed_accounts")
+        return 2
+
     import duckdb
     total = int(a.total_supply)
     if total <= 0:
@@ -183,7 +192,9 @@ def main():
     con.execute("SET preserve_insertion_order=false")
     t0 = datetime.now(timezone.utc)
     if a.edges_sol:
-        n_edges = load_sol(con, a.edges_sol)
+        n_edges, _ = load_sol(
+            con, a.edges_sol, cache_meta_path=a.sol_cache_meta,
+            expected_mint=a.mint)
     elif a.edges_evm_v2:
         n_edges = load_evm_v2(con, a.edges_evm_v2)
     else:

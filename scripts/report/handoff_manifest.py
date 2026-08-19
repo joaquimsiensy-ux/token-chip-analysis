@@ -43,6 +43,7 @@ from case_paths import safe_case_file
 from shared_release_receipt import (validate_accounting_receipt,
                                     validate_evm_observation_source_chain,
                                     validate_reconciliation_report)
+from wave_contract import WAVE_SCHEMA, has_formal_wave_semantics
 
 SCHEMA_VERSION = "handoff/v3"
 # verify 端支持集；consumer_min_schema 不在集内即拒收。
@@ -392,27 +393,30 @@ def _verify_light_schema(case_dir, fails, manifest, legacy=False):
         return
     try:
         ws = load_json(os.path.join(case_dir, "wave_scan_report.json"))
-        if ws.get("schema") in ("wave-scan/v1", "wave-scan/v2"):
+        if ws.get("schema") in ("wave-scan/v1", "wave-scan/v2", "wave-scan/v3"):
             fails.append(f"wave_scan_report.json 是旧版（{ws.get('schema')}）——v2 及更早缺 scan_universe "
-                         "逐址全集（候选对账没账可对），重跑 wave_scan.py（v3）后重 generate；"
+                         "逐址全集，v3 又缺边顺序/legacy 标记，重跑 wave_scan.py（v4）后重 generate；"
                          "已冻结旧案走 verify --legacy-read-only")
-        elif ws.get("schema") != "wave-scan/v3":
+        elif ws.get("schema") != WAVE_SCHEMA:
             fails.append(f"wave_scan_report.json schema 异常: {ws.get('schema')}")
+        elif not has_formal_wave_semantics(ws):
+            fails.append("wave_scan_report.json v4 必须是 formal 且携带合法边顺序语义；"
+                         "legacy-sol5 诊断产物不得进入 READY")
         elif not isinstance(ws.get("waves"), list) or not isinstance(ws.get("equal_amount_groups"), list) \
                 or not isinstance(ws.get("requires_adjudication"), bool):
             fails.append("wave_scan_report.json 缺 waves/equal_amount_groups/requires_adjudication——空壳拒收")
         elif not isinstance(ws.get("scan_universe"), list) \
                 or not isinstance(ws.get("must_adjudicate_count"), int) \
                 or len(ws["scan_universe"]) != ws.get("scan_universe_count"):
-            fails.append("wave_scan_report.json v3 全集不完整（scan_universe 须为数组、"
+            fails.append("wave_scan_report.json v4 全集不完整（scan_universe 须为数组、"
                          "must_adjudicate_count 须为整数、len(scan_universe)==scan_universe_count）"
-                         "——贴 v3 标签不带逐址全集同属空壳，拒收")
+                         "——贴 v4 标签不带逐址全集同属空壳，拒收")
         elif any(not isinstance(u, dict) or not str(u.get("addr") or "").strip()
                  or not isinstance(u.get("must_adjudicate"), bool)
                  for u in ws["scan_universe"]) \
                 or sum(1 for u in ws["scan_universe"] if u.get("must_adjudicate")) \
                 != ws["must_adjudicate_count"]:
-            fails.append("wave_scan_report.json v3 全集内部矛盾（每条须有 addr 且 "
+            fails.append("wave_scan_report.json v4 全集内部矛盾（每条须有 addr 且 "
                          "must_adjudicate 为布尔；must_adjudicate_count 必须等于逐条 true 计数"
                          "——count=0 配 must=true 条目这类自相矛盾拒收，v6.9.4）")
     except Exception as e:
@@ -457,7 +461,7 @@ def verify_case(case_dir, legacy_read_only=False):
             legacy_mode = True
         elif schema in LEGACY_SCHEMAS:
             fails.append(f"schema {schema} 是旧版——新运行必须重跑 v6.8.0 生产器"
-                         "（wave-scan/v3、flow-anomaly/v2）后重 generate；只读旧案加 --legacy-read-only")
+                         "（wave-scan/v4、flow-anomaly/v2）后重 generate；只读旧案加 --legacy-read-only")
         else:
             fails.append(f"schema 不兼容: 需要 {schema}，本端支持 {sorted(SUPPORTED_SCHEMAS)}")
     status = m.get("status")
@@ -1023,7 +1027,10 @@ def validate_and_replay_provenance(case_dir, pl, pl_path, ep, manifest):
         fails.append("entity_source_trace.py 算法哈希已变化——必须用当前代码重跑 provenance")
     algo_files = algorithm.get("files") or {}
     loader = os.path.join(os.path.dirname(os.path.abspath(__file__)), "wave_scan.py")
-    for name, expected in (("entity_source_trace.py", script), ("wave_scan.py", loader)):
+    identity = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "solana",
+                            "sqd_cache_identity.py")
+    for name, expected in (("entity_source_trace.py", script), ("wave_scan.py", loader),
+                           ("sqd_cache_identity.py", identity)):
         _, err = check_algorithm_file(algo_files.get(name), expected)
         if err:
             fails.append(f"算法依赖 {name} {err}")
@@ -1114,7 +1121,15 @@ def validate_and_replay_provenance(case_dir, pl, pl_path, ep, manifest):
     try:
         cmd = [sys.executable, script]
         if kind == "sol":
-            cmd += ["--edges-sol", arg]
+            try:
+                cache_meta = resolve_bound_path(case_dir, source.get("cache_meta"))
+            except ValueError as exc:
+                return [f"Solana provenance cache meta 异常: {exc}"]
+            mint = source.get("mint")
+            if not isinstance(mint, str) or not mint:
+                return ["Solana provenance 未绑定 mint"]
+            cmd += ["--edges-sol", arg, "--sol-cache-meta", cache_meta,
+                    "--mint", mint]
         elif kind == "evm_v2":
             cmd += ["--edges-evm-v2", arg]
         elif kind == "duckdb":

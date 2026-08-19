@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""wave-scan/v3 契约测试（离线合成数据，不依赖真库）。
+"""wave-scan/v4 契约测试（离线合成数据，不依赖真库）。
 
 覆盖（schema 权威定义 references/scan-schemas.md；PYTHIA 真库锚点另见
 fixtures/pythia_anchors.json，须真库在位时手动回测比对）：
@@ -25,6 +25,8 @@ import subprocess
 import sys
 import tempfile
 
+from sqd_v4_test_fixture import formal_cli_args
+
 HERE = os.path.dirname(os.path.abspath(__file__))
 SCRIPT = os.path.join(HERE, "..", "report", "wave_scan.py")
 FAILS = []
@@ -44,10 +46,11 @@ def run(edges, out, extra=None):
     d = os.path.dirname(out)
     ep = os.path.join(d, "edges.jsonl")
     with open(ep, "w", encoding="utf-8") as f:
-        for ts, frm, to, amt in edges:
-            f.write(json.dumps([ts, 0, frm, to, amt]) + "\n")
+        for tx_index, (ts, frm, to, amt) in enumerate(edges):
+            f.write(json.dumps([ts, 0, tx_index, -1, frm, to, amt]) + "\n")
     args = [sys.executable, SCRIPT, "--edges-sol", ep,
-            "--total-supply", str(TOTAL), "--out", out] + (extra or [])
+            "--total-supply", str(TOTAL), "--out", out] \
+        + formal_cli_args(ep) + (extra or [])
     return subprocess.run(args, capture_output=True, text=True)
 
 
@@ -67,9 +70,6 @@ def main():
     # 但必须出现在 scan_universe 且 must_adjudicate=true）
     LONE = "LoneWhale"
     edges.append((day(0), Z, LONE, 3 * 10 ** 10))
-    # 12. 零值"摸活"反例（codex 验收 P2）：任何人都能给静置仓发 0 值转账——
-    # last_day 只认非零金额，这笔不得洗掉 LONE 的 dormant_ge_30d 标记
-    edges.append((day(65), "ZeroToucher", LONE, 0))
     # A 正例：25 址 3 天内各建 ~0.5%（合并峰 ~12.5% ≥10%、25 员 ≥20）；
     # 金额逐址微差——防止 25 笔同面额自己构成合法等额组干扰 D 断言
     W = [f"WaveAddr{i:02d}" for i in range(25)]
@@ -101,7 +101,11 @@ def main():
         return finish()
     r = json.load(open(out1))
 
-    check("schema=wave-scan/v3", r.get("schema") == "wave-scan/v3")
+    check("schema=wave-scan/v4", r.get("schema") == "wave-scan/v4")
+    check("transaction-net 顺序语义透传",
+          r.get("edge_order_granularity") == "transaction"
+          and r.get("order_ambiguous") is True
+          and r.get("non_formal") is False)
     waves = r["waves"]
     check("A 正例：恰报 1 个波次（负例窗未混入）", len(waves) == 1)
     if waves:
@@ -140,7 +144,7 @@ def main():
               lone["must_adjudicate"] is True
               and "peak_ge_0.1pct" in lone["must_reasons"]
               and "dormant_ge_30d" in lone["must_reasons"])
-        check("12. 零值转账洗不掉静置标记（last_day 只认非零金额）",
+        check("12. v4 正式边不含零值边，静置末日保持真实活动日",
               lone["last_active_day"] == "1970-01-01")
         check("11. 孤仓 retained 桶且峰值 3%",
               lone["retention_bucket"] == "retained"
@@ -189,6 +193,54 @@ def main():
     if hit:
         check("D 二轮复收：tx_count=40 且 densest 窗 ≥20",
               hit[0]["tx_count"] == 40 and hit[0]["densest_7d_window"]["recipients"] >= 20)
+
+    # ---- v4-only 正式入口与显式 legacy 两态分立 ----
+    d5 = tempfile.mkdtemp(prefix="wave_scan_modes_")
+    legacy_edge = os.path.join(d5, "legacy.jsonl")
+    with open(legacy_edge, "w", encoding="utf-8") as f:
+        f.write(json.dumps([day(0), 1, Z, "LegacyOwner", 10 ** 9]) + "\n")
+    formal_reject = subprocess.run(
+        [sys.executable, SCRIPT, "--edges-sol", legacy_edge,
+         "--total-supply", str(TOTAL), "--out", os.path.join(d5, "formal.json")],
+        capture_output=True, text=True)
+    check("正式入口拒绝 5 元组", formal_reject.returncode == 2)
+    legacy_out = os.path.join(d5, "legacy-report.json")
+    legacy_ok = subprocess.run(
+        [sys.executable, SCRIPT, "--edges-sol", legacy_edge, "--legacy-sol5",
+         "--total-supply", str(TOTAL), "--out", legacy_out],
+        capture_output=True, text=True)
+    legacy_report = json.load(open(legacy_out)) if legacy_ok.returncode == 0 else {}
+    check("legacy 显式入口强制 non-formal/order-ambiguous",
+          legacy_ok.returncode == 0
+          and legacy_report.get("schema") == "wave-scan/v4"
+          and legacy_report.get("non_formal") is True
+          and legacy_report.get("order_ambiguous") is True)
+
+    exact_edge = os.path.join(d5, "exact.jsonl")
+    with open(exact_edge, "w", encoding="utf-8") as f:
+        f.write(json.dumps([day(0), 1, 0, 0, Z, "ExactOwner", 10 ** 9]) + "\n")
+    exact_out = os.path.join(d5, "exact-report.json")
+    exact_ok = subprocess.run(
+        [sys.executable, SCRIPT, "--edges-sol", exact_edge,
+         "--total-supply", str(TOTAL), "--out", exact_out]
+        + formal_cli_args(exact_edge),
+        capture_output=True, text=True)
+    exact_report = json.load(open(exact_out)) if exact_ok.returncode == 0 else {}
+    check("instr>=0 保持 instruction exact 语义",
+          exact_ok.returncode == 0
+          and exact_report.get("edge_order_granularity") == "instruction"
+          and exact_report.get("order_ambiguous") is False)
+
+    bad_tx_edge = os.path.join(d5, "bad-tx.jsonl")
+    with open(bad_tx_edge, "w", encoding="utf-8") as f:
+        f.write(json.dumps([day(0), 1, "0", -1, Z, "BadOwner", 10 ** 9]) + "\n")
+    bad_tx = subprocess.run(
+        [sys.executable, SCRIPT, "--edges-sol", bad_tx_edge,
+         "--total-supply", str(TOTAL), "--out", os.path.join(d5, "bad.json")]
+        + formal_cli_args(bad_tx_edge),
+        capture_output=True, text=True)
+    check("tx_index 字符串受控 exit 2", bad_tx.returncode == 2
+          and "字段类型非法" in (bad_tx.stdout + bad_tx.stderr))
 
     return finish()
 

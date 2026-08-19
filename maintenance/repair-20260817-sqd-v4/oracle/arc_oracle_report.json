@@ -1,0 +1,5001 @@
+{
+  "artifacts": {
+    "parts_manifest": "arc_parts_manifest.json",
+    "report": "arc_oracle_report.json"
+  },
+  "case": "ARC",
+  "collisions": {
+    "extra_row_count": 11502,
+    "group_count": 8487,
+    "multiplicity_histogram": {
+      "10": 7,
+      "11": 7,
+      "12": 3,
+      "14": 1,
+      "15": 1,
+      "2": 6679,
+      "21": 1,
+      "23": 1,
+      "3": 1205,
+      "4": 351,
+      "5": 116,
+      "6": 68,
+      "7": 20,
+      "8": 15,
+      "9": 12
+    },
+    "sample_groups": [
+      {
+        "edge": [
+          1763390212,
+          380693882,
+          "CreQJ2t94QK5dsxUZGXfPJ8Nx7wA9LHr5chxjSMkbNft",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          15651436827
+        ],
+        "extra_rows": 1,
+        "multiplicity": 2
+      },
+      {
+        "edge": [
+          1763393142,
+          380701229,
+          "CKBCxNxdsfZwTwKYHQmBs7J8zpPjCjMJAxcxoBUwExw6",
+          "5nKtUBx8vPRTvNB7kaFvtuvRK6qRf1SRFnrVcASAWw7w",
+          1835064000
+        ],
+        "extra_rows": 2,
+        "multiplicity": 3
+      },
+      {
+        "edge": [
+          1763393182,
+          380701328,
+          "CKBCxNxdsfZwTwKYHQmBs7J8zpPjCjMJAxcxoBUwExw6",
+          "5nKtUBx8vPRTvNB7kaFvtuvRK6qRf1SRFnrVcASAWw7w",
+          1490374000
+        ],
+        "extra_rows": 1,
+        "multiplicity": 2
+      },
+      {
+        "edge": [
+          1764182002,
+          382698000,
+          "CreQJ2t94QK5dsxUZGXfPJ8Nx7wA9LHr5chxjSMkbNft",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          13802434702
+        ],
+        "extra_rows": 1,
+        "multiplicity": 2
+      },
+      {
+        "edge": [
+          1764182017,
+          382698040,
+          "CreQJ2t94QK5dsxUZGXfPJ8Nx7wA9LHr5chxjSMkbNft",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          27602954989
+        ],
+        "extra_rows": 1,
+        "multiplicity": 2
+      },
+      {
+        "edge": [
+          1764182018,
+          382698041,
+          "CreQJ2t94QK5dsxUZGXfPJ8Nx7wA9LHr5chxjSMkbNft",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          13956046733
+        ],
+        "extra_rows": 2,
+        "multiplicity": 3
+      },
+      {
+        "edge": [
+          1764182018,
+          382698042,
+          "CreQJ2t94QK5dsxUZGXfPJ8Nx7wA9LHr5chxjSMkbNft",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          14001085067
+        ],
+        "extra_rows": 1,
+        "multiplicity": 2
+      },
+      {
+        "edge": [
+          1764182036,
+          382698086,
+          "CreQJ2t94QK5dsxUZGXfPJ8Nx7wA9LHr5chxjSMkbNft",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          13949047563
+        ],
+        "extra_rows": 2,
+        "multiplicity": 3
+      },
+      {
+        "edge": [
+          1764182050,
+          382698118,
+          "CreQJ2t94QK5dsxUZGXfPJ8Nx7wA9LHr5chxjSMkbNft",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          14058765640
+        ],
+        "extra_rows": 1,
+        "multiplicity": 2
+      },
+      {
+        "edge": [
+          1764182051,
+          382698120,
+          "CreQJ2t94QK5dsxUZGXfPJ8Nx7wA9LHr5chxjSMkbNft",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          14098076639
+        ],
+        "extra_rows": 1,
+        "multiplicity": 2
+      },
+      {
+        "edge": [
+          1764182051,
+          382698121,
+          "CreQJ2t94QK5dsxUZGXfPJ8Nx7wA9LHr5chxjSMkbNft",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          14108352144
+        ],
+        "extra_rows": 1,
+        "multiplicity": 2
+      },
+      {
+        "edge": [
+          1764182052,
+          382698123,
+          "CreQJ2t94QK5dsxUZGXfPJ8Nx7wA9LHr5chxjSMkbNft",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          14137829709
+        ],
+        "extra_rows": 4,
+        "multiplicity": 5
+      },
+      {
+        "edge": [
+          1764182054,
+          382698127,
+          "CreQJ2t94QK5dsxUZGXfPJ8Nx7wA9LHr5chxjSMkbNft",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          14202632069
+        ],
+        "extra_rows": 1,
+        "multiplicity": 2
+      },
+      {
+        "edge": [
+          1764182119,
+          382698297,
+          "CreQJ2t94QK5dsxUZGXfPJ8Nx7wA9LHr5chxjSMkbNft",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          14235750664
+        ],
+        "extra_rows": 1,
+        "multiplicity": 2
+      },
+      {
+        "edge": [
+          1764182126,
+          382698316,
+          "CreQJ2t94QK5dsxUZGXfPJ8Nx7wA9LHr5chxjSMkbNft",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          14427794989
+        ],
+        "extra_rows": 1,
+        "multiplicity": 2
+      },
+      {
+        "edge": [
+          1764182745,
+          382699909,
+          "CreQJ2t94QK5dsxUZGXfPJ8Nx7wA9LHr5chxjSMkbNft",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          13376136971
+        ],
+        "extra_rows": 1,
+        "multiplicity": 2
+      },
+      {
+        "edge": [
+          1764182761,
+          382699952,
+          "CreQJ2t94QK5dsxUZGXfPJ8Nx7wA9LHr5chxjSMkbNft",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          13393067534
+        ],
+        "extra_rows": 1,
+        "multiplicity": 2
+      },
+      {
+        "edge": [
+          1764182762,
+          382699954,
+          "CreQJ2t94QK5dsxUZGXfPJ8Nx7wA9LHr5chxjSMkbNft",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          13412017167
+        ],
+        "extra_rows": 1,
+        "multiplicity": 2
+      },
+      {
+        "edge": [
+          1764182820,
+          382700107,
+          "CreQJ2t94QK5dsxUZGXfPJ8Nx7wA9LHr5chxjSMkbNft",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          13359922378
+        ],
+        "extra_rows": 4,
+        "multiplicity": 5
+      },
+      {
+        "edge": [
+          1764182849,
+          382700180,
+          "CreQJ2t94QK5dsxUZGXfPJ8Nx7wA9LHr5chxjSMkbNft",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          13433587446
+        ],
+        "extra_rows": 1,
+        "multiplicity": 2
+      },
+      {
+        "edge": [
+          1764182940,
+          382700417,
+          "CreQJ2t94QK5dsxUZGXfPJ8Nx7wA9LHr5chxjSMkbNft",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          13388862528
+        ],
+        "extra_rows": 1,
+        "multiplicity": 2
+      },
+      {
+        "edge": [
+          1764182943,
+          382700425,
+          "CreQJ2t94QK5dsxUZGXfPJ8Nx7wA9LHr5chxjSMkbNft",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          13531730181
+        ],
+        "extra_rows": 1,
+        "multiplicity": 2
+      },
+      {
+        "edge": [
+          1764182952,
+          382700445,
+          "CreQJ2t94QK5dsxUZGXfPJ8Nx7wA9LHr5chxjSMkbNft",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          13582111368
+        ],
+        "extra_rows": 1,
+        "multiplicity": 2
+      },
+      {
+        "edge": [
+          1764183363,
+          382701494,
+          "CreQJ2t94QK5dsxUZGXfPJ8Nx7wA9LHr5chxjSMkbNft",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          13561458090
+        ],
+        "extra_rows": 1,
+        "multiplicity": 2
+      },
+      {
+        "edge": [
+          1764183363,
+          382701494,
+          "CreQJ2t94QK5dsxUZGXfPJ8Nx7wA9LHr5chxjSMkbNft",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          13610835188
+        ],
+        "extra_rows": 1,
+        "multiplicity": 2
+      },
+      {
+        "edge": [
+          1764183363,
+          382701495,
+          "CreQJ2t94QK5dsxUZGXfPJ8Nx7wA9LHr5chxjSMkbNft",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          13665909656
+        ],
+        "extra_rows": 1,
+        "multiplicity": 2
+      },
+      {
+        "edge": [
+          1764183419,
+          382701638,
+          "CreQJ2t94QK5dsxUZGXfPJ8Nx7wA9LHr5chxjSMkbNft",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          13751633870
+        ],
+        "extra_rows": 1,
+        "multiplicity": 2
+      },
+      {
+        "edge": [
+          1764183442,
+          382701697,
+          "CreQJ2t94QK5dsxUZGXfPJ8Nx7wA9LHr5chxjSMkbNft",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          13882868338
+        ],
+        "extra_rows": 1,
+        "multiplicity": 2
+      },
+      {
+        "edge": [
+          1764183482,
+          382701801,
+          "CreQJ2t94QK5dsxUZGXfPJ8Nx7wA9LHr5chxjSMkbNft",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          13981047537
+        ],
+        "extra_rows": 2,
+        "multiplicity": 3
+      },
+      {
+        "edge": [
+          1764183483,
+          382701803,
+          "CreQJ2t94QK5dsxUZGXfPJ8Nx7wA9LHr5chxjSMkbNft",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          14040189578
+        ],
+        "extra_rows": 2,
+        "multiplicity": 3
+      },
+      {
+        "edge": [
+          1764183483,
+          382701804,
+          "CreQJ2t94QK5dsxUZGXfPJ8Nx7wA9LHr5chxjSMkbNft",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          14050110913
+        ],
+        "extra_rows": 3,
+        "multiplicity": 4
+      },
+      {
+        "edge": [
+          1764183487,
+          382701812,
+          "CreQJ2t94QK5dsxUZGXfPJ8Nx7wA9LHr5chxjSMkbNft",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          14230900202
+        ],
+        "extra_rows": 3,
+        "multiplicity": 4
+      },
+      {
+        "edge": [
+          1764183558,
+          382701995,
+          "CreQJ2t94QK5dsxUZGXfPJ8Nx7wA9LHr5chxjSMkbNft",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          13923818003
+        ],
+        "extra_rows": 2,
+        "multiplicity": 3
+      },
+      {
+        "edge": [
+          1764183561,
+          382702001,
+          "CreQJ2t94QK5dsxUZGXfPJ8Nx7wA9LHr5chxjSMkbNft",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          14073342079
+        ],
+        "extra_rows": 1,
+        "multiplicity": 2
+      },
+      {
+        "edge": [
+          1764183662,
+          382702263,
+          "CreQJ2t94QK5dsxUZGXfPJ8Nx7wA9LHr5chxjSMkbNft",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          14247043738
+        ],
+        "extra_rows": 1,
+        "multiplicity": 2
+      },
+      {
+        "edge": [
+          1764183668,
+          382702279,
+          "CreQJ2t94QK5dsxUZGXfPJ8Nx7wA9LHr5chxjSMkbNft",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          14424711747
+        ],
+        "extra_rows": 2,
+        "multiplicity": 3
+      },
+      {
+        "edge": [
+          1764183781,
+          382702569,
+          "CreQJ2t94QK5dsxUZGXfPJ8Nx7wA9LHr5chxjSMkbNft",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          14432096983
+        ],
+        "extra_rows": 1,
+        "multiplicity": 2
+      },
+      {
+        "edge": [
+          1764183826,
+          382702685,
+          "CreQJ2t94QK5dsxUZGXfPJ8Nx7wA9LHr5chxjSMkbNft",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          14248465138
+        ],
+        "extra_rows": 1,
+        "multiplicity": 2
+      },
+      {
+        "edge": [
+          1764183901,
+          382702881,
+          "CreQJ2t94QK5dsxUZGXfPJ8Nx7wA9LHr5chxjSMkbNft",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          14442791168
+        ],
+        "extra_rows": 1,
+        "multiplicity": 2
+      },
+      {
+        "edge": [
+          1764183902,
+          382702882,
+          "CreQJ2t94QK5dsxUZGXfPJ8Nx7wA9LHr5chxjSMkbNft",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          14457078493
+        ],
+        "extra_rows": 3,
+        "multiplicity": 4
+      },
+      {
+        "edge": [
+          1764183949,
+          382703000,
+          "CreQJ2t94QK5dsxUZGXfPJ8Nx7wA9LHr5chxjSMkbNft",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          14511023814
+        ],
+        "extra_rows": 1,
+        "multiplicity": 2
+      },
+      {
+        "edge": [
+          1764183950,
+          382703005,
+          "CreQJ2t94QK5dsxUZGXfPJ8Nx7wA9LHr5chxjSMkbNft",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          14600110664
+        ],
+        "extra_rows": 2,
+        "multiplicity": 3
+      },
+      {
+        "edge": [
+          1764184005,
+          382703142,
+          "CreQJ2t94QK5dsxUZGXfPJ8Nx7wA9LHr5chxjSMkbNft",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          14510931565
+        ],
+        "extra_rows": 1,
+        "multiplicity": 2
+      },
+      {
+        "edge": [
+          1764184109,
+          382703407,
+          "CreQJ2t94QK5dsxUZGXfPJ8Nx7wA9LHr5chxjSMkbNft",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          14600856929
+        ],
+        "extra_rows": 1,
+        "multiplicity": 2
+      },
+      {
+        "edge": [
+          1764184260,
+          382703804,
+          "CreQJ2t94QK5dsxUZGXfPJ8Nx7wA9LHr5chxjSMkbNft",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          14723059800
+        ],
+        "extra_rows": 2,
+        "multiplicity": 3
+      },
+      {
+        "edge": [
+          1764184300,
+          382703906,
+          "CreQJ2t94QK5dsxUZGXfPJ8Nx7wA9LHr5chxjSMkbNft",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          14865889434
+        ],
+        "extra_rows": 1,
+        "multiplicity": 2
+      },
+      {
+        "edge": [
+          1764184534,
+          382704508,
+          "CreQJ2t94QK5dsxUZGXfPJ8Nx7wA9LHr5chxjSMkbNft",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          14391785573
+        ],
+        "extra_rows": 1,
+        "multiplicity": 2
+      },
+      {
+        "edge": [
+          1764184741,
+          382705046,
+          "CreQJ2t94QK5dsxUZGXfPJ8Nx7wA9LHr5chxjSMkbNft",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          14319229836
+        ],
+        "extra_rows": 1,
+        "multiplicity": 2
+      },
+      {
+        "edge": [
+          1764184841,
+          382705303,
+          "CreQJ2t94QK5dsxUZGXfPJ8Nx7wA9LHr5chxjSMkbNft",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          14421690222
+        ],
+        "extra_rows": 2,
+        "multiplicity": 3
+      },
+      {
+        "edge": [
+          1764185161,
+          382706128,
+          "CreQJ2t94QK5dsxUZGXfPJ8Nx7wA9LHr5chxjSMkbNft",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          13867406750
+        ],
+        "extra_rows": 1,
+        "multiplicity": 2
+      },
+      {
+        "edge": [
+          1764185178,
+          382706172,
+          "CreQJ2t94QK5dsxUZGXfPJ8Nx7wA9LHr5chxjSMkbNft",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          13904856454
+        ],
+        "extra_rows": 1,
+        "multiplicity": 2
+      },
+      {
+        "edge": [
+          1764185179,
+          382706173,
+          "CreQJ2t94QK5dsxUZGXfPJ8Nx7wA9LHr5chxjSMkbNft",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          13936249153
+        ],
+        "extra_rows": 1,
+        "multiplicity": 2
+      },
+      {
+        "edge": [
+          1764185341,
+          382706591,
+          "CreQJ2t94QK5dsxUZGXfPJ8Nx7wA9LHr5chxjSMkbNft",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          13806304820
+        ],
+        "extra_rows": 1,
+        "multiplicity": 2
+      },
+      {
+        "edge": [
+          1764185480,
+          382706948,
+          "CreQJ2t94QK5dsxUZGXfPJ8Nx7wA9LHr5chxjSMkbNft",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          13920846873
+        ],
+        "extra_rows": 3,
+        "multiplicity": 4
+      },
+      {
+        "edge": [
+          1764185482,
+          382706953,
+          "CreQJ2t94QK5dsxUZGXfPJ8Nx7wA9LHr5chxjSMkbNft",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          13976129791
+        ],
+        "extra_rows": 1,
+        "multiplicity": 2
+      },
+      {
+        "edge": [
+          1764185491,
+          382706977,
+          "CreQJ2t94QK5dsxUZGXfPJ8Nx7wA9LHr5chxjSMkbNft",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          13944040483
+        ],
+        "extra_rows": 1,
+        "multiplicity": 2
+      },
+      {
+        "edge": [
+          1764185765,
+          382707688,
+          "CreQJ2t94QK5dsxUZGXfPJ8Nx7wA9LHr5chxjSMkbNft",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          13959793013
+        ],
+        "extra_rows": 1,
+        "multiplicity": 2
+      },
+      {
+        "edge": [
+          1764185907,
+          382708050,
+          "CreQJ2t94QK5dsxUZGXfPJ8Nx7wA9LHr5chxjSMkbNft",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          13781289082
+        ],
+        "extra_rows": 1,
+        "multiplicity": 2
+      },
+      {
+        "edge": [
+          1764185909,
+          382708056,
+          "CreQJ2t94QK5dsxUZGXfPJ8Nx7wA9LHr5chxjSMkbNft",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          13821069733
+        ],
+        "extra_rows": 1,
+        "multiplicity": 2
+      },
+      {
+        "edge": [
+          1764186050,
+          382708425,
+          "CreQJ2t94QK5dsxUZGXfPJ8Nx7wA9LHr5chxjSMkbNft",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          13716222110
+        ],
+        "extra_rows": 1,
+        "multiplicity": 2
+      },
+      {
+        "edge": [
+          1764186061,
+          382708452,
+          "CreQJ2t94QK5dsxUZGXfPJ8Nx7wA9LHr5chxjSMkbNft",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          13693463378
+        ],
+        "extra_rows": 1,
+        "multiplicity": 2
+      },
+      {
+        "edge": [
+          1764186064,
+          382708461,
+          "CreQJ2t94QK5dsxUZGXfPJ8Nx7wA9LHr5chxjSMkbNft",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          13772841019
+        ],
+        "extra_rows": 1,
+        "multiplicity": 2
+      },
+      {
+        "edge": [
+          1764186120,
+          382708608,
+          "CreQJ2t94QK5dsxUZGXfPJ8Nx7wA9LHr5chxjSMkbNft",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          13935544309
+        ],
+        "extra_rows": 1,
+        "multiplicity": 2
+      },
+      {
+        "edge": [
+          1764186120,
+          382708608,
+          "CreQJ2t94QK5dsxUZGXfPJ8Nx7wA9LHr5chxjSMkbNft",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          27871088618
+        ],
+        "extra_rows": 1,
+        "multiplicity": 2
+      },
+      {
+        "edge": [
+          1764186122,
+          382708612,
+          "CreQJ2t94QK5dsxUZGXfPJ8Nx7wA9LHr5chxjSMkbNft",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          14017646391
+        ],
+        "extra_rows": 2,
+        "multiplicity": 3
+      },
+      {
+        "edge": [
+          1764186129,
+          382708632,
+          "CreQJ2t94QK5dsxUZGXfPJ8Nx7wA9LHr5chxjSMkbNft",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          14068192761
+        ],
+        "extra_rows": 1,
+        "multiplicity": 2
+      },
+      {
+        "edge": [
+          1764186147,
+          382708676,
+          "CreQJ2t94QK5dsxUZGXfPJ8Nx7wA9LHr5chxjSMkbNft",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          14073108026
+        ],
+        "extra_rows": 3,
+        "multiplicity": 4
+      },
+      {
+        "edge": [
+          1764186200,
+          382708815,
+          "CreQJ2t94QK5dsxUZGXfPJ8Nx7wA9LHr5chxjSMkbNft",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          14160291638
+        ],
+        "extra_rows": 2,
+        "multiplicity": 3
+      },
+      {
+        "edge": [
+          1764186301,
+          382709072,
+          "CreQJ2t94QK5dsxUZGXfPJ8Nx7wA9LHr5chxjSMkbNft",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          14120737075
+        ],
+        "extra_rows": 1,
+        "multiplicity": 2
+      },
+      {
+        "edge": [
+          1764186354,
+          382709209,
+          "CreQJ2t94QK5dsxUZGXfPJ8Nx7wA9LHr5chxjSMkbNft",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          14211749307
+        ],
+        "extra_rows": 1,
+        "multiplicity": 2
+      },
+      {
+        "edge": [
+          1764186362,
+          382709228,
+          "CreQJ2t94QK5dsxUZGXfPJ8Nx7wA9LHr5chxjSMkbNft",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          14289559822
+        ],
+        "extra_rows": 1,
+        "multiplicity": 2
+      },
+      {
+        "edge": [
+          1764186550,
+          382709710,
+          "CreQJ2t94QK5dsxUZGXfPJ8Nx7wA9LHr5chxjSMkbNft",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          14154096504
+        ],
+        "extra_rows": 1,
+        "multiplicity": 2
+      },
+      {
+        "edge": [
+          1764186602,
+          382709847,
+          "CreQJ2t94QK5dsxUZGXfPJ8Nx7wA9LHr5chxjSMkbNft",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          14297823358
+        ],
+        "extra_rows": 1,
+        "multiplicity": 2
+      },
+      {
+        "edge": [
+          1764186781,
+          382710305,
+          "CreQJ2t94QK5dsxUZGXfPJ8Nx7wA9LHr5chxjSMkbNft",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          14299406596
+        ],
+        "extra_rows": 1,
+        "multiplicity": 2
+      },
+      {
+        "edge": [
+          1764186786,
+          382710319,
+          "CreQJ2t94QK5dsxUZGXfPJ8Nx7wA9LHr5chxjSMkbNft",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          14358610472
+        ],
+        "extra_rows": 1,
+        "multiplicity": 2
+      },
+      {
+        "edge": [
+          1764187265,
+          382711544,
+          "CreQJ2t94QK5dsxUZGXfPJ8Nx7wA9LHr5chxjSMkbNft",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          14140236388
+        ],
+        "extra_rows": 1,
+        "multiplicity": 2
+      },
+      {
+        "edge": [
+          1764187270,
+          382711557,
+          "CreQJ2t94QK5dsxUZGXfPJ8Nx7wA9LHr5chxjSMkbNft",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          14221674439
+        ],
+        "extra_rows": 1,
+        "multiplicity": 2
+      },
+      {
+        "edge": [
+          1764187286,
+          382711600,
+          "CreQJ2t94QK5dsxUZGXfPJ8Nx7wA9LHr5chxjSMkbNft",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          14234462797
+        ],
+        "extra_rows": 1,
+        "multiplicity": 2
+      },
+      {
+        "edge": [
+          1764187297,
+          382711628,
+          "CreQJ2t94QK5dsxUZGXfPJ8Nx7wA9LHr5chxjSMkbNft",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          14246903959
+        ],
+        "extra_rows": 1,
+        "multiplicity": 2
+      },
+      {
+        "edge": [
+          1764187300,
+          382711636,
+          "CreQJ2t94QK5dsxUZGXfPJ8Nx7wA9LHr5chxjSMkbNft",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          14295839248
+        ],
+        "extra_rows": 1,
+        "multiplicity": 2
+      },
+      {
+        "edge": [
+          1764187781,
+          382712883,
+          "CreQJ2t94QK5dsxUZGXfPJ8Nx7wA9LHr5chxjSMkbNft",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          13964807167
+        ],
+        "extra_rows": 1,
+        "multiplicity": 2
+      },
+      {
+        "edge": [
+          1764187783,
+          382712888,
+          "CreQJ2t94QK5dsxUZGXfPJ8Nx7wA9LHr5chxjSMkbNft",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          13973988161
+        ],
+        "extra_rows": 1,
+        "multiplicity": 2
+      },
+      {
+        "edge": [
+          1764187951,
+          382713319,
+          "CreQJ2t94QK5dsxUZGXfPJ8Nx7wA9LHr5chxjSMkbNft",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          13901642504
+        ],
+        "extra_rows": 1,
+        "multiplicity": 2
+      },
+      {
+        "edge": [
+          1764187955,
+          382713331,
+          "CreQJ2t94QK5dsxUZGXfPJ8Nx7wA9LHr5chxjSMkbNft",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          13919811191
+        ],
+        "extra_rows": 1,
+        "multiplicity": 2
+      },
+      {
+        "edge": [
+          1764188022,
+          382713504,
+          "CreQJ2t94QK5dsxUZGXfPJ8Nx7wA9LHr5chxjSMkbNft",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          14016942449
+        ],
+        "extra_rows": 1,
+        "multiplicity": 2
+      },
+      {
+        "edge": [
+          1764188228,
+          382714036,
+          "CreQJ2t94QK5dsxUZGXfPJ8Nx7wA9LHr5chxjSMkbNft",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          14083909935
+        ],
+        "extra_rows": 1,
+        "multiplicity": 2
+      },
+      {
+        "edge": [
+          1764188272,
+          382714151,
+          "CreQJ2t94QK5dsxUZGXfPJ8Nx7wA9LHr5chxjSMkbNft",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          14118073083
+        ],
+        "extra_rows": 3,
+        "multiplicity": 4
+      },
+      {
+        "edge": [
+          1764188272,
+          382714152,
+          "CreQJ2t94QK5dsxUZGXfPJ8Nx7wA9LHr5chxjSMkbNft",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          14182696722
+        ],
+        "extra_rows": 1,
+        "multiplicity": 2
+      },
+      {
+        "edge": [
+          1764801899,
+          384294491,
+          "CreQJ2t94QK5dsxUZGXfPJ8Nx7wA9LHr5chxjSMkbNft",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          11212620379
+        ],
+        "extra_rows": 1,
+        "multiplicity": 2
+      },
+      {
+        "edge": [
+          1764806202,
+          384305515,
+          "CreQJ2t94QK5dsxUZGXfPJ8Nx7wA9LHr5chxjSMkbNft",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          11258803062
+        ],
+        "extra_rows": 1,
+        "multiplicity": 2
+      },
+      {
+        "edge": [
+          1765361041,
+          385729291,
+          "CreQJ2t94QK5dsxUZGXfPJ8Nx7wA9LHr5chxjSMkbNft",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          13898321930
+        ],
+        "extra_rows": 1,
+        "multiplicity": 2
+      },
+      {
+        "edge": [
+          1765361041,
+          385729292,
+          "CreQJ2t94QK5dsxUZGXfPJ8Nx7wA9LHr5chxjSMkbNft",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          13920517330
+        ],
+        "extra_rows": 1,
+        "multiplicity": 2
+      },
+      {
+        "edge": [
+          1765361115,
+          385729483,
+          "GJvewfRjqTUPtx6WsBSUnaFbdgXwgXnWfpDyLm65T4YA",
+          "FAijmttYim75twHhCKyNCH7sEU5QQkiqD3mcg6jF95Eb",
+          11214000000
+        ],
+        "extra_rows": 1,
+        "multiplicity": 2
+      },
+      {
+        "edge": [
+          1765362470,
+          385732948,
+          "CreQJ2t94QK5dsxUZGXfPJ8Nx7wA9LHr5chxjSMkbNft",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          14104373854
+        ],
+        "extra_rows": 1,
+        "multiplicity": 2
+      },
+      {
+        "edge": [
+          1766890695,
+          389639618,
+          "CreQJ2t94QK5dsxUZGXfPJ8Nx7wA9LHr5chxjSMkbNft",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          11177702243
+        ],
+        "extra_rows": 1,
+        "multiplicity": 2
+      },
+      {
+        "edge": [
+          1766890902,
+          389640145,
+          "CreQJ2t94QK5dsxUZGXfPJ8Nx7wA9LHr5chxjSMkbNft",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          11651348963
+        ],
+        "extra_rows": 1,
+        "multiplicity": 2
+      },
+      {
+        "edge": [
+          1766890909,
+          389640162,
+          "CreQJ2t94QK5dsxUZGXfPJ8Nx7wA9LHr5chxjSMkbNft",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          23288415627
+        ],
+        "extra_rows": 1,
+        "multiplicity": 2
+      },
+      {
+        "edge": [
+          1766891191,
+          389640884,
+          "CreQJ2t94QK5dsxUZGXfPJ8Nx7wA9LHr5chxjSMkbNft",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          11772147893
+        ],
+        "extra_rows": 1,
+        "multiplicity": 2
+      },
+      {
+        "edge": [
+          1766891194,
+          389640891,
+          "CreQJ2t94QK5dsxUZGXfPJ8Nx7wA9LHr5chxjSMkbNft",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          11801115247
+        ],
+        "extra_rows": 1,
+        "multiplicity": 2
+      },
+      {
+        "edge": [
+          1766891272,
+          389641088,
+          "FAijmttYim75twHhCKyNCH7sEU5QQkiqD3mcg6jF95Eb",
+          "EjwYJMj7wyP9w29WttYBSfh4dfFSuCFiSpAmjhiU72yp",
+          10003999996
+        ],
+        "extra_rows": 1,
+        "multiplicity": 2
+      },
+      {
+        "edge": [
+          1766891400,
+          389641410,
+          "CreQJ2t94QK5dsxUZGXfPJ8Nx7wA9LHr5chxjSMkbNft",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          12033018678
+        ],
+        "extra_rows": 1,
+        "multiplicity": 2
+      },
+      {
+        "edge": [
+          1766891647,
+          389642036,
+          "CreQJ2t94QK5dsxUZGXfPJ8Nx7wA9LHr5chxjSMkbNft",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          12077885115
+        ],
+        "extra_rows": 2,
+        "multiplicity": 3
+      },
+      {
+        "edge": [
+          1766891647,
+          389642036,
+          "CreQJ2t94QK5dsxUZGXfPJ8Nx7wA9LHr5chxjSMkbNft",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          12113024399
+        ],
+        "extra_rows": 1,
+        "multiplicity": 2
+      },
+      {
+        "edge": [
+          1766891773,
+          389642353,
+          "CreQJ2t94QK5dsxUZGXfPJ8Nx7wA9LHr5chxjSMkbNft",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          12108719352
+        ],
+        "extra_rows": 1,
+        "multiplicity": 2
+      },
+      {
+        "edge": [
+          1766891910,
+          389642703,
+          "CreQJ2t94QK5dsxUZGXfPJ8Nx7wA9LHr5chxjSMkbNft",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          12385178122
+        ],
+        "extra_rows": 1,
+        "multiplicity": 2
+      },
+      {
+        "edge": [
+          1766891933,
+          389642760,
+          "CreQJ2t94QK5dsxUZGXfPJ8Nx7wA9LHr5chxjSMkbNft",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          12406289417
+        ],
+        "extra_rows": 1,
+        "multiplicity": 2
+      },
+      {
+        "edge": [
+          1766891942,
+          389642783,
+          "CreQJ2t94QK5dsxUZGXfPJ8Nx7wA9LHr5chxjSMkbNft",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          12447099825
+        ],
+        "extra_rows": 1,
+        "multiplicity": 2
+      },
+      {
+        "edge": [
+          1766891949,
+          389642802,
+          "CreQJ2t94QK5dsxUZGXfPJ8Nx7wA9LHr5chxjSMkbNft",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          12459271770
+        ],
+        "extra_rows": 1,
+        "multiplicity": 2
+      },
+      {
+        "edge": [
+          1766891982,
+          389642885,
+          "CreQJ2t94QK5dsxUZGXfPJ8Nx7wA9LHr5chxjSMkbNft",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          12504254525
+        ],
+        "extra_rows": 1,
+        "multiplicity": 2
+      },
+      {
+        "edge": [
+          1766892001,
+          389642935,
+          "CreQJ2t94QK5dsxUZGXfPJ8Nx7wA9LHr5chxjSMkbNft",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          12542857563
+        ],
+        "extra_rows": 1,
+        "multiplicity": 2
+      },
+      {
+        "edge": [
+          1766892001,
+          389642935,
+          "CreQJ2t94QK5dsxUZGXfPJ8Nx7wA9LHr5chxjSMkbNft",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          12549052752
+        ],
+        "extra_rows": 1,
+        "multiplicity": 2
+      },
+      {
+        "edge": [
+          1766892002,
+          389642937,
+          "GJvewfRjqTUPtx6WsBSUnaFbdgXwgXnWfpDyLm65T4YA",
+          "FAijmttYim75twHhCKyNCH7sEU5QQkiqD3mcg6jF95Eb",
+          12161000000
+        ],
+        "extra_rows": 1,
+        "multiplicity": 2
+      },
+      {
+        "edge": [
+          1766892002,
+          389642937,
+          "GJvewfRjqTUPtx6WsBSUnaFbdgXwgXnWfpDyLm65T4YA",
+          "FAijmttYim75twHhCKyNCH7sEU5QQkiqD3mcg6jF95Eb",
+          12165000000
+        ],
+        "extra_rows": 1,
+        "multiplicity": 2
+      },
+      {
+        "edge": [
+          1766892002,
+          389642937,
+          "GJvewfRjqTUPtx6WsBSUnaFbdgXwgXnWfpDyLm65T4YA",
+          "FAijmttYim75twHhCKyNCH7sEU5QQkiqD3mcg6jF95Eb",
+          12167000000
+        ],
+        "extra_rows": 1,
+        "multiplicity": 2
+      },
+      {
+        "edge": [
+          1766892128,
+          389643256,
+          "CreQJ2t94QK5dsxUZGXfPJ8Nx7wA9LHr5chxjSMkbNft",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          12595362271
+        ],
+        "extra_rows": 1,
+        "multiplicity": 2
+      },
+      {
+        "edge": [
+          1766892186,
+          389643406,
+          "CreQJ2t94QK5dsxUZGXfPJ8Nx7wA9LHr5chxjSMkbNft",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          12509061549
+        ],
+        "extra_rows": 1,
+        "multiplicity": 2
+      },
+      {
+        "edge": [
+          1766892237,
+          389643536,
+          "CreQJ2t94QK5dsxUZGXfPJ8Nx7wA9LHr5chxjSMkbNft",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          12572818337
+        ],
+        "extra_rows": 1,
+        "multiplicity": 2
+      },
+      {
+        "edge": [
+          1766892240,
+          389643544,
+          "CreQJ2t94QK5dsxUZGXfPJ8Nx7wA9LHr5chxjSMkbNft",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          12604803448
+        ],
+        "extra_rows": 1,
+        "multiplicity": 2
+      },
+      {
+        "edge": [
+          1766892246,
+          389643558,
+          "CreQJ2t94QK5dsxUZGXfPJ8Nx7wA9LHr5chxjSMkbNft",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          12622021744
+        ],
+        "extra_rows": 1,
+        "multiplicity": 2
+      },
+      {
+        "edge": [
+          1766892429,
+          389644032,
+          "CreQJ2t94QK5dsxUZGXfPJ8Nx7wA9LHr5chxjSMkbNft",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          12461217710
+        ],
+        "extra_rows": 1,
+        "multiplicity": 2
+      },
+      {
+        "edge": [
+          1766892688,
+          389644688,
+          "FAijmttYim75twHhCKyNCH7sEU5QQkiqD3mcg6jF95Eb",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          5467386483
+        ],
+        "extra_rows": 1,
+        "multiplicity": 2
+      },
+      {
+        "edge": [
+          1766892688,
+          389644689,
+          "FAijmttYim75twHhCKyNCH7sEU5QQkiqD3mcg6jF95Eb",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          4991011885
+        ],
+        "extra_rows": 2,
+        "multiplicity": 3
+      },
+      {
+        "edge": [
+          1766892721,
+          389644772,
+          "CreQJ2t94QK5dsxUZGXfPJ8Nx7wA9LHr5chxjSMkbNft",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          12201691375
+        ],
+        "extra_rows": 1,
+        "multiplicity": 2
+      },
+      {
+        "edge": [
+          1766893093,
+          389645726,
+          "2Trxm1MjSkJeGaYHgAZ4NVbHCkj7vjPKaFtD22sUG5fE",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          8724000000
+        ],
+        "extra_rows": 2,
+        "multiplicity": 3
+      },
+      {
+        "edge": [
+          1766893390,
+          389646470,
+          "2Trxm1MjSkJeGaYHgAZ4NVbHCkj7vjPKaFtD22sUG5fE",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          11973000000
+        ],
+        "extra_rows": 1,
+        "multiplicity": 2
+      },
+      {
+        "edge": [
+          1766895240,
+          389651196,
+          "CreQJ2t94QK5dsxUZGXfPJ8Nx7wA9LHr5chxjSMkbNft",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          12298030917
+        ],
+        "extra_rows": 1,
+        "multiplicity": 2
+      },
+      {
+        "edge": [
+          1766895391,
+          389651574,
+          "FAijmttYim75twHhCKyNCH7sEU5QQkiqD3mcg6jF95Eb",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          5468287739
+        ],
+        "extra_rows": 1,
+        "multiplicity": 2
+      },
+      {
+        "edge": [
+          1766898485,
+          389659468,
+          "CreQJ2t94QK5dsxUZGXfPJ8Nx7wA9LHr5chxjSMkbNft",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          11833862918
+        ],
+        "extra_rows": 2,
+        "multiplicity": 3
+      },
+      {
+        "edge": [
+          1766898705,
+          389660031,
+          "CreQJ2t94QK5dsxUZGXfPJ8Nx7wA9LHr5chxjSMkbNft",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          11888676870
+        ],
+        "extra_rows": 5,
+        "multiplicity": 6
+      },
+      {
+        "edge": [
+          1766898706,
+          389660033,
+          "CreQJ2t94QK5dsxUZGXfPJ8Nx7wA9LHr5chxjSMkbNft",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          11934192343
+        ],
+        "extra_rows": 1,
+        "multiplicity": 2
+      },
+      {
+        "edge": [
+          1766901139,
+          389666242,
+          "CreQJ2t94QK5dsxUZGXfPJ8Nx7wA9LHr5chxjSMkbNft",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          11962605550
+        ],
+        "extra_rows": 1,
+        "multiplicity": 2
+      },
+      {
+        "edge": [
+          1766901706,
+          389667690,
+          "CreQJ2t94QK5dsxUZGXfPJ8Nx7wA9LHr5chxjSMkbNft",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          12016619662
+        ],
+        "extra_rows": 1,
+        "multiplicity": 2
+      },
+      {
+        "edge": [
+          1766913182,
+          389696964,
+          "CreQJ2t94QK5dsxUZGXfPJ8Nx7wA9LHr5chxjSMkbNft",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          12103451177
+        ],
+        "extra_rows": 1,
+        "multiplicity": 2
+      },
+      {
+        "edge": [
+          1766917793,
+          389708760,
+          "CreQJ2t94QK5dsxUZGXfPJ8Nx7wA9LHr5chxjSMkbNft",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          12254099569
+        ],
+        "extra_rows": 1,
+        "multiplicity": 2
+      },
+      {
+        "edge": [
+          1766934384,
+          389751041,
+          "CreQJ2t94QK5dsxUZGXfPJ8Nx7wA9LHr5chxjSMkbNft",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          12360837975
+        ],
+        "extra_rows": 1,
+        "multiplicity": 2
+      },
+      {
+        "edge": [
+          1766934949,
+          389752463,
+          "CreQJ2t94QK5dsxUZGXfPJ8Nx7wA9LHr5chxjSMkbNft",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          12377064456
+        ],
+        "extra_rows": 1,
+        "multiplicity": 2
+      },
+      {
+        "edge": [
+          1766935001,
+          389752592,
+          "CreQJ2t94QK5dsxUZGXfPJ8Nx7wA9LHr5chxjSMkbNft",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          12422015304
+        ],
+        "extra_rows": 1,
+        "multiplicity": 2
+      },
+      {
+        "edge": [
+          1766935039,
+          389752692,
+          "CreQJ2t94QK5dsxUZGXfPJ8Nx7wA9LHr5chxjSMkbNft",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          12429192527
+        ],
+        "extra_rows": 1,
+        "multiplicity": 2
+      },
+      {
+        "edge": [
+          1766945757,
+          389779956,
+          "7KyEvScKGoBPdroVYAy6v47XWjuuQFtPLjpWgZgMWEi",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          4271000000
+        ],
+        "extra_rows": 2,
+        "multiplicity": 3
+      },
+      {
+        "edge": [
+          1766945757,
+          389779956,
+          "CreQJ2t94QK5dsxUZGXfPJ8Nx7wA9LHr5chxjSMkbNft",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          12490200995
+        ],
+        "extra_rows": 1,
+        "multiplicity": 2
+      },
+      {
+        "edge": [
+          1766967106,
+          389834338,
+          "CreQJ2t94QK5dsxUZGXfPJ8Nx7wA9LHr5chxjSMkbNft",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          12260651334
+        ],
+        "extra_rows": 1,
+        "multiplicity": 2
+      },
+      {
+        "edge": [
+          1766987224,
+          389885709,
+          "CreQJ2t94QK5dsxUZGXfPJ8Nx7wA9LHr5chxjSMkbNft",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          12710634405
+        ],
+        "extra_rows": 1,
+        "multiplicity": 2
+      },
+      {
+        "edge": [
+          1767120480,
+          390223128,
+          "CreQJ2t94QK5dsxUZGXfPJ8Nx7wA9LHr5chxjSMkbNft",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          13907690116
+        ],
+        "extra_rows": 1,
+        "multiplicity": 2
+      },
+      {
+        "edge": [
+          1767128543,
+          390243641,
+          "CreQJ2t94QK5dsxUZGXfPJ8Nx7wA9LHr5chxjSMkbNft",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          14193903583
+        ],
+        "extra_rows": 1,
+        "multiplicity": 2
+      },
+      {
+        "edge": [
+          1767131750,
+          390251789,
+          "CreQJ2t94QK5dsxUZGXfPJ8Nx7wA9LHr5chxjSMkbNft",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          28503168003
+        ],
+        "extra_rows": 1,
+        "multiplicity": 2
+      },
+      {
+        "edge": [
+          1767149763,
+          390297606,
+          "4GQeEya6ZTwvXre4Br6ZfDyfe2WQMkcDz2QbkJZazVqS",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          4212298906
+        ],
+        "extra_rows": 1,
+        "multiplicity": 2
+      },
+      {
+        "edge": [
+          1767165141,
+          390336708,
+          "CreQJ2t94QK5dsxUZGXfPJ8Nx7wA9LHr5chxjSMkbNft",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          13989549941
+        ],
+        "extra_rows": 1,
+        "multiplicity": 2
+      },
+      {
+        "edge": [
+          1767167962,
+          390343921,
+          "CreQJ2t94QK5dsxUZGXfPJ8Nx7wA9LHr5chxjSMkbNft",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          14025724904
+        ],
+        "extra_rows": 1,
+        "multiplicity": 2
+      },
+      {
+        "edge": [
+          1767170817,
+          390351178,
+          "CreQJ2t94QK5dsxUZGXfPJ8Nx7wA9LHr5chxjSMkbNft",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          14167430212
+        ],
+        "extra_rows": 1,
+        "multiplicity": 2
+      },
+      {
+        "edge": [
+          1767178115,
+          390369721,
+          "CreQJ2t94QK5dsxUZGXfPJ8Nx7wA9LHr5chxjSMkbNft",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          14211969499
+        ],
+        "extra_rows": 1,
+        "multiplicity": 2
+      },
+      {
+        "edge": [
+          1767178130,
+          390369756,
+          "CreQJ2t94QK5dsxUZGXfPJ8Nx7wA9LHr5chxjSMkbNft",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          14234068228
+        ],
+        "extra_rows": 1,
+        "multiplicity": 2
+      },
+      {
+        "edge": [
+          1767179331,
+          390372813,
+          "CreQJ2t94QK5dsxUZGXfPJ8Nx7wA9LHr5chxjSMkbNft",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          14355127079
+        ],
+        "extra_rows": 2,
+        "multiplicity": 3
+      },
+      {
+        "edge": [
+          1767179331,
+          390372814,
+          "CreQJ2t94QK5dsxUZGXfPJ8Nx7wA9LHr5chxjSMkbNft",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          14355127079
+        ],
+        "extra_rows": 1,
+        "multiplicity": 2
+      },
+      {
+        "edge": [
+          1767179362,
+          390372893,
+          "CreQJ2t94QK5dsxUZGXfPJ8Nx7wA9LHr5chxjSMkbNft",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          14439394809
+        ],
+        "extra_rows": 1,
+        "multiplicity": 2
+      },
+      {
+        "edge": [
+          1767179369,
+          390372911,
+          "CreQJ2t94QK5dsxUZGXfPJ8Nx7wA9LHr5chxjSMkbNft",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          14540404024
+        ],
+        "extra_rows": 2,
+        "multiplicity": 3
+      },
+      {
+        "edge": [
+          1767187860,
+          390394493,
+          "CreQJ2t94QK5dsxUZGXfPJ8Nx7wA9LHr5chxjSMkbNft",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          14255392917
+        ],
+        "extra_rows": 2,
+        "multiplicity": 3
+      },
+      {
+        "edge": [
+          1767190036,
+          390400035,
+          "CreQJ2t94QK5dsxUZGXfPJ8Nx7wA9LHr5chxjSMkbNft",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          14079779782
+        ],
+        "extra_rows": 1,
+        "multiplicity": 2
+      },
+      {
+        "edge": [
+          1767193674,
+          390409274,
+          "CreQJ2t94QK5dsxUZGXfPJ8Nx7wA9LHr5chxjSMkbNft",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          13806334613
+        ],
+        "extra_rows": 1,
+        "multiplicity": 2
+      },
+      {
+        "edge": [
+          1767193709,
+          390409364,
+          "CreQJ2t94QK5dsxUZGXfPJ8Nx7wA9LHr5chxjSMkbNft",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          13894308648
+        ],
+        "extra_rows": 1,
+        "multiplicity": 2
+      },
+      {
+        "edge": [
+          1767193947,
+          390409977,
+          "CreQJ2t94QK5dsxUZGXfPJ8Nx7wA9LHr5chxjSMkbNft",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          13918441691
+        ],
+        "extra_rows": 1,
+        "multiplicity": 2
+      },
+      {
+        "edge": [
+          1767198213,
+          390420824,
+          "CreQJ2t94QK5dsxUZGXfPJ8Nx7wA9LHr5chxjSMkbNft",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          14000069300
+        ],
+        "extra_rows": 1,
+        "multiplicity": 2
+      },
+      {
+        "edge": [
+          1767202458,
+          390431619,
+          "CreQJ2t94QK5dsxUZGXfPJ8Nx7wA9LHr5chxjSMkbNft",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          14199006287
+        ],
+        "extra_rows": 1,
+        "multiplicity": 2
+      },
+      {
+        "edge": [
+          1767202458,
+          390431619,
+          "CreQJ2t94QK5dsxUZGXfPJ8Nx7wA9LHr5chxjSMkbNft",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          14264609285
+        ],
+        "extra_rows": 1,
+        "multiplicity": 2
+      },
+      {
+        "edge": [
+          1767202538,
+          390431825,
+          "CreQJ2t94QK5dsxUZGXfPJ8Nx7wA9LHr5chxjSMkbNft",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          14330602131
+        ],
+        "extra_rows": 2,
+        "multiplicity": 3
+      },
+      {
+        "edge": [
+          1767960058,
+          392343135,
+          "CreQJ2t94QK5dsxUZGXfPJ8Nx7wA9LHr5chxjSMkbNft",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          13053070551
+        ],
+        "extra_rows": 1,
+        "multiplicity": 2
+      },
+      {
+        "edge": [
+          1767965006,
+          392355613,
+          "CreQJ2t94QK5dsxUZGXfPJ8Nx7wA9LHr5chxjSMkbNft",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          12286521685
+        ],
+        "extra_rows": 1,
+        "multiplicity": 2
+      },
+      {
+        "edge": [
+          1767966023,
+          392358174,
+          "FAijmttYim75twHhCKyNCH7sEU5QQkiqD3mcg6jF95Eb",
+          "aRCaRJxZBW1vMBusNpvsyrZKgzXUhtyKuQVdmBYrfTm",
+          123477589
+        ],
+        "extra_rows": 1,
+        "multiplicity": 2
+      },
+      {
+        "edge": [
+          1767966256,
+          392358762,
+          "CreQJ2t94QK5dsxUZGXfPJ8Nx7wA9LHr5chxjSMkbNft",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          12067893154
+        ],
+        "extra_rows": 1,
+        "multiplicity": 2
+      },
+      {
+        "edge": [
+          1767968765,
+          392365087,
+          "CreQJ2t94QK5dsxUZGXfPJ8Nx7wA9LHr5chxjSMkbNft",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          12110069246
+        ],
+        "extra_rows": 2,
+        "multiplicity": 3
+      },
+      {
+        "edge": [
+          1767968799,
+          392365176,
+          "CreQJ2t94QK5dsxUZGXfPJ8Nx7wA9LHr5chxjSMkbNft",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          12170800434
+        ],
+        "extra_rows": 1,
+        "multiplicity": 2
+      },
+      {
+        "edge": [
+          1767970220,
+          392368771,
+          "CreQJ2t94QK5dsxUZGXfPJ8Nx7wA9LHr5chxjSMkbNft",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          12199811046
+        ],
+        "extra_rows": 2,
+        "multiplicity": 3
+      },
+      {
+        "edge": [
+          1767970992,
+          392370728,
+          "CreQJ2t94QK5dsxUZGXfPJ8Nx7wA9LHr5chxjSMkbNft",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          12021459361
+        ],
+        "extra_rows": 1,
+        "multiplicity": 2
+      },
+      {
+        "edge": [
+          1767972346,
+          392374156,
+          "CreQJ2t94QK5dsxUZGXfPJ8Nx7wA9LHr5chxjSMkbNft",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          12068549360
+        ],
+        "extra_rows": 1,
+        "multiplicity": 2
+      },
+      {
+        "edge": [
+          1767972766,
+          392375216,
+          "CreQJ2t94QK5dsxUZGXfPJ8Nx7wA9LHr5chxjSMkbNft",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          11713208156
+        ],
+        "extra_rows": 1,
+        "multiplicity": 2
+      },
+      {
+        "edge": [
+          1767973905,
+          392378098,
+          "CreQJ2t94QK5dsxUZGXfPJ8Nx7wA9LHr5chxjSMkbNft",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          11866312211
+        ],
+        "extra_rows": 1,
+        "multiplicity": 2
+      },
+      {
+        "edge": [
+          1767975208,
+          392381403,
+          "CreQJ2t94QK5dsxUZGXfPJ8Nx7wA9LHr5chxjSMkbNft",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          11940304370
+        ],
+        "extra_rows": 1,
+        "multiplicity": 2
+      },
+      {
+        "edge": [
+          1767975208,
+          392381405,
+          "57mP5WoNrg3uiGFUdoeYr2CPUZak1L2ZgFtyFwoT7K6G",
+          "65x5qNZYr6mfwQwnE6nQApVdmpX28zMYDybtwWDy4Wuy",
+          299555
+        ],
+        "extra_rows": 1,
+        "multiplicity": 2
+      },
+      {
+        "edge": [
+          1767975295,
+          392381626,
+          "57mP5WoNrg3uiGFUdoeYr2CPUZak1L2ZgFtyFwoT7K6G",
+          "65x5qNZYr6mfwQwnE6nQApVdmpX28zMYDybtwWDy4Wuy",
+          299385
+        ],
+        "extra_rows": 1,
+        "multiplicity": 2
+      },
+      {
+        "edge": [
+          1767975390,
+          392381871,
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          "65x5qNZYr6mfwQwnE6nQApVdmpX28zMYDybtwWDy4Wuy",
+          300130
+        ],
+        "extra_rows": 1,
+        "multiplicity": 2
+      },
+      {
+        "edge": [
+          1767975420,
+          392381948,
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          "3rhR9SS88de6epMgYCprNk8NLvBx1aAnFmarZeEngvyS",
+          302543
+        ],
+        "extra_rows": 1,
+        "multiplicity": 2
+      },
+      {
+        "edge": [
+          1767975431,
+          392381978,
+          "CreQJ2t94QK5dsxUZGXfPJ8Nx7wA9LHr5chxjSMkbNft",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          12102746858
+        ],
+        "extra_rows": 1,
+        "multiplicity": 2
+      },
+      {
+        "edge": [
+          1767975454,
+          392382036,
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          "3rhR9SS88de6epMgYCprNk8NLvBx1aAnFmarZeEngvyS",
+          303148
+        ],
+        "extra_rows": 1,
+        "multiplicity": 2
+      },
+      {
+        "edge": [
+          1767975476,
+          392382093,
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          "65x5qNZYr6mfwQwnE6nQApVdmpX28zMYDybtwWDy4Wuy",
+          6752
+        ],
+        "extra_rows": 1,
+        "multiplicity": 2
+      },
+      {
+        "edge": [
+          1767975499,
+          392382148,
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          "65x5qNZYr6mfwQwnE6nQApVdmpX28zMYDybtwWDy4Wuy",
+          6752
+        ],
+        "extra_rows": 1,
+        "multiplicity": 2
+      },
+      {
+        "edge": [
+          1767975524,
+          392382212,
+          "57mP5WoNrg3uiGFUdoeYr2CPUZak1L2ZgFtyFwoT7K6G",
+          "3rhR9SS88de6epMgYCprNk8NLvBx1aAnFmarZeEngvyS",
+          6745
+        ],
+        "extra_rows": 1,
+        "multiplicity": 2
+      },
+      {
+        "edge": [
+          1767975529,
+          392382224,
+          "57mP5WoNrg3uiGFUdoeYr2CPUZak1L2ZgFtyFwoT7K6G",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          302917
+        ],
+        "extra_rows": 1,
+        "multiplicity": 2
+      },
+      {
+        "edge": [
+          1767975529,
+          392382225,
+          "57mP5WoNrg3uiGFUdoeYr2CPUZak1L2ZgFtyFwoT7K6G",
+          "3rhR9SS88de6epMgYCprNk8NLvBx1aAnFmarZeEngvyS",
+          6744
+        ],
+        "extra_rows": 1,
+        "multiplicity": 2
+      },
+      {
+        "edge": [
+          1767975534,
+          392382236,
+          "57mP5WoNrg3uiGFUdoeYr2CPUZak1L2ZgFtyFwoT7K6G",
+          "3rhR9SS88de6epMgYCprNk8NLvBx1aAnFmarZeEngvyS",
+          6744
+        ],
+        "extra_rows": 1,
+        "multiplicity": 2
+      },
+      {
+        "edge": [
+          1767975537,
+          392382244,
+          "57mP5WoNrg3uiGFUdoeYr2CPUZak1L2ZgFtyFwoT7K6G",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          302915
+        ],
+        "extra_rows": 1,
+        "multiplicity": 2
+      },
+      {
+        "edge": [
+          1767975537,
+          392382245,
+          "57mP5WoNrg3uiGFUdoeYr2CPUZak1L2ZgFtyFwoT7K6G",
+          "3rhR9SS88de6epMgYCprNk8NLvBx1aAnFmarZeEngvyS",
+          6744
+        ],
+        "extra_rows": 2,
+        "multiplicity": 3
+      },
+      {
+        "edge": [
+          1767975561,
+          392382308,
+          "57mP5WoNrg3uiGFUdoeYr2CPUZak1L2ZgFtyFwoT7K6G",
+          "3rhR9SS88de6epMgYCprNk8NLvBx1aAnFmarZeEngvyS",
+          302909
+        ],
+        "extra_rows": 1,
+        "multiplicity": 2
+      },
+      {
+        "edge": [
+          1768050788,
+          392573426,
+          "CreQJ2t94QK5dsxUZGXfPJ8Nx7wA9LHr5chxjSMkbNft",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          11501066083
+        ],
+        "extra_rows": 1,
+        "multiplicity": 2
+      },
+      {
+        "edge": [
+          1768051154,
+          392574344,
+          "CreQJ2t94QK5dsxUZGXfPJ8Nx7wA9LHr5chxjSMkbNft",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          11516756881
+        ],
+        "extra_rows": 1,
+        "multiplicity": 2
+      },
+      {
+        "edge": [
+          1768054225,
+          392582123,
+          "CreQJ2t94QK5dsxUZGXfPJ8Nx7wA9LHr5chxjSMkbNft",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          11664476669
+        ],
+        "extra_rows": 1,
+        "multiplicity": 2
+      },
+      {
+        "edge": [
+          1768401404,
+          393463145,
+          "CreQJ2t94QK5dsxUZGXfPJ8Nx7wA9LHr5chxjSMkbNft",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          8649855661
+        ],
+        "extra_rows": 1,
+        "multiplicity": 2
+      },
+      {
+        "edge": [
+          1768401415,
+          393463173,
+          "CreQJ2t94QK5dsxUZGXfPJ8Nx7wA9LHr5chxjSMkbNft",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          8671035665
+        ],
+        "extra_rows": 1,
+        "multiplicity": 2
+      },
+      {
+        "edge": [
+          1768401482,
+          393463344,
+          "CreQJ2t94QK5dsxUZGXfPJ8Nx7wA9LHr5chxjSMkbNft",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          8688982883
+        ],
+        "extra_rows": 1,
+        "multiplicity": 2
+      },
+      {
+        "edge": [
+          1768401826,
+          393464226,
+          "CreQJ2t94QK5dsxUZGXfPJ8Nx7wA9LHr5chxjSMkbNft",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          8553588230
+        ],
+        "extra_rows": 2,
+        "multiplicity": 3
+      },
+      {
+        "edge": [
+          1768402852,
+          393466862,
+          "CreQJ2t94QK5dsxUZGXfPJ8Nx7wA9LHr5chxjSMkbNft",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          8248799248
+        ],
+        "extra_rows": 1,
+        "multiplicity": 2
+      },
+      {
+        "edge": [
+          1768402853,
+          393466864,
+          "CreQJ2t94QK5dsxUZGXfPJ8Nx7wA9LHr5chxjSMkbNft",
+          "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          8259118154
+        ],
+        "extra_rows": 1,
+        "multiplicity": 2
+      }
+    ],
+    "slot_bands_1m": [
+      {
+        "collision_groups": 3,
+        "extra_rows": 4,
+        "from_slot": 380000000,
+        "to_slot": 380999999
+      },
+      {
+        "collision_groups": 85,
+        "extra_rows": 114,
+        "from_slot": 382000000,
+        "to_slot": 382999999
+      },
+      {
+        "collision_groups": 2,
+        "extra_rows": 2,
+        "from_slot": 384000000,
+        "to_slot": 384999999
+      },
+      {
+        "collision_groups": 4,
+        "extra_rows": 4,
+        "from_slot": 385000000,
+        "to_slot": 385999999
+      },
+      {
+        "collision_groups": 48,
+        "extra_rows": 57,
+        "from_slot": 389000000,
+        "to_slot": 389999999
+      },
+      {
+        "collision_groups": 22,
+        "extra_rows": 26,
+        "from_slot": 390000000,
+        "to_slot": 390999999
+      },
+      {
+        "collision_groups": 30,
+        "extra_rows": 33,
+        "from_slot": 392000000,
+        "to_slot": 392999999
+      },
+      {
+        "collision_groups": 25,
+        "extra_rows": 27,
+        "from_slot": 393000000,
+        "to_slot": 393999999
+      },
+      {
+        "collision_groups": 1,
+        "extra_rows": 1,
+        "from_slot": 394000000,
+        "to_slot": 394999999
+      },
+      {
+        "collision_groups": 11,
+        "extra_rows": 11,
+        "from_slot": 396000000,
+        "to_slot": 396999999
+      },
+      {
+        "collision_groups": 4,
+        "extra_rows": 5,
+        "from_slot": 398000000,
+        "to_slot": 398999999
+      },
+      {
+        "collision_groups": 1,
+        "extra_rows": 1,
+        "from_slot": 399000000,
+        "to_slot": 399999999
+      },
+      {
+        "collision_groups": 6,
+        "extra_rows": 7,
+        "from_slot": 401000000,
+        "to_slot": 401999999
+      },
+      {
+        "collision_groups": 359,
+        "extra_rows": 442,
+        "from_slot": 403000000,
+        "to_slot": 403999999
+      },
+      {
+        "collision_groups": 447,
+        "extra_rows": 602,
+        "from_slot": 404000000,
+        "to_slot": 404999999
+      },
+      {
+        "collision_groups": 581,
+        "extra_rows": 724,
+        "from_slot": 405000000,
+        "to_slot": 405999999
+      },
+      {
+        "collision_groups": 224,
+        "extra_rows": 335,
+        "from_slot": 406000000,
+        "to_slot": 406999999
+      },
+      {
+        "collision_groups": 216,
+        "extra_rows": 317,
+        "from_slot": 407000000,
+        "to_slot": 407999999
+      },
+      {
+        "collision_groups": 127,
+        "extra_rows": 134,
+        "from_slot": 408000000,
+        "to_slot": 408999999
+      },
+      {
+        "collision_groups": 111,
+        "extra_rows": 145,
+        "from_slot": 409000000,
+        "to_slot": 409999999
+      },
+      {
+        "collision_groups": 134,
+        "extra_rows": 173,
+        "from_slot": 410000000,
+        "to_slot": 410999999
+      },
+      {
+        "collision_groups": 88,
+        "extra_rows": 126,
+        "from_slot": 411000000,
+        "to_slot": 411999999
+      },
+      {
+        "collision_groups": 157,
+        "extra_rows": 178,
+        "from_slot": 412000000,
+        "to_slot": 412999999
+      },
+      {
+        "collision_groups": 168,
+        "extra_rows": 205,
+        "from_slot": 413000000,
+        "to_slot": 413999999
+      },
+      {
+        "collision_groups": 143,
+        "extra_rows": 157,
+        "from_slot": 414000000,
+        "to_slot": 414999999
+      },
+      {
+        "collision_groups": 341,
+        "extra_rows": 463,
+        "from_slot": 415000000,
+        "to_slot": 415999999
+      },
+      {
+        "collision_groups": 544,
+        "extra_rows": 754,
+        "from_slot": 416000000,
+        "to_slot": 416999999
+      },
+      {
+        "collision_groups": 230,
+        "extra_rows": 270,
+        "from_slot": 417000000,
+        "to_slot": 417999999
+      },
+      {
+        "collision_groups": 213,
+        "extra_rows": 288,
+        "from_slot": 418000000,
+        "to_slot": 418999999
+      },
+      {
+        "collision_groups": 418,
+        "extra_rows": 518,
+        "from_slot": 419000000,
+        "to_slot": 419999999
+      },
+      {
+        "collision_groups": 448,
+        "extra_rows": 607,
+        "from_slot": 420000000,
+        "to_slot": 420999999
+      },
+      {
+        "collision_groups": 251,
+        "extra_rows": 318,
+        "from_slot": 421000000,
+        "to_slot": 421999999
+      },
+      {
+        "collision_groups": 304,
+        "extra_rows": 384,
+        "from_slot": 422000000,
+        "to_slot": 422999999
+      },
+      {
+        "collision_groups": 257,
+        "extra_rows": 414,
+        "from_slot": 423000000,
+        "to_slot": 423999999
+      },
+      {
+        "collision_groups": 125,
+        "extra_rows": 183,
+        "from_slot": 424000000,
+        "to_slot": 424999999
+      },
+      {
+        "collision_groups": 212,
+        "extra_rows": 274,
+        "from_slot": 425000000,
+        "to_slot": 425999999
+      },
+      {
+        "collision_groups": 445,
+        "extra_rows": 773,
+        "from_slot": 426000000,
+        "to_slot": 426999999
+      },
+      {
+        "collision_groups": 276,
+        "extra_rows": 343,
+        "from_slot": 427000000,
+        "to_slot": 427999999
+      },
+      {
+        "collision_groups": 329,
+        "extra_rows": 510,
+        "from_slot": 428000000,
+        "to_slot": 428999999
+      },
+      {
+        "collision_groups": 92,
+        "extra_rows": 143,
+        "from_slot": 429000000,
+        "to_slot": 429999999
+      },
+      {
+        "collision_groups": 70,
+        "extra_rows": 115,
+        "from_slot": 430000000,
+        "to_slot": 430999999
+      },
+      {
+        "collision_groups": 95,
+        "extra_rows": 176,
+        "from_slot": 431000000,
+        "to_slot": 431999999
+      },
+      {
+        "collision_groups": 75,
+        "extra_rows": 97,
+        "from_slot": 432000000,
+        "to_slot": 432999999
+      },
+      {
+        "collision_groups": 70,
+        "extra_rows": 99,
+        "from_slot": 433000000,
+        "to_slot": 433999999
+      },
+      {
+        "collision_groups": 70,
+        "extra_rows": 106,
+        "from_slot": 434000000,
+        "to_slot": 434999999
+      },
+      {
+        "collision_groups": 30,
+        "extra_rows": 51,
+        "from_slot": 435000000,
+        "to_slot": 435999999
+      },
+      {
+        "collision_groups": 46,
+        "extra_rows": 59,
+        "from_slot": 436000000,
+        "to_slot": 436999999
+      },
+      {
+        "collision_groups": 126,
+        "extra_rows": 166,
+        "from_slot": 437000000,
+        "to_slot": 437999999
+      },
+      {
+        "collision_groups": 423,
+        "extra_rows": 561,
+        "from_slot": 438000000,
+        "to_slot": 438999999
+      }
+    ],
+    "top_slots": [
+      {
+        "collision_groups": 12,
+        "extra_rows": 45,
+        "slot": 426045964
+      },
+      {
+        "collision_groups": 10,
+        "extra_rows": 29,
+        "slot": 420048916
+      },
+      {
+        "collision_groups": 2,
+        "extra_rows": 29,
+        "slot": 426569691
+      },
+      {
+        "collision_groups": 19,
+        "extra_rows": 26,
+        "slot": 426565776
+      },
+      {
+        "collision_groups": 10,
+        "extra_rows": 26,
+        "slot": 416300537
+      },
+      {
+        "collision_groups": 8,
+        "extra_rows": 24,
+        "slot": 431660909
+      },
+      {
+        "collision_groups": 5,
+        "extra_rows": 24,
+        "slot": 426565774
+      },
+      {
+        "collision_groups": 2,
+        "extra_rows": 24,
+        "slot": 431791404
+      },
+      {
+        "collision_groups": 5,
+        "extra_rows": 23,
+        "slot": 428545832
+      },
+      {
+        "collision_groups": 8,
+        "extra_rows": 22,
+        "slot": 424510501
+      },
+      {
+        "collision_groups": 8,
+        "extra_rows": 21,
+        "slot": 429252314
+      },
+      {
+        "collision_groups": 7,
+        "extra_rows": 20,
+        "slot": 405610983
+      },
+      {
+        "collision_groups": 4,
+        "extra_rows": 20,
+        "slot": 426404182
+      },
+      {
+        "collision_groups": 3,
+        "extra_rows": 20,
+        "slot": 416308107
+      },
+      {
+        "collision_groups": 8,
+        "extra_rows": 17,
+        "slot": 403770320
+      },
+      {
+        "collision_groups": 7,
+        "extra_rows": 17,
+        "slot": 430529352
+      },
+      {
+        "collision_groups": 6,
+        "extra_rows": 17,
+        "slot": 426565775
+      },
+      {
+        "collision_groups": 5,
+        "extra_rows": 17,
+        "slot": 429252244
+      },
+      {
+        "collision_groups": 2,
+        "extra_rows": 17,
+        "slot": 431791396
+      },
+      {
+        "collision_groups": 8,
+        "extra_rows": 16,
+        "slot": 416300552
+      },
+      {
+        "collision_groups": 4,
+        "extra_rows": 16,
+        "slot": 430529353
+      },
+      {
+        "collision_groups": 2,
+        "extra_rows": 16,
+        "slot": 426495402
+      },
+      {
+        "collision_groups": 5,
+        "extra_rows": 15,
+        "slot": 423380345
+      },
+      {
+        "collision_groups": 4,
+        "extra_rows": 15,
+        "slot": 416302927
+      },
+      {
+        "collision_groups": 7,
+        "extra_rows": 13,
+        "slot": 427115124
+      },
+      {
+        "collision_groups": 6,
+        "extra_rows": 13,
+        "slot": 424510500
+      },
+      {
+        "collision_groups": 6,
+        "extra_rows": 13,
+        "slot": 426569693
+      },
+      {
+        "collision_groups": 4,
+        "extra_rows": 13,
+        "slot": 407301472
+      },
+      {
+        "collision_groups": 4,
+        "extra_rows": 13,
+        "slot": 416301294
+      },
+      {
+        "collision_groups": 4,
+        "extra_rows": 13,
+        "slot": 427115126
+      },
+      {
+        "collision_groups": 3,
+        "extra_rows": 13,
+        "slot": 403867931
+      },
+      {
+        "collision_groups": 2,
+        "extra_rows": 13,
+        "slot": 430269796
+      },
+      {
+        "collision_groups": 1,
+        "extra_rows": 13,
+        "slot": 438201709
+      },
+      {
+        "collision_groups": 5,
+        "extra_rows": 12,
+        "slot": 406492948
+      },
+      {
+        "collision_groups": 5,
+        "extra_rows": 12,
+        "slot": 413426710
+      },
+      {
+        "collision_groups": 3,
+        "extra_rows": 12,
+        "slot": 420048897
+      },
+      {
+        "collision_groups": 3,
+        "extra_rows": 12,
+        "slot": 427000662
+      },
+      {
+        "collision_groups": 3,
+        "extra_rows": 12,
+        "slot": 434655344
+      },
+      {
+        "collision_groups": 6,
+        "extra_rows": 11,
+        "slot": 429252315
+      },
+      {
+        "collision_groups": 3,
+        "extra_rows": 11,
+        "slot": 416300536
+      },
+      {
+        "collision_groups": 2,
+        "extra_rows": 11,
+        "slot": 426933877
+      },
+      {
+        "collision_groups": 1,
+        "extra_rows": 11,
+        "slot": 420252185
+      },
+      {
+        "collision_groups": 5,
+        "extra_rows": 10,
+        "slot": 407285723
+      },
+      {
+        "collision_groups": 4,
+        "extra_rows": 10,
+        "slot": 406565416
+      },
+      {
+        "collision_groups": 3,
+        "extra_rows": 10,
+        "slot": 423383041
+      },
+      {
+        "collision_groups": 2,
+        "extra_rows": 10,
+        "slot": 420048899
+      },
+      {
+        "collision_groups": 2,
+        "extra_rows": 10,
+        "slot": 426972067
+      },
+      {
+        "collision_groups": 2,
+        "extra_rows": 10,
+        "slot": 431744707
+      },
+      {
+        "collision_groups": 1,
+        "extra_rows": 10,
+        "slot": 426979015
+      },
+      {
+        "collision_groups": 1,
+        "extra_rows": 10,
+        "slot": 428912253
+      },
+      {
+        "collision_groups": 1,
+        "extra_rows": 10,
+        "slot": 435410036
+      },
+      {
+        "collision_groups": 6,
+        "extra_rows": 9,
+        "slot": 427115102
+      },
+      {
+        "collision_groups": 6,
+        "extra_rows": 9,
+        "slot": 429252313
+      },
+      {
+        "collision_groups": 6,
+        "extra_rows": 9,
+        "slot": 434629667
+      },
+      {
+        "collision_groups": 5,
+        "extra_rows": 9,
+        "slot": 426569692
+      },
+      {
+        "collision_groups": 5,
+        "extra_rows": 9,
+        "slot": 434116911
+      },
+      {
+        "collision_groups": 4,
+        "extra_rows": 9,
+        "slot": 438002346
+      },
+      {
+        "collision_groups": 3,
+        "extra_rows": 9,
+        "slot": 405626081
+      },
+      {
+        "collision_groups": 3,
+        "extra_rows": 9,
+        "slot": 427273208
+      },
+      {
+        "collision_groups": 3,
+        "extra_rows": 9,
+        "slot": 428545826
+      },
+      {
+        "collision_groups": 3,
+        "extra_rows": 9,
+        "slot": 428956241
+      },
+      {
+        "collision_groups": 2,
+        "extra_rows": 9,
+        "slot": 407294182
+      },
+      {
+        "collision_groups": 2,
+        "extra_rows": 9,
+        "slot": 407562440
+      },
+      {
+        "collision_groups": 2,
+        "extra_rows": 9,
+        "slot": 416293747
+      },
+      {
+        "collision_groups": 2,
+        "extra_rows": 9,
+        "slot": 435320511
+      },
+      {
+        "collision_groups": 1,
+        "extra_rows": 9,
+        "slot": 426916217
+      },
+      {
+        "collision_groups": 1,
+        "extra_rows": 9,
+        "slot": 426919543
+      },
+      {
+        "collision_groups": 1,
+        "extra_rows": 9,
+        "slot": 437912603
+      },
+      {
+        "collision_groups": 6,
+        "extra_rows": 8,
+        "slot": 406793133
+      },
+      {
+        "collision_groups": 5,
+        "extra_rows": 8,
+        "slot": 403887029
+      },
+      {
+        "collision_groups": 5,
+        "extra_rows": 8,
+        "slot": 422853690
+      },
+      {
+        "collision_groups": 5,
+        "extra_rows": 8,
+        "slot": 433078561
+      },
+      {
+        "collision_groups": 4,
+        "extra_rows": 8,
+        "slot": 407149653
+      },
+      {
+        "collision_groups": 4,
+        "extra_rows": 8,
+        "slot": 407290399
+      },
+      {
+        "collision_groups": 4,
+        "extra_rows": 8,
+        "slot": 423075474
+      },
+      {
+        "collision_groups": 4,
+        "extra_rows": 8,
+        "slot": 423647921
+      },
+      {
+        "collision_groups": 3,
+        "extra_rows": 8,
+        "slot": 405605935
+      },
+      {
+        "collision_groups": 3,
+        "extra_rows": 8,
+        "slot": 411388245
+      },
+      {
+        "collision_groups": 3,
+        "extra_rows": 8,
+        "slot": 426680642
+      },
+      {
+        "collision_groups": 3,
+        "extra_rows": 8,
+        "slot": 438002353
+      },
+      {
+        "collision_groups": 2,
+        "extra_rows": 8,
+        "slot": 410528600
+      },
+      {
+        "collision_groups": 2,
+        "extra_rows": 8,
+        "slot": 420297694
+      },
+      {
+        "collision_groups": 2,
+        "extra_rows": 8,
+        "slot": 423079146
+      },
+      {
+        "collision_groups": 2,
+        "extra_rows": 8,
+        "slot": 426041888
+      },
+      {
+        "collision_groups": 2,
+        "extra_rows": 8,
+        "slot": 434780914
+      },
+      {
+        "collision_groups": 2,
+        "extra_rows": 8,
+        "slot": 436800738
+      },
+      {
+        "collision_groups": 1,
+        "extra_rows": 8,
+        "slot": 423015047
+      },
+      {
+        "collision_groups": 1,
+        "extra_rows": 8,
+        "slot": 423777133
+      },
+      {
+        "collision_groups": 1,
+        "extra_rows": 8,
+        "slot": 426046037
+      },
+      {
+        "collision_groups": 1,
+        "extra_rows": 8,
+        "slot": 426864806
+      },
+      {
+        "collision_groups": 1,
+        "extra_rows": 8,
+        "slot": 438620722
+      },
+      {
+        "collision_groups": 5,
+        "extra_rows": 7,
+        "slot": 411576366
+      },
+      {
+        "collision_groups": 5,
+        "extra_rows": 7,
+        "slot": 423381589
+      },
+      {
+        "collision_groups": 4,
+        "extra_rows": 7,
+        "slot": 428144033
+      },
+      {
+        "collision_groups": 4,
+        "extra_rows": 7,
+        "slot": 428144444
+      },
+      {
+        "collision_groups": 4,
+        "extra_rows": 7,
+        "slot": 438719976
+      },
+      {
+        "collision_groups": 3,
+        "extra_rows": 7,
+        "slot": 406801031
+      },
+      {
+        "collision_groups": 3,
+        "extra_rows": 7,
+        "slot": 416304862
+      },
+      {
+        "collision_groups": 3,
+        "extra_rows": 7,
+        "slot": 423647706
+      },
+      {
+        "collision_groups": 3,
+        "extra_rows": 7,
+        "slot": 423666354
+      }
+    ]
+  },
+  "elapsed_seconds": 20.976,
+  "implementation_path_equivalence": {
+    "canonical_order": "slot,ts,from,to,amount_raw",
+    "distinct_bytewise_equal": true,
+    "duckdb": {
+      "distinct": {
+        "bytes": 223383212,
+        "rows": 1764356,
+        "sha256": "b105dcaec88d21cc75ecbf9bdd1186ce2790368e8609357e436f30ba1b652e24"
+      },
+      "multiset": {
+        "bytes": 224851365,
+        "rows": 1775858,
+        "sha256": "8e94383783253a8840e74ae4bf7496bfb2309e30e17a39315001218c7d089d79"
+      },
+      "row_difference": 11502
+    },
+    "memory": {
+      "distinct": {
+        "bytes": 223383212,
+        "rows": 1764356,
+        "sha256": "b105dcaec88d21cc75ecbf9bdd1186ce2790368e8609357e436f30ba1b652e24"
+      },
+      "multiset": {
+        "bytes": 224851365,
+        "rows": 1775858,
+        "sha256": "8e94383783253a8840e74ae4bf7496bfb2309e30e17a39315001218c7d089d79"
+      },
+      "row_difference": 11502
+    },
+    "multiset_bytewise_equal": true,
+    "pass": true
+  },
+  "interval_non_overlap": {
+    "adjacent_pairs_checked": 1347,
+    "non_overlapping": true,
+    "ordered_by": "min_edge_slot,max_edge_slot,filename",
+    "overlap_pair_count": 0,
+    "overlaps": []
+  },
+  "mint": "61V8vBaqAGMpgDQi4JcAwo1dmBGHsyhzodcPqnEVpump",
+  "owner_terminal_comparison": {
+    "differing_owner_count": 110,
+    "negative_owner_count": {
+      "distinct": 6078,
+      "multiset": 6070
+    },
+    "owner_union_count": 33214,
+    "snapshot": {
+      "available": true,
+      "distinct": {
+        "exact_match_owner_count": 25995,
+        "mismatch_owner_count": 47820,
+        "owner_union_count": 73815,
+        "top_mismatches": [
+          {
+            "delta": -549808752553014,
+            "owner": "u6PJ8DtQuPFnfmwHbGFULQ4u4EgjDiyYKjVEsynXq2w",
+            "replay": -357855032458678,
+            "snapshot": 191953720094336
+          },
+          {
+            "delta": -55161760797878,
+            "owner": "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+            "replay": -27636071106205,
+            "snapshot": 27525689691673
+          },
+          {
+            "delta": -44197054660260,
+            "owner": "3hyWeRMoZAf9U9FJGKH8wZVL7YnYR8MLWEurrXkRuPhU",
+            "replay": 99839185397233,
+            "snapshot": 144036240057493
+          },
+          {
+            "delta": -39173083276913,
+            "owner": "HoKVbPwpcgF1LzSgVHSzraipsyQ3P3F1bdXpkN1BwbU1",
+            "replay": 48464567470042,
+            "snapshot": 87637650746955
+          },
+          {
+            "delta": -37304244746169,
+            "owner": "9ZPsRWGkukYeWg2Z7eZ8NaTBZ1DSuBUVzLcGQWZgE4Y4",
+            "replay": -18805221664847,
+            "snapshot": 18499023081322
+          },
+          {
+            "delta": -27200000270444,
+            "owner": "CLfntbSE6mKQA4XKcyqxmVUH4JqYsQPF38rPUXsCud8W",
+            "replay": -27200000270444,
+            "snapshot": 0
+          },
+          {
+            "delta": 26135680565991,
+            "owner": "CreQJ2t94QK5dsxUZGXfPJ8Nx7wA9LHr5chxjSMkbNft",
+            "replay": 26667212705448,
+            "snapshot": 531532139457
+          },
+          {
+            "delta": -17811319244335,
+            "owner": "ASTyfSima4LLAdDgoFGkgqoKowG1LZFDr9fAQrg7iaJZ",
+            "replay": -15494651028220,
+            "snapshot": 2316668216115
+          },
+          {
+            "delta": 14652081352722,
+            "owner": "HV6LWTxtJaa6trid2oKtvfL1tv5JwMM1AtuaTESy6Hcv",
+            "replay": 14652081352722,
+            "snapshot": 0
+          },
+          {
+            "delta": -11062632730749,
+            "owner": "4GQeEya6ZTwvXre4Br6ZfDyfe2WQMkcDz2QbkJZazVqS",
+            "replay": -6390198627882,
+            "snapshot": 4672434102867
+          },
+          {
+            "delta": 9946724665344,
+            "owner": "GJvewfRjqTUPtx6WsBSUnaFbdgXwgXnWfpDyLm65T4YA",
+            "replay": 10636355408058,
+            "snapshot": 689630742714
+          },
+          {
+            "delta": -9100583835203,
+            "owner": "F6V3T6gAj6yko3D5QTj4gZXXmitvXNBUBY8ZsMsWLqoW",
+            "replay": 0,
+            "snapshot": 9100583835203
+          },
+          {
+            "delta": -8272809219352,
+            "owner": "7TWnq4WeYcwQWBCwKeEX2Q9xqVtthPGkB7adNvueuVuh",
+            "replay": -1308319347072,
+            "snapshot": 6964489872280
+          },
+          {
+            "delta": -7749000100000,
+            "owner": "Cw32Ny2xcYdpfJmvFd7h2pRhcbcjoJFq8KrrA8YLwZeh",
+            "replay": -2690000100000,
+            "snapshot": 5059000000000
+          },
+          {
+            "delta": 7493220000000,
+            "owner": "77DXFZnMebramt4dXfdwem1AjnfNnVnG8FkcVWpSwdjB",
+            "replay": 7493220000000,
+            "snapshot": 0
+          },
+          {
+            "delta": 6474593035865,
+            "owner": "MfDuWeqSHEqTFVYZ7LoexgAK9dxk7cy4DFJWjWMGVWa",
+            "replay": 7444965184752,
+            "snapshot": 970372148887
+          },
+          {
+            "delta": -6265963568907,
+            "owner": "56MkyZEHWMtoMZppm4hKoMJhbVZEVJoL9ib6Z4A9PuLo",
+            "replay": -5265587487372,
+            "snapshot": 1000376081535
+          },
+          {
+            "delta": -6101906664559,
+            "owner": "BY4StcU9Y2BpgH8quZzorg31EGE4L1rjomN8FNsCBEcx",
+            "replay": -6101906664559,
+            "snapshot": 0
+          },
+          {
+            "delta": -6087751035020,
+            "owner": "EFE3j1pcSP1paUzA86zW7989ZjsFP2J7ginyUqo4ewqR",
+            "replay": -3120386580670,
+            "snapshot": 2967364454350
+          },
+          {
+            "delta": -6000000000000,
+            "owner": "ARUB3cYah7fmqzdyBrjJYVPSLoJTbfRBXAktfcgsyPL3",
+            "replay": -6000000000000,
+            "snapshot": 0
+          },
+          {
+            "delta": -5688016376091,
+            "owner": "A9PzVmoBvTMLSh8VcaPQfYc3qwH63pmLuMxRmWraqGYk",
+            "replay": -5410033346074,
+            "snapshot": 277983030017
+          },
+          {
+            "delta": -5227054508187,
+            "owner": "6LY1JzAFVZsP2a2xKrtU6znQMQ5h4i7tocWdgrkZzkzF",
+            "replay": -174682022035,
+            "snapshot": 5052372486152
+          },
+          {
+            "delta": -5144096503022,
+            "owner": "BmFdpraQhkiDQE6SnfG5omcA1VwzqfXrwtNYBwWTymy6",
+            "replay": -2325129038465,
+            "snapshot": 2818967464557
+          },
+          {
+            "delta": -5001000080000,
+            "owner": "FQTm5QScKVTZQJWacuCgtnpiuxMZnB4NPVmgziFSrTQ4",
+            "replay": -1500799200000,
+            "snapshot": 3500200880000
+          },
+          {
+            "delta": -4860604358617,
+            "owner": "CD58GhoxYff5mZhKr3WcZhLhFAwHroSdQQ52uB8SP2Gy",
+            "replay": -4762008684913,
+            "snapshot": 98595673704
+          },
+          {
+            "delta": 3848204076545,
+            "owner": "5PAhQiYdLBd6SVdjzBQDxUAEFyDdF5ExNPQfcscnPRj5",
+            "replay": 11220875499655,
+            "snapshot": 7372671423110
+          },
+          {
+            "delta": -3589122102101,
+            "owner": "Hasda78TSaT9bjiPxDBvP4GpohFpP3TDTaJEcCYK5kyN",
+            "replay": -3589121340564,
+            "snapshot": 761537
+          },
+          {
+            "delta": -3555343383032,
+            "owner": "aRCaRJxZBW1vMBusNpvsyrZKgzXUhtyKuQVdmBYrfTm",
+            "replay": -3554453327012,
+            "snapshot": 890056020
+          },
+          {
+            "delta": -3361158040000,
+            "owner": "44P5Ct5JkPz76Rs2K6juC65zXMpFRDrHatxcASJ4Dyra",
+            "replay": 1149832640000,
+            "snapshot": 4510990680000
+          },
+          {
+            "delta": -3275818000000,
+            "owner": "5ghVXfuvzLBMAdwLbs8dcCEK5viqMCqkGY71L2cZ1rCo",
+            "replay": -3275817413966,
+            "snapshot": 586034
+          },
+          {
+            "delta": -2880154326122,
+            "owner": "GSZ6pDujmQsjWyt3Z2qF6f3QEjaM1H15e1uKYMmVBe8T",
+            "replay": -2880154326122,
+            "snapshot": 0
+          },
+          {
+            "delta": -2878586517244,
+            "owner": "BRtPriQM5bL4NRr5Qt2dtDdkGSEkzaeGQJ2i44S84kg5",
+            "replay": -2878586517244,
+            "snapshot": 0
+          },
+          {
+            "delta": 2626435500000,
+            "owner": "AJfCvVcrL45Byw17gWwceBndWLUyz97REEGvyjianvfD",
+            "replay": 2626435500000,
+            "snapshot": 0
+          },
+          {
+            "delta": -2538347439936,
+            "owner": "6S5YTjZ2YvLVbnS7NKikJ5CdhkuaMTS7ZPQ7pPpV1NFe",
+            "replay": -2538347439936,
+            "snapshot": 0
+          },
+          {
+            "delta": -2380993593953,
+            "owner": "4qLjN2jnhCqS741hkkSP1DnznLNe5wA5buJRSUtbSWk7",
+            "replay": -2312743765292,
+            "snapshot": 68249828661
+          },
+          {
+            "delta": -2353946960919,
+            "owner": "Evee5RbYcc2Yhv6RajrA5epA9MCHuonAWu6dQYGPaC6f",
+            "replay": -2353946960919,
+            "snapshot": 0
+          },
+          {
+            "delta": 2126850590000,
+            "owner": "9g83LBTdVBcithkWtZYJJgRBBVviN4tzev38jm4AwNX",
+            "replay": 2126850590000,
+            "snapshot": 0
+          },
+          {
+            "delta": -2076600000000,
+            "owner": "GL8T72PKygWaYrLKtSteN9UUvYYnuC8azNDunk4eaqqQ",
+            "replay": -1642333010000,
+            "snapshot": 434266990000
+          },
+          {
+            "delta": 2000000000000,
+            "owner": "9BEwTJUwRx5jM96rMiTFsBubMUPRXVrxzuvpdL88LrF",
+            "replay": 2000000000000,
+            "snapshot": 0
+          },
+          {
+            "delta": 1862946900000,
+            "owner": "3caFdfwp2LQ93cTENzGm7T7SRSZHXiuWTB22gDQ2UBSy",
+            "replay": 1946617200000,
+            "snapshot": 83670300000
+          },
+          {
+            "delta": -1852324848640,
+            "owner": "FrhLfj81LRpMR3EwSSCGPzHmxsnoq8h628ne68vK5oMN",
+            "replay": -752901726661,
+            "snapshot": 1099423121979
+          },
+          {
+            "delta": -1795417641622,
+            "owner": "uv8wpe6okFxEUvk7FHuXKZuSw2uRWnfrgPUXhds6dvJ",
+            "replay": -1670500000000,
+            "snapshot": 124917641622
+          },
+          {
+            "delta": -1773695590001,
+            "owner": "6utZo56e68cgWrziH3qXE8FDXA7a5Xwun3L3ZYM7fMCj",
+            "replay": -1773695590000,
+            "snapshot": 1
+          },
+          {
+            "delta": -1772151546495,
+            "owner": "EKpakWU2KqqPEJMd5TY9vtZ3qfXcF7appcnHkTjtiPad",
+            "replay": -811000000000,
+            "snapshot": 961151546495
+          },
+          {
+            "delta": -1725690885079,
+            "owner": "6xfPFKnwv48XvxpFf4athewqGFvSTKQcMmfzYapgZ2sG",
+            "replay": -885820808778,
+            "snapshot": 839870076301
+          },
+          {
+            "delta": -1700536425843,
+            "owner": "14hQ1m6NtvXXs76RmMsoLSMvBwFymB8gqNHs8QgG2nDL",
+            "replay": -1515464000000,
+            "snapshot": 185072425843
+          },
+          {
+            "delta": -1628052911748,
+            "owner": "6VqT6TsoCatZfT55zTJASaNFfxvYfAtAE6a66uSotAg1",
+            "replay": -208088280595,
+            "snapshot": 1419964631153
+          },
+          {
+            "delta": -1560400404263,
+            "owner": "g848qLVXs2rQcRXBcK3nSEHCdhW5rUyBkX4Loh7p2ma",
+            "replay": 0,
+            "snapshot": 1560400404263
+          },
+          {
+            "delta": -1478228602421,
+            "owner": "Fe7SEekiKygziaEGKxsDsgLVzrCfNvVBvAYsaJBwFA8s",
+            "replay": -1125020738583,
+            "snapshot": 353207863838
+          },
+          {
+            "delta": -1474667629432,
+            "owner": "4gXs8oc2yEwDTPkDyo6V8ZixheTCZvu8JicrEuDat8tH",
+            "replay": -1474667629432,
+            "snapshot": 0
+          },
+          {
+            "delta": -1466322595322,
+            "owner": "GkEmfWZncXP6JzmRAydx8XGjvagvXGvyuUVEFdGmVdax",
+            "replay": 0,
+            "snapshot": 1466322595322
+          },
+          {
+            "delta": -1385231133524,
+            "owner": "8mDFrSxzTMA3VEGRsV5UoWCVwHTCeXZZ3qtcnQov7GJU",
+            "replay": 0,
+            "snapshot": 1385231133524
+          },
+          {
+            "delta": -1300029893282,
+            "owner": "6Be6H3N7c8fAzypKuqEqT7a3krZf5zBgeVHRwCPek5jG",
+            "replay": -949626901010,
+            "snapshot": 350402992272
+          },
+          {
+            "delta": -1241058652738,
+            "owner": "8yhgsGD5HuY9QZVUXZbCkd4q7zSo1EdRFq4KYND1yWwb",
+            "replay": -1241058652738,
+            "snapshot": 0
+          },
+          {
+            "delta": -1200000302279,
+            "owner": "4b3rKJwtk8vRSapiQteC6LsUjrSycwB5S9KKytZmA7ia",
+            "replay": -400000000000,
+            "snapshot": 800000302279
+          },
+          {
+            "delta": -1184865576516,
+            "owner": "6RFydqXPzyvZM6zdpCkdKddDXu1yX1y55Ndtq9yBoSTt",
+            "replay": -1184865576516,
+            "snapshot": 0
+          },
+          {
+            "delta": -1160000000000,
+            "owner": "21NMsj8g9EAhZMTaBNQofqt9mfjCH8v68SUdvR7du1rh",
+            "replay": -1160000000000,
+            "snapshot": 0
+          },
+          {
+            "delta": -1134973061954,
+            "owner": "Cdcz15E3LmTD7giDf8j3EapzoNooUvhS7CVcnoAZboKC",
+            "replay": 0,
+            "snapshot": 1134973061954
+          },
+          {
+            "delta": -1088454221688,
+            "owner": "ABCtj84CHZRxncHu8fuDNaDV9PsZbdMLSehfRXYMH5bT",
+            "replay": -1088454221688,
+            "snapshot": 0
+          },
+          {
+            "delta": -1058932147734,
+            "owner": "2dmCo2jcdnroEuM4rSC4bMyH3MjGDkasjiv7VG5VBX3n",
+            "replay": -1058932147734,
+            "snapshot": 0
+          },
+          {
+            "delta": -1045715410002,
+            "owner": "7sW75XaJXnwKesLojoLSFCebDJYxNRNwxnBzFqXCvkaa",
+            "replay": -1045715410002,
+            "snapshot": 0
+          },
+          {
+            "delta": -1032139395914,
+            "owner": "74yjzhotSKdqBbAuvigbMxzbCtgAQa8YEu63tZrk4czc",
+            "replay": 0,
+            "snapshot": 1032139395914
+          },
+          {
+            "delta": -1000549810665,
+            "owner": "GqbMARkhcnd2FfymMZoNwtRzNcaH1hwwd2okZ7TtwTpM",
+            "replay": -489915771942,
+            "snapshot": 510634038723
+          },
+          {
+            "delta": -1000000000000,
+            "owner": "FUcrhuptktdN31UB6kgeRMaKNf6wKNstq3qjWJKmWM2k",
+            "replay": -1000000000000,
+            "snapshot": 0
+          },
+          {
+            "delta": -995114081352,
+            "owner": "HXCkDsBunQ46iuNewvmYogy5PmcrQJmLrdmXKTMp1Q5S",
+            "replay": 0,
+            "snapshot": 995114081352
+          },
+          {
+            "delta": -990000000000,
+            "owner": "8NBEbxLknGv5aRYefFrW2qFXoDZyi9fSHJNiJRvEcMBE",
+            "replay": 346000000000,
+            "snapshot": 1336000000000
+          },
+          {
+            "delta": -970150943532,
+            "owner": "53vNDrCTyJrobtEU1by8Ta454WYiL8GFt9w33gFSbHBT",
+            "replay": 0,
+            "snapshot": 970150943532
+          },
+          {
+            "delta": -962808373953,
+            "owner": "H6rRcPfww5ijVDaGBEwBgQaVzNTjxA4U93KH9JxsSMGk",
+            "replay": -962808373953,
+            "snapshot": 0
+          },
+          {
+            "delta": -961265712007,
+            "owner": "9TdHfGqqYAwWYyEeKLe4u9sJ4Aoy7mp2r2HsqmLTPM96",
+            "replay": -961265712007,
+            "snapshot": 0
+          },
+          {
+            "delta": -937111430000,
+            "owner": "AGVhmrhDi3RKLu9nxnRqp3CUpaG3SVeYXWkWcygHAk8N",
+            "replay": -937111430000,
+            "snapshot": 0
+          },
+          {
+            "delta": -931643508589,
+            "owner": "EbQ9Vw7QcuX6x3MxXhh34xGA9gV4kC6QVREZy7WGDuAW",
+            "replay": -214948297613,
+            "snapshot": 716695210976
+          },
+          {
+            "delta": -915311229750,
+            "owner": "D5jx4wmxuPz18hqmgpCMLGVq3uSksCafCp5xjVe1nw8p",
+            "replay": -915311229750,
+            "snapshot": 0
+          },
+          {
+            "delta": -900462970763,
+            "owner": "95QTsjtEAaJRpCVATDdgphHEQomUEiEDJhPG3TaE9bJC",
+            "replay": 0,
+            "snapshot": 900462970763
+          },
+          {
+            "delta": -883212012578,
+            "owner": "B5icwPejQviynUxYJUuKNgXHoxb8zjeze8u8N6nNQA9N",
+            "replay": -883212012578,
+            "snapshot": 0
+          },
+          {
+            "delta": 820877410630,
+            "owner": "GHQxk5RSoKxSdpbwWfGGcNhgygvHW1iW36YKPeZza6im",
+            "replay": 820877410785,
+            "snapshot": 155
+          },
+          {
+            "delta": -800000000000,
+            "owner": "5jpRfHysjTMa7KnGc751kCZRWUDV4hakrfr4kqvgxhqf",
+            "replay": -800000000000,
+            "snapshot": 0
+          },
+          {
+            "delta": -791002600000,
+            "owner": "zDBbPhvt3HeRomm2CdWqdEMCYsmQHcjg8rQaXmjPGHo",
+            "replay": 0,
+            "snapshot": 791002600000
+          },
+          {
+            "delta": -790460740252,
+            "owner": "2eELx4yyGTv2H6sUxiER6TgtCqJuD7Q6pzSegtNmdf7Q",
+            "replay": 0,
+            "snapshot": 790460740252
+          },
+          {
+            "delta": -788641642212,
+            "owner": "DW2QC5ychRKmA3YpY6eWetxt1YdMK8hir3vNjNjRW6i9",
+            "replay": -648511157822,
+            "snapshot": 140130484390
+          },
+          {
+            "delta": -728468794387,
+            "owner": "8vwBP5ceJkWpRiSWDwYf4E8HmFnmaXhXK67UcCpzBeDL",
+            "replay": 0,
+            "snapshot": 728468794387
+          },
+          {
+            "delta": -723814915425,
+            "owner": "2DcWYzBxeBVfxfLgDk3BUH8iMTorxTdwNszFNCTzwiXC",
+            "replay": 0,
+            "snapshot": 723814915425
+          },
+          {
+            "delta": -713751088842,
+            "owner": "FWwPLXuEHa3pBseEsvqnvWu2HyvdcsymNVAJ93m3D1r1",
+            "replay": -713751088842,
+            "snapshot": 0
+          },
+          {
+            "delta": -710000000001,
+            "owner": "9wyZqjKZuFV3H6hhsFtXmobigZpwCfLNPjrxns4TUdLW",
+            "replay": -10000000001,
+            "snapshot": 700000000000
+          },
+          {
+            "delta": -700000430780,
+            "owner": "5AFWLvA6NRzdjpy7NBWhGoAa8RdTYiBoPmSFs87DFrXr",
+            "replay": 0,
+            "snapshot": 700000430780
+          },
+          {
+            "delta": -693261297435,
+            "owner": "GiCQWjNRmzcyLf7KUA5dHimQq3qYEomPyHxWogwMyyb9",
+            "replay": -693261297435,
+            "snapshot": 0
+          },
+          {
+            "delta": -686119150406,
+            "owner": "BZRxVFxfdAnQyPPbswkt81FYGjK18f8DXfVos8yuMcar",
+            "replay": -208500711955,
+            "snapshot": 477618438451
+          },
+          {
+            "delta": -684208723455,
+            "owner": "4h2Gvh19DF6TExVgT3T3VNakv2na22Xa9Yg2x515UcMY",
+            "replay": -684208723455,
+            "snapshot": 0
+          },
+          {
+            "delta": -671557434622,
+            "owner": "DMe3ddj7awSR3LFC64rjmCPexsrSv33QAxFoJux4vGH3",
+            "replay": -622889564199,
+            "snapshot": 48667870423
+          },
+          {
+            "delta": -660000000000,
+            "owner": "2hkS7P1NcyJFDrC91KnYZKSfE1bGDiXzStBqrZKV569w",
+            "replay": 0,
+            "snapshot": 660000000000
+          },
+          {
+            "delta": -658630676923,
+            "owner": "HMc3toT1Wb2UmN6VGZt5YyAASpzt9uRKpFvtQCWVPRWD",
+            "replay": -105942999729,
+            "snapshot": 552687677194
+          },
+          {
+            "delta": -651253910400,
+            "owner": "2CFKE7Z99f45Q68FukKoUKer7xg9gCtSchgtnndPfnYN",
+            "replay": -192003060000,
+            "snapshot": 459250850400
+          },
+          {
+            "delta": -642935597280,
+            "owner": "8TZGuPVLsBhSzrP3jVkWKGwxrCuuDJGWuAt3jLSrbvsV",
+            "replay": -642935597280,
+            "snapshot": 0
+          },
+          {
+            "delta": -641733165555,
+            "owner": "GgVF3W3z6CJDce4Ec3h2w2dKSGEp2GVzwa5a7zMaJc8d",
+            "replay": -641733165554,
+            "snapshot": 1
+          },
+          {
+            "delta": -638916022087,
+            "owner": "73cafvYwxpVxVasEhP6edKMnQYrWANBECeEv9AyVrduM",
+            "replay": 0,
+            "snapshot": 638916022087
+          },
+          {
+            "delta": 638845742328,
+            "owner": "3JKueJimPirx9f1jRntxB79xvqnmJQz6ewzzN54rRhxV",
+            "replay": 638845742328,
+            "snapshot": 0
+          },
+          {
+            "delta": -635693720045,
+            "owner": "GsCY6n5RY7v3qcDAzGYcDShNzthngVs4So4b5nmVuqSN",
+            "replay": -612977795852,
+            "snapshot": 22715924193
+          },
+          {
+            "delta": -607856413811,
+            "owner": "8ZoEfzDRjHUbTyDRar5dZ7jQvEFaeLffJSDHx9VndZG9",
+            "replay": -607238147505,
+            "snapshot": 618266306
+          },
+          {
+            "delta": 605869444008,
+            "owner": "2Trxm1MjSkJeGaYHgAZ4NVbHCkj7vjPKaFtD22sUG5fE",
+            "replay": 607286344821,
+            "snapshot": 1416900813
+          },
+          {
+            "delta": -602616256857,
+            "owner": "6FEVkH17P9y8Q9aCkDdPcMDjvj7SVxrTETaYEm8f51Jy",
+            "replay": -400711650837,
+            "snapshot": 201904606020
+          },
+          {
+            "delta": -599680633722,
+            "owner": "BCvYeeeehuPQ7gxGhzBjGTNEtCiSyPSbsKuCqapbSvVm",
+            "replay": -599680633722,
+            "snapshot": 0
+          }
+        ]
+      },
+      "multiset": {
+        "exact_match_owner_count": 26029,
+        "mismatch_owner_count": 47786,
+        "owner_union_count": 73815,
+        "top_mismatches": [
+          {
+            "delta": -549808752553014,
+            "owner": "u6PJ8DtQuPFnfmwHbGFULQ4u4EgjDiyYKjVEsynXq2w",
+            "replay": -357855032458678,
+            "snapshot": 191953720094336
+          },
+          {
+            "delta": -44197054660260,
+            "owner": "3hyWeRMoZAf9U9FJGKH8wZVL7YnYR8MLWEurrXkRuPhU",
+            "replay": 99839185397233,
+            "snapshot": 144036240057493
+          },
+          {
+            "delta": -38779984599057,
+            "owner": "HoKVbPwpcgF1LzSgVHSzraipsyQ3P3F1bdXpkN1BwbU1",
+            "replay": 48857666147898,
+            "snapshot": 87637650746955
+          },
+          {
+            "delta": -37313192982545,
+            "owner": "9ZPsRWGkukYeWg2Z7eZ8NaTBZ1DSuBUVzLcGQWZgE4Y4",
+            "replay": -18814169901223,
+            "snapshot": 18499023081322
+          },
+          {
+            "delta": -29005002657825,
+            "owner": "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+            "replay": -1479312966152,
+            "snapshot": 27525689691673
+          },
+          {
+            "delta": -27200000270444,
+            "owner": "CLfntbSE6mKQA4XKcyqxmVUH4JqYsQPF38rPUXsCud8W",
+            "replay": -27200000270444,
+            "snapshot": 0
+          },
+          {
+            "delta": -17811319244335,
+            "owner": "ASTyfSima4LLAdDgoFGkgqoKowG1LZFDr9fAQrg7iaJZ",
+            "replay": -15494651028220,
+            "snapshot": 2316668216115
+          },
+          {
+            "delta": 14652081352722,
+            "owner": "HV6LWTxtJaa6trid2oKtvfL1tv5JwMM1AtuaTESy6Hcv",
+            "replay": 14652081352722,
+            "snapshot": 0
+          },
+          {
+            "delta": -11011820644274,
+            "owner": "4GQeEya6ZTwvXre4Br6ZfDyfe2WQMkcDz2QbkJZazVqS",
+            "replay": -6339386541407,
+            "snapshot": 4672434102867
+          },
+          {
+            "delta": -9100583835203,
+            "owner": "F6V3T6gAj6yko3D5QTj4gZXXmitvXNBUBY8ZsMsWLqoW",
+            "replay": 0,
+            "snapshot": 9100583835203
+          },
+          {
+            "delta": -8272809219352,
+            "owner": "7TWnq4WeYcwQWBCwKeEX2Q9xqVtthPGkB7adNvueuVuh",
+            "replay": -1308319347072,
+            "snapshot": 6964489872280
+          },
+          {
+            "delta": -7749000100000,
+            "owner": "Cw32Ny2xcYdpfJmvFd7h2pRhcbcjoJFq8KrrA8YLwZeh",
+            "replay": -2690000100000,
+            "snapshot": 5059000000000
+          },
+          {
+            "delta": 7493220000000,
+            "owner": "77DXFZnMebramt4dXfdwem1AjnfNnVnG8FkcVWpSwdjB",
+            "replay": 7493220000000,
+            "snapshot": 0
+          },
+          {
+            "delta": -6265963568907,
+            "owner": "56MkyZEHWMtoMZppm4hKoMJhbVZEVJoL9ib6Z4A9PuLo",
+            "replay": -5265587487372,
+            "snapshot": 1000376081535
+          },
+          {
+            "delta": -6117893545159,
+            "owner": "BY4StcU9Y2BpgH8quZzorg31EGE4L1rjomN8FNsCBEcx",
+            "replay": -6117893545159,
+            "snapshot": 0
+          },
+          {
+            "delta": -6087751035020,
+            "owner": "EFE3j1pcSP1paUzA86zW7989ZjsFP2J7ginyUqo4ewqR",
+            "replay": -3120386580670,
+            "snapshot": 2967364454350
+          },
+          {
+            "delta": -6000000000000,
+            "owner": "ARUB3cYah7fmqzdyBrjJYVPSLoJTbfRBXAktfcgsyPL3",
+            "replay": -6000000000000,
+            "snapshot": 0
+          },
+          {
+            "delta": -5579064555109,
+            "owner": "A9PzVmoBvTMLSh8VcaPQfYc3qwH63pmLuMxRmWraqGYk",
+            "replay": -5301081525092,
+            "snapshot": 277983030017
+          },
+          {
+            "delta": -5282506303022,
+            "owner": "BmFdpraQhkiDQE6SnfG5omcA1VwzqfXrwtNYBwWTymy6",
+            "replay": -2463538838465,
+            "snapshot": 2818967464557
+          },
+          {
+            "delta": 5260635671144,
+            "owner": "MfDuWeqSHEqTFVYZ7LoexgAK9dxk7cy4DFJWjWMGVWa",
+            "replay": 6231007820031,
+            "snapshot": 970372148887
+          },
+          {
+            "delta": -5227054508187,
+            "owner": "6LY1JzAFVZsP2a2xKrtU6znQMQ5h4i7tocWdgrkZzkzF",
+            "replay": -174682022035,
+            "snapshot": 5052372486152
+          },
+          {
+            "delta": -5001000080000,
+            "owner": "FQTm5QScKVTZQJWacuCgtnpiuxMZnB4NPVmgziFSrTQ4",
+            "replay": -1500799200000,
+            "snapshot": 3500200880000
+          },
+          {
+            "delta": 3848204076545,
+            "owner": "5PAhQiYdLBd6SVdjzBQDxUAEFyDdF5ExNPQfcscnPRj5",
+            "replay": 11220875499655,
+            "snapshot": 7372671423110
+          },
+          {
+            "delta": -3589122102101,
+            "owner": "Hasda78TSaT9bjiPxDBvP4GpohFpP3TDTaJEcCYK5kyN",
+            "replay": -3589121340564,
+            "snapshot": 761537
+          },
+          {
+            "delta": -3361158040000,
+            "owner": "44P5Ct5JkPz76Rs2K6juC65zXMpFRDrHatxcASJ4Dyra",
+            "replay": 1149832640000,
+            "snapshot": 4510990680000
+          },
+          {
+            "delta": -3275818000000,
+            "owner": "5ghVXfuvzLBMAdwLbs8dcCEK5viqMCqkGY71L2cZ1rCo",
+            "replay": -3275817413966,
+            "snapshot": 586034
+          },
+          {
+            "delta": -2880154326122,
+            "owner": "GSZ6pDujmQsjWyt3Z2qF6f3QEjaM1H15e1uKYMmVBe8T",
+            "replay": -2880154326122,
+            "snapshot": 0
+          },
+          {
+            "delta": -2878586517244,
+            "owner": "BRtPriQM5bL4NRr5Qt2dtDdkGSEkzaeGQJ2i44S84kg5",
+            "replay": -2878586517244,
+            "snapshot": 0
+          },
+          {
+            "delta": -2761612421402,
+            "owner": "aRCaRJxZBW1vMBusNpvsyrZKgzXUhtyKuQVdmBYrfTm",
+            "replay": -2760722365382,
+            "snapshot": 890056020
+          },
+          {
+            "delta": 2626435500000,
+            "owner": "AJfCvVcrL45Byw17gWwceBndWLUyz97REEGvyjianvfD",
+            "replay": 2626435500000,
+            "snapshot": 0
+          },
+          {
+            "delta": -2538347439936,
+            "owner": "6S5YTjZ2YvLVbnS7NKikJ5CdhkuaMTS7ZPQ7pPpV1NFe",
+            "replay": -2538347439936,
+            "snapshot": 0
+          },
+          {
+            "delta": -2353946960919,
+            "owner": "Evee5RbYcc2Yhv6RajrA5epA9MCHuonAWu6dQYGPaC6f",
+            "replay": -2353946960919,
+            "snapshot": 0
+          },
+          {
+            "delta": 2347154688851,
+            "owner": "CreQJ2t94QK5dsxUZGXfPJ8Nx7wA9LHr5chxjSMkbNft",
+            "replay": 2878686828308,
+            "snapshot": 531532139457
+          },
+          {
+            "delta": 2126850590000,
+            "owner": "9g83LBTdVBcithkWtZYJJgRBBVviN4tzev38jm4AwNX",
+            "replay": 2126850590000,
+            "snapshot": 0
+          },
+          {
+            "delta": -2076600000000,
+            "owner": "GL8T72PKygWaYrLKtSteN9UUvYYnuC8azNDunk4eaqqQ",
+            "replay": -1642333010000,
+            "snapshot": 434266990000
+          },
+          {
+            "delta": 2000000000000,
+            "owner": "9BEwTJUwRx5jM96rMiTFsBubMUPRXVrxzuvpdL88LrF",
+            "replay": 2000000000000,
+            "snapshot": 0
+          },
+          {
+            "delta": -1946040364837,
+            "owner": "FrhLfj81LRpMR3EwSSCGPzHmxsnoq8h628ne68vK5oMN",
+            "replay": -846617242858,
+            "snapshot": 1099423121979
+          },
+          {
+            "delta": 1862946900000,
+            "owner": "3caFdfwp2LQ93cTENzGm7T7SRSZHXiuWTB22gDQ2UBSy",
+            "replay": 1946617200000,
+            "snapshot": 83670300000
+          },
+          {
+            "delta": -1795417641622,
+            "owner": "uv8wpe6okFxEUvk7FHuXKZuSw2uRWnfrgPUXhds6dvJ",
+            "replay": -1670500000000,
+            "snapshot": 124917641622
+          },
+          {
+            "delta": -1773695590001,
+            "owner": "6utZo56e68cgWrziH3qXE8FDXA7a5Xwun3L3ZYM7fMCj",
+            "replay": -1773695590000,
+            "snapshot": 1
+          },
+          {
+            "delta": -1772151546495,
+            "owner": "EKpakWU2KqqPEJMd5TY9vtZ3qfXcF7appcnHkTjtiPad",
+            "replay": -811000000000,
+            "snapshot": 961151546495
+          },
+          {
+            "delta": -1725690885079,
+            "owner": "6xfPFKnwv48XvxpFf4athewqGFvSTKQcMmfzYapgZ2sG",
+            "replay": -885820808778,
+            "snapshot": 839870076301
+          },
+          {
+            "delta": -1700536425843,
+            "owner": "14hQ1m6NtvXXs76RmMsoLSMvBwFymB8gqNHs8QgG2nDL",
+            "replay": -1515464000000,
+            "snapshot": 185072425843
+          },
+          {
+            "delta": 1631426424287,
+            "owner": "GJvewfRjqTUPtx6WsBSUnaFbdgXwgXnWfpDyLm65T4YA",
+            "replay": 2321057167001,
+            "snapshot": 689630742714
+          },
+          {
+            "delta": -1628052911748,
+            "owner": "6VqT6TsoCatZfT55zTJASaNFfxvYfAtAE6a66uSotAg1",
+            "replay": -208088280595,
+            "snapshot": 1419964631153
+          },
+          {
+            "delta": -1560400404263,
+            "owner": "g848qLVXs2rQcRXBcK3nSEHCdhW5rUyBkX4Loh7p2ma",
+            "replay": 0,
+            "snapshot": 1560400404263
+          },
+          {
+            "delta": -1478228602421,
+            "owner": "Fe7SEekiKygziaEGKxsDsgLVzrCfNvVBvAYsaJBwFA8s",
+            "replay": -1125020738583,
+            "snapshot": 353207863838
+          },
+          {
+            "delta": -1474667629432,
+            "owner": "4gXs8oc2yEwDTPkDyo6V8ZixheTCZvu8JicrEuDat8tH",
+            "replay": -1474667629432,
+            "snapshot": 0
+          },
+          {
+            "delta": -1466322595322,
+            "owner": "GkEmfWZncXP6JzmRAydx8XGjvagvXGvyuUVEFdGmVdax",
+            "replay": 0,
+            "snapshot": 1466322595322
+          },
+          {
+            "delta": -1385231133524,
+            "owner": "8mDFrSxzTMA3VEGRsV5UoWCVwHTCeXZZ3qtcnQov7GJU",
+            "replay": 0,
+            "snapshot": 1385231133524
+          },
+          {
+            "delta": -1300029893282,
+            "owner": "6Be6H3N7c8fAzypKuqEqT7a3krZf5zBgeVHRwCPek5jG",
+            "replay": -949626901010,
+            "snapshot": 350402992272
+          },
+          {
+            "delta": -1241058652738,
+            "owner": "8yhgsGD5HuY9QZVUXZbCkd4q7zSo1EdRFq4KYND1yWwb",
+            "replay": -1241058652738,
+            "snapshot": 0
+          },
+          {
+            "delta": -1200000302279,
+            "owner": "4b3rKJwtk8vRSapiQteC6LsUjrSycwB5S9KKytZmA7ia",
+            "replay": -400000000000,
+            "snapshot": 800000302279
+          },
+          {
+            "delta": -1184865576516,
+            "owner": "6RFydqXPzyvZM6zdpCkdKddDXu1yX1y55Ndtq9yBoSTt",
+            "replay": -1184865576516,
+            "snapshot": 0
+          },
+          {
+            "delta": -1160000000000,
+            "owner": "21NMsj8g9EAhZMTaBNQofqt9mfjCH8v68SUdvR7du1rh",
+            "replay": -1160000000000,
+            "snapshot": 0
+          },
+          {
+            "delta": -1134973061954,
+            "owner": "Cdcz15E3LmTD7giDf8j3EapzoNooUvhS7CVcnoAZboKC",
+            "replay": 0,
+            "snapshot": 1134973061954
+          },
+          {
+            "delta": -1088454221688,
+            "owner": "ABCtj84CHZRxncHu8fuDNaDV9PsZbdMLSehfRXYMH5bT",
+            "replay": -1088454221688,
+            "snapshot": 0
+          },
+          {
+            "delta": -1058932147734,
+            "owner": "2dmCo2jcdnroEuM4rSC4bMyH3MjGDkasjiv7VG5VBX3n",
+            "replay": -1058932147734,
+            "snapshot": 0
+          },
+          {
+            "delta": -1045715410002,
+            "owner": "7sW75XaJXnwKesLojoLSFCebDJYxNRNwxnBzFqXCvkaa",
+            "replay": -1045715410002,
+            "snapshot": 0
+          },
+          {
+            "delta": -1032139395914,
+            "owner": "74yjzhotSKdqBbAuvigbMxzbCtgAQa8YEu63tZrk4czc",
+            "replay": 0,
+            "snapshot": 1032139395914
+          },
+          {
+            "delta": -1000549810665,
+            "owner": "GqbMARkhcnd2FfymMZoNwtRzNcaH1hwwd2okZ7TtwTpM",
+            "replay": -489915771942,
+            "snapshot": 510634038723
+          },
+          {
+            "delta": -1000000000000,
+            "owner": "FUcrhuptktdN31UB6kgeRMaKNf6wKNstq3qjWJKmWM2k",
+            "replay": -1000000000000,
+            "snapshot": 0
+          },
+          {
+            "delta": -995114081352,
+            "owner": "HXCkDsBunQ46iuNewvmYogy5PmcrQJmLrdmXKTMp1Q5S",
+            "replay": 0,
+            "snapshot": 995114081352
+          },
+          {
+            "delta": -990000000000,
+            "owner": "8NBEbxLknGv5aRYefFrW2qFXoDZyi9fSHJNiJRvEcMBE",
+            "replay": 346000000000,
+            "snapshot": 1336000000000
+          },
+          {
+            "delta": -970150943532,
+            "owner": "53vNDrCTyJrobtEU1by8Ta454WYiL8GFt9w33gFSbHBT",
+            "replay": 0,
+            "snapshot": 970150943532
+          },
+          {
+            "delta": -962808373953,
+            "owner": "H6rRcPfww5ijVDaGBEwBgQaVzNTjxA4U93KH9JxsSMGk",
+            "replay": -962808373953,
+            "snapshot": 0
+          },
+          {
+            "delta": -961265712007,
+            "owner": "9TdHfGqqYAwWYyEeKLe4u9sJ4Aoy7mp2r2HsqmLTPM96",
+            "replay": -961265712007,
+            "snapshot": 0
+          },
+          {
+            "delta": -955817939722,
+            "owner": "CD58GhoxYff5mZhKr3WcZhLhFAwHroSdQQ52uB8SP2Gy",
+            "replay": -857222266018,
+            "snapshot": 98595673704
+          },
+          {
+            "delta": -937111430000,
+            "owner": "AGVhmrhDi3RKLu9nxnRqp3CUpaG3SVeYXWkWcygHAk8N",
+            "replay": -937111430000,
+            "snapshot": 0
+          },
+          {
+            "delta": -931643508589,
+            "owner": "EbQ9Vw7QcuX6x3MxXhh34xGA9gV4kC6QVREZy7WGDuAW",
+            "replay": -214948297613,
+            "snapshot": 716695210976
+          },
+          {
+            "delta": -915311229750,
+            "owner": "D5jx4wmxuPz18hqmgpCMLGVq3uSksCafCp5xjVe1nw8p",
+            "replay": -915311229750,
+            "snapshot": 0
+          },
+          {
+            "delta": -900462970763,
+            "owner": "95QTsjtEAaJRpCVATDdgphHEQomUEiEDJhPG3TaE9bJC",
+            "replay": 0,
+            "snapshot": 900462970763
+          },
+          {
+            "delta": -883212012578,
+            "owner": "B5icwPejQviynUxYJUuKNgXHoxb8zjeze8u8N6nNQA9N",
+            "replay": -883212012578,
+            "snapshot": 0
+          },
+          {
+            "delta": 820877410630,
+            "owner": "GHQxk5RSoKxSdpbwWfGGcNhgygvHW1iW36YKPeZza6im",
+            "replay": 820877410785,
+            "snapshot": 155
+          },
+          {
+            "delta": -800000000000,
+            "owner": "5jpRfHysjTMa7KnGc751kCZRWUDV4hakrfr4kqvgxhqf",
+            "replay": -800000000000,
+            "snapshot": 0
+          },
+          {
+            "delta": -791002600000,
+            "owner": "zDBbPhvt3HeRomm2CdWqdEMCYsmQHcjg8rQaXmjPGHo",
+            "replay": 0,
+            "snapshot": 791002600000
+          },
+          {
+            "delta": -790460740252,
+            "owner": "2eELx4yyGTv2H6sUxiER6TgtCqJuD7Q6pzSegtNmdf7Q",
+            "replay": 0,
+            "snapshot": 790460740252
+          },
+          {
+            "delta": -728468794387,
+            "owner": "8vwBP5ceJkWpRiSWDwYf4E8HmFnmaXhXK67UcCpzBeDL",
+            "replay": 0,
+            "snapshot": 728468794387
+          },
+          {
+            "delta": -723814915425,
+            "owner": "2DcWYzBxeBVfxfLgDk3BUH8iMTorxTdwNszFNCTzwiXC",
+            "replay": 0,
+            "snapshot": 723814915425
+          },
+          {
+            "delta": -713751088842,
+            "owner": "FWwPLXuEHa3pBseEsvqnvWu2HyvdcsymNVAJ93m3D1r1",
+            "replay": -713751088842,
+            "snapshot": 0
+          },
+          {
+            "delta": -710000000001,
+            "owner": "9wyZqjKZuFV3H6hhsFtXmobigZpwCfLNPjrxns4TUdLW",
+            "replay": -10000000001,
+            "snapshot": 700000000000
+          },
+          {
+            "delta": -700000430780,
+            "owner": "5AFWLvA6NRzdjpy7NBWhGoAa8RdTYiBoPmSFs87DFrXr",
+            "replay": 0,
+            "snapshot": 700000430780
+          },
+          {
+            "delta": -693261297435,
+            "owner": "GiCQWjNRmzcyLf7KUA5dHimQq3qYEomPyHxWogwMyyb9",
+            "replay": -693261297435,
+            "snapshot": 0
+          },
+          {
+            "delta": -686119150406,
+            "owner": "BZRxVFxfdAnQyPPbswkt81FYGjK18f8DXfVos8yuMcar",
+            "replay": -208500711955,
+            "snapshot": 477618438451
+          },
+          {
+            "delta": -684208723455,
+            "owner": "4h2Gvh19DF6TExVgT3T3VNakv2na22Xa9Yg2x515UcMY",
+            "replay": -684208723455,
+            "snapshot": 0
+          },
+          {
+            "delta": -671557434622,
+            "owner": "DMe3ddj7awSR3LFC64rjmCPexsrSv33QAxFoJux4vGH3",
+            "replay": -622889564199,
+            "snapshot": 48667870423
+          },
+          {
+            "delta": -660000000000,
+            "owner": "2hkS7P1NcyJFDrC91KnYZKSfE1bGDiXzStBqrZKV569w",
+            "replay": 0,
+            "snapshot": 660000000000
+          },
+          {
+            "delta": -658630676923,
+            "owner": "HMc3toT1Wb2UmN6VGZt5YyAASpzt9uRKpFvtQCWVPRWD",
+            "replay": -105942999729,
+            "snapshot": 552687677194
+          },
+          {
+            "delta": -651253910400,
+            "owner": "2CFKE7Z99f45Q68FukKoUKer7xg9gCtSchgtnndPfnYN",
+            "replay": -192003060000,
+            "snapshot": 459250850400
+          },
+          {
+            "delta": -642935597280,
+            "owner": "8TZGuPVLsBhSzrP3jVkWKGwxrCuuDJGWuAt3jLSrbvsV",
+            "replay": -642935597280,
+            "snapshot": 0
+          },
+          {
+            "delta": -641733165555,
+            "owner": "GgVF3W3z6CJDce4Ec3h2w2dKSGEp2GVzwa5a7zMaJc8d",
+            "replay": -641733165554,
+            "snapshot": 1
+          },
+          {
+            "delta": -638916022087,
+            "owner": "73cafvYwxpVxVasEhP6edKMnQYrWANBECeEv9AyVrduM",
+            "replay": 0,
+            "snapshot": 638916022087
+          },
+          {
+            "delta": 638845742328,
+            "owner": "3JKueJimPirx9f1jRntxB79xvqnmJQz6ewzzN54rRhxV",
+            "replay": 638845742328,
+            "snapshot": 0
+          },
+          {
+            "delta": -635693720045,
+            "owner": "GsCY6n5RY7v3qcDAzGYcDShNzthngVs4So4b5nmVuqSN",
+            "replay": -612977795852,
+            "snapshot": 22715924193
+          },
+          {
+            "delta": -602616256857,
+            "owner": "6FEVkH17P9y8Q9aCkDdPcMDjvj7SVxrTETaYEm8f51Jy",
+            "replay": -400711650837,
+            "snapshot": 201904606020
+          },
+          {
+            "delta": -599680633722,
+            "owner": "BCvYeeeehuPQ7gxGhzBjGTNEtCiSyPSbsKuCqapbSvVm",
+            "replay": -599680633722,
+            "snapshot": 0
+          },
+          {
+            "delta": -593618521454,
+            "owner": "2JTEFS24YLCUU7RXjtkhYCXcMuBCeqwuFDBV6fkZqprs",
+            "replay": 28312582147,
+            "snapshot": 621931103601
+          },
+          {
+            "delta": -591784505339,
+            "owner": "94oLXgGTg7Mu1BQH53tLiD3UvNFerCnhf9ctCnfrEkKc",
+            "replay": -588871884445,
+            "snapshot": 2912620894
+          },
+          {
+            "delta": -591020759149,
+            "owner": "GMdDsuU6eQmbsMEKR9YtxP6Lfbs9ezdQLbivcGXTzHFM",
+            "replay": 0,
+            "snapshot": 591020759149
+          },
+          {
+            "delta": -585218681766,
+            "owner": "A77HErqtfN1hLLpvZ9pCtu66FEtM8BveoaKbbMoZ4RiR",
+            "replay": 410843955754,
+            "snapshot": 996062637520
+          }
+        ]
+      },
+      "owners": 45823,
+      "path": "holders_owners.json",
+      "scope_note": "The 1348 parts cover only their frozen slot intervals; this snapshot comparison is diagnostic and is not a full-history reconciliation.",
+      "sha256": "6dd0bb4c8061871586e0433eba1a9eb3e6dacc49f778a118a18ef5ca944d4abe",
+      "size": 2694062
+    },
+    "top_owner_differences": [
+      {
+        "delta_multiset_minus_distinct": 26156758140053,
+        "distinct": -27636071106205,
+        "multiset": -1479312966152,
+        "owner": "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1"
+      },
+      {
+        "delta_multiset_minus_distinct": -23788525877140,
+        "distinct": 26667212705448,
+        "multiset": 2878686828308,
+        "owner": "CreQJ2t94QK5dsxUZGXfPJ8Nx7wA9LHr5chxjSMkbNft"
+      },
+      {
+        "delta_multiset_minus_distinct": -8315298241057,
+        "distinct": 10636355408058,
+        "multiset": 2321057167001,
+        "owner": "GJvewfRjqTUPtx6WsBSUnaFbdgXwgXnWfpDyLm65T4YA"
+      },
+      {
+        "delta_multiset_minus_distinct": 3904786418895,
+        "distinct": -4762008684913,
+        "multiset": -857222266018,
+        "owner": "CD58GhoxYff5mZhKr3WcZhLhFAwHroSdQQ52uB8SP2Gy"
+      },
+      {
+        "delta_multiset_minus_distinct": 2424467060551,
+        "distinct": -2312743765292,
+        "multiset": 111723295259,
+        "owner": "4qLjN2jnhCqS741hkkSP1DnznLNe5wA5buJRSUtbSWk7"
+      },
+      {
+        "delta_multiset_minus_distinct": -1213957364721,
+        "distinct": 7444965184752,
+        "multiset": 6231007820031,
+        "owner": "MfDuWeqSHEqTFVYZ7LoexgAK9dxk7cy4DFJWjWMGVWa"
+      },
+      {
+        "delta_multiset_minus_distinct": 793730961630,
+        "distinct": -3554453327012,
+        "multiset": -2760722365382,
+        "owner": "aRCaRJxZBW1vMBusNpvsyrZKgzXUhtyKuQVdmBYrfTm"
+      },
+      {
+        "delta_multiset_minus_distinct": 786464859926,
+        "distinct": -648511157822,
+        "multiset": 137953702104,
+        "owner": "DW2QC5ychRKmA3YpY6eWetxt1YdMK8hir3vNjNjRW6i9"
+      },
+      {
+        "delta_multiset_minus_distinct": -507630000000,
+        "distinct": 607286344821,
+        "multiset": 99656344821,
+        "owner": "2Trxm1MjSkJeGaYHgAZ4NVbHCkj7vjPKaFtD22sUG5fE"
+      },
+      {
+        "delta_multiset_minus_distinct": 429548556325,
+        "distinct": -607238147505,
+        "multiset": -177689591180,
+        "owner": "8ZoEfzDRjHUbTyDRar5dZ7jQvEFaeLffJSDHx9VndZG9"
+      },
+      {
+        "delta_multiset_minus_distinct": 393098677856,
+        "distinct": 48464567470042,
+        "multiset": 48857666147898,
+        "owner": "HoKVbPwpcgF1LzSgVHSzraipsyQ3P3F1bdXpkN1BwbU1"
+      },
+      {
+        "delta_multiset_minus_distinct": -330051216955,
+        "distinct": 354644824026,
+        "multiset": 24593607071,
+        "owner": "FJx61bqznoVfVDFoujYGgJoJsJq4DxDQ8K3YG5kgRm6G"
+      },
+      {
+        "delta_multiset_minus_distinct": -272149852089,
+        "distinct": -272663074602,
+        "multiset": -544812926691,
+        "owner": "FAijmttYim75twHhCKyNCH7sEU5QQkiqD3mcg6jF95Eb"
+      },
+      {
+        "delta_multiset_minus_distinct": -158462000000,
+        "distinct": 1110620326330,
+        "multiset": 952158326330,
+        "owner": "m7VmSjdSN6isudY6PVRa7GuZbG8rPBpB2X2DGHR5awz"
+      },
+      {
+        "delta_multiset_minus_distinct": -139769597253,
+        "distinct": 139769597254,
+        "multiset": 1,
+        "owner": "hnu69n6P5CgYXCtUKii9wgamqtDeTVHY3TVJ6HKt7wC"
+      },
+      {
+        "delta_multiset_minus_distinct": -138409800000,
+        "distinct": -2325129038465,
+        "multiset": -2463538838465,
+        "owner": "BmFdpraQhkiDQE6SnfG5omcA1VwzqfXrwtNYBwWTymy6"
+      },
+      {
+        "delta_multiset_minus_distinct": 129191925411,
+        "distinct": -164663996252,
+        "multiset": -35472070841,
+        "owner": "GCvHhEUYQwTJ8jyf8Lc4bv8jBXyZU4LMMsZCobwEPzvM"
+      },
+      {
+        "delta_multiset_minus_distinct": 108951820982,
+        "distinct": -5410033346074,
+        "multiset": -5301081525092,
+        "owner": "A9PzVmoBvTMLSh8VcaPQfYc3qwH63pmLuMxRmWraqGYk"
+      },
+      {
+        "delta_multiset_minus_distinct": -101352000000,
+        "distinct": 145061804457,
+        "multiset": 43709804457,
+        "owner": "7KyEvScKGoBPdroVYAy6v47XWjuuQFtPLjpWgZgMWEi"
+      },
+      {
+        "delta_multiset_minus_distinct": -93715516197,
+        "distinct": -752901726661,
+        "multiset": -846617242858,
+        "owner": "FrhLfj81LRpMR3EwSSCGPzHmxsnoq8h628ne68vK5oMN"
+      },
+      {
+        "delta_multiset_minus_distinct": -65462294859,
+        "distinct": 169713326596,
+        "multiset": 104251031737,
+        "owner": "3ACp4T3ptTdayzWryEhT65NKZSKLjwXviBjWEy54aFdW"
+      },
+      {
+        "delta_multiset_minus_distinct": -53707771719,
+        "distinct": 53707771720,
+        "multiset": 1,
+        "owner": "gtfoTELAeEZHUgHetA6umfsCETiBMzJCN4tB2sqCgFL"
+      },
+      {
+        "delta_multiset_minus_distinct": 50812086475,
+        "distinct": -6390198627882,
+        "multiset": -6339386541407,
+        "owner": "4GQeEya6ZTwvXre4Br6ZfDyfe2WQMkcDz2QbkJZazVqS"
+      },
+      {
+        "delta_multiset_minus_distinct": 45550000000,
+        "distinct": -74169387507,
+        "multiset": -28619387507,
+        "owner": "3V1ckAL5S68vu6FPe1WsrxHC76VUE9LWm9q2fRBv7yND"
+      },
+      {
+        "delta_multiset_minus_distinct": 45018612000,
+        "distinct": -56271277192,
+        "multiset": -11252665192,
+        "owner": "3BVDnsxeVZX2ZvMUNzSUeuBs1NDP8yrMmGFm1rJmi4Pp"
+      },
+      {
+        "delta_multiset_minus_distinct": 43094450672,
+        "distinct": -43094450672,
+        "multiset": 0,
+        "owner": "Bo24HGxWXcixkkZBsjZmRpLL41B9kMBMunCKDsjBUQDN"
+      },
+      {
+        "delta_multiset_minus_distinct": -36575000000,
+        "distinct": 620176278044,
+        "multiset": 583601278044,
+        "owner": "9FMUjZHCJEeoz1Au9RB7RsgCEeaDfQ164TToKfixCSHi"
+      },
+      {
+        "delta_multiset_minus_distinct": -34529349932,
+        "distinct": 34529349932,
+        "multiset": 0,
+        "owner": "44zas59yMsNv3nwsjtf9zPCxvaxyvuhLPx6x4ERKXPti"
+      },
+      {
+        "delta_multiset_minus_distinct": -27049501904,
+        "distinct": 27372904270,
+        "multiset": 323402366,
+        "owner": "7JQeyNK55fkUPUmEotupBFpiBGpgEQYLe8Ht1VdSfxcP"
+      },
+      {
+        "delta_multiset_minus_distinct": -22095171999,
+        "distinct": 7250740555,
+        "multiset": -14844431444,
+        "owner": "CKBCxNxdsfZwTwKYHQmBs7J8zpPjCjMJAxcxoBUwExw6"
+      },
+      {
+        "delta_multiset_minus_distinct": 21350565830,
+        "distinct": 18472372790,
+        "multiset": 39822938620,
+        "owner": "3xbmFr5XE5TKKDmQVfb4uq9wFHXrZyFXCGHP2ciCJGpp"
+      },
+      {
+        "delta_multiset_minus_distinct": -19349327000,
+        "distinct": 27441650344,
+        "multiset": 8092323344,
+        "owner": "2gchxmAMnKTksEDvrV4F35LFPmCf7eLh9ZU8Pm1YL8Zt"
+      },
+      {
+        "delta_multiset_minus_distinct": 18582450000,
+        "distinct": -18582450000,
+        "multiset": 0,
+        "owner": "CocVqerLDKKGVYHEA8ELLQ2jDQ7RYShmpUffCn7ZGXPv"
+      },
+      {
+        "delta_multiset_minus_distinct": -16253445000,
+        "distinct": -17080147046,
+        "multiset": -33333592046,
+        "owner": "RV3vubs5N8kHQJmXqZNmjZU6qCYB7zHu1mmAX3efZDn"
+      },
+      {
+        "delta_multiset_minus_distinct": 15986880600,
+        "distinct": -15986880600,
+        "multiset": 0,
+        "owner": "8YAVADMA2iuqhSiYL46US6qZurdWEYzRecg6eyhUfeKF"
+      },
+      {
+        "delta_multiset_minus_distinct": -15986880600,
+        "distinct": -6101906664559,
+        "multiset": -6117893545159,
+        "owner": "BY4StcU9Y2BpgH8quZzorg31EGE4L1rjomN8FNsCBEcx"
+      },
+      {
+        "delta_multiset_minus_distinct": -14136784574,
+        "distinct": -234791975211,
+        "multiset": -248928759785,
+        "owner": "6kntKawNmZNKZqUHvRVGKMwp8LQU5upyhht7w1PL7dde"
+      },
+      {
+        "delta_multiset_minus_distinct": 11578000000,
+        "distinct": -11578000000,
+        "multiset": 0,
+        "owner": "FxN4MvEvjTJBLKhAfjNboB9AGMwPAvNT1JnmdN6BjDQj"
+      },
+      {
+        "delta_multiset_minus_distinct": -8948236376,
+        "distinct": -18805221664847,
+        "multiset": -18814169901223,
+        "owner": "9ZPsRWGkukYeWg2Z7eZ8NaTBZ1DSuBUVzLcGQWZgE4Y4"
+      },
+      {
+        "delta_multiset_minus_distinct": 7075395000,
+        "distinct": -28255864752,
+        "multiset": -21180469752,
+        "owner": "5nKtUBx8vPRTvNB7kaFvtuvRK6qRf1SRFnrVcASAWw7w"
+      },
+      {
+        "delta_multiset_minus_distinct": -5935089904,
+        "distinct": 5935089904,
+        "multiset": 0,
+        "owner": "HHMbYS5YsnzPzDQ1QUgLMHrfLDsLmhz3nzVU7b1sz5Qe"
+      },
+      {
+        "delta_multiset_minus_distinct": 5503999996,
+        "distinct": 164919091421,
+        "multiset": 170423091417,
+        "owner": "EjwYJMj7wyP9w29WttYBSfh4dfFSuCFiSpAmjhiU72yp"
+      },
+      {
+        "delta_multiset_minus_distinct": -4385905930,
+        "distinct": 4385905930,
+        "multiset": 0,
+        "owner": "6mcyJDDSM2QYEeUjDofHpTDx9wEBrad8LNzPXiE2q9bj"
+      },
+      {
+        "delta_multiset_minus_distinct": -2272816000,
+        "distinct": 2272816000,
+        "multiset": 0,
+        "owner": "8GxdLL7LNdyS3gWHctPuQWwkknYcySFqupXZoBh9Wr7T"
+      },
+      {
+        "delta_multiset_minus_distinct": -1908230000,
+        "distinct": -130752360000,
+        "multiset": -132660590000,
+        "owner": "B16AxZa19FRwKcUArYurXkTSc8mtpSVnZHvJx2Mwct8G"
+      },
+      {
+        "delta_multiset_minus_distinct": 1701637951,
+        "distinct": -159298722672,
+        "multiset": -157597084721,
+        "owner": "57mP5WoNrg3uiGFUdoeYr2CPUZak1L2ZgFtyFwoT7K6G"
+      },
+      {
+        "delta_multiset_minus_distinct": -1600000000,
+        "distinct": 1600000000,
+        "multiset": 0,
+        "owner": "5HV18DVzgonda3PyKS22pyCw1pKBMiTcHHzHt5avzz6x"
+      },
+      {
+        "delta_multiset_minus_distinct": -1249000000,
+        "distinct": 251775387697,
+        "multiset": 250526387697,
+        "owner": "9XLcx4qeRMef4S1uMTsyv5Uv8SAXpo8aE9d97NDxYRvL"
+      },
+      {
+        "delta_multiset_minus_distinct": 1229351743,
+        "distinct": 9720755437,
+        "multiset": 10950107180,
+        "owner": "BeWSkQXF11MSYxMKoVan2bKtbv5zJdcx5FVRBJX8eUsu"
+      },
+      {
+        "delta_multiset_minus_distinct": -1066498457,
+        "distinct": 1066498457,
+        "multiset": 0,
+        "owner": "8R2rwCyhriS2PhcGt2LKC2pV3Zmobgt81DmRQxqrEpXD"
+      },
+      {
+        "delta_multiset_minus_distinct": -1052381362,
+        "distinct": 19512517225,
+        "multiset": 18460135863,
+        "owner": "EmDewJpfQaxWqxthX1FUyBCCPNGt8Ac5ek4M4pnGTgxC"
+      },
+      {
+        "delta_multiset_minus_distinct": -980000000,
+        "distinct": 980000000,
+        "multiset": 0,
+        "owner": "5Jiax11WiJp7NHeMKCJHFFk2GCRF9qiEN9TyAQC18Y2V"
+      },
+      {
+        "delta_multiset_minus_distinct": 872910017,
+        "distinct": -1073169057,
+        "multiset": -200259040,
+        "owner": "45ruCyfdRkWpRNGEqWzjCiXRHkZs8WXCLQ67Pnpye7Hp"
+      },
+      {
+        "delta_multiset_minus_distinct": 722512823,
+        "distinct": 113204593808,
+        "multiset": 113927106631,
+        "owner": "2B8DWvMRMrhYqK32b8jhQZemtA8MZ1e38tpz14mnw7BY"
+      },
+      {
+        "delta_multiset_minus_distinct": -717300000,
+        "distinct": 38018575575,
+        "multiset": 37301275575,
+        "owner": "DJ16xfMsiyzeTMjLnwXsTffX6B59e2jkG5XkQxwSedC"
+      },
+      {
+        "delta_multiset_minus_distinct": -621372452,
+        "distinct": 621372452,
+        "multiset": 0,
+        "owner": "6egztokf66ni6LnGh6etGMPpt4pYrBjGFwHijdLYA8t"
+      },
+      {
+        "delta_multiset_minus_distinct": -594485830,
+        "distinct": 594485830,
+        "multiset": 0,
+        "owner": "HUHTfryExMzW8owzAKPyV13aiYbf9fhDM1xBYBCz48aB"
+      },
+      {
+        "delta_multiset_minus_distinct": -570715681,
+        "distinct": 2848073616,
+        "multiset": 2277357935,
+        "owner": "XFhJq1nmwYgNcAPEyhuJmJsMHdUtB3sr4sXMkkjMf3s"
+      },
+      {
+        "delta_multiset_minus_distinct": 454324964,
+        "distinct": -638460504,
+        "multiset": -184135540,
+        "owner": "27ZASRjinQgXKsrijKqb9xyRnH6W5KWgLSDveRghvHqc"
+      },
+      {
+        "delta_multiset_minus_distinct": -437272210,
+        "distinct": 437272210,
+        "multiset": 0,
+        "owner": "FQ23CPSpaoVieXvZSUHU3wrD4W2SERy1PfkocNBsQJLF"
+      },
+      {
+        "delta_multiset_minus_distinct": -424136065,
+        "distinct": 424136074,
+        "multiset": 9,
+        "owner": "B3DNd5ZaSFYdEGmb3kfnNtNueVYvgtQicWCqo652eyxm"
+      },
+      {
+        "delta_multiset_minus_distinct": 340470645,
+        "distinct": 2159529355,
+        "multiset": 2500000000,
+        "owner": "5xc7sCCH1Y8BhjEQCEBHN1Ex3B81ERpTHSRoQtyjNAMw"
+      },
+      {
+        "delta_multiset_minus_distinct": 235392784,
+        "distinct": 21998985,
+        "multiset": 257391769,
+        "owner": "FXTYpiPSx2JMt8JuNVPhRFgXC6U2hzmvCTB91Zp7yNZ3"
+      },
+      {
+        "delta_multiset_minus_distinct": 213047959,
+        "distinct": -173788814401,
+        "multiset": -173575766442,
+        "owner": "92J3X46dbnoPs25Vc3fr5m1xt9GVrQddqiPD9uzXQHH"
+      },
+      {
+        "delta_multiset_minus_distinct": -206868882,
+        "distinct": 206868882,
+        "multiset": 0,
+        "owner": "GDtdKDK435u8ekxsAhyxAdHqBqy4Rq8FZ1LNfHrXYpJL"
+      },
+      {
+        "delta_multiset_minus_distinct": -183825175,
+        "distinct": 6065897736,
+        "multiset": 5882072561,
+        "owner": "Gbm2NtASYarSKuhZQjAmL3ZdoULghD4ZBYq8vayuQFR4"
+      },
+      {
+        "delta_multiset_minus_distinct": 174153837,
+        "distinct": 14967833226,
+        "multiset": 15141987063,
+        "owner": "HLnpSz9h2S4hiLQ43rnSD9XkcUThA7B8hQMKmDaiTLcC"
+      },
+      {
+        "delta_multiset_minus_distinct": 131101989,
+        "distinct": -131101989,
+        "multiset": 0,
+        "owner": "7rZYoECWSmJYKEfoxvkNmovaQL1zsYLdts8LiYBUM94Z"
+      },
+      {
+        "delta_multiset_minus_distinct": -58427235,
+        "distinct": 58427235,
+        "multiset": 0,
+        "owner": "9CeKNxLbnkVwQvQSBnBvyJ5XUbozWzDzoowY51EVE2hQ"
+      },
+      {
+        "delta_multiset_minus_distinct": -57829452,
+        "distinct": -6701073210,
+        "multiset": -6758902662,
+        "owner": "AmeqBatmeHRGonTqeUfdCk9LmDCnceT3XsiH6m4UShUw"
+      },
+      {
+        "delta_multiset_minus_distinct": -55031780,
+        "distinct": 55031780,
+        "multiset": 0,
+        "owner": "A6hjkEaJT6zxyT344SnEjcU7gnvLBkZ8Tvjg22GGqmRS"
+      },
+      {
+        "delta_multiset_minus_distinct": 54337632,
+        "distinct": -10607871746,
+        "multiset": -10553534114,
+        "owner": "3rhR9SS88de6epMgYCprNk8NLvBx1aAnFmarZeEngvyS"
+      },
+      {
+        "delta_multiset_minus_distinct": -42002512,
+        "distinct": 160246456,
+        "multiset": 118243944,
+        "owner": "F9AFDqmQA2KPp9hwaiYVs8FTiewrkY2sQ4CqVVGz79MK"
+      },
+      {
+        "delta_multiset_minus_distinct": 41205679,
+        "distinct": 447564392,
+        "multiset": 488770071,
+        "owner": "Hz28bcGzyqc6KQzEmyFUCsrMFGEAk56PVN556f7rdNmf"
+      },
+      {
+        "delta_multiset_minus_distinct": -37364687,
+        "distinct": 37364687,
+        "multiset": 0,
+        "owner": "nonorU2tGDewg3LJcsdLsF6yaeNJt2onCewQCHU4R8q"
+      },
+      {
+        "delta_multiset_minus_distinct": 35932545,
+        "distinct": -7603783856,
+        "multiset": -7567851311,
+        "owner": "9T9YJUY3yoi4rAF3FCukHDHTiYJ1UA1S8q8VgwxJVSHA"
+      },
+      {
+        "delta_multiset_minus_distinct": 31948894,
+        "distinct": -9908406652,
+        "multiset": -9876457758,
+        "owner": "7pAat6sDKQLkWaD4AAmNmvZePUrCyKoDJXxRPL28wGyf"
+      },
+      {
+        "delta_multiset_minus_distinct": 31743949,
+        "distinct": 11312645887,
+        "multiset": 11344389836,
+        "owner": "2TAsZoovzpQvjz4WYfq82DfCqJPvXeU964S3QnLtSkhn"
+      },
+      {
+        "delta_multiset_minus_distinct": 12726996,
+        "distinct": 7628109,
+        "multiset": 20355105,
+        "owner": "FLwdV4dEd1va8sorPb8r25XoZWSNCMGhE29xGC3CyNSz"
+      },
+      {
+        "delta_multiset_minus_distinct": -10417930,
+        "distinct": 10417930,
+        "multiset": 0,
+        "owner": "Ex4Htb8GqPgcRDiVJrvoC2QL7x5mHu2jCAbksH4ytzi9"
+      },
+      {
+        "delta_multiset_minus_distinct": 10214526,
+        "distinct": 415480798,
+        "multiset": 425695324,
+        "owner": "HXXuuUnhpfBEDeLMSajR1Wg9WXPKLKb4Rcv1tR5HDguw"
+      },
+      {
+        "delta_multiset_minus_distinct": 8089392,
+        "distinct": -2116021787,
+        "multiset": -2107932395,
+        "owner": "7HkzG4LYyCJSrD3gopPQv3VVzQQKbHBZcm9fbjj5fuaH"
+      },
+      {
+        "delta_multiset_minus_distinct": 4936776,
+        "distinct": -4500722230,
+        "multiset": -4495785454,
+        "owner": "DnjuFBMjFUJXtLBzCfP5xc9E3C4BKvWdvB32DnyXPKUQ"
+      },
+      {
+        "delta_multiset_minus_distinct": 3633520,
+        "distinct": 33626753,
+        "multiset": 37260273,
+        "owner": "3VU4AWqLEEM6TZmQAVznrgFcfzxP1doM2D3k5ESPQ54c"
+      },
+      {
+        "delta_multiset_minus_distinct": 3244705,
+        "distinct": 263997612,
+        "multiset": 267242317,
+        "owner": "2oMoNPHCbgT31NuiNXDFC7v4k5NHu2fwPiYZSmMdqk74"
+      },
+      {
+        "delta_multiset_minus_distinct": 3085705,
+        "distinct": -15065098,
+        "multiset": -11979393,
+        "owner": "24woAthsjj2BWiTKWAUYh8FMfnSH81gpAv9QcfAPDeDw"
+      },
+      {
+        "delta_multiset_minus_distinct": 2996992,
+        "distinct": 644833,
+        "multiset": 3641825,
+        "owner": "AQuCYYjdPtuD8k9Zhjmbfy8LWK2c6ydUvqU7oFgsxuoH"
+      },
+      {
+        "delta_multiset_minus_distinct": 2274025,
+        "distinct": 991488156,
+        "multiset": 993762181,
+        "owner": "7GF7nYq7Efxn92Q9oDoHB5RrNVk2sECThCfjHUrgSLmx"
+      },
+      {
+        "delta_multiset_minus_distinct": 1982318,
+        "distinct": -15368713685,
+        "multiset": -15366731367,
+        "owner": "j1oAbxxiDUWvoHxEDhWE7THLjEkDQW2cSHYn2vttxTF"
+      },
+      {
+        "delta_multiset_minus_distinct": 1798267,
+        "distinct": -555642169,
+        "multiset": -553843902,
+        "owner": "9B5g1rcCw7anvu8uqV7tBazeridindu2zsiKbwcioCJh"
+      },
+      {
+        "delta_multiset_minus_distinct": 1608125,
+        "distinct": 119172986,
+        "multiset": 120781111,
+        "owner": "8TN3RsWeD1anDfvybD9U5WBrWeU3mcTtE2C9GR93VhS6"
+      },
+      {
+        "delta_multiset_minus_distinct": 912574,
+        "distinct": 62268291,
+        "multiset": 63180865,
+        "owner": "65x5qNZYr6mfwQwnE6nQApVdmpX28zMYDybtwWDy4Wuy"
+      },
+      {
+        "delta_multiset_minus_distinct": 886825,
+        "distinct": 691927,
+        "multiset": 1578752,
+        "owner": "8boJUbVfb6CNdb31JjhLmko8c7ZmqJFmXSi2ZobB1NeR"
+      },
+      {
+        "delta_multiset_minus_distinct": 845787,
+        "distinct": -704096,
+        "multiset": 141691,
+        "owner": "BuQ3ZTMK625LGWCq6pthM9bVcr6uZvVVQxTZLrxZ4Z7J"
+      },
+      {
+        "delta_multiset_minus_distinct": 793209,
+        "distinct": -361605182,
+        "multiset": -360811973,
+        "owner": "2T5WLsT2QQPe9CfAfX93GhXjekXp5Lc4BayHVF9fE2UW"
+      },
+      {
+        "delta_multiset_minus_distinct": 612950,
+        "distinct": 32364234,
+        "multiset": 32977184,
+        "owner": "6PvK1noagaBjuWVhymPmHA2Lo9CBFdHAAwcbfeqR1R6Y"
+      },
+      {
+        "delta_multiset_minus_distinct": 560227,
+        "distinct": 455273733,
+        "multiset": 455833960,
+        "owner": "8uJc24vKsbrTG2ePCK5BDRiJbjX9AhSYPCAU46FGSjez"
+      },
+      {
+        "delta_multiset_minus_distinct": 379121,
+        "distinct": 459676523,
+        "multiset": 460055644,
+        "owner": "HarCtXMdW58z8FC32QhQtER19hJLTz8ZRnoSuRb8ejrD"
+      },
+      {
+        "delta_multiset_minus_distinct": -337329,
+        "distinct": -1190817443,
+        "multiset": -1191154772,
+        "owner": "FBKMYuTxaWh3oXuvBPYjWs1sQZrkhnciiTKeW7DB8KEd"
+      },
+      {
+        "delta_multiset_minus_distinct": 70216,
+        "distinct": -70216,
+        "multiset": 0,
+        "owner": "3eBxcd1ts7Tka1Csn13f8RqJ7EtvyfdtXAkBMC1Gi2NB"
+      },
+      {
+        "delta_multiset_minus_distinct": -70216,
+        "distinct": 10757872,
+        "multiset": 10687656,
+        "owner": "AcbSwJwuhGpi6LWYxTf5QAgrQDJLmKYQQEjiwSBdqT3p"
+      },
+      {
+        "delta_multiset_minus_distinct": 10798,
+        "distinct": -1053387860,
+        "multiset": -1053377062,
+        "owner": "8UgoPZAR8ZLoEmV6pJ8SZ6JKESP2X8nbnrZSdSgNtg1y"
+      },
+      {
+        "delta_multiset_minus_distinct": 10054,
+        "distinct": 16809293,
+        "multiset": 16819347,
+        "owner": "265q1W78nM7DgECq83HcepkvoNh84mqwbtUYYS16UJmt"
+      },
+      {
+        "delta_multiset_minus_distinct": -4526,
+        "distinct": -101543947,
+        "multiset": -101548473,
+        "owner": "3GBC5LRRdV5EdZggWUKyqkwydhQ6NBEdRRBZLxqRpKs1"
+      },
+      {
+        "delta_multiset_minus_distinct": 2921,
+        "distinct": 1936646,
+        "multiset": 1939567,
+        "owner": "FkdDHrM8j8psKbxuwjV1jBKCM2JGPygkj7WCX8sSCzNm"
+      },
+      {
+        "delta_multiset_minus_distinct": 997,
+        "distinct": 473817284,
+        "multiset": 473818281,
+        "owner": "D9GYt4W7VvteKCSvTgyjzuiBJyTy94Kmr6YiC9fbxGjW"
+      },
+      {
+        "delta_multiset_minus_distinct": 164,
+        "distinct": -44271,
+        "multiset": -44107,
+        "owner": "SUPErMoycPz71hmZXr78P7cXFYQhdpV39Roeoe2DxUC"
+      },
+      {
+        "delta_multiset_minus_distinct": 154,
+        "distinct": 43405420,
+        "multiset": 43405574,
+        "owner": "2QfBNK2WDwSLoUQRb1zAnp3KM12N9hQ8q6ApwUMnWW2T"
+      },
+      {
+        "delta_multiset_minus_distinct": 19,
+        "distinct": 6182269,
+        "multiset": 6182288,
+        "owner": "HWGoJ1HaMFUiDgfD7FVxMaYJAE2A5JjF7si6CgWSvRFQ"
+      },
+      {
+        "delta_multiset_minus_distinct": 14,
+        "distinct": 28719233,
+        "multiset": 28719247,
+        "owner": "ESuvjvsQtjuxC4XGsDeMhx8Wp5yjQcCFGncGhupcJbg8"
+      }
+    ]
+  },
+  "parts_integrity": {
+    "all_source_manifest_fields_match": true,
+    "part_count": 1348,
+    "row_count": 1775858,
+    "source_manifest_status": "PASS"
+  },
+  "read_only_verification": {
+    "changed_parts": [],
+    "parts_rehashed": 1348,
+    "snapshot_after": {
+      "sha256": "6dd0bb4c8061871586e0433eba1a9eb3e6dacc49f778a118a18ef5ca944d4abe",
+      "size": 2694062
+    },
+    "snapshot_before": {
+      "sha256": "6dd0bb4c8061871586e0433eba1a9eb3e6dacc49f778a118a18ef5ca944d4abe",
+      "size": 2694062
+    },
+    "source_manifest_after": {
+      "sha256": "bc72747223aa732f030c9badc982785745d8daba3c605b07abccbf2ac43c30b2",
+      "size": 568819
+    },
+    "source_manifest_before": {
+      "sha256": "bc72747223aa732f030c9badc982785745d8daba3c605b07abccbf2ac43c30b2",
+      "size": 568819
+    },
+    "verified": true
+  },
+  "schema": "arc-parts-oracle-report/v1",
+  "semantics": {
+    "expectation_verdict": "REFUTED_BY_FROZEN_PARTS_AND_SOURCE_MANIFEST",
+    "five_field_distinct_rows": 1764356,
+    "input_shape": "1348 frozen parts only",
+    "multiset_rows": 1775858,
+    "row_difference": 11502,
+    "source_manifest_count_matches": true,
+    "source_manifest_declared_duplicate_extra_row_count": 11502,
+    "workorder_expectation_matches": false,
+    "workorder_expected_row_difference": 124816
+  },
+  "status": "PASS"
+}

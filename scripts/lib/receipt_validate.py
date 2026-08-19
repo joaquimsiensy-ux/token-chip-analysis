@@ -78,7 +78,15 @@ def _input_file(shown, case_root):
     return path
 
 
-def validate_receipt(receipt, repo_root=None, case_root=None) -> list[str]:
+def validate_receipt(receipt, repo_root=None, case_root=None,
+                     allowed_producer_hashes=None) -> list[str]:
+    """Validate a receipt envelope and its repository-bound producer.
+
+    Callers must pass the registered hash set for the script named by
+    ``receipt.producer.path`` when using ``allowed_producer_hashes``.  This
+    function does not validate that script-to-set correspondence; the caller
+    owns that responsibility.
+    """
     errors = []
     root = Path(repo_root or REPOSITORY).resolve()
     if not isinstance(receipt, dict):
@@ -104,7 +112,11 @@ def validate_receipt(receipt, repo_root=None, case_root=None) -> list[str]:
     else:
         try:
             producer_path = _regular_file(producer.get("path"), root=root)
-            if producer.get("sha256") != _hash_file(producer_path):
+            current_hash = _hash_file(producer_path)
+            allowed_hashes = {current_hash}
+            if allowed_producer_hashes is not None:
+                allowed_hashes.update(allowed_producer_hashes)
+            if producer.get("sha256") not in allowed_hashes:
                 errors.append("producer hash mismatch")
         except (OSError, ValueError, TypeError) as exc:
             errors.append(f"producer invalid: {exc}")

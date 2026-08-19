@@ -12,8 +12,16 @@ import glob
 import hashlib
 import json
 import os
+import sys
 import tempfile
 from pathlib import Path
+
+import collector_history
+
+historical_script_hashes = collector_history.historical_script_hashes
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
+from anchor_point_contract import strict_json_loads
 
 
 SCHEMA = "evm-channels/v2"
@@ -94,6 +102,18 @@ def _sha256_file(path: Path):
     return h.hexdigest()
 
 
+def _allowed_current_script_hashes(name, protocol, path):
+    revoked = {
+        entry["sha256"]
+        for entry in collector_history.COLLECTOR_HISTORY
+        if entry["status"] == "REVOKED"
+    }
+    current = _sha256_file(Path(path))
+    if current in revoked:
+        raise ChannelsPreflightError("当前脚本版本已被吊销，禁止继续签发/校验")
+    return historical_script_hashes(name, protocol=protocol) | {current}
+
+
 def _sha256_prefix(path: Path, size: int):
     if isinstance(size, bool) or not isinstance(size, int) or size < 0 or size > path.stat().st_size:
         raise ChannelsPreflightError("collector segment prefix size 非法")
@@ -132,7 +152,7 @@ def _csv_collector_provenance(receipt_path, data_path, token, lo, hi):
     if rp.is_symlink() or not rp.is_file():
         raise ChannelsPreflightError(f"CSV 采集回执不存在或为符号链接: {rp}")
     try:
-        d = json.loads(rp.read_text(encoding="utf-8"))
+        d = strict_json_loads(rp.read_text(encoding="utf-8"))
     except Exception as exc:
         raise ChannelsPreflightError(f"CSV 采集回执不可读: {exc}") from exc
     if d.get("schema") != COLLECTOR_RECEIPT_SCHEMA or d.get("status") != "PASS":
@@ -141,10 +161,17 @@ def _csv_collector_provenance(receipt_path, data_path, token, lo, hi):
     if not isinstance(collector, dict):
         raise ChannelsPreflightError("CSV 采集回执缺 collector")
     name = collector.get("path")
+    collector_hash = collector.get("sha256")
+    if not isinstance(name, str) or not isinstance(collector_hash, str):
+        raise ChannelsPreflightError("CSV 采集回执未绑定当前受支持采集器")
     allowed = {x.name: x for x in (Path(__file__).with_name("fetch_hypersync.py"),
                                       Path(__file__).with_name("fetch_sqd_evm.py"))}
     expected_script = allowed.get(name)
-    if expected_script is None or collector.get("sha256") != _sha256_file(expected_script):
+    if expected_script is None:
+        raise ChannelsPreflightError("CSV 采集回执未绑定当前受支持采集器")
+    allowed_hashes = _allowed_current_script_hashes(
+        name, COLLECTOR_RECEIPT_SCHEMA, expected_script)
+    if collector_hash not in allowed_hashes:
         raise ChannelsPreflightError("CSV 采集回执未绑定当前受支持采集器")
     q = d.get("query")
     if not isinstance(q, dict) or str(q.get("token", "")).lower() != str(token).lower() \
@@ -192,43 +219,103 @@ def _csv_collector_provenance(receipt_path, data_path, token, lo, hi):
 
 
 def _v2_provenance(path, token, lo, hi):
-    """Revalidate every native done receipt and exact contiguous requested coverage."""
+    """Revalidate every native done receipt and exact contiguous requested coverage.
+
+    This consumer has no external URL anchor. URL truth is provided by the ensure-side
+    CLI anchor and exact channel-receipt comparison; here every done URL must equal the
+    immutable identity URL so the directory cannot prove itself with two identities.
+    """
     root = Path(path).resolve()
     identity_path = root / "capture_identity.json"
     if identity_path.is_symlink() or not identity_path.is_file():
         raise ChannelsPreflightError("v2 采集根目录缺不可变 capture_identity.json")
     try:
-        from fetch_hypersync_v2 import capture_identity, validate_done_manifest
-        identity_manifest = json.loads(identity_path.read_text(encoding="utf-8"))
+        from fetch_hypersync_v2 import (
+            IDENTITY_SCHEMA,
+            QUERY_SCHEMA,
+            RECOVERED_IDENTITY_SCHEMA,
+            SCRIPT_NAME,
+            _validate_script_actor,
+            capture_identity,
+            validate_capture_inventory,
+            validate_done_manifest,
+        )
+        identity_manifest = strict_json_loads(identity_path.read_text(encoding="utf-8"))
         first_url = identity_manifest.get("url") if isinstance(identity_manifest, dict) else None
-        if identity_manifest != capture_identity(token, first_url):
-            raise ValueError("capture_identity.json 与 token/url/query/collector 不一致")
+        expected = capture_identity(token, first_url)
+        if not isinstance(identity_manifest, dict):
+            raise ValueError("capture_identity.json 顶层必须是对象")
+        identity_schema = identity_manifest.get("schema")
+        if not isinstance(identity_schema, str):
+            raise ValueError("capture_identity.json schema 必须是字符串")
+        # v1 is a native lineage identity: collector is its issuer, not proof for each segment.
+        # v2 is an explicit recovery identity: recoverer replaces collector and lineage is unknown.
+        if identity_schema == IDENTITY_SCHEMA:
+            actual_collector = identity_manifest.get("collector")
+            expected_collector = expected["collector"]
+            allowed_collector_hashes = _allowed_current_script_hashes(
+                SCRIPT_NAME, IDENTITY_SCHEMA, Path(__file__).with_name(SCRIPT_NAME))
+            actual_path = (actual_collector.get("path")
+                           if isinstance(actual_collector, dict) else None)
+            actual_hash = (actual_collector.get("sha256")
+                           if isinstance(actual_collector, dict) else None)
+            if isinstance(actual_path, str) and isinstance(actual_hash, str) and \
+                    actual_path == SCRIPT_NAME and actual_hash in allowed_collector_hashes:
+                expected = dict(expected, collector={
+                    "path": actual_path,
+                    "sha256": actual_hash,
+                })
+        elif identity_schema == RECOVERED_IDENTITY_SCHEMA:
+            recoverer = identity_manifest.get("recoverer")
+            recovery_time = identity_manifest.get("recovery_time")
+            if identity_manifest.get("recovered") is True \
+                    and identity_manifest.get("lineage") == "unknown" \
+                    and isinstance(recovery_time, str) and recovery_time:
+                _validate_script_actor(recoverer, RECOVERED_IDENTITY_SCHEMA, "recoverer")
+                expected = {
+                    "schema": RECOVERED_IDENTITY_SCHEMA,
+                    "token": token.lower(),
+                    "url": first_url,
+                    "query_schema": QUERY_SCHEMA,
+                    "network": expected["network"],
+                    "recovered": True,
+                    "lineage": "unknown",
+                    "recovery_time": recovery_time,
+                    "recoverer": recoverer,
+                }
+        else:
+            raise ValueError(f"不认识的 capture identity schema: {identity_schema!r}")
+        if identity_manifest != expected:
+            raise ValueError("capture_identity.json 与 token/url/query/签发形态不一致")
+        done_paths = validate_capture_inventory(root, identity_required=True)
     except Exception as exc:
         raise ChannelsPreflightError(f"v2 capture identity 校验失败: {exc}") from exc
-    done_paths = sorted(root.glob("run_*/done.json"))
-    run_dirs = {p.parent for p in root.glob("run_*/logs.parquet")} \
-        | {p.parent for p in root.glob("run_*/blocks.parquet")}
-    if not done_paths or run_dirs != {p.parent for p in done_paths}:
-        raise ChannelsPreflightError("v2 采集根目录的 run 与 done.json 不完整对应")
     intervals, receipts, identity = [], [], None
     for done_path in done_paths:
         try:
-            raw = json.loads(done_path.read_text(encoding="utf-8"))
+            raw = strict_json_loads(done_path.read_text(encoding="utf-8"))
             current_identity = (str(raw.get("token", "")).lower(), raw.get("url"),
                                 raw.get("query_schema"))
+            if raw.get("url") != first_url:
+                raise ValueError("done url 与 capture_identity.json url 不一致")
             if identity is None:
                 identity = current_identity
             if current_identity != identity or current_identity[0] != str(token).lower():
                 raise ValueError("done token/url/query_schema 混入不同 capture identity")
             frm, end = int(raw["from_block"]), int(raw["to_block"])
-            validate_done_manifest(done_path, int(raw["capture_from"]), end,
-                                   token, raw["url"])
+            validated = validate_done_manifest(done_path, int(raw["capture_from"]), end,
+                                               token, raw["url"])
         except (KeyError, TypeError, ValueError) as exc:
             raise ChannelsPreflightError(f"v2 done 回执校验失败 {done_path}: {exc}") from exc
         intervals.append((frm, end))
+        collector = validated.get("collector")
         receipts.append({"path": str(done_path.relative_to(root)),
                          "sha256": _sha256_file(done_path),
-                         "from_block": frm, "to_block": end})
+                         "from_block": frm, "to_block": end,
+                         "collector": ("UNKNOWN_LEGACY" if collector is None
+                                       else "SELF_REPORTED"),
+                         "collector_sha256": (None if collector is None
+                                              else collector["sha256"])})
     intervals.sort()
     if intervals[0][0] != lo or intervals[-1][1] != hi:
         raise ChannelsPreflightError(
@@ -239,7 +326,10 @@ def _v2_provenance(path, token, lo, hi):
     return {"kind": "hypersync-v2-native",
             "identity_manifest": {"path": "capture_identity.json",
                                   "sha256": _sha256_file(identity_path)}, "identity": {
-                "token": identity[0], "provider_url": identity[1], "query_schema": identity[2]},
+                "token": identity[0], "provider_url": identity[1], "query_schema": identity[2],
+                "identity_schema": identity_schema,
+                "recovered": identity_schema == RECOVERED_IDENTITY_SCHEMA,
+                "lineage": ("unknown" if identity_schema == RECOVERED_IDENTITY_SCHEMA else None)},
             "completion": {"reason": "contiguous_done_receipts", "lo": lo, "hi": hi},
             "done_receipts": receipts}
 

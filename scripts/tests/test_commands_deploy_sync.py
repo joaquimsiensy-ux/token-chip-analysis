@@ -17,6 +17,7 @@ DEPLOYED = ACCOUNT_HOME / ".claude" / "commands"
 EXPECTED = {
     "token-analyze-1.md",
     "token-analyze-2.md",
+    "token-analyze-3.md",
     "token-analyze.md",
 }
 RETIRED = {"collect-data.md", "token-easy-analysis.md", "token-update.md"}

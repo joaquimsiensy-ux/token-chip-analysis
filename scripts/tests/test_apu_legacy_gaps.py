@@ -182,6 +182,8 @@ def ticket2_prehistoric_v2_migration():
     """工单二三件套：太古 done 官方迁移→receipt→preflight→真实引擎全链。"""
     refresh = lambda outdir: run([EVM / "fetch_hypersync_v2.py",
                                   "--refresh-manifests", "--outdir", outdir])
+    recover = lambda outdir: run([EVM / "fetch_hypersync_v2.py",
+                                  "--recover-identity", "--outdir", outdir])
     with tempfile.TemporaryDirectory() as raw_tmp:
         tmp = Path(raw_tmp).resolve()
         v2root = tmp / "v2"
@@ -195,23 +197,28 @@ def ticket2_prehistoric_v2_migration():
         _make_prehistoric_v2_run(v2root, 100, rows, blocks)
         expected_to = 151  # done.next_block
 
-        # a. 原反例：官方迁移入口必须接住无 schema 的太古 done
+        # a. 先显式恢复 unknown-lineage identity，再由官方迁移入口接住太古 done。
+        recovered = recover(v2root)
+        check("t2.太古目录显式恢复 identity 成功", recovered.returncode == 0,
+              recovered.stdout[-200:] + recovered.stderr[-200:])
         p = refresh(v2root)
         check("t2.太古 done 官方迁移成功",
               p.returncode == 0 and "upgraded=1" in p.stdout,
               f"exit={p.returncode} out={p.stdout[-200:]} err={p.stderr[-200:]}")
         done_after = json.load(open(v2root / "run_100" / "done.json"))
         check("t2.迁移后 done 升为现行 schema 且边界重建",
-              done_after.get("schema") == "hypersync-v2-done/v3"
+              done_after.get("schema") == "hypersync-v2-done/v4"
               and done_after.get("capture_from") == 100
               and done_after.get("to_block") == expected_to
               and done_after.get("refreshed_from_schema") == "pre-schema-v1"
+              and done_after.get("collector") is None
+              and done_after.get("collector_provenance") == "legacy-unattributed"
               and isinstance(done_after.get("files"), dict),
               f"done={ {k: done_after.get(k) for k in ('schema', 'capture_from', 'to_block')} }")
-        check("t2.迁移补建 capture_identity.json",
+        check("t2.恢复签发 capture_identity.json",
               (v2root / "capture_identity.json").is_file())
-        check("t2.迁移幂等（重跑 already_v3）",
-              "already_v3=1" in refresh(v2root).stdout)
+        check("t2.迁移幂等（重跑 already_v4）",
+              "already_v4=1" in refresh(v2root).stdout)
 
         # 连线：官方 receipt 生成器 → preflight → 真实引擎（工单一 stream 同族深度）
         receipt_out = tmp / "v2.receipt.json"
@@ -251,9 +258,9 @@ def ticket2_prehistoric_v2_migration():
         d = json.load(open(done_path))
         del d["next_block"]
         json.dump(d, open(done_path, "w"))
-        p = refresh(v2root)
-        check("t2.缺 next_block 的太古 done 拒绝迁移",
-              p.returncode != 0 and "未改写任何 done.json" in p.stderr,
+        p = recover(v2root)
+        check("t2.缺 next_block 的太古 done 拒绝恢复",
+              p.returncode != 0 and "边界" in p.stderr,
               f"exit={p.returncode} err={p.stderr[-200:]}")
 
     # c. 失败分支（两阶段事务）：一个 run 数据越界 → 全拒且好 run 的 done 不被改写
@@ -270,8 +277,8 @@ def ticket2_prehistoric_v2_migration():
                                    _data_value(10**20), _topic_addr(ADDR_A), _topic_addr(ADDR_B))],
                                  [(300, "0x65e71111")], done_extra={"next_block": 251})
         good_before = (v2root / "run_100" / "done.json").read_bytes()
-        p = refresh(v2root)
-        check("t2.越界 run 使迁移整体拒绝（fail-closed）", p.returncode != 0,
+        p = recover(v2root)
+        check("t2.越界 run 使恢复整体拒绝（fail-closed）", p.returncode != 0,
               f"exit={p.returncode} out={p.stdout[-150:]}")
         check("t2.两阶段事务：好 run 的 done 未被改写",
               (v2root / "run_100" / "done.json").read_bytes() == good_before)

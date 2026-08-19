@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """SQD 转账边重放引擎（所有 SQD 链分析的下游标准件）。
 
-读 fetch_sqd_transfers_v2.py 落盘的 data/soltx-<sha256(原始mint)>.jsonl.gz，边格式
-[ts, slot, from_owner, to_owner, amount_raw]，ZERO(0x00…00)=铸造/销毁哨兵。
+读 fetch_sqd_transfers_v2.py 落盘的 data/soltx-<sha256(原始mint)>.jsonl.gz。正式边格式为
+[ts, slot, tx_index, instr_index, from_owner, to_owner, amount_raw]；旧 5 元组只允许通过
+--legacy-sol5 做只读诊断，不能 reconcile/evolution。ZERO(0x00…00)=铸造/销毁哨兵。
 
 子命令：
   reconcile             全量重放 → 供给闭合 + 全 owner 快照对账（机器 receipt；阶段2硬关卡）
@@ -23,7 +24,7 @@ evolution 的阵营定义读 --camps camps.json：{"阵营名": [完整地址...
 发射时刻默认取首条铸造边 ts，--launch-ts 可覆盖。
 来源：PUB(Solana) 分析 2026-07-14 收编（replay+camp_evolution 合并参数化）。
 """
-import argparse, gzip, hashlib, json, os, re, sys
+import argparse, gzip, hashlib, io, json, os, re, sys
 from collections import defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
@@ -34,6 +35,11 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "labels"))
 from camp_spec import validate_camp_spec
 from supply_truth_gate import _reject_constant
+from spl_edge_core import (EDGE_SCHEMA_FIELDS, EDGE_SEMANTICS,
+                           INSTR_INDEX_TX_NET, ORDER_GRANULARITY_TX)
+from sqd_cache_identity import (SQD_CACHE_PROTOCOL, SQD_COLLECTOR_ID,
+                                SQD_COLLECTOR_SCRIPT,
+                                validate_cache_meta as _validate_cache_meta)
 try:
     from labels_resolver import LabelResolver, append_misses
 except Exception:
@@ -76,8 +82,6 @@ def _flush_sealed():
 
 ZERO = "0x" + "0" * 40
 SOLANA_MINT_RE = re.compile(r"[1-9A-HJ-NP-Za-km-z]{32,44}")
-
-
 def _json_loads(value, label="JSON"):
     try:
         return json.loads(value, parse_constant=_reject_constant)
@@ -130,7 +134,42 @@ def _atomic_json(path, value):
     os.replace(tmp, path)
 
 
-def load_edges(mint):
+def _valid_nonnegative_int(value):
+    return isinstance(value, int) and not isinstance(value, bool) and value >= 0
+
+
+def _validate_formal_edge(row, *, line_no=None):
+    where = f"第 {line_no} 行" if line_no is not None else "边"
+    if not isinstance(row, (list, tuple)) or len(row) != len(EDGE_SCHEMA_FIELDS):
+        raise ValueError(f"{where}必须是 {list(EDGE_SCHEMA_FIELDS)} 七元组")
+    ts, slot, tx_index, instr_index, src, dst, amt = row
+    if not all(_valid_nonnegative_int(value) for value in (ts, slot, tx_index)):
+        raise ValueError(f"{where} ts/slot/tx_index 必须为非布尔非负整数")
+    if (not isinstance(instr_index, int) or isinstance(instr_index, bool)
+            or instr_index != INSTR_INDEX_TX_NET):
+        raise ValueError(f"{where} transaction-net instr_index 必须为 {INSTR_INDEX_TX_NET}")
+    if not isinstance(src, str) or not src or not isinstance(dst, str) or not dst:
+        raise ValueError(f"{where} from/to 必须为非空字符串")
+    if not isinstance(amt, int) or isinstance(amt, bool) or amt <= 0:
+        raise ValueError(f"{where} amount_raw 必须为正整数")
+    return [ts, slot, tx_index, instr_index, src, dst, amt]
+
+
+def _normalize_legacy_edge(row, *, line_no):
+    if not isinstance(row, (list, tuple)) or len(row) != 5:
+        raise ValueError(f"legacy-sol5 第 {line_no} 行必须是 5 元组，混合行宽拒绝")
+    ts, slot, src, dst, amt = row
+    if not _valid_nonnegative_int(ts) or not _valid_nonnegative_int(slot):
+        raise ValueError(f"legacy-sol5 第 {line_no} 行 ts/slot 必须为非布尔非负整数")
+    if not isinstance(src, str) or not src or not isinstance(dst, str) or not dst:
+        raise ValueError(f"legacy-sol5 第 {line_no} 行 from/to 必须为非空字符串")
+    if not isinstance(amt, int) or isinstance(amt, bool) or amt <= 0:
+        raise ValueError(f"legacy-sol5 第 {line_no} 行 amount_raw 必须为正整数")
+    # None 明示旧格式没有交易/指令身份；只有显式 legacy 路径会产生这类内存行。
+    return [ts, slot, None, None, src, dst, amt]
+
+
+def load_edges(mint, *, legacy_sol5=False):
     _validate_mint(mint)
     key = hashlib.sha256(mint.encode("utf-8")).hexdigest()
     f = Path(f"data/soltx-{key}.jsonl.gz")
@@ -138,26 +177,63 @@ def load_edges(mint):
     if not meta_f.exists():
         sys.exit(f"缓存 meta 不存在：{meta_f}")
     meta = _json_loads(meta_f.read_text(), "soltx meta")
-    if meta.get("schema") != "sqd-solana-cache/v3" or meta.get("mint") != mint \
-            or meta.get("collection_upper_slot") is None:
-        sys.exit("SQD 缓存 meta 未绑定原始 mint/endpoint/采集上界，拒绝重放")
+    try:
+        _validate_cache_meta(meta, mint, legacy_sol5=legacy_sol5)
+    except ValueError as exc:
+        raise SystemExit(str(exc)) from exc
     if f.is_symlink():
         sys.exit(f"边文件是符号链接，拒绝重放：{f}")
     if not f.exists():
         sys.exit(f"边文件不存在：{f}（先跑 fetch_sqd_transfers_v2.py）")
     edges = []
     with gzip.open(f, "rt") as fh:
-        for line in fh:
+        for line_no, line in enumerate(fh, 1):
             if line.strip():
-                edges.append(_json_loads(line, "soltx edge row"))
-    edges.sort(key=lambda e: (e[1], e[0]))  # slot 序
+                row = _json_loads(line, f"soltx edge row 第 {line_no} 行")
+                if legacy_sol5:
+                    edges.append(_normalize_legacy_edge(row, line_no=line_no))
+                else:
+                    edges.append(_validate_formal_edge(row, line_no=line_no))
+    if legacy_sol5:
+        edges.sort(key=lambda e: (e[1], e[0]))
+    else:
+        edges.sort(key=lambda e: (e[1], e[2], e[3], e[0]))
     return edges, meta_f
+
+
+def _read_frozen_formal_edges(path):
+    """Read one immutable byte image for both physical identity and formal replay."""
+    path = Path(path)
+    if path.is_symlink():
+        raise ValueError(f"SQD 边文件是符号链接，拒绝 reconcile: {path}")
+    if not path.is_file():
+        raise ValueError(f"SQD 边文件缺失: {path}")
+    try:
+        frozen = path.read_bytes()
+    except OSError as exc:
+        raise ValueError(f"SQD 边文件读取失败: {path}: {exc}") from exc
+    if not frozen:
+        raise ValueError(f"SQD 边文件为空: {path}")
+    edges = []
+    try:
+        with gzip.open(io.BytesIO(frozen), "rt", encoding="utf-8") as fh:
+            for line_no, line in enumerate(fh, 1):
+                if not line.strip():
+                    continue
+                row = _json_loads(line, f"soltx edge row 第 {line_no} 行")
+                edges.append(_validate_formal_edge(row, line_no=line_no))
+    except (OSError, EOFError, UnicodeDecodeError) as exc:
+        raise ValueError(f"SQD 边文件 gzip/UTF-8 非法: {path}: {exc}") from exc
+    if not edges:
+        raise ValueError("边文件为空，无法生成正式 reconcile 收据")
+    edges.sort(key=lambda edge: (edge[1], edge[2], edge[3], edge[0]))
+    return edges, len(frozen), hashlib.sha256(frozen).hexdigest()
 
 
 def replay(edges):
     bal = defaultdict(int)
     minted = burned = 0
-    for ts, slot, src, dst, amt in edges:
+    for ts, slot, _tx_index, _instr_index, src, dst, amt in edges:
         if src == ZERO:
             minted += amt
         else:
@@ -176,7 +252,7 @@ def fmt_ts(ts):
 def launch_ts_of(edges, override):
     if override:
         return override
-    for ts, slot, src, dst, amt in edges:
+    for ts, slot, _tx_index, _instr_index, src, dst, amt in edges:
         if src == ZERO:
             return ts
     return edges[0][0]
@@ -189,14 +265,7 @@ def _replay_with_evidence(edges):
     digest = hashlib.sha256()
     first = last = None
     for edge in edges:
-        if not isinstance(edge, (list, tuple)) or len(edge) != 5:
-            raise ValueError("边必须是 [ts,slot,src,dst,amount_raw] 五元组")
-        ts, slot, src, dst, amt = edge
-        if isinstance(ts, bool) or not isinstance(ts, int) \
-                or isinstance(slot, bool) or not isinstance(slot, int) \
-                or isinstance(amt, bool) or not isinstance(amt, int) or amt < 0 \
-                or not isinstance(src, str) or not isinstance(dst, str):
-            raise ValueError("边 ts/slot/amount_raw 必须为合法整数且地址必须为字符串")
+        ts, slot, _tx_index, _instr_index, src, dst, amt = _validate_formal_edge(edge)
         digest.update((json.dumps(list(edge), ensure_ascii=False) + "\n").encode("utf-8"))
         point = {"slot": slot, "ts": ts}
         if first is None:
@@ -226,32 +295,22 @@ def cmd_reconcile(edges, dec, *, mint, cache_meta_path):
     cache_meta_path = Path(cache_meta_path)
     cache_meta = _json_loads(cache_meta_path.read_text(encoding="utf-8"),
                              "SQD 缓存 meta")
-    frm = cache_meta.get("from_slot")
-    to = cache_meta.get("collection_upper_slot")
-    if cache_meta.get("schema") != "sqd-solana-cache/v3" \
-            or cache_meta.get("mint") != mint \
-            or isinstance(frm, bool) or not isinstance(frm, int) or frm < 0 \
-            or isinstance(to, bool) or not isinstance(to, int) or to < frm:
-        raise ValueError("SQD 缓存 meta 缺合法原始 mint/from_slot/collection_upper_slot")
-    bal, minted, burned, edge_digest, first, last = _replay_with_evidence(edges)
-    # 将本次真实遍历得到的逻辑摘要回填缓存 meta，消费侧可独立对锚收据字段；
-    # 已有值若不等即说明 meta 与边文件撕裂，拒绝覆盖掩盖。
-    old_digest = cache_meta.get("edge_logical_sha256")
-    old_count = cache_meta.get("edge_rows")
-    if old_digest is not None and old_digest != edge_digest:
-        raise ValueError("SQD 缓存 meta.edge_logical_sha256 与实际边重放摘要不一致")
-    if old_count is not None and old_count != len(edges):
-        raise ValueError("SQD 缓存 meta.edge_rows 与实际边数不一致")
+    frm, to = _validate_cache_meta(cache_meta, mint, legacy_sol5=False)
     edge_key = hashlib.sha256(mint.encode("utf-8")).hexdigest()
     edge_path = cache_meta_path.with_name(f"soltx-{edge_key}.jsonl.gz")
-    if edge_path.is_symlink():
-        raise ValueError(f"SQD 边文件是符号链接，拒绝 reconcile: {edge_path}")
-    if not edge_path.is_file() or edge_path.stat().st_size <= 0:
-        raise ValueError(f"SQD 边文件缺失或为空: {edge_path}")
-    cache_meta["edge_logical_sha256"] = edge_digest
-    cache_meta["edge_rows"] = len(edges)
-    cache_meta["edge_file_size"] = edge_path.stat().st_size
-    cache_meta["edge_file_sha256"] = sha256_file(edge_path)
+    frozen_edges, edge_file_size, edge_file_sha256 = _read_frozen_formal_edges(edge_path)
+    supplied_edges = [_validate_formal_edge(edge) for edge in edges]
+    if supplied_edges != frozen_edges:
+        raise ValueError("reconcile 内存边与冻结边文件不一致")
+    edges = frozen_edges
+    bal, minted, burned, edge_digest, first, last = _replay_with_evidence(edges)
+    # collector 已绑定逻辑摘要与行数；reconcile 只重算对表，绝不首次建立证据。
+    if cache_meta["edge_logical_sha256"] != edge_digest:
+        raise ValueError("SQD 缓存 meta.edge_logical_sha256 与实际边重放摘要不一致")
+    if cache_meta["edge_rows"] != len(edges):
+        raise ValueError("SQD 缓存 meta.edge_rows 与实际边数不一致")
+    cache_meta["edge_file_size"] = edge_file_size
+    cache_meta["edge_file_sha256"] = edge_file_sha256
     _atomic_json(cache_meta_path, cache_meta)
     print(f"边数={len(edges):,}  时间范围 {fmt_ts(edges[0][0])} → {fmt_ts(edges[-1][0])}")
     print(f"铸造={minted:,}  销毁={burned:,}  净={minted-burned:,}")
@@ -317,10 +376,10 @@ def cmd_reconcile(edges, dec, *, mint, cache_meta_path):
 
 
 def cmd_trace(edges, addr, dec, limit):
-    rows = [e for e in edges if e[2] == addr or e[3] == addr]
+    rows = [e for e in edges if e[4] == addr or e[5] == addr]
     print(f"{addr} 相关边 {len(rows)} 条（显示前 {limit}）")
     net = 0
-    for ts, slot, src, dst, amt in rows[:limit]:
+    for ts, slot, _tx_index, _instr_index, src, dst, amt in rows[:limit]:
         d = "IN " if dst == addr else "OUT"
         other = src if dst == addr else dst
         net += amt if dst == addr else -amt
@@ -349,7 +408,7 @@ def cmd_top(edges, dec, n):
 def cmd_sniper(edges, dec, minutes, launch_ts):
     cutoff = launch_ts + minutes * 60
     first_in = {}
-    for ts, slot, src, dst, amt in edges:
+    for ts, slot, _tx_index, _instr_index, src, dst, amt in edges:
         if dst != ZERO and dst not in first_in:
             first_in[dst] = (ts, amt, src)
     snipers = {a: v for a, v in first_in.items() if v[0] <= cutoff}
@@ -359,14 +418,14 @@ def cmd_sniper(edges, dec, minutes, launch_ts):
 
 
 def cmd_mints(edges, dec):
-    total = sum(a for _, _, s, _, a in edges if s == ZERO) or 1
+    total = sum(a for _, _, _, _, s, _, a in edges if s == ZERO) or 1
     print("铸造边（src=ZERO）全清单：")
-    for ts, slot, src, dst, amt in edges:
+    for ts, slot, _tx_index, _instr_index, src, dst, amt in edges:
         if src == ZERO:
             print(f"  {fmt_ts(ts)} slot={slot}  → {dst}  {amt/dec:,.0f}（{amt/total*100:.2f}% 铸造量）")
     print("销毁边（dst=ZERO）全清单：")
     n = 0
-    for ts, slot, src, dst, amt in edges:
+    for ts, slot, _tx_index, _instr_index, src, dst, amt in edges:
         if dst == ZERO:
             n += 1
             if n <= 30:
@@ -401,7 +460,7 @@ def cmd_evolution(edges, dec, camps_file, stake_pools):
     # 第一遍：首30分钟狙击者（未列入阵营定义的首买地址）
     cutoff = launch_ts + 30 * 60
     first_in = {}
-    for ts, slot, src, dst, amt in edges:
+    for ts, slot, _tx_index, _instr_index, src, dst, amt in edges:
         if dst != ZERO and dst not in first_in:
             first_in[dst] = ts
     snipers = {a for a, ts in first_in.items()
@@ -435,7 +494,7 @@ def cmd_evolution(edges, dec, camps_file, stake_pools):
         row["锁仓/销毁"] = round(burned / supply * 100, 4) if supply > 0 else 0.0
         series.append(row)
 
-    for ts, slot, src, dst, amt in edges:
+    for ts, slot, _tx_index, _instr_index, src, dst, amt in edges:
         h = ts - ts % 3600
         if cur_hour is not None and h != cur_hour:
             snapshot(cur_hour)
@@ -501,10 +560,13 @@ def main():
     ap.add_argument("--stake-pool", action="append", default=[],
                     help="质押/托管池 owner 地址（可多次；也可 config.json:stake_pools）")
     ap.add_argument("--no-labels", action="store_true", help="关闭批量标签库兜底")
+    ap.add_argument("--legacy-sol5", action="store_true",
+                    help="显式读取旧 5 元组做 non-formal/order-ambiguous 只读诊断")
     args = ap.parse_args()
     try:
         global RESV
-        if LabelResolver is not None and "--no-labels" not in sys.argv:
+        if (LabelResolver is not None and "--no-labels" not in sys.argv
+                and not args.legacy_sol5):
             RESV = LabelResolver("sol")
             RESV.warn_if_degraded()     # 降级=显式 stderr 警告（"没命中"≠"没加载"，v4）
             if blind_serial_env():
@@ -514,7 +576,13 @@ def main():
             print("[labels][degraded_mode] labels_resolver 导入失败——本次运行无标签兜底", file=sys.stderr)
         mint = resolve_mint(args.mint)
         dec = 10 ** args.decimals
-        edges, cache_meta_path = load_edges(mint)
+        edges, cache_meta_path = load_edges(mint, legacy_sol5=args.legacy_sol5)
+        if args.legacy_sol5:
+            print("[legacy-sol5] non_formal=true order_ambiguous=true")
+            if args.cmd in {"reconcile", "evolution"}:
+                print("BLOCK: legacy-sol5 禁止 reconcile/evolution，拒绝生成正式链产物",
+                      file=sys.stderr)
+                return 2
         stake_pools = set(args.stake_pool)
         cfg = Path("config.json")
         if cfg.exists():

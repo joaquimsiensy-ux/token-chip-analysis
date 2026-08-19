@@ -39,6 +39,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
 from proxy_config import resolve_proxy
+from spl_edge_core import soltx_cache_paths, validate_edge_row
 
 DEF_RPC = "https://api.mainnet-beta.solana.com"
 DEF_PROXY = None
@@ -51,11 +52,13 @@ def log(msg):
     print(f"[audit] {msg}", file=sys.stderr, flush=True)
 
 
-def bail_invalid(out_path, mint, edges_path, reason):
+def bail_invalid(out_path, mint, edges_path, reason, *, legacy_sol5=False):
     """F-D8：早退路径也必须落带 status 的报告——"无报告"会让 status 契约的四态无从分辨。
     精简报告只含身份与失败原因（样本统计彼时尚不存在，不编造）。"""
     report = {"mint": mint, "edges_file": str(edges_path),
               "status": "INVALID_SAMPLE", "exit_code": 1,
+              "non_formal": bool(legacy_sol5),
+              "order_ambiguous": bool(legacy_sol5),
               "invalid_reasons": [reason],
               "generated": time.strftime("%Y-%m-%d %H:%M:%S")}
     try:
@@ -93,15 +96,29 @@ class Rpc:
         return None
 
 
-def load_edge_index(path):
+def load_edge_index(path, *, legacy_sol5=False):
     """边集 → (owner→slot集合 索引, slot 区间)。from/to 都记（ZERO 哨兵除外）。"""
     idx, lo, hi, n = {}, None, None, 0
     with gzip.open(path, "rt") as f:
-        for line in f:
-            try:
-                ts, slot, frm, to, amt = json.loads(line)
-            except Exception:
+        for line_no, line in enumerate(f, 1):
+            if not line.strip():
                 continue
+            try:
+                row = json.loads(line)
+                if legacy_sol5:
+                    if not isinstance(row, list) or len(row) != 5:
+                        raise ValueError("legacy-sol5 必须为 5 元组，混合行宽拒绝")
+                    ts, slot, frm, to, amt = row
+                    if (not isinstance(ts, int) or isinstance(ts, bool) or ts < 0
+                            or not isinstance(slot, int) or isinstance(slot, bool) or slot < 0
+                            or not isinstance(frm, str) or not frm
+                            or not isinstance(to, str) or not to
+                            or not isinstance(amt, int) or isinstance(amt, bool) or amt <= 0):
+                        raise ValueError("legacy-sol5 字段类型非法")
+                else:
+                    ts, slot, _tx_index, _instr_index, frm, to, amt = validate_edge_row(row)
+            except (json.JSONDecodeError, TypeError, ValueError) as exc:
+                raise ValueError(f"边文件 {path} 第 {line_no} 行非法: {exc}") from exc
             n += 1
             lo = slot if lo is None or slot < lo else lo
             hi = slot if hi is None or slot > hi else hi
@@ -226,7 +243,9 @@ def account_deltas(tx, token_account, mint):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("mint")
-    ap.add_argument("--edges", default=None, help="SQD 边集 jsonl.gz（默认 data/soltx-<mint小写>.jsonl.gz）")
+    ap.add_argument("--edges", default=None, help="SQD 边集 jsonl.gz（默认共享 sha256(mint) 路径）")
+    ap.add_argument("--legacy-sol5", action="store_true",
+                    help="显式审计旧 5 元组；报告强制 non-formal/order-ambiguous")
     ap.add_argument("--out", default=None, help="审计报告 JSON 输出路径")
     ap.add_argument("--mode", choices=["auto", "sigs", "blocks"], default="auto")
     ap.add_argument("--block-samples", type=int, default=15, help="blocks 模式抽块数")
@@ -248,13 +267,23 @@ def main():
     random.seed(args.seed)
     wall_dl = T0 + args.wall_min * 60
     mint = args.mint
-    edges_path = Path(args.edges or f"data/soltx-{mint.lower()}.jsonl.gz")
+    default_edges, _default_meta, _default_parts = soltx_cache_paths(mint, Path("data"))
+    edges_path = Path(args.edges) if args.edges else default_edges
     out_path = Path(args.out or f"data/closed_audit-{mint.lower()}.json")
     if not edges_path.exists():
-        bail_invalid(out_path, mint, edges_path, f"边集不存在：{edges_path}")
+        bail_invalid(out_path, mint, edges_path, f"边集不存在：{edges_path}",
+                     legacy_sol5=args.legacy_sol5)
 
     rpc = Rpc(args.rpc, args.proxy, args.interval)
-    idx, lo, hi, n_edges = load_edge_index(edges_path)
+    try:
+        idx, lo, hi, n_edges = load_edge_index(
+            edges_path, legacy_sol5=args.legacy_sol5)
+    except (OSError, ValueError) as exc:
+        bail_invalid(out_path, mint, edges_path, str(exc),
+                     legacy_sol5=args.legacy_sol5)
+    if not n_edges or lo is None or hi is None:
+        bail_invalid(out_path, mint, edges_path, "边文件为空，无法抽样审计",
+                     legacy_sol5=args.legacy_sol5)
     log(f"边集 {n_edges} 条，slot 区间 [{lo}, {hi}]，owner {len(idx)} 个")
 
     # 样本发现：sigs / blocks / auto（3 页探路未进区间即切 blocks）
@@ -273,7 +302,8 @@ def main():
                                                    stop_below=lo)
         wall_flag["hit"] = wall_flag["hit"] or wall_hit
         if not sigs:
-            bail_invalid(out_path, mint, edges_path, "mint 签名史为空/拉取失败")
+            bail_invalid(out_path, mint, edges_path, "mint 签名史为空/拉取失败",
+                         legacy_sol5=args.legacy_sol5)
         in_range = [s for s in sigs if lo <= s[1] <= hi]
         sig_stat = {"total": len(sigs), "complete": complete, "in_range": len(in_range)}
         log(f"mint 签名史 {len(sigs)} 条（complete={complete}），边集区间内 {len(in_range)} 条")
@@ -299,7 +329,8 @@ def main():
                                          args.sample_inits, wall_dl, wall_flag)
     if not inits:
         bail_invalid(out_path, mint, edges_path,
-                     "抽样未命中任何初始化事件（样本过小或池全为非初始化笔）")
+                     "抽样未命中任何初始化事件（样本过小或池全为非初始化笔）",
+                     legacy_sol5=args.legacy_sol5)
 
     # 存活/销户判定（getMultipleAccounts 批 100；publicnode 屏蔽此法，须 mainnet-beta）
     accs = list(inits.keys())
@@ -405,6 +436,8 @@ def main():
         "mint": mint, "edges_file": str(edges_path), "edges": n_edges,
         "edge_slot_range": [lo, hi], "mode": mode,
         "status": status, "exit_code": exit_code,
+        "non_formal": bool(args.legacy_sol5),
+        "order_ambiguous": bool(args.legacy_sol5),
         "invalid_reasons": invalid_reasons,
         "mint_sig_history": sig_stat,
         "sampled": {"decoded_txs": decoded, "init_events": len(inits),

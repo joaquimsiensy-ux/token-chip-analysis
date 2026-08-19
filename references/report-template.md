@@ -6,8 +6,9 @@
 
 **交付物：自包含单文件 HTML**（图 base64 内嵌），输出到用户工作目录。
 **物化顺序（A4→A5）**：A4 finalize 前不得创建报告 Markdown、报告图片或 HTML；
-只允许维护 claims/findings/data/facts/state 等复核输入。A4 封口后进入 A5，
-一次生成 `报告.md`，并把标准图和流转图只物化到 `charts/final/`；随后 seal 并构建 HTML。
+只允许维护 claims/findings/data/facts/state 等复核输入。A4/A4.5 收口后按模式物化：
+- 单会话模式（`/token-analyze`）：进入 A5 后一次生成 `报告.md`，并把标准图和流转图只物化到 `charts/final/`；随后 seal 并构建 HTML；
+- 分段模式：−2 在 A4/A4.5 收口后亲笔写报告正文（含附录文字）并产装配工单；−3 进入 A5 装配，只物化三张标准图、流转图、seal 与 HTML（见 split-run §3b）。
 
 ```bash
 python3 scripts/report/a5_report_seal.py --case-dir . --report 报告.md --a4-seal a4_seal.json --out a5_report_seal.json
@@ -267,6 +268,8 @@ schema 全部细节（report-extract 四键与 `id="report-extract"` 硬约定�
 - **时间戳时区纪律（v3.8.1）**：链上/交易所 API 数据原生 UTC，但用户的行情软件（GMGN/币安 App）显示本地时间（北京 UTC+8）——报告与问答中**分钟级时间一律双标**"UTC hh:mm（北京 hh:mm）"；日期级在跨日敏感处（UTC 16:00 后＝北京次日）注明口径（实锤：SIREN 案同一场崩盘两个钟，裸 UTC 被用户读成两个事件，2026-07-20）
 
 ## 交付前 checklist
+
+分段模式下本清单的渲染/seal/HTML 项由 −3 执行、正文项由 −2 执行，归属见 split-run §3b。
 
 1. “三问一异常”四项在 TL;DR 逐条直答了吗（问 1 按标签逐项计数，实锤与高度疑似分开；第 4 项无发现也须明写“无”）
 1b. 多链部署代币：TL;DR 首行分析范围声明（覆盖链 + 合计占全局总供应%）写了吗；元信息行把各链合约地址都列了吗（v2.16）

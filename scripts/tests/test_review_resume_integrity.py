@@ -18,10 +18,13 @@ sys.path.insert(0, str(EVM))
 sys.path.insert(0, str(SOL))
 sys.path.insert(0, str(HERE))
 
-from fetch_hypersync_v2 import QUERY_SCHEMA, find_resume_block
+from fetch_hypersync_v2 import (MANIFEST_SCHEMA, QUERY_SCHEMA, SCRIPT_PATH,
+                                ensure_outdir_identity, find_resume_block,
+                                sha256_file)
 from channels_preflight import _csv_stats, _file_fingerprints, _v2_stats
 from fetch_sqd_transfers_v2 import cache_identity, cache_identity_matches, cache_paths
 from replay_edges import cmd_evolution, cmd_reconcile
+from producer_history import historical_producer_hashes
 from evm_channel_fixture import write_csv_channel_receipt
 
 ZERO_EVM = "0x" + "0" * 40
@@ -66,12 +69,14 @@ def file_meta(path, block_col):
 
 
 def make_done(out, mutate=None):
+    ensure_outdir_identity(out, A_EVM, "https://bsc.hypersync.xyz")
     run_dir = make_parquet(out, [10, 19], "run_10")
-    done = {"schema": "hypersync-v2-done/v3", "query_schema": QUERY_SCHEMA,
+    done = {"schema": MANIFEST_SCHEMA, "query_schema": QUERY_SCHEMA,
             "capture_from": 10, "from_block": 10, "to_block": 20, "next_block": 20,
             "token": A_EVM, "url": "https://bsc.hypersync.xyz",
             "files": {"logs.parquet": file_meta(run_dir / "logs.parquet", "block_number"),
-                      "blocks.parquet": file_meta(run_dir / "blocks.parquet", "number")}}
+                      "blocks.parquet": file_meta(run_dir / "blocks.parquet", "number")},
+            "collector": {"path": SCRIPT_PATH, "sha256": sha256_file(FETCH_V2)}}
     (run_dir / "done.json").write_text(json.dumps(done))
     if mutate == "missing":
         (run_dir / "logs.parquet").unlink()
@@ -160,6 +165,52 @@ def test_h03(tmp):
     assert p.returncode != 0 and "FATAL" in p.stdout + p.stderr
 
 
+def test_u2b_staged_capture_first_run(tmp):
+    fake_bin = Path(tmp) / "fake-bin"
+    fake_bin.mkdir()
+    fake_python = fake_bin / "python3"
+    fake_python.write_text(
+        "#!/bin/sh\nprintf '%s\\n' \"$*\" >> \"$U2B_CALLS\"\nexit 7\n",
+        encoding="utf-8",
+    )
+    fake_python.chmod(0o755)
+    env = os.environ.copy()
+    env["PATH"] = str(fake_bin) + os.pathsep + env.get("PATH", "")
+
+    # All three first-capture states must reach the fetch loop; the fake transport then fails.
+    for tag in ("absent", "empty", "ds-store"):
+        root = Path(tmp) / f"first-{tag}"
+        if tag != "absent":
+            root.mkdir()
+        if tag == "ds-store":
+            (root / ".DS_Store").write_text("finder", encoding="utf-8")
+        calls = Path(tmp) / f"{tag}.calls"
+        env["U2B_CALLS"] = str(calls)
+        proc = subprocess.run(
+            [str(EVM / "staged_capture.sh"), A_EVM, "https://invalid.example",
+             str(root), "10", "20"],
+            capture_output=True, text=True, env=env,
+        )
+        output = proc.stdout + proc.stderr
+        assert proc.returncode == 1, output
+        assert "outdir 缺普通文件 capture_identity.json" not in output
+        assert len(calls.read_text(encoding="utf-8").splitlines()) == 2
+
+    # Any other hidden file proves the root is not a vacuum and keeps the recovery gate closed.
+    legacy = Path(tmp) / "first-hidden"
+    legacy.mkdir()
+    (legacy / ".foo").write_text("not exempt", encoding="utf-8")
+    calls = Path(tmp) / "hidden.calls"
+    env["U2B_CALLS"] = str(calls)
+    proc = subprocess.run(
+        [str(EVM / "staged_capture.sh"), A_EVM, "https://invalid.example",
+         str(legacy), "10", "20"],
+        capture_output=True, text=True, env=env,
+    )
+    assert proc.returncode == 2 and "--recover-identity" in proc.stdout + proc.stderr
+    assert not calls.exists()
+
+
 def test_r2_refresh_manifests(tmp):
     good_out = Path(tmp) / "legacy_good"
     _, old = make_legacy_done(good_out)
@@ -169,10 +220,14 @@ def test_r2_refresh_manifests(tmp):
         pass
     else:
         raise AssertionError("R2 旧 manifest 未迁移前必须 BLOCK")
+    p = run([FETCH_V2, "--recover-identity", "--outdir", good_out], tmp)
+    assert p.returncode == 0, p.stdout + p.stderr
     p = run([FETCH_V2, "--refresh-manifests", "--outdir", good_out], tmp)
     assert p.returncode == 0, p.stdout + p.stderr
     upgraded = json.loads((good_out / "run_10" / "done.json").read_text())
-    assert upgraded["schema"] == "hypersync-v2-done/v3"
+    assert upgraded["schema"] == "hypersync-v2-done/v4"
+    assert upgraded["collector"] is None
+    assert upgraded["collector_provenance"] == "legacy-unattributed"
     assert set(upgraded["files"]) == {"logs.parquet", "blocks.parquet"}
     assert (good_out / "capture_identity.json").is_file()
     assert find_resume_block(str(good_out), 10, 30, A_EVM, old["url"]) == 20
@@ -181,7 +236,7 @@ def test_r2_refresh_manifests(tmp):
         bad_out = Path(tmp) / f"legacy_{mutation}"
         _, old = make_legacy_done(bad_out, mutation)
         before = (bad_out / "run_10" / "done.json").read_bytes()
-        p = run([FETCH_V2, "--refresh-manifests", "--outdir", bad_out], tmp)
+        p = run([FETCH_V2, "--recover-identity", "--outdir", bad_out], tmp)
         after = (bad_out / "run_10" / "done.json").read_bytes()
         assert p.returncode != 0 and before == after, p.stdout + p.stderr
         assert "run_10" in p.stdout + p.stderr
@@ -213,7 +268,7 @@ def test_h04(tmp):
 
 def test_h05():
     assert cache_paths("AbC")[0] != cache_paths("aBc")[0]
-    meta = {**cache_identity("AbC", "ep"), "collection_upper_slot": 99}
+    meta = {**cache_identity("AbC", "ep"), "finalized_upper_slot": 99}
     assert cache_identity_matches(meta, "AbC", "ep")
     assert not cache_identity_matches(meta, "aBc", "ep")
     assert not cache_identity_matches({**meta, "endpoint": "other"}, "AbC", "ep")
@@ -225,7 +280,8 @@ def test_h06(tmp):
     try:
         Path("data").mkdir()
         mint = "MintCaseSensitive" + "1" * 15
-        edges = [[100, 1, ZERO_SOL, "A", 100], [3700, 2, ZERO_SOL, "B", 100]]
+        edges = [[100, 1, 0, -1, ZERO_SOL, "A", 100],
+                 [3700, 2, 0, -1, ZERO_SOL, "B", 100]]
         edge_key = hashlib.sha256(mint.encode("utf-8")).hexdigest()
         edge_path = Path(f"data/soltx-{edge_key}.jsonl.gz")
         with gzip.open(edge_path, "wt", encoding="utf-8") as fh:
@@ -242,9 +298,23 @@ def test_h06(tmp):
             "closed": True, "supply_raw": "200",
             "outputs": {"holders_owners": owner_ref}}))
         cache_meta = Path(f"data/soltx-{edge_key}.meta.json")
+        collector_hashes = historical_producer_hashes(
+            "scripts/solana/fetch_sqd_transfers_v2.py", "sqd-solana-cache/v4")
+        assert collector_hashes, collector_hashes
+        logical = hashlib.sha256()
+        for edge in edges:
+            logical.update(
+                (json.dumps(edge, ensure_ascii=False) + "\n").encode("utf-8")
+            )
         cache_meta.write_text(json.dumps({
-            "schema": "sqd-solana-cache/v3", "mint": mint,
-            "from_slot": 1, "collection_upper_slot": 2}))
+            "schema": "sqd-solana-cache/v4", "version": 4, "mint": mint,
+            "collector": "fetch_sqd_transfers_v2.py/v4",
+            "collector_sha256": next(iter(sorted(collector_hashes))),
+            "edge_schema": ["ts", "slot", "tx_index", "instr_index", "from", "to", "amt"],
+            "edge_semantics": "owner-net-greedy",
+            "order_granularity": "transaction", "order_exact": False,
+            "from_slot": 1, "finalized_upper_slot": 2,
+            "edge_logical_sha256": logical.hexdigest(), "edge_rows": len(edges)}))
         assert cmd_reconcile(edges, 1, mint=mint,
                              cache_meta_path=cache_meta)
         Path("data/holders_snapshot_meta.json").unlink()
@@ -269,13 +339,16 @@ def main():
     with tempfile.TemporaryDirectory() as tmp:
         test_h03(tmp)
     with tempfile.TemporaryDirectory() as tmp:
+        test_u2b_staged_capture_first_run(tmp)
+    with tempfile.TemporaryDirectory() as tmp:
         test_r2_refresh_manifests(tmp)
     with tempfile.TemporaryDirectory() as tmp:
         test_h04(tmp)
     test_h05()
     with tempfile.TemporaryDirectory() as tmp:
         test_h06(tmp)
-    print("PASS: H-02/H-03 + R2 legacy manifest refresh + H-04/H-05/H-06")
+    print("PASS: H-02/H-03 + U2b staged first capture + R2 legacy manifest refresh + "
+          "H-04/H-05/H-06")
     return 0
 
 

@@ -59,7 +59,9 @@ SUITE = ['changelog_lint.py', ['docs_lint.py', '--all'], 'labels_manifest.py',
          'test_formal_chain_support.py',
          'test_review_scale_guards.py',
          'test_figures_from_facts.py', 'test_cluster_quality.py',
-         'test_sqd_merge_equiv.py', 'test_supply_truth_gate.py',
+         'test_sqd_merge_equiv.py', 'test_spl_edge_core.py',
+         'test_sqd_collector_meta_v4.py', 'test_sqd_consumer_v4.py',
+         'test_supply_truth_gate.py',
          'test_repair_batch_a.py',
          'test_repair_batch_b.py',
          'test_repair_batch_c.py',
@@ -93,6 +95,9 @@ SUITE += ['test_repair_batch_d.py']
 
 # v6.41.0 批1 步骤1 RV-07：真 FAIL 收据显式归档旧 PASS 后成为 canonical。
 SUITE += ['test_repair_batch1.py']
+
+# SQD Solana v4 批6：opus 攻击型盲审点名的 producer→formal gate 交叉回归。
+SUITE += ['test_batch6_sqd_v4_blind_review.py']
 
 # v6.42.0 批2 工单 B：F-02 对抗复核 v3 结构与绑定闭环。
 SUITE += ['test_repair_batch2_f02.py']
@@ -131,6 +136,19 @@ SUITE += [
     'test_g3_docs_guards.py',
     'test_g3_alt_collectors.py',
 ]
+
+# R-2 采集器历史哈希登记表：状态过滤、CSV provenance 与 git 考证守卫。
+SUITE += ['test_collector_history.py']
+
+# R-3 v2 identity 历史兼容：维护/消费链同判定、严格形状与混合目录边界。
+SUITE += ['test_v2_identity_history.py']
+
+# U1 anchor-plan/v3：机器块源/XOR 契约、v2 重放投影与 producer 历史兼容。
+SUITE += ['test_anchor_plan_v3.py']
+
+# U2 done/v4：逐段 collector 归属、legacy-unattributed 迁移与 C12 显式恢复。
+SUITE += ['test_done_v4_collector.py']
+SUITE += ['test_csv_resume_collector_gate.py']
 
 
 def main():

@@ -22,6 +22,7 @@ from chain_registry import (formal_ready, known_chains_for_release,
                             resolve_alias, evm_family)
 from adversarial_review_runner import AGGREGATE_SCHEMA, V4_RERUN_HINT
 from case_paths import safe_case_file
+from wave_contract import has_formal_wave_semantics
 
 
 SHARED_REQUIRED = (
@@ -817,6 +818,12 @@ def check_three_ledgers(case_dir: Path, data: dict, errors: list[str], chain=Non
 
 
 def check_dormant(case_dir: Path, d: dict, errors: list[str]):
+    # 批 6 F-04：audit_closed_accounts 的 legacy 诊断会明确签出这两个标记。
+    # formal 发布必须逐字段证明为 false；缺字段也不允许以旧产物冒充 formal。
+    if d.get("non_formal") is not False:
+        errors.append("静置仓审计 non_formal 非 false（legacy/缺身份产物不得正式发布）")
+    if d.get("order_ambiguous") is not False:
+        errors.append("静置仓审计 order_ambiguous 非 false（顺序歧义产物不得正式发布）")
     if not d.get("full_history_event_replay"):
         errors.append("静置仓审计不是基于全量逐事件重放")
     required = ("historical_peaks", "zeroed_or_drawn_down",
@@ -829,10 +836,10 @@ def check_dormant(case_dir: Path, d: dict, errors: list[str]):
     if n_unresolved:
         errors.append(f"静置仓审计仍有 {n_unresolved} 个未决候选")
     # v6.9.1 集合对账（codex 复核修复：coverage 五键是自报布尔，闸不住漏仓——
-    # 必须绑定 wave-scan/v3 落盘的候选全集并逐址对账；缺绑定/旧 schema 一律拒）。
+    # 必须绑定 wave-scan/v4 落盘的候选全集并逐址对账；缺绑定/旧 schema 一律拒）。
     ref = d.get("universe_ref")
     if not isinstance(ref, dict) or not ref.get("path") or not ref.get("sha256"):
-        errors.append("静置仓审计缺 universe_ref（须绑定 wave-scan/v3 报告的 path+sha256）")
+        errors.append("静置仓审计缺 universe_ref（须绑定 wave-scan/v4 报告的 path+sha256）")
         return
     wp = regular_case_path(case_dir, str(ref["path"]))
     if wp is None:
@@ -843,8 +850,8 @@ def check_dormant(case_dir: Path, d: dict, errors: list[str]):
         return
     wr = load_json(wp, errors)
     universe = wr.get("scan_universe")
-    if str(wr.get("schema")) != "wave-scan/v3" or not isinstance(universe, list):
-        errors.append("wave_scan 报告缺 scan_universe 逐址全集（schema 须 wave-scan/v3，"
+    if not has_formal_wave_semantics(wr) or not isinstance(universe, list):
+        errors.append("wave_scan 报告缺 formal scan_universe 逐址全集（schema 须 wave-scan/v4，"
                       "旧 v2 产物只有计数无法对账——重跑 wave_scan）")
         return
     cands = d.get("candidates", [])

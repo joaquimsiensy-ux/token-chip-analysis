@@ -83,6 +83,10 @@ def _parquet_meta(path, block_col):
 def _write_v2_inputs(tmp, events):
     """Mirror the semantic event list into a formally receipted v2 parquet channel."""
     root = Path(tmp) / "v2_input"
+    url = "https://fixture.hypersync.xyz"
+    from fetch_hypersync_v2 import (MANIFEST_SCHEMA, QUERY_SCHEMA, SCRIPT_PATH,
+                                    ensure_outdir_identity, sha256_file)
+    ensure_outdir_identity(root, ADDRS[0], url)
     run_dir = root / "run_0"
     run_dir.mkdir(parents=True)
     con = duckdb.connect()
@@ -108,17 +112,16 @@ def _write_v2_inputs(tmp, events):
     con.execute(f"COPY blocks TO '{run_dir / 'blocks.parquet'}' (FORMAT parquet)")
     con.close()
 
-    url = "https://fixture.hypersync.xyz"
-    from fetch_hypersync_v2 import QUERY_SCHEMA, ensure_outdir_identity
-    ensure_outdir_identity(root, ADDRS[0], url)
     done = {
-        "schema": "hypersync-v2-done/v3", "query_schema": QUERY_SCHEMA,
+        "schema": MANIFEST_SCHEMA, "query_schema": QUERY_SCHEMA,
         "capture_from": 0, "from_block": 0, "to_block": 99999999999,
         "next_block": 99999999999, "token": ADDRS[0], "url": url,
         "files": {
             "logs.parquet": _parquet_meta(run_dir / "logs.parquet", "block_number"),
             "blocks.parquet": _parquet_meta(run_dir / "blocks.parquet", "number"),
         },
+        "collector": {"path": SCRIPT_PATH,
+                      "sha256": sha256_file(os.path.join(EVM, "fetch_hypersync_v2.py"))},
     }
     (run_dir / "done.json").write_text(json.dumps(done), encoding="utf-8")
     receipt = Path(tmp) / "v2.receipt.json"

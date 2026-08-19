@@ -25,6 +25,7 @@ HERE = Path(__file__).resolve().parent
 REPO = HERE.parent.parent
 sys.path[:0] = [str(HERE), str(HERE.parent / "report"), str(HERE.parent / "lib"),
                 str(HERE.parent / "evm"), str(HERE.parent / "solana")]
+from sqd_v4_test_fixture import formal_cli_args
 
 FAILS: list[str] = []
 
@@ -65,15 +66,17 @@ def t_f07_refresh_transaction():
                                  blocks=[(5, hex(1000))])
         _make_prehistoric_v2_run(root, 100, rows=[log_row(105)],
                                  blocks=[(105, hex(2000))])
+        fh.recover_identity(root)
         return sorted(root.glob("run_*/done.json"))
 
-    # 绿例：正常迁移全部升 v3 且 identity 建立
+    # 绿例：先恢复 identity，正常迁移全部升 v4。
     with tempfile.TemporaryDirectory(prefix="d-f07-green-", dir="/private/tmp") as raw:
         root = Path(raw)
         dones = make_two_prehistoric(root)
-        rc = fh.refresh_manifests_cli(["--refresh-manifests", "--outdir", str(root)])
+        rc = fh.refresh_manifests_cli(["--refresh-manifests", "--outdir", str(root),
+                                       "--capture-from", "0"])
         upgraded = [json.loads(p.read_text())["schema"] for p in dones]
-        check("F-07 绿例：太古双 run 迁移 exit 0 全升 v3",
+        check("F-07 绿例：太古双 run 迁移 exit 0 全升 v4",
               rc == 0 and upgraded == [fh.MANIFEST_SCHEMA] * 2
               and (root / fh.IDENTITY_NAME).is_file(), (rc, upgraded))
 
@@ -94,7 +97,8 @@ def t_f07_refresh_transaction():
 
         with mock.patch.object(fh.os, "replace", inject), \
                 contextlib.redirect_stderr(io.StringIO()) as err:
-            rc = fh.refresh_manifests_cli(["--refresh-manifests", "--outdir", str(root)])
+            rc = fh.refresh_manifests_cli(["--refresh-manifests", "--outdir", str(root),
+                                           "--capture-from", "0"])
         # 命中标志：确证注入到达目标分支（提交期，不是 prepare 期）
         check("F-07 注入命中标志（第 4 次 os.replace＝第二文件提交）",
               calls["n"] >= 4 and "disk full injected" in err.getvalue(), err.getvalue()[:200])
@@ -120,24 +124,30 @@ def t_f07_refresh_transaction():
 
         with mock.patch.object(fh.os, "replace", inject), \
                 contextlib.redirect_stderr(io.StringIO()) as err:
-            rc = fh.refresh_manifests_cli(["--refresh-manifests", "--outdir", str(root)])
+            rc = fh.refresh_manifests_cli(["--refresh-manifests", "--outdir", str(root),
+                                           "--capture-from", "0"])
         recover = list(root.rglob("*.recover"))
         check("F-07 回滚失败：exit 1＋.recover 恢复件保留＋stderr 指认混合状态",
               rc == 1 and len(recover) == 1 and "rollback-failed" in err.getvalue(),
               (rc, [x.name for x in recover], err.getvalue()[:200]))
 
-    # CLI 捕 OSError（罩住 ensure_outdir_identity 的 IO 故障）：只读 outdir 写 identity 失败
+    # CLI 捕 OSError：只读 outdir 的迁移 staging 失败不裸 traceback。
     if os.geteuid() != 0:
         with tempfile.TemporaryDirectory(prefix="d-f07-oserr-", dir="/private/tmp") as raw:
             root = Path(raw)
             make_two_prehistoric(root)
             os.chmod(root, 0o500)
+            for run_dir in root.glob("run_*"):
+                os.chmod(run_dir, 0o500)
             try:
                 with contextlib.redirect_stderr(io.StringIO()) as err:
                     rc = fh.refresh_manifests_cli(
-                        ["--refresh-manifests", "--outdir", str(root)])
+                        ["--refresh-manifests", "--outdir", str(root),
+                         "--capture-from", "0"])
             finally:
                 os.chmod(root, 0o700)
+                for run_dir in root.glob("run_*"):
+                    os.chmod(run_dir, 0o700)
             check("F-07 CLI 捕 OSError：只读目录 exit 2 不裸 traceback",
                   rc == 2 and "fail-closed" in err.getvalue(), (rc, err.getvalue()[:200]))
     else:
@@ -155,6 +165,7 @@ def _fake_edges(path: Path, rows):
 def _run_closed_audit(tmp: Path, rpc_mock, argv_extra=()):
     import audit_closed_accounts as aca
     out = tmp / "audit.json"
+    out.unlink(missing_ok=True)
     argv = ["audit_closed_accounts.py", "MINTx", "--edges", str(tmp / "edges.jsonl.gz"),
             "--out", str(out), "--mode", "blocks", "--interval", "0",
             "--block-samples", "2", "--sample-inits", "2", "--deep-accounts", "2",
@@ -187,7 +198,24 @@ def t_gptf06_closed_audit():
     with tempfile.TemporaryDirectory(prefix="d-gptf06-", dir="/private/tmp") as raw:
         tmp = Path(raw)
         _fake_edges(tmp / "edges.jsonl.gz",
-                    [[1, 100, "OWN1", "OWN2", 5], [2, 200, "OWN2", "OWN3", 5]])
+                    [[1, 100, 0, -1, "OWN1", "OWN2", 5],
+                     [2, 200, 0, -1, "OWN2", "OWN3", 5]])
+
+        # ⓪ 原反例：坏行不得被逐行 except:continue 吞掉后继续审计。
+        import audit_closed_accounts as aca
+        bad_edges = tmp / "bad-edges.jsonl.gz"
+        with gzip.open(bad_edges, "wt") as fh:
+            fh.write(json.dumps([1, 100, 0, -1, "OWN1", "OWN2", 5]) + "\n")
+            fh.write("{bad-json\n")
+        try:
+            aca.load_edge_index(bad_edges)
+            bad_line_rejected = False
+            bad_line_detail = ""
+        except ValueError as exc:
+            bad_line_rejected = "第 2 行" in str(exc)
+            bad_line_detail = str(exc)
+        check("批3 T4 坏边行带行号整次失败（旧版静默 continue）",
+              bad_line_rejected, bad_line_detail)
 
         # ① getMultipleAccounts 批失败 → exit 1 INVALID_SAMPLE
         def rpc_gma_fail(self, method, params, retries=4):
@@ -230,6 +258,19 @@ def t_gptf06_closed_audit():
               rc == 0 and report["status"] == "NO_CLOSED_SAMPLED"
               and report["invalid_reasons"] == [],
               (rc, report.get("status"), report.get("invalid_reasons")))
+
+        _fake_edges(tmp / "edges.jsonl.gz",
+                    [[1, 100, "OWN1", "OWN2", 5], [2, 200, "OWN2", "OWN3", 5]])
+        rc, legacy_report = _run_closed_audit(
+            tmp, rpc_all_alive, argv_extra=("--legacy-sol5",))
+        check("批3 T4 legacy 报告强制 non-formal/order-ambiguous",
+              rc == 0 and legacy_report
+              and legacy_report.get("non_formal") is True
+              and legacy_report.get("order_ambiguous") is True,
+              (rc, legacy_report))
+        _fake_edges(tmp / "edges.jsonl.gz",
+                    [[1, 100, 0, -1, "OWN1", "OWN2", 5],
+                     [2, 200, 0, -1, "OWN2", "OWN3", 5]])
 
         # ④ 发现漏边 → exit 2 LEAK_FOUND
         def rpc_leak(self, method, params, retries=4):
@@ -295,12 +336,14 @@ def _flip_case(tmp: Path):
 
 
 def _run_trace(tmp: Path, *extra):
+    edge_path = tmp / "edges.jsonl.gz"
     proc = subprocess.run(
         [sys.executable, str(HERE.parent / "report/entity_source_trace.py"),
-         "--edges-sol", str(tmp / "edges.jsonl.gz"), "--total-supply", "1000000",
+         "--edges-sol", str(edge_path), "--total-supply", "1000000",
          "--entity-file", str(tmp / "entities.json"),
          "--labels-file", str(tmp / "labels.json"),
-         "--out", str(tmp / "provenance_ledger.json"), *extra],
+         "--out", str(tmp / "provenance_ledger.json"),
+         *formal_cli_args(edge_path), *extra],
         capture_output=True, text=True, cwd=tmp)
     ledger = None
     if (tmp / "provenance_ledger.json").is_file():
@@ -940,10 +983,14 @@ def build_solana_case(root: Path):
         "unresolved_count": 0, "unresolved_candidates": []})
     align_ledgers_to_owner_snapshot(root, owners_path)
     write_json(root / "wave_scan_report.json", {
-        "schema": "wave-scan/v3", "scan_universe_count": 1,
+        "schema": "wave-scan/v4", "edge_order_granularity": "transaction",
+        "order_ambiguous": True, "non_formal": False,
+        "scan_universe_count": 1,
         "scan_universe": [{"addr": "ownersol1", "peak_pct": 60.0,
                            "must_adjudicate": True, "must_reasons": ["peak_ge_0.1pct"]}]})
     write_json(root / "dormant_warehouse_audit.json", {
+        "non_formal": False,
+        "order_ambiguous": False,
         "full_history_event_replay": True,
         "coverage": {k: "PASS" for k in ("historical_peaks", "zeroed_or_drawn_down",
                                           "long_dormant", "critical_window_upstream",
@@ -1015,18 +1062,33 @@ def build_solana_case(root: Path):
     # 批 2 F-09 之后 sol-rows 只认 replay_edges 真实生产的 reconcile/v3；
     # 夹具不得再手写 v2 收据绕过身份、窗口、输入与边摘要绑定。
     import replay_edges
+    from producer_history import historical_producer_hashes
     edge_key = hashlib.sha256(SOL_MINT.encode("utf-8")).hexdigest()
     edge_path = root / "data" / f"soltx-{edge_key}.jsonl.gz"
     edges = [
-        [1767225600, SOL_SLOT - 1, replay_edges.ZERO, "ownersol1", 60],
-        [1767225601, SOL_SLOT, replay_edges.ZERO, "ownersol2", 40],
+        [1767225600, SOL_SLOT - 1, 0, -1, replay_edges.ZERO, "ownersol1", 60],
+        [1767225601, SOL_SLOT, 0, -1, replay_edges.ZERO, "ownersol2", 40],
     ]
     with gzip.open(edge_path, "wt", encoding="utf-8") as fh:
         for row in edges:
             fh.write(json.dumps(row, ensure_ascii=False) + "\n")
+    logical = hashlib.sha256()
+    for row in edges:
+        logical.update(
+            (json.dumps(row, ensure_ascii=False) + "\n").encode("utf-8")
+        )
+    collector_hashes = historical_producer_hashes(
+        "scripts/solana/fetch_sqd_transfers_v2.py", "sqd-solana-cache/v4")
+    assert collector_hashes, collector_hashes
     cache_meta = write_json(root / "data" / f"soltx-{edge_key}.meta.json", {
-        "schema": "sqd-solana-cache/v3", "mint": SOL_MINT,
-        "from_slot": SOL_SLOT - 1, "collection_upper_slot": SOL_SLOT,
+        "schema": "sqd-solana-cache/v4", "version": 4, "mint": SOL_MINT,
+        "collector": "fetch_sqd_transfers_v2.py/v4",
+        "collector_sha256": next(iter(sorted(collector_hashes))),
+        "edge_schema": ["ts", "slot", "tx_index", "instr_index", "from", "to", "amt"],
+        "edge_semantics": "owner-net-greedy",
+        "order_granularity": "transaction", "order_exact": False,
+        "from_slot": SOL_SLOT - 1, "finalized_upper_slot": SOL_SLOT,
+        "edge_logical_sha256": logical.hexdigest(), "edge_rows": len(edges),
     })
     owners_ref = {"path": owners_path.name, "size": owners_path.stat().st_size,
                   "sha256": sha_file(owners_path)}
@@ -1195,18 +1257,22 @@ def t_fd2_unseal_binds_flip_receipt():
         manifest = write_json(root / "handoff_manifest.json", {"run_id": "x"})
         data_map = write_json(root / "data_map.json", {"files": []})
         receipt_digest, receipt_size = hm.full_sha256_file(str(receipt))
+        trace_path = HERE.parent / "report/entity_source_trace.py"
+        trace_digest, trace_size = hm.full_sha256_file(str(trace_path))
+        wave_path = HERE.parent / "report/wave_scan.py"
+        wave_digest, wave_size = hm.full_sha256_file(str(wave_path))
         ledger = write_json(root / "provenance_ledger.json", {
             "schema": "provenance-ledger/v2",
             "input_binding": {
                 "algorithm": {"files": {
                     "entity_source_trace.py": {
-                        "path": str(HERE.parent / "report/entity_source_trace.py"),
-                        "bytes": 42583,
-                        "sha256": "73f1cd6a8590eeecb2bddb18868f8d16b858dd4e913de508eb636e9a3763bcef"},
+                        "path": str(trace_path),
+                        "bytes": trace_size,
+                        "sha256": trace_digest},
                     "wave_scan.py": {
-                        "path": str(HERE.parent / "report/wave_scan.py"),
-                        "bytes": 40711,
-                        "sha256": "4d8f999406287c32258c9d834928b5b176ddb2c34b9461489d80550262f6638e"}}},
+                        "path": str(wave_path),
+                        "bytes": wave_size,
+                        "sha256": wave_digest}}},
                 "algorithm_params": {
                     "flip_adjudications": {"path": "flip_adjudications.json",
                                            "bytes": receipt_size,
@@ -1289,8 +1355,9 @@ def t_fd5_gptf06_two_missing_cells():
     with tempfile.TemporaryDirectory(prefix="d-fd5-", dir="/private/tmp") as raw:
         tmp = Path(raw)
         _fake_edges(tmp / "edges.jsonl.gz",
-                    [[1, 100, "OWN1", "OWN2", 5], [2, 150, "OWN1", "OWN3", 5],
-                     [3, 200, "OWN2", "OWN3", 5]])
+                    [[1, 100, 0, -1, "OWN1", "OWN2", 5],
+                     [2, 150, 0, -1, "OWN1", "OWN3", 5],
+                     [3, 200, 0, -1, "OWN2", "OWN3", 5]])
 
         # deep 全 fetch_failed：签名史直接失败（返回 None）
         def rpc_deep_fetch_fail(self, method, params, retries=4):
@@ -1349,6 +1416,7 @@ def t_fd6_prepare_leak():
         root = Path(raw)
         _make_prehistoric_v2_run(root, 0, rows=[log_row(5)], blocks=[(5, hex(1000))])
         _make_prehistoric_v2_run(root, 100, rows=[log_row(105)], blocks=[(105, hex(2000))])
+        fh.recover_identity(root)
         dones = sorted(root.glob("run_*/done.json"))
         originals = {p: p.read_bytes() for p in dones}
         real_dump = json.dump
@@ -1363,7 +1431,8 @@ def t_fd6_prepare_leak():
 
         with mock.patch.object(fh.json, "dump", inject), \
                 contextlib.redirect_stderr(io.StringIO()) as err:
-            rc = fh.refresh_manifests_cli(["--refresh-manifests", "--outdir", str(root)])
+            rc = fh.refresh_manifests_cli(["--refresh-manifests", "--outdir", str(root),
+                                           "--capture-from", "0"])
         residue = list(root.rglob(".*refresh-tmp*")) + list(root.rglob(".*refresh-bak*"))
         after = {p: p.read_bytes() for p in dones}
         check("F-D6 prepare 注入命中标志（第 2 次 json.dump）",

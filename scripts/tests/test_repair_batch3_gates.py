@@ -18,7 +18,10 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 REPO = HERE.parent.parent
 FAILS: list[str] = []
-COMMANDS = ("token-analyze-1.md", "token-analyze-2.md", "token-analyze.md")
+COMMANDS = (
+    "token-analyze-1.md", "token-analyze-2.md", "token-analyze-3.md",
+    "token-analyze.md",
+)
 R10_LEDGER = REPO / "maintenance" / "repair-20260813-sixlens" / "r10_ledger.md"
 R10_ROW_CANDIDATE_RE = re.compile(r"^\|[ \t　]*R10-")
 R10_ROW_RE = re.compile(r"^\|[ \t]*(R10-(\d+))(?:（[^|\n]+）)?[ \t]*\|")
@@ -82,6 +85,14 @@ def seed_commands(root: Path, deployed: Path) -> None:
     contents = {
         "token-analyze-1.md": "distribution_scan.json handoff/v3\n",
         "token-analyze-2.md": "a4-seal/v4 a5-report-seal/v3 G11 只支持 full\n",
+        "token-analyze-3.md": (
+            "---\n"
+            "description: 分段装配，含 a5-report-seal/v3 与 G11 发布闸\n"
+            "---\n"
+            "4. 执行序：a5_report_seal.py 产 `a5-report-seal/v3` → "
+            "build_html --mode analysis-new 过 G10/G11。\n"
+            "6. 收工：报 G11 与发布闸结果。\n"
+        ),
         "token-analyze.md": "full command\n",
     }
     for name, content in contents.items():
@@ -98,6 +109,17 @@ def seed_commands(root: Path, deployed: Path) -> None:
             {"id": "CT-TEST-BANNED-01", "kind": "banned",
              "authority_file": "commands-staging/token-analyze-2.md",
              "needle": "A5 seal v2", "stages": ["A3-A5"]},
+            {"id": "CT-TEST-REQUIRED-02", "kind": "required",
+             "authority_file": "commands-staging/token-analyze-3.md",
+             "needle": "a5_report_seal.py 产 `a5-report-seal/v3`",
+             "stages": ["A5"]},
+            {"id": "CT-TEST-REQUIRED-03", "kind": "required",
+             "authority_file": "commands-staging/token-analyze-3.md",
+             "needle": "build_html --mode analysis-new 过 G10/G11",
+             "stages": ["A5"]},
+            {"id": "CT-TEST-BANNED-02", "kind": "banned",
+             "authority_file": "commands-staging/token-analyze-3.md",
+             "needle": "A5 seal v2", "stages": ["A5"]},
         ],
     }), encoding="utf-8")
 
@@ -136,7 +158,7 @@ def t_f04_deploy_sync() -> None:
         seed_commands(root, deployed)
 
         failures, rc, output = deploy_failures(root, deployed, base / "home")
-        check("F04 三文件逐字节一致 PASS", failures == [] and rc == 0,
+        check("F04 四文件逐字节一致 PASS", failures == [] and rc == 0,
               (failures, rc, output))
 
         # F-11 主变异：双侧字节完全相同但都回退旧语义，SHA 层为绿、语义层必须红。
@@ -160,6 +182,75 @@ def t_f04_deploy_sync() -> None:
               and any("banned needle 回捡" in item and "deployed" in item
                       for item in failures), failures)
         (deployed / "token-analyze-2.md").write_text(clean_text, encoding="utf-8")
+
+        # −3 同族负例 1：deployed 缺命令文件必须 fail-closed。
+        token3_text = (root / "commands-staging" / "token-analyze-3.md").read_text(
+            encoding="utf-8")
+        (deployed / "token-analyze-3.md").unlink()
+        failures, _, _ = deploy_failures(root, deployed, base / "home")
+        check("F04 −3 deployed 缺 token-analyze-3.md FAIL",
+              any("部署版缺失" in item and "token-analyze-3.md" in item
+                  for item in failures), failures)
+        (deployed / "token-analyze-3.md").write_text(token3_text, encoding="utf-8")
+
+        # −3 同族负例 2：同名文件 SHA 不一致必须拒绝。
+        (deployed / "token-analyze-3.md").write_text(
+            "a5-report-seal/v3 G10\n", encoding="utf-8")
+        failures, _, _ = deploy_failures(root, deployed, base / "home")
+        check("F04 −3 SHA 不一致 FAIL",
+              any("SHA-256 不一致" in item and "token-analyze-3.md" in item
+                  for item in failures), failures)
+        (deployed / "token-analyze-3.md").write_text(token3_text, encoding="utf-8")
+
+        # −3 同族负例 3：staging 删除 required needle 必须语义拒绝。
+        (root / "commands-staging" / "token-analyze-3.md").write_text(
+            "G11\n", encoding="utf-8")
+        failures, _, _ = deploy_failures(root, deployed, base / "home")
+        check("F04 −3 staging required needle 缺失 FAIL",
+              any("required needle 缺失" in item and "CT-TEST-REQUIRED-02" in item
+                  and "staging" in item for item in failures), failures)
+        (root / "commands-staging" / "token-analyze-3.md").write_text(
+            token3_text, encoding="utf-8")
+
+        # −3 同族负例 4：双侧注入 banned needle，SHA 相等仍须语义拒绝。
+        token3_banned = token3_text + "A5 seal v2\n"
+        for side in (root / "commands-staging", deployed):
+            (side / "token-analyze-3.md").write_text(
+                token3_banned, encoding="utf-8")
+        failures, _, _ = deploy_failures(root, deployed, base / "home")
+        check("F04 −3 banned needle 注入 FAIL",
+              not any("SHA-256 不一致" in item and "token-analyze-3.md" in item
+                      for item in failures)
+              and any("banned needle 回捡" in item and "CT-TEST-BANNED-02" in item
+                      for item in failures), failures)
+        for side in (root / "commands-staging", deployed):
+            (side / "token-analyze-3.md").write_text(token3_text, encoding="utf-8")
+
+        # F-01 第五类负例：双侧删执行步骤、保留 frontmatter 与收工句。
+        # SHA 层保持一致，宽泛字样仍在时也必须由执行锚语义层拒绝。
+        token3_without_execution = "".join(
+            line for line in token3_text.splitlines(keepends=True)
+            if not line.startswith("4. 执行序：")
+        )
+        for side in (root / "commands-staging", deployed):
+            (side / "token-analyze-3.md").write_text(
+                token3_without_execution, encoding="utf-8")
+        failures, _, _ = deploy_failures(root, deployed, base / "home")
+        missing_contracts = {
+            contract_id
+            for contract_id in ("CT-TEST-REQUIRED-02", "CT-TEST-REQUIRED-03")
+            if any("required needle 缺失" in item and contract_id in item
+                   for item in failures)
+        }
+        check("F01 −3 删执行步骤留描述与收工句仍被语义层拒绝",
+              "a5-report-seal/v3" in token3_without_execution
+              and "G11" in token3_without_execution
+              and "a5_report_seal.py 产" not in token3_without_execution
+              and not any("SHA-256 不一致" in item for item in failures)
+              and missing_contracts
+              == {"CT-TEST-REQUIRED-02", "CT-TEST-REQUIRED-03"}, failures)
+        for side in (root / "commands-staging", deployed):
+            (side / "token-analyze-3.md").write_text(token3_text, encoding="utf-8")
 
         (deployed / "token-analyze.md").unlink()
         failures, _, _ = deploy_failures(root, deployed, base / "home")

@@ -1,0 +1,8 @@
+已完成 T1～T5：
+
+- 五个白名单文档已按工单修改，T1 定稿块逐字比对无差异。
+- 全部验收命令通过，`git diff --check` 通过。
+- done 报告已写入 [batchB_done.md](/Users/uravvv/.claude/worktrees/tca-splitrun3/maintenance/repair-20260818-splitrun3/batchB_done.md)。
+- T5 的非定稿指针做了最小等义调整，以满足工单正则，报告中已记录。
+- 未执行 commit 或 push；HEAD 仍为 `e1be99ab25c0a6f60091d7a7b635ab6097e532c8`。批 A 既有改动未动。
+

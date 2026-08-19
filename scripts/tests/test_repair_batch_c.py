@@ -84,6 +84,28 @@ def write_sol_edges(path: Path, edges):
     return path
 
 
+def formal_sol_meta(mint, from_slot, to_slot, edges):
+    from producer_history import historical_producer_hashes
+    collector_hashes = historical_producer_hashes(
+        "scripts/solana/fetch_sqd_transfers_v2.py", "sqd-solana-cache/v4")
+    assert collector_hashes, collector_hashes
+    logical = hashlib.sha256()
+    for edge in edges:
+        logical.update(
+            (json.dumps(list(edge), ensure_ascii=False) + "\n").encode("utf-8")
+        )
+    return {
+        "schema": "sqd-solana-cache/v4", "version": 4, "mint": mint,
+        "collector": "fetch_sqd_transfers_v2.py/v4",
+        "collector_sha256": next(iter(sorted(collector_hashes))),
+        "edge_schema": ["ts", "slot", "tx_index", "instr_index", "from", "to", "amt"],
+        "edge_semantics": "owner-net-greedy",
+        "order_granularity": "transaction", "order_exact": False,
+        "from_slot": from_slot, "finalized_upper_slot": to_slot,
+        "edge_logical_sha256": logical.hexdigest(), "edge_rows": len(edges),
+    }
+
+
 # ── F-05：共享校验单元面 ─────────────────────────────────────────
 
 
@@ -350,9 +372,9 @@ def t_f04_evm_chain():
 def t_f05_f04_solana_chain():
     from camp_series_provenance import write_series_sidecar  # noqa: F401 (对称导入)
     edges = [
-        [3600, 1, Z, SA, 1000],      # mint 1000 -> SA
-        [7200, 2, SA, SB, 300],
-        [10800, 3, SA, Z, 100],      # burn 100 → net 900
+        [3600, 1, 0, -1, Z, SA, 1000],      # mint 1000 -> SA
+        [7200, 2, 0, -1, SA, SB, 300],
+        [10800, 3, 0, -1, SA, Z, 100],      # burn 100 → net 900
     ]
     old = os.getcwd()
     with tempfile.TemporaryDirectory(prefix="c-f09-sol-", dir="/private/tmp") as s:
@@ -375,9 +397,7 @@ def t_f05_f04_solana_chain():
                             "closed": True, "supply_raw": "900",
                             "outputs": {"holders_owners": owners_ref}}))
             cache_meta = Path("data/soltx-fixture.meta.json")
-            cache_meta.write_text(json.dumps(
-                {"schema": "sqd-solana-cache/v3", "mint": SA,
-                 "from_slot": 1, "collection_upper_slot": 3}))
+            cache_meta.write_text(json.dumps(formal_sol_meta(SA, 1, 3, edges)))
             check("SOL reconcile gate_pass",
                   re_mod.cmd_reconcile(edges, 1, mint=SA,
                                        cache_meta_path=cache_meta) is True)
@@ -1260,9 +1280,9 @@ def t_blindreview_c_fixround1():
             failures.append(f"{name}: {detail}")
 
     edges = [
-        [3600, 1, Z, SA, 1000],
-        [7200, 2, SA, SB, 300],
-        [10800, 3, SA, Z, 100],
+        [3600, 1, 0, -1, Z, SA, 1000],
+        [7200, 2, 0, -1, SA, SB, 300],
+        [10800, 3, 0, -1, SA, Z, 100],
     ]
     old_cwd = os.getcwd()
     with tempfile.TemporaryDirectory(prefix="c-blind-fix1-", dir="/private/tmp") as raw:
@@ -1289,8 +1309,7 @@ def t_blindreview_c_fixround1():
                 }
 
             def good_meta():
-                return {"schema": "sqd-solana-cache/v3", "mint": SA,
-                        "from_slot": 1, "collection_upper_slot": 3}
+                return formal_sol_meta(SA, 1, 3, edges)
 
             write_json(snapshot_path, good_snapshot())
             write_json(meta_path, good_meta())
@@ -1555,7 +1574,7 @@ def t_blindreview_c_fixround1():
                 ("schema", lambda d: d.update(schema="bad")),
                 ("mint", lambda d: d.update(mint=SB)),
                 ("window", lambda d: d.update(from_slot=4,
-                                               collection_upper_slot=3)),
+                                               finalized_upper_slot=3)),
             ]
             for name, mutate in producer_meta_cases:
                 doc = good_meta()
@@ -1566,7 +1585,7 @@ def t_blindreview_c_fixround1():
                                          cache_meta_path=meta_path)
                     rejected = False
                 except ValueError as exc:
-                    rejected = "缓存 meta" in str(exc)
+                    rejected = "v4 meta" in str(exc)
                 probe(f"i13 producer meta {name} rejects", rejected)
                 restore_chain()
 
@@ -1705,7 +1724,7 @@ def t_blindreview_c_fixround1():
 
             original_load_edges = re_mod.load_edges
             original_argv = sys.argv[:]
-            re_mod.load_edges = lambda mint: (_ for _ in ()).throw(
+            re_mod.load_edges = lambda mint, **kwargs: (_ for _ in ()).throw(
                 RecursionError("deep JSON"))
             sys.argv = ["replay_edges.py", "reconcile", "--mint", SA,
                         "--no-labels"]
@@ -1756,9 +1775,7 @@ def t_blindreview_c_fixround1():
                                    "as_of_block": 3},
                         "closed": True, "supply_raw": "900",
                         "outputs": {"holders_owners": file_ref(bad_owners)}})
-                    write_json(bad_meta_path, {
-                        "schema": "sqd-solana-cache/v3", "mint": bad_mint,
-                        "from_slot": 1, "collection_upper_slot": 3})
+                    write_json(bad_meta_path, formal_sol_meta(bad_mint, 1, 3, edges))
                     try:
                         re_mod.cmd_reconcile(edges, 1, mint=bad_mint,
                                              cache_meta_path=bad_meta_path)
@@ -1859,9 +1876,9 @@ def t_fixround2():
             failures.append(f"{name}: {detail}")
 
     edges = [
-        [3600, 1, Z, SA, 1000],
-        [7200, 2, SA, SB, 300],
-        [10800, 3, SA, Z, 100],
+        [3600, 1, 0, -1, Z, SA, 1000],
+        [7200, 2, 0, -1, SA, SB, 300],
+        [10800, 3, 0, -1, SA, Z, 100],
     ]
     old_cwd = os.getcwd()
     with tempfile.TemporaryDirectory(prefix="c-fixround2-", dir="/private/tmp") as raw, \
@@ -1889,10 +1906,7 @@ def t_fixround2():
                 "closed": True, "supply_raw": "900",
                 "outputs": {"holders_owners": file_ref(owners_path)},
             })
-            write_json(meta_path, {
-                "schema": "sqd-solana-cache/v3", "mint": SA,
-                "from_slot": 1, "collection_upper_slot": 3,
-            })
+            write_json(meta_path, formal_sol_meta(SA, 1, 3, edges))
             assert re_mod.cmd_reconcile(
                 edges, 1, mint=SA, cache_meta_path=meta_path) is True
             Path("camps.json").write_text(

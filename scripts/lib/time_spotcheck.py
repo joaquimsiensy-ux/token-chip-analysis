@@ -42,10 +42,16 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from anchor_point_contract import (LEGACY_FINAL_BLOCK_EDGE_KIND, V2_SCHEMA,
+                                   V3_SCHEMA,
+                                   balance_block_source_of,
+                                   is_legacy_final_block_edge_point,
+                                   strict_json_loads)
 from anchor_selection import (EXPECTED_PLAN_PRODUCER, REPLAY_PARAMETER_FIELDS,
                               generate_anchor_selection, input_identity,
                               sha256_file, validate_anchor_coverage_parameters)
 from chain_registry import (executable_evm_chains, resolve_execution_mode)
+from producer_history import historical_producer_hashes
 from receipt_validate import validate_receipt
 from receipt_kernel import (assert_distinct_paths, build_envelope, finalize_envelope,
                             publish_error_receipt, publish_txn)
@@ -54,7 +60,8 @@ TRANSFER_TOPIC = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523
 BALANCEOF_SELECTOR = "0x70a08231"
 SCHEMA = "time-spotcheck/v3"
 SCHEMA_FAMILY = "time-spotcheck/"
-PLAN_SCHEMA = "anchor-plan/v2"
+PLAN_SCHEMA = V3_SCHEMA
+SUPPORTED_PLAN_SCHEMAS = {V2_SCHEMA, V3_SCHEMA}
 PLAN_RECEIPT_SCHEMA = "anchor-plan-receipt/v2"
 
 
@@ -70,13 +77,21 @@ def load_validated_plan(plan_path, receipt_path):
     receipt_file = Path(receipt_path)
     if plan_file.is_symlink() or receipt_file.is_symlink():
         raise ValueError("plan/receipt symlink rejected")
-    plan = json.loads(plan_file.read_text(encoding="utf-8"))
-    receipt = json.loads(receipt_file.read_text(encoding="utf-8"))
-    errors = validate_receipt(receipt)
+    plan = strict_json_loads(plan_file.read_text(encoding="utf-8"))
+    receipt = strict_json_loads(receipt_file.read_text(encoding="utf-8"))
+    if not isinstance(plan, dict):
+        raise ValueError("plan must be an object")
+    plan_schema = plan.get("schema")
+    if plan_schema not in SUPPORTED_PLAN_SCHEMAS:
+        raise ValueError(
+            f"plan schema must be one of {sorted(SUPPORTED_PLAN_SCHEMAS)}")
+    errors = validate_receipt(
+        receipt,
+        allowed_producer_hashes=historical_producer_hashes(
+            "scripts/lib/anchor_plan.py", plan_schema),
+    )
     if errors:
         raise ValueError("plan receipt invalid: " + "; ".join(errors))
-    if plan.get("schema") != PLAN_SCHEMA:
-        raise ValueError(f"plan schema must be {PLAN_SCHEMA}")
     if receipt.get("schema") != PLAN_RECEIPT_SCHEMA or receipt.get("verdict") != "PASS":
         raise ValueError("plan receipt schema/verdict invalid")
     producer = receipt.get("producer")
@@ -108,7 +123,7 @@ def load_validated_plan(plan_path, receipt_path):
     if (output.get("size") != plan_file.stat().st_size
             or output.get("sha256") != sha256_file(plan_file)):
         raise ValueError("plan receipt output size/hash mismatch")
-    if receipt.get("plan_schema") != PLAN_SCHEMA:
+    if receipt.get("plan_schema") != plan_schema:
         raise ValueError("plan receipt plan_schema mismatch")
     if receipt.get("generated_at") != plan.get("generated_at"):
         raise ValueError("plan generated_at differs from receipt")
@@ -138,8 +153,35 @@ def _point_multiset(value, field):
                               separators=(",", ":")) for item in value)
 
 
+def _replayed_points_for_schema(replayed, schema):
+    if schema == PLAN_SCHEMA:
+        return {field: replayed[field] for field in ("matrix_points", "forced_points")}
+    if schema != V2_SCHEMA:
+        raise ValueError(f"unsupported replay plan schema: {schema!r}")
+    replay_plan = {
+        "schema": PLAN_SCHEMA,
+        "date_range": replayed.get("date_range"),
+        "matrix_points": replayed.get("matrix_points"),
+        "forced_points": replayed.get("forced_points"),
+    }
+    projected = {}
+    for family in ("matrix_points", "forced_points"):
+        rows = []
+        for point in replayed.get(family) or []:
+            source = balance_block_source_of(point, family, replay_plan)
+            row = dict(point)
+            if source is not None:
+                del row["balance_block_source"]
+            rows.append(row)
+        projected[family] = rows
+    return projected
+
+
 def validate_semantic_replay(plan, raw_input, *, mem_limit="6GB", threads=4):
     """Recompute selection from the real input and compare all deterministic results."""
+    schema = plan.get("schema")
+    if schema not in SUPPORTED_PLAN_SCHEMAS:
+        raise ValueError(f"unsupported replay plan schema: {schema!r}")
     missing = [field for field in REPLAY_PARAMETER_FIELDS if field not in plan]
     if missing:
         raise ValueError("missing replay parameters: " + ", ".join(missing))
@@ -176,9 +218,10 @@ def validate_semantic_replay(plan, raw_input, *, mem_limit="6GB", threads=4):
     for field in ("date_range", "time_cuts", "cell_population", "boundary_blocks"):
         if plan.get(field) != replayed[field]:
             raise ValueError(f"{field} differs from deterministic replay")
+    expected_points = _replayed_points_for_schema(replayed, schema)
     for field in ("matrix_points", "forced_points"):
         declared = _point_multiset(plan.get(field), field)
-        expected = _point_multiset(replayed[field], field)
+        expected = _point_multiset(expected_points[field], field)
         if declared != expected:
             missing_count = sum((expected - declared).values())
             extra_count = sum((declared - expected).values())
@@ -191,16 +234,58 @@ def validate_semantic_replay(plan, raw_input, *, mem_limit="6GB", threads=4):
 def classify(plan):
     """anchor_plan 锚点分型：balance 型（可查余额）/ tx 型（查收据核五元组）。
     分型判据＝字段形态而非 kind 文案（kind 是给人看的，字段才是契约）。"""
+    schema = plan.get("schema")
     bal, txp, odd = [], [], []
     for src in ("matrix_points", "forced_points"):
         for p in plan.get(src, []) or []:
-            if p.get("expected_balance_raw") is not None and p.get("addr"):
-                bal.append(p)
-            elif p.get("tx") and p.get("expected_value_raw") is not None:
-                txp.append(p)
+            if schema == V3_SCHEMA:
+                source = balance_block_source_of(p, src, plan)
+                if source is not None:
+                    bal.append(p)
+                else:
+                    txp.append(p)
+            elif schema == V2_SCHEMA:
+                legacy_edge = is_legacy_final_block_edge_point(p, src, plan)
+                if p.get("expected_balance_raw") is not None and p.get("addr"):
+                    bal.append(p)
+                elif p.get("tx") and p.get("expected_value_raw") is not None:
+                    if p.get("kind") == LEGACY_FINAL_BLOCK_EDGE_KIND and not legacy_edge:
+                        raise ValueError(
+                            "tx point carries legacy final-block edge kind")
+                    txp.append(p)
+                else:
+                    odd.append(p)
             else:
-                odd.append(p)
+                raise ValueError(f"unsupported plan schema: {schema!r}")
     return bal, txp, odd
+
+
+def balance_query_block(plan, point):
+    """Resolve a balance point block under the shared legacy-edge contract."""
+    family = next(
+        (name for name in ("matrix_points", "forced_points")
+         if any(candidate is point for candidate in (plan.get(name) or []))),
+        None,
+    )
+    schema = plan.get("schema")
+    if schema == V3_SCHEMA:
+        source = balance_block_source_of(point, family, plan)
+        if source is None:
+            raise ValueError("tx point cannot be used as a balance query")
+        return (point["day_end_block"] if source == "day_end_block"
+                else plan.get("final_block"))
+    elif schema == V2_SCHEMA:
+        legacy_edge = is_legacy_final_block_edge_point(point, family, plan)
+        if point.get("kind") == LEGACY_FINAL_BLOCK_EDGE_KIND and not legacy_edge:
+            raise ValueError("malformed legacy final-block edge point")
+        block = point.get("day_end_block")
+        if block is None:
+            if not legacy_edge:
+                raise ValueError("non-edge balance point missing day_end_block")
+            block = plan.get("final_block")
+        return block
+    else:
+        raise ValueError(f"unsupported plan schema: {schema!r}")
 
 
 def hexblock(n):
@@ -267,25 +352,33 @@ def main():
     except Exception as e:
         print(f"[fatal] anchor_plan semantic replay failed: {e}", file=sys.stderr)
         return 2
-    bal_pts, tx_pts, odd_pts = classify(plan)
+    try:
+        bal_pts, tx_pts, odd_pts = classify(plan)
+    except ValueError as exc:
+        print(f"[fatal] anchor_plan point contract invalid: {exc}", file=sys.stderr)
+        return 2
     total = len(bal_pts) + len(tx_pts)
     # GMX 案实锤教训：0 个点循环零次 bad==0 直接打 PASS——必须硬失败
     assert total > 0, "[fatal] 抽查点数为 0——anchor_plan 为空或解析失败，禁当 PASS"
     if odd_pts:
         sys.exit(f"[fatal] {len(odd_pts)} 个锚点两型都不匹配（缺 expected_balance_raw 且缺 tx）——"
                  f"anchor_plan 格式漂移，先修计划再跑: {json.dumps(odd_pts[0], ensure_ascii=False)[:120]}")
-    need_final = [p for p in bal_pts if p.get("day_end_block") is None]
-    if need_final and a.final_block is None:
-        sys.exit(f"[fatal] {len(need_final)} 个 balance 锚点无 day_end_block（门槛边缘地址型），"
-                 "必须传 --final-block <数据截止块>——静默跳点=覆盖缩水，fail-closed")
     plan_final = plan.get("final_block")
     if (isinstance(plan_final, bool) or not isinstance(plan_final, int)
             or a.final_block is None or plan_final != a.final_block):
         print("[fatal] anchor_plan final_block 必须与 CLI --final-block 精确一致", file=sys.stderr)
         return 2
-    query_blocks = [p.get("day_end_block") for p in bal_pts
-                    if p.get("day_end_block") is not None]
-    query_blocks += [p.get("block") for p in tx_pts if p.get("block") is not None]
+    try:
+        balance_blocks = [balance_query_block(plan, point) for point in bal_pts]
+    except ValueError as exc:
+        print(f"[fatal] anchor_plan balance block contract invalid: {exc}", file=sys.stderr)
+        return 2
+    need_final = [point for point in bal_pts
+                  if point.get("day_end_block") is None]
+    if any(point.get("block") is None for point in tx_pts):
+        print("[fatal] anchor_plan tx 锚点缺 block", file=sys.stderr)
+        return 2
+    query_blocks = balance_blocks + [point.get("block") for point in tx_pts]
     if any(isinstance(block, bool) or not isinstance(block, int)
            or block < 0 or block > a.final_block for block in query_blocks):
         print("[fatal] anchor_plan 查询块非法或越过 final_block", file=sys.stderr)
@@ -356,9 +449,8 @@ def main():
             a.rpc, a.chain, formal=True, rps=a.rps, concurrency=min(a.rps, 8))
 
         calls = []
-        for p in bal_pts:
-            blk = p.get("day_end_block")
-            blk = int(blk) if blk is not None else a.final_block
+        for p, blk in zip(bal_pts, balance_blocks):
+            blk = int(blk)
             calls.append(("eth_call", [{"to": token,
                                         "data": BALANCEOF_SELECTOR + addr_word(p["addr"])},
                                        hexblock(blk)]))
@@ -384,9 +476,8 @@ def main():
         a.transcript_out, Path(a.out).expanduser().resolve().parent, transcript)
 
     rows, exact, mism, rpc_err = [], 0, 0, 0
-    for p, r in zip(bal_pts, results[:len(bal_pts)]):
-        blk = p.get("day_end_block")
-        blk = int(blk) if blk is not None else a.final_block
+    for p, blk, r in zip(bal_pts, balance_blocks, results[:len(bal_pts)]):
+        blk = int(blk)
         row = {"type": "balance", "kind": p.get("kind"), "addr": p["addr"], "block": blk,
                "expect_raw": str(p["expected_balance_raw"])}
         if not r.get("ok"):

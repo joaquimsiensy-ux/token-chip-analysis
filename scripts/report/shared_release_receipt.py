@@ -34,6 +34,12 @@ from adversarial_review_runner import (
 )
 from chain_registry import (evm_chain_id_for, evm_family, formal_ready,
                             recon_adapter_for, resolve_alias)
+from anchor_point_contract import (LEGACY_FINAL_BLOCK_EDGE_KIND, V2_SCHEMA,
+                                   V3_SCHEMA,
+                                   balance_block_source_of,
+                                   is_legacy_final_block_edge_point,
+                                   strict_json_loads)
+from producer_history import historical_producer_hashes
 from receipt_validate import validate_receipt
 from supply_truth_gate import (FORMAL_TOLERANCE_BPS_MAX,
                                WAIVER_TOLERANCE_BPS_CAP, decide,
@@ -93,7 +99,7 @@ def ref_ok(root, ref):
     return path
 
 
-def repo_ref_ok(ref, allowed, label):
+def repo_ref_ok(ref, allowed, label, allowed_hashes=None):
     if not isinstance(ref, dict):
         raise ValueError(f"{label} producer/runner ref missing")
     rel = str(ref.get("path", ""))
@@ -101,7 +107,10 @@ def repo_ref_ok(ref, allowed, label):
         raise ValueError(f"{label} producer/runner path is not whitelisted: {rel}")
     path = (REPO / rel).resolve()
     path.relative_to(REPO)
-    if not path.is_file() or ref.get("sha256") != sha(path):
+    admitted = {sha(path)} if path.is_file() else set()
+    if allowed_hashes is not None:
+        admitted.update(allowed_hashes)
+    if not path.is_file() or ref.get("sha256") not in admitted:
         raise ValueError(f"{label} producer/runner is not current repository script")
     return path
 
@@ -869,17 +878,41 @@ def _validate_evm_reconciliation_receipt(root, receipt, target):
     _validate_recon_gmgn(root, receipt, observations, balances, nominal)
 
 
-def _plan_point(row, final_block):
-    if row.get("expected_balance_raw") is not None and row.get("addr"):
-        block = row.get("day_end_block")
-        if block is None:
-            block = final_block
-        return ("balance", row.get("kind"), row.get("addr"),
-                block, str(row.get("expected_balance_raw")))
-    if row.get("tx") and row.get("expected_value_raw") is not None:
+def _plan_point(row, family, plan):
+    schema = plan.get("schema")
+    if schema == V3_SCHEMA:
+        source = balance_block_source_of(row, family, plan)
+        if source is not None:
+            block = (row["day_end_block"] if source == "day_end_block"
+                     else plan.get("final_block"))
+            return ("balance", row.get("kind"), row.get("addr"),
+                    block, str(row.get("expected_balance_raw")))
+        if row.get("block") is None:
+            raise ValueError("time plan tx point missing block")
         return ("tx", row.get("kind"), row.get("tx"), row.get("from"),
                 row.get("to"), row.get("block"), str(row.get("expected_value_raw")))
-    raise ValueError("time plan contains unclassifiable point")
+    elif schema == V2_SCHEMA:
+        if row.get("expected_balance_raw") is not None and row.get("addr"):
+            legacy_edge = is_legacy_final_block_edge_point(row, family, plan)
+            if row.get("kind") == LEGACY_FINAL_BLOCK_EDGE_KIND and not legacy_edge:
+                raise ValueError("time plan contains malformed legacy final-block edge point")
+            block = row.get("day_end_block")
+            if block is None:
+                if not legacy_edge:
+                    raise ValueError("time plan balance point missing day_end_block")
+                block = plan.get("final_block")
+            return ("balance", row.get("kind"), row.get("addr"),
+                    block, str(row.get("expected_balance_raw")))
+        if row.get("tx") and row.get("expected_value_raw") is not None:
+            if row.get("kind") == LEGACY_FINAL_BLOCK_EDGE_KIND:
+                raise ValueError("time plan tx point carries legacy final-block edge kind")
+            if row.get("block") is None:
+                raise ValueError("time plan tx point missing block")
+            return ("tx", row.get("kind"), row.get("tx"), row.get("from"),
+                    row.get("to"), row.get("block"), str(row.get("expected_value_raw")))
+        raise ValueError("time plan contains unclassifiable point")
+    else:
+        raise ValueError(f"unsupported plan schema: {schema!r}")
 
 
 def _time_row_point(row):
@@ -917,32 +950,46 @@ def _tx_transcript_matches(raw_receipt, row, token):
         if matches:
             hit = True
             break
-    block_ok = row.get("block") is None or receipt_block == row.get("block")
+    if row.get("block") is None:
+        raise ValueError("time receipt tx row missing block")
+    block_ok = receipt_block == row.get("block")
     return hit and block_ok, receipt_block
 
 
 def _validated_time_plan_authority(root, receipt, target):
     """Independently bind the consumed plan to its anchor_plan authority chain."""
     try:
-        plan_path, plan = _bound_json_input(root, receipt, "plan", "time plan")
-        _, plan_receipt = _bound_json_input(
+        plan_path, _ = _bound_json_input(root, receipt, "plan", "time plan")
+        plan_receipt_path, _ = _bound_json_input(
             root, receipt, "plan_receipt", "time plan receipt")
+        plan = strict_json_loads(
+            plan_path.read_text(encoding="utf-8"), parse_constant=_reject_constant)
+        plan_receipt = strict_json_loads(
+            plan_receipt_path.read_text(encoding="utf-8"),
+            parse_constant=_reject_constant)
         input_ref = (receipt.get("inputs") or {}).get("input")
         input_path = _bound_case_ref(root, input_ref, "time merged input")
         _require(isinstance(plan, dict) and isinstance(plan_receipt, dict),
                  "plan/receipt must be objects")
 
-        plan_errors = validate_receipt(plan_receipt, case_root=root)
+        plan_schema = plan.get("schema")
+        allowed_plan_schemas = {V2_SCHEMA, V3_SCHEMA}
+        _require(plan_schema in allowed_plan_schemas,
+                 "plan schema must be anchor-plan/v2 or anchor-plan/v3")
+        historical_hashes = historical_producer_hashes(
+            "scripts/lib/anchor_plan.py", plan_schema)
+        plan_errors = validate_receipt(
+            plan_receipt, case_root=root,
+            allowed_producer_hashes=historical_hashes)
         _require(not plan_errors, f"plan receipt envelope invalid: {plan_errors[:1]}")
         _require(plan_receipt.get("schema") == "anchor-plan-receipt/v2"
                  and plan_receipt.get("verdict") == "PASS"
                  and plan_receipt.get("exit_code") == 0,
                  "plan receipt schema/verdict invalid")
         producer = plan_receipt.get("producer")
-        repo_ref_ok(producer, {"scripts/lib/anchor_plan.py"}, "time anchor plan")
+        repo_ref_ok(producer, {"scripts/lib/anchor_plan.py"}, "time anchor plan",
+                    allowed_hashes=historical_hashes)
 
-        _require(plan.get("schema") == "anchor-plan/v2",
-                 "plan schema must be anchor-plan/v2")
         _require(plan.get("target") == plan_receipt.get("target"),
                  "plan target differs from signed receipt target")
         _require(canonical_target(plan_receipt.get("target")) == canonical_target(target),
@@ -971,7 +1018,8 @@ def _validated_time_plan_authority(root, receipt, target):
         output_path = _bound_case_ref(root, output, "time signed plan output")
         _require(output_path == plan_path,
                  "signed output is not the consumed plan object")
-        _require(plan_receipt.get("plan_schema") == "anchor-plan/v2",
+        _require(plan_receipt.get("plan_schema") in allowed_plan_schemas
+                 and plan_receipt.get("plan_schema") == plan_schema,
                  "plan receipt plan_schema mismatch")
         generated_at = plan.get("generated_at")
         _require(isinstance(generated_at, str) and bool(generated_at)
@@ -995,7 +1043,7 @@ def _validate_time_receipt(root, receipt, target):
     for field in ("matrix_points", "forced_points"):
         rows = plan.get(field)
         _require(isinstance(rows, list), f"time plan {field} invalid")
-        expected_points.extend(_plan_point(row, plan.get("final_block")) for row in rows)
+        expected_points.extend(_plan_point(row, field, plan) for row in rows)
     rows = receipt.get("rows")
     _require(isinstance(rows, list) and bool(rows)
              and all(isinstance(row, dict) for row in rows), "time rows invalid")

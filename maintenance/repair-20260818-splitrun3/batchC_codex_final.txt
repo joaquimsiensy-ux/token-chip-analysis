@@ -1,0 +1,14 @@
+批 C 工单已完成，未执行 git commit。
+
+- 四个白名单文件已同步至 `6.50.0`。
+- CHANGELOG 条目已按工单落盘，回归行按实跑结果更新。
+- 先红后绿证据完整：
+  - 单改 `VERSION` 后版本一致性测试真实失败。
+  - 全部同步后 lint 与版本一致性测试通过。
+- 最终完整 `run_all`：`116/117 PASS`。
+- 唯一失败项：`test_commands_deploy_sync.py`，符合工单预期；部署 cp 未执行。
+- `git diff --check` 通过。
+- 完成报告：[batchC_done.md](/Users/uravvv/.claude/worktrees/tca-splitrun3/maintenance/repair-20260818-splitrun3/batchC_done.md)
+
+受限沙箱首跑的两项 loopback `EPERM` 已在允许 loopback 的环境中通过完整全量复跑验证，Solana/EVM 纵切片均转绿。
+

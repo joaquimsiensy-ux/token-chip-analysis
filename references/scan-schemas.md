@@ -1,7 +1,7 @@
 # scan-schemas — 机械扫描产物 schema 冻结（v6.20.0）
 
 扫描、溯源和分布形态产物的**唯一权威字段定义**。实现脚本与契约测试对本文件写；改字段先改这里再改代码。
-适用脚本：`wave_scan.py`（wave-scan/v3）、`flow_anomaly_scan.py`（flow-anomaly/v2）、
+适用脚本：`wave_scan.py`（wave-scan/v4）、`flow_anomaly_scan.py`（flow-anomaly/v2）、
 `entity_source_trace.py`（provenance-ledger/v2）、`holder_distribution_scan.py`（distribution-scan/v2）、
 `distribution_explanation_check.py`（distribution-explanation/v1）和两类裁决台账。
 
@@ -14,21 +14,40 @@
 1. **稳定 ID＝内容派生**：候选 ID 由其核心内容（成员集/面额/地址）哈希派生——内容变则 ID 变，旧裁决按 ID 对不上自动失效。
 2. **裁决绑定候选内容哈希**：每条裁决记录 `candidate_sha256`＝裁决时该候选完整 JSON 的规范化哈希（`json.dumps(obj, sort_keys=True, ensure_ascii=False)` 的 sha256）。validator 重验：当前报告同 ID 候选哈希不一致＝候选内容已变＝裁决过期，exit 2。
 3. **零静默截断**：所有成员/收方/来源数组全量落盘，数组长度必须等于对应 `*_count` 字段（闭合断言）；stdout 只显 top 不代表文件截断。
-4. **本文件＝完整字段登记**（v6.8.1，codex 复核 P2 采纳）：脚本实际输出的每个字段都必须在此登记——未登记字段不得输出，登记了的不得静默删除；公共通用字段（`schema/generated_at/params/total_supply_raw/edges/note`）各产物一律在场，下文不再逐一重复。输入边表的唯一性由采集管线（four-check 对账）保证，扫描器不去重——同五元组合法重复真实存在（同秒同额多笔），fail-closed 去重会误杀。
+4. **本文件＝完整字段登记**（v6.8.1，codex 复核 P2 采纳）：脚本实际输出的每个字段都必须在此登记——未登记字段不得输出，登记了的不得静默删除；公共通用字段（`schema/generated_at/params/total_supply_raw/edges/note`）各产物一律在场，下文不再逐一重复。输入边表的唯一性由采集管线（four-check 对账）保证，扫描器不去重。Solana v4 以 `(slot,tx_index)` 标识交易，并对该交易完整边集计算排序后的 `tx_digest`：重复身份且 digest 相同只留一份，digest 不同硬失败。五元组没有交易身份，同字段重复可能是不同真实交易，禁止按五字段去重。
 
-## 1. wave-scan/v3（wave_scan.py）
+**Solana 输入边现役标准**：正式路径使用 7 元组
+`[ts,slot,tx_index,instr_index,from,to,amt]`。SQD tokenBalances 只提供交易级 pre/post
+快照，因此共享核产出的边固定 `instr_index=-1`、`edge_semantics="owner-net-greedy"`、
+`order_granularity="transaction"`：它证明 owner 级净变化，但贪心配对只是推定关系，
+**不证明链上精确 from→to**，也不能恢复交易内指令顺序；该哨兵必须对应 `order_exact=false`。旧 5 元组
+`[ts,slot,from,to,amt]` 仅是 `legacy-sol5` 诊断格式，标记 `order_ambiguous/non-formal`，无法补回
+交易身份且无迁移路径，正式使用须全量重采。
+
+## 1. wave-scan/v4（wave_scan.py）
 
 与 v1 的语义差异（**不得冒充 v1**，handoff 校验按版本严格匹配）：
 扫描对象从"清零层"改为**全体历史峰值 ≥0.02% 地址**（三桶标签）；A 指纹两层（seed_window 触发→expanded_wave 生长）；C 口径改"峰值→30% 峰值耗时 ≤30 日"；D 参数四条合一；成员零截断；负余额升 exit 2；聚类时间轴用抗 dust 的 `first_meaningful_day`。
 v3 与 v2 的差异（2026-08-02 codex 复核补闸）：**候选全集逐址落盘**——v2 只落 `scan_universe_count` 一个计数，孤仓不成波次/等额组就从产物消失、发布闸无从对账；v3 新增 `scan_universe` 逐址清单＋`must_adjudicate` 四类机械标记＋`must_adjudicate_count`，`dormant_warehouse_audit.json` 以 `universe_ref{path,sha256}` 绑定本报告，audit_release_gate 做哈希＋集合包含对账。
+v4 与 v3 的差异（2026-08-18 SQD v4 消费端分立）：新增 `edge_order_granularity`、
+`order_ambiguous`、`non_formal`。正式 SQD transaction-net 边虽为 v4 7 元组，但
+`instr_index=-1`，所以 `edge_order_granularity="transaction"`、`order_ambiguous=true`、
+`non_formal=false`；未来真实指令级边才可报 `instruction/false/false`。显式
+`--legacy-sol5` 必须报 `legacy-slot/true/true`，handoff、裁决和发布链一律拒绝它。
+正式 `--edges-sol` 不以 7 列外形判身份：必须同时提供 `--sol-cache-meta` 与 `--mint`，共享
+校验器核对 v4 schema、mint、ACTIVE collector、逻辑摘要及行数；wave/flow/entity 三入口同闸，
+entity 的 meta/mint 还要进入 input binding 并由 freeze 原命令重放。
 
 ```
 {
-  "schema": "wave-scan/v3",
+  "schema": "wave-scan/v4",
   "generated_at": ISO8601,
   "params": {…全部命令行参数…},
   "total_supply_raw": str,
   "edges": int,
+  "edge_order_granularity": "transaction|instruction|log|source-defined|legacy-slot",
+  "order_ambiguous": bool,
+  "non_formal": bool,
   "scan_universe_count": int,          # 峰值≥门槛的地址总数（不做现仓过滤）
   "scan_universe": [{                  # v3 新增：全集逐址落盘（len == scan_universe_count，零截断）
     "addr": str, "peak_raw": str, "peak_pct": float, "final_raw": str,
@@ -203,8 +222,10 @@ wave/flow/eqg 全部候选的**成员级**裁决台账。freeze 前 validator �
 （closure 降为实现自检）；回环天然良定义（v1 的 `same_slot_scc` 终点类别**废除**）；
 禁止按地址拓扑重排同秒边。缺精确位置时保留 ingest 观察序，但同一最细粒度桶内
 “既收又发”的流出来源整笔记 `UNRESOLVED/order_ambiguous`；占锚点库存 >0.5% 时
-独立顺序敏感性阻断。Solana 旧 5 元组只有 slot，扩展 7 元组
-`[ts,slot,tx_index,instruction_index,from,to,amt]` 才是精确序。
+独立顺序敏感性阻断。Solana 现役 7 元组标准为
+`[ts,slot,tx_index,instr_index,from,to,amt]`；其中 SQD transaction-net 边固定
+`instr_index=-1`，只能确定交易粒度顺序，必须置 `order_exact=false`。只有输入给出真实非负
+instruction index 时，才允许声明可恢复交易内精确执行顺序；旧 5 元组仍是非正式诊断输入。
 
 ```
 {

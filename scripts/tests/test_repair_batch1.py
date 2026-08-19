@@ -456,8 +456,8 @@ def test_rv07_window_fail_transaction(root: Path):
         receipt = work / "window_receipt.json"
         gaps = Path(str(out) + ".gaps.json")
         argv = ["0", "10", str(out), "--conc", "1", "--receipt", str(receipt)]
-        good = ([(1, 1, "a", "b", 1)], True, [1])
-        bad = ([(1, 1, "a", "b", 1)], False, [1])
+        good = ([(1, 1, 0, -1, "a", "b", 1)], True, [1])
+        bad = ([(1, 1, 0, -1, "a", "b", 1)], False, [1])
         with mock.patch.object(window, "scan_seg", return_value=good):
             assert window.main(argv) == 0
         old_data = out.read_bytes()
