@@ -1,0 +1,107 @@
+{
+  "schema": "sqd-solana-rpc-ledger/v1",
+  "draft_status": "batch0-draft",
+  "source": "PLAN.md §4.2.10",
+  "producer": "scripts/solana/sqd_gap_repair.py（计划目标路径）",
+  "consumers": [
+    "--resume",
+    "bundle rpc_ledger",
+    "operator diagnostics"
+  ],
+  "fields": [
+    {
+      "name": "seq",
+      "type": "integer",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "ts",
+      "type": "integer",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "method",
+      "type": "string",
+      "required": true,
+      "description": "",
+      "constraints": "getBlock/getBlocks"
+    },
+    {
+      "name": "params_digest",
+      "type": "string",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "slot",
+      "type": "integer",
+      "required": false,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "range",
+      "type": "array|object",
+      "required": false,
+      "description": "",
+      "constraints": "类型为推断"
+    },
+    {
+      "name": "endpoint_fingerprint",
+      "type": "string",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "http_status",
+      "type": "integer",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "bytes",
+      "type": "integer",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "credits_estimate",
+      "type": "integer",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "result_sha256",
+      "type": "string (sha256 hex)",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "attempt",
+      "type": "integer",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    }
+  ],
+  "invariants": [
+    "slot/range 按 method 二选一。",
+    "异常先 redact，key 不落盘。",
+    "resume 以 (plan_digest,params_digest,result_sha256) 判完成。",
+    "残缺尾行丢弃。"
+  ],
+  "notes": [
+    "range 形状未写明，类型为推断。",
+    "resume 使用 plan_digest，但逐行字段未列该字段，未自行增加。"
+  ]
+}

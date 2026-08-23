@@ -21,3 +21,4 @@ scripts/labels/sources/robinhood_verified_contracts.csv
 
 # 工单 C：PYTHIA 真实案隔离工作区（含 6.3G 级硬链接数据，严禁入库）
 maintenance/repair-20260814-batch2/staging-pythia/
+.staging_*/

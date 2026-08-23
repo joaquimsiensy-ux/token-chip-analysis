@@ -1,0 +1,73 @@
+{
+  "schema": "sqd-solana-slot-index-map/v1",
+  "draft_status": "batch0-draft",
+  "source": "PLAN.md §4.2.7",
+  "producer": "scripts/solana/sqd_gap_repair.py（计划目标路径）",
+  "consumers": [
+    "solana_exact_validate.py",
+    "merged edge producer"
+  ],
+  "fields": [
+    {
+      "name": "header.schema",
+      "type": "string",
+      "required": true,
+      "description": "",
+      "constraints": "sqd-solana-slot-index-map/v1"
+    },
+    {
+      "name": "header.mint",
+      "type": "string",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "header.plan_digest",
+      "type": "string",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "row.slot",
+      "type": "integer",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "row.blockhash",
+      "type": "string",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "row.map",
+      "type": "array[array]",
+      "required": true,
+      "description": "[sqd_index,nonvote_ordinal,signature]",
+      "constraints": ""
+    },
+    {
+      "name": "row.sqd_count",
+      "type": "integer",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "row.ref_nonvote_count",
+      "type": "integer",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    }
+  ],
+  "invariants": [
+    "三列各自唯一双射且单调递增。",
+    "每条 base 边 (slot,tx_index) 恰有一解；无解中止。"
+  ],
+  "notes": []
+}

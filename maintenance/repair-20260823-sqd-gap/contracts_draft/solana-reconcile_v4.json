@@ -1,0 +1,443 @@
+{
+  "schema": "solana-reconcile/v4",
+  "draft_status": "batch0-draft",
+  "source": "PLAN.md §4.2.8",
+  "producer": "scripts/solana/replay_edges.py reconcile",
+  "consumers": [
+    "shared_release_receipt.validate_reconciliation_check",
+    "handoff_manifest.py verify",
+    "audit_release_gate.py",
+    "camp_series_provenance.py"
+  ],
+  "fields": [
+    {
+      "name": "schema",
+      "type": "string",
+      "required": true,
+      "description": "",
+      "constraints": "solana-reconcile/v4"
+    },
+    {
+      "name": "target.chain",
+      "type": "string",
+      "required": true,
+      "description": "",
+      "constraints": "solana"
+    },
+    {
+      "name": "target.token",
+      "type": "string",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "target.as_of_block",
+      "type": "integer",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "mode",
+      "type": "string",
+      "required": true,
+      "description": "",
+      "constraints": "formal"
+    },
+    {
+      "name": "verdict",
+      "type": "string",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "exit_code",
+      "type": "integer",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "producer",
+      "type": "object",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "inputs.soltx_edges",
+      "type": "object",
+      "required": true,
+      "description": "path,size,sha256",
+      "constraints": ""
+    },
+    {
+      "name": "inputs.soltx_meta",
+      "type": "object",
+      "required": true,
+      "description": "path,size,sha256",
+      "constraints": ""
+    },
+    {
+      "name": "inputs.holders_owners",
+      "type": "object",
+      "required": true,
+      "description": "path,size,sha256",
+      "constraints": ""
+    },
+    {
+      "name": "inputs.holders_snapshot_meta",
+      "type": "object",
+      "required": true,
+      "description": "path,size,sha256",
+      "constraints": ""
+    },
+    {
+      "name": "inputs.coverage_map",
+      "type": "object",
+      "required": true,
+      "description": "path,size,sha256",
+      "constraints": ""
+    },
+    {
+      "name": "inputs.coverage_slot_counts",
+      "type": "object",
+      "required": true,
+      "description": "path,size,sha256",
+      "constraints": ""
+    },
+    {
+      "name": "inputs.coverage_resolution",
+      "type": "object",
+      "required": false,
+      "description": "repaired；base 省略",
+      "constraints": ""
+    },
+    {
+      "name": "inputs.repair_bundle",
+      "type": "object",
+      "required": false,
+      "description": "repaired；base 省略",
+      "constraints": ""
+    },
+    {
+      "name": "inputs.repair_pointer",
+      "type": "object",
+      "required": false,
+      "description": "repaired；base 省略",
+      "constraints": ""
+    },
+    {
+      "name": "edge_source_binding.cache_kind",
+      "type": "string",
+      "required": true,
+      "description": "",
+      "constraints": "base/repaired"
+    },
+    {
+      "name": "edge_source_binding.gid",
+      "type": "string|null",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "edge_source_binding.soltx_edges_sha256",
+      "type": "string (sha256 hex)",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "edge_source_binding.soltx_meta_sha256",
+      "type": "string (sha256 hex)",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "edge_source_binding.edge_logical_sha256",
+      "type": "string (sha256 hex)",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "coverage_effective_verdict",
+      "type": "string",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "gate_pass",
+      "type": "boolean",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "negative_balance_count",
+      "type": "integer",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "snapshot_mismatch_count",
+      "type": "integer",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "net_supply_raw",
+      "type": "integer",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "edge_digest",
+      "type": "string",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "edge_count",
+      "type": "integer",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "cli.--as-of-slot",
+      "type": "integer",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "cli.--receipt",
+      "type": "string",
+      "required": false,
+      "description": "argv 内且预先不存在；默认 data/reconcile_receipt.json",
+      "constraints": ""
+    },
+    {
+      "name": "inputs.soltx_edges.path",
+      "type": "string",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "inputs.soltx_edges.size",
+      "type": "integer",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "inputs.soltx_edges.sha256",
+      "type": "string (sha256 hex)",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "inputs.soltx_meta.path",
+      "type": "string",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "inputs.soltx_meta.size",
+      "type": "integer",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "inputs.soltx_meta.sha256",
+      "type": "string (sha256 hex)",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "inputs.holders_owners.path",
+      "type": "string",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "inputs.holders_owners.size",
+      "type": "integer",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "inputs.holders_owners.sha256",
+      "type": "string (sha256 hex)",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "inputs.holders_snapshot_meta.path",
+      "type": "string",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "inputs.holders_snapshot_meta.size",
+      "type": "integer",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "inputs.holders_snapshot_meta.sha256",
+      "type": "string (sha256 hex)",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "inputs.coverage_map.path",
+      "type": "string",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "inputs.coverage_map.size",
+      "type": "integer",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "inputs.coverage_map.sha256",
+      "type": "string (sha256 hex)",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "inputs.coverage_slot_counts.path",
+      "type": "string",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "inputs.coverage_slot_counts.size",
+      "type": "integer",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "inputs.coverage_slot_counts.sha256",
+      "type": "string (sha256 hex)",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "inputs.coverage_resolution.path",
+      "type": "string",
+      "required": false,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "inputs.coverage_resolution.size",
+      "type": "integer",
+      "required": false,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "inputs.coverage_resolution.sha256",
+      "type": "string (sha256 hex)",
+      "required": false,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "inputs.repair_bundle.path",
+      "type": "string",
+      "required": false,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "inputs.repair_bundle.size",
+      "type": "integer",
+      "required": false,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "inputs.repair_bundle.sha256",
+      "type": "string (sha256 hex)",
+      "required": false,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "inputs.repair_pointer.path",
+      "type": "string",
+      "required": false,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "inputs.repair_pointer.size",
+      "type": "integer",
+      "required": false,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "inputs.repair_pointer.sha256",
+      "type": "string (sha256 hex)",
+      "required": false,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "producer.path",
+      "type": "string",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "producer.sha256",
+      "type": "string (sha256 hex)",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    }
+  ],
+  "invariants": [
+    "保留 v3 字段。",
+    "base 模式省略后三 inputs，不写 null。",
+    "--as-of-slot==快照slot==finalized_upper_slot。",
+    "不回写 base meta edge_file_size/sha256。"
+  ],
+  "notes": [
+    "v3 继承字段未在本节展开。"
+  ]
+}

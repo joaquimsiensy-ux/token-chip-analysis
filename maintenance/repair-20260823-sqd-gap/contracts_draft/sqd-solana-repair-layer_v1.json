@@ -1,0 +1,160 @@
+{
+  "schema": "sqd-solana-repair-layer/v1",
+  "draft_status": "batch0-draft",
+  "source": "PLAN.md §4.2.2",
+  "producer": "scripts/solana/sqd_gap_repair.py（计划目标路径）",
+  "consumers": [
+    "solana_exact_validate.py",
+    "bundle builder",
+    "merged edge producer"
+  ],
+  "fields": [
+    {
+      "name": "header.schema",
+      "type": "string",
+      "required": true,
+      "description": "",
+      "constraints": "sqd-solana-repair-layer/v1"
+    },
+    {
+      "name": "header.mint",
+      "type": "string",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "header.plan_digest",
+      "type": "string",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "header.base.edge_sha256",
+      "type": "string (sha256 hex)",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "header.base.meta_sha256",
+      "type": "string (sha256 hex)",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "header.coverage.probe_id",
+      "type": "string",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "header.coverage.map_sha256",
+      "type": "string (sha256 hex)",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "header.reference.kind",
+      "type": "string",
+      "required": true,
+      "description": "",
+      "constraints": "helius-getBlock"
+    },
+    {
+      "name": "header.reference.endpoint_fingerprint",
+      "type": "string",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "header.producer.path",
+      "type": "string",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "header.producer.sha256",
+      "type": "string (sha256 hex)",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "transaction.signature",
+      "type": "string",
+      "required": true,
+      "description": "唯一键",
+      "constraints": ""
+    },
+    {
+      "name": "transaction.slot",
+      "type": "integer",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "transaction.reference_position",
+      "type": "integer",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "transaction.nonvote_ordinal",
+      "type": "integer",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "transaction.nonce",
+      "type": "boolean",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "transaction.class",
+      "type": "string",
+      "required": true,
+      "description": "",
+      "constraints": "nonce/other/missing_block"
+    },
+    {
+      "name": "transaction.edges",
+      "type": "array[array]",
+      "required": true,
+      "description": "[ts,slot,nonvote_ordinal,-1,from,to,amt]",
+      "constraints": "多边；edge_sort_key 排序"
+    },
+    {
+      "name": "transaction.evidence.sqd",
+      "type": "string",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "transaction.evidence.ref",
+      "type": "string",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    }
+  ],
+  "invariants": [
+    "header 含 plan_digest、不含 gid。",
+    "唯一键 signature。",
+    "只含 meta.err==null 交易。",
+    "edges 使用 pair_tx 7元组语义。"
+  ],
+  "notes": []
+}

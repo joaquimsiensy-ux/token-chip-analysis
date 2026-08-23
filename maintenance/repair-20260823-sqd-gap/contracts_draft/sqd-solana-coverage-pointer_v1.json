@@ -1,0 +1,33 @@
+{
+  "schema": "sqd-solana-coverage-pointer/v1",
+  "draft_status": "batch0-draft",
+  "source": "PLAN.md §4.2.1",
+  "producer": "scripts/solana/sqd_coverage_probe.py（计划目标路径）",
+  "consumers": [
+    "coverage resolver",
+    "replay_edges.py reconcile"
+  ],
+  "fields": [
+    {
+      "name": "schema",
+      "type": "string",
+      "required": true,
+      "description": "",
+      "constraints": "sqd-solana-coverage-pointer/v1"
+    },
+    {
+      "name": "verdict",
+      "type": "string",
+      "required": true,
+      "description": "",
+      "constraints": "PASS"
+    }
+  ],
+  "invariants": [
+    "锁内发布。",
+    "只指向不可变内容寻址 probe。"
+  ],
+  "notes": [
+    "本节仅明确 schema、PASS、锁内发布，未列其他 kernel 收据字段。"
+  ]
+}

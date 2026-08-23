@@ -1,0 +1,60 @@
+{
+  "schema": "edge-source-binding/v1",
+  "draft_status": "batch0-draft",
+  "source": "PLAN.md §4.2.9",
+  "producer": "replay_edges.py reconcile / cache resolver",
+  "consumers": [
+    "wave-scan/v5",
+    "flow-anomaly/v3",
+    "entity_source_trace",
+    "curve_cost",
+    "audit_closed_accounts",
+    "evolution/sol-rows sidecar",
+    "handoff verify",
+    "audit_release_gate",
+    "camp compiler"
+  ],
+  "fields": [
+    {
+      "name": "cache_kind",
+      "type": "string",
+      "required": true,
+      "description": "",
+      "constraints": "base/repaired"
+    },
+    {
+      "name": "gid",
+      "type": "string|null",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "soltx_edges_sha256",
+      "type": "string (sha256 hex)",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "soltx_meta_sha256",
+      "type": "string (sha256 hex)",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "edge_logical_sha256",
+      "type": "string (sha256 hex)",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    }
+  ],
+  "invariants": [
+    "wave v5/flow v3：Solana 必填，EVM 省略。",
+    "在场或被引用即与 exact receipt 逐字段全等。",
+    "旧 wave v4/flow v2 fail-closed 提示重跑。"
+  ],
+  "notes": []
+}

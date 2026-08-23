@@ -1,0 +1,86 @@
+{
+  "schema": "contracts-draft-index/v1",
+  "plan_sha256": "506cdcbe7938ad6e79eb539e793fa0f47081426f3f21d7dada404cb021a9ad93",
+  "files": [
+    {
+      "file": "canonicalization.json",
+      "schema": "sqd-canonicalization-rules/v1",
+      "source": "PLAN.md §4.2.0"
+    },
+    {
+      "file": "sqd-solana-coverage_v1.json",
+      "schema": "sqd-solana-coverage/v1",
+      "source": "PLAN.md §4.2.1"
+    },
+    {
+      "file": "sqd-solana-coverage-pointer_v1.json",
+      "schema": "sqd-solana-coverage-pointer/v1",
+      "source": "PLAN.md §4.2.1"
+    },
+    {
+      "file": "sqd-solana-repair-layer_v1.json",
+      "schema": "sqd-solana-repair-layer/v1",
+      "source": "PLAN.md §4.2.2"
+    },
+    {
+      "file": "sqd-solana-repair-bundle_v1.json",
+      "schema": "sqd-solana-repair-bundle/v1",
+      "source": "PLAN.md §4.2.3"
+    },
+    {
+      "file": "sqd-solana-repair-pointer_v1.json",
+      "schema": "sqd-solana-repair-pointer/v1",
+      "source": "PLAN.md §4.2.3"
+    },
+    {
+      "file": "publish_protocol.json",
+      "schema": "sqd-repair-publish-protocol/v1",
+      "source": "PLAN.md §4.2.3"
+    },
+    {
+      "file": "sqd-solana-coverage-resolution_v1.json",
+      "schema": "sqd-solana-coverage-resolution/v1",
+      "source": "PLAN.md §4.2.4"
+    },
+    {
+      "file": "evidence_tables.json",
+      "schema": "sqd-solana-evidence-tables/v1",
+      "source": "PLAN.md §4.2.5"
+    },
+    {
+      "file": "sqd-solana-cache_v4_repaired-meta.json",
+      "schema": "sqd-solana-cache/v4",
+      "source": "PLAN.md §4.2.6"
+    },
+    {
+      "file": "sqd-solana-slot-index-map_v1.json",
+      "schema": "sqd-solana-slot-index-map/v1",
+      "source": "PLAN.md §4.2.7"
+    },
+    {
+      "file": "solana-reconcile_v4.json",
+      "schema": "solana-reconcile/v4",
+      "source": "PLAN.md §4.2.8"
+    },
+    {
+      "file": "edge_source_binding.json",
+      "schema": "edge-source-binding/v1",
+      "source": "PLAN.md §4.2.9"
+    },
+    {
+      "file": "rpc_ledger.json",
+      "schema": "sqd-solana-rpc-ledger/v1",
+      "source": "PLAN.md §4.2.10"
+    },
+    {
+      "file": "composition_rules.json",
+      "schema": "sqd-solana-composition-rules/v1",
+      "source": "PLAN.md §4.1 A2.1 ＋ §4.4.3 ＋ §4.4.6"
+    },
+    {
+      "file": "reconciliation-report_v3.json",
+      "schema": "reconciliation-report/v3",
+      "source": "PLAN.md §4.4.4"
+    }
+  ]
+}

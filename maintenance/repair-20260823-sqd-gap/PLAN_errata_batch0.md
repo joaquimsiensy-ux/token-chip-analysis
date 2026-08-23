@@ -1,0 +1,18 @@
+# PLAN.md 勘误与补全注记（批 0，2026-08-23；PLAN.md 正文原文保留、逐字不改）
+
+> 来源：codex 批 0 落盘报告 `batch0_done.md` §6「发现项」7 条（第 8 条为自指哈希，见 `batch0_acceptance.md`）。
+> 行号：左＝PLAN.md 行号（含 11 行 frontmatter），括号内＝原计划文件行号。Fable 逐条核对原文属实后裁定如下；**本注记与 PLAN.md 冲突处以本注记为准**，批 1 起的工单一律引用本注记。
+
+| # | 发现（codex） | Fable 裁定（对施工有约束力） |
+|---|---|---|
+| E1 | L153(142) 4.2.0 规定 evidence/*、evidence_manifest、merged 边文件**不含** `plan_digest`；L173(162) 发布协议步骤①却概括写"各文件含 plan_digest" | **以 4.2.0 清单为准**。步骤①应读作："按依赖图依次写 evidence/evidence_manifest/resolution/layer/map/merged 边/merged meta——其中 resolution、layer header、map header、merged meta 含 `plan_digest`；所有文件一律不含 gid/bundle 哈希"。`canonicalization.json` 已按清单记录，`publish_protocol.json` 的 notes 引用本条。 |
+| E2 | L114(103) r5→r6 摘要把"数组严格递增唯一且 ⊂[from,to]"列为 getBlocks `complete` 机械条件；L160(149) 4.2.1 的离线合取式不含这两项，改为"生产时断言并记录、`--live-canary` 可复核" | **以 4.2.1 为准**（r7 定稿口径）。离线 validator 的 `complete` 合取式＝response_ok ∧ (to−from+1) ≤ 500,000 ∧ reference_head_at_check ≥ to ∧ 位图该段长度 == to−from+1 ∧ popcount == count ∧ count ≤ 区间长度；`array_monotonic_unique` 为生产时断言字段（必须为 true，否则该段 `response_ok` 置 false），validator 只检查其为 true 且可被 `--live-canary` 抽检。L114 为历史变更摘要，不再作为规范引用。 |
+| E3 | L163(152) 只说探针 `CURRENT.json` 为 kernel 收据（`sqd-solana-coverage-pointer/v1`，PASS），未逐字段 | **补全**：与 repair pointer 同构——`{schema:"sqd-solana-coverage-pointer/v1", target{chain:"solana", token:<mint>, as_of_block:<coverage_map.slot_counts.to_slot>}, mode:"formal", verdict:"PASS", exit_code:0, producer{path,sha256}, inputs{coverage_map{path,size,sha256}, slot_counts{path,size,sha256}, ledger{path,size,sha256}, blocks_bitmap{path,size,sha256}|省略}, probe_id, published_at}`；`inputs` 路径案根相对（`data/sqd_coverage/<probe_id>/…`）；`blocks_bitmap` 仅在 `skipped_confirmation` 非 null 时出现（省略而非 null）。锁内 `publish_overwrite`（PASS→PASS）发布；resolver 校验 `inputs.coverage_map.sha256 == sha256(文件)` 且 `probe_id` 重算一致。`sqd-solana-coverage-pointer_v1.json` 草案按本条在批 1 冻结时补齐。 |
+| E4 | L186(175) 合并缓存 meta"与 base v4 meta 同契约"，本计划未列 base v4 meta 完整字段表 | **以现役实现为准**：继承字段集＝`fetch_sqd_transfers_v2.py` 当前写出的 v4 meta 全部字段（以 main=f06078e 的实现为冻结基线）∪ `sqd_cache_identity.validate_cache_meta` 必检字段；差异字段按 4.2.6。批 3 工单必须附"base v4 meta 字段表（从实现抄录）＋ repaired meta 差异表"，契约草案在批 1 冻结时补一条 note 指向本条。 |
+| E5 | L192(181) `solana-reconcile/v4`"在 v3 字段全保留基础上"，本计划未列 v3 完整字段表 | **以现役实现为准**：v3 字段集＝`replay_edges.py cmd_reconcile`（main=f06078e）当前写出的全部键；v4＝v3 全部键 ＋ 4.2.8 新增键；唯一删除项＝不再回写 base meta（非 receipt 字段）。批 5 工单必须附"v3 字段表（从实现抄录）＋ v4 增量表"。 |
+| E6 | L198(187) `rpc_ledger.jsonl` 逐行字段不含 `plan_digest`，同一行却规定 `--resume` 以 `(plan_digest, params_digest, result_sha256)` 判已完成 | **补全**：`rpc_ledger.jsonl` 首行为 header `{"schema":"sqd-solana-rpc-ledger/v1","plan_digest":<…>,"reference":{kind,endpoint_fingerprint}}`，其后逐行按 4.2.10 字段（逐行不重复 plan_digest）；`--resume` 判据中的 `plan_digest` 取自 header，且必须 == 所在 `pending-<plan_digest>/` 目录名 == bundle.plan_digest。4.2.0"必须含 plan_digest 的文件清单"**增补** `rpc_ledger header`（与 layer/map header 同级）；`canonicalization.json`/`rpc_ledger.json` 草案在批 1 冻结时按本条补齐。探针的 `ledger.jsonl`（4.2.1）不受影响（探针无 plan_digest，靠 probe_id 绑定）。 |
+| E7 | L239-241(228-230) 4.4.4 只给家族键集/一律 v3/`--reseal`/exact 分支检查，未给 `reconciliation-report/v3` 完整外壳字段表 | **以现役实现为准**：v3 外壳＝`reconciliation_report.py`（main=f06078e）当前写出的 v2 外壳全部键 ＋ `schema` 升 v3 ＋ 新增 `family`（"evm"/"solana"，由 target 推导，不接受外部声明）＋ `checks` 键集按家族（EVM 四项/Solana 五项，顺序固定）；批 5 工单必须附"v2 外壳字段表（从实现抄录）＋ v3 增量表"。 |
+
+## 对批 1 的直接后果
+- 批 1"契约冻结"时，契约草案 JSON 按 E1/E2/E3/E6 修订（canonicalization / publish_protocol / sqd-solana-coverage-pointer_v1 / rpc_ledger 四份），E4/E5/E7 各加一条 note 指向本注记；`INDEX.json` 的 `plan_sha256` 不变（PLAN.md 正文未改），增加 `errata: "PLAN_errata_batch0.md"` 与其 sha256。
+- 先红清单不变（31 项）；E2 归入第 (21)/(28) 项的断言口径；E6 归入第 (13)/(26) 项相关的 resume 幂等测试（`test_sqd_gap_repair.py`）。

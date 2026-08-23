@@ -1,0 +1,92 @@
+{
+  "schema": "reconciliation-report/v3",
+  "draft_status": "batch0-draft",
+  "source": "PLAN.md §4.4.4",
+  "producer": "scripts/report/reconciliation_report.py",
+  "consumers": [
+    "shared_release_receipt.validate_reconciliation_report",
+    "handoff_manifest.py verify",
+    "audit_release_gate.py"
+  ],
+  "fields": [
+    {
+      "name": "schema",
+      "type": "string",
+      "required": true,
+      "description": "",
+      "constraints": "reconciliation-report/v3"
+    },
+    {
+      "name": "family",
+      "type": "string",
+      "required": true,
+      "description": "",
+      "constraints": "evm/solana；类型为推断"
+    },
+    {
+      "name": "checks.evm",
+      "type": "object",
+      "required": false,
+      "description": "",
+      "constraints": "balance,supply,supply_truth,time"
+    },
+    {
+      "name": "checks.solana",
+      "type": "object",
+      "required": false,
+      "description": "",
+      "constraints": "balance,supply,supply_truth,time,exact_reconcile；dynamic 顺序 supply,balance,supply_truth,time,exact_reconcile"
+    },
+    {
+      "name": "exact_reconcile.schema",
+      "type": "string",
+      "required": true,
+      "description": "",
+      "constraints": "solana-reconcile/v4"
+    },
+    {
+      "name": "exact_reconcile.mode",
+      "type": "string",
+      "required": true,
+      "description": "",
+      "constraints": "formal"
+    },
+    {
+      "name": "exact_reconcile.gate_pass",
+      "type": "boolean",
+      "required": true,
+      "description": "",
+      "constraints": "true"
+    },
+    {
+      "name": "exact_reconcile.negative_balance_count",
+      "type": "integer",
+      "required": true,
+      "description": "",
+      "constraints": "0"
+    },
+    {
+      "name": "exact_reconcile.snapshot_mismatch_count",
+      "type": "integer",
+      "required": true,
+      "description": "",
+      "constraints": "0"
+    },
+    {
+      "name": "cli.--reseal",
+      "type": "string",
+      "required": false,
+      "description": "",
+      "constraints": "仅 EVM"
+    }
+  ],
+  "invariants": [
+    "wrapper 一律 v3；v2 fail-closed。",
+    "EVM reseal 从四份 receipt 重建，不信旧 wrapper；失败拒绝。",
+    "Solana v2 重跑 v4 exact+五项。",
+    "exact 检查组合、inputs 案根哈希、holders_owners 同一文件并调用独立深验。"
+  ],
+  "notes": [
+    "family 是按家族取键的结构化推断；完整 wrapper 外壳未在本节展开。"
+  ]
+}

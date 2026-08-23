@@ -1,0 +1,285 @@
+{
+  "schema": "arc-evidence-manifest/v1",
+  "case": {
+    "token": "ARC",
+    "chain": "solana",
+    "mint": "61V8vBaqAGMpgDQi4JcAwo1dmBGHsyhzodcPqnEVpump",
+    "case_root": "~/Documents/5.6筹码分析/ARC分析"
+  },
+  "generated": {
+    "by": "Fable 本机只读 shasum（脚本 arc_hash_manifest.py）",
+    "date": "2026-08-23",
+    "note": "仅记路径/size/sha256，未复制任何内容；路径相对 case_root"
+  },
+  "staging_inputs": {
+    "arc_evidence_hashes.tsv": {
+      "rows": 116,
+      "sha256": "18cf82c1d7ab9f00694c0d19a3818256a8f67cb1eabbae51704843488160e3c5"
+    },
+    "arc_routeA_blocks_hashes.tsv": {
+      "rows": 6759,
+      "sha256": "698d5f0b7df7e6230a94221da52ca9e9b85848f0246189c22075c1f24d4800f4"
+    }
+  },
+  "base_cache": {
+    "edges": {
+      "rel_path": "data/soltx-6b99816bc26d8c53bac165b4efeb03a2b0beee563bf242e05b8906ae8dff3cb8.jsonl.gz",
+      "size": 502420015,
+      "sha256": "43f269937930c4ad384254356df24963c09584707d914c741f1967f2eaffb556"
+    },
+    "meta": {
+      "rel_path": "data/soltx-6b99816bc26d8c53bac165b4efeb03a2b0beee563bf242e05b8906ae8dff3cb8.meta.json",
+      "size": 514510,
+      "sha256": "7d3cf0d03d7d20a1300958e2408633aaf5f2f5b4ced5db80c7c3c3b342e70d92"
+    }
+  },
+  "legacy_non_formal": {
+    "note": "codex 08-18 owner-correction 旧产物，非正式、不可消费，仅存档",
+    "txaware_repaired_edges": {
+      "rel_path": "data/soltx-6b99816bc26d8c53bac165b4efeb03a2b0beee563bf242e05b8906ae8dff3cb8-txaware-repaired.jsonl.gz",
+      "size": 434005252,
+      "sha256": "9f08bab2f111ec21768a40ba3bc051d0276c5f05b7dc7918e41fda984279e71d"
+    },
+    "txaware_repaired_meta": {
+      "rel_path": "data/soltx-6b99816bc26d8c53bac165b4efeb03a2b0beee563bf242e05b8906ae8dff3cb8-txaware-repaired.meta.json",
+      "size": 499168,
+      "sha256": "e9d64a12b5a96b8c68352981285b2a066e16eca53609a32019299abef78605f6"
+    }
+  },
+  "snapshot": {
+    "holders_owners": {
+      "rel_path": "data/holders_owners.json",
+      "size": 2697321,
+      "sha256": "61b7e01724c16b7b377754a218f855833b7b36be66c66521bb38028c5760d756"
+    },
+    "holders_snapshot_meta": {
+      "rel_path": "data/holders_snapshot_meta.json",
+      "size": 2131,
+      "sha256": "b0fc1949240e84b98adfe013dafcf9c74661a5adbe00a70ac5f079ffedf6e8e5"
+    },
+    "holders_accounts": {
+      "rel_path": "data/holders_accounts.json",
+      "size": 7295005,
+      "sha256": "a278cb1e17dcd68d7f615da990abdc4617c0d2a6287461445cae0d0c866bde74"
+    }
+  },
+  "reconcile_state_before_repair": {
+    "reconcile_receipt": {
+      "rel_path": "data/reconcile_receipt.json",
+      "size": 1551,
+      "sha256": "32716704040dd2fe9f17cf56c7292cce217e32e403893a33999ba90288f4d627"
+    },
+    "replay_final_balances": {
+      "rel_path": "data/replay_final_balances.json",
+      "size": 2605729,
+      "sha256": "7e28ec145b7ede405aae53f84a8d48e695abe343f377710a50d34077ea3b1b0b"
+    },
+    "residual_profile": {
+      "rel_path": "data/residual_profile.json",
+      "size": 10509,
+      "sha256": "0fbea2fa76e81546db150eadeb572cd421c80b78b1ae7ecfc49936a484307968"
+    },
+    "anomalies": {
+      "rel_path": "anomalies.json",
+      "size": 10033,
+      "sha256": "a148e1840377494811d19f45e68c22544783bc6b3a2e33da3fd3eb33d607c6e4"
+    }
+  },
+  "repair_edges_83": {
+    "pilot": {
+      "rel_path": "diagnosis_20260823/routeA_pilot/repair_edges_pilot.jsonl",
+      "size": 6717,
+      "sha256": "2c2caf78a0784b2bc39a3e37774081b530a6a13f05d10af277755167210a1547",
+      "rows": 20
+    },
+    "full": {
+      "rel_path": "diagnosis_20260823/routeA_full/repair_edges_full.jsonl",
+      "size": 20455,
+      "sha256": "658efe70af62adfa2371a96d89e3250f6708a161fbd2de0f5a5933baaf5f8ba6",
+      "rows": 61
+    },
+    "extra_gaps": {
+      "rel_path": "diagnosis_20260823/routeA_full/extra_gaps/repair_edges_extra.jsonl",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "rows": 0
+    },
+    "hunt_remaining": {
+      "rel_path": "diagnosis_20260823/routeA_full/hunt_remaining/repair_edges_hunt.jsonl",
+      "size": 691,
+      "sha256": "e853b10791265199673664286821e1494ec3cf1c818029625eb5be1e88ba8fb0",
+      "rows": 2
+    },
+    "all_repairs_done": {
+      "rel_path": "diagnosis_20260823/routeA_full/ALL_REPAIRS_DONE.json",
+      "size": 2842,
+      "sha256": "374a614622aaad6062dc0257e3604cf16cb7a2b4382f995bf9923f2ad4e88c02"
+    },
+    "total_rows": 83
+  },
+  "root_cause_evidence": {
+    "findings_md": {
+      "rel_path": "diagnosis_20260823/sqd_query_variants/FINDINGS_sqd_omission_rootcause.md",
+      "size": 22832,
+      "sha256": "3033ba8401ddf46e69debe0b717aafcad7745cfc7bf627c89e42c9f5e325ba0f"
+    },
+    "dense_map_final": {
+      "rel_path": "diagnosis_20260823/sqd_query_variants/dense_map_final.json",
+      "size": 24320,
+      "sha256": "c117f064cbdbc9cede933b93c54ff1103514fac2922a6890f288a6caf6da7a0b"
+    },
+    "sqd_probe_ledger": {
+      "rel_path": "diagnosis_20260823/sqd_query_variants/sqd_probe_ledger.jsonl",
+      "size": 2712512,
+      "sha256": "827026ed778f718af6b70d83c1a08250edd068dba30fee200b25cc36df4e5e82"
+    },
+    "sqd_census": [
+      {
+        "rel_path": "diagnosis_20260823/sqd_query_variants/sqd_census_426649168.json",
+        "size": 245168,
+        "sha256": "d024df5c99ada551b875b309d958757a82e97e3d6da3a7f225fdf6563bfb1376"
+      },
+      {
+        "rel_path": "diagnosis_20260823/sqd_query_variants/sqd_census_426651094.json",
+        "size": 143045,
+        "sha256": "a90c9e4a3847ce6c188a718acc35c84d9c204083644c28412d851b1e77928e41"
+      },
+      {
+        "rel_path": "diagnosis_20260823/sqd_query_variants/sqd_census_426665444.json",
+        "size": 234695,
+        "sha256": "1df27f04a52d6e8dc811abf33f1f46547ea7ab7c592a96a666eeda2388f16141"
+      },
+      {
+        "rel_path": "diagnosis_20260823/sqd_query_variants/sqd_census_439000000.json",
+        "size": 104353,
+        "sha256": "f52428893a65b4b973bfa155421add88776e7c94ef7753e72a33c1e7f69f08b1"
+      }
+    ],
+    "stage_files": [
+      {
+        "rel_path": "diagnosis_20260823/sqd_query_variants/stage1_lifetime3_variants.json",
+        "size": 8078,
+        "sha256": "4bd02f2381694c6d9a8bbfbd4eff1c670bffa45cb6d9a47b387efdd5e157e3dc"
+      },
+      {
+        "rel_path": "diagnosis_20260823/sqd_query_variants/stage1b_subset_vote_analysis.json",
+        "size": 10409,
+        "sha256": "f927169c9d1d91f01cc96873aa92d8202783803cfb1779820770a61265967cdd"
+      },
+      {
+        "rel_path": "diagnosis_20260823/sqd_query_variants/stage2_absent_sample_by_signature.json",
+        "size": 43365,
+        "sha256": "2a4fcaca3779c69e870dabc79e12b71f8a28fc774f8c23d79553fd72867e54d8"
+      },
+      {
+        "rel_path": "diagnosis_20260823/sqd_query_variants/stage3_true_omission_rate_sample.json",
+        "size": 97648,
+        "sha256": "5dc0589ce39e8491a934bfbdc8335cf70568789600b658564fb556fce5699e8e"
+      },
+      {
+        "rel_path": "diagnosis_20260823/sqd_query_variants/stage4_era_sample_nonce.json",
+        "size": 698,
+        "sha256": "11c228ed345a4364e4d3dfa5b00a348237020ece342f3894c4838fe0cb76f67b"
+      },
+      {
+        "rel_path": "diagnosis_20260823/sqd_query_variants/stage5_inwindow_nonce_presence.json",
+        "size": 64918,
+        "sha256": "0d037eef412bb0436d8ce05a98dd07f068dede04c043da9d741ed3ddad52d9c8"
+      },
+      {
+        "rel_path": "diagnosis_20260823/sqd_query_variants/stage5b_truly_missing_summary.json",
+        "size": 8285,
+        "sha256": "74e3782f8a4b380631c126ed41d013e7bd5c2ab3f8da7aa147218f756245f410"
+      },
+      {
+        "rel_path": "diagnosis_20260823/sqd_query_variants/stage6_double_count_demo.json",
+        "size": 3069,
+        "sha256": "83045020104b95e9214b79f737675bfd9e64c1e9577c0f9fe69951069e2d9f62"
+      },
+      {
+        "rel_path": "diagnosis_20260823/sqd_query_variants/stage7_truly_missing_59_summary.json",
+        "size": 10603,
+        "sha256": "ddff1f5aa372bad24238540e986ee3ea1a7af9173c2909709d8b493517850f6e"
+      }
+    ],
+    "nonce_window_scan": {
+      "rel_path": "diagnosis_20260823/sqd_query_variants/nonce_window_scan.json",
+      "size": 11666,
+      "sha256": "cc20b07681616406a917cd3b0477398057403e83dca7834f9a007d02e46dc1d6"
+    },
+    "helius_full_blocks": {
+      "count": 7,
+      "bytes": 44646175
+    }
+  },
+  "acceptance": {
+    "fable_indep_after_check": {
+      "rel_path": "diagnosis_20260823/routeA_full/fable_acceptance/indep_after_check.json",
+      "size": 3514,
+      "sha256": "0d04403dd829134f3aec809d4d88a77a4d66d33f97b3283960175966e318bf6b"
+    },
+    "fable_baseline_replay_log": {
+      "rel_path": "diagnosis_20260823/routeA_full/fable_acceptance/indep_baseline_replay.log",
+      "size": 305,
+      "sha256": "8c4d9d4be2b647deb7cfbd70cf3ed19ddcb0f152c873b0cea0c8eb18d05bd6c0"
+    },
+    "shadow_manifest": {
+      "rel_path": "diagnosis_20260823/routeA_full/shadow/MANIFEST.json",
+      "size": 16122,
+      "sha256": "96473cc319639ca1912ba8c935e5a5573a33d6533e5cecd0b81e67a9b841e106"
+    },
+    "shadow_reconcile": {
+      "rel_path": "diagnosis_20260823/routeA_full/shadow/shadow_reconcile.json",
+      "size": 43794,
+      "sha256": "0684016c62873ca9983ba3cdef06822da5dfdba76b07ddb27bc5d49fc2ae1ac8"
+    },
+    "shadow_report": {
+      "rel_path": "diagnosis_20260823/routeA_full/shadow/SHADOW_RECONCILE_REPORT.md",
+      "size": 7291,
+      "sha256": "857631c47fefdac47114bfc27f48e9ef2b4b101ebd6a287057a186650d3255bc"
+    }
+  },
+  "hunt": {
+    "bisect_result": {
+      "rel_path": "diagnosis_20260823/routeA_full/hunt_remaining/bisect_result.json",
+      "size": 2689,
+      "sha256": "647da725af648a5b9c107508952cb730d92861fa7017b30282626dde46e37b79"
+    },
+    "continuity_result": {
+      "rel_path": "diagnosis_20260823/routeA_full/hunt_remaining/continuity_result.json",
+      "size": 2413,
+      "sha256": "fd2c7bb6b864849594aa4aebfe42da6938a2eb90c2a3c473fb650817b29124c6"
+    },
+    "bracket_nonce_probe": {
+      "rel_path": "diagnosis_20260823/routeA_full/hunt_remaining/bracket_nonce_probe.json",
+      "size": 332,
+      "sha256": "41f7c65d76fc765695140fcac30cb8eac43626bbaa56eaa498eb2bbdb84aac4d"
+    },
+    "header_vs_nonce_classification": {
+      "rel_path": "diagnosis_20260823/routeA_full/hunt_remaining/header_vs_nonce_classification.json",
+      "size": 287,
+      "sha256": "4b6aa539885d00660e4a065ea13a27206443a4028b45aa106463251e19c4b56b"
+    }
+  },
+  "rpc_ledgers": {
+    "diagnosis_rpc_ledger": {
+      "rel_path": "diagnosis_20260823/rpc_ledger.jsonl",
+      "size": 1142959,
+      "sha256": "3bde940bd0c733b498af27f8cc10bc1b57999f805939eb24e27d25b83c89f849"
+    }
+  },
+  "helius_blocks": {
+    "file_count": 6759,
+    "total_bytes": 2096692855,
+    "list": "arc_routeA_blocks_hashes.tsv",
+    "list_sha256": "698d5f0b7df7e6230a94221da52ca9e9b85848f0246189c22075c1f24d4800f4",
+    "by_dir": {
+      "routeA_pilot/blocks": 425,
+      "routeA_full/blocks": 6146,
+      "routeA_full/extra_gaps/blocks": 129,
+      "routeA_full/hunt_remaining/blocks": 52,
+      "sqd_query_variants/helius_full_blocks": 7
+    }
+  },
+  "all_general_files": "arc_evidence_hashes.tsv（116 文件全量清单，见同目录）"
+}

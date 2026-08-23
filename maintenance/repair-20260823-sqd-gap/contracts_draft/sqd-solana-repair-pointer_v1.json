@@ -1,0 +1,137 @@
+{
+  "schema": "sqd-solana-repair-pointer/v1",
+  "draft_status": "batch0-draft",
+  "source": "PLAN.md §4.2.3",
+  "producer": "receipt_kernel.publish_overwrite（由 sqd_gap_repair.py 调用）",
+  "consumers": [
+    "repair resolver",
+    "solana_exact_validate.py"
+  ],
+  "fields": [
+    {
+      "name": "schema",
+      "type": "string",
+      "required": true,
+      "description": "",
+      "constraints": "sqd-solana-repair-pointer/v1"
+    },
+    {
+      "name": "target.chain",
+      "type": "string",
+      "required": true,
+      "description": "",
+      "constraints": "solana"
+    },
+    {
+      "name": "target.token",
+      "type": "string",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "target.as_of_block",
+      "type": "integer",
+      "required": true,
+      "description": "base.finalized_upper_slot",
+      "constraints": ""
+    },
+    {
+      "name": "mode",
+      "type": "string",
+      "required": true,
+      "description": "",
+      "constraints": "formal"
+    },
+    {
+      "name": "verdict",
+      "type": "string",
+      "required": true,
+      "description": "",
+      "constraints": "PASS"
+    },
+    {
+      "name": "exit_code",
+      "type": "integer",
+      "required": true,
+      "description": "",
+      "constraints": "0"
+    },
+    {
+      "name": "producer",
+      "type": "object",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "inputs.bundle",
+      "type": "object",
+      "required": true,
+      "description": "path,size,sha256",
+      "constraints": ""
+    },
+    {
+      "name": "gid",
+      "type": "string",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "supersedes",
+      "type": "string|null",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "published_at",
+      "type": "string",
+      "required": true,
+      "description": "",
+      "constraints": "类型为推断"
+    },
+    {
+      "name": "producer.path",
+      "type": "string",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "producer.sha256",
+      "type": "string (sha256 hex)",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "inputs.bundle.path",
+      "type": "string",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "inputs.bundle.size",
+      "type": "integer",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "inputs.bundle.sha256",
+      "type": "string (sha256 hex)",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    }
+  ],
+  "invariants": [
+    "bundle.supersedes==切换瞬间 CURRENT.gid；无 CURRENT 时为 null。",
+    "bundle.base.edge_sha256==当前 base 哈希。",
+    "CAS 失败不得覆盖。"
+  ],
+  "notes": []
+}

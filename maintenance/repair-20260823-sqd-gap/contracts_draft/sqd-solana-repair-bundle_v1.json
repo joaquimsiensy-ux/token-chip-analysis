@@ -1,0 +1,461 @@
+{
+  "schema": "sqd-solana-repair-bundle/v1",
+  "draft_status": "batch0-draft",
+  "source": "PLAN.md §4.2.3",
+  "producer": "scripts/solana/sqd_gap_repair.py（计划目标路径）",
+  "consumers": [
+    "solana_exact_validate.py",
+    "repair resolver",
+    "CURRENT publisher"
+  ],
+  "fields": [
+    {
+      "name": "schema",
+      "type": "string",
+      "required": true,
+      "description": "",
+      "constraints": "sqd-solana-repair-bundle/v1"
+    },
+    {
+      "name": "mint",
+      "type": "string",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "plan_digest",
+      "type": "string",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "gid",
+      "type": "string",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "kind",
+      "type": "string",
+      "required": true,
+      "description": "",
+      "constraints": "repair"
+    },
+    {
+      "name": "mode",
+      "type": "string",
+      "required": true,
+      "description": "",
+      "constraints": "formal/exploration"
+    },
+    {
+      "name": "producer",
+      "type": "object",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "base",
+      "type": "object",
+      "required": true,
+      "description": "edge_file,meta_file,edge_sha256,meta_sha256,edge_logical_sha256,edge_rows,finalized_upper_slot",
+      "constraints": ""
+    },
+    {
+      "name": "coverage",
+      "type": "object",
+      "required": true,
+      "description": "probe_id,map{path,size,sha256},slot_counts{…}",
+      "constraints": ""
+    },
+    {
+      "name": "coverage_resolution",
+      "type": "object",
+      "required": true,
+      "description": "path,size,sha256",
+      "constraints": ""
+    },
+    {
+      "name": "repair_layer",
+      "type": "object",
+      "required": true,
+      "description": "path,size,sha256,transactions,edges",
+      "constraints": ""
+    },
+    {
+      "name": "slot_index_map",
+      "type": "object",
+      "required": true,
+      "description": "path,size,sha256,slots",
+      "constraints": ""
+    },
+    {
+      "name": "evidence_manifest",
+      "type": "object",
+      "required": true,
+      "description": "path,size,sha256",
+      "constraints": ""
+    },
+    {
+      "name": "merged",
+      "type": "object",
+      "required": true,
+      "description": "edge_file,meta_file,edge_sha256,meta_sha256,edge_logical_sha256,edge_rows",
+      "constraints": ""
+    },
+    {
+      "name": "reference",
+      "type": "object",
+      "required": true,
+      "description": "kind,endpoint_fingerprint,source",
+      "constraints": "source=live/local-evidence-cache"
+    },
+    {
+      "name": "rpc_ledger",
+      "type": "object",
+      "required": true,
+      "description": "path,size,sha256,requests,credits_estimate",
+      "constraints": ""
+    },
+    {
+      "name": "supersedes",
+      "type": "string|null",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "generated_at",
+      "type": "string",
+      "required": true,
+      "description": "",
+      "constraints": "类型为推断"
+    },
+    {
+      "name": "producer.path",
+      "type": "string",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "producer.sha256",
+      "type": "string (sha256 hex)",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "base.edge_file",
+      "type": "string",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "base.meta_file",
+      "type": "string",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "base.edge_sha256",
+      "type": "string (sha256 hex)",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "base.meta_sha256",
+      "type": "string (sha256 hex)",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "base.edge_logical_sha256",
+      "type": "string (sha256 hex)",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "base.edge_rows",
+      "type": "integer",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "base.finalized_upper_slot",
+      "type": "integer",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "coverage.probe_id",
+      "type": "string",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "coverage.map.path",
+      "type": "string",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "coverage.map.size",
+      "type": "integer",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "coverage.map.sha256",
+      "type": "string (sha256 hex)",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "coverage.slot_counts.path",
+      "type": "string",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "coverage.slot_counts.size",
+      "type": "integer",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "coverage.slot_counts.sha256",
+      "type": "string (sha256 hex)",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "coverage_resolution.path",
+      "type": "string",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "coverage_resolution.size",
+      "type": "integer",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "coverage_resolution.sha256",
+      "type": "string (sha256 hex)",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "repair_layer.path",
+      "type": "string",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "repair_layer.size",
+      "type": "integer",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "repair_layer.sha256",
+      "type": "string (sha256 hex)",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "repair_layer.transactions",
+      "type": "integer",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "repair_layer.edges",
+      "type": "integer",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "slot_index_map.path",
+      "type": "string",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "slot_index_map.size",
+      "type": "integer",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "slot_index_map.sha256",
+      "type": "string (sha256 hex)",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "slot_index_map.slots",
+      "type": "integer",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "evidence_manifest.path",
+      "type": "string",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "evidence_manifest.size",
+      "type": "integer",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "evidence_manifest.sha256",
+      "type": "string (sha256 hex)",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "merged.edge_file",
+      "type": "string",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "merged.meta_file",
+      "type": "string",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "merged.edge_sha256",
+      "type": "string (sha256 hex)",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "merged.meta_sha256",
+      "type": "string (sha256 hex)",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "merged.edge_logical_sha256",
+      "type": "string (sha256 hex)",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "merged.edge_rows",
+      "type": "integer",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "reference.kind",
+      "type": "string",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "reference.endpoint_fingerprint",
+      "type": "string",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "reference.source",
+      "type": "string",
+      "required": true,
+      "description": "",
+      "constraints": "live/local-evidence-cache"
+    },
+    {
+      "name": "rpc_ledger.path",
+      "type": "string",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "rpc_ledger.size",
+      "type": "integer",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "rpc_ledger.sha256",
+      "type": "string (sha256 hex)",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "rpc_ledger.requests",
+      "type": "integer",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "rpc_ledger.credits_estimate",
+      "type": "integer",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    }
+  ],
+  "invariants": [
+    "merged.edge_rows==base.edge_rows+repair_layer.edges。",
+    "mode==formal 当且仅当 reference.source==live。",
+    "exploration 不发指针。",
+    "refuted-only 不产代不发指针。"
+  ],
+  "notes": []
+}

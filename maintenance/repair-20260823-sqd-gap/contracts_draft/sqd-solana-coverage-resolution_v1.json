@@ -1,0 +1,193 @@
+{
+  "schema": "sqd-solana-coverage-resolution/v1",
+  "draft_status": "batch0-draft",
+  "source": "PLAN.md §4.2.4",
+  "producer": "scripts/solana/sqd_gap_repair.py（计划目标路径）",
+  "consumers": [
+    "solana_exact_validate.py",
+    "bundle builder"
+  ],
+  "fields": [
+    {
+      "name": "schema",
+      "type": "string",
+      "required": true,
+      "description": "",
+      "constraints": "sqd-solana-coverage-resolution/v1"
+    },
+    {
+      "name": "mint",
+      "type": "string",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "plan_digest",
+      "type": "string",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "coverage.probe_id",
+      "type": "string",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "coverage.map_sha256",
+      "type": "string (sha256 hex)",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "census[].slot",
+      "type": "integer",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "census[].state_in_map",
+      "type": "string",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "census[].result",
+      "type": "string",
+      "required": true,
+      "description": "",
+      "constraints": "confirmed_nonce_defect/confirmed_other_defect/confirmed_missing_block/refuted"
+    },
+    {
+      "name": "census[].sqd_tx_count",
+      "type": "integer",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "census[].sqd_blockhash",
+      "type": "string",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "census[].ref_tx_count",
+      "type": "integer",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "census[].ref_nonvote_count",
+      "type": "integer",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "census[].ref_blockhash",
+      "type": "string",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "census[].missing_total",
+      "type": "integer",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "census[].missing_nonce",
+      "type": "integer",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "census[].missing_err_excluded",
+      "type": "integer",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "census[].evidence.sqd",
+      "type": "object",
+      "required": true,
+      "description": "path,size,sha256",
+      "constraints": ""
+    },
+    {
+      "name": "census[].evidence.ref",
+      "type": "object",
+      "required": true,
+      "description": "path,size,sha256",
+      "constraints": ""
+    },
+    {
+      "name": "effective_verdict",
+      "type": "string",
+      "required": true,
+      "description": "展示值，须重算",
+      "constraints": ""
+    },
+    {
+      "name": "census[].evidence.sqd.path",
+      "type": "string",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "census[].evidence.sqd.size",
+      "type": "integer",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "census[].evidence.sqd.sha256",
+      "type": "string (sha256 hex)",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "census[].evidence.ref.path",
+      "type": "string",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "census[].evidence.ref.size",
+      "type": "integer",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "census[].evidence.ref.sha256",
+      "type": "string (sha256 hex)",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    }
+  ],
+  "invariants": [
+    "所有候选有归宿。",
+    "任一 confirmed=>DEFECTS_CONFIRMED。",
+    "未归宿候选=>INCONCLUSIVE。"
+  ],
+  "notes": []
+}

@@ -1,0 +1,87 @@
+{
+  "schema": "sqd-repair-publish-protocol/v1",
+  "draft_status": "batch0-draft",
+  "source": "PLAN.md §4.2.3",
+  "producer": "scripts/solana/sqd_gap_repair.py（计划目标路径）",
+  "consumers": [
+    "repair resolver",
+    "--resume",
+    "receipt_kernel.publish_overwrite"
+  ],
+  "fields": [
+    {
+      "name": "step_1",
+      "type": "object",
+      "required": true,
+      "description": "pending 内按依赖图 publish_exclusive 写 evidence/evidence_manifest/resolution/layer/map/merged 边/merged meta并逐文件fsync",
+      "constraints": "按编号执行并满足对应持久化要求"
+    },
+    {
+      "name": "step_2",
+      "type": "object",
+      "required": true,
+      "description": "计算 gid",
+      "constraints": "按编号执行并满足对应持久化要求"
+    },
+    {
+      "name": "step_3",
+      "type": "object",
+      "required": true,
+      "description": "pending 内最后 exclusive 写 bundle.json 并 fsync",
+      "constraints": "按编号执行并满足对应持久化要求"
+    },
+    {
+      "name": "step_4",
+      "type": "object",
+      "required": true,
+      "description": "深验自验",
+      "constraints": "按编号执行并满足对应持久化要求"
+    },
+    {
+      "name": "step_5",
+      "type": "object",
+      "required": true,
+      "description": "fsync pending 目录",
+      "constraints": "按编号执行并满足对应持久化要求"
+    },
+    {
+      "name": "step_6",
+      "type": "object",
+      "required": true,
+      "description": "原子 rename pending 为 gen",
+      "constraints": "按编号执行并满足对应持久化要求"
+    },
+    {
+      "name": "step_7",
+      "type": "object",
+      "required": true,
+      "description": "fsync repair 父目录",
+      "constraints": "按编号执行并满足对应持久化要求"
+    },
+    {
+      "name": "step_8",
+      "type": "object",
+      "required": true,
+      "description": "取锁读 CURRENT 校验 CAS/base 后 publish_overwrite CURRENT",
+      "constraints": "按编号执行并满足对应持久化要求"
+    },
+    {
+      "name": "step_9",
+      "type": "object",
+      "required": true,
+      "description": "锁内 fsync 指针父目录后释放锁",
+      "constraints": "按编号执行并满足对应持久化要求"
+    }
+  ],
+  "invariants": [
+    "1–5崩溃留下 pending，--resume 按 plan_digest 续跑并按哈希复用。",
+    "6–7崩溃只存 pending 或 gen 之一。",
+    "8前崩溃可对完整 gen 幂等补发指针。",
+    "resolver 只认有效 CURRENT、bundle 哈希命中、自洽且绑定当前 base 的代。",
+    "CAS 失败保留孤儿代且不覆盖。",
+    "base 重采使代失效；无退回 base 正式路径；新候选/映射无解由新代 supersede。"
+  ],
+  "notes": [
+    "步骤1“各文件含 plan_digest”与 §4.2.0 清单冲突；动作原话未修正。"
+  ]
+}

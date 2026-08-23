@@ -1,0 +1,221 @@
+{
+  "schema": "sqd-solana-evidence-tables/v1",
+  "draft_status": "batch0-draft",
+  "source": "PLAN.md §4.2.5",
+  "producer": "scripts/solana/sqd_gap_repair.py（计划目标路径）",
+  "consumers": [
+    "solana_exact_validate.py",
+    "coverage_resolution",
+    "gid calculator"
+  ],
+  "fields": [
+    {
+      "name": "<slot>.sqd.json.slot",
+      "type": "integer",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "<slot>.sqd.json.blockhash",
+      "type": "string",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "<slot>.sqd.json.parent_slot",
+      "type": "integer",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "<slot>.sqd.json.transactions",
+      "type": "array[object]",
+      "required": true,
+      "description": "index,signature,err",
+      "constraints": ""
+    },
+    {
+      "name": "<slot>.sqd.json.query_body_sha256",
+      "type": "string (sha256 hex)",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "<slot>.sqd.json.response_sha256",
+      "type": "string (sha256 hex)",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "<slot>.ref.json.slot",
+      "type": "integer",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "<slot>.ref.json.blockhash",
+      "type": "string",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "<slot>.ref.json.parent_slot",
+      "type": "integer",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "<slot>.ref.json.block_time",
+      "type": "integer",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "<slot>.ref.json.transactions",
+      "type": "array[object]",
+      "required": true,
+      "description": "position,signature,is_vote,is_nonce,err",
+      "constraints": ""
+    },
+    {
+      "name": "<slot>.ref.json.missing_detail",
+      "type": "array[object]",
+      "required": true,
+      "description": "signature,account_keys_full,pre_token_balances(mint),post_token_balances(mint)",
+      "constraints": ""
+    },
+    {
+      "name": "<slot>.ref.json.raw_response_sha256",
+      "type": "string (sha256 hex)",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "evidence_manifest.json",
+      "type": "array[object]",
+      "required": true,
+      "description": "全部证据文件 {path,size,sha256}",
+      "constraints": "按 path；进入 gid"
+    },
+    {
+      "name": "<slot>.sqd.json.transactions[].index",
+      "type": "integer",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "<slot>.sqd.json.transactions[].signature",
+      "type": "string",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "<slot>.sqd.json.transactions[].err",
+      "type": "object|null",
+      "required": true,
+      "description": "",
+      "constraints": "类型为推断"
+    },
+    {
+      "name": "<slot>.ref.json.transactions[].position",
+      "type": "integer",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "<slot>.ref.json.transactions[].signature",
+      "type": "string",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "<slot>.ref.json.transactions[].is_vote",
+      "type": "boolean",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "<slot>.ref.json.transactions[].is_nonce",
+      "type": "boolean",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "<slot>.ref.json.transactions[].err",
+      "type": "object|null",
+      "required": true,
+      "description": "",
+      "constraints": "类型为推断"
+    },
+    {
+      "name": "<slot>.ref.json.missing_detail[].signature",
+      "type": "string",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "<slot>.ref.json.missing_detail[].account_keys_full",
+      "type": "array[string]",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "<slot>.ref.json.missing_detail[].pre_token_balances(mint)",
+      "type": "array[object]",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "<slot>.ref.json.missing_detail[].post_token_balances(mint)",
+      "type": "array[object]",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "evidence_manifest.json[].path",
+      "type": "string",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "evidence_manifest.json[].size",
+      "type": "integer",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "evidence_manifest.json[].sha256",
+      "type": "string (sha256 hex)",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    }
+  ],
+  "invariants": [
+    "原始块默认不留，--keep-raw 可留。",
+    "ledger 记 raw sha256，canary 可重拉对表。"
+  ],
+  "notes": []
+}

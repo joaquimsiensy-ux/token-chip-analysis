@@ -1,0 +1,115 @@
+{
+  "schema": "sqd-solana-composition-rules/v1",
+  "draft_status": "batch0-draft",
+  "source": "PLAN.md §4.1 A2.1 ＋ §4.4.3 ＋ §4.4.6",
+  "producer": "n/a",
+  "consumers": [
+    "replay_edges.py reconcile",
+    "solana_exact_validate.py",
+    "shared_release_receipt.py"
+  ],
+  "fields": [
+    {
+      "name": "cache_kind",
+      "type": "string",
+      "required": true,
+      "description": "",
+      "constraints": "base/repaired"
+    },
+    {
+      "name": "coverage_effective_verdict",
+      "type": "string",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "as_of_slot",
+      "type": "integer",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "snapshot_slot",
+      "type": "integer",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "finalized_upper_slot",
+      "type": "integer",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "coverage_present",
+      "type": "boolean",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "coverage_union",
+      "type": "array[object]",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "coverage_producer_registered",
+      "type": "boolean",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "coverage_sqd_fingerprint_matches",
+      "type": "boolean",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "beta_rounds",
+      "type": "integer",
+      "required": true,
+      "description": "",
+      "constraints": "<=3"
+    },
+    {
+      "name": "residual_owner_count_trend",
+      "type": "string",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "bfs_allowed",
+      "type": "boolean",
+      "required": true,
+      "description": "",
+      "constraints": "false"
+    },
+    {
+      "name": "quota_stop",
+      "type": "object",
+      "required": true,
+      "description": "首次确定性 402/429/配额错误停止派发，STOPPED.json{reason,cursor}，exit 3",
+      "constraints": ""
+    }
+  ],
+  "invariants": [
+    "base 仅允许 NO_KNOWN_NONCE_OMISSION_DETECTED。",
+    "repaired 合法⇔resolution=DEFECTS_CONFIRMED、每条修复/重映射有 confirmed census、当前候选均在代 census。",
+    "INCONCLUSIVE 一律 FAIL。",
+    "DEFECTS_CONFIRMED+base FAIL。",
+    "as_of==snapshot==upper。",
+    "coverage 存在、覆盖、producer 登记、SQD 指纹一致、无 UNSCANNED。",
+    "β<=3；残差不降反升停；修复仍 FAIL 则 BLOCKED；禁 BFS/再找几笔。",
+    "配额首次确定性错误停发，在途落账，resume 幂等。"
+  ],
+  "notes": []
+}

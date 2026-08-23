@@ -1,0 +1,161 @@
+{
+  "schema": "sqd-solana-cache/v4",
+  "draft_status": "batch0-draft",
+  "source": "PLAN.md §4.2.6",
+  "producer": "scripts/solana/sqd_gap_repair.py（计划目标路径）",
+  "consumers": [
+    "repair resolver",
+    "solana_exact_validate.py",
+    "replay_edges.py"
+  ],
+  "fields": [
+    {
+      "name": "schema",
+      "type": "string",
+      "required": true,
+      "description": "",
+      "constraints": "sqd-solana-cache/v4"
+    },
+    {
+      "name": "version",
+      "type": "integer",
+      "required": true,
+      "description": "",
+      "constraints": "4"
+    },
+    {
+      "name": "edge_schema",
+      "type": "string",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "edge_semantics",
+      "type": "string",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "order_granularity",
+      "type": "string",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "order_exact",
+      "type": "boolean",
+      "required": true,
+      "description": "",
+      "constraints": "false"
+    },
+    {
+      "name": "from_slot",
+      "type": "integer",
+      "required": true,
+      "description": "同 base",
+      "constraints": ""
+    },
+    {
+      "name": "finalized_upper_slot",
+      "type": "integer",
+      "required": true,
+      "description": "同 base",
+      "constraints": ""
+    },
+    {
+      "name": "collector",
+      "type": "string",
+      "required": true,
+      "description": "",
+      "constraints": "sqd_gap_repair.py/v1"
+    },
+    {
+      "name": "collector_sha256",
+      "type": "string (sha256 hex)",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "edge_logical_sha256",
+      "type": "string (sha256 hex)",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "edge_rows",
+      "type": "integer",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "edge_file_size",
+      "type": "integer",
+      "required": true,
+      "description": "生产者写，消费端不回写",
+      "constraints": ""
+    },
+    {
+      "name": "edge_file_sha256",
+      "type": "string (sha256 hex)",
+      "required": true,
+      "description": "生产者写，消费端不回写",
+      "constraints": ""
+    },
+    {
+      "name": "plan_digest",
+      "type": "string",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "base_meta_sha256",
+      "type": "string (sha256 hex)",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "base_edge_sha256",
+      "type": "string (sha256 hex)",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "repair.slots_confirmed",
+      "type": "integer",
+      "required": true,
+      "description": "展示值",
+      "constraints": ""
+    },
+    {
+      "name": "repair.slots_remapped",
+      "type": "integer",
+      "required": true,
+      "description": "展示值",
+      "constraints": ""
+    },
+    {
+      "name": "repair.edges_added",
+      "type": "integer",
+      "required": true,
+      "description": "展示值",
+      "constraints": ""
+    }
+  ],
+  "invariants": [
+    "不含 gid。",
+    "不含 bundle 哈希。",
+    "CURRENT→bundle→merged.meta_sha256 单向绑定且 plan_digest 相等。"
+  ],
+  "notes": [
+    "base v4 meta 其他继承字段未在本节展开，未自行补全。"
+  ]
+}
