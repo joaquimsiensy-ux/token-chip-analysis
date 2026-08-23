@@ -301,6 +301,130 @@ def test_unscanned_resume_and_quota_stopped_resume():
         assert second.returncode == 0, (second.stdout, second.stderr)
 
 
+def test_periodic_checkpoint_kill_resume_at_batch_boundary():
+    start_slot = 100
+    end_slot = start_slot + probe.SQD_PAGE_SLOTS * 5 - 1
+    with tempfile.TemporaryDirectory(prefix="sqd-checkpoint-") as td:
+        root = Path(td)
+        fixture = root / "fixture"
+        fixture.mkdir()
+        responses = {
+            probe.request_digest("sqd-head", {}): {
+                "ok": True,
+                "value": {"dataset_id": "solana-mainnet", "start_block": 0,
+                          "real_time": True, "number": end_slot + 100},
+            },
+        }
+        for lower, upper in probe._partition(
+                start_slot, end_slot, probe.SQD_PAGE_SLOTS):
+            body = probe.sqd_query_body(lower, upper)
+            responses[probe.request_digest("sqd-stream", body)] = {
+                "ok": True,
+                "value": [{"header": {"number": upper},
+                           "instructions": [{"transactionIndex": 0}]}],
+            }
+        head_body = probe.rpc_body("getSlot", [{"commitment": "finalized"}], 1)
+        responses[probe.request_digest("rpc-getSlot", head_body)] = {
+            "ok": True,
+            "value": {"jsonrpc": "2.0", "id": 1, "result": end_slot + 100},
+        }
+        blocks_body = probe.rpc_body(
+            "getBlocks", [start_slot, end_slot, {"commitment": "finalized"}], 2)
+        responses[probe.request_digest("rpc-getBlocks", blocks_body)] = {
+            "ok": True,
+            "value": {"jsonrpc": "2.0", "id": 2,
+                      "result": list(range(start_slot, end_slot + 1))},
+        }
+        (fixture / "responses.json").write_text(json.dumps({
+            "format": "sqd-coverage-transport-fixture-v1",
+            "responses": responses,
+        }), encoding="utf-8")
+
+        def argv(case, *extra):
+            return [
+                "--mint", MINT, "--case-root", str(case),
+                "--from-slot", str(start_slot), "--to-slot", str(end_slot),
+                "--full", "--workers", "1",
+                "--reference-rpc", "https://rpc.fixture.invalid/",
+                "--transport-fixture", str(fixture), *extra,
+            ]
+
+        uninterrupted_case = root / "uninterrupted"
+        assert probe.main(argv(uninterrupted_case)) == 0
+        uninterrupted_pointer, uninterrupted_generation, uninterrupted_coverage = (
+            read_current(uninterrupted_case))
+        assert not (uninterrupted_generation / "resume_state.json").exists(), \
+            "default checkpoint interval fired in a five-page fixture"
+
+        interrupted_case = root / "interrupted"
+        original_transport = probe.FixtureTransport
+        transport_instances = []
+
+        class RecordingFixtureTransport(original_transport):
+            def __init__(self, directory):
+                super().__init__(directory)
+                transport_instances.append(self)
+
+        original_write_resume = probe._write_resume
+        checkpoint_writes = []
+
+        def write_checkpoint_then_kill(*args, **kwargs):
+            original_write_resume(*args, **kwargs)
+            checkpoint_writes.append(args[0])
+            raise RuntimeError("injected-kill")
+
+        with mock.patch.object(probe, "FixtureTransport",
+                               RecordingFixtureTransport), \
+                mock.patch.object(probe, "_write_resume",
+                                  side_effect=write_checkpoint_then_kill):
+            first_rc = probe.main(argv(
+                interrupted_case, "--checkpoint-every", "1"))
+        assert first_rc == 2
+        assert len(checkpoint_writes) == 1
+        first_stream_calls = [call for call in transport_instances[-1].calls
+                              if call["kind"] == "sqd-stream"]
+        assert len(first_stream_calls) == 4, first_stream_calls
+        pending = list((interrupted_case / "data/sqd_coverage").glob("pending-*"))
+        assert len(pending) == 1
+        resume_state = json.loads(
+            (pending[0] / "resume_state.json").read_text(encoding="utf-8"))
+        assert resume_state["format"] == "sqd-coverage-resume-v1"
+        checkpoint_counts = gzip.decompress(
+            (pending[0] / "slot_counts.bin.gz").read_bytes())
+        assert sum(value != 0 for value in checkpoint_counts) \
+            == probe.SQD_PAGE_SLOTS * 4
+
+        transport_instances.clear()
+        with mock.patch.object(probe, "FixtureTransport",
+                               RecordingFixtureTransport):
+            resumed_rc = probe.main(argv(
+                interrupted_case, "--checkpoint-every", "1", "--resume"))
+        assert resumed_rc == 0
+        resumed_stream_calls = [call for call in transport_instances[-1].calls
+                                if call["kind"] == "sqd-stream"]
+        assert len(resumed_stream_calls) == 1, resumed_stream_calls
+
+        resumed_pointer, resumed_generation, resumed_coverage = read_current(
+            interrupted_case)
+        assert probe.sha256_file(uninterrupted_generation / "slot_counts.bin.gz") \
+            == probe.sha256_file(resumed_generation / "slot_counts.bin.gz")
+        assert probe.sha256_file(uninterrupted_generation / "blocks.bin.gz") \
+            == probe.sha256_file(resumed_generation / "blocks.bin.gz")
+        assert uninterrupted_coverage["summary"] == resumed_coverage["summary"]
+        assert uninterrupted_pointer["probe_id"] != resumed_pointer["probe_id"]
+        assert resumed_coverage["ledger"]["requests"] \
+            == uninterrupted_coverage["ledger"]["requests"] + 1
+
+        ledger = [json.loads(line) for line in (
+            resumed_generation / "ledger.jsonl").read_text(
+                encoding="utf-8").splitlines() if line.strip()]
+        assert [row["seq"] for row in ledger] == list(range(len(ledger)))
+        successful = [probe._successful_coverage_range(row) for row in ledger
+                      if row.get("mode") == "full"]
+        assert exact.merge_ranges(item for item in successful if item is not None) \
+            == [(start_slot, end_slot)]
+
+
 def test_dry_run_has_no_artifacts():
     with tempfile.TemporaryDirectory(prefix="sqd-dry-") as td:
         case = Path(td) / "case"
@@ -515,6 +639,7 @@ def main():
         test_publish_protocol_cas_idempotence_and_three_directory_fsyncs,
         test_fixture_cli_publish_validate_no_getblocks_and_redaction,
         test_unscanned_resume_and_quota_stopped_resume,
+        test_periodic_checkpoint_kill_resume_at_batch_boundary,
         test_dry_run_has_no_artifacts,
         test_sqd_cursor_pagination_regressions,
         test_shared_map_lifecycle_rechecks_all_known_and_canary,

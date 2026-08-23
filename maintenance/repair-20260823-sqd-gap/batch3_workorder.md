@@ -26,3 +26,10 @@
 
 ## 验收口径（Fable）
 离线单测绿、红→绿对照、run_all 仅预期红；**Fable 本机**：`--blocks-cache` 用 ARC 全部 routeA 块缓存（6,759 文件）跑 exploration 代 → 修复边与 `ALL_REPAIRS_DONE.json` 三份真值文件**逐边一致（83/83）**、merged 行数恒等式、深验 PASS；然后（批 5 合并后）live 代。done 报告附本机回归建议命令。
+
+## 增补（2026-08-23，errata E24；基线改为批 2c 验收后的 HEAD）
+10. `scripts/solana/sqd_coverage_probe.py` 新增子命令/入口 `export-shared-map --case-root <案根> --probe-id <id> --out assets/sqd-solana-coverage-map/`（或等价 `--export-shared-map` 参数；以 README `assets/sqd-solana-coverage-map/README.md` 的 schema 为准）：从**已发布**的 probe 目录（CURRENT 有效且 probe_id 命中）产 `<YYYYMMDD>.json`＋`<YYYYMMDD>.counts.bin.gz`＋`<YYYYMMDD>.blocks.bin.gz`；JSON＝coverage_map 去 `mint` 的超集，`schema:"sqd-solana-shared-coverage-map/v1"`、`version:"YYYYMMDD"`（由 `--version` 显式给或取 UTC 日期）、`generated_at`、`ttl_days:30`、`supersedes`＝目录内已有最新版 version 或 null、`candidate_slots`＝由 slot_counts 重算的 DEFECT_CANDIDATE（时代校准有效的零 nonce）＋MISSING_BLOCK、`refuted_slots:[]`（E22 规则待裁决）、`canary{slots[64],counts[64]}`＝以 sha256(probe_id) 为种子在"有块头的 slot"中确定性等距取样；两件二进制直接复制并写 `{path,size,sha256,from_slot,to_slot,encoding}`。**导出确定性**：同 probe 两次导出（同 `--version`）字节一致（`generated_at` 从 probe 的 `published_at` 取，不取当前时间）。
+    - `scripts/lib/solana_exact_validate.py` 增 `validate_shared_map(asset_json_path)`：schema/ttl/supersedes 字段、二进制哈希与长度、canary 形状与 counts 对表、candidate_slots 与 counts 重算一致；probe 的 `_load_known_map` 复用该函数（若已有内联校验可保留并调用）。
+    - 测试（并入 `test_sqd_coverage_probe.py` 第 12 组）：fixture 跑通 probe → export → `validate_shared_map` ok → 用该资产作 `--known-map` 对同区间再跑 probe（round-trip）→ `shared_map.reused_ranges` 非空、canary 一致、verdict 与全扫一致；导出两次字节一致；篡改 counts 一字节 → validate 拒。
+    - 不新增 producer 登记（资产由 probe coverage_map 的 `probe_id`/哈希锚定；README 已写明不得手改、重扫出新版以 `supersedes` 串联）。
+11. `batch3_done.md` 的回归建议里加一条：Fable 本机对 ARC 全扫 probe 执行 `export-shared-map` 产首版地图并入库。

@@ -305,12 +305,14 @@ def _successful_coverage_range(row):
 
 
 def _scan_ranges(transport, counts, base_slot, ranges, workers, ledger,
-                 endpoints, *, mode="full"):
+                 endpoints, *, mode="full", checkpoint=None,
+                 checkpoint_every=0):
     lower_bound = sum((upper - lower + SQD_PAGE_SLOTS) // SQD_PAGE_SLOTS
                       for lower, upper in ranges)
     request_iter = ((start, end) for lower, upper in ranges
                     for start, end in _partition(lower, upper, SQD_PAGE_SLOTS))
     completed_count = 0
+    completed_since_checkpoint = 0
     batch_size = max(workers, workers * 4)
     with ThreadPoolExecutor(max_workers=workers) as pool:
         while True:
@@ -351,10 +353,19 @@ def _scan_ranges(transport, counts, base_slot, ranges, workers, ledger,
                         offset = page_start - base_slot
                         counts[offset:offset + len(part)] = part
                     completed_count += 1
+                    completed_since_checkpoint += 1
                     if completed_count % PROGRESS_EVERY == 0:
                         print(
                             f"[sqd-coverage] completed {completed_count} requests "
                             f"(lower bound {lower_bound})", file=sys.stderr)
+            if checkpoint is not None and checkpoint_every > 0 \
+                    and completed_since_checkpoint >= checkpoint_every:
+                checkpoint()
+                print(_safe_text(
+                    f"[sqd-coverage] checkpoint written "
+                    f"(completed {completed_count} requests)", endpoints),
+                    file=sys.stderr)
+                completed_since_checkpoint = 0
 
 
 def _read_json(path):
@@ -827,7 +838,10 @@ def run_probe(args):
     missing = _missing_ranges(counts, args.from_slot)
     if missing:
         _scan_ranges(transport, counts, args.from_slot, missing, args.workers,
-                     ledger, endpoints, mode="full")
+                     ledger, endpoints, mode="full",
+                     checkpoint=lambda: _write_resume(
+                         pending, identity, started_at, counts, ledger),
+                     checkpoint_every=args.checkpoint_every)
         scan_ranges.extend({"from_slot": start, "to_slot": end, "mode": "full"}
                            for start, end in missing)
     if args.resume and not scan_ranges:
@@ -981,6 +995,7 @@ def build_parser():
     mode.add_argument("--known-map")
     parser.add_argument("--sample", type=int, default=0)
     parser.add_argument("--workers", type=int, default=4)
+    parser.add_argument("--checkpoint-every", type=int, default=2000)
     parser.add_argument("--reference-rpc")
     parser.add_argument("--resume", action="store_true")
     parser.add_argument("--no-getblocks", action="store_true")

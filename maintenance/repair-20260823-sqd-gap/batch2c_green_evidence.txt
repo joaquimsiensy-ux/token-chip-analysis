@@ -1,0 +1,39 @@
+Batch 2c RED -> GREEN evidence
+Baseline: fix/sqd-gap-v6520 @ b005a468b919fd8c39108f513db862a2edb84555
+
+== RED: new group 11 against incumbent production code ==
+Command: python3 scripts/tests/test_sqd_coverage_probe.py
+Exit: 2
+Observed failure:
+  test_sqd_coverage_probe.py: error: unrecognized arguments: --checkpoint-every 1
+Interpretation: the incumbent probe has no periodic-checkpoint CLI entry point, so
+the injected kill/resume regression cannot enter the required checkpoint path.
+
+== GREEN: periodic checkpoint regression ==
+Command: python3 scripts/tests/test_sqd_coverage_probe.py
+Exit: 0
+Summary: PASS SQD coverage probe: 11/11 offline groups
+Injected path: first run returned 2 with "sqd coverage probe failed: injected-kill";
+the persisted checkpoint contained four completed SQD pages, and --resume issued
+exactly one remaining SQD page request before publishing successfully.
+Default-path assertion: five successful pages with the default interval 2000 did
+not write resume_state.json into the published generation.
+Equivalence assertion: slot_counts.bin.gz SHA256, blocks.bin.gz SHA256, and coverage
+summary match the uninterrupted run. probe_id equality is intentionally not used:
+the resumed ledger contains one additional metadata row, and coverage_map binds the
+ledger hash/request count, so content addressing correctly produces a different ID.
+
+== Full suite ==
+Command: python3 scripts/tests/run_all.py
+Exit: 1
+Summary: 4 items failed; no new failures.
+Expected pre-existing failures observed:
+  1. invariant_scan.py: invariant manifest FAIL (16 registered batch-work
+     discrepancies in the current tree).
+  2. test_batch4_invariant_guards.py: assertion at line 198 in
+     test_handwritten_e2e_provenance_injection.
+  3. test_batch3_solana_vertical_slice.py: loopback bind PermissionError
+     [Errno 1] Operation not permitted.
+  4. test_batch3_evm_vertical_slice.py: loopback bind PermissionError
+     [Errno 1] Operation not permitted.
+All other run_all.py entries reported PASS.

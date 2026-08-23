@@ -48,3 +48,7 @@ Helius getBlock ×5（426651590、426649075、420008956、420047316、420003646�
 - 批 3 工单补第 10 条：探针 `export-shared-map`（共享地图资产导出）。
 - E21/E22 记入 errata 标"待用户裁决"，ARC 全扫结束后连同逐桶统计一起报。
 - 冒烟产物（含 probe 发布目录）留在 scratchpad，不入库。
+
+## 8. 批 2c 验收（同日）
+- codex 首派 fail-closed 停工（我工单"三处调用"与实况一处不符，`batch2c_done_attempt1_stopped.md`）→ 工单 v2 → resume 完工：`_scan_ranges(checkpoint=, checkpoint_every=)` 只在 batch 边界主线程触发；`--checkpoint-every`（默认 2000）。单测 11/11（第 11 组注入 kill→resume）。
+- Fable 本机联网复现：420,050,000–420,099,999（5 万 slot）`--checkpoint-every 10 --workers 4`，25 秒后 SIGKILL → 检查点 16 页/7,200 slot 在盘；`--resume` → 续扫余下 42,800 slot，ledger 成功页 `slots_covered` 总和 == 50,000（无重扫无重叠）、pending 目录清理、发布 probe_id b2c22887531a513c、validator ok。**PASS。**
