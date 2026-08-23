@@ -11,11 +11,11 @@
   "scripts/*.py"
  ],
  "minimum_counts": {
-  "receipt_producers": 61,
-  "receipt_consumers": 82,
-  "transport_calls": 63,
-  "atomic_writes": 54,
-  "formal_entrypoints": 58
+  "receipt_producers": 70,
+  "receipt_consumers": 92,
+  "transport_calls": 65,
+  "atomic_writes": 56,
+  "formal_entrypoints": 61
  },
  "receipt_producers": [
   {
@@ -183,7 +183,8 @@
   },
   {
    "schemas": [
-    "flow-anomaly/v2"
+    "flow-anomaly/v2",
+    "flow-anomaly/v3"
    ],
    "script": "scripts/report/flow_anomaly_scan.py"
   },
@@ -227,7 +228,8 @@
   },
   {
    "schemas": [
-    "wave-scan/v4"
+    "wave-scan/v4",
+    "wave-scan/v5"
    ],
    "script": "scripts/report/wave_scan.py"
   },
@@ -277,7 +279,8 @@
   },
   {
    "schemas": [
-    "solana-reconcile/v3"
+    "solana-reconcile/v3",
+    "solana-reconcile/v4"
    ],
    "script": "scripts/solana/replay_edges.py"
   },
@@ -289,6 +292,22 @@
     "solana-observation-bundle/v1"
    ],
    "script": "scripts/solana/scan_token_accounts.py"
+  },
+  {
+   "schemas": [
+    "sqd-solana-coverage-pointer/v1",
+    "sqd-solana-coverage/v1"
+   ],
+   "script": "scripts/solana/sqd_coverage_probe.py"
+  },
+  {
+   "schemas": [
+    "sqd-solana-cache/v4",
+    "sqd-solana-coverage-resolution/v1",
+    "sqd-solana-repair-bundle/v1",
+    "sqd-solana-repair-pointer/v1"
+   ],
+   "script": "scripts/solana/sqd_gap_repair.py"
   },
   {
    "schemas": [
@@ -542,9 +561,24 @@
   {
    "schemas": [
     "sqd-solana-cache/v3",
-    "sqd-solana-cache/v4"
+    "sqd-solana-cache/v4",
+    "sqd-solana-repair-bundle/v1",
+    "sqd-solana-repair-pointer/v1"
    ],
    "script": "scripts/solana/sqd_cache_identity.py"
+  },
+  {
+   "schemas": [
+    "solana-reconcile/v4",
+    "sqd-solana-coverage-pointer/v1",
+    "sqd-solana-coverage-resolution/v1",
+    "sqd-solana-coverage/v1",
+    "sqd-solana-repair-bundle/v1",
+    "sqd-solana-repair-layer/v1",
+    "sqd-solana-repair-pointer/v1",
+    "sqd-solana-slot-index-map/v1"
+   ],
+   "script": "scripts/lib/solana_exact_validate.py"
   }
  ],
  "transport_calls": [
@@ -755,6 +789,14 @@
   {
    "kind": "solana-attested-session",
    "script": "scripts/solana/fetch_sqd_transfers_v2.py"
+  },
+  {
+   "kind": "net.py",
+   "script": "scripts/solana/sqd_coverage_probe.py"
+  },
+  {
+   "kind": "net.py",
+   "script": "scripts/solana/sqd_gap_repair.py"
   },
   {
    "kind": "curl",
@@ -1064,6 +1106,16 @@
   },
   {
    "locator": "main",
+   "script": "scripts/solana/sqd_coverage_probe.py",
+   "semantics": "multi_file_txn"
+  },
+  {
+   "locator": "main",
+   "script": "scripts/solana/sqd_gap_repair.py",
+   "semantics": "multi_file_txn"
+  },
+  {
+   "locator": "main",
    "script": "scripts/solana/scan_token_accounts.py",
    "semantics": "dual_file_txn"
   },
@@ -1129,7 +1181,10 @@
   "scripts/solana/audit_closed_accounts.py",
   "scripts/solana/build_evolution.py",
   "scripts/solana/probe_escrows.py",
+  "scripts/solana/replay_edges.py",
   "scripts/solana/scan_token_accounts.py",
+  "scripts/solana/sqd_coverage_probe.py",
+  "scripts/solana/sqd_gap_repair.py",
   "scripts/solana/squads_members.py",
   "scripts/solana/stake_decode.py"
  ],

@@ -11,7 +11,10 @@
  },
  "notes": [
   "先红写法见 errata E13。",
-  "E14–E16 为批 1a 增补；E14 的 inherited_fields 类型标注在批 1b 落地。"
+  "E14–E16 为批 1a 增补。",
+  "批 1b 已按 E14 将 solana-reconcile/v4 三个 raw 字段登记为 JSON int，并标注 v3 string→v4 int。",
+  "批 1b 已按 E17 补 canonicalization 的 rpc_ledger 依赖节点与 publish step_1 定稿规则。",
+  "批 1b 已按 E18 将 checks.exact_reconcile.* 设为 Solana 条件必填、EVM 必须省略。"
  ],
  "files": [
   {

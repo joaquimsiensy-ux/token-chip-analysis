@@ -58,3 +58,11 @@
 | **E18** | `reconciliation-report_v3.json` 的 `exact_reconcile.*` 五字段无条件 `required:true`，与"EVM 仅四 checks"矛盾；路径未写成 `checks.exact_reconcile` | 字段名改 `checks.exact_reconcile.*`；`required` 条件化："family==solana 必填；family==evm 必须省略（出现即拒）"；语义＝对 `solana-reconcile/v4` exact receipt 的引用（path/size/sha256）＋摘要字段，与其他四项同构。 |
 | **E14 落地** | E14 只在 `inherited_fields` 列名无类型、主 `fields` 缺项；INDEX 说批 1b 补但批 1b 工单禁改草案 | 批 1b 白名单**允许且仅允许 errata 驱动的四份草案小修**：`solana-reconcile_v4.json`（E14：`minted_raw/burned_raw/snapshot_supply_raw` 入主 fields，type "JSON int"，inherited 标 v3 string→v4 int）、`reconciliation-report_v3.json`（E18）、`canonicalization.json`＋`publish_protocol.json`（E17）；其余草案不动；INDEX 记修订。 |
 | **E19（先红清单扩 31→35 项＋写法修正）** | 第(2)项被降为烟雾红；E9/E10/E11/E14 缺反例 | (2) 改**语义红**：直跑现役 `curve_cost`（逐笔储备更新）与 `entity_source_trace` 顺序模拟，同一缺陷 slot 两种边序得出不同结果（事实断言 GREEN，证明顺序敏感），随后断言"现役存在把缺陷 slot 统一到参考非投票序号的机制（slot_index_map）"→ 缺 → RED；新增 **(30)** 探针指针 CAS（supersedes≠当前 probe_id 仍切）/同 probe_id 幂等分支/目录 fsync 三反例（oracle＋烟雾）；**(31)** coverage `CURRENT.json` 更新后旧 reconcile receipt 仍被接受（现役无 coverage_pointer → 语义红：用现役 `reconcile` 产 receipt 后改写 coverage 指针 fixture，断言 validator 应拒）；**(32)** `verdict/exit_code/gate_pass` 三元不互洽（PASS/2、FAIL/0、gate_pass true＋FAIL）仍被接受（oracle；顺带跑现役 `receipt_validate` 记录行为）；**(33)** v4 receipt raw 字段为字符串仍被接受（oracle；现役 v3 即字符串＝语义红证据）。**banned needles 调批 6 ＝ 批 6 硬闸**（不加不得收口）；invariant_scan 先红不替代逐项红证。 |
+
+---
+
+# 批 1b 增补（2026-08-23；codex 批 1b fail-closed 停工报告 `batch1b_done.md` 阻塞项，Fable 裁定）
+
+| # | 发现 | 裁定 |
+|---|---|---|
+| **E20** | 给 `invariant_scan.FORMAL_E2E_REQUIRED_PRODUCERS["sol"]` 登记 `sqd_coverage_probe.py`/`replay_edges.py` 后，现役守卫 `test_batch4_invariant_guards.py:198`（断言默认 `formal_e2e_provenance_errors()==[]`）必然红——Solana 纵切片 `test_batch3_solana_vertical_slice.py` 尚无二者的执行证据 | 选项 2：**预期先红清单＝`invariant_scan.py`（20 项登记缺口）＋`test_batch4_invariant_guards.py`（仅 :198 一条）**；不得条件化常量/伪造 producer/削弱守卫。闭合批次写死：**批 2** 把 probe 接入 Solana 纵切片（离线 mock transport 下真实执行 `sqd_coverage_probe.py` 产 coverage 产物＋指针），**批 5** 把 `replay_edges.py reconcile`（v4）接入纵切片并产 exact receipt → 两条执行证据齐后 :198 自然转绿。沙箱两项回环 `EPERM` 失败为 companion 沙箱限制（本机复跑全绿），不计。 |

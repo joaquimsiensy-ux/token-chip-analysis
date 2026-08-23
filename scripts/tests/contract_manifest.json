@@ -157,6 +157,24 @@
     {"id":"CT-BANNED-16","kind":"banned","authority_file":"commands-staging/token-analyze-3.md","needle":"A5 seal v2","stages":["A5"]},
     {"id":"CT-RECON-01","kind":"required","authority_file":"references/data-pipeline-evm-recon.md","needle":"gmgn-divergence-note/v1","stages":["A2"]},
     {"id":"CT-RECON-02","kind":"required","authority_file":"references/data-pipeline-evm-recon.md","needle":"evm-reconciliation-receipt/v3","stages":["A2"]},
-    {"id":"CT-RECON-03","kind":"required","authority_file":"references/data-pipeline-evm-recon.md","needle":"time-spotcheck/v3","stages":["A2"]}
+    {"id":"CT-RECON-03","kind":"required","authority_file":"references/data-pipeline-evm-recon.md","needle":"time-spotcheck/v3","stages":["A2"]},
+    {"id":"CT-SQDGAP-01","kind":"required","authority_file":"references/scan-schemas.md","needle":"sqd-solana-coverage/v1","stages":["A2"]},
+    {"id":"CT-SQDGAP-02","kind":"required","authority_file":"references/scan-schemas.md","needle":"sqd-solana-coverage-pointer/v1","stages":["A2"]},
+    {"id":"CT-SQDGAP-03","kind":"required","authority_file":"references/scan-schemas.md","needle":"sqd-solana-coverage-resolution/v1","stages":["A2"]},
+    {"id":"CT-SQDGAP-04","kind":"required","authority_file":"references/scan-schemas.md","needle":"sqd-solana-repair-layer/v1","stages":["A2"]},
+    {"id":"CT-SQDGAP-05","kind":"required","authority_file":"references/scan-schemas.md","needle":"sqd-solana-slot-index-map/v1","stages":["A2"]},
+    {"id":"CT-SQDGAP-06","kind":"required","authority_file":"references/scan-schemas.md","needle":"sqd-solana-repair-bundle/v1","stages":["A2"]},
+    {"id":"CT-SQDGAP-07","kind":"required","authority_file":"references/scan-schemas.md","needle":"sqd-solana-repair-pointer/v1","stages":["A2"]},
+    {"id":"CT-SQDGAP-08","kind":"required","authority_file":"references/scan-schemas.md","needle":"sqd-solana-rpc-ledger/v1","stages":["A2"]},
+    {"id":"CT-SQDGAP-09","kind":"required","authority_file":"references/scan-schemas.md","needle":"solana-reconcile/v4","stages":["A2","A5"]},
+    {"id":"CT-SQDGAP-10","kind":"required","authority_file":"references/scan-schemas.md","needle":"reconciliation-report/v3","stages":["A2","A5"]},
+    {"id":"CT-SQDGAP-11","kind":"required","authority_file":"references/scan-schemas.md","needle":"wave-scan/v5","stages":["A3","A5"]},
+    {"id":"CT-SQDGAP-12","kind":"required","authority_file":"references/scan-schemas.md","needle":"flow-anomaly/v3","stages":["A3","A5"]},
+    {"id":"CT-SQDGAP-13","kind":"required","authority_file":"references/scan-schemas.md","needle":"exact_reconcile","stages":["A2","A5"]},
+    {"id":"CT-SQDGAP-14","kind":"required","authority_file":"references/scan-schemas.md","needle":"sqd_gap_repair.py/v1","stages":["A2"]},
+    {"id":"CT-SQDGAP-15","kind":"required","authority_file":"references/scan-schemas.md","needle":"edge_source_binding","stages":["A2","A3","A5"]},
+    {"id":"CT-SQDGAP-16","kind":"required","authority_file":"references/scan-schemas.md","needle":"有块头但零 AdvanceNonce","stages":["A2"]},
+    {"id":"CT-SQDGAP-17","kind":"required","authority_file":"references/scan-schemas.md","needle":"reference-nonvote-ordinal/v1","stages":["A2","A3"]},
+    {"id":"CT-SQDGAP-18","kind":"required","authority_file":"references/scan-schemas.md","needle":"CURRENT.json","stages":["A2","A5"]}
   ]
 }

@@ -13,7 +13,7 @@
       "name": "step_1",
       "type": "object",
       "required": true,
-      "description": "按依赖图依次写 evidence/evidence_manifest/resolution/layer/map/merged 边/merged meta——其中 resolution、layer header、map header、merged meta 含 plan_digest；所有文件一律不含 gid/bundle 哈希；逐文件 fsync",
+      "description": "按依赖图依次写 evidence/evidence_manifest/resolution/layer/map/merged 边/merged meta——其中 resolution、layer header、map header、merged meta 含 plan_digest；所有文件一律不含 gid/bundle 哈希；逐文件 fsync。rpc_ledger 自 step ① 起 append-only 写入，step ③ 前 fsync 定稿",
       "constraints": "按编号执行并满足对应持久化要求"
     },
     {
@@ -86,9 +86,11 @@
     "8前崩溃可对完整 gen 幂等补发指针；CURRENT 已是同 gid 且 bundle 哈希命中时走 idempotent-republish。",
     "resolver 只认有效 CURRENT、bundle 哈希命中、自洽且绑定当前 base 的代。",
     "CAS 失败保留孤儿代且不覆盖。",
-    "base 重采使代失效；无退回 base 正式路径；新候选/映射无解由新代 supersede。"
+    "base 重采使代失效；无退回 base 正式路径；新候选/映射无解由新代 supersede。",
+    "rpc_ledger 自 step ① 起 append-only，step ③ 前 fsync 定稿并进入 bundle，但不进入 gid。"
   ],
   "notes": [
-    "步骤1按 errata E1 冻结；同 gid 幂等分支按 errata E10 冻结。"
+    "步骤1按 errata E1 冻结；同 gid 幂等分支按 errata E10 冻结。",
+    "rpc_ledger 写入、定稿与 bundle 绑定按 errata E17 冻结。"
   ]
 }

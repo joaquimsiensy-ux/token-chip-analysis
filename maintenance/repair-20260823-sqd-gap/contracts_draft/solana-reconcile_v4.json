@@ -200,6 +200,27 @@
       "constraints": ""
     },
     {
+      "name": "minted_raw",
+      "type": "JSON int",
+      "required": true,
+      "description": "v3 string → v4 JSON int（E14）",
+      "constraints": "禁止字符串整数"
+    },
+    {
+      "name": "burned_raw",
+      "type": "JSON int",
+      "required": true,
+      "description": "v3 string → v4 JSON int（E14）",
+      "constraints": "禁止字符串整数"
+    },
+    {
+      "name": "snapshot_supply_raw",
+      "type": "JSON int",
+      "required": true,
+      "description": "v3 string → v4 JSON int（E14）",
+      "constraints": "禁止字符串整数"
+    },
+    {
       "name": "net_supply_raw",
       "type": "integer",
       "required": true,
@@ -491,14 +512,14 @@
     {"name": "inputs.holders_snapshot_meta.path", "source_line": 122},
     {"name": "inputs.holders_snapshot_meta.size", "source_line": 122},
     {"name": "inputs.holders_snapshot_meta.sha256", "source_line": 123},
-    {"name": "minted_raw", "source_line": 365},
-    {"name": "burned_raw", "source_line": 365},
+    {"name": "minted_raw", "source_line": 365, "type": "v3: string → v4: JSON int（E14）"},
+    {"name": "burned_raw", "source_line": 365, "type": "v3: string → v4: JSON int（E14）"},
     {"name": "net_supply_raw", "source_line": 366},
     {"name": "negative_balance_count", "source_line": 367},
     {"name": "snapshot_present", "source_line": 367},
     {"name": "snapshot_meta_present", "source_line": 368},
     {"name": "snapshot_closed", "source_line": 368},
-    {"name": "snapshot_supply_raw", "source_line": 369},
+    {"name": "snapshot_supply_raw", "source_line": 369, "type": "v3: string → v4: JSON int（E14）"},
     {"name": "snapshot_mismatch_count", "source_line": 370},
     {"name": "gate_pass", "source_line": 370}
   ],
@@ -516,7 +537,10 @@
     {"name": "inputs.repair_bundle", "change": "repaired 模式新增；base 省略"},
     {"name": "inputs.repair_pointer", "change": "repaired 模式新增；base 省略"},
     {"name": "edge_source_binding", "change": "新增边源绑定"},
-    {"name": "coverage_effective_verdict", "change": "新增覆盖有效裁决"}
+    {"name": "coverage_effective_verdict", "change": "新增覆盖有效裁决"},
+    {"name": "minted_raw", "change": "v3 string→v4 JSON int（E14）"},
+    {"name": "burned_raw", "change": "v3 string→v4 JSON int（E14）"},
+    {"name": "snapshot_supply_raw", "change": "v3 string→v4 JSON int（E14）"}
   ],
   "invariants": [
     "inherited_fields 所列 v3 字段全部保留。",
@@ -524,7 +548,8 @@
     "--as-of-slot==快照slot==finalized_upper_slot。",
     "coverage 当前性深验：data/sqd_coverage/CURRENT.json 当前内容 sha256==receipt.inputs.coverage_pointer.sha256，pointer.inputs.coverage_map.path==receipt.inputs.coverage_map.path，且 probe_id 重算一致；CURRENT 更新后旧 receipt 一律 FAIL。",
     "gate_pass is True ⇒ verdict=PASS 且 exit_code=0；gate_pass is False ⇒ verdict=FAIL 且 exit_code=2；receipt_kernel.finalize_envelope 强制，validator 校验三者互洽。",
-    "不回写 base meta edge_file_size/sha256。"
+    "不回写 base meta edge_file_size/sha256。",
+    "minted_raw、burned_raw、snapshot_supply_raw 在 v4 必须是 JSON int；字符串整数拒收。"
   ],
   "notes": [
     "inherited_fields 从 scripts/solana/replay_edges.py 的 cmd_reconcile 现役 v3 receipt 写出点逐键抄录（代码基线 f06078e）。",
