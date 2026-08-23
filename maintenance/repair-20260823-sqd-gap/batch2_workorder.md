@@ -1,7 +1,7 @@
 # 批 2 工单（codex 施工）：SQD 覆盖探针 `sqd_coverage_probe.py` ＋ 共享地图生命周期 ＋ getBlocks 确认 ＋ coverage validator（分支 fix/sqd-gap-v6520）
 
-- 前置：批 1b 验收通过（先红 35 项红证在档 `batch1b_red_evidence.txt`）。
-- 权威：`PLAN.md` §4.1 A2.0／§4.2.1／§4.3.1／§4.4.1／§4.4.2（guard）／§4.4.6 ＋ `PLAN_errata_batch0.md` E2/E8/E9/E10/E13 ＋ 契约草案 `contracts_draft/sqd-solana-coverage_v1.json`、`sqd-solana-coverage-pointer_v1.json`、`canonicalization.json`（冲突：errata ＞ 草案 ＞ PLAN 正文）。
+- 前置：批 1b 验收通过（分支 HEAD=0b93d34；先红 35 项红证在档 `batch1b_red_evidence.txt`；预期先红＝`invariant_scan.py` 20 项登记缺口＋`test_batch4_invariant_guards.py:198`，见 errata **E20**）。
+- 权威：`PLAN.md` §4.1 A2.0／§4.2.1／§4.3.1／§4.4.1／§4.4.2（guard）／§4.4.6 ＋ `PLAN_errata_batch0.md` E2/E8/E9/E10/E13/**E20** ＋ 契约草案 `contracts_draft/sqd-solana-coverage_v1.json`、`sqd-solana-coverage-pointer_v1.json`、`canonicalization.json`（冲突：errata ＞ 草案 ＞ PLAN 正文）。
 - 目标对齐：交付**可在本机联网运行**的探针与**离线可重算**的 coverage validator；本批不碰修复生产者/代/bundle（批 3）、不碰 reconcile（批 5）。离线施工（沙箱无网）：联网冒烟由 Fable 本机代跑。不 commit、完成即停。
 - 开工门禁：`cd .staging_b2 && shasum -a 256 -c STAGING_B2_SHA256.txt` 全 OK；否则停工写 done。
 
@@ -21,8 +21,10 @@
 6. `scripts/tests/test_sqd_coverage_probe.py`：(3)(20)(21)(28)(30) 由红变绿（红证对照）＋探针单测（离线 mock transport 用 fixture 喂 SQD/Helius 响应）：四态判定、E8 整数时代校准、UNSCANNED 残留拒、长度/台账无洞/并集 ⊇ 案区间、getBlocks complete 八项合取式逐项反例、位图编解码、probe_id 重算、发布协议（pending→fsync→rename→fsync→锁内 CAS→锁内 fsync；monkeypatch `os.fsync` 记录目录 fd 三次）、E10 同 probe_id 幂等、STOPPED 配额停工（mock 402/429）、`--resume`、redact（断言 key 字符串不出现在任何落盘/日志）、禁止游程阈值法（源码守卫）
 7. `scripts/tests/fixtures/sqd_coverage/`（小样本）
 8. `scripts/tests/invariant_manifest.json`：把批 1b 为 probe 预登记的条目**核对到实际实现**（locator/semantics 一致；不得为绿而删条目）
-9. `maintenance/repair-20260823-sqd-gap/batch2_done.md` ＋ `batch2_green_evidence.txt`
-**不动**：`fetch_sqd_transfers_v2.py`、`replay_edges.py`、`spl_edge_core.py`（只读复用）、`producer_history.py`、`run_all.py`、`VERSION/pyproject/CHANGELOG/SKILL.md`、references 文档（批 6）、其他测试、PLAN/errata/契约草案。
+9. **E20 闭合（probe 半边）**：`scripts/tests/test_batch3_solana_vertical_slice.py`——只增不删：在 `VERTICAL_SLICE_EVIDENCE_TARGETS["r9-solana-pythia-mainnet-vertical-slice"]` 注册的 target 函数（及其 `main` 可达闭包）里**真实 subprocess 执行** `scripts/solana/sqd_coverage_probe.py`（离线 fixture transport 模式）产出 coverage 产物＋指针，使 `invariant_scan.formal_e2e_provenance_errors()` 的 sol 缺口从 `['replay_edges.py','sqd_coverage_probe.py']` 收窄为仅 `['replay_edges.py']`（replay 半边批 5 闭合）；做法参照该纵切片对现役 producer（scan_token_accounts/anchor_sampler/window_fetch 等）用 fixture 跑 formal 路径的既有方式；`_reachable_execution_evidence` 是 AST 静态可达分析——调用形态要与现役纵切片一致（字面脚本路径）。为此探针需提供**离线 fixture transport**（如 `--transport-fixture <dir>`：SQD/Helius 响应按请求摘要从目录读；仅测试使用；产物协议不变）。
+10. `maintenance/repair-20260823-sqd-gap/batch2_done.md` ＋ `batch2_green_evidence.txt`（含：四新测试中 probe 项由红变绿对照、`run_all.py` 全量输出——预期仍红：`invariant_scan.py`（缺口应从 20 降到只剩 repair/validator-repair 段/wave v5/flow v3/reconcile v4 相关）＋`test_batch4_invariant_guards.py:198`（仅剩 replay 半边）；其余全绿）
+**不动**：`fetch_sqd_transfers_v2.py`、`replay_edges.py`、`spl_edge_core.py`（只读复用）、`producer_history.py`、`run_all.py`、`VERSION/pyproject/CHANGELOG/SKILL.md`、references 文档（批 6；`scan-schemas.md` 已在批 1b 登记，如实现与登记字段冲突只记录不改）、上述以外的其他测试、PLAN/errata/契约草案。
+- 工作方式：小步；每完成一个模块就跑对应测试；`run_all.py` 最后跑一遍并把红项逐条解释为"预期先红（E20/登记缺口）"或"本批回归（必须修）"；发现工单与文件实况不符（行号/函数名）→ 停工写 done 报告。
 
 ## 功能规格（与契约草案逐字段对齐；差异以 errata ＞ 草案 为准）
 - CLI：`sqd_coverage_probe.py --mint <mint> --case-root <dir> --from-slot A --to-slot B [--full | --known-map <asset.json>] [--sample N] [--workers 4] [--reference-rpc <url>] [--resume] [--no-getblocks] [--dry-run]`；产物 `<case-root>/data/sqd_coverage/<probe_id>/{coverage_map.json,slot_counts.bin.gz,blocks.bin.gz,ledger.jsonl}` ＋ `<case-root>/data/sqd_coverage/CURRENT.json`；`--dry-run` 只打印预计请求数/slot 数/地图复用计划。
