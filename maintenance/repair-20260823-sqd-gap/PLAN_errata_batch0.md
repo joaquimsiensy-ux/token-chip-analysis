@@ -47,3 +47,14 @@
 | **E14** | 现役 v3 receipt 把 `minted_raw`、`burned_raw`、`snapshot_supply_raw` 写成**字符串**（`replay_edges.py:365,369`），而 `net_supply_raw` 是 JSON int（:366） | `solana-reconcile/v4` 三个 raw 字段**一律 JSON int**（Python 任意精度；与 E8"全工程落盘 JSON 禁字符串整数/禁浮点"一致）；`solana_exact_validate` 对字符串值拒收；v3 归 LEGACY 时按旧类型校验不回溯。`solana-reconcile_v4.json` 草案的 `inherited_fields` 对应三项 `type` 标"v3: string → v4: JSON int（E14）"——批 1b 顺手改（草案仍属 batch1-frozen 档，允许 errata 驱动的小修）。 |
 | E15 | 现役 `fetch_sqd_transfers_v2.py` 写出的 v4 meta 不含 `edge_file_size/edge_file_sha256`，二者由 `replay_edges.py:312-314` 回写 | 已在 PLAN 4.2.6/4.2.8 与 E4 表中处理（repaired 生产者写出、消费端不回写；base meta 保持采集器原样不再被回写）——无新裁定，记录在案。 |
 | E16 | 现役 wrapper 从 job spec 接受外部 `family`（`reconciliation_report.py:143-146`）且 `CHECK_KEYS` 固定四项 | 已由 E12 覆盖（`family` 由 target 推导、不接受外部声明；键集按家族）——批 5 实施。 |
+
+---
+
+# 批 1a 复审增补（2026-08-23，codex 准入闸第二次 `batch1a_review_codex.txt`；原 4 项阻塞全部【已闭合】；以下为新抓 3 矛盾＋批 1b 工单 4 项，Fable 核实属实全部采纳）
+
+| # | 发现 | 裁定 |
+|---|---|---|
+| **E17** | `canonicalization.json` 必含表含 `rpc_ledger header`，但依赖图节点与 `publish_protocol.json` step_1 均漏 `rpc_ledger` | 依赖图增节点 `rpc_ledger`（append-only 台账，施工期持续追加；**step ③ 写 bundle 之前 fsync 定稿**，其 `{path,size,sha256,requests,credits_estimate}` 进 bundle；**不进 gid**——含时间戳/尝试次数等非确定内容；header 含 plan_digest）。step_1 增一句"rpc_ledger 自 step ① 起 append-only 写入，step ③ 前 fsync 定稿"。 |
+| **E18** | `reconciliation-report_v3.json` 的 `exact_reconcile.*` 五字段无条件 `required:true`，与"EVM 仅四 checks"矛盾；路径未写成 `checks.exact_reconcile` | 字段名改 `checks.exact_reconcile.*`；`required` 条件化："family==solana 必填；family==evm 必须省略（出现即拒）"；语义＝对 `solana-reconcile/v4` exact receipt 的引用（path/size/sha256）＋摘要字段，与其他四项同构。 |
+| **E14 落地** | E14 只在 `inherited_fields` 列名无类型、主 `fields` 缺项；INDEX 说批 1b 补但批 1b 工单禁改草案 | 批 1b 白名单**允许且仅允许 errata 驱动的四份草案小修**：`solana-reconcile_v4.json`（E14：`minted_raw/burned_raw/snapshot_supply_raw` 入主 fields，type "JSON int"，inherited 标 v3 string→v4 int）、`reconciliation-report_v3.json`（E18）、`canonicalization.json`＋`publish_protocol.json`（E17）；其余草案不动；INDEX 记修订。 |
+| **E19（先红清单扩 31→35 项＋写法修正）** | 第(2)项被降为烟雾红；E9/E10/E11/E14 缺反例 | (2) 改**语义红**：直跑现役 `curve_cost`（逐笔储备更新）与 `entity_source_trace` 顺序模拟，同一缺陷 slot 两种边序得出不同结果（事实断言 GREEN，证明顺序敏感），随后断言"现役存在把缺陷 slot 统一到参考非投票序号的机制（slot_index_map）"→ 缺 → RED；新增 **(30)** 探针指针 CAS（supersedes≠当前 probe_id 仍切）/同 probe_id 幂等分支/目录 fsync 三反例（oracle＋烟雾）；**(31)** coverage `CURRENT.json` 更新后旧 reconcile receipt 仍被接受（现役无 coverage_pointer → 语义红：用现役 `reconcile` 产 receipt 后改写 coverage 指针 fixture，断言 validator 应拒）；**(32)** `verdict/exit_code/gate_pass` 三元不互洽（PASS/2、FAIL/0、gate_pass true＋FAIL）仍被接受（oracle；顺带跑现役 `receipt_validate` 记录行为）；**(33)** v4 receipt raw 字段为字符串仍被接受（oracle；现役 v3 即字符串＝语义红证据）。**banned needles 调批 6 ＝ 批 6 硬闸**（不加不得收口）；invariant_scan 先红不替代逐项红证。 |

@@ -1,7 +1,7 @@
-# 批 1b 工单（codex 施工）：登记面 ＋ 先红 31 项（分支 fix/sqd-gap-v6520）
+# 批 1b 工单（codex 施工）：登记面 ＋ 先红 35 项（分支 fix/sqd-gap-v6520；按 errata E17–E19 修订版）
 
-- 前置：批 1a 契约冻结已验收、codex 复审判"可进批 1"（见 `batch1a_acceptance.md`）。
-- 权威：`PLAN.md` §4.5.2／§5 ＋ `PLAN_errata_batch0.md`（E1–E13，冲突以 errata 为准）＋ `contracts_draft/*.json`（batch1-frozen）。
+- 前置：批 1a 契约冻结已验收；codex 复审（`batch1a_review_codex.txt`）判原阻塞全部闭合、另提 4 项工单修正——已按 errata E17–E19 并入本工单。
+- 权威：`PLAN.md` §4.5.2／§5 ＋ `PLAN_errata_batch0.md`（E1–E19，冲突以 errata 为准）＋ `contracts_draft/*.json`（batch1-frozen）。
 - 目标对齐：①把新协议登记进契约/不变量登记面（文档先行、契约 needle 命中）；②写 31 项先红测试并留红证。**本批不实现任何生产代码、不改任何生产脚本、不改 PLAN/errata/契约草案**。离线、不 commit、完成即停。
 - 工作方式：小步；每完成一个测试文件就跑一遍并把输出追加进红证文件；发现工单行号与文件实况不符 → 停工写 done 报告（不要猜）。
 
@@ -12,10 +12,11 @@
 4. `references/scan-schemas.md`：新增章节登记上述全部 schema（每个 schema 一节：字段表＋不变量＋生产者/消费者，内容**以 contracts_draft 为准逐字段**；wave-scan/v5／flow-anomaly/v3 写"与 v4/v2 的差异段"＝新增 `edge_source_binding`（Solana 必填、EVM 省略）；本册路由段更新）。docs_lint 的引用/粗体配对规则必须通过（`python3 scripts/tests/docs_lint.py --all`）。
 5. 新测试四件（先红）：`scripts/tests/test_sqd_coverage_probe.py`、`scripts/tests/test_sqd_gap_repair.py`、`scripts/tests/test_reconcile_v4_receipt.py`、`scripts/tests/test_recon_fifth_check.py`
 6. `maintenance/repair-20260823-sqd-gap/batch1b_red_evidence.txt`（四件逐项全量输出＋`run_all.py` 结果）＋ `batch1b_done.md`
-**不动**：`scripts/tests/run_all.py`（SUITE 124→128 收口才改）、`scripts/lib/producer_history.py`、全部生产脚本、`VERSION/pyproject.toml/CHANGELOG.md/SKILL.md`、references 其他文档、PLAN/errata/contracts_draft。
+7. **errata 驱动的草案小修（仅限四份，E14/E17/E18 原话）**：`contracts_draft/solana-reconcile_v4.json`（E14 三 raw 字段入主 fields、type JSON int）、`contracts_draft/reconciliation-report_v3.json`（E18 `checks.exact_reconcile.*` 条件必填）、`contracts_draft/canonicalization.json`＋`contracts_draft/publish_protocol.json`（E17 rpc_ledger 节点与 step_1 句）；`contracts_draft/INDEX.json` notes 记录；其余草案零改动。
+**不动**：`scripts/tests/run_all.py`（SUITE 收口才改）、`scripts/lib/producer_history.py`、全部生产脚本、`VERSION/pyproject.toml/CHANGELOG.md/SKILL.md`、references 其他文档、PLAN/errata、上述四份以外的草案。
 
-## 先红 31 项 → 测试文件映射与写法（E13 铁律）
-- **语义红**（必须直接运行现役入口，断言"应拒绝"而现役放行）：(1)(2-oracle)(9)(12)(13)(14)(17)(19)(22)(23)(24)
+## 先红 35 项 → 测试文件映射与写法（E13 铁律；E19 扩项）
+- **语义红**（必须直接运行现役入口，断言"应拒绝/应存在机制"而现役放行/缺失）：(1)(2)(9)(12)(13)(14)(17)(19)(22)(23)(24)(31)(33-现役字符串即证据)
 - **烟雾红＋oracle**（目标模块不存在：try-import 失败 ⇒ 打印 `EXPECTED_RED: <module/symbol> 未实现` 并该项 exit 1；另写纯 fixture/oracle 子测试，用 contracts_draft 的字段表构造正/反例，断言"期望拒绝原因"——批 3/5 实现后直接接入）：其余各项。
 - 禁止：skip／xfail／静默通过／用缺模块替代语义反例。每项输出一行机器可读结果 `RED|GREEN <项号> <原因类型> <一句话>`。
 - 可复用 fixture：`scripts/tests/sqd_v4_test_fixture.py`（小 v4 缓存/meta/快照）、`test_handoff_manifest.py` 中构造 READY 案根的 helper、`test_batch3_solana_vertical_slice.py` 的纵切片构造。
@@ -23,7 +24,7 @@
 | 项 | 文件 | 类型 | 现役入口与预期（亲核行号） |
 |---|---|---|---|
 | (1) gate_pass=false 仍可 generate READY | test_recon_fifth_check | 语义红 | `handoff_manifest.py generate --mode full`：READY 必备齐但 `data/reconcile_receipt.json.gate_pass=false` → 现役 READY（AUTO_GATES :99 不读 gate_pass）→ 断言应 BLOCKED |
-| (2) 同 slot 错序修复边改变 curve/entity 结果 | test_sqd_gap_repair | 烟雾＋oracle | oracle：同一缺陷 slot 两种顺序（参考序号 vs 伪序）跑 `curve_cost` 逐笔储备更新结果不同（证明顺序敏感）；烟雾：`sqd_repair_core.build_slot_index_map` 双射 |
+| (2) 同 slot 错序修复边改变 curve/entity 结果 | test_sqd_gap_repair | **语义红**（E19） | 直跑现役 `curve_cost`（逐笔储备更新）与 `entity_source_trace` 顺序模拟：同一缺陷 slot 两种边序（参考非投票序号 vs 伪序）得出不同结果（事实断言 GREEN＝顺序敏感成立），随后断言"现役存在把缺陷 slot 统一到参考序号的机制（slot_index_map 双射）"→ 缺 → RED |
 | (3) sample 段冒充全覆盖 | test_sqd_coverage_probe | 烟雾＋oracle | oracle：coverage_map fixture `scan_ranges` 不覆盖、`sample_ranges` 覆盖 → 期望"并集不覆盖" |
 | (4) coverage 文件被 repair 改写 | test_sqd_gap_repair | 烟雾＋oracle | oracle：guard 规则对 `data/sqd_coverage/` 写入者≠probe 拒 |
 | (5) 同签名多边被去重丢边 | test_sqd_gap_repair | 烟雾＋oracle | oracle：一笔交易两条边 → merged 行数恒等式 |
@@ -53,7 +54,12 @@
 | (29a) resolution 重算非 DEFECTS_CONFIRMED 仍 PASS | test_sqd_gap_repair | 烟雾＋oracle | oracle |
 | (29b) 修复交易/重映射 slot 无 confirmed 支撑仍 PASS | test_sqd_gap_repair | 烟雾＋oracle | oracle |
 | (29c) 新候选未被当前代 census 覆盖仍 PASS | test_sqd_gap_repair | 烟雾＋oracle | oracle |
+| (30) 探针指针 CAS/同 probe_id 幂等/目录 fsync | test_sqd_coverage_probe | 烟雾＋oracle | oracle 三反例：supersedes≠当前 probe_id 仍切；同 probe_id＋同哈希须幂等成功；monkeypatch `os.fsync` 期望探针目录/父目录/指针父目录三次目录 fsync（E9/E10） |
+| (31) coverage CURRENT 更新后旧 reconcile receipt 仍被接受 | test_reconcile_v4_receipt | 语义红 | 用现役 `replay_edges.py reconcile` 产 receipt 后，改写案根 coverage 指针 fixture（新 probe_id）→ 断言 validator 应拒（receipt 无/不等 `inputs.coverage_pointer`）→ 现役无此绑定 → RED（E9） |
+| (32) verdict/exit_code/gate_pass 三元不互洽仍被接受 | test_reconcile_v4_receipt | 烟雾＋oracle | oracle：PASS/2、FAIL/0、gate_pass true＋FAIL 三反例；顺带跑现役 `receipt_validate` 记录其对 PASS/2 的行为（E11） |
+| (33) v4 receipt raw 字段为字符串仍被接受 | test_reconcile_v4_receipt | 语义红 | 现役 v3 receipt `minted_raw/burned_raw/snapshot_supply_raw` 即字符串（`replay_edges.py:365,369`）＝证据；断言 v4 validator 应拒字符串 → 缺 → RED（E14） |
 
 ## 红证与汇报
-- `batch1b_red_evidence.txt`：四件逐个 `python3 scripts/tests/<file>.py` 的全量 stdout+stderr、31 项的 `RED|GREEN` 汇总行（应 31 RED）、`python3 scripts/tests/run_all.py` 全量输出（预期红项＝`invariant_scan.py`（manifest 登记了尚不存在的脚本）；其余必须绿——任何其他项变红＝本批引入回归，先修再交）。
-- `batch1b_done.md`：改动清单（文件/行）、登记面增项表、31 项映射实况、run_all 红项解释、「发现项」、「未做」、白名单自述。
+- `batch1b_red_evidence.txt`：四件逐个 `python3 scripts/tests/<file>.py` 的全量 stdout+stderr、35 项的 `RED|GREEN` 汇总行（应 35 RED；第(2)项的事实断言子步骤 GREEN 单列）、`python3 scripts/tests/run_all.py` 全量输出（预期红项＝`invariant_scan.py`（manifest 登记了尚不存在的脚本）；其余必须绿——任何其他项变红＝本批引入回归，先修再交）。
+- `batch1b_done.md`：改动清单（文件/行）、登记面增项表、35 项映射实况、四份草案 errata 小修对照、run_all 红项解释、「发现项」、「未做」、白名单自述。
+- **批 6 硬闸登记**：本批不加 banned needles（docs_lint 在 pre-commit 会卡提交），done 报告必须单列"批 6 必做：banned needles 4 组与文档修订同 commit"。
