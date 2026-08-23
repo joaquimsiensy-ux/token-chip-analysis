@@ -236,12 +236,16 @@ def test_r7_07():
     """READY only accepts formal chains and shares the release-chain source."""
     handoff = load(ROOT / "scripts/report/handoff_manifest.py", "r7_handoff_sets")
     audit = load(ROOT / "scripts/report/audit_release_gate.py", "r7_audit_sets")
-    from chain_registry import formal_ready_chains
+    from chain_registry import capability_chains, formal_ready_chains
     problems = []
     with tempfile.TemporaryDirectory() as td:
         proc, _ = _handoff_generate(Path(td).resolve(), "arbitrum")
         if proc.returncode == 0:
             problems.append("handoff generate accepted READY for exploration-only arbitrum")
+    if "arbitrum" not in capability_chains("labels_table"):
+        problems.append("arbitrum labels_table capability not registered")
+    if "arbitrum" in formal_ready_chains():
+        problems.append("arbitrum labels table incorrectly promoted exploration tier to formal")
     if set(handoff.READY_CHAINS) != formal_ready_chains():
         problems.append("handoff and audit formal chains differ instead of sharing the registry")
     assert not problems, "; ".join(problems)
@@ -319,9 +323,10 @@ def test_r7_10():
 
 def test_r7_11():
     """A staging verified_at older than publication is directional data loss."""
+    from chain_registry import capability_chains
     with tempfile.TemporaryDirectory() as td:
         root = Path(td).resolve(); pub = root / "pub"; out = root / "out"
-        for chain in ("eth", "bsc", "base", "sol", "robinhood"):
+        for chain in sorted(capability_chains("labels_table")):
             write_table(pub / f"labels-{chain}.csv", chain, verified_at="2026-08-06")
             write_table(out / f"labels-{chain}.csv", chain,
                         verified_at="2026-08-05" if chain == "eth" else "2026-08-06")
@@ -329,7 +334,9 @@ def test_r7_11():
             sys.executable, str(ROOT / "scripts/labels/roundtrip_check.py"),
             "--pub-dir", str(pub), "--out-dir", str(out), "--dump-dir", str(root)],
             capture_output=True, text=True)
-        assert proc.returncode != 0, "verified_at regression was WARN-only exit 0"
+        output = proc.stdout + proc.stderr
+        assert proc.returncode == 1 and "日期倒退" in output and "verified_at" in output, \
+            f"verified_at regression did not hit the directional-date branch: rc={proc.returncode}\n{output}"
 
 
 class _Response:

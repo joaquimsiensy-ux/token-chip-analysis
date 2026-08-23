@@ -70,9 +70,9 @@ def formal_chain_error(value):
     if formal_ready(chain):
         return None
     if chain == "arbitrum":
-        return ("chain=arbitrum 为探索支持：缺少 references/labels/labels-arbitrum.csv "
-                "及完整目标链标签门禁；可保留采集、对账和 identity snapshot，"
-                "但不得编译正式 analysis")
+        return ("chain=arbitrum 已有 CEX-only 初版标签表，但仍为 exploration tier，"
+                "且其余正式能力不齐；可保留采集、对账和 identity snapshot，"
+                "不得正式交接、审计发布或编译正式 analysis")
     if release_tier_for(chain) == "formal":
         missing = ",".join(missing_formal_capabilities(chain))
         return f"chain={chain} 尚未闭合正式发布能力（缺 {missing}），不得编译正式 analysis"

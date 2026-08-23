@@ -28,7 +28,7 @@ def write_json(path, value):
 
 def main():
     reason = audit_release_gate.formal_chain_error("arbitrum")
-    assert reason and "探索支持" in reason and "labels-arbitrum.csv" in reason, reason
+    assert reason and "exploration tier" in reason and "CEX-only" in reason, reason
     assert "arbitrum" in entity_identity_gate.identity_chains()
     assert "arbitrum" in identity_snapshot_receipt.identity_evm_chains()
 
@@ -65,7 +65,7 @@ def main():
             a5_report_seal.create_seal(root, report, root / "a4_seal.json",
                                        root / "a5_report_seal.json")
         except ValueError as exc:
-            assert "探索支持" in str(exc), exc
+            assert "exploration tier" in str(exc) and "CEX-only" in str(exc), exc
         else:
             raise AssertionError("A5 seal accepted exploratory Arbitrum")
 
@@ -82,7 +82,7 @@ def main():
             proc = subprocess.run(cmd, capture_output=True, text=True)
             output = (proc.stdout + proc.stderr).strip()
             assert proc.returncode == 2 and "正式编译拒绝" in output \
-                and "探索支持" in output, output
+                and "exploration tier" in output and "CEX-only" in output, output
             assert not output_path.exists()
             print("EVIDENCE command:", " ".join(cmd))
             print("EVIDENCE exit:", proc.returncode)

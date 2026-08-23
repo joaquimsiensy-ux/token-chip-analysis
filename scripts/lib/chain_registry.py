@@ -103,7 +103,7 @@ CHAIN_REGISTRY = MappingProxyType({
         release_tier="exploration", capture_evm_family=True,
         evm_chain_id=42161, accounting_adapter="evm", balance_producer=True,
         supply_producer=True, time_producer=True, controlled_runner=True,
-        reconciliation_consumer=True, identity_adapter="evm", labels_table=False,
+        reconciliation_consumer=True, identity_adapter="evm", labels_table=True,
         handoff=False, audit_release=False, chain_attestation="evm-chain-id",
     ),
     "polygon": _record(

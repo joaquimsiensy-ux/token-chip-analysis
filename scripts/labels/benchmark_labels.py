@@ -21,11 +21,11 @@ from labels_resolver import LabelResolver
 
 BENCH_DIR = os.path.normpath(os.path.join(_HERE, '..', '..', 'references', 'labels', 'benchmark'))
 DEFAULT_LABELS_DIR = os.path.normpath(os.path.join(_HERE, '..', '..', 'references', 'labels'))
-EXPECTED_CHAINS = ('eth', 'bsc', 'base', 'sol', 'robinhood')
+EXPECTED_CHAINS = ('eth', 'bsc', 'base', 'arbitrum', 'sol', 'robinhood')
 
 
 def require_complete_labels(labels_dir):
-    """五张正式链主表必须存在且至少有一条数据行。"""
+    """注册为 labels_table 的六张主表必须存在且至少有一条数据行。"""
     bad = []
     for chain in EXPECTED_CHAINS:
         path = os.path.join(labels_dir, f'labels-{chain}.csv')
@@ -41,7 +41,7 @@ def require_complete_labels(labels_dir):
         if not has_row:
             bad.append(f'{chain}:空表')
     if bad:
-        print(f'FAIL: 五条正式链标签主表必须齐全且非空：{"; ".join(bad)}')
+        print(f'FAIL: 六条 labels_table 链标签主表必须齐全且非空：{"; ".join(bad)}')
         return False
     return True
 
@@ -65,7 +65,7 @@ def main():
     for r in rows:
         by_chain.setdefault(r['chain'], []).append(r)
 
-    # 发布标签表覆盖的五链必须全部有金标；缺链不得静默 PASS。
+    # 发布标签表覆盖的六链必须全部有金标；缺链不得静默 PASS。
     missing = set(EXPECTED_CHAINS) - set(by_chain)
     if missing:
         print(f'FAIL: goldset 缺链 {sorted(missing)}——该链零金标=零门禁，先重跑 build_goldset.py')

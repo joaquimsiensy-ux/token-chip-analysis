@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """回归金标集构建器（P2 回归基准，codex 复核融合 2026-07-16）
 
-从两类实战产物抽取"地址→期望归类"金标：
+从实战产物与受跟踪裁决真源抽取"地址→期望归类"金标：
   entity          历史分析确认的庄家/项目方/狙击集团地址（appendix.json 的 whale_groups /
                   addresses / monitoring_advice）——【库不得将其标为 exclude】，
                   错误 exclude = 聚类阶段直接漏庄，是最严重的库缺陷。
@@ -12,6 +12,10 @@
   python3 build_goldset.py [分析根目录]     # 默认 ~/Desktop/老公用/fable筹码分析
 产物：
   references/labels/benchmark/goldset.csv（chain,address,expected,note,source_analysis）
+
+裁决真源：
+  references/labels/benchmark/goldset_curated.csv
+  自动抽样完成后按 (chain,address) 覆盖合并，保证人工裁决不被重抽样漂移冲掉。
 
 纪律：role 语义不明的条目宁缺毋滥直接丢弃；entity/infrastructure 冲突的条目丢弃并警告。
 
@@ -28,7 +32,9 @@ from collections import Counter
 _HERE = os.path.dirname(os.path.abspath(__file__))
 DEFAULT_ROOT = os.path.expanduser('~/Desktop/老公用/fable筹码分析')
 OUT_DIR = os.path.normpath(os.path.join(_HERE, '..', '..', 'references', 'labels', 'benchmark'))
+CURATED_GOLDSET = os.path.join(OUT_DIR, 'goldset_curated.csv')
 CHAIN_MAP = {'solana': 'sol', 'ethereum': 'eth', 'bnb': 'bsc', 'binance': 'bsc'}
+SUPPORTED_CHAINS = frozenset(('eth', 'bsc', 'base', 'arbitrum', 'sol', 'robinhood'))
 
 # 人工仲裁名单：appendix 金标与标签库冲突、经浏览器官方标签亲验裁决的条目（裁决优先于一切自动分类）
 ARBITRATED = {
@@ -84,7 +90,7 @@ def main():
             dropped += 1
             return
         addr = (addr or '').strip()
-        if chain not in ('eth', 'bsc', 'base', 'sol', 'robinhood') or not addr:
+        if chain not in ('eth', 'bsc', 'base', 'arbitrum', 'sol', 'robinhood') or not addr:
             dropped += 1
             return
         if chain != 'sol':
@@ -184,7 +190,7 @@ def main():
                 chain = norm_chain((json.load(open(cand[0])).get('token') or {}).get('chain'))
             except Exception:
                 chain = None
-        if chain not in ('eth', 'bsc', 'base', 'sol', 'robinhood'):
+        if chain not in ('eth', 'bsc', 'base', 'arbitrum', 'sol', 'robinhood'):
             continue
         cnt = freq.setdefault(chain, Counter())
         try:
@@ -233,11 +239,48 @@ def main():
                 n_rand += 1
     print(f'random-eoa 负样本: {n_rand} 条（低频过滤 1-5 次，sha256 确定性抽样）')
 
+    # ---- 4) 裁决金标真源（优先于全部自动分类与重抽样） ----
+    # 该文件保存已经独立复核的人工裁决；不得从一次性交接目录或历史分析根隐式恢复。
+    required = {'chain', 'address', 'expected', 'note', 'source_analysis'}
+    if not os.path.isfile(CURATED_GOLDSET):
+        raise FileNotFoundError(f'裁决金标真源缺失: {CURATED_GOLDSET}')
+    curated_seen = set()
+    with open(CURATED_GOLDSET, newline='', encoding='utf-8') as f:
+        rd = csv.DictReader(f)
+        missing_fields = required - set(rd.fieldnames or [])
+        if missing_fields:
+            raise ValueError(f'裁决金标缺字段: {sorted(missing_fields)}')
+        for lineno, r in enumerate(rd, 2):
+            chain = norm_chain(r.get('chain'))
+            addr = (r.get('address') or '').strip()
+            if chain != 'sol':
+                addr = addr.lower()
+            expected = (r.get('expected') or '').strip()
+            if chain not in SUPPORTED_CHAINS:
+                raise ValueError(f'裁决金标第 {lineno} 行链无效: {chain!r}')
+            if chain != 'sol' and not re.fullmatch(r'0x[0-9a-f]{40}', addr):
+                raise ValueError(f'裁决金标第 {lineno} 行地址无效: {addr!r}')
+            if expected not in ('entity', 'infrastructure', 'random-eoa'):
+                raise ValueError(f'裁决金标第 {lineno} 行 expected 无效: {expected!r}')
+            key = (chain, addr)
+            if key in curated_seen:
+                raise ValueError(f'裁决金标重复键: {key}')
+            curated_seen.add(key)
+            gold[key] = {
+                'chain': chain,
+                'address': addr,
+                'expected': expected,
+                'note': (r.get('note') or '').strip(),
+                'source_analysis': (r.get('source_analysis') or '').strip(),
+            }
+    print(f'裁决金标覆盖合并: {len(curated_seen)} 条（真源={CURATED_GOLDSET}）')
+
     os.makedirs(OUT_DIR, exist_ok=True)
     out = os.path.join(OUT_DIR, 'goldset.csv')
     rows = sorted(gold.values(), key=lambda r: (r['chain'], r['expected'], r['address']))
     with open(out, 'w', newline='') as f:
-        w = csv.DictWriter(f, fieldnames=['chain', 'address', 'expected', 'note', 'source_analysis'])
+        w = csv.DictWriter(f, fieldnames=['chain', 'address', 'expected', 'note', 'source_analysis'],
+                           lineterminator='\n')
         w.writeheader(); w.writerows(rows)
 
     cc = Counter((r['chain'], r['expected']) for r in rows)

@@ -105,8 +105,7 @@ EOS 侧持有人榜可用 `POST /v1/chain/get_table_by_scope`（`code`=代币合
 
 ## 9. Arbitrum 链专节（SQD 全量实测，2026-07-20）
 
-> **支持级别：探索。** 下述采集与对账能力继续保留；目标链标签主表尚未补齐，
-> G8 只能以 degraded_mode 运行，因此不得据此封口或编译正式 analysis。
+> **支持级别：探索。** 下述采集与对账能力继续保留；目标链已有 CEX-only 初版标签表，G8 不再因缺表进入 degraded mode，但基础设施/协议/桥/池等静态覆盖仍不完整，因此不得据此封口或编译正式 analysis。
 
 Arbitrum One（chainid 42161）待遇比 BSC/Base 好：Etherscan V2 免费层全开 + 官方公共 RPC 稳定直连，EVM 通用管道原样可用，无需专用脚本。
 
@@ -116,7 +115,7 @@ Arbitrum One（chainid 42161）待遇比 BSC/Base 好：Etherscan V2 免费层�
 - **Blockscout Arbitrum**：`arbitrum.blockscout.com/api/v2/addresses/{addr}`（免 key 走代理）——标签/is_contract/ens 通道结构可用（SQD 案标签全空但接口正常，标签覆盖别指望它）。（SQD，07-20）
 - **价格：GeckoTerminal 免费层对老币有一年历史墙**——OHLCV 单次仅回约 181 根，且 before_timestamp 翻页也翻不过 1 年深度——TGE 老币全史价格改走 Gate 现货日K（§4）。（SQD，07-20）
 - 0 值转账投毒与仿冒地址贴脸在 Arbitrum 同样高发（SQD 案 31,814 笔 0 值占 3.8%；仿冒关键实体地址前缀的假地址实见）——计数剔 0 值、关键地址完整比对，既有纪律 Arbitrum 再验证。（SQD，07-20）
-- labels 标签库暂无 arbitrum 链表，用 eth 库跨链复用可命中主流 CEX（SQD 案命中 17 个 CEX 地址——Arbitrum 大所热钱包多与 ETH 主网同址）；HTX 例外未命中（见 CHANGELOG v3.9.0 Known Gaps）。（SQD，07-20）
+- labels v4.3 已建 `labels-arbitrum.csv`（730 行，`coverage=CEX-only`），目标链 CEX 可直接命中，ETH 同址联查只作提示；resolver 不再因缺表 degraded，但这不代表覆盖完整。基础设施/协议/桥/池仍须现场 `getCode`、协议身份核验与行为守门员动态判别，Arbitrum exploration tier 不变。（08-20 更新；SQD 既有采集结论保留）
 
 ## 10. 质押型代币标的范式（方法链无关，LPT(ETH+Arbitrum) 首战实测，2026-07-21）
 

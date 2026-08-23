@@ -1,0 +1,19 @@
+chain,address,expected,note,source_analysis,decision_ref
+arbitrum,0xf977814e90da44bfa03b6295a0616a897441acec,infrastructure,Binance 8；ETH/BSC/Base 同址；ETH/BSC address-book 实战核验并有 Spellbook/brianleect 互证,manual-layer,T3-F-01
+arbitrum,0x28c6c06298d514db089934071355e5743bf21d60,infrastructure,Binance 14；ETH/BSC/Base 同址；ETH address-book 实战核验且三链有 Spellbook 互证,manual-layer,T3-F-01
+arbitrum,0x000000000000d5775ff7721cefb8097af62e52dd,infrastructure,OKX 205；ETH/BSC/Base 同址；ETH/Base Spellbook 与 Dune 交叉互证,manual-layer,T3-F-01
+arbitrum,0x00000000004e3d5628234f18b977041e5242651f,infrastructure,OKX 206；ETH/BSC/Base 同址；ETH/Base Spellbook 与 Dune 交叉互证,manual-layer,T3-F-01
+arbitrum,0x0003b5aa5e30e97fcc596bb5d0f3a75255e08d4e,infrastructure,OKX 207；ETH/BSC/Base 同址；三链 Spellbook 与 Dune 交叉互证,manual-layer,T3-F-01
+arbitrum,0x001866ae5b3de6caa5a51543fd9fb64f524f5478,infrastructure,Binance 9；ETH/BSC/Base 同址；三链 Spellbook 且 ETH 有 brianleect 互证,manual-layer,T3-F-01
+arbitrum,0x0051ef9259c7ec0644a80e866ab748a2f30841b3,infrastructure,Bybit 21；ETH/BSC/Base 同址；三链 Spellbook 与 Dune 交叉互证,manual-layer,T3-F-01
+arbitrum,0x00799bbc833d5b168f0410312d2a8fd9e0e3079c,infrastructure,Binance 31；ETH/BSC/Base 同址；三链 Spellbook 且 ETH 有 brianleect 互证,manual-layer,T3-F-01
+arbitrum,0x004c718103fed0bf75f2a02c3da7ea2332137fac,random-eoa,GMX 案 camp_addrs_v2 big[0]；全 labels MISS；Arbitrum resolver 含跨链推导 MISS,GMX-camp_addrs-v2,T3-F-01
+arbitrum,0x099ddb48277dcb302ca68499982f06618df08216,random-eoa,GMX 案 camp_addrs_v2 big[1]；全 labels MISS；Arbitrum resolver 含跨链推导 MISS,GMX-camp_addrs-v2,T3-F-01
+arbitrum,0x26209d9f0dc3ac0129c3fb1badabfeb9ee728c66,random-eoa,GMX 案 camp_addrs_v2 big[2]；全 labels MISS；Arbitrum resolver 含跨链推导 MISS,GMX-camp_addrs-v2,T3-F-01
+arbitrum,0x2be665d046e518879519b5d17f61f4913fcc4490,random-eoa,GMX 案 camp_addrs_v2 big[3]；全 labels MISS；Arbitrum resolver 含跨链推导 MISS,GMX-camp_addrs-v2,T3-F-01
+arbitrum,0x2e1bac4690f7351b3796df2bc56c35c38617554a,random-eoa,GMX 案 camp_addrs_v2 big[4]；全 labels MISS；Arbitrum resolver 含跨链推导 MISS,GMX-camp_addrs-v2,T3-F-01
+arbitrum,0x3035f73caab91e4f59476ce2dc559381abbe6bf2,random-eoa,GMX 案 camp_addrs_v2 big[5]；全 labels MISS；Arbitrum resolver 含跨链推导 MISS,GMX-camp_addrs-v2,T3-F-01
+arbitrum,0x38e07a38f59810785d5187ef047df8142ca4a766,random-eoa,GMX 案 camp_addrs_v2 big[6]；全 labels MISS；Arbitrum resolver 含跨链推导 MISS,GMX-camp_addrs-v2,T3-F-01
+arbitrum,0x40f18cc812e483615984bc471d8b2d16dee02d57,random-eoa,GMX 案 camp_addrs_v2 big[7]；全 labels MISS；Arbitrum resolver 含跨链推导 MISS,GMX-camp_addrs-v2,T3-F-01
+arbitrum,0x43ce1d475e06c65dd879f4ec644b8e0e10ff2b6d,random-eoa,GMX 案 camp_addrs_v2 big[8]；全 labels MISS；Arbitrum resolver 含跨链推导 MISS,GMX-camp_addrs-v2,T3-F-01
+arbitrum,0x52434934895014cbeed22b8177fb359723c6c0a4,random-eoa,GMX 案 camp_addrs_v2 big[9]；全 labels MISS；Arbitrum resolver 含跨链推导 MISS,GMX-camp_addrs-v2,T3-F-01

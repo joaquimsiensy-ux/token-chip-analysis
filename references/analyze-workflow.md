@@ -39,7 +39,7 @@
 | 标的形态 | 读哪份 pipeline / 跑哪套脚本 |
 |---|---|
 | 0x 地址，Ethereum/BSC/Base（正式） | 进入 `data-pipeline-evm.md` 通道决策树＋ `scripts/evm/` |
-| 0x 地址，Arbitrum（探索） | 可跑 EVM 采集、对账与身份快照；标签主表缺失，禁止 A4/A5 seal 与正式 analysis 编译 |
+| 0x 地址，Arbitrum（探索） | 可跑 EVM 采集、对账与身份快照；已有 CEX-only 初版标签表但覆盖不完整，仍为 exploration，禁止 A4/A5 seal 与 formal compile |
 | base58 mint | `data-pipeline-solana.md`（双 RPC 按方法路由见其分册 §0a） |
 | 0x 地址，Robinhood Chain（exploration only） | 可路由至 `data-pipeline-robinhood.md` ＋ `scripts/robinhood/`；禁止 A4/A5 seal 与正式 analysis 编译 |
 | 跨链部署（OFT/CCIP 等） | 先过多链硬关卡选定范围 → 各链按其 pipeline 采集＋跨链 mint/burn 配平；桥接分支链范式见 playbook §6a |

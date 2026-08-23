@@ -15,11 +15,14 @@
 | labels-bsc.csv（含 privacy 子表） | BSC 主表与 tornado-user 隐私层 |
 | labels-base.csv | Base 主表，含 bundler/paymaster 等 AA 基础设施层 |
 | labels-sol.csv | Solana validator/KOL/CEX/程序标签 |
+| labels-arbitrum.csv | Arbitrum exploration 主表；`coverage=CEX-only`，不授予 formal-ready |
 | labels-robinhood.csv | Robinhood exploration 主表与 serial-actor 惯犯层；表存在不授予 formal-ready |
 | codehash-robinhood.csv | Robinhood exploration 字节码组合指纹，供 fingerprint_check.py 使用 |
 | miss-queue/<chain>.csv | 运行时未命中高权重地址队列，人工审后回填 |
 
 各文件行数与 SHA-256 以同目录 `manifest.json` 为准；查询示例：`python3 -c 'import json; m=json.load(open("references/labels/manifest.json")); print("\n".join("{}\t{}".format(name, meta["rows"]) for name, meta in m["files"].items()))'`。
+
+**Arbitrum 覆盖边界（labels v4.3）**：`labels-arbitrum.csv` 是 730 行 CEX-only 初版，`resolver` 不再因缺表进入 degraded mode；这只证明目标链静态 CEX 表已加载，**不得解读为覆盖完整**。基础设施/协议/桥/池等静态标签仍为空白，剔除继续依赖现场 `getCode`、协议身份核验与行为守门员动态闸；Arbitrum 的 `release_tier=exploration` 不变，仍不得正式交接或审计发布。
 
 CSV 字段（基础 9 列 + 6 扩展列）：`address, chain, name, category, tier, source, added_date, evidence, risk_flags, merge_policy, balance_policy, source_snapshot_at, verified_at, status, raw_labels`（扩展列旧行可为空，空值走 resolver 推导）。
 

@@ -54,10 +54,10 @@ def test_label_surface_injections(scan, root):
     _copy_label_surfaces(scan, root)
     builder = root / "scripts/labels/build_labels.py"
     builder.write_text(builder.read_text().replace(
-        "BUILD_CHAINS = {'eth', 'bsc', 'base', 'sol', 'robinhood'}",
-        "BUILD_CHAINS = {'eth', 'bsc', 'base', 'sol'}"))
+        "BUILD_CHAINS = {'eth', 'bsc', 'base', 'arbitrum', 'sol', 'robinhood'}",
+        "BUILD_CHAINS = {'eth', 'bsc', 'base', 'sol', 'robinhood'}"))
     errors = scan.label_chain_surface_errors(root=root)
-    assert any("missing labels_table chains" in error and "robinhood" in error
+    assert any("missing labels_table chains" in error and "arbitrum" in error
                for error in errors), errors
 
     _copy_label_surfaces(scan, root)
@@ -65,8 +65,8 @@ def test_label_surface_injections(scan, root):
     offenders.parent.mkdir(parents=True, exist_ok=True)
     shutil.copyfile(ROOT / "scripts/labels/accumulate_offenders.py", offenders)
     offenders.write_text(offenders.read_text().replace(
-        "('eth', 'bsc', 'base', 'sol', 'robinhood')",
-        "('eth', 'bsc', 'base', 'sol', 'robinhood', 'polygon')"))
+        "('eth', 'bsc', 'base', 'arbitrum', 'sol', 'robinhood')",
+        "('eth', 'bsc', 'base', 'arbitrum', 'sol', 'robinhood', 'polygon')"))
     errors = scan.label_chain_surface_errors(root=root)
     assert any("accumulate_offenders.py" in error and "unregistered" in error
                and "polygon" in error for error in errors), errors

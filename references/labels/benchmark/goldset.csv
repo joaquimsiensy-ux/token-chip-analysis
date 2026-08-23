@@ -1,11 +1,88 @@
 chain,address,expected,note,source_analysis
+arbitrum,0x000000000000d5775ff7721cefb8097af62e52dd,infrastructure,OKX 205；ETH/BSC/Base 同址；ETH/Base Spellbook 与 Dune 交叉互证,manual-layer
+arbitrum,0x00000000004e3d5628234f18b977041e5242651f,infrastructure,OKX 206；ETH/BSC/Base 同址；ETH/Base Spellbook 与 Dune 交叉互证,manual-layer
+arbitrum,0x0003b5aa5e30e97fcc596bb5d0f3a75255e08d4e,infrastructure,OKX 207；ETH/BSC/Base 同址；三链 Spellbook 与 Dune 交叉互证,manual-layer
+arbitrum,0x001866ae5b3de6caa5a51543fd9fb64f524f5478,infrastructure,Binance 9；ETH/BSC/Base 同址；三链 Spellbook 且 ETH 有 brianleect 互证,manual-layer
+arbitrum,0x0051ef9259c7ec0644a80e866ab748a2f30841b3,infrastructure,Bybit 21；ETH/BSC/Base 同址；三链 Spellbook 与 Dune 交叉互证,manual-layer
+arbitrum,0x00799bbc833d5b168f0410312d2a8fd9e0e3079c,infrastructure,Binance 31；ETH/BSC/Base 同址；三链 Spellbook 且 ETH 有 brianleect 互证,manual-layer
+arbitrum,0x28c6c06298d514db089934071355e5743bf21d60,infrastructure,Binance 14；ETH/BSC/Base 同址；ETH address-book 实战核验且三链有 Spellbook 互证,manual-layer
+arbitrum,0x7da0b9211020d3775b18116fe751c555b9a7058c,infrastructure,Bybit (Arbitrum),manual-layer
+arbitrum,0x9d271a4e9523d74572b618ec10419a0a330e1bf0,infrastructure,Bybit Hot Wallet 10 (Arbitrum),manual-layer
+arbitrum,0xb9de92603d5e2a568bf67ad3f03a04f3a83cf3b2,infrastructure,Bybit 储备/归集仓（行为学判定）,manual-layer
+arbitrum,0xf977814e90da44bfa03b6295a0616a897441acec,infrastructure,Binance 8；ETH/BSC/Base 同址；ETH/BSC address-book 实战核验并有 Spellbook/brianleect 互证,manual-layer
+arbitrum,0x004c718103fed0bf75f2a02c3da7ea2332137fac,random-eoa,GMX 案 camp_addrs_v2 big[0]；全 labels MISS；Arbitrum resolver 含跨链推导 MISS,GMX-camp_addrs-v2
+arbitrum,0x099ddb48277dcb302ca68499982f06618df08216,random-eoa,GMX 案 camp_addrs_v2 big[1]；全 labels MISS；Arbitrum resolver 含跨链推导 MISS,GMX-camp_addrs-v2
+arbitrum,0x26209d9f0dc3ac0129c3fb1badabfeb9ee728c66,random-eoa,GMX 案 camp_addrs_v2 big[2]；全 labels MISS；Arbitrum resolver 含跨链推导 MISS,GMX-camp_addrs-v2
+arbitrum,0x2be665d046e518879519b5d17f61f4913fcc4490,random-eoa,GMX 案 camp_addrs_v2 big[3]；全 labels MISS；Arbitrum resolver 含跨链推导 MISS,GMX-camp_addrs-v2
+arbitrum,0x2e1bac4690f7351b3796df2bc56c35c38617554a,random-eoa,GMX 案 camp_addrs_v2 big[4]；全 labels MISS；Arbitrum resolver 含跨链推导 MISS,GMX-camp_addrs-v2
+arbitrum,0x3035f73caab91e4f59476ce2dc559381abbe6bf2,random-eoa,GMX 案 camp_addrs_v2 big[5]；全 labels MISS；Arbitrum resolver 含跨链推导 MISS,GMX-camp_addrs-v2
+arbitrum,0x38e07a38f59810785d5187ef047df8142ca4a766,random-eoa,GMX 案 camp_addrs_v2 big[6]；全 labels MISS；Arbitrum resolver 含跨链推导 MISS,GMX-camp_addrs-v2
+arbitrum,0x40f18cc812e483615984bc471d8b2d16dee02d57,random-eoa,GMX 案 camp_addrs_v2 big[7]；全 labels MISS；Arbitrum resolver 含跨链推导 MISS,GMX-camp_addrs-v2
+arbitrum,0x43ce1d475e06c65dd879f4ec644b8e0e10ff2b6d,random-eoa,GMX 案 camp_addrs_v2 big[8]；全 labels MISS；Arbitrum resolver 含跨链推导 MISS,GMX-camp_addrs-v2
+arbitrum,0x52434934895014cbeed22b8177fb359723c6c0a4,random-eoa,GMX 案 camp_addrs_v2 big[9]；全 labels MISS；Arbitrum resolver 含跨链推导 MISS,GMX-camp_addrs-v2
+base,0x0235ffde3d40e0224617e201499d508751edfb8d,entity,创世空投大户组(观察级),VIRTUAL分析
+base,0x06c7c71fca1aea63b8fbe5d6438ca6c681124711,entity,创世空投大户组(观察级),VIRTUAL分析
+base,0x07fa79c3b8068b715b88553f6242dfb53c03249a,entity,狙击集团(P1),PING分析
+base,0x0a80ae587ffb58dbc84f60a64fdcc26ffa0dd794,entity,同块暗仓·小狙击第 6 组换址遗留(300 万枚整沉睡 8 个月),jesse
+base,0x127b32cd6a0525f4e1da2d9aad846546d66db0fc,entity,其他大户#2(整数仓),jesse
+base,0x138971d87077c5d622998da2302ef3608d57a9ba,entity,借新闻出货实体·07-18 新启用接力仓库(收 2×195.98 万),jesse
+base,0x187b6ab771482ccfee7cd2c35176080631082368,entity,其他大户#4·活跃做T(1.09%，07-10 建仓后连续加减仓),jesse
+base,0x1a283635b08d39df3b954edf98409ab620f91ab4,entity,创世空投大户组(观察级),VIRTUAL分析
+base,0x1c75c1c65ccdd5f192e482d7a6dc5ab0c6795b48,entity,做市实体A(观察级),VIRTUAL分析
+base,0x2211d1d0020daea8039e46cf1367962070d77da9,entity,项目方(P0),jesse
+base,0x2d28ddd6f70bea7205c5b4b963a2a0f831c80ea6,entity,做市实体A(观察级),VIRTUAL分析
+base,0x31fe59820f308b1b5b683d9c0b41ff07cdd909ce,entity,做市实体A(观察级),VIRTUAL分析
+base,0x36fcf08490aaf8ffc666c4808d06b5690a8da190,entity,做市实体A(观察级),VIRTUAL分析
+base,0x501ced8dfec4dcb6836b7bc0241ab1c3a93ec434,entity,做市实体A(观察级),VIRTUAL分析
+base,0x50569c7b003e4148bc1392a1c1ebbce6c47b6d5c,entity,项目方(P0),jesse
+base,0x57cff09ea485ee9863c95a1f13bee9c8f481aeee,entity,狙击集团#5(P1),jesse
+base,0x61c3f7826144dcf49e9b057b831709175402ba8a,entity,换仓实体新仓·07-12 从旧仓单笔全额收 7.15M 续持(0.67%，07-17 已首卖 45 万),jesse
+base,0x625c271188742191a33f9aa48ecbe3d653e74150,entity,狙击集团#2(P1),jesse
+base,0x728d9bcc9d962e19e12af498a31a8afdcd1d7404,entity,"整数互转双子·主仓(持恰 5,000,100 枚整，双向倒仓+互发 gas 实锤同实体)",jesse
+base,0x73f432da307525b6590c858bf458116322d50d16,entity,其他大户#1·现任最大外部持有人(2023 老钱包，07-04~07 经 bot 建仓 2218 万零卖出),jesse
+base,0x79b94c17d8178689df8d10754d7e4a1bb3d49bc1,entity,创世空投大户组(观察级),VIRTUAL分析
+base,0x7b229dfab5dc7de384ac3cdf0c7efca961fc15de,entity,狙击集团#3(P1),jesse
+base,0x7d67c78efbbf7af121880739d7de86834001070d,entity,小庄#1(P1),PING分析
+base,0x7e9be88baefc5d6b7d56370f5703045a1247c695,entity,小庄#1(P1),PING分析
+base,0x7f24d29a29649f76773389e11c9b40afa37d9eed,entity,狙击集团#3(P1),jesse
+base,0x8466f2aa896b1c0ef34a7aeb93f78bfc2e80dfdd,entity,狙击集团#4(P1),jesse
+base,0x88cab199be21521d8afc9c112c41d05a34cffd12,entity,项目方(P0),PING分析
+base,0x9572cbe40ff2ed3dd1a4c0fa1c4a89bae0decccb,entity,狙击集团#2(P1),jesse
+base,0x95e6e9dcc12abe5fe5b4de3eeb9d3c0ea87fa262,entity,创世空投大户组(观察级),VIRTUAL分析
+base,0x9f59fa05a4ad952ba90b101555fb5e2709c9d8bb,entity,狙击集团#1(P1),jesse
+base,0x9f93f618b524b0925f3a54a90ff7fffcbc5c1179,entity,创世空投大户组(观察级),VIRTUAL分析
+base,0xa108a61edf648f370305e240b3e9e6c8648544ba,entity,项目方(P0),PING分析
+base,0xa950608437e556d674a681252ddc16ed181a86e6,entity,做市实体A(观察级),VIRTUAL分析
+base,0xac01842418c29e0041e17d179bafda759af9c3eb,entity,狙击集团#5(P1),jesse
+base,0xac9e5789f9a1b5d8ead1a154ce22ef15727863ad,entity,创世空投大户组(观察级),VIRTUAL分析
+base,0xb08fba3a917e263a9df19de07ed0fb8566186c1d,entity,项目方(P0),PING分析
+base,0xb0a3a2b60e969afd26561429aa4c1444c57e4411,entity,观察级(0.57%集群),VIRTUAL分析
+base,0xb1023928d0a4e2cada021574c7da5d390ae82251,entity,狙击集团#2(P1),jesse
+base,0xb10caf05b0a7677061dcb4cbcfb70c8508519023,entity,狙击集团#4(P1),jesse
+base,0xb416b68b317fb4dac6fc36b1c52e5efdf0610b91,entity,狙击集团#5(P1),jesse
+base,0xb828c5cde35f51e4072623e4f5fd9817fd9d75fd,entity,项目方(P0),PING分析
+base,0xb837adac365ba0ef65d5decdbcbfaa0ae2995352,entity,创世空投大户组(观察级),VIRTUAL分析
+base,0xbedaf4736c7bc4ec837b270956794804b51a8f15,entity,创世空投大户组(观察级),VIRTUAL分析
+base,0xdbd148a34491c39b7b1a42a539f62f82bbbba43e,entity,项目方(P0),PING分析
+base,0xdecfd713aa4fc16e974d57c9c58c295ca2244d04,entity,创世空投大户组(观察级),VIRTUAL分析
+base,0xe382357aea1072026f2860239ec1818dd95d50e8,entity,换仓实体旧仓(已倒空给 0x61c3),jesse
+base,0xeb023a6d892d2db25a699221181d38ad22ff5589,entity,项目方(P0),jesse
+base,0xec042ea35e41834995c919d9c5e46f7a9c4c33cb,entity,项目方(P0),PING分析
+base,0xeee3d4a14759e91af3f95011e3840fd7f6f88dcb,entity,狙击集团#4(P1),jesse
+base,0xf6e39aa00ab607bd48cd82e77a91ed7c27d35745,entity,狙击集团#5(P1),jesse
+base,0xf7e6a4f99118f5c0bb67fe0fc631dbe944dcf197,entity,狙击集团#5(P1),jesse
+base,0xf85c373aa5f98d414212a668938394e95f30d468,entity,创世空投大户组(观察级),VIRTUAL分析
+base,0xf9d660491d29e0526c8546e8e5213a77e50d1917,entity,其他大户#3·4 址归集实体主库(214 笔聚沙建仓 1112 万，02-27 后沉睡),jesse
+base,0xfc6d3f69b4c8924fcbfa9fe582b73a50a8a09771,entity,项目方关联,VIRTUAL分析
 base,0x0000000000000000000000000000000000000000,infrastructure,零地址（burn/mint 对手方）,manual-layer
 base,0x0000000000000000000000000000000000000001,infrastructure,0x…01 黑洞地址,manual-layer
 base,0x000000000000000000000000000000000000dead,infrastructure,dead 销毁地址,manual-layer
 base,0x0000000071727de22e5e9d8baf0edac6f37da032,infrastructure,ERC-4337 EntryPoint v0.7（跨链同址）,manual-layer
 base,0x00e13d60ac6d8dbc9786f77ef9f6696e8e2a075f,infrastructure,Base 活跃 ERC-4337 Paymaster（7日 921 个 UserOp 代付；gas 溯源假金主源）,manual-layer
 base,0x048ef1062cbb39b338ac2685da72adf104b4cef5,infrastructure,Base 活跃 ERC-4337 Bundler（7日 1760 笔 handleOps；gas 溯源假金主源）,manual-layer
+base,0x0529ea5885702715e83923c59746ae8734c553b7,infrastructure,CEX托管,VIRTUAL分析
 base,0x0b3e328455c4059eeb9e3f84b5543f74e24e7e1b,infrastructure,VIRTUAL 代币合约（Virtuals Protocol，Base 主场）,manual-layer
+base,0x0d0707963952f2fba59dd06f2b425ace40b492fe,infrastructure,CEX托管,VIRTUAL分析
 base,0x0f7ae28de1c8532170ad4ee566b5801485c13a0e,infrastructure,Across MulticallHandler（fill 后中转交付用户，假金主源）,manual-layer
 base,0x111111125421ca6dc452d289314280a0f8842a65,infrastructure,1inch v6 Router,manual-layer
 base,0x1111111254eeb25477b68fb85ed929f73a960582,infrastructure,1inch v5 Router,manual-layer
@@ -14,24 +91,29 @@ base,0x1278c1e48e3c9548a5d9f2b16dc27ed311b0697c,infrastructure,Base 活跃 ERC-4
 base,0x1331f0788f9c08c8f38d52c7a1152250a9de00be,infrastructure,ClankerUniv4EthDevBuy（dev 首购执行器）,manual-layer
 base,0x15e62707fca7352fbe35f51a8d6b0f8066a05dcc,infrastructure,Aerodrome Forwarder（元交易转发）,manual-layer
 base,0x16613524e02ad97edfef371bc883f2f5d6c480a5,infrastructure,Aerodrome Voter,manual-layer
+base,0x18b0f4547a89fe4c5fe84f258bea3601fa281e9f,infrastructure,KuCoin 52 热钱包,PING分析
 base,0x1d53960165188ee0c74a5705ee6307fea517c613,infrastructure,Base 活跃 ERC-4337 Bundler（7日 2416 笔 handleOps；gas 溯源假金主源）,manual-layer
 base,0x2626664c2603336e57b271c5c0b26f421741e481,infrastructure,Uniswap V3 SwapRouter02（Base）,manual-layer
 base,0x2bb27b73c602643f42471d4751fe4fc4eebefbd1,infrastructure,Relay 桥 solver 热钱包 #13（供gas/代发/交付，假共同金主头号源）,manual-layer
 base,0x2cc0c7981d846b9f2a16276556f6e8cb52bfb633,infrastructure,Base 活跃 ERC-4337 Paymaster（7日 41198 个 UserOp 代付；gas 溯源假金主源）,manual-layer
 base,0x2faeb0760d4230ef2ac21496bb4f0b47d634fd4c,infrastructure,Base 活跃 ERC-4337 Paymaster（7日 93511 个 UserOp 代付；gas 溯源假金主源）,manual-layer
+base,0x3304e22ddaa22bcdc5fca2269b418046ae7b566a,infrastructure,CEX托管,VIRTUAL分析
 base,0x344daadde53a81f95bcc46a99d39107a509251a1,infrastructure,Relay 桥 solver 热钱包 #18（供gas/代发/交付，假共同金主头号源）,manual-layer
+base,0x377b8ce04761754e8ac153b47805a9cf6b190873,infrastructure,CEX托管,VIRTUAL分析
 base,0x38869bf66a61cf6bdb996a6ae40d5853fd43b526,infrastructure,Safe v1.4.1 MultiSend（canonical 部署）,manual-layer
 base,0x3e5c63644e683549055b9be8653de26e0b4cd36e,infrastructure,Safe v1.3.0 GnosisSafeL2（canonical 部署）,manual-layer
 base,0x40a2accbd92bca938b02010e17a5b8929b49130d,infrastructure,Safe v1.3.0 MultiSendCallOnly（canonical 部署）,manual-layer
 base,0x45ca74858c579e717ee29a86042e0d53b252b504,infrastructure,Aerodrome VotingRewardsFactory,manual-layer
 base,0x48f07c16cbd5f12939e1ab24b8a23d161d6c3596,infrastructure,Base 活跃 ERC-4337 Bundler（7日 22714 笔 handleOps；gas 溯源假金主源）,manual-layer
-base,0x498581ff718922c3f8e6a244956af099b2652b2b,infrastructure,"Uniswap V4 PoolManager（Base 单例；其""持仓""=全链 V4 池流动性合计非大户）",manual-layer
+base,0x498581ff718922c3f8e6a244956af099b2652b2b,infrastructure,Uniswap V4 PoolManager,PING分析
 base,0x4b5c33c3c7a31bd108f5a99b64683b0056a62226,infrastructure,Base 活跃 ERC-4337 Bundler（7日 22013 笔 handleOps；gas 溯源假金主源）,manual-layer
+base,0x4e3ae00e8323558fa5cac04b152238924aa31b60,infrastructure,MEXC 14 热钱包,PING分析
 base,0x4fd9098af9ddcb41da48a1d78f91f1398965addc,infrastructure,Base 活跃 ERC-4337 Paymaster（7日 15731 个 UserOp 代付；gas 溯源假金主源）,manual-layer
 base,0x501ef174b66883ba40f92e6fb24bfb49331d4d4c,infrastructure,Base 活跃 ERC-4337 Bundler（7日 1745 笔 handleOps；gas 溯源假金主源）,manual-layer
 base,0x54e2acab04c89a3fe02852bf8dd69ee8f526bc75,infrastructure,Base 活跃 ERC-4337 Bundler（7日 22425 笔 handleOps；gas 溯源假金主源）,manual-layer
 base,0x56c262027e0de4aea31d2489529cb25d23e58a8b,infrastructure,Relay 桥 solver 热钱包 #2（供gas/代发/交付，假共同金主头号源）,manual-layer
 base,0x57c5115fe9f1cffdf0607a9b9beefa56a9125870,infrastructure,Base 活跃 ERC-4337 Bundler（7日 1914 笔 handleOps；gas 溯源假金主源）,manual-layer
+base,0x582717501dec047513ec258458da7834011076de,infrastructure,CEX托管,VIRTUAL分析
 base,0x591dc14b5cd66c104bdeb17d5e2bc844ca3179ca,infrastructure,Base 活跃 ERC-4337 Bundler（7日 1912 笔 handleOps；gas 溯源假金主源）,manual-layer
 base,0x5c3f18f06cc09ca1910767a34a20f771039e37c0,infrastructure,Aerodrome FactoryRegistry,manual-layer
 base,0x5d0ae8cbad6a88eda0fbe5e916992f9aed417bbb,infrastructure,Base 活跃 ERC-4337 Paymaster（7日 1222 个 UserOp 代付；gas 溯源假金主源）,manual-layer
@@ -57,6 +139,7 @@ base,0x777777e8850d8d6d98de2b5f64fae401f96eff31,infrastructure,Zora ERC20Minter,
 base,0x777777edf27ac61671e3d5718b10bf6a8802f9f1,infrastructure,Zora SecondarySwap（二级市场撮合）,manual-layer
 base,0x7c5f5a4bbd8fd63184577525326123b519429bdc,infrastructure,Uniswap V4 PositionManager（Base；从它收币=LP 提取非买入）,manual-layer
 base,0x7cbb62eaa69f79e6873cd1ecb2392971036cfaa4,infrastructure,Safe v1.3.0 CreateCall（canonical 部署）,manual-layer
+base,0x841ed663f2636863d40be4ee76243377dff13a34,infrastructure,CEX托管,VIRTUAL分析
 base,0x8718238cf0063b69513a22f6a278789cde5b08b5,infrastructure,ClankerUniv3EthDevBuy（dev 首购执行器）,manual-layer
 base,0x886f51115829cb326b74e8a834fb93fe25e85050,infrastructure,Base 活跃 ERC-4337 Paymaster（7日 6165 个 UserOp 代付；gas 溯源假金主源）,manual-layer
 base,0x8d47ba07ff9ccccf58c7e8810ee42c0dc8b8b123,infrastructure,Base 活跃 ERC-4337 Bundler（7日 22011 笔 handleOps；gas 溯源假金主源）,manual-layer
@@ -80,10 +163,13 @@ base,0xb19d6ffc2182150f8eb585b79d4abcd7c5640a9d,infrastructure,Safe v1.3.0 Creat
 base,0xb1bcca2ac714a6eed7742866a2ec772394e9ea1a,infrastructure,Base 活跃 ERC-4337 Bundler（7日 1914 笔 handleOps；gas 溯源假金主源）,manual-layer
 base,0xb2f52cb5a2094a00101d91eeb65b85cb1d86431e,infrastructure,Base 活跃 ERC-4337 Bundler（7日 1913 笔 handleOps；gas 溯源假金主源）,manual-layer
 base,0xb429d62f8f3bffb98cdb9569533ea23bf0ba28cc,infrastructure,ClankerHookStaticFeeV2（Uniswap V4 hook）,manual-layer
+base,0xb7333d779c6ecdfc4507a53706b0e173bd086a18,infrastructure,CEX托管,VIRTUAL分析
+base,0xbaed383ede0e5d9d72430661f3285daa77e9439f,infrastructure,CEX托管,VIRTUAL分析
 base,0xbdbebd58cc8153ce74530bb342427579315915b2,infrastructure,Base 活跃 ERC-4337 Bundler（7日 1742 笔 handleOps；gas 溯源假金主源）,manual-layer
 base,0xbe6d8f0d05cc4be24d5167a3ef062215be6d18a5,infrastructure,Aerodrome Slipstream SwapRouter（初始部署）,manual-layer
 base,0xc22834581ebc8527d974f8a1c97e1bea4ef910bc,infrastructure,Safe v1.3.0 GnosisSafeProxyFactory（eip155 部署）,manual-layer
 base,0xc2d17664b6f038ffa2eba5e93b73529c596dd492,infrastructure,Base 活跃 ERC-4337 Bundler（7日 15535 笔 handleOps；gas 溯源假金主源）,manual-layer
+base,0xc882b111a75c0c657fc507c04fbfcd2cc984f071,infrastructure,CEX托管,VIRTUAL分析
 base,0xca11bde05977b3631167028862be2a173976ca11,infrastructure,Multicall3（全 EVM 同址）,manual-layer
 base,0xcbbb8035cac7d4b3ca7abb74cf7bdf900215ce0d,infrastructure,Aerodrome Slipstream SwapRouter（Gauge Caps 部署）,manual-layer
 base,0xcc0c946eecf01a4bc76bc333ea74ceb04756f17b,infrastructure,某钱包 App 统一 EIP-7702 实现（同 delegate≠同实体）,manual-layer
@@ -91,6 +177,7 @@ base,0xcc4bc7882d5ec4a3716e589ab3d816b61ae47a1a,infrastructure,Relay 桥 solver 
 base,0xccc88a9d1b4ed6b0eaba998850414b24f1c315be,infrastructure,Relay ApprovalProxy v3,manual-layer
 base,0xce5c72f4b112787d59cd2390dd4548525b1b1d05,infrastructure,Base 活跃 ERC-4337 Bundler（7日 9553 笔 handleOps；gas 溯源假金主源）,manual-layer
 base,0xcf77a3ba9a5ca399b7c97c74d54e5b1beb874e43,infrastructure,Aerodrome Router,manual-layer
+base,0xd3e0341b361134014e0c89378b3e36bc5020cd97,infrastructure,CEX托管,VIRTUAL分析
 base,0xd4b53c2ba502a91159685a7951ca44ad1dfa6fa1,infrastructure,Base 活跃 ERC-4337 Paymaster（7日 919 个 UserOp 代付；gas 溯源假金主源）,manual-layer
 base,0xd53cd0ab83d845ac265be939c57f53ad838012c9,infrastructure,Safe v1.4.1 SignMessageLib（canonical 部署）,manual-layer
 base,0xd60d6b218116cfd801e28f78d011a203d2b068cc,infrastructure,ClankerHookDynamicFeeV2（Uniswap V4 hook）,manual-layer
@@ -110,17 +197,52 @@ base,0xf48f2b2d2a534e402487b3ee7c18c33aec0fe5e4,infrastructure,Safe v1.3.0 Compa
 base,0xf70da97812cb96acdf810712aa562db8dfa3dbef,infrastructure,Relay 桥 solver 热钱包（供gas/代发/替空投池发币）,manual-layer
 base,0xf8dd39c71a278fe9f4377d009d7627ef140f809e,infrastructure,Virtuals 卖单执行合约,manual-layer
 base,0xf8f2eb4940cfe7d13603dddd87f123820fc061ef,infrastructure,Aerodrome Slipstream CLFactory（Gauges V3 现行部署）,manual-layer
-base,0xf977814e90da44bfa03b6295a0616a897441acec,infrastructure,Binance HotWallet20,manual-layer
+base,0xf977814e90da44bfa03b6295a0616a897441acec,infrastructure,CEX托管,VIRTUAL分析
 base,0xfb1bffc9d739b8d520daf37df666da4c687191ea,infrastructure,Safe v1.3.0 GnosisSafeL2（eip155 部署）,manual-layer
 base,0xfda1fb5a2a5b23638c7017950506a36dcfd2bdc3,infrastructure,Aerodrome ManagedRewardsFactory,manual-layer
 base,0xfdc013ce003980889cffd66b0c8329545ae1d1e8,infrastructure,ClankerSniperAuctionV0（狙击拍卖机制）,manual-layer
+base,0xffa8db7b38579e6a2d14f9b347a9ace4d044cd54,infrastructure,CEX托管,VIRTUAL分析
+bsc,0x015cf312e457a9e3c4ec8654749aa7cb0242611a,entity,大庄#1(strict四址EOA接力库存核心)(P0),QUQ分析
+bsc,0x05f04a08df246ce66d04b718c343f7190fe0848c,entity,项目方(dev工作室)(P0),哈基米分析
+bsc,0x0a6df5146c7cef1ed56d46ef2a161862dd2a94ad,entity,其他大户·0xHeme系(below-P1),哈基米分析
+bsc,0x0b6e00b2609ba230bf4d5c4190fa7515594a9ec3,entity,其他大户·0xHeme系(below-P1),哈基米分析
+bsc,0x148c67ace132281d83a7bc72eaffb884cecf2f56,entity,其他大户·获利王系(below-P1),哈基米分析
+bsc,0x1600ceaf22277e33aba444bb924d856d1c9f946c,entity,回购烧毁机(64轮池买12.2%→dead;金主BNB侧未溯;近90天停机通缩0.042%),QUQ分析
+bsc,0x16f17e0f9196b0ddddce9fd238317507a13bcc6d,entity,大庄#1(strict四址EOA接力库存核心)(P0),QUQ分析
+bsc,0x176e6378b7c9010f0456bee76ce3039d36dc37c8,entity,其他大户·独立钱包#1（KOL，现最大外部单址1.17%）,哈基米分析
+bsc,0x1a29375ee09b38afaa23bed65f30c85230e27599,entity,大庄#1(strict四址EOA接力库存核心)(P0),QUQ分析
+bsc,0x1d755ac8119466b5baef48879501747ec1aedbe3,entity,其他大户·获利王系(below-P1),哈基米分析
+bsc,0x2465b145b6e5ba842a5f529088b9ff275584de42,entity,其他大户·0xHeme系(below-P1),哈基米分析
+bsc,0x2660339013ea287462470a9382a3fee394de4d11,entity,其他大户·0xHeme系(below-P1),哈基米分析
+bsc,0x281422503e3af797ba13ebb8dfe51c8059863963,entity,项目方(dev工作室)(P0),哈基米分析
+bsc,0x28816c4c4792467390c90e5b426f198570e29307,entity,CZ受赠仓(GMGN名人标签cz_binance;发射日被赠8.49%;25-11-09全烧;非项目方仓——完整版翻案),QUQ分析
+bsc,0x2a5a88fdf7c4ce6ea942f4451e9ba4cea7135db4,entity,大庄#1(strict四址EOA接力库存核心)(P0),QUQ分析
+bsc,0x3421c142539163a7a52205d6b63b4fa54f4fc751,entity,"沉睡大户(0.42%,25-04四笔购自Pancake后15个月零动作,无体系边)",QUQ分析
 bsc,0x36b854d67ba956fd359911e5d3c177caaaff9464,entity,庄#1·三地址·bundle发射（已清仓）(),bibi分析
+bsc,0x3809d44839b2ddb454b674f763812f221ea5c104,entity,其他大户·0xHeme系(below-P1),哈基米分析
+bsc,0x39e97ec2f39ba4ab1fc6e60cca872fcc8cfe0727,entity,项目方(dev工作室)(P0),哈基米分析
+bsc,0x3c31b888d7833e3fadf2380ae268cf192dc296cb,entity,其他大户·0xHeme系(below-P1),哈基米分析
 bsc,0x4baf0ac2f3eefc4123049dbad236ed134f113b74,entity,疑似集群·伪装分散候选（PLAUSIBLE不实锤）(),bibi分析
+bsc,0x57a2b82774238edcffd9ab4e2e90fc3a8588ef2c,entity,其他大户·0xHeme系(below-P1),哈基米分析
+bsc,0x7352595f858ac5c0a786bb941548fd08405c2f15,entity,dev变现中转(收0.833%发射后1h内7笔卖入Pancake池),QUQ分析
 bsc,0x82dcf1fde9ce5011121c05cf74c3bf9c1f002f01,entity,庄#1·三地址·bundle发射（已清仓）(),bibi分析
+bsc,0x9a98c8b4e29989e05fb374ba9370e9143828f6a0,entity,独立量化工作室金库(USDT侧;V4下方承接73%的资金母仓;不持QUQ),QUQ分析
 bsc,0xa0670863bd5cd0d60022bab2eed78e81e1a06bce,entity,疑似集群·伪装分散候选（PLAUSIBLE不实锤）(),bibi分析
+bsc,0xa403eb93a7bf95c26b81dc83416fb5cd6dcca30c,entity,其他大户·获利王系(below-P1),哈基米分析
+bsc,0xac4cdd58c88fe2d652ac52cd51923bf0890a7225,entity,其他大户·0xHeme系(below-P1),哈基米分析
+bsc,0xb01996539a966c96e2efe81d11bdc469688e42e1,entity,其他大户·0xHeme系(below-P1),哈基米分析
+bsc,0xbd7ccdc2dc2e42cf87eac66c51b81b6867c7b072,entity,项目方(dev工作室)(P0),哈基米分析
+bsc,0xc5e7bc040f663dfdd8356bc366f77486eb26743c,entity,dev付款钱包(从未持仓),QUQ分析
 bsc,0xc85a70841ebba22f85906ee91ac5b41e17e4820f,entity,疑似集群·伪装分散候选（PLAUSIBLE不实锤）(),bibi分析
+bsc,0xceebc4cf5421984b78c0df39cdd29493cf99d3e3,entity,其他大户·0xHeme系(below-P1),哈基米分析
+bsc,0xd23b7d7e0e36ae23f3b595658424dcb182eec3ef,entity,creator(连环发币工作室;当日清仓;出金经0x9f23a855→OKX标签),QUQ分析
+bsc,0xd65d30563f87781f0b4a9c6f0c73911aeec7ae50,entity,曲线狙击#2(创建后2块买5.26%;赠CZ 2.3%;赠CZ四址协同簇成员),QUQ分析
 bsc,0xdf45a1bcae59dc956965a7937532edbcaad5317c,entity,庄#1·三地址·bundle发射（已清仓）(),bibi分析
 bsc,0xe843a6a59736c86843d15e87c426857cd855a7f0,entity,疑似集群·伪装分散候选（PLAUSIBLE不实锤）(),bibi分析
+bsc,0xeebc495869f82d802c0362d38a40673f98bdb5b3,entity,"dev收币仓(曲线买14.16%卖回13.33%,净0.833%经7352当日卖池——完整版口径修正)",QUQ分析
+bsc,0xf200ca045110621d3ea98394ae8b7c0467ef7110,entity,"曲线狙击#1(创建后7块买4.29%;赠CZ 2.9%;赠CZ四址协同簇成员,与creator协同实锤)",QUQ分析
+bsc,0xf54c097769f4cd439ad4d1f12ceafed04f466cb4,entity,其他大户·0xHeme系(below-P1),哈基米分析
+bsc,0xf7e112b0cb64bc673757b9d6864118ae296c5b92,entity,其他大户·独立钱包#2（1.005%，05-17两天建仓后死拿）,哈基米分析
 bsc,0x0000000000000000000000000000000000000000,infrastructure,零地址（burn/mint 对手方）,manual-layer
 bsc,0x0000000000000000000000000000000000000001,infrastructure,0x…01 黑洞地址,manual-layer
 bsc,0x000000000000000000000000000000000000dead,infrastructure,dead 销毁地址,manual-layer
@@ -128,7 +250,6 @@ bsc,0x00000000009726632680fb29d3f7a9734e3010e2,infrastructure,Rainbow: Router,ma
 bsc,0x0000000071727de22e5e9d8baf0edac6f37da032,infrastructure,ERC-4337 EntryPoint v0.7（跨链同址）,manual-layer
 bsc,0x09b44a633de9f9ebf6fb9bdd5b5629d3dd2cef13,infrastructure,four.meme AgentIdentifier（Agent NFT 判定）,manual-layer
 bsc,0x0a6a15964fee494a881338d65940430797f0d97c,infrastructure,Stargate V2: Treasurer,manual-layer
-bsc,0x0aaef3db5d2847b231468658001c278ee892b7e8,infrastructure,Anyswap: BAB Token,manual-layer
 bsc,0x0bfbcf9fa4f9c56b0f40a671ad40e0805a091865,infrastructure,PancakeSwap V3 Factory,manual-layer
 bsc,0x0cc78251cfc0356b2b513a9ed97be1e33ecb43c8,infrastructure,four.meme Helper3 实现合约（impl）,manual-layer
 bsc,0x0d0707963952f2fba59dd06f2b425ace40b492fe,infrastructure,Gate.io 1,manual-layer
@@ -144,35 +265,25 @@ bsc,0x1126c4dcfc8deae728eb483c42ecd27e1d7d34e1,infrastructure,DxLock Token Lock 
 bsc,0x11a0c9270d88c99e221360bca50c2f6fda44a980,infrastructure,Celer cBridge: OriginalTokenVaultV2,manual-layer
 bsc,0x1231deb6f5749ef6ce6943a275a1d3e7486f4eae,infrastructure,LI.FI Diamond（跨链聚合）,manual-layer
 bsc,0x138eb30f73bc423c6455c53df6d89cb01d9ebc63,infrastructure,Stargate V2: StargatePoolUSDT,manual-layer
-bsc,0x13b432914a996b0a48695df9b2d701eda45ff264,infrastructure,Anyswap: Deployer 4,manual-layer
 bsc,0x13f4ea83d0bd40e75c8222255bc855a974568dd4,infrastructure,PancakeSwap Smart Router（V3 统一路由）,manual-layer
 bsc,0x180ad8afba82d80c21bfde40966567fa45f6332f,infrastructure,DxLock V2 LP Lock 工厂（现役）,manual-layer
 bsc,0x1a0a18ac4becddbd6389559687d1a73d8927e416,infrastructure,PancakeSwap Universal Router（v3 版）,manual-layer
 bsc,0x1a44076050125825900e736c501f859c50fe728c,infrastructure,LayerZero V2: EndpointV2,manual-layer
 bsc,0x1ab4973a48dc892cd9971ece8e01dcc7688f8f23,infrastructure,Bitget 6,manual-layer
 bsc,0x1b81d678ffb9c0263b24a97847620c99d213eb14,infrastructure,PancakeSwap V3 SwapRouter,manual-layer
-bsc,0x1dc56f2705ff2983f31fb5964cc3e19749a7cba7,infrastructure,Anyswap: AnyDAI Token,manual-layer
 bsc,0x1e34a77868e19a6647b1f2f47b51ed72dede95dd,infrastructure,Tornado Cash BSC 100 BNB 面额池,manual-layer
-bsc,0x1f7216fdb338247512ec99715587bb97bbf96eae,infrastructure,Anyswap: bBadger Token,manual-layer
 bsc,0x1fbe2acee135d991592f167ac371f3dd893a508b,infrastructure,Binance BSC 二级提币热钱包（nonce 百万级）,manual-layer
 bsc,0x238a358808379702088667322f80ac48bad5e6c4,infrastructure,PancakeSwap Infinity Vault（LP 基础设施）,manual-layer
-bsc,0x245d3238cbbe03f9b8e1bff4709d1ebdf22ced4b,infrastructure,Anyswap: FEG Token,manual-layer
 bsc,0x26727c78b0209d9e787b2f9ac8f0238b122a3098,infrastructure,Stargate V2: StargateStaking,manual-layer
 bsc,0x26c76f7fef00e02a5dd4b5cc8a0f717eb61e1e4b,infrastructure,Celer cBridge: PeggedTokenBridgeV2,manual-layer
-bsc,0x277be44551a8c4d4004e2091ff7d3f69be21782f,infrastructure,multichain,manual-layer
-bsc,0x28e2ea090877bf75740558f6bfb36a5ffee9e9df,infrastructure,Uniswap V4 PoolManager（BSC 单例，内嵌池）,manual-layer
-bsc,0x2c961ff9b386b597abc58a56f3ec63e313cada76,infrastructure,Anyswap: SUKU Token,manual-layer
+bsc,0x28e2ea090877bf75740558f6bfb36a5ffee9e9df,infrastructure,Uniswap V4 PoolManager(单例),QUQ分析
 bsc,0x2d5d7d31f671f86c782533cc367f14109a082712,infrastructure,Axelar: GasService,manual-layer
-bsc,0x2ede13880e11b19b7d6113a86ac7ac84ac651042,infrastructure,Anyswap: anyCOMP Token,manual-layer
 bsc,0x304acf330bbe08d1e512eefaa92f6a57871fd895,infrastructure,Axelar: Gateway,manual-layer
 bsc,0x306f06c147f064a010530292a1eb6737c3e378e4,infrastructure,THENA AlgebraFactory,manual-layer
 bsc,0x31c2f6fcff4f8759b3bd5bf0e1084a055615c768,infrastructure,PancakeSwap Permit2,manual-layer
 bsc,0x327dd3208f0bcf590a66110acb6e5e6941a4efa0,infrastructure,THENA AlgebraRouter（FUSION 路由）,manual-layer
 bsc,0x330bdfade01ee9bf63c209ee33102dd334618e0a,infrastructure,Tornado Cash BSC 10 BNB 面额池,manual-layer
-bsc,0x3516141b1ac8751c2042a8a1bc411ab8655464ac,infrastructure,Anyswap: OCEAN Protocol,manual-layer
 bsc,0x3669ddd1a9ee009db9eb2174c5c760fffc66cfef,infrastructure,PancakeSwap Infinity CLStableSwapPoolFactory,manual-layer
-bsc,0x3758428802fbeab2858d58aec5ff5176df464edd,infrastructure,Anyswap: PPDEX Token,manual-layer
-bsc,0x37bdfd6ed491ee0e0fe2ce49de2cb573880e3734,infrastructure,Anyswap: MFI Token,manual-layer
 bsc,0x38869bf66a61cf6bdb996a6ae40d5853fd43b526,infrastructure,Safe v1.4.1 MultiSend（canonical 部署）,manual-layer
 bsc,0x3a6d8ca21d1cf76f653a67577fa0d27453350dd8,infrastructure,Biswap V2 Router,manual-layer
 bsc,0x3c2269811836af69497e5f486a85d7316753cf62,infrastructure,LayerZero V1: Endpoint,manual-layer
@@ -182,43 +293,31 @@ bsc,0x3ebd570ed38b1b3b4bc886999fcf507e9d584859,infrastructure,LayerZero V2: Exec
 bsc,0x3f4d6bf08cb7a003488ef082102c2e6418a4551e,infrastructure,DeepLock Locker,manual-layer
 bsc,0x40a2accbd92bca938b02010e17a5b8929b49130d,infrastructure,Safe v1.3.0 MultiSendCallOnly（canonical 部署）,manual-layer
 bsc,0x43de2d77bf8027e25dbd179b491e8d64f38398aa,infrastructure,deBridge: DeBridgeGate,manual-layer
-bsc,0x43fbbe7a5397117b3da58722635832ba60905285,infrastructure,Anyswap: eRSDL Token,manual-layer
+bsc,0x449e2709f7e716963fbdc7ad775f47e757b29ae0,infrastructure,"公共卖币路由(先于QUQ 19.7h部署,服务≥102币,原子过账;R2复核后判非体系成员)",QUQ分析
 bsc,0x44de03599d1088b205d959b09a842448a0a63173,infrastructure,PancakeSwap Infinity CLStableSwapHookFactory,manual-layer
 bsc,0x46a15b0b27311cedf172ab29e4f4766fbe7f4364,infrastructure,PancakeSwap V3 NonfungiblePositionManager,manual-layer
 bsc,0x4982085c9e2f89f2ecb8131eca71afad896e89cb,infrastructure,MEXC 13,manual-layer
 bsc,0x4a364f8c717caad9a442737eb7b8a55cc6cf18d8,infrastructure,Stargate V1: Router,manual-layer
 bsc,0x4e8e101924ede233c13e2d8622dc8aed2872d505,infrastructure,Across 桥 SpokePool（relayer fill 出币方）,manual-layer
-bsc,0x4ec16da4c9007462de151c0da9f5426c69978a7b,infrastructure,Anyswap: AGAr Token,manual-layer
-bsc,0x4f6318e97011fe21fdfce3ffcf868d44e5f6994a,infrastructure,Anyswap: anyFSN Token,manual-layer
-bsc,0x5621b5a3f4a8008c4ccdd1b942b121c8b1944f1f,infrastructure,Anyswap: XED Token,manual-layer
 bsc,0x56c262027e0de4aea31d2489529cb25d23e58a8b,infrastructure,Relay 桥 solver 热钱包 #3（供gas/代发/交付，假共同金主头号源）,manual-layer
-bsc,0x5921dee8556c4593eefcfad3ca5e2f618606483b,infrastructure,Anyswap: anyMTLX Token,manual-layer
-bsc,0x5986d5c77c65e5801a5caa4fae80089f870a71da,infrastructure,Anyswap: bDIGG Token,manual-layer
 bsc,0x5a52e96bacdabb82fd05763e25335261b270efcb,infrastructure,Binance 28,manual-layer
 bsc,0x5c952063c7fc8610ffdb798152d69f0b9550762b,infrastructure,four.meme TokenManager（bonding curve 分发）,manual-layer
 bsc,0x5ff137d4b0fdcd49dca30c7cf57e578a026d2789,infrastructure,ERC-4337 EntryPoint v0.6（跨链同址，存量流量仍大）,manual-layer
 bsc,0x61ef2e01e603aeb5cd96f9ec9ae76cc6a68f6cf9,infrastructure,deBridge DlnExternalCallAdapter,manual-layer
-bsc,0x62334d3c6f48891deed7324abd0a3dcb23305f77,infrastructure,Anyswap: SPDR Token,manual-layer
 bsc,0x631fc1ea2270e98fbd9d92658ece0f5a269aa161,infrastructure,Binance BSC hot,manual-layer
-bsc,0x63a3d28bb9187809553dd16981c73f498b6b2687,infrastructure,Anyswap: OKExchain Bridge,manual-layer
 bsc,0x63c0c19a282a1b52b07dd5a65b58948a07dae32b,infrastructure,MetaMask StatelessDeleGator（EIP-7702）,manual-layer
 bsc,0x663dc15d3c1ac63ff12e45ab68fea3f0a883c251,infrastructure,deBridge（BSC 结算）,manual-layer
 bsc,0x6694340fc020c5e6b96567843da2df01b2ce1eb6,infrastructure,Stargate V1: Bridge,manual-layer
 bsc,0x68d7877b16002ad34836ba55416bca9b92b55589,infrastructure,Stargate V2: StargateMultiRewarder,manual-layer
-bsc,0x6a545f9c64d8f7b957d8d2e6410b52095a9e6c29,infrastructure,Anyswap: CFI Token,manual-layer
+bsc,0x6aba0315493b7e6989041c91181337b662fb1b90,infrastructure,"Alpha搬运腿(Router↔b300双向各94倍总量/22-24万笔,上架次日活跃至截止;场内量能制造通道)",QUQ分析
 bsc,0x6e3d884c96d640526f273c61dfcf08915ebd7e2b,infrastructure,Stargate V2: TokenMessaging,manual-layer
-bsc,0x6f817a0ce8f7640add3bc0c1c2298635043c2423,infrastructure,Anyswap: anyETH Token,manual-layer
-bsc,0x73d8bd54f7cf5fab43fe4ef40a62d390644946db,infrastructure,Binance: Alpha 2.0 Router Proxy（场内买盘链上托管 omnibus）,manual-layer
+bsc,0x73d8bd54f7cf5fab43fe4ef40a62d390644946db,infrastructure,"币安Alpha Router托管仓(25-08峰53.96%,现5.25%)",QUQ分析
 bsc,0x73f5ebe90f27b46ea12e5795d16c4b408b19cc6f,infrastructure,Binance BSC 二级提币热钱包（nonce 百万级）,manual-layer
-bsc,0x753fbc5800a8c8e3fb6dc6415810d627a387dfc9,infrastructure,Anyswap: BADGER Token,manual-layer
 bsc,0x757eba15a64468e6535532fcf093cef90e226f85,infrastructure,four.meme 主合约（mint 接收/createToken 入口）,manual-layer
 bsc,0x78bc5ee9f11d133a08b331c2e18fe81be0ed02dc,infrastructure,Celer cBridge: OriginalTokenVault,manual-layer
 bsc,0x79c7909097a2a5cedb8da900e3192cee671521a6,infrastructure,four.meme TokenManagerHelper2（旧版 helper）,manual-layer
 bsc,0x7cbb62eaa69f79e6873cd1ecb2392971036cfaa4,infrastructure,Safe v1.3.0 CreateCall（canonical 部署）,manual-layer
-bsc,0x7e624fa0e1c4abfd309cc15719b7e2580887f570,infrastructure,Multichain: POLS Token,manual-layer
 bsc,0x7fbc1ff9617d554d1902a3431a9c29dc2edaf1be,infrastructure,four.meme TokenManager V1 实现合约（impl）,manual-layer
-bsc,0x812764fa37a4fd731a5d39f0e519b6b8d61e82a0,infrastructure,Multichain: DAO Token,manual-layer
-bsc,0x84151755679590d3c79347315c5dbeff031f1b98,infrastructure,Anyswap: SUTER Token,manual-layer
 bsc,0x84443cfd09a48af6ef360c6976c5392ac5023a1f,infrastructure,Tornado Cash BSC 0.1 BNB 面额池,manual-layer
 bsc,0x858e3312ed3a876947ea49d572a7c42de08af7ee,infrastructure,Biswap V2 Factory,manual-layer
 bsc,0x87e07417bda17db14afc5454659d332197361a84,infrastructure,DxLock V3 LP Lock 记录合约,manual-layer
@@ -226,13 +325,10 @@ bsc,0x8894e0a0c962cb723c1976a4421c95949be2d4e3,infrastructure,Binance 51,manual-
 bsc,0x8a0c79f5532f3b2a16ad1e4282a5daf81928a824,infrastructure,deBridge: CallProxy,manual-layer
 bsc,0x8b0185533313fcb4cb94e4c4d000b5c7b4def9b8,infrastructure,FlokiFi VaultFactory 第3代（现役）,manual-layer
 bsc,0x9008d19f58aabd9ed0d60971565aa8510560ab41,infrastructure,CoW Protocol Settlement,manual-layer
-bsc,0x91a22f94ee917efc8f804e251f385cbeb1c6d6bc,infrastructure,Anyswap: WAIF Token,manual-layer
 bsc,0x932a9e971f006d1db136cdb5819a5a4ba57cf97b,infrastructure,FlokiFi VaultFactory 第2代,manual-layer
 bsc,0x962bd449e630b0d928f308ce63f1a21f02576057,infrastructure,Stargate V2: StargatePoolUSDC,manual-layer
 bsc,0x9641d764fc13c8b624c04430c7356c1c7c8102e2,infrastructure,Safe v1.4.1 MultiSendCallOnly（canonical 部署）,manual-layer
-bsc,0x976e33b07565b0c05b08b2e13affd3113e3d178d,infrastructure,Anyswap: AGA Token,manual-layer
 bsc,0x983b00a2c3d8925cedfc9f3eb5df1ae121ff6b9f,infrastructure,DxLock Token Lock 记录合约,manual-layer
-bsc,0x9883ae441105f815b472517389b979f031b5c87e,infrastructure,Anyswap: anyYFI Token,manual-layer
 bsc,0x98f3c9e6e3face36baad05fe09d375ef1464288b,infrastructure,Wormhole: Core Bridge,manual-layer
 bsc,0x998739bfdaadde7c933b942a68053933098f9eda,infrastructure,Safe v1.3.0 MultiSend（eip155 部署）,manual-layer
 bsc,0x9f8c645f2d0b2159767bd6e0839de4be49e823de,infrastructure,LayerZero V2: SendUln302,manual-layer
@@ -248,7 +344,6 @@ bsc,0xb300000b72deaeb607a12d5f54773d1c19c7028d,infrastructure,Binance: DEX Route
 bsc,0xb5fb4be02232b1bba4dc8f81dc24c26980de9e3c,infrastructure,Axelar: InterchainTokenService,manual-layer
 bsc,0xb6f6d86a8f9879a9c87f643768d9efc38c1da6e7,infrastructure,Wormhole: Token Bridge (WTT),manual-layer
 bsc,0xb92fe925dc43a0ecde6c8b1a2709c170ec4fff4f,infrastructure,RelayRouterV3（Relay.link 跨链聚合路由）,manual-layer
-bsc,0xbccff1c6c1ca650f533d3dcc5f4722aae6718337,infrastructure,Multichain: Router Config,manual-layer
 bsc,0xbd612a3f30dca67bf60a39fd0d35e39b7ab80774,infrastructure,Binance BSC 二级提币热钱包（nonce 百万级）,manual-layer
 bsc,0xbd89d0488c587f6fd158f645543389bcc473378e,infrastructure,DxLock V3 LP Lock 工厂,manual-layer
 bsc,0xc1dcb196ba862b337aa23eda1cb9503c0801b955,infrastructure,Axelar: DepositService,manual-layer
@@ -258,8 +353,6 @@ bsc,0xca11bde05977b3631167028862be2a173976ca11,infrastructure,Multicall3（全 E
 bsc,0xca143ce32fe78f1f7019d7d551a6402fc5350c73,infrastructure,PancakeSwap V2 Factory,manual-layer
 bsc,0xcc0c946eecf01a4bc76bc333ea74ceb04756f17b,infrastructure,某钱包 App 统一 EIP-7702 实现（同 delegate≠同实体）,manual-layer
 bsc,0xccc88a9d1b4ed6b0eaba998850414b24f1c315be,infrastructure,Relay ApprovalProxy v3,manual-layer
-bsc,0xce57283ce0e7446364e0bc479b5de5d74b5e0ffc,infrastructure,Anyswap: PKG Token,manual-layer
-bsc,0xcfb24d3c3767364391340a2e6d99c64f1cbd7a3d,infrastructure,Anyswap: LPOOL Token,manual-layer
 bsc,0xd443fe6bf23a4c9b78312391a30ff881a097580e,infrastructure,Celer cBridge: PeggedTokenBridge,manual-layer
 bsc,0xd47438c816c9e7f2e2888e060936a499af9582b3,infrastructure,Tornado Cash BSC 1 BNB 面额池,manual-layer
 bsc,0xd4ae6eca985340dd434d38f470accce4dc78d109,infrastructure,THENA RouterV2（Solidly 路由）,manual-layer
@@ -269,16 +362,10 @@ bsc,0xdccf3b77da55107280bd850ea519df3705d1a75a,infrastructure,Binance BSC 二级
 bsc,0xdd90e5e87a2081dcf0391920868ebc2ffb81a1af,infrastructure,Celer cBridge: Bridge (pool-based),manual-layer
 bsc,0xe060c04359f13097c5047a6fb182b9976b95281f,infrastructure,four.meme TokenManager2 V2 实现合约（impl）,manual-layer
 bsc,0xe0c3ab2c69d8b43d8b0d922afa224a0ab6780de1,infrastructure,CryptEx LP Locker,manual-layer
-bsc,0xe1d592c3322f1f714ca11f05b6bc0efef1907859,infrastructure,Multichain,manual-layer
-bsc,0xe1e66e037dc20247c2fabda5ec89c911e68724e7,infrastructure,Anyswap: DFX Token,manual-layer
 bsc,0xe2fc31f816a9b94326492132018c3aecc4a93ae1,infrastructure,Binance Withdrawals7（提币出口）,manual-layer
-bsc,0xe6358c1d7a91915abba46d9855bd6418898fc091,infrastructure,Anyswap: anyOMG Token,manual-layer
 bsc,0xe7351fd770a37282b91d153ee690b63579d6dd7f,infrastructure,deBridge DLN: DlnDestination,manual-layer
-bsc,0xe7b91602ce96a537cb729f484b8ddb3c1fecbb45,infrastructure,Anyswap: ALICE Token,manual-layer
-bsc,0xe9b9c1c38dab5eab3b7e2ad295425e89bd8db066,infrastructure,Anyswap: PCNT Token,manual-layer
 bsc,0xeb2d2f1b8c558a40207669291fda468e50c8a0bb,infrastructure,Binance BSC 二级提币热钱包（nonce 百万级）,manual-layer
 bsc,0xeb3a9c56d963b971d320f889be2fb8b59853e449,infrastructure,DxSale 老版 DxLock_LP（2022 被盗抽干·历史锁标签）,manual-layer
-bsc,0xebd49b26169e1b52c04cfd19fcf289405df55f80,infrastructure,Anyswap: ORBS Token,manual-layer
 bsc,0xec4549cadce5da21df6e6422d448034b5233bfbc,infrastructure,four.meme TokenManager V1（代理；2024-09 前老币）,manual-layer
 bsc,0xef4fb24ad0916217251f553c0596f8edc630eb66,infrastructure,deBridge DLN: DlnSource,manual-layer
 bsc,0xf251f83e40a78868fcfa3fa4599dad6494e46034,infrastructure,four.meme TokenManagerHelper3（查询包装器）,manual-layer
@@ -286,74 +373,74 @@ bsc,0xf48f2b2d2a534e402487b3ee7c18c33aec0fe5e4,infrastructure,Safe v1.3.0 Compat
 bsc,0xf70da97812cb96acdf810712aa562db8dfa3dbef,infrastructure,Relay 桥 solver 热钱包（供gas/代发/替空投池发币）,manual-layer
 bsc,0xf89d7b9c864f589bbf53a82105107622b35eaa40,infrastructure,Bybit HotWallet,manual-layer
 bsc,0xf977814e90da44bfa03b6295a0616a897441acec,infrastructure,Binance HotWallet20,manual-layer
-bsc,0xfa9da51631268a30ec3ddd1ccbf46c65fad99251,infrastructure,Multichain: Deployer,manual-layer
 bsc,0xfb1bffc9d739b8d520daf37df666da4c687191ea,infrastructure,Safe v1.3.0 GnosisSafeL2（eip155 部署）,manual-layer
 bsc,0xfee2a3f4329e9a1828f46927bd424db2c1624985,infrastructure,DxLock V2 LP Lock 记录合约,manual-layer
+bsc,0x034543d1c475f1cfabc8e37f87bb60cf0ea943d5,random-eoa,低频普通交易者负样本（1-5 次出现）,random-sample
+bsc,0x03e16f33d4d5929921648f219f921dacbee05a5d,random-eoa,低频普通交易者负样本（1-5 次出现）,random-sample
 bsc,0x0a64fa5ba4fc8177beeeea31b7e156131cc37f07,random-eoa,低频普通交易者负样本（1-5 次出现）,random-sample
+bsc,0x0a9ef6eee2ab15a88a888cd48068ab9ed528e77e,random-eoa,低频普通交易者负样本（1-5 次出现）,random-sample
 bsc,0x0cf8932731911f4005a939bd5a4eb23487c70849,random-eoa,低频普通交易者负样本（1-5 次出现）,random-sample
+bsc,0x0f6a5f998a3f94aa06eb57c81c3dabcc75b35f91,random-eoa,低频普通交易者负样本（1-5 次出现）,random-sample
 bsc,0x0f7bfcb3603721dba32fc13c6ee3835803e5fd45,random-eoa,低频普通交易者负样本（1-5 次出现）,random-sample
+bsc,0x122a9ee6d260c3b16c794804ff1779df3289a4a6,random-eoa,低频普通交易者负样本（1-5 次出现）,random-sample
 bsc,0x14e76b7c3bf488f9c0b2149b3a9a16345d155dcc,random-eoa,低频普通交易者负样本（1-5 次出现）,random-sample
-bsc,0x1678a2553cf029c97863a5288eb25fb89c2c6699,random-eoa,低频普通交易者负样本（1-5 次出现）,random-sample
 bsc,0x255555d80bdc1fec035ec93e39f04175ebbc0a8b,random-eoa,低频普通交易者负样本（1-5 次出现）,random-sample
+bsc,0x25fe5d13483b29f45b75a03cc599f387d5681b09,random-eoa,低频普通交易者负样本（1-5 次出现）,random-sample
+bsc,0x2812bfe9bf37894df44cadc245a878d52cc67abc,random-eoa,低频普通交易者负样本（1-5 次出现）,random-sample
 bsc,0x2a02058495106b47ba20605a3e16c4596d801d43,random-eoa,低频普通交易者负样本（1-5 次出现）,random-sample
-bsc,0x3416091e25ba183e67839d17c5840276cbecc06c,random-eoa,低频普通交易者负样本（1-5 次出现）,random-sample
+bsc,0x2aae4d1ddd518dddc746a0df0b1d71faf4243854,random-eoa,低频普通交易者负样本（1-5 次出现）,random-sample
+bsc,0x367393f2e3b12ad360ba53027185a946e19e5d59,random-eoa,低频普通交易者负样本（1-5 次出现）,random-sample
 bsc,0x36d43db83842bf819d901470e91c6ab7d0d30386,random-eoa,低频普通交易者负样本（1-5 次出现）,random-sample
-bsc,0x3d197f4659ff5c22fc4211d0b02a736ab7380a8d,random-eoa,低频普通交易者负样本（1-5 次出现）,random-sample
-bsc,0x3f4f4592e1e4004eb10533b471d5624eb2e38285,random-eoa,低频普通交易者负样本（1-5 次出现）,random-sample
-bsc,0x44d2beba06390574af22a7e1d1f557e0d521d39e,random-eoa,低频普通交易者负样本（1-5 次出现）,random-sample
-bsc,0x4f2cb78560a13f2916c9b2846219359c2f15a705,random-eoa,低频普通交易者负样本（1-5 次出现）,random-sample
 bsc,0x54f887e19761e153c501bf3f5ef790027d11c828,random-eoa,低频普通交易者负样本（1-5 次出现）,random-sample
-bsc,0x56b21b4eb0d19f0da854ed5044e6b78c3a39a9e1,random-eoa,低频普通交易者负样本（1-5 次出现）,random-sample
-bsc,0x5d03f01d9ec81162bd81dd6548d3db6e7f6c695a,random-eoa,低频普通交易者负样本（1-5 次出现）,random-sample
+bsc,0x5f282e005c472b3b9ff105261776114f7c65c6c3,random-eoa,低频普通交易者负样本（1-5 次出现）,random-sample
+bsc,0x610ff379bd26c80be232323a989f6928c081bef9,random-eoa,低频普通交易者负样本（1-5 次出现）,random-sample
 bsc,0x63efcdeac8e5df4c8e626adf04da418b01666273,random-eoa,低频普通交易者负样本（1-5 次出现）,random-sample
-bsc,0x64d089011cc21234db0e0a8ceab65a1e58017fab,random-eoa,低频普通交易者负样本（1-5 次出现）,random-sample
-bsc,0x6504d93b35ce165bf7c4aa57903cd3a6d31d3253,random-eoa,低频普通交易者负样本（1-5 次出现）,random-sample
+bsc,0x6662158f3568d8f6ceda920bfb631e82a5bfb7c4,random-eoa,低频普通交易者负样本（1-5 次出现）,random-sample
 bsc,0x66e1e8cc351953835bce4d47a8119453e01e9976,random-eoa,低频普通交易者负样本（1-5 次出现）,random-sample
-bsc,0x66f158dab68dc0e7b3a2479c86cf98c71db21164,random-eoa,低频普通交易者负样本（1-5 次出现）,random-sample
 bsc,0x66f1662b7328fd112ea848ffeeb297d465ce8492,random-eoa,低频普通交易者负样本（1-5 次出现）,random-sample
 bsc,0x69411753da53e2cc78029113d525b8e1caedb8dd,random-eoa,低频普通交易者负样本（1-5 次出现）,random-sample
-bsc,0x700dfa8e9db41f769128b3fa10ccbab6a5f80e48,random-eoa,低频普通交易者负样本（1-5 次出现）,random-sample
-bsc,0x72d208ed5ce8122a77d6ea74ba37f4c4bb7b4caa,random-eoa,低频普通交易者负样本（1-5 次出现）,random-sample
+bsc,0x6b1fa591957b4e845ee1f6763ceb8f416aff29d2,random-eoa,低频普通交易者负样本（1-5 次出现）,random-sample
+bsc,0x6beb68c16fc5b502d38c82e976f4f978f06ccabd,random-eoa,低频普通交易者负样本（1-5 次出现）,random-sample
+bsc,0x706a380c9ae046729f5729421ccffccb30cc780e,random-eoa,低频普通交易者负样本（1-5 次出现）,random-sample
+bsc,0x72c327770a7d57ccf8fab704ec9c9237bf397db0,random-eoa,低频普通交易者负样本（1-5 次出现）,random-sample
 bsc,0x7e3ebd68b84fdbe12267d2dc9de10bf6b4098580,random-eoa,低频普通交易者负样本（1-5 次出现）,random-sample
-bsc,0x81fdf57292326d698c526c747fff8fdf9441a2a7,random-eoa,低频普通交易者负样本（1-5 次出现）,random-sample
-bsc,0x86596829ed4cbea70d56770f36f5511962ee59dc,random-eoa,低频普通交易者负样本（1-5 次出现）,random-sample
 bsc,0x8bbd580649bdb9d4fcabbe2fc9edee82862fa6a1,random-eoa,低频普通交易者负样本（1-5 次出现）,random-sample
-bsc,0x8dafafebcae13f9f29d9fe34e19a36fc9170c2d0,random-eoa,低频普通交易者负样本（1-5 次出现）,random-sample
-bsc,0x95d62265d5025abbef71fc43a04cc5383a9c8ef9,random-eoa,低频普通交易者负样本（1-5 次出现）,random-sample
-bsc,0x98f52c586c231d4291f391db2cc7aaed174932b5,random-eoa,低频普通交易者负样本（1-5 次出现）,random-sample
+bsc,0x93573190cf6b6a9fbebfc4fac2000b35cb5f07ed,random-eoa,低频普通交易者负样本（1-5 次出现）,random-sample
+bsc,0x9738c950c8701146cebe38689d892d2b290529e3,random-eoa,低频普通交易者负样本（1-5 次出现）,random-sample
 bsc,0x9a7205ec96cd892f3673c9782d68c6d62d73b427,random-eoa,低频普通交易者负样本（1-5 次出现）,random-sample
 bsc,0x9af10af0777ce0886171217b1aabd562624c5a84,random-eoa,低频普通交易者负样本（1-5 次出现）,random-sample
-bsc,0x9b61fb3146672e0ae85b20e030f4d1fd33ccf3f6,random-eoa,低频普通交易者负样本（1-5 次出现）,random-sample
+bsc,0x9efeb6f7acf8b8c7acfbb747bb23e04e0cab16ba,random-eoa,低频普通交易者负样本（1-5 次出现）,random-sample
 bsc,0xa2bfba33f7e39b8d9edaa457335ee0172b1d27c8,random-eoa,低频普通交易者负样本（1-5 次出现）,random-sample
+bsc,0xa3b9efcf8428cc540ee933946ccd4b9425916155,random-eoa,低频普通交易者负样本（1-5 次出现）,random-sample
+bsc,0xa90e0fa8c114bf3860474c984bad82d152ae9d12,random-eoa,低频普通交易者负样本（1-5 次出现）,random-sample
+bsc,0xac4c6e212a361c968f1725b4d055b47e63f80b75,random-eoa,低频普通交易者负样本（1-5 次出现）,random-sample
 bsc,0xaf94a9ff9158e8894d120e7b637648e040e884d8,random-eoa,低频普通交易者负样本（1-5 次出现）,random-sample
-bsc,0xb0f19a584edaeaf177bade213f5ea62dfbcb078a,random-eoa,低频普通交易者负样本（1-5 次出现）,random-sample
 bsc,0xb3b269340bc7980ce280a2c734cd5f6097dcb5a9,random-eoa,低频普通交易者负样本（1-5 次出现）,random-sample
-bsc,0xb43d993c2a0160d45e4fef532f6895a144146e67,random-eoa,低频普通交易者负样本（1-5 次出现）,random-sample
+bsc,0xb527f9aee0aeb20da52197d302f5d538043d3666,random-eoa,低频普通交易者负样本（1-5 次出现）,random-sample
 bsc,0xb5ca0684adb55ad8499e03f8e1cc651112ee3d49,random-eoa,低频普通交易者负样本（1-5 次出现）,random-sample
 bsc,0xb6830e63ab7bf0bad22b259e1e49b2fe05e9e35a,random-eoa,低频普通交易者负样本（1-5 次出现）,random-sample
+bsc,0xbf4d5824099938898fcb1f11cb2b6e752ab2245e,random-eoa,低频普通交易者负样本（1-5 次出现）,random-sample
+bsc,0xc38e9c34bbb7ae32179bbb31fa117fad17f0cca2,random-eoa,低频普通交易者负样本（1-5 次出现）,random-sample
+bsc,0xc3cc0b7bb914ff1cfb5f42c9ee2b965a9f947d4d,random-eoa,低频普通交易者负样本（1-5 次出现）,random-sample
+bsc,0xc8c6b1a1adac57e9f5fc07cf2574de8b3aa09d9d,random-eoa,低频普通交易者负样本（1-5 次出现）,random-sample
 bsc,0xc94212e7849a517b0268dd6be272d2a79fd04c40,random-eoa,低频普通交易者负样本（1-5 次出现）,random-sample
-bsc,0xce2bf2016aba247d668cf9fddb5200004379ff14,random-eoa,低频普通交易者负样本（1-5 次出现）,random-sample
+bsc,0xca662b1600109a5a92d6d729f86d0a874a520c5b,random-eoa,低频普通交易者负样本（1-5 次出现）,random-sample
+bsc,0xce61c887029efaae243a4b0eb901f50486d853ae,random-eoa,低频普通交易者负样本（1-5 次出现）,random-sample
 bsc,0xd6ce1d020b434b10386f62e5a35a6ac7315c903e,random-eoa,低频普通交易者负样本（1-5 次出现）,random-sample
-bsc,0xd9511d24f1ee413844dc0e8ba3a89d42e90934de,random-eoa,低频普通交易者负样本（1-5 次出现）,random-sample
+bsc,0xd8d0506c210b01d373d63a01374746d6962bdd94,random-eoa,低频普通交易者负样本（1-5 次出现）,random-sample
 bsc,0xd9bdadc20007dbea705ae3e4bb431ca3e19a32fb,random-eoa,低频普通交易者负样本（1-5 次出现）,random-sample
 bsc,0xdbb823716063706cfd9127b3f706cfb2ae102905,random-eoa,低频普通交易者负样本（1-5 次出现）,random-sample
-bsc,0xdc3591df8ef2f822eeafa7eae51860a274a96d93,random-eoa,低频普通交易者负样本（1-5 次出现）,random-sample
 bsc,0xde603a998c3e2684c38ba9d50e8c826a08c191dd,random-eoa,低频普通交易者负样本（1-5 次出现）,random-sample
 bsc,0xdebb358b11f6c2c226e3014f68c523a8e3259d73,random-eoa,低频普通交易者负样本（1-5 次出现）,random-sample
 bsc,0xe14a43bafa7bd602cdb52d31bf333c577508e193,random-eoa,低频普通交易者负样本（1-5 次出现）,random-sample
-bsc,0xe6d5ed0eca6e030a1ce6657216380357a44f73c9,random-eoa,低频普通交易者负样本（1-5 次出现）,random-sample
 bsc,0xea99b7589e06a0ee1d7aac53d5050d07d30c17b2,random-eoa,低频普通交易者负样本（1-5 次出现）,random-sample
 bsc,0xee13eacfac0f2f237f80159503c51098c3ebecd7,random-eoa,低频普通交易者负样本（1-5 次出现）,random-sample
-bsc,0xee89c5c647720d8333f92d8e93e328ea8cf22ae6,random-eoa,低频普通交易者负样本（1-5 次出现）,random-sample
-bsc,0xf266514ce709900b27c851a789032a2dfe207b4a,random-eoa,低频普通交易者负样本（1-5 次出现）,random-sample
-bsc,0xf2fd53677b83fdd456852c71e1b8602c8562adbb,random-eoa,低频普通交易者负样本（1-5 次出现）,random-sample
-bsc,0xf8bf256517a6a6fe2aaf7e24cb26871bacc1ce2f,random-eoa,低频普通交易者负样本（1-5 次出现）,random-sample
-bsc,0xff471b27a58b612ebcbebc24009544016ca62189,random-eoa,低频普通交易者负样本（1-5 次出现）,random-sample
-eth,0x0b53aff8dbefd07ab444f3419effc69f450db9d3,entity,LP集群#4金主·以太坊侧（2024-05起老钱包，直转工作仓29.1E）,VIRTUAL分析
+eth,0x37672dda85f3cb8da4098baac5d84e00960cb081,entity,项目方P0,VIRTUAL分析
 eth,0x0000000000000000000000000000000000000000,infrastructure,零地址（burn/mint 对手方）,manual-layer
 eth,0x0000000000000000000000000000000000000001,infrastructure,0x…01 黑洞地址,manual-layer
 eth,0x000000000000000000000000000000000000dead,infrastructure,dead 销毁地址,manual-layer
 eth,0x0000000071727de22e5e9d8baf0edac6f37da032,infrastructure,ERC-4337 EntryPoint v0.7（跨链同址）,manual-layer
+eth,0x0415ace56d39fd50b128eb7f3a8d8608dd0e6b32,infrastructure,历史设施(余额0),VIRTUAL分析
 eth,0x0d0707963952f2fba59dd06f2b425ace40b492fe,infrastructure,Gate.io 1,manual-layer
 eth,0x0f7ae28de1c8532170ad4ee566b5801485c13a0e,infrastructure,Across MulticallHandler（fill 后中转交付用户，假金主源）,manual-layer
 eth,0x111111125421ca6dc452d289314280a0f8842a65,infrastructure,1inch v6 Router,manual-layer
@@ -362,6 +449,7 @@ eth,0x1231deb6f5749ef6ce6943a275a1d3e7486f4eae,infrastructure,LI.FI Diamond（�
 eth,0x1ab4973a48dc892cd9971ece8e01dcc7688f8f23,infrastructure,Bitget 6,manual-layer
 eth,0x28c6c06298d514db089934071355e5743bf21d60,infrastructure,Binance 14,manual-layer
 eth,0x2b5634c42055806a59e9107ed44d43c426e58258,infrastructure,KuCoin 1,manual-layer
+eth,0x3154cf16ccdb4c6d922629664174b904d80f2c35,infrastructure,桥锁仓,VIRTUAL分析
 eth,0x331d9a049d496385998067abf6cbb6371c8d2466,infrastructure,Relay 桥 solver 热钱包 #9（供gas/代发/交付，假共同金主头号源）,manual-layer
 eth,0x44ff8620b8ca30902395a7bd3f2407e1a091bf73,infrastructure,VIRTUAL 代币合约（Virtuals Protocol，ETH 侧）,manual-layer
 eth,0x4982085c9e2f89f2ecb8131eca71afad896e89cb,infrastructure,MEXC 13,manual-layer
@@ -376,7 +464,9 @@ eth,0x6cc5f688a315f3dc28a7781717a9a798a59fda7b,infrastructure,OKX,manual-layer
 eth,0x75e89d5979e4f6fba9f97c104c2f0afb3f1dcb88,infrastructure,MEXC 1,manual-layer
 eth,0x81f35e762b6792eea8781fc52f72e62235a5c416,infrastructure,LI.FI ReceiverAcrossV3,manual-layer
 eth,0x9008d19f58aabd9ed0d60971565aa8510560ab41,infrastructure,CoW Protocol Settlement,manual-layer
+eth,0x97cf38bb06da57b6418083998b09976ec40a90a3,infrastructure,历史设施(余额0),VIRTUAL分析
 eth,0xa67d7eb4dc68fa6ce8e34ef8cadaf075b9893fbb,infrastructure,Relay 桥 solver 热钱包 #4（供gas/代发/交付，假共同金主头号源）,manual-layer
+eth,0xa86309988947559b6e72ef716c5058f479386c0f,infrastructure,Coinbase Prime Custody Gas Supplier 1,manual-layer
 eth,0xada5bb90d0de0bd1b6f3938708f49295a8d1f7cb,infrastructure,Relay 桥 solver 热钱包 #5（供gas/代发/交付，假共同金主头号源）,manual-layer
 eth,0xc186fa914353c44b2e33ebe05f21846f1048beda,infrastructure,Across HubPool,manual-layer
 eth,0xca11bde05977b3631167028862be2a173976ca11,infrastructure,Multicall3（全 EVM 同址）,manual-layer
@@ -392,15 +482,24 @@ eth,0xf89d7b9c864f589bbf53a82105107622b35eaa40,infrastructure,Bybit HotWallet,ma
 eth,0xf977814e90da44bfa03b6295a0616a897441acec,infrastructure,Binance HotWallet20,manual-layer
 robinhood,0x0000000b96f62d772a0494100ef4494d834de457,entity,项目方(P0),meow分析
 robinhood,0x000461a73d3985eef4923655782aa5d0de75c111,entity,单笔满仓户（1.19%，金主一次注18E资金远超仓位）,DUMBMONEY分析
+robinhood,0x0050991ec1a3714b1357dee80976bfb1da46d47c,entity,狙击集团(P1),Index分析
+robinhood,0x020017c8b121bfcc9a25ef80fd74c23742dbf336,entity,狙击集团(P1),Index分析
+robinhood,0x02be1f715ca3f66f0afe9897b7e4de44cd926256,entity,狙击集团(P1),Index分析
 robinhood,0x03594d72e895e4ecd716e472c84815233047e566,entity,观察实体·归集体24E4(P1),BEGGAR分析
+robinhood,0x04ddd73040ba3ef121260b47fef0063a5c659330,entity,狙击集团(P1),Index分析
 robinhood,0x055569e1d61fce5046a5811d40b768d9af254563,entity,项目方(P0),meow分析
 robinhood,0x05e048f6077c12a22048ff8412a3cef15707cf57,entity,观察实体·三址体05E0(P1),BEGGAR分析
 robinhood,0x0616bc8db84e1223fcc043839da1b4b4eda261ed,entity,狙击集团(P1),NOXA分析
 robinhood,0x06e3c6e2c97d3ba1ec693a65c8cec8856956296a,entity,"观察#5·创始人分发网新节点（窗口收创始人 $4,000 USDG，至今无 VEX/无 gas/零交易）",VEX分析
+robinhood,0x0718f8232448815339e38012c87d96e96a7d1d88,entity,狙击集团(P1),Index分析
+robinhood,0x07cc42a7ee622fb5a8a71ba373cdc289802c2e83,entity,狙击集团(P1),Index分析
 robinhood,0x07cdaf0140c60a0c34681065abf49bb8d85b8cbe,entity,狙击集团#1(P1),meow分析
+robinhood,0x08451801c0304da497f1c8c615f4ae87d0beee99,entity,狙击集团(P1),Index分析
 robinhood,0x0862f2f645c64ad42b118798878c403d234841bb,entity,狙击集团(P1),NOXA分析
+robinhood,0x0872adda905d8b3325266cd32f1a5285b20034c1,entity,狙击集团(P1),Index分析
 robinhood,0x08f1ef2e20c2d5fe46d2e1d16d0da715949d28cc,entity,项目方钱包#18·顶部出货腿（已归零，07-10 卖 4.83M）,VEX分析
 robinhood,0x094ab30b7269e9deee21ad4e4898f60a433fbf56,entity,庄#4·e0e889母钱包簇(9址)·gas同源·基本离场(),TRASH分析
+robinhood,0x09dc3c7418901089d3b9c67825d82424dee25f7d,entity,狙击集团(P1),Index分析
 robinhood,0x0c175c6a0065ee05f871a68783d2de432a1e6cbe,entity,观察组A·App通道买家#1(1.887%，全经Relay交付金库，资金源链外),GME分析
 robinhood,0x0c6dbf8bc986b0ee567b46c1832dc45ca0ca5bd9,entity,观察实体·惯犯星座79E3(P1),BEGGAR分析
 robinhood,0x0ce295b8b8d77a4f80aca43aa01734af873a535c,entity,其他大户#5前置钱包(同人直转种子仓),NOXA分析
@@ -409,34 +508,51 @@ robinhood,0x0f0a21bffcc5227a218a15aa0c29817442393eee,entity,庄#1·多地址协�
 robinhood,0x106022b035132e731ffb19651471e399b71b093d,entity,狙击集团(P1),BEGGAR分析
 robinhood,0x124c4b71bcc1f9bb0c8b8c1413cb335a9cc7df04,entity,庄#1·多地址协同·拍卖集团(19址)·离场庄(窗口回场吸筹)(),TRASH分析
 robinhood,0x1379cd72f35c82719abd38c3ce759c44f8ffdd1c,entity,离场庄#1(P1),BEGGAR分析
+robinhood,0x14e468e79d14606035a86a6b068a93beada853f8,entity,狙击集团(P1),Index分析
+robinhood,0x1604ff11dfeaac437077aeda2fa492ac9ec804df,entity,项目方钱包#3·StockTreasury税金库,Index分析
 robinhood,0x16657de1a0faac319359d6dc15d31b355cb535c0,entity,狙击集团(P1),NOXA分析
+robinhood,0x17a22320470b5b0e6e5633a01a9979497dbe53ad,entity,狙击集团(P1),Index分析
+robinhood,0x18a217a35aafc789d4c908f34c63552dcee7b5b2,entity,狙击集团(P1),Index分析
 robinhood,0x18de108e8491761cd5a2c16b7330c85107674e67,entity,当前外部最大持有人（独立大户，非庄）,TRASH分析
+robinhood,0x190b5b581e80db6a0213e6c993e9d082a54721a3,entity,狙击集团(P1),Index分析
+robinhood,0x19bb987c2357ced333beb27845af559b9999208a,entity,狙击集团(P1),Index分析
 robinhood,0x1a7c2839b016bee78c0a5fe84d9751ad45331113,entity,庄#1·多地址协同·拍卖集团(19址)·离场庄(窗口回场吸筹)(),TRASH分析
 robinhood,0x1b0d0843578dedb0f3af84a0c29aaf3d0d30a6d0,entity,项目方钱包#1·团队金库（合约锁仓，2027-07-03 首解 4.165% 后 5 个月线性）,VEX分析
 robinhood,0x1b4f03245543d6e2be4e2779d8c6be993df512e5,entity,狙击集团(P1),BEGGAR分析
+robinhood,0x1b975315b4b254c9ce39a1b19e554bcde9b0d3a3,entity,狙击集团(P1),Index分析
 robinhood,0x1bda647c4432842fd0425ed00428b1ddde7e21a2,entity,庄#1·多地址协同·拍卖集团(19址)·离场庄(窗口回场吸筹)(),TRASH分析
+robinhood,0x1cd29401d9154c743d546250f77c0de301e1371f,entity,狙击集团(P1),Index分析
 robinhood,0x1e82a4197fc7c0f6cfc1bef7d0cb4fc1c8e2b13e,entity,其他大户·波段仓(1.532%),GME分析
 robinhood,0x1ec94a8a7b4427f8fcfa6da8a0783a42d138a7d1,entity,项目方钱包#11·g91 gas 组成员,VEX分析
 robinhood,0x1ee4aec751ab97a6f1f60b87c48e52387eee91de,entity,小庄#1(P1),GME分析
+robinhood,0x1f135172c595e4500663bd07b6e4c131187d50ef,entity,狙击集团(P1),Index分析
 robinhood,0x1f3cc123f5c83c34ee68b9bd7b13039a73d3e937,entity,"回场哨#1·开盘狙击单址(瞬时峰值1.12%,24分钟建仓当日离场)",HAN分析
+robinhood,0x1f9a213e18b14b5b79915731bbaf9f3fc8f5d605,entity,狙击集团(P1),Index分析
 robinhood,0x203862c72a5520ef1963bc4d63e171b3f4fd32b2,entity,"点火bot群钱包#1·7-08 01:34 单笔买 5.78% 76 分钟后卖回(非实体,协同未证)",NOXA分析
 robinhood,0x21b6f7a9f2813ba5a2fa631ef6e6c301b783b4d2,entity,其他大户#1·7-11 两笔买入 4.58% 后未动；与其他大户#4 同分钟建仓(差24秒)，待证关联对(若同实体合计 6.34% 破小庄线),NOXA分析
 robinhood,0x2254b804c64091457f48567e76fee730a05a4c2a,entity,庄#1·多地址协同·拍卖集团(19址)·离场庄(窗口回场吸筹)(),TRASH分析
+robinhood,0x22d5237ecd767efbcd84377e9d1f1548752c1360,entity,狙击集团(P1),Index分析
 robinhood,0x234455a9ede60cfcb8f1e738259b193f31dda259,entity,观察实体·三址体05E0(P1),BEGGAR分析
 robinhood,0x23b3b410c1175b6bbbe99ca2c6baee1195fa0ccd,entity,现大户#1·独立活跃大户,meow分析
+robinhood,0x2459dedb3012d1e929edd17df26620120bdf11bf,entity,项目方钱包#4·StockDistributor分红器,Index分析
 robinhood,0x249b697e462829acda803446ee2cd5a965977453,entity,项目方钱包#41·换仓新马甲,CASHCAT分析
 robinhood,0x24e414606a7bec29a56c3cbd3eae5665dd0477a7,entity,观察实体·归集体24E4(P1),BEGGAR分析
 robinhood,0x25af97786b4edb953874bf2deb1c96b089991534,entity,离场庄#1(P1),BEGGAR分析
 robinhood,0x25c5ae1ca3294bbecbb829227e22d1758d5e4916,entity,项目方(P0),GME分析
 robinhood,0x2610cf49b57c9d117e9bb56da4b259f685cbbce6,entity,项目方(P0),DUMBMONEY分析
+robinhood,0x263f8b8f9f68e8bf74e2523a38ce9ab8fa2d0f79,entity,狙击集团(P1),Index分析
 robinhood,0x26ade8473b2c9f6a64d109b7259bc599da81b91b,entity,狙击集团(P1),BEGGAR分析
 robinhood,0x2891884c0820ddf29d0c917c03c7f16b69c0057d,entity,离场庄#1(P1),BEGGAR分析
 robinhood,0x292dec9dbe85f574854b04eb24973d2dc3eee72f,entity,小庄#1(P1),DUMBMONEY分析
 robinhood,0x29e1dfe55ae0ab953d424f62a0625149bc39b068,entity,惯犯簇成员·点火手+波段（现0.76%）,DUMBMONEY分析
+robinhood,0x2af5726142562c79d739535903f7d34c6e02a8ca,entity,狙击集团(P1),Index分析
+robinhood,0x2cd91bd228ff4c537031d6b8204782090c84c0cc,entity,项目方钱包·IndexFeeHook 3%税hook,Index分析
 robinhood,0x2d89671b6a79b9b542cfeb289bf0ad52f7be3676,entity,小庄#1(P1),GME分析
 robinhood,0x2d8b38ebaac9ed8d7feb5ad7c4468a490fbb81e3,entity,小庄#1(P1),GME分析
 robinhood,0x2ea507dd0befbdb2b1649168aec36599739252da,entity,项目方(P0),meow分析
+robinhood,0x2ecdae85733d7a76a4388617f15326946de92df1,entity,狙击集团(P1),Index分析
 robinhood,0x2f04ed87b5ac8b703565469311341b0b44e315d7,entity,项目方钱包#12·g91 gas 组成员,VEX分析
+robinhood,0x2f6113d7a5dd0da94b4a099dbd797993582b1937,entity,狙击集团(P1),Index分析
 robinhood,0x308217fb49f08b60915adc0afce67f234e87aa7a,entity,现大户#6·独立活跃大户,meow分析
 robinhood,0x314d27a474d7a98bd182e20bb8a0163936fd1dc9,entity,知情圈钱包#5·新马甲A,CASHCAT分析
 robinhood,0x31a4f8801db59bfd6715186421c65a14bdfc1763,entity,离场庄#1(P1),BEGGAR分析
@@ -450,50 +566,70 @@ robinhood,0x36d915bdde36de9e062526ba46a171afa8768f90,entity,离场庄#1(P1),DUMB
 robinhood,0x36f987da605928f41b799231b22e53a0eda30f79,entity,庄#4·e0e889母钱包簇(9址)·gas同源·基本离场(),TRASH分析
 robinhood,0x3746a5ebca295dee695dd1bcba50a8626df3099c,entity,项目方(P0),HAN分析
 robinhood,0x3814abadda49ea3cccb3217ca80e2ce31d84e246,entity,项目方(P0),BEGGAR分析
+robinhood,0x383d393dd793ab5a08b0925ef8e1d9c837b70ced,entity,狙击集团(P1),Index分析
+robinhood,0x38461ef923d9a7b24e7c092909f2eb23ba8ee3a0,entity,狙击集团(P1),Index分析
 robinhood,0x38c9d6d0bfc808157d8a106e9fc270985e29105d,entity,历史大额炒手·双钱包组主（峰 7.71% 合并，已清仓；标准迁移：旧版判庄#2）,VEX分析
 robinhood,0x39069add37ea21d3db98e01e8ad81bacef739168,entity,项目方钱包#8·关联网成员（0xd905 分发边，07-10 高点曾出货 4.3M）,VEX分析
 robinhood,0x3b1dc8b04159a457f4f5e0ab86b01fa5a0b2f55c,entity,项目方(P0),GME分析
 robinhood,0x3ba2d9a5cf3808b657e4656b75b089df6f37f1c2,entity,bot矩阵族·A·四核心——A组资金树根+主仓gas金主,TRASH分析
+robinhood,0x3c3dcc802640540dccde7a4fe0f28f9bf8a6a71f,entity,狙击集团(P1),Index分析
+robinhood,0x3c7705389bb2a3a5393695042f277ba1db4cc4e9,entity,狙击集团(P1),Index分析
 robinhood,0x3ce8e1d3d0f8698d1e039cce447a9e7a3e91e422,entity,其他大户#2·7-13 起买入 2.00%,NOXA分析
 robinhood,0x3ea8491a8f4bcd59e4b138fd27eac24622836363,entity,庄#1·多地址协同·拍卖集团(19址)·离场庄(窗口回场吸筹)(),TRASH分析
+robinhood,0x3ef2bb3cc81a78ff84ffa6494a539a28e355758b,entity,狙击集团(P1),Index分析
 robinhood,0x41879300d96950bdb3f03992bdbb6d733649fb64,entity,离场庄#1(P1),BEGGAR分析
 robinhood,0x4201615ca3b32141ac09c124f59d86defd4437c7,entity,项目方钱包#16·TBA 合约（机制地址，零持仓）,VEX分析
 robinhood,0x43fefb2146bda62cacc0f32b7b50bbf556482d10,entity,知情圈钱包#7·新买入马甲C,CASHCAT分析
 robinhood,0x452dc198eb970456ff28ee91a3409c393577b6dd,entity,离场庄#1(P1),DUMBMONEY分析
+robinhood,0x4671fb2fb50a8001e13523a8a3df37bc67777777,entity,其他大户·独立买家(vanity尾缀77777777),Index分析
 robinhood,0x46b8a7fd36509b9877fd40c4fa96608166e39d82,entity,庄#1·多地址协同·拍卖集团(19址)·离场庄(窗口回场吸筹)(),TRASH分析
+robinhood,0x491f8c0bb7b970a554a82721b19aa5b9e0a90455,entity,其他大户·独立市场买家,Index分析
 robinhood,0x4a5b304ded44a521ffece44a6386fa2014d96f7d,entity,观察实体·惯犯星座79E3(P1),BEGGAR分析
-robinhood,0x4b24e2e39a605e6973933f7e9ab1f32be5625b12,entity,LP集群#4钱包#2·中转分账仓（LP已分空至两整数仓）,VIRTUAL分析
 robinhood,0x4b5a7350375e8dca623512d26b46fb80f4020731,entity,其他大户#5·7-12 起累积 1.73%(种子仓来自同人前置钱包直转),NOXA分析
 robinhood,0x4bb692c242b6f9830ca53c1c61ff303d98b8ba38,entity,离场庄(P1),NOXA分析
-robinhood,0x4ea75925e3f7e1e8f79ac5bcad0840323c310f7f,entity,LP-1543组钱包#2·中转/囤仓（L1↔L2与钱包#1互注资，链上铁证同实体）,VIRTUAL分析
+robinhood,0x4e27aa4220c2d2cbc9ba93200a90cd59d5f4f68d,entity,狙击集团(P1),Index分析
 robinhood,0x4f1cb5264206e180aa6d288578acd6b5cd2ed641,entity,庄#3·五胞胎狙击簇(5址)·gas同源·已离场(),TRASH分析
+robinhood,0x4f31f6403e313cf14c39c4614d2c0b24580c635a,entity,狙击集团(P1),Index分析
+robinhood,0x4f550d4ba6b6e94f7643f8f64430b6d02866d572,entity,狙击集团(P1),Index分析
+robinhood,0x4f89427e74056a25ed5485f50a18b1ef2b90944e,entity,狙击集团(P1),Index分析
 robinhood,0x4fa27693a052863bb5e9d3e63ba02857442a1ecf,entity,V3 USDG 池（内含 ACF 52 档阶梯挂单 22.00M @ $0.01736-$0.02372，项目方可撤回；另散户价内头寸约 0.23M+费沉淀约 0.45M）,VEX分析
 robinhood,0x509359d47a23e19978668c74c0dbc699de5e8bff,entity,离场庄(P1),NOXA分析
-robinhood,0x57595561ba5238e2d0d6fbb8169fbf5779e836da,entity,"LP集群#4钱包#4·整数存储仓（恰1,500.0000 LP）",VIRTUAL分析
+robinhood,0x5638484ba2d2f1d1d35020572b0aa439a9869192,entity,在场独立惯犯·CASHCAT案工作室核心(本次波段剩0.87%),Index分析
 robinhood,0x585ad02e878364a22099da8b8217e586b79711d2,entity,"项目方钱包#7·关联网抄底仓（收创始人 $100,000 建仓）",VEX分析
 robinhood,0x5a705de8982235a7fa45bb83dcacf03a211389c7,entity,6-17大户系·卖币所得ETH接收方(复核新增),GME分析
 robinhood,0x5cac1660f009db264a7f689b0bf17626bb9fb187,entity,观察实体·惯犯星座79E3(P1),BEGGAR分析
 robinhood,0x5d6c57466756e5963b402b7f9b9c29ccd202f4fb,entity,项目方(P0),meow分析
+robinhood,0x5ea7820dcd97ed43e9075aa6982472c454554402,entity,狙击集团(P1),Index分析
 robinhood,0x5ff0847d8df1b0b7bce36ad937da74340981bee3,entity,整数仓大户#1·拉升前精确修剪至整数 1000 万枚的程序化仓,meow分析
 robinhood,0x60289ad360193c9aa557a7f66409ff4cc4126692,entity,项目方(P0),GME分析
 robinhood,0x61712585e1866f57e66f96a8057ecb28e30c8c2c,entity,现大户#4·独立活跃大户,meow分析
+robinhood,0x61bf48e724718802193080ca73948680bd3c9bb0,entity,狙击集团(P1),Index分析
 robinhood,0x620de364f8856ee370fd3e4cab6809cc9f540263,entity,庄#3·五胞胎狙击簇(5址)·gas同源·已离场(),TRASH分析
 robinhood,0x625c52c2f888c2c514d2d57fe02e29b807f66590,entity,换仓冷仓（2.92%第2大户，7-09整仓迁入后未动）,DUMBMONEY分析
 robinhood,0x63bee611388100938d4e2f4990b32183cf89b29c,entity,疑似同人集群B成员（两次同秒动作，仍在加仓）,DUMBMONEY分析
 robinhood,0x642a9217e425da861dcc5fffc347a512a4ae7eff,entity,疑似同人集群A成员,DUMBMONEY分析
+robinhood,0x642e338c5abfa481c272c1a638d3f4fce61bb796,entity,狙击集团(P1),Index分析
 robinhood,0x64ee464343d7bd1d91fc2302403f5d72f6f1e35c,entity,观察组B·池买家(1.171%；07-08 05:43建仓嵌小庄#1建仓尾段穿插),GME分析
+robinhood,0x6572bc35c620943da39822a0326fcc9793652e30,entity,狙击集团(P1),Index分析
+robinhood,0x65cafcd52055f287ffbda9f8c67dba6f93200ba8,entity,狙击集团(P1),Index分析
 robinhood,0x669bfe092885b062a909797e449ad2282f2e3583,entity,其他大户·最大单址3.36%零卖出,BEGGAR分析
 robinhood,0x68634e035322376a824b69af143fb087ea214d55,entity,庄#4·e0e889母钱包簇(9址)·gas同源·基本离场(),TRASH分析
+robinhood,0x68783ce26215837359fc3e8c7cb59e93f2fb7236,entity,狙击集团(P1),Index分析
 robinhood,0x68c9706fbea15e88930780149d9e580fe6585985,entity,其他大户#3·7-11 买入 1.87%,NOXA分析
 robinhood,0x6a2b632b8c8676fa1aa269aee66176adbf016ee1,entity,小庄#1(P1),GME分析
 robinhood,0x6d8ac75d911bf7339fcf414ea79ae1edde18dabc,entity,离场庄#1(P1),BEGGAR分析
+robinhood,0x6e95d13d190a814aeaa864d5a19fce405654e4b8,entity,狙击集团(P1),Index分析
+robinhood,0x6ed177d63d32f379184481319c168672b35ea7ce,entity,狙击集团(P1),Index分析
 robinhood,0x6ee9d2bfc6a0e95b2f7d089d2535c26283354e43,entity,离场庄#1(P1),BEGGAR分析
 robinhood,0x6f5bbfbfb82729cf356f37f88911952ca115d3f5,entity,"回场哨#2·毕业后波段客(7702户,峰值0.98%,-54%探底最大单一推手)",HAN分析
+robinhood,0x6fd2e7fa124b7d9d021935d1f99ded0d92dffaa8,entity,狙击集团(P1),Index分析
+robinhood,0x7123a1dea605ff14ddf768c66e47f7d17b85fdef,entity,狙击集团(P1),Index分析
 robinhood,0x715da6b1a2b96ff47610de4ad3736105cc77b70d,entity,项目方钱包#15·DAO 合约（机制地址，零持仓）,VEX分析
 robinhood,0x71d1f92ba5b4e2754612bc253f0840f55e6d06be,entity,小庄#1(P1),DUMBMONEY分析
 robinhood,0x71f180e30425e09dafc4a90974266b57b3943b88,entity,小庄#1(P1),DUMBMONEY分析
 robinhood,0x71f2f1c2dc94cdabfe29cb355119f8683ae0969b,entity,项目方(P0),BEGGAR分析
 robinhood,0x72a7d7d063bd058de889ce47488c980e36d8ffd9,entity,小庄#1(P1),DUMBMONEY分析
+robinhood,0x73433a9a344823a4823320b3423bc92b5a695bd8,entity,狙击集团(P1),Index分析
 robinhood,0x73976a95bc1746cd5b3c1fadd0ea35860693bedd,entity,庄#4·e0e889母钱包簇(9址)·gas同源·基本离场(),TRASH分析
 robinhood,0x73d8dc8761994e904f458f1d763992c1ae3e1cde,entity,观察实体·分仓体73D8(P1),BEGGAR分析
 robinhood,0x740d62ca581672a38cff476b1c1578b061523ff8,entity,"项目方钱包#6·关联网最大仓（TWAP bot 加仓史，收创始人 $95,800）",VEX分析
@@ -503,32 +639,42 @@ robinhood,0x7916a5b94c597d1b78f5c1e78346a01e0922b5e8,entity,项目方(P0),GME分
 robinhood,0x79ae7f0eccf445692855b56aa672e3087dcd16e7,entity,庄#1·多地址协同·拍卖集团(19址)·离场庄(窗口回场吸筹)(),TRASH分析
 robinhood,0x79e3a5bb91ec7d8dcb3b8b96625a549eff5738f4,entity,观察实体·惯犯星座79E3(P1),BEGGAR分析
 robinhood,0x7a3f86fdc5b356c4c2357650d31c0b84826c638a,entity,项目方(P0),meow分析
-robinhood,0x7bf1ccd7dd3fa140b61fba256fe14ab8e14ecad2,entity,波段囤仓户#1（7-14/15买入9.7万枚、已卖出2.25万=23%，现持7.5万）,VIRTUAL分析
 robinhood,0x7c4bfeaea6bb64772d57cf10110e696d00df8ec3,entity,沉睡大户#4·买入后零动作的独立大户,meow分析
 robinhood,0x7d2d0d76a5c9530a9e408968657bdbe236cf1f87,entity,观察实体·三址体05E0(P1),BEGGAR分析
+robinhood,0x7da8b5a80539a0f960c91ae0830a22a807edd739,entity,狙击集团(P1),Index分析
 robinhood,0x7e3ba68c49561aae7c23c1d20fef0f1d7615a3ad,entity,观察实体·惯犯7E3B(P1),BEGGAR分析
 robinhood,0x7ef305f00e9671d4d41ba0b1cfccd826d1c38d11,entity,历史大额炒手·单地址（峰 6.38%，26 分钟内盘获利清仓；标准迁移：旧版判庄#3，现行离场庄线不达标）,VEX分析
+robinhood,0x7f7724af5e5c896c7ac8cc2c7fa35f2fe8f3056a,entity,狙击集团(P1),Index分析
+robinhood,0x8130a7926fdec31453aa478c1db8f00ebcc35f41,entity,狙击集团(P1),Index分析
 robinhood,0x81a997def5fc553f5854c964600d95132161d317,entity,抄底转仓实体·回落段24笔TWAP吸筹约1%后整笔转新址隔离,meow分析
 robinhood,0x829d1853d4ed1f80d6c223ae8828dbdbbc1e224a,entity,项目方(P0),HAN分析
+robinhood,0x82c79e75ce3ae6d7b0784df2069dcd3fe64464cc,entity,狙击集团(P1),Index分析
 robinhood,0x82e2ab3e2844d315609181b0154a3d30c69b2138,entity,庄#4·e0e889母钱包簇(9址)·gas同源·基本离场(),TRASH分析
 robinhood,0x83ba0aed984949cafb31bcb24addf76cd84bf1e3,entity,小庄#1(P1),DUMBMONEY分析
 robinhood,0x83c31923311e5eeba4e25ff4722cbad41f8d5e68,entity,小庄#1(P1),GME分析
+robinhood,0x83e21b85a0678b62cd70498ef8b472aa80fdda3d,entity,狙击集团(P1),Index分析
 robinhood,0x84a83e2832e6a2f3b8bc8afb04b835c27ddea777,entity,沉睡大户#3·买入后零动作的独立大户,meow分析
 robinhood,0x8556649fff1147f06f01a1e563334028c45a15fa,entity,庄#1·多地址协同·拍卖集团(19址)·离场庄(窗口回场吸筹)(),TRASH分析
 robinhood,0x866bf0111a97110d2afdfde622f55b3b30911a78,entity,沉睡大户#1·买入后零动作的独立大户,meow分析
 robinhood,0x86a2d2928846309ffbd479821cadbe95bdb4d28c,entity,"观察组#1(未达标签线,监控用)(P1以下)",HAN分析
 robinhood,0x86b9ad8fc7bec77c85913b0f80f69c2cfa129c3e,entity,狙击集团#2(P1),meow分析
 robinhood,0x8859f95d95cbd6e0f9c6e1e6b570b1aa4e5ccdf4,entity,离场庄#1(P1),BEGGAR分析
+robinhood,0x889069bd282f1c1c66cb853e10627595c28e71e2,entity,项目方钱包#2·LpLock永久锁定LP,Index分析
 robinhood,0x88cd33b0f66ba4bde509e9cf5a83a95118ee9be5,entity,观察实体·快抢双子9688(P1),BEGGAR分析
+robinhood,0x89562eb8979db1e85a01e85120bfd6a7c47a39cb,entity,项目方钱包#1·部署者/owner/运营keeper(本币0),Index分析
 robinhood,0x8a25ceea3d6d919e2f8bf2d23fdf12a3d4b96325,entity,项目方(P0),GME分析
 robinhood,0x8a4eb4da7f948a43a50e5bc34ae8096895beb70b,entity,离场庄(P1),NOXA分析
 robinhood,0x8bfee4f379d78955c5a42e9335af361a7e9101e3,entity,项目方(P0),GME分析
 robinhood,0x8c20c6b4819e2d3d19d9bf68b65b6b5a1a4ef75a,entity,项目方(P0),DUMBMONEY分析
+robinhood,0x8d948db4528b9b8c85db0a2e743401ef4a3f3e46,entity,狙击集团(P1),Index分析
 robinhood,0x8e65cbcdc822968131b1e37e5cee02c9ce82ab21,entity,离场庄#1(P1),BEGGAR分析
 robinhood,0x8fabe392df90b06ad610c33f41bb1abd78a5fc20,entity,其他大户·双程波段客2.16%,BEGGAR分析
 robinhood,0x906485a236c9f215a4dcba31a4a915db4038b569,entity,大额闪电往返#3·峰值 3.21% 波段往返,NOXA分析
+robinhood,0x90d55022a2833572e2a5842e34cef71b9299611b,entity,狙击集团(P1),Index分析
 robinhood,0x911a141d1670f3f053ef82e8ce25bd428a3d9e97,entity,庄#1·多地址协同·拍卖集团(19址)·离场庄(窗口回场吸筹)(),TRASH分析
 robinhood,0x91801cca41bd2123cc566f724d0b9c87a66d661b,entity,小庄#1(P1),DUMBMONEY分析
+robinhood,0x9204455ee674f1c30da7e2c5aeca9d940fe52b59,entity,狙击集团(P1),Index分析
+robinhood,0x928ed45e143393d16c9ed18a0b6139a4162472c8,entity,狙击集团(P1),Index分析
 robinhood,0x93c006f2051cb72168cf8c27cafe0fb2d71682c8,entity,旧0x91604f网新马甲（换仓归位638万）,CASHCAT分析
 robinhood,0x93f086e1ede295fb83b9ef9b30f3d2edda961f9a,entity,庄#1·多地址协同·拍卖集团(19址)·离场庄(窗口回场吸筹)(),TRASH分析
 robinhood,0x94204060cba48e24924426ae7b47321e97ff308b,entity,项目方(P0),DUMBMONEY分析
@@ -537,7 +683,8 @@ robinhood,0x9536479ea89682f3a971ac40c344dbea075be5cc,entity,"观察组#1(未达�
 robinhood,0x95cb7cfd911d2307849e6b9ee565747fe6846682,entity,小庄#1(P1),DUMBMONEY分析
 robinhood,0x95cf60a83ba70a7d788775ff0fe05caf2d2d9159,entity,项目方(P0),NOXA分析
 robinhood,0x96a24e5dd410fc97269fd8910b11fc413a0a2596,entity,观察实体·快抢双子9688(P1),BEGGAR分析
-robinhood,0x97cf38bb06da57b6418083998b09976ec40a90a3,entity,项目方(P0),VIRTUAL分析
+robinhood,0x978b59bc39f7e71d2baa20f912df87226c704e59,entity,狙击集团(P1),Index分析
+robinhood,0x9891e2cc8eb7c188d8ce4969ce9de6da14a01f34,entity,狙击集团(P1),Index分析
 robinhood,0x993e655acc26c359bce32a5a95b89fe7f8c4ed6b,entity,项目方钱包#17·分销出货残迹（残仓 1M 枚沉睡）,VEX分析
 robinhood,0x9963597a9246b39b13330992f571f8378c18c262,entity,观察组B·多钱包操作者(1.201%；实锤马甲b8f8bc74整包归集+资金直供；07-08与小庄#1成员秒级穿插建仓；1wei对拆程序化指纹),GME分析
 robinhood,0x996febe7407f1a706f62a898311123ecf9fc76a0,entity,离场庄#1(P1),BEGGAR分析
@@ -545,23 +692,38 @@ robinhood,0x99a88e7ae062b3758d1216cf2695f91b903a13f8,entity,"观察组#1(未达�
 robinhood,0x9d29f2a646d397c0290e5be475e344399f8eab0f,entity,观察实体·分仓体73D8(P1),BEGGAR分析
 robinhood,0x9d3ca3a3da4d033acee296d4c1829cc5143e0fae,entity,狙击集团(P1),NOXA分析
 robinhood,0x9d469a1d4e5240371acdacab62fa605f3f95f3b7,entity,项目方(P0),GME分析
+robinhood,0x9dbfded199ee3a6b291c223e65f97d387156aada,entity,狙击集团(P1),Index分析
 robinhood,0x9ec2f5e65548f87e107aa61bec0a4c13ce6ba663,entity,庄#1·多地址协同·拍卖集团(19址)·离场庄(窗口回场吸筹)(),TRASH分析
 robinhood,0x9f37e98d4d88c2d1d327773f9dad5753d55b6356,entity,狙击集团#2金主·专职供gas钱包（出金仅服务集团两址）,meow分析
+robinhood,0xa07c0ba78be732348a64fa264cf8026e79bab3d5,entity,狙击集团(P1),Index分析
+robinhood,0xa0d4048243d66b5b87ef8ff5ce22efb7eeb26a7a,entity,狙击集团(P1),Index分析
+robinhood,0xa201522b88bb24fe0c0f1adcef411b28a9e680b4,entity,狙击集团(P1),Index分析
 robinhood,0xa2d9051c139ec1ba9c4eb3cab1bbf5d313ea408d,entity,小庄#1(P1),GME分析
+robinhood,0xa667a51bdcb32dabc8a9396a4523b5fef314ebe7,entity,狙击集团(P1),Index分析
 robinhood,0xa791004994963e2ef71c170371a1531893681d14,entity,庄#3·五胞胎狙击簇(5址)·gas同源·已离场(),TRASH分析
 robinhood,0xa8e5ec980778357992b66be7a5f8d804e86ddd70,entity,项目方(P0),GME分析
 robinhood,0xa938cf85c5481e83544afd808229216a43739a90,entity,其他大户·装死仓(2.014%，6-29 单笔买入后 46 天零动作),GME分析
+robinhood,0xaa744d48ccfb421b60cb6aa3b83b713e753efb70,entity,狙击集团(P1),Index分析
 robinhood,0xab59b3f411de6ec506f5721bb34e8c573f679395,entity,庄#1·多地址协同·拍卖集团(19址)·离场庄(窗口回场吸筹)(),TRASH分析
 robinhood,0xac5e65e0fe4bf85af99e7f02e061e4aed05bba0c,entity,疑似同人集群A成员（gas直连+两次同秒买）,DUMBMONEY分析
 robinhood,0xae9b2082c9ef1edc7dba94e7297a1ec00da6cbd1,entity,庄#3·五胞胎狙击簇(5址)·gas同源·已离场(),TRASH分析
 robinhood,0xb446f8df431b0740457f1c50aed0e993cf8dca3a,entity,小庄#1(P1),GME分析
+robinhood,0xb4f1c7309f2139ce6da61455d20525a47310dd6f,entity,狙击集团(P1),Index分析
+robinhood,0xb5776f907a23e1883f6bb363f713b8602cb8d9cb,entity,狙击集团(P1),Index分析
 robinhood,0xb57aebb04b5f7663dc17759010a9eb41f4fdee89,entity,其他大户#4·L1 同址自充值入金；与其他大户#1 同分钟建仓，待证关联对,NOXA分析
+robinhood,0xb646fa75e09b37327505106e39d84b89c4e68413,entity,其他大户·独立市场买家,Index分析
 robinhood,0xb746f152d34927a7f3ce5fac5b7fc151af911a26,entity,"观察组#1(未达标签线,监控用)(P1以下)",HAN分析
+robinhood,0xb80dc4ed493a2ba4692b5d6303a19a64df3f5acc,entity,狙击集团(P1),Index分析
 robinhood,0xb8f8bc74215acae40aaac6d0b1621a72ffda8f44,entity,观察组B·996359的已清空马甲(峰值0.58%，07-08整包搬家归集给主钱包),GME分析
 robinhood,0xbaa11e7357525ae586826482b12bc07d70c25920,entity,其他大户#1·内盘钻石手（2.527% 零卖出，独立于项目方）,VEX分析
+robinhood,0xbb3b32e63f6b2d2605a5114416398fa3839328b8,entity,狙击集团(P1),Index分析
+robinhood,0xbd093d10c164a3c840a332debcd65defc7c4eba6,entity,狙击集团(P1),Index分析
 robinhood,0xbe38d196d1378f8388c94c3ed73c3c11632eea7e,entity,当前外部最大持有人（独立大户，非庄）,TRASH分析
 robinhood,0xbe8af7e12b536ab55fbaf92edbb512972e0504da,entity,项目方(P0),meow分析
+robinhood,0xbee5baccc945678e67949e0e45536b490febd63b,entity,狙击集团(P1),Index分析
 robinhood,0xc1165124be8dc53a3826a1aa1b6643e9138d167c,entity,现大户#2·独立活跃大户,meow分析
+robinhood,0xc14387dbbe766c12a867b16c4bb7696cd0bf90d2,entity,狙击集团(P1),Index分析
+robinhood,0xc26912365421474c271e9a7c6c534419dc9d7a38,entity,其他大户·独立市场买家,Index分析
 robinhood,0xc3669744be027097a204da8f4ad7bd64de0c66d2,entity,知情圈钱包#6·中转马甲B（已清零）,CASHCAT分析
 robinhood,0xc36d22d76c2d4108144171c4deacbcc7a46118be,entity,狙击集团#1(P1),meow分析
 robinhood,0xc3db83830ad22985077b1b704f1a203fcc62e0bf,entity,观察实体·惯犯星座79E3(P1),BEGGAR分析
@@ -570,22 +732,30 @@ robinhood,0xc4cada146e7dc48496d87534fbd1d3aba4c260ec,entity,项目方(P0),HAN分
 robinhood,0xc52fbb9c4a7373b85de6415f888e5e2e3f195176,entity,小庄#1(P1),GME分析
 robinhood,0xc5403e14799018dff883968c05791e7ca0c53681,entity,现大户#3·独立活跃大户,meow分析
 robinhood,0xc60ff2907544c2009cfd3e37c13ab8238cad314b,entity,狙击集团#2(P1),meow分析
+robinhood,0xc87ce42fc7871591970b230978401bb52079015a,entity,狙击集团(P1),Index分析
+robinhood,0xc89cafea2ff22e4ca6a32df91760371adce5468f,entity,狙击集团(P1),Index分析
 robinhood,0xc89f83d72ee125561ca996c32700063e9b9d179f,entity,项目方(P0),GME分析
-robinhood,0xc9480cf44f3132f3e8fbb8349327e9a9edb6b7a0,entity,"LP集群#4钱包#3·整数存储仓（恰1,500.0000 LP）",VIRTUAL分析
 robinhood,0xca4d6bf8556c55e6581f97aa0c16ab729193710c,entity,疑似同人集群B成员,DUMBMONEY分析
+robinhood,0xcc43a95208bb2cb7caa6ed09e9bfa7cbf7ab5e8d,entity,狙击集团(P1),Index分析
 robinhood,0xccb09e51823ae0c3655fbc4d5afc123980f8d913,entity,庄#1·多地址协同·拍卖集团(19址)·离场庄(窗口回场吸筹)(),TRASH分析
 robinhood,0xcd524aa5c083535767642117d962e5746c52f88d,entity,项目方(P0),HAN分析
 robinhood,0xcdfc08a1c1fbafb355645e5ddc32122e5716ca90,entity,离场庄#1(P1),BEGGAR分析
-robinhood,0xcef7501b9b060a599a81735bead6641c0e6baf46,entity,"Safe吸筹实体钱包#1·系统化高频swap吸筹（现4.90%贴线；无任何LP头寸只吃单不挂单；另持1,342 WETH弹药）",VIRTUAL分析
+robinhood,0xced59329209a585d18375dbcb6a2093cf0f3d66e,entity,狙击集团(P1),Index分析
 robinhood,0xd080193c37cf295dc4a39396cfa18721211575c3,entity,现大户#5·独立活跃大户,meow分析
 robinhood,0xd0f437a14e9875d137404efe57f67d7417c2060c,entity,小庄#1(P1),GME分析
 robinhood,0xd11c023cb1071d512e7b0c05d17957e5a38b0252,entity,观察实体·归集体24E4(P1),BEGGAR分析
 robinhood,0xd2c6f05ae451160643027d28433e05758e31d83b,entity,庄#1·多地址协同·拍卖集团(19址)·离场庄(窗口回场吸筹)(),TRASH分析
 robinhood,0xd3995903169b36a1b359c7e04f258841645ce854,entity,庄#4·e0e889母钱包簇(9址)·gas同源·基本离场(),TRASH分析
+robinhood,0xd3a2860f8a21c9648d1e4879b297d4fbcf257b5d,entity,狙击集团(P1),Index分析
+robinhood,0xd4c0b1d1c2bdf8117f4edda46d8c748b966b2d6c,entity,狙击集团(P1),Index分析
+robinhood,0xd6667cae26f5ddb30b2dc6435f273d58ea0391cc,entity,狙击集团(P1),Index分析
+robinhood,0xd7a40663b0f8e70a7335714c88b1ac10edc276ff,entity,狙击集团(P1),Index分析
 robinhood,0xd818a1dd9d924e8adcbdb48fa537da72e0946c2a,entity,庄#3·五胞胎狙击簇(5址)·gas同源·已离场(),TRASH分析
 robinhood,0xd874259110c6e086f1d2fee474b73e69b8f5dab0,entity,小庄#1(P1),GME分析
 robinhood,0xd8ba9e5886b7000bace2c9dbdd0be98ac77d4a28,entity,项目方(P0),GME分析
+robinhood,0xd8e562b0dba24ad46e36db4e36dfad808165a631,entity,狙击集团(P1),Index分析
 robinhood,0xd9051d253c1af3ec4026a841f752b47d3b2cd175,entity,"项目方钱包#10·g91 gas 组成员（收创始人 $5,600）",VEX分析
+robinhood,0xdda895eeecaef2893c0c761e08a4f289174422f5,entity,狙击集团(P1),Index分析
 robinhood,0xdde00b1559868463ae6a82778778f0463ff41432,entity,庄#4·e0e889母钱包簇(9址)·gas同源·基本离场(),TRASH分析
 robinhood,0xded3aa90c7698e57c6fc502e50dd5cba1d40d2c6,entity,观察实体·单址波段DED3(P1),BEGGAR分析
 robinhood,0xe0ff25663733c17389c1fab33f9525114b37d9b2,entity,其他大户#6·峰值 3.36% 已减至 1.26%(在榜大户中唯一有减持前科),NOXA分析
@@ -594,24 +764,32 @@ robinhood,0xe2890629ef31b32132003c02b29a50a025deee8a,entity,项目方(P0),HAN分
 robinhood,0xe2b85af88f01ca1445ef44990e3e9fe5bd62d93f,entity,项目方(P0),DUMBMONEY分析
 robinhood,0xe55b8e65fcf9fc57d22675d5566a08b78b10b3af,entity,项目方钱包#13·g91 gas 组成员,VEX分析
 robinhood,0xe565f0e77f54059c1853dc5a9f714f062a32d3df,entity,bot矩阵族·D·五胞胎——D组成员(资金环流:其ETH流向组金主),TRASH分析
-robinhood,0xe7e9203e74eddc2fe85f9849a639858bba56afc1,entity,项目方(P0),VIRTUAL分析
+robinhood,0xe580efb00792234034962e5f167749b4491539e9,entity,狙击集团(P1),Index分析
+robinhood,0xe60dac30d44eaf19542ac0d4f260b1afd0b844aa,entity,狙击集团(P1),Index分析
+robinhood,0xe6accfe9eb7c187b1961137577cba6d5914d2eed,entity,狙击集团(P1),Index分析
 robinhood,0xe84a923e8635dc81f77bf3ef761030f28a5ec60a,entity,"窗口大波段(经App中转链路,C买D卖3.99%)",TRASH分析
 robinhood,0xe8f25b0e33f7e69bcef19429eadb8ff2450215c2,entity,项目方(P0),GME分析
+robinhood,0xe9e321d222a31d79d8a73c8608094b7bdf894626,entity,"项目方钱包#5·Ambire做市钱包(EIP-7702,持0.42%+领分红)",Index分析
 robinhood,0xea5aa5c997e4e11c3c314fcdccf89d81da2cbba5,entity,项目方钱包#2·发射人出货关联地址(7-12 受转 0.44% 即卖),NOXA分析
 robinhood,0xeb82f9cff07cefd9dc3de2c07be634cf502f8ffa,entity,离场庄(P1),NOXA分析
 robinhood,0xeb877e7b5614b1ca58c6b00ec4ffcd248ed414ee,entity,狙击集团#1残仓钱包·马甲链终点,CASHCAT分析
 robinhood,0xeba88149813bec1cccccfdb0dacefaaa5de94cb1,entity,L1金主(eth链),GME分析
+robinhood,0xec6971271629ab72845c90f23e51990676383da8,entity,狙击集团(P1),Index分析
 robinhood,0xec7905496860989bb56fffd5f71faa466911663b,entity,狙击集团(P1),NOXA分析
 robinhood,0xed0ccbf7f5eac4479aa81a9116168cae24c5cd2c,entity,项目方钱包#9·关联网成员（07-10 高点收 0x740d 6M）,VEX分析
+robinhood,0xee85661316b568e53afa31a1c7ee56955f02c8e6,entity,狙击集团(P1),Index分析
 robinhood,0xeee29d1a6fa5873065ad8789c6e15231b48318a0,entity,离场庄#1(P1),BEGGAR分析
 robinhood,0xefd8950249a9eef6123daf08c8f474debb5efe7a,entity,狙击集团#2(P1),meow分析
-robinhood,0xf1c429b0ce94ef9893ef110d2cc100201dce71c8,entity,项目方(P0),VIRTUAL分析
 robinhood,0xf23817f6d701f514861fe44371756e3226de8fef,entity,沉睡大户#6·买入后零动作的独立大户,meow分析
 robinhood,0xf2f8c9348adde2204ded451c0f9493b1e596dff7,entity,项目方(P0),HAN分析
 robinhood,0xf333cf42ac6f497d7ac7fed1ec9cb924e140e5da,entity,"观察组#1(未达标签线,监控用)(P1以下)",HAN分析
+robinhood,0xf37027568ac0c3cd614456cc943804562c4945b4,entity,狙击集团(P1),Index分析
+robinhood,0xf3ec1f739adec2e8101f6b532d37ff6c895b9ed4,entity,狙击集团(P1),Index分析
 robinhood,0xf41028ba79fb501961530ae622f5999574f57fed,entity,其他大户·沉默仓2.71%零卖出,BEGGAR分析
 robinhood,0xf436bf4dad0751862c258bbe1b3ec0dbf31e77da,entity,项目方(P0),GME分析
+robinhood,0xf46c6da54051e2c9478d3a9555ee8b7e39ead449,entity,狙击集团(P1),Index分析
 robinhood,0xf4c873f31e4e9a0d25c5b2a7a9b496306a2d9f62,entity,庄#1·多地址协同·拍卖集团(19址)·离场庄(窗口回场吸筹)(),TRASH分析
+robinhood,0xf5533a891ebe1c507d7b5dda10de9916cd24261c,entity,狙击集团(P1),Index分析
 robinhood,0xf622c2f9cf5936cb78ce07f948515294a9706fcc,entity,庄#2·创建者·单地址明牌(锁池+费抽水)(),TRASH分析
 robinhood,0xf7ecc5c41f61422a4083266e7da3ab4ac0e39962,entity,观察实体·惯犯星座79E3(P1),BEGGAR分析
 robinhood,0xf837a2aefbba2e6243130a314ca32f4e09e2922a,entity,庄#4·e0e889母钱包簇(9址)·gas同源·基本离场(),TRASH分析
@@ -619,6 +797,8 @@ robinhood,0xfa83faaeaf7b7716b10ad148e0900a9599fcbd42,entity,项目方(P0),DUMBMO
 robinhood,0xfd062131d55ce2afd2b072051cbfa754203a07a4,entity,小庄#1(P1),GME分析
 robinhood,0xfd7e55a555555c2f25053a38ec744de1afea4fa4,entity,庄#1·多地址协同·拍卖集团(19址)·离场庄(窗口回场吸筹)(),TRASH分析
 robinhood,0xfda5d29db4c94cbc8e7b793db48771dee86865a3,entity,小庄#1(P1),DUMBMONEY分析
+robinhood,0xfdeafcf26efef3499cf56c9ce8765ed453b5c042,entity,狙击集团(P1),Index分析
+robinhood,0xfdfac5700c28661646255f1c7ce137f70943e9d0,entity,狙击集团(P1),Index分析
 robinhood,0x0000000000000000000000000000000000000000,infrastructure,零地址（burn/mint 对手方）,manual-layer
 robinhood,0x000000000000000000000000000000000000dead,infrastructure,销毁地址(96.8M 全部来自费路由),NOXA分析
 robinhood,0x000000001f26a0044baa66024e7b6599c61963f8,infrastructure,Uniswap 官方 CCA 工厂 v2.1.0（auction 实例 per-launch）,manual-layer
@@ -643,10 +823,9 @@ robinhood,0x3da66157309794822c1506702a9c966fd9612773,infrastructure,原子中转
 robinhood,0x3e5c63644e683549055b9be8653de26e0b4cd36e,infrastructure,Safe v1.3.0 GnosisSafeL2（canonical 部署）,manual-layer
 robinhood,0x3f43479c8536f7ee8180d0f67a050980dc5bc8c8,infrastructure,batchTransferNative 批量转账工具（判关联看单笔 payload）,manual-layer
 robinhood,0x40a2accbd92bca938b02010e17a5b8929b49130d,infrastructure,Safe v1.3.0 MultiSendCallOnly（canonical 部署）,manual-layer
-robinhood,0x4208f85180b9556ff439bc73bc1c43131fde0409,infrastructure,V4做市组钱包#1·桥入110.9万枚（已桥出42.3万回主链，07-11拉升日撤26.1万）,VIRTUAL分析
+robinhood,0x43e4c17b15365596caae8e7d00e42bc8e988c2d4,infrastructure,Virtuals TokenFactory 直连分发代理（常设分发枢纽）,manual-layer
 robinhood,0x469cb5da5f46d9c16d9825e41d831377e167478f,infrastructure,公共提款热钱包的补货金主（累计 3666E）,manual-layer
 robinhood,0x48a097df16c7844a33b1c3d11ab353457846e13f,infrastructure,路由/中转合约组,manual-layer
-robinhood,0x4c4f0b07cee233eebb525162cc81d0cd2a472c51,infrastructure,跨链套利商#1·双向搬砖（桥入147万卖出+30万桥回Base；07-15单日桥入78万）,VIRTUAL分析
 robinhood,0x4cd00e387622c35bddb9b4c962c136462338bc31,infrastructure,"基础设施:RelayDepository(Relay桥存款库,已验证,17.8万tx)",TRASH分析
 robinhood,0x4e5ffb3bd801d9db9a98daee7d4293afd46da677,infrastructure,路由/中转合约组,manual-layer
 robinhood,0x50ad1c820290c9cc694dd47b0a61323f4d163e7e,infrastructure,路由/中转合约组,manual-layer
@@ -658,7 +837,7 @@ robinhood,0x5ff137d4b0fdcd49dca30c7cf57e578a026d2789,infrastructure,ERC-4337 Ent
 robinhood,0x65050a9b7e5075a2ba5ced7b1b64ee66262c40dc,infrastructure,公共狙击 bot 执行代理（1500+ 独立用户，共用≠关联）,manual-layer
 robinhood,0x68be5163fdd75ecad02aee1c9242e8afc8e95c8d,infrastructure,公共卖币bot合约(同模板)——旧报告'归集器'定性作废,GME分析
 robinhood,0x69957a4b1b97adb44742bb2f0f736f196960a83a,infrastructure,NOXA 平台出纳机器人（每5分钟自动归集；ETH 分发名单=官方关联仓发现通道；gas 边不可作私有聚类）,manual-layer
-robinhood,0x70c69520eb6595d102bfd8aed8fc58428489c4e4,infrastructure,V3做市组钱包#2·已离场（38万枚全部桥回主链，07-11拉升日撤22.7万）,VIRTUAL分析
+robinhood,0x6d80b81d9fc56a7a839b1af9006eb49151961ce7,infrastructure,Virtuals AgentTaxV2 税合约（70% creator/30% 平台）,manual-layer
 robinhood,0x73991a25c818bf1f1128deaab1492d45638de0d3,infrastructure,Uniswap V3 NonfungiblePositionManager（从它收币=LP 提取非买入）,manual-layer
 robinhood,0x77dc6f6361b7b99456fc3761ce5b7dda80d83f9d,infrastructure,"基础设施:公共合约(9.8万tx,创建者曾向其转1.0 ETH,服务调用非出金)",TRASH分析
 robinhood,0x78680385fcb8187ac1b28e0d6b1e0acf5e0d0992,infrastructure,CCIP 桥出收集通道（收币→同链 burn；转给它=桥出回主链）,manual-layer
@@ -671,7 +850,6 @@ robinhood,0x8876789976decbfcbbbe364623c63652db8c0904,infrastructure,Uniswap Univ
 robinhood,0x8f10b468b06c6fd214b65f87778827f7d113f996,infrastructure,"基础设施:原子中转(319条,同秒对倒于PM与0xb92之间,套利/路由bot形态)",TRASH分析
 robinhood,0x91604f590d66ace8975eed6bd16cf55647d1c499,infrastructure,尘埃 gas 出纳服务（发尘埃 gas→收款者秒级交易；gas 边一律降级）,manual-layer
 robinhood,0x9641d764fc13c8b624c04430c7356c1c7c8102e2,infrastructure,Safe v1.4.1 MultiSendCallOnly（canonical 部署）,manual-layer
-robinhood,0x972b0f9cde1266e860e546ac92e783741769400f,infrastructure,主池LP#1·独立做市商（L1同址自桥163E，2021年老DeFi钱包；持主池LP 24.97%）,VIRTUAL分析
 robinhood,0x998739bfdaadde7c933b942a68053933098f9eda,infrastructure,Safe v1.3.0 MultiSend（eip155 部署）,manual-layer
 robinhood,0x9be3cc594a47d90148b9f65466c57600018d237c,infrastructure,公共卖币bot合约——旧报告'归集器'定性作废,GME分析
 robinhood,0x9efdc1a8e6e94f16a228e44f3025e1f346ee0417,infrastructure,NOXA feeRouter·平台费路由(烧80%/分成),BEGGAR分析
@@ -702,68 +880,8 @@ robinhood,0xe492912f37c2a4eca45d42dc67548f4c6cd7ce2b,infrastructure,买入代理
 robinhood,0xe6cae83bde06e4c305530e199d7217f42808555b,infrastructure,Robinhood 钱包 EIP-7702 标准实现（海量散户共用）,manual-layer
 robinhood,0xe72688f7d25d7318b9a81f21edda640ca948c83b,infrastructure,RobinHoodSettler（App 交易结算器，原子过手末余额 0）,manual-layer
 robinhood,0xf48f2b2d2a534e402487b3ee7c18c33aec0fe5e4,infrastructure,Safe v1.3.0 CompatibilityFallbackHandler（canonical 部署）,manual-layer
-robinhood,0xf70da97812cb96acdf810712aa562db8dfa3dbef,infrastructure,Relay 桥 solver 热钱包（供gas/代发/替空投池发币）,manual-layer
+robinhood,0xf70da97812cb96acdf810712aa562db8dfa3dbef,infrastructure,"Relay桥solver(公共入金,非关联证据)",Index分析
 robinhood,0xfb1bffc9d739b8d520daf37df666da4c687191ea,infrastructure,Safe v1.3.0 GnosisSafeL2（eip155 部署）,manual-layer
-robinhood,0x0b1c529e76039473899701d3940f415e2f650daf,random-eoa,低频普通交易者负样本（1-5 次出现）,random-sample
-robinhood,0x0b3dc81635caf7ab4379d78c4f4906900a252c57,random-eoa,低频普通交易者负样本（1-5 次出现）,random-sample
-robinhood,0x0be37874612cbd0f18e2b38fbd11fbc443ad2a0c,random-eoa,低频普通交易者负样本（1-5 次出现）,random-sample
-robinhood,0x0d34ed3683ec724ea730874f45df9aa86cf92418,random-eoa,低频普通交易者负样本（1-5 次出现）,random-sample
-robinhood,0x0e4575cfdcca6ab3caec07aeb17ab3f5bc21fa0a,random-eoa,低频普通交易者负样本（1-5 次出现）,random-sample
-robinhood,0x11263c0c062ba1a2a3656cab0f2644e6caf2db19,random-eoa,低频普通交易者负样本（1-5 次出现）,random-sample
-robinhood,0x198a040869ab10da3dc06c13dd8b4f1c540043f8,random-eoa,低频普通交易者负样本（1-5 次出现）,random-sample
-robinhood,0x1b0dc56d4be9758df9f1da6e464a2dac985e5da7,random-eoa,低频普通交易者负样本（1-5 次出现）,random-sample
-robinhood,0x1e19fc22fdf336981f8d3f9885ebc520f243f07b,random-eoa,低频普通交易者负样本（1-5 次出现）,random-sample
-robinhood,0x23be51fe05c6770bb1add0b05ccbb0eeef3860c7,random-eoa,低频普通交易者负样本（1-5 次出现）,random-sample
-robinhood,0x2457153a31bf204478df6f6cd39004c09ec7be17,random-eoa,低频普通交易者负样本（1-5 次出现）,random-sample
-robinhood,0x2517962a99d15d9ef9e0d5b154d55d3b68ca1f23,random-eoa,低频普通交易者负样本（1-5 次出现）,random-sample
-robinhood,0x272482a142df4bf07d5bd8418e0c7d359cc5c4f8,random-eoa,低频普通交易者负样本（1-5 次出现）,random-sample
-robinhood,0x282d70095ec6d765e26aec9e2abcf5e462fa0536,random-eoa,低频普通交易者负样本（1-5 次出现）,random-sample
-robinhood,0x29e16b4fa179c00b42e1e61ea3092986c65b8b99,random-eoa,低频普通交易者负样本（1-5 次出现）,random-sample
-robinhood,0x2a2efa95bf875effc91977b8574d6c7c20b5fd2a,random-eoa,低频普通交易者负样本（1-5 次出现）,random-sample
-robinhood,0x2a6bf7cf2a93141d8dca3f3ff67cfa39d1da7b57,random-eoa,低频普通交易者负样本（1-5 次出现）,random-sample
-robinhood,0x2c875d3ceafc35915715f213e10ba2e53277f2f1,random-eoa,低频普通交易者负样本（1-5 次出现）,random-sample
-robinhood,0x2de9481bae36573ea2a7b949260470c6c044867c,random-eoa,低频普通交易者负样本（1-5 次出现）,random-sample
-robinhood,0x33fe4a6b3e79615067e75bda042f8820d7666d82,random-eoa,低频普通交易者负样本（1-5 次出现）,random-sample
-robinhood,0x3bdbd0efc3c27b7b28859e402396b4e194f1ec1c,random-eoa,低频普通交易者负样本（1-5 次出现）,random-sample
-robinhood,0x3fe427d119bec32a1f2aa5a8494751197fb4a07b,random-eoa,低频普通交易者负样本（1-5 次出现）,random-sample
-robinhood,0x402e89b956c02219d97c05c56fd54a622b38c8d1,random-eoa,低频普通交易者负样本（1-5 次出现）,random-sample
-robinhood,0x485bf5dc030dcca1a712a82fae9af2d527024b57,random-eoa,低频普通交易者负样本（1-5 次出现）,random-sample
-robinhood,0x4a2a494e6d8cb019af671d11e4e23b4cc8ae3866,random-eoa,低频普通交易者负样本（1-5 次出现）,random-sample
-robinhood,0x4edf3f79600e21cfb528702c9bbed00b0590b276,random-eoa,低频普通交易者负样本（1-5 次出现）,random-sample
-robinhood,0x5d9a3f37e5e1916c763367dfa2398e2f278c4c1a,random-eoa,低频普通交易者负样本（1-5 次出现）,random-sample
-robinhood,0x5e019ce87624a921eed1944db8b6dbd2b06636cd,random-eoa,低频普通交易者负样本（1-5 次出现）,random-sample
-robinhood,0x64738a2f56887dc54b55863a7b5839fd30c2a4ae,random-eoa,低频普通交易者负样本（1-5 次出现）,random-sample
-robinhood,0x67e922d245d1f8c27bcdc2c5c11a275fd8325ea1,random-eoa,低频普通交易者负样本（1-5 次出现）,random-sample
-robinhood,0x755f4a500982598a975e04edecc1733eb953efb0,random-eoa,低频普通交易者负样本（1-5 次出现）,random-sample
-robinhood,0x76f51bc4bf2a009b6bfec7bf29175f4dc8cb07a1,random-eoa,低频普通交易者负样本（1-5 次出现）,random-sample
-robinhood,0x7bdf0e78718efe90356a86cefcdccc520d3ab801,random-eoa,低频普通交易者负样本（1-5 次出现）,random-sample
-robinhood,0x86b98eddd368d5316ed46f6bd80088acf4ed9468,random-eoa,低频普通交易者负样本（1-5 次出现）,random-sample
-robinhood,0x8c64591265f2c8360973f1a1488a4e3b718102a2,random-eoa,低频普通交易者负样本（1-5 次出现）,random-sample
-robinhood,0x8f157d0ddf6f21e01205be1253e861763e0fe960,random-eoa,低频普通交易者负样本（1-5 次出现）,random-sample
-robinhood,0x96477abe876a3e5474e4913249da69e26e5e2728,random-eoa,低频普通交易者负样本（1-5 次出现）,random-sample
-robinhood,0x9cc644752c51e9a153a773e928961737b68b67cf,random-eoa,低频普通交易者负样本（1-5 次出现）,random-sample
-robinhood,0xa122bf49f4eddccd1d7c10440e27c9de6a03c337,random-eoa,低频普通交易者负样本（1-5 次出现）,random-sample
-robinhood,0xa23771bad01795034fad7720982b8c7913bca934,random-eoa,低频普通交易者负样本（1-5 次出现）,random-sample
-robinhood,0xa2cd3fed7cb1a1d9b12a6fb3b54352aa478c7091,random-eoa,低频普通交易者负样本（1-5 次出现）,random-sample
-robinhood,0xa2e02d7bdaa7f7fe498d07dce412f75820952929,random-eoa,低频普通交易者负样本（1-5 次出现）,random-sample
-robinhood,0xa46a5952d1ddc1fa80bac3c9c5bc22ae5526d49d,random-eoa,低频普通交易者负样本（1-5 次出现）,random-sample
-robinhood,0xa871144ab6737ae4b7b5873dff027aac2cf2dd45,random-eoa,低频普通交易者负样本（1-5 次出现）,random-sample
-robinhood,0xb21bec76d6fdde017d80d7e44b625404b5710960,random-eoa,低频普通交易者负样本（1-5 次出现）,random-sample
-robinhood,0xb300000b72deaeb607a12d5f54773d1c19c7028d,random-eoa,低频普通交易者负样本（1-5 次出现）,random-sample
-robinhood,0xb3a0907396744444a9bed6b19c8c9c4c59614795,random-eoa,低频普通交易者负样本（1-5 次出现）,random-sample
-robinhood,0xbf26bef00b6cab0b4918ad6ad2535d18fbb5cc64,random-eoa,低频普通交易者负样本（1-5 次出现）,random-sample
-robinhood,0xcad6a0d35d66f44e3829b6ff7c9600d746f9507d,random-eoa,低频普通交易者负样本（1-5 次出现）,random-sample
-robinhood,0xcfed0890849cf49f4b8f3c306bf4144a554dc5f7,random-eoa,低频普通交易者负样本（1-5 次出现）,random-sample
-robinhood,0xd368890983086345fb1228edb65ca63509f4da23,random-eoa,低频普通交易者负样本（1-5 次出现）,random-sample
-robinhood,0xdb05b24d69200dec0057af0d6d4ab2c64999617a,random-eoa,低频普通交易者负样本（1-5 次出现）,random-sample
-robinhood,0xdd6eb100aea1ea350d15cc66a9107101289af161,random-eoa,低频普通交易者负样本（1-5 次出现）,random-sample
-robinhood,0xdf0fa6fdf783f48dd63a4bdb05e13c32c0ab3fbd,random-eoa,低频普通交易者负样本（1-5 次出现）,random-sample
-robinhood,0xf125293a77e91731b7117acbdc68c38563f01c67,random-eoa,低频普通交易者负样本（1-5 次出现）,random-sample
-robinhood,0xf18179a771f5ac24091fbcd9a19dde44c2151610,random-eoa,低频普通交易者负样本（1-5 次出现）,random-sample
-robinhood,0xf7ce144201dc45dd54891448a6cfe203ff1cd25d,random-eoa,低频普通交易者负样本（1-5 次出现）,random-sample
-robinhood,0xf84d0a92cd9c66d249b654dd1e684674dac96385,random-eoa,低频普通交易者负样本（1-5 次出现）,random-sample
-robinhood,0xf905690eb2ed984c8d7ae489a4f20d8e9642a91f,random-eoa,低频普通交易者负样本（1-5 次出现）,random-sample
-robinhood,0xfd8e418935c9089aeb5fa53890ee46c11e717715,random-eoa,低频普通交易者负样本（1-5 次出现）,random-sample
 sol,143z8rDrG6mrLdmcFNrso6CrMC9tYJ1nW9hJSEZQmgF8,entity,狙击集团(发射打新cohort)(P1),LAYOFF分析
 sol,28AL2FSMzxFBKBA8jPg2MSfjMrRwpNbYaNNMR4EFyV77,entity,橱窗组·边界集群(未达标签门槛)(边界案例),Clude分析
 sol,2CH5zTUVfUFfJKM76sFg5iY5tvyF7fTfrK2PtZ8eqDiG,entity,橱窗组·边界集群(未达标签门槛)(边界案例),Clude分析
@@ -848,6 +966,7 @@ sol,QM8qAx6Uarhkw6KwULVRL7fUstAvLgaRAQ1HmxwSb2V,entity,"Fojn 新马甲仓 QM8q(8
 sol,11111111111111111111111111111111,infrastructure,System Program,manual-layer
 sol,1nc1nerator11111111111111111111111111111111,infrastructure,Incinerator 销毁地址,manual-layer
 sol,29p1MyR98bkjt92F1Y9dbbLbr22JnZUDL81c2oUw2Vy3,infrastructure,疑似平台结算cranker（签发市场收尾tx；与大赢家地址前缀孪生，复核新增识别）,PUB_solana_20260713
+sol,39azUYFWPz3VHgKCf3VChUwbpURdCHRxjWVowf5jUJjg,infrastructure,pump.fun→Raydium 官方毕业迁移钱包,manual-layer
 sol,3gd3dqgtJ4jWfBfLYTX67DALFetjc5iS72sCgRhCkW2u,infrastructure,Binance 冷钱包2,manual-layer
 sol,3iQL8BFS2vE7mww4ehAqQHAsbmRNCrPxizWAT2Zfyr9y,infrastructure,VIRTUAL 代币 mint（Virtuals Protocol，Solana 侧）,manual-layer
 sol,42brAgAVNzMBP7aaktPvAmBSPEkehnFQejiZc53EpJFd,infrastructure,Bybit 冷钱包,manual-layer
@@ -855,19 +974,25 @@ sol,5LZkATrLwHYCQj2YuVbjjgsDZzBk6YfL4pFQRJmtboT2,infrastructure,Bybit（PoR 审�
 sol,5PAhQiYdLBd6SVdjzBQDxUAEFyDdF5ExNPQfcscnPRj5,infrastructure,MEXC 热钱包 2（当前主力）,manual-layer
 sol,5tzFkiKscXHK5ZXCGbXZxdw7gTjjD1mBwuoFbhUvuAi9,infrastructure,Binance 热钱包,manual-layer
 sol,6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P,infrastructure,pump.fun bonding curve 程序,manual-layer
+sol,6LY1JzAFVZsP2a2xKrtU6znQMQ5h4i7tocWdgrkZzkzF,infrastructure,Kraken 热钱包,manual-layer
 sol,6VGNcrNuhwCwWZDQoA9QoyJxKtb4FEGLnieScUnLbeKJ,infrastructure,疑似 Upbit SOL 热钱包 #1（2025-11 被黑事件 signer 反查；6000+高频、事发后持续活跃至 2026-07、余额归零画像）（policy覆盖断言）,manual-layer
-sol,6p8LxMvHUZtdiik28TQy483WaCaDGsAUFm3PKjpUpLB,infrastructure,CoinDCX: CoinDCX 7,manual-layer
-sol,821dTn3JEhhqg11Q24ijxRBYXfKWngGMibTqHS8hWjZb,infrastructure,Rollbit: Rollbit 1,manual-layer
+sol,6ZaWyb9PKP1ZGVsQcE9vjnGPCH6KiWE5XLUY7HdNEJ77,infrastructure,币安 Alpha DEX 执行仓（接近确证）,manual-layer
+sol,86KSdCfcqnJo9TCLFi3zxsJAJzvx9QU7oEPd6Fn5ZPom,infrastructure,Jupiter DCA keeper（公共自动执行代付方）,manual-layer
+sol,9SLPTL41SPsYkgdsMzdfJsxymEANKr5bYoBsQzJyKpKS,infrastructure,Hyperunit 热钱包（现货桥托管）,manual-layer
 sol,9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM,infrastructure,Binance 冷钱包,manual-layer
+sol,9ZPsRWGkukYeWg2Z7eZ8NaTBZ1DSuBUVzLcGQWZgE4Y4,infrastructure,币安 Alpha 托管库存仓（接近确证）,manual-layer
 sol,A77HErqtfN1hLLpvZ9pCtu66FEtM8BveoaKbbMoZ4RiR,infrastructure,Bitget 主热钱包,manual-layer
 sol,AC5RDfQFmDS1deWZos921JfqscXdByf8BKHs5ACWjtW2,infrastructure,Bybit 热钱包,manual-layer
 sol,ASTyfSima4LLAdDgoFGkgqoKowG1LZFDr9fAQrg7iaJZ,infrastructure,MEXC,manual-layer
 sol,AobVSwdW9BbpMdJvTqeCN4hPAmh4rHm7vwLnQ5ATSyrS,infrastructure,Crypto.com,manual-layer
 sol,BAGSB9TpGrZxQbEsrEznv5jXXdwyP6AXerN8aVRiAmcv,infrastructure,Bags 平台署名 creator（平台特征非项目方）,manual-layer
+sol,BN111JnbLtbmQqqiCh7h2pDKhAhMx4wi77Mj7jJFbyp8,infrastructure,币安 Alpha 批量转账程序（接近确证）,manual-layer
 sol,BmFdpraQhkiDQE6SnfG5omcA1VwzqfXrwtNYBwWTymy6,infrastructure,KuCoin,manual-layer
 sol,C68a6RCGLiPskbPYtAcsCjhG8tfTWYcoB4JjCrXFdqyo,infrastructure,OKX 热钱包（GMGN 标注）,manual-layer
 sol,C6pYSHkDbtLV148brZfyqegopypeh6ERG9ymveFEiCv1,infrastructure,做局小赢家·一次性钱包（提前54秒备下注币=预知时序；押990获派1.08M后90秒清仓；CEX级热钱包注资身份隔断）,PUB_solana_20260713
 sol,CChTq6PthWU82YZkbveA3WDf7s97BWhBK4Vx9bmsT743,infrastructure,Bonfida Token Vesting 程序,manual-layer
+sol,CTaDZW2LhvHPRnA9JWcZF8R5y2mpkV2RcHAXyEoKLbzp,infrastructure,Jupiter DCA keeper（轮换第二址）,manual-layer
+sol,D89hHJT5Aqyx1trP6EnGY9jJUB3whgnq3aUvvCqedvzf,infrastructure,Coinbase 热钱包 3,manual-layer
 sol,EruUYCbY2FittWeqaCEUEXxBkfBoSXTPaPVf5ymdYD1q,infrastructure,EruUYC 网络主钱包（ACE 首桥+1356 万）,OPAL分析
 sol,F8446Bh5QK3mej4X3xfHUUq7g9Vjf4VexgRcKs9fNvqN,infrastructure,Base-Solana 官方桥托管（ACE 轮 2500 万）,OPAL分析
 sol,FLASHX8DrLbgeR8FcfNV1F5krxYcYMUdBkrP1EPBtxB9,infrastructure,Axiom Trade 路由,manual-layer
