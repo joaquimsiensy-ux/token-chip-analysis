@@ -30,7 +30,7 @@ from solana_exact_validate import (  # noqa: E402
     classify_four_states, compute_probe_id,
     derive_getblocks_complete, encode_bitmap, merge_ranges, ranges_cover,
     sha256_bytes, sha256_file, validate_blocks_bitmap, validate_coverage,
-    validate_coverage_map, validate_slot_counts,
+    validate_coverage_map, validate_shared_map, validate_slot_counts,
 )
 
 
@@ -385,6 +385,10 @@ def _load_known_map(path, mint_from, mint_to, sqd_identity, metadata,
             "canary": {"slots": [], "counts_sha256": sha256_bytes(b""),
                        "verified_at": utc_now()}}
     try:
+        shared_checked = validate_shared_map(asset_path)
+        if not shared_checked["ok"]:
+            raise ValueError("shared-map-invalid:" + ";".join(
+                shared_checked["reasons"]))
         asset = _read_json(asset_path)
         if asset.get("schema") != "sqd-solana-shared-coverage-map/v1":
             raise ValueError("shared-map-schema-invalid")
@@ -463,6 +467,92 @@ def _load_known_map(path, mint_from, mint_to, sqd_identity, metadata,
     except Exception as exc:
         info["fallback_reason"] = _safe_text(exc, endpoints)
         return info, None, None, None
+
+
+def _shared_canary(probe_id, counts, from_slot):
+    headers = [from_slot + offset for offset, value in enumerate(counts)
+               if value >= 2]
+    if len(headers) < 64:
+        raise ValueError("shared map requires at least 64 slots with block headers")
+    seed = int(sha256_bytes(probe_id.encode("utf-8")), 16)
+    selected = {headers[(seed + (index * len(headers)) // 64) % len(headers)]
+                for index in range(64)}
+    if len(selected) != 64:
+        # Full-history maps are much wider than 64; this only handles tiny fixtures.
+        cursor = seed % len(headers)
+        while len(selected) < 64:
+            selected.add(headers[cursor % len(headers)])
+            cursor += 1
+    slots = sorted(selected)
+    return slots, [counts[slot - from_slot] for slot in slots]
+
+
+def export_shared_map(args):
+    """Export a published case probe as one deterministic shared-map triplet."""
+    case_root = Path(args.case_root).resolve()
+    parent = case_root / "data/sqd_coverage"
+    pointer_path = parent / "CURRENT.json"
+    pointer = _read_json(pointer_path)
+    if pointer.get("probe_id") != args.probe_id:
+        raise ValueError("probe-id is not the currently published probe")
+    generation = parent / args.probe_id
+    coverage_path = generation / "coverage_map.json"
+    coverage = _read_json(coverage_path)
+    if coverage.get("probe_id") != args.probe_id:
+        raise ValueError("coverage map probe_id mismatch")
+    slot_meta = coverage.get("slot_counts", {})
+    checked = validate_coverage(
+        case_root, coverage_path, pointer_path,
+        slot_meta.get("from_slot"), slot_meta.get("to_slot"))
+    if not checked["ok"]:
+        raise ValueError("published probe validation failed: "
+                         + "; ".join(checked["reasons"]))
+    if coverage.get("skipped_confirmation") is None:
+        raise ValueError("shared map export requires getBlocks evidence")
+    counts_source = generation / "slot_counts.bin.gz"
+    blocks_source = generation / "blocks.bin.gz"
+    counts = gzip.decompress(counts_source.read_bytes())
+    version = args.version or datetime.now(timezone.utc).strftime("%Y%m%d")
+    if not isinstance(version, str) or len(version) != 8 or not version.isdigit():
+        raise ValueError("shared map version must be YYYYMMDD")
+    out = Path(args.out).resolve()
+    out.mkdir(parents=True, exist_ok=True)
+    prior = sorted(path.stem for path in out.glob("[0-9]" * 8 + ".json")
+                   if path.stem != version)
+    supersedes = prior[-1] if prior else None
+    counts_name = f"{version}.counts.bin.gz"
+    blocks_name = f"{version}.blocks.bin.gz"
+    _publish_bytes_overwrite(out / counts_name, counts_source.read_bytes())
+    _publish_bytes_overwrite(out / blocks_name, blocks_source.read_bytes())
+    slots, canary_counts = _shared_canary(
+        args.probe_id, counts, slot_meta["from_slot"])
+    counts_ref = _sha_ref(out / counts_name, counts_name)
+    blocks_ref = _sha_ref(out / blocks_name, blocks_name)
+    bitmap_meta = coverage["skipped_confirmation"]["blocks_bitmap"]
+    asset = {
+        "schema": "sqd-solana-shared-coverage-map/v1", "version": version,
+        "generated_at": pointer["published_at"], "ttl_days": 30,
+        "supersedes": supersedes, "sqd": coverage["sqd"],
+        "slot_counts": {**counts_ref, "from_slot": slot_meta["from_slot"],
+                        "to_slot": slot_meta["to_slot"],
+                        "encoding": COUNT_ENCODING},
+        "blocks_bitmap": {**blocks_ref,
+                          "from_slot": bitmap_meta["from_slot"],
+                          "to_slot": bitmap_meta["to_slot"],
+                          "encoding": BITMAP_ENCODING},
+        "candidate_slots": checked["recomputed"]["candidate_slots"],
+        "refuted_slots": [],
+        "canary": {"slots": slots, "counts": canary_counts},
+    }
+    asset_path = out / f"{version}.json"
+    _publish_bytes_overwrite(asset_path, canonical_json(asset) + b"\n")
+    asset_checked = validate_shared_map(asset_path)
+    if not asset_checked["ok"]:
+        raise ValueError("exported shared map failed validation: "
+                         + "; ".join(asset_checked["reasons"]))
+    print(json.dumps({"status": "exported", "version": version,
+                      "asset": str(asset_path)}, sort_keys=True))
+    return 0
 
 
 def _get_reference_rpc(args):
@@ -1004,7 +1094,25 @@ def build_parser():
     return parser
 
 
+def build_export_parser():
+    parser = argparse.ArgumentParser(description="Export a published shared SQD map")
+    parser.add_argument("--case-root", required=True)
+    parser.add_argument("--probe-id", required=True)
+    parser.add_argument("--out", required=True)
+    parser.add_argument("--version")
+    return parser
+
+
 def main(argv=None):
+    argv = list(sys.argv[1:] if argv is None else argv)
+    if argv and argv[0] == "export-shared-map":
+        args = build_export_parser().parse_args(argv[1:])
+        try:
+            return export_shared_map(args)
+        except Exception as exc:
+            print(_safe_text(f"sqd shared-map export failed: {exc}", []),
+                  file=sys.stderr)
+            return 2
     args = build_parser().parse_args(argv)
     try:
         return run_probe(args)

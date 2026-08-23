@@ -1,0 +1,11 @@
+{
+  "canonical": {
+    "input": {"z": 1, "a": {"slot": 2}},
+    "bytes": "{\"a\":{\"slot\":2},\"z\":1}",
+    "sha256": "a591d939d5cb2cdcfbc3b55e59cd19e23ea513e94169cb86079ec1aeb657a6ee"
+  },
+  "gid": {
+    "formal": "5e7786d6457075ca",
+    "exploration": "8438ff3cc85f1fd0"
+  }
+}

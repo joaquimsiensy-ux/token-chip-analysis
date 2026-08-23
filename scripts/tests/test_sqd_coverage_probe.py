@@ -548,7 +548,7 @@ def test_shared_map_lifecycle_rechecks_all_known_and_canary():
                     "real_time": True, "finalized_head": 1000}
         fixture_fingerprint = probe.endpoint_fingerprint("fixture://sqd")["sha256"]
         asset = {
-            "schema": "sqd-solana-shared-coverage-map/v1", "version": "fixture",
+            "schema": "sqd-solana-shared-coverage-map/v1", "version": "20260823",
             "generated_at": datetime.now(timezone.utc).isoformat(), "ttl_days": 30,
             "supersedes": None,
             "sqd": {"endpoint_fingerprint": fixture_fingerprint,
@@ -563,7 +563,7 @@ def test_shared_map_lifecycle_rechecks_all_known_and_canary():
                               "sha256": exact.sha256_file(blocks_path),
                               "from_slot": 200, "to_slot": 263,
                               "encoding": exact.BITMAP_ENCODING},
-            "candidate_slots": [200], "refuted_slots": [201],
+            "candidate_slots": [], "refuted_slots": [],
             "canary": {"slots": list(range(200, 264)), "counts": [3] * 64},
         }
         asset_path = root / "map.json"
@@ -631,6 +631,83 @@ def test_guard_fixture_budget_and_no_run_threshold_detector():
         assert completed.returncode == 0 and "deny" in completed.stdout, rel
 
 
+def test_export_shared_map_roundtrip_and_tamper_rejection():
+    """Group 12: published probe -> deterministic export -> known-map round trip."""
+    with tempfile.TemporaryDirectory(prefix="sqd-export-map-") as td:
+        root = Path(td)
+        fixture = root / "transport"
+        fixture.mkdir()
+        lower, upper = 200, 263
+        metadata = {"dataset_id": "solana-mainnet", "start_block": 0,
+                    "real_time": True, "number": 1000}
+        responses = {probe.request_digest("sqd-head", {}): {
+            "ok": True, "value": metadata}}
+        full_body = probe.sqd_query_body(lower, upper)
+        responses[probe.request_digest("sqd-stream", full_body)] = {
+            "ok": True, "value": [
+                {"header": {"number": slot},
+                 "instructions": [{"transactionIndex": 0}]}
+                for slot in range(lower, upper + 1)]}
+        for slot in range(lower, upper + 1):
+            body = probe.sqd_query_body(slot, slot)
+            responses[probe.request_digest("sqd-stream", body)] = {
+                "ok": True, "value": [{"header": {"number": slot},
+                                         "instructions": [{"transactionIndex": 0}]}]}
+        head_body = probe.rpc_body("getSlot", [{"commitment": "finalized"}], 1)
+        responses[probe.request_digest("rpc-getSlot", head_body)] = {
+            "ok": True, "value": {"jsonrpc": "2.0", "id": 1, "result": 1000}}
+        blocks_body = probe.rpc_body(
+            "getBlocks", [lower, upper, {"commitment": "finalized"}], 2)
+        responses[probe.request_digest("rpc-getBlocks", blocks_body)] = {
+            "ok": True, "value": {"jsonrpc": "2.0", "id": 2,
+                                    "result": list(range(lower, upper + 1))}}
+        (fixture / "responses.json").write_text(json.dumps({
+            "format": "sqd-coverage-transport-fixture-v1",
+            "responses": responses}), encoding="utf-8")
+
+        first_case = root / "first"
+        base_args = [
+            "--mint", MINT, "--case-root", str(first_case),
+            "--from-slot", str(lower), "--to-slot", str(upper), "--full",
+            "--reference-rpc", "https://rpc.fixture.invalid/",
+            "--transport-fixture", str(fixture),
+        ]
+        assert probe.main(base_args) == 0
+        pointer, _generation, first_coverage = read_current(first_case)
+        out = root / "assets"
+        export_args = ["export-shared-map", "--case-root", str(first_case),
+                       "--probe-id", pointer["probe_id"], "--out", str(out),
+                       "--version", "20260823"]
+        assert probe.main(export_args) == 0
+        triplet = [out / "20260823.json", out / "20260823.counts.bin.gz",
+                   out / "20260823.blocks.bin.gz"]
+        first_bytes = [path.read_bytes() for path in triplet]
+        assert exact.validate_shared_map(triplet[0])["ok"]
+        assert probe.main(export_args) == 0
+        assert [path.read_bytes() for path in triplet] == first_bytes
+
+        second_case = root / "second"
+        roundtrip = [
+            "--mint", MINT, "--case-root", str(second_case),
+            "--from-slot", str(lower), "--to-slot", str(upper),
+            "--known-map", str(triplet[0]), "--no-getblocks",
+            "--transport-fixture", str(fixture),
+        ]
+        assert probe.main(roundtrip) == 0
+        _pointer2, _generation2, second_coverage = read_current(second_case)
+        assert second_coverage["shared_map"]["reused_ranges"]
+        assert second_coverage["shared_map"]["canary"]["slots"] \
+            == json.loads(triplet[0].read_text())["canary"]["slots"]
+        assert second_coverage["verdict"] == first_coverage["verdict"]
+
+        damaged = bytearray(triplet[1].read_bytes())
+        damaged[-1] ^= 1
+        triplet[1].write_bytes(damaged)
+        rejected = exact.validate_shared_map(triplet[0])
+        assert not rejected["ok"] and any("counts" in reason
+                                          for reason in rejected["reasons"])
+
+
 def main():
     tests = [
         test_batch1b_red_to_green_symbols,
@@ -643,6 +720,7 @@ def main():
         test_dry_run_has_no_artifacts,
         test_sqd_cursor_pagination_regressions,
         test_shared_map_lifecycle_rechecks_all_known_and_canary,
+        test_export_shared_map_roundtrip_and_tamper_rejection,
         test_guard_fixture_budget_and_no_run_threshold_detector,
     ]
     for test in tests:

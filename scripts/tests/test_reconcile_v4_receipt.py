@@ -26,6 +26,7 @@ import entity_source_trace  # noqa: E402
 import flow_anomaly_scan  # noqa: E402
 import receipt_validate  # noqa: E402
 import replay_edges  # noqa: E402
+import sqd_cache_identity  # noqa: E402
 import wave_scan  # noqa: E402
 from sqd_v4_test_fixture import FETCH_SHA256, MINT  # noqa: E402
 
@@ -166,11 +167,19 @@ def main():
         print("RED 9 semantic-acceptance wave/flow/entity/curve/camp/audit_closed 六入口均接受案外集合复制 base")
         red += 1
 
-        # (17) Current validator has no case_root/meta_path parameter and accepts the copy.
-        camp_series_provenance.validate_cache_meta(
-            json.loads(copied_meta.read_text(encoding="utf-8")), MINT, legacy_sol5=False)
-        print("RED 17 semantic-acceptance validate_cache_meta 接受正式路径集合外的复制 meta")
-        red += 1
+        # (17) The v2 identity gate accepts only the canonical resolver path.
+        sqd_cache_identity.validate_cache_meta_v2(
+            json.loads(meta.read_text(encoding="utf-8")), MINT,
+            case_root=case, meta_path=meta)
+        try:
+            sqd_cache_identity.validate_cache_meta_v2(
+                json.loads(copied_meta.read_text(encoding="utf-8")), MINT,
+                case_root=case, meta_path=copied_meta)
+        except ValueError:
+            print("GREEN 17 validate_cache_meta_v2 拒绝正式路径集合外复制 meta")
+        else:
+            print("RED 17 semantic-acceptance validate_cache_meta_v2 接受正式路径集合外复制 meta")
+            red += 1
 
         # (23) No --case-root plus a symlinked path both remain accepted.
         help_run = subprocess.run([sys.executable, str(ROOT / "scripts/report/wave_scan.py"), "--help"],

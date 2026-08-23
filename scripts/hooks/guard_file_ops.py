@@ -31,6 +31,14 @@ RAW_PATTERNS = [
         r"/data/sqd_coverage/(?:[0-9a-f]{16}|pending-[0-9a-f]{16})/"
         r"(?:coverage_map\.json|slot_counts\.bin\.gz|blocks\.bin\.gz|"
         r"ledger\.jsonl|STOPPED\.json|resume_state\.json)$"),
+    re.compile(r"/data/sqd_repair/[0-9a-f]{64}/(?:CURRENT\.json|\.lock)$"),
+    re.compile(
+        r"/data/sqd_repair/[0-9a-f]{64}/(?:gen-[0-9a-f]{16}|"
+        r"pending-[0-9a-f]{16})/(?:bundle\.json|repair_layer\.jsonl|"
+        r"slot_index_map\.jsonl|coverage_resolution\.json|rpc_ledger\.jsonl|"
+        r"evidence_manifest\.json|STOPPED\.json|"
+        r"soltx-[0-9a-f]{64}\.repaired(?:\.meta\.json|\.jsonl\.gz)|"
+        r"evidence/[0-9]+\.(?:sqd|ref)\.json)$"),
 ]
 
 
@@ -71,7 +79,7 @@ def main():
     if tool in ("Write", "Edit"):
         for pat in RAW_PATTERNS:
             if pat.search(fp):
-                deny("拦截覆盖原始采集产物：run_*/logs.parquet、soltx-* 与 sqd_coverage "
+                deny("拦截覆盖原始采集产物：run_*/logs.parquet、soltx-*、sqd_coverage 与 sqd_repair "
                      "规范件只能由其登记生产者写入。"
                      "分析层需要衍生数据时另存新文件，绝不改原始层。")
         sys.exit(0)

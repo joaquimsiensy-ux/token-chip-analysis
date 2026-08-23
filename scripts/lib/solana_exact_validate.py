@@ -672,3 +672,468 @@ def validate_coverage(case_root, coverage_path, pointer_path,
         elif not (case_root / "data/sqd_coverage" / supersedes).is_dir():
             reasons.append("pointer supersedes generation is not traceable")
     return {"ok": not reasons, "reasons": reasons, "recomputed": recomputed}
+
+
+SHARED_MAP_SCHEMA = "sqd-solana-shared-coverage-map/v1"
+REPAIR_BUNDLE_SCHEMA = "sqd-solana-repair-bundle/v1"
+REPAIR_LAYER_SCHEMA = "sqd-solana-repair-layer/v1"
+REPAIR_MAP_SCHEMA = "sqd-solana-slot-index-map/v1"
+REPAIR_RESOLUTION_SCHEMA = "sqd-solana-coverage-resolution/v1"
+REPAIR_LEDGER_SCHEMA = "sqd-solana-rpc-ledger/v1"
+REPAIR_POINTER_SCHEMA = "sqd-solana-repair-pointer/v1"
+
+
+def validate_shared_map(asset_json_path):
+    """Independently validate one reusable shared coverage-map triplet."""
+    reasons = []
+    asset_path = Path(asset_json_path).resolve()
+    try:
+        asset = json.loads(asset_path.read_text(encoding="utf-8"))
+        canonical_json(asset)
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        return {"ok": False, "reasons": [f"shared map unreadable: {exc}"]}
+    if asset.get("schema") != SHARED_MAP_SCHEMA:
+        reasons.append("shared map schema mismatch")
+    version = asset.get("version")
+    if not isinstance(version, str) or re.fullmatch(r"[0-9]{8}", version) is None:
+        reasons.append("shared map version must be YYYYMMDD")
+    if asset.get("ttl_days") != 30:
+        reasons.append("shared map ttl_days must be 30")
+    if "supersedes" not in asset or (asset.get("supersedes") is not None
+                                      and not isinstance(asset.get("supersedes"), str)):
+        reasons.append("shared map supersedes invalid")
+    if not isinstance(asset.get("generated_at"), str) or not asset["generated_at"]:
+        reasons.append("shared map generated_at missing")
+    if not isinstance(asset.get("sqd"), dict):
+        reasons.append("shared map SQD identity missing")
+
+    loaded = {}
+    for key, encoding in (("slot_counts", COUNT_ENCODING),
+                          ("blocks_bitmap", BITMAP_ENCODING)):
+        meta = asset.get(key)
+        expected_keys = {"path", "size", "sha256", "from_slot", "to_slot",
+                         "encoding"}
+        if not isinstance(meta, dict) or set(meta) != expected_keys:
+            reasons.append(f"shared map {key} metadata shape invalid")
+            continue
+        if meta.get("encoding") != encoding:
+            reasons.append(f"shared map {key} encoding mismatch")
+        try:
+            path = (asset_path.parent / meta["path"]).resolve()
+            if path.parent != asset_path.parent or not path.is_file():
+                raise ValueError("path escapes asset directory or is missing")
+            if path.stat().st_size != meta["size"]:
+                reasons.append(f"shared map {key} size mismatch")
+            if sha256_file(path) != meta["sha256"]:
+                reasons.append(f"shared map {key} sha256 mismatch")
+            loaded[key] = gzip.decompress(path.read_bytes())
+        except (OSError, EOFError, KeyError, TypeError, ValueError) as exc:
+            reasons.append(f"shared map {key} unreadable: {exc}")
+
+    counts = loaded.get("slot_counts", b"")
+    blocks = loaded.get("blocks_bitmap", b"")
+    count_meta = asset.get("slot_counts") or {}
+    block_meta = asset.get("blocks_bitmap") or {}
+    lower, upper = count_meta.get("from_slot"), count_meta.get("to_slot")
+    if not _integer(lower) or not _integer(upper) or lower > upper:
+        reasons.append("shared map interval invalid")
+    else:
+        if len(counts) != upper - lower + 1:
+            reasons.append("shared map counts length mismatch")
+        if (block_meta.get("from_slot"), block_meta.get("to_slot")) != (lower, upper):
+            reasons.append("shared map binary intervals differ")
+        bitmap = validate_blocks_bitmap(blocks, lower, upper)
+        reasons.extend(f"shared map {reason}" for reason in bitmap["reasons"])
+
+    canary = asset.get("canary")
+    slots = canary.get("slots") if isinstance(canary, dict) else None
+    canary_counts = canary.get("counts") if isinstance(canary, dict) else None
+    if not isinstance(slots, list) or len(slots) != 64 \
+            or not isinstance(canary_counts, list) or len(canary_counts) != 64:
+        reasons.append("shared map canary must contain 64 slots and counts")
+    elif _integer(lower) and _integer(upper) \
+            and len(counts) == upper - lower + 1:
+        if slots != sorted(set(slots)) or any(
+                not _integer(slot) or slot < lower or slot > upper for slot in slots):
+            reasons.append("shared map canary slots invalid")
+        elif any(not _integer(value) or not (0 <= value <= 255)
+                 for value in canary_counts):
+            reasons.append("shared map canary counts invalid")
+        elif any(counts[slot - lower] != value
+                 for slot, value in zip(slots, canary_counts)):
+            reasons.append("shared map canary differs from counts")
+        elif any(counts[slot - lower] < 2 for slot in slots):
+            reasons.append("shared map canary includes slot without block header")
+    elif isinstance(slots, list) and isinstance(canary_counts, list):
+        reasons.append("shared map canary cannot be checked against invalid counts")
+
+    candidates = asset.get("candidate_slots")
+    refuted = asset.get("refuted_slots")
+    if not isinstance(candidates, list) or candidates != sorted(set(candidates)):
+        reasons.append("shared map candidate_slots invalid")
+    if not isinstance(refuted, list) or refuted != sorted(set(refuted)):
+        reasons.append("shared map refuted_slots invalid")
+    if _integer(lower) and len(counts) == max(0, upper - lower + 1):
+        confirmation = None
+        if blocks:
+            segment = {"from": lower, "to": upper,
+                       "response_sha256": sha256_bytes(blocks),
+                       "count": sum(byte.bit_count() for byte in blocks),
+                       "response_ok": True, "array_monotonic_unique": True,
+                       "array_in_range": True}
+            confirmation = {
+                "reference_head_at_check": upper,
+                "blocks_bitmap": {"from_slot": lower, "to_slot": upper},
+                "ranges": [segment],
+            }
+        classified = classify_four_states(
+            counts, lower, confirmation=confirmation, blocks_bitmap=blocks)
+        if candidates != classified["candidate_slots"]:
+            reasons.append("shared map candidate_slots do not recompute from binaries")
+    return {"ok": not reasons, "reasons": reasons, "asset": asset,
+            "counts": counts, "blocks_bitmap": blocks}
+
+
+def _repair_path(case_root, generation, value, label, reasons):
+    if not isinstance(value, str) or not value or Path(value).is_absolute():
+        reasons.append(f"{label} path invalid")
+        return None
+    base = case_root if value.startswith("data/") else generation
+    try:
+        path = _safe_case_path(base, value)
+    except ValueError as exc:
+        reasons.append(f"{label}: {exc}")
+        return None
+    return path
+
+
+def _repair_ref(case_root, generation, ref, label, reasons):
+    if not isinstance(ref, dict) or not {"path", "size", "sha256"}.issubset(ref):
+        reasons.append(f"{label} reference shape invalid")
+        return None
+    path = _repair_path(case_root, generation, ref.get("path"), label, reasons)
+    if path is None or not path.is_file():
+        reasons.append(f"{label} file missing")
+        return None
+    if path.stat().st_size != ref.get("size"):
+        reasons.append(f"{label} size mismatch")
+    if sha256_file(path) != ref.get("sha256"):
+        reasons.append(f"{label} sha256 mismatch")
+    return path
+
+
+def _jsonl(path, reasons, label):
+    rows = []
+    try:
+        for line_no, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+            if not line.strip():
+                continue
+            row = json.loads(line)
+            canonical_json(row)
+            rows.append(row)
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        reasons.append(f"{label} invalid: {exc}")
+    return rows
+
+
+def _edge_rows(path, reasons, label):
+    rows = []
+    try:
+        with gzip.open(path, "rt", encoding="utf-8") as handle:
+            for line in handle:
+                if not line.strip():
+                    continue
+                row = json.loads(line)
+                if not isinstance(row, list) or len(row) != 7:
+                    raise ValueError("edge must contain seven fields")
+                ts, slot, tx_index, instr, source, target, amount = row
+                if any(not _integer(item) for item in (ts, slot, tx_index, amount)) \
+                        or instr != -1 or amount <= 0 \
+                        or not isinstance(source, str) or not isinstance(target, str):
+                    raise ValueError("edge field contract invalid")
+                rows.append(tuple(row))
+    except (OSError, EOFError, ValueError, json.JSONDecodeError) as exc:
+        reasons.append(f"{label} invalid: {exc}")
+    return rows
+
+
+def _edge_sort(row):
+    return row[1], row[2], row[4], row[5], str(row[6])
+
+
+def _edge_evidence(rows):
+    digest = hashlib.sha256()
+    for row in rows:
+        digest.update((json.dumps(list(row), ensure_ascii=False) + "\n").encode())
+    return digest.hexdigest(), len(rows)
+
+
+def _repair_gid(material):
+    value = dict(material)
+    for key in ("gid", "generated_at", "rpc_ledger", "bundle_sha256"):
+        value.pop(key, None)
+    value["kind"] = "repair"
+    return sha256_bytes(canonical_json(value))[:16]
+
+
+def validate_repair_pointer(pointer, *, expected_mint, expected_gid,
+                            expected_bundle_sha256):
+    """Validate the current repair pointer envelope and bundle binding."""
+    reasons = []
+    if not isinstance(pointer, dict) or pointer.get("schema") != REPAIR_POINTER_SCHEMA:
+        reasons.append("repair pointer schema mismatch")
+        return {"ok": False, "reasons": reasons}
+    if pointer.get("target", {}).get("chain") != "solana" \
+            or pointer.get("target", {}).get("token") != expected_mint:
+        reasons.append("repair pointer target mismatch")
+    if (pointer.get("mode"), pointer.get("verdict"), pointer.get("exit_code")) \
+            != ("formal", "PASS", 0):
+        reasons.append("repair pointer is not formal PASS/0")
+    if pointer.get("gid") != expected_gid:
+        reasons.append("repair pointer gid mismatch")
+    if pointer.get("inputs", {}).get("bundle", {}).get("sha256") \
+            != expected_bundle_sha256:
+        reasons.append("repair pointer bundle sha256 mismatch")
+    return {"ok": not reasons, "reasons": reasons}
+
+
+def validate_repair_bundle_deep(bundle_path, *, case_root, current_base,
+                                live_canary=0, live_canary_fetch=None):
+    """Rebuild a repair generation without importing producer/replay code."""
+    reasons = []
+    case_root = Path(case_root).resolve()
+    bundle_path = Path(bundle_path).resolve()
+    generation = bundle_path.parent
+    try:
+        bundle = json.loads(bundle_path.read_text(encoding="utf-8"))
+        canonical_json(bundle)
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        return {"ok": False, "reasons": [f"bundle unreadable: {exc}"]}
+    if bundle.get("schema") != REPAIR_BUNDLE_SCHEMA or bundle.get("kind") != "repair":
+        reasons.append("repair bundle schema/kind mismatch")
+    source = (bundle.get("reference") or {}).get("source")
+    mode = bundle.get("mode")
+    if (mode == "formal") != (source == "live"):
+        reasons.append("formal/reference source equivalence violated")
+    if mode not in {"formal", "exploration"}:
+        reasons.append("bundle mode invalid")
+    base = bundle.get("base") if isinstance(bundle.get("base"), dict) else {}
+    current_edge_sha = (current_base.get("edge_sha256")
+                        if isinstance(current_base, dict) else None)
+    if current_edge_sha is None and isinstance(current_base, (tuple, list)) \
+            and current_base:
+        current_edge_sha = sha256_file(current_base[0])
+    if base.get("edge_sha256") != current_edge_sha:
+        reasons.append("bundle base edge sha256 differs from current base")
+
+    refs = {}
+    for key in ("coverage_resolution", "repair_layer", "slot_index_map",
+                "evidence_manifest", "rpc_ledger"):
+        refs[key] = _repair_ref(case_root, generation, bundle.get(key), key, reasons)
+    merged = bundle.get("merged") if isinstance(bundle.get("merged"), dict) else {}
+    base_edge = _repair_path(case_root, generation, base.get("edge_file"),
+                             "base edge", reasons)
+    merged_edge = _repair_path(case_root, generation, merged.get("edge_file"),
+                               "merged edge", reasons)
+    merged_meta_path = _repair_path(case_root, generation, merged.get("meta_file"),
+                                    "merged meta", reasons)
+    for path, expected, label in (
+            (base_edge, base.get("edge_sha256"), "base edge"),
+            (merged_edge, merged.get("edge_sha256"), "merged edge"),
+            (merged_meta_path, merged.get("meta_sha256"), "merged meta")):
+        if path is None or not path.is_file():
+            reasons.append(f"{label} missing")
+        elif sha256_file(path) != expected:
+            reasons.append(f"{label} sha256 mismatch")
+
+    def read_json(path, label):
+        if path is None:
+            return {}
+        try:
+            value = json.loads(path.read_text(encoding="utf-8"))
+            canonical_json(value)
+            return value
+        except (OSError, ValueError, json.JSONDecodeError) as exc:
+            reasons.append(f"{label} invalid: {exc}")
+            return {}
+
+    resolution = read_json(refs.get("coverage_resolution"), "resolution")
+    manifest = read_json(refs.get("evidence_manifest"), "evidence manifest")
+    meta = read_json(merged_meta_path, "merged meta")
+    layer_rows = _jsonl(refs["repair_layer"], reasons, "repair layer") \
+        if refs.get("repair_layer") else []
+    map_rows = _jsonl(refs["slot_index_map"], reasons, "slot index map") \
+        if refs.get("slot_index_map") else []
+    ledger_rows = _jsonl(refs["rpc_ledger"], reasons, "RPC ledger") \
+        if refs.get("rpc_ledger") else []
+    if resolution.get("schema") != REPAIR_RESOLUTION_SCHEMA:
+        reasons.append("resolution schema mismatch")
+    if not layer_rows or layer_rows[0].get("schema") != REPAIR_LAYER_SCHEMA:
+        reasons.append("repair layer header mismatch")
+    if not map_rows or map_rows[0].get("schema") != REPAIR_MAP_SCHEMA:
+        reasons.append("slot index map header mismatch")
+    if not ledger_rows or ledger_rows[0].get("schema") != REPAIR_LEDGER_SCHEMA:
+        reasons.append("RPC ledger header mismatch")
+    digest = bundle.get("plan_digest")
+    plan_values = [resolution.get("plan_digest"), meta.get("plan_digest")]
+    if layer_rows:
+        plan_values.append(layer_rows[0].get("plan_digest"))
+    if map_rows:
+        plan_values.append(map_rows[0].get("plan_digest"))
+    if ledger_rows:
+        plan_values.append(ledger_rows[0].get("plan_digest"))
+    if any(value != digest for value in plan_values):
+        reasons.append("plan_digest differs across generation")
+    if "gid" in meta or "bundle_sha256" in meta:
+        reasons.append("merged meta contains forbidden circular binding")
+    if meta.get("base_edge_sha256") != base.get("edge_sha256"):
+        reasons.append("merged meta base binding mismatch")
+
+    evidence = {}
+    expected_manifest = []
+    if not isinstance(manifest, list):
+        reasons.append("evidence manifest must be an array")
+        manifest = []
+    for item in manifest:
+        path = _repair_ref(case_root, generation, item, "evidence", reasons)
+        if path:
+            evidence[item["path"]] = read_json(path, item["path"])
+            expected_manifest.append(item)
+    if manifest != sorted(manifest, key=lambda item: item.get("path", "")):
+        reasons.append("evidence manifest is not path-sorted")
+    if live_canary:
+        if not _integer(live_canary) or live_canary < 0:
+            reasons.append("live_canary must be a nonnegative integer")
+        elif not callable(live_canary_fetch):
+            reasons.append("live canary requested without a reference transport")
+        else:
+            slots = sorted({row.get("slot") for row in resolution.get("census", [])
+                            if _integer(row.get("slot"))})[:live_canary]
+            for slot in slots:
+                try:
+                    block = live_canary_fetch(slot)
+                    expected = evidence[f"evidence/{slot}.ref.json"]
+                    signatures = [((tx.get("transaction") or {}).get(
+                        "signatures") or [None])[0]
+                                  for tx in block.get("transactions", [])]
+                    expected_signatures = [row.get("signature")
+                                           for row in expected.get("transactions", [])]
+                    if block.get("blockhash") != expected.get("blockhash") \
+                            or signatures != expected_signatures:
+                        reasons.append(f"live canary differs at slot {slot}")
+                except Exception as exc:
+                    reasons.append(f"live canary failed at slot {slot}: {exc}")
+
+    layer = layer_rows[1:] if layer_rows else []
+    maps = map_rows[1:] if map_rows else []
+    signatures = [row.get("signature") for row in layer]
+    if signatures != sorted(set(signatures)):
+        reasons.append("repair layer signatures are not sorted unique")
+    confirmed = {row.get("slot") for row in resolution.get("census", [])
+                 if isinstance(row, dict) and str(row.get("result", "")).startswith("confirmed_")}
+    census_slots = {row.get("slot") for row in resolution.get("census", [])
+                    if isinstance(row, dict)}
+    coverage_candidates = set()
+    coverage_map_ref = (bundle.get("coverage") or {}).get("map")
+    coverage_map_path = _repair_ref(case_root, generation, coverage_map_ref,
+                                    "coverage map", reasons)
+    coverage_map = read_json(coverage_map_path, "coverage map")
+    coverage_candidates.update(coverage_map.get("candidate_slots") or [])
+    if not coverage_candidates.issubset(census_slots):
+        reasons.append("current coverage candidates lack census disposition")
+    effective = ("INCONCLUSIVE" if not coverage_candidates.issubset(census_slots)
+                 else "DEFECTS_CONFIRMED" if confirmed
+                 else "NO_KNOWN_NONCE_OMISSION_DETECTED")
+    if resolution.get("effective_verdict") != effective:
+        reasons.append("resolution effective verdict mismatch")
+
+    map_lookup = {}
+    for item in maps:
+        slot = item.get("slot")
+        triples = item.get("map")
+        if not _integer(slot) or not isinstance(triples, list):
+            reasons.append("slot index map row invalid")
+            continue
+        columns = list(zip(*triples)) if triples else [(), (), ()]
+        if any(len(set(column)) != len(column) for column in columns) \
+                or triples != sorted(triples, key=lambda row: row[0]):
+            reasons.append(f"slot index map not bijective for {slot}")
+        map_lookup[slot] = {row[0]: row[1] for row in triples}
+        sqd_evidence = evidence.get(f"evidence/{slot}.sqd.json", {})
+        ref_evidence = evidence.get(f"evidence/{slot}.ref.json", {})
+        reference_rows = ref_evidence.get("transactions", [])
+        nonvote = [row.get("signature") for row in reference_rows
+                   if isinstance(row, dict) and row.get("is_vote") is False]
+        if len(nonvote) != len(set(nonvote)) or any(not value for value in nonvote):
+            reasons.append(f"reference transaction identity invalid for {slot}")
+        else:
+            ordinal = {signature: index for index, signature in enumerate(nonvote)}
+            expected_map = []
+            for row in sqd_evidence.get("transactions", []):
+                index, signature = row.get("index"), row.get("signature")
+                if not _integer(index) or signature not in ordinal:
+                    reasons.append(f"SQD/reference transaction identity mismatch for {slot}")
+                    expected_map = None
+                    break
+                expected_map.append([index, ordinal[signature], signature])
+            if expected_map is not None and triples != sorted(
+                    expected_map, key=lambda row: row[0]):
+                reasons.append(f"slot index map differs from evidence for {slot}")
+        if item.get("blockhash") != ref_evidence.get("blockhash") \
+                or (sqd_evidence.get("blockhash") is not None
+                    and sqd_evidence.get("blockhash") != ref_evidence.get("blockhash")):
+            reasons.append(f"blockhash mismatch for repair slot {slot}")
+
+    repair_edges = []
+    for item in layer:
+        slot = item.get("slot")
+        sqd = evidence.get(item.get("evidence", {}).get("sqd"), {})
+        sqd_signatures = {row.get("signature") for row in sqd.get("transactions", [])}
+        if item.get("signature") in sqd_signatures:
+            reasons.append("repair signature is present in SQD evidence")
+        if slot not in confirmed:
+            reasons.append("repair transaction lacks confirmed census support")
+        for edge in item.get("edges") or []:
+            if len(edge) != 7 or edge[1] != slot or edge[2] != item.get("nonvote_ordinal") \
+                    or edge[3] != -1:
+                reasons.append("repair edge identity mismatch")
+            else:
+                repair_edges.append(tuple(edge))
+
+    base_rows = _edge_rows(base_edge, reasons, "base edges") if base_edge else []
+    rebuilt = []
+    for row in base_rows:
+        if row[1] in map_lookup:
+            if row[2] not in map_lookup[row[1]]:
+                reasons.append("base edge lacks slot-index map solution")
+                continue
+            row = (row[0], row[1], map_lookup[row[1]][row[2]], *row[3:])
+        rebuilt.append(row)
+    rebuilt.extend(repair_edges)
+    rebuilt.sort(key=_edge_sort)
+    actual_merged = _edge_rows(merged_edge, reasons, "merged edges") if merged_edge else []
+    if actual_merged != rebuilt:
+        reasons.append("merged edges do not equal f(base,layer,map)")
+    logical_sha, logical_rows = _edge_evidence(actual_merged)
+    if merged.get("edge_logical_sha256") != logical_sha \
+            or meta.get("edge_logical_sha256") != logical_sha:
+        reasons.append("merged logical edge sha256 mismatch")
+    if merged.get("edge_rows") != logical_rows or meta.get("edge_rows") != logical_rows:
+        reasons.append("merged edge row count mismatch")
+    if logical_rows != base.get("edge_rows", -1) + len(repair_edges):
+        reasons.append("merged row count identity violated")
+    if (bundle.get("repair_layer") or {}).get("edges") != len(repair_edges):
+        reasons.append("bundle repair edge count mismatch")
+
+    gid_material = {
+        "plan_digest": digest, "kind": "repair", "supersedes": bundle.get("supersedes"),
+        "census": resolution.get("census", []), "transactions": layer,
+        "slot_index_map": maps, "evidence_manifest": manifest,
+        "mode": mode, "reference": {"source": source},
+    }
+    recomputed_gid = _repair_gid(gid_material)
+    if bundle.get("gid") != recomputed_gid or generation.name != f"gen-{bundle.get('gid')}":
+        reasons.append("bundle gid or generation directory mismatch")
+    return {"ok": not reasons, "reasons": reasons, "bundle": bundle,
+            "gid": recomputed_gid, "effective_verdict": effective,
+            "edge_rows": logical_rows}

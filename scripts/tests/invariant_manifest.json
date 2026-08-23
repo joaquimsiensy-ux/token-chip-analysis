@@ -296,7 +296,8 @@
   {
    "schemas": [
     "sqd-solana-coverage-pointer/v1",
-    "sqd-solana-coverage/v1"
+    "sqd-solana-coverage/v1",
+    "sqd-solana-shared-coverage-map/v1"
    ],
    "script": "scripts/solana/sqd_coverage_probe.py"
   },
@@ -305,7 +306,10 @@
     "sqd-solana-cache/v4",
     "sqd-solana-coverage-resolution/v1",
     "sqd-solana-repair-bundle/v1",
-    "sqd-solana-repair-pointer/v1"
+    "sqd-solana-repair-layer/v1",
+    "sqd-solana-repair-pointer/v1",
+    "sqd-solana-rpc-ledger/v1",
+    "sqd-solana-slot-index-map/v1"
    ],
    "script": "scripts/solana/sqd_gap_repair.py"
   },
@@ -569,8 +573,16 @@
   },
   {
    "schemas": [
+    "solana-reconcile/v4",
     "sqd-solana-coverage-pointer/v1",
-    "sqd-solana-coverage/v1"
+    "sqd-solana-coverage-resolution/v1",
+    "sqd-solana-coverage/v1",
+    "sqd-solana-repair-bundle/v1",
+    "sqd-solana-repair-layer/v1",
+    "sqd-solana-repair-pointer/v1",
+    "sqd-solana-rpc-ledger/v1",
+    "sqd-solana-shared-coverage-map/v1",
+    "sqd-solana-slot-index-map/v1"
    ],
    "script": "scripts/lib/solana_exact_validate.py"
   },
@@ -582,14 +594,10 @@
   },
   {
    "schemas": [
-    "solana-reconcile/v4",
     "sqd-solana-coverage-resolution/v1",
-    "sqd-solana-repair-bundle/v1",
-    "sqd-solana-repair-layer/v1",
-    "sqd-solana-repair-pointer/v1",
-    "sqd-solana-slot-index-map/v1"
+    "sqd-solana-rpc-ledger/v1"
    ],
-   "script": "scripts/lib/solana_exact_validate.py"
+   "script": "scripts/solana/sqd_gap_repair.py"
   }
  ],
  "transport_calls": [
