@@ -22,6 +22,7 @@ from solana_attested_session import SOLANA_MAINNET_GENESIS_HASH  # noqa: E402
 
 MINT = "CreiuhfwdWCN5mJbMJtA9bBpYQrQF2tCBuZwSPWfpump"
 PROGRAM = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+COVERAGE_FIXTURE = ROOT / "scripts/tests/fixtures/sqd_coverage/happy"
 
 
 def mint_raw(supply):
@@ -179,6 +180,24 @@ def execute_real_slice(case, endpoint):
     return total, slot
 
 
+def execute_coverage_fixture():
+    """Run the real coverage producer with transport-only offline fixtures."""
+    with tempfile.TemporaryDirectory(prefix="b3-sol-coverage-") as td:
+        case = Path(td).resolve()
+        run([sys.executable, str(ROOT / "scripts/solana/sqd_coverage_probe.py"),
+             "--mint", MINT, "--case-root", str(case),
+             "--from-slot", "100", "--to-slot", "103", "--full",
+             "--workers", "2", "--transport-fixture", str(COVERAGE_FIXTURE)], case)
+        pointer_path = case / "data/sqd_coverage/CURRENT.json"
+        pointer = json.loads(pointer_path.read_text())
+        generation = case / "data/sqd_coverage" / pointer["probe_id"]
+        assert pointer["schema"] == "sqd-solana-coverage-pointer/v1"
+        assert (generation / "coverage_map.json").is_file()
+        assert (generation / "slot_counts.bin.gz").is_file()
+        assert (generation / "blocks.bin.gz").is_file()
+        assert (generation / "ledger.jsonl").is_file()
+
+
 def test_handoff_and_release(endpoint):
     from test_handoff_manifest import make_case
     from test_audit_release_gate import build_case
@@ -230,6 +249,7 @@ def test_handoff_and_release(endpoint):
 def test_r9_solana_pythia_mainnet_vertical_slice():
     FixtureHandler.calls = []
     FixtureHandler.slot = 100
+    execute_coverage_fixture()
     server = ThreadingHTTPServer(("127.0.0.1", 0), FixtureHandler)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()

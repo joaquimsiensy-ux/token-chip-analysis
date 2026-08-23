@@ -569,10 +569,21 @@
   },
   {
    "schemas": [
-    "solana-reconcile/v4",
     "sqd-solana-coverage-pointer/v1",
+    "sqd-solana-coverage/v1"
+   ],
+   "script": "scripts/lib/solana_exact_validate.py"
+  },
+  {
+   "schemas": [
+    "sqd-solana-shared-coverage-map/v1"
+   ],
+   "script": "scripts/solana/sqd_coverage_probe.py"
+  },
+  {
+   "schemas": [
+    "solana-reconcile/v4",
     "sqd-solana-coverage-resolution/v1",
-    "sqd-solana-coverage/v1",
     "sqd-solana-repair-bundle/v1",
     "sqd-solana-repair-layer/v1",
     "sqd-solana-repair-pointer/v1",
@@ -1105,9 +1116,9 @@
    "semantics": "overwrite_single"
   },
   {
-   "locator": "main",
+   "locator": "_publish_bytes_overwrite",
    "script": "scripts/solana/sqd_coverage_probe.py",
-   "semantics": "multi_file_txn"
+   "semantics": "overwrite_single"
   },
   {
    "locator": "main",

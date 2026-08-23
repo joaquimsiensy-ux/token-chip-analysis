@@ -1,134 +1,530 @@
 #!/usr/bin/env python3
-"""Batch 1b expected-red contract tests for the future SQD coverage probe."""
-
+"""Batch 2 offline regressions for the SQD coverage probe and validator."""
 from __future__ import annotations
 
-import importlib
+import gzip
+import json
 import os
 import stat
+import subprocess
 import sys
+import tempfile
+from datetime import datetime, timezone
+from pathlib import Path
+from unittest import mock
 
 
-TARGET = "scripts.solana.sqd_coverage_probe"
+ROOT = Path(__file__).resolve().parents[2]
+sys.path[:0] = [str(ROOT), str(ROOT / "scripts/lib"), str(ROOT / "scripts/solana")]
+
+from scripts.lib import solana_exact_validate as exact  # noqa: E402
+from scripts.solana import sqd_coverage_probe as probe  # noqa: E402
 
 
-def merged_ranges_cover(ranges, lower, upper):
-    cursor = lower
-    for start, end in sorted((int(a), int(b)) for a, b in ranges):
-        if start > cursor:
-            return False
-        cursor = max(cursor, end + 1)
-        if cursor > upper:
-            return True
-    return cursor > upper
+PROBE = ROOT / "scripts/solana/sqd_coverage_probe.py"
+FIXTURES = Path(__file__).with_name("fixtures") / "sqd_coverage"
+MINT = "FixtureMint"
 
 
-def coverage_ok(fixture):
-    counts = fixture["slot_counts"]
-    expected = fixture["to_slot"] - fixture["from_slot"] + 1
-    ledger = fixture["ledger_ranges"]
-    return (
-        len(counts) == expected
-        and all(value != 0 for value in counts)
-        and merged_ranges_cover(fixture["scan_ranges"], fixture["from_slot"], fixture["to_slot"])
-        and merged_ranges_cover(ledger, fixture["from_slot"], fixture["to_slot"])
-    )
+def run_cli(case, fixture, *extra):
+    command = [
+        sys.executable, str(PROBE), "--mint", MINT, "--case-root", str(case),
+        "--from-slot", "100", "--to-slot", "103", "--full", "--workers", "2",
+        "--transport-fixture", str(fixture), *extra,
+    ]
+    return subprocess.run(command, cwd=ROOT, capture_output=True, text=True)
 
 
-def getblocks_complete(segment):
-    width = segment["to"] - segment["from"] + 1
-    bitmap = segment["bitmap"]
-    return (
-        segment["response_ok"] is True
-        and segment["array_monotonic_unique"] is True
-        and segment["array_in_range"] is True
-        and width <= 500_000
-        and segment["reference_head_at_check"] >= segment["to"]
-        and len(bitmap) == width
-        and sum(bitmap) == segment["count"]
-        and segment["count"] <= width
-    )
+def read_current(case):
+    path = case / "data/sqd_coverage/CURRENT.json"
+    pointer = json.loads(path.read_text(encoding="utf-8"))
+    generation = case / "data/sqd_coverage" / pointer["probe_id"]
+    coverage = json.loads((generation / "coverage_map.json").read_text(encoding="utf-8"))
+    return pointer, generation, coverage
 
 
-def pointer_cas(current, candidate):
-    if current and current["probe_id"] == candidate["probe_id"]:
-        return current["coverage_sha256"] == candidate["coverage_sha256"]
-    current_id = None if current is None else current["probe_id"]
-    return candidate["supersedes"] == current_id
+def test_batch1b_red_to_green_symbols():
+    fixture = {
+        "schema": exact.COVERAGE_SCHEMA, "version": 1, "chain": "solana",
+        "mint": MINT, "probe_id": "", "era_params": dict(exact.ERA_PARAMS),
+        "scan_ranges": [{"from_slot": 10, "to_slot": 14, "mode": "full"}],
+        "sample_ranges": [{"from_slot": 15, "to_slot": 20}],
+        "verdict": "INCONCLUSIVE",
+    }
+    fixture["probe_id"] = exact.compute_probe_id(fixture)
+    result = probe.validate_coverage_map(
+        fixture, case_from_slot=10, case_to_slot=20)
+    assert not result["ok"] and any("scan_ranges union" in reason
+                                    for reason in result["reasons"])
+    print("GREEN 3 sample_ranges cannot fill formal scan_ranges gaps")
+
+    base = bytes([1, 2, 3])
+    cases = [
+        (bytes([1, 0, 3]), 1, 3, [(1, 3)], [(1, 3)]),
+        (bytes([1, 2]), 1, 3, [(1, 3)], [(1, 3)]),
+        (base, 1, 3, [(1, 3)], [(1, 1), (3, 3)]),
+    ]
+    assert all(not probe.validate_slot_counts(*case)["ok"] for case in cases)
+    print("GREEN 20 UNSCANNED/length/ledger holes fail closed")
+
+    bitmap = exact.encode_bitmap([10, 12], 10, 12)
+    good = {"from": 10, "to": 12, "response_ok": True,
+            "array_monotonic_unique": True, "array_in_range": True,
+            "reference_head_at_check": 12, "count": 2}
+    assert probe.derive_getblocks_complete(good, bitmap, 10)
+    mutations = [
+        ({**good, "response_ok": False}, bitmap, 10),
+        ({**good, "array_monotonic_unique": False}, bitmap, 10),
+        ({**good, "array_in_range": False}, bitmap, 10),
+        ({**good, "to": 500_010}, bitmap, 10),
+        ({**good, "reference_head_at_check": 11}, bitmap, 10),
+        ({**good, "to": 18, "count": 2}, b"", 10),
+        ({**good, "count": 1}, bitmap, 10),
+        ({**good, "count": 4}, bitmap, 10),
+    ]
+    assert all(not probe.derive_getblocks_complete(segment, raw, lower)
+               for segment, raw, lower in mutations)
+    padding_escape = {**good, "from": 12, "to": 15,
+                      "reference_head_at_check": 15, "count": 1}
+    assert probe.derive_getblocks_complete(padding_escape, bitmap, 10), \
+        "pure conjunction intentionally lacks declared bitmap upper bound"
+    print("GREEN 21 getBlocks complete eight-way conjunction")
+
+    assert probe.validate_blocks_bitmap(bitmap, 10, 12)["ok"]
+    assert not probe.validate_blocks_bitmap(b"", 10, 12)["ok"]
+    assert not probe.validate_blocks_bitmap(b"\x82", 10, 12)["ok"]
+    print("GREEN 28 bitmap length/popcount/range binding")
+
+    assert hasattr(probe, "publish_probe_generation")
+    print("GREEN 30 CAS/idempotence/directory fsync implementation present")
 
 
-def directory_fsync_complete(events):
-    return events == ["probe_dir", "coverage_parent", "pointer_parent"]
+def test_four_states_and_integer_era():
+    exact_boundary = bytes([3] * 9_900 + [2] * 100)
+    classified = probe.classify_four_states(exact_boundary, 0)
+    assert classified["summary"]["healthy"] == 9_900
+    assert classified["summary"]["defect_candidate"] == 100
+    assert classified["candidate_slots"] == list(range(9_900, 10_000))
+    below = probe.classify_four_states(bytes([3] * 9_899 + [2] * 101), 0)
+    assert below["summary"]["defect_candidate"] == 0
+    assert below["summary"]["era_uncertain"] == 101
+
+    bitmap = exact.encode_bitmap([0, 1, 3], 0, 3)
+    confirmation = {
+        "reference_head_at_check": 3,
+        "blocks_bitmap": {"from_slot": 0},
+        "ranges": [{"from": 0, "to": 3, "response_sha256": "0" * 64,
+                    "count": 3, "response_ok": True,
+                    "array_monotonic_unique": True, "array_in_range": True}],
+    }
+    states = probe.classify_four_states(bytes([3, 1, 1, 3]), 0,
+                                        confirmation=confirmation,
+                                        blocks_bitmap=bitmap)["states"]
+    assert states == ["HEALTHY", "MISSING_BLOCK", "SKIPPED_CONFIRMED", "HEALTHY"]
+    assert probe.classify_four_states(bytes([3, 1, 3]), 0)["states"][1] == "NO_HEADER"
 
 
-def expected_red(item, symbol, detail):
+def test_probe_id_and_canonical_float_rejection():
+    payload = {"schema": exact.COVERAGE_SCHEMA, "probe_id": "ignored",
+               "mint": MINT, "nested": {"n": 1}}
+    first = exact.compute_probe_id(payload)
+    payload["probe_id"] = first
+    assert exact.compute_probe_id(payload) == first
+    payload["nested"]["n"] = 2
+    assert exact.compute_probe_id(payload) != first
     try:
-        module = importlib.import_module(TARGET)
-        if not hasattr(module, symbol):
-            raise AttributeError(symbol)
-    except (ImportError, AttributeError):
-        print(f"EXPECTED_RED: {TARGET}/{symbol} 未实现")
-        print(f"RED {item} missing-mechanism {detail}")
-        return 1
-    print(f"GREEN {item} implemented {symbol} 已实现")
-    return 0
+        exact.canonical_json({"ratio": 0.99})
+    except ValueError as exc:
+        assert "float forbidden" in str(exc)
+    else:
+        raise AssertionError("canonical JSON accepted float")
+
+
+def _pending(parent, probe_id, coverage=b"coverage"):
+    path = parent / f"pending-{probe_id}"
+    path.mkdir()
+    for name, raw in {
+        "coverage_map.json": coverage,
+        "slot_counts.bin.gz": b"counts",
+        "blocks.bin.gz": b"blocks",
+        "ledger.jsonl": b"ledger\n",
+    }.items():
+        (path / name).write_bytes(raw)
+    return path
+
+
+def _pointer(parent, probe_id, supersedes):
+    coverage = parent / f"pending-{probe_id}/coverage_map.json"
+    return {"probe_id": probe_id, "supersedes": supersedes,
+            "inputs": {"coverage_map": {"sha256": probe.sha256_file(coverage)}}}
+
+
+def test_publish_protocol_cas_idempotence_and_three_directory_fsyncs():
+    with tempfile.TemporaryDirectory(prefix="sqd-publish-") as td:
+        case = Path(td)
+        parent = case / "data/sqd_coverage"
+        parent.mkdir(parents=True)
+        probe_id = "1" * 16
+        pending = _pending(parent, probe_id)
+        pointer = _pointer(parent, probe_id, None)
+        original_fsync = os.fsync
+        directory_fsyncs = []
+
+        def recording_fsync(fd):
+            if stat.S_ISDIR(os.fstat(fd).st_mode):
+                directory_fsyncs.append(fd)
+            return original_fsync(fd)
+
+        with mock.patch.object(probe.os, "fsync", side_effect=recording_fsync):
+            action = probe.publish_probe_generation(
+                case, pending, probe_id, pointer, observed_current=None)
+        assert action == "published" and len(directory_fsyncs) == 3, directory_fsyncs
+        current = json.loads((parent / "CURRENT.json").read_text())
+
+        pending = _pending(parent, probe_id)
+        pointer = _pointer(parent, probe_id, "wrong-but-idempotent")
+        action = probe.publish_probe_generation(
+            case, pending, probe_id, pointer, observed_current=current)
+        assert action == "idempotent-republish" and not pending.exists()
+
+        second = "2" * 16
+        pending = _pending(parent, second, coverage=b"new coverage")
+        bad = _pointer(parent, second, "not-current")
+        try:
+            probe.publish_probe_generation(
+                case, pending, second, bad, observed_current=current)
+        except RuntimeError as exc:
+            assert "CAS failed" in str(exc)
+        else:
+            raise AssertionError("stale CAS overwrote CURRENT")
+        assert (parent / second).is_dir(), "CAS orphan generation was not retained"
+        assert json.loads((parent / "CURRENT.json").read_text())["probe_id"] == probe_id
+
+
+def test_fixture_cli_publish_validate_no_getblocks_and_redaction():
+    secret = "ULTRA_SECRET_FIXTURE_KEY_123456789"
+    with tempfile.TemporaryDirectory(prefix="sqd-cli-") as td:
+        case = Path(td)
+        completed = run_cli(case, FIXTURES / "happy", "--reference-rpc",
+                            f"https://rpc.invalid/?api-key={secret}")
+        assert completed.returncode == 0, (completed.stdout, completed.stderr)
+        pointer, generation, coverage = read_current(case)
+        checked = exact.validate_coverage(
+            case, generation / "coverage_map.json",
+            case / "data/sqd_coverage/CURRENT.json", 100, 103)
+        assert checked["ok"], checked
+        assert coverage["candidate_slots"] == []
+        assert checked["recomputed"]["states"] == [
+            "HEALTHY", "ERA_UNCERTAIN", "SKIPPED_CONFIRMED", "HEALTHY"]
+        assert all(checked["recomputed"]["getblocks_complete"])
+        assert set(pointer["inputs"]) == {
+            "coverage_map", "slot_counts", "ledger", "blocks_bitmap"}
+        bad_pointer = json.loads(json.dumps(pointer))
+        bad_pointer["inputs"]["coverage_map"]["sha256"] = "0" * 64
+        bad_path = case / "bad-pointer.json"
+        bad_path.write_text(json.dumps(bad_pointer), encoding="utf-8")
+        rejected = exact.validate_coverage(
+            case, generation / "coverage_map.json", bad_path, 100, 103)
+        assert not rejected["ok"] and any("coverage_map sha256 mismatch" in reason
+                                          for reason in rejected["reasons"])
+        bad_path.unlink()
+
+        escaped = json.loads(json.dumps(coverage))
+        escaped["skipped_confirmation"]["ranges"][0].update(
+            {"from": 101, "to": 104, "count": 2})
+        escaped["probe_id"] = exact.compute_probe_id(escaped)
+        escaped_path = case / "escaped-coverage.json"
+        escaped_path.write_text(json.dumps(escaped), encoding="utf-8")
+        escaped_pointer = json.loads(json.dumps(pointer))
+        escaped_pointer["probe_id"] = escaped["probe_id"]
+        escaped_pointer["inputs"]["coverage_map"] = {
+            "path": "escaped-coverage.json", "size": escaped_path.stat().st_size,
+            "sha256": exact.sha256_file(escaped_path)}
+        escaped_pointer_path = case / "escaped-pointer.json"
+        escaped_pointer_path.write_text(json.dumps(escaped_pointer), encoding="utf-8")
+        rejected = exact.validate_coverage(
+            case, escaped_path, escaped_pointer_path, 100, 103)
+        assert not rejected["ok"] and any("escapes blocks bitmap" in reason
+                                          for reason in rejected["reasons"])
+        escaped_pointer_path.unlink()
+        escaped_path.unlink()
+
+        old_probe_id = pointer["probe_id"]
+        second = run_cli(case, FIXTURES / "happy")
+        assert second.returncode == 0, (second.stdout, second.stderr)
+        second_pointer, second_generation, _second_coverage = read_current(case)
+        assert second_pointer["supersedes"] == old_probe_id
+        assert (case / "data/sqd_coverage" / old_probe_id).is_dir()
+        traced = exact.validate_coverage(
+            case, second_generation / "coverage_map.json",
+            case / "data/sqd_coverage/CURRENT.json", 100, 103)
+        assert traced["ok"], traced
+        all_bytes = completed.stdout.encode() + completed.stderr.encode()
+        for path in case.rglob("*"):
+            if path.is_file():
+                all_bytes += path.read_bytes()
+        assert secret.encode() not in all_bytes
+
+    with tempfile.TemporaryDirectory(prefix="sqd-no-blocks-") as td:
+        case = Path(td)
+        completed = run_cli(case, FIXTURES / "happy", "--no-getblocks")
+        assert completed.returncode == 0, (completed.stdout, completed.stderr)
+        pointer, _generation, coverage = read_current(case)
+        assert coverage["skipped_confirmation"] is None
+        assert "blocks_bitmap" not in pointer["inputs"]
+        assert coverage["summary"]["no_header_unconfirmed"] == 1
+        assert coverage["verdict"] == "INCONCLUSIVE"
+
+
+def test_unscanned_resume_and_quota_stopped_resume():
+    with tempfile.TemporaryDirectory(prefix="sqd-resume-") as td:
+        case = Path(td)
+        first = run_cli(case, FIXTURES / "resume_fail")
+        assert first.returncode == 2 and "UNSCANNED" in first.stderr
+        assert not (case / "data/sqd_coverage/CURRENT.json").exists()
+        pending = list((case / "data/sqd_coverage").glob("pending-*"))
+        assert len(pending) == 1 and (pending[0] / "resume_state.json").is_file()
+        second = run_cli(case, FIXTURES / "happy", "--resume")
+        assert second.returncode == 0, (second.stdout, second.stderr)
+        assert (case / "data/sqd_coverage/CURRENT.json").is_file()
+
+    with tempfile.TemporaryDirectory(prefix="sqd-quota-") as td:
+        case = Path(td)
+        first = run_cli(case, FIXTURES / "quota")
+        assert first.returncode == 3, (first.stdout, first.stderr)
+        pending = list((case / "data/sqd_coverage").glob("pending-*"))
+        assert len(pending) == 1
+        stopped = json.loads((pending[0] / "STOPPED.json").read_text())
+        assert stopped == {"reason": "reference-quota", "cursor": 100}
+        assert not (case / "data/sqd_coverage/CURRENT.json").exists()
+        second = run_cli(case, FIXTURES / "happy", "--resume")
+        assert second.returncode == 0, (second.stdout, second.stderr)
+
+
+def test_dry_run_has_no_artifacts():
+    with tempfile.TemporaryDirectory(prefix="sqd-dry-") as td:
+        case = Path(td) / "case"
+        completed = run_cli(case, FIXTURES / "happy", "--dry-run")
+        assert completed.returncode == 0, completed.stderr
+        payload = json.loads(completed.stdout)
+        assert payload["slots"] == 4
+        assert payload["estimated_sqd_requests_lower_bound"] == 1
+        assert payload["sqd_request_estimate"] == {
+            "empirical_slots_per_page_upper_bound": 450,
+            "uncertain": True,
+            "reason": "SQD stream pages can truncate before the requested end",
+        }
+        assert not case.exists()
+
+
+def test_sqd_cursor_pagination_regressions():
+    """Cursor pages, empty success, and malformed pages are fail-closed."""
+    counts = bytearray(4)
+    ledger = []
+    probe._scan_ranges(
+        probe.FixtureTransport(FIXTURES / "pagination"), counts, 100,
+        [(100, 103)], 1, ledger, ["fixture://sqd"])
+    assert counts == bytes([1, 2, 4, 3]), (
+        "RED B2B-PAGE-01 truncated page tail was classified NO_HEADER", counts)
+    assert len(ledger) == 2
+    assert [row["from"] for row in ledger] == [100, 102]
+    assert sum(row["slots_covered"] for row in ledger) == 4
+    assert [(row["returned_from"], row["returned_to"], row["n_blocks"])
+            for row in ledger] == [(101, 101, 1), (102, 103, 2)]
+    assert all(row["empty_response"] is False for row in ledger)
+    reasons = []
+    actual_ranges, empty_count = exact._success_ranges(ledger, reasons)
+    assert actual_ranges == [(100, 101), (102, 103)]
+    assert empty_count == 0 and reasons == []
+
+    empty_counts = bytearray(4)
+    empty_ledger = []
+    probe._scan_ranges(
+        probe.FixtureTransport(FIXTURES / "empty"), empty_counts, 100,
+        [(100, 103)], 1, empty_ledger, ["fixture://sqd"])
+    assert empty_counts == bytes([1, 1, 1, 1])
+    assert len(empty_ledger) == 1
+    assert empty_ledger[0]["empty_response"] is True
+    assert empty_ledger[0]["slots_covered"] == 4
+    assert empty_ledger[0]["returned_from"] is None
+    assert empty_ledger[0]["returned_to"] is None
+    assert empty_ledger[0]["n_blocks"] == 0
+    reasons = []
+    actual_ranges, empty_count = exact._success_ranges(empty_ledger, reasons)
+    assert actual_ranges == [(100, 103)]
+    assert empty_count == 1 and reasons == []
+
+    forged = dict(ledger[0], slots_covered=4)
+    reasons = []
+    exact._success_ranges([forged], reasons)
+    assert "nonempty SQD response cursor facts inconsistent" in reasons
+
+    for start in (100, 200, 300):
+        invalid_counts = bytearray(4)
+        invalid_ledger = []
+        probe._scan_ranges(
+            probe.FixtureTransport(FIXTURES / "invalid_pages"),
+            invalid_counts, start, [(start, start + 3)], 1,
+            invalid_ledger, ["fixture://sqd"])
+        assert invalid_counts == bytes(4)
+        assert len(invalid_ledger) == 1
+        assert invalid_ledger[0]["ok"] is False
+        assert invalid_ledger[0]["slots_covered"] == 0
+
+    with tempfile.TemporaryDirectory(prefix="sqd-page-invalid-") as td:
+        case = Path(td)
+        completed = run_cli(case, FIXTURES / "invalid_pages", "--no-getblocks")
+        assert completed.returncode == 2 and "UNSCANNED" in completed.stderr
+        assert not (case / "data/sqd_coverage/CURRENT.json").exists()
+
+    for fixture_name, expected_empty in (("pagination", 0), ("empty", 1)):
+        with tempfile.TemporaryDirectory(prefix=f"sqd-page-{fixture_name}-") as td:
+            case = Path(td)
+            completed = run_cli(case, FIXTURES / fixture_name, "--no-getblocks")
+            assert completed.returncode == 0, (completed.stdout, completed.stderr)
+            _pointer, generation, _coverage = read_current(case)
+            checked = exact.validate_coverage(
+                case, generation / "coverage_map.json",
+                case / "data/sqd_coverage/CURRENT.json", 100, 103)
+            assert checked["ok"], checked
+            assert checked["recomputed"]["empty_response_count"] == expected_empty
+
+    class BoundedPageTransport:
+        def call(self, kind, body):
+            assert kind == "sqd-stream"
+            start, end = body["fromBlock"], body["toBlock"]
+            page_end = min(end, start + 99)
+            return probe.net.Result(ok=True, value=[
+                {"header": {"number": slot}, "instructions": []}
+                for slot in range(start, page_end + 1)])
+
+    parallel_counts = bytearray(904)
+    parallel_ledger = []
+    probe._scan_ranges(
+        BoundedPageTransport(), parallel_counts, 1_000,
+        [(1_000, 1_903)], 4, parallel_ledger, ["fixture://sqd"])
+    assert parallel_counts == bytes([2]) * 904
+    assert len(parallel_ledger) == 11
+    reasons = []
+    parallel_ranges, _empty = exact._success_ranges(parallel_ledger, reasons)
+    assert exact.merge_ranges(parallel_ranges) == [(1_000, 1_903)]
+    assert reasons == []
+
+
+def test_shared_map_lifecycle_rechecks_all_known_and_canary():
+    with tempfile.TemporaryDirectory(prefix="sqd-map-") as td:
+        root = Path(td)
+        counts = bytes([3] * 64)
+        counts_path = root / "map.counts.bin.gz"
+        counts_path.write_bytes(gzip.compress(counts, mtime=0))
+        blocks_path = root / "map.blocks.bin.gz"
+        blocks_path.write_bytes(gzip.compress(exact.encode_bitmap(
+            range(200, 264), 200, 263), mtime=0))
+        metadata = {"dataset_id": "solana-mainnet", "start_block": 0,
+                    "real_time": True, "finalized_head": 1000}
+        fixture_fingerprint = probe.endpoint_fingerprint("fixture://sqd")["sha256"]
+        asset = {
+            "schema": "sqd-solana-shared-coverage-map/v1", "version": "fixture",
+            "generated_at": datetime.now(timezone.utc).isoformat(), "ttl_days": 30,
+            "supersedes": None,
+            "sqd": {"endpoint_fingerprint": fixture_fingerprint,
+                    "metadata_normalized": metadata},
+            "slot_counts": {"path": counts_path.name,
+                            "size": counts_path.stat().st_size,
+                            "sha256": exact.sha256_file(counts_path),
+                            "from_slot": 200, "to_slot": 263,
+                            "encoding": exact.COUNT_ENCODING},
+            "blocks_bitmap": {"path": blocks_path.name,
+                              "size": blocks_path.stat().st_size,
+                              "sha256": exact.sha256_file(blocks_path),
+                              "from_slot": 200, "to_slot": 263,
+                              "encoding": exact.BITMAP_ENCODING},
+            "candidate_slots": [200], "refuted_slots": [201],
+            "canary": {"slots": list(range(200, 264)), "counts": [3] * 64},
+        }
+        asset_path = root / "map.json"
+        asset_path.write_text(json.dumps(asset), encoding="utf-8")
+        responses = {}
+        responses[probe.request_digest("sqd-head", {})] = {
+            "ok": True, "value": metadata}
+        for slot in range(200, 264):
+            body = probe.sqd_query_body(slot, slot)
+            responses[probe.request_digest("sqd-stream", body)] = {
+                "ok": True, "value": [{"header": {"number": slot},
+                                         "instructions": [{"transactionIndex": 0}]}]}
+        fixture_dir = root / "transport"
+        fixture_dir.mkdir()
+        (fixture_dir / "responses.json").write_text(json.dumps({
+            "format": "sqd-coverage-transport-fixture-v1",
+            "responses": responses}), encoding="utf-8")
+        ledger = []
+        info, reused, lower, upper = probe._load_known_map(
+            asset_path, 200, 263, fixture_fingerprint, metadata,
+            probe.FixtureTransport(fixture_dir), ledger, ["fixture://sqd"])
+        assert reused == counts and (lower, upper) == (200, 263)
+        assert len(ledger) == 64 and "fallback_reason" not in info
+        assert len(info["canary"]["slots"]) == 64
+
+        case = root / "case"
+        rc = probe.main([
+            "--mint", MINT, "--case-root", str(case),
+            "--from-slot", "200", "--to-slot", "263",
+            "--known-map", str(asset_path), "--no-getblocks",
+            "--transport-fixture", str(fixture_dir),
+        ])
+        assert rc == 0
+        pointer = json.loads((case / "data/sqd_coverage/CURRENT.json").read_text())
+        coverage = json.loads((case / "data/sqd_coverage" / pointer["probe_id"]
+                               / "coverage_map.json").read_text())
+        assert {item["mode"] for item in coverage["scan_ranges"]} == {
+            "map-reuse", "recheck"}
+        assert coverage["shared_map"]["reused_ranges"] == [
+            {"from_slot": 200, "to_slot": 263}]
+
+        info, reused, _lower, _upper = probe._load_known_map(
+            asset_path, 200, 263, "changed", metadata,
+            probe.FixtureTransport(fixture_dir), [], ["fixture://sqd"])
+        assert reused is None and info["fallback_reason"] == "endpoint-fingerprint-changed"
+
+
+def test_guard_fixture_budget_and_no_run_threshold_detector():
+    source = PROBE.read_text(encoding="utf-8").lower()
+    for banned in ("run_length", "defect_run", "gap_threshold", "consecutive_zero"):
+        assert banned not in source
+    fixture_bytes = sum(path.stat().st_size for path in FIXTURES.rglob("*")
+                        if path.is_file())
+    assert fixture_bytes <= 200 * 1024, fixture_bytes
+    hook = ROOT / "scripts/hooks/guard_file_ops.py"
+    for rel in (
+        "/case/data/sqd_coverage/CURRENT.json",
+        "/case/data/sqd_coverage/0123456789abcdef/coverage_map.json",
+        "/case/data/sqd_coverage/pending-0123456789abcdef/STOPPED.json",
+    ):
+        completed = subprocess.run(
+            [sys.executable, str(hook)], input=json.dumps({
+                "tool_name": "Write", "tool_input": {"file_path": rel}}),
+            capture_output=True, text=True)
+        assert completed.returncode == 0 and "deny" in completed.stdout, rel
 
 
 def main():
-    red = 0
-
-    # (3) sample_ranges cannot repair a gap in the formal scan_ranges union.
-    fixture = {"scan_ranges": [(10, 14)], "sample_ranges": [(15, 20)]}
-    assert not merged_ranges_cover(fixture["scan_ranges"], 10, 20)
-    assert merged_ranges_cover(fixture["scan_ranges"] + fixture["sample_ranges"], 10, 20)
-    red += expected_red("3", "validate_coverage_map", "sample_ranges 仍可能冒充 formal 全覆盖")
-
-    # (20) Each independent structural defect must fail the oracle.
-    base = {"from_slot": 1, "to_slot": 3, "slot_counts": [1, 2, 3],
-            "scan_ranges": [(1, 3)], "ledger_ranges": [(1, 3)]}
-    cases = [
-        {**base, "slot_counts": [1, 0, 3]},
-        {**base, "slot_counts": [1, 2]},
-        {**base, "ledger_ranges": [(1, 1), (3, 3)]},
+    tests = [
+        test_batch1b_red_to_green_symbols,
+        test_four_states_and_integer_era,
+        test_probe_id_and_canonical_float_rejection,
+        test_publish_protocol_cas_idempotence_and_three_directory_fsyncs,
+        test_fixture_cli_publish_validate_no_getblocks_and_redaction,
+        test_unscanned_resume_and_quota_stopped_resume,
+        test_dry_run_has_no_artifacts,
+        test_sqd_cursor_pagination_regressions,
+        test_shared_map_lifecycle_rechecks_all_known_and_canary,
+        test_guard_fixture_budget_and_no_run_threshold_detector,
     ]
-    assert all(not coverage_ok(case) for case in cases)
-    red += expected_red("20", "validate_slot_counts", "UNSCANNED、长度错误或 ledger 洞尚无正式拒绝器")
-
-    # (21) The errata E2 conjunction is required; flip each relevant predicate.
-    good = {"from": 10, "to": 12, "response_ok": True,
-            "array_monotonic_unique": True, "array_in_range": True,
-            "reference_head_at_check": 12, "bitmap": [1, 0, 1], "count": 2}
-    assert getblocks_complete(good)
-    bad = []
-    for key, value in [("response_ok", False), ("array_monotonic_unique", False),
-                       ("array_in_range", False), ("reference_head_at_check", 11),
-                       ("count", 4)]:
-        bad.append({**good, key: value})
-    bad.append({**good, "to": 500_010, "bitmap": [0] * 500_001, "count": 0})
-    assert all(not getblocks_complete(case) for case in bad)
-    red += expected_red("21", "derive_getblocks_complete", "getBlocks complete 合取式尚未实现")
-
-    # (28) Bitmap length, popcount and interval binding are separate failures.
-    bitmap_bad = [
-        {**good, "bitmap": [1, 0]},
-        {**good, "bitmap": [1, 0, 1], "count": 1},
-        {**good, "from": 11, "to": 13, "reference_head_at_check": 13,
-         "bitmap": [1, 0, 1], "count": 2, "array_in_range": False},
-    ]
-    assert all(not getblocks_complete(case) for case in bitmap_bad)
-    red += expected_red("28", "validate_blocks_bitmap", "位图长度、popcount、范围绑定尚无正式拒绝器")
-
-    # (30) CAS, same-id idempotence and the three directory fsyncs.
-    current = {"probe_id": "p1", "coverage_sha256": "a"}
-    assert not pointer_cas(current, {"probe_id": "p2", "coverage_sha256": "b", "supersedes": "old"})
-    assert pointer_cas(current, {"probe_id": "p1", "coverage_sha256": "a", "supersedes": "old"})
-    assert not pointer_cas(current, {"probe_id": "p1", "coverage_sha256": "changed", "supersedes": "p1"})
-    assert directory_fsync_complete(["probe_dir", "coverage_parent", "pointer_parent"])
-    assert not directory_fsync_complete(["probe_dir", "pointer_parent"])
-    red += expected_red("30", "publish_probe_generation", "探针 CAS、幂等补发与三次目录 fsync 尚未实现")
-
-    return 1 if red else 0
+    for test in tests:
+        test()
+    print(f"PASS SQD coverage probe: {len(tests)}/{len(tests)} offline groups")
+    return 0
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    raise SystemExit(main())

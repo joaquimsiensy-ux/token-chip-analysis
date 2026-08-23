@@ -66,3 +66,14 @@
 | # | 发现 | 裁定 |
 |---|---|---|
 | **E20** | 给 `invariant_scan.FORMAL_E2E_REQUIRED_PRODUCERS["sol"]` 登记 `sqd_coverage_probe.py`/`replay_edges.py` 后，现役守卫 `test_batch4_invariant_guards.py:198`（断言默认 `formal_e2e_provenance_errors()==[]`）必然红——Solana 纵切片 `test_batch3_solana_vertical_slice.py` 尚无二者的执行证据 | 选项 2：**预期先红清单＝`invariant_scan.py`（20 项登记缺口）＋`test_batch4_invariant_guards.py`（仅 :198 一条）**；不得条件化常量/伪造 producer/削弱守卫。闭合批次写死：**批 2** 把 probe 接入 Solana 纵切片（离线 mock transport 下真实执行 `sqd_coverage_probe.py` 产 coverage 产物＋指针），**批 5** 把 `replay_edges.py reconcile`（v4）接入纵切片并产 exact receipt → 两条执行证据齐后 :198 自然转绿。沙箱两项回环 `EPERM` 失败为 companion 沙箱限制（本机复跑全绿），不计。 |
+
+---
+
+# 批 2/2b 验收增补（2026-08-23；Fable 本机联网冒烟与路 A 真值交叉表的发现，详见 `batch2b_fable_acceptance.md`）
+
+| # | 发现 | 裁定 |
+|---|---|---|
+| **E21（待用户裁决，不改冻结参数）** | 时代校准按 100 万 slot 桶算"有 nonce 块/有块头块 ≥0.99"，统计只来自本案 slot_counts。阈值把"时代是否普遍用 nonce"与"桶内缺陷密度"耦合：缺陷段冒烟窗比率 0.77 → 4,863 个真缺陷全部 ERA_UNCERTAIN；若 ARC 全扫某桶缺陷密度 >1%（已知 38 段＋新发现微段集中在 06-13/15/16 三天），该桶全部缺陷 ERA_UNCERTAIN → 按计划文本 INCONCLUSIVE ⇒ FAIL，且 α 只普查 DEFECT_CANDIDATE ⇒ **越缺越修不了**。健康基线≈100%、老时代比率 0.1–0.5，阈值 0.90 同样能分清时代 | **批 3 按计划文本施工（ERA_UNCERTAIN 归 unconfirmed ⇒ INCONCLUSIVE）**；ARC 全扫结束后用逐桶真实统计报用户，候选改法：①允许 α 对 ERA_UNCERTAIN slot 普查并给归宿（census 行 confirmed/refuted 即为归宿，有效 verdict 规则相应扩到 candidate ∪ era_uncertain）；②冻结参数 `min_ratio` 0.99→0.90。用户拍板后若采纳，立批 3b 小修 validator/resolution（范围：`classify_four_states` 归宿规则＋`coverage_resolution` 有效 verdict 重算＋对应测试）。 |
+| **E22（待用户裁决，成本结构）** | 健康期 5 万 slot 样本有 0.05% 单块零 nonce 候选（薄块/纯投票块），Helius 对照 3/3 全良性、普查必 refuted；外推全史 ≈6.7 万良性候选 ×10 credits ≈ **67 万 credits 只为驳回**，计划 §4.6 的 ≈68k 未含此项。且按计划文本每案 resolution 须自行给候选归宿，共享地图 `refuted_slots` 只用于"逐 slot 复核"不替代普查 ⇒ 每个新 Solana 案都要重付 | 选项：(A) 全普查（裁决④无上限；一次性，需补"驳回继承"规则：地图 `refuted_slots` 带 census 证据哈希，后案在 SQD 侧状态（该 slot 签名集哈希）未变时可继承驳回——链上侧是已 finalized 历史事实；需 errata 写进 4.2.4/4.3.1 与 validator）；(B) 允许公共 RPC 作"仅驳回用"第二参考（便宜但引入第二来源类，违背裁决④精神）；(C) 薄块启发式免普查（不可靠，Fable 反对）。**Fable 推荐 (A)＋驳回继承**。ARC 全扫给出精确候选数后再报。 |
+| **E23（批 2c，已派）** | 探针只在整趟结束/配额停工时写 `resume_state.json`，22 小时全扫中途被杀全丢 | 批 2c：`_scan_ranges` 主线程每完成 N 页（`--checkpoint-every`，默认 2,000）写一次 `resume_state.json`（沿用现有 `_write_resume`，同一 pending 目录、identity 不变）；`--resume` 从检查点续扫只补 UNSCANNED；测试用 fixture transport 注入"第 k 页后中断"再 `--resume`，断言续扫请求数＝剩余页数且产物 probe_id 与一次跑通一致。不改 coverage 契约。 |
+| **E24（批 3 工单补第 10 条）** | 探针能消费共享地图（`--known-map`）但不能把一次全扫**导出**成地图资产；README 已写"首版由 Fable 全扫验收后入库" | 批 3 新增：`sqd_coverage_probe.py export-shared-map --case-root --probe-id <id> --out assets/sqd-solana-coverage-map/`：从已发布 probe 产 `<YYYYMMDD>.{json,counts.bin.gz,blocks.bin.gz}`（schema `sqd-solana-shared-coverage-map/v1`、`ttl_days:30`、`supersedes`＝目录内上一版 version 或 null、`candidate_slots`＝重算 DEFECT_CANDIDATE、`refuted_slots`＝[]（待 E22 规则）、canary 64 slot＝由 sha256(probe_id) 驱动在有块头 slot 中确定性等距取样＋其 counts）；导出确定性（同 probe 两次导出字节一致）；validator 校验资产自洽并能被 `--known-map` 回读（round-trip 测试）。不新增 producer 登记（资产由 probe 的 coverage_map 哈希锚定）。 |

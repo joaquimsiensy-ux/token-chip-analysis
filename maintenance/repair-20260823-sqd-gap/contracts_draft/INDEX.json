@@ -14,7 +14,8 @@
   "E14–E16 为批 1a 增补。",
   "批 1b 已按 E14 将 solana-reconcile/v4 三个 raw 字段登记为 JSON int，并标注 v3 string→v4 int。",
   "批 1b 已按 E17 补 canonicalization 的 rpc_ledger 依赖节点与 publish step_1 定稿规则。",
-  "批 1b 已按 E18 将 checks.exact_reconcile.* 设为 Solana 条件必填、EVM 必须省略。"
+  "批 1b 已按 E18 将 checks.exact_reconcile.* 设为 Solana 条件必填、EVM 必须省略。",
+  "批 2b 按 Fable 联网分页反例细化 coverage ledger：每页记录实际覆盖游标与 empty_response，成功并集按 from+slots_covered-1 重算。"
  ],
  "files": [
   {

@@ -470,11 +470,123 @@
       "required": true,
       "description": "",
       "constraints": ""
+    },
+    {
+      "name": "ledger.rows[].seq",
+      "type": "integer",
+      "required": true,
+      "description": "ledger.jsonl 零基连续序号",
+      "constraints": ""
+    },
+    {
+      "name": "ledger.rows[].ts",
+      "type": "string",
+      "required": true,
+      "description": "UTC ISO-8601",
+      "constraints": ""
+    },
+    {
+      "name": "ledger.rows[].provider",
+      "type": "string",
+      "required": true,
+      "description": "SQD 分页行为使用 SQD",
+      "constraints": ""
+    },
+    {
+      "name": "ledger.rows[].mode",
+      "type": "string",
+      "required": true,
+      "description": "metadata/full/recheck/sample/map-reuse/getSlot/getBlocks",
+      "constraints": ""
+    },
+    {
+      "name": "ledger.rows[].query_body_sha256",
+      "type": "string (sha256 hex)",
+      "required": true,
+      "description": "本页实际 from/to 查询体哈希",
+      "constraints": ""
+    },
+    {
+      "name": "ledger.rows[].from",
+      "type": "integer",
+      "required": true,
+      "description": "本页请求游标 cur",
+      "constraints": ""
+    },
+    {
+      "name": "ledger.rows[].to",
+      "type": "integer",
+      "required": true,
+      "description": "本页请求的分片终点；不等同实际覆盖终点",
+      "constraints": ""
+    },
+    {
+      "name": "ledger.rows[].returned_from",
+      "type": "integer|null",
+      "required": true,
+      "description": "非空页首个返回块号；空响应为 null",
+      "constraints": ""
+    },
+    {
+      "name": "ledger.rows[].returned_to",
+      "type": "integer|null",
+      "required": true,
+      "description": "非空页最后返回块号 L；空响应为 null",
+      "constraints": ""
+    },
+    {
+      "name": "ledger.rows[].n_blocks",
+      "type": "integer",
+      "required": true,
+      "description": "本页返回块头数",
+      "constraints": ">=0"
+    },
+    {
+      "name": "ledger.rows[].slots_covered",
+      "type": "integer",
+      "required": true,
+      "description": "成功非空页为 L-from+1；成功空页为 to-from+1；失败页为 0",
+      "constraints": ">=0"
+    },
+    {
+      "name": "ledger.rows[].empty_response",
+      "type": "boolean",
+      "required": true,
+      "description": "HTTP 200 且零块；此时该请求尾部按 NO_HEADER 覆盖",
+      "constraints": ""
+    },
+    {
+      "name": "ledger.rows[].http_status",
+      "type": "integer|null",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "ledger.rows[].bytes",
+      "type": "integer",
+      "required": true,
+      "description": "规范化响应字节数",
+      "constraints": ">=0"
+    },
+    {
+      "name": "ledger.rows[].response_sha256",
+      "type": "string (sha256 hex)|null",
+      "required": true,
+      "description": "HTTP 成功响应的规范化内容哈希",
+      "constraints": ""
+    },
+    {
+      "name": "ledger.rows[].ok",
+      "type": "boolean",
+      "required": true,
+      "description": "越界、乱序或重复块号必须 false 且不提交计数",
+      "constraints": ""
     }
   ],
   "invariants": [
     "scan_ranges 并集覆盖案区间；sample_ranges 不计入。",
-    "无 UNSCANNED；解压长度等于区间长度；ledger 成功区间并集无洞且等于 scan_ranges 并集。",
+    "无 UNSCANNED；解压长度等于区间长度；ledger 成功区间按 [from,from+slots_covered-1] 取实际覆盖，并集无洞且等于 scan_ranges 并集。",
     "skipped_confirmation.ranges[] 每段字段恰为 {from,to,response_sha256,count,response_ok,array_monotonic_unique,array_in_range}。",
     "complete 不落盘；离线 validator 的 complete 合取式＝response_ok ∧ array_monotonic_unique ∧ array_in_range ∧ (to−from+1) ≤ 500,000 ∧ reference_head_at_check ≥ to ∧ 位图该段长度 == to−from+1 ∧ popcount == count ∧ count ≤ 区间长度。",
     "array_monotonic_unique 与 array_in_range 是生产时对原始响应数组的断言结果；任一为 false 则该段 unconfirmed，其 NO_HEADER 保持未确认，有效 verdict 为 INCONCLUSIVE；--live-canary 重拉若干段与位图切片对表。",
@@ -486,6 +598,7 @@
   "notes": [
     "metadata_normalized 与 summary 子字段未完全展开。",
     "skipped_confirmation 与离线 complete 按 errata E2 重裁冻结。",
-    "探针发布协议按 errata E9 冻结；scan_id 仅作临时目录名。"
+    "探针发布协议按 errata E9 冻结；scan_id 仅作临时目录名。",
+    "批 2b 按 Fable 联网反例补 SQD 游标分页：非空页只覆盖至 returned_to，空响应显式标 empty_response=true。"
   ]
 }

@@ -26,6 +26,11 @@ RAW_PATTERNS = [
     re.compile(r"/data/v2/(partial_)?run_[^/]+/(logs|blocks)\.parquet$"),
     re.compile(r"/data/soltx-[^/]+\.jsonl\.gz$"),
     re.compile(r"/data/soltx-[^/]+\.meta\.json$"),
+    re.compile(r"/data/sqd_coverage/(CURRENT\.json|\.lock)$"),
+    re.compile(
+        r"/data/sqd_coverage/(?:[0-9a-f]{16}|pending-[0-9a-f]{16})/"
+        r"(?:coverage_map\.json|slot_counts\.bin\.gz|blocks\.bin\.gz|"
+        r"ledger\.jsonl|STOPPED\.json|resume_state\.json)$"),
 ]
 
 
@@ -66,8 +71,8 @@ def main():
     if tool in ("Write", "Edit"):
         for pat in RAW_PATTERNS:
             if pat.search(fp):
-                deny("拦截覆盖原始采集产物：run_*/logs.parquet、soltx-*.jsonl.gz 只能由采集器"
-                     "（fetch_hypersync_v2 / fetch_sqd_transfers_v2）写入。"
+                deny("拦截覆盖原始采集产物：run_*/logs.parquet、soltx-* 与 sqd_coverage "
+                     "规范件只能由其登记生产者写入。"
                      "分析层需要衍生数据时另存新文件，绝不改原始层。")
         sys.exit(0)
 
