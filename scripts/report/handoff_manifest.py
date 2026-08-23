@@ -393,14 +393,16 @@ def _verify_light_schema(case_dir, fails, manifest, legacy=False):
         return
     try:
         ws = load_json(os.path.join(case_dir, "wave_scan_report.json"))
-        if ws.get("schema") in ("wave-scan/v1", "wave-scan/v2", "wave-scan/v3"):
+        if ws.get("schema") in ("wave-scan/v1", "wave-scan/v2", "wave-scan/v3",
+                                "wave-scan/v4"):
             fails.append(f"wave_scan_report.json 是旧版（{ws.get('schema')}）——v2 及更早缺 scan_universe "
-                         "逐址全集，v3 又缺边顺序/legacy 标记，重跑 wave_scan.py（v4）后重 generate；"
+                         "逐址全集，v3 又缺边顺序/legacy 标记，v4 缺边源绑定；"
+                         "重跑 wave_scan.py（v5）后重 generate；"
                          "已冻结旧案走 verify --legacy-read-only")
         elif ws.get("schema") != WAVE_SCHEMA:
             fails.append(f"wave_scan_report.json schema 异常: {ws.get('schema')}")
         elif not has_formal_wave_semantics(ws):
-            fails.append("wave_scan_report.json v4 必须是 formal 且携带合法边顺序语义；"
+            fails.append("wave_scan_report.json v5 必须是 formal 且携带合法边顺序/边源语义；"
                          "legacy-sol5 诊断产物不得进入 READY")
         elif not isinstance(ws.get("waves"), list) or not isinstance(ws.get("equal_amount_groups"), list) \
                 or not isinstance(ws.get("requires_adjudication"), bool):
@@ -408,7 +410,7 @@ def _verify_light_schema(case_dir, fails, manifest, legacy=False):
         elif not isinstance(ws.get("scan_universe"), list) \
                 or not isinstance(ws.get("must_adjudicate_count"), int) \
                 or len(ws["scan_universe"]) != ws.get("scan_universe_count"):
-            fails.append("wave_scan_report.json v4 全集不完整（scan_universe 须为数组、"
+            fails.append("wave_scan_report.json v5 全集不完整（scan_universe 须为数组、"
                          "must_adjudicate_count 须为整数、len(scan_universe)==scan_universe_count）"
                          "——贴 v4 标签不带逐址全集同属空壳，拒收")
         elif any(not isinstance(u, dict) or not str(u.get("addr") or "").strip()
@@ -416,16 +418,16 @@ def _verify_light_schema(case_dir, fails, manifest, legacy=False):
                  for u in ws["scan_universe"]) \
                 or sum(1 for u in ws["scan_universe"] if u.get("must_adjudicate")) \
                 != ws["must_adjudicate_count"]:
-            fails.append("wave_scan_report.json v4 全集内部矛盾（每条须有 addr 且 "
+            fails.append("wave_scan_report.json v5 全集内部矛盾（每条须有 addr 且 "
                          "must_adjudicate 为布尔；must_adjudicate_count 必须等于逐条 true 计数"
                          "——count=0 配 must=true 条目这类自相矛盾拒收，v6.9.4）")
     except Exception as e:
         fails.append(f"wave_scan_report.json 读取失败（波次扫描未跑？补跑 wave_scan.py 后重 generate）: {e}")
     try:
         fa = load_json(os.path.join(case_dir, "flow_anomaly_report.json"))
-        if fa.get("schema") != "flow-anomaly/v2":
+        if fa.get("schema") != "flow-anomaly/v3":
             fails.append(f"flow_anomaly_report.json schema 异常: {fa.get('schema')}"
-                         "（需要 flow-anomaly/v2——旧 v1 产物重跑 flow_anomaly_scan.py）")
+                         "（需要 flow-anomaly/v3——旧 v1/v2 产物重跑 flow_anomaly_scan.py）")
         elif not isinstance(fa.get("sinks"), list) or not isinstance(fa.get("sprays"), list) \
                 or not isinstance(fa.get("requires_adjudication"), bool):
             fails.append("flow_anomaly_report.json 缺 sinks/sprays/requires_adjudication——空壳拒收")
@@ -461,7 +463,7 @@ def verify_case(case_dir, legacy_read_only=False):
             legacy_mode = True
         elif schema in LEGACY_SCHEMAS:
             fails.append(f"schema {schema} 是旧版——新运行必须重跑 v6.8.0 生产器"
-                         "（wave-scan/v4、flow-anomaly/v2）后重 generate；只读旧案加 --legacy-read-only")
+                         "（wave-scan/v5、flow-anomaly/v3）后重 generate；只读旧案加 --legacy-read-only")
         else:
             fails.append(f"schema 不兼容: 需要 {schema}，本端支持 {sorted(SUPPORTED_SCHEMAS)}")
     status = m.get("status")
@@ -1128,8 +1130,9 @@ def validate_and_replay_provenance(case_dir, pl, pl_path, ep, manifest):
             mint = source.get("mint")
             if not isinstance(mint, str) or not mint:
                 return ["Solana provenance 未绑定 mint"]
-            cmd += ["--edges-sol", arg, "--sol-cache-meta", cache_meta,
-                    "--mint", mint]
+            cmd += ["--edges-sol", os.path.realpath(arg),
+                    "--sol-cache-meta", os.path.realpath(cache_meta),
+                    "--mint", mint, "--case-root", os.path.realpath(case_dir)]
         elif kind == "evm_v2":
             cmd += ["--edges-evm-v2", arg]
         elif kind == "duckdb":

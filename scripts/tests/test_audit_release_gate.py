@@ -364,10 +364,11 @@ def build_case(root, historical=True):
                      "confirmed_economic_control_raw": "100",
                      "unresolved_facility_exposure": []}],
         "double_count_check_passed": True, "unresolved_count": 0, "unresolved": []})
-    # v6.9.1：静置仓审计必须绑定 wave-scan/v4 落盘全集并逐址对账（coverage 自报不作数）
+    # 静置仓审计必须绑定 wave-scan/v5 落盘全集并逐址对账（coverage 自报不作数）
     write_json(root, "wave_scan_report.json", {
-        "schema": "wave-scan/v4", "edge_order_granularity": "transaction",
+        "schema": "wave-scan/v5", "edge_order_granularity": "transaction",
         "order_ambiguous": True, "non_formal": False,
+        "params": {"edges_evm_v2": "data/v2"},
         "scan_universe_count": 2,
         "scan_universe": [
             {"addr": "0xmustaddr", "peak_pct": 3.0, "must_adjudicate": True,

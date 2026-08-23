@@ -37,8 +37,8 @@ def build_solana_case(case):
     total = sum(balances.values())
     slot = 77
 
-    # Existing v4/v2 reports are accepted today. Add a stale binding that differs
-    # from the exact-like receipt and two optional-but-present derived artifacts.
+    # Current v5/v3 reports carry a stale binding that differs from the
+    # exact-like receipt; binding equality itself remains Batch 5.
     stale = {"cache_kind": "base", "gid": None,
              "soltx_edges_sha256": "1" * 64, "soltx_meta_sha256": "2" * 64,
              "edge_logical_sha256": "3" * 64}
@@ -136,9 +136,21 @@ def main():
         failures = current_verify_accepts(case)
         assert failures == [], "\n".join(failures)
         print("RED 19 semantic-acceptance wave/flow binding 与 exact-like receipt 不等仍 verify READY")
-        print("RED 22 semantic-acceptance wave-scan/v4 与 flow-anomaly/v2 旧产物仍 verify READY")
         print("RED 24 semantic-acceptance curve/audit_closed 在场且 binding 不等仍 verify READY")
-        red += 3
+        red += 2
+
+        wave_path = case / "wave_scan_report.json"
+        flow_path = case / "flow_anomaly_report.json"
+        wave = json.loads(wave_path.read_text(encoding="utf-8"))
+        flow = json.loads(flow_path.read_text(encoding="utf-8"))
+        wave["schema"] = "wave-scan/v4"
+        flow["schema"] = "flow-anomaly/v2"
+        write_json(wave_path, wave)
+        write_json(flow_path, flow)
+        old_failures = current_verify_accepts(case)
+        assert any("旧版" in failure and "wave" in failure for failure in old_failures)
+        assert any("flow-anomaly/v3" in failure for failure in old_failures)
+        print("GREEN 22 wave-scan/v4 与 flow-anomaly/v2 旧产物被 v5/v3 验收拒收")
 
     return 1 if red else 0
 

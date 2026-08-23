@@ -91,6 +91,7 @@ def batch3b_mechanism_gate():
 
 
 def write_curve_case(case, rows):
+    case = Path(case).resolve()
     data = case / "data"
     data.mkdir(parents=True)
     key = hashlib.sha256(MINT.encode()).hexdigest()
@@ -116,10 +117,15 @@ def write_curve_case(case, rows):
     proc = subprocess.run(
         [sys.executable, str(ROOT / "scripts/solana/curve_cost.py"), CURVE,
          "--grad-price", "1", "--mint", MINT, "--vs0", "30", "--vt0", "1000",
-         "--decimals", "0"], cwd=case, text=True, capture_output=True)
+         "--decimals", "0", "--case-root", str(case)],
+        cwd=case, text=True, capture_output=True)
     if proc.returncode != 0:
         raise AssertionError(proc.stdout + proc.stderr)
-    return json.loads((data / "curve_costs.json").read_text(encoding="utf-8"))
+    payload = json.loads(
+        (data / "curve_costs.json").read_text(encoding="utf-8"))
+    assert payload["schema"] == "curve-cost/v1"
+    assert payload["edge_source_binding"]["cache_kind"] == "base"
+    return payload["buyers"]
 
 
 def load_entity_module():
@@ -221,7 +227,7 @@ def staged_missing_transactions(count):
 
 
 def repair_slot_responses(repair, slot, missing_tx, *, nonce_count=0,
-                          quota=False):
+                          quota=False, missing_first=False):
     present_signature = f"PresentSignature{slot}"
     present_tx = {
         "transaction": {"signatures": [present_signature],
@@ -233,7 +239,8 @@ def repair_slot_responses(repair, slot, missing_tx, *, nonce_count=0,
     blockhash = f"blockhash-{slot}"
     block = {"blockhash": blockhash, "parentSlot": slot - 1,
              "blockTime": 1_700_000_000 + slot,
-             "transactions": [present_tx, missing_tx]}
+             "transactions": ([missing_tx, present_tx] if missing_first
+                              else [present_tx, missing_tx])}
     census = [{"header": {"number": slot, "hash": blockhash,
                            "parentSlot": slot - 1},
                "transactions": [{"transactionIndex": 0,
@@ -252,6 +259,133 @@ def repair_slot_responses(repair, slot, missing_tx, *, nonce_count=0,
         repair.request_digest("sqd-census", repair._census_body(slot)): {
             "ok": True, "value": census},
     }
+
+
+def consumer_repaired_order_regression():
+    """Item (2): consumers must replay the CURRENT-selected repaired ordering."""
+    from scripts.solana import curve_cost
+    from scripts.solana import sqd_gap_repair as repair
+    from scripts.solana import sqd_cache_identity as identity
+
+    slot = 19_999
+    base_rows = [[1_700_000_000, slot, 0, -1, CURVE, "B", 100]]
+    missing_tx = {
+        "transaction": {
+            "signatures": [f"MissingOrderingSignature{slot}"],
+            "message": {
+                "accountKeys": ["AccountA", "AccountCurve"],
+                # base58 "5" decodes to little-endian u32=4: AdvanceNonce.
+                "instructions": [{"programId": "11111111111111111111111111111111",
+                                  "data": "5"}],
+            },
+        },
+        "meta": {
+            "err": None, "loadedAddresses": {},
+            "preTokenBalances": [
+                {"accountIndex": 0, "mint": MINT, "owner": "A",
+                 "uiTokenAmount": {"amount": "50"}},
+                {"accountIndex": 1, "mint": MINT, "owner": CURVE,
+                 "uiTokenAmount": {"amount": "0"}},
+            ],
+            "postTokenBalances": [
+                {"accountIndex": 0, "mint": MINT, "owner": "A",
+                 "uiTokenAmount": {"amount": "0"}},
+                {"accountIndex": 1, "mint": MINT, "owner": CURVE,
+                 "uiTokenAmount": {"amount": "50"}},
+            ],
+        },
+    }
+    with tempfile.TemporaryDirectory(prefix="sqd-b4-consumer-", dir="/private/tmp") as td:
+        root = Path(td)
+        case = build_batch3b_case(root, {slot}, base_rows)
+        fixture = write_repair_fixture(
+            root / "repair-fixture",
+            repair_slot_responses(
+                repair, slot, missing_tx, nonce_count=0, missing_first=True))
+        assert repair.main([
+            "repair", "--mint", MINT, "--case-root", str(case),
+            "--transport-fixture", str(fixture)]) == 0
+
+        key = hashlib.sha256(MINT.encode()).hexdigest()
+        pointer = json.loads(
+            (case / f"data/sqd_repair/{key}/CURRENT.json").read_text())
+        generation = case / f"data/sqd_repair/{key}/gen-{pointer['gid']}"
+        bundle = json.loads((generation / "bundle.json").read_text())
+        # Producer history is a later release-boundary concern and is frozen out
+        # of Batch 4.  Keep this fixture focused on the already-built resolver by
+        # supplying the exact self-reported producer hash at the registry seam.
+        original_history = identity.historical_producer_hashes
+        identity.historical_producer_hashes = lambda script, protocol: (
+            {bundle["producer"]["sha256"]}
+            if script == "scripts/solana/sqd_gap_repair.py" else
+            original_history(script, protocol))
+        top_identity = sys.modules.get("sqd_cache_identity")
+        top_original_history = getattr(top_identity, "historical_producer_hashes", None)
+        if top_identity is not None:
+            top_identity.historical_producer_hashes = identity.historical_producer_hashes
+        repaired_edge, repaired_meta, kind, gid, binding = identity.resolve_formal_cache(
+            MINT, case)
+        assert kind == "repaired" and gid and binding["cache_kind"] == "repaired"
+        with gzip.open(repaired_edge, "rt", encoding="utf-8") as handle:
+            repaired_rows = [json.loads(line) for line in handle if line.strip()]
+        assert repaired_rows == [
+            [1_700_019_999, slot, 0, -1, "A", CURVE, 50],
+            [1_700_000_000, slot, 1, -1, CURVE, "B", 100],
+        ]
+
+        # The two orderings are observably different for both consumers.
+        base_cost = write_curve_case(root / "base-semantics", base_rows)["B"]["sol_paid"]
+        repaired_cost = write_curve_case(
+            root / "repaired-semantics", repaired_rows)["B"]["sol_paid"]
+        assert base_cost != repaired_cost
+        entity = load_entity_module()
+        origin = ("PROVEN_ORIGIN", "mint", "A")
+        args = ({"B"}, {CURVE}, {"A": origin}, {"A": 1}, "pro_rata", 1)
+        base_entity = entity.simulate(
+            [(1_700_000_000, slot, 0, -1, True, 0, CURVE, "B", 100)], *args)
+        repaired_entity = entity.simulate([
+            (1_700_019_999, slot, 0, -1, True, 0, "A", CURVE, 50),
+            (1_700_000_000, slot, 1, -1, True, 1, CURVE, "B", 100),
+        ], *args)
+        assert base_entity["current"] != repaired_entity["current"]
+
+        try:
+            failures = []
+            try:
+                loaded_rows, curve_binding = curve_cost.load_edges(MINT, case)
+                if loaded_rows != repaired_rows or curve_binding != binding:
+                    failures.append("curve did not consume resolver-selected repaired cache")
+            except (OSError, TypeError, ValueError) as exc:
+                failures.append(f"curve resolver route absent: {exc}")
+
+            import duckdb
+            con = duckdb.connect(":memory:")
+            try:
+                try:
+                    count, entity_binding = entity.load_sol(
+                        con, str(repaired_edge), cache_meta_path=str(repaired_meta),
+                        expected_mint=MINT, case_root=case)
+                    actual = con.execute(
+                        "SELECT ts, chain_pos1, chain_pos2, chain_pos3, f, t, amt "
+                        "FROM edges ORDER BY chain_pos1, chain_pos2, ingest_seq").fetchall()
+                    expected = [tuple(row) for row in repaired_rows]
+                    if count != 2 or [tuple(row) for row in actual] != expected \
+                            or entity_binding != binding:
+                        failures.append("entity did not consume repaired reference ordering")
+                except (OSError, TypeError, ValueError, SystemExit) as exc:
+                    failures.append(f"entity resolver route absent: {exc}")
+            finally:
+                con.close()
+        finally:
+            identity.historical_producer_hashes = original_history
+            if top_identity is not None:
+                top_identity.historical_producer_hashes = top_original_history
+        if failures:
+            print("RED 2 semantic-consumer-half " + "; ".join(failures))
+            return 1
+        print(f"GREEN 2 semantic-consumer-half curve/entity use repaired gid={gid} "
+              f"curve_B={base_cost:.12g}->{repaired_cost:.12g}")
+        return 0
 
 
 def write_repair_fixture(path, responses):
@@ -685,6 +819,7 @@ def main():
 
     ref_cost, pseudo_cost = semantic_order_probe()
     print(f"GREEN 2-fact order-sensitive curve/entity 现役顺序敏感成立 curve_B={ref_cost:.12g}/{pseudo_cost:.12g}")
+    red += consumer_repaired_order_regression()
     production = "\n".join((ROOT / p).read_text(encoding="utf-8") for p in (
         "scripts/solana/curve_cost.py", "scripts/report/entity_source_trace.py",
         "scripts/solana/sqd_cache_identity.py"))

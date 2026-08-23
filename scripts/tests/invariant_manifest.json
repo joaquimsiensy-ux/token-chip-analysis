@@ -183,7 +183,6 @@
   },
   {
    "schemas": [
-    "flow-anomaly/v2",
     "flow-anomaly/v3"
    ],
    "script": "scripts/report/flow_anomaly_scan.py"
@@ -228,7 +227,6 @@
   },
   {
    "schemas": [
-    "wave-scan/v4",
     "wave-scan/v5"
    ],
    "script": "scripts/report/wave_scan.py"
@@ -273,6 +271,12 @@
   },
   {
    "schemas": [
+    "curve-cost/v1"
+   ],
+   "script": "scripts/solana/curve_cost.py"
+  },
+  {
+   "schemas": [
     "sqd-solana-cache/v4"
    ],
    "script": "scripts/solana/fetch_sqd_transfers_v2.py"
@@ -303,6 +307,7 @@
   },
   {
    "schemas": [
+    "sqd-solana-beta-trace/v1",
     "sqd-solana-cache/v4",
     "sqd-solana-coverage-resolution/v1",
     "sqd-solana-repair-bundle/v1",
@@ -407,7 +412,7 @@
   },
   {
    "schemas": [
-    "wave-scan/v4"
+    "wave-scan/v5"
    ],
    "script": "scripts/lib/wave_contract.py"
   },
@@ -432,7 +437,7 @@
    "schemas": [
     "candidate-adjudications/v1",
     "distribution-adjudications/v1",
-    "flow-anomaly/v2",
+    "flow-anomaly/v3",
     "pattern-resolutions/v1"
    ],
    "script": "scripts/report/adjudication_validator.py"
@@ -484,11 +489,12 @@
    "schemas": [
     "entity-freeze/v1",
     "flip-adjudications/v1",
-    "flow-anomaly/v2",
+    "flow-anomaly/v3",
     "provenance-ledger/v2",
     "wave-scan/v1",
     "wave-scan/v2",
-    "wave-scan/v3"
+    "wave-scan/v3",
+    "wave-scan/v4"
    ],
    "script": "scripts/report/handoff_manifest.py"
   },
@@ -548,12 +554,6 @@
    "schemas": [
     "sqd-solana-cache/v4"
    ],
-   "script": "scripts/solana/curve_cost.py"
-  },
-  {
-   "schemas": [
-    "sqd-solana-cache/v4"
-   ],
    "script": "scripts/solana/fetch_sqd_transfers_v2.py"
   },
   {
@@ -573,6 +573,7 @@
   },
   {
    "schemas": [
+    "sqd-solana-beta-trace/v1",
     "solana-reconcile/v4",
     "sqd-solana-coverage-pointer/v1",
     "sqd-solana-coverage-resolution/v1",

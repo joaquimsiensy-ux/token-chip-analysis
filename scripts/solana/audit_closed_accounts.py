@@ -39,7 +39,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
 from proxy_config import resolve_proxy
-from spl_edge_core import soltx_cache_paths, validate_edge_row
+from spl_edge_core import validate_edge_row
+from sqd_cache_identity import resolve_formal_cache
 
 DEF_RPC = "https://api.mainnet-beta.solana.com"
 DEF_PROXY = None
@@ -240,10 +241,23 @@ def account_deltas(tx, token_account, mint):
     return (delta, owner) if delta else None
 
 
+def resolve_edge_source(mint, *, explicit_edges=None, case_root=None):
+    """Return (edge_path, binding, formal, non_formal_source)."""
+    if explicit_edges is not None:
+        return Path(explicit_edges), None, False, "explicit-edges"
+    if not case_root:
+        raise ValueError("未给 --edges 的正式路径必须提供 --case-root")
+    edge_path, _meta_path, _kind, _gid, binding = resolve_formal_cache(
+        mint, case_root)
+    return edge_path, binding, True, None
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("mint")
     ap.add_argument("--edges", default=None, help="SQD 边集 jsonl.gz（默认共享 sha256(mint) 路径）")
+    ap.add_argument("--case-root",
+                    help="案根；未给 --edges 时必填并经 CURRENT-aware cache resolver")
     ap.add_argument("--legacy-sol5", action="store_true",
                     help="显式审计旧 5 元组；报告强制 non-formal/order-ambiguous")
     ap.add_argument("--out", default=None, help="审计报告 JSON 输出路径")
@@ -267,9 +281,14 @@ def main():
     random.seed(args.seed)
     wall_dl = T0 + args.wall_min * 60
     mint = args.mint
-    default_edges, _default_meta, _default_parts = soltx_cache_paths(mint, Path("data"))
-    edges_path = Path(args.edges) if args.edges else default_edges
     out_path = Path(args.out or f"data/closed_audit-{mint.lower()}.json")
+    explicit_edges = args.edges is not None
+    try:
+        edges_path, edge_source_binding, formal, non_formal_source = \
+            resolve_edge_source(mint, explicit_edges=args.edges,
+                                case_root=args.case_root)
+    except ValueError as exc:
+        ap.error(str(exc))
     if not edges_path.exists():
         bail_invalid(out_path, mint, edges_path, f"边集不存在：{edges_path}",
                      legacy_sol5=args.legacy_sol5)
@@ -436,7 +455,10 @@ def main():
         "mint": mint, "edges_file": str(edges_path), "edges": n_edges,
         "edge_slot_range": [lo, hi], "mode": mode,
         "status": status, "exit_code": exit_code,
-        "non_formal": bool(args.legacy_sol5),
+        "formal": formal and not args.legacy_sol5,
+        "non_formal": bool(explicit_edges or args.legacy_sol5),
+        "non_formal_source": ("legacy-sol5" if args.legacy_sol5
+                              else non_formal_source),
         "order_ambiguous": bool(args.legacy_sol5),
         "invalid_reasons": invalid_reasons,
         "mint_sig_history": sig_stat,
@@ -452,6 +474,8 @@ def main():
         "rpc_calls": rpc.calls, "elapsed_sec": round(time.time() - T0, 1),
         "generated": time.strftime("%Y-%m-%d %H:%M:%S"),
     }
+    if edge_source_binding is not None:
+        report["edge_source_binding"] = edge_source_binding
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(json.dumps(report, ensure_ascii=False, indent=1))
     log(f"报告 → {out_path}")

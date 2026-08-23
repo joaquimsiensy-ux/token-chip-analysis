@@ -181,14 +181,15 @@ def handoff_fails(root: Path) -> list[str]:
         "candidate_universe.json": {"candidates": [{"id": "c1", "address": TOKEN,
                                                        "reasons": ["fixture"]}]},
         "anomalies.json": [],
-        "wave_scan_report.json": {"schema": "wave-scan/v4",
+        "wave_scan_report.json": {"schema": "wave-scan/v5",
                                   "edge_order_granularity": "transaction",
                                   "order_ambiguous": True, "non_formal": False,
+                                  "params": {"edges_evm_v2": "data/v2"},
                                   "waves": [],
                                   "equal_amount_groups": [], "requires_adjudication": False,
                                   "scan_universe": [], "scan_universe_count": 0,
                                   "must_adjudicate_count": 0},
-        "flow_anomaly_report.json": {"schema": "flow-anomaly/v2", "sinks": [],
+        "flow_anomaly_report.json": {"schema": "flow-anomaly/v3", "sinks": [],
                                      "sprays": [], "requires_adjudication": False},
     }.items():
         write(root / name, value)

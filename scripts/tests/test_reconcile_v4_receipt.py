@@ -98,31 +98,40 @@ def prepare_base(data):
     return rows, edge, meta
 
 
-def explicit_path_acceptance(case, rows, edge, meta):
+def explicit_path_rejection(case, rows, edge, meta):
     copied = case / "copied-base"
     copied.mkdir()
     copied_edge, copied_meta = cache_paths(copied)
     copied_edge.write_bytes(edge.read_bytes())
     copied_meta.write_bytes(meta.read_bytes())
 
-    accepted = []
+    rejected = []
     for name, loader in (("wave", wave_scan.load_sol), ("flow", flow_anomaly_scan.load_sol),
                          ("entity", entity_source_trace.load_sol)):
         con = duckdb.connect(":memory:")
         try:
-            count, _ = loader(con, str(copied_edge), cache_meta_path=str(copied_meta),
-                              expected_mint=MINT)
-            accepted.append(name if count == len(rows) else "")
+            try:
+                loader(con, str(copied_edge), cache_meta_path=str(copied_meta),
+                       expected_mint=MINT, case_root=case)
+            except SystemExit as exc:
+                if exc.code == 2:
+                    rejected.append(name)
         finally:
             con.close()
-    accepted.append("curve" if curve_cost.load_edges(MINT, copied) == rows else "")
-    index, lo, hi, count = audit_closed_accounts.load_edge_index(copied_edge)
-    accepted.append("audit_closed" if count == len(rows) and (lo, hi) == (1, 1) else "")
-    # camp_series_provenance imports the same path-blind current validator.
-    camp_series_provenance.validate_cache_meta(
-        json.loads(copied_meta.read_text(encoding="utf-8")), MINT, legacy_sol5=False)
-    accepted.append("camp")
-    assert accepted == ["wave", "flow", "entity", "curve", "audit_closed", "camp"]
+
+    curve_rows, curve_binding = curve_cost.load_edges(MINT, case)
+    replay_rows, replay_meta, replay_binding = replay_edges.load_edges(
+        MINT, case_root=case)
+    assert curve_rows == replay_rows == rows and replay_meta == meta
+    assert curve_binding == replay_binding
+    rejected += ["curve", "replay-evolution"]
+
+    explicit = audit_closed_accounts.resolve_edge_source(
+        MINT, explicit_edges=copied_edge, case_root=case)
+    assert explicit == (copied_edge, None, False, "explicit-edges")
+    rejected.append("audit_closed-nonformal")
+    assert rejected == ["wave", "flow", "entity", "curve", "replay-evolution",
+                        "audit_closed-nonformal"]
     return copied, copied_edge, copied_meta
 
 
@@ -163,9 +172,9 @@ def main():
         data = case / "data"
         data.mkdir()
         rows, edge, meta = prepare_base(data)
-        copied, copied_edge, copied_meta = explicit_path_acceptance(case, rows, edge, meta)
-        print("RED 9 semantic-acceptance wave/flow/entity/curve/camp/audit_closed 六入口均接受案外集合复制 base")
-        red += 1
+        copied, copied_edge, copied_meta = explicit_path_rejection(case, rows, edge, meta)
+        print("GREEN 9 replay/curve/wave/flow/entity 正式入口拒绕 resolver；"
+              "audit_closed 显式 --edges 强制 non-formal")
 
         # (17) The v2 identity gate accepts only the canonical resolver path.
         sqd_cache_identity.validate_cache_meta_v2(
@@ -181,22 +190,37 @@ def main():
             print("RED 17 semantic-acceptance validate_cache_meta_v2 接受正式路径集合外复制 meta")
             red += 1
 
-        # (23) No --case-root plus a symlinked path both remain accepted.
+        # (23) No --case-root and a symlinked case root are both rejected.
         help_run = subprocess.run([sys.executable, str(ROOT / "scripts/report/wave_scan.py"), "--help"],
                                   text=True, capture_output=True)
-        assert help_run.returncode == 0 and "--case-root" not in help_run.stdout
-        link = case / "linked-case"
-        link.symlink_to(copied, target_is_directory=True)
+        assert help_run.returncode == 0 and "--case-root" in help_run.stdout
         con = duckdb.connect(":memory:")
         try:
-            count, _ = wave_scan.load_sol(
-                con, str(link / copied_edge.name),
-                cache_meta_path=str(link / copied_meta.name), expected_mint=MINT)
-            assert count == len(rows)
+            try:
+                wave_scan.load_sol(
+                    con, str(edge), cache_meta_path=str(meta), expected_mint=MINT)
+            except SystemExit as exc:
+                assert exc.code == 2
+            else:
+                raise AssertionError("wave formal loader accepted missing case_root")
         finally:
             con.close()
-        print("RED 23 semantic-acceptance wave_scan 无 --case-root 且接受 symlink 案根路径")
-        red += 1
+        link = case / "linked-case"
+        link.symlink_to(case, target_is_directory=True)
+        con = duckdb.connect(":memory:")
+        try:
+            try:
+                wave_scan.load_sol(
+                    con, str(link / "data" / edge.name),
+                    cache_meta_path=str(link / "data" / meta.name),
+                    expected_mint=MINT, case_root=link)
+            except SystemExit as exc:
+                assert exc.code == 2
+            else:
+                raise AssertionError("wave formal loader accepted symlink case_root")
+        finally:
+            con.close()
+        print("GREEN 23 wave_scan 缺 --case-root 与 symlink 案根均拒收")
 
         os.chdir(case)
         try:

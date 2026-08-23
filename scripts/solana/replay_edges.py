@@ -39,6 +39,7 @@ from spl_edge_core import (EDGE_SCHEMA_FIELDS, EDGE_SEMANTICS,
                            INSTR_INDEX_TX_NET, ORDER_GRANULARITY_TX)
 from sqd_cache_identity import (SQD_CACHE_PROTOCOL, SQD_COLLECTOR_ID,
                                 SQD_COLLECTOR_SCRIPT,
+                                resolve_formal_cache,
                                 validate_cache_meta as _validate_cache_meta)
 try:
     from labels_resolver import LabelResolver, append_misses
@@ -169,18 +170,33 @@ def _normalize_legacy_edge(row, *, line_no):
     return [ts, slot, None, None, src, dst, amt]
 
 
-def load_edges(mint, *, legacy_sol5=False):
+_CASE_ROOT_WARNED = False
+
+
+def load_edges(mint, *, legacy_sol5=False, case_root=None):
     _validate_mint(mint)
-    key = hashlib.sha256(mint.encode("utf-8")).hexdigest()
-    f = Path(f"data/soltx-{key}.jsonl.gz")
-    meta_f = Path(f"data/soltx-{key}.meta.json")
-    if not meta_f.exists():
-        sys.exit(f"缓存 meta 不存在：{meta_f}")
-    meta = _json_loads(meta_f.read_text(), "soltx meta")
-    try:
-        _validate_cache_meta(meta, mint, legacy_sol5=legacy_sol5)
-    except ValueError as exc:
-        raise SystemExit(str(exc)) from exc
+    binding = None
+    if case_root is not None and not legacy_sol5:
+        try:
+            f, meta_f, _kind, _gid, binding = resolve_formal_cache(mint, case_root)
+        except ValueError as exc:
+            raise SystemExit(str(exc)) from exc
+    else:
+        key = hashlib.sha256(mint.encode("utf-8")).hexdigest()
+        f = Path(f"data/soltx-{key}.jsonl.gz")
+        meta_f = Path(f"data/soltx-{key}.meta.json")
+        if not meta_f.exists():
+            sys.exit(f"缓存 meta 不存在：{meta_f}")
+        meta = _json_loads(meta_f.read_text(), "soltx meta")
+        try:
+            _validate_cache_meta(meta, mint, legacy_sol5=legacy_sol5)
+        except ValueError as exc:
+            raise SystemExit(str(exc)) from exc
+        if not legacy_sol5:
+            global _CASE_ROOT_WARNED
+            if not _CASE_ROOT_WARNED:
+                print("WARN: 正式路径须 --case-root（批 5 强制）", file=sys.stderr)
+                _CASE_ROOT_WARNED = True
     if f.is_symlink():
         sys.exit(f"边文件是符号链接，拒绝重放：{f}")
     if not f.exists():
@@ -198,7 +214,9 @@ def load_edges(mint, *, legacy_sol5=False):
         edges.sort(key=lambda e: (e[1], e[0]))
     else:
         edges.sort(key=lambda e: (e[1], e[2], e[3], e[0]))
-    return edges, meta_f
+    if case_root is None or legacy_sol5:
+        return edges, meta_f
+    return edges, meta_f, binding
 
 
 def _read_frozen_formal_edges(path):
@@ -434,7 +452,7 @@ def cmd_mints(edges, dec):
         print(f"  ...(销毁边共 {n} 条，仅显示前 30)")
 
 
-def cmd_evolution(edges, dec, camps_file, stake_pools):
+def cmd_evolution(edges, dec, camps_file, stake_pools, edge_source_binding=None):
     # F-05 定案（rg 调用面：main --camps 默认 camps.json + test_review_resume_integrity，
     # 文档与真实案均无"无 camps 跑 evolution"的用法）：缺文件从"静默空 spec"改为硬拒——
     # 静默空 spec 的效果是全部地址落散户/狙击者两桶，序列外观正常实际零阵营。
@@ -545,7 +563,8 @@ def cmd_evolution(edges, dec, camps_file, stake_pools):
                          series_format="sol-rows", denominator="net_supply",
                          camps_spec_path=camps_file,
                          final_balances_path="data/effective_balances.json",
-                         inputs=_inputs)
+                         inputs=_inputs,
+                         edge_source_binding=edge_source_binding)
 
 
 def main():
@@ -554,6 +573,8 @@ def main():
     ap.add_argument("arg", nargs="?", help="trace 的地址 / top 的 n / sniper 的分钟数")
     ap.add_argument("arg2", nargs="?", help="trace 的显示条数")
     ap.add_argument("--mint")
+    ap.add_argument("--case-root",
+                    help="案根；正式消费经 CURRENT-aware cache resolver（evolution 必填）")
     ap.add_argument("--decimals", type=int, default=6)
     ap.add_argument("--launch-ts", type=int, help="发射时刻 epoch（默认取首条铸造边）")
     ap.add_argument("--camps", default="camps.json", help="evolution 的阵营定义 JSON")
@@ -563,6 +584,8 @@ def main():
     ap.add_argument("--legacy-sol5", action="store_true",
                     help="显式读取旧 5 元组做 non-formal/order-ambiguous 只读诊断")
     args = ap.parse_args()
+    if args.cmd == "evolution" and not args.case_root:
+        ap.error("evolution 正式路径必须提供 --case-root")
     try:
         global RESV
         if (LabelResolver is not None and "--no-labels" not in sys.argv
@@ -576,7 +599,13 @@ def main():
             print("[labels][degraded_mode] labels_resolver 导入失败——本次运行无标签兜底", file=sys.stderr)
         mint = resolve_mint(args.mint)
         dec = 10 ** args.decimals
-        edges, cache_meta_path = load_edges(mint, legacy_sol5=args.legacy_sol5)
+        loaded = load_edges(
+            mint, legacy_sol5=args.legacy_sol5, case_root=args.case_root)
+        if args.case_root and not args.legacy_sol5:
+            edges, cache_meta_path, edge_source_binding = loaded
+        else:
+            edges, cache_meta_path = loaded
+            edge_source_binding = None
         if args.legacy_sol5:
             print("[legacy-sol5] non_formal=true order_ambiguous=true")
             if args.cmd in {"reconcile", "evolution"}:
@@ -605,7 +634,8 @@ def main():
         elif args.cmd == "mints":
             cmd_mints(edges, dec)
         elif args.cmd == "evolution":
-            cmd_evolution(edges, dec, args.camps, stake_pools)
+            cmd_evolution(edges, dec, args.camps, stake_pools,
+                          edge_source_binding=edge_source_binding)
     except (OSError, ValueError, json.JSONDecodeError, RecursionError) as exc:
         print(f"BLOCK: {exc}", file=sys.stderr)
         return 2

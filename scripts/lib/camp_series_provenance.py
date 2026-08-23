@@ -50,7 +50,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from supply_semantics import ZERO  # noqa: E402
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "solana"))
-from sqd_cache_identity import validate_cache_meta  # noqa: E402
+from sqd_cache_identity import resolve_formal_cache  # noqa: E402
 
 SIDECAR_SCHEMA = "camp-series-provenance/v1"
 # 净分母族的 burn 桶不参与堆叠闭合；total 分母族"锁仓/销毁"参与——双式闭合见 docstring。
@@ -116,7 +116,8 @@ def _file_ref(path) -> dict:
 
 def write_series_sidecar(series_path, *, producer: str, series_format: str,
                          denominator: str, camps_spec_path=None,
-                         final_balances_path=None, inputs=None, extra=None) -> Path:
+                         final_balances_path=None, inputs=None, extra=None,
+                         edge_source_binding=None) -> Path:
     """producer 在序列文件落盘后立即调用；sidecar 与序列同目录、tmp+os.replace 原子写。
 
     inputs: {语义名: 路径} —— 只登记与本次重放同源的小文件（replay_stats/
@@ -144,6 +145,8 @@ def write_series_sidecar(series_path, *, producer: str, series_format: str,
         "inputs": {name: _file_ref(p) for name, p in (inputs or {}).items()},
         "generated_at_utc": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
     }
+    if edge_source_binding is not None:
+        doc["edge_source_binding"] = dict(edge_source_binding)
     if extra:
         doc["extra"] = dict(extra)
     out = sidecar_path_for(series_path)
@@ -590,11 +593,20 @@ def registry_anchor_check(sidecar: dict, resolved: dict, series_path, *,
         cache_meta = _json_loads(meta_path.read_text(encoding="utf-8"),
                                  "soltx meta")
         try:
-            validate_cache_meta(cache_meta, expected_mint, legacy_sol5=False)
+            edge_path, resolver_meta_path, _cache_kind, _gid, resolver_binding = \
+                resolve_formal_cache(expected_mint, Path(rr).parent.parent)
         except ValueError as exc:
             raise SeriesProvenanceError(
-                f"reconcile 绑定的 soltx meta schema/mint/producer/contract 身份无效: {exc}"
+                "reconcile 绑定的 soltx meta schema/mint/producer/contract 或边文件"
+                f"身份未通过正式 resolver: {exc}"
             ) from exc
+        if resolver_meta_path.resolve() != meta_path.resolve():
+            raise SeriesProvenanceError(
+                "reconcile.inputs.soltx_meta 不是 resolver 当前选择的正式 meta")
+        side_binding = sidecar.get("edge_source_binding")
+        if side_binding is not None and side_binding != resolver_binding:
+            raise SeriesProvenanceError(
+                "sidecar.edge_source_binding 与 resolver 当前边源不全等")
         if cache_meta.get("from_slot") != frm \
                 or cache_meta.get("finalized_upper_slot") != to:
             raise SeriesProvenanceError(
@@ -603,8 +615,6 @@ def registry_anchor_check(sidecar: dict, resolved: dict, series_path, *,
                 or cache_meta.get("edge_rows") != edge_count:
             raise SeriesProvenanceError(
                 "reconcile edge_digest/edge_count 与 collector 绑定的 soltx meta 不一致")
-        edge_key = hashlib.sha256(expected_mint.encode("utf-8")).hexdigest()
-        edge_path = meta_path.with_name(f"soltx-{edge_key}.jsonl.gz")
         edge_size = cache_meta.get("edge_file_size")
         edge_sha = cache_meta.get("edge_file_sha256")
         if edge_path.is_symlink():

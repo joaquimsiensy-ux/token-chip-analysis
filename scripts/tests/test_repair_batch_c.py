@@ -396,7 +396,7 @@ def t_f05_f04_solana_chain():
                                        "as_of_block": 3},
                             "closed": True, "supply_raw": "900",
                             "outputs": {"holders_owners": owners_ref}}))
-            cache_meta = Path("data/soltx-fixture.meta.json")
+            cache_meta = Path(f"data/soltx-{edge_key}.meta.json")
             cache_meta.write_text(json.dumps(formal_sol_meta(SA, 1, 3, edges)))
             check("SOL reconcile gate_pass",
                   re_mod.cmd_reconcile(edges, 1, mint=SA,

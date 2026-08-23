@@ -25,7 +25,7 @@ HERE = Path(__file__).resolve().parent
 REPO = HERE.parent.parent
 sys.path[:0] = [str(HERE), str(HERE.parent / "report"), str(HERE.parent / "lib"),
                 str(HERE.parent / "evm"), str(HERE.parent / "solana")]
-from sqd_v4_test_fixture import formal_cli_args
+from sqd_v4_test_fixture import EDGE_SOURCE_BINDING, formal_cli_args
 
 FAILS: list[str] = []
 
@@ -983,8 +983,10 @@ def build_solana_case(root: Path):
         "unresolved_count": 0, "unresolved_candidates": []})
     align_ledgers_to_owner_snapshot(root, owners_path)
     write_json(root / "wave_scan_report.json", {
-        "schema": "wave-scan/v4", "edge_order_granularity": "transaction",
+        "schema": "wave-scan/v5", "edge_order_granularity": "transaction",
         "order_ambiguous": True, "non_formal": False,
+        "params": {"edges_sol": "data/soltx.jsonl.gz"},
+        "edge_source_binding": dict(EDGE_SOURCE_BINDING),
         "scan_universe_count": 1,
         "scan_universe": [{"addr": "ownersol1", "peak_pct": 60.0,
                            "must_adjudicate": True, "must_reasons": ["peak_ge_0.1pct"]}]})

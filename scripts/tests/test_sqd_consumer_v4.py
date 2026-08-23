@@ -99,8 +99,10 @@ def test_replay_edges_v4_and_legacy_split() -> None:
     _write_edges(edge_path, rows)
     meta_path.write_text(json.dumps(_v4_meta(rows)), encoding="utf-8")
 
-    loaded, loaded_meta = replay_edges.load_edges(MINT)
-    assert loaded == rows and loaded_meta == meta_path
+    loaded, loaded_meta, binding = replay_edges.load_edges(
+        MINT, case_root=Path.cwd())
+    assert loaded == rows and loaded_meta == meta_path.resolve()
+    assert binding["cache_kind"] == "base" and binding["gid"] is None
 
     original_history = producer_history.PRODUCER_HISTORY
     producer_history.PRODUCER_HISTORY = original_history + ({
@@ -112,19 +114,25 @@ def test_replay_edges_v4_and_legacy_split() -> None:
         "reason": "test-only hash-wide revocation",
     },)
     try:
-        _expect_reject(lambda: replay_edges.load_edges(MINT), "producer 登记")
+        _expect_reject(
+            lambda: replay_edges.load_edges(MINT, case_root=Path.cwd()),
+            "producer 登记")
     finally:
         producer_history.PRODUCER_HISTORY = original_history
 
     forged = _v4_meta(rows)
     forged["collector_sha256"] = "2" * 64
     meta_path.write_text(json.dumps(forged), encoding="utf-8")
-    _expect_reject(lambda: replay_edges.load_edges(MINT), "producer 登记")
+    _expect_reject(
+        lambda: replay_edges.load_edges(MINT, case_root=Path.cwd()),
+        "producer 登记")
     meta_path.write_text(json.dumps(_v4_meta(rows)), encoding="utf-8")
 
     mixed = rows + [[102, 2, MINT, OWNER, 1]]
     _write_edges(edge_path, mixed)
-    _expect_reject(lambda: replay_edges.load_edges(MINT), "七元组")
+    _expect_reject(
+        lambda: replay_edges.load_edges(MINT, case_root=Path.cwd()),
+        "七元组")
 
     legacy_rows = [[100, 1, ZERO, MINT, 100]]
     _write_edges(edge_path, legacy_rows)
@@ -269,13 +277,17 @@ def test_curve_cost_is_v4_only() -> None:
     edge_path, meta_path = _paths()
     _write_edges(edge_path, rows)
     meta_path.write_text(json.dumps(_v4_meta(rows)), encoding="utf-8")
-    assert curve_cost.load_edges(MINT) == rows
+    loaded, binding = curve_cost.load_edges(MINT, Path.cwd())
+    assert loaded == rows and binding["cache_kind"] == "base"
 
     forged = _v4_meta(rows)
     forged["collector_sha256"] = "f" * 64
     meta_path.write_text(json.dumps(forged), encoding="utf-8")
-    _expect_reject(lambda: replay_edges.load_edges(MINT), "producer 登记")
-    _expect_reject(lambda: curve_cost.load_edges(MINT), "producer 登记")
+    _expect_reject(
+        lambda: replay_edges.load_edges(MINT, case_root=Path.cwd()),
+        "producer 登记")
+    _expect_reject(
+        lambda: curve_cost.load_edges(MINT, Path.cwd()), "producer 登记")
 
     forged = _v4_meta(rows)
     forged["edge_logical_sha256"] = "0" * 64
@@ -286,11 +298,13 @@ def test_curve_cost_is_v4_only() -> None:
         ),
         "摘要",
     )
-    _expect_reject(lambda: curve_cost.load_edges(MINT), "摘要")
+    _expect_reject(
+        lambda: curve_cost.load_edges(MINT, Path.cwd()), "摘要")
 
     meta_path.write_text(json.dumps(_v4_meta(rows)), encoding="utf-8")
     _write_edges(edge_path, rows + [[101, 2, MINT, OWNER, 1]])
-    _expect_reject(lambda: curve_cost.load_edges(MINT), "第 2 行")
+    _expect_reject(
+        lambda: curve_cost.load_edges(MINT, Path.cwd()), "第 2 行")
 
 
 def test_solana_producer_history_entries() -> None:

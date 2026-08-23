@@ -7,7 +7,7 @@
 mint 来源：--mint / MINT 环境变量 / 工作目录 config.json 的 mint 字段。
 输入：共享 sha256(mint) 路径的 SQD v4 7 元组边＋meta + data/solusdt_1h.json（币安 SOLUSDT 小时K，
       data-api.binance.vision/api/v3/klines 免 key 直连）
-输出：data/curve_costs.json {buyer: {tokens, sol_paid, n_buys, first_ts, last_ts}}
+输出：data/curve_costs.json（curve-cost/v1，含 edge_source_binding 与 buyers）
 
 精度注记（pipeline §8 curve 重建条，PUB 实测）：
 - 买入枚数逐位精确（token 守恒不受 wash 影响）；SOL 成本用标准参数(30/1073M)系统性低估约 10%
@@ -24,8 +24,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
-from spl_edge_core import soltx_cache_paths, validate_edge_row
-from sqd_cache_identity import validate_cache_meta
+from spl_edge_core import validate_edge_row
+from sqd_cache_identity import resolve_formal_cache
 
 
 def resolve_mint(cli):
@@ -49,19 +49,13 @@ def sol_price_at(ts, sol_klines):
     return float(sol_klines[-1][4])
 
 
-def load_edges(mint, data_dir=Path("data")):
+def load_edges(mint, case_root):
     """Load formal sqd-solana-cache/v4 rows; legacy rows are not cost evidence."""
-    edge_path, meta_path, _parts_path = soltx_cache_paths(mint, data_dir)
-    if not meta_path.is_file():
-        raise ValueError(f"SQD v4 meta 不存在: {meta_path}")
+    edge_path, meta_path, _kind, _gid, binding = resolve_formal_cache(mint, case_root)
     try:
         meta = json.loads(meta_path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError, RecursionError) as exc:
         raise ValueError(f"SQD v4 meta 非法: {exc}") from exc
-    validate_cache_meta(meta, mint, legacy_sol5=False)
-    # Delegated consumer anchor for invariant_scan; the shared validator owns the checks.
-    if meta["schema"] != "sqd-solana-cache/v4":  # pragma: no cover - validator guarantees it
-        raise AssertionError("validate_cache_meta 未兑现 v4 schema 后置条件")
     if not edge_path.is_file() or edge_path.is_symlink():
         raise ValueError(f"SQD v4 边文件缺失或为符号链接: {edge_path}")
     rows = []
@@ -84,8 +78,8 @@ def load_edges(mint, data_dir=Path("data")):
     if (meta["edge_rows"] != len(rows)
             or meta["edge_logical_sha256"] != logical.hexdigest()):
         raise ValueError("SQD v4 meta 的边摘要/行数与实际边文件不一致")
-    rows.sort(key=lambda edge: (edge[1], edge[2], edge[4], edge[5], str(edge[6])))
-    return rows
+    rows.sort(key=lambda edge: (edge[1], edge[2], edge[3], edge[0]))
+    return rows, binding
 
 
 def main():
@@ -94,6 +88,8 @@ def main():
     ap.add_argument("--grad-price", type=float, required=True,
                     help="外盘首根开盘价 USD（GT 分钟/小时K首根，校准锚）")
     ap.add_argument("--mint")
+    ap.add_argument("--case-root", required=True,
+                    help="案根；正式边源只经 CURRENT-aware cache resolver")
     ap.add_argument("--exclude", default="", help="剔除地址（迁移收币的外盘池等），逗号分隔")
     ap.add_argument("--list-buyers", type=int, default=15)
     ap.add_argument("--vs0", type=float, default=30.0, help="初始虚拟 SOL 储备")
@@ -108,7 +104,7 @@ def main():
     ZERO = "0x" + "0" * 40
 
     try:
-        edges = load_edges(mint)
+        edges, edge_source_binding = load_edges(mint, args.case_root)
     except (OSError, ValueError) as exc:
         print(f"BLOCK: {exc}", file=sys.stderr)
         return 2
@@ -158,7 +154,9 @@ def main():
 
     out = {a: {**b, "tokens": b["tokens"] / dec} for a, b in
            sorted(buyers.items(), key=lambda kv: -kv[1]["tokens"])}
-    json.dump(out, open("data/curve_costs.json", "w"))
+    json.dump({"schema": "curve-cost/v1",
+               "edge_source_binding": edge_source_binding,
+               "buyers": out}, open("data/curve_costs.json", "w"))
     n = args.list_buyers
     print(f"\n内盘买家 {len(out)} 个，top{n}（按买入量）：")
     for a, b in list(out.items())[:n]:

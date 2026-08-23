@@ -836,10 +836,10 @@ def check_dormant(case_dir: Path, d: dict, errors: list[str]):
     if n_unresolved:
         errors.append(f"静置仓审计仍有 {n_unresolved} 个未决候选")
     # v6.9.1 集合对账（codex 复核修复：coverage 五键是自报布尔，闸不住漏仓——
-    # 必须绑定 wave-scan/v4 落盘的候选全集并逐址对账；缺绑定/旧 schema 一律拒）。
+    # 必须绑定 wave-scan/v5 落盘的候选全集并逐址对账；缺绑定/旧 schema 一律拒）。
     ref = d.get("universe_ref")
     if not isinstance(ref, dict) or not ref.get("path") or not ref.get("sha256"):
-        errors.append("静置仓审计缺 universe_ref（须绑定 wave-scan/v4 报告的 path+sha256）")
+        errors.append("静置仓审计缺 universe_ref（须绑定 wave-scan/v5 报告的 path+sha256）")
         return
     wp = regular_case_path(case_dir, str(ref["path"]))
     if wp is None:
@@ -851,7 +851,7 @@ def check_dormant(case_dir: Path, d: dict, errors: list[str]):
     wr = load_json(wp, errors)
     universe = wr.get("scan_universe")
     if not has_formal_wave_semantics(wr) or not isinstance(universe, list):
-        errors.append("wave_scan 报告缺 formal scan_universe 逐址全集（schema 须 wave-scan/v4，"
+        errors.append("wave_scan 报告缺 formal scan_universe 逐址全集（schema 须 wave-scan/v5，"
                       "旧 v2 产物只有计数无法对账——重跑 wave_scan）")
         return
     cands = d.get("candidates", [])
