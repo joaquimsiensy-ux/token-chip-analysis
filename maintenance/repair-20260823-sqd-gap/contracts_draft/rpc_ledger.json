@@ -127,10 +127,14 @@
     "异常先 redact，key 不落盘。",
     "resume 以 (plan_digest,params_digest,result_sha256) 判完成；plan_digest 取自首行 header。",
     "header.plan_digest==所在 pending-<plan_digest> 目录名==bundle.plan_digest。",
-    "残缺尾行丢弃。"
+    "残缺尾行丢弃。",
+    "每个 slot 完成后 evidence 对与成功 ledger 行立即落 pending；只有三元命中且 evidence 对齐全才跳过。",
+    "配额停工 STOPPED.json 含 reason,cursor,plan_digest,completed_slots；resume 只请求未完成 slot。",
+    "rpc_ledger 不进 gid；中断续跑与一次跑通的 gid 必须相同。"
   ],
   "notes": [
     "range 形状未写明，类型为推断。",
-    "首行 header 按 errata E6 增补；逐行字段保持 PLAN §4.2.10 不变。"
+    "首行 header 按 errata E6 增补；逐行字段保持 PLAN §4.2.10 不变。",
+    "STOPPED completed_slots 与 resume 跳过规则按 errata E27 增补。"
   ]
 }

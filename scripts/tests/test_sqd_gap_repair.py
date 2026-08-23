@@ -8,10 +8,13 @@ import hashlib
 import importlib
 import importlib.util
 import json
+import os
+import shutil
 import subprocess
 import sys
 import tempfile
 from pathlib import Path
+from types import SimpleNamespace
 
 from sqd_v4_test_fixture import FETCH_SHA256, MINT
 
@@ -56,6 +59,35 @@ def expected_red(item, symbol, detail):
         return 1
     print(f"GREEN {item} implemented {symbol} 已实现")
     return 0
+
+
+def batch3b_mechanism_gate():
+    """E25-E27 smoke RED; full semantic/fault tests replace this gate on GREEN."""
+    repair = importlib.import_module(TARGET)
+    core = importlib.import_module("scripts.solana.sqd_repair_core")
+    exact = importlib.import_module("scripts.lib.solana_exact_validate")
+    checks = (
+        ("E25-beta-e2e", core, "derive_residual_owners",
+         "三份现役输入尚不能确定性推导残差 owner"),
+        ("E25-beta-tamper", exact, "validate_beta_trace",
+         "beta_trace 尚无独立自洽/输入哈希拒收器"),
+        ("E26-state", repair, "validate_coverage_state_consistency",
+         "coverage/repair nonce 状态不一致尚不中止"),
+        ("E27-a-quota", repair, "load_resume_slots",
+         "402 后 evidence/ledger 在途落账与跳过机制缺失"),
+        ("E27-b-crash", repair, "resume_published_generation",
+         "步骤 ⑤-⑧ 崩溃后的代恢复机制缺失"),
+        ("E27-c-cas", repair, "assert_resume_cas",
+         "resume 的 observed CURRENT 漂移专用硬闸缺失"),
+    )
+    red = 0
+    for item, module, symbol, detail in checks:
+        if hasattr(module, symbol):
+            print(f"GREEN {item} mechanism {symbol}")
+        else:
+            print(f"RED {item} missing-mechanism {detail}")
+            red += 1
+    return red
 
 
 def write_curve_case(case, rows):
@@ -122,6 +154,113 @@ def semantic_order_probe():
     entity_pseudo = entity.simulate(pseudo_edges, *args)
     assert entity_ref["current"] != entity_pseudo["current"]
     return curve_ref["B"]["sol_paid"], curve_pseudo["B"]["sol_paid"]
+
+
+def build_batch3b_case(root, zero_slots, base_rows):
+    """Build one deterministic 10k-slot calibrated coverage/base fixture."""
+    from scripts.solana import sqd_coverage_probe as probe
+    from scripts.solana.spl_edge_core import (EDGE_SCHEMA_FIELDS, EDGE_SEMANTICS,
+                                               ORDER_GRANULARITY_TX)
+    root = Path(root)
+    case, data = root / "case", root / "case/data"
+    data.mkdir(parents=True)
+    lower, upper = 10_000, 19_999
+    coverage_fixture = root / "coverage-fixture"
+    coverage_fixture.mkdir()
+    metadata = {"dataset_id": "solana-mainnet", "start_block": 0,
+                "real_time": True, "number": upper}
+    responses = {
+        probe.request_digest("sqd-head", {}): {"ok": True, "value": metadata},
+    }
+    for start in range(lower, upper + 1, probe.SQD_PAGE_SLOTS):
+        end = min(upper, start + probe.SQD_PAGE_SLOTS - 1)
+        body = probe.sqd_query_body(start, end)
+        blocks = [{"header": {"number": slot},
+                   "instructions": ([] if slot in set(zero_slots)
+                                    else [{"transactionIndex": 0}])}
+                  for slot in range(start, end + 1)]
+        responses[probe.request_digest("sqd-stream", body)] = {
+            "ok": True, "value": blocks}
+    (coverage_fixture / "responses.json").write_text(json.dumps({
+        "format": "sqd-coverage-transport-fixture-v1", "responses": responses}),
+        encoding="utf-8")
+    assert probe.main([
+        "--mint", MINT, "--case-root", str(case),
+        "--from-slot", str(lower), "--to-slot", str(upper), "--full",
+        "--no-getblocks", "--transport-fixture", str(coverage_fixture)]) == 0
+
+    key = hashlib.sha256(MINT.encode()).hexdigest()
+    edge_path = data / f"soltx-{key}.jsonl.gz"
+    meta_path = data / f"soltx-{key}.meta.json"
+    raw = b"".join((json.dumps(row, ensure_ascii=False) + "\n").encode()
+                   for row in base_rows)
+    edge_path.write_bytes(gzip.compress(raw, mtime=0))
+    logical = hashlib.sha256(raw).hexdigest()
+    meta_path.write_text(json.dumps({
+        "schema": "sqd-solana-cache/v4", "version": 4, "mint": MINT,
+        "endpoint": "fixture://sqd", "endpoint_sha256": "0" * 64,
+        "collector": "fetch_sqd_transfers_v2.py/v4",
+        "collector_sha256": FETCH_SHA256,
+        "edge_schema": list(EDGE_SCHEMA_FIELDS),
+        "edge_semantics": EDGE_SEMANTICS,
+        "order_granularity": ORDER_GRANULARITY_TX, "order_exact": False,
+        "dedupe_identity": "transaction", "supply_delta_source": "fixture",
+        "from_slot": lower, "finalized_upper_slot": upper,
+        "edge_logical_sha256": logical, "edge_rows": len(base_rows),
+    }), encoding="utf-8")
+    return case
+
+
+def staged_missing_transactions(count):
+    with gzip.open(ROOT / ".staging_b3/routeA_pilot/426649168.json.gz", "rt") as handle:
+        routea = json.load(handle)
+    rows = [item["tx"] for item in routea["missing_full"]
+            if item.get("failed") is False and item["tx"].get("meta")]
+    assert len(rows) >= count
+    return rows[:count]
+
+
+def repair_slot_responses(repair, slot, missing_tx, *, nonce_count=0,
+                          quota=False):
+    present_signature = f"PresentSignature{slot}"
+    present_tx = {
+        "transaction": {"signatures": [present_signature],
+                        "message": {"accountKeys": ["PresentAccount"],
+                                    "instructions": []}},
+        "meta": {"err": None, "loadedAddresses": {},
+                 "preTokenBalances": [], "postTokenBalances": []},
+    }
+    blockhash = f"blockhash-{slot}"
+    block = {"blockhash": blockhash, "parentSlot": slot - 1,
+             "blockTime": 1_700_000_000 + slot,
+             "transactions": [present_tx, missing_tx]}
+    census = [{"header": {"number": slot, "hash": blockhash,
+                           "parentSlot": slot - 1},
+               "transactions": [{"transactionIndex": 0,
+                                  "signatures": [present_signature],
+                                  "err": None}]}]
+    state = [{"header": {"number": slot},
+              "instructions": [{"transactionIndex": 0}] * nonce_count}]
+    reference = ({"ok": False, "http_status": 402,
+                  "category": "quota", "message": "payment required"}
+                 if quota else {"ok": True, "value": {
+                     "jsonrpc": "2.0", "id": slot, "result": block}})
+    return {
+        repair.request_digest("sqd-probe", repair.sqd_query_body(slot, slot)): {
+            "ok": True, "value": state},
+        repair.request_digest("reference-getBlock", repair._rpc_body(slot)): reference,
+        repair.request_digest("sqd-census", repair._census_body(slot)): {
+            "ok": True, "value": census},
+    }
+
+
+def write_repair_fixture(path, responses):
+    path = Path(path)
+    path.mkdir(exist_ok=True)
+    (path / "responses.json").write_text(json.dumps({
+        "format": "sqd-gap-repair-transport-fixture-v1",
+        "responses": responses}), encoding="utf-8")
+    return path
 
 
 def functional_repair_regressions():
@@ -273,6 +412,10 @@ def blocks_cache_end_to_end():
         assert bundle["mode"] == "exploration"
         assert bundle["reference"]["source"] == "local-evidence-cache"
         assert bundle["repair_layer"]["edges"] == 1
+        resolution = json.loads(
+            (generations[0] / "coverage_resolution.json").read_text())
+        assert resolution["plan_candidates"]["beta"] == []
+        assert not (generations[0] / "evidence/beta_trace.json").exists()
         checked = exact.validate_repair_bundle_deep(
             generations[0] / "bundle.json", case_root=case,
             current_base={"edge_sha256": hashlib.sha256(edge_path.read_bytes()).hexdigest()})
@@ -281,84 +424,22 @@ def blocks_cache_end_to_end():
 
 
 def live_mock_transport_regression():
-    from scripts.solana import sqd_coverage_probe as probe
     from scripts.solana import sqd_gap_repair as repair
-    from scripts.solana.spl_edge_core import (EDGE_SCHEMA_FIELDS, EDGE_SEMANTICS,
-                                               ORDER_GRANULARITY_TX)
-
-    slot = 426649168
-    mint = "61V8vBaqAGMpgDQi4JcAwo1dmBGHsyhzodcPqnEVpump"
-    with gzip.open(ROOT / ".staging_b3/routeA_pilot/426649168.json.gz", "rt") as handle:
-        routea = json.load(handle)
-    missing = next(item for item in routea["missing_full"]
-                   if item["sig"].startswith("5NFBt2"))
+    slot = 19_999
+    missing = staged_missing_transactions(1)[0]
     with tempfile.TemporaryDirectory(prefix="sqd-live-mock-", dir="/private/tmp") as td:
         root = Path(td)
-        case, data = root / "case", root / "case/data"
-        data.mkdir(parents=True)
-        coverage_fixture = root / "coverage-fixture"
-        coverage_fixture.mkdir()
-        metadata = {"dataset_id": "solana-mainnet", "start_block": 0,
-                    "real_time": True, "number": slot}
-        coverage_responses = {probe.request_digest("sqd-head", {}): {
-            "ok": True, "value": metadata}}
-        coverage_body = probe.sqd_query_body(slot - 1, slot)
-        coverage_responses[probe.request_digest("sqd-stream", coverage_body)] = {
-            "ok": True, "value": [
-                {"header": {"number": value},
-                 "instructions": [{"transactionIndex": 0}]}
-                for value in (slot - 1, slot)]}
-        (coverage_fixture / "responses.json").write_text(json.dumps({
-            "format": "sqd-coverage-transport-fixture-v1",
-            "responses": coverage_responses}), encoding="utf-8")
-        assert probe.main([
-            "--mint", mint, "--case-root", str(case),
-            "--from-slot", str(slot - 1), "--to-slot", str(slot), "--full",
-            "--no-getblocks", "--transport-fixture", str(coverage_fixture)]) == 0
-
-        key = hashlib.sha256(mint.encode()).hexdigest()
-        edge_path = data / f"soltx-{key}.jsonl.gz"
-        meta_path = data / f"soltx-{key}.meta.json"
-        base_row = [routea["blockTime"] - 1, slot - 1, 0, -1,
-                    "BaseFrom", "BaseTo", 1]
-        with gzip.open(edge_path, "wt", encoding="utf-8") as handle:
-            handle.write(json.dumps(base_row, ensure_ascii=False) + "\n")
-        logical = hashlib.sha256(
-            (json.dumps(base_row, ensure_ascii=False) + "\n").encode()).hexdigest()
-        meta_path.write_text(json.dumps({
-            "schema": "sqd-solana-cache/v4", "version": 4, "mint": mint,
-            "endpoint": "fixture://sqd", "endpoint_sha256": "0" * 64,
-            "collector": "fetch_sqd_transfers_v2.py/v4",
-            "collector_sha256": FETCH_SHA256,
-            "edge_schema": list(EDGE_SCHEMA_FIELDS),
-            "edge_semantics": EDGE_SEMANTICS,
-            "order_granularity": ORDER_GRANULARITY_TX, "order_exact": False,
-            "dedupe_identity": "transaction", "supply_delta_source": "fixture",
-            "from_slot": slot - 1, "finalized_upper_slot": slot,
-            "edge_logical_sha256": logical, "edge_rows": 1,
-        }), encoding="utf-8")
-        residual = root / "residual.json"
-        residual.write_text(json.dumps({"candidate_slots": [slot]}), encoding="utf-8")
-        repair_fixture = root / "repair-fixture"
-        repair_fixture.mkdir()
-        block = {"blockhash": routea["blockhash"], "parentSlot": slot - 1,
-                 "blockTime": routea["blockTime"], "transactions": [missing["tx"]]}
-        census = [{"header": {"number": slot, "hash": routea["blockhash"],
-                               "parentSlot": slot - 1}, "transactions": []}]
-        repair_responses = {
-            repair.request_digest("reference-getBlock", repair._rpc_body(slot)): {
-                "ok": True, "value": {"jsonrpc": "2.0", "id": slot,
-                                        "result": block}},
-            repair.request_digest("sqd-census", repair._census_body(slot)): {
-                "ok": True, "value": census},
-        }
-        (repair_fixture / "responses.json").write_text(json.dumps({
-            "format": "sqd-gap-repair-transport-fixture-v1",
-            "responses": repair_responses}), encoding="utf-8")
+        case = build_batch3b_case(
+            root, {slot}, [[1_700_000_000, slot, 0, -1,
+                            ZERO, "BaseOwner", 1]])
+        repair_fixture = write_repair_fixture(
+            root / "repair-fixture",
+            repair_slot_responses(repair, slot, missing, nonce_count=0))
         assert repair.main([
-            "repair", "--mint", mint, "--case-root", str(case),
-            "--residual-owners", str(residual),
+            "repair", "--mint", MINT, "--case-root", str(case),
             "--transport-fixture", str(repair_fixture)]) == 0
+        key = hashlib.sha256(MINT.encode()).hexdigest()
+        data = case / "data"
         parent = data / "sqd_repair" / key
         pointer = json.loads((parent / "CURRENT.json").read_text())
         bundle = json.loads((parent / f"gen-{pointer['gid']}/bundle.json").read_text())
@@ -369,12 +450,238 @@ def live_mock_transport_regression():
     print("GREEN live Helius getBlock/SQD census mock transport/formal pointer")
 
 
+def beta_balance_response(owner, slot, amount):
+    return [{"header": {"number": slot}, "tokenBalances": [{
+        "transactionIndex": 0, "account": f"Account-{owner}",
+        "preMint": MINT, "postMint": MINT,
+        "preOwner": owner, "postOwner": owner,
+        "preAmount": str(max(0, amount - 1)), "postAmount": str(amount),
+    }]}]
+
+
+def add_beta_responses(repair, responses, owner, first_slot, break_slot):
+    for slot, amount in ((first_slot, 5), (break_slot, 9)):
+        body = repair._beta_body(owner, slot)
+        responses[repair.request_digest("sqd-beta", body)] = {
+            "ok": True, "value": beta_balance_response(owner, slot, amount)}
+    lower, upper = break_slot - 64, break_slot + 64
+    fingerprint = [{"header": {"number": slot},
+                    "instructions": ([] if slot == break_slot else [
+                        {"transactionIndex": 0}])}
+                   for slot in range(lower, upper + 1)]
+    responses[repair.request_digest(
+        "sqd-probe", repair.sqd_query_body(lower, upper))] = {
+            "ok": True, "value": fingerprint}
+
+
+def batch3b_semantic_regressions():
+    from scripts.lib import solana_exact_validate as exact
+    from scripts.solana import sqd_gap_repair as repair
+
+    missing = staged_missing_transactions(2)
+    with tempfile.TemporaryDirectory(prefix="sqd-b3b-", dir="/private/tmp") as td:
+        root = Path(td)
+
+        # E25: three bound inputs -> sorted residual subset -> beta breakpoint ->
+        # candidate/census/gid; independent validator rejects a one-byte trace change.
+        beta_root = root / "beta"
+        first, breakpoint = 15_000, 19_999
+        case = build_batch3b_case(beta_root, {breakpoint}, [
+            [1_700_000_000, first, 0, -1, ZERO, "OwnerA", 5],
+            [1_700_000_001, breakpoint, 0, -1, ZERO, "OwnerA", 5],
+        ])
+        data = case / "data"
+        (data / "reconcile_receipt.json").write_text(json.dumps({
+            "schema": "solana-reconcile/v3", "gate_pass": False,
+            "negative_balance_count": 0, "snapshot_mismatch_count": 2}),
+            encoding="utf-8")
+        (data / "replay_final_balances.json").write_text(json.dumps({
+            "OwnerA": 10}), encoding="utf-8")
+        (data / "holders_owners.json").write_text(json.dumps({
+            "OwnerA": 12, "OwnerB": 1}), encoding="utf-8")
+        subset = beta_root / "subset.json"
+        subset.write_text(json.dumps(["OwnerA"]), encoding="utf-8")
+        responses = repair_slot_responses(
+            repair, breakpoint, missing[0], nonce_count=0)
+        add_beta_responses(repair, responses, "OwnerA", first, breakpoint)
+        fixture = write_repair_fixture(beta_root / "repair-fixture", responses)
+        assert repair.main([
+            "repair", "--mint", MINT, "--case-root", str(case), "--beta",
+            "--residual-owners", str(subset),
+            "--transport-fixture", str(fixture)]) == 0
+        key = hashlib.sha256(MINT.encode()).hexdigest()
+        parent = data / "sqd_repair" / key
+        pointer = json.loads((parent / "CURRENT.json").read_text())
+        generation = parent / f"gen-{pointer['gid']}"
+        resolution = json.loads((generation / "coverage_resolution.json").read_text())
+        assert resolution["plan_candidates"]["beta"] == [breakpoint]
+        trace_path = generation / "evidence/beta_trace.json"
+        trace = json.loads(trace_path.read_text())
+        assert [row["owner"] for row in trace["residual_owners"]] == ["OwnerA"]
+        assert trace["candidate_slots"] == [breakpoint]
+        bundle = json.loads((generation / "bundle.json").read_text())
+        base_edge = case / bundle["base"]["edge_file"]
+        checked = exact.validate_repair_bundle_deep(
+            generation / "bundle.json", case_root=case,
+            current_base={"edge_sha256": hashlib.sha256(
+                base_edge.read_bytes()).hexdigest()})
+        assert checked["ok"], checked
+        original = trace_path.read_bytes()
+        mutated = bytearray(original)
+        position = original.rfind(str(breakpoint).encode("ascii"))
+        assert position >= 0
+        last_digit = position + len(str(breakpoint)) - 1
+        mutated[last_digit] = ord("8") if mutated[last_digit] != ord("8") else ord("7")
+        assert sum(left != right for left, right in zip(original, mutated)) == 1
+        trace_path.write_bytes(mutated)
+        tampered = exact.validate_repair_bundle_deep(
+            generation / "bundle.json", case_root=case,
+            current_base={"edge_sha256": hashlib.sha256(
+                base_edge.read_bytes()).hexdigest()})
+        assert not tampered["ok"] and any(
+            "beta" in reason or "evidence" in reason for reason in tampered["reasons"])
+        trace_path.write_bytes(original)
+
+        # No residuals is a no-query, no-trace beta result.
+        clean = root / "clean"
+        clean_case = build_batch3b_case(clean, {breakpoint}, [
+            [1, breakpoint, 0, -1, ZERO, "OwnerA", 1]])
+        clean_data = clean_case / "data"
+        (clean_data / "reconcile_receipt.json").write_text(json.dumps({
+            "schema": "solana-reconcile/v3", "gate_pass": True}), encoding="utf-8")
+        for name in ("replay_final_balances.json", "holders_owners.json"):
+            (clean_data / name).write_text(json.dumps({"OwnerA": 1}), encoding="utf-8")
+        empty_fixture = write_repair_fixture(clean / "empty-fixture", {})
+        args = SimpleNamespace(mint=MINT, residual_owners=None)
+        clean_trace = repair.run_beta_search(
+            args, clean_case, repair.read_edge_file(next(
+                clean_data.glob("soltx-*.jsonl.gz"))),
+            repair.RepairFixtureTransport(empty_fixture))
+        assert clean_trace["residual_owners"] == []
+        assert clean_trace["candidate_slots"] == [] and clean_trace["rounds"] == []
+
+        # E26: the paid request must not start if zero-nonce coverage becomes healthy.
+        mismatch = root / "state-mismatch"
+        mismatch_case = build_batch3b_case(mismatch, {breakpoint}, [
+            [1, breakpoint, 0, -1, ZERO, "BaseOwner", 1]])
+        mismatch_responses = repair_slot_responses(
+            repair, breakpoint, missing[0], nonce_count=1)
+        mismatch_fixture = write_repair_fixture(
+            mismatch / "repair-fixture", mismatch_responses)
+        assert repair.main([
+            "repair", "--mint", MINT, "--case-root", str(mismatch_case),
+            "--transport-fixture", str(mismatch_fixture)]) == 2
+        mismatch_parent = mismatch_case / "data/sqd_repair" / key
+        assert list(mismatch_parent.glob("pending-*"))
+        assert not list(mismatch_parent.glob("gen-*"))
+
+        # E27(a): quota after k=1 leaves one evidence pair/ledger row; resume
+        # fixture intentionally omits slot 1 so a re-request would fail.
+        template = root / "quota-template"
+        slots = [19_998, 19_999]
+        template_case = build_batch3b_case(template, set(slots), [
+            [1, slots[0], 0, -1, ZERO, "BaseA", 1],
+            [2, slots[1], 0, -1, ZERO, "BaseB", 1],
+        ])
+        interrupted = root / "interrupted"
+        uninterrupted = root / "uninterrupted"
+        shutil.copytree(template_case, interrupted / "case")
+        shutil.copytree(template_case, uninterrupted / "case")
+        first_responses = repair_slot_responses(
+            repair, slots[0], missing[0], nonce_count=0)
+        first_responses.update(repair_slot_responses(
+            repair, slots[1], missing[1], nonce_count=0, quota=True))
+        first_fixture = write_repair_fixture(
+            interrupted / "first-fixture", first_responses)
+        assert repair.main([
+            "repair", "--mint", MINT, "--case-root", str(interrupted / "case"),
+            "--transport-fixture", str(first_fixture)]) == 3
+        interrupted_parent = interrupted / "case/data/sqd_repair" / key
+        pending = next(interrupted_parent.glob("pending-*"))
+        stopped = json.loads((pending / "STOPPED.json").read_text())
+        assert stopped["completed_slots"] == [slots[0]]
+        assert (pending / f"evidence/{slots[0]}.sqd.json").is_file()
+        assert (pending / f"evidence/{slots[0]}.ref.json").is_file()
+        assert len((pending / "rpc_ledger.jsonl").read_text().splitlines()) == 2
+        with (pending / "rpc_ledger.jsonl").open("ab") as handle:
+            handle.write(b'{"seq":')
+            handle.flush()
+            os.fsync(handle.fileno())
+        resume_fixture = write_repair_fixture(
+            interrupted / "resume-fixture",
+            repair_slot_responses(repair, slots[1], missing[1], nonce_count=0))
+        assert repair.main([
+            "repair", "--mint", MINT, "--case-root", str(interrupted / "case"),
+            "--resume", "--transport-fixture", str(resume_fixture)]) == 0
+        resumed_ledger = next(interrupted_parent.glob(
+            "gen-*/rpc_ledger.jsonl")).read_text().splitlines()
+        assert all(isinstance(json.loads(line), dict) for line in resumed_ledger)
+        interrupted_pointer = json.loads(
+            (interrupted_parent / "CURRENT.json").read_text())
+
+        all_responses = repair_slot_responses(
+            repair, slots[0], missing[0], nonce_count=0)
+        all_responses.update(repair_slot_responses(
+            repair, slots[1], missing[1], nonce_count=0))
+        all_fixture = write_repair_fixture(
+            uninterrupted / "all-fixture", all_responses)
+        assert repair.main([
+            "repair", "--mint", MINT, "--case-root", str(uninterrupted / "case"),
+            "--transport-fixture", str(all_fixture)]) == 0
+        uninterrupted_parent = uninterrupted / "case/data/sqd_repair" / key
+        uninterrupted_pointer = json.loads(
+            (uninterrupted_parent / "CURRENT.json").read_text())
+        assert interrupted_pointer["gid"] == uninterrupted_pointer["gid"]
+
+        # E27(b): crash at CAS after immutable rename; resume uses the existing
+        # generation without transport and publishes idempotently.
+        crash = root / "crash"
+        crash_case = build_batch3b_case(crash, {breakpoint}, [
+            [1, breakpoint, 0, -1, ZERO, "CrashBase", 1]])
+        crash_fixture = write_repair_fixture(
+            crash / "repair-fixture",
+            repair_slot_responses(repair, breakpoint, missing[0], nonce_count=0))
+        original_publish = repair.publish_current_cas
+        def injected_crash(*_args, **_kwargs):
+            raise RuntimeError("injected-after-rename")
+        repair.publish_current_cas = injected_crash
+        try:
+            assert repair.main([
+                "repair", "--mint", MINT, "--case-root", str(crash_case),
+                "--transport-fixture", str(crash_fixture)]) == 2
+        finally:
+            repair.publish_current_cas = original_publish
+        crash_parent = crash_case / "data/sqd_repair" / key
+        assert list(crash_parent.glob("gen-*"))
+        assert not (crash_parent / "CURRENT.json").exists()
+        assert repair.main([
+            "repair", "--mint", MINT, "--case-root", str(crash_case),
+            "--resume", "--transport-fixture", str(crash_fixture)]) == 0
+
+        # E27(c): a generation planned against another CURRENT is never allowed
+        # to overwrite the winner.
+        crash_pointer = json.loads((crash_parent / "CURRENT.json").read_text())
+        crash_bundle = json.loads(next(crash_parent.glob("gen-*/bundle.json")).read_text())
+        before = dict(crash_pointer)
+        try:
+            repair.assert_resume_cas(crash_bundle, {"gid": "f" * 16})
+        except RuntimeError:
+            pass
+        else:
+            raise AssertionError("resume CAS drift was accepted")
+        assert json.loads((crash_parent / "CURRENT.json").read_text()) == before
+
+    print("GREEN E25 beta E2E/tamper/subset/no-residual; E26 state abort; "
+          "E27 quota-resume/crash/CAS fault injection")
+
+
 def main():
-    red = 0
+    red = batch3b_mechanism_gate()
 
     functional_repair_regressions()
     blocks_cache_end_to_end()
     live_mock_transport_regression()
+    batch3b_semantic_regressions()
 
     ref_cost, pseudo_cost = semantic_order_probe()
     print(f"GREEN 2-fact order-sensitive curve/entity 现役顺序敏感成立 curve_B={ref_cost:.12g}/{pseudo_cost:.12g}")

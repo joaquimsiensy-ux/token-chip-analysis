@@ -23,12 +23,14 @@ from endpoint_identity import endpoint_fingerprint, redact_endpoint_text  # noqa
 from receipt_kernel import publish_exclusive, publish_overwrite  # noqa: E402
 from solana_exact_validate import validate_coverage, validate_repair_bundle_deep  # noqa: E402
 from spl_edge_core import soltx_cache_paths, sqd_repair_paths  # noqa: E402
+from sqd_coverage_probe import sqd_query_body  # noqa: E402
 from sqd_cache_identity import (resolve_formal_cache,
                                 validate_repair_bundle)  # noqa: E402
 from sqd_repair_core import (canonical_json, compute_gid, compute_plan_digest,
-                             account_keys, edge_logical_evidence, edges_for_transaction,
+                             account_keys, derive_residual_owners,
+                             edge_logical_evidence, edges_for_transaction,
                              is_nonce_transaction, is_vote_transaction, merge_edges,
-                             parse_routea_cache, read_edge_file,
+                             owner_activity, parse_routea_cache, read_edge_file,
                              sha256_bytes, sha256_file)  # noqa: E402
 
 
@@ -44,9 +46,12 @@ DEFAULT_SQD = "https://portal.sqd.dev/datasets/solana-mainnet"
 
 
 class QuotaStopped(RuntimeError):
-    def __init__(self, cursor):
+    def __init__(self, cursor, payloads=None, ledger=None, completed_slots=None):
         super().__init__("reference-quota")
         self.cursor = cursor
+        self.payloads = list(payloads or [])
+        self.ledger = list(ledger or [])
+        self.completed_slots = sorted(set(completed_slots or []))
 
 
 def request_digest(kind, body):
@@ -84,7 +89,7 @@ class RepairLiveTransport:
         if kind == "reference-getBlock":
             return net.curl_json(self.reference_endpoint, post_json=body,
                                  no_retry_statuses=tuple(QUOTA_STATUSES))
-        if kind == "sqd-census":
+        if kind in {"sqd-census", "sqd-probe", "sqd-beta"}:
             return net.curl_json(f"{DEFAULT_SQD}/stream", post_json=body)
         raise ValueError(f"unknown repair transport kind: {kind}")
 
@@ -286,7 +291,8 @@ def _coverage(case_root, mint):
         slot_meta.get("from_slot"), slot_meta.get("to_slot"))
     if not checked["ok"]:
         raise ValueError("coverage validation failed: " + "; ".join(checked["reasons"]))
-    return pointer, coverage, coverage_path, parent / str(probe_id) / "slot_counts.bin.gz"
+    return (pointer, coverage, coverage_path,
+            parent / str(probe_id) / "slot_counts.bin.gz", checked)
 
 
 def _base(case_root, mint):
@@ -296,41 +302,213 @@ def _base(case_root, mint):
     return edge, meta, _json(meta)
 
 
-def _residual_candidates(path):
+def _residual_subset(path):
     if not path:
-        return []
+        return None
     payload = _json(path)
-    found = set()
-    def walk(value, key=None):
-        if key in {"slot", "candidate_slot", "first_bad_slot", "break_slot"} \
-                and isinstance(value, int) and not isinstance(value, bool):
-            found.add(value)
-        elif key == "candidate_slots" and isinstance(value, list):
-            found.update(item for item in value
-                         if isinstance(item, int) and not isinstance(item, bool))
-        elif isinstance(value, dict):
-            for child_key, child in value.items():
-                walk(child, child_key)
-        elif isinstance(value, list):
-            for child in value:
-                walk(child, key)
-    walk(payload)
-    return sorted(found)
+    if isinstance(payload, dict) and set(payload) == {"owners"}:
+        payload = payload["owners"]
+    if not isinstance(payload, list) or any(
+            not isinstance(owner, str) or not owner for owner in payload):
+        raise ValueError("--residual-owners must be a JSON owner string array")
+    return sorted(set(payload))
+
+
+def _beta_input(case_root, subset=None):
+    data = Path(case_root) / "data"
+    paths = {
+        "receipt": data / "reconcile_receipt.json",
+        "replay_final_balances": data / "replay_final_balances.json",
+        "holders_owners": data / "holders_owners.json",
+    }
+    values = {name: _json(path) for name, path in paths.items()}
+    residual = derive_residual_owners(
+        values["receipt"], values["replay_final_balances"],
+        values["holders_owners"], subset=subset)
+    refs = {name: _file_ref(path, str(path.relative_to(case_root)))
+            for name, path in paths.items()}
+    return residual, refs
+
+
+def _beta_body(owner, slot):
+    fields = {
+        "block": {"number": True},
+        "transaction": {"transactionIndex": True},
+        "tokenBalance": {
+            "transactionIndex": True, "account": True,
+            "preMint": True, "postMint": True,
+            "preOwner": True, "postOwner": True,
+            "preAmount": True, "postAmount": True,
+        },
+    }
+    return {
+        "type": "solana", "fromBlock": slot, "toBlock": slot,
+        "includeAllBlocks": True, "fields": fields,
+        "tokenBalances": [
+            {"preOwner": [owner], "transaction": True},
+            {"postOwner": [owner], "transaction": True},
+        ],
+    }
+
+
+def _blocks(value):
+    if value is None:
+        return []
+    return value if isinstance(value, list) else [value]
+
+
+def _beta_post_amount(value, slot, owner, mint):
+    matching = [block for block in _blocks(value) if isinstance(block, dict)
+                and (block.get("header") or {}).get("number") == slot]
+    rows = [row for block in matching for row in (block.get("tokenBalances") or [])
+            if row.get("preMint") == mint or row.get("postMint") == mint]
+    latest = {}
+    for row in rows:
+        if row.get("preOwner") != owner and row.get("postOwner") != owner:
+            continue
+        account = row.get("account")
+        index = row.get("transactionIndex")
+        if not isinstance(account, str) or not isinstance(index, int) \
+                or isinstance(index, bool):
+            raise ValueError("SQD beta token balance identity invalid")
+        if account not in latest or index > latest[account][0]:
+            amount = row.get("postAmount") if row.get("postOwner") == owner else 0
+            if amount is None:
+                amount = 0
+            if isinstance(amount, str) and amount.isdigit():
+                amount = int(amount)
+            if not isinstance(amount, int) or isinstance(amount, bool):
+                raise ValueError("SQD beta postAmount must be an integer")
+            latest[account] = (index, amount)
+    return sum(item[1] for item in latest.values()) if latest else None
+
+
+def _probe_fingerprint(transport, lower, upper):
+    body = sqd_query_body(lower, upper)
+    result = transport.call("sqd-probe", body)
+    value, error = _result_value(result)
+    if error is not None:
+        raise ValueError("SQD beta fingerprint failed")
+    blocks = [block for block in _blocks(value) if isinstance(block, dict)]
+    slots = [((block.get("header") or {}).get("number")) for block in blocks]
+    if any(not isinstance(slot, int) or isinstance(slot, bool)
+           or slot < lower or slot > upper for slot in slots) \
+            or slots != sorted(set(slots)):
+        raise ValueError("SQD beta fingerprint slot identity invalid")
+    by_slot = dict(zip(slots, blocks))
+    rows = []
+    for slot in range(lower, upper + 1):
+        block = by_slot.get(slot)
+        rows.append({"slot": slot,
+                     "count": (-1 if block is None else len(
+                         block.get("instructions") or []))})
+    return rows
+
+
+def run_beta_search(args, case_root, base_edges, transport):
+    """Run E25 owner-balance bisection and return a deterministic trace."""
+    residual, refs = _beta_input(case_root, _residual_subset(args.residual_owners))
+    trace = {
+        "schema": "sqd-solana-beta-trace/v1", "inputs": refs,
+        "residual_owners": residual, "rounds": [], "candidate_slots": [],
+    }
+    all_candidates = set()
+    for item in residual:
+        owner = item["owner"]
+        activity = owner_activity(base_edges, owner)
+        cache = {}
+
+        def probe(index):
+            slot = activity[index]["slot"]
+            if slot not in cache:
+                body = _beta_body(owner, slot)
+                result = transport.call("sqd-beta", body)
+                value, error = _result_value(result)
+                if error is not None:
+                    raise ValueError(f"SQD beta balance probe failed for owner {owner}")
+                raw = canonical_json(_blocks(value))
+                actual = _beta_post_amount(value, slot, owner, args.mint)
+                cache[slot] = {
+                    "slot": slot, "sqd_post_amount": actual,
+                    "replay_balance": activity[index]["replay_balance"],
+                    "match": (actual is not None
+                              and actual == activity[index]["replay_balance"]),
+                    "query_body_sha256": sha256_bytes(canonical_json(body)),
+                    "response_sha256": sha256_bytes(raw),
+                }
+            return cache[slot]
+
+        breakpoint = None
+        if activity:
+            last = probe(len(activity) - 1)
+            first = probe(0)
+            if not last["match"]:
+                lo, hi = 0, len(activity) - 1
+                if first["match"]:
+                    while hi - lo > 1:
+                        if len(cache) >= 40:
+                            raise ValueError("SQD beta owner probe limit exceeded")
+                        mid = (lo + hi) // 2
+                        if probe(mid)["match"]:
+                            lo = mid
+                        else:
+                            hi = mid
+                else:
+                    hi = 0
+                breakpoint = activity[hi]["slot"]
+        fingerprint = []
+        candidates = []
+        window = None
+        if breakpoint is not None:
+            window = {"from": max(0, breakpoint - 64), "to": breakpoint + 64}
+            fingerprint = _probe_fingerprint(
+                transport, window["from"], window["to"])
+            candidates = sorted(row["slot"] for row in fingerprint
+                                if row["count"] == 0)
+            all_candidates.update(candidates)
+        trace["rounds"].append({
+            "round": 1, "owner": owner,
+            "probes": sorted(cache.values(), key=lambda row: row["slot"]),
+            "breakpoint_slot": breakpoint, "window": window,
+            "fingerprint": fingerprint, "candidate_slots": candidates,
+        })
+    trace["candidate_slots"] = sorted(all_candidates)
+    return trace
+
+
+def validate_coverage_state_consistency(state, *, header_present,
+                                        nonce_count, beta_candidate=False):
+    if not isinstance(nonce_count, int) or isinstance(nonce_count, bool) \
+            or nonce_count < 0:
+        raise ValueError("repair nonce count must be a nonnegative integer")
+    if not beta_candidate and state not in {"DEFECT_CANDIDATE", "MISSING_BLOCK"}:
+        raise ValueError("non-candidate coverage state entered alpha")
+    if state in {"NO_HEADER", "MISSING_BLOCK", "SKIPPED_CONFIRMED"}:
+        matches = not header_present
+    elif state in {"DEFECT_CANDIDATE", "ERA_UNCERTAIN"}:
+        matches = header_present and nonce_count == 0
+    elif state == "HEALTHY":
+        matches = header_present and nonce_count > 0
+    else:
+        matches = False
+    if not matches:
+        raise ValueError("SQD coverage state changed before repair")
+    return True
 
 
 def _plan(case_root, mint, blocks_cache=None, reference_fingerprint=None,
-          residual_slots=()):
+          beta_slots=()):
     # Resolve first so an invalid CURRENT is a hard error; generation building
     # still binds the immutable canonical base pair below.
     resolve_formal_cache(mint, case_root)
     base_edge, base_meta, base = _base(case_root, mint)
-    pointer, coverage, coverage_path, counts_path = _coverage(case_root, mint)
+    pointer, coverage, coverage_path, counts_path, checked = _coverage(case_root, mint)
     slot_meta = coverage.get("slot_counts", {})
     if slot_meta.get("from_slot") > base.get("from_slot") \
             or slot_meta.get("to_slot") < base.get("finalized_upper_slot"):
         raise ValueError("coverage interval does not cover the current base interval")
     candidates = sorted(set(coverage.get("candidate_slots") or [])
-                        | set(residual_slots))
+                        | set(beta_slots))
     source = "local-evidence-cache" if blocks_cache else "live"
     cache_dirs = ([blocks_cache] if isinstance(blocks_cache, (str, Path))
                   else list(blocks_cache or []))
@@ -349,12 +527,16 @@ def _plan(case_root, mint, blocks_cache=None, reference_fingerprint=None,
         "coverage": {"probe_id": coverage["probe_id"],
                      "map_sha256": sha256_file(coverage_path)},
         "candidate_slots": sorted(set(candidates)),
+        "plan_candidates": {
+            "coverage": sorted(set(coverage.get("candidate_slots") or [])),
+            "beta": sorted(set(beta_slots)),
+        },
         "mode": "exploration" if blocks_cache else "formal",
         "reference": reference, "producer": producer,
     }
     plan["plan_digest"] = compute_plan_digest(plan)
     return plan, (base_edge, base_meta, base), (
-        pointer, coverage, coverage_path, counts_path)
+        pointer, coverage, coverage_path, counts_path, checked)
 
 
 def _rpc_body(slot):
@@ -402,22 +584,226 @@ def _is_quota(result, error):
     return False
 
 
+def _ledger_header(plan):
+    return {
+        "schema": "sqd-solana-rpc-ledger/v1",
+        "plan_digest": plan["plan_digest"],
+        "reference": {"kind": plan["reference"]["kind"],
+                      "endpoint_fingerprint": plan["reference"][
+                          "endpoint_fingerprint"]},
+    }
+
+
+def _read_ledger_prefix(path):
+    path = Path(path)
+    if not path.is_file():
+        return []
+    raw = path.read_bytes()
+    complete = raw
+    if raw and not raw.endswith(b"\n"):
+        cut = raw.rfind(b"\n")
+        complete = raw[:cut + 1] if cut >= 0 else b""
+    rows = []
+    for line in complete.splitlines():
+        try:
+            value = json.loads(line)
+        except (ValueError, json.JSONDecodeError) as exc:
+            raise ValueError("RPC ledger contains malformed complete line") from exc
+        if not isinstance(value, dict):
+            raise ValueError("RPC ledger complete line must be an object")
+        rows.append(value)
+    clean = _jsonl_bytes(rows)
+    if clean != raw:
+        with path.open("wb") as handle:
+            handle.write(clean)
+            handle.flush()
+            os.fsync(handle.fileno())
+    return rows
+
+
+def _append_ledger_row(path, row):
+    with Path(path).open("ab") as handle:
+        handle.write(canonical_json(row) + b"\n")
+        handle.flush()
+        os.fsync(handle.fileno())
+
+
+def load_resume_slots(pending, header):
+    """Return slots whose evidence pair and successful ledger row align."""
+    pending = Path(pending)
+    ledger_path = pending / "rpc_ledger.jsonl"
+    rows = _read_ledger_prefix(ledger_path)
+    if not rows:
+        _publish_bytes_exclusive(ledger_path, _jsonl_bytes([header]))
+        return set(), []
+    if rows[0].get("schema") != "sqd-solana-rpc-ledger/v1" \
+            or rows[0] != header:
+        raise ValueError("resume RPC ledger header differs from plan")
+    completed = set()
+    seen_slots = set()
+    required = {"seq", "ts", "method", "params_digest", "slot",
+                "endpoint_fingerprint", "http_status", "bytes",
+                "credits_estimate", "result_sha256", "attempt"}
+    for expected_seq, row in enumerate(rows[1:]):
+        slot = row.get("slot")
+        if set(row) != required or row.get("seq") != expected_seq \
+                or row.get("method") != "getBlock" \
+                or row.get("http_status") != 200 \
+                or not isinstance(slot, int) or isinstance(slot, bool) \
+                or slot in seen_slots:
+            raise ValueError("resume RPC ledger successful prefix is invalid")
+        seen_slots.add(slot)
+        sqd_path = pending / "evidence" / f"{slot}.sqd.json"
+        ref_path = pending / "evidence" / f"{slot}.ref.json"
+        if not sqd_path.is_file() or not ref_path.is_file():
+            continue
+        try:
+            sqd = _json(sqd_path)
+            ref = _json(ref_path)
+        except (OSError, ValueError, json.JSONDecodeError):
+            continue
+        expected_params = sha256_bytes(canonical_json(_rpc_body(slot)))
+        if row.get("params_digest") == expected_params \
+                and row.get("endpoint_fingerprint") == header["reference"][
+                    "endpoint_fingerprint"] \
+                and sqd.get("slot") == slot and ref.get("slot") == slot \
+                and ref.get("raw_response_sha256") == row.get("result_sha256"):
+            completed.add(slot)
+    return completed, rows[1:]
+
+
+def _state_probe(transport, slot):
+    body = sqd_query_body(slot, slot)
+    result = transport.call("sqd-probe", body)
+    value, error = _result_value(result)
+    if error is not None:
+        raise ValueError(f"SQD coverage-state recheck failed at slot {slot}")
+    matching = [block for block in _blocks(value) if isinstance(block, dict)
+                and (block.get("header") or {}).get("number") == slot]
+    if len(matching) > 1:
+        raise ValueError(f"SQD coverage-state recheck duplicated slot {slot}")
+    present = bool(matching)
+    count = len((matching[0].get("instructions") or [])) if present else 0
+    raw = canonical_json(_blocks(value))
+    return present, count, sha256_bytes(canonical_json(body)), sha256_bytes(raw)
+
+
+def _payload_from_evidence(sqd_ev, ref_ev):
+    transaction_by_signature = {
+        row["signature"]: row for row in ref_ev.get("transactions", [])}
+    missing = []
+    for item in ref_ev.get("missing_detail", []):
+        tx_row = transaction_by_signature.get(item.get("signature"), {})
+        keys = item.get("account_keys_full") or []
+        def balances(name):
+            out = []
+            for row in item.get(name, []):
+                out.append({
+                    "accountIndex": row.get("accountIndex"),
+                    "mint": row.get("mint"), "owner": row.get("owner"),
+                    "uiTokenAmount": {"amount": str(row.get("amount", 0)),
+                                      "decimals": row.get("decimals", 0)},
+                })
+            return out
+        tx = {
+            "transaction": {"signatures": [item["signature"]],
+                            "message": {"accountKeys": keys, "instructions": []}},
+            "meta": {"err": tx_row.get("err"), "loadedAddresses": {},
+                     "preTokenBalances": balances("pre_token_balances(mint)"),
+                     "postTokenBalances": balances("post_token_balances(mint)")},
+        }
+        missing.append({"pos": tx_row.get("position"), "sig": item["signature"],
+                        "nonce": tx_row.get("is_nonce") is True,
+                        "failed": tx_row.get("err") is not None, "tx": tx})
+    return {
+        "slot": ref_ev["slot"], "blockhash": ref_ev["blockhash"],
+        "sqd_blockhash": sqd_ev.get("blockhash"),
+        "parentSlot": ref_ev.get("parent_slot"),
+        "blockTime": ref_ev.get("block_time"),
+        "helius_sigs": [row.get("signature")
+                        for row in ref_ev.get("transactions", [])],
+        "sqd_sigs": [row.get("signature")
+                     for row in sqd_ev.get("transactions", [])],
+        "sqd_transactions": sqd_ev.get("transactions", []),
+        "missing_full": missing,
+        "reference_response_sha256": ref_ev.get("raw_response_sha256"),
+        "coverage_state": sqd_ev.get("coverage_state"),
+        "sqd_nonce_count_at_repair": sqd_ev.get(
+            "sqd_nonce_count_at_repair"),
+        "coverage_probe_query_sha256": sqd_ev.get(
+            "coverage_probe_query_sha256"),
+        "coverage_probe_response_sha256": sqd_ev.get(
+            "coverage_probe_response_sha256"),
+        "census_query_body_sha256": sqd_ev.get("query_body_sha256"),
+        "census_response_sha256": sqd_ev.get("response_sha256"),
+    }
+
+
+def _persist_live_slot(pending, payload, mint, ledger_row):
+    evidence = Path(pending) / "evidence"
+    evidence.mkdir(exist_ok=True)
+    _census, _layer, _mapping, sqd_ev, ref_ev = _routea_slot(payload, mint)
+    _publish_json_exclusive(evidence / f"{payload['slot']}.sqd.json", sqd_ev)
+    _publish_json_exclusive(evidence / f"{payload['slot']}.ref.json", ref_ev)
+    _append_ledger_row(Path(pending) / "rpc_ledger.jsonl", ledger_row)
+    _fsync_dir(evidence)
+
+
+def resume_published_generation(parent, plan_digest):
+    """Find the unique immutable generation already produced for this plan."""
+    matches = []
+    for path in sorted(Path(parent).glob("gen-*/bundle.json")):
+        try:
+            bundle = _json(path)
+        except (OSError, ValueError, json.JSONDecodeError):
+            continue
+        if bundle.get("plan_digest") == plan_digest:
+            matches.append((path.parent, bundle))
+    if len(matches) > 1:
+        raise ValueError("multiple immutable generations match resume plan")
+    return matches[0] if matches else None
+
+
+def assert_resume_cas(bundle, current):
+    """Fail closed if CURRENT moved after the resumed generation was planned."""
+    current_gid = current.get("gid") if isinstance(current, dict) else None
+    if current_gid not in {bundle.get("supersedes"), bundle.get("gid")}:
+        raise RuntimeError("repair pointer CAS failed after resume drift")
+    return True
+
+
 def _live_payloads(args, candidate_slots, reference_endpoint,
-                   reference_fingerprint):
+                   reference_fingerprint, *, pending, plan, coverage_states,
+                   beta_slots):
     transport = (RepairFixtureTransport(args.transport_fixture)
                  if args.transport_fixture else RepairLiveTransport(reference_endpoint))
-    payloads, ledger = [], []
+    header = _ledger_header(plan)
+    completed, ledger = load_resume_slots(pending, header)
+    payloads = []
     for slot in candidate_slots:
+        if slot in completed:
+            sqd_ev = _json(Path(pending) / "evidence" / f"{slot}.sqd.json")
+            ref_ev = _json(Path(pending) / "evidence" / f"{slot}.ref.json")
+            payloads.append(_payload_from_evidence(sqd_ev, ref_ev))
+            continue
+        state = coverage_states.get(slot)
+        if state is None:
+            raise ValueError(f"candidate slot outside coverage interval: {slot}")
+        present, nonce_count, probe_query_sha, probe_response_sha = _state_probe(
+            transport, slot)
+        validate_coverage_state_consistency(
+            state, header_present=present, nonce_count=nonce_count,
+            beta_candidate=slot in beta_slots)
         body = _rpc_body(slot)
         result = transport.call("reference-getBlock", body)
         block, error = _result_value(result)
         if _is_quota(result, error):
-            raise QuotaStopped(slot)
+            raise QuotaStopped(slot, payloads, ledger, completed)
         if error is not None or not isinstance(block, dict):
             raise ValueError(f"reference getBlock failed at slot {slot}: {error}")
         raw = json.dumps(block, sort_keys=True, separators=(",", ":"),
                          ensure_ascii=False).encode("utf-8")
-        ledger.append({
+        ledger_row = {
             "seq": len(ledger), "ts": int(time.time()), "method": "getBlock",
             "params_digest": sha256_bytes(canonical_json(body)), "slot": slot,
             "endpoint_fingerprint": reference_fingerprint,
@@ -425,15 +811,20 @@ def _live_payloads(args, candidate_slots, reference_endpoint,
                 (result.error or {}).get("http_status") or 0)),
             "bytes": len(raw), "credits_estimate": 10,
             "result_sha256": sha256_bytes(raw), "attempt": 1,
-        })
-        census_result = transport.call("sqd-census", _census_body(slot))
+        }
+        census_body = _census_body(slot)
+        census_result = transport.call("sqd-census", census_body)
         census_value, census_error = _result_value(census_result)
         if census_error is not None:
             raise ValueError(f"SQD census failed at slot {slot}: {census_error}")
         blocks = census_value if isinstance(census_value, list) else [census_value]
+        census_raw = canonical_json(blocks)
         matching = [item for item in blocks if isinstance(item, dict)
                     and (item.get("header") or {}).get("number") == slot]
         sqd_block = matching[0] if matching else None
+        if bool(sqd_block) != present:
+            raise ValueError(
+                f"SQD state probe/census header disagreement at slot {slot}")
         sqd_transactions = (sqd_block.get("transactions") or []) if sqd_block else []
         normalized_sqd = []
         for row in sqd_transactions:
@@ -462,14 +853,25 @@ def _live_payloads(args, candidate_slots, reference_endpoint,
                 "failed": (tx.get("meta") or {}).get("err") is not None,
                 "tx": tx,
             })
-        payloads.append({
+        payload = {
             "slot": slot, "blockhash": block.get("blockhash"),
             "sqd_blockhash": ((sqd_block or {}).get("header") or {}).get("hash"),
             "parentSlot": block.get("parentSlot"), "blockTime": block.get("blockTime"),
             "helius_sigs": helius_sigs, "sqd_sigs": sqd_sigs,
             "sqd_transactions": normalized_sqd,
             "missing_full": missing_full,
-        })
+            "reference_response_sha256": sha256_bytes(raw),
+            "coverage_state": state,
+            "sqd_nonce_count_at_repair": nonce_count,
+            "coverage_probe_query_sha256": probe_query_sha,
+            "coverage_probe_response_sha256": probe_response_sha,
+            "census_query_body_sha256": sha256_bytes(canonical_json(census_body)),
+            "census_response_sha256": sha256_bytes(census_raw),
+        }
+        _persist_live_slot(pending, payload, args.mint, ledger_row)
+        ledger.append(ledger_row)
+        completed.add(slot)
+        payloads.append(payload)
     return payloads, ledger
 
 
@@ -578,8 +980,17 @@ def _routea_slot(payload, mint):
         "slot": slot, "blockhash": payload.get("sqd_blockhash"),
         "parent_slot": payload.get("parentSlot", slot - 1),
         "transactions": sqd_transactions,
-        "query_body_sha256": sha256_bytes(canonical_json({"slot": slot})),
-        "response_sha256": sha256_bytes(canonical_json(sqd_transactions)),
+        "query_body_sha256": payload.get("census_query_body_sha256") or
+        sha256_bytes(canonical_json({"slot": slot})),
+        "response_sha256": payload.get("census_response_sha256") or
+        sha256_bytes(canonical_json(sqd_transactions)),
+        "coverage_state": payload.get("coverage_state", "DEFECT_CANDIDATE"),
+        "sqd_nonce_count_at_repair": payload.get(
+            "sqd_nonce_count_at_repair"),
+        "coverage_probe_query_sha256": payload.get(
+            "coverage_probe_query_sha256"),
+        "coverage_probe_response_sha256": payload.get(
+            "coverage_probe_response_sha256"),
     }
     def normalized_balances(tx, field):
         rows = []
@@ -596,9 +1007,9 @@ def _routea_slot(payload, mint):
             })
         return rows
 
-    raw_digest = hashlib.sha256(json.dumps(
-        payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False
-    ).encode("utf-8")).hexdigest()
+    raw_digest = payload.get("reference_response_sha256") or hashlib.sha256(
+        json.dumps(payload, sort_keys=True, separators=(",", ":"),
+                   ensure_ascii=False).encode("utf-8")).hexdigest()
     ref_evidence = {
         "slot": slot, "blockhash": payload["blockhash"],
         "parent_slot": payload.get("parentSlot", slot - 1),
@@ -619,6 +1030,9 @@ def _routea_slot(payload, mint):
               else "confirmed_other_defect" if payload["missing_full"] else "refuted")
     census = {
         "slot": slot, "state_in_map": "DEFECT_CANDIDATE", "result": result,
+        "coverage_state": sqd_evidence["coverage_state"],
+        "sqd_nonce_count_at_repair": sqd_evidence[
+            "sqd_nonce_count_at_repair"],
         "sqd_tx_count": len(sqd_transactions),
         "sqd_blockhash": payload.get("sqd_blockhash"),
         "ref_tx_count": len(payload["helius_sigs"]),
@@ -641,13 +1055,53 @@ def _produce_blocks(args):
         raise ValueError("case-root symlink is forbidden")
     plan, base_info, coverage_info = _plan(
         case_root, args.mint, args.blocks_cache, args.reference_fingerprint,
-        args.residual_slots)
+        args.beta_slots)
     base_edge, base_meta, base = base_info
-    _pointer, coverage, coverage_path, counts_path = coverage_info
+    _pointer, coverage, coverage_path, counts_path, coverage_checked = coverage_info
+    from_slot = coverage["slot_counts"]["from_slot"]
+    coverage_states = {
+        from_slot + index: state for index, state in enumerate(
+            coverage_checked["recomputed"]["states"])}
     parent, current_path, _lock = sqd_repair_paths(case_root, args.mint)
     parent.mkdir(parents=True, exist_ok=True)
     current = _json(current_path) if current_path.is_file() else None
     supersedes = current.get("gid") if isinstance(current, dict) else None
+    if args.resume:
+        recovered = resume_published_generation(parent, plan["plan_digest"])
+        if recovered is not None:
+            final, bundle = recovered
+            checked = validate_repair_bundle_deep(
+                final / "bundle.json", case_root=case_root,
+                current_base={"edge_sha256": sha256_file(base_edge)})
+            if not checked["ok"]:
+                raise ValueError("resume generation deep validation failed: "
+                                 + "; ".join(checked["reasons"]))
+            action = "exploration-not-published"
+            if bundle["mode"] == "formal":
+                now_current = _json(current_path) if current_path.is_file() else None
+                assert_resume_cas(bundle, now_current)
+                bundle_ref = _file_ref(
+                    final / "bundle.json",
+                    str((final / "bundle.json").relative_to(case_root)))
+                pointer = {
+                    "schema": "sqd-solana-repair-pointer/v1",
+                    "target": {"chain": "solana", "token": args.mint,
+                               "as_of_block": base["finalized_upper_slot"]},
+                    "mode": "formal", "verdict": "PASS", "exit_code": 0,
+                    "producer": plan["producer"], "inputs": {"bundle": bundle_ref},
+                    "gid": bundle["gid"], "supersedes": bundle["supersedes"],
+                    "published_at": utc_now(),
+                }
+                expected = ({"gid": bundle["supersedes"]}
+                            if bundle["supersedes"] is not None else None)
+                action = publish_current_cas(
+                    current_path, pointer, expected_current=expected,
+                    bundle_path=final / "bundle.json", base_edge_path=base_edge)
+            print(json.dumps({"status": action, "gid": bundle["gid"],
+                              "plan_digest": plan["plan_digest"],
+                              "repair_edges": bundle["repair_layer"]["edges"]},
+                             sort_keys=True))
+            return 0
     pending = parent / f"pending-{plan['plan_digest']}"
     if pending.exists() and not args.resume:
         raise ValueError("matching pending generation exists; use --resume")
@@ -655,19 +1109,37 @@ def _produce_blocks(args):
     guard_coverage_writes([pending])
     evidence_dir = pending / "evidence"
     evidence_dir.mkdir(exist_ok=True)
+    beta_trace = getattr(args, "beta_trace", None)
+    beta_trace_ref = None
+    if beta_trace is not None and beta_trace.get("residual_owners"):
+        beta_path = evidence_dir / "beta_trace.json"
+        _publish_json_exclusive(beta_path, beta_trace)
+        beta_trace_ref = _file_ref(beta_path, "evidence/beta_trace.json")
 
     census, layer, maps, evidence_manifest = [], [], [], []
     rpc_rows = []
     if args.blocks_cache:
         payloads = _cache_payloads(args.blocks_cache)
+        for payload in payloads:
+            state = coverage_states.get(payload["slot"])
+            if state is None:
+                raise ValueError(
+                    f"cache slot outside coverage interval: {payload['slot']}")
+            payload["coverage_state"] = state
+            payload["sqd_nonce_count_at_repair"] = None
+            payload["coverage_probe_query_sha256"] = None
+            payload["coverage_probe_response_sha256"] = None
     else:
         try:
             payloads, rpc_rows = _live_payloads(
                 args, plan["candidate_slots"], args.reference_endpoint,
-                args.reference_fingerprint)
+                args.reference_fingerprint, pending=pending, plan=plan,
+                coverage_states=coverage_states,
+                beta_slots=set(plan["plan_candidates"]["beta"]))
         except QuotaStopped as exc:
             stopped = {"reason": "reference-quota", "cursor": exc.cursor,
-                       "plan_digest": plan["plan_digest"]}
+                       "plan_digest": plan["plan_digest"],
+                       "completed_slots": exc.completed_slots}
             publish_overwrite(pending / "STOPPED.json", stopped)
             _fsync_dir(pending)
             print(json.dumps(stopped, sort_keys=True), file=sys.stderr)
@@ -688,11 +1160,13 @@ def _produce_blocks(args):
         layer.extend(layer_rows)
         maps.append(map_row)
         evidence_manifest.extend((sqd_ref, ref_ref))
+    if beta_trace_ref is not None:
+        evidence_manifest.append(beta_trace_ref)
     census.sort(key=lambda row: row["slot"])
     layer.sort(key=lambda row: row["signature"])
     maps.sort(key=lambda row: row["slot"])
     evidence_manifest.sort(key=lambda row: row["path"])
-    candidate_slots = coverage.get("candidate_slots") or []
+    candidate_slots = plan["candidate_slots"]
     census_slots = {row["slot"] for row in census}
     effective = ("INCONCLUSIVE" if not set(candidate_slots).issubset(census_slots)
                  else "DEFECTS_CONFIRMED" if any(
@@ -703,6 +1177,7 @@ def _produce_blocks(args):
         "plan_digest": plan["plan_digest"],
         "coverage": {"probe_id": coverage["probe_id"],
                      "map_sha256": sha256_file(coverage_path)},
+        "plan_candidates": plan["plan_candidates"],
         "census": census, "effective_verdict": effective,
     }
     validate_resolution(resolution, candidate_slots, formal=False)
@@ -751,22 +1226,19 @@ def _produce_blocks(args):
     _publish_bytes_exclusive(pending / "slot_index_map.jsonl",
                              _jsonl_bytes([map_header, *maps]))
     _publish_json_exclusive(pending / "evidence_manifest.json", evidence_manifest)
-    ledger_header = {
-        "schema": "sqd-solana-rpc-ledger/v1",
-        "plan_digest": plan["plan_digest"],
-        "reference": {"kind": plan["reference"]["kind"],
-                      "endpoint_fingerprint": plan["reference"]["endpoint_fingerprint"]},
-    }
+    ledger_header = _ledger_header(plan)
     ledger_path = pending / "rpc_ledger.jsonl"
-    if args.resume and ledger_path.is_file():
-        complete_rows = [json.loads(line) for line in ledger_path.read_text(
-            encoding="utf-8").splitlines() if line.strip()]
-        if not complete_rows or complete_rows[0] != ledger_header:
-            raise ValueError("resume RPC ledger header differs from plan")
-        rpc_rows = complete_rows[1:]
-    else:
+    if not ledger_path.is_file():
         _publish_bytes_exclusive(ledger_path,
                                  _jsonl_bytes([ledger_header, *rpc_rows]))
+    complete_rows = _read_ledger_prefix(ledger_path)
+    if not complete_rows or complete_rows[0] != ledger_header:
+        raise ValueError("RPC ledger header differs from plan")
+    rpc_rows = complete_rows[1:]
+    stopped_path = pending / "STOPPED.json"
+    if stopped_path.is_file():
+        stopped_path.unlink()
+        _fsync_dir(pending)
     gid_material = {
         "plan_digest": plan["plan_digest"], "kind": "repair",
         "supersedes": supersedes, "census": census, "transactions": layer,
@@ -951,9 +1423,12 @@ def main(argv=None):
         case_root = Path(args.case_root).resolve()
         args.reference_endpoint = None
         args.reference_fingerprint = None
+        args.beta_trace = None
+        args.beta_slots = []
         if args.beta_rounds < 1 or args.beta_rounds > 3:
             raise ValueError("beta rounds must be within 1..3")
-        args.residual_slots = _residual_candidates(args.residual_owners)
+        if args.residual_owners and not args.beta:
+            raise ValueError("--residual-owners requires --beta")
         if not args.blocks_cache:
             if args.transport_fixture:
                 args.reference_endpoint = "fixture://helius"
@@ -968,14 +1443,24 @@ def main(argv=None):
             endpoints.append(args.reference_endpoint)
             args.reference_fingerprint = endpoint_fingerprint(
                 args.reference_endpoint)["sha256"]
+        if args.beta:
+            beta_transport = (RepairFixtureTransport(args.transport_fixture)
+                              if args.transport_fixture else RepairLiveTransport(
+                                  args.reference_endpoint))
+            base_edge, _base_meta, _base_value = _base(case_root, args.mint)
+            args.beta_trace = run_beta_search(
+                args, case_root, read_edge_file(base_edge), beta_transport)
+            args.beta_slots = args.beta_trace["candidate_slots"]
         plan, _base_info, _coverage_info = _plan(
             case_root, args.mint, args.blocks_cache, args.reference_fingerprint,
-            args.residual_slots)
+            args.beta_slots)
         if args.command == "plan":
-            print(json.dumps({**plan, "estimated_slots": len(plan["candidate_slots"]),
+            output = {**plan, "estimated_slots": len(plan["candidate_slots"]),
                               "estimated_requests": len(plan["candidate_slots"]) * 2,
-                              "estimated_credits": len(plan["candidate_slots"]) * 10},
-                             sort_keys=True))
+                              "estimated_credits": len(plan["candidate_slots"]) * 10}
+            if args.beta_trace is not None:
+                output["beta_trace"] = args.beta_trace
+            print(json.dumps(output, sort_keys=True))
             return 0
         return _repair_publish_txn(args)
     except Exception as exc:

@@ -211,11 +211,83 @@
       "required": true,
       "description": "",
       "constraints": ""
+    },
+    {
+      "name": "beta_trace.json",
+      "type": "object",
+      "required": false,
+      "description": "sqd-solana-beta-trace/v1；仅 beta 已开且存在残差 owner 时写入 evidence/",
+      "constraints": "进入 evidence_manifest 与 gid"
+    },
+    {
+      "name": "beta_trace.json.schema",
+      "type": "string",
+      "required": false,
+      "description": "sqd-solana-beta-trace/v1",
+      "constraints": "beta_trace 在场时必须精确匹配"
+    },
+    {
+      "name": "beta_trace.json.inputs",
+      "type": "object",
+      "required": false,
+      "description": "receipt/replay_final_balances/holders_owners 三份案根相对 path,size,sha256",
+      "constraints": "全部与案根当前文件逐字节一致"
+    },
+    {
+      "name": "beta_trace.json.residual_owners",
+      "type": "array[object]",
+      "required": false,
+      "description": "owner,replay,snapshot；由两份 owner->int 文件差集推导",
+      "constraints": "按 owner 升序唯一；可由 --residual-owners 作显式子集过滤"
+    },
+    {
+      "name": "beta_trace.json.rounds",
+      "type": "array[object]",
+      "required": false,
+      "description": "round,owner,probes,breakpoint_slot,window,fingerprint,candidate_slots",
+      "constraints": "round 1..3；每 owner balance probes 不超过 40"
+    },
+    {
+      "name": "beta_trace.json.rounds[].probes",
+      "type": "array[object]",
+      "required": false,
+      "description": "slot,sqd_post_amount,replay_balance,match,query_body_sha256,response_sha256",
+      "constraints": "按 slot 升序唯一；match 机械重算"
+    },
+    {
+      "name": "beta_trace.json.rounds[].fingerprint",
+      "type": "array[object]",
+      "required": false,
+      "description": "断点正负 64 slot 的 slot,count 指纹",
+      "constraints": "按 slot 升序唯一"
+    },
+    {
+      "name": "beta_trace.json.candidate_slots",
+      "type": "array[integer]",
+      "required": false,
+      "description": "各 round candidate_slots 的确定性并集",
+      "constraints": "升序唯一；等于 coverage_resolution.plan_candidates.beta"
+    },
+    {
+      "name": "<slot>.sqd.json.coverage_state",
+      "type": "string",
+      "required": true,
+      "description": "E26 coverage 状态留痕",
+      "constraints": "与 census 及 coverage 二进制重算一致"
+    },
+    {
+      "name": "<slot>.sqd.json.sqd_nonce_count_at_repair",
+      "type": "integer|null",
+      "required": true,
+      "description": "E26 repair 时 nonce 重查数",
+      "constraints": "formal 非 null；cache exploration 为 null"
     }
   ],
   "invariants": [
     "原始块默认不留，--keep-raw 可留。",
-    "ledger 记 raw sha256，canary 可重拉对表。"
+    "ledger 记 raw sha256，canary 可重拉对表。",
+    "beta_trace 三份输入 hash、残差推导、probe match、候选并集均可离线复算。",
+    "formal census 的 coverage_state/nonce count 与 SQD evidence 和 coverage 状态一致。"
   ],
   "notes": []
 }

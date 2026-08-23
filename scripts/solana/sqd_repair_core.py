@@ -94,6 +94,56 @@ def compute_gid(value):
     return sha256_bytes(canonical_json(material))[:16]
 
 
+def derive_residual_owners(receipt, replay_balances, snapshot_balances,
+                           subset=None):
+    """Derive E25 residual owners from the three existing replay artifacts."""
+    if not isinstance(receipt, dict) or not isinstance(receipt.get("gate_pass"), bool):
+        raise ValueError("reconcile receipt gate_pass must be boolean")
+    for label, value in (("replay_final_balances", replay_balances),
+                         ("holders_owners", snapshot_balances)):
+        if not isinstance(value, dict):
+            raise ValueError(f"{label} must be an owner-to-int object")
+        for owner, amount in value.items():
+            if not isinstance(owner, str) or not owner \
+                    or not isinstance(amount, int) or isinstance(amount, bool):
+                raise ValueError(f"{label} contains invalid owner balance")
+    if receipt["gate_pass"]:
+        return []
+    allowed = None
+    if subset is not None:
+        if not isinstance(subset, (list, tuple, set)) \
+                or any(not isinstance(owner, str) or not owner for owner in subset):
+            raise ValueError("residual owner subset must contain owner strings")
+        allowed = set(subset)
+    owners = sorted(set(replay_balances) | set(snapshot_balances))
+    rows = []
+    for owner in owners:
+        replay = replay_balances.get(owner, 0)
+        snapshot = snapshot_balances.get(owner, 0)
+        if replay != snapshot and (allowed is None or owner in allowed):
+            rows.append({"owner": owner, "replay": replay,
+                         "snapshot": snapshot})
+    return rows
+
+
+def owner_activity(rows, owner):
+    """Return sorted activity slots and inclusive replay balances for one owner."""
+    per_slot = {}
+    for raw in rows:
+        row = validate_edge_row(raw)
+        delta = (row[6] if row[5] == owner else 0) \
+            - (row[6] if row[4] == owner else 0)
+        if delta:
+            per_slot[row[1]] = per_slot.get(row[1], 0) + delta
+    slots = sorted(per_slot)
+    balance = 0
+    out = []
+    for slot in slots:
+        balance += per_slot[slot]
+        out.append({"slot": slot, "replay_balance": balance})
+    return out
+
+
 def b58decode(value):
     if not isinstance(value, str):
         raise ValueError("base58 value must be string")

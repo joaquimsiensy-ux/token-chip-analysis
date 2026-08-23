@@ -897,6 +897,171 @@ def validate_repair_pointer(pointer, *, expected_mint, expected_gid,
     return {"ok": not reasons, "reasons": reasons}
 
 
+def validate_beta_trace(trace, *, case_root, generation=None):
+    """Independently validate E25 trace structure and its three live inputs."""
+    reasons = []
+    case_root = Path(case_root).resolve()
+    generation = Path(generation or case_root).resolve()
+    if not isinstance(trace, dict):
+        return {"ok": False, "reasons": ["beta trace must be an object"]}
+    try:
+        canonical_json(trace)
+    except ValueError as exc:
+        reasons.append(f"beta trace canonicalization failed: {exc}")
+    if trace.get("schema") != "sqd-solana-beta-trace/v1":
+        reasons.append("beta trace schema mismatch")
+    inputs = trace.get("inputs")
+    if not isinstance(inputs, dict) or set(inputs) != {
+            "receipt", "replay_final_balances", "holders_owners"}:
+        reasons.append("beta trace input key set mismatch")
+        inputs = {}
+    loaded = {}
+    for name in ("receipt", "replay_final_balances", "holders_owners"):
+        path = _repair_ref(case_root, generation, inputs.get(name),
+                           f"beta input {name}", reasons)
+        if path is not None:
+            try:
+                loaded[name] = json.loads(path.read_text(encoding="utf-8"))
+            except (OSError, ValueError, json.JSONDecodeError) as exc:
+                reasons.append(f"beta input {name} unreadable: {exc}")
+    receipt = loaded.get("receipt", {})
+    replay = loaded.get("replay_final_balances", {})
+    snapshot = loaded.get("holders_owners", {})
+    if not isinstance(receipt, dict) or not isinstance(receipt.get("gate_pass"), bool):
+        reasons.append("beta receipt gate_pass invalid")
+    for label, value in (("replay", replay), ("snapshot", snapshot)):
+        if not isinstance(value, dict) or any(
+                not isinstance(owner, str) or not owner or not _integer(amount)
+                for owner, amount in (value.items() if isinstance(value, dict) else [])):
+            reasons.append(f"beta {label} owner balances invalid")
+    expected = {owner: (replay.get(owner, 0), snapshot.get(owner, 0))
+                for owner in sorted(set(replay) | set(snapshot))
+                if replay.get(owner, 0) != snapshot.get(owner, 0)} \
+        if isinstance(replay, dict) and isinstance(snapshot, dict) else {}
+    residual = trace.get("residual_owners")
+    if not isinstance(residual, list):
+        reasons.append("beta residual_owners must be an array")
+        residual = []
+    owners = [row.get("owner") for row in residual if isinstance(row, dict)]
+    if owners != sorted(set(owners)):
+        reasons.append("beta residual owners are not sorted unique")
+    for row in residual:
+        if not isinstance(row, dict) or set(row) != {"owner", "replay", "snapshot"}:
+            reasons.append("beta residual owner row shape invalid")
+            continue
+        pair = expected.get(row["owner"])
+        if pair != (row["replay"], row["snapshot"]):
+            reasons.append("beta residual owner differs from bound inputs")
+    if receipt.get("gate_pass") is True and residual:
+        reasons.append("gate-passing receipt cannot produce beta residual owners")
+
+    rounds = trace.get("rounds")
+    if not isinstance(rounds, list):
+        reasons.append("beta rounds must be an array")
+        rounds = []
+    union = set()
+    round_owners = []
+    for row in rounds:
+        if not isinstance(row, dict):
+            reasons.append("beta round must be an object")
+            continue
+        owner = row.get("owner")
+        round_owners.append(owner)
+        if owner not in owners or row.get("round") not in {1, 2, 3}:
+            reasons.append("beta round owner/index invalid")
+        probes = row.get("probes")
+        if not isinstance(probes, list) or len(probes) > 40:
+            reasons.append("beta probes missing or exceed owner limit")
+            probes = []
+        probe_slots = [item.get("slot") for item in probes
+                       if isinstance(item, dict)]
+        if probe_slots != sorted(set(probe_slots)):
+            reasons.append("beta probes are not slot-sorted unique")
+        for item in probes:
+            if not isinstance(item, dict):
+                reasons.append("beta probe row invalid")
+                continue
+            actual, replay_value = item.get("sqd_post_amount"), item.get(
+                "replay_balance")
+            if actual is not None and not _integer(actual):
+                reasons.append("beta probe SQD amount invalid")
+            if not _integer(replay_value) or item.get("match") != (
+                    actual is not None and actual == replay_value):
+                reasons.append("beta probe match is not mechanically derived")
+            for key in ("query_body_sha256", "response_sha256"):
+                if not isinstance(item.get(key), str) or re.fullmatch(
+                        r"[0-9a-f]{64}", item[key]) is None:
+                    reasons.append(f"beta probe {key} invalid")
+        breakpoint = row.get("breakpoint_slot")
+        window = row.get("window")
+        fingerprint = row.get("fingerprint")
+        candidates = row.get("candidate_slots")
+        if breakpoint is None:
+            if window is not None or fingerprint not in ([], None) or candidates not in ([], None):
+                reasons.append("beta no-breakpoint round has derived artifacts")
+            candidates = []
+        else:
+            if not _integer(breakpoint) or not isinstance(window, dict) \
+                    or set(window) != {"from", "to"} \
+                    or not _integer(window.get("from")) \
+                    or not _integer(window.get("to")) \
+                    or not window["from"] <= breakpoint <= window["to"]:
+                reasons.append("beta breakpoint/window invalid")
+            if not isinstance(fingerprint, list):
+                reasons.append("beta fingerprint missing")
+                fingerprint = []
+            fp_slots = [item.get("slot") for item in fingerprint
+                        if isinstance(item, dict)]
+            expected_window = {
+                "from": max(0, breakpoint - 64), "to": breakpoint + 64}
+            if window != expected_window:
+                reasons.append("beta fingerprint window is not exact +/-64")
+            if fp_slots != list(range(window.get("from", 0),
+                                      window.get("to", -1) + 1)):
+                reasons.append("beta fingerprint does not cover its full window")
+            if any(not isinstance(item, dict)
+                   or set(item) != {"slot", "count"}
+                   or not _integer(item.get("count"))
+                   or item["count"] < -1 for item in fingerprint):
+                reasons.append("beta fingerprint row invalid")
+            derived = sorted(item.get("slot") for item in fingerprint
+                             if isinstance(item, dict) and item.get("count") == 0)
+            if candidates != derived:
+                reasons.append("beta round candidates differ from fingerprint")
+                candidates = derived
+        union.update(candidates or [])
+    if round_owners != owners:
+        reasons.append("beta rounds do not cover residual owners in order")
+    candidates = trace.get("candidate_slots")
+    if candidates != sorted(union):
+        reasons.append("beta trace candidate union mismatch")
+    return {"ok": not reasons, "reasons": reasons,
+            "candidate_slots": sorted(union), "residual_owners": owners}
+
+
+def _repair_state_matches(state, header_present, nonce_count):
+    if not _integer(nonce_count) or nonce_count < 0:
+        return False
+    if state in {"NO_HEADER", "MISSING_BLOCK", "SKIPPED_CONFIRMED"}:
+        return not header_present
+    if state in {"DEFECT_CANDIDATE", "ERA_UNCERTAIN"}:
+        return header_present and nonce_count == 0
+    if state == "HEALTHY":
+        return header_present and nonce_count > 0
+    return False
+
+
+def _repair_getblock_params_digest(slot):
+    body = {
+        "jsonrpc": "2.0", "id": slot, "method": "getBlock",
+        "params": [slot, {"commitment": "finalized",
+                          "transactionDetails": "full", "encoding": "json",
+                          "rewards": False,
+                          "maxSupportedTransactionVersion": 0}],
+    }
+    return sha256_bytes(canonical_json(body))
+
+
 def validate_repair_bundle_deep(bundle_path, *, case_root, current_base,
                                 live_canary=0, live_canary_fetch=None):
     """Rebuild a repair generation without importing producer/replay code."""
@@ -984,6 +1149,34 @@ def validate_repair_bundle_deep(bundle_path, *, case_root, current_base,
         plan_values.append(ledger_rows[0].get("plan_digest"))
     if any(value != digest for value in plan_values):
         reasons.append("plan_digest differs across generation")
+    if ledger_rows:
+        if ledger_rows[0].get("plan_digest") != digest:
+            reasons.append("RPC ledger header plan_digest mismatch")
+        seqs = []
+        for row in ledger_rows[1:]:
+            seqs.append(row.get("seq"))
+            required = {"seq", "ts", "method", "params_digest", "slot",
+                        "endpoint_fingerprint", "http_status", "bytes",
+                        "credits_estimate", "result_sha256", "attempt"}
+            if not isinstance(row, dict) or set(row) != required \
+                    or row.get("method") != "getBlock" \
+                    or any(not _integer(row.get(key)) for key in (
+                        "seq", "ts", "slot", "http_status", "bytes",
+                        "credits_estimate", "attempt")) \
+                    or any(not isinstance(row.get(key), str) or re.fullmatch(
+                        r"[0-9a-f]{64}", row[key]) is None for key in (
+                            "params_digest", "endpoint_fingerprint",
+                            "result_sha256")):
+                reasons.append("RPC ledger row contract invalid")
+        if seqs != list(range(len(seqs))):
+            reasons.append("RPC ledger sequence is not contiguous")
+        ledger_slots = [row.get("slot") for row in ledger_rows[1:]
+                        if isinstance(row, dict)]
+        if len(ledger_slots) != len(set(ledger_slots)):
+            reasons.append("RPC ledger slots are not unique")
+        if (bundle.get("rpc_ledger") or {}).get("requests") != len(
+                ledger_rows) - 1:
+            reasons.append("bundle RPC ledger request count mismatch")
     if "gid" in meta or "bundle_sha256" in meta:
         reasons.append("merged meta contains forbidden circular binding")
     if meta.get("base_edge_sha256") != base.get("edge_sha256"):
@@ -1039,13 +1232,87 @@ def validate_repair_bundle_deep(bundle_path, *, case_root, current_base,
                                     "coverage map", reasons)
     coverage_map = read_json(coverage_map_path, "coverage map")
     coverage_candidates.update(coverage_map.get("candidate_slots") or [])
-    if not coverage_candidates.issubset(census_slots):
-        reasons.append("current coverage candidates lack census disposition")
-    effective = ("INCONCLUSIVE" if not coverage_candidates.issubset(census_slots)
+    plan_candidates = resolution.get("plan_candidates")
+    if not isinstance(plan_candidates, dict) or set(plan_candidates) != {
+            "coverage", "beta"}:
+        reasons.append("resolution plan_candidates shape invalid")
+        plan_candidates = {"coverage": [], "beta": []}
+    for key in ("coverage", "beta"):
+        values = plan_candidates.get(key)
+        if not isinstance(values, list) or values != sorted(set(values)) \
+                or any(not _integer(slot) for slot in values):
+            reasons.append(f"resolution plan_candidates.{key} invalid")
+            plan_candidates[key] = []
+    if plan_candidates["coverage"] != sorted(coverage_candidates):
+        reasons.append("resolution coverage candidates differ from coverage map")
+    beta_trace = evidence.get("evidence/beta_trace.json")
+    if isinstance(beta_trace, dict):
+        beta_checked = validate_beta_trace(
+            beta_trace, case_root=case_root, generation=generation)
+        reasons.extend(beta_checked["reasons"])
+        if beta_checked["candidate_slots"] != plan_candidates["beta"]:
+            reasons.append("plan beta candidates differ from beta trace")
+    elif plan_candidates["beta"]:
+        reasons.append("beta candidates require beta_trace evidence")
+    all_candidates = set(plan_candidates["coverage"]) | set(
+        plan_candidates["beta"])
+    if not all_candidates.issubset(census_slots):
+        reasons.append("plan candidates lack census disposition")
+    effective = ("INCONCLUSIVE" if not all_candidates.issubset(census_slots)
                  else "DEFECTS_CONFIRMED" if confirmed
                  else "NO_KNOWN_NONCE_OMISSION_DETECTED")
     if resolution.get("effective_verdict") != effective:
         reasons.append("resolution effective verdict mismatch")
+
+    coverage_check = None
+    slot_meta = coverage_map.get("slot_counts", {}) if isinstance(
+        coverage_map, dict) else {}
+    if coverage_map_path is not None:
+        pointer_path = case_root / "data/sqd_coverage/CURRENT.json"
+        coverage_check = validate_coverage(
+            case_root, coverage_map_path, pointer_path,
+            slot_meta.get("from_slot"), slot_meta.get("to_slot"))
+        if not coverage_check["ok"]:
+            reasons.append("bundle coverage no longer validates: "
+                           + "; ".join(coverage_check["reasons"]))
+    state_by_slot = {}
+    if coverage_check and coverage_check["ok"]:
+        lower = slot_meta["from_slot"]
+        state_by_slot = {lower + index: state for index, state in enumerate(
+            coverage_check["recomputed"]["states"])}
+    census_by_slot = {row.get("slot"): row for row in resolution.get("census", [])
+                      if isinstance(row, dict)}
+    ledger_by_slot = {row.get("slot"): row for row in ledger_rows[1:]
+                      if isinstance(row, dict) and _integer(row.get("slot"))}
+    for slot in sorted(all_candidates):
+        row = census_by_slot.get(slot, {})
+        evidence_row = evidence.get(f"evidence/{slot}.sqd.json", {})
+        expected_state = state_by_slot.get(slot)
+        if row.get("coverage_state") != expected_state \
+                or evidence_row.get("coverage_state") != expected_state:
+            reasons.append(f"coverage state does not recompute for {slot}")
+        nonce_count = row.get("sqd_nonce_count_at_repair")
+        if evidence_row.get("sqd_nonce_count_at_repair") != nonce_count:
+            reasons.append(f"repair nonce count differs from evidence for {slot}")
+        if mode == "formal":
+            header_present = evidence_row.get("blockhash") is not None
+            if not _repair_state_matches(expected_state, header_present, nonce_count):
+                reasons.append(f"repair coverage state semantics mismatch for {slot}")
+            for key in ("query_body_sha256", "response_sha256",
+                        "coverage_probe_query_sha256",
+                        "coverage_probe_response_sha256"):
+                if not isinstance(evidence_row.get(key), str) or re.fullmatch(
+                        r"[0-9a-f]{64}", evidence_row[key]) is None:
+                    reasons.append(f"repair state evidence {key} invalid for {slot}")
+            ledger_row = ledger_by_slot.get(slot)
+            ref_row = evidence.get(f"evidence/{slot}.ref.json", {})
+            if not isinstance(ledger_row, dict) \
+                    or ledger_row.get("params_digest") != _repair_getblock_params_digest(slot) \
+                    or ledger_row.get("result_sha256") != ref_row.get(
+                        "raw_response_sha256"):
+                reasons.append(f"repair ledger/evidence resume identity mismatch for {slot}")
+        elif nonce_count is not None:
+            reasons.append("exploration cache repair must use null nonce recheck")
 
     map_lookup = {}
     for item in maps:
