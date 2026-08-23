@@ -1,6 +1,6 @@
 {
   "schema": "sqd-solana-composition-rules/v1",
-  "draft_status": "batch0-draft",
+  "draft_status": "batch1-frozen",
   "source": "PLAN.md §4.1 A2.1 ＋ §4.4.3 ＋ §4.4.6",
   "producer": "n/a",
   "consumers": [
@@ -108,6 +108,7 @@
     "DEFECTS_CONFIRMED+base FAIL。",
     "as_of==snapshot==upper。",
     "coverage 存在、覆盖、producer 登记、SQD 指纹一致、无 UNSCANNED。",
+    "coverage 当前性：CURRENT.json 当前内容 sha256 必须等于 reconcile receipt 的 inputs.coverage_pointer.sha256；pointer.inputs.coverage_map.path 必须等于 receipt.inputs.coverage_map.path；probe_id 重算一致。CURRENT 更新后旧 receipt 一律 FAIL，camp_series、handoff 与 audit 同样深验。",
     "β<=3；残差不降反升停；修复仍 FAIL 则 BLOCKED；禁 BFS/再找几笔。",
     "配额首次确定性错误停发，在途落账，resume 幂等。"
   ],

@@ -37,3 +37,13 @@
 ## 批 1 拆分（准入闸要求）
 - **批 1a（准入补丁，先行）**：九份契约草案修订（`canonicalization`/`publish_protocol`/`sqd-solana-coverage-pointer_v1`/`sqd-solana-coverage_v1`/`rpc_ledger`/`solana-reconcile_v4`/`sqd-solana-cache_v4_repaired-meta`/`reconciliation-report_v3`/`INDEX`）＋ E4/E5/E7 三张继承表抄录 ＋ `draft_status: batch1-frozen`。完成后 codex 只读复审一次，判"可进批 1"后才派批 1b。
 - **批 1b**：登记面（invariant/contract/scan-schemas）＋ 先红 31 项（按 E13 写法）。
+
+---
+
+# 批 1a 增补（2026-08-23，源自 codex 批 1a 抄录时的「发现项」，Fable 核实属实）
+
+| # | 发现 | 裁定 |
+|---|---|---|
+| **E14** | 现役 v3 receipt 把 `minted_raw`、`burned_raw`、`snapshot_supply_raw` 写成**字符串**（`replay_edges.py:365,369`），而 `net_supply_raw` 是 JSON int（:366） | `solana-reconcile/v4` 三个 raw 字段**一律 JSON int**（Python 任意精度；与 E8"全工程落盘 JSON 禁字符串整数/禁浮点"一致）；`solana_exact_validate` 对字符串值拒收；v3 归 LEGACY 时按旧类型校验不回溯。`solana-reconcile_v4.json` 草案的 `inherited_fields` 对应三项 `type` 标"v3: string → v4: JSON int（E14）"——批 1b 顺手改（草案仍属 batch1-frozen 档，允许 errata 驱动的小修）。 |
+| E15 | 现役 `fetch_sqd_transfers_v2.py` 写出的 v4 meta 不含 `edge_file_size/edge_file_sha256`，二者由 `replay_edges.py:312-314` 回写 | 已在 PLAN 4.2.6/4.2.8 与 E4 表中处理（repaired 生产者写出、消费端不回写；base meta 保持采集器原样不再被回写）——无新裁定，记录在案。 |
+| E16 | 现役 wrapper 从 job spec 接受外部 `family`（`reconciliation_report.py:143-146`）且 `CHECK_KEYS` 固定四项 | 已由 E12 覆盖（`family` 由 target 推导、不接受外部声明；键集按家族）——批 5 实施。 |

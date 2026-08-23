@@ -1,6 +1,6 @@
 {
   "schema": "sqd-canonicalization-rules/v1",
-  "draft_status": "batch0-draft",
+  "draft_status": "batch1-frozen",
   "source": "PLAN.md §4.2.0",
   "producer": "scripts/solana/sqd_repair_core.py 与 scripts/lib/solana_exact_validate.py（计划目标路径）",
   "consumers": [
@@ -104,7 +104,7 @@
       "name": "plan_digest_required_files",
       "type": "array[string]",
       "required": true,
-      "description": "coverage_resolution,repair_layer header,slot_index_map header,merged meta,bundle,STOPPED.json",
+      "description": "coverage_resolution,repair_layer header,slot_index_map header,rpc_ledger header,merged meta,bundle,STOPPED.json",
       "constraints": ""
     },
     {
@@ -120,10 +120,11 @@
     "必须含 plan_digest 的文件其值全等。",
     "bundle.gid 重算一致。",
     "gid 标签只在 bundle 与指针。",
-    "CURRENT→bundle→merged.meta_sha256 单向核对且 meta.plan_digest==bundle.plan_digest。"
+    "CURRENT→bundle→merged.meta_sha256 单向核对且 meta.plan_digest==bundle.plan_digest。",
+    "全工程所有落盘 JSON 禁止浮点；比率一律使用分子/分母整数。"
   ],
   "notes": [
     "依赖图 edges 由 PLAN 节点顺序机械展开。",
-    "PLAN 第142行与162行对部分文件是否含 plan_digest 冲突；本规则按第142行统一清单记录，发布动作另见 publish_protocol.json。"
+    "plan_digest 文件清单按 errata E1 与 E6 冻结。"
   ]
 }

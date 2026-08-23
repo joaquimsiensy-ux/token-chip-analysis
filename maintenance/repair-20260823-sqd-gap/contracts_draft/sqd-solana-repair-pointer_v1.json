@@ -1,6 +1,6 @@
 {
   "schema": "sqd-solana-repair-pointer/v1",
-  "draft_status": "batch0-draft",
+  "draft_status": "batch1-frozen",
   "source": "PLAN.md §4.2.3",
   "producer": "receipt_kernel.publish_overwrite（由 sqd_gap_repair.py 调用）",
   "consumers": [
@@ -131,7 +131,10 @@
   "invariants": [
     "bundle.supersedes==切换瞬间 CURRENT.gid；无 CURRENT 时为 null。",
     "bundle.base.edge_sha256==当前 base 哈希。",
-    "CAS 失败不得覆盖。"
+    "若 CURRENT.gid==bundle.gid 且 CURRENT.inputs.bundle.sha256==sha256(gen-<gid>/bundle.json)，不改 CURRENT，只补 fsync 指针父目录并成功返回退出码 0，日志标 idempotent-republish。",
+    "仅同 gid 幂等条件不满足时按原 CAS；CAS 失败不得覆盖。"
   ],
-  "notes": []
+  "notes": [
+    "同 gid 幂等分支按 errata E10 冻结。"
+  ]
 }

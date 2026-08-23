@@ -1,6 +1,6 @@
 {
   "schema": "reconciliation-report/v3",
-  "draft_status": "batch0-draft",
+  "draft_status": "batch1-frozen",
   "source": "PLAN.md §4.4.4",
   "producer": "scripts/report/reconciliation_report.py",
   "consumers": [
@@ -20,22 +20,15 @@
       "name": "family",
       "type": "string",
       "required": true,
-      "description": "",
-      "constraints": "evm/solana；类型为推断"
+      "description": "由 target 推导，不接受外部声明",
+      "constraints": "evm/solana"
     },
     {
-      "name": "checks.evm",
+      "name": "checks",
       "type": "object",
-      "required": false,
-      "description": "",
-      "constraints": "balance,supply,supply_truth,time"
-    },
-    {
-      "name": "checks.solana",
-      "type": "object",
-      "required": false,
-      "description": "",
-      "constraints": "balance,supply,supply_truth,time,exact_reconcile；dynamic 顺序 supply,balance,supply_truth,time,exact_reconcile"
+      "required": true,
+      "description": "单层 checks{<key>:...}；不得嵌套 checks.evm/checks.solana",
+      "constraints": "family=evm 时固定顺序 balance,supply,supply_truth,time；family=solana 时固定顺序 supply,balance,supply_truth,time,exact_reconcile"
     },
     {
       "name": "exact_reconcile.schema",
@@ -80,13 +73,29 @@
       "constraints": "仅 EVM"
     }
   ],
+  "inherited_fields": [
+    {"name": "schema", "source_line": 119},
+    {"name": "target", "source_line": 120},
+    {"name": "producer", "source_line": 121},
+    {"name": "verdict", "source_line": 122},
+    {"name": "exit_code", "source_line": 123},
+    {"name": "checks", "source_line": 124},
+    {"name": "inputs", "source_line": 209, "required": false},
+    {"name": "error", "source_line": 276, "required": false}
+  ],
+  "added_fields": [
+    {"name": "schema", "change": "reconciliation-report/v2→reconciliation-report/v3"},
+    {"name": "family", "change": "新增；由 target 推导为 evm/solana，不接受外部声明"}
+  ],
   "invariants": [
     "wrapper 一律 v3；v2 fail-closed。",
+    "checks 保持单层 checks{<key>}；family=evm 的键集恰为 balance,supply,supply_truth,time，family=solana 的键集恰为 supply,balance,supply_truth,time,exact_reconcile，顺序固定。",
     "EVM reseal 从四份 receipt 重建，不信旧 wrapper；失败拒绝。",
     "Solana v2 重跑 v4 exact+五项。",
     "exact 检查组合、inputs 案根哈希、holders_owners 同一文件并调用独立深验。"
   ],
   "notes": [
-    "family 是按家族取键的结构化推断；完整 wrapper 外壳未在本节展开。"
+    "inherited_fields 从 scripts/report/reconciliation_report.py 的 _base_wrapper 及后续 inputs/error 填充处逐键抄录（代码基线 f06078e），按 errata E7 前移冻结。",
+    "checks 形状按 errata E12 冻结为单层。"
   ]
 }

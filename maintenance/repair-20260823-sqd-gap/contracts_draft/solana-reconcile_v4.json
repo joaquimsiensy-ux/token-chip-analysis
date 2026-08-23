@@ -1,6 +1,6 @@
 {
   "schema": "solana-reconcile/v4",
-  "draft_status": "batch0-draft",
+  "draft_status": "batch1-frozen",
   "source": "PLAN.md §4.2.8",
   "producer": "scripts/solana/replay_edges.py reconcile",
   "consumers": [
@@ -50,14 +50,14 @@
       "type": "string",
       "required": true,
       "description": "",
-      "constraints": ""
+      "constraints": "gate_pass true⇒PASS；gate_pass false⇒FAIL；由 receipt_kernel.finalize_envelope 强制一致"
     },
     {
       "name": "exit_code",
       "type": "integer",
       "required": true,
       "description": "",
-      "constraints": ""
+      "constraints": "gate_pass true⇒0；gate_pass false⇒2；由 receipt_kernel.finalize_envelope 强制一致"
     },
     {
       "name": "producer",
@@ -107,6 +107,13 @@
       "required": true,
       "description": "path,size,sha256",
       "constraints": ""
+    },
+    {
+      "name": "inputs.coverage_pointer",
+      "type": "object",
+      "required": true,
+      "description": "path,size,sha256；案根 data/sqd_coverage/CURRENT.json",
+      "constraints": "必填；绑定发布时 CURRENT 的当前内容"
     },
     {
       "name": "inputs.coverage_resolution",
@@ -354,6 +361,27 @@
       "constraints": ""
     },
     {
+      "name": "inputs.coverage_pointer.path",
+      "type": "string",
+      "required": true,
+      "description": "",
+      "constraints": "data/sqd_coverage/CURRENT.json"
+    },
+    {
+      "name": "inputs.coverage_pointer.size",
+      "type": "integer",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "inputs.coverage_pointer.sha256",
+      "type": "string (sha256 hex)",
+      "required": true,
+      "description": "",
+      "constraints": "必须等于 CURRENT.json 当前内容 sha256"
+    },
+    {
       "name": "inputs.coverage_resolution.path",
       "type": "string",
       "required": false,
@@ -431,13 +459,75 @@
       "constraints": ""
     }
   ],
+  "inherited_fields": [
+    {"name": "schema", "source_line": 356},
+    {"name": "chain", "source_line": 356},
+    {"name": "mint", "source_line": 356},
+    {"name": "collection_window", "source_line": 357},
+    {"name": "collection_window.from_slot", "source_line": 357},
+    {"name": "collection_window.to_slot", "source_line": 357},
+    {"name": "edge_extrema", "source_line": 358},
+    {"name": "edge_extrema.first", "source_line": 358},
+    {"name": "edge_extrema.first.slot", "source_line": 270},
+    {"name": "edge_extrema.first.ts", "source_line": 270},
+    {"name": "edge_extrema.last", "source_line": 358},
+    {"name": "edge_extrema.last.slot", "source_line": 270},
+    {"name": "edge_extrema.last.ts", "source_line": 270},
+    {"name": "edge_digest", "source_line": 359},
+    {"name": "edge_count", "source_line": 359},
+    {"name": "producer", "source_line": 360},
+    {"name": "producer.path", "source_line": 360},
+    {"name": "producer.sha256", "source_line": 361},
+    {"name": "inputs", "source_line": 362},
+    {"name": "inputs.soltx_meta", "source_line": 362},
+    {"name": "inputs.soltx_meta.path", "source_line": 122},
+    {"name": "inputs.soltx_meta.size", "source_line": 122},
+    {"name": "inputs.soltx_meta.sha256", "source_line": 123},
+    {"name": "inputs.holders_owners", "source_line": 363},
+    {"name": "inputs.holders_owners.path", "source_line": 122},
+    {"name": "inputs.holders_owners.size", "source_line": 122},
+    {"name": "inputs.holders_owners.sha256", "source_line": 123},
+    {"name": "inputs.holders_snapshot_meta", "source_line": 364},
+    {"name": "inputs.holders_snapshot_meta.path", "source_line": 122},
+    {"name": "inputs.holders_snapshot_meta.size", "source_line": 122},
+    {"name": "inputs.holders_snapshot_meta.sha256", "source_line": 123},
+    {"name": "minted_raw", "source_line": 365},
+    {"name": "burned_raw", "source_line": 365},
+    {"name": "net_supply_raw", "source_line": 366},
+    {"name": "negative_balance_count", "source_line": 367},
+    {"name": "snapshot_present", "source_line": 367},
+    {"name": "snapshot_meta_present", "source_line": 368},
+    {"name": "snapshot_closed", "source_line": 368},
+    {"name": "snapshot_supply_raw", "source_line": 369},
+    {"name": "snapshot_mismatch_count", "source_line": 370},
+    {"name": "gate_pass", "source_line": 370}
+  ],
+  "added_fields": [
+    {"name": "schema", "change": "solana-reconcile/v3→solana-reconcile/v4"},
+    {"name": "target", "change": "新增 target{chain,token,as_of_block}"},
+    {"name": "mode", "change": "新增 formal"},
+    {"name": "verdict", "change": "新增；与 gate_pass/exit_code 互洽"},
+    {"name": "exit_code", "change": "新增；与 gate_pass/verdict 互洽"},
+    {"name": "inputs.soltx_edges", "change": "新增必填文件引用"},
+    {"name": "inputs.coverage_map", "change": "新增必填文件引用"},
+    {"name": "inputs.coverage_slot_counts", "change": "新增必填文件引用"},
+    {"name": "inputs.coverage_pointer", "change": "errata E9 新增必填 CURRENT 文件引用"},
+    {"name": "inputs.coverage_resolution", "change": "repaired 模式新增；base 省略"},
+    {"name": "inputs.repair_bundle", "change": "repaired 模式新增；base 省略"},
+    {"name": "inputs.repair_pointer", "change": "repaired 模式新增；base 省略"},
+    {"name": "edge_source_binding", "change": "新增边源绑定"},
+    {"name": "coverage_effective_verdict", "change": "新增覆盖有效裁决"}
+  ],
   "invariants": [
-    "保留 v3 字段。",
+    "inherited_fields 所列 v3 字段全部保留。",
     "base 模式省略后三 inputs，不写 null。",
     "--as-of-slot==快照slot==finalized_upper_slot。",
+    "coverage 当前性深验：data/sqd_coverage/CURRENT.json 当前内容 sha256==receipt.inputs.coverage_pointer.sha256，pointer.inputs.coverage_map.path==receipt.inputs.coverage_map.path，且 probe_id 重算一致；CURRENT 更新后旧 receipt 一律 FAIL。",
+    "gate_pass is True ⇒ verdict=PASS 且 exit_code=0；gate_pass is False ⇒ verdict=FAIL 且 exit_code=2；receipt_kernel.finalize_envelope 强制，validator 校验三者互洽。",
     "不回写 base meta edge_file_size/sha256。"
   ],
   "notes": [
-    "v3 继承字段未在本节展开。"
+    "inherited_fields 从 scripts/solana/replay_edges.py 的 cmd_reconcile 现役 v3 receipt 写出点逐键抄录（代码基线 f06078e）。",
+    "唯一删除项：不再回写 base meta 的 edge_file_size/edge_file_sha256；这是写入副作用删除，不是 receipt 字段删除。"
   ]
 }

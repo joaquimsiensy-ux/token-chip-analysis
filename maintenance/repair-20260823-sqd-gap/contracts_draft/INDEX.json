@@ -1,86 +1,98 @@
 {
-  "schema": "contracts-draft-index/v1",
-  "plan_sha256": "506cdcbe7938ad6e79eb539e793fa0f47081426f3f21d7dada404cb021a9ad93",
-  "files": [
-    {
-      "file": "canonicalization.json",
-      "schema": "sqd-canonicalization-rules/v1",
-      "source": "PLAN.md §4.2.0"
-    },
-    {
-      "file": "sqd-solana-coverage_v1.json",
-      "schema": "sqd-solana-coverage/v1",
-      "source": "PLAN.md §4.2.1"
-    },
-    {
-      "file": "sqd-solana-coverage-pointer_v1.json",
-      "schema": "sqd-solana-coverage-pointer/v1",
-      "source": "PLAN.md §4.2.1"
-    },
-    {
-      "file": "sqd-solana-repair-layer_v1.json",
-      "schema": "sqd-solana-repair-layer/v1",
-      "source": "PLAN.md §4.2.2"
-    },
-    {
-      "file": "sqd-solana-repair-bundle_v1.json",
-      "schema": "sqd-solana-repair-bundle/v1",
-      "source": "PLAN.md §4.2.3"
-    },
-    {
-      "file": "sqd-solana-repair-pointer_v1.json",
-      "schema": "sqd-solana-repair-pointer/v1",
-      "source": "PLAN.md §4.2.3"
-    },
-    {
-      "file": "publish_protocol.json",
-      "schema": "sqd-repair-publish-protocol/v1",
-      "source": "PLAN.md §4.2.3"
-    },
-    {
-      "file": "sqd-solana-coverage-resolution_v1.json",
-      "schema": "sqd-solana-coverage-resolution/v1",
-      "source": "PLAN.md §4.2.4"
-    },
-    {
-      "file": "evidence_tables.json",
-      "schema": "sqd-solana-evidence-tables/v1",
-      "source": "PLAN.md §4.2.5"
-    },
-    {
-      "file": "sqd-solana-cache_v4_repaired-meta.json",
-      "schema": "sqd-solana-cache/v4",
-      "source": "PLAN.md §4.2.6"
-    },
-    {
-      "file": "sqd-solana-slot-index-map_v1.json",
-      "schema": "sqd-solana-slot-index-map/v1",
-      "source": "PLAN.md §4.2.7"
-    },
-    {
-      "file": "solana-reconcile_v4.json",
-      "schema": "solana-reconcile/v4",
-      "source": "PLAN.md §4.2.8"
-    },
-    {
-      "file": "edge_source_binding.json",
-      "schema": "edge-source-binding/v1",
-      "source": "PLAN.md §4.2.9"
-    },
-    {
-      "file": "rpc_ledger.json",
-      "schema": "sqd-solana-rpc-ledger/v1",
-      "source": "PLAN.md §4.2.10"
-    },
-    {
-      "file": "composition_rules.json",
-      "schema": "sqd-solana-composition-rules/v1",
-      "source": "PLAN.md §4.1 A2.1 ＋ §4.4.3 ＋ §4.4.6"
-    },
-    {
-      "file": "reconciliation-report_v3.json",
-      "schema": "reconciliation-report/v3",
-      "source": "PLAN.md §4.4.4"
-    }
-  ]
+ "schema": "contracts-draft-index/v1",
+ "plan_sha256": "506cdcbe7938ad6e79eb539e793fa0f47081426f3f21d7dada404cb021a9ad93",
+ "errata": {
+  "file": "PLAN_errata_batch0.md",
+  "sha256": "95bedf64b11872e6a3edd7edab25740375cb2e66f8b90c8e0ce72069441a5fb8"
+ },
+ "final_review": {
+  "file": "batch0_final_review_codex.txt",
+  "sha256": "f0070ef1d6ad7436dfe8d240a7d9220b10fb61e206f77d42cea0dce25004e440"
+ },
+ "notes": [
+  "先红写法见 errata E13。",
+  "E14–E16 为批 1a 增补；E14 的 inherited_fields 类型标注在批 1b 落地。"
+ ],
+ "files": [
+  {
+   "file": "canonicalization.json",
+   "schema": "sqd-canonicalization-rules/v1",
+   "source": "PLAN.md §4.2.0"
+  },
+  {
+   "file": "sqd-solana-coverage_v1.json",
+   "schema": "sqd-solana-coverage/v1",
+   "source": "PLAN.md §4.2.1"
+  },
+  {
+   "file": "sqd-solana-coverage-pointer_v1.json",
+   "schema": "sqd-solana-coverage-pointer/v1",
+   "source": "PLAN.md §4.2.1"
+  },
+  {
+   "file": "sqd-solana-repair-layer_v1.json",
+   "schema": "sqd-solana-repair-layer/v1",
+   "source": "PLAN.md §4.2.2"
+  },
+  {
+   "file": "sqd-solana-repair-bundle_v1.json",
+   "schema": "sqd-solana-repair-bundle/v1",
+   "source": "PLAN.md §4.2.3"
+  },
+  {
+   "file": "sqd-solana-repair-pointer_v1.json",
+   "schema": "sqd-solana-repair-pointer/v1",
+   "source": "PLAN.md §4.2.3"
+  },
+  {
+   "file": "publish_protocol.json",
+   "schema": "sqd-repair-publish-protocol/v1",
+   "source": "PLAN.md §4.2.3"
+  },
+  {
+   "file": "sqd-solana-coverage-resolution_v1.json",
+   "schema": "sqd-solana-coverage-resolution/v1",
+   "source": "PLAN.md §4.2.4"
+  },
+  {
+   "file": "evidence_tables.json",
+   "schema": "sqd-solana-evidence-tables/v1",
+   "source": "PLAN.md §4.2.5"
+  },
+  {
+   "file": "sqd-solana-cache_v4_repaired-meta.json",
+   "schema": "sqd-solana-cache/v4",
+   "source": "PLAN.md §4.2.6"
+  },
+  {
+   "file": "sqd-solana-slot-index-map_v1.json",
+   "schema": "sqd-solana-slot-index-map/v1",
+   "source": "PLAN.md §4.2.7"
+  },
+  {
+   "file": "solana-reconcile_v4.json",
+   "schema": "solana-reconcile/v4",
+   "source": "PLAN.md §4.2.8"
+  },
+  {
+   "file": "edge_source_binding.json",
+   "schema": "edge-source-binding/v1",
+   "source": "PLAN.md §4.2.9"
+  },
+  {
+   "file": "rpc_ledger.json",
+   "schema": "sqd-solana-rpc-ledger/v1",
+   "source": "PLAN.md §4.2.10"
+  },
+  {
+   "file": "composition_rules.json",
+   "schema": "sqd-solana-composition-rules/v1",
+   "source": "PLAN.md §4.1 A2.1 ＋ §4.4.3 ＋ §4.4.6"
+  },
+  {
+   "file": "reconciliation-report_v3.json",
+   "schema": "reconciliation-report/v3",
+   "source": "PLAN.md §4.4.4"
+  }
+ ]
 }

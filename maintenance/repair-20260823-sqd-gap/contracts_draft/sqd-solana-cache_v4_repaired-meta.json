@@ -1,6 +1,6 @@
 {
   "schema": "sqd-solana-cache/v4",
-  "draft_status": "batch0-draft",
+  "draft_status": "batch1-frozen",
   "source": "PLAN.md §4.2.6",
   "producer": "scripts/solana/sqd_gap_repair.py（计划目标路径）",
   "consumers": [
@@ -150,12 +150,40 @@
       "constraints": ""
     }
   ],
+  "inherited_fields": [
+    {"name": "schema", "source_line": 527, "repaired_value": "同 base"},
+    {"name": "mint", "source_line": 527, "repaired_value": "同 base"},
+    {"name": "endpoint", "source_line": 528, "repaired_value": "同 base"},
+    {"name": "endpoint_sha256", "source_line": 529, "repaired_value": "同 base"},
+    {"name": "collector", "source_line": 530, "repaired_value": "差异字段（4.2.6）"},
+    {"name": "collector_sha256", "source_line": 531, "repaired_value": "差异字段（4.2.6）"},
+    {"name": "edge_schema", "source_line": 532, "repaired_value": "同 base"},
+    {"name": "edge_semantics", "source_line": 533, "repaired_value": "同 base"},
+    {"name": "order_granularity", "source_line": 534, "repaired_value": "同 base"},
+    {"name": "order_exact", "source_line": 535, "repaired_value": "同 base"},
+    {"name": "dedupe_identity", "source_line": 536, "repaired_value": "同 base"},
+    {"name": "supply_delta_source", "source_line": 537, "repaired_value": "同 base"},
+    {"name": "version", "source_line": 997, "repaired_value": "同 base"},
+    {"name": "from_slot", "source_line": 997, "repaired_value": "同 base"},
+    {"name": "launch_covered", "source_line": 998, "repaired_value": "同 base"},
+    {"name": "areas", "source_line": 998, "repaired_value": "同 base"},
+    {"name": "finalized_upper_slot", "source_line": 999, "repaired_value": "同 base"},
+    {"name": "dataset_scope", "source_line": 1026, "repaired_value": "同 base"},
+    {"name": "next_slot", "source_line": 1242, "repaired_value": "同 base"},
+    {"name": "gaps", "source_line": 1242, "repaired_value": "同 base"},
+    {"name": "empty_ok", "source_line": 1244, "repaired_value": "同 base"},
+    {"name": "edge_logical_sha256", "source_line": 1246, "repaired_value": "生产者重算"},
+    {"name": "edge_rows", "source_line": 1247, "repaired_value": "生产者重算"},
+    {"name": "merge_mode", "source_line": 1248, "repaired_value": "同 base"},
+    {"name": "updated", "source_line": 1249, "repaired_value": "同 base"}
+  ],
   "invariants": [
     "不含 gid。",
     "不含 bundle 哈希。",
     "CURRENT→bundle→merged.meta_sha256 单向绑定且 plan_digest 相等。"
   ],
   "notes": [
-    "base v4 meta 其他继承字段未在本节展开，未自行补全。"
+    "inherited_fields 从 scripts/solana/fetch_sqd_transfers_v2.py 现役 v4 meta 写出点逐字段抄录（代码基线 f06078e），按 errata E4 前移冻结。",
+    "edge_logical_sha256/edge_rows 在 repaired meta 中由修复生产者重算，且同时属于 §4.2.6 明列的差异字段；表中以实际取值动作标为“生产者重算”。"
   ]
 }

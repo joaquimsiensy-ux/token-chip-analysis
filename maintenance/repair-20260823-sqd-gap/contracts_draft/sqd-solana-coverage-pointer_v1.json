@@ -1,7 +1,7 @@
 {
   "schema": "sqd-solana-coverage-pointer/v1",
-  "draft_status": "batch0-draft",
-  "source": "PLAN.md §4.2.1",
+  "draft_status": "batch1-frozen",
+  "source": "PLAN.md §4.2.1 ＋ PLAN_errata_batch0.md E9/E10",
   "producer": "scripts/solana/sqd_coverage_probe.py（计划目标路径）",
   "consumers": [
     "coverage resolver",
@@ -16,18 +16,212 @@
       "constraints": "sqd-solana-coverage-pointer/v1"
     },
     {
+      "name": "target.chain",
+      "type": "string",
+      "required": true,
+      "description": "",
+      "constraints": "solana"
+    },
+    {
+      "name": "target.token",
+      "type": "string",
+      "required": true,
+      "description": "mint",
+      "constraints": ""
+    },
+    {
+      "name": "target.as_of_block",
+      "type": "integer",
+      "required": true,
+      "description": "slot_counts.to_slot",
+      "constraints": ""
+    },
+    {
+      "name": "mode",
+      "type": "string",
+      "required": true,
+      "description": "",
+      "constraints": "formal"
+    },
+    {
       "name": "verdict",
       "type": "string",
       "required": true,
       "description": "",
       "constraints": "PASS"
+    },
+    {
+      "name": "exit_code",
+      "type": "integer",
+      "required": true,
+      "description": "",
+      "constraints": "0"
+    },
+    {
+      "name": "producer",
+      "type": "object",
+      "required": true,
+      "description": "path,sha256",
+      "constraints": ""
+    },
+    {
+      "name": "inputs.coverage_map",
+      "type": "object",
+      "required": true,
+      "description": "path,size,sha256",
+      "constraints": "案根相对路径 data/sqd_coverage/<probe_id>/coverage_map.json"
+    },
+    {
+      "name": "inputs.slot_counts",
+      "type": "object",
+      "required": true,
+      "description": "path,size,sha256",
+      "constraints": "案根相对路径 data/sqd_coverage/<probe_id>/slot_counts.bin.gz"
+    },
+    {
+      "name": "inputs.ledger",
+      "type": "object",
+      "required": true,
+      "description": "path,size,sha256",
+      "constraints": "案根相对路径 data/sqd_coverage/<probe_id>/ledger.jsonl"
+    },
+    {
+      "name": "inputs.blocks_bitmap",
+      "type": "object",
+      "required": false,
+      "description": "path,size,sha256",
+      "constraints": "仅 skipped_confirmation 非 null 时出现；否则省略而非 null"
+    },
+    {
+      "name": "probe_id",
+      "type": "string",
+      "required": true,
+      "description": "coverage_map 去 probe_id 后规范化内容 sha256 前16位",
+      "constraints": ""
+    },
+    {
+      "name": "supersedes",
+      "type": "string|null",
+      "required": true,
+      "description": "发布时所见 CURRENT.probe_id；无 CURRENT 时为 null",
+      "constraints": ""
+    },
+    {
+      "name": "published_at",
+      "type": "string",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "producer.path",
+      "type": "string",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "producer.sha256",
+      "type": "string (sha256 hex)",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "inputs.coverage_map.path",
+      "type": "string",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "inputs.coverage_map.size",
+      "type": "integer",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "inputs.coverage_map.sha256",
+      "type": "string (sha256 hex)",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "inputs.slot_counts.path",
+      "type": "string",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "inputs.slot_counts.size",
+      "type": "integer",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "inputs.slot_counts.sha256",
+      "type": "string (sha256 hex)",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "inputs.ledger.path",
+      "type": "string",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "inputs.ledger.size",
+      "type": "integer",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "inputs.ledger.sha256",
+      "type": "string (sha256 hex)",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "inputs.blocks_bitmap.path",
+      "type": "string",
+      "required": false,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "inputs.blocks_bitmap.size",
+      "type": "integer",
+      "required": false,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "inputs.blocks_bitmap.sha256",
+      "type": "string (sha256 hex)",
+      "required": false,
+      "description": "",
+      "constraints": ""
     }
   ],
   "invariants": [
-    "锁内发布。",
-    "只指向不可变内容寻址 probe。"
+    "inputs 四项固定为 coverage_map、slot_counts、ledger、blocks_bitmap；blocks_bitmap 仅在 skipped_confirmation 非 null 时出现，否则省略而非 null。",
+    "resolver 校验 inputs.coverage_map.sha256==sha256(coverage_map 文件) 且 probe_id 重算一致。",
+    "施工目录 pending-<scan_id> 完整持久化并原子改名为 <probe_id> 后，才允许锁内发布 CURRENT。",
+    "锁内 CAS 要求 pointer.supersedes==当前 CURRENT.probe_id；无 CURRENT 时 supersedes 为 null。",
+    "若 CURRENT.probe_id==pointer.probe_id 且 CURRENT.inputs.coverage_map.sha256==sha256(<probe_id>/coverage_map.json)，不改 CURRENT，只补 fsync 指针父目录并成功返回退出码 0，日志标 idempotent-republish。",
+    "仅同 probe_id 幂等条件不满足时按原 CAS；CAS 失败不得覆盖。"
   ],
   "notes": [
-    "本节仅明确 schema、PASS、锁内发布，未列其他 kernel 收据字段。"
+    "E3 字段表作废，以 errata E9 为准。",
+    "探针指针同构幂等分支按 errata E10 冻结。"
   ]
 }

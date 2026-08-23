@@ -1,6 +1,6 @@
 {
   "schema": "sqd-solana-evidence-tables/v1",
-  "draft_status": "batch0-draft",
+  "draft_status": "batch1-frozen",
   "source": "PLAN.md §4.2.5",
   "producer": "scripts/solana/sqd_gap_repair.py（计划目标路径）",
   "consumers": [
