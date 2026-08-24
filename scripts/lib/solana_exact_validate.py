@@ -1262,6 +1262,22 @@ def validate_repair_bundle_deep(bundle_path, *, case_root, current_base,
                  else "NO_KNOWN_NONCE_OMISSION_DETECTED")
     if resolution.get("effective_verdict") != effective:
         reasons.append("resolution effective verdict mismatch")
+    # 加固(缺口1)：formal 修复的 census 确认集必须全部落在候选集内。否则逐 slot 严格
+    # 校验（其遍历主键含候选集）会漏掉它们，而修复边准入只查 `slot in confirmed`，
+    # 攻击者即可凭一条自报 confirmed census 行让凭空修复边通过深验。
+    # exploration 用本地证据缓存，可确认自扫（SQD 指纹）漏标的缺陷，故豁免此包含。
+    if mode == "formal" and not confirmed.issubset(all_candidates):
+        reasons.append("confirmed census slots escape candidate set")
+    # 加固(缺口1)：干净 coverage 判定不得携带任何 confirmed 处置或修复边。
+    if effective == "NO_KNOWN_NONCE_OMISSION_DETECTED" and (
+            confirmed or (bundle.get("repair_layer") or {}).get("edges")):
+        reasons.append("clean coverage verdict carries confirmed census or repair edges")
+    # 加固(缺口1)：formal 修复不得携带 exploration 指纹（null nonce 复查），
+    # 且该判定不依赖候选循环是否触达对应 slot。
+    if mode == "formal" and any(
+            row.get("sqd_nonce_count_at_repair") is None
+            for row in resolution.get("census", []) if isinstance(row, dict)):
+        reasons.append("formal repair census carries exploration null-nonce fingerprint")
 
     coverage_check = None
     slot_meta = coverage_map.get("slot_counts", {}) if isinstance(
@@ -1283,7 +1299,16 @@ def validate_repair_bundle_deep(bundle_path, *, case_root, current_base,
                       if isinstance(row, dict)}
     ledger_by_slot = {row.get("slot"): row for row in ledger_rows[1:]
                       if isinstance(row, dict) and _integer(row.get("slot"))}
-    for slot in sorted(all_candidates):
+    # 加固(缺口1)：formal 逐 slot 严格校验的遍历主键 = 候选集 ∪ census 确认集 ∪ 修复层
+    # 各 slot。任何"实际被确认为缺陷 / 实际产生修复边"的 slot 都必须逐个跑严格校验，
+    # 否则候选集为空/不含该 slot 时严格校验被整段跳过。exploration 探索代不进入正式
+    # 发布路径，保持原候选集遍历以免误伤其"本地证据确认自扫漏标缺陷"的合法语义。
+    repair_touched = {slot for slot in all_candidates if _integer(slot)}
+    if mode == "formal":
+        repair_touched |= {slot for slot in confirmed if _integer(slot)}
+        repair_touched |= {item.get("slot") for item in layer
+                           if _integer(item.get("slot"))}
+    for slot in sorted(repair_touched):
         row = census_by_slot.get(slot, {})
         evidence_row = evidence.get(f"evidence/{slot}.sqd.json", {})
         expected_state = state_by_slot.get(slot)
@@ -1312,6 +1337,13 @@ def validate_repair_bundle_deep(bundle_path, *, case_root, current_base,
                 reasons.append(f"repair ledger/evidence resume identity mismatch for {slot}")
         elif nonce_count is not None:
             reasons.append("exploration cache repair must use null nonce recheck")
+    # 加固(缺口1)：formal 下 rpc_ledger 必须为每个修复 slot 留下实物 getBlock 请求，
+    # 请求数不得少于修复层触及的 slot 数。
+    if mode == "formal":
+        repair_layer_slots = {item.get("slot") for item in layer
+                              if _integer(item.get("slot"))}
+        if len(ledger_rows) - 1 < len(repair_layer_slots):
+            reasons.append("formal repair ledger has fewer getBlock requests than repair slots")
 
     map_lookup = {}
     for item in maps:
@@ -1380,6 +1412,18 @@ def validate_repair_bundle_deep(bundle_path, *, case_root, current_base,
     actual_merged = _edge_rows(merged_edge, reasons, "merged edges") if merged_edge else []
     if actual_merged != rebuilt:
         reasons.append("merged edges do not equal f(base,layer,map)")
+    # 加固(缺口3)：所有 merged 边的 slot 必须落在声明的 coverage 窗口 [from,to] 内，
+    # 且声明窗口 upper 必须与 base.finalized_upper_slot 一致；否则 slot>声明 upper 的
+    # 边（谎报采集时点/夹带超窗口数据）会被无声混入余额与供应。
+    window_lower = slot_meta.get("from_slot")
+    window_upper = slot_meta.get("to_slot")
+    if _integer(window_lower) and _integer(window_upper):
+        if any(not (window_lower <= row[1] <= window_upper)
+               for row in actual_merged):
+            reasons.append("merged edge slot escapes declared coverage window")
+        if _integer(base.get("finalized_upper_slot")) \
+                and base.get("finalized_upper_slot") != window_upper:
+            reasons.append("base finalized_upper_slot differs from coverage window upper")
     logical_sha, logical_rows = _edge_evidence(actual_merged)
     if merged.get("edge_logical_sha256") != logical_sha \
             or meta.get("edge_logical_sha256") != logical_sha:

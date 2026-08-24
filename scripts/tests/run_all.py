@@ -160,6 +160,11 @@ SUITE += [
     'test_recon_fifth_check.py',
 ]
 
+# 批7 修复代深验三处校验覆盖缺口加固：缺口1(遍历主键绑定候选集致 confirmed-only slot
+# 严格校验被跳过)、缺口3(深验未校验边 slot ⊆ 声明窗口)；缺口2(自扫 coverage 无真实性
+# 复查)判定为离线信任边界仅在 batch7_done.md 记录，不进本 suite 断言。
+SUITE += ['test_batch7_validator_coverage_gaps.py']
+
 
 def main():
     results = []

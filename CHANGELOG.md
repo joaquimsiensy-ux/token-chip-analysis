@@ -63,6 +63,7 @@
 - **正式勘误**：撤回 ARC 诊断中“硬下界 13,425 笔／Meteora-Raydium CPI 特征／218 漏-739 伪影分类”；根因是把 SQD 去投票 `transactionIndex` 当链上绝对位置。抽 80 块 404 笔改按签名复核后 404/404 均在 SQD，跨源身份此后只认签名。
 - **契约与文档**：新增 S-12 判例和 capture §13e；contract manifest 新增 14 required＋5 banned，ID 快照由 175 升 194；批 5 wrapper 草案改为 referenced receipt fields，与现役 runner/validator 结构一致。
 - **producer 与回归**：登记 coverage probe 2 条、gap repair 4 条 ACTIVE 历史哈希；`run_all.py` 注册 coverage probe、gap repair、reconcile v4 receipt、第五查四项，SUITE 124→128。施工轮数 1；外部网络调用 0；分析结论 0；传播级数字错误 0。
+- **深验健壮性加固（批7，同版未升）**：修复代深验 `validate_repair_bundle_deep` 补三处校验覆盖缺口——缺口1 formal 逐 slot 严格校验遍历主键由"候选集"改为"候选集∪census确认集∪修复层 slot"，并加 confirmed⊆候选集反向包含、干净 verdict 零修复边、formal 拒 exploration 指纹、ledger 请求数≥修复 slot 数（此前一条自报 confirmed census 行即可让凭空修复边通过深验、抬高余额/供应）；缺口3 补 merged 边 slot⊆声明 coverage 窗口[from,to] 且 upper==base.finalized_upper（此前 slot>声明 upper 的超窗口边被夹带）。缺口2（自扫 coverage 无真实性复查）裁定为离线 validator 固有信任边界、不加假闸（详见 maintenance/repair-20260823-sqd-gap/batch7_done.md）。新增 `test_batch7_validator_coverage_gaps.py`，SUITE 128→129；exploration 与合法 formal/repaired 路径回归全绿不误伤。施工轮数 1；外部网络调用 0；分析结论 0；传播级数字错误 0。
 
 ## [6.51.0] - 2026-08-20 — labels v4.3／Arbitrum CEX-only 建表与 round-trip 收口
 
