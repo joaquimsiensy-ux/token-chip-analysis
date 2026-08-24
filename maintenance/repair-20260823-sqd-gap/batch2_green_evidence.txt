@@ -1,0 +1,299 @@
+批 2（SQD 覆盖探针）离线绿证
+日期：2026-08-23
+分支：fix/sqd-gap-v6520
+HEAD：733c4aed0eb18364f4c2a6a2dc98772ae68db422
+VERSION：6.51.0
+
+=== 开工门禁 ===
+$ cd .staging_b2 && shasum -a 256 -c STAGING_B2_SHA256.txt
+21/21 OK（清单 21 行，全部为 arc_reference/... 路径）
+
+=== 批 1b 红证基线：python3 scripts/tests/test_sqd_coverage_probe.py ===
+EXPECTED_RED: scripts.solana.sqd_coverage_probe/validate_coverage_map 未实现
+RED 3 missing-mechanism sample_ranges 仍可能冒充 formal 全覆盖
+EXPECTED_RED: scripts.solana.sqd_coverage_probe/validate_slot_counts 未实现
+RED 20 missing-mechanism UNSCANNED、长度错误或 ledger 洞尚无正式拒绝器
+EXPECTED_RED: scripts.solana.sqd_coverage_probe/derive_getblocks_complete 未实现
+RED 21 missing-mechanism getBlocks complete 合取式尚未实现
+EXPECTED_RED: scripts.solana.sqd_coverage_probe/validate_blocks_bitmap 未实现
+RED 28 missing-mechanism 位图长度、popcount、范围绑定尚无正式拒绝器
+EXPECTED_RED: scripts.solana.sqd_coverage_probe/publish_probe_generation 未实现
+RED 30 missing-mechanism 探针 CAS、幂等补发与三次目录 fsync 尚未实现
+[exit_code=1]
+
+=== 批 2 绿证：python3 scripts/tests/test_sqd_coverage_probe.py ===
+GREEN 3 sample_ranges cannot fill formal scan_ranges gaps
+GREEN 20 UNSCANNED/length/ledger holes fail closed
+GREEN 21 getBlocks complete eight-way conjunction
+GREEN 28 bitmap length/popcount/range binding
+GREEN 30 CAS/idempotence/directory fsync implementation present
+{"probe_id": "75e25e3cac3cff9b", "status": "published", "verdict": "NO_KNOWN_NONCE_OMISSION_DETECTED"}
+PASS SQD coverage probe: 9/9 offline groups
+[exit_code=0]
+
+九组离线测试同时覆盖：四态、E8 整数时代边界、八项 getBlocks 合取式逐项反例、
+位图编解码、probe_id 重算、pending 发布/CAS/幂等/三次目录 fsync、fixture transport、
+key 脱敏、UNSCANNED 拒绝与 --resume、402/429 STOPPED 与 --resume、--dry-run、
+共享地图 TTL/身份/64-slot canary/逐 slot 缺陷复核/伴随文件、路径逃逸拒绝和源码阈值法守卫。
+
+=== python3 scripts/tests/test_net_result.py ===
+PASS: net Result 显式状态与 curl_json 失败分类
+[exit_code=0]
+
+=== python3 scripts/tests/test_contract_routes.py ===
+PASS: R-01/R-02 注册表、ID 快照、五组锚与 SKILL 原子阶段双向闭合
+[exit_code=0]
+
+=== py_compile ===
+$ python3 -m py_compile scripts/solana/sqd_coverage_probe.py scripts/lib/solana_exact_validate.py scripts/lib/net.py scripts/tests/test_sqd_coverage_probe.py scripts/tests/test_net_result.py scripts/tests/test_batch3_solana_vertical_slice.py
+[exit_code=0]
+
+=== E20 probe 半边闭合 ===
+$ python3 - <<'PY'
+from scripts.tests import invariant_scan
+print(invariant_scan.formal_e2e_provenance_errors())
+PY
+["formal E2E target lacks registered producer execution for sol: ['scripts/solana/replay_edges.py']"]
+[exit_code=0]
+
+=== 批 1b 四件测试的批 2 终态 ===
+
+$ python3 scripts/tests/test_recon_fifth_check.py
+RED 14 semantic-acceptance audit_release 仅凭 wrapper status 放行坏子 receipt 哈希
+RED 1 semantic-acceptance handoff generate 在 exact-like gate_pass=false 时仍生成 READY
+RED 19 semantic-acceptance wave/flow binding 与 exact-like receipt 不等仍 verify READY
+RED 22 semantic-acceptance wave-scan/v4 与 flow-anomaly/v2 旧产物仍 verify READY
+RED 24 semantic-acceptance curve/audit_closed 在场且 binding 不等仍 verify READY
+[exit_code=1；全部为批 5/后续 reconcile 缺口]
+
+$ python3 scripts/tests/test_reconcile_v4_receipt.py
+RED 9 semantic-acceptance wave/flow/entity/curve/camp/audit_closed 六入口均接受案外集合复制 base
+RED 17 semantic-acceptance validate_cache_meta 接受正式路径集合外的复制 meta
+RED 23 semantic-acceptance wave_scan 无 --case-root 且接受 symlink 案根路径
+RED 12 semantic-acceptance cache upper=1、snapshot slot=2 仍产 gate_pass=true 且现役 consumer 接受
+RED 13 semantic-mutation replay_edges reconcile 改写 base meta 的物理 sha256
+RED 31 semantic-acceptance coverage CURRENT 更新后旧 receipt 仍被现役 consumer 接受
+RED 33 semantic-evidence 现役 v3 receipt 三个 raw 字段为字符串且 v4 类型拒绝器不存在
+RED 11 missing-mechanism v4 base/repaired 条件 inputs 深验尚未实现
+RED 32 missing-mechanism verdict/exit_code/gate_pass 三元互洽尚未实现
+[exit_code=1；coverage CURRENT 漂移反例保留为后续 consumer/reconcile 闭合项，本批 coverage validator 已绿]
+
+$ python3 scripts/tests/test_sqd_gap_repair.py
+GREEN 2-fact order-sensitive curve/entity 现役顺序敏感成立 curve_B=3.71517027864/4.16666666667
+RED 2 missing-mechanism 现役无 slot_index_map 双射统一缺陷 slot 参考序号机制
+RED 4 missing-mechanism repair 写 coverage 资产尚无拒绝机制
+RED 5 missing-mechanism 同签名多边行数恒等式尚无生产实现
+RED 6 missing-mechanism 不可变 gen 目录 exclusive 写尚未实现
+RED 7 missing-mechanism pending 与无指针孤儿代过滤尚未实现
+RED 8 missing-mechanism formal 拒 local-evidence-cache 尚未实现
+RED 10 missing-mechanism refuted-only 不产代规则尚未实现
+RED 15 missing-mechanism base 重采后旧代硬错尚未实现
+RED 16 missing-mechanism gid 去自引用并绑定 mode/supersedes 尚未实现
+RED 18 missing-mechanism CAS 与同 gid 幂等分支尚未实现
+RED 25 missing-mechanism merged meta 禁环与 bundle meta 哈希核对尚未实现
+RED 26 missing-mechanism 代目录、父目录、指针父目录 fsync 尚未实现
+RED 27 missing-mechanism 字符串金额拒绝尚无生产规范化实现
+RED 29a missing-mechanism 非 DEFECTS_CONFIRMED resolution 尚无深验
+RED 29b missing-mechanism 修复交易/重映射 slot confirmed 支撑尚无深验
+RED 29c missing-mechanism 当前新候选全覆盖尚无深验
+[exit_code=1；全部为批 3 repair 缺口]
+
+=== python3 scripts/tests/run_all.py（最终完整输出） ===
+--- invariant_scan.py 完整输出 ---
+FAIL receipt_producers: code point missing from manifest: ('scripts/report/flow_anomaly_scan.py', ('flow-anomaly/v2',))
+FAIL receipt_producers: code point missing from manifest: ('scripts/report/wave_scan.py', ('wave-scan/v4',))
+FAIL receipt_producers: code point missing from manifest: ('scripts/solana/replay_edges.py', ('solana-reconcile/v3',))
+FAIL receipt_producers: manifest point missing from code: ('scripts/report/flow_anomaly_scan.py', ('flow-anomaly/v2', 'flow-anomaly/v3'))
+FAIL receipt_producers: manifest point missing from code: ('scripts/report/wave_scan.py', ('wave-scan/v4', 'wave-scan/v5'))
+FAIL receipt_producers: manifest point missing from code: ('scripts/solana/replay_edges.py', ('solana-reconcile/v3', 'solana-reconcile/v4'))
+FAIL receipt_producers: manifest point missing from code: ('scripts/solana/sqd_gap_repair.py', ('sqd-solana-cache/v4', 'sqd-solana-coverage-resolution/v1', 'sqd-solana-repair-bundle/v1', 'sqd-solana-repair-pointer/v1'))
+FAIL receipt_consumers: code point missing from manifest: ('scripts/solana/sqd_cache_identity.py', ('sqd-solana-cache/v3', 'sqd-solana-cache/v4'))
+FAIL receipt_consumers: manifest point missing from code: ('scripts/lib/solana_exact_validate.py', ('solana-reconcile/v4', 'sqd-solana-coverage-resolution/v1', 'sqd-solana-repair-bundle/v1', 'sqd-solana-repair-layer/v1', 'sqd-solana-repair-pointer/v1', 'sqd-solana-slot-index-map/v1'))
+FAIL receipt_consumers: manifest point missing from code: ('scripts/solana/sqd_cache_identity.py', ('sqd-solana-cache/v3', 'sqd-solana-cache/v4', 'sqd-solana-repair-bundle/v1', 'sqd-solana-repair-pointer/v1'))
+FAIL transport_calls: manifest point missing from code: ('scripts/solana/sqd_gap_repair.py', 'net.py')
+FAIL atomic_writes: manifest point missing from code: ('scripts/solana/sqd_gap_repair.py', 'main')
+FAIL formal_entrypoints: missing file: scripts/solana/sqd_gap_repair.py
+FAIL formal E2E target lacks registered producer execution for sol: ['scripts/solana/replay_edges.py']
+FAIL failure artifact registry has non-producer entry: scripts/solana/replay_edges.py
+FAIL failure artifact registry has non-producer entry: scripts/solana/sqd_gap_repair.py
+invariant manifest FAIL: 16 discrepancy(s)
+
+--- test_batch3_solana_vertical_slice.py 完整输出 ---
+Traceback (most recent call last):
+  File "scripts/tests/test_batch3_solana_vertical_slice.py", line 270, in <module>
+    raise SystemExit(main())
+  File "scripts/tests/test_batch3_solana_vertical_slice.py", line 265, in main
+    test_r9_solana_pythia_mainnet_vertical_slice()
+  File "scripts/lib/formal_capability_probes.py", line 145, in guarded
+    return function(*args, **kwargs)
+  File "scripts/tests/test_batch3_solana_vertical_slice.py", line 253, in test_r9_solana_pythia_mainnet_vertical_slice
+    server = ThreadingHTTPServer(("127.0.0.1", 0), FixtureHandler)
+PermissionError: [Errno 1] Operation not permitted
+
+--- test_batch3_evm_vertical_slice.py 完整输出 ---
+Traceback (most recent call last):
+  File "scripts/tests/test_batch3_evm_vertical_slice.py", line 353, in <module>
+    raise SystemExit(main())
+  File "scripts/tests/test_batch3_evm_vertical_slice.py", line 344, in main
+    test_r9_eth_mainnet_vertical_slice()
+  File "scripts/lib/formal_capability_probes.py", line 145, in guarded
+    return function(*args, **kwargs)
+  File "scripts/tests/test_batch3_evm_vertical_slice.py", line 330, in test_r9_eth_mainnet_vertical_slice
+    _run_registered_chain("eth")
+  File "scripts/tests/test_batch3_evm_vertical_slice.py", line 281, in _run_registered_chain
+    server = ThreadingHTTPServer(("127.0.0.1", 0), FixtureHandler)
+PermissionError: [Errno 1] Operation not permitted
+
+--- test_batch4_invariant_guards.py 完整输出 ---
+INJECT B4-RPC-01 bare RpcPool -> RED
+INJECT B4-LABEL-01/02 + B4F-LABEL-03 extra/missing/eighth surface -> RED
+INJECT B4F-FORMAL-01 empty ACCOUNTING_PRODUCERS -> RED with diagnostic
+INJECT B4-VS-01/02 missing SUITE + missing file -> RED
+INJECT B4-INV17-01/02 urllib + variable curl + denominator shrink -> RED
+INJECT B4-RH-COUNT-01 documented 15/14 vs disk 16/15 -> RED
+INJECT R9-B4-MAIN-01 bare integer main() -> RED
+INJECT B4F2-MAIN-02 top-level bare integer main() -> RED
+Traceback (most recent call last):
+  File "scripts/tests/test_batch4_invariant_guards.py", line 540, in <module>
+    raise SystemExit(main())
+  File "scripts/tests/test_batch4_invariant_guards.py", line 534, in main
+    case(scan, work)
+  File "scripts/tests/test_batch4_invariant_guards.py", line 198, in test_handwritten_e2e_provenance_injection
+    assert scan.formal_e2e_provenance_errors() == []
+AssertionError
+
+========================================================
+      PASS  changelog_lint.py
+      PASS  docs_lint.py --all
+      PASS  labels_manifest.py
+FAIL(rc=1)  invariant_scan.py        invariant manifest FAIL: 16 discrepancy(s)
+      PASS  test_r7_findings.py
+      PASS  test_net_result.py
+      PASS  test_batch1_rpc_attestation.py
+      PASS  test_batch2_p3_hardening.py
+      PASS  test_batch2_capability_matrix.py
+      PASS  test_batch2_ready_reconciliation.py
+      PASS  test_batch2_robinhood_exploration.py
+      PASS  test_batch2_legacy_hardening.py
+      PASS  test_batch2_registry_harness_hardening.py
+      PASS  test_batch3_solana_producers.py
+FAIL(rc=1)  test_batch3_solana_vertical_slice.py
+FAIL(rc=1)  test_batch3_evm_vertical_slice.py
+      PASS  test_r9_batch1_boundaries.py
+      PASS  test_r9_solana_attested_session.py
+      PASS  test_r9_batch2_attestation_adapters.py
+      PASS  test_r9_batch2_executable_capabilities.py
+      PASS  test_r9_batch2_solana_sqd_adapter.py
+      PASS  test_r9_batch3_solana_observation.py
+      PASS  test_r9_batch3_dynamic_runner.py
+      PASS  test_r9_batch3_preflight.py
+      PASS  test_r9_batch3_release_guards.py
+FAIL(rc=1)  test_batch4_invariant_guards.py
+      PASS  test_exemption_guards.py
+      PASS  test_receipt_kernel.py
+      PASS  test_batch1_receipt_paths.py
+      PASS  test_reconciliation_runner.py
+      PASS  test_chain_registry.py
+      PASS  ../labels/check_manual_sync.py
+      PASS  env_check.py
+      PASS  test_commands_deploy_sync.py
+      PASS  casebook_lint.py
+      PASS  fixtures_lint.py
+      PASS  test_build_html.py
+      PASS  test_engine_equivalence.py
+      PASS  test_report_facts.py
+      PASS  test_fault_injection.py
+      PASS  test_review_evm_integrity.py
+      PASS  test_review_solana_integrity.py
+      PASS  test_review_labels.py
+      PASS  test_review_robinhood_integrity.py
+      PASS  test_review_resume_integrity.py
+      PASS  test_entity_identity_gate.py
+      PASS  test_review_chain_collectors.py
+      PASS  test_labels_resolver_guards.py
+      PASS  test_batch1_risk_flags.py
+      PASS  test_roundtrip_check.py
+      PASS  test_label_snapshot_roundtrip.py
+      PASS  test_goldset_curated_rebuild.py
+      PASS  test_arbitrum_label_consumers.py
+      PASS  test_benchmark_labels.py
+      PASS  test_add_labels_rollback.py
+      PASS  test_fetch_failclosed.py
+      PASS  test_fetch_gmgn_sh.py
+      PASS  test_sixlens_receipts.py
+      PASS  test_sixlens_docs.py
+      PASS  test_token_no_positional.py
+      PASS  test_contract_routes.py
+      PASS  test_version_consistency.py
+      PASS  test_chain_support_matrix.py
+      PASS  test_formal_chain_support.py
+      PASS  test_review_scale_guards.py
+      PASS  test_figures_from_facts.py
+      PASS  test_cluster_quality.py
+      PASS  test_sqd_merge_equiv.py
+      PASS  test_spl_edge_core.py
+      PASS  test_sqd_collector_meta_v4.py
+      PASS  test_sqd_consumer_v4.py
+      PASS  test_supply_truth_gate.py
+      PASS  test_repair_batch_a.py
+      PASS  test_repair_batch_b.py
+      PASS  test_repair_batch_c.py
+      PASS  test_handoff_manifest.py
+      PASS  test_audit_release_gate.py
+      PASS  test_review_20260804_p0.py
+      PASS  test_review_20260804_p101.py
+      PASS  test_review_20260804_p104.py
+      PASS  test_review_20260804_p105.py
+      PASS  test_review_20260804_p106.py
+      PASS  test_review_20260804_p201.py
+      PASS  test_review_20260804_p202.py
+      PASS  test_round4_csv_adapters.py
+      PASS  test_param_scripts.py
+      PASS  test_round4_a5_seal.py
+      PASS  test_round4_identity_emitter.py
+      PASS  test_round4b_provenance.py
+      PASS  test_round4c_solana_provenance.py
+      PASS  test_state_from_facts.py
+      PASS  test_a4_gate.py
+      PASS  test_time_spotcheck.py
+      PASS  test_peaks_daily.py
+      PASS  test_wave_scan.py
+      PASS  test_flow_anomaly.py
+      PASS  test_entity_source_trace.py
+      PASS  test_adjudication_validator.py
+      PASS  test_distribution_gate.py
+      PASS  test_apu_legacy_gaps.py
+      PASS  test_repair_batch_d.py
+      PASS  test_repair_batch1.py
+      PASS  test_batch6_sqd_v4_blind_review.py
+      PASS  test_repair_batch2_f02.py
+      PASS  test_repair_batch3_f01.py
+      PASS  test_repair_batch3_gates.py
+      PASS  test_evm_observation.py
+      PASS  test_evm_observation_release.py
+      PASS  test_repair_g1_audit_report.py
+      PASS  test_repair_g1_risk_flags_pipeline.py
+      PASS  test_repair_g1_handoff_containment.py
+      PASS  test_repair_g1_cross_target.py
+      PASS  test_repair_g1_text_hygiene.py
+      PASS  test_evm_observation_nonempty_code.py
+      PASS  test_arbitrum_exploration_cli.py
+      PASS  test_recon_deep_reverify.py
+      PASS  test_gmgn_divergence_note.py
+      PASS  test_g3_docs_guards.py
+      PASS  test_g3_alt_collectors.py
+      PASS  test_collector_history.py
+      PASS  test_v2_identity_history.py
+      PASS  test_anchor_plan_v3.py
+      PASS  test_done_v4_collector.py
+      PASS  test_csv_resume_collector_gate.py
+========================================================
+120 PASS / 4 FAIL
+4 项失败——修完再收工
+[exit_code=1]
+
+=== run_all 四项失败归类 ===
+1. invariant_scan.py：预期先红；16 项均为批 3 repair、批 5 replay/reconcile、wave v5、flow v3 或其登记对应项。probe/coverage validator 本批登记已与实现对齐。
+2. test_batch3_solana_vertical_slice.py：环境红；fixture probe 已在监听回环端口之前真实 subprocess 成功，随后既有 ThreadingHTTPServer 因沙箱 EPERM 失败。
+3. test_batch3_evm_vertical_slice.py：环境红；既有回环监听因沙箱 EPERM 失败，与本批改动无关。
+4. test_batch4_invariant_guards.py:198：预期 E20 红；probe 半边已闭合，只剩 replay_edges.py，按工单留待批 5。

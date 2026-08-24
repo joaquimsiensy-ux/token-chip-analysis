@@ -9,7 +9,7 @@
   python3 roundtrip_check.py            # 全链比对，输出差异摘要
   python3 roundtrip_check.py --dump     # 差异行落盘 roundtrip_diff_<chain>.csv 供救回
 退出码：0=收敛（发布版被新构建完整覆盖，可安全发布）；1=断环或行内退化；
-        2=任一正式链的发布表或 staging 表缺失。
+        2=任一 labels-table 登记链的发布主表或 staging 主表缺失。
 比对键：(address, chain)；除检查发布版地址是否仍在 staging，也逐行比较全部行为字段。
 纯 provenance 字段允许差异但逐项输出 WARN，禁止静默吞掉。
 staging 比发布版多行是正常扩容。
@@ -22,7 +22,7 @@ from risk_flags import canonical_risk_flags
 HERE = os.path.dirname(os.path.abspath(__file__))
 OUT = os.path.join(HERE, 'sources', 'out')
 PUB = os.path.normpath(os.path.join(HERE, '..', '..', 'references', 'labels'))
-CHAINS = ['eth', 'bsc', 'base', 'sol', 'robinhood']
+CHAINS = ['eth', 'bsc', 'base', 'arbitrum', 'sol', 'robinhood']
 DECISION_FIELDS = ['category', 'tier', 'merge_policy', 'balance_policy', 'status', 'name',
                    'risk_flags']
 PROVENANCE_FIELDS = ['source', 'evidence', 'added_date', 'verified_at',
@@ -108,7 +108,7 @@ def main():
         new = load_keys(os.path.join(args.out_dir, fn))
         if pub is None or new is None:
             missing_table = True
-            print(f'[FAIL] {fn}: 缺正式链主表（发布版={pub is not None} staging={new is not None}）')
+            print(f'[FAIL] {fn}: 缺 labels-table 登记链主表（发布版={pub is not None} staging={new is not None}）')
             continue
         # privacy 子表并入比对（resolver 视角是合并加载的）
         for side, store in (('pub', pub), ('new', new)):
@@ -168,7 +168,7 @@ def main():
             print(f'[WARN] {ch}: {len(provenance_diffs)} 行 provenance 差异；字段={"|".join(fields)}'
                   '（允许差异，需人工确认来源迁移）')
     if missing_table:
-        print('\n结论：正式链标签表不完整——缺表属于发布前置条件失败，禁止发布。')
+        print('\n结论：labels-table 登记链标签发布主表不完整——缺表属于发布前置条件失败，禁止发布。')
         return 2
     if broken:
         print('\n结论：round-trip 未收敛——先把丢失或退化行救回 additions/ 再重建，勿直接 cp 发布。')

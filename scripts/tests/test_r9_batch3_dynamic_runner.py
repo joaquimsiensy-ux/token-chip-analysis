@@ -26,22 +26,26 @@ def load_runner():
 def job(case):
     placeholder = "{observed_as_of_block}"
     return {
-        "family": "solana", "case_dir": str(case),
+        "case_dir": str(case),
         "derive_as_of_from": "supply",
         "target": {"chain": "solana", "token": "mint", "as_of_block": None},
         "checks": {
-            "balance": {"producer": "scripts/solana/anchor_sampler.py",
-                        "argv": ["--as-of-slot", placeholder, "--receipt", "balance.json"],
-                        "receipt": "balance.json"},
             "supply": {"producer": "scripts/solana/scan_token_accounts.py",
                        "argv": ["--out", "snapshot.json", "--bundle", "supply.json"],
                        "receipt": "supply.json"},
+            "balance": {"producer": "scripts/solana/anchor_sampler.py",
+                        "argv": ["--as-of-slot", placeholder, "--receipt", "balance.json"],
+                        "receipt": "balance.json"},
             "supply_truth": {"producer": "scripts/lib/supply_truth_gate.py",
                              "argv": ["--as-of-block", placeholder, "--out", "truth.json"],
                              "receipt": "truth.json"},
             "time": {"producer": "scripts/solana/anchor_sampler.py",
                      "argv": ["--as-of-slot", placeholder, "--receipt", "time.json"],
                      "receipt": "time.json"},
+            "exact_reconcile": {"producer": "scripts/solana/replay_edges.py",
+                                "argv": ["reconcile", "--as-of-slot", placeholder,
+                                         "--receipt", "exact.json"],
+                                "receipt": "exact.json"},
         },
     }
 
@@ -59,7 +63,8 @@ def test_dynamic_slot_is_observed_then_substituted():
                 target = {"chain": "solana", "token": "mint", "as_of_block": 103}
             else:
                 assert "103" in command and "{observed_as_of_block}" not in command
-                receipt = next(name for name in ("balance.json", "truth.json", "time.json")
+                receipt = next(name for name in ("balance.json", "truth.json", "time.json",
+                                                  "exact.json")
                                if name in command)
                 target = {"chain": "solana", "token": "mint", "as_of_block": 103}
             (Path(cwd) / receipt).write_text(json.dumps({
@@ -74,7 +79,7 @@ def test_dynamic_slot_is_observed_then_substituted():
         assert rc == 0 and wrapper["target"]["as_of_block"] == 103
         assert calls[0] == "scan_token_accounts.py"
         assert calls == ["scan_token_accounts.py", "anchor_sampler.py",
-                         "supply_truth_gate.py", "anchor_sampler.py"]
+                         "supply_truth_gate.py", "anchor_sampler.py", "replay_edges.py"]
 
 
 def main():

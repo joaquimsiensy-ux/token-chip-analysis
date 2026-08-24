@@ -165,7 +165,7 @@ def spec(case, chain, endpoint):
               "--replay-stats", "stats_evm.json", "--gmgn", "gmgn_evm.csv",
               "--chain", chain, "--token", TOKEN, "--end-block", "123",
               "--rpc", endpoint, "--top-n", "1"]
-    return {"family": "evm", "case_dir": str(case),
+    return {"case_dir": str(case),
             "target": {"chain": chain, "token": TOKEN, "as_of_block": 123},
             "inputs": {name: name for name in
                        ("config_evm.json", "balances_evm.json", "stats_evm.json",

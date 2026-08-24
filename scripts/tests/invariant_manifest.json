@@ -11,11 +11,11 @@
   "scripts/*.py"
  ],
  "minimum_counts": {
-  "receipt_producers": 61,
-  "receipt_consumers": 82,
-  "transport_calls": 63,
-  "atomic_writes": 54,
-  "formal_entrypoints": 58
+  "receipt_producers": 70,
+  "receipt_consumers": 92,
+  "transport_calls": 65,
+  "atomic_writes": 56,
+  "formal_entrypoints": 61
  },
  "receipt_producers": [
   {
@@ -183,7 +183,7 @@
   },
   {
    "schemas": [
-    "flow-anomaly/v2"
+    "flow-anomaly/v3"
    ],
    "script": "scripts/report/flow_anomaly_scan.py"
   },
@@ -209,7 +209,7 @@
   },
   {
    "schemas": [
-    "reconciliation-report/v2"
+    "reconciliation-report/v3"
    ],
    "script": "scripts/report/reconciliation_report.py"
   },
@@ -227,7 +227,7 @@
   },
   {
    "schemas": [
-    "wave-scan/v4"
+    "wave-scan/v5"
    ],
    "script": "scripts/report/wave_scan.py"
   },
@@ -271,13 +271,19 @@
   },
   {
    "schemas": [
+    "curve-cost/v1"
+   ],
+   "script": "scripts/solana/curve_cost.py"
+  },
+  {
+   "schemas": [
     "sqd-solana-cache/v4"
    ],
    "script": "scripts/solana/fetch_sqd_transfers_v2.py"
   },
   {
    "schemas": [
-    "solana-reconcile/v3"
+    "solana-reconcile/v4"
    ],
    "script": "scripts/solana/replay_edges.py"
   },
@@ -289,6 +295,27 @@
     "solana-observation-bundle/v1"
    ],
    "script": "scripts/solana/scan_token_accounts.py"
+  },
+  {
+   "schemas": [
+    "sqd-solana-coverage-pointer/v1",
+    "sqd-solana-coverage/v1",
+    "sqd-solana-shared-coverage-map/v1"
+   ],
+   "script": "scripts/solana/sqd_coverage_probe.py"
+  },
+  {
+   "schemas": [
+    "sqd-solana-beta-trace/v1",
+    "sqd-solana-cache/v4",
+    "sqd-solana-coverage-resolution/v1",
+    "sqd-solana-repair-bundle/v1",
+    "sqd-solana-repair-layer/v1",
+    "sqd-solana-repair-pointer/v1",
+    "sqd-solana-rpc-ledger/v1",
+    "sqd-solana-slot-index-map/v1"
+   ],
+   "script": "scripts/solana/sqd_gap_repair.py"
   },
   {
    "schemas": [
@@ -344,8 +371,7 @@
    "schemas": [
     "camp-series-provenance/v1",
     "solana-holder-snapshot-v2",
-    "solana-reconcile/v2",
-    "solana-reconcile/v3"
+    "solana-reconcile/v4"
    ],
    "script": "scripts/lib/camp_series_provenance.py"
   },
@@ -384,7 +410,7 @@
   },
   {
    "schemas": [
-    "wave-scan/v4"
+    "wave-scan/v5"
    ],
    "script": "scripts/lib/wave_contract.py"
   },
@@ -409,7 +435,7 @@
    "schemas": [
     "candidate-adjudications/v1",
     "distribution-adjudications/v1",
-    "flow-anomaly/v2",
+    "flow-anomaly/v3",
     "pattern-resolutions/v1"
    ],
    "script": "scripts/report/adjudication_validator.py"
@@ -431,10 +457,15 @@
     "adversarial-review/v4",
     "figure2-check-receipt/v1",
     "identity-holder-snapshot/v2",
-    "reconciliation-report/v2",
     "reproduce-receipt/v2"
    ],
    "script": "scripts/report/audit_release_gate.py"
+  },
+  {
+   "schemas": [
+    "reconciliation-report/v2"
+   ],
+   "script": "scripts/report/reconciliation_report.py"
   },
   {
    "schemas": [
@@ -461,11 +492,12 @@
    "schemas": [
     "entity-freeze/v1",
     "flip-adjudications/v1",
-    "flow-anomaly/v2",
+    "flow-anomaly/v3",
     "provenance-ledger/v2",
     "wave-scan/v1",
     "wave-scan/v2",
-    "wave-scan/v3"
+    "wave-scan/v3",
+    "wave-scan/v4"
    ],
    "script": "scripts/report/handoff_manifest.py"
   },
@@ -498,10 +530,12 @@
     "gmgn-divergence-note/v1",
     "over-cap-approval/v1",
     "reconciliation-report/v2",
+    "reconciliation-report/v3",
     "review-ledger/v1",
     "shared-release-receipt/v1",
     "solana-anchor-sampler-receipt/v2",
     "solana-observation-bundle/v1",
+    "solana-reconcile/v4",
     "supply-truth-receipt/v3",
     "supply-truth-receipt/v4",
     "time-spotcheck/v3",
@@ -525,12 +559,6 @@
    "schemas": [
     "sqd-solana-cache/v4"
    ],
-   "script": "scripts/solana/curve_cost.py"
-  },
-  {
-   "schemas": [
-    "sqd-solana-cache/v4"
-   ],
    "script": "scripts/solana/fetch_sqd_transfers_v2.py"
   },
   {
@@ -542,9 +570,42 @@
   {
    "schemas": [
     "sqd-solana-cache/v3",
-    "sqd-solana-cache/v4"
+    "sqd-solana-cache/v4",
+    "sqd-solana-repair-bundle/v1",
+    "sqd-solana-repair-pointer/v1"
    ],
    "script": "scripts/solana/sqd_cache_identity.py"
+  },
+  {
+   "schemas": [
+    "sqd-solana-beta-trace/v1",
+    "solana-holder-snapshot-v2",
+    "solana-reconcile/v4",
+    "sqd-solana-cache/v4",
+    "sqd-solana-coverage-pointer/v1",
+    "sqd-solana-coverage-resolution/v1",
+    "sqd-solana-coverage/v1",
+    "sqd-solana-repair-bundle/v1",
+    "sqd-solana-repair-layer/v1",
+    "sqd-solana-repair-pointer/v1",
+    "sqd-solana-rpc-ledger/v1",
+    "sqd-solana-shared-coverage-map/v1",
+    "sqd-solana-slot-index-map/v1"
+   ],
+   "script": "scripts/lib/solana_exact_validate.py"
+  },
+  {
+   "schemas": [
+    "sqd-solana-shared-coverage-map/v1"
+   ],
+   "script": "scripts/solana/sqd_coverage_probe.py"
+  },
+  {
+   "schemas": [
+    "sqd-solana-coverage-resolution/v1",
+    "sqd-solana-rpc-ledger/v1"
+   ],
+   "script": "scripts/solana/sqd_gap_repair.py"
   }
  ],
  "transport_calls": [
@@ -755,6 +816,14 @@
   {
    "kind": "solana-attested-session",
    "script": "scripts/solana/fetch_sqd_transfers_v2.py"
+  },
+  {
+   "kind": "net.py",
+   "script": "scripts/solana/sqd_coverage_probe.py"
+  },
+  {
+   "kind": "net.py",
+   "script": "scripts/solana/sqd_gap_repair.py"
   },
   {
    "kind": "curl",
@@ -1063,6 +1132,16 @@
    "semantics": "overwrite_single"
   },
   {
+   "locator": "_publish_bytes_overwrite",
+   "script": "scripts/solana/sqd_coverage_probe.py",
+   "semantics": "overwrite_single"
+  },
+  {
+   "locator": "main",
+   "script": "scripts/solana/sqd_gap_repair.py",
+   "semantics": "multi_file_txn"
+  },
+  {
    "locator": "main",
    "script": "scripts/solana/scan_token_accounts.py",
    "semantics": "dual_file_txn"
@@ -1129,7 +1208,10 @@
   "scripts/solana/audit_closed_accounts.py",
   "scripts/solana/build_evolution.py",
   "scripts/solana/probe_escrows.py",
+  "scripts/solana/replay_edges.py",
   "scripts/solana/scan_token_accounts.py",
+  "scripts/solana/sqd_coverage_probe.py",
+  "scripts/solana/sqd_gap_repair.py",
   "scripts/solana/squads_members.py",
   "scripts/solana/stake_decode.py"
  ],

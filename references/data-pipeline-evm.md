@@ -1,7 +1,6 @@
 # EVM 链数据管道实测手册（Ethereum/BSC/Base 正式；Arbitrum 探索，2026-07 实测版）
 
-> Arbitrum 本册只保留采集、对账与存量重放方法；因缺 `labels-arbitrum.csv` 及完整标签门禁，
-> 只能产探索/降级结果，不得封 A4/A5 seal 或编译正式 analysis。
+> Arbitrum 已有 `labels-arbitrum.csv` CEX-only 初版，resolver 不再因缺表进入 degraded mode；但基础设施/协议/桥/池等静态覆盖仍为空白，剔除仍依赖现场 `getCode`、协议识别与行为守门员动态闸。其 `release_tier=exploration` 不变，只能产探索结果，不得封 A4/A5 seal 或编译正式 analysis。
 
 > 通道结论由多次 BSC 实战合并（OPN/SIREN，07 起）。
 > 所有限速/吞吐数字为当时实测，节点政策随时会变；复用任何通道前先按 §6 做 1 分钟能力探测。

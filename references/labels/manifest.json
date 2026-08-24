@@ -1,15 +1,20 @@
 {
- "generated_at": "2026-08-04 23:38:43",
+ "generated_at": "2026-08-20 00:48:52",
  "files": {
   "codehash-robinhood.csv": {
    "sha256": "ff4f3c16974fed723f000bcc058f30a4bb2c7b0827f3cfe8d1e29338f05d5b92",
    "rows": 3,
    "bytes": 1040
   },
+  "labels-arbitrum.csv": {
+   "sha256": "126a7c7e75675cac14d0dca69add5720781aa15573c0e906f4b791946922ff71",
+   "rows": 730,
+   "bytes": 157979
+  },
   "labels-base.csv": {
-   "sha256": "72e12e405cc257118e4eb8a0722cde13e84c314b600abd0e95c0d9091ad67365",
-   "rows": 14202,
-   "bytes": 2691308
+   "sha256": "cb2871f4fd0a11417ebfdd8aed762ecb25427dd110197795c11c2002df9314ae",
+   "rows": 14253,
+   "bytes": 2700780
   },
   "labels-bsc-privacy.csv": {
    "sha256": "6900c32f6fadaf13aa48cb0c61a7938fa19488e34d735938452c5ac5912cbcc2",
@@ -27,9 +32,9 @@
    "bytes": 33176897
   },
   "labels-eth.csv": {
-   "sha256": "f3af6001bb02bb0b77fca5cf926ff77f5269061f363ea1a04d74442dda838702",
-   "rows": 140045,
-   "bytes": 21563798
+   "sha256": "f8e02f0cf2484562dbfe347d0c39ab8ed3d250218e8caaf48fb38be409223f22",
+   "rows": 140046,
+   "bytes": 21563545
   },
   "labels-robinhood.csv": {
    "sha256": "edd33770b8787642c84e2edf098a562b9e2e2a765af0bb4d05f72321751690f2",

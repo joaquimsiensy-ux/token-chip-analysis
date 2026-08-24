@@ -235,3 +235,13 @@ def soltx_cache_paths(mint, data_dir):
     key = hashlib.sha256(mint.encode("utf-8")).hexdigest()
     return (root / f"soltx-{key}.jsonl.gz", root / f"soltx-{key}.meta.json",
             root / f"soltx-{key}.parts")
+
+
+def sqd_repair_paths(case_root, mint):
+    """Return the mint-scoped repair parent, pointer and publication lock."""
+    if not isinstance(mint, str):
+        raise TypeError("mint must be a string")
+    root = Path(case_root)
+    key = hashlib.sha256(mint.encode("utf-8")).hexdigest()
+    parent = root / "data" / "sqd_repair" / key
+    return parent, parent / "CURRENT.json", parent / ".lock"

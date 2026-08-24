@@ -33,7 +33,7 @@ from risk_flags import canonical_risk_flags, merge_risk_flags, parse_risk_flags
 
 CHAIN_BY_ID = {'1': 'eth', '8453': 'base', '56': 'bsc'}
 # 这是标签资产构建面，不是 release-tier 或 formal-ready 链清单。
-BUILD_CHAINS = {'eth', 'bsc', 'base', 'sol', 'robinhood'}
+BUILD_CHAINS = {'eth', 'bsc', 'base', 'arbitrum', 'sol', 'robinhood'}
 
 # 各上游源的快照时点（重建/换源时人工更新；写进 source_snapshot_at 列供时效审计）
 SOURCE_SNAPSHOT = {
@@ -123,12 +123,14 @@ SRC_PRIORITY = {'curation': -1, 'manual': 0, 'addressbook': 0, 'serial': 0, 'reg
 book = {}  # (chain, address) -> row dict
 
 def upsert(chain, address, name, category, tier, source, date='', evidence='', risk_flag='',
-           raw_label=None, verified_at='', status='', merge_policy='', balance_policy=''):
+           raw_label=None, verified_at='', status='', merge_policy='', balance_policy='',
+           source_snapshot_at=''):
     """risk 不再覆盖功能分类（codex 复核 2026-07-16）：risk 命中记入独立 risk_flags 列，
     与 cex/bridge 等 role 并存——被制裁的 CEX 地址既保留 exclude 剔除行为，又保留高危提示。
     v4：raw_label 多值积累进 raw_labels 列（taxonomy 归并的信息不再丢失）。
     v4.2：merge_policy/balance_policy 透传（此前硬编码空——全量重建会丢手工策略覆盖，
-    codex 第四轮复核发现的 round-trip 断环）。"""
+    codex 第四轮复核发现的 round-trip 断环）。
+    v4.3：source_snapshot_at 同样透传；行级值优先，空值才回落源级默认。"""
     addr = norm_addr(address, chain)    # 全链统一规范化（EVM/HL 小写 0x40、SOL base58、FIL f 地址）
     if addr is None: return
     name = re.sub(r'[\x00-\x08\x0b-\x1f\x7f]', '', name or '')  # 剥 NUL/控制字符（Dune balancer_lbp 名字段实测带 \x00）
@@ -138,6 +140,7 @@ def upsert(chain, address, name, category, tier, source, date='', evidence='', r
     key = (chain, addr)
     old = book.get(key)
     prio = SRC_PRIORITY.get(source.split('-')[0], 9)
+    snapshot_at = source_snapshot_at or snap_of(source)
     raws = set()
     if raw_label:
         raws = {raw_label} if isinstance(raw_label, str) else set(raw_label)
@@ -145,7 +148,7 @@ def upsert(chain, address, name, category, tier, source, date='', evidence='', r
         book[key] = {'address': addr, 'chain': chain, 'name': name, 'category': category,
                      'tier': tier, 'source': source, 'added_date': date, 'evidence': evidence,
                      'risk_flags': risk_flag, 'merge_policy': merge_policy, 'balance_policy': balance_policy,
-                     'source_snapshot_at': snap_of(source), 'verified_at': verified_at,
+                     'source_snapshot_at': snapshot_at, 'verified_at': verified_at,
                      'status': status, '_raw': raws, '_p': prio}
         return
     old['_raw'] |= raws
@@ -162,6 +165,7 @@ def upsert(chain, address, name, category, tier, source, date='', evidence='', r
         # 高优先级源带 policy 覆盖值 → 一并生效（v4.2 round-trip 闭环）
         if merge_policy: old['merge_policy'] = merge_policy
         if balance_policy: old['balance_policy'] = balance_policy
+        if snapshot_at: old['source_snapshot_at'] = snapshot_at
         # 高优先级源的 evidence/verified_at/status 同样覆盖（有值才覆盖；2026-07-18 稳定化修复：
         # 此前三列只走末尾"补空"逻辑，curation 精修的证据出处会被先到的低层源占住无法救回）
         if evidence: old['evidence'] = evidence
@@ -175,6 +179,8 @@ def upsert(chain, address, name, category, tier, source, date='', evidence='', r
         old['merge_policy'] = merge_policy
     if balance_policy and not old.get('balance_policy'):
         old['balance_policy'] = balance_policy
+    if snapshot_at and not old.get('source_snapshot_at'):
+        old['source_snapshot_at'] = snapshot_at
     # 已存行是纯 risk 占位、新行带功能分类 → 补上功能分类（无论优先级）
     if old['tier'] == 'risk' and not incoming_is_pure_risk:
         old.update({'category': category, 'tier': tier})
@@ -422,7 +428,8 @@ for _fn in _EXTRA_SOURCES + _ADDITION_FILES:
                r['source'], r.get('added_date', ''), r.get('evidence', ''),
                risk_flag=r.get('risk_flags', ''), verified_at=r.get('verified_at', ''),
                status=r.get('status', ''), raw_label=_rawl or None,
-               merge_policy=r.get('merge_policy', ''), balance_policy=r.get('balance_policy', ''))
+               merge_policy=r.get('merge_policy', ''), balance_policy=r.get('balance_policy', ''),
+               source_snapshot_at=r.get('source_snapshot_at', ''))
         n += 1
     print(f'{_fn} merged:', n)
 

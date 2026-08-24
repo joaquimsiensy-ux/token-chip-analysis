@@ -1,0 +1,132 @@
+{
+  "schema": "sqd-canonicalization-rules/v1",
+  "draft_status": "batch1-frozen",
+  "source": "PLAN.md §4.2.0",
+  "producer": "scripts/solana/sqd_repair_core.py 与 scripts/lib/solana_exact_validate.py（计划目标路径）",
+  "consumers": [
+    "sqd_gap_repair.py",
+    "solana_exact_validate.py",
+    "resolver/CURRENT→bundle 校验链"
+  ],
+  "fields": [
+    {
+      "name": "canonical_json",
+      "type": "UTF-8 bytes",
+      "required": true,
+      "description": "json.dumps(obj, sort_keys=True, separators=(\",\",\":\"), ensure_ascii=False).encode(\"utf-8\")",
+      "constraints": "禁止浮点"
+    },
+    {
+      "name": "integer_fields",
+      "type": "JSON int",
+      "required": true,
+      "description": "slot/tx_index/ts/金额 amt",
+      "constraints": "禁止字符串；Python 任意精度；amt 遵守 v4 正整数契约"
+    },
+    {
+      "name": "signature_address_hash",
+      "type": "string",
+      "required": true,
+      "description": "原文字符串",
+      "constraints": ""
+    },
+    {
+      "name": "table_sort.census",
+      "type": "string",
+      "required": true,
+      "description": "按 slot",
+      "constraints": ""
+    },
+    {
+      "name": "table_sort.transactions",
+      "type": "string",
+      "required": true,
+      "description": "按 signature",
+      "constraints": ""
+    },
+    {
+      "name": "table_sort.edges",
+      "type": "string",
+      "required": true,
+      "description": "按 edge_sort_key",
+      "constraints": ""
+    },
+    {
+      "name": "table_sort.slot_index_map",
+      "type": "string",
+      "required": true,
+      "description": "按 slot 再 sqd_index",
+      "constraints": ""
+    },
+    {
+      "name": "table_sort.evidence_manifest",
+      "type": "string",
+      "required": true,
+      "description": "按 path",
+      "constraints": ""
+    },
+    {
+      "name": "table_sort.candidate_slots",
+      "type": "string",
+      "required": true,
+      "description": "按 slot 升序去重",
+      "constraints": ""
+    },
+    {
+      "name": "plan_digest",
+      "type": "string (sha256 hex prefix)",
+      "required": true,
+      "description": "sha256(规范化输入) 前16位",
+      "constraints": "base.edge_sha256,base.meta_sha256,coverage.probe_id,coverage.map_sha256,candidate_slots,mode,reference.kind,reference.endpoint_fingerprint,producer.sha256"
+    },
+    {
+      "name": "gid",
+      "type": "string (sha256 hex prefix)",
+      "required": true,
+      "description": "sha256(规范化输入) 前16位",
+      "constraints": "plan输入全部字段,kind=repair,supersedes,census,transactions,slot_index_map,evidence_manifest,mode,reference.source；输入不含 gid"
+    },
+    {
+      "name": "dependency_graph.nodes",
+      "type": "array[string]",
+      "required": true,
+      "description": "节点为 evidence/*,evidence_manifest,coverage_resolution,repair_layer,slot_index_map,merged 边文件,merged meta,gid,rpc_ledger,bundle.json,CURRENT.json",
+      "constraints": "rpc_ledger 自 step ① 起 append-only，step ③ 前 fsync 定稿；bundle 绑定 rpc_ledger，rpc_ledger 不进 gid"
+    },
+    {
+      "name": "dependency_graph.edges",
+      "type": "array[array[string,string]]",
+      "required": true,
+      "description": "依赖边；bundle 同时依赖 gid 与已定稿 rpc_ledger",
+      "constraints": "rpc_ledger 不作为 gid 输入"
+    },
+    {
+      "name": "plan_digest_required_files",
+      "type": "array[string]",
+      "required": true,
+      "description": "coverage_resolution,repair_layer header,slot_index_map header,rpc_ledger header,merged meta,bundle,STOPPED.json",
+      "constraints": ""
+    },
+    {
+      "name": "plan_digest_forbidden_files",
+      "type": "array[string]",
+      "required": true,
+      "description": "evidence/*,evidence_manifest,merged 边文件,CURRENT",
+      "constraints": ""
+    }
+  ],
+  "invariants": [
+    "依赖图无环。",
+    "必须含 plan_digest 的文件其值全等。",
+    "bundle.gid 重算一致。",
+    "gid 标签只在 bundle 与指针。",
+    "CURRENT→bundle→merged.meta_sha256 单向核对且 meta.plan_digest==bundle.plan_digest。",
+    "全工程所有落盘 JSON 禁止浮点；比率一律使用分子/分母整数。",
+    "rpc_ledger 是依赖图节点，bundle 前 fsync 定稿并由 bundle 引用，但不进入 gid。"
+  ],
+  "notes": [
+    "依赖图 edges 由 PLAN 节点顺序机械展开。",
+    "plan_digest 文件清单按 errata E1 与 E6 冻结。",
+    "rpc_ledger 依赖节点与 bundle 绑定按 errata E17 冻结。"
+  ]
+}

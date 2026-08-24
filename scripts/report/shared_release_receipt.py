@@ -62,7 +62,12 @@ RECON_PRODUCERS = {
         "supply": {"scripts/solana/scan_token_accounts.py"},
         "supply_truth": {"scripts/lib/supply_truth_gate.py"},
         "time": {"scripts/solana/anchor_sampler.py"},
+        "exact_reconcile": {"scripts/solana/replay_edges.py"},
     },
+}
+RECON_CHECK_KEYS = {
+    "evm": ("balance", "supply", "supply_truth", "time"),
+    "solana": ("supply", "balance", "supply_truth", "time", "exact_reconcile"),
 }
 RECON_RUNNERS = {"scripts/report/reconciliation_report.py"}
 ADVERSARIAL_RUNNERS = {"scripts/report/adversarial_review_runner.py"}
@@ -333,14 +338,14 @@ def _bound_case_ref(root, ref, label, *, base=None):
     if not raw.parts or ".." in raw.parts:
         raise ValueError(f"{label} path must be a safe contained path")
     lexical = raw if raw.is_absolute() else base / raw
-    current = Path(lexical.anchor) if lexical.is_absolute() else Path()
-    for part in lexical.parts[1:] if lexical.is_absolute() else lexical.parts:
-        current = current / part
-        if current.is_symlink():
-            raise ValueError(f"{label} path is a symlink")
+    # 外部记录可能使用 macOS /var、/tmp 或案根 alias；这些祖先别名必须先归一化，
+    # 不能逐祖先把系统 symlink 当成案外逃逸。文件自身的 symlink 仍显式拒绝；
+    # 中间 symlink 若指向案外，则会在 resolve 后的包含判定中被拒绝。
+    if lexical.is_symlink():
+        raise ValueError(f"{label} path is a symlink")
     try:
         path = lexical.resolve(strict=True)
-        path.relative_to(case_root)
+        path.relative_to(case_root.resolve())
     except (OSError, ValueError) as exc:
         raise ValueError(f"{label} file invalid or escapes case root") from exc
     if not path.is_file():
@@ -1163,6 +1168,7 @@ def _validate_anchor_receipt(root, receipt, target):
 
 def validate_reconciliation_check(root, key, item, target, family):
     """Validate one producer receipt semantically; wrapper fields are comparisons, not truth."""
+    root = Path(root).resolve()
     if not isinstance(item, dict):
         raise ValueError(f"reconciliation {key} item missing")
     path = ref_ok(root, item.get("receipt"))
@@ -1350,17 +1356,33 @@ def validate_reconciliation_check(root, key, item, target, family):
                  f"reconciliation time unknown schema {schema!r}; expected "
                  f"time-spotcheck/v3；{TIME_SPOTCHECK_V3_HINT}")
         _validate_time_receipt(root, receipt, target)
+    elif family == "solana" and key == "exact_reconcile":
+        _require(schema == "solana-reconcile/v4",
+                 "Solana exact_reconcile 必须重跑 replay_edges.py reconcile 生成 v4 收据")
+        _require(receipt.get("mode") == "formal"
+                 and receipt.get("gate_pass") is True
+                 and receipt.get("negative_balance_count") == 0
+                 and receipt.get("snapshot_mismatch_count") == 0,
+                 "Solana exact_reconcile 未达到 formal 全平")
+        from solana_exact_validate import validate_reconcile_receipt_deep
+        checked = validate_reconcile_receipt_deep(path, case_root=root)
+        _require(checked["ok"], "Solana exact_reconcile 独立深验失败: "
+                 + "; ".join(checked["reasons"]))
     else:
         raise ValueError(f"reconciliation {key} has no validator for family={family}；{migration}")
     return receipt
 
 
 def validate_reconciliation_report(root, expected_target=None, *, return_receipts=False):
-    """Deeply validate the controlled wrapper and all four bound receipts."""
+    """Deeply validate the v3 controlled wrapper and all family checks."""
     root = Path(root).resolve()
     recon = json.loads(regular(root, "reconciliation_report.json").read_text())
     target = recon.get("target")
-    if (recon.get("schema") != "reconciliation-report/v2"
+    if recon.get("schema") == "reconciliation-report/v2":
+        hint = ("EVM 请用 reconciliation_report.py --reseal；Solana 必须重跑 "
+                "replay_edges.py reconcile v4 与五项 runner")
+        raise ValueError(f"reconciliation-report/v2 已 fail-closed；{hint}")
+    if (recon.get("schema") != "reconciliation-report/v3"
             or not isinstance(target, dict)
             or set(target) != {"chain", "token", "as_of_block"}
             or not target.get("chain") or not target.get("token")
@@ -1372,12 +1394,15 @@ def validate_reconciliation_report(root, expected_target=None, *, return_receipt
     if expected_target is not None and canonical_target(target) != canonical_target(expected_target):
         raise ValueError("reconciliation target/schema mismatch")
     family = chain_family(target["chain"])
+    _require(recon.get("family") == family,
+             "reconciliation wrapper family 必须由 target 推导且与 target 一致")
     repo_ref_ok(recon.get("producer"), RECON_RUNNERS, "reconciliation wrapper")
     checks = recon.get("checks")
-    if not isinstance(checks, dict) or set(checks) != {"balance", "supply", "supply_truth", "time"}:
-        raise ValueError("reconciliation wrapper must contain exactly four checks")
+    keys = RECON_CHECK_KEYS[family]
+    if not isinstance(checks, dict) or tuple(checks) != keys:
+        raise ValueError(f"reconciliation wrapper checks 必须按顺序恰为 {keys}")
     receipts = {}
-    for key in ("balance", "supply", "supply_truth", "time"):
+    for key in keys:
         item = checks[key]
         if (not isinstance(item, dict) or item.get("status") != "PASS"
                 or item.get("exit_code") != 0):
@@ -1401,7 +1426,74 @@ def validate_reconciliation_report(root, expected_target=None, *, return_receipt
             raise ValueError(
                 "reconciliation balance/supply/supply_truth 绑定的 replay_stats 不同源"
                 f"（sha256 不一致: {stats_shas}）——三查必须核同一份重放账本；{MIGRATION_HINT}")
+    else:
+        exact_ref = (receipts["exact_reconcile"].get("inputs") or {}).get(
+            "holders_owners")
+        supply_ref = (receipts["supply"].get("holder_outputs") or {}).get("owners")
+        exact_path = _bound_case_ref(root, exact_ref, "exact holders_owners")
+        supply_receipt_ref = checks["supply"].get("receipt") or {}
+        supply_receipt_path = _bound_case_ref(
+            root, supply_receipt_ref, "Solana supply receipt")
+        supply_path = _bound_case_ref(
+            root, supply_ref, "Solana supply holder_outputs.owners",
+            base=supply_receipt_path.parent)
+        _require(exact_path == supply_path,
+                 "exact_reconcile.inputs.holders_owners 与 supply observation bundle "
+                 "holder_outputs.owners 不是同一文件")
     return (target, receipts) if return_receipts else target
+
+
+def validate_solana_derived_bindings(root, exact_binding, *, extra_paths=()):
+    """Require every present/referenced Solana edge-derived JSON to bind exact."""
+    root = Path(root).resolve()
+    candidates = {"wave_scan_report.json", "flow_anomaly_report.json"}
+    data_map = root / "data_map.json"
+    if data_map.is_file():
+        try:
+            mapped = json.loads(data_map.read_text(encoding="utf-8"))
+            candidates.update(item.get("path") for item in mapped.get("files", [])
+                              if isinstance(item, dict)
+                              and isinstance(item.get("path"), str))
+        except Exception as exc:
+            raise ValueError(f"data_map.json 无法用于边源绑定深验: {exc}") from exc
+    candidates.update(path for path in extra_paths if isinstance(path, str))
+    for rel in sorted(candidates):
+        name = Path(rel).name
+        relevant = (rel in {"wave_scan_report.json", "flow_anomaly_report.json"}
+                    or "entity_source_trace" in name
+                    or name.startswith("curve_cost")
+                    or name.startswith("closed_audit-")
+                    or name.endswith(".provenance.json"))
+        if not relevant:
+            continue
+        try:
+            shown = Path(rel)
+            if shown.is_absolute() or not shown.parts or ".." in shown.parts:
+                raise ValueError("path must be a safe case-relative path")
+            lexical = root / shown
+            current = root
+            for part in shown.parts:
+                current = current / part
+                if current.is_symlink():
+                    raise ValueError("path traverses a symlink")
+            resolved = lexical.resolve(strict=True)
+            resolved.relative_to(root)
+            path = _bound_case_ref(
+                root, {"path": rel, "size": resolved.stat().st_size,
+                       "sha256": sha(resolved)}, f"derived artifact {rel}")
+            value = json.loads(path.read_text(encoding="utf-8"))
+        except FileNotFoundError:
+            continue
+        except Exception as exc:
+            raise ValueError(f"Solana 派生产物 {rel} 无法深验: {exc}") from exc
+        if not isinstance(value, dict):
+            raise ValueError(f"Solana 派生产物 {rel} 顶层不是对象")
+        if name.endswith(".provenance.json") and value.get("series_format") != "sol-rows":
+            continue
+        if value.get("edge_source_binding") != exact_binding:
+            raise ValueError(
+                f"Solana 派生产物 {rel}.edge_source_binding 与 exact_reconcile 不全等")
+    return True
 
 
 def validate_adversarial_review(root, expected_target=None):

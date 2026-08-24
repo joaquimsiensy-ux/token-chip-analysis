@@ -30,13 +30,15 @@ dormant_warehouse_audit.json 以 universe_ref{path,sha256} 绑定本报告做集
 
 输入三选一：
   --edges-sol "data/soltx-*.jsonl.gz"   Solana v4 7 元组行；正式路径同时强制
-                                        --sol-cache-meta 与 --mint 做采集身份对表；
+                                        --case-root 与 --mint，经 resolver 唯一选边；
+                                        --sol-cache-meta 若给出须与 resolver 对表；
                                         旧 5 元组须显式 --legacy-sol5
   --edges-evm-v2 data/v2                EVM v2 采集目录（run_*/logs.parquet+blocks.parquet；
                                         hex→HUGEINT 两段组合，高 32 hex 非零硬退 exit 2）
   --duckdb path [--edges-table edges]   已物化工作库（表含 f,t,ts,amt 四列）
 
-输出：--out wave_scan_report.json（schema wave-scan/v4，成员/收方/全集数组全量零截断）。
+输出：--out wave_scan_report.json（schema wave-scan/v5，成员/收方/全集数组全量零截断；
+Solana 正式产物含 edge_source_binding，EVM 省略）。
 候选非空时 requires_adjudication=true——−2 必须按 candidate-adjudications/v1 成员级
 逐条裁决（validator 校验），裁决完毕前历史大户兜底桶不准关闸（split-run §3.2）。
 
@@ -61,6 +63,7 @@ import json
 import os
 import sys
 from datetime import datetime, timezone
+from pathlib import Path
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "lib"))
 from wave_contract import (ORDER_GRANULARITY_INSTRUCTION,
@@ -70,11 +73,11 @@ from wave_contract import (ORDER_GRANULARITY_INSTRUCTION,
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "solana"))
 from spl_edge_core import (EDGE_SCHEMA_FIELDS, INSTR_INDEX_TX_NET,
                            ORDER_GRANULARITY_TX)
-from sqd_cache_identity import validate_cache_meta
+from sqd_cache_identity import resolve_formal_cache
 
 Z = "0x0000000000000000000000000000000000000000"
 DEAD = "0x000000000000000000000000000000000000dead"
-SCHEMA = "wave-scan/v4"
+SCHEMA = "wave-scan/v5"
 
 
 def log(msg):
@@ -102,23 +105,31 @@ def _nonnegative_int(value):
 
 
 def load_sol(con, pattern, *, legacy_sol5=False, cache_meta_path=None,
-             expected_mint=None):
+             expected_mint=None, case_root=None):
     files = sorted(glob.glob(pattern))
     if not files:
         log(f"探测失败：--edges-sol 无匹配文件: {pattern}")
         sys.exit(2)
     cache_meta = None
+    edge_source_binding = None
     if not legacy_sol5:
-        if not cache_meta_path or not expected_mint:
-            log("探测失败：正式 --edges-sol 必须提供 --sol-cache-meta 与 --mint，"
-                "并通过 v4 meta/ACTIVE collector 身份对表")
+        if not case_root or not expected_mint:
+            log("探测失败：正式 --edges-sol 必须提供 --case-root 与 --mint，"
+                "并通过 CURRENT-aware cache resolver；不得回退到 v4 meta/collector 直验")
             sys.exit(2)
         try:
-            with open(cache_meta_path, encoding="utf-8") as fh:
+            edge_path, meta_path, _kind, _gid, edge_source_binding = \
+                resolve_formal_cache(expected_mint, case_root)
+            if len(files) != 1 or Path(files[0]).resolve() != edge_path.resolve():
+                raise ValueError(
+                    "--edges-sol glob 结果必须恰为 resolver 解析出的唯一边文件")
+            if cache_meta_path is not None \
+                    and Path(cache_meta_path).resolve() != meta_path.resolve():
+                raise ValueError("--sol-cache-meta 必须等于 resolver 解析出的 meta_path")
+            with open(meta_path, encoding="utf-8") as fh:
                 cache_meta = json.load(fh)
-            validate_cache_meta(cache_meta, expected_mint, legacy_sol5=False)
         except (OSError, ValueError, TypeError, json.JSONDecodeError) as exc:
-            log(f"探测失败：Solana v4 meta/collector 身份无效: {exc}")
+            log(f"探测失败：Solana 正式 cache resolver 身份无效: {exc}")
             sys.exit(2)
     con.execute("""CREATE TABLE edges (
         ts BIGINT, f VARCHAR, t VARCHAR, amt HUGEINT,
@@ -191,7 +202,7 @@ def load_sol(con, pattern, *, legacy_sol5=False, cache_meta_path=None,
     ):
         log("探测失败：Solana v4 meta 的 edge_rows/edge_logical_sha256 与实际边文件不一致")
         sys.exit(2)
-    return total, cache_meta is not None
+    return total, edge_source_binding
 
 
 def load_evm_v2(con, dir_):
@@ -598,15 +609,16 @@ def equal_amount_groups(con, total, min_amt_raw, win_days, min_win_recv, min_gro
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     src = ap.add_mutually_exclusive_group(required=True)
-    src.add_argument("--edges-sol", help="Solana v4 jsonl.gz glob（正式行宽固定为 7）")
+    src.add_argument("--edges-sol", help="Solana v4 jsonl.gz；正式 glob 必须恰命中 resolver 唯一边文件")
     src.add_argument("--edges-evm-v2", help="EVM v2 采集目录（run_*/logs.parquet）")
     src.add_argument("--duckdb", help="已物化 DuckDB 库路径")
     ap.add_argument("--edges-table", default="edges", help="--duckdb 模式的边表名（需 f,t,ts,amt 列）")
     ap.add_argument("--legacy-sol5", action="store_true",
                     help="显式读取旧 5 元组；输出强制 non-formal/order-ambiguous")
     ap.add_argument("--sol-cache-meta",
-                    help="正式 --edges-sol 对应的 sqd-solana-cache/v4 meta")
-    ap.add_argument("--mint", help="正式 --edges-sol 的预期 Solana mint（与 meta 对表）")
+                    help="可选；若给出必须等于 resolver 解析的 sqd-solana-cache/v4 meta")
+    ap.add_argument("--mint", help="正式 --edges-sol 的预期 Solana mint")
+    ap.add_argument("--case-root", help="正式 Solana 案根；拒符号链接且不猜 cwd")
     ap.add_argument("--total-supply", required=True, help="总供应 raw（分母冻结值）")
     ap.add_argument("--decimals", type=int, default=None, help="仅用于展示换算")
     ap.add_argument("--out", default="wave_scan_report.json")
@@ -664,9 +676,10 @@ def main():
     con.execute("SET preserve_insertion_order=false")
     t0 = datetime.now(timezone.utc)
     if a.edges_sol:
-        n_edges, sol_formal = load_sol(
+        n_edges, edge_source_binding = load_sol(
             con, a.edges_sol, legacy_sol5=a.legacy_sol5,
-            cache_meta_path=a.sol_cache_meta, expected_mint=a.mint)
+            cache_meta_path=a.sol_cache_meta, expected_mint=a.mint,
+            case_root=a.case_root)
     elif a.edges_evm_v2:
         n_edges = load_evm_v2(con, a.edges_evm_v2)
     else:
@@ -820,7 +833,7 @@ def main():
         "params": {k: v for k, v in vars(a).items() if k not in ("out",)},
         "edge_order_granularity": edge_order_granularity,
         "order_ambiguous": order_ambiguous,
-        "non_formal": (not sol_formal) if a.edges_sol else False,
+        "non_formal": (edge_source_binding is None) if a.edges_sol else False,
         "total_supply_raw": str(total),
         "edges": n_edges,
         "scan_universe_count": len(members),
@@ -836,6 +849,8 @@ def main():
                 "按 candidate-adjudications/v1 成员级逐条裁决归 −2/A3 判断层（等额组必查 "
                 "top_sender_global_out_degree）；候选未裁决完毕前历史大户兜底桶不准关闸（casebook S-04）。",
     }
+    if a.edges_sol and edge_source_binding is not None:
+        report["edge_source_binding"] = edge_source_binding
     with open(a.out, "w", encoding="utf-8") as fh:
         json.dump(report, fh, ensure_ascii=False, indent=1)
     log(f"候选波次 {len(waves_out)} 个 / 等额组 {len(eq_groups)} 个 → {a.out}")

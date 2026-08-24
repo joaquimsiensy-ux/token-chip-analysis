@@ -34,12 +34,17 @@ from pathlib import Path
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "lib"))
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "labels"))
 from camp_spec import validate_camp_spec
+from receipt_kernel import build_envelope, finalize_envelope
+from solana_exact_validate import validate_coverage
 from supply_truth_gate import _reject_constant
 from spl_edge_core import (EDGE_SCHEMA_FIELDS, EDGE_SEMANTICS,
-                           INSTR_INDEX_TX_NET, ORDER_GRANULARITY_TX)
+                           INSTR_INDEX_TX_NET, ORDER_GRANULARITY_TX,
+                           soltx_cache_paths, sqd_repair_paths)
 from sqd_cache_identity import (SQD_CACHE_PROTOCOL, SQD_COLLECTOR_ID,
                                 SQD_COLLECTOR_SCRIPT,
-                                validate_cache_meta as _validate_cache_meta)
+                                resolve_formal_cache,
+                                validate_cache_meta as _validate_cache_meta,
+                                validate_repair_bundle)
 try:
     from labels_resolver import LabelResolver, append_misses
 except Exception:
@@ -169,18 +174,30 @@ def _normalize_legacy_edge(row, *, line_no):
     return [ts, slot, None, None, src, dst, amt]
 
 
-def load_edges(mint, *, legacy_sol5=False):
+_CASE_ROOT_WARNED = False
+
+
+def load_edges(mint, *, legacy_sol5=False, case_root=None):
     _validate_mint(mint)
-    key = hashlib.sha256(mint.encode("utf-8")).hexdigest()
-    f = Path(f"data/soltx-{key}.jsonl.gz")
-    meta_f = Path(f"data/soltx-{key}.meta.json")
-    if not meta_f.exists():
-        sys.exit(f"缓存 meta 不存在：{meta_f}")
-    meta = _json_loads(meta_f.read_text(), "soltx meta")
-    try:
-        _validate_cache_meta(meta, mint, legacy_sol5=legacy_sol5)
-    except ValueError as exc:
-        raise SystemExit(str(exc)) from exc
+    binding = None
+    if case_root is not None and not legacy_sol5:
+        f, meta_f, _kind, _gid, binding = resolve_formal_cache(mint, case_root)
+    else:
+        key = hashlib.sha256(mint.encode("utf-8")).hexdigest()
+        f = Path(f"data/soltx-{key}.jsonl.gz")
+        meta_f = Path(f"data/soltx-{key}.meta.json")
+        if not meta_f.exists():
+            sys.exit(f"缓存 meta 不存在：{meta_f}")
+        meta = _json_loads(meta_f.read_text(), "soltx meta")
+        try:
+            _validate_cache_meta(meta, mint, legacy_sol5=legacy_sol5)
+        except ValueError as exc:
+            raise SystemExit(str(exc)) from exc
+        if not legacy_sol5:
+            global _CASE_ROOT_WARNED
+            if not _CASE_ROOT_WARNED:
+                print("WARN: 正式路径须 --case-root（批 5 强制）", file=sys.stderr)
+                _CASE_ROOT_WARNED = True
     if f.is_symlink():
         sys.exit(f"边文件是符号链接，拒绝重放：{f}")
     if not f.exists():
@@ -198,7 +215,9 @@ def load_edges(mint, *, legacy_sol5=False):
         edges.sort(key=lambda e: (e[1], e[0]))
     else:
         edges.sort(key=lambda e: (e[1], e[2], e[3], e[0]))
-    return edges, meta_f
+    if case_root is None or legacy_sol5:
+        return edges, meta_f
+    return edges, meta_f, binding
 
 
 def _read_frozen_formal_edges(path):
@@ -289,16 +308,94 @@ def _snapshot_target(meta):
     return target.get("as_of_block") if isinstance(target, dict) else None
 
 
-def cmd_reconcile(edges, dec, *, mint, cache_meta_path):
-    """重放并发布 solana-reconcile/v3；mint 按 Solana base58 原文比较。"""
+def _case_input_path(case_root, ref, label):
+    if not isinstance(ref, dict) or not isinstance(ref.get("path"), str):
+        raise ValueError(f"{label} 缺 path 引用")
+    rel = Path(ref["path"])
+    if rel.is_absolute() or not rel.parts or any(part in {"", ".", ".."}
+                                                 for part in rel.parts):
+        raise ValueError(f"{label} path 非案根安全相对路径")
+    root = Path(case_root).resolve()
+    cursor = root
+    for part in rel.parts:
+        cursor /= part
+        if cursor.is_symlink():
+            raise ValueError(f"{label} path 含符号链接")
+    path = cursor.resolve()
+    if root not in path.parents or not path.is_file():
+        raise ValueError(f"{label} 文件缺失或逃逸案根")
+    return path
+
+
+def _coverage_inputs(case_root, frm, upper):
+    root = Path(case_root).resolve()
+    pointer_path = root / "data/sqd_coverage/CURRENT.json"
+    if not pointer_path.is_file():
+        raise ValueError("coverage 强制输入缺失: data/sqd_coverage/CURRENT.json")
+    pointer = _json_loads(pointer_path.read_text(encoding="utf-8"), "coverage CURRENT")
+    pointer_inputs = pointer.get("inputs") if isinstance(pointer.get("inputs"), dict) else {}
+    coverage_path = _case_input_path(root, pointer_inputs.get("coverage_map"),
+                                     "coverage_map")
+    counts_path = _case_input_path(root, pointer_inputs.get("slot_counts"),
+                                   "coverage_slot_counts")
+    checked = validate_coverage(root, coverage_path, pointer_path, frm, upper)
+    if not checked["ok"]:
+        raise ValueError("coverage 深验失败: " + "; ".join(checked["reasons"]))
+    return pointer_path, pointer, coverage_path, counts_path, checked
+
+
+def _cheap_reconcile_preflight(case_root, mint, as_of_slot):
+    """Reject cheap formal-input defects before loading a potentially huge edge log."""
     _validate_mint(mint)
+    if case_root is None:
+        raise ValueError("reconcile 正式路径必须提供 --case-root")
+    if not _valid_nonnegative_int(as_of_slot):
+        raise ValueError("reconcile --as-of-slot 必须为非负整数")
+    root = Path(case_root).resolve()
+
+    coverage_pointer = root / "data/sqd_coverage/CURRENT.json"
+    if not coverage_pointer.is_file():
+        raise ValueError("coverage 强制输入缺失: data/sqd_coverage/CURRENT.json")
+    _json_loads(coverage_pointer.read_text(encoding="utf-8"), "coverage CURRENT")
+
+    snapshot_meta = root / "data/holders_snapshot_meta.json"
+    if not snapshot_meta.is_file():
+        raise ValueError("缺 holders_owners.json 或 holders_snapshot_meta.json")
+    _json_loads(snapshot_meta.read_text(encoding="utf-8"),
+                "holders_snapshot_meta.json")
+
+    _base_edge, base_meta, _parts = soltx_cache_paths(mint, root / "data")
+    if not base_meta.is_file():
+        raise ValueError("canonical base cache pair is missing")
+    _json_loads(base_meta.read_text(encoding="utf-8"), "base meta")
+
+
+def cmd_reconcile(edges, dec, *, mint, cache_meta_path, case_root,
+                  as_of_slot, receipt_path="data/reconcile_receipt.json",
+                  edge_source_binding=None):
+    """重放并发布 solana-reconcile/v4；mint 按 Solana base58 原文比较。"""
+    _validate_mint(mint)
+    if case_root is None:
+        raise ValueError("reconcile 正式路径必须提供 --case-root")
+    if not _valid_nonnegative_int(as_of_slot):
+        raise ValueError("reconcile --as-of-slot 必须为非负整数")
+    case_root = Path(case_root).resolve()
     cache_meta_path = Path(cache_meta_path)
+    resolved_edge, resolved_meta, cache_kind, gid, resolved_binding = \
+        resolve_formal_cache(mint, case_root)
+    if resolved_meta.resolve() != cache_meta_path.resolve():
+        raise ValueError("reconcile cache meta 不是 resolver 当前选择")
+    if edge_source_binding is not None and edge_source_binding != resolved_binding:
+        raise ValueError("reconcile 传入 edge_source_binding 与 resolver 不一致")
+    edge_source_binding = resolved_binding
     cache_meta = _json_loads(cache_meta_path.read_text(encoding="utf-8"),
                              "SQD 缓存 meta")
-    frm, to = _validate_cache_meta(cache_meta, mint, legacy_sol5=False)
-    edge_key = hashlib.sha256(mint.encode("utf-8")).hexdigest()
-    edge_path = cache_meta_path.with_name(f"soltx-{edge_key}.jsonl.gz")
-    frozen_edges, edge_file_size, edge_file_sha256 = _read_frozen_formal_edges(edge_path)
+    frm, to = cache_meta["from_slot"], cache_meta["finalized_upper_slot"]
+    if as_of_slot != to:
+        raise ValueError(
+            "--as-of-slot 必须 == cache finalized_upper_slot；拒绝生成错时点 receipt")
+    frozen_edges, _edge_file_size, edge_file_sha256 = _read_frozen_formal_edges(
+        resolved_edge)
     supplied_edges = [_validate_formal_edge(edge) for edge in edges]
     if supplied_edges != frozen_edges:
         raise ValueError("reconcile 内存边与冻结边文件不一致")
@@ -309,16 +406,61 @@ def cmd_reconcile(edges, dec, *, mint, cache_meta_path):
         raise ValueError("SQD 缓存 meta.edge_logical_sha256 与实际边重放摘要不一致")
     if cache_meta["edge_rows"] != len(edges):
         raise ValueError("SQD 缓存 meta.edge_rows 与实际边数不一致")
-    cache_meta["edge_file_size"] = edge_file_size
-    cache_meta["edge_file_sha256"] = edge_file_sha256
-    _atomic_json(cache_meta_path, cache_meta)
+    if edge_source_binding.get("soltx_edges_sha256") != edge_file_sha256:
+        raise ValueError("resolver edge_source_binding 与冻结边物理哈希不一致")
+    coverage_pointer_path, _coverage_pointer, coverage_path, counts_path, coverage = \
+        _coverage_inputs(case_root, frm, to)
+    coverage_doc = _json_loads(
+        coverage_path.read_text(encoding="utf-8"), "coverage_map")
+    cache_endpoint = cache_meta.get("endpoint_sha256")
+    coverage_endpoint = (coverage_doc.get("sqd") or {}).get(
+        "endpoint_fingerprint")
+    if cache_endpoint is not None and cache_endpoint != coverage_endpoint:
+        raise ValueError("coverage SQD endpoint 指纹与 soltx meta 不一致")
+    coverage_effective_verdict = coverage["recomputed"]["verdict"]
+    combination_ok = coverage_effective_verdict == \
+        "NO_KNOWN_NONCE_OMISSION_DETECTED"
+    repair_inputs = {}
+    if cache_kind == "repaired":
+        repair_parent, repair_pointer_path, _lock = sqd_repair_paths(case_root, mint)
+        repair_pointer = _json_loads(
+            repair_pointer_path.read_text(encoding="utf-8"), "repair CURRENT")
+        bundle_path = _case_input_path(
+            case_root, (repair_pointer.get("inputs") or {}).get("bundle"),
+            "repair_bundle")
+        base_edge, _base_meta, _parts = soltx_cache_paths(mint, case_root / "data")
+        bundle = validate_repair_bundle(
+            bundle_path, deep=True, case_root=case_root,
+            current_base={"edge_sha256": sha256_file(base_edge)})
+        generation = bundle_path.parent
+        resolution_ref = bundle.get("coverage_resolution") or {}
+        resolution_path = generation / str(resolution_ref.get("path") or "")
+        if not resolution_path.is_file():
+            raise ValueError("repair coverage_resolution 缺失")
+        resolution = _json_loads(
+            resolution_path.read_text(encoding="utf-8"), "coverage_resolution")
+        current_candidates = set(coverage["recomputed"].get("candidate_slots", []))
+        census_slots = {row.get("slot") for row in resolution.get("census", [])
+                        if isinstance(row, dict)}
+        coverage_effective_verdict = resolution.get("effective_verdict")
+        combination_ok = (
+            coverage_effective_verdict == "DEFECTS_CONFIRMED"
+            and current_candidates.issubset(census_slots)
+            and bundle.get("gid") == gid)
+        repair_inputs = {
+            "coverage_resolution": resolution_path,
+            "repair_bundle": bundle_path,
+            "repair_pointer": repair_pointer_path,
+        }
     print(f"边数={len(edges):,}  时间范围 {fmt_ts(edges[0][0])} → {fmt_ts(edges[-1][0])}")
     print(f"铸造={minted:,}  销毁={burned:,}  净={minted-burned:,}")
     neg = {a: v for a, v in bal.items() if v < 0}  # 任意负余额=数据洞
     print(f"负余额地址数={len(neg)}" + (f"  最大负值={min(neg.values()):,}" if neg else ""))
     rb = {a: v for a, v in bal.items() if v > 0}
-    snap_f = Path("data/holders_owners.json")
-    meta_f = Path("data/holders_snapshot_meta.json")
+    snap_f = case_root / "data/holders_owners.json"
+    meta_f = case_root / "data/holders_snapshot_meta.json"
+    if not snap_f.is_file() or not meta_f.is_file():
+        raise ValueError("缺 holders_owners.json 或 holders_snapshot_meta.json")
     mismatch, snapshot_ok, supply = [], False, None
     owners_ref = _file_ref(snap_f) if snap_f.exists() else None
     snap_meta = None
@@ -340,7 +482,7 @@ def cmd_reconcile(edges, dec, *, mint, cache_meta_path):
                        and snap_meta.get("closed") is True
                        and registered_supply == supply
                        and isinstance(snapshot_slot, int) and not isinstance(snapshot_slot, bool)
-                       and snapshot_slot >= to
+                       and snapshot_slot == to == as_of_slot
                        and out_ref == owners_ref)
         print(f"快照 supply={supply:,}  重放净-快照差={minted-burned-supply:,}")
         for a in sorted(set(snap) | set(rb)):
@@ -351,26 +493,47 @@ def cmd_reconcile(edges, dec, *, mint, cache_meta_path):
             print(f"  MISMATCH {a}  快照={s_:,}  重放={r_:,}  差={r_-s_:,}")
     else:
         print("[FAIL] 缺 holders_owners.json 或 holders_snapshot_meta.json，快照关卡不完整")
-    gate_pass = (not neg and snapshot_ok and supply == minted - burned and not mismatch)
-    producer_path = Path(__file__).resolve()
-    receipt = {"schema": "solana-reconcile/v3", "chain": "solana", "mint": mint,
-               "collection_window": {"from_slot": frm, "to_slot": to},
-               "edge_extrema": {"first": first, "last": last},
-               "edge_digest": edge_digest, "edge_count": len(edges),
-               "producer": {"path": "scripts/solana/replay_edges.py",
-                            "sha256": sha256_file(producer_path)},
-               "inputs": {"soltx_meta": _file_ref(cache_meta_path),
-                          "holders_owners": owners_ref,
-                          "holders_snapshot_meta": _file_ref(meta_f) if meta_f.exists() else None},
-               "minted_raw": str(minted), "burned_raw": str(burned),
-               "net_supply_raw": minted - burned,
-               "negative_balance_count": len(neg), "snapshot_present": snap_f.exists(),
-               "snapshot_meta_present": meta_f.exists(), "snapshot_closed": snapshot_ok,
-               "snapshot_supply_raw": str(supply) if supply is not None else None,
-               "snapshot_mismatch_count": len(mismatch), "gate_pass": gate_pass}
-    _atomic_json("data/reconcile_receipt.json", receipt)
-    json.dump(dict(sorted(rb.items(), key=lambda kv: -kv[1])),
-              open("data/replay_final_balances.json", "w"))
+    gate_pass = bool(not neg and snapshot_ok and supply == minted - burned
+                     and not mismatch and combination_ok)
+    # 所有 envelope 引用必须仍是本次计算实际消费的那一版实物；尤其禁止边文件在
+    # 冻结读取后、签收据前被同路径换包，造成逻辑摘要与 inputs 哈希分属两版。
+    if sha256_file(resolved_edge) != edge_file_sha256:
+        raise ValueError("soltx_edges 在重放期间发生变化，拒绝签出混合版本 receipt")
+    if sha256_file(cache_meta_path) != edge_source_binding.get("soltx_meta_sha256"):
+        raise ValueError("soltx_meta 在重放期间发生变化，拒绝签出混合版本 receipt")
+    receipt_inputs = {
+        "soltx_edges": resolved_edge, "soltx_meta": cache_meta_path,
+        "holders_owners": snap_f, "holders_snapshot_meta": meta_f,
+        "coverage_map": coverage_path, "coverage_slot_counts": counts_path,
+        "coverage_pointer": coverage_pointer_path, **repair_inputs,
+    }
+    envelope = build_envelope(
+        "solana-reconcile/v4",
+        {"chain": "solana", "token": mint, "as_of_block": as_of_slot},
+        "scripts/solana/replay_edges.py", "formal",
+        inputs=receipt_inputs, input_base=case_root)
+    receipt = finalize_envelope(
+        envelope, "PASS" if gate_pass else "FAIL", 0 if gate_pass else 2,
+        chain="solana", mint=mint,
+        collection_window={"from_slot": frm, "to_slot": to},
+        edge_extrema={"first": first, "last": last},
+        edge_digest=edge_digest, edge_count=len(edges),
+        minted_raw=minted, burned_raw=burned, net_supply_raw=minted - burned,
+        negative_balance_count=len(neg), snapshot_present=True,
+        snapshot_meta_present=True, snapshot_closed=snapshot_ok,
+        snapshot_supply_raw=supply, snapshot_mismatch_count=len(mismatch),
+        edge_source_binding=edge_source_binding,
+        coverage_effective_verdict=coverage_effective_verdict,
+        gate_pass=gate_pass)
+    shown_receipt = Path(receipt_path)
+    if not shown_receipt.is_absolute():
+        shown_receipt = case_root / shown_receipt
+    shown_receipt = shown_receipt.resolve()
+    if case_root not in shown_receipt.parents:
+        raise ValueError("--receipt 必须位于案根内")
+    _atomic_json(shown_receipt, receipt)
+    _atomic_json(case_root / "data/replay_final_balances.json",
+                 dict(sorted(rb.items(), key=lambda kv: -kv[1])))
     print("重放末态已写 data/replay_final_balances.json")
     return gate_pass
 
@@ -434,7 +597,7 @@ def cmd_mints(edges, dec):
         print(f"  ...(销毁边共 {n} 条，仅显示前 30)")
 
 
-def cmd_evolution(edges, dec, camps_file, stake_pools):
+def cmd_evolution(edges, dec, camps_file, stake_pools, edge_source_binding=None):
     # F-05 定案（rg 调用面：main --camps 默认 camps.json + test_review_resume_integrity，
     # 文档与真实案均无"无 camps 跑 evolution"的用法）：缺文件从"静默空 spec"改为硬拒——
     # 静默空 spec 的效果是全部地址落散户/狙击者两桶，序列外观正常实际零阵营。
@@ -545,7 +708,8 @@ def cmd_evolution(edges, dec, camps_file, stake_pools):
                          series_format="sol-rows", denominator="net_supply",
                          camps_spec_path=camps_file,
                          final_balances_path="data/effective_balances.json",
-                         inputs=_inputs)
+                         inputs=_inputs,
+                         edge_source_binding=edge_source_binding)
 
 
 def main():
@@ -554,6 +718,12 @@ def main():
     ap.add_argument("arg", nargs="?", help="trace 的地址 / top 的 n / sniper 的分钟数")
     ap.add_argument("arg2", nargs="?", help="trace 的显示条数")
     ap.add_argument("--mint")
+    ap.add_argument("--case-root",
+                    help="案根；正式消费经 CURRENT-aware cache resolver（reconcile/evolution 必填）")
+    ap.add_argument("--as-of-slot", type=int,
+                    help="reconcile 冻结 slot；必须等于快照 slot 与 cache finalized_upper_slot")
+    ap.add_argument("--receipt", default="data/reconcile_receipt.json",
+                    help="reconcile 收据路径（默认 data/reconcile_receipt.json）")
     ap.add_argument("--decimals", type=int, default=6)
     ap.add_argument("--launch-ts", type=int, help="发射时刻 epoch（默认取首条铸造边）")
     ap.add_argument("--camps", default="camps.json", help="evolution 的阵营定义 JSON")
@@ -563,6 +733,10 @@ def main():
     ap.add_argument("--legacy-sol5", action="store_true",
                     help="显式读取旧 5 元组做 non-formal/order-ambiguous 只读诊断")
     args = ap.parse_args()
+    if args.cmd in {"reconcile", "evolution"} and not args.case_root:
+        ap.error(f"{args.cmd} 正式路径必须提供 --case-root")
+    if args.cmd == "reconcile" and args.as_of_slot is None:
+        ap.error("reconcile 正式路径必须提供 --as-of-slot")
     try:
         global RESV
         if (LabelResolver is not None and "--no-labels" not in sys.argv
@@ -575,8 +749,16 @@ def main():
         elif LabelResolver is None:
             print("[labels][degraded_mode] labels_resolver 导入失败——本次运行无标签兜底", file=sys.stderr)
         mint = resolve_mint(args.mint)
+        if args.cmd == "reconcile" and not args.legacy_sol5:
+            _cheap_reconcile_preflight(args.case_root, mint, args.as_of_slot)
         dec = 10 ** args.decimals
-        edges, cache_meta_path = load_edges(mint, legacy_sol5=args.legacy_sol5)
+        loaded = load_edges(
+            mint, legacy_sol5=args.legacy_sol5, case_root=args.case_root)
+        if args.case_root and not args.legacy_sol5:
+            edges, cache_meta_path, edge_source_binding = loaded
+        else:
+            edges, cache_meta_path = loaded
+            edge_source_binding = None
         if args.legacy_sol5:
             print("[legacy-sol5] non_formal=true order_ambiguous=true")
             if args.cmd in {"reconcile", "evolution"}:
@@ -591,7 +773,11 @@ def main():
 
         if args.cmd == "reconcile":
             if not cmd_reconcile(edges, dec, mint=mint,
-                                 cache_meta_path=cache_meta_path):
+                                 cache_meta_path=cache_meta_path,
+                                 case_root=args.case_root,
+                                 as_of_slot=args.as_of_slot,
+                                 receipt_path=args.receipt,
+                                 edge_source_binding=edge_source_binding):
                 return 2
         elif args.cmd == "trace":
             if not args.arg:
@@ -605,7 +791,8 @@ def main():
         elif args.cmd == "mints":
             cmd_mints(edges, dec)
         elif args.cmd == "evolution":
-            cmd_evolution(edges, dec, args.camps, stake_pools)
+            cmd_evolution(edges, dec, args.camps, stake_pools,
+                          edge_source_binding=edge_source_binding)
     except (OSError, ValueError, json.JSONDecodeError, RecursionError) as exc:
         print(f"BLOCK: {exc}", file=sys.stderr)
         return 2

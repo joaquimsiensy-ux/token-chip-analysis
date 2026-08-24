@@ -10,6 +10,8 @@
 
 ## 版本索引（活跃窗口，新在上；每版一行，详情见下方对应条目）
 
+- **6.52.0**（2026-08-23）Solana SQD 覆盖健康闸与修复生产者窄门收口：A2 升五查，wave v5／flow v3／wrapper v3／reconcile v4 同步，契约 175→194、SUITE 124→128；正式勘误跨源位置编号假象
+- **6.51.0**（2026-08-20）labels v4.3：Arbitrum 730 行 CEX-only 初版建表并接通六表守卫，Base +51／ETH +1；修复 additions 重放 `source_snapshot_at` round-trip 断环；Arbitrum 仍为 exploration，不授予正式交接或审计发布
 - **6.50.0**（2026-08-18）split-run 三段化＋刀 1 外包公告：新增 /token-analyze-3 装配段（−2 收口前移至报告正文＋装配工单，A5 装配独立 Opus 会话）；ET-1 报警证据采集前置 −1（停止线拆采集/定性）；刀 1 机械档扩为 14 项公告＋6 条纪律（唯一权威源）；新契约 CT-SEMANTIC-61/62、CT-BANNED-16，命令四元；版本号跳过 6.49.0（已被并行 SQD 工程占用）
 - **6.49.0**（2026-08-18）Solana SQD transaction-net v4 五批根治：7 元组交易身份＋tx_digest 冲突硬拒、owner 双侧记账与输入卫生、正式/legacy 两态分立、采集摘要/producer 登记/invariant 闭环、ARC 双窗口真采与破坏性注入收口；冻结 parts 域内实证 DISTINCT 损失 11,502 行/8,487 组（最高 23 倍），124,816 更正为两版全史行数差的混合口径
 - **6.48.1**（2026-08-17）单元3 盲审消化轮＝三单元收口工程收官：盲审判 CONDITIONAL（闸体 9 项 DEFENDED 全攻不破），消化本单元引入债（签发点 schema 字面量收敛、怪写法等价重构、--out/--receipt 同路径前置拒、文档"保证覆盖全部 segments"过度声称收窄到 hypersync 签发者＋方案B 永久登记维护债申明）；BREACH-01（SQD 侧同 schema 签发者无 TOCTOU，非本单元引入）等四项移交第四单元候选清单
@@ -53,6 +55,25 @@
 - **6.20.1** 2026-08-05 修 5 处阻断级文档漂移（A4 前禁写报告冲突/easy 残留/惯犯回灌 docstring/批量预采集残留/旧 Par 路线历史降级）＋docs_lint 增中文禁词与 Python module docstring 扫描
 
 更早版本（6.20.0 及以前）详见 `archive/CHANGELOG-archive.md`。
+
+## [6.52.0] - 2026-08-23 — SQD 覆盖健康闸与修复生产者窄门收口
+
+- **覆盖与修复窄门**：正式记录 durable-nonce 缺陷区段、四态 coverage 指纹、共享地图 30 天 TTL/逐 slot 复核/canary、Helius 唯一参考源与额度停工语义；A2 的 Solana 路径升为四查＋`exact_reconcile` 第五查，base、resolution、repair bundle、CURRENT 指针和 ACTIVE producer 缺一即拒。
+- **协议升版**：wave `wave-scan/v5`、flow `flow-anomaly/v3`、wrapper `reconciliation-report/v3`、exact receipt `solana-reconcile/v4` 全链对齐；Solana 派生产物必带与 exact receipt 全等的 `edge_source_binding`，EVM 必须省略。旧 wave v4/flow v2 正式件需重跑；EVM 旧 wrapper 迁移用 `reconciliation_report.py --reseal` 从四份现役 receipt 重建，不信旧 wrapper。
+- **正式勘误**：撤回 ARC 诊断中“硬下界 13,425 笔／Meteora-Raydium CPI 特征／218 漏-739 伪影分类”；根因是把 SQD 去投票 `transactionIndex` 当链上绝对位置。抽 80 块 404 笔改按签名复核后 404/404 均在 SQD，跨源身份此后只认签名。
+- **契约与文档**：新增 S-12 判例和 capture §13e；contract manifest 新增 14 required＋5 banned，ID 快照由 175 升 194；批 5 wrapper 草案改为 referenced receipt fields，与现役 runner/validator 结构一致。
+- **producer 与回归**：登记 coverage probe 2 条、gap repair 4 条 ACTIVE 历史哈希；`run_all.py` 注册 coverage probe、gap repair、reconcile v4 receipt、第五查四项，SUITE 124→128。施工轮数 1；外部网络调用 0；分析结论 0；传播级数字错误 0。
+- **深验健壮性加固（批7，同版未升）**：修复代深验 `validate_repair_bundle_deep` 补三处校验覆盖缺口——缺口1 formal 逐 slot 严格校验遍历主键由"候选集"改为"候选集∪census确认集∪修复层 slot"，并加 confirmed⊆候选集反向包含、干净 verdict 零修复边、formal 拒 exploration 指纹、ledger 请求数≥修复 slot 数（此前一条自报 confirmed census 行即可让凭空修复边通过深验、抬高余额/供应）；缺口3 补 merged 边 slot⊆声明 coverage 窗口[from,to] 且 upper==base.finalized_upper（此前 slot>声明 upper 的超窗口边被夹带）。缺口2（自扫 coverage 无真实性复查）裁定为离线 validator 固有信任边界、不加假闸（详见 maintenance/repair-20260823-sqd-gap/batch7_done.md）。新增 `test_batch7_validator_coverage_gaps.py`，SUITE 128→129；exploration 与合法 formal/repaired 路径回归全绿不误伤。施工轮数 1；外部网络调用 0；分析结论 0；传播级数字错误 0。
+
+## [6.51.0] - 2026-08-20 — labels v4.3／Arbitrum CEX-only 建表与 round-trip 收口
+
+- **Arbitrum 建表**：新增 `labels-arbitrum.csv` 730 行 CEX-only 初版，chain registry 只打开 `labels_table`，`release_tier=exploration` 与其余能力不变；benchmark/round-trip/GoPlus/goldset/invariant/release 文案及消费侧回归接通。resolver 不再因缺表 degraded 不等于覆盖完整，基础设施/协议/桥/池仍靠动态识别，不得正式交接或审计发布。
+- **round-trip 修复**：`build_labels.py::upsert()` 与 additions 重放路径透传 `source_snapshot_at`，行级值优先、空值才回落源级默认；新增先红后绿回归与 Arbitrum 消费侧端到端回归。
+- **数据入库**：Arbitrum +730、Base +51、ETH +1、Solana 0；新增 8 条 Arbitrum infrastructure 金标与 10 条 GMX 案 random-eoa 负样本，补录源由 `add_labels.py` 事务入库并自动归档，manifest 重写。
+- **验收口径**：沙箱 run_all 121/123，两项 vertical slice 仅因 loopback bind EPERM 阻断；验收方本机分别代跑 Solana/EVM vertical slice 均 rc=0 PASS。独立 invariant scan PASS。
+- **盲审消化 F-01/F-03**：新增受跟踪候选真源 `benchmark/goldset_curated.csv`，构建器在自动分类/重抽样后按 `(chain,address)` 优先合并；真实重建 1,017 条后 Arbitrum 裁决金标 18/18 逐语义保留、random-eoa 10 条、`weak_gate=false`。补齐 snapshot 高优先覆盖与低优先补空两条分支回归，并以删赋值突变证明测试会红。
+- **盲审消化 F-02/F-04/F-05/F-06**：R7-11 fixture 从 registry 派生六张 labels-table 表并精确断言日期倒退；Arbitrum 权威路由改为 CEX-only/coverage incomplete/exploration；round-trip 文案改称 labels-table 登记链；根 `.gitattributes` 仅对 `references/labels/*.csv` 关闭 whitespace 检查，发布表未重规范化，goldset 构建器显式 LF 收敛。
+- **修复轮验收**：新增测试后沙箱 run_all 为 122/124，唯一两项失败仍是 Solana/EVM vertical slice 的 loopback bind EPERM，其余全绿；验收方本机修复前 123/123 原始输出继续作为允许 loopback 环境机器证据，本轮不改 runner 超时。
 
 ## [6.50.0] - 2026-08-18 — split-run 三段化＋刀 1 外包公告体系
 

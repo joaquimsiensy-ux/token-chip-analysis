@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""wave-scan/v4 契约测试（离线合成数据，不依赖真库）。
+"""wave-scan/v5 契约测试（离线合成数据，不依赖真库）。
 
 覆盖（schema 权威定义 references/scan-schemas.md；PYTHIA 真库锚点另见
 fixtures/pythia_anchors.json，须真库在位时手动回测比对）：
@@ -101,7 +101,11 @@ def main():
         return finish()
     r = json.load(open(out1))
 
-    check("schema=wave-scan/v4", r.get("schema") == "wave-scan/v4")
+    check("schema=wave-scan/v5", r.get("schema") == "wave-scan/v5")
+    check("Solana v5 写入 edge_source_binding 五键",
+          set(r.get("edge_source_binding") or {}) == {
+              "cache_kind", "gid", "soltx_edges_sha256",
+              "soltx_meta_sha256", "edge_logical_sha256"})
     check("transaction-net 顺序语义透传",
           r.get("edge_order_granularity") == "transaction"
           and r.get("order_ambiguous") is True
@@ -212,7 +216,7 @@ def main():
     legacy_report = json.load(open(legacy_out)) if legacy_ok.returncode == 0 else {}
     check("legacy 显式入口强制 non-formal/order-ambiguous",
           legacy_ok.returncode == 0
-          and legacy_report.get("schema") == "wave-scan/v4"
+          and legacy_report.get("schema") == "wave-scan/v5"
           and legacy_report.get("non_formal") is True
           and legacy_report.get("order_ambiguous") is True)
 

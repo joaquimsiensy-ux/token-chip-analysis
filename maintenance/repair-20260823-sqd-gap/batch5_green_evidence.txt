@@ -1,0 +1,169 @@
+批 5 RED → GREEN 证据
+日期：2026-08-23
+分支：fix/sqd-gap-v6520
+冻结 HEAD：8df0695
+
+一、RED 基线（施工前）
+
+来源：maintenance/repair-20260823-sqd-gap/batch1b_red_evidence.txt，且施工前重新执行
+test_reconcile_v4_receipt.py / test_recon_fifth_check.py 复现 exit 1。
+
+- (1) exact-like gate_pass=false 仍可生成 READY。
+- (11) v4 base/repaired 条件 inputs 深验缺失。
+- (12) cache upper=1、snapshot slot=2 仍产 gate_pass=true。
+- (13) reconcile 回写 base meta 物理 size/sha256。
+- (14) audit_release 只凭 wrapper status 放行坏子 receipt。
+- (19) wave/flow binding 与 exact receipt 不等仍 READY。
+- (24) curve/audit_closed binding 与 exact receipt 不等仍 READY。
+- (31) coverage CURRENT 更新后旧 receipt 仍被接受。
+- (32) verdict/exit_code/gate_pass 三元互洽器缺失。
+- (33) 三个 raw 字段仍为字符串，v4 JSON-int 拒绝器缺失。
+- E20 半边：invariant_scan 有 6 个 replay/coverage/validator 纵切片缺口，
+  test_batch4_invariant_guards.py:198 正例不成立。
+
+二、GREEN 主证据（最终代码字节）
+
+命令：python3 scripts/tests/test_reconcile_v4_receipt.py
+exit_code=0
+
+- GREEN 12 upper≠snapshot/as-of 在生成 receipt 前硬拒。
+- GREEN 13 replay_edges reconcile 不再回写 base meta。
+- GREEN coverage SQD endpoint 指纹不一致 fail-closed。
+- GREEN 31 coverage CURRENT 更新后旧 receipt 被独立深验与 camp 拒绝。
+- GREEN 33 v4 raw 字符串被独立深验拒绝。
+- GREEN 11 v4 base/repaired 条件 inputs 拒绝 repair_bundle:null。
+- GREEN 32 verdict/exit_code/gate_pass 三元互洽。
+- 追加 TOCTOU 绿例：冻结读取后同路径换包 edge/meta 时拒绝签出混合版本 receipt。
+
+命令：python3 scripts/tests/test_recon_fifth_check.py
+exit_code=0
+
+- GREEN 14 audit_release 复用公共深验拒绝坏子 receipt。
+- GREEN 1 handoff generate 对旧 wrapper/exact gate_pass=false fail-closed。
+- GREEN 24 handoff verify 拒绝 curve/audit_closed stale binding。
+- GREEN 19 handoff verify 拒绝 wave/flow stale binding。
+- GREEN 22 wave-scan/v4 与 flow-anomaly/v2 旧产物被当前验收拒收。
+
+命令：python3 scripts/tests/invariant_scan.py
+exit_code=0
+
+PASS invariant manifest: receipt_producers=75, receipt_consumers=112,
+transport_calls=65, atomic_writes=56, formal_entrypoints=61, exceptions=0
+
+命令：python3 scripts/tests/test_batch4_invariant_guards.py
+exit_code=0
+
+PASS B4-G1: bare pool / labels / vertical slice / denominator injection guards。
+E20 replay_edges.py reconcile v4 已作为 Solana 纵切片真实 producer 写入 runner spec；
+coverage fixture、exact receipt 与 validator consumer 均被 invariant 自然扫描到。
+
+三、受影响回归
+
+以下最终均 exit_code=0：
+
+- test_reconciliation_runner.py
+- test_batch2_ready_reconciliation.py
+- test_handoff_manifest.py（68 项）
+- test_audit_release_gate.py
+- test_evm_observation_release.py（11/11；EVM v2 fixture 真走 reseal_evm 重封 v3）
+- test_r9_batch3_dynamic_runner.py（Solana 五项顺序）
+- test_formal_chain_support.py
+- test_repair_batch_c.py（227 checks）
+- test_repair_batch_d.py
+- test_review_resume_integrity.py
+- test_sqd_collector_meta_v4.py
+- test_sqd_consumer_v4.py
+- test_batch6_sqd_v4_blind_review.py
+- test_sqd_gap_repair.py（含 repaired bundle 深验）
+- test_arbitrum_exploration_cli.py
+- test_batch2_legacy_hardening.py
+- test_r7_findings.py（15/15，当前 wrapper producer=v3）
+
+四、纵切片与全套
+
+命令：python3 scripts/tests/test_batch3_solana_vertical_slice.py
+exit_code=1（仅沙箱能力限制）
+
+停止点：ThreadingHTTPServer(("127.0.0.1", 0), FixtureHandler)
+错误：PermissionError: [Errno 1] Operation not permitted
+解释：在 fixture server 建立前失败，尚未进入 producer；不是业务断言或 v4 receipt 失败。
+
+命令：MPLCONFIGDIR=/private/tmp/mpl-batch5 python3 scripts/tests/run_all.py
+exit_code=1
+
+- suite 数：124。
+- PASS：122。
+- FAIL：2，且恰为 test_batch3_solana_vertical_slice.py 与
+  test_batch3_evm_vertical_slice.py。
+- 两项均在 ThreadingHTTPServer 绑定 127.0.0.1:0 时得到相同 Errno 1 EPERM。
+- 其余 122 项全部 PASS；无非 EPERM 红项。
+
+五、批 5d macOS case_root symlink 语义微修
+
+RED（只加回归、未改生产代码）：
+
+命令：python3 scripts/tests/test_reconcile_v4_receipt.py
+exit_code=1
+
+在 tempfile 明确使用 `/tmp` 创建案根；macOS `/tmp -> /private/tmp`。调用
+`resolve_formal_cache` 时 trace 命中 `sqd_cache_identity.py:101`，错误为：
+
+`ValueError: case_root must not contain symlinks`
+
+这证明旧实现误把系统级 symlink 祖先当作案根自身别名。
+
+GREEN（最终代码字节）：
+
+- `python3 scripts/tests/test_reconcile_v4_receipt.py`：exit_code=0；
+  `/tmp/...` 案根经 resolver、wave resolved-path 对表及完整 reconcile 全部接受；案根末段
+  自身是 symlink 时得到
+  `BLOCK: case_root itself must not be a symlink`、exit 2，且不生成 receipt。
+- `python3 scripts/tests/test_sqd_gap_repair.py`：exit_code=0。
+- `python3 scripts/tests/test_batch4_invariant_guards.py`：exit_code=0。
+- `python3 scripts/tests/test_sqd_consumer_v4.py`：exit_code=0；既有 fail-closed 负例保持绿。
+- `python3 scripts/tests/test_batch3_solana_vertical_slice.py`：exit_code=1，仅在
+  `ThreadingHTTPServer(("127.0.0.1", 0), FixtureHandler)` 创建点报沙箱
+  `PermissionError: [Errno 1] Operation not permitted`；未进入生产者，不能在本环境声称
+  E20 整体执行转绿。
+- `MPLCONFIGDIR=/tmp/mpl-batch5d python3 scripts/tests/run_all.py`：exit_code=1；
+  失败仍恰为 Solana/EVM 两个 loopback 纵切片的同一 EPERM，其余项目全部 PASS，
+  无新增红项。
+
+六、批 5f 案根包含判定 canonicalize 微修
+
+RED（只加回归、未改生产代码）：
+
+命令：python3 scripts/tests/test_reconcile_v4_receipt.py
+exit_code=1
+
+`/private/tmp` 下建立 `real/` 案目录及 `alias -> real`，以 alias 绝对路径绑定
+`data/holders_owners.json`。trace 命中
+`shared_release_receipt.py:_bound_case_ref`，错误为：
+
+`ValueError: alias owners path is a symlink`
+
+这证明旧实现逐祖先检查，把 canonicalize 后仍落在案根内的 alias 误判为逃逸。
+
+GREEN（最终代码字节）：
+
+- `python3 scripts/tests/test_reconcile_v4_receipt.py`：exit_code=0；输出
+  `GREEN batch5f alias containment canonicalized；../ 与案外 symlink 仍拒`。
+  同一回归覆盖 `_safe_case_path`、`_bound_case_ref`、
+  `validate_reconcile_receipt_deep` 三个路径面；显式验证 `../`、案内文件 symlink 指向
+  案外实物、案外 receipt 均保持 fail-closed。
+- `python3 scripts/tests/test_recon_fifth_check.py`：exit_code=0；五项受控对账、handoff
+  generate/verify 及 stale binding 负例全绿。
+- `python3 scripts/tests/test_repair_batch_a.py`：exit_code=0；45/45，包含
+  `test_n1_replay_stats_must_live_inside_case_root` 的案外路径与 symlink 负例。
+- `python3 scripts/tests/run_all.py`：exit_code=1；124 项中 122 PASS、2 FAIL，失败仍恰为
+  `test_batch3_solana_vertical_slice.py` 与 `test_batch3_evm_vertical_slice.py`。两项均在
+  `ThreadingHTTPServer(("127.0.0.1", 0), FixtureHandler)` 的 `socket.bind` 处得到
+  `PermissionError: [Errno 1] Operation not permitted`，尚未进入 producer；无新增业务红项。
+
+=== Fable 本机终验（2026-08-23，批 5j 后树静止） ===
+1) python3 scripts/tests/test_batch3_solana_vertical_slice.py → rc=0
+   PASS B3-SOL-E2E: real producer->runner->aggregator->READY->release
+   （受控对账五查全 PASS 含第五项 exact_reconcile；handoff READY；release 闸全过）
+2) python3 scripts/tests/run_all.py → rc=0，「全部通过」（SUITE 124 项）
+3) 微修链 8 站（5c/5d/5e/5f/5g/5h/5i/5j）逐站红证与裁定见 batch5_done.md 各节；
+   每站均为生产闸正确拦截、测试夹具适配，无任何校验放宽。

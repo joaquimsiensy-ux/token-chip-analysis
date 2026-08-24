@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""F-02 回归：五张主表必须齐全非空，manual 设施必须 100% 命中。"""
+"""F-02 回归：六张 labels_table 主表必须齐全非空，manual 设施必须 100% 命中。"""
 import csv
 import subprocess
 import sys
@@ -9,7 +9,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = ROOT / "scripts" / "labels" / "benchmark_labels.py"
 REAL_LABELS = ROOT / "references" / "labels"
-CHAINS = ("eth", "bsc", "base", "sol", "robinhood")
+CHAINS = ("eth", "bsc", "base", "arbitrum", "sol", "robinhood")
 FIELDS = ["address", "chain", "name", "category", "tier", "source", "added_date",
           "evidence", "risk_flags", "merge_policy", "balance_policy", "source_snapshot_at",
           "verified_at", "status", "raw_labels"]
@@ -69,7 +69,7 @@ def main():
 
     p = subprocess.run([sys.executable, str(SCRIPT)], capture_output=True, text=True)
     assert p.returncode == 0, p.stdout + p.stderr
-    print("PASS: benchmark 五表完整性与 manual 召回硬闸生效")
+    print("PASS: benchmark 六表完整性与 manual 召回硬闸生效")
 
 
 if __name__ == "__main__":

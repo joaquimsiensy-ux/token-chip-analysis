@@ -277,12 +277,13 @@ def test_runner_rejects_none_target_before_producer(root):
     sys.path.insert(0, str(ROOT / "scripts/report"))
     module = load(ROOT / "scripts/report/reconciliation_report.py", "b3_none_target")
     producers = {
-        "balance": "scripts/solana/anchor_sampler.py",
         "supply": "scripts/solana/scan_token_accounts.py",
+        "balance": "scripts/solana/anchor_sampler.py",
         "supply_truth": "scripts/lib/supply_truth_gate.py",
         "time": "scripts/solana/anchor_sampler.py",
+        "exact_reconcile": "scripts/solana/replay_edges.py",
     }
-    spec = {"family": "solana", "case_dir": str(root),
+    spec = {"case_dir": str(root),
             "target": {"chain": "solana", "token": "mint", "as_of_block": None},
             "checks": {key: {"producer": producer,
                               "argv": ["--receipt", f"{key}.json"],

@@ -1,0 +1,24 @@
+{
+  "format": "sqd-coverage-transport-fixture-v1",
+  "responses": {
+    "b06a99bedd0e6374e710a7ada42a72b0e0d055ca90c5fbd7cca5c44f294a69c1": {
+      "ok": true,
+      "value": {"dataset_id": "solana-mainnet", "start_block": 0, "real_time": true, "number": 1000}
+    },
+    "392d53e22f545786cce6ff158ad4325ce34d1a876cc6a783c79f73f1fe5419f9": {
+      "ok": true,
+      "value": [
+        {"header": {"number": 100}, "instructions": [{"transactionIndex": 0}]},
+        {"header": {"number": 101}, "instructions": []},
+        {"header": {"number": 103}, "instructions": [{"transactionIndex": 0}, {"transactionIndex": 1}]}
+      ]
+    },
+    "7a16835b73ea95bdf321fc546ac2f87ccf7e10a9711c2c716e8117a130423d11": {
+      "ok": false,
+      "category": "http_status",
+      "http_status": 402,
+      "retryable": false,
+      "message": "payment required: secret-key-must-be-redacted"
+    }
+  }
+}

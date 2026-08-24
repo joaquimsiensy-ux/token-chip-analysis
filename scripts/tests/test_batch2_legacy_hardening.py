@@ -26,12 +26,14 @@ def rewrite_legacy(case_dir: Path, schema: str, *, keep_reconciliation: bool) ->
             if item.get("path") != "reconciliation_report.json"
         ]
         manifest["gates"].pop("reconciliation_four_checks", None)
+        manifest["gates"].pop("reconciliation_checks", None)
         (case_dir / "reconciliation_report.json").unlink()
     path.write_text(json.dumps(manifest, ensure_ascii=False), encoding="utf-8")
     return manifest
 
 
-def generate_case(case_dir: Path, *, chain="bsc", token="0x0") -> dict:
+def generate_case(case_dir: Path, *, chain="bsc",
+                  token="0x1111111111111111111111111111111111111111") -> dict:
     handoff_fixture.make_case(str(case_dir), chain=chain, token=token)
     result = handoff_fixture.run([
         "generate", "--case-dir", str(case_dir), "--status", "READY",
@@ -119,6 +121,7 @@ def test_b2f_lg_05_disk_wrapper_cannot_fake_absence(root: Path):
         if item.get("path") != "reconciliation_report.json"
     ]
     manifest["gates"].pop("reconciliation_four_checks", None)
+    manifest["gates"].pop("reconciliation_checks", None)
     (case_dir / "handoff_manifest.json").write_text(
         json.dumps(manifest, ensure_ascii=False), encoding="utf-8")
     wrapper_path = case_dir / "reconciliation_report.json"

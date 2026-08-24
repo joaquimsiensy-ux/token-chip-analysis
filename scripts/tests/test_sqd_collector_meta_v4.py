@@ -82,7 +82,8 @@ def test_collector_meta_matches_replay_and_tamper_rejects() -> None:
     tampered_rows, _ = replay.load_edges(MINT)
     try:
         replay.cmd_reconcile(
-            tampered_rows, 0, mint=MINT, cache_meta_path=meta_path)
+            tampered_rows, 0, mint=MINT, cache_meta_path=meta_path,
+            case_root=Path.cwd(), as_of_slot=10)
     except ValueError as exc:
         assert "摘要" in str(exc), str(exc)
     else:

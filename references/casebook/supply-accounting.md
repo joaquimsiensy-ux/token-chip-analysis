@@ -92,3 +92,12 @@
 - **证据要求（证据不足时的结论上限）**：任一 sink 拆分或冻结块链上余额缺失时，不得把主 FAIL 改判为沉没形态；只报告供给口径未闭合并阻断重放余额发布。
 - **正确规则指针**：`scripts/lib/supply_truth_gate.py` 的 `decide_sink_fallback` 与 `references/data-pipeline-evm-recon.md`「两种销毁形态」；权威定义见 `playbook-supply-recon.md` §1。
 - **案源**：出处：APU 2026-08-09；dead 沉没余额使旧主规则出现 1968.2bps 偏差，冻结块 `totalSupply` 与 mint 逐 wei 相等。
+
+## S-12 SQD Solana 缺陷区段与跨源编号错位 【机制成立】
+
+- **触发现象**：Solana 重放残差总和为 0，但负余额与正残差成对出现；残差 owner 很少、金额逐 raw unit 精确相反，对手方又集中在交易所或做市设施。coverage 探针同时可能出现“有块头但零 AdvanceNonce”（SQD 有该 slot 块头，却没有耐久 nonce 交易）的机械指纹。
+- **失败原因（禁止推断）**：不得直接推成采集器 bug、owner 变更漏记，或启动逐账户 BFS 补账追清零；也不得拿 Helius/RPC 返回数组位置当 SQD `tx_index` 比对后判“缺失”。SQD `transactionIndex` 是数据集内部排除投票交易后的重编号，参考源位置与它不是同一把尺子。
+- **必做区分检验**：①跑 coverage 探针，区分 HEALTHY/NO_HEADER/DEFECT_CANDIDATE/ERA_UNCERTAIN，并专查“有块头但零 AdvanceNonce”；②跨源逐交易只按签名核对，不比位置编号；③对残差 owner 做余额连续性二分，确认断点是否集中在同一缺陷 slot，按 α 普查→β 最多三轮的止损线推进。
+- **证据要求（证据不足时的结论上限）**：没有探针结论、签名逐笔核对和连续性断点证据，只能写“残差未归因”；不得写“SQD 漏交易”“采集器坏了”或“账户已补平”。
+- **正确规则指针**：`data-pipeline-solana-capture.md` §13e；正式字段、bundle、指针、`exact_reconcile` 与 `edge_source_binding` 见 `scan-schemas.md` §14。
+- **案源**：出处：ARC 2026-08-20/23。正式勘误：codex 2026-08-23 诊断报告中的“硬下界 13,425 笔／Meteora-Raydium CPI 特征／218 漏-739 伪影分类”，是把 SQD `transactionIndex`（去投票重编号）当链上绝对位置比对造成的假象。后续抽 80 块共 404 笔按签名核对，404/404 全部在 SQD；旧分类撤回，不得再作为缺陷数量或协议归因证据。

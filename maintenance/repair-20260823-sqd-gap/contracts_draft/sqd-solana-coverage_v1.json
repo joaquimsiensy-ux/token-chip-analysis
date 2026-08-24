@@ -1,0 +1,604 @@
+{
+  "schema": "sqd-solana-coverage/v1",
+  "draft_status": "batch1-frozen",
+  "source": "PLAN.md §4.2.1",
+  "producer": "scripts/solana/sqd_coverage_probe.py（计划目标路径）",
+  "consumers": [
+    "solana_exact_validate.py",
+    "replay_edges.py reconcile",
+    "coverage resolver"
+  ],
+  "fields": [
+    {
+      "name": "schema",
+      "type": "string",
+      "required": true,
+      "description": "协议名",
+      "constraints": "sqd-solana-coverage/v1"
+    },
+    {
+      "name": "version",
+      "type": "integer",
+      "required": true,
+      "description": "协议版本",
+      "constraints": "类型由 schema/version 简写推断"
+    },
+    {
+      "name": "chain",
+      "type": "string",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "mint",
+      "type": "string",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "probe_id",
+      "type": "string (sha256 hex prefix)",
+      "required": true,
+      "description": "去 probe_id 后规范化 coverage_map 的 sha256 前16位",
+      "constraints": ""
+    },
+    {
+      "name": "producer.path",
+      "type": "string",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "producer.sha256",
+      "type": "string (sha256 hex)",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "sqd.endpoint_fingerprint",
+      "type": "string",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "sqd.dataset",
+      "type": "string",
+      "required": true,
+      "description": "",
+      "constraints": "solana-mainnet"
+    },
+    {
+      "name": "sqd.metadata_normalized",
+      "type": "object",
+      "required": true,
+      "description": "含 dataset_id,start_block,real_time,…",
+      "constraints": ""
+    },
+    {
+      "name": "sqd.metadata_sha256",
+      "type": "string (sha256 hex)",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "sqd.finalized_head_at_scan",
+      "type": "integer",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "sqd.query_body_sha256",
+      "type": "string (sha256 hex)",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "scan_ranges",
+      "type": "array[object]",
+      "required": true,
+      "description": "元素 from_slot,to_slot,mode",
+      "constraints": "mode=full/map-reuse/recheck；并集覆盖案区间"
+    },
+    {
+      "name": "sample_ranges",
+      "type": "array[object]",
+      "required": false,
+      "description": "",
+      "constraints": "不计入覆盖并集"
+    },
+    {
+      "name": "era_params.window",
+      "type": "integer",
+      "required": true,
+      "description": "",
+      "constraints": "1000000"
+    },
+    {
+      "name": "era_params.min_headers",
+      "type": "integer",
+      "required": true,
+      "description": "",
+      "constraints": "10000"
+    },
+    {
+      "name": "era_params.min_ratio_num",
+      "type": "integer",
+      "required": true,
+      "description": "",
+      "constraints": "99"
+    },
+    {
+      "name": "era_params.min_ratio_den",
+      "type": "integer",
+      "required": true,
+      "description": "",
+      "constraints": "100"
+    },
+    {
+      "name": "slot_counts.path",
+      "type": "string",
+      "required": true,
+      "description": "",
+      "constraints": "slot_counts.bin.gz"
+    },
+    {
+      "name": "slot_counts.size",
+      "type": "integer",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "slot_counts.sha256",
+      "type": "string (sha256 hex)",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "slot_counts.from_slot",
+      "type": "integer",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "slot_counts.to_slot",
+      "type": "integer",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "slot_counts.encoding",
+      "type": "string",
+      "required": true,
+      "description": "",
+      "constraints": "u8:0=UNSCANNED,1=NO_HEADER,2=HEADER_ZERO_NONCE,n>=3→nonce_count=n-2，255饱和"
+    },
+    {
+      "name": "skipped_confirmation",
+      "type": "object|null",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "skipped_confirmation.method",
+      "type": "string",
+      "required": true,
+      "description": "",
+      "constraints": "getBlocks"
+    },
+    {
+      "name": "skipped_confirmation.commitment",
+      "type": "string",
+      "required": true,
+      "description": "",
+      "constraints": "finalized"
+    },
+    {
+      "name": "skipped_confirmation.reference_head_at_check",
+      "type": "integer",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "skipped_confirmation.endpoint_fingerprint",
+      "type": "string",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "skipped_confirmation.blocks_bitmap",
+      "type": "object",
+      "required": true,
+      "description": "path,size,sha256,from_slot,to_slot,encoding",
+      "constraints": ""
+    },
+    {
+      "name": "skipped_confirmation.ranges",
+      "type": "array[object]",
+      "required": true,
+      "description": "from,to,response_sha256,count,response_ok,array_monotonic_unique,array_in_range",
+      "constraints": ""
+    },
+    {
+      "name": "shared_map",
+      "type": "object|null",
+      "required": true,
+      "description": "asset_path,version,sha256,supersedes,generated_at,reused_ranges,canary{slots[64],counts_sha256,verified_at}",
+      "constraints": ""
+    },
+    {
+      "name": "ledger",
+      "type": "object",
+      "required": true,
+      "description": "path,size,sha256,requests,success_ranges_sha256",
+      "constraints": ""
+    },
+    {
+      "name": "summary",
+      "type": "object",
+      "required": true,
+      "description": "饱和计数",
+      "constraints": ""
+    },
+    {
+      "name": "verdict",
+      "type": "string",
+      "required": true,
+      "description": "",
+      "constraints": "NO_KNOWN_NONCE_OMISSION_DETECTED/DEFECTS_CONFIRMED/INCONCLUSIVE；须重算"
+    },
+    {
+      "name": "scan_ranges[].from_slot",
+      "type": "integer",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "scan_ranges[].to_slot",
+      "type": "integer",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "scan_ranges[].mode",
+      "type": "string",
+      "required": true,
+      "description": "",
+      "constraints": "full/map-reuse/recheck"
+    },
+    {
+      "name": "skipped_confirmation.blocks_bitmap.path",
+      "type": "string",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "skipped_confirmation.blocks_bitmap.size",
+      "type": "integer",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "skipped_confirmation.blocks_bitmap.sha256",
+      "type": "string (sha256 hex)",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "skipped_confirmation.blocks_bitmap.from_slot",
+      "type": "integer",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "skipped_confirmation.blocks_bitmap.to_slot",
+      "type": "integer",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "skipped_confirmation.blocks_bitmap.encoding",
+      "type": "string",
+      "required": true,
+      "description": "",
+      "constraints": "u1 per slot,1=getBlocks列出该slot"
+    },
+    {
+      "name": "skipped_confirmation.ranges[].from",
+      "type": "integer",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "skipped_confirmation.ranges[].to",
+      "type": "integer",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "skipped_confirmation.ranges[].response_sha256",
+      "type": "string (sha256 hex)",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "skipped_confirmation.ranges[].count",
+      "type": "integer",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "skipped_confirmation.ranges[].response_ok",
+      "type": "boolean",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "skipped_confirmation.ranges[].array_monotonic_unique",
+      "type": "boolean",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "skipped_confirmation.ranges[].array_in_range",
+      "type": "boolean",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "shared_map.asset_path",
+      "type": "string",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "shared_map.version",
+      "type": "string",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "shared_map.sha256",
+      "type": "string (sha256 hex)",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "shared_map.supersedes",
+      "type": "string|null",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "shared_map.generated_at",
+      "type": "string",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "shared_map.reused_ranges",
+      "type": "array[object]",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "shared_map.canary.slots",
+      "type": "array[integer]",
+      "required": true,
+      "description": "",
+      "constraints": "长度64"
+    },
+    {
+      "name": "shared_map.canary.counts_sha256",
+      "type": "string (sha256 hex)",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "shared_map.canary.verified_at",
+      "type": "string",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "ledger.path",
+      "type": "string",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "ledger.size",
+      "type": "integer",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "ledger.sha256",
+      "type": "string (sha256 hex)",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "ledger.requests",
+      "type": "integer",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "ledger.success_ranges_sha256",
+      "type": "string (sha256 hex)",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "ledger.rows[].seq",
+      "type": "integer",
+      "required": true,
+      "description": "ledger.jsonl 零基连续序号",
+      "constraints": ""
+    },
+    {
+      "name": "ledger.rows[].ts",
+      "type": "string",
+      "required": true,
+      "description": "UTC ISO-8601",
+      "constraints": ""
+    },
+    {
+      "name": "ledger.rows[].provider",
+      "type": "string",
+      "required": true,
+      "description": "SQD 分页行为使用 SQD",
+      "constraints": ""
+    },
+    {
+      "name": "ledger.rows[].mode",
+      "type": "string",
+      "required": true,
+      "description": "metadata/full/recheck/sample/map-reuse/getSlot/getBlocks",
+      "constraints": ""
+    },
+    {
+      "name": "ledger.rows[].query_body_sha256",
+      "type": "string (sha256 hex)",
+      "required": true,
+      "description": "本页实际 from/to 查询体哈希",
+      "constraints": ""
+    },
+    {
+      "name": "ledger.rows[].from",
+      "type": "integer",
+      "required": true,
+      "description": "本页请求游标 cur",
+      "constraints": ""
+    },
+    {
+      "name": "ledger.rows[].to",
+      "type": "integer",
+      "required": true,
+      "description": "本页请求的分片终点；不等同实际覆盖终点",
+      "constraints": ""
+    },
+    {
+      "name": "ledger.rows[].returned_from",
+      "type": "integer|null",
+      "required": true,
+      "description": "非空页首个返回块号；空响应为 null",
+      "constraints": ""
+    },
+    {
+      "name": "ledger.rows[].returned_to",
+      "type": "integer|null",
+      "required": true,
+      "description": "非空页最后返回块号 L；空响应为 null",
+      "constraints": ""
+    },
+    {
+      "name": "ledger.rows[].n_blocks",
+      "type": "integer",
+      "required": true,
+      "description": "本页返回块头数",
+      "constraints": ">=0"
+    },
+    {
+      "name": "ledger.rows[].slots_covered",
+      "type": "integer",
+      "required": true,
+      "description": "成功非空页为 L-from+1；成功空页为 to-from+1；失败页为 0",
+      "constraints": ">=0"
+    },
+    {
+      "name": "ledger.rows[].empty_response",
+      "type": "boolean",
+      "required": true,
+      "description": "HTTP 200 且零块；此时该请求尾部按 NO_HEADER 覆盖",
+      "constraints": ""
+    },
+    {
+      "name": "ledger.rows[].http_status",
+      "type": "integer|null",
+      "required": true,
+      "description": "",
+      "constraints": ""
+    },
+    {
+      "name": "ledger.rows[].bytes",
+      "type": "integer",
+      "required": true,
+      "description": "规范化响应字节数",
+      "constraints": ">=0"
+    },
+    {
+      "name": "ledger.rows[].response_sha256",
+      "type": "string (sha256 hex)|null",
+      "required": true,
+      "description": "HTTP 成功响应的规范化内容哈希",
+      "constraints": ""
+    },
+    {
+      "name": "ledger.rows[].ok",
+      "type": "boolean",
+      "required": true,
+      "description": "越界、乱序或重复块号必须 false 且不提交计数",
+      "constraints": ""
+    }
+  ],
+  "invariants": [
+    "scan_ranges 并集覆盖案区间；sample_ranges 不计入。",
+    "无 UNSCANNED；解压长度等于区间长度；ledger 成功区间按 [from,from+slots_covered-1] 取实际覆盖，并集无洞且等于 scan_ranges 并集。",
+    "skipped_confirmation.ranges[] 每段字段恰为 {from,to,response_sha256,count,response_ok,array_monotonic_unique,array_in_range}。",
+    "complete 不落盘；离线 validator 的 complete 合取式＝response_ok ∧ array_monotonic_unique ∧ array_in_range ∧ (to−from+1) ≤ 500,000 ∧ reference_head_at_check ≥ to ∧ 位图该段长度 == to−from+1 ∧ popcount == count ∧ count ≤ 区间长度。",
+    "array_monotonic_unique 与 array_in_range 是生产时对原始响应数组的断言结果；任一为 false 则该段 unconfirmed，其 NO_HEADER 保持未确认，有效 verdict 为 INCONCLUSIVE；--live-canary 重拉若干段与位图切片对表。",
+    "era_params 固定为 {window:1000000,min_headers:10000,min_ratio_num:99,min_ratio_den:100}；判定使用整数交叉相乘 nonce_blocks*min_ratio_den >= header_blocks*min_ratio_num。",
+    "summary/verdict 从 slot_counts 重算。",
+    "探针不可变；重跑产生新 probe_id。",
+    "探针发布协议：data/sqd_coverage/pending-<scan_id>/ 写齐 coverage_map.json、slot_counts.bin.gz、blocks.bin.gz、ledger.jsonl 并逐文件 fsync → fsync 施工目录 → os.rename(pending-<scan_id>, <probe_id>) → fsync data/sqd_coverage 父目录 → .lock 独占内 CAS → 锁内 publish_overwrite CURRENT → 锁内 fsync 指针父目录。"
+  ],
+  "notes": [
+    "metadata_normalized 与 summary 子字段未完全展开。",
+    "skipped_confirmation 与离线 complete 按 errata E2 重裁冻结。",
+    "探针发布协议按 errata E9 冻结；scan_id 仅作临时目录名。",
+    "批 2b 按 Fable 联网反例补 SQD 游标分页：非空页只覆盖至 returned_to，空响应显式标 empty_response=true。"
+  ]
+}

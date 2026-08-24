@@ -1,0 +1,174 @@
+BATCH 4 RED -> GREEN EVIDENCE
+========================================
+status=BLOCKED_ACCEPTANCE_NONWHITELIST_STALE_TEST
+branch=fix/sqd-gap-v6520
+head=5782f76
+mode=offline,no-commit,no-branch-switch
+
+PRECONDITION / ANCHORS
+----------------------
+- `git rev-parse --short HEAD` => 5782f76.
+- 工单列出的 resolver、replay、curve、audit_closed、wave、flow、entity、camp、
+  handoff、audit_release、adjudication 锚文本逐项 grep 命中后才施工。
+- `replay_edges.cmd_reconcile` 函数 AST 源段在 HEAD/工作树的 SHA-256 均为
+  4fc634b36fb77dc5e91872e14c7ee6bd806d587a608002dc42e915dcb46daedb；逐字相等。
+- shared_release_receipt.py、reconciliation_report.py、producer_history.py、references、
+  PLAN、PLAN_errata、契约草案均未修改；handoff AUTO_GATES 与 binding 全等检查未修改。
+
+RED -> GREEN
+------------
+1. Item (2), semantic consumer half
+   RED authority: batch1b_red_evidence.txt:50
+     RED 2 missing-mechanism 现役无 slot_index_map 双射统一缺陷 slot 参考序号机制
+   Batch-4 test-first RED:
+     RED 2 semantic-consumer-half curve resolver route absent: SQD v4 meta 不存在;
+     entity resolver route absent: load_sol() got an unexpected keyword argument 'case_root'
+   GREEN:
+     GREEN 2 semantic-consumer-half curve/entity use repaired gid=<16hex>
+     curve_B=3.33333333333->3.00751879699
+   Meaning: 批 3 fixture 产出 repaired CURRENT；curve/entity 均消费 resolver 选中的合并缓存，
+   行序与参考交易序一致，且 base/repaired 的顺序敏感结果不同。
+
+2. Item (9), six formal entrypoints
+   RED authority: batch1b_red_evidence.txt:26
+     RED 9 semantic-acceptance wave/flow/entity/curve/camp/audit_closed 六入口均接受案外集合复制 base
+   GREEN:
+     GREEN 9 replay/curve/wave/flow/entity 正式入口拒绕 resolver；
+     audit_closed 显式 --edges 强制 non-formal
+   Camp 在 registry_anchor_check 中经 resolver；sidecar 有 binding 时要求与 resolver 全等。
+   Camp 的第二次 receipt/binding 全等核归批 5，未提前修改。
+
+3. Item (22), old wave/flow artifacts
+   RED authority: batch1b_red_evidence.txt:18
+     RED 22 semantic-acceptance wave-scan/v4 与 flow-anomaly/v2 旧产物仍 verify READY
+   GREEN:
+     GREEN 22 wave-scan/v4 与 flow-anomaly/v2 旧产物被 v5/v3 验收拒收
+
+4. Item (23), case root and symlinks
+   RED authority: batch1b_red_evidence.txt:29
+     RED 23 semantic-acceptance wave_scan 无 --case-root 且接受 symlink 案根路径
+   GREEN:
+     GREEN 23 wave_scan 缺 --case-root 与 symlink 案根均拒收
+
+TARGETED TESTS
+--------------
+PASS / exit 0:
+- python3 scripts/tests/test_sqd_gap_repair.py
+- python3 scripts/tests/test_sqd_consumer_v4.py
+- python3 scripts/tests/test_sqd_collector_meta_v4.py
+- python3 scripts/tests/test_wave_scan.py
+- python3 scripts/tests/test_flow_anomaly.py
+- python3 scripts/tests/test_entity_source_trace.py
+- python3 scripts/tests/test_handoff_manifest.py                 # 68 checks
+- python3 scripts/tests/test_audit_release_gate.py
+- python3 scripts/tests/test_adjudication_validator.py
+- python3 scripts/tests/test_evm_observation_release.py          # 11/11
+- python3 scripts/tests/test_repair_batch_d.py                    # BATCH D all pass
+- python3 scripts/tests/test_batch6_sqd_v4_blind_review.py
+- python3 -m py_compile <all modified Python files>
+- git diff --check
+
+EXPECTED NONZERO, BATCH 5 ONLY:
+- python3 scripts/tests/test_reconcile_v4_receipt.py => exit 1
+  GREEN (9), GREEN (23); remaining RED: (12),(13),(31),(33),(11),(32).
+- python3 scripts/tests/test_recon_fifth_check.py => exit 1
+  GREEN (22); remaining RED: (14),(1),(19),(24).
+- python3 scripts/tests/invariant_scan.py => exit 1, six discrepancies, all caused by the
+  pre-registered but not-yet-implemented Batch-5 reconcile-v4/exact-validator/formal-E2E/
+  failure-artifact surface. Batch-4 wave-v5/flow-v3/beta-trace discrepancies are closed.
+
+FULL SUITE
+----------
+Command: python3 -u scripts/tests/run_all.py
+Result: exit 1; 124 entries = 119 PASS + 5 FAIL.
+
+Allowed/expected failures:
+1. invariant_scan.py: six Batch-5 discrepancies described above.
+2. test_batch4_invariant_guards.py: derivative failure because its baseline assertion requires
+   formal_e2e_provenance_errors()==[] while the same Batch-5 replay producer execution is pending.
+3. test_batch3_solana_vertical_slice.py: sandbox loopback bind EPERM at 127.0.0.1.
+4. test_batch3_evm_vertical_slice.py: sandbox loopback bind EPERM at 127.0.0.1.
+
+Unexpected acceptance blocker:
+5. test_repair_batch_c.py, F04 Solana E2E positive fixture. It writes the edge at the canonical
+   base path but writes meta as data/soltx-fixture.meta.json, then expects camp compilation to
+   accept it. Batch 4 requires camp formal consumption to call resolve_formal_cache and accept only
+   the canonical base pair or CURRENT repaired pair, so the resolver correctly returns
+   `canonical base cache pair is missing`. The test is outside the Batch-4 whitelist. It was not
+   changed, and production was not weakened with a fallback. Therefore the requested run_all
+   acceptance condition is not fully satisfied.
+
+DISCOVERIES / DEFERRED
+----------------------
+- producer_history.py is frozen by this workorder and currently has no accepted
+  scripts/solana/sqd_gap_repair.py producer hash. The repaired-order regression therefore injects
+  the exact fixture producer hash only at the test registry seam to exercise the already-delivered
+  resolver. A real repaired generation remains fail-closed until the authorized later batch updates
+  producer history.
+- The stale non-whitelisted Batch-C positive fixture above must be migrated to the canonical base
+  meta path (or explicitly reclassified non-formal) by an authorized follow-up; accepting its
+  noncanonical meta in production would violate this batch's sole-read-boundary rule.
+
+FABLE LOCAL RECHECK (ARC BASE CASE)
+----------------------------------
+Run from the repository root. Replace the values first. The ARC case must have no repair CURRENT;
+these commands intentionally verify resolver-selected base behavior.
+
+  CASE_ROOT="/absolute/path/to/ARC-case"
+  MINT="<solana-mint>"
+  TOTAL_SUPPLY_RAW="<raw-integer>"
+  EDGE_KEY="$(printf %s "$MINT" | shasum -a 256 | awk '{print $1}')"
+  EDGE="$CASE_ROOT/data/soltx-$EDGE_KEY.jsonl.gz"
+  META="$CASE_ROOT/data/soltx-$EDGE_KEY.meta.json"
+
+  python3 scripts/report/wave_scan.py \
+    --case-root "$CASE_ROOT" --edges-sol "$EDGE" --sol-cache-meta "$META" \
+    --mint "$MINT" --total-supply "$TOTAL_SUPPLY_RAW" \
+    --out "$CASE_ROOT/wave_scan_report.json"
+
+  python3 scripts/report/flow_anomaly_scan.py \
+    --case-root "$CASE_ROOT" --edges-sol "$EDGE" --sol-cache-meta "$META" \
+    --mint "$MINT" --total-supply "$TOTAL_SUPPLY_RAW" \
+    --out "$CASE_ROOT/flow_anomaly_report.json"
+
+  python3 scripts/solana/curve_cost.py "<curve-owner>" \
+    --case-root "$CASE_ROOT" --mint "$MINT" --grad-price "<usd-price>"
+
+  python3 scripts/solana/audit_closed_accounts.py "$MINT" \
+    --case-root "$CASE_ROOT" --out "$CASE_ROOT/data/closed_audit-$MINT.json"
+
+Expected artifact checks:
+- wave_scan_report.json schema == wave-scan/v5 and has five-key edge_source_binding.
+- flow_anomaly_report.json schema == flow-anomaly/v3 and has the same five-key binding.
+- data/curve_costs.json schema == curve-cost/v1 and has the same binding.
+- closed audit report has formal=true, non_formal=false, and the same binding.
+- EVM wave/flow reports omit edge_source_binding.
+
+BATCH 4b MICRO-FIX APPEND
+-------------------------
+This append supersedes the earlier BLOCKED_ACCEPTANCE status caused solely by the stale F04
+positive fixture. Batch 4b changes no production code and adds no resolver fallback.
+
+Fixture correction:
+- scripts/tests/test_repair_batch_c.py F04 now writes the Solana meta beside its canonical edge
+  as data/soltx-<edge_key>.meta.json; cache_meta_path points to that canonical path.
+- The remaining data/legacy.meta.json occurrence is intentionally unchanged. It belongs to the
+  explicit import_pythia_legacy.py fail-closed negative test and is not consumed through the camp
+  formal resolver. Other formal Solana meta fixtures were already canonical.
+
+Why this is a fixture issue:
+- The formal resolver correctly rejected the old copied/noncanonical base/meta pair under PLAN
+  4.4.2. Moving the positive fixture meta to the canonical pair makes the fixture satisfy the
+  production contract; weakening production to accept the copied path would violate that contract.
+
+Verification:
+- python3 scripts/tests/test_repair_batch_c.py => exit 0
+  PASS: repair batch C (F-05+F-04+fixround1+fixround2) 227 checks
+- python3 scripts/tests/run_all.py => exit 1; 124 entries = 120 PASS + 4 FAIL
+  1. invariant_scan.py: six pre-registered Batch-5 reconcile-v4/exact-validator/formal-E2E/
+     failure-artifact discrepancies.
+  2. test_batch4_invariant_guards.py: derivative Batch-5 formal-E2E producer-execution assertion.
+  3. test_batch3_solana_vertical_slice.py: sandbox loopback bind EPERM at 127.0.0.1.
+  4. test_batch3_evm_vertical_slice.py: sandbox loopback bind EPERM at 127.0.0.1.
+
+No unexpected full-suite failure remains after the Batch 4b fixture correction.

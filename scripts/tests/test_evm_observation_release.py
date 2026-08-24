@@ -17,6 +17,7 @@ sys.path[:0] = [str(ROOT / "scripts/lib"), str(ROOT / "scripts/report"),
                 str(ROOT / "scripts/tests")]
 
 import handoff_manifest as handoff  # noqa: E402
+import reconciliation_report as recon_runner  # noqa: E402
 import shared_release_receipt as shared  # noqa: E402
 import audit_release_gate as audit_release  # noqa: E402
 from endpoint_identity import endpoint_fingerprint  # noqa: E402
@@ -154,6 +155,9 @@ def build_case(root: Path) -> dict:
         "producer": repo_ref("scripts/report/reconciliation_report.py"),
         "verdict": "PASS", "exit_code": 0, "checks": checks,
     })
+    # 存量 EVM fixture 必须走当前 --reseal 的同一实现，不直接手写 v3。
+    assert recon_runner.main([
+        "--reseal", str(root / "reconciliation_report.json")]) == 0
     write(root / "adversarial_review.json", {})
     return {"target": target, "bundle": bundle, "bundle_path": bundle_path,
             "accounting": accounting, "receipts": receipts}
@@ -181,14 +185,15 @@ def handoff_fails(root: Path) -> list[str]:
         "candidate_universe.json": {"candidates": [{"id": "c1", "address": TOKEN,
                                                        "reasons": ["fixture"]}]},
         "anomalies.json": [],
-        "wave_scan_report.json": {"schema": "wave-scan/v4",
+        "wave_scan_report.json": {"schema": "wave-scan/v5",
                                   "edge_order_granularity": "transaction",
                                   "order_ambiguous": True, "non_formal": False,
+                                  "params": {"edges_evm_v2": "data/v2"},
                                   "waves": [],
                                   "equal_amount_groups": [], "requires_adjudication": False,
                                   "scan_universe": [], "scan_universe_count": 0,
                                   "must_adjudicate_count": 0},
-        "flow_anomaly_report.json": {"schema": "flow-anomaly/v2", "sinks": [],
+        "flow_anomaly_report.json": {"schema": "flow-anomaly/v3", "sinks": [],
                                      "sprays": [], "requires_adjudication": False},
     }.items():
         write(root / name, value)

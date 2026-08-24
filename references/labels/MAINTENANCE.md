@@ -4,18 +4,20 @@
 
 labels 数据版本独立于 skill 版本；已发布版本与逐表变更见 CHANGELOG。
 
-**发布库维护纪律（v4.2+ 稳定化定，2026-07-18）**：
+**发布库维护纪律（v4.3+，2026-08-20）**：
 - **curation 层（SRC_PRIORITY = -1，高于 manual/addressbook）**：`additions/curation_overrides_*.csv` 的 source 一律写 `curation`。根因：add_labels.py 对同级采用"新条目覆盖"、build_labels.py 采用"先到保留"——两语义不一致曾致 12 行 v4.2 精修（Relay solver 官方 API 亲验等）在全量重建时被 gen_manual 泛化行回退（列级 diff 实测抓出，已救回 `curation_overrides_20260718.csv`）。**今后凡"直改发布库"级别的精修，必须同步固化为 curation override 文件**，否则下次重建即回退。
 - **高优先级源覆盖语义**：upsert 的 evidence/verified_at/status 三列随优先级覆盖（有值才覆盖）——curation/manual 层的权威证据出处才能真正生效。
-- **benchmark fail-fast**：默认发布库与 `--labels-dir` 预检都要求五张登记链主表齐全且非空；缺表或只有表头均 exit 2。这是标签资产完整性，不是 release tier；Robinhood 仍为 exploration。
-- **roundtrip_check.py 进发布流程**（见下方重建步骤）：行级收敛门禁比较七个决策字段（以 `roundtrip_check.py::DECISION_FIELDS` 为准），缺表即 exit 2。
+- **benchmark fail-fast**：默认发布库与 `--labels-dir` 预检都要求六张登记链主表齐全且非空；缺表或只有表头均 exit 2。这是标签资产完整性，不是 release tier；Arbitrum 与 Robinhood 仍为 exploration。
+- **roundtrip_check.py 进发布流程**（见下方重建步骤）：行级收敛门禁比较七个决策字段（以 `roundtrip_check.py::DECISION_FIELDS` 为准），任一 labels-table 登记链发布主表或 staging 主表缺失即 exit 2；这不等于 formal-ready 资格。
 
 ## 数据源清单
 
 | 源 | 内容 | 置信 |
 |---|---|---|
 | curation | 人工精修固化（additions/curation_overrides_*.csv） | 最高（压过一切，v4.2+ 稳定化设立） |
+| goldset-curated | `benchmark/goldset_curated.csv` 中经盲审确认的裁决金标 | 金标构建最后按 `(chain,address)` 覆盖自动分类/重抽样；不得依赖临时交接目录 |
 | manual/addressbook | 实战核验条目（含全部 Robinhood 独家）| 最高，优先级压过一切 |
+| dune-cex-addresses | Arbitrum CEX-only 初版（Dune CEX 地址快照，730 行） | 中高（增量合并非高信任前缀；重放按 `dune` 前缀取 SRC_PRIORITY=1） |
 | serial-offenders | 惯犯层（appendix/state 双源自动回灌+人工白名单，随案滚动，07-31 时点约 1,740 址）| **线索级**（案内定性、多数案源未经用户复核，v6.2.0 降级定调——消费纪律见 labels/README serial-actor 段，禁当最高置信源用） |
 | registry-official | 官方 deployment registry（Aerodrome/Clanker/Zora/Uniswap/Virtuals 官方仓库·npm 包·docs 亲验，Base 54 条首建）| 高（官方源） |
 | manual-chainverify | 链上事件/RPC 亲验条目（如 Tornado BSC 合约）| 高（链上实测） |
@@ -41,9 +43,11 @@ labels 数据版本独立于 skill 版本；已发布版本与逐表变更见 CH
 
 **SOL 地址硬校验（v4.1，重大数据事故修复）**：spellbook cex_solana 混入 **55 条跨链垃圾**（BTC bech32/Cardano 切片/Elrond/hex 串——字符集+长度校验全过，纯属巧合）。`norm_addr` 已改为 **base58 解码必须恰好 32 字节**（validate/add_labels/构建器 upsert 全链路生效，重建自动过滤）。清洗审计记录：`sources/sol_cex_cleanup_20260717.json`（34 格式假+21 从未上链删除；14 条有历史签名但账户已回收标 historical）。教训：**上游"人工维护"≠格式可信，链上存在性是最后防线**。
 
-**round-trip 铁律（v4.2，codex 第四轮复核修的三个断环）**：①`upsert()` 支持 merge_policy/balance_policy 透传（此前硬编码空——重建丢手工策略）；②**`sources/additions/` 目录整目录进重建流**——add_labels.py 增量入库成功后自动把补录 CSV 归档于此，重建全量回放（此前 v4.1 七份增量文件不在重建源里，全量重建会静默丢约 250 条 registry 级标签；**additions/ 里的文件永不删除**）；③SOL spellbook 垃圾黑名单（`sol_cex_cleanup_20260717.json` 的 never 名单）进构建流——21 条"格式合法但链上从无签名"的跨链垃圾此前删除只做在现库，重建即复活（v4.2 干跑实测抓出）。历史手术固化文件：`additions/curation_overrides_20260717.csv`（120 条 historical 状态）、`additions/recovered_increments_20260717.csv`（22 条未归档增量找回）、`additions/curation_overrides_20260718.csv`（12 条精修救回）。
+**round-trip 铁律（v4.2–v4.3）**：v4.2 关闭三个断环：①`upsert()` 支持 merge_policy/balance_policy 透传（此前硬编码空——重建丢手工策略）；②**`sources/additions/` 目录整目录进重建流**——add_labels.py 增量入库成功后自动把补录 CSV 归档于此，重建全量回放（此前 v4.1 七份增量文件不在重建源里，全量重建会静默丢约 250 条 registry 级标签；**additions/ 里的文件永不删除**）；③SOL spellbook 垃圾黑名单（`sol_cex_cleanup_20260717.json` 的 never 名单）进构建流——21 条"格式合法但链上从无签名"的跨链垃圾此前删除只做在现库，重建即复活（v4.2 干跑实测抓出）。v4.3 再关闭 `source_snapshot_at` 断环：`upsert()` 与 additions 重放均透传行级快照值，行有值即保留，空值才回落到源级默认。历史手术固化文件：`additions/curation_overrides_20260717.csv`（120 条 historical 状态）、`additions/recovered_increments_20260717.csv`（22 条未归档增量找回）、`additions/curation_overrides_20260718.csv`（12 条精修救回）。
 
-## 重建与发布流程（v4.2+，顺序不可乱）
+**Arbitrum 覆盖边界（labels v4.3）**：`labels-arbitrum.csv` 已建 730 行 CEX-only 初版，resolver 因缺表导致的 degraded mode 已消除，但这不代表覆盖完整。基础设施/协议/桥/池等静态标签仍为空白，剔除必须继续依赖现场 `getCode`、协议识别与行为守门员动态闸；注册表 `release_tier=exploration` 不变，不得正式交接或审计发布。
+
+## 重建与发布流程（v4.3+，顺序不可乱）
 
 **在 `scripts/labels/` 目录执行**（benchmark 的 --labels-dir 按 cwd 解析，在 sources/ 里跑会 fail-fast 拒绝）：
 
@@ -51,10 +55,11 @@ labels 数据版本独立于 skill 版本；已发布版本与逐表变更见 CH
 cd ~/.claude/skills/token-chip-analysis/scripts/labels
 ( cd sources && python3 ../gen_manual_from_addressbook.py && python3 ../build_labels.py )
 #    ↑ 构建末尾自动跑 validate_labels + check_manual_sync 双校验，任一 FAIL 拒绝发布
-python3 roundtrip_check.py                       # 发布版逐键逐行收敛；任一正式链缺表即 exit 2
-python3 benchmark_labels.py --labels-dir=sources/out   # 发布前预检（五表齐全且非空）
+python3 roundtrip_check.py                       # 发布版逐键逐行收敛；任一 labels-table 登记链主表缺失即 exit 2
+python3 benchmark_labels.py --labels-dir=sources/out   # 发布前预检（六表齐全且非空）
 cp sources/out/labels-*.csv ../../references/labels/   # 发布
-python3 benchmark_labels.py --save               # 回归 PASS 才算完；五条登记链金标强制出现（校验对象是 goldset，缺链即 FAIL）；标签表口径＝五张主表＋两张 privacy 子表，不用于推导 formal-ready
+python3 build_goldset.py                       # 自动样本后合并 goldset_curated.csv；裁决键优先
+python3 benchmark_labels.py --save               # 回归 PASS 才算完；六条登记链金标强制出现（校验对象是 goldset，缺链即 FAIL）；标签表口径＝六张主表＋两张 privacy 子表，不用于推导 formal-ready
 python3 ../tests/labels_manifest.py --write      # 发布落印（校验和 manifest；add_labels 增量入库后同样要 --write）
 ```
 

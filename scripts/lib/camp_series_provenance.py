@@ -50,7 +50,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from supply_semantics import ZERO  # noqa: E402
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "solana"))
-from sqd_cache_identity import validate_cache_meta  # noqa: E402
+from sqd_cache_identity import resolve_formal_cache  # noqa: E402
 
 SIDECAR_SCHEMA = "camp-series-provenance/v1"
 # 净分母族的 burn 桶不参与堆叠闭合；total 分母族"锁仓/销毁"参与——双式闭合见 docstring。
@@ -116,7 +116,8 @@ def _file_ref(path) -> dict:
 
 def write_series_sidecar(series_path, *, producer: str, series_format: str,
                          denominator: str, camps_spec_path=None,
-                         final_balances_path=None, inputs=None, extra=None) -> Path:
+                         final_balances_path=None, inputs=None, extra=None,
+                         edge_source_binding=None) -> Path:
     """producer 在序列文件落盘后立即调用；sidecar 与序列同目录、tmp+os.replace 原子写。
 
     inputs: {语义名: 路径} —— 只登记与本次重放同源的小文件（replay_stats/
@@ -144,6 +145,8 @@ def write_series_sidecar(series_path, *, producer: str, series_format: str,
         "inputs": {name: _file_ref(p) for name, p in (inputs or {}).items()},
         "generated_at_utc": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
     }
+    if edge_source_binding is not None:
+        doc["edge_source_binding"] = dict(edge_source_binding)
     if extra:
         doc["extra"] = dict(extra)
     out = sidecar_path_for(series_path)
@@ -401,8 +404,8 @@ def validate_series_payload(css: dict, *, tol_pp: float = CLOSURE_TOL_PP,
 SUPPLY_TRUTH_SCHEMAS = {
     "supply-truth-receipt/v3", "supply-truth-receipt/v4",
 }
-RECONCILE_SCHEMA = "solana-reconcile/v3"
-LEGACY_RECONCILE_SCHEMA = "solana-reconcile/v2"
+RECONCILE_SCHEMA = "solana-reconcile/v4"
+LEGACY_RECONCILE_SCHEMAS = {"solana-reconcile/v2", "solana-reconcile/v3"}
 
 
 def _slot(value, label):
@@ -432,7 +435,7 @@ def registry_anchor_check(sidecar: dict, resolved: dict, series_path, *,
       verdict==PASS、exit_code==0，参照 holder_distribution_scan.load_supply
       先例），且 sidecar 登记的 replay_stats sha256 必须命中收据的**特定字段位置**
       inputs.replay_stats.sha256（批 A 起哈希绑定的那一格，非任意位置）。
-    sol-rows：sidecar 必须绑定 solana-reconcile/v3；chain/mint/cutoff 预期值必须
+    sol-rows：sidecar 必须绑定 solana-reconcile/v4；chain/mint/cutoff 预期值必须
       由调用方案内 target 独立传入，绝不取收据自报值。收据输入三验、producer
       指纹、窗口包含关系与边摘要/行数对 cache meta 的关系均在这里重验。
     """
@@ -511,14 +514,24 @@ def registry_anchor_check(sidecar: dict, resolved: dict, series_path, *,
                 "（replay_edges reconcile 是阶段 2 硬关卡，先跑 reconcile 再跑 evolution）")
         receipt = _json_loads(Path(rr).read_text(encoding="utf-8"),
                               "reconcile_receipt")
-        if isinstance(receipt, dict) and receipt.get("schema") == LEGACY_RECONCILE_SCHEMA:
+        if isinstance(receipt, dict) and receipt.get("schema") in LEGACY_RECONCILE_SCHEMAS:
             raise SeriesProvenanceError(
-                "solana-reconcile/v2 无链上身份键，已 fail-closed；"
-                "重跑 replay_edges reconcile 重新生成 v3 收据")
+                f"{receipt.get('schema')} 已归 LEGACY 并 fail-closed；"
+                "重跑 replay_edges reconcile 重新生成 v4 收据")
         if not isinstance(receipt, dict) or receipt.get("schema") != RECONCILE_SCHEMA:
             raise SeriesProvenanceError(
                 f"reconcile_receipt 不是合法对账收据（schema 必须是 "
-                f"{RECONCILE_SCHEMA}）——重跑 replay_edges reconcile 重新生成 v3 收据")
+                f"{RECONCILE_SCHEMA}）——重跑 replay_edges reconcile 重新生成 v4 收据")
+        try:
+            from solana_exact_validate import validate_reconcile_receipt_deep
+            deep = validate_reconcile_receipt_deep(
+                rr, case_root=Path(rr).parent.parent)
+        except Exception as exc:
+            raise SeriesProvenanceError(
+                f"reconcile_receipt 独立深验器执行失败: {exc}") from exc
+        if not deep["ok"]:
+            raise SeriesProvenanceError(
+                "reconcile_receipt 独立深验失败: " + "; ".join(deep["reasons"]))
         if receipt.get("gate_pass") is not True:
             raise SeriesProvenanceError("reconcile_receipt gate_pass 非 true，序列不入正式编译")
         for field in ("negative_balance_count", "snapshot_mismatch_count"):
@@ -590,11 +603,24 @@ def registry_anchor_check(sidecar: dict, resolved: dict, series_path, *,
         cache_meta = _json_loads(meta_path.read_text(encoding="utf-8"),
                                  "soltx meta")
         try:
-            validate_cache_meta(cache_meta, expected_mint, legacy_sol5=False)
+            edge_path, resolver_meta_path, _cache_kind, _gid, resolver_binding = \
+                resolve_formal_cache(expected_mint, Path(rr).parent.parent)
         except ValueError as exc:
             raise SeriesProvenanceError(
-                f"reconcile 绑定的 soltx meta schema/mint/producer/contract 身份无效: {exc}"
+                "reconcile 绑定的 soltx meta schema/mint/producer/contract 或边文件"
+                f"身份未通过正式 resolver: {exc}"
             ) from exc
+        if resolver_meta_path.resolve() != meta_path.resolve():
+            raise SeriesProvenanceError(
+                "reconcile.inputs.soltx_meta 不是 resolver 当前选择的正式 meta")
+        receipt_binding = receipt.get("edge_source_binding")
+        if receipt_binding != resolver_binding:
+            raise SeriesProvenanceError(
+                "reconcile_receipt.edge_source_binding 与 resolver 当前边源不全等")
+        side_binding = sidecar.get("edge_source_binding")
+        if side_binding != receipt_binding:
+            raise SeriesProvenanceError(
+                "sidecar.edge_source_binding 与 exact reconcile 收据不全等")
         if cache_meta.get("from_slot") != frm \
                 or cache_meta.get("finalized_upper_slot") != to:
             raise SeriesProvenanceError(
@@ -603,10 +629,9 @@ def registry_anchor_check(sidecar: dict, resolved: dict, series_path, *,
                 or cache_meta.get("edge_rows") != edge_count:
             raise SeriesProvenanceError(
                 "reconcile edge_digest/edge_count 与 collector 绑定的 soltx meta 不一致")
-        edge_key = hashlib.sha256(expected_mint.encode("utf-8")).hexdigest()
-        edge_path = meta_path.with_name(f"soltx-{edge_key}.jsonl.gz")
-        edge_size = cache_meta.get("edge_file_size")
-        edge_sha = cache_meta.get("edge_file_sha256")
+        edge_ref = inputs.get("soltx_edges") or {}
+        edge_size = edge_ref.get("size")
+        edge_sha = edge_ref.get("sha256")
         if edge_path.is_symlink():
             raise SeriesProvenanceError(
                 f"Solana 边文件是符号链接，拒收: {edge_path.name}")
@@ -616,14 +641,14 @@ def registry_anchor_check(sidecar: dict, resolved: dict, series_path, *,
         if isinstance(edge_size, bool) or not isinstance(edge_size, int) \
                 or edge_size <= 0 or edge_path.stat().st_size != edge_size:
             raise SeriesProvenanceError(
-                "Solana 边文件实物 size 与 soltx meta.edge_file_size 不一致")
+                "Solana 边文件实物 size 与 reconcile.inputs.soltx_edges 不一致")
         if not isinstance(edge_sha, str) \
                 or re.fullmatch(r"[0-9a-f]{64}", edge_sha) is None:
             raise SeriesProvenanceError(
-                "soltx meta.edge_file_sha256 必须为小写 sha256")
+                "reconcile.inputs.soltx_edges.sha256 必须为小写 sha256")
         if verify_edge_physical_sha and sha256_file(edge_path) != edge_sha:
             raise SeriesProvenanceError(
-                "Solana 边文件物理 sha256 与 soltx meta 登记不一致")
+                "Solana 边文件物理 sha256 与 reconcile.inputs.soltx_edges 登记不一致")
         owners_obj = _json_loads(owners_path.read_text(encoding="utf-8"),
                                  "holders_owners.json")
         if not isinstance(owners_obj, dict):
@@ -643,7 +668,8 @@ def registry_anchor_check(sidecar: dict, resolved: dict, series_path, *,
                 "reconcile window 与 holders snapshot/案 target cutoff 不一致")
         owner_ref = ((snapshot.get("outputs") or {}).get("holders_owners") or {})
         receipt_owner_ref = inputs.get("holders_owners") or {}
-        if owner_ref != receipt_owner_ref:
+        if (owner_ref.get("size"), owner_ref.get("sha256")) != (
+                receipt_owner_ref.get("size"), receipt_owner_ref.get("sha256")):
             raise SeriesProvenanceError(
                 "holders_snapshot_meta.outputs.holders_owners 与 reconcile 输入撕裂")
         # owners_path 已由 _resolve_ref 完成存在/size/sha 三验；变量保留用于明确

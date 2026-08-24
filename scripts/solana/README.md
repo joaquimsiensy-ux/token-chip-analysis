@@ -6,6 +6,8 @@
 | `scan_token_accounts.py` | 全量账户与 owner 快照 | A1/A2 | 现役主线 | 大响应失败时换 Helius；分片仅验证用 |
 | `scan_sharded.py` | amount 字节分片扫描 | A1 | 待更多标的验证 | `scan_token_accounts.py` + Helius |
 | `fetch_sqd_transfers_v2.py` | SQD 全量转账边采集 | A1 | 现役主线 | `window_fetch.py` 补窗口 |
+| `sqd_coverage_probe.py` | SQD coverage 四态探针；默认探针入口／`export-shared-map`，产 `data/sqd_coverage/<probe_id>/` 与 `data/sqd_coverage/CURRENT.json` | A1/A2 | 现役硬闸 | 额度错误落 STOPPED 后换 key 续跑 |
+| `sqd_gap_repair.py` | 已确认缺陷的 `plan`／`repair`／`verify` 生产者，产 `data/sqd_repair/<sha256(mint)>/gen-*/` bundle、repaired cache 与同目录 `CURRENT.json` | A2 | 现役硬闸 | 残差不降按 β 止损停工 |
 | `window_fetch.py` | 高密度窗口定向采集 | A1 | 现役专项 | v2 区域重拉 |
 | `fetch_pool_sigs.py` | 地址签名全史落盘 | A1/A3 | 现役 | RPC 换源后续拉 |
 | `decode_txs_v2.py` | 批量交易解码与 receipt | A1/A3 | 现役主线 | `decode_txs.py` 逐笔兼容入口 |

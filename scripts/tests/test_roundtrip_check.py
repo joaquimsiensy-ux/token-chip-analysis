@@ -8,7 +8,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = ROOT / "scripts" / "labels" / "roundtrip_check.py"
-CHAINS = ("eth", "bsc", "base", "sol", "robinhood")
+CHAINS = ("eth", "bsc", "base", "arbitrum", "sol", "robinhood")
 FIELDS = ["address", "chain", "name", "category", "tier", "merge_policy",
           "balance_policy", "status", "risk_flags", "source", "evidence", "added_date",
           "verified_at", "source_snapshot_at", "raw_labels"]
@@ -49,11 +49,13 @@ def main():
             write_table(out, chain)
 
         p = run(pub, root / "missing-out")
-        assert p.returncode != 0 and "可安全发布" not in p.stdout, p.stdout + p.stderr
+        assert p.returncode == 2 and "labels-table 登记链主表" in p.stdout \
+            and "正式链" not in p.stdout and "可安全发布" not in p.stdout, p.stdout + p.stderr
 
         (out / "labels-bsc.csv").unlink()
         p = run(pub, out)
-        assert p.returncode != 0 and "可安全发布" not in p.stdout, p.stdout + p.stderr
+        assert p.returncode == 2 and "labels-table 登记链主表" in p.stdout \
+            and "正式链" not in p.stdout and "可安全发布" not in p.stdout, p.stdout + p.stderr
         write_table(out, "bsc")
 
         write_table(out, "eth", tier="identity")

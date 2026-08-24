@@ -1,0 +1,83 @@
+{
+ "date": "2026-08-20",
+ "goldset": "goldset.csv",
+ "total": 1017,
+ "chains": {
+  "arbitrum": {
+   "entity": 0,
+   "entity_wrong_exclude": 0,
+   "entity_identity_tagged": 0,
+   "random_eoa": 10,
+   "random_eoa_wrong_exclude": 0,
+   "infra_manual": 11,
+   "infra_manual_hit": 11,
+   "infra_field": 0,
+   "infra_field_hit": 0,
+   "weak_gate": false
+  },
+  "base": {
+   "entity": 54,
+   "entity_wrong_exclude": 0,
+   "entity_identity_tagged": 17,
+   "random_eoa": 0,
+   "random_eoa_wrong_exclude": 0,
+   "infra_manual": 113,
+   "infra_manual_hit": 113,
+   "infra_field": 15,
+   "infra_field_hit": 15,
+   "weak_gate": false
+  },
+  "bsc": {
+   "entity": 41,
+   "entity_wrong_exclude": 0,
+   "entity_identity_tagged": 11,
+   "random_eoa": 60,
+   "random_eoa_wrong_exclude": 0,
+   "infra_manual": 128,
+   "infra_manual_hit": 128,
+   "infra_field": 4,
+   "infra_field_hit": 2,
+   "weak_gate": false
+  },
+  "eth": {
+   "entity": 1,
+   "entity_wrong_exclude": 0,
+   "entity_identity_tagged": 1,
+   "random_eoa": 0,
+   "random_eoa_wrong_exclude": 0,
+   "infra_manual": 40,
+   "infra_manual_hit": 40,
+   "infra_field": 4,
+   "infra_field_hit": 2,
+   "weak_gate": true
+  },
+  "robinhood": {
+   "entity": 319,
+   "entity_wrong_exclude": 0,
+   "entity_identity_tagged": 195,
+   "random_eoa": 0,
+   "random_eoa_wrong_exclude": 0,
+   "infra_manual": 63,
+   "infra_manual_hit": 63,
+   "infra_field": 20,
+   "infra_field_hit": 14,
+   "weak_gate": false
+  },
+  "sol": {
+   "entity": 81,
+   "entity_wrong_exclude": 0,
+   "entity_identity_tagged": 37,
+   "random_eoa": 0,
+   "random_eoa_wrong_exclude": 0,
+   "infra_manual": 49,
+   "infra_manual_hit": 49,
+   "infra_field": 4,
+   "infra_field_hit": 0,
+   "weak_gate": false
+  }
+ },
+ "violations": [],
+ "weak_gate_chains": [
+  "eth"
+ ]
+}

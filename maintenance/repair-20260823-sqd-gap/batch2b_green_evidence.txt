@@ -1,0 +1,132 @@
+批 2b：SQD 游标分页修复红绿证
+日期：2026-08-23
+分支：fix/sqd-gap-v6520
+HEAD：733c4aed0eb18364f4c2a6a2dc98772ae68db422
+VERSION：6.51.0
+
+=== 修复前分页截断反例（仅新增测试/fixture，尚未改生产代码） ===
+$ python3 - <<'PY'
+from scripts.tests.test_sqd_coverage_probe import test_sqd_cursor_pagination_regressions
+test_sqd_cursor_pagination_regressions()
+PY
+Traceback (most recent call last):
+  File "<stdin>", line 2, in <module>
+  File "scripts/tests/test_sqd_coverage_probe.py", line 321, in test_sqd_cursor_pagination_regressions
+    assert counts == bytes([1, 2, 4, 3]), (
+AssertionError: ('RED B2B-PAGE-01 truncated page tail was classified NO_HEADER', bytearray(b'\x01\x02\x01\x01'))
+[exit_code=1]
+
+反例语义：请求 [100,103] 第一页只返回 header 101；旧实现直接把未返回的 102/103 写成 1。
+正确结果应为 [1,2,4,3]：100 真缺块、101 零 nonce 块头、102 两条 nonce、103 一条 nonce。
+
+=== 修复后同一反例 ===
+$ python3 - <<'PY'
+from scripts.tests.test_sqd_coverage_probe import test_sqd_cursor_pagination_regressions
+test_sqd_cursor_pagination_regressions()
+print('GREEN B2B-PAGE-01 cursor follows truncated page tail')
+PY
+GREEN B2B-PAGE-01 cursor follows truncated page tail
+[exit_code=0]
+
+分页组同时验证：
+- 第一页 [100,103] 实际覆盖 [100,101]，第二页从 102 继续；counts=[1,2,4,3]。
+- 两行 ledger 的 from=[100,102]，slots_covered 总和=4；returned facts 分别为 (101,101,1)/(102,103,2)。
+- HTTP 200 空数组覆盖请求尾部，全 counts=1，empty_response=true，returned_from/to=null，n_blocks=0。
+- 越界、乱序、重复三类页均 ok=false、slots_covered=0、counts 保持全 UNSCANNED。
+- 非法页 CLI exit 2 且无 CURRENT。
+- pagination/empty 两种 CLI 产物均经 validate_coverage ok；recomputed.empty_response_count 分别为 0/1。
+- 904-slot、workers=4、三分片、每页最多 100 slot 的确定性并发回归：11 行 ledger，实际覆盖并集恰为 [1000,1903]。
+- 伪造第一行 slots_covered=4 而 returned_to=101 时，validator 报 nonempty SQD response cursor facts inconsistent。
+
+=== 最终专项测试 ===
+$ python3 scripts/tests/test_sqd_coverage_probe.py
+GREEN 3 sample_ranges cannot fill formal scan_ranges gaps
+GREEN 20 UNSCANNED/length/ledger holes fail closed
+GREEN 21 getBlocks complete eight-way conjunction
+GREEN 28 bitmap length/popcount/range binding
+GREEN 30 CAS/idempotence/directory fsync implementation present
+{"probe_id": "01586e69c1390aad", "status": "published", "verdict": "NO_KNOWN_NONCE_OMISSION_DETECTED"}
+PASS SQD coverage probe: 10/10 offline groups
+[exit_code=0]
+
+$ python3 -m py_compile scripts/solana/sqd_coverage_probe.py scripts/lib/solana_exact_validate.py scripts/tests/test_sqd_coverage_probe.py
+[exit_code=0]
+
+$ python3 -m json.tool maintenance/repair-20260823-sqd-gap/contracts_draft/sqd-solana-coverage_v1.json
+[exit_code=0]
+
+$ python3 -m json.tool maintenance/repair-20260823-sqd-gap/contracts_draft/INDEX.json
+[exit_code=0]
+
+$ python3 scripts/tests/test_contract_routes.py
+PASS: R-01/R-02 注册表、ID 快照、五组锚与 SKILL 原子阶段双向闭合
+[exit_code=0]
+
+$ python3 scripts/tests/test_net_result.py
+PASS: net Result 显式状态与 curl_json 失败分类
+[exit_code=0]
+
+$ python3 - <<'PY'
+from scripts.tests import invariant_scan
+print(invariant_scan.formal_e2e_provenance_errors())
+PY
+["formal E2E target lacks registered producer execution for sol: ['scripts/solana/replay_edges.py']"]
+[exit_code=0]
+
+=== invariant_scan.py 终态 ===
+invariant manifest FAIL: 16 discrepancy(s)
+[exit_code=1；与批 2 完全相同，均为 repair/replay/reconcile/wave-v5/flow-v3 future 登记；无新增分页缺口]
+
+=== python3 scripts/tests/run_all.py（分页核心修复后） ===
+120 PASS / 4 FAIL（按汇总表计数）
+
+该全量执行后仅补充了已由同文件专项覆盖的 known-map dry-run 下界展示字段、并发分页断言和契约 mode 描述；最终再次执行 10/10 专项、py_compile、JSON/contract route 与 diff check，均通过。未把这次全量冒充为最后一次文本编辑后的执行。
+
+四项失败与批 2 完全相同：
+1. invariant_scan.py：16 项 future 登记缺口。
+2. test_batch3_solana_vertical_slice.py：既有 ThreadingHTTPServer bind EPERM。
+3. test_batch3_evm_vertical_slice.py：既有 ThreadingHTTPServer bind EPERM。
+4. test_batch4_invariant_guards.py:198：E20 仅剩 replay_edges.py 半边。
+
+完整失败首行：
+FAIL receipt_producers: code point missing from manifest: ('scripts/report/flow_anomaly_scan.py', ('flow-anomaly/v2',))
+FAIL receipt_producers: code point missing from manifest: ('scripts/report/wave_scan.py', ('wave-scan/v4',))
+FAIL receipt_producers: code point missing from manifest: ('scripts/solana/replay_edges.py', ('solana-reconcile/v3',))
+FAIL receipt_producers: manifest point missing from code: ('scripts/report/flow_anomaly_scan.py', ('flow-anomaly/v2', 'flow-anomaly/v3'))
+FAIL receipt_producers: manifest point missing from code: ('scripts/report/wave_scan.py', ('wave-scan/v4', 'wave-scan/v5'))
+FAIL receipt_producers: manifest point missing from code: ('scripts/solana/replay_edges.py', ('solana-reconcile/v3', 'solana-reconcile/v4'))
+FAIL receipt_producers: manifest point missing from code: ('scripts/solana/sqd_gap_repair.py', ('sqd-solana-cache/v4', 'sqd-solana-coverage-resolution/v1', 'sqd-solana-repair-bundle/v1', 'sqd-solana-repair-pointer/v1'))
+FAIL receipt_consumers: code point missing from manifest: ('scripts/solana/sqd_cache_identity.py', ('sqd-solana-cache/v3', 'sqd-solana-cache/v4'))
+FAIL receipt_consumers: manifest point missing from code: ('scripts/lib/solana_exact_validate.py', ('solana-reconcile/v4', 'sqd-solana-coverage-resolution/v1', 'sqd-solana-repair-bundle/v1', 'sqd-solana-repair-layer/v1', 'sqd-solana-repair-pointer/v1', 'sqd-solana-slot-index-map/v1'))
+FAIL receipt_consumers: manifest point missing from code: ('scripts/solana/sqd_cache_identity.py', ('sqd-solana-cache/v3', 'sqd-solana-cache/v4', 'sqd-solana-repair-bundle/v1', 'sqd-solana-repair-pointer/v1'))
+FAIL transport_calls: manifest point missing from code: ('scripts/solana/sqd_gap_repair.py', 'net.py')
+FAIL atomic_writes: manifest point missing from code: ('scripts/solana/sqd_gap_repair.py', 'main')
+FAIL formal_entrypoints: missing file: scripts/solana/sqd_gap_repair.py
+FAIL formal E2E target lacks registered producer execution for sol: ['scripts/solana/replay_edges.py']
+FAIL failure artifact registry has non-producer entry: scripts/solana/replay_edges.py
+FAIL failure artifact registry has non-producer entry: scripts/solana/sqd_gap_repair.py
+invariant manifest FAIL: 16 discrepancy(s)
+
+两个 vertical slice 的失败均为：
+PermissionError: [Errno 1] Operation not permitted
+
+batch4 invariant guard 的失败点为：
+scripts/tests/test_batch4_invariant_guards.py:198
+assert scan.formal_e2e_provenance_errors() == []
+AssertionError
+
+=== 最终静态/白名单证据 ===
+$ git diff --check
+[exit_code=0]
+
+fixture 总大小：4,440 bytes（<=200 KB）
+
+本批最终关键文件 SHA-256：
+a1c95dbbdb015eee1728d12773edcfa01e04b87f1d3243527d020697668695c3  scripts/solana/sqd_coverage_probe.py
+952d16d2b1ee0c0d68c5528cefa933f287af84895a4aca8f23dbda9abc12e2f5  scripts/lib/solana_exact_validate.py
+8010d9bd019858ab44f9d3c78f4a7979d414acaaae7969a66678326ebdea1a6d  scripts/tests/test_sqd_coverage_probe.py
+95845d32b5fb9ededbf2f6b1bf28d40a3a6f4794e9fa9036a244dafe781afaf3  maintenance/repair-20260823-sqd-gap/contracts_draft/sqd-solana-coverage_v1.json
+0f6209cd71b574b81a22ebdad8715286bbdc53042c27513e8ec080f072b7e463  maintenance/repair-20260823-sqd-gap/contracts_draft/INDEX.json
+1636279e9a4ed905ccdaa95a3ec67fecd4efbae93229211ca8bbf5a2802a9baf  scripts/tests/fixtures/sqd_coverage/pagination/responses.json
+9856ddc19998933694922a3146eb8f1e330b86599c16f6da2cae9698f1732010  scripts/tests/fixtures/sqd_coverage/empty/responses.json
+5582d6af938e97f4d72bce254f1398e99e62c21f2b093dcffeacae117af6be4b  scripts/tests/fixtures/sqd_coverage/invalid_pages/responses.json

@@ -59,8 +59,11 @@ class Result:
         raise TypeError("Result has no truth value; test result.ok explicitly")
 
 
-def _curl_error(category, message, *, returncode=None):
-    error = {"category": category, "message": str(message)[:500]}
+def _curl_error(category, message, *, returncode=None, http_status=None,
+                retryable=False):
+    error = {"category": category, "message": str(message)[:500],
+             "http_status": None if http_status is None else int(http_status),
+             "retryable": bool(retryable)}
     if returncode is not None:
         error["returncode"] = int(returncode)
     return Result(ok=False, error=error)
@@ -81,7 +84,7 @@ def _decode_curl_json(raw: str):
 
 
 def curl_json(url, *, post_json=None, headers=None, proxy=None,
-              timeout=45.0, attempts=4) -> Result:
+              timeout=45.0, attempts=4, no_retry_statuses=()) -> Result:
     """Run the registered curl backend and return an explicit :class:`Result`.
 
     ``curl --fail-with-body`` maps HTTP failures to return code 22.  Other non-zero
@@ -95,9 +98,14 @@ def curl_json(url, *, post_json=None, headers=None, proxy=None,
         raise ValueError("timeout must be positive")
     if headers is not None and not hasattr(headers, "items"):
         raise TypeError("headers must be a mapping")
+    try:
+        no_retry_statuses = frozenset(int(item) for item in no_retry_statuses)
+    except (TypeError, ValueError) as exc:
+        raise TypeError("no_retry_statuses must contain integer HTTP statuses") from exc
 
     command = ["curl", "--silent", "--show-error", "--fail-with-body",
-               "--max-time", str(float(timeout))]
+               "--max-time", str(float(timeout)),
+               "--write-out", "\n__CURL_HTTP_STATUS__:%{http_code}"]
     if proxy:
         command.extend(["-x", str(proxy)])
     header_map = dict(headers or {})
@@ -118,21 +126,43 @@ def curl_json(url, *, post_json=None, headers=None, proxy=None,
             completed = subprocess.run(
                 command, capture_output=True, text=True, timeout=float(timeout) + 10.0)
         except (OSError, subprocess.TimeoutExpired) as exc:
-            last = _curl_error("transport", f"{type(exc).__name__}: {exc}")
+            detail = redact_endpoint_text(f"{type(exc).__name__}: {exc}", [str(url)])
+            last = _curl_error("transport", detail,
+                               retryable=True)
         else:
+            raw = completed.stdout
+            marker = "\n__CURL_HTTP_STATUS__:"
+            http_status = None
+            if marker in raw:
+                raw, status_text = raw.rsplit(marker, 1)
+                try:
+                    http_status = int(status_text.strip())
+                except ValueError:
+                    http_status = None
             if completed.returncode != 0:
                 category = "http_status" if completed.returncode == 22 else "transport"
                 detail = completed.stderr.strip() or f"curl exited {completed.returncode}"
-                last = _curl_error(category, detail, returncode=completed.returncode)
-            elif not completed.stdout.strip():
-                last = _curl_error("decode", "curl returned empty stdout")
+                detail = redact_endpoint_text(detail, [str(url)])
+                last = _curl_error(
+                    category, detail, returncode=completed.returncode,
+                    http_status=http_status,
+                    retryable=(category == "transport"
+                               or http_status in RETRYABLE_STATUS))
+            elif not raw.strip():
+                last = _curl_error("decode", "curl returned empty stdout",
+                                   http_status=http_status, retryable=True)
             else:
                 try:
-                    value = _decode_curl_json(completed.stdout)
+                    value = _decode_curl_json(raw)
                 except (TypeError, ValueError) as exc:
-                    last = _curl_error("decode", f"invalid JSON response: {exc}")
+                    detail = redact_endpoint_text(
+                        f"invalid JSON response: {exc}", [str(url)])
+                    last = _curl_error("decode", detail,
+                                       http_status=http_status, retryable=True)
                 else:
                     return Result(ok=True, value=value)
+        if last.error.get("http_status") in no_retry_statuses:
+            break
         if attempt + 1 < attempts:
             time.sleep(min(2 ** attempt, 8))
     return last

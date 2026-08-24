@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""flow_anomaly_scan.py — 资金流异常扫描器：汇集点＋分发点（v6.8.0 新增；v2 schema 2026-08-02）。
+"""flow_anomaly_scan.py — 资金流异常扫描器：汇集点＋分发点（v3 schema）。
 
 背景：W1 波次二次漏检复盘（2026-08-01）的第三道防线——wave_scan 抓"同窗建仓的群"，
 本脚本抓"资金拓扑上的枢纽"：①汇集点（sink）＝滚动窗内从多个合格来源收币的地址
@@ -7,7 +7,7 @@
 向大批地址批量派发的地址（H9 三派发器型出货器）。
 两类候选只报警不定性，按 candidate-adjudications/v1 成员级裁决归 −2 判断层。
 
-v2（2026-08-02 用户拍板补缝＋codex 交叉复核重构，schema flow-anomaly/v2）：
+上一版（2026-08-02 用户拍板补缝＋codex 交叉复核重构）：
   两条覆盖缝——缝1：慢速批发线 500 过宽（PYTHIA H9 单案 6,503 收方校准），收方 20~499
   且控节奏避开脉冲窗的慢速分发双模式全漏 → 慢速线降 100（用户设定的高召回初值）；
   缝2：脉冲只数"首建当日来自此源"的 fresh 新收方，向已建仓老地址补货的分发完全隐形
@@ -37,8 +37,9 @@ v2（2026-08-02 用户拍板补缝＋codex 交叉复核重构，schema flow-anom
 first_meaningful_day 抗 dust 定义（首日末余额 ≥自身峰值×first-meaningful-ratio）。
 
 输入三选一（同 wave_scan）：--edges-sol / --edges-evm-v2 / --duckdb；正式
---edges-sol 同时强制 --sol-cache-meta 与 --mint，复用 v4 meta/collector/digest/rows 身份闸。
-输出：--out flow_anomaly_report.json（schema flow-anomaly/v2，来源/收方数组全量零截断；
+--edges-sol 强制 --case-root 与 --mint，经 resolver 取唯一 cache；--sol-cache-meta 若给出
+必须等于 resolver 结果。输出：--out flow_anomaly_report.json（schema flow-anomaly/v3，
+Solana 含 edge_source_binding、EVM 省略；来源/收方数组全量零截断；
 sink 另含历史峰值、当前余额、全史净流入，供 validator 防多窗口累计低估；权威定义
 references/scan-schemas.md）。
 
@@ -63,7 +64,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from wave_scan import (Z, DEAD, load_sol, load_evm_v2, attach_duckdb,  # noqa: E402
                        build_addr_summary, retention_bucket, day_str)
 
-SCHEMA = "flow-anomaly/v2"
+SCHEMA = "flow-anomaly/v3"
 
 
 def log(msg):
@@ -145,6 +146,7 @@ def main():
                     help="保留显式诊断开关；本 READY anomaly 链一律拒绝")
     ap.add_argument("--sol-cache-meta")
     ap.add_argument("--mint")
+    ap.add_argument("--case-root", help="正式 Solana 案根；经 cache resolver 且拒符号链接")
     ap.add_argument("--total-supply", required=True)
     ap.add_argument("--out", default="flow_anomaly_report.json")
     ap.add_argument("--exclude-file", help="已知设施地址清单（不参与扫描）")
@@ -191,10 +193,11 @@ def main():
     con.execute(f"SET memory_limit='{a.mem_limit}'")
     con.execute("SET preserve_insertion_order=false")
     t0 = datetime.now(timezone.utc)
+    edge_source_binding = None
     if a.edges_sol:
-        n_edges, _ = load_sol(
+        n_edges, edge_source_binding = load_sol(
             con, a.edges_sol, cache_meta_path=a.sol_cache_meta,
-            expected_mint=a.mint)
+            expected_mint=a.mint, case_root=a.case_root)
     elif a.edges_evm_v2:
         n_edges = load_evm_v2(con, a.edges_evm_v2)
     else:
@@ -395,6 +398,8 @@ def main():
                 "slow_spray），mode_hits 保全三口径命中事实；浓度字段识别伪分发只报不拒。"
                 "参数出身＝PYTHIA 单案回测＋用户设定初值（2026-08-02），非多案校准。",
     }
+    if a.edges_sol:
+        report["edge_source_binding"] = edge_source_binding
     with open(a.out, "w", encoding="utf-8") as fh:
         json.dump(report, fh, ensure_ascii=False, indent=1)
     log(f"汇集点 {len(sinks)} 个 / 分发点 {len(sprays)} 个 → {a.out}")

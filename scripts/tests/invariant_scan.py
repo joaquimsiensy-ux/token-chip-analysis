@@ -83,6 +83,8 @@ FORMAL_E2E_REQUIRED_PRODUCERS = {
         "scripts/solana/anchor_sampler.py",
         "scripts/lib/supply_truth_gate.py",
         "scripts/solana/accounting_gate_sol.py",
+        "scripts/solana/sqd_coverage_probe.py",
+        "scripts/solana/replay_edges.py",
         "scripts/solana/window_fetch.py",
     }),
 }
@@ -119,6 +121,12 @@ FAILURE_ARTIFACT_COVERAGE = {
         "canonical": "holder snapshot", "marker": "observation bundle",
         "error": "unique ERROR side receipt",
         "protections": ("runner_fresh_receipt", "self_quarantine")},
+    "scripts/solana/replay_edges.py": {
+        "canonical": "reconciliation receipt", "marker": "runner wrapper",
+        "error": "unique ERROR side receipt", "protections": ("runner_fresh_receipt",)},
+    "scripts/solana/sqd_gap_repair.py": {
+        "canonical": "repair generation", "marker": "repair pointer",
+        "error": "unique ERROR side receipt", "protections": ("self_quarantine",)},
     "scripts/lib/anchor_plan.py": {
         "canonical": "anchor plan", "marker": "anchor-plan receipt",
         "error": "unique ERROR side receipt", "protections": ("self_quarantine",)},

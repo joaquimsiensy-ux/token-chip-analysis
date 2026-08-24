@@ -91,11 +91,11 @@
 **脚本**：`scripts/solana/audit_closed_accounts.py <MINT> [--edges <soltx.jsonl.gz>]`（对旧研报目录审计用 `--edges/--out` 指路径）。流程=发现历史账户样本 → getMultipleAccounts 判存活/销户（此法 publicnode 屏蔽，走 api.mainnet-beta+代理）→ 销户账户拉自身签名史（销户后签名史仍可查，§3a 坑 4 同源事实）decode 实际转账 → 逐事件对照边集。
 
 - **两种样本发现模式**（`--mode auto|sigs|blocks`，默认 auto）：sigs=mint 签名史抽样（全程边集适用；签名史新→老翻页，历史定向段边集会翻不到区间）；blocks=边集 slot 区间内均匀抽 getBlock 整块提取（定向段正解，免翻页）。auto 3 页探路未进区间自动切 blocks。
-- **判定粒度声明（v4 定稿）**：默认正式入口只接受 v4 7 元组并校验 `tx_index/instr_index`；旧 5 元组只允许显式 `--legacy-sol5` 诊断，报告强制 `non_formal=true/order_ambiguous=true`，不得冒充正式输入。`audit_release_gate.py` 对 `dormant_warehouse_audit.json` 的这两个字段均要求显式 `false`，字段缺失或任一为真都阻断发布。当前覆盖谓词仍是“边集中存在同 slot 且 from/to 含该 owner 的边”：独立发现侧拿到的是签名，而 v4 SQD 边不落签名，审计器尚未把签名经 `getBlock` 映射为 `tx_index`，所以同 slot 同 owner 多笔仍可能误判覆盖。7 元组堵住格式降级与 DISTINCT 吃边，但**没有自动把本补充抽查升级为 transaction-exact**；需逐事件精确核对时，必须先做 signature→`(slot,tx_index)` 映射再比较。`CLEAN` 只按这一已声明强度解释。
+- **判定粒度声明（v4 定稿）**：默认正式入口只接受 v4 7 元组并校验 `tx_index/instr_index`；旧 5 元组只允许显式 `--legacy-sol5` 诊断，报告强制 `non_formal=true/order_ambiguous=true`，不得冒充正式输入。`audit_release_gate.py` 对 `dormant_warehouse_audit.json` 的这两个字段均要求显式 `false`，字段缺失或任一为真都阻断发布。base（未修复原账）的覆盖谓词仍只是“边集中存在同 slot 且 from/to 含该 owner 的边”，同 slot 同 owner 多笔可能误判；7 元组堵住格式降级与 DISTINCT 吃边，但不会把普通销户抽查自动升级为 transaction-exact（逐交易精确）。**缺陷 slot 经修复代替换后则已是 transaction-exact**：修复生产者按签名取参考源交易、统一重编号，`exact_reconcile` 再深验修复 bundle（成套证据包）与边源。跨源身份只认签名，不比较两个来源各自的交易位置编号。`CLEAN` 只按所走路径的已声明强度解释。
 - **undetermined 语义（诚实纪律）**：深挖账户按结果分类 events_found / all_zero_delta / fetch_failed——后两类是"没查出来"不是"没事件"（高频中转户 delta 笔可能在 --deep-sigs 窗口外），不构成"无漏"证据；过半 undetermined＝样本无效（批 D GPT-F-06 起 exit 1，不再只告警）。
 - **退出码**：0=抽样零漏边；2=发现漏边（对账 gate 语义，报告 missing_detail 带 tx 级证据）；1=运行失败/样本无效。**样本无效机器判据（批 D GPT-F-06 收口，任一命中即 exit 1）**：任一 getMultipleAccounts 批失败／深挖账户全部 fetch_failed／checked=0 且 closed>0／墙钟截断／undetermined 过半。
 - **报告 status 契约（批 D）**：`CLEAN`（checked>0 零漏，exit 0）／`NO_CLOSED_SAMPLED`（抽样内无销户账户，审计对象为空——**弱结论**，exit 0，只证明"这批样本没有销户账户"，不冒充"销户路径零漏"强证明）／`LEAK_FOUND`（exit 2）／`INVALID_SAMPLE`（exit 1，`invalid_reasons` 逐条列明）。早退路径（边集缺失/签名史拉取失败/抽样零命中）同样落精简 status 报告——不存在"失败无报告"形态（消化轮 1 F-D8）。
-- **定位**：SQD 全量重放路线的对账**补充抽查项**（非硬 gate）——阶段 2 四查过后例行跑一次，发现 missing 才升级为堵漏行动（用 window_fetch 补拉缺口段）。
+- **定位**：销户抽查仍是补充证据；但 SQD coverage 探针（覆盖健康检查）和 Solana `exact_reconcile` 已是 A2 硬 gate。先由探针判健康或缺陷，再按 §13e 走修复生产者；禁止拿 `window_fetch` 追加几条边冒充缺口闭合。
 
 （Helius vs SQD 采集通道交叉复核——codex 第二意见提议"用 mint 初始化历史反向审计数据湖"，本脚本为其工程化落地并经 PUB/USELESS 双案冒烟；07-21）
 
@@ -117,8 +117,8 @@
 #### v4 provenance 的保护范围与信任前提
 
 `collector_sha256`、producer history、`edge_logical_sha256` 与 `edge_rows` 是完整性和版本对齐防线：
-它们防止版本漂移、旧采集器产物误入正式链，以及未登记改装采集器冒充现役 producer。登记哈希可由
-`git show <commit>:<script> | shasum -a 256` 公开复算，**不是密码学签名**。
+它们防止版本漂移、旧采集器产物误入正式链，以及未登记改装采集器冒充现役 producer。修复代还必须同时满足当前 base 绑定、coverage resolution（缺陷裁决）、repair bundle（修复证据包）、`CURRENT.json` 指针与 ACTIVE 修复生产者哈希；只拿一份 repaired meta（修复后元数据）不构成可信输入。登记哈希可由
+`git show <commit>:<script> | shasum -a 256` 公开复算，**这些代、bundle 和哈希仍不是密码学签名**。
 
 这套防线假设工作目录的 `data/` 可信。若对手已经能向该目录同时落盘自洽伪造的边、meta 与快照，
 现有校验只能证明这些本地文件彼此一致，不能证明边确实来自链上采集，也不能阻止伪造件骗过
@@ -133,6 +133,8 @@
 - **HTTP 204 ＝ fromBlock 超出服务端已索引范围**（0 字节）。**绝不能判完成**——那是漏数据,只能按可重试失败处理。
 - **`/head` 给的是 unfinalized head**,响应头 `x-sqd-finalized-head-number` 比它小约 2,900 slot（实测）。采集上界取 `/head` 没问题（实测到 head 仍正常返回数据）,但别拿两者的差当异常。
 
+SQD **无块头（NO_HEADER）**不能只靠 SQD 自己最终确认；前提是参考源可查询该时代且本轮额度可用，再用参考源 `getBlocks` 取得该区间真实出块位图逐 slot 对照。代价按区间长度近似线性增长，跨度大时应先按 coverage 分段，不得用一次超宽调用掩盖部分失败。
+
 #### 空 slot 完成判定与 scan-fail 契约
 
 - **触发条件**：scan_area 收到 HTTP 200，但流中没有数据行。
@@ -145,7 +147,7 @@
 - **触发条件**：旧缓存与本轮 parts 收尾合并。
 - **必做动作**：预估行数 > MERGE_INMEM_MAX_ROWS（默认 800 万，可用 --merge-max-rows 调整）走 DuckDB 外排，memory_limit=4GB、threads=4、临时目录 data/_merge_tmp；阈值内走内存。无 DuckDB 时明确告警后回退内存。旧缓存只做流式行数、gzip CRC 与前几行抽验，不全量载入。
 - **原子落盘**：内存/外排两条路径都先写临时文件再 os.replace；中断不得破坏旧缓存，零边不改缓存。
-- **等价口径**：amt 可超 int64，外排全程按 VARCHAR；只允许 slot/ts/tx_index/instr_index CAST BIGINT。每个 source 内先规范化完整交易边集，跨 source 按 `(slot,tx_index)` 的 `tx_digest` 去重；同身份同 digest 留一份、异 digest 硬失败。排序固定为 `(slot,tx_index,from,to,amt文本)`，确保内存/外排两路径逐字节一致。
+- **等价口径**：amt 可超 int64，外排全程按 VARCHAR；只允许 slot/ts/tx_index/instr_index CAST BIGINT。每个 source 内先规范化完整交易边集，跨 source 按 `(slot,tx_index)` 的 `tx_digest` 去重；同身份同 digest 留一份、异 digest 硬失败。排序固定走共享 `edge_sort_key`（边排序键）＝`(slot,tx_index,from,to,amt文本)`；base 与修复代合并也必须用同一键，确保内存/外排/修复三条路径逐字节一致。
 - **阻断语义/失败码**：临时文件未完整、gzip/JSON 体检失败或合并异常，不得替换旧缓存，命令非零退出。
 - **权威测试**：scripts/tests/test_sqd_merge_equiv.py；覆盖两路径等价、同交易跨 source 去重、同身份异 digest 拒绝、同五字段异 `tx_index` 留二、旧/混合行宽拒绝、超 int64、ts=0、大数保真、路径选择、原子落盘与零行判定。
 
@@ -153,8 +155,8 @@
 
 #### 无 sig 但有交易身份时的去重边界
 
-SQD 不落盘签名不等于没有交易身份：请求与响应已有 `transactionIndex`，所以 v4 用
-`(slot,tx_index)` 唯一标识 finalized 区间内的交易，签名需要时可按该位置反查。每笔交易先生成
+SQD 不落盘签名不等于没有数据集内交易身份：请求与响应已有 `transactionIndex`，所以 v4 用
+`(slot,tx_index)` 标识 SQD finalized 区间内的交易。**`tx_index` 是 SQD 内部排除投票交易后的重编号，不等于链上或 RPC 返回数组里的绝对位置**；缺陷 slot 修复后统一改用参考源非投票序号（`reference-nonvote-ordinal/v1`）。跨源身份只用交易签名，禁止拿两个来源的位置编号互比并据此判缺失。每笔交易先生成
 完整 transaction-net 边集，再对排序后的边集计算 `tx_digest`；同一身份重复出现且 digest 相同
 只留一份，digest 不同说明数据源对同一交易给出冲突内容，必须硬失败，禁止静默选一份或取并集。
 旧 5 元组无法区分“同 slot、同额、同 owner 的两笔真实交易”与重复采集，按五字段 DISTINCT 会
@@ -176,6 +178,32 @@ JSON-RPC batch + 跨地址共享 sig 缓存（`--cache-dir`,按 sig 前 2 字符
 **遗留后续项**：①~~v2 整合 HyperSync 第二引擎~~ ②~~完备性验收~~（均 3.18.0 完成，验收不通过→禁用待 GA 重验）③Helius key 运行时检测（见 §13c）④SQD key 专属端点补录 ⑤实时 mint 档案（方案 4,用户暂缓）。
 
 （Solana 采集加速工程,@CX 三轮交叉复核 + 本机四组实测,2026-07-21;完备性验收与双引擎整合,2026-07-22）
+
+### 13e. SQD 数据集已知缺陷与覆盖健康闸
+
+**先说结论**：SQD 会在 durable-nonce（耐久 nonce，一种不依赖近期 blockhash 的 Solana 交易）附近，按 slot 小区段把整笔交易静默漏掉。缺口可短到 1 个 slot，也可能落在旧共享地图跨度外；2026-06-13、06-15、06-16 的冻结实证共确认 **38＋2 段**。因此“下载成功、供给闭合、余额残差总和为 0”都不能单独证明边集完整。
+
+**探针四态（`sqd_coverage_probe.py`）**：探针不是补边器，只负责给每个 slot 贴机械状态。
+
+- `HEALTHY`：SQD 块头与 nonce 指纹符合该时代的健康基线。
+- `NO_HEADER`：SQD 没给块头；最终是否真跳块必须由参考源 `getBlocks` 位图确认。
+- `DEFECT_CANDIDATE`：典型指纹是 **“SQD 有块头但零 AdvanceNonce”**。这只是缺陷候选，不能直接当漏交易结论。
+- `ERA_UNCERTAIN`：时代校准或样本量不足，现有阈值不能可靠下判；必须补探针，不得当健康。
+
+`getBlocks` 确认的前提是参考源覆盖目标历史、返回完整、额度尚可；成本随待确认 slot 数增长。先用 SQD 块头和已知地图缩小范围，再逐 slot 核对，禁止对超宽区间一次请求后把部分结果当全量结果。
+
+**正式产物窄门**（完整字段和消费者清单见 `scan-schemas.md` §14）：
+
+1. 探针发布 `sqd-solana-coverage/v1` 和 `sqd-solana-coverage-pointer/v1`；`CURRENT.json` 是当前 coverage 的原子指针。
+2. `sqd_gap_repair.py/v1` 只修已确认缺陷，产 `sqd-solana-coverage-resolution/v1`、repaired `sqd-solana-cache/v4`、`sqd-solana-repair-bundle/v1` 与 `sqd-solana-repair-pointer/v1`。交易按签名取参考源真值，并统一成 `reference-nonvote-ordinal/v1`。
+3. pending（尚未发布目录）不能被消费；bundle、代、base、coverage 与指针必须全套同代。**修过账不退回 base、base 重采即代全作废**：resolver（正式边源解析器）一旦确认当前 base 需要修复，就不得静默回退原账；base 内容一变，旧修复代的绑定自然失效，必须重探、重修、重发。
+4. A2 的 Solana 对账是五查：coverage 是 `exact_reconcile` 的强制输入；`solana-reconcile/v4` 与 wrapper `reconciliation-report/v3` 任一深验失败都停。下游 wave/flow/entity/curve/audit/evolution 产物必须带 `edge_source_binding`（边源绑定），并与 exact receipt 的 `{cache_kind,gid,soltx_edges_sha256,soltx_meta_sha256,edge_logical_sha256}` 全等。
+
+**共享地图生命周期**：已知缺陷地图只省重复探测，不替代本案证据。地图 TTL（有效期）为 30 天；已知缺陷 slot 仍逐个复核；每次运行抽 canary（哨兵 slot）验证健康区和已知缺陷区，任一不符就停止复用并重建地图。
+
+**参考源与额度**：正式修复的唯一参考源是 Helius。准确性优先，工单不设预算上限；但“无上限”不等于无限重试。遇配额耗尽或计费拒绝，先原子落 STOPPED/ledger（停工状态和额度台账），干净退出，再换已登记 key 续跑；禁止降级到另一 RPC 拼出“看起来闭合”的代。
+
+**止损纪律**：先走 α（覆盖普查与签名差集），只有残差仍未归因才开 β（余额连续性二分）。β 最多 3 轮；一轮后残差数量/金额不下降就立即停，保留证据并上报。禁止对每个残差账户做 BFS（逐账户向外无限扩散补账）追求清零；那会把诊断变成不可审计的找数游戏。
 
 ---
 
@@ -215,7 +243,7 @@ JSON-RPC batch + 跨地址共享 sig 缓存（`--cache-dir`,按 sig 前 2 字符
 4. **差异地址 ATA 迭代补边法**收敛盲区：重放期末 vs 毕业时点持仓对表，差异地址拉其 ATA 签名史补 decode——**理论盲区=双方 ATA 都已存在的用户间直转**（不经 curve 不经 mint），迭代到差异清零。
 5. **独立通道抽验**：SQD 兜底扫一小段与 decode 结果逐边对表。
 
-**产出与衔接**：内盘边集（如 `data/curve_pre_edges.jsonl`）与主段 SQD 边集拼接为全史边集；衔接缝（锚点 slot 前后几万 slot）注意 mint 签名史补齐，否则供给闭合差在缝里。报告局限性声明理论盲区（供给闭合零差时可写"盲区规模可忽略"）。
+**产出与衔接**：内盘边集（如 `data/curve_pre_edges.jsonl`）不得直接与 SQD base 手拼；先按 §13e 的修复生产者正规化（统一交易身份、`edge_sort_key`、bundle 与 `edge_source_binding`），再与主段正式边源拼成全史边集。衔接缝（锚点 slot 前后几万 slot）注意 mint 签名史补齐，否则供给闭合差在缝里。报告局限性声明理论盲区（供给闭合零差时可写"盲区规模可忽略"）。
 
 **配套工程数字**：SQD 对"单一连续大空洞"**只有 1 个 worker 有效**——并发单位是空洞段，同段 4 进程分片互相拖慢（服务端时间片均分），单进程 ~3450 slots/s 反而最快，别对死亡期空洞开分片；高频 ATA（池子级）签名史翻页必须设 CAP（~20 页）防拖死；ATA 的 PDA 派生纯 Python 可推（ed25519 on-curve 检查 ~30 行，无需 solders 依赖——`entity_identity_gate.py` 已内置同款实现可抄）。
 

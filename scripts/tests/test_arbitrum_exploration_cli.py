@@ -81,7 +81,7 @@ def test_wrapper_target_rejects_exploration_tier():
         root = Path(td)
         runner = ROOT / "scripts/report/reconciliation_report.py"
         write_json(root / "reconciliation_report.json", {
-            "schema": "reconciliation-report/v2",
+            "schema": "reconciliation-report/v3", "family": "evm",
             "target": {"chain": "arbitrum", "token": "0xtoken", "as_of_block": 123},
             "producer": {"path": "scripts/report/reconciliation_report.py",
                          "sha256": sha(runner)},

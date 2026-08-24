@@ -1,0 +1,109 @@
+================================================================
+批7 修复代深验校验覆盖缺口加固 —— 原始输出证据
+生成时间: 2026-08-24  分支: fix/sqd-gap-v6520
+================================================================
+
+### 0. 开工门禁
+94314de99cbc3e54fa9d9ef9f42f55b361a92eda
+---BRANCH---
+fix/sqd-gap-v6520
+---STATUS---
+---END---
+
+================================================================
+### 1. 缺口核实（加固前 = 先红：深验/validate_coverage 放行篡改代）
+================================================================
+
+--- 缺口1（加固前）b7_tamper_gap1.py：注入 confirmed slot 15000(不在candidate)+凭空边 ---
+BASELINE_OK True EFFECTIVE DEFECTS_CONFIRMED
+TAMPERED_OK True EFFECTIVE DEFECTS_CONFIRMED
+TAMPERED_EDGE_ROWS 3
+TAMPERED_REASONS []
+GAP1_CONFIRMED: 深验放行了含凭空注入边(15000)的篡改代——遍历主键缺口属实
+
+--- 缺口2（加固前，且判定不加固）b7_gap23.py gap2：改counts把缺陷slot伪成healthy ---
+GAP2_BASELINE_OK True VERDICT INCONCLUSIVE CANDIDATES [19999]
+GAP2_TAMPERED_OK True VERDICT NO_KNOWN_NONCE_OMISSION_DETECTED CANDIDATES []
+GAP2_TAMPERED_RECOMP_VERDICT NO_KNOWN_NONCE_OMISSION_DETECTED
+GAP2_TAMPERED_REASONS []
+GAP2_CONFIRMED: 真实缺陷 slot 19999 被伪成 HEALTHY，自扫 coverage 校验放行，verdict=NO_KNOWN（跳过修复义务）
+
+--- 缺口3（加固前）b7_gap23.py gap3：base边追加slot=25000>声明窗口upper=19999 ---
+GAP3_BASELINE_OK True
+GAP3_TAMPERED_OK True EDGE_ROWS 3
+GAP3_TAMPERED_REASONS []
+GAP3_CONFIRMED: 深验放行了含 slot=25000 > 声明窗口 upper=19999 的边——边slot⊆窗口不变式缺失
+
+================================================================
+### 2. 加固后（= 后绿：缺口1/3篡改被拒，基线不误伤；缺口2仍放行=离线信任边界裁定）
+================================================================
+
+--- 缺口1（加固+formal-only修正后）b7_tamper_gap1.py ---
+BASELINE_OK True EFFECTIVE DEFECTS_CONFIRMED
+TAMPERED_OK False EFFECTIVE DEFECTS_CONFIRMED
+GAP1_NOT_CONFIRMED: 深验拒收
+
+--- 缺口1 拒收全部理由（首次加固时抓取，多重拦截）---
+TAMPERED_REASONS ["confirmed census slots escape candidate set", "coverage state does not recompute for 15000", "repair nonce count differs from evidence for 15000", "repair coverage state semantics mismatch for 15000", "repair state evidence query_body_sha256 invalid for 15000", "repair state evidence response_sha256 invalid for 15000", "repair state evidence coverage_probe_query_sha256 invalid for 15000", "repair state evidence coverage_probe_response_sha256 invalid for 15000", "repair ledger/evidence resume identity mismatch for 15000", "formal repair ledger has fewer getBlock requests than repair slots"]
+
+--- 缺口2/3（加固后）b7_gap23.py：gap2仍True(不加固/裁定)，gap3拒收 ---
+GAP2_TAMPERED_OK True VERDICT NO_KNOWN_NONCE_OMISSION_DETECTED CANDIDATES []
+GAP3_BASELINE_OK True
+GAP3_TAMPERED_OK False EDGE_ROWS 3
+GAP3_TAMPERED_REASONS ["merged edge slot escapes declared coverage window"]
+GAP3_NOT_CONFIRMED
+
+================================================================
+### 3. 不误伤 exploration：修正前误伤 → formal-only 修正后 test_sqd_gap_repair 通过
+================================================================
+误伤根因（首次加固，反向包含误伤 --blocks-cache exploration 代）:
+sqd gap repair failed: post-publish deep validation failed: confirmed census slots escape candidate set
+    blocks_cache_end_to_end()
+  File "/Users/uravvv/.claude/skills/token-chip-analysis/scripts/tests/test_sqd_gap_repair.py", line 540, in blocks_cache_end_to_end
+修正后 test_sqd_gap_repair EXIT=0:
+GREEN 29b implemented validate_census_support 已实现
+GREEN 29c implemented validate_current_candidates 已实现
+
+================================================================
+### 4. 正式回归测试 test_batch7_validator_coverage_gaps.py（GREEN）
+================================================================
+{"probe_id": "cf506d13f2603932", "status": "published", "verdict": "INCONCLUSIVE"}
+{"gid": "9b13bf848f64b053", "plan_digest": "830e0b3ec007bbf8", "repair_edges": 1, "status": "published"}
+GREEN gap1 遍历主键缺口已加固：合法代放行 + 凭空注入边被拒 (edge_rows tampered=3) reasons0=confirmed census slots escape candidate set
+{"probe_id": "9af39c362a9f04fc", "status": "published", "verdict": "INCONCLUSIVE"}
+{"gid": "aa60b85f0169757f", "plan_digest": "5de6b65f77e084b2", "repair_edges": 1, "status": "published"}
+GREEN gap3 边-slot 窗口缺口已加固：合法代放行 + slot=25000 超窗口边被拒 reasons=['merged edge slot escapes declared coverage window']
+批7 validator 覆盖缺口加固回归全部 GREEN (缺口1遍历主键 + 缺口3边slot窗口)
+
+================================================================
+### 5. 合法路径回归（工单点名三项）
+================================================================
+test_batch3_solana_vertical_slice:
+PASS B3-SOL-E2E: real producer->runner->aggregator->READY->release
+test_reconcile_v4_receipt:
+GREEN 32 verdict/exit_code/gate_pass 三元互洽
+test_sqd_gap_repair:
+GREEN 29c implemented validate_current_candidates 已实现
+
+================================================================
+### 6. invariant_scan（下限不破）
+================================================================
+PASS invariant manifest: receipt_producers=75, receipt_consumers=112, transport_calls=65, atomic_writes=56, formal_entrypoints=61, exceptions=0
+
+================================================================
+### 7. 完整 run_all.py 最终验收（129 项全 PASS）
+================================================================
+PASS 项数: 129
+      PASS  test_batch7_validator_coverage_gaps.py 批7 validator 覆盖缺口加固回归全部 GREEN (缺口1遍历主键 + 缺口3边slot窗口)
+========================================================
+全部通过
+
+================================================================
+### 8. git status --short（改动清单，未 commit）
+================================================================
+ M CHANGELOG.md
+ M scripts/lib/solana_exact_validate.py
+ M scripts/tests/run_all.py
+?? scripts/tests/test_batch7_validator_coverage_gaps.py
+?? maintenance/repair-20260823-sqd-gap/batch7_done.md
+?? maintenance/repair-20260823-sqd-gap/batch7_green_evidence.txt
