@@ -194,11 +194,11 @@ def test_r7_04():
 
 
 def test_r7_05():
-    """A mandatory reconciliation_report/v2 needs a production writer."""
+    """The current reconciliation_report/v3 needs a production writer."""
     scan = load(TESTS / "invariant_scan.py", "r7_invariant_scan")
     producers = scan.scan_actual()["receipt_producers"]
-    writers = [x["script"] for x in producers if "reconciliation-report/v2" in x["schemas"]]
-    assert writers, "no production script writes reconciliation-report/v2"
+    writers = [x["script"] for x in producers if "reconciliation-report/v3" in x["schemas"]]
+    assert writers, "no production script writes reconciliation-report/v3"
 
 
 def test_r7_06():

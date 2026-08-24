@@ -24,6 +24,7 @@ from spl_edge_core import (  # noqa: E402
     EDGE_SEMANTICS,
     ORDER_GRANULARITY_TX,
 )
+from sqd_v4_test_fixture import write_coverage_fixture  # noqa: E402
 
 
 ZERO = "0x" + "0" * 40
@@ -79,6 +80,16 @@ def _paths() -> tuple[Path, Path]:
     key = hashlib.sha256(MINT.encode("utf-8")).hexdigest()
     return (Path(f"data/soltx-{key}.jsonl.gz"),
             Path(f"data/soltx-{key}.meta.json"))
+
+
+def _reconcile(rows, dec, meta_path):
+    meta = json.loads(Path(meta_path).read_text(encoding="utf-8"))
+    write_coverage_fixture(
+        Path.cwd(), mint=MINT, from_slot=meta.get("from_slot", 1),
+        to_slot=meta.get("finalized_upper_slot", 1))
+    return replay_edges.cmd_reconcile(
+        rows, dec, mint=MINT, cache_meta_path=meta_path,
+        case_root=Path.cwd(), as_of_slot=meta.get("finalized_upper_slot", 1))
 
 
 def _expect_reject(call, needle: str) -> None:
@@ -150,7 +161,12 @@ def test_replay_edges_v4_and_legacy_split() -> None:
     try:
         sys.argv = ["replay_edges.py", "reconcile", "--mint", MINT,
                     "--legacy-sol5", "--no-labels"]
-        assert replay_edges.main() == 2
+        try:
+            replay_edges.main()
+        except SystemExit as exc:
+            assert exc.code == 2
+        else:
+            raise AssertionError("reconcile 缺 --case-root 未由 CLI parser fail-closed")
     finally:
         sys.argv = old_argv
     assert not Path("data/reconcile_receipt.json").exists()
@@ -178,14 +194,15 @@ def test_reconcile_digest_matches_v4_meta() -> None:
         "outputs": {"holders_owners": owners_ref},
     }), encoding="utf-8")
 
-    assert replay_edges.cmd_reconcile(
-        rows, 1, mint=MINT, cache_meta_path=meta_path) is True
+    assert _reconcile(rows, 1, meta_path) is True
     assert json.loads(meta_path.read_text())["edge_logical_sha256"] == _logical_digest(rows)
     series_path = Path("data/camp_share_series.json")
     series_path.write_text("[]", encoding="utf-8")
     receipt_path = Path("data/reconcile_receipt.json")
     assert registry_anchor_check(
-        {"series_format": "sol-rows"},
+        {"series_format": "sol-rows",
+         "edge_source_binding": json.loads(
+             receipt_path.read_text())["edge_source_binding"]},
         {"inputs.reconcile_receipt": receipt_path},
         series_path,
         expected_chain="solana",
@@ -210,15 +227,14 @@ def test_reconcile_digest_matches_v4_meta() -> None:
             expected_mint=MINT,
             expected_cutoff_slot=1,
         ),
-        "producer 登记",
+        "edge_source_binding",
     )
 
     bad = _v4_meta(rows)
     bad["edge_logical_sha256"] = "0" * 64
     meta_path.write_text(json.dumps(bad), encoding="utf-8")
     _expect_reject(
-        lambda: replay_edges.cmd_reconcile(
-            rows, 1, mint=MINT, cache_meta_path=meta_path),
+        lambda: _reconcile(rows, 1, meta_path),
         "摘要",
     )
 
@@ -257,19 +273,19 @@ def test_reconcile_binds_one_frozen_edge_image() -> None:
 
     replay_edges._replay_with_evidence = swap_after_replay
     try:
-        assert replay_edges.cmd_reconcile(
-            rows, 1, mint=MINT, cache_meta_path=meta_path
-        ) is True
+        try:
+            _reconcile(rows, 1, meta_path)
+        except ValueError as exc:
+            assert "重放期间发生变化" in str(exc), str(exc)
+        else:
+            raise AssertionError("同路径边文件在重放期间换包后仍签出 receipt")
     finally:
         replay_edges._replay_with_evidence = original_replay
 
-    published = json.loads(meta_path.read_text(encoding="utf-8"))
-    assert published["edge_file_sha256"] == hashlib.sha256(frozen_bytes).hexdigest(), (
-        "reconcile 的逻辑摘要与物理哈希来自两次独立读盘"
-    )
-    assert published["edge_file_sha256"] != hashlib.sha256(
-        edge_path.read_bytes()
-    ).hexdigest()
+    assert json.loads(meta_path.read_text(encoding="utf-8")) == _v4_meta(rows)
+    assert not Path("data/reconcile_receipt.json").exists()
+    assert hashlib.sha256(frozen_bytes).hexdigest() != hashlib.sha256(
+        edge_path.read_bytes()).hexdigest()
 
 
 def test_curve_cost_is_v4_only() -> None:
@@ -293,9 +309,7 @@ def test_curve_cost_is_v4_only() -> None:
     forged["edge_logical_sha256"] = "0" * 64
     meta_path.write_text(json.dumps(forged), encoding="utf-8")
     _expect_reject(
-        lambda: replay_edges.cmd_reconcile(
-            rows, 1, mint=MINT, cache_meta_path=meta_path
-        ),
+        lambda: _reconcile(rows, 1, meta_path),
         "摘要",
     )
     _expect_reject(

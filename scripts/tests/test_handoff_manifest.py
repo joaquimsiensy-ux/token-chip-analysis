@@ -212,7 +212,8 @@ def make_case(d, chain="eth", token=TOKEN, as_of_block=999):
                                          "sha256": file_sha(Path(d, receipt_name))},
                              "producer": repo_ref(producers[key])}
     write_json(d, "reconciliation_report.json", {
-        "schema": "reconciliation-report/v2", "target": target,
+        "schema": "reconciliation-report/v3",
+        "family": "solana" if chain == "solana" else "evm", "target": target,
         "producer": repo_ref("scripts/report/reconciliation_report.py"),
         "verdict": "PASS", "exit_code": 0, "checks": recon_checks})
     os.makedirs(os.path.join(d, "sealed"), exist_ok=True)
@@ -306,7 +307,7 @@ def main():
               <= artifact_paths)
         check("manifest sealed 只记哈希", m["sealed"] and "sha256" in m["sealed"][0])
         check("manifest 自动 gate 四个", set(m["gates"]) == {"accounting_gate", "supply_truth_gate",
-                                                            "time_spotcheck", "reconciliation_four_checks"})
+                                                            "time_spotcheck", "reconciliation_checks"})
         p = run(["verify", "--case-dir", d])
         check("verify READY exit 0", p.returncode == 0)
 

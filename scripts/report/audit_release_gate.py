@@ -402,8 +402,9 @@ def canonical_json_sha(value) -> str:
 
 def safe_case_path(case_dir: Path, rel: str) -> Path | None:
     try:
-        p = (case_dir / rel).resolve()
-        p.relative_to(case_dir)
+        root = Path(case_dir).resolve()
+        p = (root / rel).resolve()
+        p.relative_to(root)
         return p
     except (ValueError, OSError):
         return None
@@ -464,23 +465,19 @@ def check_accounting(case_dir: Path, d: dict, errors: list[str]):
         errors.append(f"记账模型公共 validator 未通过: {exc}")
 
 
-def check_reconciliation(d: dict, errors: list[str]):
-    if d.get("schema") != "reconciliation-report/v2" or not isinstance(d.get("target"), dict):
-        errors.append("四查对账缺 v2 target/子工具 receipts (balance/supply/supply_truth/time)")
-        return
-    checks = d.get("checks", d)
-    aliases = {
-        "balance": ("balance", "balance_reconciliation"),
-        "supply": ("supply", "supply_closure"),
-        "supply_truth": ("supply_truth", "supply_truth_gate"),
-        "time": ("time", "time_anchors", "temporal"),
-    }
-    for label, keys in aliases.items():
-        value = next((checks[k] for k in keys if k in checks), None)
-        if isinstance(value, dict):
-            value = value.get("status", value.get("passed"))
-        if not status_pass(value):
-            errors.append(f"四查对账未通过: {label}")
+def check_reconciliation(case_dir: Path, d: dict, errors: list[str]):
+    """Reuse the shared v3 deep validator; wrapper status is never truth."""
+    try:
+        from shared_release_receipt import (validate_reconciliation_report,
+                                            validate_solana_derived_bindings)
+        target, receipts = validate_reconciliation_report(
+            case_dir, return_receipts=True)
+        if resolve_alias(target.get("chain")) == "sol":
+            exact = receipts["exact_reconcile"]
+            validate_solana_derived_bindings(
+                case_dir, exact["edge_source_binding"])
+    except Exception as exc:
+        errors.append(f"受控对账公共深验失败: {exc}")
 
 
 def unresolved_count(d: dict, errors: list[str] | None = None, label="资产") -> int:
@@ -1418,7 +1415,7 @@ def run(case_dir: Path, report: Path | None, *, profile="independent-audit"):
     if "accounting_mode.json" in data:
         check_accounting(case_dir, data["accounting_mode.json"], errors)
     if "reconciliation_report.json" in data:
-        check_reconciliation(data["reconciliation_report.json"], errors)
+        check_reconciliation(case_dir, data["reconciliation_report.json"], errors)
     if "address_classification.json" in data:
         check_classification(data["address_classification.json"], errors)
     for name in ("membership_ledger.json", "position_ledger.json",

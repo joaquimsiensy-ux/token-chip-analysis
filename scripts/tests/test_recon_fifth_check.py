@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+from argparse import Namespace
 import sys
 import tempfile
 from pathlib import Path
@@ -83,10 +84,12 @@ def current_verify_accepts(case):
     original_accounting = handoff_manifest.validate_accounting_receipt
     original_source = handoff_manifest.validate_evm_observation_source_chain
 
-    target = {"chain": "solana", "token": MINT.lower(), "as_of_block": 77}
+    target = {"chain": "solana", "token": MINT, "as_of_block": 77}
+    exact = json.loads((case / "data/reconcile_receipt.json").read_text())
 
     def fake_recon(_case_dir, return_receipts=False):
-        receipts = {"supply_truth": {}}
+        receipts = {"supply_truth": {}, "exact_reconcile": {
+            "edge_source_binding": exact["edge_source_binding"], "inputs": {}}}
         return (target, receipts) if return_receipts else target
 
     def fake_accounting(_case_dir, expected_target=None):
@@ -115,10 +118,10 @@ def main():
                    "path": f"{key}.json", "sha256": "bad"}}
                           for key in ("balance", "supply", "supply_truth", "time")}}
     errors = []
-    audit_release_gate.check_reconciliation(wrapper, errors)
-    assert errors == []
-    print("RED 14 semantic-acceptance audit_release 仅凭 wrapper status 放行坏子 receipt 哈希")
-    red += 1
+    with tempfile.TemporaryDirectory(prefix="batch5-audit-") as raw:
+        audit_release_gate.check_reconciliation(Path(raw), wrapper, errors)
+    assert errors and "公共深验失败" in errors[0]
+    print("GREEN 14 audit_release 复用公共深验拒绝坏子 receipt")
 
     with tempfile.TemporaryDirectory(prefix="batch1b-fifth-", dir="/private/tmp") as raw:
         case = Path(raw)
@@ -129,15 +132,57 @@ def main():
                 "--cutoff", "2025-01-01T00:00:00Z", "--frozen-block", str(slot),
                 "--denominators", json.dumps({"total_supply_raw": str(total)})]
         generated = handoff(args, case)
-        assert generated.returncode == 0, generated.stdout + generated.stderr
-        print("RED 1 semantic-acceptance handoff generate 在 exact-like gate_pass=false 时仍生成 READY")
-        red += 1
+        assert generated.returncode == 2, generated.stdout + generated.stderr
+        print("GREEN 1 handoff generate 对旧 wrapper/exact gate_pass=false fail-closed")
+
+        # Build a baseline manifest through the same core while isolating the
+        # deliberately malformed old wrapper.  Verification below restores the
+        # real derived-binding validator and must reject stale artifacts.
+        target = {"chain": "solana", "token": MINT, "as_of_block": 77}
+        current = json.loads((case / "data/reconcile_receipt.json").read_text())[
+            "edge_source_binding"]
+        original_recon = handoff_manifest.validate_reconciliation_report
+        original_bindings = handoff_manifest.validate_solana_derived_bindings
+
+        def fake_recon(_case_dir, return_receipts=False):
+            receipts = {"supply_truth": {}, "exact_reconcile": {
+                "edge_source_binding": current, "inputs": {}}}
+            return (target, receipts) if return_receipts else target
+
+        ns = Namespace(
+            case_dir=str(case), status="READY", mode="full", producer_model="batch5",
+            chain="solana", contract=MINT, cutoff="2025-01-01T00:00:00Z",
+            frozen_block="77", denominators=json.dumps({"total_supply_raw": str(total)}),
+            status_reason=None, case_id=None, run_id=None, gate=None, include=None)
+        try:
+            handoff_manifest.validate_reconciliation_report = fake_recon
+            handoff_manifest.validate_solana_derived_bindings = lambda *_a, **_k: True
+            assert handoff_manifest.cmd_generate(ns) == 0
+        finally:
+            handoff_manifest.validate_reconciliation_report = original_recon
+            handoff_manifest.validate_solana_derived_bindings = original_bindings
 
         failures = current_verify_accepts(case)
-        assert failures == [], "\n".join(failures)
-        print("RED 19 semantic-acceptance wave/flow binding 与 exact-like receipt 不等仍 verify READY")
-        print("RED 24 semantic-acceptance curve/audit_closed 在场且 binding 不等仍 verify READY")
-        red += 2
+        assert any("curve_costs" in failure or "closed_audit" in failure
+                   for failure in failures), "\n".join(failures)
+        print("GREEN 24 handoff verify 拒绝 curve/audit_closed stale binding")
+
+        for path in (case / "data/curve_costs.json",
+                     case / f"data/closed_audit-{MINT.lower()}.json"):
+            value = json.loads(path.read_text())
+            value["edge_source_binding"] = current
+            write_json(path, value)
+        try:
+            handoff_manifest.validate_reconciliation_report = fake_recon
+            handoff_manifest.validate_solana_derived_bindings = lambda *_a, **_k: True
+            assert handoff_manifest.cmd_generate(ns) == 0
+        finally:
+            handoff_manifest.validate_reconciliation_report = original_recon
+            handoff_manifest.validate_solana_derived_bindings = original_bindings
+        wave_failures = current_verify_accepts(case)
+        assert any("wave_scan_report" in failure or "flow_anomaly_report" in failure
+                   for failure in wave_failures), "\n".join(wave_failures)
+        print("GREEN 19 handoff verify 拒绝 wave/flow stale binding")
 
         wave_path = case / "wave_scan_report.json"
         flow_path = case / "flow_anomaly_report.json"

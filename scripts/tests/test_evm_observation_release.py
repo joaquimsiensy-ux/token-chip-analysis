@@ -17,6 +17,7 @@ sys.path[:0] = [str(ROOT / "scripts/lib"), str(ROOT / "scripts/report"),
                 str(ROOT / "scripts/tests")]
 
 import handoff_manifest as handoff  # noqa: E402
+import reconciliation_report as recon_runner  # noqa: E402
 import shared_release_receipt as shared  # noqa: E402
 import audit_release_gate as audit_release  # noqa: E402
 from endpoint_identity import endpoint_fingerprint  # noqa: E402
@@ -154,6 +155,9 @@ def build_case(root: Path) -> dict:
         "producer": repo_ref("scripts/report/reconciliation_report.py"),
         "verdict": "PASS", "exit_code": 0, "checks": checks,
     })
+    # 存量 EVM fixture 必须走当前 --reseal 的同一实现，不直接手写 v3。
+    assert recon_runner.main([
+        "--reseal", str(root / "reconciliation_report.json")]) == 0
     write(root / "adversarial_review.json", {})
     return {"target": target, "bundle": bundle, "bundle_path": bundle_path,
             "accounting": accounting, "receipts": receipts}

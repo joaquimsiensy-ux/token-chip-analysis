@@ -4,9 +4,7 @@
 Coverage segment (batch 2): implemented below.  It validates
 ``sqd-solana-coverage/v1`` and ``sqd-solana-coverage-pointer/v1`` from disk.
 
-Repair segment (batch 3): intentionally not implemented in this batch.
-
-Reconcile segment (batch 5): intentionally not implemented in this batch.
+Repair segment (batch 3) and reconcile segment (batch 5) are implemented below.
 
 This module is deliberately independent from ``replay_edges`` and
 ``sqd_repair_core``.  Validators receive paths and explicit case bounds; they
@@ -681,6 +679,7 @@ REPAIR_MAP_SCHEMA = "sqd-solana-slot-index-map/v1"
 REPAIR_RESOLUTION_SCHEMA = "sqd-solana-coverage-resolution/v1"
 REPAIR_LEDGER_SCHEMA = "sqd-solana-rpc-ledger/v1"
 REPAIR_POINTER_SCHEMA = "sqd-solana-repair-pointer/v1"
+RECONCILE_SCHEMA = "solana-reconcile/v4"
 
 
 def validate_shared_map(asset_json_path):
@@ -1404,3 +1403,311 @@ def validate_repair_bundle_deep(bundle_path, *, case_root, current_base,
     return {"ok": not reasons, "reasons": reasons, "bundle": bundle,
             "gid": recomputed_gid, "effective_verdict": effective,
             "edge_rows": logical_rows}
+
+
+def validate_verdict_gate_triad(value, exit_code=None, gate_pass=None):
+    """Return whether E11's verdict/exit_code/gate_pass triad is exact.
+
+    ``value`` may be the receipt object or the verdict string.  Keeping this
+    pure makes the rule reusable by producers, deep consumers and mutation
+    tests without importing the generic receipt validator.
+    """
+    if isinstance(value, dict):
+        verdict = value.get("verdict")
+        exit_code = value.get("exit_code")
+        gate_pass = value.get("gate_pass")
+    else:
+        verdict = value
+    return ((gate_pass is True and verdict == "PASS" and exit_code == 0)
+            or (gate_pass is False and verdict == "FAIL" and exit_code == 2))
+
+
+def _load_json_object(path, label, reasons):
+    try:
+        value = json.loads(Path(path).read_text(encoding="utf-8"))
+        canonical_json(value)
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        reasons.append(f"{label} unreadable: {exc}")
+        return {}
+    if not isinstance(value, dict):
+        reasons.append(f"{label} must be an object")
+        return {}
+    return value
+
+
+def _snapshot_output_path(case_root, snapshot_path, ref, reasons):
+    if not isinstance(ref, dict) or not {"path", "size", "sha256"}.issubset(ref):
+        reasons.append("holders snapshot owners reference invalid")
+        return None
+    shown = ref.get("path")
+    if not isinstance(shown, str) or not shown or Path(shown).is_absolute():
+        reasons.append("holders snapshot owners path invalid")
+        return None
+    candidates = [Path(snapshot_path).parent / shown, Path(case_root) / shown]
+    path = next((candidate.resolve() for candidate in candidates
+                 if candidate.is_file()), None)
+    root = Path(case_root).resolve()
+    if path is None or (path != root and root not in path.parents):
+        reasons.append("holders snapshot owners path missing or escapes case")
+        return None
+    if path.stat().st_size != ref.get("size") or sha256_file(path) != ref.get("sha256"):
+        reasons.append("holders snapshot owners reference mismatch")
+    return path
+
+
+def validate_reconcile_v4(receipt, *, case_root=None, receipt_path=None):
+    """Validate the v4 envelope shape; deep validation is path based below."""
+    reasons = []
+    if not isinstance(receipt, dict):
+        return {"ok": False, "reasons": ["reconcile receipt must be an object"]}
+    try:
+        canonical_json(receipt)
+    except ValueError as exc:
+        reasons.append(f"reconcile canonicalization failed: {exc}")
+    if receipt.get("schema") != RECONCILE_SCHEMA:
+        reasons.append("reconcile schema mismatch")
+    if receipt.get("mode") != "formal":
+        reasons.append("reconcile mode must be formal")
+    target = receipt.get("target")
+    if not isinstance(target, dict) or set(target) != {
+            "chain", "token", "as_of_block"} \
+            or target.get("chain") != "solana" \
+            or not isinstance(target.get("token"), str) \
+            or not target.get("token") \
+            or not _integer(target.get("as_of_block")):
+        reasons.append("reconcile target invalid")
+    if not validate_verdict_gate_triad(receipt):
+        reasons.append("verdict/exit_code/gate_pass triad inconsistent")
+    for name in ("minted_raw", "burned_raw", "snapshot_supply_raw",
+                 "net_supply_raw", "negative_balance_count",
+                 "snapshot_mismatch_count", "edge_count"):
+        if not _integer(receipt.get(name)) or receipt[name] < 0:
+            reasons.append(f"reconcile {name} must be a nonnegative JSON int")
+    for name in ("snapshot_present", "snapshot_meta_present", "snapshot_closed"):
+        if not isinstance(receipt.get(name), bool):
+            reasons.append(f"reconcile {name} must be boolean")
+    binding = receipt.get("edge_source_binding")
+    expected_binding = {"cache_kind", "gid", "soltx_edges_sha256",
+                        "soltx_meta_sha256", "edge_logical_sha256"}
+    if not isinstance(binding, dict) or set(binding) != expected_binding \
+            or binding.get("cache_kind") not in {"base", "repaired"}:
+        reasons.append("edge_source_binding shape invalid")
+    inputs = receipt.get("inputs")
+    required = {"soltx_edges", "soltx_meta", "holders_owners",
+                "holders_snapshot_meta", "coverage_map",
+                "coverage_slot_counts", "coverage_pointer"}
+    optional = {"coverage_resolution", "repair_bundle", "repair_pointer"}
+    if not isinstance(inputs, dict):
+        reasons.append("reconcile inputs missing")
+    else:
+        kind = binding.get("cache_kind") if isinstance(binding, dict) else None
+        expected = required if kind == "base" else required | optional
+        if set(inputs) != expected:
+            reasons.append(f"reconcile conditional input key set mismatch: expected {sorted(expected)}")
+        if any(inputs.get(name) is None for name in inputs):
+            reasons.append("reconcile inputs may not contain null references")
+    if case_root is not None and receipt_path is not None:
+        root = Path(case_root).resolve()
+        path = Path(receipt_path).resolve()
+        if path != root and root not in path.parents:
+            reasons.append("reconcile receipt path escapes case root")
+    return {"ok": not reasons, "reasons": reasons}
+
+
+def validate_reconcile_receipt_deep(receipt_path, *, case_root):
+    """Independently replay and validate one ``solana-reconcile/v4`` receipt."""
+    reasons = []
+    root = Path(case_root).resolve()
+    receipt_path = Path(receipt_path).resolve()
+    if receipt_path != root and root not in receipt_path.parents:
+        return {"ok": False, "reasons": ["reconcile receipt escapes case root"]}
+    receipt = _load_json_object(receipt_path, "reconcile receipt", reasons)
+    shallow = validate_reconcile_v4(
+        receipt, case_root=root, receipt_path=receipt_path)
+    reasons.extend(shallow["reasons"])
+    inputs = receipt.get("inputs") if isinstance(receipt.get("inputs"), dict) else {}
+    paths = {name: _check_file_ref(root, ref, f"reconcile input {name}", reasons)
+             for name, ref in inputs.items()}
+
+    expected_pointer = root / "data/sqd_coverage/CURRENT.json"
+    if paths.get("coverage_pointer") != expected_pointer.resolve():
+        reasons.append("coverage pointer is not data/sqd_coverage/CURRENT.json")
+    edge_path = paths.get("soltx_edges")
+    meta_path = paths.get("soltx_meta")
+    owners_path = paths.get("holders_owners")
+    snapshot_path = paths.get("holders_snapshot_meta")
+    coverage_path = paths.get("coverage_map")
+    pointer_path = paths.get("coverage_pointer")
+
+    meta = _load_json_object(meta_path, "soltx meta", reasons) if meta_path else {}
+    owners = _load_json_object(owners_path, "holders owners", reasons) if owners_path else {}
+    snapshot = _load_json_object(
+        snapshot_path, "holders snapshot meta", reasons) if snapshot_path else {}
+    pointer = _load_json_object(pointer_path, "coverage pointer", reasons) \
+        if pointer_path else {}
+    coverage = _load_json_object(coverage_path, "coverage map", reasons) \
+        if coverage_path else {}
+
+    mint = receipt.get("target", {}).get("token")
+    frm, upper = meta.get("from_slot"), meta.get("finalized_upper_slot")
+    if meta.get("schema") != "sqd-solana-cache/v4" or meta.get("mint") != mint \
+            or not _integer(frm) or not _integer(upper) or frm > upper:
+        reasons.append("soltx meta identity/window invalid")
+    if receipt.get("chain") != "solana" or receipt.get("mint") != mint:
+        reasons.append("inherited reconcile chain/mint differs from target")
+    if receipt.get("collection_window") != {"from_slot": frm, "to_slot": upper}:
+        reasons.append("reconcile collection_window differs from soltx meta")
+
+    edge_rows = _edge_rows(edge_path, reasons, "reconcile edges") if edge_path else []
+    balances = {}
+    minted = burned = 0
+    for _ts, _slot_value, _tx, _instr, source, target, amount in edge_rows:
+        if source == "0x" + "0" * 40:
+            minted += amount
+        else:
+            balances[source] = balances.get(source, 0) - amount
+        if target == "0x" + "0" * 40:
+            burned += amount
+        else:
+            balances[target] = balances.get(target, 0) + amount
+    replay_positive = {owner: amount for owner, amount in balances.items() if amount > 0}
+    negatives = {owner: amount for owner, amount in balances.items() if amount < 0}
+    digest, count = _edge_evidence(edge_rows)
+    if edge_rows:
+        extrema = {"first": {"slot": edge_rows[0][1], "ts": edge_rows[0][0]},
+                   "last": {"slot": edge_rows[-1][1], "ts": edge_rows[-1][0]}}
+        if receipt.get("edge_extrema") != extrema:
+            reasons.append("reconcile edge extrema mismatch")
+    if receipt.get("edge_digest") != digest or receipt.get("edge_count") != count:
+        reasons.append("reconcile edge digest/count mismatch")
+    if meta.get("edge_logical_sha256") != digest or meta.get("edge_rows") != count:
+        reasons.append("soltx meta logical digest/count mismatch")
+    for name, actual in (("minted_raw", minted), ("burned_raw", burned),
+                         ("net_supply_raw", minted - burned),
+                         ("negative_balance_count", len(negatives))):
+        if receipt.get(name) != actual:
+            reasons.append(f"reconcile {name} does not recompute")
+
+    owner_values_ok = isinstance(owners, dict) and all(
+        isinstance(owner, str) and owner and _integer(amount) and amount >= 0
+        for owner, amount in owners.items())
+    if not owner_values_ok:
+        reasons.append("holders owners balances must be nonnegative JSON ints")
+    mismatches = [owner for owner in sorted(set(owners) | set(replay_positive))
+                  if owners.get(owner, 0) != replay_positive.get(owner, 0)] \
+        if owner_values_ok else []
+    snapshot_supply = sum(owners.values()) if owner_values_ok else 0
+    snapshot_target = snapshot.get("target") if isinstance(snapshot.get("target"), dict) else {}
+    try:
+        declared_supply = int(snapshot.get("supply_raw"))
+    except (TypeError, ValueError):
+        declared_supply = None
+        reasons.append("holders snapshot supply_raw is not an integer")
+    output_path = _snapshot_output_path(
+        root, snapshot_path, (snapshot.get("outputs") or {}).get("holders_owners"),
+        reasons) if snapshot_path else None
+    snapshot_closed = (
+        snapshot.get("schema") == "solana-holder-snapshot-v2"
+        and snapshot.get("mint") == mint
+        and snapshot_target == receipt.get("target")
+        and snapshot.get("closed") is True
+        and declared_supply == snapshot_supply
+        and output_path == owners_path)
+    if receipt.get("snapshot_supply_raw") != snapshot_supply:
+        reasons.append("reconcile snapshot_supply_raw does not recompute")
+    if receipt.get("snapshot_mismatch_count") != len(mismatches):
+        reasons.append("reconcile snapshot_mismatch_count does not recompute")
+    if receipt.get("snapshot_present") is not True \
+            or receipt.get("snapshot_meta_present") is not True \
+            or receipt.get("snapshot_closed") is not snapshot_closed:
+        reasons.append("reconcile snapshot presence/closure facts mismatch")
+    if not _integer(upper) or receipt.get("target", {}).get("as_of_block") != upper:
+        reasons.append("as_of_slot must equal snapshot slot and finalized_upper_slot")
+
+    coverage_check = None
+    if coverage_path and pointer_path and _integer(frm) and _integer(upper):
+        coverage_check = validate_coverage(root, coverage_path, pointer_path, frm, upper)
+        reasons.extend(f"reconcile coverage: {reason}"
+                       for reason in coverage_check["reasons"])
+    cache_endpoint = meta.get("endpoint_sha256")
+    coverage_endpoint = (coverage.get("sqd") or {}).get("endpoint_fingerprint") \
+        if isinstance(coverage.get("sqd"), dict) else None
+    if cache_endpoint is not None and cache_endpoint != coverage_endpoint:
+        reasons.append("coverage SQD endpoint fingerprint differs from soltx meta")
+    pointer_map = (pointer.get("inputs") or {}).get("coverage_map") or {}
+    if pointer_map.get("path") != (inputs.get("coverage_map") or {}).get("path"):
+        reasons.append("coverage pointer map path differs from receipt")
+    if pointer.get("probe_id") != coverage.get("probe_id"):
+        reasons.append("coverage pointer/map probe_id mismatch")
+    if paths.get("coverage_slot_counts") is not None:
+        expected_counts = ((pointer.get("inputs") or {}).get("slot_counts") or {})
+        if expected_counts != inputs.get("coverage_slot_counts"):
+            reasons.append("coverage slot_counts receipt/pointer reference mismatch")
+
+    binding = receipt.get("edge_source_binding") or {}
+    actual_binding = {
+        "cache_kind": binding.get("cache_kind"), "gid": binding.get("gid"),
+        "soltx_edges_sha256": sha256_file(edge_path) if edge_path else None,
+        "soltx_meta_sha256": sha256_file(meta_path) if meta_path else None,
+        "edge_logical_sha256": digest,
+    }
+    if binding != actual_binding:
+        reasons.append("edge_source_binding does not equal bound edge/meta facts")
+
+    coverage_verdict = (coverage_check or {}).get("recomputed", {}).get("verdict")
+    combination_ok = False
+    if binding.get("cache_kind") == "base":
+        if binding.get("gid") is not None:
+            reasons.append("base binding gid must be null")
+        combination_ok = coverage_verdict == "NO_KNOWN_NONCE_OMISSION_DETECTED"
+        effective = coverage_verdict
+    else:
+        effective = None
+        bundle_path = paths.get("repair_bundle")
+        resolution = _load_json_object(
+            paths.get("coverage_resolution"), "coverage resolution", reasons) \
+            if paths.get("coverage_resolution") else {}
+        bundle = _load_json_object(
+            bundle_path, "repair bundle", reasons) if bundle_path else {}
+        base_edge = root / "data" / (
+            f"soltx-{sha256_bytes(str(mint).encode('utf-8'))}.jsonl.gz")
+        current_base = {"edge_sha256": sha256_file(base_edge)} \
+            if base_edge.is_file() else {"edge_sha256": None}
+        bundle_result = validate_repair_bundle_deep(
+            bundle_path, case_root=root, current_base=current_base) \
+            if bundle_path else {"ok": False, "reasons": ["repair bundle missing"]}
+        reasons.extend(f"reconcile repair: {reason}" for reason in bundle_result["reasons"])
+        effective = bundle_result.get("effective_verdict")
+        current_candidates = set((coverage_check or {}).get(
+            "recomputed", {}).get("candidate_slots", []))
+        census_slots = {row.get("slot") for row in resolution.get("census", [])
+                        if isinstance(row, dict)}
+        combination_ok = (bundle_result.get("ok") is True
+                          and effective == "DEFECTS_CONFIRMED"
+                          and current_candidates.issubset(census_slots)
+                          and binding.get("gid") == bundle.get("gid"))
+        repair_pointer = _load_json_object(
+            paths.get("repair_pointer"), "repair pointer", reasons) \
+            if paths.get("repair_pointer") else {}
+        if repair_pointer.get("gid") != binding.get("gid"):
+            reasons.append("repair pointer gid differs from edge binding")
+    if receipt.get("coverage_effective_verdict") != effective:
+        reasons.append("coverage_effective_verdict does not recompute")
+
+    gate_expected = bool(
+        not negatives and snapshot_closed and snapshot_supply == minted - burned
+        and not mismatches and combination_ok)
+    if receipt.get("gate_pass") is not gate_expected:
+        reasons.append("gate_pass does not recompute from exact reconciliation")
+    if not validate_verdict_gate_triad(
+            receipt.get("verdict"), receipt.get("exit_code"), gate_expected):
+        reasons.append("verdict/exit_code do not match recomputed gate_pass")
+    producer = receipt.get("producer") or {}
+    producer_path = Path(__file__).resolve().parents[2] / "scripts/solana/replay_edges.py"
+    if producer != {"path": "scripts/solana/replay_edges.py",
+                    "sha256": sha256_file(producer_path)}:
+        reasons.append("reconcile producer is not current replay_edges.py")
+    return {"ok": not reasons, "reasons": reasons, "receipt": receipt,
+            "gate_pass": gate_expected, "edge_source_binding": actual_binding,
+            "coverage_effective_verdict": effective,
+            "holders_owners_path": owners_path}

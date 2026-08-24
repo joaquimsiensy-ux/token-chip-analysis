@@ -166,7 +166,8 @@ def test_f02_missing_logical_evidence_is_not_backfilled() -> None:
             )
             try:
                 sqd_fixture.replay_edges.cmd_reconcile(
-                    rows, 1, mint=sqd_fixture.MINT, cache_meta_path=meta_path
+                    rows, 1, mint=sqd_fixture.MINT, cache_meta_path=meta_path,
+                    case_root=Path.cwd(), as_of_slot=1
                 )
             except ValueError as exc:
                 assert "edge_logical_sha256" in str(exc) and "edge_rows" in str(exc)

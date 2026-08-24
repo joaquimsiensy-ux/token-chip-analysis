@@ -41,8 +41,10 @@ from chain_registry import (evm_family, formal_ready_chains, get_chain_config,
                             release_tier_for, resolve_alias)
 from case_paths import safe_case_file
 from shared_release_receipt import (validate_accounting_receipt,
+                                    canonical_target,
                                     validate_evm_observation_source_chain,
-                                    validate_reconciliation_report)
+                                    validate_reconciliation_report,
+                                    validate_solana_derived_bindings)
 from wave_contract import WAVE_SCHEMA, has_formal_wave_semantics
 
 SCHEMA_VERSION = "handoff/v3"
@@ -96,7 +98,8 @@ REQUIRED_FOR_READY_EVM = ["time_spotcheck.json", "evm_observation_bundle.json",
 # 自动 gate 适配：从产物 JSON 读 verdict/exit_code（防手报）；verify 时重读比对
 AUTO_GATES = {"accounting_gate": "accounting_mode.json", "supply_truth_gate": "supply_truth.json",
               "time_spotcheck": "time_spotcheck.json",
-              "reconciliation_four_checks": "reconciliation_report.json"}
+              "reconciliation_checks": "reconciliation_report.json"}
+LEGACY_AUTO_GATE_ALIASES = {"reconciliation_four_checks": "reconciliation_checks"}
 # accounting_gate.py 的公开退出码契约允许 WARN + exit 0 放行；其余自动 gate 必须 PASS。
 AUTO_GATE_ACCEPTED_VERDICTS = {"accounting_gate": {"PASS", "WARN"}}
 PROVENANCE_LABEL_KINDS = {"cex", "dex_pool", "facility", "bridge", "launch_alloc",
@@ -192,6 +195,7 @@ def cmd_generate(a):
 
     artifacts, missing_required = [], []
     seen = set()
+    data_map_paths = set()
 
     def add_path(rel):
         if rel in seen:
@@ -223,6 +227,8 @@ def cmd_generate(a):
         else:
             try:
                 for ent in dm.get("files", []):
+                    if isinstance(ent, dict) and isinstance(ent.get("path"), str):
+                        data_map_paths.add(ent["path"])
                     add_explicit(ent.get("path"))
             except ValueError as e:
                 print(f"[generate] data_map.json 显式文件路径非法: {e}", file=sys.stderr)
@@ -258,6 +264,31 @@ def cmd_generate(a):
                 sealed.append({"path": rel, "bytes": size, "hash_algo": algo, "sha256": digest})
 
     if a.status == "READY":
+        try:
+            recon_target, recon_receipts = validate_reconciliation_report(
+                case_dir, return_receipts=True)
+            if resolve_alias(recon_target["chain"]) == "sol":
+                wrapper = load_json(os.path.join(case_dir, "reconciliation_report.json"))
+                exact_item = (wrapper.get("checks") or {}).get("exact_reconcile") or {}
+                exact_path = ((exact_item.get("receipt") or {}).get("path"))
+                required_exact = {exact_path}
+                required_exact.update(
+                    ref.get("path") for ref in
+                    (recon_receipts["exact_reconcile"].get("inputs") or {}).values()
+                    if isinstance(ref, dict))
+                required_exact.discard(None)
+                missing_map = sorted(required_exact - data_map_paths)
+                missing_artifacts = sorted(required_exact - seen)
+                if missing_map or missing_artifacts:
+                    raise ValueError(
+                        f"Solana exact receipt 及 inputs 必须同时进 data_map/artifacts；"
+                        f"data_map缺={missing_map}, artifacts缺={missing_artifacts}")
+                validate_solana_derived_bindings(
+                    case_dir, recon_receipts["exact_reconcile"]["edge_source_binding"],
+                    extra_paths=seen)
+        except Exception as exc:
+            print(f"[generate] reconciliation READY 深验失败: {exc}", file=sys.stderr)
+            return 2
         required = list(REQUIRED_FOR_READY)
         if set(chains) & evm_family():
             required += REQUIRED_FOR_READY_EVM
@@ -380,8 +411,32 @@ def _verify_light_schema(case_dir, fails, manifest, legacy=False):
             chains = {resolve_alias(chain) for chain in scope.get("chains") or []}
             if len(chains) != 1 or resolve_alias(target.get("chain")) not in chains:
                 fails.append("reconciliation target.chain 未与唯一 READY scope 链绑定")
-            if str(target.get("token") or "").lower() != str(scope.get("contract") or "").lower():
+            scope_target = {"chain": next(iter(chains), None),
+                            "token": scope.get("contract"),
+                            "as_of_block": target.get("as_of_block")}
+            if canonical_target(target) != canonical_target(scope_target):
                 fails.append("reconciliation target.token 未与 READY scope.contract 绑定")
+            if resolve_alias(target.get("chain")) == "sol":
+                exact = recon_receipts["exact_reconcile"]
+                wrapper = load_json(os.path.join(case_dir, "reconciliation_report.json"))
+                exact_path = ((((wrapper.get("checks") or {}).get("exact_reconcile") or {})
+                               .get("receipt") or {}).get("path"))
+                required_exact = {exact_path}
+                required_exact.update(
+                    ref.get("path") for ref in (exact.get("inputs") or {}).values()
+                    if isinstance(ref, dict))
+                required_exact.discard(None)
+                data_map = load_json(os.path.join(case_dir, "data_map.json"))
+                mapped = {row.get("path") for row in data_map.get("files", [])
+                          if isinstance(row, dict)}
+                missing_map = sorted(required_exact - mapped)
+                missing_artifacts = sorted(required_exact - art_paths)
+                if missing_map or missing_artifacts:
+                    fails.append(
+                        "Solana exact receipt 及 inputs 未同时绑定 data_map/artifacts: "
+                        f"data_map缺={missing_map}, artifacts缺={missing_artifacts}")
+                validate_solana_derived_bindings(
+                    case_dir, exact["edge_source_binding"], extra_paths=art_paths)
             if not legacy:
                 _, accounting, _ = validate_accounting_receipt(
                     case_dir, expected_target=target)
@@ -525,11 +580,14 @@ def verify_case(case_dir, legacy_read_only=False):
             if miss:
                 fails.append(f"READY 必备件不在 artifact 清单: {miss}（manifest 被手改或 generate 版本过旧）")
             gates_m = m.get("gates") or {}
+            normalized_gate_names = {
+                LEGACY_AUTO_GATE_ALIASES.get(name, name) for name in gates_m}
             for gname, rel in AUTO_GATES.items():
-                if rel in art_paths and gname not in gates_m:
+                if rel in art_paths and gname not in normalized_gate_names:
                     fails.append(f"gate {gname} 缺失（产物 {rel} 在场却无对应 gate 记录）")
         elif "reconciliation_report.json" in art_paths \
-                and "reconciliation_four_checks" not in (m.get("gates") or {}):
+                and not ({"reconciliation_four_checks", "reconciliation_checks"}
+                         & set(m.get("gates") or {})):
             fails.append("legacy 案在场 reconciliation_report.json 缺对应 gate 记录")
         for ent, p in safe_artifacts:
             algo, digest, size = sha256_file(p)

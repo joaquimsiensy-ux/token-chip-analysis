@@ -63,6 +63,7 @@ import json
 import os
 import sys
 from datetime import datetime, timezone
+from pathlib import Path
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "lib"))
 from wave_contract import (ORDER_GRANULARITY_INSTRUCTION,
@@ -119,11 +120,11 @@ def load_sol(con, pattern, *, legacy_sol5=False, cache_meta_path=None,
         try:
             edge_path, meta_path, _kind, _gid, edge_source_binding = \
                 resolve_formal_cache(expected_mint, case_root)
-            if len(files) != 1 or os.path.abspath(files[0]) != str(edge_path):
+            if len(files) != 1 or Path(files[0]).resolve() != edge_path.resolve():
                 raise ValueError(
                     "--edges-sol glob 结果必须恰为 resolver 解析出的唯一边文件")
             if cache_meta_path is not None \
-                    and os.path.abspath(cache_meta_path) != str(meta_path):
+                    and Path(cache_meta_path).resolve() != meta_path.resolve():
                 raise ValueError("--sol-cache-meta 必须等于 resolver 解析出的 meta_path")
             with open(meta_path, encoding="utf-8") as fh:
                 cache_meta = json.load(fh)

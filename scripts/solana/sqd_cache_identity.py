@@ -94,12 +94,9 @@ def _sha256(path):
 def _case_root(value):
     raw = Path(value)
     cursor = raw if raw.is_absolute() else Path.cwd() / raw
-    probe = Path(cursor.anchor)
-    for part in cursor.parts[1:]:
-        probe /= part
-        if probe.is_symlink():
-            raise ValueError("case_root must not contain symlinks")
     root = cursor.resolve()
+    if cursor.is_symlink():
+        raise ValueError("case_root itself must not be a symlink")
     if not root.is_dir():
         raise ValueError("case_root must be an existing directory")
     return root
