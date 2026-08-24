@@ -76,4 +76,3 @@ GREEN 定向回归
 - `git diff --check`：PASS。
 - 分支/HEAD 收工复核：fix/sqd-gap-v6520 @ c237263。
 - 未联网、未 commit、未切分支；密钥未进入日志、异常或产物。
-

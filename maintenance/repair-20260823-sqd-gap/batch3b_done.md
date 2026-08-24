@@ -147,4 +147,3 @@ assert bundle["merged"]["edge_rows"] == bundle["base"]["edge_rows"] + len(actual
 print("PASS: 83/83 edges; exploration; merged row identity")
 PY
 ```
-

@@ -113,4 +113,3 @@ source_baseline_f06078e=PASS
 - 未执行批 1b 先红测试，未实现任何生产逻辑。
 - 未 commit、未 push、未切分支、未联网。
 - 工作树另有 `batch1a_workorder.md`、`batch1b_workorder.md` 未跟踪文件；本批未写、未删、未纳入 diff。
-
