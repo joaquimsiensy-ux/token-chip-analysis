@@ -194,6 +194,7 @@
     {"id":"CT-BANNED-18","kind":"banned","authority_file":"references/data-pipeline-solana-capture.md","needle":"signature→(slot,tx_index) 映射经 getBlock","stages":["A1","A2"]},
     {"id":"CT-BANNED-19","kind":"banned","authority_file":"references/split-run.md","needle":"reconciliation_four_checks","stages":["A2","A5"]},
     {"id":"CT-BANNED-20","kind":"banned","authority_file":"references/split-run.md","needle":"wave-scan/v4","stages":["A3","A5"]},
-    {"id":"CT-BANNED-21","kind":"banned","authority_file":"references/split-run.md","needle":"flow-anomaly/v2","stages":["A3","A5"]}
+    {"id":"CT-BANNED-21","kind":"banned","authority_file":"references/split-run.md","needle":"flow-anomaly/v2","stages":["A3","A5"]},
+    {"id":"CT-BANNED-22","kind":"banned","authority_file":"references/scan-schemas.md","needle":"只认 `solana-reconcile/v3`","stages":["A3","A5"]}
   ]
 }

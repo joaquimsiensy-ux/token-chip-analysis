@@ -10,6 +10,7 @@
 
 ## 版本索引（活跃窗口，新在上；每版一行，详情见下方对应条目）
 
+- **6.52.1**（2026-08-24）F-005 文档漂移更正：外部全量审查发现的三处 Solana reconcile v3 正向旧口径改为 v4 envelope／v2-v3 legacy 拒收，并新增 banned needle 防再漂守卫
 - **6.52.0**（2026-08-23）Solana SQD 覆盖健康闸与修复生产者窄门收口：A2 升五查，wave v5／flow v3／wrapper v3／reconcile v4 同步，契约 175→194、SUITE 124→128；正式勘误跨源位置编号假象
 - **6.51.0**（2026-08-20）labels v4.3：Arbitrum 730 行 CEX-only 初版建表并接通六表守卫，Base +51／ETH +1；修复 additions 重放 `source_snapshot_at` round-trip 断环；Arbitrum 仍为 exploration，不授予正式交接或审计发布
 - **6.50.0**（2026-08-18）split-run 三段化＋刀 1 外包公告：新增 /token-analyze-3 装配段（−2 收口前移至报告正文＋装配工单，A5 装配独立 Opus 会话）；ET-1 报警证据采集前置 −1（停止线拆采集/定性）；刀 1 机械档扩为 14 项公告＋6 条纪律（唯一权威源）；新契约 CT-SEMANTIC-61/62、CT-BANNED-16，命令四元；版本号跳过 6.49.0（已被并行 SQD 工程占用）
@@ -55,6 +56,12 @@
 - **6.20.1** 2026-08-05 修 5 处阻断级文档漂移（A4 前禁写报告冲突/easy 残留/惯犯回灌 docstring/批量预采集残留/旧 Par 路线历史降级）＋docs_lint 增中文禁词与 Python module docstring 扫描
 
 更早版本（6.20.0 及以前）详见 `archive/CHANGELOG-archive.md`。
+
+## [6.52.1] - 2026-08-24 — F-005 Solana reconcile v3/v4 文档漂移更正
+
+- **外审 finding 更正**：外部全量审查指出 `scan-schemas.md` 同一份现役文档一边把 v4 写对，另一边仍把 v3 当 current。现已更正 inputs、consumer 登记面、formal 来源链三处：正式链只接受 `solana-reconcile/v4` formal envelope，v2/v3 都是 legacy，必须重跑。
+- **按代码写清语义**：v4 保留 v3 业务字段并收紧三项供应量 raw 值为 JSON int；consumer 还要验 target/mode/verdict/exit_code、producer、base/repaired 条件 inputs、当前 resolver 的 `edge_source_binding`，以及窗口、边摘要和终态闭合，不再沿用“三输入＋cache meta 物理指纹”的旧说法。
+- **防再漂守卫**：新增 `CT-BANNED-22`，在 `references/scan-schemas.md` 禁止把“只认 `solana-reconcile/v3`”写回正向 current 口径；contract ID 快照 194→195。施工轮数 1；外部网络调用 0；分析结论 0；传播级数字错误 0。
 
 ## [6.52.0] - 2026-08-23 — SQD 覆盖健康闸与修复生产者窄门收口
 
