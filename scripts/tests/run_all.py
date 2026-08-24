@@ -152,6 +152,14 @@ SUITE += ['test_anchor_plan_v3.py']
 SUITE += ['test_done_v4_collector.py']
 SUITE += ['test_csv_resume_collector_gate.py']
 
+# v6.52.0 SQD coverage/repair producer、reconcile v4 receipt 与 Solana A2 第五查收口。
+SUITE += [
+    'test_sqd_coverage_probe.py',
+    'test_sqd_gap_repair.py',
+    'test_reconcile_v4_receipt.py',
+    'test_recon_fifth_check.py',
+]
+
 
 def main():
     results = []

@@ -10,6 +10,7 @@
 
 ## 版本索引（活跃窗口，新在上；每版一行，详情见下方对应条目）
 
+- **6.52.0**（2026-08-23）Solana SQD 覆盖健康闸与修复生产者窄门收口：A2 升五查，wave v5／flow v3／wrapper v3／reconcile v4 同步，契约 175→194、SUITE 124→128；正式勘误跨源位置编号假象
 - **6.51.0**（2026-08-20）labels v4.3：Arbitrum 730 行 CEX-only 初版建表并接通六表守卫，Base +51／ETH +1；修复 additions 重放 `source_snapshot_at` round-trip 断环；Arbitrum 仍为 exploration，不授予正式交接或审计发布
 - **6.50.0**（2026-08-18）split-run 三段化＋刀 1 外包公告：新增 /token-analyze-3 装配段（−2 收口前移至报告正文＋装配工单，A5 装配独立 Opus 会话）；ET-1 报警证据采集前置 −1（停止线拆采集/定性）；刀 1 机械档扩为 14 项公告＋6 条纪律（唯一权威源）；新契约 CT-SEMANTIC-61/62、CT-BANNED-16，命令四元；版本号跳过 6.49.0（已被并行 SQD 工程占用）
 - **6.49.0**（2026-08-18）Solana SQD transaction-net v4 五批根治：7 元组交易身份＋tx_digest 冲突硬拒、owner 双侧记账与输入卫生、正式/legacy 两态分立、采集摘要/producer 登记/invariant 闭环、ARC 双窗口真采与破坏性注入收口；冻结 parts 域内实证 DISTINCT 损失 11,502 行/8,487 组（最高 23 倍），124,816 更正为两版全史行数差的混合口径
@@ -54,6 +55,14 @@
 - **6.20.1** 2026-08-05 修 5 处阻断级文档漂移（A4 前禁写报告冲突/easy 残留/惯犯回灌 docstring/批量预采集残留/旧 Par 路线历史降级）＋docs_lint 增中文禁词与 Python module docstring 扫描
 
 更早版本（6.20.0 及以前）详见 `archive/CHANGELOG-archive.md`。
+
+## [6.52.0] - 2026-08-23 — SQD 覆盖健康闸与修复生产者窄门收口
+
+- **覆盖与修复窄门**：正式记录 durable-nonce 缺陷区段、四态 coverage 指纹、共享地图 30 天 TTL/逐 slot 复核/canary、Helius 唯一参考源与额度停工语义；A2 的 Solana 路径升为四查＋`exact_reconcile` 第五查，base、resolution、repair bundle、CURRENT 指针和 ACTIVE producer 缺一即拒。
+- **协议升版**：wave `wave-scan/v5`、flow `flow-anomaly/v3`、wrapper `reconciliation-report/v3`、exact receipt `solana-reconcile/v4` 全链对齐；Solana 派生产物必带与 exact receipt 全等的 `edge_source_binding`，EVM 必须省略。旧 wave v4/flow v2 正式件需重跑；EVM 旧 wrapper 迁移用 `reconciliation_report.py --reseal` 从四份现役 receipt 重建，不信旧 wrapper。
+- **正式勘误**：撤回 ARC 诊断中“硬下界 13,425 笔／Meteora-Raydium CPI 特征／218 漏-739 伪影分类”；根因是把 SQD 去投票 `transactionIndex` 当链上绝对位置。抽 80 块 404 笔改按签名复核后 404/404 均在 SQD，跨源身份此后只认签名。
+- **契约与文档**：新增 S-12 判例和 capture §13e；contract manifest 新增 14 required＋5 banned，ID 快照由 175 升 194；批 5 wrapper 草案改为 referenced receipt fields，与现役 runner/validator 结构一致。
+- **producer 与回归**：登记 coverage probe 2 条、gap repair 4 条 ACTIVE 历史哈希；`run_all.py` 注册 coverage probe、gap repair、reconcile v4 receipt、第五查四项，SUITE 124→128。施工轮数 1；外部网络调用 0；分析结论 0；传播级数字错误 0。
 
 ## [6.51.0] - 2026-08-20 — labels v4.3／Arbitrum CEX-only 建表与 round-trip 收口
 

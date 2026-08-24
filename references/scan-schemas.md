@@ -1,7 +1,7 @@
 # scan-schemas — 机械扫描产物 schema 冻结（v6.20.0）
 
 扫描、溯源和分布形态产物的**唯一权威字段定义**。实现脚本与契约测试对本文件写；改字段先改这里再改代码。
-适用脚本：`wave_scan.py`（wave-scan/v4）、`flow_anomaly_scan.py`（flow-anomaly/v2）、
+适用脚本：`wave_scan.py`（wave-scan/v5）、`flow_anomaly_scan.py`（flow-anomaly/v3）、
 `entity_source_trace.py`（provenance-ledger/v2）、`holder_distribution_scan.py`（distribution-scan/v2）、
 `distribution_explanation_check.py`（distribution-explanation/v1）和两类裁决台账。
 
@@ -24,7 +24,7 @@
 `[ts,slot,from,to,amt]` 仅是 `legacy-sol5` 诊断格式，标记 `order_ambiguous/non-formal`，无法补回
 交易身份且无迁移路径，正式使用须全量重采。
 
-## 1. wave-scan/v4（wave_scan.py）
+## 1. wave-scan/v5（wave_scan.py）
 
 与 v1 的语义差异（**不得冒充 v1**，handoff 校验按版本严格匹配）：
 扫描对象从"清零层"改为**全体历史峰值 ≥0.02% 地址**（三桶标签）；A 指纹两层（seed_window 触发→expanded_wave 生长）；C 口径改"峰值→30% 峰值耗时 ≤30 日"；D 参数四条合一；成员零截断；负余额升 exit 2；聚类时间轴用抗 dust 的 `first_meaningful_day`。
@@ -38,9 +38,11 @@ v4 与 v3 的差异（2026-08-18 SQD v4 消费端分立）：新增 `edge_order_
 校验器核对 v4 schema、mint、ACTIVE collector、逻辑摘要及行数；wave/flow/entity 三入口同闸，
 entity 的 meta/mint 还要进入 input binding 并由 freeze 原命令重放。
 
+v4→v5 的唯一变化是新增必填对象 `edge_source_binding{cache_kind,gid|null,soltx_edges_sha256,soltx_meta_sha256,edge_logical_sha256}`：Solana 必填且与 `solana-reconcile/v4` 全等，EVM 必须省略。其余 v4 字段和算法语义全部保留；正式链遇旧 v4 产物 fail-closed，并提示用当前边源重跑。
+
 ```
 {
-  "schema": "wave-scan/v4",
+  "schema": "wave-scan/v5",
   "generated_at": ISO8601,
   "params": {…全部命令行参数…},
   "total_supply_raw": str,
@@ -107,7 +109,7 @@ entity 的 meta/mint 还要进入 input binding 并由 freeze 原命令重放。
 
 **D 裁决纪律**（写给 −2）：每个等额组必查 `top_sender_global_out_degree`——上千＝场内设施整数面额"撞衫"（用户买整数金额自然撞面额），可批量定性关闭；个位数＝定向分仓信号。**字段口径澄清（2026-08-02）**：该字段名带 "global" 但实际口径是**本币种全史边表的 distinct 收方数**（工程实现口径），不是跨币种全历史出度——它只是裁决参考；枢纽终裁按 methods §6 硬规则块"中间节点三段式检验"的全历史口径（普通＋内部交易）人工核查。
 
-## 2. flow-anomaly/v2（flow_anomaly_scan.py）
+## 2. flow-anomaly/v3（flow_anomaly_scan.py）
 
 汇集点＋分发点两类候选。v1→v2（2026-08-02 用户拍板补两缝＋codex 交叉复核重构）：
 缝1＝慢速线 500（H9 单案 6,503 收方校准）过宽，降 100；缝2＝pulse 只数 fresh 新收方，
@@ -116,9 +118,11 @@ pulse_all，单一 mode＋优先级只是选标签会丢证据）；出边零值
 来源数）；金额阈值整数运算（meow 案纪律）；窗口浓度两键识别伪分发。参数出身＝PYTHIA
 单案回测＋用户设定高召回初值，非多案校准。
 
+v2→v3 的唯一变化是新增必填对象 `edge_source_binding{cache_kind,gid|null,soltx_edges_sha256,soltx_meta_sha256,edge_logical_sha256}`：Solana 必填且与 `solana-reconcile/v4` 全等，EVM 必须省略。其余 v2 字段和算法语义全部保留；正式链遇旧 v2 产物 fail-closed，并提示用当前边源重跑。
+
 ```
 {
-  "schema": "flow-anomaly/v2",
+  "schema": "flow-anomaly/v3",
   "generated_at": ISO8601, "params": {…}, "total_supply_raw": str, "edges": int,
   "eligible_universe_count": int,      # 合格地址（历史峰值≥0.02%）数——来源/收方均不限清零层
   "sinks": [{                          # 汇集点：滚动窗内从多来源收币
@@ -1142,11 +1146,11 @@ QUQ 与 PYTHIA 只用于算法层探索定标。防伪链测试使用合成 fixt
 | `schema` | string | 是 | reconciliation-report/v3 |
 | `family` | string | 是 | 由 target 推导，不接受外部声明；evm/solana |
 | `checks` | object | 是 | 单层 checks{<key>:...}；不得嵌套 checks.evm/checks.solana；family=evm 时固定顺序 balance,supply,supply_truth,time；family=solana 时固定顺序 supply,balance,supply_truth,time,exact_reconcile |
-| `checks.exact_reconcile.schema` | string | family==solana 必填；family==evm 必须省略（出现即拒） | solana-reconcile/v4 |
-| `checks.exact_reconcile.mode` | string | family==solana 必填；family==evm 必须省略（出现即拒） | formal |
-| `checks.exact_reconcile.gate_pass` | boolean | family==solana 必填；family==evm 必须省略（出现即拒） | true |
-| `checks.exact_reconcile.negative_balance_count` | integer | family==solana 必填；family==evm 必须省略（出现即拒） | 0 |
-| `checks.exact_reconcile.snapshot_mismatch_count` | integer | family==solana 必填；family==evm 必须省略（出现即拒） | 0 |
+| `checks.exact_reconcile.receipt→schema` | string | family==solana 的引用实物内必填；family==evm 无该 item | `solana-reconcile/v4`；不是 wrapper item 直属字段 |
+| `checks.exact_reconcile.receipt→mode` | string | family==solana 的引用实物内必填；family==evm 无该 item | `formal`；不是 wrapper item 直属字段 |
+| `checks.exact_reconcile.receipt→gate_pass` | boolean | family==solana 的引用实物内必填；family==evm 无该 item | `true`；不是 wrapper item 直属字段 |
+| `checks.exact_reconcile.receipt→negative_balance_count` | integer | family==solana 的引用实物内必填；family==evm 无该 item | `0`；不是 wrapper item 直属字段 |
+| `checks.exact_reconcile.receipt→snapshot_mismatch_count` | integer | family==solana 的引用实物内必填；family==evm 无该 item | `0`；不是 wrapper item 直属字段 |
 | `cli.--reseal` | string | 否 | 仅 EVM |
 
 继承字段（现役基线逐键抄录）：
@@ -1168,14 +1172,14 @@ QUQ 与 PYTHIA 只用于算法层探索定标。防伪链测试使用合成 fixt
 - checks 保持单层 checks{<key>}；family=evm 的键集恰为 balance,supply,supply_truth,time，family=solana 的键集恰为 supply,balance,supply_truth,time,exact_reconcile，顺序固定。
 - EVM reseal 从四份 receipt 重建，不信旧 wrapper；失败拒绝。
 - Solana v2 重跑 v4 exact+五项。
-- checks.exact_reconcile 仅 family=solana 必填；family=evm 必须省略，出现即拒。
+- `checks.exact_reconcile` 的 wrapper item 固定绑定 `{status,exit_code,process_exit_code,producer,receipt}`；上表五个 v4 字段位于 `receipt{path,size,sha256}` 引用的实物内，由公共 validator 打开后深验，不是 item 直属字段。该 item 仅 family=solana 必填；family=evm 必须省略，出现即拒。
 - exact 检查组合、inputs 案根哈希、holders_owners 同一文件并调用独立深验。
 
 注记：
 
 - inherited_fields 从 scripts/report/reconciliation_report.py 的 _base_wrapper 及后续 inputs/error 填充处逐键抄录（代码基线 f06078e），按 errata E7 前移冻结。
 - checks 形状按 errata E12 冻结为单层。
-- checks.exact_reconcile.* 的条件必填规则按 errata E18 冻结。
+- checks.exact_reconcile 的条件必填规则按 errata E18 冻结；批 6 只把五个 v4 字段明确为 referenced receipt fields，与现役 runner/validator 结构对齐。
 
 ### 14.13 `edge_source_binding（edge-source-binding/v1）`
 

@@ -38,7 +38,7 @@
 - **A0 全部**：合约核定、多链硬关卡（AskUserQuestion 选链范围）、分母口径、链路由、accounting_gate——**exit 2 → −1 停工写 blocker 进 anomalies，禁套标准管线**；vesting 标的产 `unlock_evidence.json`（仅事实：来源/日期/数量/口径/冲突，零质量判断）。
 - **CEX 黑箱关卡**（维持点名制，用户命令附加要求时才做）：结论落盘必须含同块分母＋confirmed/suspected/ambiguous 三档分列＋保守上限口径＋用户裁决与时间戳；超线中止 → manifest 状态 `BLOCKED_CEX_GATE`，−2 拒绝消费。
 - **A1 全部**：并行采集＋存量产物复用（断点续拉，禁从零重采）；`done_with_gaps` 必须补齐才准出 READY。
-- **A2 全部**：四查对账 fail-closed，四个生产者必须由 `scripts/report/reconciliation_report.py` 接收 job spec 后受控启动；runner 校验新鲜 receipt、target、生产者和输入/receipt 哈希，再原子生成 `reconciliation_report.json`，禁止手拼 wrapper。时间抽查跑 `scripts/lib/time_spotcheck.py`（EVM 案 `time_spotcheck.json` 为 READY 必备件＋AUTO_GATES，6.7.0）——**默认锚点级直查即闭环，全史第二源重拉是例外动作**（触发条件与 pilot 报 ETA 纪律见 evm-recon §13；APU 案照旧模板全史重拉 103 分钟纯冗余教训）。
+- **A2 全部**：EVM 四查；Solana 五查＝四查＋精确重放 `exact_reconcile`。所有家族一律由 `scripts/report/reconciliation_report.py` 接收 job spec 后受控启动，并原子生成 `reconciliation-report/v3` wrapper；runner 校验新鲜 receipt、target、生产者和输入/receipt 哈希，禁止手拼 wrapper。Solana A2 FAIL 先跑 coverage 探针归因，再按 α/β 止损线运行修复生产者，禁止逐账户 BFS 补账。时间抽查跑 `scripts/lib/time_spotcheck.py`（EVM 案 `time_spotcheck.json` 为 READY 必备件＋AUTO_GATES，6.7.0）——**默认锚点级直查即闭环，全史第二源重拉是例外动作**（触发条件与 pilot 报 ETA 纪律见 evm-recon §13；APU 案照旧模板全史重拉 103 分钟纯冗余教训）。
 
   上述“禁止手拼”是执行纪律，不是聚合器具备单机执行证明：聚合器能拒绝缺 runner 绑定或绑定哈希不符的 wrapper，但无法识别蓄意填写正确 path/SHA-256 并编造自洽观测的 wrapper；内容绑定的作用是把无意漏跑变成必须显式造假的行为，并留下可由仓库 git 历史审计的代码哈希。
 - **A3 机械子层**（对照 analyze-workflow A3 主序编号）：
@@ -48,8 +48,8 @@
   4. 聚类准备（主序第 1 项后半的算法侧）：cluster_prep ＋聚类算法**候选簇**——含拒绝边与孤立点**全量保留**，不只交"算法觉得相关"的簇；合并裁决权在 −2。
   5. `identity_preflight.json`：候选与大仓地址的原始事实层（标签/on-curve/getCode/托管疑点）。**正式 entity_identity_gate 属 −2**——该脚本依赖含实体表的 analysis-state.json，−1 无实体表跑它只会产出假 gate。
   6. 基础序列：`address_bucket_series`（标签桶序列）＋价格序列。**命名禁用"阵营/camp"**——真 camp_share_series 只能 −2 实体冻结后生成。序列产出时顺手标记"价格单日 ±50%"与"单日桶间变动 ≥10pp"的日子清单（供 −2 定峰值逐笔触发日用，无归因义务，2026-08-02）。
-  7. **全体持仓波次扫描（v4）**：`scripts/report/wave_scan.py`（原始边表直读，扫描对象＝全体历史峰值 ≥0.02% 地址不限清零层，A 种子窗/B 喂币专属/C 快速清仓/D 等额面额四指纹合并口径）产 `wave_scan_report.json`（wave-scan/v4，含边顺序/legacy 标记、scan_universe 逐址全集＋must_adjudicate 标记）——**READY 必产件，缺件 generate 即拒**；候选只报警不定性，裁决权在 −2；已知公共设施可经 `--exclude-file` 剔除（取 candidate_screening 的 auto_excluded_candidate）。
-  8. **资金流异常扫描**：`scripts/report/flow_anomaly_scan.py`（汇集点＋分发点三口径多命中 v2——pulse／pulse_all 不限新老收方／slow_spray 全史 ≥100）产 `flow_anomaly_report.json`（flow-anomaly/v2）——**READY 必产件**；Q1/3yMk 型进货枢纽与 H9 派发器型出货器由此现形，候选裁决权在 −2。
+  7. **全体持仓波次扫描（v5）**：`scripts/report/wave_scan.py`（原始边表直读，扫描对象＝全体历史峰值 ≥0.02% 地址不限清零层，A 种子窗/B 喂币专属/C 快速清仓/D 等额面额四指纹合并口径）产 `wave_scan_report.json`（wave-scan/v5，含边顺序/legacy 标记、scan_universe 逐址全集＋must_adjudicate 标记）——**READY 必产件，缺件 generate 即拒**；候选只报警不定性，裁决权在 −2；已知公共设施可经 `--exclude-file` 剔除（取 candidate_screening 的 auto_excluded_candidate）。Solana 必带 `edge_source_binding` 并与 exact receipt 全等，EVM 必须省略。
+  8. **资金流异常扫描**：`scripts/report/flow_anomaly_scan.py`（汇集点＋分发点三口径多命中 v3——pulse／pulse_all 不限新老收方／slow_spray 全史 ≥100）产 `flow_anomaly_report.json`（flow-anomaly/v3）——**READY 必产件**；Q1/3yMk 型进货枢纽与 H9 派发器型出货器由此现形，候选裁决权在 −2。Solana 必带同一 `edge_source_binding`，EVM 必须省略。
   9. **当前持仓分布初判**：运行 `holder_distribution_scan.py --stage initial`，产 `distribution_scan.json` 和 `charts/distribution_stage1.png`。JSON 是 READY 必产件，工作图只供 −2 查看，不进 seal 或报告。initial 不绑定 handoff manifest。**快照单一来源硬性**：这一步吃的 owner 快照必须与 A2 四查 `verify_recon --balances` 吃的是同一个文件，别另存一份"内容一样"的副本——发布闸 new-analysis 拿 sha256 做等值比对（EVM 对四查 balance 收据的 `inputs.balances`，Solana 对 observation bundle 的 `holder_outputs.owners`），两份文件哪怕总和相同也会被判"同值换仓"直接拒。initial 记录的 `upstream_receipts` 是 optional 记录性收据：案根还没有 preflight 副本时不记是合法的，但记了就会被逐项三验。
 - **初步观察（可选但鼓励）**：−1 执行者的初步定性/怀疑**只准写进 `sealed/stage1_hypotheses.sealed.md`**（密封纪律见 §2.3），主产物区零定性词。
 
@@ -82,9 +82,9 @@
 | `anomalies.json` | −1 | 每条 `id/severity/blocking/stage/status/evidence/resolution`——WARN/勉强 PASS/绕过/未档 blocker/缺口处置全在此，**血泪权威源，−2 必读件** |
 | `data_map.json` | −1 | 数据索引：路径/schema/行数/块与时间范围/来源/生成命令/哈希＋DuckDB 查询示例 |
 | `unlock_evidence.json` | −1 | vesting 事实（按需） |
-| `wave_scan_report.json` | −1 | 全体持仓四指纹波次扫描（wave_scan.py，wave-scan/v4）候选波次＋等额组＋scan_universe 全集；READY 必产件，legacy/non-formal 拒绝，−2 逐条裁决完毕前历史大户兜底桶不准关闸 |
+| `wave_scan_report.json` | −1 | 全体持仓四指纹波次扫描（wave_scan.py，wave-scan/v5）候选波次＋等额组＋scan_universe 全集；Solana 带 `edge_source_binding`；READY 必产件，legacy/non-formal 拒绝，−2 逐条裁决完毕前历史大户兜底桶不准关闸 |
 | `et1_evidence_packs.json` | −1 | ET-1 报警地址证据采集包（观察事实零定性；optional，不进 READY 前置；存在即入 manifest allowlist＋data_map） |
-| `flow_anomaly_report.json` | −1 | 资金流异常扫描（flow_anomaly_scan.py，flow-anomaly/v2 三口径多命中）汇集点＋分发点候选；READY 必产件 |
+| `flow_anomaly_report.json` | −1 | 资金流异常扫描（flow_anomaly_scan.py，flow-anomaly/v3 三口径多命中）汇集点＋分发点候选；Solana 带 `edge_source_binding`；READY 必产件 |
 | `distribution_scan.json` | −1 | 当前 cutoff 的 initial 分布扫描（distribution-scan/v2）；READY 必产件，verify 独立重算 |
 | `candidate_adjudications.json` | −2 | wave/flow 全候选成员级裁决台账（candidate-adjudications/v1；`adjudication_validator.py template` 起草、`validate` 校验）——freeze 机器前置，缺漏即拒 |
 | `distribution_adjudications.json` | −2 | final 异常簇成员级裁决台账；存在时 freeze 必须校验并绑定当前实体名册 |
@@ -102,7 +102,7 @@
 
 - **身份**：schema_version、case_id、run_id、mode（仅 `full`；**值来源＝/token-analyze-1 命令的档位参数，−1 收工 `generate --mode full` 必填传入**，用户未给档位时 −1 开工前先问、禁猜）、producer_model、CC/codex 两侧 git SHA、consumer_min_schema。
 - **口径**：链范围、合约、冻结块/slot、UTC cutoff、三种分母（总供应/调整后/流通）及来源。
-- **gate 记录**：每个 gate 的命令＋exit＋语义状态。`accounting_mode.json`、`supply_truth.json`、`time_spotcheck.json` 与 `reconciliation_report.json` 均由 AUTO_GATES 从产物 JSON 自动读 `verdict/exit_code`，禁止 declared 覆盖；其余 declared gate 也必须同时满足 `verdict=PASS|OK` 且 `exit_code=0`，generate 后 verify 会重查。四查必须运行 `reconciliation_report.py`，由 runner 记录四个子进程 exit 并绑定 producer receipt，不接受 −1 手报四查 wrapper。
+- **gate 记录**：每个 gate 的命令＋exit＋语义状态。`accounting_mode.json`、`supply_truth.json`、`time_spotcheck.json` 与 `reconciliation_report.json` 均由 AUTO_GATES 从产物 JSON 自动读 `verdict/exit_code`，禁止 declared 覆盖；AUTO_GATES 现役键名为 `reconciliation_checks`，旧键仅作读入别名。其余 declared gate 也必须同时满足 `verdict=PASS|OK` 且 `exit_code=0`，generate 后 verify 会重查。EVM 四查、Solana 五查都必须运行 `reconciliation_report.py`，由 runner 记录各子进程 exit 并绑定 producer receipt，不接受 −1 手报 wrapper。
 - **产物 allowlist**：逐件登记路径/字节/sha256（大文件分片哈希＋复用采集侧行数/区间校验，不收尾全盘重哈希）/行数/schema/依赖。排除日志/临时库/含密钥文件（config.json 不入清单内容）。
 - **状态机**：`READY | BLOCKED | PARTIAL | SUPERSEDED | BLOCKED_CEX_GATE`——只有 READY 可被 −2 消费；READY 前置＝五件契约 JSON＋accounting_mode.json＋supply_truth.json＋wave_scan_report.json＋flow_anomaly_report.json＋distribution_scan.json 齐全（EVM 家族链另加 time_spotcheck.json）。verify 会调用分布扫描器重算 initial 语义。手改 manifest、scan 或排除来源都不能通过。
 - **生成纪律**：原子生成（tmp+rename）、不含自身哈希；generate 后新增产物走 `late_additions`（重跑 generate 产 superseding manifest，旧件自动归档带 run_id 后缀）。

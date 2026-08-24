@@ -31,38 +31,38 @@
       "constraints": "family=evm 时固定顺序 balance,supply,supply_truth,time；family=solana 时固定顺序 supply,balance,supply_truth,time,exact_reconcile"
     },
     {
-      "name": "checks.exact_reconcile.schema",
+      "name": "checks.exact_reconcile.receipt→schema",
       "type": "string",
       "required": "family==solana 必填；family==evm 必须省略（出现即拒）",
-      "description": "",
+      "description": "wrapper item 先以 receipt{path,size,sha256} 引用实物；schema 位于被引用的 receipt 内，不是 wrapper item 直属字段",
       "constraints": "solana-reconcile/v4"
     },
     {
-      "name": "checks.exact_reconcile.mode",
+      "name": "checks.exact_reconcile.receipt→mode",
       "type": "string",
       "required": "family==solana 必填；family==evm 必须省略（出现即拒）",
-      "description": "",
+      "description": "被引用 receipt 的深验字段，不是 wrapper item 直属字段",
       "constraints": "formal"
     },
     {
-      "name": "checks.exact_reconcile.gate_pass",
+      "name": "checks.exact_reconcile.receipt→gate_pass",
       "type": "boolean",
       "required": "family==solana 必填；family==evm 必须省略（出现即拒）",
-      "description": "",
+      "description": "被引用 receipt 的深验字段，不是 wrapper item 直属字段",
       "constraints": "true"
     },
     {
-      "name": "checks.exact_reconcile.negative_balance_count",
+      "name": "checks.exact_reconcile.receipt→negative_balance_count",
       "type": "integer",
       "required": "family==solana 必填；family==evm 必须省略（出现即拒）",
-      "description": "",
+      "description": "被引用 receipt 的深验字段，不是 wrapper item 直属字段",
       "constraints": "0"
     },
     {
-      "name": "checks.exact_reconcile.snapshot_mismatch_count",
+      "name": "checks.exact_reconcile.receipt→snapshot_mismatch_count",
       "type": "integer",
       "required": "family==solana 必填；family==evm 必须省略（出现即拒）",
-      "description": "",
+      "description": "被引用 receipt 的深验字段，不是 wrapper item 直属字段",
       "constraints": "0"
     },
     {
@@ -92,12 +92,12 @@
     "checks 保持单层 checks{<key>}；family=evm 的键集恰为 balance,supply,supply_truth,time，family=solana 的键集恰为 supply,balance,supply_truth,time,exact_reconcile，顺序固定。",
     "EVM reseal 从四份 receipt 重建，不信旧 wrapper；失败拒绝。",
     "Solana v2 重跑 v4 exact+五项。",
-    "checks.exact_reconcile 仅 family=solana 必填；family=evm 必须省略，出现即拒。",
+    "checks.exact_reconcile 的 wrapper item 形状为 {status,exit_code,process_exit_code,producer,receipt}；schema/mode/gate_pass/negative_balance_count/snapshot_mismatch_count 位于 receipt 引用的实物内，由公共 validator 深验。family=solana 必须有该 item；family=evm 必须省略，出现即拒。",
     "exact 检查组合、inputs 案根哈希、holders_owners 同一文件并调用独立深验。"
   ],
   "notes": [
     "inherited_fields 从 scripts/report/reconciliation_report.py 的 _base_wrapper 及后续 inputs/error 填充处逐键抄录（代码基线 f06078e），按 errata E7 前移冻结。",
     "checks 形状按 errata E12 冻结为单层。",
-    "checks.exact_reconcile.* 的条件必填规则按 errata E18 冻结。"
+    "checks.exact_reconcile 的条件必填规则按 errata E18 冻结；批 6 仅把五个 v4 字段明确为 referenced receipt fields，与现役 runner/validator 结构对齐。"
   ]
 }

@@ -15,6 +15,7 @@
   1. 首选：`subprocess` + `curl -s`（多次实战最稳，脚本模板均已内置）
   2. 备选：`ssl.create_default_context(cafile=certifi.where())` 传给 `urlopen` 的 `context` 参数
 - requests 库自带证书一般没问题
+- Solana SQD 修复生产者正式运行依赖 Helius key：只从 `~/.config/helius/api-key` 读取；遇配额/计费错误先落 STOPPED 与额度台账并干净停工，换已登记 key 后续跑，禁止静默换参考源。
 
 ## PDF 生成（reportlab）
 
