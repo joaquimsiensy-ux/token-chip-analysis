@@ -10,6 +10,7 @@
 
 ## 版本索引（活跃窗口，新在上；每版一行，详情见下方对应条目）
 
+- **6.52.2**（2026-08-24）F-007/F-008 LIT 回归修复收口：阵营序列按 series_format 固定堆叠语义，evm_v2 目录重放前补字符闸与集合闸；SUITE 129→131、契约 195→197
 - **6.52.1**（2026-08-24）F-005 文档漂移更正：外部全量审查发现的三处 Solana reconcile v3 正向旧口径改为 v4 envelope／v2-v3 legacy 拒收，并新增 banned needle 防再漂守卫
 - **6.52.0**（2026-08-23）Solana SQD 覆盖健康闸与修复生产者窄门收口：A2 升五查，wave v5／flow v3／wrapper v3／reconcile v4 同步，契约 175→194、SUITE 124→128；正式勘误跨源位置编号假象
 - **6.51.0**（2026-08-20）labels v4.3：Arbitrum 730 行 CEX-only 初版建表并接通六表守卫，Base +51／ETH +1；修复 additions 重放 `source_snapshot_at` round-trip 断环；Arbitrum 仍为 exploration，不授予正式交接或审计发布
@@ -56,6 +57,13 @@
 - **6.20.1** 2026-08-05 修 5 处阻断级文档漂移（A4 前禁写报告冲突/easy 残留/惯犯回灌 docstring/批量预采集残留/旧 Par 路线历史降级）＋docs_lint 增中文禁词与 Python module docstring 扫描
 
 更早版本（6.20.0 及以前）详见 `archive/CHANGELOG-archive.md`。
+
+## [6.52.2] - 2026-08-24 — LIT 阵营序列与 evm_v2 重放回归修复收口
+
+- **F-007 阵营序列闭合修复**：正式序列不再按 denominator 名称猜 burn 语义，改由 producer 的 `series_format` 固定实际堆叠集合。`evm-dict` 的「锁仓/销毁」参与堆叠与散户残差、只豁免 `burn_cum_pct`，且 legacy 序列不得含该键；`sol-rows` 的「锁仓/销毁」仍是分母外披露桶；`sol-anchor-rows` 无堆叠豁免。无 format 的手填路径保留历史 dual 行为。
+- **F-008 evm_v2 重放前置闸**：`source.argument` 明确按 kind 分家，sol/duckdb 绑定文件、evm_v2 绑定目录；evm_v2 在创建临时文件或启动子进程前先做完整 Unicode `Cc`／glob／SQL 字符闸、不跟随符号链接的固定两 pattern 枚举，并要求当前命中集合与 `source.files` 登记集合双向精确相等。
+- **登记面收齐**：新增 F-007/F-008 两个回归测试并将 SUITE 129→131；新增 `CT-BANNED-23` 防旧 denominator 一刀切句式回流、`CT-SEMANTIC-63` 固定 evm_v2 集合闸文案，契约 195→197；版本三件与现役文档同步至 6.52.2。
+- **成本/质量指标**：施工轮数 1；外部网络调用 0；新增回归用例 61（F-007 15＋F-008 46）；分析结论 0；传播级数字错误 0。
 
 ## [6.52.1] - 2026-08-24 — F-005 Solana reconcile v3/v4 文档漂移更正
 

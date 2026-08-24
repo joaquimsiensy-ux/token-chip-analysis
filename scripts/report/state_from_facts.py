@@ -12,14 +12,15 @@ Entity ids, labels, membership and current/peak amounts always come from facts.j
 
 camp_share_series 的两道闸（F-04，2026-08-13；F-C1 消化轮把第二道焊成必经）：
   ①无条件数值面（camp_series_provenance.validate_series_payload）：桶名白名单
-    =standard_charts.CAMP_ORDER_MODERN、有限数、非 burn 桶值域 [0,100]、同点合计
-    闭合（burn 桶豁免口径见该模块 docstring）、日期轴 UTC 严格递增——手填
-    series 至少过数值面；
+    =standard_charts.CAMP_ORDER_MODERN、有限数、堆叠桶值域 [0,100]、同点合计闭合、
+    日期轴 UTC 严格递增——绑定路径的堆叠集合由 series_format 按 producer 固定
+    （EVM replay_pass2.py:84-86,101-106,139-145；Solana replay_edges.py:648-657），
+    手填 series 无 format 时保留历史 dual 行为；
   ②来源绑定＝formal 必经（F-C1）：默认（formal）编译 **--series-source 必填**，
     缺席直接 BLOCK exit 2——闸不许挂在可选参数上（v6.11.0 B-03 元规则第八层）。
     --series-source 指向四族重放 producer 落盘的原生序列文件，必须带
     `<序列名>.provenance.json` sidecar——验输出 sha＋输入实物三验＋登记面命中
-    （supply_truth/reconcile）＋按 sidecar 口径的单式闭合严判＋camps spec 末点
+    （supply_truth/reconcile）＋按 sidecar 格式的实际堆叠单式闭合＋camps spec 末点
     对账；state 的 series 由本编译器从原生文件转换生成（source 里可省略
     camp_share_series；写了就必须与转换结果完全一致，防双源分叉）。产物
     provenance 落 series_binding="producer-sidecar"＋camp_series_sidecar 绑定块，
@@ -151,11 +152,12 @@ def bind_series_source(source: dict, series_source: Path) -> dict:
     """
     sidecar, raw, resolved = load_series_with_sidecar(series_source)
     compiled = series_to_state_form(raw, sidecar["series_format"])
-    # F-C4：绑定路径有 sidecar 的 denominator 口径，闭合按口径单式严判——
-    # 净分母族 burn 桶不得蹭进合计救缺口，total 族反之（无 sidecar 的手填路径
-    # 没有口径信息，compile_state 内保留双式）
+    # F-C4/F-007：denominator 仍须映射以验证合法性；堆叠集合按 producer 的
+    # series_format 固定（EVM replay_pass2.py:84-86,101-106,139-145；Solana
+    # replay_edges.py:648-657）。无 sidecar 的手填路径仍保留历史 dual 行为。
     validate_series_payload(compiled,
-                            closure_mode=closure_mode_for(sidecar["denominator"]))
+                            closure_mode=closure_mode_for(sidecar["denominator"]),
+                            series_format=sidecar["series_format"])
     target = source.get("token") or {}
     if target.get("chain") == "solana" and "data_cutoff_slot" not in target:
         raise ValueError(

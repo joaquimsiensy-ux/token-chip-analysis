@@ -165,6 +165,9 @@ SUITE += [
 # 复查)判定为离线信任边界仅在 batch7_done.md 记录，不进本 suite 断言。
 SUITE += ['test_batch7_validator_coverage_gaps.py']
 
+# v6.52.2 repair-20260824-lit-regression：F-007 series_format 堆叠语义与 F-008 evm_v2 集合闸。
+SUITE += ["test_lit_regression_f007.py", "test_lit_regression_f008.py"]  # v6.52.2 repair-20260824-lit-regression
+
 
 def main():
     results = []

@@ -1,0 +1,4 @@
+COMMAND: MPLCONFIGDIR=/tmp/f008-mpl-cache PYTHONPYCACHEPREFIX=/tmp/f008-pycache python3 scripts/tests/test_lit_regression_f008.py --red-only
+FAIL: real multi-run evm_v2 provenance replay: ["source argument 异常: 路径不是常规文件: 'data/ethereum/v2'"]
+SUMMARY: 0/1 PASS
+EXIT_CODE=1
