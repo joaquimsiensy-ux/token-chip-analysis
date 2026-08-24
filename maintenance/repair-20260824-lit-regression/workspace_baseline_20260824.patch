@@ -1,0 +1,72 @@
+diff --git a/scripts/lib/camp_series_provenance.py b/scripts/lib/camp_series_provenance.py
+index 521d9de..6d746ea 100644
+--- a/scripts/lib/camp_series_provenance.py
++++ b/scripts/lib/camp_series_provenance.py
+@@ -760,6 +760,12 @@ def endpoint_reconcile(sidecar: dict, css: dict, resolved: dict,
+         if camp in BURN_EXEMPT_KEYS:
+             # spec 里显式配置的销毁类阵营（如 0xdead 地址）：其终点参与 burn 桶比对
+             burn_recon[camp] = burn_recon.get(camp, 0.0) + recon
++            # total 分母族（mint_total_legacy）下"锁仓/销毁"参与堆叠闭合（与
++            # closure_mode_for 的 total 口径、Solana build_evolution 分支同语义），
++            # 散户残差恒等式须按 100−全桶计——否则 dead-sink 烧毁案（供应恒定、
++            # 烧毁走 0xdead 非 0x0）在净/legacy 两口径下末点对账双双假红（LIT 案首证）。
++            if fmt == "evm-dict" and sidecar.get("denominator") == "mint_total_legacy":
++                spec_sum += recon
+             continue
+         spec_sum += recon
+         if camp not in series:
+diff --git a/scripts/report/handoff_manifest.py b/scripts/report/handoff_manifest.py
+index 58558d3..2db198e 100644
+--- a/scripts/report/handoff_manifest.py
++++ b/scripts/report/handoff_manifest.py
+@@ -691,6 +691,34 @@ def resolve_bound_path(case_dir, shown):
+     return os.path.join(case_dir, shown)
+ 
+ 
++def resolve_bound_source_dir(case_dir, shown):
++    """evm_v2 溯源源参数的目录版 containment 校验（safe_case_file 只认常规文件）。
++
++    校验强度与 safe_case_file 相同：拒绝空值/绝对路径/空段/./.. 段、逐段拒符号链接、
++    realpath 越根拒；额外要求目标存在且为目录。文件级完整性由 provenance
++    source.files 的逐件哈希校验承担，不在此处。
++    """
++    if not isinstance(shown, str) or not shown or not shown.strip():
++        raise ValueError(f"路径必须是案根内非空相对目录: {shown!r}")
++    if os.path.isabs(shown):
++        raise ValueError(f"路径不得是绝对路径: {shown!r}")
++    parts = shown.split("/")
++    if any(part in {"", ".", ".."} for part in parts):
++        raise ValueError(f"路径含空段、. 或 .. 非法段: {shown!r}")
++    lexical = case_dir
++    for part in parts:
++        lexical = os.path.join(lexical, part)
++        if os.path.islink(lexical):
++            raise ValueError(f"路径不得经过符号链接: {shown!r}")
++    root_real = os.path.realpath(case_dir)
++    target = os.path.realpath(lexical)
++    if os.path.commonpath((target, root_real)) != root_real:
++        raise ValueError(f"路径越出案根: {shown!r}")
++    if not os.path.isdir(target):
++        raise ValueError(f"路径不是目录: {shown!r}")
++    return target
++
++
+ def check_bound_file(case_dir, rec, expected_path=None):
+     if not isinstance(rec, dict):
+         return None, "文件绑定不是对象"
+@@ -1173,7 +1201,14 @@ def validate_and_replay_provenance(case_dir, pl, pl_path, ep, manifest):
+     # 从允许字段重建命令，不执行 ledger 自报的自由文本 command。
+     kind = source.get("kind")
+     try:
+-        arg = resolve_bound_path(case_dir, source.get("argument"))
++        if kind == "evm_v2":
++            # evm_v2 的 source.argument 是 run_*/logs.parquet 的父目录（trace 端 CLI 语义），
++            # 不能走 safe_case_file 的常规文件闸（7b99867 起误伤目录参数——LIT 案回归）；
++            # 目录级 containment 同样拒绝绝对路径/非法段/symlink/越根，
++            # 数据完整性仍由上方 source.files 逐件哈希校验承担。
++            arg = resolve_bound_source_dir(case_dir, source.get("argument"))
++        else:
++            arg = resolve_bound_path(case_dir, source.get("argument"))
+     except ValueError as e:
+         return [f"source argument 异常: {e}"]
+     fd, replay_path = tempfile.mkstemp(prefix=".provenance-replay-", suffix=".json", dir=case_dir)

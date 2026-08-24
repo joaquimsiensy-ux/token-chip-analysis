@@ -1,0 +1,536 @@
+# F-007 round2 green evidence (raw stdout/stderr)
+
+COMMAND: MPLCONFIGDIR=/tmp/f007-round2-mpl PYTHONPYCACHEPREFIX=/tmp/f007-round2-pycache python3 scripts/tests/test_lit_regression_f007.py
+PASS: LIT legacy dead-sink endpoint
+PASS: LIT net dead-sink closure
+PASS: EVM net burn plus dead-sink
+PASS: legacy burn_cum_pct consistency gate
+PASS: retail endpoint tamper
+PASS: dead-sink endpoint tamper
+PASS: burn cannot rescue stack gap
+PASS: illegal denominator
+PASS: no-format dual compatibility
+PASS: fixed format mapping
+PASS: EVM dead-sink range
+PASS: Solana burn disclosure
+PASS: Solana anchor real stack
+PASS: Solana anchor false oracle
+PASS: Solana anchor burn_cum_pct consistency gate
+SUMMARY: 15/15 PASS
+EXIT_CODE=0
+
+COMMAND: MPLCONFIGDIR=/tmp/f007-round2-mpl PYTHONPYCACHEPREFIX=/tmp/f007-round2-pycache python3 scripts/tests/test_repair_batch_c.py
+usage: replay_edges.py [-h] [--mint MINT] [--case-root CASE_ROOT]
+                       [--as-of-slot AS_OF_SLOT] [--receipt RECEIPT]
+                       [--decimals DECIMALS] [--launch-ts LAUNCH_TS]
+                       [--camps CAMPS] [--stake-pool STAKE_POOL] [--no-labels]
+                       [--legacy-sol5]
+                       {reconcile,trace,top,sniper,mints,evolution} [arg]
+                       [arg2]
+replay_edges.py: error: reconcile 正式路径必须提供 --case-root
+[camp-spec] camps 地址 0xa000000000000000000000000000000000000001 同时归入阵营「camp_A」与「camp_B」（原文 '0xa000000000000000000000000000000000000001'）——阵营互斥，JSON 键序决定归属是静默错误，先修 spec 再重放
+[camp-spec] camps 地址 0xabc0000000000000000000000000000000000001 同时归入阵营「camp_A」与「camp_B」（原文 '0xabc0000000000000000000000000000000000001'）——阵营互斥，JSON 键序决定归属是静默错误，先修 spec 再重放
+[camp-spec] camps 阵营「camp_A」内重复地址 0xa000000000000000000000000000000000000001（原文 '0xa000000000000000000000000000000000000001'）——阵营互斥且成员唯一，先修 spec 再重放
+[camp-spec] camps 阵营「camp_A」内重复地址 0xa000000000000000000000000000000000000001（原文 '0xA000000000000000000000000000000000000001'）——阵营互斥且成员唯一，先修 spec 再重放
+[camp-spec] camps 地址 So1AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA 同时归入阵营「营1」与「营2」（原文 'So1AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA'）——阵营互斥，JSON 键序决定归属是静默错误，先修 spec 再重放
+[camp-spec] camps 阵营「camp_A」的值必须是地址列表，收到 str
+[camp-spec] camps 含非法阵营名: ''
+[camp-spec] /var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/tmpoo28e8i_/entity_camps.json JSON 重复键 'So1AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA'——同一地址写了两遍（后值会静默覆盖前值），先修文件再重放
+[camp-spec] 阵营定义文件不存在：camps.json——evolution 必须显式给 camps（无阵营定义就放一份 {}），拒绝静默按空 spec 重放
+[camp-spec] camps_dup.json 地址 So1AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA 同时归入阵营「营1」与「营2」（原文 'So1AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA'）——阵营互斥，JSON 键序决定归属是静默错误，先修 spec 再重放
+边数=3  时间范围 01-01 01:00:00 → 01-01 03:00:00
+铸造=1,000  销毁=100  净=900
+负余额地址数=0
+快照 supply=900  重放净-快照差=0
+全 owner 对账：2/2 一致
+重放末态已写 data/replay_final_balances.json
+首30分钟狙击者 0 个（已写 data/sniper_set.json）
+阵营序列 3 个小时点，已写 data/camp_share_series.json
+末态占比： {'_supply_raw': '900', '项目方': 66.6667, '大庄': 33.3333, '锁仓/销毁': 11.1111}
+
+质押修正后有效持仓 top15：
+  So1AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA              600  66.667%  (现货600+质押0)
+  So1BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB              300  33.333%  (现货300+质押0)
+有效持仓末态已写 data/effective_balances.json
+边数=3  时间范围 01-01 01:00:00 → 01-01 03:00:00
+铸造=1,000  销毁=100  净=900
+负余额地址数=0
+快照 supply=900  重放净-快照差=0
+全 owner 对账：2/2 一致
+重放末态已写 data/replay_final_balances.json
+边数=3  时间范围 01-01 01:00:00 → 01-01 03:00:00
+铸造=1,000  销毁=100  净=900
+负余额地址数=0
+快照 supply=900  重放净-快照差=0
+全 owner 对账：2/2 一致
+重放末态已写 data/replay_final_balances.json
+边数=3  时间范围 01-01 01:00:00 → 01-01 03:00:00
+铸造=1,000  销毁=100  净=900
+负余额地址数=0
+快照 supply=900  重放净-快照差=0
+全 owner 对账：2/2 一致
+重放末态已写 data/replay_final_balances.json
+边数=3  时间范围 01-01 01:00:00 → 01-01 03:00:00
+铸造=1,000  销毁=100  净=900
+负余额地址数=0
+快照 supply=900  重放净-快照差=0
+全 owner 对账：2/2 一致
+重放末态已写 data/replay_final_balances.json
+边数=3  时间范围 01-01 01:00:00 → 01-01 03:00:00
+铸造=1,000  销毁=100  净=900
+负余额地址数=0
+快照 supply=900  重放净-快照差=0
+全 owner 对账：2/2 一致
+重放末态已写 data/replay_final_balances.json
+边数=3  时间范围 01-01 01:00:00 → 01-01 03:00:00
+铸造=1,000  销毁=100  净=900
+负余额地址数=0
+快照 supply=900  重放净-快照差=0
+全 owner 对账：2/2 一致
+重放末态已写 data/replay_final_balances.json
+边数=3  时间范围 01-01 01:00:00 → 01-01 03:00:00
+铸造=1,000  销毁=100  净=900
+负余额地址数=0
+边数=3  时间范围 01-01 01:00:00 → 01-01 03:00:00
+铸造=1,000  销毁=100  净=900
+负余额地址数=0
+快照 supply=900  重放净-快照差=0
+全 owner 对账：2/2 一致
+重放末态已写 data/replay_final_balances.json
+边数=3  时间范围 01-01 01:00:00 → 01-01 03:00:00
+铸造=1,000  销毁=100  净=900
+负余额地址数=0
+快照 supply=900  重放净-快照差=0
+全 owner 对账：2/2 一致
+重放末态已写 data/replay_final_balances.json
+边数=3  时间范围 01-01 01:00:00 → 01-01 03:00:00
+铸造=1,000  销毁=100  净=900
+负余额地址数=0
+快照 supply=900  重放净-快照差=0
+全 owner 对账：2/2 一致
+重放末态已写 data/replay_final_balances.json
+边数=3  时间范围 01-01 01:00:00 → 01-01 03:00:00
+铸造=1,000  销毁=100  净=900
+负余额地址数=0
+快照 supply=900  重放净-快照差=0
+全 owner 对账：2/2 一致
+重放末态已写 data/replay_final_balances.json
+边数=3  时间范围 01-01 01:00:00 → 01-01 03:00:00
+铸造=1,000  销毁=100  净=900
+负余额地址数=0
+快照 supply=900  重放净-快照差=0
+全 owner 对账：2/2 一致
+重放末态已写 data/replay_final_balances.json
+边数=3  时间范围 01-01 01:00:00 → 01-01 03:00:00
+铸造=1,000  销毁=100  净=900
+负余额地址数=0
+快照 supply=900  重放净-快照差=0
+全 owner 对账：2/2 一致
+重放末态已写 data/replay_final_balances.json
+边数=3  时间范围 01-01 01:00:00 → 01-01 03:00:00
+铸造=1,000  销毁=100  净=900
+负余额地址数=0
+快照 supply=900  重放净-快照差=0
+全 owner 对账：0/2 一致
+  MISMATCH So1AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA  快照=599  重放=600  差=1
+  MISMATCH So1BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB  快照=301  重放=300  差=-1
+重放末态已写 data/replay_final_balances.json
+首30分钟狙击者 0 个（已写 data/sniper_set.json）
+阵营序列 3 个小时点，已写 data/camp_share_series.json
+末态占比： {'_supply_raw': '900', '项目方': 66.6667, '大庄': 33.3333, '锁仓/销毁': 11.1111}
+
+质押修正后有效持仓 top15：
+  So1AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA              600  66.667%  (现货600+质押0)
+  So1BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB              300  33.333%  (现货300+质押0)
+有效持仓末态已写 data/effective_balances.json
+BLOCK: source 非法: deep JSON
+边数=3  时间范围 01-01 01:00:00 → 01-01 03:00:00
+铸造=1,000  销毁=100  净=900
+负余额地址数=0
+快照 supply=900  重放净-快照差=0
+全 owner 对账：2/2 一致
+重放末态已写 data/replay_final_balances.json
+首30分钟狙击者 1 个（已写 data/sniper_set.json）
+阵营序列 3 个小时点，已写 data/camp_share_series.json
+末态占比： {'_supply_raw': '900', '首30分钟狙击者': 66.6667, '其他散户': 33.3333, '锁仓/销毁': 11.1111}
+
+质押修正后有效持仓 top15：
+  So1AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA              600  66.667%  (现货600+质押0)
+  So1BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB              300  33.333%  (现货300+质押0)
+有效持仓末态已写 data/effective_balances.json
+首30分钟狙击者 0 个（已写 data/sniper_set.json）
+阵营序列 3 个小时点，已写 data/camp_share_series.json
+末态占比： {'_supply_raw': '900', '项目方': 66.6667, '大庄': 33.3333, '锁仓/销毁': 11.1111}
+
+质押修正后有效持仓 top15：
+  So1AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA              600  66.667%  (现货600+质押0)
+  So1BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB              300  33.333%  (现货300+质押0)
+有效持仓末态已写 data/effective_balances.json
+首30分钟狙击者 0 个（已写 data/sniper_set.json）
+阵营序列 3 个小时点，已写 data/camp_share_series.json
+末态占比： {'_supply_raw': '900', '项目方': 66.6667, '大庄': 33.3333, '锁仓/销毁': 11.1111}
+
+质押修正后有效持仓 top15：
+  So1AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA              600  66.667%  (现货600+质押0)
+  So1BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB              300  33.333%  (现货300+质押0)
+有效持仓末态已写 data/effective_balances.json
+首30分钟狙击者 0 个（已写 data/sniper_set.json）
+阵营序列 3 个小时点，已写 data/camp_share_series.json
+末态占比： {'_supply_raw': '900', '项目方': 66.6667, '大庄': 33.3333, '锁仓/销毁': 11.1111}
+
+质押修正后有效持仓 top15：
+  So1AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA              600  66.667%  (现货600+质押0)
+  So1BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB              300  33.333%  (现货300+质押0)
+有效持仓末态已写 data/effective_balances.json
+首30分钟狙击者 0 个（已写 data/sniper_set.json）
+阵营序列 3 个小时点，已写 data/camp_share_series.json
+末态占比： {'_supply_raw': '900', '项目方': 66.6667, '大庄': 33.3333, '锁仓/销毁': 11.1111}
+
+质押修正后有效持仓 top15：
+  So1AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA              600  66.667%  (现货600+质押0)
+  So1BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB              300  33.333%  (现货300+质押0)
+有效持仓末态已写 data/effective_balances.json
+首30分钟狙击者 0 个（已写 data/sniper_set.json）
+阵营序列 3 个小时点，已写 data/camp_share_series.json
+末态占比： {'_supply_raw': '900', '项目方': 66.6667, '大庄': 33.3333, '锁仓/销毁': 11.1111}
+
+质押修正后有效持仓 top15：
+  So1AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA              600  66.667%  (现货600+质押0)
+  So1BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB              300  33.333%  (现货300+质押0)
+有效持仓末态已写 data/effective_balances.json
+首30分钟狙击者 0 个（已写 data/sniper_set.json）
+阵营序列 3 个小时点，已写 data/camp_share_series.json
+末态占比： {'_supply_raw': '900', '项目方': 66.6667, '大庄': 33.3333, '锁仓/销毁': 11.1111}
+
+质押修正后有效持仓 top15：
+  So1AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA              600  66.667%  (现货600+质押0)
+  So1BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB              300  33.333%  (现货300+质押0)
+有效持仓末态已写 data/effective_balances.json
+首30分钟狙击者 0 个（已写 data/sniper_set.json）
+阵营序列 3 个小时点，已写 data/camp_share_series.json
+末态占比： {'_supply_raw': '900', '项目方': 66.6667, '大庄': 33.3333, '锁仓/销毁': 11.1111}
+
+质押修正后有效持仓 top15：
+  So1AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA              600  66.667%  (现货600+质押0)
+  So1BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB              300  33.333%  (现货300+质押0)
+有效持仓末态已写 data/effective_balances.json
+首30分钟狙击者 0 个（已写 data/sniper_set.json）
+阵营序列 3 个小时点，已写 data/camp_share_series.json
+末态占比： {'_supply_raw': '900', '项目方': 66.6667, '大庄': 33.3333, '锁仓/销毁': 11.1111}
+
+质押修正后有效持仓 top15：
+  So1AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA              600  66.667%  (现货600+质押0)
+  So1BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB              300  33.333%  (现货300+质押0)
+有效持仓末态已写 data/effective_balances.json
+首30分钟狙击者 0 个（已写 data/sniper_set.json）
+阵营序列 3 个小时点，已写 data/camp_share_series.json
+末态占比： {'_supply_raw': '900', '项目方': 66.6667, '大庄': 33.3333, '锁仓/销毁': 11.1111}
+
+质押修正后有效持仓 top15：
+  So1AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA              600  66.667%  (现货600+质押0)
+  So1BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB              300  33.333%  (现货300+质押0)
+有效持仓末态已写 data/effective_balances.json
+首30分钟狙击者 0 个（已写 data/sniper_set.json）
+阵营序列 3 个小时点，已写 data/camp_share_series.json
+末态占比： {'_supply_raw': '900', '项目方': 66.6667, '大庄': 33.3333, '锁仓/销毁': 11.1111}
+
+质押修正后有效持仓 top15：
+  So1AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA              600  66.667%  (现货600+质押0)
+  So1BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB              300  33.333%  (现货300+质押0)
+有效持仓末态已写 data/effective_balances.json
+首30分钟狙击者 0 个（已写 data/sniper_set.json）
+阵营序列 3 个小时点，已写 data/camp_share_series.json
+末态占比： {'_supply_raw': '900', '项目方': 66.6667, '大庄': 33.3333, '锁仓/销毁': 11.1111}
+
+质押修正后有效持仓 top15：
+  So1AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA              600  66.667%  (现货600+质押0)
+  So1BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB              300  33.333%  (现货300+质押0)
+有效持仓末态已写 data/effective_balances.json
+首30分钟狙击者 0 个（已写 data/sniper_set.json）
+阵营序列 3 个小时点，已写 data/camp_share_series.json
+末态占比： {'_supply_raw': '900', '项目方': 66.6667, '大庄': 33.3333, '锁仓/销毁': 11.1111}
+
+质押修正后有效持仓 top15：
+  So1AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA              600  66.667%  (现货600+质押0)
+  So1BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB              300  33.333%  (现货300+质押0)
+有效持仓末态已写 data/effective_balances.json
+首30分钟狙击者 0 个（已写 data/sniper_set.json）
+阵营序列 3 个小时点，已写 data/camp_share_series.json
+末态占比： {'_supply_raw': '900', '项目方': 66.6667, '大庄': 33.3333, '锁仓/销毁': 11.1111}
+
+质押修正后有效持仓 top15：
+  So1AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA              600  66.667%  (现货600+质押0)
+  So1BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB              300  33.333%  (现货300+质押0)
+有效持仓末态已写 data/effective_balances.json
+首30分钟狙击者 0 个（已写 data/sniper_set.json）
+阵营序列 3 个小时点，已写 data/camp_share_series.json
+末态占比： {'_supply_raw': '900', '项目方': 66.6667, '大庄': 33.3333, '锁仓/销毁': 11.1111}
+
+质押修正后有效持仓 top15：
+  So1AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA              600  66.667%  (现货600+质押0)
+  So1BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB              300  33.333%  (现货300+质押0)
+有效持仓末态已写 data/effective_balances.json
+首30分钟狙击者 0 个（已写 data/sniper_set.json）
+阵营序列 3 个小时点，已写 data/camp_share_series.json
+末态占比： {'_supply_raw': '900', '项目方': 66.6667, '大庄': 33.3333, '锁仓/销毁': 11.1111}
+
+质押修正后有效持仓 top15：
+  So1AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA              600  66.667%  (现货600+质押0)
+  So1BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB              300  33.333%  (现货300+质押0)
+有效持仓末态已写 data/effective_balances.json
+首30分钟狙击者 0 个（已写 data/sniper_set.json）
+阵营序列 3 个小时点，已写 data/camp_share_series.json
+末态占比： {'_supply_raw': '900', '项目方': 66.6667, '大庄': 33.3333, '锁仓/销毁': 11.1111}
+
+质押修正后有效持仓 top15：
+  So1AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA              600  66.667%  (现货600+质押0)
+  So1BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB              300  33.333%  (现货300+质押0)
+有效持仓末态已写 data/effective_balances.json
+首30分钟狙击者 0 个（已写 data/sniper_set.json）
+阵营序列 3 个小时点，已写 data/camp_share_series.json
+末态占比： {'_supply_raw': '900', '项目方': 66.6667, '大庄': 33.3333, '锁仓/销毁': 11.1111}
+
+质押修正后有效持仓 top15：
+  So1AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA              600  66.667%  (现货600+质押0)
+  So1BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB              300  33.333%  (现货300+质押0)
+有效持仓末态已写 data/effective_balances.json
+首30分钟狙击者 0 个（已写 data/sniper_set.json）
+阵营序列 3 个小时点，已写 data/camp_share_series.json
+末态占比： {'_supply_raw': '900', '项目方': 66.6667, '大庄': 33.3333, '锁仓/销毁': 11.1111}
+
+质押修正后有效持仓 top15：
+  So1AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA              600  66.667%  (现货600+质押0)
+  So1BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB              300  33.333%  (现货300+质押0)
+有效持仓末态已写 data/effective_balances.json
+首30分钟狙击者 0 个（已写 data/sniper_set.json）
+阵营序列 3 个小时点，已写 data/camp_share_series.json
+末态占比： {'_supply_raw': '900', '项目方': 66.6667, '大庄': 33.3333, '锁仓/销毁': 11.1111}
+
+质押修正后有效持仓 top15：
+  So1AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA              600  66.667%  (现货600+质押0)
+  So1BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB              300  33.333%  (现货300+质押0)
+有效持仓末态已写 data/effective_balances.json
+首30分钟狙击者 0 个（已写 data/sniper_set.json）
+阵营序列 3 个小时点，已写 data/camp_share_series.json
+末态占比： {'_supply_raw': '900', '项目方': 66.6667, '大庄': 33.3333, '锁仓/销毁': 11.1111}
+
+质押修正后有效持仓 top15：
+  So1AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA              600  66.667%  (现货600+质押0)
+  So1BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB              300  33.333%  (现货300+质押0)
+有效持仓末态已写 data/effective_balances.json
+首30分钟狙击者 0 个（已写 data/sniper_set.json）
+阵营序列 3 个小时点，已写 data/camp_share_series.json
+末态占比： {'_supply_raw': '900', '项目方': 66.6667, '大庄': 33.3333, '锁仓/销毁': 11.1111}
+
+质押修正后有效持仓 top15：
+  So1AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA              600  66.667%  (现货600+质押0)
+  So1BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB              300  33.333%  (现货300+质押0)
+有效持仓末态已写 data/effective_balances.json
+首30分钟狙击者 0 个（已写 data/sniper_set.json）
+阵营序列 3 个小时点，已写 data/camp_share_series.json
+末态占比： {'_supply_raw': '900', '项目方': 66.6667, '大庄': 33.3333, '锁仓/销毁': 11.1111}
+
+质押修正后有效持仓 top15：
+  So1AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA              600  66.667%  (现货600+质押0)
+  So1BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB              300  33.333%  (现货300+质押0)
+有效持仓末态已写 data/effective_balances.json
+首30分钟狙击者 0 个（已写 data/sniper_set.json）
+阵营序列 3 个小时点，已写 data/camp_share_series.json
+末态占比： {'_supply_raw': '900', '项目方': 66.6667, '大庄': 33.3333, '锁仓/销毁': 11.1111}
+
+质押修正后有效持仓 top15：
+  So1AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA              600  66.667%  (现货600+质押0)
+  So1BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB              300  33.333%  (现货300+质押0)
+有效持仓末态已写 data/effective_balances.json
+边数=3  时间范围 01-01 01:00:00 → 01-01 03:00:00
+铸造=1,000  销毁=100  净=900
+负余额地址数=0
+快照 supply=900  重放净-快照差=0
+全 owner 对账：2/2 一致
+重放末态已写 data/replay_final_balances.json
+首30分钟狙击者 0 个（已写 data/sniper_set.json）
+阵营序列 3 个小时点，已写 data/camp_share_series.json
+末态占比： {'_supply_raw': '900', '项目方': 66.6667, '大庄': 33.3333, '锁仓/销毁': 11.1111}
+
+质押修正后有效持仓 top15：
+  So1AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA              600  66.667%  (现货600+质押0)
+  So1BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB              300  33.333%  (现货300+质押0)
+有效持仓末态已写 data/effective_balances.json
+首30分钟狙击者 0 个（已写 data/sniper_set.json）
+阵营序列 3 个小时点，已写 data/camp_share_series.json
+末态占比： {'_supply_raw': '900', '项目方': 66.6667, '大庄': 33.3333, '锁仓/销毁': 11.1111}
+
+质押修正后有效持仓 top15：
+  So1AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA              600  66.667%  (现货600+质押0)
+  So1BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB              300  33.333%  (现货300+质押0)
+有效持仓末态已写 data/effective_balances.json
+首30分钟狙击者 0 个（已写 data/sniper_set.json）
+阵营序列 3 个小时点，已写 data/camp_share_series.json
+末态占比： {'_supply_raw': '900', '项目方': 66.6667, '大庄': 33.3333, '锁仓/销毁': 11.1111}
+
+质押修正后有效持仓 top15：
+  So1AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA              600  66.667%  (现货600+质押0)
+  So1BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB              300  33.333%  (现货300+质押0)
+有效持仓末态已写 data/effective_balances.json
+边数=3  时间范围 01-01 01:00:00 → 01-01 03:00:00
+铸造=1,000  销毁=100  净=900
+负余额地址数=0
+快照 supply=900  重放净-快照差=0
+全 owner 对账：2/2 一致
+重放末态已写 data/replay_final_balances.json
+首30分钟狙击者 0 个（已写 data/sniper_set.json）
+阵营序列 3 个小时点，已写 data/camp_share_series.json
+末态占比： {'_supply_raw': '900', '项目方': 66.6667, '大庄': 33.3333, '锁仓/销毁': 11.1111}
+
+质押修正后有效持仓 top15：
+  So1AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA              600  66.667%  (现货600+质押0)
+  So1BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB              300  33.333%  (现货300+质押0)
+有效持仓末态已写 data/effective_balances.json
+首30分钟狙击者 0 个（已写 data/sniper_set.json）
+阵营序列 3 个小时点，已写 data/camp_share_series.json
+末态占比： {'_supply_raw': '900', '项目方': 66.6667, '大庄': 33.3333, '锁仓/销毁': 11.1111}
+
+质押修正后有效持仓 top15：
+  So1AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA              600  66.667%  (现货600+质押0)
+  So1BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB              300  33.333%  (现货300+质押0)
+有效持仓末态已写 data/effective_balances.json
+首30分钟狙击者 0 个（已写 data/sniper_set.json）
+阵营序列 3 个小时点，已写 data/camp_share_series.json
+末态占比： {'_supply_raw': '900', '项目方': 66.6667, '大庄': 33.3333, '锁仓/销毁': 11.1111}
+
+质押修正后有效持仓 top15：
+  So1AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA              600  66.667%  (现货600+质押0)
+  So1BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB              300  33.333%  (现货300+质押0)
+有效持仓末态已写 data/effective_balances.json
+首30分钟狙击者 0 个（已写 data/sniper_set.json）
+阵营序列 3 个小时点，已写 data/camp_share_series.json
+末态占比： {'_supply_raw': '900', '项目方': 66.6667, '大庄': 33.3333, '锁仓/销毁': 11.1111}
+
+质押修正后有效持仓 top15：
+  So1AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA              600  66.667%  (现货600+质押0)
+  So1BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB              300  33.333%  (现货300+质押0)
+有效持仓末态已写 data/effective_balances.json
+首30分钟狙击者 0 个（已写 data/sniper_set.json）
+阵营序列 3 个小时点，已写 data/camp_share_series.json
+末态占比： {'_supply_raw': '900', '项目方': 66.6667, '大庄': 33.3333, '锁仓/销毁': 11.1111}
+
+质押修正后有效持仓 top15：
+  So1AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA              600  66.667%  (现货600+质押0)
+  So1BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB              300  33.333%  (现货300+质押0)
+有效持仓末态已写 data/effective_balances.json
+首30分钟狙击者 0 个（已写 data/sniper_set.json）
+阵营序列 3 个小时点，已写 data/camp_share_series.json
+末态占比： {'_supply_raw': '900', '项目方': 66.6667, '大庄': 33.3333, '锁仓/销毁': 11.1111}
+
+质押修正后有效持仓 top15：
+  So1AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA              600  66.667%  (现货600+质押0)
+  So1BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB              300  33.333%  (现货300+质押0)
+有效持仓末态已写 data/effective_balances.json
+首30分钟狙击者 0 个（已写 data/sniper_set.json）
+阵营序列 3 个小时点，已写 data/camp_share_series.json
+末态占比： {'_supply_raw': '900', '项目方': 66.6667, '大庄': 33.3333, '锁仓/销毁': 11.1111}
+
+质押修正后有效持仓 top15：
+  So1AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA              600  66.667%  (现货600+质押0)
+  So1BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB              300  33.333%  (现货300+质押0)
+有效持仓末态已写 data/effective_balances.json
+首30分钟狙击者 0 个（已写 data/sniper_set.json）
+阵营序列 3 个小时点，已写 data/camp_share_series.json
+末态占比： {'_supply_raw': '900', '项目方': 66.6667, '大庄': 33.3333, '锁仓/销毁': 11.1111}
+
+质押修正后有效持仓 top15：
+  So1AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA              600  66.667%  (现货600+质押0)
+  So1BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB              300  33.333%  (现货300+质押0)
+有效持仓末态已写 data/effective_balances.json
+首30分钟狙击者 0 个（已写 data/sniper_set.json）
+阵营序列 3 个小时点，已写 data/camp_share_series.json
+末态占比： {'_supply_raw': '900', '项目方': 66.6667, '大庄': 33.3333, '锁仓/销毁': 11.1111}
+
+质押修正后有效持仓 top15：
+  So1AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA              600  66.667%  (现货600+质押0)
+  So1BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB              300  33.333%  (现货300+质押0)
+有效持仓末态已写 data/effective_balances.json
+首30分钟狙击者 0 个（已写 data/sniper_set.json）
+阵营序列 3 个小时点，已写 data/camp_share_series.json
+末态占比： {'_supply_raw': '900', '项目方': 66.6667, '大庄': 33.3333, '锁仓/销毁': 11.1111}
+
+质押修正后有效持仓 top15：
+  So1AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA              600  66.667%  (现货600+质押0)
+  So1BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB              300  33.333%  (现货300+质押0)
+有效持仓末态已写 data/effective_balances.json
+PASS: repair batch C (F-05+F-04+fixround1+fixround2) 227 checks
+EXIT_CODE=0
+
+COMMAND: MPLCONFIGDIR=/tmp/f007-round2-mpl PYTHONPYCACHEPREFIX=/tmp/f007-round2-pycache python3 scripts/tests/test_a4_gate.py
+ok    register 正例 exit 0
+ok    register 空数组 exit 2
+ok    register 重复 id exit 2
+ok    Round4 P1-02 finalize 重验重复 claim id
+ok    Round4 P1-02 同族空文本失败分支
+ok    finalize 未 register exit 2
+ok    finalize 缺一条裁决 exit 2
+ok    finalize 多一条未登记裁决 exit 2
+ok    finalize verdict 非法 exit 2
+ok    finalize WEAKENED 无 revision_note exit 2
+ok    finalize charts/final 非空 exit 2
+ok    finalize 正例 exit 0 且 seal PASS
+ok    D-06 已封口监控 JSON 可走正式构建
+ok    P1-05 全新分析无净室资产仍过必经共享门禁
+ok    P1-06 终版 claim registry 对账后重封口
+ok    G9 正例 exit 0 且 HTML 写出
+ok    P1-05 audit seal 不得降级当 new-analysis 构建
+ok    P0-01 seal 外 facts 拒绝且不落 HTML
+ok    P0-01 seal 外 state 拒绝且不落 HTML
+ok    P0-01 analysis 禁止未封口 JSON 附录
+ok    G9 registry 封口后漂移拒绝
+ok    G9 verdicts 封口后漂移拒绝
+ok    G9 claim file 封口后漂移拒绝
+ok    G9 dotdot 图片越界拒绝
+ok    G9 absolute 图片越界拒绝
+ok    G9 symlink 图片越界拒绝
+ok    G9 封口后改结论 exit 1
+ok    G9 拒绝时 HTML 未写出（gate 前置）
+ok    重封时 charts/final 留旧图被拒 exit 2（旧图必须作废）
+ok    清旧图后重跑 finalize 重新封口 exit 0
+ok    G9 图不在封口目录 exit 1 不写出
+ok    legacy 降级理由入 HTML 注释
+ok    analysis 无 --a4-seal 拒绝
+ok    已删除的 update 模式被拒绝
+ok    D-07 help 不再暴露不可达 skip gate 参数
+========================================
+a4_gate 契约测试全部通过（23 项）
+EXIT_CODE=0
+
+COMMAND: MPLCONFIGDIR=/tmp/f007-round2-mpl PYTHONPYCACHEPREFIX=/tmp/f007-round2-pycache python3 scripts/tests/test_sqd_consumer_v4.py
+usage: replay_edges.py [-h] [--mint MINT] [--case-root CASE_ROOT]
+                       [--as-of-slot AS_OF_SLOT] [--receipt RECEIPT]
+                       [--decimals DECIMALS] [--launch-ts LAUNCH_TS]
+                       [--camps CAMPS] [--stake-pool STAKE_POOL] [--no-labels]
+                       [--legacy-sol5]
+                       {reconcile,trace,top,sniper,mints,evolution} [arg]
+                       [arg2]
+replay_edges.py: error: reconcile 正式路径必须提供 --case-root
+边数=1  时间范围 01-01 00:01:40 → 01-01 00:01:40
+铸造=100  销毁=0  净=100
+负余额地址数=0
+快照 supply=100  重放净-快照差=0
+全 owner 对账：1/1 一致
+重放末态已写 data/replay_final_balances.json
+边数=1  时间范围 01-01 00:01:40 → 01-01 00:01:40
+铸造=100  销毁=0  净=100
+负余额地址数=0
+快照 supply=100  重放净-快照差=0
+全 owner 对账：1/1 一致
+PASS: SQD v4 consumer split-mode regressions
+EXIT_CODE=0
+
+COMMAND: MPLCONFIGDIR=/tmp/f007-round2-mpl PYTHONPYCACHEPREFIX=/tmp/f007-round2-pycache python3 scripts/tests/test_state_from_facts.py
+PASS: real compile_state output passes formal chain gate
+PASS: missing top-level chain is rejected by formal chain gate
+PASS: contradictory top-level/token chain is rejected by formal chain gate
+PASS: D-05 state_from_facts compiler owns membership and raw-derived shares
+EXIT_CODE=0
+
+COMMAND: MPLCONFIGDIR=/tmp/f007-round2-mpl PYTHONPYCACHEPREFIX=/tmp/f007-round2-pycache python3 scripts/tests/test_audit_release_gate.py
+PASS: audit_release_gate 净室资产/哈希/CEX受益权/阴性结论/图表封口与负钳零/对抗复核否决/四查WARN拦截/双线阈值/嵌套未决暴露/静置仓全集对账/日级峰值口径闭环十一类契约全过
+EXIT_CODE=0

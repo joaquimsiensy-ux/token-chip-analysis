@@ -24,18 +24,17 @@ compile_state 只验容器与长度，不验有限数/值域/闭合/标准阵营
      用恒等式比对（不是单向下界：spec 桶全部双向精确，残差=100−Σspec 也是
      双向等式）。
 
-burn 口径定案（施工前 rg 全库落锤，防 100% 闭合闸误杀 burn 案）：
-  - EVM camp_series.json（dict 形态）：轴键 `dates`、元数据 `_meta`、
-    burn 单列 `burn_cum_pct`（分母=当期净供应，可 >100%，不参与堆叠闭合）；
-    legacy 口径（CHIP_LEGACY_CAMP_DENOM=1）"销毁"桶参与 100% 闭合。
-  - Solana replay_edges camp_share_series.json（行数组形态）：行内轴键 `ts`、
-    元数据 `_supply_raw`、burn 行内桶 `锁仓/销毁`（分母=净供应 minted−burned，
-    不参与闭合，可 >100%）。
-  - Solana build_evolution camp_series.json（行数组形态）：`锁仓/销毁` 在
-    total_supply 分母下**参与** 100% 闭合（散户残差吸收）——与 replay_edges
-    同名键不同语义。
-  故同点闭合公式=双式：非 burn 桶之和≈100（净分母族）或 全桶之和≈100
-  （total 分母族/legacy），二中其一即过；burn 桶单独验非负有限、不设 100 上界。
+burn 口径按 producer 的 series_format 分家（堆叠语义不由分母口径猜测）：
+  - EVM `evm-dict`（scripts/evm/replay_pass2.py:84-86,101-106,139-145）：
+    `锁仓/销毁` 是 camps spec 普通堆叠桶，两种分母都计入 known；仅 net 输出的
+    `burn_cum_pct` 是堆叠外披露轨。legacy 不输出 `burn_cum_pct`/`_meta`。
+  - Solana `sol-rows`（scripts/solana/replay_edges.py:648-657）：
+    `锁仓/销毁` 是 minted−burned 净供应分母外的真烧毁披露桶，不参与堆叠。
+  - Solana `sol-anchor-rows`（scripts/solana/build_evolution.py:177-183）：
+    `锁仓/销毁` 写入 camp_raw、计入 known，散户补 TOT−known，全桶除以 TOT，
+    因而无堆叠豁免；producer 不输出 `burn_cum_pct`，该键出现即拒。该辅助格式
+    不接入正式编译链，但校验映射仍固定，调用者无权另传豁免集合。
+  - 无 series_format 的手填路径保留历史 dual/net/total 双式行为，逐字兼容。
 """
 from __future__ import annotations
 
@@ -53,9 +52,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "solana"))
 from sqd_cache_identity import resolve_formal_cache  # noqa: E402
 
 SIDECAR_SCHEMA = "camp-series-provenance/v1"
-# 净分母族的 burn 桶不参与堆叠闭合；total 分母族"锁仓/销毁"参与——双式闭合见 docstring。
-# EVM legacy 堆叠桶"销毁"（CHIP_LEGACY_CAMP_DENOM=1 才出现）不在此列：legacy 重放
-# 不入正式编译，白名单先拒，列进来就是永远走不到的死分支
+# 跨格式 burn 披露键全集；不可直接当堆叠豁免集。实际豁免只能由
+# stack_exempt_for(series_format) 固定派生：EVM 依据 replay_pass2.py:84-86,101-106,
+# 139-145 仅豁免 burn_cum_pct；sol-rows 依据 replay_edges.py:648-657 两键均豁免；
+# sol-anchor-rows 依据 build_evolution.py:177-183 无豁免。
 BURN_EXEMPT_KEYS = ("burn_cum_pct", "锁仓/销毁")
 AXIS_META_KEYS = ("dates", "ts", "_meta", "_supply_raw")
 CLOSURE_TOL_PP = 0.05     # 同点合计闭合容差（0.05pp 级；round(4)×14 桶的舍入远小于此）
@@ -70,6 +70,18 @@ DENOMINATORS = ("current_net_supply", "mint_total_legacy", "net_supply",
 SOLANA_MINT_RE = re.compile(r"[1-9A-HJ-NP-Za-km-z]{32,44}")
 class SeriesProvenanceError(ValueError):
     """sidecar 缺失/不匹配/序列数值面非法/末点对账失败（调用方按 exit 2 处理）。"""
+
+
+def stack_exempt_for(series_format: str) -> tuple[str, ...]:
+    """返回 producer 固定的堆叠外键；anchor 依据 build_evolution.py:177-183。"""
+    if series_format == "evm-dict":
+        return ("burn_cum_pct",)
+    if series_format == "sol-rows":
+        return BURN_EXEMPT_KEYS
+    if series_format == "sol-anchor-rows":
+        return ()
+    raise SeriesProvenanceError(
+        f"series_format {series_format!r} 无堆叠语义映射")
 
 
 def _reject_constant(value: str):
@@ -310,12 +322,12 @@ def modern_camp_whitelist() -> set:
 
 
 def closure_mode_for(denominator: str) -> str:
-    """F-C4：sidecar 的 denominator 口径 → 闭合单式选择（绑定路径专用）。
+    """F-C4：校验 sidecar denominator 并保留历史闭合模式标签。
 
-    净分母族（current_net_supply/net_supply）：burn 桶不参与堆叠，闭合只认
-    非 burn 之和≈100——burn 值不得蹭进合计救非 burn 桶的缺口；
-    total 分母族（mint_total_legacy/config_total_supply）：锁仓/销毁参与闭合，
-    只认全桶之和≈100——总量超发不得靠非 burn 式蹭过。
+    绑定路径的堆叠集合只由 stack_exempt_for(series_format) 决定：EVM 依据
+    replay_pass2.py:84-86,101-106,139-145；sol-rows 依据 replay_edges.py:648-657；
+    sol-anchor-rows 依据 build_evolution.py:177-183。
+    返回值继续校验 denominator 合法性，并供无 format 手填路径保持既有行为。
     """
     if denominator in ("current_net_supply", "net_supply"):
         return "net"
@@ -325,17 +337,19 @@ def closure_mode_for(denominator: str) -> str:
 
 
 def validate_series_payload(css: dict, *, tol_pp: float = CLOSURE_TOL_PP,
-                            closure_mode: str = "dual"):
+                            closure_mode: str = "dual", series_format=None):
     """state 形态 camp_share_series 的数值面硬校验（拒=raise SeriesProvenanceError）：
 
     ①桶名白名单=CAMP_ORDER_MODERN ∪ burn 豁免键（legacy 桶名/实体级自造桶名一律拒，
       新报告禁用；旧案重绘不经 compile_state）；
     ②全值有限（json 的 NaN/Infinity 字面量默认能解析进来，必须显式查）；
-    ③非 burn 桶值域 [0,100]；burn 桶仅验非负有限（burn_cum_pct 按净分母可 >100 合法）；
-    ④同点合计闭合，closure_mode 三态（F-C4）：
-       "net"=只认非 burn 之和≈100、"total"=只认全桶之和≈100（sidecar 绑定路径按
-       denominator 口径单式严判，两族不得互救）；"dual"=二中其一（无口径信息的
-       手填路径专用宽式）。全桶全零点=供应未产生，豁免。容差 tol_pp。
+    ③堆叠桶值域 [0,100]；堆叠外披露桶仅验非负有限；豁免集合由 producer 格式
+      固定：evm-dict 依据 replay_pass2.py:84-86,101-106,139-145 仅豁免
+      burn_cum_pct；sol-rows 依据 replay_edges.py:648-657 豁免 BURN_EXEMPT_KEYS；
+      sol-anchor-rows 依据 build_evolution.py:177-183 无豁免，调用者不能自定义；
+    ④有 series_format 时只认实际堆叠键之和≈100；closure_mode 仍验合法，且
+      evm-dict+mint_total_legacy 禁带 producer 从不输出的 burn_cum_pct。无 format
+      时 closure_mode 的 dual/net/total 历史双式行为逐字保留。全桶全零点豁免。
     ⑤日期轴统一 UTC 解析后严格递增无重复（倒序/重复/非法日期/时区换算后倒挂都拒）。
     """
     dates = css.get("dates")
@@ -354,18 +368,29 @@ def validate_series_payload(css: dict, *, tol_pp: float = CLOSURE_TOL_PP,
             f"自造桶名新报告禁用）。存量案迁移口径见 scan-schemas.md §13"
             f"「存量迁移」：不重编译不受影响；重编译须先按案内证据把桶归入现代名"
             f"（映射是分析判断非机械替换）")
+    stack_exempt = BURN_EXEMPT_KEYS if series_format is None \
+        else stack_exempt_for(series_format)
+    if series_format == "sol-anchor-rows" and "burn_cum_pct" in series:
+        raise SeriesProvenanceError(
+            "sol-anchor-rows 序列不得含 burn_cum_pct：build_evolution 不输出该键"
+            "（scripts/solana/build_evolution.py:177-183）")
+    if series_format == "evm-dict" and closure_mode == "total" \
+            and "burn_cum_pct" in series:
+        raise SeriesProvenanceError(
+            "evm-dict + mint_total_legacy 序列不得含 burn_cum_pct："
+            "replay_pass2 legacy producer 从不输出该键")
     n = len(dates)
     for camp, values in series.items():
         if not isinstance(values, list) or len(values) != n:
             raise SeriesProvenanceError(f"桶「{camp}」长度 {len(values) if isinstance(values, list) else '非列表'} ≠ dates {n}")
-        is_burn = camp in BURN_EXEMPT_KEYS
+        is_exempt = camp in stack_exempt
         for i, v in enumerate(values):
             if isinstance(v, bool) or not isinstance(v, (int, float)) \
                     or v != v or v in (float("inf"), float("-inf")):
                 raise SeriesProvenanceError(f"桶「{camp}」[{i}] 非有限数值: {v!r}")
             if v < 0:
                 raise SeriesProvenanceError(f"桶「{camp}」[{i}] 为负: {v}")
-            if not is_burn and v > 100:
+            if not is_exempt and v > 100:
                 raise SeriesProvenanceError(f"桶「{camp}」[{i}] 超出 100: {v}")
     if closure_mode not in ("dual", "net", "total"):
         raise SeriesProvenanceError(f"closure_mode 只认 dual/net/total，"
@@ -377,13 +402,22 @@ def validate_series_payload(css: dict, *, tol_pp: float = CLOSURE_TOL_PP,
         s_all = s_non + sum(series[c][i] for c in burn)
         if s_all == 0:
             continue  # 供应尚未产生的点（producer 全零输出），豁免
-        if closure_mode == "net":
+        if series_format is not None:
+            stack_keys = [c for c in series if c not in stack_exempt]
+            s_stack = sum(series[c][i] for c in stack_keys)
+            closed = abs(s_stack - 100.0) <= tol_pp
+        elif closure_mode == "net":
             closed = abs(s_non - 100.0) <= tol_pp
         elif closure_mode == "total":
             closed = abs(s_all - 100.0) <= tol_pp
         else:
             closed = abs(s_non - 100.0) <= tol_pp or abs(s_all - 100.0) <= tol_pp
         if not closed:
+            if series_format is not None:
+                raise SeriesProvenanceError(
+                    f"第 {i} 点（{dates[i]}）合计不闭合"
+                    f"（series_format={series_format}, closure_mode={closure_mode}）："
+                    f"实际堆叠键Σ={s_stack:.4f}，偏离 100 超过 {tol_pp}pp")
             raise SeriesProvenanceError(
                 f"第 {i} 点（{dates[i]}）合计不闭合（closure_mode={closure_mode}）："
                 f"非burn桶Σ={s_non:.4f}、全桶Σ={s_all:.4f}，"
@@ -760,6 +794,10 @@ def endpoint_reconcile(sidecar: dict, css: dict, resolved: dict,
         if camp in BURN_EXEMPT_KEYS:
             # spec 里显式配置的销毁类阵营（如 0xdead 地址）：其终点参与 burn 桶比对
             burn_recon[camp] = burn_recon.get(camp, 0.0) + recon
+            # EVM replay_pass2.py:84-86,101-106 的 camps stack 两种分母都包含
+            # 「锁仓/销毁」；Solana replay_edges.py:648-657 则是堆叠外烧毁披露。
+            if fmt == "evm-dict":
+                spec_sum += recon
             continue
         spec_sum += recon
         if camp not in series:
