@@ -154,6 +154,7 @@
     {"id":"CT-BANNED-15","kind":"banned","authority_file":"commands-staging/token-analyze-2.md","needle":"A5 seal v2","stages":["A3-A5"]},
     {"id":"CT-SEMANTIC-61","kind":"required","authority_file":"commands-staging/token-analyze-3.md","needle":"a5_report_seal.py 产 `a5-report-seal/v3`","stages":["A5"]},
     {"id":"CT-SEMANTIC-62","kind":"required","authority_file":"commands-staging/token-analyze-3.md","needle":"build_html --mode analysis-new 过 G10/G11","stages":["A5"]},
+    {"id":"CT-SEMANTIC-63","kind":"required","authority_file":"references/scan-schemas.md","needle":"当前命中集合必须与 `source.files` 精确相等","stages":["A3","A5"]},
     {"id":"CT-BANNED-16","kind":"banned","authority_file":"commands-staging/token-analyze-3.md","needle":"A5 seal v2","stages":["A5"]},
     {"id":"CT-RECON-01","kind":"required","authority_file":"references/data-pipeline-evm-recon.md","needle":"gmgn-divergence-note/v1","stages":["A2"]},
     {"id":"CT-RECON-02","kind":"required","authority_file":"references/data-pipeline-evm-recon.md","needle":"evm-reconciliation-receipt/v3","stages":["A2"]},
@@ -195,6 +196,7 @@
     {"id":"CT-BANNED-19","kind":"banned","authority_file":"references/split-run.md","needle":"reconciliation_four_checks","stages":["A2","A5"]},
     {"id":"CT-BANNED-20","kind":"banned","authority_file":"references/split-run.md","needle":"wave-scan/v4","stages":["A3","A5"]},
     {"id":"CT-BANNED-21","kind":"banned","authority_file":"references/split-run.md","needle":"flow-anomaly/v2","stages":["A3","A5"]},
-    {"id":"CT-BANNED-22","kind":"banned","authority_file":"references/scan-schemas.md","needle":"只认 `solana-reconcile/v3`","stages":["A3","A5"]}
+    {"id":"CT-BANNED-22","kind":"banned","authority_file":"references/scan-schemas.md","needle":"只认 `solana-reconcile/v3`","stages":["A3","A5"]},
+    {"id":"CT-BANNED-23","kind":"banned","authority_file":"references/scan-schemas.md","needle":"净分母族只认非 burn 之和","stages":["A3","A5"]}
   ]
 }

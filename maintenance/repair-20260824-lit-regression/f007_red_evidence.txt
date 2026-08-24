@@ -1,0 +1,6 @@
+COMMAND: MPLCONFIGDIR=/tmp/f007-mpl-cache python3 scripts/tests/test_lit_regression_f007.py --red-only
+Matplotlib is building the font cache; this may take a moment.
+FAIL: LIT legacy dead-sink endpoint: SeriesProvenanceError: 末点对账失败：散户残差末点 5.0000% ≠ 恒等式 100−Σspec=20.0000%（差 15.0000pp）
+FAIL: LIT net dead-sink closure: SeriesProvenanceError: 第 0 点（2026-08-24T00:00:00Z）合计不闭合（closure_mode=net）：非burn桶Σ=85.0000、全桶Σ=110.0000，偏离 100 超过 0.05pp
+SUMMARY: 0/2 PASS
+EXIT_CODE=1
