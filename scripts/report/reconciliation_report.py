@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run all four reconciliation producers and atomically publish their v2 wrapper."""
+"""Run family reconciliation producers and atomically publish their v3 wrapper."""
 from __future__ import annotations
 
 import argparse
@@ -10,13 +10,14 @@ import subprocess
 import sys
 from pathlib import Path
 
-from shared_release_receipt import RECON_PRODUCERS, repo_ref_ok
+from shared_release_receipt import (RECON_CHECK_KEYS, RECON_PRODUCERS,
+                                    canonical_target, chain_family, repo_ref_ok,
+                                    validate_reconciliation_check)
 
 
 HERE = Path(__file__).resolve().parent
 REPO = HERE.parent.parent
 RUNNER_REL = "scripts/report/reconciliation_report.py"
-CHECK_KEYS = ("balance", "supply", "supply_truth", "time")
 OUTPUT_NAME = "reconciliation_report.json"
 OBSERVED_SLOT_PLACEHOLDER = "{observed_as_of_block}"
 
@@ -114,9 +115,10 @@ def atomic_write_json(path, value):
         raise
 
 
-def _base_wrapper(target):
+def _base_wrapper(target, family):
     return {
-        "schema": "reconciliation-report/v2",
+        "schema": "reconciliation-report/v3",
+        "family": family,
         "target": target,
         "producer": repo_ref(RUNNER_REL),
         "verdict": "FAIL",
@@ -141,11 +143,14 @@ def _resolve_case_dir(spec, base_dir):
 
 
 def _validate_spec(spec, case_dir):
-    family = spec.get("family")
-    if family not in RECON_PRODUCERS:
-        raise RunnerError(f"family must be one of {sorted(RECON_PRODUCERS)}")
+    if "family" in spec:
+        raise RunnerError("family 不接受外部声明；必须由 target.chain 推导")
     target = spec.get("target")
     derive_as_of = spec.get("derive_as_of_from")
+    try:
+        family = chain_family(target.get("chain") if isinstance(target, dict) else None)
+    except ValueError as exc:
+        raise RunnerError(str(exc)) from exc
     dynamic_solana = family == "solana" and derive_as_of == "supply"
     if derive_as_of is not None and not dynamic_solana:
         raise RunnerError("derive_as_of_from is only supported as solana/supply")
@@ -158,11 +163,12 @@ def _validate_spec(spec, case_dir):
                 or target["as_of_block"] < 0)):
         raise RunnerError("target must contain exactly chain/token/as_of_block")
     checks = spec.get("checks")
-    if not isinstance(checks, dict) or set(checks) != set(CHECK_KEYS):
-        raise RunnerError(f"checks must contain exactly {list(CHECK_KEYS)}")
+    check_keys = RECON_CHECK_KEYS[family]
+    if not isinstance(checks, dict) or tuple(checks) != check_keys:
+        raise RunnerError(f"checks must contain exactly, in order, {list(check_keys)}")
     prepared = {}
     receipt_paths = set()
-    for key in CHECK_KEYS:
+    for key in check_keys:
         item = checks[key]
         if not isinstance(item, dict):
             raise RunnerError(f"check {key} must be an object")
@@ -189,7 +195,7 @@ def _validate_spec(spec, case_dir):
     if dynamic_solana:
         if OBSERVED_SLOT_PLACEHOLDER in prepared["supply"]["argv"]:
             raise RunnerError("supply producer cannot consume the slot it must observe")
-        for key in ("balance", "supply_truth", "time"):
+        for key in ("balance", "supply_truth", "time", "exact_reconcile"):
             if OBSERVED_SLOT_PLACEHOLDER not in prepared[key]["argv"]:
                 raise RunnerError(
                     f"dynamic solana check {key} must consume {OBSERVED_SLOT_PLACEHOLDER}")
@@ -204,10 +210,10 @@ def run_job(spec, *, base_dir=None):
     receipt_snapshots = {}
     try:
         family, case_dir, target, checks, inputs, dynamic_solana = _validate_spec(spec, case_dir)
-        wrapper = _base_wrapper(target)
+        wrapper = _base_wrapper(target, family)
         if inputs:
             wrapper["inputs"] = inputs
-        order = ("supply", "balance", "supply_truth", "time") if dynamic_solana else CHECK_KEYS
+        order = RECON_CHECK_KEYS[family]
         for key in order:
             item = checks[key]
             argv = list(item["argv"])
@@ -249,9 +255,9 @@ def run_job(spec, *, base_dir=None):
                 observed_target = receipt.get("target")
                 if (not isinstance(observed_target, dict)
                         or set(observed_target) != {"chain", "token", "as_of_block"}
-                        or observed_target.get("chain") != target.get("chain")
-                        or str(observed_target.get("token", "")).lower()
-                        != str(target.get("token", "")).lower()
+                        or canonical_target(observed_target)
+                        != canonical_target({**target,
+                                             "as_of_block": observed_target.get("as_of_block")})
                         or isinstance(observed_target.get("as_of_block"), bool)
                         or not isinstance(observed_target.get("as_of_block"), int)
                         or observed_target["as_of_block"] < 0):
@@ -270,7 +276,12 @@ def run_job(spec, *, base_dir=None):
     except Exception as exc:
         if wrapper is None:
             target = spec.get("target") if isinstance(spec, dict) else None
-            wrapper = _base_wrapper(target if isinstance(target, dict) else {})
+            family = None
+            try:
+                family = chain_family(target.get("chain")) if isinstance(target, dict) else None
+            except ValueError:
+                pass
+            wrapper = _base_wrapper(target if isinstance(target, dict) else {}, family)
         wrapper["verdict"] = "FAIL"
         wrapper["exit_code"] = 2
         wrapper["error"] = str(exc)
@@ -284,11 +295,59 @@ def run_job(spec, *, base_dir=None):
     return 0 if wrapper["verdict"] == "PASS" else 2
 
 
+def reseal_evm(old_wrapper_path):
+    """Deeply revalidate an EVM v2 wrapper's four receipt files and reseal v3."""
+    old_wrapper_path = Path(old_wrapper_path).resolve()
+    case_dir = old_wrapper_path.parent
+    old = json.loads(old_wrapper_path.read_text(encoding="utf-8"))
+    if old.get("schema") != "reconciliation-report/v2":
+        raise RunnerError("--reseal 只接受旧 reconciliation-report/v2 wrapper")
+    checks = old.get("checks")
+    if not isinstance(checks, dict) or set(checks) != set(RECON_CHECK_KEYS["evm"]):
+        raise RunnerError("EVM 旧 wrapper 必须含四份 receipt 引用")
+    rebuilt = {}
+    observed_target = None
+    for key in RECON_CHECK_KEYS["evm"]:
+        old_item = checks.get(key)
+        ref_value = old_item.get("receipt") if isinstance(old_item, dict) else None
+        if not isinstance(ref_value, dict) or not isinstance(ref_value.get("path"), str):
+            raise RunnerError(f"旧 wrapper {key} receipt 引用缺失")
+        receipt_ref = file_ref(case_dir, ref_value["path"])
+        receipt = json.loads(case_path(
+            case_dir, receipt_ref["path"], must_exist=True).read_text(encoding="utf-8"))
+        target = canonical_target(receipt.get("target"))
+        if observed_target is None:
+            observed_target = target
+        elif target != observed_target:
+            raise RunnerError("旧 wrapper 四份 receipt target 不一致")
+        if chain_family(target["chain"]) != "evm":
+            raise RunnerError("--reseal 仅允许 EVM 家族")
+        old_producer = old_item.get("producer") if isinstance(old_item, dict) else {}
+        producer = old_producer.get("path") if isinstance(old_producer, dict) else None
+        if producer not in RECON_PRODUCERS["evm"][key]:
+            raise RunnerError(f"旧 wrapper {key} producer 不在 EVM 白名单")
+        item = {"status": receipt.get("verdict"), "exit_code": receipt.get("exit_code"),
+                "process_exit_code": 0, "producer": repo_ref(producer),
+                "receipt": receipt_ref}
+        validate_reconciliation_check(case_dir, key, item, observed_target, "evm")
+        rebuilt[key] = item
+    wrapper = _base_wrapper(observed_target, "evm")
+    wrapper["checks"] = rebuilt
+    wrapper["verdict"] = "PASS"
+    wrapper["exit_code"] = 0
+    atomic_write_json(case_dir / OUTPUT_NAME, wrapper)
+    return 0
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("job_spec", type=Path)
+    group = parser.add_mutually_exclusive_group(required=True)
+    group.add_argument("job_spec", nargs="?", type=Path)
+    group.add_argument("--reseal", type=Path, metavar="OLD_WRAPPER")
     args = parser.parse_args(argv)
     try:
+        if args.reseal is not None:
+            return reseal_evm(args.reseal)
         spec_path = args.job_spec.resolve()
         spec = json.loads(spec_path.read_text(encoding="utf-8"))
         return run_job(spec, base_dir=spec_path.parent)

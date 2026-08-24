@@ -1,0 +1,79 @@
+批 3b RED -> GREEN 与离线回归证据
+===================================
+
+冻结与门禁
+----------
+
+- branch: fix/sqd-gap-v6520
+- HEAD: c237263
+- .staging_b2/STAGING_B2_SHA256.txt: 21/21 OK
+- .staging_b3/STAGING_B3_SHA256.txt: 14/14 OK
+- 工单列出的函数名、行号与锚文本：逐项 grep -n 命中 c237263 实况。
+- replay_edges.py 只读核对：replay_final_balances.json 与 holders_owners.json
+  均为 JSON object `{owner: int}`；残差按两侧 owner 并集排序推导。
+- sqd_coverage_probe.py：未修改；生产者只读 import `sqd_query_body`。
+
+先红证据
+--------
+
+在生产实现前运行 `batch3b_mechanism_gate()`，exit_code=1：
+
+- RED E25-beta-e2e: 缺 `derive_residual_owners`
+- RED E25-beta-tamper: 缺 `validate_beta_trace`
+- RED E26-state: 缺 `validate_coverage_state_consistency`
+- RED E27-a-quota: 缺 `load_resume_slots`
+- RED E27-b-crash: 缺 `resume_published_generation`
+- RED E27-c-cas: 缺 `assert_resume_cas`
+
+上述 RED 是批 3 `batch3_done.md` 发现项 #6/#7/#8/#9 经 E25/E26/E27
+裁定后的缺失机制门，不以字符串搜索代替后续语义测试。
+
+GREEN 定向回归
+--------------
+
+1. `python3 scripts/tests/test_sqd_gap_repair.py`
+   exit_code=0
+   - E25：三输入绑定、确定性残差 owner、显式子集、tokenBalances 余额二分、
+     +/-64 指纹、beta 候选进入 plan/census/gid、独立深验：GREEN。
+   - E25 篡改 beta_trace 一字节：fail-closed GREEN。
+   - E25 gate_pass=true 无残差：零 beta query、beta=[]、不写 trace：GREEN。
+   - E26 coverage 状态从 zero-nonce 变 healthy：在付费 getBlock 前中止，
+     pending 保留且不产 gen：GREEN。
+   - E27(a) 第 2 候选 402：第 1 候选 evidence 对和 ledger 行已 fsync，
+     STOPPED.completed_slots=[19998]；人为追加残缺 ledger 尾行后 resume 丢弃
+     残尾、不重请求 19998，只请求剩余候选；最终 gid 等于不中断跑：GREEN。
+   - E27(b) immutable rename 后、CURRENT CAS 前注入异常：gen 保留；resume
+     不调用采集路径而完成幂等补发：GREEN。
+   - E27(c) resume 前 CURRENT 漂移：CAS 硬错且原 CURRENT 字节不变：GREEN。
+   - 批 3 原 canonical/gid/E17/routeA/CAS/blocks-cache/formal mock 回归：GREEN。
+
+2. `python3 scripts/tests/test_sqd_coverage_probe.py`
+   exit_code=0
+   - PASS SQD coverage probe: 12/12 offline groups
+   - 第 12 组 export-shared-map 的确定性、独立 validator、tamper fail-closed：PASS。
+
+3. `python3 scripts/tests/test_reconcile_v4_receipt.py`
+   exit_code=1（c237263 原样，当前批未修改此文件）
+   - 本批相关项 (17) `validate_cache_meta_v2` 拒绝正式路径集合外复制 meta：GREEN。
+   - 现役批 4/5 RED：9、23、12、13、31、33、11、32；均由 HEAD 原测试
+     自带，属于 wave/flow/case-root/reconcile-v4 消费半边，不在批 3b 白名单。
+
+4. `python3 scripts/tests/run_all.py`
+   exit_code=1；总计 124：PASS 120 / FAIL 4。
+   - invariant_scan.py：12 discrepancy；既有 wave v5、flow v3、reconcile v4、
+     replay formal E2E/失败产物缺口，加本批 beta trace producer/validator 与
+     invariant_manifest 登记不一致。manifest 不在白名单，未越界修改或隐藏 schema。
+   - test_batch4_invariant_guards.py:198：replay 正式 E2E 半边，批 4 范围。
+   - test_batch3_solana_vertical_slice.py：loopback bind EPERM。
+   - test_batch3_evm_vertical_slice.py：loopback bind EPERM。
+   - 其余 120 项全部 PASS，无其他失败类型。
+
+补充校验
+--------
+
+- `python3 -m py_compile`（本批四个 Python 改动文件）：PASS。
+- 四份 contracts_draft JSON 逐份 `python3 -m json.tool`：PASS。
+- `git diff --check`：PASS。
+- 分支/HEAD 收工复核：fix/sqd-gap-v6520 @ c237263。
+- 未联网、未 commit、未切分支；密钥未进入日志、异常或产物。
+

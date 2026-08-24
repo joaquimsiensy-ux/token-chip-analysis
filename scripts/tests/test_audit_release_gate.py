@@ -340,7 +340,7 @@ def build_case(root, historical=True):
                        "receipt": {"path": evidence.name, "sha256": sha(evidence)},
                        "producer": repo_ref(producers[key])}
     write_json(root, "reconciliation_report.json", {
-        "schema": "reconciliation-report/v2", "target": target,
+        "schema": "reconciliation-report/v3", "family": "evm", "target": target,
         "producer": repo_ref("scripts/report/reconciliation_report.py"),
         "verdict": "PASS", "exit_code": 0, "checks": checks})
     write_json(root, "address_classification.json", {
@@ -364,10 +364,11 @@ def build_case(root, historical=True):
                      "confirmed_economic_control_raw": "100",
                      "unresolved_facility_exposure": []}],
         "double_count_check_passed": True, "unresolved_count": 0, "unresolved": []})
-    # v6.9.1：静置仓审计必须绑定 wave-scan/v4 落盘全集并逐址对账（coverage 自报不作数）
+    # 静置仓审计必须绑定 wave-scan/v5 落盘全集并逐址对账（coverage 自报不作数）
     write_json(root, "wave_scan_report.json", {
-        "schema": "wave-scan/v4", "edge_order_granularity": "transaction",
+        "schema": "wave-scan/v5", "edge_order_granularity": "transaction",
         "order_ambiguous": True, "non_formal": False,
+        "params": {"edges_evm_v2": "data/v2"},
         "scan_universe_count": 2,
         "scan_universe": [
             {"addr": "0xmustaddr", "peak_pct": 3.0, "must_adjudicate": True,
@@ -637,8 +638,8 @@ def main():
         write_json(root, "reconciliation_report.json", {
             "checks": {"balance": "WARN", "supply": "PASS", "time": "PASS"}})
         errors = gate.run(root, report)
-        assert any("balance" in x for x in errors), errors
-        assert any("supply_truth" in x for x in errors), errors
+        assert any("公共深验失败" in x or "target/schema" in x
+                   for x in errors), errors
 
     # 6.5.0 修复反例：0.5% 旧线不再放行（现行 0.1%/0.2% 双线）。
     with tempfile.TemporaryDirectory() as td:

@@ -1,6 +1,6 @@
 {
   "schema": "sqd-solana-coverage-resolution/v1",
-  "draft_status": "batch0-draft",
+  "draft_status": "batch1-frozen",
   "source": "PLAN.md §4.2.4",
   "producer": "scripts/solana/sqd_gap_repair.py（计划目标路径）",
   "consumers": [
@@ -182,10 +182,40 @@
       "required": true,
       "description": "",
       "constraints": ""
+    },
+    {
+      "name": "plan_candidates.coverage",
+      "type": "array[integer]",
+      "required": true,
+      "description": "coverage map 的候选 slot，升序去重",
+      "constraints": "等于 coverage_map.candidate_slots"
+    },
+    {
+      "name": "plan_candidates.beta",
+      "type": "array[integer]",
+      "required": true,
+      "description": "E25 beta_trace 推导的候选 slot，升序去重",
+      "constraints": "等于 beta_trace.candidate_slots；未开 beta 或无残差时为空"
+    },
+    {
+      "name": "census[].coverage_state",
+      "type": "string",
+      "required": true,
+      "description": "由冻结 coverage slot_counts 与确认位图重算的 coverage 状态",
+      "constraints": "按 E26 与 coverage 二进制逐 slot 一致"
+    },
+    {
+      "name": "census[].sqd_nonce_count_at_repair",
+      "type": "integer|null",
+      "required": true,
+      "description": "repair 时用探针同一查询体重查的 nonce 指令数",
+      "constraints": "formal 为非负整数；local-evidence-cache exploration 为 null"
     }
   ],
   "invariants": [
-    "所有候选有归宿。",
+    "plan_candidates.coverage 与 plan_candidates.beta 的并集全部有 census 归宿。",
+    "plan_candidates.beta 等于 beta_trace.candidate_slots。",
+    "census coverage_state 与 slot_counts 重算一致；formal nonce count 不得为 null。",
     "任一 confirmed=>DEFECTS_CONFIRMED。",
     "未归宿候选=>INCONCLUSIVE。"
   ],

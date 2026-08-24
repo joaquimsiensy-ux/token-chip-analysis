@@ -25,7 +25,8 @@ HERE = Path(__file__).resolve().parent
 REPO = HERE.parent.parent
 sys.path[:0] = [str(HERE), str(HERE.parent / "report"), str(HERE.parent / "lib"),
                 str(HERE.parent / "evm"), str(HERE.parent / "solana")]
-from sqd_v4_test_fixture import formal_cli_args
+from sqd_v4_test_fixture import (EDGE_SOURCE_BINDING, formal_cli_args,
+                                 write_coverage_fixture)
 
 FAILS: list[str] = []
 
@@ -857,7 +858,8 @@ def _build_solana_bundle(root: Path):
     for name in ("_supply.json", "_gpa_raw_all.json", "_gpa_raw_all.meta.json"):
         inputs[name] = write_json(data / name, {"fixture": name})
     def ref(path):
-        return {"path": Path(path).name, "size": Path(path).stat().st_size,
+        return {"path": Path(path).relative_to(root).as_posix(),
+                "size": Path(path).stat().st_size,
                 "sha256": sha_file(path)}
     bundle = {
         "schema": "solana-observation-bundle/v1",
@@ -898,12 +900,63 @@ def _build_solana_bundle(root: Path):
     return write_json(root / "supply_receipt.json", bundle), owners_path
 
 
+def _build_solana_exact(root: Path, target: dict, owners_path: Path):
+    """Create the real v4 exact receipt before assembling the five-check wrapper."""
+    import replay_edges
+    from producer_history import historical_producer_hashes
+
+    edge_key = hashlib.sha256(SOL_MINT.encode("utf-8")).hexdigest()
+    edge_path = root / "data" / f"soltx-{edge_key}.jsonl.gz"
+    edges = [
+        [1767225600, SOL_SLOT - 1, 0, -1, replay_edges.ZERO, "ownersol1", 60],
+        [1767225601, SOL_SLOT, 0, -1, replay_edges.ZERO, "ownersol2", 40],
+    ]
+    with gzip.open(edge_path, "wt", encoding="utf-8") as fh:
+        for row in edges:
+            fh.write(json.dumps(row, ensure_ascii=False) + "\n")
+    logical = hashlib.sha256()
+    for row in edges:
+        logical.update(
+            (json.dumps(row, ensure_ascii=False) + "\n").encode("utf-8"))
+    collector_hashes = historical_producer_hashes(
+        "scripts/solana/fetch_sqd_transfers_v2.py", "sqd-solana-cache/v4")
+    assert collector_hashes, collector_hashes
+    cache_meta = write_json(root / "data" / f"soltx-{edge_key}.meta.json", {
+        "schema": "sqd-solana-cache/v4", "version": 4, "mint": SOL_MINT,
+        "collector": "fetch_sqd_transfers_v2.py/v4",
+        "collector_sha256": next(iter(sorted(collector_hashes))),
+        "edge_schema": ["ts", "slot", "tx_index", "instr_index", "from", "to", "amt"],
+        "edge_semantics": "owner-net-greedy",
+        "order_granularity": "transaction", "order_exact": False,
+        "from_slot": SOL_SLOT - 1, "finalized_upper_slot": SOL_SLOT,
+        "edge_logical_sha256": logical.hexdigest(), "edge_rows": len(edges),
+    })
+    owners_ref = {"path": owners_path.name, "size": owners_path.stat().st_size,
+                  "sha256": sha_file(owners_path)}
+    write_json(root / "data/holders_snapshot_meta.json", {
+        "schema": "solana-holder-snapshot-v2", "mint": SOL_MINT,
+        "target": target, "closed": True, "supply_raw": "100",
+        "outputs": {"holders_owners": owners_ref},
+    })
+    write_coverage_fixture(
+        root, mint=SOL_MINT, from_slot=SOL_SLOT - 1, to_slot=SOL_SLOT)
+    with contextlib.chdir(root):
+        assert replay_edges.cmd_reconcile(
+            edges, 1, mint=SOL_MINT, cache_meta_path=cache_meta,
+            case_root=root, as_of_slot=SOL_SLOT) is True
+    receipt = root / "data/reconcile_receipt.json"
+    binding = json.loads(receipt.read_text(encoding="utf-8"))["edge_source_binding"]
+    return receipt, binding
+
+
 def build_solana_case(root: Path):
     """Solana new-analysis 发布闸 run() 完整端到端夹具（B-2，F-B6② 留账正主）。"""
     from test_audit_release_gate import align_ledgers_to_owner_snapshot
     root = Path(root)
     target = {"chain": "solana", "token": SOL_MINT, "as_of_block": SOL_SLOT}
     bundle_path, owners_path = _build_solana_bundle(root)
+    camp_reconcile, exact_binding = _build_solana_exact(
+        root, target, owners_path)
     report = root / "report.md"
     report.write_text("# Solana 审计报告\n", encoding="utf-8")
     stats = write_json(root / "fixture_replay_stats.json",
@@ -923,7 +976,8 @@ def build_solana_case(root: Path):
     producers = {"balance": "scripts/solana/anchor_sampler.py",
                  "supply": "scripts/solana/scan_token_accounts.py",
                  "supply_truth": "scripts/lib/supply_truth_gate.py",
-                 "time": "scripts/solana/anchor_sampler.py"}
+                 "time": "scripts/solana/anchor_sampler.py",
+                 "exact_reconcile": "scripts/solana/replay_edges.py"}
     anchor_output = root / "fixture_anchors.jsonl"
     anchor_rows = [
         {"date": f"2026-01-0{day}", "chain": "solana", "mint": SOL_MINT,
@@ -936,11 +990,12 @@ def build_solana_case(root: Path):
     anchor_ref = {"path": anchor_output.name, "size": anchor_output.stat().st_size,
                   "sha256": sha_file(anchor_output)}
     checks = {}
-    for key in ("balance", "supply", "supply_truth", "time"):
+    for key in ("supply", "balance", "supply_truth", "time"):
         name = f"{key}_receipt.json"
         if key == "supply":
             checks[key] = {"status": "PASS", "exit_code": 0,
                            "receipt": {"path": "supply_receipt.json",
+                                       "size": bundle_path.stat().st_size,
                                        "sha256": sha_file(bundle_path)},
                            "producer": _repo_ref(producers[key])}
             continue
@@ -971,10 +1026,18 @@ def build_solana_case(root: Path):
                                   "sha256": sha_file(bundle_path)}}}
         path = write_json(root / name, doc)
         checks[key] = {"status": "PASS", "exit_code": 0,
-                       "receipt": {"path": name, "sha256": sha_file(path)},
+                       "receipt": {"path": name, "size": path.stat().st_size,
+                                   "sha256": sha_file(path)},
                        "producer": _repo_ref(producers[key])}
+    checks["exact_reconcile"] = {
+        "status": "PASS", "exit_code": 0,
+        "receipt": {"path": "data/reconcile_receipt.json",
+                    "size": camp_reconcile.stat().st_size,
+                    "sha256": sha_file(camp_reconcile)},
+        "producer": _repo_ref(producers["exact_reconcile"]),
+    }
     write_json(root / "reconciliation_report.json", {
-        "schema": "reconciliation-report/v2", "target": target,
+        "schema": "reconciliation-report/v3", "family": "solana", "target": target,
         "producer": _repo_ref("scripts/report/reconciliation_report.py"),
         "verdict": "PASS", "exit_code": 0, "checks": checks})
     write_json(root / "address_classification.json", {
@@ -983,8 +1046,10 @@ def build_solana_case(root: Path):
         "unresolved_count": 0, "unresolved_candidates": []})
     align_ledgers_to_owner_snapshot(root, owners_path)
     write_json(root / "wave_scan_report.json", {
-        "schema": "wave-scan/v4", "edge_order_granularity": "transaction",
+        "schema": "wave-scan/v5", "edge_order_granularity": "transaction",
         "order_ambiguous": True, "non_formal": False,
+        "params": {"edges_sol": "data/soltx.jsonl.gz"},
+        "edge_source_binding": dict(exact_binding),
         "scan_universe_count": 1,
         "scan_universe": [{"addr": "ownersol1", "peak_pct": 60.0,
                            "must_adjudicate": True, "must_reasons": ["peak_ge_0.1pct"]}]})
@@ -1059,48 +1124,7 @@ def build_solana_case(root: Path):
     p = run_formal_script(dist, ["--case-dir", str(root), "--stage", "initial"])
     assert p.returncode == 0, p.stdout + p.stderr
     write_json(root / "camp_spec.json", {})
-    # 批 2 F-09 之后 sol-rows 只认 replay_edges 真实生产的 reconcile/v3；
-    # 夹具不得再手写 v2 收据绕过身份、窗口、输入与边摘要绑定。
-    import replay_edges
-    from producer_history import historical_producer_hashes
-    edge_key = hashlib.sha256(SOL_MINT.encode("utf-8")).hexdigest()
-    edge_path = root / "data" / f"soltx-{edge_key}.jsonl.gz"
-    edges = [
-        [1767225600, SOL_SLOT - 1, 0, -1, replay_edges.ZERO, "ownersol1", 60],
-        [1767225601, SOL_SLOT, 0, -1, replay_edges.ZERO, "ownersol2", 40],
-    ]
-    with gzip.open(edge_path, "wt", encoding="utf-8") as fh:
-        for row in edges:
-            fh.write(json.dumps(row, ensure_ascii=False) + "\n")
-    logical = hashlib.sha256()
-    for row in edges:
-        logical.update(
-            (json.dumps(row, ensure_ascii=False) + "\n").encode("utf-8")
-        )
-    collector_hashes = historical_producer_hashes(
-        "scripts/solana/fetch_sqd_transfers_v2.py", "sqd-solana-cache/v4")
-    assert collector_hashes, collector_hashes
-    cache_meta = write_json(root / "data" / f"soltx-{edge_key}.meta.json", {
-        "schema": "sqd-solana-cache/v4", "version": 4, "mint": SOL_MINT,
-        "collector": "fetch_sqd_transfers_v2.py/v4",
-        "collector_sha256": next(iter(sorted(collector_hashes))),
-        "edge_schema": ["ts", "slot", "tx_index", "instr_index", "from", "to", "amt"],
-        "edge_semantics": "owner-net-greedy",
-        "order_granularity": "transaction", "order_exact": False,
-        "from_slot": SOL_SLOT - 1, "finalized_upper_slot": SOL_SLOT,
-        "edge_logical_sha256": logical.hexdigest(), "edge_rows": len(edges),
-    })
-    owners_ref = {"path": owners_path.name, "size": owners_path.stat().st_size,
-                  "sha256": sha_file(owners_path)}
-    write_json(root / "data/holders_snapshot_meta.json", {
-        "schema": "solana-holder-snapshot-v2", "mint": SOL_MINT,
-        "target": target, "closed": True, "supply_raw": "100",
-        "outputs": {"holders_owners": owners_ref},
-    })
-    with contextlib.chdir(root):
-        assert replay_edges.cmd_reconcile(
-            edges, 1, mint=SOL_MINT, cache_meta_path=cache_meta) is True
-    camp_reconcile = root / "data/reconcile_receipt.json"
+    # exact v4 已在五项 wrapper 组装前由 _build_solana_exact 真跑生成。
     series_path = write_json(root / "data/camp_series.json", [
         {"ts": 1767225600, "散户": 100.0, "_supply_raw": "100"},
     ])
@@ -1110,6 +1134,7 @@ def build_solana_case(root: Path):
         series_format="sol-rows", denominator="net_supply",
         camps_spec_path=root / "camp_spec.json", final_balances_path=owners_path,
         inputs={"reconcile_receipt": camp_reconcile},
+        edge_source_binding=exact_binding,
     )
     sidecar = json.loads(sidecar_path.read_text(encoding="utf-8"))
     state = {

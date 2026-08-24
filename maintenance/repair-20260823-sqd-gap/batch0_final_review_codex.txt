@@ -1,0 +1,33 @@
+独立结论：存在设计级阻塞。冻结状态核对为 `main@82109fd`、`VERSION=6.51.0`；现役代码相对 `f06078e` 未发生业务改动，审查期间未改文件。
+
+① 设计级阻塞
+
+1. 规范化自相矛盾：全工程禁止浮点、哈希输入整数化（`PLAN.md:152-154`），coverage 却固定 `min_ratio:0.99`（`PLAN.md:161`；`sqd-solana-coverage_v1.json:132-136`）。最小修法：改为整数有理数，如 `min_ratio_num:99,min_ratio_den:100`。
+
+2. coverage 的“当前版本”可被绕过：E3 规定 `CURRENT.json` 用 `publish_overwrite`，但现役实现不 fsync 父目录（`receipt_kernel.py:590-601`），也无 CAS，旧探针可并发覆盖新探针；更严重的是 reconcile v4 inputs 未绑定 `coverage_pointer`（`PLAN.md:192-193`），旧 receipt 在 CURRENT 更新后仍可能通过。最小修法：探针目录执行 pending→fsync→rename→fsync；CURRENT 增加 `supersedes`/CAS并锁内 fsync；reconcile v4 强制输入 `coverage_pointer`，深验其仍等于案根 CURRENT。
+
+3. repair 崩溃恢复并非幂等：发布只允许 `bundle.supersedes==CURRENT.gid`，但下一行又称已发布同一 gid 可“幂等补发”（`PLAN.md:174-175`）。若 CURRENT 已是本 gid，CAS 必失败。最小修法：锁内先允许 `CURRENT.gid==bundle.gid` 且 bundle 哈希完全一致，此时只补 fsync 并成功返回。
+
+4. receipt 语义不明确：`verdict/exit_code（与 gate_pass 同值）`（`PLAN.md:193`）与现役 `PASS/0、FAIL/2` 契约冲突（`receipt_kernel.py:159-163`）。须明确映射而非“同值”。
+
+② Errata 裁定
+
+E1、E6方向正确；E2、E3不完整。E2列出的 complete 合取式未显式包含 `array_monotonic_unique==true`，且没有 `array_in_range`，只靠 `response_ok` 间接承载（`PLAN_errata_batch0.md:9`）；应保存可离线重算的压缩响应实物，或至少分别冻结两个断言。E3引入上述无 CAS、无目录 fsync、无下游当前性绑定问题（`:10`）。E4/E5/E7把完整字段表延至批3/5（`:11-14`），与批1“契约冻结”冲突，必须前移到批1首动作。
+
+③ 契约草案
+
+- repair-bundle：所列字段与现 PLAN 基本一致（`sqd-solana-repair-bundle_v1.json:11-137`）。
+- solana-reconcile：仅写“保留v3字段”而未展开（`solana-reconcile_v4.json:434-441`），并缺 `inputs.coverage_pointer`。
+- coverage：保留浮点，且 notes 仍把 E2 留作歧义（`sqd-solana-coverage_v1.json:461-470`）。
+- publish_protocol：步骤齐，但缺同 gid 幂等分支；notes 仍是旧冲突描述（`publish_protocol.json:76-85`）。
+- wrapper 草案把 checks 写成 `checks.evm/checks.solana`（`reconciliation-report_v3.json:27-38`），而现役外壳是单层 `checks{balance,…}`（`reconciliation_report.py:117-125`），E7“只加 note”不足。
+
+批1冻结前必改：`canonicalization.json`、`publish_protocol.json`、coverage pointer、coverage v1、rpc ledger、solana-reconcile v4、repaired-meta、reconciliation-report v3、`INDEX.json`；同时补 E4/E5/E7 完整继承表。
+
+④ 先红防装死
+
+直接依赖尚不存在模块/符号的是：(3)–(8)、(10)–(11)、(15)–(18)、(20)–(21)、(25)–(29c)；(9)/(23)若直接 import resolver 也会同样装死。建议 try-import 后给明确 `EXPECTED_RED: resolver/validator未实现`，但 ImportError 只作烟雾项；另写纯 fixture/oracle 校验期望拒绝原因。对 (1)、(2)、(9)、(12)–(14)、(19)、(22)–(24)，应直接运行现役入口，断言当前确实“闸不存在/坏产物被放行”，不得用缺模块代替语义反例。
+
+**不可进批 1（必补：四项设计阻塞、E2/E3重裁、E4/E5/E7字段表前移及上述九份契约修订）。**
+
+RC=0 DONE

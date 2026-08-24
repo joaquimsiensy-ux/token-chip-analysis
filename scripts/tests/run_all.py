@@ -152,6 +152,19 @@ SUITE += ['test_anchor_plan_v3.py']
 SUITE += ['test_done_v4_collector.py']
 SUITE += ['test_csv_resume_collector_gate.py']
 
+# v6.52.0 SQD coverage/repair producer、reconcile v4 receipt 与 Solana A2 第五查收口。
+SUITE += [
+    'test_sqd_coverage_probe.py',
+    'test_sqd_gap_repair.py',
+    'test_reconcile_v4_receipt.py',
+    'test_recon_fifth_check.py',
+]
+
+# 批7 修复代深验三处校验覆盖缺口加固：缺口1(遍历主键绑定候选集致 confirmed-only slot
+# 严格校验被跳过)、缺口3(深验未校验边 slot ⊆ 声明窗口)；缺口2(自扫 coverage 无真实性
+# 复查)判定为离线信任边界仅在 batch7_done.md 记录，不进本 suite 断言。
+SUITE += ['test_batch7_validator_coverage_gaps.py']
+
 
 def main():
     results = []

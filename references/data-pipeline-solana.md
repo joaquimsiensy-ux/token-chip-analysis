@@ -27,6 +27,8 @@
 | §11 长币龄混合重建 + 高密度期定向采集 | 采集与重建 | `data-pipeline-solana-capture.md` |
 | §12 销户账户覆盖审计 | 采集与重建 | `data-pipeline-solana-capture.md` |
 | §13 采集加速工程（13a 传输层/13b 采集器 v2/13c 解码 v2/13d Solana HyperSync 通道·已禁用） | 采集与重建 | `data-pipeline-solana-capture.md` |
+| `sqd_coverage_probe.py`：SQD 覆盖健康探针、共享地图与 coverage 指针 | 采集与重建 | `data-pipeline-solana-capture.md` §13e；`scan-schemas.md` §14 |
+| `sqd_gap_repair.py`：确认缺陷的替换式修复、bundle 与 repair 指针 | 采集与重建 | `data-pipeline-solana-capture.md` §13e；`scan-schemas.md` §14 |
 | §14 日级余额快照重建法（取代锚点法做长币龄演变） | 采集与重建 | `data-pipeline-solana-capture.md` |
 | §15 pump.fun 长内盘期全量重建（签名史双索引法） | 采集与重建 | `data-pipeline-solana-capture.md` |
 

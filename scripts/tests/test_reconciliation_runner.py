@@ -36,7 +36,7 @@ TARGET = {"chain": "bsc", "token": "0xtoken", "as_of_block": 123}
 
 def make_spec(root, *, inputs=None):
     spec = {
-        "family": "evm", "case_dir": str(root), "target": dict(TARGET),
+        "case_dir": str(root), "target": dict(TARGET),
         "checks": {
             key: {"producer": producer, "argv": ["--receipt", f"{key}.json"],
                   "receipt": f"{key}.json"}

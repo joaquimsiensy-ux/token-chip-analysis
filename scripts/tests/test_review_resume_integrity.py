@@ -26,6 +26,7 @@ from fetch_sqd_transfers_v2 import cache_identity, cache_identity_matches, cache
 from replay_edges import cmd_evolution, cmd_reconcile
 from producer_history import historical_producer_hashes
 from evm_channel_fixture import write_csv_channel_receipt
+from sqd_v4_test_fixture import write_coverage_fixture
 
 ZERO_EVM = "0x" + "0" * 40
 A_EVM = "0x" + "a" * 40
@@ -315,13 +316,22 @@ def test_h06(tmp):
             "order_granularity": "transaction", "order_exact": False,
             "from_slot": 1, "finalized_upper_slot": 2,
             "edge_logical_sha256": logical.hexdigest(), "edge_rows": len(edges)}))
+        write_coverage_fixture(tmp, mint=mint, from_slot=1, to_slot=2)
         assert cmd_reconcile(edges, 1, mint=mint,
-                             cache_meta_path=cache_meta)
+                             cache_meta_path=cache_meta,
+                             case_root=tmp, as_of_slot=2)
         Path("data/holders_snapshot_meta.json").unlink()
-        assert not cmd_reconcile(edges, 1, mint=mint,
-                                 cache_meta_path=cache_meta)
+        try:
+            cmd_reconcile(edges, 1, mint=mint, cache_meta_path=cache_meta,
+                          case_root=tmp, as_of_slot=2)
+        except ValueError as exc:
+            assert "holders_snapshot_meta" in str(exc)
+        else:
+            raise AssertionError("缺 holders_snapshot_meta 仍签出 reconcile receipt")
         Path("camps.json").write_text(json.dumps({"A营": ["A"], "B营": ["B"]}))
-        cmd_evolution(edges, 1, "camps.json", set())
+        receipt = json.loads(Path("data/reconcile_receipt.json").read_text())
+        cmd_evolution(edges, 1, "camps.json", set(),
+                      edge_source_binding=receipt["edge_source_binding"])
         series = json.loads(Path("data/camp_share_series.json").read_text())
         assert series[0]["_supply_raw"] == "100" and series[0]["A营"] == 100.0, series
         assert series[-1]["_supply_raw"] == "200" and series[-1]["A营"] == 50.0, series

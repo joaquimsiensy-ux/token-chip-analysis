@@ -1,0 +1,78 @@
+批 3 GREEN 证据（2026-08-23）
+================================
+
+冻结与开工门禁
+--------------
+- branch: fix/sqd-gap-v6520
+- HEAD: 4046690
+- .staging_b2/STAGING_B2_SHA256.txt: 21/21 OK
+- .staging_b3/STAGING_B3_SHA256.txt: 14/14 OK
+- batch3_workorder.md 所列函数名、行号和锚文本均先以 grep -n 核对通过。
+- 开工时仅 batch3_workorder.md 有一处既存工作树修改；本批保留且未覆盖。
+
+RED 基线（改码前）
+------------------
+证据源：batch1b_red_evidence.txt。
+
+- test_sqd_gap_repair.py:
+  - (2) slot_index_map 参考序号统一机制缺失。
+  - (4)(5)(6)(7)(8)(10)(15)(16)(18)(25)(26)(27)(29a)(29b)(29c)
+    均为 EXPECTED_RED / missing-mechanism。
+- test_reconcile_v4_receipt.py:
+  - (17) validate_cache_meta 接受正式路径集合外复制 meta，RED。
+
+GREEN 定向回归
+--------------
+
+1. python3 scripts/tests/test_sqd_gap_repair.py
+   exit_code=0
+   - functional canonical/gid/E17/routeA truth/CAS regressions: GREEN
+   - --blocks-cache exploration generation/deep validation/no pointer: GREEN
+   - mock Helius getBlock + SQD census/formal pointer: GREEN
+   - (2)(4)(5)(6)(7)(8)(10)(15)(16)(18)(25)(26)(27)(29a)(29b)(29c):
+     全部由 RED 转 GREEN。
+
+2. python3 scripts/tests/test_sqd_coverage_probe.py
+   exit_code=0
+   PASS SQD coverage probe: 12/12 offline groups
+   - 第 12 组 export-shared-map：同 probe/同 version 字节确定性、独立 validator、
+     tamper fail-closed 均通过。
+
+3. python3 scripts/tests/test_reconcile_v4_receipt.py
+   exit_code=1（工单允许的批 4/5 预期红仍在）
+   - (17) GREEN: validate_cache_meta_v2 拒绝正式路径集合外复制 meta。
+   - 仍红 (9)(23)(12)(13)(31)(33)(11)(32)，均属后续批 4/5 消费端、
+     replay 或 reconcile-v4 validator 工作，不在本批白名单。
+
+4. python3 scripts/tests/run_all.py
+   总计 124：PASS 120 / FAIL 4。
+   唯一失败如下，均为工单明列预期红：
+   - invariant_scan.py：10 个剩余缺口；wave v5、flow v3、reconcile v4、
+     validator reconcile 段，以及 replay 正式 E2E/失败产物注册的后续半边。
+   - test_batch3_solana_vertical_slice.py：沙箱 loopback bind EPERM。
+   - test_batch3_evm_vertical_slice.py：沙箱 loopback bind EPERM。
+   - test_batch4_invariant_guards.py:198：replay 正式 E2E 半边尚未由批 4 闭合。
+   其余 120 项全部 PASS；未出现工单范围外的新失败。
+
+验收边界
+--------
+上述 GREEN 只覆盖现有测试实际断言的路径。逐条复核工单正文后，通用 β 余额二分、
+coverage/repair 跨阶段 SQD 签名集哈希比较、以及 STOPPED 后逐请求 ledger resume 尚未
+闭合；这些未被现有 GREEN 证明。详见 batch3_done.md“发现项”第 6–9 项。因此本证据
+文件不把批 3 整体状态声明为完成。
+
+补充校验
+--------
+- python3 -m py_compile（本批全部 Python 生产文件）: PASS
+- git diff --check: PASS
+- 受保护文件 git diff --exit-code: PASS
+  - scripts/solana/fetch_sqd_transfers_v2.py
+  - scripts/solana/replay_edges.py
+  - scripts/lib/producer_history.py
+  - scripts/tests/run_all.py
+  - VERSION
+  - references/scan-schemas.md
+  - maintenance/repair-20260823-sqd-gap/PLAN.md
+  - maintenance/repair-20260823-sqd-gap/PLAN_errata_batch0.md
+  - maintenance/repair-20260823-sqd-gap/contracts_draft/*.json
+- 全程离线；参考 RPC 仅使用 fixture/mock transport；未切分支、未 commit。

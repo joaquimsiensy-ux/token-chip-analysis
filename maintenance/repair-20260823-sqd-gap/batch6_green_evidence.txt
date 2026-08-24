@@ -1,0 +1,270 @@
+Batch 6 acceptance evidence
+===========================
+
+Gate
+----
+command: git rev-parse HEAD && git status --short
+exit: 0
+stdout:
+cca4efb7732e9bd9cc918dcef838d23448890b17
+[git status --short: no output]
+
+Red -> green documentation contract
+-----------------------------------
+RED command: python3 scripts/tests/docs_lint.py
+RED exit: 1
+RED stdout:
+FAIL: 禁用 needle 回捡 CT-BANNED-17: references/data-pipeline-solana-capture.md → 签名需要时可按该位置反查
+FAIL: 禁用 needle 回捡 CT-BANNED-20: references/split-run.md → wave-scan/v4
+FAIL: 禁用 needle 回捡 CT-BANNED-21: references/split-run.md → flow-anomaly/v2
+
+GREEN command: python3 scripts/tests/docs_lint.py
+GREEN exit: 0
+GREEN stdout:
+PASS: 45 个文档，引用无断链、粗体配对完整
+
+Contract and invariant checks
+-----------------------------
+command: python3 scripts/tests/test_contract_routes.py
+exit: 0
+stdout:
+PASS: R-01/R-02 注册表、ID 快照、五组锚与 SKILL 原子阶段双向闭合
+
+manifest counts:
+total 194 required 173 banned 21 snapshot 194 set_equal True sorted True dup_pairs 0
+
+command: python3 scripts/tests/changelog_lint.py
+exit: 0
+stdout:
+PASS: 版本号唯一（豁免 2 组历史撞号存档）、顺序正确；活跃 42 条 + 归档 139 条
+
+command: python3 scripts/tests/invariant_scan.py
+exit: 0
+stdout:
+PASS invariant manifest: receipt_producers=75, receipt_consumers=112, transport_calls=65, atomic_writes=56, formal_entrypoints=61, exceptions=0
+
+New suite registrations
+-----------------------
+suite_count 128
+test_sqd_coverage_probe.py: PASS SQD coverage probe: 12/12 offline groups
+test_sqd_gap_repair.py: PASS (all mechanism and functional groups green)
+test_reconcile_v4_receipt.py: PASS (through GREEN 32 verdict/exit_code/gate_pass)
+test_recon_fifth_check.py: PASS (through GREEN 22 old wave/flow schemas rejected)
+
+Producer hashes
+---------------
+e41370b185aef9bd16fea8ce1abc519a138ee4ce8923bdbc8058d64cdd0619bf  scripts/solana/sqd_coverage_probe.py
+c8beb16e998c5019f6d3cfee0cb14ca163b4dcc3b7d3eb9bdd43fdfd6e44d137  scripts/solana/sqd_gap_repair.py
+
+Key zero-hit greps
+------------------
+command: rg -n -F '签名需要时可按该位置反查' . --glob '!scripts/tests/contract_manifest.json' --glob '!maintenance/**' --glob '!archive/**'
+exit: 1 (expected no-match status)
+stdout: [no output]
+
+command: rg -n -F 'signature→(slot,tx_index) 映射经 getBlock' . --glob '!scripts/tests/contract_manifest.json' --glob '!maintenance/**' --glob '!archive/**'
+exit: 1 (expected no-match status)
+stdout: [no output]
+
+command: rg -n -F 'reconciliation_four_checks' references commands-staging SKILL.md
+exit: 1 (expected no-match status; implementation read alias remains outside documentation scope)
+stdout: [no output]
+
+command: rg -n 'wave-scan/v4|flow-anomaly/v2' references/split-run.md
+exit: 1 (expected no-match status)
+stdout: [no output]
+
+command: rg -n '6\.51\.0' . --glob '!CHANGELOG.md' --glob '!archive/**' --glob '!maintenance/**'
+exit: 1 (expected no-match status; CHANGELOG history intentionally preserved)
+stdout: [no output]
+
+Full run_all result
+-------------------
+command: python3 scripts/tests/run_all.py
+exit: 1
+result: 125 PASS / 128; two expected loopback EPERM failures plus one deployment-sync handoff failure.
+
+Failure 1: test_batch3_solana_vertical_slice.py
+Traceback (most recent call last):
+  File "scripts/tests/test_batch3_solana_vertical_slice.py", line 646, in <module>
+    raise SystemExit(main())
+  File "scripts/tests/test_batch3_solana_vertical_slice.py", line 641, in main
+    test_r9_solana_pythia_mainnet_vertical_slice()
+  File "scripts/lib/formal_capability_probes.py", line 145, in guarded
+    return function(*args, **kwargs)
+  File "scripts/tests/test_batch3_solana_vertical_slice.py", line 625, in test_r9_solana_pythia_mainnet_vertical_slice
+    server = ThreadingHTTPServer(("127.0.0.1", 0), FixtureHandler)
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/socketserver.py", line 457, in __init__
+    self.server_bind()
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/http/server.py", line 148, in server_bind
+    socketserver.TCPServer.server_bind(self)
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/socketserver.py", line 478, in server_bind
+    self.socket.bind(self.server_address)
+PermissionError: [Errno 1] Operation not permitted
+
+Failure 2: test_batch3_evm_vertical_slice.py
+Traceback (most recent call last):
+  File "scripts/tests/test_batch3_evm_vertical_slice.py", line 353, in <module>
+    raise SystemExit(main())
+  File "scripts/tests/test_batch3_evm_vertical_slice.py", line 344, in main
+    test_r9_eth_mainnet_vertical_slice()
+  File "scripts/lib/formal_capability_probes.py", line 145, in guarded
+    return function(*args, **kwargs)
+  File "scripts/tests/test_batch3_evm_vertical_slice.py", line 330, in test_r9_eth_mainnet_vertical_slice
+    _run_registered_chain("eth")
+  File "scripts/tests/test_batch3_evm_vertical_slice.py", line 281, in _run_registered_chain
+    server = ThreadingHTTPServer(("127.0.0.1", 0), FixtureHandler)
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/socketserver.py", line 457, in __init__
+    self.server_bind()
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/http/server.py", line 148, in server_bind
+    socketserver.TCPServer.server_bind(self)
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/socketserver.py", line 478, in server_bind
+    self.socket.bind(self.server_address)
+PermissionError: [Errno 1] Operation not permitted
+
+Failure 3: test_commands_deploy_sync.py
+- SHA-256 不一致：token-analyze-1.md staging=c27789dbe61573551f331b7c6df302631c06959f0d2a158d504e39994fab3d29 deployed=4e205b39bb3ed8e17b11e6d14a8e003a87f0c9409d083e5c3037c0e38503acbf
+FAIL: commands-staging 与已部署命令不一致
+
+run_all summary (all 128 registered items):
+PASS changelog_lint.py
+PASS docs_lint.py --all
+PASS labels_manifest.py
+PASS invariant_scan.py
+PASS test_r7_findings.py
+PASS test_net_result.py
+PASS test_batch1_rpc_attestation.py
+PASS test_batch2_p3_hardening.py
+PASS test_batch2_capability_matrix.py
+PASS test_batch2_ready_reconciliation.py
+PASS test_batch2_robinhood_exploration.py
+PASS test_batch2_legacy_hardening.py
+PASS test_batch2_registry_harness_hardening.py
+PASS test_batch3_solana_producers.py
+FAIL test_batch3_solana_vertical_slice.py (loopback bind EPERM)
+FAIL test_batch3_evm_vertical_slice.py (loopback bind EPERM)
+PASS test_r9_batch1_boundaries.py
+PASS test_r9_solana_attested_session.py
+PASS test_r9_batch2_attestation_adapters.py
+PASS test_r9_batch2_executable_capabilities.py
+PASS test_r9_batch2_solana_sqd_adapter.py
+PASS test_r9_batch3_solana_observation.py
+PASS test_r9_batch3_dynamic_runner.py
+PASS test_r9_batch3_preflight.py
+PASS test_r9_batch3_release_guards.py
+PASS test_batch4_invariant_guards.py
+PASS test_exemption_guards.py
+PASS test_receipt_kernel.py
+PASS test_batch1_receipt_paths.py
+PASS test_reconciliation_runner.py
+PASS test_chain_registry.py
+PASS ../labels/check_manual_sync.py
+PASS env_check.py
+FAIL test_commands_deploy_sync.py (deployed copy intentionally not modified by this workorder)
+PASS casebook_lint.py
+PASS fixtures_lint.py
+PASS test_build_html.py
+PASS test_engine_equivalence.py
+PASS test_report_facts.py
+PASS test_fault_injection.py
+PASS test_review_evm_integrity.py
+PASS test_review_solana_integrity.py
+PASS test_review_labels.py
+PASS test_review_robinhood_integrity.py
+PASS test_review_resume_integrity.py
+PASS test_entity_identity_gate.py
+PASS test_review_chain_collectors.py
+PASS test_labels_resolver_guards.py
+PASS test_batch1_risk_flags.py
+PASS test_roundtrip_check.py
+PASS test_label_snapshot_roundtrip.py
+PASS test_goldset_curated_rebuild.py
+PASS test_arbitrum_label_consumers.py
+PASS test_benchmark_labels.py
+PASS test_add_labels_rollback.py
+PASS test_fetch_failclosed.py
+PASS test_fetch_gmgn_sh.py
+PASS test_sixlens_receipts.py
+PASS test_sixlens_docs.py
+PASS test_token_no_positional.py
+PASS test_contract_routes.py
+PASS test_version_consistency.py
+PASS test_chain_support_matrix.py
+PASS test_formal_chain_support.py
+PASS test_review_scale_guards.py
+PASS test_figures_from_facts.py
+PASS test_cluster_quality.py
+PASS test_sqd_merge_equiv.py
+PASS test_spl_edge_core.py
+PASS test_sqd_collector_meta_v4.py
+PASS test_sqd_consumer_v4.py
+PASS test_supply_truth_gate.py
+PASS test_repair_batch_a.py
+PASS test_repair_batch_b.py
+PASS test_repair_batch_c.py
+PASS test_handoff_manifest.py
+PASS test_audit_release_gate.py
+PASS test_review_20260804_p0.py
+PASS test_review_20260804_p101.py
+PASS test_review_20260804_p104.py
+PASS test_review_20260804_p105.py
+PASS test_review_20260804_p106.py
+PASS test_review_20260804_p201.py
+PASS test_review_20260804_p202.py
+PASS test_round4_csv_adapters.py
+PASS test_param_scripts.py
+PASS test_round4_a5_seal.py
+PASS test_round4_identity_emitter.py
+PASS test_round4b_provenance.py
+PASS test_round4c_solana_provenance.py
+PASS test_state_from_facts.py
+PASS test_a4_gate.py
+PASS test_time_spotcheck.py
+PASS test_peaks_daily.py
+PASS test_wave_scan.py
+PASS test_flow_anomaly.py
+PASS test_entity_source_trace.py
+PASS test_adjudication_validator.py
+PASS test_distribution_gate.py
+PASS test_apu_legacy_gaps.py
+PASS test_repair_batch_d.py
+PASS test_repair_batch1.py
+PASS test_batch6_sqd_v4_blind_review.py
+PASS test_repair_batch2_f02.py
+PASS test_repair_batch3_f01.py
+PASS test_repair_batch3_gates.py
+PASS test_evm_observation.py
+PASS test_evm_observation_release.py
+PASS test_repair_g1_audit_report.py
+PASS test_repair_g1_risk_flags_pipeline.py
+PASS test_repair_g1_handoff_containment.py
+PASS test_repair_g1_cross_target.py
+PASS test_repair_g1_text_hygiene.py
+PASS test_evm_observation_nonempty_code.py
+PASS test_arbitrum_exploration_cli.py
+PASS test_recon_deep_reverify.py
+PASS test_gmgn_divergence_note.py
+PASS test_g3_docs_guards.py
+PASS test_g3_alt_collectors.py
+PASS test_collector_history.py
+PASS test_v2_identity_history.py
+PASS test_anchor_plan_v3.py
+PASS test_done_v4_collector.py
+PASS test_csv_resume_collector_gate.py
+PASS test_sqd_coverage_probe.py
+PASS test_sqd_gap_repair.py
+PASS test_reconcile_v4_receipt.py
+PASS test_recon_fifth_check.py
+
+Boundary conclusion
+-------------------
+All non-loopback business tests pass. The deployment-sync test cannot pass in the same
+workorder that both changes commands-staging/token-analyze-1.md and forbids modifying the
+deployed ~/.claude/commands copy. The acceptance side must perform the explicitly assigned
+deployment sync and rerun test_commands_deploy_sync.py. No workaround or out-of-scope write
+was performed.
+
+=== Fable 本机终验（2026-08-23，批 6 后） ===
+1) 部署副本已同步：~/.claude/commands/token-analyze-1.md ← commands-staging（备份 .bak_20260823_220129；同步后两侧 sha256 一致 c27789db…）
+2) python3 scripts/tests/run_all.py → rc=0「全部通过」（SUITE 128 项，含新注册四项与 deploy-sync）
+3) 抽验：banned needle「签名需要时可按该位置反查」全库 0 命中（豁免处除外）；版本三处 6.52.0；producer 两脚本 git show 哈希==工作树哈希；S-12 落地；capture.md §13e 大白话合规

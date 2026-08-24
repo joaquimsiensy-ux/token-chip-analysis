@@ -1,13 +1,13 @@
 # scan-schemas — 机械扫描产物 schema 冻结（v6.20.0）
 
 扫描、溯源和分布形态产物的**唯一权威字段定义**。实现脚本与契约测试对本文件写；改字段先改这里再改代码。
-适用脚本：`wave_scan.py`（wave-scan/v4）、`flow_anomaly_scan.py`（flow-anomaly/v2）、
+适用脚本：`wave_scan.py`（wave-scan/v5）、`flow_anomaly_scan.py`（flow-anomaly/v3）、
 `entity_source_trace.py`（provenance-ledger/v2）、`holder_distribution_scan.py`（distribution-scan/v2）、
 `distribution_explanation_check.py`（distribution-explanation/v1）和两类裁决台账。
 
 ## 本册路由
 
-- §0 公共纪律；§1 wave-scan；§2 flow-anomaly；§3 裁决台账；§4 provenance-ledger；§5 PYTHIA fixture；§6 至 §11 是分布形态契约；§13 阵营序列 sidecar 与 burn 闭合口径。
+- §0 公共纪律；§1 wave-scan；§2 flow-anomaly；§3 裁决台账；§4 provenance-ledger；§5 PYTHIA fixture；§6 至 §11 是分布形态契约；§13 阵营序列 sidecar 与 burn 闭合口径；§14 是 Solana SQD 覆盖、修复代、exact reconcile 与派生边源绑定契约。
 
 ## 0. 四条公共纪律
 
@@ -24,7 +24,7 @@
 `[ts,slot,from,to,amt]` 仅是 `legacy-sol5` 诊断格式，标记 `order_ambiguous/non-formal`，无法补回
 交易身份且无迁移路径，正式使用须全量重采。
 
-## 1. wave-scan/v4（wave_scan.py）
+## 1. wave-scan/v5（wave_scan.py）
 
 与 v1 的语义差异（**不得冒充 v1**，handoff 校验按版本严格匹配）：
 扫描对象从"清零层"改为**全体历史峰值 ≥0.02% 地址**（三桶标签）；A 指纹两层（seed_window 触发→expanded_wave 生长）；C 口径改"峰值→30% 峰值耗时 ≤30 日"；D 参数四条合一；成员零截断；负余额升 exit 2；聚类时间轴用抗 dust 的 `first_meaningful_day`。
@@ -38,9 +38,11 @@ v4 与 v3 的差异（2026-08-18 SQD v4 消费端分立）：新增 `edge_order_
 校验器核对 v4 schema、mint、ACTIVE collector、逻辑摘要及行数；wave/flow/entity 三入口同闸，
 entity 的 meta/mint 还要进入 input binding 并由 freeze 原命令重放。
 
+v4→v5 的唯一变化是新增必填对象 `edge_source_binding{cache_kind,gid|null,soltx_edges_sha256,soltx_meta_sha256,edge_logical_sha256}`：Solana 必填且与 `solana-reconcile/v4` 全等，EVM 必须省略。其余 v4 字段和算法语义全部保留；正式链遇旧 v4 产物 fail-closed，并提示用当前边源重跑。
+
 ```
 {
-  "schema": "wave-scan/v4",
+  "schema": "wave-scan/v5",
   "generated_at": ISO8601,
   "params": {…全部命令行参数…},
   "total_supply_raw": str,
@@ -107,7 +109,7 @@ entity 的 meta/mint 还要进入 input binding 并由 freeze 原命令重放。
 
 **D 裁决纪律**（写给 −2）：每个等额组必查 `top_sender_global_out_degree`——上千＝场内设施整数面额"撞衫"（用户买整数金额自然撞面额），可批量定性关闭；个位数＝定向分仓信号。**字段口径澄清（2026-08-02）**：该字段名带 "global" 但实际口径是**本币种全史边表的 distinct 收方数**（工程实现口径），不是跨币种全历史出度——它只是裁决参考；枢纽终裁按 methods §6 硬规则块"中间节点三段式检验"的全历史口径（普通＋内部交易）人工核查。
 
-## 2. flow-anomaly/v2（flow_anomaly_scan.py）
+## 2. flow-anomaly/v3（flow_anomaly_scan.py）
 
 汇集点＋分发点两类候选。v1→v2（2026-08-02 用户拍板补两缝＋codex 交叉复核重构）：
 缝1＝慢速线 500（H9 单案 6,503 收方校准）过宽，降 100；缝2＝pulse 只数 fresh 新收方，
@@ -116,9 +118,11 @@ pulse_all，单一 mode＋优先级只是选标签会丢证据）；出边零值
 来源数）；金额阈值整数运算（meow 案纪律）；窗口浓度两键识别伪分发。参数出身＝PYTHIA
 单案回测＋用户设定高召回初值，非多案校准。
 
+v2→v3 的唯一变化是新增必填对象 `edge_source_binding{cache_kind,gid|null,soltx_edges_sha256,soltx_meta_sha256,edge_logical_sha256}`：Solana 必填且与 `solana-reconcile/v4` 全等，EVM 必须省略。其余 v2 字段和算法语义全部保留；正式链遇旧 v2 产物 fail-closed，并提示用当前边源重跑。
+
 ```
 {
-  "schema": "flow-anomaly/v2",
+  "schema": "flow-anomaly/v3",
   "generated_at": ISO8601, "params": {…}, "total_supply_raw": str, "edges": int,
   "eligible_universe_count": int,      # 合格地址（历史峰值≥0.02%）数——来源/收方均不限清零层
   "sinks": [{                          # 汇集点：滚动窗内从多来源收币
@@ -592,3 +596,646 @@ QUQ 与 PYTHIA 只用于算法层探索定标。防伪链测试使用合成 fixt
 **存量迁移（F-C2 定口径，2026-08-13 全库普查 34 个含 series 的 state）**：数值面白名单对存量案是**硬迁移**——"旧案无追溯卡死"只对 sidecar 链成立（不经 compile_state 的 fig1 旧案重绘可使用 CAMP_ORDER legacy 键，但 fig1 入口已由 `select_fig1_series()` 白名单硬拒覆盖，不再允许白名单外键静默漏图），任何存量案**重编译 state 即撞新闸**。三类处置：①旧标签体系/自造桶名（狙击集团、大庄Gate、W系做市体系一类，数值面本身干净）＝口径不兼容——不重编译不受影响；重编译须先按**案内证据**把桶归入 `CAMP_ORDER_MODERN` 现代名，**映射是分析判断不是机械替换**（同名"狙击集团"在不同案里可能是散户层也可能是庄，禁全局映射表）；②旧 schema 形态（camp_share_series 非 {dates,series}，21 例）＝本批之前 compile_state 的结构检查就拒，非本批引入，不适用新口径；③真数据问题（日期轴重复、单点闭合超差）＝刻意收紧，重编译须先修数据或用当前版 producer 重出序列（F-B5 模式）。Solana 案重编译还要求 `source.json.token.data_cutoff_slot` 必填：它是本案采集上界 slot，必须与 reconcile 收据 `collection_window.to_slot` 和 snapshot cutoff 同源；存量案从案内采集清单的冻结/采集上界字段或 `holders_snapshot_meta.target.as_of_block` 查得，二者不一致时先停止并修复采集链，不得任选一个补填。
 
 **burn 口径定案（rg 全库落锤，防 100% 闭合闸误杀 burn 案）**：三族产物的 burn 表达不同——EVM 现代口径 `burn_cum_pct` 顶层单列（分母＝当期净供应，可 >100%，不参与堆叠）；replay_edges 行内 `锁仓/销毁`（分母＝净供应，不参与闭合，有 burn 时全桶合计 >100% 是**合法形态**）；build_evolution 行内 `锁仓/销毁`（分母＝total_supply，**参与** 100% 闭合）。故同点合计闭合＝**双式**：非 burn 桶之和≈100 **或** 全桶之和≈100（容差 0.05pp），二中其一即过；burn 桶单独验非负有限、不设 100 上界；全桶全零的点（供应尚未产生）豁免。轴/元数据键（`dates`/`ts`/`_meta`/`_supply_raw`）不是桶，转换层剔除或转为 dates。
+
+## 14. Solana SQD 覆盖、修复代与第五查契约（批 1 冻结）
+
+本节逐字段登记 `maintenance/repair-20260823-sqd-gap/contracts_draft/*.json` 的 `batch1-frozen` 契约。实现不得从本节猜默认值；缺字段、条件字段置 `null`、文件引用不在案根、哈希或当前指针不一致均 fail-closed。所有落盘 JSON 禁浮点，整数（含金额）使用 JSON int。
+
+### 14.1 `sqd-solana-coverage/v1`
+
+- 生产者：`sqd_coverage_probe.py`（计划目标脚本）
+- 消费者：solana_exact_validate.py；replay_edges.py reconcile；coverage resolver
+- 草案来源：`sqd-solana-coverage_v1.json`（PLAN.md §4.2.1）
+
+| 字段 | 类型 | 必填 | 说明与约束 |
+|---|---|---|---|
+| `schema` | string | 是 | 协议名；sqd-solana-coverage/v1 |
+| `version` | integer | 是 | 协议版本；类型由 schema/version 简写推断 |
+| `chain` | string | 是 |  |
+| `mint` | string | 是 |  |
+| `probe_id` | string (sha256 hex prefix) | 是 | 去 probe_id 后规范化 coverage_map 的 sha256 前16位 |
+| `producer.path` | string | 是 |  |
+| `producer.sha256` | string (sha256 hex) | 是 |  |
+| `sqd.endpoint_fingerprint` | string | 是 |  |
+| `sqd.dataset` | string | 是 | solana-mainnet |
+| `sqd.metadata_normalized` | object | 是 | 含 dataset_id,start_block,real_time,… |
+| `sqd.metadata_sha256` | string (sha256 hex) | 是 |  |
+| `sqd.finalized_head_at_scan` | integer | 是 |  |
+| `sqd.query_body_sha256` | string (sha256 hex) | 是 |  |
+| `scan_ranges` | array[object] | 是 | 元素 from_slot,to_slot,mode；mode=full/map-reuse/recheck；并集覆盖案区间 |
+| `sample_ranges` | array[object] | 否 | 不计入覆盖并集 |
+| `era_params.window` | integer | 是 | 1000000 |
+| `era_params.min_headers` | integer | 是 | 10000 |
+| `era_params.min_ratio_num` | integer | 是 | 99 |
+| `era_params.min_ratio_den` | integer | 是 | 100 |
+| `slot_counts.path` | string | 是 | slot_counts.bin.gz |
+| `slot_counts.size` | integer | 是 |  |
+| `slot_counts.sha256` | string (sha256 hex) | 是 |  |
+| `slot_counts.from_slot` | integer | 是 |  |
+| `slot_counts.to_slot` | integer | 是 |  |
+| `slot_counts.encoding` | string | 是 | u8:0=UNSCANNED,1=NO_HEADER,2=HEADER_ZERO_NONCE,n>=3→nonce_count=n-2，255饱和 |
+| `skipped_confirmation` | object\|null | 是 |  |
+| `skipped_confirmation.method` | string | 是 | getBlocks |
+| `skipped_confirmation.commitment` | string | 是 | finalized |
+| `skipped_confirmation.reference_head_at_check` | integer | 是 |  |
+| `skipped_confirmation.endpoint_fingerprint` | string | 是 |  |
+| `skipped_confirmation.blocks_bitmap` | object | 是 | path,size,sha256,from_slot,to_slot,encoding |
+| `skipped_confirmation.ranges` | array[object] | 是 | from,to,response_sha256,count,response_ok,array_monotonic_unique,array_in_range |
+| `shared_map` | object\|null | 是 | asset_path,version,sha256,supersedes,generated_at,reused_ranges,canary{slots[64],counts_sha256,verified_at} |
+| `ledger` | object | 是 | path,size,sha256,requests,success_ranges_sha256 |
+| `summary` | object | 是 | 饱和计数 |
+| `verdict` | string | 是 | NO_KNOWN_NONCE_OMISSION_DETECTED/DEFECTS_CONFIRMED/INCONCLUSIVE；须重算 |
+| `scan_ranges[].from_slot` | integer | 是 |  |
+| `scan_ranges[].to_slot` | integer | 是 |  |
+| `scan_ranges[].mode` | string | 是 | full/map-reuse/recheck |
+| `skipped_confirmation.blocks_bitmap.path` | string | 是 |  |
+| `skipped_confirmation.blocks_bitmap.size` | integer | 是 |  |
+| `skipped_confirmation.blocks_bitmap.sha256` | string (sha256 hex) | 是 |  |
+| `skipped_confirmation.blocks_bitmap.from_slot` | integer | 是 |  |
+| `skipped_confirmation.blocks_bitmap.to_slot` | integer | 是 |  |
+| `skipped_confirmation.blocks_bitmap.encoding` | string | 是 | one-bit per slot；1=getBlocks 列出该 slot |
+| `skipped_confirmation.ranges[].from` | integer | 是 |  |
+| `skipped_confirmation.ranges[].to` | integer | 是 |  |
+| `skipped_confirmation.ranges[].response_sha256` | string (sha256 hex) | 是 |  |
+| `skipped_confirmation.ranges[].count` | integer | 是 |  |
+| `skipped_confirmation.ranges[].response_ok` | boolean | 是 |  |
+| `skipped_confirmation.ranges[].array_monotonic_unique` | boolean | 是 |  |
+| `skipped_confirmation.ranges[].array_in_range` | boolean | 是 |  |
+| `shared_map.asset_path` | string | 是 |  |
+| `shared_map.version` | string | 是 |  |
+| `shared_map.sha256` | string (sha256 hex) | 是 |  |
+| `shared_map.supersedes` | string\|null | 是 |  |
+| `shared_map.generated_at` | string | 是 |  |
+| `shared_map.reused_ranges` | array[object] | 是 |  |
+| `shared_map.canary.slots` | array[integer] | 是 | 长度64 |
+| `shared_map.canary.counts_sha256` | string (sha256 hex) | 是 |  |
+| `shared_map.canary.verified_at` | string | 是 |  |
+| `ledger.path` | string | 是 |  |
+| `ledger.size` | integer | 是 |  |
+| `ledger.sha256` | string (sha256 hex) | 是 |  |
+| `ledger.requests` | integer | 是 |  |
+| `ledger.success_ranges_sha256` | string (sha256 hex) | 是 |  |
+
+不变量：
+
+- scan_ranges 并集覆盖案区间；sample_ranges 不计入。
+- 无 UNSCANNED；解压长度等于区间长度；ledger 成功区间并集无洞且等于 scan_ranges 并集。
+- skipped_confirmation.ranges[] 每段字段恰为 {from,to,response_sha256,count,response_ok,array_monotonic_unique,array_in_range}。
+- complete 不落盘；离线 validator 的 complete 合取式＝response_ok ∧ array_monotonic_unique ∧ array_in_range ∧ (to−from+1) ≤ 500,000 ∧ reference_head_at_check ≥ to ∧ 位图该段长度 == to−from+1 ∧ popcount == count ∧ count ≤ 区间长度。
+- array_monotonic_unique 与 array_in_range 是生产时对原始响应数组的断言结果；任一为 false 则该段 unconfirmed，其 NO_HEADER 保持未确认，有效 verdict 为 INCONCLUSIVE；--live-canary 重拉若干段与位图切片对表。
+- era_params 固定为 {window:1000000,min_headers:10000,min_ratio_num:99,min_ratio_den:100}；判定使用整数交叉相乘 nonce_blocks*min_ratio_den >= header_blocks*min_ratio_num。
+- summary/verdict 从 slot_counts 重算。
+- 探针不可变；重跑产生新 probe_id。
+- 探针发布协议：data/sqd_coverage/pending-<scan_id>/ 写齐 coverage_map.json、slot_counts.bin.gz、blocks.bin.gz、ledger.jsonl 并逐文件 fsync → fsync 施工目录 → os.rename(pending-<scan_id>, <probe_id>) → fsync data/sqd_coverage 父目录 → .lock 独占内 CAS → 锁内 publish_overwrite CURRENT → 锁内 fsync 指针父目录。
+
+注记：
+
+- metadata_normalized 与 summary 子字段未完全展开。
+- skipped_confirmation 与离线 complete 按 errata E2 重裁冻结。
+- 探针发布协议按 errata E9 冻结；scan_id 仅作临时目录名。
+
+### 14.2 `sqd-solana-coverage-pointer/v1`
+
+- 生产者：`sqd_coverage_probe.py`（计划目标脚本）
+- 消费者：coverage resolver；replay_edges.py reconcile
+- 草案来源：`sqd-solana-coverage-pointer_v1.json`（PLAN.md §4.2.1 ＋ PLAN_errata_batch0.md E9/E10）
+
+| 字段 | 类型 | 必填 | 说明与约束 |
+|---|---|---|---|
+| `schema` | string | 是 | sqd-solana-coverage-pointer/v1 |
+| `target.chain` | string | 是 | solana |
+| `target.token` | string | 是 | mint |
+| `target.as_of_block` | integer | 是 | slot_counts.to_slot |
+| `mode` | string | 是 | formal |
+| `verdict` | string | 是 | PASS |
+| `exit_code` | integer | 是 | 0 |
+| `producer` | object | 是 | path,sha256 |
+| `inputs.coverage_map` | object | 是 | path,size,sha256；案根相对路径 data/sqd_coverage/<probe_id>/coverage_map.json |
+| `inputs.slot_counts` | object | 是 | path,size,sha256；案根相对路径 data/sqd_coverage/<probe_id>/slot_counts.bin.gz |
+| `inputs.ledger` | object | 是 | path,size,sha256；案根相对路径 data/sqd_coverage/<probe_id>/ledger.jsonl |
+| `inputs.blocks_bitmap` | object | 否 | path,size,sha256；仅 skipped_confirmation 非 null 时出现；否则省略而非 null |
+| `probe_id` | string | 是 | coverage_map 去 probe_id 后规范化内容 sha256 前16位 |
+| `supersedes` | string\|null | 是 | 发布时所见 CURRENT.probe_id；无 CURRENT 时为 null |
+| `published_at` | string | 是 |  |
+| `producer.path` | string | 是 |  |
+| `producer.sha256` | string (sha256 hex) | 是 |  |
+| `inputs.coverage_map.path` | string | 是 |  |
+| `inputs.coverage_map.size` | integer | 是 |  |
+| `inputs.coverage_map.sha256` | string (sha256 hex) | 是 |  |
+| `inputs.slot_counts.path` | string | 是 |  |
+| `inputs.slot_counts.size` | integer | 是 |  |
+| `inputs.slot_counts.sha256` | string (sha256 hex) | 是 |  |
+| `inputs.ledger.path` | string | 是 |  |
+| `inputs.ledger.size` | integer | 是 |  |
+| `inputs.ledger.sha256` | string (sha256 hex) | 是 |  |
+| `inputs.blocks_bitmap.path` | string | 否 |  |
+| `inputs.blocks_bitmap.size` | integer | 否 |  |
+| `inputs.blocks_bitmap.sha256` | string (sha256 hex) | 否 |  |
+
+不变量：
+
+- inputs 四项固定为 coverage_map、slot_counts、ledger、blocks_bitmap；blocks_bitmap 仅在 skipped_confirmation 非 null 时出现，否则省略而非 null。
+- resolver 校验 inputs.coverage_map.sha256==sha256(coverage_map 文件) 且 probe_id 重算一致。
+- 施工目录 pending-<scan_id> 完整持久化并原子改名为 <probe_id> 后，才允许锁内发布 CURRENT。
+- 锁内 CAS 要求 pointer.supersedes==当前 CURRENT.probe_id；无 CURRENT 时 supersedes 为 null。
+- 若 CURRENT.probe_id==pointer.probe_id 且 CURRENT.inputs.coverage_map.sha256==sha256(<probe_id>/coverage_map.json)，不改 CURRENT，只补 fsync 指针父目录并成功返回退出码 0，日志标 idempotent-republish。
+- 仅同 probe_id 幂等条件不满足时按原 CAS；CAS 失败不得覆盖。
+
+注记：
+
+- E3 字段表作废，以 errata E9 为准。
+- 探针指针同构幂等分支按 errata E10 冻结。
+
+### 14.3 `sqd-solana-coverage-resolution/v1`
+
+- 生产者：`sqd_gap_repair.py`（计划目标脚本）
+- 消费者：solana_exact_validate.py；bundle builder
+- 草案来源：`sqd-solana-coverage-resolution_v1.json`（PLAN.md §4.2.4）
+
+| 字段 | 类型 | 必填 | 说明与约束 |
+|---|---|---|---|
+| `schema` | string | 是 | sqd-solana-coverage-resolution/v1 |
+| `mint` | string | 是 |  |
+| `plan_digest` | string | 是 |  |
+| `coverage.probe_id` | string | 是 |  |
+| `coverage.map_sha256` | string (sha256 hex) | 是 |  |
+| `census[].slot` | integer | 是 |  |
+| `census[].state_in_map` | string | 是 |  |
+| `census[].result` | string | 是 | confirmed_nonce_defect/confirmed_other_defect/confirmed_missing_block/refuted |
+| `census[].sqd_tx_count` | integer | 是 |  |
+| `census[].sqd_blockhash` | string | 是 |  |
+| `census[].ref_tx_count` | integer | 是 |  |
+| `census[].ref_nonvote_count` | integer | 是 |  |
+| `census[].ref_blockhash` | string | 是 |  |
+| `census[].missing_total` | integer | 是 |  |
+| `census[].missing_nonce` | integer | 是 |  |
+| `census[].missing_err_excluded` | integer | 是 |  |
+| `census[].evidence.sqd` | object | 是 | path,size,sha256 |
+| `census[].evidence.ref` | object | 是 | path,size,sha256 |
+| `effective_verdict` | string | 是 | 展示值，须重算 |
+| `census[].evidence.sqd.path` | string | 是 |  |
+| `census[].evidence.sqd.size` | integer | 是 |  |
+| `census[].evidence.sqd.sha256` | string (sha256 hex) | 是 |  |
+| `census[].evidence.ref.path` | string | 是 |  |
+| `census[].evidence.ref.size` | integer | 是 |  |
+| `census[].evidence.ref.sha256` | string (sha256 hex) | 是 |  |
+
+不变量：
+
+- 所有候选有归宿。
+- 任一 confirmed=>DEFECTS_CONFIRMED。
+- 未归宿候选=>INCONCLUSIVE。
+
+### 14.4 `sqd-solana-repair-layer/v1`
+
+- 生产者：`sqd_gap_repair.py`（计划目标脚本）
+- 消费者：solana_exact_validate.py；bundle builder；merged edge producer
+- 草案来源：`sqd-solana-repair-layer_v1.json`（PLAN.md §4.2.2）
+
+| 字段 | 类型 | 必填 | 说明与约束 |
+|---|---|---|---|
+| `header.schema` | string | 是 | sqd-solana-repair-layer/v1 |
+| `header.mint` | string | 是 |  |
+| `header.plan_digest` | string | 是 |  |
+| `header.base.edge_sha256` | string (sha256 hex) | 是 |  |
+| `header.base.meta_sha256` | string (sha256 hex) | 是 |  |
+| `header.coverage.probe_id` | string | 是 |  |
+| `header.coverage.map_sha256` | string (sha256 hex) | 是 |  |
+| `header.reference.kind` | string | 是 | helius-getBlock |
+| `header.reference.endpoint_fingerprint` | string | 是 |  |
+| `header.producer.path` | string | 是 |  |
+| `header.producer.sha256` | string (sha256 hex) | 是 |  |
+| `transaction.signature` | string | 是 | 唯一键 |
+| `transaction.slot` | integer | 是 |  |
+| `transaction.reference_position` | integer | 是 |  |
+| `transaction.nonvote_ordinal` | integer | 是 |  |
+| `transaction.nonce` | boolean | 是 |  |
+| `transaction.class` | string | 是 | nonce/other/missing_block |
+| `transaction.edges` | array[array] | 是 | [ts,slot,nonvote_ordinal,-1,from,to,amt]；多边；edge_sort_key 排序 |
+| `transaction.evidence.sqd` | string | 是 |  |
+| `transaction.evidence.ref` | string | 是 |  |
+
+不变量：
+
+- header 含 plan_digest、不含 gid。
+- 唯一键 signature。
+- 只含 meta.err==null 交易。
+- edges 使用 pair_tx 7元组语义。
+
+### 14.5 `sqd-solana-slot-index-map/v1`
+
+- 生产者：`sqd_gap_repair.py`（计划目标脚本）
+- 消费者：solana_exact_validate.py；merged edge producer
+- 草案来源：`sqd-solana-slot-index-map_v1.json`（PLAN.md §4.2.7）
+
+| 字段 | 类型 | 必填 | 说明与约束 |
+|---|---|---|---|
+| `header.schema` | string | 是 | sqd-solana-slot-index-map/v1 |
+| `header.mint` | string | 是 |  |
+| `header.plan_digest` | string | 是 |  |
+| `row.slot` | integer | 是 |  |
+| `row.blockhash` | string | 是 |  |
+| `row.map` | array[array] | 是 | [sqd_index,nonvote_ordinal,signature] |
+| `row.sqd_count` | integer | 是 |  |
+| `row.ref_nonvote_count` | integer | 是 |  |
+
+不变量：
+
+- 三列各自唯一双射且单调递增。
+- 每条 base 边 (slot,tx_index) 恰有一解；无解中止。
+
+### 14.6 `sqd-solana-repair-bundle/v1`
+
+- 生产者：`sqd_gap_repair.py`（计划目标脚本）
+- 消费者：solana_exact_validate.py；repair resolver；CURRENT publisher
+- 草案来源：`sqd-solana-repair-bundle_v1.json`（PLAN.md §4.2.3）
+
+| 字段 | 类型 | 必填 | 说明与约束 |
+|---|---|---|---|
+| `schema` | string | 是 | sqd-solana-repair-bundle/v1 |
+| `mint` | string | 是 |  |
+| `plan_digest` | string | 是 |  |
+| `gid` | string | 是 |  |
+| `kind` | string | 是 | repair |
+| `mode` | string | 是 | formal/exploration |
+| `producer` | object | 是 |  |
+| `base` | object | 是 | edge_file,meta_file,edge_sha256,meta_sha256,edge_logical_sha256,edge_rows,finalized_upper_slot |
+| `coverage` | object | 是 | probe_id,map{path,size,sha256},slot_counts{…} |
+| `coverage_resolution` | object | 是 | path,size,sha256 |
+| `repair_layer` | object | 是 | path,size,sha256,transactions,edges |
+| `slot_index_map` | object | 是 | path,size,sha256,slots |
+| `evidence_manifest` | object | 是 | path,size,sha256 |
+| `merged` | object | 是 | edge_file,meta_file,edge_sha256,meta_sha256,edge_logical_sha256,edge_rows |
+| `reference` | object | 是 | kind,endpoint_fingerprint,source；source=live/local-evidence-cache |
+| `rpc_ledger` | object | 是 | path,size,sha256,requests,credits_estimate |
+| `supersedes` | string\|null | 是 |  |
+| `generated_at` | string | 是 | 类型为推断 |
+| `producer.path` | string | 是 |  |
+| `producer.sha256` | string (sha256 hex) | 是 |  |
+| `base.edge_file` | string | 是 |  |
+| `base.meta_file` | string | 是 |  |
+| `base.edge_sha256` | string (sha256 hex) | 是 |  |
+| `base.meta_sha256` | string (sha256 hex) | 是 |  |
+| `base.edge_logical_sha256` | string (sha256 hex) | 是 |  |
+| `base.edge_rows` | integer | 是 |  |
+| `base.finalized_upper_slot` | integer | 是 |  |
+| `coverage.probe_id` | string | 是 |  |
+| `coverage.map.path` | string | 是 |  |
+| `coverage.map.size` | integer | 是 |  |
+| `coverage.map.sha256` | string (sha256 hex) | 是 |  |
+| `coverage.slot_counts.path` | string | 是 |  |
+| `coverage.slot_counts.size` | integer | 是 |  |
+| `coverage.slot_counts.sha256` | string (sha256 hex) | 是 |  |
+| `coverage_resolution.path` | string | 是 |  |
+| `coverage_resolution.size` | integer | 是 |  |
+| `coverage_resolution.sha256` | string (sha256 hex) | 是 |  |
+| `repair_layer.path` | string | 是 |  |
+| `repair_layer.size` | integer | 是 |  |
+| `repair_layer.sha256` | string (sha256 hex) | 是 |  |
+| `repair_layer.transactions` | integer | 是 |  |
+| `repair_layer.edges` | integer | 是 |  |
+| `slot_index_map.path` | string | 是 |  |
+| `slot_index_map.size` | integer | 是 |  |
+| `slot_index_map.sha256` | string (sha256 hex) | 是 |  |
+| `slot_index_map.slots` | integer | 是 |  |
+| `evidence_manifest.path` | string | 是 |  |
+| `evidence_manifest.size` | integer | 是 |  |
+| `evidence_manifest.sha256` | string (sha256 hex) | 是 |  |
+| `merged.edge_file` | string | 是 |  |
+| `merged.meta_file` | string | 是 |  |
+| `merged.edge_sha256` | string (sha256 hex) | 是 |  |
+| `merged.meta_sha256` | string (sha256 hex) | 是 |  |
+| `merged.edge_logical_sha256` | string (sha256 hex) | 是 |  |
+| `merged.edge_rows` | integer | 是 |  |
+| `reference.kind` | string | 是 |  |
+| `reference.endpoint_fingerprint` | string | 是 |  |
+| `reference.source` | string | 是 | live/local-evidence-cache |
+| `rpc_ledger.path` | string | 是 |  |
+| `rpc_ledger.size` | integer | 是 |  |
+| `rpc_ledger.sha256` | string (sha256 hex) | 是 |  |
+| `rpc_ledger.requests` | integer | 是 |  |
+| `rpc_ledger.credits_estimate` | integer | 是 |  |
+
+不变量：
+
+- merged.edge_rows==base.edge_rows+repair_layer.edges。
+- mode==formal 当且仅当 reference.source==live。
+- exploration 不发指针。
+- refuted-only 不产代不发指针。
+
+### 14.7 `sqd-solana-repair-pointer/v1`
+
+- 生产者：receipt_kernel.publish_overwrite（由 sqd_gap_repair.py 调用）
+- 消费者：repair resolver；solana_exact_validate.py
+- 草案来源：`sqd-solana-repair-pointer_v1.json`（PLAN.md §4.2.3）
+
+| 字段 | 类型 | 必填 | 说明与约束 |
+|---|---|---|---|
+| `schema` | string | 是 | sqd-solana-repair-pointer/v1 |
+| `target.chain` | string | 是 | solana |
+| `target.token` | string | 是 |  |
+| `target.as_of_block` | integer | 是 | base.finalized_upper_slot |
+| `mode` | string | 是 | formal |
+| `verdict` | string | 是 | PASS |
+| `exit_code` | integer | 是 | 0 |
+| `producer` | object | 是 |  |
+| `inputs.bundle` | object | 是 | path,size,sha256 |
+| `gid` | string | 是 |  |
+| `supersedes` | string\|null | 是 |  |
+| `published_at` | string | 是 | 类型为推断 |
+| `producer.path` | string | 是 |  |
+| `producer.sha256` | string (sha256 hex) | 是 |  |
+| `inputs.bundle.path` | string | 是 |  |
+| `inputs.bundle.size` | integer | 是 |  |
+| `inputs.bundle.sha256` | string (sha256 hex) | 是 |  |
+
+不变量：
+
+- bundle.supersedes==切换瞬间 CURRENT.gid；无 CURRENT 时为 null。
+- bundle.base.edge_sha256==当前 base 哈希。
+- 若 CURRENT.gid==bundle.gid 且 CURRENT.inputs.bundle.sha256==sha256(gen-<gid>/bundle.json)，不改 CURRENT，只补 fsync 指针父目录并成功返回退出码 0，日志标 idempotent-republish。
+- 仅同 gid 幂等条件不满足时按原 CAS；CAS 失败不得覆盖。
+
+注记：
+
+- 同 gid 幂等分支按 errata E10 冻结。
+
+### 14.8 `sqd-solana-rpc-ledger/v1`
+
+- 生产者：`sqd_gap_repair.py`（计划目标脚本）
+- 消费者：--resume；bundle rpc_ledger；operator diagnostics
+- 草案来源：`rpc_ledger.json`（PLAN.md §4.2.10）
+
+| 字段 | 类型 | 必填 | 说明与约束 |
+|---|---|---|---|
+| `header.schema` | string | 是 | rpc_ledger.jsonl 首行 header；sqd-solana-rpc-ledger/v1 |
+| `header.plan_digest` | string | 是 | rpc_ledger.jsonl 首行 header；其后逐行不重复；等于 pending-<plan_digest> 目录名且等于 bundle.plan_digest |
+| `header.reference.kind` | string | 是 | rpc_ledger.jsonl 首行 header |
+| `header.reference.endpoint_fingerprint` | string | 是 | rpc_ledger.jsonl 首行 header |
+| `seq` | integer | 是 |  |
+| `ts` | integer | 是 |  |
+| `method` | string | 是 | getBlock/getBlocks |
+| `params_digest` | string | 是 |  |
+| `slot` | integer | 否 |  |
+| `range` | array\|object | 否 | 类型为推断 |
+| `endpoint_fingerprint` | string | 是 |  |
+| `http_status` | integer | 是 |  |
+| `bytes` | integer | 是 |  |
+| `credits_estimate` | integer | 是 |  |
+| `result_sha256` | string (sha256 hex) | 是 |  |
+| `attempt` | integer | 是 |  |
+
+不变量：
+
+- slot/range 按 method 二选一。
+- 异常先 redact，key 不落盘。
+- resume 以 (plan_digest,params_digest,result_sha256) 判完成；plan_digest 取自首行 header。
+- header.plan_digest==所在 pending-<plan_digest> 目录名==bundle.plan_digest。
+- 残缺尾行丢弃。
+
+注记：
+
+- range 形状未写明，类型为推断。
+- 首行 header 按 errata E6 增补；逐行字段保持 PLAN §4.2.10 不变。
+
+### 14.9 `solana-reconcile/v4`
+
+- 生产者：scripts/solana/replay_edges.py reconcile
+- 消费者：shared_release_receipt.validate_reconciliation_check；handoff_manifest.py verify；audit_release_gate.py；camp_series_provenance.py
+- 草案来源：`solana-reconcile_v4.json`（PLAN.md §4.2.8）
+
+| 字段 | 类型 | 必填 | 说明与约束 |
+|---|---|---|---|
+| `schema` | string | 是 | solana-reconcile/v4 |
+| `target.chain` | string | 是 | solana |
+| `target.token` | string | 是 |  |
+| `target.as_of_block` | integer | 是 |  |
+| `mode` | string | 是 | formal |
+| `verdict` | string | 是 | gate_pass true⇒PASS；gate_pass false⇒FAIL；由 receipt_kernel.finalize_envelope 强制一致 |
+| `exit_code` | integer | 是 | gate_pass true⇒0；gate_pass false⇒2；由 receipt_kernel.finalize_envelope 强制一致 |
+| `producer` | object | 是 |  |
+| `inputs.soltx_edges` | object | 是 | path,size,sha256 |
+| `inputs.soltx_meta` | object | 是 | path,size,sha256 |
+| `inputs.holders_owners` | object | 是 | path,size,sha256 |
+| `inputs.holders_snapshot_meta` | object | 是 | path,size,sha256 |
+| `inputs.coverage_map` | object | 是 | path,size,sha256 |
+| `inputs.coverage_slot_counts` | object | 是 | path,size,sha256 |
+| `inputs.coverage_pointer` | object | 是 | path,size,sha256；案根 data/sqd_coverage/CURRENT.json；必填；绑定发布时 CURRENT 的当前内容 |
+| `inputs.coverage_resolution` | object | 否 | repaired；base 省略 |
+| `inputs.repair_bundle` | object | 否 | repaired；base 省略 |
+| `inputs.repair_pointer` | object | 否 | repaired；base 省略 |
+| `edge_source_binding.cache_kind` | string | 是 | base/repaired |
+| `edge_source_binding.gid` | string\|null | 是 |  |
+| `edge_source_binding.soltx_edges_sha256` | string (sha256 hex) | 是 |  |
+| `edge_source_binding.soltx_meta_sha256` | string (sha256 hex) | 是 |  |
+| `edge_source_binding.edge_logical_sha256` | string (sha256 hex) | 是 |  |
+| `coverage_effective_verdict` | string | 是 |  |
+| `gate_pass` | boolean | 是 |  |
+| `negative_balance_count` | integer | 是 |  |
+| `snapshot_mismatch_count` | integer | 是 |  |
+| `minted_raw` | JSON int | 是 | v3 string → v4 JSON int（E14）；禁止字符串整数 |
+| `burned_raw` | JSON int | 是 | v3 string → v4 JSON int（E14）；禁止字符串整数 |
+| `snapshot_supply_raw` | JSON int | 是 | v3 string → v4 JSON int（E14）；禁止字符串整数 |
+| `net_supply_raw` | integer | 是 |  |
+| `edge_digest` | string | 是 |  |
+| `edge_count` | integer | 是 |  |
+| `cli.--as-of-slot` | integer | 是 |  |
+| `cli.--receipt` | string | 否 | argv 内且预先不存在；默认 data/reconcile_receipt.json |
+| `inputs.soltx_edges.path` | string | 是 |  |
+| `inputs.soltx_edges.size` | integer | 是 |  |
+| `inputs.soltx_edges.sha256` | string (sha256 hex) | 是 |  |
+| `inputs.soltx_meta.path` | string | 是 |  |
+| `inputs.soltx_meta.size` | integer | 是 |  |
+| `inputs.soltx_meta.sha256` | string (sha256 hex) | 是 |  |
+| `inputs.holders_owners.path` | string | 是 |  |
+| `inputs.holders_owners.size` | integer | 是 |  |
+| `inputs.holders_owners.sha256` | string (sha256 hex) | 是 |  |
+| `inputs.holders_snapshot_meta.path` | string | 是 |  |
+| `inputs.holders_snapshot_meta.size` | integer | 是 |  |
+| `inputs.holders_snapshot_meta.sha256` | string (sha256 hex) | 是 |  |
+| `inputs.coverage_map.path` | string | 是 |  |
+| `inputs.coverage_map.size` | integer | 是 |  |
+| `inputs.coverage_map.sha256` | string (sha256 hex) | 是 |  |
+| `inputs.coverage_slot_counts.path` | string | 是 |  |
+| `inputs.coverage_slot_counts.size` | integer | 是 |  |
+| `inputs.coverage_slot_counts.sha256` | string (sha256 hex) | 是 |  |
+| `inputs.coverage_pointer.path` | string | 是 | data/sqd_coverage/CURRENT.json |
+| `inputs.coverage_pointer.size` | integer | 是 |  |
+| `inputs.coverage_pointer.sha256` | string (sha256 hex) | 是 | 必须等于 CURRENT.json 当前内容 sha256 |
+| `inputs.coverage_resolution.path` | string | 否 |  |
+| `inputs.coverage_resolution.size` | integer | 否 |  |
+| `inputs.coverage_resolution.sha256` | string (sha256 hex) | 否 |  |
+| `inputs.repair_bundle.path` | string | 否 |  |
+| `inputs.repair_bundle.size` | integer | 否 |  |
+| `inputs.repair_bundle.sha256` | string (sha256 hex) | 否 |  |
+| `inputs.repair_pointer.path` | string | 否 |  |
+| `inputs.repair_pointer.size` | integer | 否 |  |
+| `inputs.repair_pointer.sha256` | string (sha256 hex) | 否 |  |
+| `producer.path` | string | 是 |  |
+| `producer.sha256` | string (sha256 hex) | 是 |  |
+
+继承字段（现役基线逐键抄录）：
+
+| 字段 | 源码行 | v4/v3 类型修订 |
+|---|---:|---|
+| `schema` | 356 |  |
+| `chain` | 356 |  |
+| `mint` | 356 |  |
+| `collection_window` | 357 |  |
+| `collection_window.from_slot` | 357 |  |
+| `collection_window.to_slot` | 357 |  |
+| `edge_extrema` | 358 |  |
+| `edge_extrema.first` | 358 |  |
+| `edge_extrema.first.slot` | 270 |  |
+| `edge_extrema.first.ts` | 270 |  |
+| `edge_extrema.last` | 358 |  |
+| `edge_extrema.last.slot` | 270 |  |
+| `edge_extrema.last.ts` | 270 |  |
+| `edge_digest` | 359 |  |
+| `edge_count` | 359 |  |
+| `producer` | 360 |  |
+| `producer.path` | 360 |  |
+| `producer.sha256` | 361 |  |
+| `inputs` | 362 |  |
+| `inputs.soltx_meta` | 362 |  |
+| `inputs.soltx_meta.path` | 122 |  |
+| `inputs.soltx_meta.size` | 122 |  |
+| `inputs.soltx_meta.sha256` | 123 |  |
+| `inputs.holders_owners` | 363 |  |
+| `inputs.holders_owners.path` | 122 |  |
+| `inputs.holders_owners.size` | 122 |  |
+| `inputs.holders_owners.sha256` | 123 |  |
+| `inputs.holders_snapshot_meta` | 364 |  |
+| `inputs.holders_snapshot_meta.path` | 122 |  |
+| `inputs.holders_snapshot_meta.size` | 122 |  |
+| `inputs.holders_snapshot_meta.sha256` | 123 |  |
+| `minted_raw` | 365 | v3: string → v4: JSON int（E14） |
+| `burned_raw` | 365 | v3: string → v4: JSON int（E14） |
+| `net_supply_raw` | 366 |  |
+| `negative_balance_count` | 367 |  |
+| `snapshot_present` | 367 |  |
+| `snapshot_meta_present` | 368 |  |
+| `snapshot_closed` | 368 |  |
+| `snapshot_supply_raw` | 369 | v3: string → v4: JSON int（E14） |
+| `snapshot_mismatch_count` | 370 |  |
+| `gate_pass` | 370 |  |
+
+不变量：
+
+- inherited_fields 所列 v3 字段全部保留。
+- base 模式省略后三 inputs，不写 null。
+- --as-of-slot==快照slot==finalized_upper_slot。
+- coverage 当前性深验：data/sqd_coverage/CURRENT.json 当前内容 sha256==receipt.inputs.coverage_pointer.sha256，pointer.inputs.coverage_map.path==receipt.inputs.coverage_map.path，且 probe_id 重算一致；CURRENT 更新后旧 receipt 一律 FAIL。
+- gate_pass is True ⇒ verdict=PASS 且 exit_code=0；gate_pass is False ⇒ verdict=FAIL 且 exit_code=2；receipt_kernel.finalize_envelope 强制，validator 校验三者互洽。
+- 不回写 base meta edge_file_size/sha256。
+- minted_raw、burned_raw、snapshot_supply_raw 在 v4 必须是 JSON int；字符串整数拒收。
+
+注记：
+
+- inherited_fields 从 scripts/solana/replay_edges.py 的 cmd_reconcile 现役 v3 receipt 写出点逐键抄录（代码基线 f06078e）。
+- 唯一删除项：不再回写 base meta 的 edge_file_size/edge_file_sha256；这是写入副作用删除，不是 receipt 字段删除。
+
+### 14.10 `reconciliation-report/v3`
+
+- 生产者：scripts/report/reconciliation_report.py
+- 消费者：shared_release_receipt.validate_reconciliation_report；handoff_manifest.py verify；audit_release_gate.py
+- 草案来源：`reconciliation-report_v3.json`（PLAN.md §4.4.4）
+
+| 字段 | 类型 | 必填 | 说明与约束 |
+|---|---|---|---|
+| `schema` | string | 是 | reconciliation-report/v3 |
+| `family` | string | 是 | 由 target 推导，不接受外部声明；evm/solana |
+| `checks` | object | 是 | 单层 checks{<key>:...}；不得嵌套 checks.evm/checks.solana；family=evm 时固定顺序 balance,supply,supply_truth,time；family=solana 时固定顺序 supply,balance,supply_truth,time,exact_reconcile |
+| `checks.exact_reconcile.receipt→schema` | string | family==solana 的引用实物内必填；family==evm 无该 item | `solana-reconcile/v4`；不是 wrapper item 直属字段 |
+| `checks.exact_reconcile.receipt→mode` | string | family==solana 的引用实物内必填；family==evm 无该 item | `formal`；不是 wrapper item 直属字段 |
+| `checks.exact_reconcile.receipt→gate_pass` | boolean | family==solana 的引用实物内必填；family==evm 无该 item | `true`；不是 wrapper item 直属字段 |
+| `checks.exact_reconcile.receipt→negative_balance_count` | integer | family==solana 的引用实物内必填；family==evm 无该 item | `0`；不是 wrapper item 直属字段 |
+| `checks.exact_reconcile.receipt→snapshot_mismatch_count` | integer | family==solana 的引用实物内必填；family==evm 无该 item | `0`；不是 wrapper item 直属字段 |
+| `cli.--reseal` | string | 否 | 仅 EVM |
+
+继承字段（现役基线逐键抄录）：
+
+| 字段 | 源码行 | v4/v3 类型修订 |
+|---|---:|---|
+| `schema` | 119 |  |
+| `target` | 120 |  |
+| `producer` | 121 |  |
+| `verdict` | 122 |  |
+| `exit_code` | 123 |  |
+| `checks` | 124 |  |
+| `inputs` | 209 |  |
+| `error` | 276 |  |
+
+不变量：
+
+- wrapper 一律 v3；v2 fail-closed。
+- checks 保持单层 checks{<key>}；family=evm 的键集恰为 balance,supply,supply_truth,time，family=solana 的键集恰为 supply,balance,supply_truth,time,exact_reconcile，顺序固定。
+- EVM reseal 从四份 receipt 重建，不信旧 wrapper；失败拒绝。
+- Solana v2 重跑 v4 exact+五项。
+- `checks.exact_reconcile` 的 wrapper item 固定绑定 `{status,exit_code,process_exit_code,producer,receipt}`；上表五个 v4 字段位于 `receipt{path,size,sha256}` 引用的实物内，由公共 validator 打开后深验，不是 item 直属字段。该 item 仅 family=solana 必填；family=evm 必须省略，出现即拒。
+- exact 检查组合、inputs 案根哈希、holders_owners 同一文件并调用独立深验。
+
+注记：
+
+- inherited_fields 从 scripts/report/reconciliation_report.py 的 _base_wrapper 及后续 inputs/error 填充处逐键抄录（代码基线 f06078e），按 errata E7 前移冻结。
+- checks 形状按 errata E12 冻结为单层。
+- checks.exact_reconcile 的条件必填规则按 errata E18 冻结；批 6 只把五个 v4 字段明确为 referenced receipt fields，与现役 runner/validator 结构对齐。
+
+### 14.13 `edge_source_binding（edge-source-binding/v1）`
+
+- 生产者：replay_edges.py reconcile / cache resolver
+- 消费者：wave-scan/v5；flow-anomaly/v3；entity_source_trace；curve_cost；audit_closed_accounts；evolution/sol-rows sidecar；handoff verify；audit_release_gate；camp compiler
+- 草案来源：`edge_source_binding.json`（PLAN.md §4.2.9）
+
+| 字段 | 类型 | 必填 | 说明与约束 |
+|---|---|---|---|
+| `cache_kind` | string | 是 | base/repaired |
+| `gid` | string\|null | 是 |  |
+| `soltx_edges_sha256` | string (sha256 hex) | 是 |  |
+| `soltx_meta_sha256` | string (sha256 hex) | 是 |  |
+| `edge_logical_sha256` | string (sha256 hex) | 是 |  |
+
+不变量：
+
+- wave v5/flow v3：Solana 必填，EVM 省略。
+- 在场或被引用即与 exact receipt 逐字段全等。
+- 旧 wave v4/flow v2 fail-closed 提示重跑。
+
+### 14.11 `wave-scan/v5` 与 v4 的差异段
+
+- 生产者：`scripts/report/wave_scan.py`；消费者：handoff、audit release、candidate adjudication。
+- v5 保留 v4 全部字段，仅新增顶层 `edge_source_binding`。Solana 必填，EVM 省略；禁止写 `null` 代替省略。
+- `edge_source_binding` 的逐字段定义与全等规则见 §14.13。旧 `wave-scan/v4` 在正式链 fail-closed，并提示以当前边源重跑。
+
+不变量：
+
+- Solana v5 的 `edge_source_binding` 必须与 `solana-reconcile/v4` exact receipt 逐字段全等。
+- EVM v5 不得出现 `edge_source_binding`。
+
+### 14.12 `flow-anomaly/v3` 与 v2 的差异段
+
+- 生产者：`scripts/report/flow_anomaly_scan.py`；消费者：handoff、audit release、candidate adjudication。
+- v3 保留 v2 全部字段，仅新增顶层 `edge_source_binding`。Solana 必填，EVM 省略；禁止写 `null` 代替省略。
+- `edge_source_binding` 的逐字段定义与全等规则见 §14.13。旧 `flow-anomaly/v2` 在正式链 fail-closed，并提示以当前边源重跑。
+
+不变量：
+
+- Solana v3 的 `edge_source_binding` 必须与 `solana-reconcile/v4` exact receipt 逐字段全等。
+- EVM v3 不得出现 `edge_source_binding`。
+
+### 14.14 路由、术语与机械针
+
+- `exact_reconcile` 是 Solana 受控对账的第五项，引用 `solana-reconcile/v4`；`reconciliation-report/v3` 的 `checks.exact_reconcile.*` 在 Solana 条件必填，在 EVM 必须省略。
+- `sqd_gap_repair.py/v1` 是 repaired cache 的 collector 身份；正式 resolver 只接受当前 `CURRENT.json` 指向、bundle 哈希命中且绑定当前 base 的代。
+- `reference-nonvote-ordinal/v1` 表示缺陷 slot 内按参考源非投票交易序号统一重编号；`slot_index_map` 必须证明 SQD index、签名与 nonvote ordinal 三列双射。
+- “有块头但零 AdvanceNonce”是 coverage 指纹：存在 SQD 块头但该 slot 的 AdvanceNonce 计数为零；它只是机械候选，必须经 resolution 确认后才能成为修复依据。
+- 探针与 repair 的 `CURRENT.json` 均是最后发布的 kernel 指针；pending 或无当前指针的孤儿 gen 不得进入 formal。
+
+生产者/消费者路由：
+
+| 协议族 | 生产者 | 消费者 |
+|---|---|---|
+| coverage + coverage pointer | `sqd_coverage_probe.py` | repair planner、`solana_exact_validate.py`、reconcile |
+| resolution/layer/map/bundle/repair pointer/rpc ledger | `sqd_gap_repair.py` | resolver、`validate_repair_bundle`、`solana_exact_validate.py` |
+| `solana-reconcile/v4` | `scripts/solana/replay_edges.py` | reconciliation wrapper、camp sidecar、handoff、audit release |
+| wave v5 / flow v3 | wave/flow scanners | adjudication、handoff、audit release |

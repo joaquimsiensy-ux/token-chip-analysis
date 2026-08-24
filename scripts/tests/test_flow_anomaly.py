@@ -175,7 +175,11 @@ def main():
         print(p.stdout, p.stderr)
         return finish()
     r = json.load(open(out1))
-    check("schema=flow-anomaly/v2", r.get("schema") == "flow-anomaly/v2")
+    check("schema=flow-anomaly/v3", r.get("schema") == "flow-anomaly/v3")
+    check("Solana v3 写入 edge_source_binding 五键",
+          set(r.get("edge_source_binding") or {}) == {
+              "cache_kind", "gid", "soltx_edges_sha256",
+              "soltx_meta_sha256", "edge_logical_sha256"})
 
     sids = {s["addr"]: s for s in r["sinks"]}
     check("sink 正例 SinkA 命中", "SinkA" in sids)

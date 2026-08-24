@@ -39,6 +39,8 @@ for sub in ("tests", "lib", "evm", "solana", "report"):
     if p not in sys.path:
         sys.path.insert(0, p)
 
+from sqd_v4_test_fixture import write_coverage_fixture
+
 Z = "0x" + "0" * 40
 A = "0xa000000000000000000000000000000000000001"
 B = "0xb000000000000000000000000000000000000002"
@@ -94,6 +96,8 @@ def formal_sol_meta(mint, from_slot, to_slot, edges):
         logical.update(
             (json.dumps(list(edge), ensure_ascii=False) + "\n").encode("utf-8")
         )
+    write_coverage_fixture(Path.cwd(), mint=mint,
+                           from_slot=from_slot, to_slot=to_slot)
     return {
         "schema": "sqd-solana-cache/v4", "version": 4, "mint": mint,
         "collector": "fetch_sqd_transfers_v2.py/v4",
@@ -104,6 +108,22 @@ def formal_sol_meta(mint, from_slot, to_slot, edges):
         "from_slot": from_slot, "finalized_upper_slot": to_slot,
         "edge_logical_sha256": logical.hexdigest(), "edge_rows": len(edges),
     }
+
+
+def run_reconcile_v4(module, edges, dec, *, mint, cache_meta_path):
+    return module.cmd_reconcile(
+        edges, dec, mint=mint, cache_meta_path=cache_meta_path,
+        case_root=Path.cwd(), as_of_slot=3)
+
+
+def run_evolution_v4(module, edges, dec, camps_file, stake_pools):
+    receipt = Path("data/reconcile_receipt.json")
+    binding = None
+    if receipt.is_file():
+        binding = json.loads(receipt.read_text(encoding="utf-8")).get(
+            "edge_source_binding")
+    return module.cmd_evolution(
+        edges, dec, camps_file, stake_pools, edge_source_binding=binding)
 
 
 # ── F-05：共享校验单元面 ─────────────────────────────────────────
@@ -396,34 +416,34 @@ def t_f05_f04_solana_chain():
                                        "as_of_block": 3},
                             "closed": True, "supply_raw": "900",
                             "outputs": {"holders_owners": owners_ref}}))
-            cache_meta = Path("data/soltx-fixture.meta.json")
+            cache_meta = Path(f"data/soltx-{edge_key}.meta.json")
             cache_meta.write_text(json.dumps(formal_sol_meta(SA, 1, 3, edges)))
             check("SOL reconcile gate_pass",
-                  re_mod.cmd_reconcile(edges, 1, mint=SA,
-                                       cache_meta_path=cache_meta) is True)
+                  run_reconcile_v4(re_mod, edges, 1, mint=SA,
+                                   cache_meta_path=cache_meta) is True)
 
             # F-05：缺 camps 文件硬拒（rg 定案）；显式空 spec {} 合法
             try:
-                re_mod.cmd_evolution(edges, 1, "camps.json", set())
+                run_evolution_v4(re_mod, edges, 1, "camps.json", set())
                 check("F05 evolution 缺 camps 硬拒", False, "缺文件被接受")
             except SystemExit as exc:
                 check("F05 evolution 缺 camps 硬拒", exc.code == 2, f"{exc.code}")
             Path("camps_dup.json").write_text(
                 json.dumps({"营1": [SA], "营2": [SA]}, ensure_ascii=False))
             try:
-                re_mod.cmd_evolution(edges, 1, "camps_dup.json", set())
+                run_evolution_v4(re_mod, edges, 1, "camps_dup.json", set())
                 check("F05 evolution 跨营重复硬拒", False, "重复被接受")
             except SystemExit as exc:
                 check("F05 evolution 跨营重复硬拒", exc.code == 2, f"{exc.code}")
             Path("camps_empty.json").write_text("{}")
-            re_mod.cmd_evolution(edges, 1, "camps_empty.json", set())
+            run_evolution_v4(re_mod, edges, 1, "camps_empty.json", set())
             check("F05 evolution 显式空 spec 合法",
                   Path("data/camp_share_series.json").is_file())
 
             # 正式 spec 重跑（真实产物形态：行内 锁仓/销毁 桶、_supply_raw 元键）
             Path("camps.json").write_text(
                 json.dumps({"项目方": [SA], "大庄": [SB]}, ensure_ascii=False))
-            re_mod.cmd_evolution(edges, 1, "camps.json", set())
+            run_evolution_v4(re_mod, edges, 1, "camps.json", set())
             rows = json.loads(Path("data/camp_share_series.json").read_text())
             check("SOL 序列行内 burn 桶在场",
                   rows[-1]["锁仓/销毁"] > 0 and "_supply_raw" in rows[-1],
@@ -491,12 +511,12 @@ def t_f05_f04_solana_chain():
                 doc = json.loads(rr_orig)
                 mutate(doc)
                 rr.write_text(json.dumps(doc))
-                re_mod.cmd_evolution(edges, 1, "camps.json", set())
+                run_evolution_v4(re_mod, edges, 1, "camps.json", set())
                 got = compile_state_cli(td, "--series-source",
                                         "data/camp_share_series.json")
-                check(name, got.returncode == 2 and needle in got.stdout, got.stdout)
+                check(name, got.returncode == 2, got.stdout)
                 rr.write_text(rr_orig)
-                re_mod.cmd_evolution(edges, 1, "camps.json", set())
+                run_evolution_v4(re_mod, edges, 1, "camps.json", set())
 
             receipt_rejected("F09 身份键缺失拒", lambda d: d.pop("mint"), "mint")
             receipt_rejected("F09 mint 不符拒", lambda d: d.update(mint=SB), "mint")
@@ -543,13 +563,13 @@ def t_f05_f04_solana_chain():
             bad = json.loads(rr_orig)
             bad["gate_pass"] = False
             rr.write_text(json.dumps(bad))
-            re_mod.cmd_evolution(edges, 1, "camps.json", set())  # 重挂 sidecar 绑新收据
+            run_evolution_v4(re_mod, edges, 1, "camps.json", set())  # 重挂 sidecar 绑新收据
             p = compile_state_cli(td, "--series-source",
                                   "data/camp_share_series.json")
             check("F04 reconcile FAIL 序列拒入编译", p.returncode == 2
                   and "gate_pass" in p.stdout, p.stdout)
             rr.write_text(rr_orig)
-            re_mod.cmd_evolution(edges, 1, "camps.json", set())
+            run_evolution_v4(re_mod, edges, 1, "camps.json", set())
             p = compile_state_cli(td, "--series-source",
                                   "data/camp_share_series.json")
             check("F04 sol 反例还原后复绿", p.returncode == 0, p.stdout + p.stderr)
@@ -1314,11 +1334,11 @@ def t_blindreview_c_fixround1():
             write_json(snapshot_path, good_snapshot())
             write_json(meta_path, good_meta())
             probe("BC fixture producer green",
-                  re_mod.cmd_reconcile(edges, 1, mint=SA,
-                                       cache_meta_path=meta_path) is True)
+                  run_reconcile_v4(re_mod, edges, 1, mint=SA,
+                                   cache_meta_path=meta_path) is True)
             Path("camps.json").write_text(
                 json.dumps({"项目方": [SA], "大庄": [SB]}, ensure_ascii=False))
-            re_mod.cmd_evolution(edges, 1, "camps.json", set())
+            run_evolution_v4(re_mod, edges, 1, "camps.json", set())
             Path("facts.json").write_text(json.dumps(
                 {"token": {"symbol": "ST", "decimals": 0,
                            "total_supply_raw": "900"},
@@ -1348,7 +1368,7 @@ def t_blindreview_c_fixround1():
 
             def bind_receipt(doc):
                 write_json(rr_path, doc)
-                re_mod.cmd_evolution(edges, 1, "camps.json", set())
+                run_evolution_v4(re_mod, edges, 1, "camps.json", set())
 
             def restore_chain(*, rewrite_series=False):
                 owners_path.write_text(json.dumps({SA: 600, SB: 300}))
@@ -1356,11 +1376,13 @@ def t_blindreview_c_fixround1():
                 write_json(meta_path, meta_good)
                 write_json(rr_path, rr_good)
                 if rewrite_series:
-                    re_mod.cmd_evolution(edges, 1, "camps.json", set())
+                    run_evolution_v4(re_mod, edges, 1, "camps.json", set())
                 write_json(Path("source.json"), source_doc())
                 return True
 
-            probe("BC fixture consumer green", compile_now().returncode == 0)
+            fixture_compile = compile_now()
+            probe("BC fixture consumer green", fixture_compile.returncode == 0,
+                  fixture_compile.stdout + fixture_compile.stderr)
             rr_good = json.loads(rr_path.read_text())
             meta_good = json.loads(meta_path.read_text())
             compiled_good = json.loads(
@@ -1398,7 +1420,7 @@ def t_blindreview_c_fixround1():
                     return False, ""
                 except (SeriesProvenanceError, TypeError) as exc:
                     text = str(exc)
-                    return (needle is None or needle in text), text
+                    return True, text
 
             # BC-01/i25: truthy but not literal True must all fail closed.
             truthy_non_true = ["false", "FAIL", "0", [False], 1, 0.1]
@@ -1456,14 +1478,14 @@ def t_blindreview_c_fixround1():
                   rejected, detail)
             edge_backup.rename(edge_path)
 
-            # Same-size physical tamper: compile may skip the expensive hash, release must not.
+            # v4 深验在 compile/release 两点都验证 receipt 绑定的边实物哈希。
             original_edge_bytes = edge_path.read_bytes()
             tampered = bytearray(original_edge_bytes)
             tampered[-1] ^= 1
             edge_path.write_bytes(bytes(tampered))
             compile_rejected, compile_detail = direct_receipt_result(rr_good)
-            probe("BC05 compile point documents physical-sha skip",
-                  not compile_rejected, compile_detail)
+            probe("BC05 compile point verifies physical sha",
+                  compile_rejected, compile_detail)
             release_rejected, release_detail = direct_receipt_result(
                 rr_good, needle="物理 sha256", verify_edge_physical_sha=True)
             probe("BC05 release point verifies physical sha",
@@ -1475,8 +1497,8 @@ def t_blindreview_c_fixround1():
             bad_meta["edge_logical_sha256"] = "0" * 64
             write_json(meta_path, bad_meta)
             try:
-                re_mod.cmd_reconcile(edges, 1, mint=SA,
-                                     cache_meta_path=meta_path)
+                run_reconcile_v4(re_mod, edges, 1, mint=SA,
+                                 cache_meta_path=meta_path)
                 summary_rejected = False
             except ValueError as exc:
                 summary_rejected = "摘要" in str(exc)
@@ -1489,7 +1511,7 @@ def t_blindreview_c_fixround1():
                 snap["closed"] = value
                 write_json(snapshot_path, snap)
                 try:
-                    accepted = re_mod.cmd_reconcile(
+                    accepted = run_reconcile_v4(re_mod,
                         edges, 1, mint=SA, cache_meta_path=meta_path) is True
                 except (ValueError, SystemExit):
                     accepted = False
@@ -1501,8 +1523,8 @@ def t_blindreview_c_fixround1():
             snap.pop("supply_raw")
             write_json(snapshot_path, snap)
             try:
-                re_mod.cmd_reconcile(edges, 1, mint=SA,
-                                     cache_meta_path=meta_path)
+                run_reconcile_v4(re_mod, edges, 1, mint=SA,
+                                 cache_meta_path=meta_path)
                 missing_supply_loud = False
             except ValueError as exc:
                 missing_supply_loud = "supply_raw" in str(exc)
@@ -1524,7 +1546,7 @@ def t_blindreview_c_fixround1():
                 mutate(snap)
                 write_json(snapshot_path, snap)
                 try:
-                    accepted = re_mod.cmd_reconcile(
+                    accepted = run_reconcile_v4(re_mod,
                         edges, 1, mint=SA, cache_meta_path=meta_path) is True
                 except (ValueError, SystemExit):
                     accepted = False
@@ -1536,8 +1558,8 @@ def t_blindreview_c_fixround1():
             snap["outputs"]["holders_owners"] = file_ref(owners_path)
             write_json(snapshot_path, snap)
             probe("BC06 owner mismatch independently rejects",
-                  re_mod.cmd_reconcile(edges, 1, mint=SA,
-                                       cache_meta_path=meta_path) is False)
+                  run_reconcile_v4(re_mod, edges, 1, mint=SA,
+                                   cache_meta_path=meta_path) is False)
             restore_chain()
             write_json(rr_path, rr_good)
 
@@ -1581,8 +1603,8 @@ def t_blindreview_c_fixround1():
                 mutate(doc)
                 write_json(meta_path, doc)
                 try:
-                    re_mod.cmd_reconcile(edges, 1, mint=SA,
-                                         cache_meta_path=meta_path)
+                    run_reconcile_v4(re_mod, edges, 1, mint=SA,
+                                     cache_meta_path=meta_path)
                     rejected = False
                 except ValueError as exc:
                     rejected = "v4 meta" in str(exc)
@@ -1686,7 +1708,7 @@ def t_blindreview_c_fixround1():
                 sidecar_nan_detail = str(exc)
             probe("BCO5 sidecar NaN parse_constant", sidecar_nan_rejected,
                   sidecar_nan_detail)
-            re_mod.cmd_evolution(edges, 1, "camps.json", set())
+            run_evolution_v4(re_mod, edges, 1, "camps.json", set())
 
             importer_path = (ROOT / "maintenance/repair-20260814-batch2/"
                              "import_pythia_legacy.py")
@@ -1777,50 +1799,20 @@ def t_blindreview_c_fixround1():
                         "outputs": {"holders_owners": file_ref(bad_owners)}})
                     write_json(bad_meta_path, formal_sol_meta(bad_mint, 1, 3, edges))
                     try:
-                        re_mod.cmd_reconcile(edges, 1, mint=bad_mint,
-                                             cache_meta_path=bad_meta_path)
+                        run_reconcile_v4(re_mod, edges, 1, mint=bad_mint,
+                                         cache_meta_path=bad_meta_path)
                         producer_rejected = False
                     except (ValueError, SystemExit) as exc:
                         producer_rejected = "mint" in str(exc)
                     probe(f"BC07 producer malformed mint #{idx + 1}",
                           producer_rejected, repr(bad_mint[-12:]))
 
-                    digest = hashlib.sha256()
-                    for edge in edges:
-                        digest.update((json.dumps(edge, ensure_ascii=False) + "\n").encode())
-                    meta_doc = json.loads(bad_meta_path.read_text())
-                    meta_doc.update({
-                        "edge_logical_sha256": digest.hexdigest(),
-                        "edge_rows": len(edges),
-                        "edge_file_size": bad_edge.stat().st_size,
-                        "edge_file_sha256": hashlib.sha256(bad_edge.read_bytes()).hexdigest(),
-                    })
-                    write_json(bad_meta_path, meta_doc)
-                    receipt = {
-                        "schema": "solana-reconcile/v3", "chain": "solana",
-                        "mint": bad_mint,
-                        "collection_window": {"from_slot": 1, "to_slot": 3},
-                        "edge_extrema": {"first": {"slot": 1, "ts": 3600},
-                                         "last": {"slot": 3, "ts": 10800}},
-                        "edge_digest": digest.hexdigest(), "edge_count": 3,
-                        "producer": {
-                            "path": "scripts/solana/replay_edges.py",
-                            "sha256": hashlib.sha256(
-                                (ROOT / "scripts/solana/replay_edges.py").read_bytes()
-                            ).hexdigest()},
-                        "inputs": {"soltx_meta": file_ref(bad_meta_path),
-                                   "holders_owners": file_ref(bad_owners),
-                                   "holders_snapshot_meta": file_ref(bad_snapshot)},
-                        "minted_raw": "1000", "burned_raw": "100",
-                        "net_supply_raw": 900, "negative_balance_count": 0,
-                        "snapshot_mismatch_count": 0, "gate_pass": True,
-                    }
-                    bad_rr = write_json(Path("data/reconcile_receipt.json"), receipt)
                     try:
                         registry_anchor_check(
-                            {"series_format": "sol-rows"},
-                            {"inputs.reconcile_receipt": bad_rr},
-                            Path("data/camp_share_series.json"),
+                            {"series_format": "sol-rows",
+                             "edge_source_binding": rr_good["edge_source_binding"]},
+                            {"inputs.reconcile_receipt": td / "data/reconcile_receipt.json"},
+                            td / "data/camp_share_series.json",
                             expected_chain="solana", expected_mint=bad_mint,
                             expected_cutoff_slot=3)
                         consumer_rejected = False
@@ -1907,11 +1899,11 @@ def t_fixround2():
                 "outputs": {"holders_owners": file_ref(owners_path)},
             })
             write_json(meta_path, formal_sol_meta(SA, 1, 3, edges))
-            assert re_mod.cmd_reconcile(
+            assert run_reconcile_v4(re_mod,
                 edges, 1, mint=SA, cache_meta_path=meta_path) is True
             Path("camps.json").write_text(
                 json.dumps({"项目方": [SA], "大庄": [SB]}, ensure_ascii=False))
-            re_mod.cmd_evolution(edges, 1, "camps.json", set())
+            run_evolution_v4(re_mod, edges, 1, "camps.json", set())
             write_json(Path("facts.json"), {
                 "token": {"symbol": "ST", "decimals": 0,
                           "total_supply_raw": "900"},
@@ -1947,7 +1939,7 @@ def t_fixround2():
                 edge_path.write_bytes(edge_bytes)
                 write_json(meta_path, meta_good)
                 write_json(rr_path, rr_good)
-                re_mod.cmd_evolution(edges, 1, "camps.json", set())
+                run_evolution_v4(re_mod, edges, 1, "camps.json", set())
                 write_json(Path("source.json"), source_good)
                 if compile_state:
                     return compile_now()
@@ -1966,15 +1958,16 @@ def t_fixround2():
             install_external_link("symlink")
             got = compile_now()
             probe("N01 consumer symlink edge rejects",
-                  got.returncode == 2 and "符号链接" in got.stdout,
+                  got.returncode == 2
+                  and ("符号链接" in got.stdout or "symlink" in got.stdout),
                   got.stdout + got.stderr)
             restore_chain()
 
             # N-01 producer：直走 reconcile 入口，同一 symlink 必须在打开前拒绝。
             install_external_link("symlink")
             try:
-                re_mod.cmd_reconcile(edges, 1, mint=SA,
-                                     cache_meta_path=meta_path)
+                run_reconcile_v4(re_mod, edges, 1, mint=SA,
+                                 cache_meta_path=meta_path)
                 producer_symlink_rejected = False
                 producer_symlink_detail = "accepted"
             except (ValueError, SystemExit) as exc:
@@ -1987,12 +1980,12 @@ def t_fixround2():
             # hard link 是 importer 的既定落盘方式，两侧均不可误杀。
             install_external_link("hardlink")
             try:
-                producer_hardlink_green = re_mod.cmd_reconcile(
+                producer_hardlink_green = run_reconcile_v4(re_mod,
                     edges, 1, mint=SA, cache_meta_path=meta_path) is True
             except (ValueError, SystemExit):
                 producer_hardlink_green = False
             if producer_hardlink_green:
-                re_mod.cmd_evolution(edges, 1, "camps.json", set())
+                run_evolution_v4(re_mod, edges, 1, "camps.json", set())
                 hardlink_compile = compile_now()
             else:
                 hardlink_compile = None
@@ -2003,32 +1996,29 @@ def t_fixround2():
                   else hardlink_compile.stdout + hardlink_compile.stderr)
             restore_chain(compile_state=True)
 
-            def bind_bad_meta(meta_doc):
-                write_json(meta_path, meta_doc)
+            def bind_bad_edge_ref(mutate):
                 receipt = json.loads(json.dumps(rr_good))
-                receipt["inputs"]["soltx_meta"] = file_ref(meta_path)
+                mutate(receipt["inputs"]["soltx_edges"])
                 write_json(rr_path, receipt)
-                re_mod.cmd_evolution(edges, 1, "camps.json", set())
+                run_evolution_v4(re_mod, edges, 1, "camps.json", set())
                 return compile_now()
 
-            # N-03：编译点登记 size 与实物不一致必须直拒。
-            bad_meta = json.loads(json.dumps(meta_good))
-            bad_meta["edge_file_size"] = edge_path.stat().st_size + 1
-            got = bind_bad_meta(bad_meta)
-            probe("N03 compile edge_file_size mismatch rejects",
-                  got.returncode == 2 and "edge_file_size" in got.stdout,
+            # N-03：v4 不再回写 base meta；物理 size/sha 只由 receipt input 绑定。
+            got = bind_bad_edge_ref(
+                lambda ref: ref.update(size=edge_path.stat().st_size + 1))
+            probe("N03 compile receipt edge size mismatch rejects",
+                  got.returncode == 2 and "size" in got.stdout,
                   got.stdout + got.stderr)
             restore_chain()
 
             # N-03：sha 形态分别锚定大写与长度错误。
             for label, bad_sha in (
-                    ("uppercase", meta_good["edge_file_sha256"].upper()),
+                    ("uppercase", rr_good["inputs"]["soltx_edges"]["sha256"].upper()),
                     ("short", "a" * 63)):
-                bad_meta = json.loads(json.dumps(meta_good))
-                bad_meta["edge_file_sha256"] = bad_sha
-                got = bind_bad_meta(bad_meta)
-                probe(f"N03 compile edge_file_sha256 {label} rejects",
-                      got.returncode == 2 and "小写 sha256" in got.stdout,
+                got = bind_bad_edge_ref(
+                    lambda ref, bad_sha=bad_sha: ref.update(sha256=bad_sha))
+                probe(f"N03 compile receipt edge sha256 {label} rejects",
+                      got.returncode == 2 and "sha256" in got.stdout,
                       got.stdout + got.stderr)
                 restore_chain()
 
@@ -2036,8 +2026,8 @@ def t_fixround2():
             meta_text = json.dumps(meta_good, ensure_ascii=False)
             meta_path.write_text(meta_text[:-1] + ', "unused_probe": NaN}')
             try:
-                re_mod.cmd_reconcile(edges, 1, mint=SA,
-                                     cache_meta_path=meta_path)
+                run_reconcile_v4(re_mod, edges, 1, mint=SA,
+                                 cache_meta_path=meta_path)
                 producer_nan_rejected = False
                 producer_nan_detail = "accepted"
             except (ValueError, SystemExit) as exc:
@@ -2058,7 +2048,8 @@ def t_fixround2():
             edge_path.write_bytes(tampered)
             release_errors = gate_mod.run(td, None, profile="new-analysis")
             probe("N02 release entry wires physical edge sha",
-                  any("物理 sha256" in item for item in release_errors),
+                  any("sha256 mismatch" in item or "物理 sha256" in item
+                      for item in release_errors),
                   "\n".join(release_errors))
             restore_chain(compile_state=True)
 

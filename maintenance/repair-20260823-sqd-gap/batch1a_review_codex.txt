@@ -1,0 +1,29 @@
+反对直接放行。支持方的核心理由成立：原阻塞已基本闭合；但新草案和批1b工单之间仍有硬冲突。
+
+① 原阻塞
+
+- 【已闭合】浮点：改为 `min_ratio_num/den` 与整数交叉乘法（`sqd-solana-coverage_v1.json:132-143,481`）。
+- 【已闭合】coverage 当前性：指针具备 CAS、目录 fsync、幂等分支；reconcile 必绑当前 `coverage_pointer`（`sqd-solana-coverage-pointer_v1.json:218-221`；`solana-reconcile_v4.json:112-116,525`）。
+- 【已闭合】repair 同 gid 幂等：先判同 gid＋bundle 哈希，再进普通 CAS（`publish_protocol.json:76-80`）。
+- 【已闭合】verdict 映射：明确 `true→PASS/0、false→FAIL/2`（`solana-reconcile_v4.json:49-60,526`）。
+- 【已闭合】E2/E3：八项 complete 合取式已落地；E3 已由 E9 取代（`sqd-solana-coverage_v1.json:478-480`；pointer `:224-225`）。
+
+② 新矛盾
+
+- E14未真正落入契约：三项 raw 只在 `inherited_fields` 列名字、无类型，主 `fields` 更完全缺项（`solana-reconcile_v4.json:494-501`）；INDEX称批1b补（`:14`），工单却禁止改草案（`batch1b_workorder.md:5,15`）。
+- wrapper 自相矛盾：EVM规定仅四 checks（`reconciliation-report_v3.json:31`），但 `exact_reconcile.*` 五字段无条件 `required:true`，且路径未写成 `checks.exact_reconcile`/引用收据语义（`:34-66`）。
+- canonical 必含表已含 rpc ledger header（`canonicalization.json:104-108`），但依赖图和发布 step_1 均漏 `rpc_ledger`（`:90-94`；`publish_protocol.json:13-17`）。CAS顺序本身可解释为幂等分支优先，无实质冲突。
+
+③ 继承表
+
+抽核 `fetch…:527,531,998,1026,1246`、`replay_edges.py:356,362,365,370`、`reconciliation_report.py:119-124,209,276`，字段名与 source_line 均一致。唯一缺口是上述 E14 类型迁移，不是抄录行号错误。
+
+④ 批1b
+
+- 不符合 E13：第(2)必须直跑现役 curve/entity 证明顺序敏感，却被降为缺模块烟雾＋自制 oracle（工单 `:18,26`；errata `:35`）。
+- 必补 E9/E10/E11/E14 子反例：coverage 指针 CAS/同 probe 幂等/目录 fsync、CURRENT 更新使旧 receipt 失效、三元映射互斥、字符串 raw 拒收。
+- banned needles 延至批6可接受，但必须列为批6硬闸；不存在脚本使 invariant_scan 先红也可接受，但不得替代31项语义/oracle 红证。
+
+**不可进批 1b（必补：E14契约、wrapper 条件路径、rpc_ledger 依赖发布链、第(2)语义红及 E9–E14 新反例）。**
+
+RC=0 DONE

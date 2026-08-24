@@ -41,8 +41,10 @@ from chain_registry import (evm_family, formal_ready_chains, get_chain_config,
                             release_tier_for, resolve_alias)
 from case_paths import safe_case_file
 from shared_release_receipt import (validate_accounting_receipt,
+                                    canonical_target,
                                     validate_evm_observation_source_chain,
-                                    validate_reconciliation_report)
+                                    validate_reconciliation_report,
+                                    validate_solana_derived_bindings)
 from wave_contract import WAVE_SCHEMA, has_formal_wave_semantics
 
 SCHEMA_VERSION = "handoff/v3"
@@ -96,7 +98,8 @@ REQUIRED_FOR_READY_EVM = ["time_spotcheck.json", "evm_observation_bundle.json",
 # 自动 gate 适配：从产物 JSON 读 verdict/exit_code（防手报）；verify 时重读比对
 AUTO_GATES = {"accounting_gate": "accounting_mode.json", "supply_truth_gate": "supply_truth.json",
               "time_spotcheck": "time_spotcheck.json",
-              "reconciliation_four_checks": "reconciliation_report.json"}
+              "reconciliation_checks": "reconciliation_report.json"}
+LEGACY_AUTO_GATE_ALIASES = {"reconciliation_four_checks": "reconciliation_checks"}
 # accounting_gate.py 的公开退出码契约允许 WARN + exit 0 放行；其余自动 gate 必须 PASS。
 AUTO_GATE_ACCEPTED_VERDICTS = {"accounting_gate": {"PASS", "WARN"}}
 PROVENANCE_LABEL_KINDS = {"cex", "dex_pool", "facility", "bridge", "launch_alloc",
@@ -192,6 +195,7 @@ def cmd_generate(a):
 
     artifacts, missing_required = [], []
     seen = set()
+    data_map_paths = set()
 
     def add_path(rel):
         if rel in seen:
@@ -223,6 +227,8 @@ def cmd_generate(a):
         else:
             try:
                 for ent in dm.get("files", []):
+                    if isinstance(ent, dict) and isinstance(ent.get("path"), str):
+                        data_map_paths.add(ent["path"])
                     add_explicit(ent.get("path"))
             except ValueError as e:
                 print(f"[generate] data_map.json 显式文件路径非法: {e}", file=sys.stderr)
@@ -258,6 +264,31 @@ def cmd_generate(a):
                 sealed.append({"path": rel, "bytes": size, "hash_algo": algo, "sha256": digest})
 
     if a.status == "READY":
+        try:
+            recon_target, recon_receipts = validate_reconciliation_report(
+                case_dir, return_receipts=True)
+            if resolve_alias(recon_target["chain"]) == "sol":
+                wrapper = load_json(os.path.join(case_dir, "reconciliation_report.json"))
+                exact_item = (wrapper.get("checks") or {}).get("exact_reconcile") or {}
+                exact_path = ((exact_item.get("receipt") or {}).get("path"))
+                required_exact = {exact_path}
+                required_exact.update(
+                    ref.get("path") for ref in
+                    (recon_receipts["exact_reconcile"].get("inputs") or {}).values()
+                    if isinstance(ref, dict))
+                required_exact.discard(None)
+                missing_map = sorted(required_exact - data_map_paths)
+                missing_artifacts = sorted(required_exact - seen)
+                if missing_map or missing_artifacts:
+                    raise ValueError(
+                        f"Solana exact receipt 及 inputs 必须同时进 data_map/artifacts；"
+                        f"data_map缺={missing_map}, artifacts缺={missing_artifacts}")
+                validate_solana_derived_bindings(
+                    case_dir, recon_receipts["exact_reconcile"]["edge_source_binding"],
+                    extra_paths=seen)
+        except Exception as exc:
+            print(f"[generate] reconciliation READY 深验失败: {exc}", file=sys.stderr)
+            return 2
         required = list(REQUIRED_FOR_READY)
         if set(chains) & evm_family():
             required += REQUIRED_FOR_READY_EVM
@@ -380,8 +411,32 @@ def _verify_light_schema(case_dir, fails, manifest, legacy=False):
             chains = {resolve_alias(chain) for chain in scope.get("chains") or []}
             if len(chains) != 1 or resolve_alias(target.get("chain")) not in chains:
                 fails.append("reconciliation target.chain 未与唯一 READY scope 链绑定")
-            if str(target.get("token") or "").lower() != str(scope.get("contract") or "").lower():
+            scope_target = {"chain": next(iter(chains), None),
+                            "token": scope.get("contract"),
+                            "as_of_block": target.get("as_of_block")}
+            if canonical_target(target) != canonical_target(scope_target):
                 fails.append("reconciliation target.token 未与 READY scope.contract 绑定")
+            if resolve_alias(target.get("chain")) == "sol":
+                exact = recon_receipts["exact_reconcile"]
+                wrapper = load_json(os.path.join(case_dir, "reconciliation_report.json"))
+                exact_path = ((((wrapper.get("checks") or {}).get("exact_reconcile") or {})
+                               .get("receipt") or {}).get("path"))
+                required_exact = {exact_path}
+                required_exact.update(
+                    ref.get("path") for ref in (exact.get("inputs") or {}).values()
+                    if isinstance(ref, dict))
+                required_exact.discard(None)
+                data_map = load_json(os.path.join(case_dir, "data_map.json"))
+                mapped = {row.get("path") for row in data_map.get("files", [])
+                          if isinstance(row, dict)}
+                missing_map = sorted(required_exact - mapped)
+                missing_artifacts = sorted(required_exact - art_paths)
+                if missing_map or missing_artifacts:
+                    fails.append(
+                        "Solana exact receipt 及 inputs 未同时绑定 data_map/artifacts: "
+                        f"data_map缺={missing_map}, artifacts缺={missing_artifacts}")
+                validate_solana_derived_bindings(
+                    case_dir, exact["edge_source_binding"], extra_paths=art_paths)
             if not legacy:
                 _, accounting, _ = validate_accounting_receipt(
                     case_dir, expected_target=target)
@@ -393,14 +448,16 @@ def _verify_light_schema(case_dir, fails, manifest, legacy=False):
         return
     try:
         ws = load_json(os.path.join(case_dir, "wave_scan_report.json"))
-        if ws.get("schema") in ("wave-scan/v1", "wave-scan/v2", "wave-scan/v3"):
+        if ws.get("schema") in ("wave-scan/v1", "wave-scan/v2", "wave-scan/v3",
+                                "wave-scan/v4"):
             fails.append(f"wave_scan_report.json 是旧版（{ws.get('schema')}）——v2 及更早缺 scan_universe "
-                         "逐址全集，v3 又缺边顺序/legacy 标记，重跑 wave_scan.py（v4）后重 generate；"
+                         "逐址全集，v3 又缺边顺序/legacy 标记，v4 缺边源绑定；"
+                         "重跑 wave_scan.py（v5）后重 generate；"
                          "已冻结旧案走 verify --legacy-read-only")
         elif ws.get("schema") != WAVE_SCHEMA:
             fails.append(f"wave_scan_report.json schema 异常: {ws.get('schema')}")
         elif not has_formal_wave_semantics(ws):
-            fails.append("wave_scan_report.json v4 必须是 formal 且携带合法边顺序语义；"
+            fails.append("wave_scan_report.json v5 必须是 formal 且携带合法边顺序/边源语义；"
                          "legacy-sol5 诊断产物不得进入 READY")
         elif not isinstance(ws.get("waves"), list) or not isinstance(ws.get("equal_amount_groups"), list) \
                 or not isinstance(ws.get("requires_adjudication"), bool):
@@ -408,7 +465,7 @@ def _verify_light_schema(case_dir, fails, manifest, legacy=False):
         elif not isinstance(ws.get("scan_universe"), list) \
                 or not isinstance(ws.get("must_adjudicate_count"), int) \
                 or len(ws["scan_universe"]) != ws.get("scan_universe_count"):
-            fails.append("wave_scan_report.json v4 全集不完整（scan_universe 须为数组、"
+            fails.append("wave_scan_report.json v5 全集不完整（scan_universe 须为数组、"
                          "must_adjudicate_count 须为整数、len(scan_universe)==scan_universe_count）"
                          "——贴 v4 标签不带逐址全集同属空壳，拒收")
         elif any(not isinstance(u, dict) or not str(u.get("addr") or "").strip()
@@ -416,16 +473,16 @@ def _verify_light_schema(case_dir, fails, manifest, legacy=False):
                  for u in ws["scan_universe"]) \
                 or sum(1 for u in ws["scan_universe"] if u.get("must_adjudicate")) \
                 != ws["must_adjudicate_count"]:
-            fails.append("wave_scan_report.json v4 全集内部矛盾（每条须有 addr 且 "
+            fails.append("wave_scan_report.json v5 全集内部矛盾（每条须有 addr 且 "
                          "must_adjudicate 为布尔；must_adjudicate_count 必须等于逐条 true 计数"
                          "——count=0 配 must=true 条目这类自相矛盾拒收，v6.9.4）")
     except Exception as e:
         fails.append(f"wave_scan_report.json 读取失败（波次扫描未跑？补跑 wave_scan.py 后重 generate）: {e}")
     try:
         fa = load_json(os.path.join(case_dir, "flow_anomaly_report.json"))
-        if fa.get("schema") != "flow-anomaly/v2":
+        if fa.get("schema") != "flow-anomaly/v3":
             fails.append(f"flow_anomaly_report.json schema 异常: {fa.get('schema')}"
-                         "（需要 flow-anomaly/v2——旧 v1 产物重跑 flow_anomaly_scan.py）")
+                         "（需要 flow-anomaly/v3——旧 v1/v2 产物重跑 flow_anomaly_scan.py）")
         elif not isinstance(fa.get("sinks"), list) or not isinstance(fa.get("sprays"), list) \
                 or not isinstance(fa.get("requires_adjudication"), bool):
             fails.append("flow_anomaly_report.json 缺 sinks/sprays/requires_adjudication——空壳拒收")
@@ -461,7 +518,7 @@ def verify_case(case_dir, legacy_read_only=False):
             legacy_mode = True
         elif schema in LEGACY_SCHEMAS:
             fails.append(f"schema {schema} 是旧版——新运行必须重跑 v6.8.0 生产器"
-                         "（wave-scan/v4、flow-anomaly/v2）后重 generate；只读旧案加 --legacy-read-only")
+                         "（wave-scan/v5、flow-anomaly/v3）后重 generate；只读旧案加 --legacy-read-only")
         else:
             fails.append(f"schema 不兼容: 需要 {schema}，本端支持 {sorted(SUPPORTED_SCHEMAS)}")
     status = m.get("status")
@@ -523,11 +580,14 @@ def verify_case(case_dir, legacy_read_only=False):
             if miss:
                 fails.append(f"READY 必备件不在 artifact 清单: {miss}（manifest 被手改或 generate 版本过旧）")
             gates_m = m.get("gates") or {}
+            normalized_gate_names = {
+                LEGACY_AUTO_GATE_ALIASES.get(name, name) for name in gates_m}
             for gname, rel in AUTO_GATES.items():
-                if rel in art_paths and gname not in gates_m:
+                if rel in art_paths and gname not in normalized_gate_names:
                     fails.append(f"gate {gname} 缺失（产物 {rel} 在场却无对应 gate 记录）")
         elif "reconciliation_report.json" in art_paths \
-                and "reconciliation_four_checks" not in (m.get("gates") or {}):
+                and not ({"reconciliation_four_checks", "reconciliation_checks"}
+                         & set(m.get("gates") or {})):
             fails.append("legacy 案在场 reconciliation_report.json 缺对应 gate 记录")
         for ent, p in safe_artifacts:
             algo, digest, size = sha256_file(p)
@@ -1128,8 +1188,9 @@ def validate_and_replay_provenance(case_dir, pl, pl_path, ep, manifest):
             mint = source.get("mint")
             if not isinstance(mint, str) or not mint:
                 return ["Solana provenance 未绑定 mint"]
-            cmd += ["--edges-sol", arg, "--sol-cache-meta", cache_meta,
-                    "--mint", mint]
+            cmd += ["--edges-sol", os.path.realpath(arg),
+                    "--sol-cache-meta", os.path.realpath(cache_meta),
+                    "--mint", mint, "--case-root", os.path.realpath(case_dir)]
         elif kind == "evm_v2":
             cmd += ["--edges-evm-v2", arg]
         elif kind == "duckdb":

@@ -258,6 +258,8 @@ def _fake_sol_slice_source(call_prefix, *, imports="", shadow=""):
         "scripts/solana/anchor_sampler.py",
         "scripts/lib/supply_truth_gate.py",
         "scripts/solana/accounting_gate_sol.py",
+        "scripts/solana/sqd_coverage_probe.py",
+        "scripts/solana/replay_edges.py",
         "scripts/solana/window_fetch.py",
     )
     calls = "".join(call_prefix.format(script=script) for script in scripts)
@@ -326,6 +328,8 @@ def test_execution_import_binding_positive_controls(scan, root):
         "scripts/solana/anchor_sampler.py",
         "scripts/lib/supply_truth_gate.py",
         "scripts/solana/accounting_gate_sol.py",
+        "scripts/solana/sqd_coverage_probe.py",
+        "scripts/solana/replay_edges.py",
         "scripts/solana/window_fetch.py",
     )
     calls = "".join(

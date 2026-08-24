@@ -57,7 +57,7 @@
 
 **既有采集产物复用**：开工先查工作目录是否已有采集产物（EVM＝`data/v2/run_*/done.json`，Solana＝`data/soltx-*.jsonl.gz`＋meta）——有则**直接复用并断点续拉增量到最新**（底层采集器天然幂等），禁止无视既有产物从零重采；完整性以当链 `done.json`、`collection_manifest.json`/receipt 为准，链内 manifest/receipt 证明单链数据范围。`done_with_gaps` 必须先补齐缺口再进对账。
 
-## A2 对账关卡（硬性，四查全过才进分析）
+## A2 对账关卡（硬性，EVM 四查／Solana 五查全过才进分析）
 
 1. **余额对账**：重建结果 vs 独立数据源精确对表（形态见各链 pipeline recon 分册）。
 2. **供给闭合**：总量恒等式/mint−burn 配平（内部自洽检验）。
@@ -79,6 +79,7 @@
 
    **退出语义**：exit 0＝PASS。exit 2 有两种情况，看有没有落收据来分：落了收据＝FAIL；若同 target、同 schema 家族的旧 PASS 在场，kernel 会先以同目录 hard-link 将它归档为 `.superseded-<UTC微秒>.<PID>`，再原子替换 canonical，FAIL 仍返回 exit 2，不得误报通道故障 exit 1。该币余额禁用重放结果并改 Multicall3/RPC 实时直查（地址全集与转账历史仍可用重放，重放余额仅作 ≥阈值超集筛选）；没落收据＝容差政策拒绝（缺 waiver/approval、凭据不合法或未覆盖本次实际偏差），不是 FAIL。政策拒绝会把上一轮旧收据自动作废归档为 `supply_truth.json.superseded-<UTC>`，案内不再有现役收据，下游缺件即停；归档失败升格 exit 1；凭据内容导致的解析异常归 exit 2，同样履行旧收据自动作废归档。exit 1＝检测自身失败（含凭据文件读不动等通道故障），修通道重跑，禁当 PASS。
 4. **时间抽查**：EVM 走分层计划制——先跑 `scripts/lib/anchor_plan.py` 出抽样计划，再跑 `scripts/lib/time_spotcheck.py --chain <链> --final-block <冻结块>` 对独立第二源逐锚点核对，产绑定 target、计划链与逐笔调用 transcript 的 `time-spotcheck/v3`；纯随机锚点容易漏高风险位置。Solana 走 `anchor_sampler.py --as-of-slot <冻结slot> --receipt <回执>`，任一失败日 exit 2。第二源分层选型与全史重拉例外见 evm-recon §13。注意本查不替代供给闭合。
+5. **Solana 精确重放（第五查）**：仅 Solana 必跑 `exact_reconcile`，消费当前 coverage 指针、正式 base 或修复代、owner 快照并产 `solana-reconcile/v4`；wrapper 一律为 `reconciliation-report/v3`。FAIL 先用 `sqd_coverage_probe.py` 归因，再按 α/β 止损线运行 `sqd_gap_repair.py`，禁止逐账户 BFS 补账。EVM 无此第五项且 wrapper 中必须省略。
 
 对不上＝数据有洞＝回去补，不许"差不多就行"。
 
@@ -100,8 +101,9 @@
 3. **ET-2 无下限成员完整性扫描**：对每个临时实体做不设持仓下限的成员完整性扫描。
    ET 是判级筛查层，不与 EF-1～EF-3 顶层冻结门禁混称。
 4. **EF-3A 全体持仓波次扫描／EF-3B 资金流异常扫描**：名册定稿前分别运行
-   `wave_scan.py` 与 `flow_anomaly_scan.py`，产 `wave_scan_report.json`（wave-scan/v4）和
-   `flow_anomaly_report.json`（flow-anomaly/v2）。分段执行时 EF-3A/B 跑批归 −1。
+   `wave_scan.py` 与 `flow_anomaly_scan.py`，产 `wave_scan_report.json`（wave-scan/v5）和
+   `flow_anomaly_report.json`（flow-anomaly/v3）。Solana 两件必须带与 exact receipt 全等的
+   `edge_source_binding`，EVM 必须省略。分段执行时 EF-3A/B 跑批归 −1。
 5. **当前持仓分布初判**：仅在 EF-3A 和 EF-3B 之后运行
    `holder_distribution_scan.py --stage initial`。产物是 `distribution_scan.json` 和
    `charts/distribution_stage1.png`。JSON 进入 READY `handoff/v3`，verify 会重新派生五桶并重算；

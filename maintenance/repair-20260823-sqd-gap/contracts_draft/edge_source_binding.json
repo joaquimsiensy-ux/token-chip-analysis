@@ -1,6 +1,6 @@
 {
   "schema": "edge-source-binding/v1",
-  "draft_status": "batch0-draft",
+  "draft_status": "batch1-frozen",
   "source": "PLAN.md §4.2.9",
   "producer": "replay_edges.py reconcile / cache resolver",
   "consumers": [

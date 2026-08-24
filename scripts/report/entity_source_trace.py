@@ -51,7 +51,8 @@ fifo（先进先出，老币先耗）/lifo（后进先出，新币先耗）三�
 正式模式强制 --labels-file {addr:{"kind":"cex|dex_pool|facility|bridge|launch_alloc|airdrop|vesting",…}}；
 仅显式 --allow-no-labels 可作探索运行，ledger 标 exploration 且 freeze 必拒；
 边表三通道同 wave_scan（--edges-sol/--edges-evm-v2/--duckdb）；正式
---edges-sol 同时强制 --sol-cache-meta 与 --mint，且两者进入 input_binding/freeze 重放。
+--edges-sol 强制 --case-root 与 --mint，经 resolver 取唯一 cache；--sol-cache-meta 若给出
+必须等于 resolver 结果。resolver 返回的 binding 进入 input_binding/freeze 重放。
 输出：--out provenance_ledger.json。实体条目含 members_sha256；台账另记录原始边/标签/
 实体文件完整哈希、total supply、manifest run/cutoff/block/denominators、算法哈希与参数。
 freeze 不仅比对绑定，还以当前代码从当前原始边真实重放并比较语义摘要。
@@ -107,7 +108,7 @@ def full_file_record(path, case_dir):
     with open(path, "rb") as f:
         for blk in iter(lambda: f.read(4 * 1024 * 1024), b""):
             h.update(blk)
-    ap = os.path.abspath(path)
+    ap = os.path.realpath(os.path.abspath(path))
     try:
         rel = os.path.relpath(ap, case_dir)
         shown = rel if rel != ".." and not rel.startswith(".." + os.sep) else ap
@@ -117,12 +118,12 @@ def full_file_record(path, case_dir):
 
 
 def bound_path(path, case_dir):
-    ap = os.path.abspath(path)
+    ap = os.path.realpath(os.path.abspath(path))
     rel = os.path.relpath(ap, case_dir)
     return rel if rel != ".." and not rel.startswith(".." + os.sep) else ap
 
 
-def source_binding(a, case_dir):
+def source_binding(a, case_dir, edge_source_binding=None):
     if a.edges_sol:
         kind, argument = "sol", a.edges_sol
         files = sorted(glob.glob(a.edges_sol))
@@ -153,7 +154,7 @@ def source_binding(a, case_dir):
     identity_path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                                  "..", "solana", "sqd_cache_identity.py")
     identity_rec = full_file_record(identity_path, case_dir)
-    return {
+    result = {
         "mode": "exploration" if a.allow_no_labels else "formal",
         "algorithm": {"script_sha256": trace_rec["sha256"],
                       "files": {"entity_source_trace.py": trace_rec,
@@ -180,6 +181,9 @@ def source_binding(a, case_dir):
                              "flip_adjudications": (full_file_record(a.acknowledge_flip, case_dir)
                                                     if a.acknowledge_flip else None)},
     }
+    if edge_source_binding is not None:
+        result["edge_source_binding"] = edge_source_binding
+    return result
 
 
 def semantic_payload(report):
@@ -674,6 +678,7 @@ def main():
                     help="保留显式诊断开关；本实体 provenance 正式链一律拒绝")
     ap.add_argument("--sol-cache-meta")
     ap.add_argument("--mint")
+    ap.add_argument("--case-root", help="正式 Solana 案根；经 cache resolver 且拒符号链接")
     ap.add_argument("--total-supply", required=True)
     ap.add_argument("--entity-file", required=True, help="{entity_id:[addr…]}")
     ap.add_argument("--labels-file", help="{addr:{kind,name}} 确证标签（cex/dex_pool/facility/bridge/…）")
@@ -720,7 +725,7 @@ def main():
     # 覆盖判定在 ledger 组装后按当前明细重算指纹。
     from handoff_manifest import (ledger_real_flips, load_flip_adjudications,
                                   verify_flip_receipt_against_ledger)
-    case_dir = os.path.dirname(os.path.abspath(a.out))
+    case_dir = os.path.realpath(os.path.dirname(os.path.abspath(a.out)))
     receipt_rows = {}
     if a.acknowledge_flip:
         # F-D7：三处收据口径统一为"案根内＋sha 绑定"——trace 不收案外收据（案根检查
@@ -736,19 +741,19 @@ def main():
         except (OSError, ValueError, TypeError) as exc:
             log(f"--acknowledge-flip 裁决收据不合法: {exc}")
             sys.exit(2)
-    binding = source_binding(a, case_dir)
-
     con = duckdb.connect()
     con.execute(f"SET memory_limit='{a.mem_limit}'")
     t0 = datetime.now(timezone.utc)
+    edge_source_binding = None
     if a.edges_sol:
-        n_edges, _ = load_sol(
+        n_edges, edge_source_binding = load_sol(
             con, a.edges_sol, cache_meta_path=a.sol_cache_meta,
-            expected_mint=a.mint)
+            expected_mint=a.mint, case_root=a.case_root)
     elif a.edges_evm_v2:
         n_edges = load_evm_v2(con, a.edges_evm_v2)
     else:
         n_edges = attach_duckdb(con, a.duckdb, a.edges_table)
+    binding = source_binding(a, case_dir, edge_source_binding=edge_source_binding)
     # handoff scope 若已冻结 cutoff/block，溯源必须实际应用同一边界；只把值写进台账不够。
     where = []
     hb = binding.get("handoff_manifest") or {}

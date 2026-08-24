@@ -1,86 +1,103 @@
 {
-  "schema": "contracts-draft-index/v1",
-  "plan_sha256": "506cdcbe7938ad6e79eb539e793fa0f47081426f3f21d7dada404cb021a9ad93",
-  "files": [
-    {
-      "file": "canonicalization.json",
-      "schema": "sqd-canonicalization-rules/v1",
-      "source": "PLAN.md §4.2.0"
-    },
-    {
-      "file": "sqd-solana-coverage_v1.json",
-      "schema": "sqd-solana-coverage/v1",
-      "source": "PLAN.md §4.2.1"
-    },
-    {
-      "file": "sqd-solana-coverage-pointer_v1.json",
-      "schema": "sqd-solana-coverage-pointer/v1",
-      "source": "PLAN.md §4.2.1"
-    },
-    {
-      "file": "sqd-solana-repair-layer_v1.json",
-      "schema": "sqd-solana-repair-layer/v1",
-      "source": "PLAN.md §4.2.2"
-    },
-    {
-      "file": "sqd-solana-repair-bundle_v1.json",
-      "schema": "sqd-solana-repair-bundle/v1",
-      "source": "PLAN.md §4.2.3"
-    },
-    {
-      "file": "sqd-solana-repair-pointer_v1.json",
-      "schema": "sqd-solana-repair-pointer/v1",
-      "source": "PLAN.md §4.2.3"
-    },
-    {
-      "file": "publish_protocol.json",
-      "schema": "sqd-repair-publish-protocol/v1",
-      "source": "PLAN.md §4.2.3"
-    },
-    {
-      "file": "sqd-solana-coverage-resolution_v1.json",
-      "schema": "sqd-solana-coverage-resolution/v1",
-      "source": "PLAN.md §4.2.4"
-    },
-    {
-      "file": "evidence_tables.json",
-      "schema": "sqd-solana-evidence-tables/v1",
-      "source": "PLAN.md §4.2.5"
-    },
-    {
-      "file": "sqd-solana-cache_v4_repaired-meta.json",
-      "schema": "sqd-solana-cache/v4",
-      "source": "PLAN.md §4.2.6"
-    },
-    {
-      "file": "sqd-solana-slot-index-map_v1.json",
-      "schema": "sqd-solana-slot-index-map/v1",
-      "source": "PLAN.md §4.2.7"
-    },
-    {
-      "file": "solana-reconcile_v4.json",
-      "schema": "solana-reconcile/v4",
-      "source": "PLAN.md §4.2.8"
-    },
-    {
-      "file": "edge_source_binding.json",
-      "schema": "edge-source-binding/v1",
-      "source": "PLAN.md §4.2.9"
-    },
-    {
-      "file": "rpc_ledger.json",
-      "schema": "sqd-solana-rpc-ledger/v1",
-      "source": "PLAN.md §4.2.10"
-    },
-    {
-      "file": "composition_rules.json",
-      "schema": "sqd-solana-composition-rules/v1",
-      "source": "PLAN.md §4.1 A2.1 ＋ §4.4.3 ＋ §4.4.6"
-    },
-    {
-      "file": "reconciliation-report_v3.json",
-      "schema": "reconciliation-report/v3",
-      "source": "PLAN.md §4.4.4"
-    }
-  ]
+ "schema": "contracts-draft-index/v1",
+ "plan_sha256": "506cdcbe7938ad6e79eb539e793fa0f47081426f3f21d7dada404cb021a9ad93",
+ "errata": {
+  "file": "PLAN_errata_batch0.md",
+  "sha256": "53af1f1103f5a351809809dbb096dfe6ce928ebeb9f5e274edd3374c664fcc42"
+ },
+ "final_review": {
+  "file": "batch0_final_review_codex.txt",
+  "sha256": "f0070ef1d6ad7436dfe8d240a7d9220b10fb61e206f77d42cea0dce25004e440"
+ },
+ "notes": [
+  "先红写法见 errata E13。",
+  "E14–E16 为批 1a 增补。",
+  "批 1b 已按 E14 将 solana-reconcile/v4 三个 raw 字段登记为 JSON int，并标注 v3 string→v4 int。",
+  "批 1b 已按 E17 补 canonicalization 的 rpc_ledger 依赖节点与 publish step_1 定稿规则。",
+  "批 1b 已按 E18 将 checks.exact_reconcile.* 设为 Solana 条件必填、EVM 必须省略。",
+  "批 2b 按 Fable 联网分页反例细化 coverage ledger：每页记录实际覆盖游标与 empty_response，成功并集按 from+slots_covered-1 重算。",
+  "批 3b 按 errata E25 小修 coverage-resolution 与 evidence beta_trace；按 E26 增 coverage_state/repair nonce 留痕；按 E27 增 STOPPED completed_slots 与三元 resume 规则。"
+ ],
+ "files": [
+  {
+   "file": "canonicalization.json",
+   "schema": "sqd-canonicalization-rules/v1",
+   "source": "PLAN.md §4.2.0"
+  },
+  {
+   "file": "sqd-solana-coverage_v1.json",
+   "schema": "sqd-solana-coverage/v1",
+   "source": "PLAN.md §4.2.1"
+  },
+  {
+   "file": "sqd-solana-coverage-pointer_v1.json",
+   "schema": "sqd-solana-coverage-pointer/v1",
+   "source": "PLAN.md §4.2.1"
+  },
+  {
+   "file": "sqd-solana-repair-layer_v1.json",
+   "schema": "sqd-solana-repair-layer/v1",
+   "source": "PLAN.md §4.2.2"
+  },
+  {
+   "file": "sqd-solana-repair-bundle_v1.json",
+   "schema": "sqd-solana-repair-bundle/v1",
+   "source": "PLAN.md §4.2.3"
+  },
+  {
+   "file": "sqd-solana-repair-pointer_v1.json",
+   "schema": "sqd-solana-repair-pointer/v1",
+   "source": "PLAN.md §4.2.3"
+  },
+  {
+   "file": "publish_protocol.json",
+   "schema": "sqd-repair-publish-protocol/v1",
+   "source": "PLAN.md §4.2.3"
+  },
+  {
+   "file": "sqd-solana-coverage-resolution_v1.json",
+   "schema": "sqd-solana-coverage-resolution/v1",
+   "source": "PLAN.md §4.2.4"
+  },
+  {
+   "file": "evidence_tables.json",
+   "schema": "sqd-solana-evidence-tables/v1",
+   "source": "PLAN.md §4.2.5"
+  },
+  {
+   "file": "sqd-solana-cache_v4_repaired-meta.json",
+   "schema": "sqd-solana-cache/v4",
+   "source": "PLAN.md §4.2.6"
+  },
+  {
+   "file": "sqd-solana-slot-index-map_v1.json",
+   "schema": "sqd-solana-slot-index-map/v1",
+   "source": "PLAN.md §4.2.7"
+  },
+  {
+   "file": "solana-reconcile_v4.json",
+   "schema": "solana-reconcile/v4",
+   "source": "PLAN.md §4.2.8"
+  },
+  {
+   "file": "edge_source_binding.json",
+   "schema": "edge-source-binding/v1",
+   "source": "PLAN.md §4.2.9"
+  },
+  {
+   "file": "rpc_ledger.json",
+   "schema": "sqd-solana-rpc-ledger/v1",
+   "source": "PLAN.md §4.2.10"
+  },
+  {
+   "file": "composition_rules.json",
+   "schema": "sqd-solana-composition-rules/v1",
+   "source": "PLAN.md §4.1 A2.1 ＋ §4.4.3 ＋ §4.4.6"
+  },
+  {
+   "file": "reconciliation-report_v3.json",
+   "schema": "reconciliation-report/v3",
+   "source": "PLAN.md §4.4.4"
+  }
+ ]
 }
