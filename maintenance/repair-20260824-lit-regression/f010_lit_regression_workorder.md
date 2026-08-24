@@ -3,7 +3,7 @@
 一句话目标：在真实 LIT 案目录用已入库的正式修复（skill 仓库分支 fix/lit-regression-v6522，HEAD=93aa5b6）实证两处闸放行——F-007 序列编译不再末点假红、F-008 freeze 走通 evm_v2 溯源重放；报告数字零变化。
 
 ## 【开工门禁】（不符即写停工报告并停）
-- skill 仓库：/Users/uravvv/.claude/skills/token-chip-analysis；`git -C <仓库> branch --show-current` = `fix/lit-regression-v6522`；`git -C <仓库> rev-parse --short HEAD` 以 `93aa5b6` 开头；`git -C <仓库> status --short` 干净。
+- skill 仓库：/Users/uravvv/.claude/skills/token-chip-analysis；`git -C <仓库> branch --show-current` = `fix/lit-regression-v6522`；`git -C <仓库> merge-base --is-ancestor 93aa5b6 HEAD` 退出码 0（三批修复 333144e/6fdf911/93aa5b6 全部在库；HEAD 本身可因后续工程档案 commit 前移，不锚死）；`git -C <仓库> status --short` 干净。
 - LIT 案目录存在：/Users/uravvv/Documents/5.6筹码分析/LIT分析（本工单工作根=案目录，唯一可写区）。
 - 案内关键实物存在：`data/ethereum/replay/camp_series.provenance.json`（sidecar，series_format=evm-dict、denominator=mint_total_legacy）与 `data/ethereum/v2/` 目录。
 
