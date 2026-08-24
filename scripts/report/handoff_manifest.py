@@ -33,13 +33,14 @@ import os
 import subprocess
 import sys
 import tempfile
+import unicodedata
 from datetime import datetime, timedelta, timezone
 
 _LIB = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "lib"))
 sys.path.insert(0, _LIB)
 from chain_registry import (evm_family, formal_ready_chains, get_chain_config,
                             release_tier_for, resolve_alias)
-from case_paths import safe_case_file
+from case_paths import safe_case_dir, safe_case_file
 from shared_release_receipt import (validate_accounting_receipt,
                                     canonical_target,
                                     validate_evm_observation_source_chain,
@@ -60,6 +61,12 @@ ADJUDICATIONS_NAME = "candidate_adjudications.json"
 DISTRIBUTION_ADJUDICATIONS_NAME = "distribution_adjudications.json"
 LEGACY_RECEIPT_NAME = "legacy_readonly_receipt.json"
 PROVENANCE_SCHEMA = "provenance-ledger/v2"  # v1 是 pro-rata 数学错误版（2026-08-01 codex 复核），一律拒
+# F-008: these names share one source of truth with the run_*/logs.parquet and
+# run_*/blocks.parquet constructions in wave_scan.load_evm_v2 and
+# entity_source_trace.source_binding.  Those two bound algorithm files are
+# forbidden to change here; an AST guard test locks all three sites together.
+EVM_V2_EDGE_NAMES = ("logs.parquet", "blocks.parquet")
+EVM_V2_RUN_PREFIX = "run_"
 STATUSES = {"READY", "BLOCKED", "PARTIAL", "SUPERSEDED", "BLOCKED_CEX_GATE"}
 SPARSE_THRESHOLD = 64 * 1024 * 1024  # >64MB 用分片哈希（split-run §2.2：不收尾全盘重哈希）
 CHUNK = 4 * 1024 * 1024
@@ -691,6 +698,45 @@ def resolve_bound_path(case_dir, shown):
     return os.path.join(case_dir, shown)
 
 
+def validate_evm_v2_argument(case_dir, shown):
+    """Validate a directory argument before it can reach glob or SQL assembly."""
+    if isinstance(shown, str):
+        forbidden = "*?[]'\\"
+        if any(char in shown for char in forbidden) \
+                or any(unicodedata.category(char) == "Cc" for char in shown):
+            raise ValueError(f"evm_v2 目录参数含 glob/SQL/控制字符: {shown!r}")
+    return safe_case_dir(case_dir, shown)
+
+
+def enumerate_evm_v2_sources(case_dir, argument, edge_dir):
+    """Enumerate the loader's fixed two-pattern input set without following links."""
+    found = set()
+    root_real = os.path.realpath(case_dir)
+    try:
+        with os.scandir(edge_dir) as children:
+            run_entries = sorted(children, key=lambda entry: entry.name)
+        for entry in run_entries:
+            if not entry.name.startswith(EVM_V2_RUN_PREFIX):
+                continue
+            if entry.is_symlink():
+                raise ValueError(f"evm_v2 run 目录不得是符号链接: {entry.name!r}")
+            if not entry.is_dir(follow_symlinks=False):
+                continue
+            with os.scandir(entry.path) as run_children:
+                edge_entries = sorted(run_children, key=lambda child: child.name)
+            for child in edge_entries:
+                if child.name not in EVM_V2_EDGE_NAMES:
+                    continue
+                rel = f"{argument}/{entry.name}/{child.name}"
+                path = safe_case_file(case_dir, rel)
+                found.add(os.path.relpath(path, root_real).replace(os.sep, "/"))
+    except ValueError:
+        raise
+    except (OSError, TypeError) as exc:
+        raise ValueError(f"evm_v2 目录枚举失败: {argument!r}: {exc}") from exc
+    return found
+
+
 def check_bound_file(case_dir, rec, expected_path=None):
     if not isinstance(rec, dict):
         return None, "文件绑定不是对象"
@@ -1172,10 +1218,44 @@ def validate_and_replay_provenance(case_dir, pl, pl_path, ep, manifest):
 
     # 从允许字段重建命令，不执行 ledger 自报的自由文本 command。
     kind = source.get("kind")
-    try:
-        arg = resolve_bound_path(case_dir, source.get("argument"))
-    except ValueError as e:
-        return [f"source argument 异常: {e}"]
+    if kind == "evm_v2":
+        argument = source.get("argument")
+        try:
+            arg = validate_evm_v2_argument(case_dir, argument)
+            current_paths = enumerate_evm_v2_sources(case_dir, argument, arg)
+        except ValueError as e:
+            return [f"source argument 异常: {e}"]
+
+        registered_paths = []
+        seen_paths = set()
+        for index, rec in enumerate(source_files):
+            if not isinstance(rec, dict):
+                return [f"evm_v2 source.files[{index}] 不是对象"]
+            rel = rec.get("path")
+            if not isinstance(rel, str):
+                return [f"evm_v2 source.files[{index}].path 不是字符串"]
+            if rel in seen_paths:
+                return [f"evm_v2 source.files 登记路径重复: {rel!r}"]
+            seen_paths.add(rel)
+            registered_paths.append(rel)
+        registered_set = set(registered_paths)
+        disk_only = sorted(current_paths - registered_set)
+        ledger_only = sorted(registered_set - current_paths)
+        if disk_only or ledger_only:
+            return [
+                "evm_v2 重放前集合闸不等: "
+                f"disk_only_count={len(disk_only)}, ledger_only_count={len(ledger_only)}, "
+                f"disk_only_first10={disk_only[:10]}, ledger_only_first10={ledger_only[:10]}"
+            ]
+        # Guarantee assumes no concurrent writer mutates the case directory from
+        # this completed check until the replay subprocess exits.  The remaining
+        # validation-to-read TOCTOU window is known residual risk outside F-008.
+        arg = str(arg)
+    else:
+        try:
+            arg = resolve_bound_path(case_dir, source.get("argument"))
+        except ValueError as e:
+            return [f"source argument 异常: {e}"]
     fd, replay_path = tempfile.mkstemp(prefix=".provenance-replay-", suffix=".json", dir=case_dir)
     os.close(fd)
     try:

@@ -1,0 +1,162 @@
+COMMAND: MPLCONFIGDIR=/tmp/f008-round4-mpl PYTHONPYCACHEPREFIX=/tmp/f008-round4-pycache python3 scripts/tests/test_lit_regression_f008.py
+PASS: real multi-run evm_v2 provenance replay
+PASS: unregistered run_evil/logs.parquet rejected pre-spawn
+PASS: symlink run directory rejected pre-spawn
+PASS: deleted registered file rejected pre-spawn
+PASS: descendant parquet symlink rejected pre-spawn
+PASS: argument absolute rejected pre-spawn
+PASS: argument dotdot rejected pre-spawn
+PASS: argument ordinary-file rejected pre-spawn
+PASS: argument empty rejected pre-spawn
+PASS: argument dot rejected pre-spawn
+PASS: argument asterisk rejected pre-spawn
+PASS: argument question rejected pre-spawn
+PASS: argument left-bracket rejected pre-spawn
+PASS: argument right-bracket rejected pre-spawn
+PASS: argument single-quote rejected pre-spawn
+PASS: argument backslash rejected pre-spawn
+PASS: argument newline rejected pre-spawn
+PASS: argument control rejected pre-spawn
+PASS: argument C1 U+0085 rejected by character gate pre-spawn
+PASS: argument middle symlink rejected pre-spawn
+PASS: duplicate source.files path rejected pre-spawn
+PASS: non-object source.files record rejected pre-spawn
+PASS: non-string source.files path rejected pre-spawn
+PASS: registered pattern-external file rejected pre-spawn
+PASS: safe_case_dir exported
+PASS: safe_case_dir legal directory
+PASS: safe_case_dir rejects ''
+PASS: safe_case_dir rejects ' '
+PASS: safe_case_dir rejects '/private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/f008_9b5rb44x/safe_dir/a/b'
+PASS: safe_case_dir rejects 'a//b'
+PASS: safe_case_dir rejects 'a/./b'
+PASS: safe_case_dir rejects 'a/../b'
+PASS: safe_case_dir rejects 'linked'
+PASS: safe_case_dir rejects 'a/file'
+PASS: safe_case_dir rejects 'missing'
+PASS: safe_case_file still accepts regular file
+PASS: safe_case_file still rejects directory
+PASS: AST source guard wave_scan.load_evm_v2 frozen definitions and consumers
+PASS: AST source guard entity_source_trace.source_binding all glob calls
+PASS: AST source guard rejects concatenated third glob self-negative
+PASS: AST wave guard rejects logs AugAssign self-negative
+PASS: AST wave guard rejects blocks alias consumption self-negative
+PASS: AST wave guard rejects swapped logs/blocks file mapping self-negative
+PASS: AST wave guard rejects swapped logs/blocks SQL slots self-negative
+PASS: sol replay dispatch remains green
+PASS: duckdb replay dispatch remains green
+SUMMARY: 46/46 PASS
+EXIT_CODE=0
+COMMAND: MPLCONFIGDIR=/tmp/f008-round4-mpl PYTHONPYCACHEPREFIX=/tmp/f008-round4-pycache python3 scripts/tests/test_handoff_manifest.py
+ok    generate READY exit 0
+ok    manifest 收录 data_map 索引文件
+ok    EVM manifest 收录 bundle 与 transcript
+ok    manifest sealed 只记哈希
+ok    manifest 自动 gate 四个
+ok    verify READY exit 0
+ok    accounting WARN + exit 0 按记账 gate 契约放行
+ok    READY 缺 chain generate 拒
+ok    READY 缺 contract generate 拒
+ok    READY 未知 chain generate 拒
+ok    PARTIAL 不强制正式 scope
+ok    scope 独立正例生成
+ok    verify 空 chains scope 拒
+ok    EVM 链缺 time_spotcheck 拒 READY exit 2
+ok    solana 不得复用 bsc reconciliation
+ok    READY 缺 reconciliation 拒
+ok    receipt 追加两条
+ok    receipt blind_mode 跟随环境
+ok    freeze 前揭盲拒绝 exit 2
+ok    freeze 缺 --entity-file 拒
+ok    无裁决台账 freeze 拒 exit 2
+ok    exploration/null-label provenance freeze 拒
+ok    四重前置齐备 freeze 初次 exit 0
+ok    冻结记录绑定成员/名册/provenance/manifest/data_map 全套哈希
+ok    freeze 后揭盲放行 exit 0
+ok    名册改动后复用旧溯源台账 freeze 拒 exit 2
+ok    重跑溯源后 freeze 变更走 revision 追加
+ok    supersede 归档旧 manifest
+ok    generate BLOCKED_CEX_GATE exit 0
+ok    verify BLOCKED 拒收 exit 2
+ok    BLOCKED 案 freeze 同拒 exit 2（前置 0 内联 verify）
+ok    哈希漂移拒收 exit 2
+ok    哈希漂移案 freeze 同拒 exit 2（前置 0）
+ok    schema 不兼容拒收 exit 2
+ok    gate 语义漂移拒收 exit 2
+ok    blocking 异常未解决拒收 exit 2
+ok    READY 缺必备件 generate 即拒 exit 2
+ok    同目录报 PARTIAL 可出 manifest
+ok    READY 缺 supply_truth gate 即拒 exit 2
+ok    READY 缺 wave_scan_report 即拒 exit 2
+ok    wave_scan_report 空壳 verify 拒收 exit 2
+ok    READY 缺 flow_anomaly_report 即拒 exit 2
+ok    wave-scan/v1 旧版产物 verify 拒收 exit 2
+ok    wave-scan/v2 旧版产物 verify 拒收 exit 2
+ok    v5 标签缺 scan_universe 全集 verify 拒收 exit 2
+ok    v5 count 与逐条 must 标记矛盾 verify 拒收 exit 2
+ok    handoff/v2 默认拒收 exit 2
+ok    handoff/v1 默认拒收 exit 2
+ok    handoff/v1 --legacy-read-only 放行且带只读警告
+ok    legacy 降级落机器 receipt
+ok    legacy 案 freeze 必拒 exit 2
+ok    溯源台账 v1（数学错误版）freeze 拒 exit 2
+ok    stock>0 而 composition 空壳 freeze 拒 exit 2
+ok    closure 自报 100 但按 composition 重算不闭合 freeze 拒 exit 2
+ok    成员集哈希错配 freeze 拒 exit 2
+ok    台账实体集与名册不一致 freeze 拒 exit 2
+ok    敏感性不稳 freeze 拒 exit 2
+ok    与边表脱离的人工合法台账 freeze 拒 exit 2
+ok    策略明细翻转但 stable=true 仍由 freeze 重算拒绝
+ok    尘埃锚点翻转豁免（不因翻转拒；伪造由重放语义摘要兜底）
+ok    内容自洽但与当前原始边重放不一致 freeze 拒
+ok    台账修复后 freeze 放行 exit 0
+ok    仅 provenance 变化也追加 freeze revision
+ok    check-unseal 复核 provenance 当前哈希漂移并拒绝
+ok    check-unseal 全绑定恢复后放行
+ok    check-unseal 直接复核原始边绑定漂移并拒绝
+ok    原始边恢复后 check-unseal 放行
+ok    手改 manifest 摘掉必备件 verify 拒 exit 2
+========================================
+handoff_manifest 契约测试全部通过（68 项）
+EXIT_CODE=0
+COMMAND: MPLCONFIGDIR=/tmp/f008-round4-mpl PYTHONPYCACHEPREFIX=/tmp/f008-round4-pycache python3 scripts/tests/test_repair_g1_handoff_containment.py
+ok    a1 --include ../outside.json generate 硬退 rc=2 且报路径拒绝
+ok    a2 data_map files[].path=../outside.json generate 硬退
+ok    a3 manifest artifacts[].path=../outside.json verify 拒 READY
+ok    b1 --include 绝对路径 generate 硬退
+ok    b2 data_map 中间目录 symlink 指案外 generate 硬退
+ok    b3 sealed/ 案外 symlink 拒绝或不收录案外哈希
+ok    b4 freeze --members 绝对路径硬退
+ok    b5 check-unseal 拒绝 entity_freeze.json 的 ../ 绑定路径
+ok    b6 --include 原始字符串 'a/./b.json' 硬退
+ok    b6 --include 原始字符串 'a//b.json' 硬退
+ok    b6 --include 原始字符串 '' 硬退
+ok    b7 adjudication_validator --entity-file 绝对路径 非零拒绝
+ok    b7 adjudication_validator --entity-file ../ 越界 非零拒绝
+ok    c1 case_paths.safe_case_file 单元向量组
+ok    c2 正常案 generate→verify 保持 READY
+ok    c3 CONTRACT_FILES 可选件缺失不误停 PARTIAL
+
+PASS: 16/16 checks
+EXIT_CODE=0
+COMMAND: MPLCONFIGDIR=/tmp/f008-round4-mpl PYTHONPYCACHEPREFIX=/tmp/f008-round4-pycache python3 scripts/tests/test_evm_observation_release.py
+PASS test_accounting_missing_bundle_rejected
+PASS test_accounting_anchor_mismatch_rejected
+PASS test_supply_missing_bundle_rejected
+PASS test_supply_n2_mismatch_rejected
+PASS test_accounting_supply_bundle_same_source_rejected
+PASS test_evm_legacy_schemas_rejected_with_migration
+PASS test_handoff_rejects_accounting_missing_anchor_and_source_split
+PASS test_f02_original_scalar_rewrite_rejected
+F03_LAYER=EVM accounting bundle anchor mismatch: as_of_block != bundle anchor.number
+PASS test_f03_retarget_dies_at_bundle_anchor_not_target
+snapshot_slot=103 accounts=1 owners=1 supply=100 activity=complete -> supply_snapshot.json
+[GATE] mode=standard verdict=PASS exit=0 -> accounting_mode.json
+[supply_truth] PASS  重放净供给=100  链上=100  差=0（0.0bps，容差 10bps）→ supply_truth.json
+PASS test_solana_accounting_and_supply_paths_unchanged
+PASS test_audit_release_reuses_public_accounting_validator
+PASS workorder C EVM observation release: 11/11
+EXIT_CODE=0
+COMMAND: MPLCONFIGDIR=/tmp/f008-round4-mpl PYTHONPYCACHEPREFIX=/tmp/f008-round4-pycache python3 scripts/tests/test_audit_release_gate.py
+PASS: audit_release_gate 净室资产/哈希/CEX受益权/阴性结论/图表封口与负钳零/对抗复核否决/四查WARN拦截/双线阈值/嵌套未决暴露/静置仓全集对账/日级峰值口径闭环十一类契约全过
+EXIT_CODE=0
