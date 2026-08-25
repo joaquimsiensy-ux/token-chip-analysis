@@ -149,6 +149,8 @@ def curl_json(url, *, post_json=None, headers=None, proxy=None,
                     retryable=(category == "transport"
                                or http_status in RETRYABLE_STATUS))
             elif not raw.strip():
+                # Adapter contract: sqd_coverage_probe.py recognizes this exact
+                # decode/status/message triple as an exhausted SQD stream tail.
                 last = _curl_error("decode", "curl returned empty stdout",
                                    http_status=http_status, retryable=True)
             else:
