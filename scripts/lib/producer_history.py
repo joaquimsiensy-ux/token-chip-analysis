@@ -57,6 +57,22 @@ PRODUCER_HISTORY = (
         "reason": "v6.52.0 registers the atomic CURRENT coverage pointer producer from the same frozen probe implementation.",
     },
     {
+        "script": "scripts/solana/sqd_coverage_probe.py",
+        "sha256": "bccf1802b6a5c9d9bbbdb12e19354ad761416c631e3cdfde2449f7fe1794f176",
+        "commit": "55d4efede78f6afb6c1d3c8aa3bbec95b6faa33f",
+        "protocol": "sqd-solana-coverage/v1",
+        "status": "ACTIVE",
+        "reason": "v6.52.3 recognizes the exact HTTP-200 empty-body SQD stream tail as covered skipped slots.",
+    },
+    {
+        "script": "scripts/solana/sqd_coverage_probe.py",
+        "sha256": "bccf1802b6a5c9d9bbbdb12e19354ad761416c631e3cdfde2449f7fe1794f176",
+        "commit": "55d4efede78f6afb6c1d3c8aa3bbec95b6faa33f",
+        "protocol": "sqd-solana-coverage-pointer/v1",
+        "status": "ACTIVE",
+        "reason": "v6.52.3 registers the atomic CURRENT pointer from the stream-tail-aware frozen probe.",
+    },
+    {
         "script": "scripts/solana/sqd_gap_repair.py",
         "sha256": "c8beb16e998c5019f6d3cfee0cb14ca163b4dcc3b7d3eb9bdd43fdfd6e44d137",
         "commit": "5782f76773fae0f3b9b036222ad85298992ec840",
