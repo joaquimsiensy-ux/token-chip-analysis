@@ -10,6 +10,7 @@
 
 ## 版本索引（活跃窗口，新在上；每版一行，详情见下方对应条目）
 
+- **6.52.4**（2026-08-25）批 3c SQD census 字段契约修复：删除服务端拒收且无消费方的 `parentSlot`，两段提交锚定四项 producer 登记；SUITE 132→133
 - **6.52.3**（2026-08-24）批 2d SQD stream 尾部跳块收口：HTTP 200 空体按严格三条件判定流结束、两段提交完成可考证 producer 登记；SUITE 131→132
 - **6.52.2**（2026-08-24）F-007/F-008 LIT 回归修复收口：阵营序列按 series_format 固定堆叠语义，evm_v2 目录重放前补字符闸与集合闸；SUITE 129→131、契约 195→197
 - **6.52.1**（2026-08-24）F-005 文档漂移更正：外部全量审查发现的三处 Solana reconcile v3 正向旧口径改为 v4 envelope／v2-v3 legacy 拒收，并新增 banned needle 防再漂守卫
@@ -58,6 +59,13 @@
 - **6.20.1** 2026-08-05 修 5 处阻断级文档漂移（A4 前禁写报告冲突/easy 残留/惯犯回灌 docstring/批量预采集残留/旧 Par 路线历史降级）＋docs_lint 增中文禁词与 Python module docstring 扫描
 
 更早版本（6.20.0 及以前）详见 `archive/CHANGELOG-archive.md`。
+
+## [6.52.4] - 2026-08-25 — 批 3c SQD census 字段契约修复
+
+- **根因与修复**：`sqd_gap_repair.py` 的 census 请求把 Solana RPC 响应字段 `parentSlot` 混入 SQD portal 的 block 字段选择；SQD 以 HTTP 400 拒收，且 census 响应与 payload 均不消费该字段。第一段仅删除这个无消费方字段，保留 Helius 响应侧四处合法 `parentSlot`，并新增离线字段白名单守卫。
+- **两段提交与登记**：第一段由验收方冻结为 `80ab2a380952bf63eb01bb896c9d7e260bc8055f`；第二段据此为 cache、repair bundle、coverage resolution 与 CURRENT repair pointer 四个 protocol 新增可由 `git show` 复算的 ACTIVE producer 记录，旧哈希继续保留 ACTIVE。
+- **回归与版本**：新守卫注册到全量 SUITE，机械分母 132→133；版本三件同步至 6.52.4，第二段保持不 commit，留待验收方冻结。
+- **成本/质量指标**：两段施工；外部网络调用 0；新增回归组 1；分析结论 0；传播级数字错误 0。
 
 ## [6.52.3] - 2026-08-24 — 批 2d SQD stream 尾部跳块语义收口
 

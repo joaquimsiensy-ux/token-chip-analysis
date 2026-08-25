@@ -553,7 +553,7 @@ def _census_body(slot):
         "type": "solana", "fromBlock": slot, "toBlock": slot,
         "includeAllBlocks": True,
         "fields": {
-            "block": {"number": True, "hash": True, "parentSlot": True},
+            "block": {"number": True, "hash": True},
             "transaction": {"transactionIndex": True, "signatures": True,
                             "err": True},
         },
