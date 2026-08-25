@@ -45,6 +45,9 @@ GETBLOCKS_PAGE_SLOTS = 500_000
 PROGRESS_EVERY = 500
 QUOTA_STATUSES = (402, 429)
 KEY_FILE = Path.home() / ".config/helius/api-key"
+# Exact adapter discriminator; keep synchronized with net.py's curl_json
+# empty-stdout decode error.  Invalid JSON and other decode failures stay fatal.
+SQD_EMPTY_BODY_MESSAGE = "curl returned empty stdout"
 
 
 def utc_now():
@@ -226,6 +229,18 @@ def _scan_request(transport, start, end, seq, endpoints, *, mode="full"):
         "response_sha256": None, "ok": False,
     }
     if not result.ok:
+        error = result.error if isinstance(result.error, dict) else {}
+        if error.get("category") == "decode" \
+                and error.get("http_status") == 200 \
+                and error.get("message") == SQD_EMPTY_BODY_MESSAGE:
+            # SQD stream exhausts an all-skipped tail with HTTP 200 and no body.
+            # Use the decoded-empty-array ledger convention; do not broaden this
+            # net.py-coupled literal match to other decode or transport failures.
+            raw = canonical_json([])
+            row.update(bytes=len(raw), response_sha256=sha256_bytes(raw),
+                       slots_covered=end - start + 1,
+                       empty_response=True, ok=True)
+            return row, bytes([1]) * (end - start + 1)
         row["error"] = _result_error(result, endpoints)
         return row, None
     value = result.value
