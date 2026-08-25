@@ -655,3 +655,39 @@ address,chain,reason,weight,context,seen_date
 0xe27395dc1093964b724699772f1efcc94c54682c,bsc,共同 gas funder 服务 3 地址（疑似热钱包/代付服务）,3,EGL1 cluster,2026-07-27
 0x055a3b37957bfbd3345bed9968e7e8dd56d67066,bsc,共同 gas funder 服务 3 地址（疑似热钱包/代付服务）,3,EGL1 cluster,2026-07-27
 0x613af17c8516f358226ce72bd034a99ccf77caf7,bsc,共同 gas funder 服务 3 地址（疑似热钱包/代付服务）,3,EGL1 cluster,2026-07-27
+0x094936529eda3445bd9ec7489d371daf14ff237d,bsc,高度数节点 deg=5332（疑似路由/分发设施）,5332,COLLECT cluster,2026-08-24
+0x07964f135f276412b3182a3b2407b8dd45000000,bsc,高度数节点 deg=601（疑似路由/分发设施）,601,COLLECT cluster,2026-08-24
+0xc590175e458b83680867afd273527ff58f74c02b,bsc,高度数节点 deg=297（疑似路由/分发设施）,297,COLLECT cluster,2026-08-24
+0x94a11745a8d33388ee635b55f43944f1202c13d4,bsc,高度数节点 deg=351（疑似路由/分发设施）,351,COLLECT cluster,2026-08-24
+0x60f7b1b6f666b87722ff53005b95e4dda10448a9,bsc,高度数节点 deg=999（疑似路由/分发设施）,999,COLLECT cluster,2026-08-24
+0x3156020dff8d99af1ddc523ebdfb1ad2018554a0,bsc,高度数节点 deg=259（疑似路由/分发设施）,259,COLLECT cluster,2026-08-24
+0x7a7ad9aa93cd0a2d0255326e5fb145cec14997ff,bsc,高度数节点 deg=1612（疑似路由/分发设施）,1612,COLLECT cluster,2026-08-24
+0x68d04638eb46cd37c7b4ae316ac1da4a330c75c6,bsc,高度数节点 deg=264（疑似路由/分发设施）,264,COLLECT cluster,2026-08-24
+0x9f7fdabf7d4caabd65d90bd0ca8da33dd5b1ed8a,bsc,高度数节点 deg=1477（疑似路由/分发设施）,1477,COLLECT cluster,2026-08-24
+0x0df5fcec61d51205dd7564e00fd80eaee6e7b88d,bsc,高度数节点 deg=30529（疑似路由/分发设施）,30529,COLLECT cluster,2026-08-24
+0xc30ac7ab7fbb2f0cb82c6d49b65df362b5ac1769,bsc,高度数节点 deg=235（疑似路由/分发设施）,235,COLLECT cluster,2026-08-24
+0xf135d75d1360c76dddc01394c82da76a172a00d8,bsc,高度数节点 deg=225（疑似路由/分发设施）,225,COLLECT cluster,2026-08-24
+0x61e3fca605e2f0e29d5a176e1c9868d4f0ee817f,bsc,高度数节点 deg=365（疑似路由/分发设施）,365,COLLECT cluster,2026-08-24
+0xa5aa69f4a9f403ea32611b4da4da3f5afa985a0c,bsc,高度数节点 deg=206（疑似路由/分发设施）,206,COLLECT cluster,2026-08-24
+0x9d1dd2d8e2fe143649b5cf0da64f9562ee15ee2b,bsc,高度数节点 deg=29088（疑似路由/分发设施）,29088,COLLECT cluster,2026-08-24
+0xc2eff1f1ce35d395408a34ad881dbcd978f40b89,bsc,高度数节点 deg=485（疑似路由/分发设施）,485,COLLECT cluster,2026-08-24
+0x3d90f66b534dd8482b181e24655a9e8265316be9,bsc,高度数节点 deg=437（疑似路由/分发设施）,437,COLLECT cluster,2026-08-24
+0xec4108b6c7ea8bd64591e69697f8f1fb0e896d11,bsc,高度数节点 deg=4476（疑似路由/分发设施）,4476,COLLECT cluster,2026-08-24
+0x0cf0ff2fe1bec52af507123b9e53dd7e255ce76b,bsc,高度数节点 deg=38007（疑似路由/分发设施）,38007,COLLECT cluster,2026-08-24
+0x1ffead9a221992d16f3aa02455542d2b2da92bcf,bsc,高度数节点 deg=379（疑似路由/分发设施）,379,COLLECT cluster,2026-08-24
+0xb7cbad7dd322bd1610c61c539ff2d36909055f54,bsc,守门员FUNNEL in38/out71 ret=0.000（漏斗形状，判明身份后回填标签库）,577,COLLECT cluster,2026-08-24
+0x75a0ddd32915f8a31fd753764759a4209e7791fd,bsc,守门员FUNNEL in96/out101 ret=0.000（漏斗形状，判明身份后回填标签库）,10198,COLLECT cluster,2026-08-24
+0xc590175e458b83680867afd273527ff58f74c02b,bsc,守门员FUNNEL in226/out234 ret=0.000（漏斗形状，判明身份后回填标签库）,1569,COLLECT cluster,2026-08-24
+0x61897777dea27f9fa484f98c57faedcf79ab450b,bsc,守门员FUNNEL in37/out71 ret=0.000（漏斗形状，判明身份后回填标签库）,1057,COLLECT cluster,2026-08-24
+0x60f7b1b6f666b87722ff53005b95e4dda10448a9,bsc,守门员FUNNEL in492/out733 ret=0.001（漏斗形状，判明身份后回填标签库）,94732,COLLECT cluster,2026-08-24
+0xe340fa8ab44640663397fae37122a014a5c1f8bc,bsc,守门员FUNNEL in41/out72 ret=0.000（漏斗形状，判明身份后回填标签库）,1481,COLLECT cluster,2026-08-24
+0x69460570c93f9de5e2edbc3052bf10125f0ca22d,bsc,守门员FUNNEL in65/out45 ret=0.000（漏斗形状，判明身份后回填标签库）,319,COLLECT cluster,2026-08-24
+0xf66754bfc311089c64a45bf368801f60e5fe56ba,bsc,守门员FUNNEL in57/out79 ret=0.000（漏斗形状，判明身份后回填标签库）,1366,COLLECT cluster,2026-08-24
+0x202b02fba2b48fb2773606bbc79d6c578e9bb0ca,bsc,守门员FUNNEL in45/out101 ret=0.000（漏斗形状，判明身份后回填标签库）,1717,COLLECT cluster,2026-08-24
+0xf135d75d1360c76dddc01394c82da76a172a00d8,bsc,守门员FUNNEL in120/out157 ret=0.000（漏斗形状，判明身份后回填标签库）,12969,COLLECT cluster,2026-08-24
+0xd36b6d646ac6e23672e9eedec558164c7f2d6deb,bsc,守门员FUNNEL in163/out182 ret=0.000（漏斗形状，判明身份后回填标签库）,1543,COLLECT cluster,2026-08-24
+0x296b00198dc7ec3410e12da814d9267bb8df506a,bsc,守门员FUNNEL in49/out53 ret=0.000（漏斗形状，判明身份后回填标签库）,882,COLLECT cluster,2026-08-24
+0x4bab2cb2ed6ee2d564ba5398cab4161d95e58f1b,bsc,守门员FUNNEL in96/out123 ret=0.000（漏斗形状，判明身份后回填标签库）,647,COLLECT cluster,2026-08-24
+0xc2eff1f1ce35d395408a34ad881dbcd978f40b89,bsc,守门员FUNNEL in342/out252 ret=0.000（漏斗形状，判明身份后回填标签库）,3547,COLLECT cluster,2026-08-24
+0x011af51cc6614fec1de0e0ff6dc315a150f3851c,bsc,守门员FUNNEL in52/out64 ret=0.000（漏斗形状，判明身份后回填标签库）,693,COLLECT cluster,2026-08-24
+0x1ffead9a221992d16f3aa02455542d2b2da92bcf,bsc,守门员FUNNEL in169/out323 ret=0.000（漏斗形状，判明身份后回填标签库）,8847,COLLECT cluster,2026-08-24
