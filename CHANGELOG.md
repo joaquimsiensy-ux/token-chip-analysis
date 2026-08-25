@@ -10,6 +10,7 @@
 
 ## 版本索引（活跃窗口，新在上；每版一行，详情见下方对应条目）
 
+- **6.52.6**（2026-08-25）批 8 SQD repair 生产者规模化：key 无关指纹与 key 池热降级、并发保序拉取、流式装配；两段提交锚定四项 producer 登记，SUITE 133→134
 - **6.52.5**（2026-08-25）facts_gate 宏正则补连字符：ENT-PROJ 型实体键宏此前为死宏（不渲染且 G4 不检出、以字面量漏进正文），字符类扩 `-` 属收紧修复，flow spec 宏同源通道同步受益；SUITE 133 全绿
 - **6.52.4**（2026-08-25）批 3c SQD census 字段契约修复：删除服务端拒收且无消费方的 `parentSlot`，两段提交锚定四项 producer 登记；SUITE 132→133
 - **6.52.3**（2026-08-24）批 2d SQD stream 尾部跳块收口：HTTP 200 空体按严格三条件判定流结束、两段提交完成可考证 producer 登记；SUITE 131→132
@@ -60,6 +61,15 @@
 - **6.20.1** 2026-08-05 修 5 处阻断级文档漂移（A4 前禁写报告冲突/easy 残留/惯犯回灌 docstring/批量预采集残留/旧 Par 路线历史降级）＋docs_lint 增中文禁词与 Python module docstring 扫描
 
 更早版本（6.20.0 及以前）详见 `archive/CHANGELOG-archive.md`。
+
+## [6.52.6] - 2026-08-25 — 批 8 SQD repair 生产者规模化
+
+- **根因一（换 key 指纹断裂）**：live plan 原先对含 key 的完整 endpoint URL 取指纹，换免费 key 会改变 plan digest 与 pending 目录并使既有 ledger 校验失败，配额接力无法续跑；现改为 public endpoint 的 key 无关指纹，并用 key 池轮转及 quota 热摘除保持同 plan 原位续跑。
+- **根因二（串行 15 天不可行）**：153,667 个候选按实测约 428 slot/h 串行需要约 14.9 天；新增默认 1、可显式调高的有界 worker 池，slot 内调用顺序不变，主线程严格按 candidate 顺序落 evidence 与 ledger，并为 SQD 瞬断提供有限退避。
+- **根因三（装配内存死结）**：旧 `_live_payloads` 先累积全部 payload 再装配，全量预计需要 100GB 以上常驻内存；现改为逐 payload 生成、持久化、装配即丢弃，常驻量收敛为聚合结构与有界重排缓冲。
+- **两段提交与登记**：第一段由验收方冻结为 `ddfeec1b307f33e4ca9c22d129ad554d33ef426d`；第二段据此为 cache、repair bundle、coverage resolution 与 CURRENT repair pointer 四个 protocol 新增可由 `git show` 复算的 ACTIVE producer 记录，旧哈希继续保留 ACTIVE。
+- **回归与版本**：批 8 规模化回归注册到全量 SUITE，机械分母 133→134；允许本地 loopback 的全量实测 134/134 PASS。版本声明同步至 6.52.6，并将基线滞后的 `pyproject.toml=6.52.4` 一并对齐。
+- **成本/质量指标**：两段施工；外部网络调用 0；新增回归组 1；分析结论 0；传播级数字错误 0。
 
 ## [6.52.5] - 2026-08-25 — facts_gate 宏正则补连字符（死宏静默漏检修复）
 
