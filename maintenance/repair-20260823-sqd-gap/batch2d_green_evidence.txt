@@ -1,0 +1,196 @@
+Batch 2d red-to-green evidence
+==============================
+
+Frozen opening gate
+-------------------
+command: git branch --show-current; git rev-parse HEAD; cat VERSION; git status --short
+exit: 0
+stdout:
+main
+e3969e1b36376ff64ad8f15124b1ec4515a2dd97
+6.52.2
+?? maintenance/repair-20260823-sqd-gap/batch2d_workorder.md
+
+command: shasum -a 256 maintenance/repair-20260823-sqd-gap/batch2d_workorder.md scripts/solana/sqd_coverage_probe.py scripts/lib/net.py
+exit: 0
+stdout:
+5797a30e0f8f620d0469c8623f19b9af0512803a3f53feb9d7aef9a6c8191f92  maintenance/repair-20260823-sqd-gap/batch2d_workorder.md
+e41370b185aef9bd16fea8ce1abc519a138ee4ce8923bdbc8058d64cdd0619bf  scripts/solana/sqd_coverage_probe.py
+248fbb007d1aa7c3eb6bb144094ee2630f9829de5e0fae8a5b8062b43138a05f  scripts/lib/net.py
+
+Pre-write changelog lint
+------------------------
+command: python3 scripts/tests/changelog_lint.py
+exit: 0
+stdout:
+PASS: 版本号唯一（豁免 2 组历史撞号存档）、顺序正确；活跃 44 条 + 归档 139 条
+
+RED: incumbent HTTP-200 empty-body semantics
+---------------------------------------------
+state: scripts/solana/sqd_coverage_probe.py still had opening SHA256
+       e41370b185aef9bd16fea8ce1abc519a138ee4ce8923bdbc8058d64cdd0619bf
+command: python3 scripts/tests/test_batch2d_stream_tail.py
+exit: 1 (expected RED)
+stdout/stderr:
+Traceback (most recent call last):
+  File "scripts/tests/test_batch2d_stream_tail.py", line 161, in <module>
+    raise SystemExit(main())
+  File "scripts/tests/test_batch2d_stream_tail.py", line 155, in main
+    test()
+  File "scripts/tests/test_batch2d_stream_tail.py", line 59, in test_stream_tail_after_nonempty_page_is_complete_no_header
+    assert row["ok"] is True
+AssertionError
+
+Interpretation: after a non-empty first page, the incumbent leaves the HTTP-200
+empty-body tail row ok=False; _scan_partition returns part=None and cannot mark
+the final two slots NO_HEADER.
+
+Focused GREEN before stop
+-------------------------
+command: python3 scripts/tests/test_batch2d_stream_tail.py
+exit: 0
+stdout:
+{"probe_id": "160fe965e770cf5a", "status": "published", "verdict": "INCONCLUSIVE"}
+PASS batch2d SQD stream tail: 4/4 groups
+
+The four groups prove:
+- a non-empty first page followed by the exact decode/200/empty-stdout triple
+  covers the tail as NO_HEADER and _successful_coverage_range accepts it;
+- HTTP 529 empty body, HTTP 200 invalid JSON, and non-decode failures remain red;
+- ordinary block-array counts are unchanged;
+- --no-getblocks CLI exits 0 with no zero slot counts, and the unchanged
+  solana_exact_validate.py independently accepts the published generation.
+
+command: python3 scripts/tests/test_sqd_coverage_probe.py
+exit: 0
+terminal line:
+PASS SQD coverage probe: 12/12 offline groups
+
+command: python3 scripts/tests/test_net_result.py
+exit: 0
+stdout:
+PASS: net Result 显式状态与 curl_json 失败分类
+
+command: python3 scripts/tests/test_recon_fifth_check.py
+exit: 0
+terminal line:
+GREEN 22 wave-scan/v4 与 flow-anomaly/v2 旧产物被 v5/v3 验收拒收
+
+STOP gate: producer-history commit paradox
+-------------------------------------------
+command: shasum -a 256 scripts/solana/sqd_coverage_probe.py
+exit: 0
+stdout:
+bccf1802b6a5c9d9bbbdb12e19354ad761416c631e3cdfde2449f7fe1794f176  scripts/solana/sqd_coverage_probe.py
+
+command: git show HEAD:scripts/solana/sqd_coverage_probe.py | shasum -a 256
+exit: 0
+stdout:
+e41370b185aef9bd16fea8ce1abc519a138ee4ce8923bdbc8058d64cdd0619bf  -
+
+Mechanical conflict:
+- scripts/lib/producer_history.py:3-6 forbids admitting a dirty-worktree hash;
+- scripts/tests/test_anchor_plan_v3.py:361-362 requires a 64-hex hash and
+  40-hex commit for every entry;
+- the same test at lines 413-421 runs git show for every entry and requires
+  its SHA256 to equal the registered hash;
+- batch2d forbids commit, but requires both sqd_coverage_probe entries to
+  register the new working-tree hash and requires run_all to pass.
+
+No placeholder can satisfy the current guard: an old real commit resolves to
+the old hash, while a 40-hex placeholder does not resolve via git show.  Work
+stopped before producer_history, run_all registration, version, or CHANGELOG
+changes.  Full run_all was intentionally not started after this hard stop.
+
+Stage 2: frozen anchor and registration closeout
+================================================
+
+Opening gate
+------------
+command: git rev-parse HEAD; git branch --show-current; git status --short
+exit: 0
+facts:
+- HEAD: 55d4efede78f6afb6c1d3c8aa3bbec95b6faa33f
+- branch: fix/sqd-gap-batch2d
+- the only opening untracked path was the user-provided
+  maintenance/repair-20260823-sqd-gap/batch2d_workorder_stage2.md
+
+command: git show 55d4efede78f6afb6c1d3c8aa3bbec95b6faa33f:scripts/solana/sqd_coverage_probe.py | shasum -a 256
+exit: 0
+stdout:
+bccf1802b6a5c9d9bbbdb12e19354ad761416c631e3cdfde2449f7fe1794f176  -
+
+CHANGELOG pre-write gate
+------------------------
+command: python3 scripts/tests/changelog_lint.py
+exit: 0
+stdout:
+PASS: 版本号唯一（豁免 2 组历史撞号存档）、顺序正确；活跃 44 条 + 归档 139 条
+
+Stage 2 focused GREEN
+---------------------
+producer-history disposition:
+- Added the frozen 55d4efe / bccf1802 pair for both
+  sqd-solana-coverage/v1 and sqd-solana-coverage-pointer/v1.
+- Kept the c237263 / e41370b historical pair ACTIVE.  REVOKED is hash-wide;
+  revoking it would invalidate still-verifiable historical receipts without
+  evidence.  The same-file multi-version ACTIVE precedent is already present.
+
+command: python3 scripts/tests/test_anchor_plan_v3.py
+exit: 0
+terminal line:
+anchor-plan v3: 15/15 PASS
+
+command: python3 scripts/tests/test_batch2d_stream_tail.py
+exit: 0
+terminal line:
+PASS batch2d SQD stream tail: 4/4 groups
+
+command: python3 scripts/tests/test_version_consistency.py
+exit: 0
+stdout:
+PASS: M-03 version metadata consistent at 6.52.3
+
+command: python3 scripts/tests/changelog_lint.py
+exit: 0
+stdout:
+PASS: 版本号唯一（豁免 2 组历史撞号存档）、顺序正确；活跃 45 条 + 归档 139 条
+
+command: python3 -c 'from scripts.tests import run_all; print(len(run_all.SUITE)); print(run_all.SUITE.count("test_batch2d_stream_tail.py"))'
+exit: 0
+stdout:
+132
+1
+
+Full-suite environment split and final GREEN
+----------------------------------------------
+command: python3 scripts/tests/run_all.py
+environment: restricted workspace sandbox
+exit: 1
+mechanical result: 130 PASS / 2 FAIL
+failures:
+- test_batch3_solana_vertical_slice.py: ThreadingHTTPServer bind on
+  127.0.0.1 failed with PermissionError: [Errno 1] Operation not permitted.
+- test_batch3_evm_vertical_slice.py: the same loopback bind EPERM.
+All other entries, including test_batch2d_stream_tail.py, passed.  This run is
+recorded as environment-limited and is not claimed as full green.
+
+command: python3 scripts/tests/test_batch3_solana_vertical_slice.py;
+         python3 scripts/tests/test_batch3_evm_vertical_slice.py
+environment: approved execution with loopback permission
+exit: 0
+stdout terminal lines:
+PASS B3-SOL-E2E: real producer->runner->aggregator->READY->release
+PASS B3-EVM-E2E: eth/bsc/base slices + nonzero dead vertical closure
+
+command: python3 scripts/tests/run_all.py
+environment: approved execution with loopback permission; same working tree
+exit: 0
+mechanical result: 132/132 PASS
+terminal lines:
+PASS test_anchor_plan_v3.py: anchor-plan v3: 15/15 PASS
+PASS test_sqd_coverage_probe.py: PASS SQD coverage probe: 12/12 offline groups
+PASS test_batch2d_stream_tail.py: PASS batch2d SQD stream tail: 4/4 groups
+PASS test_version_consistency.py: M-03 version metadata consistent at 6.52.3
+========================================================
+全部通过

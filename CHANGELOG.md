@@ -10,6 +10,7 @@
 
 ## 版本索引（活跃窗口，新在上；每版一行，详情见下方对应条目）
 
+- **6.52.3**（2026-08-24）批 2d SQD stream 尾部跳块收口：HTTP 200 空体按严格三条件判定流结束、两段提交完成可考证 producer 登记；SUITE 131→132
 - **6.52.2**（2026-08-24）F-007/F-008 LIT 回归修复收口：阵营序列按 series_format 固定堆叠语义，evm_v2 目录重放前补字符闸与集合闸；SUITE 129→131、契约 195→197
 - **6.52.1**（2026-08-24）F-005 文档漂移更正：外部全量审查发现的三处 Solana reconcile v3 正向旧口径改为 v4 envelope／v2-v3 legacy 拒收，并新增 banned needle 防再漂守卫
 - **6.52.0**（2026-08-23）Solana SQD 覆盖健康闸与修复生产者窄门收口：A2 升五查，wave v5／flow v3／wrapper v3／reconcile v4 同步，契约 175→194、SUITE 124→128；正式勘误跨源位置编号假象
@@ -57,6 +58,13 @@
 - **6.20.1** 2026-08-05 修 5 处阻断级文档漂移（A4 前禁写报告冲突/easy 残留/惯犯回灌 docstring/批量预采集残留/旧 Par 路线历史降级）＋docs_lint 增中文禁词与 Python module docstring 扫描
 
 更早版本（6.20.0 及以前）详见 `archive/CHANGELOG-archive.md`。
+
+## [6.52.3] - 2026-08-24 — 批 2d SQD stream 尾部跳块语义收口
+
+- **根因与修复**：SQD 游标续页落入全跳块尾段时会返回 HTTP 200 零字节 body，通用传输层将其归为 decode 失败，导致尾部 slot 永久停在 UNSCANNED。probe 现仅在 `category=decode`、`http_status=200`、`message="curl returned empty stdout"` 三条件全等时复用空数组语义，整段记 NO_HEADER；529 空体、200 非法 JSON、其他 decode/transport 失败仍 fail-closed，`net.py` 逻辑不变。
+- **两段提交与登记**：第一段由验收方冻结为 `55d4efede78f6afb6c1d3c8aa3bbec95b6faa33f`，第二段据此为 coverage map 与 CURRENT pointer 两个 protocol 各新增可由 `git show` 复算的 ACTIVE producer 记录；旧哈希继续保留 ACTIVE，维持历史正式收据兼容。
+- **回归与版本**：真实 RED 证明旧 probe 会把 200 空体尾段留作失败；新测试覆盖精确正例、三类防误伤、正常块数组与 CLI/validator 端到端，并注册到全量 SUITE，机械分母 131→132；版本三件同步至 6.52.3。
+- **成本/质量指标**：两段施工；外部网络调用 0；新增回归组 4；分析结论 0；传播级数字错误 0。
 
 ## [6.52.2] - 2026-08-24 — LIT 阵营序列与 evm_v2 重放回归修复收口
 
