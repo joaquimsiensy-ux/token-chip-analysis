@@ -160,6 +160,7 @@ SUITE += [
     'test_reconcile_v4_receipt.py',
     'test_recon_fifth_check.py',
 ]
+SUITE += ['test_batch3c_census_fields.py']  # v6.52.4 batch3c SQD census field contract
 
 # 批7 修复代深验三处校验覆盖缺口加固：缺口1(遍历主键绑定候选集致 confirmed-only slot
 # 严格校验被跳过)、缺口3(深验未校验边 slot ⊆ 声明窗口)；缺口2(自扫 coverage 无真实性

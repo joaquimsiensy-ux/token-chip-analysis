@@ -32,3 +32,98 @@ Boundary checks
 - Helius response-side parentSlot references remain at lines 721, 859, 981, 1015.
 - No network call was made.
 - run_all.py was not run, per stage-1 stop contract.
+
+Stage 2: frozen producer registration and release closeout
+===========================================================
+
+Opening gate
+------------
+command: git rev-parse HEAD; git status --short
+exit: 0
+facts:
+- HEAD: 80ab2a380952bf63eb01bb896c9d7e260bc8055f
+- the only opening worktree item was the acceptance-provided untracked
+  maintenance/repair-20260823-sqd-gap/batch3c_stage2_anchor.txt
+- anchor file content exactly matched HEAD
+
+command: git show 80ab2a380952bf63eb01bb896c9d7e260bc8055f:scripts/solana/sqd_gap_repair.py | shasum -a 256
+exit: 0
+stdout:
+da6eb283ab08ed714268a6c1b19bbc39f091b18bbb3a64ce1e1056e01571dda0  -
+
+CHANGELOG pre-write gate
+------------------------
+command: python3 scripts/tests/changelog_lint.py
+exit: 0
+stdout:
+PASS: 版本号唯一（豁免 2 组历史撞号存档）、顺序正确；活跃 45 条 + 归档 139 条
+
+Stage 2 focused GREEN
+---------------------
+producer-history disposition:
+- Added the frozen 80ab2a3 / da6eb283 pair for all four existing
+  sqd_gap_repair protocols: cache/v4, repair-bundle/v1,
+  coverage-resolution/v1, and repair-pointer/v1.
+- Kept the 5782f76 / c8beb16 historical four-entry generation ACTIVE.
+
+command: python3 scripts/tests/changelog_lint.py
+exit: 0
+stdout:
+PASS: 版本号唯一（豁免 2 组历史撞号存档）、顺序正确；活跃 46 条 + 归档 139 条
+
+command: python3 scripts/tests/test_anchor_plan_v3.py
+exit: 0
+terminal line:
+anchor-plan v3: 15/15 PASS
+
+command: python3 scripts/tests/test_batch3c_census_fields.py
+exit: 0
+stdout:
+PASS batch3c census fields match the SQD contract
+
+command: python3 scripts/tests/test_version_consistency.py
+exit: 0
+stdout:
+PASS: M-03 version metadata consistent at 6.52.4
+
+command: python3 -c 'from scripts.tests import run_all; ...'
+exit: 0
+stdout:
+SUITE=133
+batch3c_count=1
+
+Full-suite environment split and final GREEN
+----------------------------------------------
+command: python3 scripts/tests/run_all.py
+environment: restricted workspace sandbox
+exit: 1
+mechanical result: 131 PASS / 2 FAIL
+failures:
+- test_batch3_solana_vertical_slice.py: ThreadingHTTPServer bind on
+  127.0.0.1 failed with PermissionError: [Errno 1] Operation not permitted.
+- test_batch3_evm_vertical_slice.py: the same loopback bind EPERM.
+All other 131 entries, including test_batch3c_census_fields.py, passed.  This
+run is environment-limited and is not claimed as full green.
+
+command: python3 scripts/tests/test_batch3_solana_vertical_slice.py
+environment: approved execution with loopback permission
+exit: 0
+stdout:
+PASS B3-SOL-E2E: real producer->runner->aggregator->READY->release
+
+command: python3 scripts/tests/test_batch3_evm_vertical_slice.py
+environment: approved execution with loopback permission
+exit: 0
+stdout:
+PASS B3-EVM-E2E: eth/bsc/base slices + nonzero dead vertical closure
+
+command: python3 scripts/tests/run_all.py
+environment: approved execution with loopback permission; same working tree
+exit: 0
+mechanical result: 133/133 PASS
+selected terminal lines:
+PASS test_anchor_plan_v3.py: anchor-plan v3: 15/15 PASS
+PASS test_batch3c_census_fields.py: PASS batch3c census fields match the SQD contract
+PASS test_version_consistency.py: M-03 version metadata consistent at 6.52.4
+========================================================
+全部通过
