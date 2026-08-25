@@ -1,0 +1,34 @@
+Batch 3c stage 1 RED -> GREEN evidence
+Date: 2026-08-25
+Baseline HEAD: 985690edc81a8357b657f4de51278353dc7960e8
+
+RED
+State: guard test added; scripts/solana/sqd_gap_repair.py still contained
+       fields.block.parentSlot.
+Command: python3 scripts/tests/test_batch3c_census_fields.py
+Exit code: 1
+Output:
+Traceback (most recent call last):
+  File "/Users/uravvv/.claude/skills/token-chip-analysis/scripts/tests/test_batch3c_census_fields.py", line 45, in <module>
+    raise SystemExit(main())
+                     ~~~~^^
+  File "/Users/uravvv/.claude/skills/token-chip-analysis/scripts/tests/test_batch3c_census_fields.py", line 39, in main
+    test_census_fields_match_sqd_contract()
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "/Users/uravvv/.claude/skills/token-chip-analysis/scripts/tests/test_batch3c_census_fields.py", line 31, in test_census_fields_match_sqd_contract
+    assert block_fields <= SQD_BLOCK_FIELDS, (
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: unsupported SQD block fields: ['parentSlot']
+
+GREEN
+State: removed only fields.block.parentSlot from _census_body().
+Command: python3 scripts/tests/test_batch3c_census_fields.py
+Exit code: 0
+Output:
+PASS batch3c census fields match the SQD contract
+
+Boundary checks
+- scripts/solana/sqd_gap_repair.py production diff is one deleted key only.
+- Helius response-side parentSlot references remain at lines 721, 859, 981, 1015.
+- No network call was made.
+- run_all.py was not run, per stage-1 stop contract.
