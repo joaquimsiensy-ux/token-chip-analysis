@@ -1177,7 +1177,7 @@ QUQ 与 PYTHIA 只用于算法层探索定标。防伪链测试使用合成 fixt
 - Solana v2 重跑 v4 exact+五项。
 - `checks.exact_reconcile` 的 wrapper item 固定绑定 `{status,exit_code,process_exit_code,producer,receipt}`；上表五个 v4 字段位于 `receipt{path,size,sha256}` 引用的实物内，由公共 validator 打开后深验，不是 item 直属字段。该 item 仅 family=solana 必填；family=evm 必须省略，出现即拒。
 - 动态 Solana wrapper 的观测 target 可以晚于第五查的冻结 target；仅 `exact_reconcile` 放宽为 chain/token 全等且 `0 ≤ receipt.as_of_block ≤ wrapper.as_of_block`。其余 Solana checks 与全部 EVM checks 仍要求 receipt target 和 wrapper target 全等。
-- exact 检查组合、inputs 案根哈希、holders_owners 同一文件并调用独立深验；独立深验把 `receipt.target.as_of_block` 正向绑定到 receipt 所绑 `soltx_meta.finalized_upper_slot`，不得拿任意旧时点收据冒充冻结点。
+- exact 检查组合、inputs 案根哈希并调用独立深验。静态态（exact 与 wrapper 的 `as_of_block` 相等）继续要求 exact 与 supply 的 `holders_owners` 是同一文件；冻结态（exact 早于 wrapper）则要求 exact 快照的 sha256+size 与案内 `data/solana_observation_bundle_frozen.json` 的 `holder_outputs.owners` 全等，且该冻结 bundle 经过与活 supply bundle 同深度的案根信封、schema、主网 genesis attestation、closed/closure 与 target 深验，并同时进入 handoff 的 data_map/artifacts。大白话：活观测回答“现在”，冻结快照回答“封账点”，不再强迫两者共用文件；防伪改由冻结 bundle 的内容指纹承担。独立深验仍把 `receipt.target.as_of_block` 正向绑定到 receipt 所绑 `soltx_meta.finalized_upper_slot`，不得拿任意旧时点收据冒充冻结点。
 
 注记：
 

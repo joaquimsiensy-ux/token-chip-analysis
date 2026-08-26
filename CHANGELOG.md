@@ -10,6 +10,7 @@
 
 ## 版本索引（活跃窗口，新在上；每版一行，详情见下方对应条目）
 
+- **6.52.10**（2026-08-26）批 11 五查冻结快照与活观测分家：发布深验 solana 同文件绑定改两态（静态态原语义逐字保留；冻结态哈希绑定案内密封冻结观测 bundle `data/solana_observation_bundle_frozen.json`，信封+观测深验+sha256/size 双绑三重防伪）；handoff 冻结态必进 data_map/artifacts；job spec supply --work-dir 分家防覆盖封账件（ARC 真实覆盖事故+密封指纹逐字节恢复驱动）；CT-SQDGAP-34；SUITE 135 全绿
 - **6.52.9**（2026-08-26）批 10 五查 exact_reconcile 活链协议修正（方案 A·用户裁决）：第五查从"消费观测到的当前 slot"改为"钉账本缓存冻结点字面量"，观测点与冻结点的现值差由 supply_truth 10bps 容差兜底；runner 占位符校验反转＋receipt target 三层同深放宽（chain/token 全等、冻结 slot ≤ 观测 slot）＋深验既有正向绑定（receipt.as_of == cache finalized_upper_slot）考据确认；先红后绿 N1-N5＋CT-SQDGAP-33 防回流；SUITE 134 全绿
 - **6.52.8**（2026-08-26）solana_observation jsonParsed 兼容：v0+ALT 交易在 jsonParsed 编码下公共 RPC（publicnode/api.mainnet-beta）不带 meta.loadedAddresses（地址已并入 dict 形态 accountKeys），原校验一律报错致五查观测在公共端点全断；改为仅当 accountKeys 为 str 键（裸 json 编码）时仍强制 loadedAddresses，dict 键豁免；ARC 五查实跑验证
 - **6.52.7**（2026-08-26）批 9 repair 深验校验侧流式/惰性化：`validate_repair_bundle_deep` evidence 惰性读盘＋三 jsonl 流式＋SQLite 临时索引，语义与 reasons 逐字不变；16GB 本机首次跑通 15.4 万 slot 正式代发布（旧实现三轮内存超限被杀）；SUITE 134 全绿
@@ -64,6 +65,15 @@
 - **6.20.1** 2026-08-05 修 5 处阻断级文档漂移（A4 前禁写报告冲突/easy 残留/惯犯回灌 docstring/批量预采集残留/旧 Par 路线历史降级）＋docs_lint 增中文禁词与 Python module docstring 扫描
 
 更早版本（6.20.0 及以前）详见 `archive/CHANGELOG-archive.md`。
+
+## [6.52.10] - 2026-08-26 — 批 11 五查冻结快照与活观测分家（方案 A 收尾层）
+
+- **根因（ARC 五查实跑第 4 发暴露，活链死结最后一层）**：发布深验要求第五查消费的持有人快照与 supply 观测产物**同一文件**（防伪本意），方案 A 后两者天然分裂（观测=链上现在，第五查=冻结点）；同文件绑定逼第五查吃活快照 → 活跃币必然 mismatch（ARC 实测 966 户差=封账后 6 天正常交易）。更重者：supply 观测按旧 job spec 写 `--work-dir data`，多轮重跑将封账快照三件与三 inputs **全部覆盖**为活链版（真实事故）。
+- **恢复（验收方，全程哈希对照密封指纹）**：五件从案内密封复合快照/同构模板逐字节重建全部 sha256 MATCH；唯 `_gpa_raw_all.json` 封账版（43MB，含 18 万户全量）不可重建（复合快照仅存 4.6 万非零行），待本机 TM 快照提取（已请用户协助）。
+- **修正**：①shared_release_receipt 同文件绑定改两态——静态态（exact==wrapper 时点）原代码原文案逐字保留；冻结态（exact<wrapper）改为哈希绑定案内密封冻结 bundle：信封（inputs 实物重哈希）＋validate_observation_bundle 深验（producer/genesis/closure/holder_outputs 文件级三验）＋owners sha256+size 双绑，防伪强度≥原路径同一；②handoff generate/verify 共用 required-set，冻结态必进 data_map/artifacts；③文档两态契约+job spec 分家要求（supply --work-dir 独立子目录）。
+- **防回流**：先红后绿 R1＋N1-N5（缺件/target 错配/指纹错配/静态零变化/handoff 清单）＋CT-SQDGAP-34；ARC 实物实测新闸精准咬中唯一真实缺口（gpa_rpc 双 mismatch）＝判别力真事故验证。
+- **验收（Fable）**：codex 施工（沙箱 133/135，2 项 loopback 环境）；本机 run_all 135 全绿；防伪链闭合逐环核实（validate_receipt 实物重哈希+B-1 holder 三验+canonical bytes 对账）。
+- **成本/质量指标**：codex 单会话约 50 分钟＋Fable 验收与案内恢复；外部网络调用 0；新增测试 1 文件+契约 1 条；分析结论 0；传播级数字错误 0。
 
 ## [6.52.9] - 2026-08-26 — 批 10 五查 exact_reconcile 活链协议修正（方案 A）
 

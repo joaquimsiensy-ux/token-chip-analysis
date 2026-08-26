@@ -168,6 +168,9 @@ SUITE += ['test_batch8_repair_scale.py']  # v6.52.6 Batch 8 producer scale and s
 # 复查)判定为离线信任边界仅在 batch7_done.md 记录，不进本 suite 断言。
 SUITE += ['test_batch7_validator_coverage_gaps.py']
 
+# Batch 11：Solana 静态态同文件绑定不变；冻结态改绑案内 frozen bundle 指纹与 handoff 清单。
+SUITE += ['test_batch11_frozen_bundle_binding.py']
+
 # v6.52.2 repair-20260824-lit-regression：F-007 series_format 堆叠语义与 F-008 evm_v2 集合闸。
 SUITE += ["test_lit_regression_f007.py", "test_lit_regression_f008.py"]  # v6.52.2 repair-20260824-lit-regression
 

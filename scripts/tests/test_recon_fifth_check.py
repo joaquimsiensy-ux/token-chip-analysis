@@ -89,6 +89,7 @@ def current_verify_accepts(case):
 
     def fake_recon(_case_dir, return_receipts=False):
         receipts = {"supply_truth": {}, "exact_reconcile": {
+            "target": target,
             "edge_source_binding": exact["edge_source_binding"], "inputs": {}}}
         return (target, receipts) if return_receipts else target
 
@@ -146,6 +147,7 @@ def main():
 
         def fake_recon(_case_dir, return_receipts=False):
             receipts = {"supply_truth": {}, "exact_reconcile": {
+                "target": target,
                 "edge_source_binding": current, "inputs": {}}}
             return (target, receipts) if return_receipts else target
 
