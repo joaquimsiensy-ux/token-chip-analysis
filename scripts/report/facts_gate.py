@@ -63,7 +63,10 @@ import json
 import re
 import sys
 
-MACRO_RE = re.compile(r"\{\{([A-Za-z0-9_.:]+)\}\}")
+# 字符类含连字符：实体键约定（3.19 起 entities 字典键=stable entity_id）允许
+# ENT-PROJ 型命名——缺连字符时这类宏既不渲染也不被 G4 检出（死宏静默漏进正文，
+# SPORTFUN 2026-08-25 实踩），扩集是收紧方向（原漏检死宏开始被渲染/检出）。
+MACRO_RE = re.compile(r"\{\{([A-Za-z0-9_.:-]+)\}\}")
 PCT_RE = re.compile(r"\d+(?:\.\d+)?%")
 
 
