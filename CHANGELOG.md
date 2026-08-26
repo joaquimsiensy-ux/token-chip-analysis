@@ -10,6 +10,7 @@
 
 ## 版本索引（活跃窗口，新在上；每版一行，详情见下方对应条目）
 
+- **6.52.8**（2026-08-26）solana_observation jsonParsed 兼容：v0+ALT 交易在 jsonParsed 编码下公共 RPC（publicnode/api.mainnet-beta）不带 meta.loadedAddresses（地址已并入 dict 形态 accountKeys），原校验一律报错致五查观测在公共端点全断；改为仅当 accountKeys 为 str 键（裸 json 编码）时仍强制 loadedAddresses，dict 键豁免；ARC 五查实跑验证
 - **6.52.7**（2026-08-26）批 9 repair 深验校验侧流式/惰性化：`validate_repair_bundle_deep` evidence 惰性读盘＋三 jsonl 流式＋SQLite 临时索引，语义与 reasons 逐字不变；16GB 本机首次跑通 15.4 万 slot 正式代发布（旧实现三轮内存超限被杀）；SUITE 134 全绿
 - **6.52.6**（2026-08-25）批 8 SQD repair 生产者规模化：key 无关指纹与 key 池热降级、并发保序拉取、流式装配；两段提交锚定四项 producer 登记，SUITE 133→134
 - **6.52.5**（2026-08-25）facts_gate 宏正则补连字符：ENT-PROJ 型实体键宏此前为死宏（不渲染且 G4 不检出、以字面量漏进正文），字符类扩 `-` 属收紧修复，flow spec 宏同源通道同步受益；SUITE 133 全绿
@@ -62,6 +63,13 @@
 - **6.20.1** 2026-08-05 修 5 处阻断级文档漂移（A4 前禁写报告冲突/easy 残留/惯犯回灌 docstring/批量预采集残留/旧 Par 路线历史降级）＋docs_lint 增中文禁词与 Python module docstring 扫描
 
 更早版本（6.20.0 及以前）详见 `archive/CHANGELOG-archive.md`。
+
+## [6.52.8] - 2026-08-26 — solana_observation jsonParsed 编码兼容（loadedAddresses 豁免）
+
+- **根因**：观测器 `_account_keys_and_writable` 对带 addressTableLookups 的 v0 交易一律强制 `meta.loadedAddresses` 存在；但 jsonParsed 编码下节点把地址表解析结果直接并入 `accountKeys`（dict 形态、带逐键 writable），公共 RPC（publicnode / api.mainnet-beta）此时可完全不带 `meta.loadedAddresses`——键集已完整却被误判缺失，五查 supply 观测在公共端点对含 v0+ALT 交易的块全断（ARC 五查实跑首次暴露；Helius 大 GPA 政策墙迫使观测改走 publicnode 后触发）。
+- **修法（3 行收窄豁免）**：仅当 `accountKeys` 为 str 键（裸 json 编码，地址表确需 loadedAddresses 补全）时维持强制报错；全 dict 键（jsonParsed）豁免。dict 分支后续 writable 归并逻辑不变，语义零放宽——裸编码缺字段仍 fail-closed。
+- **验收（Fable 本机）**：ARC 五查 runner 实跑通过（supply 观测 45,883 owner 快照成功、四查 PASS）；run_all 全量通过。
+- **成本/质量指标**：Fable 亲修 3 行；外部网络调用＝ARC 五查实跑；新增测试 0（观测契约既有守卫覆盖）；分析结论 0；传播级数字错误 0。
 
 ## [6.52.7] - 2026-08-26 — 批 9 repair 深验校验侧流式/惰性化
 

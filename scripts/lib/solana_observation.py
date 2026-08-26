@@ -162,8 +162,12 @@ def _account_keys_and_writable(transaction):
     if lookups is not None and not isinstance(lookups, list):
         raise SolanaObservationError("transaction addressTableLookups invalid")
     if lookups and not isinstance(loaded, dict):
-        raise SolanaObservationError(
-            "transaction loadedAddresses missing for addressTableLookups")
+        # jsonParsed 编码把地址表解析结果并入 accountKeys(dict 形态、带逐键
+        # writable),公共 RPC(publicnode/api.mainnet-beta)在该编码下可不带
+        # meta.loadedAddresses——键已完整,豁免;裸 json 编码(str 键)仍强制。
+        if not all(isinstance(item, dict) for item in raw_keys):
+            raise SolanaObservationError(
+                "transaction loadedAddresses missing for addressTableLookups")
     if isinstance(loaded, dict):
         for item in loaded.get("writable") or []:
             if not isinstance(item, str):
