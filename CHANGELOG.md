@@ -10,6 +10,7 @@
 
 ## 版本索引（活跃窗口，新在上；每版一行，详情见下方对应条目）
 
+- **6.52.7**（2026-08-26）批 9 repair 深验校验侧流式/惰性化：`validate_repair_bundle_deep` evidence 惰性读盘＋三 jsonl 流式＋SQLite 临时索引，语义与 reasons 逐字不变；16GB 本机首次跑通 15.4 万 slot 正式代发布（旧实现三轮内存超限被杀）；SUITE 134 全绿
 - **6.52.6**（2026-08-25）批 8 SQD repair 生产者规模化：key 无关指纹与 key 池热降级、并发保序拉取、流式装配；两段提交锚定四项 producer 登记，SUITE 133→134
 - **6.52.5**（2026-08-25）facts_gate 宏正则补连字符：ENT-PROJ 型实体键宏此前为死宏（不渲染且 G4 不检出、以字面量漏进正文），字符类扩 `-` 属收紧修复，flow spec 宏同源通道同步受益；SUITE 133 全绿
 - **6.52.4**（2026-08-25）批 3c SQD census 字段契约修复：删除服务端拒收且无消费方的 `parentSlot`，两段提交锚定四项 producer 登记；SUITE 132→133
@@ -61,6 +62,13 @@
 - **6.20.1** 2026-08-05 修 5 处阻断级文档漂移（A4 前禁写报告冲突/easy 残留/惯犯回灌 docstring/批量预采集残留/旧 Par 路线历史降级）＋docs_lint 增中文禁词与 Python module docstring 扫描
 
 更早版本（6.20.0 及以前）详见 `archive/CHANGELOG-archive.md`。
+
+## [6.52.7] - 2026-08-26 — 批 9 repair 深验校验侧流式/惰性化
+
+- **根因（批 8 F4 的同族缺口）**：生产侧装配已流式化，但发布必经的 `validate_repair_bundle_deep` 仍整载全部产物——evidence 6.5 万文件全量驻留字典、`slot_index_map.jsonl` 2.3GB 整载为列表——ARC 正式代（153,667 slot）深验在 16GB 本机连续三轮内存超限被系统终止（EXIT=137，采样栈显示大部分时间在 gc 遍历千万级对象图），发布路径完全不可用。
+- **改造（语义零变更）**：evidence manifest 仍逐项路径/哈希/JSON/canonical 校验但不驻留内容，后续按 slot 惰性读盘（LRU=2）；`repair_layer`/`slot_index_map`/`rpc_ledger` 三 jsonl 逐行流式校验，跨行聚合仅留紧凑集合/计数；有序代按 slot 流式联结 map 与 base edge，乱序输入走标准库临时 SQLite 回退保留旧排序语义；GID 增量哈希流式消费；批 7 全部加固检查与 reasons 文本逐字保留；仅标准库无新依赖。
+- **验收（Fable 本机）**：三守卫（sqd_gap_repair/批7缺口/批8规模化）复跑全绿、run_all 全量通过；施工方 HEAD 旧实现 vs 新实现同一 formal 夹具四情形逐字段等价；真实代终验＝runner 第四轮直接用新实现完成正式发布（80 分钟、入口阶段峰约 8.4GB 后回落 3-5GB 稳定，旧实现死于 12GB+；`status=published`、repair_edges=83、CURRENT verdict=PASS）。峰值超工单 6GB 期望值但发布完整跑通，目标本质（16GB 本机可发布）达成。
+- **成本/质量指标**：codex 单会话施工约 1 小时；外部网络调用 0；新增测试 0（既有守卫覆盖）；分析结论 0；传播级数字错误 0。
 
 ## [6.52.6] - 2026-08-25 — 批 8 SQD repair 生产者规模化
 

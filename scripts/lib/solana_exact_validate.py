@@ -14,8 +14,12 @@ from __future__ import annotations
 
 import gzip
 import hashlib
+import heapq
 import json
 import re
+import sqlite3
+import tempfile
+from itertools import groupby
 from pathlib import Path
 
 
@@ -821,22 +825,45 @@ def _repair_ref(case_root, generation, ref, label, reasons):
     return path
 
 
-def _jsonl(path, reasons, label):
-    rows = []
+def _iter_jsonl(path, reasons=None, label=None):
+    """Yield canonical JSONL values without materializing the whole file."""
     try:
-        for line_no, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
-            if not line.strip():
-                continue
-            row = json.loads(line)
-            canonical_json(row)
-            rows.append(row)
+        with Path(path).open("r", encoding="utf-8") as handle:
+            for line in handle:
+                if not line.strip():
+                    continue
+                row = json.loads(line)
+                canonical_json(row)
+                yield row
     except (OSError, ValueError, json.JSONDecodeError) as exc:
-        reasons.append(f"{label} invalid: {exc}")
-    return rows
+        if reasons is not None:
+            reasons.append(f"{label} invalid: {exc}")
 
 
-def _edge_rows(path, reasons, label):
-    rows = []
+def _jsonl(path, reasons, label):
+    return list(_iter_jsonl(path, reasons, label))
+
+
+def _jsonl_header_count(path, reasons, label):
+    header = None
+    count = 0
+    for row in _iter_jsonl(path, reasons, label):
+        if count == 0:
+            header = row
+        count += 1
+    return header, count
+
+
+def _jsonl_data(path):
+    if path is None:
+        return
+    rows = _iter_jsonl(path)
+    next(rows, None)
+    yield from rows
+
+
+def _iter_edge_rows(path, reasons=None, label=None):
+    """Yield validated edge tuples without retaining the full edge file."""
     try:
         with gzip.open(path, "rt", encoding="utf-8") as handle:
             for line in handle:
@@ -850,10 +877,14 @@ def _edge_rows(path, reasons, label):
                         or instr != -1 or amount <= 0 \
                         or not isinstance(source, str) or not isinstance(target, str):
                     raise ValueError("edge field contract invalid")
-                rows.append(tuple(row))
+                yield tuple(row)
     except (OSError, EOFError, ValueError, json.JSONDecodeError) as exc:
-        reasons.append(f"{label} invalid: {exc}")
-    return rows
+        if reasons is not None:
+            reasons.append(f"{label} invalid: {exc}")
+
+
+def _edge_rows(path, reasons, label):
+    return list(_iter_edge_rows(path, reasons, label))
 
 
 def _edge_sort(row):
@@ -873,6 +904,51 @@ def _repair_gid(material):
         value.pop(key, None)
     value["kind"] = "repair"
     return sha256_bytes(canonical_json(value))[:16]
+
+
+def _canonical_array_digest(digest, values):
+    digest.update(b"[")
+    first = True
+    for value in values:
+        if not first:
+            digest.update(b",")
+        digest.update(canonical_json(value))
+        first = False
+    digest.update(b"]")
+
+
+def _repair_gid_stream(*, plan_digest, supersedes, census, transactions_path,
+                       slot_index_map_path, evidence_manifest, mode, source):
+    """Hash the repair identity while streaming the two JSONL-bound arrays."""
+    digest = hashlib.sha256()
+    fields = {
+        "census": census,
+        "evidence_manifest": evidence_manifest,
+        "kind": "repair",
+        "mode": mode,
+        "plan_digest": plan_digest,
+        "reference": {"source": source},
+        "slot_index_map": None,
+        "supersedes": supersedes,
+        "transactions": None,
+    }
+    digest.update(b"{")
+    for index, key in enumerate(sorted(fields)):
+        if index:
+            digest.update(b",")
+        digest.update(canonical_json(key))
+        digest.update(b":")
+        if key == "slot_index_map":
+            _canonical_array_digest(digest, _jsonl_data(slot_index_map_path))
+        elif key == "transactions":
+            _canonical_array_digest(digest, _jsonl_data(transactions_path))
+        elif key in {"census", "evidence_manifest"} \
+                and isinstance(fields[key], list):
+            _canonical_array_digest(digest, fields[key])
+        else:
+            digest.update(canonical_json(fields[key]))
+    digest.update(b"}")
+    return digest.hexdigest()[:16]
 
 
 def validate_repair_pointer(pointer, *, expected_mint, expected_gid,
@@ -1124,36 +1200,44 @@ def validate_repair_bundle_deep(bundle_path, *, case_root, current_base,
     resolution = read_json(refs.get("coverage_resolution"), "resolution")
     manifest = read_json(refs.get("evidence_manifest"), "evidence manifest")
     meta = read_json(merged_meta_path, "merged meta")
-    layer_rows = _jsonl(refs["repair_layer"], reasons, "repair layer") \
-        if refs.get("repair_layer") else []
-    map_rows = _jsonl(refs["slot_index_map"], reasons, "slot index map") \
-        if refs.get("slot_index_map") else []
-    ledger_rows = _jsonl(refs["rpc_ledger"], reasons, "RPC ledger") \
-        if refs.get("rpc_ledger") else []
+    layer_header, layer_row_count = _jsonl_header_count(
+        refs["repair_layer"], reasons, "repair layer") \
+        if refs.get("repair_layer") else (None, 0)
+    map_header, map_row_count = _jsonl_header_count(
+        refs["slot_index_map"], reasons, "slot index map") \
+        if refs.get("slot_index_map") else (None, 0)
+    ledger_header, ledger_row_count = _jsonl_header_count(
+        refs["rpc_ledger"], reasons, "RPC ledger") \
+        if refs.get("rpc_ledger") else (None, 0)
     if resolution.get("schema") != REPAIR_RESOLUTION_SCHEMA:
         reasons.append("resolution schema mismatch")
-    if not layer_rows or layer_rows[0].get("schema") != REPAIR_LAYER_SCHEMA:
+    if not layer_row_count or layer_header.get("schema") != REPAIR_LAYER_SCHEMA:
         reasons.append("repair layer header mismatch")
-    if not map_rows or map_rows[0].get("schema") != REPAIR_MAP_SCHEMA:
+    if not map_row_count or map_header.get("schema") != REPAIR_MAP_SCHEMA:
         reasons.append("slot index map header mismatch")
-    if not ledger_rows or ledger_rows[0].get("schema") != REPAIR_LEDGER_SCHEMA:
+    if not ledger_row_count or ledger_header.get("schema") != REPAIR_LEDGER_SCHEMA:
         reasons.append("RPC ledger header mismatch")
     digest = bundle.get("plan_digest")
     plan_values = [resolution.get("plan_digest"), meta.get("plan_digest")]
-    if layer_rows:
-        plan_values.append(layer_rows[0].get("plan_digest"))
-    if map_rows:
-        plan_values.append(map_rows[0].get("plan_digest"))
-    if ledger_rows:
-        plan_values.append(ledger_rows[0].get("plan_digest"))
+    if layer_row_count:
+        plan_values.append(layer_header.get("plan_digest"))
+    if map_row_count:
+        plan_values.append(map_header.get("plan_digest"))
+    if ledger_row_count:
+        plan_values.append(ledger_header.get("plan_digest"))
     if any(value != digest for value in plan_values):
         reasons.append("plan_digest differs across generation")
-    if ledger_rows:
-        if ledger_rows[0].get("plan_digest") != digest:
+    ledger_by_slot = {}
+    ledger_data_count = ledger_row_count - 1
+    if ledger_row_count:
+        if ledger_header.get("plan_digest") != digest:
             reasons.append("RPC ledger header plan_digest mismatch")
-        seqs = []
-        for row in ledger_rows[1:]:
-            seqs.append(row.get("seq"))
+        seq_contiguous = True
+        ledger_slots = set()
+        duplicate_ledger_slot = False
+        for expected_seq, row in enumerate(_jsonl_data(refs["rpc_ledger"])):
+            if row.get("seq") != expected_seq:
+                seq_contiguous = False
             required = {"seq", "ts", "method", "params_digest", "slot",
                         "endpoint_fingerprint", "http_status", "bytes",
                         "credits_estimate", "result_sha256", "attempt"}
@@ -1167,32 +1251,57 @@ def validate_repair_bundle_deep(bundle_path, *, case_root, current_base,
                             "params_digest", "endpoint_fingerprint",
                             "result_sha256")):
                 reasons.append("RPC ledger row contract invalid")
-        if seqs != list(range(len(seqs))):
+            slot = row.get("slot")
+            if slot in ledger_slots:
+                duplicate_ledger_slot = True
+            ledger_slots.add(slot)
+            if _integer(slot):
+                ledger_by_slot[slot] = {
+                    "params_digest": row.get("params_digest"),
+                    "result_sha256": row.get("result_sha256"),
+                }
+        if not seq_contiguous:
             reasons.append("RPC ledger sequence is not contiguous")
-        ledger_slots = [row.get("slot") for row in ledger_rows[1:]
-                        if isinstance(row, dict)]
-        if len(ledger_slots) != len(set(ledger_slots)):
+        if duplicate_ledger_slot:
             reasons.append("RPC ledger slots are not unique")
-        if (bundle.get("rpc_ledger") or {}).get("requests") != len(
-                ledger_rows) - 1:
+        if (bundle.get("rpc_ledger") or {}).get("requests") != ledger_data_count:
             reasons.append("bundle RPC ledger request count mismatch")
     if "gid" in meta or "bundle_sha256" in meta:
         reasons.append("merged meta contains forbidden circular binding")
     if meta.get("base_edge_sha256") != base.get("edge_sha256"):
         reasons.append("merged meta base binding mismatch")
 
-    evidence = {}
-    expected_manifest = []
+    evidence_paths = {}
     if not isinstance(manifest, list):
         reasons.append("evidence manifest must be an array")
         manifest = []
     for item in manifest:
         path = _repair_ref(case_root, generation, item, "evidence", reasons)
         if path:
-            evidence[item["path"]] = read_json(path, item["path"])
-            expected_manifest.append(item)
+            evidence_paths[item["path"]] = path
+            read_json(path, item["path"])
     if manifest != sorted(manifest, key=lambda item: item.get("path", "")):
         reasons.append("evidence manifest is not path-sorted")
+
+    evidence_cache = {}
+
+    def evidence_get(name, default=None):
+        if name not in evidence_paths:
+            return default
+        if name in evidence_cache:
+            value = evidence_cache.pop(name)
+            evidence_cache[name] = value
+            return value
+        try:
+            value = json.loads(evidence_paths[name].read_text(encoding="utf-8"))
+            canonical_json(value)
+        except (OSError, ValueError, json.JSONDecodeError):
+            value = {}
+        if len(evidence_cache) >= 2:
+            evidence_cache.pop(next(iter(evidence_cache)))
+        evidence_cache[name] = value
+        return value
+
     if live_canary:
         if not _integer(live_canary) or live_canary < 0:
             reasons.append("live_canary must be a nonnegative integer")
@@ -1204,7 +1313,10 @@ def validate_repair_bundle_deep(bundle_path, *, case_root, current_base,
             for slot in slots:
                 try:
                     block = live_canary_fetch(slot)
-                    expected = evidence[f"evidence/{slot}.ref.json"]
+                    evidence_name = f"evidence/{slot}.ref.json"
+                    if evidence_name not in evidence_paths:
+                        raise KeyError(evidence_name)
+                    expected = evidence_get(evidence_name)
                     signatures = [((tx.get("transaction") or {}).get(
                         "signatures") or [None])[0]
                                   for tx in block.get("transactions", [])]
@@ -1216,10 +1328,19 @@ def validate_repair_bundle_deep(bundle_path, *, case_root, current_base,
                 except Exception as exc:
                     reasons.append(f"live canary failed at slot {slot}: {exc}")
 
-    layer = layer_rows[1:] if layer_rows else []
-    maps = map_rows[1:] if map_rows else []
-    signatures = [row.get("signature") for row in layer]
-    if signatures != sorted(set(signatures)):
+    signatures_sorted_unique = True
+    previous_signature = None
+    have_signature = False
+    repair_layer_slots = set()
+    for row in _jsonl_data(refs["repair_layer"]):
+        signature = row.get("signature")
+        if have_signature and not previous_signature < signature:
+            signatures_sorted_unique = False
+        previous_signature = signature
+        have_signature = True
+        if _integer(row.get("slot")):
+            repair_layer_slots.add(row["slot"])
+    if not signatures_sorted_unique:
         reasons.append("repair layer signatures are not sorted unique")
     confirmed = {row.get("slot") for row in resolution.get("census", [])
                  if isinstance(row, dict) and str(row.get("result", "")).startswith("confirmed_")}
@@ -1244,7 +1365,7 @@ def validate_repair_bundle_deep(bundle_path, *, case_root, current_base,
             plan_candidates[key] = []
     if plan_candidates["coverage"] != sorted(coverage_candidates):
         reasons.append("resolution coverage candidates differ from coverage map")
-    beta_trace = evidence.get("evidence/beta_trace.json")
+    beta_trace = evidence_get("evidence/beta_trace.json")
     if isinstance(beta_trace, dict):
         beta_checked = validate_beta_trace(
             beta_trace, case_root=case_root, generation=generation)
@@ -1290,15 +1411,13 @@ def validate_repair_bundle_deep(bundle_path, *, case_root, current_base,
         if not coverage_check["ok"]:
             reasons.append("bundle coverage no longer validates: "
                            + "; ".join(coverage_check["reasons"]))
-    state_by_slot = {}
+    state_lower = None
+    states = []
     if coverage_check and coverage_check["ok"]:
-        lower = slot_meta["from_slot"]
-        state_by_slot = {lower + index: state for index, state in enumerate(
-            coverage_check["recomputed"]["states"])}
+        state_lower = slot_meta["from_slot"]
+        states = coverage_check["recomputed"]["states"]
     census_by_slot = {row.get("slot"): row for row in resolution.get("census", [])
                       if isinstance(row, dict)}
-    ledger_by_slot = {row.get("slot"): row for row in ledger_rows[1:]
-                      if isinstance(row, dict) and _integer(row.get("slot"))}
     # 加固(缺口1)：formal 逐 slot 严格校验的遍历主键 = 候选集 ∪ census 确认集 ∪ 修复层
     # 各 slot。任何"实际被确认为缺陷 / 实际产生修复边"的 slot 都必须逐个跑严格校验，
     # 否则候选集为空/不含该 slot 时严格校验被整段跳过。exploration 探索代不进入正式
@@ -1306,12 +1425,13 @@ def validate_repair_bundle_deep(bundle_path, *, case_root, current_base,
     repair_touched = {slot for slot in all_candidates if _integer(slot)}
     if mode == "formal":
         repair_touched |= {slot for slot in confirmed if _integer(slot)}
-        repair_touched |= {item.get("slot") for item in layer
-                           if _integer(item.get("slot"))}
+        repair_touched |= repair_layer_slots
     for slot in sorted(repair_touched):
         row = census_by_slot.get(slot, {})
-        evidence_row = evidence.get(f"evidence/{slot}.sqd.json", {})
-        expected_state = state_by_slot.get(slot)
+        evidence_row = evidence_get(f"evidence/{slot}.sqd.json", {})
+        state_index = slot - state_lower if _integer(state_lower) else -1
+        expected_state = (states[state_index]
+                          if 0 <= state_index < len(states) else None)
         if row.get("coverage_state") != expected_state \
                 or evidence_row.get("coverage_state") != expected_state:
             reasons.append(f"coverage state does not recompute for {slot}")
@@ -1329,7 +1449,7 @@ def validate_repair_bundle_deep(bundle_path, *, case_root, current_base,
                         r"[0-9a-f]{64}", evidence_row[key]) is None:
                     reasons.append(f"repair state evidence {key} invalid for {slot}")
             ledger_row = ledger_by_slot.get(slot)
-            ref_row = evidence.get(f"evidence/{slot}.ref.json", {})
+            ref_row = evidence_get(f"evidence/{slot}.ref.json", {})
             if not isinstance(ledger_row, dict) \
                     or ledger_row.get("params_digest") != _repair_getblock_params_digest(slot) \
                     or ledger_row.get("result_sha256") != ref_row.get(
@@ -1340,25 +1460,28 @@ def validate_repair_bundle_deep(bundle_path, *, case_root, current_base,
     # 加固(缺口1)：formal 下 rpc_ledger 必须为每个修复 slot 留下实物 getBlock 请求，
     # 请求数不得少于修复层触及的 slot 数。
     if mode == "formal":
-        repair_layer_slots = {item.get("slot") for item in layer
-                              if _integer(item.get("slot"))}
-        if len(ledger_rows) - 1 < len(repair_layer_slots):
+        if ledger_data_count < len(repair_layer_slots):
             reasons.append("formal repair ledger has fewer getBlock requests than repair slots")
 
-    map_lookup = {}
-    for item in maps:
+    map_slots_strictly_increasing = True
+    previous_map_slot = None
+    have_map_slot = False
+    for item in _jsonl_data(refs["slot_index_map"]):
         slot = item.get("slot")
         triples = item.get("map")
         if not _integer(slot) or not isinstance(triples, list):
             reasons.append("slot index map row invalid")
             continue
+        if have_map_slot and slot <= previous_map_slot:
+            map_slots_strictly_increasing = False
+        previous_map_slot = slot
+        have_map_slot = True
         columns = list(zip(*triples)) if triples else [(), (), ()]
         if any(len(set(column)) != len(column) for column in columns) \
                 or triples != sorted(triples, key=lambda row: row[0]):
             reasons.append(f"slot index map not bijective for {slot}")
-        map_lookup[slot] = {row[0]: row[1] for row in triples}
-        sqd_evidence = evidence.get(f"evidence/{slot}.sqd.json", {})
-        ref_evidence = evidence.get(f"evidence/{slot}.ref.json", {})
+        sqd_evidence = evidence_get(f"evidence/{slot}.sqd.json", {})
+        ref_evidence = evidence_get(f"evidence/{slot}.ref.json", {})
         reference_rows = ref_evidence.get("transactions", [])
         nonvote = [row.get("signature") for row in reference_rows
                    if isinstance(row, dict) and row.get("is_vote") is False]
@@ -1382,66 +1505,208 @@ def validate_repair_bundle_deep(bundle_path, *, case_root, current_base,
                     and sqd_evidence.get("blockhash") != ref_evidence.get("blockhash")):
             reasons.append(f"blockhash mismatch for repair slot {slot}")
 
-    repair_edges = []
-    for item in layer:
-        slot = item.get("slot")
-        sqd = evidence.get(item.get("evidence", {}).get("sqd"), {})
-        sqd_signatures = {row.get("signature") for row in sqd.get("transactions", [])}
-        if item.get("signature") in sqd_signatures:
-            reasons.append("repair signature is present in SQD evidence")
-        if slot not in confirmed:
-            reasons.append("repair transaction lacks confirmed census support")
-        for edge in item.get("edges") or []:
-            if len(edge) != 7 or edge[1] != slot or edge[2] != item.get("nonvote_ordinal") \
-                    or edge[3] != -1:
-                reasons.append("repair edge identity mismatch")
-            else:
-                repair_edges.append(tuple(edge))
+    repair_edge_count = 0
+    with tempfile.TemporaryDirectory(prefix="sqd-deep-validate-") as temp_dir:
+        connection = sqlite3.connect(str(Path(temp_dir) / "index.sqlite3"))
+        try:
+            connection.execute("PRAGMA journal_mode=OFF")
+            connection.execute("PRAGMA synchronous=OFF")
+            connection.execute("PRAGMA temp_store=FILE")
+            connection.execute("PRAGMA cache_size=-8192")
+            connection.execute(
+                "CREATE TABLE repair_edges ("
+                "slot INTEGER, tx_index INTEGER, source TEXT, target TEXT, "
+                "amount_sort TEXT, ordinal INTEGER, row_json TEXT)")
 
-    base_rows = _edge_rows(base_edge, reasons, "base edges") if base_edge else []
-    rebuilt = []
-    for row in base_rows:
-        if row[1] in map_lookup:
-            if row[2] not in map_lookup[row[1]]:
-                reasons.append("base edge lacks slot-index map solution")
-                continue
-            row = (row[0], row[1], map_lookup[row[1]][row[2]], *row[3:])
-        rebuilt.append(row)
-    rebuilt.extend(repair_edges)
-    rebuilt.sort(key=_edge_sort)
-    actual_merged = _edge_rows(merged_edge, reasons, "merged edges") if merged_edge else []
-    if actual_merged != rebuilt:
-        reasons.append("merged edges do not equal f(base,layer,map)")
-    # 加固(缺口3)：所有 merged 边的 slot 必须落在声明的 coverage 窗口 [from,to] 内，
-    # 且声明窗口 upper 必须与 base.finalized_upper_slot 一致；否则 slot>声明 upper 的
-    # 边（谎报采集时点/夹带超窗口数据）会被无声混入余额与供应。
-    window_lower = slot_meta.get("from_slot")
-    window_upper = slot_meta.get("to_slot")
-    if _integer(window_lower) and _integer(window_upper):
-        if any(not (window_lower <= row[1] <= window_upper)
-               for row in actual_merged):
-            reasons.append("merged edge slot escapes declared coverage window")
-        if _integer(base.get("finalized_upper_slot")) \
-                and base.get("finalized_upper_slot") != window_upper:
-            reasons.append("base finalized_upper_slot differs from coverage window upper")
-    logical_sha, logical_rows = _edge_evidence(actual_merged)
+            for item in _jsonl_data(refs["repair_layer"]):
+                slot = item.get("slot")
+                sqd = evidence_get(item.get("evidence", {}).get("sqd"), {})
+                sqd_signatures = {
+                    row.get("signature") for row in sqd.get("transactions", [])}
+                if item.get("signature") in sqd_signatures:
+                    reasons.append("repair signature is present in SQD evidence")
+                if slot not in confirmed:
+                    reasons.append("repair transaction lacks confirmed census support")
+                for edge in item.get("edges") or []:
+                    if len(edge) != 7 or edge[1] != slot \
+                            or edge[2] != item.get("nonvote_ordinal") \
+                            or edge[3] != -1:
+                        reasons.append("repair edge identity mismatch")
+                    else:
+                        edge = tuple(edge)
+                        connection.execute(
+                            "INSERT INTO repair_edges VALUES (?, ?, ?, ?, ?, ?, ?)",
+                            (edge[1], edge[2], edge[4], edge[5], str(edge[6]),
+                             repair_edge_count, json.dumps(
+                                 list(edge), ensure_ascii=False,
+                                 separators=(",", ":"))))
+                        repair_edge_count += 1
+            connection.commit()
+
+            base_slots_nondecreasing = True
+            previous_base_slot = None
+            if base_edge:
+                for row in _iter_edge_rows(base_edge, reasons, "base edges"):
+                    if previous_base_slot is not None \
+                            and row[1] < previous_base_slot:
+                        base_slots_nondecreasing = False
+                    previous_base_slot = row[1]
+
+            def repair_edge_rows():
+                query = (
+                    "SELECT row_json FROM repair_edges ORDER BY slot, tx_index, "
+                    "source COLLATE BINARY, target COLLATE BINARY, "
+                    "amount_sort COLLATE BINARY, ordinal")
+                for (raw,) in connection.execute(query):
+                    yield tuple(json.loads(raw))
+
+            def map_lookups():
+                for map_item in _jsonl_data(refs["slot_index_map"]):
+                    map_slot = map_item.get("slot")
+                    triples = map_item.get("map")
+                    if not _integer(map_slot) or not isinstance(triples, list):
+                        continue
+                    yield map_slot, {row[0]: row[1] for row in triples}
+
+            fast_stream = map_slots_strictly_increasing and base_slots_nondecreasing
+            if fast_stream:
+                def transformed_base_rows():
+                    lookup_rows = iter(map_lookups())
+                    current_lookup = next(lookup_rows, None)
+                    base_rows = (_iter_edge_rows(base_edge) if base_edge else ())
+                    for slot, grouped in groupby(base_rows, key=lambda row: row[1]):
+                        while current_lookup is not None \
+                                and current_lookup[0] < slot:
+                            current_lookup = next(lookup_rows, None)
+                        mapped = (current_lookup is not None
+                                  and current_lookup[0] == slot)
+                        lookup = current_lookup[1] if mapped else {}
+                        transformed = []
+                        for row in grouped:
+                            if mapped:
+                                if row[2] not in lookup:
+                                    reasons.append(
+                                        "base edge lacks slot-index map solution")
+                                    continue
+                                row = (row[0], row[1], lookup[row[2]], *row[3:])
+                            transformed.append(row)
+                        transformed.sort(key=_edge_sort)
+                        yield from transformed
+
+                expected_rows = heapq.merge(
+                    transformed_base_rows(), repair_edge_rows(), key=_edge_sort)
+            else:
+                connection.execute(
+                    "CREATE TABLE mapped_slots (slot INTEGER PRIMARY KEY)")
+                connection.execute(
+                    "CREATE TABLE map_values (slot INTEGER, old_key TEXT, "
+                    "new_value TEXT, PRIMARY KEY (slot, old_key))")
+                for map_slot, lookup in map_lookups():
+                    connection.execute(
+                        "INSERT OR REPLACE INTO mapped_slots VALUES (?)", (map_slot,))
+                    connection.execute("DELETE FROM map_values WHERE slot=?", (map_slot,))
+                    connection.executemany(
+                        "INSERT OR REPLACE INTO map_values VALUES (?, ?, ?)",
+                        ((map_slot, canonical_json(old).decode("utf-8"),
+                          canonical_json(new).decode("utf-8"))
+                         for old, new in lookup.items()))
+                connection.execute(
+                    "CREATE TABLE base_edges ("
+                    "slot INTEGER, tx_index INTEGER, source TEXT, target TEXT, "
+                    "amount_sort TEXT, ordinal INTEGER, row_json TEXT)")
+                base_ordinal = 0
+                base_rows = _iter_edge_rows(base_edge) if base_edge else ()
+                for row in base_rows:
+                    mapped = connection.execute(
+                        "SELECT 1 FROM mapped_slots WHERE slot=?", (row[1],)
+                    ).fetchone() is not None
+                    if mapped:
+                        found = connection.execute(
+                            "SELECT new_value FROM map_values "
+                            "WHERE slot=? AND old_key=?",
+                            (row[1], canonical_json(row[2]).decode("utf-8"))
+                        ).fetchone()
+                        if found is None:
+                            reasons.append("base edge lacks slot-index map solution")
+                            continue
+                        row = (row[0], row[1], json.loads(found[0]), *row[3:])
+                    connection.execute(
+                        "INSERT INTO base_edges VALUES (?, ?, ?, ?, ?, ?, ?)",
+                        (row[1], row[2], row[4], row[5], str(row[6]),
+                         base_ordinal, json.dumps(
+                             list(row), ensure_ascii=False, separators=(",", ":"))))
+                    base_ordinal += 1
+                connection.commit()
+
+                def fallback_expected_rows():
+                    query = (
+                        "SELECT row_json FROM ("
+                        "SELECT slot, tx_index, source, target, amount_sort, "
+                        "0 AS origin, ordinal, row_json FROM base_edges UNION ALL "
+                        "SELECT slot, tx_index, source, target, amount_sort, "
+                        "1 AS origin, ordinal, row_json FROM repair_edges) "
+                        "ORDER BY slot, tx_index, source COLLATE BINARY, "
+                        "target COLLATE BINARY, amount_sort COLLATE BINARY, "
+                        "origin, ordinal")
+                    for (raw,) in connection.execute(query):
+                        yield tuple(json.loads(raw))
+
+                expected_rows = fallback_expected_rows()
+
+            expected_rows = iter(expected_rows)
+            sentinel = object()
+            merged_mismatch = False
+            logical_digest = hashlib.sha256()
+            logical_rows = 0
+            window_lower = slot_meta.get("from_slot")
+            window_upper = slot_meta.get("to_slot")
+            window_escape = False
+            actual_rows = (_iter_edge_rows(
+                merged_edge, reasons, "merged edges") if merged_edge else ())
+            for row in actual_rows:
+                expected_row = next(expected_rows, sentinel)
+                if expected_row is sentinel or row != expected_row:
+                    merged_mismatch = True
+                logical_digest.update(
+                    (json.dumps(list(row), ensure_ascii=False) + "\n").encode())
+                logical_rows += 1
+                if _integer(window_lower) and _integer(window_upper) \
+                        and not window_lower <= row[1] <= window_upper:
+                    window_escape = True
+            if next(expected_rows, sentinel) is not sentinel:
+                merged_mismatch = True
+            if merged_mismatch:
+                reasons.append("merged edges do not equal f(base,layer,map)")
+            # 加固(缺口3)：所有 merged 边的 slot 必须落在声明的 coverage 窗口 [from,to] 内，
+            # 且声明窗口 upper 必须与 base.finalized_upper_slot 一致；否则 slot>声明 upper 的
+            # 边（谎报采集时点/夹带超窗口数据）会被无声混入余额与供应。
+            if _integer(window_lower) and _integer(window_upper):
+                if window_escape:
+                    reasons.append("merged edge slot escapes declared coverage window")
+                if _integer(base.get("finalized_upper_slot")) \
+                        and base.get("finalized_upper_slot") != window_upper:
+                    reasons.append(
+                        "base finalized_upper_slot differs from coverage window upper")
+            logical_sha = logical_digest.hexdigest()
+        finally:
+            connection.close()
+
     if merged.get("edge_logical_sha256") != logical_sha \
             or meta.get("edge_logical_sha256") != logical_sha:
         reasons.append("merged logical edge sha256 mismatch")
     if merged.get("edge_rows") != logical_rows or meta.get("edge_rows") != logical_rows:
         reasons.append("merged edge row count mismatch")
-    if logical_rows != base.get("edge_rows", -1) + len(repair_edges):
+    if logical_rows != base.get("edge_rows", -1) + repair_edge_count:
         reasons.append("merged row count identity violated")
-    if (bundle.get("repair_layer") or {}).get("edges") != len(repair_edges):
+    if (bundle.get("repair_layer") or {}).get("edges") != repair_edge_count:
         reasons.append("bundle repair edge count mismatch")
 
-    gid_material = {
-        "plan_digest": digest, "kind": "repair", "supersedes": bundle.get("supersedes"),
-        "census": resolution.get("census", []), "transactions": layer,
-        "slot_index_map": maps, "evidence_manifest": manifest,
-        "mode": mode, "reference": {"source": source},
-    }
-    recomputed_gid = _repair_gid(gid_material)
+    recomputed_gid = _repair_gid_stream(
+        plan_digest=digest, supersedes=bundle.get("supersedes"),
+        census=resolution.get("census", []),
+        transactions_path=refs.get("repair_layer"),
+        slot_index_map_path=refs.get("slot_index_map"),
+        evidence_manifest=manifest, mode=mode, source=source)
     if bundle.get("gid") != recomputed_gid or generation.name != f"gen-{bundle.get('gid')}":
         reasons.append("bundle gid or generation directory mismatch")
     return {"ok": not reasons, "reasons": reasons, "bundle": bundle,

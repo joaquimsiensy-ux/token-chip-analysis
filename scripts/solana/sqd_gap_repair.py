@@ -1490,7 +1490,7 @@ def _produce_blocks(args):
 def _verify(args):
     case_root = Path(args.case_root).resolve()
     parent, _current, _lock = sqd_repair_paths(case_root, args.mint)
-    base_edge, _base_meta, _base = _base(case_root, args.mint)
+    base_edge, _base_meta, _base_payload = _base(case_root, args.mint)
     endpoints = []
     canary_fetch = None
     if args.live_canary:
