@@ -1183,8 +1183,18 @@ def validate_reconciliation_check(root, key, item, target, family):
     if envelope_errors:
         raise ValueError(
             f"reconciliation {key} receipt envelope invalid: {envelope_errors[0]}；{migration}")
-    _require(canonical_target(receipt.get("target")) == canonical_target(target),
-             f"reconciliation {key} receipt target mismatch；{migration}")
+    if family == "solana" and key == "exact_reconcile":
+        exact_target = canonical_target(receipt.get("target"))
+        wrapper_target = canonical_target(target)
+        _require(exact_target["chain"] == wrapper_target["chain"]
+                 and exact_target["token"] == wrapper_target["token"]
+                 and exact_target["as_of_block"] <= wrapper_target["as_of_block"],
+                 "reconciliation exact_reconcile receipt target must match wrapper "
+                 "chain/token and its cache slot must not be later than the observed slot；"
+                 f"{migration}")
+    else:
+        _require(canonical_target(receipt.get("target")) == canonical_target(target),
+                 f"reconciliation {key} receipt target mismatch；{migration}")
     _require(receipt.get("verdict") == item.get("status")
              and receipt.get("exit_code") == item.get("exit_code"),
              f"reconciliation {key} wrapper/receipt verdict mismatch")

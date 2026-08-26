@@ -195,10 +195,33 @@ def _validate_spec(spec, case_dir):
     if dynamic_solana:
         if OBSERVED_SLOT_PLACEHOLDER in prepared["supply"]["argv"]:
             raise RunnerError("supply producer cannot consume the slot it must observe")
-        for key in ("balance", "supply_truth", "time", "exact_reconcile"):
+        for key in ("balance", "supply_truth", "time"):
             if OBSERVED_SLOT_PLACEHOLDER not in prepared[key]["argv"]:
                 raise RunnerError(
                     f"dynamic solana check {key} must consume {OBSERVED_SLOT_PLACEHOLDER}")
+        exact_argv = prepared["exact_reconcile"]["argv"]
+        if any(OBSERVED_SLOT_PLACEHOLDER in arg for arg in exact_argv):
+            raise RunnerError(
+                "dynamic solana exact_reconcile must not consume "
+                f"{OBSERVED_SLOT_PLACEHOLDER}; 第五查必须用 --as-of-slot 字面量钉死账本缓存 "
+                "finalized_upper_slot")
+        slot_values = []
+        for index, arg in enumerate(exact_argv):
+            if arg == "--as-of-slot":
+                slot_values.append(exact_argv[index + 1]
+                                   if index + 1 < len(exact_argv) else None)
+            elif arg.startswith("--as-of-slot="):
+                slot_values.append(arg.partition("=")[2])
+        if len(slot_values) != 1:
+            raise RunnerError(
+                "dynamic solana exact_reconcile must carry exactly one --as-of-slot "
+                "with the literal cache finalized_upper_slot")
+        # isdigit 单用会放行非 ASCII 数字（如阿拉伯-印度数字），须限定 ASCII
+        if (not isinstance(slot_values[0], str) or not slot_values[0].isascii()
+                or not slot_values[0].isdigit()):
+            raise RunnerError(
+                "dynamic solana exact_reconcile --as-of-slot must be a non-negative "
+                "literal cache finalized_upper_slot")
     inputs = snapshot_inputs(case_dir, spec.get("inputs"))
     return family, case_dir, dict(target), prepared, inputs, dynamic_solana
 
@@ -264,7 +287,21 @@ def run_job(spec, *, base_dir=None):
                     raise RunnerError("supply receipt did not provide a valid observed target")
                 target = dict(observed_target)
                 wrapper["target"] = dict(target)
-            if receipt.get("target") != target:
+            if dynamic_solana and key == "exact_reconcile":
+                try:
+                    exact_target = canonical_target(receipt.get("target"))
+                    wrapper_target = canonical_target(target)
+                except ValueError as exc:
+                    raise RunnerError(
+                        "check exact_reconcile receipt target must contain matching "
+                        "chain/token and a non-negative integer cache slot") from exc
+                if (exact_target["chain"] != wrapper_target["chain"]
+                        or exact_target["token"] != wrapper_target["token"]
+                        or exact_target["as_of_block"] > wrapper_target["as_of_block"]):
+                    raise RunnerError(
+                        "check exact_reconcile receipt target must match wrapper chain/token "
+                        "and its cache slot must not be later than the observed slot")
+            elif receipt.get("target") != target:
                 raise RunnerError(f"check {key} receipt target mismatch")
             if receipt.get("verdict") != "PASS" or receipt.get("exit_code") != 0:
                 raise RunnerError(f"check {key} receipt is not PASS/0")

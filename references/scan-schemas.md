@@ -1153,6 +1153,7 @@ QUQ 与 PYTHIA 只用于算法层探索定标。防伪链测试使用合成 fixt
 | `checks.exact_reconcile.receipt→gate_pass` | boolean | family==solana 的引用实物内必填；family==evm 无该 item | `true`；不是 wrapper item 直属字段 |
 | `checks.exact_reconcile.receipt→negative_balance_count` | integer | family==solana 的引用实物内必填；family==evm 无该 item | `0`；不是 wrapper item 直属字段 |
 | `checks.exact_reconcile.receipt→snapshot_mismatch_count` | integer | family==solana 的引用实物内必填；family==evm 无该 item | `0`；不是 wrapper item 直属字段 |
+| `job_spec.slot_binding` | argv 约束 | dynamic Solana 必填 | balance／supply_truth／time 必须消费 `{observed_as_of_block}`；`exact_reconcile` 的 argv 禁止出现该占位符，且 `--as-of-slot` 必须是账本缓存 `finalized_upper_slot` 的非负整数字面量 |
 | `cli.--reseal` | string | 否 | 仅 EVM |
 
 继承字段（现役基线逐键抄录）：
@@ -1175,7 +1176,8 @@ QUQ 与 PYTHIA 只用于算法层探索定标。防伪链测试使用合成 fixt
 - EVM reseal 从四份 receipt 重建，不信旧 wrapper；失败拒绝。
 - Solana v2 重跑 v4 exact+五项。
 - `checks.exact_reconcile` 的 wrapper item 固定绑定 `{status,exit_code,process_exit_code,producer,receipt}`；上表五个 v4 字段位于 `receipt{path,size,sha256}` 引用的实物内，由公共 validator 打开后深验，不是 item 直属字段。该 item 仅 family=solana 必填；family=evm 必须省略，出现即拒。
-- exact 检查组合、inputs 案根哈希、holders_owners 同一文件并调用独立深验。
+- 动态 Solana wrapper 的观测 target 可以晚于第五查的冻结 target；仅 `exact_reconcile` 放宽为 chain/token 全等且 `0 ≤ receipt.as_of_block ≤ wrapper.as_of_block`。其余 Solana checks 与全部 EVM checks 仍要求 receipt target 和 wrapper target 全等。
+- exact 检查组合、inputs 案根哈希、holders_owners 同一文件并调用独立深验；独立深验把 `receipt.target.as_of_block` 正向绑定到 receipt 所绑 `soltx_meta.finalized_upper_slot`，不得拿任意旧时点收据冒充冻结点。
 
 注记：
 

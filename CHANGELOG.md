@@ -10,6 +10,7 @@
 
 ## 版本索引（活跃窗口，新在上；每版一行，详情见下方对应条目）
 
+- **6.52.9**（2026-08-26）批 10 五查 exact_reconcile 活链协议修正（方案 A·用户裁决）：第五查从"消费观测到的当前 slot"改为"钉账本缓存冻结点字面量"，观测点与冻结点的现值差由 supply_truth 10bps 容差兜底；runner 占位符校验反转＋receipt target 三层同深放宽（chain/token 全等、冻结 slot ≤ 观测 slot）＋深验既有正向绑定（receipt.as_of == cache finalized_upper_slot）考据确认；先红后绿 N1-N5＋CT-SQDGAP-33 防回流；SUITE 134 全绿
 - **6.52.8**（2026-08-26）solana_observation jsonParsed 兼容：v0+ALT 交易在 jsonParsed 编码下公共 RPC（publicnode/api.mainnet-beta）不带 meta.loadedAddresses（地址已并入 dict 形态 accountKeys），原校验一律报错致五查观测在公共端点全断；改为仅当 accountKeys 为 str 键（裸 json 编码）时仍强制 loadedAddresses，dict 键豁免；ARC 五查实跑验证
 - **6.52.7**（2026-08-26）批 9 repair 深验校验侧流式/惰性化：`validate_repair_bundle_deep` evidence 惰性读盘＋三 jsonl 流式＋SQLite 临时索引，语义与 reasons 逐字不变；16GB 本机首次跑通 15.4 万 slot 正式代发布（旧实现三轮内存超限被杀）；SUITE 134 全绿
 - **6.52.6**（2026-08-25）批 8 SQD repair 生产者规模化：key 无关指纹与 key 池热降级、并发保序拉取、流式装配；两段提交锚定四项 producer 登记，SUITE 133→134
@@ -63,6 +64,15 @@
 - **6.20.1** 2026-08-05 修 5 处阻断级文档漂移（A4 前禁写报告冲突/easy 残留/惯犯回灌 docstring/批量预采集残留/旧 Par 路线历史降级）＋docs_lint 增中文禁词与 Python module docstring 扫描
 
 更早版本（6.20.0 及以前）详见 `archive/CHANGELOG-archive.md`。
+
+## [6.52.9] - 2026-08-26 — 批 10 五查 exact_reconcile 活链协议修正（方案 A）
+
+- **根因（ARC 首个真实活链案暴露）**：五查 runner 强制第五查消费 `{observed_as_of_block}`（观测到的链上当前 slot），而生产者 `replay_edges.py` 硬闸要求对账 slot == 账本缓存 `finalized_upper_slot`（冻结点）。活链每 0.4s 前进一格，"当前"结构性追不上"冻结点"——两规则互斥，第五查在任何活跃币上必死。此前只有静态夹具跑过（观测点与冻结点人为对齐）未暴露。协议内部亦自相矛盾：supply_truth 以 10bps 容差接受时点差，exact_reconcile 却禁止任何时点差。
+- **修正哲学（用户 2026-08-26 裁决方案 A）**：第五查改为对冻结点对账（严格性不降：仍为冻结点上 45,883 owner 级全量逐值相等）；观测点与冻结点的现值差继续由 supply_truth 容差兜底。
+- **三层同深**：①runner `_validate_spec` 前三查维持占位符强制，exact 反向禁止占位符、要求恰一个 `--as-of-slot` 非负 ASCII 整数字面量（isdigit 单用会放行非 ASCII 数字，Fable 验收攻击 A5 抓获后亲修收紧）；②runner `run_job` 与公共深验 `validate_reconciliation_check` 对 solana exact 同步放宽 receipt target（chain/token canonical 全等、冻结 slot ≤ 观测 slot），其余 check 与全部 EVM 维持全等；③生产者硬闸不动（SHA-256 与 HEAD 全等验证），深验既有正向绑定（`solana_exact_validate.py:1919-1934` receipt.as_of == 所绑 soltx_meta.finalized_upper_slot）考据确认为防"旧时点收据冒充"的权威闸。
+- **防回流**：先红后绿（R1 红证据留档）＋N1-N5 负向守卫两层各测＋EVM 回归＋契约 CT-SQDGAP-33 登记；文档（analyze-workflow §5/scan-schemas）大白话写明"前三查问链上现在、第五查问冻结账本自洽"。
+- **验收（Fable）**：codex 施工（沙箱 132/134，2 失败纯属沙箱禁 loopback）；Fable 本机 run_all 134 全绿×2（施工树＋亲修后终树）、6 发边界攻击 5 拦 1 化妆级瑕疵亲修、深验绑定逐行核实。
+- **成本/质量指标**：codex 单会话约 40 分钟＋Fable 验收；外部网络调用 0；新增测试 3 文件扩展＋契约 1 条；分析结论 0；传播级数字错误 0。
 
 ## [6.52.8] - 2026-08-26 — solana_observation jsonParsed 编码兼容（loadedAddresses 豁免）
 
