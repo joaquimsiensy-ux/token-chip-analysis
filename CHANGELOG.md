@@ -10,6 +10,7 @@
 
 ## 版本索引（活跃窗口，新在上；每版一行，详情见下方对应条目）
 
+- **6.52.11**（2026-08-27）批 12 分布扫描器冻结态供应漂移容差：`load_supply` 的 `net>onchain` 静态硬拒改两态——漂移向仅当 supply_truth 收据 PASS/exit 0、diff 逐位复算相等、整数容差内（`drift*10000<=tolerance_bps*onchain`）放行并留痕 `supply_drift_raw`；静态向/快照闭合锚/分母语义零变化；方案 A 同族第四消费点（ARC A3 第 8 项实跑暴露：封账后 26,135 raw 微量销毁使冻结净额高于链上现值）；SUITE 136 全绿
 - **6.52.10**（2026-08-26）批 11 五查冻结快照与活观测分家：发布深验 solana 同文件绑定改两态（静态态原语义逐字保留；冻结态哈希绑定案内密封冻结观测 bundle `data/solana_observation_bundle_frozen.json`，信封+观测深验+sha256/size 双绑三重防伪）；handoff 冻结态必进 data_map/artifacts；job spec supply --work-dir 分家防覆盖封账件（ARC 真实覆盖事故+密封指纹逐字节恢复驱动）；CT-SQDGAP-34；SUITE 135 全绿
 - **6.52.9**（2026-08-26）批 10 五查 exact_reconcile 活链协议修正（方案 A·用户裁决）：第五查从"消费观测到的当前 slot"改为"钉账本缓存冻结点字面量"，观测点与冻结点的现值差由 supply_truth 10bps 容差兜底；runner 占位符校验反转＋receipt target 三层同深放宽（chain/token 全等、冻结 slot ≤ 观测 slot）＋深验既有正向绑定（receipt.as_of == cache finalized_upper_slot）考据确认；先红后绿 N1-N5＋CT-SQDGAP-33 防回流；SUITE 134 全绿
 - **6.52.8**（2026-08-26）solana_observation jsonParsed 兼容：v0+ALT 交易在 jsonParsed 编码下公共 RPC（publicnode/api.mainnet-beta）不带 meta.loadedAddresses（地址已并入 dict 形态 accountKeys），原校验一律报错致五查观测在公共端点全断；改为仅当 accountKeys 为 str 键（裸 json 编码）时仍强制 loadedAddresses，dict 键豁免；ARC 五查实跑验证
@@ -65,6 +66,15 @@
 - **6.20.1** 2026-08-05 修 5 处阻断级文档漂移（A4 前禁写报告冲突/easy 残留/惯犯回灌 docstring/批量预采集残留/旧 Par 路线历史降级）＋docs_lint 增中文禁词与 Python module docstring 扫描
 
 更早版本（6.20.0 及以前）详见 `archive/CHANGELOG-archive.md`。
+
+## [6.52.11] - 2026-08-27 — 批 12 分布扫描器冻结态供应漂移容差（方案 A 同族第四消费点）
+
+- **根因（ARC A3 第 8 项实跑暴露）**：`holder_distribution_scan.load_supply` 硬拒 `net > onchain`——静态时点假设（冻结重放净额不可能高于链上现值）。方案 A 冻结态下 onchain 取自观测时点，封账后一笔 26,135 raw 微量销毁使 onchain(现在) < net(冻结点)；supply_truth 闸自己按 10bps 容差判 PASS（diff_bps=0.0），扫描器却把这份 PASS 收据在门口再拒一遍 → distribution initial 全案 BLOCKED。
+- **修正**：漂移向（net>onchain）仅当同一收据 PASS/exit 0（既有 :235 检查）＋`diff` 字段与 net−onchain 逐位复算相等＋整数容差 `drift*10000 <= tolerance_bps*onchain` 时放行，并在 denominators 留痕 `supply_drift_raw`（v2 兼容可选字段）；任一不满足原句硬拒。静态向、Solana 快照闭合精确等式（容差 0）、分布分母语义零变化。
+- **波及面核查（关到同一深度）**：全库 rg 确认无第五个静态方向假设点（supply_truth_gate 生产者/shared_release_receipt 深验/发布闸 sha 比对，行号在 batch12_done.md）。
+- **防回流**：先红后绿 R1（ARC 同形数值）＋N1 diff 失配拒＋N2 边界外 1 raw 整数判定拒＋N3 非 PASS 拒＋N4 EVM/Solana 静态零变化；契约不新增编号（v2 向后兼容留痕，CT-DISTRIBUTION-01 既有锚不变）。
+- **验收（Fable）**：codex 施工约 25 分钟；本机 run_all 136 全绿；"PASS/exit 0"声明与 diff 表面不符疑点核实为既有代码非虚报。
+- **成本/质量指标**：外部网络调用 0；新增测试 1 文件；分析结论 0；传播级数字错误 0。
 
 ## [6.52.10] - 2026-08-26 — 批 11 五查冻结快照与活观测分家（方案 A 收尾层）
 

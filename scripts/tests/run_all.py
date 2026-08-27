@@ -171,6 +171,9 @@ SUITE += ['test_batch7_validator_coverage_gaps.py']
 # Batch 11：Solana 静态态同文件绑定不变；冻结态改绑案内 frozen bundle 指纹与 handoff 清单。
 SUITE += ['test_batch11_frozen_bundle_binding.py']
 
+# Batch 12：distribution scanner 尊重 supply_truth PASS 收据的冻结态容差，静态态零变化。
+SUITE += ['test_batch12_frozen_supply_drift.py']
+
 # v6.52.2 repair-20260824-lit-regression：F-007 series_format 堆叠语义与 F-008 evm_v2 集合闸。
 SUITE += ["test_lit_regression_f007.py", "test_lit_regression_f008.py"]  # v6.52.2 repair-20260824-lit-regression
 
