@@ -155,6 +155,7 @@ SUITE += ['test_csv_resume_collector_gate.py']
 # v6.52.0 SQD coverage/repair producer、reconcile v4 receipt 与 Solana A2 第五查收口。
 SUITE += [
     'test_sqd_coverage_probe.py',
+    'test_f03_sharedmap_reuse.py',
     'test_batch2d_stream_tail.py',
     'test_sqd_gap_repair.py',
     'test_reconcile_v4_receipt.py',

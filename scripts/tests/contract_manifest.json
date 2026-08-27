@@ -193,6 +193,7 @@
     {"id":"CT-SQDGAP-32","kind":"required","authority_file":"references/data-pipeline-solana-capture.md","needle":"CURRENT.json","stages":["A2","A5"]},
     {"id":"CT-SQDGAP-33","kind":"required","authority_file":"references/scan-schemas.md","needle":"`exact_reconcile` 的 argv 禁止出现该占位符","stages":["A2","A5"]},
     {"id":"CT-SQDGAP-34","kind":"required","authority_file":"references/scan-schemas.md","needle":"`data/solana_observation_bundle_frozen.json` 的 `holder_outputs.owners` 全等","stages":["A2","A5"]},
+    {"id":"CT-SQDGAP-35","kind":"required","authority_file":"references/scan-schemas.md","needle":"identity-anchor 行只证明历史锚，不计入 counts 覆盖并集","stages":["A2"]},
     {"id":"CT-BANNED-17","kind":"banned","authority_file":"references/data-pipeline-solana-capture.md","needle":"签名需要时可按该位置反查","stages":["A1","A2"]},
     {"id":"CT-BANNED-18","kind":"banned","authority_file":"references/data-pipeline-solana-capture.md","needle":"signature→(slot,tx_index) 映射经 getBlock","stages":["A1","A2"]},
     {"id":"CT-BANNED-19","kind":"banned","authority_file":"references/split-run.md","needle":"reconciliation_four_checks","stages":["A2","A5"]},

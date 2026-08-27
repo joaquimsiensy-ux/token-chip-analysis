@@ -13,6 +13,7 @@ import fcntl
 import gzip
 import json
 import os
+import re
 import sys
 import tempfile
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -48,6 +49,10 @@ KEY_FILE = Path.home() / ".config/helius/api-key"
 # Exact adapter discriminator; keep synchronized with net.py's curl_json
 # empty-stdout decode error.  Invalid JSON and other decode failures stay fatal.
 SQD_EMPTY_BODY_MESSAGE = "curl returned empty stdout"
+STABLE_METADATA_KEYS = frozenset({"dataset_id", "start_block", "real_time"})
+DYNAMIC_METADATA_KEYS = frozenset({"finalized_head", "number", "hash", "height"})
+KNOWN_METADATA_KEYS = STABLE_METADATA_KEYS | DYNAMIC_METADATA_KEYS
+HEAD_METADATA_KEYS = ("number", "height", "finalized_head")
 
 
 def utc_now():
@@ -192,6 +197,100 @@ def _normalize_metadata(value):
                 and not isinstance(item, float):
             normalized[key] = item
     return normalized
+
+
+def _unwrap_head_response(value):
+    if isinstance(value, dict) and "result" in value:
+        return value["result"]
+    return value
+
+
+def _identity_result(reason=None, **facts):
+    return {"ok": reason is None, "reason": reason, **facts}
+
+
+def _valid_stable_metadata_value(key, value):
+    if key == "dataset_id":
+        return type(value) is str and bool(value)
+    if key == "start_block":
+        return type(value) is int and value >= 0
+    if key == "real_time":
+        return type(value) is bool
+    return False
+
+
+def _strict_identity_equal(left, right):
+    return type(left) is type(right) and left == right
+
+
+def _validate_known_map_identity(asset, sqd_identity, metadata, current_head_raw):
+    """Pure fail-closed identity/head/template gate for shared-map reuse."""
+    if not isinstance(asset, dict) or not isinstance(metadata, dict):
+        return _identity_result("metadata-identity-changed")
+    sqd = asset.get("sqd")
+    if not isinstance(sqd, dict):
+        return _identity_result("metadata-identity-changed")
+    asset_metadata = sqd.get("metadata_normalized")
+    if not isinstance(asset_metadata, dict):
+        return _identity_result("metadata-identity-changed")
+    raw = _unwrap_head_response(current_head_raw)
+    if not isinstance(raw, dict):
+        return _identity_result("metadata-identity-changed")
+    if set(asset_metadata) - KNOWN_METADATA_KEYS \
+            or set(raw) - KNOWN_METADATA_KEYS:
+        return _identity_result("metadata-identity-changed")
+    for key in STABLE_METADATA_KEYS:
+        if key not in asset_metadata or key not in metadata:
+            return _identity_result("metadata-identity-changed")
+        asset_value = asset_metadata[key]
+        current_value = metadata[key]
+        if not _valid_stable_metadata_value(key, asset_value) \
+                or not _valid_stable_metadata_value(key, current_value) \
+                or not _strict_identity_equal(asset_value, current_value):
+            return _identity_result("metadata-identity-changed")
+        if key in raw and (not _valid_stable_metadata_value(key, raw[key])
+                           or not _strict_identity_equal(raw[key], asset_value)):
+            return _identity_result("metadata-identity-changed")
+
+    aliases = []
+    for key in HEAD_METADATA_KEYS:
+        if key not in raw:
+            continue
+        value = raw[key]
+        if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+            return _identity_result("head-invalid")
+        aliases.append(value)
+    if not aliases:
+        return _identity_result("head-invalid")
+    if len(set(aliases)) != 1:
+        return _identity_result("metadata-alias-conflict")
+    current_head = aliases[0]
+
+    if sqd.get("endpoint_fingerprint") != sqd_identity:
+        return _identity_result("endpoint-fingerprint-changed")
+    head_at_scan = sqd.get("finalized_head_at_scan")
+    if not isinstance(head_at_scan, int) or isinstance(head_at_scan, bool) \
+            or head_at_scan < 0:
+        return _identity_result("head-at-scan-missing")
+    if current_head < head_at_scan:
+        return _identity_result("head-regressed")
+    slot_meta = asset.get("slot_counts")
+    to_slot = slot_meta.get("to_slot") if isinstance(slot_meta, dict) else None
+    if not isinstance(to_slot, int) or isinstance(to_slot, bool) \
+            or to_slot > head_at_scan:
+        return _identity_result("map-exceeds-scan-head")
+    query_sha = sqd.get("query_body_sha256")
+    if not isinstance(query_sha, str) \
+            or re.fullmatch(r"[0-9a-f]{64}", query_sha) is None:
+        return _identity_result("query-template-missing")
+    if query_sha != sqd_query_template_sha256():
+        return _identity_result("query-template-changed")
+    anchor_hash = asset_metadata.get("hash")
+    if not isinstance(anchor_hash, str) or not anchor_hash:
+        return _identity_result("identity-anchor-unavailable")
+    return _identity_result(
+        finalized_head_at_scan=head_at_scan, current_finalized_head=current_head,
+        anchor_hash=anchor_hash)
 
 
 def _partition(start, end, width):
@@ -391,14 +490,132 @@ def _parse_time(value):
     return datetime.fromisoformat(str(value).replace("Z", "+00:00"))
 
 
+def sqd_identity_anchor_body(slot):
+    return {
+        "type": "solana", "fromBlock": int(slot), "toBlock": int(slot),
+        "includeAllBlocks": True,
+        "fields": {"block": {"number": True, "hash": True}},
+    }
+
+
+def _check_identity_anchor(transport, slot, expected_hash, ledger, endpoints):
+    body = sqd_identity_anchor_body(slot)
+    row = {
+        "seq": 0, "ts": utc_now(), "provider": "SQD",
+        "mode": "identity-anchor", "counts_coverage": False,
+        "query_body_sha256": sha256_bytes(canonical_json(body)),
+        "from": slot, "to": slot, "http_status": None,
+        "returned_from": None, "returned_to": None, "n_blocks": 0,
+        "slots_covered": 0, "empty_response": False, "bytes": 0,
+        "response_sha256": None, "ok": False,
+    }
+    try:
+        result = transport.call("sqd-stream", body)
+        row["http_status"] = _result_http_status(result)
+    except Exception as exc:
+        row["error"] = _safe_text(exc, endpoints)
+        _append_ledger(ledger, [row])
+        return "identity-anchor-request-failed"
+    if not result.ok:
+        row["error"] = _result_error(result, endpoints)
+        _append_ledger(ledger, [row])
+        return "identity-anchor-request-failed"
+    try:
+        raw = canonical_json(result.value)
+        row.update(bytes=len(raw), response_sha256=sha256_bytes(raw))
+        blocks = result.value if isinstance(result.value, list) else [result.value]
+        if len(blocks) != 1 or not isinstance(blocks[0], dict):
+            raise ValueError("identity anchor response must contain exactly one block")
+        header = blocks[0].get("header")
+        if not isinstance(header, dict):
+            raise ValueError("identity anchor header missing")
+        number = header.get("number")
+        block_hash = header.get("hash")
+        if not isinstance(number, int) or isinstance(number, bool) or number != slot:
+            raise ValueError("identity anchor number mismatch")
+        if not isinstance(block_hash, str) or not block_hash:
+            raise ValueError("identity anchor hash missing")
+        row.update(returned_from=number, returned_to=number, n_blocks=1, ok=True)
+    except (TypeError, ValueError) as exc:
+        row["error"] = _safe_text(exc, endpoints)
+        _append_ledger(ledger, [row])
+        return "identity-anchor-response-invalid"
+    _append_ledger(ledger, [row])
+    if block_hash != expected_hash:
+        return "identity-anchor-mismatch"
+    return None
+
+
+def _contiguous_ranges(slots):
+    ranges = []
+    start = end = None
+    for slot in slots:
+        if start is None:
+            start = end = slot
+        elif slot == end + 1:
+            end = slot
+        else:
+            ranges.append((start, end))
+            start = end = slot
+    if start is not None:
+        ranges.append((start, end))
+    return ranges
+
+
+def _recheck_known_slots(transport, recheck, asset_counts, afrom, workers,
+                         ledger, endpoints):
+    ranges = _contiguous_ranges(recheck)
+    completed = []
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        futures = {
+            pool.submit(_scan_request, transport, start, end, 0, endpoints,
+                        mode="recheck"): (start, end)
+            for start, end in ranges
+        }
+        for future in as_completed(futures):
+            start, end = futures[future]
+            try:
+                row, part = future.result()
+            except Exception as exc:
+                row = {
+                    "seq": 0, "ts": utc_now(), "provider": "SQD",
+                    "mode": "recheck", "counts_coverage": True,
+                    "query_body_sha256": sha256_bytes(canonical_json(
+                        sqd_query_body(start, end))),
+                    "from": start, "to": end, "http_status": None,
+                    "returned_from": None, "returned_to": None, "n_blocks": 0,
+                    "slots_covered": 0, "empty_response": False, "bytes": 0,
+                    "response_sha256": None, "ok": False,
+                    "error": _safe_text(exc, endpoints),
+                }
+                part = None
+            completed.append((start, end, row, part))
+
+    actual = {}
+    failure = None
+    for start, end, row, part in sorted(completed):
+        _append_ledger(ledger, [row])
+        if part is None or len(part) != end - start + 1:
+            failure = failure or f"recheck-request-failed:{start}-{end}"
+            continue
+        for offset, value in enumerate(part):
+            slot = start + offset
+            if value != asset_counts[slot - afrom]:
+                failure = failure or f"recheck-mismatch:{slot}"
+            actual[slot] = value
+    return actual, failure
+
+
 def _load_known_map(path, mint_from, mint_to, sqd_identity, metadata,
-                    transport, ledger, endpoints):
+                    transport, ledger, endpoints, *, current_head_raw=None,
+                    workers=1):
     """Validate and recheck a shared map; return reusable counts or fallback."""
     asset_path = Path(path).resolve()
     info = {"asset_path": str(asset_path), "version": None, "sha256": None,
             "supersedes": None, "generated_at": None, "reused_ranges": [],
             "canary": {"slots": [], "counts_sha256": sha256_bytes(b""),
                        "verified_at": utc_now()}}
+    ledger_start = len(ledger)
     try:
         shared_checked = validate_shared_map(asset_path)
         if not shared_checked["ok"]:
@@ -418,10 +635,11 @@ def _load_known_map(path, mint_from, mint_to, sqd_identity, metadata,
             days=int(asset.get("ttl_days", 30)))
         if datetime.now(timezone.utc) > expires:
             raise ValueError("ttl-expired")
-        if asset.get("sqd", {}).get("endpoint_fingerprint") != sqd_identity:
-            raise ValueError("endpoint-fingerprint-changed")
-        if asset.get("sqd", {}).get("metadata_normalized") != metadata:
-            raise ValueError("metadata-changed")
+        identity = _validate_known_map_identity(
+            asset, sqd_identity, metadata,
+            metadata if current_head_raw is None else current_head_raw)
+        if not identity["ok"]:
+            raise ValueError(identity["reason"])
         slot_meta = asset["slot_counts"]
         if slot_meta.get("encoding") != COUNT_ENCODING:
             raise ValueError("counts-encoding-mismatch")
@@ -448,6 +666,11 @@ def _load_known_map(path, mint_from, mint_to, sqd_identity, metadata,
         bitmap_check = validate_blocks_bitmap(blocks_raw, afrom, ato)
         if not bitmap_check["ok"]:
             raise ValueError("blocks-bitmap-invalid")
+        anchor_failure = _check_identity_anchor(
+            transport, identity["finalized_head_at_scan"], identity["anchor_hash"],
+            ledger, endpoints)
+        if anchor_failure is not None:
+            raise ValueError(anchor_failure)
         canary = asset.get("canary") or {}
         slots = canary.get("slots")
         expected_counts = canary.get("counts")
@@ -456,14 +679,10 @@ def _load_known_map(path, mint_from, mint_to, sqd_identity, metadata,
             raise ValueError("canary-shape-invalid")
         recheck = sorted(set(slots + asset.get("candidate_slots", [])
                              + asset.get("refuted_slots", [])))
-        actual = {}
-        for slot in recheck:
-            row, part = _scan_request(transport, slot, slot, 0, endpoints,
-                                      mode="recheck")
-            _append_ledger(ledger, [row])
-            if part is None or part[0] != asset_counts[slot - afrom]:
-                raise ValueError(f"recheck-mismatch:{slot}")
-            actual[slot] = part[0]
+        actual, recheck_failure = _recheck_known_slots(
+            transport, recheck, asset_counts, afrom, workers, ledger, endpoints)
+        if recheck_failure is not None:
+            raise ValueError(recheck_failure)
         actual_canary = [actual[slot] for slot in slots]
         if actual_canary != expected_counts:
             raise ValueError("canary-counts-changed")
@@ -480,6 +699,9 @@ def _load_known_map(path, mint_from, mint_to, sqd_identity, metadata,
         return info, asset_counts[overlap_from - afrom:overlap_to - afrom + 1], \
             overlap_from, overlap_to
     except Exception as exc:
+        for row in ledger[ledger_start:]:
+            if row.get("mode") == "recheck":
+                row["counts_coverage"] = False
         info["fallback_reason"] = _safe_text(exc, endpoints)
         return info, None, None, None
 
@@ -923,7 +1145,8 @@ def run_probe(args):
     if not args.resume and args.known_map:
         shared_map, reused, reuse_from, reuse_to = _load_known_map(
             args.known_map, args.from_slot, args.to_slot, sqd_identity, metadata,
-            transport, ledger, endpoints)
+            transport, ledger, endpoints, current_head_raw=head_result.value,
+            workers=args.workers)
         if reused is not None:
             counts[reuse_from - args.from_slot:reuse_to - args.from_slot + 1] = reused
             scan_ranges.append({"from_slot": reuse_from, "to_slot": reuse_to,

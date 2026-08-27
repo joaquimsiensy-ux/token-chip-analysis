@@ -621,10 +621,10 @@ QUQ 与 PYTHIA 只用于算法层探索定标。防伪链测试使用合成 fixt
 | `producer.sha256` | string (sha256 hex) | 是 |  |
 | `sqd.endpoint_fingerprint` | string | 是 |  |
 | `sqd.dataset` | string | 是 | solana-mainnet |
-| `sqd.metadata_normalized` | object | 是 | 含 dataset_id,start_block,real_time,… |
+| `sqd.metadata_normalized` | object | 是 | 含稳定身份 dataset_id/start_block/real_time，也含 finalized_head/number/hash/height 等动态 head 观测；共享地图复用时按稳定/动态/未知三类校验：稳定字段全等，动态字段走单调与历史锚，未知字段 fail-closed |
 | `sqd.metadata_sha256` | string (sha256 hex) | 是 |  |
-| `sqd.finalized_head_at_scan` | integer | 是 |  |
-| `sqd.query_body_sha256` | string (sha256 hex) | 是 |  |
+| `sqd.finalized_head_at_scan` | integer | 是 | 共享地图复用必检：当前 finalized head 不得小于此值，地图区间不得超过此值 |
+| `sqd.query_body_sha256` | string (sha256 hex) | 是 | 共享地图复用必检：必须等于当前标准 SQD counts 查询模板哈希 |
 | `scan_ranges` | array[object] | 是 | 元素 from_slot,to_slot,mode；mode=full/map-reuse/recheck；并集覆盖案区间 |
 | `sample_ranges` | array[object] | 否 | 不计入覆盖并集 |
 | `era_params.window` | integer | 是 | 1000000 |
@@ -682,6 +682,7 @@ QUQ 与 PYTHIA 只用于算法层探索定标。防伪链测试使用合成 fixt
 不变量：
 
 - scan_ranges 并集覆盖案区间；sample_ranges 不计入。
+- `identity-anchor` ledger 行记录本次 SQD 对历史锚 slot 的块号/块哈希实测，固定 `counts_coverage=false`。identity-anchor 行只证明历史锚，不计入 counts 覆盖并集；只有实际连续拉取的 `recheck` 行才声明对应重验点覆盖。
 - 无 UNSCANNED；解压长度等于区间长度；ledger 成功区间并集无洞且等于 scan_ranges 并集。
 - skipped_confirmation.ranges[] 每段字段恰为 {from,to,response_sha256,count,response_ok,array_monotonic_unique,array_in_range}。
 - complete 不落盘；离线 validator 的 complete 合取式＝response_ok ∧ array_monotonic_unique ∧ array_in_range ∧ (to−from+1) ≤ 500,000 ∧ reference_head_at_check ≥ to ∧ 位图该段长度 == to−from+1 ∧ popcount == count ∧ count ≤ 区间长度。

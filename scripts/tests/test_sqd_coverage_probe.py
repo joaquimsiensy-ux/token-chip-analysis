@@ -545,14 +545,20 @@ def test_shared_map_lifecycle_rechecks_all_known_and_canary():
         blocks_path.write_bytes(gzip.compress(exact.encode_bitmap(
             range(200, 264), 200, 263), mtime=0))
         metadata = {"dataset_id": "solana-mainnet", "start_block": 0,
-                    "real_time": True, "finalized_head": 1000}
+                    "real_time": True, "finalized_head": 1000,
+                    "number": 1000, "hash": "fixture-anchor-1000"}
         fixture_fingerprint = probe.endpoint_fingerprint("fixture://sqd")["sha256"]
         asset = {
             "schema": "sqd-solana-shared-coverage-map/v1", "version": "20260823",
             "generated_at": datetime.now(timezone.utc).isoformat(), "ttl_days": 30,
             "supersedes": None,
-            "sqd": {"endpoint_fingerprint": fixture_fingerprint,
-                    "metadata_normalized": metadata},
+            "sqd": {"dataset": "solana-mainnet",
+                    "endpoint_fingerprint": fixture_fingerprint,
+                    "finalized_head_at_scan": 1000,
+                    "metadata_normalized": metadata,
+                    "metadata_sha256": exact.sha256_bytes(
+                        exact.canonical_json(metadata)),
+                    "query_body_sha256": probe.sqd_query_template_sha256()},
             "slot_counts": {"path": counts_path.name,
                             "size": counts_path.stat().st_size,
                             "sha256": exact.sha256_file(counts_path),
@@ -571,6 +577,16 @@ def test_shared_map_lifecycle_rechecks_all_known_and_canary():
         responses = {}
         responses[probe.request_digest("sqd-head", {})] = {
             "ok": True, "value": metadata}
+        anchor_body = probe.sqd_identity_anchor_body(1000)
+        responses[probe.request_digest("sqd-stream", anchor_body)] = {
+            "ok": True, "value": [{"header": {
+                "number": 1000, "hash": "fixture-anchor-1000"}}]}
+        range_body = probe.sqd_query_body(200, 263)
+        responses[probe.request_digest("sqd-stream", range_body)] = {
+            "ok": True, "value": [
+                {"header": {"number": slot},
+                 "instructions": [{"transactionIndex": 0}]}
+                for slot in range(200, 264)]}
         for slot in range(200, 264):
             body = probe.sqd_query_body(slot, slot)
             responses[probe.request_digest("sqd-stream", body)] = {
@@ -586,7 +602,10 @@ def test_shared_map_lifecycle_rechecks_all_known_and_canary():
             asset_path, 200, 263, fixture_fingerprint, metadata,
             probe.FixtureTransport(fixture_dir), ledger, ["fixture://sqd"])
         assert reused == counts and (lower, upper) == (200, 263)
-        assert len(ledger) == 64 and "fallback_reason" not in info
+        assert len(ledger) == 2 and "fallback_reason" not in info
+        assert [(row["mode"], row["from"], row["to"])
+                for row in ledger] == [
+            ("identity-anchor", 1000, 1000), ("recheck", 200, 263)]
         assert len(info["canary"]["slots"]) == 64
 
         case = root / "case"
@@ -639,7 +658,8 @@ def test_export_shared_map_roundtrip_and_tamper_rejection():
         fixture.mkdir()
         lower, upper = 200, 263
         metadata = {"dataset_id": "solana-mainnet", "start_block": 0,
-                    "real_time": True, "number": 1000}
+                    "real_time": True, "number": 1000,
+                    "hash": "fixture-export-anchor-1000"}
         responses = {probe.request_digest("sqd-head", {}): {
             "ok": True, "value": metadata}}
         full_body = probe.sqd_query_body(lower, upper)
@@ -648,6 +668,10 @@ def test_export_shared_map_roundtrip_and_tamper_rejection():
                 {"header": {"number": slot},
                  "instructions": [{"transactionIndex": 0}]}
                 for slot in range(lower, upper + 1)]}
+        anchor_body = probe.sqd_identity_anchor_body(1000)
+        responses[probe.request_digest("sqd-stream", anchor_body)] = {
+            "ok": True, "value": [{"header": {
+                "number": 1000, "hash": "fixture-export-anchor-1000"}}]}
         for slot in range(lower, upper + 1):
             body = probe.sqd_query_body(slot, slot)
             responses[probe.request_digest("sqd-stream", body)] = {
@@ -686,6 +710,14 @@ def test_export_shared_map_roundtrip_and_tamper_rejection():
         assert probe.main(export_args) == 0
         assert [path.read_bytes() for path in triplet] == first_bytes
 
+        responses[probe.request_digest("sqd-head", {})] = {
+            "ok": True, "value": {
+                "dataset_id": "solana-mainnet", "start_block": 0,
+                "real_time": True, "number": 1010,
+                "hash": "fixture-current-head-1010"}}
+        (fixture / "responses.json").write_text(json.dumps({
+            "format": "sqd-coverage-transport-fixture-v1",
+            "responses": responses}), encoding="utf-8")
         second_case = root / "second"
         roundtrip = [
             "--mint", MINT, "--case-root", str(second_case),

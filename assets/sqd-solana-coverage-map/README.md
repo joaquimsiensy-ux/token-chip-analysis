@@ -19,7 +19,9 @@ JSON 是 `sqd-solana-coverage/v1` 去掉案级 `mint` 后的超集，并至少�
   "supersedes": null,
   "sqd": {
     "endpoint_fingerprint": "sha256",
-    "metadata_normalized": {}
+    "metadata_normalized": {},
+    "finalized_head_at_scan": 0,
+    "query_body_sha256": "sha256"
   },
   "slot_counts": {
     "path": "YYYYMMDD.counts.bin.gz",
@@ -46,6 +48,6 @@ JSON 是 `sqd-solana-coverage/v1` 去掉案级 `mint` 后的超集，并至少�
 }
 ```
 
-复用是 fail-closed 的：TTL 必须未过期，SQD `metadata_normalized` 与端点指纹必须一致，全部已知 candidate/refuted slot 必须逐 slot 复核，64 个 canary 的计数必须逐值相同。任一条件不成立，案级探针记录 `shared_map.fallback_reason` 并升级为全扫。`sample_ranges` 只是附加证据，永远不能补正式覆盖并集的洞。
+复用是 fail-closed 的（不确定就拒绝复用）：TTL 必须未过期，端点指纹和稳定身份字段（数据集、起始块、实时标志）必须全等；还要在本次 SQD 请求中实测旧 `finalized_head_at_scan` 的块哈希（历史锚）相同、当前 finalized head（最终确认高度）不倒退、查询模板哈希一致，并逐 slot 重验全部 canary/candidate/refuted 已知点。动态的 head、高度别名和当前 head 哈希允许向前变化，不再参与整份字典全等；任何未知 metadata 字段仍会 fail-closed 回退全扫。64 个 canary 的计数也必须逐值相同。任一条件不成立，案级探针记录 `shared_map.fallback_reason` 并升级为全扫。`sample_ranges` 只是附加证据，永远不能补正式覆盖并集的洞。
 
 地图只按单 slot 的“有块头但零 AdvanceNonce”判定候选；禁止用连续游程长度或阈值代替。共享资产不得直接手改，重扫产生新版本并以 `supersedes` 串联。
