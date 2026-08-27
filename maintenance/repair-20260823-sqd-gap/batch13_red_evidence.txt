@@ -1,0 +1,6 @@
+COMMAND: python3 scripts/tests/test_batch13_accounting_target.py --r1
+EXIT_CODE: 1
+snapshot_slot=103 accounts=1 owners=1 supply=100 activity=complete -> supply_snapshot.json
+[GATE] mode=standard verdict=PASS exit=0 -> accounting_mode.json
+[supply_truth] PASS  重放净供给=100  链上=100  差=0（0.0bps，容差 10bps）→ supply_truth.json
+FAIL R1/G1 frozen accounting target: AssertionError: reconciliation/accounting 公共深验失败: accounting target mismatch

@@ -42,6 +42,7 @@ from chain_registry import (evm_family, formal_ready_chains, get_chain_config,
                             release_tier_for, resolve_alias)
 from case_paths import safe_case_dir, safe_case_file
 from shared_release_receipt import (validate_accounting_receipt,
+                                    accounting_expected_target,
                                     canonical_target,
                                     SOLANA_FROZEN_OBSERVATION_BUNDLE,
                                     validate_evm_observation_source_chain,
@@ -448,8 +449,10 @@ def _verify_light_schema(case_dir, fails, manifest, legacy=False):
                 validate_solana_derived_bindings(
                     case_dir, exact["edge_source_binding"], extra_paths=art_paths)
             if not legacy:
+                expected_accounting = accounting_expected_target(
+                    target, recon_receipts)
                 _, accounting, _ = validate_accounting_receipt(
-                    case_dir, expected_target=target)
+                    case_dir, expected_target=expected_accounting)
                 validate_evm_observation_source_chain(
                     case_dir, accounting, recon_receipts["supply_truth"])
         except Exception as exc:

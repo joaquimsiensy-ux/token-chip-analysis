@@ -1486,6 +1486,24 @@ def validate_reconciliation_report(root, expected_target=None, *, return_receipt
     return (target, receipts) if return_receipts else target
 
 
+def accounting_expected_target(reconciliation_target, reconciliation_receipts):
+    """Select the accounting ledger target for static and frozen reconciliation."""
+    wrapper_target = canonical_target(reconciliation_target)
+    if chain_family(wrapper_target["chain"]) != "solana":
+        return wrapper_target
+    exact = (reconciliation_receipts or {}).get("exact_reconcile")
+    _require(isinstance(exact, dict),
+             "Solana accounting target selection lacks exact_reconcile receipt")
+    exact_target = canonical_target(exact.get("target"))
+    _require(exact_target["chain"] == wrapper_target["chain"]
+             and exact_target["token"] == wrapper_target["token"],
+             "Solana accounting/exact target chain or token mismatch")
+    _require(exact_target["as_of_block"] <= wrapper_target["as_of_block"],
+             "Solana accounting/exact target is later than wrapper target")
+    return exact_target if exact_target["as_of_block"] < wrapper_target["as_of_block"] \
+        else wrapper_target
+
+
 def validate_solana_derived_bindings(root, exact_binding, *, extra_paths=()):
     """Require every present/referenced Solana edge-derived JSON to bind exact."""
     root = Path(root).resolve()
@@ -1776,11 +1794,26 @@ def validate_evm_observation_source_chain(root, accounting, supply_truth_receipt
 def validate_sources(root):
     root = Path(root).resolve()
     target, accounting, _ = validate_accounting_receipt(root)
-    recon_target, receipts = validate_reconciliation_report(
-        root, target, return_receipts=True)
+    if chain_family(target["chain"]) == "evm":
+        # EVM has no fifth receipt; preserve the original target comparison path.
+        recon_target, receipts = validate_reconciliation_report(
+            root, target, return_receipts=True)
+    else:
+        recon_target, receipts = validate_reconciliation_report(
+            root, return_receipts=True)
+        expected_accounting = accounting_expected_target(recon_target, receipts)
+        if expected_accounting == canonical_target(recon_target):
+            # Static Solana preserves the original wrapper/accounting equality.
+            if canonical_target(target) != canonical_target(recon_target):
+                raise ValueError("reconciliation target/schema mismatch")
+        else:
+            # Frozen Solana keeps the validator strict; only the caller-selected
+            # expected target changes from the live wrapper to the exact receipt.
+            target, accounting, _ = validate_accounting_receipt(
+                root, accounting=accounting, expected_target=expected_accounting)
     validate_evm_observation_source_chain(
         root, accounting, receipts["supply_truth"])
-    validate_adversarial_review(root, recon_target)
+    validate_adversarial_review(root, target)
     return target
 
 

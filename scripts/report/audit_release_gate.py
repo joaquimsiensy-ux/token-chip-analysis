@@ -281,6 +281,34 @@ def check_formal_case_chain(case_dir, data, errors):
 
     token_claims = []
     block_claims = []
+    reconciliation_block = (reconciliation_target or {}).get("as_of_block")
+    if isinstance(accounting, dict) and reconciliation_target is not None \
+            and accounting.get("as_of_block") != reconciliation_block:
+        # Dynamic Solana has two honest times: the wrapper observes "now", while
+        # accounting and all frozen-ledger consumers remain bound to exact_reconcile.
+        # Grant the two-state projection only after the current deep validator has
+        # proved the exact receipt and its frozen target.
+        try:
+            from shared_release_receipt import (accounting_expected_target,
+                                                canonical_target,
+                                                validate_reconciliation_report)
+            checked_target, checked_receipts = validate_reconciliation_report(
+                case_dir, return_receipts=True)
+            expected_accounting = accounting_expected_target(
+                checked_target, checked_receipts)
+            accounting_target = canonical_target({
+                "chain": accounting.get("chain"),
+                "token": accounting.get("token") or accounting.get("mint"),
+                "as_of_block": accounting.get("as_of_block"),
+            })
+            checked_wrapper = canonical_target(checked_target)
+            if expected_accounting == accounting_target \
+                    and expected_accounting["as_of_block"] < checked_wrapper["as_of_block"]:
+                reconciliation_block = expected_accounting["as_of_block"]
+        except Exception:
+            # The ordinary uniqueness check below and the dedicated deep check later
+            # both remain fail-closed; do not turn an invalid receipt into an exemption.
+            pass
     if isinstance(state, dict):
         state_token = state.get("token")
         if isinstance(state_token, dict):
@@ -305,7 +333,7 @@ def check_formal_case_chain(case_dir, data, errors):
                      reconciliation_target.get("token"),
                      source_chains.get("reconciliation"), errors)
         _claim_block(block_claims, "reconciliation_report.json.target.as_of_block",
-                     reconciliation_target.get("as_of_block"), errors)
+                     reconciliation_block, errors)
     if shared_target is not None:
         _claim_token(token_claims, "shared_release_receipt.json.target.token",
                      shared_target.get("token"), source_chains.get("shared"), errors)

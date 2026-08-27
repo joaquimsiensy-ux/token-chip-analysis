@@ -10,6 +10,7 @@
 
 ## 版本索引（活跃窗口，新在上；每版一行，详情见下方对应条目）
 
+- **6.52.12**（2026-08-27）批 13 accounting 期望时点两态：中央选择器 `accounting_expected_target`（Solana 冻结态取 exact 收据冻结点、静态与 EVM 零变化），handoff verify/validate_sources/audit 块声明三消费面同深接入（audit 投影以深验成功为前提，异常回落原判）；方案 A 同族第五消费点（ARC handoff 实跑暴露：A0 会计核定产在封账点 vs verify 拿观测时点当期望）；SUITE 137 全绿
 - **6.52.11**（2026-08-27）批 12 分布扫描器冻结态供应漂移容差：`load_supply` 的 `net>onchain` 静态硬拒改两态——漂移向仅当 supply_truth 收据 PASS/exit 0、diff 逐位复算相等、整数容差内（`drift*10000<=tolerance_bps*onchain`）放行并留痕 `supply_drift_raw`；静态向/快照闭合锚/分母语义零变化；方案 A 同族第四消费点（ARC A3 第 8 项实跑暴露：封账后 26,135 raw 微量销毁使冻结净额高于链上现值）；SUITE 136 全绿
 - **6.52.10**（2026-08-26）批 11 五查冻结快照与活观测分家：发布深验 solana 同文件绑定改两态（静态态原语义逐字保留；冻结态哈希绑定案内密封冻结观测 bundle `data/solana_observation_bundle_frozen.json`，信封+观测深验+sha256/size 双绑三重防伪）；handoff 冻结态必进 data_map/artifacts；job spec supply --work-dir 分家防覆盖封账件（ARC 真实覆盖事故+密封指纹逐字节恢复驱动）；CT-SQDGAP-34；SUITE 135 全绿
 - **6.52.9**（2026-08-26）批 10 五查 exact_reconcile 活链协议修正（方案 A·用户裁决）：第五查从"消费观测到的当前 slot"改为"钉账本缓存冻结点字面量"，观测点与冻结点的现值差由 supply_truth 10bps 容差兜底；runner 占位符校验反转＋receipt target 三层同深放宽（chain/token 全等、冻结 slot ≤ 观测 slot）＋深验既有正向绑定（receipt.as_of == cache finalized_upper_slot）考据确认；先红后绿 N1-N5＋CT-SQDGAP-33 防回流；SUITE 134 全绿
@@ -66,6 +67,14 @@
 - **6.20.1** 2026-08-05 修 5 处阻断级文档漂移（A4 前禁写报告冲突/easy 残留/惯犯回灌 docstring/批量预采集残留/旧 Par 路线历史降级）＋docs_lint 增中文禁词与 Python module docstring 扫描
 
 更早版本（6.20.0 及以前）详见 `archive/CHANGELOG-archive.md`。
+
+## [6.52.12] - 2026-08-27 — 批 13 accounting 期望时点两态（方案 A 同族第五消费点）
+
+- **根因（ARC handoff verify 实跑暴露）**：A0 会计模式核定天然产在封账点（ARC as_of=440368381、checked_at=封账时刻），handoff verify 却把五查 wrapper 的观测时点（441940997）当 expected_target 传给 `validate_accounting_receipt` → canonical 全等必炸 "accounting target mismatch"。静态案两时点相等从未暴露。
+- **修正**：新增中央选择器 `accounting_expected_target(recon_target, receipts)`——EVM→wrapper 不变；Solana 要求 exact 收据在场且 chain/token 全等、exact≤wrapper（违反即拒），严格早于才返回冻结点。三消费面同深接入：handoff `_verify_light_schema`、shared `validate_sources`（−3 路径；EVM 分支与 Solana 静态分支原语义逐字保留，A4 seal 绑定时点随 accounting target=冻结账本语义）、audit_release_gate 块声明去重（冻结点投影仅在深验成功后授予，异常回落原判 fail-closed）。`validate_accounting_receipt` 本体校验零放宽。
+- **防回流**：先红后绿 R1（ARC 同形三时点夹具）＋N1 accounting 双非时点拒＋N2 chain/token 错配拒＋静态/EVM 纵切片回归零变化。
+- **验收（Fable）**：codex 施工约 30 分钟；本机 run_all 137 全绿；audit 投影的 fail-closed 方向核查（except 回落=更严）。
+- **成本/质量指标**：外部网络调用 0；新增测试 1 文件；分析结论 0；传播级数字错误 0。
 
 ## [6.52.11] - 2026-08-27 — 批 12 分布扫描器冻结态供应漂移容差（方案 A 同族第四消费点）
 
