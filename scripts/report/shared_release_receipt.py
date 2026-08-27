@@ -1756,8 +1756,25 @@ def validate_accounting_receipt(root, accounting=None, expected_target=None):
     bundle_ref = accounting.get("observation_bundle")
     _require(isinstance(bundle_ref, dict),
              "solana accounting does not bind observation bundle")
-    bundle_path = _bound_case_ref(
-        root, bundle_ref, "solana accounting observation bundle")
+    bundle_label = "solana accounting observation bundle"
+    try:
+        bundle_path = _bound_case_ref(root, bundle_ref, bundle_label)
+    except ValueError as original_error:
+        # 冻结态里正式路径可能已由后续活观测占用；只有路径现物的内容指纹不匹配
+        # 才允许按同一 size+sha256 去冻结件寻址。路径逃逸、symlink、缺件等安全失败
+        # 不得进入兜底，继续由通用 _bound_case_ref 原样 fail-closed。
+        content_mismatches = {
+            f"{bundle_label} size mismatch",
+            f"{bundle_label} sha256 mismatch",
+        }
+        if str(original_error) not in content_mismatches:
+            raise
+        frozen_ref = dict(bundle_ref)
+        frozen_ref["path"] = SOLANA_FROZEN_OBSERVATION_BUNDLE
+        try:
+            bundle_path = _bound_case_ref(root, frozen_ref, bundle_label)
+        except (OSError, ValueError):
+            raise original_error from None
     bundle = json.loads(bundle_path.read_text(encoding="utf-8"))
     from solana_observation import validate_observation_bundle
     validate_observation_bundle(

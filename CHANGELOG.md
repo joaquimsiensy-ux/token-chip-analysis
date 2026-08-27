@@ -10,6 +10,7 @@
 
 ## 版本索引（活跃窗口，新在上；每版一行，详情见下方对应条目）
 
+- **6.52.13**（2026-08-27）批 14 accounting 观测 bundle 绑定冻结态内容寻址兜底：正式路径现物指纹不匹配（仅 size/sha mismatch 两种）时按收据记录的同一 size+sha256 到冻结件 `data/solana_observation_bundle_frozen.json` 寻址（哈希是身份、路径只是地址；兜底命中后深验零跳过），安全类失败（逃逸/symlink/缺件）不兜底、兜底失败回抛原错；方案 A 同族第六消费点（ARC handoff 第 2 发暴露：封账期收据绑定的正式路径被活观测占用）；SUITE 138 全绿
 - **6.52.12**（2026-08-27）批 13 accounting 期望时点两态：中央选择器 `accounting_expected_target`（Solana 冻结态取 exact 收据冻结点、静态与 EVM 零变化），handoff verify/validate_sources/audit 块声明三消费面同深接入（audit 投影以深验成功为前提，异常回落原判）；方案 A 同族第五消费点（ARC handoff 实跑暴露：A0 会计核定产在封账点 vs verify 拿观测时点当期望）；SUITE 137 全绿
 - **6.52.11**（2026-08-27）批 12 分布扫描器冻结态供应漂移容差：`load_supply` 的 `net>onchain` 静态硬拒改两态——漂移向仅当 supply_truth 收据 PASS/exit 0、diff 逐位复算相等、整数容差内（`drift*10000<=tolerance_bps*onchain`）放行并留痕 `supply_drift_raw`；静态向/快照闭合锚/分母语义零变化；方案 A 同族第四消费点（ARC A3 第 8 项实跑暴露：封账后 26,135 raw 微量销毁使冻结净额高于链上现值）；SUITE 136 全绿
 - **6.52.10**（2026-08-26）批 11 五查冻结快照与活观测分家：发布深验 solana 同文件绑定改两态（静态态原语义逐字保留；冻结态哈希绑定案内密封冻结观测 bundle `data/solana_observation_bundle_frozen.json`，信封+观测深验+sha256/size 双绑三重防伪）；handoff 冻结态必进 data_map/artifacts；job spec supply --work-dir 分家防覆盖封账件（ARC 真实覆盖事故+密封指纹逐字节恢复驱动）；CT-SQDGAP-34；SUITE 135 全绿
@@ -67,6 +68,14 @@
 - **6.20.1** 2026-08-05 修 5 处阻断级文档漂移（A4 前禁写报告冲突/easy 残留/惯犯回灌 docstring/批量预采集残留/旧 Par 路线历史降级）＋docs_lint 增中文禁词与 Python module docstring 扫描
 
 更早版本（6.20.0 及以前）详见 `archive/CHANGELOG-archive.md`。
+
+## [6.52.13] - 2026-08-27 — 批 14 accounting bundle 绑定冻结态内容寻址兜底（方案 A 同族第六消费点）
+
+- **根因（ARC handoff verify 第 2 发暴露）**：A0 会计核定收据按 path+size+sha256 绑定其观测 bundle（当时正式路径=data/solana_observation_bundle.json、内容=封账观测）。方案 A 后该路径被五查活观测占用且 supply_truth 也按此路径绑活内容——同一路径被两份合法收据绑定两份不同内容，案级无解；`_bound_case_ref` 按路径现物验哈希必炸 size mismatch。
+- **修正**：solana accounting 分支局部兜底——`_bound_case_ref` 抛错且错误恰为内容指纹类（size/sha mismatch 两种字符串精确匹配）时，以**收据记录的同一 size+sha256** 改址冻结件重试（复用通用绑定器，指纹权威不变=字节同一才认）；安全类失败（路径逃逸/symlink/缺件）直接回抛不兜底；兜底失败回抛原错。命中后 validate_observation_bundle 深验+slot 绑定检查零跳过。`_bound_case_ref` 本体与 EVM 分支零变化。
+- **防回流**：先红后绿 R1（ARC 同形夹具）＋9 项测试（含冻结件被改 1 字节拒/缺件拒/安全失败不进兜底/静态与 EVM 零变化回归）。
+- **验收（Fable）**：codex 施工约 20 分钟；本机 run_all 138 全绿；兜底触发条件白名单式（两种精确错误串）审查通过。
+- **成本/质量指标**：外部网络调用 0；新增测试 1 文件；分析结论 0；传播级数字错误 0。
 
 ## [6.52.12] - 2026-08-27 — 批 13 accounting 期望时点两态（方案 A 同族第五消费点）
 
