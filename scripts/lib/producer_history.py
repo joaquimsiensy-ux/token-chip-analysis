@@ -73,6 +73,22 @@ PRODUCER_HISTORY = (
         "reason": "v6.52.3 registers the atomic CURRENT pointer from the stream-tail-aware frozen probe.",
     },
     {
+        "script": "scripts/solana/sqd_coverage_probe.py",
+        "sha256": "be415db3552588532ff195126ddd53aefe9d3c14785da64c2be4cf23804f7bea",
+        "commit": "f0469a376c0101759f260dafb1678c00ff785d65",
+        "protocol": "sqd-solana-coverage/v1",
+        "status": "ACTIVE",
+        "reason": "v6.52.14 registers the shared-map probe with three-way identity checks, a historical anchor, and concurrent rechecks.",
+    },
+    {
+        "script": "scripts/solana/sqd_coverage_probe.py",
+        "sha256": "be415db3552588532ff195126ddd53aefe9d3c14785da64c2be4cf23804f7bea",
+        "commit": "f0469a376c0101759f260dafb1678c00ff785d65",
+        "protocol": "sqd-solana-coverage-pointer/v1",
+        "status": "ACTIVE",
+        "reason": "v6.52.14 registers the atomic CURRENT pointer producer from the same frozen F-03 probe.",
+    },
+    {
         "script": "scripts/solana/sqd_gap_repair.py",
         "sha256": "c8beb16e998c5019f6d3cfee0cb14ca163b4dcc3b7d3eb9bdd43fdfd6e44d137",
         "commit": "5782f76773fae0f3b9b036222ad85298992ec840",

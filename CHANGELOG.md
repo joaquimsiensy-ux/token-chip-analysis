@@ -10,6 +10,7 @@
 
 ## 版本索引（活跃窗口，新在上；每版一行，详情见下方对应条目）
 
+- **6.52.14**（2026-08-27）F-03 共享 SQD 地图复用闸修复（codex 六视角 review P1，修复中新引入 b005a468）：身份三分类＋历史锚＋head 单调＋模板绑定；已知点只连续合并并发重验，失败整体回退且撤销本轮 recheck 覆盖声明；`validate_shared_map` 同深扩全，`validate_coverage` 按 D1 用户裁决接 producer_history；CT-SQDGAP-35；20260827 资产零字节改动即刻可复用；盲审 R1 BLOCK 三项消化后 R2 PASS；两段提交完成 producer 双协议登记，SUITE 138→139
 - **shared-map 20260827**（2026-08-27）Solana SQD 共享覆盖地图首版入库：源=ARC 全史普查 probe 32dc03effa707da1（306,451,717→440,368,381 共 1.339 亿 slot 100% 覆盖、getBlocks 位图全程、defect_candidate=153,667 已全普查驳回/确认），TTL 30 天、消费按 capture §13e 生命周期（已知 slot 仍逐个复核+canary）；三件=json+counts.bin.gz(97.7MB)+blocks.bin.gz
 - **6.52.13**（2026-08-27）批 14 accounting 观测 bundle 绑定冻结态内容寻址兜底：正式路径现物指纹不匹配（仅 size/sha mismatch 两种）时按收据记录的同一 size+sha256 到冻结件 `data/solana_observation_bundle_frozen.json` 寻址（哈希是身份、路径只是地址；兜底命中后深验零跳过），安全类失败（逃逸/symlink/缺件）不兜底、兜底失败回抛原错；方案 A 同族第六消费点（ARC handoff 第 2 发暴露：封账期收据绑定的正式路径被活观测占用）；SUITE 138 全绿
 - **6.52.12**（2026-08-27）批 13 accounting 期望时点两态：中央选择器 `accounting_expected_target`（Solana 冻结态取 exact 收据冻结点、静态与 EVM 零变化），handoff verify/validate_sources/audit 块声明三消费面同深接入（audit 投影以深验成功为前提，异常回落原判）；方案 A 同族第五消费点（ARC handoff 实跑暴露：A0 会计核定产在封账点 vs verify 拿观测时点当期望）；SUITE 137 全绿
@@ -69,6 +70,15 @@
 - **6.20.1** 2026-08-05 修 5 处阻断级文档漂移（A4 前禁写报告冲突/easy 残留/惯犯回灌 docstring/批量预采集残留/旧 Par 路线历史降级）＋docs_lint 增中文禁词与 Python module docstring 扫描
 
 更早版本（6.20.0 及以前）详见 `archive/CHANGELOG-archive.md`。
+
+## [6.52.14] - 2026-08-27 — F-03 共享 SQD 地图复用闸身份与重验闭环
+
+- **出处与根因**：codex 六视角 review 2026-08-27 将 F-03 判为 P1；问题由提交 b005a468 在修复中引入——复用闸把会随链前进的动态 head 当成不可变身份，真实 head 前进会误退全扫，也没有用历史块锚证明当前端点与冻结资产仍是同一段历史。
+- **身份闭环**：身份拆为稳定字段（数据集/起点/实时性）、动态 head 和未知字段三类；稳定身份严格全等，未知字段 fail-closed，历史锚 slot 的 block hash 必须当次实测一致，finalized head 只准单调不倒退，查询模板哈希必须绑定一致。
+- **重验与回退**：canary、candidate、refuted 等全部已知点只做连续区间合并后并发重验；任一请求、身份或重验失败都整体回退全扫，不部分复用。若复用途中失败，本轮已经成功的 recheck 行仍留作审计事实，但撤销其 `counts_coverage` 覆盖声明，保证最终 ledger 声明与实际交付 counts 字节来源一致。
+- **消费面与防回流**：`validate_shared_map` 扩到与生产复用闸同深；`validate_coverage` 按 D1 用户裁决接入 `producer_history`，coverage 与原子 CURRENT pointer 两协议分别登记同一冻结探针；新增 CT-SQDGAP-35 和端到端/并发/类型/失败回退矩阵。既有 `assets/sqd-solana-coverage-map/20260827` 三件零字节改动，升级后可立即复用。
+- **盲审与验收**：盲审第 1 轮判 BLOCK，三项发现（失败 recheck 覆盖声明、稳定身份类型洗白、anchor transport 裸异常）全部消化；第 2 轮 PASS。两段提交协议第二段完成版本面与 producer 登记，SUITE 138→139。
+- **成本/质量指标**：外部网络调用 0；资产改动 0 字节；新增 suite 入口 1；分析结论 0；传播级数字错误 0。
 
 ## [6.52.13] - 2026-08-27 — 批 14 accounting bundle 绑定冻结态内容寻址兜底（方案 A 同族第六消费点）
 
