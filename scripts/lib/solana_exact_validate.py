@@ -19,8 +19,14 @@ import json
 import re
 import sqlite3
 import tempfile
+from datetime import datetime
 from itertools import groupby
 from pathlib import Path
+
+try:
+    from producer_history import historical_producer_hashes
+except ModuleNotFoundError:  # Package import: scripts.lib.solana_exact_validate.
+    from .producer_history import historical_producer_hashes
 
 
 COVERAGE_SCHEMA = "sqd-solana-coverage/v1"
@@ -485,7 +491,17 @@ def validate_coverage(case_root, coverage_path, pointer_path,
         reasons.append("coverage producer path invalid")
     else:
         producer_file = Path(__file__).resolve().parents[2] / expected_producer_path
-        if not producer_file.is_file() or producer.get("sha256") != sha256_file(producer_file):
+        try:
+            current_sha = sha256_file(producer_file) if producer_file.is_file() else None
+            producer_sha = producer.get("sha256")
+            coverage_allowed = producer_sha == current_sha or producer_sha in \
+                historical_producer_hashes(expected_producer_path, COVERAGE_SCHEMA)
+            pointer_allowed = producer_sha == current_sha or producer_sha in \
+                historical_producer_hashes(expected_producer_path, COVERAGE_POINTER_SCHEMA)
+        except (KeyError, TypeError, ValueError) as exc:
+            reasons.append(f"coverage producer history invalid: {exc}")
+            coverage_allowed = pointer_allowed = False
+        if not coverage_allowed or not pointer_allowed:
             reasons.append("coverage producer sha256 mismatch")
     sqd = coverage.get("sqd") if isinstance(coverage.get("sqd"), dict) else {}
     metadata = sqd.get("metadata_normalized")
@@ -695,6 +711,9 @@ def validate_shared_map(asset_json_path):
         canonical_json(asset)
     except (OSError, ValueError, json.JSONDecodeError) as exc:
         return {"ok": False, "reasons": [f"shared map unreadable: {exc}"]}
+    if not isinstance(asset, dict):
+        return {"ok": False, "reasons": ["shared map must be object"],
+                "asset": asset, "counts": b"", "blocks_bitmap": b""}
     if asset.get("schema") != SHARED_MAP_SCHEMA:
         reasons.append("shared map schema mismatch")
     version = asset.get("version")
@@ -705,10 +724,57 @@ def validate_shared_map(asset_json_path):
     if "supersedes" not in asset or (asset.get("supersedes") is not None
                                       and not isinstance(asset.get("supersedes"), str)):
         reasons.append("shared map supersedes invalid")
-    if not isinstance(asset.get("generated_at"), str) or not asset["generated_at"]:
+    generated_at = asset.get("generated_at")
+    if not isinstance(generated_at, str) or not generated_at:
         reasons.append("shared map generated_at missing")
-    if not isinstance(asset.get("sqd"), dict):
+    else:
+        try:
+            datetime.fromisoformat(generated_at.replace("Z", "+00:00"))
+        except ValueError:
+            reasons.append("shared map generated_at invalid")
+
+    sqd = asset.get("sqd")
+    if not isinstance(sqd, dict):
         reasons.append("shared map SQD identity missing")
+        sqd = {}
+    metadata = sqd.get("metadata_normalized")
+    if not isinstance(metadata, dict):
+        reasons.append("shared map SQD metadata_normalized invalid")
+        metadata = {}
+    else:
+        metadata_sha = sha256_bytes(canonical_json(metadata))
+        if "metadata_sha256" in sqd and sqd.get("metadata_sha256") != metadata_sha:
+            reasons.append("shared map SQD metadata sha256 mismatch")
+    stable_identity_valid = (
+        type(metadata.get("dataset_id")) is str
+        and bool(metadata.get("dataset_id"))
+        and type(metadata.get("start_block")) is int
+        and metadata.get("start_block") >= 0
+        and type(metadata.get("real_time")) is bool
+    )
+    if not stable_identity_valid:
+        reasons.append("shared map SQD stable identity invalid")
+    if sqd.get("dataset") != metadata.get("dataset_id"):
+        reasons.append("shared map SQD dataset differs from metadata dataset_id")
+    finalized_head = metadata.get("finalized_head")
+    finalized_head_at_scan = sqd.get("finalized_head_at_scan")
+    if not _integer(finalized_head_at_scan) or finalized_head_at_scan < 0:
+        reasons.append("shared map SQD finalized_head_at_scan invalid")
+    if not _integer(finalized_head) or finalized_head < 0:
+        reasons.append("shared map SQD metadata finalized_head invalid")
+    elif _integer(finalized_head_at_scan) \
+            and finalized_head != finalized_head_at_scan:
+        reasons.append("shared map SQD finalized head differs from metadata")
+    alias_values = [metadata[key] for key in ("number", "height", "finalized_head")
+                    if key in metadata]
+    if any(not _integer(value) or value < 0 for value in alias_values) \
+            or len(set(alias_values)) > 1:
+        reasons.append("shared map SQD metadata aliases conflict")
+    for key, label in (("query_body_sha256", "query body sha256"),
+                       ("endpoint_fingerprint", "endpoint fingerprint")):
+        value = sqd.get(key)
+        if not isinstance(value, str) or re.fullmatch(r"[0-9a-f]{64}", value) is None:
+            reasons.append(f"shared map SQD {label} invalid")
 
     loaded = {}
     for key, encoding in (("slot_counts", COUNT_ENCODING),
@@ -735,14 +801,22 @@ def validate_shared_map(asset_json_path):
 
     counts = loaded.get("slot_counts", b"")
     blocks = loaded.get("blocks_bitmap", b"")
-    count_meta = asset.get("slot_counts") or {}
-    block_meta = asset.get("blocks_bitmap") or {}
+    count_meta = asset.get("slot_counts") if isinstance(
+        asset.get("slot_counts"), dict) else {}
+    block_meta = asset.get("blocks_bitmap") if isinstance(
+        asset.get("blocks_bitmap"), dict) else {}
     lower, upper = count_meta.get("from_slot"), count_meta.get("to_slot")
-    if not _integer(lower) or not _integer(upper) or lower > upper:
+    interval_valid = (_integer(lower) and _integer(upper)
+                      and 0 <= lower <= upper)
+    if not interval_valid:
         reasons.append("shared map interval invalid")
     else:
         if len(counts) != upper - lower + 1:
             reasons.append("shared map counts length mismatch")
+        elif any(value == 0 for value in counts):
+            reasons.append("shared map counts contains UNSCANNED")
+        if _integer(finalized_head_at_scan) and upper > finalized_head_at_scan:
+            reasons.append("shared map interval exceeds finalized head at scan")
         if (block_meta.get("from_slot"), block_meta.get("to_slot")) != (lower, upper):
             reasons.append("shared map binary intervals differ")
         bitmap = validate_blocks_bitmap(blocks, lower, upper)
@@ -754,10 +828,10 @@ def validate_shared_map(asset_json_path):
     if not isinstance(slots, list) or len(slots) != 64 \
             or not isinstance(canary_counts, list) or len(canary_counts) != 64:
         reasons.append("shared map canary must contain 64 slots and counts")
-    elif _integer(lower) and _integer(upper) \
+    elif interval_valid \
             and len(counts) == upper - lower + 1:
-        if slots != sorted(set(slots)) or any(
-                not _integer(slot) or slot < lower or slot > upper for slot in slots):
+        if any(not _integer(slot) or slot < lower or slot > upper for slot in slots) \
+                or slots != sorted(set(slots)):
             reasons.append("shared map canary slots invalid")
         elif any(not _integer(value) or not (0 <= value <= 255)
                  for value in canary_counts):
@@ -770,13 +844,18 @@ def validate_shared_map(asset_json_path):
     elif isinstance(slots, list) and isinstance(canary_counts, list):
         reasons.append("shared map canary cannot be checked against invalid counts")
 
-    candidates = asset.get("candidate_slots")
-    refuted = asset.get("refuted_slots")
-    if not isinstance(candidates, list) or candidates != sorted(set(candidates)):
-        reasons.append("shared map candidate_slots invalid")
-    if not isinstance(refuted, list) or refuted != sorted(set(refuted)):
-        reasons.append("shared map refuted_slots invalid")
-    if _integer(lower) and len(counts) == max(0, upper - lower + 1):
+    def checked_slots(value, label):
+        if not isinstance(value, list) \
+                or any(not _integer(slot) for slot in value) \
+                or value != sorted(set(value)) \
+                or (interval_valid and any(slot < lower or slot > upper for slot in value)):
+            reasons.append(f"shared map {label} invalid")
+            return None
+        return value
+
+    candidates = checked_slots(asset.get("candidate_slots"), "candidate_slots")
+    refuted = checked_slots(asset.get("refuted_slots"), "refuted_slots")
+    if interval_valid and len(counts) == upper - lower + 1:
         confirmation = None
         if blocks:
             segment = {"from": lower, "to": upper,
@@ -791,7 +870,7 @@ def validate_shared_map(asset_json_path):
             }
         classified = classify_four_states(
             counts, lower, confirmation=confirmation, blocks_bitmap=blocks)
-        if candidates != classified["candidate_slots"]:
+        if candidates is not None and candidates != classified["candidate_slots"]:
             reasons.append("shared map candidate_slots do not recompute from binaries")
     return {"ok": not reasons, "reasons": reasons, "asset": asset,
             "counts": counts, "blocks_bitmap": blocks}
