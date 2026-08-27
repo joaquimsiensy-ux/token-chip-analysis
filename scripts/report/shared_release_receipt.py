@@ -69,6 +69,7 @@ RECON_CHECK_KEYS = {
     "evm": ("balance", "supply", "supply_truth", "time"),
     "solana": ("supply", "balance", "supply_truth", "time", "exact_reconcile"),
 }
+SOLANA_FROZEN_OBSERVATION_BUNDLE = "data/solana_observation_bundle_frozen.json"
 RECON_RUNNERS = {"scripts/report/reconciliation_report.py"}
 ADVERSARIAL_RUNNERS = {"scripts/report/adversarial_review_runner.py"}
 GMGN_DIVERGENCE_NOTE_SCHEMA = "gmgn-divergence-note/v1"
@@ -1183,8 +1184,18 @@ def validate_reconciliation_check(root, key, item, target, family):
     if envelope_errors:
         raise ValueError(
             f"reconciliation {key} receipt envelope invalid: {envelope_errors[0]}；{migration}")
-    _require(canonical_target(receipt.get("target")) == canonical_target(target),
-             f"reconciliation {key} receipt target mismatch；{migration}")
+    if family == "solana" and key == "exact_reconcile":
+        exact_target = canonical_target(receipt.get("target"))
+        wrapper_target = canonical_target(target)
+        _require(exact_target["chain"] == wrapper_target["chain"]
+                 and exact_target["token"] == wrapper_target["token"]
+                 and exact_target["as_of_block"] <= wrapper_target["as_of_block"],
+                 "reconciliation exact_reconcile receipt target must match wrapper "
+                 "chain/token and its cache slot must not be later than the observed slot；"
+                 f"{migration}")
+    else:
+        _require(canonical_target(receipt.get("target")) == canonical_target(target),
+                 f"reconciliation {key} receipt target mismatch；{migration}")
     _require(receipt.get("verdict") == item.get("status")
              and receipt.get("exit_code") == item.get("exit_code"),
              f"reconciliation {key} wrapper/receipt verdict mismatch")
@@ -1429,18 +1440,68 @@ def validate_reconciliation_report(root, expected_target=None, *, return_receipt
     else:
         exact_ref = (receipts["exact_reconcile"].get("inputs") or {}).get(
             "holders_owners")
-        supply_ref = (receipts["supply"].get("holder_outputs") or {}).get("owners")
         exact_path = _bound_case_ref(root, exact_ref, "exact holders_owners")
-        supply_receipt_ref = checks["supply"].get("receipt") or {}
-        supply_receipt_path = _bound_case_ref(
-            root, supply_receipt_ref, "Solana supply receipt")
-        supply_path = _bound_case_ref(
-            root, supply_ref, "Solana supply holder_outputs.owners",
-            base=supply_receipt_path.parent)
-        _require(exact_path == supply_path,
-                 "exact_reconcile.inputs.holders_owners 与 supply observation bundle "
-                 "holder_outputs.owners 不是同一文件")
+        exact_target = canonical_target(receipts["exact_reconcile"].get("target"))
+        wrapper_target = canonical_target(target)
+        if exact_target["as_of_block"] == wrapper_target["as_of_block"]:
+            # 静态态保持批 5 原语义：exact 与 supply 必须消费同一个 owners 文件。
+            supply_ref = (receipts["supply"].get("holder_outputs") or {}).get("owners")
+            supply_receipt_ref = checks["supply"].get("receipt") or {}
+            supply_receipt_path = _bound_case_ref(
+                root, supply_receipt_ref, "Solana supply receipt")
+            supply_path = _bound_case_ref(
+                root, supply_ref, "Solana supply holder_outputs.owners",
+                base=supply_receipt_path.parent)
+            _require(exact_path == supply_path,
+                     "exact_reconcile.inputs.holders_owners 与 supply observation bundle "
+                     "holder_outputs.owners 不是同一文件")
+        else:
+            binding_hint = ("冻结态第五查快照必须哈希绑定冻结观测 bundle "
+                            f"{SOLANA_FROZEN_OBSERVATION_BUNDLE}")
+            try:
+                frozen_path = regular(root, SOLANA_FROZEN_OBSERVATION_BUNDLE)
+                frozen_bundle = json.loads(frozen_path.read_text(encoding="utf-8"))
+                envelope_errors = validate_receipt(frozen_bundle, case_root=root)
+                _require(not envelope_errors,
+                         f"{binding_hint}；信封校验失败: "
+                         + (envelope_errors[0] if envelope_errors else "unknown"))
+                from solana_observation import validate_observation_bundle
+                validate_observation_bundle(
+                    frozen_bundle, bundle_path=frozen_path,
+                    expected_mint=exact_target["token"])
+            except Exception as exc:
+                if binding_hint in str(exc):
+                    raise
+                raise ValueError(f"{binding_hint}；冻结 bundle 深验失败: {exc}") from exc
+            _require(canonical_target(frozen_bundle.get("target")) == exact_target,
+                     f"{binding_hint}；冻结 bundle target 必须与 exact_reconcile target 全等")
+            frozen_ref = (frozen_bundle.get("holder_outputs") or {}).get("owners")
+            _require(isinstance(frozen_ref, dict)
+                     and not isinstance(frozen_ref.get("size"), bool)
+                     and isinstance(frozen_ref.get("size"), int)
+                     and frozen_ref.get("size") == exact_ref.get("size")
+                     and frozen_ref.get("sha256") == exact_ref.get("sha256"),
+                     f"{binding_hint}；exact holders_owners 与冻结 bundle owners 的 "
+                     "sha256+size 必须全等")
     return (target, receipts) if return_receipts else target
+
+
+def accounting_expected_target(reconciliation_target, reconciliation_receipts):
+    """Select the accounting ledger target for static and frozen reconciliation."""
+    wrapper_target = canonical_target(reconciliation_target)
+    if chain_family(wrapper_target["chain"]) != "solana":
+        return wrapper_target
+    exact = (reconciliation_receipts or {}).get("exact_reconcile")
+    _require(isinstance(exact, dict),
+             "Solana accounting target selection lacks exact_reconcile receipt")
+    exact_target = canonical_target(exact.get("target"))
+    _require(exact_target["chain"] == wrapper_target["chain"]
+             and exact_target["token"] == wrapper_target["token"],
+             "Solana accounting/exact target chain or token mismatch")
+    _require(exact_target["as_of_block"] <= wrapper_target["as_of_block"],
+             "Solana accounting/exact target is later than wrapper target")
+    return exact_target if exact_target["as_of_block"] < wrapper_target["as_of_block"] \
+        else wrapper_target
 
 
 def validate_solana_derived_bindings(root, exact_binding, *, extra_paths=()):
@@ -1695,8 +1756,25 @@ def validate_accounting_receipt(root, accounting=None, expected_target=None):
     bundle_ref = accounting.get("observation_bundle")
     _require(isinstance(bundle_ref, dict),
              "solana accounting does not bind observation bundle")
-    bundle_path = _bound_case_ref(
-        root, bundle_ref, "solana accounting observation bundle")
+    bundle_label = "solana accounting observation bundle"
+    try:
+        bundle_path = _bound_case_ref(root, bundle_ref, bundle_label)
+    except ValueError as original_error:
+        # 冻结态里正式路径可能已由后续活观测占用；只有路径现物的内容指纹不匹配
+        # 才允许按同一 size+sha256 去冻结件寻址。路径逃逸、symlink、缺件等安全失败
+        # 不得进入兜底，继续由通用 _bound_case_ref 原样 fail-closed。
+        content_mismatches = {
+            f"{bundle_label} size mismatch",
+            f"{bundle_label} sha256 mismatch",
+        }
+        if str(original_error) not in content_mismatches:
+            raise
+        frozen_ref = dict(bundle_ref)
+        frozen_ref["path"] = SOLANA_FROZEN_OBSERVATION_BUNDLE
+        try:
+            bundle_path = _bound_case_ref(root, frozen_ref, bundle_label)
+        except (OSError, ValueError):
+            raise original_error from None
     bundle = json.loads(bundle_path.read_text(encoding="utf-8"))
     from solana_observation import validate_observation_bundle
     validate_observation_bundle(
@@ -1733,11 +1811,26 @@ def validate_evm_observation_source_chain(root, accounting, supply_truth_receipt
 def validate_sources(root):
     root = Path(root).resolve()
     target, accounting, _ = validate_accounting_receipt(root)
-    recon_target, receipts = validate_reconciliation_report(
-        root, target, return_receipts=True)
+    if chain_family(target["chain"]) == "evm":
+        # EVM has no fifth receipt; preserve the original target comparison path.
+        recon_target, receipts = validate_reconciliation_report(
+            root, target, return_receipts=True)
+    else:
+        recon_target, receipts = validate_reconciliation_report(
+            root, return_receipts=True)
+        expected_accounting = accounting_expected_target(recon_target, receipts)
+        if expected_accounting == canonical_target(recon_target):
+            # Static Solana preserves the original wrapper/accounting equality.
+            if canonical_target(target) != canonical_target(recon_target):
+                raise ValueError("reconciliation target/schema mismatch")
+        else:
+            # Frozen Solana keeps the validator strict; only the caller-selected
+            # expected target changes from the live wrapper to the exact receipt.
+            target, accounting, _ = validate_accounting_receipt(
+                root, accounting=accounting, expected_target=expected_accounting)
     validate_evm_observation_source_chain(
         root, accounting, receipts["supply_truth"])
-    validate_adversarial_review(root, recon_target)
+    validate_adversarial_review(root, target)
     return target
 
 

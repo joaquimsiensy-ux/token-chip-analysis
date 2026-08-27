@@ -1,0 +1,19 @@
+Batch 12 R1 RED evidence
+Repository HEAD before repair: 16d70464c077d27cf3ea6e357d2aee0ff0be5eda
+Command: PYTHONDONTWRITEBYTECODE=1 python3 -B scripts/tests/test_batch12_frozen_supply_drift.py
+Exit code: 1
+
+FAIL [R1/G1 ARC 同形 PASS 收据容差内冻结态漂移放行并留痕] BLOCK: distribution data_broken: 供给真值 onchain/net 非法
+{}
+ok   [N1 diff 与 net-onchain 不等仍拒]
+ok   [N2 超 tolerance_bps 一 raw 仍拒且计算不经浮点]
+ok   [N3 非 PASS 收据仍拒]
+ok   [N3 exit 非 0 收据仍拒]
+ok   [N4 bsc 静态态输出语义零变化]
+ok   [N4 solana 静态态输出语义零变化]
+FAIL: batch12 frozen supply drift contract
+
+Pre-repair static-suite baseline
+Command: PYTHONDONTWRITEBYTECODE=1 python3 -B scripts/tests/test_distribution_gate.py
+Exit code: 0
+Terminal line: PASS: distribution gate red-green contract

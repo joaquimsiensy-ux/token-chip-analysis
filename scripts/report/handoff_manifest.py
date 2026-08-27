@@ -42,7 +42,9 @@ from chain_registry import (evm_family, formal_ready_chains, get_chain_config,
                             release_tier_for, resolve_alias)
 from case_paths import safe_case_dir, safe_case_file
 from shared_release_receipt import (validate_accounting_receipt,
+                                    accounting_expected_target,
                                     canonical_target,
+                                    SOLANA_FROZEN_OBSERVATION_BUNDLE,
                                     validate_evm_observation_source_chain,
                                     validate_reconciliation_report,
                                     validate_solana_derived_bindings)
@@ -119,6 +121,20 @@ EXCLUDE_NAMES = {"config.json", MANIFEST_NAME}  # manifest 不含自身；config
 
 def utcnow():
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _solana_required_exact_paths(wrapper, exact):
+    """Exact receipt/inputs plus the frozen anti-forgery bundle in dynamic cases."""
+    exact_item = (wrapper.get("checks") or {}).get("exact_reconcile") or {}
+    required = {((exact_item.get("receipt") or {}).get("path"))}
+    required.update(ref.get("path") for ref in (exact.get("inputs") or {}).values()
+                    if isinstance(ref, dict))
+    exact_target = canonical_target(exact.get("target"))
+    wrapper_target = canonical_target(wrapper.get("target"))
+    if exact_target["as_of_block"] < wrapper_target["as_of_block"]:
+        required.add(SOLANA_FROZEN_OBSERVATION_BUNDLE)
+    required.discard(None)
+    return required
 
 
 def sha256_file(path):
@@ -276,14 +292,8 @@ def cmd_generate(a):
                 case_dir, return_receipts=True)
             if resolve_alias(recon_target["chain"]) == "sol":
                 wrapper = load_json(os.path.join(case_dir, "reconciliation_report.json"))
-                exact_item = (wrapper.get("checks") or {}).get("exact_reconcile") or {}
-                exact_path = ((exact_item.get("receipt") or {}).get("path"))
-                required_exact = {exact_path}
-                required_exact.update(
-                    ref.get("path") for ref in
-                    (recon_receipts["exact_reconcile"].get("inputs") or {}).values()
-                    if isinstance(ref, dict))
-                required_exact.discard(None)
+                required_exact = _solana_required_exact_paths(
+                    wrapper, recon_receipts["exact_reconcile"])
                 missing_map = sorted(required_exact - data_map_paths)
                 missing_artifacts = sorted(required_exact - seen)
                 if missing_map or missing_artifacts:
@@ -426,13 +436,7 @@ def _verify_light_schema(case_dir, fails, manifest, legacy=False):
             if resolve_alias(target.get("chain")) == "sol":
                 exact = recon_receipts["exact_reconcile"]
                 wrapper = load_json(os.path.join(case_dir, "reconciliation_report.json"))
-                exact_path = ((((wrapper.get("checks") or {}).get("exact_reconcile") or {})
-                               .get("receipt") or {}).get("path"))
-                required_exact = {exact_path}
-                required_exact.update(
-                    ref.get("path") for ref in (exact.get("inputs") or {}).values()
-                    if isinstance(ref, dict))
-                required_exact.discard(None)
+                required_exact = _solana_required_exact_paths(wrapper, exact)
                 data_map = load_json(os.path.join(case_dir, "data_map.json"))
                 mapped = {row.get("path") for row in data_map.get("files", [])
                           if isinstance(row, dict)}
@@ -445,8 +449,10 @@ def _verify_light_schema(case_dir, fails, manifest, legacy=False):
                 validate_solana_derived_bindings(
                     case_dir, exact["edge_source_binding"], extra_paths=art_paths)
             if not legacy:
+                expected_accounting = accounting_expected_target(
+                    target, recon_receipts)
                 _, accounting, _ = validate_accounting_receipt(
-                    case_dir, expected_target=target)
+                    case_dir, expected_target=expected_accounting)
                 validate_evm_observation_source_chain(
                     case_dir, accounting, recon_receipts["supply_truth"])
         except Exception as exc:

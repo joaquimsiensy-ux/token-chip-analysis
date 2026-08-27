@@ -160,11 +160,25 @@ SUITE += [
     'test_reconcile_v4_receipt.py',
     'test_recon_fifth_check.py',
 ]
+SUITE += ['test_batch3c_census_fields.py']  # v6.52.4 batch3c SQD census field contract
+SUITE += ['test_batch8_repair_scale.py']  # v6.52.6 Batch 8 producer scale and streaming contract
 
 # 批7 修复代深验三处校验覆盖缺口加固：缺口1(遍历主键绑定候选集致 confirmed-only slot
 # 严格校验被跳过)、缺口3(深验未校验边 slot ⊆ 声明窗口)；缺口2(自扫 coverage 无真实性
 # 复查)判定为离线信任边界仅在 batch7_done.md 记录，不进本 suite 断言。
 SUITE += ['test_batch7_validator_coverage_gaps.py']
+
+# Batch 11：Solana 静态态同文件绑定不变；冻结态改绑案内 frozen bundle 指纹与 handoff 清单。
+SUITE += ['test_batch11_frozen_bundle_binding.py']
+
+# Batch 12：distribution scanner 尊重 supply_truth PASS 收据的冻结态容差，静态态零变化。
+SUITE += ['test_batch12_frozen_supply_drift.py']
+
+# Batch 13：handoff/shared/audit 的 accounting 期望 target 支持静态/冻结两态。
+SUITE += ['test_batch13_accounting_target.py']
+
+# Batch 14：Solana accounting 冻结态 bundle 按 size+sha256 内容寻址，安全失败不兜底。
+SUITE += ['test_batch14_accounting_bundle_fallback.py']
 
 # v6.52.2 repair-20260824-lit-regression：F-007 series_format 堆叠语义与 F-008 evm_v2 集合闸。
 SUITE += ["test_lit_regression_f007.py", "test_lit_regression_f008.py"]  # v6.52.2 repair-20260824-lit-regression

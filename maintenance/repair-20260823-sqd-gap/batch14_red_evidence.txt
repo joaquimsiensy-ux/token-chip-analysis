@@ -1,0 +1,9 @@
+Batch 14 R1 red evidence
+Captured before any production-code change.
+
+HEAD: 4d23230d0eec7fd1ce7a0410622c2f1d5febdf71
+Command: python3 scripts/tests/test_batch14_accounting_bundle_fallback.py --r1
+Exit code: 1
+
+FAIL test_r1_g1_size_mismatch_uses_frozen_bundle: ValueError: solana accounting observation bundle size mismatch
+batch14 tests=1 failed=1

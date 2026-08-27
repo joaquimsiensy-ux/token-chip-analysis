@@ -10,6 +10,17 @@
 
 ## 版本索引（活跃窗口，新在上；每版一行，详情见下方对应条目）
 
+- **shared-map 20260827**（2026-08-27）Solana SQD 共享覆盖地图首版入库：源=ARC 全史普查 probe 32dc03effa707da1（306,451,717→440,368,381 共 1.339 亿 slot 100% 覆盖、getBlocks 位图全程、defect_candidate=153,667 已全普查驳回/确认），TTL 30 天、消费按 capture §13e 生命周期（已知 slot 仍逐个复核+canary）；三件=json+counts.bin.gz(97.7MB)+blocks.bin.gz
+- **6.52.13**（2026-08-27）批 14 accounting 观测 bundle 绑定冻结态内容寻址兜底：正式路径现物指纹不匹配（仅 size/sha mismatch 两种）时按收据记录的同一 size+sha256 到冻结件 `data/solana_observation_bundle_frozen.json` 寻址（哈希是身份、路径只是地址；兜底命中后深验零跳过），安全类失败（逃逸/symlink/缺件）不兜底、兜底失败回抛原错；方案 A 同族第六消费点（ARC handoff 第 2 发暴露：封账期收据绑定的正式路径被活观测占用）；SUITE 138 全绿
+- **6.52.12**（2026-08-27）批 13 accounting 期望时点两态：中央选择器 `accounting_expected_target`（Solana 冻结态取 exact 收据冻结点、静态与 EVM 零变化），handoff verify/validate_sources/audit 块声明三消费面同深接入（audit 投影以深验成功为前提，异常回落原判）；方案 A 同族第五消费点（ARC handoff 实跑暴露：A0 会计核定产在封账点 vs verify 拿观测时点当期望）；SUITE 137 全绿
+- **6.52.11**（2026-08-27）批 12 分布扫描器冻结态供应漂移容差：`load_supply` 的 `net>onchain` 静态硬拒改两态——漂移向仅当 supply_truth 收据 PASS/exit 0、diff 逐位复算相等、整数容差内（`drift*10000<=tolerance_bps*onchain`）放行并留痕 `supply_drift_raw`；静态向/快照闭合锚/分母语义零变化；方案 A 同族第四消费点（ARC A3 第 8 项实跑暴露：封账后 26,135 raw 微量销毁使冻结净额高于链上现值）；SUITE 136 全绿
+- **6.52.10**（2026-08-26）批 11 五查冻结快照与活观测分家：发布深验 solana 同文件绑定改两态（静态态原语义逐字保留；冻结态哈希绑定案内密封冻结观测 bundle `data/solana_observation_bundle_frozen.json`，信封+观测深验+sha256/size 双绑三重防伪）；handoff 冻结态必进 data_map/artifacts；job spec supply --work-dir 分家防覆盖封账件（ARC 真实覆盖事故+密封指纹逐字节恢复驱动）；CT-SQDGAP-34；SUITE 135 全绿
+- **6.52.9**（2026-08-26）批 10 五查 exact_reconcile 活链协议修正（方案 A·用户裁决）：第五查从"消费观测到的当前 slot"改为"钉账本缓存冻结点字面量"，观测点与冻结点的现值差由 supply_truth 10bps 容差兜底；runner 占位符校验反转＋receipt target 三层同深放宽（chain/token 全等、冻结 slot ≤ 观测 slot）＋深验既有正向绑定（receipt.as_of == cache finalized_upper_slot）考据确认；先红后绿 N1-N5＋CT-SQDGAP-33 防回流；SUITE 134 全绿
+- **6.52.8**（2026-08-26）solana_observation jsonParsed 兼容：v0+ALT 交易在 jsonParsed 编码下公共 RPC（publicnode/api.mainnet-beta）不带 meta.loadedAddresses（地址已并入 dict 形态 accountKeys），原校验一律报错致五查观测在公共端点全断；改为仅当 accountKeys 为 str 键（裸 json 编码）时仍强制 loadedAddresses，dict 键豁免；ARC 五查实跑验证
+- **6.52.7**（2026-08-26）批 9 repair 深验校验侧流式/惰性化：`validate_repair_bundle_deep` evidence 惰性读盘＋三 jsonl 流式＋SQLite 临时索引，语义与 reasons 逐字不变；16GB 本机首次跑通 15.4 万 slot 正式代发布（旧实现三轮内存超限被杀）；SUITE 134 全绿
+- **6.52.6**（2026-08-25）批 8 SQD repair 生产者规模化：key 无关指纹与 key 池热降级、并发保序拉取、流式装配；两段提交锚定四项 producer 登记，SUITE 133→134
+- **6.52.5**（2026-08-25）facts_gate 宏正则补连字符：ENT-PROJ 型实体键宏此前为死宏（不渲染且 G4 不检出、以字面量漏进正文），字符类扩 `-` 属收紧修复，flow spec 宏同源通道同步受益；SUITE 133 全绿
+- **6.52.4**（2026-08-25）批 3c SQD census 字段契约修复：删除服务端拒收且无消费方的 `parentSlot`，两段提交锚定四项 producer 登记；SUITE 132→133
 - **6.52.3**（2026-08-24）批 2d SQD stream 尾部跳块收口：HTTP 200 空体按严格三条件判定流结束、两段提交完成可考证 producer 登记；SUITE 131→132
 - **6.52.2**（2026-08-24）F-007/F-008 LIT 回归修复收口：阵营序列按 series_format 固定堆叠语义，evm_v2 目录重放前补字符闸与集合闸；SUITE 129→131、契约 195→197
 - **6.52.1**（2026-08-24）F-005 文档漂移更正：外部全量审查发现的三处 Solana reconcile v3 正向旧口径改为 v4 envelope／v2-v3 legacy 拒收，并新增 banned needle 防再漂守卫
@@ -58,6 +69,86 @@
 - **6.20.1** 2026-08-05 修 5 处阻断级文档漂移（A4 前禁写报告冲突/easy 残留/惯犯回灌 docstring/批量预采集残留/旧 Par 路线历史降级）＋docs_lint 增中文禁词与 Python module docstring 扫描
 
 更早版本（6.20.0 及以前）详见 `archive/CHANGELOG-archive.md`。
+
+## [6.52.13] - 2026-08-27 — 批 14 accounting bundle 绑定冻结态内容寻址兜底（方案 A 同族第六消费点）
+
+- **根因（ARC handoff verify 第 2 发暴露）**：A0 会计核定收据按 path+size+sha256 绑定其观测 bundle（当时正式路径=data/solana_observation_bundle.json、内容=封账观测）。方案 A 后该路径被五查活观测占用且 supply_truth 也按此路径绑活内容——同一路径被两份合法收据绑定两份不同内容，案级无解；`_bound_case_ref` 按路径现物验哈希必炸 size mismatch。
+- **修正**：solana accounting 分支局部兜底——`_bound_case_ref` 抛错且错误恰为内容指纹类（size/sha mismatch 两种字符串精确匹配）时，以**收据记录的同一 size+sha256** 改址冻结件重试（复用通用绑定器，指纹权威不变=字节同一才认）；安全类失败（路径逃逸/symlink/缺件）直接回抛不兜底；兜底失败回抛原错。命中后 validate_observation_bundle 深验+slot 绑定检查零跳过。`_bound_case_ref` 本体与 EVM 分支零变化。
+- **防回流**：先红后绿 R1（ARC 同形夹具）＋9 项测试（含冻结件被改 1 字节拒/缺件拒/安全失败不进兜底/静态与 EVM 零变化回归）。
+- **验收（Fable）**：codex 施工约 20 分钟；本机 run_all 138 全绿；兜底触发条件白名单式（两种精确错误串）审查通过。
+- **成本/质量指标**：外部网络调用 0；新增测试 1 文件；分析结论 0；传播级数字错误 0。
+
+## [6.52.12] - 2026-08-27 — 批 13 accounting 期望时点两态（方案 A 同族第五消费点）
+
+- **根因（ARC handoff verify 实跑暴露）**：A0 会计模式核定天然产在封账点（ARC as_of=440368381、checked_at=封账时刻），handoff verify 却把五查 wrapper 的观测时点（441940997）当 expected_target 传给 `validate_accounting_receipt` → canonical 全等必炸 "accounting target mismatch"。静态案两时点相等从未暴露。
+- **修正**：新增中央选择器 `accounting_expected_target(recon_target, receipts)`——EVM→wrapper 不变；Solana 要求 exact 收据在场且 chain/token 全等、exact≤wrapper（违反即拒），严格早于才返回冻结点。三消费面同深接入：handoff `_verify_light_schema`、shared `validate_sources`（−3 路径；EVM 分支与 Solana 静态分支原语义逐字保留，A4 seal 绑定时点随 accounting target=冻结账本语义）、audit_release_gate 块声明去重（冻结点投影仅在深验成功后授予，异常回落原判 fail-closed）。`validate_accounting_receipt` 本体校验零放宽。
+- **防回流**：先红后绿 R1（ARC 同形三时点夹具）＋N1 accounting 双非时点拒＋N2 chain/token 错配拒＋静态/EVM 纵切片回归零变化。
+- **验收（Fable）**：codex 施工约 30 分钟；本机 run_all 137 全绿；audit 投影的 fail-closed 方向核查（except 回落=更严）。
+- **成本/质量指标**：外部网络调用 0；新增测试 1 文件；分析结论 0；传播级数字错误 0。
+
+## [6.52.11] - 2026-08-27 — 批 12 分布扫描器冻结态供应漂移容差（方案 A 同族第四消费点）
+
+- **根因（ARC A3 第 8 项实跑暴露）**：`holder_distribution_scan.load_supply` 硬拒 `net > onchain`——静态时点假设（冻结重放净额不可能高于链上现值）。方案 A 冻结态下 onchain 取自观测时点，封账后一笔 26,135 raw 微量销毁使 onchain(现在) < net(冻结点)；supply_truth 闸自己按 10bps 容差判 PASS（diff_bps=0.0），扫描器却把这份 PASS 收据在门口再拒一遍 → distribution initial 全案 BLOCKED。
+- **修正**：漂移向（net>onchain）仅当同一收据 PASS/exit 0（既有 :235 检查）＋`diff` 字段与 net−onchain 逐位复算相等＋整数容差 `drift*10000 <= tolerance_bps*onchain` 时放行，并在 denominators 留痕 `supply_drift_raw`（v2 兼容可选字段）；任一不满足原句硬拒。静态向、Solana 快照闭合精确等式（容差 0）、分布分母语义零变化。
+- **波及面核查（关到同一深度）**：全库 rg 确认无第五个静态方向假设点（supply_truth_gate 生产者/shared_release_receipt 深验/发布闸 sha 比对，行号在 batch12_done.md）。
+- **防回流**：先红后绿 R1（ARC 同形数值）＋N1 diff 失配拒＋N2 边界外 1 raw 整数判定拒＋N3 非 PASS 拒＋N4 EVM/Solana 静态零变化；契约不新增编号（v2 向后兼容留痕，CT-DISTRIBUTION-01 既有锚不变）。
+- **验收（Fable）**：codex 施工约 25 分钟；本机 run_all 136 全绿；"PASS/exit 0"声明与 diff 表面不符疑点核实为既有代码非虚报。
+- **成本/质量指标**：外部网络调用 0；新增测试 1 文件；分析结论 0；传播级数字错误 0。
+
+## [6.52.10] - 2026-08-26 — 批 11 五查冻结快照与活观测分家（方案 A 收尾层）
+
+- **根因（ARC 五查实跑第 4 发暴露，活链死结最后一层）**：发布深验要求第五查消费的持有人快照与 supply 观测产物**同一文件**（防伪本意），方案 A 后两者天然分裂（观测=链上现在，第五查=冻结点）；同文件绑定逼第五查吃活快照 → 活跃币必然 mismatch（ARC 实测 966 户差=封账后 6 天正常交易）。更重者：supply 观测按旧 job spec 写 `--work-dir data`，多轮重跑将封账快照三件与三 inputs **全部覆盖**为活链版（真实事故）。
+- **恢复（验收方，全程哈希对照密封指纹）**：五件从案内密封复合快照/同构模板逐字节重建全部 sha256 MATCH；唯 `_gpa_raw_all.json` 封账版（43MB，含 18 万户全量）不可重建（复合快照仅存 4.6 万非零行），待本机 TM 快照提取（已请用户协助）。
+- **修正**：①shared_release_receipt 同文件绑定改两态——静态态（exact==wrapper 时点）原代码原文案逐字保留；冻结态（exact<wrapper）改为哈希绑定案内密封冻结 bundle：信封（inputs 实物重哈希）＋validate_observation_bundle 深验（producer/genesis/closure/holder_outputs 文件级三验）＋owners sha256+size 双绑，防伪强度≥原路径同一；②handoff generate/verify 共用 required-set，冻结态必进 data_map/artifacts；③文档两态契约+job spec 分家要求（supply --work-dir 独立子目录）。
+- **防回流**：先红后绿 R1＋N1-N5（缺件/target 错配/指纹错配/静态零变化/handoff 清单）＋CT-SQDGAP-34；ARC 实物实测新闸精准咬中唯一真实缺口（gpa_rpc 双 mismatch）＝判别力真事故验证。
+- **验收（Fable）**：codex 施工（沙箱 133/135，2 项 loopback 环境）；本机 run_all 135 全绿；防伪链闭合逐环核实（validate_receipt 实物重哈希+B-1 holder 三验+canonical bytes 对账）。
+- **成本/质量指标**：codex 单会话约 50 分钟＋Fable 验收与案内恢复；外部网络调用 0；新增测试 1 文件+契约 1 条；分析结论 0；传播级数字错误 0。
+
+## [6.52.9] - 2026-08-26 — 批 10 五查 exact_reconcile 活链协议修正（方案 A）
+
+- **根因（ARC 首个真实活链案暴露）**：五查 runner 强制第五查消费 `{observed_as_of_block}`（观测到的链上当前 slot），而生产者 `replay_edges.py` 硬闸要求对账 slot == 账本缓存 `finalized_upper_slot`（冻结点）。活链每 0.4s 前进一格，"当前"结构性追不上"冻结点"——两规则互斥，第五查在任何活跃币上必死。此前只有静态夹具跑过（观测点与冻结点人为对齐）未暴露。协议内部亦自相矛盾：supply_truth 以 10bps 容差接受时点差，exact_reconcile 却禁止任何时点差。
+- **修正哲学（用户 2026-08-26 裁决方案 A）**：第五查改为对冻结点对账（严格性不降：仍为冻结点上 45,883 owner 级全量逐值相等）；观测点与冻结点的现值差继续由 supply_truth 容差兜底。
+- **三层同深**：①runner `_validate_spec` 前三查维持占位符强制，exact 反向禁止占位符、要求恰一个 `--as-of-slot` 非负 ASCII 整数字面量（isdigit 单用会放行非 ASCII 数字，Fable 验收攻击 A5 抓获后亲修收紧）；②runner `run_job` 与公共深验 `validate_reconciliation_check` 对 solana exact 同步放宽 receipt target（chain/token canonical 全等、冻结 slot ≤ 观测 slot），其余 check 与全部 EVM 维持全等；③生产者硬闸不动（SHA-256 与 HEAD 全等验证），深验既有正向绑定（`solana_exact_validate.py:1919-1934` receipt.as_of == 所绑 soltx_meta.finalized_upper_slot）考据确认为防"旧时点收据冒充"的权威闸。
+- **防回流**：先红后绿（R1 红证据留档）＋N1-N5 负向守卫两层各测＋EVM 回归＋契约 CT-SQDGAP-33 登记；文档（analyze-workflow §5/scan-schemas）大白话写明"前三查问链上现在、第五查问冻结账本自洽"。
+- **验收（Fable）**：codex 施工（沙箱 132/134，2 失败纯属沙箱禁 loopback）；Fable 本机 run_all 134 全绿×2（施工树＋亲修后终树）、6 发边界攻击 5 拦 1 化妆级瑕疵亲修、深验绑定逐行核实。
+- **成本/质量指标**：codex 单会话约 40 分钟＋Fable 验收；外部网络调用 0；新增测试 3 文件扩展＋契约 1 条；分析结论 0；传播级数字错误 0。
+
+## [6.52.8] - 2026-08-26 — solana_observation jsonParsed 编码兼容（loadedAddresses 豁免）
+
+- **根因**：观测器 `_account_keys_and_writable` 对带 addressTableLookups 的 v0 交易一律强制 `meta.loadedAddresses` 存在；但 jsonParsed 编码下节点把地址表解析结果直接并入 `accountKeys`（dict 形态、带逐键 writable），公共 RPC（publicnode / api.mainnet-beta）此时可完全不带 `meta.loadedAddresses`——键集已完整却被误判缺失，五查 supply 观测在公共端点对含 v0+ALT 交易的块全断（ARC 五查实跑首次暴露；Helius 大 GPA 政策墙迫使观测改走 publicnode 后触发）。
+- **修法（3 行收窄豁免）**：仅当 `accountKeys` 为 str 键（裸 json 编码，地址表确需 loadedAddresses 补全）时维持强制报错；全 dict 键（jsonParsed）豁免。dict 分支后续 writable 归并逻辑不变，语义零放宽——裸编码缺字段仍 fail-closed。
+- **验收（Fable 本机）**：ARC 五查 runner 实跑通过（supply 观测 45,883 owner 快照成功、四查 PASS）；run_all 全量通过。
+- **成本/质量指标**：Fable 亲修 3 行；外部网络调用＝ARC 五查实跑；新增测试 0（观测契约既有守卫覆盖）；分析结论 0；传播级数字错误 0。
+
+## [6.52.7] - 2026-08-26 — 批 9 repair 深验校验侧流式/惰性化
+
+- **根因（批 8 F4 的同族缺口）**：生产侧装配已流式化，但发布必经的 `validate_repair_bundle_deep` 仍整载全部产物——evidence 6.5 万文件全量驻留字典、`slot_index_map.jsonl` 2.3GB 整载为列表——ARC 正式代（153,667 slot）深验在 16GB 本机连续三轮内存超限被系统终止（EXIT=137，采样栈显示大部分时间在 gc 遍历千万级对象图），发布路径完全不可用。
+- **改造（语义零变更）**：evidence manifest 仍逐项路径/哈希/JSON/canonical 校验但不驻留内容，后续按 slot 惰性读盘（LRU=2）；`repair_layer`/`slot_index_map`/`rpc_ledger` 三 jsonl 逐行流式校验，跨行聚合仅留紧凑集合/计数；有序代按 slot 流式联结 map 与 base edge，乱序输入走标准库临时 SQLite 回退保留旧排序语义；GID 增量哈希流式消费；批 7 全部加固检查与 reasons 文本逐字保留；仅标准库无新依赖。
+- **验收（Fable 本机）**：三守卫（sqd_gap_repair/批7缺口/批8规模化）复跑全绿、run_all 全量通过；施工方 HEAD 旧实现 vs 新实现同一 formal 夹具四情形逐字段等价；真实代终验＝runner 第四轮直接用新实现完成正式发布（80 分钟、入口阶段峰约 8.4GB 后回落 3-5GB 稳定，旧实现死于 12GB+；`status=published`、repair_edges=83、CURRENT verdict=PASS）。峰值超工单 6GB 期望值但发布完整跑通，目标本质（16GB 本机可发布）达成。
+- **成本/质量指标**：codex 单会话施工约 1 小时；外部网络调用 0；新增测试 0（既有守卫覆盖）；分析结论 0；传播级数字错误 0。
+
+## [6.52.6] - 2026-08-25 — 批 8 SQD repair 生产者规模化
+
+- **根因一（换 key 指纹断裂）**：live plan 原先对含 key 的完整 endpoint URL 取指纹，换免费 key 会改变 plan digest 与 pending 目录并使既有 ledger 校验失败，配额接力无法续跑；现改为 public endpoint 的 key 无关指纹，并用 key 池轮转及 quota 热摘除保持同 plan 原位续跑。
+- **根因二（串行 15 天不可行）**：153,667 个候选按实测约 428 slot/h 串行需要约 14.9 天；新增默认 1、可显式调高的有界 worker 池，slot 内调用顺序不变，主线程严格按 candidate 顺序落 evidence 与 ledger，并为 SQD 瞬断提供有限退避。
+- **根因三（装配内存死结）**：旧 `_live_payloads` 先累积全部 payload 再装配，全量预计需要 100GB 以上常驻内存；现改为逐 payload 生成、持久化、装配即丢弃，常驻量收敛为聚合结构与有界重排缓冲。
+- **两段提交与登记**：第一段由验收方冻结为 `ddfeec1b307f33e4ca9c22d129ad554d33ef426d`；第二段据此为 cache、repair bundle、coverage resolution 与 CURRENT repair pointer 四个 protocol 新增可由 `git show` 复算的 ACTIVE producer 记录，旧哈希继续保留 ACTIVE。
+- **回归与版本**：批 8 规模化回归注册到全量 SUITE，机械分母 133→134；允许本地 loopback 的全量实测 134/134 PASS。版本声明同步至 6.52.6，并将基线滞后的 `pyproject.toml=6.52.4` 一并对齐。
+- **成本/质量指标**：两段施工；外部网络调用 0；新增回归组 1；分析结论 0；传播级数字错误 0。
+
+## [6.52.5] - 2026-08-25 — facts_gate 宏正则补连字符（死宏静默漏检修复）
+
+- **根因**：`MACRO_RE` 字符类 `[A-Za-z0-9_.:]` 不含连字符，而实体键约定（3.19 起 entities 字典键＝stable entity_id）未禁连字符命名——`{{ENT-PROJ.share}}` 型宏既不被 `render()` 渲染、也不被 G4 残留检出（同一正则的盲区），死宏以字面量静默漏进正文。SPORTFUN −2 案实踩：报告 17 处实体宏全为死宏，flow spec 宏化时暴露。
+- **修复与方向**：字符类扩为 `[A-Za-z0-9_.:-]+`（连字符置尾无范围歧义），求值路径 `partition(".")` 本已支持该键型。属**收紧**修复：原漏检死宏开始被渲染/检出，G5 白名单同步收编实体宏渲染值；无键名含连字符的旧案行为零变化。消费方 facts_gate（render/G4）与 figures_from_facts（flow leftovers）同步受益。
+- **回归与版本**：test_report_facts / test_figures_from_facts 单跑 PASS；全量 SUITE 133 全绿（分母不变）。版本 6.52.5。
+- **成本/质量指标**：单文件 4 行改动；外部网络调用 0；新增回归组 0（既有七契约覆盖）；分析结论 0；传播级数字错误 0。
+
+## [6.52.4] - 2026-08-25 — 批 3c SQD census 字段契约修复
+
+- **根因与修复**：`sqd_gap_repair.py` 的 census 请求把 Solana RPC 响应字段 `parentSlot` 混入 SQD portal 的 block 字段选择；SQD 以 HTTP 400 拒收，且 census 响应与 payload 均不消费该字段。第一段仅删除这个无消费方字段，保留 Helius 响应侧四处合法 `parentSlot`，并新增离线字段白名单守卫。
+- **两段提交与登记**：第一段由验收方冻结为 `80ab2a380952bf63eb01bb896c9d7e260bc8055f`；第二段据此为 cache、repair bundle、coverage resolution 与 CURRENT repair pointer 四个 protocol 新增可由 `git show` 复算的 ACTIVE producer 记录，旧哈希继续保留 ACTIVE。
+- **回归与版本**：新守卫注册到全量 SUITE，机械分母 132→133；版本三件同步至 6.52.4，第二段保持不 commit，留待验收方冻结。
+- **成本/质量指标**：两段施工；外部网络调用 0；新增回归组 1；分析结论 0；传播级数字错误 0。
 
 ## [6.52.3] - 2026-08-24 — 批 2d SQD stream 尾部跳块语义收口
 

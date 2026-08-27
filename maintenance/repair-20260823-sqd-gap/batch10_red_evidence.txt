@@ -1,0 +1,16 @@
+R1 COMMAND: PYTHONDONTWRITEBYTECODE=1 python3 -B -c <minimal dynamic Solana _validate_spec probe>
+R1 CASE: balance/supply_truth/time keep {observed_as_of_block}; exact_reconcile uses literal --as-of-slot 101
+R1 EXPECTED NEW SEMANTICS: _validate_spec accepts the job spec
+R1 ACTUAL PRE-FIX RESULT: exit_code=1
+
+Traceback (most recent call last):
+  File "<string>", line 3, in <module>
+    runner._validate_spec(spec,case)
+    ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^
+  File "/Users/uravvv/.claude/skills/token-chip-analysis/scripts/report/reconciliation_report.py", line 200, in _validate_spec
+    raise RunnerError(
+        f"dynamic solana check {key} must consume {OBSERVED_SLOT_PLACEHOLDER}")
+r9_b3_dynamic_runner.RunnerError: dynamic solana check exact_reconcile must consume {observed_as_of_block}
+R1 COMMAND: reconciliation_report._validate_spec(dynamic Solana; exact_reconcile literal slot=101)
+R1 EXPECTED: new semantics should accept this spec
+R1 RED: RunnerError: dynamic solana check exact_reconcile must consume {observed_as_of_block}

@@ -367,7 +367,7 @@ TERMINAL = {
 
 闭合分母是 `mint_total` 不是 `onchain_total_supply`／`total_supply_raw`：replay 引擎对 sink 是记账不抹除，`sum(快照含 dead/zero) == mint_total` 恒成立——form2（转 dead 不减供给，`onchain==mint`）与 form1（真 `_burn`，`onchain==mint−burn`）都如此（APU／IQ／KOGE 真案逐 wei 实测）。若对 `onchain` 闭合，整类 form1 销毁币会被误杀。分母取值分链：EVM 取 `replay_stats.json` 的 `mint_total`（replay 产物，收据里有），Solana 取 `onchain_total_supply`（scanner `require_snapshot_closed` 已保证 `sum==supply` 精确，不套 EVM 的 replay mint 语义）。
 
-`total_supply_raw`／`frozen_total_supply_raw` 是**调用者可注入的影子键**（真实生产者 `supply_truth_gate` 只写 `onchain_total_supply`／`replay_net`／`mint_total`／`burn_total`）——闭合分母绝不取影子键，`net`（分布百分比分母）也优先取真实键 `replay_net`／`onchain_total_supply`。EVM formal 的 `onchain_total_supply` 来自已验证 `evm-observation-bundle/v1` 的冻结块 `total_supply_raw` 并由 `supply-truth-receipt/v4` 绑定，不再是消费时现场 RPC 自报；`net` 仍只用于分布百分比。
+`total_supply_raw`／`frozen_total_supply_raw` 是**调用者可注入的影子键**（真实生产者 `supply_truth_gate` 只写 `onchain_total_supply`／`replay_net`／`mint_total`／`burn_total`）——闭合分母绝不取影子键，`net`（分布百分比分母）也优先取真实键 `replay_net`／`onchain_total_supply`。EVM formal 的 `onchain_total_supply` 来自已验证 `evm-observation-bundle/v1` 的冻结块 `total_supply_raw` 并由 `supply-truth-receipt/v4` 绑定，不再是消费时现场 RPC 自报；`net` 仍只用于分布百分比。冻结点后的链上销毁可令观测时点 `onchain_total_supply` 略低于冻结点 `replay_net`：扫描器仅在同一收据为 PASS/exit 0、`diff == replay_net-onchain_total_supply` 逐 raw 相等且 `diff*10000 <= tolerance_bps*onchain_total_supply` 时接受，并在 `denominators.supply_drift_raw` 留痕；任一字段缺失、失配或超容差仍 fail-closed。该交叉检查全程用整数运算，不改变 `net` 的分布百分比分母身份，也不放宽 Solana owner 快照对 `onchain` 的精确闭合。
 
 **闭合锚点的取值顺序（已绑定已验证的链路优先）**：① `supply_truth` 收据 `inputs.replay_stats` **绑定**的那份实物（已过 receipt 三验＋案根遏制，取值后再交叉验 `mint−burn == replay_net`）；② 收据的 `mint_total` 字段；③ `onchain_total_supply`。**案根裸 `replay_stats.json` 永远不是锚点来源**——真案 9/10 把它放 `data/`／`out/`／`replay/` 子目录并由收据绑定，把案根硬编码文件名排在第一，既让"抹平快照＋伪造一份未绑定案根件"直接过闸，又让"案根留一份陈旧件"把合法案误杀。合法但未绑定的案根同名件**忽略**（未绑定的文件不是证据，不该被采用，也不该有一票否决权）；它若**在场却非法**（符号链接／非普通文件）则 fail-closed 拒，与上面"在场非法不得静默漂白"同一把尺子。
 
@@ -432,7 +432,8 @@ TERMINAL = {
   "not_evaluable_reason": null|"low_sample|data_broken",
   "errors": [str],
   "denominators": {"mint_total_raw": str,     // ＝mint_total 铸造总量（含已销毁），非链上流通量
-                     "net_supply_raw": str,     // ＝replay_net 链上流通量
+                     "net_supply_raw": str,     // ＝replay_net；仍是分布百分比分母
+                     "supply_drift_raw": str,   // optional；仅 net>onchain 且收据容差内时＝net-onchain
                      "private_boxable_supply_raw": str},
   "bucket_coverage": {bucket: {"raw": str, "net_supply_pct": float}},
   "owner_count_private_main": int,
@@ -1153,6 +1154,7 @@ QUQ 与 PYTHIA 只用于算法层探索定标。防伪链测试使用合成 fixt
 | `checks.exact_reconcile.receipt→gate_pass` | boolean | family==solana 的引用实物内必填；family==evm 无该 item | `true`；不是 wrapper item 直属字段 |
 | `checks.exact_reconcile.receipt→negative_balance_count` | integer | family==solana 的引用实物内必填；family==evm 无该 item | `0`；不是 wrapper item 直属字段 |
 | `checks.exact_reconcile.receipt→snapshot_mismatch_count` | integer | family==solana 的引用实物内必填；family==evm 无该 item | `0`；不是 wrapper item 直属字段 |
+| `job_spec.slot_binding` | argv 约束 | dynamic Solana 必填 | balance／supply_truth／time 必须消费 `{observed_as_of_block}`；`exact_reconcile` 的 argv 禁止出现该占位符，且 `--as-of-slot` 必须是账本缓存 `finalized_upper_slot` 的非负整数字面量 |
 | `cli.--reseal` | string | 否 | 仅 EVM |
 
 继承字段（现役基线逐键抄录）：
@@ -1175,7 +1177,8 @@ QUQ 与 PYTHIA 只用于算法层探索定标。防伪链测试使用合成 fixt
 - EVM reseal 从四份 receipt 重建，不信旧 wrapper；失败拒绝。
 - Solana v2 重跑 v4 exact+五项。
 - `checks.exact_reconcile` 的 wrapper item 固定绑定 `{status,exit_code,process_exit_code,producer,receipt}`；上表五个 v4 字段位于 `receipt{path,size,sha256}` 引用的实物内，由公共 validator 打开后深验，不是 item 直属字段。该 item 仅 family=solana 必填；family=evm 必须省略，出现即拒。
-- exact 检查组合、inputs 案根哈希、holders_owners 同一文件并调用独立深验。
+- 动态 Solana wrapper 的观测 target 可以晚于第五查的冻结 target；仅 `exact_reconcile` 放宽为 chain/token 全等且 `0 ≤ receipt.as_of_block ≤ wrapper.as_of_block`。其余 Solana checks 与全部 EVM checks 仍要求 receipt target 和 wrapper target 全等。
+- exact 检查组合、inputs 案根哈希并调用独立深验。静态态（exact 与 wrapper 的 `as_of_block` 相等）继续要求 exact 与 supply 的 `holders_owners` 是同一文件；冻结态（exact 早于 wrapper）则要求 exact 快照的 sha256+size 与案内 `data/solana_observation_bundle_frozen.json` 的 `holder_outputs.owners` 全等，且该冻结 bundle 经过与活 supply bundle 同深度的案根信封、schema、主网 genesis attestation、closed/closure 与 target 深验，并同时进入 handoff 的 data_map/artifacts。大白话：活观测回答“现在”，冻结快照回答“封账点”，不再强迫两者共用文件；防伪改由冻结 bundle 的内容指纹承担。独立深验仍把 `receipt.target.as_of_block` 正向绑定到 receipt 所绑 `soltx_meta.finalized_upper_slot`，不得拿任意旧时点收据冒充冻结点。
 
 注记：
 

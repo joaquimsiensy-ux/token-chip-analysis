@@ -1,0 +1,153 @@
+Batch 8 stage 1 RED -> GREEN evidence
+Baseline HEAD: d8a427b
+Worktree gate: only batch8_workorder.md was untracked before construction.
+
+[RED] New regression against the unmodified baseline producer
+Command: python3 scripts/tests/test_batch8_repair_scale.py
+Exit: 1
+Observed failure:
+  File "scripts/tests/test_batch8_repair_scale.py", line 126, in test_key_neutral_identity
+    identity_a = repair.reference_endpoint_identity(endpoint(key_a))
+AttributeError: module 'scripts.solana.sqd_gap_repair' has no attribute 'reference_endpoint_identity'
+
+This is the intended pre-fix failure: the baseline has no key-neutral reference
+identity seam, so the first Batch 8 assertion cannot be satisfied.
+
+[GREEN] Batch 8 targeted regression after the producer fix
+Command: python3 scripts/tests/test_batch8_repair_scale.py
+Exit: 0
+Final line:
+PASS batch8: key-neutral identity/pool failover/ordered workers/resume/streaming
+
+Observed semantic checks in that command:
+- two different Helius keys and credential-bearing custom URLs produce the same
+  public-endpoint fingerprint and the same plan digest; plaintext keys are absent
+  from the fingerprint input;
+- CLI/default/fallback key-file precedence and blank-line handling pass;
+- workers=4 completes 20 deliberately out-of-order slots with a 10/10 key split,
+  candidate-ordered ledger slots, seq 0..19, 40 evidence files, and 20/20 resume hits;
+- key 1 quota is called once, permanently removed, and key 2 completes all slots;
+  the first ledger row records attempt=2;
+- all keys quota returns exit 3 and writes STOPPED.json with cursor=10000 and no
+  completed slots;
+- key set A persists slots 10000..10009 then stops at 10010; key set B resumes the
+  same pending plan and calls the network only for slots 10010..10019;
+- _live_payloads is a generator, the former payload accumulator/tuple return is
+  absent, and SQD transient retries execute four attempts with sleeps 2/4/8.
+
+[GREEN] Existing targeted compatibility regression
+Command: python3 scripts/tests/test_sqd_gap_repair.py
+Exit: 0
+Final line:
+GREEN 29c implemented validate_current_candidates 已实现
+
+[GREEN] Additional contract/transport regressions
+Commands:
+  python3 scripts/tests/test_batch3c_census_fields.py
+  python3 scripts/tests/test_net_result.py
+  git diff --check
+Exits: 0 / 0 / 0
+Final lines:
+  PASS batch3c census fields match the SQD contract
+  PASS: net Result 显式状态与 curl_json 失败分类
+
+[FULL SUITE] Existing 133-item suite (the Batch 8 test is intentionally not yet
+registered in stage 1)
+Command: python3 scripts/tests/run_all.py
+Exit: 1
+Count: 130 PASS / 3 FAIL / 133 total
+Residual failures:
+1. test_batch3_solana_vertical_slice.py
+   PermissionError: [Errno 1] Operation not permitted at
+   ThreadingHTTPServer(("127.0.0.1", 0), FixtureHandler).socket.bind
+2. test_batch3_evm_vertical_slice.py
+   PermissionError: [Errno 1] Operation not permitted at
+   ThreadingHTTPServer(("127.0.0.1", 0), FixtureHandler).socket.bind
+3. test_version_consistency.py
+   AssertionError: pyproject.toml project.version != VERSION
+
+The third failure is frozen-baseline state, not a stage-1 edit:
+  git show d8a427b:VERSION             => 6.52.5
+  git show d8a427b:pyproject.toml      => version = "6.52.4"
+  current VERSION / pyproject.toml     => 6.52.5 / 6.52.4
+Version files are stage-2-only whitelist entries, so stage 1 did not alter them.
+
+[FINAL TARGETED RECHECK]
+Command:
+  python3 scripts/tests/test_batch8_repair_scale.py &&
+  python3 scripts/tests/test_sqd_gap_repair.py &&
+  git diff --check
+Exit: 0
+
+Final artifact SHA-256 before the done report:
+  60b48f86154d8793c8b1229121641f3f2d6517e924188aa47452855cc8636f7b  scripts/solana/sqd_gap_repair.py
+  aa857a37283986f323a29c5a1b7258895aed19362dff58fcbe54dc858d3a161f  scripts/tests/test_batch8_repair_scale.py
+
+=======================================================================
+Batch 8 stage 2 registration/version/full-suite evidence
+Stage-2 anchor: ddfeec1b307f33e4ca9c22d129ad554d33ef426d
+
+[ANCHOR GATE]
+Commands:
+  git rev-parse HEAD
+  git show ddfeec1b307f33e4ca9c22d129ad554d33ef426d:scripts/solana/sqd_gap_repair.py | shasum -a 256
+  git show ddfeec1b307f33e4ca9c22d129ad554d33ef426d:scripts/solana/sqd_gap_repair.py | openssl dgst -sha256
+Observed:
+  HEAD = ddfeec1b307f33e4ca9c22d129ad554d33ef426d
+  shasum = 60b48f86154d8793c8b1229121641f3f2d6517e924188aa47452855cc8636f7b
+  openssl = 60b48f86154d8793c8b1229121641f3f2d6517e924188aa47452855cc8636f7b
+
+[CHANGELOG LINT BEFORE EDIT]
+Command: python3 scripts/tests/changelog_lint.py
+Exit: 0
+Final line:
+  PASS: 版本号唯一（豁免 2 组历史撞号存档）、顺序正确；活跃 47 条 + 归档 139 条
+
+[STAGE-2 TARGETED GREEN]
+Commands and exits:
+  python3 scripts/tests/changelog_lint.py             => 0
+  python3 scripts/tests/test_anchor_plan_v3.py        => 0
+  python3 scripts/tests/test_batch8_repair_scale.py   => 0
+  python3 scripts/tests/test_version_consistency.py   => 0
+Final lines:
+  PASS: 版本号唯一（豁免 2 组历史撞号存档）、顺序正确；活跃 48 条 + 归档 139 条
+  anchor-plan v3: 15/15 PASS
+  PASS batch8: key-neutral identity/pool failover/ordered workers/resume/streaming
+  PASS: M-03 version metadata consistent at 6.52.6
+
+[MECHANICAL REGISTRATION CHECK]
+Observed by AST/literal parsing and producer-history filtering:
+  SUITE_COUNT=134
+  BATCH8_COUNT=1
+  ANCHOR_ROWS=4
+  protocols=[sqd-solana-cache/v4, sqd-solana-repair-bundle/v1,
+             sqd-solana-coverage-resolution/v1, sqd-solana-repair-pointer/v1]
+  sha256 set={60b48f86154d8793c8b1229121641f3f2d6517e924188aa47452855cc8636f7b}
+  status set={ACTIVE}
+
+[FULL SUITE: RESTRICTED SANDBOX]
+Command: python3 scripts/tests/run_all.py
+Exit: 1
+Count: 132 PASS / 2 FAIL / 134 total
+The only failures were pre-existing vertical slices attempting to bind a local
+fixture server, both rejected by the restricted sandbox:
+  test_batch3_solana_vertical_slice.py => PermissionError: [Errno 1]
+                                         Operation not permitted at socket.bind
+  test_batch3_evm_vertical_slice.py    => PermissionError: [Errno 1]
+                                         Operation not permitted at socket.bind
+All other 132 entries, including test_batch8_repair_scale.py, passed.
+
+[FULL SUITE: LOCAL LOOPBACK ALLOWED]
+Command: python3 scripts/tests/run_all.py
+Environment difference: local 127.0.0.1 fixture-server bind allowed; no external
+network behavior added and no test file modified.
+Exit: 0
+Count: 134 PASS / 0 FAIL / 134 total
+Final line:
+  全部通过
+
+The two formerly environment-blocked entries passed in this run:
+  PASS test_batch3_solana_vertical_slice.py
+  PASS test_batch3_evm_vertical_slice.py
+The new entry also passed:
+  PASS test_batch8_repair_scale.py

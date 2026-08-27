@@ -53,7 +53,7 @@ DISCLOSURE_PCT = 1.0
 # sum(快照含 dead/zero) == mint_total 在真实 form1/form2 案上均逐 wei 成立（APU/IQ/KOGE 实测），
 # 且快照与 totalSupply 同 as_of_block 冻结不存在块高漂移，故不再留任何容差窗口——
 # 留窗口会被"删掉几个刚过 dust 线的 owner 翻 low_sample"这类判定翻转攻击钻空（P2-B4 反例）。
-# 这是本闸自己的旋钮，独立写死，**不读 supply_truth 收据里的 tolerance_bps**。
+# 这是快照闭合闸自己的旋钮，独立写死；不把 supply_truth 的漂移 tolerance 当快照容差。
 SNAPSHOT_CLOSURE_TOLERANCE_BPS = 0
 # replay_stats 里 mint/burn 的字段名（与 supply_truth_gate.FIELD_PAIRS 同口径，此处内联避免依赖）。
 MINT_BURN_FIELD_PAIRS = (("mint_total_wei", "burn_total_wei"),
@@ -222,8 +222,8 @@ def verify_data_map(case_dir: Path, snapshot_rel: str, snapshot: Path) -> Path:
     return path
 
 
-def load_supply(case_dir: Path) -> tuple[Path, int, int, str, dict]:
-    """读 supply_truth，返回 (path, onchain, net, chain, obj)。
+def load_supply(case_dir: Path) -> tuple[Path, int, int, str, dict, int]:
+    """读 supply_truth，返回 (path, onchain, net, chain, obj, supply_drift_raw)。
 
     onchain（链上流通总量）与 net（分布百分比分母）都**优先取真实生产键**
     onchain_total_supply/replay_net；只有真实键缺席时才回退影子键
@@ -238,10 +238,23 @@ def load_supply(case_dir: Path) -> tuple[Path, int, int, str, dict]:
         "total_supply_raw", obj.get("frozen_total_supply_raw"))), "onchain_total_supply")
     net = strict_raw(obj.get("replay_net", obj.get("net_supply_raw", onchain)),
                      "net_supply_raw")
-    if not onchain or not net or net > onchain:
+    if not onchain or not net:
         raise ValueError("供给真值 onchain/net 非法")
+    supply_drift_raw = net - onchain
+    if supply_drift_raw > 0:
+        drift_boundary = ("供给真值 onchain/net 非法；冻结态例外只接受 PASS/exit 0、"
+                          "diff 逐位一致且漂移不超过收据 tolerance_bps")
+        try:
+            receipt_diff = strict_raw(obj.get("diff"), "supply_truth.diff")
+            tolerance_bps = strict_raw(obj.get("tolerance_bps"),
+                                       "supply_truth.tolerance_bps")
+        except ValueError as exc:
+            raise ValueError(f"{drift_boundary}: {exc}") from exc
+        if receipt_diff != supply_drift_raw \
+                or supply_drift_raw * 10000 > tolerance_bps * onchain:
+            raise ValueError(drift_boundary)
     chain = str(obj.get("chain", "")).strip().lower()
-    return path, onchain, net, chain, obj
+    return path, onchain, net, chain, obj, max(0, supply_drift_raw)
 
 
 def _bound_replay_stats(case_dir: Path, supply_obj: dict) -> Path | None:
@@ -558,7 +571,8 @@ def concentration_cluster(main_rows, net_supply):
     return row, metrics
 
 
-def analyze(partition, bucket_raw, private_supply, total_supply, net_supply):
+def analyze(partition, bucket_raw, private_supply, total_supply, net_supply,
+            supply_drift_raw=0):
     main_rows = partition["private_main"]
     coverage = {k: {"raw": str(v), "net_supply_pct": v * 100.0 / net_supply}
                 for k, v in bucket_raw.items()}
@@ -566,6 +580,8 @@ def analyze(partition, bucket_raw, private_supply, total_supply, net_supply):
     # 真 _burn 案上语义误导（IQ 案与流通量差 34.9%）；net_supply_raw 语义不变。
     denominators = {"mint_total_raw": str(total_supply), "net_supply_raw": str(net_supply),
                     "private_boxable_supply_raw": str(private_supply)}
+    if supply_drift_raw:
+        denominators["supply_drift_raw"] = str(supply_drift_raw)
     if len(main_rows) < SAMPLE_LINE:
         ranked = sorted(main_rows, key=lambda x: (-int(x["raw"]), x["owner"]))
         top = {str(k): sum(int(x["raw"]) for x in ranked[:k]) * 100.0 / net_supply
@@ -611,7 +627,7 @@ def build_scan(case_dir: Path, stage: str, snapshot_arg: str | None):
     snapshot, snapshot_rel = find_snapshot(case_dir, snapshot_arg)
     balances = parse_snapshot(snapshot)
     data_map = verify_data_map(case_dir, snapshot_rel, snapshot)
-    supply, onchain, net, chain, supply_obj = load_supply(case_dir)
+    supply, onchain, net, chain, supply_obj, supply_drift_raw = load_supply(case_dir)
     anchor, anchor_source, replay_ref = mint_closure_anchor(case_dir, supply_obj, chain, onchain)
     snapshot_sum = sum(balances.values())
     # 快照必须对**铸造总量 mint_total（闭合锚点）逐 wei 精确闭合**：缺口和超发同拦。
@@ -623,8 +639,9 @@ def build_scan(case_dir: Path, stage: str, snapshot_arg: str | None):
                          f"mint={anchor}（{anchor_source}）容差={SNAPSHOT_CLOSURE_TOLERANCE_BPS}bps")
     partition, bucket_raw, private_supply, dust_raw, derivation = derive_partition(
         case_dir, balances, stage)
-    # denominators：total_supply_raw 展示口径＝mint（铸造总量），net＝onchain 流通量
-    result = analyze(partition, bucket_raw, private_supply, anchor, net)
+    # denominators：mint 展示铸造总量；net 保持冻结 replay_net 分布分母。
+    result = analyze(partition, bucket_raw, private_supply, anchor, net,
+                     supply_drift_raw=supply_drift_raw)
     script = Path(__file__).resolve()
     common = {"snapshot": rel_entry(case_dir, snapshot), "data_map": rel_entry(case_dir, data_map),
               "supply_truth": rel_entry(case_dir, supply),

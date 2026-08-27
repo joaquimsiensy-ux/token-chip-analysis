@@ -1,0 +1,57 @@
+Batch 10 targeted green evidence
+================================
+
+Baseline HEAD: db2eff13ae165f5eb5b9ff183efb4b16c05f8a1d
+
+1. PYTHONDONTWRITEBYTECODE=1 python3 -B scripts/tests/test_r9_batch3_dynamic_runner.py
+   exit_code=0
+   PASS R9 B3-G2/batch10: dynamic checks use observed slot; exact stays frozen
+
+2. PYTHONDONTWRITEBYTECODE=1 python3 -B scripts/tests/test_reconcile_v4_receipt.py
+   exit_code=0
+   GREEN batch10 exact target 放宽仅限冻结点≤观测点；chain/token/future/cache-upper 错配均拒
+   GREEN 31 coverage CURRENT 更新后旧 receipt 被独立深验与 camp 拒绝
+   GREEN 33 v4 raw 字符串被独立深验拒绝
+   GREEN 32 verdict/exit_code/gate_pass 三元互洽
+
+3. PYTHONDONTWRITEBYTECODE=1 python3 -B scripts/tests/test_reconciliation_runner.py
+   exit_code=0
+   PASS: reconciliation runner rejected all 7 controlled-execution counterexamples
+
+4. PYTHONDONTWRITEBYTECODE=1 python3 -B scripts/tests/docs_lint.py --all
+   exit_code=0
+   PASS: 59 个文档，引用无断链、粗体配对完整（--all 全量模式）
+
+5. PYTHONDONTWRITEBYTECODE=1 python3 -B scripts/tests/invariant_scan.py
+   exit_code=0
+   PASS invariant manifest: receipt_producers=75, receipt_consumers=112,
+   transport_calls=65, atomic_writes=56, formal_entrypoints=61, exceptions=0
+
+6. git diff --check
+   exit_code=0
+
+Full suite (not all green in this restricted sandbox)
+=====================================================
+
+Command:
+PYTHONDONTWRITEBYTECODE=1 python3 -B scripts/tests/run_all.py
+
+Result: exit_code=1; 132/134 PASS, 2/134 FAIL before business assertions.
+
+Environment-only failures:
+- test_batch3_solana_vertical_slice.py: ThreadingHTTPServer.bind(127.0.0.1)
+  -> PermissionError: [Errno 1] Operation not permitted
+- test_batch3_evm_vertical_slice.py: ThreadingHTTPServer.bind(127.0.0.1)
+  -> PermissionError: [Errno 1] Operation not permitted
+
+The full suite reports PASS for the changed guard surfaces, including:
+- test_r9_batch3_dynamic_runner.py
+- test_reconciliation_runner.py
+- test_contract_routes.py
+- test_reconcile_v4_receipt.py
+- test_recon_fifth_check.py
+- docs_lint.py --all
+- invariant_scan.py
+
+This file does not claim run_all is all green.  Both failed groups must be rerun
+in an environment that permits loopback binding before final acceptance.

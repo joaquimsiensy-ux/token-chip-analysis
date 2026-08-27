@@ -522,6 +522,50 @@ def main():
             assert checked["ok"], checked["reasons"]
             assert current_camp_accepts(receipt_path, 1)
 
+            # Batch 10: wrapper observes slot 2 while exact receipt remains bound to
+            # cache finalized_upper_slot 1.  Only this Solana fifth check may differ.
+            item = {"status": "PASS", "exit_code": 0,
+                    "receipt": ref(receipt_path, "data/reconcile_receipt.json")}
+            observed_target = {"chain": "solana", "token": MINT,
+                               "as_of_block": 2}
+            accepted = shared.validate_reconciliation_check(
+                case, "exact_reconcile", item, observed_target, "solana")
+            assert accepted["target"]["as_of_block"] == 1
+
+            for mismatched_target in (
+                    {"chain": "bsc", "token": MINT, "as_of_block": 2},
+                    {"chain": "solana", "token": OWNER, "as_of_block": 2}):
+                try:
+                    shared.validate_reconciliation_check(
+                        case, "exact_reconcile", item, mismatched_target, "solana")
+                except ValueError as exc:
+                    assert "must match wrapper chain/token" in str(exc)
+                else:
+                    raise AssertionError("shared validator accepted exact target mismatch")
+
+            try:
+                shared.validate_reconciliation_check(
+                    case, "exact_reconcile", item,
+                    {"chain": "solana", "token": MINT, "as_of_block": 0},
+                    "solana")
+            except ValueError as exc:
+                assert "must not be later than the observed slot" in str(exc)
+            else:
+                raise AssertionError("shared validator accepted future exact receipt")
+
+            stale_slot_receipt = dict(receipt)
+            stale_slot_receipt["target"] = dict(receipt["target"])
+            stale_slot_receipt["target"]["as_of_block"] = 0
+            stale_slot_path = data / "wrong-cache-slot-receipt.json"
+            stale_slot_path.write_text(json.dumps(stale_slot_receipt), encoding="utf-8")
+            stale_slot_check = exact.validate_reconcile_receipt_deep(
+                stale_slot_path, case_root=case)
+            assert not stale_slot_check["ok"] and any(
+                "finalized_upper_slot" in reason
+                for reason in stale_slot_check["reasons"]), stale_slot_check["reasons"]
+            print("GREEN batch10 exact target 放宽仅限冻结点≤观测点；"
+                  "chain/token/future/cache-upper 错配均拒")
+
             # (31) Change coverage CURRENT after the receipt; current receipt and consumer ignore it.
             current = json.loads(pointer.read_text())
             current["published_at"] = "2026-08-23T00:00:01Z"

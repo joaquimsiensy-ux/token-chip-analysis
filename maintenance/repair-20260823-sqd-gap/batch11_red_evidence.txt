@@ -1,0 +1,19 @@
+Batch 11 R1 pre-change red evidence
+==================================
+
+Baseline HEAD: 70ca1b4fd99be9e69f831486fe5ffda692be84fd
+Production diff before command: empty
+
+Command:
+PYTHONDONTWRITEBYTECODE=1 python3 -B scripts/tests/test_batch11_frozen_bundle_binding.py --r1
+
+Exit code: 1
+
+Raw output:
+FAIL batch11: ValueError: exact_reconcile.inputs.holders_owners 与 supply observation bundle holder_outputs.owners 不是同一文件
+
+R1 interpretation:
+The fixture has exact as_of=500 and wrapper/live-supply as_of=501.  The exact
+holders_owners bytes match the case-local frozen observation bundle by sha256
+and size, while the live supply bundle intentionally binds a different owners
+file.  The pre-change validator rejects solely at the legacy same-file gate.

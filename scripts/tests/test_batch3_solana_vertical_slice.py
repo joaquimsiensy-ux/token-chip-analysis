@@ -479,7 +479,7 @@ def runner_spec(case, endpoint):
                 "exact_reconcile": {
                     "producer": "scripts/solana/replay_edges.py",
                     "argv": ["reconcile", "--mint", MINT,
-                             "--case-root", str(case), "--as-of-slot", observed,
+                             "--case-root", str(case), "--as-of-slot", str(OBSERVED_SLOT),
                              "--receipt", "data/reconcile_receipt.json"],
                     "receipt": "data/reconcile_receipt.json"}}}
 
