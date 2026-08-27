@@ -10,6 +10,7 @@
 
 ## 版本索引（活跃窗口，新在上；每版一行，详情见下方对应条目）
 
+- **shared-map 20260827**（2026-08-27）Solana SQD 共享覆盖地图首版入库：源=ARC 全史普查 probe 32dc03effa707da1（306,451,717→440,368,381 共 1.339 亿 slot 100% 覆盖、getBlocks 位图全程、defect_candidate=153,667 已全普查驳回/确认），TTL 30 天、消费按 capture §13e 生命周期（已知 slot 仍逐个复核+canary）；三件=json+counts.bin.gz(97.7MB)+blocks.bin.gz
 - **6.52.13**（2026-08-27）批 14 accounting 观测 bundle 绑定冻结态内容寻址兜底：正式路径现物指纹不匹配（仅 size/sha mismatch 两种）时按收据记录的同一 size+sha256 到冻结件 `data/solana_observation_bundle_frozen.json` 寻址（哈希是身份、路径只是地址；兜底命中后深验零跳过），安全类失败（逃逸/symlink/缺件）不兜底、兜底失败回抛原错；方案 A 同族第六消费点（ARC handoff 第 2 发暴露：封账期收据绑定的正式路径被活观测占用）；SUITE 138 全绿
 - **6.52.12**（2026-08-27）批 13 accounting 期望时点两态：中央选择器 `accounting_expected_target`（Solana 冻结态取 exact 收据冻结点、静态与 EVM 零变化），handoff verify/validate_sources/audit 块声明三消费面同深接入（audit 投影以深验成功为前提，异常回落原判）；方案 A 同族第五消费点（ARC handoff 实跑暴露：A0 会计核定产在封账点 vs verify 拿观测时点当期望）；SUITE 137 全绿
 - **6.52.11**（2026-08-27）批 12 分布扫描器冻结态供应漂移容差：`load_supply` 的 `net>onchain` 静态硬拒改两态——漂移向仅当 supply_truth 收据 PASS/exit 0、diff 逐位复算相等、整数容差内（`drift*10000<=tolerance_bps*onchain`）放行并留痕 `supply_drift_raw`；静态向/快照闭合锚/分母语义零变化；方案 A 同族第四消费点（ARC A3 第 8 项实跑暴露：封账后 26,135 raw 微量销毁使冻结净额高于链上现值）；SUITE 136 全绿
