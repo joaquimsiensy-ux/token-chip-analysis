@@ -10,6 +10,7 @@
 
 ## 版本索引（活跃窗口，新在上；每版一行，详情见下方对应条目）
 
+- **6.53.0**（2026-08-27）持仓分布图升级为 matplotlib 双轴带标签图：修复裸 PNG 哑图导致柱高被误读的根因，横轴明确为单地址持仓占私人可入箱供应 %，取消 `struct/zlib` 裸 PNG；新增数据对齐、标准生产链、low_sample 与缺依赖显式失败回归，SUITE 139→140
 - **6.52.15**（2026-08-27）F-03b 共享 SQD 地图复用失败分级：ARC live 92,643 次 recheck 中 1,182 次限流失败且零 mismatch，暴露“任一请求失败即整体回退”使复用必然失败；mismatch 整体回退不变，请求失败末尾重试后只剔除该段转 full，canary 段失败仍整体回退；map-reuse 按已验证子区间逐段声明，案外 recheck 撤销覆盖并以杀变异测试固守；新增 `unverified_ranges`/`recheck_stats` 审计字段且 retry mismatch 不污染；盲审 R1 BLOCK 两项消化后 R2 PASS；SUITE 139 不变，既有 F-03 测试组 9→15
 - **6.52.14**（2026-08-27）F-03 共享 SQD 地图复用闸修复（codex 六视角 review P1，修复中新引入 b005a468）：身份三分类＋历史锚＋head 单调＋模板绑定；已知点只连续合并并发重验，失败整体回退且撤销本轮 recheck 覆盖声明；`validate_shared_map` 同深扩全，`validate_coverage` 按 D1 用户裁决接 producer_history；CT-SQDGAP-35；20260827 资产零字节改动即刻可复用；盲审 R1 BLOCK 三项消化后 R2 PASS；两段提交完成 producer 双协议登记，SUITE 138→139
 - **shared-map 20260827**（2026-08-27）Solana SQD 共享覆盖地图首版入库：源=ARC 全史普查 probe 32dc03effa707da1（306,451,717→440,368,381 共 1.339 亿 slot 100% 覆盖、getBlocks 位图全程、defect_candidate=153,667 已全普查驳回/确认），TTL 30 天、消费按 capture §13e 生命周期（已知 slot 仍逐个复核+canary）；三件=json+counts.bin.gz(97.7MB)+blocks.bin.gz
@@ -71,6 +72,15 @@
 - **6.20.1** 2026-08-05 修 5 处阻断级文档漂移（A4 前禁写报告冲突/easy 残留/惯犯回灌 docstring/批量预采集残留/旧 Par 路线历史降级）＋docs_lint 增中文禁词与 Python module docstring 扫描
 
 更早版本（6.20.0 及以前）详见 `archive/CHANGELOG-archive.md`。
+
+## [6.53.0] - 2026-08-27 — 持仓分布图升级为 matplotlib 双轴带标签图
+
+- **出处与根因**：BTW·BSC 报告的“当前持仓分布”最高蓝柱实际表示地址数最多的空投残留档，却因旧 `write_png` 只是 800×420 灰底蓝柱裸 PNG、没有轴/刻度/标题/图例，被读者误当成大筹码档；问题在表现层，不在分布判定或 scan JSON。
+- **设计与实现**：新增纯数据 `_chart_series`，按 bin index 对齐地址数、泊松期望人数、该档 raw 占净供应百分比与从数据推导的对数横轴刻度；`write_png` 改为函数内导入 matplotlib/chart_style，输出 1800×840 双轴中文图，low_sample 输出居中说明；删除 `struct/zlib` 裸 PNG，异常路径以 `finally` 关闭 figure。
+- **消费面与防回流**：`write_png(path: Path, scan: dict) -> None` 签名、唯一调用行、三个 PNG 路径、scan/record-round/analyze/validate/semantic 判定代码及 payload 均不变；final 仍由真实 `--stage final --round 1` 产轮次图，再由 record-round 拷到唯一终版路径；缺 matplotlib 显式失败，不允许静默降级。
+- **测试**：先红证明旧实现无 `_chart_series`、尺寸仅 800×420 且 matplotlib 毒丸仍会产降级图；后绿覆盖零值档保留、百分比分母、对数刻度、initial/final 标准生产链、无 `base_bins` 的 low_sample、PIL 合法性与 1800×840；点名的 distribution gate、A4 gate、repair batch C/D 全绿，SUITE 139→140。
+- **盲审与验收**：按小改裁量免两轮盲审，以 @CX 施工前计划复核＋codex 施工后盲审＋Fable 独立验收替代；版本位按书面规则升次版本（生产行为改变＋复盘驱动）。
+- **成本-质量指标**：施工 1 轮；外部网络调用 0；新增回归组 1；判定逻辑改动 0；payload/schema 改动 0；分析结论 0；传播级数字错误 0。
 
 ## [6.52.15] - 2026-08-27 — F-03b 共享 SQD 地图复用失败分级与分段补扫
 
