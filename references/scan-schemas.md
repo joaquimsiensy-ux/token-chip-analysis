@@ -644,7 +644,7 @@ QUQ 与 PYTHIA 只用于算法层探索定标。防伪链测试使用合成 fixt
 | `skipped_confirmation.endpoint_fingerprint` | string | 是 |  |
 | `skipped_confirmation.blocks_bitmap` | object | 是 | path,size,sha256,from_slot,to_slot,encoding |
 | `skipped_confirmation.ranges` | array[object] | 是 | from,to,response_sha256,count,response_ok,array_monotonic_unique,array_in_range |
-| `shared_map` | object\|null | 是 | asset_path,version,sha256,supersedes,generated_at,reused_ranges,canary{slots[64],counts_sha256,verified_at} |
+| `shared_map` | object\|null | 是 | asset_path,version,sha256,supersedes,generated_at,reused_ranges,unverified_ranges,recheck_stats,canary{slots[64],counts_sha256,verified_at} |
 | `ledger` | object | 是 | path,size,sha256,requests,success_ranges_sha256 |
 | `summary` | object | 是 | 饱和计数 |
 | `verdict` | string | 是 | NO_KNOWN_NONCE_OMISSION_DETECTED/DEFECTS_CONFIRMED/INCONCLUSIVE；须重算 |
@@ -669,7 +669,9 @@ QUQ 与 PYTHIA 只用于算法层探索定标。防伪链测试使用合成 fixt
 | `shared_map.sha256` | string (sha256 hex) | 是 |  |
 | `shared_map.supersedes` | string\|null | 是 |  |
 | `shared_map.generated_at` | string | 是 |  |
-| `shared_map.reused_ranges` | array[object] | 是 |  |
+| `shared_map.reused_ranges` | array[object] | 是 | 本案实际复用的连续子区间；不含未验证段及案区间外 slot |
+| `shared_map.unverified_ranges` | array[object] | 是 | 首轮请求失败且末尾统一重试仍失败的原始 recheck 区间；元素为 from_slot,to_slot |
+| `shared_map.recheck_stats` | object | 是 | `verified`/`unverified`/`retried` 均按 recheck 连续请求区间计数；retried 是首轮失败后进入末尾重试的区间数 |
 | `shared_map.canary.slots` | array[integer] | 是 | 长度64 |
 | `shared_map.canary.counts_sha256` | string (sha256 hex) | 是 |  |
 | `shared_map.canary.verified_at` | string | 是 |  |
@@ -683,6 +685,9 @@ QUQ 与 PYTHIA 只用于算法层探索定标。防伪链测试使用合成 fixt
 
 - scan_ranges 并集覆盖案区间；sample_ranges 不计入。
 - `identity-anchor` ledger 行记录本次 SQD 对历史锚 slot 的块号/块哈希实测，固定 `counts_coverage=false`。identity-anchor 行只证明历史锚，不计入 counts 覆盖并集；只有实际连续拉取的 `recheck` 行才声明对应重验点覆盖。
+- recheck 每个连续请求区间分为 verified（完整返回且逐 slot 等于资产）、mismatch（完整返回但至少一值不同）、request-failed（transport 失败、part 缺失、返回长度短于请求区间或 worker 异常）。首轮 request-failed 区间在同一并发池末尾统一重试一次；失败行直接 `counts_coverage=false`。
+- 任一 mismatch 仍使整张地图回退 full，原因保持 `recheck-mismatch:<slot>`；canary 值逐值不等仍为 `canary-counts-changed`。canary 所在区间重试后仍 request-failed 时整图回退，原因为 `canary-recheck-unavailable`。
+- 非 canary 区间重试后仍失败时写入 `unverified_ranges`，对应复用字节清零并由 full 补扫；其余已验证字节继续复用。`map-reuse` ledger 行和 scan_ranges 条目按 `reused_ranges` 每个连续子区间逐段生成，`response_sha256` 只哈希该段实际复用字节，不得覆盖未验证段或案区间外 slot；若本案没有可复用子区间，则不得生成 map-reuse 行。
 - 无 UNSCANNED；解压长度等于区间长度；ledger 成功区间并集无洞且等于 scan_ranges 并集。
 - skipped_confirmation.ranges[] 每段字段恰为 {from,to,response_sha256,count,response_ok,array_monotonic_unique,array_in_range}。
 - complete 不落盘；离线 validator 的 complete 合取式＝response_ok ∧ array_monotonic_unique ∧ array_in_range ∧ (to−from+1) ≤ 500,000 ∧ reference_head_at_check ≥ to ∧ 位图该段长度 == to−from+1 ∧ popcount == count ∧ count ≤ 区间长度。

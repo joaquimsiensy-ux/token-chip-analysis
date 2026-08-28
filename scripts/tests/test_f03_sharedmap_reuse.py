@@ -95,6 +95,20 @@ def _block(slot, count, *, block_hash=None):
                              for index in range(max(0, count - 2))]}
 
 
+def _request_failure(status=529):
+    return {"ok": False, "category": "http", "message": f"fixture {status}",
+            "http_status": status, "retryable": True}
+
+
+def _success_range(counts, start, end, *, overrides=None):
+    overrides = overrides or {}
+    return {"ok": True, "value": [
+        _block(slot, overrides.get(slot, counts[slot - LOWER]))
+        for slot in range(start, end + 1)
+        if overrides.get(slot, counts[slot - LOWER]) > 1
+    ]}
+
+
 def _responses(counts, *, anchor_hash=ANCHOR_HASH, fail_range=None,
                mismatch_slot=None):
     responses = {
@@ -153,6 +167,34 @@ def _load(asset_path, metadata, current_head_raw, transport, ledger, *, workers=
     return probe._load_known_map(*args, **kwargs)
 
 
+def _assert_case_bounded_rechecks(ledger, coverage, case_from, case_to, *,
+                                  require_fully_outside_success=False,
+                                  require_cross_boundary_success=False):
+    outside_rows = [
+        row for row in ledger
+        if row.get("mode") == "recheck"
+        and (row.get("from") < case_from or row.get("to") > case_to)
+    ]
+    assert outside_rows, ledger
+    assert all(row.get("counts_coverage") is False for row in outside_rows), \
+        outside_rows
+    assert all(case_from <= row["from_slot"] <= row["to_slot"] <= case_to
+               for row in coverage["scan_ranges"]), coverage["scan_ranges"]
+    if require_fully_outside_success:
+        assert any(
+            row.get("ok") is True
+            and (row["to"] < case_from or row["from"] > case_to)
+            for row in outside_rows
+        ), outside_rows
+    if require_cross_boundary_success:
+        assert any(
+            row.get("ok") is True
+            and ((row["from"] < case_from <= row["to"])
+                 or (row["from"] <= case_to < row["to"]))
+            for row in outside_rows
+        ), outside_rows
+
+
 def test_head_forward_anchor_and_gap_exact_rechecks():
     with tempfile.TemporaryDirectory(prefix="f03-head-forward-") as td:
         root = Path(td)
@@ -206,7 +248,7 @@ def test_anchor_transport_exception_is_structured_and_audited():
         assert anchors[0]["counts_coverage"] is False
 
 
-def test_recheck_mismatch_and_parallel_failure_fail_closed():
+def test_recheck_mismatch_still_falls_back():
     with tempfile.TemporaryDirectory(prefix="f03-recheck-fail-") as td:
         root = Path(td)
         asset_path, _asset, counts = _write_asset(root)
@@ -216,16 +258,322 @@ def test_recheck_mismatch_and_parallel_failure_fail_closed():
             _transport(root, _responses(counts, mismatch_slot=170)), [])
         assert reused is None and info["fallback_reason"] == "recheck-mismatch:170", info
 
-    with tempfile.TemporaryDirectory(prefix="f03-worker-fail-") as td:
+
+def test_partial_request_failure_reuses_verified_ranges():
+    """F-03b RED: a persistent non-canary failure must not discard the map."""
+    with tempfile.TemporaryDirectory(prefix="f03b-partial-fail-") as td:
         root = Path(td)
         asset_path, _asset, counts = _write_asset(root)
+        raw = _metadata(NEW_HEAD, "new-head-hash")
+        ledger = []
+        info, reused, lower, upper = _load(
+            asset_path, probe._normalize_metadata(raw), raw,
+            _transport(root, _responses(counts, fail_range=(170, 171))), ledger)
+        assert reused is not None, info
+        assert (lower, upper) == (LOWER, UPPER)
+        assert info["unverified_ranges"] == [
+            {"from_slot": 170, "to_slot": 171},
+        ]
+        target_rows = [row for row in ledger if row.get("mode") == "recheck"
+                       and row.get("from") == 170]
+        assert len(target_rows) == 2
+        assert all(row["counts_coverage"] is False for row in target_rows)
+        assert info["recheck_stats"] == {
+            "verified": 2, "unverified": 1, "retried": 1,
+        }
+
+
+def test_partial_rate_limit_end_to_end_full_repairs_failed_ranges():
+    with tempfile.TemporaryDirectory(prefix="f03b-partial-e2e-") as td:
+        root = Path(td)
+        asset_path, _asset, counts = _write_asset(root)
+        responses = _responses(counts)
+        case_from, case_to = 120, 175
+        fresh = {170: 7, 171: 8}
+        digest = probe.request_digest(
+            "sqd-stream", probe.sqd_query_body(170, 171))
+        responses[digest] = [
+            _request_failure(529), _request_failure(529),
+            _success_range(counts, 170, 171, overrides=fresh),
+        ]
+        _transport(root, responses)
+        case = root / "case"
+        assert probe.main([
+            "--mint", MINT, "--case-root", str(case),
+            "--from-slot", str(case_from), "--to-slot", str(case_to),
+            "--known-map", str(asset_path), "--no-getblocks",
+            "--transport-fixture", str(root / "transport"),
+        ]) == 0
+        pointer_path = case / "data/sqd_coverage/CURRENT.json"
+        pointer = json.loads(pointer_path.read_text(encoding="utf-8"))
+        generation = case / "data/sqd_coverage" / pointer["probe_id"]
+        coverage_path = generation / "coverage_map.json"
+        coverage = json.loads(coverage_path.read_text(encoding="utf-8"))
+        checked = exact.validate_coverage(
+            case, coverage_path, pointer_path, case_from, case_to)
+        assert checked["ok"], checked
+        assert coverage["shared_map"]["unverified_ranges"] == [
+            {"from_slot": 170, "to_slot": 171},
+        ]
+        assert coverage["shared_map"]["recheck_stats"] == {
+            "verified": 2, "unverified": 1, "retried": 1,
+        }
+        expected_reused = [
+            {"from_slot": 120, "to_slot": 169},
+            {"from_slot": 172, "to_slot": 175},
+        ]
+        assert coverage["shared_map"]["reused_ranges"] == expected_reused
+        ledger = [json.loads(line) for line in
+                  (generation / "ledger.jsonl").read_text(
+                      encoding="utf-8").splitlines() if line.strip()]
+        map_rows = [row for row in ledger if row.get("mode") == "map-reuse"]
+        assert [(row["from"], row["to"]) for row in map_rows] == [
+            (120, 169), (172, 175),
+        ]
+        for row in map_rows:
+            part = counts[row["from"] - LOWER:row["to"] - LOWER + 1]
+            assert row["response_sha256"] == exact.sha256_bytes(part)
+        assert all(not (row["from"] <= 170 <= row["to"])
+                   for row in map_rows)
+        full_rows = [row for row in ledger if row.get("mode") == "full"
+                     and row.get("counts_coverage") is True]
+        assert [(row["from"], row["to"]) for row in full_rows] == [
+            (170, 171),
+        ]
+        failed_rechecks = [row for row in ledger
+                           if row.get("mode") == "recheck"
+                           and row.get("from") == 170]
+        assert len(failed_rechecks) == 2
+        assert all(row["counts_coverage"] is False for row in failed_rechecks)
+        _assert_case_bounded_rechecks(
+            ledger, coverage, case_from, case_to,
+            require_fully_outside_success=True,
+            require_cross_boundary_success=True,
+        )
+        final_counts = gzip.decompress(
+            (generation / coverage["slot_counts"]["path"]).read_bytes())
+        for slot, value in fresh.items():
+            assert final_counts[slot - case_from] == value
+
+
+def test_retry_rescues_range_and_retry_mismatch_falls_back():
+    with tempfile.TemporaryDirectory(prefix="f03b-retry-rescue-") as td:
+        root = Path(td)
+        asset_path, _asset, counts = _write_asset(root)
+        raw = _metadata(NEW_HEAD, "new-head-hash")
+        responses = _responses(counts)
+        digest = probe.request_digest(
+            "sqd-stream", probe.sqd_query_body(170, 171))
+        responses[digest] = [
+            _request_failure(), _success_range(counts, 170, 171),
+        ]
+        ledger = []
+        info, reused, lower, upper = _load(
+            asset_path, probe._normalize_metadata(raw), raw,
+            _transport(root, responses), ledger)
+        assert reused == counts and (lower, upper) == (LOWER, UPPER), info
+        assert info["unverified_ranges"] == []
+        assert info["recheck_stats"] == {
+            "verified": 3, "unverified": 0, "retried": 1,
+        }
+        target_rows = [row for row in ledger if row.get("mode") == "recheck"
+                       and row.get("from") == 170]
+        assert len(target_rows) == 2
+        assert [row["counts_coverage"] for row in target_rows] == [False, True]
+
+    with tempfile.TemporaryDirectory(prefix="f03b-retry-mismatch-") as td:
+        root = Path(td)
+        asset_path, _asset, counts = _write_asset(root)
+        responses = _responses(counts)
+        digest = probe.request_digest(
+            "sqd-stream", probe.sqd_query_body(170, 171))
+        responses[digest] = [
+            _request_failure(),
+            _success_range(counts, 170, 171, overrides={170: 4}),
+        ]
         ledger = []
         info, reused, _lower, _upper = _load(
             asset_path, probe._normalize_metadata(raw), raw,
-            _transport(root, _responses(counts, fail_range=(170, 171))), ledger)
+            _transport(root, responses), ledger)
         assert reused is None
-        assert info["fallback_reason"] == "recheck-request-failed:170-171", info
-        assert any(row["mode"] == "recheck" and not row["ok"] for row in ledger)
+        assert info["fallback_reason"] == "recheck-mismatch:170", info
+        assert info["unverified_ranges"] == []
+        assert info["recheck_stats"] == {
+            "verified": 2, "unverified": 0, "retried": 1,
+        }
+        assert all(row["counts_coverage"] is False
+                   for row in ledger if row.get("mode") == "recheck")
+
+    with tempfile.TemporaryDirectory(prefix="f03b-mismatch-plus-retry-") as td:
+        root = Path(td)
+        asset_path, _asset, counts = _write_asset(root)
+        responses = _responses(counts, mismatch_slot=170)
+        digest = probe.request_digest(
+            "sqd-stream", probe.sqd_query_body(180, 180))
+        responses[digest] = [
+            _request_failure(), _success_range(counts, 180, 180),
+        ]
+        ledger = []
+        info, reused, _lower, _upper = _load(
+            asset_path, probe._normalize_metadata(raw), raw,
+            _transport(root, responses), ledger)
+        assert reused is None
+        assert info["fallback_reason"] == "recheck-mismatch:170", info
+        retried_rows = [row for row in ledger if row.get("mode") == "recheck"
+                        and row.get("from") == 180]
+        assert len(retried_rows) == 2
+        assert info["recheck_stats"]["retried"] == 1
+
+
+def test_canary_unavailable_and_canary_counts_changed_fall_back():
+    with tempfile.TemporaryDirectory(prefix="f03b-canary-unavailable-") as td:
+        root = Path(td)
+        asset_path, _asset, counts = _write_asset(root)
+        raw = _metadata(NEW_HEAD, "new-head-hash")
+        responses = _responses(counts)
+        digest = probe.request_digest(
+            "sqd-stream", probe.sqd_query_body(LOWER, LOWER + 63))
+        responses[digest] = [_request_failure(), _request_failure()]
+        info, reused, _lower, _upper = _load(
+            asset_path, probe._normalize_metadata(raw), raw,
+            _transport(root, responses), [])
+        assert reused is None
+        assert info["fallback_reason"] == "canary-recheck-unavailable", info
+
+    with tempfile.TemporaryDirectory(prefix="f03b-canary-changed-") as td:
+        root = Path(td)
+        asset_path, _asset, counts = _write_asset(root)
+        original_validate = probe.validate_shared_map
+        original_read = probe._read_json
+        try:
+            probe.validate_shared_map = lambda _path: {"ok": True, "reasons": []}
+
+            def changed_canary(path):
+                asset = original_read(path)
+                asset["canary"]["counts"][0] += 1
+                return asset
+
+            probe._read_json = changed_canary
+            info, reused, _lower, _upper = _load(
+                asset_path, probe._normalize_metadata(raw), raw,
+                _transport(root, _responses(counts)), [])
+        finally:
+            probe.validate_shared_map = original_validate
+            probe._read_json = original_read
+        assert reused is None
+        assert info["fallback_reason"] == "canary-counts-changed", info
+
+
+def test_truncated_and_worker_exception_ranges_are_unverified():
+    with tempfile.TemporaryDirectory(prefix="f03b-truncated-") as td:
+        root = Path(td)
+        asset_path, _asset, counts = _write_asset(root)
+        raw = _metadata(NEW_HEAD, "new-head-hash")
+        responses = _responses(counts)
+        digest = probe.request_digest(
+            "sqd-stream", probe.sqd_query_body(170, 171))
+        truncated = _success_range(counts, 170, 170, overrides={170: 3})
+        responses[digest] = [truncated, truncated]
+        ledger = []
+        info, reused, _lower, _upper = _load(
+            asset_path, probe._normalize_metadata(raw), raw,
+            _transport(root, responses), ledger)
+        assert reused is not None
+        assert info["unverified_ranges"] == [
+            {"from_slot": 170, "to_slot": 171},
+        ]
+        rows = [row for row in ledger if row.get("mode") == "recheck"
+                and row.get("from") == 170]
+        assert len(rows) == 2 and all(row["ok"] is True for row in rows)
+        assert all(row["slots_covered"] == 1 for row in rows)
+        assert all(row["counts_coverage"] is False for row in rows)
+
+    with tempfile.TemporaryDirectory(prefix="f03b-worker-exception-") as td:
+        root = Path(td)
+        asset_path, _asset, counts = _write_asset(root)
+        base = _transport(root, _responses(counts))
+        target = probe.request_digest(
+            "sqd-stream", probe.sqd_query_body(170, 171))
+
+        class RaisingRangeTransport:
+            def call(self, kind, body):
+                if probe.request_digest(kind, body) == target:
+                    raise TimeoutError("fixture worker timeout")
+                return base.call(kind, body)
+
+        ledger = []
+        info, reused, _lower, _upper = _load(
+            asset_path, probe._normalize_metadata(raw), raw,
+            RaisingRangeTransport(), ledger)
+        assert reused is not None
+        assert info["unverified_ranges"] == [
+            {"from_slot": 170, "to_slot": 171},
+        ]
+        rows = [row for row in ledger if row.get("mode") == "recheck"
+                and row.get("from") == 170]
+        assert len(rows) == 2 and all(row["ok"] is False for row in rows)
+        assert all(row["counts_coverage"] is False for row in rows)
+
+
+def test_exclusion_failure_falls_back_and_case_can_degrade_to_pure_full():
+    with tempfile.TemporaryDirectory(prefix="f03b-exclusion-fail-") as td:
+        root = Path(td)
+        asset_path, _asset, counts = _write_asset(root)
+        raw = _metadata(NEW_HEAD, "new-head-hash")
+        original = probe._reuse_ranges_excluding
+        try:
+            probe._reuse_ranges_excluding = lambda *_args: (_ for _ in ()).throw(
+                ValueError("fixture-exclusion-failed"))
+            ledger = []
+            info, reused, _lower, _upper = _load(
+                asset_path, probe._normalize_metadata(raw), raw,
+                _transport(root, _responses(counts)), ledger)
+        finally:
+            probe._reuse_ranges_excluding = original
+        assert reused is None
+        assert info["fallback_reason"] == "fixture-exclusion-failed", info
+        assert all(row["counts_coverage"] is False
+                   for row in ledger if row.get("mode") == "recheck")
+
+    with tempfile.TemporaryDirectory(prefix="f03b-pure-full-") as td:
+        root = Path(td)
+        asset_path, _asset, counts = _write_asset(root)
+        responses = _responses(counts)
+        digest = probe.request_digest(
+            "sqd-stream", probe.sqd_query_body(170, 171))
+        fresh = {170: 6, 171: 7}
+        responses[digest] = [
+            _request_failure(), _request_failure(),
+            _success_range(counts, 170, 171, overrides=fresh),
+        ]
+        _transport(root, responses)
+        case = root / "case"
+        assert probe.main([
+            "--mint", MINT, "--case-root", str(case),
+            "--from-slot", "170", "--to-slot", "171",
+            "--known-map", str(asset_path), "--no-getblocks",
+            "--transport-fixture", str(root / "transport"),
+        ]) == 0
+        pointer_path = case / "data/sqd_coverage/CURRENT.json"
+        pointer = json.loads(pointer_path.read_text(encoding="utf-8"))
+        generation = case / "data/sqd_coverage" / pointer["probe_id"]
+        coverage_path = generation / "coverage_map.json"
+        coverage = json.loads(coverage_path.read_text(encoding="utf-8"))
+        checked = exact.validate_coverage(
+            case, coverage_path, pointer_path, 170, 171)
+        assert checked["ok"], checked
+        assert coverage["shared_map"]["reused_ranges"] == []
+        ledger = [json.loads(line) for line in
+                  (generation / "ledger.jsonl").read_text(
+                      encoding="utf-8").splitlines() if line.strip()]
+        assert not [row for row in ledger if row.get("mode") == "map-reuse"]
+        _assert_case_bounded_rechecks(
+            ledger, coverage, 170, 171,
+            require_fully_outside_success=True,
+        )
+        final_counts = gzip.decompress(
+            (generation / coverage["slot_counts"]["path"]).read_bytes())
+        assert list(final_counts) == [fresh[170], fresh[171]]
 
 
 def test_fallback_rechecks_removed_from_published_coverage():
@@ -542,7 +890,13 @@ def main():
         test_head_forward_anchor_and_gap_exact_rechecks,
         test_anchor_mismatch_is_not_ignored,
         test_anchor_transport_exception_is_structured_and_audited,
-        test_recheck_mismatch_and_parallel_failure_fail_closed,
+        test_recheck_mismatch_still_falls_back,
+        test_partial_request_failure_reuses_verified_ranges,
+        test_partial_rate_limit_end_to_end_full_repairs_failed_ranges,
+        test_retry_rescues_range_and_retry_mismatch_falls_back,
+        test_canary_unavailable_and_canary_counts_changed_fall_back,
+        test_truncated_and_worker_exception_ranges_are_unverified,
+        test_exclusion_failure_falls_back_and_case_can_degrade_to_pure_full,
         test_fallback_rechecks_removed_from_published_coverage,
         test_identity_reason_matrix_and_tracked_asset_json_only,
         test_stable_identity_types_and_real_head_shape,
