@@ -89,6 +89,22 @@ PRODUCER_HISTORY = (
         "reason": "v6.52.14 registers the atomic CURRENT pointer producer from the same frozen F-03 probe.",
     },
     {
+        "script": "scripts/solana/sqd_coverage_probe.py",
+        "sha256": "c4980c984b08d27f5a7e46db50f97c9c16e47ea491f37a459b3773f939218769",
+        "commit": "cdc4f87f8e3ee4d181760cb8455d688f23049f20",
+        "protocol": "sqd-solana-coverage/v1",
+        "status": "ACTIVE",
+        "reason": "v6.52.15 registers the F-03b failure-classifying probe that drops request-failed recheck segments to full after retries while preserving whole-map fallback for mismatches.",
+    },
+    {
+        "script": "scripts/solana/sqd_coverage_probe.py",
+        "sha256": "c4980c984b08d27f5a7e46db50f97c9c16e47ea491f37a459b3773f939218769",
+        "commit": "cdc4f87f8e3ee4d181760cb8455d688f23049f20",
+        "protocol": "sqd-solana-coverage-pointer/v1",
+        "status": "ACTIVE",
+        "reason": "v6.52.15 registers the atomic CURRENT pointer producer from the same frozen F-03b probe.",
+    },
+    {
         "script": "scripts/solana/sqd_gap_repair.py",
         "sha256": "c8beb16e998c5019f6d3cfee0cb14ca163b4dcc3b7d3eb9bdd43fdfd6e44d137",
         "commit": "5782f76773fae0f3b9b036222ad85298992ec840",

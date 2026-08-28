@@ -10,6 +10,7 @@
 
 ## 版本索引（活跃窗口，新在上；每版一行，详情见下方对应条目）
 
+- **6.52.15**（2026-08-27）F-03b 共享 SQD 地图复用失败分级：ARC live 92,643 次 recheck 中 1,182 次限流失败且零 mismatch，暴露“任一请求失败即整体回退”使复用必然失败；mismatch 整体回退不变，请求失败末尾重试后只剔除该段转 full，canary 段失败仍整体回退；map-reuse 按已验证子区间逐段声明，案外 recheck 撤销覆盖并以杀变异测试固守；新增 `unverified_ranges`/`recheck_stats` 审计字段且 retry mismatch 不污染；盲审 R1 BLOCK 两项消化后 R2 PASS；SUITE 139 不变，既有 F-03 测试组 9→15
 - **6.52.14**（2026-08-27）F-03 共享 SQD 地图复用闸修复（codex 六视角 review P1，修复中新引入 b005a468）：身份三分类＋历史锚＋head 单调＋模板绑定；已知点只连续合并并发重验，失败整体回退且撤销本轮 recheck 覆盖声明；`validate_shared_map` 同深扩全，`validate_coverage` 按 D1 用户裁决接 producer_history；CT-SQDGAP-35；20260827 资产零字节改动即刻可复用；盲审 R1 BLOCK 三项消化后 R2 PASS；两段提交完成 producer 双协议登记，SUITE 138→139
 - **shared-map 20260827**（2026-08-27）Solana SQD 共享覆盖地图首版入库：源=ARC 全史普查 probe 32dc03effa707da1（306,451,717→440,368,381 共 1.339 亿 slot 100% 覆盖、getBlocks 位图全程、defect_candidate=153,667 已全普查驳回/确认），TTL 30 天、消费按 capture §13e 生命周期（已知 slot 仍逐个复核+canary）；三件=json+counts.bin.gz(97.7MB)+blocks.bin.gz
 - **6.52.13**（2026-08-27）批 14 accounting 观测 bundle 绑定冻结态内容寻址兜底：正式路径现物指纹不匹配（仅 size/sha mismatch 两种）时按收据记录的同一 size+sha256 到冻结件 `data/solana_observation_bundle_frozen.json` 寻址（哈希是身份、路径只是地址；兜底命中后深验零跳过），安全类失败（逃逸/symlink/缺件）不兜底、兜底失败回抛原错；方案 A 同族第六消费点（ARC handoff 第 2 发暴露：封账期收据绑定的正式路径被活观测占用）；SUITE 138 全绿
@@ -70,6 +71,15 @@
 - **6.20.1** 2026-08-05 修 5 处阻断级文档漂移（A4 前禁写报告冲突/easy 残留/惯犯回灌 docstring/批量预采集残留/旧 Par 路线历史降级）＋docs_lint 增中文禁词与 Python module docstring 扫描
 
 更早版本（6.20.0 及以前）详见 `archive/CHANGELOG-archive.md`。
+
+## [6.52.15] - 2026-08-27 — F-03b 共享 SQD 地图复用失败分级与分段补扫
+
+- **出处与根因**：F-03 修复后 ARC live 实测共发出 92,643 个 recheck 请求，其中 91,461 成功，1,182 失败全部来自 SQD 服务端限流（529×1,034、429×148），零数据 mismatch。旧规则把请求失败和数据不一致都当成整图不可信，导致大地图在真实限流环境下几乎必然放弃复用、退回全扫。
+- **失败三分级**：每个 range 明分 verified、mismatch、request-failed。成功响应只要有一处 slot 值不一致，仍按 `recheck-mismatch:<slot>` 整体回退；请求失败在首轮结束后统一重试一次，仍失败只把该段剔出复用并转 full 补扫；canary 段请求仍失败或值变化，仍整体回退，不允许部分复用。
+- **覆盖声明与防回流**：map-reuse 不再用一条大区间笼统声称复用，而是按实际验证通过的案件子区间逐段声明；案外或跨案件边界的 recheck 行一律撤销 `counts_coverage`。新增受控杀变异测试，模拟恢复案外 coverage 声明时必须转 RED，证明测试能咬住这条边界。
+- **审计字段**：shared_map 新增 `unverified_ranges` 和 `recheck_stats`（verified/unverified/retried），`reused_ranges` 改记实际复用的子区间；retry 后得到 mismatch 只进入 mismatch 路径并触发整体回退，不污染 unverified 列表或计数。
+- **盲审与验收**：盲审第 1 轮判 BLOCK 的两项发现已消化——retry mismatch 审计误分类修正，案外/跨界 coverage 以端到端断言和杀变异测试封口；第 2 轮 PASS。SUITE 维持 139 项，F-03 既有测试文件内测试组由 9 增至 15，未新增 suite 入口。
+- **成本/质量指标**：live 实测 6.3 小时；外部网络调用 0（本登记批）；资产改动 0 字节；新增 suite 入口 0；分析结论 0；传播级数字错误 0。
 
 ## [6.52.14] - 2026-08-27 — F-03 共享 SQD 地图复用闸身份与重验闭环
 
