@@ -30,10 +30,8 @@ import json
 import math
 import os
 import shutil
-import struct
 import sys
 import tempfile
-import zlib
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -729,24 +727,116 @@ def semantic_payload(scan: dict):
     return payload
 
 
-def write_png(path: Path, scan: dict) -> None:
-    width, height = 800, 420
-    rgb = bytearray([248, 249, 251] * width * height)
+def _chart_series(scan: dict) -> dict:
+    def as_int(value, default=0):
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return default
+
+    def as_float(value, default=0.0):
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return default
+
+    stage = str(scan.get("stage") or "")
+    round_n = scan.get("round")
+    owner_count = scan.get("owner_count_private_main")
+    if stage == "final" and round_n is not None:
+        title = f"当前持仓分布(final·第{round_n}轮)"
+    else:
+        title = f"当前持仓分布({stage or 'initial'})"
+    if owner_count is not None:
+        title += f"——私人主桶 {as_int(owner_count):,} 址"
+
     bins = scan.get("base_bins") or []
-    max_count = max([x.get("owner_count", 0) for x in bins] or [1])
-    if bins:
-        bar_w = max(1, (width - 60) // len(bins))
-        for i, row in enumerate(bins):
-            bh = int((height - 60) * row.get("owner_count", 0) / max_count)
-            for y in range(height - 30 - bh, height - 30):
-                for x in range(30 + i * bar_w, min(width - 30, 30 + (i + 1) * bar_w - 1)):
-                    pos = (y * width + x) * 3; rgb[pos:pos + 3] = bytes((53, 112, 181))
-    raw = b"".join(b"\x00" + bytes(rgb[y * width * 3:(y + 1) * width * 3]) for y in range(height))
-    def chunk(kind, data):
-        return struct.pack(">I", len(data)) + kind + data + struct.pack(">I", zlib.crc32(kind + data) & 0xffffffff)
-    png = b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0)) \
-          + chunk(b"IDAT", zlib.compress(raw, 9)) + chunk(b"IEND", b"")
-    path.parent.mkdir(parents=True, exist_ok=True); path.write_bytes(png)
+    if not isinstance(bins, list) or not bins:
+        note = (f"私人主桶 {as_int(owner_count):,} 址,低于形态闸样本门槛;"
+                "形态统计未运行(low_sample)") if owner_count is not None \
+            else "形态统计未运行(low_sample)"
+        return {"mode": "low_sample", "bars": [], "expected": [], "right_pct": [],
+                "xticks": [], "title": title, "note": note}
+
+    ordered = sorted((row for row in bins if isinstance(row, dict)),
+                     key=lambda row: as_int(row.get("index")))
+    if not ordered:
+        note = (f"私人主桶 {as_int(owner_count):,} 址,低于形态闸样本门槛;"
+                "形态统计未运行(low_sample)") if owner_count is not None \
+            else "形态统计未运行(low_sample)"
+        return {"mode": "low_sample", "bars": [], "expected": [], "right_pct": [],
+                "xticks": [], "title": title, "note": note}
+
+    bars = [as_int(row.get("owner_count")) for row in ordered]
+    expected = [as_float(row.get("expected_owner_count")) for row in ordered]
+    net_supply = as_int((scan.get("denominators") or {}).get("net_supply_raw")) \
+        if isinstance(scan.get("denominators") or {}, dict) else 0
+    right_pct = [as_int(row.get("raw_balance")) / net_supply * 100.0
+                 if net_supply else 0.0 for row in ordered]
+
+    xticks = []
+    v0 = as_float(ordered[0].get("upper_private_pct"))
+    last = as_float(ordered[-1].get("upper_private_pct"))
+    ratio = as_float(ordered[1].get("upper_private_pct")) / v0 \
+        if len(ordered) > 1 and v0 else 0.0
+    if v0 > 0 and last >= v0 and ratio > 1:
+        first_exponent = math.ceil(math.log10(v0) - 1e-12)
+        last_exponent = min(2, math.floor(math.log10(last) + 1e-12))
+        for exponent in range(first_exponent, last_exponent + 1):
+            value = 10.0 ** exponent
+            if v0 <= value <= last:
+                xticks.append({"pos": math.log(value / v0) / math.log(ratio),
+                               "label": f"{value:g}%"})
+    return {"mode": "normal", "bars": bars, "expected": expected,
+            "right_pct": right_pct, "xticks": xticks, "title": title, "note": None}
+
+
+def write_png(path: Path, scan: dict) -> None:
+    from chart_style import setup
+    import matplotlib.pyplot as plt
+
+    setup()
+    series = _chart_series(scan)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fig, ax = plt.subplots(figsize=(12, 5.6))
+    try:
+        ax.set_title(series["title"])
+        if series["mode"] == "low_sample":
+            ax.set_xticks([])
+            ax.set_yticks([])
+            ax.text(0.5, 0.5, series["note"], ha="center", va="center",
+                    transform=ax.transAxes)
+        else:
+            bars = series["bars"]
+            expected = series["expected"]
+            right_pct = series["right_pct"]
+            n = len(bars)
+            ax.bar(range(n), bars, color="#3570b5", width=0.92, label="地址数")
+            ax.stairs(expected, edges=[i - 0.5 for i in range(n + 1)], baseline=None,
+                      color="#777777", linestyle="--",
+                      label="拟合期望人数(泊松零假设 λ,形态闸基线)")
+            ax.set_ylabel("地址数")
+            ax.set_xticks([tick["pos"] for tick in series["xticks"]],
+                          [tick["label"] for tick in series["xticks"]])
+            ax.set_xlabel("单地址持仓占私人可入箱供应 %(对数分箱,每格 ×√2)")
+
+            ax2 = ax.twinx()
+            points = list(range(n))
+            ax2.plot(points, right_pct, color="#e68632", linewidth=1.8,
+                     label="该档合计持币占净供应 %")
+            positive = [(index, value) for index, value in enumerate(right_pct) if value > 0]
+            if positive:
+                ax2.scatter([item[0] for item in positive], [item[1] for item in positive],
+                            color="#e68632", s=22, label="_nolegend_")
+            ax2.set_ylabel("该档合计持币占净供应 %")
+            ax2.set_ylim(bottom=0)
+            handles, labels = ax.get_legend_handles_labels()
+            handles2, labels2 = ax2.get_legend_handles_labels()
+            ax.legend(handles + handles2, labels + labels2, loc="best", framealpha=0.95)
+        fig.tight_layout()
+        fig.savefig(path, dpi=150)
+    finally:
+        plt.close(fig)
 
 
 def scan_output_paths(case_dir: Path, stage: str, output: str | None, chart: str | None, round_n: int | None):

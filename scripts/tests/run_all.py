@@ -87,6 +87,7 @@ SUITE = ['changelog_lint.py', ['docs_lint.py', '--all'], 'labels_manifest.py',
 
 # v6.20.0 持仓分布形态硬闸。单列在扫描器与封口链测试之后，任何新绕过都会阻断全量 suite。
 SUITE += ['test_distribution_gate.py']
+SUITE += ['test_distribution_chart.py']
 
 # v6.39.0 APU 案（ANOM-012）存量迁移三工单：replay_stats 覆盖截止块契约、
 # 太古 done 官方迁移全链、旧 −1 产物格式迁移命令。

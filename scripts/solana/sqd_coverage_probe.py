@@ -19,6 +19,7 @@ import tempfile
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from threading import Lock
 
 LIB = Path(__file__).resolve().parents[1] / "lib"
 sys.path.insert(0, str(LIB))
@@ -82,11 +83,18 @@ class FixtureTransport:
             raise ValueError("fixture transport schema mismatch")
         self.responses = payload.get("responses") or {}
         self.calls = []
+        self.response_indexes = {}
+        self.response_lock = Lock()
 
     def call(self, kind, body):
         digest = request_digest(kind, body)
         self.calls.append({"kind": kind, "digest": digest})
         item = self.responses.get(digest)
+        if isinstance(item, list):
+            with self.response_lock:
+                index = self.response_indexes.get(digest, 0)
+                self.response_indexes[digest] = index + 1
+            item = item[min(index, len(item) - 1)] if item else None
         if not isinstance(item, dict):
             return net.Result(ok=False, error={
                 "category": "fixture", "message": f"missing fixture {digest}",
@@ -565,12 +573,13 @@ def _contiguous_ranges(slots):
 def _recheck_known_slots(transport, recheck, asset_counts, afrom, workers,
                          ledger, endpoints):
     ranges = _contiguous_ranges(recheck)
-    completed = []
-    with ThreadPoolExecutor(max_workers=workers) as pool:
+
+    def run_round(pool, targets):
+        completed = []
         futures = {
             pool.submit(_scan_request, transport, start, end, 0, endpoints,
                         mode="recheck"): (start, end)
-            for start, end in ranges
+            for start, end in targets
         }
         for future in as_completed(futures):
             start, end = futures[future]
@@ -579,7 +588,7 @@ def _recheck_known_slots(transport, recheck, asset_counts, afrom, workers,
             except Exception as exc:
                 row = {
                     "seq": 0, "ts": utc_now(), "provider": "SQD",
-                    "mode": "recheck", "counts_coverage": True,
+                    "mode": "recheck", "counts_coverage": False,
                     "query_body_sha256": sha256_bytes(canonical_json(
                         sqd_query_body(start, end))),
                     "from": start, "to": end, "http_status": None,
@@ -591,19 +600,71 @@ def _recheck_known_slots(transport, recheck, asset_counts, afrom, workers,
                 part = None
             completed.append((start, end, row, part))
 
+        outcomes = []
+        for start, end, row, part in sorted(completed):
+            expected = end - start + 1
+            if part is None or len(part) != expected:
+                row["counts_coverage"] = False
+                outcomes.append((start, end, "request-failed", None, row, None))
+                _append_ledger(ledger, [row])
+                continue
+            mismatch = next((start + offset for offset, value in enumerate(part)
+                             if value != asset_counts[start + offset - afrom]), None)
+            outcome = "mismatch" if mismatch is not None else "verified"
+            outcomes.append((start, end, outcome, mismatch, row, part))
+            _append_ledger(ledger, [row])
+        return outcomes
+
     actual = {}
-    failure = None
-    for start, end, row, part in sorted(completed):
-        _append_ledger(ledger, [row])
-        if part is None or len(part) != end - start + 1:
-            failure = failure or f"recheck-request-failed:{start}-{end}"
-            continue
-        for offset, value in enumerate(part):
-            slot = start + offset
-            if value != asset_counts[slot - afrom]:
-                failure = failure or f"recheck-mismatch:{slot}"
-            actual[slot] = value
-    return actual, failure
+    verified = set()
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        first = run_round(pool, ranges)
+        mismatch_slots = [item[3] for item in first if item[2] == "mismatch"]
+        failed = [(start, end) for start, end, outcome, _slot, _row, _part in first
+                  if outcome == "request-failed"]
+        for start, end, outcome, _slot, _row, part in first:
+            if outcome == "verified":
+                verified.add((start, end))
+                for offset, value in enumerate(part):
+                    actual[start + offset] = value
+
+        retry = run_round(pool, failed) if failed else []
+        mismatch_slots.extend(item[3] for item in retry
+                              if item[2] == "mismatch")
+        unverified = []
+        for start, end, outcome, _slot, _row, part in retry:
+            if outcome == "verified":
+                verified.add((start, end))
+                for offset, value in enumerate(part):
+                    actual[start + offset] = value
+            elif outcome == "request-failed":
+                unverified.append((start, end))
+        stats = {"verified": len(verified), "unverified": len(unverified),
+                 "retried": len(failed)}
+        if mismatch_slots:
+            return actual, f"recheck-mismatch:{min(mismatch_slots)}", \
+                unverified, stats
+        return actual, None, unverified, stats
+
+
+def _reuse_ranges_excluding(overlap_from, overlap_to, excluded):
+    clipped = []
+    for start, end in excluded:
+        if type(start) is not int or type(end) is not int or start > end:
+            raise ValueError("unverified-range-invalid")
+        start, end = max(start, overlap_from), min(end, overlap_to)
+        if start <= end:
+            clipped.append((start, end))
+    excluded_union = merge_ranges(clipped)
+    reused = []
+    cursor = overlap_from
+    for start, end in excluded_union:
+        if cursor < start:
+            reused.append({"from_slot": cursor, "to_slot": start - 1})
+        cursor = end + 1
+    if cursor <= overlap_to:
+        reused.append({"from_slot": cursor, "to_slot": overlap_to})
+    return reused, excluded_union
 
 
 def _load_known_map(path, mint_from, mint_to, sqd_identity, metadata,
@@ -613,6 +674,8 @@ def _load_known_map(path, mint_from, mint_to, sqd_identity, metadata,
     asset_path = Path(path).resolve()
     info = {"asset_path": str(asset_path), "version": None, "sha256": None,
             "supersedes": None, "generated_at": None, "reused_ranges": [],
+            "unverified_ranges": [],
+            "recheck_stats": {"verified": 0, "unverified": 0, "retried": 0},
             "canary": {"slots": [], "counts_sha256": sha256_bytes(b""),
                        "verified_at": utc_now()}}
     ledger_start = len(ledger)
@@ -679,10 +742,15 @@ def _load_known_map(path, mint_from, mint_to, sqd_identity, metadata,
             raise ValueError("canary-shape-invalid")
         recheck = sorted(set(slots + asset.get("candidate_slots", [])
                              + asset.get("refuted_slots", [])))
-        actual, recheck_failure = _recheck_known_slots(
+        actual, recheck_failure, unverified, recheck_stats = _recheck_known_slots(
             transport, recheck, asset_counts, afrom, workers, ledger, endpoints)
+        info["unverified_ranges"] = [
+            {"from_slot": start, "to_slot": end} for start, end in unverified]
+        info["recheck_stats"] = recheck_stats
         if recheck_failure is not None:
             raise ValueError(recheck_failure)
+        if any(start <= slot <= end for start, end in unverified for slot in slots):
+            raise ValueError("canary-recheck-unavailable")
         actual_canary = [actual[slot] for slot in slots]
         if actual_canary != expected_counts:
             raise ValueError("canary-counts-changed")
@@ -694,10 +762,20 @@ def _load_known_map(path, mint_from, mint_to, sqd_identity, metadata,
         overlap_from, overlap_to = max(mint_from, afrom), min(mint_to, ato)
         if overlap_from > overlap_to:
             raise ValueError("map-does-not-overlap-case")
-        info["reused_ranges"] = [{"from_slot": overlap_from,
-                                  "to_slot": overlap_to}]
-        return info, asset_counts[overlap_from - afrom:overlap_to - afrom + 1], \
-            overlap_from, overlap_to
+        info["reused_ranges"], excluded = _reuse_ranges_excluding(
+            overlap_from, overlap_to, unverified)
+        reused = bytearray(asset_counts[
+            overlap_from - afrom:overlap_to - afrom + 1])
+        for start, end in excluded:
+            offset = start - overlap_from
+            reused[offset:offset + end - start + 1] = bytes(end - start + 1)
+        if _missing_ranges(reused, overlap_from) != excluded:
+            raise ValueError("unverified-exclusion-invariant-failed")
+        for row in ledger[ledger_start:]:
+            if row.get("mode") == "recheck" and row.get("counts_coverage") is True \
+                    and (row.get("from") < mint_from or row.get("to") > mint_to):
+                row["counts_coverage"] = False
+        return info, bytes(reused), overlap_from, overlap_to
     except Exception as exc:
         for row in ledger[ledger_start:]:
             if row.get("mode") == "recheck":
@@ -1149,17 +1227,23 @@ def run_probe(args):
             workers=args.workers)
         if reused is not None:
             counts[reuse_from - args.from_slot:reuse_to - args.from_slot + 1] = reused
-            scan_ranges.append({"from_slot": reuse_from, "to_slot": reuse_to,
-                                "mode": "map-reuse"})
-            _append_ledger(ledger, [{
-                "seq": 0, "ts": utc_now(), "provider": "shared-map",
-                "mode": "map-reuse", "counts_coverage": True,
-                "query_body_sha256": sha256_bytes(canonical_json({
-                    "asset": shared_map["sha256"]})),
-                "from": reuse_from, "to": reuse_to, "http_status": None,
-                "bytes": len(reused), "response_sha256": sha256_bytes(reused),
-                "slots_covered": reuse_to - reuse_from + 1, "ok": True,
-            }])
+            map_rows = []
+            for segment in shared_map["reused_ranges"]:
+                start, end = segment["from_slot"], segment["to_slot"]
+                part = bytes(counts[start - args.from_slot:
+                                    end - args.from_slot + 1])
+                scan_ranges.append({"from_slot": start, "to_slot": end,
+                                    "mode": "map-reuse"})
+                map_rows.append({
+                    "seq": 0, "ts": utc_now(), "provider": "shared-map",
+                    "mode": "map-reuse", "counts_coverage": True,
+                    "query_body_sha256": sha256_bytes(canonical_json({
+                        "asset": shared_map["sha256"]})),
+                    "from": start, "to": end, "http_status": None,
+                    "bytes": len(part), "response_sha256": sha256_bytes(part),
+                    "slots_covered": end - start + 1, "ok": True,
+                })
+            _append_ledger(ledger, map_rows)
         else:
             counts[:] = bytes(len(counts))
 

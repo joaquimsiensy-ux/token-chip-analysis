@@ -10,6 +10,9 @@
 
 ## 版本索引（活跃窗口，新在上；每版一行，详情见下方对应条目）
 
+- **6.53.0**（2026-08-27）持仓分布图升级为 matplotlib 双轴带标签图：修复裸 PNG 哑图导致柱高被误读的根因，横轴明确为单地址持仓占私人可入箱供应 %，取消 `struct/zlib` 裸 PNG；新增数据对齐、标准生产链、low_sample 与缺依赖显式失败回归，SUITE 139→140
+- **6.52.15**（2026-08-27）F-03b 共享 SQD 地图复用失败分级：ARC live 92,643 次 recheck 中 1,182 次限流失败且零 mismatch，暴露“任一请求失败即整体回退”使复用必然失败；mismatch 整体回退不变，请求失败末尾重试后只剔除该段转 full，canary 段失败仍整体回退；map-reuse 按已验证子区间逐段声明，案外 recheck 撤销覆盖并以杀变异测试固守；新增 `unverified_ranges`/`recheck_stats` 审计字段且 retry mismatch 不污染；盲审 R1 BLOCK 两项消化后 R2 PASS；SUITE 139 不变，既有 F-03 测试组 9→15
+- **6.52.14**（2026-08-27）F-03 共享 SQD 地图复用闸修复（codex 六视角 review P1，修复中新引入 b005a468）：身份三分类＋历史锚＋head 单调＋模板绑定；已知点只连续合并并发重验，失败整体回退且撤销本轮 recheck 覆盖声明；`validate_shared_map` 同深扩全，`validate_coverage` 按 D1 用户裁决接 producer_history；CT-SQDGAP-35；20260827 资产零字节改动即刻可复用；盲审 R1 BLOCK 三项消化后 R2 PASS；两段提交完成 producer 双协议登记，SUITE 138→139
 - **shared-map 20260827**（2026-08-27）Solana SQD 共享覆盖地图首版入库：源=ARC 全史普查 probe 32dc03effa707da1（306,451,717→440,368,381 共 1.339 亿 slot 100% 覆盖、getBlocks 位图全程、defect_candidate=153,667 已全普查驳回/确认），TTL 30 天、消费按 capture §13e 生命周期（已知 slot 仍逐个复核+canary）；三件=json+counts.bin.gz(97.7MB)+blocks.bin.gz
 - **6.52.13**（2026-08-27）批 14 accounting 观测 bundle 绑定冻结态内容寻址兜底：正式路径现物指纹不匹配（仅 size/sha mismatch 两种）时按收据记录的同一 size+sha256 到冻结件 `data/solana_observation_bundle_frozen.json` 寻址（哈希是身份、路径只是地址；兜底命中后深验零跳过），安全类失败（逃逸/symlink/缺件）不兜底、兜底失败回抛原错；方案 A 同族第六消费点（ARC handoff 第 2 发暴露：封账期收据绑定的正式路径被活观测占用）；SUITE 138 全绿
 - **6.52.12**（2026-08-27）批 13 accounting 期望时点两态：中央选择器 `accounting_expected_target`（Solana 冻结态取 exact 收据冻结点、静态与 EVM 零变化），handoff verify/validate_sources/audit 块声明三消费面同深接入（audit 投影以深验成功为前提，异常回落原判）；方案 A 同族第五消费点（ARC handoff 实跑暴露：A0 会计核定产在封账点 vs verify 拿观测时点当期望）；SUITE 137 全绿
@@ -69,6 +72,33 @@
 - **6.20.1** 2026-08-05 修 5 处阻断级文档漂移（A4 前禁写报告冲突/easy 残留/惯犯回灌 docstring/批量预采集残留/旧 Par 路线历史降级）＋docs_lint 增中文禁词与 Python module docstring 扫描
 
 更早版本（6.20.0 及以前）详见 `archive/CHANGELOG-archive.md`。
+
+## [6.53.0] - 2026-08-27 — 持仓分布图升级为 matplotlib 双轴带标签图
+
+- **出处与根因**：BTW·BSC 报告的“当前持仓分布”最高蓝柱实际表示地址数最多的空投残留档，却因旧 `write_png` 只是 800×420 灰底蓝柱裸 PNG、没有轴/刻度/标题/图例，被读者误当成大筹码档；问题在表现层，不在分布判定或 scan JSON。
+- **设计与实现**：新增纯数据 `_chart_series`，按 bin index 对齐地址数、泊松期望人数、该档 raw 占净供应百分比与从数据推导的对数横轴刻度；`write_png` 改为函数内导入 matplotlib/chart_style，输出 1800×840 双轴中文图，low_sample 输出居中说明；删除 `struct/zlib` 裸 PNG，异常路径以 `finally` 关闭 figure。
+- **消费面与防回流**：`write_png(path: Path, scan: dict) -> None` 签名、唯一调用行、三个 PNG 路径、scan/record-round/analyze/validate/semantic 判定代码及 payload 均不变；final 仍由真实 `--stage final --round 1` 产轮次图，再由 record-round 拷到唯一终版路径；缺 matplotlib 显式失败，不允许静默降级。
+- **测试**：先红证明旧实现无 `_chart_series`、尺寸仅 800×420 且 matplotlib 毒丸仍会产降级图；后绿覆盖零值档保留、百分比分母、对数刻度、initial/final 标准生产链、无 `base_bins` 的 low_sample、PIL 合法性与 1800×840；点名的 distribution gate、A4 gate、repair batch C/D 全绿，SUITE 139→140。
+- **盲审与验收**：按小改裁量免两轮盲审，以 @CX 施工前计划复核＋codex 施工后盲审＋Fable 独立验收替代；版本位按书面规则升次版本（生产行为改变＋复盘驱动）。
+- **成本-质量指标**：施工 1 轮；外部网络调用 0；新增回归组 1；判定逻辑改动 0；payload/schema 改动 0；分析结论 0；传播级数字错误 0。
+
+## [6.52.15] - 2026-08-27 — F-03b 共享 SQD 地图复用失败分级与分段补扫
+
+- **出处与根因**：F-03 修复后 ARC live 实测共发出 92,643 个 recheck 请求，其中 91,461 成功，1,182 失败全部来自 SQD 服务端限流（529×1,034、429×148），零数据 mismatch。旧规则把请求失败和数据不一致都当成整图不可信，导致大地图在真实限流环境下几乎必然放弃复用、退回全扫。
+- **失败三分级**：每个 range 明分 verified、mismatch、request-failed。成功响应只要有一处 slot 值不一致，仍按 `recheck-mismatch:<slot>` 整体回退；请求失败在首轮结束后统一重试一次，仍失败只把该段剔出复用并转 full 补扫；canary 段请求仍失败或值变化，仍整体回退，不允许部分复用。
+- **覆盖声明与防回流**：map-reuse 不再用一条大区间笼统声称复用，而是按实际验证通过的案件子区间逐段声明；案外或跨案件边界的 recheck 行一律撤销 `counts_coverage`。新增受控杀变异测试，模拟恢复案外 coverage 声明时必须转 RED，证明测试能咬住这条边界。
+- **审计字段**：shared_map 新增 `unverified_ranges` 和 `recheck_stats`（verified/unverified/retried），`reused_ranges` 改记实际复用的子区间；retry 后得到 mismatch 只进入 mismatch 路径并触发整体回退，不污染 unverified 列表或计数。
+- **盲审与验收**：盲审第 1 轮判 BLOCK 的两项发现已消化——retry mismatch 审计误分类修正，案外/跨界 coverage 以端到端断言和杀变异测试封口；第 2 轮 PASS。SUITE 维持 139 项，F-03 既有测试文件内测试组由 9 增至 15，未新增 suite 入口。
+- **成本/质量指标**：live 实测 6.3 小时；外部网络调用 0（本登记批）；资产改动 0 字节；新增 suite 入口 0；分析结论 0；传播级数字错误 0。
+
+## [6.52.14] - 2026-08-27 — F-03 共享 SQD 地图复用闸身份与重验闭环
+
+- **出处与根因**：codex 六视角 review 2026-08-27 将 F-03 判为 P1；问题由提交 b005a468 在修复中引入——复用闸把会随链前进的动态 head 当成不可变身份，真实 head 前进会误退全扫，也没有用历史块锚证明当前端点与冻结资产仍是同一段历史。
+- **身份闭环**：身份拆为稳定字段（数据集/起点/实时性）、动态 head 和未知字段三类；稳定身份严格全等，未知字段 fail-closed，历史锚 slot 的 block hash 必须当次实测一致，finalized head 只准单调不倒退，查询模板哈希必须绑定一致。
+- **重验与回退**：canary、candidate、refuted 等全部已知点只做连续区间合并后并发重验；任一请求、身份或重验失败都整体回退全扫，不部分复用。若复用途中失败，本轮已经成功的 recheck 行仍留作审计事实，但撤销其 `counts_coverage` 覆盖声明，保证最终 ledger 声明与实际交付 counts 字节来源一致。
+- **消费面与防回流**：`validate_shared_map` 扩到与生产复用闸同深；`validate_coverage` 按 D1 用户裁决接入 `producer_history`，coverage 与原子 CURRENT pointer 两协议分别登记同一冻结探针；新增 CT-SQDGAP-35 和端到端/并发/类型/失败回退矩阵。既有 `assets/sqd-solana-coverage-map/20260827` 三件零字节改动，升级后可立即复用。
+- **盲审与验收**：盲审第 1 轮判 BLOCK，三项发现（失败 recheck 覆盖声明、稳定身份类型洗白、anchor transport 裸异常）全部消化；第 2 轮 PASS。两段提交协议第二段完成版本面与 producer 登记，SUITE 138→139。
+- **成本/质量指标**：外部网络调用 0；资产改动 0 字节；新增 suite 入口 1；分析结论 0；传播级数字错误 0。
 
 ## [6.52.13] - 2026-08-27 — 批 14 accounting bundle 绑定冻结态内容寻址兜底（方案 A 同族第六消费点）
 
