@@ -23,7 +23,7 @@
 | :738 | `            from shared_release_receipt import _bound_case_ref` |
 | CHANGELOG.md:4 | `- **skill 版本**：主=架构级重构；次=每次**分析复盘**迭代 +1；修=文档小修` |
 | references/retrospective.md:139 | `- **skill 版本**（流程+方法，CHANGELOG 主条目）：主版本=架构级重构（工作流骨架变更）；次版本=每次**分析复盘**迭代 +1；修订号=文档小修/笔误。` |
-| scripts/tests/test_repair_batch3_gates.py:557 | `    expected_ids = {f"R10-{number}" for number in range(1, 28)}` |
+| scripts/tests/test_repair_batch3_gates.py:554 | `    expected_ids = {f"R10-{number}" for number in range(1, 28)}` |
 | maintenance/repair-20260813-sixlens/r10_ledger.md:69 | `…当前现役 = 27 − 15 = **12**。…` |
 | scripts/report/holder_distribution_scan.py:672-695 | final 扫描 `common["handoff_manifest"] = {"run_id": manifest.get("run_id"), …}` 反绑段（只读参考，不改） |
 
@@ -91,7 +91,7 @@
 
 - `maintenance/repair-20260813-sixlens/r10_ledger.md` 第五节表格末尾追加一行（格式照 R10-19/R10-22：**不写【状态载体】**，"接受在案"写正文；守卫把无载体条目计为现役）：
   `| R10-28 | audit_release_gate._recon_owner_snapshot 静态 Solana 分支 owners 实物 basename-only 查找 | 2026-08-30 用户裁决接受在案（1B，更正风险描述后再次确认）：:756-785 丢弃登记路径目录段，搜索 gpa_rpc.path 父目录（绝对路径可指案外）/收据目录/data，命中判据仅 basename+is_file+非 symlink，无 size/sha256/containment，观察包登记的 owners sha256 未核；影响面仅静态 Solana 案 B-7（两态案走冻结分支 :730-755 已强绑定；EVM :701-717 已强绑定）；唯一防线=check_three_ledgers 逐址等值（挡内容不同，不挡配平替身）。修法线索：改用 shared_release_receipt.bound_case_ref 校验观察包登记 sha，与冻结分支同口径。来源：批 18 计划 @CX 复核 |`
-- `scripts/tests/test_repair_batch3_gates.py:557` `range(1, 28)` → `range(1, 29)`（**只改这一常量**）。
+- `scripts/tests/test_repair_batch3_gates.py:554` `range(1, 28)` → `range(1, 29)`（**只改这一常量**）。
 - `r10_ledger.md:69` 之后追加一行 0830 落账说明（格式照 0816 那行），并把第六节"当前现役"声明改为 **13**（`27 − 15 + 1 = 13`，或按守卫 `ACTIVE_DECLARATION_RE` 认的格式写；先读 `test_repair_batch3_gates.py` 的正则确认）。
 - CHANGELOG 6.54.0 条目末尾按先例写"R10-28 接受在案（用户 2026-08-30 裁决）"。
 
@@ -127,5 +127,5 @@
 
 ## 白名单 / 禁改
 - 白名单：`scripts/report/handoff_manifest.py`（仅 CONTRACT_FILES、新函数、add_path、add_explicit）、`scripts/report/shared_release_receipt.py`（仅 bound_case_ref 改名+别名、witness 类与构造函数、validate_sources/validate_bundle 签名与 :1819 分支）、`scripts/report/audit_release_gate.py`（仅 :85-134 缓存段、:345/:549/:643 一行适配、:738-741）、新建两个测试文件、`scripts/tests/run_all.py`（末尾追加两行）、`scripts/tests/test_repair_batch3_gates.py`（仅 :557 常量）、`maintenance/repair-20260813-sixlens/r10_ledger.md`、`references/split-run.md`、`references/scan-schemas.md`、`references/retrospective.md`、`CHANGELOG.md`、`VERSION`、`pyproject.toml`、`SKILL.md`、`maintenance/repair-20260823-sqd-gap/batch18_red_evidence.txt|batch18_done.md`。
-- 禁改：`entity_source_trace.py`、`holder_distribution_scan.py`、`solana_exact_validate.py`、`state_from_facts.py`、`camp_series_provenance.py`、`entity_identity_gate.py`、任何既有测试文件的断言逻辑（`test_repair_batch3_gates.py:557` 除外）、任何案卷目录。
+- 禁改：`entity_source_trace.py`、`holder_distribution_scan.py`、`solana_exact_validate.py`、`state_from_facts.py`、`camp_series_provenance.py`、`entity_identity_gate.py`、任何既有测试文件的断言逻辑（`test_repair_batch3_gates.py:554` 除外）、任何案卷目录。
 - 离线；不 commit；不写任何 key；行号与描述不一致、红造不出、夹具失控——停工写 done 汇报。
