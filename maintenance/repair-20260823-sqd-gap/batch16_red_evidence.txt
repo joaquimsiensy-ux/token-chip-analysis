@@ -9,3 +9,16 @@ FAIL R1 deep registered path: R1 修前真实阻断：sidecar reconcile.inputs.s
 FAIL batch16 resolve_ref case path: 1/1
 
 At capture time, scripts/lib/camp_series_provenance.py had not been modified.
+
+Batch 16 blind review R3 RED evidence (production code still at ce4e56c)
+
+HEAD: fcf0d2e4402712cbbfe6ff1d7a4fdeea42e86e13
+Parent baseline: ce4e56c6fb1d112a0e2c48acf972fbd412a7831d
+Command: python3 scripts/tests/test_batch16_resolve_ref_case_path.py --r2
+Exit code: 1
+
+Raw output:
+FAIL R2 cross-case registered path: R2 修前越出本案：登记路径命中隔壁案文件 /private/tmp/batch16-r2-727cz6sy/caseB/data/x.json
+FAIL batch16 resolve_ref case path: 1/1
+
+At capture time, scripts/lib/camp_series_provenance.py had not been modified.

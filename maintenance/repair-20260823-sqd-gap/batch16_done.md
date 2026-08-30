@@ -134,3 +134,83 @@ scripts/tests/run_all.py              |  3 +++
 
 1. 在允许 loopback bind 的本机复跑完整 142 项 SUITE，补齐全绿证据。
 2. 决定是否另开工单处理 `audit_release_gate._recon_owner_snapshot` 静态段的 basename-only 通用深层路径风险；本批按禁改边界未动。
+
+## 10. 盲审 R3 消化
+
+### 结论与改动
+
+- 冻结开工态：`main@fcf0d2e4402712cbbfe6ff1d7a4fdeea42e86e13`，其直接父提交为指定基线 `ce4e56c6fb1d112a0e2c48acf972fbd412a7831d`；`fcf0d2e` 只新增调度方 R3 工单，开工 `git status --short` 无输出。
+- 状态：**盲审 R3 P1 已消化，沙箱验收 PARTIAL**。版本 `6.53.2 → 6.53.3`，五个版本位（VERSION、pyproject、SKILL 注释、CHANGELOG 索引与详情）同步。
+- `_resolve_ref(..., *, case_root=None)` 的 basename 两层段保持不变；只有 `case_root` 在场时才以唯一候选 `case_root / registered` 做登记路径兜底，并执行路径卫生、逐段 symlink、containment、文件类型、size、sha256 全验。`case_root=None` 不执行兜底，错误文案不再声称尝试过登记路径。
+- `load_series_with_sidecar` 的 sidecar 三类调用不传 `case_root`；`registry_anchor_check` 仅对 reconcile inputs 传案根，显式参数优先，未给时仅从直属 `data/` 的收据推导。发布闸点名调用新增 `case_root=case_dir`；`state_from_facts.py` 未改，继续走 `data/` 推导。
+- `scripts/report/audit_release_gate.py` 仅在原 `registry_anchor_check(` 调用新增一行 `case_root=case_dir`，其它行零改动。
+
+### R3 RED 原始证据
+
+命令：`python3 scripts/tests/test_batch16_resolve_ref_case_path.py --r2`
+
+真实退出码：`1`
+
+```text
+FAIL R2 cross-case registered path: R2 修前越出本案：登记路径命中隔壁案文件 /private/tmp/batch16-r2-727cz6sy/caseB/data/x.json
+FAIL batch16 resolve_ref case path: 1/1
+```
+
+该证据采集时生产代码仍为父基线 `ce4e56c`；完整 HEAD、命令、退出码与输出已追加 `batch16_red_evidence.txt`。
+
+### R3 回归与 N7–N9 原文
+
+- `python3 scripts/tests/test_batch16_resolve_ref_case_path.py`：退出 0，`PASS batch16 resolve_ref case path: 11/11`。
+- `python3 scripts/tests/test_repair_batch_d.py`：退出 0，`t_b1_b2` 完整 Solana new-analysis 绿案为零 error，末行 `BATCH D 全部通过`。
+- `MPLCONFIGDIR=/private/tmp/batch16-r3-mpl python3 scripts/tests/test_batch15_three_ledgers_frozen.py --r1`：退出 0；R1 与 N6 完整动态案均 PASS，`PASS batch15 frozen consumers: 2/2`。
+
+N7–N9 单独执行真实退出码 `0`，原始输出：
+
+```text
+边数=1  时间范围 01-01 00:01:40 → 01-01 00:01:40
+铸造=100  销毁=0  净=100
+负余额地址数=0
+快照 supply=100  重放净-快照差=0
+全 owner 对账：1/1 一致
+重放末态已写 data/replay_final_balances.json
+PASS N7 registry inferred case root
+边数=1  时间范围 01-01 00:01:40 → 01-01 00:01:40
+铸造=100  销毁=0  净=100
+负余额地址数=0
+快照 supply=100  重放净-快照差=0
+全 owner 对账：1/1 一致
+重放末态已写 data/replay_final_balances.json
+PASS N8 root receipt has no inference
+边数=1  时间范围 01-01 00:01:40 → 01-01 00:01:40
+铸造=100  销毁=0  净=100
+负余额地址数=0
+快照 supply=100  重放净-快照差=0
+全 owner 对账：1/1 一致
+重放末态已写 data/replay_final_balances.json
+PASS N9 explicit case root wins
+```
+
+### 完整 SUITE
+
+命令：`MPLCONFIGDIR=/private/tmp/batch16-r3-runall-mpl python3 scripts/tests/run_all.py`
+
+- 真实退出码：`1`；分母 142，PASS 140，FAIL 2。
+- Batch 16：`PASS batch16 resolve_ref case path: 11/11`；Batch D 与批 15 完整文件亦在本轮 PASS。
+- 两项失败仅为 `test_batch3_solana_vertical_slice.py:625` 与 `test_batch3_evm_vertical_slice.py:281` 创建 `ThreadingHTTPServer(("127.0.0.1", 0), FixtureHandler)` 时触发 `PermissionError: [Errno 1] Operation not permitted`；均未进入业务断言，不冒充全绿。
+
+### 最终 `git diff --stat`
+
+```text
+ CHANGELOG.md                                       |  10 ++
+ SKILL.md                                           |   2 +-
+ VERSION                                            |   2 +-
+ .../repair-20260823-sqd-gap/batch16_done.md        |  80 +++++++++
+ .../batch16_red_evidence.txt                       |  13 ++
+ pyproject.toml                                     |   2 +-
+ scripts/lib/camp_series_provenance.py              |  47 +++---
+ scripts/report/audit_release_gate.py               |   1 +
+ .../tests/test_batch16_resolve_ref_case_path.py    | 178 ++++++++++++++++-----
+ 9 files changed, 274 insertions(+), 61 deletions(-)
+```
+
+无 commit、无网络调用、无 key 写入、无白名单外改动。

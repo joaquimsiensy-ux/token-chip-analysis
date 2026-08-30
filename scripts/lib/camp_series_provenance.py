@@ -176,7 +176,7 @@ def write_series_sidecar(series_path, *, producer: str, series_format: str,
 # ── consumer 侧 ──────────────────────────────────────────────────────
 
 
-def _resolve_ref(ref: dict, label: str, search_dirs) -> Path:
+def _resolve_ref(ref: dict, label: str, search_dirs, *, case_root=None) -> Path:
     """按 basename 在 series 目录与其父目录（案根）两层内找实物并三验。
 
     basename 未命中时，登记路径兜底只接受案根内相对路径；sha256 仍是
@@ -198,27 +198,26 @@ def _resolve_ref(ref: dict, label: str, search_dirs) -> Path:
                 raise SeriesProvenanceError(f"sidecar {label} sha256 不匹配（{cand}）")
             return cand
 
-    registered = str(ref["path"])
-    rel = Path(registered)
-    parts = registered.split("/")
-    if rel.is_absolute() or any(part in {"", ".", ".."} for part in parts):
-        raise SeriesProvenanceError(
-            f"sidecar {label} 登记路径必须是案根内且不含空段/./.. 的相对路径: "
-            f"{registered!r}")
-    for base in search_dirs:
-        base = Path(base)
-        root = base.resolve()
+    if case_root is not None:
+        registered = str(ref["path"])
+        rel = Path(registered)
+        parts = registered.split("/")
+        if rel.is_absolute() or any(part in {"", ".", ".."} for part in parts):
+            raise SeriesProvenanceError(
+                f"sidecar {label} 登记路径必须是案根内且不含空段/./.. 的相对路径: "
+                f"{registered!r}")
+        root = Path(case_root).resolve()
         cursor = root
         for part in parts:
             cursor = cursor / part
             if cursor.is_symlink():
                 raise SeriesProvenanceError(
                     f"sidecar {label} 登记路径含符号链接 {cursor}，拒收")
-        cand = base / registered
+        cand = root / registered
         resolved_cand = cand.resolve()
         if resolved_cand != root and root not in resolved_cand.parents:
             raise SeriesProvenanceError(
-                f"sidecar {label} 登记路径逃出案根 {base}: {registered!r}")
+                f"sidecar {label} 登记路径逃出案根 {case_root}: {registered!r}")
         if cand.is_file():
             if cand.stat().st_size != ref.get("size"):
                 raise SeriesProvenanceError(
@@ -227,9 +226,11 @@ def _resolve_ref(ref: dict, label: str, search_dirs) -> Path:
             if sha256_file(cand) != str(ref["sha256"]).lower():
                 raise SeriesProvenanceError(f"sidecar {label} sha256 不匹配（{cand}）")
             return cand
-    raise SeriesProvenanceError(
-        f"sidecar {label}（{name}）在序列目录与案根两层内按文件名找不到，"
-        f"按登记路径 {ref['path']!r} 解析亦未命中")
+    detail = (f"sidecar {label}（{name}）在序列目录与案根两层内按文件名找不到")
+    if case_root is not None:
+        detail += (f"，按登记路径 {ref['path']!r} 相对案根 {case_root} "
+                   "解析亦未命中")
+    raise SeriesProvenanceError(detail)
 
 
 def load_series_with_sidecar(series_path):
@@ -489,7 +490,7 @@ def _snapshot_cutoff(meta):
 def registry_anchor_check(sidecar: dict, resolved: dict, series_path, *,
                           expected_chain=None, expected_mint=None,
                           expected_cutoff_slot=None,
-                          verify_edge_physical_sha=False):
+                          verify_edge_physical_sha=False, case_root=None):
     """sidecar 的 inputs 必须命中案内已对账的登记面（把序列锚进案内数据链）。
 
     F-C3（消化轮）：登记面命中是**结构化校验**，不是"文件里含某个 sha 字符串"——
@@ -658,13 +659,19 @@ def registry_anchor_check(sidecar: dict, resolved: dict, series_path, *,
                 "reconcile_receipt producer path/sha256 与当前 replay_edges.py 不一致")
 
         receipt_dirs = [Path(rr).parent, Path(rr).parent.parent]
+        reconcile_case_root = case_root
+        if reconcile_case_root is None and Path(rr).parent.name == "data":
+            reconcile_case_root = Path(rr).parent.parent
         inputs = receipt.get("inputs") or {}
         meta_path = _resolve_ref(inputs.get("soltx_meta"),
-                                 "reconcile.inputs.soltx_meta", receipt_dirs)
+                                 "reconcile.inputs.soltx_meta", receipt_dirs,
+                                 case_root=reconcile_case_root)
         owners_path = _resolve_ref(inputs.get("holders_owners"),
-                                   "reconcile.inputs.holders_owners", receipt_dirs)
+                                   "reconcile.inputs.holders_owners", receipt_dirs,
+                                   case_root=reconcile_case_root)
         snapshot_path = _resolve_ref(inputs.get("holders_snapshot_meta"),
-                                     "reconcile.inputs.holders_snapshot_meta", receipt_dirs)
+                                     "reconcile.inputs.holders_snapshot_meta", receipt_dirs,
+                                     case_root=reconcile_case_root)
         cache_meta = _json_loads(meta_path.read_text(encoding="utf-8"),
                                  "soltx meta")
         try:

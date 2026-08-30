@@ -1518,6 +1518,7 @@ def check_series_binding(case_dir: Path, d: dict, errors: list[str],
                     expected_chain=expected_target.get("chain"),
                     expected_mint=expected_target.get("token"),
                     expected_cutoff_slot=expected_target.get("as_of_block"),
+                    case_root=case_dir,
                     verify_edge_physical_sha=True)
                 endpoint_reconcile(sidecar, compiled, resolved)
             except SeriesProvenanceError as exc:

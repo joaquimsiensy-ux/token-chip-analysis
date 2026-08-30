@@ -10,6 +10,7 @@
 
 ## 版本索引（活跃窗口，新在上；每版一行，详情见下方对应条目）
 
+- **6.53.3**（2026-08-30）序列来源链登记路径兜底收窄为唯一案根：序列 sidecar 恢复 basename-only；仅 reconcile inputs 可按显式案根或 `data/` 收据推导案根解析深层登记路径，阻断相邻案件越界命中；盲审 R3 P1 消化，SUITE 142 不变
 - **6.53.2**（2026-08-30）序列来源链登记路径按案根解析兜底：保留两层 basename 优先语义，未命中时安全解析案根内相对登记路径，使 sqd_repair 深层 soltx meta 与 resolver 身份一致；新增逃逸、绝对路径、symlink、指纹与 registry anchor 回归，SUITE 141→142
 - **6.53.1**（2026-08-30）发布闸 B-7 三账对账源与 series cutoff 冻结态投影：动态 Solana 的三账改吃 exact owners＋冻结块，序列 cutoff 改投冻结点；新增篡改、symlink、绝对路径、静态零变化、完整两态案与错 cutoff 回归，SUITE 140→141
 - **6.53.0**（2026-08-27）持仓分布图升级为 matplotlib 双轴带标签图：修复裸 PNG 哑图导致柱高被误读的根因，横轴明确为单地址持仓占私人可入箱供应 %，取消 `struct/zlib` 裸 PNG；新增数据对齐、标准生产链、low_sample 与缺依赖显式失败回归，SUITE 139→140
@@ -74,6 +75,15 @@
 - **6.20.1** 2026-08-05 修 5 处阻断级文档漂移（A4 前禁写报告冲突/easy 残留/惯犯回灌 docstring/批量预采集残留/旧 Par 路线历史降级）＋docs_lint 增中文禁词与 Python module docstring 扫描
 
 更早版本（6.20.0 及以前）详见 `archive/CHANGELOG-archive.md`。
+
+## [6.53.3] - 2026-08-30 — 序列来源链登记路径兜底收窄为唯一案根（盲审 R3 P1）
+
+- **出处与根因**：codex 盲审发现 6.53.2 的登记路径兜底把 `search_dirs` 每个 base 都当 containment 根；序列位于案根时，`[case_dir, case_dir.parent]` 会把案件父目录当根，攻击者可登记 `sibling-case/data/x.json` 并以相邻案件实物的 size/sha256 通过三验，打穿发布闸“只吃本案产物”的隔离保证。
+- **设计与实现**：`_resolve_ref` 新增仅限关键字的 `case_root=None`；两层 basename 逻辑逐字保留，登记路径兜底仅在显式给定唯一案根时执行，只构造 `case_root / registered` 一个候选，并继续执行相对路径卫生、逐段 symlink、resolve containment、is_file、size 与 sha256 全等校验。未给案根时不执行兜底，错误文案也不声称尝试过登记路径。
+- **消费面与防回流**：series sidecar 的 `camps_spec`、`final_balances`、`inputs.*` 均由 producer 只登记文件名，故 `load_series_with_sidecar` 不传案根并恢复批 16 前语义；只有 reconcile v4 收据 inputs 传案根，显式值优先，否则仅当收据直属 `data/` 时推导其父目录为案根。发布闸显式传 `case_dir`；`state_from_facts.py` 不改，沿 `data/` 推导路径。
+- **测试**：R3 RED 真实返回相邻 `caseB/data/x.json`；修后 R2 覆盖显式本案根与 `None` 双拒，既有 R1/N1–N6 保持，新增 N7 `data/` 推导深层命中、N8 案根收据不推导、N9 显式案根覆盖推导值。发布闸完整案回归与版本/CHANGELOG/全量 suite 结果见 `batch16_done.md`。
+- **盲审与验收**：codex 盲审 R3 1 条 P1（兜底越出本案）已消化；白名单内离线施工，不改 `state_from_facts.py`、独立深验器、共享收据或发布闸其它行，不 commit。
+- **成本-质量指标**：生产实现 1 轮；外部网络调用 0；新增 suite 入口 0；新增测试场景 4（R2、N7–N9）；生产 schema 改动 0；传播级数字错误 0。
 
 ## [6.53.2] - 2026-08-30 — 序列来源链登记路径按案根解析兜底（sqd_repair 修复缓存深层路径）
 

@@ -47,6 +47,51 @@ def expect_error(call, needle: str) -> str:
     raise AssertionError(f"预期拒收但通过，缺少错误关键词 {needle!r}")
 
 
+def prepare_deep_registry_case(case: Path, marker: str):
+    rows, edge, meta = prepare_complete_case(case)
+    old_cwd = Path.cwd()
+    try:
+        os.chdir(case)
+        receipt_path, receipt, _before, _after, result = make_reconcile(
+            case, rows, edge, meta, snapshot_slot=1, as_of_slot=1)
+    finally:
+        os.chdir(old_cwd)
+    assert result is True
+
+    deep_meta = (case / "data/sqd_repair" / (marker * 64) / "gen-x"
+                 / meta.name)
+    deep_meta.parent.mkdir(parents=True)
+    meta.rename(deep_meta)
+    receipt["inputs"]["soltx_meta"] = ref(
+        deep_meta, deep_meta.relative_to(case).as_posix())
+    receipt_path.write_text(json.dumps(receipt), encoding="utf-8")
+    checked = exact.validate_reconcile_receipt_deep(receipt_path, case_root=case)
+    assert checked["ok"], checked["reasons"]
+
+    series = write(case / "data/camp_share_series.json", "[]\n")
+    sidecar = {"series_format": "sol-rows",
+               "edge_source_binding": receipt["edge_source_binding"]}
+    resolved = {"inputs.reconcile_receipt": receipt_path}
+    return receipt_path, receipt, edge, deep_meta, series, sidecar, resolved
+
+
+def registry_with_resolver(case_data, *, case_root_marker):
+    receipt_path, receipt, edge, deep_meta, series, sidecar, resolved = case_data
+    original_resolver = provenance.resolve_formal_cache
+    provenance.resolve_formal_cache = lambda _mint, _root: (
+        edge.resolve(), deep_meta.resolve(), "base", None,
+        receipt["edge_source_binding"])
+    try:
+        kwargs = {}
+        if case_root_marker is not ...:
+            kwargs["case_root"] = case_root_marker
+        return provenance.registry_anchor_check(
+            sidecar, resolved, series, expected_chain="solana",
+            expected_mint=MINT, expected_cutoff_slot=1, **kwargs)
+    finally:
+        provenance.resolve_formal_cache = original_resolver
+
+
 def test_r1_deep_registered_path_resolves_from_case_root() -> None:
     with tempfile.TemporaryDirectory(prefix="batch16-r1-", dir="/private/tmp") as raw:
         case = Path(raw)
@@ -59,10 +104,34 @@ def test_r1_deep_registered_path_resolves_from_case_root() -> None:
         registered = meta.relative_to(case).as_posix()
         try:
             got = provenance._resolve_ref(
-                ref(meta, registered), "reconcile.inputs.soltx_meta", [data, case])
+                ref(meta, registered), "reconcile.inputs.soltx_meta", [data, case],
+                case_root=case)
         except provenance.SeriesProvenanceError as exc:
             raise AssertionError(f"R1 修前真实阻断：{exc}") from exc
         assert got == meta, (got, meta)
+
+
+def test_r2_cross_case_registered_path_is_rejected() -> None:
+    with tempfile.TemporaryDirectory(prefix="batch16-r2-", dir="/private/tmp") as raw:
+        parent = Path(raw)
+        case_a = parent / "caseA"
+        case_a.mkdir()
+        write(case_a / "camp_share_series.json", "[]\n")
+        sibling = write(parent / "caseB/data/x.json", "sibling-case\n")
+        sibling_ref = ref(sibling, "caseB/data/x.json")
+        explicit = expect_error(
+            lambda: provenance._resolve_ref(
+                sibling_ref, "reconcile.inputs.soltx_meta", [case_a, parent],
+                case_root=case_a),
+            "找不到",
+        )
+        assert "相对案根" in explicit and str(case_a) in explicit, explicit
+        implicit = expect_error(
+            lambda: provenance._resolve_ref(
+                sibling_ref, "reconcile.inputs.soltx_meta", [case_a, parent]),
+            "找不到",
+        )
+        assert "按登记路径" not in implicit, implicit
 
 
 def test_n1_dotdot_registered_path_rejected() -> None:
@@ -72,7 +141,8 @@ def test_n1_dotdot_registered_path_rejected() -> None:
         data.mkdir()
         bad = {"path": "data/../outside.json", "size": 1, "sha256": "0" * 64}
         expect_error(
-            lambda: provenance._resolve_ref(bad, "inputs.dotdot", [data, case]),
+            lambda: provenance._resolve_ref(
+                bad, "inputs.dotdot", [data, case], case_root=case),
             "登记路径",
         )
 
@@ -85,7 +155,8 @@ def test_n2_absolute_registered_path_rejected() -> None:
         bad = {"path": "/private/tmp/batch16-absolute.json",
                "size": 1, "sha256": "0" * 64}
         expect_error(
-            lambda: provenance._resolve_ref(bad, "inputs.absolute", [data, case]),
+            lambda: provenance._resolve_ref(
+                bad, "inputs.absolute", [data, case], case_root=case),
             "登记路径",
         )
 
@@ -102,7 +173,8 @@ def test_n3_intermediate_symlink_rejected() -> None:
         registered = "data/sqd_repair/gen-x/soltx-link.meta.json"
         expect_error(
             lambda: provenance._resolve_ref(
-                ref(meta, registered), "inputs.symlink", [data, case]),
+                ref(meta, registered), "inputs.symlink", [data, case],
+                case_root=case),
             "符号链接",
         )
 
@@ -116,13 +188,15 @@ def test_n4_deep_size_and_sha_mismatch_rejected() -> None:
         size_ref = ref(size_file, "deep/size.json")
         size_ref["size"] += 1
         expect_error(
-            lambda: provenance._resolve_ref(size_ref, "inputs.size", [data, case]),
+            lambda: provenance._resolve_ref(
+                size_ref, "inputs.size", [data, case], case_root=case),
             "size 不匹配",
         )
         sha_ref = ref(sha_file, "deep/sha.json")
         sha_ref["sha256"] = "0" * 64
         expect_error(
-            lambda: provenance._resolve_ref(sha_ref, "inputs.sha", [data, case]),
+            lambda: provenance._resolve_ref(
+                sha_ref, "inputs.sha", [data, case], case_root=case),
             "sha256 不匹配",
         )
 
@@ -151,51 +225,76 @@ def test_n5_basename_precedence_and_mismatch_behavior_unchanged() -> None:
 def test_n6_registry_anchor_accepts_same_deep_meta_as_resolver() -> None:
     with tempfile.TemporaryDirectory(prefix="batch16-n6-", dir="/private/tmp") as raw:
         case = Path(raw)
-        rows, edge, meta = prepare_complete_case(case)
-        old_cwd = Path.cwd()
-        try:
-            os.chdir(case)
-            receipt_path, receipt, _before, _after, result = make_reconcile(
-                case, rows, edge, meta, snapshot_slot=1, as_of_slot=1)
-        finally:
-            os.chdir(old_cwd)
-        assert result is True
+        case_data = prepare_deep_registry_case(case, "b")
+        got = registry_with_resolver(case_data, case_root_marker=case)
+        assert got == case_data[0]
 
-        deep_meta = (case / "data/sqd_repair" / ("b" * 64) / "gen-x"
-                     / meta.name)
-        deep_meta.parent.mkdir(parents=True)
-        meta.rename(deep_meta)
+
+def test_n7_registry_anchor_derives_case_root_from_data_receipt() -> None:
+    with tempfile.TemporaryDirectory(prefix="batch16-n7-", dir="/private/tmp") as raw:
+        case = Path(raw)
+        case_data = prepare_deep_registry_case(case, "c")
+        got = registry_with_resolver(case_data, case_root_marker=...)
+        assert got == case_data[0]
+
+
+def test_n8_receipt_outside_data_does_not_infer_parent_root() -> None:
+    with tempfile.TemporaryDirectory(prefix="batch16-n8-", dir="/private/tmp") as raw:
+        parent = Path(raw)
+        case = parent / "caseA"
+        case_data = list(prepare_deep_registry_case(case, "d"))
+        receipt_path, receipt = case_data[:2]
+        root_receipt = case / receipt_path.name
+        receipt_path.rename(root_receipt)
+        sibling = write(parent / "caseB/deep/sibling.meta.json", "sibling\n")
         receipt["inputs"]["soltx_meta"] = ref(
-            deep_meta, deep_meta.relative_to(case).as_posix())
-        receipt_path.write_text(json.dumps(receipt), encoding="utf-8")
-        checked = exact.validate_reconcile_receipt_deep(receipt_path, case_root=case)
-        assert checked["ok"], checked["reasons"]
+            sibling, "caseB/deep/sibling.meta.json")
+        root_receipt.write_text(json.dumps(receipt), encoding="utf-8")
+        case_data[0] = root_receipt
+        case_data[6] = {"inputs.reconcile_receipt": root_receipt}
 
-        series = write(case / "data/camp_share_series.json", "[]\n")
-        sidecar = {"series_format": "sol-rows",
-                   "edge_source_binding": receipt["edge_source_binding"]}
-        resolved = {"inputs.reconcile_receipt": receipt_path}
-        original_resolver = provenance.resolve_formal_cache
-        provenance.resolve_formal_cache = lambda _mint, _root: (
-            edge.resolve(), deep_meta.resolve(), "base", None,
-            receipt["edge_source_binding"])
+        original_deep = exact.validate_reconcile_receipt_deep
+        exact.validate_reconcile_receipt_deep = lambda *_args, **_kwargs: {
+            "ok": True, "reasons": []}
         try:
-            got = provenance.registry_anchor_check(
-                sidecar, resolved, series, expected_chain="solana",
-                expected_mint=MINT, expected_cutoff_slot=1)
+            detail = expect_error(
+                lambda: registry_with_resolver(
+                    tuple(case_data), case_root_marker=...),
+                "找不到",
+            )
         finally:
-            provenance.resolve_formal_cache = original_resolver
-        assert got == receipt_path
+            exact.validate_reconcile_receipt_deep = original_deep
+        assert "按登记路径" not in detail, detail
+
+
+def test_n9_explicit_case_root_overrides_inference() -> None:
+    with tempfile.TemporaryDirectory(prefix="batch16-n9-", dir="/private/tmp") as raw:
+        parent = Path(raw)
+        case = parent / "caseA"
+        outside = parent / "caseB"
+        outside.mkdir()
+        case_data = prepare_deep_registry_case(case, "e")
+        detail = expect_error(
+            lambda: registry_with_resolver(case_data, case_root_marker=outside),
+            "找不到",
+        )
+        assert str(outside) in detail, detail
+        got = registry_with_resolver(case_data, case_root_marker=case)
+        assert got == case_data[0]
 
 
 TESTS = [
     ("R1 deep registered path", test_r1_deep_registered_path_resolves_from_case_root),
+    ("R2 cross-case registered path", test_r2_cross_case_registered_path_is_rejected),
     ("N1 dotdot", test_n1_dotdot_registered_path_rejected),
     ("N2 absolute", test_n2_absolute_registered_path_rejected),
     ("N3 symlink chain", test_n3_intermediate_symlink_rejected),
     ("N4 size/sha", test_n4_deep_size_and_sha_mismatch_rejected),
     ("N5 basename unchanged", test_n5_basename_precedence_and_mismatch_behavior_unchanged),
     ("N6 registry anchor", test_n6_registry_anchor_accepts_same_deep_meta_as_resolver),
+    ("N7 registry inferred case root", test_n7_registry_anchor_derives_case_root_from_data_receipt),
+    ("N8 root receipt has no inference", test_n8_receipt_outside_data_does_not_infer_parent_root),
+    ("N9 explicit case root wins", test_n9_explicit_case_root_overrides_inference),
 ]
 
 
@@ -203,8 +302,11 @@ def main() -> int:
     selected = TESTS
     if sys.argv[1:] == ["--r1"]:
         selected = TESTS[:1]
+    elif sys.argv[1:] == ["--r2"]:
+        selected = TESTS[1:2]
     elif sys.argv[1:]:
-        raise SystemExit("usage: test_batch16_resolve_ref_case_path.py [--r1]")
+        raise SystemExit(
+            "usage: test_batch16_resolve_ref_case_path.py [--r1|--r2]")
     failed = []
     for name, test in selected:
         try:
