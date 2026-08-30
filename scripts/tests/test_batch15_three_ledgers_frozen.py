@@ -374,6 +374,58 @@ def test_n6_dynamic_full_gate() -> None:
         assert errors == []
 
 
+def test_n9_run_reuses_deep_validation_once() -> None:
+    with tempfile.TemporaryDirectory(prefix="batch15-n9-", dir="/private/tmp") as raw:
+        root = Path(raw)
+        report, _resign_points = build_dynamic_integration_case(root)
+        original = shared.validate_reconciliation_report
+        calls = 0
+
+        def counted(*args, **kwargs):
+            nonlocal calls
+            calls += 1
+            return original(*args, **kwargs)
+
+        try:
+            shared.validate_reconciliation_report = counted
+            errors = gate.run(root, report, profile="new-analysis")
+        finally:
+            shared.validate_reconciliation_report = original
+        assert errors == [], errors
+        # validate_bundle/check_reconciliation use the same argument shape and
+        # cache entry, so cross-partition projection, B-7 and series share one call.
+        assert calls == 1, f"N9 deep validation calls={calls}, expected=1"
+
+
+def test_n10_run_cache_does_not_survive_file_mutation() -> None:
+    with tempfile.TemporaryDirectory(prefix="batch15-n10-", dir="/private/tmp") as raw:
+        root = Path(raw)
+        report, _resign_points = build_dynamic_integration_case(root)
+        original = shared.validate_reconciliation_report
+        calls = 0
+
+        def counted(*args, **kwargs):
+            nonlocal calls
+            calls += 1
+            return original(*args, **kwargs)
+
+        try:
+            shared.validate_reconciliation_report = counted
+            first_errors = gate.run(root, report, profile="new-analysis")
+            write_json(root / "data/holders_owners.json",
+                       {"ownersol1": 61, "ownersol2": 39})
+            second_errors = gate.run(root, report, profile="new-analysis")
+        finally:
+            shared.validate_reconciliation_report = original
+        assert first_errors == [], first_errors
+        assert calls == 2, f"N10 deep validation calls={calls}, expected=2"
+        assert any("受控对账公共深验失败" in item for item in second_errors), \
+            second_errors
+        uncached_errors = gate._run(root, report, profile="new-analysis")
+        assert second_errors == uncached_errors, \
+            "N10 cached/uncached errors must be byte-for-byte identical"
+
+
 def test_n7_wrong_projected_cutoff_rejected() -> None:
     with tempfile.TemporaryDirectory(prefix="batch15-n7-", dir="/private/tmp") as raw:
         root = Path(raw)
@@ -409,6 +461,8 @@ def main(argv=None) -> int:
             test_n5_absolute_exact_ref_rejected_by_deep_validator,
             test_n8_snapshot_default_is_frozen_explicit_is_observation,
             test_n7_wrong_projected_cutoff_rejected,
+            test_n9_run_reuses_deep_validation_once,
+            test_n10_run_cache_does_not_survive_file_mutation,
         ]
     failed = []
     for test in tests:

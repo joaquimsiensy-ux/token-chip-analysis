@@ -82,6 +82,56 @@ def formal_chain_error(value):
 
 
 TARGET_MISMATCH_PREFIX = "正式发布跨分区 target 不一致"
+_RUN_DEEP_CACHE = None
+_CACHE_MISS = object()
+
+
+def _cached_reconciliation_report(case_dir: Path, validate):
+    cache = _RUN_DEEP_CACHE
+    if cache is None:
+        return validate()
+    key = case_dir.resolve()
+    cached = cache.get(key, _CACHE_MISS)
+    if cached is not _CACHE_MISS:
+        if isinstance(cached, Exception):
+            raise cached
+        return cached
+    try:
+        result = validate()
+    except Exception as exc:
+        cache[key] = exc
+        raise
+    cache[key] = result
+    return result
+
+
+def _validate_reconciliation_report_once(case_dir: Path):
+    """Reuse one immutable deep reconciliation result within the current run()."""
+    from shared_release_receipt import validate_reconciliation_report
+
+    return _cached_reconciliation_report(
+        case_dir,
+        lambda: validate_reconciliation_report(case_dir, return_receipts=True),
+    )
+
+
+def _validate_shared_bundle_once(case_dir: Path):
+    """Let validate_bundle consume the same result without changing its module."""
+    import shared_release_receipt
+
+    original = shared_release_receipt.validate_reconciliation_report
+
+    def cached(root, expected_target=None, *, return_receipts=False):
+        if expected_target is None and return_receipts:
+            return _cached_reconciliation_report(
+                Path(root), lambda: original(root, return_receipts=True))
+        return original(root, expected_target, return_receipts=return_receipts)
+
+    shared_release_receipt.validate_reconciliation_report = cached
+    try:
+        return shared_release_receipt.validate_bundle(case_dir)
+    finally:
+        shared_release_receipt.validate_reconciliation_report = original
 
 
 def _target_error(errors, detail):
@@ -290,10 +340,9 @@ def check_formal_case_chain(case_dir, data, errors):
         # proved the exact receipt and its frozen target.
         try:
             from shared_release_receipt import (accounting_expected_target,
-                                                canonical_target,
-                                                validate_reconciliation_report)
-            checked_target, checked_receipts = validate_reconciliation_report(
-                case_dir, return_receipts=True)
+                                                canonical_target)
+            checked_target, checked_receipts = \
+                _validate_reconciliation_report_once(case_dir)
             expected_accounting = accounting_expected_target(
                 checked_target, checked_receipts)
             accounting_target = canonical_target({
@@ -496,10 +545,8 @@ def check_accounting(case_dir: Path, d: dict, errors: list[str]):
 def check_reconciliation(case_dir: Path, d: dict, errors: list[str]):
     """Reuse the shared v3 deep validator; wrapper status is never truth."""
     try:
-        from shared_release_receipt import (validate_reconciliation_report,
-                                            validate_solana_derived_bindings)
-        target, receipts = validate_reconciliation_report(
-            case_dir, return_receipts=True)
+        from shared_release_receipt import validate_solana_derived_bindings
+        target, receipts = _validate_reconciliation_report_once(case_dir)
         if resolve_alias(target.get("chain")) == "sol":
             exact = receipts["exact_reconcile"]
             validate_solana_derived_bindings(
@@ -592,10 +639,8 @@ def _frozen_consumer_target(
 
     try:
         from shared_release_receipt import (accounting_expected_target,
-                                            canonical_target,
-                                            validate_reconciliation_report)
-        checked_target, receipts = validate_reconciliation_report(
-            case_dir, return_receipts=True)
+                                            canonical_target)
+        checked_target, receipts = _validate_reconciliation_report_once(case_dir)
         expected = accounting_expected_target(checked_target, receipts)
     except Exception as exc:
         errors.append(
@@ -1500,6 +1545,16 @@ def check_chart(d: dict, errors: list[str]):
 
 
 def run(case_dir: Path, report: Path | None, *, profile="independent-audit"):
+    """Run the release gate with a deep-validation cache scoped to this call."""
+    global _RUN_DEEP_CACHE
+    _RUN_DEEP_CACHE = {}
+    try:
+        return _run(case_dir, report, profile=profile)
+    finally:
+        _RUN_DEEP_CACHE = None
+
+
+def _run(case_dir: Path, report: Path | None, *, profile="independent-audit"):
     errors = []
     case_dir = case_dir.resolve()
     if profile not in REQUIRED_BY_PROFILE:
@@ -1522,8 +1577,8 @@ def run(case_dir: Path, report: Path | None, *, profile="independent-audit"):
     if "audit_input_manifest.json" in data:
         check_manifest(case_dir, data["audit_input_manifest.json"], errors)
     try:
-        import shared_release_receipt
-        errors.extend(f"共享发布 receipt: {x}" for x in shared_release_receipt.validate_bundle(case_dir))
+        errors.extend(f"共享发布 receipt: {x}" for x in
+                      _validate_shared_bundle_once(case_dir))
     except Exception as exc:
         errors.append(f"共享发布 receipt validator 失败: {exc}")
     if "accounting_mode.json" in data:

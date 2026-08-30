@@ -26,9 +26,9 @@
 
 已做，见 `scripts/report/audit_release_gate.py:566-616`。
 
-- `_frozen_consumer_target(...) -> tuple[dict | None, dict | None, dict | None]` 统一调用
-  `validate_reconciliation_report(..., return_receipts=True)` 和
-  `accounting_expected_target(...)`。
+- `_frozen_consumer_target(...) -> tuple[dict | None, dict | None, dict | None]` 统一经
+  `_validate_reconciliation_report_once(...)` 取得单次 `run()` 缓存的深验结果，再调用
+  `accounting_expected_target(...)`；缓存不写入 `data`。
 - 深验异常追加带 label、accounting/wrapper 块高与原异常的 fail-loud 错误，返回三空；调用方不回落观察点。
 - accounting target 与中央选择器结果做 canonical 自闭合；不一致只追加指定错误并停止消费点。
 - 动态态返回 `(expected, canonical wrapper, receipts)`；EVM 仍直接走原路径。
@@ -263,4 +263,60 @@ python3 scripts/tests/run_all.py > /tmp/batch15_runall.txt 2>&1; echo rc=$?
  scripts/report/audit_release_gate.py               |  4 +-
  scripts/tests/test_batch15_three_ledgers_frozen.py | 43 +++++++++++++-------
  4 files changed, 78 insertions(+), 20 deletions(-)
+```
+
+## 盲审 R2 消化
+
+### 结论与改动摘要
+
+- 施工基线核对：开工 `git status --short` 为空；当前 `main@cfbdfc6` 的直接父提交是工单基线 `345c9d5`，唯一新增内容是调度方已提交的 `batch15_blind_r2_digest.md`。
+- `audit_release_gate.py` 新增 `_RUN_DEEP_CACHE`，键为 `case_dir.resolve()`，值为深验 `(checked_target, receipts)` 或捕获到的异常对象；缓存命中异常时执行 `raise cached`，重新抛出同一对象，不把失败改成豁免。
+- `run()` 成为薄包装器：入口创建空缓存，`finally` 清为 `None`；原闸体移入 `_run()`，因此正常返回、profile 参数错误或任何未捕获异常都不会把缓存带到下次 `run()`。
+- 跨分区冻结态投影、`check_reconciliation`、B-7 与 series 均走同一助手。`check_reconciliation` 的参数形态同为 `case_dir, return_receipts=True`，且深验本身无消费方特有副作用，因此接入缓存；其后的 `validate_solana_derived_bindings` 仍逐次执行，原错误语义不变。
+- N9 首轮实测发现 `shared_release_receipt.validate_bundle()` 内部的 `validate_sources()` 还有一条同参数深验调用，盲审文字未列出该既有消费者。发布闸只在调用 `validate_bundle()` 的窄窗口把该同参数调用代理到当前 run 缓存，并在 `finally` 恢复原函数；带 `expected_target` 的 EVM 参数形态仍直调原函数，`shared_release_receipt.py` 零改动。
+- 未改 `check_three_ledgers` 本体、EVM 分支、Solana 静态段、`_recon_owner_snapshot` 冻结分支或任何禁改文件；版本保持 `6.53.1`。
+
+### N9/N10 计数与 errors 原文
+
+N9（一次完整动态 `new-analysis` run）：
+
+```text
+calls=1
+errors=[]
+```
+
+N10（同目录先绿跑、篡改 `data/holders_owners.json` 后再跑）：
+
+```text
+first_calls=1
+first_errors=[]
+second_calls=1
+second_errors=["正式发布跨分区 target 不一致: as_of_block 声明矛盾: accounting_mode.json.as_of_block=500, reconciliation_report.json.target.as_of_block=501, shared_release_receipt.json.target.as_of_block=500, identity_bridge/data/identity_holders_receipt.json.as_of_block=500", "共享发布 receipt: observation bundle holder_outputs.owners sha256/size mismatch: holders_owners.json", "记账模型公共 validator 未通过: observation bundle holder_outputs.owners sha256/size mismatch: holders_owners.json", "受控对账公共深验失败: reconciliation exact_reconcile receipt envelope invalid: input holders_owners size mismatch；存量案例须重跑对应生产者获取当前回执", "发布期序列 cutoff 目标: accounting as_of_block=500/wrapper 501：冻结态深验未通过，无法确定对账时点: reconciliation exact_reconcile receipt envelope invalid: input holders_owners size mismatch；存量案例须重跑对应生产者获取当前回执"]
+```
+
+第二次 run 的真实深验计数为 1 且明确拒绝篡改，证明第一次绿结果没有跨 run 残留；同一第二次 run 内各消费者复用同一失败对象，errors 次序与文案保持 fail-closed。
+
+### 验收
+
+- `python3 scripts/tests/test_batch15_three_ledgers_frozen.py`：PASS，12/12；N9 `calls=1, errors=[]`，N10 两次 run 各 `calls=1` 且第二次拒绝篡改，并与缓存关闭的对照 `errors` 逐字相同。
+- `python3 scripts/tests/test_repair_batch_d.py`：`BATCH D 全部通过`。
+- `python3 scripts/tests/test_audit_release_gate.py`：PASS。
+- `python3 scripts/tests/test_batch13_accounting_target.py`：PASS，8/8。
+- `MPLCONFIGDIR=/private/tmp/batch15-r2-mpl-cache python3 scripts/tests/test_repair_batch_c.py`：PASS，227 checks。
+- `python3 scripts/tests/changelog_lint.py`：PASS，版本号唯一且顺序正确。
+- `python3 scripts/tests/docs_lint.py`：PASS，45 个文档；全套内 `docs_lint.py --all` 亦 PASS，59 个文档。
+- `git diff --check`：PASS。
+- `MPLCONFIGDIR=/private/tmp/batch15-r2-runall-mpl-cache python3 scripts/tests/run_all.py`：`rc=1`，141 total / 139 PASS / 2 FAIL。仅失败项为 `test_batch3_solana_vertical_slice.py:625` 与 `test_batch3_evm_vertical_slice.py:281`，均在 `ThreadingHTTPServer(("127.0.0.1", 0), ...)` 绑定阶段触发 `PermissionError: [Errno 1] Operation not permitted`，未进入业务断言；故本轮状态为 PARTIAL，需调度方在允许 loopback bind 的本机复跑，不冒充全绿。
+- 未 commit，未改版本号，未读取或写入任何 key。
+
+### 本轮 git diff --stat
+
+最终原文：
+
+```text
+ CHANGELOG.md                                       |  4 +-
+ .../repair-20260823-sqd-gap/batch15_done.md        | 62 +++++++++++++++-
+ scripts/report/audit_release_gate.py               | 83 ++++++++++++++++++----
+ scripts/tests/test_batch15_three_ledgers_frozen.py | 54 ++++++++++++++
+ 4 files changed, 184 insertions(+), 19 deletions(-)
 ```
