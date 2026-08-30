@@ -214,3 +214,83 @@ PASS N9 explicit case root wins
 ```
 
 无 commit、无网络调用、无 key 写入、无白名单外改动。
+
+## 11. 盲审 R4 消化
+
+### 结论与改动
+
+- 冻结开工态：`main@42cd70afa7d192b3f6a3c4fe1414534dc4cdbf08`，其唯一父提交为指定代码基线 `057235c6e933f3241f9fcb9a7a3dede6c1b4a7fb`；HEAD 只新增调度方 R4 工单，开工 `git status --short` 无输出。
+- 状态：**盲审 R4 P1 已消化，沙箱验收 PARTIAL**。版本 `6.53.3 → 6.53.4`，五个版本位（VERSION、pyproject、SKILL 注释、CHANGELOG 索引与详情）同步。
+- `registry_anchor_check` 在任何读取/深验前统一计算 `effective_root`：显式 `case_root` 优先；未给时仅从直属 `data/` 的 sol-rows 收据推导；EVM 或非 `data/` 收据且未给根时保持 `None`。
+- 新增 `_within_root`；`effective_root` 在场时，`resolved` 全表（`camps_spec`、`final_balances`、`inputs.*`）逐项先做 resolve containment，EVM 的 `dirs` 只保留案根内目录。
+- reconcile 独立深验、三项 receipt input 解析和 `resolve_formal_cache` 共用同一个 `effective_root`。R4 采用工单允许的 `_resolve_ref` 层等价修法：`case_root` 给定时先过滤 basename `search_dirs`，因此 `receipt_dirs` 不再能命中案件父目录；`case_root=None` 时该段逐字保持 6.53.3 行为。
+- `load_series_with_sidecar`、`audit_release_gate.py`、`state_from_facts.py`、`solana_exact_validate.py`、`sqd_cache_identity.py`、`shared_release_receipt.py` 与其它测试文件均未改。
+
+### R4 RED 原始证据
+
+证据采集时生产代码仍为父基线 `057235c`；HEAD 只含调度方 R4 工单。完整原文已追加 `batch16_red_evidence.txt`。
+
+```text
+Command: python3 scripts/tests/test_batch16_resolve_ref_case_path.py --r3
+Exit code: 1
+FAIL R3 resolved receipt containment: reconcile_receipt 不是合法对账收据（schema 必须是 solana-reconcile/v4）——重跑 replay_edges reconcile 重新生成 v4 收据
+FAIL batch16 resolve_ref case path: 1/1
+
+Command: python3 scripts/tests/test_batch16_resolve_ref_case_path.py --r4
+Exit code: 1
+FAIL R4 basename case-root containment: R4 修前越出本案：basename 命中父目录文件 /private/tmp/batch16-r4-mgfb63zp/holders_owners.json
+FAIL batch16 resolve_ref case path: 1/1
+```
+
+修后 R3 第一条错误已变为 `sidecar inputs.reconcile_receipt 实物 … 位于案根 … 之外，拒收`；R4 不再返回父目录实物并以“找不到”拒收。
+
+### N10–N12 原文
+
+三项分别单独执行，真实退出码均为 `0`：
+
+```text
+$ python3 scripts/tests/test_batch16_resolve_ref_case_path.py --n10
+PASS batch16 resolve_ref case path: 1/1
+$ python3 scripts/tests/test_batch16_resolve_ref_case_path.py --n11
+PASS batch16 resolve_ref case path: 1/1
+$ python3 scripts/tests/test_batch16_resolve_ref_case_path.py --n12
+PASS batch16 resolve_ref case path: 1/1
+```
+
+- N10：`case_root=None` 且收据不在 `data/`，父目录 basename 仍按 6.53.3 命中。
+- N11：收据直属 `data/` 时推导案根，`resolved` 中父目录直系的其它输入先于收据读取被 containment 拒绝。
+- N12：EVM 显式给案根时，父目录直系 `supply_truth.json` 不进入搜索域，错误为“案根内找不到 supply_truth.json”。
+- Batch 16 全文件：退出 `0`，`PASS batch16 resolve_ref case path: 16/16`；既有 R1/R2/N1–N9 断言未改。
+
+### 点名回归与完整 SUITE
+
+- `python3 scripts/tests/test_repair_batch_d.py`：退出 `0`，末行 `BATCH D 全部通过`。
+- `MPLCONFIGDIR=/private/tmp/batch16-r4-n6-mpl python3 scripts/tests/test_batch15_three_ledgers_frozen.py --r1`：退出 `0`；脚本的 `--r1` 固定覆盖 R1 与 N6，末行 `PASS batch15 frozen consumers: 2/2`。
+- `python3 scripts/tests/test_sqd_consumer_v4.py`：退出 `0`，`PASS: SQD v4 consumer split-mode regressions`。
+- `python3 scripts/tests/test_reconcile_v4_receipt.py`：退出 `0`，末行 `GREEN 32 verdict/exit_code/gate_pass 三元互洽`。
+- `python3 scripts/tests/changelog_lint.py`：退出 `0`；版本唯一、倒排正确，活跃 62 条＋归档 139 条。
+- `python3 -m py_compile scripts/lib/camp_series_provenance.py scripts/tests/test_batch16_resolve_ref_case_path.py`：退出 `0`。
+
+完整命令：`MPLCONFIGDIR=/private/tmp/batch16-r4-runall-mpl python3 scripts/tests/run_all.py`。
+
+- 真实退出码：`1`；分母 142，PASS 140，FAIL 2。
+- Batch 16：`PASS batch16 resolve_ref case path: 16/16`；Batch D、批 15、SQD consumer v4、reconcile v4 均在本轮再次 PASS。
+- 唯一失败 1：`test_batch3_solana_vertical_slice.py:625` 创建 `ThreadingHTTPServer(("127.0.0.1", 0), FixtureHandler)` 时触发 `PermissionError: [Errno 1] Operation not permitted`。
+- 唯一失败 2：`test_batch3_evm_vertical_slice.py:281` 同样在 loopback bind 阶段触发 `PermissionError: [Errno 1] Operation not permitted`。
+- 两项均未进入业务断言；不把 140/142 冒充全绿，允许 loopback bind 的本机全套仍须由调度方复跑。
+
+### 最终 `git diff --stat`
+
+```text
+ CHANGELOG.md                                       |  10 ++
+ SKILL.md                                           |   2 +-
+ VERSION                                            |   2 +-
+ .../repair-20260823-sqd-gap/batch16_done.md        |  80 +++++++++++++++
+ .../batch16_red_evidence.txt                       |  21 ++++
+ pyproject.toml                                     |   2 +-
+ scripts/lib/camp_series_provenance.py              |  43 ++++++--
+ .../tests/test_batch16_resolve_ref_case_path.py    | 111 ++++++++++++++++++++-
+ 8 files changed, 254 insertions(+), 17 deletions(-)
+```
+
+无 commit、无网络调用、无 key 写入、无白名单外改动。

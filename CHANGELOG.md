@@ -10,6 +10,7 @@
 
 ## 版本索引（活跃窗口，新在上；每版一行，详情见下方对应条目）
 
+- **6.53.4**（2026-08-30）序列来源链案根隔离贯彻到收据、输入、深验与 resolver：统一 effective_root，所有 resolved 实物先做 containment，basename/供给真值目录/深验/resolver 同根；盲审 R4 P1 消化，SUITE 142 不变
 - **6.53.3**（2026-08-30）序列来源链登记路径兜底收窄为唯一案根：序列 sidecar 恢复 basename-only；仅 reconcile inputs 可按显式案根或 `data/` 收据推导案根解析深层登记路径，阻断相邻案件越界命中；盲审 R3 P1 消化，SUITE 142 不变
 - **6.53.2**（2026-08-30）序列来源链登记路径按案根解析兜底：保留两层 basename 优先语义，未命中时安全解析案根内相对登记路径，使 sqd_repair 深层 soltx meta 与 resolver 身份一致；新增逃逸、绝对路径、symlink、指纹与 registry anchor 回归，SUITE 141→142
 - **6.53.1**（2026-08-30）发布闸 B-7 三账对账源与 series cutoff 冻结态投影：动态 Solana 的三账改吃 exact owners＋冻结块，序列 cutoff 改投冻结点；新增篡改、symlink、绝对路径、静态零变化、完整两态案与错 cutoff 回归，SUITE 140→141
@@ -75,6 +76,15 @@
 - **6.20.1** 2026-08-05 修 5 处阻断级文档漂移（A4 前禁写报告冲突/easy 残留/惯犯回灌 docstring/批量预采集残留/旧 Par 路线历史降级）＋docs_lint 增中文禁词与 Python module docstring 扫描
 
 更早版本（6.20.0 及以前）详见 `archive/CHANGELOG-archive.md`。
+
+## [6.53.4] - 2026-08-30 — 序列来源链案根隔离贯彻到收据、输入、深验与 resolver（盲审 R4 P1）
+
+- **出处与根因**：codex 盲审确认 6.53.3 只把案根约束用于 `_resolve_ref` 的登记路径兜底；basename 段仍可从案件父目录直系命中同名同指纹实物，`resolved` 中的 sidecar 输入未统一做案根 containment，独立深验与正式 cache resolver 也仍从收据位置各自推根，导致“调用方给案根”没有贯彻到整条消费链。
+- **设计与实现**：`registry_anchor_check` 单点计算 `effective_root`：显式 `case_root` 优先；未给时仅为直属 `data/` 的 sol-rows 收据推导案根；其它情形保持 `None`。新增 `_within_root`，案根在场时于任何读取/深验前逐项拒绝案外 `resolved` 实物，并过滤 EVM 登记面搜索目录；`_resolve_ref` 同层过滤 basename 搜索目录，等价落实 reconcile `receipt_dirs` 的案根约束。
+- **消费面与防回流**：reconcile inputs、独立深验器与 `resolve_formal_cache` 全部消费同一 `effective_root`；显式根覆盖位置推导，推导根只限 `data/` 收据。`case_root=None` 且不可推导时，EVM 与非 `data/` sol-rows 继续沿 6.53.3 的 basename、深验和 resolver 根行为；`load_series_with_sidecar`、`state_from_facts.py` 与发布闸均未改。
+- **测试**：R3 实证案外收据修前先被读取并报 schema 错，R4 实证 basename 修前返回父目录实物；修后两者首层拒收。新增 N10 非 `data/` 收据且根为 `None` 的兼容回归、N11 `data/` 收据推导根后的 resolved 全表 containment、N12 EVM 显式根不接受父目录 `supply_truth.json`；既有 R1/R2/N1–N9 断言保持，Batch 16 为 16/16。
+- **盲审与验收**：codex 盲审 R4 1 条 P1（案根未贯彻全路径）已消化；白名单内离线施工，不改 `load_series_with_sidecar`、`audit_release_gate.py`、`state_from_facts.py`、独立深验器、cache resolver 或其它测试文件，不 commit。
+- **成本-质量指标**：生产实现 1 轮、兼容文案/夹具校准 1 轮；外部网络调用 0；新增 suite 入口 0；新增测试场景 5（R3、R4、N10–N12）；生产 schema 改动 0；传播级数字错误 0。
 
 ## [6.53.3] - 2026-08-30 — 序列来源链登记路径兜底收窄为唯一案根（盲审 R3 P1）
 

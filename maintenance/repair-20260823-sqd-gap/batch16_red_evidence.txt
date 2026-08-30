@@ -10,6 +10,27 @@ FAIL batch16 resolve_ref case path: 1/1
 
 At capture time, scripts/lib/camp_series_provenance.py had not been modified.
 
+Batch 16 blind review R4 RED evidence (production code still at 057235c baseline)
+
+HEAD: 42cd70afa7d192b3f6a3c4fe1414534dc4cdbf08
+Parent baseline: 057235c6e933f3241f9fcb9a7a3dede6c1b4a7fb
+Command: python3 scripts/tests/test_batch16_resolve_ref_case_path.py --r3
+Exit code: 1
+
+Raw output:
+FAIL R3 resolved receipt containment: reconcile_receipt 不是合法对账收据（schema 必须是 solana-reconcile/v4）——重跑 replay_edges reconcile 重新生成 v4 收据
+FAIL batch16 resolve_ref case path: 1/1
+
+Command: python3 scripts/tests/test_batch16_resolve_ref_case_path.py --r4
+Exit code: 1
+
+Raw output:
+FAIL R4 basename case-root containment: R4 修前越出本案：basename 命中父目录文件 /private/tmp/batch16-r4-mgfb63zp/holders_owners.json
+FAIL batch16 resolve_ref case path: 1/1
+
+At capture time, scripts/lib/camp_series_provenance.py had not been modified from
+the 057235c parent baseline; HEAD only added the scheduler's R4 workorder.
+
 Batch 16 blind review R3 RED evidence (production code still at ce4e56c)
 
 HEAD: fcf0d2e4402712cbbfe6ff1d7a4fdeea42e86e13

@@ -134,6 +134,45 @@ def test_r2_cross_case_registered_path_is_rejected() -> None:
         assert "按登记路径" not in implicit, implicit
 
 
+def test_r3_resolved_receipt_outside_explicit_case_root_is_rejected_first() -> None:
+    with tempfile.TemporaryDirectory(prefix="batch16-r3-", dir="/private/tmp") as raw:
+        parent = Path(raw)
+        case = parent / "caseA"
+        series = write(case / "camp_share_series.json", "[]\n")
+        outside_receipt = write(parent / "reconcile_receipt.json", "{}\n")
+        provenance.write_series_sidecar(
+            series, producer="batch16-r3", series_format="sol-rows",
+            denominator="net_supply",
+            inputs={"reconcile_receipt": outside_receipt},
+        )
+        sidecar, _raw, resolved = provenance.load_series_with_sidecar(series)
+        assert resolved["inputs.reconcile_receipt"] == outside_receipt
+        detail = expect_error(
+            lambda: provenance.registry_anchor_check(
+                sidecar, resolved, series, expected_chain="solana",
+                expected_mint=MINT, expected_cutoff_slot=1, case_root=case),
+            "位于案根",
+        )
+        assert str(outside_receipt) in detail and str(case.resolve()) in detail, detail
+
+
+def test_r4_basename_search_cannot_escape_explicit_case_root() -> None:
+    with tempfile.TemporaryDirectory(prefix="batch16-r4-", dir="/private/tmp") as raw:
+        parent = Path(raw)
+        case = parent / "caseA"
+        case.mkdir()
+        outside = write(parent / "holders_owners.json", "outside\n")
+        try:
+            got = provenance._resolve_ref(
+                ref(outside, outside.name), "reconcile.inputs.holders_owners",
+                [case, parent], case_root=case)
+        except provenance.SeriesProvenanceError as exc:
+            detail = str(exc)
+            assert "找不到" in detail, detail
+        else:
+            raise AssertionError(f"R4 修前越出本案：basename 命中父目录文件 {got}")
+
+
 def test_n1_dotdot_registered_path_rejected() -> None:
     with tempfile.TemporaryDirectory(prefix="batch16-n1-", dir="/private/tmp") as raw:
         case = Path(raw)
@@ -283,6 +322,59 @@ def test_n9_explicit_case_root_overrides_inference() -> None:
         assert got == case_data[0]
 
 
+def test_n10_none_root_outside_data_keeps_parent_basename_behavior() -> None:
+    with tempfile.TemporaryDirectory(prefix="batch16-n10-", dir="/private/tmp") as raw:
+        parent = Path(raw)
+        case = parent / "caseA"
+        receipt = write(case / "reconcile_receipt.json", "{}\n")
+        owners = write(parent / "holders_owners.json", "legacy-parent\n")
+        got = provenance._resolve_ref(
+            ref(owners, owners.name), "reconcile.inputs.holders_owners",
+            [receipt.parent, receipt.parent.parent])
+        assert got == owners
+
+
+def test_n11_inferred_root_rejects_other_resolved_parent_input() -> None:
+    with tempfile.TemporaryDirectory(prefix="batch16-n11-", dir="/private/tmp") as raw:
+        parent = Path(raw)
+        case = parent / "caseA"
+        series = write(case / "camp_share_series.json", "[]\n")
+        receipt = write(case / "data/reconcile_receipt.json", "{}\n")
+        outside = write(parent / "sniper_set.json", "{}\n")
+        sidecar = {"series_format": "sol-rows"}
+        resolved = {
+            "inputs.reconcile_receipt": receipt,
+            "inputs.sniper_set": outside,
+        }
+        detail = expect_error(
+            lambda: provenance.registry_anchor_check(
+                sidecar, resolved, series, expected_chain="solana",
+                expected_mint=MINT, expected_cutoff_slot=1),
+            "位于案根",
+        )
+        assert "inputs.sniper_set" in detail and str(case.resolve()) in detail, detail
+
+
+def test_n12_evm_explicit_root_ignores_parent_supply_truth() -> None:
+    with tempfile.TemporaryDirectory(prefix="batch16-n12-", dir="/private/tmp") as raw:
+        parent = Path(raw)
+        case = parent / "caseA"
+        series = write(case / "camp_share_series.json", "{}\n")
+        stats = write(case / "replay_stats.json", "{}\n")
+        write(parent / "supply_truth.json", "{}\n")
+        sidecar = {
+            "series_format": "evm-dict",
+            "inputs": {"replay_stats": ref(stats, stats.name)},
+        }
+        detail = expect_error(
+            lambda: provenance.registry_anchor_check(
+                sidecar, {"inputs.replay_stats": stats}, series,
+                case_root=case),
+            "案根内找不到 supply_truth.json",
+        )
+        assert str(parent / "supply_truth.json") not in detail, detail
+
+
 TESTS = [
     ("R1 deep registered path", test_r1_deep_registered_path_resolves_from_case_root),
     ("R2 cross-case registered path", test_r2_cross_case_registered_path_is_rejected),
@@ -295,18 +387,27 @@ TESTS = [
     ("N7 registry inferred case root", test_n7_registry_anchor_derives_case_root_from_data_receipt),
     ("N8 root receipt has no inference", test_n8_receipt_outside_data_does_not_infer_parent_root),
     ("N9 explicit case root wins", test_n9_explicit_case_root_overrides_inference),
+    ("R3 resolved receipt containment", test_r3_resolved_receipt_outside_explicit_case_root_is_rejected_first),
+    ("R4 basename case-root containment", test_r4_basename_search_cannot_escape_explicit_case_root),
+    ("N10 None root compatibility", test_n10_none_root_outside_data_keeps_parent_basename_behavior),
+    ("N11 inferred root containment", test_n11_inferred_root_rejects_other_resolved_parent_input),
+    ("N12 EVM supply truth containment", test_n12_evm_explicit_root_ignores_parent_supply_truth),
 ]
 
 
 def main() -> int:
     selected = TESTS
-    if sys.argv[1:] == ["--r1"]:
-        selected = TESTS[:1]
-    elif sys.argv[1:] == ["--r2"]:
-        selected = TESTS[1:2]
+    selectors = {
+        "--r1": "R1 ", "--r2": "R2 ", "--r3": "R3 ", "--r4": "R4 ",
+        "--n10": "N10 ", "--n11": "N11 ", "--n12": "N12 ",
+    }
+    if len(sys.argv) == 2 and sys.argv[1] in selectors:
+        prefix = selectors[sys.argv[1]]
+        selected = [item for item in TESTS if item[0].startswith(prefix)]
     elif sys.argv[1:]:
         raise SystemExit(
-            "usage: test_batch16_resolve_ref_case_path.py [--r1|--r2]")
+            "usage: test_batch16_resolve_ref_case_path.py "
+            "[--r1|--r2|--r3|--r4|--n10|--n11|--n12]")
     failed = []
     for name, test in selected:
         try:
