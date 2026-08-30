@@ -10,6 +10,7 @@
 
 ## 版本索引（活跃窗口，新在上；每版一行，详情见下方对应条目）
 
+- **6.53.2**（2026-08-30）序列来源链登记路径按案根解析兜底：保留两层 basename 优先语义，未命中时安全解析案根内相对登记路径，使 sqd_repair 深层 soltx meta 与 resolver 身份一致；新增逃逸、绝对路径、symlink、指纹与 registry anchor 回归，SUITE 141→142
 - **6.53.1**（2026-08-30）发布闸 B-7 三账对账源与 series cutoff 冻结态投影：动态 Solana 的三账改吃 exact owners＋冻结块，序列 cutoff 改投冻结点；新增篡改、symlink、绝对路径、静态零变化、完整两态案与错 cutoff 回归，SUITE 140→141
 - **6.53.0**（2026-08-27）持仓分布图升级为 matplotlib 双轴带标签图：修复裸 PNG 哑图导致柱高被误读的根因，横轴明确为单地址持仓占私人可入箱供应 %，取消 `struct/zlib` 裸 PNG；新增数据对齐、标准生产链、low_sample 与缺依赖显式失败回归，SUITE 139→140
 - **6.52.15**（2026-08-27）F-03b 共享 SQD 地图复用失败分级：ARC live 92,643 次 recheck 中 1,182 次限流失败且零 mismatch，暴露“任一请求失败即整体回退”使复用必然失败；mismatch 整体回退不变，请求失败末尾重试后只剔除该段转 full，canary 段失败仍整体回退；map-reuse 按已验证子区间逐段声明，案外 recheck 撤销覆盖并以杀变异测试固守；新增 `unverified_ranges`/`recheck_stats` 审计字段且 retry mismatch 不污染；盲审 R1 BLOCK 两项消化后 R2 PASS；SUITE 139 不变，既有 F-03 测试组 9→15
@@ -73,6 +74,15 @@
 - **6.20.1** 2026-08-05 修 5 处阻断级文档漂移（A4 前禁写报告冲突/easy 残留/惯犯回灌 docstring/批量预采集残留/旧 Par 路线历史降级）＋docs_lint 增中文禁词与 Python module docstring 扫描
 
 更早版本（6.20.0 及以前）详见 `archive/CHANGELOG-archive.md`。
+
+## [6.53.2] - 2026-08-30 — 序列来源链登记路径按案根解析兜底（sqd_repair 修复缓存深层路径）
+
+- **出处与根因**：ARC −2 正式编译在 1.5 小时后被 `reconcile.inputs.soltx_meta` 缺件阻断；`solana-reconcile/v4` 按案根登记 `data/sqd_repair/<sha>/gen-<gid>/soltx-….repaired.meta.json`，深验器能按完整相对路径解析，但 `camp_series_provenance._resolve_ref` 只取 basename 到序列目录与案根两层查找，所有使用 sqd_gap_repair 深层修复缓存的 Solana 案都会结构性失败。
+- **设计与实现**：原有两层 basename 搜索、symlink 拒收、size/sha256 三验及首命中即返回/不匹配即拒的代码段保持不变；仅在两层均未命中后，按 `search_dirs` 原顺序尝试登记路径。兜底只接受非绝对且无空段、`.`、`..` 的相对路径，从 base 起逐段拒 symlink，`resolve()` 后强制 containment，并在首个实物命中时全等复验 size/sha256；sha256 仍是权威身份。
+- **消费面与防回流**：调用点、resolver 等值检查、`solana_exact_validate.py` 与既有测试均未改；深层 meta 返回原登记实物，故 `resolver_meta_path.resolve() == meta_path.resolve()` 继续成立。全库同族核查发现 `audit_release_gate._recon_owner_snapshot` 静态段也只按 basename 搜索，遵守批 15 禁改边界仅记录待调度裁决；其它同族点按各自登记协议分类，未扩改动面。
+- **测试**：先红精确复现旧异常“两层内都找不到”；新增 7 组覆盖 sqd_repair 深层正例、`..`、绝对路径、中间目录 symlink、size/sha256 错配、basename 两层老形态与命中错哈希不降级、`registry_anchor_check` 深层 meta 与 resolver 同实物。N6 使用真实独立深验器；因完整 repaired cache producer 布局成本过高，按工单允许仅 monkeypatch `resolve_formal_cache` 返回该深层 meta，路径等值检查与其余 registry 逻辑真实执行。SUITE 141→142。
+- **盲审与验收**：白名单内离线施工；点名既有回归、版本一致性、CHANGELOG lint 与完整 run_all 结果见 `batch16_done.md`，允许 loopback 的本机全套由调度方复跑。
+- **成本-质量指标**：生产实现 1 轮；外部网络调用 0；新增 suite 入口 1；新增测试场景 7；生产 schema 改动 0；传播级数字错误 0。
 
 ## [6.53.1] - 2026-08-30 — 发布闸 B-7 三账对账源与 series cutoff 冻结态投影
 

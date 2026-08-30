@@ -179,8 +179,8 @@ def write_series_sidecar(series_path, *, producer: str, series_format: str,
 def _resolve_ref(ref: dict, label: str, search_dirs) -> Path:
     """按 basename 在 series 目录与其父目录（案根）两层内找实物并三验。
 
-    路径只按 basename 解析（sidecar 不携带可逃逸路径），sha256 是权威身份；
-    符号链接拒收（与 F-08/批 B 同口径）。
+    basename 未命中时，登记路径兜底只接受案根内相对路径；sha256 仍是
+    权威身份。符号链接拒收（与 F-08/批 B 同口径）。
     """
     if not isinstance(ref, dict) or not ref.get("path") or not ref.get("sha256"):
         raise SeriesProvenanceError(f"sidecar {label} 必须绑定 path/sha256/size")
@@ -197,8 +197,39 @@ def _resolve_ref(ref: dict, label: str, search_dirs) -> Path:
             if sha256_file(cand) != str(ref["sha256"]).lower():
                 raise SeriesProvenanceError(f"sidecar {label} sha256 不匹配（{cand}）")
             return cand
+
+    registered = str(ref["path"])
+    rel = Path(registered)
+    parts = registered.split("/")
+    if rel.is_absolute() or any(part in {"", ".", ".."} for part in parts):
+        raise SeriesProvenanceError(
+            f"sidecar {label} 登记路径必须是案根内且不含空段/./.. 的相对路径: "
+            f"{registered!r}")
+    for base in search_dirs:
+        base = Path(base)
+        root = base.resolve()
+        cursor = root
+        for part in parts:
+            cursor = cursor / part
+            if cursor.is_symlink():
+                raise SeriesProvenanceError(
+                    f"sidecar {label} 登记路径含符号链接 {cursor}，拒收")
+        cand = base / registered
+        resolved_cand = cand.resolve()
+        if resolved_cand != root and root not in resolved_cand.parents:
+            raise SeriesProvenanceError(
+                f"sidecar {label} 登记路径逃出案根 {base}: {registered!r}")
+        if cand.is_file():
+            if cand.stat().st_size != ref.get("size"):
+                raise SeriesProvenanceError(
+                    f"sidecar {label} size 不匹配（{cand}: 实测 "
+                    f"{cand.stat().st_size} ≠ 登记 {ref.get('size')}）")
+            if sha256_file(cand) != str(ref["sha256"]).lower():
+                raise SeriesProvenanceError(f"sidecar {label} sha256 不匹配（{cand}）")
+            return cand
     raise SeriesProvenanceError(
-        f"sidecar {label}（{name}）在序列目录与案根两层内都找不到")
+        f"sidecar {label}（{name}）在序列目录与案根两层内按文件名找不到，"
+        f"按登记路径 {ref['path']!r} 解析亦未命中")
 
 
 def load_series_with_sidecar(series_path):

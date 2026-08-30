@@ -1,0 +1,11 @@
+Batch 16 RED evidence (production code still at HEAD)
+
+HEAD: 730495e23c416b656c879a13e3412054f20f7018
+Command: python3 scripts/tests/test_batch16_resolve_ref_case_path.py --r1
+Exit code: 1
+
+Raw output:
+FAIL R1 deep registered path: R1 修前真实阻断：sidecar reconcile.inputs.soltx_meta（soltx-a.repaired.meta.json）在序列目录与案根两层内都找不到
+FAIL batch16 resolve_ref case path: 1/1
+
+At capture time, scripts/lib/camp_series_provenance.py had not been modified.

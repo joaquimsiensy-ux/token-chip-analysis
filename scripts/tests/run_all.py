@@ -188,6 +188,9 @@ SUITE += ['test_batch15_three_ledgers_frozen.py']
 # v6.52.2 repair-20260824-lit-regression：F-007 series_format 堆叠语义与 F-008 evm_v2 集合闸。
 SUITE += ["test_lit_regression_f007.py", "test_lit_regression_f008.py"]  # v6.52.2 repair-20260824-lit-regression
 
+# Batch 16：序列来源链登记路径按案根解析兜底（sqd_repair 深层缓存）。
+SUITE += ['test_batch16_resolve_ref_case_path.py']
+
 
 def main():
     results = []
