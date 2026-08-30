@@ -198,23 +198,38 @@ def test_n4b_accounting_cannot_disguise_dynamic_as_static() -> None:
         assert not any("不等值" in item for item in errors), errors
 
 
-def test_n5_absolute_exact_ref_inside_passes_outside_rejected() -> None:
-    with tempfile.TemporaryDirectory(prefix="batch15-n5-in-", dir="/private/tmp") as raw:
-        root = Path(raw)
-        fixture = build_unit_case(root)
-        fixture["state"]["exact_ref"]["path"] = str(fixture["frozen_owners"])
-        assert check_three_ledgers(root, fixture) == []
-
+def test_n5_absolute_exact_ref_rejected_by_deep_validator() -> None:
+    """案内绝对路径也被真实深验器 fail-closed 拒绝。"""
     with tempfile.TemporaryDirectory(prefix="batch15-n5-root-", dir="/private/tmp") as raw, \
             tempfile.TemporaryDirectory(prefix="batch15-n5-out-", dir="/private/tmp") as outer:
         root = Path(raw)
-        fixture = build_unit_case(root)
+        build_dynamic_integration_case(root)
+        receipt_path = root / "data/reconcile_receipt.json"
+        wrapper_path = root / "reconciliation_report.json"
+
+        def errors_for(absolute_path: Path) -> list[str]:
+            receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+            receipt["inputs"]["holders_owners"]["path"] = str(absolute_path)
+            write_json(receipt_path, receipt)
+            wrapper = json.loads(wrapper_path.read_text(encoding="utf-8"))
+            wrapper["checks"]["exact_reconcile"]["receipt"] = case_ref(
+                root, receipt_path)
+            write_json(wrapper_path, wrapper)
+            errors: list[str] = []
+            gate.check_three_ledgers(
+                root, load_gate_data(root), errors, chain="sol")
+            assert any("冻结态深验未通过" in item for item in errors), errors
+            assert not any("不等值" in item for item in errors), errors
+            return errors
+
+        inside_errors = errors_for(root / "data/holders_owners.json")
+        assert any("artifact path must be case-relative" in item
+                   for item in inside_errors), inside_errors
         outside = write_json(Path(outer) / "holders_owners.json",
-                             {"owner-a": 60, "owner-b": 40})
-        fixture["state"]["exact_ref"] = ref(outside, str(outside))
-        errors = check_three_ledgers(root, fixture)
-        assert any("冻结态深验未通过" in item for item in errors), errors
-        assert not any("不等值" in item for item in errors), errors
+                             {"ownersol1": 60, "ownersol2": 40})
+        outside_errors = errors_for(outside)
+        assert any("input escapes case root" in item
+                   for item in outside_errors), outside_errors
 
 
 def test_n8_snapshot_default_is_frozen_explicit_is_observation() -> None:
@@ -391,7 +406,7 @@ def main(argv=None) -> int:
             test_n3_frozen_owners_symlink_rejected,
             test_n4a_true_static_case_unchanged,
             test_n4b_accounting_cannot_disguise_dynamic_as_static,
-            test_n5_absolute_exact_ref_inside_passes_outside_rejected,
+            test_n5_absolute_exact_ref_rejected_by_deep_validator,
             test_n8_snapshot_default_is_frozen_explicit_is_observation,
             test_n7_wrong_projected_cutoff_rejected,
         ]

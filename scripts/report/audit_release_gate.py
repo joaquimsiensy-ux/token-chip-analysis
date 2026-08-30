@@ -599,8 +599,8 @@ def _frozen_consumer_target(
         expected = accounting_expected_target(checked_target, receipts)
     except Exception as exc:
         errors.append(
-            f"{label}: accounting as_of_block={accounting_as_of!r} 与 wrapper "
-            f"{wrapper_as_of!r} 不同，但冻结态深验未通过，无法确定对账时点: {exc}")
+            f"{label}: accounting as_of_block={accounting_as_of!r}/wrapper "
+            f"{wrapper_as_of!r}：冻结态深验未通过，无法确定对账时点: {exc}")
         return None, None, None
 
     try:

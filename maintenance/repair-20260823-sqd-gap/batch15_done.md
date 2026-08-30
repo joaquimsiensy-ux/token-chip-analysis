@@ -46,7 +46,7 @@
 已做，见 `scripts/report/audit_release_gate.py:680-705`。
 
 - 动态 Solana 用 `receipts["exact_reconcile"]["inputs"]["holders_owners"]`。
-- 生产模块按工单直接导入既有私有 `_bound_case_ref`；案根内相对/绝对路径接受，`..`、案外、文件 symlink、size、sha256 任一失败均拒。
+- 生产模块按工单直接导入既有私有 `_bound_case_ref`；生产契约是案内相对路径，案内绝对路径亦由深验器 fail-closed 拒绝（盲审 R1 P2 修正）；`..`、案外、文件 symlink、size、sha256 任一失败均拒。
 - owners 实物转为 `str -> int`，返回冻结块；解析错误 fail-loud。
 - EVM 分支、原 Solana 静态 observation bundle 段、`check_three_ledgers` 本体均与 HEAD 字节全等。
 
@@ -90,7 +90,7 @@
 5. N3 冻结 owners symlink 拒绝。
 6. N4a 真静态案通过。
 7. N4b 错填 wrapper 的 accounting 无法伪装静态。
-8. N5 案根内绝对 exact ref 通过，案外绝对路径拒绝。
+8. N5 exact ref 的案内绝对路径也被真实深验器 fail-closed 拒绝，案外绝对路径保持拒绝，且均不回落逐址“不等值”检查。
 9. N8 默认 snapshot 选冻结件，显式参数选观察件。
 10. N7 注入错误 cutoff 投影，series provenance 拒绝。
 
@@ -220,4 +220,47 @@ python3 scripts/tests/run_all.py > /tmp/batch15_runall.txt 2>&1; echo rc=$?
       PASS  test_lit_regression_f008.py SUMMARY: 46/46 PASS
 ========================================================
 2 项失败——修完再收工
+```
+
+## 盲审 R1 消化
+
+### 结论与改动摘要
+
+- 施工基线核对：开工 `git status --short` 为空；当前 `main@9ae8a0b` 的父提交是工单基线 `3a71c26`，唯一新增内容是调度方已提交的 `batch15_blind_r1_digest.md`。
+- N5 删除“案内绝对 exact ref 通过”的夹具假绿，改用 N6 的完整动态两态案；篡改真实 `data/reconcile_receipt.json` 的 `inputs.holders_owners.path`，同步 wrapper 对该收据的 size/sha256 引用，再由未打补丁的 `gate.check_three_ledgers()` 进入真实 `validate_reconciliation_report()`。
+- 案内绝对路径穿过 envelope 后由 `validate_reconcile_receipt_deep()` 的 case-relative 契约 fail-closed 拒绝；案外绝对路径由 envelope 案根约束拒绝。两种错误都包含“冻结态深验未通过”，且都不包含“不等值”，证明没有回落到观察 owners 的逐址比较。
+- `_frozen_consumer_target()` 的深验失败文案改准为 `accounting as_of_block=…/wrapper …：冻结态深验未通过…`，未改控制流。
+- `batch15_done.md` 与 `CHANGELOG.md` 同步生产契约及 codex 盲审 R1 1 条 P2（N5 假绿）消化结果；版本仍为 `6.53.1`。
+
+### N5 真实 errors 原文
+
+案内绝对路径：
+
+```text
+["三账 balance_source 对账源: accounting as_of_block=500/wrapper 501：冻结态深验未通过，无法确定对账时点: Solana exact_reconcile 独立深验失败: artifact path must be case-relative: '/private/tmp/batch15-n5-proof-odhzx3ju/data/holders_owners.json'; reconcile snapshot_supply_raw does not recompute; reconcile snapshot_mismatch_count does not recompute; reconcile snapshot presence/closure facts mismatch; gate_pass does not recompute from exact reconciliation; verdict/exit_code do not match recomputed gate_pass"]
+```
+
+案外绝对路径：
+
+```text
+["三账 balance_source 对账源: accounting as_of_block=500/wrapper 501：冻结态深验未通过，无法确定对账时点: reconciliation exact_reconcile receipt envelope invalid: input holders_owners invalid: input escapes case root；存量案例须重跑对应生产者获取当前回执"]
+```
+
+### 验收
+
+- `python3 scripts/tests/test_batch15_three_ledgers_frozen.py`：PASS，10/10；N5 使用完整动态夹具和真实校验器，无 `fake_check` 补丁。
+- `python3 scripts/tests/changelog_lint.py`：PASS。
+- `python3 scripts/tests/docs_lint.py`：PASS，45 个文档。
+- `python3 scripts/tests/run_all.py`：`rc=1`，141 total / 139 PASS / 2 FAIL。仅 `test_batch3_solana_vertical_slice.py:625` 与 `test_batch3_evm_vertical_slice.py:281` 在绑定 `127.0.0.1` 时触发 `PermissionError: [Errno 1] Operation not permitted`；均未进入业务断言，须由调度方在允许 loopback bind 的本机复跑。
+- `git diff --check`：PASS。
+- 未 commit，未改版本号，未读取或写入任何 key。
+
+### 本轮 git diff --stat
+
+```text
+ CHANGELOG.md                                       |  4 +-
+ .../repair-20260823-sqd-gap/batch15_done.md        | 47 +++++++++++++++++++++-
+ scripts/report/audit_release_gate.py               |  4 +-
+ scripts/tests/test_batch15_three_ledgers_frozen.py | 43 +++++++++++++-------
+ 4 files changed, 78 insertions(+), 20 deletions(-)
 ```
