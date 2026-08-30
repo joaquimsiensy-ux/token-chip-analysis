@@ -1,0 +1,38 @@
+Batch 15 RED evidence (production code still at HEAD)
+
+HEAD: 363ef4a088cbfc6ae0981433ad6f08e81168a720
+Command: python3 scripts/tests/test_batch15_three_ledgers_frozen.py --r1
+Exit code: 1
+
+Exact assertion reached:
+R1 errors 必须恰好命中 B-7 时点不一致＋逐址不等值
+
+Raw output:
+FAIL test_r1_g1_frozen_ledgers_use_exact_owners: AssertionError: R1 修前精确红：["membership[0].balance_source as_of_block=500 与四查冻结时点 501 不一致（三账快照必须核在同一冻结块）", "membership[0].balance_source 地址 owner-a 余额 60 与四查 owner 快照 70 不等值"]
+边数=2  时间范围 01-01 00:00:00 → 01-01 00:00:01
+铸造=100  销毁=0  净=100
+负余额地址数=0
+快照 supply=100  重放净-快照差=0
+全 owner 对账：2/2 一致
+重放末态已写 data/replay_final_balances.json
+snapshot_slot=500 accounts=1 owners=1 supply=100 activity=complete -> snapshot.json
+FAIL test_n6_dynamic_full_gate: AssertionError: N6 修前动态集成红：["membership[0].balance_source as_of_block=500 与四查冻结时点 501 不一致（三账快照必须核在同一冻结块）", "membership[0].balance_source 地址 ownersol1 余额 60 与四查 owner 快照 70 不等值", "发布期来源链复算失败：reconcile window 与 holders snapshot/案 target cutoff 不一致"]
+FAIL batch15 frozen consumers: 2/2
+
+Classification:
+- errors count: exactly 2
+- B-7 cutoff mismatch: exactly 1
+- B-7 per-owner inequality: exactly 1
+- missing artifact / unrelated error: 0
+
+N6 pre-fix integration classification:
+- re-sign/binding points: 12 (stop-loss threshold not exceeded)
+- B-7 cutoff mismatch: exactly 1
+- B-7 per-owner inequality: exactly 1
+- series cutoff mismatch: exactly 1
+- missing artifact / unrelated gate error: 0
+
+Non-business stderr emitted while the fixture generated charts (not part of gate.errors):
+/Users/uravvv/.matplotlib is not a writable directory
+Matplotlib created a temporary cache directory under the task tmpdir.
+Matplotlib is building the font cache; this may take a moment.

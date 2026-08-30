@@ -563,6 +563,64 @@ def raw_int(value, label, errors):
     return 0 if n is None else n
 
 
+def _frozen_consumer_target(
+        case_dir: Path, data: dict, errors: list[str], label: str,
+) -> tuple[dict | None, dict | None, dict | None]:
+    """Project a deeply validated dynamic Solana wrapper to its frozen target."""
+    accounting = data.get("accounting_mode.json")
+    recon = data.get("reconciliation_report.json")
+    # run() 的缺件夹具仍要让原 series 校验暴露其自身的物理绑定错误；缺必需
+    # accounting/reconciliation 已由 REQUIRED_BY_PROFILE 单独 fail-closed，不能让
+    # 本助手抢先制造次生错误并遮住原校验。正式完整案才进入两态选择。
+    if not isinstance(accounting, dict) or not isinstance(recon, dict):
+        return None, None, None
+    target = recon.get("target") if isinstance(recon, dict) else None
+    wrapper_as_of = target.get("as_of_block") if isinstance(target, dict) else None
+    accounting_as_of = (accounting.get("as_of_block")
+                        if isinstance(accounting, dict) else None)
+
+    # EVM has no exact-reconcile split.  For Solana, equality of two self-reported
+    # fields is not enough to call the case static: N4b must still prove that the
+    # deeply validated central selector also lands on the wrapper target.
+    if accounting_as_of == wrapper_as_of:
+        try:
+            from shared_release_receipt import chain_family
+            if chain_family((accounting or {}).get("chain")) != "solana":
+                return None, None, None
+        except Exception:
+            pass
+
+    try:
+        from shared_release_receipt import (accounting_expected_target,
+                                            canonical_target,
+                                            validate_reconciliation_report)
+        checked_target, receipts = validate_reconciliation_report(
+            case_dir, return_receipts=True)
+        expected = accounting_expected_target(checked_target, receipts)
+    except Exception as exc:
+        errors.append(
+            f"{label}: accounting as_of_block={accounting_as_of!r} 与 wrapper "
+            f"{wrapper_as_of!r} 不同，但冻结态深验未通过，无法确定对账时点: {exc}")
+        return None, None, None
+
+    try:
+        accounting_target = canonical_target({
+            "chain": accounting.get("chain"),
+            "token": accounting.get("token") or accounting.get("mint"),
+            "as_of_block": accounting.get("as_of_block"),
+        })
+    except Exception:
+        errors.append(f"{label}: accounting target 与中央选择器结果不一致")
+        return None, None, None
+    if accounting_target != expected:
+        errors.append(f"{label}: accounting target 与中央选择器结果不一致")
+        return None, None, None
+    wrapper = canonical_target(checked_target)
+    if expected == wrapper:
+        return None, None, None
+    return expected, wrapper, receipts
+
+
 def _recon_owner_snapshot(case_dir: Path, data: dict, chain, errors: list[str]):
     """B-7：取四查真正核过的那份 owner 余额映射与冻结时点，作三账 balance_source 的对账源。
 
@@ -570,6 +628,8 @@ def _recon_owner_snapshot(case_dir: Path, data: dict, chain, errors: list[str]):
     bundle 的 holder_outputs.owners 实物（B-1 起有文件级三验与定位）。返回
     (owners{addr:int}|None, as_of_block|None)；解析失败已 append error，返回 (None, None)
     ——fail-loud，不静默降级为"跳过比对"。
+    Solana 冻结态（exact 早于 wrapper）＝exact 收据 inputs.holders_owners 实物＋冻结块；
+    静态态＝observation bundle owners＋wrapper 块。
     """
     recon = data.get("reconciliation_report.json")
     if not isinstance(recon, dict):
@@ -622,6 +682,32 @@ def _recon_owner_snapshot(case_dir: Path, data: dict, chain, errors: list[str]):
         except (TypeError, ValueError):
             errors.append("三账 balance_source 对账源: 四查 balances 实物不是 addr->raw 映射")
             return None, as_of
+    error_count = len(errors)
+    expected, wrapper, receipts = _frozen_consumer_target(
+        case_dir, data, errors, "三账 balance_source 对账源")
+    if expected is None:
+        if len(errors) != error_count:
+            return None, None
+    elif expected["as_of_block"] < wrapper["as_of_block"]:
+        try:
+            from shared_release_receipt import _bound_case_ref
+            ref = receipts["exact_reconcile"]["inputs"]["holders_owners"]
+            frozen = _bound_case_ref(
+                case_dir, ref, "三账 balance_source 冻结 exact holders_owners")
+        except Exception as exc:
+            errors.append("三账 balance_source 对账源: 冻结 exact holders_owners "
+                          f"实物不可用: {exc}")
+            return None, None
+        owners = load_json(frozen, errors)
+        if not isinstance(owners, dict):
+            return None, None
+        try:
+            owners_map = {str(k): int(str(v)) for k, v in owners.items()}
+        except (TypeError, ValueError):
+            errors.append("三账 balance_source 对账源: 冻结 exact holders_owners "
+                          "不是 owner->raw 映射")
+            return None, None
+        return owners_map, expected["as_of_block"]
     # Solana：从 supply 收据（observation bundle）拿 holder_outputs.owners 实物
     try:
         import sys as _sys
@@ -1483,10 +1569,20 @@ def run(case_dir: Path, report: Path | None, *, profile="independent-audit"):
         state_path = case_dir / "analysis-state.json"
         if state_path.is_file():
             state_obj = load_json(state_path, errors)
-            release_target = ((data.get("reconciliation_report.json") or {})
+            wrapper_target = ((data.get("reconciliation_report.json") or {})
                               .get("target") or {})
-            check_series_binding(case_dir, state_obj, errors,
-                                 expected_target=release_target)
+            error_count = len(errors)
+            expected_target, _wrapper, _receipts = _frozen_consumer_target(
+                case_dir, data, errors, "发布期序列 cutoff 目标")
+            if len(errors) == error_count:
+                release_target = dict(wrapper_target)
+                if expected_target is not None:
+                    # camp_series_provenance 的 Solana 收据身份使用原始链名
+                    # "solana"；中央选择器 canonical_target 返回 "sol"。这里只
+                    # 投影冻结 cutoff，chain/token 继续沿用已深验 wrapper 的表示。
+                    release_target["as_of_block"] = expected_target["as_of_block"]
+                check_series_binding(case_dir, state_obj, errors,
+                                     expected_target=release_target)
             if "fig1_legend_receipt.json" in data:
                 check_figure1_legend_receipt(
                     case_dir, data["fig1_legend_receipt.json"], state_obj, errors)

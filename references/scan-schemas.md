@@ -377,6 +377,8 @@ TERMINAL = {
 
 分布扫描吃的那份 owner 快照，必须就是四查真正核过的那一份：EVM 比对四查 `balance` 收据的 `inputs.balances.sha256`，Solana 比对 observation bundle 的 `holder_outputs.owners.sha256`，**只比 sha256 不比 path**（两边路径形态本来就不同）。**initial 扫描与进报告的终态 final 扫描（`distribution_rounds.json` 的 `terminal.final_scan_path`）两份都要落在同一个四查 sha 上**——只绑 initial 挡不住 final 轮换一份同值换仓快照产终态判定（F-B1）。该交叉检查由 `audit_release_gate.py --profile new-analysis` 执行，**只放发布闸、不放进 validate**（终态 scan 是本轮新产，不涉及存量案追溯）。
 
+动态 Solana 的分布扫描吃 observation bundle 的观察 owners；三账 B-7、series cutoff、accounting 等冻结账消费者则通过同一中央选择器投影，吃 exact 收据 `inputs.holders_owners` 实物＋冻结块。
+
 **两侧绑定强度已对齐（批 D B-1 落地）**：EVM 的 `inputs.balances` 由 `receipt_validate.validate_receipt` 拿案内实物文件做 path/size/sha 三验；Solana 的 `holder_outputs.accounts/owners` 自批 D 起由 `validate_observation_bundle`（bundle_path 在场的消费侧）做同款文件级三验（查找目录＝收据 inputs 实物所在 work_dir → bundle 同目录 → 同目录 data/），缺件/换包/符号链接均拒。
 
 `final` 绑定 READY `handoff/v3`、身份快照收据、当前 A4 seal、当前 entity freeze revision、三账、initial scan 和上一轮 final scan。
@@ -1185,6 +1187,7 @@ QUQ 与 PYTHIA 只用于算法层探索定标。防伪链测试使用合成 fixt
 - `checks.exact_reconcile` 的 wrapper item 固定绑定 `{status,exit_code,process_exit_code,producer,receipt}`；上表五个 v4 字段位于 `receipt{path,size,sha256}` 引用的实物内，由公共 validator 打开后深验，不是 item 直属字段。该 item 仅 family=solana 必填；family=evm 必须省略，出现即拒。
 - 动态 Solana wrapper 的观测 target 可以晚于第五查的冻结 target；仅 `exact_reconcile` 放宽为 chain/token 全等且 `0 ≤ receipt.as_of_block ≤ wrapper.as_of_block`。其余 Solana checks 与全部 EVM checks 仍要求 receipt target 和 wrapper target 全等。
 - exact 检查组合、inputs 案根哈希并调用独立深验。静态态（exact 与 wrapper 的 `as_of_block` 相等）继续要求 exact 与 supply 的 `holders_owners` 是同一文件；冻结态（exact 早于 wrapper）则要求 exact 快照的 sha256+size 与案内 `data/solana_observation_bundle_frozen.json` 的 `holder_outputs.owners` 全等，且该冻结 bundle 经过与活 supply bundle 同深度的案根信封、schema、主网 genesis attestation、closed/closure 与 target 深验，并同时进入 handoff 的 data_map/artifacts。大白话：活观测回答“现在”，冻结快照回答“封账点”，不再强迫两者共用文件；防伪改由冻结 bundle 的内容指纹承担。独立深验仍把 `receipt.target.as_of_block` 正向绑定到 receipt 所绑 `soltx_meta.finalized_upper_slot`，不得拿任意旧时点收据冒充冻结点。
+- 动态 Solana 的分布扫描固定消费观察 owners；三账 B-7、series cutoff、accounting 等冻结账消费者固定消费 exact 收据 owners＋冻结块，并由同一个中央选择器完成投影。
 
 注记：
 

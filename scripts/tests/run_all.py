@@ -182,6 +182,9 @@ SUITE += ['test_batch13_accounting_target.py']
 # Batch 14：Solana accounting 冻结态 bundle 按 size+sha256 内容寻址，安全失败不兜底。
 SUITE += ['test_batch14_accounting_bundle_fallback.py']
 
+# Batch 15：发布闸 B-7 三账对账源＋series cutoff 冻结态投影（方案 A 第七/八消费点）。
+SUITE += ['test_batch15_three_ledgers_frozen.py']
+
 # v6.52.2 repair-20260824-lit-regression：F-007 series_format 堆叠语义与 F-008 evm_v2 集合闸。
 SUITE += ["test_lit_regression_f007.py", "test_lit_regression_f008.py"]  # v6.52.2 repair-20260824-lit-regression
 

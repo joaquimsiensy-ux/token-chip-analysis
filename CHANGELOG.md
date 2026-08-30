@@ -10,6 +10,7 @@
 
 ## 版本索引（活跃窗口，新在上；每版一行，详情见下方对应条目）
 
+- **6.53.1**（2026-08-30）发布闸 B-7 三账对账源与 series cutoff 冻结态投影：动态 Solana 的三账改吃 exact owners＋冻结块，序列 cutoff 改投冻结点；新增篡改、symlink、绝对路径、静态零变化、完整两态案与错 cutoff 回归，SUITE 140→141
 - **6.53.0**（2026-08-27）持仓分布图升级为 matplotlib 双轴带标签图：修复裸 PNG 哑图导致柱高被误读的根因，横轴明确为单地址持仓占私人可入箱供应 %，取消 `struct/zlib` 裸 PNG；新增数据对齐、标准生产链、low_sample 与缺依赖显式失败回归，SUITE 139→140
 - **6.52.15**（2026-08-27）F-03b 共享 SQD 地图复用失败分级：ARC live 92,643 次 recheck 中 1,182 次限流失败且零 mismatch，暴露“任一请求失败即整体回退”使复用必然失败；mismatch 整体回退不变，请求失败末尾重试后只剔除该段转 full，canary 段失败仍整体回退；map-reuse 按已验证子区间逐段声明，案外 recheck 撤销覆盖并以杀变异测试固守；新增 `unverified_ranges`/`recheck_stats` 审计字段且 retry mismatch 不污染；盲审 R1 BLOCK 两项消化后 R2 PASS；SUITE 139 不变，既有 F-03 测试组 9→15
 - **6.52.14**（2026-08-27）F-03 共享 SQD 地图复用闸修复（codex 六视角 review P1，修复中新引入 b005a468）：身份三分类＋历史锚＋head 单调＋模板绑定；已知点只连续合并并发重验，失败整体回退且撤销本轮 recheck 覆盖声明；`validate_shared_map` 同深扩全，`validate_coverage` 按 D1 用户裁决接 producer_history；CT-SQDGAP-35；20260827 资产零字节改动即刻可复用；盲审 R1 BLOCK 三项消化后 R2 PASS；两段提交完成 producer 双协议登记，SUITE 138→139
@@ -72,6 +73,15 @@
 - **6.20.1** 2026-08-05 修 5 处阻断级文档漂移（A4 前禁写报告冲突/easy 残留/惯犯回灌 docstring/批量预采集残留/旧 Par 路线历史降级）＋docs_lint 增中文禁词与 Python module docstring 扫描
 
 更早版本（6.20.0 及以前）详见 `archive/CHANGELOG-archive.md`。
+
+## [6.53.1] - 2026-08-30 — 发布闸 B-7 三账对账源与 series cutoff 冻结态投影
+
+- **出处与根因**：批 10–14 已把六个动态 Solana 冻结账消费点接到 `accounting_expected_target`，但发布闸 B-7 仍从 supply observation bundle 取观察 owners＋wrapper 块，series binding 仍把 wrapper 块当 cutoff；exact=500、wrapper=501 时，按冻结账建三账会被时点与逐址等值拒绝，冻结 `holders_snapshot_meta` 也会被 series cutoff 拒绝。
+- **设计与实现**：新增 `_frozen_consumer_target`，先走 `validate_reconciliation_report(..., return_receipts=True)` 深验，再由 `accounting_expected_target` 选冻结目标并与 accounting 自闭合；B-7 以 `_bound_case_ref` 打开 exact 收据 `inputs.holders_owners`，保留案根、绝对案内路径、symlink、size、sha256 全部硬闸；series 只把中央选择器的冻结 `as_of_block` 投到既有 wrapper chain/token 表示。
+- **消费面与防回流**：动态 Solana 三账与序列消费冻结点，分布 initial/final 仍消费 observation owners；真静态 Solana 与 EVM 沿原 wrapper 路径不变。冻结深验、accounting 自闭合、exact 实物任一失败均停止该消费点，不回落观察 owners；`holder_distribution_scan.py`、`camp_series_provenance.py`、三账本体与共享深验器均未改。
+- **测试**：R1 修前精确命中 B-7 时点不一致＋逐址不等值且无其它错误；新增 10 组覆盖 live 三账反例、冻结件篡改、symlink、真静态、伪静态 accounting、案内/案外绝对路径、默认/显式分布快照、完整动态 new-analysis 零错误及错 cutoff 变异拒绝；文档、版本和既有 EVM/静态发布闸回归纳入验收，SUITE 140→141。
+- **盲审与验收**：@CX 施工前复核＋codex 施工后盲审＋Fable 独立验收；具体轮次由调度方验收后补。
+- **成本-质量指标**：生产实现 1 轮；fixture 路由校准 2 次后取得完整动态红；外部网络调用 0；新增 suite 入口 1；新增测试场景 10；生产 schema 改动 0；传播级数字错误 0。
 
 ## [6.53.0] - 2026-08-27 — 持仓分布图升级为 matplotlib 双轴带标签图
 

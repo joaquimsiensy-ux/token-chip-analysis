@@ -114,6 +114,10 @@
    `data/holders_owners.json`）：发布闸 new-analysis 会拿分布快照的 sha256 去对四查
    `balance` 收据的 `inputs.balances`（Solana 对 observation bundle 的
    `holder_outputs.owners`），喂两份不同的文件即便总和相同也会被判"同值换仓"而拒。
+   动态 Solana（`exact_reconcile` 早于 wrapper）必须显式指定观察快照，因为
+   `holder_distribution_scan.find_snapshot` 默认优先 `data/holders_owners.json`（冻结件），
+   而发布闸的分布绑定要求 observation bundle 的观察 owners。完整命令：
+   `python3 scripts/report/holder_distribution_scan.py --case-dir . --stage initial --snapshot data/observe_live/holders_owners.json`。
    `supply_truth` 为 PASS/exit 0 且冻结点 `replay_net` 因冻结后链上微量销毁略高于观测时点
    `onchain_total_supply` 时，扫描器只在收据 `diff` 逐 raw 相等且整数复算不超过其
    `tolerance_bps` 时放行并记录 `supply_drift_raw`；分布百分比仍以冻结点 `replay_net`
