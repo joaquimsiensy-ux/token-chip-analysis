@@ -294,3 +294,8 @@ PASS batch16 resolve_ref case path: 1/1
 ```
 
 无 commit、无网络调用、无 key 写入、无白名单外改动。
+
+## 11. 盲审 R5（收官）
+
+- codex review-mtfuvahe（base `ce4e56c`，覆盖 6.53.3+6.53.4 全部改动）：**零发现**——"案根 containment 在引用解析、深验、正式缓存 resolver 三处一致贯彻"。
+- 批 15/16 盲审总账：R1/R2 各 1 P2、R3/R4 各 1 P1、R5 0，均由 codex 一次消化；本机全套终态 142/142（main `4a26eb5` v6.53.4）。
