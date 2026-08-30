@@ -191,6 +191,9 @@ SUITE += ["test_lit_regression_f007.py", "test_lit_regression_f008.py"]  # v6.52
 # Batch 16：序列来源链登记路径按案根解析兜底（sqd_repair 深层缓存）。
 SUITE += ['test_batch16_resolve_ref_case_path.py']
 
+# Batch 17：G8 链名别名归一
+SUITE += ['test_batch17_identity_chain_alias.py']
+
 
 def main():
     results = []

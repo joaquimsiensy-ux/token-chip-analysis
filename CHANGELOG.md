@@ -10,6 +10,7 @@
 
 ## 版本索引（活跃窗口，新在上；每版一行，详情见下方对应条目）
 
+- **6.53.5**（2026-08-30）G8 身份闸链名别名归一：`validate_gate` 双向经链注册表解析后比较，放行规范 gate `sol` 与 state_from_facts `solana` 的同链绑定，同时保留错链拒绝及原始值错误文案；真实 Solana emitter/build 回归，SUITE 142→143
 - **6.53.4**（2026-08-30）序列来源链案根隔离贯彻到收据、输入、深验与 resolver：统一 effective_root，所有 resolved 实物先做 containment，basename/供给真值目录/深验/resolver 同根；盲审 R4 P1 消化，SUITE 142 不变
 - **6.53.3**（2026-08-30）序列来源链登记路径兜底收窄为唯一案根：序列 sidecar 恢复 basename-only；仅 reconcile inputs 可按显式案根或 `data/` 收据推导案根解析深层登记路径，阻断相邻案件越界命中；盲审 R3 P1 消化，SUITE 142 不变
 - **6.53.2**（2026-08-30）序列来源链登记路径按案根解析兜底：保留两层 basename 优先语义，未命中时安全解析案根内相对登记路径，使 sqd_repair 深层 soltx meta 与 resolver 身份一致；新增逃逸、绝对路径、symlink、指纹与 registry anchor 回归，SUITE 141→142
@@ -76,6 +77,15 @@
 - **6.20.1** 2026-08-05 修 5 处阻断级文档漂移（A4 前禁写报告冲突/easy 残留/惯犯回灌 docstring/批量预采集残留/旧 Par 路线历史降级）＋docs_lint 增中文禁词与 Python module docstring 扫描
 
 更早版本（6.20.0 及以前）详见 `archive/CHANGELOG-archive.md`。
+
+## [6.53.5] - 2026-08-30 — G8 身份闸链名别名归一（Solana sol/solana 裸比较拦死 state_from_facts 产物）
+
+- **出处与根因**：ARC −2 主线 arc-9f 会话发现，G8 gate 的规范链键为 `sol`，而批 16 已确认 `state_from_facts.py` 生成的 Solana analysis-state 顶层与 token 链名必须为 `solana`；`entity_identity_gate.validate_gate` 对两者裸字符串比较，使所有绑定该正式 state 产物的 Solana G8 在结构上必报不绑定。Fable 已只读核实根因，codex 开工前计划复核同意按注册表既有别名语义修复。
+- **设计与实现**：`entity_identity_gate.py` 直接从 `chain_registry` 导入 `resolve_alias`，仅在 `validate_gate` 的 state/gate 链绑定比较两侧调用；不导入 `audit_release_gate`，不改变 gate chain 的 `identity_chains()` 规范键限制。错误文案继续插入 `chain` 与 `state_chain` 原始值，因此错链审计仍能看到输入形态。
+- **消费面与防回流**：CLI `--check` 与 `build_html.py` G8 共用同一 `validate_gate`，故同时获得别名归一；snapshot receipt adapter 严格比较、`build()`、`a4_gate.py`、`audit_release_gate.py`、`state_from_facts.py` 与既有测试均未改，避免放宽正式 emitter 的规范 adapter 契约。
+- **测试**：新增 Batch 17 真实 Solana 路线：`run_solana` 生成闭合 owner snapshot/meta，`emit_solana` 产规范 `sol` identity receipt，`build(..., "sol")` 产 gate 并填写 flag resolution 后进入 `validate_gate`。R1 修前唯一错误为 `chain 与 state 不绑定: gate='sol' state='solana'`、修后零错误；N1 保持 `sol` 旧形态通过，N2 保持 `bsc` 错链拒绝且文案保留原值，N3 覆盖仅 `token.chain="solana"` 的回退路径；SUITE 142→143。
+- **盲审与验收**：严格按批 17 白名单离线施工，不改既有测试、案卷目录、handoff/provenance 路径，不 commit；完整套件在受限沙箱的两个 loopback 纵切片结果及调度方本机复跑要求见 `batch17_done.md`。
+- **成本-质量指标**：生产实现 1 轮；夹具降级 0；外部网络调用 0；新增 suite 入口 1；新增测试场景 4（R1、N1–N3）；生产 schema 改动 0；传播级数字错误 0。
 
 ## [6.53.4] - 2026-08-30 — 序列来源链案根隔离贯彻到收据、输入、深验与 resolver（盲审 R4 P1）
 

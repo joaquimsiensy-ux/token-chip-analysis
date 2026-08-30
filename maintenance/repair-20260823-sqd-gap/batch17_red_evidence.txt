@@ -1,0 +1,14 @@
+Batch 17 pre-production RED evidence
+Date: 2026-08-30
+HEAD: 70a9212ed6fac2b600553fda30975cdb3c2e0dc7
+Command: python3 scripts/tests/test_batch17_identity_chain_alias.py --r1
+
+snapshot_slot=103 accounts=1 owners=1 supply=100 activity=complete -> snapshot.json
+[identity_gate] 1 址入闸，0 个 flag 待解决 → /private/tmp/batch17-r1-rla0yi83/data/identity_gate.json
+FAIL R1 Solana alias state: R1 errors 原文: ["chain 与 state 不绑定: gate='sol' state='solana'"]
+FAIL batch17 identity chain alias: 1/1
+EXIT=1
+
+Conclusion: the real Solana emitter/build route reached validate_gate and failed
+only at the raw sol/solana state-chain comparison. No production edit preceded
+this capture.
