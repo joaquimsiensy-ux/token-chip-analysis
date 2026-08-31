@@ -194,6 +194,12 @@ SUITE += ['test_batch16_resolve_ref_case_path.py']
 # Batch 17：G8 链名别名归一
 SUITE += ['test_batch17_identity_chain_alias.py']
 
+# Batch 18：共享 reconciliation witness/provider 正式接口。
+SUITE += ['test_batch18_shared_bundle_witness.py']
+
+# Batch 18：handoff manifest 反绑产物单向排除与 −2 收敛。
+SUITE += ['test_batch18_manifest_stage2_loop.py']
+
 
 def main():
     results = []

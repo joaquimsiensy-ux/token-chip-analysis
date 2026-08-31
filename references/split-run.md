@@ -107,6 +107,7 @@
 - **产物 allowlist**：逐件登记路径/字节/sha256（大文件分片哈希＋复用采集侧行数/区间校验，不收尾全盘重哈希）/行数/schema/依赖。排除日志/临时库/含密钥文件（config.json 不入清单内容）。
 - **状态机**：`READY | BLOCKED | PARTIAL | SUPERSEDED | BLOCKED_CEX_GATE`——只有 READY 可被 −2 消费；READY 前置＝五件契约 JSON＋accounting_mode.json＋supply_truth.json＋wave_scan_report.json＋flow_anomaly_report.json＋distribution_scan.json 齐全（EVM 家族链另加 time_spotcheck.json）。verify 会调用分布扫描器重算 initial 语义。手改 manifest、scan 或排除来源都不能通过。
 - **生成纪律**：原子生成（tmp+rename）、不含自身哈希；generate 后新增产物走 `late_additions`（重跑 generate 产 superseding manifest，旧件自动归档带 run_id 后缀）。
+- **−2 重生成纪律**：首次 freeze 前，−2 期可直接重跑 generate，随后重跑一次溯源（`entity_source_trace`）即收敛，不再需要移出账本；freeze 之后再 generate 会使 entity_freeze 记的 manifest sha/run_id 过期（check-unseal 拒绝），须连锁重跑 trace → freeze revision → 受影响的 A4 / final 分布扫描 / A5。
 
 ### 2.3 sealed 密封纪律（防锚定）
 

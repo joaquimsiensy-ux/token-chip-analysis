@@ -16,6 +16,8 @@
 3. **零静默截断**：所有成员/收方/来源数组全量落盘，数组长度必须等于对应 `*_count` 字段（闭合断言）；stdout 只显 top 不代表文件截断。
 4. **本文件＝完整字段登记**（v6.8.1，codex 复核 P2 采纳）：脚本实际输出的每个字段都必须在此登记——未登记字段不得输出，登记了的不得静默删除；公共通用字段（`schema/generated_at/params/total_supply_raw/edges/note`）各产物一律在场，下文不再逐一重复。输入边表的唯一性由采集管线（four-check 对账）保证，扫描器不去重。Solana v4 以 `(slot,tx_index)` 标识交易，并对该交易完整边集计算排序后的 `tx_digest`：重复身份且 digest 相同只留一份，digest 不同硬失败。五元组没有交易身份，同字段重复可能是不同真实交易，禁止按五字段去重。
 
+**handoff manifest 反绑产物规则**：manifest 不收两类会反向记录自身的产物：①案根精确路径 `provenance_ledger.json`（反绑 manifest sha/run_id/scope）；②非案根、`stage="final"` 且存在 `input_binding.handoff_manifest` 的 `distribution_scan.json`（反绑 run_id/指纹）。案根 initial `distribution_scan.json` 不反绑 manifest，仍是 READY 必备件。discover/data_map 遇上述产物会跳过并在 stderr 提示；显式 `--include` 或 `--gate` 则报“反绑产物禁止进入 manifest”并 exit 2。JSON 读失败不按反绑规则误杀，随后仍由既有路径/实物校验 fail-closed。
+
 **Solana 输入边现役标准**：正式路径使用 7 元组
 `[ts,slot,tx_index,instr_index,from,to,amt]`。SQD tokenBalances 只提供交易级 pre/post
 快照，因此共享核产出的边固定 `instr_index=-1`、`edge_semantics="owner-net-greedy"`、

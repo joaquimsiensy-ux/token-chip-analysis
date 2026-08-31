@@ -78,7 +78,8 @@ CONTRACT_FILES = [
     "candidate_universe.json", "candidate_screening.json", "identity_preflight.json",
     "anomalies.json", "data_map.json", "unlock_evidence.json", RECEIPTS_NAME,
     "accounting_mode.json", "supply_truth.json", "wave_scan_report.json",
-    "flow_anomaly_report.json", ADJUDICATIONS_NAME, "provenance_ledger.json",
+    # provenance_ledger.json 反绑 manifest，按 _reverse_bound_reason 单向排除。
+    "flow_anomaly_report.json", ADJUDICATIONS_NAME,
     "time_spotcheck.json", "distribution_scan.json", DISTRIBUTION_ADJUDICATIONS_NAME,
     "reconciliation_report.json", "evm_observation_bundle.json",
     "evm_observation_transcript.json",
@@ -117,6 +118,31 @@ PROVENANCE_LABEL_KINDS = {"cex", "dex_pool", "facility", "bridge", "launch_alloc
 # WAL/临时文件仍排除。大库由 sha256-sparse 做交接哈希，freeze 的 input_binding 另做完整哈希。
 EXCLUDE_SUFFIXES = (".log", ".duckdb.wal", ".lock", ".tmp", ".bak")
 EXCLUDE_NAMES = {"config.json", MANIFEST_NAME}  # manifest 不含自身；config 可能含运行时 key 路径
+
+
+def _reverse_bound_reason(case_dir, rel):
+    """返回反绑 manifest 的产物理由；普通产物返回 None。
+
+    来源账本自己记 manifest 的 sha/run_id/scope，final 分布扫描也记 manifest
+    run_id/指纹；manifest 若再收录它们，两边就互相记对方，−2 重跑 generate
+    无法收敛（ARC 2026-08-30 实证）。因此 manifest 单向不收这些反绑产物，
+    它们仍由 entity_freeze / check-unseal / A5 单向绑定保障完整性；这与案根
+    initial distribution_scan 由 READY manifest 单向绑定的规则相同。
+    """
+    if rel == "provenance_ledger.json":
+        return "provenance_ledger 反绑 manifest 的 sha/run_id/scope"
+    if os.path.basename(rel) != "distribution_scan.json" \
+            or rel == "distribution_scan.json":
+        return None
+    try:
+        path = safe_case_file(case_dir, rel, must_exist=False)
+        scan = load_json(path)
+    except Exception:
+        return None
+    if scan.get("stage") == "final" \
+            and (scan.get("input_binding") or {}).get("handoff_manifest") is not None:
+        return "final 分布扫描反绑 manifest run_id/指纹"
+    return None
 
 
 def utcnow():
@@ -223,6 +249,11 @@ def cmd_generate(a):
     def add_path(rel):
         if rel in seen:
             return
+        safe_case_file(case_dir, rel)
+        reason = _reverse_bound_reason(case_dir, rel)
+        if reason is not None:
+            print(f"[generate] 跳过反绑产物 {rel}: {reason}", file=sys.stderr)
+            return
         base = os.path.basename(rel)
         if base in EXCLUDE_NAMES or base.endswith(EXCLUDE_SUFFIXES):
             return
@@ -236,10 +267,17 @@ def cmd_generate(a):
 
     def add_explicit(rel):
         path = safe_case_file(case_dir, rel)
+        reason = _reverse_bound_reason(case_dir, rel)
+        if reason is not None:
+            print(f"[generate] 反绑产物禁止进入 manifest: {rel}: {reason}",
+                  file=sys.stderr)
+            raise SystemExit(2)
         add_path(rel)
 
     for name in CONTRACT_FILES:
         discover(name)
+    # 已有 −2 账本虽不再属于 manifest 契约件，仍经过统一入口给出可见跳过提示。
+    discover("provenance_ledger.json")
     # data_map 里登记的数据文件并入 allowlist（避免 glob 大杂烩，索引即白名单）
     dm_path = os.path.join(case_dir, "data_map.json")
     if os.path.isfile(dm_path):
@@ -252,7 +290,7 @@ def cmd_generate(a):
                 for ent in dm.get("files", []):
                     if isinstance(ent, dict) and isinstance(ent.get("path"), str):
                         data_map_paths.add(ent["path"])
-                    add_explicit(ent.get("path"))
+                    add_path(ent.get("path"))
             except ValueError as e:
                 print(f"[generate] data_map.json 显式文件路径非法: {e}", file=sys.stderr)
                 return 2

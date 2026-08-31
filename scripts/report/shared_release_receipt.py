@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 from collections import Counter
 import csv
+import dataclasses
 import hashlib
 import json
 import math
@@ -330,7 +331,12 @@ def canonical_target(target):
     return {"chain": chain, "token": token, "as_of_block": slot}
 
 
-def _bound_case_ref(root, ref, label, *, base=None):
+def bound_case_ref(root, ref, label, *, base=None):
+    """校验 path/size/sha256 三字段引用并返回案根内 resolved Path。
+
+    ``base=`` 是相对路径的解析基准；macOS alias 与中间 symlink 经归一后必须
+    仍位于案根内，文件本身不得是 symlink，size 与 sha256 必须与实物全等。
+    """
     if not isinstance(ref, dict) or not {"path", "size", "sha256"} <= set(ref):
         raise ValueError(f"{label} must bind path/size/sha256")
     case_root = Path(root).resolve()
@@ -356,6 +362,9 @@ def _bound_case_ref(root, ref, label, *, base=None):
              f"{label} size mismatch")
     _require(ref.get("sha256") == sha(path), f"{label} sha256 mismatch")
     return path
+
+
+_bound_case_ref = bound_case_ref  # 旧名保留：模块内 26 处调用与既有契约测试不动
 
 
 MIGRATION_HINT = "存量案例须重跑对应生产者获取当前回执"
@@ -1808,7 +1817,37 @@ def validate_evm_observation_source_chain(root, accounting, supply_truth_receipt
     return accounting_sha
 
 
-def validate_sources(root):
+@dataclasses.dataclass(frozen=True)
+class DeepReconciliationWitness:
+    # Runtime type objects keep dataclass importable through legacy importlib
+    # harnesses that execute a module without first registering it in sys.modules.
+    __annotations__ = {
+        "root": Path,
+        "report_sha256": str,
+        "target": dict,
+        "receipts": dict,
+    }
+
+
+def witness_reconciliation_report(root) -> DeepReconciliationWitness:
+    """唯一合法产地：真跑一次深验，并记录案根与 wrapper 指纹。"""
+    root = Path(root).resolve()
+    target, receipts = validate_reconciliation_report(
+        root, return_receipts=True)
+    report = root / "reconciliation_report.json"
+    # The real validator above requires this file.  The empty sentinel is only
+    # reachable by legacy unit harnesses that replace that global validator with
+    # a pure fixture function; provider consumers still reject it against disk.
+    report_sha256 = sha(report) if report.is_file() else ""
+    return DeepReconciliationWitness(
+        root=root,
+        report_sha256=report_sha256,
+        target=target,
+        receipts=receipts,
+    )
+
+
+def validate_sources(root, *, reconciliation_provider=None):
     root = Path(root).resolve()
     target, accounting, _ = validate_accounting_receipt(root)
     if chain_family(target["chain"]) == "evm":
@@ -1816,8 +1855,16 @@ def validate_sources(root):
         recon_target, receipts = validate_reconciliation_report(
             root, target, return_receipts=True)
     else:
-        recon_target, receipts = validate_reconciliation_report(
-            root, return_receipts=True)
+        if reconciliation_provider is not None:
+            witness = reconciliation_provider()
+            if not isinstance(witness, DeepReconciliationWitness) \
+                    or witness.root != Path(root).resolve() \
+                    or witness.report_sha256 != sha(root / "reconciliation_report.json"):
+                raise ValueError("reconciliation witness 无效/过期")
+            recon_target, receipts = witness.target, witness.receipts
+        else:
+            recon_target, receipts = validate_reconciliation_report(
+                root, return_receipts=True)
         expected_accounting = accounting_expected_target(recon_target, receipts)
         if expected_accounting == canonical_target(recon_target):
             # Static Solana preserves the original wrapper/accounting equality.
@@ -1854,12 +1901,13 @@ def create_bundle(root, out=None):
     return payload
 
 
-def validate_bundle(root):
+def validate_bundle(root, *, reconciliation_provider=None):
     errors = []
     root = Path(root).resolve()
     try:
         data = json.loads(regular(root, "shared_release_receipt.json").read_text())
-        target = validate_sources(root)
+        target = validate_sources(
+            root, reconciliation_provider=reconciliation_provider)
         if (data.get("schema") != "shared-release-receipt/v1"
                 or data.get("status") != "PASS" or data.get("target") != target):
             raise ValueError("shared receipt schema/target invalid")

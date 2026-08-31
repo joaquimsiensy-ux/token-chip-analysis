@@ -107,31 +107,22 @@ def _cached_reconciliation_report(case_dir: Path, validate):
 
 def _validate_reconciliation_report_once(case_dir: Path):
     """Reuse one immutable deep reconciliation result within the current run()."""
-    from shared_release_receipt import validate_reconciliation_report
+    from shared_release_receipt import witness_reconciliation_report
 
     return _cached_reconciliation_report(
         case_dir,
-        lambda: validate_reconciliation_report(case_dir, return_receipts=True),
+        lambda: witness_reconciliation_report(case_dir),
     )
 
 
 def _validate_shared_bundle_once(case_dir: Path):
-    """Let validate_bundle consume the same result without changing its module."""
+    """Let validate_bundle lazily consume the same witnessed deep result."""
     import shared_release_receipt
 
-    original = shared_release_receipt.validate_reconciliation_report
-
-    def cached(root, expected_target=None, *, return_receipts=False):
-        if expected_target is None and return_receipts:
-            return _cached_reconciliation_report(
-                Path(root), lambda: original(root, return_receipts=True))
-        return original(root, expected_target, return_receipts=return_receipts)
-
-    shared_release_receipt.validate_reconciliation_report = cached
-    try:
-        return shared_release_receipt.validate_bundle(case_dir)
-    finally:
-        shared_release_receipt.validate_reconciliation_report = original
+    return shared_release_receipt.validate_bundle(
+        case_dir,
+        reconciliation_provider=lambda: _validate_reconciliation_report_once(case_dir),
+    )
 
 
 def _target_error(errors, detail):
@@ -341,8 +332,8 @@ def check_formal_case_chain(case_dir, data, errors):
         try:
             from shared_release_receipt import (accounting_expected_target,
                                                 canonical_target)
-            checked_target, checked_receipts = \
-                _validate_reconciliation_report_once(case_dir)
+            witness = _validate_reconciliation_report_once(case_dir)
+            checked_target, checked_receipts = witness.target, witness.receipts
             expected_accounting = accounting_expected_target(
                 checked_target, checked_receipts)
             accounting_target = canonical_target({
@@ -546,7 +537,8 @@ def check_reconciliation(case_dir: Path, d: dict, errors: list[str]):
     """Reuse the shared v3 deep validator; wrapper status is never truth."""
     try:
         from shared_release_receipt import validate_solana_derived_bindings
-        target, receipts = _validate_reconciliation_report_once(case_dir)
+        witness = _validate_reconciliation_report_once(case_dir)
+        target, receipts = witness.target, witness.receipts
         if resolve_alias(target.get("chain")) == "sol":
             exact = receipts["exact_reconcile"]
             validate_solana_derived_bindings(
@@ -640,7 +632,8 @@ def _frozen_consumer_target(
     try:
         from shared_release_receipt import (accounting_expected_target,
                                             canonical_target)
-        checked_target, receipts = _validate_reconciliation_report_once(case_dir)
+        witness = _validate_reconciliation_report_once(case_dir)
+        checked_target, receipts = witness.target, witness.receipts
         expected = accounting_expected_target(checked_target, receipts)
     except Exception as exc:
         errors.append(
@@ -735,9 +728,9 @@ def _recon_owner_snapshot(case_dir: Path, data: dict, chain, errors: list[str]):
             return None, None
     elif expected["as_of_block"] < wrapper["as_of_block"]:
         try:
-            from shared_release_receipt import _bound_case_ref
+            from shared_release_receipt import bound_case_ref
             ref = receipts["exact_reconcile"]["inputs"]["holders_owners"]
-            frozen = _bound_case_ref(
+            frozen = bound_case_ref(
                 case_dir, ref, "三账 balance_source 冻结 exact holders_owners")
         except Exception as exc:
             errors.append("三账 balance_source 对账源: 冻结 exact holders_owners "

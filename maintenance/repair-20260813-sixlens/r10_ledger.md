@@ -59,6 +59,7 @@
 | R10-25 | C 三轮 O-3：symlink 拒绝退出码存在 CLI rc=1/直调 rc=2 两路 | 待统一；来源：`blindreview_C_round3.md` O-3 |
 | R10-26 | C 三轮 O-4：a4_gate/a5_report_seal 裸 `json.loads` 同族面 | 待等深；来源：`blindreview_C_round3.md` O-4 |
 | R10-27 | emoji 实义白名单扩容候选 | 候选、非当前承诺；来源：A 线第三轮 CLOSED 消息的误伤评估，由 `workorder_final_closure.md` §1 入档（无独立报告文件） |
+| R10-28 | audit_release_gate._recon_owner_snapshot 静态 Solana 分支 owners 实物 basename-only 查找 | 2026-08-30 用户裁决接受在案（1B，更正风险描述后再次确认）：:756-785 丢弃登记路径目录段，搜索 gpa_rpc.path 父目录（绝对路径可指案外）/收据目录/data，命中判据仅 basename+is_file+非 symlink，无 size/sha256/containment，观察包登记的 owners sha256 未核；影响面仅静态 Solana 案 B-7（两态案走冻结分支 :730-755 已强绑定；EVM :701-717 已强绑定）；唯一防线=check_three_ledgers 逐址等值（挡内容不同，不挡配平替身）。修法线索：改用 shared_release_receipt.bound_case_ref 校验观察包登记 sha，与冻结分支同口径。来源：批 18 计划 @CX 复核 |
 
 ## 六、状态
 
@@ -66,5 +67,6 @@
 - 弱闸旁证（R10-5/6 相关）：见 `batchD_workorder.md` §旁证——三命令 staging/部署 SHA 实测全等记录＋解释器与直接依赖 version/import 实测记录，均为实测输出，不引用弱闸 rc=0。
 - 2026-08-14 批 3 收官：批 1 补账 CLOSED 4 条（R10-1/3/4/7，v6.41.0 已修当时未记，F-07 集成漂移修正）；批 3 修复 4 条（R10-5/6/16/17）经三轮盲审（R1 BLOCK 1P1+3P2 → R2 CONDITIONAL 2P2 → R3 CONDITIONAL 1P2）+三轮消化+addendum PASS 转 CLOSED；批 3 收官时现役 15。盲审全程证据见 `maintenance/repair-20260814-batch3/blindreview_round{1,2,3}.md` 与 `blindreview_round3_addendum.md`。
 - 2026-08-15 EVM 观测锚工程（6.44.0）收官：R10-13 转 CLOSED、R10-9 案内观测 MITIGATED 仍计现役；收官时现役计 14。独立盲审（opus 线程）31 伪造向量全拒 PASS，证据见 `maintenance/repair-20260814-evmobs/blindreview_OBS_round1.md`。
-- 2026-08-15 三 AI 并行修复工程（6.45.0，v6.44.0 review 14 findings 全处置）收官：g1 清账 R10-15/R10-18；当前现役 = 27 − 15 = **12**。14 findings 逐条处置与状态见三组 done 报告（`maintenance/repair-20260815-g{1,2,3}/`）；其中 review F-05 经用户 08-15 裁决不加闸（ACCEPTED_RISK，机器化边界如实写入 analyze/research 两分册，本台账 R10-17 残余定性不变仍在案）；review F-07 关至 transcript/实物绑定深度，远端真执行证明仍属 R10-9/14 外锚族；g2 盲审 PARTIAL-1（抽查覆盖面无下限＋去重计数要点）与 g3 的 SQD data 长度取舍（G3R2-01）列 R11 候选。
+- 2026-08-15 三 AI 并行修复工程（6.45.0，v6.44.0 review 14 findings 全处置）收官：g1 清账 R10-15/R10-18；批 18 登记后当前现役 = 27 − 15 + 1 = **13**。14 findings 逐条处置与状态见三组 done 报告（`maintenance/repair-20260815-g{1,2,3}/`）；其中 review F-05 经用户 08-15 裁决不加闸（ACCEPTED_RISK，机器化边界如实写入 analyze/research 两分册，本台账 R10-17 残余定性不变仍在案）；review F-07 关至 transcript/实物绑定深度，远端真执行证明仍属 R10-9/14 外锚族；g2 盲审 PARTIAL-1（抽查覆盖面无下限＋去重计数要点）与 g3 的 SQD data 长度取舍（G3R2-01）列 R11 候选。
 - 2026-08-16 用户四项裁决落账（现役计数不变）：① F-01 hard link 盲区**不加检测**——合法硬链接误伤面真实（PYTHIA 案 nlink=3 正常件先例），威胁模型下攻击者另有更短路径，与 R10-22 同族定性，接受为已记录边界；② `a5_report_seal.safe_file` 允许绝对路径**正式豁免**——build_html resolve 后传入的合法调用形态，案根围栏由 relative_to 强制，现场注释已标（`scripts/report/a5_report_seal.py:32`）；③ g2 PARTIAL-1 抽查覆盖面下限**批准立项 R11**（修但不急；实现要点=去重计数＋小盘币取 min(下限, 实际总数)）；④ G3R2-01 SQD data 长度**裁决不设限**——兼容非标 ERC20 优先，截断风险边界已注释入采集器现场（`scripts/evm/fetch_sqd_evm.py`），撤出 R11 候选；捆绑小收紧（header.hash 66 位/logIndex·timestamp 非负）随 R11 顺手；⑤ 同日追加 R10-19 **裁决维持现状**、R10-20 **批准立项 R11**（均详见第五节条目行）。R11 实改项就此定局两件：抽查覆盖面下限（③）＋series binding 扩复核档（R10-20），捆绑 SQD 小收紧与小卫生活顺手。
+- 2026-08-30 用户裁决 1B 落账：R10-28 静态 Solana B-7 owners basename-only 实物查找接受在案；新增 1 条现役，现役计数由 12 增至 13。

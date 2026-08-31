@@ -1,7 +1,7 @@
 # CHANGELOG — token-chip-analysis（活跃窗口）
 
 版本规则（v3.0 起两维制，详见 references/retrospective.md「版本号约定」）：
-- **skill 版本**：主=架构级重构；次=每次**分析复盘**迭代 +1；修=文档小修
+- **skill 版本**：主=**不兼容**的工作流/schema/入口边界变更；次=**向后兼容**的新能力、新公开接口或持久化契约扩展（含分析复盘迭代）；修=既定契约内的修复、加固、回归补充与文档修订
 - **labels 数据版本**：标签库扩容/重建记 `labels vX.Y` 前缀条目，不再占用 skill 次版本号
 红线：条目只记工具性知识（数据源/坑/方法/脚本），禁止记录任何代币的分析结论。
 每条迭代条目附成本指标（轮次数/Bash 调用数/交付用时）+ 质量指标（初稿关键结论数/复核判定分布/漏检实体数/传播级数字错误数，v3.0 起，见 retrospective 步骤 1）。
@@ -10,6 +10,7 @@
 
 ## 版本索引（活跃窗口，新在上；每版一行，详情见下方对应条目）
 
+- **6.54.0**（2026-08-30）四条裁决落地：manifest 单向排除反绑账本/final 分布扫描；共享深验公开 `bound_case_ref` 与带案根、wrapper 指纹的惰性 witness/provider；版本规则按兼容性重写；R10-28 接受在案；SUITE 143→145
 - **6.53.5**（2026-08-30）G8 身份闸链名别名归一：`validate_gate` 双向经链注册表解析后比较，放行规范 gate `sol` 与 state_from_facts `solana` 的同链绑定，同时保留错链拒绝及原始值错误文案；真实 Solana emitter/build 回归，SUITE 142→143
 - **6.53.4**（2026-08-30）序列来源链案根隔离贯彻到收据、输入、深验与 resolver：统一 effective_root，所有 resolved 实物先做 containment，basename/供给真值目录/深验/resolver 同根；盲审 R4 P1 消化，SUITE 142 不变
 - **6.53.3**（2026-08-30）序列来源链登记路径兜底收窄为唯一案根：序列 sidecar 恢复 basename-only；仅 reconcile inputs 可按显式案根或 `data/` 收据推导案根解析深层登记路径，阻断相邻案件越界命中；盲审 R3 P1 消化，SUITE 142 不变
@@ -77,6 +78,15 @@
 - **6.20.1** 2026-08-05 修 5 处阻断级文档漂移（A4 前禁写报告冲突/easy 残留/惯犯回灌 docstring/批量预采集残留/旧 Par 路线历史降级）＋docs_lint 增中文禁词与 Python module docstring 扫描
 
 更早版本（6.20.0 及以前）详见 `archive/CHANGELOG-archive.md`。
+
+## [6.54.0] - 2026-08-30 — manifest 反绑产物豁免、共享校验器接口转正、版本规则文字收紧、R10-28 登记（四条裁决）
+
+- **出处与根因**：用户 2026-08-30 裁决 1B/2A/3A/4A。ARC −2 实证 `provenance_ledger.json` 反绑 manifest 的 sha/run_id/scope，而旧 manifest 又收账本 sha，generate 与 trace 交替重跑形成哈希死环；批 15 为复用深验结果，发布闸还直接导入私有 `_bound_case_ref`，并运行时替换共享模块函数，形成缓存/替换语义的治理边界；版本规则文字与长期“修订位承载代码修复”的实践不一致；静态 Solana B-7 owners basename-only 查找按用户裁决登记为 R10-28 接受风险。
+- **设计与实现**：manifest 按规范相对路径和内容识别两类反绑产物——案根 `provenance_ledger.json`，以及非案根、`stage=final` 且带 `input_binding.handoff_manifest` 的 `distribution_scan.json`；discover/data_map 可见跳过，`--include`/`--gate` 明确 exit 2，案根 initial scan 仍为 READY 必备。共享模块公开 `bound_case_ref`，保留 `_bound_case_ref` 同对象别名；新增 `DeepReconciliationWitness`、唯一构造函数 `witness_reconciliation_report` 与 `reconciliation_provider=` 惰性入口，见证同时绑定 resolved 案根和当前 reconciliation wrapper sha。manifest 收录契约可见变化（向后兼容）＋共享校验器新增公开接口，按本版起生效的新规则属“向后兼容的新公开接口/持久化契约扩展”，因此升次版本。
+- **消费面与防回流**：Solana provider 只在 `validate_sources` 原深验位置惰性调用，伪造裸元组、跨案 witness、wrapper 漂移均 fail-closed；EVM 带 expected_target 的不同源校验仍真跑。发布闸缓存 witness 并由三个既有消费点取 `target/receipts`，删除运行时函数替换，异常仍落在 `validate_bundle` 原捕获层，错误前缀逐字不变；旧 manifest 若已收账本仍照常按哈希 verify。freeze 的 provenance 重放、entity_freeze、check-unseal、A5、entity_source_trace 与 holder_distribution_scan 均未放宽。
+- **测试**：先红固定 provider 关键字 TypeError，以及两次显式 run-id generate 后账本 sha 漂移导致 verify/freeze 拒绝；新增 witness R1/N1–N4/N11 与 manifest R1/N1–N6，覆盖单次深验计数、EVM 零变化、伪造/跨案/过期 witness、异常逐字等价、账本收敛、显式入口拒绝、旧 manifest 兼容、final/initial 分布扫描分流及 freeze 防篡改；两份测试登记后 SUITE 143→145。N11 基线与改后两组 gate errors 逐字全等。
+- **盲审与验收**：实施计划已经 codex 只读复核并由用户批准；批 18 严格白名单离线施工，不改案卷、不 commit。定向回归、既有批 15 N9/N10、handoff/发布闸/文档版本门禁与沙箱 `run_all.py` 的真实结果见 `maintenance/repair-20260823-sqd-gap/batch18_done.md`。
+- **成本-质量指标**：生产实现 1 轮；外部网络调用 0；新增 suite 入口 2；新增测试场景 13；N11 错误文本漂移 0；旧 manifest 兼容回归 1；R10-28 接受在案（用户 2026-08-30 裁决）；传播级数字错误 0。
 
 ## [6.53.5] - 2026-08-30 — G8 身份闸链名别名归一（Solana sol/solana 裸比较拦死 state_from_facts 产物）
 
