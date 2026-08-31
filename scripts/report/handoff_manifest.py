@@ -139,8 +139,13 @@ def _reverse_bound_reason(case_dir, rel):
         scan = load_json(path)
     except Exception:
         return None
+    if not isinstance(scan, dict):
+        return None
+    input_binding = scan.get("input_binding")
+    if not isinstance(input_binding, dict):
+        input_binding = {}
     if scan.get("stage") == "final" \
-            and (scan.get("input_binding") or {}).get("handoff_manifest") is not None:
+            and input_binding.get("handoff_manifest") is not None:
         return "final 分布扫描反绑 manifest run_id/指纹"
     return None
 

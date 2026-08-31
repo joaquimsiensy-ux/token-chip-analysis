@@ -11,6 +11,7 @@ import json
 import math
 import os
 import sys
+import weakref
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
@@ -1817,7 +1818,7 @@ def validate_evm_observation_source_chain(root, accounting, supply_truth_receipt
     return accounting_sha
 
 
-@dataclasses.dataclass(frozen=True)
+@dataclasses.dataclass(frozen=True, eq=False)
 class DeepReconciliationWitness:
     # Runtime type objects keep dataclass importable through legacy importlib
     # harnesses that execute a module without first registering it in sys.modules.
@@ -1826,11 +1827,61 @@ class DeepReconciliationWitness:
         "report_sha256": str,
         "target": dict,
         "receipts": dict,
+        "bound_files": tuple,
     }
 
 
+_ISSUED_WITNESSES = weakref.WeakSet()
+
+
+def _reconciliation_bound_files(root, target, receipts):
+    """Fingerprint the physical file closure already accepted by deep validation."""
+    root = Path(root).resolve()
+    report = root / "reconciliation_report.json"
+    # Legacy pure-function fixtures replace the validator and have no wrapper on
+    # disk.  Their sentinel remains empty; production validation requires it.
+    if not report.is_file():
+        return ()
+
+    bound = {}
+
+    def remember(path):
+        path = Path(path).resolve()
+        if path.is_file():
+            bound[str(path)] = sha(path)
+
+    remember(report)
+    wrapper = json.loads(report.read_text(encoding="utf-8"))
+    checks = wrapper.get("checks") or {}
+    family = chain_family(target["chain"])
+    for key in RECON_CHECK_KEYS[family]:
+        receipt_path = ref_ok(root, (checks.get(key) or {}).get("receipt"))
+        remember(receipt_path)
+        receipt = receipts.get(key) or {}
+        for section in ("inputs", "holder_outputs"):
+            refs = receipt.get(section) or {}
+            if not isinstance(refs, dict):
+                continue
+            for name, ref in refs.items():
+                if not isinstance(ref, dict) or not {"path", "sha256"} <= set(ref):
+                    continue
+                if section == "holder_outputs":
+                    path = _bound_case_ref(
+                        root, ref, f"reconciliation {key} {section}.{name}",
+                        base=receipt_path.parent)
+                else:
+                    path = ref_ok(root, ref)
+                remember(path)
+
+    if family == "solana":
+        exact_target = canonical_target((receipts.get("exact_reconcile") or {}).get("target"))
+        if exact_target["as_of_block"] != canonical_target(target)["as_of_block"]:
+            remember(regular(root, SOLANA_FROZEN_OBSERVATION_BUNDLE))
+    return tuple(sorted(bound.items()))
+
+
 def witness_reconciliation_report(root) -> DeepReconciliationWitness:
-    """唯一合法产地：真跑一次深验，并记录案根与 wrapper 指纹。"""
+    """唯一合法产地：真跑一次深验，并记录案根与已验文件指纹。"""
     root = Path(root).resolve()
     target, receipts = validate_reconciliation_report(
         root, return_receipts=True)
@@ -1839,12 +1890,15 @@ def witness_reconciliation_report(root) -> DeepReconciliationWitness:
     # reachable by legacy unit harnesses that replace that global validator with
     # a pure fixture function; provider consumers still reject it against disk.
     report_sha256 = sha(report) if report.is_file() else ""
-    return DeepReconciliationWitness(
+    witness = DeepReconciliationWitness(
         root=root,
         report_sha256=report_sha256,
         target=target,
         receipts=receipts,
+        bound_files=_reconciliation_bound_files(root, target, receipts),
     )
+    _ISSUED_WITNESSES.add(witness)
+    return witness
 
 
 def validate_sources(root, *, reconciliation_provider=None):
@@ -1857,9 +1911,29 @@ def validate_sources(root, *, reconciliation_provider=None):
     else:
         if reconciliation_provider is not None:
             witness = reconciliation_provider()
-            if not isinstance(witness, DeepReconciliationWitness) \
-                    or witness.root != Path(root).resolve() \
-                    or witness.report_sha256 != sha(root / "reconciliation_report.json"):
+            # 按对象身份认签发，不按字段值认：直构的值等伪造品和 replace
+            # 拷贝即使每个字段都一样，也不是本模块刚刚签发的那个对象。
+            try:
+                issued = witness in _ISSUED_WITNESSES
+            except TypeError:
+                issued = False
+            if not issued:
+                raise ValueError("reconciliation witness 无效/过期")
+            try:
+                current = (
+                    isinstance(witness, DeepReconciliationWitness)
+                    and witness.root == Path(root).resolve()
+                    and witness.report_sha256 == sha(
+                        root / "reconciliation_report.json"))
+                for raw_path, expected_sha in witness.bound_files:
+                    path = Path(raw_path)
+                    if (path.is_symlink() or not path.is_file()
+                            or sha(path) != expected_sha):
+                        current = False
+                        break
+            except (OSError, TypeError, ValueError):
+                current = False
+            if not current:
                 raise ValueError("reconciliation witness 无效/过期")
             recon_target, receipts = witness.target, witness.receipts
         else:

@@ -200,6 +200,9 @@ SUITE += ['test_batch18_shared_bundle_witness.py']
 # Batch 18：handoff manifest 反绑产物单向排除与 −2 收敛。
 SUITE += ['test_batch18_manifest_stage2_loop.py']
 
+# Batch 18 盲审消化：witness 身份/文件闭包防伪与 manifest 分类器类型防御。
+SUITE += ['test_batch18_review_digest.py']
+
 
 def main():
     results = []

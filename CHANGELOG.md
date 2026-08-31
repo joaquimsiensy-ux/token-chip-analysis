@@ -10,6 +10,7 @@
 
 ## 版本索引（活跃窗口，新在上；每版一行，详情见下方对应条目）
 
+- **6.54.1**（2026-08-31）批 18 盲审 P1×2＋P2 一次消化：witness 改为签发对象身份注册并绑定深验文件闭包，拒绝直构/replace/值等伪造与 receipt/owners 过期缓存；manifest 分类器防御非对象 JSON/非对象 input_binding，SUITE 145→146
 - **6.54.0**（2026-08-30）四条裁决落地：manifest 单向排除反绑账本/final 分布扫描；共享深验公开 `bound_case_ref` 与带案根、wrapper 指纹的惰性 witness/provider；版本规则按兼容性重写；R10-28 接受在案；SUITE 143→145
 - **6.53.5**（2026-08-30）G8 身份闸链名别名归一：`validate_gate` 双向经链注册表解析后比较，放行规范 gate `sol` 与 state_from_facts `solana` 的同链绑定，同时保留错链拒绝及原始值错误文案；真实 Solana emitter/build 回归，SUITE 142→143
 - **6.53.4**（2026-08-30）序列来源链案根隔离贯彻到收据、输入、深验与 resolver：统一 effective_root，所有 resolved 实物先做 containment，basename/供给真值目录/深验/resolver 同根；盲审 R4 P1 消化，SUITE 142 不变
@@ -78,6 +79,15 @@
 - **6.20.1** 2026-08-05 修 5 处阻断级文档漂移（A4 前禁写报告冲突/easy 残留/惯犯回灌 docstring/批量预采集残留/旧 Par 路线历史降级）＋docs_lint 增中文禁词与 Python module docstring 扫描
 
 更早版本（6.20.0 及以前）详见 `archive/CHANGELOG-archive.md`。
+
+## [6.54.1] - 2026-08-31 — 批 18 盲审消化：witness 防伪造闭环与 manifest 分类器类型防御
+
+- **出处与根因**：来源为批 18 盲审 `review-mth382hf-wfap0k` 的两条 P1 与一条 P2，三条均 CONFIRMED。P1-a 指出公开 frozen dataclass 只凭类型/案根/wrapper sha 验证，直构、`dataclasses.replace` 与值全等拷贝都能伪造 witness；P1-b 指出 witness 只绑 wrapper，本轮已深验的 receipt 与 holders 实物在签发后变化仍可消费旧缓存；P2 指出 `_reverse_bound_reason` 对合法非对象 JSON 及非对象 `input_binding` 直接 `.get`，异常会被 data_map 外层捕获并截断剩余条目。
+- **设计与实现**：`DeepReconciliationWitness` 改为 `frozen=True, eq=False`，由模块私有 `WeakSet` 按对象身份登记，唯一签发入口真跑深验后注册。新增 `bound_files` 有序元组：wrapper 本体；wrapper `checks[key].receipt` 的逐项实物；各已验 receipt 的 `inputs` 与 `holder_outputs` 中带 path/sha256 的实物（holder_outputs 沿用 receipt.parent 基准）；动态 Solana 另含冻结 observation bundle。所有指纹均在深验完成的磁盘态重算。manifest 分类器对非 dict scan 直接按普通产物处理，非 dict `input_binding` 视为无反绑。
+- **消费面与防回流**：Solana provider 仍在 `validate_sources` 原位置惰性取 witness，先拒绝未登记身份，再复核案根、wrapper sha 与 `bound_files` 每个实物的存在性/非 symlink/当前 sha；任一失败统一抛 `reconciliation witness 无效/过期`，异常仍由 `validate_bundle` 原捕获层处理。该指纹只检查文件新鲜度，不重跑深验，批 15 N10 的缓存态与非缓存态语义、N9/N10 调用次数及批 18 N11 错误前缀均保持。manifest 的 data_map for-in-try 结构、final 反绑判定与普通坏 JSON 的 sha 绑定规则不变。
+- **测试**：先红原文存 `maintenance/repair-20260823-sqd-gap/batch18_review_red_evidence.txt`，覆盖直构/replace 放行、receipt 篡改放行、owners witness 三验放行及非对象 JSON 截断。新增 `test_batch18_review_digest.py` 三组回归：F1 拒直构、replace、值全等拷贝且合法签发照常通过；F2 receipt/holders 篡改拒绝且未改动通过；F3 数组 scan 与字符串 input_binding 均收录、真正 final 仍跳过。新入口使 SUITE 145→146。
+- **盲审与验收**：严格按 b18r1 白名单施工；既有测试断言零改动，`audit_release_gate.py` 无需适配且未修改，ARC 案根及禁改生产文件均未触碰。新测试、批 15/18 关键缓存与错误文案回归已先行通过；其余工单点名受影响面与 lint/version 门禁结果记入 `maintenance/repair-20260823-sqd-gap/batch18_review_done.md`，146 全量由验收方本机 nohup 执行。
+- **成本-质量指标**：生产实现 1 轮；外部网络调用 0；新增 suite 入口 1；新增测试函数 3；已确认盲审 finding 3（P1×2＋P2）；既有测试断言改动 0；`audit_release_gate.py` 适配行 0；传播级数字错误 0。
 
 ## [6.54.0] - 2026-08-30 — manifest 反绑产物豁免、共享校验器接口转正、版本规则文字收紧、R10-28 登记（四条裁决）
 
