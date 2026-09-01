@@ -10,6 +10,7 @@
 
 ## 版本索引（活跃窗口，新在上；每版一行，详情见下方对应条目）
 
+- **7.0.0**（2026-09-01）批 18 第三轮盲审终版：公开 witness 新鲜度从递归文件闭包改为如实钉一级输入 frontier，`bound_files` 不兼容更名为 `frontier_files`；销户审计 5 个早退与主路径统一完整报告及 monotonic 墙钟；SUITE 146 不变
 - **6.54.2**（2026-08-31）批 18 第二轮盲审 P1×2 消化：witness 对 target/receipts 增 canonical payload 摘要并在消费时重算；文件新鲜度从手工两节枚举升级为案根内递归 JSON path 闭包，绑定 supply output 等深层实物；SUITE 146 不变
 - **6.54.1**（2026-08-31）批 18 盲审 P1×2＋P2 一次消化：witness 改为签发对象身份注册并绑定深验文件闭包，拒绝直构/replace/值等伪造与 receipt/owners 过期缓存；manifest 分类器防御非对象 JSON/非对象 input_binding，SUITE 145→146
 - **6.54.0**（2026-08-30）四条裁决落地：manifest 单向排除反绑账本/final 分布扫描；共享深验公开 `bound_case_ref` 与带案根、wrapper 指纹的惰性 witness/provider；版本规则按兼容性重写；R10-28 接受在案；SUITE 143→145
@@ -80,6 +81,15 @@
 - **6.20.1** 2026-08-05 修 5 处阻断级文档漂移（A4 前禁写报告冲突/easy 残留/惯犯回灌 docstring/批量预采集残留/旧 Par 路线历史降级）＋docs_lint 增中文禁词与 Python module docstring 扫描
 
 更早版本（6.20.0 及以前）详见 `archive/CHANGELOG-archive.md`。
+
+## [7.0.0] - 2026-09-01 — witness 一级 frontier 与销户审计完整报告契约
+
+- **出处与根因**：批 18 第三轮盲审四轮只读复核定形。递归 JSON path 闭包会打开 repair bundle 的 evidence manifest 并对 30 万级叶重复哈希，既把签发成本推到不可接受，也把实际只能担保一级输入的 witness 误述成全量实时担保；`audit_closed_accounts.py` 的 5 个早退则写精简报告，和主路径 `sampled` 契约不一致。用户 2026-09-01 裁决：公开 witness 只钉一级输入，属不兼容担保边界变更，升主版本。
+- **设计与实现**：`_reconciliation_bound_files` 改为 `_reconciliation_frontier_files`，删除 JSON 队列/BFS 与引用文件打开；必选层逐家族绑定 wrapper 的 receipt refs、全部 envelope inputs、Solana supply output/holder outputs、anchor outputs、exact 全 inputs 与冻结 bundle，兜底层只扫内存 receipt 的三字段 ref，双基准双命中全绑；`_stream_sha` 以 131072 字节分块，512 件 fail-closed，wrapper 继续只由 `report_sha256` 负责。`DeepReconciliationWitness.bound_files` 不兼容更名为 `frontier_files`，payload/WeakSet 语义不变。
+- **消费面与 F4**：witness 消费仍统一报 `reconciliation witness 无效/过期`，一级文件改字节即拒；更深 evidence leaf 改字节时同 witness 如实不承诺检测，但重新签发必由真实 `validate_repair_bundle_deep` 拒绝。销户审计删除模块级墙钟起点，deadline、4 个比较点与 elapsed 全部改用 monotonic；auto 探路传播 `wall_hit`；单一 builder 为 5 个 bail 与 complete 路径输出完整 `sampled`，固定 `sampling_phase/counts_complete`，墙钟原因去重并与直接原因并存。
+- **测试**：RED 原文见 `batch18_review3_red_evidence.txt`：100 个真实 repair slot 产生 200 个 evidence leaves，真实 exact 深验先 PASS 后旧 collector 原样报“文件闭包超过 128”；F4 原样 `KeyError: 'sampled'`。GREEN 覆盖 R1-R4 三步边界、gpa_rpc 三基准先中、案内中间 symlink、macOS alias、双基准双绑、必选缺件、wrapper/frozen/owners 篡改、5 个 bail mock monotonic；既有 review2 断言按字段/担保语义同步，EVM provider 路径与 N3 不变。
+- **盲审与验收**：严格白名单施工，未改 `test_repair_batch_d.py`、`receipt_validate.py`、`solana_observation.py`、`solana_exact_validate.py`、handoff/audit release 或 ARC 案根；6.54.1/6.54.2 历史条目的 `bound_files` 保持历史原文。定向回归、lint、版本一致性、5 次 batch D 与白名单核验记录于 `batch18_review3_done.md`；全量 146 由验收方本机 nohup，ARC 只读实测按 done 命令执行。
+- **成本-质量指标**：生产实现 1 轮；外部网络调用 0；新增 suite 入口 0；R1 repair slot 100／evidence leaf 200；新增 review3 回归函数 5；既有测试文件改动 1（仅 `test_batch18_review_digest.py` 合同同步及追加）；禁改测试改动 0；初稿关键结论 0；复核判定 CONFIRMED 5／WEAKENED 0／REFUTED 0；漏检实体 0；传播级数字错误 0。
 
 ## [6.54.2] - 2026-08-31 — 批 18 第二轮盲审：witness payload 冻结与递归文件闭包
 

@@ -1191,6 +1191,14 @@ QUQ 与 PYTHIA 只用于算法层探索定标。防伪链测试使用合成 fixt
 - exact 检查组合、inputs 案根哈希并调用独立深验。静态态（exact 与 wrapper 的 `as_of_block` 相等）继续要求 exact 与 supply 的 `holders_owners` 是同一文件；冻结态（exact 早于 wrapper）则要求 exact 快照的 sha256+size 与案内 `data/solana_observation_bundle_frozen.json` 的 `holder_outputs.owners` 全等，且该冻结 bundle 经过与活 supply bundle 同深度的案根信封、schema、主网 genesis attestation、closed/closure 与 target 深验，并同时进入 handoff 的 data_map/artifacts。大白话：活观测回答“现在”，冻结快照回答“封账点”，不再强迫两者共用文件；防伪改由冻结 bundle 的内容指纹承担。独立深验仍把 `receipt.target.as_of_block` 正向绑定到 receipt 所绑 `soltx_meta.finalized_upper_slot`，不得拿任意旧时点收据冒充冻结点。
 - 动态 Solana 的分布扫描固定消费观察 owners；三账 B-7、series cutoff、accounting 等冻结账消费者固定消费 exact 收据 owners＋冻结块，并由同一个中央选择器完成投影。
 
+#### `DeepReconciliationWitness.frontier_files`（7.0.0）
+
+- 这是进程内 witness 的一级新鲜度边界，不是持久化 receipt 字段。`frontier_files` 是按绝对路径排序的 `(path, sha256)` 元组；消费时以 131072 字节分块流式重算。
+- **担保**：签发后，wrapper 由独立 `report_sha256` 锁定；各 `checks[key].receipt` 文件本体、各家族 receipt JSON 直接消费的 inputs/output/holder_outputs、以及动态 Solana 冻结观测 bundle 的任何字节变化，都会令同一 witness 以 `reconciliation witness 无效/过期` 拒绝。
+- **不担保**：一级文件继续引用的更深 evidence leaf（例如 repair bundle 所引 evidence manifest 内逐件证据）在签发后的变化。签发当刻这些叶已由 `validate_repair_bundle_deep` 逐件真哈希；bundle/manifest 总指纹仍被一级文件锁定。用户 2026-09-01 明确裁决只钉一级输入，不得把该边界表述为递归全量新鲜度。
+- 必选层逐家族复用现行消费 resolver，缺件或解析失败拒签；兜底层只遍历内存中的 receipt 对象，对带 `path/size/sha256` 的 ref 同时尝试案根与 receipt 父目录，双基准命中不同实物时两件都绑。兜底绝不打开被引用文件。wrapper 本体不进入 `frontier_files`；总件数上限 512、对象嵌套上限 64，哈希成本为 `O(frontier 总字节)`，不承诺总字节上限。
+- 7.0.0 迁移：公开 dataclass 字段 `bound_files` 更名为 `frontier_files`。直构、`dataclasses.replace` 或缓存该运行时对象的外部调用方必须改名并按新的担保/不担保边界解释；payload 摘要、WeakSet 身份签发与 report 指纹语义不变。
+
 注记：
 
 - inherited_fields 从 scripts/report/reconciliation_report.py 的 _base_wrapper 及后续 inputs/error 填充处逐键抄录（代码基线 f06078e），按 errata E7 前移冻结。

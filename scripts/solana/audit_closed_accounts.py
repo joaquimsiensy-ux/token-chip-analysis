@@ -46,25 +46,82 @@ DEF_RPC = "https://api.mainnet-beta.solana.com"
 DEF_PROXY = None
 INIT_TYPES = {"initializeAccount", "initializeAccount2", "initializeAccount3"}
 ATA_TYPES = {"create", "createIdempotent"}
-T0 = time.time()
-
-
 def log(msg):
     print(f"[audit] {msg}", file=sys.stderr, flush=True)
 
 
-def bail_invalid(out_path, mint, edges_path, reason, *, legacy_sol5=False):
-    """F-D8：早退路径也必须落带 status 的报告——"无报告"会让 status 契约的四态无从分辨。
-    精简报告只含身份与失败原因（样本统计彼时尚不存在，不编造）。"""
-    report = {"mint": mint, "edges_file": str(edges_path),
-              "status": "INVALID_SAMPLE", "exit_code": 1,
-              "non_formal": bool(legacy_sol5),
-              "order_ambiguous": bool(legacy_sol5),
-              "invalid_reasons": [reason],
-              "generated": time.strftime("%Y-%m-%d %H:%M:%S")}
+WALL_REASON = "墙钟截断（样本被保险丝提前收数，不完整）"
+
+
+def _append_reason(reasons, reason):
+    if reason and reason not in reasons:
+        reasons.append(reason)
+
+
+def _build_report(state, *, status, exit_code, sampling_phase,
+                  counts_complete, direct_reason=None, invalid_reasons=()):
+    """Single report contract for all five bail phases and the complete path."""
+    wall_flag = state["wall_flag"]
+    now = time.monotonic()
+    wall_flag["hit"] = wall_flag["hit"] or now > state["wall_dl"]
+    reasons = []
+    for reason in invalid_reasons:
+        _append_reason(reasons, reason)
+    _append_reason(reasons, direct_reason)
+    if wall_flag["hit"]:
+        _append_reason(reasons, WALL_REASON)
+        if status not in {"INVALID_SAMPLE", "LEAK_FOUND"}:
+            status, exit_code = "INVALID_SAMPLE", 1
+    lo, hi = state["lo"], state["hi"]
+    events = state["events"]
+    coverage = events["covered"] / events["checked"] if events["checked"] else None
+    report = {
+        "mint": state["mint"], "edges_file": str(state["edges_path"]),
+        "edges": state["n_edges"], "edge_slot_range": [lo, hi],
+        "mode": state["mode"], "status": status, "exit_code": exit_code,
+        "formal": state["formal"] and not state["legacy_sol5"],
+        "non_formal": bool(state["explicit_edges"] or state["legacy_sol5"]),
+        "non_formal_source": ("legacy-sol5" if state["legacy_sol5"]
+                              else state["non_formal_source"]),
+        "order_ambiguous": bool(state["legacy_sol5"]),
+        "invalid_reasons": reasons,
+        "mint_sig_history": state["sig_stat"],
+        "sampled": {
+            "decoded_txs": state["decoded"],
+            "init_events": len(state["inits"]),
+            "alive": len(state["alive"]), "closed": len(state["closed"]),
+            "deep_checked": state["deep_done"],
+            "deep_account_classes": state["acct_cls"],
+            "gma_batch_failed": state["gma_batch_failed"],
+            "wall_truncated": wall_flag["hit"],
+            "sampling_phase": sampling_phase,
+            "counts_complete": counts_complete,
+        },
+        "events": events, "coverage_rate": coverage,
+        "missing_detail": state["missing_detail"][:200],
+        "params": state["params"],
+        "rpc_calls": state["rpc"].calls if state.get("rpc") is not None else 0,
+        "elapsed_sec": round(now - state["started_at"], 1),
+        "generated": time.strftime("%Y-%m-%d %H:%M:%S"),
+    }
+    if state["edge_source_binding"] is not None:
+        report["edge_source_binding"] = state["edge_source_binding"]
+    return report
+
+
+def _write_report(out_path, report):
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text(json.dumps(report, ensure_ascii=False, indent=1))
+
+
+def bail_invalid(out_path, state, reason, *, sampling_phase):
+    """F-D8/F4: every early return writes the same complete report contract."""
+    report = _build_report(
+        state, status="INVALID_SAMPLE", exit_code=1,
+        sampling_phase=sampling_phase, counts_complete=False,
+        direct_reason=reason)
     try:
-        out_path.parent.mkdir(parents=True, exist_ok=True)
-        out_path.write_text(json.dumps(report, ensure_ascii=False, indent=1))
+        _write_report(out_path, report)
         log(f"INVALID_SAMPLE 报告 → {out_path}")
     except OSError as exc:
         log(f"早退报告写入失败（不改变 exit 1 语义）: {exc}")
@@ -134,7 +191,7 @@ def fetch_mint_sigs(rpc, mint, max_pages, wall_dl, stop_below=None):
     返回 (rows, complete, wall_hit)——wall_hit=True 表示因墙钟截断（样本无效判据之一）。"""
     out, before = [], None
     for page in range(max_pages):
-        if time.time() > wall_dl:
+        if time.monotonic() > wall_dl:
             log(f"签名史拉取触墙钟保险丝，截断于 {len(out)} 条")
             return out, False, True
         params = [mint, {"limit": 1000}]
@@ -162,7 +219,7 @@ def sample_inits_from_blocks(rpc, mint, lo, hi, n_blocks, target, wall_dl, wall_
     for s in slots:
         if len(inits) >= target:
             break
-        if time.time() > wall_dl:
+        if time.monotonic() > wall_dl:
             wall_flag["hit"] = True
             log("blocks 抽样触墙钟保险丝，提前收数（样本无效）")
             break
@@ -253,6 +310,7 @@ def resolve_edge_source(mint, *, explicit_edges=None, case_root=None):
 
 
 def main():
+    started_at = time.monotonic()
     ap = argparse.ArgumentParser()
     ap.add_argument("mint")
     ap.add_argument("--edges", default=None, help="SQD 边集 jsonl.gz（默认共享 sha256(mint) 路径）")
@@ -279,7 +337,7 @@ def main():
     except ValueError as exc:
         ap.error(str(exc))
     random.seed(args.seed)
-    wall_dl = T0 + args.wall_min * 60
+    wall_dl = started_at + args.wall_min * 60
     mint = args.mint
     out_path = Path(args.out or f"data/closed_audit-{mint.lower()}.json")
     explicit_edges = args.edges is not None
@@ -289,28 +347,47 @@ def main():
                                 case_root=args.case_root)
     except ValueError as exc:
         ap.error(str(exc))
+    state = {
+        "started_at": started_at, "wall_dl": wall_dl, "wall_flag": {"hit": False},
+        "mint": mint, "edges_path": edges_path,
+        "explicit_edges": explicit_edges, "legacy_sol5": args.legacy_sol5,
+        "formal": formal, "non_formal_source": non_formal_source,
+        "edge_source_binding": edge_source_binding,
+        "mode": args.mode, "n_edges": 0, "lo": None, "hi": None,
+        "decoded": 0, "sig_stat": {"total": 0, "complete": None, "in_range": 0},
+        "inits": {}, "alive": set(), "closed": set(), "deep_done": 0,
+        "acct_cls": {"events_found": 0, "all_zero_delta": 0, "fetch_failed": 0},
+        "gma_batch_failed": 0,
+        "events": {"checked": 0, "covered": 0, "missing": 0, "out_of_range": 0},
+        "missing_detail": [], "rpc": None,
+        "params": {k: getattr(args, k.replace("-", "_")) for k in
+                   ["sample-inits", "deep-accounts", "deep-sigs", "block-samples",
+                    "seed", "interval", "mode"]},
+    }
     if not edges_path.exists():
-        bail_invalid(out_path, mint, edges_path, f"边集不存在：{edges_path}",
-                     legacy_sol5=args.legacy_sol5)
+        bail_invalid(out_path, state, f"边集不存在：{edges_path}",
+                     sampling_phase="edges_missing")
 
     rpc = Rpc(args.rpc, args.proxy, args.interval)
+    state["rpc"] = rpc
     try:
         idx, lo, hi, n_edges = load_edge_index(
             edges_path, legacy_sol5=args.legacy_sol5)
     except (OSError, ValueError) as exc:
-        bail_invalid(out_path, mint, edges_path, str(exc),
-                     legacy_sol5=args.legacy_sol5)
+        bail_invalid(out_path, state, str(exc), sampling_phase="edges_invalid")
+    state.update({"n_edges": n_edges, "lo": lo, "hi": hi})
     if not n_edges or lo is None or hi is None:
-        bail_invalid(out_path, mint, edges_path, "边文件为空，无法抽样审计",
-                     legacy_sol5=args.legacy_sol5)
+        bail_invalid(out_path, state, "边文件为空，无法抽样审计",
+                     sampling_phase="edges_empty")
     log(f"边集 {n_edges} 条，slot 区间 [{lo}, {hi}]，owner {len(idx)} 个")
 
     # 样本发现：sigs / blocks / auto（3 页探路未进区间即切 blocks）
     mode, decoded, sig_stat = args.mode, 0, {"total": 0, "complete": None, "in_range": 0}
     inits = {}  # account -> {owner, init_slot}
-    wall_flag = {"hit": False}  # GPT-F-06：任何一处因墙钟截断＝样本无效
+    wall_flag = state["wall_flag"]  # 任何一处因墙钟截断＝样本无效
     if mode == "auto":
-        probe, _, _ = fetch_mint_sigs(rpc, mint, 3, wall_dl, stop_below=lo)
+        probe, _, wall_hit = fetch_mint_sigs(rpc, mint, 3, wall_dl, stop_below=lo)
+        wall_flag["hit"] = wall_flag["hit"] or wall_hit
         if probe and any(lo <= s <= hi for _, s in probe):
             mode = "sigs"
         else:
@@ -321,8 +398,10 @@ def main():
                                                    stop_below=lo)
         wall_flag["hit"] = wall_flag["hit"] or wall_hit
         if not sigs:
-            bail_invalid(out_path, mint, edges_path, "mint 签名史为空/拉取失败",
-                         legacy_sol5=args.legacy_sol5)
+            state.update({"mode": mode, "decoded": decoded,
+                          "sig_stat": sig_stat, "inits": inits})
+            bail_invalid(out_path, state, "mint 签名史为空/拉取失败",
+                         sampling_phase="signature_discovery")
         in_range = [s for s in sigs if lo <= s[1] <= hi]
         sig_stat = {"total": len(sigs), "complete": complete, "in_range": len(in_range)}
         log(f"mint 签名史 {len(sigs)} 条（complete={complete}），边集区间内 {len(in_range)} 条")
@@ -331,7 +410,7 @@ def main():
         for sig, slot in pool:
             if len(inits) >= args.sample_inits:
                 break
-            if time.time() > wall_dl:
+            if time.monotonic() > wall_dl:
                 wall_flag["hit"] = True
                 log("初始化事件抽样触墙钟保险丝（样本无效）")
                 break
@@ -347,9 +426,11 @@ def main():
         inits = sample_inits_from_blocks(rpc, mint, lo, hi, args.block_samples,
                                          args.sample_inits, wall_dl, wall_flag)
     if not inits:
-        bail_invalid(out_path, mint, edges_path,
+        state.update({"mode": mode, "decoded": decoded,
+                      "sig_stat": sig_stat, "inits": inits})
+        bail_invalid(out_path, state,
                      "抽样未命中任何初始化事件（样本过小或池全为非初始化笔）",
-                     legacy_sol5=args.legacy_sol5)
+                     sampling_phase="init_discovery")
 
     # 存活/销户判定（getMultipleAccounts 批 100；publicnode 屏蔽此法，须 mainnet-beta）
     accs = list(inits.keys())
@@ -373,7 +454,7 @@ def main():
     acct_cls = {"events_found": 0, "all_zero_delta": 0, "fetch_failed": 0}
     missing_detail, deep_done = [], 0
     for acc in list(closed)[: args.deep_accounts]:
-        if time.time() > wall_dl:
+        if time.monotonic() > wall_dl:
             wall_flag["hit"] = True
             log("深挖触墙钟保险丝，提前收数（样本无效）"); break
         owner = inits[acc]["owner"]
@@ -436,7 +517,7 @@ def main():
         invalid_reasons.append(f"抽到 {len(closed)} 个销户账户但核到的区间内事件为 0"
                                "（checked=0 且 closed>0，覆盖率无从谈起）")
     if wall_flag["hit"]:
-        invalid_reasons.append("墙钟截断（样本被保险丝提前收数，不完整）")
+        invalid_reasons.append(WALL_REASON)
     if undetermined_over_half:
         invalid_reasons.append("undetermined（all_zero_delta+fetch_failed）过半")
     # 边界显式定案：closed=0＝抽样内无销户账户（审计对象为空）——是弱结论不是查询失败，
@@ -450,34 +531,19 @@ def main():
     else:
         status, exit_code = "CLEAN", 0
 
-    cov = events["covered"] / events["checked"] if events["checked"] else None
-    report = {
-        "mint": mint, "edges_file": str(edges_path), "edges": n_edges,
-        "edge_slot_range": [lo, hi], "mode": mode,
-        "status": status, "exit_code": exit_code,
-        "formal": formal and not args.legacy_sol5,
-        "non_formal": bool(explicit_edges or args.legacy_sol5),
-        "non_formal_source": ("legacy-sol5" if args.legacy_sol5
-                              else non_formal_source),
-        "order_ambiguous": bool(args.legacy_sol5),
-        "invalid_reasons": invalid_reasons,
-        "mint_sig_history": sig_stat,
-        "sampled": {"decoded_txs": decoded, "init_events": len(inits),
-                    "alive": len(alive), "closed": len(closed), "deep_checked": deep_done,
-                    "deep_account_classes": acct_cls,
-                    "gma_batch_failed": gma_batch_failed,
-                    "wall_truncated": wall_flag["hit"]},
-        "events": events, "coverage_rate": cov, "missing_detail": missing_detail[:200],
-        "params": {k: getattr(args, k.replace("-", "_")) for k in
-                   ["sample-inits", "deep-accounts", "deep-sigs", "block-samples",
-                    "seed", "interval", "mode"]},
-        "rpc_calls": rpc.calls, "elapsed_sec": round(time.time() - T0, 1),
-        "generated": time.strftime("%Y-%m-%d %H:%M:%S"),
-    }
-    if edge_source_binding is not None:
-        report["edge_source_binding"] = edge_source_binding
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    out_path.write_text(json.dumps(report, ensure_ascii=False, indent=1))
+    state.update({
+        "mode": mode, "decoded": decoded, "sig_stat": sig_stat, "inits": inits,
+        "alive": alive, "closed": closed, "deep_done": deep_done,
+        "acct_cls": acct_cls, "gma_batch_failed": gma_batch_failed,
+        "events": events, "missing_detail": missing_detail,
+    })
+    report = _build_report(
+        state, status=status, exit_code=exit_code, sampling_phase="complete",
+        counts_complete=True, invalid_reasons=invalid_reasons)
+    status, exit_code = report["status"], report["exit_code"]
+    cov = report["coverage_rate"]
+    invalid_reasons = report["invalid_reasons"]
+    _write_report(out_path, report)
     log(f"报告 → {out_path}")
     print(json.dumps({"mode": mode, "status": status,
                       "closed_sampled": len(closed), "deep_checked": deep_done,

@@ -86,6 +86,18 @@ def sha(path):
     return hashlib.sha256(Path(path).read_bytes()).hexdigest()
 
 
+def _stream_sha(path):
+    """Hash a frontier file without materializing large evidence in memory."""
+    digest = hashlib.sha256()
+    with Path(path).open("rb") as stream:
+        while True:
+            block = stream.read(131072)
+            if not block:
+                break
+            digest.update(block)
+    return digest.hexdigest()
+
+
 def regular(root, rel):
     root = Path(root).resolve()
     raw = root / str(rel)
@@ -1827,7 +1839,7 @@ class DeepReconciliationWitness:
         "report_sha256": str,
         "target": dict,
         "receipts": dict,
-        "bound_files": tuple,
+        "frontier_files": tuple,
         "payload_sha256": str,
     }
     # Keep direct construction source-compatible for the existing anti-forgery
@@ -1846,8 +1858,15 @@ def _reconciliation_payload_sha256(target, receipts):
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
-def _reconciliation_bound_files(root, target, receipts):
-    """Fingerprint every case file reachable by a JSON ``path`` reference."""
+def _reconciliation_frontier_files(root, target, receipts):
+    """Fingerprint the signed reconciliation frontier, not recursive evidence leaves.
+
+    Guaranteed fresh after issuance: every family receipt file, every file reference
+    directly consumed from those receipt objects, and the explicit frozen Solana
+    observation bundle.  Referenced JSON is hashed but never opened here, so evidence
+    leaves below a repair bundle/manifest remain the deep validator's issuance-time
+    guarantee rather than being misrepresented as witness-time recursive freshness.
+    """
     root = Path(root).resolve()
     report = root / "reconciliation_report.json"
     # Legacy pure-function fixtures replace the validator and have no wrapper on
@@ -1855,26 +1874,22 @@ def _reconciliation_bound_files(root, target, receipts):
     if not report.is_file():
         return ()
 
-    bound = {}
-    json_queue = []
-    scanned_json = set()
-    max_files = 128
+    frontier = {}
+    max_files = 512
     max_depth = 64
 
     def remember(path):
         path = Path(path).resolve()
         key = str(path)
-        if key in bound:
+        if key in frontier:
             return
-        if len(bound) >= max_files:
+        if len(frontier) >= max_files:
             raise ValueError(
-                f"reconciliation witness 文件闭包超过 {max_files} 个文件")
-        bound[key] = sha(path)
-        if path.suffix.lower() == ".json":
-            json_queue.append(path)
+                f"reconciliation witness frontier 超过 {max_files} 个文件")
+        frontier[key] = _stream_sha(path)
 
     def candidate(base, shown):
-        """Resolve one shape-discovered path without accepting any symlink hop."""
+        """Best-effort resolver for non-mandatory three-field ref shapes."""
         try:
             # abspath normalizes dot segments but deliberately does not follow links,
             # so every lexical component can be checked before final resolution.
@@ -1899,9 +1914,9 @@ def _reconciliation_bound_files(root, target, receipts):
                 f"reconciliation witness JSON 嵌套超过 {max_depth} 层")
         if isinstance(node, dict):
             shown = node.get("path")
-            if isinstance(shown, str):
-                # 闭包宁多勿漏：同时按案根与当前 JSON 的目录尝试。多绑只会
-                # 让 witness 提前过期并在下一次 run 重签；漏绑会放行过期证据。
+            if {"path", "size", "sha256"} <= set(node) \
+                    and isinstance(shown, str):
+                # 兜底层宁严：案根与 receipt 父目录若命中不同实物，两个都绑。
                 seen_candidates = set()
                 for base in (root, source.parent):
                     path = candidate(base, shown)
@@ -1914,37 +1929,103 @@ def _reconciliation_bound_files(root, target, receipts):
             for value in node:
                 discover(value, source, depth + 1)
 
-    report_path = candidate(root, report.name)
-    if report_path is None:
-        raise ValueError("reconciliation witness wrapper 文件无效")
-    remember(report_path)
+    try:
+        wrapper = json.loads(report.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        raise ValueError(f"reconciliation witness wrapper 文件无效: {exc}") from exc
     family = chain_family(target["chain"])
+    checks = wrapper.get("checks")
+    if not isinstance(checks, dict):
+        raise ValueError("reconciliation witness wrapper checks 无效")
+
+    receipt_paths = {}
+    keys = RECON_CHECK_KEYS[family]
+    for key in keys:
+        item = checks.get(key)
+        if not isinstance(item, dict):
+            raise ValueError(f"reconciliation witness {key} check 缺失")
+        receipt_path = ref_ok(root, item.get("receipt"))
+        receipt_paths[key] = receipt_path
+        remember(receipt_path)
+
+    # Legacy pure-function harnesses replace validate_reconciliation_check and
+    # intentionally return synthetic objects unrelated to the wrapper's receipt
+    # bytes.  Preserve their empty-frontier sentinel; real validation always
+    # returns the exact JSON object loaded from each receipt path above.
+    try:
+        if any(receipts.get(key) != json.loads(
+                receipt_paths[key].read_text(encoding="utf-8")) for key in keys):
+            return ()
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        pass
+
+    # 必选层：validate_receipt(case_root=...) 真消费每份 receipt 的全部 inputs。
+    for key in keys:
+        receipt = receipts.get(key)
+        if not isinstance(receipt, dict):
+            raise ValueError(f"reconciliation witness {key} receipt 缺失")
+        inputs = receipt.get("inputs")
+        if not isinstance(inputs, dict):
+            raise ValueError(f"reconciliation witness {key} inputs 无效")
+        for name, ref in inputs.items():
+            remember(_bound_case_ref(
+                root, ref, f"reconciliation witness {key}.inputs.{name}"))
+
     if family == "solana":
+        # supply output is consumed by ref_ok; balance/time outputs by anchor validator.
+        supply = receipts["supply"]
+        remember(ref_ok(root, supply.get("output")))
+        for key in ("balance", "time"):
+            remember(_bound_case_ref(
+                root, receipts[key].get("output"),
+                f"reconciliation witness {key}.output"))
+
+        # Match solana_observation.validate_observation_bundle's first-hit search:
+        # gpa_rpc physical parent -> receipt parent -> receipt.parent/data.
+        holder_outputs = supply.get("holder_outputs")
+        if not isinstance(holder_outputs, dict):
+            raise ValueError("reconciliation witness supply holder_outputs 无效")
+        search_dirs = []
+        gpa_ref = (supply.get("inputs") or {}).get("gpa_rpc") or {}
+        gpa_shown = str(gpa_ref.get("path") or "")
+        if gpa_shown:
+            gpa_path = Path(gpa_shown)
+            gpa_path = (gpa_path if gpa_path.is_absolute()
+                        else receipt_paths["supply"].parent / gpa_path)
+            search_dirs.append(gpa_path.parent)
+        search_dirs += [receipt_paths["supply"].parent,
+                        receipt_paths["supply"].parent / "data"]
+        for name in ("accounts", "owners"):
+            ref = holder_outputs.get(name)
+            if not isinstance(ref, dict) or not {"path", "size", "sha256"} <= set(ref):
+                raise ValueError(
+                    f"reconciliation witness supply holder_outputs.{name} 无效")
+            basename = Path(str(ref.get("path") or "")).name
+            selected = None
+            for directory in search_dirs:
+                shown = directory / basename
+                if shown.is_symlink():
+                    raise ValueError(
+                        f"reconciliation witness supply holder_outputs.{name} 是 symlink")
+                if shown.is_file():
+                    selected = shown.resolve()
+                    break
+            if selected is None or (ref.get("size") != selected.stat().st_size
+                                    or ref.get("sha256") != _stream_sha(selected)):
+                raise ValueError(
+                    f"reconciliation witness supply holder_outputs.{name} 无法解析")
+            selected.relative_to(root)
+            remember(selected)
+
+        # Frozen fifth-check state is not a receipt input but is explicitly consumed.
         exact_target = canonical_target((receipts.get("exact_reconcile") or {}).get("target"))
         if exact_target["as_of_block"] != canonical_target(target)["as_of_block"]:
-            frozen = regular(root, SOLANA_FROZEN_OBSERVATION_BUNDLE)
-            frozen_safe = candidate(root, frozen.relative_to(root).as_posix())
-            if frozen_safe is None:
-                raise ValueError(
-                    f"evidence file invalid: {SOLANA_FROZEN_OBSERVATION_BUNDLE}")
-            remember(frozen_safe)
+            remember(regular(root, SOLANA_FROZEN_OBSERVATION_BUNDLE))
 
-    # Breadth-first across referenced JSON files; malformed JSON is not itself a
-    # new trust source, so its bytes remain bound while recursive discovery skips it.
-    index = 0
-    while index < len(json_queue):
-        source = json_queue[index]
-        index += 1
-        source_key = str(source)
-        if source_key in scanned_json:
-            continue
-        scanned_json.add(source_key)
-        try:
-            document = json.loads(source.read_text(encoding="utf-8"))
-        except (OSError, UnicodeError, json.JSONDecodeError):
-            continue
-        discover(document, source)
-    return tuple(sorted(bound.items()))
+    # 兜底层：only traverse each already-loaded receipt object.  Never open a ref.
+    for key in keys:
+        discover(receipts[key], receipt_paths[key])
+    return tuple(sorted(frontier.items()))
 
 
 def witness_reconciliation_report(root) -> DeepReconciliationWitness:
@@ -1962,11 +2043,41 @@ def witness_reconciliation_report(root) -> DeepReconciliationWitness:
         report_sha256=report_sha256,
         target=target,
         receipts=receipts,
-        bound_files=_reconciliation_bound_files(root, target, receipts),
+        frontier_files=_reconciliation_frontier_files(root, target, receipts),
         payload_sha256=_reconciliation_payload_sha256(target, receipts),
     )
     _ISSUED_WITNESSES.add(witness)
     return witness
+
+
+def _consume_reconciliation_witness(root, witness):
+    """Verify issuance, payload, wrapper, and every declared frontier file."""
+    root = Path(root).resolve()
+    try:
+        issued = witness in _ISSUED_WITNESSES
+    except TypeError:
+        issued = False
+    if not issued:
+        raise ValueError("reconciliation witness 无效/过期")
+    try:
+        current = (
+            isinstance(witness, DeepReconciliationWitness)
+            and witness.root == root
+            and witness.report_sha256 == _stream_sha(
+                root / "reconciliation_report.json")
+            and witness.payload_sha256
+            == _reconciliation_payload_sha256(witness.target, witness.receipts))
+        for raw_path, expected_sha in witness.frontier_files:
+            path = Path(raw_path)
+            if (path.is_symlink() or not path.is_file()
+                    or _stream_sha(path) != expected_sha):
+                current = False
+                break
+    except (OSError, TypeError, ValueError):
+        current = False
+    if not current:
+        raise ValueError("reconciliation witness 无效/过期")
+    return witness.target, witness.receipts
 
 
 def validate_sources(root, *, reconciliation_provider=None):
@@ -1979,34 +2090,7 @@ def validate_sources(root, *, reconciliation_provider=None):
     else:
         if reconciliation_provider is not None:
             witness = reconciliation_provider()
-            # 按对象身份认签发，不按字段值认：直构的值等伪造品和 replace
-            # 拷贝即使每个字段都一样，也不是本模块刚刚签发的那个对象。
-            try:
-                issued = witness in _ISSUED_WITNESSES
-            except TypeError:
-                issued = False
-            if not issued:
-                raise ValueError("reconciliation witness 无效/过期")
-            try:
-                current = (
-                    isinstance(witness, DeepReconciliationWitness)
-                    and witness.root == Path(root).resolve()
-                    and witness.report_sha256 == sha(
-                        root / "reconciliation_report.json")
-                    and witness.payload_sha256
-                    == _reconciliation_payload_sha256(
-                        witness.target, witness.receipts))
-                for raw_path, expected_sha in witness.bound_files:
-                    path = Path(raw_path)
-                    if (path.is_symlink() or not path.is_file()
-                            or sha(path) != expected_sha):
-                        current = False
-                        break
-            except (OSError, TypeError, ValueError):
-                current = False
-            if not current:
-                raise ValueError("reconciliation witness 无效/过期")
-            recon_target, receipts = witness.target, witness.receipts
+            recon_target, receipts = _consume_reconciliation_witness(root, witness)
         else:
             recon_target, receipts = validate_reconciliation_report(
                 root, return_receipts=True)
