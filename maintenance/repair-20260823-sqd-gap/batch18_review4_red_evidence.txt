@@ -1,0 +1,17 @@
+Batch 18 review4 RED evidence (before production change)
+Baseline: ec7c5927520000b6169f6a4c57805aad4d27213b
+Equivalent code baseline: ad44909 (tree delta is workorder only)
+
+Command:
+python3 -c 'import sys; sys.path.insert(0, "scripts/tests"); import test_batch18_review_digest as t; t.test_review4_r1_signature_discovery_bail_preserves_complete()'
+
+Exit code: 1
+
+Traceback (most recent call last):
+  File "<string>", line 1, in <module>
+    import sys; sys.path.insert(0, "scripts/tests"); import test_batch18_review_digest as t; t.test_review4_r1_signature_discovery_bail_preserves_complete()
+                                                                                             ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "/Users/uravvv/.claude/skills/token-chip-analysis/scripts/tests/test_batch18_review_digest.py", line 680, in test_review4_r1_signature_discovery_bail_preserves_complete
+    assert histories == expected, (
+           ^^^^^^^^^^^^^^^^^^^^^
+AssertionError: two-state mint_sig_history=[{'total': 0, 'complete': None, 'in_range': 0}, {'total': 0, 'complete': None, 'in_range': 0}]; expected=[{'total': 0, 'complete': True, 'in_range': 0}, {'total': 0, 'complete': False, 'in_range': 0}]

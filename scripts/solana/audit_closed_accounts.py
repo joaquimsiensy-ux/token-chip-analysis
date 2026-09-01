@@ -399,7 +399,8 @@ def main():
         wall_flag["hit"] = wall_flag["hit"] or wall_hit
         if not sigs:
             state.update({"mode": mode, "decoded": decoded,
-                          "sig_stat": sig_stat, "inits": inits})
+                          "sig_stat": {"total": 0, "complete": complete,
+                                       "in_range": 0}, "inits": inits})
             bail_invalid(out_path, state, "mint 签名史为空/拉取失败",
                          sampling_phase="signature_discovery")
         in_range = [s for s in sigs if lo <= s[1] <= hi]

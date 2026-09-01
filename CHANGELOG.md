@@ -10,6 +10,7 @@
 
 ## 版本索引（活跃窗口，新在上；每版一行，详情见下方对应条目）
 
+- **7.0.1**（2026-09-01）批 18 第四轮盲审 P2 消化：销户审计 `signature_discovery` 空签名早退如实透传 `complete`，区分“完整查询且成功签名结果为空”与截断/失败；SUITE 146 不变
 - **7.0.0**（2026-09-01）批 18 第三轮盲审终版：公开 witness 新鲜度从递归文件闭包改为如实钉一级输入 frontier，`bound_files` 不兼容更名为 `frontier_files`；销户审计 5 个早退与主路径统一完整报告及 monotonic 墙钟；SUITE 146 不变
 - **6.54.2**（2026-08-31）批 18 第二轮盲审 P1×2 消化：witness 对 target/receipts 增 canonical payload 摘要并在消费时重算；文件新鲜度从手工两节枚举升级为案根内递归 JSON path 闭包，绑定 supply output 等深层实物；SUITE 146 不变
 - **6.54.1**（2026-08-31）批 18 盲审 P1×2＋P2 一次消化：witness 改为签发对象身份注册并绑定深验文件闭包，拒绝直构/replace/值等伪造与 receipt/owners 过期缓存；manifest 分类器防御非对象 JSON/非对象 input_binding，SUITE 145→146
@@ -81,6 +82,15 @@
 - **6.20.1** 2026-08-05 修 5 处阻断级文档漂移（A4 前禁写报告冲突/easy 残留/惯犯回灌 docstring/批量预采集残留/旧 Par 路线历史降级）＋docs_lint 增中文禁词与 Python module docstring 扫描
 
 更早版本（6.20.0 及以前）详见 `archive/CHANGELOG-archive.md`。
+
+## [7.0.1] - 2026-09-01 — signature_discovery 早退透传签名史 complete
+
+- **出处与根因**：批 18 第四轮盲审唯一 P2 亲核属实。`scripts/solana/audit_closed_accounts.py` 的 sigs 模式已从 `fetch_mint_sigs` 取得 `(sigs, complete, wall_hit)`，但空 `sigs` 早退在真值入账前写回初始 `sig_stat`，使 `mint_sig_history.complete` 恒为 `null`。
+- **设计与实现**：仅在 `signature_discovery` 空签名早退的 `state.update` 中将 `sig_stat` 写为 `{"total": 0, "complete": complete, "in_range": 0}`；不改 `fetch_mint_sigs`、报告 builder、其他 bail 或主路径。
+- **消费面与防回流**：`complete=true` 仅表达“完整查询且成功签名结果为空”，不扩张为“链上绝对没有任何历史”；`complete=false` 保留截断/失败语义。blocks/auto 及其他不适用早退继续为 `complete=null`。
+- **测试**：先红证据同时记录 `([], True, False)` 与 `([], False, False)` 均错写 `complete=None`；回归对两份完整报告成对断言 `mint_sig_history` 分别为 `complete=True/False`，并锁定 `sampling_phase="signature_discovery"`、`counts_complete=false` 和直接原因原文。
+- **盲审与验收**：按已通过的 b18r4 工单机械施工，并按用户明确授权将 `ec7c592` 视为 `ad44909` 的等价工作基线；代码树仅工单差异已实查，严格白名单，不改 `test_repair_batch_d.py`，完工不 commit。
+- **成本-质量指标**：生产实现 1 轮；生产改动点 1；外部网络调用 0；新增 suite 入口 0；新增回归函数 1（两状态）；禁改测试改动 0；SUITE 分母 146 不变；传播级数字错误 0。
 
 ## [7.0.0] - 2026-09-01 — witness 一级 frontier 与销户审计完整报告契约
 

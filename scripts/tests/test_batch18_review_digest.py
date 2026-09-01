@@ -654,6 +654,34 @@ def test_review3_f4_five_bails_share_complete_report_contract() -> None:
             assert sum("墙钟" in reason for reason in reasons) == 1, reasons
 
 
+def test_review4_r1_signature_discovery_bail_preserves_complete() -> None:
+    import audit_closed_accounts as audit
+
+    reports = []
+    for index, complete in enumerate((True, False)):
+        with tempfile.TemporaryDirectory(
+                prefix=f"b18r4-r1-{index}-", dir="/private/tmp") as raw, \
+                mock.patch.object(
+                    audit, "fetch_mint_sigs",
+                    return_value=([], complete, False)):
+            report = _run_closed_audit(Path(raw), edge_kind="valid", mode="sigs")
+            reports.append(report)
+            assert report["sampled"]["sampling_phase"] == "signature_discovery"
+            assert report["sampled"]["counts_complete"] is False
+            assert any(
+                "mint 签名史为空/拉取失败" in reason
+                for reason in report["invalid_reasons"])
+
+    histories = [report["mint_sig_history"] for report in reports]
+    expected = [
+        {"total": 0, "complete": True, "in_range": 0},
+        {"total": 0, "complete": False, "in_range": 0},
+    ]
+    assert histories == expected, (
+        f"two-state mint_sig_history={histories!r}; expected={expected!r}")
+    assert [history["complete"] for history in histories] == [True, False]
+
+
 def main() -> int:
     tests = [
         test_f1_only_issued_witness_identity_is_accepted,
@@ -666,6 +694,7 @@ def main() -> int:
         test_review3_r4_repaired_leaf_boundary_is_explicit,
         test_review3_frontier_resolver_equivalence_and_fail_closed,
         test_review3_f4_five_bails_share_complete_report_contract,
+        test_review4_r1_signature_discovery_bail_preserves_complete,
     ]
     failed = []
     for test in tests:
