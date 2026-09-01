@@ -3,14 +3,14 @@
 基线:main 上本工单文件的历史版本为唯一与 50d7767(v6.54.2 代码终版)的树差异,代码零差异,按等价工作基线处理,不构成停工条件。
 沿革:盲审三条(P1+P2×2)→v1/v2 复核退回(深验经 `solana_exact_validate.validate_repair_bundle_deep`(:1357)对 evidence manifest 逐件真哈希,ARC 正式代 gen-80c6929 实测 307,334 件/40.1GB,签发一次深验 >65 分钟)。
 **用户裁决(2026-09-01):witness 防伪边界=钉一级输入(frontier),不冒充全量。语义已定,不再复议。** v3 复核落 5 条返修集,本 v4 全部吸收。
-版本:6.54.2 → **6.54.3**。
+版本:6.54.2 → **7.0.0**(用户 2026-09-01 裁决:公开 witness 担保边界不兼容变更,升主版本)。
 
 ## 纪律
 - 先红后绿,红证据存 `maintenance/repair-20260823-sqd-gap/batch18_review3_red_evidence.txt`。
 - 白名单:`scripts/report/shared_release_receipt.py`、`scripts/solana/audit_closed_accounts.py`、`scripts/tests/test_batch18_review_digest.py`(既有断言只许随本契约变更同步且 done 逐条说明)、`references/scan-schemas.md`(登记 witness frontier 段)、`references/data-pipeline-solana-capture.md`(F4 文档)、`VERSION`、`pyproject.toml`、`SKILL.md`(:23)、`CHANGELOG.md`、本目录 red_evidence/done。
 - **不触碰**:`scripts/lib/receipt_validate.py`、`scripts/lib/solana_observation.py`、`scripts/lib/solana_exact_validate.py`(frontier 方案无 observer)。
 - **test_repair_batch_d.py 禁改**;其余禁改同前批(handoff_manifest、audit_release_gate、既有其他测试断言、ARC 案根只读、API key)。
-- CHANGELOG 历史条目(6.54.1/6.54.2)中的 `bound_files` 为历史事实,**禁止全局替换**;仅在 6.54.3 条目写迁移说明。
+- CHANGELOG 历史条目(6.54.1/6.54.2)中的 `bound_files` 为历史事实,**禁止全局替换**;仅在 7.0.0 条目写迁移说明。
 - 锚点以 50d7767 为准,开工 grep 亲核,不符停工。完工不 commit。
 
 ## 第一部分:frontier 语义
@@ -60,4 +60,4 @@ witness 文件闭包字段改名 **`frontier_files`**:
 
 ## 收尾
 - 回归重点:test_batch18_review_digest 全部、test_batch18_shared_bundle_witness(N11 逐字)、test_batch15_three_ledgers_frozen(N9/N10)、test_reconcile_v4_receipt、test_repair_batch1、test_r9_batch3_release_guards、test_r9_batch3_solana_observation、test_repair_batch_d 连跑 5 次、changelog/docs/version lint。
-- SUITE 分母 146 不变;版本五处 6.54.3;CHANGELOG 六栏,明确记"用户 2026-09-01 裁决:钉一级输入"与 frontier 担保/不担保边界;scan-schemas.md 登记 frontier 段。全量 146 由验收方本机 nohup。
+- SUITE 分母 146 不变;版本五处 7.0.0;CHANGELOG 六栏,明确记"用户 2026-09-01 裁决:钉一级输入"与 frontier 担保/不担保边界;scan-schemas.md 登记 frontier 段。全量 146 由验收方本机 nohup。
