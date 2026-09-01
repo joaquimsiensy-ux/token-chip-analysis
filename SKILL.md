@@ -20,7 +20,7 @@ description: >-
   只查价格/K线/热榜/新币列表不要用本 skill。
 ---
 
-<!-- skill-version-source: VERSION; skill-version: 6.54.1 -->
+<!-- skill-version-source: VERSION; skill-version: 6.54.2 -->
 
 # 代币筹码分析（Token Chip Analysis）
 

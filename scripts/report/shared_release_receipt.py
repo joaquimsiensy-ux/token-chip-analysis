@@ -1828,14 +1828,26 @@ class DeepReconciliationWitness:
         "target": dict,
         "receipts": dict,
         "bound_files": tuple,
+        "payload_sha256": str,
     }
+    # Keep direct construction source-compatible for the existing anti-forgery
+    # regression; an empty digest can never pass the issued-witness freshness check.
+    payload_sha256 = ""
 
 
 _ISSUED_WITNESSES = weakref.WeakSet()
 
 
+def _reconciliation_payload_sha256(target, receipts):
+    """Bind the exact in-memory payload returned by the one deep validation."""
+    canonical = json.dumps(
+        (target, receipts), sort_keys=True, ensure_ascii=False,
+        separators=(",", ":"))
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
 def _reconciliation_bound_files(root, target, receipts):
-    """Fingerprint the physical file closure already accepted by deep validation."""
+    """Fingerprint every case file reachable by a JSON ``path`` reference."""
     root = Path(root).resolve()
     report = root / "reconciliation_report.json"
     # Legacy pure-function fixtures replace the validator and have no wrapper on
@@ -1844,39 +1856,94 @@ def _reconciliation_bound_files(root, target, receipts):
         return ()
 
     bound = {}
+    json_queue = []
+    scanned_json = set()
+    max_files = 128
+    max_depth = 64
 
     def remember(path):
         path = Path(path).resolve()
-        if path.is_file():
-            bound[str(path)] = sha(path)
+        key = str(path)
+        if key in bound:
+            return
+        if len(bound) >= max_files:
+            raise ValueError(
+                f"reconciliation witness 文件闭包超过 {max_files} 个文件")
+        bound[key] = sha(path)
+        if path.suffix.lower() == ".json":
+            json_queue.append(path)
 
-    remember(report)
-    wrapper = json.loads(report.read_text(encoding="utf-8"))
-    checks = wrapper.get("checks") or {}
+    def candidate(base, shown):
+        """Resolve one shape-discovered path without accepting any symlink hop."""
+        try:
+            # abspath normalizes dot segments but deliberately does not follow links,
+            # so every lexical component can be checked before final resolution.
+            lexical = Path(os.path.abspath(Path(base) / shown))
+            relative = lexical.relative_to(root)
+            cursor = root
+            for part in relative.parts:
+                cursor = cursor / part
+                if cursor.is_symlink():
+                    return None
+            resolved = lexical.resolve()
+            resolved.relative_to(root)
+            if not resolved.is_file():
+                return None
+            return resolved
+        except (OSError, RuntimeError, TypeError, ValueError):
+            return None
+
+    def discover(node, source, depth=0):
+        if depth > max_depth:
+            raise ValueError(
+                f"reconciliation witness JSON 嵌套超过 {max_depth} 层")
+        if isinstance(node, dict):
+            shown = node.get("path")
+            if isinstance(shown, str):
+                # 闭包宁多勿漏：同时按案根与当前 JSON 的目录尝试。多绑只会
+                # 让 witness 提前过期并在下一次 run 重签；漏绑会放行过期证据。
+                seen_candidates = set()
+                for base in (root, source.parent):
+                    path = candidate(base, shown)
+                    if path is not None and path not in seen_candidates:
+                        seen_candidates.add(path)
+                        remember(path)
+            for value in node.values():
+                discover(value, source, depth + 1)
+        elif isinstance(node, list):
+            for value in node:
+                discover(value, source, depth + 1)
+
+    report_path = candidate(root, report.name)
+    if report_path is None:
+        raise ValueError("reconciliation witness wrapper 文件无效")
+    remember(report_path)
     family = chain_family(target["chain"])
-    for key in RECON_CHECK_KEYS[family]:
-        receipt_path = ref_ok(root, (checks.get(key) or {}).get("receipt"))
-        remember(receipt_path)
-        receipt = receipts.get(key) or {}
-        for section in ("inputs", "holder_outputs"):
-            refs = receipt.get(section) or {}
-            if not isinstance(refs, dict):
-                continue
-            for name, ref in refs.items():
-                if not isinstance(ref, dict) or not {"path", "sha256"} <= set(ref):
-                    continue
-                if section == "holder_outputs":
-                    path = _bound_case_ref(
-                        root, ref, f"reconciliation {key} {section}.{name}",
-                        base=receipt_path.parent)
-                else:
-                    path = ref_ok(root, ref)
-                remember(path)
-
     if family == "solana":
         exact_target = canonical_target((receipts.get("exact_reconcile") or {}).get("target"))
         if exact_target["as_of_block"] != canonical_target(target)["as_of_block"]:
-            remember(regular(root, SOLANA_FROZEN_OBSERVATION_BUNDLE))
+            frozen = regular(root, SOLANA_FROZEN_OBSERVATION_BUNDLE)
+            frozen_safe = candidate(root, frozen.relative_to(root).as_posix())
+            if frozen_safe is None:
+                raise ValueError(
+                    f"evidence file invalid: {SOLANA_FROZEN_OBSERVATION_BUNDLE}")
+            remember(frozen_safe)
+
+    # Breadth-first across referenced JSON files; malformed JSON is not itself a
+    # new trust source, so its bytes remain bound while recursive discovery skips it.
+    index = 0
+    while index < len(json_queue):
+        source = json_queue[index]
+        index += 1
+        source_key = str(source)
+        if source_key in scanned_json:
+            continue
+        scanned_json.add(source_key)
+        try:
+            document = json.loads(source.read_text(encoding="utf-8"))
+        except (OSError, UnicodeError, json.JSONDecodeError):
+            continue
+        discover(document, source)
     return tuple(sorted(bound.items()))
 
 
@@ -1896,6 +1963,7 @@ def witness_reconciliation_report(root) -> DeepReconciliationWitness:
         target=target,
         receipts=receipts,
         bound_files=_reconciliation_bound_files(root, target, receipts),
+        payload_sha256=_reconciliation_payload_sha256(target, receipts),
     )
     _ISSUED_WITNESSES.add(witness)
     return witness
@@ -1924,7 +1992,10 @@ def validate_sources(root, *, reconciliation_provider=None):
                     isinstance(witness, DeepReconciliationWitness)
                     and witness.root == Path(root).resolve()
                     and witness.report_sha256 == sha(
-                        root / "reconciliation_report.json"))
+                        root / "reconciliation_report.json")
+                    and witness.payload_sha256
+                    == _reconciliation_payload_sha256(
+                        witness.target, witness.receipts))
                 for raw_path, expected_sha in witness.bound_files:
                     path = Path(raw_path)
                     if (path.is_symlink() or not path.is_file()

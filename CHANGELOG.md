@@ -10,6 +10,7 @@
 
 ## 版本索引（活跃窗口，新在上；每版一行，详情见下方对应条目）
 
+- **6.54.2**（2026-08-31）批 18 第二轮盲审 P1×2 消化：witness 对 target/receipts 增 canonical payload 摘要并在消费时重算；文件新鲜度从手工两节枚举升级为案根内递归 JSON path 闭包，绑定 supply output 等深层实物；SUITE 146 不变
 - **6.54.1**（2026-08-31）批 18 盲审 P1×2＋P2 一次消化：witness 改为签发对象身份注册并绑定深验文件闭包，拒绝直构/replace/值等伪造与 receipt/owners 过期缓存；manifest 分类器防御非对象 JSON/非对象 input_binding，SUITE 145→146
 - **6.54.0**（2026-08-30）四条裁决落地：manifest 单向排除反绑账本/final 分布扫描；共享深验公开 `bound_case_ref` 与带案根、wrapper 指纹的惰性 witness/provider；版本规则按兼容性重写；R10-28 接受在案；SUITE 143→145
 - **6.53.5**（2026-08-30）G8 身份闸链名别名归一：`validate_gate` 双向经链注册表解析后比较，放行规范 gate `sol` 与 state_from_facts `solana` 的同链绑定，同时保留错链拒绝及原始值错误文案；真实 Solana emitter/build 回归，SUITE 142→143
@@ -79,6 +80,15 @@
 - **6.20.1** 2026-08-05 修 5 处阻断级文档漂移（A4 前禁写报告冲突/easy 残留/惯犯回灌 docstring/批量预采集残留/旧 Par 路线历史降级）＋docs_lint 增中文禁词与 Python module docstring 扫描
 
 更早版本（6.20.0 及以前）详见 `archive/CHANGELOG-archive.md`。
+
+## [6.54.2] - 2026-08-31 — 批 18 第二轮盲审：witness payload 冻结与递归文件闭包
+
+- **出处与根因**：来源为批 18 第二轮盲审 `review-mthvbju6`（base=`19c0fa6`）的两条 P1，均 CONFIRMED。P1-a 指出 `frozen=True` 只禁止字段再赋值，合法签发对象中的 `target`/`receipts` 仍可原地改写，身份登记与磁盘文件指纹均无法识别内存 payload 漂移；P1-b 指出 6.54.1 闭包只手工枚举 receipt 的 `inputs`/`holder_outputs`，遗漏深验实际解引用的其它形状，如 Solana supply bundle 顶层 `output` 实物。
+- **设计与实现**：`DeepReconciliationWitness` 新增 `payload_sha256`，签发时对 `(target, receipts)` 以 `sort_keys=True`、`ensure_ascii=False`、紧凑分隔符的 canonical JSON 计算 SHA256；消费时在身份、案根/wrapper、文件闭包三验中同步重算并比较。`_reconciliation_bound_files` 从 wrapper 出发广度优先扫描：递归遍历每份 JSON 的任意嵌套节点，见字符串 `path` 即分别按案根和当前 JSON 父目录解析；只登记案根内、全路径无 symlink、当前存在的普通文件，两个基准命中不同文件时全部绑定；新发现 JSON 继续入队，按绝对路径防环，文件上限 128、嵌套上限 64，解析失败只停止该文件的递归而保留其字节绑定。
+- **消费面与防回流**：旧 `RECON_CHECK_KEYS` 两节定向枚举由形状扫描覆盖并删除，避免深验新增引用字段时再次漏绑；wrapper 本体与动态 Solana 冻结 observation bundle 的显式必收保持。闭包采取宁多勿漏：误绑只会令 witness 提前过期、下一次 run 重签，漏绑才会放行过期证据。纯函数夹具缺 wrapper 时仍返回空闭包哨兵，但照常签 payload 摘要；任何 payload 或闭包漂移继续统一为 `reconciliation witness 无效/过期`，不增加深验次数。
+- **测试**：先红原文存 `maintenance/repair-20260823-sqd-gap/batch18_review2_red_evidence.txt`：合法 witness 的 target 与 receipts 各一式原地篡改均返回 `[]`；Solana supply bundle 本体已绑但顶层 output 实物未绑，改实物后仍返回 `[]`。在既有 `test_batch18_review_digest.py` 仅追加两组函数并接入原 main 列表：F1 对照 canonical 摘要并拒绝两种原地篡改，F2 断言闭包含 bundle 与 output、改 output 后拒绝；SUITE 分母保持 146。新增 5/5、批 18 witness 6/6、批 15 frozen 12/12（N9/N10 调用次数不变）、R9/reconcile v4/repair batch1 均已通过。
+- **盲审与验收**：验收方确认 `156a78c` 是指定 `8ae0f63` 的等价工作基线（父提交即指定基线，唯一树差异为本工单文件），解除开工阻断后严格按 b18r2 白名单施工；既有测试断言、`audit_release_gate.py`、`handoff_manifest.py`、`scripts/lib`、ARC 案根与 API key 均未修改。定向 lint/版本/manifest/handoff 回归与最终白名单审计记录于 `batch18_review2_done.md`；全量 146 仍由验收方本机 nohup。
+- **成本-质量指标**：生产实现 1 轮；外部网络调用 0；新增 suite 入口 0；新增测试函数 2；确认并消化 P1 finding 2；既有测试断言改动 0；深验调用次数漂移 0；传播级数字错误 0。
 
 ## [6.54.1] - 2026-08-31 — 批 18 盲审消化：witness 防伪造闭环与 manifest 分类器类型防御
 

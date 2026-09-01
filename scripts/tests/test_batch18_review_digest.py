@@ -122,11 +122,62 @@ def test_f3_non_object_scans_do_not_truncate_manifest_classification() -> None:
         assert f"跳过反绑产物 {final_rel}" in proc.stderr, proc.stderr
 
 
+def test_review2_f1_payload_digest_rejects_in_place_mutation() -> None:
+    import hashlib
+    import json
+
+    for surface in ("target", "receipts"):
+        with tempfile.TemporaryDirectory(
+                prefix=f"b18r2-f1-{surface}-", dir="/private/tmp") as raw:
+            root = Path(raw)
+            build_dynamic_integration_case(root)
+            witness = shared.witness_reconciliation_report(root)
+            canonical = json.dumps(
+                (witness.target, witness.receipts), sort_keys=True,
+                ensure_ascii=False, separators=(",", ":"))
+            assert witness.payload_sha256 == hashlib.sha256(
+                canonical.encode("utf-8")).hexdigest()
+            assert shared.validate_bundle(
+                root, reconciliation_provider=lambda: witness) == []
+            if surface == "target":
+                witness.target["as_of_block"] += 1
+            else:
+                receipt = witness.receipts["supply"]
+                receipt["supply_raw"] = str(int(receipt["supply_raw"]) + 1)
+            assert shared.validate_bundle(
+                root, reconciliation_provider=lambda: witness) == INVALID
+
+
+def test_review2_f2_recursive_ref_closure_binds_nested_output() -> None:
+    import json
+
+    with tempfile.TemporaryDirectory(prefix="b18r2-f2-", dir="/private/tmp") as raw:
+        root = Path(raw)
+        build_dynamic_integration_case(root)
+        witness = shared.witness_reconciliation_report(root)
+        observation_ref = witness.receipts["supply_truth"]["inputs"][
+            "observation_bundle"]
+        bundle_path = (root / observation_ref["path"]).resolve()
+        bundle = json.loads(bundle_path.read_text(encoding="utf-8"))
+        output_path = (root / bundle["output"]["path"]).resolve()
+        bound = {Path(path) for path, _digest in witness.bound_files}
+        assert bundle_path in bound and output_path in bound
+        assert len(bound) <= 128
+        assert shared.validate_bundle(
+            root, reconciliation_provider=lambda: witness) == []
+        output_path.write_text(
+            output_path.read_text(encoding="utf-8") + "\n", encoding="utf-8")
+        assert shared.validate_bundle(
+            root, reconciliation_provider=lambda: witness) == INVALID
+
+
 def main() -> int:
     tests = [
         test_f1_only_issued_witness_identity_is_accepted,
         test_f2_issued_witness_binds_deep_file_closure,
         test_f3_non_object_scans_do_not_truncate_manifest_classification,
+        test_review2_f1_payload_digest_rejects_in_place_mutation,
+        test_review2_f2_recursive_ref_closure_binds_nested_output,
     ]
     failed = []
     for test in tests:
