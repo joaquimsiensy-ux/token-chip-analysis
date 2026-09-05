@@ -1,7 +1,7 @@
 # CHANGELOG — token-chip-analysis（活跃窗口）
 
 版本规则（v3.0 起两维制，详见 references/retrospective.md「版本号约定」）：
-- **skill 版本**：主=架构级重构；次=每次**分析复盘**迭代 +1；修=文档小修
+- **skill 版本**：主=**不兼容**的工作流/schema/入口边界变更；次=**向后兼容**的新能力、新公开接口或持久化契约扩展（含分析复盘迭代）；修=既定契约内的修复、加固、回归补充与文档修订
 - **labels 数据版本**：标签库扩容/重建记 `labels vX.Y` 前缀条目，不再占用 skill 次版本号
 红线：条目只记工具性知识（数据源/坑/方法/脚本），禁止记录任何代币的分析结论。
 每条迭代条目附成本指标（轮次数/Bash 调用数/交付用时）+ 质量指标（初稿关键结论数/复核判定分布/漏检实体数/传播级数字错误数，v3.0 起，见 retrospective 步骤 1）。
@@ -10,6 +10,16 @@
 
 ## 版本索引（活跃窗口，新在上；每版一行，详情见下方对应条目）
 
+- **7.0.1**（2026-09-01）批 18 第四轮盲审 P2 消化：销户审计 `signature_discovery` 空签名早退如实透传 `complete`，区分“完整查询且成功签名结果为空”与截断/失败；SUITE 146 不变
+- **7.0.0**（2026-09-01）批 18 第三轮盲审终版：公开 witness 新鲜度从递归文件闭包改为如实钉一级输入 frontier，`bound_files` 不兼容更名为 `frontier_files`；销户审计 5 个早退与主路径统一完整报告及 monotonic 墙钟；SUITE 146 不变
+- **6.54.2**（2026-08-31）批 18 第二轮盲审 P1×2 消化：witness 对 target/receipts 增 canonical payload 摘要并在消费时重算；文件新鲜度从手工两节枚举升级为案根内递归 JSON path 闭包，绑定 supply output 等深层实物；SUITE 146 不变
+- **6.54.1**（2026-08-31）批 18 盲审 P1×2＋P2 一次消化：witness 改为签发对象身份注册并绑定深验文件闭包，拒绝直构/replace/值等伪造与 receipt/owners 过期缓存；manifest 分类器防御非对象 JSON/非对象 input_binding，SUITE 145→146
+- **6.54.0**（2026-08-30）四条裁决落地：manifest 单向排除反绑账本/final 分布扫描；共享深验公开 `bound_case_ref` 与带案根、wrapper 指纹的惰性 witness/provider；版本规则按兼容性重写；R10-28 接受在案；SUITE 143→145
+- **6.53.5**（2026-08-30）G8 身份闸链名别名归一：`validate_gate` 双向经链注册表解析后比较，放行规范 gate `sol` 与 state_from_facts `solana` 的同链绑定，同时保留错链拒绝及原始值错误文案；真实 Solana emitter/build 回归，SUITE 142→143
+- **6.53.4**（2026-08-30）序列来源链案根隔离贯彻到收据、输入、深验与 resolver：统一 effective_root，所有 resolved 实物先做 containment，basename/供给真值目录/深验/resolver 同根；盲审 R4 P1 消化，SUITE 142 不变
+- **6.53.3**（2026-08-30）序列来源链登记路径兜底收窄为唯一案根：序列 sidecar 恢复 basename-only；仅 reconcile inputs 可按显式案根或 `data/` 收据推导案根解析深层登记路径，阻断相邻案件越界命中；盲审 R3 P1 消化，SUITE 142 不变
+- **6.53.2**（2026-08-30）序列来源链登记路径按案根解析兜底：保留两层 basename 优先语义，未命中时安全解析案根内相对登记路径，使 sqd_repair 深层 soltx meta 与 resolver 身份一致；新增逃逸、绝对路径、symlink、指纹与 registry anchor 回归，SUITE 141→142
+- **6.53.1**（2026-08-30）发布闸 B-7 三账对账源与 series cutoff 冻结态投影：动态 Solana 的三账改吃 exact owners＋冻结块，序列 cutoff 改投冻结点；新增篡改、symlink、绝对路径、静态零变化、完整两态案与错 cutoff 回归，SUITE 140→141
 - **6.53.0**（2026-08-27）持仓分布图升级为 matplotlib 双轴带标签图：修复裸 PNG 哑图导致柱高被误读的根因，横轴明确为单地址持仓占私人可入箱供应 %，取消 `struct/zlib` 裸 PNG；新增数据对齐、标准生产链、low_sample 与缺依赖显式失败回归，SUITE 139→140
 - **6.52.15**（2026-08-27）F-03b 共享 SQD 地图复用失败分级：ARC live 92,643 次 recheck 中 1,182 次限流失败且零 mismatch，暴露“任一请求失败即整体回退”使复用必然失败；mismatch 整体回退不变，请求失败末尾重试后只剔除该段转 full，canary 段失败仍整体回退；map-reuse 按已验证子区间逐段声明，案外 recheck 撤销覆盖并以杀变异测试固守；新增 `unverified_ranges`/`recheck_stats` 审计字段且 retry mismatch 不污染；盲审 R1 BLOCK 两项消化后 R2 PASS；SUITE 139 不变，既有 F-03 测试组 9→15
 - **6.52.14**（2026-08-27）F-03 共享 SQD 地图复用闸修复（codex 六视角 review P1，修复中新引入 b005a468）：身份三分类＋历史锚＋head 单调＋模板绑定；已知点只连续合并并发重验，失败整体回退且撤销本轮 recheck 覆盖声明；`validate_shared_map` 同深扩全，`validate_coverage` 按 D1 用户裁决接 producer_history；CT-SQDGAP-35；20260827 资产零字节改动即刻可复用；盲审 R1 BLOCK 三项消化后 R2 PASS；两段提交完成 producer 双协议登记，SUITE 138→139
@@ -72,6 +82,96 @@
 - **6.20.1** 2026-08-05 修 5 处阻断级文档漂移（A4 前禁写报告冲突/easy 残留/惯犯回灌 docstring/批量预采集残留/旧 Par 路线历史降级）＋docs_lint 增中文禁词与 Python module docstring 扫描
 
 更早版本（6.20.0 及以前）详见 `archive/CHANGELOG-archive.md`。
+
+## [7.0.1] - 2026-09-01 — signature_discovery 早退透传签名史 complete
+
+- **出处与根因**：批 18 第四轮盲审唯一 P2 亲核属实。`scripts/solana/audit_closed_accounts.py` 的 sigs 模式已从 `fetch_mint_sigs` 取得 `(sigs, complete, wall_hit)`，但空 `sigs` 早退在真值入账前写回初始 `sig_stat`，使 `mint_sig_history.complete` 恒为 `null`。
+- **设计与实现**：仅在 `signature_discovery` 空签名早退的 `state.update` 中将 `sig_stat` 写为 `{"total": 0, "complete": complete, "in_range": 0}`；不改 `fetch_mint_sigs`、报告 builder、其他 bail 或主路径。
+- **消费面与防回流**：`complete=true` 仅表达“完整查询且成功签名结果为空”，不扩张为“链上绝对没有任何历史”；`complete=false` 保留截断/失败语义。blocks/auto 及其他不适用早退继续为 `complete=null`。
+- **测试**：先红证据同时记录 `([], True, False)` 与 `([], False, False)` 均错写 `complete=None`；回归对两份完整报告成对断言 `mint_sig_history` 分别为 `complete=True/False`，并锁定 `sampling_phase="signature_discovery"`、`counts_complete=false` 和直接原因原文。
+- **盲审与验收**：按已通过的 b18r4 工单机械施工，并按用户明确授权将 `ec7c592` 视为 `ad44909` 的等价工作基线；代码树仅工单差异已实查，严格白名单，不改 `test_repair_batch_d.py`，完工不 commit。
+- **成本-质量指标**：生产实现 1 轮；生产改动点 1；外部网络调用 0；新增 suite 入口 0；新增回归函数 1（两状态）；禁改测试改动 0；SUITE 分母 146 不变；传播级数字错误 0。
+
+## [7.0.0] - 2026-09-01 — witness 一级 frontier 与销户审计完整报告契约
+
+- **出处与根因**：批 18 第三轮盲审四轮只读复核定形。递归 JSON path 闭包会打开 repair bundle 的 evidence manifest 并对 30 万级叶重复哈希，既把签发成本推到不可接受，也把实际只能担保一级输入的 witness 误述成全量实时担保；`audit_closed_accounts.py` 的 5 个早退则写精简报告，和主路径 `sampled` 契约不一致。用户 2026-09-01 裁决：公开 witness 只钉一级输入，属不兼容担保边界变更，升主版本。
+- **设计与实现**：`_reconciliation_bound_files` 改为 `_reconciliation_frontier_files`，删除 JSON 队列/BFS 与引用文件打开；必选层逐家族绑定 wrapper 的 receipt refs、全部 envelope inputs、Solana supply output/holder outputs、anchor outputs、exact 全 inputs 与冻结 bundle，兜底层只扫内存 receipt 的三字段 ref，双基准双命中全绑；`_stream_sha` 以 131072 字节分块，512 件 fail-closed，wrapper 继续只由 `report_sha256` 负责。`DeepReconciliationWitness.bound_files` 不兼容更名为 `frontier_files`，payload/WeakSet 语义不变。
+- **消费面与 F4**：witness 消费仍统一报 `reconciliation witness 无效/过期`，一级文件改字节即拒；更深 evidence leaf 改字节时同 witness 如实不承诺检测，但重新签发必由真实 `validate_repair_bundle_deep` 拒绝。销户审计删除模块级墙钟起点，deadline、4 个比较点与 elapsed 全部改用 monotonic；auto 探路传播 `wall_hit`；单一 builder 为 5 个 bail 与 complete 路径输出完整 `sampled`，固定 `sampling_phase/counts_complete`，墙钟原因去重并与直接原因并存。
+- **测试**：RED 原文见 `batch18_review3_red_evidence.txt`：100 个真实 repair slot 产生 200 个 evidence leaves，真实 exact 深验先 PASS 后旧 collector 原样报“文件闭包超过 128”；F4 原样 `KeyError: 'sampled'`。GREEN 覆盖 R1-R4 三步边界、gpa_rpc 三基准先中、案内中间 symlink、macOS alias、双基准双绑、必选缺件、wrapper/frozen/owners 篡改、5 个 bail mock monotonic；既有 review2 断言按字段/担保语义同步，EVM provider 路径与 N3 不变。
+- **盲审与验收**：严格白名单施工，未改 `test_repair_batch_d.py`、`receipt_validate.py`、`solana_observation.py`、`solana_exact_validate.py`、handoff/audit release 或 ARC 案根；6.54.1/6.54.2 历史条目的 `bound_files` 保持历史原文。定向回归、lint、版本一致性、5 次 batch D 与白名单核验记录于 `batch18_review3_done.md`；全量 146 由验收方本机 nohup，ARC 只读实测按 done 命令执行。
+- **成本-质量指标**：生产实现 1 轮；外部网络调用 0；新增 suite 入口 0；R1 repair slot 100／evidence leaf 200；新增 review3 回归函数 5；既有测试文件改动 1（仅 `test_batch18_review_digest.py` 合同同步及追加）；禁改测试改动 0；初稿关键结论 0；复核判定 CONFIRMED 5／WEAKENED 0／REFUTED 0；漏检实体 0；传播级数字错误 0。
+
+## [6.54.2] - 2026-08-31 — 批 18 第二轮盲审：witness payload 冻结与递归文件闭包
+
+- **出处与根因**：来源为批 18 第二轮盲审 `review-mthvbju6`（base=`19c0fa6`）的两条 P1，均 CONFIRMED。P1-a 指出 `frozen=True` 只禁止字段再赋值，合法签发对象中的 `target`/`receipts` 仍可原地改写，身份登记与磁盘文件指纹均无法识别内存 payload 漂移；P1-b 指出 6.54.1 闭包只手工枚举 receipt 的 `inputs`/`holder_outputs`，遗漏深验实际解引用的其它形状，如 Solana supply bundle 顶层 `output` 实物。
+- **设计与实现**：`DeepReconciliationWitness` 新增 `payload_sha256`，签发时对 `(target, receipts)` 以 `sort_keys=True`、`ensure_ascii=False`、紧凑分隔符的 canonical JSON 计算 SHA256；消费时在身份、案根/wrapper、文件闭包三验中同步重算并比较。`_reconciliation_bound_files` 从 wrapper 出发广度优先扫描：递归遍历每份 JSON 的任意嵌套节点，见字符串 `path` 即分别按案根和当前 JSON 父目录解析；只登记案根内、全路径无 symlink、当前存在的普通文件，两个基准命中不同文件时全部绑定；新发现 JSON 继续入队，按绝对路径防环，文件上限 128、嵌套上限 64，解析失败只停止该文件的递归而保留其字节绑定。
+- **消费面与防回流**：旧 `RECON_CHECK_KEYS` 两节定向枚举由形状扫描覆盖并删除，避免深验新增引用字段时再次漏绑；wrapper 本体与动态 Solana 冻结 observation bundle 的显式必收保持。闭包采取宁多勿漏：误绑只会令 witness 提前过期、下一次 run 重签，漏绑才会放行过期证据。纯函数夹具缺 wrapper 时仍返回空闭包哨兵，但照常签 payload 摘要；任何 payload 或闭包漂移继续统一为 `reconciliation witness 无效/过期`，不增加深验次数。
+- **测试**：先红原文存 `maintenance/repair-20260823-sqd-gap/batch18_review2_red_evidence.txt`：合法 witness 的 target 与 receipts 各一式原地篡改均返回 `[]`；Solana supply bundle 本体已绑但顶层 output 实物未绑，改实物后仍返回 `[]`。在既有 `test_batch18_review_digest.py` 仅追加两组函数并接入原 main 列表：F1 对照 canonical 摘要并拒绝两种原地篡改，F2 断言闭包含 bundle 与 output、改 output 后拒绝；SUITE 分母保持 146。新增 5/5、批 18 witness 6/6、批 15 frozen 12/12（N9/N10 调用次数不变）、R9/reconcile v4/repair batch1 均已通过。
+- **盲审与验收**：验收方确认 `156a78c` 是指定 `8ae0f63` 的等价工作基线（父提交即指定基线，唯一树差异为本工单文件），解除开工阻断后严格按 b18r2 白名单施工；既有测试断言、`audit_release_gate.py`、`handoff_manifest.py`、`scripts/lib`、ARC 案根与 API key 均未修改。定向 lint/版本/manifest/handoff 回归与最终白名单审计记录于 `batch18_review2_done.md`；全量 146 仍由验收方本机 nohup。
+- **成本-质量指标**：生产实现 1 轮；外部网络调用 0；新增 suite 入口 0；新增测试函数 2；确认并消化 P1 finding 2；既有测试断言改动 0；深验调用次数漂移 0；传播级数字错误 0。
+
+## [6.54.1] - 2026-08-31 — 批 18 盲审消化：witness 防伪造闭环与 manifest 分类器类型防御
+
+- **出处与根因**：来源为批 18 盲审 `review-mth382hf-wfap0k` 的两条 P1 与一条 P2，三条均 CONFIRMED。P1-a 指出公开 frozen dataclass 只凭类型/案根/wrapper sha 验证，直构、`dataclasses.replace` 与值全等拷贝都能伪造 witness；P1-b 指出 witness 只绑 wrapper，本轮已深验的 receipt 与 holders 实物在签发后变化仍可消费旧缓存；P2 指出 `_reverse_bound_reason` 对合法非对象 JSON 及非对象 `input_binding` 直接 `.get`，异常会被 data_map 外层捕获并截断剩余条目。
+- **设计与实现**：`DeepReconciliationWitness` 改为 `frozen=True, eq=False`，由模块私有 `WeakSet` 按对象身份登记，唯一签发入口真跑深验后注册。新增 `bound_files` 有序元组：wrapper 本体；wrapper `checks[key].receipt` 的逐项实物；各已验 receipt 的 `inputs` 与 `holder_outputs` 中带 path/sha256 的实物（holder_outputs 沿用 receipt.parent 基准）；动态 Solana 另含冻结 observation bundle。所有指纹均在深验完成的磁盘态重算。manifest 分类器对非 dict scan 直接按普通产物处理，非 dict `input_binding` 视为无反绑。
+- **消费面与防回流**：Solana provider 仍在 `validate_sources` 原位置惰性取 witness，先拒绝未登记身份，再复核案根、wrapper sha 与 `bound_files` 每个实物的存在性/非 symlink/当前 sha；任一失败统一抛 `reconciliation witness 无效/过期`，异常仍由 `validate_bundle` 原捕获层处理。该指纹只检查文件新鲜度，不重跑深验，批 15 N10 的缓存态与非缓存态语义、N9/N10 调用次数及批 18 N11 错误前缀均保持。manifest 的 data_map for-in-try 结构、final 反绑判定与普通坏 JSON 的 sha 绑定规则不变。
+- **测试**：先红原文存 `maintenance/repair-20260823-sqd-gap/batch18_review_red_evidence.txt`，覆盖直构/replace 放行、receipt 篡改放行、owners witness 三验放行及非对象 JSON 截断。新增 `test_batch18_review_digest.py` 三组回归：F1 拒直构、replace、值全等拷贝且合法签发照常通过；F2 receipt/holders 篡改拒绝且未改动通过；F3 数组 scan 与字符串 input_binding 均收录、真正 final 仍跳过。新入口使 SUITE 145→146。
+- **盲审与验收**：严格按 b18r1 白名单施工；既有测试断言零改动，`audit_release_gate.py` 无需适配且未修改，ARC 案根及禁改生产文件均未触碰。新测试、批 15/18 关键缓存与错误文案回归已先行通过；其余工单点名受影响面与 lint/version 门禁结果记入 `maintenance/repair-20260823-sqd-gap/batch18_review_done.md`，146 全量由验收方本机 nohup 执行。
+- **成本-质量指标**：生产实现 1 轮；外部网络调用 0；新增 suite 入口 1；新增测试函数 3；已确认盲审 finding 3（P1×2＋P2）；既有测试断言改动 0；`audit_release_gate.py` 适配行 0；传播级数字错误 0。
+
+## [6.54.0] - 2026-08-30 — manifest 反绑产物豁免、共享校验器接口转正、版本规则文字收紧、R10-28 登记（四条裁决）
+
+- **出处与根因**：用户 2026-08-30 裁决 1B/2A/3A/4A。ARC −2 实证 `provenance_ledger.json` 反绑 manifest 的 sha/run_id/scope，而旧 manifest 又收账本 sha，generate 与 trace 交替重跑形成哈希死环；批 15 为复用深验结果，发布闸还直接导入私有 `_bound_case_ref`，并运行时替换共享模块函数，形成缓存/替换语义的治理边界；版本规则文字与长期“修订位承载代码修复”的实践不一致；静态 Solana B-7 owners basename-only 查找按用户裁决登记为 R10-28 接受风险。
+- **设计与实现**：manifest 按规范相对路径和内容识别两类反绑产物——案根 `provenance_ledger.json`，以及非案根、`stage=final` 且带 `input_binding.handoff_manifest` 的 `distribution_scan.json`；discover/data_map 可见跳过，`--include`/`--gate` 明确 exit 2，案根 initial scan 仍为 READY 必备。共享模块公开 `bound_case_ref`，保留 `_bound_case_ref` 同对象别名；新增 `DeepReconciliationWitness`、唯一构造函数 `witness_reconciliation_report` 与 `reconciliation_provider=` 惰性入口，见证同时绑定 resolved 案根和当前 reconciliation wrapper sha。manifest 收录契约可见变化（向后兼容）＋共享校验器新增公开接口，按本版起生效的新规则属“向后兼容的新公开接口/持久化契约扩展”，因此升次版本。
+- **消费面与防回流**：Solana provider 只在 `validate_sources` 原深验位置惰性调用，伪造裸元组、跨案 witness、wrapper 漂移均 fail-closed；EVM 带 expected_target 的不同源校验仍真跑。发布闸缓存 witness 并由三个既有消费点取 `target/receipts`，删除运行时函数替换，异常仍落在 `validate_bundle` 原捕获层，错误前缀逐字不变；旧 manifest 若已收账本仍照常按哈希 verify。freeze 的 provenance 重放、entity_freeze、check-unseal、A5、entity_source_trace 与 holder_distribution_scan 均未放宽。
+- **测试**：先红固定 provider 关键字 TypeError，以及两次显式 run-id generate 后账本 sha 漂移导致 verify/freeze 拒绝；新增 witness R1/N1–N4/N11 与 manifest R1/N1–N6，覆盖单次深验计数、EVM 零变化、伪造/跨案/过期 witness、异常逐字等价、账本收敛、显式入口拒绝、旧 manifest 兼容、final/initial 分布扫描分流及 freeze 防篡改；两份测试登记后 SUITE 143→145。N11 基线与改后两组 gate errors 逐字全等。
+- **盲审与验收**：实施计划已经 codex 只读复核并由用户批准；批 18 严格白名单离线施工，不改案卷、不 commit。定向回归、既有批 15 N9/N10、handoff/发布闸/文档版本门禁与沙箱 `run_all.py` 的真实结果见 `maintenance/repair-20260823-sqd-gap/batch18_done.md`。
+- **成本-质量指标**：生产实现 1 轮；外部网络调用 0；新增 suite 入口 2；新增测试场景 13；N11 错误文本漂移 0；旧 manifest 兼容回归 1；R10-28 接受在案（用户 2026-08-30 裁决）；传播级数字错误 0。
+
+## [6.53.5] - 2026-08-30 — G8 身份闸链名别名归一（Solana sol/solana 裸比较拦死 state_from_facts 产物）
+
+- **出处与根因**：ARC −2 主线 arc-9f 会话发现，G8 gate 的规范链键为 `sol`，而批 16 已确认 `state_from_facts.py` 生成的 Solana analysis-state 顶层与 token 链名必须为 `solana`；`entity_identity_gate.validate_gate` 对两者裸字符串比较，使所有绑定该正式 state 产物的 Solana G8 在结构上必报不绑定。Fable 已只读核实根因，codex 开工前计划复核同意按注册表既有别名语义修复。
+- **设计与实现**：`entity_identity_gate.py` 直接从 `chain_registry` 导入 `resolve_alias`，仅在 `validate_gate` 的 state/gate 链绑定比较两侧调用；不导入 `audit_release_gate`，不改变 gate chain 的 `identity_chains()` 规范键限制。错误文案继续插入 `chain` 与 `state_chain` 原始值，因此错链审计仍能看到输入形态。
+- **消费面与防回流**：CLI `--check` 与 `build_html.py` G8 共用同一 `validate_gate`，故同时获得别名归一；snapshot receipt adapter 严格比较、`build()`、`a4_gate.py`、`audit_release_gate.py`、`state_from_facts.py` 与既有测试均未改，避免放宽正式 emitter 的规范 adapter 契约。
+- **测试**：新增 Batch 17 真实 Solana 路线：`run_solana` 生成闭合 owner snapshot/meta，`emit_solana` 产规范 `sol` identity receipt，`build(..., "sol")` 产 gate 并填写 flag resolution 后进入 `validate_gate`。R1 修前唯一错误为 `chain 与 state 不绑定: gate='sol' state='solana'`、修后零错误；N1 保持 `sol` 旧形态通过，N2 保持 `bsc` 错链拒绝且文案保留原值，N3 覆盖仅 `token.chain="solana"` 的回退路径；SUITE 142→143。
+- **盲审与验收**：严格按批 17 白名单离线施工，不改既有测试、案卷目录、handoff/provenance 路径，不 commit；完整套件在受限沙箱的两个 loopback 纵切片结果及调度方本机复跑要求见 `batch17_done.md`。
+- **成本-质量指标**：生产实现 1 轮；夹具降级 0；外部网络调用 0；新增 suite 入口 1；新增测试场景 4（R1、N1–N3）；生产 schema 改动 0；传播级数字错误 0。
+
+## [6.53.4] - 2026-08-30 — 序列来源链案根隔离贯彻到收据、输入、深验与 resolver（盲审 R4 P1）
+
+- **出处与根因**：codex 盲审确认 6.53.3 只把案根约束用于 `_resolve_ref` 的登记路径兜底；basename 段仍可从案件父目录直系命中同名同指纹实物，`resolved` 中的 sidecar 输入未统一做案根 containment，独立深验与正式 cache resolver 也仍从收据位置各自推根，导致“调用方给案根”没有贯彻到整条消费链。
+- **设计与实现**：`registry_anchor_check` 单点计算 `effective_root`：显式 `case_root` 优先；未给时仅为直属 `data/` 的 sol-rows 收据推导案根；其它情形保持 `None`。新增 `_within_root`，案根在场时于任何读取/深验前逐项拒绝案外 `resolved` 实物，并过滤 EVM 登记面搜索目录；`_resolve_ref` 同层过滤 basename 搜索目录，等价落实 reconcile `receipt_dirs` 的案根约束。
+- **消费面与防回流**：reconcile inputs、独立深验器与 `resolve_formal_cache` 全部消费同一 `effective_root`；显式根覆盖位置推导，推导根只限 `data/` 收据。`case_root=None` 且不可推导时，EVM 与非 `data/` sol-rows 继续沿 6.53.3 的 basename、深验和 resolver 根行为；`load_series_with_sidecar`、`state_from_facts.py` 与发布闸均未改。
+- **测试**：R3 实证案外收据修前先被读取并报 schema 错，R4 实证 basename 修前返回父目录实物；修后两者首层拒收。新增 N10 非 `data/` 收据且根为 `None` 的兼容回归、N11 `data/` 收据推导根后的 resolved 全表 containment、N12 EVM 显式根不接受父目录 `supply_truth.json`；既有 R1/R2/N1–N9 断言保持，Batch 16 为 16/16。
+- **盲审与验收**：codex 盲审 R4 1 条 P1（案根未贯彻全路径）已消化；白名单内离线施工，不改 `load_series_with_sidecar`、`audit_release_gate.py`、`state_from_facts.py`、独立深验器、cache resolver 或其它测试文件，不 commit。
+- **成本-质量指标**：生产实现 1 轮、兼容文案/夹具校准 1 轮；外部网络调用 0；新增 suite 入口 0；新增测试场景 5（R3、R4、N10–N12）；生产 schema 改动 0；传播级数字错误 0。
+
+## [6.53.3] - 2026-08-30 — 序列来源链登记路径兜底收窄为唯一案根（盲审 R3 P1）
+
+- **出处与根因**：codex 盲审发现 6.53.2 的登记路径兜底把 `search_dirs` 每个 base 都当 containment 根；序列位于案根时，`[case_dir, case_dir.parent]` 会把案件父目录当根，攻击者可登记 `sibling-case/data/x.json` 并以相邻案件实物的 size/sha256 通过三验，打穿发布闸“只吃本案产物”的隔离保证。
+- **设计与实现**：`_resolve_ref` 新增仅限关键字的 `case_root=None`；两层 basename 逻辑逐字保留，登记路径兜底仅在显式给定唯一案根时执行，只构造 `case_root / registered` 一个候选，并继续执行相对路径卫生、逐段 symlink、resolve containment、is_file、size 与 sha256 全等校验。未给案根时不执行兜底，错误文案也不声称尝试过登记路径。
+- **消费面与防回流**：series sidecar 的 `camps_spec`、`final_balances`、`inputs.*` 均由 producer 只登记文件名，故 `load_series_with_sidecar` 不传案根并恢复批 16 前语义；只有 reconcile v4 收据 inputs 传案根，显式值优先，否则仅当收据直属 `data/` 时推导其父目录为案根。发布闸显式传 `case_dir`；`state_from_facts.py` 不改，沿 `data/` 推导路径。
+- **测试**：R3 RED 真实返回相邻 `caseB/data/x.json`；修后 R2 覆盖显式本案根与 `None` 双拒，既有 R1/N1–N6 保持，新增 N7 `data/` 推导深层命中、N8 案根收据不推导、N9 显式案根覆盖推导值。发布闸完整案回归与版本/CHANGELOG/全量 suite 结果见 `batch16_done.md`。
+- **盲审与验收**：codex 盲审 R3 1 条 P1（兜底越出本案）已消化；白名单内离线施工，不改 `state_from_facts.py`、独立深验器、共享收据或发布闸其它行，不 commit。
+- **成本-质量指标**：生产实现 1 轮；外部网络调用 0；新增 suite 入口 0；新增测试场景 4（R2、N7–N9）；生产 schema 改动 0；传播级数字错误 0。
+
+## [6.53.2] - 2026-08-30 — 序列来源链登记路径按案根解析兜底（sqd_repair 修复缓存深层路径）
+
+- **出处与根因**：ARC −2 正式编译在 1.5 小时后被 `reconcile.inputs.soltx_meta` 缺件阻断；`solana-reconcile/v4` 按案根登记 `data/sqd_repair/<sha>/gen-<gid>/soltx-….repaired.meta.json`，深验器能按完整相对路径解析，但 `camp_series_provenance._resolve_ref` 只取 basename 到序列目录与案根两层查找，所有使用 sqd_gap_repair 深层修复缓存的 Solana 案都会结构性失败。
+- **设计与实现**：原有两层 basename 搜索、symlink 拒收、size/sha256 三验及首命中即返回/不匹配即拒的代码段保持不变；仅在两层均未命中后，按 `search_dirs` 原顺序尝试登记路径。兜底只接受非绝对且无空段、`.`、`..` 的相对路径，从 base 起逐段拒 symlink，`resolve()` 后强制 containment，并在首个实物命中时全等复验 size/sha256；sha256 仍是权威身份。
+- **消费面与防回流**：调用点、resolver 等值检查、`solana_exact_validate.py` 与既有测试均未改；深层 meta 返回原登记实物，故 `resolver_meta_path.resolve() == meta_path.resolve()` 继续成立。全库同族核查发现 `audit_release_gate._recon_owner_snapshot` 静态段也只按 basename 搜索，遵守批 15 禁改边界仅记录待调度裁决；其它同族点按各自登记协议分类，未扩改动面。
+- **测试**：先红精确复现旧异常“两层内都找不到”；新增 7 组覆盖 sqd_repair 深层正例、`..`、绝对路径、中间目录 symlink、size/sha256 错配、basename 两层老形态与命中错哈希不降级、`registry_anchor_check` 深层 meta 与 resolver 同实物。N6 使用真实独立深验器；因完整 repaired cache producer 布局成本过高，按工单允许仅 monkeypatch `resolve_formal_cache` 返回该深层 meta，路径等值检查与其余 registry 逻辑真实执行。SUITE 141→142。
+- **盲审与验收**：白名单内离线施工；点名既有回归、版本一致性、CHANGELOG lint 与完整 run_all 结果见 `batch16_done.md`，允许 loopback 的本机全套由调度方复跑。
+- **成本-质量指标**：生产实现 1 轮；外部网络调用 0；新增 suite 入口 1；新增测试场景 7；生产 schema 改动 0；传播级数字错误 0。
+
+## [6.53.1] - 2026-08-30 — 发布闸 B-7 三账对账源与 series cutoff 冻结态投影
+
+- **出处与根因**：批 10–14 已把六个动态 Solana 冻结账消费点接到 `accounting_expected_target`，但发布闸 B-7 仍从 supply observation bundle 取观察 owners＋wrapper 块，series binding 仍把 wrapper 块当 cutoff；exact=500、wrapper=501 时，按冻结账建三账会被时点与逐址等值拒绝，冻结 `holders_snapshot_meta` 也会被 series cutoff 拒绝。
+- **设计与实现**：新增 `_frozen_consumer_target`，先走 `validate_reconciliation_report(..., return_receipts=True)` 深验，再由 `accounting_expected_target` 选冻结目标并与 accounting 自闭合；B-7 以 `_bound_case_ref` 打开 exact 收据 `inputs.holders_owners`，保留案根、绝对案内路径、symlink、size、sha256 全部硬闸；series 只把中央选择器的冻结 `as_of_block` 投到既有 wrapper chain/token 表示。深验结果在单次 `run()` 内缓存，B-7/series/跨分区投影共用一次深验。
+- **消费面与防回流**：动态 Solana 三账与序列消费冻结点，分布 initial/final 仍消费 observation owners；真静态 Solana 与 EVM 沿原 wrapper 路径不变。冻结深验、accounting 自闭合、exact 实物任一失败均停止该消费点，不回落观察 owners；`holder_distribution_scan.py`、`camp_series_provenance.py`、三账本体与共享深验器均未改。
+- **测试**：R1 修前精确命中 B-7 时点不一致＋逐址不等值且无其它错误；新增 10 组覆盖 live 三账反例、冻结件篡改、symlink、真静态、伪静态 accounting、案内绝对路径亦被深验器拒绝（fail-closed）、案外绝对路径拒绝、默认/显式分布快照、完整动态 new-analysis 零错误及错 cutoff 变异拒绝；文档、版本和既有 EVM/静态发布闸回归纳入验收，SUITE 140→141。
+- **盲审与验收**：@CX 施工前复核＋codex 盲审 R1 1 条 P2（N5 假绿）、R2 1 条 P2（深验重复扫描）均已消化＋Fable 独立验收；具体后续轮次由调度方验收后补。
+- **成本-质量指标**：生产实现 1 轮；fixture 路由校准 2 次后取得完整动态红；外部网络调用 0；新增 suite 入口 1；新增测试场景 10；生产 schema 改动 0；传播级数字错误 0。
 
 ## [6.53.0] - 2026-08-27 — 持仓分布图升级为 matplotlib 双轴带标签图
 

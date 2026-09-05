@@ -551,7 +551,7 @@ def r10_ledger_failures(path: Path) -> list[str]:
     duplicate_ids = sorted({entry_id for entry_id in ids if ids.count(entry_id) > 1})
     if duplicate_ids:
         failures.append(f"R10 条目 ID 重复：{duplicate_ids}")
-    expected_ids = {f"R10-{number}" for number in range(1, 28)}
+    expected_ids = {f"R10-{number}" for number in range(1, 29)}
     actual_ids = set(ids)
     if actual_ids != expected_ids:
         failures.append(

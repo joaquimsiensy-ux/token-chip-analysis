@@ -1,0 +1,56 @@
+批 18 盲审消化工单 b18r1：基线 RED 证据
+基线提交：19c0fa6（当前 HEAD 2d99351 仅新增本工单；目标文件与 19c0fa6 无差异）
+复现日期：2026-08-31
+复现方式：Python 临时案根均位于 /private/tmp；生产代码尚未修改。
+
+=== F1 RED：未签发直构 witness 通过旧三验 ===
+步骤：真实构造动态 Solana 案并取得合法 witness；随后用合法 payload 的值全等深拷贝，
+直接调用 DeepReconciliationWitness(...) 构造一个从未由签发函数返回的对象，再作为 provider 输入。
+原始关键输出：
+direct_is_issued_object= False
+direct_validate_bundle_errors= []
+
+=== F1 RED：dataclasses.replace 复制 witness 通过旧三验 ===
+步骤：对同一合法 witness 执行 dataclasses.replace(issued, target=deepcopy(issued.target))，
+得到身份不同、值全等且从未由签发函数返回的对象，再作为 provider 输入。
+原始关键输出：
+replace_is_issued_object= False
+replace_validate_bundle_errors= []
+
+判定：旧消费点只验 isinstance/root/wrapper-sha，不验签发对象身份；直构与 replace 均被接受。
+
+=== F2 RED-A：签发后篡改 exact_reconcile receipt，旧缓存仍被消费 ===
+步骤：真实签发 witness 后，只给 data/reconcile_receipt.json 追加换行；
+reconciliation_report.json 不动，再以旧 witness 调用 validate_bundle。
+原始关键输出：
+wrapper_sha_unchanged= True
+mutated_receipt_sha= 6cbd5e2e5abb8babfce89ec1ac8bbd8551af9b38769a80ecca3d0c1153af9cc3
+validate_bundle_errors= []
+
+判定：wrapper 指纹不变时，旧 witness 不重验 receipt 实物，过期 payload 被接受。
+
+=== F2 RED-B：签发后篡改 exact holders_owners，旧三验仍放行 ===
+步骤：真实签发 witness 后，把 data/holders_owners.json 从 60/40 改为 61/39；
+reconciliation_report.json 不动。先逐式计算旧三验，再缓存旁路独立 accounting 复验，
+只观察 witness 消费点是否拒绝；最后保留完整 validate_bundle 的对照输出。
+原始关键输出：
+legacy_three_checks_pass= True
+isolated_witness_consumer_errors= []
+full_validate_bundle_errors= ['observation bundle holder_outputs.owners sha256/size mismatch: holders_owners.json']
+
+判定：完整路径已有另一层 accounting bundle 校验会报 owners mismatch，但这不修复 witness 缺陷；
+旧 witness 三验本身仍接受已过期的 holders 实物。新闭包指纹必须在 witness 消费点独立拒绝，
+错误文案统一为 reconciliation witness 无效/过期。
+
+=== F3 RED：合法非对象 JSON 触发 AttributeError 并截断 data_map 剩余条目 ===
+步骤：data_map.files 依次追加 data/x/distribution_scan.json 与 data/x/ordinary.json；
+前者内容为合法 JSON 数组 [1, 2]，后者为普通对象。执行 generate。
+原始关键输出：
+generate_rc= 0
+stderr= [generate] data_map.json 解析失败（将继续，但 READY 会被 verify 拒）: 'list' object has no attribute 'get'
+bad_scan_in_artifacts= False
+second_ordinary_in_artifacts= False
+relevant_artifacts= []
+
+判定：_reverse_bound_reason 在 try 外调用 scan.get；AttributeError 被 data_map 外层 except 吞掉，
+导致当前坏 JSON 与其后的普通条目都未写入 manifest，构成确定的循环截断。

@@ -1,0 +1,33 @@
+b18r2 baseline RED evidence
+effective code baseline: 8ae0f637e9dcbaba5646416f9cea73d0c020dfeb
+working HEAD: 156a78c6b37c4a335d1206bdfdb69fa48fc6b4fa
+command: inline Python using build_dynamic_integration_case + real witness_reconciliation_report + validate_bundle(provider)
+exit_code=1 (intentional RED when both vulnerabilities reproduce)
+
+边数=2  时间范围 01-01 00:00:00 → 01-01 00:00:01
+铸造=100  销毁=0  净=100
+负余额地址数=0
+快照 supply=100  重放净-快照差=0
+全 owner 对账：2/2 一致
+重放末态已写 data/replay_final_balances.json
+snapshot_slot=500 accounts=1 owners=1 supply=100 activity=complete -> snapshot.json
+边数=2  时间范围 01-01 00:00:00 → 01-01 00:00:01
+铸造=100  销毁=0  净=100
+负余额地址数=0
+快照 supply=100  重放净-快照差=0
+全 owner 对账：2/2 一致
+重放末态已写 data/replay_final_balances.json
+snapshot_slot=500 accounts=1 owners=1 supply=100 activity=complete -> snapshot.json
+边数=2  时间范围 01-01 00:00:00 → 01-01 00:00:01
+铸造=100  销毁=0  净=100
+负余额地址数=0
+快照 supply=100  重放净-快照差=0
+全 owner 对账：2/2 一致
+重放末态已写 data/replay_final_balances.json
+snapshot_slot=500 accounts=1 owners=1 supply=100 activity=complete -> snapshot.json
+F1_TARGET_MUTATION_ERRORS=[]
+F1_RECEIPTS_MUTATION_ERRORS=[]
+F2_BUNDLE_BOUND_BEFORE=true
+F2_OUTPUT_BOUND_BEFORE=false
+F2_OUTPUT_MUTATION_ERRORS=[]
+BASELINE_VULNERABILITIES_CONFIRMED=true

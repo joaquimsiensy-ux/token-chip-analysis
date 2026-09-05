@@ -176,16 +176,26 @@ def write_series_sidecar(series_path, *, producer: str, series_format: str,
 # ── consumer 侧 ──────────────────────────────────────────────────────
 
 
-def _resolve_ref(ref: dict, label: str, search_dirs) -> Path:
+def _within_root(path, root) -> bool:
+    """path resolve 后等于 root 或位于 root 后代。"""
+    resolved_path = Path(path).resolve()
+    resolved_root = Path(root).resolve()
+    return resolved_path == resolved_root or resolved_root in resolved_path.parents
+
+
+def _resolve_ref(ref: dict, label: str, search_dirs, *, case_root=None) -> Path:
     """按 basename 在 series 目录与其父目录（案根）两层内找实物并三验。
 
-    路径只按 basename 解析（sidecar 不携带可逃逸路径），sha256 是权威身份；
-    符号链接拒收（与 F-08/批 B 同口径）。
+    basename 未命中时，登记路径兜底只接受案根内相对路径；sha256 仍是
+    权威身份。符号链接拒收（与 F-08/批 B 同口径）。
     """
     if not isinstance(ref, dict) or not ref.get("path") or not ref.get("sha256"):
         raise SeriesProvenanceError(f"sidecar {label} 必须绑定 path/sha256/size")
     name = Path(str(ref["path"])).name
-    for base in search_dirs:
+    root = Path(case_root).resolve() if case_root is not None else None
+    basename_dirs = search_dirs if root is None else (
+        base for base in search_dirs if _within_root(base, root))
+    for base in basename_dirs:
         cand = Path(base) / name
         if cand.is_symlink():
             raise SeriesProvenanceError(f"sidecar {label} 指向符号链接 {cand}，拒收")
@@ -197,8 +207,39 @@ def _resolve_ref(ref: dict, label: str, search_dirs) -> Path:
             if sha256_file(cand) != str(ref["sha256"]).lower():
                 raise SeriesProvenanceError(f"sidecar {label} sha256 不匹配（{cand}）")
             return cand
-    raise SeriesProvenanceError(
-        f"sidecar {label}（{name}）在序列目录与案根两层内都找不到")
+
+    if case_root is not None:
+        registered = str(ref["path"])
+        rel = Path(registered)
+        parts = registered.split("/")
+        if rel.is_absolute() or any(part in {"", ".", ".."} for part in parts):
+            raise SeriesProvenanceError(
+                f"sidecar {label} 登记路径必须是案根内且不含空段/./.. 的相对路径: "
+                f"{registered!r}")
+        cursor = root
+        for part in parts:
+            cursor = cursor / part
+            if cursor.is_symlink():
+                raise SeriesProvenanceError(
+                    f"sidecar {label} 登记路径含符号链接 {cursor}，拒收")
+        cand = root / registered
+        resolved_cand = cand.resolve()
+        if resolved_cand != root and root not in resolved_cand.parents:
+            raise SeriesProvenanceError(
+                f"sidecar {label} 登记路径逃出案根 {case_root}: {registered!r}")
+        if cand.is_file():
+            if cand.stat().st_size != ref.get("size"):
+                raise SeriesProvenanceError(
+                    f"sidecar {label} size 不匹配（{cand}: 实测 "
+                    f"{cand.stat().st_size} ≠ 登记 {ref.get('size')}）")
+            if sha256_file(cand) != str(ref["sha256"]).lower():
+                raise SeriesProvenanceError(f"sidecar {label} sha256 不匹配（{cand}）")
+            return cand
+    detail = (f"sidecar {label}（{name}）在序列目录与案根两层内按文件名找不到")
+    if case_root is not None:
+        detail += (f"，按登记路径 {ref['path']!r} 相对案根 {case_root} "
+                   "解析亦未命中")
+    raise SeriesProvenanceError(detail)
 
 
 def load_series_with_sidecar(series_path):
@@ -458,7 +499,7 @@ def _snapshot_cutoff(meta):
 def registry_anchor_check(sidecar: dict, resolved: dict, series_path, *,
                           expected_chain=None, expected_mint=None,
                           expected_cutoff_slot=None,
-                          verify_edge_physical_sha=False):
+                          verify_edge_physical_sha=False, case_root=None):
     """sidecar 的 inputs 必须命中案内已对账的登记面（把序列锚进案内数据链）。
 
     F-C3（消化轮）：登记面命中是**结构化校验**，不是"文件里含某个 sha 字符串"——
@@ -475,13 +516,29 @@ def registry_anchor_check(sidecar: dict, resolved: dict, series_path, *,
     """
     fmt = sidecar.get("series_format")
     series_path = Path(series_path)
+    rr = resolved.get("inputs.reconcile_receipt") if fmt == "sol-rows" else None
+    if case_root is not None:
+        effective_root = Path(case_root).resolve()
+    elif fmt == "sol-rows" and rr is not None and Path(rr).parent.name == "data":
+        effective_root = Path(rr).parent.parent.resolve()
+    else:
+        effective_root = None
+    if effective_root is not None:
+        for key, path in resolved.items():
+            if not _within_root(path, effective_root):
+                raise SeriesProvenanceError(
+                    f"sidecar {key} 实物 {path} 位于案根 {effective_root} 之外，拒收；"
+                    "案根内找不到该实物")
     dirs = [series_path.parent, series_path.parent.parent]
+    if effective_root is not None:
+        dirs = [d for d in dirs if _within_root(d, effective_root)]
     if fmt == "evm-dict":
         st = next((d / "supply_truth.json" for d in dirs
                    if (d / "supply_truth.json").is_file()), None)
         if st is None:
             raise SeriesProvenanceError(
-                "案内找不到 supply_truth.json——正式序列必须先过供给真值闸"
+                ("案根内" if effective_root is not None else "案内")
+                + "找不到 supply_truth.json——正式序列必须先过供给真值闸"
                 "（supply_truth_gate.py）再进编译")
         stats_ref = (sidecar.get("inputs") or {}).get("replay_stats")
         if not stats_ref:
@@ -541,7 +598,6 @@ def registry_anchor_check(sidecar: dict, resolved: dict, series_path, *,
                 "inputs.replay_stats.sha256——序列与供给真值闸不是同一条数据链")
         return st
     if fmt == "sol-rows":
-        rr = resolved.get("inputs.reconcile_receipt")
         if rr is None:
             raise SeriesProvenanceError(
                 "sol-rows sidecar 必须登记 inputs.reconcile_receipt"
@@ -559,7 +615,8 @@ def registry_anchor_check(sidecar: dict, resolved: dict, series_path, *,
         try:
             from solana_exact_validate import validate_reconcile_receipt_deep
             deep = validate_reconcile_receipt_deep(
-                rr, case_root=Path(rr).parent.parent)
+                rr, case_root=effective_root if effective_root is not None
+                else Path(rr).parent.parent)
         except Exception as exc:
             raise SeriesProvenanceError(
                 f"reconcile_receipt 独立深验器执行失败: {exc}") from exc
@@ -627,18 +684,24 @@ def registry_anchor_check(sidecar: dict, resolved: dict, series_path, *,
                 "reconcile_receipt producer path/sha256 与当前 replay_edges.py 不一致")
 
         receipt_dirs = [Path(rr).parent, Path(rr).parent.parent]
+        reconcile_case_root = effective_root
         inputs = receipt.get("inputs") or {}
         meta_path = _resolve_ref(inputs.get("soltx_meta"),
-                                 "reconcile.inputs.soltx_meta", receipt_dirs)
+                                 "reconcile.inputs.soltx_meta", receipt_dirs,
+                                 case_root=reconcile_case_root)
         owners_path = _resolve_ref(inputs.get("holders_owners"),
-                                   "reconcile.inputs.holders_owners", receipt_dirs)
+                                   "reconcile.inputs.holders_owners", receipt_dirs,
+                                   case_root=reconcile_case_root)
         snapshot_path = _resolve_ref(inputs.get("holders_snapshot_meta"),
-                                     "reconcile.inputs.holders_snapshot_meta", receipt_dirs)
+                                     "reconcile.inputs.holders_snapshot_meta", receipt_dirs,
+                                     case_root=reconcile_case_root)
         cache_meta = _json_loads(meta_path.read_text(encoding="utf-8"),
                                  "soltx meta")
         try:
             edge_path, resolver_meta_path, _cache_kind, _gid, resolver_binding = \
-                resolve_formal_cache(expected_mint, Path(rr).parent.parent)
+                resolve_formal_cache(
+                    expected_mint, effective_root if effective_root is not None
+                    else Path(rr).parent.parent)
         except ValueError as exc:
             raise SeriesProvenanceError(
                 "reconcile 绑定的 soltx meta schema/mint/producer/contract 或边文件"

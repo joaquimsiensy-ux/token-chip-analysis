@@ -16,6 +16,8 @@
 3. **零静默截断**：所有成员/收方/来源数组全量落盘，数组长度必须等于对应 `*_count` 字段（闭合断言）；stdout 只显 top 不代表文件截断。
 4. **本文件＝完整字段登记**（v6.8.1，codex 复核 P2 采纳）：脚本实际输出的每个字段都必须在此登记——未登记字段不得输出，登记了的不得静默删除；公共通用字段（`schema/generated_at/params/total_supply_raw/edges/note`）各产物一律在场，下文不再逐一重复。输入边表的唯一性由采集管线（four-check 对账）保证，扫描器不去重。Solana v4 以 `(slot,tx_index)` 标识交易，并对该交易完整边集计算排序后的 `tx_digest`：重复身份且 digest 相同只留一份，digest 不同硬失败。五元组没有交易身份，同字段重复可能是不同真实交易，禁止按五字段去重。
 
+**handoff manifest 反绑产物规则**：manifest 不收两类会反向记录自身的产物：①案根精确路径 `provenance_ledger.json`（反绑 manifest sha/run_id/scope）；②非案根、`stage="final"` 且存在 `input_binding.handoff_manifest` 的 `distribution_scan.json`（反绑 run_id/指纹）。案根 initial `distribution_scan.json` 不反绑 manifest，仍是 READY 必备件。discover/data_map 遇上述产物会跳过并在 stderr 提示；显式 `--include` 或 `--gate` 则报“反绑产物禁止进入 manifest”并 exit 2。JSON 读失败不按反绑规则误杀，随后仍由既有路径/实物校验 fail-closed。
+
 **Solana 输入边现役标准**：正式路径使用 7 元组
 `[ts,slot,tx_index,instr_index,from,to,amt]`。SQD tokenBalances 只提供交易级 pre/post
 快照，因此共享核产出的边固定 `instr_index=-1`、`edge_semantics="owner-net-greedy"`、
@@ -376,6 +378,8 @@ TERMINAL = {
 `initial` 记录上游收据但不绑定 handoff manifest。上游收据是 **optional 的记录性收据**：案根没有那份文件就不记（split-run 下 −1 出 initial scan 时，−2 还没把 preflight 副本拷进案根），**在场即三验**——凡是记进 `upstream_receipts` 的条目，validate 都要核实文件存在且 sha256／size 与记录一致。校验方向只有"记录项 → 磁盘"这一条，反过来要求"磁盘上有的都得记"会把 6.39.5 修掉的三闸死环修回来。文件在场却非法（符号链接、指到案外、不是普通文件）时生产侧直接 exit 2，不做静默跳过。
 
 分布扫描吃的那份 owner 快照，必须就是四查真正核过的那一份：EVM 比对四查 `balance` 收据的 `inputs.balances.sha256`，Solana 比对 observation bundle 的 `holder_outputs.owners.sha256`，**只比 sha256 不比 path**（两边路径形态本来就不同）。**initial 扫描与进报告的终态 final 扫描（`distribution_rounds.json` 的 `terminal.final_scan_path`）两份都要落在同一个四查 sha 上**——只绑 initial 挡不住 final 轮换一份同值换仓快照产终态判定（F-B1）。该交叉检查由 `audit_release_gate.py --profile new-analysis` 执行，**只放发布闸、不放进 validate**（终态 scan 是本轮新产，不涉及存量案追溯）。
+
+动态 Solana 的分布扫描吃 observation bundle 的观察 owners；三账 B-7、series cutoff、accounting 等冻结账消费者则通过同一中央选择器投影，吃 exact 收据 `inputs.holders_owners` 实物＋冻结块。
 
 **两侧绑定强度已对齐（批 D B-1 落地）**：EVM 的 `inputs.balances` 由 `receipt_validate.validate_receipt` 拿案内实物文件做 path/size/sha 三验；Solana 的 `holder_outputs.accounts/owners` 自批 D 起由 `validate_observation_bundle`（bundle_path 在场的消费侧）做同款文件级三验（查找目录＝收据 inputs 实物所在 work_dir → bundle 同目录 → 同目录 data/），缺件/换包/符号链接均拒。
 
@@ -1185,6 +1189,15 @@ QUQ 与 PYTHIA 只用于算法层探索定标。防伪链测试使用合成 fixt
 - `checks.exact_reconcile` 的 wrapper item 固定绑定 `{status,exit_code,process_exit_code,producer,receipt}`；上表五个 v4 字段位于 `receipt{path,size,sha256}` 引用的实物内，由公共 validator 打开后深验，不是 item 直属字段。该 item 仅 family=solana 必填；family=evm 必须省略，出现即拒。
 - 动态 Solana wrapper 的观测 target 可以晚于第五查的冻结 target；仅 `exact_reconcile` 放宽为 chain/token 全等且 `0 ≤ receipt.as_of_block ≤ wrapper.as_of_block`。其余 Solana checks 与全部 EVM checks 仍要求 receipt target 和 wrapper target 全等。
 - exact 检查组合、inputs 案根哈希并调用独立深验。静态态（exact 与 wrapper 的 `as_of_block` 相等）继续要求 exact 与 supply 的 `holders_owners` 是同一文件；冻结态（exact 早于 wrapper）则要求 exact 快照的 sha256+size 与案内 `data/solana_observation_bundle_frozen.json` 的 `holder_outputs.owners` 全等，且该冻结 bundle 经过与活 supply bundle 同深度的案根信封、schema、主网 genesis attestation、closed/closure 与 target 深验，并同时进入 handoff 的 data_map/artifacts。大白话：活观测回答“现在”，冻结快照回答“封账点”，不再强迫两者共用文件；防伪改由冻结 bundle 的内容指纹承担。独立深验仍把 `receipt.target.as_of_block` 正向绑定到 receipt 所绑 `soltx_meta.finalized_upper_slot`，不得拿任意旧时点收据冒充冻结点。
+- 动态 Solana 的分布扫描固定消费观察 owners；三账 B-7、series cutoff、accounting 等冻结账消费者固定消费 exact 收据 owners＋冻结块，并由同一个中央选择器完成投影。
+
+#### `DeepReconciliationWitness.frontier_files`（7.0.0）
+
+- 这是进程内 witness 的一级新鲜度边界，不是持久化 receipt 字段。`frontier_files` 是按绝对路径排序的 `(path, sha256)` 元组；消费时以 131072 字节分块流式重算。
+- **担保**：签发后，wrapper 由独立 `report_sha256` 锁定；各 `checks[key].receipt` 文件本体、各家族 receipt JSON 直接消费的 inputs/output/holder_outputs、以及动态 Solana 冻结观测 bundle 的任何字节变化，都会令同一 witness 以 `reconciliation witness 无效/过期` 拒绝。
+- **不担保**：一级文件继续引用的更深 evidence leaf（例如 repair bundle 所引 evidence manifest 内逐件证据）在签发后的变化。签发当刻这些叶已由 `validate_repair_bundle_deep` 逐件真哈希；bundle/manifest 总指纹仍被一级文件锁定。用户 2026-09-01 明确裁决只钉一级输入，不得把该边界表述为递归全量新鲜度。
+- 必选层逐家族复用现行消费 resolver，缺件或解析失败拒签；兜底层只遍历内存中的 receipt 对象，对带 `path/size/sha256` 的 ref 同时尝试案根与 receipt 父目录，双基准命中不同实物时两件都绑。兜底绝不打开被引用文件。wrapper 本体不进入 `frontier_files`；总件数上限 512、对象嵌套上限 64，哈希成本为 `O(frontier 总字节)`，不承诺总字节上限。
+- 7.0.0 迁移：公开 dataclass 字段 `bound_files` 更名为 `frontier_files`。直构、`dataclasses.replace` 或缓存该运行时对象的外部调用方必须改名并按新的担保/不担保边界解释；payload 摘要、WeakSet 身份签发与 report 指纹语义不变。
 
 注记：
 

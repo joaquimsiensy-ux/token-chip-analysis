@@ -1,0 +1,52 @@
+batch18 review3 RED evidence
+baseline: 56e7cf3cce74b873f847fd929a8e8fdf95622ed7
+equivalent code baseline: 50d7767
+production edits at capture time: none
+
+R1 command:
+PYTHONDONTWRITEBYTECODE=1 python3 - <<'PY'
+import sys
+sys.path[:0] = ['scripts/tests']
+from test_batch18_review_digest import test_review3_r1_real_deep_validation_precedes_frontier_collection
+test_review3_r1_real_deep_validation_precedes_frontier_collection()
+PY
+
+R1 original output (relevant complete causal tail):
+{"probe_id": "a8b77395f4eb7fef", "status": "published", "verdict": "INCONCLUSIVE"}
+{"gid": "6ab44618d09ca314", "plan_digest": "c392c1ea0e825477", "repair_edges": 100, "status": "published"}
+边数=103  时间范围 11-14 22:13:20 → 11-15 03:46:39
+铸造=5,100  销毁=0  净=5,100
+负余额地址数=0
+快照 supply=5,100  重放净-快照差=0
+全 owner 对账：2/2 一致
+重放末态已写 data/replay_final_balances.json
+RED_PRECONDITION R1 repaired exact-reconcile real deep validation PASS
+Traceback (most recent call last):
+  File "<stdin>", line 4, in <module>
+  File "scripts/tests/test_batch18_review_digest.py", line 394, in test_review3_r1_real_deep_validation_precedes_frontier_collection
+    witness = shared.witness_reconciliation_report(root)
+  File "scripts/report/shared_release_receipt.py", line 1965, in witness_reconciliation_report
+    bound_files=_reconciliation_bound_files(root, target, receipts),
+  File "scripts/report/shared_release_receipt.py", line 1946, in _reconciliation_bound_files
+    discover(document, source)
+  File "scripts/report/shared_release_receipt.py", line 1910, in discover
+    remember(path)
+  File "scripts/report/shared_release_receipt.py", line 1870, in remember
+    raise ValueError(
+ValueError: reconciliation witness 文件闭包超过 128 个文件
+
+R1 conclusion:
+The real repaired exact-reconcile deep validator passed first.  The baseline then
+opened the repair bundle's evidence_manifest and recursively admitted its 200
+leaf files, reaching the old 128-file closure cap.  No deep validator was mocked.
+
+F4 command:
+PYTHONDONTWRITEBYTECODE=1 python3 scripts/tests/test_batch18_review_digest.py
+
+F4 original output (relevant line):
+FAIL test_review3_f4_five_bails_share_complete_report_contract: KeyError: 'sampled'
+
+F4 conclusion:
+With a mocked monotonic clock advanced beyond the deadline, the first early-bail
+report still lacked the main-path sampled object, so direct indexing of the
+required report contract raised the baseline KeyError shown above.

@@ -182,8 +182,26 @@ SUITE += ['test_batch13_accounting_target.py']
 # Batch 14：Solana accounting 冻结态 bundle 按 size+sha256 内容寻址，安全失败不兜底。
 SUITE += ['test_batch14_accounting_bundle_fallback.py']
 
+# Batch 15：发布闸 B-7 三账对账源＋series cutoff 冻结态投影（方案 A 第七/八消费点）。
+SUITE += ['test_batch15_three_ledgers_frozen.py']
+
 # v6.52.2 repair-20260824-lit-regression：F-007 series_format 堆叠语义与 F-008 evm_v2 集合闸。
 SUITE += ["test_lit_regression_f007.py", "test_lit_regression_f008.py"]  # v6.52.2 repair-20260824-lit-regression
+
+# Batch 16：序列来源链登记路径按案根解析兜底（sqd_repair 深层缓存）。
+SUITE += ['test_batch16_resolve_ref_case_path.py']
+
+# Batch 17：G8 链名别名归一
+SUITE += ['test_batch17_identity_chain_alias.py']
+
+# Batch 18：共享 reconciliation witness/provider 正式接口。
+SUITE += ['test_batch18_shared_bundle_witness.py']
+
+# Batch 18：handoff manifest 反绑产物单向排除与 −2 收敛。
+SUITE += ['test_batch18_manifest_stage2_loop.py']
+
+# Batch 18 盲审消化：witness 身份/文件闭包防伪与 manifest 分类器类型防御。
+SUITE += ['test_batch18_review_digest.py']
 
 
 def main():

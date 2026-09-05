@@ -43,7 +43,7 @@ import argparse, hashlib, json, os, sys
 _HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.normpath(os.path.join(_HERE, '..', 'labels')))
 sys.path.insert(0, os.path.normpath(os.path.join(_HERE, '..', 'lib')))
-from chain_registry import identity_chains
+from chain_registry import identity_chains, resolve_alias
 
 P = 2**255 - 19
 D = (-121665 * pow(121666, P - 2, P)) % P
@@ -189,7 +189,7 @@ def validate_gate(gate_path, state_path=None, require_resolved=True):
         errors.append(f'analysis-state.json 不可读: {e}')
         state = {}
     state_chain = state.get('chain') or (state.get('token') or {}).get('chain')
-    if state_chain != chain:
+    if resolve_alias(state_chain) != resolve_alias(chain):
         errors.append(f'chain 与 state 不绑定: gate={chain!r} state={state_chain!r}')
 
     binding = gate.get('snapshot_binding')

@@ -1,0 +1,38 @@
+Batch 18 RED evidence (pre-production-change)
+Date: 2026-08-30
+HEAD: 532a05408179
+Baseline version: 6.53.5
+
+Precondition:
+  git status --short
+Result before adding the two new tests: empty (clean worktree)
+
+R1-A command:
+  python3 scripts/tests/test_batch18_shared_bundle_witness.py --r1
+Exit code: 1
+Raw output:
+FAIL test_r1_validate_bundle_accepts_provider_keyword: TypeError: validate_bundle() got an unexpected keyword argument 'reconciliation_provider'
+FAIL batch18 shared bundle witness: 1/1
+
+R1-B command:
+  python3 scripts/tests/test_batch18_manifest_stage2_loop.py --r1
+Exit code: 1
+Raw output:
+FAIL test_r1_two_generates_then_trace_converge_before_freeze: AssertionError: R1 修前 manifest/账本反绑不收敛：{"generate_stderr": "", "verify_rc": 2, "verify": "[verify] FAIL（fail-closed，逐条修复或退回 −1）:\n  ✗ 哈希/大小漂移: provenance_ledger.json\n", "freeze_rc": 2, "freeze": "[freeze] handoff verify 未通过——禁止冻结（fail-closed）:\n  ✗ 哈希/大小漂移: provenance_ledger.json\n"}
+FAIL batch18 manifest stage2 loop: 1/1
+
+N11 pre-change baseline command:
+  python3 - <<'PY'
+  # build_dynamic_integration_case(root), gate.run(new-analysis), then mutate
+  # reconciliation_report.json or data/holders_owners.json and print errors.
+  PY
+Exit code: 0
+
+N11 reconciliation_report.json mutation, before=[]; after exactly:
+["共享发布 receipt: shared receipt input hashes changed"]
+
+N11 data/holders_owners.json mutation, before=[]; after exactly:
+["正式发布跨分区 target 不一致: as_of_block 声明矛盾: accounting_mode.json.as_of_block=500, reconciliation_report.json.target.as_of_block=501, shared_release_receipt.json.target.as_of_block=500, identity_bridge/data/identity_holders_receipt.json.as_of_block=500", "共享发布 receipt: observation bundle holder_outputs.owners sha256/size mismatch: holders_owners.json", "记账模型公共 validator 未通过: observation bundle holder_outputs.owners sha256/size mismatch: holders_owners.json", "受控对账公共深验失败: reconciliation exact_reconcile receipt envelope invalid: input holders_owners size mismatch；存量案例须重跑对应生产者获取当前回执", "发布期序列 cutoff 目标: accounting as_of_block=500/wrapper 501：冻结态深验未通过，无法确定对账时点: reconciliation exact_reconcile receipt envelope invalid: input holders_owners size mismatch；存量案例须重跑对应生产者获取当前回执"]
+
+Production files modified before this evidence was written: none.
+Only the two new batch-18 test files were added to reproduce the failures.
