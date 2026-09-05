@@ -60,7 +60,6 @@ def _repo_ref(relative: str) -> dict:
 def _build_repaired_reconciliation_case(root: Path, *, slots: int) -> tuple[Path, Path]:
     """Build a real formal repair generation and a five-check reconciliation wrapper."""
     import replay_edges
-    import sqd_cache_identity
     import test_sqd_gap_repair as repair_fixture
     from solana_attested_session import SOLANA_MAINNET_GENESIS_HASH
     from scripts.solana import sqd_gap_repair
@@ -94,15 +93,6 @@ def _build_repaired_reconciliation_case(root: Path, *, slots: int) -> tuple[Path
         "repair", "--mint", repair_fixture.MINT, "--case-root", str(case),
         "--transport-fixture", str(transport)]) == 0
 
-    original_history = sqd_cache_identity.historical_producer_hashes
-
-    def admitted_history(script, protocol):
-        admitted = set(original_history(script, protocol))
-        if script == "scripts/solana/sqd_gap_repair.py":
-            admitted.add(_sha(ROOT / script))
-        return admitted
-
-    sqd_cache_identity.historical_producer_hashes = admitted_history
     rows, cache_meta, binding = replay_edges.load_edges(
         repair_fixture.MINT, case_root=case)
     balances = {}
@@ -129,14 +119,11 @@ def _build_repaired_reconciliation_case(root: Path, *, slots: int) -> tuple[Path
         "target": target, "closed": True, "supply_raw": str(supply),
         "outputs": {"holders_owners": _ref(case, owners_path, owners_path.name)},
     })
-    try:
-        with contextlib.chdir(case):
-            assert replay_edges.cmd_reconcile(
-                rows, 1, mint=repair_fixture.MINT, cache_meta_path=cache_meta,
-                case_root=case, as_of_slot=upper,
-                edge_source_binding=binding) is True
-    finally:
-        sqd_cache_identity.historical_producer_hashes = original_history
+    with contextlib.chdir(case):
+        assert replay_edges.cmd_reconcile(
+            rows, 1, mint=repair_fixture.MINT, cache_meta_path=cache_meta,
+            case_root=case, as_of_slot=upper,
+            edge_source_binding=binding) is True
     exact_path = data / "reconcile_receipt.json"
 
     inputs = {}

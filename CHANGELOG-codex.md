@@ -16,6 +16,7 @@
 
 ## 版本索引（codex 侧，新在上）
 
+- **c2.2.4 2026-09-04 SQD repair 来源登记闭合**：在已同步的 7.0.1 上补齐 v6.52.7 修复程序四项历史登记；两个正向测试改用真实登记表，新增当前文件哈希完整性与缺项/撤销负测；main 与真实案例数据只读。
 - **c2.2.3 2026-08-16 time verifier final-block 回填修复**：`shared_release_receipt` 深验 balance 锚点时，计划缺 `day_end_block` 改与正式执行器一致回填已签名 `plan.final_block`；补 producer PASS、旧 consumer RED、修后 GREEN 的回归反例，转账块和显式日终块语义不放宽。
 - **c2.2.2 2026-08-10 同步门禁修复**：压缩 `SKILL.md` frontmatter 触发描述，保留链支持、正式能力与分析范围语义，使文件恢复至 8192-byte 硬上限内；不改方法契约。
 - **c2.2.1 2026-08-01 同步 6.6.0–6.7.0 三提交＋G4/G5 载体职责终结**：main 下发波次扫描三硬闸（6.6.0）与双闸（6.7.0：time_spotcheck 时间抽查执行器进 READY 必备——**−1 执行者本副本直接相关**，A2 第 4 查改跑 scripts/lib/time_spotcheck.py 默认锚点直查、全史 SQD 重拉降例外；A4→A5 顺序硬闸 a4_gate 封口属 −2 侧，本副本仅停止线语义不变）。SKILL.md 冲突解法：阶段表 A4/A5/A6 取 main 新行＋A6 落盘产物保留 CHANGELOG-codex 适配；「实体冻结前三硬闸」正文节随下发进驻本文件，G4/G5 从同文载体收缩为指针（docs_lint needle 由正文节命中，消除同文双份漂移隐患）；G6 对 G4/G5 引用不变。
@@ -33,6 +34,19 @@
 - **3.28.0 2026-07-24 QUQ(BSC) LP手续费专项复盘：V4四层账本、逐tick归因与“已实现”措辞硬闸**：修正旧版“V4只有净现金流、手续费算不出来”的过度悲观规则；新增 `lp-fee-accounting.md`，统一池子产生/仓位应得/当前未结算/历史已结算四分法，固化 `feesAccrued`、`feeGrowthInside`、逐Swap×逐tick重放、所有权历史与8项对账gate；channels 修正V3跨窗 `collect−burn` 条件和V4归属方法；evidence-wording 禁止把“窗口应得−期末未结算”直接写成已提现净收入；skill触发范围补庄家LP收入与V3/V4比较
 - **3.27.0 2026-07-24 ASTEROID(ETH) 完整版复盘：行为组隔离、盘中峰值与可观测口径硬化**：tiering 正式新增“行为 cohort ≠ 单一实体”（同块/同额可能由协议参数机械制造；无独立控制证据不得合计判狙击集团、不得回灌惯犯库）与“官方自报角色只证角色、不证技术多签或 deployer 同控”；日终/粗粒度曲线不得替代逐事件峰值，盘中峰值须事件点补回；evidence-wording 固化“公开 CEX 标签地址余额合计”口径，禁止冒充完整托管/库存/净头寸；report-template 新增价格覆盖审计与缺口留白义务；EVM sources 新增 Blockscout internal-transactions incomplete=下限纪律；`accumulate_offenders.py --help` 改为纯只读，并 fail-closed 排除行为 cohort/非同一主体/共同控制未确证组，离线测试覆盖。**不删除存量 serial 标签**：历史行为组条目属于待人工复核遗留项，禁止自动批量清洗。成本：轮次数/终端调用数/交付用时未可靠自动计数，不补猜。质量：初稿关键结论约 8；复核裁决 CONFIRMED 11 / WEAKENED 9 / REFUTED 2；复核补出关键漏检 1；传播级数字错误 0（冻结前另修正 3 项数据/口径缺口）。
 - **3.26.0 2026-07-24 FROGGIE(BSC) easy 复盘：阵营序列 schema 契约修正+惯犯回灌单案安全模式+两条聚类边界候选**：monitoring/report 两册统一 `camp_share_series={dates,series}` 唯一形态，figures_from_facts 对旧列表可读 fail+契约测试；accumulate_offenders 支持直接传单案目录、默认库增量合并防截库、无状态/零实锤组 fail-closed 不改输出，离线测试覆盖；methods 新增【候选】短窗口多来源归集只证归集后统一控制、来源钱包证据不足进 associated_source_addresses；tiering 新增【候选】大额串联只证资金 campaign、必须先机械过 P0/P1 门槛再谈自动化/刷量例外
+
+---
+
+## [c2.2.4] - 2026-09-04 — SQD repair 来源登记闭合
+
+### 修正
+- 为已提交的 `sqd_gap_repair.py` 指纹 `25f04ff10bc494be977e4c5b3193c3a928c0764fa529d8d5a47563fe2a825e66` 补齐 cache、bundle、coverage-resolution、pointer 四项 ACTIVE 登记，Git 锚定 `4c5cd578a5f1a10449d128dcdb91a724c359e7a5`。该提交的 verify CLI 局部变量修正改变了文件哈希，原登记表漏跟进。
+- 历史生产者及 REVOKED 优先规则保留；不修改生产者、读取器、对账算法、协议或共有版本 7.0.1，仅在 codex 分支登记本次修复。
+
+### 回归与边界
+- `test_sqd_gap_repair.py` 从现用程序文件计算哈希，逐项检查四协议登记；逐一缺项、哈希撤销及未知 bundle producer 必须拒绝，旧版生产者继续认可。
+- 该测试与 `test_batch18_review_digest.py` 的正向修复/消费/对账链移除临时自动认可哈希，直接使用真实登记表；沿用现有全量 suite 的 146 个入口。
+- MELANIA 仅只读核验原修复包的来源与缓存选择，不运行 A2/A3、不关闭异常、不改变案例产物。来源门禁通过不代表整个 A2 已通过。
 
 ---
 

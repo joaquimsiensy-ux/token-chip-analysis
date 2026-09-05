@@ -26,6 +26,67 @@ CURVE = "CurveOwner"
 ZERO = "0x" + "0" * 40
 
 
+REPAIR_SCRIPT = "scripts/solana/sqd_gap_repair.py"
+REPAIR_PROTOCOLS = (
+    "sqd-solana-cache/v4",
+    "sqd-solana-repair-bundle/v1",
+    "sqd-solana-coverage-resolution/v1",
+    "sqd-solana-repair-pointer/v1",
+)
+
+
+def _require_current_repair_registration():
+    from scripts.solana import sqd_gap_repair as repair
+    import producer_history
+
+    digest = hashlib.sha256(Path(repair.__file__).read_bytes()).hexdigest()
+    missing = [protocol for protocol in REPAIR_PROTOCOLS
+               if digest not in producer_history.historical_producer_hashes(
+                   REPAIR_SCRIPT, protocol)]
+    assert not missing, f"current repair producer {digest} is unregistered: {missing}"
+    return digest
+
+
+def producer_registration_regressions():
+    """Release checks use the on-disk producer and the real registry."""
+    digest = _require_current_repair_registration()
+    import producer_history
+
+    old_digest = "60b48f86154d8793c8b1229121641f3f2d6517e924188aa47452855cc8636f7b"
+    for protocol in REPAIR_PROTOCOLS:
+        assert old_digest in producer_history.historical_producer_hashes(
+            REPAIR_SCRIPT, protocol), f"historical repair producer lost: {protocol}"
+
+    def expect_missing(protocol):
+        try:
+            _require_current_repair_registration()
+        except AssertionError as exc:
+            assert digest in str(exc) and protocol in str(exc), str(exc)
+        else:
+            raise AssertionError(f"missing/revoked producer accepted: {protocol}")
+
+    original = producer_history.PRODUCER_HISTORY
+    try:
+        for protocol in REPAIR_PROTOCOLS:
+            producer_history.PRODUCER_HISTORY = tuple(
+                row for row in original
+                if not (row["script"] == REPAIR_SCRIPT
+                        and row["sha256"] == digest
+                        and row["protocol"] == protocol))
+            expect_missing(protocol)
+        revoked = next(row for row in original
+                       if row["script"] == REPAIR_SCRIPT and row["sha256"] == digest)
+        producer_history.PRODUCER_HISTORY = original + ({
+            **revoked, "status": "REVOKED", "reason": "test-only hash-wide revocation",
+        },)
+        for protocol in REPAIR_PROTOCOLS:
+            expect_missing(protocol)
+    finally:
+        producer_history.PRODUCER_HISTORY = original
+    assert _require_current_repair_registration() == digest
+    print("GREEN producer registration: current 4/4; each omission/revocation rejected; historical 4/4")
+
+
 def canonical_bytes(value):
     def walk(node):
         if isinstance(node, float):
@@ -311,18 +372,17 @@ def consumer_repaired_order_regression():
             (case / f"data/sqd_repair/{key}/CURRENT.json").read_text())
         generation = case / f"data/sqd_repair/{key}/gen-{pointer['gid']}"
         bundle = json.loads((generation / "bundle.json").read_text())
-        # Producer history is a later release-boundary concern and is frozen out
-        # of Batch 4.  Keep this fixture focused on the already-built resolver by
-        # supplying the exact self-reported producer hash at the registry seam.
-        original_history = identity.historical_producer_hashes
-        identity.historical_producer_hashes = lambda script, protocol: (
-            {bundle["producer"]["sha256"]}
-            if script == "scripts/solana/sqd_gap_repair.py" else
-            original_history(script, protocol))
-        top_identity = sys.modules.get("sqd_cache_identity")
-        top_original_history = getattr(top_identity, "historical_producer_hashes", None)
-        if top_identity is not None:
-            top_identity.historical_producer_hashes = identity.historical_producer_hashes
+        unknown_bundle = {**bundle, "producer": {
+            **bundle["producer"], "sha256": "0" * 64,
+        }}
+        unknown_path = generation / "unknown-producer.bundle.json"
+        unknown_path.write_text(json.dumps(unknown_bundle), encoding="utf-8")
+        try:
+            identity.validate_repair_bundle(unknown_path)
+        except ValueError as exc:
+            assert str(exc) == "formal repair producer is not registered", str(exc)
+        else:
+            raise AssertionError("unregistered repair producer was accepted")
         repaired_edge, repaired_meta, kind, gid, binding = identity.resolve_formal_cache(
             MINT, case)
         assert kind == "repaired" and gid and binding["cache_kind"] == "repaired"
@@ -349,37 +409,32 @@ def consumer_repaired_order_regression():
         ], *args)
         assert base_entity["current"] != repaired_entity["current"]
 
+        failures = []
         try:
-            failures = []
-            try:
-                loaded_rows, curve_binding = curve_cost.load_edges(MINT, case)
-                if loaded_rows != repaired_rows or curve_binding != binding:
-                    failures.append("curve did not consume resolver-selected repaired cache")
-            except (OSError, TypeError, ValueError) as exc:
-                failures.append(f"curve resolver route absent: {exc}")
+            loaded_rows, curve_binding = curve_cost.load_edges(MINT, case)
+            if loaded_rows != repaired_rows or curve_binding != binding:
+                failures.append("curve did not consume resolver-selected repaired cache")
+        except (OSError, TypeError, ValueError) as exc:
+            failures.append(f"curve resolver route absent: {exc}")
 
-            import duckdb
-            con = duckdb.connect(":memory:")
+        import duckdb
+        con = duckdb.connect(":memory:")
+        try:
             try:
-                try:
-                    count, entity_binding = entity.load_sol(
-                        con, str(repaired_edge), cache_meta_path=str(repaired_meta),
-                        expected_mint=MINT, case_root=case)
-                    actual = con.execute(
-                        "SELECT ts, chain_pos1, chain_pos2, chain_pos3, f, t, amt "
-                        "FROM edges ORDER BY chain_pos1, chain_pos2, ingest_seq").fetchall()
-                    expected = [tuple(row) for row in repaired_rows]
-                    if count != 2 or [tuple(row) for row in actual] != expected \
-                            or entity_binding != binding:
-                        failures.append("entity did not consume repaired reference ordering")
-                except (OSError, TypeError, ValueError, SystemExit) as exc:
-                    failures.append(f"entity resolver route absent: {exc}")
-            finally:
-                con.close()
+                count, entity_binding = entity.load_sol(
+                    con, str(repaired_edge), cache_meta_path=str(repaired_meta),
+                    expected_mint=MINT, case_root=case)
+                actual = con.execute(
+                    "SELECT ts, chain_pos1, chain_pos2, chain_pos3, f, t, amt "
+                    "FROM edges ORDER BY chain_pos1, chain_pos2, ingest_seq").fetchall()
+                expected = [tuple(row) for row in repaired_rows]
+                if count != 2 or [tuple(row) for row in actual] != expected \
+                        or entity_binding != binding:
+                    failures.append("entity did not consume repaired reference ordering")
+            except (OSError, TypeError, ValueError, SystemExit) as exc:
+                failures.append(f"entity resolver route absent: {exc}")
         finally:
-            identity.historical_producer_hashes = original_history
-            if top_identity is not None:
-                top_identity.historical_producer_hashes = top_original_history
+            con.close()
         if failures:
             print("RED 2 semantic-consumer-half " + "; ".join(failures))
             return 1
@@ -811,6 +866,7 @@ def batch3b_semantic_regressions():
 
 def main():
     red = batch3b_mechanism_gate()
+    producer_registration_regressions()
 
     functional_repair_regressions()
     blocks_cache_end_to_end()
