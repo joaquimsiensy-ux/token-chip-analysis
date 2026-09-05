@@ -194,7 +194,25 @@ def main():
         flow["schema"] = "flow-anomaly/v2"
         write_json(wave_path, wave)
         write_json(flow_path, flow)
+        # The edited artifacts must first fail their existing byte bindings.
+        # Keep that gate separate from the old-schema rejection below.
+        hash_failures = current_verify_accepts(case)
+        for changed_name in ("wave_scan_report.json", "flow_anomaly_report.json"):
+            assert any("哈希/大小漂移" in failure and changed_name in failure
+                       for failure in hash_failures), "\n".join(hash_failures)
+        print("GREEN 22a wave/flow 字节漂移独立拒收")
+
+        # Bind the actual fixture bytes so the next call reaches the schema
+        # gate. Do not change schemas, gate verdicts, or expected diagnostics.
+        manifest_path = case / "handoff_manifest.json"
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        for artifact in manifest["artifacts"]:
+            if artifact["path"] in ("wave_scan_report.json", "flow_anomaly_report.json"):
+                algo, digest, size = handoff_manifest.sha256_file(case / artifact["path"])
+                artifact.update(hash_algo=algo, sha256=digest, bytes=size)
+        write_json(manifest_path, manifest)
         old_failures = current_verify_accepts(case)
+        assert not any("哈希/大小漂移" in failure for failure in old_failures), old_failures
         assert any("旧版" in failure and "wave" in failure for failure in old_failures)
         assert any("flow-anomaly/v3" in failure for failure in old_failures)
         print("GREEN 22 wave-scan/v4 与 flow-anomaly/v2 旧产物被 v5/v3 验收拒收")

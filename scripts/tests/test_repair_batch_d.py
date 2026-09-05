@@ -1282,22 +1282,17 @@ def t_fd2_unseal_binds_flip_receipt():
         manifest = write_json(root / "handoff_manifest.json", {"run_id": "x"})
         data_map = write_json(root / "data_map.json", {"files": []})
         receipt_digest, receipt_size = hm.full_sha256_file(str(receipt))
-        trace_path = HERE.parent / "report/entity_source_trace.py"
-        trace_digest, trace_size = hm.full_sha256_file(str(trace_path))
-        wave_path = HERE.parent / "report/wave_scan.py"
-        wave_digest, wave_size = hm.full_sha256_file(str(wave_path))
+        # Build a valid algorithm prerequisite from the producer's dependency
+        # contract; F-D2 then varies only the frozen confirmation receipt.
+        algorithm_files = {}
+        for name, path in hm.algorithm_dependency_paths().items():
+            file_digest, file_size = hm.full_sha256_file(str(path))
+            algorithm_files[name] = {"path": str(path.resolve()),
+                                     "bytes": file_size, "sha256": file_digest}
         ledger = write_json(root / "provenance_ledger.json", {
             "schema": "provenance-ledger/v2",
             "input_binding": {
-                "algorithm": {"files": {
-                    "entity_source_trace.py": {
-                        "path": str(trace_path),
-                        "bytes": trace_size,
-                        "sha256": trace_digest},
-                    "wave_scan.py": {
-                        "path": str(wave_path),
-                        "bytes": wave_size,
-                        "sha256": wave_digest}}},
+                "algorithm": {"files": algorithm_files},
                 "algorithm_params": {
                     "flip_adjudications": {"path": "flip_adjudications.json",
                                            "bytes": receipt_size,

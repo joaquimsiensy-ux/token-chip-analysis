@@ -98,6 +98,24 @@
   },
   {
    "schemas": [
+    "python-code-content/v1"
+   ],
+   "script": "scripts/lib/content_cache.py"
+  },
+  {
+   "script": "scripts/lib/deep_edge_rows_cache.py",
+   "schemas": [
+    "deep-original-edge-columns/v1"
+   ]
+  },
+  {
+   "script": "scripts/lib/deep_validation_cache.py",
+   "schemas": [
+    "complete-deep-read-proof/v1"
+   ]
+  },
+  {
+   "schemas": [
     "evm-observation-bundle/v1"
    ],
    "script": "scripts/lib/evm_observation.py"
@@ -107,6 +125,12 @@
     "receipt-supersede-lock/v1"
    ],
    "script": "scripts/lib/receipt_kernel.py"
+  },
+  {
+   "script": "scripts/lib/solana_edge_store.py",
+   "schemas": [
+    "solana-edge-materialization/v1"
+   ]
   },
   {
    "schemas": [
@@ -224,6 +248,13 @@
     "shared-release-receipt/v1"
    ],
    "script": "scripts/report/shared_release_receipt.py"
+  },
+  {
+   "script": "scripts/report/trace_compute_cache.py",
+   "schemas": [
+    "trace-computation/v1",
+    "trace-independent-replay/v1"
+   ]
   },
   {
    "schemas": [
@@ -374,6 +405,18 @@
     "solana-reconcile/v4"
    ],
    "script": "scripts/lib/camp_series_provenance.py"
+  },
+  {
+   "script": "scripts/lib/deep_edge_rows_cache.py",
+   "schemas": [
+    "deep-original-edge-columns/v1"
+   ]
+  },
+  {
+   "script": "scripts/lib/deep_validation_cache.py",
+   "schemas": [
+    "complete-deep-read-proof/v1"
+   ]
   },
   {
    "schemas": [
@@ -548,6 +591,12 @@
     "analysis-state-source/v1"
    ],
    "script": "scripts/report/state_from_facts.py"
+  },
+  {
+   "script": "scripts/report/trace_compute_cache.py",
+   "schemas": [
+    "trace-computation/v1"
+   ]
   },
   {
    "schemas": [
@@ -962,6 +1011,16 @@
    "semantics": "overwrite_single"
   },
   {
+   "script": "scripts/lib/content_cache.py",
+   "locator": "save",
+   "semantics": "overwrite_single"
+  },
+  {
+   "script": "scripts/lib/deep_edge_rows_cache.py",
+   "locator": "_build_rows",
+   "semantics": "overwrite_single"
+  },
+  {
    "locator": "publish_exclusive",
    "script": "scripts/lib/receipt_kernel.py",
    "semantics": "exclusive_new"
@@ -989,6 +1048,11 @@
   {
    "locator": "main",
    "script": "scripts/lib/rpc_batch.py",
+   "semantics": "overwrite_single"
+  },
+  {
+   "script": "scripts/lib/solana_edge_store.py",
+   "locator": "load_materialized",
    "semantics": "overwrite_single"
   },
   {

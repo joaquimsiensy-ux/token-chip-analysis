@@ -104,13 +104,14 @@ def _nonnegative_int(value):
     return isinstance(value, int) and not isinstance(value, bool) and value >= 0
 
 
-def load_sol(con, pattern, *, legacy_sol5=False, cache_meta_path=None,
-             expected_mint=None, case_root=None):
+def preflight_sol(pattern, *, legacy_sol5=False, cache_meta_path=None,
+                  expected_mint=None, case_root=None):
     files = sorted(glob.glob(pattern))
     if not files:
         log(f"探测失败：--edges-sol 无匹配文件: {pattern}")
         sys.exit(2)
     cache_meta = None
+    meta_path = None
     edge_source_binding = None
     if not legacy_sol5:
         if not case_root or not expected_mint:
@@ -131,6 +132,57 @@ def load_sol(con, pattern, *, legacy_sol5=False, cache_meta_path=None,
         except (OSError, ValueError, TypeError, json.JSONDecodeError) as exc:
             log(f"探测失败：Solana 正式 cache resolver 身份无效: {exc}")
             sys.exit(2)
+    if cache_meta is not None:
+        if (not _nonnegative_int(cache_meta.get("edge_rows"))
+                or cache_meta["edge_rows"] <= 0
+                or not isinstance(cache_meta.get("edge_logical_sha256"), str)
+                or len(cache_meta["edge_logical_sha256"]) != 64):
+            log("探测失败：Solana meta 缺少有效 edge_rows/edge_logical_sha256")
+            raise SystemExit(2)
+    return {"files": files, "cache_meta": cache_meta,
+            "edge_source_binding": edge_source_binding,
+            "meta_path": str(meta_path) if meta_path else None,
+            "request": {"pattern": str(pattern), "legacy_sol5": legacy_sol5,
+                        "cache_meta_path": str(cache_meta_path) if cache_meta_path else None,
+                        "expected_mint": expected_mint,
+                        "case_root": str(Path(case_root).resolve()) if case_root else None}}
+
+
+def load_sol(con, pattern, *, legacy_sol5=False, cache_meta_path=None,
+             expected_mint=None, case_root=None, preflight=None):
+    prepared = preflight or preflight_sol(
+        pattern, legacy_sol5=legacy_sol5, cache_meta_path=cache_meta_path,
+        expected_mint=expected_mint, case_root=case_root)
+    request = {"pattern": str(pattern), "legacy_sol5": legacy_sol5,
+               "cache_meta_path": str(cache_meta_path) if cache_meta_path else None,
+               "expected_mint": expected_mint,
+               "case_root": str(Path(case_root).resolve()) if case_root else None}
+    if prepared.get("request") != request:
+        log("探测失败：预检与当前 Solana 装载参数不一致")
+        raise SystemExit(2)
+    if not legacy_sol5:
+        from solana_edge_store import load_materialized
+        def verify_selection():
+            current = preflight_sol(
+                pattern, legacy_sol5=False, cache_meta_path=cache_meta_path,
+                expected_mint=expected_mint, case_root=case_root)
+            if current != prepared:
+                raise ValueError("Solana 正式源选择或元数据在预检后改变")
+        try:
+            # A caller may have done other work after preflight. Never let a
+            # stale in-process dictionary bypass CURRENT or source validation.
+            if preflight is not None:
+                verify_selection()
+            result = load_materialized(con, prepared, case_root=case_root, mint=expected_mint)
+            verify_selection()
+            return result
+        except (OSError, ValueError, TypeError) as exc:
+            log(f"探测失败：Solana 物化缓存拒绝复用: {exc}")
+            raise SystemExit(2) from exc
+    # Explicit legacy path retains its existing contract and insertion behavior.
+    files = prepared["files"]
+    cache_meta = prepared["cache_meta"]
+    edge_source_binding = prepared["edge_source_binding"]
     con.execute("""CREATE TABLE edges (
         ts BIGINT, f VARCHAR, t VARCHAR, amt HUGEINT,
         chain_pos1 BIGINT, chain_pos2 BIGINT, chain_pos3 BIGINT,

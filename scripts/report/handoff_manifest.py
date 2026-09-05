@@ -22,7 +22,8 @@ freeze 四重机器前置（全部 fail-closed 无跳过通道）：
   1. 裁决闭环 validator validate --entity-file（全候选成员级裁决＋linked_entity 名册绑定）
   2. 溯源台账内容级绑定（schema=v2＋实体集双向一致＋逐实体成员哈希＋closure 按
      composition 明细重算）
-  3. 原始边/标签/分母/cutoff/block/manifest/data_map/算法哈希全绑定，以当前代码真实重放；
+  3. 原始边/标签/分母/cutoff/block/manifest/data_map/算法哈希全绑定，首次以当前代码独立重放；
+     同计算输入和待审计算内容仅可复用自身独立计算凭证，每次重新核当前确认和文件绑定；
      从三策略完整明细重算消费与顺序敏感性，不信 stable 自报。全部绑定哈希入 revision，
      check-unseal 逐项复核当前文件。
 """
@@ -33,11 +34,14 @@ import os
 import subprocess
 import sys
 import tempfile
+import time
 import unicodedata
 from datetime import datetime, timedelta, timezone
 
 _LIB = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "lib"))
 sys.path.insert(0, _LIB)
+sys.path.insert(0, os.path.normpath(os.path.join(_LIB, "..", "solana")))
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from chain_registry import (evm_family, formal_ready_chains, get_chain_config,
                             release_tier_for, resolve_alias)
 from case_paths import safe_case_dir, safe_case_file
@@ -49,6 +53,10 @@ from shared_release_receipt import (validate_accounting_receipt,
                                     validate_reconciliation_report,
                                     validate_solana_derived_bindings)
 from wave_contract import WAVE_SCHEMA, has_formal_wave_semantics
+from trace_compute_cache import (algorithm_dependency_paths, emit_metric,
+                                 load_independent_replay, save_independent_replay,
+                                 runtime_fingerprint, AlgorithmRuntimeDriftError,
+                                 assert_algorithm_runtime, register_loaded_algorithm)
 
 SCHEMA_VERSION = "handoff/v3"
 # verify 端支持集；consumer_min_schema 不在集内即拒收。
@@ -645,6 +653,10 @@ def verify_case(case_dir, legacy_read_only=False):
                 and not ({"reconciliation_four_checks", "reconciliation_checks"}
                          & set(m.get("gates") or {})):
             fails.append("legacy 案在场 reconciliation_report.json 缺对应 gate 记录")
+        if fails:
+            emit_metric("handoff_precheck_reject", stage="artifact_registration",
+                        expensive_validation_started=False, failure_count=len(fails))
+            return (fails, m, legacy_mode)
         for ent, p in safe_artifacts:
             algo, digest, size = sha256_file(p)
             if size != ent["bytes"] or digest != ent["sha256"] or algo != ent.get("hash_algo"):
@@ -676,7 +688,8 @@ def verify_case(case_dir, legacy_read_only=False):
                     fails.append(f"gate {gname}（declared）非 PASS 却报 READY: {g.get('verdict')}")
                 if g.get("exit_code") != 0:
                     fails.append(f"gate {gname}（declared）exit_code={g.get('exit_code')} ≠ 0 却报 READY")
-        _verify_light_schema(case_dir, fails, m, legacy=legacy_mode)
+        if not fails:
+            _verify_light_schema(case_dir, fails, m, legacy=legacy_mode)
     return (fails, m, legacy_mode)
 
 
@@ -786,7 +799,18 @@ def enumerate_evm_v2_sources(case_dir, argument, edge_dir):
     return found
 
 
-def check_bound_file(case_dir, rec, expected_path=None):
+def _valid_sha256(value):
+    return isinstance(value, str) and len(value) == 64 \
+        and all(c in "0123456789abcdef" for c in value)
+
+
+def _valid_file_hash_fields(rec):
+    return _valid_sha256(rec.get("sha256")) \
+        and type(rec.get("bytes")) is int and rec["bytes"] >= 0
+
+
+def check_bound_file_path(case_dir, rec, expected_path=None):
+    """Check the reference and regular-file path before any full-file hashing."""
     if not isinstance(rec, dict):
         return None, "文件绑定不是对象"
     try:
@@ -795,6 +819,18 @@ def check_bound_file(case_dir, rec, expected_path=None):
             return p, f"绑定路径 {p} ≠ 当前要求路径 {expected_path}"
         if not os.path.isfile(p):
             return p, f"绑定文件不存在: {p}"
+        if not _valid_file_hash_fields(rec):
+            return p, f"绑定文件 sha256/bytes 结构无效: {rec.get('path')}"
+        return p, None
+    except (OSError, ValueError, TypeError) as e:
+        return None, f"文件绑定校验失败: {e}"
+
+
+def check_bound_file(case_dir, rec, expected_path=None):
+    p, err = check_bound_file_path(case_dir, rec, expected_path)
+    if err:
+        return p, err
+    try:
         digest, size = full_sha256_file(p)
         if digest != rec.get("sha256") or size != rec.get("bytes"):
             return p, f"绑定文件哈希/大小漂移: {rec.get('path')}"
@@ -803,7 +839,7 @@ def check_bound_file(case_dir, rec, expected_path=None):
         return None, f"文件绑定校验失败: {e}"
 
 
-def check_algorithm_file(rec, expected_path):
+def check_algorithm_file_path(rec, expected_path):
     """Validate a repository code dependency against one fixed trusted path.
 
     Algorithm files are intentionally outside the case root, so they cannot use
@@ -820,6 +856,16 @@ def check_algorithm_file(rec, expected_path):
         return None, f"算法文件绑定路径 {shown} ≠ 当前验证器依赖 {expected_path}"
     if os.path.islink(shown) or not os.path.isfile(expected):
         return None, f"算法文件不存在、非普通文件或为符号链接: {shown}"
+    if not _valid_file_hash_fields(rec):
+        return None, f"算法文件 sha256/bytes 结构无效: {shown}"
+    return expected, None
+
+
+def check_algorithm_file(rec, expected_path):
+    expected, err = check_algorithm_file_path(rec, expected_path)
+    if err:
+        return expected, err
+    shown = rec["path"]
     try:
         digest, size = full_sha256_file(expected)
     except OSError as e:
@@ -1160,11 +1206,40 @@ def recompute_provenance_sensitivity(case_dir, pl):
                 all_stable = False
     if bs.get("conservative_vs_aggressive_verdict_stable") is not all_stable:
         fails.append("溯源敏感性 bounds_sensitivity 汇总布尔值与策略明细机器重算不一致")
+    if not fails:
+        expected_acks = sorted(
+            ({"entity_id": key[0], "anchor": key[1],
+              "reason": str(receipt_rows[key].get("reason", "")).strip(),
+              "flip_fingerprint": receipt_rows[key].get("flip_fingerprint"),
+              "source": "flip-adjudications/v1"} for key in acks),
+            key=lambda row: (row["entity_id"], row["anchor"]))
+        if bs.get("acknowledged_flips") != expected_acks or bs.get("publishable") is not True:
+            fails.append("当前确认层与已验证收据/策略明细不一致——不得沿用旧确认或旧PASS")
     return fails
 
 
-def validate_and_replay_provenance(case_dir, pl, pl_path, ep, manifest):
-    """完整输入绑定 + 当前代码真实重放。返回失败列表；空列表才允许 freeze。"""
+def check_provenance_algorithm_files(algorithm):
+    """Hash the small trusted code dependencies; never read raw source data."""
+    fails = []
+    script = os.path.join(os.path.dirname(os.path.abspath(__file__)), "entity_source_trace.py")
+    algo = algorithm.get("script_sha256")
+    current_algo, _ = full_sha256_file(script)
+    if algo != current_algo:
+        fails.append("entity_source_trace.py 算法哈希已变化——必须用当前代码重跑 provenance")
+    algo_files = algorithm.get("files") or {}
+    for name, expected in algorithm_dependency_paths().items():
+        _, err = check_algorithm_file(algo_files.get(name), expected)
+        if err:
+            fails.append(f"算法依赖 {name} {err}")
+    return fails
+
+
+def precheck_provenance_inputs(case_dir, pl, ep):
+    """Shared freeze/P4 rejection checks; never hashes or loads raw edge files.
+
+    This is not a verification receipt: current full bindings, the formal source
+    resolver and independent replay remain mandatory in P4 after this precheck.
+    """
     fails = []
     b = pl.get("input_binding")
     if not isinstance(b, dict):
@@ -1173,23 +1248,93 @@ def validate_and_replay_provenance(case_dir, pl, pl_path, ep, manifest):
         return ["provenance 是 allow-no-labels 探索产物，禁止进入正式 freeze"]
     if b.get("labels_file") is None:
         return ["provenance labels_file 为空——正式 freeze 必须绑定标签快照"]
+    try:
+        if type(b.get("total_supply_raw")) not in (str, int) or int(b["total_supply_raw"]) <= 0:
+            raise ValueError("nonpositive supply")
+    except (ValueError, TypeError):
+        fails.append("provenance total_supply_raw 必须为正整数")
 
-    script = os.path.join(os.path.dirname(os.path.abspath(__file__)), "entity_source_trace.py")
-    algorithm = b.get("algorithm") or {}
-    algo = algorithm.get("script_sha256")
-    current_algo, _ = full_sha256_file(script)
-    if algo != current_algo:
-        fails.append("entity_source_trace.py 算法哈希已变化——必须用当前代码重跑 provenance")
-    algo_files = algorithm.get("files") or {}
-    loader = os.path.join(os.path.dirname(os.path.abspath(__file__)), "wave_scan.py")
-    identity = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "solana",
-                            "sqd_cache_identity.py")
-    for name, expected in (("entity_source_trace.py", script), ("wave_scan.py", loader),
-                           ("sqd_cache_identity.py", identity)):
-        _, err = check_algorithm_file(algo_files.get(name), expected)
+    params = b.get("algorithm_params")
+    if not isinstance(params, dict):
+        return ["provenance algorithm_params 必须是对象"]
+    for key in ("depth_limit", "facility_min_degree", "node_budget", "edge_budget"):
+        if type(params.get(key)) is not int:
+            fails.append(f"provenance algorithm_params.{key} 必须是整数")
+    if "mem_limit" in params and (not isinstance(params["mem_limit"], str)
+                                  or not params["mem_limit"].strip()):
+        fails.append("provenance algorithm_params.mem_limit 必须是非空字符串")
+    if params.get("acknowledged_flips"):
+        fails.append("provenance 携带 6.39.4 旧式 acknowledged_flips 字符串参数——"
+                     "裁决收据制（flip-adjudications/v1）起旧确认不再受理，须重跑 trace")
+
+    algorithm = b.get("algorithm")
+    if not isinstance(algorithm, dict):
+        fails.append("provenance algorithm 必须是对象")
+        algorithm = {}
+    if algorithm.get("runtime") != runtime_fingerprint():
+        fails.append("provenance Python/DuckDB 运行时版本已变化或未绑定——必须重算")
+    if not _valid_sha256(algorithm.get("script_sha256")):
+        fails.append("provenance algorithm.script_sha256 缺失或结构无效")
+    algo_files = algorithm.get("files")
+    if not isinstance(algo_files, dict):
+        fails.append("provenance algorithm.files 必须是对象")
+        algo_files = {}
+    for name, expected in algorithm_dependency_paths().items():
+        _, err = check_algorithm_file_path(algo_files.get(name), expected)
         if err:
             fails.append(f"算法依赖 {name} {err}")
 
+    references = [("entity_file", b.get("entity_file"), ep),
+                  ("labels_file", b.get("labels_file"), None)]
+    for name in ("handoff_manifest", "data_map"):
+        container = b.get(name)
+        references.append((name, container.get("file") if isinstance(container, dict) else None,
+                           os.path.join(case_dir, MANIFEST_NAME if name == "handoff_manifest" else "data_map.json")))
+    if params.get("flip_adjudications") is not None:
+        references.append(("flip 裁决收据", params["flip_adjudications"], None))
+    source = b.get("source")
+    if not isinstance(source, dict):
+        return fails + ["provenance source 必须是对象"]
+    kind = source.get("kind")
+    if kind not in {"sol", "evm_v2", "duckdb"}:
+        fails.append(f"未知 provenance source kind: {kind!r}")
+    try:
+        if kind == "evm_v2":
+            validate_evm_v2_argument(case_dir, source.get("argument"))
+        else:
+            resolve_bound_path(case_dir, source.get("argument"))
+    except (OSError, ValueError, TypeError) as exc:
+        fails.append(f"source argument 异常: {exc}")
+    source_files = source.get("files")
+    if not isinstance(source_files, list) or not source_files:
+        fails.append("provenance source.files 为空")
+    else:
+        references += [("source", rec, None) for rec in source_files]
+    for name, rec, expected in references:
+        _, err = check_bound_file_path(case_dir, rec, expected)
+        if err:
+            fails.append(f"{name} {err}")
+    if kind == "sol":
+        mint = source.get("mint")
+        if not isinstance(mint, str) or not mint:
+            fails.append("Solana provenance 未绑定 mint")
+        try:
+            meta_path = resolve_bound_path(case_dir, source.get("cache_meta"))
+            # Reuse the formal resolver's metadata contract, without its raw SHA
+            # work. CURRENT selection and complete content checks still run in P4.
+            from sqd_cache_identity import validate_cache_meta_shape
+            validate_cache_meta_shape(load_json(meta_path), mint)
+        except (OSError, ValueError, TypeError) as exc:
+            fails.append(f"Solana provenance cache meta 异常: {exc}")
+    if fails:
+        return fails
+
+    fails += check_provenance_algorithm_files(algorithm)
+    if fails:
+        return fails
+
+    # Only after every cheap shape/path check do we hash the small identity and
+    # confirmation files. No old PASS or supplied summary bypasses these checks.
     _, err = check_bound_file(case_dir, b.get("entity_file"), expected_path=ep)
     if err:
         fails.append(f"entity_file {err}")
@@ -1205,6 +1350,30 @@ def validate_and_replay_provenance(case_dir, pl, pl_path, ep, manifest):
                 fails.append("labels_file 有效标签数为 0——正式 freeze 不接受空标签快照")
         except (AttributeError, OSError, ValueError, TypeError) as exc:
             fails.append(f"labels_file 内容校验失败: {exc}")
+    fails += recompute_provenance_sensitivity(case_dir, pl)
+    return fails
+
+
+def validate_and_replay_provenance(case_dir, pl, pl_path, ep, manifest):
+    """完整绑定与当前确认 + 独立重放或其自身完整内容凭证。返回失败列表。"""
+    validation_started = time.perf_counter()
+    fails = precheck_provenance_inputs(case_dir, pl, ep)
+    if fails:
+        emit_metric("provenance_precheck_reject", stage="inputs_and_confirmation",
+                    independent_replay_started=False, failure_count=len(fails))
+        return fails
+    try:
+        assert_algorithm_runtime()
+    except AlgorithmRuntimeDriftError as exc:
+        emit_metric("provenance_precheck_reject", stage="loaded_algorithm",
+                    independent_replay_started=False, failure_count=1)
+        return [f"provenance 算法驻留版本不一致，必须重启进程: {exc}"]
+    b = pl["input_binding"]
+    labels_path = resolve_bound_path(case_dir, b["labels_file"]["path"])
+
+    script = os.path.join(os.path.dirname(os.path.abspath(__file__)), "entity_source_trace.py")
+    algorithm = b.get("algorithm") or {}
+    fails += check_provenance_algorithm_files(algorithm)
 
     hb = b.get("handoff_manifest")
     if not isinstance(hb, dict):
@@ -1246,6 +1415,11 @@ def validate_and_replay_provenance(case_dir, pl, pl_path, ep, manifest):
     if scope.get("cutoff_utc") in (None, "") and scope.get("frozen_block") in (None, ""):
         fails.append("manifest 未冻结 cutoff_utc/frozen_block，provenance 不可复现")
 
+    if fails:
+        emit_metric("provenance_precheck_reject", stage="identity_labels_algorithm_scope",
+                    independent_replay_started=False, failure_count=len(fails))
+        return fails
+
     source = b.get("source") or {}
     source_files = source.get("files")
     if not isinstance(source_files, list) or not source_files:
@@ -1261,7 +1435,6 @@ def validate_and_replay_provenance(case_dir, pl, pl_path, ep, manifest):
             if os.path.isabs(str(rel)) or rel not in data_paths or rel not in art_paths:
                 fails.append(f"source {rel} 未同时绑定 verified manifest.artifacts 与 data_map")
 
-    fails += recompute_provenance_sensitivity(case_dir, pl)
     if fails:
         return fails
 
@@ -1305,7 +1478,39 @@ def validate_and_replay_provenance(case_dir, pl, pl_path, ep, manifest):
             arg = resolve_bound_path(case_dir, source.get("argument"))
         except ValueError as e:
             return [f"source argument 异常: {e}"]
-    fd, replay_path = tempfile.mkstemp(prefix=".provenance-replay-", suffix=".json", dir=case_dir)
+    # The source selection is also a live dependency. In particular, unchanged
+    # old edge bytes cannot hide a changed Solana CURRENT pointer.
+    if kind == "sol":
+        try:
+            from wave_scan import preflight_sol
+            prepared = preflight_sol(arg, cache_meta_path=resolve_bound_path(
+                case_dir, source.get("cache_meta")), expected_mint=source.get("mint"),
+                case_root=case_dir)
+            if prepared["edge_source_binding"] != b.get("edge_source_binding"):
+                return ["Solana provenance 当前resolver身份与台账绑定不一致"]
+        except (OSError, ValueError, TypeError, SystemExit) as exc:
+            return [f"Solana provenance 当前选择复验失败: {exc}"]
+    replay_started = time.perf_counter()
+    candidate_file_sha, _ = full_sha256_file(pl_path)
+    if load_json(pl_path) != pl:
+        return ["provenance 当前台账文件与本次待审对象不同——拒绝复用独立结果"]
+    try:
+        independent_hit, rerun_reason = load_independent_replay(case_dir, b, pl)
+    except AlgorithmRuntimeDriftError as exc:
+        return [f"provenance 算法在独立缓存验证前后变化，必须重启进程: {exc}"]
+    if independent_hit:
+        if full_sha256_file(pl_path)[0] != candidate_file_sha:
+            return ["provenance 当前台账在独立缓存校验期间变化"]
+        emit_metric("provenance_independent_replay", cache_hit=True,
+                    full_rerun_reason=None, entities_computed=0,
+                    policy_simulations=0, edges_loaded_for_trace=0,
+                    input_validation_seconds=round(replay_started - validation_started, 6),
+                    elapsed_seconds=round(time.perf_counter() - validation_started, 6))
+        return []
+    # Keep isolated performance/review outputs beside the candidate ledger. The
+    # case remains the explicit binding context, regardless of the output path.
+    replay_dir = os.path.dirname(os.path.abspath(pl_path))
+    fd, replay_path = tempfile.mkstemp(prefix=".provenance-replay-", suffix=".json", dir=replay_dir)
     os.close(fd)
     try:
         cmd = [sys.executable, script]
@@ -1319,7 +1524,7 @@ def validate_and_replay_provenance(case_dir, pl, pl_path, ep, manifest):
                 return ["Solana provenance 未绑定 mint"]
             cmd += ["--edges-sol", os.path.realpath(arg),
                     "--sol-cache-meta", os.path.realpath(cache_meta),
-                    "--mint", mint, "--case-root", os.path.realpath(case_dir)]
+                    "--mint", mint]
         elif kind == "evm_v2":
             cmd += ["--edges-evm-v2", arg]
         elif kind == "duckdb":
@@ -1329,6 +1534,9 @@ def validate_and_replay_provenance(case_dir, pl, pl_path, ep, manifest):
         params = b.get("algorithm_params") or {}
         cmd += ["--total-supply", str(b.get("total_supply_raw")),
                 "--entity-file", ep, "--out", replay_path,
+                "--case-root", os.path.realpath(case_dir),
+                "--compute-cache-mode", "off",
+                "--mem-limit", str(params.get("mem_limit", "8GB")),
                 "--depth-limit", str(params["depth_limit"]),
                 "--facility-min-degree", str(params["facility_min_degree"]),
                 "--node-budget", str(params["node_budget"]),
@@ -1349,19 +1557,67 @@ def validate_and_replay_provenance(case_dir, pl, pl_path, ep, manifest):
             cmd += ["--labels-file", labels_path]
         env = dict(os.environ)
         env["PYTHONDONTWRITEBYTECODE"] = "1"
+        emit_metric("provenance_independent_replay_start", cache_hit=False,
+                    full_rerun_reason=rerun_reason, producer_compute_cache="off")
         p = subprocess.run(cmd, capture_output=True, text=True, env=env)
         if p.returncode != 0:
+            emit_metric("provenance_independent_replay_failed", exit_code=p.returncode,
+                        full_rerun_reason=rerun_reason,
+                        elapsed_seconds=round(time.perf_counter() - validation_started, 6))
             return [f"provenance 原始数据重放失败 exit={p.returncode}: "
                     f"{(p.stdout + p.stderr)[-1200:]}"]
         fresh = load_json(replay_path)
+        if full_sha256_file(pl_path)[0] != candidate_file_sha:
+            return ["provenance 待审台账在独立重放期间变化——拒绝冻结与缓存"]
         if provenance_semantic_sha(fresh) != provenance_semantic_sha(pl):
+            emit_metric("provenance_independent_replay_failed", reason="semantic_mismatch",
+                        full_rerun_reason=rerun_reason,
+                        elapsed_seconds=round(time.perf_counter() - validation_started, 6))
             return ["provenance 重放语义摘要与待冻结台账不一致——台账过期/人工构造/参数漂移"]
+        save_independent_replay(case_dir, b, pl, fresh)
+        emit_metric("provenance_independent_replay", cache_hit=False,
+                    full_rerun_reason=rerun_reason, producer_compute_cache="off",
+                    entities_computed=len(fresh.get("entities") or []),
+                    policy_simulations=(fresh.get("computation_reuse") or {}).get("policy_simulations"),
+                    edges_loaded_for_trace=(fresh.get("computation_reuse") or {}).get("edges_loaded_for_trace"),
+                    input_validation_seconds=round(replay_started - validation_started, 6),
+                    elapsed_seconds=round(time.perf_counter() - validation_started, 6))
     except (KeyError, OSError, ValueError, TypeError) as e:
         return [f"provenance 重放参数/执行异常: {e}"]
     finally:
         if os.path.isfile(replay_path):
             os.unlink(replay_path)
     return []
+
+def freeze_adjudication_binding(case_dir, members, entity_file):
+    """Snapshot small inputs around current-run validators; never a PASS receipt."""
+    paths = {members, entity_file, ADJUDICATIONS_NAME,
+             "wave_scan_report.json", "flow_anomaly_report.json"}
+    distribution_path = os.path.join(case_dir, DISTRIBUTION_ADJUDICATIONS_NAME)
+    distribution_present = os.path.lexists(distribution_path)
+    if distribution_present:
+        safe_case_file(case_dir, DISTRIBUTION_ADJUDICATIONS_NAME)
+        obj = load_json(distribution_path)
+        paths.add(DISTRIBUTION_ADJUDICATIONS_NAME)
+        paths.add((obj.get("source_scan") or {}).get("path"))
+    files = {}
+    for shown in paths:
+        path = safe_case_file(case_dir, shown)
+        digest, size = full_sha256_file(path)
+        files[shown] = {"sha256": digest, "bytes": size}
+    validator = os.path.join(os.path.dirname(os.path.abspath(__file__)), "adjudication_validator.py")
+    return {"files": files, "distribution_present": distribution_present,
+            "validator_sha256": full_sha256_file(validator)[0]}
+
+
+def check_freeze_adjudication_binding(case_dir, members, entity_file, expected):
+    try:
+        if freeze_adjudication_binding(case_dir, members, entity_file) != expected:
+            return ["freeze 裁决、源报告、名册或 validator 在验证期间变化"]
+    except (OSError, ValueError, TypeError, AttributeError) as exc:
+        return [f"freeze 裁决输入不可复验: {exc}"]
+    return []
+
 
 def cmd_freeze(a):
     case_dir = os.path.abspath(a.case_dir)
@@ -1397,9 +1653,8 @@ def cmd_freeze(a):
                 bound_records = []
                 bound_records += list(((binding.get("source") or {}).get("files") or []))
                 algo_files = ((binding.get("algorithm") or {}).get("files") or {})
-                script_dir = os.path.dirname(os.path.abspath(__file__))
-                for name in ("entity_source_trace.py", "wave_scan.py"):
-                    _, err = check_algorithm_file(algo_files.get(name), os.path.join(script_dir, name))
+                for name, expected in algorithm_dependency_paths().items():
+                    _, err = check_algorithm_file(algo_files.get(name), expected)
                     if err:
                         drift.append(f"算法依赖 {name} {err}")
                 for key in ("entity_file", "labels_file"):
@@ -1452,39 +1707,6 @@ def cmd_freeze(a):
     except Exception:
         print(f"[freeze] 实体名册格式错误（需非空 {{entity_id:[addr…]}}）: {ep}", file=sys.stderr)
         return 2
-
-    # ── 前置 0：同进程严格 v2 verify（v6.8.1 codex 复核修复——manifest 缺失/BLOCKED/
-    # 哈希漂移/legacy 契约时一律禁止冻结；不存在绕过 verify 的冻结路径）
-    vfails, verified_manifest, _ = verify_case(case_dir, legacy_read_only=False)
-    if vfails:
-        print("[freeze] handoff verify 未通过——禁止冻结（fail-closed）:", file=sys.stderr)
-        for x in vfails:
-            print(f"  ✗ {x}", file=sys.stderr)
-        return 2
-
-    # ── 前置 1：裁决闭环（v6.8.0；v6.8.1 起把实体名册传给 validator——
-    # linked_entity 绑定校验不可跳过）："报警器响了没人管照样冻结"从此机器堵死。
-    # 旧案 revision 追加同样过此闸：改成员表＝新结论，必须先重跑 v2 扫描器补裁决。
-    validator = os.path.join(os.path.dirname(os.path.abspath(__file__)), "adjudication_validator.py")
-    pv = subprocess.run([sys.executable, validator, "validate", "--case-dir", case_dir,
-                         "--entity-file", a.entity_file],
-                        capture_output=True, text=True)
-    if pv.returncode != 0:
-        print("[freeze] 候选裁决闭环未通过——禁止冻结（validator 输出如下）:", file=sys.stderr)
-        sys.stderr.write(pv.stdout + pv.stderr)
-        return 2
-
-    distribution_adj_path = os.path.join(case_dir, DISTRIBUTION_ADJUDICATIONS_NAME)
-    distribution_adj_digest = None
-    if os.path.isfile(distribution_adj_path):
-        pd = subprocess.run([sys.executable, validator, "distribution-validate",
-                             "--case-dir", case_dir, "--entity-file", a.entity_file],
-                            capture_output=True, text=True)
-        if pd.returncode != 0:
-            print("[freeze] 分布异常裁决闭环未通过——禁止冻结:", file=sys.stderr)
-            sys.stderr.write(pd.stdout + pd.stderr)
-            return 2
-        _, distribution_adj_digest, _ = sha256_file(distribution_adj_path)
 
     # ── 前置 2：溯源闸内容级绑定（v6.8.1 codex 复核修复——不再信文件自报：
     # ①schema 必须 v2（v1 是 pro-rata 数学错误版）；②台账实体 ID 集与本次名册双向一致；
@@ -1539,6 +1761,62 @@ def cmd_freeze(a):
         print(f"[freeze] provenance_ledger.json 结构异常: {e}", file=sys.stderr)
         return 2
 
+    # Scheduling only: structure and confirmation are still mandatory, but
+    # missing approval must not first trigger unrelated full source validation.
+    sensitivity_fails = precheck_provenance_inputs(case_dir, pl, ep)
+    if sensitivity_fails:
+        emit_metric("freeze_precheck_reject", stage="inputs_and_confirmation",
+                    expensive_validation_started=False, failure_count=len(sensitivity_fails))
+        print("[freeze] 输入/确认便宜预检未通过——先修当前输入与确认，再运行完整验证:", file=sys.stderr)
+        for failure in sensitivity_fails:
+            print(f"  ✗ {failure}", file=sys.stderr)
+        return 2
+
+    try:
+        adjudication_binding = freeze_adjudication_binding(case_dir, a.members, a.entity_file)
+    except (OSError, ValueError, TypeError, AttributeError) as exc:
+        print(f"[freeze] 裁决输入前检失败: {exc}", file=sys.stderr)
+        return 2
+
+    # ── 前置 1：裁决闭环（v6.8.0；v6.8.1 起把实体名册传给 validator——
+    # linked_entity 绑定校验不可跳过）："报警器响了没人管照样冻结"从此机器堵死。
+    # 旧案 revision 追加同样过此闸：改成员表＝新结论，必须先重跑 v2 扫描器补裁决。
+    validator = os.path.join(os.path.dirname(os.path.abspath(__file__)), "adjudication_validator.py")
+    pv = subprocess.run([sys.executable, validator, "validate", "--case-dir", case_dir,
+                         "--entity-file", a.entity_file],
+                        capture_output=True, text=True)
+    if pv.returncode != 0:
+        print("[freeze] 候选裁决闭环未通过——禁止冻结（validator 输出如下）:", file=sys.stderr)
+        sys.stderr.write(pv.stdout + pv.stderr)
+        return 2
+
+    distribution_adj_path = os.path.join(case_dir, DISTRIBUTION_ADJUDICATIONS_NAME)
+    distribution_adj_digest = None
+    if os.path.isfile(distribution_adj_path):
+        pd = subprocess.run([sys.executable, validator, "distribution-validate",
+                             "--case-dir", case_dir, "--entity-file", a.entity_file],
+                            capture_output=True, text=True)
+        if pd.returncode != 0:
+            print("[freeze] 分布异常裁决闭环未通过——禁止冻结:", file=sys.stderr)
+            sys.stderr.write(pd.stdout + pd.stderr)
+            return 2
+        _, distribution_adj_digest, _ = sha256_file(distribution_adj_path)
+
+    adjudication_drift = check_freeze_adjudication_binding(
+        case_dir, a.members, a.entity_file, adjudication_binding)
+    if adjudication_drift:
+        print("[freeze] " + "; ".join(adjudication_drift), file=sys.stderr)
+        return 2
+
+    # ── 前置 0：同进程严格 v2 verify（v6.8.1 codex 复核修复——manifest 缺失/BLOCKED/
+    # 哈希漂移/legacy 契约时一律禁止冻结；不存在绕过 verify 的冻结路径）
+    vfails, verified_manifest, _ = verify_case(case_dir, legacy_read_only=False)
+    if vfails:
+        print("[freeze] handoff verify 未通过——禁止冻结（fail-closed）:", file=sys.stderr)
+        for x in vfails:
+            print(f"  ✗ {x}", file=sys.stderr)
+        return 2
+
     # ── 前置 3：完整输入绑定＋当前代码真实重放。此闸也从 policy_details 独立重算
     # FIFO/LIFO/pro-rata 与顺序敏感性，不读取 ledger 自报 stable 布尔值作裁决。
     replay_fails = validate_and_replay_provenance(
@@ -1571,7 +1849,12 @@ def cmd_freeze(a):
     rev_keys = ("members_source", "members_sha256", "entity_file", "entity_file_sha256",
                 "provenance_ledger_sha256", "provenance_input_binding_sha256",
                 "manifest_sha256", "manifest_run_id", "manifest_scope", "data_map_sha256",
-                "distribution_adjudications_sha256", "frozen_at_utc", "pending_items", "casebook_note")
+                 "distribution_adjudications_sha256", "frozen_at_utc", "pending_items", "casebook_note")
+    adjudication_drift = check_freeze_adjudication_binding(
+        case_dir, a.members, a.entity_file, adjudication_binding)
+    if adjudication_drift:
+        print("[freeze] " + "; ".join(adjudication_drift), file=sys.stderr)
+        return 2
     if os.path.isfile(path):
         fz = load_json(path)
         no_op_keys = tuple(k for k in rev_keys if k != "frozen_at_utc")
@@ -1640,6 +1923,9 @@ def main():
     except Exception as e:
         print(f"[{a.subcmd}] 脚本自身错误（exit 1，修完重跑）: {e}", file=sys.stderr)
         return 1
+
+
+register_loaded_algorithm(globals(), sys._getframe().f_code)
 
 
 if __name__ == "__main__":

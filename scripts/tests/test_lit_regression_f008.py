@@ -745,8 +745,35 @@ def test_mock_legacy_kinds(root: Path, base: Path, ledger: dict, manifest: dict)
         source["kind"] = kind
         source["argument"] = source["files"][0]["path"]
         if kind == "sol":
-            source["cache_meta"] = source["files"][1]["path"]
-            source["mint"] = "fixture-mint"
+            from sqd_v4_test_fixture import formal_cli_args
+            from wave_scan import preflight_sol
+
+            raw = case / "data" / "sol_dispatch.jsonl"
+            raw.write_text("".join(json.dumps(row) + "\n" for row in (
+                [1_700_000_001, 1, 0, -1, ZERO, ENTITY, 100],
+                [1_700_000_002, 2, 0, -1, ENTITY, OTHER, 10],
+            )), encoding="utf-8")
+            argv = formal_cli_args(raw)
+            args = dict(zip(argv[::2], argv[1::2]))
+            edge, meta = Path(args["--edges-sol"]), Path(args["--sol-cache-meta"])
+            prepared = preflight_sol(str(edge), cache_meta_path=str(meta),
+                                     expected_mint=args["--mint"], case_root=str(case))
+            source.update(argument=edge.relative_to(case).as_posix(),
+                          cache_meta=meta.relative_to(case).as_posix(),
+                          mint=args["--mint"],
+                          files=[file_record(edge, case), file_record(meta, case)])
+            led["input_binding"]["edge_source_binding"] = prepared["edge_source_binding"]
+            man["artifacts"] = [{"path": rec["path"]} for rec in source["files"]]
+            write_json(case / "handoff_manifest.json", man)
+            write_json(case / "data_map.json", {"files": man["artifacts"]})
+            led["input_binding"]["handoff_manifest"]["file"] = file_record(
+                case / "handoff_manifest.json", case)
+            led["input_binding"]["data_map"] = {
+                "file": file_record(case / "data_map.json", case),
+                "paths": [rec["path"] for rec in source["files"]],
+            }
+        # The current candidate must match the exact ledger passed to P4.
+        write_json(case / "provenance_ledger.json", led)
         old_run = handoff.subprocess.run
         calls = []
 
@@ -770,7 +797,7 @@ def main() -> int:
     ap.add_argument("--red-only", action="store_true")
     args = ap.parse_args()
     with tempfile.TemporaryDirectory(prefix="f008_") as tmp:
-        root = Path(tmp)
+        root = Path(tmp).resolve()
         base, ledger, manifest, _ = test_real_multi_run(root)
         if not args.red_only:
             test_set_and_argument_attacks(root, base, ledger, manifest)

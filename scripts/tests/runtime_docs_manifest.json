@@ -34,6 +34,7 @@
     {"path": "labels/README.md", "entry": "labels/README.md", "stages": ["A1", "A3"]},
     {"path": "lp-fee-accounting.md", "entry": "analysis-playbook.md", "stages": ["A3", "A5"]},
     {"path": "monitoring-package.md", "entry": "report-template.md", "stages": ["post-A5"]},
+    {"path": "performance-reuse-codex.md", "entry": "split-run.md", "stages": ["A2", "A3", "A4"]},
     {"path": "playbook-entity-cluster-cost.md", "entry": "analysis-playbook.md", "stages": ["A3"]},
     {"path": "playbook-entity-cluster-methods.md", "entry": "analysis-playbook.md", "stages": ["A3"]},
     {"path": "playbook-entity-cluster-tiering.md", "entry": "analysis-playbook.md", "stages": ["A3"]},

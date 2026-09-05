@@ -204,6 +204,12 @@ SUITE += ['test_batch18_manifest_stage2_loop.py']
 SUITE += ['test_batch18_review_digest.py']
 
 
+# Codex c2.2.5: exact raw materialization, dependency reuse and independent replay.
+SUITE += ['test_trace_compute_cache.py', 'test_deep_validation_cache.py',
+          'test_deep_edge_rows_cache.py',
+          'test_codex_performance_contract.py', 'test_freeze_preflight_schedule.py']
+
+
 def main():
     results = []
     for item in SUITE:

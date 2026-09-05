@@ -157,7 +157,10 @@ def main():
     wj(d2, "analysis-state.json", {"entities": []})
     wj(d2, "provenance_ledger.json", make_provenance(d2, emap))
     p = run(HANDOFF, ["freeze", "--case-dir", d2] + FRZ)
-    check("缺裁决台账 freeze exit 2", p.returncode == 2 and "裁决闭环" in (p.stderr + p.stdout))
+    check("缺裁决台账 freeze exit 2",
+          p.returncode == 2
+          and "裁决输入前检失败: 文件不存在:" in (p.stderr + p.stdout)
+          and "candidate_adjudications.json" in (p.stderr + p.stdout))
 
     # 3. ②少裁
     d3 = os.path.join(root, "missing")

@@ -55,7 +55,8 @@ fifo（先进先出，老币先耗）/lifo（后进先出，新币先耗）三�
 必须等于 resolver 结果。resolver 返回的 binding 进入 input_binding/freeze 重放。
 输出：--out provenance_ledger.json。实体条目含 members_sha256；台账另记录原始边/标签/
 实体文件完整哈希、total supply、manifest run/cutoff/block/denominators、算法哈希与参数。
-freeze 不仅比对绑定，还以当前代码从当前原始边真实重放并比较语义摘要。
+freeze 首次以当前代码从当前原始边独立重放；同计算输入与待审计算内容的重复运行
+只能复用它自己已完成的独立计算凭证，每次仍核当前完整绑定和确认层。
 
 退出码：0=溯源完成且闭合且敏感性稳定；2=数据/参数错误、闭合自检失败或敏感性翻转
 （fail-closed）；1=脚本自身错误。
@@ -65,16 +66,23 @@ freeze 不仅比对绑定，还以当前代码从当前原始边真实重放并�
   - 3yMk：EwUU8oi 设施支路停（facility_candidate/confirmed）而 W1 支路穿透（path_len ≥2）。
 """
 import argparse
+import copy
 import glob
 import hashlib
 import json
 import os
 import sys
+import time
 from collections import deque
 from datetime import datetime, timezone
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from wave_scan import Z, DEAD, load_sol, load_evm_v2, attach_duckdb, day_str  # noqa: E402
+from wave_scan import Z, DEAD, load_sol, preflight_sol, load_evm_v2, attach_duckdb, day_str  # noqa: E402
+from trace_compute_cache import (COMPUTE_SCHEMA, algorithm_dependency_paths,
+                                 computation_inputs,
+                                 load_computation, save_computation, emit_metric,
+                                 runtime_fingerprint, AlgorithmRuntimeDriftError,
+                                 assert_algorithm_runtime, register_loaded_algorithm)
 
 SCHEMA = "provenance-ledger/v2"
 POLICIES = ("pro_rata", "fifo", "lifo")
@@ -124,6 +132,7 @@ def bound_path(path, case_dir):
 
 
 def source_binding(a, case_dir, edge_source_binding=None):
+    assert_algorithm_runtime()
     if a.edges_sol:
         kind, argument = "sol", a.edges_sol
         files = sorted(glob.glob(a.edges_sol))
@@ -139,27 +148,29 @@ def source_binding(a, case_dir, edge_source_binding=None):
     data_map_path = os.path.join(case_dir, "data_map.json")
     manifest = None
     if os.path.isfile(manifest_path):
-        m = json.load(open(manifest_path, encoding="utf-8"))
+        with open(manifest_path, encoding="utf-8") as handle:
+            m = json.load(handle)
         manifest = {"file": full_file_record(manifest_path, case_dir),
                     "run_id": m.get("run_id"), "scope": m.get("scope")}
     data_map = None
     if os.path.isfile(data_map_path):
-        dm = json.load(open(data_map_path, encoding="utf-8"))
+        with open(data_map_path, encoding="utf-8") as handle:
+            dm = json.load(handle)
         data_map = {"file": full_file_record(data_map_path, case_dir),
                     "paths": sorted(x.get("path") for x in dm.get("files", [])
                                     if isinstance(x, dict) and isinstance(x.get("path"), str))}
-    trace_rec = full_file_record(__file__, case_dir)
-    loader_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "wave_scan.py")
-    loader_rec = full_file_record(loader_path, case_dir)
-    identity_path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                                 "..", "solana", "sqd_cache_identity.py")
-    identity_rec = full_file_record(identity_path, case_dir)
+    algorithm_files = {}
+    for name, path in algorithm_dependency_paths().items():
+        rec = full_file_record(path, case_dir)
+        # The verifier selects exact repository dependencies, even when a clone
+        # happens to live under the case root.
+        rec["path"] = os.path.realpath(path)
+        algorithm_files[name] = rec
     result = {
         "mode": "exploration" if a.allow_no_labels else "formal",
-        "algorithm": {"script_sha256": trace_rec["sha256"],
-                      "files": {"entity_source_trace.py": trace_rec,
-                                "wave_scan.py": loader_rec,
-                                "sqd_cache_identity.py": identity_rec},
+        "algorithm": {"script_sha256": algorithm_files["entity_source_trace.py"]["sha256"],
+                      "files": algorithm_files,
+                      "runtime": runtime_fingerprint(),
                       "policies": list(POLICIES), "order_material_pct": ORDER_MATERIAL_PCT},
         "source": {"kind": kind, "argument": bound_path(argument, case_dir),
                    "edges_table": a.edges_table if kind == "duckdb" else None,
@@ -175,6 +186,7 @@ def source_binding(a, case_dir, edge_source_binding=None):
         "algorithm_params": {"depth_limit": a.depth_limit,
                              "facility_min_degree": a.facility_min_degree,
                              "node_budget": a.node_budget, "edge_budget": a.edge_budget,
+                             "mem_limit": a.mem_limit,
                              # F-06：翻转裁决收据（flip-adjudications/v1）以文件引用随绑定
                              # 传递——freeze 重放用同一份收据实物还原同一 exit 语义；
                              # 收据内容一变（sha 失配）重放自动拒。
@@ -667,93 +679,38 @@ def trace_entity(con, classifier, eid, members, total, a):
     return ent, sens
 
 
-def main():
-    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    src = ap.add_mutually_exclusive_group(required=True)
-    src.add_argument("--edges-sol")
-    src.add_argument("--edges-evm-v2")
-    src.add_argument("--duckdb")
-    ap.add_argument("--edges-table", default="edges")
-    ap.add_argument("--legacy-sol5", action="store_true",
-                    help="保留显式诊断开关；本实体 provenance 正式链一律拒绝")
-    ap.add_argument("--sol-cache-meta")
-    ap.add_argument("--mint")
-    ap.add_argument("--case-root", help="正式 Solana 案根；经 cache resolver 且拒符号链接")
-    ap.add_argument("--total-supply", required=True)
-    ap.add_argument("--entity-file", required=True, help="{entity_id:[addr…]}")
-    ap.add_argument("--labels-file", help="{addr:{kind,name}} 确证标签（cex/dex_pool/facility/bridge/…）")
-    ap.add_argument("--allow-no-labels", action="store_true",
-                    help="仅探索：允许无标签运行；产物带 exploration 标记且禁止 freeze")
-    ap.add_argument("--out", default="provenance_ledger.json")
-    ap.add_argument("--acknowledge-flip", metavar="RECEIPT.json",
-                    help="flip-adjudications/v1 裁决收据文件路径（F-06 起唯一合法通道；"
-                         "6.39.4 的 ENTITY:ANCHOR:REASON 字符串格式已废除）。收据必须含"
-                         "裁决主体、UTC 决定时间、名册与证据 sha 绑定，且每锚点行携带"
-                         "flip_fingerprint（该锚点三策略明细的规范化 sha）与三策略 top"
-                         "名称/份额披露——本工具重算当前运行同款指纹并要求相等，底层数据"
-                         "一变收据自动失效必须重裁。收据引用随 input_binding 传递，"
-                         "freeze 重放同收据还原。")
-    ap.add_argument("--mem-limit", default="8GB")
-    ap.add_argument("--depth-limit", type=int, default=10, help="BFS 深度上限（距实体最短跳数）")
-    ap.add_argument("--facility-min-degree", type=int, default=1000, help="设施启发式：双向对手方 ≥此数")
-    ap.add_argument("--node-budget", type=int, default=200_000, help="单实体祖先节点上限（超出记 budget_truncated）")
-    ap.add_argument("--edge-budget", type=int, default=3_000_000, help="单实体子图边数上限（超出 exit 2）")
-    a = ap.parse_args()
+def prepare_computation_binding(a, case_dir):
+    """Fresh full hashes and resolver identity; never a stat-only cache lookup."""
+    assert_algorithm_runtime()
+    prepared = None
+    identity = None
+    effective = copy.copy(a)
+    if a.edges_sol:
+        prepared = preflight_sol(a.edges_sol, cache_meta_path=a.sol_cache_meta,
+                                 expected_mint=a.mint, case_root=a.case_root)
+        # Keep the original CLI request intact for load_sol's request guard.
+        # The binding still includes the resolver's effective metadata file.
+        effective.sol_cache_meta = prepared["meta_path"]
+        identity = prepared["edge_source_binding"]
+    return source_binding(effective, case_dir, edge_source_binding=identity), prepared
 
-    if a.legacy_sol5:
-        log("正式 entity provenance 拒绝 legacy-sol5；旧数据没有可证交易内顺序")
-        return 2
 
-    if not a.labels_file and not a.allow_no_labels:
-        log("正式模式必须给 --labels-file；仅探索可显式加 --allow-no-labels")
-        sys.exit(2)
-    if a.labels_file and a.allow_no_labels:
-        log("--labels-file 与 --allow-no-labels 互斥；有标签时使用正式模式")
-        sys.exit(2)
-
+def compute_from_edges(a, case_dir, entity_map, labels, total, binding, prepared):
+    """Only the original raw-edge computation; no user approval state."""
     import duckdb
-    total = int(a.total_supply)
-    if total <= 0:
-        log("参数错误：--total-supply 必须为正")
-        sys.exit(2)
-    entity_map = load_entity_map(a.entity_file)
-    labels = load_labels(a.labels_file) if a.labels_file else {}
-    if a.labels_file and not labels:
-        log("正式模式 --labels-file 有效标签数为 0——空标签快照禁止进入 provenance/freeze")
-        return 2
-    # F-06：裁决收据先行验证（文件不存在/结构不合法＝调用错误 exit 2，不落 exit 1）；
-    # 覆盖判定在 ledger 组装后按当前明细重算指纹。
-    from handoff_manifest import (ledger_real_flips, load_flip_adjudications,
-                                  verify_flip_receipt_against_ledger)
-    case_dir = os.path.realpath(os.path.dirname(os.path.abspath(a.out)))
-    receipt_rows = {}
-    if a.acknowledge_flip:
-        # F-D7：三处收据口径统一为"案根内＋sha 绑定"——trace 不收案外收据（案根检查
-        # 先于结构验证：案外收据先报位置错，不报它同目录缺名册一类的次生错）。
-        receipt_real = os.path.realpath(os.path.expanduser(a.acknowledge_flip))
-        rel = os.path.relpath(receipt_real, os.path.realpath(case_dir))
-        if rel == ".." or rel.startswith(".." + os.sep):
-            log(f"--acknowledge-flip 裁决收据必须在案根（--out 所在目录）内: {a.acknowledge_flip}")
-            sys.exit(2)
-        try:
-            _, receipt_rows = load_flip_adjudications(
-                a.acknowledge_flip, current_entity_file=a.entity_file)
-        except (OSError, ValueError, TypeError) as exc:
-            log(f"--acknowledge-flip 裁决收据不合法: {exc}")
-            sys.exit(2)
     con = duckdb.connect()
     con.execute(f"SET memory_limit='{a.mem_limit}'")
-    t0 = datetime.now(timezone.utc)
     edge_source_binding = None
     if a.edges_sol:
         n_edges, edge_source_binding = load_sol(
             con, a.edges_sol, cache_meta_path=a.sol_cache_meta,
-            expected_mint=a.mint, case_root=a.case_root)
+            expected_mint=a.mint, case_root=a.case_root, preflight=prepared)
     elif a.edges_evm_v2:
         n_edges = load_evm_v2(con, a.edges_evm_v2)
     else:
         n_edges = attach_duckdb(con, a.duckdb, a.edges_table)
-    binding = source_binding(a, case_dir, edge_source_binding=edge_source_binding)
+    if a.edges_sol and edge_source_binding != binding.get("edge_source_binding"):
+        raise ValueError("Solana loader identity changed after preflight")
     # handoff scope 若已冻结 cutoff/block，溯源必须实际应用同一边界；只把值写进台账不够。
     where = []
     hb = binding.get("handoff_manifest") or {}
@@ -819,18 +776,165 @@ def main():
     for e in entities:
         unresolved_total += sum(float(c["raw"]) for c in e["anchors"]["peak"]["composition"]
                                 if c["kind"] == "UNRESOLVED")
+    con.close()
+    return {"schema": COMPUTE_SCHEMA, "entities": entities, "sensitivity": sens_all,
+            "unresolved_total_pct": round(unresolved_total * 100.0 / total, 4),
+            "counts": {"source_edges": n_edges, "kept_edges": kept}}
+
+
+def _main():
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    src = ap.add_mutually_exclusive_group(required=True)
+    src.add_argument("--edges-sol")
+    src.add_argument("--edges-evm-v2")
+    src.add_argument("--duckdb")
+    ap.add_argument("--edges-table", default="edges")
+    ap.add_argument("--legacy-sol5", action="store_true",
+                    help="保留显式诊断开关；本实体 provenance 正式链一律拒绝")
+    ap.add_argument("--sol-cache-meta")
+    ap.add_argument("--mint")
+    ap.add_argument("--case-root", help="案根绑定上下文；正式Solana必需且经resolver。--out可写独立目录")
+    ap.add_argument("--total-supply", required=True)
+    ap.add_argument("--entity-file", required=True, help="{entity_id:[addr…]}")
+    ap.add_argument("--labels-file", help="{addr:{kind,name}} 确证标签（cex/dex_pool/facility/bridge/…）")
+    ap.add_argument("--allow-no-labels", action="store_true",
+                    help="仅探索：允许无标签运行；产物带 exploration 标记且禁止 freeze")
+    ap.add_argument("--out", default="provenance_ledger.json")
+    ap.add_argument("--acknowledge-flip", metavar="RECEIPT.json",
+                    help="flip-adjudications/v1 裁决收据文件路径（F-06 起唯一合法通道；"
+                         "6.39.4 的 ENTITY:ANCHOR:REASON 字符串格式已废除）。收据必须含"
+                         "裁决主体、UTC 决定时间、名册与证据 sha 绑定，且每锚点行携带"
+                         "flip_fingerprint（该锚点三策略明细的规范化 sha）与三策略 top"
+                         "名称/份额披露——本工具重算当前运行同款指纹并要求相等，底层数据"
+                         "一变收据自动失效必须重裁。收据引用随 input_binding 传递，"
+                         "freeze 重放同收据还原。")
+    ap.add_argument("--compute-cache-mode", choices=("read-write", "off"), default="read-write",
+                    help="reuse confirmation-free computations; P4 subprocesses force off")
+    ap.add_argument("--mem-limit", default="8GB")
+    ap.add_argument("--depth-limit", type=int, default=10, help="BFS 深度上限（距实体最短跳数）")
+    ap.add_argument("--facility-min-degree", type=int, default=1000, help="设施启发式：双向对手方 ≥此数")
+    ap.add_argument("--node-budget", type=int, default=200_000, help="单实体祖先节点上限（超出记 budget_truncated）")
+    ap.add_argument("--edge-budget", type=int, default=3_000_000, help="单实体子图边数上限（超出 exit 2）")
+    a = ap.parse_args()
+
+    if a.legacy_sol5:
+        log("正式 entity provenance 拒绝 legacy-sol5；旧数据没有可证交易内顺序")
+        return 2
+
+    if not a.labels_file and not a.allow_no_labels:
+        log("正式模式必须给 --labels-file；仅探索可显式加 --allow-no-labels")
+        sys.exit(2)
+    if a.labels_file and a.allow_no_labels:
+        log("--labels-file 与 --allow-no-labels 互斥；有标签时使用正式模式")
+        sys.exit(2)
+
+    import duckdb
+    total = int(a.total_supply)
+    if total <= 0:
+        log("参数错误：--total-supply 必须为正")
+        sys.exit(2)
+    entity_map = load_entity_map(a.entity_file)
+    labels = load_labels(a.labels_file) if a.labels_file else {}
+    if a.labels_file and not labels:
+        log("正式模式 --labels-file 有效标签数为 0——空标签快照禁止进入 provenance/freeze")
+        return 2
+    # F-06：裁决收据先行验证（文件不存在/结构不合法＝调用错误 exit 2，不落 exit 1）；
+    # 覆盖判定在 ledger 组装后按当前明细重算指纹。
+    from handoff_manifest import (ledger_real_flips, load_flip_adjudications,
+                                  verify_flip_receipt_against_ledger)
+    output_dir = os.path.dirname(os.path.abspath(a.out))
+    if not os.path.isdir(output_dir):
+        log(f"输出目录不存在：{output_dir}")
+        return 2
+    case_dir = os.path.realpath(a.case_root or output_dir)
+    receipt_rows = {}
+    if a.acknowledge_flip:
+        # F-D7：三处收据口径统一为"案根内＋sha 绑定"——trace 不收案外收据（案根检查
+        # 先于结构验证：案外收据先报位置错，不报它同目录缺名册一类的次生错）。
+        receipt_real = os.path.realpath(os.path.expanduser(a.acknowledge_flip))
+        rel = os.path.relpath(receipt_real, os.path.realpath(case_dir))
+        if rel == ".." or rel.startswith(".." + os.sep):
+            log(f"--acknowledge-flip 裁决收据必须在案根（--case-root，未指定时为--out目录）内: {a.acknowledge_flip}")
+            sys.exit(2)
+        try:
+            _, receipt_rows = load_flip_adjudications(
+                a.acknowledge_flip, current_entity_file=a.entity_file)
+        except (OSError, ValueError, TypeError) as exc:
+            log(f"--acknowledge-flip 裁决收据不合法: {exc}")
+            sys.exit(2)
+    t0 = datetime.now(timezone.utc)
+    started = time.perf_counter()
+    hash_started = time.perf_counter()
+    binding, prepared = prepare_computation_binding(a, case_dir)
+    hash_seconds = time.perf_counter() - hash_started
+    computation, rerun_reason = load_computation(case_dir, binding, a.compute_cache_mode)
+    cache_hit = computation is not None
+    compute_started = time.perf_counter()
+    if not cache_hit:
+        log(f"全量溯源计算：{rerun_reason}")
+        emit_metric("trace_computation_start", cache_hit=False, full_rerun_reason=rerun_reason)
+        try:
+            computation = compute_from_edges(a, case_dir, entity_map, labels, total, binding, prepared)
+        except (Exception, SystemExit):
+            emit_metric("trace_computation_failed", full_rerun_reason=rerun_reason,
+                        hash_and_identity_seconds=round(hash_seconds, 6),
+                        compute_seconds=round(time.perf_counter() - compute_started, 6))
+            raise
+    else:
+        log("完整计算输入匹配：复用三策略明细，重新处理当前确认收据")
+    compute_seconds = time.perf_counter() - compute_started
+    # Re-resolve CURRENT and rehash every bound computational input after both
+    # cache hits and real runs. Rebinding cannot silently bless concurrent drift.
+    hash_started = time.perf_counter()
+    current_binding, _ = prepare_computation_binding(a, case_dir)
+    hash_seconds += time.perf_counter() - hash_started
+    if computation_inputs(current_binding) != computation_inputs(binding):
+        emit_metric("trace_input_drift", full_rerun_reason="inputs_changed_during_run")
+        log("计算期间原始身份/证据/算法/参数变化——拒绝缓存及台账落盘")
+        return 2
+    binding = current_binding
+    if not cache_hit:
+        save_computation(case_dir, binding, computation, a.compute_cache_mode)
+    # Confirmation is checked again from the current file, including all evidence
+    # refs. The cache never supplies acknowledgement or publication decisions.
+    if a.acknowledge_flip:
+        try:
+            _, receipt_rows = load_flip_adjudications(
+                a.acknowledge_flip, current_entity_file=a.entity_file)
+            if full_file_record(a.acknowledge_flip, case_dir) != \
+                    binding["algorithm_params"]["flip_adjudications"]:
+                raise ValueError("confirmation changed during validation")
+        except (OSError, ValueError, TypeError) as exc:
+            log(f"当前确认收据拒绝: {exc}")
+            return 2
+    entities = computation["entities"]
+    sens_all = computation["sensitivity"]
+    run_metrics = {
+        "compute_cache_mode": a.compute_cache_mode, "cache_hit": cache_hit,
+        "full_rerun_reason": rerun_reason,
+        "source_edges": computation["counts"]["source_edges"],
+        "kept_edges": computation["counts"]["kept_edges"],
+        "entities_computed": 0 if cache_hit else len(entities),
+        "edges_loaded_for_trace": 0 if cache_hit else computation["counts"]["source_edges"],
+        "policy_simulations": 0 if cache_hit else len(entities) * len(POLICIES),
+        "hash_and_identity_seconds": round(hash_seconds, 6),
+        "compute_seconds": round(compute_seconds, 6),
+        "elapsed_seconds": round(time.perf_counter() - started, 6),
+    }
+    emit_metric("trace_computation", **run_metrics)
     all_stable = all(s["stable"] for s in sens_all.values()) if sens_all else True
     ordering_bad = any(not s.get("ordering_stable", True) for s in sens_all.values())
     report = {
         "schema": SCHEMA,
         "exploration": bool(a.allow_no_labels),
         "generated_at": t0.strftime("%Y-%m-%dT%H:%M:%SZ"),
-        "case": os.path.basename(os.path.dirname(os.path.abspath(a.out))) or None,
+        "case": os.path.basename(case_dir) or None,
         "params": {k: v for k, v in vars(a).items() if k not in ("out",)},
         "total_supply_raw": str(total),
         "input_binding": binding,
         "entities": entities,
-        "unresolved_total_pct": round(unresolved_total * 100.0 / total, 4),
+        "unresolved_total_pct": computation["unresolved_total_pct"],
+        "computation_reuse": run_metrics,
         "bounds_sensitivity": {
             "methods": list(POLICIES),
             "per_entity": {eid: s for eid, s in sens_all.items()},
@@ -856,6 +960,7 @@ def main():
     publishable = (not ordering_bad) and not flip_fails
     report["bounds_sensitivity"]["publishable"] = publishable
     report["replay_semantic_sha256"] = semantic_sha256(report)
+    assert_algorithm_runtime()
     with open(a.out, "w", encoding="utf-8") as fh:
         json.dump(report, fh, ensure_ascii=False, indent=1)
     log(f"{len(entities)} 实体溯源完成 → {a.out}")
@@ -870,9 +975,23 @@ def main():
     return 0
 
 
+def main():
+    try:
+        return _main()
+    except AlgorithmRuntimeDriftError as exc:
+        log(f"算法驻留版本不一致，拒绝缓存/输出（exit 2）: {exc}")
+        return 2
+
+
+register_loaded_algorithm(globals(), sys._getframe().f_code)
+
+
 if __name__ == "__main__":
     try:
         sys.exit(main())
+    except AlgorithmRuntimeDriftError as exc:
+        print(f"[source_trace] 算法驻留版本不一致，拒绝缓存/输出（exit 2）: {exc}", file=sys.stderr)
+        raise SystemExit(2)
     except SystemExit:
         raise
     except Exception as e:

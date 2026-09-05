@@ -21,7 +21,14 @@ import sqlite3
 import tempfile
 from datetime import datetime
 from itertools import groupby
-from pathlib import Path
+try:
+    from deep_validation_cache import (TrackingPath as Path, cached_deep_validation,
+                                       tracked_gzip_text, _metric)
+    from deep_edge_rows_cache import reusable_edge_rows, register_raw_decoder
+except ModuleNotFoundError:
+    from .deep_validation_cache import (TrackingPath as Path, cached_deep_validation,
+                                        tracked_gzip_text, _metric)
+    from .deep_edge_rows_cache import reusable_edge_rows, register_raw_decoder
 
 try:
     from producer_history import historical_producer_hashes
@@ -941,22 +948,47 @@ def _jsonl_data(path):
     yield from rows
 
 
-def _iter_edge_rows(path, reasons=None, label=None):
-    """Yield validated edge tuples without retaining the full edge file."""
+def _validated_edge(row):
+    # Preserve the native contract, including negative integers, empty owners,
+    # and Python numeric equality accepting instr=-1.0.
+    if not isinstance(row, list) or len(row) != 7:
+        raise ValueError("edge must contain seven fields")
+    ts, slot, tx_index, instr, source, target, amount = row
+    if any(not _integer(item) for item in (ts, slot, tx_index, amount)) \
+            or instr != -1 or amount <= 0 \
+            or not isinstance(source, str) or not isinstance(target, str):
+        raise ValueError("edge field contract invalid")
+    return tuple(row)
+
+
+def _parse_edge_rows(path, *, reason=None):
+    """The original JSON decoder; count each actual full-stream parse attempt."""
+    import time
+    started, total, complete = time.perf_counter(), 0, False
+    _metric("deep_edge_parse_start", path=str(path),
+            reason=reason or "unmaterialized_raw_source")
     try:
-        with gzip.open(path, "rt", encoding="utf-8") as handle:
+        with tracked_gzip_text(path) as handle:
             for line in handle:
                 if not line.strip():
                     continue
-                row = json.loads(line)
-                if not isinstance(row, list) or len(row) != 7:
-                    raise ValueError("edge must contain seven fields")
-                ts, slot, tx_index, instr, source, target, amount = row
-                if any(not _integer(item) for item in (ts, slot, tx_index, amount)) \
-                        or instr != -1 or amount <= 0 \
-                        or not isinstance(source, str) or not isinstance(target, str):
-                    raise ValueError("edge field contract invalid")
-                yield tuple(row)
+                row = _validated_edge(json.loads(line))
+                total += 1
+                yield row
+        complete = True
+    finally:
+        _metric("deep_edge_parse_finish", path=str(path), rows=total, complete=complete,
+                elapsed_seconds=time.perf_counter() - started)
+
+
+register_raw_decoder(_parse_edge_rows, _validated_edge)
+
+
+def _iter_edge_rows(path, reasons=None, label=None):
+    """Yield the original tuples using only content-verified raw materialization."""
+    try:
+        yield from reusable_edge_rows(path, _parse_edge_rows, _validated_edge,
+                                      reason=label)
     except (OSError, EOFError, ValueError, json.JSONDecodeError) as exc:
         if reasons is not None:
             reasons.append(f"{label} invalid: {exc}")
@@ -1216,6 +1248,7 @@ def _repair_getblock_params_digest(slot):
     return sha256_bytes(canonical_json(body))
 
 
+@cached_deep_validation("repair_bundle")
 def validate_repair_bundle_deep(bundle_path, *, case_root, current_base,
                                 live_canary=0, live_canary_fetch=None):
     """Rebuild a repair generation without importing producer/replay code."""
@@ -1652,7 +1685,8 @@ def validate_repair_bundle_deep(bundle_path, *, case_root, current_base,
                 def transformed_base_rows():
                     lookup_rows = iter(map_lookups())
                     current_lookup = next(lookup_rows, None)
-                    base_rows = (_iter_edge_rows(base_edge) if base_edge else ())
+                    base_rows = (_iter_edge_rows(base_edge, label="base transform fast")
+                                 if base_edge else ())
                     for slot, grouped in groupby(base_rows, key=lambda row: row[1]):
                         while current_lookup is not None \
                                 and current_lookup[0] < slot:
@@ -1694,7 +1728,8 @@ def validate_repair_bundle_deep(bundle_path, *, case_root, current_base,
                     "slot INTEGER, tx_index INTEGER, source TEXT, target TEXT, "
                     "amount_sort TEXT, ordinal INTEGER, row_json TEXT)")
                 base_ordinal = 0
-                base_rows = _iter_edge_rows(base_edge) if base_edge else ()
+                base_rows = (_iter_edge_rows(base_edge, label="base transform fallback")
+                             if base_edge else ())
                 for row in base_rows:
                     mapped = connection.execute(
                         "SELECT 1 FROM mapped_slots WHERE slot=?", (row[1],)
@@ -1902,6 +1937,7 @@ def validate_reconcile_v4(receipt, *, case_root=None, receipt_path=None):
     return {"ok": not reasons, "reasons": reasons}
 
 
+@cached_deep_validation("reconcile_receipt")
 def validate_reconcile_receipt_deep(receipt_path, *, case_root):
     """Independently replay and validate one ``solana-reconcile/v4`` receipt."""
     reasons = []

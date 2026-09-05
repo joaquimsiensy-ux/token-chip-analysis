@@ -172,6 +172,18 @@ def validate_repair_bundle(bundle_path, *, deep=False, case_root=None,
     return bundle
 
 
+def validate_cache_meta_shape(meta, mint):
+    """Shared metadata contract without reading or hashing raw edge files."""
+    if not isinstance(meta, dict):
+        raise ValueError("cache meta must be an object")
+    collector = COLLECTORS.get(meta.get("collector"))
+    if collector is None:
+        raise ValueError("cache collector is outside the closed set")
+    frm, upper = validate_cache_meta(meta, mint, legacy_sol5=False) \
+        if collector["kind"] == "base" else _validate_repaired_meta(meta, mint)
+    return frm, upper, collector
+
+
 def validate_cache_meta_v2(meta, mint, *, case_root, meta_path):
     """Validate a v4 meta only at the unique resolver-selected formal path."""
     root = _case_root(case_root)
@@ -179,11 +191,7 @@ def validate_cache_meta_v2(meta, mint, *, case_root, meta_path):
     base_edge, base_meta, _parts = soltx_cache_paths(mint, root / "data")
     parent, current_path, _lock = sqd_repair_paths(root, mint)
     current = _read_json(current_path, "repair pointer") if current_path.is_file() else None
-    collector = COLLECTORS.get(meta.get("collector"))
-    if collector is None:
-        raise ValueError("cache collector is outside the closed set")
-    frm, upper = validate_cache_meta(meta, mint, legacy_sol5=False) \
-        if collector["kind"] == "base" else _validate_repaired_meta(meta, mint)
+    frm, upper, collector = validate_cache_meta_shape(meta, mint)
     if current is None:
         if collector["kind"] != "base" or meta_path != base_meta.resolve():
             raise ValueError("without CURRENT only the canonical base meta is formal")

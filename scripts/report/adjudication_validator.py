@@ -199,6 +199,11 @@ def distribution_candidates(case_dir, scan_rel):
                         capture_output=True, text=True)
     if pv.returncode != 0:
         raise ValueError("final distribution scan 独立重算失败: " + (pv.stdout + pv.stderr)[-800:])
+    return _read_distribution_candidates(scan_path)
+
+
+def _read_distribution_candidates(scan_path):
+    """Read candidate rows for rejection checks; this does not validate the scan."""
     scan = load_json(scan_path)
     out = {}
     for row in scan.get("abnormal_clusters", []):
@@ -250,24 +255,34 @@ def cmd_distribution_validate(a):
     except ValueError as exc:
         return _report([str(exc)])
     try:
+        receipt_sha = file_sha(path)
         obj = load_json(path)
         if obj.get("schema") != DISTRIBUTION_SCHEMA:
             return _report([f"distribution 裁决 schema 必须 {DISTRIBUTION_SCHEMA}"])
         source = obj.get("source_scan") or {}; scan_rel = source.get("path")
-        scan_path, scan, cands = distribution_candidates(case_dir, scan_rel)
+        scan_path = str(safe_case_file(case_dir, scan_rel))
+        scan_path, scan, cands = _read_distribution_candidates(scan_path)
         if source.get("sha256") != file_sha(scan_path):
             fails.append("distribution source_scan 哈希漂移")
     except Exception as exc:
         return _report([str(exc)])
     entity_map = None
+    entity_path = None
+    entity_sha = None
     if a.entity_file:
         try:
             entity_path = safe_case_file(case_dir, a.entity_file)
-        except ValueError as exc:
+            entity_sha = file_sha(entity_path)
+        except (OSError, ValueError) as exc:
             fails.append(str(exc))
             entity_path = None
         entity_map, err = load_entity_map_strict(str(entity_path)) if entity_path else (None, None)
         if err: fails.append(err)
+        try:
+            if entity_path and file_sha(entity_path) != entity_sha:
+                fails.append("distribution 实体名册在读取期间变化")
+        except OSError as exc:
+            fails.append(f"distribution 实体名册不可读取: {exc}")
     rows = obj.get("adjudications")
     if not isinstance(rows, list) or not isinstance(obj.get("adjudicated_at"), str) \
             or not obj.get("adjudicated_at"):
@@ -316,6 +331,19 @@ def cmd_distribution_validate(a):
     if unresolved_pct + 1e-12 >= DISTRIBUTION_UNRESOLVED_LINE_PCT:
         fails.append(f"distribution unresolved 合计 {unresolved_pct:.6f}% 达经济门 2%")
     if fails: return _report(fails)
+    # Complete adjudications still require the same real independent scan
+    # validation. Reject drift across that work instead of approving old rows.
+    try:
+        _, verified_scan, _ = distribution_candidates(case_dir, scan_rel)
+        if verified_scan != scan or source.get("sha256") != file_sha(scan_path) \
+                or file_sha(path) != receipt_sha or load_json(path) != obj:
+            return _report(["distribution 裁决或 source_scan 在独立验证期间变化"])
+        if entity_path and (safe_case_file(case_dir, a.entity_file) != entity_path
+                            or file_sha(entity_path) != entity_sha
+                            or load_entity_map_strict(str(entity_path))[0] != entity_map):
+            return _report(["distribution 实体名册在独立验证期间变化"])
+    except Exception as exc:
+        return _report([str(exc)])
     log(f"PASS distribution {len(rows)} 条，unresolved={unresolved_pct:.6f}%")
     return 0
 
