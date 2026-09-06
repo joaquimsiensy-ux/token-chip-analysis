@@ -407,6 +407,9 @@ def cmd_finalize(a):
         fails.append(f"verdicts 文件非法: {e}")
         verdict_rel = None
 
+    # Dedicated registry/verdict entries must not be duplicated in sealed_files.
+    sealed = [row for row in sealed if row["path"] not in {CLAIMS_NAME, verdict_rel}]
+
     charts_dir = a.charts_dir
     try:
         cd_abs = safe_case_dir(case_dir, charts_dir, must_exist=False)
@@ -494,8 +497,18 @@ def main():
                    help="A5 报告图专用目录（封口时必须为空；默认 charts/final）")
     f.add_argument("--workflow-type", choices=sorted(WORKFLOW_TYPES), required=True,
                    help="不可变发布轨道：全新分析或净室复核")
+    b = sub.add_parser("repair-bindings", help="终态后仅修复已证明判断不变的 G8/A4 绑定，归档后须重跑原终态轮次")
+    b.add_argument("--case-dir", required=True)
+    b.add_argument("--previous-identity", required=True)
+    b.add_argument("--previous-state", required=True)
+    b.add_argument("--rounds-checkpoint", required=True)
+    b.add_argument("--archive-dir", required=True)
+    b.add_argument("--apply", action="store_true", help="默认只读验证；通过后显式应用并归档")
     a = ap.parse_args()
     try:
+        if a.subcmd == "repair-bindings":
+            from a4_binding_repair import run
+            return run(a)
         return {"register": cmd_register, "finalize": cmd_finalize}[a.subcmd](a)
     except Exception as e:
         print(f"[{a.subcmd}] 脚本自身错误（exit 1，修完重跑）: {e}", file=sys.stderr)

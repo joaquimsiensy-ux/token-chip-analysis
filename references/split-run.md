@@ -181,6 +181,20 @@ casebook C/E 册过闸 → 聚类合并裁决 → 临时实体 → **ET-2 无下
 
 修错三分类：①图渲染失败、路径/receipt **缺件或落位**类红灯 → 自修重跑；②报告.md 的逐字模板句或图路径字符串错 → 最小机械修正＋amendments 哈希链留痕；③涉及数字/实体名/结论措辞 → 一律停工退回 −2；figure2_check 对账 FAIL、任何与 facts 数值不同源类失败同属本类（禁以"重跑"名义改数据或换选材）。
 
+### 3b.4a 已终态案例的受限绑定修复（Codex）
+
+若新增已过 A4 的 `distribution_observation` 导致 G8 仍绑定旧 state，先用正式 `entity_identity_gate.py` 重建；仅在所有地址行、标签、快照及原 resolution 逐字段相等时保留既有裁决。严禁手填新哈希。对已终态案例，用以下入口恢复，默认只读预检，验证后才带 `--apply`：
+
+```bash
+python3 scripts/report/a4_gate.py repair-bindings --case-dir <案目录> \
+  --previous-identity <旧identity案内归档> --previous-state <其绑定的旧state归档> \
+  --rounds-checkpoint <真实终态前台账> --archive-dir <全新案内归档目录>
+```
+
+该入口只接受 state 增加上述观察字段且原字段全等、G8 仅 state 哈希不同、其余 A4 已封口资产全部未变的情况。独立重算现有终态与解释后，完整归档旧轮次/终态图，A4 revision 加一；移除相同的 registry/verdict 跨字段重复，恢复原终态扫描绑定的真实检查点。此操作不签发终态，也不允许新判断或 waiver；随后必须按原 `round_n` 重新运行原生 scan → explanation → record-round，逐项比较分区、金额、异常簇均未变。原终态永久保留为 superseded 证据，不能用新增诊断轮或自填 terminal 代替修复。
+
+之后刷新工单受影响的绑定并保留原稿锚与 amendments，按 −3 完成图表、双收据和 A5 seal。正式 HTML 前还必须运行 `shared_release_receipt.py <案目录>`；缺件不得把 A4/复核汇总的 PASS 当作发布就绪。
+
 ### 3b.5 兜底声明（诚实边界）
 
 既有 A5 链闸（a5_report_seal／build_html／audit_release_gate，全 fail-closed）验证的是已引用资产的完整性与漂移：a4 revision 链、分布终态链、图实物、facts/state 绑定、终态图唯一引用、固定句式。不覆盖：图表应有基数（少画图仍可能过闸）、fig2 实体线覆盖完整性（figure2_check 只验已提供的线）、渲染输入与 check 输入的同一性、工单字段完备性——这些由工单字段约定＋−3 开工前置自检（3b.1）与交付自查申报承担，属用户已接受的残余风险（不设 validator 系用户 2026-08-18 拍板；首战后评估是否升级）。

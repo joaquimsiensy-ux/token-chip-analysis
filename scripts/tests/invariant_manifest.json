@@ -154,6 +154,12 @@
   },
   {
    "schemas": [
+    "a4-binding-repair/v1"
+   ],
+   "script": "scripts/report/a4_binding_repair.py"
+  },
+  {
+   "schemas": [
     "a4-claims/v2",
     "a4-seal/v4"
    ],
@@ -456,6 +462,12 @@
     "wave-scan/v5"
    ],
    "script": "scripts/lib/wave_contract.py"
+  },
+  {
+   "schemas": [
+    "a4-seal/v4"
+   ],
+   "script": "scripts/report/a4_binding_repair.py"
   },
   {
    "schemas": [
@@ -1064,6 +1076,11 @@
    "locator": "cmd_series",
    "script": "scripts/prices/llama_price.py",
    "semantics": "overwrite_single"
+  },
+  {
+   "locator": "apply",
+   "script": "scripts/report/a4_binding_repair.py",
+   "semantics": "supersede_single"
   },
   {
    "locator": "create_seal",
