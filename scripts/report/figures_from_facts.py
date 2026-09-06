@@ -110,10 +110,15 @@ def mode_fig1(a):
     dates, series_by_camp = css.get("dates"), css.get("series")
     if not dates or not series_by_camp:
         raise SystemExit("FAIL: state 缺 camp_share_series.dates/series，无法直出图 1")
+    try:
+        series_format = charts.fig1_series_format(state)
+        exemption = charts.fig1_excluded_series(series_format)
+    except Exception as exc:  # SeriesProvenanceError 及同族
+        raise SystemExit(f"FAIL: state 的 camp_series_sidecar.series_format 非法,无法确定图 1 豁免集: {exc}")
     rendered_camps, excluded_keys, rejected_keys = charts.select_fig1_series(
-        series_by_camp)
+        series_by_camp, series_format=series_format)
     if rejected_keys:
-        available = list(charts.CAMP_ORDER) + list(charts.FIG1_EXCLUDED_SERIES)
+        available = list(charts.CAMP_ORDER) + list(exemption)
         print(
             f"FAIL: camp_share_series 含白名单外桶名 {rejected_keys}——图 1 "
             f"可用集合是 standard_charts.CAMP_ORDER 加结构化豁免键"
@@ -164,7 +169,8 @@ def mode_fig1(a):
         charts.plot_camp_evolution(
             series, staged_png,
             a.token or (state.get("token") or {}).get("symbol", "?"),
-            price_series=price, overlay=overlay)
+            price_series=price, overlay=overlay, series_format=series_format,
+            note_supply=("占净供应量" if series_format == "sol-rows" else "占总供应量"))
         if not os.path.isfile(staged_png) or os.path.getsize(staged_png) == 0:
             raise SystemExit(
                 f"FAIL: 图 1 渲染结束但 PNG 未生成或为空: {a.out}")
@@ -173,7 +179,7 @@ def mode_fig1(a):
         if os.path.exists(staged_png):
             os.unlink(staged_png)
     _write_fig1_legend_receipt(
-        a, rendered_camps, excluded_keys, overlay_receipt)
+        a, rendered_camps, excluded_keys, overlay_receipt, exemption=exemption)
     print(f"OK fig1: {len(series['ts'])} 点 × {len(rendered_camps)} 实绘阵营 → {a.out}"
           + (f"（价格 {len(price['ts'])} 点）" if price else "（无价格轴）"))
     return 0
@@ -220,13 +226,14 @@ def _file_ref(path):
             "sha256": hashlib.sha256(data).hexdigest(), "size": len(data)}
 
 
-def _write_fig1_legend_receipt(a, rendered_camps, excluded_keys, overlays):
+def _write_fig1_legend_receipt(a, rendered_camps, excluded_keys, overlays, *, exemption=None):
     """F-01：图 1 实绘集合与输入/输出实物绑定，tmp+fsync+replace。"""
+    exemption = dict(charts.FIG1_EXCLUDED_SERIES) if exemption is None else exemption
     doc = {
         "schema": FIG1_LEGEND_RECEIPT_SCHEMA,
         "rendered_camps": list(rendered_camps),
         "excluded_series": [
-            {"key": key, "reason": charts.FIG1_EXCLUDED_SERIES[key]}
+            {"key": key, "reason": exemption[key]}
             for key in excluded_keys
         ],
         "overlays": list(overlays),

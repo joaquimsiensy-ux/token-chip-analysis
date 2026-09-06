@@ -1,0 +1,12 @@
+findfont: Failed to find font weight normal, now using 300.
+findfont: Failed to find font weight normal, now using 300.
+findfont: Failed to find font weight normal, now using 300.
+ok series_format=sol-rows: rendered=['大庄', '散户'], excluded=[{'key': '锁仓/销毁', 'reason': 'non_stacked_metric'}]
+ok series_format=evm-dict: rendered=['大庄', '散户', '锁仓/销毁'], excluded=[]
+ok 两消费方拒绝 rendered: ["图 1 legend rendered_camps 与当前 state 重算不一致（期望 ['大庄', '散户']）"]; ["图 1 legend 实绘集合与发布闸从 state 重算不一致（期望 ['大庄', '散户']）"]
+ok 两消费方拒绝 missing-exemption: ["图 1 legend excluded_series 与当前 state 重算不一致（期望 [{'key': '锁仓/销毁', 'reason': 'non_stacked_metric'}]）"]; ["图 1 legend 排除键与发布闸从 state 重算不一致（期望 [{'key': '锁仓/销毁', 'reason': 'non_stacked_metric'}]）"]
+ok 两消费方拒绝 overlay: ["图 1 legend overlay[0] 含当前 state 非实绘 camp: ['锁仓/销毁']"]; ["图 1 legend overlay[0] 含 state 非实绘 camp: ['锁仓/销毁']"]
+ok fig1 拒绝豁免桶 nan: rc=1
+ok fig1 拒绝豁免桶 inf: rc=1
+ok fig1 拒绝豁免桶 non-numeric: rc=1
+PASS: figures_from_facts fig1白名单/legacy销毁键/legend receipt/burn豁免/overlay组成/价格绑定/flow宏同源/check终值对账全过

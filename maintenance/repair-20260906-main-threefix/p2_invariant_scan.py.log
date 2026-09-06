@@ -1,0 +1,1 @@
+PASS invariant manifest: receipt_producers=75, receipt_consumers=112, transport_calls=65, atomic_writes=56, formal_entrypoints=61, exceptions=0

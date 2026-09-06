@@ -15,7 +15,7 @@
                             返回事件清单文本行，报告 md 里紧跟图片贴出
 
 规格要点（不要随意改动，保持跨报告视觉一致）：
-- 阵营固定配色见 CAMP_COLORS；堆叠顺序见 CAMP_ORDER（项目方在最底、锁仓/销毁在最顶）
+- 阵营固定配色见 CAMP_COLORS；堆叠顺序见 CAMP_ORDER（项目方在最底、锁仓/销毁在最顶）；Solana sol-rows 真烧毁轨在净供应分母外，经 series_format 豁免不堆叠，note_supply 为占净供应量
 - 阵营命名标准（v5.0 标签体系，report-template.md「标签体系」节）：
   项目方 / 大庄 / 小庄 / 离场庄 / 刷量地址(有仓才单列) / 流动性池 /
   其他大户(当前 ≥0.1%总供应 或 ≥0.2%流通、未入任何标签、已过排查前置闸) / 散户 /
@@ -43,6 +43,11 @@ from datetime import datetime, timedelta
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from chart_style import setup
+from pathlib import Path
+
+LIB = Path(__file__).resolve().parents[1] / "lib"
+sys.path.insert(0, str(LIB))
+import camp_series_provenance
 
 # ── 阵营标准配色与堆叠顺序（图1，v2.0 标签体系）────────────────
 # F-04（2026-08-13）：拆两段导出——现代段是新报告唯一合法阵营名集合
@@ -146,28 +151,55 @@ PRICE_LOG_SWITCH_RATIO = 30  # 图1 价格右轴：max/min 超此倍数自动切
 OVERLAY_COLORS = ["#4A148C", "#880E4F", "#004D40"]
 
 
-def select_fig1_series(series):
+def fig1_excluded_series(series_format=None) -> dict:
+    """由生产器格式派生豁免；仅 None 保留历史重绘规则。"""
+    if series_format is None:
+        return dict(FIG1_EXCLUDED_SERIES)
+    return {key: "non_stacked_metric"
+            for key in camp_series_provenance.stack_exempt_for(series_format)}
+
+
+def fig1_series_format(state) -> str | None:
+    """state 绑定的 producer series_format 唯一取值点。"""
+    prov = state.get("provenance")
+    if not isinstance(prov, dict) or "camp_series_sidecar" not in prov:
+        return None
+    sidecar = prov["camp_series_sidecar"]
+    if not isinstance(sidecar, dict):
+        raise camp_series_provenance.SeriesProvenanceError("camp_series_sidecar 非对象")
+    fmt = sidecar.get("series_format")
+    if fmt is None:
+        return None
+    if not isinstance(fmt, str):
+        raise camp_series_provenance.SeriesProvenanceError("series_format 非字符串")
+    return fmt
+
+
+def select_fig1_series(series, *, series_format=None):
     """纯函数：把图 1 series 键分为（实绘有序列表, 豁免键, 拒绝键）。
 
     ``ts`` 是时间轴元数据，不属于阵营键。实绘顺序唯一来自
-    ``CAMP_ORDER``；豁免键唯一来自 ``FIG1_EXCLUDED_SERIES``。
+    ``CAMP_ORDER``；正式数据的豁免键由 producer ``series_format`` 经
+    ``stack_exempt_for`` 派生；None 保留 ``FIG1_EXCLUDED_SERIES`` 历史行为。
     函数不做 IO、不修改输入，供绘图、收据与后续发布闸同源消费。
     """
+    exempt = fig1_excluded_series(series_format)
     keys = list(series)
-    rendered = [camp for camp in CAMP_ORDER if camp in series]
-    excluded = [key for key in FIG1_EXCLUDED_SERIES if key in series]
-    allowed = set(CAMP_ORDER) | set(FIG1_EXCLUDED_SERIES) | {"ts"}
+    rendered = [camp for camp in CAMP_ORDER if camp in series and camp not in exempt]
+    excluded = [key for key in exempt if key in series]
+    allowed = set(CAMP_ORDER) | set(exempt) | {"ts"}
     rejected = [key for key in keys if key not in allowed]
     return rendered, excluded, rejected
 
 
 def plot_camp_evolution(series, out_png, token, note_supply="占总供应量", price_series=None,
-                        overlay=None):
+                        overlay=None, *, series_format=None):
     """图1：各阵营持仓占比演变（全量转账重放后的快照序列）。
 
     series: {"ts": [datetime,...], "<阵营名>": [pct,...], ...}
-            阵营名用 CAMP_ORDER 标准名；缺的阵营不画；锁仓/销毁如有必须传入。
-            pct 为占总供应量的百分数（0-100）。多个庄家组自行先合并成
+            阵营名用 CAMP_ORDER 标准名；缺的阵营不画；锁仓/销毁如有必须传入；Solana sol-rows 真烧毁轨在净供应分母外，
+            经 series_format 豁免不堆叠，此时 note_supply 为占净供应量。
+            pct 为占总供应量的百分数（0-100；sol-rows 为占净供应量）。多个庄家组自行先合并成
             「庄家TOP1」+「庄家其他组」两条（TOP1=现仓最大的庄家组）。
     price_series: 可选 {"ts": [...], "usd": [...]}——传入则右轴叠加价格黑线（白描边），
             价格+筹码分布对照（v3.12，2026-07-21 用户定，完整分析默认传入）。
@@ -188,7 +220,7 @@ def plot_camp_evolution(series, out_png, token, note_supply="占总供应量", p
     """
     setup()
     ts = series["ts"]
-    camps, _excluded, rejected = select_fig1_series(series)
+    camps, _excluded, rejected = select_fig1_series(series, series_format=series_format)
     if rejected:
         raise ValueError(f"图 1 series 含白名单外键 {rejected}")
     fig, ax = plt.subplots(figsize=(12, 5.6))

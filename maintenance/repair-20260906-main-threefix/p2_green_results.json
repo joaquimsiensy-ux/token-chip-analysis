@@ -1,0 +1,42 @@
+[
+  {
+    "command": "python3 scripts/tests/test_figures_from_facts.py",
+    "rc": 0,
+    "log": "maintenance/repair-20260906-main-threefix/p2_test_figures_from_facts.py.log"
+  },
+  {
+    "command": "python3 scripts/tests/test_a4_gate.py",
+    "rc": 0,
+    "log": "maintenance/repair-20260906-main-threefix/p2_test_a4_gate.py.log"
+  },
+  {
+    "command": "python3 scripts/tests/test_repair_batch1.py",
+    "rc": 0,
+    "log": "maintenance/repair-20260906-main-threefix/p2_test_repair_batch1.py.log"
+  },
+  {
+    "command": "python3 scripts/tests/test_producer_registry_current.py",
+    "rc": 0,
+    "log": "maintenance/repair-20260906-main-threefix/p2_test_producer_registry_current.py.log"
+  },
+  {
+    "command": "python3 scripts/tests/changelog_lint.py",
+    "rc": 0,
+    "log": "maintenance/repair-20260906-main-threefix/p2_changelog_lint.py.log"
+  },
+  {
+    "command": "python3 scripts/tests/docs_lint.py --all",
+    "rc": 0,
+    "log": "maintenance/repair-20260906-main-threefix/p2_docs_lint.py.log"
+  },
+  {
+    "command": "python3 scripts/tests/test_version_consistency.py",
+    "rc": 0,
+    "log": "maintenance/repair-20260906-main-threefix/p2_test_version_consistency.py.log"
+  },
+  {
+    "command": "python3 scripts/tests/invariant_scan.py",
+    "rc": 0,
+    "log": "maintenance/repair-20260906-main-threefix/p2_invariant_scan.py.log"
+  }
+]

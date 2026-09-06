@@ -163,3 +163,11 @@ SUITE += ['test_producer_registry_current.py']
 - `red_evidence.txt`:A/C/B 三段 RED。
 - `done.md`:格式沿 `maintenance/repair-20260823-sqd-gap/batch18_review4_done.md` 五节;第 4 节命令/结果表逐行列 `changelog_lint.py`、`docs_lint.py --all`、`test_version_consistency.py`、`invariant_scan.py`、`run_all.py`(147/147)实际结果;第 5 节列白名单改动计数、"未 commit";遗留栏登记:A3 两处 monkeypatch、test_a4_gate 末尾"23 项"计数、evm-dict ylabel。
 - 全绿后停,**不 commit**。任何一项做不到,写清做不到的原因与已完成部分,不得降低断言凑绿。
+
+## 勘误(2026-09-06 施工中裁决)
+
+B2 用例 5 第④种篡改收窄为图一入口拒绝：`figures_from_facts.py fig1` 对非有限豁免值非零退出。A5 `_fig1_expected_from_state` 与发布闸 `check_figure1_legend_receipt` 不新增数值校验，只承担①②③三种篡改的双拒。
+
+理由：消费方只重算键集合，非有限值由画图层把关；state 篡改另有收据 state 哈希绑定兜底。
+
+裁决人：验收方(Fable)。时间：2026-09-06。

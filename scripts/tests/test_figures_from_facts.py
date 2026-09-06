@@ -9,6 +9,10 @@ import os
 import subprocess
 import sys
 import tempfile
+from pathlib import Path
+from copy import deepcopy
+from datetime import datetime
+from unittest.mock import patch
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 FFF = os.path.join(HERE, "..", "report", "figures_from_facts.py")
@@ -214,9 +218,133 @@ def main():
             "size": os.path.getsize(price_csv),
         }
 
+        test_series_format(Path(td) / "series-format")
+
     print("PASS: figures_from_facts fig1白名单/legacy销毁键/legend receipt/"
           "burn豁免/overlay组成/价格绑定/flow宏同源/check终值对账全过")
     return 0
+
+
+def test_series_format(root):
+    """三修 B：格式分家直出、纯函数与两个真实消费方交叉核验。"""
+    sys.path.insert(0, REPORT_DIR)
+    sys.path.insert(0, str(Path(HERE).parent / "lib"))
+    import standard_charts as charts
+    import a5_report_seal as a5
+    import audit_release_gate as gate
+    from camp_series_provenance import SeriesProvenanceError
+
+    series = {"大庄": [60.0, 60.0], "散户": [40.0, 40.0], "锁仓/销毁": [5.0, 5.0]}
+    cases = {}
+    for fmt in ("sol-rows", "evm-dict"):
+        case = root / fmt
+        case.mkdir(parents=True)
+        state = {"token": {"symbol": "TT"}, "camp_share_series": {
+            "dates": ["2026-01-01", "2026-01-02"], "series": deepcopy(series)},
+            "provenance": {"camp_series_sidecar": {"series_format": fmt}}}
+        sp = case / "analysis-state.json"
+        sp.write_text(json.dumps(state, ensure_ascii=False), encoding="utf-8")
+        png = case / "fig1.png"
+        r = run(["fig1", "--state", str(sp), "--out", str(png)])
+        assert r.returncode == 0 and png.stat().st_size > 0, r.stdout + r.stderr
+        receipt = json.loads((case / LEGEND_RECEIPT).read_text(encoding="utf-8"))
+        expected = ["大庄", "散户"] if fmt == "sol-rows" else ["大庄", "散户", "锁仓/销毁"]
+        excluded = [{"key": "锁仓/销毁", "reason": "non_stacked_metric"}] if fmt == "sol-rows" else []
+        assert receipt["rendered_camps"] == expected, receipt
+        assert receipt["excluded_series"] == excluded, receipt
+        # 捕获真正交给 matplotlib 的数值、标签和分母，防止收据正确但实绘错误。
+        # 保留上方 CLI 真实 PNG 正例；这里也调用原始绘图方法并自动恢复补丁。
+        from matplotlib.axes import Axes
+        actual_stacks, actual_ylabels = [], []
+        original_stackplot, original_ylabel = Axes.stackplot, Axes.set_ylabel
+
+        def record_stackplot(ax, xs, ys, *args, **kwargs):
+            actual_stacks.append((list(kwargs["labels"]), [list(y) for y in ys]))
+            return original_stackplot(ax, xs, ys, *args, **kwargs)
+
+        def record_ylabel(ax, label, *args, **kwargs):
+            actual_ylabels.append(label)
+            return original_ylabel(ax, label, *args, **kwargs)
+
+        note_supply = "占净供应量" if fmt == "sol-rows" else "占总供应量"
+        with patch.object(Axes, "stackplot", record_stackplot), \
+                patch.object(Axes, "set_ylabel", record_ylabel):
+            charts.plot_camp_evolution(
+                {"ts": [datetime(2026, 1, 1), datetime(2026, 1, 2)], **deepcopy(series)},
+                str(case / "plot-layer.png"), "TT", series_format=fmt,
+                note_supply=note_supply)
+        assert actual_stacks == [(expected, [series[c] for c in expected])], actual_stacks
+        assert f"{note_supply} %" in actual_ylabels, actual_ylabels
+        assert Axes.stackplot is original_stackplot and Axes.set_ylabel is original_ylabel
+        cases[fmt] = (case, state, receipt, [a5.entry(case, png)])
+        print(f"ok series_format={fmt}: rendered={expected}, excluded={excluded}")
+
+    assert charts.select_fig1_series(series, series_format="sol-rows") == (
+        ["大庄", "散户"], ["锁仓/销毁"], [])
+    for invalid in ("", "bogus", 7, False, [], {}):
+        try:
+            charts.select_fig1_series(series, series_format=invalid)
+        except SeriesProvenanceError:
+            pass
+        else:
+            raise AssertionError(f"非法 format 未拒: {invalid!r}")
+    for sidecar in ([], "sol-rows", None, 1):
+        try:
+            charts.fig1_series_format({"provenance": {"camp_series_sidecar": sidecar}})
+        except SeriesProvenanceError:
+            pass
+        else:
+            raise AssertionError(f"非对象 sidecar 未拒: {sidecar!r}")
+    for invalid in (7, False, [], {}):
+        try:
+            charts.fig1_series_format({"provenance": {"camp_series_sidecar": {
+                "series_format": invalid}}})
+        except SeriesProvenanceError:
+            pass
+        else:
+            raise AssertionError(f"非字符串 format 未拒: {invalid!r}")
+    assert charts.fig1_series_format({}) is None
+    assert charts.fig1_series_format({"provenance": []}) is None
+    assert charts.fig1_series_format({"provenance": {"camp_series_sidecar": {}}}) is None
+    fallback = charts.fig1_excluded_series()
+    assert fallback == charts.FIG1_EXCLUDED_SERIES and fallback is not charts.FIG1_EXCLUDED_SERIES
+
+    case, state, receipt, images = cases["sol-rows"]
+    _, rendered, excluded, _ = a5._fig1_expected_from_state(case)
+    assert rendered == receipt["rendered_camps"] and excluded == receipt["excluded_series"]
+    assert a5._fig1_legend_errors(case, receipt, images) == []
+    errors = []
+    gate.check_figure1_legend_receipt(case, receipt, state, errors)
+    assert errors == [], errors
+    for label in ("rendered", "missing-exemption", "overlay"):
+        bad_receipt, bad_state = deepcopy(receipt), deepcopy(state)
+        if label == "rendered":
+            bad_receipt["rendered_camps"].append("锁仓/销毁")
+        elif label == "missing-exemption":
+            bad_receipt["excluded_series"] = []
+        else:
+            bad_receipt["overlays"] = [{"label": "坏线", "camps": ["锁仓/销毁"]}]
+        sp = case / "analysis-state.json"
+        sp.write_text(json.dumps(bad_state, ensure_ascii=False), encoding="utf-8")
+        # 同步物理绑定，确保反例由键集合/overlay 契约拒绝。
+        bad_receipt["state"] = a5.entry(case, sp)
+        a5_errors = a5._fig1_legend_errors(case, bad_receipt, images)
+        gate_errors = []
+        gate.check_figure1_legend_receipt(case, bad_receipt, bad_state, gate_errors)
+        assert a5_errors and gate_errors, (label, a5_errors, gate_errors)
+        print(f"ok 两消费方拒绝 {label}: {a5_errors}; {gate_errors}")
+    # 用户裁决：消费方只重算键集合；非有限数值由 fig1 既有校验把关。
+    for label, value in (("nan", float("nan")), ("inf", float("inf")),
+                         ("non-numeric", "bad")):
+        bad_state = deepcopy(state)
+        bad_state["camp_share_series"]["series"]["锁仓/销毁"][0] = value
+        sp.write_text(json.dumps(bad_state, ensure_ascii=False), encoding="utf-8")
+        out = case / f"{label}.png"
+        r = run(["fig1", "--state", str(sp), "--out", str(out)])
+        assert r.returncode != 0 and "非有限数值" in r.stdout + r.stderr, r.stdout + r.stderr
+        assert not out.exists()
+        print(f"ok fig1 拒绝豁免桶 {label}: rc={r.returncode}")
+    (case / "analysis-state.json").write_text(json.dumps(state, ensure_ascii=False), encoding="utf-8")
 
 
 if __name__ == "__main__":

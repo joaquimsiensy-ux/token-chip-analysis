@@ -112,9 +112,9 @@
 | 历史大户 | 峰值达锚但现仓已衰减的历史地址层（未达离场庄判级；筹码换血叙事用，混合重建标的常见；CEX/设施判定优先于本层归属——SPX6900 07-25 定） |
 | 散户 | 以上皆非 |
 | 桥锁仓 | 跨链桥锁定仓（＝别链流通的背书，非锁仓销毁；多链币必备单列） |
-| 锁仓/销毁（如有） | 锁仓合约 + 销毁地址，必须单列体现在图中 |
+| 锁仓/销毁（如有） | 锁仓合约 + 销毁地址，必须单列体现在图中（EVM 堆叠桶；Solana sol-rows 为堆叠外披露） |
 
-**阵营键全集与堆叠顺序的唯一权威＝`scripts/report/standard_charts.py` 的 `CAMP_ORDER`/`CAMP_COLORS`（含 legacy 键清单）**——本表只作释义，不另立全集；传图与落 series 的键名必须逐字取自 CAMP_ORDER。`figures_from_facts.py fig1` 与绘图函数共用 `select_fig1_series()`：白名单外键 exit 2 硬拒，`burn_cum_pct` 只做有限值验证后的结构化豁免，实绘集合落 `fig1_legend_receipt.json`，不再依赖“出图后人工数图例”（GMX 案静默漏图判例）。
+**阵营键全集与堆叠顺序的唯一权威＝`scripts/report/standard_charts.py` 的 `CAMP_ORDER`/`CAMP_COLORS`（含 legacy 键清单）**——本表只作释义，不另立全集；传图与落 series 的键名必须逐字取自 CAMP_ORDER。`figures_from_facts.py fig1` 与绘图函数共用 `select_fig1_series()`：白名单外键 exit 2 硬拒，豁免集按 state 绑定的 producer `series_format` 由 `stack_exempt_for` 派生：`sol-rows` 豁免 `burn_cum_pct` 与「锁仓/销毁」（真烧毁轨，净供应分母外，图一按净供应标注、不堆叠仅在报告披露）；`evm-dict` 仅豁免 `burn_cum_pct`（其「锁仓/销毁」仍是在账堆叠桶）；无 `series_format` 的历史重绘保持旧规则，豁免键仍须通过有限值验证，实绘集合落 `fig1_legend_receipt.json`，不再依赖“出图后人工数图例”（GMX 案静默漏图判例）。
 
 - 阵营成员资格按数据截至时点的标签认定为固定名单，历史曲线画该名单的合计持仓（"其他大户"历史早期占比小是正常形态——筹码后来才累积）。
 - **发射窗/bundle 流量/存量双口径** — **触发条件**：发射窗协同分层或报告“峰值”。**必做动作**：累计对池净拿为流量，时点峰值持仓为存量；留存另报直接与含出货下游的经济体口径。流量、存量必须各自分层后交叉，禁止只以净拿>0 过滤。**阻断语义**：毛量巨大、净额≈0 的闪电套利层不得静默丢弃；“峰值”只用于存量。**权威脚本**：发射窗逐事件重放。案源：bibi、USELESS 2026-07-12～21。

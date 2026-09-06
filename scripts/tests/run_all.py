@@ -202,6 +202,8 @@ SUITE += ['test_batch18_manifest_stage2_loop.py']
 
 # Batch 18 盲审消化：witness 身份/文件闭包防伪与 manifest 分类器类型防御。
 SUITE += ['test_batch18_review_digest.py']
+# repair-20260906-main-threefix：生产者当前哈希必登记 + 登记 git 可复现守卫。
+SUITE += ['test_producer_registry_current.py']
 
 
 def main():

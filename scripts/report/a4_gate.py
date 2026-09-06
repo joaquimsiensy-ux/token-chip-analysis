@@ -407,6 +407,12 @@ def cmd_finalize(a):
         fails.append(f"verdicts 文件非法: {e}")
         verdict_rel = None
 
+    reserved = {CLAIMS_NAME, verdict_rel} - {None}
+    dup = sorted(reserved & seal_files)
+    if dup:
+        fails.append(f"封口清单与 registry/verdicts 专用字段路径重复: {dup}"
+                     f"——请从 --seal-files 或 claim files 中移除,裁决与登记表由专用字段单独封口")
+
     charts_dir = a.charts_dir
     try:
         cd_abs = safe_case_dir(case_dir, charts_dir, must_exist=False)

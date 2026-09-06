@@ -1,0 +1,287 @@
+A RED
+command: python3 scripts/tests/test_producer_registry_current.py
+exit_code: 1
+sha256 scripts/tests/test_producer_registry_current.py: f4b97c8c569a289fb14d220ac02c820fb80236438074313968599a0028ceb30d
+sha256 scripts/lib/producer_history.py: f54494dee767530219807c4e76f3b7848f821adf8fc0e1c8353c03942992fb9f
+sha256 scripts/solana/sqd_gap_repair.py: 25f04ff10bc494be977e4c5b3193c3a928c0764fa529d8d5a47563fe2a825e66
+--- stdout ---
+ok  登记脚本集合与守卫清单一致
+ok  必要协议在场: scripts/solana/fetch_sqd_transfers_v2.py
+ok  当前哈希 scripts/solana/fetch_sqd_transfers_v2.py sqd-solana-cache/v4 a94b193b94ba8872e4d6aa4915ff7d89ef6cc438d7f2c6c0744ebc33212d9bae: 改了生产者文件必须同步登记 scripts/lib/producer_history.py(git show <commit>:<script> 可复现的哈希)
+ok  必要协议在场: scripts/solana/sqd_coverage_probe.py
+ok  当前哈希 scripts/solana/sqd_coverage_probe.py sqd-solana-coverage-pointer/v1 c4980c984b08d27f5a7e46db50f97c9c16e47ea491f37a459b3773f939218769: 改了生产者文件必须同步登记 scripts/lib/producer_history.py(git show <commit>:<script> 可复现的哈希)
+ok  当前哈希 scripts/solana/sqd_coverage_probe.py sqd-solana-coverage/v1 c4980c984b08d27f5a7e46db50f97c9c16e47ea491f37a459b3773f939218769: 改了生产者文件必须同步登记 scripts/lib/producer_history.py(git show <commit>:<script> 可复现的哈希)
+ok  必要协议在场: scripts/solana/sqd_gap_repair.py
+FAIL  当前哈希 scripts/solana/sqd_gap_repair.py sqd-solana-cache/v4 25f04ff10bc494be977e4c5b3193c3a928c0764fa529d8d5a47563fe2a825e66: 改了生产者文件必须同步登记 scripts/lib/producer_history.py(git show <commit>:<script> 可复现的哈希)
+FAIL  当前哈希 scripts/solana/sqd_gap_repair.py sqd-solana-coverage-resolution/v1 25f04ff10bc494be977e4c5b3193c3a928c0764fa529d8d5a47563fe2a825e66: 改了生产者文件必须同步登记 scripts/lib/producer_history.py(git show <commit>:<script> 可复现的哈希)
+FAIL  当前哈希 scripts/solana/sqd_gap_repair.py sqd-solana-repair-bundle/v1 25f04ff10bc494be977e4c5b3193c3a928c0764fa529d8d5a47563fe2a825e66: 改了生产者文件必须同步登记 scripts/lib/producer_history.py(git show <commit>:<script> 可复现的哈希)
+FAIL  当前哈希 scripts/solana/sqd_gap_repair.py sqd-solana-repair-pointer/v1 25f04ff10bc494be977e4c5b3193c3a928c0764fa529d8d5a47563fe2a825e66: 改了生产者文件必须同步登记 scripts/lib/producer_history.py(git show <commit>:<script> 可复现的哈希)
+ok  必要协议在场: scripts/solana/window_fetch.py
+ok  当前哈希 scripts/solana/window_fetch.py solana-window-fetch-receipt/v3 56d94cbecf476b632c814a57b245c58397087dd105406e2538cac47c2fa6661c: 改了生产者文件必须同步登记 scripts/lib/producer_history.py(git show <commit>:<script> 可复现的哈希)
+ok  登记与 git 历史一致: scripts/lib/anchor_plan.py 3b76db80130987e0faf68d73094b08cddd161c9b 登记 e5168a455d53bb5163722ea7f2a67c42b20bd3dd8ef6c3ae5e588014842cc1d9 实得 e5168a455d53bb5163722ea7f2a67c42b20bd3dd8ef6c3ae5e588014842cc1d9
+ok  登记与 git 历史一致: scripts/lib/anchor_plan.py 0ec6d1e2365c339d200fc26d17344f962fbdb7a9 登记 1a461169f0770c7a4b8d74eb185f68ae225906cf1ec49b9ad04154e340ebebb2 实得 1a461169f0770c7a4b8d74eb185f68ae225906cf1ec49b9ad04154e340ebebb2
+ok  登记与 git 历史一致: scripts/solana/fetch_sqd_transfers_v2.py 75aa622a546755a7848d211739a75f7b31f9e59b 登记 2589f6a396c262d0747343ef21dee2bc7ba814eaa59eebdfa782fe9253c32212 实得 2589f6a396c262d0747343ef21dee2bc7ba814eaa59eebdfa782fe9253c32212
+ok  登记与 git 历史一致: scripts/solana/fetch_sqd_transfers_v2.py 47b3620fb2f739b9a609b543572e0b69559038b0 登记 a94b193b94ba8872e4d6aa4915ff7d89ef6cc438d7f2c6c0744ebc33212d9bae 实得 a94b193b94ba8872e4d6aa4915ff7d89ef6cc438d7f2c6c0744ebc33212d9bae
+ok  登记与 git 历史一致: scripts/solana/sqd_coverage_probe.py c2372635cf567c451892f828dcb229cdd4dc277d 登记 e41370b185aef9bd16fea8ce1abc519a138ee4ce8923bdbc8058d64cdd0619bf 实得 e41370b185aef9bd16fea8ce1abc519a138ee4ce8923bdbc8058d64cdd0619bf
+ok  登记与 git 历史一致: scripts/solana/sqd_coverage_probe.py c2372635cf567c451892f828dcb229cdd4dc277d 登记 e41370b185aef9bd16fea8ce1abc519a138ee4ce8923bdbc8058d64cdd0619bf 实得 e41370b185aef9bd16fea8ce1abc519a138ee4ce8923bdbc8058d64cdd0619bf
+ok  登记与 git 历史一致: scripts/solana/sqd_coverage_probe.py 55d4efede78f6afb6c1d3c8aa3bbec95b6faa33f 登记 bccf1802b6a5c9d9bbbdb12e19354ad761416c631e3cdfde2449f7fe1794f176 实得 bccf1802b6a5c9d9bbbdb12e19354ad761416c631e3cdfde2449f7fe1794f176
+ok  登记与 git 历史一致: scripts/solana/sqd_coverage_probe.py 55d4efede78f6afb6c1d3c8aa3bbec95b6faa33f 登记 bccf1802b6a5c9d9bbbdb12e19354ad761416c631e3cdfde2449f7fe1794f176 实得 bccf1802b6a5c9d9bbbdb12e19354ad761416c631e3cdfde2449f7fe1794f176
+ok  登记与 git 历史一致: scripts/solana/sqd_coverage_probe.py f0469a376c0101759f260dafb1678c00ff785d65 登记 be415db3552588532ff195126ddd53aefe9d3c14785da64c2be4cf23804f7bea 实得 be415db3552588532ff195126ddd53aefe9d3c14785da64c2be4cf23804f7bea
+ok  登记与 git 历史一致: scripts/solana/sqd_coverage_probe.py f0469a376c0101759f260dafb1678c00ff785d65 登记 be415db3552588532ff195126ddd53aefe9d3c14785da64c2be4cf23804f7bea 实得 be415db3552588532ff195126ddd53aefe9d3c14785da64c2be4cf23804f7bea
+ok  登记与 git 历史一致: scripts/solana/sqd_coverage_probe.py cdc4f87f8e3ee4d181760cb8455d688f23049f20 登记 c4980c984b08d27f5a7e46db50f97c9c16e47ea491f37a459b3773f939218769 实得 c4980c984b08d27f5a7e46db50f97c9c16e47ea491f37a459b3773f939218769
+ok  登记与 git 历史一致: scripts/solana/sqd_coverage_probe.py cdc4f87f8e3ee4d181760cb8455d688f23049f20 登记 c4980c984b08d27f5a7e46db50f97c9c16e47ea491f37a459b3773f939218769 实得 c4980c984b08d27f5a7e46db50f97c9c16e47ea491f37a459b3773f939218769
+ok  登记与 git 历史一致: scripts/solana/sqd_gap_repair.py 5782f76773fae0f3b9b036222ad85298992ec840 登记 c8beb16e998c5019f6d3cfee0cb14ca163b4dcc3b7d3eb9bdd43fdfd6e44d137 实得 c8beb16e998c5019f6d3cfee0cb14ca163b4dcc3b7d3eb9bdd43fdfd6e44d137
+ok  登记与 git 历史一致: scripts/solana/sqd_gap_repair.py 5782f76773fae0f3b9b036222ad85298992ec840 登记 c8beb16e998c5019f6d3cfee0cb14ca163b4dcc3b7d3eb9bdd43fdfd6e44d137 实得 c8beb16e998c5019f6d3cfee0cb14ca163b4dcc3b7d3eb9bdd43fdfd6e44d137
+ok  登记与 git 历史一致: scripts/solana/sqd_gap_repair.py 5782f76773fae0f3b9b036222ad85298992ec840 登记 c8beb16e998c5019f6d3cfee0cb14ca163b4dcc3b7d3eb9bdd43fdfd6e44d137 实得 c8beb16e998c5019f6d3cfee0cb14ca163b4dcc3b7d3eb9bdd43fdfd6e44d137
+ok  登记与 git 历史一致: scripts/solana/sqd_gap_repair.py 5782f76773fae0f3b9b036222ad85298992ec840 登记 c8beb16e998c5019f6d3cfee0cb14ca163b4dcc3b7d3eb9bdd43fdfd6e44d137 实得 c8beb16e998c5019f6d3cfee0cb14ca163b4dcc3b7d3eb9bdd43fdfd6e44d137
+ok  登记与 git 历史一致: scripts/solana/sqd_gap_repair.py 80ab2a380952bf63eb01bb896c9d7e260bc8055f 登记 da6eb283ab08ed714268a6c1b19bbc39f091b18bbb3a64ce1e1056e01571dda0 实得 da6eb283ab08ed714268a6c1b19bbc39f091b18bbb3a64ce1e1056e01571dda0
+ok  登记与 git 历史一致: scripts/solana/sqd_gap_repair.py 80ab2a380952bf63eb01bb896c9d7e260bc8055f 登记 da6eb283ab08ed714268a6c1b19bbc39f091b18bbb3a64ce1e1056e01571dda0 实得 da6eb283ab08ed714268a6c1b19bbc39f091b18bbb3a64ce1e1056e01571dda0
+ok  登记与 git 历史一致: scripts/solana/sqd_gap_repair.py 80ab2a380952bf63eb01bb896c9d7e260bc8055f 登记 da6eb283ab08ed714268a6c1b19bbc39f091b18bbb3a64ce1e1056e01571dda0 实得 da6eb283ab08ed714268a6c1b19bbc39f091b18bbb3a64ce1e1056e01571dda0
+ok  登记与 git 历史一致: scripts/solana/sqd_gap_repair.py 80ab2a380952bf63eb01bb896c9d7e260bc8055f 登记 da6eb283ab08ed714268a6c1b19bbc39f091b18bbb3a64ce1e1056e01571dda0 实得 da6eb283ab08ed714268a6c1b19bbc39f091b18bbb3a64ce1e1056e01571dda0
+ok  登记与 git 历史一致: scripts/solana/sqd_gap_repair.py ddfeec1b307f33e4ca9c22d129ad554d33ef426d 登记 60b48f86154d8793c8b1229121641f3f2d6517e924188aa47452855cc8636f7b 实得 60b48f86154d8793c8b1229121641f3f2d6517e924188aa47452855cc8636f7b
+ok  登记与 git 历史一致: scripts/solana/sqd_gap_repair.py ddfeec1b307f33e4ca9c22d129ad554d33ef426d 登记 60b48f86154d8793c8b1229121641f3f2d6517e924188aa47452855cc8636f7b 实得 60b48f86154d8793c8b1229121641f3f2d6517e924188aa47452855cc8636f7b
+ok  登记与 git 历史一致: scripts/solana/sqd_gap_repair.py ddfeec1b307f33e4ca9c22d129ad554d33ef426d 登记 60b48f86154d8793c8b1229121641f3f2d6517e924188aa47452855cc8636f7b 实得 60b48f86154d8793c8b1229121641f3f2d6517e924188aa47452855cc8636f7b
+ok  登记与 git 历史一致: scripts/solana/sqd_gap_repair.py ddfeec1b307f33e4ca9c22d129ad554d33ef426d 登记 60b48f86154d8793c8b1229121641f3f2d6517e924188aa47452855cc8636f7b 实得 60b48f86154d8793c8b1229121641f3f2d6517e924188aa47452855cc8636f7b
+ok  登记与 git 历史一致: scripts/solana/window_fetch.py 75aa622a546755a7848d211739a75f7b31f9e59b 登记 56d94cbecf476b632c814a57b245c58397087dd105406e2538cac47c2fa6661c 实得 56d94cbecf476b632c814a57b245c58397087dd105406e2538cac47c2fa6661c
+producer registry: 4 FAIL
+--- stderr ---
+
+C RED
+reproducer: PYTHONDONTWRITEBYTECODE=1 python3 maintenance/repair-20260906-main-threefix/reproduce_c_red.py
+sha256 maintenance/repair-20260906-main-threefix/reproduce_c_red.py: 30ff26f8f7627aba85fef07b18049da133d2c8fd011a5c275a31ed4c7c410aa5
+sha256 scripts/tests/test_a4_gate.py: f71b423a427cd32aabfb5caff6a451cd74743f2259e90aa1fe36efa2cba5a029
+sha256 scripts/report/a4_gate.py: 395806ea9394b310509ac1a1e0fa0bbf97b5bff9f756613c6abfd757941b8b94
+sha256 scripts/report/build_html.py: 87cd8e238592ca1453515ea3fc547c1861d39bf8e15859b6ee538a5524d27f17
+a4_gate finalize (test_a4_gate.run adds --workflow-type independent-audit)
+command: /usr/local/bin/python3 /Users/uravvv/.claude/skills/token-chip-analysis/scripts/tests/../report/a4_gate.py finalize --case-dir /var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/threefix_c_red_9s15t136/case --seal-files findings.md,analysis-state.json,v_ok.json --verdicts-file /var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/threefix_c_red_9s15t136/case/v_ok.json --workflow-type independent-audit
+exit_code: 0
+--- stdout ---
+[finalize] 封口 PASS  2 条裁决（{"WEAKENED": 1, "CONFIRMED": 1}）  7 件终版文件哈希封口 → /var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/threefix_c_red_9s15t136/case/a4_seal.json
+[finalize] 现在可进 A5：图一律输出到 charts/final/，编译带 --a4-seal a4_seal.json；封口后再改结论文件必须改完重跑 finalize
+--- stderr ---
+
+build_html G9 (existing run() A5/formal harness)
+command: /usr/local/bin/python3 /Users/uravvv/.claude/skills/token-chip-analysis/scripts/tests/../report/build_html.py --mode analysis-audit --md /var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/threefix_c_red_9s15t136/case/report.md --out /var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/threefix_c_red_9s15t136/case/report.html --facts /var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/threefix_c_red_9s15t136/case/facts.json --state /var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/threefix_c_red_9s15t136/case/analysis-state.json --a4-seal /var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/threefix_c_red_9s15t136/case/a4_seal.json
+exit_code: 1
+--- stdout ---
+[WARN] G9 封口条目非法: 封口路径重复: v_ok.json
+[FAIL] 未写出 /var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/threefix_c_red_9s15t136/case/report.html——1 条告警，修复后重跑（有 WARN 不许交付）
+--- stderr ---
+
+finalize a4_seal.json exists: True
+
+C regression RED
+command: PYTHONDONTWRITEBYTECODE=1 python3 scripts/tests/test_a4_gate.py
+exit_code: 1
+sha256 scripts/tests/test_a4_gate.py: 315efc6c731450138fb0d269951a1f94d65c04c20717a224bc5d7684e621b4c3
+sha256 scripts/report/a4_gate.py: 395806ea9394b310509ac1a1e0fa0bbf97b5bff9f756613c6abfd757941b8b94
+--- combined stdout/stderr ---
+ok    register 正例 exit 0
+ok    register 空数组 exit 2
+ok    register 重复 id exit 2
+ok    Round4 P1-02 finalize 重验重复 claim id
+ok    Round4 P1-02 同族空文本失败分支
+ok    finalize 未 register exit 2
+ok    finalize 缺一条裁决 exit 2
+ok    finalize 多一条未登记裁决 exit 2
+ok    finalize verdict 非法 exit 2
+ok    finalize WEAKENED 无 revision_note exit 2
+ok    finalize charts/final 非空 exit 2
+FAIL  重复路径 seal-files / v_ok.json exit 2 且不产 seal
+[finalize] 封口 PASS  2 条裁决（{"WEAKENED": 1, "CONFIRMED": 1}）  7 件终版文件哈希封口 → /var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/a4_duplicate_0q_6ofii/case/a4_seal.json
+[finalize] 现在可进 A5：图一律输出到 charts/final/，编译带 --a4-seal a4_seal.json；封口后再改结论文件必须改完重跑 finalize
+
+FAIL  重复路径 seal-files / a4_claims.json exit 2 且不产 seal
+[finalize] 封口 PASS  2 条裁决（{"WEAKENED": 1, "CONFIRMED": 1}）  7 件终版文件哈希封口 → /var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/a4_duplicate_rfu5x5gr/case/a4_seal.json
+[finalize] 现在可进 A5：图一律输出到 charts/final/，编译带 --a4-seal a4_seal.json；封口后再改结论文件必须改完重跑 finalize
+
+FAIL  重复路径 claim files / v_ok.json exit 2 且不产 seal
+[finalize] FAIL（逐条修复后重跑，翻案后重新 finalize 即重新封口）:
+  ✗ claim C1 证据文件集合不一致
+
+FAIL  重复路径 claim files / a4_claims.json exit 2 且不产 seal
+[finalize] FAIL（逐条修复后重跑，翻案后重新 finalize 即重新封口）:
+  ✗ claim C1 证据文件集合不一致
+
+ok    finalize 正例 exit 0 且 seal PASS
+FAIL  重复路径重封 exit 2 且旧 seal 字节不变
+[finalize] 封口 PASS  2 条裁决（{"WEAKENED": 1, "CONFIRMED": 1}）  7 件终版文件哈希封口 → /var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/a4_gate_test_w16bjbry/case/a4_seal.json
+[finalize] 现在可进 A5：图一律输出到 charts/final/，编译带 --a4-seal a4_seal.json；封口后再改结论文件必须改完重跑 finalize
+
+FAIL  重复路径重封失败后案内文件集合与字节不变
+ok    D-06 已封口监控 JSON 可走正式构建
+ok    P1-05 全新分析无净室资产仍过必经共享门禁
+ok    P1-06 终版 claim registry 对账后重封口
+ok    G9 正例 exit 0 且 HTML 写出
+ok    P1-05 audit seal 不得降级当 new-analysis 构建
+ok    P0-01 seal 外 facts 拒绝且不落 HTML
+ok    P0-01 seal 外 state 拒绝且不落 HTML
+ok    P0-01 analysis 禁止未封口 JSON 附录
+ok    G9 registry 封口后漂移拒绝
+ok    G9 verdicts 封口后漂移拒绝
+ok    G9 claim file 封口后漂移拒绝
+ok    G9 dotdot 图片越界拒绝
+ok    G9 absolute 图片越界拒绝
+ok    G9 symlink 图片越界拒绝
+ok    G9 封口后改结论 exit 1
+ok    G9 拒绝时 HTML 未写出（gate 前置）
+ok    重封时 charts/final 留旧图被拒 exit 2（旧图必须作废）
+ok    清旧图后重跑 finalize 重新封口 exit 0
+ok    G9 图不在封口目录 exit 1 不写出
+ok    legacy 降级理由入 HTML 注释
+ok    analysis 无 --a4-seal 拒绝
+ok    已删除的 update 模式被拒绝
+ok    D-07 help 不再暴露不可达 skip gate 参数
+========================================
+a4_gate 契约测试 6 项失败
+
+B RED
+reproducer: PYTHONDONTWRITEBYTECODE=1 python3 maintenance/repair-20260906-main-threefix/reproduce_b_red.py
+sha256 maintenance/repair-20260906-main-threefix/reproduce_b_red.py: 6da24ea5f9127efd2e08de5d0a9fca799fc717b8c684a34de81f4b654555285e
+sha256 scripts/tests/test_figures_from_facts.py: 3a762c73994d2e91aade7cb247967f615097b8a264db2a00fe3fdb937c0bc392
+sha256 scripts/report/figures_from_facts.py: 6a138ecaea41bc5f4fe3470eda2168d9848734df21c6820bf957dc5ced365398
+sha256 scripts/report/standard_charts.py: 62ff4dd43777aedf6160cc911855b35f28a9cec624321bfa600a7944d6ecf9c1
+sha256 scripts/report/a5_report_seal.py: 776c527bf5f8d28843d20db1a9b7ecb8a5ec76ca82aea42204a51d774a1ce919
+sha256 scripts/report/audit_release_gate.py: 20787d8eb2d3cb4129cc363861fa51d72021613633b548dd7832425d4363193f
+sha256 scripts/lib/camp_series_provenance.py: 4beb1ff7ea184a7f1864615f91047f1955b7d9ea6a6a565ed98f536d6a2e080d
+fixture: {"token": {"symbol": "TT"}, "camp_share_series": {"dates": ["2026-01-01", "2026-01-02"], "series": {"大庄": [60.0, 60.0], "散户": [40.0, 40.0], "锁仓/销毁": [5.0, 5.0]}}, "provenance": {"camp_series_sidecar": {"series_format": "sol-rows"}}}
+command: /usr/local/bin/python3 scripts/report/figures_from_facts.py fig1 --state /var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/threefix_b_red_jv2no8tx/analysis-state.json --out /var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/threefix_b_red_jv2no8tx/fig1.png
+exit_code: 0
+--- stdout ---
+OK fig1: 2 点 × 3 实绘阵营 → /var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/threefix_b_red_jv2no8tx/fig1.png（无价格轴）
+--- stderr ---
+Matplotlib is building the font cache; this may take a moment.
+findfont: Failed to find font weight normal, now using 300.
+findfont: Failed to find font weight normal, now using 300.
+findfont: Failed to find font weight normal, now using 300.
+
+--- receipt original ---
+{
+ "schema": "figure1-legend/v1",
+ "rendered_camps": [
+  "大庄",
+  "散户",
+  "锁仓/销毁"
+ ],
+ "excluded_series": [],
+ "overlays": [],
+ "price_csv": null,
+ "output_png": {
+  "path": "fig1.png",
+  "sha256": "20a1a011f39f78f3835db20124b1ad2772e666c443a3f26817496d2ece9c4aeb",
+  "size": 57151
+ },
+ "state": {
+  "path": "analysis-state.json",
+  "sha256": "7027bcfacd3bb59788f23ebf967d8e546e0e166352a8d91ff3a0cb08c62a750c",
+  "size": 248
+ },
+ "generated_at_utc": "2026-09-06T14:22:03Z"
+}
+
+call: camp_series_provenance.validate_series_payload(css, series_format="sol-rows")
+result: PASS (no exception), returned None; non-exempt sum=100
+
+B regression RED
+command: python3 -c 'import sys,tempfile; from pathlib import Path; sys.path.insert(0,'"'"'scripts/tests'"'"'); from test_figures_from_facts import test_series_format; test_series_format(Path(tempfile.mkdtemp(prefix='"'"'b_test_red_'"'"')) / '"'"'cases'"'"')'
+exit_code: 1
+sha256 scripts/tests/test_figures_from_facts.py: 2d050a3cf39f75b55d2e3aa7d77608071a95996b75fa09eb8abb700e9ef2a240
+sha256 scripts/report/standard_charts.py: 62ff4dd43777aedf6160cc911855b35f28a9cec624321bfa600a7944d6ecf9c1
+sha256 scripts/report/figures_from_facts.py: 6a138ecaea41bc5f4fe3470eda2168d9848734df21c6820bf957dc5ced365398
+--- stdout ---
+--- stderr ---
+/Users/uravvv/.matplotlib is not a writable directory
+Matplotlib created a temporary cache directory at /var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/matplotlib-4jg26qoe because there was an issue with the default path ({configdir}); it is highly recommended to set the MPLCONFIGDIR environment variable to a writable directory, in particular to speed up the import of Matplotlib and to better support multiprocessing.
+Matplotlib is building the font cache; this may take a moment.
+Traceback (most recent call last):
+  File "<string>", line 1, in <module>
+    import sys,tempfile; from pathlib import Path; sys.path.insert(0,'scripts/tests'); from test_figures_from_facts import test_series_format; test_series_format(Path(tempfile.mkdtemp(prefix='b_test_red_')) / 'cases')
+                                                                                                                                               ~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/uravvv/.claude/skills/token-chip-analysis/scripts/tests/test_figures_from_facts.py", line 251, in test_series_format
+    assert receipt["rendered_camps"] == expected, receipt
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: {'schema': 'figure1-legend/v1', 'rendered_camps': ['大庄', '散户', '锁仓/销毁'], 'excluded_series': [], 'overlays': [], 'price_csv': None, 'output_png': {'path': 'fig1.png', 'sha256': '20a1a011f39f78f3835db20124b1ad2772e666c443a3f26817496d2ece9c4aeb', 'size': 57151}, 'state': {'path': 'analysis-state.json', 'sha256': '7027bcfacd3bb59788f23ebf967d8e546e0e166352a8d91ff3a0cb08c62a750c', 'size': 248}, 'generated_at_utc': '2026-09-06T14:22:54Z'}
+
+P2-2 RED (2026-09-06): before fixture edits
+command: PYTHONDONTWRITEBYTECODE=1 python3 maintenance/repair-20260906-main-threefix/reproduce_p2_c_red.py
+sha256 scripts/tests/test_a4_gate.py: 315efc6c731450138fb0d269951a1f94d65c04c20717a224bc5d7684e621b4c3
+sha256 scripts/report/a4_gate.py: dd05f2b5ed454461c5a5e85275a97b4b12558f5595d6c8db5542354370e81698
+sha256 maintenance/repair-20260906-main-threefix/reproduce_p2_c_red.py: 053042a63606e89a281b81c3d8572a9a294a2811e0243a984b4b5a03302a76a2
+pre-hard-rejection production sha256: 395806ea9394b310509ac1a1e0fa0bbf97b5bff9f756613c6abfd757941b8b94
+reserved=v_ok.json, synchronized_registry=False
+command: /usr/local/bin/python3 -c 'import subprocess, sys
+from pathlib import Path
+root = Path(sys.argv.pop(1))
+sys.path.insert(0, str(root / "scripts/tests"))
+from formal_ready_test_harness import test_vertical_slices
+script = str(root / "scripts/report/a4_gate.py")
+sys.argv = [script] + sys.argv[1:]
+source = subprocess.check_output(["git", "show", "8396aa4:scripts/report/a4_gate.py"], cwd=root)
+with test_vertical_slices():
+    exec(compile(source, script, "exec"), {"__name__": "__main__", "__file__": script})
+' /Users/uravvv/.claude/skills/token-chip-analysis finalize --case-dir /var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/p2_c_red_hzsgrx87/case --seal-files findings.md,analysis-state.json --verdicts-file /var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/p2_c_red_hzsgrx87/case/v_ok.json --workflow-type independent-audit
+exit_code: 2
+--- stdout ---
+--- stderr ---
+[finalize] FAIL（逐条修复后重跑，翻案后重新 finalize 即重新封口）:
+  ✗ claim C1 证据文件集合不一致
+
+seal_exists: False
+reserved=v_ok.json, synchronized_registry=True
+command: /usr/local/bin/python3 -c 'import subprocess, sys
+from pathlib import Path
+root = Path(sys.argv.pop(1))
+sys.path.insert(0, str(root / "scripts/tests"))
+from formal_ready_test_harness import test_vertical_slices
+script = str(root / "scripts/report/a4_gate.py")
+sys.argv = [script] + sys.argv[1:]
+source = subprocess.check_output(["git", "show", "8396aa4:scripts/report/a4_gate.py"], cwd=root)
+with test_vertical_slices():
+    exec(compile(source, script, "exec"), {"__name__": "__main__", "__file__": script})
+' /Users/uravvv/.claude/skills/token-chip-analysis finalize --case-dir /var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/p2_c_red_l6hnm_nc/case --seal-files findings.md,analysis-state.json --verdicts-file /var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/p2_c_red_l6hnm_nc/case/v_ok.json --workflow-type independent-audit
+exit_code: 0
+--- stdout ---
+[finalize] 封口 PASS  2 条裁决（{"WEAKENED": 1, "CONFIRMED": 1}）  7 件终版文件哈希封口 → /var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/p2_c_red_l6hnm_nc/case/a4_seal.json
+[finalize] 现在可进 A5：图一律输出到 charts/final/，编译带 --a4-seal a4_seal.json；封口后再改结论文件必须改完重跑 finalize
+--- stderr ---
+
+seal_exists: True
+reserved=a4_claims.json, synchronized_registry=False
+command: /usr/local/bin/python3 -c 'import subprocess, sys
+from pathlib import Path
+root = Path(sys.argv.pop(1))
+sys.path.insert(0, str(root / "scripts/tests"))
+from formal_ready_test_harness import test_vertical_slices
+script = str(root / "scripts/report/a4_gate.py")
+sys.argv = [script] + sys.argv[1:]
+source = subprocess.check_output(["git", "show", "8396aa4:scripts/report/a4_gate.py"], cwd=root)
+with test_vertical_slices():
+    exec(compile(source, script, "exec"), {"__name__": "__main__", "__file__": script})
+' /Users/uravvv/.claude/skills/token-chip-analysis finalize --case-dir /var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/p2_c_red_a98js75k/case --seal-files findings.md,analysis-state.json --verdicts-file /var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/p2_c_red_a98js75k/case/v_ok.json --workflow-type independent-audit
+exit_code: 2
+--- stdout ---
+--- stderr ---
+[finalize] FAIL（逐条修复后重跑，翻案后重新 finalize 即重新封口）:
+  ✗ claim C1 证据文件集合不一致
+
+seal_exists: False
+reserved=a4_claims.json, synchronized_registry=True
+command: /usr/local/bin/python3 -c 'import subprocess, sys
+from pathlib import Path
+root = Path(sys.argv.pop(1))
+sys.path.insert(0, str(root / "scripts/tests"))
+from formal_ready_test_harness import test_vertical_slices
+script = str(root / "scripts/report/a4_gate.py")
+sys.argv = [script] + sys.argv[1:]
+source = subprocess.check_output(["git", "show", "8396aa4:scripts/report/a4_gate.py"], cwd=root)
+with test_vertical_slices():
+    exec(compile(source, script, "exec"), {"__name__": "__main__", "__file__": script})
+' /Users/uravvv/.claude/skills/token-chip-analysis finalize --case-dir /var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/p2_c_red__5e6k9yr/case --seal-files findings.md,analysis-state.json --verdicts-file /var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/p2_c_red__5e6k9yr/case/v_ok.json --workflow-type independent-audit
+exit_code: 0
+--- stdout ---
+[finalize] 封口 PASS  2 条裁决（{"WEAKENED": 1, "CONFIRMED": 1}）  7 件终版文件哈希封口 → /var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/p2_c_red__5e6k9yr/case/a4_seal.json
+[finalize] 现在可进 A5：图一律输出到 charts/final/，编译带 --a4-seal a4_seal.json；封口后再改结论文件必须改完重跑 finalize
+--- stderr ---
+
+seal_exists: True
+reproducer_exit_code: 0

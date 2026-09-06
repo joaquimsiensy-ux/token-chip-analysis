@@ -1,0 +1,11 @@
+{
+  "command": "nohup python3 scripts/tests/run_all.py > /tmp/run_all.log 2>&1 &",
+  "exit_code": 1,
+  "passed": 145,
+  "total": 147,
+  "failures": [
+    "FAIL(rc=1)  test_batch3_solana_vertical_slice.py (无输出)",
+    "FAIL(rc=1)  test_batch3_evm_vertical_slice.py (无输出)"
+  ],
+  "log_sha256": "a565dc88babcdf76919397f308b751381bc4ae821320f7fe894abf7212b02504"
+}

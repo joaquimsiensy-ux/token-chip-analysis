@@ -1,0 +1,30 @@
+[supply_truth] PASS  重放净供给=100  链上=100  差=0（0.0bps，容差 10bps）→ /private/tmp/repair-batch1-hvp2j2e2/original/supply_truth.json
+RV07 LEGACY_INJECTION rc=1 canonical=PASS archives=0 error=existing_PASS_cannot_be_downgraded
+[supply_truth] FAIL  重放净供给=1  链上=100  差=-99（9900.0bps，容差 10bps）→ /private/tmp/repair-batch1-hvp2j2e2/original/supply_truth.json
+RV07 FIXED rc=2 canonical=FAIL archives=1 archived_verdict=PASS
+RV07 SIGKILL RED lock_rejected=1; RECOVERED rollback=1; GREEN canonical=FAIL
+segments: 1 x 2000 slots, conc=1
+PASS 1 segs (0 gaps) in 0s -> /private/tmp/repair-batch1-hvp2j2e2/window/window.jsonl
+segments: 1 x 2000 slots, conc=1
+[window_fetch] ERROR → /private/tmp/repair-batch1-hvp2j2e2/window/window_receipt.error.20260906T144846.241317Z.38021.json
+[window_fetch] 检测/提交失败（exit 1）: receipt switch injected
+segments: 1 x 2000 slots, conc=1
+[window_fetch] ERROR → /private/tmp/repair-batch1-hvp2j2e2/window/window_receipt.error.20260906T144846.244062Z.38021.json
+[window_fetch] 检测/提交失败（exit 1）: post-receipt data cleanup injected
+segments: 1 x 2000 slots, conc=1
+FAIL 1 segs (1 gaps) in 0s -> /private/tmp/repair-batch1-hvp2j2e2/window/window.jsonl.partial
+findfont: Failed to find font weight normal, now using 300.
+findfont: Failed to find font weight normal, now using 300.
+findfont: Failed to find font weight normal, now using 300.
+RV17 FIXED rc=1 verdict=ERROR complete=false false_closure=no
+RV04 LEGACY_INJECTION chip_proxy_ignored=yes selected_fixed_port=yes
+RV04 FIXED chip_proxy_wins_probe=yes selected_env=yes
+F03 OBSERVED pass1_rc=4 pass1_products=5/5 pass2_rc=4 pass2_formal=[] duck_rc=4 duck_formal=[] duck_diagnostics=['camp_series.json', 'entity_series.json']
+F03 SCHEMA observed_rc={'missing': 2, 'nonbool': 2, 'malformed': 2}
+F03 TOCTOU observed_rc=2 immediate=True
+F01 UNKNOWN observed_rc=2 png=False bad_key=True
+OK fig1: 1 点 × 3 实绘阵营 → /private/tmp/repair-batch1-hvp2j2e2/receipt/charts/final/fig1.png（价格 1 点）
+F01b PRE/POST A5 missing receipt rejected=True
+F01b PRE/POST release missing receipt errors=['缺必需资产: fig1_legend_receipt.json']
+F01b A5 cross-check rejects=a5-png-not-images:1,a5-state-hash:1,a5-png-hash:1,a5-camps:1
+PASS v6.41.0 batch1 steps 1-6 RV-07/RV-04/RV-17/F-03/F-01/A5v3/F-04

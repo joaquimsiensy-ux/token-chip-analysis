@@ -1,0 +1,3 @@
+command: python3 scripts/tests/invariant_scan.py
+exit_code: 0
+PASS invariant manifest: receipt_producers=75, receipt_consumers=112, transport_calls=65, atomic_writes=56, formal_entrypoints=61, exceptions=0
