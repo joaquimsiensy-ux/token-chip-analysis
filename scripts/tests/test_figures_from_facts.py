@@ -7,6 +7,7 @@ check 图2终值对账并守住临时托管期间的经济归属连续性。
 import hashlib
 import json
 import os
+from pathlib import Path
 import subprocess
 import sys
 import tempfile
@@ -68,8 +69,76 @@ def write_state(root, name, series, dates=None):
     return path
 
 
+def check_producer_stack_contract(td):
+    """A cumulative burn is outside the sol-rows holdings denominator."""
+    root = Path(td).resolve() / "producer-stack"
+    root.mkdir()
+    state = {
+        "token": {"symbol": "TEST"},
+        "camp_share_series": {
+            "dates": ["2026-01-01", "2026-01-02"],
+            "series": {"项目方": [60.0, 50.0], "散户": [40.0, 50.0],
+                       "锁仓/销毁": [5.0, 7.0]},
+        },
+        "provenance": {"camp_series_sidecar": {"series_format": "sol-rows"}},
+    }
+    state_path = root / "analysis-state.json"
+    state_path.write_text(json.dumps(state, ensure_ascii=False))
+    original_sha = sha256(state_path)
+    png = root / "fig1.png"
+    result = run(["fig1", "--state", str(state_path), "--out", str(png)])
+    assert result.returncode == 0 and png.stat().st_size > 10000, result.stdout + result.stderr
+    receipt = json.loads((root / LEGEND_RECEIPT).read_text())
+    assert receipt["rendered_camps"] == ["项目方", "散户"], receipt
+    assert receipt["excluded_series"] == [{"key": "锁仓/销毁", "reason": "non_stacked_metric"}]
+    assert sha256(state_path) == original_sha, "Rendering must preserve all source values"
+
+    sys.path.insert(0, REPORT_DIR)
+    import standard_charts
+    import a5_report_seal
+    import audit_release_gate
+    images = [a5_report_seal.entry(root, png)]
+    assert not a5_report_seal._fig1_legend_errors(root, receipt, images)
+    errors = []
+    audit_release_gate.check_figure1_legend_receipt(root, receipt, state, errors)
+    assert not errors, errors
+    forged = json.loads(json.dumps(receipt))
+    forged["rendered_camps"].append("锁仓/销毁")
+    forged["excluded_series"] = []
+    assert a5_report_seal._fig1_legend_errors(root, forged, images)
+    errors = []
+    audit_release_gate.check_figure1_legend_receipt(root, forged, state, errors)
+    assert errors, "The release consumer must reject the old incompatible stack"
+
+    series = state["camp_share_series"]["series"]
+    for fmt in (None, "evm-dict", "sol-anchor-rows"):
+        rendered, excluded, rejected = standard_charts.select_fig1_series(series, series_format=fmt)
+        assert "锁仓/销毁" in rendered and "锁仓/销毁" not in excluded and not rejected
+    try:
+        standard_charts.select_fig1_series(series, series_format="unregistered-format")
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("Unknown producer formats must be rejected")
+
+    # Observe actual plotted arrays; do not change the source values.
+    from datetime import datetime
+    from unittest.mock import MagicMock, patch
+    axis = MagicMock()
+    axis.get_legend_handles_labels.return_value = ([], [])
+    with patch.object(standard_charts, "setup"), patch.object(standard_charts, "_timeaxis"), \
+            patch.object(standard_charts.plt, "subplots", return_value=(MagicMock(), axis)), \
+            patch.object(standard_charts.plt, "close"):
+        standard_charts.plot_camp_evolution(
+            {"ts": [datetime(2026, 1, 1), datetime(2026, 1, 2)], **series},
+            "not-written.png", "TEST", series_format="sol-rows")
+    assert axis.stackplot.call_args.args[1] == [series["项目方"], series["散户"]]
+    assert axis.stackplot.call_args.kwargs["labels"] == ["项目方", "散户"]
+
+
 def main():
     with tempfile.TemporaryDirectory() as td:
+        check_producer_stack_contract(td)
         fp = os.path.join(td, "facts.json")
         sp = os.path.join(td, "state.json")
         json.dump(FACTS, open(fp, "w"))
@@ -271,7 +340,7 @@ def main():
         }
 
     print("PASS: figures_from_facts fig1白名单/legacy销毁键/legend receipt/"
-          "burn豁免/overlay组成/价格绑定/flow宏同源/schema拒绝旧列表/"
+          "producer分母与四消费者一致/burn豁免/overlay组成/价格绑定/flow宏同源/schema拒绝旧列表/"
           "strict拒绝硬编码图内数字/宏错必炸/check终值对账+临时托管连续性全过")
     return 0
 

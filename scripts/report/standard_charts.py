@@ -146,23 +146,36 @@ PRICE_LOG_SWITCH_RATIO = 30  # 图1 价格右轴：max/min 超此倍数自动切
 OVERLAY_COLORS = ["#4A148C", "#880E4F", "#004D40"]
 
 
-def select_fig1_series(series):
+def fig1_exclusion_reasons(series_format=None):
+    """Use the producer's fixed stack semantics; legacy callers keep their behavior."""
+    if series_format is None:
+        return dict(FIG1_EXCLUDED_SERIES)
+    lib = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "lib")
+    if lib not in sys.path:
+        sys.path.insert(0, lib)
+    from camp_series_provenance import stack_exempt_for
+    return {key: "non_stacked_metric" for key in stack_exempt_for(series_format)}
+
+
+def select_fig1_series(series, *, series_format=None):
     """纯函数：把图 1 series 键分为（实绘有序列表, 豁免键, 拒绝键）。
 
     ``ts`` 是时间轴元数据，不属于阵营键。实绘顺序唯一来自
-    ``CAMP_ORDER``；豁免键唯一来自 ``FIG1_EXCLUDED_SERIES``。
+    ``CAMP_ORDER``；正式数据的豁免键由 producer 的固定堆叠语义派生；
+    未声明格式的历史调用保留 ``FIG1_EXCLUDED_SERIES``。
     函数不做 IO、不修改输入，供绘图、收据与后续发布闸同源消费。
     """
     keys = list(series)
-    rendered = [camp for camp in CAMP_ORDER if camp in series]
-    excluded = [key for key in FIG1_EXCLUDED_SERIES if key in series]
-    allowed = set(CAMP_ORDER) | set(FIG1_EXCLUDED_SERIES) | {"ts"}
+    exemption = fig1_exclusion_reasons(series_format)
+    rendered = [camp for camp in CAMP_ORDER if camp in series and camp not in exemption]
+    excluded = [key for key in exemption if key in series]
+    allowed = set(CAMP_ORDER) | set(exemption) | {"ts"}
     rejected = [key for key in keys if key not in allowed]
     return rendered, excluded, rejected
 
 
 def plot_camp_evolution(series, out_png, token, note_supply="占总供应量", price_series=None,
-                        overlay=None):
+                        overlay=None, series_format=None):
     """图1：各阵营持仓占比演变（全量转账重放后的快照序列）。
 
     series: {"ts": [datetime,...], "<阵营名>": [pct,...], ...}
@@ -188,7 +201,7 @@ def plot_camp_evolution(series, out_png, token, note_supply="占总供应量", p
     """
     setup()
     ts = series["ts"]
-    camps, _excluded, rejected = select_fig1_series(series)
+    camps, _excluded, rejected = select_fig1_series(series, series_format=series_format)
     if rejected:
         raise ValueError(f"图 1 series 含白名单外键 {rejected}")
     fig, ax = plt.subplots(figsize=(12, 5.6))
