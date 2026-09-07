@@ -1,0 +1,3 @@
+command: python3 scripts/tests/docs_lint.py --all
+exit_code: 0
+PASS: 59 个文档，引用无断链、粗体配对完整（--all 全量模式）

@@ -122,8 +122,11 @@ def mode_fig1(a):
     dates, series_by_camp = css.get("dates"), css.get("series")
     if not dates or not isinstance(series_by_camp, dict) or not series_by_camp:
         raise SystemExit("FAIL: state 缺 camp_share_series.dates/series，无法直出图 1")
-    series_format = ((state.get("provenance") or {}).get("camp_series_sidecar") or {}).get("series_format")
-    exemption = charts.fig1_exclusion_reasons(series_format)
+    try:
+        series_format = charts.fig1_series_format(state)
+        exemption = charts.fig1_excluded_series(series_format)
+    except Exception as exc:  # SeriesProvenanceError 及同族
+        raise SystemExit(f"FAIL: state 的 camp_series_sidecar.series_format 非法,无法确定图 1 豁免集: {exc}")
     rendered_camps, excluded_keys, rejected_keys = charts.select_fig1_series(
         series_by_camp, series_format=series_format)
     if rejected_keys:
@@ -179,7 +182,7 @@ def mode_fig1(a):
             series, staged_png,
             a.token or (state.get("token") or {}).get("symbol", "?"),
             price_series=price, overlay=overlay, series_format=series_format,
-            note_supply="占净供应量" if series_format == "sol-rows" else "占总供应量")
+            note_supply=("占净供应量" if series_format == "sol-rows" else "占总供应量"))
         if not os.path.isfile(staged_png) or os.path.getsize(staged_png) == 0:
             raise SystemExit(
                 f"FAIL: 图 1 渲染结束但 PNG 未生成或为空: {a.out}")

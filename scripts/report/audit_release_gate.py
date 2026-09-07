@@ -1385,9 +1385,10 @@ def check_figure1_legend_receipt(case_dir: Path, d: dict, state: dict,
         return
     try:
         import standard_charts
-        series_format = ((state.get("provenance") or {}).get("camp_series_sidecar") or {}).get("series_format")
-        whitelist = standard_charts.fig1_exclusion_reasons(series_format)
-        rendered, excluded_keys, rejected = standard_charts.select_fig1_series(series, series_format=series_format)
+        series_format = standard_charts.fig1_series_format(state)
+        whitelist = standard_charts.fig1_excluded_series(series_format)
+        rendered, excluded_keys, rejected = standard_charts.select_fig1_series(
+            series, series_format=series_format)
     except Exception as exc:
         errors.append(f"发布闸重算图 1 实绘集合失败: {exc}")
         return

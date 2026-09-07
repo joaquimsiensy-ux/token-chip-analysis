@@ -1,0 +1,43 @@
+ok    register 正例 exit 0
+ok    register 空数组 exit 2
+ok    register 重复 id exit 2
+ok    Round4 P1-02 finalize 重验重复 claim id
+ok    Round4 P1-02 同族空文本失败分支
+ok    finalize 未 register exit 2
+ok    finalize 缺一条裁决 exit 2
+ok    finalize 多一条未登记裁决 exit 2
+ok    finalize verdict 非法 exit 2
+ok    finalize WEAKENED 无 revision_note exit 2
+ok    finalize charts/final 非空 exit 2
+ok    重复路径 seal-files / v_ok.json exit 2 且不产 seal
+ok    重复路径 seal-files / a4_claims.json exit 2 且不产 seal
+ok    重复路径 claim files / v_ok.json exit 2 且不产 seal
+ok    重复路径 claim files / a4_claims.json exit 2 且不产 seal
+ok    finalize 正例 exit 0 且 seal PASS
+ok    重复路径重封 exit 2 且旧 seal 字节不变
+ok    重复路径重封失败后案内文件集合与字节不变
+ok    D-06 已封口监控 JSON 可走正式构建
+ok    P1-05 全新分析无净室资产仍过必经共享门禁
+ok    P1-06 终版 claim registry 对账后重封口
+ok    G9 正例 exit 0 且 HTML 写出
+ok    P1-05 audit seal 不得降级当 new-analysis 构建
+ok    P0-01 seal 外 facts 拒绝且不落 HTML
+ok    P0-01 seal 外 state 拒绝且不落 HTML
+ok    P0-01 analysis 禁止未封口 JSON 附录
+ok    G9 registry 封口后漂移拒绝
+ok    G9 verdicts 封口后漂移拒绝
+ok    G9 claim file 封口后漂移拒绝
+ok    G9 dotdot 图片越界拒绝
+ok    G9 absolute 图片越界拒绝
+ok    G9 symlink 图片越界拒绝
+ok    G9 封口后改结论 exit 1
+ok    G9 拒绝时 HTML 未写出（gate 前置）
+ok    重封时 charts/final 留旧图被拒 exit 2（旧图必须作废）
+ok    清旧图后重跑 finalize 重新封口 exit 0
+ok    G9 图不在封口目录 exit 1 不写出
+ok    legacy 降级理由入 HTML 注释
+ok    analysis 无 --a4-seal 拒绝
+ok    已删除的 update 模式被拒绝
+ok    D-07 help 不再暴露不可达 skip gate 参数
+========================================
+a4_gate 契约测试全部通过（23 项）

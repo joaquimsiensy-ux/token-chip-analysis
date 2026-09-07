@@ -53,8 +53,8 @@ def _fig1_expected_from_state(root):
  if not isinstance(series,dict) or not series:
   raise ValueError("analysis-state 缺 camp_share_series.series，无法重算图 1 实绘集合")
  import standard_charts
- series_format=((state_obj.get("provenance") or {}).get("camp_series_sidecar") or {}).get("series_format")
- exemption=standard_charts.fig1_exclusion_reasons(series_format)
+ series_format=standard_charts.fig1_series_format(state_obj)
+ exemption=standard_charts.fig1_excluded_series(series_format)
  rendered,excluded,rejected=standard_charts.select_fig1_series(series,series_format=series_format)
  if rejected:
   raise ValueError(f"analysis-state 图 1 series 含白名单外键: {rejected}")

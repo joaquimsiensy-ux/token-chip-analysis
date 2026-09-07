@@ -10,6 +10,7 @@
 
 ## 版本索引（活跃窗口，新在上；每版一行，详情见下方对应条目）
 
+- **7.0.2**（2026-09-06）生产者四协议补登记与 git 可复现守卫；A4 封口硬拒专用字段重复路径；图一按 producer series_format 派生豁免、绘图与两消费方同源；SUITE 146→147，A→C→B 先红后绿。
 - **7.0.1**（2026-09-01）批 18 第四轮盲审 P2 消化：销户审计 `signature_discovery` 空签名早退如实透传 `complete`，区分“完整查询且成功签名结果为空”与截断/失败；SUITE 146 不变
 - **7.0.0**（2026-09-01）批 18 第三轮盲审终版：公开 witness 新鲜度从递归文件闭包改为如实钉一级输入 frontier，`bound_files` 不兼容更名为 `frontier_files`；销户审计 5 个早退与主路径统一完整报告及 monotonic 墙钟；SUITE 146 不变
 - **6.54.2**（2026-08-31）批 18 第二轮盲审 P1×2 消化：witness 对 target/receipts 增 canonical payload 摘要并在消费时重算；文件新鲜度从手工两节枚举升级为案根内递归 JSON path 闭包，绑定 supply output 等深层实物；SUITE 146 不变
@@ -82,6 +83,15 @@
 - **6.20.1** 2026-08-05 修 5 处阻断级文档漂移（A4 前禁写报告冲突/easy 残留/惯犯回灌 docstring/批量预采集残留/旧 Par 路线历史降级）＋docs_lint 增中文禁词与 Python module docstring 扫描
 
 更早版本（6.20.0 及以前）详见 `archive/CHANGELOG-archive.md`。
+
+## [7.0.2] - 2026-09-06 — 生产者登记、A4 重复路径与图一格式豁免修复
+
+- **出处与根因**：MELANIA/ARC 案触发的工具故障：生产者修改后四协议漏登记；A4 finalize 接受与专用字段重复的路径，构建端再拒绝；图一固定豁免集合与 sol-rows 生产器堆叠口径不一致。
+- **设计与实现**：A→C→B 施工；从可复现 git 对象补四条 ACTIVE 登记；finalize 对三来源封口集合与 registry/verdicts 路径交集硬拒；图一豁免从 state 的 series_format 经 stack_exempt_for 派生，sol-rows 真烧毁不堆叠并按净供应标注。
+- **消费面与防回流**：当前生产者逐协议登记与全表 git 哈希守卫接入 SUITE；图一绘图、legend 收据、A5 与发布闸共用格式选择器；只有 None 保留历史重绘规则，空串及非法格式拒绝；非有限豁免值沿用画图层校验。
+- **测试**：三段改动前 RED 保留命令、退出码、原文及哈希；C 覆盖四种重复来源与失败保留旧 seal；B 覆盖 sol-rows/evm-dict、格式非法、三种收据篡改双消费方拒绝及 NaN/inf/非数值直出拒绝；完整门禁实际结果见 maintenance/repair-20260906-main-threefix/done.md。
+- **盲审与验收**：按审批工单由 codex 独立施工；codex 第 1 轮只读盲审 PASS（0 P0/P1、3 P2 已消化：绘图层断言、C 段夹具单一化、裁决入档）；验收方本机全套 run_all 147/147 RC=0（施工沙箱内因 localhost bind 受限为 145/147，已在 done.md 如实记录）；B2④ 收窄裁决已入工单勘误。
+- **成本-质量指标**：生产改动文件 6；新增 SUITE 入口 1（146→147）；外部网络调用 0；白名单外改动 0；三个缺陷均保留先红证据；未进行代币分析，验收计数按实际日志披露。
 
 ## [7.0.1] - 2026-09-01 — signature_discovery 早退透传签名史 complete
 

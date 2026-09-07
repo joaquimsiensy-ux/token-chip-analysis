@@ -1,0 +1,3 @@
+command: python3 scripts/tests/changelog_lint.py
+exit_code: 0
+PASS: 版本号唯一（豁免 2 组历史撞号存档）、顺序正确；活跃 69 条 + 归档 139 条

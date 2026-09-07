@@ -422,12 +422,55 @@ def main():
     check("finalize charts/final 非空 exit 2", p.returncode == 2)
     os.unlink(os.path.join(d, "charts", "final", "premature.png"))
 
+    # 三修 C：每个反例使用独立副本，不污染后续正例案。
+    for source, reserved in (("seal-files", "v_ok.json"),
+                             ("seal-files", "a4_claims.json"),
+                             ("claim files", "v_ok.json"),
+                             ("claim files", "a4_claims.json")):
+        copied = Path(tempfile.mkdtemp(prefix="a4_duplicate_")) / "case"
+        shutil.copytree(d, copied)
+        rebind_case_inputs(d, copied)
+        seal_files = "findings.md,analysis-state.json"
+        if source == "seal-files":
+            seal_files += "," + reserved
+        else:
+            claim_path = copied / "a4_claims.json"
+            obj = json.loads(claim_path.read_text(encoding="utf-8"))
+            obj["claims"][0]["files"].append(reserved)
+            claim_path.write_text(json.dumps(obj, ensure_ascii=False), encoding="utf-8")
+            # 同步独立审计登记，使副本只违反专用字段重复路径约束。
+            registry_path = copied / "claim_registry.json"
+            registry = json.loads(registry_path.read_text(encoding="utf-8"))
+            claim = obj["claims"][0]
+            next(c for c in registry["claims"] if c["claim_id"] == claim["id"])["evidence_files"] = claim["files"]
+            registry_path.write_text(json.dumps(registry, ensure_ascii=False), encoding="utf-8")
+        p = run(GATE, ["finalize", "--case-dir", str(copied),
+                       "--seal-files", seal_files,
+                       "--verdicts-file", str(copied / "v_ok.json")])
+        check(f"重复路径 {source} / {reserved} exit 2 且不产 seal",
+              p.returncode == 2 and "重复" in p.stderr and reserved in p.stderr
+              and not (copied / "a4_seal.json").exists(), p.stdout + p.stderr)
+
     # 4. finalize 正例
     p = run(GATE, ["finalize", "--case-dir", d, "--seal-files", "findings.md,analysis-state.json",
                    "--verdicts-file", good_verdicts])
     seal_p = os.path.join(d, "a4_seal.json")
     check("finalize 正例 exit 0 且 seal PASS", p.returncode == 0 and os.path.isfile(seal_p)
           and json.load(open(seal_p))["verdict"] == "PASS")
+
+    before_duplicate = {p.relative_to(d).as_posix(): p.read_bytes()
+                        for p in Path(d).rglob("*") if p.is_file()}
+    p = run(GATE, ["finalize", "--case-dir", d,
+                   "--seal-files", "findings.md,analysis-state.json,v_ok.json",
+                   "--verdicts-file", good_verdicts])
+    after_duplicate = {p.relative_to(d).as_posix(): p.read_bytes()
+                       for p in Path(d).rglob("*") if p.is_file()}
+    check("重复路径重封 exit 2 且旧 seal 字节不变",
+          p.returncode == 2 and "重复" in p.stderr
+          and Path(seal_p).read_bytes() == before_duplicate["a4_seal.json"],
+          p.stdout + p.stderr)
+    check("重复路径重封失败后案内文件集合与字节不变",
+          before_duplicate == after_duplicate)
 
     # D-06：用户确认买入后，监控附录进入 seal 即可维持正式报告身份。
     sealed_appendix = wj(d, "appendix.json", {"chip_summary": {}, "addresses": [],

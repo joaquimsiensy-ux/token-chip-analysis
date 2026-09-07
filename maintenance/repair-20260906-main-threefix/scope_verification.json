@@ -1,0 +1,60 @@
+{
+  "head": "8396aa48e6da318433571002e246f1c3ab78794b",
+  "outside_whitelist": [],
+  "implementation_files": [
+    "CHANGELOG.md",
+    "SKILL.md",
+    "VERSION",
+    "pyproject.toml",
+    "references/analyze-workflow.md",
+    "references/playbook-entity-cluster-tiering.md",
+    "references/report-template.md",
+    "references/scan-schemas.md",
+    "scripts/lib/producer_history.py",
+    "scripts/report/a4_gate.py",
+    "scripts/report/a5_report_seal.py",
+    "scripts/report/audit_release_gate.py",
+    "scripts/report/figures_from_facts.py",
+    "scripts/report/standard_charts.py",
+    "scripts/tests/run_all.py",
+    "scripts/tests/test_a4_gate.py",
+    "scripts/tests/test_figures_from_facts.py",
+    "scripts/tests/test_producer_registry_current.py"
+  ],
+  "protected_unchanged": [
+    "scripts/report/build_html.py",
+    "scripts/lib/camp_series_provenance.py",
+    "scripts/tests/test_repair_batch_d.py",
+    "scripts/tests/test_repair_batch1.py",
+    "scripts/tests/invariant_manifest.json",
+    "scripts/tests/runtime_docs_manifest.json",
+    "scripts/tests/contract_manifest.json",
+    "scripts/solana/sqd_gap_repair.py"
+  ],
+  "revoked_rule_unchanged": true,
+  "skill_changed_original_lines": [
+    23,
+    27
+  ],
+  "suite_count": 147,
+  "sha256": {
+    "CHANGELOG.md": "3be141224a347ca3f68d40ab99fa0810d52464dbea3cbd0069e1315cb312d06c",
+    "SKILL.md": "426f95d71dd2864f6477d049259d695e57ad96b6bc8e3620efab8c851a57a68e",
+    "VERSION": "ee9b5bfa02e262be62fa5d3a1b68d15d452378b99ab7d6c2feabf5163ed1ac6a",
+    "pyproject.toml": "f6a517151ef4963a7de448b3d3392956768fb04e6d7176d9860a5dbc7a2b2aba",
+    "references/analyze-workflow.md": "8456c1293cdba3459e8017b68efd445b1b212a7ef449c881d503e1153fc55e26",
+    "references/playbook-entity-cluster-tiering.md": "4f515cf28860e313ee8d283453f5541b66a7902a4f8da6575a4f5ff58237a04f",
+    "references/report-template.md": "7cef77396f3570c4408fca56b055596e5efc2827817285f2d95ffed99344e7c7",
+    "references/scan-schemas.md": "e07029c8d4c476ebec2752ea6b72fe130663a9e12d871b4ec57e41076a51b0a4",
+    "scripts/lib/producer_history.py": "a98997cefaa61c4dc8c268455cf85b1f7e494376a2deb511354f2eac11b059ec",
+    "scripts/report/a4_gate.py": "dd05f2b5ed454461c5a5e85275a97b4b12558f5595d6c8db5542354370e81698",
+    "scripts/report/a5_report_seal.py": "dde8dcf817074cd7a407ebb98255623ba56ed26eb7f7d780d1e4bc0f4dff7eee",
+    "scripts/report/audit_release_gate.py": "c4ac530aa44a3cf493fd37f28306b7869761095a012a307297f952a1c6d08897",
+    "scripts/report/figures_from_facts.py": "c5e2cc34ade060f1b193b40efff3e3af8e938e63ddeab02209d94812fcab908b",
+    "scripts/report/standard_charts.py": "8b57be77aaa9d2add7a735611e47be3824caa53d47b1e0ddfd67711ec28b2d95",
+    "scripts/tests/run_all.py": "f92d33c3a5c4a8eaa56d17cc529dc280938d08c2331d6af5e1ed070daa345ebf",
+    "scripts/tests/test_a4_gate.py": "315efc6c731450138fb0d269951a1f94d65c04c20717a224bc5d7684e621b4c3",
+    "scripts/tests/test_figures_from_facts.py": "a6616cc015f78ed3cf057528a5e0dd1fe32d65c4c8d6278005eed1611be4aa60",
+    "scripts/tests/test_producer_registry_current.py": "f4b97c8c569a289fb14d220ac02c820fb80236438074313968599a0028ceb30d"
+  }
+}

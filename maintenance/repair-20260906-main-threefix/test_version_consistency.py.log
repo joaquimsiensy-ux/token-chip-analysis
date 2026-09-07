@@ -1,0 +1,3 @@
+command: python3 scripts/tests/test_version_consistency.py
+exit_code: 0
+PASS: M-03 version metadata consistent at 7.0.2

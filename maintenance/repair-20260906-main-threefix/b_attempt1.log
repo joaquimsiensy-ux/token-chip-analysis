@@ -1,0 +1,16 @@
+ok series_format=sol-rows: rendered=['大庄', '散户'], excluded=[{'key': '锁仓/销毁', 'reason': 'non_stacked_metric'}]
+ok series_format=evm-dict: rendered=['大庄', '散户', '锁仓/销毁'], excluded=[]
+ok 两消费方拒绝 rendered: ["图 1 legend rendered_camps 与当前 state 重算不一致（期望 ['大庄', '散户']）"]; ["图 1 legend 实绘集合与发布闸从 state 重算不一致（期望 ['大庄', '散户']）"]
+ok 两消费方拒绝 missing-exemption: ["图 1 legend excluded_series 与当前 state 重算不一致（期望 [{'key': '锁仓/销毁', 'reason': 'non_stacked_metric'}]）"]; ["图 1 legend 排除键与发布闸从 state 重算不一致（期望 [{'key': '锁仓/销毁', 'reason': 'non_stacked_metric'}]）"]
+ok 两消费方拒绝 overlay: ["图 1 legend overlay[0] 含当前 state 非实绘 camp: ['锁仓/销毁']"]; ["图 1 legend overlay[0] 含 state 非实绘 camp: ['锁仓/销毁']"]
+Traceback (most recent call last):
+  File "/Users/uravvv/.claude/skills/token-chip-analysis/scripts/tests/test_figures_from_facts.py", line 320, in <module>
+    sys.exit(main())
+             ~~~~^^
+  File "/Users/uravvv/.claude/skills/token-chip-analysis/scripts/tests/test_figures_from_facts.py", line 219, in main
+    test_series_format(Path(td) / "series-format")
+    ~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/uravvv/.claude/skills/token-chip-analysis/scripts/tests/test_figures_from_facts.py", line 310, in test_series_format
+    assert a5_errors and gate_errors, (label, a5_errors, gate_errors)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: ('nan', [], [])

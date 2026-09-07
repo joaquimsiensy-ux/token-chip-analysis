@@ -71,6 +71,9 @@ def fixture(c):
     # Remove the seed fixture seal; it has not entered a revision chain.
     os.replace(c/'a4_seal.json',c/'history/seed-seal.json')
     args=argparse.Namespace(case_dir=str(c),verdicts_file=str(c/'verdicts.json'),seal_files='evidence.json,verdicts.json,a4_claims.json',charts_dir='charts/final',workflow_type='new-analysis')
+    assert a4.cmd_finalize(args)==2, 'duplicate dedicated paths must fail closed'
+    assert not (c/'a4_seal.json').exists(), 'rejected finalize must not create a seal'
+    args.seal_files='evidence.json'
     assert a4.cmd_finalize(args)==0
     sealed=repair.load(c/'a4_seal.json');paths=[x['path'] for x in sealed['sealed_files']]+[sealed['registry']['path'],sealed['verdicts']['path']]
     assert len(paths)==len(set(paths)),'native finalize still produces duplicate dedicated paths'

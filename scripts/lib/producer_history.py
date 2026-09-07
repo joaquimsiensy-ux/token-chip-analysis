@@ -206,7 +206,7 @@ PRODUCER_HISTORY = (
         "commit": "4c5cd578a5f1a10449d128dcdb91a724c359e7a5",
         "protocol": "sqd-solana-cache/v4",
         "status": "ACTIVE",
-        "reason": "c2.2.4 registers repaired v4 caches from the committed v6.52.7 verify CLI variable fix; output semantics are unchanged.",
+        "reason": "v7.0.2 registers the v6.52.7 batch-9 producer (verify-CLI local `_base` renamed to `_base_payload` in `_verify`; sqd-solana-cache/v4 output semantics unchanged).",
     },
     {
         "script": "scripts/solana/sqd_gap_repair.py",
@@ -214,7 +214,7 @@ PRODUCER_HISTORY = (
         "commit": "4c5cd578a5f1a10449d128dcdb91a724c359e7a5",
         "protocol": "sqd-solana-repair-bundle/v1",
         "status": "ACTIVE",
-        "reason": "c2.2.4 registers repair bundles from the committed v6.52.7 verify CLI variable fix; output semantics are unchanged.",
+        "reason": "v7.0.2 registers the v6.52.7 batch-9 producer (verify-CLI local `_base` renamed to `_base_payload` in `_verify`; sqd-solana-repair-bundle/v1 output semantics unchanged).",
     },
     {
         "script": "scripts/solana/sqd_gap_repair.py",
@@ -222,7 +222,7 @@ PRODUCER_HISTORY = (
         "commit": "4c5cd578a5f1a10449d128dcdb91a724c359e7a5",
         "protocol": "sqd-solana-coverage-resolution/v1",
         "status": "ACTIVE",
-        "reason": "c2.2.4 registers coverage resolutions from the committed v6.52.7 verify CLI variable fix; output semantics are unchanged.",
+        "reason": "v7.0.2 registers the v6.52.7 batch-9 producer (verify-CLI local `_base` renamed to `_base_payload` in `_verify`; sqd-solana-coverage-resolution/v1 output semantics unchanged).",
     },
     {
         "script": "scripts/solana/sqd_gap_repair.py",
@@ -230,7 +230,7 @@ PRODUCER_HISTORY = (
         "commit": "4c5cd578a5f1a10449d128dcdb91a724c359e7a5",
         "protocol": "sqd-solana-repair-pointer/v1",
         "status": "ACTIVE",
-        "reason": "c2.2.4 registers atomic CURRENT repair pointers from the committed v6.52.7 verify CLI variable fix; output semantics are unchanged.",
+        "reason": "v7.0.2 registers the v6.52.7 batch-9 producer (verify-CLI local `_base` renamed to `_base_payload` in `_verify`; sqd-solana-repair-pointer/v1 output semantics unchanged).",
     },
     {
         "script": "scripts/solana/window_fetch.py",
