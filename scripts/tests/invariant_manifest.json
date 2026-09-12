@@ -1198,11 +1198,6 @@
    "semantics": "overwrite_single"
   },
   {
-   "locator": "finalize",
-   "script": "scripts/solana/fetch_sqd_transfers_v2.py",
-   "semantics": "overwrite_single"
-  },
-  {
    "locator": "persist_meta",
    "script": "scripts/solana/fetch_sqd_transfers_v2.py",
    "semantics": "overwrite_single"
