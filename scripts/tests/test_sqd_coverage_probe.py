@@ -630,6 +630,48 @@ def test_shared_map_lifecycle_rechecks_all_known_and_canary():
         assert reused is None and info["fallback_reason"] == "endpoint-fingerprint-changed"
 
 
+def test_known_map_recheck_keeps_pending_submissions_bounded():
+    from concurrent.futures import Future
+
+    class CountingFuture(Future):
+        def __init__(self, pool, value):
+            super().__init__()
+            self.pool, self.consumed = pool, False
+            self.set_result(value)
+
+        def result(self, timeout=None):
+            if not self.consumed:
+                self.pool.pending -= 1
+                self.consumed = True
+            return super().result(timeout)
+
+    class BoundedExecutor:
+        def __init__(self, max_workers):
+            self.limit, self.pending = max_workers * 4, 0
+        def __enter__(self): return self
+        def __exit__(self, *args): pass
+        def submit(self, function, *args, **kwargs):
+            self.pending += 1
+            assert self.pending <= self.limit, 'entire recheck was queued before results were consumed'
+            return CountingFuture(self, function(*args, **kwargs))
+
+    class Transport:
+        def call(self, kind, body):
+            assert kind == 'sqd-stream'
+            return probe.net.Result(ok=True, value=[
+                {'header': {'number': slot}, 'instructions': []}
+                for slot in range(body['fromBlock'], body['toBlock'] + 1)])
+
+    slots = list(range(100, 164, 2))
+    ledger = []
+    with mock.patch.object(probe, 'ThreadPoolExecutor', BoundedExecutor):
+        actual, failure, unverified, stats = probe._recheck_known_slots(
+            Transport(), slots, bytes([2]) * 64, 100, 2, ledger, ['fixture://sqd'])
+    assert actual == {slot: 2 for slot in slots}
+    assert failure is None and unverified == [] and stats['verified'] == len(slots)
+    assert [row['seq'] for row in ledger] == list(range(len(slots)))
+
+
 def test_guard_fixture_budget_and_no_run_threshold_detector():
     source = PROBE.read_text(encoding="utf-8").lower()
     for banned in ("run_length", "defect_run", "gap_threshold", "consecutive_zero"):
@@ -752,6 +794,7 @@ def main():
         test_dry_run_has_no_artifacts,
         test_sqd_cursor_pagination_regressions,
         test_shared_map_lifecycle_rechecks_all_known_and_canary,
+        test_known_map_recheck_keeps_pending_submissions_bounded,
         test_export_shared_map_roundtrip_and_tamper_rejection,
         test_guard_fixture_budget_and_no_run_threshold_detector,
     ]

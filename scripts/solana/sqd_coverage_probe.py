@@ -327,8 +327,14 @@ def _missing_ranges(mask, base_slot):
 def _scan_request(transport, start, end, seq, endpoints, *, mode="full"):
     body = sqd_query_body(start, end)
     result = transport.call("sqd-stream", body)
+    return _scan_result(result, start, end, seq, endpoints, mode=mode)
+
+
+def _scan_result(result, start, end, seq, endpoints, *, mode="full", observed_at=None):
+    """Decode both a live response and a committed raw recheck response."""
+    body = sqd_query_body(start, end)
     row = {
-        "seq": seq, "ts": utc_now(), "provider": "SQD", "mode": mode,
+        "seq": seq, "ts": observed_at or utc_now(), "provider": "SQD", "mode": mode,
         "counts_coverage": True, "query_body_sha256": sha256_bytes(canonical_json(body)),
         "from": start, "to": end, "http_status": _result_http_status(result),
         "returned_from": None, "returned_to": None, "n_blocks": 0,
@@ -570,80 +576,230 @@ def _contiguous_ranges(slots):
     return ranges
 
 
+class RecheckCheckpointError(ValueError):
+    """A damaged or uncommitted recovery state cannot authorize fallback."""
+
+
+class RecheckJournal:
+    """Raw response batches become reusable only through an atomic HEAD."""
+    def __init__(self, directory, identity, ranges):
+        self.directory = Path(directory)
+        self.identity = identity
+        self.ranges = set(ranges)
+        self.index, self.batches = {}, []
+        self.cached_path, self.cached_records = None, None
+        self.head_sha = None
+        try:
+            if self.directory.is_symlink():
+                raise ValueError('recheck journal is a symlink')
+            self.directory.mkdir(parents=True, exist_ok=True)
+            head = self.directory / 'HEAD.json'
+            if head.is_symlink():
+                raise ValueError('recheck journal HEAD is a symlink')
+            if head.exists():
+                head_raw = head.read_bytes()
+                document = json.loads(head_raw)
+                self.head_sha = sha256_bytes(head_raw)
+                if (document['schema'] != 'sqd-recheck-head/v1' or
+                    canonical_json(document['identity']) != canonical_json(identity)):
+                    raise ValueError('recheck journal identity changed')
+                for ref in document['batches']:
+                    records = self._read_batch(ref)
+                    keys = self._validate_records(records)
+                    self.batches.append(ref)
+                    self.index.update({key: (ref, i) for i, key in enumerate(keys)})
+        except Exception as exc:
+            raise RecheckCheckpointError(f'recheck journal rejected: {exc}') from exc
+
+    def _read_batch(self, ref):
+        name = 'batch-' + ref['sha256'] + '.json'
+        if ref['path'] != name or not re.fullmatch(r'batch-[0-9a-f]{64}\.json', name):
+            raise ValueError('recheck batch reference is invalid')
+        path = self.directory / name
+        if path.is_symlink() or path.stat().st_size != ref['size'] or sha256_file(path) != ref['sha256']:
+            raise ValueError('recheck batch changed or is missing')
+        document = _read_json(path)
+        if (document['schema'] != 'sqd-recheck-batch/v1' or
+            canonical_json(document['identity']) != canonical_json(self.identity)):
+            raise ValueError('recheck batch identity changed')
+        return document['records']
+
+    def _validate_records(self, records):
+        if not isinstance(records, list) or not records:
+            raise ValueError('recheck batch has no records')
+        keys = []
+        for record in records:
+            round_no, start, end = record['round'], record['from'], record['to']
+            key = (round_no, start, end)
+            if (any(type(x) is not int for x in key) or round_no not in (0, 1) or
+                (start, end) not in self.ranges or key in self.index or key in keys):
+                raise ValueError('duplicate or out-of-scope recheck record')
+            response = record['response']
+            if set(response) != {'ok', 'value', 'error'} or type(response['ok']) is not bool:
+                raise ValueError('recheck raw response is invalid')
+            observed_at = record['row']['ts']
+            if not isinstance(observed_at, str) or not observed_at:
+                raise ValueError('recheck observation timestamp is missing')
+            _parse_time(observed_at)
+            row, part = _scan_result(net.Result(**response), start, end, 0, [],
+                                     mode='recheck', observed_at=observed_at)
+            if (canonical_json(row) != canonical_json(record['row']) or
+                record['counts_hex'] != (part.hex() if part is not None else None)):
+                raise ValueError('recheck counts or native row differ from raw response')
+            if round_no == 1:
+                previous = self.lookup(0, start, end)
+                if previous is None:
+                    raise ValueError('recheck retry has no committed first attempt')
+                raw_counts = previous['counts_hex']
+                if raw_counts is not None and len(bytes.fromhex(raw_counts)) == end - start + 1:
+                    raise ValueError('recheck retry follows a complete first attempt')
+            keys.append(key)
+        return keys
+
+    def lookup(self, round_no, start, end):
+        indexed = self.index.get((round_no, start, end))
+        if indexed is None:
+            return None
+        ref, ordinal = indexed
+        try:
+            # A batch is small; never retain the entire history of raw responses.
+            if self.cached_path != ref['path']:
+                self.cached_records = self._read_batch(ref)
+                self.cached_path = ref['path']
+            return self.cached_records[ordinal]
+        except Exception as exc:
+            raise RecheckCheckpointError(f'recheck committed batch unavailable: {exc}') from exc
+
+    def commit(self, records):
+        if not records:
+            return
+        try:
+            keys = self._validate_records(records)
+            payload = canonical_json({'schema': 'sqd-recheck-batch/v1',
+                                      'identity': self.identity, 'records': records}) + b'\n'
+            sha = sha256_bytes(payload)
+            ref = {'path': 'batch-' + sha + '.json', 'size': len(payload), 'sha256': sha}
+            lock_path = self.directory / '.commit.lock'
+            lock_fd = os.open(lock_path, os.O_CREAT | os.O_RDWR | getattr(os, 'O_NOFOLLOW', 0), 0o600)
+            with os.fdopen(lock_fd, 'r+b') as lock_handle:
+                fcntl.flock(lock_handle.fileno(), fcntl.LOCK_EX)
+                try:
+                    head_path = self.directory / 'HEAD.json'
+                    if head_path.is_symlink():
+                        raise ValueError('recheck HEAD changed to a symlink')
+                    current_sha = sha256_bytes(head_path.read_bytes()) if head_path.exists() else None
+                    if current_sha != self.head_sha:
+                        raise ValueError('recheck HEAD changed since this writer loaded it')
+                    path = self.directory / ref['path']
+                    if path.exists():
+                        if path.is_symlink() or path.read_bytes() != payload:
+                            raise ValueError('recheck immutable batch collision')
+                    else:
+                        _publish_bytes_overwrite(path, payload)
+                    _fsync_dir(self.directory)
+                    batches = self.batches + [ref]
+                    publish_overwrite(self.directory / 'HEAD.json', {
+                        'schema': 'sqd-recheck-head/v1', 'identity': self.identity, 'batches': batches})
+                    _fsync_dir(self.directory)
+                    self.batches = batches
+                    self.index.update({key: (ref, i) for i, key in enumerate(keys)})
+                    self.head_sha = sha256_bytes(head_path.read_bytes())
+                finally:
+                    fcntl.flock(lock_handle.fileno(), fcntl.LOCK_UN)
+
+        except Exception as exc:
+            raise RecheckCheckpointError(f'recheck checkpoint commit failed: {exc}') from exc
+
+
+def _fetch_recheck_record(transport, start, end, round_no, endpoints):
+    try:
+        result = transport.call('sqd-stream', sqd_query_body(start, end))
+    except Exception as exc:
+        result = net.Result(ok=False, error={'message': _safe_text(exc, endpoints)})
+    # Store sanitized SQD errors so replay never needs a secret endpoint string.
+    response = {'ok': result.ok, 'value': result.value, 'error': result.error}
+    if isinstance(response['error'], dict) and 'message' in response['error']:
+        response['error'] = dict(response['error'], message=_safe_text(response['error']['message'], endpoints))
+    row, part = _scan_result(net.Result(**response), start, end, 0, [], mode='recheck')
+    return {'round': round_no, 'from': start, 'to': end, 'response': response,
+            'row': row, 'counts_hex': part.hex() if part is not None else None}
+
+
 def _recheck_known_slots(transport, recheck, asset_counts, afrom, workers,
-                         ledger, endpoints):
+                         ledger, endpoints, *, journal=None):
     ranges = _contiguous_ranges(recheck)
 
-    def run_round(pool, targets):
-        completed = []
-        futures = {
-            pool.submit(_scan_request, transport, start, end, 0, endpoints,
-                        mode="recheck"): (start, end)
-            for start, end in targets
-        }
-        for future in as_completed(futures):
-            start, end = futures[future]
-            try:
-                row, part = future.result()
-            except Exception as exc:
-                row = {
-                    "seq": 0, "ts": utc_now(), "provider": "SQD",
-                    "mode": "recheck", "counts_coverage": False,
-                    "query_body_sha256": sha256_bytes(canonical_json(
-                        sqd_query_body(start, end))),
-                    "from": start, "to": end, "http_status": None,
-                    "returned_from": None, "returned_to": None, "n_blocks": 0,
-                    "slots_covered": 0, "empty_response": False, "bytes": 0,
-                    "response_sha256": None, "ok": False,
-                    "error": _safe_text(exc, endpoints),
-                }
-                part = None
-            completed.append((start, end, row, part))
-
-        outcomes = []
-        for start, end, row, part in sorted(completed):
-            expected = end - start + 1
-            if part is None or len(part) != expected:
-                row["counts_coverage"] = False
-                outcomes.append((start, end, "request-failed", None, row, None))
+    def run_round(pool, targets, round_no):
+        batch_size = max(1, workers * 4)
+        for offset in range(0, len(targets), batch_size):
+            records, futures = [], {}
+            for start, end in targets[offset:offset + batch_size]:
+                cached = journal.lookup(round_no, start, end) if journal is not None else None
+                if cached is not None:
+                    records.append(cached)
+                else:
+                    futures[pool.submit(_fetch_recheck_record, transport, start, end,
+                                        round_no, endpoints)] = (start, end)
+            fetched = []
+            for future in as_completed(futures):
+                try:
+                    fetched.append(future.result())
+                except Exception as exc:
+                    raise RecheckCheckpointError(f'recheck response decoding failed: {exc}') from exc
+            fetched.sort(key=lambda record: (record['from'], record['to']))
+            if journal is not None:
+                journal.commit(fetched)
+            records.extend(fetched)
+            completed = [(record['from'], record['to'], dict(record['row']),
+                          bytes.fromhex(record['counts_hex']) if record['counts_hex'] is not None else None)
+                         for record in records]
+            done = min(offset + batch_size, len(targets))
+            if journal is not None and (done == len(targets) or done // PROGRESS_EVERY != offset // PROGRESS_EVERY):
+                print(f'[sqd-coverage] recheck round={round_no} completed={done}/{len(targets)} '
+                      f'committed_attempts={len(journal.index)}', file=sys.stderr, flush=True)
+            outcomes = []
+            for start, end, row, part in sorted(completed):
+                expected = end - start + 1
+                if part is None or len(part) != expected:
+                    row["counts_coverage"] = False
+                    outcomes.append((start, end, "request-failed", None, row, None))
+                    _append_ledger(ledger, [row])
+                    continue
+                mismatch = next((start + offset for offset, value in enumerate(part)
+                                 if value != asset_counts[start + offset - afrom]), None)
+                outcome = "mismatch" if mismatch is not None else "verified"
+                outcomes.append((start, end, outcome, mismatch, row, part))
                 _append_ledger(ledger, [row])
-                continue
-            mismatch = next((start + offset for offset, value in enumerate(part)
-                             if value != asset_counts[start + offset - afrom]), None)
-            outcome = "mismatch" if mismatch is not None else "verified"
-            outcomes.append((start, end, outcome, mismatch, row, part))
-            _append_ledger(ledger, [row])
-        return outcomes
+            yield outcomes
 
     actual = {}
     verified = set()
+    mismatch_slots, failed, unverified = [], [], []
     with ThreadPoolExecutor(max_workers=workers) as pool:
-        first = run_round(pool, ranges)
-        mismatch_slots = [item[3] for item in first if item[2] == "mismatch"]
-        failed = [(start, end) for start, end, outcome, _slot, _row, _part in first
-                  if outcome == "request-failed"]
-        for start, end, outcome, _slot, _row, part in first:
-            if outcome == "verified":
-                verified.add((start, end))
-                for offset, value in enumerate(part):
-                    actual[start + offset] = value
-
-        retry = run_round(pool, failed) if failed else []
-        mismatch_slots.extend(item[3] for item in retry
-                              if item[2] == "mismatch")
-        unverified = []
-        for start, end, outcome, _slot, _row, part in retry:
-            if outcome == "verified":
-                verified.add((start, end))
-                for offset, value in enumerate(part):
-                    actual[start + offset] = value
-            elif outcome == "request-failed":
-                unverified.append((start, end))
+        for batch in run_round(pool, ranges, 0):
+            for start, end, outcome, slot, row, part in batch:
+                if outcome == "mismatch":
+                    mismatch_slots.append(slot)
+                elif outcome == "request-failed":
+                    failed.append((start, end))
+                else:
+                    verified.add((start, end))
+                    for offset, value in enumerate(part):
+                        actual[start + offset] = value
+        for batch in run_round(pool, failed, 1):
+            for start, end, outcome, slot, row, part in batch:
+                if outcome == "mismatch":
+                    mismatch_slots.append(slot)
+                elif outcome == "request-failed":
+                    unverified.append((start, end))
+                else:
+                    verified.add((start, end))
+                    for offset, value in enumerate(part):
+                        actual[start + offset] = value
         stats = {"verified": len(verified), "unverified": len(unverified),
                  "retried": len(failed)}
         if mismatch_slots:
-            return actual, f"recheck-mismatch:{min(mismatch_slots)}", \
-                unverified, stats
+            return actual, f"recheck-mismatch:{min(mismatch_slots)}", unverified, stats
         return actual, None, unverified, stats
 
 
@@ -669,7 +825,7 @@ def _reuse_ranges_excluding(overlap_from, overlap_to, excluded):
 
 def _load_known_map(path, mint_from, mint_to, sqd_identity, metadata,
                     transport, ledger, endpoints, *, current_head_raw=None,
-                    workers=1):
+                    workers=1, journal_root=None, journal_identity=None):
     """Validate and recheck a shared map; return reusable counts or fallback."""
     asset_path = Path(path).resolve()
     info = {"asset_path": str(asset_path), "version": None, "sha256": None,
@@ -742,8 +898,17 @@ def _load_known_map(path, mint_from, mint_to, sqd_identity, metadata,
             raise ValueError("canary-shape-invalid")
         recheck = sorted(set(slots + asset.get("candidate_slots", [])
                              + asset.get("refuted_slots", [])))
+        journal = None
+        if journal_root is not None:
+            binding = {'target': journal_identity, 'shared_map_sha256': info['sha256'],
+                       'slot_counts_sha256': slot_meta['sha256'], 'blocks_bitmap_sha256': blocks_meta['sha256'],
+                       'endpoint_fingerprint': sqd_identity, 'query_template_sha256': sqd_query_template_sha256(),
+                       'producer_sha256': sha256_file(__file__)}
+            namespace = {key: journal_identity.get(key) for key in ('mint', 'from_slot', 'to_slot')}
+            directory = Path(journal_root) / sha256_bytes(canonical_json(namespace))
+            journal = RecheckJournal(directory, binding, _contiguous_ranges(recheck))
         actual, recheck_failure, unverified, recheck_stats = _recheck_known_slots(
-            transport, recheck, asset_counts, afrom, workers, ledger, endpoints)
+            transport, recheck, asset_counts, afrom, workers, ledger, endpoints, journal=journal)
         info["unverified_ranges"] = [
             {"from_slot": start, "to_slot": end} for start, end in unverified]
         info["recheck_stats"] = recheck_stats
@@ -776,6 +941,8 @@ def _load_known_map(path, mint_from, mint_to, sqd_identity, metadata,
                     and (row.get("from") < mint_from or row.get("to") > mint_to):
                 row["counts_coverage"] = False
         return info, bytes(reused), overlap_from, overlap_to
+    except RecheckCheckpointError:
+        raise
     except Exception as exc:
         for row in ledger[ledger_start:]:
             if row.get("mode") == "recheck":
@@ -1077,18 +1244,29 @@ def _pending_state(parent, args, sqd_identity):
     matches = []
     for pending in sorted(parent.glob("pending-*")):
         state_path = pending / "resume_state.json"
+        if args.known_map and (pending.is_symlink() or state_path.is_symlink() or
+                (state_path.exists() and not state_path.is_file())):
+            raise RecheckCheckpointError('known-map resume state path is not a regular file')
         if not state_path.is_file():
             continue
         try:
             state = _read_json(state_path)
-        except (OSError, ValueError, json.JSONDecodeError):
+        except (OSError, ValueError, json.JSONDecodeError) as exc:
+            if args.known_map:
+                raise RecheckCheckpointError('known-map resume state is unreadable or damaged') from exc
             continue
+        if args.known_map and (not isinstance(state, dict) or
+                state.get('format') != 'sqd-coverage-resume-v1' or not isinstance(state.get('identity'), dict)):
+            raise RecheckCheckpointError('known-map resume state schema is invalid')
         identity = state.get("identity")
         expected = {"mint": args.mint, "from_slot": args.from_slot,
                     "to_slot": args.to_slot, "sqd_fingerprint": sqd_identity,
                     "plan": _plan_identity(args)}
         if identity == expected:
             matches.append((pending, state))
+        elif args.known_map and isinstance(identity, dict) and all(
+                identity.get(key) == expected[key] for key in ('mint', 'from_slot', 'to_slot')):
+            raise RecheckCheckpointError('known-map resume checkpoint plan or endpoint changed')
     if len(matches) > 1:
         raise ValueError("multiple resumable coverage pending directories match plan")
     return matches[0] if matches else (None, None)
@@ -1220,11 +1398,34 @@ def run_probe(args):
 
     scan_ranges = []
     shared_map = None
-    if not args.resume and args.known_map:
+    if args.known_map:
+        recovering_recheck = args.resume or any((parent / 'recheck-journal').glob('*/HEAD.json'))
+        resumed_full = []
+        if resume is not None:
+            if len(counts) != args.to_slot - args.from_slot + 1:
+                raise RecheckCheckpointError('known-map resume counts length changed')
+            for seq, row in enumerate(ledger):
+                if type(row.get('seq')) is not int or row['seq'] != seq:
+                    raise RecheckCheckpointError('known-map resume ledger sequence changed')
+                if row.get('mode') in {'map-reuse', 'recheck'}:
+                    row['counts_coverage'] = False
+                elif row.get('mode') == 'full' and row.get('ok') is True:
+                    covered = _successful_coverage_range(row)
+                    if covered is None or not args.from_slot <= covered[0] <= covered[1] <= args.to_slot:
+                        raise RecheckCheckpointError('known-map resume full range is invalid')
+                    start, end = covered
+                    part = bytes(counts[start - args.from_slot:end - args.from_slot + 1])
+                    if len(part) != end - start + 1 or 0 in part:
+                        raise RecheckCheckpointError('known-map resume full counts are incomplete')
+                    resumed_full.append((start, end, part))
+        counts[:] = bytes(len(counts))
         shared_map, reused, reuse_from, reuse_to = _load_known_map(
             args.known_map, args.from_slot, args.to_slot, sqd_identity, metadata,
             transport, ledger, endpoints, current_head_raw=head_result.value,
-            workers=args.workers)
+            workers=args.workers, journal_root=parent / 'recheck-journal', journal_identity=identity)
+        if recovering_recheck and reused is None:
+            raise RecheckCheckpointError('known-map resume identity/recheck failed: ' +
+                                         str(shared_map.get('fallback_reason')))
         if reused is not None:
             counts[reuse_from - args.from_slot:reuse_to - args.from_slot + 1] = reused
             map_rows = []
@@ -1246,6 +1447,12 @@ def run_probe(args):
             _append_ledger(ledger, map_rows)
         else:
             counts[:] = bytes(len(counts))
+        for start, end, part in resumed_full:
+            offset = start - args.from_slot
+            current = counts[offset:offset + len(part)]
+            if any(old and old != fresh for old, fresh in zip(current, part)):
+                raise RecheckCheckpointError('resumed full counts conflict with newly verified shared map')
+            counts[offset:offset + len(part)] = part
 
     missing = _missing_ranges(counts, args.from_slot)
     if missing:
