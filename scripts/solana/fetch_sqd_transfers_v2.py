@@ -47,6 +47,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from endpoint_identity import endpoint_fingerprint
+from producer_history import historical_producer_hashes
 from proxy_config import redact_proxy, resolve_proxy
 from solana_attested_session import SolanaAttestedSession
 from solana_sqd_dataset import (SOLANA_SQD_DATASET_ID,
@@ -542,7 +543,12 @@ def normalize_cache_identity(meta, mint, endpoint, frozen_collector_sha256=None)
     if not meta or meta.get("finalized_upper_slot") is None:
         return None
     expected = cache_identity(mint, endpoint, frozen_collector_sha256)
-    if any(meta.get(key) != value for key, value in expected.items()):
+    if any(meta.get(key) != value for key, value in expected.items()
+           if key != "collector_sha256"):
+        return None
+    allowed = historical_producer_hashes(
+        "scripts/solana/fetch_sqd_transfers_v2.py", CACHE_SCHEMA)
+    if meta.get("collector_sha256") not in allowed:
         return None
     upper = meta.get("finalized_upper_slot")
     if isinstance(upper, bool) or not isinstance(upper, int) or upper < 0:
@@ -734,7 +740,8 @@ class MemMerger:
 class ExtMerger:
     """DuckDB 外排收尾：按 source 计算完整交易 digest 并拒绝身份冲突。"""
     mode = "duckdb-external"
-    RC = "columns={'x':'VARCHAR'}, header=false, quote='', delim=e'\\x07'"
+    # Small serial CSV buffers leave headroom for external-sort spill blocks.
+    RC = "columns={'x':'VARCHAR'}, header=false, quote='', delim=e'\\x07', buffer_size=4194304, parallel=false"
 
     def __init__(self, cache_fp, parts_dir, part_files, old_ok):
         self.cache_fp = cache_fp
@@ -765,119 +772,56 @@ class ExtMerger:
                 f"{[str(self.old)]!r}, {self.RC}, compression='gzip')")
         return " UNION ALL ".join(segs)
 
-    def _ctes(self):
-        src = self._src()
-        return f"""
-            raw AS (
-              SELECT src_id, x, try_cast(x AS JSON) AS j FROM ({src})
-            ),
-            parsed AS (
-              SELECT src_id, x, j, json_array_length(j) AS width,
-                     json_type(j, '$[0]') AS ts_type,
-                     json_type(j, '$[1]') AS slot_type,
-                     json_type(j, '$[2]') AS tx_type,
-                     json_type(j, '$[3]') AS instr_type,
-                     json_type(j, '$[4]') AS f_type,
-                     json_type(j, '$[5]') AS t_type,
-                     json_type(j, '$[6]') AS amt_type,
-                     json_extract_string(j, '$[0]') AS ts_s,
-                     json_extract_string(j, '$[1]') AS slot_s,
-                     json_extract_string(j, '$[2]') AS tx_s,
-                     json_extract_string(j, '$[3]') AS instr_s,
-                     json_extract_string(j, '$[4]') AS f,
-                     json_extract_string(j, '$[5]') AS t,
-                     json_extract_string(j, '$[6]') AS amt
-              FROM raw
-            ),
-            canonical_source_rows AS (
-              SELECT DISTINCT src_id,
-                     CAST(ts_s AS BIGINT) AS ts,
-                     CAST(slot_s AS BIGINT) AS slot,
-                     CAST(tx_s AS BIGINT) AS tx_index,
-                     CAST(instr_s AS BIGINT) AS instr_index,
-                     f, t, amt
-              FROM parsed
-            ),
-            source_tx AS (
-              SELECT src_id, slot, tx_index,
-                     sha256(string_agg(
-                       '[' || ts || ',' || slot || ',' || tx_index || ',' || instr_index
-                       || ',' || to_json(f) || ',' || to_json(t) || ',' || amt || ']',
-                       '\\n' ORDER BY f, t, amt, ts, instr_index)) AS tx_digest
-              FROM canonical_source_rows
-              GROUP BY src_id, slot, tx_index
-            ),
-            tx_choice AS (
-              SELECT slot, tx_index, min(src_id) AS keep_source
-              FROM source_tx
-              GROUP BY slot, tx_index
-            ),
-            canonical AS (
-              SELECT r.ts, r.slot, r.tx_index, r.instr_index, r.f, r.t, r.amt
-              FROM canonical_source_rows r
-              JOIN tx_choice c ON r.slot = c.slot AND r.tx_index = c.tx_index
-                              AND r.src_id = c.keep_source
-            )
-        """
+    def _iter_edges(self):
+        """Spill the sort to disk; retain only one complete transaction in Python.
 
-    def _validate(self, con):
-        invalid = con.execute(f"""
-            WITH {self._ctes()}
-            SELECT src_id, x FROM parsed
-            WHERE j IS NULL OR width <> {len(EDGE_SCHEMA_FIELDS)}
-               OR ts_type NOT IN ('UBIGINT', 'BIGINT')
-               OR slot_type NOT IN ('UBIGINT', 'BIGINT')
-               OR tx_type NOT IN ('UBIGINT', 'BIGINT')
-               OR instr_type <> 'BIGINT'
-               OR amt_type NOT IN ('UBIGINT', 'BIGINT', 'DOUBLE')
-               OR NOT coalesce(regexp_full_match(ts_s, '(0|[1-9][0-9]*)'), false)
-               OR NOT coalesce(regexp_full_match(slot_s, '(0|[1-9][0-9]*)'), false)
-               OR NOT coalesce(regexp_full_match(tx_s, '(0|[1-9][0-9]*)'), false)
-               OR try_cast(ts_s AS BIGINT) IS NULL
-               OR try_cast(slot_s AS BIGINT) IS NULL
-               OR try_cast(tx_s AS BIGINT) IS NULL
-               OR instr_s <> '{INSTR_INDEX_TX_NET}'
-               OR f_type <> 'VARCHAR' OR t_type <> 'VARCHAR'
-               OR f IS NULL OR f = '' OR t IS NULL OR t = ''
-               OR NOT coalesce(regexp_full_match(amt, '[1-9][0-9]*'), false)
-            LIMIT 1
-        """).fetchone()
-        if invalid:
-            raise ValueError(
-                f"invalid v4 edge row in {invalid[0]}; legacy/mixed rows require full recapture")
-        conflict = con.execute(f"""
-            WITH {self._ctes()}
-            SELECT slot, tx_index, count(DISTINCT tx_digest)
-            FROM source_tx GROUP BY slot, tx_index
-            HAVING count(DISTINCT tx_digest) > 1 LIMIT 1
-        """).fetchone()
-        if conflict:
-            raise RuntimeError(
-                "conflicting transaction edge sets for "
-                f"slot={conflict[0]} tx_index={conflict[1]}")
+        SQL only supplies sortable transaction identity. The shared Python v4
+        parser validates every original scalar before any row is accepted.
+        Ordered string_agg across the entire history is deliberately avoided.
+        """
+        con = self._con()
+        try:
+            cursor = con.execute(f"""
+                SELECT src_id, x,
+                       try_cast(json_extract_string(try_cast(x AS JSON), '$[1]') AS BIGINT) AS slot,
+                       try_cast(json_extract_string(try_cast(x AS JSON), '$[2]') AS BIGINT) AS tx_index
+                FROM ({self._src()})
+                ORDER BY slot, tx_index, src_id
+            """)
+            identity, sources = None, {}
+            while True:
+                batch = cursor.fetchmany(4096)
+                if not batch:
+                    break
+                for source, raw, slot, tx_index in batch:
+                    row = validate_edge_row(json.loads(raw))
+                    if slot is None or tx_index is None or row[0] > 2**63 - 1:
+                        raise ValueError("v4 timestamp/transaction identity exceeds BIGINT")
+                    current = (row[1], row[2])
+                    if current != (slot, tx_index):
+                        raise ValueError("v4 sorted transaction identity changed during parsing")
+                    if identity is not None and current != identity:
+                        yield from dedupe_transaction_sources(sources.items())
+                        sources = {}
+                    identity = current
+                    sources.setdefault(source, []).append(row)
+            if sources:
+                yield from dedupe_transaction_sources(sources.items())
+        finally:
+            con.close()
 
     def rows(self):
         return None      # 精确行数要全扫，收尾 COPY 时自然得到
 
     def stats(self):
-        if self._cache is not None:
-            return self._cache
-        src = self._src()
-        if not src:
-            self._cache = (False, None)
-            return self._cache
-        con = self._con()
-        try:
-            self._validate(con)
-            row = con.execute(f"""
-                WITH {self._ctes()}
-                SELECT max(CASE WHEN f = ? THEN 1 ELSE 0 END),
-                       min(CASE WHEN ts <> 0 THEN ts END)
-                FROM canonical
-            """, [ZERO]).fetchone()
-        finally:
-            con.close()
-        self._cache = (bool(row[0]), row[1])
+        if self._cache is None:
+            has_mint, min_ts = False, None
+            if self._src():
+                for row in self._iter_edges():
+                    has_mint = has_mint or row[4] == ZERO
+                    if row[0]:
+                        min_ts = row[0] if min_ts is None else min(min_ts, row[0])
+            self._cache = (has_mint, min_ts)
         return self._cache
 
     def absorb(self, edges):
@@ -893,37 +837,26 @@ class ExtMerger:
         self._cache = None      # 数据变了，回补判据缓存失效
 
     def finalize(self):
-        src = self._src()
-        if not src:
-            return {"rows": 0, "has_mint": False, "min_ts": None}
-        has_mint, min_ts = self.stats()
-        tmp = self.cache_fp.parent / (self.cache_fp.name + ".tmp")
-        con = self._con()
-        try:
-            self._validate(con)
-            n = con.execute(f"""
-                COPY (
-                  WITH {self._ctes()}
-                  SELECT '[' || ts || ', ' || slot || ', ' || tx_index || ', '
-                              || instr_index || ', ' || to_json(f) || ', '
-                              || to_json(t) || ', ' || amt || ']' AS line
-                  FROM canonical
-                  ORDER BY slot, tx_index, f, t, amt
-                ) TO '{tmp}' (FORMAT csv, HEADER false, QUOTE '', DELIMITER e'\\x07',
-                              COMPRESSION gzip)
-            """).fetchone()[0]
-        except BaseException:
-            tmp.unlink(missing_ok=True)
-            raise
-        finally:
-            con.close()
-            for leftover in self.tmpdir.glob("*"):
-                leftover.unlink(missing_ok=True)
-        if not n:
-            tmp.unlink(missing_ok=True)                             # 零边不动缓存（同旧版语义）
-            return {"rows": 0, "has_mint": False, "min_ts": None}
-        os.replace(tmp, self.cache_fp)
-        return {"rows": int(n), "has_mint": has_mint, "min_ts": min_ts}
+        result = {"rows": 0, "has_mint": False, "min_ts": None}
+        if not self._src():
+            return result
+
+        def lines():
+            for row in self._iter_edges():
+                result["rows"] += 1
+                if result["rows"] % 5_000_000 == 0:
+                    log(f"外排合并已写 {result['rows']:,} 条边（临时输出，尚未提交）")
+                result["has_mint"] = result["has_mint"] or row[4] == ZERO
+                if row[0]:
+                    previous = result["min_ts"]
+                    result["min_ts"] = row[0] if previous is None else min(previous, row[0])
+                yield json.dumps(list(row))
+            if not result["rows"]:
+                raise ValueError("finalized v4 edge cache is empty")
+
+        _atomic_gz(self.cache_fp, lines())
+        self._cache = (result["has_mint"], result["min_ts"])
+        return result
 
 
 class EdgeCount:
@@ -962,7 +895,7 @@ def make_merger(cache_fp, parts_dir, part_files, old_ok, old_rows, max_rows):
 def run(mint, launch_ts, wall_min, conc, rps, base_url, key,
         hs_cfg=None, from_slot_cli=None, to_slot_cli=None,
         empty_max=EMPTY_MAX, merge_max_rows=MERGE_INMEM_MAX_ROWS,
-        dataset_id=SOLANA_SQD_DATASET_ID, state_session=None):
+        dataset_id=SOLANA_SQD_DATASET_ID, state_session=None, keep_parts=False):
     frozen_collector_sha256 = collector_sha256()
     if hs_cfg is not None:
         log("[fail-closed] --hypersync 通道已禁用；v4 正式采集只允许 SQD")
@@ -1238,7 +1171,7 @@ def run(mint, launch_ts, wall_min, conc, rps, base_url, key,
                 front = max(front, e)
         # empty_ok = 判定为"区间内无块"的空区间审计清单（伪 scan-fail 修复的留痕，
         # 便于事后复验：任取一段做 ±60 包围请求，应能拿到前后块且不含该段本身）
-        meta.update({"launch_covered": bool(meta.get("launch_covered")) or has_mint,
+        meta.update({**identity, "launch_covered": bool(meta.get("launch_covered")) or has_mint,
                      "next_slot": front + 1, "gaps": gaps,
                      "finalized_upper_slot": head,
                      "empty_ok": {"n": len(fx.empty_hits), "max": empty_max,
@@ -1248,9 +1181,10 @@ def run(mint, launch_ts, wall_min, conc, rps, base_url, key,
                      "merge_mode": merger.mode,
                      "updated": time.strftime("%Y-%m-%d %H:%M")})
         persist_meta()
-        for pf in parts_dir.glob("*.jsonl"):
-            pf.unlink()
-        shutil.rmtree(parts_dir.parent / "_merge_tmp", ignore_errors=True)
+        if not keep_parts:
+            for pf in parts_dir.glob("*.jsonl"):
+                pf.unlink()
+            shutil.rmtree(parts_dir.parent / "_merge_tmp", ignore_errors=True)
     except Exception as e:
         # 收尾失败＝数据没落盘，必须让退出码非 0（否则"完成 0 条边"会被当成正常空结果）；
         # parts 与 meta 都保留，重跑即从 parts 续合并
@@ -1321,6 +1255,8 @@ def main(argv=None, *, request_json=None):
     ap.add_argument("--merge-max-rows", type=int, default=MERGE_INMEM_MAX_ROWS,
                     help=f"收尾全内存合并的行数上限（默认 {MERGE_INMEM_MAX_ROWS:,}，"
                          "超过自动降级 DuckDB 磁盘外排防 OOM）")
+    ap.add_argument("--keep-parts", action="store_true",
+                    help="合并成功后保留下载分片，供原始证据复用与检查")
     a = ap.parse_args(argv)
     if a.from_slot and a.to_slot and a.from_slot > a.to_slot:
         ap.error("--from-slot must not exceed --to-slot")
@@ -1342,7 +1278,7 @@ def main(argv=None, *, request_json=None):
     edges, gap = run(a.mint, a.launch_ts or None, a.wall_min, a.conc, a.rps, a.url, key,
                      hs_cfg=None, from_slot_cli=a.from_slot or None,
                      to_slot_cli=a.to_slot or None, empty_max=a.empty_max,
-                     merge_max_rows=a.merge_max_rows, dataset_id=a.dataset_id,
+                     merge_max_rows=a.merge_max_rows, dataset_id=a.dataset_id, keep_parts=a.keep_parts,
                      state_session=state_session)
     if edges is None:
         print(f"失败：{gap}", flush=True)

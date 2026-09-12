@@ -25,7 +25,7 @@ def validate_edge_row(row):
     for name, value in (("ts", ts), ("slot", slot), ("tx_index", tx_index)):
         if isinstance(value, bool) or not isinstance(value, int) or value < 0:
             raise ValueError(f"edge {name} must be a non-negative integer")
-    if isinstance(instr_index, bool) or instr_index != INSTR_INDEX_TX_NET:
+    if isinstance(instr_index, bool) or not isinstance(instr_index, int) or instr_index != INSTR_INDEX_TX_NET:
         raise ValueError(f"transaction-net edge instr_index must be {INSTR_INDEX_TX_NET}")
     for name, value in (("from", owner_from), ("to", owner_to)):
         if not isinstance(value, str) or not value:
@@ -43,7 +43,8 @@ def edge_sort_key(edge):
 
 def transaction_digest(edges):
     """Hash one transaction's complete, order-independent canonical edge set."""
-    rows = tuple(sorted({validate_edge_row(row) for row in edges}, key=edge_sort_key))
+    rows = tuple(sorted({validate_edge_row(row) for row in edges},
+                        key=lambda row: (edge_sort_key(row), row[0], row[3])))
     if not rows:
         raise ValueError("transaction edge set must not be empty")
     identities = {(row[1], row[2]) for row in rows}
