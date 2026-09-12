@@ -335,6 +335,8 @@
   },
   {
    "schemas": [
+    "sqd-recheck-batch/v1",
+    "sqd-recheck-head/v1",
     "sqd-solana-coverage-pointer/v1",
     "sqd-solana-coverage/v1",
     "sqd-solana-shared-coverage-map/v1"
@@ -657,6 +659,8 @@
   },
   {
    "schemas": [
+    "sqd-recheck-batch/v1",
+    "sqd-recheck-head/v1",
     "sqd-solana-shared-coverage-map/v1"
    ],
    "script": "scripts/solana/sqd_coverage_probe.py"
