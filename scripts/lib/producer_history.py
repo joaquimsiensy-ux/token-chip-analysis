@@ -240,6 +240,7 @@ PRODUCER_HISTORY = (
         "status": "ACTIVE",
         "reason": "Batch 4 registers the v3 formal Solana window producer frozen at the T1 tip.",
     },
+    {'script': 'scripts/solana/fetch_sqd_transfers_v2.py', 'sha256': '592bdcbf71d867eb38800f8477db7b571d9226e97a4002cbc9b1f4f7a3438655', 'commit': 'd97b8953ca423d009e8f519af54e7e75a5ecd67c', 'protocol': 'sqd-solana-cache/v4', 'status': 'ACTIVE', 'reason': 'c2.2.10 materializes raw gzip/CSV source rows before sorting to bound compressed-history merge memory.'},
     {'script': 'scripts/solana/fetch_sqd_transfers_v2.py', 'sha256': 'bf900040c841e416aa34bf673d3c8d3e881a571888481495b662aef3bc2cb29b', 'commit': '8685e47c312ddb95b71e6326b3af5faf0d9a436f', 'protocol': 'sqd-solana-cache/v4', 'status': 'ACTIVE', 'reason': 'c2.2.9 streams complete-transaction deduplication after disk sorting, retaining registered v4 caches and their committed parts.'},
 )
 
