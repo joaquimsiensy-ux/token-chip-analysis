@@ -66,6 +66,44 @@ class StreamingMerge(unittest.TestCase):
                     self.assertEqual(row[-1],10**25+count-1)
                 self.assertEqual(count,n)
 
+    def test_gzip_history_and_200_parts_under_small_memory_limit(self):
+        with tempfile.TemporaryDirectory() as d:
+            p=Path(d); parts=p/'parts'; parts.mkdir(); cache=p/'cache.jsonl.gz'
+            n=1_000_000; extra=200_000
+            def row(i):
+                return [1700000000+i,100+i,0,-1,'A'*43+str(i%10),
+                        'B'*43+str(i%10),10**25+i]
+            with gzip.open(cache,'wt',compresslevel=1) as out:
+                for i in range(n-1,-1,-1): out.write(json.dumps(row(i))+'\n')
+            files=[]
+            for part_no in range(200):
+                path=parts/f'{part_no}.jsonl'; files.append(path)
+                with path.open('w') as out:
+                    for i in range(n+part_no*1000,n+(part_no+1)*1000):
+                        out.write(json.dumps(row(i))+'\n')
+                    if part_no==0: out.write(json.dumps(row(0))+'\n')
+            with mock.patch.object(M,'MERGE_MEM_LIMIT','256MB'), mock.patch.object(M,'MERGE_THREADS',4):
+                result=M.ExtMerger(cache,parts,files,True).finalize()
+            self.assertEqual(result['rows'],n+extra)
+            with gzip.open(cache,'rt') as inp:
+                for count,line in enumerate(inp,1):
+                    actual=json.loads(line)
+                    self.assertEqual(actual[1],99+count)
+                    self.assertEqual(actual[-1],10**25+count-1)
+                self.assertEqual(count,n+extra)
+            self.assertTrue(all(path.is_file() for path in files))
+
+    def test_source_materialization_failure_preserves_previous_cache(self):
+        with tempfile.TemporaryDirectory() as d:
+            p=Path(d); parts=p/'parts'; parts.mkdir(); cache=p/'cache.gz'
+            with gzip.open(cache,'wt') as out:
+                out.write(json.dumps([100,100,0,-1,'A','B',10])+'\n')
+            original=cache.read_bytes()
+            with self.assertRaises(M.duckdb.IOException):
+                M.ExtMerger(cache,parts,[parts/'missing.jsonl'],True).finalize()
+            self.assertEqual(cache.read_bytes(),original)
+            self.assertFalse((p/'cache.gz.tmp').exists())
+
     def test_complete_transaction_conflict_preserves_previous_cache(self):
         with tempfile.TemporaryDirectory() as d:
             p=Path(d); parts=p/'parts';parts.mkdir(); cache=p/'cache.gz'

@@ -781,11 +781,13 @@ class ExtMerger:
         """
         con = self._con()
         try:
+            # Keep compressed CSV reading and blocking sort in separate query phases.
+            con.execute(f"CREATE TEMP TABLE merge_input AS {self._src()}")
             cursor = con.execute(f"""
                 SELECT src_id, x,
                        try_cast(json_extract_string(try_cast(x AS JSON), '$[1]') AS BIGINT) AS slot,
                        try_cast(json_extract_string(try_cast(x AS JSON), '$[2]') AS BIGINT) AS tx_index
-                FROM ({self._src()})
+                FROM merge_input
                 ORDER BY slot, tx_index, src_id
             """)
             identity, sources = None, {}
