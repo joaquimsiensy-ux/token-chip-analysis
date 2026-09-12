@@ -9,6 +9,22 @@ from git history and must not be admitted.
 
 PRODUCER_HISTORY = (
     {
+        "script": "scripts/solana/sqd_coverage_probe.py",
+        "sha256": "f3ac5a8b6366d611d563e0cba8d8b21f6ab742d4c28869117c5a7aa103252f86",
+        "commit": "0ab8abe4fc4e448b547e3445b48803dc4e1513e4",
+        "protocol": "sqd-solana-coverage/v1",
+        "status": "ACTIVE",
+        "reason": "c2.2.11 registers bounded rechecks with raw response journal replay, atomic HEAD CAS, and known-map resume identity validation.",
+    },
+    {
+        "script": "scripts/solana/sqd_coverage_probe.py",
+        "sha256": "f3ac5a8b6366d611d563e0cba8d8b21f6ab742d4c28869117c5a7aa103252f86",
+        "commit": "0ab8abe4fc4e448b547e3445b48803dc4e1513e4",
+        "protocol": "sqd-solana-coverage-pointer/v1",
+        "status": "ACTIVE",
+        "reason": "c2.2.11 registers bounded rechecks with raw response journal replay, atomic HEAD CAS, and known-map resume identity validation.",
+    },
+    {
         "script": "scripts/lib/anchor_plan.py",
         "sha256": "e5168a455d53bb5163722ea7f2a67c42b20bd3dd8ef6c3ae5e588014842cc1d9",
         "commit": "3b76db80130987e0faf68d73094b08cddd161c9b",
