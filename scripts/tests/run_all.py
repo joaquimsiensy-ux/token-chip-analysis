@@ -160,6 +160,9 @@ SUITE += [
     'test_f03_sharedmap_reuse.py',
     'test_batch2d_stream_tail.py',
     'test_sqd_gap_repair.py',
+    'test_sqd_repair_memory_state.py',
+    'test_sqd_repair_stream.py',
+    'test_sqd_repair_spool.py',
     'test_reconcile_v4_receipt.py',
     'test_recon_fifth_check.py',
 ]

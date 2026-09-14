@@ -998,6 +998,33 @@ def _edge_rows(path, reasons, label):
     return list(_iter_edge_rows(path, reasons, label))
 
 
+def _stream_reconcile_summary(edge_path, reasons):
+    """Replay balances, supply, digest and extrema in one bounded edge pass."""
+    balances = {}
+    minted = burned = count = 0
+    digest = hashlib.sha256()
+    first = last = None
+    rows = _iter_edge_rows(edge_path, reasons, "reconcile edges") if edge_path else ()
+    for row in rows:
+        ts, slot, _tx, _instr, source, target, amount = row
+        if first is None:
+            first = {"slot": slot, "ts": ts}
+        last = {"slot": slot, "ts": ts}
+        digest.update((json.dumps(list(row), ensure_ascii=False) + "\n").encode())
+        count += 1
+        if source == "0x" + "0" * 40:
+            minted += amount
+        else:
+            balances[source] = balances.get(source, 0) - amount
+        if target == "0x" + "0" * 40:
+            burned += amount
+        else:
+            balances[target] = balances.get(target, 0) + amount
+    return {"balances": balances, "minted": minted, "burned": burned,
+            "digest": digest.hexdigest(), "count": count,
+            "extrema": {"first": first, "last": last} if count else None}
+
+
 def _edge_sort(row):
     return row[1], row[2], row[4], row[5], str(row[6])
 
@@ -1982,25 +2009,14 @@ def validate_reconcile_receipt_deep(receipt_path, *, case_root):
     if receipt.get("collection_window") != {"from_slot": frm, "to_slot": upper}:
         reasons.append("reconcile collection_window differs from soltx meta")
 
-    edge_rows = _edge_rows(edge_path, reasons, "reconcile edges") if edge_path else []
-    balances = {}
-    minted = burned = 0
-    for _ts, _slot_value, _tx, _instr, source, target, amount in edge_rows:
-        if source == "0x" + "0" * 40:
-            minted += amount
-        else:
-            balances[source] = balances.get(source, 0) - amount
-        if target == "0x" + "0" * 40:
-            burned += amount
-        else:
-            balances[target] = balances.get(target, 0) + amount
+    replay = _stream_reconcile_summary(edge_path, reasons)
+    balances = replay["balances"]
+    minted, burned = replay["minted"], replay["burned"]
     replay_positive = {owner: amount for owner, amount in balances.items() if amount > 0}
     negatives = {owner: amount for owner, amount in balances.items() if amount < 0}
-    digest, count = _edge_evidence(edge_rows)
-    if edge_rows:
-        extrema = {"first": {"slot": edge_rows[0][1], "ts": edge_rows[0][0]},
-                   "last": {"slot": edge_rows[-1][1], "ts": edge_rows[-1][0]}}
-        if receipt.get("edge_extrema") != extrema:
+    digest, count = replay["digest"], replay["count"]
+    if replay["extrema"] is not None:
+        if receipt.get("edge_extrema") != replay["extrema"]:
             reasons.append("reconcile edge extrema mismatch")
     if receipt.get("edge_digest") != digest or receipt.get("edge_count") != count:
         reasons.append("reconcile edge digest/count mismatch")

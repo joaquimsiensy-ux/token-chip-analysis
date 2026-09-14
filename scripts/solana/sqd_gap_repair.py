@@ -33,8 +33,12 @@ from sqd_repair_core import (canonical_json, compute_gid, compute_plan_digest,
                              account_keys, derive_residual_owners,
                              edge_logical_evidence, edges_for_transaction,
                              is_nonce_transaction, is_vote_transaction, merge_edges,
-                             owner_activity, parse_routea_cache, read_edge_file,
+                             owner_activity, parse_routea_cache, read_edge_file, iter_edge_file,
                              sha256_bytes, sha256_file)  # noqa: E402
+
+
+from sqd_repair_stream import publish_merged_edges
+from sqd_repair_spool import RepairSpool
 
 
 CACHE_SCHEMA = "sqd-solana-cache/v4"
@@ -500,7 +504,7 @@ def run_beta_search(args, case_root, base_edges, transport):
     all_candidates = set()
     for item in residual:
         owner = item["owner"]
-        activity = owner_activity(base_edges, owner)
+        activity = owner_activity(base_edges() if callable(base_edges) else base_edges, owner)
         cache = {}
 
         def probe(index):
@@ -1214,6 +1218,19 @@ def _routea_slot(payload, mint):
     }, sqd_evidence, ref_evidence
 
 
+def _candidate_coverage_states(states, from_slot, candidate_slots):
+    """Index already validated states only for slots this repair consumes."""
+    selected = {}
+    for slot in candidate_slots:
+        if not isinstance(slot, int) or isinstance(slot, bool):
+            raise ValueError("candidate slot must be an integer")
+        index = slot - from_slot
+        if not 0 <= index < len(states):
+            raise ValueError(f"candidate slot outside coverage interval: {slot}")
+        selected[slot] = states[index]
+    return selected
+
+
 def _produce_blocks(args):
     case_root = Path(args.case_root).resolve()
     if Path(args.case_root).is_symlink():
@@ -1224,9 +1241,12 @@ def _produce_blocks(args):
     base_edge, base_meta, base = base_info
     _pointer, coverage, coverage_path, counts_path, coverage_checked = coverage_info
     from_slot = coverage["slot_counts"]["from_slot"]
-    coverage_states = {
-        from_slot + index: state for index, state in enumerate(
-            coverage_checked["recomputed"]["states"])}
+    coverage_states = _candidate_coverage_states(
+        coverage_checked["recomputed"]["states"], from_slot,
+        plan["candidate_slots"])
+    del coverage_info
+    if not args.blocks_cache:
+        del coverage_checked
     parent, current_path, _lock = sqd_repair_paths(case_root, args.mint)
     parent.mkdir(parents=True, exist_ok=True)
     current = _json(current_path) if current_path.is_file() else None
@@ -1281,210 +1301,208 @@ def _produce_blocks(args):
         _publish_json_exclusive(beta_path, beta_trace)
         beta_trace_ref = _file_ref(beta_path, "evidence/beta_trace.json")
 
-    census, layer, maps, evidence_manifest = [], [], [], []
-    rpc_rows = []
-    try:
-        if args.blocks_cache:
-            payloads = _cache_payloads(args.blocks_cache)
+    with RepairSpool(pending.parent) as spool:
+        census, evidence_manifest = [], []
+        rpc_rows = []
+        try:
+            if args.blocks_cache:
+                payloads = _cache_payloads(args.blocks_cache)
+                for payload in payloads:
+                    state = _candidate_coverage_states(
+                        coverage_checked["recomputed"]["states"], from_slot,
+                        [payload["slot"]])[payload["slot"]]
+                    payload["coverage_state"] = state
+                    payload["sqd_nonce_count_at_repair"] = None
+                    payload["coverage_probe_query_sha256"] = None
+                    payload["coverage_probe_response_sha256"] = None
+                del coverage_checked
+            else:
+                payloads = _live_payloads(
+                    args, plan["candidate_slots"], args.reference_endpoints,
+                    args.reference_fingerprint, pending=pending, plan=plan,
+                    coverage_states=coverage_states,
+                    beta_slots=set(plan["plan_candidates"]["beta"]))
             for payload in payloads:
-                state = coverage_states.get(payload["slot"])
-                if state is None:
+                if payload.get("sqd_blockhash") not in (None, payload.get("blockhash")):
                     raise ValueError(
-                        f"cache slot outside coverage interval: {payload['slot']}")
-                payload["coverage_state"] = state
-                payload["sqd_nonce_count_at_repair"] = None
-                payload["coverage_probe_query_sha256"] = None
-                payload["coverage_probe_response_sha256"] = None
-        else:
-            payloads = _live_payloads(
-                args, plan["candidate_slots"], args.reference_endpoints,
-                args.reference_fingerprint, pending=pending, plan=plan,
-                coverage_states=coverage_states,
-                beta_slots=set(plan["plan_candidates"]["beta"]))
-        for payload in payloads:
-            if payload.get("sqd_blockhash") not in (None, payload.get("blockhash")):
-                raise ValueError(
-                    f"reference/SQD blockhash mismatch at slot {payload['slot']}")
-            census_row, layer_rows, map_row, sqd_ev, ref_ev = _routea_slot(
-                payload, args.mint)
-            sqd_path = evidence_dir / f"{payload['slot']}.sqd.json"
-            ref_path = evidence_dir / f"{payload['slot']}.ref.json"
-            _publish_json_exclusive(sqd_path, sqd_ev)
-            _publish_json_exclusive(ref_path, ref_ev)
-            sqd_ref = _file_ref(sqd_path, f"evidence/{sqd_path.name}")
-            ref_ref = _file_ref(ref_path, f"evidence/{ref_path.name}")
-            census_row["evidence"] = {"sqd": sqd_ref, "ref": ref_ref}
-            census.append(census_row)
-            layer.extend(layer_rows)
-            maps.append(map_row)
-            evidence_manifest.extend((sqd_ref, ref_ref))
-    except QuotaStopped as exc:
-        stopped = {"reason": "reference-quota", "cursor": exc.cursor,
-                   "plan_digest": plan["plan_digest"],
-                   "completed_slots": exc.completed_slots}
-        publish_overwrite(pending / "STOPPED.json", stopped)
-        _fsync_dir(pending)
-        print(json.dumps(stopped, sort_keys=True), file=sys.stderr)
-        return 3
-    if beta_trace_ref is not None:
-        evidence_manifest.append(beta_trace_ref)
-    census.sort(key=lambda row: row["slot"])
-    layer.sort(key=lambda row: row["signature"])
-    maps.sort(key=lambda row: row["slot"])
-    evidence_manifest.sort(key=lambda row: row["path"])
-    candidate_slots = plan["candidate_slots"]
-    census_slots = {row["slot"] for row in census}
-    effective = ("INCONCLUSIVE" if not set(candidate_slots).issubset(census_slots)
-                 else "DEFECTS_CONFIRMED" if any(
-                     row["result"].startswith("confirmed_") for row in census)
-                 else "NO_KNOWN_NONCE_OMISSION_DETECTED")
-    resolution = {
-        "schema": "sqd-solana-coverage-resolution/v1", "mint": args.mint,
-        "plan_digest": plan["plan_digest"],
-        "coverage": {"probe_id": coverage["probe_id"],
-                     "map_sha256": sha256_file(coverage_path)},
-        "plan_candidates": plan["plan_candidates"],
-        "census": census, "effective_verdict": effective,
-    }
-    validate_resolution(resolution, candidate_slots, formal=False)
-    if not should_publish_generation(resolution, layer, maps):
-        print(json.dumps({"status": "refuted-only", "plan_digest": plan["plan_digest"]}))
-        return 0
-    repair_edges = [tuple(edge) for row in layer for edge in row["edges"]]
-    slot_maps = {row["slot"]: row["map"] for row in maps}
-    merged_rows = merge_edges(read_edge_file(base_edge), repair_edges, slot_maps)
-    logical_sha, logical_rows = edge_logical_evidence(merged_rows)
-    key = hashlib.sha256(args.mint.encode()).hexdigest()
-    merged_edge_name = f"soltx-{key}.repaired.jsonl.gz"
-    merged_meta_name = f"soltx-{key}.repaired.meta.json"
-    merged_edge_path = pending / merged_edge_name
-    _publish_bytes_exclusive(merged_edge_path, _gzip_jsonl(merged_rows))
-    merged_meta = dict(base)
-    merged_meta.update({
-        "schema": CACHE_SCHEMA, "collector": COLLECTOR_ID,
-        "collector_sha256": sha256_file(__file__),
-        "edge_logical_sha256": logical_sha, "edge_rows": logical_rows,
-        "edge_file_size": merged_edge_path.stat().st_size,
-        "edge_file_sha256": sha256_file(merged_edge_path),
-        "plan_digest": plan["plan_digest"],
-        "base_meta_sha256": sha256_file(base_meta),
-        "base_edge_sha256": sha256_file(base_edge),
-        "repair": {"slots_confirmed": sum(
-            row["result"].startswith("confirmed_") for row in census),
-            "slots_remapped": len(maps), "edges_added": len(repair_edges)},
-    })
-    merged_meta.pop("gid", None)
-    merged_meta.pop("bundle_sha256", None)
-    _publish_json_exclusive(pending / merged_meta_name, merged_meta)
-    _publish_json_exclusive(pending / "coverage_resolution.json", resolution)
-    layer_header = {
-        "schema": "sqd-solana-repair-layer/v1", "mint": args.mint,
-        "plan_digest": plan["plan_digest"],
-        "base": plan["base"], "coverage": plan["coverage"],
-        "reference": {"kind": plan["reference"]["kind"],
-                      "endpoint_fingerprint": plan["reference"]["endpoint_fingerprint"]},
-        "producer": plan["producer"],
-    }
-    _publish_bytes_exclusive(pending / "repair_layer.jsonl",
-                             _jsonl_bytes([layer_header, *layer]))
-    map_header = {"schema": "sqd-solana-slot-index-map/v1", "mint": args.mint,
-                  "plan_digest": plan["plan_digest"]}
-    _publish_bytes_exclusive(pending / "slot_index_map.jsonl",
-                             _jsonl_bytes([map_header, *maps]))
-    _publish_json_exclusive(pending / "evidence_manifest.json", evidence_manifest)
-    ledger_header = _ledger_header(plan)
-    ledger_path = pending / "rpc_ledger.jsonl"
-    if not ledger_path.is_file():
-        _publish_bytes_exclusive(ledger_path,
-                                 _jsonl_bytes([ledger_header, *rpc_rows]))
-    complete_rows = _read_ledger_prefix(ledger_path)
-    if not complete_rows or complete_rows[0] != ledger_header:
-        raise ValueError("RPC ledger header differs from plan")
-    rpc_rows = complete_rows[1:]
-    stopped_path = pending / "STOPPED.json"
-    if stopped_path.is_file():
-        stopped_path.unlink()
-        _fsync_dir(pending)
-    gid_material = {
-        "plan_digest": plan["plan_digest"], "kind": "repair",
-        "supersedes": supersedes, "census": census, "transactions": layer,
-        "slot_index_map": maps, "evidence_manifest": evidence_manifest,
-        "mode": plan["mode"], "reference": {"source": plan["reference"]["source"]},
-    }
-    gid = compute_gid(gid_material)
-    refs = {
-        "coverage_resolution": _file_ref(pending / "coverage_resolution.json",
-                                         "coverage_resolution.json"),
-        "repair_layer": {**_file_ref(pending / "repair_layer.jsonl",
-                                     "repair_layer.jsonl"),
-                         "transactions": len(layer), "edges": len(repair_edges)},
-        "slot_index_map": {**_file_ref(pending / "slot_index_map.jsonl",
-                                       "slot_index_map.jsonl"), "slots": len(maps)},
-        "evidence_manifest": _file_ref(pending / "evidence_manifest.json",
-                                       "evidence_manifest.json"),
-        "rpc_ledger": {**_file_ref(ledger_path, "rpc_ledger.jsonl"),
-                       "requests": len(rpc_rows),
-                       "credits_estimate": sum(row["credits_estimate"]
-                                               for row in rpc_rows)},
-    }
-    bundle = {
-        "schema": "sqd-solana-repair-bundle/v1", "mint": args.mint,
-        "plan_digest": plan["plan_digest"], "gid": gid, "kind": "repair",
-        "mode": plan["mode"], "producer": plan["producer"],
-        "base": {"edge_file": str(base_edge.relative_to(case_root)),
-                 "meta_file": str(base_meta.relative_to(case_root)),
-                 "edge_sha256": sha256_file(base_edge),
-                 "meta_sha256": sha256_file(base_meta),
-                 "edge_logical_sha256": base["edge_logical_sha256"],
-                 "edge_rows": base["edge_rows"],
-                 "finalized_upper_slot": base["finalized_upper_slot"]},
-        "coverage": {"probe_id": coverage["probe_id"],
-                     "map": _file_ref(coverage_path,
-                                      str(coverage_path.relative_to(case_root))),
-                     "slot_counts": _file_ref(counts_path,
-                                              str(counts_path.relative_to(case_root)))},
-        **refs,
-        "merged": {"edge_file": merged_edge_name, "meta_file": merged_meta_name,
-                   "edge_sha256": sha256_file(merged_edge_path),
-                   "meta_sha256": sha256_file(pending / merged_meta_name),
-                   "edge_logical_sha256": logical_sha, "edge_rows": logical_rows},
-        "reference": plan["reference"], "supersedes": supersedes,
-        "generated_at": _pointer.get("published_at"),
-    }
-    _publish_json_exclusive(pending / "bundle.json", bundle)
-    _fsync_dir(pending)
-    final = parent / f"gen-{gid}"
-    if final.is_dir():
-        existing = _json(final / "bundle.json")
-        if existing.get("gid") != gid or existing.get("plan_digest") != plan["plan_digest"]:
-            raise ValueError("existing generation collides with computed gid")
-        # Crash recovery: the immutable generation wins; pending remains ignored.
-    else:
-        publish_generation_exclusive(pending, final)
-    current_base = {"edge_sha256": sha256_file(base_edge)}
-    checked = validate_repair_bundle_deep(
-        final / "bundle.json", case_root=case_root, current_base=current_base)
-    if not checked["ok"]:
-        raise ValueError("post-publish deep validation failed: " + "; ".join(checked["reasons"]))
-    action = "exploration-not-published"
-    if plan["mode"] == "formal":
-        bundle_ref = _file_ref(final / "bundle.json",
-                               str((final / "bundle.json").relative_to(case_root)))
-        pointer = {
-            "schema": "sqd-solana-repair-pointer/v1",
-            "target": {"chain": "solana", "token": args.mint,
-                       "as_of_block": base["finalized_upper_slot"]},
-            "mode": "formal", "verdict": "PASS", "exit_code": 0,
-            "producer": plan["producer"], "inputs": {"bundle": bundle_ref},
-            "gid": gid, "supersedes": supersedes, "published_at": utc_now(),
+                        f"reference/SQD blockhash mismatch at slot {payload['slot']}")
+                census_row, layer_rows, map_row, sqd_ev, ref_ev = _routea_slot(
+                    payload, args.mint)
+                sqd_path = evidence_dir / f"{payload['slot']}.sqd.json"
+                ref_path = evidence_dir / f"{payload['slot']}.ref.json"
+                _publish_json_exclusive(sqd_path, sqd_ev)
+                _publish_json_exclusive(ref_path, ref_ev)
+                sqd_ref = _file_ref(sqd_path, f"evidence/{sqd_path.name}")
+                ref_ref = _file_ref(ref_path, f"evidence/{ref_path.name}")
+                census_row["evidence"] = {"sqd": sqd_ref, "ref": ref_ref}
+                census.append(census_row)
+                spool.add(map_row, layer_rows)
+                evidence_manifest.extend((sqd_ref, ref_ref))
+        except QuotaStopped as exc:
+            stopped = {"reason": "reference-quota", "cursor": exc.cursor,
+                       "plan_digest": plan["plan_digest"],
+                       "completed_slots": exc.completed_slots}
+            publish_overwrite(pending / "STOPPED.json", stopped)
+            _fsync_dir(pending)
+            print(json.dumps(stopped, sort_keys=True), file=sys.stderr)
+            return 3
+        if beta_trace_ref is not None:
+            evidence_manifest.append(beta_trace_ref)
+        census.sort(key=lambda row: row["slot"])
+        evidence_manifest.sort(key=lambda row: row["path"])
+        candidate_slots = plan["candidate_slots"]
+        census_slots = {row["slot"] for row in census}
+        effective = ("INCONCLUSIVE" if not set(candidate_slots).issubset(census_slots)
+                     else "DEFECTS_CONFIRMED" if any(
+                         row["result"].startswith("confirmed_") for row in census)
+                     else "NO_KNOWN_NONCE_OMISSION_DETECTED")
+        resolution = {
+            "schema": "sqd-solana-coverage-resolution/v1", "mint": args.mint,
+            "plan_digest": plan["plan_digest"],
+            "coverage": {"probe_id": coverage["probe_id"],
+                         "map_sha256": sha256_file(coverage_path)},
+            "plan_candidates": plan["plan_candidates"],
+            "census": census, "effective_verdict": effective,
         }
-        action = publish_current_cas(
-            current_path, pointer, expected_current=current,
-            bundle_path=final / "bundle.json", base_edge_path=base_edge)
-    print(json.dumps({"status": action, "gid": gid,
-                      "plan_digest": plan["plan_digest"],
-                      "repair_edges": len(repair_edges)}, sort_keys=True))
-    return 0
+        validate_resolution(resolution, candidate_slots, formal=False)
+        if not should_publish_generation(resolution, spool.iter_layer(), spool.slot_maps):
+            print(json.dumps({"status": "refuted-only", "plan_digest": plan["plan_digest"]}))
+            return 0
+        key = hashlib.sha256(args.mint.encode()).hexdigest()
+        merged_edge_name = f"soltx-{key}.repaired.jsonl.gz"
+        merged_meta_name = f"soltx-{key}.repaired.meta.json"
+        merged_edge_path = pending / merged_edge_name
+        print("repair_phase=merge", flush=True)
+        merged = publish_merged_edges(
+            base_edge, spool.iter_repair_edges(), spool.slot_maps,
+            merged_edge_path, work_dir=pending.parent)
+        logical_sha, logical_rows = merged["edge_logical_sha256"], merged["edge_rows"]
+        print("repair_phase=publish_evidence", flush=True)
+        merged_meta = dict(base)
+        merged_meta.update({
+            "schema": CACHE_SCHEMA, "collector": COLLECTOR_ID,
+            "collector_sha256": sha256_file(__file__),
+            "edge_logical_sha256": logical_sha, "edge_rows": logical_rows,
+            "edge_file_size": merged_edge_path.stat().st_size,
+            "edge_file_sha256": sha256_file(merged_edge_path),
+            "plan_digest": plan["plan_digest"],
+            "base_meta_sha256": sha256_file(base_meta),
+            "base_edge_sha256": sha256_file(base_edge),
+            "repair": {"slots_confirmed": sum(
+                row["result"].startswith("confirmed_") for row in census),
+                "slots_remapped": spool.map_count, "edges_added": spool.edge_count},
+        })
+        merged_meta.pop("gid", None)
+        merged_meta.pop("bundle_sha256", None)
+        _publish_json_exclusive(pending / merged_meta_name, merged_meta)
+        _publish_json_exclusive(pending / "coverage_resolution.json", resolution)
+        layer_header = {
+            "schema": "sqd-solana-repair-layer/v1", "mint": args.mint,
+            "plan_digest": plan["plan_digest"],
+            "base": plan["base"], "coverage": plan["coverage"],
+            "reference": {"kind": plan["reference"]["kind"],
+                          "endpoint_fingerprint": plan["reference"]["endpoint_fingerprint"]},
+            "producer": plan["producer"],
+        }
+        spool.publish_layer(pending / "repair_layer.jsonl", layer_header)
+        map_header = {"schema": "sqd-solana-slot-index-map/v1", "mint": args.mint,
+                      "plan_digest": plan["plan_digest"]}
+        spool.publish_maps(pending / "slot_index_map.jsonl", map_header)
+        _publish_json_exclusive(pending / "evidence_manifest.json", evidence_manifest)
+        ledger_header = _ledger_header(plan)
+        ledger_path = pending / "rpc_ledger.jsonl"
+        if not ledger_path.is_file():
+            _publish_bytes_exclusive(ledger_path,
+                                     _jsonl_bytes([ledger_header, *rpc_rows]))
+        complete_rows = _read_ledger_prefix(ledger_path)
+        if not complete_rows or complete_rows[0] != ledger_header:
+            raise ValueError("RPC ledger header differs from plan")
+        rpc_rows = complete_rows[1:]
+        stopped_path = pending / "STOPPED.json"
+        if stopped_path.is_file():
+            stopped_path.unlink()
+            _fsync_dir(pending)
+        gid_material = {
+            "plan_digest": plan["plan_digest"], "kind": "repair",
+            "supersedes": supersedes, "census": census,
+            "evidence_manifest": evidence_manifest,
+            "mode": plan["mode"], "reference": {"source": plan["reference"]["source"]},
+        }
+        gid = spool.compute_gid(gid_material)
+        refs = {
+            "coverage_resolution": _file_ref(pending / "coverage_resolution.json",
+                                             "coverage_resolution.json"),
+            "repair_layer": {**_file_ref(pending / "repair_layer.jsonl",
+                                         "repair_layer.jsonl"),
+                             "transactions": spool.transaction_count, "edges": spool.edge_count},
+            "slot_index_map": {**_file_ref(pending / "slot_index_map.jsonl",
+                                           "slot_index_map.jsonl"), "slots": spool.map_count},
+            "evidence_manifest": _file_ref(pending / "evidence_manifest.json",
+                                           "evidence_manifest.json"),
+            "rpc_ledger": {**_file_ref(ledger_path, "rpc_ledger.jsonl"),
+                           "requests": len(rpc_rows),
+                           "credits_estimate": sum(row["credits_estimate"]
+                                                   for row in rpc_rows)},
+        }
+        bundle = {
+            "schema": "sqd-solana-repair-bundle/v1", "mint": args.mint,
+            "plan_digest": plan["plan_digest"], "gid": gid, "kind": "repair",
+            "mode": plan["mode"], "producer": plan["producer"],
+            "base": {"edge_file": str(base_edge.relative_to(case_root)),
+                     "meta_file": str(base_meta.relative_to(case_root)),
+                     "edge_sha256": sha256_file(base_edge),
+                     "meta_sha256": sha256_file(base_meta),
+                     "edge_logical_sha256": base["edge_logical_sha256"],
+                     "edge_rows": base["edge_rows"],
+                     "finalized_upper_slot": base["finalized_upper_slot"]},
+            "coverage": {"probe_id": coverage["probe_id"],
+                         "map": _file_ref(coverage_path,
+                                          str(coverage_path.relative_to(case_root))),
+                         "slot_counts": _file_ref(counts_path,
+                                                  str(counts_path.relative_to(case_root)))},
+            **refs,
+            "merged": {"edge_file": merged_edge_name, "meta_file": merged_meta_name,
+                       "edge_sha256": sha256_file(merged_edge_path),
+                       "meta_sha256": sha256_file(pending / merged_meta_name),
+                       "edge_logical_sha256": logical_sha, "edge_rows": logical_rows},
+            "reference": plan["reference"], "supersedes": supersedes,
+            "generated_at": _pointer.get("published_at"),
+        }
+        _publish_json_exclusive(pending / "bundle.json", bundle)
+        _fsync_dir(pending)
+        final = parent / f"gen-{gid}"
+        if final.is_dir():
+            existing = _json(final / "bundle.json")
+            if existing.get("gid") != gid or existing.get("plan_digest") != plan["plan_digest"]:
+                raise ValueError("existing generation collides with computed gid")
+            # Crash recovery: the immutable generation wins; pending remains ignored.
+        else:
+            publish_generation_exclusive(pending, final)
+        current_base = {"edge_sha256": sha256_file(base_edge)}
+        print("repair_phase=deep_validation", flush=True)
+        checked = validate_repair_bundle_deep(
+            final / "bundle.json", case_root=case_root, current_base=current_base)
+        if not checked["ok"]:
+            raise ValueError("post-publish deep validation failed: " + "; ".join(checked["reasons"]))
+        action = "exploration-not-published"
+        if plan["mode"] == "formal":
+            bundle_ref = _file_ref(final / "bundle.json",
+                                   str((final / "bundle.json").relative_to(case_root)))
+            pointer = {
+                "schema": "sqd-solana-repair-pointer/v1",
+                "target": {"chain": "solana", "token": args.mint,
+                           "as_of_block": base["finalized_upper_slot"]},
+                "mode": "formal", "verdict": "PASS", "exit_code": 0,
+                "producer": plan["producer"], "inputs": {"bundle": bundle_ref},
+                "gid": gid, "supersedes": supersedes, "published_at": utc_now(),
+            }
+            action = publish_current_cas(
+                current_path, pointer, expected_current=current,
+                bundle_path=final / "bundle.json", base_edge_path=base_edge)
+        print(json.dumps({"status": action, "gid": gid,
+                          "plan_digest": plan["plan_digest"],
+                          "repair_edges": spool.edge_count}, sort_keys=True))
+        return 0
 
 
 def _verify(args):
@@ -1612,12 +1630,12 @@ def main(argv=None):
                                   args.reference_endpoint))
             base_edge, _base_meta, _base_value = _base(case_root, args.mint)
             args.beta_trace = run_beta_search(
-                args, case_root, read_edge_file(base_edge), beta_transport)
+                args, case_root, lambda: iter_edge_file(base_edge), beta_transport)
             args.beta_slots = args.beta_trace["candidate_slots"]
-        plan, _base_info, _coverage_info = _plan(
-            case_root, args.mint, args.blocks_cache, args.reference_fingerprint,
-            args.beta_slots)
         if args.command == "plan":
+            plan, _base_info, _coverage_info = _plan(
+                case_root, args.mint, args.blocks_cache, args.reference_fingerprint,
+                args.beta_slots)
             output = {**plan, "estimated_slots": len(plan["candidate_slots"]),
                               "estimated_requests": len(plan["candidate_slots"]) * 2,
                               "estimated_credits": len(plan["candidate_slots"]) * 10}

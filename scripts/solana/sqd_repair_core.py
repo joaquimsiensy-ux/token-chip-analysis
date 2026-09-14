@@ -8,8 +8,12 @@ import json
 import struct
 from pathlib import Path
 
-from spl_edge_core import (INSTR_INDEX_TX_NET, edge_sort_key,
-                           owner_deltas_by_tx, pair_tx, validate_edge_row)
+try:
+    from .spl_edge_core import (INSTR_INDEX_TX_NET, edge_sort_key,
+                               owner_deltas_by_tx, pair_tx, validate_edge_row)
+except ImportError:
+    from spl_edge_core import (INSTR_INDEX_TX_NET, edge_sort_key,
+                              owner_deltas_by_tx, pair_tx, validate_edge_row)
 
 
 VOTE_PROGRAM = "Vote111111111111111111111111111111111111111"
@@ -333,13 +337,16 @@ def edge_logical_evidence(rows):
     return digest.hexdigest(), count
 
 
-def read_edge_file(path):
-    rows = []
+def iter_edge_file(path):
+    """Stream validated rows; reopen this iterator for each independent replay."""
     with gzip.open(path, "rt", encoding="utf-8") as handle:
         for line in handle:
             if line.strip():
-                rows.append(validate_edge_row(json.loads(line)))
-    return rows
+                yield validate_edge_row(json.loads(line))
+
+
+def read_edge_file(path):
+    return list(iter_edge_file(path))
 
 
 def parse_routea_cache(path):
