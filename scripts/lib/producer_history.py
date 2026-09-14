@@ -8,6 +8,10 @@ from git history and must not be admitted.
 
 
 PRODUCER_HISTORY = (
+    {'script': 'scripts/solana/sqd_gap_repair.py', 'sha256': '51d21f6f22f283f06fd00413815a32289a1557d091e5060fbac65cfccddf3c46', 'commit': '5171a2f695b0ea6e0fe254af68548c6faa9f26fe', 'protocol': 'sqd-solana-cache/v4', 'status': 'ACTIVE', 'reason': 'c2.2.12 preserves native repair evidence and protocol semantics with disk-backed finalization and streaming replay.'},
+    {'script': 'scripts/solana/sqd_gap_repair.py', 'sha256': '51d21f6f22f283f06fd00413815a32289a1557d091e5060fbac65cfccddf3c46', 'commit': '5171a2f695b0ea6e0fe254af68548c6faa9f26fe', 'protocol': 'sqd-solana-coverage-resolution/v1', 'status': 'ACTIVE', 'reason': 'c2.2.12 preserves native repair evidence and protocol semantics with disk-backed finalization and streaming replay.'},
+    {'script': 'scripts/solana/sqd_gap_repair.py', 'sha256': '51d21f6f22f283f06fd00413815a32289a1557d091e5060fbac65cfccddf3c46', 'commit': '5171a2f695b0ea6e0fe254af68548c6faa9f26fe', 'protocol': 'sqd-solana-repair-bundle/v1', 'status': 'ACTIVE', 'reason': 'c2.2.12 preserves native repair evidence and protocol semantics with disk-backed finalization and streaming replay.'},
+    {'script': 'scripts/solana/sqd_gap_repair.py', 'sha256': '51d21f6f22f283f06fd00413815a32289a1557d091e5060fbac65cfccddf3c46', 'commit': '5171a2f695b0ea6e0fe254af68548c6faa9f26fe', 'protocol': 'sqd-solana-repair-pointer/v1', 'status': 'ACTIVE', 'reason': 'c2.2.12 preserves native repair evidence and protocol semantics with disk-backed finalization and streaming replay.'},
     {
         "script": "scripts/solana/sqd_coverage_probe.py",
         "sha256": "f3ac5a8b6366d611d563e0cba8d8b21f6ab742d4c28869117c5a7aa103252f86",
