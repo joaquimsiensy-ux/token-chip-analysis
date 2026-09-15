@@ -10,6 +10,7 @@
 
 ## 版本索引（活跃窗口，新在上；每版一行，详情见下方对应条目）
 
+- **7.0.3**（2026-09-15）T-01 v2（APU 案暴露，codex 只读复核后 codex 施工）：`entity_source_trace` 对尘埃 current 锚点（<0.01% 供应）的闭合异常降级为"来源不可用"（`closure_check.current_negligible_skipped`＋`anchors.current.composition_usable=false`，构成保留作诊断、不归一化）；freeze 独立重算同一条件并同步豁免空构成与 Σraw 拒收，绑定/重放门禁不变；peak 锚点门禁不变；回归补 2^90 量级精度损失、阈值三档、尘埃 peak 仍拒、造假拒收。
 - **7.0.2**（2026-09-06）生产者四协议补登记与 git 可复现守卫；A4 封口硬拒专用字段重复路径；图一按 producer series_format 派生豁免、绘图与两消费方同源；SUITE 146→147，A→C→B 先红后绿。
 - **7.0.1**（2026-09-01）批 18 第四轮盲审 P2 消化：销户审计 `signature_discovery` 空签名早退如实透传 `complete`，区分“完整查询且成功签名结果为空”与截断/失败；SUITE 146 不变
 - **7.0.0**（2026-09-01）批 18 第三轮盲审终版：公开 witness 新鲜度从递归文件闭包改为如实钉一级输入 frontier，`bound_files` 不兼容更名为 `frontier_files`；销户审计 5 个早退与主路径统一完整报告及 monotonic 墙钟；SUITE 146 不变

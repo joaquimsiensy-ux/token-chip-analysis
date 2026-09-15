@@ -1522,8 +1522,21 @@ def cmd_freeze(a):
             for anchor_name in ("current", "peak"):
                 anchor = ent["anchors"][anchor_name]
                 stock = int(anchor["stock_raw"])
+                den = (verified_manifest.get("scope") or {}).get("denominators")
+                total = 0
+                if isinstance(den, dict):
+                    for key in ("total_supply_raw", "total_supply", "supply_raw",
+                                "nominal_allocation_supply_raw"):
+                        if den.get(key) is not None:
+                            total = int(den[key])
+                            break
+                dust_current = (anchor_name == "current" and total > 0
+                                and 0 < stock and stock * 10000 < total)
                 comp = anchor.get("composition")
                 if stock <= 0:
+                    continue
+                if dust_current:
+                    print(f"[freeze] {eid} current 锚点尘埃库存,闭合重算降级")
                     continue
                 if not comp:
                     print(f"[freeze] {eid} {anchor_name} 锚点库存 {stock} > 0 但 composition 为空"
