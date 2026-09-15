@@ -1222,6 +1222,16 @@
    "semantics": "multi_file_txn"
   },
   {
+   "locator": "publish_jsonl_exclusive",
+   "script": "scripts/solana/sqd_repair_spool.py",
+   "semantics": "exclusive_new"
+  },
+  {
+   "locator": "publish_merged_edges",
+   "script": "scripts/solana/sqd_repair_stream.py",
+   "semantics": "exclusive_new"
+  },
+  {
    "locator": "main",
    "script": "scripts/solana/scan_token_accounts.py",
    "semantics": "dual_file_txn"

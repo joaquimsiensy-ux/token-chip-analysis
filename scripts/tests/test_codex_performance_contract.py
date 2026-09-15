@@ -929,8 +929,8 @@ class DeepReadClosureContract(ContractCase):
     def validate(self, phase, force=False):
         context = deep_validation_cache.force_deep_validation if force else None
         start = time.perf_counter()
-        original = solana_exact_validate._edge_rows
-        with patch.object(solana_exact_validate, '_edge_rows', wraps=original) as replay:
+        original = solana_exact_validate._stream_reconcile_summary
+        with patch.object(solana_exact_validate, '_stream_reconcile_summary', wraps=original) as replay:
             if context:
                 with context('codex independent acceptance'):
                     result = solana_exact_validate.validate_reconcile_receipt_deep(
@@ -1269,7 +1269,7 @@ class DeepRawRowsContract(ContractCase):
         finally:
             con.close()
         # Raw decoder prohibited, while the real ledger/accounting helper must run.
-        original = solana_exact_validate._edge_rows
+        original = solana_exact_validate._stream_reconcile_summary
         with observe_calls({'parser': solana_exact_validate._parse_edge_rows,
                             'account': original}, forbidden=('parser',)) as account:
             result, _ = helper.validate('main_materialization_independent_deep', force=True)
