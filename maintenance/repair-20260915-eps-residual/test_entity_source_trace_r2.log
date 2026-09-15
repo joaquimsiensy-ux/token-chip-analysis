@@ -1,0 +1,202 @@
+ok    T1 两版本 trace exit 0
+ok    T1 RED 基线 data_gap_events=1
+ok    T1 假缺口不记 data_gap
+ok    T1 fp_residual_events=1
+ok    T1 current residual raw=1
+ok    T1 current 无 data_gap
+ok    T1 current stock_raw=2**90
+ok    T1 current mint raw 与 RED 相同
+ok    T1 current closure Σ 与 RED 相同
+ok    T1 peak residual raw=1
+ok    T1 peak 无 data_gap
+ok    T1 peak stock_raw=2**90
+ok    T1 peak mint raw 与 RED 相同
+ok    T1 peak closure Σ 与 RED 相同
+ok    T4 T1 实体集合不变
+ok    T4 T1 D/current stock_raw 相同
+ok    T4 T1 D/current Σraw 相同
+ok    T4 T1 D/current 非 gap 来源逐条相同
+ok    T4 T1 D/current 0 <= gap 差 <= residual raw
+ok    T4 T1 D/current gap 数量拆分守恒
+ok    T4 T1 D/current 策略集合相同
+ok    T4 T1 D/current/fifo 非 gap 来源逐条相同
+ok    T4 T1 D/current/fifo 0 <= gap 差 <= residual raw
+ok    T4 T1 D/current/fifo 既有样例差为零
+ok    T4 T1 D/current/lifo 非 gap 来源逐条相同
+ok    T4 T1 D/current/lifo 0 <= gap 差 <= residual raw
+ok    T4 T1 D/current/lifo 既有样例差为零
+ok    T4 T1 D/current/pro_rata 非 gap 来源逐条相同
+ok    T4 T1 D/current/pro_rata 0 <= gap 差 <= residual raw
+ok    T4 T1 D/current/pro_rata 既有样例差为零
+ok    T4 T1 D/peak stock_raw 相同
+ok    T4 T1 D/peak Σraw 相同
+ok    T4 T1 D/peak 非 gap 来源逐条相同
+ok    T4 T1 D/peak 0 <= gap 差 <= residual raw
+ok    T4 T1 D/peak gap 数量拆分守恒
+ok    T4 T1 D/peak 策略集合相同
+ok    T4 T1 D/peak/fifo 非 gap 来源逐条相同
+ok    T4 T1 D/peak/fifo 0 <= gap 差 <= residual raw
+ok    T4 T1 D/peak/fifo 既有样例差为零
+ok    T4 T1 D/peak/lifo 非 gap 来源逐条相同
+ok    T4 T1 D/peak/lifo 0 <= gap 差 <= residual raw
+ok    T4 T1 D/peak/lifo 既有样例差为零
+ok    T4 T1 D/peak/pro_rata 非 gap 来源逐条相同
+ok    T4 T1 D/peak/pro_rata 0 <= gap 差 <= residual raw
+ok    T4 T1 D/peak/pro_rata 既有样例差为零
+ok    T5 gap_eps_rel 登记
+ok    T5 residual 事件键登记
+ok    T2 supply=1000000 exit 0
+ok    T2 amt=100 真缺口事件保留
+ok    T2 amt=100 current data_gap raw 保留
+ok    T2 amt=100 peak data_gap raw 保留
+ok    T2 supply=12379400392853802748991242240 exit 0
+ok    T2 amt=1152921504606846976 真缺口事件保留
+ok    T2 amt=1152921504606846976 current data_gap raw 保留
+ok    T2 amt=1152921504606846976 peak data_gap raw 保留
+ok    T3 小供应阈值等于 EPS
+ok    T3 大供应相对阈值
+ok    T3 dust 两版本 exit 0
+ok    T3 dust current 三策略逐条相同
+ok    T3 dust peak 三策略逐条相同
+ok    T3 dust data_gap_events 相同
+ok    T4 多来源两版本 exit 0
+ok    T4 多来源 实体集合不变
+ok    T4 多来源 D/current stock_raw 相同
+ok    T4 多来源 D/current Σraw 相同
+ok    T4 多来源 D/current 非 gap 来源逐条相同
+ok    T4 多来源 D/current 0 <= gap 差 <= residual raw
+ok    T4 多来源 D/current gap 数量拆分守恒
+ok    T4 多来源 D/current 策略集合相同
+ok    T4 多来源 D/current/fifo 非 gap 来源逐条相同
+ok    T4 多来源 D/current/fifo 0 <= gap 差 <= residual raw
+ok    T4 多来源 D/current/fifo 既有样例差为零
+ok    T4 多来源 D/current/lifo 非 gap 来源逐条相同
+ok    T4 多来源 D/current/lifo 0 <= gap 差 <= residual raw
+ok    T4 多来源 D/current/lifo 既有样例差为零
+ok    T4 多来源 D/current/pro_rata 非 gap 来源逐条相同
+ok    T4 多来源 D/current/pro_rata 0 <= gap 差 <= residual raw
+ok    T4 多来源 D/current/pro_rata 既有样例差为零
+ok    T4 多来源 D/peak stock_raw 相同
+ok    T4 多来源 D/peak Σraw 相同
+ok    T4 多来源 D/peak 非 gap 来源逐条相同
+ok    T4 多来源 D/peak 0 <= gap 差 <= residual raw
+ok    T4 多来源 D/peak gap 数量拆分守恒
+ok    T4 多来源 D/peak 策略集合相同
+ok    T4 多来源 D/peak/fifo 非 gap 来源逐条相同
+ok    T4 多来源 D/peak/fifo 0 <= gap 差 <= residual raw
+ok    T4 多来源 D/peak/fifo 既有样例差为零
+ok    T4 多来源 D/peak/lifo 非 gap 来源逐条相同
+ok    T4 多来源 D/peak/lifo 0 <= gap 差 <= residual raw
+ok    T4 多来源 D/peak/lifo 既有样例差为零
+ok    T4 多来源 D/peak/pro_rata 非 gap 来源逐条相同
+ok    T4 多来源 D/peak/pro_rata 0 <= gap 差 <= residual raw
+ok    T4 多来源 D/peak/pro_rata 既有样例差为零
+ok    T4-mixed 两版本 trace exit 0
+ok    T4-mixed 两版本账本落盘
+ok    T4-mixed 实体集合不变
+ok    T4-mixed D/current stock_raw 相同
+ok    T4-mixed D/current 非 gap 来源逐条相同
+ok    T4-mixed D/current 0 <= gap 差 <= residual raw
+ok    T4-mixed D/current 策略集合相同
+ok    T4-mixed D/current/fifo 非 gap 来源逐条相同
+ok    T4-mixed D/current/fifo 0 <= gap 差 <= residual raw
+ok    T4-mixed D/current/lifo 非 gap 来源逐条相同
+ok    T4-mixed D/current/lifo 0 <= gap 差 <= residual raw
+ok    T4-mixed D/current/pro_rata 非 gap 来源逐条相同
+ok    T4-mixed D/current/pro_rata 0 <= gap 差 <= residual raw
+ok    T4-mixed D/peak stock_raw 相同
+ok    T4-mixed D/peak 非 gap 来源逐条相同
+ok    T4-mixed D/peak 0 <= gap 差 <= residual raw
+ok    T4-mixed D/peak 策略集合相同
+ok    T4-mixed D/peak/fifo 非 gap 来源逐条相同
+ok    T4-mixed D/peak/fifo 0 <= gap 差 <= residual raw
+ok    T4-mixed D/peak/lifo 非 gap 来源逐条相同
+ok    T4-mixed D/peak/lifo 0 <= gap 差 <= residual raw
+ok    T4-mixed D/peak/pro_rata 非 gap 来源逐条相同
+ok    T4-mixed D/peak/pro_rata 0 <= gap 差 <= residual raw
+ok    T4-mixed current 703 主策略合计=2**60
+ok    T4-mixed current 704 主策略合计=2**60+1
+ok    T4-mixed current 差=1 <= residual raw
+ok    T4-mixed current 两版本闭合 pct=100.0
+ok    T4-mixed current 三策略齐全
+ok    T4-mixed current/pro_rata 两版本 stock_raw=2**60
+ok    T4-mixed current/pro_rata 两版合计差=1
+ok    T4-mixed current/pro_rata 两版按 raw 复算闭合 pct=100.0
+ok    T4-mixed current/fifo 两版本 stock_raw=2**60
+ok    T4-mixed current/fifo 两版合计差=0
+ok    T4-mixed current/fifo 两版按 raw 复算闭合 pct=100.0
+ok    T4-mixed current/lifo 两版本 stock_raw=2**60
+ok    T4-mixed current/lifo 两版合计差=1
+ok    T4-mixed current/lifo 两版按 raw 复算闭合 pct=100.0
+ok    T4-mixed peak 703 主策略合计=2**60
+ok    T4-mixed peak 704 主策略合计=2**60+1
+ok    T4-mixed peak 差=1 <= residual raw
+ok    T4-mixed peak 两版本闭合 pct=100.0
+ok    T4-mixed peak 三策略齐全
+ok    T4-mixed peak/pro_rata 两版本 stock_raw=2**60
+ok    T4-mixed peak/pro_rata 两版合计差=1
+ok    T4-mixed peak/pro_rata 两版按 raw 复算闭合 pct=100.0
+ok    T4-mixed peak/fifo 两版本 stock_raw=2**60
+ok    T4-mixed peak/fifo 两版合计差=0
+ok    T4-mixed peak/fifo 两版按 raw 复算闭合 pct=100.0
+ok    T4-mixed peak/lifo 两版本 stock_raw=2**60
+ok    T4-mixed peak/lifo 两版合计差=1
+ok    T4-mixed peak/lifo 两版按 raw 复算闭合 pct=100.0
+ok    T8 generate exit 0
+ok    T8 verify exit 0
+ok    T8 裁决模板 exit 0
+ok    T8 trace before freeze 0 exit 0
+ok    T8 freeze exit 0
+ok    T8 trace before freeze 2 exit 0
+ok    T8 freeze exit 2
+ok    T8 旧算法哈希变化明确拒收
+ok    dust nonempty=False trace exit 0
+ok    dust nonempty=False 整数库存保留
+ok    dust nonempty=False 异常后两字段确定性生成
+ok    dust nonempty=False 构成保留精度损失诊断
+ok    dust nonempty=True trace exit 0
+ok    dust nonempty=True 整数库存保留
+ok    dust nonempty=True 异常后两字段确定性生成
+ok    dust nonempty=True 构成保留精度损失诊断
+ok    stock=1 total=10001 严格阈值 exit 0
+ok    stock=1 total=10000 严格阈值 exit 2
+ok    total=10000 current 闭合门禁拒绝
+ok    stock=1 total=9999 严格阈值 exit 2
+ok    total=9999 current 闭合门禁拒绝
+ok    真实精度损失尘埃 peak 仍 exit 2
+ok    正常闭合/零库存 stock=0 trace exit 0
+ok    stock=0 无异常不生成降级字段
+ok    正常闭合/零库存 stock=1 trace exit 0
+ok    stock=1 无异常不生成降级字段
+ok    正式 provenance 缺 --labels-file exit 2
+ok    显式无标签探索模式落 exploration 标记
+ok    主场景 exit 0
+ok    mint 直达 100%
+ok    标签 CEX 边界 100%
+ok    标签边界 evidence=label_confirmed
+ok    两来源 6:4 终点 mint 100%
+ok    direct_upstream 毛流入 6:4 准确
+ok    P0-1 反例：mint 10%（v1 会错算 52.6%）
+ok    P0-1 反例：dex_pool 90%
+ok    data_gap 100%
+ok    深度上限 → depth_limit
+ok    跨时回环正确穿透 → mint 100%（same_slot_scc 概念废除）
+ok    实体内部收缩：终点 mint 100%（内部边不计）
+ok    实体内部收缩：进货单只有 mint 一家
+ok    设施启发式支路停 → facility_candidate
+ok    全实体峰值锚点 Σ=100% 闭合
+ok    members_sha256 在场且可复算
+ok    敏感性稳定（主场景无消耗歧义）
+ok    FIFO/LIFO 主导翻转 exit 2 阻断
+ok    翻转案报告落盘 stable=false
+ok    翻转细节记录 top_by_policy 且 agree=false
+ok    成员跨实体重复 exit 2
+ok    成员非字符串 exit 2
+ok    成员空数组 exit 2
+ok    同 slot 因果顺序缺失 exit 2 阻断
+ok    顺序敏感性独立标 UNRESOLVED（不被 FIFO/LIFO 第一大一致掩盖）
+ok    歧义资金进入独立 order_ambiguous 桶
+ok    精确同秒序按 tx/instruction 执行：实体来源 mint 100%
+ok    正式 entity provenance 显式拒绝 legacy-sol5
+
+PASS：0 项失败

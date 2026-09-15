@@ -1,0 +1,557 @@
+## T1: 7.0.3 baseline
+COMMAND: /usr/local/bin/python3 /Users/uravvv/.claude/skills/token-chip-analysis/scripts/tests/../report/entity_source_trace.py --edges-sol /Users/uravvv/.claude/skills/token-chip-analysis/.staging_eps/red/T1/edges.jsonl --total-supply 12379400392853802748991242240 --entity-file /Users/uravvv/.claude/skills/token-chip-analysis/.staging_eps/red/T1/entities.json --labels-file /Users/uravvv/.claude/skills/token-chip-analysis/.staging_eps/red/T1/labels.json --out /Users/uravvv/.claude/skills/token-chip-analysis/.staging_eps/red/T1/ledger.json --case-root /Users/uravvv/.claude/skills/token-chip-analysis/.staging_eps/red/T1 --edges-sol /Users/uravvv/.claude/skills/token-chip-analysis/.staging_eps/red/T1/data/soltx-4eb8d4d0e921d2f9c873ff102f98fa6b65f15cdd45aba80bfdf5b0ac2108359f.jsonl.gz --sol-cache-meta /Users/uravvv/.claude/skills/token-chip-analysis/.staging_eps/red/T1/data/soltx-4eb8d4d0e921d2f9c873ff102f98fa6b65f15cdd45aba80bfdf5b0ac2108359f.meta.json --mint So1AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+ENV: PYTHONPATH=/Users/uravvv/.claude/skills/token-chip-analysis/scripts/report
+EXIT_CODE: 0
+TEST_SHA256: ef4f4111d7dbef90a717091afa10ba98104431feea21abda63d1a89bef039710
+DRIVER_SHA256: a5d9ab67fbca83c88e0e2dc1e842fa0a0d96fc0093deee2f7d49ad115e16f5a6
+PRODUCTION_SHA256: ff4b640a1adbcecf8f3651efbda04493d3085754f939da1ef23b8d9f2efe0fc3
+STDOUT_BEGIN
+[wave_scan]   已装载 soltx-4eb8d4d0e921d2f9c873ff102f98fa6b65f15cdd45aba80bfdf5b0ac2108359f.jsonl.gz → 累计 3 边
+[source_trace] 边表就绪 3 条——按 handoff cutoff/block 物化索引表 e(t)…
+[source_trace] 物化全局出入度（设施启发式）…
+[source_trace] 溯源 D（1 址，三策略模拟）…
+[source_trace]   子图：祖先 1 / 终点 1（深度截断 0·预算截断 0）/ 边 3
+[source_trace]   峰值锚点 1970-01-02 库存 10.000%供应 | 终点 2 类 | 未决 0.0% | 进货单 1 上家 | 敏感性 稳定
+[source_trace] 1 实体溯源完成 → /Users/uravvv/.claude/skills/token-chip-analysis/.staging_eps/red/T1/ledger.json
+STDOUT_END
+STDERR_BEGIN
+STDERR_END
+LEDGER_BEGIN
+{
+  "entity": {
+    "entity_id": "D",
+    "member_count": 1,
+    "members_sha256": "3f39d5c348e5b79d06e842c114e6cc571583bbf44e4b0ebfda1a01ec05745d43",
+    "anchors": {
+      "current": {
+        "stock_raw": "1237940039285380274899124224",
+        "composition": [
+          {
+            "kind": "PROVEN_ORIGIN",
+            "subkind": "mint",
+            "via": "0x0000000000000000000000000000000000000000",
+            "pct_of_anchor": 100.0,
+            "raw": "1237940039285380274899124224",
+            "evidence_level": "onchain_pattern",
+            "path_len": 2
+          },
+          {
+            "kind": "UNRESOLVED",
+            "subkind": "data_gap",
+            "via": null,
+            "pct_of_anchor": 0.0,
+            "raw": "1",
+            "evidence_level": "onchain_pattern",
+            "path_len": null
+          }
+        ],
+        "direct_upstream": [
+          {
+            "addr": "X",
+            "pct_of_gross_in": 100.0,
+            "raw": "1237940039285380274899124224"
+          }
+        ]
+      },
+      "peak": {
+        "stock_raw": "1237940039285380274899124224",
+        "composition": [
+          {
+            "kind": "PROVEN_ORIGIN",
+            "subkind": "mint",
+            "via": "0x0000000000000000000000000000000000000000",
+            "pct_of_anchor": 100.0,
+            "raw": "1237940039285380274899124224",
+            "evidence_level": "onchain_pattern",
+            "path_len": 2
+          },
+          {
+            "kind": "UNRESOLVED",
+            "subkind": "data_gap",
+            "via": null,
+            "pct_of_anchor": 0.0,
+            "raw": "1",
+            "evidence_level": "onchain_pattern",
+            "path_len": null
+          }
+        ],
+        "direct_upstream": [
+          {
+            "addr": "X",
+            "pct_of_gross_in": 100.0,
+            "raw": "1237940039285380274899124224"
+          }
+        ],
+        "date": "1970-01-02"
+      }
+    },
+    "turnover": {
+      "gross_in_raw": "1237940039285380274899124224",
+      "gross_out_raw": "0"
+    },
+    "closure_check": {
+      "current_sum_pct": 100.0,
+      "peak_sum_pct": 100.0
+    },
+    "simulation": {
+      "ancestors": 1,
+      "terminals": 1,
+      "depth_truncated": 0,
+      "budget_truncated": 0,
+      "edges_simulated": 3,
+      "order_ambiguous_groups": 0,
+      "order_ambiguous_events": 0,
+      "data_gap_events": 1
+    }
+  },
+  "sensitivity": {
+    "methods": [
+      "pro_rata",
+      "fifo",
+      "lifo"
+    ],
+    "per_entity": {
+      "D": {
+        "stable": true,
+        "consumption_stable": true,
+        "ordering_stable": true,
+        "anchors": {
+          "peak": {
+            "top_by_policy": {
+              "pro_rata": [
+                "PROVEN_ORIGIN",
+                "mint",
+                "0x0000000000000000000000000000000000000000"
+              ],
+              "fifo": [
+                "PROVEN_ORIGIN",
+                "mint",
+                "0x0000000000000000000000000000000000000000"
+              ],
+              "lifo": [
+                "PROVEN_ORIGIN",
+                "mint",
+                "0x0000000000000000000000000000000000000000"
+              ]
+            },
+            "policy_details": {
+              "pro_rata": [
+                {
+                  "terminal": [
+                    "PROVEN_ORIGIN",
+                    "mint",
+                    "0x0000000000000000000000000000000000000000"
+                  ],
+                  "raw": "1237940039285380274899124224"
+                },
+                {
+                  "terminal": [
+                    "UNRESOLVED",
+                    "data_gap",
+                    null
+                  ],
+                  "raw": "1"
+                }
+              ],
+              "fifo": [
+                {
+                  "terminal": [
+                    "PROVEN_ORIGIN",
+                    "mint",
+                    "0x0000000000000000000000000000000000000000"
+                  ],
+                  "raw": "1237940039285380274899124224"
+                },
+                {
+                  "terminal": [
+                    "UNRESOLVED",
+                    "data_gap",
+                    null
+                  ],
+                  "raw": "1"
+                }
+              ],
+              "lifo": [
+                {
+                  "terminal": [
+                    "PROVEN_ORIGIN",
+                    "mint",
+                    "0x0000000000000000000000000000000000000000"
+                  ],
+                  "raw": "1237940039285380274899124224"
+                },
+                {
+                  "terminal": [
+                    "UNRESOLVED",
+                    "data_gap",
+                    null
+                  ],
+                  "raw": "1"
+                }
+              ]
+            },
+            "agree": true,
+            "negligible_stock": false,
+            "ordering_sensitivity": {
+              "status": "RESOLVED",
+              "order_ambiguous_raw": "0",
+              "order_ambiguous_pct": 0.0,
+              "materiality_pct": 0.5,
+              "stable": true
+            }
+          },
+          "current": {
+            "top_by_policy": {
+              "pro_rata": [
+                "PROVEN_ORIGIN",
+                "mint",
+                "0x0000000000000000000000000000000000000000"
+              ],
+              "fifo": [
+                "PROVEN_ORIGIN",
+                "mint",
+                "0x0000000000000000000000000000000000000000"
+              ],
+              "lifo": [
+                "PROVEN_ORIGIN",
+                "mint",
+                "0x0000000000000000000000000000000000000000"
+              ]
+            },
+            "policy_details": {
+              "pro_rata": [
+                {
+                  "terminal": [
+                    "PROVEN_ORIGIN",
+                    "mint",
+                    "0x0000000000000000000000000000000000000000"
+                  ],
+                  "raw": "1237940039285380274899124224"
+                },
+                {
+                  "terminal": [
+                    "UNRESOLVED",
+                    "data_gap",
+                    null
+                  ],
+                  "raw": "1"
+                }
+              ],
+              "fifo": [
+                {
+                  "terminal": [
+                    "PROVEN_ORIGIN",
+                    "mint",
+                    "0x0000000000000000000000000000000000000000"
+                  ],
+                  "raw": "1237940039285380274899124224"
+                },
+                {
+                  "terminal": [
+                    "UNRESOLVED",
+                    "data_gap",
+                    null
+                  ],
+                  "raw": "1"
+                }
+              ],
+              "lifo": [
+                {
+                  "terminal": [
+                    "PROVEN_ORIGIN",
+                    "mint",
+                    "0x0000000000000000000000000000000000000000"
+                  ],
+                  "raw": "1237940039285380274899124224"
+                },
+                {
+                  "terminal": [
+                    "UNRESOLVED",
+                    "data_gap",
+                    null
+                  ],
+                  "raw": "1"
+                }
+              ]
+            },
+            "agree": true,
+            "negligible_stock": false,
+            "ordering_sensitivity": {
+              "status": "RESOLVED",
+              "order_ambiguous_raw": "0",
+              "order_ambiguous_pct": 0.0,
+              "materiality_pct": 0.5,
+              "stable": true
+            }
+          }
+        }
+      }
+    },
+    "conservative_vs_aggressive_verdict_stable": true,
+    "acknowledged_flips": [],
+    "publishable": true,
+    "note": "两维独立敏感性：三种库存消耗策略逐锚点比对完整明细；缺精确链上位置时，同一最细粒度桶内既收又发的来源记 UNRESOLVED/order_ambiguous。尘埃锚点（<总供应 0.01%）不入判定；真实消费翻转须 flip-adjudications/v1 裁决收据（--acknowledge-flip <收据>）逐锚点指纹绑定覆盖且构成结论按多策略并列披露（A5 对报告实文核对），顺序未决量 >0.5% 锚点库存无豁免，exit 2"
+  }
+}
+LEDGER_END
+
+## T2-small: 7.0.3 baseline
+COMMAND: /usr/local/bin/python3 /Users/uravvv/.claude/skills/token-chip-analysis/scripts/tests/../report/entity_source_trace.py --edges-sol /Users/uravvv/.claude/skills/token-chip-analysis/.staging_eps/red/T2-small/edges.jsonl --total-supply 1000000 --entity-file /Users/uravvv/.claude/skills/token-chip-analysis/.staging_eps/red/T2-small/entities.json --labels-file /Users/uravvv/.claude/skills/token-chip-analysis/.staging_eps/red/T2-small/labels.json --out /Users/uravvv/.claude/skills/token-chip-analysis/.staging_eps/red/T2-small/ledger.json --case-root /Users/uravvv/.claude/skills/token-chip-analysis/.staging_eps/red/T2-small --edges-sol /Users/uravvv/.claude/skills/token-chip-analysis/.staging_eps/red/T2-small/data/soltx-4eb8d4d0e921d2f9c873ff102f98fa6b65f15cdd45aba80bfdf5b0ac2108359f.jsonl.gz --sol-cache-meta /Users/uravvv/.claude/skills/token-chip-analysis/.staging_eps/red/T2-small/data/soltx-4eb8d4d0e921d2f9c873ff102f98fa6b65f15cdd45aba80bfdf5b0ac2108359f.meta.json --mint So1AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+ENV: PYTHONPATH=/Users/uravvv/.claude/skills/token-chip-analysis/scripts/report
+EXIT_CODE: 0
+TEST_SHA256: ef4f4111d7dbef90a717091afa10ba98104431feea21abda63d1a89bef039710
+DRIVER_SHA256: a5d9ab67fbca83c88e0e2dc1e842fa0a0d96fc0093deee2f7d49ad115e16f5a6
+PRODUCTION_SHA256: ff4b640a1adbcecf8f3651efbda04493d3085754f939da1ef23b8d9f2efe0fc3
+STDOUT_BEGIN
+[wave_scan]   已装载 soltx-4eb8d4d0e921d2f9c873ff102f98fa6b65f15cdd45aba80bfdf5b0ac2108359f.jsonl.gz → 累计 1 边
+[source_trace] 边表就绪 1 条——按 handoff cutoff/block 物化索引表 e(t)…
+[source_trace] 物化全局出入度（设施启发式）…
+[source_trace] 溯源 D（1 址，三策略模拟）…
+[source_trace]   子图：祖先 1 / 终点 0（深度截断 0·预算截断 0）/ 边 1
+[source_trace]   峰值锚点 1970-01-02 库存 0.010%供应 | 终点 1 类 | 未决 100.0% | 进货单 1 上家 | 敏感性 稳定
+[source_trace] 1 实体溯源完成 → /Users/uravvv/.claude/skills/token-chip-analysis/.staging_eps/red/T2-small/ledger.json
+STDOUT_END
+STDERR_BEGIN
+STDERR_END
+LEDGER_BEGIN
+{
+  "entity": {
+    "entity_id": "D",
+    "member_count": 1,
+    "members_sha256": "3f39d5c348e5b79d06e842c114e6cc571583bbf44e4b0ebfda1a01ec05745d43",
+    "anchors": {
+      "current": {
+        "stock_raw": "100",
+        "composition": [
+          {
+            "kind": "UNRESOLVED",
+            "subkind": "data_gap",
+            "via": null,
+            "pct_of_anchor": 100.0,
+            "raw": "100",
+            "evidence_level": "onchain_pattern",
+            "path_len": null
+          }
+        ],
+        "direct_upstream": [
+          {
+            "addr": "X",
+            "pct_of_gross_in": 100.0,
+            "raw": "100"
+          }
+        ]
+      },
+      "peak": {
+        "stock_raw": "100",
+        "composition": [
+          {
+            "kind": "UNRESOLVED",
+            "subkind": "data_gap",
+            "via": null,
+            "pct_of_anchor": 100.0,
+            "raw": "100",
+            "evidence_level": "onchain_pattern",
+            "path_len": null
+          }
+        ],
+        "direct_upstream": [
+          {
+            "addr": "X",
+            "pct_of_gross_in": 100.0,
+            "raw": "100"
+          }
+        ],
+        "date": "1970-01-02"
+      }
+    },
+    "turnover": {
+      "gross_in_raw": "100",
+      "gross_out_raw": "0"
+    },
+    "closure_check": {
+      "current_sum_pct": 100.0,
+      "peak_sum_pct": 100.0
+    },
+    "simulation": {
+      "ancestors": 1,
+      "terminals": 0,
+      "depth_truncated": 0,
+      "budget_truncated": 0,
+      "edges_simulated": 1,
+      "order_ambiguous_groups": 0,
+      "order_ambiguous_events": 0,
+      "data_gap_events": 1
+    }
+  },
+  "sensitivity": {
+    "methods": [
+      "pro_rata",
+      "fifo",
+      "lifo"
+    ],
+    "per_entity": {
+      "D": {
+        "stable": true,
+        "consumption_stable": true,
+        "ordering_stable": true,
+        "anchors": {
+          "peak": {
+            "top_by_policy": {
+              "pro_rata": [
+                "UNRESOLVED",
+                "data_gap",
+                null
+              ],
+              "fifo": [
+                "UNRESOLVED",
+                "data_gap",
+                null
+              ],
+              "lifo": [
+                "UNRESOLVED",
+                "data_gap",
+                null
+              ]
+            },
+            "policy_details": {
+              "pro_rata": [
+                {
+                  "terminal": [
+                    "UNRESOLVED",
+                    "data_gap",
+                    null
+                  ],
+                  "raw": "100"
+                }
+              ],
+              "fifo": [
+                {
+                  "terminal": [
+                    "UNRESOLVED",
+                    "data_gap",
+                    null
+                  ],
+                  "raw": "100"
+                }
+              ],
+              "lifo": [
+                {
+                  "terminal": [
+                    "UNRESOLVED",
+                    "data_gap",
+                    null
+                  ],
+                  "raw": "100"
+                }
+              ]
+            },
+            "agree": true,
+            "negligible_stock": false,
+            "ordering_sensitivity": {
+              "status": "RESOLVED",
+              "order_ambiguous_raw": "0",
+              "order_ambiguous_pct": 0.0,
+              "materiality_pct": 0.5,
+              "stable": true
+            }
+          },
+          "current": {
+            "top_by_policy": {
+              "pro_rata": [
+                "UNRESOLVED",
+                "data_gap",
+                null
+              ],
+              "fifo": [
+                "UNRESOLVED",
+                "data_gap",
+                null
+              ],
+              "lifo": [
+                "UNRESOLVED",
+                "data_gap",
+                null
+              ]
+            },
+            "policy_details": {
+              "pro_rata": [
+                {
+                  "terminal": [
+                    "UNRESOLVED",
+                    "data_gap",
+                    null
+                  ],
+                  "raw": "100"
+                }
+              ],
+              "fifo": [
+                {
+                  "terminal": [
+                    "UNRESOLVED",
+                    "data_gap",
+                    null
+                  ],
+                  "raw": "100"
+                }
+              ],
+              "lifo": [
+                {
+                  "terminal": [
+                    "UNRESOLVED",
+                    "data_gap",
+                    null
+                  ],
+                  "raw": "100"
+                }
+              ]
+            },
+            "agree": true,
+            "negligible_stock": false,
+            "ordering_sensitivity": {
+              "status": "RESOLVED",
+              "order_ambiguous_raw": "0",
+              "order_ambiguous_pct": 0.0,
+              "materiality_pct": 0.5,
+              "stable": true
+            }
+          }
+        }
+      }
+    },
+    "conservative_vs_aggressive_verdict_stable": true,
+    "acknowledged_flips": [],
+    "publishable": true,
+    "note": "两维独立敏感性：三种库存消耗策略逐锚点比对完整明细；缺精确链上位置时，同一最细粒度桶内既收又发的来源记 UNRESOLVED/order_ambiguous。尘埃锚点（<总供应 0.01%）不入判定；真实消费翻转须 flip-adjudications/v1 裁决收据（--acknowledge-flip <收据>）逐锚点指纹绑定覆盖且构成结论按多策略并列披露（A5 对报告实文核对），顺序未决量 >0.5% 锚点库存无豁免，exit 2"
+  }
+}
+LEDGER_END
+
+## Proposed assertions against unchanged 7.0.3
+COMMAND: /usr/local/bin/python3 -c 'import sys; sys.path.insert(0, "scripts/tests"); import test_entity_source_trace as t; t.test_eps_residual(); sys.exit(t.finish())'
+EXIT_CODE: 1
+TEST_SHA256: ef4f4111d7dbef90a717091afa10ba98104431feea21abda63d1a89bef039710
+PRODUCTION_SHA256: ff4b640a1adbcecf8f3651efbda04493d3085754f939da1ef23b8d9f2efe0fc3
+STDOUT_BEGIN
+FAIL  T1 两版本 trace exit 0
+Traceback (most recent call last):
+  File "/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/trace_703_layout_m7eknj2h/scripts/report/trace_703.py", line 77, in <module>
+    from wave_scan import Z, DEAD, load_sol, load_evm_v2, attach_duckdb, day_str  # noqa: E402
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/trace_703_layout_m7eknj2h/scripts/report/wave_scan.py", line 69, in <module>
+    from wave_contract import (ORDER_GRANULARITY_INSTRUCTION,
+                               ORDER_GRANULARITY_LOG,
+                               ORDER_GRANULARITY_SOURCE_DEFINED)
+ModuleNotFoundError: No module named 'wave_contract'
+[wave_scan]   已装载 soltx-4eb8d4d0e921d2f9c873ff102f98fa6b65f15cdd45aba80bfdf5b0ac2108359f.jsonl.gz → 累计 3 边
+[source_trace] 边表就绪 3 条——按 handoff cutoff/block 物化索引表 e(t)…
+[source_trace] 物化全局出入度（设施启发式）…
+[source_trace] 溯源 D（1 址，三策略模拟）…
+[source_trace]   子图：祖先 1 / 终点 1（深度截断 0·预算截断 0）/ 边 3
+[source_trace]   峰值锚点 1970-01-02 库存 10.000%供应 | 终点 2 类 | 未决 0.0% | 进货单 1 上家 | 敏感性 稳定
+[source_trace] 1 实体溯源完成 → /var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/trace_eps_t1_afdbupng/ledger.json
+
+
+FAIL：1 项失败
+STDOUT_END
+STDERR_BEGIN
+STDERR_END

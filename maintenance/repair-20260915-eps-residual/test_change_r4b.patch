@@ -1,0 +1,78 @@
+--- before_r4b/test_entity_source_trace.py
++++ after_r4b/test_entity_source_trace.py
+@@ -256,7 +256,7 @@
+ 
+ 
+ def eps_compare_quantities(old, new, label, edges, expect_equal=True, measurements=None):
+-    """T4：唯一精确数量为 stock_raw；全部构成/短缺/pct 判界，旧两例仍断言差零。"""
++    """T4：stock_raw 精确；非 UNRESOLVED/合桶量/短缺/pct 判界，原始标签差只记录。"""
+     from fractions import Fraction
+     n, supply = len(edges), int(new["input_binding"]["total_supply_raw"])
+     measurements = [] if measurements is None else measurements
+@@ -266,13 +266,22 @@
+         raw_delta = delta if stock is None else delta * stock / 100
+         ok = eps_rounding_bound(raw_delta, n, supply)
+         measurements.append({"category": category, "where": where,
+-                             "delta": str(delta), "within_bound": ok})
++                             "delta": str(delta), "bound_checked": True, "within_bound": ok})
+         return ok
+ 
+     def compare_rows(x, y, where, stock):
+-        # 缺席键按 0 对齐；逐条检查也覆盖 gap/residual 原始标签，不能只看合计。
++        # r3 裁决勘误：非 UNRESOLVED 逐键判界；原始未决标签差只记录迁移量。
++        # gap/residual 合桶量在下方单独判界，不能给原始标签差套用 B。
+         for key in sorted(x.keys() | y.keys(), key=str):
+             category = "unresolved_key" if key[0] == "UNRESOLVED" else "non_unresolved_key"
++            if key[0] == "UNRESOLVED":
++                row = {"category": category, "where": f"{where}/{key}", "key": list(key),
++                       "n": n, "old_raw": str(x.get(key, 0)), "new_raw": str(y.get(key, 0)),
++                       "delta": str(y.get(key, 0) - x.get(key, 0)), "bound_checked": False,
++                       "scope": "label_migration_record_only"}
++                measurements.append(row)
++                print("T4_LABEL_MIGRATION " + json.dumps(row, sort_keys=True))
++                continue
+             check(f"{where} 构成 {key} raw 在界内",
+                   bounded(category, y.get(key, 0) - x.get(key, 0), f"{where}/{key}"))
+         delta = sum(y.values()) - sum(x.values())
+@@ -535,7 +544,7 @@
+           "total_supply_raw": str(total), "anchors": anchors, "policy_deltas": rows,
+           "shortfalls_703_704": [ledger["test_shortfalls"] for ledger in (old, new)],
+           "last_pro_rata_shortfall_703_704": shortfalls,
+-          "out_of_bound_count": sum(not row["within_bound"] for row in measurements)}, sort_keys=True))
++          "out_of_bound_count": sum(row.get("within_bound") is False for row in measurements)}, sort_keys=True))
+ 
+ 
+ def test_eps_residual_mixed_c():
+@@ -623,9 +632,12 @@
+     for category in sorted({row["category"] for row in measurements}):
+         rows = [row for row in measurements if row["category"] == category]
+         max_delta = max(abs(Fraction(row["delta"])) for row in rows)
++        checked = [row for row in rows if row["bound_checked"]]
+         by_class[category] = {"comparisons": len(rows), "max_abs_delta": str(max_delta),
+                               "unit": "pct" if category.endswith("pct") else "raw",
+-                              "out_of_bound_count": sum(not row["within_bound"] for row in rows),
++                              "bound_checked": bool(checked), "bounded_comparisons": len(checked),
++                              "changed_count": sum(Fraction(row["delta"]) != 0 for row in rows),
++                              "out_of_bound_count": sum(not row["within_bound"] for row in checked) if checked else None,
+                               "max_witnesses": [row for row in rows if abs(Fraction(row["delta"])) == max_delta][:6]}
+     summary = {"seed": seed, "cases": cases, "policies": ["pro_rata", "fifo", "lifo"],
+                "policy_anchor_comparisons": len(deltas), "total_supply_raw": str(total),
+@@ -637,15 +649,16 @@
+                "external_middle_cases": external_middle_cases, "overdraft_cases": overdraft_cases,
+                "by_class": by_class,
+                "max_abs_delta_occurrences": sum(abs(row["delta"]) == maximum for row in deltas),
+-               "out_of_bound_count": sum(not row["within_bound"] for row in measurements),
++               "out_of_bound_count": sum(row.get("within_bound") is False for row in measurements),
+                "negative_delta_count": sum(row["delta"] < 0 for row in deltas),
+                "positive_delta_count": sum(row["delta"] > 0 for row in deltas),
+                "max_witnesses": [row for row in deltas if abs(row["delta"]) == maximum]}
+     print(f"T4-stress max|Δ|={maximum} raw; occurrences={summary['max_abs_delta_occurrences']}; "
+           f"out_of_bound={summary['out_of_bound_count']}")
+     for category, stats in by_class.items():
++        status = f"out_of_bound={stats['out_of_bound_count']}" if stats["bound_checked"] else "label_migration_record_only"
+         print(f"T4-stress {category} max|Δ|={stats['max_abs_delta']} {stats['unit']}; "
+-              f"out_of_bound={stats['out_of_bound_count']}")
++              f"{status}")
+     print("T4_STRESS_SUMMARY " + json.dumps(summary, sort_keys=True))
+     check("T4-stress 固定种子 300 组且三策略两锚点齐全", len(deltas) == cases * 3 * 2)
+     check("T4-stress 每组 3–8 边且覆盖非空非 gap 构成", min(lengths) == 3 and max(lengths) == 8 and nongap_cases > 0)

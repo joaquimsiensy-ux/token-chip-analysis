@@ -1,0 +1,17 @@
+{
+  "status": "PASS",
+  "original_check_calls": 69,
+  "r2_check_calls": 84,
+  "r3_check_calls": 100,
+  "authorized_replacements": [
+    "Call(func=Name(id='check', ctx=Load()), args=[JoinedStr(values=[FormattedValue(value=Name(id='label', ctx=Load()), conversion=-1), Constant(value=' '), FormattedValue(value=Name(id='eid', ctx=Load()), conversion=-1), Constant(value='/'), FormattedValue(value=Name(id='anchor', ctx=Load()), conversion=-1), Constant(value=' 0 <= gap 差 <= residual raw')]), Compare(left=Constant(value=0), ops=[LtE(), LtE()], comparators=[Name(id='delta', ctx=Load()), Call(func=Attribute(value=Name(id='y', ctx=Load()), attr='get', ctx=Load()), args=[Name(id='res', ctx=Load()), Constant(value=0)])])])",
+    "Call(func=Name(id='check', ctx=Load()), args=[JoinedStr(values=[FormattedValue(value=Name(id='label', ctx=Load()), conversion=-1), Constant(value=' '), FormattedValue(value=Name(id='eid', ctx=Load()), conversion=-1), Constant(value='/'), FormattedValue(value=Name(id='anchor', ctx=Load()), conversion=-1), Constant(value='/'), FormattedValue(value=Name(id='policy', ctx=Load()), conversion=-1), Constant(value=' 0 <= gap 差 <= residual raw')]), Compare(left=Constant(value=0), ops=[LtE(), LtE()], comparators=[Name(id='delta', ctx=Load()), Call(func=Attribute(value=Name(id='v', ctx=Load()), attr='get', ctx=Load()), args=[Name(id='res', ctx=Load()), Constant(value=0)])])])"
+  ],
+  "missing_original_check_calls": [],
+  "original_executed_checks": 105,
+  "r2_executed_checks": 200,
+  "r2_checks_retained_except_replaced_bound": 176,
+  "r3_executed_checks": 7492,
+  "missing_original_executed_checks": [],
+  "missing_retained_r2_executed_checks": []
+}

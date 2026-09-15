@@ -1,0 +1,30 @@
+[
+  {
+    "argv": [
+      "python3",
+      "-B",
+      "scripts/tests/docs_lint.py",
+      "--all"
+    ],
+    "exit_code": 0,
+    "log": "docs_lint_final_r2.log"
+  },
+  {
+    "argv": [
+      "git",
+      "diff",
+      "--check"
+    ],
+    "exit_code": 0,
+    "log": "git_diff_check_final_r2.log"
+  },
+  {
+    "argv": [
+      "python3",
+      "-B",
+      "maintenance/repair-20260915-eps-residual/verify_scope_r2.py"
+    ],
+    "exit_code": 0,
+    "log": "scope_verification_r2.log"
+  }
+]

@@ -1,0 +1,7 @@
+mixed HEAD {'pro_rata': 1152921504606846976, 'fifo': 1152921504606846976, 'lifo': 1152921504606846976}
+mixed WORKTREE {'pro_rata': 1152921504606846977, 'fifo': 1152921504606846976, 'lifo': 1152921504606846977}
+policy_details_equal = False
+small_flip HEAD {'pro_rata': 100, 'fifo': 100, 'lifo': 100}
+small_flip WORKTREE {'pro_rata': 100, 'fifo': 100, 'lifo': 100}
+policy_details_equal = True
+tops = {'pro_rata': ['PROVEN_ORIGIN', 'mint', '0x0000000000000000000000000000000000000000'], 'fifo': ['PROVEN_ORIGIN', 'mint', '0x0000000000000000000000000000000000000000'], 'lifo': ['UNRESOLVED', 'data_gap', None]}

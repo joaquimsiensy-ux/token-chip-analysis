@@ -1,0 +1,48 @@
+{
+  "cases": 200,
+  "edge_count_max": 8,
+  "edge_count_min": 3,
+  "large_max": 4611686018427387904,
+  "large_min": 1125899906842624,
+  "max_abs_delta_occurrences": 2,
+  "max_abs_delta_raw": 788,
+  "max_witnesses": [
+    {
+      "anchor": "current",
+      "case": 101,
+      "delta": -788,
+      "entity": "D",
+      "n": 8,
+      "policy": "pro_rata",
+      "within_bound": true
+    },
+    {
+      "anchor": "peak",
+      "case": 101,
+      "delta": -788,
+      "entity": "D",
+      "n": 8,
+      "policy": "pro_rata",
+      "within_bound": true
+    }
+  ],
+  "negative_delta_count": 360,
+  "nongap_nonempty_cases": 74,
+  "out_of_bound_count": 0,
+  "policies": [
+    "pro_rata",
+    "fifo",
+    "lifo"
+  ],
+  "policy_anchor_comparisons": 1200,
+  "positive_delta_count": 270,
+  "seed": 20260915,
+  "small_max": 4086,
+  "small_min": 33,
+  "total_supply_raw": "12379400392853802748991242240",
+  "test_log": "test_entity_source_trace_r3.log",
+  "test_log_sha256": "7a7e03574f150a3be19b6122ea144ed4eb913746e3629fd3e14039963378e066",
+  "check_pass_count": 7492,
+  "check_fail_count": 0,
+  "status": "PASS"
+}

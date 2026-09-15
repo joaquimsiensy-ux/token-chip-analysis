@@ -1,0 +1,17 @@
+{
+  "checked_at_utc": "2026-09-15T17:13:04.992903+00:00",
+  "results": [
+    {
+      "command": "python3 -B scripts/tests/docs_lint.py --all",
+      "exit_code": 0,
+      "log": "docs_lint_final_r5.log",
+      "log_sha256": "23ab83b356e62f858f2a062b696b0f49c9a28d99570e1fb74dffb1cc876e20ec"
+    },
+    {
+      "command": "git diff --check",
+      "exit_code": 0,
+      "log": "git_diff_check_final_r5.log",
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  ]
+}

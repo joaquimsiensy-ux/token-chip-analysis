@@ -1,0 +1,30 @@
+{
+  "at_utc": "2026-09-15T16:37:54.497547+00:00",
+  "results": [
+    {
+      "command": [
+        "python3",
+        "-B",
+        "scripts/tests/docs_lint.py",
+        "--all"
+      ],
+      "exit_code": 0,
+      "elapsed_seconds": 0.365,
+      "log": "docs_lint_final_r4.log",
+      "sha256": "23ab83b356e62f858f2a062b696b0f49c9a28d99570e1fb74dffb1cc876e20ec"
+    },
+    {
+      "command": [
+        "git",
+        "diff",
+        "--check"
+      ],
+      "exit_code": 0,
+      "elapsed_seconds": 0.015,
+      "log": "git_diff_check_final_r4.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  ],
+  "done_sha256": "05d8fb43fdcb716e4260209c0702572ce02bff21b8a00e58eea7cc1523671da4",
+  "production_sha256": "e85acee4e9a98a664d9b4881ca33177003aa9455261109a01e111e6faeda3cd1"
+}

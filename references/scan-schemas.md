@@ -248,7 +248,7 @@ instruction index 时，才允许声明可恢复交易内精确执行顺序；�
   "input_binding": {
     "algorithm": {"script_sha256": str,
                   "files": {"entity_source_trace.py": {…}, "wave_scan.py": {…}},
-                  "policies": [str…], "order_material_pct": float},
+                  "policies": [str…], "order_material_pct": float, "gap_eps_rel": float},
     "source": {"kind": "sol|evm_v2|duckdb", "argument": str, "edges_table": str|null,
                "files": [{"path", "bytes", "sha256"}…]},
     "entity_file": {"path", "bytes", "sha256"},
@@ -282,7 +282,7 @@ instruction index 时，才允许声明可恢复交易内精确执行顺序；�
     "simulation": {"ancestors": int, "terminals": int, "depth_truncated": int,
                     "budget_truncated": int, "edges_simulated": int,
                     "order_ambiguous_groups": int, "order_ambiguous_events": int,
-                    "data_gap_events": int}   # 诊断块
+                    "data_gap_events": int, "fp_residual_events": int}   # 诊断块
   }],
   "unresolved_total_pct": float,
   "bounds_sensitivity": {
@@ -304,7 +304,7 @@ TERMINAL = {
   "kind": "PROVEN_ORIGIN|BOUNDARY|UNRESOLVED",
   "subkind":  # PROVEN_ORIGIN: mint|launch_alloc|proven_airdrop|proven_vesting
               # BOUNDARY: dex_pool|cex_confirmed|facility_confirmed|bridge
-              # UNRESOLVED: data_gap|depth_limit|budget_truncated|facility_candidate|order_ambiguous
+              # UNRESOLVED: data_gap|fp_residual|depth_limit|budget_truncated|facility_candidate|order_ambiguous
   "via": addr|null,                    # 边界地址；via=null 的未决聚合条目按 subkind 合并
   "pct_of_anchor": float, "raw": str,
   "evidence_level": "label_confirmed|onchain_pattern|heuristic",
@@ -322,6 +322,15 @@ TERMINAL = {
 - 深度上限（默认 10 跳）记 `depth_limit`、BFS 节点预算超限记 `budget_truncated`、账户被取用时库存不足记 `data_gap`（短缺显式入账）——全部 UNRESOLVED **不静默丢弃**；子图边数超 `--edge-budget` 直接 exit 2（不静默采样）。
 - **双维敏感性阻断**：pro_rata 主法出数，fifo/lifo 上下界同跑；任一 stock>0 锚点的第一大终点条目在三策略间不一致，或 `order_ambiguous` >0.5% 锚点库存 → 汇总 false、脚本 exit 2。freeze 不读取 stable 自报作裁决，而从 `policy_details` 重算，并核验 `input_binding` 后以当前代码和当前原始边真实重放；语义摘要不一致即拒。
 - **freeze 可复现绑定**：source files 必须同时出现在已 verify 的 manifest artifacts 与 data_map；标签、实体文件、完整源边、total supply、manifest run/scope（cutoff/block/denominators）、算法脚本与参数逐项哈希绑定。任一变化都必须重跑 provenance 并追加 freeze revision；`check-unseal` 复核所有当前绑定文件哈希。
+
+缺口分类阈值 `gap_eps = max(EPS, total_supply_raw * 1e-13)`，账户运算仍使用 `EPS=1e-6`。
+量级依据：APU 实测最大假 gap 为供应量的 `1.1e-18`，单步理论噪声约 `7e-17`，分类阈值取 `1e-13`。
+`fp_residual` 表示“浮点噪声量级的账户短缺，不代表链上数据缺失”，仍属 `UNRESOLVED` 并计入未决总量；只有超过 gap_eps 的短缺记 `data_gap`。本版 `take()` 返回的短缺原样入桶，但两版 `take()` 的结果也可能因拆桶后的求和顺序不同而变化。
+按 `r3_fix_ruling.md` 及末尾勘误，唯一精确不变的数量是整数路径 `stock_raw`。令 `B = 4·n·2^-52·S + 2`，n 为该实体模拟消费边数，S 为 total_supply raw。该界的域假设：单笔转账金额不超过总供应量。裁决要求以下与 7.0.3 的差 Δ 满足 `|Δ| ≤ B`：①非 UNRESOLVED 构成键逐键 raw（含 mint）；②data_gap 与 fp_residual 合桶量（gap704+residual704 对 gap703）；③构成 Σraw；④逐笔短缺。原始 data_gap/fp_residual 标签逐键差只记录为标签迁移量，不判界，不承诺其相同。
+闭合 pct 差界为 `B/stock_raw×100`（stock>0）；零库存锚点不除以零，仍检查 raw。展示值在舍入边界上可能不同，不承诺展示值相同。Δ 可正可负，不承诺方向；事件计数（data_gap_events/fp_residual_events）、三策略 policy_details、翻转指纹均可能随舍入而变，不承诺不变。改标签在 float 之上会对全部构成产生 ulp 级扰动，7.0.3 与 7.0.4 都是浮点近似，无优劣。
+量级：`B/S = 4·n·2^-52 + 2/S`；APU/PYTHIA 实际边数下 B/S≤4.3e-9，远低于闭合门禁 0.5%。两案 224 锚点及 666 组策略已只读复核：非 UNRESOLVED 键、gap/residual 合桶量、Σraw 与 pct 差均为 0，原始标签迁移另列。300 组压力测试的合桶量/非 UNRESOLVED 键/逐笔短缺 max|Δ| 为 1536/32/1024 raw，均在界内；原始标签逐键差按勘误仅记录。r4 曾记录的 684 次原始标签“超界”保留为标签迁移历史，不计数量界失败；r4b 续工结果见 maintenance/repair-20260915-eps-residual/done.md。
+账户阈值不放大：否则小额余额被清空、小额入账被跳过、真实尘埃 peak 新增闭合拒收（三反例）。
+残留：极端累加序列的假缺口仍可能超过 gap_eps 而记为 data_gap；float 运算与 `int(float)` 截断为 raw "0" 的根因未修。
 
 ### 4a. flip-adjudications/v1（翻转裁决收据，批 D F-06）
 

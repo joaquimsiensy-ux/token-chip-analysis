@@ -1,0 +1,92 @@
+{
+  "scope_status": "PASS",
+  "head": "2000b6e78f790ee0ed348cc2ecb8eae796d5136e",
+  "branch": "main",
+  "initial_files_checked": 1122,
+  "changed_files": {
+    "CHANGELOG.md": {
+      "before_sha256": "e37769c99d4f568a9d9135f1ce55a723b30218beaf6c607ad8a79b2147299576",
+      "after_sha256": "9122dd86979028c7cb2cab138b4603c0d027c5fbd411483e84f99488034fb55d"
+    },
+    "maintenance/repair-20260915-eps-residual/apu_regression.md": {
+      "before_sha256": "1ee8eb8621e19623ae42887dedd610ce1260069cf2da3cbf233849ba3ab8da67",
+      "after_sha256": "38c1490f53dca709388175fc27fdda8683da125ba55921ad39d01a94ce685f2e"
+    },
+    "maintenance/repair-20260915-eps-residual/done.md": {
+      "before_sha256": "55b96dc48bb9c02c562fec35e2b7edf9be63281c3a039034ea0cc7c98a25cb3c",
+      "after_sha256": "05d8fb43fdcb716e4260209c0702572ce02bff21b8a00e58eea7cc1523671da4"
+    },
+    "maintenance/repair-20260915-eps-residual/pythia_regression.md": {
+      "before_sha256": "adbdc5cf432dace715598d86d4657bed2108dcefcca95faa22509df843a5c264",
+      "after_sha256": "e701bd12400eb750027eb7e65265809d42b629bd7eea7b09e3de055d6396a831"
+    },
+    "references/scan-schemas.md": {
+      "before_sha256": "9565758e423defe3dafbe3a5f870fa9fd977eae6bf9b736259ae2e946256818e",
+      "after_sha256": "b3a6e7e2a930244e521b5ab8326bf508d294c162c60c22a33f90b134dcab154b"
+    },
+    "scripts/tests/test_entity_source_trace.py": {
+      "before_sha256": "ef8fb678d0ffa3bf26cc956566c4244a04eccb76e8a1ee87bf85c2c9d6469a15",
+      "after_sha256": "e3789cb4d4c996cbae4827562eb86e9f3ec530c567df79c9bb11e6ea55b009fa"
+    }
+  },
+  "removed_files": [],
+  "unexpected_changes": [],
+  "added_files": [
+    "maintenance/repair-20260915-eps-residual/assertion_preservation_r4.json",
+    "maintenance/repair-20260915-eps-residual/changelog_lint_before_r4.log",
+    "maintenance/repair-20260915-eps-residual/changelog_lint_r4.log",
+    "maintenance/repair-20260915-eps-residual/check_results_r4.json",
+    "maintenance/repair-20260915-eps-residual/docs_lint_final_r4.log",
+    "maintenance/repair-20260915-eps-residual/docs_lint_r4.log",
+    "maintenance/repair-20260915-eps-residual/existing_evidence_r4.log",
+    "maintenance/repair-20260915-eps-residual/final_checks_r4.json",
+    "maintenance/repair-20260915-eps-residual/fixtures_lint_r4.log",
+    "maintenance/repair-20260915-eps-residual/git_diff_check_final_r4.log",
+    "maintenance/repair-20260915-eps-residual/git_diff_check_r4.log",
+    "maintenance/repair-20260915-eps-residual/git_status_r4.log",
+    "maintenance/repair-20260915-eps-residual/invariant_scan_r4.log",
+    "maintenance/repair-20260915-eps-residual/label_migration_reproduction_r4.log",
+    "maintenance/repair-20260915-eps-residual/ledger_recheck_r4.json",
+    "maintenance/repair-20260915-eps-residual/reproduce_label_migration_r4.py",
+    "maintenance/repair-20260915-eps-residual/run_checks_r4.log",
+    "maintenance/repair-20260915-eps-residual/run_checks_r4.py",
+    "maintenance/repair-20260915-eps-residual/scope_after_r4.json",
+    "maintenance/repair-20260915-eps-residual/scope_before_r4.json",
+    "maintenance/repair-20260915-eps-residual/scope_verification_r4.log",
+    "maintenance/repair-20260915-eps-residual/t4_counterexamples_probe_r4.log",
+    "maintenance/repair-20260915-eps-residual/t4_counterexamples_r4.json",
+    "maintenance/repair-20260915-eps-residual/t4_stress_probe_r4.log",
+    "maintenance/repair-20260915-eps-residual/t4_stress_summary_r4.json",
+    "maintenance/repair-20260915-eps-residual/test_change_r4.patch",
+    "maintenance/repair-20260915-eps-residual/test_entity_source_trace_before_r4.txt",
+    "maintenance/repair-20260915-eps-residual/test_entity_source_trace_r4.log",
+    "maintenance/repair-20260915-eps-residual/test_version_consistency_r4.log",
+    "maintenance/repair-20260915-eps-residual/verify_existing_evidence_r4.py",
+    "maintenance/repair-20260915-eps-residual/verify_scope_r4.py"
+  ],
+  "unexpected_additions": [],
+  "assertions_preserved": true,
+  "ledger_files_unchanged": {
+    ".staging_eps/apu/provenance_ledger.json": true,
+    ".staging_eps/apu/provenance_ledger_704.json": true,
+    ".staging_eps/pythia/t7_compare/ledger_703.json": true,
+    ".staging_eps/pythia/t7_compare/ledger_704.json": true
+  },
+  "production_sha256": "e85acee4e9a98a664d9b4881ca33177003aa9455261109a01e111e6faeda3cd1",
+  "check_receipts": {
+    "seven_results": true,
+    "dispatch_matches": true,
+    "log_hashes_match": true,
+    "tested_file_hashes_match": true
+  },
+  "seven_exit_codes": {
+    "test_entity_source_trace_r4.log": 1,
+    "test_version_consistency_r4.log": 0,
+    "changelog_lint_r4.log": 0,
+    "docs_lint_r4.log": 0,
+    "invariant_scan_r4.log": 0,
+    "fixtures_lint_r4.log": 0,
+    "git_diff_check_r4.log": 0
+  },
+  "stress_out_of_bound_count": 684
+}

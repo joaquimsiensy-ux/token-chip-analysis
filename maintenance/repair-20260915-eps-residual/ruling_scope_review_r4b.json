@@ -1,0 +1,92 @@
+{
+  "status": "PASS",
+  "checks": {
+    "all_r4_check_calls_preserved": true,
+    "all_remaining_r4_passes_retained": true,
+    "all_original_label_checks_recorded": true,
+    "stress_input_generator_unchanged": true,
+    "rounding_bound_function_unchanged": true,
+    "counterexample_values_unchanged": true,
+    "stress_comparison_counts_and_maxima_unchanged": true,
+    "labels_recorded_without_bounds": true,
+    "remaining_classes_all_bounded": true,
+    "remaining_bounds_all_pass": true,
+    "test_has_no_failures": true,
+    "seven_checks_pass": true
+  },
+  "r4_original_label_checks_now_recorded": 4632,
+  "r4_historical_label_comparison_count_above_B": 684,
+  "r4b_stress_label_records": {
+    "bound_checked": false,
+    "bounded_comparisons": 0,
+    "changed_count": 4270,
+    "comparisons": 4558,
+    "max_abs_delta": "2251799813685574",
+    "max_witnesses": [
+      {
+        "bound_checked": false,
+        "case": 270,
+        "category": "unresolved_key",
+        "delta": "-2251799813685574",
+        "key": [
+          "UNRESOLVED",
+          "data_gap",
+          null
+        ],
+        "n": 8,
+        "new_raw": "14214486323888066",
+        "old_raw": "16466286137573640",
+        "scope": "label_migration_record_only",
+        "where": "T4-stress 270 n=8 D/current/fifo/('UNRESOLVED', 'data_gap', None)"
+      },
+      {
+        "bound_checked": false,
+        "case": 270,
+        "category": "unresolved_key",
+        "delta": "-2251799813685574",
+        "key": [
+          "UNRESOLVED",
+          "data_gap",
+          null
+        ],
+        "n": 8,
+        "new_raw": "14214486323888066",
+        "old_raw": "16466286137573640",
+        "scope": "label_migration_record_only",
+        "where": "T4-stress 270 n=8 D/peak/fifo/('UNRESOLVED', 'data_gap', None)"
+      }
+    ],
+    "out_of_bound_count": null,
+    "unit": "raw"
+  },
+  "r4b_stress_out_of_bound_count": 0,
+  "ledger_scope_review": {
+    "source": "ledger_recheck_r4.json",
+    "source_sha256": "a4dc5cecb4b4ed17e9b267743cff8ce1f1e8a214f3e6b1926e5fd83da5ce6542",
+    "inputs_sha256_unchanged": true,
+    "cases": {
+      "APU": {
+        "anchors": 210,
+        "policies": 630,
+        "bounded_raw_comparisons": 10705,
+        "bounded_max_abs_delta_raw": 0,
+        "out_of_bound_count": 0,
+        "original_unresolved_records": 1009,
+        "label_migration_max_abs_delta_raw": 478750745388,
+        "label_migration_changed_count": 616,
+        "label_migration_bound_checked": false
+      },
+      "PYTHIA": {
+        "anchors": 14,
+        "policies": 36,
+        "bounded_raw_comparisons": 132,
+        "bounded_max_abs_delta_raw": 0,
+        "out_of_bound_count": 0,
+        "original_unresolved_records": 450,
+        "label_migration_max_abs_delta_raw": 0,
+        "label_migration_changed_count": 0,
+        "label_migration_bound_checked": false
+      }
+    }
+  }
+}

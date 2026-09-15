@@ -1,0 +1,27 @@
+[
+  {
+    "command": "/usr/local/bin/python3 /Users/uravvv/.claude/skills/token-chip-analysis/scripts/tests/changelog_lint.py",
+    "exit_code": 0,
+    "elapsed_seconds": 0.024242584127932787
+  },
+  {
+    "command": "/usr/local/bin/python3 /Users/uravvv/.claude/skills/token-chip-analysis/scripts/tests/docs_lint.py --all",
+    "exit_code": 0,
+    "elapsed_seconds": 0.4736056250985712
+  },
+  {
+    "command": "/usr/local/bin/python3 /Users/uravvv/.claude/skills/token-chip-analysis/scripts/tests/test_version_consistency.py",
+    "exit_code": 0,
+    "elapsed_seconds": 0.024665999924764037
+  },
+  {
+    "command": "/usr/local/bin/python3 /Users/uravvv/.claude/skills/token-chip-analysis/scripts/tests/invariant_scan.py",
+    "exit_code": 0,
+    "elapsed_seconds": 3.4197562921326607
+  },
+  {
+    "command": "/usr/local/bin/python3 /Users/uravvv/.claude/skills/token-chip-analysis/scripts/tests/fixtures_lint.py",
+    "exit_code": 0,
+    "elapsed_seconds": 0.022491500014439225
+  }
+]

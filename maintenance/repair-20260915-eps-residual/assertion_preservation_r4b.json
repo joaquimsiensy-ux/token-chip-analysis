@@ -1,0 +1,20 @@
+{
+  "status": "PASS",
+  "original_check_calls": 69,
+  "r4_check_calls": 109,
+  "r4b_check_calls": 109,
+  "authorized_replacements": [],
+  "specific_test_functions_unchanged": {
+    "test_eps_residual": true,
+    "test_eps_residual_mixed": true,
+    "test_eps_residual_mixed_b": true,
+    "test_eps_residual_mixed_c": true,
+    "test_eps_residual_mixed_d": true
+  },
+  "original_check_calls_missing": [],
+  "original_executed_checks": 105,
+  "original_executed_checks_missing": [],
+  "r4b_passes": 17525,
+  "r4b_failures": 0,
+  "failure_names": []
+}

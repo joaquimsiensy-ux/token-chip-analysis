@@ -1,0 +1,31 @@
+{
+  "head": "2000b6e78f790ee0ed348cc2ecb8eae796d5136e",
+  "commit_created": false,
+  "outside_whitelist": [],
+  "modified_tracked": [
+    "CHANGELOG.md",
+    "SKILL.md",
+    "VERSION",
+    "pyproject.toml",
+    "references/scan-schemas.md",
+    "scripts/report/entity_source_trace.py",
+    "scripts/tests/test_entity_source_trace.py"
+  ],
+  "production_sha256": "e85acee4e9a98a664d9b4881ca33177003aa9455261109a01e111e6faeda3cd1",
+  "test_sha256": "6a23965e085fd48457ffa402f38a0345ae06610e840ad6d42ddc05c93992c3e2",
+  "protected_files_unchanged": {
+    "scripts/report/handoff_manifest.py": true,
+    "scripts/tests/test_sqd_gap_repair.py": true,
+    "scripts/tests/test_handoff_manifest.py": true,
+    "scripts/tests/invariant_manifest.json": true,
+    "scripts/tests/fixtures/pythia_anchors.json": true,
+    "scripts/tests/run_all.py": true
+  },
+  "post_suite_production_and_test_sha256_unchanged": true,
+  "git_diff_check_exit_code": 0,
+  "staging_checks": [
+    33,
+    1,
+    2
+  ]
+}

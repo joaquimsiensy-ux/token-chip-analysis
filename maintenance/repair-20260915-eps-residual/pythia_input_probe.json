@@ -1,0 +1,104 @@
+{
+  "attach": "READ_ONLY",
+  "edge_count": 4857654,
+  "tables": [
+    [
+      "src",
+      "main",
+      "addr_summary",
+      [
+        "owner",
+        "slot_end_peak",
+        "total_in",
+        "total_out",
+        "first_slot",
+        "last_slot",
+        "final_bal"
+      ],
+      [
+        "VARCHAR",
+        "HUGEINT",
+        "HUGEINT",
+        "HUGEINT",
+        "BIGINT",
+        "BIGINT",
+        "HUGEINT"
+      ],
+      false
+    ],
+    [
+      "src",
+      "main",
+      "edges",
+      [
+        "ts",
+        "slot",
+        "f",
+        "t",
+        "amt"
+      ],
+      [
+        "BIGINT",
+        "BIGINT",
+        "VARCHAR",
+        "VARCHAR",
+        "BIGINT"
+      ],
+      false
+    ],
+    [
+      "src",
+      "main",
+      "flows",
+      [
+        "owner",
+        "slot",
+        "inflow",
+        "outflow",
+        "net"
+      ],
+      [
+        "VARCHAR",
+        "BIGINT",
+        "HUGEINT",
+        "HUGEINT",
+        "HUGEINT"
+      ],
+      false
+    ],
+    [
+      "src",
+      "main",
+      "runbal",
+      [
+        "owner",
+        "slot",
+        "inflow",
+        "outflow",
+        "bal_end"
+      ],
+      [
+        "VARCHAR",
+        "BIGINT",
+        "HUGEINT",
+        "HUGEINT",
+        "HUGEINT"
+      ],
+      false
+    ]
+  ],
+  "prefix_matches": {
+    "Q1Ac6Y": [
+      "Q1Ac6YAuugzcs5VocpykbUizr5gFvJ6s2mXTZq83DCr"
+    ],
+    "3yMkB8oc": [
+      "3yMkB8ocXev2X3zUw4AK2C5XcfrPXnxXbRYEMhpb5zuR"
+    ],
+    "EwUU8oi": [
+      "EwUU8oiKTomjekU5eszctx3kneKJnKm5BJpn5sTT4CUf"
+    ]
+  },
+  "staged_files": [
+    "s2_work.duckdb"
+  ]
+}

@@ -1,0 +1,3 @@
+APU {"entities": 105, "anchors": 210, "zero_sum_delta_anchors": 210, "policy_comparisons": 630, "failures": 0, "policy_details_changed_anchors": 118, "changed_anchors_all_had_old_gap": true}
+PYTHIA {"entities": 7, "anchors": 14, "zero_sum_delta_anchors": 14, "policy_comparisons": 36, "failures": 0, "policy_details_changed_anchors": 9, "changed_anchors_all_had_old_gap": true}
+F3 PASS: 147 PASS, 0 FAIL; SUITE order matches; existing log only

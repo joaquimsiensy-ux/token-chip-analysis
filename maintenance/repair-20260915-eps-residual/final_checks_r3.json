@@ -1,0 +1,27 @@
+{
+  "status": "PASS",
+  "checked_at_utc": "2026-09-15T16:06:06.657915+00:00",
+  "results": [
+    {
+      "command": "python3 -B scripts/tests/docs_lint.py --all",
+      "exit_code": 0,
+      "log": "docs_lint_final_r3.log",
+      "log_sha256": "23ab83b356e62f858f2a062b696b0f49c9a28d99570e1fb74dffb1cc876e20ec"
+    },
+    {
+      "command": "git diff --check",
+      "exit_code": 0,
+      "log": "git_diff_check_final_r3.log",
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  ],
+  "files": {
+    "CHANGELOG.md": "e37769c99d4f568a9d9135f1ce55a723b30218beaf6c607ad8a79b2147299576",
+    "references/scan-schemas.md": "9565758e423defe3dafbe3a5f870fa9fd977eae6bf9b736259ae2e946256818e",
+    "scripts/tests/test_entity_source_trace.py": "ef8fb678d0ffa3bf26cc956566c4244a04eccb76e8a1ee87bf85c2c9d6469a15",
+    "scripts/report/entity_source_trace.py": "e85acee4e9a98a664d9b4881ca33177003aa9455261109a01e111e6faeda3cd1",
+    "maintenance/repair-20260915-eps-residual/done.md": "55b96dc48bb9c02c562fec35e2b7edf9be63281c3a039034ea0cc7c98a25cb3c",
+    "maintenance/repair-20260915-eps-residual/apu_regression.md": "1ee8eb8621e19623ae42887dedd610ce1260069cf2da3cbf233849ba3ab8da67",
+    "maintenance/repair-20260915-eps-residual/pythia_regression.md": "adbdc5cf432dace715598d86d4657bed2108dcefcca95faa22509df843a5c264"
+  }
+}

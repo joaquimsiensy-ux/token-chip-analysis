@@ -1,0 +1,44 @@
+[
+  {
+    "cwd": ".staging_eps",
+    "command": [
+      "shasum",
+      "-a",
+      "256",
+      "-c",
+      "STAGING_SHA256.txt"
+    ],
+    "exit_code": 0,
+    "ok_count": 33,
+    "stdout": "apu/data/stage2/provenance_labels_v3.json: OK\napu/data/stage2/s2_entity_members.json: OK\napu/data/v2/capture_identity.json: OK\napu/data/v2/run_19368487/blocks.parquet: OK\napu/data/v2/run_19368487/done.json: OK\napu/data/v2/run_19368487/logs.parquet: OK\napu/data/v2/run_19618487/blocks.parquet: OK\napu/data/v2/run_19618487/done.json: OK\napu/data/v2/run_19618487/logs.parquet: OK\napu/data/v2/run_20368487/blocks.parquet: OK\napu/data/v2/run_20368487/done.json: OK\napu/data/v2/run_20368487/logs.parquet: OK\napu/data/v2/run_21368487/blocks.parquet: OK\napu/data/v2/run_21368487/done.json: OK\napu/data/v2/run_21368487/logs.parquet: OK\napu/data/v2/run_22368487/blocks.parquet: OK\napu/data/v2/run_22368487/done.json: OK\napu/data/v2/run_22368487/logs.parquet: OK\napu/data/v2/run_23368487/blocks.parquet: OK\napu/data/v2/run_23368487/done.json: OK\napu/data/v2/run_23368487/logs.parquet: OK\napu/data/v2/run_24368487/blocks.parquet: OK\napu/data/v2/run_24368487/done.json: OK\napu/data/v2/run_24368487/logs.parquet: OK\napu/data/v2/run_25368487/blocks.parquet: OK\napu/data/v2/run_25368487/done.json: OK\napu/data/v2/run_25368487/logs.parquet: OK\napu/data_map.json: OK\napu/entity_freeze.json: OK\napu/flip_adjudications.json: OK\napu/handoff_manifest.json: OK\napu/provenance_ledger.json: OK\npythia/s2_work.duckdb: OK\n",
+    "stderr": ""
+  },
+  {
+    "cwd": ".staging_eps",
+    "command": [
+      "shasum",
+      "-a",
+      "256",
+      "-c",
+      "STAGING_SHA256_apu_extra.txt"
+    ],
+    "exit_code": 0,
+    "ok_count": 1,
+    "stdout": "apu/data/stage2/flip_evidence.md: OK\n",
+    "stderr": ""
+  },
+  {
+    "cwd": ".staging_eps/pythia",
+    "command": [
+      "shasum",
+      "-a",
+      "256",
+      "-c",
+      "STAGING_SHA256_pythia_extra.txt"
+    ],
+    "exit_code": 0,
+    "ok_count": 2,
+    "stdout": "s2_entity_members.json: OK\nentity_file_flat.json: OK\n",
+    "stderr": ""
+  }
+]

@@ -1,0 +1,30 @@
+[source_trace] 边表就绪 4,857,654 条——按 handoff cutoff/block 物化索引表 e(t)…
+[source_trace] 物化全局出入度（设施启发式）…
+[source_trace] 溯源 e_dev（2 址，三策略模拟）…
+[source_trace]   子图：祖先 26,864 / 终点 73（深度截断 62·预算截断 0）/ 边 3,978,561
+[source_trace]   峰值锚点 2024-12-27 库存 6.451%供应 | 终点 2 类 | 未决 0.3% | 进货单 2 上家 | 敏感性 稳定
+[source_trace] 溯源 e_h9（40 址，三策略模拟）…
+[source_trace]   子图：祖先 26,948 / 终点 11（深度截断 0·预算截断 0）/ 边 4,010,018
+[source_trace]   峰值锚点 2026-05-11 库存 18.410%供应 | 终点 13 类 | 未决 99.9% | 进货单 213 上家 | 敏感性 ⚠ 翻转
+[source_trace] 溯源 e_cex_binance_alpha（1 址，三策略模拟）…
+[source_trace]   子图：祖先 26,975 / 终点 17（深度截断 6·预算截断 0）/ 边 4,009,967
+[source_trace]   峰值锚点 2026-03-04 库存 18.841%供应 | 终点 14 类 | 未决 100.0% | 进货单 29 上家 | 敏感性 ⚠ 翻转
+[source_trace] 溯源 e_lp（3 址，三策略模拟）…
+[source_trace]   子图：祖先 92,663 / 终点 9（深度截断 0·预算截断 0）/ 边 4,816,134
+[source_trace]   峰值锚点 2025-02-15 库存 13.557%供应 | 终点 9 类 | 未决 98.7% | 进货单 49670 上家 | 敏感性 ⚠ 翻转
+[source_trace] 溯源 hx_rotator_0109（7 址，三策略模拟）…
+[source_trace]   子图：祖先 26,876 / 终点 77（深度截断 66·预算截断 0）/ 边 3,985,570
+[source_trace]   峰值锚点 2025-01-09 库存 3.647%供应 | 终点 11 类 | 未决 100.0% | 进货单 9 上家 | 敏感性 稳定
+[source_trace] 溯源 hx_supply_chain（48 址，三策略模拟）…
+[source_trace]   子图：祖先 26,911 / 终点 27（深度截断 16·预算截断 0）/ 边 3,979,808
+[source_trace]   峰值锚点 2025-10-24 库存 12.369%供应 | 终点 8 类 | 未决 100.0% | 进货单 31 上家 | 敏感性 稳定
+[source_trace] 溯源 hx_hub_2q5w9t（1 址，三策略模拟）…
+[source_trace]   子图：祖先 26,979 / 终点 13（深度截断 2·预算截断 0）/ 边 4,009,997
+[source_trace]   峰值锚点 2025-11-20 库存 9.090%供应 | 终点 13 类 | 未决 100.0% | 进货单 469 上家 | 敏感性 稳定
+[source_trace] 7 实体溯源完成 → /Users/uravvv/.claude/skills/token-chip-analysis/.staging_eps/pythia/t7_compare/ledger_704.json
+[source_trace]   ✗ e_cex_binance_alpha current 三策略主导终点翻转未获裁决收据覆盖——真实多来源结构须 flip-adjudications/v1 书面裁决后重跑
+[source_trace]   ✗ e_cex_binance_alpha peak 三策略主导终点翻转未获裁决收据覆盖——真实多来源结构须 flip-adjudications/v1 书面裁决后重跑
+[source_trace]   ✗ e_h9 current 三策略主导终点翻转未获裁决收据覆盖——真实多来源结构须 flip-adjudications/v1 书面裁决后重跑
+[source_trace] 敏感性不稳：消费策略主导翻转未获合法裁决收据覆盖，或事件顺序未决量达到实质线——结论不得发布（exit 2）。真实多来源结构须造 flip-adjudications/v1 裁决收据（含逐锚点 flip_fingerprint 与三策略披露）后 --acknowledge-flip <收据> 重跑；顺序未决须补齐 block/slot + tx + log/instruction 序号
+
+--- STDERR (verbatim) ---

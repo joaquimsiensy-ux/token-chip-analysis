@@ -1,0 +1,284 @@
+--- before_r4/test_entity_source_trace.py
++++ after_r4/test_entity_source_trace.py
+@@ -196,7 +196,7 @@
+ 
+ 
+ def eps_rounding_bound(delta, n, supply):
+-    """r2 裁决：整数交叉相乘检查 |Δ| <= 4*n*2**-52*S + 2。"""
++    """r3 裁决：整数/有理数交叉相乘检查 |Δ| <= 4*n*2**-52*S + 2。"""
+     return abs(delta) * 2 ** 52 <= 4 * n * supply + 2 * 2 ** 52
+ 
+ 
+@@ -255,16 +255,44 @@
+             "input_binding": {"total_supply_raw": str(total)}, "test_shortfalls": shortfalls}
+ 
+ 
+-def eps_compare_quantities(old, new, label, edges, expect_equal=True):
+-    """T4：四项精确不变 + 双向舍入界；既有两组样例仍额外断言差为零。"""
++def eps_compare_quantities(old, new, label, edges, expect_equal=True, measurements=None):
++    """T4：唯一精确数量为 stock_raw；全部构成/短缺/pct 判界，旧两例仍断言差零。"""
++    from fractions import Fraction
+     n, supply = len(edges), int(new["input_binding"]["total_supply_raw"])
++    measurements = [] if measurements is None else measurements
++
++    def bounded(category, delta, where, stock=None):
++        # pct 用未舍入的有理数；展示 pct 也判同一界，不要求两版显示相同。
++        raw_delta = delta if stock is None else delta * stock / 100
++        ok = eps_rounding_bound(raw_delta, n, supply)
++        measurements.append({"category": category, "where": where,
++                             "delta": str(delta), "within_bound": ok})
++        return ok
++
++    def compare_rows(x, y, where, stock):
++        # 缺席键按 0 对齐；逐条检查也覆盖 gap/residual 原始标签，不能只看合计。
++        for key in sorted(x.keys() | y.keys(), key=str):
++            category = "unresolved_key" if key[0] == "UNRESOLVED" else "non_unresolved_key"
++            check(f"{where} 构成 {key} raw 在界内",
++                  bounded(category, y.get(key, 0) - x.get(key, 0), f"{where}/{key}"))
++        delta = sum(y.values()) - sum(x.values())
++        check(f"{where} Σraw 在界内", bounded("sum_raw", delta, where))
++        if stock > 0:
++            check(f"{where} raw 复算闭合 pct 差 <= B/stock*100",
++                  bounded("closure_pct", Fraction(delta * 100, stock), where, stock))
++
+     check(f"{label} 两版本供应量相同", old["input_binding"]["total_supply_raw"] ==
+           new["input_binding"]["total_supply_raw"])
+     observed = ((old, new) if "test_shortfalls" in old and "test_shortfalls" in new else
+                 [eps_memory_trace(model, edges, supply) for model in eps_models()])
+     for policy in ("pro_rata", "fifo", "lifo"):
+-        check(f"{label}/{policy} 逐笔短缺入桶数量精确相同",
+-              observed[0]["test_shortfalls"][policy] == observed[1]["test_shortfalls"][policy])
++        s0, s1 = [ledger["test_shortfalls"][policy] for ledger in observed]
++        check(f"{label}/{policy} 逐笔旁录消费边对齐",
++              [amt for amt, _ in s0] == [amt for amt, _ in s1])
++        for i, ((_, before), (_, after)) in enumerate(zip(s0, s1)):
++            delta = Fraction(float.fromhex(after)) - Fraction(float.fromhex(before))
++            check(f"{label}/{policy} take[{i}] 短缺在界内",
++                  bounded("shortfall", delta, f"{label}/{policy}/take[{i}]"))
+     policy_deltas = []
+     old_entities = {e["entity_id"]: e for e in old["entities"]}
+     new_entities = {e["entity_id"]: e for e in new["entities"]}
+@@ -277,17 +305,23 @@
+             x, y = amounts(a["composition"]), amounts(b["composition"])
+             gap, res = ("UNRESOLVED", "data_gap", None), ("UNRESOLVED", "fp_residual", None)
+             check(f"{label} {eid}/{anchor} stock_raw 相同", a["stock_raw"] == b["stock_raw"])
+-            check(f"{label} {eid}/{anchor} 闭合 pct 展示值精确相同",
+-                  before["closure_check"][f"{anchor}_sum_pct"] ==
+-                  new_entities[eid]["closure_check"][f"{anchor}_sum_pct"])
++            stock = int(a["stock_raw"])
++            compare_rows(x, y, f"{label} {eid}/{anchor}", stock)
++            if stock > 0:
++                pct0 = Fraction(str(before["closure_check"][f"{anchor}_sum_pct"]))
++                pct1 = Fraction(str(new_entities[eid]["closure_check"][f"{anchor}_sum_pct"]))
++                check(f"{label} {eid}/{anchor} 闭合 pct 展示差 <= B/stock*100",
++                      bounded("display_pct", pct1 - pct0, f"{label} {eid}/{anchor}", stock))
+             if expect_equal:
+                 check(f"{label} {eid}/{anchor} Σraw 相同", sum(x.values()) == sum(y.values()))
+-            check(f"{label} {eid}/{anchor} 非 gap 来源逐条相同",
+-                  {k: v for k, v in x.items() if k not in (gap, res)} ==
+-                  {k: v for k, v in y.items() if k not in (gap, res)})
++                # 仅两组既有样例的具体断言；新增混合/压力样例不承诺逐键精确。
++                check(f"{label} {eid}/{anchor} 非 gap 来源逐条相同",
++                      {k: v for k, v in x.items() if k not in (gap, res)} ==
++                      {k: v for k, v in y.items() if k not in (gap, res)})
+             delta = y.get(gap, 0) + y.get(res, 0) - x.get(gap, 0)
+             check(f"{label} {eid}/{anchor} |Δ| <= 4*n*2**-52*S + 2",
+                   eps_rounding_bound(delta, n, supply))
++            bounded("unresolved_total", delta, f"{label} {eid}/{anchor}")
+             if expect_equal:
+                 check(f"{label} {eid}/{anchor} gap 数量拆分守恒",
+                       x.get(gap, 0) == y.get(gap, 0) + y.get(res, 0))
+@@ -298,16 +332,11 @@
+             for policy in sorted(pd0.keys() & pd1.keys()):
+                 u = {tuple(c["terminal"]): int(c["raw"]) for c in pd0[policy]}
+                 v = {tuple(c["terminal"]): int(c["raw"]) for c in pd1[policy]}
+-                check(f"{label} {eid}/{anchor}/{policy} 非 gap 来源逐条相同",
+-                      {k: raw for k, raw in u.items() if k not in (gap, res)} ==
+-                      {k: raw for k, raw in v.items() if k not in (gap, res)})
++                compare_rows(u, v, f"{label} {eid}/{anchor}/{policy}", stock)
+                 delta = v.get(gap, 0) + v.get(res, 0) - u.get(gap, 0)
+                 check(f"{label} {eid}/{anchor}/{policy} |Δ| <= 4*n*2**-52*S + 2",
+                       eps_rounding_bound(delta, n, supply))
+-                stock = int(a["stock_raw"])
+-                check(f"{label} {eid}/{anchor}/{policy} 闭合 pct 展示值精确相同",
+-                      round(sum(raw * 100.0 / stock for raw in u.values()), 3) ==
+-                      round(sum(raw * 100.0 / stock for raw in v.values()), 3))
++                bounded("unresolved_total", delta, f"{label} {eid}/{anchor}/{policy}")
+                 policy_deltas.append({"entity": eid, "anchor": anchor, "policy": policy,
+                                       "delta": delta, "within_bound": eps_rounding_bound(delta, n, supply)})
+                 if expect_equal:
+@@ -475,20 +504,70 @@
+         print("T4-mixed-b observed", json.dumps(row, sort_keys=True))
+ 
+ 
++def eps_mixed_counterexample(label, outgoing, mint_pair, shortfall_pair, sum_pair, deltas_expected):
++    """r3 反例 A/B：四笔同日精确边，调用两版真实 trace_entity 并披露实跑值。"""
++    h, total = 2 ** 60, 10 * 2 ** 90
++    edges = [(day(1), "X", "A", h), (day(1), Z, "A", h),
++             (day(1), "X", "A", 257), (day(1), "A", "D", outgoing)]
++    old, new = [eps_memory_trace(model, edges, total) for model in eps_models()]
++    measurements = []
++    rows = eps_compare_quantities(old, new, label, edges, expect_equal=False,
++                                  measurements=measurements)
++    shortfalls = [float.fromhex(ledger["test_shortfalls"]["pro_rata"][-1][1]) for ledger in (old, new)]
++    check(f"{label} 最后一笔 pro_rata 短缺实跑值", shortfalls == list(shortfall_pair))
++    anchors = {}
++    for anchor in ("current", "peak"):
++        entities = [ledger["entities"][0] for ledger in (old, new)]
++        values = [e["anchors"][anchor] for e in entities]
++        mint = [sum(int(c["raw"]) for c in a["composition"] if c["subkind"] == "mint") for a in values]
++        sums = [sum(int(c["raw"]) for c in a["composition"]) for a in values]
++        check(f"{label}/{anchor} 两版本 mint raw 实跑值", mint == list(mint_pair))
++        check(f"{label}/{anchor} 两版本 Σraw 实跑值", sums == list(sum_pair))
++        check(f"{label}/{anchor} stock_raw 等于整数边表流入",
++              values[0]["stock_raw"] == values[1]["stock_raw"] == str(outgoing))
++        anchors[anchor] = {"mint_raw_703_704": mint, "sum_raw_703_704": sums,
++                           "stock_raw_703_704": [a["stock_raw"] for a in values],
++                           "display_pct_703_704": [e["closure_check"][f"{anchor}_sum_pct"] for e in entities]}
++    for row in rows:
++        check(f"{label}/{row['anchor']}/{row['policy']} UNRESOLVED 合计实跑差",
++              row["delta"] == deltas_expected[row["policy"]])
++    print("T4_COUNTEREXAMPLE " + json.dumps({"label": label, "edges": edges,
++          "total_supply_raw": str(total), "anchors": anchors, "policy_deltas": rows,
++          "shortfalls_703_704": [ledger["test_shortfalls"] for ledger in (old, new)],
++          "last_pro_rata_shortfall_703_704": shortfalls,
++          "out_of_bound_count": sum(not row["within_bound"] for row in measurements)}, sort_keys=True))
++
++
++def test_eps_residual_mixed_c():
++    """T4-mixed-c（反例 A）：中间账户混合 mint，mint raw 随拆桶减少 128。"""
++    h = 2 ** 60
++    eps_mixed_counterexample("T4-mixed-c", h, (h // 2, h // 2 - 128), (0, 0),
++                             (h + 128, h - 128), {"pro_rata": -128, "fifo": 0, "lifo": 0})
++
++
++def test_eps_residual_mixed_d():
++    """T4-mixed-d（反例 B）：超余额转出，pro_rata 逐笔短缺 512 → 0。"""
++    h = 2 ** 60
++    eps_mixed_counterexample("T4-mixed-d", 2 * h + 512, (h, h), (512, 0),
++                             (2 * h + 768, 2 * h + 257), {"pro_rata": -511, "fifo": 0, "lifo": 1})
++
++
+ def test_eps_residual_stress():
+-    """T4-stress：固定种子 200 组、每组 3–8 边，完整真实模拟三策略。"""
++    """T4-stress：固定种子 300 组；中间账户混合 mint/外部转入，允许超余额转出。"""
++    from fractions import Fraction
+     import random
+-    seed, cases, total = 20260915, 200, 10 * 2 ** 90
++    seed, cases, total = 20260915, 300, 10 * 2 ** 90
+     rng = random.Random(seed)
+     models = eps_models()
+     deltas, lengths, large_values, small_values = [], [], [], []
+-    nongap_cases = 0
++    measurements = []
++    nongap_cases = intermediate_mint_cases = external_middle_cases = overdraft_cases = 0
+     failures_before = len(FAILS)
+     for case in range(cases):
+         n = rng.randint(3, 8)
+-        # 两种短缺必有；可增加短缺笔数或分次转出，并保留一部分上游库存。
+-        # 部分组另有直达 D 的 mint，使非 gap 来源比较也覆盖非空构成。
+-        mint = rng.randint(1, 4096) if n >= 4 and rng.randrange(2) else 0
++        # 两种外部短缺必有；mint 可先进入 A 参与比例扣减，也保留直达 D 的覆盖。
++        mint = (2 ** rng.randint(50, 62) if rng.randrange(2) else rng.randint(1, 4096)) \
++            if n >= 4 and rng.randrange(2) else 0
+         incoming = rng.randint(2, n - 1 - bool(mint))
+         amounts = [2 ** rng.randint(50, 62), rng.randint(1, 4096)]
+         amounts += [2 ** rng.randint(50, 62) if rng.randrange(2) else rng.randint(1, 4096)
+@@ -496,15 +575,25 @@
+         rng.shuffle(amounts)
+         large_values += [v for v in amounts if v >= 2 ** 50]
+         small_values += [v for v in amounts if v <= 4096]
+-        edges = [(day(1), "X", "A", amount) for amount in amounts]
++        edges = [(day(1), rng.choice(("X", "Y")), "A", amount) for amount in amounts]
++        external_middle_cases += 1
+         remaining = sum(amounts)
++        if mint:
++            target = "A" if rng.randrange(4) else "D"
++            edges.insert(rng.randrange(len(edges) + 1), (day(1), Z, target, mint))
++            remaining += mint if target == "A" else 0
++            nongap_cases += 1
++            intermediate_mint_cases += target == "A"
++        overdraft = False
+         for _ in range(n - incoming - bool(mint)):
+-            amount = remaining // rng.randint(2, 5)
++            if rng.randrange(3) == 0 or remaining <= 0:
++                amount = max(remaining, 0) + rng.choice((rng.randint(1, 4096), 2 ** rng.randint(50, 62)))
++            else:
++                amount = max(1, remaining // rng.randint(2, 5))
++            overdraft |= amount > remaining
+             edges.append((day(2), "A", "D", amount))
+             remaining -= amount
+-        if mint:
+-            edges.append((day(2), Z, "D", mint))
+-            nongap_cases += 1
++        overdraft_cases += overdraft
+         lengths.append(len(edges))
+         old, new = [eps_memory_trace(model, edges, total) for model in models]
+         label = f"T4-stress {case:03d} n={len(edges)}"
+@@ -517,7 +606,12 @@
+             check(f"{label}/{anchor} 两版本库存等于整数边表余额",
+                   old["entities"][0]["anchors"][anchor]["stock_raw"] ==
+                   new["entities"][0]["anchors"][anchor]["stock_raw"] == str(stock))
+-        rows = eps_compare_quantities(old, new, label, edges, expect_equal=False)
++        case_measurements = []
++        rows = eps_compare_quantities(old, new, label, edges, expect_equal=False,
++                                      measurements=case_measurements)
++        for row in case_measurements:
++            row.update(case=case, n=n)
++        measurements.extend(case_measurements)
+         for row in rows:
+             row.update(case=case, n=n)
+         deltas.extend(rows)
+@@ -525,22 +619,41 @@
+             print("T4-stress failing input", json.dumps({"case": case, "edges": edges}))
+             failures_before = len(FAILS)
+     maximum = max(abs(row["delta"]) for row in deltas)
++    by_class = {}
++    for category in sorted({row["category"] for row in measurements}):
++        rows = [row for row in measurements if row["category"] == category]
++        max_delta = max(abs(Fraction(row["delta"])) for row in rows)
++        by_class[category] = {"comparisons": len(rows), "max_abs_delta": str(max_delta),
++                              "unit": "pct" if category.endswith("pct") else "raw",
++                              "out_of_bound_count": sum(not row["within_bound"] for row in rows),
++                              "max_witnesses": [row for row in rows if abs(Fraction(row["delta"])) == max_delta][:6]}
+     summary = {"seed": seed, "cases": cases, "policies": ["pro_rata", "fifo", "lifo"],
+                "policy_anchor_comparisons": len(deltas), "total_supply_raw": str(total),
+                "edge_count_min": min(lengths), "edge_count_max": max(lengths),
+                "large_min": min(large_values), "large_max": max(large_values),
+                "small_min": min(small_values), "small_max": max(small_values),
+                "nongap_nonempty_cases": nongap_cases, "max_abs_delta_raw": maximum,
++               "intermediate_mint_cases": intermediate_mint_cases,
++               "external_middle_cases": external_middle_cases, "overdraft_cases": overdraft_cases,
++               "by_class": by_class,
+                "max_abs_delta_occurrences": sum(abs(row["delta"]) == maximum for row in deltas),
+-               "out_of_bound_count": sum(not row["within_bound"] for row in deltas),
++               "out_of_bound_count": sum(not row["within_bound"] for row in measurements),
+                "negative_delta_count": sum(row["delta"] < 0 for row in deltas),
+                "positive_delta_count": sum(row["delta"] > 0 for row in deltas),
+                "max_witnesses": [row for row in deltas if abs(row["delta"]) == maximum]}
+     print(f"T4-stress max|Δ|={maximum} raw; occurrences={summary['max_abs_delta_occurrences']}; "
+           f"out_of_bound={summary['out_of_bound_count']}")
++    for category, stats in by_class.items():
++        print(f"T4-stress {category} max|Δ|={stats['max_abs_delta']} {stats['unit']}; "
++              f"out_of_bound={stats['out_of_bound_count']}")
+     print("T4_STRESS_SUMMARY " + json.dumps(summary, sort_keys=True))
+-    check("T4-stress 固定种子 200 组且三策略两锚点齐全", len(deltas) == cases * 3 * 2)
++    check("T4-stress 固定种子 300 组且三策略两锚点齐全", len(deltas) == cases * 3 * 2)
+     check("T4-stress 每组 3–8 边且覆盖非空非 gap 构成", min(lengths) == 3 and max(lengths) == 8 and nongap_cases > 0)
++    check("T4-stress 中间账户覆盖 mint/外部转入与超余额转出",
++          cases >= 300 and intermediate_mint_cases > 0 and external_middle_cases > 0 and overdraft_cases > 0)
++    check("T4-stress 实际观察到非 UNRESOLVED raw 和逐笔短缺变化",
++          Fraction(by_class["non_unresolved_key"]["max_abs_delta"]) > 0
++          and Fraction(by_class["shortfall"]["max_abs_delta"]) > 0)
+     check("T4-stress 舍入界超界次数为零", summary["out_of_bound_count"] == 0)
+ 
+ 
+@@ -594,6 +707,8 @@
+     test_eps_residual()
+     test_eps_residual_mixed()
+     test_eps_residual_mixed_b()
++    test_eps_residual_mixed_c()
++    test_eps_residual_mixed_d()
+     test_eps_residual_stress()
+     test_eps_residual_freeze()
+     test_dust_current_precision_loss()

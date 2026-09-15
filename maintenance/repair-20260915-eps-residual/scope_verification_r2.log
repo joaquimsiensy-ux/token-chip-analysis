@@ -1,0 +1,4 @@
+{"status": "PASS", "head": "2000b6e78f790ee0ed348cc2ecb8eae796d5136e", "branch": "main", "initial_files_checked": 1062, "removed_files": [], "unexpected_changes": [], "unexpected_additions": []}
+changed files: CHANGELOG.md, maintenance/repair-20260915-eps-residual/apu_regression.md, maintenance/repair-20260915-eps-residual/done.md, maintenance/repair-20260915-eps-residual/pythia_regression.md, maintenance/repair-20260915-eps-residual/run_all_fable_result.json, references/scan-schemas.md, scripts/tests/test_entity_source_trace.py
+existing assertions: 105 retained; r2 checks: 200; missing: 0
+ledger hashes unchanged: True

@@ -1,0 +1,7 @@
+{"command": "python3 -B scripts/tests/test_entity_source_trace.py", "exit_code": 0, "elapsed_seconds": 25.704, "log": "test_entity_source_trace_r2.log"}
+{"command": "python3 -B scripts/tests/test_version_consistency.py", "exit_code": 0, "elapsed_seconds": 0.025, "log": "test_version_consistency_r2.log"}
+{"command": "python3 -B scripts/tests/changelog_lint.py", "exit_code": 0, "elapsed_seconds": 0.022, "log": "changelog_lint_r2.log"}
+{"command": "python3 -B scripts/tests/docs_lint.py --all", "exit_code": 0, "elapsed_seconds": 0.499, "log": "docs_lint_r2.log"}
+{"command": "python3 -B scripts/tests/invariant_scan.py", "exit_code": 0, "elapsed_seconds": 3.513, "log": "invariant_scan_r2.log"}
+{"command": "python3 -B scripts/tests/fixtures_lint.py", "exit_code": 0, "elapsed_seconds": 0.022, "log": "fixtures_lint_r2.log"}
+{"command": "git diff --check", "exit_code": 0, "elapsed_seconds": 0.019, "log": "git_diff_check_r2.log"}

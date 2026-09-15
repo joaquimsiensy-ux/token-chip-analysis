@@ -10,6 +10,7 @@
 
 ## 版本索引（活跃窗口，新在上；每版一行，详情见下方对应条目）
 
+- **7.0.4**（2026-09-15）溯源噪声量级短缺改判 UNRESOLVED/fp_residual，短缺入桶不丢弃（逐笔短缺值本身有舍入界，见详细段）、账户 EPS 不变；补 7.0.3 版本登记与详细段；新增分类、数量有界差分与 freeze 回归。
 - **7.0.3**（2026-09-15）T-01 v2（APU 案暴露，codex 只读复核后 codex 施工）：`entity_source_trace` 对尘埃 current 锚点（<0.01% 供应）的闭合异常降级为"来源不可用"（`closure_check.current_negligible_skipped`＋`anchors.current.composition_usable=false`，构成保留作诊断、不归一化）；freeze 独立重算同一条件并同步豁免空构成与 Σraw 拒收，绑定/重放门禁不变；peak 锚点门禁不变；回归补 2^90 量级精度损失、阈值三档、尘埃 peak 仍拒、造假拒收。
 - **7.0.2**（2026-09-06）生产者四协议补登记与 git 可复现守卫；A4 封口硬拒专用字段重复路径；图一按 producer series_format 派生豁免、绘图与两消费方同源；SUITE 146→147，A→C→B 先红后绿。
 - **7.0.1**（2026-09-01）批 18 第四轮盲审 P2 消化：销户审计 `signature_discovery` 空签名早退如实透传 `complete`，区分“完整查询且成功签名结果为空”与截断/失败；SUITE 146 不变
@@ -84,6 +85,25 @@
 - **6.20.1** 2026-08-05 修 5 处阻断级文档漂移（A4 前禁写报告冲突/easy 残留/惯犯回灌 docstring/批量预采集残留/旧 Par 路线历史降级）＋docs_lint 增中文禁词与 Python module docstring 扫描
 
 更早版本（6.20.0 及以前）详见 `archive/CHANGELOG-archive.md`。
+
+## [7.0.4] - 2026-09-15 — 溯源假 data_gap 改判浮点残差
+
+- **出处与根因**：APU 案触发的工具故障：float64 大额 raw 运算产生的微量账户短缺被绝对 EPS 判成 data_gap。
+- **设计与实现**：仅缺口分类使用 max(EPS, total_supply_raw×1e-13)，噪声量级短缺改记 UNRESOLVED/fp_residual 并计数。按 r3_fix_ruling.md 及末尾勘误，唯一精确不变的数量是整数路径 `stock_raw`。令 B = `4·n·2^-52·S + 2`，n 为该实体模拟消费边数，S 为 total_supply raw。该界的域假设：单笔转账金额不超过总供应量。裁决要求以下各项与 7.0.3 之差满足 `|Δ| ≤ B`：①非 UNRESOLVED 构成键逐键 raw；②data_gap 与 fp_residual 合桶量（gap704+residual704 对 gap703）；③构成 Σraw；④逐笔短缺。原始 data_gap/fp_residual 标签逐键差仅记录为标签迁移量，不判界，也不承诺其相同。闭合 pct 差界为 `B/stock_raw×100`（stock>0），展示值在舍入边界上可能不同，不承诺展示值相同；Δ 可正可负，不承诺方向。改标签在 float 之上会对全部构成产生 ulp 级扰动，7.0.3 与 7.0.4 都是浮点近似，无优劣。事件计数、三策略 policy_details 和翻转指纹均可能随舍入而变，不承诺不变。账户类、EPS 其余引用、闭合门禁、尘埃 current 降级与 provenance-ledger/v2 schema 均保持；补 gap_eps_rel 参数登记。
+- **数量验证**：APU/PYTHIA 224 锚点、666 组策略的既有只读复核中，非 UNRESOLVED 键、gap/residual 合桶量、Σraw 和 pct 的差均为 0；原始标签迁移单列。两案 B/S≤4.3e-9，远低于闭合门禁 0.5%。300 组压力测试的合桶量/非 UNRESOLVED 键/逐笔短缺 max|Δ| 为 1536/32/1024 raw，均在界内。r4 曾将原始标签差套用 B 而记录 684 次“超界”；按勘误保留为标签迁移历史，不计数量界失败。r4b 续工及七项命令结果见 done.md。
+- **消费面与防回流**：三策略 policy_details 实际变化的锚点，其翻转指纹变化、旧裁决收据失配，须重新裁决（APU 实测 118/210，全部含旧 data_gap）；小供应量 gap_eps==EPS 下真实 data_gap 锚点明细不变，收据仍匹配。旧账本整体 freeze 重放与 --check-unseal 另因算法文件哈希漂移被拒，与收据是否匹配无关；“已封存不动”只指不重写文件。极端累加序列的假缺口仍可能超过 gap_eps 记成 data_gap（浮点根因未除的残留）。已知未修：int(float) 截断为 `"raw":"0"` 的既有现象；冻结生产文件 docstring 的“数量不变”措辞留待下一版本修正。
+- **测试**：按工单先 RED 后 GREEN；T1 假缺口、T2 真缺口、T3 阈值与旧版 dust 对照、T4 的 stock_raw 精确比较与非 UNRESOLVED 构成/合桶量/Σraw/短缺/pct 界，原始标签迁移逐条记录、不判界（既有两例具体断言保留）、T4-mixed、T4-mixed-b 的 129 raw 反例、T4-mixed-c 的 mint 变化与 T4-mixed-d 的逐笔短缺变化。T4-stress 固定种子 300 组，中间账户接收 mint/外部转入并允许超余额转出；T5 登记、T8 新旧账本 freeze。T6/T7 既有离线真实输入回归与 r4 只读复核、七项指定命令结果见 maintenance/repair-20260915-eps-residual/done.md。
+- **盲审与验收**：依据已审批的 repair-20260915-eps-residual 工单施工；实际完成项与未完成项以 done.md 为准，待 Fable 验收；本次不 commit。
+- **成本-质量指标**：生产逻辑文件 1，新增 SUITE 入口 0；外部网络调用 0；全量回归计数、输入差分及耗时以施工证据为准。
+
+## [7.0.3] - 2026-09-15 — 尘埃 current 闭合异常降级
+
+- **出处与根因**：APU 案触发的工具故障：大额 raw 浮点精度损失导致非零尘埃 current 的构成缺失或闭合异常。
+- **设计与实现**：按提交 f0036f8，current 库存严格小于供应量 0.01% 时，闭合异常标 current_negligible_skipped=true、composition_usable=false；保留构成诊断且不归一化，peak 门禁不变。pyproject/详细段漏改由 7.0.4 补齐。
+- **消费面与防回流**：freeze 独立按同一整数阈值重算尘埃 current 条件，同步豁免空构成与 Σraw 拒收；算法绑定、真实重放与 peak 检查仍执行。
+- **测试**：四组回归覆盖 2^90 精度损失、阈值三档、尘埃 peak 拒收、伪造字段拒收；提交记录 trace 48/handoff 93 全绿，此处仅补录历史结果。
+- **盲审与验收**：T-01 v2 经 codex 只读复核后施工，f0036f8 已提交；本段不把历史局部测试当作 7.0.4 完工验收。
+- **成本-质量指标**：历史提交涉及 8 文件，272 行新增、2 行删除；新增 SUITE 入口 0，版本登记遗漏本次补齐。
 
 ## [7.0.2] - 2026-09-06 — 生产者登记、A4 重复路径与图一格式豁免修复
 

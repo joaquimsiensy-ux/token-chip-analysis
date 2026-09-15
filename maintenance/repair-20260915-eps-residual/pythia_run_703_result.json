@@ -1,0 +1,27 @@
+{
+  "command": "/usr/local/bin/python3 /var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/eps_703_followup_6g5gmgch/scripts/report/trace_703.py --duckdb /Users/uravvv/.claude/skills/token-chip-analysis/.staging_eps/pythia/s2_work.duckdb --edges-table edges --entity-file /Users/uravvv/.claude/skills/token-chip-analysis/.staging_eps/pythia/entity_file_flat.json --allow-no-labels --total-supply 998158041739995 --edge-budget 5000000 --out /Users/uravvv/.claude/skills/token-chip-analysis/.staging_eps/pythia/t7_compare/ledger_703.json",
+  "argv": [
+    "/usr/local/bin/python3",
+    "/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/eps_703_followup_6g5gmgch/scripts/report/trace_703.py",
+    "--duckdb",
+    "/Users/uravvv/.claude/skills/token-chip-analysis/.staging_eps/pythia/s2_work.duckdb",
+    "--edges-table",
+    "edges",
+    "--entity-file",
+    "/Users/uravvv/.claude/skills/token-chip-analysis/.staging_eps/pythia/entity_file_flat.json",
+    "--allow-no-labels",
+    "--total-supply",
+    "998158041739995",
+    "--edge-budget",
+    "5000000",
+    "--out",
+    "/Users/uravvv/.claude/skills/token-chip-analysis/.staging_eps/pythia/t7_compare/ledger_703.json"
+  ],
+  "cwd": "/Users/uravvv/.claude/skills/token-chip-analysis",
+  "PYTHONPATH": "/Users/uravvv/.claude/skills/token-chip-analysis/scripts/report:",
+  "exit_code": 2,
+  "elapsed_seconds": 560.186438041972,
+  "production_sha256": "ff4b640a1adbcecf8f3651efbda04493d3085754f939da1ef23b8d9f2efe0fc3",
+  "stdout_and_stderr_log": "pythia_run_703.log",
+  "stderr_file": "pythia_run_703.stderr.txt"
+}

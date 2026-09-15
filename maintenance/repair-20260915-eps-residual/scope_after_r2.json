@@ -1,0 +1,73 @@
+{
+  "status": "PASS",
+  "head": "2000b6e78f790ee0ed348cc2ecb8eae796d5136e",
+  "branch": "main",
+  "initial_files_checked": 1062,
+  "changed_files": {
+    "CHANGELOG.md": {
+      "before_sha256": "1de88a2066f3bb6be56a0fa3ef4c0884e725b06cb4bfa1aaf822bffc0331e00c",
+      "after_sha256": "8bb5776d1f1648b029bf291fd1f4b90ae9c4a48ab5ad9a7da280f04ed36c8d30"
+    },
+    "maintenance/repair-20260915-eps-residual/apu_regression.md": {
+      "before_sha256": "72285c8d276ecf5d39820949e56a7458a4949b4c9a225264614b9a6bf1b1f14c",
+      "after_sha256": "4244910a64232aded0cbd4ad38b81ee5526e35e986a5e3c4d7e22c67ec4744c2"
+    },
+    "maintenance/repair-20260915-eps-residual/done.md": {
+      "before_sha256": "d5ee63921a4d07ba9b3b2d11ad0df4e1ab436ef6a7b7b87e5cd0e1ae12c22b7c",
+      "after_sha256": "bd76959cd6551faa546394b51a9616f0d06ce98598fd6889ab05f5e72dd85efd"
+    },
+    "maintenance/repair-20260915-eps-residual/pythia_regression.md": {
+      "before_sha256": "bf8e344b048edaa0dbd49f8a2129a4cbd1b447978a2658770f13f174377c9f95",
+      "after_sha256": "074dbf6f249cdf17be568bf1fa3289e45d26bc138f19f2009f16269b042a228a"
+    },
+    "maintenance/repair-20260915-eps-residual/run_all_fable_result.json": {
+      "before_sha256": "c0e0b7cfba9b20ef7e2b9e736cc592606052c2e50f782ee6a8a9578a7654965d",
+      "after_sha256": "7730a24794268f21979ae9b3758b358e15294305192aa8b7411402f96da8175f"
+    },
+    "references/scan-schemas.md": {
+      "before_sha256": "5106738e3d7e68df1a9785920b8ef10992b9a8820ec648a01041c60b82f71a49",
+      "after_sha256": "ce1aa722856a6e8b71841d3c941cfc38ad1e6a0c14273cd0d3a347567f472ac9"
+    },
+    "scripts/tests/test_entity_source_trace.py": {
+      "before_sha256": "6a23965e085fd48457ffa402f38a0345ae06610e840ad6d42ddc05c93992c3e2",
+      "after_sha256": "4ae78c9e81cb2cf3c8b8e10323392baddb3001da0ac60e9d3a10a7a049921e12"
+    }
+  },
+  "removed_files": [],
+  "unexpected_changes": [],
+  "added_files": [
+    "maintenance/repair-20260915-eps-residual/assertion_preservation_r2.json",
+    "maintenance/repair-20260915-eps-residual/changelog_lint_before_r2.log",
+    "maintenance/repair-20260915-eps-residual/changelog_lint_r2.log",
+    "maintenance/repair-20260915-eps-residual/check_results_r2.json",
+    "maintenance/repair-20260915-eps-residual/docs_lint_final_r2.log",
+    "maintenance/repair-20260915-eps-residual/docs_lint_r2.log",
+    "maintenance/repair-20260915-eps-residual/existing_evidence_r2.log",
+    "maintenance/repair-20260915-eps-residual/fixtures_lint_r2.log",
+    "maintenance/repair-20260915-eps-residual/git_diff_check_final_r2.log",
+    "maintenance/repair-20260915-eps-residual/git_diff_check_r2.log",
+    "maintenance/repair-20260915-eps-residual/invariant_scan_r2.log",
+    "maintenance/repair-20260915-eps-residual/ledger_recheck_r2.json",
+    "maintenance/repair-20260915-eps-residual/precheck_results_r2.json",
+    "maintenance/repair-20260915-eps-residual/r1_reproduction_r2.log",
+    "maintenance/repair-20260915-eps-residual/r1_reproduction_r2.py",
+    "maintenance/repair-20260915-eps-residual/run_checks_r2.log",
+    "maintenance/repair-20260915-eps-residual/run_checks_r2.py",
+    "maintenance/repair-20260915-eps-residual/scope_before_r2.json",
+    "maintenance/repair-20260915-eps-residual/scope_verification_r2.log",
+    "maintenance/repair-20260915-eps-residual/test_entity_source_trace_before_r2.txt",
+    "maintenance/repair-20260915-eps-residual/test_entity_source_trace_r2.log",
+    "maintenance/repair-20260915-eps-residual/test_version_consistency_r2.log",
+    "maintenance/repair-20260915-eps-residual/verify_existing_evidence_r2.py",
+    "maintenance/repair-20260915-eps-residual/verify_scope_r2.py"
+  ],
+  "unexpected_additions": [],
+  "existing_assertions_preserved": true,
+  "ledger_files_unchanged": {
+    ".staging_eps/apu/provenance_ledger.json": true,
+    ".staging_eps/apu/provenance_ledger_704.json": true,
+    ".staging_eps/pythia/t7_compare/ledger_703.json": true,
+    ".staging_eps/pythia/t7_compare/ledger_704.json": true
+  },
+  "production_sha256_unchanged": "e85acee4e9a98a664d9b4881ca33177003aa9455261109a01e111e6faeda3cd1"
+}

@@ -1,0 +1,27 @@
+[
+  {
+    "argv": [
+      "/usr/local/bin/python3",
+      "scripts/tests/changelog_lint.py"
+    ],
+    "exit_code": 0,
+    "elapsed_seconds": 0.055458791088312864
+  },
+  {
+    "argv": [
+      "/usr/local/bin/python3",
+      "scripts/tests/docs_lint.py",
+      "--all"
+    ],
+    "exit_code": 0,
+    "elapsed_seconds": 1.0935537919867784
+  },
+  {
+    "argv": [
+      "/usr/local/bin/python3",
+      "scripts/tests/fixtures_lint.py"
+    ],
+    "exit_code": 0,
+    "elapsed_seconds": 0.05209070909768343
+  }
+]

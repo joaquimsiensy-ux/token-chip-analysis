@@ -1,0 +1,78 @@
+{
+  "status": "PASS",
+  "verified_at_utc": "2026-09-15T17:13:43.585622+00:00",
+  "baseline_file_count": 1180,
+  "head": "2000b6e78f790ee0ed348cc2ecb8eae796d5136e",
+  "branch": "main",
+  "production_sha256": "e85acee4e9a98a664d9b4881ca33177003aa9455261109a01e111e6faeda3cd1",
+  "ruling_sha256": "0bf1d3f283fe6e42eb7b4b638a47319546de5c5c582413b70aa2645061139a7b",
+  "checks": {
+    "only_five_allowed_files_changed": true,
+    "no_unexpected_additions": true,
+    "no_files_removed": true,
+    "head_unchanged": true,
+    "branch_unchanged": true,
+    "index_unchanged": true,
+    "version_unchanged": true,
+    "production_hash_matches": true,
+    "ruling_unchanged": true,
+    "only_comparator_function_changed": true,
+    "all_check_expressions_preserved": true,
+    "seven_checks_and_final_rechecks_pass_with_log_hashes": true,
+    "tested_source_hashes_match_final": true
+  },
+  "changed_files": {
+    "CHANGELOG.md": {
+      "before_sha256": "c59229e97cd246ddd49a2d14827213116dbe5bc31e73627b3bd16affea78ac55",
+      "after_sha256": "d01c5442c70a1b982b7621b3cda763bdf1609ab03c38f8b427f8634e8dc12495"
+    },
+    "maintenance/repair-20260915-eps-residual/done.md": {
+      "before_sha256": "3e5c7eb57c69e301961e5da5a8bbad608b443c9b2cb2dd74ff1bf538cb138f70",
+      "after_sha256": "d81c3340e268ec0fa1ecd7bd2b54ac3c2e8a85049d94d849e7c478aecc2ef1f8"
+    },
+    "maintenance/repair-20260915-eps-residual/pythia_regression.md": {
+      "before_sha256": "e701bd12400eb750027eb7e65265809d42b629bd7eea7b09e3de055d6396a831",
+      "after_sha256": "2b252a28fcf36598f7ea611fb638dc00bd2e2a6d7002a8991b630e27c950486f"
+    },
+    "references/scan-schemas.md": {
+      "before_sha256": "f7650a78ad534b19085453dbba5a74f80aec186717cc47d1c3fd4b03464369ea",
+      "after_sha256": "2abad493c06e874fadb56de7d2eb0834e5ffae50ae6acf80fd126dabf5c28b11"
+    },
+    "scripts/tests/test_entity_source_trace.py": {
+      "before_sha256": "a62cca4356f0d7ad12f5970f4be63e7c799d7a65dbe72d1d2bc68b833ced77a9",
+      "after_sha256": "38d8f2910f40cef693a30a494c5c0050b042e0ae9db3c3f5cd5bf04eb17b3c06"
+    }
+  },
+  "new_artifacts": [
+    "maintenance/repair-20260915-eps-residual/change_r5.patch",
+    "maintenance/repair-20260915-eps-residual/changelog_lint_before_r5.log",
+    "maintenance/repair-20260915-eps-residual/changelog_lint_r5.log",
+    "maintenance/repair-20260915-eps-residual/check_results_r5.json",
+    "maintenance/repair-20260915-eps-residual/docs_lint_final_r5.log",
+    "maintenance/repair-20260915-eps-residual/docs_lint_r5.log",
+    "maintenance/repair-20260915-eps-residual/final_checks_r5.json",
+    "maintenance/repair-20260915-eps-residual/fixtures_lint_r5.log",
+    "maintenance/repair-20260915-eps-residual/git_diff_check_final_r5.log",
+    "maintenance/repair-20260915-eps-residual/git_diff_check_r5.log",
+    "maintenance/repair-20260915-eps-residual/git_status_r5.log",
+    "maintenance/repair-20260915-eps-residual/invariant_scan_r5.log",
+    "maintenance/repair-20260915-eps-residual/m3_comparator_probe_r5.log",
+    "maintenance/repair-20260915-eps-residual/m3_comparator_probe_r5.py",
+    "maintenance/repair-20260915-eps-residual/run_checks_r5.log",
+    "maintenance/repair-20260915-eps-residual/run_checks_r5.py",
+    "maintenance/repair-20260915-eps-residual/scope_after_r5.json",
+    "maintenance/repair-20260915-eps-residual/scope_before_r5.json",
+    "maintenance/repair-20260915-eps-residual/scope_verification_r5.log",
+    "maintenance/repair-20260915-eps-residual/t4_counterexamples_r5.json",
+    "maintenance/repair-20260915-eps-residual/t4_stress_summary_r5.json",
+    "maintenance/repair-20260915-eps-residual/test_entity_source_trace_r5.log",
+    "maintenance/repair-20260915-eps-residual/test_version_consistency_r5.log"
+  ],
+  "unexpected_changes": [],
+  "unexpected_additions": [],
+  "removed": [],
+  "changed_test_functions": [
+    "eps_compare_quantities"
+  ],
+  "preserved_check_expression_count": 109
+}

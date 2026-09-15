@@ -1,0 +1,401 @@
+{
+  "source_log": "test_entity_source_trace_r4.log",
+  "log_sha256": "87d07c2d0a4d151e17af411b63dbf8b61a7717009e9449fa310c74a624366a87",
+  "test_sha256": "e3789cb4d4c996cbae4827562eb86e9f3ec530c567df79c9bb11e6ea55b009fa",
+  "summary": {
+    "by_class": {
+      "closure_pct": {
+        "comparisons": 2400,
+        "max_abs_delta": "5/22517998136858",
+        "max_witnesses": [
+          {
+            "case": 111,
+            "category": "closure_pct",
+            "delta": "-5/22517998136858",
+            "n": 3,
+            "where": "T4-stress 111 n=3 D/current",
+            "within_bound": true
+          },
+          {
+            "case": 111,
+            "category": "closure_pct",
+            "delta": "-5/22517998136858",
+            "n": 3,
+            "where": "T4-stress 111 n=3 D/current/pro_rata",
+            "within_bound": true
+          },
+          {
+            "case": 111,
+            "category": "closure_pct",
+            "delta": "-5/22517998136858",
+            "n": 3,
+            "where": "T4-stress 111 n=3 D/peak",
+            "within_bound": true
+          },
+          {
+            "case": 111,
+            "category": "closure_pct",
+            "delta": "-5/22517998136858",
+            "n": 3,
+            "where": "T4-stress 111 n=3 D/peak/pro_rata",
+            "within_bound": true
+          }
+        ],
+        "out_of_bound_count": 0,
+        "unit": "pct"
+      },
+      "display_pct": {
+        "comparisons": 600,
+        "max_abs_delta": "0",
+        "max_witnesses": [
+          {
+            "case": 0,
+            "category": "display_pct",
+            "delta": "0",
+            "n": 8,
+            "where": "T4-stress 000 n=8 D/current",
+            "within_bound": true
+          },
+          {
+            "case": 0,
+            "category": "display_pct",
+            "delta": "0",
+            "n": 8,
+            "where": "T4-stress 000 n=8 D/peak",
+            "within_bound": true
+          },
+          {
+            "case": 1,
+            "category": "display_pct",
+            "delta": "0",
+            "n": 5,
+            "where": "T4-stress 001 n=5 D/current",
+            "within_bound": true
+          },
+          {
+            "case": 1,
+            "category": "display_pct",
+            "delta": "0",
+            "n": 5,
+            "where": "T4-stress 001 n=5 D/peak",
+            "within_bound": true
+          },
+          {
+            "case": 2,
+            "category": "display_pct",
+            "delta": "0",
+            "n": 7,
+            "where": "T4-stress 002 n=7 D/current",
+            "within_bound": true
+          },
+          {
+            "case": 2,
+            "category": "display_pct",
+            "delta": "0",
+            "n": 7,
+            "where": "T4-stress 002 n=7 D/peak",
+            "within_bound": true
+          }
+        ],
+        "out_of_bound_count": 0,
+        "unit": "pct"
+      },
+      "non_unresolved_key": {
+        "comparisons": 866,
+        "max_abs_delta": "32",
+        "max_witnesses": [
+          {
+            "case": 41,
+            "category": "non_unresolved_key",
+            "delta": "-32",
+            "n": 7,
+            "where": "T4-stress 041 n=7 D/current/('PROVEN_ORIGIN', 'mint', '0x0000000000000000000000000000000000000000')",
+            "within_bound": true
+          },
+          {
+            "case": 41,
+            "category": "non_unresolved_key",
+            "delta": "-32",
+            "n": 7,
+            "where": "T4-stress 041 n=7 D/current/pro_rata/('PROVEN_ORIGIN', 'mint', '0x0000000000000000000000000000000000000000')",
+            "within_bound": true
+          },
+          {
+            "case": 41,
+            "category": "non_unresolved_key",
+            "delta": "-32",
+            "n": 7,
+            "where": "T4-stress 041 n=7 D/peak/('PROVEN_ORIGIN', 'mint', '0x0000000000000000000000000000000000000000')",
+            "within_bound": true
+          },
+          {
+            "case": 41,
+            "category": "non_unresolved_key",
+            "delta": "-32",
+            "n": 7,
+            "where": "T4-stress 041 n=7 D/peak/pro_rata/('PROVEN_ORIGIN', 'mint', '0x0000000000000000000000000000000000000000')",
+            "within_bound": true
+          },
+          {
+            "case": 282,
+            "category": "non_unresolved_key",
+            "delta": "-32",
+            "n": 6,
+            "where": "T4-stress 282 n=6 D/current/lifo/('PROVEN_ORIGIN', 'mint', '0x0000000000000000000000000000000000000000')",
+            "within_bound": true
+          },
+          {
+            "case": 282,
+            "category": "non_unresolved_key",
+            "delta": "-32",
+            "n": 6,
+            "where": "T4-stress 282 n=6 D/peak/lifo/('PROVEN_ORIGIN', 'mint', '0x0000000000000000000000000000000000000000')",
+            "within_bound": true
+          }
+        ],
+        "out_of_bound_count": 0,
+        "unit": "raw"
+      },
+      "shortfall": {
+        "comparisons": 4761,
+        "max_abs_delta": "1024",
+        "max_witnesses": [
+          {
+            "case": 1,
+            "category": "shortfall",
+            "delta": "-1024",
+            "n": 5,
+            "where": "T4-stress 001 n=5/pro_rata/take[2]",
+            "within_bound": true
+          },
+          {
+            "case": 220,
+            "category": "shortfall",
+            "delta": "-1024",
+            "n": 8,
+            "where": "T4-stress 220 n=8/pro_rata/take[6]",
+            "within_bound": true
+          }
+        ],
+        "out_of_bound_count": 0,
+        "unit": "raw"
+      },
+      "sum_raw": {
+        "comparisons": 2400,
+        "max_abs_delta": "1536",
+        "max_witnesses": [
+          {
+            "case": 224,
+            "category": "sum_raw",
+            "delta": "1536",
+            "n": 8,
+            "where": "T4-stress 224 n=8 D/current",
+            "within_bound": true
+          },
+          {
+            "case": 224,
+            "category": "sum_raw",
+            "delta": "1536",
+            "n": 8,
+            "where": "T4-stress 224 n=8 D/current/fifo",
+            "within_bound": true
+          },
+          {
+            "case": 224,
+            "category": "sum_raw",
+            "delta": "1536",
+            "n": 8,
+            "where": "T4-stress 224 n=8 D/current/lifo",
+            "within_bound": true
+          },
+          {
+            "case": 224,
+            "category": "sum_raw",
+            "delta": "1536",
+            "n": 8,
+            "where": "T4-stress 224 n=8 D/current/pro_rata",
+            "within_bound": true
+          },
+          {
+            "case": 224,
+            "category": "sum_raw",
+            "delta": "1536",
+            "n": 8,
+            "where": "T4-stress 224 n=8 D/peak",
+            "within_bound": true
+          },
+          {
+            "case": 224,
+            "category": "sum_raw",
+            "delta": "1536",
+            "n": 8,
+            "where": "T4-stress 224 n=8 D/peak/fifo",
+            "within_bound": true
+          }
+        ],
+        "out_of_bound_count": 0,
+        "unit": "raw"
+      },
+      "unresolved_key": {
+        "comparisons": 4558,
+        "max_abs_delta": "2251799813685574",
+        "max_witnesses": [
+          {
+            "case": 270,
+            "category": "unresolved_key",
+            "delta": "-2251799813685574",
+            "n": 8,
+            "where": "T4-stress 270 n=8 D/current/fifo/('UNRESOLVED', 'data_gap', None)",
+            "within_bound": false
+          },
+          {
+            "case": 270,
+            "category": "unresolved_key",
+            "delta": "-2251799813685574",
+            "n": 8,
+            "where": "T4-stress 270 n=8 D/peak/fifo/('UNRESOLVED', 'data_gap', None)",
+            "within_bound": false
+          }
+        ],
+        "out_of_bound_count": 684,
+        "unit": "raw"
+      },
+      "unresolved_total": {
+        "comparisons": 2400,
+        "max_abs_delta": "1536",
+        "max_witnesses": [
+          {
+            "case": 224,
+            "category": "unresolved_total",
+            "delta": "1536",
+            "n": 8,
+            "where": "T4-stress 224 n=8 D/current",
+            "within_bound": true
+          },
+          {
+            "case": 224,
+            "category": "unresolved_total",
+            "delta": "1536",
+            "n": 8,
+            "where": "T4-stress 224 n=8 D/current/fifo",
+            "within_bound": true
+          },
+          {
+            "case": 224,
+            "category": "unresolved_total",
+            "delta": "1536",
+            "n": 8,
+            "where": "T4-stress 224 n=8 D/current/lifo",
+            "within_bound": true
+          },
+          {
+            "case": 224,
+            "category": "unresolved_total",
+            "delta": "1536",
+            "n": 8,
+            "where": "T4-stress 224 n=8 D/current/pro_rata",
+            "within_bound": true
+          },
+          {
+            "case": 224,
+            "category": "unresolved_total",
+            "delta": "1536",
+            "n": 8,
+            "where": "T4-stress 224 n=8 D/peak",
+            "within_bound": true
+          },
+          {
+            "case": 224,
+            "category": "unresolved_total",
+            "delta": "1536",
+            "n": 8,
+            "where": "T4-stress 224 n=8 D/peak/fifo",
+            "within_bound": true
+          }
+        ],
+        "out_of_bound_count": 0,
+        "unit": "raw"
+      }
+    },
+    "cases": 300,
+    "edge_count_max": 8,
+    "edge_count_min": 3,
+    "external_middle_cases": 300,
+    "intermediate_mint_cases": 91,
+    "large_max": 4611686018427387904,
+    "large_min": 1125899906842624,
+    "max_abs_delta_occurrences": 6,
+    "max_abs_delta_raw": 1536,
+    "max_witnesses": [
+      {
+        "anchor": "current",
+        "case": 224,
+        "delta": 1536,
+        "entity": "D",
+        "n": 8,
+        "policy": "fifo",
+        "within_bound": true
+      },
+      {
+        "anchor": "current",
+        "case": 224,
+        "delta": 1536,
+        "entity": "D",
+        "n": 8,
+        "policy": "lifo",
+        "within_bound": true
+      },
+      {
+        "anchor": "current",
+        "case": 224,
+        "delta": 1536,
+        "entity": "D",
+        "n": 8,
+        "policy": "pro_rata",
+        "within_bound": true
+      },
+      {
+        "anchor": "peak",
+        "case": 224,
+        "delta": 1536,
+        "entity": "D",
+        "n": 8,
+        "policy": "fifo",
+        "within_bound": true
+      },
+      {
+        "anchor": "peak",
+        "case": 224,
+        "delta": 1536,
+        "entity": "D",
+        "n": 8,
+        "policy": "lifo",
+        "within_bound": true
+      },
+      {
+        "anchor": "peak",
+        "case": 224,
+        "delta": 1536,
+        "entity": "D",
+        "n": 8,
+        "policy": "pro_rata",
+        "within_bound": true
+      }
+    ],
+    "negative_delta_count": 690,
+    "nongap_nonempty_cases": 116,
+    "out_of_bound_count": 684,
+    "overdraft_cases": 158,
+    "policies": [
+      "pro_rata",
+      "fifo",
+      "lifo"
+    ],
+    "policy_anchor_comparisons": 1800,
+    "positive_delta_count": 630,
+    "seed": 20260915,
+    "small_max": 4081,
+    "small_min": 2,
+    "total_supply_raw": "12379400392853802748991242240"
+  }
+}

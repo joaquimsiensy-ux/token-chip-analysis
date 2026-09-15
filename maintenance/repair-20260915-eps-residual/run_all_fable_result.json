@@ -1,0 +1,14 @@
+{
+  "status": "PASS",
+  "log_file": "maintenance/repair-20260915-eps-residual/run_all_fable.log",
+  "checked_at_utc": "2026-09-15T15:31:26.776772+00:00",
+  "passed": 147,
+  "failed": 0,
+  "exit_code": null,
+  "note": "r2 只读核对调度方已提供的沙箱外日志：SUITE 顺序一致，147 PASS、0 FAIL，末行为全部通过。日志未单列进程退出码；本轮未重跑全套。",
+  "log_sha256": "a15a1dad8b65343e3f4b1c1873d5f56ba24a3a6767b4e2ad902ca39d29e8cd0d",
+  "suite_order_matches": true,
+  "pass": 147,
+  "fail": 0,
+  "log": "run_all_fable.log"
+}

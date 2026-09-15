@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """entity_source_trace.py — 已知实体币源溯源闸（provenance-ledger/v2，v6.8.1）。
+v7.0.4:低于 gap_eps(max(EPS, total·1e-13))的账户短缺记 UNRESOLVED/fp_residual,不再冒充 data_gap;数量不变。
 
 背景：W1 波次二次漏检复盘第一道防线——PYTHIA 案 Q1 的 20 个直接上家里 9 个是 W1、
 3yMk 的 11 个上家里 10 个是 W1，19 根藤裸露在进货单上却因"找到并入证据就收工"的溯源
@@ -87,6 +88,17 @@ LABEL_KIND_MAP = {
 ENTITY_NODE = "@ENTITY"
 ORDER_AMBIGUOUS_KEY = ("UNRESOLVED", "order_ambiguous", None)
 EPS = 1e-6
+# 缺口判定专用相对阈值:float64 在 1e29 量级 raw 上单步噪声约 1e13,绝对 EPS=1e-6 会把纯噪声
+# 记成"数据缺失"。低于 gap_eps 的账户短缺改记 UNRESOLVED/fp_residual(数量原样保留,只改标签);
+# 账户判等/扣减/入账仍用 EPS,不放大(放大会清空小额真实转账并新增 peak 拒收,2026-09-15 复算)。
+GAP_EPS_REL = 1e-13
+
+
+def gap_eps(total_supply):
+    """max(EPS, total*1e-13):小供应量退化为 EPS,行为与 7.0.3 逐字一致。"""
+    return max(EPS, float(int(total_supply)) * GAP_EPS_REL)
+
+
 ORDER_MATERIAL_PCT = 0.5
 # 尘埃锚点线：锚点库存 < 总供应的 0.01% 时，构成"第一大来源"不承载任何结论，
 # 三策略翻转不入稳定性判定（明细照记并标 negligible_stock）。清零实体的残渣
@@ -160,7 +172,7 @@ def source_binding(a, case_dir, edge_source_binding=None):
                       "files": {"entity_source_trace.py": trace_rec,
                                 "wave_scan.py": loader_rec,
                                 "sqd_cache_identity.py": identity_rec},
-                      "policies": list(POLICIES), "order_material_pct": ORDER_MATERIAL_PCT},
+                      "policies": list(POLICIES), "order_material_pct": ORDER_MATERIAL_PCT, "gap_eps_rel": GAP_EPS_REL},
         "source": {"kind": kind, "argument": bound_path(argument, case_dir),
                    "edges_table": a.edges_table if kind == "duckdb" else None,
                    "mint": a.mint if kind == "sol" else None,
@@ -403,7 +415,7 @@ def build_ancestors(con, members, T, classifier, depth_limit, node_budget):
 
 # ---------------- 正向模拟 ----------------
 
-def simulate(edges_iter, Mset, ancestors, term_key, term_plen, policy, T_peak):
+def simulate(edges_iter, Mset, ancestors, term_key, term_plen, policy, T_peak, gap_eps=EPS):
     """edges_iter 带 chain_pos/order_exact/ingest_seq，按可证链上位置升序。
     精确位置缺失时绝不再按地址拓扑改写真实顺序：保留采集观察顺序，但同一最细粒度桶内
     若某节点既收又发，则该节点的流出来源无法证明，整笔记 UNRESOLVED/order_ambiguous。
@@ -412,7 +424,7 @@ def simulate(edges_iter, Mset, ancestors, term_key, term_plen, policy, T_peak):
 
     逐笔重演到数据末，
     跨过 T_peak 时拍峰值快照。返回 {"peak": vec, "current": vec,
-    "gap_events": int, "order_ambiguous_groups": int, "order_ambiguous_events": int,
+    "gap_events": int, "fp_residual_events": int, "order_ambiguous_groups": int, "order_ambiguous_events": int,
     "n_edges": int}。
     （direct_upstream 进货单不在模拟中维护——它是毛流入事实清单，见 gross_upstream。）"""
     acc = {}
@@ -424,14 +436,14 @@ def simulate(edges_iter, Mset, ancestors, term_key, term_plen, policy, T_peak):
         return a
 
     peak_snap = None
-    gap_events = ambiguous_groups = ambiguous_events = n_edges = 0
+    gap_events = residual_events = ambiguous_groups = ambiguous_events = n_edges = 0
 
     def snap():
         ent = acc.get(ENTITY_NODE)
         return ent.snapshot() if ent else {}
 
     def flush_group(bucket, group):
-        nonlocal peak_snap, gap_events, ambiguous_groups, ambiguous_events, n_edges
+        nonlocal peak_snap, gap_events, residual_events, ambiguous_groups, ambiguous_events, n_edges
         ts = bucket[0]
         if peak_snap is None and ts > T_peak:
             peak_snap = snap()
@@ -462,10 +474,15 @@ def simulate(edges_iter, Mset, ancestors, term_key, term_plen, policy, T_peak):
                 # 账户仍按观察序扣减以维持数量账，但来源整笔降级为独立未决桶。
                 comp, shortfall = {ORDER_AMBIGUOUS_KEY: float(amt)}, 0.0
                 ambiguous_events += 1
-            elif shortfall > EPS:
+            elif shortfall > gap_eps:
                 gap_key = ("UNRESOLVED", "data_gap", None)
                 comp[gap_key] = comp.get(gap_key, 0.0) + shortfall
                 gap_events += 1
+            elif shortfall > EPS:
+                # 浮点残差:噪声量级的短缺,数量保留、不代表链上数据缺失
+                res_key = ("UNRESOLVED", "fp_residual", None)
+                comp[res_key] = comp.get(res_key, 0.0) + shortfall
+                residual_events += 1
             if dst == ENTITY_NODE:
                 account(ENTITY_NODE).add(comp)
             elif t in ancestors:
@@ -485,7 +502,8 @@ def simulate(edges_iter, Mset, ancestors, term_key, term_plen, policy, T_peak):
     if peak_snap is None:
         peak_snap = snap()
     return {"peak": peak_snap, "current": snap(),
-            "gap_events": gap_events, "order_ambiguous_groups": ambiguous_groups,
+            "gap_events": gap_events, "fp_residual_events": residual_events,
+            "order_ambiguous_groups": ambiguous_groups,
             "order_ambiguous_events": ambiguous_events, "n_edges": n_edges}
 
 
@@ -547,7 +565,8 @@ def fetch_sim_edges(con, sim_nodes, T, edge_budget):
 def comp_to_list(vec, term_plen, stock, labels):
     """向量 → composition 数组（按占比降序，全量零截断）。"""
     ev_map = {"mint": "onchain_pattern", "facility_candidate": "heuristic",
-              "data_gap": "onchain_pattern", "depth_limit": "onchain_pattern",
+              "data_gap": "onchain_pattern", "fp_residual": "onchain_pattern",
+              "depth_limit": "onchain_pattern",
               "budget_truncated": "onchain_pattern", "order_ambiguous": "onchain_pattern"}
     out = []
     for (kind, sub, via), amt in sorted(vec.items(), key=lambda kv: -kv[1]):
@@ -600,7 +619,7 @@ def trace_entity(con, classifier, eid, members, total, a):
 
     runs = {}
     for policy in POLICIES:
-        runs[policy] = simulate(edges, Mset, ancestors, term_key, term_plen, policy, T_peak)
+        runs[policy] = simulate(edges, Mset, ancestors, term_key, term_plen, policy, T_peak, gap_eps=gap_eps(total))
     main = runs["pro_rata"]
 
     def build_anchor(snap_key, stock, T, date=None):
@@ -662,7 +681,8 @@ def trace_entity(con, classifier, eid, members, total, a):
                        "edges_simulated": main["n_edges"],
                        "order_ambiguous_groups": main["order_ambiguous_groups"],
                        "order_ambiguous_events": main["order_ambiguous_events"],
-                       "data_gap_events": main["gap_events"]},
+                       "data_gap_events": main["gap_events"],
+                       "fp_residual_events": main["fp_residual_events"]},
     }
     return ent, sens
 

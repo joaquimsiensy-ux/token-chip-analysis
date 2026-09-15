@@ -1,0 +1,56 @@
+{
+  "checked_at_utc": "2026-09-15T15:32:31.384891+00:00",
+  "environment": {
+    "PYTHONDONTWRITEBYTECODE": "1"
+  },
+  "files": {
+    "scripts/report/entity_source_trace.py": "e85acee4e9a98a664d9b4881ca33177003aa9455261109a01e111e6faeda3cd1",
+    "scripts/tests/test_entity_source_trace.py": "4ae78c9e81cb2cf3c8b8e10323392baddb3001da0ac60e9d3a10a7a049921e12",
+    "CHANGELOG.md": "8bb5776d1f1648b029bf291fd1f4b90ae9c4a48ab5ad9a7da280f04ed36c8d30",
+    "references/scan-schemas.md": "ce1aa722856a6e8b71841d3c941cfc38ad1e6a0c14273cd0d3a347567f472ac9"
+  },
+  "results": [
+    {
+      "command": "python3 -B scripts/tests/test_entity_source_trace.py",
+      "exit_code": 0,
+      "elapsed_seconds": 25.704,
+      "log": "test_entity_source_trace_r2.log"
+    },
+    {
+      "command": "python3 -B scripts/tests/test_version_consistency.py",
+      "exit_code": 0,
+      "elapsed_seconds": 0.025,
+      "log": "test_version_consistency_r2.log"
+    },
+    {
+      "command": "python3 -B scripts/tests/changelog_lint.py",
+      "exit_code": 0,
+      "elapsed_seconds": 0.022,
+      "log": "changelog_lint_r2.log"
+    },
+    {
+      "command": "python3 -B scripts/tests/docs_lint.py --all",
+      "exit_code": 0,
+      "elapsed_seconds": 0.499,
+      "log": "docs_lint_r2.log"
+    },
+    {
+      "command": "python3 -B scripts/tests/invariant_scan.py",
+      "exit_code": 0,
+      "elapsed_seconds": 3.513,
+      "log": "invariant_scan_r2.log"
+    },
+    {
+      "command": "python3 -B scripts/tests/fixtures_lint.py",
+      "exit_code": 0,
+      "elapsed_seconds": 0.022,
+      "log": "fixtures_lint_r2.log"
+    },
+    {
+      "command": "git diff --check",
+      "exit_code": 0,
+      "elapsed_seconds": 0.019,
+      "log": "git_diff_check_r2.log"
+    }
+  ]
+}

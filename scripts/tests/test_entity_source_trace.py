@@ -155,7 +155,575 @@ def test_closed_dust_current_has_no_skip_marker():
                   and "composition_usable" not in ent["anchors"]["current"])
 
 
+def eps_residual_edges():
+    h = 2 ** 90
+    return [(day(1), Z, "X", h), (day(1), "X", "D", h - 1),
+            (day(1), "X", "D", 1)]
+
+
+def eps_baseline_script():
+    """未修改的 3b29e38 实现；保留 source_binding 所需的相对文件布局。"""
+    from pathlib import Path
+    root = Path(HERE).parents[1]
+    code = subprocess.run(
+        ["git", "show", "3b29e38:scripts/report/entity_source_trace.py"],
+        cwd=root, capture_output=True, check=True).stdout
+    d = Path(tempfile.mkdtemp(prefix="trace_703_layout_"))
+    report = d / "scripts" / "report"
+    report.mkdir(parents=True)
+    old = report / "trace_703.py"
+    old.write_bytes(code)
+    (report / "wave_scan.py").symlink_to(root / "scripts/report/wave_scan.py")
+    (d / "scripts/lib").symlink_to(root / "scripts/lib", target_is_directory=True)
+    (d / "scripts/solana").symlink_to(root / "scripts/solana", target_is_directory=True)
+    return str(old)
+
+
+def eps_run_version(d, ep, entities, total, script, out="ledger.json"):
+    """与 run_trace 同一正式 CLI；允许选取冻结的旧生产文件。"""
+    from pathlib import Path
+    Path(d, "entities.json").write_text(json.dumps(entities))
+    Path(d, "labels.json").write_text(json.dumps({"FAC": {"kind": "facility"}}))
+    args = [sys.executable, script, "--edges-sol", ep, "--total-supply", str(total),
+            "--entity-file", os.path.join(d, "entities.json"),
+            "--labels-file", os.path.join(d, "labels.json"),
+            "--out", os.path.join(d, out)] + formal_cli_args(ep)
+    env = os.environ.copy()
+    env["PYTHONPATH"] = os.path.abspath(os.path.join(HERE, "../report")) + os.pathsep + env.get("PYTHONPATH", "")
+    p = subprocess.run(args, capture_output=True, text=True, env=env)
+    ledger = json.loads(Path(d, out).read_text()) if Path(d, out).exists() else None
+    return p, ledger
+
+
+def eps_rounding_bound(delta, n, supply):
+    """r3 裁决：整数/有理数交叉相乘检查 |Δ| <= 4*n*2**-52*S + 2。"""
+    return abs(delta) * 2 ** 52 <= 4 * n * supply + 2 * 2 ** 52
+
+
+def eps_models():
+    """完整加载两份真实实现；旧版继续取 eps_baseline_script() 的冻结布局。"""
+    import importlib.util
+    if not hasattr(eps_models, "cached"):
+        models = []
+        for name, path in (("eps_703", eps_baseline_script()), ("eps_704", SCRIPT)):
+            spec = importlib.util.spec_from_file_location(name, path)
+            model = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(model)
+            models.append(model)
+        eps_models.cached = models
+    return eps_models.cached
+
+
+def eps_memory_trace(model, edges, total):
+    """真实 trace_entity + 内存 HUGEINT 边表；旁录 take 返回的逐笔短缺，不改数值。"""
+    from types import SimpleNamespace
+    from unittest.mock import patch
+    import duckdb
+    shortfalls = {p: [] for p in model.POLICIES}
+    make_account = model.make_account
+
+    class ObservedAccount:
+        def __init__(self, policy):
+            self.inner = make_account(policy)
+            self.policy = policy
+
+        def add(self, comp):
+            return self.inner.add(comp)
+
+        def take(self, amt):
+            comp, shortfall = self.inner.take(amt)
+            # float.hex 保留所有位；shortfall 是 simulate 原样送入缺口桶的数量。
+            shortfalls[self.policy].append((amt.hex(), shortfall.hex()))
+            return comp, shortfall
+
+        def snapshot(self):
+            return self.inner.snapshot()
+
+    with duckdb.connect(":memory:") as con:
+        con.execute("""CREATE TABLE e(ts BIGINT, chain_pos1 BIGINT, chain_pos2 BIGINT,
+                    chain_pos3 BIGINT, order_exact BOOLEAN, ingest_seq BIGINT,
+                    f VARCHAR, t VARCHAR, amt HUGEINT)""")
+        con.executemany("INSERT INTO e VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                        [(ts, 0, i, 0, True, i, f, t, str(amt))
+                         for i, (ts, f, t, amt) in enumerate(edges)])
+        con.execute("CREATE VIEW edges AS SELECT * FROM e")
+        args = SimpleNamespace(depth_limit=10, node_budget=200000, edge_budget=3000000)
+        with patch.object(model, "make_account", ObservedAccount), patch.object(model, "log", lambda _: None):
+            classifier = model.Classifier(con, {"FAC": {"kind": "facility"}}, 1000)
+            ent, sens = model.trace_entity(con, classifier, "D", ["D"], total, args)
+    return {"entities": [ent], "bounds_sensitivity": {"per_entity": {"D": sens}},
+            "input_binding": {"total_supply_raw": str(total)}, "test_shortfalls": shortfalls}
+
+
+def eps_compare_quantities(old, new, label, edges, expect_equal=True, measurements=None):
+    """T4：stock_raw 精确；gap/residual 合桶，其余键逐键；Σraw/短缺/pct 判界。"""
+    from fractions import Fraction
+    n, supply = len(edges), int(new["input_binding"]["total_supply_raw"])
+    measurements = [] if measurements is None else measurements
+
+    def bounded(category, delta, where, stock=None):
+        # pct 用未舍入的有理数；展示 pct 也判同一界，不要求两版显示相同。
+        raw_delta = delta if stock is None else delta * stock / 100
+        ok = eps_rounding_bound(raw_delta, n, supply)
+        measurements.append({"category": category, "where": where,
+                             "delta": str(delta), "bound_checked": True, "within_bound": ok})
+        return ok
+
+    def compare_rows(x, y, where, stock):
+        # 只有 data_gap/fp_residual 的原始标签差只记录迁移量。
+        # 两者合桶量在下方判界，其余键（含其他 UNRESOLVED）逐键判界。
+        for key in sorted(x.keys() | y.keys(), key=str):
+            category = "unresolved_key" if key[0] == "UNRESOLVED" else "non_unresolved_key"
+            if key in (gap, res):
+                row = {"category": category, "where": f"{where}/{key}", "key": list(key),
+                       "n": n, "old_raw": str(x.get(key, 0)), "new_raw": str(y.get(key, 0)),
+                       "delta": str(y.get(key, 0) - x.get(key, 0)), "bound_checked": False,
+                       "scope": "label_migration_record_only"}
+                measurements.append(row)
+                print("T4_LABEL_MIGRATION " + json.dumps(row, sort_keys=True))
+                continue
+            check(f"{where} 构成 {key} raw 在界内",
+                  bounded(category, y.get(key, 0) - x.get(key, 0), f"{where}/{key}"))
+        delta = sum(y.values()) - sum(x.values())
+        check(f"{where} Σraw 在界内", bounded("sum_raw", delta, where))
+        if stock > 0:
+            check(f"{where} raw 复算闭合 pct 差 <= B/stock*100",
+                  bounded("closure_pct", Fraction(delta * 100, stock), where, stock))
+
+    check(f"{label} 两版本供应量相同", old["input_binding"]["total_supply_raw"] ==
+          new["input_binding"]["total_supply_raw"])
+    observed = ((old, new) if "test_shortfalls" in old and "test_shortfalls" in new else
+                [eps_memory_trace(model, edges, supply) for model in eps_models()])
+    for policy in ("pro_rata", "fifo", "lifo"):
+        s0, s1 = [ledger["test_shortfalls"][policy] for ledger in observed]
+        check(f"{label}/{policy} 逐笔旁录消费边对齐",
+              [amt for amt, _ in s0] == [amt for amt, _ in s1])
+        for i, ((_, before), (_, after)) in enumerate(zip(s0, s1)):
+            delta = Fraction(float.fromhex(after)) - Fraction(float.fromhex(before))
+            check(f"{label}/{policy} take[{i}] 短缺在界内",
+                  bounded("shortfall", delta, f"{label}/{policy}/take[{i}]"))
+    policy_deltas = []
+    old_entities = {e["entity_id"]: e for e in old["entities"]}
+    new_entities = {e["entity_id"]: e for e in new["entities"]}
+    check(f"{label} 实体集合不变", old_entities.keys() == new_entities.keys())
+    for eid, before in old_entities.items():
+        for anchor in ("current", "peak"):
+            a, b = before["anchors"][anchor], new_entities[eid]["anchors"][anchor]
+            def amounts(rows):
+                return {(c["kind"], c["subkind"], c["via"]): int(c["raw"]) for c in rows}
+            x, y = amounts(a["composition"]), amounts(b["composition"])
+            gap, res = ("UNRESOLVED", "data_gap", None), ("UNRESOLVED", "fp_residual", None)
+            check(f"{label} {eid}/{anchor} stock_raw 相同", a["stock_raw"] == b["stock_raw"])
+            stock = int(a["stock_raw"])
+            compare_rows(x, y, f"{label} {eid}/{anchor}", stock)
+            if stock > 0:
+                pct0 = Fraction(str(before["closure_check"][f"{anchor}_sum_pct"]))
+                pct1 = Fraction(str(new_entities[eid]["closure_check"][f"{anchor}_sum_pct"]))
+                check(f"{label} {eid}/{anchor} 闭合 pct 展示差 <= B/stock*100",
+                      bounded("display_pct", pct1 - pct0, f"{label} {eid}/{anchor}", stock))
+            if expect_equal:
+                check(f"{label} {eid}/{anchor} Σraw 相同", sum(x.values()) == sum(y.values()))
+                # 仅两组既有样例的具体断言；新增混合/压力样例不承诺逐键精确。
+                check(f"{label} {eid}/{anchor} 非 gap 来源逐条相同",
+                      {k: v for k, v in x.items() if k not in (gap, res)} ==
+                      {k: v for k, v in y.items() if k not in (gap, res)})
+            delta = y.get(gap, 0) + y.get(res, 0) - x.get(gap, 0)
+            check(f"{label} {eid}/{anchor} |Δ| <= 4*n*2**-52*S + 2",
+                  eps_rounding_bound(delta, n, supply))
+            bounded("unresolved_total", delta, f"{label} {eid}/{anchor}")
+            if expect_equal:
+                check(f"{label} {eid}/{anchor} gap 数量拆分守恒",
+                      x.get(gap, 0) == y.get(gap, 0) + y.get(res, 0))
+            # 零库存锚点没有 policy_details；其余锚点逐策略检查同一不变量。
+            pd0 = old["bounds_sensitivity"]["per_entity"][eid]["anchors"].get(anchor, {}).get("policy_details", {})
+            pd1 = new["bounds_sensitivity"]["per_entity"][eid]["anchors"].get(anchor, {}).get("policy_details", {})
+            check(f"{label} {eid}/{anchor} 策略集合相同", pd0.keys() == pd1.keys())
+            for policy in sorted(pd0.keys() & pd1.keys()):
+                u = {tuple(c["terminal"]): int(c["raw"]) for c in pd0[policy]}
+                v = {tuple(c["terminal"]): int(c["raw"]) for c in pd1[policy]}
+                compare_rows(u, v, f"{label} {eid}/{anchor}/{policy}", stock)
+                delta = v.get(gap, 0) + v.get(res, 0) - u.get(gap, 0)
+                check(f"{label} {eid}/{anchor}/{policy} |Δ| <= 4*n*2**-52*S + 2",
+                      eps_rounding_bound(delta, n, supply))
+                bounded("unresolved_total", delta, f"{label} {eid}/{anchor}/{policy}")
+                policy_deltas.append({"entity": eid, "anchor": anchor, "policy": policy,
+                                      "delta": delta, "within_bound": eps_rounding_bound(delta, n, supply)})
+                if expect_equal:
+                    check(f"{label} {eid}/{anchor}/{policy} 既有样例差为零",
+                          delta == 0 and sum(u.values()) == sum(v.values()))
+    return policy_deltas
+
+
+def test_eps_residual():
+    import math
+    sys.path.insert(0, os.path.abspath(os.path.join(HERE, "../report")))
+    import entity_source_trace as m
+    total = 10 * 2 ** 90
+    old_script = eps_baseline_script()
+    d = tempfile.mkdtemp(prefix="trace_eps_t1_")
+    ep = write_edges(d, eps_residual_edges())
+    p0, old = eps_run_version(d, ep, {"D": ["D"]}, total, old_script, "old.json")
+    p1, new = eps_run_version(d, ep, {"D": ["D"]}, total, SCRIPT)
+    check("T1 两版本 trace exit 0", p0.returncode == p1.returncode == 0)
+    if old is None or new is None:
+        print(p0.stdout + p0.stderr + p1.stdout + p1.stderr)
+        return
+    ent = new["entities"][0]
+    check("T1 RED 基线 data_gap_events=1", old["entities"][0]["simulation"]["data_gap_events"] == 1)
+    check("T1 假缺口不记 data_gap", ent["simulation"]["data_gap_events"] == 0)
+    check("T1 fp_residual_events=1", ent["simulation"].get("fp_residual_events") == 1)
+    for anchor in ("current", "peak"):
+        cur = ent["anchors"][anchor]
+        check(f"T1 {anchor} residual raw=1",
+              len([c for c in cur["composition"] if c["kind"] == "UNRESOLVED"
+                   and c["subkind"] == "fp_residual" and c["raw"] == "1"]) == 1)
+        check(f"T1 {anchor} 无 data_gap", all(c["subkind"] != "data_gap" for c in cur["composition"]))
+        check(f"T1 {anchor} stock_raw=2**90", cur["stock_raw"] == str(2 ** 90))
+        check(f"T1 {anchor} mint raw 与 RED 相同",
+              [c["raw"] for c in cur["composition"] if c["subkind"] == "mint"] ==
+              [c["raw"] for c in old["entities"][0]["anchors"][anchor]["composition"] if c["subkind"] == "mint"])
+        check(f"T1 {anchor} closure Σ 与 RED 相同",
+              ent["closure_check"][f"{anchor}_sum_pct"] == old["entities"][0]["closure_check"][f"{anchor}_sum_pct"])
+    eps_compare_quantities(old, new, "T4 T1", eps_residual_edges())
+    check("T5 gap_eps_rel 登记", new["input_binding"]["algorithm"].get("gap_eps_rel") == 1e-13)
+    check("T5 residual 事件键登记", "fp_residual_events" in ent["simulation"])
+    for supply, amt in ((10 ** 6, 100), (total, 2 ** 60)):
+        td = tempfile.mkdtemp(prefix="trace_eps_t2_")
+        p, r = eps_run_version(td, write_edges(td, [(day(1), "X", "D", amt)]),
+                               {"D": ["D"]}, supply, SCRIPT)
+        check(f"T2 supply={supply} exit 0", p.returncode == 0)
+        if r:
+            e = r["entities"][0]
+            check(f"T2 amt={amt} 真缺口事件保留", e["simulation"]["data_gap_events"] == 1
+                  and e["simulation"].get("fp_residual_events") == 0)
+            for anchor in ("current", "peak"):
+                check(f"T2 amt={amt} {anchor} data_gap raw 保留",
+                      any(c["subkind"] == "data_gap" and c["raw"] == str(amt)
+                          for c in e["anchors"][anchor]["composition"]))
+    check("T3 小供应阈值等于 EPS", hasattr(m, "gap_eps") and m.gap_eps(10 ** 4) == m.gap_eps(10 ** 6) == m.EPS)
+    check("T3 大供应相对阈值", hasattr(m, "gap_eps") and math.isclose(m.gap_eps(total), total * 1e-13))
+    td = tempfile.mkdtemp(prefix="trace_eps_t3_")
+    ep = write_edges(td, dust_precision_edges(nonempty=True))
+    p0, old = eps_run_version(td, ep, {"D": ["D1", "D2"]}, total, old_script, "old.json")
+    p1, new = eps_run_version(td, ep, {"D": ["D1", "D2"]}, total, SCRIPT)
+    check("T3 dust 两版本 exit 0", p0.returncode == p1.returncode == 0)
+    if old and new:
+        for anchor in ("current", "peak"):
+            check(f"T3 dust {anchor} 三策略逐条相同",
+                  old["bounds_sensitivity"]["per_entity"]["D"]["anchors"][anchor]["policy_details"] ==
+                  new["bounds_sensitivity"]["per_entity"]["D"]["anchors"][anchor]["policy_details"])
+        check("T3 dust data_gap_events 相同", old["entities"][0]["simulation"]["data_gap_events"] ==
+              new["entities"][0]["simulation"]["data_gap_events"])
+    h = 2 ** 90
+    # 跨日保留入仓峰值，随后多来源反复扣减至零，再小额入账。
+    edges = [(day(1), Z, "A", h), (day(1), Z, "B", h),
+             (day(2), "A", "D", h // 2), (day(2), "B", "D", h // 2)]
+    edges += [(day(3), "D", "OUT", h // 4)] * 4
+    edges += [(day(4), "A", "D", 1), (day(4), "B", "D", 1)]
+    td = tempfile.mkdtemp(prefix="trace_eps_t4_")
+    ep = write_edges(td, edges)
+    p0, old = eps_run_version(td, ep, {"D": ["D"]}, total, old_script, "old.json")
+    p1, new = eps_run_version(td, ep, {"D": ["D"]}, total, SCRIPT)
+    check("T4 多来源两版本 exit 0", p0.returncode == p1.returncode == 0)
+    if old and new:
+        eps_compare_quantities(old, new, "T4 多来源", edges)
+
+
+def test_eps_residual_mixed():
+    """T4-mixed：真实 data_gap 与 fp_residual 共存，覆盖旧单桶吞掉 1 raw。"""
+    stock = 2 ** 60
+    d = tempfile.mkdtemp(prefix="trace_eps_t4_mixed_")
+    edges = [(day(1), "X", "A", stock), (day(1), "X", "A", 1),
+             (day(1), "A", "D", stock)]
+    ep = write_edges(d, edges)
+    p0, old = eps_run_version(d, ep, {"D": ["D"]}, 10 * 2 ** 90,
+                              eps_baseline_script(), "old.json")
+    p1, new = eps_run_version(d, ep, {"D": ["D"]}, 10 * 2 ** 90, SCRIPT)
+    check("T4-mixed 两版本 trace exit 0", p0.returncode == p1.returncode == 0)
+    check("T4-mixed 两版本账本落盘", old is not None and new is not None)
+    if old is None or new is None:
+        print(p0.stdout + p0.stderr + p1.stdout + p1.stderr)
+        return
+    eps_compare_quantities(old, new, "T4-mixed", edges, expect_equal=False)
+    before, after = old["entities"][0], new["entities"][0]
+    for anchor in ("current", "peak"):
+        a, b = before["anchors"][anchor], after["anchors"][anchor]
+        sum0 = sum(int(c["raw"]) for c in a["composition"])
+        sum1 = sum(int(c["raw"]) for c in b["composition"])
+        residual = sum(int(c["raw"]) for c in b["composition"]
+                       if c["kind"] == "UNRESOLVED" and c["subkind"] == "fp_residual")
+        # 两笔短缺的整数合计为 stock + 1；实体库存由整数边表独立核算为 stock。
+        check(f"T4-mixed {anchor} 703 主策略合计=2**60", sum0 == stock)
+        check(f"T4-mixed {anchor} 704 主策略合计=2**60+1", sum1 == stock + 1)
+        check(f"T4-mixed {anchor} 差=1 <= residual raw", sum1 - sum0 == 1 <= residual)
+        check(f"T4-mixed {anchor} 两版本闭合 pct=100.0",
+              before["closure_check"][f"{anchor}_sum_pct"] ==
+              after["closure_check"][f"{anchor}_sum_pct"] == 100.0)
+        pd0 = old["bounds_sensitivity"]["per_entity"]["D"]["anchors"][anchor]["policy_details"]
+        pd1 = new["bounds_sensitivity"]["per_entity"]["D"]["anchors"][anchor]["policy_details"]
+        check(f"T4-mixed {anchor} 三策略齐全",
+              pd0.keys() == pd1.keys() == {"pro_rata", "fifo", "lifo"})
+        for policy in ("pro_rata", "fifo", "lifo"):
+            # 三策略共用同一个由整数边表核算的 stock_raw，不以浮点构成合计冒充库存。
+            check(f"T4-mixed {anchor}/{policy} 两版本 stock_raw=2**60",
+                  a["stock_raw"] == b["stock_raw"] == str(stock))
+            raw0 = sum(int(c["raw"]) for c in pd0[policy])
+            raw1 = sum(int(c["raw"]) for c in pd1[policy])
+            # FIFO 先取走大额层，1 raw 残差仍在 A；主策略/LIFO 的 D 锚点保留该残差。
+            delta = 0 if policy == "fifo" else 1
+            check(f"T4-mixed {anchor}/{policy} 两版合计差={delta}",
+                  raw0 == stock and raw1 == stock + delta)
+            check(f"T4-mixed {anchor}/{policy} 两版按 raw 复算闭合 pct=100.0",
+                  round(raw0 * 100.0 / int(a["stock_raw"]), 3) ==
+                  round(raw1 * 100.0 / int(b["stock_raw"]), 3) == 100.0)
+
+
+def test_eps_residual_mixed_b():
+    """T4-mixed-b：129 raw 使旧桶向上舍入；主策略 Δ=-128 的实跑反例。"""
+    stock, total = 2 ** 60, 10 * 2 ** 90
+    edges = [(day(1), "X", "A", stock), (day(1), "X", "A", 129),
+             (day(1), "A", "D", stock)]
+    d = tempfile.mkdtemp(prefix="trace_eps_t4_mixed_b_")
+    ep = write_edges(d, edges)
+    p0, old = eps_run_version(d, ep, {"D": ["D"]}, total, eps_baseline_script(), "old.json")
+    p1, new = eps_run_version(d, ep, {"D": ["D"]}, total, SCRIPT)
+    check("T4-mixed-b 两版本 trace exit 0", p0.returncode == p1.returncode == 0)
+    check("T4-mixed-b 两版本账本落盘", old is not None and new is not None)
+    if old is None or new is None:
+        print(p0.stdout + p0.stderr + p1.stdout + p1.stderr)
+        return
+    deltas = eps_compare_quantities(old, new, "T4-mixed-b", edges, expect_equal=False)
+    for anchor in ("current", "peak"):
+        a, b = [ledger["entities"][0] for ledger in (old, new)]
+        raw0, raw1 = [sum(int(c["raw"]) for c in e["anchors"][anchor]["composition"]) for e in (a, b)]
+        check(f"T4-mixed-b {anchor} 主构成合计 703=2**60、704=2**60-128",
+              raw0 == stock and raw1 == stock - 128)
+        check(f"T4-mixed-b {anchor} 两版本 stock_raw=2**60",
+              a["anchors"][anchor]["stock_raw"] == b["anchors"][anchor]["stock_raw"] == str(stock))
+        check(f"T4-mixed-b {anchor} 两版本闭合 pct=100.0",
+              a["closure_check"][f"{anchor}_sum_pct"] == b["closure_check"][f"{anchor}_sum_pct"] == 100.0)
+        for policy in ("pro_rata", "fifo", "lifo"):
+            sums = [sum(int(c["raw"]) for c in ledger["bounds_sensitivity"]["per_entity"]["D"]
+                        ["anchors"][anchor]["policy_details"][policy]) for ledger in (old, new)]
+            check(f"T4-mixed-b {anchor}/{policy} 两版按 raw 复算闭合 pct=100.0",
+                  round(sums[0] * 100.0 / stock, 3) == round(sums[1] * 100.0 / stock, 3) == 100.0)
+    for row in deltas:
+        expected = {"pro_rata": -128, "fifo": 0, "lifo": 1}[row["policy"]]
+        check(f"T4-mixed-b {row['anchor']}/{row['policy']} Δ={expected}", row["delta"] == expected)
+        print("T4-mixed-b observed", json.dumps(row, sort_keys=True))
+
+
+def eps_mixed_counterexample(label, outgoing, mint_pair, shortfall_pair, sum_pair, deltas_expected):
+    """r3 反例 A/B：四笔同日精确边，调用两版真实 trace_entity 并披露实跑值。"""
+    h, total = 2 ** 60, 10 * 2 ** 90
+    edges = [(day(1), "X", "A", h), (day(1), Z, "A", h),
+             (day(1), "X", "A", 257), (day(1), "A", "D", outgoing)]
+    old, new = [eps_memory_trace(model, edges, total) for model in eps_models()]
+    measurements = []
+    rows = eps_compare_quantities(old, new, label, edges, expect_equal=False,
+                                  measurements=measurements)
+    shortfalls = [float.fromhex(ledger["test_shortfalls"]["pro_rata"][-1][1]) for ledger in (old, new)]
+    check(f"{label} 最后一笔 pro_rata 短缺实跑值", shortfalls == list(shortfall_pair))
+    anchors = {}
+    for anchor in ("current", "peak"):
+        entities = [ledger["entities"][0] for ledger in (old, new)]
+        values = [e["anchors"][anchor] for e in entities]
+        mint = [sum(int(c["raw"]) for c in a["composition"] if c["subkind"] == "mint") for a in values]
+        sums = [sum(int(c["raw"]) for c in a["composition"]) for a in values]
+        check(f"{label}/{anchor} 两版本 mint raw 实跑值", mint == list(mint_pair))
+        check(f"{label}/{anchor} 两版本 Σraw 实跑值", sums == list(sum_pair))
+        check(f"{label}/{anchor} stock_raw 等于整数边表流入",
+              values[0]["stock_raw"] == values[1]["stock_raw"] == str(outgoing))
+        anchors[anchor] = {"mint_raw_703_704": mint, "sum_raw_703_704": sums,
+                           "stock_raw_703_704": [a["stock_raw"] for a in values],
+                           "display_pct_703_704": [e["closure_check"][f"{anchor}_sum_pct"] for e in entities]}
+    for row in rows:
+        check(f"{label}/{row['anchor']}/{row['policy']} UNRESOLVED 合计实跑差",
+              row["delta"] == deltas_expected[row["policy"]])
+    print("T4_COUNTEREXAMPLE " + json.dumps({"label": label, "edges": edges,
+          "total_supply_raw": str(total), "anchors": anchors, "policy_deltas": rows,
+          "shortfalls_703_704": [ledger["test_shortfalls"] for ledger in (old, new)],
+          "last_pro_rata_shortfall_703_704": shortfalls,
+          "out_of_bound_count": sum(row.get("within_bound") is False for row in measurements)}, sort_keys=True))
+
+
+def test_eps_residual_mixed_c():
+    """T4-mixed-c（反例 A）：中间账户混合 mint，mint raw 随拆桶减少 128。"""
+    h = 2 ** 60
+    eps_mixed_counterexample("T4-mixed-c", h, (h // 2, h // 2 - 128), (0, 0),
+                             (h + 128, h - 128), {"pro_rata": -128, "fifo": 0, "lifo": 0})
+
+
+def test_eps_residual_mixed_d():
+    """T4-mixed-d（反例 B）：超余额转出，pro_rata 逐笔短缺 512 → 0。"""
+    h = 2 ** 60
+    eps_mixed_counterexample("T4-mixed-d", 2 * h + 512, (h, h), (512, 0),
+                             (2 * h + 768, 2 * h + 257), {"pro_rata": -511, "fifo": 0, "lifo": 1})
+
+
+def test_eps_residual_stress():
+    """T4-stress：固定种子 300 组；中间账户混合 mint/外部转入，允许超余额转出。"""
+    from fractions import Fraction
+    import random
+    seed, cases, total = 20260915, 300, 10 * 2 ** 90
+    rng = random.Random(seed)
+    models = eps_models()
+    deltas, lengths, large_values, small_values = [], [], [], []
+    measurements = []
+    nongap_cases = intermediate_mint_cases = external_middle_cases = overdraft_cases = 0
+    failures_before = len(FAILS)
+    for case in range(cases):
+        n = rng.randint(3, 8)
+        # 两种外部短缺必有；mint 可先进入 A 参与比例扣减，也保留直达 D 的覆盖。
+        mint = (2 ** rng.randint(50, 62) if rng.randrange(2) else rng.randint(1, 4096)) \
+            if n >= 4 and rng.randrange(2) else 0
+        incoming = rng.randint(2, n - 1 - bool(mint))
+        amounts = [2 ** rng.randint(50, 62), rng.randint(1, 4096)]
+        amounts += [2 ** rng.randint(50, 62) if rng.randrange(2) else rng.randint(1, 4096)
+                    for _ in range(incoming - 2)]
+        rng.shuffle(amounts)
+        large_values += [v for v in amounts if v >= 2 ** 50]
+        small_values += [v for v in amounts if v <= 4096]
+        edges = [(day(1), rng.choice(("X", "Y")), "A", amount) for amount in amounts]
+        external_middle_cases += 1
+        remaining = sum(amounts)
+        if mint:
+            target = "A" if rng.randrange(4) else "D"
+            edges.insert(rng.randrange(len(edges) + 1), (day(1), Z, target, mint))
+            remaining += mint if target == "A" else 0
+            nongap_cases += 1
+            intermediate_mint_cases += target == "A"
+        overdraft = False
+        for _ in range(n - incoming - bool(mint)):
+            if rng.randrange(3) == 0 or remaining <= 0:
+                amount = max(remaining, 0) + rng.choice((rng.randint(1, 4096), 2 ** rng.randint(50, 62)))
+            else:
+                amount = max(1, remaining // rng.randint(2, 5))
+            overdraft |= amount > remaining
+            edges.append((day(2), "A", "D", amount))
+            remaining -= amount
+        overdraft_cases += overdraft
+        lengths.append(len(edges))
+        old, new = [eps_memory_trace(model, edges, total) for model in models]
+        label = f"T4-stress {case:03d} n={len(edges)}"
+        check(f"{label} 实际模拟边数齐全",
+              old["entities"][0]["simulation"]["edges_simulated"] ==
+              new["entities"][0]["simulation"]["edges_simulated"] == n)
+        # 独立整数边表余额；不能把构成浮点合计当作 stock_raw 的真值。
+        stock = sum(amt for _, _, t, amt in edges if t == "D")
+        for anchor in ("current", "peak"):
+            check(f"{label}/{anchor} 两版本库存等于整数边表余额",
+                  old["entities"][0]["anchors"][anchor]["stock_raw"] ==
+                  new["entities"][0]["anchors"][anchor]["stock_raw"] == str(stock))
+        case_measurements = []
+        rows = eps_compare_quantities(old, new, label, edges, expect_equal=False,
+                                      measurements=case_measurements)
+        for row in case_measurements:
+            row.update(case=case, n=n)
+        measurements.extend(case_measurements)
+        for row in rows:
+            row.update(case=case, n=n)
+        deltas.extend(rows)
+        if len(FAILS) > failures_before:
+            print("T4-stress failing input", json.dumps({"case": case, "edges": edges}))
+            failures_before = len(FAILS)
+    maximum = max(abs(row["delta"]) for row in deltas)
+    by_class = {}
+    for category in sorted({row["category"] for row in measurements}):
+        rows = [row for row in measurements if row["category"] == category]
+        max_delta = max(abs(Fraction(row["delta"])) for row in rows)
+        checked = [row for row in rows if row["bound_checked"]]
+        by_class[category] = {"comparisons": len(rows), "max_abs_delta": str(max_delta),
+                              "unit": "pct" if category.endswith("pct") else "raw",
+                              "bound_checked": bool(checked), "bounded_comparisons": len(checked),
+                              "changed_count": sum(Fraction(row["delta"]) != 0 for row in rows),
+                              "out_of_bound_count": sum(not row["within_bound"] for row in checked) if checked else None,
+                              "max_witnesses": [row for row in rows if abs(Fraction(row["delta"])) == max_delta][:6]}
+    summary = {"seed": seed, "cases": cases, "policies": ["pro_rata", "fifo", "lifo"],
+               "policy_anchor_comparisons": len(deltas), "total_supply_raw": str(total),
+               "edge_count_min": min(lengths), "edge_count_max": max(lengths),
+               "large_min": min(large_values), "large_max": max(large_values),
+               "small_min": min(small_values), "small_max": max(small_values),
+               "nongap_nonempty_cases": nongap_cases, "max_abs_delta_raw": maximum,
+               "intermediate_mint_cases": intermediate_mint_cases,
+               "external_middle_cases": external_middle_cases, "overdraft_cases": overdraft_cases,
+               "by_class": by_class,
+               "max_abs_delta_occurrences": sum(abs(row["delta"]) == maximum for row in deltas),
+               "out_of_bound_count": sum(row.get("within_bound") is False for row in measurements),
+               "negative_delta_count": sum(row["delta"] < 0 for row in deltas),
+               "positive_delta_count": sum(row["delta"] > 0 for row in deltas),
+               "max_witnesses": [row for row in deltas if abs(row["delta"]) == maximum]}
+    print(f"T4-stress max|Δ|={maximum} raw; occurrences={summary['max_abs_delta_occurrences']}; "
+          f"out_of_bound={summary['out_of_bound_count']}")
+    for category, stats in by_class.items():
+        status = f"out_of_bound={stats['out_of_bound_count']}" if stats["bound_checked"] else "label_migration_record_only"
+        print(f"T4-stress {category} max|Δ|={stats['max_abs_delta']} {stats['unit']}; "
+              f"{status}")
+    print("T4_STRESS_SUMMARY " + json.dumps(summary, sort_keys=True))
+    check("T4-stress 固定种子 300 组且三策略两锚点齐全", len(deltas) == cases * 3 * 2)
+    check("T4-stress 每组 3–8 边且覆盖非空非 gap 构成", min(lengths) == 3 and max(lengths) == 8 and nongap_cases > 0)
+    check("T4-stress 中间账户覆盖 mint/外部转入与超余额转出",
+          cases >= 300 and intermediate_mint_cases > 0 and external_middle_cases > 0 and overdraft_cases > 0)
+    check("T4-stress 实际观察到非 UNRESOLVED raw 和逐笔短缺变化",
+          Fraction(by_class["non_unresolved_key"]["max_abs_delta"]) > 0
+          and Fraction(by_class["shortfall"]["max_abs_delta"]) > 0)
+    check("T4-stress 舍入界超界次数为零", summary["out_of_bound_count"] == 0)
+
+
+def test_eps_residual_freeze():
+    """T8：复用完整 READY 案根材料，正式 subprocess freeze 验证新旧账本。"""
+    import gzip
+    from pathlib import Path
+    import test_handoff_manifest as h
+    from sqd_v4_test_fixture import write_v4_meta
+    from formal_ready_test_harness import run_formal_script
+    d = tempfile.mkdtemp(prefix="trace_eps_freeze_")
+    h.make_case(d)
+    edge_path = h.sol_edge_path(d)
+    rows = [json.dumps([ts, i + 1, i, 0, f, t, amt])
+            for i, (ts, f, t, amt) in enumerate(eps_residual_edges())]
+    Path(edge_path).write_bytes(gzip.compress(("\n".join(rows) + "\n").encode(), mtime=0))
+    write_v4_meta(edge_path, meta_path=edge_path.replace(".jsonl.gz", ".meta.json"))
+    gen = h.GEN[:-2] + ["--denominators", json.dumps({"total_supply_raw": str(10 * 2 ** 90)})]
+    for cmd in (["generate", "--case-dir", d, "--status", "READY"] + gen,
+                ["verify", "--case-dir", d]):
+        p = run_formal_script(h.SCRIPT, cmd)
+        check(f"T8 {cmd[0]} exit 0", p.returncode == 0)
+        if p.returncode:
+            print(p.stdout + p.stderr)
+            return
+    h.write_json(d, "analysis-state.json", {"whale_groups": [{"id": "D", "members": ["D"]}]})
+    h.write_json(d, "entities.json", {"D": ["D"]})
+    validator = os.path.join(HERE, "../report/adjudication_validator.py")
+    p = subprocess.run([sys.executable, validator, "template", "--case-dir", d, "--force"],
+                       capture_output=True, text=True)
+    check("T8 裁决模板 exit 0", p.returncode == 0)
+    if p.returncode:
+        print(p.stdout + p.stderr)
+        return
+    adj = json.loads(Path(d, "candidate_adjudications.json").read_text())
+    adj["adjudicated_at"] = "2026-08-01T00:00:00Z"
+    h.write_json(d, "candidate_adjudications.json", adj)
+    freeze = ["freeze", "--case-dir", d, "--members", "analysis-state.json", "--entity-file", "entities.json"]
+    for script, expected in ((SCRIPT, 0), (eps_baseline_script(), 2)):
+        p, r = eps_run_version(d, edge_path, {"D": ["D"]}, 10 * 2 ** 90, script, "provenance_ledger.json")
+        check(f"T8 trace before freeze {expected} exit 0", p.returncode == 0)
+        p = run_formal_script(h.SCRIPT, freeze)
+        check(f"T8 freeze exit {expected}", p.returncode == expected)
+        if expected == 2:
+            check("T8 旧算法哈希变化明确拒收", "算法哈希已变化" in p.stderr)
+        if p.returncode != expected:
+            print(p.stdout + p.stderr)
+
+
 def main():
+    test_eps_residual()
+    test_eps_residual_mixed()
+    test_eps_residual_mixed_b()
+    test_eps_residual_mixed_c()
+    test_eps_residual_mixed_d()
+    test_eps_residual_stress()
+    test_eps_residual_freeze()
     test_dust_current_precision_loss()
     test_dust_current_threshold()
     test_dust_peak_precision_loss_rejected()

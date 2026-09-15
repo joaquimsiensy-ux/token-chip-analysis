@@ -1,0 +1,72 @@
+{
+  "status": "PASS",
+  "head": "2000b6e78f790ee0ed348cc2ecb8eae796d5136e",
+  "branch": "main",
+  "initial_files_checked": 1092,
+  "changed_files": {
+    "CHANGELOG.md": {
+      "before_sha256": "8bb5776d1f1648b029bf291fd1f4b90ae9c4a48ab5ad9a7da280f04ed36c8d30",
+      "after_sha256": "e37769c99d4f568a9d9135f1ce55a723b30218beaf6c607ad8a79b2147299576"
+    },
+    "maintenance/repair-20260915-eps-residual/apu_regression.md": {
+      "before_sha256": "4244910a64232aded0cbd4ad38b81ee5526e35e986a5e3c4d7e22c67ec4744c2",
+      "after_sha256": "1ee8eb8621e19623ae42887dedd610ce1260069cf2da3cbf233849ba3ab8da67"
+    },
+    "maintenance/repair-20260915-eps-residual/done.md": {
+      "before_sha256": "bd76959cd6551faa546394b51a9616f0d06ce98598fd6889ab05f5e72dd85efd",
+      "after_sha256": "55b96dc48bb9c02c562fec35e2b7edf9be63281c3a039034ea0cc7c98a25cb3c"
+    },
+    "maintenance/repair-20260915-eps-residual/pythia_regression.md": {
+      "before_sha256": "074dbf6f249cdf17be568bf1fa3289e45d26bc138f19f2009f16269b042a228a",
+      "after_sha256": "adbdc5cf432dace715598d86d4657bed2108dcefcca95faa22509df843a5c264"
+    },
+    "references/scan-schemas.md": {
+      "before_sha256": "ce1aa722856a6e8b71841d3c941cfc38ad1e6a0c14273cd0d3a347567f472ac9",
+      "after_sha256": "9565758e423defe3dafbe3a5f870fa9fd977eae6bf9b736259ae2e946256818e"
+    },
+    "scripts/tests/test_entity_source_trace.py": {
+      "before_sha256": "4ae78c9e81cb2cf3c8b8e10323392baddb3001da0ac60e9d3a10a7a049921e12",
+      "after_sha256": "ef8fb678d0ffa3bf26cc956566c4244a04eccb76e8a1ee87bf85c2c9d6469a15"
+    }
+  },
+  "removed_files": [],
+  "unexpected_changes": [],
+  "added_files": [
+    "maintenance/repair-20260915-eps-residual/assertion_preservation_r3.json",
+    "maintenance/repair-20260915-eps-residual/changelog_lint_before_r3.log",
+    "maintenance/repair-20260915-eps-residual/changelog_lint_r3.log",
+    "maintenance/repair-20260915-eps-residual/check_results_r3.json",
+    "maintenance/repair-20260915-eps-residual/docs_lint_final_r3.log",
+    "maintenance/repair-20260915-eps-residual/docs_lint_r3.log",
+    "maintenance/repair-20260915-eps-residual/existing_evidence_r3.log",
+    "maintenance/repair-20260915-eps-residual/final_checks_r3.json",
+    "maintenance/repair-20260915-eps-residual/fixtures_lint_r3.log",
+    "maintenance/repair-20260915-eps-residual/git_diff_check_final_r3.log",
+    "maintenance/repair-20260915-eps-residual/git_diff_check_r3.log",
+    "maintenance/repair-20260915-eps-residual/git_status_r3.log",
+    "maintenance/repair-20260915-eps-residual/invariant_scan_r3.log",
+    "maintenance/repair-20260915-eps-residual/ledger_recheck_r3.json",
+    "maintenance/repair-20260915-eps-residual/run_checks_r3.log",
+    "maintenance/repair-20260915-eps-residual/run_checks_r3.py",
+    "maintenance/repair-20260915-eps-residual/scope_after_r3.json",
+    "maintenance/repair-20260915-eps-residual/scope_before_r3.json",
+    "maintenance/repair-20260915-eps-residual/scope_verification_r3.log",
+    "maintenance/repair-20260915-eps-residual/t4_stress_probe_r3.log",
+    "maintenance/repair-20260915-eps-residual/t4_stress_summary_r3.json",
+    "maintenance/repair-20260915-eps-residual/test_change_r3.patch",
+    "maintenance/repair-20260915-eps-residual/test_entity_source_trace_before_r3.txt",
+    "maintenance/repair-20260915-eps-residual/test_entity_source_trace_r3.log",
+    "maintenance/repair-20260915-eps-residual/test_version_consistency_r3.log",
+    "maintenance/repair-20260915-eps-residual/verify_existing_evidence_r3.py",
+    "maintenance/repair-20260915-eps-residual/verify_scope_r3.py"
+  ],
+  "unexpected_additions": [],
+  "existing_assertions_preserved": true,
+  "ledger_files_unchanged": {
+    ".staging_eps/apu/provenance_ledger.json": true,
+    ".staging_eps/apu/provenance_ledger_704.json": true,
+    ".staging_eps/pythia/t7_compare/ledger_703.json": true,
+    ".staging_eps/pythia/t7_compare/ledger_704.json": true
+  },
+  "production_sha256": "e85acee4e9a98a664d9b4881ca33177003aa9455261109a01e111e6faeda3cd1"
+}

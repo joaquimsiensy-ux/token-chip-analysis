@@ -1,0 +1,344 @@
+{
+  "status": "PASS",
+  "scope": "synthetic comparator acceptance/rejection probe; injected out-of-bound inputs are expected rejections",
+  "bound_raw": "2 + 4000000/2**52",
+  "cases": [
+    {
+      "case": "order_ambiguous delta=2",
+      "expected_acceptance": true,
+      "before": {
+        "accepted": true,
+        "failed_assertions": [],
+        "bounded_unresolved_comparisons": 0,
+        "migration_records": 16
+      },
+      "after": {
+        "accepted": true,
+        "failed_assertions": [],
+        "bounded_unresolved_comparisons": 16,
+        "migration_records": 0
+      }
+    },
+    {
+      "case": "order_ambiguous delta=3",
+      "expected_acceptance": false,
+      "before": {
+        "accepted": true,
+        "failed_assertions": [],
+        "bounded_unresolved_comparisons": 0,
+        "migration_records": 16
+      },
+      "after": {
+        "accepted": false,
+        "failed_assertions": [
+          "order_ambiguous delta=3 D/current 构成 ('UNRESOLVED', 'depth_limit', 'B') raw 在界内",
+          "order_ambiguous delta=3 D/current 构成 ('UNRESOLVED', 'order_ambiguous', 'A') raw 在界内",
+          "order_ambiguous delta=3 D/current/fifo 构成 ('UNRESOLVED', 'depth_limit', 'B') raw 在界内",
+          "order_ambiguous delta=3 D/current/fifo 构成 ('UNRESOLVED', 'order_ambiguous', 'A') raw 在界内",
+          "order_ambiguous delta=3 D/current/lifo 构成 ('UNRESOLVED', 'depth_limit', 'B') raw 在界内",
+          "order_ambiguous delta=3 D/current/lifo 构成 ('UNRESOLVED', 'order_ambiguous', 'A') raw 在界内",
+          "order_ambiguous delta=3 D/current/pro_rata 构成 ('UNRESOLVED', 'depth_limit', 'B') raw 在界内",
+          "order_ambiguous delta=3 D/current/pro_rata 构成 ('UNRESOLVED', 'order_ambiguous', 'A') raw 在界内",
+          "order_ambiguous delta=3 D/peak 构成 ('UNRESOLVED', 'depth_limit', 'B') raw 在界内",
+          "order_ambiguous delta=3 D/peak 构成 ('UNRESOLVED', 'order_ambiguous', 'A') raw 在界内",
+          "order_ambiguous delta=3 D/peak/fifo 构成 ('UNRESOLVED', 'depth_limit', 'B') raw 在界内",
+          "order_ambiguous delta=3 D/peak/fifo 构成 ('UNRESOLVED', 'order_ambiguous', 'A') raw 在界内",
+          "order_ambiguous delta=3 D/peak/lifo 构成 ('UNRESOLVED', 'depth_limit', 'B') raw 在界内",
+          "order_ambiguous delta=3 D/peak/lifo 构成 ('UNRESOLVED', 'order_ambiguous', 'A') raw 在界内",
+          "order_ambiguous delta=3 D/peak/pro_rata 构成 ('UNRESOLVED', 'depth_limit', 'B') raw 在界内",
+          "order_ambiguous delta=3 D/peak/pro_rata 构成 ('UNRESOLVED', 'order_ambiguous', 'A') raw 在界内"
+        ],
+        "bounded_unresolved_comparisons": 16,
+        "migration_records": 0
+      }
+    },
+    {
+      "case": "order_ambiguous delta=-3",
+      "expected_acceptance": false,
+      "before": {
+        "accepted": true,
+        "failed_assertions": [],
+        "bounded_unresolved_comparisons": 0,
+        "migration_records": 16
+      },
+      "after": {
+        "accepted": false,
+        "failed_assertions": [
+          "order_ambiguous delta=-3 D/current 构成 ('UNRESOLVED', 'depth_limit', 'B') raw 在界内",
+          "order_ambiguous delta=-3 D/current 构成 ('UNRESOLVED', 'order_ambiguous', 'A') raw 在界内",
+          "order_ambiguous delta=-3 D/current/fifo 构成 ('UNRESOLVED', 'depth_limit', 'B') raw 在界内",
+          "order_ambiguous delta=-3 D/current/fifo 构成 ('UNRESOLVED', 'order_ambiguous', 'A') raw 在界内",
+          "order_ambiguous delta=-3 D/current/lifo 构成 ('UNRESOLVED', 'depth_limit', 'B') raw 在界内",
+          "order_ambiguous delta=-3 D/current/lifo 构成 ('UNRESOLVED', 'order_ambiguous', 'A') raw 在界内",
+          "order_ambiguous delta=-3 D/current/pro_rata 构成 ('UNRESOLVED', 'depth_limit', 'B') raw 在界内",
+          "order_ambiguous delta=-3 D/current/pro_rata 构成 ('UNRESOLVED', 'order_ambiguous', 'A') raw 在界内",
+          "order_ambiguous delta=-3 D/peak 构成 ('UNRESOLVED', 'depth_limit', 'B') raw 在界内",
+          "order_ambiguous delta=-3 D/peak 构成 ('UNRESOLVED', 'order_ambiguous', 'A') raw 在界内",
+          "order_ambiguous delta=-3 D/peak/fifo 构成 ('UNRESOLVED', 'depth_limit', 'B') raw 在界内",
+          "order_ambiguous delta=-3 D/peak/fifo 构成 ('UNRESOLVED', 'order_ambiguous', 'A') raw 在界内",
+          "order_ambiguous delta=-3 D/peak/lifo 构成 ('UNRESOLVED', 'depth_limit', 'B') raw 在界内",
+          "order_ambiguous delta=-3 D/peak/lifo 构成 ('UNRESOLVED', 'order_ambiguous', 'A') raw 在界内",
+          "order_ambiguous delta=-3 D/peak/pro_rata 构成 ('UNRESOLVED', 'depth_limit', 'B') raw 在界内",
+          "order_ambiguous delta=-3 D/peak/pro_rata 构成 ('UNRESOLVED', 'order_ambiguous', 'A') raw 在界内"
+        ],
+        "bounded_unresolved_comparisons": 16,
+        "migration_records": 0
+      }
+    },
+    {
+      "case": "depth_limit delta=2",
+      "expected_acceptance": true,
+      "before": {
+        "accepted": true,
+        "failed_assertions": [],
+        "bounded_unresolved_comparisons": 0,
+        "migration_records": 16
+      },
+      "after": {
+        "accepted": true,
+        "failed_assertions": [],
+        "bounded_unresolved_comparisons": 16,
+        "migration_records": 0
+      }
+    },
+    {
+      "case": "depth_limit delta=3",
+      "expected_acceptance": false,
+      "before": {
+        "accepted": true,
+        "failed_assertions": [],
+        "bounded_unresolved_comparisons": 0,
+        "migration_records": 16
+      },
+      "after": {
+        "accepted": false,
+        "failed_assertions": [
+          "depth_limit delta=3 D/current 构成 ('UNRESOLVED', 'budget_truncated', 'B') raw 在界内",
+          "depth_limit delta=3 D/current 构成 ('UNRESOLVED', 'depth_limit', 'A') raw 在界内",
+          "depth_limit delta=3 D/current/fifo 构成 ('UNRESOLVED', 'budget_truncated', 'B') raw 在界内",
+          "depth_limit delta=3 D/current/fifo 构成 ('UNRESOLVED', 'depth_limit', 'A') raw 在界内",
+          "depth_limit delta=3 D/current/lifo 构成 ('UNRESOLVED', 'budget_truncated', 'B') raw 在界内",
+          "depth_limit delta=3 D/current/lifo 构成 ('UNRESOLVED', 'depth_limit', 'A') raw 在界内",
+          "depth_limit delta=3 D/current/pro_rata 构成 ('UNRESOLVED', 'budget_truncated', 'B') raw 在界内",
+          "depth_limit delta=3 D/current/pro_rata 构成 ('UNRESOLVED', 'depth_limit', 'A') raw 在界内",
+          "depth_limit delta=3 D/peak 构成 ('UNRESOLVED', 'budget_truncated', 'B') raw 在界内",
+          "depth_limit delta=3 D/peak 构成 ('UNRESOLVED', 'depth_limit', 'A') raw 在界内",
+          "depth_limit delta=3 D/peak/fifo 构成 ('UNRESOLVED', 'budget_truncated', 'B') raw 在界内",
+          "depth_limit delta=3 D/peak/fifo 构成 ('UNRESOLVED', 'depth_limit', 'A') raw 在界内",
+          "depth_limit delta=3 D/peak/lifo 构成 ('UNRESOLVED', 'budget_truncated', 'B') raw 在界内",
+          "depth_limit delta=3 D/peak/lifo 构成 ('UNRESOLVED', 'depth_limit', 'A') raw 在界内",
+          "depth_limit delta=3 D/peak/pro_rata 构成 ('UNRESOLVED', 'budget_truncated', 'B') raw 在界内",
+          "depth_limit delta=3 D/peak/pro_rata 构成 ('UNRESOLVED', 'depth_limit', 'A') raw 在界内"
+        ],
+        "bounded_unresolved_comparisons": 16,
+        "migration_records": 0
+      }
+    },
+    {
+      "case": "depth_limit delta=-3",
+      "expected_acceptance": false,
+      "before": {
+        "accepted": true,
+        "failed_assertions": [],
+        "bounded_unresolved_comparisons": 0,
+        "migration_records": 16
+      },
+      "after": {
+        "accepted": false,
+        "failed_assertions": [
+          "depth_limit delta=-3 D/current 构成 ('UNRESOLVED', 'budget_truncated', 'B') raw 在界内",
+          "depth_limit delta=-3 D/current 构成 ('UNRESOLVED', 'depth_limit', 'A') raw 在界内",
+          "depth_limit delta=-3 D/current/fifo 构成 ('UNRESOLVED', 'budget_truncated', 'B') raw 在界内",
+          "depth_limit delta=-3 D/current/fifo 构成 ('UNRESOLVED', 'depth_limit', 'A') raw 在界内",
+          "depth_limit delta=-3 D/current/lifo 构成 ('UNRESOLVED', 'budget_truncated', 'B') raw 在界内",
+          "depth_limit delta=-3 D/current/lifo 构成 ('UNRESOLVED', 'depth_limit', 'A') raw 在界内",
+          "depth_limit delta=-3 D/current/pro_rata 构成 ('UNRESOLVED', 'budget_truncated', 'B') raw 在界内",
+          "depth_limit delta=-3 D/current/pro_rata 构成 ('UNRESOLVED', 'depth_limit', 'A') raw 在界内",
+          "depth_limit delta=-3 D/peak 构成 ('UNRESOLVED', 'budget_truncated', 'B') raw 在界内",
+          "depth_limit delta=-3 D/peak 构成 ('UNRESOLVED', 'depth_limit', 'A') raw 在界内",
+          "depth_limit delta=-3 D/peak/fifo 构成 ('UNRESOLVED', 'budget_truncated', 'B') raw 在界内",
+          "depth_limit delta=-3 D/peak/fifo 构成 ('UNRESOLVED', 'depth_limit', 'A') raw 在界内",
+          "depth_limit delta=-3 D/peak/lifo 构成 ('UNRESOLVED', 'budget_truncated', 'B') raw 在界内",
+          "depth_limit delta=-3 D/peak/lifo 构成 ('UNRESOLVED', 'depth_limit', 'A') raw 在界内",
+          "depth_limit delta=-3 D/peak/pro_rata 构成 ('UNRESOLVED', 'budget_truncated', 'B') raw 在界内",
+          "depth_limit delta=-3 D/peak/pro_rata 构成 ('UNRESOLVED', 'depth_limit', 'A') raw 在界内"
+        ],
+        "bounded_unresolved_comparisons": 16,
+        "migration_records": 0
+      }
+    },
+    {
+      "case": "budget_truncated delta=2",
+      "expected_acceptance": true,
+      "before": {
+        "accepted": true,
+        "failed_assertions": [],
+        "bounded_unresolved_comparisons": 0,
+        "migration_records": 16
+      },
+      "after": {
+        "accepted": true,
+        "failed_assertions": [],
+        "bounded_unresolved_comparisons": 16,
+        "migration_records": 0
+      }
+    },
+    {
+      "case": "budget_truncated delta=3",
+      "expected_acceptance": false,
+      "before": {
+        "accepted": true,
+        "failed_assertions": [],
+        "bounded_unresolved_comparisons": 0,
+        "migration_records": 16
+      },
+      "after": {
+        "accepted": false,
+        "failed_assertions": [
+          "budget_truncated delta=3 D/current 构成 ('UNRESOLVED', 'budget_truncated', 'A') raw 在界内",
+          "budget_truncated delta=3 D/current 构成 ('UNRESOLVED', 'facility_candidate', 'B') raw 在界内",
+          "budget_truncated delta=3 D/current/fifo 构成 ('UNRESOLVED', 'budget_truncated', 'A') raw 在界内",
+          "budget_truncated delta=3 D/current/fifo 构成 ('UNRESOLVED', 'facility_candidate', 'B') raw 在界内",
+          "budget_truncated delta=3 D/current/lifo 构成 ('UNRESOLVED', 'budget_truncated', 'A') raw 在界内",
+          "budget_truncated delta=3 D/current/lifo 构成 ('UNRESOLVED', 'facility_candidate', 'B') raw 在界内",
+          "budget_truncated delta=3 D/current/pro_rata 构成 ('UNRESOLVED', 'budget_truncated', 'A') raw 在界内",
+          "budget_truncated delta=3 D/current/pro_rata 构成 ('UNRESOLVED', 'facility_candidate', 'B') raw 在界内",
+          "budget_truncated delta=3 D/peak 构成 ('UNRESOLVED', 'budget_truncated', 'A') raw 在界内",
+          "budget_truncated delta=3 D/peak 构成 ('UNRESOLVED', 'facility_candidate', 'B') raw 在界内",
+          "budget_truncated delta=3 D/peak/fifo 构成 ('UNRESOLVED', 'budget_truncated', 'A') raw 在界内",
+          "budget_truncated delta=3 D/peak/fifo 构成 ('UNRESOLVED', 'facility_candidate', 'B') raw 在界内",
+          "budget_truncated delta=3 D/peak/lifo 构成 ('UNRESOLVED', 'budget_truncated', 'A') raw 在界内",
+          "budget_truncated delta=3 D/peak/lifo 构成 ('UNRESOLVED', 'facility_candidate', 'B') raw 在界内",
+          "budget_truncated delta=3 D/peak/pro_rata 构成 ('UNRESOLVED', 'budget_truncated', 'A') raw 在界内",
+          "budget_truncated delta=3 D/peak/pro_rata 构成 ('UNRESOLVED', 'facility_candidate', 'B') raw 在界内"
+        ],
+        "bounded_unresolved_comparisons": 16,
+        "migration_records": 0
+      }
+    },
+    {
+      "case": "budget_truncated delta=-3",
+      "expected_acceptance": false,
+      "before": {
+        "accepted": true,
+        "failed_assertions": [],
+        "bounded_unresolved_comparisons": 0,
+        "migration_records": 16
+      },
+      "after": {
+        "accepted": false,
+        "failed_assertions": [
+          "budget_truncated delta=-3 D/current 构成 ('UNRESOLVED', 'budget_truncated', 'A') raw 在界内",
+          "budget_truncated delta=-3 D/current 构成 ('UNRESOLVED', 'facility_candidate', 'B') raw 在界内",
+          "budget_truncated delta=-3 D/current/fifo 构成 ('UNRESOLVED', 'budget_truncated', 'A') raw 在界内",
+          "budget_truncated delta=-3 D/current/fifo 构成 ('UNRESOLVED', 'facility_candidate', 'B') raw 在界内",
+          "budget_truncated delta=-3 D/current/lifo 构成 ('UNRESOLVED', 'budget_truncated', 'A') raw 在界内",
+          "budget_truncated delta=-3 D/current/lifo 构成 ('UNRESOLVED', 'facility_candidate', 'B') raw 在界内",
+          "budget_truncated delta=-3 D/current/pro_rata 构成 ('UNRESOLVED', 'budget_truncated', 'A') raw 在界内",
+          "budget_truncated delta=-3 D/current/pro_rata 构成 ('UNRESOLVED', 'facility_candidate', 'B') raw 在界内",
+          "budget_truncated delta=-3 D/peak 构成 ('UNRESOLVED', 'budget_truncated', 'A') raw 在界内",
+          "budget_truncated delta=-3 D/peak 构成 ('UNRESOLVED', 'facility_candidate', 'B') raw 在界内",
+          "budget_truncated delta=-3 D/peak/fifo 构成 ('UNRESOLVED', 'budget_truncated', 'A') raw 在界内",
+          "budget_truncated delta=-3 D/peak/fifo 构成 ('UNRESOLVED', 'facility_candidate', 'B') raw 在界内",
+          "budget_truncated delta=-3 D/peak/lifo 构成 ('UNRESOLVED', 'budget_truncated', 'A') raw 在界内",
+          "budget_truncated delta=-3 D/peak/lifo 构成 ('UNRESOLVED', 'facility_candidate', 'B') raw 在界内",
+          "budget_truncated delta=-3 D/peak/pro_rata 构成 ('UNRESOLVED', 'budget_truncated', 'A') raw 在界内",
+          "budget_truncated delta=-3 D/peak/pro_rata 构成 ('UNRESOLVED', 'facility_candidate', 'B') raw 在界内"
+        ],
+        "bounded_unresolved_comparisons": 16,
+        "migration_records": 0
+      }
+    },
+    {
+      "case": "facility_candidate delta=2",
+      "expected_acceptance": true,
+      "before": {
+        "accepted": true,
+        "failed_assertions": [],
+        "bounded_unresolved_comparisons": 0,
+        "migration_records": 16
+      },
+      "after": {
+        "accepted": true,
+        "failed_assertions": [],
+        "bounded_unresolved_comparisons": 16,
+        "migration_records": 0
+      }
+    },
+    {
+      "case": "facility_candidate delta=3",
+      "expected_acceptance": false,
+      "before": {
+        "accepted": true,
+        "failed_assertions": [],
+        "bounded_unresolved_comparisons": 0,
+        "migration_records": 16
+      },
+      "after": {
+        "accepted": false,
+        "failed_assertions": [
+          "facility_candidate delta=3 D/current 构成 ('UNRESOLVED', 'facility_candidate', 'A') raw 在界内",
+          "facility_candidate delta=3 D/current 构成 ('UNRESOLVED', 'order_ambiguous', 'B') raw 在界内",
+          "facility_candidate delta=3 D/current/fifo 构成 ('UNRESOLVED', 'facility_candidate', 'A') raw 在界内",
+          "facility_candidate delta=3 D/current/fifo 构成 ('UNRESOLVED', 'order_ambiguous', 'B') raw 在界内",
+          "facility_candidate delta=3 D/current/lifo 构成 ('UNRESOLVED', 'facility_candidate', 'A') raw 在界内",
+          "facility_candidate delta=3 D/current/lifo 构成 ('UNRESOLVED', 'order_ambiguous', 'B') raw 在界内",
+          "facility_candidate delta=3 D/current/pro_rata 构成 ('UNRESOLVED', 'facility_candidate', 'A') raw 在界内",
+          "facility_candidate delta=3 D/current/pro_rata 构成 ('UNRESOLVED', 'order_ambiguous', 'B') raw 在界内",
+          "facility_candidate delta=3 D/peak 构成 ('UNRESOLVED', 'facility_candidate', 'A') raw 在界内",
+          "facility_candidate delta=3 D/peak 构成 ('UNRESOLVED', 'order_ambiguous', 'B') raw 在界内",
+          "facility_candidate delta=3 D/peak/fifo 构成 ('UNRESOLVED', 'facility_candidate', 'A') raw 在界内",
+          "facility_candidate delta=3 D/peak/fifo 构成 ('UNRESOLVED', 'order_ambiguous', 'B') raw 在界内",
+          "facility_candidate delta=3 D/peak/lifo 构成 ('UNRESOLVED', 'facility_candidate', 'A') raw 在界内",
+          "facility_candidate delta=3 D/peak/lifo 构成 ('UNRESOLVED', 'order_ambiguous', 'B') raw 在界内",
+          "facility_candidate delta=3 D/peak/pro_rata 构成 ('UNRESOLVED', 'facility_candidate', 'A') raw 在界内",
+          "facility_candidate delta=3 D/peak/pro_rata 构成 ('UNRESOLVED', 'order_ambiguous', 'B') raw 在界内"
+        ],
+        "bounded_unresolved_comparisons": 16,
+        "migration_records": 0
+      }
+    },
+    {
+      "case": "facility_candidate delta=-3",
+      "expected_acceptance": false,
+      "before": {
+        "accepted": true,
+        "failed_assertions": [],
+        "bounded_unresolved_comparisons": 0,
+        "migration_records": 16
+      },
+      "after": {
+        "accepted": false,
+        "failed_assertions": [
+          "facility_candidate delta=-3 D/current 构成 ('UNRESOLVED', 'facility_candidate', 'A') raw 在界内",
+          "facility_candidate delta=-3 D/current 构成 ('UNRESOLVED', 'order_ambiguous', 'B') raw 在界内",
+          "facility_candidate delta=-3 D/current/fifo 构成 ('UNRESOLVED', 'facility_candidate', 'A') raw 在界内",
+          "facility_candidate delta=-3 D/current/fifo 构成 ('UNRESOLVED', 'order_ambiguous', 'B') raw 在界内",
+          "facility_candidate delta=-3 D/current/lifo 构成 ('UNRESOLVED', 'facility_candidate', 'A') raw 在界内",
+          "facility_candidate delta=-3 D/current/lifo 构成 ('UNRESOLVED', 'order_ambiguous', 'B') raw 在界内",
+          "facility_candidate delta=-3 D/current/pro_rata 构成 ('UNRESOLVED', 'facility_candidate', 'A') raw 在界内",
+          "facility_candidate delta=-3 D/current/pro_rata 构成 ('UNRESOLVED', 'order_ambiguous', 'B') raw 在界内",
+          "facility_candidate delta=-3 D/peak 构成 ('UNRESOLVED', 'facility_candidate', 'A') raw 在界内",
+          "facility_candidate delta=-3 D/peak 构成 ('UNRESOLVED', 'order_ambiguous', 'B') raw 在界内",
+          "facility_candidate delta=-3 D/peak/fifo 构成 ('UNRESOLVED', 'facility_candidate', 'A') raw 在界内",
+          "facility_candidate delta=-3 D/peak/fifo 构成 ('UNRESOLVED', 'order_ambiguous', 'B') raw 在界内",
+          "facility_candidate delta=-3 D/peak/lifo 构成 ('UNRESOLVED', 'facility_candidate', 'A') raw 在界内",
+          "facility_candidate delta=-3 D/peak/lifo 构成 ('UNRESOLVED', 'order_ambiguous', 'B') raw 在界内",
+          "facility_candidate delta=-3 D/peak/pro_rata 构成 ('UNRESOLVED', 'facility_candidate', 'A') raw 在界内",
+          "facility_candidate delta=-3 D/peak/pro_rata 构成 ('UNRESOLVED', 'order_ambiguous', 'B') raw 在界内"
+        ],
+        "bounded_unresolved_comparisons": 16,
+        "migration_records": 0
+      }
+    },
+    {
+      "case": "gap/residual label migration",
+      "after": {
+        "accepted": true,
+        "failed_assertions": [],
+        "bounded_unresolved_comparisons": 0,
+        "migration_records": 16
+      }
+    }
+  ]
+}

@@ -1,0 +1,14 @@
+{
+  "command": "nohup python3 scripts/tests/run_all.py > /tmp/run_all_eps.log 2>&1 &",
+  "exit_code": 1,
+  "passed": 145,
+  "failed": 2,
+  "total": 147,
+  "failures": [
+    "test_batch3_solana_vertical_slice.py",
+    "test_batch3_evm_vertical_slice.py"
+  ],
+  "failure": "socket.bind(127.0.0.1, ephemeral port): PermissionError: [Errno 1] Operation not permitted",
+  "log_initial_mtime_utc": "2026-09-15T13:41:52.220911+00:00",
+  "completed": true
+}

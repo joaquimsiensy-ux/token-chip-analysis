@@ -1,0 +1,7 @@
+{"command": "python3 -B scripts/tests/test_entity_source_trace.py", "exit_code": 0, "elapsed_seconds": 28.812, "log": "test_entity_source_trace_r4b.log", "log_sha256": "54b09d14c9121bb9b0baef539ef4d051469f118cab41d0ebb91d58fc253fdf26"}
+{"command": "python3 -B scripts/tests/test_version_consistency.py", "exit_code": 0, "elapsed_seconds": 0.022, "log": "test_version_consistency_r4b.log", "log_sha256": "0aa71a843750af9a1483f1cc7cbebddf4eef8b784ce7d3cabd0a5196495afd7a"}
+{"command": "python3 -B scripts/tests/changelog_lint.py", "exit_code": 0, "elapsed_seconds": 0.022, "log": "changelog_lint_r4b.log", "log_sha256": "0b4a73477cd277e8b16eab65168c1501dac0e3e3759d80d8625836193588b06e"}
+{"command": "python3 -B scripts/tests/docs_lint.py --all", "exit_code": 0, "elapsed_seconds": 0.381, "log": "docs_lint_r4b.log", "log_sha256": "23ab83b356e62f858f2a062b696b0f49c9a28d99570e1fb74dffb1cc876e20ec"}
+{"command": "python3 -B scripts/tests/invariant_scan.py", "exit_code": 0, "elapsed_seconds": 3.255, "log": "invariant_scan_r4b.log", "log_sha256": "9261e72f46a0f19333c6bf7566d45edf4d6e7bf029678dfe06c9cdd025af345e"}
+{"command": "python3 -B scripts/tests/fixtures_lint.py", "exit_code": 0, "elapsed_seconds": 0.025, "log": "fixtures_lint_r4b.log", "log_sha256": "183d30c5a03d27f68bbb1d7554622bff86eea8c5be867d0fde52926d2bd7b994"}
+{"command": "git diff --check", "exit_code": 0, "elapsed_seconds": 0.016, "log": "git_diff_check_r4b.log", "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"}

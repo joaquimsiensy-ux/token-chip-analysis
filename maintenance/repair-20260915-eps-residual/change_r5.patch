@@ -1,0 +1,134 @@
+--- before_r5/CHANGELOG.md
++++ after_r5/CHANGELOG.md
+@@ -10,7 +10,7 @@
+ 
+ ## 版本索引（活跃窗口，新在上；每版一行，详情见下方对应条目）
+ 
+-- **7.0.4**（2026-09-15）溯源噪声量级短缺改判 UNRESOLVED/fp_residual，每笔短缺数量原样保留、账户 EPS 不变；补 7.0.3 版本登记与详细段；新增分类、数量有界差分与 freeze 回归。
++- **7.0.4**（2026-09-15）溯源噪声量级短缺改判 UNRESOLVED/fp_residual，短缺入桶不丢弃（逐笔短缺值本身有舍入界，见详细段）、账户 EPS 不变；补 7.0.3 版本登记与详细段；新增分类、数量有界差分与 freeze 回归。
+ - **7.0.3**（2026-09-15）T-01 v2（APU 案暴露，codex 只读复核后 codex 施工）：`entity_source_trace` 对尘埃 current 锚点（<0.01% 供应）的闭合异常降级为"来源不可用"（`closure_check.current_negligible_skipped`＋`anchors.current.composition_usable=false`，构成保留作诊断、不归一化）；freeze 独立重算同一条件并同步豁免空构成与 Σraw 拒收，绑定/重放门禁不变；peak 锚点门禁不变；回归补 2^90 量级精度损失、阈值三档、尘埃 peak 仍拒、造假拒收。
+ - **7.0.2**（2026-09-06）生产者四协议补登记与 git 可复现守卫；A4 封口硬拒专用字段重复路径；图一按 producer series_format 派生豁免、绘图与两消费方同源；SUITE 146→147，A→C→B 先红后绿。
+ - **7.0.1**（2026-09-01）批 18 第四轮盲审 P2 消化：销户审计 `signature_discovery` 空签名早退如实透传 `complete`，区分“完整查询且成功签名结果为空”与截断/失败；SUITE 146 不变
+@@ -89,7 +89,7 @@
+ ## [7.0.4] - 2026-09-15 — 溯源假 data_gap 改判浮点残差
+ 
+ - **出处与根因**：APU 案触发的工具故障：float64 大额 raw 运算产生的微量账户短缺被绝对 EPS 判成 data_gap。
+-- **设计与实现**：仅缺口分类使用 max(EPS, total_supply_raw×1e-13)，噪声量级短缺改记 UNRESOLVED/fp_residual 并计数。按 r3_fix_ruling.md 及末尾勘误，唯一精确不变的数量是整数路径 `stock_raw`。令 B = `4·n·2^-52·S + 2`，n 为该实体模拟消费边数，S 为 total_supply raw；裁决要求以下各项与 7.0.3 之差满足 `|Δ| ≤ B`：①非 UNRESOLVED 构成键逐键 raw；②data_gap 与 fp_residual 合桶量（gap704+residual704 对 gap703）；③构成 Σraw；④逐笔短缺。原始 data_gap/fp_residual 标签逐键差仅记录为标签迁移量，不判界，也不承诺其相同。闭合 pct 差界为 `B/stock_raw×100`（stock>0），展示值在舍入边界上可能不同，不承诺展示值相同；Δ 可正可负，不承诺方向。改标签在 float 之上会对全部构成产生 ulp 级扰动，7.0.3 与 7.0.4 都是浮点近似，无优劣。事件计数、三策略 policy_details 和翻转指纹均可能随舍入而变，不承诺不变。账户类、EPS 其余引用、闭合门禁、尘埃 current 降级与 provenance-ledger/v2 schema 均保持；补 gap_eps_rel 参数登记。
++- **设计与实现**：仅缺口分类使用 max(EPS, total_supply_raw×1e-13)，噪声量级短缺改记 UNRESOLVED/fp_residual 并计数。按 r3_fix_ruling.md 及末尾勘误，唯一精确不变的数量是整数路径 `stock_raw`。令 B = `4·n·2^-52·S + 2`，n 为该实体模拟消费边数，S 为 total_supply raw。该界的域假设：单笔转账金额不超过总供应量。裁决要求以下各项与 7.0.3 之差满足 `|Δ| ≤ B`：①非 UNRESOLVED 构成键逐键 raw；②data_gap 与 fp_residual 合桶量（gap704+residual704 对 gap703）；③构成 Σraw；④逐笔短缺。原始 data_gap/fp_residual 标签逐键差仅记录为标签迁移量，不判界，也不承诺其相同。闭合 pct 差界为 `B/stock_raw×100`（stock>0），展示值在舍入边界上可能不同，不承诺展示值相同；Δ 可正可负，不承诺方向。改标签在 float 之上会对全部构成产生 ulp 级扰动，7.0.3 与 7.0.4 都是浮点近似，无优劣。事件计数、三策略 policy_details 和翻转指纹均可能随舍入而变，不承诺不变。账户类、EPS 其余引用、闭合门禁、尘埃 current 降级与 provenance-ledger/v2 schema 均保持；补 gap_eps_rel 参数登记。
+ - **数量验证**：APU/PYTHIA 224 锚点、666 组策略的既有只读复核中，非 UNRESOLVED 键、gap/residual 合桶量、Σraw 和 pct 的差均为 0；原始标签迁移单列。两案 B/S≤4.3e-9，远低于闭合门禁 0.5%。300 组压力测试的合桶量/非 UNRESOLVED 键/逐笔短缺 max|Δ| 为 1536/32/1024 raw，均在界内。r4 曾将原始标签差套用 B 而记录 684 次“超界”；按勘误保留为标签迁移历史，不计数量界失败。r4b 续工及七项命令结果见 done.md。
+ - **消费面与防回流**：三策略 policy_details 实际变化的锚点，其翻转指纹变化、旧裁决收据失配，须重新裁决（APU 实测 118/210，全部含旧 data_gap）；小供应量 gap_eps==EPS 下真实 data_gap 锚点明细不变，收据仍匹配。旧账本整体 freeze 重放与 --check-unseal 另因算法文件哈希漂移被拒，与收据是否匹配无关；“已封存不动”只指不重写文件。极端累加序列的假缺口仍可能超过 gap_eps 记成 data_gap（浮点根因未除的残留）。已知未修：int(float) 截断为 `"raw":"0"` 的既有现象；冻结生产文件 docstring 的“数量不变”措辞留待下一版本修正。
+ - **测试**：按工单先 RED 后 GREEN；T1 假缺口、T2 真缺口、T3 阈值与旧版 dust 对照、T4 的 stock_raw 精确比较与非 UNRESOLVED 构成/合桶量/Σraw/短缺/pct 界，原始标签迁移逐条记录、不判界（既有两例具体断言保留）、T4-mixed、T4-mixed-b 的 129 raw 反例、T4-mixed-c 的 mint 变化与 T4-mixed-d 的逐笔短缺变化。T4-stress 固定种子 300 组，中间账户接收 mint/外部转入并允许超余额转出；T5 登记、T8 新旧账本 freeze。T6/T7 既有离线真实输入回归与 r4 只读复核、七项指定命令结果见 maintenance/repair-20260915-eps-residual/done.md。
+--- before_r5/maintenance/repair-20260915-eps-residual/done.md
++++ after_r5/maintenance/repair-20260915-eps-residual/done.md
+@@ -4,7 +4,7 @@
+ 
+ **r4 的 684 次原始标签“超界”按勘误保留为标签迁移历史，不计 r4b 数量界失败。原始 r4 日志及退出码不改写；当前终态与新七项检查见文末“r4b 续工记录”。本轮保持全程离线，不重跑全套/APU/PYTHIA，不 commit。**
+ 
+-T6 数量不变量通过，原参数正式跑因旧收据指纹失配 exit 2；T7 同输入双版本对照完成。全套结果由调度方沙箱外提供，指定文件为 run_all_fable.log；当前到位状态见第 4 节。本机沙箱的 145/147 结果保留，不记为本机全绿。
++T6 有界差分通过，原参数正式跑因旧收据指纹失配 exit 2；T7 同输入双版本对照完成。全套结果由调度方沙箱外提供，指定文件为 run_all_fable.log；当前到位状态见第 4 节。本机沙箱的 145/147 结果保留，不记为本机全绿。
+ 
+ ## 1. 改动清单
+ 
+@@ -432,3 +432,49 @@
+ - 全程离线；未读取禁用归档目录或 tag；未重跑全套/APU/PYTHIA，未改生产代码、受保护测试或 fixture。
+ 
+ **r4b 终态：COMPLETE。勘误范围已落实；300 组压力测试受约束项超界 0，七项指定命令退出码全为 0，既有具体断言、原始标签迁移记录、范围及生产/账本哈希核验通过。**
++
++## r5 收尾记录
++
++**终态：COMPLETE。** M1/M3/N2/N3/N4 已处理；本节记录 r5 结果，前文 r4/r4b 记录保留为历史。M2/N1 按本工单列为已知未处理。
++
++### 改动
++
++| 项目 | 文件 | r5 改动 |
++|---|---|---|
++| M1 | `CHANGELOG.md:13` | 改为“短缺入桶不丢弃（逐笔短缺值本身有舍入界，见详细段）”，与 T4-mixed-d 的 512→0 一致。 |
++| M3 | `scripts/tests/test_entity_source_trace.py` | 仅实际合桶的 `UNRESOLVED/data_gap`、`UNRESOLVED/fp_residual` 原始键记录标签迁移；其余 UNRESOLVED 键与非 UNRESOLVED 键一样逐键判界，覆盖主构成与三策略、current/peak。 |
++| N2 | `done.md:7` | “T6 数量不变量通过”改为“T6 有界差分通过”。 |
++| N3 | `pythia_regression.md` | e_lp 行增加脚注：事件计数不承诺不变，拆桶舍入使部分边界短缺落到 EPS 以下而不再产生事件，因此 3+11139=11142，比旧计数 11145 少 3 次。 |
++| N4 | `CHANGELOG.md` 7.0.4 详细段、`references/scan-schemas.md` §4 | 在 B 界定义后补充“单笔转账金额不超过总供应量”的域假设；`r3_fix_ruling.md` 保持原样。 |
++
++### 验证与退出码
++
++`python3 -B maintenance/repair-20260915-eps-residual/run_checks_r5.py` 退出 **0**。子进程设置 `PYTHONDONTWRITEBYTECODE=1`；七项命令、退出码、耗时、文件和日志 SHA-256 见 `check_results_r5.json` / `run_checks_r5.log`。
++
++| 命令 | 退出码 | 原始日志 |
++|---|---:|---|
++| `python3 -B scripts/tests/test_entity_source_trace.py` | 0 | `test_entity_source_trace_r5.log` |
++| `python3 -B scripts/tests/test_version_consistency.py` | 0 | `test_version_consistency_r5.log` |
++| `python3 -B scripts/tests/changelog_lint.py` | 0 | `changelog_lint_r5.log` |
++| `python3 -B scripts/tests/docs_lint.py --all` | 0 | `docs_lint_r5.log` |
++| `python3 -B scripts/tests/invariant_scan.py` | 0 | `invariant_scan_r5.log` |
++| `python3 -B scripts/tests/fixtures_lint.py` | 0 | `fixtures_lint_r5.log` |
++| `git diff --check` | 0 | `git_diff_check_r5.log` |
++
++- 指定测试 **17525 check PASS、0 FAIL**，包含 T4 T1、多来源、mixed、mixed-b、mixed-c、mixed-d 及全部 T4-stress；T4-mixed-d 的逐笔短缺仍为 **512→0**。反例原始摘要见 `t4_counterexamples_r5.json`。
++- T4-stress 固定种子 **20260915**、**300 组**、三策略×两锚点 **1800 组**策略比较；合桶量/非 UNRESOLVED 键/逐笔短缺的 max|Δ| 仍为 **1536/32/1024 raw**，受约束项超界 **0**。`B=4·n·2^-52·S+2`、样本参数和既有具体断言均未修改。摘要见 `t4_stress_summary_r5.json`。
++- 原有压力样本中的 UNRESOLVED 原始键均为 gap/residual，4558 条迁移记录仍不逐键判界；其他子类的比较器行为另用 `m3_comparator_probe_r5.py` 验证，退出 **0**。保持 stock_raw、Σraw、合桶量和 pct 不变，仅在 order_ambiguous/depth_limit/budget_truncated/facility_candidate 之间转移 raw：四组界内 +2 控制通过，八组 ±3 超界注入均被新比较器拒绝，旧比较器均误放；gap/residual 纯标签迁移仍通过，共 **13 例**。这些人为注入是预期拒绝探针，不是 T4 实跑的超界。证据见 `m3_comparator_probe_r5.log`。
++- 仅 `eps_compare_quantities` 函数 AST 改变；109 处既有 `check` 表达式全部保留，判界函数、全部具体样例和压力生成器 AST 均不变。
++- 本节落盘后再次运行 `docs_lint --all`、`git diff --check`，退出码均为 **0**；见 `final_checks_r5.json`、`docs_lint_final_r5.log`、`git_diff_check_final_r5.log`。
++
++### 已知未处理
++
++- **M2**：压力样本总供应量远大于单笔金额，现有界断言对紧界的鉴别力不足；本轮不补同量级样本、不修改压力参数，也不以压力通过宣称已解决该问题。
++- **N1**：冻结生产文件 docstring/注释仍有“数量不变”“数量原样保留，只改标签”的旧措辞；按工单不修改，留待后续处理。
++
++### 范围与完整性
++
++- 施工前冻结 **1180 个文件**；仅修改本工单五个既有白名单文件，新增证据均位于本工单目录并带 `_r5` 后缀。无删除、无白名单外改动；增量补丁见 `change_r5.patch`，最终核验见 `scope_before_r5.json`、`scope_after_r5.json`、`scope_verification_r5.log`。
++- 分支 `main`、HEAD `2000b6e78f790ee0ed348cc2ecb8eae796d5136e`、VERSION `7.0.4` 和 Git index 均保持施工起点状态；未 commit。
++- 生产 `scripts/report/entity_source_trace.py` SHA-256 仍为 `e85acee4e9a98a664d9b4881ca33177003aa9455261109a01e111e6faeda3cd1`；`r3_fix_ruling.md` 及其他既有非白名单文件哈希保持不变。
++- 全程离线；未读取禁用归档目录或禁用 tag。
+--- before_r5/maintenance/repair-20260915-eps-residual/pythia_regression.md
++++ after_r5/maintenance/repair-20260915-eps-residual/pythia_regression.md
+@@ -66,10 +66,12 @@
+ | e_dev | 2054 → 0 | 0 → 2054 |
+ | e_h9 | 1991 → 0 | 0 → 1991 |
+ | e_cex_binance_alpha | 2099 → 0 | 0 → 2099 |
+-| e_lp | 11145 → 3 | 0 → 11139 |
++| e_lp[^event-count] | 11145 → 3 | 0 → 11139 |
+ | hx_rotator_0109 | 2092 → 0 | 0 → 2092 |
+ | hx_supply_chain | 2009 → 0 | 0 → 2009 |
+ | hx_hub_2q5w9t | 2078 → 0 | 0 → 2078 |
++
++[^event-count]: 事件计数不承诺不变；拆桶后的浮点舍入使部分边界短缺落到 EPS 以下，不再产生事件，因此新计数 3 + 11139 = 11142，比旧计数 11145 少 3 次，不要求两版事件数守恒。
+ 
+ ## 逐锚点数量
+ 
+--- before_r5/references/scan-schemas.md
++++ after_r5/references/scan-schemas.md
+@@ -326,7 +326,7 @@
+ 缺口分类阈值 `gap_eps = max(EPS, total_supply_raw * 1e-13)`，账户运算仍使用 `EPS=1e-6`。
+ 量级依据：APU 实测最大假 gap 为供应量的 `1.1e-18`，单步理论噪声约 `7e-17`，分类阈值取 `1e-13`。
+ `fp_residual` 表示“浮点噪声量级的账户短缺，不代表链上数据缺失”，仍属 `UNRESOLVED` 并计入未决总量；只有超过 gap_eps 的短缺记 `data_gap`。本版 `take()` 返回的短缺原样入桶，但两版 `take()` 的结果也可能因拆桶后的求和顺序不同而变化。
+-按 `r3_fix_ruling.md` 及末尾勘误，唯一精确不变的数量是整数路径 `stock_raw`。令 `B = 4·n·2^-52·S + 2`，n 为该实体模拟消费边数，S 为 total_supply raw；裁决要求以下与 7.0.3 的差 Δ 满足 `|Δ| ≤ B`：①非 UNRESOLVED 构成键逐键 raw（含 mint）；②data_gap 与 fp_residual 合桶量（gap704+residual704 对 gap703）；③构成 Σraw；④逐笔短缺。原始 data_gap/fp_residual 标签逐键差只记录为标签迁移量，不判界，不承诺其相同。
++按 `r3_fix_ruling.md` 及末尾勘误，唯一精确不变的数量是整数路径 `stock_raw`。令 `B = 4·n·2^-52·S + 2`，n 为该实体模拟消费边数，S 为 total_supply raw。该界的域假设：单笔转账金额不超过总供应量。裁决要求以下与 7.0.3 的差 Δ 满足 `|Δ| ≤ B`：①非 UNRESOLVED 构成键逐键 raw（含 mint）；②data_gap 与 fp_residual 合桶量（gap704+residual704 对 gap703）；③构成 Σraw；④逐笔短缺。原始 data_gap/fp_residual 标签逐键差只记录为标签迁移量，不判界，不承诺其相同。
+ 闭合 pct 差界为 `B/stock_raw×100`（stock>0）；零库存锚点不除以零，仍检查 raw。展示值在舍入边界上可能不同，不承诺展示值相同。Δ 可正可负，不承诺方向；事件计数（data_gap_events/fp_residual_events）、三策略 policy_details、翻转指纹均可能随舍入而变，不承诺不变。改标签在 float 之上会对全部构成产生 ulp 级扰动，7.0.3 与 7.0.4 都是浮点近似，无优劣。
+ 量级：`B/S = 4·n·2^-52 + 2/S`；APU/PYTHIA 实际边数下 B/S≤4.3e-9，远低于闭合门禁 0.5%。两案 224 锚点及 666 组策略已只读复核：非 UNRESOLVED 键、gap/residual 合桶量、Σraw 与 pct 差均为 0，原始标签迁移另列。300 组压力测试的合桶量/非 UNRESOLVED 键/逐笔短缺 max|Δ| 为 1536/32/1024 raw，均在界内；原始标签逐键差按勘误仅记录。r4 曾记录的 684 次原始标签“超界”保留为标签迁移历史，不计数量界失败；r4b 续工结果见 maintenance/repair-20260915-eps-residual/done.md。
+ 账户阈值不放大：否则小额余额被清空、小额入账被跳过、真实尘埃 peak 新增闭合拒收（三反例）。
+--- before_r5/scripts/tests/test_entity_source_trace.py
++++ after_r5/scripts/tests/test_entity_source_trace.py
+@@ -256,7 +256,7 @@
+ 
+ 
+ def eps_compare_quantities(old, new, label, edges, expect_equal=True, measurements=None):
+-    """T4：stock_raw 精确；非 UNRESOLVED/合桶量/短缺/pct 判界，原始标签差只记录。"""
++    """T4：stock_raw 精确；gap/residual 合桶，其余键逐键；Σraw/短缺/pct 判界。"""
+     from fractions import Fraction
+     n, supply = len(edges), int(new["input_binding"]["total_supply_raw"])
+     measurements = [] if measurements is None else measurements
+@@ -270,11 +270,11 @@
+         return ok
+ 
+     def compare_rows(x, y, where, stock):
+-        # r3 裁决勘误：非 UNRESOLVED 逐键判界；原始未决标签差只记录迁移量。
+-        # gap/residual 合桶量在下方单独判界，不能给原始标签差套用 B。
++        # 只有 data_gap/fp_residual 的原始标签差只记录迁移量。
++        # 两者合桶量在下方判界，其余键（含其他 UNRESOLVED）逐键判界。
+         for key in sorted(x.keys() | y.keys(), key=str):
+             category = "unresolved_key" if key[0] == "UNRESOLVED" else "non_unresolved_key"
+-            if key[0] == "UNRESOLVED":
++            if key in (gap, res):
+                 row = {"category": category, "where": f"{where}/{key}", "key": list(key),
+                        "n": n, "old_raw": str(x.get(key, 0)), "new_raw": str(y.get(key, 0)),
+                        "delta": str(y.get(key, 0) - x.get(key, 0)), "bound_checked": False,

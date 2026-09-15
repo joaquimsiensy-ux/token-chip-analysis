@@ -1,0 +1,1713 @@
+{
+  "same_input_arguments": true,
+  "exit_codes": [
+    2,
+    2
+  ],
+  "exit_codes_equal": true,
+  "blocking_reasons": [
+    [
+      "[source_trace]   ✗ e_cex_binance_alpha current 三策略主导终点翻转未获裁决收据覆盖——真实多来源结构须 flip-adjudications/v1 书面裁决后重跑",
+      "[source_trace]   ✗ e_cex_binance_alpha peak 三策略主导终点翻转未获裁决收据覆盖——真实多来源结构须 flip-adjudications/v1 书面裁决后重跑",
+      "[source_trace]   ✗ e_h9 current 三策略主导终点翻转未获裁决收据覆盖——真实多来源结构须 flip-adjudications/v1 书面裁决后重跑",
+      "[source_trace] 敏感性不稳：消费策略主导翻转未获合法裁决收据覆盖，或事件顺序未决量达到实质线——结论不得发布（exit 2）。真实多来源结构须造 flip-adjudications/v1 裁决收据（含逐锚点 flip_fingerprint 与三策略披露）后 --acknowledge-flip <收据> 重跑；顺序未决须补齐 block/slot + tx + log/instruction 序号"
+    ],
+    [
+      "[source_trace]   ✗ e_cex_binance_alpha current 三策略主导终点翻转未获裁决收据覆盖——真实多来源结构须 flip-adjudications/v1 书面裁决后重跑",
+      "[source_trace]   ✗ e_cex_binance_alpha peak 三策略主导终点翻转未获裁决收据覆盖——真实多来源结构须 flip-adjudications/v1 书面裁决后重跑",
+      "[source_trace]   ✗ e_h9 current 三策略主导终点翻转未获裁决收据覆盖——真实多来源结构须 flip-adjudications/v1 书面裁决后重跑",
+      "[source_trace] 敏感性不稳：消费策略主导翻转未获合法裁决收据覆盖，或事件顺序未决量达到实质线——结论不得发布（exit 2）。真实多来源结构须造 flip-adjudications/v1 裁决收据（含逐锚点 flip_fingerprint 与三策略披露）后 --acknowledge-flip <收据> 重跑；顺序未决须补齐 block/slot + tx + log/instruction 序号"
+    ]
+  ],
+  "ledger_exists": [
+    true,
+    true
+  ],
+  "rows": [
+    {
+      "entity_id": "e_dev",
+      "anchor": "current",
+      "stock_raw": [
+        "0",
+        "0"
+      ],
+      "sum_raw": [
+        "0",
+        "0"
+      ],
+      "data_gap_raw": [
+        "0",
+        "0"
+      ],
+      "fp_residual_raw": "0",
+      "checks": {
+        "stock_equal": true,
+        "sum_equal": true,
+        "nongap_equal": true,
+        "gap_split_equal": true
+      },
+      "source_rows": []
+    },
+    {
+      "entity_id": "e_dev",
+      "anchor": "peak",
+      "stock_raw": [
+        "64393693625888",
+        "64393693625888"
+      ],
+      "sum_raw": [
+        "64393693625888",
+        "64393693625888"
+      ],
+      "data_gap_raw": [
+        "0",
+        "0"
+      ],
+      "fp_residual_raw": "0",
+      "checks": {
+        "stock_equal": true,
+        "sum_equal": true,
+        "nongap_equal": true,
+        "gap_split_equal": true
+      },
+      "source_rows": [
+        {
+          "terminal": [
+            "PROVEN_ORIGIN",
+            "mint",
+            "0x0000000000000000000000000000000000000000"
+          ],
+          "old_raw": "64225321215919",
+          "new_raw": "64225321215919"
+        },
+        {
+          "terminal": [
+            "UNRESOLVED",
+            "facility_candidate",
+            "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1"
+          ],
+          "old_raw": "168372409969",
+          "new_raw": "168372409969"
+        }
+      ]
+    },
+    {
+      "entity_id": "e_h9",
+      "anchor": "current",
+      "stock_raw": [
+        "12061341704660",
+        "12061341704660"
+      ],
+      "sum_raw": [
+        "12061341704654",
+        "12061341704654"
+      ],
+      "data_gap_raw": [
+        "0",
+        "0"
+      ],
+      "fp_residual_raw": "0",
+      "checks": {
+        "stock_equal": true,
+        "sum_equal": true,
+        "nongap_equal": true,
+        "gap_split_equal": true
+      },
+      "source_rows": [
+        {
+          "terminal": [
+            "PROVEN_ORIGIN",
+            "mint",
+            "0x0000000000000000000000000000000000000000"
+          ],
+          "old_raw": "5972144728",
+          "new_raw": "5972144728"
+        },
+        {
+          "terminal": [
+            "UNRESOLVED",
+            "data_gap",
+            null
+          ],
+          "old_raw": "0",
+          "new_raw": null
+        },
+        {
+          "terminal": [
+            "UNRESOLVED",
+            "facility_candidate",
+            "137Wof1SpWSePSdGm1Nk9FRtEJWN8YFGJhRCewtHWdwJ"
+          ],
+          "old_raw": "374684814",
+          "new_raw": "374684814"
+        },
+        {
+          "terminal": [
+            "UNRESOLVED",
+            "facility_candidate",
+            "4PCXqMju81FJkos5QijFYgeBiN7uMhJtMt2nocCiq7yc"
+          ],
+          "old_raw": "62834570256",
+          "new_raw": "62834570256"
+        },
+        {
+          "terminal": [
+            "UNRESOLVED",
+            "facility_candidate",
+            "4RwjLeDo8w7Jw6w78Qg2vzn1WTKpkhTZuA5nYooyKT3d"
+          ],
+          "old_raw": "75709865",
+          "new_raw": "75709865"
+        },
+        {
+          "terminal": [
+            "UNRESOLVED",
+            "facility_candidate",
+            "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1"
+          ],
+          "old_raw": "7970767643739",
+          "new_raw": "7970767643739"
+        },
+        {
+          "terminal": [
+            "UNRESOLVED",
+            "facility_candidate",
+            "8SHWfsb4azTpi6k7KhJJiFQ1m8ojwC1ByRAkSnq2t81b"
+          ],
+          "old_raw": "8790617861",
+          "new_raw": "8790617861"
+        },
+        {
+          "terminal": [
+            "UNRESOLVED",
+            "facility_candidate",
+            "8fsL1QDfCrsYCAgU1MowV2SLKgqpbqg5QFRu3kamU2hi"
+          ],
+          "old_raw": "16022679",
+          "new_raw": "16022679"
+        },
+        {
+          "terminal": [
+            "UNRESOLVED",
+            "facility_candidate",
+            "ELH4DP19py2CnCAktTsFf8KMSBijcVv8VJXsArueWXrX"
+          ],
+          "old_raw": "251151",
+          "new_raw": "251151"
+        },
+        {
+          "terminal": [
+            "UNRESOLVED",
+            "facility_candidate",
+            "EwUU8oiKTomjekU5eszctx3kneKJnKm5BJpn5sTT4CUf"
+          ],
+          "old_raw": "2916506202877",
+          "new_raw": "2916506202877"
+        },
+        {
+          "terminal": [
+            "UNRESOLVED",
+            "facility_candidate",
+            "GZdjCnZHV5q79VbWMrGmBnuXA684xqb6YFETMyPjSHja"
+          ],
+          "old_raw": "3244982469",
+          "new_raw": "3244982469"
+        },
+        {
+          "terminal": [
+            "UNRESOLVED",
+            "facility_candidate",
+            "HwEfZWKzMGqa6qgKqWLtsDXbx4bgexw5mQSBQj34asWt"
+          ],
+          "old_raw": "169859844363",
+          "new_raw": "169859844363"
+        },
+        {
+          "terminal": [
+            "UNRESOLVED",
+            "fp_residual",
+            null
+          ],
+          "old_raw": null,
+          "new_raw": "0"
+        },
+        {
+          "terminal": [
+            "UNRESOLVED",
+            "order_ambiguous",
+            null
+          ],
+          "old_raw": "922899029852",
+          "new_raw": "922899029852"
+        }
+      ]
+    },
+    {
+      "entity_id": "e_h9",
+      "anchor": "peak",
+      "stock_raw": [
+        "183760117556662",
+        "183760117556662"
+      ],
+      "sum_raw": [
+        "183760117556656",
+        "183760117556656"
+      ],
+      "data_gap_raw": [
+        "0",
+        "0"
+      ],
+      "fp_residual_raw": "0",
+      "checks": {
+        "stock_equal": true,
+        "sum_equal": true,
+        "nongap_equal": true,
+        "gap_split_equal": true
+      },
+      "source_rows": [
+        {
+          "terminal": [
+            "PROVEN_ORIGIN",
+            "mint",
+            "0x0000000000000000000000000000000000000000"
+          ],
+          "old_raw": "217190676360",
+          "new_raw": "217190676360"
+        },
+        {
+          "terminal": [
+            "UNRESOLVED",
+            "data_gap",
+            null
+          ],
+          "old_raw": "0",
+          "new_raw": null
+        },
+        {
+          "terminal": [
+            "UNRESOLVED",
+            "facility_candidate",
+            "137Wof1SpWSePSdGm1Nk9FRtEJWN8YFGJhRCewtHWdwJ"
+          ],
+          "old_raw": "15189069597",
+          "new_raw": "15189069597"
+        },
+        {
+          "terminal": [
+            "UNRESOLVED",
+            "facility_candidate",
+            "4PCXqMju81FJkos5QijFYgeBiN7uMhJtMt2nocCiq7yc"
+          ],
+          "old_raw": "2702220855350",
+          "new_raw": "2702220855350"
+        },
+        {
+          "terminal": [
+            "UNRESOLVED",
+            "facility_candidate",
+            "4RwjLeDo8w7Jw6w78Qg2vzn1WTKpkhTZuA5nYooyKT3d"
+          ],
+          "old_raw": "2990394622",
+          "new_raw": "2990394622"
+        },
+        {
+          "terminal": [
+            "UNRESOLVED",
+            "facility_candidate",
+            "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1"
+          ],
+          "old_raw": "98716863869143",
+          "new_raw": "98716863869143"
+        },
+        {
+          "terminal": [
+            "UNRESOLVED",
+            "facility_candidate",
+            "8SHWfsb4azTpi6k7KhJJiFQ1m8ojwC1ByRAkSnq2t81b"
+          ],
+          "old_raw": "106918341387",
+          "new_raw": "106918341387"
+        },
+        {
+          "terminal": [
+            "UNRESOLVED",
+            "facility_candidate",
+            "8fsL1QDfCrsYCAgU1MowV2SLKgqpbqg5QFRu3kamU2hi"
+          ],
+          "old_raw": "111312581",
+          "new_raw": "111312581"
+        },
+        {
+          "terminal": [
+            "UNRESOLVED",
+            "facility_candidate",
+            "ELH4DP19py2CnCAktTsFf8KMSBijcVv8VJXsArueWXrX"
+          ],
+          "old_raw": "9680240",
+          "new_raw": "9680240"
+        },
+        {
+          "terminal": [
+            "UNRESOLVED",
+            "facility_candidate",
+            "EwUU8oiKTomjekU5eszctx3kneKJnKm5BJpn5sTT4CUf"
+          ],
+          "old_raw": "49554000896409",
+          "new_raw": "49554000896409"
+        },
+        {
+          "terminal": [
+            "UNRESOLVED",
+            "facility_candidate",
+            "GZdjCnZHV5q79VbWMrGmBnuXA684xqb6YFETMyPjSHja"
+          ],
+          "old_raw": "137317472900",
+          "new_raw": "137317472900"
+        },
+        {
+          "terminal": [
+            "UNRESOLVED",
+            "facility_candidate",
+            "HwEfZWKzMGqa6qgKqWLtsDXbx4bgexw5mQSBQj34asWt"
+          ],
+          "old_raw": "7066290027008",
+          "new_raw": "7066290027008"
+        },
+        {
+          "terminal": [
+            "UNRESOLVED",
+            "fp_residual",
+            null
+          ],
+          "old_raw": null,
+          "new_raw": "0"
+        },
+        {
+          "terminal": [
+            "UNRESOLVED",
+            "order_ambiguous",
+            null
+          ],
+          "old_raw": "25241014961059",
+          "new_raw": "25241014961059"
+        }
+      ]
+    },
+    {
+      "entity_id": "e_cex_binance_alpha",
+      "anchor": "current",
+      "stock_raw": [
+        "155377793096056",
+        "155377793096056"
+      ],
+      "sum_raw": [
+        "155377793096047",
+        "155377793096047"
+      ],
+      "data_gap_raw": [
+        "0",
+        "0"
+      ],
+      "fp_residual_raw": "0",
+      "checks": {
+        "stock_equal": true,
+        "sum_equal": true,
+        "nongap_equal": true,
+        "gap_split_equal": true
+      },
+      "source_rows": [
+        {
+          "terminal": [
+            "PROVEN_ORIGIN",
+            "mint",
+            "0x0000000000000000000000000000000000000000"
+          ],
+          "old_raw": "32814566354",
+          "new_raw": "32814566354"
+        },
+        {
+          "terminal": [
+            "UNRESOLVED",
+            "data_gap",
+            null
+          ],
+          "old_raw": "0",
+          "new_raw": null
+        },
+        {
+          "terminal": [
+            "UNRESOLVED",
+            "depth_limit",
+            null
+          ],
+          "old_raw": "33424565081",
+          "new_raw": "33424565081"
+        },
+        {
+          "terminal": [
+            "UNRESOLVED",
+            "facility_candidate",
+            "137Wof1SpWSePSdGm1Nk9FRtEJWN8YFGJhRCewtHWdwJ"
+          ],
+          "old_raw": "1422331524",
+          "new_raw": "1422331524"
+        },
+        {
+          "terminal": [
+            "UNRESOLVED",
+            "facility_candidate",
+            "4PCXqMju81FJkos5QijFYgeBiN7uMhJtMt2nocCiq7yc"
+          ],
+          "old_raw": "272166228644",
+          "new_raw": "272166228644"
+        },
+        {
+          "terminal": [
+            "UNRESOLVED",
+            "facility_candidate",
+            "4RwjLeDo8w7Jw6w78Qg2vzn1WTKpkhTZuA5nYooyKT3d"
+          ],
+          "old_raw": "613690842",
+          "new_raw": "613690842"
+        },
+        {
+          "terminal": [
+            "UNRESOLVED",
+            "facility_candidate",
+            "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1"
+          ],
+          "old_raw": "100403009782068",
+          "new_raw": "100403009782068"
+        },
+        {
+          "terminal": [
+            "UNRESOLVED",
+            "facility_candidate",
+            "8SHWfsb4azTpi6k7KhJJiFQ1m8ojwC1ByRAkSnq2t81b"
+          ],
+          "old_raw": "212820898792",
+          "new_raw": "212820898792"
+        },
+        {
+          "terminal": [
+            "UNRESOLVED",
+            "facility_candidate",
+            "8fsL1QDfCrsYCAgU1MowV2SLKgqpbqg5QFRu3kamU2hi"
+          ],
+          "old_raw": "437379373",
+          "new_raw": "437379373"
+        },
+        {
+          "terminal": [
+            "UNRESOLVED",
+            "facility_candidate",
+            "ELH4DP19py2CnCAktTsFf8KMSBijcVv8VJXsArueWXrX"
+          ],
+          "old_raw": "1744352",
+          "new_raw": "1744352"
+        },
+        {
+          "terminal": [
+            "UNRESOLVED",
+            "facility_candidate",
+            "EwUU8oiKTomjekU5eszctx3kneKJnKm5BJpn5sTT4CUf"
+          ],
+          "old_raw": "49438119383228",
+          "new_raw": "49438119383228"
+        },
+        {
+          "terminal": [
+            "UNRESOLVED",
+            "facility_candidate",
+            "GZdjCnZHV5q79VbWMrGmBnuXA684xqb6YFETMyPjSHja"
+          ],
+          "old_raw": "11053288476",
+          "new_raw": "11053288476"
+        },
+        {
+          "terminal": [
+            "UNRESOLVED",
+            "facility_candidate",
+            "HwEfZWKzMGqa6qgKqWLtsDXbx4bgexw5mQSBQj34asWt"
+          ],
+          "old_raw": "821228809874",
+          "new_raw": "821228809874"
+        },
+        {
+          "terminal": [
+            "UNRESOLVED",
+            "fp_residual",
+            null
+          ],
+          "old_raw": null,
+          "new_raw": "0"
+        },
+        {
+          "terminal": [
+            "UNRESOLVED",
+            "order_ambiguous",
+            null
+          ],
+          "old_raw": "4150680427439",
+          "new_raw": "4150680427439"
+        }
+      ]
+    },
+    {
+      "entity_id": "e_cex_binance_alpha",
+      "anchor": "peak",
+      "stock_raw": [
+        "188065369215802",
+        "188065369215802"
+      ],
+      "sum_raw": [
+        "188065369215795",
+        "188065369215795"
+      ],
+      "data_gap_raw": [
+        "0",
+        "0"
+      ],
+      "fp_residual_raw": "0",
+      "checks": {
+        "stock_equal": true,
+        "sum_equal": true,
+        "nongap_equal": true,
+        "gap_split_equal": true
+      },
+      "source_rows": [
+        {
+          "terminal": [
+            "PROVEN_ORIGIN",
+            "mint",
+            "0x0000000000000000000000000000000000000000"
+          ],
+          "old_raw": "547353472",
+          "new_raw": "547353472"
+        },
+        {
+          "terminal": [
+            "UNRESOLVED",
+            "data_gap",
+            null
+          ],
+          "old_raw": "0",
+          "new_raw": null
+        },
+        {
+          "terminal": [
+            "UNRESOLVED",
+            "depth_limit",
+            null
+          ],
+          "old_raw": "37743602397",
+          "new_raw": "37743602397"
+        },
+        {
+          "terminal": [
+            "UNRESOLVED",
+            "facility_candidate",
+            "137Wof1SpWSePSdGm1Nk9FRtEJWN8YFGJhRCewtHWdwJ"
+          ],
+          "old_raw": "1729002164",
+          "new_raw": "1729002164"
+        },
+        {
+          "terminal": [
+            "UNRESOLVED",
+            "facility_candidate",
+            "4PCXqMju81FJkos5QijFYgeBiN7uMhJtMt2nocCiq7yc"
+          ],
+          "old_raw": "289544821909",
+          "new_raw": "289544821909"
+        },
+        {
+          "terminal": [
+            "UNRESOLVED",
+            "facility_candidate",
+            "4RwjLeDo8w7Jw6w78Qg2vzn1WTKpkhTZuA5nYooyKT3d"
+          ],
+          "old_raw": "764416877",
+          "new_raw": "764416877"
+        },
+        {
+          "terminal": [
+            "UNRESOLVED",
+            "facility_candidate",
+            "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1"
+          ],
+          "old_raw": "94656738440030",
+          "new_raw": "94656738440030"
+        },
+        {
+          "terminal": [
+            "UNRESOLVED",
+            "facility_candidate",
+            "8SHWfsb4azTpi6k7KhJJiFQ1m8ojwC1ByRAkSnq2t81b"
+          ],
+          "old_raw": "391802017601",
+          "new_raw": "391802017601"
+        },
+        {
+          "terminal": [
+            "UNRESOLVED",
+            "facility_candidate",
+            "8fsL1QDfCrsYCAgU1MowV2SLKgqpbqg5QFRu3kamU2hi"
+          ],
+          "old_raw": "289136124",
+          "new_raw": "289136124"
+        },
+        {
+          "terminal": [
+            "UNRESOLVED",
+            "facility_candidate",
+            "ELH4DP19py2CnCAktTsFf8KMSBijcVv8VJXsArueWXrX"
+          ],
+          "old_raw": "953328",
+          "new_raw": "953328"
+        },
+        {
+          "terminal": [
+            "UNRESOLVED",
+            "facility_candidate",
+            "EwUU8oiKTomjekU5eszctx3kneKJnKm5BJpn5sTT4CUf"
+          ],
+          "old_raw": "90877786608757",
+          "new_raw": "90877786608757"
+        },
+        {
+          "terminal": [
+            "UNRESOLVED",
+            "facility_candidate",
+            "GZdjCnZHV5q79VbWMrGmBnuXA684xqb6YFETMyPjSHja"
+          ],
+          "old_raw": "11109265357",
+          "new_raw": "11109265357"
+        },
+        {
+          "terminal": [
+            "UNRESOLVED",
+            "facility_candidate",
+            "HwEfZWKzMGqa6qgKqWLtsDXbx4bgexw5mQSBQj34asWt"
+          ],
+          "old_raw": "1320721857760",
+          "new_raw": "1320721857760"
+        },
+        {
+          "terminal": [
+            "UNRESOLVED",
+            "fp_residual",
+            null
+          ],
+          "old_raw": null,
+          "new_raw": "0"
+        },
+        {
+          "terminal": [
+            "UNRESOLVED",
+            "order_ambiguous",
+            null
+          ],
+          "old_raw": "476591740019",
+          "new_raw": "476591740019"
+        }
+      ]
+    },
+    {
+      "entity_id": "e_lp",
+      "anchor": "current",
+      "stock_raw": [
+        "36254349538946",
+        "36254349538946"
+      ],
+      "sum_raw": [
+        "36254349538936",
+        "36254349538936"
+      ],
+      "data_gap_raw": [
+        "6827586",
+        "6827586"
+      ],
+      "fp_residual_raw": "0",
+      "checks": {
+        "stock_equal": true,
+        "sum_equal": true,
+        "nongap_equal": true,
+        "gap_split_equal": true
+      },
+      "source_rows": [
+        {
+          "terminal": [
+            "PROVEN_ORIGIN",
+            "mint",
+            "0x0000000000000000000000000000000000000000"
+          ],
+          "old_raw": "201596114624",
+          "new_raw": "201596114624"
+        },
+        {
+          "terminal": [
+            "UNRESOLVED",
+            "data_gap",
+            null
+          ],
+          "old_raw": "6827586",
+          "new_raw": "6827586"
+        },
+        {
+          "terminal": [
+            "UNRESOLVED",
+            "facility_candidate",
+            "137Wof1SpWSePSdGm1Nk9FRtEJWN8YFGJhRCewtHWdwJ"
+          ],
+          "old_raw": "13998968575",
+          "new_raw": "13998968575"
+        },
+        {
+          "terminal": [
+            "UNRESOLVED",
+            "facility_candidate",
+            "4PCXqMju81FJkos5QijFYgeBiN7uMhJtMt2nocCiq7yc"
+          ],
+          "old_raw": "433540260532",
+          "new_raw": "433540260532"
+        },
+        {
+          "terminal": [
+            "UNRESOLVED",
+            "facility_candidate",
+            "4RwjLeDo8w7Jw6w78Qg2vzn1WTKpkhTZuA5nYooyKT3d"
+          ],
+          "old_raw": "60405718931",
+          "new_raw": "60405718931"
+        },
+        {
+          "terminal": [
+            "UNRESOLVED",
+            "facility_candidate",
+            "8SHWfsb4azTpi6k7KhJJiFQ1m8ojwC1ByRAkSnq2t81b"
+          ],
+          "old_raw": "335330616205",
+          "new_raw": "335330616205"
+        },
+        {
+          "terminal": [
+            "UNRESOLVED",
+            "facility_candidate",
+            "8fsL1QDfCrsYCAgU1MowV2SLKgqpbqg5QFRu3kamU2hi"
+          ],
+          "old_raw": "77559214711",
+          "new_raw": "77559214711"
+        },
+        {
+          "terminal": [
+            "UNRESOLVED",
+            "facility_candidate",
+            "ELH4DP19py2CnCAktTsFf8KMSBijcVv8VJXsArueWXrX"
+          ],
+          "old_raw": "13469318730",
+          "new_raw": "13469318730"
+        },
+        {
+          "terminal": [
+            "UNRESOLVED",
+            "facility_candidate",
+            "EwUU8oiKTomjekU5eszctx3kneKJnKm5BJpn5sTT4CUf"
+          ],
+          "old_raw": "11086051960953",
+          "new_raw": "11086051960953"
+        },
+        {
+          "terminal": [
+            "UNRESOLVED",
+            "facility_candidate",
+            "GZdjCnZHV5q79VbWMrGmBnuXA684xqb6YFETMyPjSHja"
+          ],
+          "old_raw": "93643220112",
+          "new_raw": "93643220112"
+        },
+        {
+          "terminal": [
+            "UNRESOLVED",
+            "fp_residual",
+            null
+          ],
+          "old_raw": null,
+          "new_raw": "0"
+        },
+        {
+          "terminal": [
+            "UNRESOLVED",
+            "order_ambiguous",
+            null
+          ],
+          "old_raw": "23938747317977",
+          "new_raw": "23938747317977"
+        }
+      ]
+    },
+    {
+      "entity_id": "e_lp",
+      "anchor": "peak",
+      "stock_raw": [
+        "135324577844399",
+        "135324577844399"
+      ],
+      "sum_raw": [
+        "135324577844395",
+        "135324577844395"
+      ],
+      "data_gap_raw": [
+        "0",
+        "0"
+      ],
+      "fp_residual_raw": "0",
+      "checks": {
+        "stock_equal": true,
+        "sum_equal": true,
+        "nongap_equal": true,
+        "gap_split_equal": true
+      },
+      "source_rows": [
+        {
+          "terminal": [
+            "PROVEN_ORIGIN",
+            "mint",
+            "0x0000000000000000000000000000000000000000"
+          ],
+          "old_raw": "1738706363128",
+          "new_raw": "1738706363128"
+        },
+        {
+          "terminal": [
+            "UNRESOLVED",
+            "data_gap",
+            null
+          ],
+          "old_raw": "0",
+          "new_raw": null
+        },
+        {
+          "terminal": [
+            "UNRESOLVED",
+            "facility_candidate",
+            "137Wof1SpWSePSdGm1Nk9FRtEJWN8YFGJhRCewtHWdwJ"
+          ],
+          "old_raw": "386231945940",
+          "new_raw": "386231945940"
+        },
+        {
+          "terminal": [
+            "UNRESOLVED",
+            "facility_candidate",
+            "4PCXqMju81FJkos5QijFYgeBiN7uMhJtMt2nocCiq7yc"
+          ],
+          "old_raw": "8905132203351",
+          "new_raw": "8905132203351"
+        },
+        {
+          "terminal": [
+            "UNRESOLVED",
+            "facility_candidate",
+            "4RwjLeDo8w7Jw6w78Qg2vzn1WTKpkhTZuA5nYooyKT3d"
+          ],
+          "old_raw": "1592319612542",
+          "new_raw": "1592319612542"
+        },
+        {
+          "terminal": [
+            "UNRESOLVED",
+            "facility_candidate",
+            "8SHWfsb4azTpi6k7KhJJiFQ1m8ojwC1ByRAkSnq2t81b"
+          ],
+          "old_raw": "8018675608201",
+          "new_raw": "8018675608201"
+        },
+        {
+          "terminal": [
+            "UNRESOLVED",
+            "facility_candidate",
+            "8fsL1QDfCrsYCAgU1MowV2SLKgqpbqg5QFRu3kamU2hi"
+          ],
+          "old_raw": "1965813297186",
+          "new_raw": "1965813297186"
+        },
+        {
+          "terminal": [
+            "UNRESOLVED",
+            "facility_candidate",
+            "GZdjCnZHV5q79VbWMrGmBnuXA684xqb6YFETMyPjSHja"
+          ],
+          "old_raw": "2548821680557",
+          "new_raw": "2548821680557"
+        },
+        {
+          "terminal": [
+            "UNRESOLVED",
+            "fp_residual",
+            null
+          ],
+          "old_raw": null,
+          "new_raw": "0"
+        },
+        {
+          "terminal": [
+            "UNRESOLVED",
+            "order_ambiguous",
+            null
+          ],
+          "old_raw": "110168877133490",
+          "new_raw": "110168877133490"
+        }
+      ]
+    },
+    {
+      "entity_id": "hx_rotator_0109",
+      "anchor": "current",
+      "stock_raw": [
+        "0",
+        "0"
+      ],
+      "sum_raw": [
+        "0",
+        "0"
+      ],
+      "data_gap_raw": [
+        "0",
+        "0"
+      ],
+      "fp_residual_raw": "0",
+      "checks": {
+        "stock_equal": true,
+        "sum_equal": true,
+        "nongap_equal": true,
+        "gap_split_equal": true
+      },
+      "source_rows": []
+    },
+    {
+      "entity_id": "hx_rotator_0109",
+      "anchor": "peak",
+      "stock_raw": [
+        "36399538236003",
+        "36399538236003"
+      ],
+      "sum_raw": [
+        "36399538235998",
+        "36399538235998"
+      ],
+      "data_gap_raw": [
+        "0",
+        "0"
+      ],
+      "fp_residual_raw": "0",
+      "checks": {
+        "stock_equal": true,
+        "sum_equal": true,
+        "nongap_equal": true,
+        "gap_split_equal": true
+      },
+      "source_rows": [
+        {
+          "terminal": [
+            "PROVEN_ORIGIN",
+            "mint",
+            "0x0000000000000000000000000000000000000000"
+          ],
+          "old_raw": "0",
+          "new_raw": "0"
+        },
+        {
+          "terminal": [
+            "UNRESOLVED",
+            "data_gap",
+            null
+          ],
+          "old_raw": "0",
+          "new_raw": null
+        },
+        {
+          "terminal": [
+            "UNRESOLVED",
+            "facility_candidate",
+            "137Wof1SpWSePSdGm1Nk9FRtEJWN8YFGJhRCewtHWdwJ"
+          ],
+          "old_raw": "5554703546",
+          "new_raw": "5554703546"
+        },
+        {
+          "terminal": [
+            "UNRESOLVED",
+            "facility_candidate",
+            "4PCXqMju81FJkos5QijFYgeBiN7uMhJtMt2nocCiq7yc"
+          ],
+          "old_raw": "117468817869",
+          "new_raw": "117468817869"
+        },
+        {
+          "terminal": [
+            "UNRESOLVED",
+            "facility_candidate",
+            "4RwjLeDo8w7Jw6w78Qg2vzn1WTKpkhTZuA5nYooyKT3d"
+          ],
+          "old_raw": "980886961",
+          "new_raw": "980886961"
+        },
+        {
+          "terminal": [
+            "UNRESOLVED",
+            "facility_candidate",
+            "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1"
+          ],
+          "old_raw": "30741530550670",
+          "new_raw": "30741530550670"
+        },
+        {
+          "terminal": [
+            "UNRESOLVED",
+            "facility_candidate",
+            "8SHWfsb4azTpi6k7KhJJiFQ1m8ojwC1ByRAkSnq2t81b"
+          ],
+          "old_raw": "830324651617",
+          "new_raw": "830324651617"
+        },
+        {
+          "terminal": [
+            "UNRESOLVED",
+            "facility_candidate",
+            "8fsL1QDfCrsYCAgU1MowV2SLKgqpbqg5QFRu3kamU2hi"
+          ],
+          "old_raw": "4358247009",
+          "new_raw": "4358247009"
+        },
+        {
+          "terminal": [
+            "UNRESOLVED",
+            "facility_candidate",
+            "GZdjCnZHV5q79VbWMrGmBnuXA684xqb6YFETMyPjSHja"
+          ],
+          "old_raw": "397523520174",
+          "new_raw": "397523520174"
+        },
+        {
+          "terminal": [
+            "UNRESOLVED",
+            "facility_candidate",
+            "HwEfZWKzMGqa6qgKqWLtsDXbx4bgexw5mQSBQj34asWt"
+          ],
+          "old_raw": "4301796857804",
+          "new_raw": "4301796857804"
+        },
+        {
+          "terminal": [
+            "UNRESOLVED",
+            "fp_residual",
+            null
+          ],
+          "old_raw": null,
+          "new_raw": "0"
+        },
+        {
+          "terminal": [
+            "UNRESOLVED",
+            "order_ambiguous",
+            null
+          ],
+          "old_raw": "348",
+          "new_raw": "348"
+        }
+      ]
+    },
+    {
+      "entity_id": "hx_supply_chain",
+      "anchor": "current",
+      "stock_raw": [
+        "44201009748514",
+        "44201009748514"
+      ],
+      "sum_raw": [
+        "44201009748510",
+        "44201009748510"
+      ],
+      "data_gap_raw": [
+        "0",
+        "0"
+      ],
+      "fp_residual_raw": "0",
+      "checks": {
+        "stock_equal": true,
+        "sum_equal": true,
+        "nongap_equal": true,
+        "gap_split_equal": true
+      },
+      "source_rows": [
+        {
+          "terminal": [
+            "UNRESOLVED",
+            "facility_candidate",
+            "4PCXqMju81FJkos5QijFYgeBiN7uMhJtMt2nocCiq7yc"
+          ],
+          "old_raw": "4738448",
+          "new_raw": "4738448"
+        },
+        {
+          "terminal": [
+            "UNRESOLVED",
+            "facility_candidate",
+            "4RwjLeDo8w7Jw6w78Qg2vzn1WTKpkhTZuA5nYooyKT3d"
+          ],
+          "old_raw": "57785",
+          "new_raw": "57785"
+        },
+        {
+          "terminal": [
+            "UNRESOLVED",
+            "facility_candidate",
+            "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1"
+          ],
+          "old_raw": "2733422232",
+          "new_raw": "2733422232"
+        },
+        {
+          "terminal": [
+            "UNRESOLVED",
+            "facility_candidate",
+            "8SHWfsb4azTpi6k7KhJJiFQ1m8ojwC1ByRAkSnq2t81b"
+          ],
+          "old_raw": "339722",
+          "new_raw": "339722"
+        },
+        {
+          "terminal": [
+            "UNRESOLVED",
+            "facility_candidate",
+            "8fsL1QDfCrsYCAgU1MowV2SLKgqpbqg5QFRu3kamU2hi"
+          ],
+          "old_raw": "4571",
+          "new_raw": "4571"
+        },
+        {
+          "terminal": [
+            "UNRESOLVED",
+            "facility_candidate",
+            "EwUU8oiKTomjekU5eszctx3kneKJnKm5BJpn5sTT4CUf"
+          ],
+          "old_raw": "44198155454809",
+          "new_raw": "44198155454809"
+        },
+        {
+          "terminal": [
+            "UNRESOLVED",
+            "facility_candidate",
+            "GZdjCnZHV5q79VbWMrGmBnuXA684xqb6YFETMyPjSHja"
+          ],
+          "old_raw": "4505821",
+          "new_raw": "4505821"
+        },
+        {
+          "terminal": [
+            "UNRESOLVED",
+            "facility_candidate",
+            "HwEfZWKzMGqa6qgKqWLtsDXbx4bgexw5mQSBQj34asWt"
+          ],
+          "old_raw": "111225122",
+          "new_raw": "111225122"
+        }
+      ]
+    },
+    {
+      "entity_id": "hx_supply_chain",
+      "anchor": "peak",
+      "stock_raw": [
+        "123461079593822",
+        "123461079593822"
+      ],
+      "sum_raw": [
+        "123461079593817",
+        "123461079593817"
+      ],
+      "data_gap_raw": [
+        "0",
+        "0"
+      ],
+      "fp_residual_raw": "0",
+      "checks": {
+        "stock_equal": true,
+        "sum_equal": true,
+        "nongap_equal": true,
+        "gap_split_equal": true
+      },
+      "source_rows": [
+        {
+          "terminal": [
+            "UNRESOLVED",
+            "facility_candidate",
+            "4PCXqMju81FJkos5QijFYgeBiN7uMhJtMt2nocCiq7yc"
+          ],
+          "old_raw": "13235308",
+          "new_raw": "13235308"
+        },
+        {
+          "terminal": [
+            "UNRESOLVED",
+            "facility_candidate",
+            "4RwjLeDo8w7Jw6w78Qg2vzn1WTKpkhTZuA5nYooyKT3d"
+          ],
+          "old_raw": "161404",
+          "new_raw": "161404"
+        },
+        {
+          "terminal": [
+            "UNRESOLVED",
+            "facility_candidate",
+            "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1"
+          ],
+          "old_raw": "7634921957",
+          "new_raw": "7634921957"
+        },
+        {
+          "terminal": [
+            "UNRESOLVED",
+            "facility_candidate",
+            "8SHWfsb4azTpi6k7KhJJiFQ1m8ojwC1ByRAkSnq2t81b"
+          ],
+          "old_raw": "948904",
+          "new_raw": "948904"
+        },
+        {
+          "terminal": [
+            "UNRESOLVED",
+            "facility_candidate",
+            "8fsL1QDfCrsYCAgU1MowV2SLKgqpbqg5QFRu3kamU2hi"
+          ],
+          "old_raw": "12769",
+          "new_raw": "12769"
+        },
+        {
+          "terminal": [
+            "UNRESOLVED",
+            "facility_candidate",
+            "EwUU8oiKTomjekU5eszctx3kneKJnKm5BJpn5sTT4CUf"
+          ],
+          "old_raw": "123453107056898",
+          "new_raw": "123453107056898"
+        },
+        {
+          "terminal": [
+            "UNRESOLVED",
+            "facility_candidate",
+            "GZdjCnZHV5q79VbWMrGmBnuXA684xqb6YFETMyPjSHja"
+          ],
+          "old_raw": "12585538",
+          "new_raw": "12585538"
+        },
+        {
+          "terminal": [
+            "UNRESOLVED",
+            "facility_candidate",
+            "HwEfZWKzMGqa6qgKqWLtsDXbx4bgexw5mQSBQj34asWt"
+          ],
+          "old_raw": "310671039",
+          "new_raw": "310671039"
+        }
+      ]
+    },
+    {
+      "entity_id": "hx_hub_2q5w9t",
+      "anchor": "current",
+      "stock_raw": [
+        "121855801177",
+        "121855801177"
+      ],
+      "sum_raw": [
+        "121855801173",
+        "121855801173"
+      ],
+      "data_gap_raw": [
+        "0",
+        "0"
+      ],
+      "fp_residual_raw": "0",
+      "checks": {
+        "stock_equal": true,
+        "sum_equal": true,
+        "nongap_equal": true,
+        "gap_split_equal": true
+      },
+      "source_rows": [
+        {
+          "terminal": [
+            "PROVEN_ORIGIN",
+            "mint",
+            "0x0000000000000000000000000000000000000000"
+          ],
+          "old_raw": "0",
+          "new_raw": "0"
+        },
+        {
+          "terminal": [
+            "UNRESOLVED",
+            "data_gap",
+            null
+          ],
+          "old_raw": "0",
+          "new_raw": null
+        },
+        {
+          "terminal": [
+            "UNRESOLVED",
+            "facility_candidate",
+            "137Wof1SpWSePSdGm1Nk9FRtEJWN8YFGJhRCewtHWdwJ"
+          ],
+          "old_raw": "17260261",
+          "new_raw": "17260261"
+        },
+        {
+          "terminal": [
+            "UNRESOLVED",
+            "facility_candidate",
+            "4PCXqMju81FJkos5QijFYgeBiN7uMhJtMt2nocCiq7yc"
+          ],
+          "old_raw": "7295838755",
+          "new_raw": "7295838755"
+        },
+        {
+          "terminal": [
+            "UNRESOLVED",
+            "facility_candidate",
+            "4RwjLeDo8w7Jw6w78Qg2vzn1WTKpkhTZuA5nYooyKT3d"
+          ],
+          "old_raw": "14647018",
+          "new_raw": "14647018"
+        },
+        {
+          "terminal": [
+            "UNRESOLVED",
+            "facility_candidate",
+            "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1"
+          ],
+          "old_raw": "88086530476",
+          "new_raw": "88086530476"
+        },
+        {
+          "terminal": [
+            "UNRESOLVED",
+            "facility_candidate",
+            "8SHWfsb4azTpi6k7KhJJiFQ1m8ojwC1ByRAkSnq2t81b"
+          ],
+          "old_raw": "345356512",
+          "new_raw": "345356512"
+        },
+        {
+          "terminal": [
+            "UNRESOLVED",
+            "facility_candidate",
+            "8fsL1QDfCrsYCAgU1MowV2SLKgqpbqg5QFRu3kamU2hi"
+          ],
+          "old_raw": "2499",
+          "new_raw": "2499"
+        },
+        {
+          "terminal": [
+            "UNRESOLVED",
+            "facility_candidate",
+            "ELH4DP19py2CnCAktTsFf8KMSBijcVv8VJXsArueWXrX"
+          ],
+          "old_raw": "0",
+          "new_raw": "0"
+        },
+        {
+          "terminal": [
+            "UNRESOLVED",
+            "facility_candidate",
+            "EwUU8oiKTomjekU5eszctx3kneKJnKm5BJpn5sTT4CUf"
+          ],
+          "old_raw": "18601649633",
+          "new_raw": "18601649633"
+        },
+        {
+          "terminal": [
+            "UNRESOLVED",
+            "facility_candidate",
+            "GZdjCnZHV5q79VbWMrGmBnuXA684xqb6YFETMyPjSHja"
+          ],
+          "old_raw": "212643704",
+          "new_raw": "212643704"
+        },
+        {
+          "terminal": [
+            "UNRESOLVED",
+            "facility_candidate",
+            "HwEfZWKzMGqa6qgKqWLtsDXbx4bgexw5mQSBQj34asWt"
+          ],
+          "old_raw": "7280299622",
+          "new_raw": "7280299622"
+        },
+        {
+          "terminal": [
+            "UNRESOLVED",
+            "fp_residual",
+            null
+          ],
+          "old_raw": null,
+          "new_raw": "0"
+        },
+        {
+          "terminal": [
+            "UNRESOLVED",
+            "order_ambiguous",
+            null
+          ],
+          "old_raw": "1572693",
+          "new_raw": "1572693"
+        }
+      ]
+    },
+    {
+      "entity_id": "hx_hub_2q5w9t",
+      "anchor": "peak",
+      "stock_raw": [
+        "90729347866833",
+        "90729347866833"
+      ],
+      "sum_raw": [
+        "90729347866828",
+        "90729347866828"
+      ],
+      "data_gap_raw": [
+        "0",
+        "0"
+      ],
+      "fp_residual_raw": "0",
+      "checks": {
+        "stock_equal": true,
+        "sum_equal": true,
+        "nongap_equal": true,
+        "gap_split_equal": true
+      },
+      "source_rows": [
+        {
+          "terminal": [
+            "PROVEN_ORIGIN",
+            "mint",
+            "0x0000000000000000000000000000000000000000"
+          ],
+          "old_raw": "2",
+          "new_raw": "2"
+        },
+        {
+          "terminal": [
+            "UNRESOLVED",
+            "data_gap",
+            null
+          ],
+          "old_raw": "0",
+          "new_raw": null
+        },
+        {
+          "terminal": [
+            "UNRESOLVED",
+            "facility_candidate",
+            "137Wof1SpWSePSdGm1Nk9FRtEJWN8YFGJhRCewtHWdwJ"
+          ],
+          "old_raw": "12993148541",
+          "new_raw": "12993148541"
+        },
+        {
+          "terminal": [
+            "UNRESOLVED",
+            "facility_candidate",
+            "4PCXqMju81FJkos5QijFYgeBiN7uMhJtMt2nocCiq7yc"
+          ],
+          "old_raw": "5492148546895",
+          "new_raw": "5492148546895"
+        },
+        {
+          "terminal": [
+            "UNRESOLVED",
+            "facility_candidate",
+            "4RwjLeDo8w7Jw6w78Qg2vzn1WTKpkhTZuA5nYooyKT3d"
+          ],
+          "old_raw": "11025956407",
+          "new_raw": "11025956407"
+        },
+        {
+          "terminal": [
+            "UNRESOLVED",
+            "facility_candidate",
+            "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1"
+          ],
+          "old_raw": "66173016785386",
+          "new_raw": "66173016785386"
+        },
+        {
+          "terminal": [
+            "UNRESOLVED",
+            "facility_candidate",
+            "8SHWfsb4azTpi6k7KhJJiFQ1m8ojwC1ByRAkSnq2t81b"
+          ],
+          "old_raw": "259908739377",
+          "new_raw": "259908739377"
+        },
+        {
+          "terminal": [
+            "UNRESOLVED",
+            "facility_candidate",
+            "8fsL1QDfCrsYCAgU1MowV2SLKgqpbqg5QFRu3kamU2hi"
+          ],
+          "old_raw": "1881434",
+          "new_raw": "1881434"
+        },
+        {
+          "terminal": [
+            "UNRESOLVED",
+            "facility_candidate",
+            "ELH4DP19py2CnCAktTsFf8KMSBijcVv8VJXsArueWXrX"
+          ],
+          "old_raw": "21",
+          "new_raw": "21"
+        },
+        {
+          "terminal": [
+            "UNRESOLVED",
+            "facility_candidate",
+            "EwUU8oiKTomjekU5eszctx3kneKJnKm5BJpn5sTT4CUf"
+          ],
+          "old_raw": "13138542641068",
+          "new_raw": "13138542641068"
+        },
+        {
+          "terminal": [
+            "UNRESOLVED",
+            "facility_candidate",
+            "GZdjCnZHV5q79VbWMrGmBnuXA684xqb6YFETMyPjSHja"
+          ],
+          "old_raw": "160073561647",
+          "new_raw": "160073561647"
+        },
+        {
+          "terminal": [
+            "UNRESOLVED",
+            "facility_candidate",
+            "HwEfZWKzMGqa6qgKqWLtsDXbx4bgexw5mQSBQj34asWt"
+          ],
+          "old_raw": "5480452716459",
+          "new_raw": "5480452716459"
+        },
+        {
+          "terminal": [
+            "UNRESOLVED",
+            "fp_residual",
+            null
+          ],
+          "old_raw": null,
+          "new_raw": "0"
+        },
+        {
+          "terminal": [
+            "UNRESOLVED",
+            "order_ambiguous",
+            null
+          ],
+          "old_raw": "1183889591",
+          "new_raw": "1183889591"
+        }
+      ]
+    }
+  ],
+  "events": [
+    {
+      "entity_id": "e_dev",
+      "data_gap_events": [
+        2054,
+        0
+      ],
+      "fp_residual_events": [
+        0,
+        2054
+      ]
+    },
+    {
+      "entity_id": "e_h9",
+      "data_gap_events": [
+        1991,
+        0
+      ],
+      "fp_residual_events": [
+        0,
+        1991
+      ]
+    },
+    {
+      "entity_id": "e_cex_binance_alpha",
+      "data_gap_events": [
+        2099,
+        0
+      ],
+      "fp_residual_events": [
+        0,
+        2099
+      ]
+    },
+    {
+      "entity_id": "e_lp",
+      "data_gap_events": [
+        11145,
+        3
+      ],
+      "fp_residual_events": [
+        0,
+        11139
+      ]
+    },
+    {
+      "entity_id": "hx_rotator_0109",
+      "data_gap_events": [
+        2092,
+        0
+      ],
+      "fp_residual_events": [
+        0,
+        2092
+      ]
+    },
+    {
+      "entity_id": "hx_supply_chain",
+      "data_gap_events": [
+        2009,
+        0
+      ],
+      "fp_residual_events": [
+        0,
+        2009
+      ]
+    },
+    {
+      "entity_id": "hx_hub_2q5w9t",
+      "data_gap_events": [
+        2078,
+        0
+      ],
+      "fp_residual_events": [
+        0,
+        2078
+      ]
+    }
+  ],
+  "t4_failures": [],
+  "historical_q1_data_gap_events_information_only": 2191,
+  "blocking_reasons_equal": true,
+  "entities": 7,
+  "exploration": [
+    true,
+    true
+  ],
+  "input_binding_equal": {
+    "source": true,
+    "entity_file": true,
+    "labels_file": true,
+    "handoff_manifest": true,
+    "data_map": true,
+    "total_supply_raw": true
+  }
+}

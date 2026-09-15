@@ -1,0 +1,62 @@
+{
+  "scripts/report/handoff_manifest.py": {
+    "unchanged": true,
+    "sha256": "37919a42ff3bf9c97484dc1ec6b8da19223dac0bb10219edd26d53c867deb79e"
+  },
+  "scripts/tests/test_sqd_gap_repair.py": {
+    "unchanged": true,
+    "sha256": "8e14a53cc7fa539198fe26e305cadbf5380e34857e8d2b25970e7622e662f699"
+  },
+  "scripts/tests/test_handoff_manifest.py": {
+    "unchanged": true,
+    "sha256": "4ffdb6e0e58fefa91c9d1ffa6b18b518ea7ad48cd1fdd2af54154c4753dc776c"
+  },
+  "scripts/tests/invariant_manifest.json": {
+    "unchanged": true,
+    "sha256": "fbee231a850999e34e3830018762c1aeee35f8eacda5c1e5d6d436ec60cc21be"
+  },
+  "scripts/tests/fixtures/pythia_anchors.json": {
+    "unchanged": true,
+    "sha256": "55055a93269f5c7947b263fdd77786d112e94ff1440f971529569484941425d9"
+  },
+  "scripts/tests/run_all.py": {
+    "unchanged": true,
+    "sha256": "f92d33c3a5c4a8eaa56d17cc529dc280938d08c2331d6af5e1ed070daa345ebf"
+  },
+  "existing_test_text": {
+    "byte_identical_after_removing_additions": true
+  },
+  "VectorAccount": {
+    "byte_identical": true
+  },
+  "LayeredAccount": {
+    "byte_identical": true
+  },
+  "top_entry": {
+    "byte_identical": true
+  },
+  "policy_detail": {
+    "byte_identical": true
+  },
+  "old_eps_references": [
+    "EPS = 1e-6",
+    "if avail <= EPS:",
+    "if amt >= avail - EPS:",
+    "if s <= EPS:",
+    "while need > EPS and self.layers:",
+    "if use >= la - EPS:",
+    "elif shortfall > EPS:",
+    "if amt <= EPS:",
+    "rows = [(k, v) for k, v in vec.items() if v > EPS]",
+    "for k, v in sorted(vec.items(), key=lambda kv: (-kv[1], str(kv[0]))) if v > EPS]"
+  ],
+  "baseline_head": "2000b6e78f790ee0ed348cc2ecb8eae796d5136e",
+  "initial_git_status": "",
+  "ancestor_3b29e38_exit_code": 0,
+  "staging_initial_sha256_check": {
+    "command": "shasum -a 256 -c STAGING_SHA256.txt",
+    "cwd": "/Users/uravvv/.claude/skills/token-chip-analysis/.staging_eps",
+    "exit_code": 0,
+    "ok_files": 33
+  }
+}

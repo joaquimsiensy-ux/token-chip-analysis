@@ -1,0 +1,4 @@
+{"status": "PASS", "head": "2000b6e78f790ee0ed348cc2ecb8eae796d5136e", "branch": "main", "initial_files_checked": 1092, "removed_files": [], "unexpected_changes": [], "unexpected_additions": []}
+changed files: CHANGELOG.md, maintenance/repair-20260915-eps-residual/apu_regression.md, maintenance/repair-20260915-eps-residual/done.md, maintenance/repair-20260915-eps-residual/pythia_regression.md, references/scan-schemas.md, scripts/tests/test_entity_source_trace.py
+assertions: {"status": "PASS", "original_check_calls": 69, "r2_check_calls": 84, "r3_check_calls": 100, "missing_original_check_calls": [], "original_executed_checks": 105, "r2_executed_checks": 200, "r2_checks_retained_except_replaced_bound": 176, "r3_executed_checks": 7492, "missing_original_executed_checks": [], "missing_retained_r2_executed_checks": []}
+ledger hashes unchanged: True production: e85acee4e9a98a664d9b4881ca33177003aa9455261109a01e111e6faeda3cd1

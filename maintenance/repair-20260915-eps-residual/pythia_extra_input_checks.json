@@ -1,0 +1,16 @@
+{
+  "command": "shasum -a 256 -c STAGING_SHA256_pythia_extra.txt",
+  "cwd": "/Users/uravvv/.claude/skills/token-chip-analysis/.staging_eps/pythia",
+  "exit_code": 0,
+  "ok_files": 2,
+  "files": {
+    "s2_entity_members.json": {
+      "bytes": 17647,
+      "sha256": "714bf76bc6d710123890310e8865a1cf6b134436cbe7b8681e56b731cfccf4e1"
+    },
+    "entity_file_flat.json": {
+      "bytes": 5242,
+      "sha256": "a27c064714ea868d3ce15918c6ecc8b8e8d0708b463e4102d1d7eede59a89e5c"
+    }
+  }
+}
