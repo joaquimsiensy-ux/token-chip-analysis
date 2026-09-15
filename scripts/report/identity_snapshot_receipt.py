@@ -10,6 +10,7 @@ sys.path.insert(0, str(LIB))
 from channels_preflight import validate_preflight_artifact
 from scan_token_accounts import parse_gpa_response, parse_supply_response, parse_token_accounts
 from chain_registry import identity_chains, identity_evm_chains
+from producer_history import historical_producer_hashes
 def sha(p): return hashlib.sha256(Path(p).read_bytes()).hexdigest()
 def load(p): return json.loads(Path(p).read_text())
 def total_snapshot(p):
@@ -80,8 +81,10 @@ def validate_solana_source(mint,snapshot,meta,total):
   raise ValueError("Solana snapshot/meta must share one collector output directory")
  if m.get("schema")!="solana-holder-snapshot-v2" or m.get("closed") is not True or m.get("mint")!=mint or str(m.get("supply_raw"))!=str(total) or str(m.get("sum_accounts_raw"))!=str(total):
   raise ValueError("Solana holder meta does not prove closed owner universe")
- if m.get("producer")!={"path":"scan_token_accounts.py","sha256":sha(collector)}:
-  raise ValueError("Solana holder meta producer is not current scan_token_accounts.py")
+ allowed={sha(collector)} | set(historical_producer_hashes("scripts/solana/scan_token_accounts.py", "solana-holder-snapshot-v2"))
+ producer=m.get("producer") or {}
+ if producer.get("path")!="scan_token_accounts.py" or producer.get("sha256") not in allowed:
+  raise ValueError("Solana holder meta producer is not an admitted scan_token_accounts.py")
  outputs=m.get("outputs") or {}
  owners_path=ref_with_size(root,outputs.get("holders_owners"),"holders_owners")
  accounts_path=ref_with_size(root,outputs.get("holders_accounts"),"holders_accounts")
@@ -142,7 +145,7 @@ def ref_with_size(root,item,label):
 def emit_solana(mint,block,snapshot,meta,total,out):
  root=Path(snapshot).resolve().parent; m,collector=validate_solana_source(mint,snapshot,meta,total)
  source={"kind":"solana-token-accounts","snapshot_meta":ref(root,meta),
-         "collector":{"path":"scan_token_accounts.py","sha256":sha(collector)},
+         "collector":dict(m["producer"]),
          "scan_artifacts":[{"raw_artifact":x["raw_artifact"],"meta_artifact":x["meta_artifact"]}
                            for x in m["scans"]]}
  return write(base("sol",mint,block,snapshot,total,source),out)
@@ -151,12 +154,15 @@ def validate_receipt(receipt,snapshot,total,chain):
  r=load(receipt); root=Path(receipt).resolve().parent; errors=[]
  try:
   if r.get("schema")!="identity-holder-snapshot/v2" or r.get("status")!="PASS" or r.get("adapter")!=chain: raise ValueError("receipt schema/status/adapter invalid")
-  if r.get("producer")!={"path":"identity_snapshot_receipt.py","sha256":sha(__file__)}: raise ValueError("receipt producer is not current production emitter")
+  allowed={sha(__file__)} | set(historical_producer_hashes("scripts/report/identity_snapshot_receipt.py", "identity-holder-snapshot/v2"))
+  producer=r.get("producer") or {}
+  if producer.get("path")!="identity_snapshot_receipt.py" or producer.get("sha256") not in allowed: raise ValueError("receipt producer is not an admitted production emitter")
   if r.get("snapshot")!={"path":Path(snapshot).name,"sha256":sha(snapshot)} or str(r.get("total_supply_raw"))!=str(total): raise ValueError("receipt snapshot/supply binding mismatch")
   src=r.get("source") or {}
   if chain=="sol":
    meta=(root/str((src.get("snapshot_meta") or {}).get("path",""))).resolve()
-   validate_solana_source(r.get("token"),snapshot,meta,total)
+   source_meta,_=validate_solana_source(r.get("token"),snapshot,meta,total)
+   if src.get("collector")!=source_meta.get("producer"): raise ValueError("identity collector differs from observed snapshot producer")
   else:
    preflight=(root/str((src.get("preflight") or {}).get("path",""))).resolve()
    stats=(root/str((src.get("replay_stats") or {}).get("path",""))).resolve()

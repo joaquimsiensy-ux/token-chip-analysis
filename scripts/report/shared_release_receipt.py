@@ -1483,14 +1483,10 @@ def validate_reconciliation_report(root, expected_target=None, *, return_receipt
             try:
                 frozen_path = regular(root, SOLANA_FROZEN_OBSERVATION_BUNDLE)
                 frozen_bundle = json.loads(frozen_path.read_text(encoding="utf-8"))
-                envelope_errors = validate_receipt(frozen_bundle, case_root=root)
-                _require(not envelope_errors,
-                         f"{binding_hint}；信封校验失败: "
-                         + (envelope_errors[0] if envelope_errors else "unknown"))
                 from solana_observation import validate_observation_bundle
                 validate_observation_bundle(
                     frozen_bundle, bundle_path=frozen_path,
-                    expected_mint=exact_target["token"])
+                    expected_mint=exact_target["token"], case_root=root)
             except Exception as exc:
                 if binding_hint in str(exc):
                     raise

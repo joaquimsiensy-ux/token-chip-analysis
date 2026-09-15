@@ -28,7 +28,8 @@ from receipt_kernel import (assert_distinct_paths, build_envelope, finalize_enve
                             publish_error_receipt, publish_overwrite, publish_txn)
 from solana_attested_session import SolanaAttestedSession
 from solana_observation import (assert_declared_slot, build_observation_bundle,
-                                observe_snapshot, validate_observation_bundle)
+                                observe_snapshot, validate_observation_bundle,
+                                _normalized_gpa_accounts, canonical_json_sha256)
 
 SPL = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
 T22 = "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
@@ -140,6 +141,155 @@ def _case_relative(path):
         raise ValueError("formal outputs must stay inside the case directory") from exc
 
 
+def _reuse_ref(ref, *, directories=None):
+    """Resolve and verify a source ref without touching its bytes or inode."""
+    if not isinstance(ref, dict) or not {"path", "size", "sha256"} <= set(ref):
+        raise ValueError("reuse source reference must bind path/size/sha256")
+    shown = Path(ref["path"])
+    candidates = ([directory / shown.name for directory in directories]
+                  if directories is not None else [shown])
+    for path in candidates:
+        if path.is_symlink():
+            raise ValueError(f"reuse source dependency is a symlink: {path}")
+        if path.is_file():
+            if path.stat().st_size != ref["size"] or sha256_file(path) != ref["sha256"]:
+                raise ValueError(f"reuse source dependency hash/size mismatch: {path}")
+            return path.resolve()
+    raise ValueError(f"reuse source dependency missing: {shown}")
+
+
+def _reuse_output_paths(args, marker, protected):
+    data_dir = Path(args.work_dir)
+    outputs = [Path(args.out), Path(marker), *[data_dir / name for name in (
+        "_supply.json", "_gpa_raw_all.json", "_gpa_raw_all.meta.json",
+        "holders_accounts.json", "holders_owners.json", "holders_snapshot_meta.json")]]
+    resolved = []
+    for output in outputs:
+        _case_relative(output)
+        # Reject parent symlinks before quarantine as well as leaf aliases.
+        if any(part.is_symlink() for part in (output, *output.parents)):
+            raise ValueError(f"reuse output symlink forbidden: {output}")
+        for source in [*protected, *resolved]:
+            if (output.resolve() == Path(source).resolve()
+                    or (output.exists() and Path(source).exists()
+                        and os.path.samefile(output, source))):
+                raise ValueError(f"reuse output aliases source/dependency/output: {output}")
+        resolved.append(output.resolve())
+
+
+def _reuse_protected_paths(args, marker):
+    """Protect declared dependencies before deciding whether stale outputs are safe to quarantine."""
+    source = Path(args.reuse_observation_bundle)
+    if source.is_symlink():
+        raise ValueError("reuse observation bundle symlink forbidden")
+    source = source.resolve(strict=True)
+    bundle = json.loads(source.read_text(encoding="utf-8"))
+    inputs = bundle.get("inputs")
+    if not isinstance(inputs, dict) or not isinstance(bundle.get("holder_outputs"), dict):
+        raise ValueError("reuse source dependency manifest missing")
+    paths = [source]
+    for ref in [*inputs.values(), bundle.get("output")]:
+        if not isinstance(ref, dict) or not isinstance(ref.get("path"), str) or not ref["path"]:
+            raise ValueError("reuse source dependency path missing")
+        paths.append(Path(ref["path"]).resolve())
+    gpa = inputs.get("gpa_rpc") or {}
+    if not gpa.get("path"):
+        raise ValueError("reuse source GPA dependency path missing")
+    gpa_dir = Path(gpa["path"]).resolve().parent
+    for ref in bundle["holder_outputs"].values():
+        if not isinstance(ref, dict) or not ref.get("path"):
+            raise ValueError("reuse holder dependency path missing")
+        paths.extend(directory / Path(ref["path"]).name
+                     for directory in (gpa_dir, source.parent, source.parent / "data"))
+    paths.append(gpa_dir / "holders_snapshot_meta.json")
+    _reuse_output_paths(args, marker, paths)
+    return paths
+
+
+def _load_reuse_observation(args, marker):
+    source = Path(args.reuse_observation_bundle)
+    if source.is_symlink():
+        raise ValueError("reuse observation bundle symlink forbidden")
+    source = source.resolve(strict=True)
+    source_sha = sha256_file(source)
+    bundle = json.loads(source.read_text(encoding="utf-8"))
+    validate_observation_bundle(bundle, bundle_path=source, expected_mint=args.mint,
+                                case_root=Path.cwd())
+    if bundle.get("mint") != args.mint or bundle.get("program") not in {SPL, T22}:
+        raise ValueError("reuse observation mint/program identity invalid")
+    program = bundle["program"]
+    if args.program != "auto" and program != (T22 if args.program == "token2022" else SPL):
+        raise ValueError("reuse observation program differs from --program")
+    slot = bundle["snapshot"]["slot"]
+    assert_declared_slot(args.as_of_slot, slot, "--as-of-slot")
+    if slot < args.min_context_slot:
+        raise ValueError("reuse observed slot is below --min-context-slot")
+    if args.datasizes not in {"auto", "all"} and program == T22:
+        raise ValueError("Token-2022 formal observation rejects dataSize filters")
+    inputs = {name: _reuse_ref(ref) for name, ref in bundle["inputs"].items()}
+    if not {"supply_rpc", "gpa_rpc", "gpa_meta"} <= inputs.keys():
+        raise ValueError("reuse requires original supply/GPA/meta evidence")
+    directories = [inputs["gpa_rpc"].parent, source.parent, source.parent / "data"]
+    holders = {name: _reuse_ref(ref, directories=directories)
+               for name, ref in bundle["holder_outputs"].items()}
+    snapshot_path = _reuse_ref(bundle.get("output"))
+    protected = list(dict.fromkeys([source, *inputs.values(), *holders.values(), snapshot_path]))
+    source_meta = inputs["gpa_rpc"].parent / "holders_snapshot_meta.json"
+    if source_meta.is_file():
+        protected.append(source_meta.resolve())
+    case_root = Path.cwd().resolve()
+    for path in protected:
+        if case_root not in path.resolve().parents:
+            raise ValueError(f"reuse source dependency escapes case directory: {path}")
+    _reuse_output_paths(args, marker, protected)
+    fingerprints = {path: sha256_file(path) for path in protected}
+    if fingerprints[source] != source_sha:
+        raise ValueError("reuse source bundle changed during validation")
+
+    gpa = json.loads(inputs["gpa_rpc"].read_text(encoding="utf-8"))
+    accounts, gpa_slot = parse_gpa_response(gpa)
+    normalized_slot, normalized = _normalized_gpa_accounts(gpa["result"])
+    _, rows, owners, malformed = parse_token_accounts(accounts)
+    supply = json.loads(inputs["supply_rpc"].read_text(encoding="utf-8"))
+    supply_slot, decimals, amount = parse_supply_response(supply)
+    require_snapshot_closed(sum(owners.values()), amount, malformed)
+    if (gpa_slot != slot or normalized_slot != slot
+            or len(normalized) != bundle["snapshot"]["account_count"]
+            or canonical_json_sha256(normalized) != bundle["snapshot"]["accounts_sha256"]
+            or supply_slot != bundle["supply"]["slot"]
+            or amount != int(bundle["supply"]["amount"])
+            or decimals != int(bundle["supply"]["decimals"])):
+        raise ValueError("reuse raw evidence differs from observation core")
+    meta = json.loads(inputs["gpa_meta"].read_text(encoding="utf-8"))
+    expected_meta = {"schema": "solana-gpa-cache-v2", "mint": args.mint,
+                     "program": program, "gpa_response_slot": slot,
+                     "supply_observed_slot": supply_slot, "account_count": len(accounts),
+                     "rpc": bundle["attestation"]["endpoint"]["public_origin"],
+                     "filters": [{"memcmp": {"offset": 0, "bytes": args.mint}}]}
+    if any(meta.get(key) != value for key, value in expected_meta.items()):
+        raise ValueError("reuse GPA metadata identity/filter/slot mismatch")
+    previous = json.loads(snapshot_path.read_text(encoding="utf-8"))
+    expected_snapshot = {"schema": "solana-holder-snapshot/v3", "target": bundle["target"],
+                         "mint": args.mint, "program": program, "decimals": decimals,
+                         "supply_raw": str(amount), "sum_accounts_raw": str(amount),
+                         "closed": True, "accounts": rows, "owners": owners,
+                         "endpoint": bundle["attestation"]["endpoint"]}
+    if (any(previous.get(key) != value for key, value in expected_snapshot.items())
+            or json.loads(holders["accounts"].read_text(encoding="utf-8")) != rows
+            or json.loads(holders["owners"].read_text(encoding="utf-8")) != owners):
+        raise ValueError("reuse raw replay differs from source snapshot/holder outputs")
+    core = {name: bundle[name] for name in ("attestation", "mint", "program", "mint_pre",
+            "snapshot", "mint_post", "activity", "supply", "closure", "input_hashes", "attempt")}
+    core.update(schema="solana-observation-core/v1", canonical_target=bundle["target"])
+    provenance = {"mode": "verified-offline-reuse", "network_requests": 0,
+                  "source_bundle": {"path": str(source), "size": source.stat().st_size,
+                                    "sha256": source_sha},
+                  "source_producer": bundle["producer"], "observed_slot": slot,
+                  "semantics": "Reissued from verified existing evidence; no new live observation. "
+                               "Original mint/activity attestations and input hashes are inherited."}
+    return core, normalized, protected, fingerprints, provenance
+
+
 def main(argv=None, *, request_json=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("mint")
@@ -157,6 +307,8 @@ def main(argv=None, *, request_json=None):
     ap.add_argument("--receipt", help="compatibility name for the observation bundle/commit marker")
     ap.add_argument("--bundle", help="solana-observation-bundle/v1 output/commit marker")
     ap.add_argument("--work-dir", default="data")
+    ap.add_argument("--reuse-observation-bundle",
+                    help="offline deep-verified reuse; preserves the source observed slot")
     args = ap.parse_args(argv)
     marker = args.bundle or args.receipt
     if not marker:
@@ -169,6 +321,28 @@ def main(argv=None, *, request_json=None):
         ap.error("--min-context-slot must be non-negative")
     if args.timeout <= 0:
         ap.error("--timeout must be positive")
+    reused = None
+    if args.reuse_observation_bundle:
+        protected_hint = None
+        try:
+            protected_hint = _reuse_protected_paths(args, marker)
+            reused = _load_reuse_observation(args, marker)
+        except Exception as exc:
+            print(f"FATAL: observation reuse preflight failed: {exc}", file=sys.stderr)
+            if protected_hint is not None:
+                try:
+                    _reuse_output_paths(args, marker, protected_hint)
+                    failed_run = quarantine_run_id()
+                    quarantine_current(marker, failed_run)
+                    quarantine_current(args.out, failed_run)
+                    envelope = build_envelope("solana-observation-bundle/v1", {
+                        "chain": "solana", "token": args.mint,
+                        "as_of_block": args.as_of_slot if args.as_of_slot is not None
+                                       else args.min_context_slot}, __file__, "formal")
+                    publish_error_receipt(marker, envelope, exc, run_id=failed_run)
+                except Exception as quarantine_exc:
+                    print(f"FATAL: reuse failure quarantine failed: {quarantine_exc}", file=sys.stderr)
+            return 1
     try:
         assert_distinct_paths(args.out, marker)
     except Exception as exc:
@@ -188,7 +362,7 @@ def main(argv=None, *, request_json=None):
 
     data_dir = Path(args.work_dir).resolve()
     data_dir.mkdir(parents=True, exist_ok=True)
-    endpoints = args.rpcs or [_default_rpc()]
+    endpoints = None if reused else args.rpcs or [_default_rpc()]
     error_target = {"chain": "solana", "token": args.mint,
                     "as_of_block": (args.as_of_slot if args.as_of_slot is not None
                                     else args.min_context_slot)}
@@ -196,24 +370,28 @@ def main(argv=None, *, request_json=None):
     try:
         error_envelope = build_envelope(
             "solana-observation-bundle/v1", error_target, __file__, "formal")
-        session = SolanaAttestedSession(
-            endpoints, request_json=request_json, timeout=args.timeout)
-        if args.program == "auto":
-            detected = session.call("getAccountInfo", [args.mint, {
-                "commitment": "finalized", "encoding": "base64",
-                "minContextSlot": args.min_context_slot,
-            }])
-            value = detected.get("value") if isinstance(detected, dict) else None
-            prog = value.get("owner") if isinstance(value, dict) else None
-            if prog not in {SPL, T22}:
-                raise ValueError(f"mint owner={prog!r} is not SPL/Token-2022")
+        if reused:
+            core, normalized, protected, fingerprints, provenance = reused
+            prog = core["program"]
         else:
-            prog = T22 if args.program == "token2022" else SPL
-        if args.datasizes not in {"auto", "all"} and prog == T22:
-            raise ValueError("Token-2022 formal observation rejects dataSize filters")
+            session = SolanaAttestedSession(
+                endpoints, request_json=request_json, timeout=args.timeout)
+            if args.program == "auto":
+                detected = session.call("getAccountInfo", [args.mint, {
+                    "commitment": "finalized", "encoding": "base64",
+                    "minContextSlot": args.min_context_slot,
+                }])
+                value = detected.get("value") if isinstance(detected, dict) else None
+                prog = value.get("owner") if isinstance(value, dict) else None
+                if prog not in {SPL, T22}:
+                    raise ValueError(f"mint owner={prog!r} is not SPL/Token-2022")
+            else:
+                prog = T22 if args.program == "token2022" else SPL
+            if args.datasizes not in {"auto", "all"} and prog == T22:
+                raise ValueError("Token-2022 formal observation rejects dataSize filters")
+            core, normalized = observe_snapshot(
+                session, args.mint, prog, min_context_slot=args.min_context_slot)
 
-        core, normalized = observe_snapshot(
-            session, args.mint, prog, min_context_slot=args.min_context_slot)
         snapshot_slot = core["snapshot"]["slot"]
         error_envelope = build_envelope(
             "solana-observation-bundle/v1",
@@ -278,10 +456,18 @@ def main(argv=None, *, request_json=None):
             "supply_raw": str(supply_raw), "sum_accounts_raw": str(total),
             "closed": True, "accounts": rows, "owners": owners,
         }
+        bundle_inputs = {"supply_rpc": supply_file, "gpa_rpc": gpa_file,
+                         "gpa_meta": gpa_meta_file}
+        extra = {}
+        if reused:
+            if any(sha256_file(path) != fingerprints[path] for path in protected):
+                raise ValueError("reuse source dependency changed during materialization")
+            bundle_inputs.update({f"reuse_source_{i}": path for i, path in enumerate(protected)})
+            snapshot["observation_reuse"] = provenance
+            extra["observation_reuse"] = provenance
         data_bytes = (json.dumps(snapshot, ensure_ascii=False, indent=2) + "\n").encode()
         bundle = build_observation_bundle(
-            core, __file__, inputs={"supply_rpc": supply_file, "gpa_rpc": gpa_file,
-                                    "gpa_meta": gpa_meta_file},
+            core, __file__, inputs=bundle_inputs, **extra,
             closed=True, supply_raw=str(supply_raw), sum_accounts_raw=str(total),
             as_of_slot=snapshot_slot, as_of_block=snapshot_slot,
             observed_context_slot=snapshot_slot,
@@ -294,7 +480,8 @@ def main(argv=None, *, request_json=None):
         # Producer and consumers share the exact same object-level contract.
         # bundle_path is intentionally omitted because the atomic formal write
         # has not happened yet; byte equality is checked by consumers later.
-        validate_observation_bundle(bundle, expected_mint=args.mint)
+        validate_observation_bundle(bundle, expected_mint=args.mint,
+                                    case_root=Path.cwd() if reused else None)
         publish_txn(args.out, snapshot, marker, bundle)
     except Exception as exc:
         print(f"FATAL: Solana observation failed: {exc}", file=sys.stderr)

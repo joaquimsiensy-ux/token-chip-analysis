@@ -16,6 +16,7 @@ from pathlib import Path
 from endpoint_identity import endpoint_fingerprint
 from receipt_kernel import build_envelope, finalize_envelope
 from receipt_validate import validate_receipt
+from producer_history import historical_producer_hashes
 from solana_attested_session import (SOLANA_MAINNET_GENESIS_HASH,
                                      SolanaAttestedSession)
 
@@ -531,18 +532,22 @@ def build_observation_bundle(core, producer_file, *, inputs=None, mode="formal",
 
 
 def validate_observation_bundle(bundle, *, bundle_path=None, expected_mint=None,
-                                expected_producer="scripts/solana/scan_token_accounts.py"):
+                                expected_producer="scripts/solana/scan_token_accounts.py",
+                                case_root=None):
     if not isinstance(bundle, dict) or bundle.get("schema") != BUNDLE_SCHEMA:
         raise ValueError("observation bundle schema invalid")
-    errors = validate_receipt(bundle)
+    producer = bundle.get("producer") or {}
+    if producer.get("path") != expected_producer:
+        raise ValueError("observation bundle producer binding invalid")
+    errors = validate_receipt(
+        bundle, case_root=case_root,
+        allowed_producer_hashes=historical_producer_hashes(
+            expected_producer, BUNDLE_SCHEMA))
     if errors:
         raise ValueError(f"observation bundle envelope invalid: {errors[0]}")
     if bundle.get("verdict") != "PASS" or bundle.get("exit_code") != 0 \
             or bundle.get("mode") != "formal":
         raise ValueError("formal observation bundle must be PASS/0")
-    producer = bundle.get("producer") or {}
-    if producer.get("path") != expected_producer:
-        raise ValueError("observation bundle producer binding invalid")
     target = bundle.get("target") or {}
     if expected_mint is not None and target.get("token") != expected_mint.strip():
         raise ValueError("observation bundle mint target mismatch")

@@ -10,6 +10,8 @@ sys.path.insert(0, str(REPO_ROOT / "scripts/lib"))
 from producer_history import PRODUCER_HISTORY, historical_producer_hashes
 
 CURRENT_PRODUCERS = {
+    "scripts/solana/scan_token_accounts.py": {"solana-observation-bundle/v1", "solana-holder-snapshot-v2"},
+    "scripts/report/identity_snapshot_receipt.py": {"identity-holder-snapshot/v2"},
     "scripts/solana/sqd_gap_repair.py": {
         "sqd-solana-cache/v4", "sqd-solana-repair-bundle/v1",
         "sqd-solana-coverage-resolution/v1", "sqd-solana-repair-pointer/v1"},
