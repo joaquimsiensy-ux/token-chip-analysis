@@ -290,6 +290,159 @@ def setup_freezeable(d, entity_map=None):
 FRZ = ["--members", "analysis-state.json", "--entity-file", "s2_entity_members.json"]
 
 
+def make_dust_freeze_case(nonempty=False, total=10 * 2 ** 90,
+                          denominator_key="total_supply_raw"):
+    """独立合成案：真实精度损失边 → READY manifest → trace；不替换任何生产闸。"""
+    import gzip
+    from test_entity_source_trace import dust_precision_edges
+
+    d = tempfile.mkdtemp(prefix="handoff_dust_")
+    make_case(d)
+    edge_path = sol_edge_path(d)
+    rows = [json.dumps([ts, i + 1, i, 0, frm, to, amt])
+            for i, (ts, frm, to, amt) in enumerate(dust_precision_edges(nonempty))]
+    Path(edge_path).write_bytes(gzip.compress(("\n".join(rows) + "\n").encode(), mtime=0))
+    write_v4_meta(edge_path, meta_path=edge_path.replace(".jsonl.gz", ".meta.json"))
+    gen = GEN[:-2] + ["--denominators", json.dumps({denominator_key: str(total)})]
+    p = run(["generate", "--case-dir", d, "--status", "READY"] + gen)
+    assert p.returncode == 0, p.stdout + p.stderr
+    p = run(["verify", "--case-dir", d])
+    assert p.returncode == 0, p.stdout + p.stderr
+    emap = {"D": ["D1", "D2"]}
+    write_json(d, "s2_entity_members.json", emap)
+    write_json(d, "analysis-state.json", {"whale_groups": [
+        {"id": "D", "members": emap["D"]}]})
+    validator = os.path.join(HERE, "..", "report", "adjudication_validator.py")
+    p = subprocess.run([sys.executable, validator, "template", "--case-dir", d, "--force"],
+                       capture_output=True, text=True)
+    assert p.returncode == 0, p.stdout + p.stderr
+    adj = json.load(open(os.path.join(d, "candidate_adjudications.json")))
+    adj["adjudicated_at"] = "2026-08-01T00:00:00Z"
+    write_json(d, "candidate_adjudications.json", adj)
+    write_json(d, "fixture_labels.json", {"FAC": {"kind": "facility"}})
+    p = subprocess.run([sys.executable, os.path.join(HERE, "..", "report", "entity_source_trace.py"),
+                        "--edges-sol", edge_path, "--total-supply", str(total),
+                        "--entity-file", os.path.join(d, "s2_entity_members.json"),
+                        "--labels-file", os.path.join(d, "fixture_labels.json"),
+                        "--out", os.path.join(d, "provenance_ledger.json")]
+                       + formal_cli_args(edge_path), capture_output=True, text=True)
+    assert p.returncode == 0, p.stdout + p.stderr
+    return d, json.load(open(os.path.join(d, "provenance_ledger.json")))
+
+
+def test_dust_current_formal_freeze_replay():
+    for nonempty in (False, True):
+        d, ledger = make_dust_freeze_case(nonempty)
+        ent = ledger["entities"][0]
+        cur = ent["anchors"]["current"]
+        check(f"正式 dust nonempty={nonempty} trace 保留库存及诊断构成",
+              cur["stock_raw"] == ("2" if nonempty else "1")
+              and [c["raw"] for c in cur["composition"]] == (["1"] if nonempty else [])
+              and ent["closure_check"]["current_sum_pct"] == (50.0 if nonempty else 0.0)
+              and ent["closure_check"].get("current_negligible_skipped") is True
+              and cur.get("composition_usable") is False)
+        before = Path(d, "provenance_ledger.json").read_bytes()
+        p = run(["freeze", "--case-dir", d] + FRZ)
+        check(f"正式 dust nonempty={nonempty} 完整重放 freeze exit 0",
+              p.returncode == 0 and "current 锚点尘埃库存,闭合重算降级" in p.stdout
+              and Path(d, "entity_freeze.json").is_file())
+        if p.returncode != 0:
+            print(p.stdout + p.stderr)
+        check(f"正式 dust nonempty={nonempty} freeze 不改来源台账",
+              Path(d, "provenance_ledger.json").read_bytes() == before)
+        p = run(["freeze", "--case-dir", d, "--check-unseal"])
+        check(f"正式 dust nonempty={nonempty} 封存绑定可复验", p.returncode == 0)
+
+
+def test_dust_freeze_threshold_and_peak_rejection():
+    # 与 trace 阈值测试相同：固定边表，仅隔离闭合门禁的分母选择；不作供应对账结论。
+    d, ledger = make_dust_freeze_case(total=10001)
+    p = run(["freeze", "--case-dir", d] + FRZ)
+    check("freeze 库存 1 / 10001 严格阈值以下通过真实重放", p.returncode == 0)
+    manifest = Path(d, "handoff_manifest.json")
+    original = manifest.read_bytes()
+    sealed = Path(d, "entity_freeze.json").read_bytes()
+    for total in (10000, 9999, 0):
+        obj = json.loads(original)
+        obj["scope"]["denominators"]["total_supply_raw"] = str(total)
+        write_json(d, "handoff_manifest.json", obj)
+        # ledger 仍声称 10001 且 skip=True；freeze 必须按 manifest 而非自报量/标记判断。
+        p = run(["freeze", "--case-dir", d] + FRZ)
+        check(f"freeze manifest total={total} 无视伪造豁免 current 空构成拒",
+              p.returncode == 2 and "D current 锚点库存 1 > 0 但 composition 为空" in p.stderr
+              and Path(d, "entity_freeze.json").read_bytes() == sealed)
+    manifest.write_bytes(original)
+    bad = copy.deepcopy(ledger)
+    bad["entities"][0]["anchors"]["peak"]["stock_raw"] = "1"
+    bad["entities"][0]["anchors"]["peak"]["composition"] = []
+    write_json(d, "provenance_ledger.json", bad)
+    p = run(["freeze", "--case-dir", d] + FRZ)
+    check("freeze 尘埃 peak 空构成仍拒",
+          p.returncode == 2 and "D peak 锚点库存 1 > 0 但 composition 为空" in p.stderr
+          and Path(d, "entity_freeze.json").read_bytes() == sealed)
+    bad["entities"][0]["anchors"]["peak"]["composition"] = [
+        dict(ledger["entities"][0]["anchors"]["peak"]["composition"][0], raw="2")]
+    write_json(d, "provenance_ledger.json", bad)
+    p = run(["freeze", "--case-dir", d] + FRZ)
+    check("freeze 尘埃 peak 非空失真仍拒",
+          p.returncode == 2 and "溯源闭合重算失败: D peak" in p.stderr
+          and Path(d, "entity_freeze.json").read_bytes() == sealed)
+
+
+def test_dust_freeze_tampering_rejected():
+    d, ledger = make_dust_freeze_case(nonempty=True)
+    p = run(["freeze", "--case-dir", d] + FRZ)
+    assert p.returncode == 0, p.stdout + p.stderr
+    sealed = Path(d, "entity_freeze.json").read_bytes()
+    for attack in ("skip_marker", "composition_usable", "stock", "supply", "source_detail",
+                   "policy_detail"):
+        bad = copy.deepcopy(ledger)
+        ent = bad["entities"][0]
+        cur = ent["anchors"]["current"]
+        if attack == "skip_marker":
+            ent["closure_check"]["current_negligible_skipped"] = False
+        elif attack == "composition_usable":
+            cur["composition_usable"] = True
+        elif attack == "stock":
+            cur["stock_raw"] = "1"
+        elif attack == "supply":
+            bad["total_supply_raw"] = str(20 * 2 ** 90)
+            bad["input_binding"]["total_supply_raw"] = bad["total_supply_raw"]
+        elif attack == "source_detail":
+            cur["composition"][0]["subkind"] = "proven_airdrop"
+        else:
+            bad["bounds_sensitivity"]["per_entity"]["D"]["anchors"]["current"][
+                "policy_details"]["fifo"][0]["terminal"][1] = "proven_airdrop"
+        write_json(d, "provenance_ledger.json", bad)
+        p = run(["freeze", "--case-dir", d] + FRZ)
+        reason = "total_supply 未与" if attack == "supply" else "重放语义摘要"
+        check(f"尘埃 {attack} 篡改仍被绑定/真实重放拒绝",
+              p.returncode == 2 and reason in (p.stdout + p.stderr)
+              and Path(d, "entity_freeze.json").read_bytes() == sealed)
+        if p.returncode != 2 or reason not in (p.stdout + p.stderr):
+            print(p.stdout + p.stderr)
+    write_json(d, "provenance_ledger.json", ledger)
+    source = Path(sol_edge_path(d))
+    original = source.read_bytes()
+    source.write_bytes(original + b"tampered")
+    p = run(["freeze", "--case-dir", d] + FRZ)
+    check("尘埃原始边文件篡改仍被输入绑定拒绝",
+          p.returncode == 2 and "哈希" in (p.stdout + p.stderr)
+          and Path(d, "entity_freeze.json").read_bytes() == sealed)
+    source.write_bytes(original)
+    p = run(["freeze", "--case-dir", d] + FRZ)
+    check("全部篡改恢复后 dust freeze 再次真实重放通过", p.returncode == 0)
+
+
+def test_dust_freeze_supply_aliases():
+    for key in ("total_supply", "supply_raw", "nominal_allocation_supply_raw"):
+        d, _ = make_dust_freeze_case(denominator_key=key)
+        p = run(["freeze", "--case-dir", d] + FRZ)
+        check(f"尘埃 freeze 已绑定供应量别名 {key} 真实重放通过", p.returncode == 0)
+        if p.returncode != 0:
+            print(p.stdout + p.stderr)
+
+
 def main():
     root = tempfile.mkdtemp(prefix="handoff_test_")
     try:
@@ -609,6 +762,11 @@ def main():
         setup_freezeable(d17)
         p = run(["freeze", "--case-dir", d17] + FRZ)
         check("legacy 案 freeze 必拒 exit 2", p.returncode == 2)
+
+        test_dust_current_formal_freeze_replay()
+        test_dust_freeze_threshold_and_peak_rejection()
+        test_dust_freeze_tampering_rejected()
+        test_dust_freeze_supply_aliases()
 
         # 18. freeze 溯源闸内容级反例集（v6.8.1：空壳/自报值/错哈希全部必须被内容重查打回）
         d18 = os.path.join(root, "case_provgate")

@@ -77,7 +77,89 @@ def run_trace(d, ep, entities, labels=None, extra=None):
     return subprocess.run(args, capture_output=True, text=True)
 
 
+def dust_precision_edges(nonempty=False, same_day=False):
+    """整数余额留 1；float(H - 1) == float(H) 真实抹去来源库存。"""
+    h = 2 ** 90
+    edges = [(day(1), Z, "D1", h),
+             (day(1 if same_day else 2), "D1", "D2", h - 1),
+             (day(1 if same_day else 2), "D2", "OUT", h - 1)]
+    if nonempty:
+        # 再入 1 后，整数余额 2、来源向量仅 1：非空且失真，不能归一化。
+        edges.append((day(3), Z, "D1", 1))
+    return edges
+
+
+def test_dust_current_precision_loss():
+    for nonempty in (False, True):
+        d = tempfile.mkdtemp(prefix="trace_dust_precision_")
+        ep = write_edges(d, dust_precision_edges(nonempty))
+        p = run_trace(d, ep, {"D": ["D1", "D2"]},
+                      labels={"FAC": {"kind": "facility"}},
+                      extra=["--total-supply", str(10 * 2 ** 90)])
+        check(f"dust nonempty={nonempty} trace exit 0", p.returncode == 0)
+        if p.returncode != 0:
+            print(p.stdout + p.stderr)
+            continue
+        ent = json.load(open(os.path.join(d, "ledger.json")))["entities"][0]
+        cur = ent["anchors"]["current"]
+        check(f"dust nonempty={nonempty} 整数库存保留",
+              cur["stock_raw"] == ("2" if nonempty else "1"))
+        check(f"dust nonempty={nonempty} 异常后两字段确定性生成",
+              ent["closure_check"].get("current_negligible_skipped") is True
+              and cur.get("composition_usable") is False)
+        check(f"dust nonempty={nonempty} 构成保留精度损失诊断",
+              ([c["raw"] for c in cur["composition"]] == (["1"] if nonempty else []))
+              and ent["closure_check"]["current_sum_pct"] == (50.0 if nonempty else 0.0)
+              and ent["anchors"]["peak"]["stock_raw"] == str(2 ** 90)
+              and ent["closure_check"]["peak_sum_pct"] == 100.0)
+
+
+def test_dust_current_threshold():
+    # 固定同一精度损失边表，仅改变分母以隔离严格整数阈值；不是供应对账 fixture。
+    for total, expected in ((10001, 0), (10000, 2), (9999, 2)):
+        d = tempfile.mkdtemp(prefix="trace_dust_threshold_")
+        p = run_trace(d, write_edges(d, dust_precision_edges()), {"D": ["D1", "D2"]},
+                      labels={"FAC": {"kind": "facility"}},
+                      extra=["--total-supply", str(total)])
+        check(f"stock=1 total={total} 严格阈值 exit {expected}", p.returncode == expected)
+        if expected == 2:
+            check(f"total={total} current 闭合门禁拒绝",
+                  "闭合自检失败：D current" in (p.stdout + p.stderr)
+                  and not os.path.exists(os.path.join(d, "ledger.json")))
+
+
+def test_dust_peak_precision_loss_rejected():
+    d = tempfile.mkdtemp(prefix="trace_dust_peak_")
+    p = run_trace(d, write_edges(d, dust_precision_edges(same_day=True)),
+                  {"D": ["D1", "D2"]}, labels={"FAC": {"kind": "facility"}},
+                  extra=["--total-supply", str(10 * 2 ** 90)])
+    check("真实精度损失尘埃 peak 仍 exit 2",
+          p.returncode == 2 and "闭合自检失败：D peak" in (p.stdout + p.stderr)
+          and not os.path.exists(os.path.join(d, "ledger.json")))
+
+
+def test_closed_dust_current_has_no_skip_marker():
+    for stock in (0, 1):
+        d = tempfile.mkdtemp(prefix="trace_dust_closed_")
+        edges = [(day(1), Z, "D1", 1)]
+        if stock == 0:
+            edges.append((day(2), "D1", "OUT", 1))
+        p = run_trace(d, write_edges(d, edges), {"D": ["D1"]},
+                      labels={"FAC": {"kind": "facility"}})
+        check(f"正常闭合/零库存 stock={stock} trace exit 0", p.returncode == 0)
+        if p.returncode == 0:
+            ent = json.load(open(os.path.join(d, "ledger.json")))["entities"][0]
+            check(f"stock={stock} 无异常不生成降级字段",
+                  ent["anchors"]["current"]["stock_raw"] == str(stock)
+                  and "current_negligible_skipped" not in ent["closure_check"]
+                  and "composition_usable" not in ent["anchors"]["current"])
+
+
 def main():
+    test_dust_current_precision_loss()
+    test_dust_current_threshold()
+    test_dust_peak_precision_loss_rejected()
+    test_closed_dust_current_has_no_skip_marker()
     d = tempfile.mkdtemp(prefix="trace_test_")
     # F-01：正式模式缺标签必须先于数据加载拒绝；探索模式需显式标记。
     pre = tempfile.mkdtemp(prefix="trace_labels_required_")

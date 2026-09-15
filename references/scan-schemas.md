@@ -218,6 +218,14 @@ wave/flow/eqg 全部候选的**成员级**裁决台账。freeze 前 validator �
 
 已知实体每址币源溯源台账。**记账分母两锚点**（不对全史毛流入归一化——周转会重复计源）。
 
+可选布尔字段：`closure_check.current_negligible_skipped` 仅在 current 库存严格满足
+`total > 0 and 0 < stock and stock * 10000 < total` 且闭合偏差超过 0.5% 时由 trace
+确定性写为 `True`，表示豁免闭合硬拒；正常闭合的尘埃锚点不生成该字段。
+同时写入 `anchors.current.composition_usable=False`（可选布尔），表示构成仅供诊断、
+不得用于归因；构成向量与 `stock_raw` 保留原样，不归一化、不置空。两字段均进入 freeze
+语义摘要。freeze 独立按已验证 manifest 的绑定供应量判断尘埃条件，不信任跳过标记，
+仍执行完整输入绑定和原始数据重放；恰好 0.01% 及以上的 current、所有 peak 维持原闭合门禁。
+
 **v2 算法冻结（正向模拟；v1 一律作废重跑）**：v1 的"截至 T 全部历史流入按金额归一化"
 数学错误——比例守恒只在单次流出瞬间成立，流入流出交错时老来源被消耗的份额不会缩水
 （反例：先收 A 100→转出 90→再收 B 90，真实库存 A 10%/B 90%，v1 算成 52.6/47.4；

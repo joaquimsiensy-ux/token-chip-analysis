@@ -760,7 +760,15 @@ def compute_from_edges(a, case_dir, entity_map, labels, total, binding, prepared
         for anchor_name in ("current", "peak"):
             s = ent["closure_check"][f"{anchor_name}_sum_pct"]
             stock = int(ent["anchors"][anchor_name]["stock_raw"])
+            dust_current = (anchor_name == "current" and total > 0
+                            and 0 < stock and stock * 10000 < total)
             if stock > 0 and abs(s - 100.0) > 0.5:
+                if dust_current:
+                    ent["closure_check"]["current_negligible_skipped"] = True
+                    ent["anchors"]["current"]["composition_usable"] = False
+                    log(f"  {eid} current 锚点为尘埃库存({stock*100.0/total:.2e}% 供应),"
+                        f"闭合 Σ={s}% 不可用,已降级(不拒)")
+                    continue
                 log(f"闭合自检失败：{eid} {anchor_name} 锚点构成 Σ={s}% ≠ 100%"
                     "（实现守恒被破坏，或实体历史负余额＝数据缺失——exit 2）")
                 sys.exit(2)
