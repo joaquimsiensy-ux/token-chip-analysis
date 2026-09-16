@@ -1,4 +1,6 @@
-# 工单 R1：口径漂移与文档-代码不符修复（盲审 R1 消化）v2
+# 工单 R1：口径漂移与文档-代码不符修复（盲审 R1 消化）v3
+
+v3 变更（消化 `review_r2_reply.md` 退回 3 条）：F1 快照段改为整段替换（发布闸只比 sha256，不要求同文件）；D8 scan:139 整行替换去掉"反聚类伪装"意图断言；D8 补 scan:138/140/141、D9 补 scan:143/capture:37；顺带修 scan:133/143 对不存在的"analysis-playbook §6"的断引用（聚类规则实在 playbook-entity-cluster-methods §6）。
 
 v2 变更（消化 `review_r1_reply.md` 退回意见）：去掉锚文本中多余的反斜杠；章节号改正（evm-recon 对账 gate＝§5、capture Streamflow 条＝§9）；D2 只列正式链；D5/D5b/D6/D8/D10/D12/D14/D17/C1 采纳复核修订文本；F1 补白名单内 7 处并扩白名单纳入 context-discipline/scan-schemas 5 处；D8 补 4 处同族；D10 补 :19；§0.1 区分内容基线与施工 HEAD。
 内容基线：`444544360179d5080657aafd5ad60a78fe89e9b3`（VERSION 7.1.1；§2 所涉文件、`scripts/`、`VERSION` 相对该基线未变）。来源：`blind_r1_report.md`＋Fable 亲核补充 F1/D5b、待确认转正 C1/C2。
@@ -71,12 +73,18 @@ python3 scripts/lib/time_spotcheck.py --plan anchor_plan.json --input <生成pla
 - `references/playbook-entity-cluster-tiering.md:82` 两处：锚 `三者叠加可到链上铁证。` → `三者叠加仍只作行为证据；定级须过 methods"行为指纹三问总闸与强弱两档"，无独立控制证据时最高为"高度疑似"。`；锚 `gas 不同源时只能写行为级同一实体，不得写资金同源。` → `未补独立控制证据不得确证同一实体；gas 不同源不得写资金同源。`
 - `references/data-pipeline-solana-scan.md:133` 锚 `的关联硬证据（任一即可，叠加为铁案）` → `的关联候选指纹（定级须过 playbook-entity-cluster-methods"行为指纹三问总闸与强弱两档"；纯行为最高为"高度疑似"）`
 - `references/data-pipeline-solana-scan.md:135` 整行替换。锚（行首）：`1. **同 slot 原子下单**：` → `1. **同 slot 共现**：多钱包同 slot 同买同卖只作候选发现；用 pre/postTokenBalances 按 `(mint,side)` 定位后，须排除公共工具和协议机制；同 slot 本身不证明原子 bundle 或单一控制端。`
-- `references/data-pipeline-solana-scan.md:139` 锚 `= 脚本驱动铁证。` → `只作行为候选，须过同期分母与工具/协议对照，不据此确证同一实体。`
+- `references/data-pipeline-solana-scan.md:139` 整行替换。锚（行首）：`5. **金额分档 + ±10% 抖动**：` → `5. **金额分档 + ±10% 抖动**：近似买入额与偏移只作行为候选；须检验同期分母及工具/协议对照，不据此确证脚本驱动、反聚类意图或同一实体。`
+- `references/data-pipeline-solana-scan.md:138` 锚 `——普通用户不会用这套组合，是技术指纹（用户说"gas 都一样"即指此）；优先费按买/卖分固定档位也算。` → `——先检验同工具用户的组合普及率并排除公共预设；买/卖分档亦同，不直接作控制证据。`
+- `references/data-pipeline-solana-scan.md:140` 锚 `——收款方是母钱包凭空生成的空壳，比"gas 同源"更强的控盘指纹（换钱包也换不掉这个"凭空生成收款方"的结构）。` → `——只证明代付建户与转币，不证明付款方控制收款 owner；归属须另核收款方签名、后续处置与独立控制证据。`（同行"识别=…"句保留）
+- `references/data-pipeline-solana-scan.md:141` 锚 `**跨地址的全局配平只有单一记账者能做到**，是"单一控制端"的强指纹（独立主体不会为凑别人仓位的整数而分15笔转账）。` → `只作跨地址配额管理候选；须排除公共执行服务并补独立控制证据后再判同一实体。`
+- `references/data-pipeline-solana-scan.md:133` 另一锚 `与 analysis-playbook §6 通用聚类规则配合` → `与 playbook-entity-cluster-methods §6 通用聚类规则配合`（analysis-playbook.md 无 §6，聚类规则在 methods §6）
 - `references/playbook-entity-cluster-methods.md:134` 两处：锚 `①**配对自证**` → `①**配对指纹候选**`；锚 `=批量定制的配对地址，同一实体最硬指纹之一（铁证级；识别看中段不看前缀）` → `只作定制地址候选指纹；须过行为指纹三问总闸，不能仅据共享中段确证同一实体（识别看中段不看前缀）`
 
 ### D9 Streamflow 服务 feePayer 被用作合并依据
 `references/data-pipeline-solana-scan.md:85`。锚：`多笔提取共用此 feePayer = 同一批操作，据此把散落的"新钱包"归回原实体。`
 → `多笔提取共用此 feePayer 只证明同用该服务，不作控制边；归属须沿代币流穿透（data-pipeline-solana-capture §9 第 7 条、casebook E-02/E-05）。`
+- `references/data-pipeline-solana-scan.md:143` 整行替换。锚（行首）：`**逆向找历代马甲（最高价值的一招）**：` → `**归集口上游候选反查**：总归集口的历史流入地址仅作候选清单；逐址核验币流、公共服务属性与独立控制证据，不直接视为同一实体的历代马甲（casebook E-05）。（此方法跨链通用，见 playbook-entity-cluster-methods §6。）`
+- `references/data-pipeline-solana-capture.md:37` 锚 `识别马甲网络最有效的一招（母钱包收敛即实锤）。` → `母钱包收敛只作候选线索，须先按 casebook E-05 排除公共服务来源，再补独立控制证据。`
 
 ### D10 判例库"先验三测"与正式"四测"冲突
 `references/casebook/entity-clustering.md`
@@ -100,9 +108,15 @@ python3 scripts/lib/time_spotcheck.py --plan anchor_plan.json --input <生成pla
 - `references/playbook-supply-recon.md:48` 锚：`Solana 走标准四查` → `Solana 走标准五查`
 - `references/analyze-workflow.md:19` 锚：`A2 完成四查对账。` → `A2 完成对账关卡。`
 - `references/analyze-workflow.md:46` 锚：`采集 receipt、四查、标签 resolver` → `采集 receipt、按链定义的对账关卡、标签 resolver`
-- `references/analyze-workflow.md:112` 锚：`必须与 A2 四查里 `verify_recon --balances` 吃的是同一个文件` → `必须与 A2 权威输入是同一个文件`
-- `references/analyze-workflow.md:114` 锚：`去对四查` → `去对 A2`
-- `references/split-run.md:53` 两处：锚 `必须与 A2 四查 `verify_recon --balances` 吃的是同一个文件` → `必须与 A2 权威输入是同一个文件`；锚 `（EVM 对四查 balance 收据的` → `（EVM 对 balance 收据的`
+- `references/analyze-workflow.md:112-116` 整段替换（五行）。首行锚：`**喂它的 owner 快照必须与 A2 四查里 `verify_recon --balances` 吃的是同一个文件**`；末行以 `也会被判"同值换仓"而拒。` 结束。保留三空格缩进，五行替换为四行：
+```
+   **owner 快照须与 A2 的权威输入绑定一致**：
+   EVM 对 `balance` 收据的 `inputs.balances`；
+   Solana 对 observation bundle 的 `holder_outputs.owners`。
+   发布闸按 sha256 核对内容；即使总和相同，逐地址余额不同也会拒绝。
+```
+（发布闸 `audit_release_gate.py check_distribution_snapshot_binding` 只比 sha256 不比 path，故不得写成"同一个文件"。）
+- `references/split-run.md:53`：从锚 `**快照单一来源硬性**：` 起至同行 `直接拒。` 止（含），整段替换为：`**快照单一来源硬性**：分布快照须与 A2 的权威输入内容一致：EVM 对 `balance` 收据的 `inputs.balances`，Solana 对 observation bundle 的 `holder_outputs.owners`；发布闸按 sha256 核对，逐地址余额不同即使总和相同也拒绝。`（同行其余文字不动）
 - `references/split-run.md:98` 两处：锚 `四查 producer receipt` → `A2 全部 producer receipt`；锚 `四查 receipt 格式零改动` → `各项 receipt 按现行 schema 提供`
 - `references/split-run.md:126` 与 `commands-staging/token-analyze-2.md:13` 锚：`必读件**：anomalies.json、四查结论、` → `必读件**：anomalies.json、对账结论、`（两处逐字同步）
 - `references/split-run.md:143` 锚：`verify＋四查兜底` → `verify＋A2 全部对账关卡兜底`
@@ -141,6 +155,11 @@ python3 scripts/lib/time_spotcheck.py --plan anchor_plan.json --input <生成pla
 
 ### C2 方法册 `wave_scan v3` 版本号过期
 `references/playbook-entity-cluster-methods.md:171` 两处：锚 `wave_scan v3 全体历史峰值` → `wave_scan 全体历史峰值`；锚 `**权威脚本**：wave_scan v3、` → `**权威脚本**：wave_scan、`（`候选全集从三条现役机械通道取齐` 是契约 needle，原样保留。）
+
+### X1 "analysis-playbook §6/§6a"断引用（analysis-playbook.md 是薄路由页，无 §6；聚类规则在 methods §6、类型三分类在 tiering §6a）
+- `references/report-template.md:34` 锚 `类型学见 analysis-playbook §6a` → `类型学见 playbook-entity-cluster-tiering §6a`
+- `references/data-pipeline-solana-scan.md:159` 锚 `仍按 analysis-playbook §6 硬规则复核` → `仍按 playbook-entity-cluster-methods §6 硬规则复核`
+（scan:133/143 的同类断引用已在 D8/D9 条内处理。）
 
 ## §3 暂缓项（本轮不施工）
 - **D1 [需改代码]** 见 `code_change_pending.md`。
