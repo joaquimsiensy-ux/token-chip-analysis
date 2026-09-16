@@ -71,4 +71,4 @@
 
 ## §E 验收（Fable）
 run_all 全绿；FORGGIE 已发布案 `audit_release_gate --profile new-analysis` 仍 PASS；三册 wc 合计 ≤ 104962；`stage2_closeout --help` 列四子命令。
-**APU 0914 完整 closeout 验收（W2 挪来）**：副本被 A0.6 拦（accounting 绝对路径），只能在**真案目录**跑——先 `reseal --from a4 --dry-run`（只读，输出失效表：charts/final 三图归档、周期 1 归档、a4 rev2、final round 1、a5 seal/工单 bindings 失效）；真跑会归档 −3 三图与周期 1、封 a4 rev2、重跑 final scan——**属 ③ 档改真实案卷，须用户拍板后执行**，执行前对案根做 `_history/pre_reseal_<ts>/` 整目录备份（`cp -R`，禁 rm）。用户不批则 W3 验收只到 dry-run，完整 PASS 记为待办。
+**APU 0914 完整 closeout 验收（W2 挪来）**：副本被 A0.6 拦（accounting 绝对路径），只能在**真案目录**跑——先 `reseal --from a4 --dry-run`（只读，输出失效表：charts/final 三图归档、周期 1 归档、a4 rev2、final round 1、a5 seal/工单 bindings 失效）；真跑会归档 −3 三图与周期 1、封 a4 rev2、重跑 final scan——**用户 2026-09-16 裁决：先不真跑。** W3 验收对 APU 只到 `reseal --from a4 --dry-run`（只读），完整 closeout PASS 记为待办，待用户另行批准（届时执行前对案根做 `_history/pre_reseal_<ts>/` 整目录备份，`cp -R` 禁 rm）。
