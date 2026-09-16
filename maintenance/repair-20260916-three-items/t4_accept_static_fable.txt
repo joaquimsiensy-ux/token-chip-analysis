@@ -1,0 +1,32 @@
+== HEAD f7749a6 / 验收树 HEAD f7749a6
+== porcelain
+ M CHANGELOG.md
+ M SKILL.md
+ M VERSION
+ M pyproject.toml
+?? maintenance/repair-20260916-three-items/t4_done.md
+== references/scripts 零差异
+rc=0
+== 版本四处
+7.1.1
+15:version = "7.1.1"
+23:<!-- skill-version-source: VERSION; skill-version: 7.1.1 -->
+13:- **7.1.1**（2026-09-16）三项修复：seal↔正文零地址打架改由附录 F 承接（seal 零改动）；`handoff_manifest inspect/lookup` 两只读查询子命令；`_members_total` 预填删除改旁车、排除规则精确化、显式登记冲突报错、freeze 案根卫生 WARN；四册手册相对 7.0.4 基线合计净减 42 B，SUITE 入口不变。
+91:## [7.1.1] - 2026-09-16 — 三项修复：seal↔零地址、只读查询命令、备份与台账瘦身
+== SKILL 字节
+    8024
+    8024
+== CHANGELOG diff 行数
+11	0	CHANGELOG.md
+== 文案逐字核（工单 §2 两段 vs CHANGELOG）
+block0: 逐字在场 (199 字符)
+block1: 逐字在场 (2404 字符)
+== scripts/tests/changelog_lint.py
+PASS: 版本号唯一（豁免 2 组历史撞号存档）、顺序正确；活跃 73 条 + 归档 139 条
+rc=0
+== scripts/tests/test_version_consistency.py
+PASS: M-03 version metadata consistent at 7.1.1
+rc=0
+== scripts/tests/docs_lint.py --all
+/Library/Frameworks/Python.framework/Versions/3.14/Resources/Python.app/Contents/MacOS/Python: can't open file '/Users/uravvv/.claude/worktrees/tca-three-items/scripts/tests/docs_lint.py --all': [Errno 2] No such file or directory
+rc=2
