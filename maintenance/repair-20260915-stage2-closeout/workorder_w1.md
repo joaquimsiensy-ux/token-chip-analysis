@@ -49,7 +49,7 @@ def find_snapshot(case_dir: Path, requested: str | None, stage: str) -> tuple[Pa
 - `:625`（锚 `    snapshot, snapshot_rel = find_snapshot(case_dir, snapshot_arg)`）改为 `find_snapshot(case_dir, snapshot_arg, stage)`。
 - `_walk_entries`（`:200`）定义在 `find_snapshot` 之后，Python 运行时解析没问题，不必移动；`load_json`（`:151`）同理。
 - `verify_data_map`（`:211-220`）**不改**。
-- **另两处直接调用必须同步**：`scripts/tests/test_batch15_three_ledgers_frozen.py:239`（锚 `default_path, default_rel = distribution.find_snapshot(root, None)`）改为 `find_snapshot(root, None, "initial")`；`:241`（锚 `explicit_path, shown_rel = distribution.find_snapshot(root, explicit_rel)`）改为 `find_snapshot(root, explicit_rel, "initial")`。该夹具 `build_frozen_case`（`test_batch11_frozen_bundle_binding.py:223-225`）已在 data_map 登记 `data/holders_owners.json`（`:218` `exact_input`）与 frozen bundle 路径，后者不在 `SNAPSHOT_CANDIDATES`，唯一登记成立；`:242-244` 原断言保持不变并须仍 PASS。
+- **另两处直接调用必须同步**：`scripts/tests/test_batch15_three_ledgers_frozen.py:239`（锚 `default_path, default_rel = distribution.find_snapshot(root, None)`）改为 `find_snapshot(root, None, "initial")`；`:241`（锚 `explicit_path, shown_rel = distribution.find_snapshot(root, explicit_rel)`）改为 `find_snapshot(root, explicit_rel, "initial")`。**夹具勘误（v2.1，codex 停工记录核实）**：`test_batch11_frozen_bundle_binding.py:95-149` 的 `build_case`（batch15 `:30` 导入为 `build_frozen_case`）**不写** data_map；`:223-225` 那处登记属于 `test_n5_handoff_required_frozen_bundle`（`:214`），不在 N8 夹具链上且无 sha。因此**允许并要求**在 N8 用例 `build_unit_case(root)`（`:238`）之后补写真实登记：`{"files":[{"path":"data/holders_owners.json","sha256":<该文件 sha256>}]}` 到 `root/"data_map.json"`（用本文件已有 helper 或 `hashlib`/`json` 直接写）；`:242-244` 三条原断言逐字不变并须仍 PASS；生产侧登记优先规则不放宽。
 
 ### A2 新增子命令 `reopen-cycle`
 
