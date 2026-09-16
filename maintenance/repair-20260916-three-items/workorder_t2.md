@@ -1,7 +1,8 @@
-# 工单 T2（v1）：seal ↔ 正文零地址打架 —— 三策略翻转披露定为附录 F（零代码）
+# 工单 T2（v2）：seal ↔ 正文零地址打架 —— 三策略翻转披露定为附录 F（零代码）
 
 > 出处：用户 2026-09-16 批准的三项修复计划 §2.1（裁决："披露表定为附录、seal 不改"）。原则：**不增加 skill 上下文；能删的不新增，能改的不新增**。
 > 基线：分支 `fix/three-items-20260916`，在 T1 之后施工（与 T1 无文件重叠，可独立）。
+> v2 变更：融合 codex 首轮复核（`t2_review_reply.txt`）：:265 排他条款须同步改（否则与附录 F 直接冲突）；:222 补"唯一命中／F 内不再分标题"两个 seal 隐藏前提；示例用钱包标签写法；重算字节。旧问题的准确描述：披露需终点标识，但模板"地址允许位置"（:53/:265）未覆盖披露附录。
 
 ## 0. 开工纪律
 
@@ -11,23 +12,30 @@
 - **白名单**：`references/report-template.md`、`scripts/tests/test_repair_batch_d.py`、本目录证据文件。**`scripts/report/a5_report_seal.py` 一行不改**（`_disclosure_slice` :153-172 按标题行切片、任意层级；`provenance_flip_bundle` :175 逐字核 `terminal[2]`＋策略名＋份额——附录里写完整地址即可满足，无需改闸）。不动 CHANGELOG/VERSION/pyproject。
 - 完工写 `t2_done.md`：改动清单、RED→GREEN、run_all 结果行、report-template.md 改前/改后字节数。
 
-## 1. `references/report-template.md`（改前 42499 字节；改后须 ≤ 42499，预期 42489）
+## 1. `references/report-template.md`（改前 42499 字节；改后须 ≤ 42499，预期 42491）
 
-五处替换，逐字：
+八处替换，逐字（行号为施工前基线）：
 
 - `:145`（锚 `## 附录（默认四件套；E 买入后按需）`）→
   `## 附录（默认四件套；E 买入后按需；F 仅有翻转时）`
+- `:147`（锚 `  B. 标签 ↔ 完整地址对照表（每行：钱包标签 | 完整地址 | 一句话角色）——`）→ 去掉行尾 `——`：
+  `  B. 标签 ↔ 完整地址对照表（每行：钱包标签 | 完整地址 | 一句话角色）`
 - `:148`（锚 `     **任何情况下不可省**：正文零地址设计下这是报告可验证性的唯一支点，`）→
   `     **不可省**：正文零地址下这是可验证性的唯一支点，`
 - `:149`（锚 `     也是买入后补生成 JSON 的原料（生成后与 JSON addresses 完全一致）`）→
   `     也是买入后 JSON 附录的原料（与 addresses 完全一致）`
-- `:153`（锚 `     schema 见 monitoring-package.md）`，即附录 E 第二行）之后**新增一行**：
-  `  F. 溯源三策略翻转披露（仅存在真实翻转时；此处允许完整地址，写法见图层同源④）`
-- `:222`（锚 `  ④溯源存在真实三策略翻转（flip-adjudications/v1 裁决）时，报告必须有**披露章节**：`…`写在别处不算数。`）整行替换为：
-  `  ④溯源存在真实三策略翻转（flip-adjudications/v1 裁决）时，披露写在**附录 F**（标题含收据 `report_locations` 声明的位置串；正文只写"见附录 F"）：同段写全三策略（`pro_rata/fifo/lifo` 或"按比例/先进先出/后进先出"任一）、每策略主导终点完整地址与两位小数份额——A5 seal 只核该切片。`
+- `:150`（锚 `  C. 对抗复核修正记录（原结论→修正后，这是报告可信度的来源）`）→
+  `  C. 对抗复核修正记录（原结论→修正后；可信度来源）`
+- `:153`（锚 `     schema 见 monitoring-package.md）`，附录 E 第二行）之后**新增一行**：
+  `  F. 溯源三策略翻转披露（仅真实翻转；只列各策略主导终点完整地址与份额，写法见④）`
+- `:222`（锚 `  ④溯源存在真实三策略翻转（flip-adjudications/v1 裁决）时，报告必须有**披露章节**：`）整行替换为：
+  `  ④溯源存在真实三策略翻转（flip-adjudications/v1 裁决）时，披露写在**附录 F**（标题含收据 `report_locations` 位置串且唯一；F 内不再分标题；正文只写"见附录 F"）：同段写全三策略（`pro_rata/fifo/lifo` 或"按比例/先进先出/后进先出"任一）、每策略主导终点完整地址与两位小数份额，A5 seal 只核该切片。`
+  （"唯一"与"不再分标题"对应 `_disclosure_slice` 的两个隐藏前提：:161-171 首次命中即返回；:170 遇下一任意级标题即截断。）
+- `:265`（锚 `- **正文（含表格）不出现地址**——一律钱包标签；完整地址只在附录 B 与 JSON 附录`）整行替换为：
+  `- **正文（含表格）零地址**，一律钱包标签；地址只在 B/JSON；F 仅限翻转主导终点。`
 
-`:53`（钱包标签制）、`:265`、`:284`（正文零地址）**不动**——附录本就允许完整地址（附录 A/B 已是先例），打架点只在 :222 曾要求正文写终点标识。
-改后跑 `python3 scripts/tests/docs_lint.py --all` 须 PASS。
+`:53`（钱包标签制；限制的是"标签↔地址对照"只放 B/JSON，与 F 不冲突）、`:284`（正文零地址＋B 表完整）**不动**。附录 F 不替代 B、不扩展为其他地址清单。
+字节核算（UTF-8）：+20 −6 −27 −17 −15 +120 −83 0 ＝ −8。改后跑 `python3 scripts/tests/docs_lint.py --all` 须 PASS。
 
 ## 2. `scripts/tests/test_repair_batch_d.py` `t_f06_a5_disclosure`（新增一条绿例，原用例全部不动）
 
@@ -35,11 +43,11 @@
 
 ```python
         # 模板 2.1：披露放附录 F，正文零地址只写"见附录 F" → 仍 DISCLOSED（切片按标题命中，不看层级/位置）
-        appx_parts = ["# 报告", "## 实体", "项目方钱包 W1 的溯源存在三策略翻转，见附录 F。", "## 附录 F：溯源三策略翻转披露"]
+        appx_parts = ["# 报告", "## 实体", "项目方钱包#1 的溯源存在三策略翻转，见附录 F。", "## 附录 F：溯源三策略翻转披露"]
         for info in real.values():
             for policy in hm.FLIP_POLICIES:
                 appx_parts.append(f"{policy}: {info['tops'][policy][2]} 占 {info['shares'][policy]}%")
-        appx_parts.append("## 附录 G：数据来源")
+        appx_parts.append("## 后续章节")
         appx_bundle = a5.provenance_flip_bundle(tmp, "\n".join(appx_parts), a4obj)
         check("2.1 绿例：披露在附录 F、正文只写'见附录 F' → DISCLOSED",
               appx_bundle["status"] == "DISCLOSED" and appx_bundle["anchors"], appx_bundle)
@@ -50,6 +58,6 @@
 
 ## 3. 完成标准
 
-- report-template.md 字节 ≤ 42499；docs_lint PASS；`python3 scripts/tests/test_repair_batch_d.py` PASS（新增 1 条）；run_all 全绿（nohup 落文件）。
+- report-template.md 字节 ≤ 42499（预期 42491）；docs_lint PASS；`python3 scripts/tests/test_repair_batch_d.py` PASS（新增 1 条）；run_all 全绿（nohup 落文件）。
 - Fable 本机验收项（案卷在仓库外，codex 不做）：APU 0914 已封口报告（披露在其"附录C"）复跑 `a5_report_seal.py` 仍 PASS，证明附录写法与现闸兼容。
 - `t2_red_evidence.txt`、`t2_done.md` 在本目录；不 commit。
