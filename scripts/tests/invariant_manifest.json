@@ -131,6 +131,7 @@
   {
    "schemas": [
     "a4-claims/v2",
+    "a4-limits/v1",
     "a4-seal/v4"
    ],
    "script": "scripts/report/a4_gate.py"
@@ -196,6 +197,7 @@
   },
   {
    "schemas": [
+    "distribution-reopen/v1",
     "distribution-rounds/v1",
     "distribution-scan/v2"
    ],
@@ -505,6 +507,7 @@
    "schemas": [
     "a4-seal/v4",
     "distribution-exception-receipt/v1",
+    "distribution-reopen/v1",
     "distribution-rounds/v1",
     "distribution-scan/v2"
    ],

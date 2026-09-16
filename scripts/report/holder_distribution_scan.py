@@ -29,6 +29,7 @@ import hashlib
 import json
 import math
 import os
+import re
 import shutil
 import sys
 import tempfile
@@ -184,17 +185,29 @@ def parse_snapshot(path: Path) -> dict[str, int]:
     return out
 
 
-def find_snapshot(case_dir: Path, requested: str | None) -> tuple[Path, str]:
+SNAPSHOT_CANDIDATES = ("data/balances_final.json", "data/holders_owners.json",
+                       "balances_final.json", "holders_owners.json")
+
+
+def find_snapshot(case_dir: Path, requested: str | None, stage: str) -> tuple[Path, str]:
+    """owner 快照解析：显式指定 > final 取 initial scan 绑定 > initial 取 data_map 唯一登记候选。
+    任何一路都不做"换一份文件再试"：登记/绑定不成立就停。data_map 唯一性与 sha 仍由
+    verify_data_map 复核（显式指定也绕不过登记）。"""
     if requested:
-        path = safe_file(case_dir, requested, "快照")
-        return path, requested
-    for rel in ("data/balances_final.json", "data/holders_owners.json",
-                "balances_final.json", "holders_owners.json"):
-        try:
-            return safe_file(case_dir, rel, "快照"), rel
-        except ValueError:
-            pass
-    raise ValueError("找不到 A2 owner 快照 balances_final.json/holders_owners.json")
+        return safe_file(case_dir, requested, "快照"), requested
+    if stage == "final":
+        initial = load_json(safe_file(case_dir, "distribution_scan.json", "initial scan"))
+        rel = ((initial.get("input_binding") or {}).get("snapshot") or {}).get("path")
+        if not isinstance(rel, str) or not rel:
+            raise ValueError("final 快照须从 initial scan 的 input_binding.snapshot 解析，绑定缺失或损坏")
+        return safe_file(case_dir, rel, "initial 绑定快照"), rel
+    obj = load_json(safe_file(case_dir, "data_map.json", "data_map"))
+    registered = sorted({x.get("path") for x in _walk_entries(obj)
+                         if x.get("path") in SNAPSHOT_CANDIDATES})
+    if len(registered) != 1:
+        raise ValueError("快照未在 data_map 唯一登记（候选名 "
+                         f"{'/'.join(SNAPSHOT_CANDIDATES)}，登记到 {registered or '无'}）")
+    return safe_file(case_dir, registered[0], "快照"), registered[0]
 
 
 def _walk_entries(value):
@@ -622,7 +635,7 @@ def _label_manifest(case_dir: Path):
 
 
 def build_scan(case_dir: Path, stage: str, snapshot_arg: str | None):
-    snapshot, snapshot_rel = find_snapshot(case_dir, snapshot_arg)
+    snapshot, snapshot_rel = find_snapshot(case_dir, snapshot_arg, stage)
     balances = parse_snapshot(snapshot)
     data_map = verify_data_map(case_dir, snapshot_rel, snapshot)
     supply, onchain, net, chain, supply_obj, supply_drift_raw = load_supply(case_dir)
@@ -907,6 +920,8 @@ def attach_round_binding(case: Path, scan: dict, round_n: int) -> None:
         previous = None
         previous_scan = None
         ledger_entry = None
+    scan["input_binding"]["reopened_from_cycle"] = validate_reopen_receipt(case) \
+        if (case / "distribution_reopen.json").is_file() else None
     scan["round"] = round_n
     scan["previous_round"] = previous.get("round_n") if previous else None
     scan["previous_round_entry_sha256"] = canonical_sha(previous) if previous else None
@@ -1048,6 +1063,13 @@ def validate_scan(case: Path, scan_rel: str, expected_stage: str | None = None) 
             for key in ("round", "previous_round", "previous_round_entry_sha256"):
                 rebuilt[key] = scan.get(key)
             rebuilt["input_binding"]["round_binding"] = binding.get("round_binding")
+            receipt_present = (case / "distribution_reopen.json").is_file()
+            if receipt_present:
+                rebuilt["input_binding"]["reopened_from_cycle"] = validate_reopen_receipt(case)
+            elif binding.get("reopened_from_cycle") is not None:
+                errors.append("scan 自报 reopened_from_cycle 但案根无 distribution_reopen.json")
+            elif "reopened_from_cycle" in binding:
+                rebuilt["input_binding"]["reopened_from_cycle"] = None
         if semantic_payload(rebuilt) != semantic_payload(scan):
             errors.append("scan 语义与独立重算不一致")
     except Exception as exc:
@@ -1081,6 +1103,212 @@ def validate_waiver(case: Path, waiver: dict, scan_path: Path, ledger_sha: str, 
     except OSError:
         errors.append("waiver 的 A4 seal 不存在")
     return errors
+
+
+def validate_reopen_receipt(case: Path) -> dict:
+    """逐项重验最近归档，并从实物重建每轮 final scan 的重开绑定。"""
+    receipt_path = safe_file(case, "distribution_reopen.json", "reopen 回执")
+    receipt = load_json(receipt_path)
+    if not isinstance(receipt, dict) or receipt.get("schema") != "distribution-reopen/v1":
+        raise ValueError("reopen 回执 schema 非 distribution-reopen/v1")
+    cycles = receipt.get("cycles")
+    if not isinstance(cycles, list) or not cycles:
+        raise ValueError("reopen 回执 cycles 必须非空")
+    previous = 0
+    for entry in cycles:
+        n = entry.get("cycle") if isinstance(entry, dict) else None
+        if type(n) is not int or n <= previous:
+            raise ValueError("reopen 回执 cycle 必须为严格递增的正整数")
+        previous = n
+    entry = cycles[-1]
+    archived = entry.get("archived")
+    if not isinstance(archived, list) or not archived:
+        raise ValueError("reopen 回执 archived 必须非空")
+    prefix = f"data/stage2/dist_cycle{previous}/"
+    sources, targets, files = set(), set(), {}
+    for item in archived:
+        if not isinstance(item, dict):
+            raise ValueError("reopen archived 条目必须是对象")
+        source, target, mode = item.get("from"), item.get("to"), item.get("mode")
+        if not isinstance(source, str) or not source or Path(source).is_absolute() \
+                or any(part in {"", ".", ".."} for part in source.split("/")):
+            raise ValueError("reopen archived from 非法")
+        if not isinstance(target, str) or mode not in {"moved", "copied"}:
+            raise ValueError("reopen archived to/mode 非法")
+        if source in sources or target in targets:
+            raise ValueError("reopen archived from/to 重复")
+        expected = prefix + (source if mode == "moved" else "a4_snapshot/" + Path(source).name)
+        if target != expected:
+            raise ValueError("reopen archived to 与 cycle/from/mode 不符")
+        path = safe_file(case, target, "reopen 归档")
+        if sha256_file(path) != item.get("sha256"):
+            raise ValueError(f"reopen 归档 sha256 不符: {target}")
+        sources.add(source); targets.add(target); files[source] = (path, mode)
+    ledger_item = files.get("distribution_rounds.json")
+    if ledger_item is None or ledger_item[1] != "moved":
+        raise ValueError("reopen archived 缺 distribution_rounds.json moved 条目")
+    ledger_path = ledger_item[0]
+    ledger = load_json(ledger_path)
+    if not isinstance(ledger, dict):
+        raise ValueError("reopen 归档台账不是对象")
+    errors = validate_rounds_ledger(ledger)
+    prior_terminal = ledger.get("terminal")
+    ledger_sha = sha256_file(ledger_path)
+    if errors or prior_terminal is None:
+        raise ValueError("reopen 归档台账无有效 terminal: " + "; ".join(errors))
+    if entry.get("prior_terminal") != prior_terminal or entry.get("prior_ledger_sha256") != ledger_sha:
+        raise ValueError("reopen prior_terminal/prior_ledger_sha256 与归档台账实物不符")
+    seal_rel = prefix + "a4_snapshot/a4_seal.json"
+    seal_path = case / seal_rel
+    seal_sha = None
+    if seal_path.exists() or seal_path.is_symlink():
+        seal_path = safe_file(case, seal_rel, "reopen A4 快照")
+        if files.get("a4_seal.json") != (seal_path, "copied"):
+            raise ValueError("reopen archived 缺 A4 seal copied 条目")
+        seal_sha = sha256_file(seal_path)
+        registry = (load_json(seal_path).get("registry") or {}).get("path")
+        registry_item = files.get(registry)
+        if registry_item is None or registry_item[1] != "copied":
+            raise ValueError("reopen archived 缺 A4 registry copied 条目")
+    if entry.get("a4_seal_sha_at_reopen") != seal_sha:
+        raise ValueError("reopen a4_seal_sha_at_reopen 与 A4 快照实物不符")
+    return {"cycle": previous, "receipt": rel_entry(case, receipt_path),
+            "prior_terminal": prior_terminal, "prior_ledger_sha256": ledger_sha,
+            "a4_seal_sha_at_reopen": seal_sha}
+
+
+def cmd_reopen_cycle(args) -> int:
+    """全部检查后归档终态；搬运失败逆序恢复，回执最后原子写入。"""
+    case = Path(args.case_dir).resolve()
+    receipt_path = case / "distribution_reopen.json"
+
+    def checked_dir(rel, must_exist=True):
+        path = case
+        for part in Path(rel).parts:
+            path /= part
+            if path.is_symlink():
+                raise ValueError(f"重开归档目录拒绝符号链接: {rel}")
+        path.resolve().relative_to(case)
+        if (must_exist or path.exists()) and not path.is_dir():
+            raise ValueError(f"重开归档目录不存在或非目录: {rel}")
+        return path
+
+    try:
+        receipt = {"schema": "distribution-reopen/v1", "cycles": []}
+        if receipt_path.exists() or receipt_path.is_symlink():
+            validate_reopen_receipt(case)
+            receipt = load_json(receipt_path)
+        if not (case / "distribution_rounds.json").exists():
+            raise ValueError("台账无 terminal，无需重开（distribution_rounds.json 不在场）")
+        ledger_path = safe_file(case, "distribution_rounds.json", "台账")
+        ledger = load_json(ledger_path)
+        if not isinstance(ledger, dict):
+            raise ValueError("rounds 台账必须是对象")
+        errors = validate_rounds_ledger(ledger)
+        if errors:
+            raise ValueError("; ".join(errors))
+        terminal = ledger.get("terminal")
+        if terminal is None:
+            raise ValueError("台账无 terminal，无需重开")
+        stage2 = checked_dir("data/stage2", must_exist=False)
+        numbers = [int(match.group(1)) for path in stage2.iterdir()
+                   if path.is_dir() and (match := re.match(r"^dist_cycle(\d+)", path.name))] \
+            if stage2.is_dir() else []
+        n = max(numbers, default=0) + 1
+        prefix = f"data/stage2/dist_cycle{n}/"
+        archive = stage2 / f"dist_cycle{n}"
+        if archive.exists() or archive.is_symlink():
+            raise ValueError(f"归档目标已在场（可能上次搬运中断），请手工核对: {prefix}")
+        if receipt["cycles"] and n <= receipt["cycles"][-1]["cycle"]:
+            raise ValueError("归档目录编号不大于上一回执 cycle，请手工核对")
+        rounds_dir = checked_dir("dist_rounds")
+        for row in ledger["rounds"]:
+            for key in ("final_scan_path", "explanation_path"):
+                rel = row.get(key)
+                if key == "explanation_path" and rel is None:
+                    continue
+                path = safe_file(case, rel, "台账引用")
+                if not path.is_relative_to(rounds_dir):
+                    raise ValueError("台账引用了 dist_rounds/ 之外的文件，先手工归档")
+        chart_rel = "charts/final/holder_distribution_current.png"
+        if terminal.get("final_chart_path") != chart_rel:
+            raise ValueError("terminal.final_chart_path 非分布终态图路径")
+        final_dir = checked_dir("charts/final")
+        chart = safe_file(case, chart_rel, "终态图")
+        if any(path.name != chart.name for path in final_dir.iterdir()):
+            raise ValueError("charts/final 含其他文件——先归档 −3 图（reseal 第 0 步），reopen-cycle 只搬分布终态图")
+        moved_files = [ledger_path]
+        for path in sorted(rounds_dir.rglob("*")):
+            if path.is_symlink():
+                raise ValueError(f"dist_rounds 拒绝符号链接: {path.relative_to(case)}")
+            if path.is_dir():
+                continue
+            moved_files.append(safe_file(case, path.relative_to(case).as_posix(), "轮次归档"))
+        moved_files.append(chart)
+        copies = []
+        seal_sha = None
+        if (case / "a4_seal.json").exists() or (case / "a4_seal.json").is_symlink():
+            seal_path = safe_file(case, "a4_seal.json", "A4 seal")
+            seal = load_json(seal_path)
+            registry = safe_file(case, (seal.get("registry") or {}).get("path"), "A4 registry")
+            if registry.name == seal_path.name:
+                raise ValueError("A4 快照 seal 与 registry 同名，无法归档")
+            copies = [(seal_path, archive / "a4_snapshot" / seal_path.name),
+                      (registry, archive / "a4_snapshot" / registry.name)]
+            seal_sha = sha256_file(seal_path)
+        archived = [{"from": path.relative_to(case).as_posix(),
+                     "to": prefix + path.relative_to(case).as_posix(),
+                     "sha256": sha256_file(path), "mode": "moved"} for path in moved_files]
+        archived += [{"from": src.relative_to(case).as_posix(), "to": dst.relative_to(case).as_posix(),
+                      "sha256": sha256_file(src), "mode": "copied"} for src, dst in copies]
+        entry = {"cycle": n, "reason": args.reason, "ts_utc": utcnow(), "archived": archived,
+                 "prior_terminal": terminal, "prior_ledger_sha256": sha256_file(ledger_path),
+                 "a4_seal_sha_at_reopen": seal_sha,
+                 "note": "解释件 evidence_refs 指向的 sealed 文件（findings/facts/state 等）不复制（seal 内已记它们的 sha，可事后核对）。"}
+        moves = [(ledger_path, archive / "distribution_rounds.json"),
+                 (rounds_dir, archive / "dist_rounds"), (chart, archive / chart_rel)]
+    except (ValueError, OSError, TypeError, KeyError, AttributeError) as exc:
+        print(f"BLOCK: {exc}"); return 2
+
+    if args.dry_run:
+        for item in archived:
+            verb = "将搬运" if item["mode"] == "moved" else "将复制"
+            print(f"{verb} {item['from']} → {item['to']}")
+        print("将失效的下游件：")
+        if (case / "a5_report_seal.json").exists():
+            print("- a5_report_seal.json")
+        print("- a5_assembly_workorder.json 的 bindings.rounds")
+        print(f"- 终态图 {chart_rel}")
+        return 0
+
+    moved = []
+    try:
+        archive.mkdir(parents=True, exist_ok=False)
+        for src, dst in moves:
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            shutil.move(str(src), str(dst))
+            moved.append((src, dst))
+        for src, dst in copies:
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(src, dst)
+        receipt["cycles"].append(entry)
+        atomic_json(receipt_path, receipt)
+    except Exception as exc:
+        rollback_errors = []
+        for src, dst in reversed(moved):
+            try:
+                shutil.move(str(dst), str(src))
+            except Exception as rollback_exc:
+                rollback_errors.append(f"{dst} → {src}: {rollback_exc}")
+        print(f"ERROR: 重开归档失败: {exc}；已逆序回搬，残留归档目录请手工核对: {prefix}")
+        for error in rollback_errors:
+            print(f"ERROR: 回搬失败: {error}")
+        return 1
+    print(f"PASS: cycle {n} archived -> {prefix}")
+    print("若 A4 claims 能与 initial scan 闭合：先 a4_gate.py finalize 封新 rev，再 --stage final --round 1 → record-round（NORMAL/LOW_SAMPLE 直接终态）。")
+    print("若形态为 ABNORMAL 且需要 final scan 作 claim 来源：在当前 seal 下 --stage final --round 1 → record-round（不带解释，得非终态 UNEXPLAINED）→ 补证据/复核 → finalize → --stage final --round 2 带 --explanation 终态。")
+    print('NORMAL/LOW_SAMPLE 形态没有“先建轮 1 再 finalize”的路径（轮 1 一 record 就终态，finalize 会被拒）。')
+    return 0
 
 
 def cmd_record_round(args) -> int:
@@ -1163,10 +1391,14 @@ def cmd_record_round(args) -> int:
 
 def main(argv=None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
-    if argv and argv[0] in {"validate", "record-round"}:
+    if argv and argv[0] in {"validate", "record-round", "reopen-cycle"}:
         cmd = argv.pop(0)
         ap = argparse.ArgumentParser()
         ap.add_argument("--case-dir", required=True)
+        if cmd == "reopen-cycle":
+            ap.add_argument("--reason", required=True)
+            ap.add_argument("--dry-run", action="store_true")
+            return cmd_reopen_cycle(ap.parse_args(argv))
         ap.add_argument("--scan", required=True)
         if cmd == "validate":
             ap.add_argument("--expected-stage", choices=["initial", "final"])

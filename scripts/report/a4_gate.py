@@ -22,8 +22,10 @@ mtime 不作裁决依据（cp -p 误伤 / touch 绕过，codex 复核否决）�
   python3 a4_gate.py finalize --case-dir <案目录> --verdicts-file <verdicts.json> \
       --workflow-type <new-analysis|independent-audit> \
       --seal-files findings.md,analysis-state.json,facts.json,identity_gate.json [--charts-dir charts/final]
-      # verdicts.json: [{"id": "C1", "verdict": "CONFIRMED|WEAKENED|REFUTED",
-      #                  "revision_note": "WEAKENED/REFUTED 必填"}, ...]
+       # verdicts.json: [{"id": "C1", "verdict": "CONFIRMED|WEAKENED|REFUTED",
+       #                  "revision_note": "WEAKENED/REFUTED 必填"}, ...]
+  python3 a4_gate.py limits-extract --case-dir <案目录> [--findings findings.md] [--out limits.json] [--heading <正则>]
+      # 仅适用于有独立局限/观测边界节的案；不能收齐散落全稿的局限。
 
 退出码: 0=封口成功 / 2=校验不过（硬停，修完重跑）/ 1=脚本自身错误。
 （来源：A4 前提前做 A5 七案返工核查 + codex 交叉复核，2026-08-01）"""
@@ -31,6 +33,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -484,6 +487,90 @@ def cmd_finalize(a):
     return 0
 
 
+def cmd_limits_extract(a):
+    """从独立局限/观测边界节提取条目；不用于收齐散落全稿的局限。"""
+    case_dir = Path(a.case_dir).resolve()
+    try:
+        findings = safe_case_file(case_dir, a.findings)
+        out = safe_case_file(case_dir, a.out, must_exist=False)
+        if out == findings or (out.exists() and os.path.samefile(out, findings)):
+            raise ValueError("--out 与 --findings 是同一文件，禁止覆盖输入")
+        heading_re = re.compile(a.heading)
+        lines = findings.read_text(encoding="utf-8").splitlines()
+        headings = []
+        fenced = False
+        for number, line in enumerate(lines, 1):
+            if line.lstrip().startswith("```"):
+                fenced = not fenced
+                continue
+            if fenced:
+                continue
+            match = re.match(r"^(#{2,6})\s+(.+?)\s*$", line)
+            if match:
+                headings.append({"line": number, "level": len(match.group(1)),
+                                 "text": match.group(2)})
+        matches = [heading for heading in headings if heading_re.search(heading["text"])]
+        if len(matches) != 1:
+            print(f"[limits-extract] 标题须恰好匹配 1 处，当前 {len(matches)} 处；用 --heading 精确指定。",
+                  file=sys.stderr)
+            for heading in matches or headings:
+                print(f"  第 {heading['line']} 行：{heading['text']}", file=sys.stderr)
+            if not headings:
+                print("  未发现二至六级标题（代码围栏内不解析标题）。", file=sys.stderr)
+            return 2
+        heading = matches[0]
+        end = next((h["line"] for h in headings
+                    if h["line"] > heading["line"] and h["level"] <= heading["level"]), len(lines) + 1)
+        items = []
+        current = None
+        fenced = False
+        fence_line = None
+        for number in range(heading["line"] + 1, end):
+            line = lines[number - 1]
+            stripped = line.strip()
+            if stripped.startswith("```"):
+                if current is not None:
+                    current["text"] += " " + stripped
+                fenced = not fenced
+                fence_line = number if fenced else None
+                continue
+            if fenced:
+                if current is not None and stripped:
+                    current["text"] += " " + stripped
+                continue
+            if not stripped:
+                current = None
+                continue
+            match = re.match(r"^(?:(\d+)\.\s+(.*)|([-*])\s+(.*))$", line)
+            if match:
+                index = len(items) + 1
+                marker = match.group(1) + "." if match.group(1) is not None else match.group(3)
+                text = match.group(2) if match.group(1) is not None else match.group(4)
+                current = {"id": f"LIM-{index:02d}", "index": index, "written_marker": marker,
+                           "line": number, "text": text.strip()}
+                items.append(current)
+            elif current is None:
+                raise ValueError(f"局限节第 {number} 行无法归属到条目")
+            elif line[0].isspace():
+                current["text"] += " " + stripped
+            else:
+                raise ValueError(f"局限节第 {number} 行既非条目也非缩进续行")
+        if fenced:
+            raise ValueError(f"局限节第 {fence_line} 行代码围栏未闭合")
+        if not items:
+            raise ValueError("局限条目提取为空")
+        obj = {"schema": "a4-limits/v1",
+               "findings": {"path": a.findings, "sha256": sha256_file(findings)},
+               "heading": heading, "items": items}
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(json.dumps(obj, indent=1, ensure_ascii=False) + "\n", encoding="utf-8")
+    except (ValueError, OSError, re.error) as exc:
+        print(f"[limits-extract] {exc}", file=sys.stderr)
+        return 2
+    print(f"[limits-extract] {len(items)} 条 → {a.out}")
+    return 0
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -499,10 +586,18 @@ def main():
     f.add_argument("--charts-dir", default="charts/final",
                    help="A5 报告图专用目录（封口时必须为空；默认 charts/final）")
     f.add_argument("--workflow-type", choices=sorted(WORKFLOW_TYPES), required=True,
-                   help="不可变发布轨道：全新分析或净室复核")
+                    help="不可变发布轨道：全新分析或净室复核")
+    limits = sub.add_parser("limits-extract",
+        help="从 findings 局限/观测边界节提取编号条目（供完整性路引用，禁硬编码文案）",
+        description="仅适用于有独立局限/观测边界节的案；不能收齐散落全稿的局限。")
+    limits.add_argument("--case-dir", required=True)
+    limits.add_argument("--findings", default="findings.md")
+    limits.add_argument("--out", default="limits.json")
+    limits.add_argument("--heading", default="局限|观测边界", help="匹配独立节标题的正则，必须唯一匹配")
     a = ap.parse_args()
     try:
-        return {"register": cmd_register, "finalize": cmd_finalize}[a.subcmd](a)
+        return {"register": cmd_register, "finalize": cmd_finalize,
+                "limits-extract": cmd_limits_extract}[a.subcmd](a)
     except Exception as e:
         print(f"[{a.subcmd}] 脚本自身错误（exit 1，修完重跑）: {e}", file=sys.stderr)
         return 1

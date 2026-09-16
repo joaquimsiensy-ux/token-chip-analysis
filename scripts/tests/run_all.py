@@ -204,6 +204,8 @@ SUITE += ['test_batch18_manifest_stage2_loop.py']
 SUITE += ['test_batch18_review_digest.py']
 # repair-20260906-main-threefix：生产者当前哈希必登记 + 登记 git 可复现守卫。
 SUITE += ['test_producer_registry_current.py']
+# repair-20260915-stage2-closeout W1：分布台账终态受控重开+快照登记解析；a4_gate limits-extract。
+SUITE += ['test_reopen_cycle.py', 'test_a4_limits_extract.py']
 
 
 def main():

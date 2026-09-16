@@ -236,9 +236,13 @@ def test_n8_snapshot_default_is_frozen_explicit_is_observation() -> None:
     with tempfile.TemporaryDirectory(prefix="batch15-n8-", dir="/private/tmp") as raw:
         root = Path(raw)
         build_unit_case(root)
-        default_path, default_rel = distribution.find_snapshot(root, None)
+        write_json(root / "data_map.json", {
+            "files": [{"path": "data/holders_owners.json",
+                       "sha256": sha(root / "data/holders_owners.json")}],
+        })
+        default_path, default_rel = distribution.find_snapshot(root, None, "initial")
         explicit_rel = "data/observe_live/holders_owners.json"
-        explicit_path, shown_rel = distribution.find_snapshot(root, explicit_rel)
+        explicit_path, shown_rel = distribution.find_snapshot(root, explicit_rel, "initial")
         assert default_path == root / "data/holders_owners.json"
         assert default_rel == "data/holders_owners.json"
         assert explicit_path == root / explicit_rel and shown_rel == explicit_rel
