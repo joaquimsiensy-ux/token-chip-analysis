@@ -1177,6 +1177,11 @@
    "locator": "_atomic_json",
    "script": "scripts/report/stage2_closeout.py",
    "semantics": "overwrite_single"
+  },
+  {
+   "locator": "reseal_copy_verdicts",
+   "script": "scripts/report/stage2_closeout.py",
+   "semantics": "overwrite_single"
   }
  ],
  "formal_entrypoints": [

@@ -1,0 +1,420 @@
+W3 v18 开工基线 c897ecdcaabf37f54413ff82cbe42f12b5dc822e
+开工 git status --short 为空；main。
+验收 worktree 四项与文件/目录清单核验 PASS。
+三册基线 28162 + 34301 + 42499 = 104962 bytes。
+
+A/CLI RED: python3 -B scripts/report/stage2_closeout.py reseal --help
+exit=2
+Matplotlib is building the font cache; this may take a moment.
+usage: stage2_closeout.py [-h] {check,fill-workorder,amend} ...
+stage2_closeout.py: error: argument command: invalid choice: 'reseal' (choose from 'check', 'fill-workorder', 'amend')
+A/import intermediate GREEN: direct CLI --help under matplotlib import blocker
+exit=0
+matplotlib_attempt_mark_exists=False
+usage: stage2_closeout.py check [-h] --case-dir CASE_DIR --report REPORT
+                                [--workorder WORKORDER] [--receipt-only]
+                                [--json-out JSON_OUT]
+
+−2 收口（new-analysis）：check / fill-workorder / amend。
+
+只闭合案根 whale_series.json ↔ 工单选材 ↔ entity_series 实物；不能证明
+−3 渲染的 PNG 使用该序列，figure2_check_receipt 同样不能证明 PNG 消费来源。
+time_range 本版不消费；图注数字为存在性检查，非逐桶配对。
+exit 0=PASS，2=BLOCK，1=脚本错。
+
+options:
+  -h, --help            show this help message and exit
+  --case-dir CASE_DIR
+  --report REPORT       案根相对路径
+  --workorder WORKORDER
+                        案根相对路径
+  --receipt-only
+  --json-out JSON_OUT   案内结果文件相对路径
+
+INTERMEDIATE GREEN: initial eight real CLI fixture contracts (remaining required cases not yet run)
+fixtures: /private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/test-stage2-reseal-s63ta6qu
+ok    skip_register_when_claims_same
+ok    registry_sha_drift_forces_register
+ok    verdict_change_stops
+ok    terminal_ledger_triggers_reopen
+ok    other_charts_archived_not_deleted
+ok    ends_with_closeout_check
+ok    migrated_case_root_stops
+ok    adjudication_bound_to_m3_only_stops
+stage2_reseal: 8/8 PASS
+
+BASELINE RED on detached c897ecd with new test overlay; existing W2 downstream guard remains green
+Matplotlib is building the font cache; this may take a moment.
+fixtures: /private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/test-stage2-reseal-otf4l82n
+FAIL  skip_register_when_claims_same: AssertionError: usage: stage2_closeout.py [-h] {check,fill-workorder,amend} ...
+stage2_closeout.py: error: argument command: invalid choice: 'reseal' (choose from 'check', 'fill-workorder', 'amend')
+
+FAIL  registry_sha_drift_forces_register: AssertionError: usage: stage2_closeout.py [-h] {check,fill-workorder,amend} ...
+stage2_closeout.py: error: argument command: invalid choice: 'reseal' (choose from 'check', 'fill-workorder', 'amend')
+
+FAIL  verdict_change_stops: AssertionError: usage: stage2_closeout.py [-h] {check,fill-workorder,amend} ...
+stage2_closeout.py: error: argument command: invalid choice: 'reseal' (choose from 'check', 'fill-workorder', 'amend')
+
+FAIL  terminal_ledger_triggers_reopen: AssertionError: usage: stage2_closeout.py [-h] {check,fill-workorder,amend} ...
+stage2_closeout.py: error: argument command: invalid choice: 'reseal' (choose from 'check', 'fill-workorder', 'amend')
+
+FAIL  other_charts_archived_not_deleted: AssertionError: usage: stage2_closeout.py [-h] {check,fill-workorder,amend} ...
+stage2_closeout.py: error: argument command: invalid choice: 'reseal' (choose from 'check', 'fill-workorder', 'amend')
+
+FAIL  ends_with_closeout_check: AssertionError: usage: stage2_closeout.py [-h] {check,fill-workorder,amend} ...
+stage2_closeout.py: error: argument command: invalid choice: 'reseal' (choose from 'check', 'fill-workorder', 'amend')
+
+FAIL  migrated_case_root_stops: AssertionError: usage: stage2_closeout.py [-h] {check,fill-workorder,amend} ...
+stage2_closeout.py: error: argument command: invalid choice: 'reseal' (choose from 'check', 'fill-workorder', 'amend')
+
+FAIL  adjudication_bound_to_m3_only_stops: AssertionError: usage: stage2_closeout.py [-h] {check,fill-workorder,amend} ...
+stage2_closeout.py: error: argument command: invalid choice: 'reseal' (choose from 'check', 'fill-workorder', 'amend')
+
+FAIL  freeze_readback_no_new_revision: AttributeError: module 'stage2_closeout' has no attribute 'freeze_readback'
+FAIL  adjudication_bound_to_m4_archived: AssertionError: usage: stage2_closeout.py [-h] {check,fill-workorder,amend} ...
+stage2_closeout.py: error: argument command: invalid choice: 'reseal' (choose from 'check', 'fill-workorder', 'amend')
+
+FAIL  nonterminal_ignores_history_receipt: AttributeError: module 'stage2_closeout' has no attribute 'reseal_archive'
+FAIL  adjudication_bound_to_copy_terminal_stops: AssertionError: usage: stage2_closeout.py [-h] {check,fill-workorder,amend} ...
+stage2_closeout.py: error: argument command: invalid choice: 'reseal' (choose from 'check', 'fill-workorder', 'amend')
+
+FAIL  adjudication_dependency_in_charts_final_stops: AttributeError: module 'stage2_closeout' has no attribute 'reseal_archive'
+ok    terminal_downstream_mismatches_block
+FAIL  new_clusters_stop: AssertionError: usage: stage2_closeout.py [-h] {check,fill-workorder,amend} ...
+stage2_closeout.py: error: argument command: invalid choice: 'reseal' (choose from 'check', 'fill-workorder', 'amend')
+
+FAIL  final_source_branch_prebuilds_round: AttributeError: module 'stage2_closeout' has no attribute 'reseal_cluster_ids'
+FAIL  sealed_file_missing_stops: AssertionError: usage: stage2_closeout.py [-h] {check,fill-workorder,amend} ...
+stage2_closeout.py: error: argument command: invalid choice: 'reseal' (choose from 'check', 'fill-workorder', 'amend')
+
+FAIL  sealed_path_remapped_from_reopen: AssertionError: usage: stage2_closeout.py [-h] {check,fill-workorder,amend} ...
+stage2_closeout.py: error: argument command: invalid choice: 'reseal' (choose from 'check', 'fill-workorder', 'amend')
+
+FAIL  archived_claim_reference_stops: AssertionError: usage: stage2_closeout.py [-h] {check,fill-workorder,amend} ...
+stage2_closeout.py: error: argument command: invalid choice: 'reseal' (choose from 'check', 'fill-workorder', 'amend')
+
+FAIL  round_number_continues_nonterminal_ledger: AssertionError: usage: stage2_closeout.py [-h] {check,fill-workorder,amend} ...
+stage2_closeout.py: error: argument command: invalid choice: 'reseal' (choose from 'check', 'fill-workorder', 'amend')
+
+7(d0) parent/child finder: exactly two matplotlib attempts; evidence=/private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/test-stage2-reseal-otf4l82n/w3-mpl-blocker-u2xx88cr
+FAIL  dry_run_touches_nothing: AssertionError: Matplotlib is building the font cache; this may take a moment.
+usage: stage2_closeout.py [-h] {check,fill-workorder,amend} ...
+stage2_closeout.py: error: argument command: invalid choice: 'reseal' (choose from 'check', 'fill-workorder', 'amend')
+
+stage2_reseal: 1/21 PASS
+
+
+INTERMEDIATE: first expanded run; 13 fixture rebind failure (not production blocker)
+fixtures: /private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/test-stage2-reseal-gcrwj8xs
+ok    skip_register_when_claims_same
+ok    registry_sha_drift_forces_register
+ok    verdict_change_stops
+ok    terminal_ledger_triggers_reopen
+ok    other_charts_archived_not_deleted
+ok    ends_with_closeout_check
+ok    migrated_case_root_stops
+ok    adjudication_bound_to_m3_only_stops
+ok    freeze_readback_no_new_revision
+ok    adjudication_bound_to_m4_archived
+ok    nonterminal_ignores_history_receipt
+ok    adjudication_bound_to_copy_terminal_stops
+ok    adjudication_dependency_in_charts_final_stops
+ok    terminal_downstream_mismatches_block
+ok    new_clusters_stop
+FAIL  final_source_branch_prebuilds_round: ValueError: reconciliation balance receipt envelope invalid: input balances size mismatch；存量案例须重跑对应生产者获取当前回执
+stage2_reseal: 15/16 PASS
+
+
+INTERMEDIATE: missing fixture evidence file caught by real register
+fixtures: /private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/test-stage2-reseal-w32e5794
+FAIL  final_source_branch_prebuilds_round: AssertionError: A0.1 顶层 script_sha256｜记录=e85acee4e9a98a664d9b4881ca33177003aa9455261109a01e111e6faeda3cd1｜当前=e85acee4e9a98a664d9b4881ca33177003aa9455261109a01e111e6faeda3cd1
+A0.1 文件 entity_source_trace.py｜记录 sha/bytes=e85acee4e9a98a664d9b4881ca33177003aa9455261109a01e111e6faeda3cd1/46034｜当前 sha/bytes=e85acee4e9a98a664d9b4881ca33177003aa9455261109a01e111e6faeda3cd1/46034
+A0.1 文件 wave_scan.py｜记录 sha/bytes=9f8c176eff0592f6173eb7d8b7edf28cd47c07f986f703af74f063c20cbcbdc8/46694｜当前 sha/bytes=9f8c176eff0592f6173eb7d8b7edf28cd47c07f986f703af74f063c20cbcbdc8/46694
+A0.1 文件 sqd_cache_identity.py｜记录 sha/bytes=1e39b2178831c29a446c545a1eab602cb4ab4c0391747913573e0f8efcc32ded/12974｜当前 sha/bytes=1e39b2178831c29a446c545a1eab602cb4ab4c0391747913573e0f8efcc32ded/12974
+层｜动作｜将失效下游件
+a4｜重封｜final scan（各轮）、rounds 全部行、a4（freeze revision 变时）、adversarial_review/shared_release_receipt（按 registry sha，不按 seal revision）、a5 seal、工单 bindings
+A0.3–A0.5｜将归档｜["charts/final/holder_distribution_current.png", "dist_rounds/round_1/distribution_scan.json", "dist_rounds/round_1/holder_distribution_round.png", "distribution_rounds.json"]
+A0.3｜整体搬运条目｜[]
+A0.4｜周期归档目标｜data/stage2/dist_cycle1/
+命令｜/usr/local/bin/python3 -B /Users/uravvv/.claude/skills/token-chip-analysis/scripts/report/holder_distribution_scan.py reopen-cycle --reason 'reseal --from a4 20260916T112936.500816Z' --case-dir /private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/test-stage2-reseal-w32e5794/variant-003
+PASS: cycle 1 archived -> data/stage2/dist_cycle1/
+若 A4 claims 能与 initial scan 闭合：先 a4_gate.py finalize 封新 rev，再 --stage final --round 1 → record-round（NORMAL/LOW_SAMPLE 直接终态）。
+若形态为 ABNORMAL 且需要 final scan 作 claim 来源：在当前 seal 下 --stage final --round 1 → record-round（不带解释，得非终态 UNEXPLAINED）→ 补证据/复核 → finalize → --stage final --round 2 带 --explanation 终态。
+NORMAL/LOW_SAMPLE 形态没有“先建轮 1 再 finalize”的路径（轮 1 一 record 就终态，finalize 会被拒）。
+分支=final；D=['dist-eb6d79e6fcb26cb2b3fb']；I=[]
+旧 seal 来源（仅参考）：{"path": "distribution_scan.json", "sha256": "25f7304573312d4480582f36b9ce9dee6eecd5f52f21222e4cbcd5d60e26ea09", "stage": "initial", "cluster_claim_ids": []}
+分支=final；D=['dist-eb6d79e6fcb26cb2b3fb']；I=[]
+命令｜/usr/local/bin/python3 -B /Users/uravvv/.claude/skills/token-chip-analysis/scripts/report/holder_distribution_scan.py --stage final --round 1 --case-dir /private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/test-stage2-reseal-w32e5794/variant-003
+PASS: final ABNORMAL_SHAPE -> /private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/test-stage2-reseal-w32e5794/variant-003/dist_rounds/round_1/distribution_scan.json
+命令｜/usr/local/bin/python3 -B /Users/uravvv/.claude/skills/token-chip-analysis/scripts/report/holder_distribution_scan.py record-round --scan dist_rounds/round_1/distribution_scan.json --case-dir /private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/test-stage2-reseal-w32e5794/variant-003
+PASS: round 1 -> REQUIRES_A4_REFLOW
+命令｜/usr/local/bin/python3 -B /Users/uravvv/.claude/skills/token-chip-analysis/scripts/report/a4_gate.py register --claims-file /private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/test-stage2-reseal-w32e5794/variant-003/new_claims.json --case-dir /private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/test-stage2-reseal-w32e5794/variant-003
+前置不过：a4_gate.py exit 2
+findfont: Failed to find font weight normal, now using 300.
+findfont: Failed to find font weight normal, now using 300.
+findfont: Failed to find font weight normal, now using 300.
+[register] 文件不存在: 'evidence.json'
+
+stage2_reseal: 0/1 PASS
+
+
+GREEN: repaired fixture final-source 13a/13b/13c and round continuation 11
+fixtures: /private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/test-stage2-reseal-ou4h5ok6
+ok    final_source_branch_prebuilds_round
+ok    round_number_continues_nonterminal_ledger
+stage2_reseal: 2/2 PASS
+
+
+GREEN: acceptance direct CLI and runtime matplotlib import blockade
+fixtures: /private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/test-stage2-reseal-70unpv4n
+7(e) acceptance HEAD=c897ecdcaabf37f54413ff82cbe42f12b5dc822e; overlay=5 sha256 equal; exact files/directories
+fixtures: /private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/test-stage2-reseal-vrtam3q_
+7(d0) parent/child finder: exactly two matplotlib attempts; evidence=/private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/test-stage2-reseal-vrtam3q_/w3-mpl-blocker-x959y0yz
+7(b,d,e,g) direct CLI normal/blocked: identical stdout/code, zero case/scripts/MPL changes
+ok    dry_run_touches_nothing
+stage2_reseal: 1/1 PASS
+ok    dry_run_touches_nothing
+stage2_reseal: 1/1 PASS
+
+
+LOCAL COUNTERFACTUAL: no repository code edit; removing dependency intersection recreates A0.5 failure
+命令｜/usr/local/bin/python3 -B /Users/uravvv/.claude/skills/token-chip-analysis/scripts/report/adjudication_validator.py distribution-validate --case-dir /private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/w3-counterfactual-95kvil34/w3-adjudication-dependency-od4akuh8
+[adjudication] PASS distribution 2 条，unresolved=0.000000%
+A0.3–A0.5｜将归档｜["charts/final/owners.json"]
+A0.3｜整体搬运条目｜["charts/final/owners.json"]
+命令｜/usr/local/bin/python3 -B /Users/uravvv/.claude/skills/token-chip-analysis/scripts/report/adjudication_validator.py distribution-validate --case-dir /private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/w3-counterfactual-95kvil34/w3-adjudication-dependency-od4akuh8
+[adjudication] FAIL（fail-closed，逐条修复）:
+  ✗ final distribution scan 独立重算失败: BLOCK: distribution scan validate
+- scan 不可重验: 快照不存在: charts/final/owners.json
+
+A0.3 预验通过后依赖失效
+COUNTERFACTUAL: guard removed -> prevalidation PASS -> snapshot moved -> A0.5 SystemExit(2)
+PASS counterfactual; fixture=/private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/w3-counterfactual-95kvil34/w3-adjudication-dependency-od4akuh8
+
+
+C/D pre-change RED expectations:
+references/split-run.md 28162
+references/analyze-workflow.md 34301
+references/report-template.md 42499
+C expected reseal manual instruction: absent
+D expected VERSION 7.1.0: actual 7.0.4
+Before writing CHANGELOG, changelog_lint raw output:
+PASS: 版本号唯一（豁免 2 组历史撞号存档）、顺序正确；活跃 71 条 + 归档 139 条
+
+B FULL GREEN
+fixtures: /private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/test-stage2-reseal-zj10lizq
+ok    skip_register_when_claims_same
+ok    registry_sha_drift_forces_register
+ok    verdict_change_stops
+ok    terminal_ledger_triggers_reopen
+ok    other_charts_archived_not_deleted
+ok    ends_with_closeout_check
+ok    migrated_case_root_stops
+ok    adjudication_bound_to_m3_only_stops
+ok    freeze_readback_no_new_revision
+ok    adjudication_bound_to_m4_archived
+ok    nonterminal_ignores_history_receipt
+ok    adjudication_bound_to_copy_terminal_stops
+ok    adjudication_dependency_in_charts_final_stops
+ok    terminal_downstream_mismatches_block
+ok    new_clusters_stop
+ok    final_source_branch_prebuilds_round
+ok    sealed_file_missing_stops
+ok    sealed_path_remapped_from_reopen
+ok    archived_claim_reference_stops
+ok    round_number_continues_nonterminal_ledger
+7(e) acceptance HEAD=c897ecdcaabf37f54413ff82cbe42f12b5dc822e; overlay=5 sha256 equal; exact files/directories
+fixtures: /private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/test-stage2-reseal-sima4ta8
+7(d0) parent/child finder: exactly two matplotlib attempts; evidence=/private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/test-stage2-reseal-sima4ta8/w3-mpl-blocker-yzfnpceo
+7(b,d,e,g) direct CLI normal/blocked: identical stdout/code, zero case/scripts/MPL changes
+ok    dry_run_touches_nothing
+stage2_reseal: 1/1 PASS
+ok    dry_run_touches_nothing
+stage2_reseal: 21/21 PASS
+
+C exact replacement byte ledger
+[
+  {
+    "file": "references/split-run.md",
+    "anchor": "136-flow",
+    "deleted_bytes": 178,
+    "added_bytes": 114
+  },
+  {
+    "file": "references/split-run.md",
+    "anchor": "136-closeout",
+    "deleted_bytes": 27,
+    "added_bytes": 21
+  },
+  {
+    "file": "references/split-run.md",
+    "anchor": "117",
+    "deleted_bytes": 46,
+    "added_bytes": 50
+  },
+  {
+    "file": "references/split-run.md",
+    "anchor": "150-count",
+    "deleted_bytes": 30,
+    "added_bytes": 30
+  },
+  {
+    "file": "references/split-run.md",
+    "anchor": "150",
+    "deleted_bytes": 94,
+    "added_bytes": 134
+  },
+  {
+    "file": "references/split-run.md",
+    "anchor": "154",
+    "deleted_bytes": 59,
+    "added_bytes": 76
+  },
+  {
+    "file": "references/split-run.md",
+    "anchor": "94",
+    "deleted_bytes": 54,
+    "added_bytes": 56
+  },
+  {
+    "file": "references/split-run.md",
+    "anchor": "158",
+    "deleted_bytes": 25,
+    "added_bytes": 67
+  },
+  {
+    "file": "references/split-run.md",
+    "anchor": "165",
+    "deleted_bytes": 93,
+    "added_bytes": 225
+  },
+  {
+    "file": "references/split-run.md",
+    "anchor": "168-170",
+    "deleted_bytes": 629,
+    "added_bytes": 272
+  },
+  {
+    "file": "references/split-run.md",
+    "anchor": "176-177",
+    "deleted_bytes": 507,
+    "added_bytes": 392
+  },
+  {
+    "file": "references/split-run.md",
+    "anchor": "180",
+    "deleted_bytes": 50,
+    "added_bytes": 89
+  },
+  {
+    "file": "references/split-run.md",
+    "anchor": "184",
+    "deleted_bytes": 415,
+    "added_bytes": 323
+  },
+  {
+    "file": "references/analyze-workflow.md",
+    "anchor": "185",
+    "deleted_bytes": 100,
+    "added_bytes": 67
+  },
+  {
+    "file": "references/analyze-workflow.md",
+    "anchor": "173",
+    "deleted_bytes": 87,
+    "added_bytes": 152
+  }
+]
+TOTAL 104636
+
+C/D GREEN raw outputs (not full W3 acceptance)
+
+w3_docs_default.log
+PASS: 45 个文档，引用无断链、粗体配对完整
+
+w3_docs_all.log
+PASS: 59 个文档，引用无断链、粗体配对完整（--all 全量模式）
+
+w3_changelog_after.log
+PASS: 版本号唯一（豁免 2 组历史撞号存档）、顺序正确；活跃 72 条 + 归档 139 条
+
+w3_version.log
+PASS: M-03 version metadata consistent at 7.1.0
+
+w3_invariants.log
+PASS invariant manifest: receipt_producers=79, receipt_consumers=115, transport_calls=65, atomic_writes=59, formal_entrypoints=61, exceptions=0
+
+w3_help.log
+usage: stage2_closeout.py [-h] {check,fill-workorder,amend,reseal} ...
+
+−2 收口（new-analysis）：check / fill-workorder / amend / reseal。
+
+只闭合案根 whale_series.json ↔ 工单选材 ↔ entity_series 实物；不能证明
+−3 渲染的 PNG 使用该序列，figure2_check_receipt 同样不能证明 PNG 消费来源。
+time_range 本版不消费；图注数字为存在性检查，非逐桶配对。
+exit 0=PASS，2=BLOCK，3=reseal 人工停点，1=脚本错。
+
+positional arguments:
+  {check,fill-workorder,amend,reseal}
+
+options:
+  -h, --help            show this help message and exit
+
+STOP: forbidden-path indirect read confirmed
+scripts/report/handoff_manifest.py:201-207 git_sha calls subprocess git -C os.path.expanduser(repo_dir) rev-parse --short=12 HEAD.
+scripts/report/handoff_manifest.py:414-415 generate passes ~/.codex/skills/token-chip-analysis.
+The four already-produced w3-freeze-* manifests in test-stage2-reseal-gcrwj8xs each contain nonempty skill_git_sha.codex (True,True,True,True). Hash values are not reproduced.
+Therefore the invoked subprocess did read Git metadata inside the forbidden ~/.codex tree. This is a user constraint violation, not merely a proposed call or a sandbox denial. Exact read count/files were not audited.
+All ten tool-launched test/check sessions have finished; no run_all launch, no commit, no push, no true cases, no worktree add/remove/prune.
+git HEAD at stop=c897ecdcaabf37f54413ff82cbe42f12b5dc822e; git diff --check exit 0.
+
+RESUME ruling: 既有脚本 git rev-parse 元数据查询不算违禁，未加拦截。主 scripts 9 个既有 __pycache__ 保留；acceptance scripts 0。
+Final payload sha256 captured in /tmp/w3_final_payload_hashes.json before rerun.
+Final targeted command: python3 -B scripts/tests/test_stage2_reseal.py > /tmp/w3_reseal_final.log 2>&1
+Full suite launch: export PYTHONDONTWRITEBYTECODE=1; nohup python3 scripts/tests/run_all.py > /tmp/run_all_w3.log 2>&1 &
+Shell stderr: zsh:2: nice(5) failed: operation not permitted
+This launch warning is not a test result; actual log completion will decide status.
+
+RESUME final targeted suite raw log
+fixtures: /private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/test-stage2-reseal-i91uij3p
+ok    skip_register_when_claims_same
+ok    registry_sha_drift_forces_register
+ok    verdict_change_stops
+ok    terminal_ledger_triggers_reopen
+ok    other_charts_archived_not_deleted
+ok    ends_with_closeout_check
+ok    migrated_case_root_stops
+ok    15a/15e terminal=True: real/dry both exit 3, unchanged
+ok    15b/15e terminal=False: real/dry both exit 3, unchanged
+ok    adjudication_bound_to_m3_only_stops
+ok    6 pending=True note=True: freeze revision unchanged
+ok    6 pending=False note=False: freeze revision unchanged
+ok    6 pending=True note=False: freeze revision unchanged
+ok    6 pending=False note=True: freeze revision unchanged
+ok    freeze_readback_no_new_revision
+ok    adjudication_bound_to_m4_archived
+ok    nonterminal_ignores_history_receipt
+ok    adjudication_bound_to_copy_terminal_stops
+ok    adjudication_dependency_in_charts_final_stops
+ok    14 downstream fallback: rounds.a4_seal_sha
+ok    14 downstream fallback: rounds.entity_freeze_revision
+ok    terminal_downstream_mismatches_block
+ok    new_clusters_stop
+ok    13a final source mismatch: nonterminal anchor retained
+ok    13b matching final source: register stop then real finalize
+ok    13c pending_a3 -> round 2 UNEXPLAINED; exactly one seal revision
+ok    final_source_branch_prebuilds_round
+ok    sealed_file_missing_stops
+ok    sealed_path_remapped_from_reopen
+ok    archived_claim_reference_stops
+ok    round_number_continues_nonterminal_ledger
+7(e) acceptance HEAD=c897ecdcaabf37f54413ff82cbe42f12b5dc822e; overlay=12 sha256 equal; exact files/directories
+fixtures: /private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/test-stage2-reseal-ceuj8wgt
+7(d0) parent/child finder: exactly two matplotlib attempts; evidence=/private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/test-stage2-reseal-ceuj8wgt/w3-mpl-blocker-bm1v8jbr
+7(b,d,e,g) direct CLI normal/blocked: identical stdout/code, zero case/scripts/MPL changes
+ok    dry_run_touches_nothing
+stage2_reseal: 1/1 PASS
+ok    dry_run_touches_nothing
+stage2_reseal: 21/21 PASS
+FINAL_PAYLOAD_UNCHANGED=PASS for the 11 payload files recorded before the final targeted run.
+Initial nohup had no live writer (lsof control test detected the targeted-test writer). Relaunched exact nohup command after unsetopt BG_NICE, retained shell with wait; live suite writer PID=90935. No test was changed.

@@ -207,6 +207,7 @@ SUITE += ['test_producer_registry_current.py']
 # repair-20260915-stage2-closeout W1：分布台账终态受控重开+快照登记解析；a4_gate limits-extract。
 SUITE += ['test_reopen_cycle.py', 'test_a4_limits_extract.py']
 SUITE += ['test_stage2_closeout.py']
+SUITE += ['test_stage2_reseal.py']
 
 
 def main():

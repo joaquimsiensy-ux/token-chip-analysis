@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""−2 收口（new-analysis）：check / fill-workorder / amend。
+"""−2 收口（new-analysis）：check / fill-workorder / amend / reseal。
 
 只闭合案根 whale_series.json ↔ 工单选材 ↔ entity_series 实物；不能证明
 −3 渲染的 PNG 使用该序列，figure2_check_receipt 同样不能证明 PNG 消费来源。
 time_range 本版不消费；图注数字为存在性检查，非逐桶配对。
-exit 0=PASS，2=BLOCK，1=脚本错。
+exit 0=PASS，2=BLOCK，3=reseal 人工停点，1=脚本错。
 """
 from __future__ import annotations
 
@@ -15,6 +15,8 @@ import json
 import os
 from pathlib import Path
 import re
+import shlex
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -22,13 +24,13 @@ import tempfile
 HERE = Path(__file__).resolve().parent
 REPO = HERE.parent.parent
 sys.path[:0] = [str(HERE), str(REPO / "scripts/lib")]
+sys.dont_write_bytecode = True
 from case_paths import safe_case_file
 import a4_gate
 import a5_report_seal
 import audit_release_gate
 import entity_identity_gate
 import facts_gate
-import figures_from_facts
 
 SCHEMA = "stage2-closeout/v1"
 RECEIPT = "stage2_closeout_receipt.json"
@@ -405,6 +407,8 @@ def workorder_errors(case, report_rel, workorder_rel=WORKORDER, *, obj=None, fac
 
 
 def fig2_series_errors(case, workorder_rel=WORKORDER):
+    import figures_from_facts
+
     errors, notes = [], ["NOTE: time_range 未核", SERIES_BOUNDARY]
     out = safe_case_file(case, "whale_series.json", must_exist=False)
     sidecar = safe_case_file(case, "whale_series.provenance.json", must_exist=False)
@@ -752,28 +756,557 @@ def amend(case, report_rel, previous_rel=None):
     return [], updated
 
 
+def reseal_stop(code, message):
+    print(message)
+    raise SystemExit(code)
+
+
+def reseal_cli(case, script, *arguments, execute=True):
+    command = [sys.executable, "-B", str(HERE / script), *map(str, arguments),
+               "--case-dir", str(case)]
+    print("命令｜" + shlex.join(command))
+    if not execute:
+        return None
+    proc = subprocess.run(command, cwd=str(case),
+                          env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"},
+                          capture_output=True, text=True)
+    print(proc.stdout, end="")
+    print(proc.stderr, end="", file=sys.stderr)
+    return proc
+
+
+def reseal_require(case, script, *arguments):
+    proc = reseal_cli(case, script, *arguments)
+    if proc.returncode:
+        reseal_stop(2, f"前置不过：{script} exit {proc.returncode}")
+    return proc
+
+
+def reseal_ledger(case):
+    import holder_distribution_scan as scanner
+    if not (case / "distribution_rounds.json").exists():
+        return {"rounds": [], "terminal": None}
+    ledger = load(case, "distribution_rounds.json")
+    if not isinstance(ledger, dict):
+        raise ValueError("rounds 台账必须是对象")
+    errors = scanner.validate_rounds_ledger(ledger)
+    if errors:
+        raise ValueError("; ".join(errors))
+    return ledger
+
+
+def reseal_identity(case, path):
+    return path.resolve().relative_to(case).as_posix()
+
+
+def reseal_move_sets(case, ledger):
+    m3, m4 = set(), set()
+    final = case / "charts/final"
+    if final.exists():
+        for entry in final.iterdir():
+            if entry.name == "holder_distribution_current.png":
+                continue
+            files = entry.rglob("*") if entry.is_dir() else [entry]
+            for path in files:
+                if path.is_file():
+                    m3.add(reseal_identity(case, path))
+    if ledger.get("terminal") is not None:
+        m4.add("distribution_rounds.json")
+        for path in (case / "dist_rounds").rglob("*"):
+            if path.is_file():
+                m4.add(reseal_identity(case, path))
+        m4.add(reseal_identity(case, case / ledger["terminal"]["final_chart_path"]))
+    return m3, m4
+
+
+def reseal_sealed_paths(case, seal):
+    rows = list(seal.get("sealed_files", []))
+    rows += [seal.get(key) for key in ("registry", "verdicts", "distribution_claim_source")]
+    return {reseal_identity(case, safe_case_file(case, row["path"], must_exist=False))
+            for row in rows if isinstance(row, dict) and row.get("path")}
+
+
+def reseal_adjudication_dependencies(case, scan_rel, entity_file):
+    """Use each consumer's resolver before comparing resolved case identities."""
+    import holder_distribution_scan as scanner
+    dependencies = set()
+
+    def add(rel):
+        path = scanner.safe_file(case, rel, "裁决校验依赖")
+        dependencies.add(reseal_identity(case, path))
+
+    scan = load(case, scan_rel)
+    if not isinstance(scan, dict) or not isinstance(scan.get("input_binding"), dict):
+        raise ValueError("裁决 scan/input_binding 必须是对象")
+
+    def walk(value, keys=()):
+        if keys[:2] == ("algorithm", "files") or keys == ("labels_manifest",):
+            return
+        if isinstance(value, dict):
+            for key, item in value.items():
+                if key == "path":
+                    add(item)
+                else:
+                    walk(item, keys + (key,))
+        elif isinstance(value, list):
+            for item in value:
+                walk(item, keys)
+
+    add(scan_rel)
+    walk(scan["input_binding"])
+    for rel in ("handoff_manifest.json", "identity_snapshot_receipt.json", "a4_seal.json",
+                "entity_freeze.json", "membership_ledger.json", "position_ledger.json",
+                "economic_control_ledger.json", "distribution_scan.json",
+                "distribution_adjudications.json"):
+        add(rel)
+    if (case / "distribution_rounds.json").exists():
+        add("distribution_rounds.json")
+        ledger = reseal_ledger(case)
+        for row in ledger["rounds"]:
+            if row.get("round_n") == scan.get("round"):
+                add(row["final_scan_path"])
+    if (case / "distribution_reopen.json").exists():
+        add("distribution_reopen.json")
+        scanner.validate_reopen_receipt(case)
+        last = load(case, "distribution_reopen.json")["cycles"][-1]
+        for row in last["archived"]:
+            add(row["to"])
+        snapshot = f"data/stage2/dist_cycle{last['cycle']}/a4_snapshot/a4_seal.json"
+        if (case / snapshot).exists():
+            add(snapshot)
+    if entity_file is not None:
+        dependencies.add(reseal_identity(case, safe_case_file(case, entity_file)))
+    return dependencies
+
+
+def reseal_archive(case, m3, m4, terminal, entity_file=None, *,
+                   sealed_paths=(), from_layer="rounds", dry_run=False):
+    """Shared A0.3–A0.5; every predictable refusal precedes all mutations."""
+    case = Path(case).resolve()
+    adjudication = case / "distribution_adjudications.json"
+    p, m5, prevalidated = None, set(), []
+    validate_args = ["distribution-validate"]
+    if entity_file is not None:
+        validate_args += ["--entity-file", entity_file]
+    try:
+        if adjudication.exists() or adjudication.is_symlink():
+            p = reseal_identity(case, safe_case_file(
+                case, load(case, "distribution_adjudications.json")["source_scan"]["path"]))
+            if p in m4:
+                m5 = {"distribution_adjudications.json"}
+            elif terminal or p in m3:
+                reseal_stop(3, f"裁决文件绑定的 scan {p} 不随周期归档/将被本步搬走，"
+                            "归档后其绑定必失效且 A0.5 不承接：人工处置（把裁决件移出案根或改绑；"
+                            "终态后由 −2 重新承接裁决）")
+            else:
+                overlap = reseal_adjudication_dependencies(case, p, entity_file) & m3
+                if overlap:
+                    reseal_stop(3, "裁决校验依赖 " + ", ".join(sorted(overlap)) +
+                                " 将被本步搬走，归档后裁决必失效且 A0.5 不承接：人工处置（改绑或把裁决件移出案根）")
+                reseal_require(case, "adjudication_validator.py", *validate_args)
+                prevalidated.append(p)
+        overlap = set(sealed_paths) & (m3 | m4 | m5)
+        if from_layer == "rounds" and overlap:
+            reseal_stop(3, "\n".join(f"归档将搬走 seal 封入的文件 {rel}，seal 会失效：改走 `--from a4`"
+                                    for rel in sorted(overlap)))
+    except (ValueError, OSError, KeyError, TypeError) as exc:
+        reseal_stop(2, f"A0.3 前置不过：{exc}")
+    entries = []
+    final = case / "charts/final"
+    if final.exists():
+        entries = [path.relative_to(case).as_posix() + ("/" if path.is_dir() else "")
+                   for path in sorted(final.iterdir()) if path.name != "holder_distribution_current.png"]
+    print("A0.3–A0.5｜将归档｜" + json.dumps(sorted(m3 | m4 | m5), ensure_ascii=False))
+    print("A0.3｜整体搬运条目｜" + json.dumps(entries, ensure_ascii=False))
+    if terminal:
+        stage2 = case / "data/stage2"
+        cycles = [int(match.group(1)) for path in stage2.iterdir()
+                  if path.is_dir() and (match := re.match(r"^dist_cycle(\d+)", path.name))] if stage2.is_dir() else []
+        print(f"A0.4｜周期归档目标｜data/stage2/dist_cycle{max(cycles, default=0) + 1}/")
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S.%fZ")
+    history = f"data/stage2/_history/{stamp}"
+    if dry_run:
+        if terminal:
+            reseal_cli(case, "holder_distribution_scan.py", "reopen-cycle", "--reason",
+                       f"reseal --from {from_layer} <UTC>", execute=False)
+        return {"stage_done": "A0.5", "prevalidated_scan_paths": prevalidated}
+    final = case / "charts/final"
+    if final.exists():
+        for entry in sorted(final.iterdir()):
+            if entry.name != "holder_distribution_current.png":
+                target = safe_case_file(case, f"{history}/charts_final/{entry.name}", must_exist=False)
+                target.parent.mkdir(parents=True, exist_ok=True)
+                shutil.move(str(entry), str(target))
+    moved = set()
+    if terminal:
+        reseal_require(case, "holder_distribution_scan.py", "reopen-cycle", "--reason",
+                       f"reseal --from {from_layer} {stamp}")
+        moved = {row["from"] for row in load(case, "distribution_reopen.json")["cycles"][-1]["archived"]
+                 if row["mode"] == "moved"}
+    if p is not None:
+        if p in moved:
+            target = safe_case_file(case, f"{history}/distribution_adjudications.json", must_exist=False)
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.move(str(adjudication), str(target))
+            _atomic_json(case, f"{history}/reseal_log.json", {
+                "skill_commit": skill_commit(),
+                "失效原因": "绑定的分布扫描已随周期归档；终态后由 −2 重新承接裁决"})
+        else:
+            proc = reseal_cli(case, "adjudication_validator.py", *validate_args)
+            if proc.returncode:
+                reseal_stop(2, "A0.3 预验通过后依赖失效")
+    return {"stage_done": "A0.5", "prevalidated_scan_paths": prevalidated}
+
+
+def reseal_preflight(case):
+    import handoff_manifest
+    try:
+        accounting = load(case, "accounting_mode.json")
+        path = accounting["observation_bundle"]["path"]
+        if not isinstance(path, str) or not path.strip():
+            raise ValueError("observation bundle 路径字段缺失")
+        if Path(path).is_absolute() and not Path(path).resolve().is_relative_to(case):
+            reseal_stop(2, "案根已迁移：observation bundle 绝对路径指向原案，reseal 须在原路径执行；"
+                        "未迁移重绑的复制案无法通过发布闸")
+    except (OSError, ValueError, KeyError, TypeError) as exc:
+        reseal_stop(2, f"A0.0 前置不过：accounting_mode.json observation bundle 路径缺失或不可读：{exc}")
+    try:
+        algorithm = load(case, "provenance_ledger.json")["input_binding"]["algorithm"]
+    except (OSError, ValueError, KeyError, TypeError) as exc:
+        print(f"算法文件 entity_source_trace.py 漂移：缺 input_binding.algorithm：{exc}")
+        algorithm = {}
+    current_sha, current_size = handoff_manifest.full_sha256_file(HERE / "entity_source_trace.py")
+    if not isinstance(algorithm, dict):
+        print("算法文件 entity_source_trace.py 漂移：input_binding.algorithm 必须是对象")
+        algorithm = {}
+    failed = algorithm.get("script_sha256") != current_sha
+    print(f"A0.1 顶层 script_sha256｜记录={algorithm.get('script_sha256')}｜当前={current_sha}（{current_size} bytes）")
+    files = algorithm.get("files")
+    for name, target in (("entity_source_trace.py", HERE / "entity_source_trace.py"),
+                         ("wave_scan.py", HERE / "wave_scan.py"),
+                         ("sqd_cache_identity.py", REPO / "scripts/solana/sqd_cache_identity.py")):
+        record = files.get(name) if isinstance(files, dict) else None
+        _, error = handoff_manifest.check_algorithm_file(record, target)
+        sha, size = handoff_manifest.full_sha256_file(target)
+        shown = record if isinstance(record, dict) else {}
+        print(f"A0.1 文件 {name}｜记录 sha/bytes={shown.get('sha256')}/{shown.get('bytes')}"
+              f"｜当前 sha/bytes={sha}/{size}")
+        if error:
+            failed = True
+            print(f"算法文件 {name} 漂移：{error}")
+            if isinstance(record, dict) and isinstance(record.get("path"), str) and \
+                    Path(record["path"]).resolve() != target.resolve():
+                print("单文件校验在路径比较处返回；上述当前 sha/bytes 为另外只读计算，未由单文件校验比较内容")
+    if failed:
+        reseal_stop(2, "算法文件 entity_source_trace.py/wave_scan.py/sqd_cache_identity.py 漂移："
+                    "须在与 freeze 记录同一 checkout 下运行，或在当前代码下重跑 provenance/freeze 链")
+
+
+def freeze_readback(case):
+    frozen = load(case, "entity_freeze.json")
+    arguments = ["freeze", "--members", frozen["members_source"], "--entity-file", frozen["entity_file"]]
+    if frozen["pending_items"]:
+        arguments += ["--pending", ";".join(frozen["pending_items"])]
+    if frozen.get("casebook_note") is not None:
+        arguments += ["--casebook-note", frozen["casebook_note"]]
+    before = freeze_revision(case)
+    reseal_require(case, "handoff_manifest.py", *arguments)
+    after = freeze_revision(case)
+    print(f"A1 freeze revision {before} → {after}；" + ("无需新 revision" if before == after else "revision 已增加"))
+
+
+def reseal_cluster_ids(scan):
+    return {f"dist-{row['cluster_id']}" for row in scan.get("abnormal_clusters", [])}
+
+
+def reseal_source(case, claims, *, terminal_will_reopen=False):
+    ledger = reseal_ledger(case)
+    wanted = {row["id"] for row in claims if row["id"].startswith("dist-")}
+    initial = reseal_cluster_ids(load(case, "distribution_scan.json"))
+    if ledger["rounds"] and not terminal_will_reopen:
+        rel = ledger["rounds"][-1]["final_scan_path"]
+        found = reseal_cluster_ids(load(case, rel))
+        proc = reseal_cli(case, "holder_distribution_scan.py", "validate", "--scan", rel,
+                          "--expected-stage", "final")
+        print(f"分支=final；D={sorted(wanted)}；F_old={sorted(found)}；最新 final 当前有效={'是' if proc.returncode == 0 else '否'}")
+        return "final", rel, wanted, found, proc.returncode == 0
+    branch = "initial" if wanted == initial else "final"
+    print(f"分支={branch}；D={sorted(wanted)}；I={sorted(initial)}")
+    return branch, "distribution_scan.json", wanted, initial, True
+
+
+def reseal_scan(case):
+    n = len(reseal_ledger(case)["rounds"]) + 1
+    reseal_require(case, "holder_distribution_scan.py", "--stage", "final", "--round", n)
+    rel = f"dist_rounds/round_{n}/distribution_scan.json"
+    return n, rel, load(case, rel)
+
+
+def reseal_prepare_source(case, claims):
+    branch, rel, wanted, found, valid = reseal_source(case, claims)
+    ledger = reseal_ledger(case)
+    if ledger["rounds"] and valid:
+        if wanted != found:
+            reseal_stop(3, f"待登记 dist-* claims {sorted(wanted)} 与现存非终态 final 簇 {sorted(found)} 不闭合："
+                        "人工重定 claims 或改 `--from rounds` 续跑")
+        return rel
+    if branch == "initial":
+        return rel
+    n, rel, scan = reseal_scan(case)
+    reseal_require(case, "holder_distribution_scan.py", "record-round", "--scan", rel)
+    if reseal_ledger(case).get("terminal") is not None:
+        reseal_stop(3, "分布形态已变，dist-* claims 失去来源，须人工重定 claims；台账已终态，重封前需再 reopen-cycle")
+    found = reseal_cluster_ids(scan)
+    if found != wanted:
+        reseal_stop(3, f"final scan 异常簇 {sorted(found)} 与待登记 dist-* claims {sorted(wanted)} 不闭合："
+                    f"人工重定 claims（--claims-file）后重跑 reseal；本轮 {n} 已记入台账为非终态锚")
+    return rel
+
+
+def reseal_mapped_path(case, rel, purpose):
+    if (case / rel).exists():
+        return safe_case_file(case, rel).relative_to(case).as_posix()
+    if (case / "distribution_reopen.json").exists():
+        for row in load(case, "distribution_reopen.json")["cycles"][-1]["archived"]:
+            if row["mode"] == "moved" and row["from"] == rel:
+                if file_sha(case, row["to"]) == row["sha256"]:
+                    print(f"{purpose} 映射 {rel} → {row['to']}")
+                    return row["to"]
+                break
+    reseal_stop(3, f"{purpose} 缺文件或归档 sha 不符：{rel}；要求显式 --{purpose}")
+
+
+def reseal_register_needed(case, claims, claims_file):
+    old = load(case, "a4_claims.json")["claims"]
+    archived = set()
+    if (case / "distribution_reopen.json").exists():
+        archived = {row["from"] for row in load(case, "distribution_reopen.json")["cycles"][-1]["archived"]
+                    if row["mode"] == "moved"}
+    for row in old:
+        for rel in row["files"]:
+            if not (case / rel).exists() and rel in archived and claims_file is None:
+                reseal_stop(3, f"claim {row['id']} 引用已归档文件 {rel}＝claims 变更："
+                            "用 --claims-file 重定引用后重跑 reseal；仅传 --seal-files 无效")
+    try:
+        same = canon(a4_gate.validate_claim_rows(case, claims)) == canon(a4_gate.validate_claim_rows(case, old))
+    except ValueError:
+        same = False
+    try:
+        bound = file_sha(case, "a4_claims.json") == load(case, "adversarial_review.json")["claim_registry"]["sha256"]
+    except (OSError, ValueError, KeyError, TypeError):
+        bound = False
+    return not (same and bound)
+
+
+def reseal_verdicts(case, path, seal, claims):
+    if path is None:
+        return None
+    rel = path.relative_to(case).as_posix()
+    rows = load(case, rel)
+    if not isinstance(rows, list):
+        raise ValueError("verdicts 必须为数组")
+    registered = {row["id"] for row in claims}
+    old = {row["id"]: row["verdict"] for row in seal["claims"]}
+    for row in rows:
+        if row["id"] not in registered:
+            reseal_stop(2, "verdicts 含未登记 id：" + row["id"])
+        if row["id"] in old and row["verdict"].strip().upper() != old[row["id"]]:
+            reseal_stop(3, "A4 verdict 与上版有差异＝判断变更：请人工按 A4 流程 `a4_gate finalize` 封新 revision、"
+                        "按 `downstream-check` 重跑受影响复核，然后 `reseal --from rounds`")
+    return path
+
+
+def reseal_copy_verdicts(case, source, target):
+    """Persist the exact verdict bytes; replacement is one-file atomic."""
+    destination = safe_case_file(case, target, must_exist=False)
+    data = safe_case_file(case, source).read_bytes()
+    fd, temporary = tempfile.mkstemp(prefix=".reseal-verdicts-", dir=destination.parent)
+    try:
+        with os.fdopen(fd, "wb") as stream:
+            stream.write(data)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary, destination)
+    finally:
+        if os.path.exists(temporary):
+            os.unlink(temporary)
+    return destination
+
+
+def reseal_extra_files(case, seal, claims, source, explicit):
+    if explicit is not None:
+        return explicit
+    automatic = set(a4_gate.MANDATORY_SEAL_FILES) | {source}
+    automatic.update(rel for row in claims for rel in row["files"])
+    return ",".join(reseal_mapped_path(case, row["path"], "seal-files")
+                    for row in seal["sealed_files"] if row["path"] not in automatic)
+
+
+def reseal_a4(case, args, claims, claims_file, verdicts_file, source):
+    seal = load(case, "a4_seal.json")
+    if reseal_register_needed(case, claims, claims_file):
+        if claims_file is None:
+            _atomic_json(case, "reseal_claims.json", claims)
+            claims_file = case / "reseal_claims.json"
+        reseal_require(case, "a4_gate.py", "register", "--claims-file", claims_file)
+        reseal_stop(3, "registry 已变：按 runner 记录的实际路数重跑受影响复核 → adversarial_review_runner finalize → "
+                    "shared_release_receipt；完成后再跑 reseal --from a4")
+    reseal_verdicts(case, verdicts_file, seal, claims)
+    if verdicts_file is None:
+        old = reseal_mapped_path(case, seal["verdicts"]["path"], "verdicts-file")
+        verdicts_file = reseal_copy_verdicts(case, old, f"verdicts_rev{seal['revision'] + 1}.json")
+    extras = reseal_extra_files(case, seal, claims, source, args.seal_files)
+    reseal_require(case, "a4_gate.py", "finalize", "--verdicts-file", verdicts_file,
+                   "--seal-files", extras, "--workflow-type", "new-analysis")
+    pending = (case / "distribution_rounds.json").exists() and reseal_ledger(case)["terminal"] is None
+    stops = []
+    for row in a4_gate.downstream_stale(case):
+        if row["status"] != "stale":
+            continue
+        if pending and row["item"] in {"rounds.a4_seal_sha", "rounds.entity_freeze_revision"}:
+            print(f"pending_a3：{row['item']}，延期到 A3 终态验证")
+        else:
+            stops.append(row)
+    if stops:
+        reseal_stop(3, "下游过期：" + json.dumps(stops, ensure_ascii=False))
+
+
+def reseal_rounds(case, old_waived):
+    n, rel, scan = reseal_scan(case)
+    new_clusters = reseal_cluster_ids(scan) - {row["id"] for row in load(case, "a4_seal.json")["claims"]}
+    explanation, failure = None, ""
+    if scan["verdict"] == "ABNORMAL_SHAPE" and not new_clusters and not old_waived:
+        output = f"dist_rounds/round_{n}/explanation.json"
+        proc = reseal_cli(case, "distribution_explanation_check.py", "--scan", rel,
+                          "--a4-seal", "a4_seal.json", "--out", output)
+        if proc.returncode:
+            failure = "解释检查失败：" + proc.stdout + proc.stderr
+        else:
+            explanation = output
+    arguments = ["record-round", "--scan", rel]
+    if explanation:
+        arguments += ["--explanation", explanation]
+    reseal_require(case, "holder_distribution_scan.py", *arguments)
+    if old_waived:
+        reseal_stop(3, "waiver 须 ≥ 第 2 轮且重新绑定当前 scan/seal/台账：补证据/复核 → 需要则 finalize → "
+                    f"--stage final --round {n + 1} → 人工 waiver record")
+    if new_clusters:
+        reseal_stop(3, "新簇回流 A4：" + ", ".join(sorted(new_clusters)))
+    if reseal_ledger(case)["terminal"] is None:
+        reseal_stop(3, failure + "\n补证据/复核 → finalize → reseal --from rounds（轮号自动 n+1，再次尝试解释）")
+
+
+def reseal(case, args):
+    try:
+        reseal_preflight(case)
+        claims_file = Path(args.claims_file).resolve() if args.claims_file else None
+        verdicts_file = Path(args.verdicts_file).resolve() if args.verdicts_file else None
+        if verdicts_file is not None:
+            safe_case_file(case, verdicts_file.relative_to(case).as_posix())
+        claims = json.loads(claims_file.read_bytes()) if claims_file else load(case, "a4_claims.json")["claims"]
+        if not isinstance(claims, list):
+            raise ValueError("claims-file 必须为数组")
+        seal = load(case, "a4_seal.json")
+        ledger = reseal_ledger(case)
+        terminal = ledger.get("terminal") is not None
+        old_waived = terminal and ledger["terminal"].get("status") == "WAIVED"
+        print("层｜动作｜将失效下游件")
+        if args.from_layer in {"freeze", "a4"}:
+            print(f"{args.from_layer}｜重封｜final scan（各轮）、rounds 全部行、a4（freeze revision 变时）、"
+                  "adversarial_review/shared_release_receipt（按 registry sha，不按 seal revision）、a5 seal、工单 bindings")
+        else:
+            print("rounds｜重开/续轮｜rounds 行、终态图、a5 seal、工单 bindings.rounds/终态图")
+        m3, m4 = reseal_move_sets(case, ledger)
+        frozen = load(case, "entity_freeze.json")
+        if (case / "distribution_adjudications.json").exists() and not terminal and args.from_layer != "rounds":
+            print("恢复步骤：人工归档旧裁决并移出默认案根路径 → 检查它是否被 seal/freeze 封入 → 续跑对应层；"
+                  "重新承接裁决须从绑定新 final 的 scan 重新 distribution-template；freeze 再变仍会使来源 scan 过期")
+        reseal_archive(case, m3, m4, terminal, frozen.get("entity_file"),
+                       sealed_paths=reseal_sealed_paths(case, seal), from_layer=args.from_layer, dry_run=args.dry_run)
+        if args.from_layer != "rounds":
+            branch, source, wanted, found, valid = reseal_source(case, claims, terminal_will_reopen=args.dry_run and terminal)
+            print("旧 seal 来源（仅参考）：" + json.dumps(seal.get("distribution_claim_source"), ensure_ascii=False))
+        if args.dry_run:
+            next_round = 1 if terminal else len(ledger["rounds"]) + 1
+            if args.from_layer != "rounds":
+                needed = reseal_register_needed(case, claims, claims_file)
+                print(f"register={'须执行并停点' if needed else '跳过'}")
+                reseal_verdicts(case, verdicts_file, seal, claims)
+                prebuild = branch == "final" and (terminal or not ledger["rounds"] or not valid)
+                if prebuild:
+                    prebuild_round = next_round
+                    source = f"dist_rounds/round_{next_round}/distribution_scan.json"
+                    next_round += 1
+                elif branch == "final" and wanted != found:
+                    print(f"A1.5 当前停点预判：待登记 dist-* claims {sorted(wanted)} 与现存非终态 final 簇 {sorted(found)} 不闭合")
+                extras = reseal_extra_files(case, seal, claims, source, args.seal_files)
+                if verdicts_file is None:
+                    old_verdicts = reseal_mapped_path(case, seal["verdicts"]["path"], "verdicts-file")
+                    verdicts_file = case / f"verdicts_rev{seal['revision'] + 1}.json"
+                    print(f"A2.2｜持久复制｜{old_verdicts} → {verdicts_file.name}")
+                print("A1 后须重验；dry-run 不运行 freeze 试探")
+                if args.from_layer == "freeze":
+                    arguments = ["freeze", "--members", frozen.get("members_source"), "--entity-file", frozen.get("entity_file")]
+                    if frozen.get("pending_items"):
+                        arguments += ["--pending", ";".join(frozen["pending_items"])]
+                    if frozen.get("casebook_note") is not None:
+                        arguments += ["--casebook-note", frozen["casebook_note"]]
+                    reseal_cli(case, "handoff_manifest.py", *arguments, execute=False)
+                if prebuild:
+                    reseal_cli(case, "holder_distribution_scan.py", "--stage", "final", "--round", prebuild_round, execute=False)
+                    reseal_cli(case, "holder_distribution_scan.py", "record-round", "--scan", source, execute=False)
+                if needed:
+                    reseal_cli(case, "a4_gate.py", "register", "--claims-file", claims_file or case / "reseal_claims.json", execute=False)
+                reseal_cli(case, "a4_gate.py", "finalize", "--verdicts-file", verdicts_file,
+                           "--seal-files", extras, "--workflow-type", "new-analysis", execute=False)
+            reseal_cli(case, "holder_distribution_scan.py", "--stage", "final", "--round",
+                       next_round, execute=False)
+            reseal_cli(case, "holder_distribution_scan.py", "record-round", "--scan", "<本轮 final scan>", execute=False)
+            for command in ("fill-workorder", "check"):
+                reseal_cli(case, "stage2_closeout.py", command, "--report", args.report, execute=False)
+            return 0
+        if args.from_layer == "freeze":
+            freeze_readback(case)
+        if args.from_layer != "rounds":
+            source = reseal_prepare_source(case, claims)
+            reseal_a4(case, args, claims, claims_file, verdicts_file, source)
+        reseal_rounds(case, old_waived)
+        reseal_require(case, "stage2_closeout.py", "fill-workorder", "--report", args.report)
+        return reseal_cli(case, "stage2_closeout.py", "check", "--report", args.report).returncode
+    except (ValueError, OSError, KeyError, TypeError) as exc:
+        reseal_stop(2, f"reseal 前置不过：{exc}")
+
+
 def main(argv=None):
     argv = list(sys.argv[1:] if argv is None else argv)
-    if not argv or argv[0].startswith("--"):
+    if not argv or (argv[0].startswith("--") and argv[0] != "--help"):
         argv.insert(0, "check")
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="command", required=True)
-    for name in ("check", "fill-workorder", "amend"):
+    for name in ("check", "fill-workorder", "amend", "reseal"):
         parser = sub.add_parser(name, description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
         parser.add_argument("--case-dir", required=True, type=Path)
         parser.add_argument("--report", required=True, help="案根相对路径")
-        if name != "amend":
+        if name not in {"amend", "reseal"}:
             parser.add_argument("--workorder", default=WORKORDER, help="案根相对路径")
         if name == "check":
             parser.add_argument("--receipt-only", action="store_true")
             parser.add_argument("--json-out", help="案内结果文件相对路径")
         if name == "amend":
             parser.add_argument("--previous", help="修正前报告副本，案根相对路径；以原始字节重放")
+        if name == "reseal":
+            parser.add_argument("--from", dest="from_layer", required=True, choices=("freeze", "a4", "rounds"))
+            parser.add_argument("--claims-file")
+            parser.add_argument("--verdicts-file")
+            parser.add_argument("--seal-files")
+            parser.add_argument("--dry-run", action="store_true")
     a = ap.parse_args(argv)
     case = a.case_dir.resolve()
     try:
         if not case.is_dir():
             raise ValueError(f"案目录不存在: {case}")
+        if a.command == "reseal":
+            return reseal(case, a)
         if a.command == "fill-workorder":
             fill_workorder(case, a.report, a.workorder)
             return 0

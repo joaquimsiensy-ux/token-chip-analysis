@@ -10,6 +10,7 @@
 
 ## 版本索引（活跃窗口，新在上；每版一行，详情见下方对应条目）
 
+- **7.1.0**（2026-09-16）−2 收口与重封命令化：stage2_closeout 四子命令、分布周期归档与停点编排；同步 W1/W2 接口，三册净减 326 字节，SUITE 150→151。
 - **7.0.4**（2026-09-15）溯源噪声量级短缺改判 UNRESOLVED/fp_residual，短缺入桶不丢弃（逐笔短缺值本身有舍入界，见详细段）、账户 EPS 不变；补 7.0.3 版本登记与详细段；新增分类、数量有界差分与 freeze 回归。
 - **7.0.3**（2026-09-15）T-01 v2（APU 案暴露，codex 只读复核后 codex 施工）：`entity_source_trace` 对尘埃 current 锚点（<0.01% 供应）的闭合异常降级为"来源不可用"（`closure_check.current_negligible_skipped`＋`anchors.current.composition_usable=false`，构成保留作诊断、不归一化）；freeze 独立重算同一条件并同步豁免空构成与 Σraw 拒收，绑定/重放门禁不变；peak 锚点门禁不变；回归补 2^90 量级精度损失、阈值三档、尘埃 peak 仍拒、造假拒收。
 - **7.0.2**（2026-09-06）生产者四协议补登记与 git 可复现守卫；A4 封口硬拒专用字段重复路径；图一按 producer series_format 派生豁免、绘图与两消费方同源；SUITE 146→147，A→C→B 先红后绿。
@@ -85,6 +86,15 @@
 - **6.20.1** 2026-08-05 修 5 处阻断级文档漂移（A4 前禁写报告冲突/easy 残留/惯犯回灌 docstring/批量预采集残留/旧 Par 路线历史降级）＋docs_lint 增中文禁词与 Python module docstring 扫描
 
 更早版本（6.20.0 及以前）详见 `archive/CHANGELOG-archive.md`。
+
+## [7.1.0] - 2026-09-16 — −2 收口与重封命令化
+
+- **收口接口**：`stage2_closeout.py check/fill-workorder/amend/reseal` 将工单机械绑定、原稿锚、修正链与收口收据落为命令；`audit_release_gate --profile stage2-dryrun` 允许尚未装配的 A5 产物缺席，`figures_from_facts fig2-series` 生成案根序列与来源旁车。
+- **重封编排**：`reseal --from freeze|a4|rounds` 先核案根与 provenance 算法绑定，再做归档依赖交集检查，串联既有 freeze/A4/final 轮次与 closeout。claims、verdict 与新簇变化按工单停点返回；非终态两项 rounds 绑定延期到终态完整检查。dry-run 主进程和后代只执行只读检查，运行时阻断 matplotlib 验证导入链。
+- **已合入的 W1/W2 契约同步登记**：`a4_gate limits-extract/downstream-check/seal_integrity_errors` 提供局限提取、下游漂移表与封口完整性检查；`holder_distribution_scan reopen-cycle` 保留周期归档回执，`find_snapshot` 优先消费登记及 initial 绑定。
+- **手册**：严格按 W3 §C 替换；split-run 28162→27804 B，analyze-workflow 34301→34333 B，report-template 保持 42499 B；三册合计 104962→104636 B，净减 326 B，五枚分布/波次契约针保留。
+- **测试与验收**：新增 `test_stage2_reseal.py`，SUITE 150→151；工单十五组及子例以真实离线 CLI 夹具执行，含四种 freeze 回读、final-source 分支、归档映射、裁决依赖反例和预建验收 worktree 内的导入阻断。全套测试结果与未做项以 `maintenance/repair-20260915-stage2-closeout/w3_done.md` 为准。
+- **成本-质量指标**：W3 新增生产入口 1、SUITE 模块 1；外部网络调用 0；不运行真实案卷，判断结论不自动变更。
 
 ## [7.0.4] - 2026-09-15 — 溯源假 data_gap 改判浮点残差
 

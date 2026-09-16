@@ -170,7 +170,7 @@
 2. **扰动敏感度前置**（EVM 案，`cluster_sensitivity.py --dir <案目录>`，sensitivity_report.md 作复核输入；FRAGILE/STABLE 字样只进复核材料禁进报告正文）。
 3. **惯犯揭盲**（实体冻结后 `label_lookup.py --unseal` 取封存命中，与实体划分互证/互斥）。
 4. 本地反例自查脚本前置。
-5. **N 路怀疑者 agent**＋1 完整性批评角色查 findings/结论清单缺口（必查全史极值清单）＋1 路**外部异构怀疑者**（codex/GPT 单进程横扫全部结论）——重算义务、备择解释与分组细则按 §10＋research-workflows §二执行，不在此复述。所有落盘件必须使用 `adversarial-review-artifact/v2` 绑定当前 `a4_claims.json` sha；claim-review 的 claim_id 并集全覆盖，且每条 evidence 至少 10 个实义白名单字符。白名单覆盖 ASCII 可打印、拉丁补充与扩展、通用标点、CJK、假名、韩文音节和全角段；不在覆盖面的语种（如俄文、阿拉伯文）与纯 emoji 文本会被拒。外语原文证据应附一行中文说明，或保留 URL/数字等覆盖面内字符；中英文工作流不受影响。每条 findings、non_covered 与 REFUTED verdict 必须以机械定位符对应唯一 blocker，少记、多记或未处置均阻断。每路成功 execution receipt 同时追加到案根 `adversarial_review_ledger.jsonl`（`review-ledger/v1` 哈希链）；finalize 要求 ledger 当前有效 receipt SHA 集与传入清单精确相等，并把 `entries/active/tip_sha` 写入 `adversarial-review/v4.review_ledger`。之后只可由 runner `finalize` 原子产出 `adversarial-review/v4`。
+5. **N 路怀疑者 agent**＋1 完整性批评角色查 findings/结论清单缺口（局限条目取 `a4_gate limits-extract` 输出，禁硬编码；必查全史极值清单）＋1 路**外部异构怀疑者**（codex/GPT 单进程横扫全部结论）——重算义务、备择解释与分组细则按 §10＋research-workflows §二执行，不在此复述。所有落盘件必须使用 `adversarial-review-artifact/v2` 绑定当前 `a4_claims.json` sha；claim-review 的 claim_id 并集全覆盖，且每条 evidence 至少 10 个实义白名单字符。白名单覆盖 ASCII 可打印、拉丁补充与扩展、通用标点、CJK、假名、韩文音节和全角段；不在覆盖面的语种（如俄文、阿拉伯文）与纯 emoji 文本会被拒。外语原文证据应附一行中文说明，或保留 URL/数字等覆盖面内字符；中英文工作流不受影响。每条 findings、non_covered 与 REFUTED verdict 必须以机械定位符对应唯一 blocker，少记、多记或未处置均阻断。每路成功 execution receipt 同时追加到案根 `adversarial_review_ledger.jsonl`（`review-ledger/v1` 哈希链）；finalize 要求 ledger 当前有效 receipt SHA 集与传入清单精确相等，并把 `entries/active/tip_sha` 写入 `adversarial-review/v4.review_ledger`。之后只可由 runner `finalize` 原子产出 `adversarial-review/v4`。
 
    **机器化边界**：机器已强制两类角色在场（≥1 claim 怀疑者＋≥1 完整性批评）、claim_id 并集精确覆盖注册表、entrypoint 内容去重、execution ledger 哈希链精确对账、每条 evidence ≥10 实义白名单字符、findings/non_covered/REFUTED 与 blocker 双向联动。机器未强制（依执行纪律与独立盲审落实）：怀疑者路数 N、每条结论的分档路数、外部路是否真为异构模型、外部异构路成功与否（该路失败不阻塞交付，见本册既有条款）。机器闸 PASS 不等于 N 路已落实——路数与异构性的核验责任在执行纪律与盲审，不在发布闸。
 6. 判定三档 CONFIRMED/WEAKENED/REFUTED（**必须实际核查，"理论上可能"不算推翻**）→ 修订顺序先修数据管线再修文案 → 修正记录印进报告附录。
@@ -182,7 +182,7 @@ A4 finalize 后，用同一 cutoff 快照运行 `holder_distribution_scan.py --s
 
 如果 final 出现当前 A4 seal 未覆盖的新异常簇，立即回流 A4 登记和复核。已经覆盖的异常簇运行 `distribution_explanation_check.py`。位置、成员、数量、证据和传播五项全部通过才记 `EXPLAINED`。未通过时，默认逐成员生成 `distribution_adjudications.json`；只有书面排除成员路径后才能使用 `pattern_resolutions.json`。两条路径的结论都必须回流 A4 重封，再开始新一轮 final。
 
-`distribution_rounds.json` 按轮追加并绑定上一条记录哈希。两轮仍未终态时让用户选择第三轮或标准 waiver。只有 `NORMAL`、完整 `LOW_SAMPLE`、`EXPLAINED` 或带完整收据的 `WAIVED` 能成为终态。终态才物化 `charts/final/holder_distribution_current.png`。删除台账后从非首轮继续、终态后追加或同时存在多个 terminal 都会被拒绝。
+`distribution_rounds.json` 按轮追加并绑定上一条记录哈希。两轮仍未终态时让用户选择第三轮或标准 waiver。只有 `NORMAL`、完整 `LOW_SAMPLE`、`EXPLAINED` 或带完整收据的 `WAIVED` 能成为终态。终态才物化 `charts/final/holder_distribution_current.png`。终态后重开只走 `holder_distribution_scan.py reopen-cycle`。
 
 ## A5 报告
 
