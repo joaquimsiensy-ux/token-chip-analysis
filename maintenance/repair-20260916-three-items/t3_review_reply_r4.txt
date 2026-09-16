@@ -1,0 +1,76 @@
+# 复核 T3: 通过
+
+基线：fix/three-items-20260916，HEAD=59315c248f1f0c2e41f7a05ced6ca23b0407767f。首尾工作树均干净，T1、T2 均为当前提交的祖先。
+
+结论：第三轮剩余两项已在 v5 工单中闭合，未发现新增阻断问题。本次通过指工单可施工，不代表尚未实现的子命令已经 GREEN。以下“工单行号”指 maintenance/repair-20260916-three-items/workorder_t3.md。
+
+1. 通过：行号与锚文本准确、唯一。
+
+已用 nl -ba 亲核，并逐项计数：
+
+scripts/report/handoff_manifest.py：导入 :44、cmd_freeze :1402、main :1647、--check-unseal :1688、dispatch :1692–1693。
+scripts/tests/test_handoff_manifest.py：SCRIPT :43、write_json :63、make_case :73、结果汇总 print("=" * 40) :993。
+references/split-run.md:72、references/context-discipline.md:27：替换锚均准确且唯一。
+
+工单 :12 已正确说明测试登记位于 finally 清理之后，新增测试自行创建、清理案根即可。建议保持原文。
+
+2. 通过：共同路径守卫满足已声明的防误读边界。
+
+case_paths.py:16–40 校验原始非法路径段、绝对路径、逐段符号链接、realpath 案根包含关系、常规文件及存在性。工单 :23–26 先执行这些检查，再对原始首段 casefold 拒绝 sealed，逻辑成立。
+
+本轮实际确认 ./sealed/x.json、../outside.json、绝对路径均被拒；当前卷可解析 SCRIPTS/lib/case_paths.py，大小写不敏感场景真实存在，casefold 必要。反斜杠在 macOS 上不是目录分隔符，当前处理不会把 .sealed 等合法名称误拒。
+
+--addr-file 同样读取案内文件，必须走同一守卫。案根直接指向 sealed 的限制已在 :22 明示。建议保持 :19–29，不把此守卫扩大解释为揭盲授权机制。
+
+3. 通过：行为定义可实现，上轮深度冲突已闭合。
+
+工单 :38–43、:64 的分页公式一致：returned 计根节点本页选中项，与深度无关；offset 超界时 returned=0、next_offset=total、truncated=false；标量 offset≥1 不输出值。
+
+工单 :89 现在要求：
+选中 meta 时，depth=0 显示 k 摘要；
+选中 A_UP 时，depth=0 显示 meta 摘要，depth=1 才显示 k 子项。
+这与 :43 一致，两种深度下 total=4、returned=4 也正确。
+
+lookup :55–61 已明确规则组合、字段优先级、无效首字段不回退、成员双列表扫描、_key 冲突拒绝及按来源位置去重。混合夹具 A 两条、B 一条成立。--json 忽略 --fields、保留完整长字符串与嵌套记录，无冲突。
+
+现有标准库足够，不需要新依赖。实际案目录零写入仍须由施工后的源码和用例⑦验证。
+
+4. 通过：七条用例可据此落地，RED 判据实测成立。
+
+①通过：深度对比和标量翻页断言已闭合。
+②通过：JSONL 坏行继续、broken.json 返回 2 可执行。
+③通过：当前卷支持大小写负例；./sealed 测的是原始路径拒绝。
+④通过：混合容器、非字符串成员、同址多记录和 _key 冲突预期成立。
+⑤通过：100 字符 note、嵌套 meta、同时传 --fields 能验证 JSON 完整记录。
+⑥通过：地址文件守卫反例已补齐；:87 要求补齐必填参数并检查对应错误文本，可避免假通过。
+⑦通过：:96–97 已补齐整数 flags、目录边界、rename 两端、目录项词法路径、文件访问双路径检查、dir_fd 与未归属事件处理，以及监测器自检。上轮列出的漏检已闭合。
+
+本轮仅以合成 audit 事件做内存判据检查：三个案内事件均命中，相邻目录事件未命中；没有执行实际写入。这不替代施工后监测器自身的验收。
+
+夹具源码核实：make_case:83 建 data/、:219 建 sealed/、:222 运行生成子进程；write_json:63–65 不建父目录。先完成夹具再快照、收紧权限的顺序正确。
+
+非阻断实施建议：工单 :98 可补“快照比较路径、内容哈希、恢复后的权限及链接文本；不比较读取或 chmod 自身可能改变的 atime/ctime”，避免辅助检查误报。
+
+本轮实际运行两个未实现入口，均 exit 2，stderr 分别包含 invalid choice: 'inspect'、invalid choice: 'lookup'。未运行会创建夹具的七条测试或 run_all。
+
+5. 通过：UTF-8 字节不增，内存替换后 docs_lint PASS。
+
+从工单 :106、:108 提取替换正文，保留原换行，独立计算：
+
+split-run.md:72：行正文 239 → 234 字节；文件 28135 → 28130，减少 5。
+context-discipline.md:27：行正文 273 → 272 字节；文件 9257 → 9256，减少 1。
+
+只在内存替换后执行真实 docs_lint.main(all_mode=True)，返回 0：
+PASS: 59 个文档，引用无断链、粗体配对完整（--all 全量模式）
+
+未发现代码或契约依赖删去的整句。schema 常量仍在 handoff_manifest.py:54–59；测试仍在 run_all.py:70 登记。建议两条替换文本保持原样。
+
+6. 通过：与 T1 顺序施工不冲突，白名单足够。
+
+T1 当前对应位置为排除规则 :120–132、add_path 排除处理 :274–279、卫生辅助函数 :1381–1399、freeze 内调用 :1468–1471。
+
+T3 在 :1402 前新增函数，尾部增加 parser/dispatch，无须修改这些逻辑。split-run.md 中 T1 修改在 :109–110，T3 在 :72，互不重叠。
+
+工单 :114 已明确 main 的唯一例外；监测包装脚本可由新增测试在 scratch 中生成，无须新增仓库文件白名单。建议保持当前范围。
+
+本次未修改文件、未执行 Git 写操作、未联网、未读取 /Users/uravvv/.codex/。
