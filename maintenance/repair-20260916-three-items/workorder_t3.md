@@ -1,4 +1,4 @@
-# 工单 T3（v1）：高频机械活稳定命令 —— `handoff_manifest.py inspect / lookup` 两个只读分页子命令
+# 工单 T3（v2，T1 落地 55b56c2 后重锚行号）：高频机械活稳定命令 —— `handoff_manifest.py inspect / lookup` 两个只读分页子命令
 
 > 出处：用户 2026-09-16 批准的三项修复计划 §2.2（裁决：本轮只做 inspect/lookup；`q` SQL、写入型入口不做）。原则：**不增加 skill 上下文；能删的不新增，能改的不新增**。
 > 基线：分支 `fix/three-items-20260916`，在 T1 之后施工（T1 改同一文件的 :119-:120 / :254-:266 / :1366 前 / :1432 前；本单只在文件末尾 argparse 段与新函数区施工，行号以 T1 落地后重新 `nl -ba` 核对锚文本为准）。
@@ -22,7 +22,7 @@ def _readonly_case_file(case_dir, rel):
         raise ValueError(f"sealed/ 下文件不得用只读查询工具读取（揭盲走 freeze --check-unseal）: {rel}")
     return str(safe_case_file(case_dir, rel))
 ```
-`safe_case_file` 已在 `:15` 导入（`from case_paths import safe_case_dir, safe_case_file`）。案外路径、符号链接、`..` 均由它抛 `ValueError`；两个子命令捕获后 `print(f"[{subcmd}] 路径非法: {e}", file=sys.stderr); return 2`。
+`safe_case_file` 已在 `:44` 导入（`from case_paths import safe_case_dir, safe_case_file`）。案外路径、符号链接、`..` 均由它抛 `ValueError`；两个子命令捕获后 `print(f"[{subcmd}] 路径非法: {e}", file=sys.stderr); return 2`。
 
 ## 2. `inspect`：JSON 键树/类型/长度/样本，分页
 
@@ -51,10 +51,10 @@ def _readonly_case_file(case_dir, rel):
 - 末行（文本模式）：`total=<地址数> returned=<n> truncated=<bool> next_offset=<k> missing=<全部文件均 MISSING 的地址数>`。
 - 退出码：0 正常（含 MISSING）；2 路径非法/文件不可解析/无查询地址。
 
-## 4. argparse 与 dispatch（`main()` `:1606-1655`）
+## 4. argparse 与 dispatch（`main()` `:1647-1696`）
 
-- 在 `f = sub.add_parser("freeze", …)` 段之后（`:1647` 锚 `f.add_argument("--check-unseal", action="store_true")` 之后）加两个 parser，帮助文案：`inspect`＝"只读：JSON/JSONL 键树、类型、长度、样本（分页），代替手写 python 探 schema"；`lookup`＝"只读：按地址清单跨文件回填字段（分页），代替手写 python 跨文件查"。
-- `:1652-1653`（锚 `return {"generate": cmd_generate, "verify": cmd_verify,` / `"receipt": cmd_receipt, "freeze": cmd_freeze}[a.subcmd](a)`）字典加 `"inspect": cmd_inspect, "lookup": cmd_lookup`。
+- 在 `f = sub.add_parser("freeze", …)` 段之后（`:1688` 锚 `f.add_argument("--check-unseal", action="store_true")` 之后）加两个 parser，帮助文案：`inspect`＝"只读：JSON/JSONL 键树、类型、长度、样本（分页），代替手写 python 探 schema"；`lookup`＝"只读：按地址清单跨文件回填字段（分页），代替手写 python 跨文件查"。
+- `:1692-1693`（锚 `return {"generate": cmd_generate, "verify": cmd_verify,` / `"receipt": cmd_receipt, "freeze": cmd_freeze}[a.subcmd](a)`）字典加 `"inspect": cmd_inspect, "lookup": cmd_lookup`。
 
 ## 5. 测试 `scripts/tests/test_handoff_manifest.py`（新增用例，登记进 `main()`；夹具 `make_case`（`:73`）已建 `data/`）
 
