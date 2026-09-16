@@ -1,7 +1,8 @@
-# 工单 T1（v2）：备份堆积与裁决台账瘦身 —— repair-20260916-three-items 第一批（分支 `fix/three-items-20260916`）
+# 工单 T1（v3）：备份堆积与裁决台账瘦身 —— repair-20260916-three-items 第一批（分支 `fix/three-items-20260916`）
 
 > 出处：用户 2026-09-16 批准的三项修复计划（`~/.claude/plans/tca-three-items-20260915.md` §2.3）。本批只做第 3 项。原则：**不增加 skill 上下文；能删的不新增，能改的不新增**。
 > 基线：本仓库分支 `fix/three-items-20260916`，HEAD 为 `b4f80cd`（main 7.0.4＋W1）的后继（工单已 commit）。
+> v3 变更：融合 codex 第二轮复核（`t1_review_reply_r2.txt`）：import 插入点改 :32 后；旁车先写、成功后再写台账；A5 补旁车不可写负测；B4 用例 4 改 mock；措辞修正。
 > v2 变更：融合 codex 第一轮只读复核 12 条（`t1_review_reply.txt`）：旁车路径走 `safe_case_file`、B2 文案更正、B3 捕获 OSError、B4/A5 的 RED 重定义、scan-schemas 字节修正、白名单显式化、模块帮助同步。
 
 ## 0. 开工纪律
@@ -28,7 +29,8 @@ def sidecar_rel(out_rel):
 
 def write_members_sidecar(side_path, members_by_cid):
     """成员清单旁车（派生件，总是覆盖；不进台账、不进 schema、不登记 data_map、无消费者）。
-    side_path 须是调用方已用 safe_case_file 校验过的绝对路径。"""
+    side_path 须是调用方已用 safe_case_file 校验过的绝对路径。**调用方须在写台账之前调用**：
+    旁车写失败（OSError）时台账尚未落盘，重跑不会被台账防覆盖拦住。"""
     with open(side_path, "w", encoding="utf-8") as fh:
         json.dump({cid: sorted(m) for cid, m in sorted(members_by_cid.items())}, fh, ensure_ascii=False, indent=1)
     return side_path
@@ -38,13 +40,13 @@ def write_members_sidecar(side_path, members_by_cid):
 
 - 在 `:226`（锚 `out_path = str(safe_case_file(case_dir, a.out, must_exist=False))`）同一 `try` 内紧接一行：`side_path = str(safe_case_file(case_dir, sidecar_rel(a.out), must_exist=False))`。旁车若是符号链接、目录、越界，沿用既有 `except ValueError` 报错并返回，**此时台账尚未写入**。
 - `:238`（锚 `"net_supply_pct": row["scale_pct"], "_members_total": sorted(row["members"])}`）改为 `"net_supply_pct": row["scale_pct"]}`。
-- `:240-242`（锚 `with open(out_path, "w", encoding="utf-8") as fh:` … `log(f"distribution 模板 {len(cands)} 条 → {out_path}")`）：写完台账后 `write_members_sidecar(side_path, {cid: row["members"] for cid, row in cands.items()})`，log 改为 `log(f"distribution 模板 {len(cands)} 条 → {out_path}（成员清单 → {os.path.basename(side_path)}）")`。
+- `:240-242`（锚 `with open(out_path, "w", encoding="utf-8") as fh:` … `log(f"distribution 模板 {len(cands)} 条 → {out_path}")`）：**顺序＝台账防覆盖检查（`:229-230`）通过 → 先 `write_members_sidecar(side_path, {cid: row["members"] for cid, row in cands.items()})` → 成功后才打开并写台账**；旁车写入抛 `OSError` 时 `return _report([f"成员清单旁车写入失败: {e}"])`（台账未创建）。log 改为 `log(f"distribution 模板 {len(cands)} 条 → {out_path}（成员清单 → {os.path.basename(side_path)}）")`。
 
 ### A3 `cmd_template`：同法
 
-- 找到该函数里 `out_path = str(safe_case_file(case_dir, a.out, must_exist=False))`（`:398` 之前不远处，锚文本同上）同一 `try` 内紧接 `side_path = str(safe_case_file(case_dir, sidecar_rel(a.out), must_exist=False))`。
+- `:394`（锚 `out_path = str(safe_case_file(case_dir, a.out, must_exist=False))`）同一 `try` 内紧接 `side_path = str(safe_case_file(case_dir, sidecar_rel(a.out), must_exist=False))`。
 - `:417`（锚 `"_members_total": sorted(c["members"]),`）整行删除；`:416` 行尾（锚 `"note": None},`）保持逗号即可。
-- `:420-422`（锚 `with open(out_path, "w", encoding="utf-8") as f:` … `log(f"模板 {len(tpl['adjudications'])} 条候选 → {out_path}（成员级逐条填写后跑 validate）")`）：写完后 `write_members_sidecar(side_path, {cid: c["members"] for cid, c in cands.items()})`，log 改为 `…→ {out_path}（成员清单 → {os.path.basename(side_path)}；逐条填写后跑 validate）`。
+- `:420-422`（锚 `with open(out_path, "w", encoding="utf-8") as f:` … `log(f"模板 {len(tpl['adjudications'])} 条候选 → {out_path}（成员级逐条填写后跑 validate）")`）：**同样先旁车后台账**：防覆盖检查（`:397-398`）通过 → `write_members_sidecar(side_path, {cid: c["members"] for cid, c in cands.items()})` → 成功后写台账；旁车 `OSError` 时 `log(f"成员清单旁车写入失败: {e}"); return 2`（台账未创建）。log 改为 `…→ {out_path}（成员清单 → {os.path.basename(side_path)}；逐条填写后跑 validate）`。
 
 ### A4 帮助文案
 
@@ -56,14 +58,15 @@ def write_members_sidecar(side_path, members_by_cid):
 - **先加独立契约用例**（放在 `test_adjudication_validator.py` `main()` 里**第一次 `fill_all` 调用（`:121`）之前**，用独立临时目录，不依赖 fill_all）：
   1. `template 不含 _members_total 且旁车在场`：`template --force` 后，台账每条记录无该键；`candidate_adjudications.members.json` 存在、键集合＝候选 id 集合、每个值非空列表。旁车不存在时通过 `check(...)` 输出 FAIL（不得抛异常）。
   2. `旁车路径不合法即拒且台账未写`：预置 `candidate_adjudications.members.json` 为**目录**（或符号链接）→ template 退出码非 0，且 `candidate_adjudications.json` 不存在。
+  3. `旁车不可写即拒且台账未写`：用 `unittest.mock.patch` 让 `write_members_sidecar`（或其内 `open`）抛 `PermissionError`，直接调用 `cmd_template`/`cmd_distribution_template`（构造 argparse.Namespace）→ 返回非零，台账文件不存在；若预置了旧台账并带 `--force`，旧台账内容不变。
 - **再改联动读取**：`:99-101`（锚 `adj = json.load(open(os.path.join(d, "candidate_adjudications.json")))` … `members = r.pop("_members_total")`）：`:99` 后加 `side = json.load(open(os.path.join(d, "candidate_adjudications.members.json")))`，`:101` 改 `members = side[r["candidate_id"]]`。
 - `scripts/tests/test_distribution_gate.py:377`（锚 `for x in row.pop("_members_total", [])]`）：同法从 `distribution_adjudications.members.json` 读 `side[row["candidate_id"]]`；旁车不存在时该用例应 FAIL（不要 `.get(…, [])` 静默）。并新增独立断言：distribution-template 后台账无 `_members_total`、旁车成员集合与源扫描候选成员**完全一致**。
 - **兼容用例**（`test_adjudication_validator.py` 现有用例之后）：`老台账带 _members_total 仍 PASS`：`fill_all` 后给每条记录补回 `"_members_total": <该候选成员列表>` 写回，`validate` 退出码仍 0。
-- RED：改生产代码前，用例 1 FAIL（旁车不存在）、用例 2 FAIL（旧代码不校验旁车即写台账）、`:101` 改后 fill_all 抛 FileNotFoundError（作为联动负测**单独**执行并记录异常，不当作末尾用例已跑）；改后全 GREEN。
+- RED：改生产代码前，用例 1 FAIL（旁车不存在）、用例 2 FAIL（旧代码不校验旁车即写台账）、用例 3 FAIL（旧代码无该函数/台账已写）、`:101` 改后 fill_all 抛 FileNotFoundError（作为联动负测**单独**执行并记录异常，不当作末尾用例已跑）；改后全 GREEN。
 
 ## 2. B 段：`scripts/report/handoff_manifest.py` —— 精确排除规则、显式登记冲突报错、freeze 卫生 WARN
 
-文件顶部无 `import re`，须在 `:1-9` 标准库 import 段按字母序补 `import re`。
+文件顶部无 `import re`：在 `:32`（锚 `import os`）之后、`:33`（锚 `import subprocess`）之前插入 `import re`（`:29-37` 才是 import 段，`:1-9` 是 shebang 与模块说明）。
 
 ### B1 排除规则 `:119`（锚 `EXCLUDE_SUFFIXES = (".log", ".duckdb.wal", ".lock", ".tmp", ".bak")`）
 
@@ -140,9 +143,9 @@ data_map 登记方式：读现有 `data_map.json`，向 `dm["files"]` **追加**
 1. `排除规则（保持行为）`：案目录放 `findings.md.bak_20260913`、`report.md.bak`、`_history/old.json`、`handoff_manifest.r0.superseded.json`（均不登记），`balances_pre_launch.json` 与 `data/labels.v3.jsonl` 登记 data_map → generate exit 0；manifest 路径集合不含前四者、含后两者。（未登记文件本就不会被收录，此条**不要求 RED**。）
 2. `显式登记冲突`：data_map 登记 `x.bak_2026`（文件在场）→ generate exit 2，stderr 含"命中排除规则"；另案 `--include _history/y.json`（文件在场）→ exit 2 同文案；再一案 `--gate custom:PASS:0:_history/z.json` → exit 2 同文案。
 3. `freeze 卫生 WARN`：顺序 `make_case → generate READY 并断言 exit 0 → setup_freezeable → 放入 report.md.bak_v7d_ 与 data/entity_series.v2.json（不登记）→ freeze`：exit 与不放时相同（应为 0）且 stderr 含"WARN 案根疑似历史副本 2 件"。同案再跑 `freeze --check-unseal`：stderr **不含**"疑似历史副本"。
-4. `卫生扫描失败不改返回码`：直接调用 `case_hygiene_warnings(tmp)`，先 `os.chmod(tmp/data, 0)`（`finally` 恢复 0o755）→ 不抛异常、返回列表、stderr 含"卫生扫描跳过"。
+4. `卫生扫描失败不改返回码`：直接调用 `case_hygiene_warnings(tmp)`，用 `unittest.mock.patch("os.listdir", side_effect=PermissionError("x"))`（不用 chmod，高权限下 chmod 0 仍可列目录会误报）→ 不抛异常、返回 `[]`、stderr 含"卫生扫描跳过"。
 5. `is_excluded_path` 单元：`("a/_history/b.json", True)`、`("_history_x/b.json", False)`、`("x.bak_v7d_", True)`、`("x.bakup.json", False)`、`("balances_pre_launch.json", False)`、`("data/labels.v3.jsonl", False)`、`("x.superseded", True)`。
-- RED：改生产代码前，用例 2 三案均 exit 0（旧代码静默丢弃）、用例 3 无 WARN、用例 4/5 因函数不存在 ImportError（记录为 FAIL）；以原文入证据。不得为制造 RED 给生产代码加全目录扫描。
+- RED：改生产代码前，用例 2 三案均 exit 0（旧规则不匹配这三个路径，旧代码接受并收录）、用例 3 无 WARN、用例 4/5 因函数不存在 ImportError（**在用例内 try/except ImportError 记录为 FAIL**，不得在模块顶层导入缺失函数让整份测试提前退出）；以原文入证据。不得为制造 RED 给生产代码加全目录扫描。
 
 ## 3. C 段：条文（只替换；每个文件改后字节数 ≤ 改前）
 

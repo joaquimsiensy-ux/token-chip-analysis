@@ -1,0 +1,108 @@
+# 复核 T1 R2: 退回
+
+1. 退回——import 行号错误，会触发工单自己的停工条件。
+
+workorder_t1.md:66 写“在 :1–9 标准库 import 段”，但 nl -ba 实核 handoff_manifest.py:1–9 是 shebang 和模块说明；import 段实际在 :29–37。
+
+建议将工单 :66 改为：
+“文件顶部无 import re；在 scripts/report/handoff_manifest.py:32 的 import os 后、:33 的 import subprocess 前插入 import re。”
+
+其余所列源码、测试和文档行号及锚文本吻合。A3 的模糊定位“:398 之前不远处”可直接明确为 :394。
+
+当前分支正确，HEAD＝0a5f844dbd73696d4703cf15225216ded1519b54，复核前后工作树均干净。
+
+2. 退回——上一轮第 3 条的“旁车失败留下已写台账”只解决了一部分。
+
+工单 :39、:45 新增 safe_case_file，正确阻止目录、符号链接和越界路径。但 scripts/lib/case_paths.py:36–41 只检查常规文件，不检查能否写入。
+
+工单 :41、:47 仍要求先写台账、后写旁车。已有旁车是不可写的普通文件时，路径校验可以通过，随后台账写成，旁车 open 抛 PermissionError；下一次不加 --force 又被台账防覆盖拒绝。
+
+已在内存按拟议修改执行 cmd_template，并注入旁车写入 PermissionError：异常发生时，台账写入已完成 1 次。没有写磁盘。
+
+最小建议：将工单 :41、:47 的顺序改为：
+“在既有台账防覆盖检查通过后，先完成 write_members_sidecar；成功后才打开并写入台账。旁车写入 OSError 应明确报错返回。”
+
+A5 补一条：
+“注入旁车写入 PermissionError，断言返回非零且台账未创建；已有台账内容不变。”
+
+这不要求改 validate 或增加双文件事务，但能消除已指出的旁车失败阻塞台账重试问题。
+
+3. 通过——删除 _members_total 不改变现有校验语义。
+
+全仓检索确认，生产代码只有 adjudication_validator.py:238、:417 两处预填；实际读取点只有 test_adjudication_validator.py:101 和 test_distribution_gate.py:377。
+
+validate 从源报告重建成员，distribution-validate 同样从扫描结果重建成员。handoff_manifest.py:1468–1487 的校验子进程不读取旁车。
+
+“不重写存量案卷台账”已落实，避免整文件哈希变化被误称为兼容。三个 validate 函数及 freeze 四道前置无需修改。
+
+4. 通过——旁车命名和默认收录边界正确。
+
+sidecar_rel 对 foo.json 得到 foo.members.json；其他后缀追加 .members.json，与工单说明一致。默认两种旁车名称未发现已有产物冲突，也不在 CONTRACT_FILES；generate 不会因为文件存在就自动收录。
+
+“不登记 data_map”是操作纪律，并非机器禁止：人为通过 data_map、--include 或 --gate 登记，仍可能绑定旁车。当前工单遵守不登记原则即可，不需要扩大 B1 排除规则。
+
+5. 通过——B1 未发现新增误伤现有正常夹具。
+
+对 scripts/tests 全目录提取文件名文本，得到 3,996 次出现、943 个不同文本，并复核备份、归档相关命中位置。新增规则命中的是迁移备份和 manifest 归档；既有 .bak 测试临时件仍按原规则排除。
+
+balances_pre_launch.json、data/labels.v3.jsonl、x.bakup.json、_history_x/b.json 不命中；a/_history/b.json 命中，目录分量判断正确。
+
+现有 supply_truth.json.superseded-*、receipt.json.superseded-* 不匹配该正则。这符合本工单明确限定的“.superseded. 或末尾 .superseded”，不是新增回归，不建议顺手扩展。
+
+本项结论覆盖仓库夹具和所列命名，未读取仓库外真实案卷。
+
+6. 通过——B2 异常传播、verify 边界和 --gate 格式正确。
+
+handoff_manifest.py:299–303、:1653 捕获 ValueError／Exception，不能吞掉 SystemExit。直接调用 cmd_generate 会抛 SystemExit(2)，CLI 退出 2，v2 描述正确。
+
+:370–374 按 name:verdict:exit:artifact 解析；custom:PASS:0:_history/z.json 格式正确，:380 经 add_explicit 进入排除检查。verify 不调用 add_path，无须修改。
+
+工单 :145 的“旧代码静默丢弃”建议改为“旧代码接受并收录这三个路径”。这三种路径不匹配旧排除规则，预期 exit 0 正确，原因表述不正确；属于措辞修正。
+
+7. 通过——B3 插入点和 OSError 处理修复成立。
+
+:1432 位于 --check-unseal 所有返回路径之后，不会让该分支执行卫生扫描。
+
+在内存执行工单原函数，向 os.listdir 注入 PermissionError：返回 []，stderr 输出“卫生扫描跳过”，异常没有外抛。该修法不新增 freeze 拒绝条件。
+
+B4 用例 4 的 chmod(data, 0) 在普通用户权限下可用；建议改用 mock 向 os.listdir 注入 PermissionError，以免高权限运行时仍可列目录而使测试误报。此建议不阻断本机施工。
+
+8. 通过——测试夹具、data_map 登记和主要 RED 顺序可执行。
+
+make_case:83 已建立 data/；write_json:63–65 不创建父目录，工单要求自行创建 _history/ 正确。
+
+dm["files"] 追加条目正确；generate READY → setup_freezeable → 放入未登记文件 → freeze 的顺序符合 :275–287 的夹具前提。
+
+A5 独立契约测试放在首次 fill_all:121 前，且联动 FileNotFoundError 单独记录，已解决上一轮“新增断言根本未执行”的问题。B4 未登记文件检查不再要求 RED，也已修正。
+
+B4 用例 4／5 应分别捕获缺失函数的 ImportError 并记录 FAIL，不能在模块顶层导入缺失函数后让整份测试提前退出。
+
+9. 通过——白名单和“不改”清单足够，未发现遗漏的必须修改消费点。
+
+EXCLUDE_SUFFIXES、add_path 的运行时消费点集中于 handoff_manifest.py；_members_total 的两处测试读取均已列入。
+
+migrate_legacy_case.py 的备份生产、add_labels.py 的回滚备份不需要修改。模块帮助、CLI 帮助、安全路径辅助函数和测试文件均已进入白名单。上一轮第 12 条已落实。
+
+10. 通过——C 段语义和 UTF-8 字节预算均成立。
+
+按工单原文在内存逐行替换，独立计算：
+
+references/split-run.md：28162 → 28135，减少 27 字节。
+references/scan-schemas.md：104942 → 104941，减少 1 字节。
+
+scan-schemas 两处替换及 :523 去逗号均已计入。reason 的简短写法明确属于填写纪律，没有声称校验器强制执行长度或同句规则。split-run 的归档及冻结后重跑链条与源码一致。
+
+11. 通过——docs_lint 不因拟议删行或注释修改失败。
+
+实际执行当前文档的 docs_lint 全量检查，以及通过内存读取替换后的同一检查：
+
+当前文档：PASS，59 个文档，返回 0。
+拟议文档：PASS，59 个文档，返回 0。
+
+未落盘修改版文件。
+
+12. 通过——上一轮意见大部分落实；本轮仍须修正两处阻断项。
+
+上一轮的异常传播说明、卫生扫描异常处理、RED 定义与顺序、夹具登记方式、字节预算、白名单和帮助同步均已落实。尚未闭合的是第 2 项旁车写入失败留下台账的问题；另有第 1 项新发现的 import 行号错误。
+
+本次仅离线读取、源码检索和内存验证；未执行会写夹具的完整测试，未修改文件、未执行 Git 写操作，未读取 /Users/uravvv/.codex/ 下任何文件。
