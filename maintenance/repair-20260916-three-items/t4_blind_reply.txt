@@ -1,0 +1,71 @@
+# 盲审 T4: FAIL
+
+**两项阻断：CHANGELOG 有一处事实描述错误；`49b628e` 同树补验达到 151/151 的结论缺少对应原始日志。**
+
+① **范围：PASS**
+
+`git diff f7749a6 49b628e --stat`：**9 files changed, 615 insertions(+), 3 deletions(-)**。仅四个白名单文件及 maintenance 下五份报告/日志。
+
+```text
+git diff --exit-code f7749a6 49b628e -- references/ scripts/
+exit 0，输出为空
+```
+
+当前 HEAD 为 `3a2bc3d`，相对审查对象仅新增 `t4_accept_fable.md`；已将其作为补验材料单独核对。
+
+② **逐字、位置、版本及字节数：PASS**
+
+从目标提交提取工单 §2 两段代码块、仅去除工单缩进，在父提交原文件指定位置插入后，**重建结果与目标 CHANGELOG 逐字节相同**。
+
+- 新索引在 :13，原索引移至 :14。
+- 新详细段在 :91，原 :90 标题移至 :101。
+- `VERSION:1`、`pyproject.toml:15`、`SKILL.md:23` 均为 `7.1.1`。
+- SKILL.md：**8,024 → 8,024 B**；VERSION 保持末尾 LF。
+- 四文件 SHA-256 均与 `t4_done.md:93–96` 相符。
+
+③ **指定命令实跑：PASS**
+
+| 命令 | 退出码 | 输出 |
+|---|---:|---|
+| `python3 -B scripts/tests/changelog_lint.py` | 0 | 活跃 73 条＋归档 139 条 |
+| `python3 -B scripts/tests/test_version_consistency.py` | 0 | metadata consistent at 7.1.1 |
+| `python3 -B scripts/tests/docs_lint.py --all` | 0 | 59 个文档，引用无断链、粗体配对完整 |
+
+④ **施工报告一致；最终树补验证据不足——阻断**
+
+独立解析沙箱日志，得到 **148 PASS／3 FAIL／151 个不同入口**，顺序及集合与当前 SUITE 完全一致。三项归因也符合日志：
+
+- Solana、EVM：`socket.bind` 抛出 `PermissionError`。
+- reseal：`t4_done.md` 不在 overlay 白名单，结果 **20/21 PASS**，并非临时目录缺失。
+
+证据：[沙箱日志](/Users/uravvv/.claude/worktrees/tca-three-items/maintenance/repair-20260916-three-items/t4_run_all_codex_sandbox.log:22) 的 :22、:48、:83–84。因此 `t4_done.md` 的“停工”、计数及归因正确。
+
+但 [补验报告](/Users/uravvv/.claude/worktrees/tca-three-items/maintenance/repair-20260916-three-items/t4_accept_fable.md:1) 声称 `49b628e` 三项单跑通过，现存日志只能证明：
+
+- [旧全套日志:99](/Users/uravvv/.claude/worktrees/tca-three-items/maintenance/repair-20260916-three-items/t4_run_all_merged_fable.log:99) 明示 **7.1.0**；独立计数为 150/151，唯一失败确为验收 worktree 缺失。
+- [reseal 日志:33](/Users/uravvv/.claude/worktrees/tca-three-items/maintenance/repair-20260916-three-items/t4_reseal_merged_fable.log:33) 明示 **HEAD=22d81bb、overlay=0**，:40 为 21/21 PASS。
+
+**同目录没有对应 `49b628e` 三项补跑的原始日志及退出码。** 旧树结果支持历史补验说明，尚不能证明工单 §3 要求的“同一最终树”收口。
+
+⑤ **CHANGELOG 事实核对：FAIL——阻断**
+
+[CHANGELOG.md:96](/Users/uravvv/.claude/worktrees/tca-three-items/CHANGELOG.md:96) 写两份测试“**改从源 fixture 取成员**”，实际为：
+
+- [test_adjudication_validator.py:100](/Users/uravvv/.claude/worktrees/tca-three-items/scripts/tests/test_adjudication_validator.py:100)：读取模板生成的 `.members.json` 旁车，再取 `side[candidate_id]`。
+- [test_distribution_gate.py:377](/Users/uravvv/.claude/worktrees/tca-three-items/scripts/tests/test_distribution_gate.py:377)：同样读取旁车；另在 :378–384 对照源扫描集合，:388–389 填裁决仍使用旁车。
+
+实现符合 [T1 工单:62](/Users/uravvv/.claude/worktrees/tca-three-items/maintenance/repair-20260916-three-items/workorder_t1.md:62)，错误在 T4 登记文案。按 [T4 工单:8](/Users/uravvv/.claude/worktrees/tca-three-items/maintenance/repair-20260916-three-items/workorder_t4_version.md:8)，应退回工单。逐字复制通过不能消除此事实错误。
+
+其余指定事实核对一致：子命令及必需参数、附录 F、`test_t3_readonly_queries` 名称、日志中的 283 项均成立。Git blob 实测四册为：
+
+```text
+split-run          28162 → 28130；合并后 27772
+context-discipline  9257 →  9256
+report-template    42499 → 42491
+scan-schemas      104942 → 104941
+三项修复合计净减 42 B
+```
+
+**非阻断记录：** [旧静态验收:31](/Users/uravvv/.claude/worktrees/tca-three-items/maintenance/repair-20260916-three-items/t4_accept_static_fable.txt:31) 把 `docs_lint.py --all` 当成文件名，exit 2；本轮正确命令已通过。提交级 `diff --check` 因两份原始日志共六处行尾空格退出 2，四个白名单文件单独检查退出 0。
+
+

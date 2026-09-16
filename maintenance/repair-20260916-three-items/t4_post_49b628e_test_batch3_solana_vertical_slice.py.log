@@ -1,0 +1,1 @@
+PASS B3-SOL-E2E: real producer->runner->aggregator->READY->release

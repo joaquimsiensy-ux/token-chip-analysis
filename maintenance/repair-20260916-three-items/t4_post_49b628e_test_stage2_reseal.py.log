@@ -1,0 +1,40 @@
+fixtures: /private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/test-stage2-reseal-0tqu38xp
+ok    skip_register_when_claims_same
+ok    registry_sha_drift_forces_register
+ok    verdict_change_stops
+ok    terminal_ledger_triggers_reopen
+ok    other_charts_archived_not_deleted
+ok    ends_with_closeout_check
+ok    migrated_case_root_stops
+ok    15a/15e terminal=True: real/dry both exit 3, unchanged
+ok    15b/15e terminal=False: real/dry both exit 3, unchanged
+ok    adjudication_bound_to_m3_only_stops
+ok    6 pending=True note=True: freeze revision unchanged
+ok    6 pending=False note=False: freeze revision unchanged
+ok    6 pending=True note=False: freeze revision unchanged
+ok    6 pending=False note=True: freeze revision unchanged
+ok    freeze_readback_no_new_revision
+ok    adjudication_bound_to_m4_archived
+ok    nonterminal_ignores_history_receipt
+ok    adjudication_bound_to_copy_terminal_stops
+ok    adjudication_dependency_in_charts_final_stops
+ok    14 downstream fallback: rounds.a4_seal_sha
+ok    14 downstream fallback: rounds.entity_freeze_revision
+ok    terminal_downstream_mismatches_block
+ok    new_clusters_stop
+ok    13a final source mismatch: nonterminal anchor retained
+ok    13b matching final source: register stop then real finalize
+ok    13c pending_a3 -> round 2 UNEXPLAINED; exactly one seal revision
+ok    final_source_branch_prebuilds_round
+ok    sealed_file_missing_stops
+ok    sealed_path_remapped_from_reopen
+ok    archived_claim_reference_stops
+ok    round_number_continues_nonterminal_ledger
+7(e) acceptance HEAD=49b628e7aa94ce3d1fa8efee240e7dc9fe95e41d; overlay=0 sha256 equal; exact files/directories
+fixtures: /private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/test-stage2-reseal-a83vwwxk
+7(d0) parent/child finder: exactly two matplotlib attempts; evidence=/private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/test-stage2-reseal-a83vwwxk/w3-mpl-blocker-lmob86ao
+7(b,d,e,g) direct CLI normal/blocked: identical stdout/code, zero case/scripts/MPL changes
+ok    dry_run_touches_nothing
+stage2_reseal: 1/1 PASS
+ok    dry_run_touches_nothing
+stage2_reseal: 21/21 PASS
