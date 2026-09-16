@@ -443,7 +443,93 @@ def test_dust_freeze_supply_aliases():
             print(p.stdout + p.stderr)
 
 
+def test_history_exclusion_and_hygiene():
+    from contextlib import redirect_stderr
+    from io import StringIO
+    from unittest.mock import patch
+
+    with tempfile.TemporaryDirectory(prefix="handoff_history_") as d:
+        make_case(d)
+        excluded = ["findings.md.bak_20260913", "report.md.bak",
+                    "_history/old.json", "handoff_manifest.r0.superseded.json"]
+        kept = ["balances_pre_launch.json", "data/labels.v3.jsonl"]
+        os.makedirs(os.path.join(d, "_history"))
+        for rel in excluded + kept:
+            Path(d, rel).write_text("{}")
+        dm = json.loads(Path(d, "data_map.json").read_text())
+        dm["files"].extend({"path": rel, "source": "test"} for rel in kept)
+        write_json(d, "data_map.json", dm)
+        p = run(["generate", "--case-dir", d, "--status", "READY"] + GEN)
+        paths = {x["path"] for x in json.loads(Path(d, "handoff_manifest.json").read_text())["artifacts"]}
+        check("排除规则保持行为且不误伤 pre/v3", p.returncode == 0
+              and not paths.intersection(excluded) and set(kept) <= paths)
+
+    for mode, rel in (("data_map", "x.bak_2026"), ("include", "_history/y.json"),
+                      ("gate", "_history/z.json")):
+        with tempfile.TemporaryDirectory(prefix="handoff_conflict_") as d:
+            make_case(d)
+            Path(d, rel).parent.mkdir(exist_ok=True)
+            Path(d, rel).write_text("{}")
+            extra = []
+            if mode == "data_map":
+                dm = json.loads(Path(d, "data_map.json").read_text())
+                dm["files"].append({"path": rel, "source": "test"})
+                write_json(d, "data_map.json", dm)
+            elif mode == "include":
+                extra = ["--include", rel]
+            else:
+                extra = ["--gate", "custom:PASS:0:" + rel]
+            p = run(["generate", "--case-dir", d, "--status", "READY"] + GEN + extra)
+            print(f"显式登记 {mode}: exit={p.returncode}\n{p.stdout}{p.stderr}")
+            check(f"显式登记冲突 {mode}", p.returncode == 2 and "命中排除规则" in p.stderr)
+
+    codes = []
+    for dirty in (False, True):
+        with tempfile.TemporaryDirectory(prefix="handoff_hygiene_") as d:
+            make_case(d)
+            p = run(["generate", "--case-dir", d, "--status", "READY"] + GEN)
+            check(f"卫生夹具 READY dirty={dirty}", p.returncode == 0)
+            setup_freezeable(d)
+            if dirty:
+                Path(d, "report.md.bak_v7d_").write_text("backup")
+                Path(d, "data/entity_series.v2.json").write_text("{}")
+            p = run(["freeze", "--case-dir", d] + FRZ)
+            codes.append(p.returncode)
+            if dirty:
+                print(f"卫生 freeze: exit={p.returncode}\n{p.stdout}{p.stderr}")
+                check("freeze 卫生 WARN 且返回码不变", codes == [0, 0]
+                      and "WARN 案根疑似历史副本 2 件" in p.stderr)
+                p = run(["freeze", "--case-dir", d, "--check-unseal"])
+                check("check-unseal 不扫描卫生", p.returncode == 0 and "疑似历史副本" not in p.stderr)
+
+    sys.path.insert(0, os.path.join(HERE, "..", "report"))
+    try:
+        from handoff_manifest import case_hygiene_warnings
+    except ImportError as e:
+        print(f"ImportError: {e}")
+        check("卫生扫描失败不改返回码", False)
+    else:
+        with tempfile.TemporaryDirectory(prefix="handoff_listdir_") as d:
+            os.mkdir(os.path.join(d, "data"))
+            err = StringIO()
+            with redirect_stderr(err), patch("os.listdir", side_effect=PermissionError("x")):
+                result = case_hygiene_warnings(d)
+            check("卫生扫描失败不改返回码", result == [] and "卫生扫描跳过" in err.getvalue())
+    try:
+        from handoff_manifest import is_excluded_path
+    except ImportError as e:
+        print(f"ImportError: {e}")
+        check("is_excluded_path 精确规则", False)
+    else:
+        for rel, want in (("a/_history/b.json", True), ("_history_x/b.json", False),
+                          ("x.bak_v7d_", True), ("x.bakup.json", False),
+                          ("balances_pre_launch.json", False), ("data/labels.v3.jsonl", False),
+                          ("x.superseded", True)):
+            check(f"is_excluded_path {rel}", bool(is_excluded_path(rel)) == want)
+
+
 def main():
+    test_history_exclusion_and_hygiene()
     root = tempfile.mkdtemp(prefix="handoff_test_")
     try:
         # 1. READY 正例

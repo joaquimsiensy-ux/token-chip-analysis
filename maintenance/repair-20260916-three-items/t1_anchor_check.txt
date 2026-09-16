@@ -41,3 +41,10 @@ references/scan-schemas.md: 2abad493c06e874fadb56de7d2eb0834e5ffae50ae6acf80fd12
 sandbox-exec -p '(version 1) (allow default) (deny file-read* (subpath "/Users/uravvv/.codex") (subpath "/Users/uravvv/.claude/skills/token-chip-analysis") (subpath "/Users/uravvv/.claude/skills/_archive"))' /usr/bin/true
 EXIT CODE: 71
 STDERR: sandbox-exec: sandbox_apply: Operation not permitted
+
+## attempt2 核锚
+HEAD: 14f249631895cc79954486174ddce5569cc63387；开工 status 为空。
+工单全文已读；上述生产与文档锚点再次用 nl -ba 核对一致。
+测试 A 的行号因已提交的 attempt1 改动迁移，按用户澄清保留；核对现有 fill_all、契约测试与 distribution 成员读取一致。B 测试夹具 63-65/73/275 锚点仍一致。
+用户已解除 git_sha 既有行为阻断；原样运行，无跳过、无额外隔离。
+A RED 引用原有三段，证据未覆盖。

@@ -30,6 +30,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -116,8 +117,19 @@ PROVENANCE_LABEL_KINDS = {"cex", "dex_pool", "facility", "bridge", "launch_alloc
                           "airdrop", "vesting"}
 # data_map 明确登记的 .duckdb 可能是 provenance 的正式重放源，必须进 manifest 绑定；
 # WAL/临时文件仍排除。大库由 sha256-sparse 做交接哈希，freeze 的 input_binding 另做完整哈希。
-EXCLUDE_SUFFIXES = (".log", ".duckdb.wal", ".lock", ".tmp", ".bak")
+EXCLUDE_SUFFIXES = (".log", ".duckdb.wal", ".lock", ".tmp")
+# 历史副本/归档件精确规则（不用 _pre_、.vN. 等宽泛版本特征，避免误伤 balances_pre_launch.json / labels.v3.jsonl）：
+#   basename 含 .bak_ 或以 .bak 结尾，或含 .superseded. 或以 .superseded 结尾；或路径任一目录分量恰为 _history
+EXCLUDE_NAME_RE = re.compile(r"\.bak(_|$)|\.superseded(\.|$)")
+HISTORY_DIR = "_history"
 EXCLUDE_NAMES = {"config.json", MANIFEST_NAME}  # manifest 不含自身；config 可能含运行时 key 路径
+
+def is_excluded_path(rel):
+    """manifest 收录排除判定（generate 与 −2 收口共用）：临时件后缀、历史副本命名、_history/ 目录。"""
+    base = os.path.basename(rel)
+    if base in EXCLUDE_NAMES or base.endswith(EXCLUDE_SUFFIXES) or EXCLUDE_NAME_RE.search(base):
+        return True
+    return HISTORY_DIR in rel.replace("\\", "/").split("/")[:-1]
 
 
 def _reverse_bound_reason(case_dir, rel):
@@ -251,7 +263,7 @@ def cmd_generate(a):
     seen = set()
     data_map_paths = set()
 
-    def add_path(rel):
+    def add_path(rel, explicit=False):
         if rel in seen:
             return
         safe_case_file(case_dir, rel)
@@ -259,8 +271,11 @@ def cmd_generate(a):
         if reason is not None:
             print(f"[generate] 跳过反绑产物 {rel}: {reason}", file=sys.stderr)
             return
-        base = os.path.basename(rel)
-        if base in EXCLUDE_NAMES or base.endswith(EXCLUDE_SUFFIXES):
+        if is_excluded_path(rel):
+            if explicit:
+                print(f"[generate] 显式登记的路径命中排除规则（历史副本/临时件/_history 不得进 manifest，请移出登记或改名）: {rel}",
+                      file=sys.stderr)
+                raise SystemExit(2)
             return
         artifacts.append(file_entry(case_dir, rel))
         seen.add(rel)
@@ -277,7 +292,7 @@ def cmd_generate(a):
             print(f"[generate] 反绑产物禁止进入 manifest: {rel}: {reason}",
                   file=sys.stderr)
             raise SystemExit(2)
-        add_path(rel)
+        add_path(rel, explicit=True)
 
     for name in CONTRACT_FILES:
         discover(name)
@@ -295,7 +310,7 @@ def cmd_generate(a):
                 for ent in dm.get("files", []):
                     if isinstance(ent, dict) and isinstance(ent.get("path"), str):
                         data_map_paths.add(ent["path"])
-                    add_path(ent.get("path"))
+                    add_path(ent.get("path"), explicit=True)
             except ValueError as e:
                 print(f"[generate] data_map.json 显式文件路径非法: {e}", file=sys.stderr)
                 return 2
@@ -1363,6 +1378,27 @@ def validate_and_replay_provenance(case_dir, pl, pl_path, ep, manifest):
             os.unlink(replay_path)
     return []
 
+HYGIENE_RE = re.compile(r"\.bak(_|$)|_pre_|\.v\d+\.|\.superseded(\.|$)")
+
+
+def case_hygiene_warnings(case_dir):
+    """案根一级与 data/ 一级里疑似手工历史副本（只提醒不拒；−2 收口可复用）。扫描失败也只提醒。"""
+    hits = []
+    for sub in ("", "data"):
+        d = os.path.join(case_dir, sub)
+        if not os.path.isdir(d):
+            continue
+        try:
+            names = sorted(os.listdir(d))
+        except OSError as e:
+            print(f"[freeze] WARN 卫生扫描跳过 {sub or '.'}（{e}）", file=sys.stderr)
+            continue
+        for name in names:
+            if os.path.isfile(os.path.join(d, name)) and HYGIENE_RE.search(name):
+                hits.append(os.path.join(sub, name) if sub else name)
+    return hits
+
+
 def cmd_freeze(a):
     case_dir = os.path.abspath(a.case_dir)
     path = os.path.join(case_dir, FREEZE_NAME)
@@ -1428,6 +1464,11 @@ def cmd_freeze(a):
                 pass
         print("[freeze] entity_freeze.json 不存在或无效——实体未冻结，禁止揭盲、禁止读 sealed/", file=sys.stderr)
         return 2
+
+    hygiene = case_hygiene_warnings(case_dir)
+    if hygiene:
+        shown = ", ".join(hygiene[:10]) + ("…" if len(hygiene) > 10 else "")
+        print(f"[freeze] WARN 案根疑似历史副本 {len(hygiene)} 件（请移入 _history/，不影响冻结）: {shown}", file=sys.stderr)
 
     if not a.members:
         print("[freeze] 需要 --members <成员表文件>（如 analysis-state.json）", file=sys.stderr)

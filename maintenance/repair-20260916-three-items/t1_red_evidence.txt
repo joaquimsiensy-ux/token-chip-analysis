@@ -83,3 +83,58 @@ FAIL [distribution-template 旁车在场] [adjudication] distribution 模板 2 �
 --- STDERR (raw) ---
 
 --- END ---
+
+=== B-RED ===
+COMMAND: python3 -c 'import sys; sys.path.insert(0, "scripts/tests"); import test_handoff_manifest as t; t.test_history_exclusion_and_hygiene(); sys.exit(bool(t.FAILS))'
+ENV: PYTHONDONTWRITEBYTECODE=1
+EXIT CODE: 1
+SHA256 scripts/tests/test_handoff_manifest.py: 72b0ae764d6baf6cd0c37563197e982fd717485f89b1212c20a8fc3f4095cac0
+SHA256 scripts/report/handoff_manifest.py: 37919a42ff3bf9c97484dc1ec6b8da19223dac0bb10219edd26d53c867deb79e
+--- STDOUT (raw) ---
+ok    排除规则保持行为且不误伤 pre/v3
+显式登记 data_map: exit=0
+[generate] READY  19 件产物  4 个 gate  1 件密封 → /var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/handoff_conflict_b1u_qmtf/handoff_manifest.json
+
+FAIL  显式登记冲突 data_map
+显式登记 include: exit=0
+[generate] READY  19 件产物  4 个 gate  1 件密封 → /var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/handoff_conflict_vf2lq43j/handoff_manifest.json
+
+FAIL  显式登记冲突 include
+显式登记 gate: exit=0
+[generate] READY  19 件产物  5 个 gate  1 件密封 → /var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/handoff_conflict_9suz68lc/handoff_manifest.json
+
+FAIL  显式登记冲突 gate
+ok    卫生夹具 READY dirty=False
+ok    卫生夹具 READY dirty=True
+卫生 freeze: exit=0
+[freeze] E1 current 锚点尘埃库存,闭合重算降级
+[freeze] 初次冻结 → /var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/handoff_hygiene_or_cc7th/entity_freeze.json（成员表 963354875cf0…，实体名册 499dcbb9e56b…，未决项 0）
+
+FAIL  freeze 卫生 WARN 且返回码不变
+ok    check-unseal 不扫描卫生
+ImportError: cannot import name 'case_hygiene_warnings' from 'handoff_manifest' (/Users/uravvv/.claude/worktrees/tca-three-items/scripts/tests/../report/handoff_manifest.py)
+FAIL  卫生扫描失败不改返回码
+ImportError: cannot import name 'is_excluded_path' from 'handoff_manifest' (/Users/uravvv/.claude/worktrees/tca-three-items/scripts/tests/../report/handoff_manifest.py)
+FAIL  is_excluded_path 精确规则
+
+--- STDERR (raw) ---
+
+--- END ---
+
+=== C-RED ===
+COMMAND: wc -c references/split-run.md references/scan-schemas.md
+ENV: PYTHONDONTWRITEBYTECODE=1
+EXIT CODE: 0
+SHA256 scripts/tests/docs_lint.py: 39be88edfd06771204848647fc401afb2faee17139d76d2660a908f74051b32e
+SHA256 scripts/report/adjudication_validator.py: b91dde13a6ae2242447157655cec95ae0fc9ba48c6bda05f6ee7d52a06b46416
+SHA256 scripts/report/handoff_manifest.py: 87562a556bce945aa215ab6afc7c13c92549e013c9a8cddd3fb945fcb4f934f0
+SHA256 references/split-run.md: ab472ed6a5c7de5a70075f37995f61a130ccd0a562a10140f56c05c0131968d7
+SHA256 references/scan-schemas.md: 2abad493c06e874fadb56de7d2eb0834e5ffae50ae6acf80fd126dabf5c28b11
+--- STDOUT (raw) ---
+   28162 references/split-run.md
+  104942 references/scan-schemas.md
+  133104 total
+
+--- STDERR (raw) ---
+
+--- END ---

@@ -1,0 +1,44 @@
+# 盲审 T1: PASS
+
+未发现工单偏离、逻辑错误或测试造假。此结论针对未提交改动；**不代表全套测试已独立复跑通过**。全程离线，未修改文件、未执行 Git 写操作、未读取禁用目录。
+
+1. **通过：范围与受保护代码。**  
+   当前分支正确，HEAD 为 `14f249631895cc79954486174ddce5569cc63387`；全部修改及新文件均在白名单内。用 `git show HEAD:…` 提取函数源码逐字比较，三个 validate、`cmd_verify`、`_reverse_bound_reason`、`check_bound_file` 均完全一致；`cmd_freeze` 去掉指定 WARN 插入段后也完全一致，四道前置未变。  
+   证据：`scripts/report/adjudication_validator.py:265、342、452`；`scripts/report/handoff_manifest.py:135、698、804、1402`。
+
+2. **通过：A 段旁车及兼容性。**  
+   两条模板路径均经 `safe_case_file` 校验，写入顺序均为“防覆盖检查→旁车→台账”。旁车抛出 `OSError` 时直接返回，尚未打开台账，因此不会创建新台账或截断旧台账。  
+   两份测试确实从旁车按候选 ID 读取成员；distribution 测试还与源扫描成员集合完整比对。旧台账补回 `_members_total` 的兼容用例存在，施工 GREEN 记录为通过。A 两份测试已在 HEAD 中，本次未改。  
+   证据：`scripts/report/adjudication_validator.py:240、244、255、413、417、439`；`scripts/tests/test_adjudication_validator.py:100、139、405`；`scripts/tests/test_distribution_gate.py:373、381、389`。
+
+3. **通过：B 段排除与 WARN。**  
+   实际执行排除函数，六项结果依次为：`True、True、True、True、False、False`，符合工单。`data_map`、`--include`、`--gate` 均接入显式登记检查，命中排除抛出 `SystemExit(2)`。卫生扫描位于 `--check-unseal` 返回分支之后，不改变冻结返回码；`os.listdir` 的 `OSError` 仅产生 WARN 并继续。对应测试没有跳过或弱化既有断言。  
+   证据：`scripts/report/handoff_manifest.py:127、274、295、313、1384、1468`；`scripts/tests/test_handoff_manifest.py:469、486、514`。
+
+4. **通过：C 段文本与字节。**  
+   四处指定替换文本逐字匹配工单，无额外文档修改；split-run 产物表未变。实际字节数：
+
+   | 文件 | HEAD | 工作树 |
+   |---|---:|---:|
+   | `references/split-run.md` | 28162 | **28135** |
+   | `references/scan-schemas.md` | 104942 | **104941** |
+
+   证据：`references/split-run.md:109`；`references/scan-schemas.md:207、522`。
+
+5. **问题（环境限制，不计缺陷）：独立运行结果。**  
+   均设置 `PYTHONDONTWRITEBYTECODE=1`，实际执行指定命令：
+
+   | 命令（位于 `scripts/tests/`） | 退出码 | 结果 |
+   |---|---:|---|
+   | `python3 test_adjudication_validator.py` | 1 | 无可用临时目录 |
+   | `python3 test_distribution_gate.py` | 1 | 无可用临时目录 |
+   | `python3 test_handoff_manifest.py` | 1 | 无可用临时目录 |
+   | `python3 docs_lint.py --all` | 0 | 59 个文档通过 |
+
+   前三项被只读沙箱阻断，不能声称本次功能测试通过。触发位置：`test_adjudication_validator.py:121`、`test_distribution_gate.py:164`、`test_handoff_manifest.py:451`。施工 GREEN 中七个生产、测试及文档文件的 SHA256 均与当前文件匹配。
+
+6. **通过：额外行为与证据真实性。**  
+   未发现工单之外的生产行为变化。B 测试删除新增函数及调用后，与 HEAD 逐字一致；`git diff --check` 通过。施工报告如实保留全套未通过状态：两项端口限制、两项缺失夹具，没有冒报全绿；缺夹具失败不构成本次改动引入回归的证据。  
+   证据：`maintenance/repair-20260916-three-items/t1_done.md:1`；`maintenance/repair-20260916-three-items/t1_run_all.log:22、48、74、91`。
+
+非阻断建议：在允许创建临时目录的环境补跑三份指定功能测试；全套验收仍需恢复真实缺失夹具并解决端口环境限制。

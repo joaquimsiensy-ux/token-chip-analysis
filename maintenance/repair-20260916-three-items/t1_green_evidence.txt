@@ -1,0 +1,245 @@
+
+=== A-GREEN ===
+COMMAND: python3 scripts/tests/test_adjudication_validator.py && python3 scripts/tests/test_distribution_gate.py
+ENV: PYTHONDONTWRITEBYTECODE=1
+EXIT CODE: 0
+SHA256 scripts/tests/test_adjudication_validator.py: 7ca8e9c86e46884d447633da0bb836a1eb1e93000980be8b7fb833ea930cb73f
+SHA256 scripts/tests/test_distribution_gate.py: cd828f46bdde9dbe2386fc4b633f5218f065a51ad91289e4a81764bbb03d17ac
+SHA256 scripts/report/adjudication_validator.py: b91dde13a6ae2242447157655cec95ae0fc9ba48c6bda05f6ee7d52a06b46416
+--- STDOUT (raw) ---
+ok    template 不含 _members_total 且旁车在场
+ok    旁车路径不合法即拒且台账未写
+[adjudication] 成员清单旁车写入失败: sidecar denied
+ok    旁车不可写即拒且台账未写 distribution=False existing=False
+[adjudication] 成员清单旁车写入失败: sidecar denied
+ok    旁车不可写即拒且台账未写 distribution=False existing=True
+[adjudication] FAIL（fail-closed，逐条修复）:
+  ✗ 成员清单旁车写入失败: sidecar denied
+ok    旁车不可写即拒且台账未写 distribution=True existing=False
+[adjudication] FAIL（fail-closed，逐条修复）:
+  ✗ 成员清单旁车写入失败: sidecar denied
+ok    旁车不可写即拒且台账未写 distribution=True existing=True
+ok    template 生成 exit 0 且 4 条候选（wave+eqg+sink+spray）
+ok    template 预填 sha256 与机器 tier_impact
+ok    template 已存在防覆盖 exit 2
+ok    正例 validate exit 0
+ok    裁决闭环但缺溯源台账 freeze exit 2
+ok    裁决＋溯源双闭环后 freeze 放行 exit 0
+ok    缺裁决台账 freeze exit 2
+ok    少裁 exit 2
+ok    重复 ID exit 2
+ok    候选内容变 sha256 失效 exit 2
+ok    部分成员未裁 exit 2
+ok    tier_impact 伪造 exit 2
+ok    unresolved 且 ≥5% exit 2
+ok    unresolved 且 <5% 放行 exit 0
+ok    sink 多窗口累计 12%（单窗 4%）unresolved 必须 exit 2
+ok    源报告重跑整册过期 exit 2
+ok    confirmed 但全员 excluded（矛盾裁决）exit 2
+ok    confirmed 但 evidence 空 exit 2
+ok    excluded 却收编成员 exit 2
+ok    excluded 成员缺排除理由 exit 2
+ok    adjudicated_at 未填 exit 2
+ok    candidate_kind 与机器不符 exit 2
+ok    nearest_tier_line 伪造 exit 2
+ok    confirmed 未传 --entity-file exit 2
+ok    linked_entity 不在名册 exit 2
+ok    accepted 成员未落名册 exit 2
+ok    confirmed＋名册齐备正例 exit 0
+ok    源报告 schema 错版 exit 2
+ok    老台账带 _members_total 仍 PASS
+
+PASS：0 项失败
+ok   [CLI 不暴露 skip/阈值/自由披露绕过]
+ok   [解释五判据无绕过参数]
+ok   [源码不接受自由披露理由]
+ok   [handoff_manifest.py 新契约已升版且默认旧版拒收]
+ok   [a4_gate.py 新契约已升版且默认旧版拒收]
+ok   [a5_report_seal.py 新契约已升版且默认旧版拒收]
+ok   [正常长尾不误报]
+ok   [候选阈值已冻结]
+ok   [等额鼓包触发]
+ok   [等额组未达 2% 经济门不触发鼓包]
+ok   [dust 假长尾被隔离且不进入主箱统计]
+ok   [CEX 大额不污染主箱且未识别合约达到 1% 强制披露]
+ok   [头部集中触发]
+ok   [同一快照多个异常簇分别保留]
+ok   [手改 verdict 被重算拒绝]
+ok   [手写排除派生哈希被独立重算拒绝]
+ok   [快照内容漂移被绑定哈希拒绝]
+ok   [重复 owner 快照 fail-closed]
+ok   [sample_line-1 切小样本集中度模式]
+ok   [小样本集中度结果不完整被拒]
+ok   [initial 冒充 final 被拒]
+ok   [唯一 terminal 后禁止再生成轮次]
+ok   [分区冲突 data_broken 且 exit 2]
+ok   [漏登 dist-claims 被 A4 双向闭合拒绝]
+ok   [五判据真实闭合才 EXPLAINED]
+ok   [解释绑定过期 A4 seal 被拒]
+ok   [手搓 EXPLAINED 成员不闭合拒绝]
+ok   [initial NORMAL 到 final ABNORMAL 新簇强制回流且 final 图仍空]
+ok   [删 rounds 台账后不可从非首轮归零]
+ok   [distribution-template 无 _members_total 且旁车成员与源候选完全一致]
+ok   [distribution 新候选类型合法裁决通过]
+ok   [distribution validator 九类反例全部拒绝]
+ok   [distribution unresolved 达 2% 经济门即拒]
+ok   [waiver 缺用户决定与绑定字段必拒]
+PASS: distribution gate red-green contract
+
+--- STDERR (raw) ---
+
+--- END ---
+
+=== B-GREEN ===
+COMMAND: python3 scripts/tests/test_handoff_manifest.py
+ENV: PYTHONDONTWRITEBYTECODE=1
+EXIT CODE: 0
+SHA256 scripts/tests/test_handoff_manifest.py: 72b0ae764d6baf6cd0c37563197e982fd717485f89b1212c20a8fc3f4095cac0
+SHA256 scripts/report/handoff_manifest.py: 87562a556bce945aa215ab6afc7c13c92549e013c9a8cddd3fb945fcb4f934f0
+--- STDOUT (raw) ---
+ok    排除规则保持行为且不误伤 pre/v3
+显式登记 data_map: exit=2
+[generate] 显式登记的路径命中排除规则（历史副本/临时件/_history 不得进 manifest，请移出登记或改名）: x.bak_2026
+
+ok    显式登记冲突 data_map
+显式登记 include: exit=2
+[generate] 显式登记的路径命中排除规则（历史副本/临时件/_history 不得进 manifest，请移出登记或改名）: _history/y.json
+
+ok    显式登记冲突 include
+显式登记 gate: exit=2
+[generate] 显式登记的路径命中排除规则（历史副本/临时件/_history 不得进 manifest，请移出登记或改名）: _history/z.json
+
+ok    显式登记冲突 gate
+ok    卫生夹具 READY dirty=False
+ok    卫生夹具 READY dirty=True
+卫生 freeze: exit=0
+[freeze] E1 current 锚点尘埃库存,闭合重算降级
+[freeze] 初次冻结 → /var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/handoff_hygiene_q6to42wz/entity_freeze.json（成员表 963354875cf0…，实体名册 499dcbb9e56b…，未决项 0）
+[freeze] WARN 案根疑似历史副本 2 件（请移入 _history/，不影响冻结）: report.md.bak_v7d_, data/entity_series.v2.json
+
+ok    freeze 卫生 WARN 且返回码不变
+ok    check-unseal 不扫描卫生
+ok    卫生扫描失败不改返回码
+ok    is_excluded_path a/_history/b.json
+ok    is_excluded_path _history_x/b.json
+ok    is_excluded_path x.bak_v7d_
+ok    is_excluded_path x.bakup.json
+ok    is_excluded_path balances_pre_launch.json
+ok    is_excluded_path data/labels.v3.jsonl
+ok    is_excluded_path x.superseded
+ok    generate READY exit 0
+ok    manifest 收录 data_map 索引文件
+ok    EVM manifest 收录 bundle 与 transcript
+ok    manifest sealed 只记哈希
+ok    manifest 自动 gate 四个
+ok    verify READY exit 0
+ok    accounting WARN + exit 0 按记账 gate 契约放行
+ok    READY 缺 chain generate 拒
+ok    READY 缺 contract generate 拒
+ok    READY 未知 chain generate 拒
+ok    PARTIAL 不强制正式 scope
+ok    scope 独立正例生成
+ok    verify 空 chains scope 拒
+ok    EVM 链缺 time_spotcheck 拒 READY exit 2
+ok    solana 不得复用 bsc reconciliation
+ok    READY 缺 reconciliation 拒
+ok    receipt 追加两条
+ok    receipt blind_mode 跟随环境
+ok    freeze 前揭盲拒绝 exit 2
+ok    freeze 缺 --entity-file 拒
+ok    无裁决台账 freeze 拒 exit 2
+ok    exploration/null-label provenance freeze 拒
+ok    四重前置齐备 freeze 初次 exit 0
+ok    冻结记录绑定成员/名册/provenance/manifest/data_map 全套哈希
+ok    freeze 后揭盲放行 exit 0
+ok    名册改动后复用旧溯源台账 freeze 拒 exit 2
+ok    重跑溯源后 freeze 变更走 revision 追加
+ok    supersede 归档旧 manifest
+ok    generate BLOCKED_CEX_GATE exit 0
+ok    verify BLOCKED 拒收 exit 2
+ok    BLOCKED 案 freeze 同拒 exit 2（前置 0 内联 verify）
+ok    哈希漂移拒收 exit 2
+ok    哈希漂移案 freeze 同拒 exit 2（前置 0）
+ok    schema 不兼容拒收 exit 2
+ok    gate 语义漂移拒收 exit 2
+ok    blocking 异常未解决拒收 exit 2
+ok    READY 缺必备件 generate 即拒 exit 2
+ok    同目录报 PARTIAL 可出 manifest
+ok    READY 缺 supply_truth gate 即拒 exit 2
+ok    READY 缺 wave_scan_report 即拒 exit 2
+ok    wave_scan_report 空壳 verify 拒收 exit 2
+ok    READY 缺 flow_anomaly_report 即拒 exit 2
+ok    wave-scan/v1 旧版产物 verify 拒收 exit 2
+ok    wave-scan/v2 旧版产物 verify 拒收 exit 2
+ok    v5 标签缺 scan_universe 全集 verify 拒收 exit 2
+ok    v5 count 与逐条 must 标记矛盾 verify 拒收 exit 2
+ok    handoff/v2 默认拒收 exit 2
+ok    handoff/v1 默认拒收 exit 2
+ok    handoff/v1 --legacy-read-only 放行且带只读警告
+ok    legacy 降级落机器 receipt
+ok    legacy 案 freeze 必拒 exit 2
+ok    正式 dust nonempty=False trace 保留库存及诊断构成
+ok    正式 dust nonempty=False 完整重放 freeze exit 0
+ok    正式 dust nonempty=False freeze 不改来源台账
+ok    正式 dust nonempty=False 封存绑定可复验
+ok    正式 dust nonempty=True trace 保留库存及诊断构成
+ok    正式 dust nonempty=True 完整重放 freeze exit 0
+ok    正式 dust nonempty=True freeze 不改来源台账
+ok    正式 dust nonempty=True 封存绑定可复验
+ok    freeze 库存 1 / 10001 严格阈值以下通过真实重放
+ok    freeze manifest total=10000 无视伪造豁免 current 空构成拒
+ok    freeze manifest total=9999 无视伪造豁免 current 空构成拒
+ok    freeze manifest total=0 无视伪造豁免 current 空构成拒
+ok    freeze 尘埃 peak 空构成仍拒
+ok    freeze 尘埃 peak 非空失真仍拒
+ok    尘埃 skip_marker 篡改仍被绑定/真实重放拒绝
+ok    尘埃 composition_usable 篡改仍被绑定/真实重放拒绝
+ok    尘埃 stock 篡改仍被绑定/真实重放拒绝
+ok    尘埃 supply 篡改仍被绑定/真实重放拒绝
+ok    尘埃 source_detail 篡改仍被绑定/真实重放拒绝
+ok    尘埃 policy_detail 篡改仍被绑定/真实重放拒绝
+ok    尘埃原始边文件篡改仍被输入绑定拒绝
+ok    全部篡改恢复后 dust freeze 再次真实重放通过
+ok    尘埃 freeze 已绑定供应量别名 total_supply 真实重放通过
+ok    尘埃 freeze 已绑定供应量别名 supply_raw 真实重放通过
+ok    尘埃 freeze 已绑定供应量别名 nominal_allocation_supply_raw 真实重放通过
+ok    溯源台账 v1（数学错误版）freeze 拒 exit 2
+ok    stock>0 而 composition 空壳 freeze 拒 exit 2
+ok    closure 自报 100 但按 composition 重算不闭合 freeze 拒 exit 2
+ok    成员集哈希错配 freeze 拒 exit 2
+ok    台账实体集与名册不一致 freeze 拒 exit 2
+ok    敏感性不稳 freeze 拒 exit 2
+ok    与边表脱离的人工合法台账 freeze 拒 exit 2
+ok    策略明细翻转但 stable=true 仍由 freeze 重算拒绝
+ok    尘埃锚点翻转豁免（不因翻转拒；伪造由重放语义摘要兜底）
+ok    内容自洽但与当前原始边重放不一致 freeze 拒
+ok    台账修复后 freeze 放行 exit 0
+ok    仅 provenance 变化也追加 freeze revision
+ok    check-unseal 复核 provenance 当前哈希漂移并拒绝
+ok    check-unseal 全绑定恢复后放行
+ok    check-unseal 直接复核原始边绑定漂移并拒绝
+ok    原始边恢复后 check-unseal 放行
+ok    手改 manifest 摘掉必备件 verify 拒 exit 2
+========================================
+handoff_manifest 契约测试全部通过（109 项）
+
+--- STDERR (raw) ---
+
+--- END ---
+
+=== C-GREEN ===
+COMMAND: wc -c references/split-run.md references/scan-schemas.md && python3 -c 'from pathlib import Path; assert Path("references/split-run.md").stat().st_size <= 28162; assert Path("references/scan-schemas.md").stat().st_size <= 104942' && python3 scripts/tests/docs_lint.py --all
+ENV: PYTHONDONTWRITEBYTECODE=1
+EXIT CODE: 0
+SHA256 scripts/tests/docs_lint.py: 39be88edfd06771204848647fc401afb2faee17139d76d2660a908f74051b32e
+SHA256 references/split-run.md: dea4851cff3a7ac4f9b2a35c1556b3efb96562b0868fdb74a65491885e51431a
+SHA256 references/scan-schemas.md: d38883a35af944146d0abc30042dbf4a258685b7730e13bb4d018178ce61c735
+--- STDOUT (raw) ---
+   28135 references/split-run.md
+  104941 references/scan-schemas.md
+  133076 total
+PASS: 59 个文档，引用无断链、粗体配对完整（--all 全量模式）
+
+--- STDERR (raw) ---
+
+--- END ---

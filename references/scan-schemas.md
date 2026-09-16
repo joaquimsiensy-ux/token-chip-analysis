@@ -204,8 +204,7 @@ wave/flow/eqg 全部候选的**成员级**裁决台账。freeze 前 validator �
                                "could_change_tiering": bool},   # validator 三字段逐一重算比对，人工不得改数
       "note": str
     },
-    "_members_total": [addr…]          # template 预填的候选成员全集（⑤校验的机器参照；−2 填写时删除亦可，
-                                       #   validator 以源报告重算为准不读此字段）
+    # template 不再预填 _members_total；候选成员清单在旁车 <台账名>.members.json（validator 以源报告重算为准）
   }]
 }
 ```
@@ -520,8 +519,8 @@ TERMINAL = {
     "candidate_verdict": "pattern_confirmed|excluded|unresolved",
     "accepted_members": [addr], "excluded_members": [{"addr", "reason"}],
     "linked_entity_id": str|null, "evidence": [str],
-    "raw_balance": str, "net_supply_pct": float,
-    "_members_total": [addr]
+    "raw_balance": str, "net_supply_pct": float
+    # excluded 的 reason 写简短一句（同类成员同句），详细依据放 evidence；validator 只查 reason 非空
   }]
 }
 ```

@@ -8,8 +8,8 @@
 
 子命令：
   template  读 wave_scan_report.json + flow_anomaly_report.json 生成裁决模板
-            candidate_adjudications.json（id/candidate_sha256/成员全集/机器 tier_impact
-            预填，verdict 留空待 −2 逐条填写——candidate_sha256 不必手算）
+            candidate_adjudications.json（id/candidate_sha256/机器 tier_impact 预填；成员清单另写
+            同目录旁车 <台账名>.members.json；verdict 留空待 −2 逐条填写）
   validate  校验裁决台账（freeze 前置；六类拒绝全 exit 2）
 
 拒绝规则（schema 权威定义 references/scan-schemas.md §3；v6.8.1 codex 复核后加固）：
@@ -190,6 +190,20 @@ def machine_tier_impact(scale_pct):
             "could_change_tiering": scale_pct >= TIER_MIN_LINE_PCT}
 
 
+def sidecar_rel(out_rel):
+    """台账相对路径 → 同目录旁车相对路径：foo.json → foo.members.json。"""
+    return out_rel[:-5] + ".members.json" if out_rel.endswith(".json") else out_rel + ".members.json"
+
+
+def write_members_sidecar(side_path, members_by_cid):
+    """成员清单旁车（派生件，总是覆盖；不进台账、不进 schema、不登记 data_map、无消费者）。
+    side_path 须是调用方已用 safe_case_file 校验过的绝对路径。**调用方须在写台账之前调用**：
+    旁车写失败（OSError）时台账尚未落盘，重跑不会被台账防覆盖拦住。"""
+    with open(side_path, "w", encoding="utf-8") as fh:
+        json.dump({cid: sorted(m) for cid, m in sorted(members_by_cid.items())}, fh, ensure_ascii=False, indent=1)
+    return side_path
+
+
 def distribution_candidates(case_dir, scan_rel):
     scan_path = str(safe_case_file(case_dir, scan_rel))
     script = os.path.join(os.path.dirname(os.path.abspath(__file__)), "holder_distribution_scan.py")
@@ -224,6 +238,7 @@ def cmd_distribution_template(a):
         return _report([str(exc)])
     try:
         out_path = str(safe_case_file(case_dir, a.out, must_exist=False))
+        side_path = str(safe_case_file(case_dir, sidecar_rel(a.out), must_exist=False))
     except ValueError as exc:
         return _report([str(exc)])
     if os.path.isfile(out_path) and not a.force:
@@ -235,11 +250,15 @@ def cmd_distribution_template(a):
               "candidate_sha256": canon_sha(row["obj"]), "candidate_verdict": None,
               "accepted_members": [], "excluded_members": [], "linked_entity_id": None,
               "evidence": [], "raw_balance": str(row["raw"]),
-              "net_supply_pct": row["scale_pct"], "_members_total": sorted(row["members"])}
+              "net_supply_pct": row["scale_pct"]}
               for cid, row in sorted(cands.items())]}
+    try:
+        write_members_sidecar(side_path, {cid: row["members"] for cid, row in cands.items()})
+    except OSError as e:
+        return _report([f"成员清单旁车写入失败: {e}"])
     with open(out_path, "w", encoding="utf-8") as fh:
         json.dump(obj, fh, ensure_ascii=False, indent=1)
-    log(f"distribution 模板 {len(cands)} 条 → {out_path}")
+    log(f"distribution 模板 {len(cands)} 条 → {out_path}（成员清单 → {os.path.basename(side_path)}）")
     return 0
 
 
@@ -392,6 +411,7 @@ def cmd_template(a):
         return _report([f"源报告含重复候选 ID: {sorted(dups)[:5]}——扫描器产物异常，先排查"])
     try:
         out_path = str(safe_case_file(case_dir, a.out, must_exist=False))
+        side_path = str(safe_case_file(case_dir, sidecar_rel(a.out), must_exist=False))
     except ValueError as exc:
         return _report([str(exc)])
     if os.path.isfile(out_path) and not a.force:
@@ -414,12 +434,16 @@ def cmd_template(a):
             "evidence": [],
             "tier_impact": {"max_possible_impact": machine_tier_impact(c["scale_pct"]),
                             "note": None},
-            "_members_total": sorted(c["members"]),
         } for cid, c in sorted(cands.items())],
     }
+    try:
+        write_members_sidecar(side_path, {cid: c["members"] for cid, c in cands.items()})
+    except OSError as e:
+        log(f"成员清单旁车写入失败: {e}")
+        return 2
     with open(out_path, "w", encoding="utf-8") as f:
         json.dump(tpl, f, ensure_ascii=False, indent=1)
-    log(f"模板 {len(tpl['adjudications'])} 条候选 → {out_path}（成员级逐条填写后跑 validate）")
+    log(f"模板 {len(tpl['adjudications'])} 条候选 → {out_path}（成员清单 → {os.path.basename(side_path)}；逐条填写后跑 validate）")
     return 0
 
 
@@ -578,7 +602,7 @@ def _report(fails):
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="subcmd", required=True)
-    t = sub.add_parser("template", help="生成裁决模板（sha256/成员全集/机器 tier_impact 预填）")
+    t = sub.add_parser("template", help="生成裁决模板（sha256/机器 tier_impact 预填；成员清单写同目录 <台账名>.members.json）")
     t.add_argument("--case-dir", required=True)
     t.add_argument("--out", default="candidate_adjudications.json")
     t.add_argument("--force", action="store_true")
@@ -588,7 +612,7 @@ def main():
     v.add_argument("--entity-file", default=None,
                    help="实体名册 {entity_id:[addr…]}——linked_entity 绑定校验；"
                         "存在 pattern_confirmed 裁决时必传（freeze 强制传入）")
-    dt = sub.add_parser("distribution-template", help="由 final scan 生成分布异常成员级裁决模板")
+    dt = sub.add_parser("distribution-template", help="由 final scan 生成分布异常成员级裁决模板；成员清单写同目录 <台账名>.members.json")
     dt.add_argument("--case-dir", required=True)
     dt.add_argument("--scan", required=True)
     dt.add_argument("--out", default="distribution_adjudications.json")

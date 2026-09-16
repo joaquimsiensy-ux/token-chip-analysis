@@ -1,0 +1,19 @@
+scripts/report/adjudication_validator.py cmd_validate: unchanged PASS
+scripts/report/adjudication_validator.py cmd_distribution_validate: unchanged PASS
+scripts/report/adjudication_validator.py cmd_pattern_validate: unchanged PASS
+scripts/report/handoff_manifest.py cmd_verify: unchanged PASS
+scripts/report/handoff_manifest.py _reverse_bound_reason: unchanged PASS
+scripts/report/handoff_manifest.py check_bound_file: unchanged PASS
+scripts/report/handoff_manifest.py git_sha: unchanged PASS
+scripts/report/handoff_manifest.py cmd_freeze: unchanged PASS (except specified WARN insertion)
+scripts/tests/test_adjudication_validator.py: attempt1 preserved byte-for-byte PASS
+scripts/tests/test_distribution_gate.py: attempt1 preserved byte-for-byte PASS
+B existing tests unchanged after removing only new function and main call: PASS
+attempt1 RED preserved as exact byte prefix: PASS
+git diff --check: PASS
+run_all launch command: nohup python3 scripts/tests/run_all.py > /tmp/run_all_t1.log 2>&1 &
+shell launch stderr: zsh:1: nice(5) failed: operation not permitted
+Final run_all: exit 1; 145 PASS / 149 total; 4 FAIL.
+run_all log SHA256: 41d1a5b70b6a8e49aba8cc64994c1103a182c3a7d88504ce63eca433cc610781
+Missing fixture .staging_b3/routeA_pilot/426649168.json.gz: exists=False; git ls-files empty.
+Final HEAD: 14f249631895cc79954486174ddce5569cc63387
