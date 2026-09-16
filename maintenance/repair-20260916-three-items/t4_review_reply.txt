@@ -1,0 +1,76 @@
+# 复核 T4: 退回
+
+§2 存在命令语法和事实表述错误，需要先修订工单。复核基线为 `22d81bb`；结束时 HEAD 未变，工作树仍干净。未修改文件、未执行 Git 写操作，全程离线。
+
+**① §2 CHANGELOG 文案：不通过。**
+
+必须修正以下内容：
+
+- **查询命令语法不符。** `inspect` 的文件参数是必填 `--file`，两命令都要求 `--case-dir`；`lookup` 的 `--in` 是 `action="append"`，多个文件必须重复该选项。实际 parser 在内存中的解析结果：
+  ```text
+  inspect --case-dir . data/a.json                 → exit 2，缺少 --file
+  inspect --case-dir . --file data/a.json          → 解析通过
+  lookup --case-dir . --addr X --in a.json b.json  → exit 2，不识别 b.json
+  lookup --case-dir . --addr X --in a.json --in b.json → 解析通过
+  ```
+  此验证仅执行参数解析，没有运行命令处理函数。应据此修订工单第 28 行。证据：[handoff_manifest.py:1902](/Users/uravvv/.claude/worktrees/tca-three-items/scripts/report/handoff_manifest.py:1902)。
+
+- **“不截断 JSON”放在 `inspect` 描述中不准确。** `inspect` 输出文本树，标量样本使用 `repr(value)[:80]`；完整 JSON 输出属于 `lookup --json`。证据：[handoff_manifest.py:1450](/Users/uravvv/.claude/worktrees/tca-three-items/scripts/report/handoff_manifest.py:1450)、[1592](/Users/uravvv/.claude/worktrees/tca-three-items/scripts/report/handoff_manifest.py:1592)。
+
+- **“既有函数零改动”过于绝对。** 对 `15d943c^ → 15d943c` 的既有顶层函数逐一比较，唯一变化是 `main`，包含 parser 注册和命令分派。应限定为“既有命令处理函数未改；`main` 新增注册与分派”。
+
+- **根因统计有出入。** 入库记录为 FORGGIE 12 件、EGL1 3 件、APU 63 件，合计 **78 件**，不是 80 件；若 80 来自更新清点，需要注明依据。另，“已有命令无人用”也过于绝对，原始调研明确记录 EGL1 使用 `facts_gate` 19 次。证据：[入库统计:223](/Users/uravvv/.claude/worktrees/tca-three-items/maintenance/repair-20260915-stage2-closeout/plan_v2_approved.md:223)、[原始调研:37](/Users/uravvv/.claude/plans/tca-three-items-20260915.md:37)。
+
+以下登记内容与仓库吻合：
+
+- **附录 F、绿例、测试名正确。** 见 [report-template.md:223](/Users/uravvv/.claude/worktrees/tca-three-items/references/report-template.md:223)、[test_repair_batch_d.py:539](/Users/uravvv/.claude/worktrees/tca-three-items/scripts/tests/test_repair_batch_d.py:539)、[test_handoff_manifest.py:531](/Users/uravvv/.claude/worktrees/tca-three-items/scripts/tests/test_handoff_manifest.py:531)。相对路径写事件记录及自检也在场。
+- **旁车与兼容性描述正确。** 实际为 `foo.json → foo.members.json`，先写旁车，再写台账；保留“老台账带 `_members_total` 仍 PASS”用例。见 [adjudication_validator.py:193](/Users/uravvv/.claude/worktrees/tca-three-items/scripts/report/adjudication_validator.py:193)、[兼容用例:400](/Users/uravvv/.claude/worktrees/tca-three-items/scripts/tests/test_adjudication_validator.py:400)。
+- **排除规则、exit 2、卫生 WARN 正确。** 精确规则为 `\.bak(_|$)|\.superseded(\.|$)` 和完整目录分量 `_history`；`_pre_`、`.vN.` 只参与卫生提示。见 [handoff_manifest.py:120](/Users/uravvv/.claude/worktrees/tca-three-items/scripts/report/handoff_manifest.py:120)、[显式冲突:274](/Users/uravvv/.claude/worktrees/tca-three-items/scripts/report/handoff_manifest.py:274)、[WARN:1679](/Users/uravvv/.claude/worktrees/tca-three-items/scripts/report/handoff_manifest.py:1679)。
+
+Git 对象字节计数全部吻合：
+
+| 文件（`references/`） | `b4f80cd` | `15d943c` | 当前 HEAD |
+|---|---:|---:|---:|
+| `split-run.md` | 28,162 | 28,130 | 27,772 |
+| `context-discipline.md` | 9,257 | 9,256 | 9,256 |
+| `report-template.md` | 42,499 | 42,491 | 42,491 |
+| `scan-schemas.md` | 104,942 | 104,941 | 104,941 |
+| 合计 | 184,860 | 184,818 | 184,460 |
+
+三批相对基线净减 **42 B**。指定 `git diff --stat b4f80cd 15d943c -- scripts/ references/` 共列 10 文件，其中生产逻辑文件确为 2；`run_all.py` 和 `a5_report_seal.py` 均无差异，SUITE 为 **149→149**。当前合并树为 151 项，不影响“三批新增 SUITE 入口 0”的结论。
+
+复核轮数、盲审结果与 r1 的 **283 项通过**均有对应记录；后者见 [t3_r1_accept_fable.txt:32](/Users/uravvv/.claude/worktrees/tca-three-items/maintenance/repair-20260916-three-items/t3_r1_accept_fable.txt:32)。
+
+**② 插入位置、体例与版本检查：通过。**
+
+原索引、详细标题确在 `CHANGELOG.md:13`、`:90`。新增条目的标题、日期、粗体分项及成本指标与相邻版本体例一致。
+
+我仅在内存中应用 §2 原文，并运行现有检查函数：
+
+| 检查 | 当前文件实跑 | 内存模拟修改后 |
+|---|---|---|
+| `changelog_lint.py` | exit 0；活跃 72、归档 139 | exit 0；活跃 **73**、归档 139 |
+| `test_version_consistency.py` | exit 0；7.1.0 | exit 0；**7.1.1** |
+| `docs_lint.py --all` | exit 0；59 文档 | exit 0；59 文档 |
+
+无撞号或倒排。版本测试的四处比较——`pyproject`、CHANGELOG 首索引、首详细条目、SKILL 注释——均被覆盖，权威源仍为 VERSION。见 [test_version_consistency.py:12](/Users/uravvv/.claude/worktrees/tca-three-items/scripts/tests/test_version_consistency.py:12)。
+
+模拟中 `SKILL.md` 为 **8,024→8,024 B**，VERSION 的末尾换行保持。
+
+**③ 白名单：够用，没有第五处当前版本号需要同步。**
+
+全库检索 `7\.1\.0` 后，白名单外的 [split-run.md:183](/Users/uravvv/.claude/worktrees/tca-three-items/references/split-run.md:183) 是“自 7.1.0 起”的历史能力说明，应保留。其他命中属于计划、旧工单或验收记录，也不应批量替换。另新增 `t4_done.md` 已获 §0 明确允许。
+
+**④ 验收命令与完成标准：命令有效，但全绿声明需要加条件。**
+
+三个文档/版本命令已实跑通过；`run_all.py` 的 151 个入口均存在，返回规则是全部成功才 exit 0。它会创建临时夹具，因此本次零写入复核未执行全套。
+
+工单第 31 行预写“合并树全套通过”，**目前没有对应的入库证据**：现有 T3 日志是 **149 PASS、0 FAIL**，并明确显示版本 7.0.4；当前 `t4_done.md` 尚不存在。见 [t3_run_all_fable.log:63](/Users/uravvv/.claude/worktrees/tca-three-items/maintenance/repair-20260916-three-items/t3_run_all_fable.log:63)。
+
+应明确：只有最终 T4 树四条验收命令全部 exit 0，且全套 **151 PASS、0 FAIL**，才能写“完成”及该全绿声明；环境失败只能记录原因并“停工”，待同一最终树的本机验收补齐。这样 §1、§3、§4 才能形成明确的机器判定规则。
+
+**非阻断建议：**
+
+- 补 `git status --porcelain=v1 --untracked-files=all`，确认新增文件仅为 `t4_done.md`；`git diff --stat HEAD` 不显示未跟踪文件。
+- 将“无手册/脚本差异”检查改为 `git diff --exit-code HEAD -- references/ scripts/`，直接记录退出码，避免管道掩盖 Git 错误。
+
