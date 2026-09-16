@@ -1,4 +1,4 @@
-# 工单 T1（v3）：备份堆积与裁决台账瘦身 —— repair-20260916-three-items 第一批（分支 `fix/three-items-20260916`）
+# 工单 T1（v3.1，codex 三轮复核通过）：备份堆积与裁决台账瘦身 —— repair-20260916-three-items 第一批（分支 `fix/three-items-20260916`）
 
 > 出处：用户 2026-09-16 批准的三项修复计划（`~/.claude/plans/tca-three-items-20260915.md` §2.3）。本批只做第 3 项。原则：**不增加 skill 上下文；能删的不新增，能改的不新增**。
 > 基线：本仓库分支 `fix/three-items-20260916`，HEAD 为 `b4f80cd`（main 7.0.4＋W1）的后继（工单已 commit）。
@@ -46,7 +46,7 @@ def write_members_sidecar(side_path, members_by_cid):
 
 - `:394`（锚 `out_path = str(safe_case_file(case_dir, a.out, must_exist=False))`）同一 `try` 内紧接 `side_path = str(safe_case_file(case_dir, sidecar_rel(a.out), must_exist=False))`。
 - `:417`（锚 `"_members_total": sorted(c["members"]),`）整行删除；`:416` 行尾（锚 `"note": None},`）保持逗号即可。
-- `:420-422`（锚 `with open(out_path, "w", encoding="utf-8") as f:` … `log(f"模板 {len(tpl['adjudications'])} 条候选 → {out_path}（成员级逐条填写后跑 validate）")`）：**同样先旁车后台账**：防覆盖检查（`:397-398`）通过 → `write_members_sidecar(side_path, {cid: c["members"] for cid, c in cands.items()})` → 成功后写台账；旁车 `OSError` 时 `log(f"成员清单旁车写入失败: {e}"); return 2`（台账未创建）。log 改为 `…→ {out_path}（成员清单 → {os.path.basename(side_path)}；逐条填写后跑 validate）`。
+- `:420-422`（锚 `with open(out_path, "w", encoding="utf-8") as f:` … `log(f"模板 {len(tpl['adjudications'])} 条候选 → {out_path}（成员级逐条填写后跑 validate）")`）：**同样先旁车后台账**：防覆盖检查（`:397-399`）通过 → `write_members_sidecar(side_path, {cid: c["members"] for cid, c in cands.items()})` → 成功后写台账；旁车 `OSError` 时 `log(f"成员清单旁车写入失败: {e}"); return 2`（台账未创建）。log 改为 `…→ {out_path}（成员清单 → {os.path.basename(side_path)}；逐条填写后跑 validate）`。
 
 ### A4 帮助文案
 
@@ -58,7 +58,7 @@ def write_members_sidecar(side_path, members_by_cid):
 - **先加独立契约用例**（放在 `test_adjudication_validator.py` `main()` 里**第一次 `fill_all` 调用（`:121`）之前**，用独立临时目录，不依赖 fill_all）：
   1. `template 不含 _members_total 且旁车在场`：`template --force` 后，台账每条记录无该键；`candidate_adjudications.members.json` 存在、键集合＝候选 id 集合、每个值非空列表。旁车不存在时通过 `check(...)` 输出 FAIL（不得抛异常）。
   2. `旁车路径不合法即拒且台账未写`：预置 `candidate_adjudications.members.json` 为**目录**（或符号链接）→ template 退出码非 0，且 `candidate_adjudications.json` 不存在。
-  3. `旁车不可写即拒且台账未写`：用 `unittest.mock.patch` 让 `write_members_sidecar`（或其内 `open`）抛 `PermissionError`，直接调用 `cmd_template`/`cmd_distribution_template`（构造 argparse.Namespace）→ 返回非零，台账文件不存在；若预置了旧台账并带 `--force`，旧台账内容不变。
+  3. `旁车不可写即拒且台账未写`：用 `unittest.mock.patch` 让 `write_members_sidecar`（或其内 `open`）抛 `PermissionError`（旧代码无该函数时把 `AttributeError`/`ImportError` 捕获记为 FAIL，继续跑其他用例），直接调用 `cmd_template`/`cmd_distribution_template`（构造 argparse.Namespace）→ 返回非零，台账文件不存在；若预置了旧台账并带 `--force`，旧台账内容不变。
 - **再改联动读取**：`:99-101`（锚 `adj = json.load(open(os.path.join(d, "candidate_adjudications.json")))` … `members = r.pop("_members_total")`）：`:99` 后加 `side = json.load(open(os.path.join(d, "candidate_adjudications.members.json")))`，`:101` 改 `members = side[r["candidate_id"]]`。
 - `scripts/tests/test_distribution_gate.py:377`（锚 `for x in row.pop("_members_total", [])]`）：同法从 `distribution_adjudications.members.json` 读 `side[row["candidate_id"]]`；旁车不存在时该用例应 FAIL（不要 `.get(…, [])` 静默）。并新增独立断言：distribution-template 后台账无 `_members_total`、旁车成员集合与源扫描候选成员**完全一致**。
 - **兼容用例**（`test_adjudication_validator.py` 现有用例之后）：`老台账带 _members_total 仍 PASS`：`fill_all` 后给每条记录补回 `"_members_total": <该候选成员列表>` 写回，`validate` 退出码仍 0。
