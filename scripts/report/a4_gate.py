@@ -571,6 +571,144 @@ def cmd_limits_extract(a):
     return 0
 
 
+def seal_integrity_errors(case_dir: Path, seal: dict) -> tuple[list[str], set[str]]:
+    """G9 non-image checks, sharing one traversal with sealed-path consumers."""
+    case_dir = Path(case_dir).resolve()
+    errors, sealed_paths = [], set()
+    if seal.get("schema") != "a4-seal/v4" or seal.get("verdict") != "PASS" or not seal.get("claims"):
+        return (["a4_seal.json 无效（schema/verdict/claims 缺失）——"
+                 "A4 收尾必须 a4_gate.py finalize 封口成功后才编报告"], sealed_paths)
+    errors.extend(f"A4 revision 链无效: {error}" for error in validate_revision_chain(case_dir, seal))
+    def checked(rel, label):
+        if not isinstance(rel, str) or os.path.isabs(rel) or ".." in Path(rel).parts:
+            raise ValueError(f"{label} 路径非法: {rel}")
+        raw = case_dir / rel
+        if raw.is_symlink():
+            raise ValueError(f"{label} 拒绝符号链接: {rel}")
+        resolved = raw.resolve()
+        resolved.relative_to(case_dir)
+        if not resolved.is_file():
+            raise ValueError(f"{label} 不存在: {rel}")
+        return resolved
+
+    all_entries = list(seal.get("sealed_files", []))
+    all_entries += [seal.get("registry") or {}, seal.get("verdicts") or {}]
+    for ent in all_entries:
+        try:
+            rel = ent["path"]
+            if rel in sealed_paths:
+                raise ValueError(f"封口路径重复: {rel}")
+            sealed_paths.add(rel)
+            _p = checked(rel, "封口文件")
+            _h = hashlib.sha256(_p.read_bytes()).hexdigest()
+            if _h != ent.get("sha256"):
+                errors.append(f"封口后被改动: {rel}")
+        except Exception as e:
+            errors.append(f"封口条目非法: {e}")
+    required = {"findings.md", "analysis-state.json", "facts.json", "identity_gate.json",
+                "a4_claims.json"}
+    if seal.get("workflow_type") == "independent-audit":
+        required.add("claim_registry.json")
+    else:
+        source = seal.get("distribution_claim_source") or {}
+        if source.get("path"):
+            required.add(source["path"])
+    if not required <= sealed_paths:
+        errors.append(f"封口资产不全: {sorted(required - sealed_paths)}")
+    if not set(seal.get("claim_files") or []) <= sealed_paths:
+        errors.append("claim 引用文件未全部封口")
+
+    return errors, sealed_paths
+
+
+DOWNSTREAM_FIX_ORDER = "freeze → A4 register/finalize → 受影响复核路 → runner finalize → shared_release_receipt → rounds → A5"
+
+
+def downstream_stale(case_dir: Path) -> list[dict]:
+    """Inspect five downstream bindings without changing any artifacts."""
+    case_dir = Path(case_dir).resolve()
+    result = []
+
+    def load(rel):
+        return json.loads(safe_case_file(case_dir, rel).read_text(encoding="utf-8"))
+
+    def inspect(item, sources, compare):
+        expected = actual = None
+        try:
+            paths = [safe_case_file(case_dir, name, must_exist=False) for name in sources]
+            if not all(path.is_file() for path in paths):
+                status = "absent"
+            else:
+                expected, actual = compare()
+                status = "ok" if expected == actual and expected is not None else "stale"
+        except Exception as exc:
+            status, actual = "stale", str(exc)
+        result.append({"item": item, "expected": expected, "actual": actual,
+                       "status": status, "fix_order": DOWNSTREAM_FIX_ORDER})
+
+    def registry():
+        ref = load("adversarial_review.json").get("claim_registry") or {}
+        path = safe_case_file(case_dir, ref.get("path"))
+        if path != safe_case_file(case_dir, CLAIMS_NAME):
+            return ref, {"path": CLAIMS_NAME, "sha256": sha256_file(case_dir / CLAIMS_NAME)}
+        return ref.get("sha256"), sha256_file(path)
+
+    inspect("adversarial_review.claim_registry", ["adversarial_review.json", CLAIMS_NAME], registry)
+    inspect("shared_release_receipt.adversarial_review",
+            ["shared_release_receipt.json", "adversarial_review.json"],
+            lambda: ((load("shared_release_receipt.json").get("inputs", {})
+                      .get("adversarial_review.json", {}).get("sha256")),
+                     sha256_file(safe_case_file(case_dir, "adversarial_review.json"))))
+
+    def terminal_row():
+        rounds = load("distribution_rounds.json")
+        terminal = rounds.get("terminal") or {}
+        rows = [row for row in rounds.get("rounds", []) if row.get("round_n") == terminal.get("round_n")]
+        if len(rows) != 1:
+            raise ValueError("rounds terminal 指针不唯一")
+        return terminal, rows[0]
+
+    inspect("rounds.a4_seal_sha", ["distribution_rounds.json", SEAL_NAME],
+            lambda: (terminal_row()[1].get("a4_seal_sha"),
+                     sha256_file(safe_case_file(case_dir, SEAL_NAME))))
+
+    def freeze_revision():
+        terminal, _row = terminal_row()
+        rel = terminal.get("final_scan_path")
+        path = safe_case_file(case_dir, rel, must_exist=False)
+        if not path.is_file():
+            return "missing_scan", None
+        return (load(rel).get("input_binding", {}).get("entity_freeze_revision"),
+                len(load("entity_freeze.json")["revisions"]) + 1)
+
+    inspect("rounds.entity_freeze_revision", ["distribution_rounds.json", "entity_freeze.json"], freeze_revision)
+    if result[-1]["expected"] == "missing_scan":
+        result[-1].update(status="absent", expected=None)
+
+    def universe():
+        ref = load("dormant_warehouse_audit.json").get("universe_ref") or {}
+        path = safe_case_file(case_dir, ref.get("path"), must_exist=False)
+        return ref.get("sha256"), sha256_file(path) if path.is_file() else None
+
+    inspect("dormant_warehouse_audit.universe_ref", ["dormant_warehouse_audit.json"], universe)
+    if result[-1]["status"] == "stale" and result[-1]["actual"] is None:
+        result[-1]["status"] = "absent"
+    return result
+
+
+def cmd_downstream_check(a):
+    case_dir = Path(a.case_dir).resolve()
+    rows = downstream_stale(case_dir)
+    print("item\tstatus\texpected\tactual")
+    for row in rows:
+        print("\t".join(str(row[key]) for key in ("item", "status", "expected", "actual")))
+    print("fix_order: " + DOWNSTREAM_FIX_ORDER)
+    if a.json_out:
+        safe_case_file(case_dir, a.json_out, must_exist=False).write_text(
+            json.dumps(rows, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    return 3 if any(row["status"] == "stale" for row in rows) else 0
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -594,10 +732,14 @@ def main():
     limits.add_argument("--findings", default="findings.md")
     limits.add_argument("--out", default="limits.json")
     limits.add_argument("--heading", default="局限|观测边界", help="匹配独立节标题的正则，必须唯一匹配")
+    downstream = sub.add_parser("downstream-check", help="只读检查下游绑定漂移；stale exit 3")
+    downstream.add_argument("--case-dir", required=True)
+    downstream.add_argument("--json-out")
     a = ap.parse_args()
     try:
         return {"register": cmd_register, "finalize": cmd_finalize,
-                "limits-extract": cmd_limits_extract}[a.subcmd](a)
+                "limits-extract": cmd_limits_extract,
+                "downstream-check": cmd_downstream_check}[a.subcmd](a)
     except Exception as e:
         print(f"[{a.subcmd}] 脚本自身错误（exit 1，修完重跑）: {e}", file=sys.stderr)
         return 1

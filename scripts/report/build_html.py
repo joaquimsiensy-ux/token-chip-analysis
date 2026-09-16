@@ -337,59 +337,15 @@ def main():
             _case = Path(mddir).resolve()
             if _sdir != _case:
                 warns.append("[WARN] G9 seal 与报告不在同一案目录")
-            if _seal.get("schema") != "a4-seal/v4" or _seal.get("verdict") != "PASS" \
-                    or not _seal.get("claims"):
-                warns.append("[WARN] G9 a4_seal.json 无效（schema/verdict/claims 缺失）——"
-                             "A4 收尾必须 a4_gate.py finalize 封口成功后才编报告")
-            else:
-                import a4_gate
-                for _chain_error in a4_gate.validate_revision_chain(_case, _seal):
-                    warns.append(f"[WARN] G9 A4 revision 链无效: {_chain_error}")
+            import a4_gate
+            _g9_errs, _sealed_paths = a4_gate.seal_integrity_errors(_case, _seal)
+            warns.extend("[WARN] G9 " + e for e in _g9_errs)
             if _seal.get("schema") == "a4-seal/v4" and _seal.get("verdict") == "PASS" \
                     and _seal.get("claims") and _seal.get("workflow_type") != formal_modes[a.mode]:
                 warns.append(f"[WARN] G9 workflow_type 与构建模式不匹配: "
                              f"seal={_seal.get('workflow_type')} mode={a.mode}")
             elif _seal.get("schema") == "a4-seal/v4" and _seal.get("verdict") == "PASS" \
                     and _seal.get("claims"):
-                def checked(rel, label):
-                    if not isinstance(rel, str) or os.path.isabs(rel) or ".." in Path(rel).parts:
-                        raise ValueError(f"{label} 路径非法: {rel}")
-                    raw = _case / rel
-                    if raw.is_symlink():
-                        raise ValueError(f"{label} 拒绝符号链接: {rel}")
-                    resolved = raw.resolve()
-                    resolved.relative_to(_case)
-                    if not resolved.is_file():
-                        raise ValueError(f"{label} 不存在: {rel}")
-                    return resolved
-
-                all_entries = list(_seal.get("sealed_files", []))
-                all_entries += [_seal.get("registry") or {}, _seal.get("verdicts") or {}]
-                for ent in all_entries:
-                    try:
-                        rel = ent["path"]
-                        if rel in _sealed_paths:
-                            raise ValueError(f"封口路径重复: {rel}")
-                        _sealed_paths.add(rel)
-                        _p = checked(rel, "封口文件")
-                        _h = hashlib.sha256(_p.read_bytes()).hexdigest()
-                        if _h != ent.get("sha256"):
-                            warns.append(f"[WARN] G9 封口后被改动: {rel}")
-                    except Exception as e:
-                        warns.append(f"[WARN] G9 封口条目非法: {e}")
-                required = {"findings.md", "analysis-state.json", "facts.json", "identity_gate.json",
-                            "a4_claims.json"}
-                if _seal.get("workflow_type") == "independent-audit":
-                    required.add("claim_registry.json")
-                else:
-                    source = _seal.get("distribution_claim_source") or {}
-                    if source.get("path"):
-                        required.add(source["path"])
-                if not required <= _sealed_paths:
-                    warns.append(f"[WARN] G9 封口资产不全: {sorted(required - _sealed_paths)}")
-                if not set(_seal.get("claim_files") or []) <= _sealed_paths:
-                    warns.append("[WARN] G9 claim 引用文件未全部封口")
-
                 _cdir = (_seal.get("charts_dir") or "charts/final").rstrip("/")
                 try:
                     if os.path.isabs(_cdir) or ".." in Path(_cdir).parts:

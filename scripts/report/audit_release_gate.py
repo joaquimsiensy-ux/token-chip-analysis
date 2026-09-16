@@ -53,6 +53,7 @@ NEW_ANALYSIS_REQUIRED = (
 LEGACY_READONLY_RECEIPT = "legacy_readonly_receipt.json"
 REQUIRED_BY_PROFILE = {
     "new-analysis": SHARED_REQUIRED + NEW_ANALYSIS_REQUIRED,
+    "stage2-dryrun": SHARED_REQUIRED + ("distribution_scan.json", "distribution_rounds.json"),
     "independent-audit": SHARED_REQUIRED + AUDIT_ONLY_REQUIRED,
 }
 PASS_WORDS = {"pass", "passed", "ok"}
@@ -1555,8 +1556,8 @@ def _run(case_dir: Path, report: Path | None, *, profile="independent-audit"):
     case_dir = case_dir.resolve()
     if profile not in REQUIRED_BY_PROFILE:
         raise ValueError(f"未知发布 profile: {profile}")
-    if profile == "independent-audit" and report is None:
-        errors.append("independent-audit 发布必须带 --report 以重验报告哈希绑定（fail-closed）")
+    if profile in ("independent-audit", "stage2-dryrun") and report is None:
+        errors.append(f"{profile} 发布必须带 --report 以重验报告哈希绑定（fail-closed）")
     legacy_marker = case_dir / LEGACY_READONLY_RECEIPT
     if legacy_marker.exists() or legacy_marker.is_symlink():
         errors.append("只读降级 legacy 案不得编译新正式 analysis")
@@ -1603,7 +1604,7 @@ def _run(case_dir: Path, report: Path | None, *, profile="independent-audit"):
         }
         check_adversarial(case_dir, data["adversarial_review.json"], errors,
                           expected_adversarial_target)
-    if profile == "new-analysis" and "distribution_scan.json" in data:
+    if profile in ("new-analysis", "stage2-dryrun") and "distribution_scan.json" in data:
         try:
             import holder_distribution_scan
             errors.extend("持仓分布 initial scan: " + x for x in
@@ -1613,9 +1614,9 @@ def _run(case_dir: Path, report: Path | None, *, profile="independent-audit"):
             errors.append(f"持仓分布 initial scan validator 失败: {exc}")
         if case_chain:
             check_distribution_snapshot_binding(case_dir, data, case_chain, errors)
-    if profile == "new-analysis":
+    if profile in ("new-analysis", "stage2-dryrun"):
         # F-C5/F-C1（批 C 消化轮）：图 2 对账收据复验＋阵营序列 producer 绑定复验
-        if "figure2_check_receipt.json" in data:
+        if profile == "new-analysis" and "figure2_check_receipt.json" in data:
             check_figure2_receipt(case_dir, data["figure2_check_receipt.json"], errors)
         state_path = case_dir / "analysis-state.json"
         if state_path.is_file():
@@ -1634,26 +1635,27 @@ def _run(case_dir: Path, report: Path | None, *, profile="independent-audit"):
                     release_target["as_of_block"] = expected_target["as_of_block"]
                 check_series_binding(case_dir, state_obj, errors,
                                      expected_target=release_target)
-            if "fig1_legend_receipt.json" in data:
+            if profile == "new-analysis" and "fig1_legend_receipt.json" in data:
                 check_figure1_legend_receipt(
                     case_dir, data["fig1_legend_receipt.json"], state_obj, errors)
-        elif "fig1_legend_receipt.json" in data:
+        elif profile == "new-analysis" and "fig1_legend_receipt.json" in data:
             errors.append("new-analysis 有图 1 legend receipt 但缺标准 analysis-state.json")
-        # F-D8（批 D 消化轮 1）：A5 seal 在发布闸**重验**，不只查存在——A5 的
-        # distribution_bundle 绑定链（final scan → final_bindings.entity_freeze 等三验）
-        # 与 provenance_flip_bundle 由此接入发布必经路：双删 freeze＋ledger、冻结后改
-        # 终态件在这里现形。重验需要待发布报告实物，缺 --report 即 fail-closed。
-        seal_path = case_dir / "a5_report_seal.json"
-        if seal_path.is_file():
-            if report is None:
-                errors.append("new-analysis 发布必须带 --report 以重验 A5 seal（fail-closed）")
-            else:
-                try:
-                    import a5_report_seal
-                    errors.extend("A5 seal 重验: " + x for x in a5_report_seal.validate_seal(
-                        seal_path, report, case_dir / "a4_seal.json"))
-                except Exception as exc:
-                    errors.append(f"A5 seal 重验器失败: {exc}")
+        if profile == "new-analysis":
+            # F-D8（批 D 消化轮 1）：A5 seal 在发布闸**重验**，不只查存在——A5 的
+            # distribution_bundle 绑定链（final scan → final_bindings.entity_freeze 等三验）
+            # 与 provenance_flip_bundle 由此接入发布必经路：双删 freeze＋ledger、冻结后改
+            # 终态件在这里现形。重验需要待发布报告实物，缺 --report 即 fail-closed。
+            seal_path = case_dir / "a5_report_seal.json"
+            if seal_path.is_file():
+                if report is None:
+                    errors.append("new-analysis 发布必须带 --report 以重验 A5 seal（fail-closed）")
+                else:
+                    try:
+                        import a5_report_seal
+                        errors.extend("A5 seal 重验: " + x for x in a5_report_seal.validate_seal(
+                            seal_path, report, case_dir / "a4_seal.json"))
+                    except Exception as exc:
+                        errors.append(f"A5 seal 重验器失败: {exc}")
     if "historical_chart" in claim_types:
         chart_path = case_dir / "chart_reconciliation.json"
         if not chart_path.is_file():
