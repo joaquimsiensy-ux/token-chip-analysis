@@ -1,0 +1,100 @@
+# 复核 T3: 退回
+
+基线：fix/three-items-20260916，HEAD=efb033da95c9d403c0a724f88b39b20c2221e2fd。首尾 git status --short 均为空；T1、T2 提交均为当前 HEAD 的祖先。
+
+第二轮六项中，第 1、2、5、6 项已闭合；第 3、4 项仍有未闭合问题。以下工单行号均指 maintenance/repair-20260916-three-items/workorder_t3.md。
+
+1. 通过：行号、锚文本及测试登记位置。
+
+已用 nl -ba 亲核，并逐个计数确认以下锚唯一：
+
+scripts/report/handoff_manifest.py：导入 :44、cmd_freeze :1402、main :1647、--check-unseal :1688、dispatch :1692–1693。
+scripts/tests/test_handoff_manifest.py：SCRIPT :43、write_json :63、make_case :73、结果汇总 print("=" * 40) :993。
+references/split-run.md:72、references/context-discipline.md:27：两条替换锚准确且唯一。
+
+建议：保持工单 :12 登记位置。注意该位置在测试 main 的 finally 清理之后（测试源码 :990–991），新增测试须自行准备夹具，不能复用已经删除的 root。
+
+2. 通过：共同路径守卫满足声明的防误读边界。
+
+scripts/lib/case_paths.py:16–40 确实校验原始路径非法段、绝对路径、逐段符号链接、realpath 包含关系与常规文件。工单 :23–26 先校验原始 rel，再以首段 casefold 拒绝 sealed，顺序合理。
+
+实际只读探测确认：./sealed/x.json、../outside.json、绝对路径均被拒；当前卷可解析 SCRIPTS/lib/case_paths.py，大小写变体确实需要 casefold。删除 lstrip 与反斜杠替换也避免了误拒合法名称。
+
+--addr-file 必须使用同一守卫，否则地址清单入口会绕过 sealed 防误读。工单已明确案根必须是真实案根，未把它包装成不可绕过的揭盲授权。
+
+建议：:19–29 保持原样。
+
+3. 退回：分页计数已闭合，depth 定义与用例仍冲突；lookup 第二轮问题已闭合。
+
+工单 :38–42、:64 的 total/returned/truncated/next_offset 定义可实现；标量 offset≥1 不输出值也已明确。
+
+但 :43 规定 depth=0 显示“本页选中项的一行摘要”，:89 却要求：
+
+“--path <A_UP>.meta --depth 0 → 输出不含 k、total=1 returned=1”。
+
+此时根节点是 {"k":1}，本页唯一选中项就是 k。按 :43，必须显示它的摘要；按 :89，又必须隐藏它。returned 与 depth 解耦没有消除这个矛盾。
+
+建议保留 :43 的按项摘要行为，将 :89 对应片段替换为：
+
+“--path <A_UP>.meta --depth 0 → 显示 k 的标量摘要，total=1 returned=1；另以 --path <A_UP> 比较深度：depth=0 显示 meta 摘要但不出现 k 的子项行，depth=1 出现 k 的子项行，两者 total=4 returned=4。”
+
+lookup 的四条规则已明确组合关系、首个存在字段的优先级、无效候选不回退、members/addresses 同扫、_key 冲突 exit 2，以及按来源位置去重。混合夹具预期 A 两条、B 一条成立；--json 忽略 --fields 并保留完整记录也无冲突。现有标准库足够，无须新增依赖。
+
+当前尚无两个子命令的实现，不能据工单认定“实际零写入”已经通过。
+
+4. 退回：用例①仍冲突，用例⑦的新监测方案存在漏检；其余夹具修正基本闭合。
+
+①退回：按第 3 项修正深度断言。“无 = 行”建议明确为“正文没有以 '= ' 开头的标量行”，避免把固定的 file= 和统计行算进去。
+
+②通过：JSONL 坏行计数、broken.json 返回 2 的要求可执行。
+
+③通过：当前 macOS 卷可执行大小写负例；./sealed 在原始路径校验阶段被拒，不能把它算作 sealed 分支覆盖。
+
+④通过：混合结构、非字符串成员、_key 冲突和同址多记录夹具已补齐。
+
+⑤通过：长 note、嵌套 meta、同时传 --fields，能够检验 JSON 完整输出。
+
+⑥通过：--addr-file 的符号链接、./sealed、绝对路径反例已补齐。建议 :94 明写“各简写调用补齐 --case-dir、有效地址入口和 --in”，尤其参数负例不能因为缺少必填参数而假通过。
+
+⑦退回：工单 :96 只把 open 的 mode 含 w/a/x/+ 算作写操作，会漏掉 os.open。实际只读调用 os.open 观察到 audit 参数为 (path, None, flags)；以相同事件格式在内存发送写 flags，mode 判据为 False、flags 判据为 True。没有执行实际写操作。
+
+此外，仅写“realpath(case) 前缀”不足以定义路径归属：普通字符串前缀会误收相邻目录；删除案内、指向案外的符号链接时，仅检查目标 realpath 又会漏掉案内目录项变更。重命名还必须检查源、目标两端。
+
+建议将 :96 的监测判据补成：
+
+“open 同时检查字符串 mode 和整数 flags；flags 含 O_WRONLY/O_RDWR/O_CREAT/O_TRUNC/O_APPEND 任一位即记录。路径按目录边界比较，不用裸 startswith；目录项变更检查词法绝对路径，文件访问同时检查解析后目标；rename 检查源、目标两端。事件参数按实际 audit 事件解析，处理 dir_fd；无法归属的写事件不得静默跳过。”
+
+建议增加内存合成 audit 事件自检，至少覆盖 mode=None 的写 flags、重命名目标在案内、删除案内外指符号链接，证明监测器确实能报警。
+
+工单 :97 另有一处 API 描述错误：os.lstat 返回元数据，不返回符号链接目标。建议改成：
+
+“符号链接用 os.lstat 记录元数据，并用 os.readlink 记录链接文本，不读取目标文件内容。”
+
+make_case:73、data/:83、sealed/:219、准备阶段子进程 :222，以及 write_json:63 不建父目录，均核实正确。RED 已本轮实际执行：inspect、lookup 均 exit 2，分别包含对应 invalid choice。未运行会写夹具的七条测试或 run_all，不能报告 GREEN。
+
+5. 通过：文档 UTF-8 字节不增，内存替换后的真实 docs_lint PASS。
+
+从工单 :105、:107 提取替换正文，保留原换行，独立精算：
+
+split-run.md:72：行正文 239 → 234 字节；文件 28135 → 28130，减少 5。
+context-discipline.md:27：行正文 273 → 272 字节；文件 9257 → 9256，减少 1。
+
+仅在内存替换两份文档后，执行真实 docs_lint.main(all_mode=True)，返回 0：
+
+PASS: 59 个文档，引用无断链、粗体配对完整（--all 全量模式）
+
+未发现其他代码或契约依赖删掉的整句。schema 常量仍在 handoff_manifest.py:54–59，测试仍由 run_all.py:70 登记。
+
+建议：两条替换文本及 -B 验收命令保持原样。
+
+6. 通过：与 T1 顺序施工兼容，白名单够用，干净基线条件已满足。
+
+T1 当前位置：排除规则 :120–132、add_path 排除处理 :274–279、卫生辅助函数 :1381–1399、freeze 内调用 :1468–1471。
+
+T3 在 :1402 前新增函数、尾部新增 parser/dispatch，不需要修改这些逻辑。文档中 T1 修改在 split-run.md:109–110，T3 修改 :72，不冲突。
+
+工单 :113 已明确 main 是既有函数体不变要求的唯一例外；测试辅助逻辑可放在新增测试函数内，包装脚本由测试在 scratch 中生成，不需要增加仓库文件白名单。
+
+建议：保持现有范围，修正上述工单 :89、:96–97 后再施工。
+
+本次未修改文件、未执行 Git 写操作、未联网、未读取 /Users/uravvv/.codex/。
