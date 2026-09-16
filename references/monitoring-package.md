@@ -40,7 +40,7 @@
 
 **addresses 字段纪律（交付前逐条对照）**：
 - **address 必须完整**，绝对不要缩写省略——一律从落盘数据文件复制；build_html.py 见省略号/星号会 WARN
-- **chain** 小写正式枚举：bsc / eth / base / sol / robinhood。arbitrum 只保留探索采集，
+- **chain** 小写枚举：bsc / eth / base / sol / robinhood（robinhood 为探索档）。arbitrum 只保留探索采集，
   正式门禁未齐，不生成正式监控包；新链适配完成后沿用小写简名
 - **role 以钱包标签开头**（与正文、附录 B 一致），后接一句话角色——看板卡片直接显示，正文读者拿标签来这里反查地址
 - **group**：同一关联集群填相同组名（看板视组内互转为内部调仓、**不算流出**）；独立地址留空 `""`

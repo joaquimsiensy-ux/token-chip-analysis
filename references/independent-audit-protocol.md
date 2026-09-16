@@ -102,8 +102,7 @@ claim 里的 `reproduce_command`。完整阴性命题还必须证明候选集完
 再由唯一生产生成器 `scripts/report/reproduce_receipt.py` 重跑：
 
 ```bash
-python3 scripts/report/reproduce_receipt.py <案目录> \
-  --output reproduce_output.json --receipt reproduce_receipt.json
+python3 scripts/report/reproduce_receipt.py <案目录>
 ```
 
 controller 会先确认正式输出不存在，再独占创建 staging 文件、设置

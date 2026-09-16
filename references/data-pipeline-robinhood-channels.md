@@ -27,11 +27,11 @@
 - `gas_trace.py`：候选地址原生币入金批量溯源（HyperSync transactions，50 址/批；基础设施剔除名单从 config.json 读）。⚠️ **COMPUTE 会话实测（链高 789 万时）走 HyperSync transactions 25 分钟无产出并连败退出**——链增高后此路已不可行，改用下面的 gas_trace_bs.py
 - `gas_trace_bs.py`：Blockscout gas 溯源。成功空结果写 `status=EMPTY/no_native_in`；四次网络失败进入 retry queue、exit 2 且不进入 done，二者不再混成同一记录。消费时仍须处理 `self_alias`，重点实体补 internal-transactions。
 - `pull_weth_pool.py`：**主池报价币侧 Transfer**（Pointless 2026-07-13 收编）——cost_engine 的输入；config.pool + 可选 quote_token（默认 WETH）
-- `cost_engine.py`：**tx 级 swap 对价重建**——本币和报价币分别使用 config 的 `decimals` / `quote_decimals`，不得再写死 18；逐 tx 配对出每实体成本/已实现盈亏。需 data/weth_pool.jsonl + data/quote_usd_hour.json + transit_contracts.json；config 可选 fee_distributor。
+- `cost_engine.py`：**tx 级 swap 对价重建**——本币和报价币分别使用 config 的 `decimals` / `quote_decimals`，不得再写死 18；逐 tx 配对出每实体成本/已实现盈亏。需 data/weth_pool.jsonl + data/quote_usd_hour.json + data/transit_contracts.json；config 可选 fee_distributor。
 - `pull_swaps.py` / `pull_swaps_v4.py`：与 Transfer 同样采用身份绑定、末块重叠续拉和事件键去重；V4 有任何解码失败不写完成 receipt。
 - `build_price.py`：**全历史 USD 价格重建**——方向由 token/quote 地址排序判定，V3 raw ratio 再乘 `10^(token_decimals-quote_decimals)` 校正单位；GT 分钟 K 没有任何重叠样本时 fail-closed，不得发布无交叉验证的价格序列。输入仍为 `data/ethusdt_1h.json` 与 `data/ohlcv_minute.json`。
-- `pull_lp_events.py` **用法与输出坑（2026-07-17 实测）**：①与其他脚本不同，**不读 config.json 的池子配置**，必须命令行传参 `--from-block N --pools 0x主池 --out data/lp_events.jsonl`（漏传 --from-block 直接 usage 报错、串行链会被短路）；②输出是**格式化 JSON 数组**（非 JSONL，逐行 json.loads 会炸）；③Mint/Burn/Collect 的 `amount0/amount1` 是**已解码浮点**（WETH 枚/本币枚），不是 wei——按 wei 再除 1e18 会把费流水全算成 0（本次 Collect 62 笔 4.33 WETH 首轮统计因此归零，重读字段才修正）（DUMBMONEY，07-17）
-  ⚠️ 依赖 `data/ethusdt_1h.json` 为 **list 格式** [[ts_ms,close]...]，而 cost_engine 的 quote_usd_hour.json 是 dict——两文件格式不同需各自生成（一行转换即可），首跑 FileNotFoundError 属预期（BEGGAR，07-17）
+- `pull_lp_events.py` **用法与输出坑（2026-07-17 实测）**：①与其他脚本不同，**`--from-block N` 必传**（漏传直接 usage 报错、串行链会被短路）；`--pools` 可省略则取 config.pools（CLI 优先）；`--out` 默认 data/lp_events.json；②输出是**格式化 JSON 数组**（非 JSONL，逐行 json.loads 会炸）；③Mint/Burn/Collect 的 `amount0/amount1` 是**已解码浮点**（WETH 枚/本币枚），不是 wei——按 wei 再除 1e18 会把费流水全算成 0（本次 Collect 62 笔 4.33 WETH 首轮统计因此归零，重读字段才修正）（DUMBMONEY，07-17）
+  cost_engine 的 `data/quote_usd_hour.json` 为 `[[ts,o,h,l,c],...]`；`data/ethusdt_1h.json` 属 build_price 输入，列为 `[[ts,close],...]`；pull_lp_events 不读小时线。
 - `pull_ohlcv.py`：GT 分钟K+小时K 翻页（带 UA/退避；pool 从 config.json 读）
 - **HyperSync 429 备选通道三件套**：`pull_transfers_rpc.py` → `pull_block_ts_anchors.py` → `merge_hs_rpc.py`。合并器遇 gzip EOF/坏 JSON/重复键立即失败，原输入只读；默认写 `transfers_merged.jsonl.gz`，完整复读、行数和哈希 receipt 通过后，只有显式 `--promote` 才替换输入。
 - `config.example.json`：复制到工作目录改名 config.json 按标的填写（cost_engine 用可加 fee_distributor/quote_token/deploy_block；gas_trace_bs 可加 extra_targets）

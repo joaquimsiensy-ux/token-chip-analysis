@@ -67,6 +67,7 @@ python3 ../tests/labels_manifest.py --write      # 发布落印（校验和 mani
 - 大文件源（accounts.csv/tokens.csv/brianleect）不在本地长存，重建前重下载：
 
 ```bash
+(cd sources || exit
 P="${CHIP_PROXY:?请先设置 CHIP_PROXY}"   # 代理地址不写死；脚本统一由 proxy_config.py 解析
 curl -sL -x $P -o accounts.csv https://raw.githubusercontent.com/dawsbot/eth-labels/v1/data/csv/accounts.csv
 curl -sL -x $P -o tokens.csv   https://raw.githubusercontent.com/dawsbot/eth-labels/v1/data/csv/tokens.csv
@@ -78,13 +79,14 @@ curl -sL -x $P -o scamsniffer_address.json https://raw.githubusercontent.com/sca
 # OFAC/ScamSniffer 更新后重跑 codetype（增量断点续跑）：
 ETH_RPC="https://ethereum-rpc.publicnode.com" python3 ../probe_codetype.py ofac_eth.txt ofac_eth_codetype.json
 ETH_RPC="https://ethereum-rpc.publicnode.com" python3 ../probe_codetype.py scamsniffer_address.json scamsniffer_codetype.json
+)
 ```
 
 **增量入库（免重建）与惯犯层刷新**：
 
 ```bash
-cd sources && python3 ../add_labels.py my_additions.csv        # 合并进现库 + 三闸事务（FAIL 还原）
-python3 ../accumulate_offenders.py && cd sources && python3 ../add_labels.py serial_actors.csv
+(cd sources && python3 ../add_labels.py my_additions.csv)        # 合并进现库 + 三闸事务（FAIL 还原）
+python3 accumulate_offenders.py && (cd sources && python3 ../add_labels.py serial_actors.csv)
 ```
 - add_labels 成功后补录 CSV 自动归档进 additions/（round-trip 保证）；**人工精修（改 name/evidence/category 级别）不要走 add_labels 常规层——写成 curation override 文件**（source=curation），否则重建时会被 manual 同级"先到保留"规则回退。
 - add_labels 在改发布表前先把补录源复制到 additions 临时 staging；随后依次跑 **validate + benchmark + manifest 三闸**，三闸与归档独占发布全部成功后 staging 才转正，之后才删除表/manifest 备份。任一失败恢复原表与旧 manifest，并清理 staging；重名只允许追加时分秒一次，二次重名直接拒绝，绝不覆盖既有归档。

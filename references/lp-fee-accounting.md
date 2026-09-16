@@ -59,7 +59,7 @@ callerDelta   = principalDelta + feesAccrued + 可选 hook delta
 
 ```text
 fee_rate_j = event.fee / 1_000_000
-gross_input_j = 正数一侧的 amount0 或 amount1
+gross_input_j = 经同 tx Transfer 校准的输入腿负值绝对值（data-pipeline-robinhood-traps 第 12 条）
 swap_fee_j ≈ gross_input_j × fee_rate_j
 ```
 
