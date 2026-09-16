@@ -5,3 +5,7 @@
 | 编号 | 来源 | 位置 | 问题 | 推荐修法 | 牵连面 | 用户裁决 |
 |---|---|---|---|---|---|---|
 | D1 | 盲审 R1 | `scripts/report/wave_scan.py:735-746` vs `references/analyze-workflow.md:161` | 文档承诺"份额阈值一律整数运算"，代码用浮点算 0.1% 线与必裁决线；已复现 total=10^24、持仓恰 0.1% 时判 False（阈值上浮 131072 raw） | 两处比较改整数交叉相乘（或 Fraction），补"恰好整数份额"回归用例 | wave_scan.py 不在 producer_history 登记；invariant_manifest 只登记脚本名与 schema；测试只绑产物哈希；旧案按当前版本重验需重跑（既定设计） | 待决 |
+
+## D2（R4 盲审 D4 附带）`scripts/solana/decode_txs_v2.py:8` 文头注释"按 sig 前 2 字符分 256 片"
+- 性质：仅 docstring 文字，与 `:75` 实际按 sig 前 2 字符（Base58 字母表，可能分片数远多于 256）不符；零行为影响。
+- 文档侧同错已由工单 R4 D4 改正；代码文件按用户原则不动，是否顺手订正注释待用户决策。
