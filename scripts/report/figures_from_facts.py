@@ -47,6 +47,7 @@ import math
 import os
 import sys
 import tempfile
+from pathlib import Path
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
@@ -276,19 +277,15 @@ def _write_check_receipt(a, verdict, okc, errs):
     os.replace(tmp, out)
 
 
-def mode_check(a):
-    # F-04 同族钳制（同 supply_truth_gate --tolerance-bps 的 F-02 模式）：--tol-pp 直接
-    # 决定图 2 末点对账 PASS/FAIL，是判定翻转参数——正式模式写死默认值，探索放宽必须
-    # 显式声明 --exploration（fail-loud，不静默夹回默认值）。exit 2=容差政策拒
-    # （调用方式非法，与对账 FAIL 的 exit 1 区分，同 supply_truth_gate 口径）
-    if not a.exploration and a.tol_pp != DEFAULT_TOL_PP:
-        print(f"FAIL: 正式模式 --tol-pp 写死 {DEFAULT_TOL_PP}pp（收到 {a.tol_pp}）"
-              f"——探索性放宽必须显式加 --exploration", file=sys.stderr)
-        raise SystemExit(2)
-    facts = Facts(_load(a.facts))
-    series = _load(a.series)
+def fig2_check_errors(facts_path: Path, series_path: Path, tol_pp: float) -> tuple[list[str], int]:
+    """Read-only endpoint reconciliation; no CLI exits, output, or receipts."""
+    try:
+        facts = Facts(_load(facts_path))
+        series = _load(series_path)
+    except (OSError, ValueError) as exc:
+        raise ValueError(str(exc)) from exc
     if not isinstance(series, list):
-        raise SystemExit("FAIL: --series 应为图 2 whale_series JSON（list of lines）")
+        return ["--series 应为图 2 whale_series JSON（list of lines）"], 0
     by_label = {(e.get("label") or "").strip(): (eid, e)
                 for eid, e in facts.entities.items()}
     errs, okc = [], 0
@@ -311,11 +308,26 @@ def mode_check(a):
         last = float(pct[-1])
         cur = int(str(ent.get("current_raw", "0")))
         want = cur / facts.total_raw * 100 if facts.total_raw else 0.0
-        if abs(last - want) > a.tol_pp:
+        if abs(last - want) > tol_pp:
             errs.append(f"{key} 线末点 {last:.4f}% ≠ facts 当前 {want:.4f}%"
-                        f"（差 {abs(last-want):.4f}pp > 容差 {a.tol_pp}pp）")
+                        f"（差 {abs(last-want):.4f}pp > 容差 {tol_pp}pp）")
         else:
             okc += 1
+    return errs, okc
+
+
+def mode_check(a):
+    # F-04 同族钳制（同 supply_truth_gate --tolerance-bps 的 F-02 模式）：--tol-pp 直接
+    # 决定图 2 末点对账 PASS/FAIL，是判定翻转参数——正式模式写死默认值，探索放宽必须
+    # 显式声明 --exploration（fail-loud，不静默夹回默认值）。exit 2=容差政策拒
+    # （调用方式非法，与对账 FAIL 的 exit 1 区分，同 supply_truth_gate 口径）
+    if not a.exploration and a.tol_pp != DEFAULT_TOL_PP:
+        print(f"FAIL: 正式模式 --tol-pp 写死 {DEFAULT_TOL_PP}pp（收到 {a.tol_pp}）"
+              f"——探索性放宽必须显式加 --exploration", file=sys.stderr)
+        raise SystemExit(2)
+    errs, okc = fig2_check_errors(Path(a.facts), Path(a.series), a.tol_pp)
+    if errs and errs[0] == "--series 应为图 2 whale_series JSON（list of lines）":
+        raise SystemExit("FAIL: " + errs[0])
     if errs:
         for e in errs:
             print(f"[CHECK-FAIL] {e}")
@@ -327,6 +339,83 @@ def mode_check(a):
     tag = "[exploration] " if a.exploration else ""
     print(f"{tag}PASS: 图 2 全部 {okc} 条实体线末点与 facts 当前持仓同源"
           f"（容差 {a.tol_pp}pp，收据 {CHECK_RECEIPT_NAME}）")
+    return 0
+
+
+def build_fig2_series(entity_series_obj, facts_obj, keys) -> list:
+    """Preserve producer dates/percentages and use facts entity labels."""
+    if not keys or len(keys) != len(set(keys)):
+        raise ValueError("--keys 为空或有重复")
+    dates = entity_series_obj.get("dates")
+    if not isinstance(dates, list):
+        raise ValueError("entity_series.dates 必须为 list")
+    for date in dates:
+        if not isinstance(date, str) or dt.date.fromisoformat(date).isoformat() != date:
+            raise ValueError("entity_series.dates 必须为 YYYY-MM-DD")
+    entities = facts_obj.get("entities") or {}
+    lines = []
+    for key in keys:
+        if key not in entities:
+            raise ValueError(f"facts.entities 缺 key: {key}")
+        if key not in entity_series_obj:
+            raise ValueError(f"entity_series 缺 key: {key}")
+        pct = entity_series_obj[key]
+        if not isinstance(pct, list) or len(pct) != len(dates):
+            raise ValueError(f"{key}: len(pct) != len(dates)")
+        lines.append({"entity_id": key, "label": entities[key]["label"],
+                      "ts": dates, "pct": pct})
+    return lines
+
+
+def dumps_fig2_series(lines) -> bytes:
+    return json.dumps(lines, ensure_ascii=False, sort_keys=True,
+                      separators=(",", ":")).encode("utf-8")
+
+
+def _write_fig2_outputs(out, data, provenance):
+    # Sequential single-file replacement, not a two-file transaction.
+    sidecar = out.parent / "whale_series.provenance.json"
+    for target, content in ((out, data), (sidecar, dumps_fig2_series(provenance))):
+        fd, tmp = tempfile.mkstemp(prefix=".fig2-series-", dir=target.parent)
+        try:
+            with os.fdopen(fd, "wb") as fh:
+                fh.write(content)
+                fh.flush()
+                os.fsync(fh.fileno())
+            os.replace(tmp, target)
+        finally:
+            if os.path.exists(tmp):
+                os.unlink(tmp)
+
+
+def mode_fig2_series(a):
+    sys.path.insert(0, str(Path(HERE).parent / "lib"))
+    from case_paths import safe_case_file
+    try:
+        case_arg = Path(a.labels_from).absolute().parent
+        case = case_arg.resolve()
+        def checked(value, must_exist=True):
+            rel = Path(value).absolute().relative_to(case_arg).as_posix()
+            return safe_case_file(case, rel, must_exist=must_exist)
+        facts_path = checked(a.labels_from)
+        series_path = checked(a.entity_series)
+        out = checked(a.out, False)
+        safe_case_file(case, (out.parent / "whale_series.provenance.json").relative_to(case).as_posix(),
+                       must_exist=False)
+        keys = [key.strip() for key in a.keys.split(",")]
+        data = dumps_fig2_series(build_fig2_series(_load(series_path), _load(facts_path), keys))
+        def ref(path):
+            return {"path": path.relative_to(case).as_posix(),
+                    "sha256": hashlib.sha256(path.read_bytes()).hexdigest()}
+        provenance = {"schema": "fig2-series-provenance/v1",
+                      "entity_series": ref(series_path), "facts": ref(facts_path), "keys": keys,
+                      "out": {"path": out.relative_to(case).as_posix(),
+                              "sha256": hashlib.sha256(data).hexdigest()}}
+        _write_fig2_outputs(out, data, provenance)
+    except (OSError, ValueError, KeyError, TypeError) as exc:
+        print(f"FAIL: {exc}", file=sys.stderr)
+        return 1
+    print(f"PASS: fig2-series {len(keys)} 条 → {out}")
     return 0
 
 
@@ -359,6 +448,14 @@ def main():
     p3.add_argument("--exploration", action="store_true",
                     help="显式声明探索运行，才允许覆盖 --tol-pp（正式发布禁用）")
     p3.set_defaults(fn=mode_check)
+    p4 = sub.add_parser("fig2-series", help="从 entity_series 生成图 2 选材及旁车",
+        description="ts 为 ISO 日期串，绘图前转 datetime；closeout 只认案根 whale_series.json。"
+                    "序列旁车与 figure2_check_receipt 均不能证明 PNG 使用了该序列。")
+    p4.add_argument("--entity-series", required=True)
+    p4.add_argument("--keys", required=True, help="逗号分隔且不得重复的实体 key")
+    p4.add_argument("--labels-from", required=True, help="案根 facts.json")
+    p4.add_argument("--out", required=True, help="closeout 只认案根 whale_series.json")
+    p4.set_defaults(fn=mode_fig2_series)
     a = ap.parse_args()
     return a.fn(a)
 

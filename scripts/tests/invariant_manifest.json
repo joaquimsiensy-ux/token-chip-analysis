@@ -177,6 +177,7 @@
   },
   {
    "schemas": [
+    "fig2-series-provenance/v1",
     "figure1-legend/v1",
     "figure2-check-receipt/v1"
    ],
@@ -324,6 +325,12 @@
     "solana-window-fetch-receipt/v3"
    ],
    "script": "scripts/solana/window_fetch.py"
+  },
+  {
+   "schemas": [
+    "stage2-closeout/v1"
+   ],
+   "script": "scripts/report/stage2_closeout.py"
   }
  ],
  "receipt_consumers": [
@@ -609,6 +616,13 @@
     "sqd-solana-rpc-ledger/v1"
    ],
    "script": "scripts/solana/sqd_gap_repair.py"
+  },
+  {
+   "schemas": [
+    "fig2-series-provenance/v1",
+    "stage2-closeout/v1"
+   ],
+   "script": "scripts/report/stage2_closeout.py"
   }
  ],
  "transport_calls": [
@@ -1153,6 +1167,16 @@
    "locator": "main",
    "script": "scripts/solana/window_fetch.py",
    "semantics": "restore_on_fail"
+  },
+  {
+   "locator": "_write_fig2_outputs",
+   "script": "scripts/report/figures_from_facts.py",
+   "semantics": "overwrite_single"
+  },
+  {
+   "locator": "_atomic_json",
+   "script": "scripts/report/stage2_closeout.py",
+   "semantics": "overwrite_single"
   }
  ],
  "formal_entrypoints": [
