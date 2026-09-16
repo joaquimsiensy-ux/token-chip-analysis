@@ -1,0 +1,49 @@
+# 盲审 T4-r1: PASS
+
+审查 HEAD：`a51c2166de4b187ca9cb7fd4be97c4898beb54f0`。**上轮两项阻断均已消除；本轮阻断 0 项。**
+
+① **差异范围：PASS**
+
+相对 `49b628e`，共 11 个文件变化：
+
+- CHANGELOG：新增／删除各 1 行，仅指定句子订正。
+- 主工单：新增／删除各 2 行，仅同步该句及标题标记。
+- 另新增 maintenance 下 9 份返修工单、报告与日志。
+
+独立按指定替换重建两个文件，结果与当前文件逐字节相同。`references/`、`scripts/`、`VERSION`、`pyproject.toml`、`SKILL.md` 的 `git diff --exit-code` **退出 0，stdout 为空**。
+
+② **文案与代码块：PASS**
+
+[订正句:96](/Users/uravvv/.claude/worktrees/tca-three-items/CHANGELOG.md:96) 与实现一致：
+
+- [test_adjudication_validator.py:98](/Users/uravvv/.claude/worktrees/tca-three-items/scripts/tests/test_adjudication_validator.py:98)：生成模板，读取 `.members.json`，使用旁车成员。
+- [test_distribution_gate.py:377](/Users/uravvv/.claude/worktrees/tca-three-items/scripts/tests/test_distribution_gate.py:377)：读取旁车，与源扫描集合比较；:388–389 填裁决仍使用旁车。
+
+两文件均为旧句 **0 次**、新句 **1 次**。[主工单 §2](/Users/uravvv/.claude/worktrees/tca-three-items/maintenance/repair-20260916-three-items/workorder_t4_version.md:19) 两段代码块仅去缩进后，各在 CHANGELOG 完整出现 **1 次**，分别起于 :13、:91。
+
+③ **三条指定命令实跑：PASS**
+
+| 命令 | 退出码 | 结果 |
+|---|---:|---|
+| `python3 -B scripts/tests/changelog_lint.py` | 0 | 活跃 73 条＋归档 139 条 |
+| `python3 -B scripts/tests/test_version_consistency.py` | 0 | 版本元数据一致：7.1.1 |
+| `python3 -B scripts/tests/docs_lint.py --all` | 0 | 59 个文档通过 |
+
+④ **补验证据：PASS，上轮④阻断消除**
+
+三份原始日志已入库，对应原沙箱的全部三个失败入口：
+
+- [Solana 日志:1](/Users/uravvv/.claude/worktrees/tca-three-items/maintenance/repair-20260916-three-items/t4_post_49b628e_test_batch3_solana_vertical_slice.py.log:1)：`PASS B3-SOL-E2E`。
+- [EVM 日志:1](/Users/uravvv/.claude/worktrees/tca-three-items/maintenance/repair-20260916-three-items/t4_post_49b628e_test_batch3_evm_vertical_slice.py.log:1)：`PASS B3-EVM-E2E`。
+- [reseal 日志:33](/Users/uravvv/.claude/worktrees/tca-three-items/maintenance/repair-20260916-three-items/t4_post_49b628e_test_stage2_reseal.py.log:33)：完整 HEAD=`49b628e…`、`overlay=0`；:40 为 **21/21 PASS**。
+
+[补充段:11](/Users/uravvv/.claude/worktrees/tca-three-items/maintenance/repair-20260916-three-items/t4_accept_fable.md:11) 明示命令、cwd、验收 HEAD，以及三项退出码均为 **0**，与日志自洽。
+
+返修后另有 [reseal 日志:33](/Users/uravvv/.claude/worktrees/tca-three-items/maintenance/repair-20260916-three-items/t4_r1_post_a675e72_test_stage2_reseal.py.log:33)，绑定 `a675e720…`、`overlay=0`，:40 为 **21/21 PASS**；[验收记录:15](/Users/uravvv/.claude/worktrees/tca-three-items/maintenance/repair-20260916-three-items/t4_accept_fable.md:15) 明示退出码 **0**。该提交至当前 HEAD 仅增加此次补验记录与日志。
+
+**非阻断说明：** Solana/EVM 原始日志各仅含 PASS 行；HEAD、命令和退出码由补充段统一登记。
+
+⑤ **复验边界：符合**
+
+未发现意外改动，未扩展重审上轮其他 PASS 项。全程离线、只读，未运行全套 `run_all`。结束时 HEAD 未变，工作树仍干净。
+
