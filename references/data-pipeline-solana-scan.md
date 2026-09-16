@@ -97,7 +97,7 @@ Solana 特有优势：program-owned PDA 让托管类型可以直接从账户归�
 4. **ProgramData `data[13:45]` = upgrade_authority——必查是否已放弃/转多签**。未放弃 = 项目方保有单方面升级程序、理论上转走全部托管资产的能力——**这必须写进报告风险章**（PUB 案：质押池托管 13.57% 供应而升级权未放弃，是全案最大结构风险，由对抗复核 RPC 抓出）；
 5. 部署者（upgrade_authority 持有人）首笔 gas 溯源——来自 creator/项目方钱包即闭环"官方部署"定性。
 
-**配套账本验证**（`scripts/solana/stake_decode.py` 自动做）：池的全部 token account 签名史 decode → 逐用户存/取账本 → **账本净额合计 vs 池链上余额精确对表**；"支付奖励"（用户取回>本金）与"自由赎回"记录是排除"归集仓伪装成质押池"的关键证据。**质押池确认后，全部持仓/留存分析必须做质押修正**（有效持仓=现货+池内份额，`replay_edges.py evolution --stake-pool`），否则质押大户被误判清仓（同 playbook §8 HYPE 教训的 Solana 特化）。（PUB，07-14）
+**配套账本验证**（`scripts/solana/stake_decode.py` 自动做）：池的全部 token account 签名史 decode → 逐用户存/取账本 → **账本净额合计 vs 池链上余额对表（容差 ≤2 raw）**；"支付奖励"（用户取回>本金）与"自由赎回"记录是排除"归集仓伪装成质押池"的关键证据。**质押池确认后，全部持仓/留存分析必须做质押修正**（有效持仓=现货+池内份额，`replay_edges.py evolution --stake-pool`），否则质押大户被误判清仓（同 playbook §8 HYPE 教训的 Solana 特化）。（PUB，07-14）
 
 ## 3. 行为特征识别库（标签缺失时的兜底判据）
 

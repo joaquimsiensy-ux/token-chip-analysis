@@ -870,7 +870,7 @@ QUQ 与 PYTHIA 只用于算法层探索定标。防伪链测试使用合成 fixt
 
 不变量：
 
-- 三列各自唯一双射且单调递增。
+- 三列各自唯一；行按 `sqd_index` 递增。
 - 每条 base 边 (slot,tx_index) 恰有一解；无解中止。
 
 ### 14.6 `sqd-solana-repair-bundle/v1`
