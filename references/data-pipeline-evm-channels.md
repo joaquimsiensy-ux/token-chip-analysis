@@ -66,7 +66,7 @@ CSV 的每个历史 prefix，再从前一 `requested_to` 续采并发布加长 c
 **存量 legacy CSV** 不可补签或手工迁移：另名归档，重新从冻结 `lo` 采到 `hi`。SQD 的正式
 fresh-output 命令同样带 `--receipt`；Alchemy/BigQuery/bloXroute/Etherscan 只作诊断或补充。
 数据变化后必须由生产 collector 重采/续采，再重跑 `make_channel_receipt.py`；测试 fixture 或
-手搓 JSON 不构成迁移工具。v2 Parquet 通道则继续由 native done v3 +
+手搓 JSON 不构成迁移工具。v2 Parquet 通道则继续由 native done v4 +
 `make_channel_receipt.py --format v2` 生成，无 `--collector-receipt` 参数。
 
 下述“保证”的主语仅限 `fetch_hypersync.py` 签发、且受同哈希续采闸与 TOCTOU 启动冻结/写前
@@ -256,7 +256,7 @@ size 与 SHA-256；全部通过后才原子将 v2/v3/pre-schema done 升为
 | **V4/Infinity 单例余额归属** | 单例余额只作上界；精确归属须逐头寸闭合，权威见 `lp-fee-accounting.md` | （判例：casebook/supply-accounting.md S-07） |
 | CEX 归集身份 | 必须核下游对象身份，禁止只凭高入度低出度判 CEX | （判例：casebook/cex-custody.md C-06） |
 | DexScreener dexId "uniswap" 无版本标注可能是 V3 池 | Swap topic：V3=`0xc42079f9…`、V2=`0xd78ad95f…`；dexId 只写 "uniswap" 不标版本时，先按 log topic 判池版本再解析，按错版本解析买卖归因全错 | （外部 bibi 考古，07） |
-| four.meme 内盘量化 / 克隆快判 | 内盘额度恰 8 亿/80%，dev-buy 同 tx 按 bonding curve 买断内盘凑满即秒毕业、创世后约 8 块（~4s）TokenManager2 注 20% 入 Pancake V2；"创世同秒单钱包拿走 ~80%"=dev buy。`7777` 后缀=另一发射台 CREATE2（与 4444 并列，平台特征非指纹）。meme-api 全路径已 404，正身改看创世 tx HTML 是否触及 TokenManager2/部署器（创建者从合约页 Contract Creator 取，href 单引号，正则 `["']?`） | （外部 TCC/bibi 考古，07） |
+| four.meme 内盘量化 / 克隆快判 | 内盘额度恰 8 亿/80%，dev-buy 同 tx 按 bonding curve 买断内盘凑满即秒毕业、创世后约 8 块（~4s）TokenManager2 注 20% 入 Pancake V2；"创世同秒单钱包拿走 ~80%"=dev buy。`7777` 后缀=另一发射台 CREATE2（与 4444 并列，平台特征非指纹）。正身可试 meme-api（历史实测见 data-pipeline-evm-sources，当前可用性须实测），或查创世 tx HTML 是否触及 TokenManager2/部署器（创建者从合约页 Contract Creator 取，href 单引号，正则 `["']?`） | （外部 TCC/bibi 考古，07） |
 | **PancakeSwap/Uniswap V3 topic** | Pancake V3=`0x19b47279…`（7×32B），Uniswap V3=`0xc42079f9…`（5 字段）；目标池静默 0 行即阻断并复核 topic/布局 | （判例：casebook/supply-accounting.md S-04） |
 | four.meme creator/收币实体 | 同收币地址不得直接判项目方马甲；平台 creator 与收币实体按身份权威规则分账 | （判例：casebook/entity-clustering.md E-12） |
 | **币安 Alpha 结算引擎桥** | 高吞吐 + 净持≈0 + 交易所/路由/池对手方应归 CEX 基础设施，不得判庄 | （判例：casebook/cex-custody.md C-01） |
@@ -269,7 +269,6 @@ size 与 SHA-256；全部通过后才原子将 v2/v3/pre-schema done 升为
 | **Alpha 积分政策时间线锚点 + 量能断崖三因鉴别** | 政策线：2025 年中 BSC 币全板块 2x → **2025-09-04 取消**（BSC 双倍与 Alpha 2.0 限价单双倍一并废止，改新 TGE 30 天 4x）→ **2026-07-22 Alpha CEX 限价单买 BSC 币 4x**（挽回板块流量新政）。Alpha 币量能台阶/断崖先对政策线，再三因鉴别：①个币处分（mulPoint 降档）②板块政策变化 ③**竞价性分流**（更高倍数/更低磨损的新载体抢走刷分大军——刷分量是"倍数×磨损成本"性价比的函数）。鉴别三件套=mulPoint 直查+**对照币实验**（同板块 2-3 币 GT 日 K 同窗看是否同跌，同跌=板块性非个币）+xapi `search_posts_all` 断崖窗口±3 天搜刷分社区实时讨论（⚠中文**带引号词组零命中**，拆开词搜）。QUQ 案：07-14 单日腰斩且随后 8 天窄带平稳（窄带新平台=新配额指纹），判③——美股代币 4x+磨损低 15 倍分流，对照币同窗 -93% 更狠、QUQ 仍全表量第一=分流非处分 | （QUQ 投后，07-22） |
 | **Alpha 场内↔链上量能迁移** | 链上量归零先查同期场内量与政策；托管转移不得直接写出货 | （判例：casebook/cex-custody.md C-01） |
 | **全史 DEX 成交量硬算（池腿法）** | 每笔 swap 必有一条代币进/出池的 Transfer 腿：POOLS={各直连池+V4 PoolManager 单例}，from/to 恰一侧在集合=计一腿（**单边口径**），池↔池转账（V3↔V4 摆深度）自动排除；**LP 加撤剔除**=lp_events 的 mint（进池）+collect（出池）amount 按日减（burn 只记账无 Transfer 勿剔）。价格三源拼接：CG（365d 窗）+DefiLlama historical 逐日（2025 起 BSC 小币覆盖好，发射数日内即有价）+GT day 线只留 ~181 天。**费反推独立交叉验证器**：V3 全史 collect−burn 双边费 ÷ 池费率 = 名义成交额，与池腿实算互验；CG 聚合口径预期偏高 | （QUQ 投后，07-22） |
-| **transfers_lib 整表读大 parquet 必 OOM** | `iter_transfers` 内部 `pq.read_table` 整表载入，logs.parquet 数 GB 级（QUQ 案 6.6GB/1.03 亿行）直接 SIGKILL（exit 137、输出全空）。亿级全史扫描自写 pyarrow `ParquetFile.iter_batches(batch_size=20万, columns=['block_number','topic1','topic2','data'])` 流式，峰值内存 <1GB、约 2 分钟/亿行；日期用 blocks.parquet number→timestamp 映射 + `ts//86400` 整数日聚合（避免逐行 strftime）；跨 run 去重用块边界法 `[from_block,next_block)`（亿级 (tx,log_index) set 去重内存不可行） | （QUQ 投后，07-22） |
 | **V3/V4 LP 费与回执速查** | 四层费口径与公式统一见 `lp-fee-accounting.md`；回执速查最小规则：按 PoolManager/直连池腿分 V4/V3，费率读池状态，路由抽成按拆腿输入和对用户付出 | （判例：casebook/supply-accounting.md S-07） |
 | **TVL 伪影与 LP 归属** | 官方头寸查 `ownerOf`/NFT 状态链；receipt 净现金流只证明投入提取；池属以目标时点可证 LP 归属为准 | （判例：casebook/supply-accounting.md S-07） |
 | **枢纽性质裁决** | 用同 tx 等额转入转出配对率区分原子过账管道与余额滞留仓库 | （判例：casebook/entity-clustering.md E-02） |

@@ -14,7 +14,7 @@
 1. **稳定 ID＝内容派生**：候选 ID 由其核心内容（成员集/面额/地址）哈希派生——内容变则 ID 变，旧裁决按 ID 对不上自动失效。
 2. **裁决绑定候选内容哈希**：每条裁决记录 `candidate_sha256`＝裁决时该候选完整 JSON 的规范化哈希（`json.dumps(obj, sort_keys=True, ensure_ascii=False)` 的 sha256）。validator 重验：当前报告同 ID 候选哈希不一致＝候选内容已变＝裁决过期，exit 2。
 3. **零静默截断**：所有成员/收方/来源数组全量落盘，数组长度必须等于对应 `*_count` 字段（闭合断言）；stdout 只显 top 不代表文件截断。
-4. **本文件＝完整字段登记**（v6.8.1，codex 复核 P2 采纳）：脚本实际输出的每个字段都必须在此登记——未登记字段不得输出，登记了的不得静默删除；公共通用字段（`schema/generated_at/params/total_supply_raw/edges/note`）各产物一律在场，下文不再逐一重复。输入边表的唯一性由采集管线（four-check 对账）保证，扫描器不去重。Solana v4 以 `(slot,tx_index)` 标识交易，并对该交易完整边集计算排序后的 `tx_digest`：重复身份且 digest 相同只留一份，digest 不同硬失败。五元组没有交易身份，同字段重复可能是不同真实交易，禁止按五字段去重。
+4. **本文件＝完整字段登记**（v6.8.1，codex 复核 P2 采纳）：脚本实际输出的每个字段都必须在此登记——未登记字段不得输出，登记了的不得静默删除；公共通用字段（`schema/generated_at/params/total_supply_raw/edges/note`）各产物一律在场，下文不再逐一重复。输入边表的唯一性由采集管线（A2 对账关卡）保证，扫描器不去重。Solana v4 以 `(slot,tx_index)` 标识交易，并对该交易完整边集计算排序后的 `tx_digest`：重复身份且 digest 相同只留一份，digest 不同硬失败。五元组没有交易身份，同字段重复可能是不同真实交易，禁止按五字段去重。
 
 **handoff manifest 反绑产物规则**：manifest 不收两类会反向记录自身的产物：①案根精确路径 `provenance_ledger.json`（反绑 manifest sha/run_id/scope）；②非案根、`stage="final"` 且存在 `input_binding.handoff_manifest` 的 `distribution_scan.json`（反绑 run_id/指纹）。案根 initial `distribution_scan.json` 不反绑 manifest，仍是 READY 必备件。discover/data_map 遇上述产物会跳过并在 stderr 提示；显式 `--include` 或 `--gate` 则报“反绑产物禁止进入 manifest”并 exit 2。JSON 读失败不按反绑规则误杀，随后仍由既有路径/实物校验 fail-closed。
 
@@ -393,7 +393,7 @@ TERMINAL = {
 
 `initial` 记录上游收据但不绑定 handoff manifest。上游收据是 **optional 的记录性收据**：案根没有那份文件就不记（split-run 下 −1 出 initial scan 时，−2 还没把 preflight 副本拷进案根），**在场即三验**——凡是记进 `upstream_receipts` 的条目，validate 都要核实文件存在且 sha256／size 与记录一致。校验方向只有"记录项 → 磁盘"这一条，反过来要求"磁盘上有的都得记"会把 6.39.5 修掉的三闸死环修回来。文件在场却非法（符号链接、指到案外、不是普通文件）时生产侧直接 exit 2，不做静默跳过。
 
-分布扫描吃的那份 owner 快照，必须就是四查真正核过的那一份：EVM 比对四查 `balance` 收据的 `inputs.balances.sha256`，Solana 比对 observation bundle 的 `holder_outputs.owners.sha256`，**只比 sha256 不比 path**（两边路径形态本来就不同）。**initial 扫描与进报告的终态 final 扫描（`distribution_rounds.json` 的 `terminal.final_scan_path`）两份都要落在同一个四查 sha 上**——只绑 initial 挡不住 final 轮换一份同值换仓快照产终态判定（F-B1）。该交叉检查由 `audit_release_gate.py --profile new-analysis` 执行，**只放发布闸、不放进 validate**（终态 scan 是本轮新产，不涉及存量案追溯）。
+分布扫描吃的那份 owner 快照，必须就是 A2 真正核过的那一份：EVM 比对 `balance` 收据的 `inputs.balances.sha256`，Solana 比对 observation bundle 的 `holder_outputs.owners.sha256`，**只比 sha256 不比 path**（两边路径形态本来就不同）。**initial 扫描与进报告的终态 final 扫描（`distribution_rounds.json` 的 `terminal.final_scan_path`）两份都要落在同一个 A2 快照 sha 上**——只绑 initial 挡不住 final 轮换一份同值换仓快照产终态判定（F-B1）。该交叉检查由 `audit_release_gate.py --profile new-analysis` 执行，**只放发布闸、不放进 validate**（终态 scan 是本轮新产，不涉及存量案追溯）。
 
 动态 Solana 的分布扫描吃 observation bundle 的观察 owners；三账 B-7、series cutoff、accounting 等冻结账消费者则通过同一中央选择器投影，吃 exact 收据 `inputs.holders_owners` 实物＋冻结块。
 
@@ -481,7 +481,7 @@ TERMINAL = {
 
 `data_broken` 产物只保留 schema、stage、时间、exit code、阈值、verdict、reason、errors 和空异常簇，脚本返回 2。`low_sample` 必须带完整逐址分类、top-k、HHI、等额组和分区闭合结果，脚本返回 0。validate 会从绑定文件重新派生五桶、重新计算全部统计量并比较语义字段，并对 `upstream_receipts` 里**已记录**的每一项做存在＋sha256＋size 三验（记录性收据，缺席合法、在场即验）；`upstream_receipts` 本身不进语义逐位比较（6.39.5 三闸死环修复）。
 
-**重验须重跑当前版本生产者（F-B5，修正旧口径）**：validate 内部经 `build_scan` 重算，闭合闸也在这条追溯路径上，且 `input_binding.algorithm.sha256` 绑脚本自身哈希——脚本改过一个字节，旧产物就对不上。所以存量案在 A5 重验前无论如何都要重跑对应生产者获取当前回执（与仓内既有的"存量案例须重跑对应生产者"一致），这**不是死锁**。重跑后仍不对铸造总量精确闭合的存量案按 `data_broken` 拒收，这是**刻意收紧不是回归**（基线时代只拦超发，残缺快照能过）。第二层交叉检查禁入 validate 只是不让"快照↔四查绑定"这一条追溯卡死，闭合闸的追溯收紧另算。
+**重验须重跑当前版本生产者（F-B5，修正旧口径）**：validate 内部经 `build_scan` 重算，闭合闸也在这条追溯路径上，且 `input_binding.algorithm.sha256` 绑脚本自身哈希——脚本改过一个字节，旧产物就对不上。所以存量案在 A5 重验前无论如何都要重跑对应生产者获取当前回执（与仓内既有的"存量案例须重跑对应生产者"一致），这**不是死锁**。重跑后仍不对铸造总量精确闭合的存量案按 `data_broken` 拒收，这是**刻意收紧不是回归**（基线时代只拦超发，残缺快照能过）。第二层交叉检查禁入 validate 只是不让"快照↔A2 绑定"这一条追溯卡死，闭合闸的追溯收紧另算。
 
 ## 7. distribution-explanation/v1
 

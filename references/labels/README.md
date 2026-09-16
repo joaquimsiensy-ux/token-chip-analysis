@@ -5,7 +5,7 @@
 **定位**：与 `address-book.md`（手工实战核验层）互补的**批量兜底层**。目的：CEX/桥/路由/协议/发射台等基础设施地址在聚类前被系统性识别剔除，不再等踩坑后回填；惯犯庄家（serial-actor）命中即高亮。
 **防线定位**：静态库的目标是「**库里每条都对**」而非「全」——设施是开放集合永远追不全，"全"由**行为守门员**（`gatekeeper.py`，漏斗形状运行时判定）兜底，未知设施由守门员拦截→miss 队列→人工确认→回填本库，实战驱动闭环扩容。
 **分工三层**：①本库批量查询（静态已知标签）→ ②address-book.md（实战核验、含机制注释；仅命中 manual 标签且需要机制注释时按地址精查：`rg -n "<地址>" references/address-book.md`，禁止整本加载）→ ③分析时动态判别（守门员漏斗指纹 + getCode/owner/行为画像，见各链 data-pipeline）。**三层是递进关系：库无记录≠白户**，新链新设施仍靠动态判别，判明后回填 manual 层。
-**接入方式（v4）**：`labels_resolver.py` 共享内核——`label_lookup.py`（人工查询）、EVM `cluster.py`/`analyze_holdings.py`、SOL `replay_edges.py`/`build_evolution.py`（阵营体检）均已默认接入（`--no-labels` 关闭）；表缺失/加载失败显式报 **degraded_mode**（"没命中"与"没加载"可区分），分析产物落 `labels_meta`。
+**接入方式（v4）**：`labels_resolver.py` 共享内核——`label_lookup.py`（人工查询）、EVM `cluster.py`/`analyze_holdings.py`、SOL `replay_edges.py`/`build_evolution.py`（阵营体检）均已默认接入；表缺失/加载失败显式报 **degraded_mode**（"没命中"与"没加载"可区分），分析产物落 `labels_meta`。
 
 ## 文件一览
 

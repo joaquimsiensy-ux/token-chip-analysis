@@ -57,11 +57,10 @@ EOS 侧持有人榜可用 `POST /v1/chain/get_table_by_scope`（`code`=代币合
 
 ## 8. Base 链专节（PING 全量实测，2026-07-17）
 
-### 8.1 全量转账双通道拓扑（与 BSC 经验相反：高峰期 Alchemy 是主力）
+### 8.1 全量转账通道实测（历史；Alchemy 已除名正式通道，正式 CSV 资格见 data-pipeline-evm-channels §1 末段）
 
 - **HyperSync base 端点（base.hypersync.xyz）高峰期 429 严重**：单进程串行仍连败，退避后有效吞吐 ~250 条/s 且不稳定——BSC"HyperSync 全程稳定"的经验在 Base 高峰时段不成立，§1 决策树不可照搬（PING，07-17）
-- **Alchemy base-mainnet getAssetTransfers 实测 ~230 条/s 稳定零限流**（代理经 `CHIP_PROXY`/`--proxy` 解析，见 `scripts/lib/proxy_config.py`；免费层 30M CU 拉 239 万条余量充足）——Base 高峰期 Alchemy 反而是主力通道（PING，07-17）
-- **分段接力法（双通道 2:1 提速）**：HyperSync 负责发射段（旧块），Alchemy 按 fromBlock/toBlock 切成多个块段并行接力拉近段；fetch_alchemy.py 已支持 `--config/--from-block/--to-block`（v2.26 参数化）（PING，07-17）
+- **Alchemy base-mainnet getAssetTransfers 实测 ~230 条/s 稳定零限流**（代理经 `CHIP_PROXY`/`--proxy` 解析，见 `scripts/lib/proxy_config.py`；免费层 30M CU 拉 239 万条余量充足）——仅探索采集可用，不产正式收据（PING，07-17）
 - **★跨通道拼接去重键陷阱（链无关，凡 HyperSync+Alchemy 混拼皆适用）**：HyperSync uniqueId 尾号=链上 log_index，Alchemy uniqueId 尾号=**类别内序号**——语义不同，跨通道按 (tx, 尾号) 去重必然失败，重叠段双计实测造出 5,485 个负余额地址。正解=**按块段给通道划唯一归属**（每通道只收自己块段内的事件，段内用自家键去重），对账以"负余额地址数=0"放行；scripts/evm/replay_pass1.py 已固化该逻辑（PING，07-17）
 - **抽样估算量的 next_block 语义坑**：HyperSync 每次响应的 next_block 推进量由"服务端每响应条数上限"决定，不是固定块跨度——按"首段块跨度"外推全量会严重低估（实测低估 5 倍）；正确外推按事件密度分段抽样（PING，07-17）
 - **HyperSync base 非高峰时段单通道可行**（与上条"高峰期 429"互补，时段依赖）：单进程串行 213 万条 94 分钟拉完全程零 429（≈380 条/s 均速，含发射密集段）；但**主采集运行期间另发探测/复核请求会撞并发限制 429**（第 3 个并发请求即失败）——密度探测要在主采集启动前做完，或探测后再启动主采集（jesse，07-18）

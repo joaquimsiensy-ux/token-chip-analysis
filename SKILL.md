@@ -29,7 +29,7 @@ description: >-
 ## 铁律（7 条封顶，任何阶段不可越过）
 
 1. **结论独立性**：只沉淀方法，禁止复用历史标的结论/数字/判定或作“上次也是这样”类比；同会话不连做两币。casebook 只提供方法级失败模式。
-2. **对账关卡**：A2 四查（余额对账/供给闭合/供给真值闸/时间抽查）不过关不进分析。
+2. **对账关卡**：A2 对账关卡（EVM 四查／Solana 五查）不过关不进分析。
 3. **证据强度纪律**：用链上铁证/高度疑似/疑似/未能确证分级；意图不可区分时并列写（`report-template.md`）。
 4. **对抗复核必做**：历史执行高频实质改写结论，必须给出实际重算证据；允许复核零推翻（REFUTED=0 如实记录），不可跳过。
 5. **数据源取用**：key 以 `~/.claude/api-keys.md` 登记为唯一真源，运行时按其登记的原始存放位置（如 `~/.config/*`）读取；只写工作目录 config.json，永不写死进 skill 目录。
@@ -42,7 +42,7 @@ description: >-
 |---|---|---|---|
 | A0 画像与路由 | 合约、多链、分母、链路由 | A0＋当链 pipeline；accounting_mode.exploration.json（A0 预检）/ accounting_mode.json（A2 formal） | accounting_gate：0 放行/2 硬停/1 修通道重跑 |
 | A1 并行采集 | 完整数据＋标签＋价格 | A1＋当链 pipeline；data/、链内 collection_manifest/receipt | — |
-| A2 对账关卡 | 余额/供给闭合/供给真值/时间抽查 | A2＋recon；supply_truth.json、anchor_plan.json、time_spotcheck.json | 四查不过不进 A3；gate 0 PASS/2 FAIL/1 修通道重跑 |
+| A2 对账关卡 | 余额/供给闭合/供给真值/时间抽查，Solana 加精确重放 | A2＋recon；supply_truth.json、anchor_plan.json、time_spotcheck.json | 不过不进 A3；gate 0 PASS/2 FAIL/1 修通道重跑 |
 | A3 分析 | 标注/归因→casebook→聚类裁决→临时实体→ET-2→EF/freeze→G8→判级/ET-1→演变→facts/state | A3＋casebook C/E＋playbook；findings.md、facts.json、analysis-state.json、identity_gate.json | EF-1～EF-3 或 G8 未闭合即拒编译 |
 | A4 对抗复核 | claims→扰动→揭盲→N 路复核→裁决→finalize | A4＋evidence-wording；a4_claims.json、a4_seal.json | 实际核查三档；a4_gate 未封口（2）禁进 A5 |
 | A4.5 分布终判环 | final 分布扫描、新异常簇回流 A4、解释五判据 | dist_rounds 轮次台账 | 唯一终态才物化终版分布图；两轮未终态由用户选第三轮或 waiver |

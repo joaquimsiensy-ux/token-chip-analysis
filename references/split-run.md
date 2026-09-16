@@ -41,17 +41,17 @@
 - **A2 全部**：EVM 四查；Solana 五查＝四查＋精确重放 `exact_reconcile`。所有家族一律由 `scripts/report/reconciliation_report.py` 接收 job spec 后受控启动，并原子生成 `reconciliation-report/v3` wrapper；runner 校验新鲜 receipt、target、生产者和输入/receipt 哈希，禁止手拼 wrapper。Solana A2 FAIL 先跑 coverage 探针归因，再按 α/β 止损线运行修复生产者，禁止逐账户 BFS 补账。时间抽查跑 `scripts/lib/time_spotcheck.py`（EVM 案 `time_spotcheck.json` 为 READY 必备件＋AUTO_GATES，6.7.0）——**默认锚点级直查即闭环，全史第二源重拉是例外动作**（触发条件与 pilot 报 ETA 纪律见 evm-recon §13；APU 案照旧模板全史重拉 103 分钟纯冗余教训）。
 
   上述“禁止手拼”是执行纪律，不是聚合器具备单机执行证明：聚合器能拒绝缺 runner 绑定或绑定哈希不符的 wrapper，但无法识别蓄意填写正确 path/SHA-256 并编造自洽观测的 wrapper；内容绑定的作用是把无意漏跑变成必须显式造假的行为，并留下可由仓库 git 历史审计的代码哈希。
-- **A3 机械子层**（对照 analyze-workflow A3 主序编号）：
-  1. 地址身份标注**批量层**（主序第 1 项前半）：标签库/getCode/Sourcify/外部证据批查。**输出只写观察事实**：`observed_type`＋`source`＋`source_timestamp`＋`conflict_flags`；仅多源无冲突的公共设施可标 `auto_excluded_candidate`，最终排除权在 −2。
-  2. 金库与核心实体逐笔归因**跑批**（主序第 1 项中段的脚本执行侧）：产出流水，不定性。
-  3. 大户排查**批量层跑满**（主序第 5 项的批量侧）：当前 ≥0.1% 总供应或 ≥0.2% 流通全量＋历史越线＋归零/静置候选（`dormant_candidates` 并入 candidate_universe）× 标签库/惯犯库/指纹/funder 溯源四通道；无法机械定性者标 `needs_adjudication`（批量层跑满是防"候选海"倒灌 −2 的第一道闸）。对四通道报警地址，就地产 ET-1 证据采集包：分母＝报警地址的保守超集（−1 阶段无最终"其他大户"集合，宁多采不漏采），逐址采资金源/gas 注资/互转边/对手方清单，只记观察事实零定性，落 et1_evidence_packs.json；该件为 optional 产物，存在时必须经 generate 纳入 manifest allowlist 并登记 data_map 与 stage1_receipts（防交接后被改写）。归属定性深挖仍归 −2。
-  4. 聚类准备（主序第 1 项后半的算法侧）：cluster_prep ＋聚类算法**候选簇**——含拒绝边与孤立点**全量保留**，不只交"算法觉得相关"的簇；合并裁决权在 −2。
+- **A3 机械子层**：
+  1. 地址身份标注**批量层**：标签库/getCode/Sourcify/外部证据批查。**输出只写观察事实**：`observed_type`＋`source`＋`source_timestamp`＋`conflict_flags`；仅多源无冲突的公共设施可标 `auto_excluded_candidate`，最终排除权在 −2。
+  2. 金库与核心实体逐笔归因**跑批**：产出流水，不定性。
+  3. 大户排查**批量层跑满**：当前 ≥0.1% 总供应或 ≥0.2% 流通全量＋历史越线＋归零/静置候选（`dormant_candidates` 并入 candidate_universe）× 标签库/惯犯库/指纹/funder 溯源四通道；无法机械定性者标 `needs_adjudication`（批量层跑满是防"候选海"倒灌 −2 的第一道闸）。对四通道报警地址，就地产 ET-1 证据采集包：分母＝报警地址的保守超集（−1 阶段无最终"其他大户"集合，宁多采不漏采），逐址采资金源/gas 注资/互转边/对手方清单，只记观察事实零定性，落 et1_evidence_packs.json；该件为 optional 产物，存在时必须经 generate 纳入 manifest allowlist 并登记 data_map 与 stage1_receipts（防交接后被改写）。归属定性深挖仍归 −2。
+  4. 聚类准备：cluster_prep ＋聚类算法**候选簇**——含拒绝边与孤立点**全量保留**，不只交"算法觉得相关"的簇；合并裁决权在 −2。
   5. `identity_preflight.json`：候选与大仓地址的原始事实层（标签/on-curve/getCode/托管疑点）。**正式 entity_identity_gate 属 −2**——该脚本依赖含实体表的 analysis-state.json，−1 无实体表跑它只会产出假 gate。
   6. 基础序列：`address_bucket_series`（标签桶序列）＋价格序列。**命名禁用"阵营/camp"**——真 camp_share_series 只能 −2 实体冻结后生成。序列产出时顺手标记"价格单日 ±50%"与"单日桶间变动 ≥10pp"的日子清单（供 −2 定峰值逐笔触发日用，无归因义务，2026-08-02）。
   7. **全体持仓波次扫描（v5）**：`scripts/report/wave_scan.py`（原始边表直读，扫描对象＝全体历史峰值 ≥0.02% 地址不限清零层，A 种子窗/B 喂币专属/C 快速清仓/D 等额面额四指纹合并口径）产 `wave_scan_report.json`（wave-scan/v5，含边顺序/legacy 标记、scan_universe 逐址全集＋must_adjudicate 标记）——**READY 必产件，缺件 generate 即拒**；候选只报警不定性，裁决权在 −2；已知公共设施可经 `--exclude-file` 剔除（取 candidate_screening 的 auto_excluded_candidate）。Solana 必带 `edge_source_binding` 并与 exact receipt 全等，EVM 必须省略。
   8. **资金流异常扫描**：`scripts/report/flow_anomaly_scan.py`（汇集点＋分发点三口径多命中 v3——pulse／pulse_all 不限新老收方／slow_spray 全史 ≥100）产 `flow_anomaly_report.json`（flow-anomaly/v3）——**READY 必产件**；Q1/3yMk 型进货枢纽与 H9 派发器型出货器由此现形，候选裁决权在 −2。Solana 必带同一 `edge_source_binding`，EVM 必须省略。
-  9. **当前持仓分布初判**：运行 `holder_distribution_scan.py --stage initial`，产 `distribution_scan.json` 和 `charts/distribution_stage1.png`。JSON 是 READY 必产件，工作图只供 −2 查看，不进 seal 或报告。initial 不绑定 handoff manifest。**快照单一来源硬性**：这一步吃的 owner 快照必须与 A2 四查 `verify_recon --balances` 吃的是同一个文件，别另存一份"内容一样"的副本——发布闸 new-analysis 拿 sha256 做等值比对（EVM 对四查 balance 收据的 `inputs.balances`，Solana 对 observation bundle 的 `holder_outputs.owners`），两份文件哪怕总和相同也会被判"同值换仓"直接拒。initial 记录的 `upstream_receipts` 是 optional 记录性收据：案根还没有 preflight 副本时不记是合法的，但记了就会被逐项三验。
-     动态 Solana（`exact_reconcile` 早于 wrapper）必须显式使用观察 owners；`find_snapshot` 默认优先 `data/holders_owners.json`（冻结件），发布闸分布绑定却要求 observation bundle 的观察件。完整命令：`python3 scripts/report/holder_distribution_scan.py --case-dir . --stage initial --snapshot data/observe_live/holders_owners.json`。
+  9. **当前持仓分布初判**：运行 `holder_distribution_scan.py --stage initial`，产 `distribution_scan.json` 和 `charts/distribution_stage1.png`。JSON 是 READY 必产件，工作图只供 −2 查看，不进 seal 或报告。initial 不绑定 handoff manifest。**快照单一来源硬性**：分布快照须与 A2 的权威输入内容一致：EVM 对 `balance` 收据的 `inputs.balances`，Solana 对 observation bundle 的 `holder_outputs.owners`；发布闸按 sha256 核对，逐地址余额不同即使总和相同也拒绝。initial 记录的 `upstream_receipts` 是 optional 记录性收据：案根还没有 preflight 副本时不记是合法的，但记了就会被逐项三验。
+     动态 Solana（`exact_reconcile` 早于 wrapper）必须显式使用观察 owners（`--snapshot`），因为发布闸分布绑定要求 observation bundle 的观察件。完整命令：`python3 scripts/report/holder_distribution_scan.py --case-dir . --stage initial --snapshot data/observe_live/holders_owners.json`。
 - **初步观察（可选但鼓励）**：−1 执行者的初步定性/怀疑**只准写进 `sealed/stage1_hypotheses.sealed.md`**（密封纪律见 §2.3），主产物区零定性词。
 
 ### 1.4 停止线（禁做清单，越线＝流程事故）
@@ -95,7 +95,7 @@
 | `provenance_ledger.json` | −2 | 已知实体币源溯源台账（entity_source_trace.py，正式模式强制绑定 `--labels-file`；`--allow-no-labels` 仅探索且 freeze 必拒；provenance-ledger/v2 正向模拟＋完整输入绑定）——freeze 从原始边/标签真实重放；v1 一律重跑 |
 | `sealed/stage1_hypotheses.sealed.md` | −1 | 初步定性密封件，见 §2.3 |
 | `entity_freeze.json` | −2 | 冻结事件物化：成员表哈希/时间/未决项/casebook 检验结果；变更走 revision 追加，不许静默覆盖 |
-| 既有产物 | −1 | accounting_mode、链内 done.json/collection_manifest/receipt、四查 producer receipt、由 `reconciliation_report.py` 生成的 `reconciliation_report.json`、cluster_prep、address_bucket_series、价格序列；四查 receipt 格式零改动，wrapper 禁止手拼 |
+| 既有产物 | −1 | accounting_mode、链内 done.json/collection_manifest/receipt、A2 全部 producer receipt、由 `reconciliation_report.py` 生成的 `reconciliation_report.json`、cluster_prep、address_bucket_series、价格序列；各项 receipt 按现行 schema 提供，wrapper 禁止手拼 |
 
 **findings.md 双义处理**：−1 不写 findings.md（它是 A3 交接包，归 −2 按 context-discipline 现行制度写）；点名式 CEX 黑箱关卡中止时，其结论只作为 `BLOCKED_CEX_GATE` 恢复资产。
 
@@ -123,7 +123,7 @@
 1. **模型自检**：非 Fable/主力判断模型 → 警告（不硬停）。
 2. **`handoff_manifest.py verify` fail-closed**：文件齐＋哈希对＋语义验证（gate exit 码与状态重查、schema 版本兼容、状态必须 READY——BLOCKED/PARTIAL/BLOCKED_CEX_GATE 一律 exit 2 拒收）。旧版 skill 产的 −1 目录（data_map 哈希带 `sha256:` 前缀、candidate_universe 条目只有 `cid`、anchor_plan 无 kernel receipt，APU 案 ANOM-012 实证）先跑 `scripts/report/migrate_legacy_case.py --case-dir <案目录>` 官方迁移，禁止手拼；anchor receipt 缺失只能用现行 anchor_plan.py 重跑补产，不可补票。
 3. **数据保鲜检查（用户定稿口径）**：默认按已有数据跑（cutoff 即分析截止点，报告如实标注数据时点）；仅当 cutoff 距今缺口 **>72h** 才弹警报，AskUserQuestion 停等用户确认是否拉取缺口段——确认拉取则增量拼接、重跑受影响 gate 与候选门槛、产 superseding manifest；用户选按原数据继续则裁决记入 anomalies 后照跑。**绝不自动拉取。**
-4. **必读件**：anomalies.json、四查结论、accounting_mode、点名式 CEX 黑箱关卡结论（若有）。
+4. **必读件**：anomalies.json、对账结论、accounting_mode、点名式 CEX 黑箱关卡结论（若有）。
 5. **候选覆盖自检（防 candidates 锚定）**：用重放产物独立重算阈值榜单/历史越线/归零/静置清单，比对 candidate_universe 无缺漏才继续；发现缺漏记 anomalies 并补入。
 6. **data_map 当索引按需读盘**（禁整读大产物）；candidate_screening 当裁决工作台。
 7. **sealed 禁读令生效**（§2.3）。
@@ -140,7 +140,7 @@ casebook C/E 册过闸 → 聚类合并裁决 → 临时实体 → **ET-2 无下
 外部异构怀疑者（research-workflows §2 那一路）在分段模式下必须满足：
 - **全新、无 −1 对话上下文的 codex 会话**；
 - 输入＝原始数据路径＋冻结 manifest＋claim registry；
-- **不给 sealed 观察文件、不让它复核自己 −1 的产出物本身**（数据完整性由 −2 verify＋四查兜底，数据层疑点由 Claude 怀疑者路负责）;
+- **不给 sealed 观察文件、不让它复核自己 −1 的产出物本身**（数据完整性由 −2 verify＋A2 全部对账关卡兜底，数据层疑点由 Claude 怀疑者路负责）;
 - 该调用只存在 CC 侧流程，codex skill 不新增任何自调复核入口。
 
 ## §3b −3 装配段（A5 装配执行；消费 −2 装配工单）

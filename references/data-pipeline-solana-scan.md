@@ -82,7 +82,7 @@ Solana 特有优势：program-owned PDA 让托管类型可以直接从账户归�
   - **Magna vesting 程序 `magnaSHyv8zzKJJmr8NSz5JXmtdGDTTFPEADmvNAwbj`** → 线性解锁托管 PDA（token account 的 owner 直接是它），特征为持续（小时级）匀速释放。
   - **Streamflow 锁仓程序 `strmRqUCoQUgGUan5YhzUZa6KqdzwX5L6FpUxfmKg5m`**（外部 CLAW 分析实测，2026-07）→ 锁仓 escrow 的 token 账户 authority = 账户自身；stream 元数据账户（owner=strm 程序）可 **raw 解码锁仓参数**：定位 mint 的 32 字节偏移 `moff` 后，`sender@moff-128`、`recipient@moff-64`，参数区 `start/deposited/period/amount_per_period/cliff` 在 `moff+148` 起的 u64 序列（flags+stream_name 紧随）。**懒人路线**：GMGN holders 的 `streamflow_status` 字段直接给 `next_unlock_time/current_locked_amount`，无需手解，与链上互验即可。
     **固定偏移速查（data_len=1104 版布局，CLUDE 实战三处互验）**`[VERIFIED·CLUDE实战]`：offset 9=创建时间、**33=end_time（到期）**、409=start、417=net_deposited、441=cliff 时间（33/409/441 对一次性 cliff 流三处同值互验）；**cancelable_by_sender/recipient、transferable_by_sender/recipient、automatic_withdrawal 标志位必读**——`period=1s+cliff_amount=全额`=一次性 cliff 到期全解，transferable=0 直接反证"受益权可场外转让"风险提示（写"锁仓可转让"之前必查此位）；automatic_withdrawal=0 则到期后币不自动离开 escrow，观察哨要按"历史到期→处置最长空窗"设过渡期防误报。解码脚本 `scripts/solana/probe_escrows.py`，调用时用必填 `--targets-file` 注入本案 `{address, label}` JSON 数组。（CLUDE，07-13）
-    - **"即建即提"洗筹指纹（CLAW 实测）**：操盘方用即建即提 stream 做一跳中转，切断"老仓→新仓"的直接转账链路伪装成独立成本；识别锚点 = 提取 tx 的 **feePayer = Streamflow 自动提取服务 `wdrwhnCv4pzW8beKsbPa4S2UDZrXenjg16KJdKSpb5u`**，多笔提取共用此 feePayer = 同一批操作，据此把散落的"新钱包"归回原实体。
+    - **"即建即提"洗筹指纹（CLAW 实测）**：操盘方用即建即提 stream 做一跳中转，切断"老仓→新仓"的直接转账链路伪装成独立成本；识别锚点 = 提取 tx 的 **feePayer = Streamflow 自动提取服务 `wdrwhnCv4pzW8beKsbPa4S2UDZrXenjg16KJdKSpb5u`**，多笔提取共用此 feePayer 只证明同用该服务，不作控制边；归属须沿代币流穿透（data-pipeline-solana-capture §9 第 7 条、casebook E-02/E-05）。
     - **recipient 激活状态检测**（外部 CLAW 考古，2026-07）：对 stream 的 recipient 地址查账户存在性——账户不存在（fresh keypair 从未注资）= 收款人从未动过，锁仓休眠中；配套受益人时序画像：发射后分钟级首买 = 先验知情，发射前数天新建并注资 = 预谋配置。
     - **措辞纪律：锁仓流的可转让性以该 stream 实例的 transferable_by_* 标志位为唯一裁决**（外部 CLAW 考古，2026-07；与上方"标志位必读"条呼应）——transferable=1 时解锁权可私下转售且不在代币转账留痕，"锁仓至 2030"≠"当前受益人持有至 2030"，结论措辞必须带此提示；transferable=0 则直接反证该风险，禁写"可转让"。
 - 官方金库确认后必须追下游：高频（数小时一轮）向数十个地址小额发放 = 排放/奖励发放行为指纹，据此把"金库流出"与"抛售"区分开。
@@ -130,17 +130,17 @@ Solana 特有优势：program-owned PDA 让托管类型可以直接从账户归�
 
 ### 3b. Solana 控盘团伙（庄）识别指纹（外部 FyedK/CLAW 协同集群分析，2026-07）
 
-meme/微盘"庄"（多钱包控盘团伙）的关联硬证据（任一即可，叠加为铁案），与 analysis-playbook §6 通用聚类规则配合、是其 Solana 特化：
+meme/微盘"庄"（多钱包控盘团伙）的关联候选指纹（定级须过 playbook-entity-cluster-methods"行为指纹三问总闸与强弱两档"；纯行为最高为"高度疑似"），与 playbook-entity-cluster-methods §6 通用聚类规则配合、是其 Solana 特化：
 
-1. **同 slot 原子下单**：多钱包在完全相同 block 同买同卖 → 单控制端 bundle（用 pre/postTokenBalances 差分定位每钱包买卖，按 `(mint,side)` 聚合看是否同 slot）——最强铁证。
+1. **同 slot 共现**：多钱包同 slot 同买同卖只作候选发现；用 pre/postTokenBalances 按 `(mint,side)` 定位后，须排除公共工具和协议机制；同 slot 本身不证明原子 bundle 或单一控制端。
 2. **跨组同区块交易**：某代币被两组钱包在同一 block 买入（常见于旧组收工/新组开工的交接点，掉队钱包混进新组 bundle）。
 3. **共用归集口/中转**：不同组利润流入同一归集地址，或同一中转既收 A 组款又给 B 组发起始 gas。
-4. **机器人 + 优先费指纹**：同一交易 bot（如 Axiom `FLASHX8DrLbgeR8FcfNV1F5krxYcYMUdBkrP1EPBtxB9`）+ 同一套**离散 cu_price 预设档**（某案 436363 / 800000 / 2.5M / 3.636M / 6.667M microLamports 五档）——普通用户不会用这套组合，是技术指纹（用户说"gas 都一样"即指此）；优先费按买/卖分固定档位也算。cu_price 从 ComputeBudget 指令 `SetComputeUnitPrice`（data 首字节 3）解析。
-5. **金额分档 + ±10% 抖动**：多钱包买入额几乎相同但带随机偏移（反聚类伪装）= 脚本驱动铁证。
-6. **母钱包代付创建落仓户 ATA**：落仓/收币钱包**收币前无任何链上生命**（首笔即被注资），其 token account 的租金由**付款方母钱包代付创建**（同一 tx 里母钱包既转币又付 ATA 创建费）——收款方是母钱包凭空生成的空壳，比"gas 同源"更强的控盘指纹（换钱包也换不掉这个"凭空生成收款方"的结构）。识别=对疑似落仓户查最老签名，看首笔是否为对手方 createAssociatedTokenAccount+transfer 同 tx（OPAL(Solana) 实测 2026-07-14）。
-7. **跨地址凑整回补**：N 笔零散金额（30万/180万/80万…）从一个地址精确凑齐**整数目标**（如 1,000 万整）补入另一地址，使多个落仓户终局配比落成整数（如 25/25/20 万）——**跨地址的全局配平只有单一记账者能做到**，是"单一控制端"的强指纹（独立主体不会为凑别人仓位的整数而分15笔转账）。识别锚点=某中转的净持仓被一串碎额转账修剪到整数（OPAL(Solana) 实测 2026-07-14）。
+4. **机器人 + 优先费指纹**：同一交易 bot（如 Axiom `FLASHX8DrLbgeR8FcfNV1F5krxYcYMUdBkrP1EPBtxB9`）+ 同一套**离散 cu_price 预设档**（某案 436363 / 800000 / 2.5M / 3.636M / 6.667M microLamports 五档）——先检验同工具用户的组合普及率并排除公共预设；买/卖分档亦同，不直接作控制证据。cu_price 从 ComputeBudget 指令 `SetComputeUnitPrice`（data 首字节 3）解析。
+5. **金额分档 + ±10% 抖动**：近似买入额与偏移只作行为候选；须检验同期分母及工具/协议对照，不据此确证脚本驱动、反聚类意图或同一实体。
+6. **母钱包代付创建落仓户 ATA**：落仓/收币钱包**收币前无任何链上生命**（首笔即被注资），其 token account 的租金由**付款方母钱包代付创建**（同一 tx 里母钱包既转币又付 ATA 创建费）——只证明代付建户与转币，不证明付款方控制收款 owner；归属须另核收款方签名、后续处置与独立控制证据。识别=对疑似落仓户查最老签名，看首笔是否为对手方 createAssociatedTokenAccount+transfer 同 tx（OPAL(Solana) 实测 2026-07-14）。
+7. **跨地址凑整回补**：N 笔零散金额（30万/180万/80万…）从一个地址精确凑齐**整数目标**（如 1,000 万整）补入另一地址，使多个落仓户终局配比落成整数（如 25/25/20 万）——只作跨地址配额管理候选；须排除公共执行服务并补独立控制证据后再判同一实体。识别锚点=某中转的净持仓被一串碎额转账修剪到整数（OPAL(Solana) 实测 2026-07-14）。
 
-**逆向找历代马甲（最高价值的一招）**：庄的冷门微盘常是自买自卖 wash trading、外部买家≈0，根本没有跟单狗——所以"最近的同款买家"往往就是庄自己的历代钱包。**总归集口的历史流入地址列表 = 庄的历代马甲归集头名录**（某案总归集口两年 154 个流入地址）。比 co-buyer 扫描高效得多。（此洞察跨链通用，已提炼进 analysis-playbook §6。）
+**归集口上游候选反查**：总归集口的历史流入地址仅作候选清单；逐址核验币流、公共服务属性与独立控制证据，不直接视为同一实体的历代马甲（casebook E-05）。（此方法跨链通用，见 playbook-entity-cluster-methods §6。）
 
 **资金闭环典型**：CEX（多为币安热钱包 `5tzFkiKscX…`，余额百万级 SOL 可验证）提现 → 分发/中转钱包 → 各代马甲交易 → 组内归集头 → 总归集口 → 100% 存回币安 = 庄是币安实名用户。
 
@@ -156,7 +156,7 @@ meme/微盘"庄"（多钱包控盘团伙）的关联硬证据（任一即可，�
   - `/defi/quotation/v1/tokens/kline/sol/<mint>?resolution=1d`：日 K
   - **口径坑**：GMGN holders 是**当前**持仓口径，与 RugCheck（账户总数口径）可差 2–20 倍，两者交叉验证不互替。GMGN 的 bundler/sniper 标签是线索不是定论，仍须落链上 §3b 指纹确认（二见实证：某 top 大户带 bundler 标签、链上实为毕业+6h 才进场的外盘买家——直接采信会把建仓时点/成本全判错；来源：USELESS(Solana) 分析，2026-07-21）。
 - **pump.fun coin API**：v1（frontend-api）已死（530）；**v3 可用**——`frontend-api-v3.pump.fun` 拿代币元数据/creator/description（外部 CLAW 考古，07）。**v3 的 creator 履历三端点**（代理经 `CHIP_PROXY`/`--proxy` 解析，见 `scripts/lib/proxy_config.py`；dev 前科调查核心通道）：①`/coins?creator=<addr>&limit=100&includeNsfw=true` = creator 名下全部发币记录；②`/users/<addr>` = 平台账号画像（用户名/关注数/是否绑定 X）——**x_username=null 可证明"链上 creator 与官推无平台级绑定"**（官推侦查的链上侧交叉证据）；③`/balances/<addr>` = 站内持仓视角（不含毕业后链上 SPL 持仓，引用须注明口径）（PUB，07-14）。
-- **RugCheck `api.rugcheck.xyz/v1/tokens/<mint>/report`（免 key）**（外部 SGL/CLAW 分析实测，2026-07）：一次拿 topHolders（含 owner+pct+**insider 标记**）+ markets（LP 名单）+ **insiderNetworks**（转账关联的内幕簇，直接给出关联地址网络）+ launchpad——**是 `getTokenLargestAccounts` 恒 429 的最佳替代**（§0a），insider 关联比自建聚类省事，但仍按 analysis-playbook §6 硬规则复核。
+- **RugCheck `api.rugcheck.xyz/v1/tokens/<mint>/report`（免 key）**（外部 SGL/CLAW 分析实测，2026-07）：一次拿 topHolders（含 owner+pct+**insider 标记**）+ markets（LP 名单）+ **insiderNetworks**（转账关联的内幕簇，直接给出关联地址网络）+ launchpad——**是 `getTokenLargestAccounts` 恒 429 的最佳替代**（§0a），insider 关联比自建聚类省事，但仍按 playbook-entity-cluster-methods §6 硬规则复核。
   **坑：免费层 insiderNetworks 的 size 字段有值但 accounts 成员列表可为空**——只能当线索计数用，成员名单要自建聚类复现（PUB，07-14；USELESS 案 07-21 再确认免费层 accounts=None）。**knownAccounts 字段实测 388 条 AMM 池/基础设施标签，可直接作算集中度前的剔除表**（USELESS，07-21）。
   **坑：`detectedAt` 是 RugCheck 索引器首见时间，不是发射时间**——老币可差出几个月（TROLL 实测差 145 天：真实创建 2024-03-10，detectedAt 2024-08-02），据此定"发射窗"会漏掉整段早期历史（TROLL 案初稿因此漏了创建 tx 的 dev 闪电轮与 2024-08 做量集群所在的整个时段）。**发射时点唯一正解=curve/mint ATA 最早签名核实到秒**（getSignaturesForAddress 翻到最老；
   pump.fun frontend-api-v3 的 created_timestamp 可作秒级互证）（TROLL，07-29）。

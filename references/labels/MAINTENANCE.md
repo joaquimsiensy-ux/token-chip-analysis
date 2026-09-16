@@ -16,7 +16,7 @@ labels 数据版本独立于 skill 版本；已发布版本与逐表变更见 CH
 |---|---|---|
 | curation | 人工精修固化（additions/curation_overrides_*.csv） | 最高（压过一切，v4.2+ 稳定化设立） |
 | goldset-curated | `benchmark/goldset_curated.csv` 中经盲审确认的裁决金标 | 金标构建最后按 `(chain,address)` 覆盖自动分类/重抽样；不得依赖临时交接目录 |
-| manual/addressbook | 实战核验条目（含全部 Robinhood 独家）| 最高，优先级压过一切 |
+| manual/addressbook | 实战核验条目（含全部 Robinhood 独家）| 次高（SRC_PRIORITY=0，仅低于 curation） |
 | dune-cex-addresses | Arbitrum CEX-only 初版（Dune CEX 地址快照，730 行） | 中高（增量合并非高信任前缀；重放按 `dune` 前缀取 SRC_PRIORITY=1） |
 | serial-offenders | 惯犯层（appendix/state 双源自动回灌+人工白名单，随案滚动，07-31 时点约 1,740 址）| **线索级**（案内定性、多数案源未经用户复核，v6.2.0 降级定调——消费纪律见 labels/README serial-actor 段，禁当最高置信源用） |
 | registry-official | 官方 deployment registry（Aerodrome/Clanker/Zora/Uniswap/Virtuals 官方仓库·npm 包·docs 亲验，Base 54 条首建）| 高（官方源） |

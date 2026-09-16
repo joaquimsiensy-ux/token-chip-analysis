@@ -10,7 +10,7 @@
 
 对账清单＝**标准四件套＋1 项重放前置检查**（下列 1–4 为对表查，5 为采集完整性前置），全过才允许跑下游分析。与 analyze-workflow A2 现行"四查"的对应：本节 1＝余额对账、2/3＝供给闭合、4＝时间抽查；A2 第 3 查**供给真值闸**挂 `scripts/lib/supply_truth_gate.py`，不在本清单内：
 1. **余额硬对账＋GMGN 黄灯对表（两件事，不得混写）**：`verify_recon.py` 先按绑定的 `balances` 确定性选出 top-N（先截取、再跳过 ZERO/dead），逐地址用冻结块 RPC `balanceOf` 与重放 raw balance 精确相等核对；任一 MISMATCH/RPC_ERROR 都是硬 FAIL。GMGN top10 是另一个第三方比例对表：以 0.15pp 为容差，差异不改变收据的 PASS/0，但收据必须带 `warnings:["gmgn_divergence"]`，发布链在合格人工查证说明绑定前保持阻断。曾在扫块进度 97% 时 4/10 MISMATCH、补扫 remaining=0 后 10/10 全 OK；该历史现象只说明提前对表能暴露未补扫完成或口径问题，不把 GMGN 比例差异误写成 RPC 个位数硬对账。（OPN，07；2026-08-15 黄灯制）
-2. **全网余额和=0**：所有地址重建余额求和应为零（mint/burn 计入），不为零即漏了转账段。（SIREN，07）
+2. **全网余额和=mint_total**：重建余额按 raw integer 求和等于铸币总量（sink 收方照加），不等即对账失败，须排查数据或重放口径。（SIREN，07）
 3. **总量恒等式 wei 级闭合**：跨链代币各链余量之和 ≈ 总供应，精确到 wei。（OPN，07）
 4. **时间抽查（分层计划制）**：`anchor_plan.py` 出分层抽样计划（矩阵点＋四类强制覆盖点），`scripts/lib/time_spotcheck.py` 对独立第二源逐锚点核对（balance 型 archive balanceOf 直查＋tx 型收据五元组，产 time_spotcheck.json）；第二源分层选型与全史重拉例外条款见 §13。（旧"固定块距插值抽几笔对浏览器"形态已由本制取代；OPN/SIREN 07 → 2026-08-01 改版）
 5. **重放前置完整性检查（快照缺块防护，重放开跑前做）**：核对全部采集 run 的 done.json——next_block 全部达到目标块、mtime 晚于最后一次采集启动，才允许重放（实锤：重放跑在尾部 run 拉完前 13 分钟，快照缺尾部 ~980 块/682 条）。**机制警示：供给闭合恒等式（上面第 2/3 查）对"缺整行"免疫**——整行缺失时借贷两边同时缺、sum 恒等于 TOTAL 照样通过，此类洞只有 RPC 抽查负余额能暴露；增量重放出现"期初为 0 的地址转出变负"=上游快照有洞的指纹，见到即停下补数据。（QUQ 完整版分析，07-22）
@@ -149,9 +149,9 @@ KOGE 一级 inflow 预筛（≥0.1% 供应）后**仍剩 157,459 个候选**，�
 
 **层 1（默认，有 archive 通道的链：ETH/Base/Arbitrum/Polygon 等）——锚点直查，跑固化脚本**：
 ```bash
-python3 scripts/lib/time_spotcheck.py --plan anchor_plan.json --rpc <独立archive节点> \
-    --chain <eth|bsc|base|arbitrum> --token 0x标的 --out time_spotcheck.json \
-    --final-block <数据截止块>
+python3 scripts/lib/time_spotcheck.py --plan anchor_plan.json --input <生成plan所用的merged转账数据> \
+    --rpc <独立archive节点> --chain <eth|bsc|base> --token 0x标的 \
+    --out time_spotcheck.json --final-block <数据截止块>
 ```
 - balance 型锚点走 archive `eth_call balanceOf`（历史块状态直查），tx 型锚点（最大单笔/交界块）走 `eth_getTransactionReceipt` 核五元组——**两型都查**，只查 balance 型等于四类强制覆盖点漏验两类。O(锚点数) 秒级完成，APU 案 Alchemy archive 15/15 精确一致实证。
 - 独立性口径（措辞纪律）：状态直查对"余额结果"的验证比换一家事件索引商更直接；但**不能替代事件集合完整性验证**——等额进出抵消、零余额中转层、tx/logIndex/时间戳元数据错误它天然验不出（这些去层 3）。

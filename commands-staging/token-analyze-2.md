@@ -10,7 +10,7 @@ argument-hint: <代币名或合约地址> full [补充信息]
 1. **模型自检**：非 Fable/主力判断模型 → 警告我（不硬停）。
 2. **`scripts/report/handoff_manifest.py verify --case-dir .` fail-closed**：exit 2 一律拒收（缺件/哈希漂移/gate 语义漂移/状态非 READY），报告缺什么让我裁决退回 −1 还是走旧单会话命令，**禁止带病开工**。
 3. **数据保鲜检查**：默认按已有数据跑（报告如实标注数据时点）；仅当 cutoff 距今缺口 >72h 才弹警报 AskUserQuestion 停等我裁决，**绝不自动拉取**。
-4. **必读件**：anomalies.json、四查结论、accounting_mode、点名式 CEX 黑箱关卡结论（若有）。
+4. **必读件**：anomalies.json、对账结论、accounting_mode、点名式 CEX 黑箱关卡结论（若有）。
 5. **候选覆盖自检**：用重放产物独立重算候选清单比对 candidate_universe，无缺漏才继续。
 6. data_map.json 当索引按需读盘，禁整读大产物；candidate_screening.json 当裁决工作台。
 7. **sealed/ 禁读令**：entity_freeze.json 落盘前禁读（`freeze --check-unseal` exit 0 才准）；冻结后 sealed 观察只作 A4 差异靶单——**不是证据、不算复核路数**；交付收口时按 §3b.3 第⑤条自查申报。

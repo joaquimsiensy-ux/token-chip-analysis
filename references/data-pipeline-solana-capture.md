@@ -34,7 +34,7 @@
 1. **全量转账＝SQD portal**（portal.sqd.dev，免 key 免代理）——采集器现役 **v2**，v4 正式边标准为 `[ts,slot,tx_index,-1,from,to,amt]`（§13b；`-1` 表示交易级净额边没有 instruction 顺序）；缓存使用 sha256(原始 mint) 路径。转账边=同 tx 内 owner 级净变动贪心配对，`edge_semantics="owner-net-greedy"`，from/to 为 ZERO 哨兵即铸造/销毁；它证明 owner 净变化，不证明链上精确 from→to。断点续拉按交易身份去重，meta 连续完成前缀防 off-by-one。
    **吞吐与架构选择**：v2 稳态约 255 倍实时（§13a 传输层翻案了旧的 1.5-4x 数字）——2-6 个月币龄全程重放数小时级；§11 混合重建（发射窗精确+核心实体流水+CPMM 重建+快照封口）降级为超长币龄（1 年+）专用。
 2. **发射期精确定价**：GeckoTerminal 分钟 K `/ohlcv/minute?aggregate=1&limit=1000&before_timestamp=`（池创建起就有）；小时 K 翻页可拿全历史。pump.fun"发射即迁移"币无内盘 K 线，内盘成本用 GMGN dev avg_cost 近似。
-3. **资金同源（gas 溯源）**：公共 RPC `getSignaturesForAddress`（翻到最老）+ `getTransaction(jsonParsed)` 找首笔 system transfer 入金 source；0.25s 间隔，代理经 `CHIP_PROXY`/`--proxy` 解析（`scripts/lib/proxy_config.py`）。识别马甲网络最有效的一招（母钱包收敛即实锤）。
+3. **资金同源（gas 溯源）**：公共 RPC `getSignaturesForAddress`（翻到最老）+ `getTransaction(jsonParsed)` 找首笔 system transfer 入金 source；0.25s 间隔，代理经 `CHIP_PROXY`/`--proxy` 解析（`scripts/lib/proxy_config.py`）。母钱包收敛只作候选线索，须先按 casebook E-05 排除公共服务来源，再补独立控制证据。
 4. **双跳换仓溯源**：老仓→一次性中转→新址的双跳必须重放溯源，禁止把前端 `transfer_in` 当独立新仓。（判例：casebook/entity-clustering.md E-04）
 5. **铸造受益人全清单**：创建 tx 的全部铸造受益地址都作为 creator 系起点。（判例：casebook/entity-clustering.md E-12）
 6. **bonding curve 成本校准**：枚数按 token 守恒重建；标准虚拟储备参数算出的 SOL 成本可能系统性低估约 10%，关键笔必须用 `getTransaction` 实付真值校准，批量值报告修正区间，并剔除毕业迁移笔。（判例：casebook/supply-accounting.md S-05）
@@ -45,7 +45,7 @@
 
 针对"4-5 个月币龄全量 SQD 挂机不现实"的 Plan B 的一个更轻量替代，已在 LAYOFF 跑通：
 
-1. **锚点法演变重建（免全量 SQD，`scripts/solana/build_evolution.py`）**：不重放每一笔，而是——①`fetch_pool_sigs.py` 拉主池全史签名；②等距抽签名做**池子余额锚点**（`decode_txs_v2.py --pool <池owner>` 每笔落 `pool_balance`）；③核心实体（top 大户 + 离场盈利榜 + 上游中转）用 `whale_deep.py` 拉 ATA 级全流水；④`build_evolution.py` 在时间点插值：各实体持仓从其逐笔流水累积、流动性池用锚点曲线、散户=总供应−已知−池−销毁残差。产出图1/图2 数据。**精度声明**：中小散户是残差估算，量级正确、单点精度有限，报告局限性须写明。
+1. **锚点法演变重建（免全量 SQD，`scripts/solana/build_evolution.py`）**：不重放每一笔，而是——①`fetch_pool_sigs.py` 拉主池全史签名；②等距抽签名做**池子余额锚点**（`decode_txs_v2.py --pool <池owner>` 每笔落 `pool_balance`）；③核心实体（top 大户 + 离场盈利榜 + 上游中转）用 `whale_deep.py` 拉 ATA 级全流水；④`build_evolution.py` 在时间点插值：各实体持仓从其逐笔流水累积、流动性池用锚点曲线、散户=总供应−已知−池−销毁残差。产出 `sol-anchor-rows` 序列，仅探索辅助、不进正式编译链（正式序列走 replay_edges/replay_duck）。**精度声明**：中小散户是残差估算，量级正确、单点精度有限，报告局限性须写明。
 2. **decode 通道坑**：`getTransaction` 直连 `api.mainnet-beta` **恒 429**，须使用已配置代理（`decode_txs_v2.py --proxy "$CHIP_PROXY"`）；代理统一经 `CHIP_PROXY`/`--proxy` 解析（`scripts/lib/proxy_config.py`），不得写死端口。金额只用 raw integer，输出 `deltas_raw/pool_balance_raw + decimals`，UI 字段仅为精确十进制字符串；缓存及断点输出绑定 mint/pool/RPC，`decode_fail` 不算 done。v1 `decode_txs.py` 仅保留为逐笔兼容入口，已复用 v2 的输出身份、completed_sigs 和完整性 receipt；两版最终仍有失败签名都以非零退出。
 3. **gas 溯源翻页上限（`gas_origin.py` 合并版）**：翻页上限已并入 `gas_origin.py`——默认 `max_pages=2`、超深地址标 `approx`，`--full` 恢复翻到最老的全量行为；落仓户签名少一页到底、秒完成。历史来源：gas_fast 加固，BONK 等案。
 4. **服务 funder 排除**：gas 聚类只取最早 SOL 入金；候选 funder 必查余额与近千签名时间跨度。（判例：casebook/entity-clustering.md E-05）
@@ -131,7 +131,7 @@
 - **空区间不返回空**：区间内有块但该 mint 无数据时,服务端回**稀疏 header-only 行**标记扫描进度（实测 100 万 slot 的空区间回 20 行、推进到 +3,905;1000 万 slot 同样 20 行 640 字节）——客户端按最后 header 续拉即可,这是正常推进不是失败。
 - **零行的唯一正常成因＝区间内一个块都没有**（Solana skipped slot 串,leader 没出块）。实证：BONK 现场 4 段复验,去掉 mint 过滤依然零行,而包围 ±60 有 103-112 个块。
 - **HTTP 204 ＝ fromBlock 超出服务端已索引范围**（0 字节）。**绝不能判完成**——那是漏数据,只能按可重试失败处理。
-- **`/head` 给的是 unfinalized head**,响应头 `x-sqd-finalized-head-number` 比它小约 2,900 slot（实测）。采集上界取 `/head` 没问题（实测到 head 仍正常返回数据）,但别拿两者的差当异常。
+- **`/head` 给的是 unfinalized head**,响应头 `x-sqd-finalized-head-number` 比它小约 2,900 slot（实测）。生产者上界不超过 finalized slot，并与 `/head`、可选 `--to-slot` 取较小值（`fetch_sqd_transfers_v2.py`），别拿两者的差当异常。
 
 SQD **无块头（NO_HEADER）**不能只靠 SQD 自己最终确认；前提是参考源可查询该时代且本轮额度可用，再用参考源 `getBlocks` 取得该区间真实出块位图逐 slot 对照。代价按区间长度近似线性增长，跨度大时应先按 coverage 分段，不得用一次超宽调用掩盖部分失败。
 

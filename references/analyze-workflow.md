@@ -16,7 +16,7 @@
   `independent-audit-protocol.md` 净室复核轨；不新增 slash command。旧报告只拆成
   `claim_registry.json` 待审命题，正文、实体表、标签、衍生 JSON 与图表均不作证据输入。
 - 净室轨与新分析共用 A0–A2 骨架：A0 核定标的、链范围、分母和记账模型，A1 独立采集原始数据
-  并冻结 `audit_input_manifest.json`，A2 完成四查对账。A3 起以净室协议重建实体、三账、历史序列和
+  并冻结 `audit_input_manifest.json`，A2 完成对账关卡。A3 起以净室协议重建实体、三账、历史序列和
   命题裁决；A4 使用 `--workflow-type independent-audit`，A5 仅以
   `build_html.py --mode analysis-audit` 编译并强制 `audit_release_gate --profile independent-audit`。
 - 不满足上述触发条件的新币/新分析走标准 A0–A5、`--workflow-type new-analysis` 与
@@ -43,7 +43,7 @@
 | base58 mint | `data-pipeline-solana.md`（双 RPC 按方法路由见其分册 §0a） |
 | 0x 地址，Robinhood Chain（exploration only） | 可路由至 `data-pipeline-robinhood.md` ＋ `scripts/robinhood/`；禁止 A4/A5 seal 与正式 analysis 编译 |
 | 跨链部署（OFT/CCIP 等） | 先过多链硬关卡选定范围 → 各链按其 pipeline 采集＋跨链 mint/burn 配平；桥接分支链范式见 playbook §6a |
-| 全新链 | 新链 SOP：先实测数据面并实现采集 receipt、四查、标签 resolver 与 G8 chain 适配；这些正式门禁未齐前只能交付明确降级的探索结果，不得编译正式 analysis |
+| 全新链 | 新链 SOP：先实测数据面并实现采集 receipt、按链定义的对账关卡、标签 resolver 与 G8 chain 适配；这些正式门禁未齐前只能交付明确降级的探索结果，不得编译正式 analysis |
 
 **通道实测探路**：写任何采集脚本前，先用 1–2 分钟小请求逐个实测候选数据源（可用性/返回结构/分页/上限/限速）；拿到任何新 key 先做 1 分钟能力探测再承诺方案；禁止基于文档想象设计方案。
 
@@ -109,14 +109,11 @@
    `charts/distribution_stage1.png`。JSON 进入 READY `handoff/v3`，verify 会重新派生五桶并重算；
    工作图不进 seal，也不进报告。initial 只绑定快照、来源收据、排除派生链、算法和阈值，
    不绑定 handoff manifest。
-   **喂它的 owner 快照必须与 A2 四查里 `verify_recon --balances` 吃的是同一个文件**
-   （EVM 通常是 `balances_final.json`，Solana 是 scanner 自己产的
-   `data/holders_owners.json`）：发布闸 new-analysis 会拿分布快照的 sha256 去对四查
-   `balance` 收据的 `inputs.balances`（Solana 对 observation bundle 的
-   `holder_outputs.owners`），喂两份不同的文件即便总和相同也会被判"同值换仓"而拒。
-   动态 Solana（`exact_reconcile` 早于 wrapper）必须显式指定观察快照，因为
-   `holder_distribution_scan.find_snapshot` 默认优先 `data/holders_owners.json`（冻结件），
-   而发布闸的分布绑定要求 observation bundle 的观察 owners。完整命令：
+   **owner 快照须与 A2 的权威输入绑定一致**：
+   EVM 对 `balance` 收据的 `inputs.balances`；
+   Solana 对 observation bundle 的 `holder_outputs.owners`。
+   发布闸按 sha256 核对内容；即使总和相同，逐地址余额不同也会拒绝。
+   动态 Solana（`exact_reconcile` 早于 wrapper）必须显式指定观察快照（`--snapshot`），因为发布闸的分布绑定要求 observation bundle 的观察 owners。完整命令：
    `python3 scripts/report/holder_distribution_scan.py --case-dir . --stage initial --snapshot data/observe_live/holders_owners.json`。
    `supply_truth` 为 PASS/exit 0 且冻结点 `replay_net` 因冻结后链上微量销毁略高于观测时点
    `onchain_total_supply` 时，扫描器只在收据 `diff` 逐 raw 相等且整数复算不超过其
@@ -142,7 +139,7 @@
 10. **判级（含 ET-1）**：庄级实体识别、标签划分与类型三分类的门槛数值与细则唯一权威源＝
     playbook-entity-cluster-tiering §6a（本处不设数值副本防漂移）。ET-1 对其他大户线逐个过
     标签库/惯犯库/指纹/funder 批量排查，报警才人工深挖；项目方、大庄/小庄、离场庄、
-    刷量地址与发射窗协同实体均按该节判级，合并口径含全部疑似关联地址。
+    刷量地址与发射窗协同实体均按该节判级，合并口径按 strict／expanded 双边界。
     分段执行时报警地址证据采集归 −1（只记观察事实，split-run §1.3），人工深挖定性归 −2（§1.4）。
 11. **阵营演变重放**：按已冻结且过 G8/判级的名册，重放已声明范围内各阵营占比演变序列；
     分母＝当期净供应序列，**逐时点 assert Σ阵营＝100%±容差**，改过名册跑反向断言
