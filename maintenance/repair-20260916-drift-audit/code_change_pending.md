@@ -9,3 +9,7 @@
 ## D2（R4 盲审 D4 附带）`scripts/solana/decode_txs_v2.py:8` 文头注释"按 sig 前 2 字符分 256 片"
 - 性质：仅 docstring 文字，与 `:75` 实际按 sig 前 2 字符（Base58 字母表，可能分片数远多于 256）不符；零行为影响。
 - 文档侧同错已由工单 R4 D4 改正；代码文件按用户原则不动，是否顺手订正注释待用户决策。
+
+## D3（R5 盲审 D2 附带）`scripts/report/standard_charts.py:283` `plot_whale_vs_price` 文档串"线超 8 条时可将持仓较小的实体合并成一条避免花屏"
+- 性质：仅 docstring 文字；split-run 收口闸 `stage2_closeout.py:197-198` 对 merge_groups 硬拒，merge_groups 属 7.2 遗留清单。零行为影响。
+- 文档侧同错已由工单 R5 D2 删除许可；代码文件按用户原则不动，是否顺手订正待用户决策。
