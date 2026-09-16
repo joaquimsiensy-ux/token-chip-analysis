@@ -10,3 +10,6 @@ codex 沙箱 run_all 148/151 的三项失败在提交后的同一内容树本机
 ## 补充（盲审 t4_blind_reply.txt ④ 指出原始日志未入库）
 三项在树 49b628e 单跑的原始输出已入库：`t4_post_49b628e_test_batch3_solana_vertical_slice.py.log`、`t4_post_49b628e_test_batch3_evm_vertical_slice.py.log`、`t4_post_49b628e_test_stage2_reseal.py.log`，退出码均为 0（运行命令 `python3 -B scripts/tests/<名>`，cwd＝仓库根，验收 worktree HEAD＝49b628e）。
 另：`t4_accept_static_fable.txt` 末段 docs_lint 一行是验收脚本把 `docs_lint.py --all` 当文件名的引号错误（exit 2），随后单独实跑 `python3 -B scripts/tests/docs_lint.py --all` PASS 59 文档（见 t4_done.md 与盲审 ③ 复跑）。
+
+## T4-r1 提交后补验（Fable）
+树 a675e720f90489757e00cd0c225d6cee70a00cef 单跑 `python3 -B scripts/tests/test_stage2_reseal.py` 退出码 0，日志 `t4_r1_post_a675e72_test_stage2_reseal.py.log`。
