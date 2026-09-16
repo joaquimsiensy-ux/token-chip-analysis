@@ -1,4 +1,4 @@
-# 工单 T4-r1（v1，返修单；出处：codex 盲审 `t4_blind_reply.txt` ⑤ 阻断）：CHANGELOG 7.1.1 条目一句事实订正
+# 工单 T4-r1（v1.1，codex 复核通过并采纳两条措辞建议；出处：codex 盲审 `t4_blind_reply.txt` ⑤ 阻断）：CHANGELOG 7.1.1 条目一句事实订正
 
 > 主工单 `workorder_t4_version.md`（v2.1）全部条款继续有效；本单只订正一句登记文案，并同步主工单 §2 代码块，保持"工单代码块＝CHANGELOG 逐字"。
 
@@ -26,9 +26,9 @@
 - `git status --porcelain=v1 --untracked-files=all` 只列 `CHANGELOG.md`、`workorder_t4_version.md`（M）与 `t4_r1_done.md`（??）。
 - `git diff --exit-code HEAD -- references/ scripts/ VERSION pyproject.toml SKILL.md` 退出码 0。
 - `git diff --numstat HEAD -- CHANGELOG.md` 为 `1 1`。
-- 工单 §2 两段代码块（去缩进）仍逐字在 CHANGELOG 中（可用 python 读工单 ``` 块比对）。
+- 主工单 `workorder_t4_version.md` §2 两段代码块（去缩进）仍逐字在 CHANGELOG 中（可用 python 读该工单 ``` 块比对；勿误取本返修单的旧/新句代码块）。
 - `python3 -B scripts/tests/changelog_lint.py`、`test_version_consistency.py`、`docs_lint.py --all` 均 exit 0。
-- 全套 `run_all` 本单不要求（只改 CHANGELOG 与工单文案，不进任何测试输入；`changelog_lint` 已覆盖）；提交后由调度方在最终树本机单跑 `test_stage2_reseal.py` 记入验收。
+- 全套 `run_all` 本单不要求（只改 CHANGELOG 与工单文案，不改生产／测试代码；读取 CHANGELOG 的 `changelog_lint`、`test_version_consistency` 已在本单验收内）；提交后由调度方在最终树本机单跑 `test_stage2_reseal.py` 记入验收。
 
 ## §4 报告 `t4_r1_done.md`
 首行 `# 施工 T4-r1: 完成` 或 `停工`；列两文件 diff 行数、§3 各命令退出码与关键输出。不 commit。

@@ -1,0 +1,20 @@
+# 复核 T4-r1: 通过
+
+基线：`e718880`。这是返修单复核，尚未施工；本轮结束工作树仍干净。
+
+1. **① §1 描述准确。**  
+   前者生成模板后读取旁车，再取 `side[r["candidate_id"]]`，见 [test_adjudication_validator.py:98](/Users/uravvv/.claude/worktrees/tca-three-items/scripts/tests/test_adjudication_validator.py:98)。后者读取旁车、与源扫描成员集合比较，填裁决仍使用旁车，见 [test_distribution_gate.py:377](/Users/uravvv/.claude/worktrees/tca-three-items/scripts/tests/test_distribution_gate.py:377)。与 [T1 工单:62](/Users/uravvv/.claude/worktrees/tca-three-items/maintenance/repair-20260916-three-items/workorder_t1.md:62) 一致。
+
+2. **② 替换句准确，唯一性可满足。**  
+   旧台账补回 `_members_total` 后验证通过的兼容用例确实存在，见 [test_adjudication_validator.py:400](/Users/uravvv/.claude/worktrees/tca-three-items/scripts/tests/test_adjudication_validator.py:400)。  
+   当前 [CHANGELOG.md:96](/Users/uravvv/.claude/worktrees/tca-three-items/CHANGELOG.md:96) 和 [主工单:29](/Users/uravvv/.claude/worktrees/tca-three-items/maintenance/repair-20260916-three-items/workorder_t4_version.md:29) 均是**旧句一次、新句零次**。内存模拟指定替换后，两文件均为**新句一次、旧句零次**；主工单两段代码块去缩进后，各自在 CHANGELOG 中完整出现一次。
+
+3. **③ 白名单够用，验收可机器判定。**  
+   按 [返修单:7](/Users/uravvv/.claude/worktrees/tca-three-items/maintenance/repair-20260916-three-items/workorder_t4_r1.md:7) 与 §2 指定替换，模拟结果为 CHANGELOG **新增／删除各 1 行**，主工单**各 2 行**，另新增报告即可。状态、保护区差分、出现次数、代码块一致性和退出码均可机械核对。  
+   当前树实跑 `changelog_lint.py`、`test_version_consistency.py`、`docs_lint.py --all`，均 **exit 0**；分别为活跃 73＋归档 139 条、版本 7.1.1、59 个文档。这是当前树检查结果。
+
+4. **④ 原始日志缺失阻断已消除。**  
+   [Solana 日志:1](/Users/uravvv/.claude/worktrees/tca-three-items/maintenance/repair-20260916-three-items/t4_post_49b628e_test_batch3_solana_vertical_slice.py.log:1)、[EVM 日志:1](/Users/uravvv/.claude/worktrees/tca-three-items/maintenance/repair-20260916-three-items/t4_post_49b628e_test_batch3_evm_vertical_slice.py.log:1) 均记录 PASS；[reseal 日志:33](/Users/uravvv/.claude/worktrees/tca-three-items/maintenance/repair-20260916-three-items/t4_post_49b628e_test_stage2_reseal.py.log:33) 明示 `HEAD=49b628e…`、`overlay=0`，其 :40 为 `21/21 PASS`。[补充段:11](/Users/uravvv/.claude/worktrees/tca-three-items/maintenance/repair-20260916-three-items/t4_accept_fable.md:11) 补齐命令、cwd、验收 HEAD 和三项退出码 0。三项也恰好对应原沙箱日志的全部失败入口。证据支持原 T4 补验收口；T4-r1 提交后的 reseal 仍按本单另验。
+
+非阻断建议：[返修单:29](/Users/uravvv/.claude/worktrees/tca-three-items/maintenance/repair-20260916-three-items/workorder_t4_r1.md:29) 的“工单 §2”明确写成“主工单 `workorder_t4_version.md` §2”，避免误取返修单自身的旧、新句代码块；:31 的“不进任何测试输入”改成“不改生产／测试代码”，因为 [版本检查:16](/Users/uravvv/.claude/worktrees/tca-three-items/scripts/tests/test_version_consistency.py:16) 实际读取 CHANGELOG。
+
