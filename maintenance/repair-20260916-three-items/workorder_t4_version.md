@@ -1,4 +1,4 @@
-# 工单 T4（v2，融合 codex 复核 `t4_review_reply.txt`：查询命令语法、`main` 改动限定、副本件数 78、run_all 全绿条件、porcelain/--exit-code 验收）：版本落地 7.1.1 —— repair-20260916-three-items 收官（分支 `fix/three-items-20260916`，已合并 origin/main=7b820a4「7.1.0 W3」）
+# 工单 T4（v2.1，r2 非阻断措辞采纳；v2 融合 codex 复核 `t4_review_reply.txt`：查询命令语法、`main` 改动限定、副本件数 78、run_all 全绿条件、porcelain/--exit-code 验收）：版本落地 7.1.1 —— repair-20260916-three-items 收官（分支 `fix/three-items-20260916`，已合并 origin/main=7b820a4「7.1.0 W3」）
 
 > 性质：**纯文档/元数据工单**，零生产代码、零测试代码、零手册改动。另一会话已占 7.1.0，本三项记 **7.1.1**（修版：既定契约内的修复与文档修订）。
 
@@ -38,7 +38,7 @@ VERSION（权威）= `pyproject.toml` `version` = CHANGELOG 最新条目 = `SKIL
 - `python3 -B scripts/tests/changelog_lint.py` PASS（活跃条数比改前 +1）。
 - `python3 -B scripts/tests/test_version_consistency.py` exit 0。
 - `python3 -B scripts/tests/docs_lint.py --all` PASS。
-- `python3 -B scripts/tests/run_all.py`：**只有** 151 PASS、0 FAIL 且上面四条命令全部 exit 0，报告才可写「完成」并声明全绿；任何失败（含沙箱环境项：临时目录、127.0.0.1、`/tmp/w3_acceptance` 验收 worktree 缺失）一律写「停工」并逐项列名归因，不得冒充通过；环境项由调度方在**同一最终树**本机补验后才算收口。
+- `python3 -B scripts/tests/run_all.py`：**只有** 151 PASS、0 FAIL 且四个 Python 验收命令（changelog_lint、test_version_consistency、docs_lint --all、run_all）全部 exit 0，报告才可写「完成」并声明全绿；任何失败（含沙箱环境项：临时目录、127.0.0.1、`/tmp/w3_acceptance` 验收 worktree 缺失）一律写「停工」并逐项列名归因，不得冒充通过；环境项由调度方在**同一最终树**本机补验后才算收口。
 - `wc -c SKILL.md` 改前后相等。
 
 ## §4 报告 `t4_done.md`

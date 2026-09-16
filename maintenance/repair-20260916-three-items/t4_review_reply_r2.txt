@@ -1,0 +1,54 @@
+# 复核 T4: 通过
+
+v1 四处退回项已消除，全绿条件及两项验收建议也已纳入。复核 HEAD 为 `8867b6e91391676abc1dd42495cdba79e257b24f`；结束时 HEAD 未变，porcelain 输出为空。全程离线、零文件修改、无 Git 写操作，未访问禁止路径。
+
+**① §2 CHANGELOG 文案：通过。**
+
+| v1 退回项 | v2 核对结果与证据 |
+|---|---|
+| 查询命令语法 | 已补齐 `--case-dir`、`--file`，明确重复 `--in`。从实际 parser 提取后仅做参数解析，v2 两种查询均通过；旧错误写法仍返回 2。[handoff_manifest.py:1902](/Users/uravvv/.claude/worktrees/tca-three-items/scripts/report/handoff_manifest.py:1902) |
+| `inspect` 截断说明 | 已明确文本树、样本和 80 字符限制，与 `repr(value)[:80]` 一致；分页返回 `next_offset`。[handoff_manifest.py:1450](/Users/uravvv/.claude/worktrees/tca-three-items/scripts/report/handoff_manifest.py:1450) |
+| “既有函数零改动” | 已限定为既有命令处理函数未改、`main` 新增注册与分派。对 `15d943c^ → 15d943c` 比较既有顶层函数，变化列表确为 `['main']`。 |
+| 根因统计 | `12＋3＋63＝78`，与入库清点一致；“极少被用”也保留了 EGL1 调用 `facts_gate` 19 次这一事实。[清点记录:223](/Users/uravvv/.claude/worktrees/tca-three-items/maintenance/repair-20260915-stage2-closeout/plan_v2_approved.md:223)、[调研记录:37](/Users/uravvv/.claude/plans/tca-three-items-20260915.md:37) |
+
+附录 F、测试名及绿例、旁车命名、排除规则、exit 2、卫生 WARN 沿用 v1 已通过结论：`22d81bb → HEAD` 仅改变工单并新增复核回信，相关实现和证据没有变化。
+
+Git 对象字节数复算如下，全部与工单一致：
+
+| 四册手册 | `b4f80cd` | `15d943c` | 当前 HEAD |
+|---|---:|---:|---:|
+| split-run | 28,162 | 28,130 | 27,772 |
+| context-discipline | 9,257 | 9,256 | 9,256 |
+| report-template | 42,499 | 42,491 | 42,491 |
+| scan-schemas | 104,942 | 104,941 | 104,941 |
+
+三批合计净减 **42 B**。指定 `git diff --stat` 列出 10 个文件，其中生产逻辑文件确为 **2**；`run_all.py`、`a5_report_seal.py` 无差异，三批 SUITE **149→149**，新增入口 **0**。合并后的 151 项属于另一比较口径，工单已区分。
+
+**② 插入位置、体例与版本检查：通过。**
+
+索引和详细标题仍在 `CHANGELOG.md:13`、`:90`，插入体例符合相邻版本。§2 覆盖 VERSION 权威源及版本测试的四个比较点：pyproject、首索引、首详细条目、SKILL 注释。[test_version_consistency.py:12](/Users/uravvv/.claude/worktrees/tca-three-items/scripts/tests/test_version_consistency.py:12)
+
+仅在内存中套入 v2 原文，调用现有检查函数：
+
+| 检查 | 当前文件实跑 | v2 内存模拟 |
+|---|---|---|
+| changelog_lint | exit 0；活跃 72 条 | 返回 0；活跃 **73** 条 |
+| test_version_consistency | exit 0；7.1.0 | 返回 0；**7.1.1** |
+| docs_lint --all | exit 0；59 文档 | 返回 0；59 文档 |
+
+无撞号或倒排；SKILL 为 **8,024→8,024 B**，VERSION 末尾换行保持。
+
+**③ 白名单：恰好够用。**
+
+全库检索 `7\.1\.0`，没有第五处当前版本元数据需要同步。[split-run.md:183](/Users/uravvv/.claude/worktrees/tca-three-items/references/split-run.md:183) 的“自 7.1.0”是历史能力说明，应保留；旧 CHANGELOG、计划和验收记录也不应替换。新增 `t4_done.md` 已明确获准。
+
+**④ 验收命令与完成标准：通过。**
+
+[工单:37](/Users/uravvv/.claude/worktrees/tca-three-items/maintenance/repair-20260916-three-items/workorder_t4_version.md:37) 的 porcelain 可核对修改与新增路径，`git diff --exit-code` 可直接判定脚本、手册是否存在差异。
+
+[工单:41](/Users/uravvv/.claude/worktrees/tca-three-items/maintenance/repair-20260916-three-items/workorder_t4_version.md:41) 已明确：**151 PASS、0 FAIL，四个 Python 验收命令全部成功，才能完成并声明全绿；任何失败均停工，同一最终树补验后才收口。** 当前 SUITE 确为 151 项，入口文件全部存在，执行器遇任何失败返回 1。[run_all.py:213](/Users/uravvv/.claude/worktrees/tca-three-items/scripts/tests/run_all.py:213)
+
+本次未执行会创建临时夹具的 `run_all`；§2 的全绿文字须待上述条件满足后成立，本次通过仅代表 **T4 v2 工单复核通过**。
+
+**非阻断建议：** 将 §3“上面四条命令”明确为“四个 Python 验收命令（含 run_all）”，避免与同段两条 Git 命令混数。
+
