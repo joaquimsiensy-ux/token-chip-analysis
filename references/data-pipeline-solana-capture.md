@@ -166,7 +166,7 @@ SQD 不落盘签名不等于没有数据集内交易身份：请求与响应已�
 
 ### 13c. 溯源解码 v2（`decode_txs_v2.py`,三板斧落地）
 
-JSON-RPC batch + 跨地址共享 sig 缓存（`--cache-dir`,按 sig 前 2 字符 256 片）+ `--rpc` 端点可换。**mainnet-beta 实测硬墙**：batch 内子请求被**按方法逐个限流**（"Too many requests for a specific RPC call"）——batch 默认 8,429 子请求自动收回重试，绝不能记 decode_fail。公共节点净速度收益约 1.5 倍；**真价值=①缓存**（关联地址重复交易第二址起零请求）**②Helius key 存在即切**。**运行前检测 `~/.config/helius/api-key`**：存在则按下列 Helius 参数跑，缺失则降级公共 RPC（key 注册沿革见 CHANGELOG）；端点国内直连免代理；**实测免费层不支持 batch**（403 码 -32403,单元素数组同拒），账号级上限 **10 RPS**——正解=`--rpc https://mainnet.helius-rpc.com/?api-key=<key> --workers 6 --interval 0.12` 单笔并发贴近上限；archival 10 credits/笔,免费月额≈10 万笔。更高套餐能力未经本管线实测，不得把 50 RPS 或可 batch 当通用口径。
+JSON-RPC batch + 跨地址共享 sig 缓存（`--cache-dir`,按 sig 前 2 字符分片）+ `--rpc` 端点可换。**mainnet-beta 实测硬墙**：batch 内子请求被**按方法逐个限流**（"Too many requests for a specific RPC call"）——batch 默认 8,429 子请求自动收回重试，绝不能记 decode_fail。公共节点净速度收益约 1.5 倍；**真价值=①缓存**（关联地址重复交易第二址起零请求）**②Helius key 存在即切**。**运行前检测 `~/.config/helius/api-key`**：存在则按下列 Helius 参数跑，缺失则降级公共 RPC（key 注册沿革见 CHANGELOG）；端点国内直连免代理；**实测免费层不支持 batch**（403 码 -32403,单元素数组同拒），账号级上限 **10 RPS**——正解=`--rpc https://mainnet.helius-rpc.com/?api-key=<key> --workers 6 --interval 0.12` 单笔并发贴近上限；archival 10 credits/笔,免费月额≈10 万笔。更高套餐能力未经本管线实测，不得把 50 RPS 或可 batch 当通用口径。
 **⚠ urllib 逐笔新建连接对 Helius 会 sock_connect 挂死**：decode_txs_v2 在部分本机网络环境下逐笔 urlopen 挂起（即使 `ProxyHandler({})` 强制直连也不稳）——症状是单笔卡住无超时推进。绕行=手写 `http.client.HTTPSConnection` **keep-alive 长连接**版；根治通道=environment.md B5 的 `scripts/lib/net.py`（httpx 连接池），新写解码脚本直接用它，别再走 urllib。
 
 ### 13d. Solana HyperSync 通道（**已禁用**——完备性验收不通过，GA 后重验；全量细节见 git 3.18.x 条目）

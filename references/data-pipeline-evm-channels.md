@@ -242,7 +242,7 @@ size 与 SHA-256；全部通过后才原子将 v2/v3/pre-schema done 升为
 | 新 key 不探测就承诺方案 | 任何新 key 到手先做 1 分钟能力探测：eth_blockNumber + 一次真实 getLogs（或一页 transfers），确认块范围上限/限速/链覆盖后再写进计划 | （SIREN，07） |
 | 用户网络可达性 | 让用户注册任何站点前，先在用户机器上 `curl -s -o /dev/null -w '%{http_code}' {url}` 预检，且"控制台打不开 ≠ API 端点不可用" | （SIREN，07） |
 | 数据量按市值臆测 | 先拉发射首月抽样外推总量，向用户报保守上限；"转账笔数/市值异常比"本身可写进报告当信号 | （SIREN，07） |
-| dataseed 只能做轻查询 | eth_blockNumber / eth_getBlockByNumber / eth_call / eth_getCode（latest 状态）正常，可做时间戳锚点与工厂 getPair；getLogs 与历史状态一律被拒 | （OPN/SIREN，07） |
+| dataseed 只能做轻查询 | eth_blockNumber / eth_getBlockByNumber / eth_call / eth_getCode（latest 状态）正常，可做时间戳锚点与工厂 getPair；getLogs 被拒；历史 state 仅浅窗口可查（§3.6） | （OPN/SIREN，07） |
 | 部署块 getCode 二分失效 | 免费节点拒历史 eth_getCode（archive 请求），二分会找错块 → 改用块头时间戳二分定起始块（非 archive 请求） | （OPN/SIREN，07） |
 | 通道切换不清观察哨 | 废弃一条数据通道时，同步 TaskStop 与之绑定的 until-grep 观察哨/循环任务 | （SIREN，07） |
 | zsh 裸 glob 杀命令链 | 后台命令 `rm -f part_*.csv && python3 ...` 在 glob 无匹配时报 "no matches found" 并中断整条链，扫块脚本被连带杀掉 → 用 `rm -f ... 2>/dev/null \|\| true` 或拆成两条命令 | （OPN，07） |
