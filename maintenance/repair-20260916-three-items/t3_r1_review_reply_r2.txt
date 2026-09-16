@@ -1,0 +1,22 @@
+# 复核 T3-r1: 通过
+
+v2 已消除上一轮的验收基线和报告白名单冲突，未发现阻断项。
+
+1. **① §1 与当前代码一致。**  
+   `open` 分支固定传入 `(path, None)`，随后按 cwd 解析相对路径；当实际 `dir_fd` 指向案内、cwd 在案外时，会漏记。真实只读调用确认审计事件只有三个参数；对应合成写事件在原钩子中得到 `[]`。证据：[测试:735](/Users/uravvv/.claude/worktrees/tca-three-items/scripts/tests/test_handoff_manifest.py:735)、[路径解析:718](/Users/uravvv/.claude/worktrees/tca-three-items/scripts/tests/test_handoff_manifest.py:718)。
+
+2. **② §2 修法最小，足以补齐指定缺口。**  
+   写判定后直接记录相对路径，避免猜测缺失的 `dir_fd`；绝对路径和整数 fd 保持原逻辑，满足[主工单:96](/Users/uravvv/.claude/worktrees/tca-three-items/maintenance/repair-20260916-three-items/workorder_t3.md:96)。追加事件后报警数为 **8**，原七条顺序不变，检查 `alarms[7]` 正确；修改同一个 `check` 不增加检查条数。证据：[自检:761](/Users/uravvv/.claude/worktrees/tca-three-items/scripts/tests/test_handoff_manifest.py:761)、[断言:784](/Users/uravvv/.claude/worktrees/tca-three-items/scripts/tests/test_handoff_manifest.py:784)。
+
+3. **③ §2.4 对当前正例成立。**  
+   `safe_case_file` 返回绝对路径，两处生产 `open` 均为默认读模式，首先就被“非写事件”判断放行。保留“日志为空”及“触发则保持 FAIL”的要求正确；“未归属”本身不证明案内写入。证据：[case_paths.py:32](/Users/uravvv/.claude/worktrees/tca-three-items/scripts/lib/case_paths.py:32)、[生产:1415](/Users/uravvv/.claude/worktrees/tca-three-items/scripts/report/handoff_manifest.py:1415)、[生产:1576](/Users/uravvv/.claude/worktrees/tca-three-items/scripts/report/handoff_manifest.py:1576)。
+
+4. **④ §3 完成标准可机器验证。**  
+   以返修开始时工作树为基线，结合路径清单、已有改动及未跟踪文件哈希，可以验证本次文件增量；生产 diff 哈希比较也保留了既有 T3 施工。新增报告已明确获得白名单例外。`exit 0` 与汇总计数可联合验收，任何失败都会返回 1。证据：[返修单:5](/Users/uravvv/.claude/worktrees/tca-three-items/maintenance/repair-20260916-three-items/workorder_t3_r1.md:5)、[返修单:19](/Users/uravvv/.claude/worktrees/tca-three-items/maintenance/repair-20260916-three-items/workorder_t3_r1.md:19)、[测试汇总:1331](/Users/uravvv/.claude/worktrees/tca-three-items/scripts/tests/test_handoff_manifest.py:1331)。
+
+5. **⑤ 无需把 tempfile/shutil 的所有相对路径套用同一规则。**  
+   本机标准库中，`mkstemp/mkdtemp`、`move/copyfile` 没有隐藏的 `dir_fd`，相对路径可按 cwd 归属；`rmtree` 的审计事件明确携带 `dir_fd`，钩子已接收它。证据：[shutil.py:831](/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/shutil.py:831)、[测试:745](/Users/uravvv/.claude/worktrees/tca-three-items/scripts/tests/test_handoff_manifest.py:745)。四行证据勘误也准确：所列函数均已存在于 HEAD，当前函数文本未变。[证据文件:17](/Users/uravvv/.claude/worktrees/tca-three-items/maintenance/repair-20260916-three-items/t3_scope_evidence.txt:17)。
+
+本轮 **29 项 open、14 项 tempfile/shutil 内存检查通过**；自检回放在内存模拟一处链接解析后，确认报警 `7 → 8`。未运行会创建、修改和删除夹具的完整测试，**283 项仍须施工后实跑验收**。全程离线、无文件及 Git 写入；复核前后 HEAD、status、17 个已改/未跟踪文件哈希及生产 diff 哈希一致。
+
+非阻断建议：快照使用 `git status --porcelain=v1 --untracked-files=all`；同时保留两个允许修改文件的开工原文于内存或获准报告中，便于机器核对改动是否严格落在 §0 指定区域。

@@ -1,0 +1,301 @@
+ok    排除规则保持行为且不误伤 pre/v3
+显式登记 data_map: exit=2
+[generate] 显式登记的路径命中排除规则（历史副本/临时件/_history 不得进 manifest，请移出登记或改名）: x.bak_2026
+
+ok    显式登记冲突 data_map
+显式登记 include: exit=2
+[generate] 显式登记的路径命中排除规则（历史副本/临时件/_history 不得进 manifest，请移出登记或改名）: _history/y.json
+
+ok    显式登记冲突 include
+显式登记 gate: exit=2
+[generate] 显式登记的路径命中排除规则（历史副本/临时件/_history 不得进 manifest，请移出登记或改名）: _history/z.json
+
+ok    显式登记冲突 gate
+ok    卫生夹具 READY dirty=False
+ok    卫生夹具 READY dirty=True
+卫生 freeze: exit=0
+[freeze] E1 current 锚点尘埃库存,闭合重算降级
+[freeze] 初次冻结 → /var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/handoff_hygiene_2iod5nhb/entity_freeze.json（成员表 963354875cf0…，实体名册 499dcbb9e56b…，未决项 0）
+[freeze] WARN 案根疑似历史副本 2 件（请移入 _history/，不影响冻结）: report.md.bak_v7d_, data/entity_series.v2.json
+
+ok    freeze 卫生 WARN 且返回码不变
+ok    check-unseal 不扫描卫生
+ok    卫生扫描失败不改返回码
+ok    is_excluded_path a/_history/b.json
+ok    is_excluded_path _history_x/b.json
+ok    is_excluded_path x.bak_v7d_
+ok    is_excluded_path x.bakup.json
+ok    is_excluded_path balances_pre_launch.json
+ok    is_excluded_path data/labels.v3.jsonl
+ok    is_excluded_path x.superseded
+ok    generate READY exit 0
+ok    manifest 收录 data_map 索引文件
+ok    EVM manifest 收录 bundle 与 transcript
+ok    manifest sealed 只记哈希
+ok    manifest 自动 gate 四个
+ok    verify READY exit 0
+ok    accounting WARN + exit 0 按记账 gate 契约放行
+ok    READY 缺 chain generate 拒
+ok    READY 缺 contract generate 拒
+ok    READY 未知 chain generate 拒
+ok    PARTIAL 不强制正式 scope
+ok    scope 独立正例生成
+ok    verify 空 chains scope 拒
+ok    EVM 链缺 time_spotcheck 拒 READY exit 2
+ok    solana 不得复用 bsc reconciliation
+ok    READY 缺 reconciliation 拒
+ok    receipt 追加两条
+ok    receipt blind_mode 跟随环境
+ok    freeze 前揭盲拒绝 exit 2
+ok    freeze 缺 --entity-file 拒
+ok    无裁决台账 freeze 拒 exit 2
+ok    exploration/null-label provenance freeze 拒
+ok    四重前置齐备 freeze 初次 exit 0
+ok    冻结记录绑定成员/名册/provenance/manifest/data_map 全套哈希
+ok    freeze 后揭盲放行 exit 0
+ok    名册改动后复用旧溯源台账 freeze 拒 exit 2
+ok    重跑溯源后 freeze 变更走 revision 追加
+ok    supersede 归档旧 manifest
+ok    generate BLOCKED_CEX_GATE exit 0
+ok    verify BLOCKED 拒收 exit 2
+ok    BLOCKED 案 freeze 同拒 exit 2（前置 0 内联 verify）
+ok    哈希漂移拒收 exit 2
+ok    哈希漂移案 freeze 同拒 exit 2（前置 0）
+ok    schema 不兼容拒收 exit 2
+ok    gate 语义漂移拒收 exit 2
+ok    blocking 异常未解决拒收 exit 2
+ok    READY 缺必备件 generate 即拒 exit 2
+ok    同目录报 PARTIAL 可出 manifest
+ok    READY 缺 supply_truth gate 即拒 exit 2
+ok    READY 缺 wave_scan_report 即拒 exit 2
+ok    wave_scan_report 空壳 verify 拒收 exit 2
+ok    READY 缺 flow_anomaly_report 即拒 exit 2
+ok    wave-scan/v1 旧版产物 verify 拒收 exit 2
+ok    wave-scan/v2 旧版产物 verify 拒收 exit 2
+ok    v5 标签缺 scan_universe 全集 verify 拒收 exit 2
+ok    v5 count 与逐条 must 标记矛盾 verify 拒收 exit 2
+ok    handoff/v2 默认拒收 exit 2
+ok    handoff/v1 默认拒收 exit 2
+ok    handoff/v1 --legacy-read-only 放行且带只读警告
+ok    legacy 降级落机器 receipt
+ok    legacy 案 freeze 必拒 exit 2
+ok    正式 dust nonempty=False trace 保留库存及诊断构成
+ok    正式 dust nonempty=False 完整重放 freeze exit 0
+ok    正式 dust nonempty=False freeze 不改来源台账
+ok    正式 dust nonempty=False 封存绑定可复验
+ok    正式 dust nonempty=True trace 保留库存及诊断构成
+ok    正式 dust nonempty=True 完整重放 freeze exit 0
+ok    正式 dust nonempty=True freeze 不改来源台账
+ok    正式 dust nonempty=True 封存绑定可复验
+ok    freeze 库存 1 / 10001 严格阈值以下通过真实重放
+ok    freeze manifest total=10000 无视伪造豁免 current 空构成拒
+ok    freeze manifest total=9999 无视伪造豁免 current 空构成拒
+ok    freeze manifest total=0 无视伪造豁免 current 空构成拒
+ok    freeze 尘埃 peak 空构成仍拒
+ok    freeze 尘埃 peak 非空失真仍拒
+ok    尘埃 skip_marker 篡改仍被绑定/真实重放拒绝
+ok    尘埃 composition_usable 篡改仍被绑定/真实重放拒绝
+ok    尘埃 stock 篡改仍被绑定/真实重放拒绝
+ok    尘埃 supply 篡改仍被绑定/真实重放拒绝
+ok    尘埃 source_detail 篡改仍被绑定/真实重放拒绝
+ok    尘埃 policy_detail 篡改仍被绑定/真实重放拒绝
+ok    尘埃原始边文件篡改仍被输入绑定拒绝
+ok    全部篡改恢复后 dust freeze 再次真实重放通过
+ok    尘埃 freeze 已绑定供应量别名 total_supply 真实重放通过
+ok    尘埃 freeze 已绑定供应量别名 supply_raw 真实重放通过
+ok    尘埃 freeze 已绑定供应量别名 nominal_allocation_supply_raw 真实重放通过
+ok    溯源台账 v1（数学错误版）freeze 拒 exit 2
+ok    stock>0 而 composition 空壳 freeze 拒 exit 2
+ok    closure 自报 100 但按 composition 重算不闭合 freeze 拒 exit 2
+ok    成员集哈希错配 freeze 拒 exit 2
+ok    台账实体集与名册不一致 freeze 拒 exit 2
+ok    敏感性不稳 freeze 拒 exit 2
+ok    与边表脱离的人工合法台账 freeze 拒 exit 2
+ok    策略明细翻转但 stable=true 仍由 freeze 重算拒绝
+ok    尘埃锚点翻转豁免（不因翻转拒；伪造由重放语义摘要兜底）
+ok    内容自洽但与当前原始边重放不一致 freeze 拒
+ok    台账修复后 freeze 放行 exit 0
+ok    仅 provenance 变化也追加 freeze revision
+ok    check-unseal 复核 provenance 当前哈希漂移并拒绝
+ok    check-unseal 全绑定恢复后放行
+ok    check-unseal 直接复核原始边绑定漂移并拒绝
+ok    原始边恢复后 check-unseal 放行
+ok    手改 manifest 摘掉必备件 verify 拒 exit 2
+ok    T3 正例 inspect --file data/identity_cards.json --limit 1
+ok    T3 inspect 首行、排序与第一页
+ok    T3 正例 inspect --file data/identity_cards.json --limit 1 --offset 1
+ok    T3 inspect 第二页
+ok    T3 正例 inspect --file data/identity_cards.json --offset 5
+ok    T3 inspect 超界空页
+ok    T3 正例 inspect --file data/identity_cards.json --path 0xABCABCABCABCABCABCABCABCABCABCABCABCABCA.kind
+ok    T3 inspect 标量
+ok    T3 正例 inspect --file data/identity_cards.json --path 0xABCABCABCABCABCABCABCABCABCABCABCABCABCA.kind --offset 1
+ok    T3 inspect 标量空页
+ok    T3 正例 inspect --file data/identity_cards.json --path 0xABCABCABCABCABCABCABCABCABCABCABCABCABCA.meta --depth 0
+ok    T3 inspect depth 0 标量摘要
+ok    T3 正例 inspect --file data/identity_cards.json --path 0xABCABCABCABCABCABCABCABCABCABCABCABCABCA --depth 0
+ok    T3 正例 inspect --file data/identity_cards.json --path 0xABCABCABCABCABCABCABCABCABCABCABCABCABCA --depth 1
+ok    T3 inspect 深度与计数解耦
+ok    T3 正例 inspect --file data/balances_final.json --limit 2
+ok    T3 inspect list 根分页
+ok    T3 正例 inspect --file data/balances_final.json --path 0.addr
+ok    T3 inspect list 路径
+ok    T3 反例 inspect --file data/balances_final.json --path 9.addr
+ok    T3 反例 inspect --file data/balances_final.json --path -1
+ok    T3 反例 inspect --file data/identity_cards.json --limit 0
+ok    T3 反例 inspect --file data/identity_cards.json --offset -1
+ok    T3 反例 inspect --file data/identity_cards.json --depth -1
+ok    T3 反例 inspect --file data/identity_cards.json --path absent
+ok    T3 正例 inspect --file data/labels.jsonl
+ok    T3 inspect JSONL 坏行继续
+ok    T3 反例 inspect --file data/broken.json
+ok    T3 反例 inspect --file data/invalid_utf8.json
+ok    T3 反例 inspect --file data/addrs.txt
+ok    T3 反例 inspect --file sealed/x.json
+ok    T3 反例 inspect --file SEALED/x.json
+ok    T3 反例 inspect --file ./sealed/x.json
+ok    T3 反例 inspect --file ../outside.json
+ok    T3 反例 inspect --file /private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/t3-readonly-ox0b4bw9/outside.json
+ok    T3 反例 inspect --file data/link.json
+ok    T3 反例 inspect --file data/nope.json
+ok    T3 正例 inspect --file .sealed/ok.json
+ok    T3 .sealed 合法目录不误拒
+ok    T3 正例 lookup --addr 0xabcabcabcabcabcabcabcabcabcabcabcabcabca --in data/identity_cards.json --addr 0x9999999999999999999999999999999999999999 --in data/balances_final.json --in data/entity_registry.json --fields label,balance
+ok    T3 lookup 三文件字段
+ok    T3 正例 lookup --addr 0xdefdefdefdefdefdefdefdefdefdefdefdefdefd --in data/entity_registry.json
+ok    T3 lookup 名册 list
+ok    T3 正例 lookup --addr 0xabcabcabcabcabcabcabcabcabcabcabcabcabca --in data/mixed.json --json
+ok    T3 lookup 混合来源 0xabcabcabcabcabcabcabcabcabcabcabcabcabca
+ok    T3 正例 lookup --addr 0x9999999999999999999999999999999999999999 --in data/mixed.json --json
+ok    T3 lookup 混合来源 0x9999999999999999999999999999999999999999
+ok    T3 反例 lookup --addr 0xabcabcabcabcabcabcabcabcabcabcabcabcabca --in data/keyclash.json
+ok    T3 正例 lookup --addr 0xabcabcabcabcabcabcabcabcabcabcabcabcabca --in data/labels.jsonl
+ok    T3 lookup JSONL 文本坏行计数
+ok    T3 正例 lookup --addr 0xabcabcabcabcabcabcabcabcabcabcabcabcabca --in data/labels.jsonl --json
+ok    T3 lookup JSONL JSON 坏行计数
+ok    T3 反例 lookup --addr 0xabcabcabcabcabcabcabcabcabcabcabcabcabca --in data/broken.json
+ok    T3 反例 lookup --addr 0xabcabcabcabcabcabcabcabcabcabcabcabcabca --in data/invalid_utf8.json
+ok    T3 反例 lookup --addr 0xabcabcabcabcabcabcabcabcabcabcabcabcabca --in data/addrs.txt
+ok    T3 正例 lookup --addr 0xabcabcabcabcabcabcabcabcabcabcabcabcabca --in data/edge_records.json --json
+ok    T3 lookup 按来源去重且双成员表
+ok    T3 正例 lookup --addr 0x9999999999999999999999999999999999999999 --in data/edge_records.json --json
+ok    T3 lookup 无效首字段不回退
+ok    T3 正例 lookup --addr SolAbC --in data/edge_records.json --json
+ok    T3 lookup 非 EVM 大小写 SolAbC
+ok    T3 正例 lookup --addr solabc --in data/edge_records.json --json
+ok    T3 lookup 非 EVM 大小写 solabc
+ok    T3 正例 lookup --addr-file data/addrs.txt --in data/identity_cards.json --fields label --json
+ok    T3 lookup 地址文件归一与完整 JSON
+ok    T3 反例 lookup --addr 0xabcabcabcabcabcabcabcabcabcabcabcabcabca --in sealed/x.json
+ok    T3 反例 lookup --addr 0xabcabcabcabcabcabcabcabcabcabcabcabcabca --in SEALED/x.json
+ok    T3 反例 lookup --addr 0xabcabcabcabcabcabcabcabcabcabcabcabcabca --in data/link.json
+ok    T3 反例 lookup --addr-file sealed/x.json --in data/identity_cards.json
+ok    T3 反例 lookup --addr-file SEALED/x.json --in data/identity_cards.json
+ok    T3 反例 lookup --addr-file data/link.txt --in data/identity_cards.json
+ok    T3 反例 lookup --addr-file ./sealed/x.json --in data/identity_cards.json
+ok    T3 反例 lookup --addr-file /private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/t3-readonly-ox0b4bw9/outside.json --in data/identity_cards.json
+ok    T3 反例 lookup --in data/identity_cards.json
+ok    T3 反例 lookup --addr 0xabcabcabcabcabcabcabcabcabcabcabcabcabca --in data/identity_cards.json --addr-file data/addrs.txt
+ok    T3 反例 lookup --addr 0xabcabcabcabcabcabcabcabcabcabcabcabcabca --in data/identity_cards.json --limit 0
+ok    T3 反例 lookup --addr 0xabcabcabcabcabcabcabcabcabcabcabcabcabca --in data/identity_cards.json --offset -1
+ok    T3 反例 lookup --addr  --in data/identity_cards.json
+ok    T3 正例 lookup --addr 0xabcabcabcabcabcabcabcabcabcabcabcabcabca --in data/identity_cards.json --addr 0x9999999999999999999999999999999999999999 --limit 1 --offset 0
+ok    T3 lookup 分页 0
+ok    T3 正例 lookup --addr 0xabcabcabcabcabcabcabcabcabcabcabcabcabca --in data/identity_cards.json --addr 0x9999999999999999999999999999999999999999 --limit 1 --offset 1
+ok    T3 lookup 分页 1
+ok    T3 正例 lookup --addr 0xabcabcabcabcabcabcabcabcabcabcabcabcabca --in data/identity_cards.json --addr 0x9999999999999999999999999999999999999999 --limit 1 --offset 9
+ok    T3 lookup 分页 9
+ok    T3 正例 lookup --addr 0xabcabcabcabcabcabcabcabcabcabcabcabcabca --in data/identity_cards.json --addr 0xabcabcabcabcabcabcabcabcabcabcabcabcabca
+ok    T3 lookup 保留重复
+ok    T3 正例 lookup --addr 0xabcabcabcabcabcabcabcabcabcabcabcabcabca --in data/identity_cards.json --addr 0x9999999999999999999999999999999999999999 --limit 1 --offset 1 --json
+ok    T3 lookup JSON 全 query 与本页 missing
+ok    T3 audit 自检 flags/rename 目标/链接词法/相邻边界/dir_fd/未归属/realpath/源端
+ok    T3 audit 案目录零写入 inspect --case-dir /private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/t3-readonly-ox0b4bw9/case --file data/identity_cards.json --limit 1
+ok    T3 audit 正例退出码 inspect --case-dir /private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/t3-readonly-ox0b4bw9/case --file data/identity_cards.json --limit 1
+ok    T3 audit 案目录零写入 inspect --case-dir /private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/t3-readonly-ox0b4bw9/case --file data/identity_cards.json --limit 1 --offset 1
+ok    T3 audit 正例退出码 inspect --case-dir /private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/t3-readonly-ox0b4bw9/case --file data/identity_cards.json --limit 1 --offset 1
+ok    T3 audit 案目录零写入 inspect --case-dir /private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/t3-readonly-ox0b4bw9/case --file data/identity_cards.json --offset 5
+ok    T3 audit 正例退出码 inspect --case-dir /private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/t3-readonly-ox0b4bw9/case --file data/identity_cards.json --offset 5
+ok    T3 audit 案目录零写入 inspect --case-dir /private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/t3-readonly-ox0b4bw9/case --file data/identity_cards.json --path 0xABCABCABCABCABCABCABCABCABCABCABCABCABCA.kind
+ok    T3 audit 正例退出码 inspect --case-dir /private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/t3-readonly-ox0b4bw9/case --file data/identity_cards.json --path 0xABCABCABCABCABCABCABCABCABCABCABCABCABCA.kind
+ok    T3 audit 案目录零写入 inspect --case-dir /private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/t3-readonly-ox0b4bw9/case --file data/identity_cards.json --path 0xABCABCABCABCABCABCABCABCABCABCABCABCABCA.kind --offset 1
+ok    T3 audit 正例退出码 inspect --case-dir /private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/t3-readonly-ox0b4bw9/case --file data/identity_cards.json --path 0xABCABCABCABCABCABCABCABCABCABCABCABCABCA.kind --offset 1
+ok    T3 audit 案目录零写入 inspect --case-dir /private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/t3-readonly-ox0b4bw9/case --file data/identity_cards.json --path 0xABCABCABCABCABCABCABCABCABCABCABCABCABCA.meta --depth 0
+ok    T3 audit 正例退出码 inspect --case-dir /private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/t3-readonly-ox0b4bw9/case --file data/identity_cards.json --path 0xABCABCABCABCABCABCABCABCABCABCABCABCABCA.meta --depth 0
+ok    T3 audit 案目录零写入 inspect --case-dir /private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/t3-readonly-ox0b4bw9/case --file data/identity_cards.json --path 0xABCABCABCABCABCABCABCABCABCABCABCABCABCA --depth 0
+ok    T3 audit 正例退出码 inspect --case-dir /private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/t3-readonly-ox0b4bw9/case --file data/identity_cards.json --path 0xABCABCABCABCABCABCABCABCABCABCABCABCABCA --depth 0
+ok    T3 audit 案目录零写入 inspect --case-dir /private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/t3-readonly-ox0b4bw9/case --file data/identity_cards.json --path 0xABCABCABCABCABCABCABCABCABCABCABCABCABCA --depth 1
+ok    T3 audit 正例退出码 inspect --case-dir /private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/t3-readonly-ox0b4bw9/case --file data/identity_cards.json --path 0xABCABCABCABCABCABCABCABCABCABCABCABCABCA --depth 1
+ok    T3 audit 案目录零写入 inspect --case-dir /private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/t3-readonly-ox0b4bw9/case --file data/balances_final.json --limit 2
+ok    T3 audit 正例退出码 inspect --case-dir /private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/t3-readonly-ox0b4bw9/case --file data/balances_final.json --limit 2
+ok    T3 audit 案目录零写入 inspect --case-dir /private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/t3-readonly-ox0b4bw9/case --file data/balances_final.json --path 0.addr
+ok    T3 audit 正例退出码 inspect --case-dir /private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/t3-readonly-ox0b4bw9/case --file data/balances_final.json --path 0.addr
+ok    T3 audit 案目录零写入 inspect --case-dir /private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/t3-readonly-ox0b4bw9/case --file data/labels.jsonl
+ok    T3 audit 正例退出码 inspect --case-dir /private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/t3-readonly-ox0b4bw9/case --file data/labels.jsonl
+ok    T3 audit 案目录零写入 inspect --case-dir /private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/t3-readonly-ox0b4bw9/case --file .sealed/ok.json
+ok    T3 audit 正例退出码 inspect --case-dir /private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/t3-readonly-ox0b4bw9/case --file .sealed/ok.json
+ok    T3 audit 案目录零写入 lookup --case-dir /private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/t3-readonly-ox0b4bw9/case --addr 0xabcabcabcabcabcabcabcabcabcabcabcabcabca --in data/identity_cards.json --addr 0x9999999999999999999999999999999999999999 --in data/balances_final.json --in data/entity_registry.json --fields label,balance
+ok    T3 audit 正例退出码 lookup --case-dir /private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/t3-readonly-ox0b4bw9/case --addr 0xabcabcabcabcabcabcabcabcabcabcabcabcabca --in data/identity_cards.json --addr 0x9999999999999999999999999999999999999999 --in data/balances_final.json --in data/entity_registry.json --fields label,balance
+ok    T3 audit 案目录零写入 lookup --case-dir /private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/t3-readonly-ox0b4bw9/case --addr 0xdefdefdefdefdefdefdefdefdefdefdefdefdefd --in data/entity_registry.json
+ok    T3 audit 正例退出码 lookup --case-dir /private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/t3-readonly-ox0b4bw9/case --addr 0xdefdefdefdefdefdefdefdefdefdefdefdefdefd --in data/entity_registry.json
+ok    T3 audit 案目录零写入 lookup --case-dir /private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/t3-readonly-ox0b4bw9/case --addr 0xabcabcabcabcabcabcabcabcabcabcabcabcabca --in data/mixed.json --json
+ok    T3 audit 正例退出码 lookup --case-dir /private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/t3-readonly-ox0b4bw9/case --addr 0xabcabcabcabcabcabcabcabcabcabcabcabcabca --in data/mixed.json --json
+ok    T3 audit 案目录零写入 lookup --case-dir /private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/t3-readonly-ox0b4bw9/case --addr 0x9999999999999999999999999999999999999999 --in data/mixed.json --json
+ok    T3 audit 正例退出码 lookup --case-dir /private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/t3-readonly-ox0b4bw9/case --addr 0x9999999999999999999999999999999999999999 --in data/mixed.json --json
+ok    T3 audit 案目录零写入 lookup --case-dir /private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/t3-readonly-ox0b4bw9/case --addr 0xabcabcabcabcabcabcabcabcabcabcabcabcabca --in data/labels.jsonl
+ok    T3 audit 正例退出码 lookup --case-dir /private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/t3-readonly-ox0b4bw9/case --addr 0xabcabcabcabcabcabcabcabcabcabcabcabcabca --in data/labels.jsonl
+ok    T3 audit 案目录零写入 lookup --case-dir /private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/t3-readonly-ox0b4bw9/case --addr 0xabcabcabcabcabcabcabcabcabcabcabcabcabca --in data/labels.jsonl --json
+ok    T3 audit 正例退出码 lookup --case-dir /private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/t3-readonly-ox0b4bw9/case --addr 0xabcabcabcabcabcabcabcabcabcabcabcabcabca --in data/labels.jsonl --json
+ok    T3 audit 案目录零写入 lookup --case-dir /private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/t3-readonly-ox0b4bw9/case --addr 0xabcabcabcabcabcabcabcabcabcabcabcabcabca --in data/edge_records.json --json
+ok    T3 audit 正例退出码 lookup --case-dir /private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/t3-readonly-ox0b4bw9/case --addr 0xabcabcabcabcabcabcabcabcabcabcabcabcabca --in data/edge_records.json --json
+ok    T3 audit 案目录零写入 lookup --case-dir /private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/t3-readonly-ox0b4bw9/case --addr 0x9999999999999999999999999999999999999999 --in data/edge_records.json --json
+ok    T3 audit 正例退出码 lookup --case-dir /private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/t3-readonly-ox0b4bw9/case --addr 0x9999999999999999999999999999999999999999 --in data/edge_records.json --json
+ok    T3 audit 案目录零写入 lookup --case-dir /private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/t3-readonly-ox0b4bw9/case --addr SolAbC --in data/edge_records.json --json
+ok    T3 audit 正例退出码 lookup --case-dir /private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/t3-readonly-ox0b4bw9/case --addr SolAbC --in data/edge_records.json --json
+ok    T3 audit 案目录零写入 lookup --case-dir /private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/t3-readonly-ox0b4bw9/case --addr solabc --in data/edge_records.json --json
+ok    T3 audit 正例退出码 lookup --case-dir /private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/t3-readonly-ox0b4bw9/case --addr solabc --in data/edge_records.json --json
+ok    T3 audit 案目录零写入 lookup --case-dir /private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/t3-readonly-ox0b4bw9/case --addr-file data/addrs.txt --in data/identity_cards.json --fields label --json
+ok    T3 audit 正例退出码 lookup --case-dir /private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/t3-readonly-ox0b4bw9/case --addr-file data/addrs.txt --in data/identity_cards.json --fields label --json
+ok    T3 audit 案目录零写入 lookup --case-dir /private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/t3-readonly-ox0b4bw9/case --addr 0xabcabcabcabcabcabcabcabcabcabcabcabcabca --in data/identity_cards.json --addr 0x9999999999999999999999999999999999999999 --limit 1 --offset 0
+ok    T3 audit 正例退出码 lookup --case-dir /private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/t3-readonly-ox0b4bw9/case --addr 0xabcabcabcabcabcabcabcabcabcabcabcabcabca --in data/identity_cards.json --addr 0x9999999999999999999999999999999999999999 --limit 1 --offset 0
+ok    T3 audit 案目录零写入 lookup --case-dir /private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/t3-readonly-ox0b4bw9/case --addr 0xabcabcabcabcabcabcabcabcabcabcabcabcabca --in data/identity_cards.json --addr 0x9999999999999999999999999999999999999999 --limit 1 --offset 1
+ok    T3 audit 正例退出码 lookup --case-dir /private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/t3-readonly-ox0b4bw9/case --addr 0xabcabcabcabcabcabcabcabcabcabcabcabcabca --in data/identity_cards.json --addr 0x9999999999999999999999999999999999999999 --limit 1 --offset 1
+ok    T3 audit 案目录零写入 lookup --case-dir /private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/t3-readonly-ox0b4bw9/case --addr 0xabcabcabcabcabcabcabcabcabcabcabcabcabca --in data/identity_cards.json --addr 0x9999999999999999999999999999999999999999 --limit 1 --offset 9
+ok    T3 audit 正例退出码 lookup --case-dir /private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/t3-readonly-ox0b4bw9/case --addr 0xabcabcabcabcabcabcabcabcabcabcabcabcabca --in data/identity_cards.json --addr 0x9999999999999999999999999999999999999999 --limit 1 --offset 9
+ok    T3 audit 案目录零写入 lookup --case-dir /private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/t3-readonly-ox0b4bw9/case --addr 0xabcabcabcabcabcabcabcabcabcabcabcabcabca --in data/identity_cards.json --addr 0xabcabcabcabcabcabcabcabcabcabcabcabcabca
+ok    T3 audit 正例退出码 lookup --case-dir /private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/t3-readonly-ox0b4bw9/case --addr 0xabcabcabcabcabcabcabcabcabcabcabcabcabca --in data/identity_cards.json --addr 0xabcabcabcabcabcabcabcabcabcabcabcabcabca
+ok    T3 audit 案目录零写入 lookup --case-dir /private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/t3-readonly-ox0b4bw9/case --addr 0xabcabcabcabcabcabcabcabcabcabcabcabcabca --in data/identity_cards.json --addr 0x9999999999999999999999999999999999999999 --limit 1 --offset 1 --json
+ok    T3 audit 正例退出码 lookup --case-dir /private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/t3-readonly-ox0b4bw9/case --addr 0xabcabcabcabcabcabcabcabcabcabcabcabcabca --in data/identity_cards.json --addr 0x9999999999999999999999999999999999999999 --limit 1 --offset 1 --json
+ok    T3 chmod 正例 inspect --case-dir /private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/t3-readonly-ox0b4bw9/case --file data/identity_cards.json --limit 1
+ok    T3 chmod 正例 inspect --case-dir /private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/t3-readonly-ox0b4bw9/case --file data/identity_cards.json --limit 1 --offset 1
+ok    T3 chmod 正例 inspect --case-dir /private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/t3-readonly-ox0b4bw9/case --file data/identity_cards.json --offset 5
+ok    T3 chmod 正例 inspect --case-dir /private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/t3-readonly-ox0b4bw9/case --file data/identity_cards.json --path 0xABCABCABCABCABCABCABCABCABCABCABCABCABCA.kind
+ok    T3 chmod 正例 inspect --case-dir /private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/t3-readonly-ox0b4bw9/case --file data/identity_cards.json --path 0xABCABCABCABCABCABCABCABCABCABCABCABCABCA.kind --offset 1
+ok    T3 chmod 正例 inspect --case-dir /private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/t3-readonly-ox0b4bw9/case --file data/identity_cards.json --path 0xABCABCABCABCABCABCABCABCABCABCABCABCABCA.meta --depth 0
+ok    T3 chmod 正例 inspect --case-dir /private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/t3-readonly-ox0b4bw9/case --file data/identity_cards.json --path 0xABCABCABCABCABCABCABCABCABCABCABCABCABCA --depth 0
+ok    T3 chmod 正例 inspect --case-dir /private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/t3-readonly-ox0b4bw9/case --file data/identity_cards.json --path 0xABCABCABCABCABCABCABCABCABCABCABCABCABCA --depth 1
+ok    T3 chmod 正例 inspect --case-dir /private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/t3-readonly-ox0b4bw9/case --file data/balances_final.json --limit 2
+ok    T3 chmod 正例 inspect --case-dir /private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/t3-readonly-ox0b4bw9/case --file data/balances_final.json --path 0.addr
+ok    T3 chmod 正例 inspect --case-dir /private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/t3-readonly-ox0b4bw9/case --file data/labels.jsonl
+ok    T3 chmod 正例 inspect --case-dir /private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/t3-readonly-ox0b4bw9/case --file .sealed/ok.json
+ok    T3 chmod 正例 lookup --case-dir /private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/t3-readonly-ox0b4bw9/case --addr 0xabcabcabcabcabcabcabcabcabcabcabcabcabca --in data/identity_cards.json --addr 0x9999999999999999999999999999999999999999 --in data/balances_final.json --in data/entity_registry.json --fields label,balance
+ok    T3 chmod 正例 lookup --case-dir /private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/t3-readonly-ox0b4bw9/case --addr 0xdefdefdefdefdefdefdefdefdefdefdefdefdefd --in data/entity_registry.json
+ok    T3 chmod 正例 lookup --case-dir /private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/t3-readonly-ox0b4bw9/case --addr 0xabcabcabcabcabcabcabcabcabcabcabcabcabca --in data/mixed.json --json
+ok    T3 chmod 正例 lookup --case-dir /private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/t3-readonly-ox0b4bw9/case --addr 0x9999999999999999999999999999999999999999 --in data/mixed.json --json
+ok    T3 chmod 正例 lookup --case-dir /private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/t3-readonly-ox0b4bw9/case --addr 0xabcabcabcabcabcabcabcabcabcabcabcabcabca --in data/labels.jsonl
+ok    T3 chmod 正例 lookup --case-dir /private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/t3-readonly-ox0b4bw9/case --addr 0xabcabcabcabcabcabcabcabcabcabcabcabcabca --in data/labels.jsonl --json
+ok    T3 chmod 正例 lookup --case-dir /private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/t3-readonly-ox0b4bw9/case --addr 0xabcabcabcabcabcabcabcabcabcabcabcabcabca --in data/edge_records.json --json
+ok    T3 chmod 正例 lookup --case-dir /private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/t3-readonly-ox0b4bw9/case --addr 0x9999999999999999999999999999999999999999 --in data/edge_records.json --json
+ok    T3 chmod 正例 lookup --case-dir /private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/t3-readonly-ox0b4bw9/case --addr SolAbC --in data/edge_records.json --json
+ok    T3 chmod 正例 lookup --case-dir /private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/t3-readonly-ox0b4bw9/case --addr solabc --in data/edge_records.json --json
+ok    T3 chmod 正例 lookup --case-dir /private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/t3-readonly-ox0b4bw9/case --addr-file data/addrs.txt --in data/identity_cards.json --fields label --json
+ok    T3 chmod 正例 lookup --case-dir /private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/t3-readonly-ox0b4bw9/case --addr 0xabcabcabcabcabcabcabcabcabcabcabcabcabca --in data/identity_cards.json --addr 0x9999999999999999999999999999999999999999 --limit 1 --offset 0
+ok    T3 chmod 正例 lookup --case-dir /private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/t3-readonly-ox0b4bw9/case --addr 0xabcabcabcabcabcabcabcabcabcabcabcabcabca --in data/identity_cards.json --addr 0x9999999999999999999999999999999999999999 --limit 1 --offset 1
+ok    T3 chmod 正例 lookup --case-dir /private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/t3-readonly-ox0b4bw9/case --addr 0xabcabcabcabcabcabcabcabcabcabcabcabcabca --in data/identity_cards.json --addr 0x9999999999999999999999999999999999999999 --limit 1 --offset 9
+ok    T3 chmod 正例 lookup --case-dir /private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/t3-readonly-ox0b4bw9/case --addr 0xabcabcabcabcabcabcabcabcabcabcabcabcabca --in data/identity_cards.json --addr 0xabcabcabcabcabcabcabcabcabcabcabcabcabca
+ok    T3 chmod 正例 lookup --case-dir /private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/t3-readonly-ox0b4bw9/case --addr 0xabcabcabcabcabcabcabcabcabcabcabcabcabca --in data/identity_cards.json --addr 0x9999999999999999999999999999999999999999 --limit 1 --offset 1 --json
+ok    T3 案目录快照完全一致
+========================================
+handoff_manifest 契约测试全部通过（283 项）
+
+exit=0

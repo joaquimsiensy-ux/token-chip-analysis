@@ -1399,6 +1399,217 @@ def case_hygiene_warnings(case_dir):
     return hits
 
 
+def _readonly_case_file(case_dir, rel):
+    """先校验原始路径，再拒 sealed；案根须是真实案根，本守卫不是揭盲授权闸。"""
+    path = safe_case_file(case_dir, rel)
+    first = rel.split("/", 1)[0]
+    if first.casefold() == "sealed":
+        raise ValueError(f"sealed/ 下文件不得用只读查询工具读取（揭盲走 freeze --check-unseal）: {rel}")
+    return str(path)
+
+
+def _readonly_load(path):
+    suffix = os.path.splitext(path)[1]
+    if suffix not in (".json", ".jsonl"):
+        raise ValueError("只支持 .json/.jsonl")
+    with open(path, encoding="utf-8") as f:
+        if suffix == ".json":
+            return json.load(f), 0
+        rows, bad = [], 0
+        for line in f:
+            if not line.strip():
+                continue
+            try:
+                rows.append(json.loads(line))
+            except ValueError:
+                bad += 1
+        return rows, bad
+
+
+def _readonly_page(total, returned, offset):
+    next_offset = min(offset + returned, total)
+    return dict(total=total, returned=returned, truncated=next_offset < total,
+                next_offset=next_offset)
+
+
+def _readonly_stats(stats):
+    return " ".join(f"{k}={str(v).lower() if isinstance(v, bool) else v}"
+                    for k, v in stats.items())
+
+
+def _inspect_item(label, value, depth, level=0):
+    prefix = "  " * level + label
+    if isinstance(value, (dict, list)):
+        print(f"{prefix}: {type(value).__name__} len={len(value)}")
+        if depth > 0:
+            children = ([(k, value[k]) for k in sorted(value)] if isinstance(value, dict)
+                        else [("[0]", value[0])] if value else [])
+            for key, child in children:
+                _inspect_item(key, child, depth - 1, level + 1)
+    else:
+        print(f"{prefix}: = {repr(value)[:80]}")
+
+
+def cmd_inspect(a):
+    for name, minimum in (("limit", 1), ("offset", 0), ("depth", 0)):
+        if getattr(a, name) < minimum:
+            print(f"[inspect] --{name} 必须 ≥ {minimum}", file=sys.stderr)
+            return 2
+    try:
+        path = _readonly_case_file(a.case_dir, a.file)
+    except ValueError as e:
+        print(f"[inspect] 路径非法: {e}", file=sys.stderr)
+        return 2
+    try:
+        node, bad = _readonly_load(path)
+        if a.path is not None:
+            for part in a.path.split("."):
+                if isinstance(node, dict):
+                    if part not in node:
+                        raise ValueError(f"路径不存在: {part}")
+                    node = node[part]
+                elif isinstance(node, list):
+                    if not part or any(c not in "0123456789" for c in part):
+                        raise ValueError(f"下标非法/越界: {part}")
+                    index = int(part)
+                    if index >= len(node):
+                        raise ValueError(f"下标非法/越界: {part}")
+                    node = node[index]
+                else:
+                    raise ValueError(f"路径不存在: {part}")
+        size = os.path.getsize(path)
+        print(f"file={a.file} bytes={size} path={a.path if a.path is not None else '.'}")
+        if isinstance(node, dict):
+            total = len(node)
+            selected = sorted(node)[a.offset:a.offset + a.limit]
+            for key in selected:
+                _inspect_item(key, node[key], a.depth)
+            returned = len(selected)
+        elif isinstance(node, list):
+            total = len(node)
+            selected = node[a.offset:a.offset + a.limit]
+            for index, value in enumerate(selected, a.offset):
+                _inspect_item(f"[{index}]", value, a.depth)
+            returned = len(selected)
+        else:
+            total, returned = 1, int(a.offset == 0)
+            if returned:
+                print(f"= {repr(node)[:80]}")
+        footer = _readonly_stats(_readonly_page(total, returned, a.offset))
+        if a.file.endswith(".jsonl"):
+            footer += f" bad_lines={bad}"
+        print(footer)
+        return 0
+    except (ValueError, OSError) as e:
+        print(f"[inspect] 读取/解析失败: {e}", file=sys.stderr)
+        return 2
+
+
+def _lookup_address(value):
+    if not isinstance(value, str) or not value:
+        return None
+    if re.fullmatch(r"0x[0-9a-fA-F]{40}", value):
+        return value.lower()
+    return value
+
+
+def _lookup_index(data, rel):
+    records = []
+    if isinstance(data, dict):
+        for key, value in data.items():
+            if isinstance(value, dict):
+                if "_key" in value:
+                    raise ValueError(f"{rel}: 顶层键 {key} 的记录已有 _key 字段")
+                record = dict(value, _key=key)
+            elif isinstance(value, list):
+                record = {"_key": key, "members": value}
+            else:
+                record = {"_key": key, "value": value}
+            records.append((key, record))
+            if isinstance(value, list):
+                records.extend((None, item) for item in value if isinstance(item, dict))
+    elif isinstance(data, list):
+        records.extend((None, item) for item in data if isinstance(item, dict))
+    index = {}
+    for key, record in records:
+        candidates = [key]
+        for field in ("addr", "address", "owner", "wallet", "account"):
+            if field in record:
+                candidates.append(record[field])
+                break
+        for field in ("members", "addresses"):
+            if isinstance(record.get(field), list):
+                candidates.extend(record[field])
+        # 每次循环代表一个来源位置，只对该位置的地址去重。
+        seen = set()
+        for candidate in candidates:
+            addr = _lookup_address(candidate)
+            if addr is not None and addr not in seen:
+                index.setdefault(addr, []).append(record)
+                seen.add(addr)
+    return index
+
+
+def _lookup_text(record, fields):
+    if fields is not None:
+        return "{" + ", ".join(f"{f}={str(record[f])[:80] if f in record else 'MISSING_FIELD'}"
+                                for f in fields) + "}"
+    scalars = [(k, v) for k, v in record.items() if not isinstance(v, (dict, list))][:3]
+    return "{keys=" + repr(list(record)) + ", " + ", ".join(
+        f"{k}={str(v)[:80]}" for k, v in scalars) + "}"
+
+
+def cmd_lookup(a):
+    for name, minimum in (("limit", 1), ("offset", 0)):
+        if getattr(a, name) < minimum:
+            print(f"[lookup] --{name} 必须 ≥ {minimum}", file=sys.stderr)
+            return 2
+    try:
+        paths = [(rel, _readonly_case_file(a.case_dir, rel)) for rel in a.inputs]
+        addr_path = _readonly_case_file(a.case_dir, a.addr_file) if a.addr_file else None
+    except ValueError as e:
+        print(f"[lookup] 路径非法: {e}", file=sys.stderr)
+        return 2
+    try:
+        candidates = a.addr or []
+        if addr_path:
+            with open(addr_path, encoding="utf-8") as f:
+                candidates = [line.strip() for line in f
+                              if line.strip() and not line.strip().startswith("#")]
+        query = [addr for value in candidates if (addr := _lookup_address(value)) is not None]
+        if not query:
+            raise ValueError("无查询地址")
+        indexes, bad_lines = {}, {}
+        for rel, path in paths:
+            data, bad = _readonly_load(path)
+            indexes[rel] = _lookup_index(data, rel)
+            if rel.endswith(".jsonl"):
+                bad_lines[rel] = bad
+        rows = [{"addr": addr, "hits": {rel: indexes[rel].get(addr) for rel in a.inputs}}
+                for addr in query[a.offset:a.offset + a.limit]]
+        stats = _readonly_page(len(query), len(rows), a.offset)
+        stats["missing"] = sum(all(v is None for v in row["hits"].values()) for row in rows)
+        if a.json:
+            print(json.dumps(dict(query=query, files=a.inputs, rows=rows,
+                                  **stats, bad_lines=bad_lines), ensure_ascii=False))
+        else:
+            fields = a.fields.split(",") if a.fields is not None else None
+            for row in rows:
+                print(row["addr"])
+                for rel in a.inputs:
+                    hits = row["hits"][rel]
+                    summary = "MISSING" if hits is None else (
+                        (f"n={len(hits)} " if len(hits) > 1 else "") +
+                        " ; ".join(_lookup_text(record, fields) for record in hits))
+                    print(f"  {rel}: {summary}")
+            print(_readonly_stats(stats) + "".join(
+                f" bad_lines={rel}:{bad}" for rel, bad in bad_lines.items()))
+        return 0
+    except (ValueError, OSError) as e:
+        print(f"[lookup] 读取/解析失败: {e}", file=sys.stderr)
+        return 2
+
+
 def cmd_freeze(a):
     case_dir = os.path.abspath(a.case_dir)
     path = os.path.join(case_dir, FREEZE_NAME)
@@ -1687,10 +1898,31 @@ def main():
     f.add_argument("--casebook-note", default=None)
     f.add_argument("--check-unseal", action="store_true")
 
+
+    i = sub.add_parser("inspect", help="只读：JSON/JSONL 键树、类型、长度、样本（分页），代替手写 python 探 schema")
+    i.add_argument("--case-dir", required=True)
+    i.add_argument("--file", required=True)
+    i.add_argument("--path", help="点分路径；带点的键本轮不支持")
+    i.add_argument("--depth", type=int, default=2)
+    i.add_argument("--limit", type=int, default=30)
+    i.add_argument("--offset", type=int, default=0)
+
+    l = sub.add_parser("lookup", help="只读：按地址清单跨文件回填字段（分页），代替手写 python 跨文件查")
+    l.add_argument("--case-dir", required=True)
+    addresses = l.add_mutually_exclusive_group(required=True)
+    addresses.add_argument("--addr", action="append")
+    addresses.add_argument("--addr-file")
+    l.add_argument("--in", dest="inputs", action="append", required=True)
+    l.add_argument("--fields")
+    l.add_argument("--limit", type=int, default=50)
+    l.add_argument("--offset", type=int, default=0)
+    l.add_argument("--json", action="store_true")
+
     a = ap.parse_args()
     try:
         return {"generate": cmd_generate, "verify": cmd_verify,
-                "receipt": cmd_receipt, "freeze": cmd_freeze}[a.subcmd](a)
+                "receipt": cmd_receipt, "freeze": cmd_freeze,
+                "inspect": cmd_inspect, "lookup": cmd_lookup}[a.subcmd](a)
     except Exception as e:
         print(f"[{a.subcmd}] 脚本自身错误（exit 1，修完重跑）: {e}", file=sys.stderr)
         return 1

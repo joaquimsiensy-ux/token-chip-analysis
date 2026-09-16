@@ -1,0 +1,86 @@
+# 盲审 T3: PASS
+
+审计对象：/Users/uravvv/.claude/worktrees/tca-three-items 分支 fix/three-items-20260916，工作树相对 HEAD=8d8787e6 的未提交改动。全程只读，未做任何 git 写操作，未读取禁止目录/tag。
+
+---
+
+## 1. 白名单与既有函数零改动 —— 通过
+
+- tracked 改动恰为工单 §0 白名单四文件（`git status`）：`references/context-discipline.md`、`references/split-run.md`、`scripts/report/handoff_manifest.py`、`scripts/tests/test_handoff_manifest.py`；新文件全部落在 `maintenance/repair-20260916-three-items/`。白名单外零改动。
+- AST 逐顶层定义比对 `git show HEAD:scripts/report/handoff_manifest.py` vs 工作树：顶层定义 34 → 44，**新增 10 个且一个不多**（`_readonly_case_file` / `_readonly_load` / `_readonly_page` / `_readonly_stats` / `_inspect_item` / `cmd_inspect` / `_lookup_address` / `_lookup_index` / `_lookup_text` / `cmd_lookup`），删除 0；**33 个既有顶层定义 AST 完全相同**，唯一有差异者为 `main`。非函数顶层语句 49 条（含 `SCHEMA_VERSION`/`SUPPORTED_SCHEMAS`/`LEGACY_SCHEMAS` 等常量与全部 import）AST 完全相同。
+- `main` 的差异用语句级 difflib 定位：仅两处 —— (a) 插入 17 条语句 `scripts/report/handoff_manifest.py:1902-1919`（inspect 6 参数 + lookup 互斥组与 7 参数）；(b) 替换 dispatch 字典一句 `:1922-1923`（加 `"inspect": cmd_inspect, "lookup": cmd_lookup`），`except Exception` 兜底原样。**与工单 §7 明示的唯一例外完全吻合。**
+- 点名检查项全部落在"AST 完全相同"的 33 个里：`_reverse_bound_reason`、`check_bound_file`、`check_algorithm_file`、`validate_evm_v2_argument`、`validate_and_replay_provenance`、`verify_case`、`cmd_verify`、`cmd_generate`、`cmd_receipt`、`cmd_freeze`（freeze 四道前置全在 `cmd_freeze` 体内，未动）。另三个 `validate_*` 来自 `shared_release_receipt`（该文件未被修改）。
+- 新增函数区位置正确：`:1402` 起，位于 T1 的 `case_hygiene_warnings`（`:1381-1399`）之后、`cmd_freeze`（现 `:1613`）之前。
+- 测试文件同法比对：新增顶层仅 `test_t3_readonly_queries`，删除 0，既有顶层仅 `main` 变化，变化内容为单句 `test_t3_readonly_queries()` 插入。
+- `git diff --check` 干净。
+
+## 2. 守卫（sealed / 案外 / 只读） —— 通过
+
+- `_readonly_case_file`（`scripts/report/handoff_manifest.py:1402-1408`）先 `safe_case_file(case_dir, rel)` 三验，再 `rel.split("/",1)[0].casefold()=="sealed"` 即 raise，与工单 §1 逐字同构（无 lstrip/反斜杠处理，`.sealed` 合法目录不误拒）。
+- 三个入口全部经该守卫：`--file`（`:1461`）、`--in`（`:1568` 列表推导）、`--addr-file`（`:1569`）。
+- 依赖的 `scripts/lib/case_paths.py:9-46` 确实拒：绝对路径、空段/`.`/`..`、路径经符号链接、realpath 越出案根、非常规文件、文件不存在。
+- 我独立建案自测（不依赖施工方夹具）：`inspect --file sealed/x.json` → exit 2 含 `sealed/`；`SEALED/x.json` → exit 2 含 `sealed/`（casefold 生效）；`../mycase/data/ic.json` → exit 2「路径含空段、. 或 .. 非法段」；绝对路径 → exit 2「路径不得是绝对路径」；`lookup --in sealed/x.json` → exit 2 同款。
+- 只读性：新增段（`:1402-1610`）全文 grep 只有两处 `open(`，均为 `open(path, encoding="utf-8")` 默认读模式（`:1415`、`:1576`），路径是 `safe_case_file` 返回的 realpath 绝对路径；**无 `"w"/"a"/"x"/"+"`、无 `os.remove/unlink/rmdir/rename/replace/chmod/mkdir/truncate`、无 `shutil.*`、无 `tempfile.*`、无 `subprocess`**。全文件 grep `os.open` / `dir_fd` 零命中。
+- 我自己的案根跑完 20+ 条正/反例后，`ls -laR` 显示文件数与 mtime 与建案时一致，无新增文件、无 `__pycache__`（`-B`）。
+
+## 3. inspect 分页语义 —— 通过（独立复现）
+
+- `returned` 由 `len(selected)` 得出，`_inspect_item` 的递归展开与 `returned` 无任何耦合 → 与 depth 解耦（`:1480-1496`）。
+- `next_offset=min(offset+returned,total)`、`truncated=next_offset<total` 集中在 `_readonly_page`（`:1429-1432`），inspect/lookup 共用同一公式。
+- 我独立实跑（自建案）：`--limit 1` → `total=2 returned=1 truncated=true next_offset=1`；`--offset 1` → `returned=1 truncated=false next_offset=2`；`--offset 9`（超界）→ `returned=0 truncated=false next_offset=2`；标量路径 `--path zz.label --offset 1` → 正文无 `= ` 行、`total=1 returned=0 next_offset=1`（§2「标量 offset≥1 不输出」满足）。
+- jsonl：坏行不中断，`total=2 ... bad_lines=1`，exit 0（`_readonly_load:1418-1425`）。
+- 失败路径：`_readonly_load` 抛的 `ValueError("只支持 .json/.jsonl")`、`json` 解码错误、`UnicodeDecodeError`（ValueError 子类）、`OSError` 全部被 `cmd_inspect` 的 `except (ValueError, OSError)`（`:1503-1505`）捕获 → exit 2，**不会漏到 `main` 兜底成 exit 1**。参数校验 `--limit/--offset/--depth`（`:1454-1458`）exit 2 并在 stderr 指名参数。
+- `--path` 段解析：dict 按原字符串键、list 段须纯十进制且不越界（`:1465-1476`），否则 exit 2「下标非法/越界」；不存在 → exit 2「路径不存在」。
+
+## 4. lookup 语义 —— 通过（独立复现）
+
+- `--addr`/`--addr-file` 用 `add_mutually_exclusive_group(required=True)`（`:1912-1914`）：都不给 → `one of the arguments --addr --addr-file is required`，同时给 → `not allowed with argument --addr`，均 exit 2（我实跑确认）。
+- 地址候选仅非空字符串：`_lookup_address`（`:1508-1513`）对非 str / 空串返回 None，其余 0x+40hex 小写化、非 EVM 原样区分大小写。
+- 规则 1/2 都跑：`_lookup_index:1517-1530` 顶层 dict 每个 (key,value) 建记录，且 value 是 list 时**另外**把其中 dict 元素各建一条记录；顶层是 list（含 jsonl）只取 dict 元素。
+- 规则 3/4 都执行：`:1533-1540` 先按 `addr/address/owner/wallet/account` 首个**存在**的键取值并 `break`（存在但值非法不回退，符合工单），**再**无条件扫 `members`/`addresses` 两个列表。
+- `_key` 冲突：`:1519-1520` raise `"{rel}: 顶层键 {key} 的记录已有 _key 字段"` → exit 2 且 stderr 含 `_key`。
+- 按来源位置去重：`seen` 集合在每条记录的循环内新建（`:1541-1547`，注释明写"每次循环代表一个来源位置"），内容相同但位置不同的两条各算一条，输出 `n=<k>`。我实跑 `bal.json` 中同址两条 → `n=2 {b=1} ; {b=3}`。
+- `--json` 忽略 `--fields`：`fields` 仅在文本分支计算（`:1592`），json 分支直接 `json.dumps(rows)` 输出完整记录、无截断；`query` 含全部归一化地址与重复，`missing` 只统计本页（`:1587`）。
+- 分页公式与 inspect 同源；重复查询 `--addr A --addr A` → `total=2` 实测。
+- MISSING 标记：文本 `  <rel>: MISSING`（`:1596-1600`）、json `null`，实测一致。空查询 → exit 2「无查询地址」。
+
+## 5. 测试 —— 通过，我本人复跑
+
+- 位置：`test_t3_readonly_queries()` 登记在 `scripts/tests/test_handoff_manifest.py:1328`，在既有 `finally: shutil.rmtree(root...)`（:1325-1326）之后、`print("=" * 40)`（:1330）之前，未在 return 之后 —— 与工单 §0 一致。
+- 自建自清理：`tempfile.mkdtemp(prefix="t3-readonly-").resolve()` 建独立 scratch 案根（:532-535），`finally` 恢复 chmod 后**逐一 unlink/rmdir 明确路径**（:850-862），不复用已删除的 main 案根、不批量 rmtree 案根。
+- 审计钩子**真监测**：包装脚本用 `sys.addaudithook` + `runpy.run_path` 在同进程内跑被测子命令（:696-808）；`open` 事件同时认字符串 mode 与整数 flags（`:731-732`）、rename 两端（`:738-740`）、词法路径与 realpath 双检（`:720-722`）、目录边界用 `os.path.commonpath` 而非 `startswith`。**自检 7 条合成事件**（案内 flags 写、案外→案内 rename、案内指向案外的链接删除、dir_fd 归属、无法归属、案外符号链接指向案内的写、案内→案外 rename 源端）全部被记录，相邻目录 `_sibling` 写事件不被记录 —— 断言 `len(alarms)==7` 且 `alarms[4]["scope"]=="未归属写事件"`（:797-801）。监测器不是空壳。
+- 我本人执行 `python3 -B scripts/tests/test_handoff_manifest.py`：**exit=0**，末行 `handoff_manifest 契约测试全部通过（283 项）`，无 FAIL 行；其中 T3 相关 `ok` 行 **174 条**（与施工报告一致）。
+- 另跑全套 `python3 -B scripts/tests/run_all.py`：**"全部通过"，149 个 PASS、0 FAIL**。施工方沙箱里 FAIL 的两条（`test_batch3_solana_vertical_slice.py`、`test_batch3_evm_vertical_slice.py`，localhost socket.bind 被拒）在我本机均 PASS —— 施工报告如实记录为沙箱限制、未冒充通过，属实且诚实。
+
+## 6. 文档两行 —— 通过
+
+- 两行均**逐字**出现在工单 §6（脚本精确比对，非目测）：`references/split-run.md:72`（146 字符）、`references/context-discipline.md:27`（130 字符，含行首三空格）。
+- 字节：`git show HEAD:` → 28135 / 9257；工作树 `wc -c` → **28130 / 9256**（−5 / −1），与工单预期完全吻合。
+- `python3 -B scripts/tests/docs_lint.py --all` → `PASS: 59 个文档，引用无断链、粗体配对完整（--all 全量模式）`，exit=0（我本人跑）。
+
+## 7. 工单未要求的行为/文本变化 —— 通过（仅两处无害项）
+
+- `CHANGELOG.md`/`VERSION`/`pyproject.toml` 均未出现在 `git status`，零改动。
+- 生产代码无任何工单外行为：新增段自成一体，未被既有任何函数调用（dispatch 之外零引用）。
+- 唯二可记的差异（均不构成偏离）：
+  (a) `handoff_manifest.py:1900-1901` 比 HEAD 多一个空行（函数体内两连空行），纯排版。
+  (b) 测试用例在工单 §5 七组之外多覆盖了 `.sealed` 合法目录不误拒、非 UTF-8 文件、无效首地址字段不回退、双成员表、非 EVM 大小写敏感等边界。属白名单文件内的增量覆盖，t3_done.md 已如实申报，不改变生产行为。
+
+## 8. 专项裁定（上一位审员的 audit hook 指摘）
+
+**① 描述属实。** `scripts/tests/test_handoff_manifest.py:729-735` 的 `open` 分支把 `paths` 写成 `[(path, None)]`，dir_fd 恒为 None；`belongs`（:712-724）随即对相对路径走 `os.path.abspath(path)`，即按**包装脚本进程的 cwd** 归属。我实测证实前提：`os.open("probe.txt", O_WRONLY|O_CREAT, dir_fd=fd)` 触发的 audit 事件是 `open ('probe.txt', None, 16777729)` —— **CPython 不把 dir_fd 传进 `open` 事件**。因此若被测代码用 dir_fd + 相对路径写入案内，`belongs` 会返回 False（而非 None），事件被静默丢弃、既不记为案内写也不记为"未归属"。对比之下 `os.remove/rename/mkdir/chmod/rmtree` 分支都正确取了 dir_fd 参数，唯独 `open` 拿不到，这是 audit 协议本身的形态限制，不是写错。
+
+**② 生产代码不存在该形态。** `grep -n "os\.open\|dir_fd" scripts/report/handoff_manifest.py` → **全文件零命中**。新增段（:1402-1610）只有两处 `open(path, encoding="utf-8")`，`path` 均为 `_readonly_case_file` 返回的 `safe_case_file` realpath **绝对路径**，不可能走相对路径分支；且全段无任何写模式、无 `tempfile`、无 `shutil`、无 `subprocess`。
+
+**③ 裁定：非阻断，属监测器加固项。** 理由：这是"测量仪器的一个盲区"，而非被测物的缺陷；被测物根本不产生落入盲区的事件，且盲区之外还有两道独立冗余证据 —— (i) 去写位 chmod 后全部正例仍 exit 0；(ii) 案目录 sha256+权限+链接文本快照前后完全一致（`:806`）。任何 dir_fd 写入若真发生，必然改变快照或被 chmod 挡住。故不判 FAIL。
+**最小改法建议（我不改代码，供后续采纳）：** 在 `belongs`（`:712-724`）开头加一句 —— 当 `access=True`（即 open/truncate 类事件）且 `not os.path.isabs(path)` 且 `dir_fd in (None,-1)` 时直接 `return None`，让它落进既有的"未归属写事件"通道（`:759-761` 的 `None in states` 分支）而不是被 abspath 悄悄归给 cwd。一行判断，不动其他分支，自检里再补一条合成事件（相对路径 + flags 写）断言其被记为"未归属写事件"即可。
+
+---
+
+## 非阻断建议
+
+1. **审计钩子 open 事件加固**：按上面第 8 条的最小改法补一句 `isabs` 判断，把 dir_fd 相对路径写入从"静默丢弃"改为"未归属写事件"。当前不影响结论。
+2. **`t3_scope_evidence.txt` 措辞易误导**：它把 `add_path`(:266)、`discover`(:283)、`add_explicit`(:288)、`bound_ref`(:969) 列进"新增函数"，但这四个是 `cmd_generate` 与 `load_flip_adjudications` **内部既有的嵌套函数**，HEAD 里本就存在（其外层顶层函数 AST 与 HEAD 逐字相同，已证未改）。是施工方比对脚本只建顶层名字典造成的列示口径问题，建议下次在证据里标注"嵌套函数仅列行号、非新增"。
+3. **`handoff_manifest.py:1900-1901` 多出的一个空行**可顺手收掉，纯排版。
+4. **观察项（工单设计，非缺陷）**：lookup 规则 1 把顶层 dict 的**每个键**都当地址候选，因此容器型键（如 `rows`、`E1`）也会进索引。若将来有人拿这类字符串当 `--addr` 查，会得到"假命中"。这是工单 §3 明文规定的行为，本轮照做正确；建议在后续版本的帮助文案里加一句提示。
+5. **run_all 环境差异已消解**：施工方沙箱里 FAIL 的两条纵切片测试，我在本机复跑为 PASS，全套 149/149"全部通过"。工单 §7 的"全套全绿"条件实质已满足，可在验收记录里补这一行，免得遗留项悬着。

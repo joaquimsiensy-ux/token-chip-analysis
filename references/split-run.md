@@ -69,7 +69,7 @@
 
 ## §2 交接契约（handoff）
 
-机器权威源一律 JSON；md 仅渲染层可选。工具：`scripts/report/handoff_manifest.py`（子命令 `generate / verify / receipt / freeze`，schema 常量内嵌，测试 `scripts/tests/test_handoff_manifest.py` 进 run_all）。
+机器权威源一律 JSON；md 仅渲染层可选。工具：`scripts/report/handoff_manifest.py`（子命令 `generate / verify / receipt / freeze / inspect / lookup`；后两个只读分页：看键树、按地址批查字段）。
 
 ### 2.1 产物清单
 

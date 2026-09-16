@@ -1,0 +1,65 @@
+=== 1 改动文件 ===
+ M references/context-discipline.md
+ M references/split-run.md
+ M scripts/report/handoff_manifest.py
+ M scripts/tests/test_handoff_manifest.py
+?? maintenance/repair-20260916-three-items/t3_byte_evidence.txt
+?? maintenance/repair-20260916-three-items/t3_docs_lint.txt
+?? maintenance/repair-20260916-three-items/t3_done.md
+?? maintenance/repair-20260916-three-items/t3_green_evidence.txt
+?? maintenance/repair-20260916-three-items/t3_red_evidence.txt
+?? maintenance/repair-20260916-three-items/t3_run_all_evidence.txt
+?? maintenance/repair-20260916-three-items/t3_scope_evidence.txt
+ scripts/report/handoff_manifest.py     | 234 ++++++++++++++++++++++-
+ scripts/tests/test_handoff_manifest.py | 337 +++++++++++++++++++++++++++++++++
+ 4 files changed, 572 insertions(+), 3 deletions(-)
+=== 2 白名单外改动（应为空） ===
+=== 3 既有函数体零改动（HEAD vs 工作树，逐函数比对，只列有差异的） ===
+changed: ['main']
+missing: []
+added: ['_readonly_case_file', '_readonly_load', '_readonly_page', '_readonly_stats', '_inspect_item', 'cmd_inspect', '_lookup_address', '_lookup_index', '_lookup_text', 'cmd_lookup']
+=== 4 文档字节（预期 28130 / 9256）===
+   28130 references/split-run.md
+    9256 references/context-discipline.md
+   37386 total
+ 2 files changed, 2 insertions(+), 2 deletions(-)
+PASS: 59 个文档，引用无断链、粗体配对完整（--all 全量模式）
+=== 5 单测 ===
+exit=0
+ok    T3 案目录快照完全一致
+========================================
+handoff_manifest 契约测试全部通过（283 项）
+0
+=== 6 FORGGIE 实跑（零写入：以 marker 之后新文件为证） ===
+inspect exit=0
+file=data/entity_series.json bytes=10169 path=.
+dates: list len=442
+  [0]: = '2025-06-27'
+大庄#1: list len=442
+  [0]: = 94.187
+total=2 returned=2 truncated=false next_offset=2
+total=2 returned=2 truncated=false next_offset=2
+inspect jsonl exit=0
+total=4364 returned=2 truncated=true next_offset=2 bad_lines=0
+lookup exit=0
+0x02578fe3aa2ff62ebd629828d3ef84147991ee3a
+  data/balances_final.json: MISSING
+  entity_registry.json: {keys=['_key', 'members'], _key=e_issuer_botarmy}
+  data/labels_final.jsonl: {keys=['chain', 'address', 'hit'], chain=bsc, address=0x02578fe3aa2ff62ebd629828d3ef84147991ee3a, hit=False}
+0x0303e4fe3d5a3d4f225e7690f038786648657b2b
+  data/balances_final.json: {keys=['_key', 'value'], _key=0x0303e4fe3d5a3d4f225e7690f038786648657b2b, value=63704}
+  entity_registry.json: MISSING
+  data/labels_final.jsonl: {keys=['chain', 'address', 'hit'], chain=bsc, address=0x0303e4fe3d5a3d4f225e7690f038786648657b2b, hit=False}
+0x04aeb2a86d0f82153265f73b51f8c57baee45130
+  data/balances_final.json: MISSING
+  entity_registry.json: MISSING
+  data/labels_final.jsonl: {keys=['chain', 'address', 'hit'], chain=bsc, address=0x04aeb2a86d0f82153265f73b51f8c57baee45130, hit=False}
+total=256 returned=3 truncated=true next_offset=3 missing=0 bad_lines=data/labels_final.jsonl:0
+total=256 returned=3 truncated=true next_offset=3 missing=0 bad_lines=data/labels_final.jsonl:0
+lookup json exit=0
+{'total': 256, 'returned': 2, 'truncated': True, 'next_offset': 2, 'missing': 1}
+[inspect] 路径非法: 文件不存在: 'sealed/x.json'
+sealed exit=2
+[inspect] 路径非法: 文件不存在: 'SEALED/x.json'
+--- marker 之后案卷内新/改文件（应为空） ---
+=== 完 ===

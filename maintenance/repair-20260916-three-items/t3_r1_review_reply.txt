@@ -1,0 +1,31 @@
+# 复核 T3-r1: 退回
+
+**修法本身成立；需要修正的是验收基线和报告白名单。** 本轮离线、未修改文件、未执行 Git 写操作，未访问禁止目录。审查 HEAD 为 `8d8787e67ae1229b3c906e63bcdc421ae9d2cc14`。
+
+1. **① §1：与当前代码一致。**  
+   `open` 分支确实固定传入 `(path, None)`，随后通过 `abspath` 按 cwd 解析。[test_handoff_manifest.py:735](/Users/uravvv/.claude/worktrees/tca-three-items/scripts/tests/test_handoff_manifest.py:735)、[同文件:712](/Users/uravvv/.claude/worktrees/tca-three-items/scripts/tests/test_handoff_manifest.py:712)。  
+   实际只读 `os.open(..., dir_fd=fd)` 捕获到三个参数；再用原钩子合成对应写事件，复现结果为：**携带正确 dir_fd 时归属=True，当前钩子归属=False，日志=[]**。
+
+2. **② §2：修法最小，足以补齐指定缺口。**  
+   在写判定之后，将非整数相对路径直接记为“未归属写事件”，可以避免猜测缺失的 `dir_fd`；绝对路径和 fd 分支保持原样，符合[主工单:96](/Users/uravvv/.claude/worktrees/tca-three-items/maintenance/repair-20260916-three-items/workorder_t3.md:96)。  
+   新事件追加在末尾，原报警下标不变，`7 → 8`、新增检查 `alarms[7]` 正确；修改同一个 `check` 不增加检查条数。现有断言见[测试:784](/Users/uravvv/.claude/worktrees/tca-three-items/scripts/tests/test_handoff_manifest.py:784)。
+
+3. **③ §2.4：对当前正例成立。**  
+   `safe_case_file` 返回经过 `realpath` 得到的绝对路径；两处生产 `open` 均使用默认读取模式，首先就会被钩子的“非写事件”判断放行。因此当前正例不会因新规则误报。证据：[case_paths.py:32](/Users/uravvv/.claude/worktrees/tca-three-items/scripts/lib/case_paths.py:32)、[handoff_manifest.py:1415](/Users/uravvv/.claude/worktrees/tca-three-items/scripts/report/handoff_manifest.py:1415)、[同文件:1576](/Users/uravvv/.claude/worktrees/tca-three-items/scripts/report/handoff_manifest.py:1576)。
+
+4. **④ §3：存在验收冲突，需返修。**
+
+   **P2：`git diff --stat` 使用了错误基线。** 当前实测已有 **4 个 tracked 文件改动**，包括必须保留的生产代码和两份文档；不能同时满足“总 diff 只含本单两个文件”。此外，`t3_scope_evidence.txt` 当前为 **untracked**，普通 `git diff --stat` 根本不会显示它。[返修单:20](/Users/uravvv/.claude/worktrees/tca-three-items/maintenance/repair-20260916-three-items/workorder_t3_r1.md:20)。  
+   应改为：**以返修开始时的工作树内容为基线，核对本次增量仅涉及允许文件及区域，并覆盖未跟踪文件；固定 HEAD 后比较生产 diff 哈希。**
+
+   **报告白名单需明确。** §0 写“只允许改这两个文件”，§3 又要求新增 `t3_r1_done.md`。应将报告的完整路径明列为新增交付物例外，消除范围歧义。[返修单:5](/Users/uravvv/.claude/worktrees/tca-three-items/maintenance/repair-20260916-three-items/workorder_t3_r1.md:5)、[同文件:21](/Users/uravvv/.claude/worktrees/tca-three-items/maintenance/repair-20260916-three-items/workorder_t3_r1.md:21)。
+
+   `exit 0`、283 项检查及生产 diff 前后哈希相同均可机器验证；检查总数由[测试:1334](/Users/uravvv/.claude/worktrees/tca-three-items/scripts/tests/test_handoff_manifest.py:1334)输出。
+
+5. **⑤ 无需把 tempfile/shutil 的所有相对路径套用同一规则。**  
+   本机标准库核对结果：`mkstemp/mkdtemp`、`move/copyfile` 没有隐藏的 `dir_fd` 参数，相对路径按 cwd 解释；`shutil.rmtree` 的审计事件携带 `dir_fd`，当前钩子已传给 `belongs`。因此不能仅因路径相对就认定无法归属，无需扩大本单范围。[测试:745](/Users/uravvv/.claude/worktrees/tca-three-items/scripts/tests/test_handoff_manifest.py:745)。  
+   四行证据勘误也准确：`add_path/discover/add_explicit/bound_ref` 均已存在于 HEAD，且当前函数文本未变。[t3_scope_evidence.txt:17](/Users/uravvv/.claude/worktrees/tca-three-items/maintenance/repair-20260916-three-items/t3_scope_evidence.txt:17)。
+
+本轮抽取原钩子并在内存构造候选修法，**29 项 open 检查、9 项 tempfile/shutil 检查通过**。未运行会创建、修改和删除夹具的完整测试；已有日志中的 283 项通过仅是历史基线，不代表返修后验收。
+
+非阻断建议：§2.4 的“若触发即为真实回归”宜改为“若触发则保持 FAIL”。新规则会保守记录案外相对写；“未归属”本身不能证明发生了案内写入。

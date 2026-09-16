@@ -1,0 +1,37 @@
+=== 1 文件增量（相对开工基线）
+< c24c72850cdbb6a87748b24125098ec79c4d0be76ab88733cfd6c37d774080aa  scripts/tests/test_handoff_manifest.py
+> 19b3bbf02b117020f603d6a3273ea926375684cbfa856fdc31547ca6358c400c  scripts/tests/test_handoff_manifest.py
+> 14622f61a552e069a5e98379a7ad0fad663a973c851c90e268f8006c1592accc  maintenance/repair-20260916-three-items/t3_r1_done.md
+< 092bc7d1eddb6fa3b67260363d219ae71197bf8cf54aeaf5aec6721f24241ff1  maintenance/repair-20260916-three-items/t3_scope_evidence.txt
+> 9daff9ebd7eb0baaf8dda2b2af8524a794b3e07c9d527e71acbf62e5cf3183ce  maintenance/repair-20260916-three-items/t3_scope_evidence.txt
+（期望：只有 test_handoff_manifest.py 与 t3_scope_evidence.txt 的 sha 行变化，新增 t3_r1_done.md 行；prod diff sha 行无变化）
+=== 2 测试文件改动是否只在钩子区域
+734a735,737
+>         if not isinstance(path, int) and not os.path.isabs(os.fsdecode(path)):
+>             events.append({'event': 'open', 'args': repr(args), 'scope': '未归属写事件'})
+>             return
+773a777
+>         sys.audit('open', 'probe_rel', None, os.O_WRONLY | os.O_CREAT)
+784,785c788,789
+<         check("T3 audit 自检 flags/rename 目标/链接词法/相邻边界/dir_fd/未归属/realpath/源端",
+<               p.returncode == 0 and len(alarms) == 7
+---
+>         check("T3 audit 自检 flags/rename 目标/链接词法/相邻边界/dir_fd/未归属/realpath/源端/相对路径",
+>               p.returncode == 0 and len(alarms) == 8
+787c791,792
+<               and alarms[4]["scope"] == "未归属写事件")
+---
+>               and alarms[4]["scope"] == "未归属写事件"
+>               and alarms[7]["event"] == "open" and alarms[7]["scope"] == "未归属写事件")
+=== 3 证据文件改动
+17,20d16
+< 新增函数 add_path: 266-281
+< 新增函数 discover: 283-286
+< 新增函数 add_explicit: 288-295
+< 新增函数 bound_ref: 969-989
+=== 4 契约测试
+exit=0
+handoff_manifest 契约测试全部通过（283 项）
+0
+=== 5 施工报告首行
+# 施工 T3-r1: 完成

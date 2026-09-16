@@ -1,0 +1,10 @@
+$ python3 -B scripts/report/handoff_manifest.py inspect --case-dir /tmp --file x
+exit=2
+stderr:
+usage: handoff_manifest.py [-h] {generate,verify,receipt,freeze} ...
+handoff_manifest.py: error: argument subcmd: invalid choice: 'inspect' (choose from 'generate', 'verify', 'receipt', 'freeze')
+$ python3 -B scripts/report/handoff_manifest.py lookup --case-dir /tmp --file x
+exit=2
+stderr:
+usage: handoff_manifest.py [-h] {generate,verify,receipt,freeze} ...
+handoff_manifest.py: error: argument subcmd: invalid choice: 'lookup' (choose from 'generate', 'verify', 'receipt', 'freeze')

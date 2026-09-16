@@ -1,0 +1,38 @@
+# 盲审 T3: FAIL
+
+唯一阻断项是审计监测器漏记相对路径 `os.open(..., dir_fd=...)` 写事件，未满足工单明确要求。未发现新增生产代码存在写入或查询语义错误。
+
+审查基线：`HEAD=8d8787e67ae1229b3c906e63bcdc421ae9d2cc14`。全程离线、未修改文件、未执行 Git 写操作或访问禁止目录。
+
+1. **通过：白名单与既有逻辑。**  
+   改动限于四个指定文件及工单证据目录。逐函数原文比较后，在内存撤去授权新增部分，两份 Python 文件均逐字等于 HEAD。所列 validate、verify、`_reverse_bound_reason`、`check_bound_file` 和 freeze 四道前置均未动。新增函数位于 [handoff_manifest.py:1402](/Users/uravvv/.claude/worktrees/tca-three-items/scripts/report/handoff_manifest.py:1402)，parser 与 dispatch 位于 [:1902](/Users/uravvv/.claude/worktrees/tca-three-items/scripts/report/handoff_manifest.py:1902)。
+
+2. **通过：路径守卫与生产只读性。**  
+   `--file`、`--in`、`--addr-file` 均先经 `safe_case_file`，再以首段 `casefold()=="sealed"` 拒绝。案外路径、非法路径段和符号链接由既有守卫拒绝。新增段只有两处默认读取模式的 `open`，没有写入操作。证据：[共同守卫:1402](/Users/uravvv/.claude/worktrees/tca-three-items/scripts/report/handoff_manifest.py:1402)、[lookup 入口:1568](/Users/uravvv/.claude/worktrees/tca-three-items/scripts/report/handoff_manifest.py:1568)、[safe_case_file:16](/Users/uravvv/.claude/worktrees/tca-three-items/scripts/lib/case_paths.py:16)。
+
+3. **通过：inspect 语义。**  
+   根节点分页、`returned` 与 depth 解耦、标量空页、`next_offset` 公式、JSONL 坏行计数均符合工单。解析、解码和读取异常返回 2；`UnicodeDecodeError` 属于已捕获的 `ValueError`。证据：[读取与分页:1411](/Users/uravvv/.claude/worktrees/tca-three-items/scripts/report/handoff_manifest.py:1411)、[inspect:1453](/Users/uravvv/.claude/worktrees/tca-three-items/scripts/report/handoff_manifest.py:1453)。
+
+4. **通过：lookup 语义。**  
+   地址入口互斥且必填；候选仅非空字符串；规则 1/2、3/4 均执行；无效首地址字段不回退；`_key` 冲突返回 2；按来源位置去重；JSON 保留完整记录并忽略 fields；missing 仅计本页。证据：[索引:1508](/Users/uravvv/.claude/worktrees/tca-three-items/scripts/report/handoff_manifest.py:1508)、[输出:1580](/Users/uravvv/.claude/worktrees/tca-three-items/scripts/report/handoff_manifest.py:1580)、[互斥参数:1912](/Users/uravvv/.claude/worktrees/tca-three-items/scripts/report/handoff_manifest.py:1912)。
+
+5. **问题：测试结构合规，但监测器有第 8 项缺口。**  
+   七组子测自建、自清理案根，在原 finally 后、汇总 print 前登记。钩子覆盖了要求的事件类别、整数 flags、rename 两端、commonpath、词法与 realpath 检查，并有合成事件自检。证据：[测试入口:531](/Users/uravvv/.claude/worktrees/tca-three-items/scripts/tests/test_handoff_manifest.py:531)、[钩子及自检:726](/Users/uravvv/.claude/worktrees/tca-three-items/scripts/tests/test_handoff_manifest.py:726)、[登记:1328](/Users/uravvv/.claude/worktrees/tca-three-items/scripts/tests/test_handoff_manifest.py:1328)。  
+   本轮实际执行指定契约测试：**exit 1，已完成 PASS 数 0**，在既有 [:451](/Users/uravvv/.claude/worktrees/tca-three-items/scripts/tests/test_handoff_manifest.py:451) 创建临时目录时遇到 `No usable temporary directory found`。这是沙箱限制，不作为 FAIL 原因。另行执行的 **33 项内存语义检查通过**，不替代完整契约测试。
+
+6. **通过：文档。**  
+   两行与工单 §6 逐字一致，其余正文未变。独立 `wc -c` 与 HEAD 比较确认：
+   - [split-run.md:72](/Users/uravvv/.claude/worktrees/tca-three-items/references/split-run.md:72)：**28135 → 28130**
+   - [context-discipline.md:27](/Users/uravvv/.claude/worktrees/tca-three-items/references/context-discipline.md:27)：**9257 → 9256**
+
+   `python3 -B scripts/tests/docs_lint.py --all`：**exit 0，59 个文档 PASS**。
+
+7. **通过：其他范围。**  
+   未发现额外生产行为或文档正文变化；`CHANGELOG.md`、`VERSION`、`pyproject.toml` 与 HEAD 逐字节一致；`git diff --check` 通过。审查期间新增了白名单证据日志 `t3_run_all_fable.log`，HEAD 和四个核心改动文件的哈希保持不变。
+
+8. **问题，P2：专项描述属实，按当前工单构成阻断。**  
+   ① [open 分支:735](/Users/uravvv/.claude/worktrees/tca-three-items/scripts/tests/test_handoff_manifest.py:735) 固定传入 `(path, None)`；[belongs:720](/Users/uravvv/.claude/worktrees/tca-three-items/scripts/tests/test_handoff_manifest.py:720) 因而按进程工作目录解析相对路径。实际只读 `os.open(..., dir_fd=fd)` 确认事件仅有 `(path, None, flags)`。使用原钩子的无落盘复现结果：**正确 dir_fd 归属=True，钩子归属=False，合成写事件日志=[]**。  
+   ② 对生产新增段检索 `os.open|dir_fd|remove|unlink|rename|mkdir|chmod|truncate|write`，无相关调用；仅有 [:1415](/Users/uravvv/.claude/worktrees/tca-three-items/scripts/report/handoff_manifest.py:1415)、[:1576](/Users/uravvv/.claude/worktrees/tca-three-items/scripts/report/handoff_manifest.py:1576) 两处读取。  
+   ③ 阻断依据是 [工单:96](/Users/uravvv/.claude/worktrees/tca-three-items/maintenance/repair-20260916-three-items/workorder_t3.md:96) 明确要求“无法归属的写事件记为‘未归属写事件’，不得静默跳过”。生产当前没有此调用，不消除这项验收缺口。**最小修正：将 `mode=None`、相对路径的写 open 保守记录为未归属事件，并增加对应合成自检。**无需修改生产代码。
+
+非阻断建议：修正 [t3_scope_evidence.txt:17](/Users/uravvv/.claude/worktrees/tca-three-items/maintenance/repair-20260916-three-items/t3_scope_evidence.txt:17) 起四行，把 `add_path/discover/add_explicit/bound_ref` 从“新增函数”清单移除；它们已存在于 HEAD。

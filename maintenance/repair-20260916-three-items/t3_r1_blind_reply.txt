@@ -1,0 +1,23 @@
+# 盲审 T3-r1: PASS
+
+未发现返修缺陷。HEAD 保持 `8d8787e67ae1229b3c906e63bcdc421ae9d2cc14`；本轮离线只读，未修改文件、执行 Git 写操作或读取禁止目录。
+
+1. **通过：返修符合 §2，且为最小增量。**  
+   [open 分支:735](/Users/uravvv/.claude/worktrees/tca-three-items/scripts/tests/test_handoff_manifest.py:735) 对非整数相对路径写事件直接记录“未归属写事件”并返回；`:777` 新增指定合成事件；`:788–792` 检查 8 条及 `alarms[7]`。原断言、绝对路径和 fd 逻辑、正例空日志断言均保留。在内存撤去指定修改后，全文 SHA-256 与[施工前记录:105](/Users/uravvv/.claude/worktrees/tca-three-items/maintenance/repair-20260916-three-items/t3_r1_done.md:105) 完全一致。
+
+2. **通过／沿用：生产代码与文档零增量。**  
+   独立计算指定 diff 的 SHA-256 为：
+   `7ae6d8bc1f1333e7366bffee036c74aeeda84940e1b06e92a81253e84c515168`。  
+   与指定基线一致；上一轮 **第 1–4、6、7 项结论沿用**，见[上一轮审查:7](/Users/uravvv/.claude/worktrees/tca-three-items/maintenance/repair-20260916-three-items/t3_blind_reply.txt:7)。
+
+3. **问题（环境，非阻断）：完整测试受限；内存定向复验通过。**  
+   实跑 `python3 -B scripts/tests/test_handoff_manifest.py`：**exit 1，已执行 check 为 0，无汇总行**。在[临时目录创建:451](/Users/uravvv/.claude/worktrees/tca-three-items/scripts/tests/test_handoff_manifest.py:451) 报 `No usable temporary directory found`。  
+   提取原钩子、selftest 和 check 条件在内存运行，得到 **8 条事件，新断言为真**，`alarms[7]` 为 `open / 未归属写事件`；撤去修复则只有 7 条，新断言为假。其中既有链接场景采用内存路径映射；此结果不替代完整 283 项测试。
+
+4. **通过：四行勘误已删除，施工报告与可核实实物一致。**  
+   [证据文件:16](/Users/uravvv/.claude/worktrees/tca-three-items/maintenance/repair-20260916-three-items/t3_scope_evidence.txt:16) 后已无四条误记；仅补回这四行，即恢复[记录的施工前哈希:106](/Users/uravvv/.claude/worktrees/tca-three-items/maintenance/repair-20260916-three-items/t3_r1_done.md:106)，证明无其他内容改动。报告所列行号、两文件哈希及白名单外 17 项哈希均吻合。报告的 **283 PASS 属于施工测试记录，本轮未独立复现完整测试**。
+
+5. **通过：版本文件未动。**  
+   [CHANGELOG.md:1](/Users/uravvv/.claude/worktrees/tca-three-items/CHANGELOG.md:1)、[VERSION:1](/Users/uravvv/.claude/worktrees/tca-three-items/VERSION:1)、[pyproject.toml:15](/Users/uravvv/.claude/worktrees/tca-three-items/pyproject.toml:15) 均与 HEAD 逐字节一致；`git diff --check` 通过。
+
+非阻断建议：归档时单列审查期间新增的 [t3_r1_accept_fable.txt:1](/Users/uravvv/.claude/worktrees/tca-three-items/maintenance/repair-20260916-three-items/t3_r1_accept_fable.txt:1)。它使当前快照比施工报告多一份验收证据；剔除此项后，状态快照一致，核心文件哈希和 HEAD 均未变。

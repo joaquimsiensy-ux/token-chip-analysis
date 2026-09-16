@@ -1,0 +1,34 @@
+开工 git status --short：空（首次工具输出已核对）。
+分支：fix/three-items-20260916
+HEAD：8d8787e67ae1229b3c906e63bcdc421ae9d2cc14
+全部指定锚点已在开工时用 nl -ba 核对一致。
+初次 zsh 后台启动：nice(5) failed: operation not permitted；进程未存活，日志 0 字节。随后以 bash、相同 nohup 命令启动并 wait 记录真实退出码。
+scripts/report/handoff_manifest.py: 既有函数变更仅 main；其他既有函数文本完全相同 PASS。
+新增函数 _readonly_case_file: 1402-1408
+新增函数 _readonly_load: 1411-1426
+新增函数 _readonly_page: 1429-1432
+新增函数 _readonly_stats: 1435-1437
+新增函数 _inspect_item: 1440-1450
+新增函数 cmd_inspect: 1453-1505
+新增函数 _lookup_address: 1508-1513
+新增函数 _lookup_index: 1516-1550
+新增函数 _lookup_text: 1553-1559
+新增函数 cmd_lookup: 1562-1610
+scripts/tests/test_handoff_manifest.py: 既有函数变更仅 main；其他既有函数文本完全相同 PASS。
+新增函数 test_t3_readonly_queries: 531-863
+新增函数 invoke: 546-555
+新增函数 inspect: 557-558
+新增函数 lookup: 560-561
+新增函数 test_inspect_tree: 563-593
+新增函数 test_inspect_jsonl: 595-600
+新增函数 test_inspect_guard: 602-609
+新增函数 test_lookup_structures: 611-642
+新增函数 test_lookup_complete_json: 644-651
+新增函数 test_lookup_guard_and_pages: 653-675
+新增函数 snapshot: 677-690
+新增函数 test_readonly: 692-808
+独立执行 T3 七组测试：174 checks, failures=[]。完整 test_handoff_manifest.py：283 项全部通过，exit=0；见 t3_green_evidence.txt。
+
+最终复核：HEAD 未变；tracked diff 仅四个授权文件；所有既有函数仅 main 发生授权变更；既有测试去除新增段与登记后逐字等于 HEAD；文档仅指定行变化；git diff --check PASS。
+最终测试案根已用 resolve() 固定为真实路径，避免 /var 与 /private/var 别名漏检；修正后完整契约测试 283 项 PASS、exit=0。
+run_all：147 项 PASS，2 项 FAIL，exit=1；两项 localhost socket.bind 被沙箱拒绝。

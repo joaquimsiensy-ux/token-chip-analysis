@@ -528,6 +528,346 @@ def test_history_exclusion_and_hygiene():
             check(f"is_excluded_path {rel}", bool(is_excluded_path(rel)) == want)
 
 
+def test_t3_readonly_queries():
+    """T3 七组黑盒契约；独立案根，所有正例复跑 audit 与去写位检查。"""
+    import stat
+    scratch = Path(tempfile.mkdtemp(prefix="t3-readonly-")).resolve()
+    case = scratch / "case"
+    case.mkdir()
+    (case / "data").mkdir()
+    (case / "sealed").mkdir()
+    A = "0x" + "abc" * 13 + "a"
+    B = "0x" + "999" * 13 + "9"
+    C = "0x" + "def" * 13 + "d"
+    A_UP = "0x" + A[2:].upper()
+    positives = []
+    modes = []
+
+    def invoke(sub, args, error=None):
+        command = [sys.executable, "-B", SCRIPT, sub, "--case-dir", str(case), *args]
+        result = subprocess.run(command, capture_output=True, text=True)
+        if error is None:
+            check("T3 正例 " + " ".join([sub, *args]), result.returncode == 0)
+            positives.append(command)
+        else:
+            check("T3 反例 " + " ".join([sub, *args]),
+                  result.returncode == 2 and error in result.stderr)
+        return result.stdout
+
+    def inspect(args=(), file="data/identity_cards.json", error=None):
+        return invoke("inspect", ["--file", file, *args], error)
+
+    def lookup(args=(), addr=A, file="data/identity_cards.json", error=None):
+        return invoke("lookup", ["--addr", addr, "--in", file, *args], error)
+
+    def test_inspect_tree():
+        out = inspect(["--limit", "1"])
+        check("T3 inspect 首行、排序与第一页", out.startswith("file=data/identity_cards.json bytes=")
+              and sorted([A_UP, C])[0] in out
+              and out.rstrip().endswith("total=2 returned=1 truncated=true next_offset=1"))
+        out = inspect(["--limit", "1", "--offset", "1"])
+        check("T3 inspect 第二页", "returned=1 truncated=false next_offset=2" in out)
+        out = inspect(["--offset", "5"])
+        check("T3 inspect 超界空页", "returned=0 truncated=false next_offset=2" in out)
+        out = inspect(["--path", A_UP + ".kind"])
+        check("T3 inspect 标量", "= 'eoa'" in out and "total=1 returned=1" in out)
+        out = inspect(["--path", A_UP + ".kind", "--offset", "1"])
+        check("T3 inspect 标量空页", not any(line.startswith("= ") for line in out.splitlines())
+              and "returned=0" in out)
+        out = inspect(["--path", A_UP + ".meta", "--depth", "0"])
+        check("T3 inspect depth 0 标量摘要", "k: = 1" in out and "total=1 returned=1" in out)
+        shallow = inspect(["--path", A_UP, "--depth", "0"])
+        deep = inspect(["--path", A_UP, "--depth", "1"])
+        check("T3 inspect 深度与计数解耦", "meta: dict len=1" in shallow
+              and "  k:" not in shallow and "  k: = 1" in deep
+              and all("total=4 returned=4" in x for x in (shallow, deep)))
+        out = inspect(["--limit", "2"], "data/balances_final.json")
+        check("T3 inspect list 根分页", "[0]:" in out and "[1]:" in out and "[2]:" not in out
+              and "total=3 returned=2 truncated=true next_offset=2" in out)
+        out = inspect(["--path", "0.addr"], "data/balances_final.json")
+        check("T3 inspect list 路径", "= " + repr(A) in out)
+        for path in ("9.addr", "-1"):
+            inspect(["--path", path], "data/balances_final.json", "下标")
+        for option, value in (("--limit", "0"), ("--offset", "-1"), ("--depth", "-1")):
+            inspect([option, value], error=option)
+        inspect(["--path", "absent"], error="路径不存在: absent")
+
+    def test_inspect_jsonl():
+        out = inspect(file="data/labels.jsonl")
+        check("T3 inspect JSONL 坏行继续", "total=2" in out and out.rstrip().endswith("bad_lines=1"))
+        inspect(file="data/broken.json", error="读取/解析失败")
+        inspect(file="data/invalid_utf8.json", error="读取/解析失败")
+        inspect(file="data/addrs.txt", error="只支持 .json/.jsonl")
+
+    def test_inspect_guard():
+        for rel in ("sealed/x.json", "SEALED/x.json"):
+            inspect(file=rel, error="sealed/")
+        for rel in ("./sealed/x.json", "../outside.json", str(scratch / "outside.json"), "data/link.json"):
+            inspect(file=rel, error="路径非法")
+        inspect(file="data/nope.json", error="路径非法")
+        out = inspect(file=".sealed/ok.json")
+        check("T3 .sealed 合法目录不误拒", "= 1" in out)
+
+    def test_lookup_structures():
+        out = lookup(["--addr", B, "--in", "data/balances_final.json", "--in",
+                      "data/entity_registry.json", "--fields", "label,balance"])
+        blocks = out.split("\n" + B + "\n")
+        check("T3 lookup 三文件字段", len(blocks) == 2 and "label=W1" in blocks[0]
+              and "n=2" in blocks[0] and "balance=10" in blocks[0] and "balance=7" in blocks[0]
+              and "data/entity_registry.json: {label=MISSING_FIELD" in blocks[0]
+              and "data/identity_cards.json: MISSING" in blocks[1]
+              and "data/entity_registry.json: {label=MISSING_FIELD" in blocks[1]
+              and out.rstrip().endswith("total=2 returned=2 truncated=false next_offset=2 missing=0"))
+        out = lookup(addr=C, file="data/entity_registry.json")
+        check("T3 lookup 名册 list", "_key=E2" in out and ": MISSING" not in out)
+        for addr, count in ((A, 2), (B, 1)):
+            obj = json.loads(lookup(["--json"], addr=addr, file="data/mixed.json"))
+            check("T3 lookup 混合来源 " + addr, len(obj["rows"][0]["hits"]["data/mixed.json"]) == count)
+        lookup(file="data/keyclash.json", error="_key")
+        out = lookup(file="data/labels.jsonl")
+        check("T3 lookup JSONL 文本坏行计数", "bad_lines=data/labels.jsonl:1" in out)
+        obj = json.loads(lookup(["--json"], file="data/labels.jsonl"))
+        check("T3 lookup JSONL JSON 坏行计数", obj["bad_lines"] == {"data/labels.jsonl": 1})
+        lookup(file="data/broken.json", error="读取/解析失败")
+        lookup(file="data/invalid_utf8.json", error="读取/解析失败")
+        lookup(file="data/addrs.txt", error="只支持 .json/.jsonl")
+        obj = json.loads(lookup(["--json"], file="data/edge_records.json"))
+        hits = obj["rows"][0]["hits"]["data/edge_records.json"]
+        check("T3 lookup 按来源去重且双成员表", len(hits) == 3)
+        obj = json.loads(lookup(["--json"], addr=B, file="data/edge_records.json"))
+        check("T3 lookup 无效首字段不回退", obj["rows"][0]["hits"]["data/edge_records.json"] is None)
+        for addr, found in (("SolAbC", True), ("solabc", False)):
+            obj = json.loads(lookup(["--json"], addr=addr, file="data/edge_records.json"))
+            check("T3 lookup 非 EVM 大小写 " + addr,
+                  (obj["rows"][0]["hits"]["data/edge_records.json"] is not None) == found)
+
+    def test_lookup_complete_json():
+        obj = json.loads(invoke("lookup", ["--addr-file", "data/addrs.txt", "--in",
+                              "data/identity_cards.json", "--fields", "label", "--json"]))
+        record = obj["rows"][0]["hits"]["data/identity_cards.json"][0]
+        check("T3 lookup 地址文件归一与完整 JSON", obj["query"] == [A, B]
+              and record["label"] == "W1" and record["note"] == "x" * 100
+              and record["meta"] == {"k": 1}
+              and obj["rows"][1]["hits"]["data/identity_cards.json"] is None and obj["missing"] == 1)
+
+    def test_lookup_guard_and_pages():
+        for rel in ("sealed/x.json", "SEALED/x.json"):
+            lookup(file=rel, error="sealed/")
+        lookup(file="data/link.json", error="路径非法")
+        for rel, error in (("sealed/x.json", "sealed/"), ("SEALED/x.json", "sealed/"),
+                           ("data/link.txt", "路径非法"), ("./sealed/x.json", "路径非法"),
+                           (str(scratch / "outside.json"), "路径非法")):
+            invoke("lookup", ["--addr-file", rel, "--in", "data/identity_cards.json"], error)
+        invoke("lookup", ["--in", "data/identity_cards.json"], "--addr")
+        lookup(["--addr-file", "data/addrs.txt"], error="--addr-file")
+        for option, value in (("--limit", "0"), ("--offset", "-1")):
+            lookup([option, value], error=option)
+        lookup(addr="", error="无查询地址")
+        for offset, expected in ((0, "returned=1 truncated=true next_offset=1"),
+                                 (1, "returned=1 truncated=false next_offset=2"),
+                                 (9, "returned=0 truncated=false next_offset=2")):
+            out = lookup(["--addr", B, "--limit", "1", "--offset", str(offset)])
+            check("T3 lookup 分页 " + str(offset), expected in out)
+        out = lookup(["--addr", A])
+        check("T3 lookup 保留重复", "total=2 returned=2" in out)
+        obj = json.loads(lookup(["--addr", B, "--limit", "1", "--offset", "1", "--json"]))
+        check("T3 lookup JSON 全 query 与本页 missing", obj["query"] == [A, B]
+              and len(obj["rows"]) == 1 and obj["missing"] == 1 and obj["next_offset"] == 2)
+
+    def snapshot():
+        result = {}
+        for base, dirs, files in os.walk(case, followlinks=False):
+            for path in [Path(base)] + [Path(base) / n for n in dirs + files]:
+                meta = os.lstat(path)
+                mode = stat.S_IMODE(meta.st_mode)
+                rel = str(path.relative_to(case))
+                if stat.S_ISLNK(meta.st_mode):
+                    result[rel] = ("link", mode, os.readlink(path))
+                elif stat.S_ISREG(meta.st_mode):
+                    result[rel] = ("file", mode, hashlib.sha256(path.read_bytes()).hexdigest())
+                else:
+                    result[rel] = ("dir", mode)
+        return result
+
+    def test_readonly():
+        wrapper = scratch / "audit_wrapper.py"
+        log = scratch / "audit.json"
+        wrapper.write_text(r"""import os
+import sys
+import json
+import runpy
+case_real = os.path.realpath(sys.argv[1])
+log = sys.argv[2]
+mode = sys.argv[3]
+script = sys.argv[4]
+arguments = sys.argv[5:]
+events = []
+
+def fd_path(fd):
+    if sys.platform == 'darwin':
+        import fcntl
+        return os.fsdecode(fcntl.fcntl(fd, 50, bytes(1024)).split(b'\0', 1)[0])
+    return os.readlink('/proc/self/fd/' + str(fd))
+
+def belongs(path, dir_fd=None, access=False):
+    try:
+        if isinstance(path, int):
+            path = fd_path(path)
+        else:
+            path = os.fsdecode(path)
+            if not os.path.isabs(path) and dir_fd not in (None, -1):
+                path = os.path.join(fd_path(dir_fd), path)
+        lexical = os.path.abspath(path)
+        paths = (lexical, os.path.realpath(lexical)) if access else (lexical,)
+        return any(os.path.commonpath([case_real, p]) == case_real for p in paths)
+    except (OSError, ValueError, TypeError):
+        return None
+
+def hook(event, args):
+    paths = []
+    access = False
+    if event == 'open':
+        path, mode, flags = args
+        writes = (isinstance(mode, str) and any(c in mode for c in 'wax+')) or (
+            isinstance(flags, int) and flags & (os.O_WRONLY | os.O_RDWR | os.O_CREAT | os.O_TRUNC | os.O_APPEND))
+        if not writes:
+            return
+        if not isinstance(path, int) and not os.path.isabs(os.fsdecode(path)):
+            events.append({'event': 'open', 'args': repr(args), 'scope': '未归属写事件'})
+            return
+        paths, access = [(path, None)], True
+    elif event in ('os.remove', 'os.unlink', 'os.rmdir'):
+        paths = [(args[0], args[1] if len(args) > 1 else None)]
+    elif event in ('os.rename', 'os.replace'):
+        paths = [(args[0], args[2] if len(args) > 2 else None),
+                 (args[1], args[3] if len(args) > 3 else None)]
+    elif event in ('os.chmod', 'os.mkdir'):
+        paths = [(args[0], args[2] if len(args) > 2 else None)]
+    elif event == 'os.truncate':
+        paths, access = [(args[0], None)], True
+    elif event in ('shutil.move', 'shutil.copyfile'):
+        paths, access = [(args[0], None), (args[1], None)], True
+    elif event == 'shutil.rmtree':
+        paths = [(args[0], args[1] if len(args) > 1 else None)]
+    elif event in ('tempfile.mkstemp', 'tempfile.mkdtemp'):
+        paths, access = [(args[0], None)], True
+    else:
+        return
+    states = [belongs(path, fd, access) for path, fd in paths]
+    if True in states or None in states:
+        events.append({'event': event, 'args': repr(args),
+                       'scope': '未归属写事件' if None in states else 'case'})
+
+sys.addaudithook(hook)
+try:
+    if mode == 'selftest':
+        sys.audit('open', os.path.join(case_real, 'probe'), None, os.O_WRONLY | os.O_CREAT)
+        sys.audit('os.rename', os.path.join(case_real + '_sibling', 'x'), os.path.join(case_real, 'x'), -1, -1)
+        sys.audit('os.remove', os.path.join(case_real, 'data/link.json'), -1)
+        sys.audit('open', case_real + '_sibling/x', None, os.O_WRONLY | os.O_CREAT)
+        # dir_fd、无法归属、案外链接指向案内的访问与重命名源端。
+        fd = os.open(case_real, os.O_RDONLY)
+        try:
+            sys.audit('os.remove', 'probe', fd)
+        finally:
+            os.close(fd)
+        sys.audit('os.remove', 'probe', -98765)
+        sys.audit('open', os.path.join(os.path.dirname(case_real), 'into_case'), None, os.O_WRONLY)
+        sys.audit('os.rename', os.path.join(case_real, 'x'), case_real + '_sibling/x', -1, -1)
+        sys.audit('open', 'probe_rel', None, os.O_WRONLY | os.O_CREAT)
+    else:
+        sys.argv = [script, *arguments]
+        runpy.run_path(script, run_name='__main__')
+finally:
+    with open(log, 'w', encoding='utf-8') as f:
+        json.dump(events, f, ensure_ascii=False)
+""", encoding="utf-8")
+        p = subprocess.run([sys.executable, "-B", str(wrapper), str(case), str(log),
+                            "selftest", SCRIPT], capture_output=True, text=True)
+        alarms = json.loads(log.read_text())
+        check("T3 audit 自检 flags/rename 目标/链接词法/相邻边界/dir_fd/未归属/realpath/源端/相对路径",
+              p.returncode == 0 and len(alarms) == 8
+              and [x["event"] for x in alarms[:3]] == ["open", "os.rename", "os.remove"]
+              and alarms[4]["scope"] == "未归属写事件"
+              and alarms[7]["event"] == "open" and alarms[7]["scope"] == "未归属写事件")
+        for command in positives:
+            p = subprocess.run([sys.executable, "-B", str(wrapper), str(case), str(log),
+                                "run", SCRIPT, *command[3:]], capture_output=True, text=True)
+            check("T3 audit 案目录零写入 " + " ".join(command[3:]),
+                  json.loads(log.read_text()) == [])
+            check("T3 audit 正例退出码 " + " ".join(command[3:]), p.returncode == 0)
+        before = snapshot()
+        try:
+            for rel, entry in before.items():
+                if entry[0] != "link":
+                    path = case / rel
+                    modes.append((path, entry[1]))
+                    os.chmod(path, entry[1] & ~0o222)
+            for command in positives:
+                p = subprocess.run(command, capture_output=True, text=True)
+                check("T3 chmod 正例 " + " ".join(command[3:]), p.returncode == 0)
+        finally:
+            for path, mode in modes:
+                os.chmod(path, mode)
+            modes.clear()
+        check("T3 案目录快照完全一致", before == snapshot())
+
+    try:
+        fixtures = {
+            "identity_cards.json": {A_UP: {"kind": "eoa", "label": "W1", "note": "x" * 100,
+                                           "meta": {"k": 1}}, C: {"kind": "contract", "label": "P1"}},
+            "balances_final.json": [{"addr": A, "balance": "10", "pct": 1.5},
+                                    {"addr": B, "balance": "3", "pct": 0.2},
+                                    {"addr": A, "balance": "7", "pct": 1.0}],
+            "entity_registry.json": {"E1": {"members": [A, B]}, "E2": [C]},
+            "mixed.json": {"rows": [{"addr": A}, {"addr": 7}, "junk"], "E1": {"members": [A, B, None, 5]}},
+            "keyclash.json": {A: {"_key": "dup", "label": "x"}},
+            "edge_records.json": [{"addr": A}, {"addr": A},
+                                  {"addr": None, "address": B, "members": [A, A, None],
+                                   "addresses": [A, "SolAbC", 9]}],
+        }
+        for name, value in fixtures.items():
+            write_json(str(case), "data/" + name, value)
+        (case / "data/labels.jsonl").write_text(
+            json.dumps({"address": A, "name": "A"}) + "\n\n" +
+            json.dumps({"address": B, "name": "B"}) + "\n{broken\n", encoding="utf-8")
+        (case / "data/broken.json").write_text("{broken", encoding="utf-8")
+        (case / "data/invalid_utf8.json").write_bytes(b'\xff')
+        (case / "data/addrs.txt").write_text("# 注释\n\n" + A_UP + "\n" + B + "\n", encoding="utf-8")
+        write_json(str(case), "sealed/x.json", {})
+        # 在大小写敏感卷也让 SEALED 路径存在，确保测到首段 casefold。
+        if not (case / "SEALED").exists():
+            (case / "SEALED").mkdir()
+            write_json(str(case), "SEALED/x.json", {})
+        (case / ".sealed").mkdir()
+        write_json(str(case), ".sealed/ok.json", 1)
+        (scratch / "outside.json").write_text("{}", encoding="utf-8")
+        for name in ("link.json", "link.txt"):
+            (case / "data" / name).symlink_to("../../outside.json")
+        (scratch / "into_case").symlink_to(case / "data/identity_cards.json")
+        test_inspect_tree()
+        test_inspect_jsonl()
+        test_inspect_guard()
+        test_lookup_structures()
+        test_lookup_complete_json()
+        test_lookup_guard_and_pages()
+        test_readonly()
+    finally:
+        for path, mode in modes:
+            os.chmod(path, mode)
+        # 逐一删除明确路径；不使用批量目录删除。
+        for base, dirs, files in os.walk(scratch, topdown=False, followlinks=False):
+            for name in files:
+                (Path(base) / name).unlink()
+            for name in dirs:
+                path = Path(base) / name
+                if path.is_symlink():
+                    path.unlink()
+                else:
+                    path.rmdir()
+        scratch.rmdir()
+
+
 def main():
     test_history_exclusion_and_hygiene()
     root = tempfile.mkdtemp(prefix="handoff_test_")
@@ -989,6 +1329,8 @@ def main():
               p.returncode == 2 and "必备件" in p.stdout)
     finally:
         shutil.rmtree(root, ignore_errors=True)
+
+    test_t3_readonly_queries()
 
     print("=" * 40)
     if FAILS:
