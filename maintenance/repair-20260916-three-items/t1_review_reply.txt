@@ -1,0 +1,132 @@
+# 复核 T1: 退回
+
+1. 通过——基线与行号锚点一致。
+
+当前分支 fix/three-items-20260916，HEAD＝4531b4071c2d0616b306d87d2dd058b88d63b540，是 b4f80cd 的后继；工作树干净。
+
+已用 nl -ba 核对工单全部源码定位：
+adjudication_validator.py:193、238、240–242、416–417、420–422、581、591；
+test_adjudication_validator.py:99、101；
+test_distribution_gate.py:377；
+handoff_manifest.py:119–120、254–266、271、280、298、1366、1432；
+test_handoff_manifest.py:73、275；
+split-run.md:90–91、109–110；
+scan-schemas.md:207–208、523–524。
+均吻合。handoff_manifest.py 当前没有 import re，必须补入。
+
+建议工单第 9 行明确：“行号均指施工前基线；插入代码后按已核验锚文本定位。”否则 A1 插入后，后续行号必然移动。
+
+2. 通过——删除 _members_total 不改变裁决校验语义，但“零受影响”应限定范围。
+
+全仓检索确认：生产代码只有两处模板写入；实际读取只有工单指出的两处测试。
+
+cmd_validate、cmd_distribution_validate 从源报告重建成员集合，不读取 _members_total。freeze:1468–1487 调用这两个校验子进程，也不读取旁车。因此无须修改三个 validate 函数或 freeze 前置判定。
+
+但台账文件内容变化会改变整文件哈希，不能把“校验语义不变”写成“重写已绑定台账也不影响冻结”。建议工单第 12 行补：“不重写存量案卷台账；兼容性仅用测试夹具验证。”
+
+3. 退回——A1 旁车写入绕过现有路径校验，并新增部分成功状态。
+
+默认两个旁车名称没有发现现有产物冲突；它们不在 CONTRACT_FILES，默认不会自动进入 manifest。若人为登记 data_map 或 --include，则仍会被收录，之后覆盖旁车会造成哈希漂移。
+
+实质问题在工单第 24–25 行：旁车直接 open，没有使用 safe_case_file。台账路径通过安全校验，不代表相邻旁车路径安全；预先存在的旁车符号链接会被跟随并覆盖目标。现有 safe_case_file 明确禁止这种情况，见 scripts/lib/case_paths.py:24–40。
+
+此外，台账先写、旁车后写；旁车若为目录或不可写，将留下已生成台账并失败，下一次不带 --force 又会被台账防覆盖阻止。
+
+建议：
+在两处模板写入台账之前，先推导旁车相对路径并调用 safe_case_file(case_dir, side_rel, must_exist=False)，沿用已有 ValueError 报错方式；辅助函数接收已校验路径。补旁车为符号链接、目录的负测，确保拒绝时台账尚未写入。工单应明确旁车不登记 data_map。
+
+A4 的“<out>.members.json”也不准确：foo.json 实际对应 foo.members.json。建议改为“成员清单写同目录 <台账名>.members.json”。
+
+4. 通过——B1 对已检索夹具未发现新增误伤，但规则注释应与实际匹配范围一致。
+
+检索 scripts/tests 中文件名文本，共取得 3,980 次出现、922 个不同文本，并检查备份、归档相关调用位置。命中者为既有 .bak 临时备份、.bak_migrate_* 迁移备份和 .superseded.json 归档；未发现正常业务产物因新增规则被误排。
+
+balances_pre_launch.json、labels.v3.jsonl、x.bakup.json、_history_x/b.json 均不命中；a/_history/b.json 命中，目录分量判断正确。
+
+不过正则还排除 x.superseded.csv、x.superseded，范围超过注释中的“*.superseded.json 族”。建议工单第 61 行改为：“basename 含 .bak_、以 .bak 结尾，或含 .superseded.、以 .superseded 结尾”。
+
+真实案卷未纳入此次读取范围，不能把仓库夹具检查表述为全量真实案卷验证。
+
+5. 通过——B2 的 SystemExit(2) 不会被吞掉，verify 不受这处改法影响。
+
+cmd_generate:299–303 捕获 ValueError、Exception；main:1653 也只捕获 Exception。SystemExit 不属于 Exception，能穿透并使 CLI 退出 2。
+
+工单第 88 行“若有外层 except Exception 则改为 return 2”应删除；该判断依据错误。准确文本建议：
+
+“raise SystemExit(2) 穿透现有 Exception 捕获，使 CLI 退出 2；直接调用 cmd_generate 时表现为抛出 SystemExit，而非返回整数。”
+
+add_explicit 同时服务 --include 和 --gate（:380），因此 --gate 登记排除路径也会新增冲突拒绝，建议补一条测试。verify 没有调用 add_path 或 EXCLUDE_SUFFIXES，无须修改。
+
+6. 退回——B3 插入点正确，但“只 WARN、不改返回码”尚未成立。
+
+:1432 位于 --check-unseal 的所有返回路径之后，位置正确。
+
+但新增 os.listdir 没有捕获 OSError。已在内存执行工单函数并注入 PermissionError，确认异常外抛；它会被 main:1653–1655 转为 exit 1。原本可继续的 freeze 因卫生扫描失败而中止，违反要求。
+
+建议工单第 104 行改为先在 try 内取得 names = sorted(os.listdir(d))；except OSError 时打印扫描失败 WARN 并 continue，再遍历 names。补“扫描失败不改变原 freeze 返回码”和“--check-unseal 不调用卫生扫描”的测试。
+
+7. 退回——B4 第一条 RED 不可能按原文发生。
+
+cmd_generate:282–298 只收录 CONTRACT_FILES、data_map 和显式入口，没有扫描案根所有文件。
+
+因此未登记的 findings.md.bak_20260913 在旧代码中就不会被收录；工单第 124 行要求它被收录并产生 FAIL，无法成立。四个未登记文件的排除断言在旧代码也会通过。
+
+建议第 124 行替换为：
+
+“未登记文件不收录属于保持行为检查，不要求 RED；RED 由 data_map/--include 显式登记备份仍成功、freeze 缺少 WARN，以及新增路径判定单元用例提供。”
+
+若要验证自动发现调用确实使用新规则，应增加针对 discover/add_path 的隔离测试，不应为制造 RED 给生产代码增加全目录扫描。
+
+8. 退回——A5 的 RED 执行顺序会导致新增用例无法运行。
+
+test_adjudication_validator.py:121 已调用 fill_all。按工单先改 :99–101，旧生产代码没有旁车，会立即抛 FileNotFoundError；放在现有用例之后的新 check 根本到不了。
+
+建议工单第 48–51 行改为：先在首次 fill_all 之前独立运行模板旁车契约检查，文件不存在时通过 check 输出 FAIL；再单独执行 fill_all 联动负测并记录异常。不能把提前崩溃当作末尾新增用例已经执行。
+
+distribution-template 也应独立断言“无 _members_total、旁车成员与源候选完全一致”；仅修改填充来源不能证明字段已删除。
+
+9. 通过——夹具可以复用，data_map 必须追加 files 条目。
+
+make_case:83 已创建 data/；_history/ 需要测试自行创建，write_json:63–65 不创建父目录。
+
+登记方式为读取现有 data_map，向 dm["files"] 追加 {"path": "balances_pre_launch.json", "source": "test"} 等条目，再写回；不要替换原有 files，也不要使用 items 结构。
+
+freeze 测试顺序应为：
+make_case → generate READY 并断言成功 → setup_freezeable → 放入两个不登记文件 → freeze。
+这符合 setup_freezeable:276 的前提，也避免更改已绑定 data_map。
+
+10. 退回——C 段违反单文件字节不增要求。
+
+按工单原文在内存精确替换、按 UTF-8 字节计算：
+
+references/split-run.md：28162 → 28135，减少 27，符合。
+references/scan-schemas.md：104942 → 104950，增加 8，不符合。
+
+scan-schemas 第一处替换减少 97；第二处替换连同去逗号增加 105。
+
+建议工单第 138 行改为：
+    # excluded 的 reason 写简短一句（同类成员同句），详细依据放 evidence；validator 只查 reason 非空
+
+此文本比工单版本少 9 字节，整份 scan-schemas.md 将为 104941 字节，净减少 1。
+
+条文其余语义与源码一致；“reason 非空”是校验器实际限制，“简短一句”和证据写法是填写纪律，不应声称校验器强制执行。
+
+11. 通过——docs_lint 不会因这些删行或注释替换失败。
+
+已执行当前文档的 docs_lint 全量检查，并通过内存读取替换执行拟议文本的同一检查：两次均为 PASS，59 个文档，返回 0。没有写入修改版文件。
+
+token-analyze-2.md 中“归档/备份/留底”检索无命中，不改合理。
+
+12. 退回——白名单及验收表述需收紧。
+
+未发现遗漏的 _members_total 运行时消费者；EXCLUDE_SUFFIXES 和 add_path 的实际消费点都集中在 handoff_manifest.py。迁移脚本及 labels 回滚备份无需改动。
+
+但遗漏了一处说明：adjudication_validator.py:11–12 的模块帮助仍称“成员全集预填”，应同步改为“sha256/机器 tier_impact 预填；成员清单另写旁车”。
+
+建议在工单第 12 行后明确白名单：两份生产 Python、三份测试 Python、两份 references 文档，以及本批维护证据。新增辅助函数、安全路径处理、import re 和模块帮助也要列入允许区域。
+
+第 15 行“五个文档”应改为“两个文档”。
+第 145 行“git diff 中不得出现函数的行”应改为“这些函数体不得有新增或删除行，diff 上下文不计”。
+第 13 行“每段先 RED”还应为 C 明确定义字节/条文断言；现有 docs_lint 在修改前已经 PASS，不能充当 C 的 RED。
+
+本次仅做离线只读复核和内存计算；未运行会写夹具的完整测试，未修改文件或执行 Git 写操作。
