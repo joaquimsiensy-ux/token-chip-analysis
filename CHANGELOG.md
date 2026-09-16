@@ -10,6 +10,7 @@
 
 ## 版本索引（活跃窗口，新在上；每版一行，详情见下方对应条目）
 
+- **7.1.2**（2026-09-16）口径漂移与文档-代码不符审计闭环：codex 盲审七轮（19→8→2→4→2→1→0 条）、六轮工单皆先 codex 只读复核再 codex 施工，46 条/86 处纯文本修复，零代码改动；references 930850→929833（净减 1017 B）、SKILL.md 8024→8021、commands 不变；三项需改代码候选记台账待裁决。
 - **7.1.1**（2026-09-16）三项修复：seal↔正文零地址打架改由附录 F 承接（seal 零改动）；`handoff_manifest inspect/lookup` 两只读查询子命令；`_members_total` 预填删除改旁车、排除规则精确化、显式登记冲突报错、freeze 案根卫生 WARN；四册手册相对 7.0.4 基线合计净减 42 B，SUITE 入口不变。
 - **7.1.0**（2026-09-16）−2 收口与重封命令化：stage2_closeout 四子命令、分布周期归档与停点编排；同步 W1/W2 接口，三册净减 326 字节，SUITE 150→151。
 - **7.0.4**（2026-09-15）溯源噪声量级短缺改判 UNRESOLVED/fp_residual，短缺入桶不丢弃（逐笔短缺值本身有舍入界，见详细段）、账户 EPS 不变；补 7.0.3 版本登记与详细段；新增分类、数量有界差分与 freeze 回归。
@@ -87,6 +88,16 @@
 - **6.20.1** 2026-08-05 修 5 处阻断级文档漂移（A4 前禁写报告冲突/easy 残留/惯犯回灌 docstring/批量预采集残留/旧 Par 路线历史降级）＋docs_lint 增中文禁词与 Python module docstring 扫描
 
 更早版本（6.20.0 及以前）详见 `archive/CHANGELOG-archive.md`。
+
+## [7.1.2] - 2026-09-16 — 口径漂移与文档-代码不符审计闭环（零代码改动）
+
+- **范围与纪律**：只修"同一事实在多处说法不一"与"文档写法与 scripts/ 实际行为不符"两类；结构/门禁有效性/复杂度/fail-closed/代码质量/上下文预算一律不动（用户 09-16 裁决）。修复原则：删除 > 修改 > 新增；只改文本；需改代码者一律记 `maintenance/repair-20260916-drift-audit/code_change_pending.md` 等用户统一裁决。
+- **工艺**：codex 只读盲审→Fable 逐条亲核→Fable 写工单→codex 只读复核（退回即改版）→codex 写模式施工→Fable 九项守卫＋字节＋白名单 diff 验收→commit→run_all 151/151→下一轮盲审。七轮盲审发现数 19→8→2(+1 转正)→4→2→1→0；R7 唯一待确认项（图 2 check 收据是否含输入格式错误）裁定不属漂移：PASS 与对账 FAIL 均落收据，series 非 list 与容差政策拒属调用非法，与 supply_truth_gate 口径一致。
+- **修复要点（按轮）**：R1 27 条/66 处——"A2 四查"泛化为"对账关卡（EVM 四查／Solana 五查）"、EVM 余额恒等式 =mint_total、strict/expanded 双边界、行为指纹上限、Streamflow feePayer、快照哈希绑定、Alchemy 除名、断引用等；R2 9 条/10 处——V4 输入腿定义、跨案回灌、reproduce_receipt 参数、LP 池配置回退、标签维护 cwd 子 shell、§ 号纠错；R3 3 处——Helius 默认读 key 池再回退单 key、slot-index-map 不变量改"各列唯一＋按 sqd_index 递增"、质押账本对表容差 ≤2 raw；R4 4 处——S-10 图例核对改按收据"实绘＋豁免键＝传入"、A6 版本号改引 retrospective 约定、dataseed 历史 state 浅窗口口径统一、sig 缓存"256 片"删除；R5 2 处——RobinHoodSettler 坑册硬编码地址（与地址簿/标签表/金标/手工源四处不符）改指地址簿、图 2 删除"线超 8 条可合并"许可（stage2_closeout 硬拒 merge_groups）；R6 1 处——删除公共 CEX 热钱包同源边"同 48h 窗＋行为指纹才升中等"例外（与同册 :117/:247 冲突）。
+- **字节与产物**：28 个文件、+84/−88 行；references 三组 glob 930850→929833（净减 1017 B），SKILL.md 8024→8021，commands-staging 8798 不变（token-analyze-2 一处口径同步已部署）；contract_manifest needle 零碰撞；每轮九项守卫全绿，run_all 六次 151/151。
+- **待用户裁决的代码侧候选（本版未动）**：①`scripts/report/wave_scan.py:735-746` 份额阈值浮点比较 vs analyze-workflow "整数运算"（已复现 total=10^24 时 0.1% 边界判 False）；②`scripts/solana/decode_txs_v2.py:8` 文头注释"256 片"；③`scripts/report/standard_charts.py:283` 文档串"线超 8 条可合并"。
+- **工艺教训**：派施工前工作树必须干净且施工期间不 commit（压缩钩子 `_压缩状态/` 与未提交的预置提示词各致停工一次，前者已加 .gitignore）；搬运 codex 日志前先查其是否已自写同名报告；codex 盲审三轮自报 `wc -l references/*.md` 误触 attic.md（仅计行未引用）。
+- **成本-质量指标**：codex 任务 21 次（盲审 7、复核 8、施工 6）；Fable 亲核 46/46 条属实、0 条误报采纳；工单退回 4 次（R1 两次、R2 一次、R3 一次字节预算）均在派工前拦下；外部网络调用 0；不运行真实案卷判断。
 
 ## [7.1.1] - 2026-09-16 — 三项修复：seal↔零地址、只读查询命令、备份与台账瘦身
 
