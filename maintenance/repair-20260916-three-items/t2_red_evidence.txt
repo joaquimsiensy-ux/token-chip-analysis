@@ -1,0 +1,115 @@
+非 RED 型：预期 GREEN（模板改动零代码，闸未变）。
+新增用例已加入；模板仍为原始 42499 字节。
+命令：python3 scripts/tests/test_repair_batch_d.py
+/Users/uravvv/.matplotlib is not a writable directory
+Matplotlib created a temporary cache directory at /var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/matplotlib-idl8jicm because there was an issue with the default path ({configdir}); it is highly recommended to set the MPLCONFIGDIR environment variable to a writable directory, in particular to speed up the import of Matplotlib and to better support multiprocessing.
+Matplotlib is building the font cache; this may take a moment.
+[refreshed] checked=2 upgraded=2 already_v4=0
+ok    F-07 绿例：太古双 run 迁移 exit 0 全升 v4
+ok    F-07 注入命中标志（第 4 次 os.replace＝第二文件提交）
+ok    F-07 原反例：注入后所有 done.json 字节回滚原样＋无临时/备份/恢复残留＋exit 2
+ok    F-07 回滚失败：exit 1＋.recover 恢复件保留＋stderr 指认混合状态
+ok    F-07 CLI 捕 OSError：只读目录 exit 2 不裸 traceback
+ok    批3 T4 坏边行带行号整次失败（旧版静默 continue）
+{"mode": "blocks", "status": "INVALID_SAMPLE", "closed_sampled": 0, "deep_checked": 0, "deep_account_classes": {"events_found": 0, "all_zero_delta": 0, "fetch_failed": 0}, "events_checked": 0, "covered": 0, "missing": 0, "out_of_range": 0, "coverage_rate": null, "invalid_reasons": ["getMultipleAccounts 批失败 1 批（存活/销户判定对这些账户是盲的）"]}
+ok    GPT-F-06 ① gma 批失败→exit 1 INVALID_SAMPLE（原反例：旧版 continue 假绿）
+{"mode": "blocks", "status": "INVALID_SAMPLE", "closed_sampled": 1, "deep_checked": 1, "deep_account_classes": {"events_found": 0, "all_zero_delta": 1, "fetch_failed": 0}, "events_checked": 0, "covered": 0, "missing": 0, "out_of_range": 0, "coverage_rate": null, "invalid_reasons": ["抽到 1 个销户账户但核到的区间内事件为 0（checked=0 且 closed>0，覆盖率无从谈起）", "undetermined（all_zero_delta+fetch_failed）过半"]}
+ok    GPT-F-06 ② checked=0 且 closed>0→exit 1（旧版 exit 0 冒充零漏）
+{"mode": "blocks", "status": "NO_CLOSED_SAMPLED", "closed_sampled": 0, "deep_checked": 0, "deep_account_classes": {"events_found": 0, "all_zero_delta": 0, "fetch_failed": 0}, "events_checked": 0, "covered": 0, "missing": 0, "out_of_range": 0, "coverage_rate": null, "invalid_reasons": []}
+ok    GPT-F-06 ③ closed=0→exit 0 status=NO_CLOSED_SAMPLED（弱结论≠查询失败）
+{"mode": "blocks", "status": "NO_CLOSED_SAMPLED", "closed_sampled": 0, "deep_checked": 0, "deep_account_classes": {"events_found": 0, "all_zero_delta": 0, "fetch_failed": 0}, "events_checked": 0, "covered": 0, "missing": 0, "out_of_range": 0, "coverage_rate": null, "invalid_reasons": []}
+ok    批3 T4 legacy 报告强制 non-formal/order-ambiguous
+{"mode": "blocks", "status": "LEAK_FOUND", "closed_sampled": 1, "deep_checked": 1, "deep_account_classes": {"events_found": 1, "all_zero_delta": 0, "fetch_failed": 0}, "events_checked": 1, "covered": 0, "missing": 1, "out_of_range": 0, "coverage_rate": 0.0, "invalid_reasons": []}
+ok    GPT-F-06 ④ 漏边实锤→exit 2 LEAK_FOUND（gate 语义保留）
+{"mode": "blocks", "status": "INVALID_SAMPLE", "closed_sampled": 0, "deep_checked": 0, "deep_account_classes": {"events_found": 0, "all_zero_delta": 0, "fetch_failed": 0}, "events_checked": 0, "covered": 0, "missing": 0, "out_of_range": 0, "coverage_rate": null, "invalid_reasons": ["墙钟截断（样本被保险丝提前收数，不完整）"]}
+ok    GPT-F-06 ⑤ 墙钟截断→exit 1（wall_truncated 单列）
+ok    F-06 无收据：真实翻转 exit 2 且 publishable=false（阻断保留）
+ok    F-06 原反例翻案：6.39.4 旧串格式（任意 10 字符理由）不再解除阻断
+ok    F-06 合法收据：指纹＋披露匹配放行 exit 0，收据引用入 input_binding
+ok    F-06 freeze recompute：绑定收据独立重验通过（不再信 ledger 自报）
+ok    F-06 收据换包（sha 失配）→ freeze recompute 拒
+ok    F-06 底层数据一变→旧收据指纹自动失效 exit 2（必须重裁）
+ok    F-06 预防性豁免（收据行指向非真实翻转锚点）→ exit 2
+ok    F-06 单元反例被拒：schema 错误
+ok    F-06 单元反例被拒：缺裁决主体
+ok    F-06 单元反例被拒：时间非 UTC Z
+ok    F-06 单元反例被拒：evidence_refs 空
+ok    F-06 单元反例被拒：理由过短
+ok    F-06 单元反例被拒：指纹非 hex
+ok    F-06 单元反例被拒：缺披露位置
+ok    F-06 名册改动后旧收据失效
+ok    F-06 A5 绿例：披露章节内含三策略名＋top＋份额 → DISCLOSED
+ok    2.1 绿例：披露在附录 F、正文只写'见附录 F' → DISCLOSED
+ok    F-06 A5 原反例：报告缺披露段被拒
+ok    F-D1 无关附录攻击（同地址串＋同数字）被拒
+ok    F-D1 切片命中但缺策略名骨架被拒
+ok    F-D1 份额半边独立红例（ident 在场、份额错）被拒
+ok    N-D1 绿例①：纯中文披露（按比例/先进先出/后进先出）→ DISCLOSED
+ok    N-D1 绿例②：中英混排披露 → DISCLOSED
+ok    N-D1 回归：无关附录攻击仍拒（别名族不放宽位置锚）
+ok    N-D1 红例：中文策略词在场但缺份额仍拒
+ok    F-D1 披露值落在切片外章节被拒（同段要求）
+ok    F-06 A5：freeze 后换 ledger 被 sha 绑定拒
+ok    F-06 A5：freeze 后删 ledger 旁路封死
+[supply_truth] PASS  重放净供给=100  链上=100  差=0（0.0bps，容差 10bps）→ /private/tmp/d-a1-879kmf1n/supply_truth.json
+ok    A-1 政策拒绝：exit 2＋旧 PASS 收据作废归档（案内不再有现役收据）
+ok    A-1 归档件即上一轮原收据（内容不销毁）
+ok    A-1 误伤查：占位的非本 gate 文件不动
+ok    B-4 绿例：三验一致的绑定实物作锚点
+ok    B-4 原反例：绑定实物换包（sha/size 失配）被拒
+ok    B-5 红线：案根外绑定实物 fail-closed
+[supply_truth] PASS  重放净供给=100  链上=100  差=0（0.0bps，容差 10bps）→ /private/tmp/d-a3-_z1ayu_n/supply_truth.json
+ok    A-3 生产侧：envelope inputs 记案根相对路径
+ok    A-3 搬家绿例：相对路径收据整案复制后照过
+ok    A-5 原反例：三查 replay_stats 不同源被拒
+ok    B-7 原反例①：balance_source 时点与四查冻结块不一致被拒
+ok    B-7 原反例②：三账内部自洽但与四查 owner 快照不等值被拒
+边数=2  时间范围 01-01 00:00:00 → 01-01 00:00:01
+铸造=100  销毁=0  净=100
+负余额地址数=0
+快照 supply=100  重放净-快照差=0
+全 owner 对账：2/2 一致
+重放末态已写 data/replay_final_balances.json
+snapshot_slot=500 accounts=1 owners=1 supply=100 activity=complete -> snapshot.json
+ok    B-2 Solana new-analysis run() 端到端绿例（发布闸零 error）
+ok    B-1 原反例：holder_outputs.owners 换包被 validator 三验拒
+ok    B-2 换仓后发布闸拒（端到端负例）
+ok    B-1 缺件：owners 实物不存在被拒
+ok    F-D2 基线：收据原样 check-unseal 放行
+ok    F-D2 原反例①：冻结后改写收据 → check-unseal rc=2
+ok    F-D2 原反例②：冻结后删除收据 → check-unseal rc=2
+ok    F-D2 复原后再放行（绑定即字节）
+ok    F-D4 被拒：裁决主体单字符占位 x
+ok    F-D4 被拒：时间 1970（荒谬时间戳）
+ok    F-D4 被拒：未来一年（预签收据）
+ok    F-D4 被拒：1 字节垃圾证据文件
+{"mode": "blocks", "status": "INVALID_SAMPLE", "closed_sampled": 1, "deep_checked": 1, "deep_account_classes": {"events_found": 0, "all_zero_delta": 0, "fetch_failed": 1}, "events_checked": 0, "covered": 0, "missing": 0, "out_of_range": 0, "coverage_rate": null, "invalid_reasons": ["深挖账户全部 fetch_failed（一个转账都没核到）", "抽到 1 个销户账户但核到的区间内事件为 0（checked=0 且 closed>0，覆盖率无从谈起）", "undetermined（all_zero_delta+fetch_failed）过半"]}
+ok    F-D5 深挖全 fetch_failed → exit 1（独立判据，有测试锁）
+{"mode": "blocks", "status": "CLEAN", "closed_sampled": 1, "deep_checked": 1, "deep_account_classes": {"events_found": 1, "all_zero_delta": 0, "fetch_failed": 0}, "events_checked": 1, "covered": 1, "missing": 0, "out_of_range": 0, "coverage_rate": 1.0, "invalid_reasons": []}
+ok    F-D5 CLEAN 正例格：checked>0 零漏 → exit 0 status=CLEAN
+ok    F-D6 prepare 注入命中标志（第 2 次 json.dump）
+ok    F-D6 prepare 期失败：正式件原样＋零临时件泄漏＋exit 2
+ok    F-D7 改名收据合法案不再被 A5 误伤（按 ledger 绑定定位）
+ok    F-D7 换收据（改裁决人）被 A5 sha 互绑拒
+ok    F-D7 trace 拒案外收据（三处口径＝案根内）
+边数=2  时间范围 01-01 00:00:00 → 01-01 00:00:01
+铸造=100  销毁=0  净=100
+负余额地址数=0
+快照 supply=100  重放净-快照差=0
+全 owner 对账：2/2 一致
+重放末态已写 data/replay_final_balances.json
+snapshot_slot=500 accounts=1 owners=1 supply=100 activity=complete -> snapshot.json
+ok    F-D8 双删绕路：删 entity_freeze 后发布闸拒（A5 seal 重验接入发布必经路）
+ok    F-D8 new-analysis 缺 --report 无法重验 A5 → fail-closed
+ok    F-D8 早退（边集缺失）也落 INVALID_SAMPLE 报告
+[supply_truth] PASS  重放净供给=100  链上=100  差=0（0.0bps，容差 10bps）→ /private/tmp/d-fd8c-o086w2g3/supply_truth.json
+ok    F-D8 参数错误（负容差）exit 2 且**不**作废旧收据
+ok    F-D3 ① state_from_facts formal 编译（series 绑定链）
+ok    F-D3 ② figures check 末点对账＋留痕收据（同案）
+ok    F-D3 ③ A4 finalize 同案封口 figures/state 产物
+ok    F-D3 ④前置：fig1 producer 落 legend receipt
+ok    F-D3 ④ A5 seal 同案收口（state→figures→A4→A5 全链一案贯通）
+================================================
+BATCH D 全部通过
+
+exit_code=0

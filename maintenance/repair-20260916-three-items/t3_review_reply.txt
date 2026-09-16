@@ -1,0 +1,101 @@
+# 复核 T3: 退回
+
+核对基线：fix/three-items-20260916，HEAD=d42997a56fdd24c96788fc051b20d55a74425ad3。以下“工单行号”均指 maintenance/repair-20260916-three-items/workorder_t3.md。
+
+1. 通过：行号与锚文本准确且唯一。
+
+已用 nl -ba 亲核 scripts/report/handoff_manifest.py：
+导入在 :44，cmd_freeze 在 :1402，main 在 :1647，--check-unseal 参数在 :1688，dispatch 在 :1692–1693。上述锚文本在各自文件中均只出现一次。
+
+两条文档锚分别位于 split-run.md:72、context-discipline.md:27，均唯一。write_json:63、make_case:73 也准确。
+
+建议：工单 :15 明写“在当前 :1402 的 def cmd_freeze(a): 前新增，保留前面的 T1 卫生扫描函数”。
+
+2. 退回：sealed 守卫存在大小写绕过。
+
+scripts/lib/case_paths.py:16–40 确实检查原始相对路径、逐段符号链接、realpath 包含关系及常规文件。./sealed/x、../outside.json、绝对路径均会拒绝，不能用这些形式绕过。
+
+但工单 :20–21 只检查小写 sealed。实测当前卷接受 SCRIPTS/lib/case_paths.py，说明大小写变体确实可解析；因此 SEALED/x.json 可绕过前缀判断，safe_case_file 本身不负责禁止 sealed。
+
+建议将工单 :20–23 改成：
+“先以原始 rel 调用 safe_case_file；再用 rel.replace('\\', '/').split('/', 1)[0].casefold() == 'sealed' 拒绝；返回已验证路径。”
+不要把归一化后的路径传给 safe_case_file，否则可能丢失原始非法段证据。
+
+--addr-file 共用守卫合理，否则地址清单也能读取密封内容。应补测三个入口的 SEALED/x.json、./sealed/x.json、绝对路径及符号链接。
+
+该守卫仍以 --case-dir 是真实案根为前提；它不能识别用户把案根直接指定为某案 sealed 目录。工单应说明此边界，不能声称实现了不可绕过的揭盲授权。
+
+3. 退回：行为定义仍有冲突；零写入范围未闭合。
+
+inspect：
+工单 :35 要求列表始终只展开 [0]，:36 却以列表长度作为分页 total。列表有两个元素时，next_offset=1 后仍展开 [0]，无法形成有效分页。
+
+建议 :35–36 改为：
+“列表每页最多展开 --offset 指向的一个元素；仅选定根节点分页，子层列表仅采样首元素。total 为根节点元素数；returned 为本页实际展开数；next_offset=min(offset+returned,total)；truncated=next_offset<total。”
+同时明确 limit≥1、offset≥0、depth≥0；标量 total=1；depth 的根层为 0。
+
+工单 :32 还需明确数字 dict key、负下标和带点 key 的处理。建议“dict 优先按原字符串键匹配；list 仅接受非负十进制下标；带点键暂不支持”。JSON 损坏、编码错误和读取失败也应明确 exit 2，否则 main:1694–1696 会兜底成 exit 1。
+
+lookup：
+工单 :44 的“按序，命中任一即用”与 :48 的“也索引”冲突。规则 2 命中容器后若只执行规则 3，{"E1":{"members":[…]}} 就无法命中；{entity_id:[addr…]} 也不是“记录含 members/addresses”。
+
+建议 :44–49 改为：
+“规则 1/2 负责选择记录；对每条记录执行规则 3，并始终追加规则 4 的成员地址。{entity_id:[addr…]} 单独适配为含 entity_id、members 的记录。同一来源记录对同一地址只计一次，不同来源记录全部保留。”
+同时明确混合顶层结构是否全部扫描，避免查询地址改变规则 1 是否命中，进而改变其他地址结果。
+
+工单 :50–51 应补：
+“--json 忽略 --fields，保留完整记录；query 为完整归一化查询序列，rows 为本页；missing 仅计本页；重复查询地址保留。”
+这样才能消除完整记录、字段过滤及计数范围的歧义。
+
+零新依赖可实现，现有标准库足够。但严格“零写入”还包括 Python 导入生成 __pycache__：源码 :42 起导入本地模块，普通 python3 启动不能保证不写。建议全部只读调用固定 python3 -B 或 PYTHONDONTWRITEBYTECODE=1；若要求普通启动也零写入，须扩大白名单，允许在本地导入前设置 sys.dont_write_bytecode。
+
+4. 退回：夹具可复用，七条用例不能按现文直接形成充分验收；RED 成立。
+
+write_json:63–65 不创建父目录；make_case:83 创建 data，:219 创建 sealed，但调用者须先创建案根。make_case:222 还会启动分布扫描，属于准备阶段写入。
+
+建议工单 :61 使用明确地址常量，例如：
+A="0x"+"abc"*13+"a"
+B="0x"+"999"*13+"9"
+C="0x"+"def"*13+"d"
+大写键用 "0x"+A[2:].upper()，不要把省略号写进实际地址。
+
+逐例结果：
+①退回：标量计数、深度及列表分页尚未定义。
+②通过：可编写；应将 bad_lines 的输出位置补入正式行为条款。
+③退回：缺大小写、符号链接、绝对路径反例。
+④退回：实体索引冲突未解决；预期末行还漏了 next_offset，与 :51 格式不一致。建议末行明确为 total=2 returned=2 truncated=false next_offset=2 missing=0。
+⑤退回：只有 label 断言，不能证明“完整记录不截断”。补超过 80 字符字段、嵌套对象，并同时传 --fields label 验证 JSON 仍完整。
+⑥退回：补 --addr-file sealed 拒绝、互斥参数、负数及越界分页、同址多记录。
+⑦退回：必须先完成全部夹具准备，再做快照；前后文件清单＋SHA 只能证明最终状态相同，不能证明没有临时写入后删除。建议增加拒绝写入/删除操作的运行检查。
+
+实跑两个现有入口：inspect、lookup 均 exit 2，stderr 均含 invalid choice，RED 判据通过。但守卫负例本身也可能因“子命令不存在”假通过，必须同时断言对应错误文本。
+
+本次未执行会创建夹具的测试或 run_all，未把源码检查冒充 GREEN。
+
+5. 通过：UTF-8 字节精算与内存替换 docs_lint 均符合要求。
+
+split-run.md:72：
+行正文 239 → 234 字节；文件 28135 → 28130 字节，减少 5。
+
+context-discipline.md:27：
+行正文 273 → 272 字节；文件 9257 → 9256 字节，减少 1。
+
+保留原换行，仅在内存替换后执行真实 docs_lint.main(all_mode=True)，结果 exit 0：
+PASS: 59 个文档，引用无断链、粗体配对完整（--all 全量模式）。
+
+未发现其他位置依赖被删整句。schema 常量仍在 handoff_manifest.py:54–59；test_handoff_manifest.py 仍在 run_all.py:70 登记。建议保持两条替换文本原样。
+
+6. 退回：与 T1 顺序施工兼容，但当前开工条件不满足，验收命令需修正。
+
+T1 已存在的排除逻辑在 :119–132、:266–279，卫生辅助函数在 :1381–1399，freeze 内调用在 :1468–1471。T3 在 :1402 前新增函数、尾部新增 parser/dispatch，不必修改这些逻辑，顺序施工可兼容。
+
+白名单基本够用；若采用入口内部禁止字节码写入，须按第 3 项补充允许区域。测试 main:531 追加新测试调用应明确属于允许的“新增用例登记”。
+
+当前工作树不满足工单 :9：
+首次检查已有 scripts/tests/test_repair_batch_d.py 修改；末次又出现 references/report-template.md 修改及新增 T2 证据文件。HEAD 未变，但存在并发写入。建议等待相关施工完成后重新核对干净基线，不覆盖或清理这些改动。
+
+工单 :87 的 inspect data/entity_series.json --depth 1 缺少已规定的 --file 与 --case-dir，按拟定 parser 会失败。改为：
+python3 -B scripts/report/handoff_manifest.py inspect --case-dir D --file data/entity_series.json --depth 1
+lookup 验收同样补 --case-dir D，并核对真实案内相对路径。
+
+本次复核未修改文件、未执行 Git 写操作、未联网、未读取 /Users/uravvv/.codex/。

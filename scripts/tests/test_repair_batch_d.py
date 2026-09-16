@@ -536,6 +536,15 @@ def t_f06_a5_disclosure():
         bundle = a5.provenance_flip_bundle(tmp, good_text, a4obj)
         check("F-06 A5 绿例：披露章节内含三策略名＋top＋份额 → DISCLOSED",
               bundle["status"] == "DISCLOSED" and bundle["anchors"], bundle)
+        # 模板 2.1：披露放附录 F，正文零地址只写"见附录 F" → 仍 DISCLOSED（切片按标题命中，不看层级/位置）
+        appx_parts = ["# 报告", "## 实体", "项目方钱包#1 的溯源存在三策略翻转，见附录 F。", "## 附录 F：溯源三策略翻转披露"]
+        for info in real.values():
+            for policy in hm.FLIP_POLICIES:
+                appx_parts.append(f"{policy}: {info['tops'][policy][2]} 占 {info['shares'][policy]}%")
+        appx_parts.append("## 后续章节")
+        appx_bundle = a5.provenance_flip_bundle(tmp, "\n".join(appx_parts), a4obj)
+        check("2.1 绿例：披露在附录 F、正文只写'见附录 F' → DISCLOSED",
+              appx_bundle["status"] == "DISCLOSED" and appx_bundle["anchors"], appx_bundle)
         # 报告缺披露段 → 拒（原反例：只字未提翻转）
         try:
             a5.provenance_flip_bundle(tmp, "# 报告\n只字未提翻转。", a4obj)
