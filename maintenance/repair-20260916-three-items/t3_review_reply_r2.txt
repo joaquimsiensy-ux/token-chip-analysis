@@ -1,0 +1,113 @@
+# 复核 T3: 退回
+
+核对基线：fix/three-items-20260916，HEAD=fadc5870e63fc7b217bce7181c6bfa3d6421e319。以下“工单行号”指 maintenance/repair-20260916-three-items/workorder_t3.md。
+
+v3 已融合第一轮大部分意见，但索引边界、深度计数和只读验收仍未完全闭合。
+
+1. 通过：主要行号与锚文本准确且唯一；测试登记位置需纠正。
+
+已用 nl -ba 核实 scripts/report/handoff_manifest.py：导入 :44、cmd_freeze :1402、main :1647、--check-unseal :1688、dispatch :1692–1693。各锚文本均唯一。
+
+文档锚 split-run.md:72、context-discipline.md:27 均准确且唯一。write_json:63、make_case:73 也准确。
+
+工单 :12 的“main() 末尾登记调用，:531 附近”不准确：:531 是 main 开头；测试结果汇总在 :993–998。
+
+建议改成：
+“新增用例调用放在 main() 的结果汇总之前，以 print(\"=\" * 40)（当前 :993）为锚；不得放在 return 之后。”
+
+2. 通过：路径守卫满足已声明的防误读边界；建议简化首段提取。
+
+case_paths.py:16–40 确实检查原始路径非法段、绝对路径、逐段符号链接、realpath 包含关系及常规文件。三个入口共用守卫合理，--addr-file 不能例外。
+
+实测 ./sealed/x.json 在 safe_case_file 阶段已被拒，错误原文包含该路径，故工单要求 stderr 含 sealed/ 可以成立，但这条测试没有执行到 sealed 前缀判断。绝对路径、.. 同样不能绕过。
+
+当前卷实测能解析 SCRIPTS/lib/case_paths.py；新增 casefold 正确堵住大小写前缀绕过。案根被直接指定到 sealed 的边界也已明确。
+
+工单 :24 的 lstrip("./") 会剥除任意连续点和斜杠，例如把合法文件夹 .sealed 误判为 sealed；反斜杠在 macOS 上也不是路径分隔符。
+
+建议 :24 简化为：
+first = rel.split("/", 1)[0]
+
+保留先调用 safe_case_file 的顺序。此项属于误拒修正，不是现有 sealed 绕过。
+
+3. 退回：行为主体可实现，但还有影响实现一致性的空白。
+
+inspect，工单 :39–43、:79：
+
+depth=0 要求不展开 k，但 returned 又定义为“本页实际展开数”。对于 --path <A_UP>.meta --depth 0，页中选中了一个键，却没有展开；returned 应为 1 还是 0 未定。标量 offset≥1 时是否仍打印值也未明确。
+
+建议改为：
+“returned 为根节点本页选中项数，与 depth 是否显示子项无关；depth=0 只显示所选根节点摘要。标量 offset≥1 时不输出值。next_offset=min(offset+returned,total)，truncated=next_offset<total。”
+
+lookup，工单 :55–60：
+
+规则 1＋2、规则 3＋4 的执行关系已修正，但新增组合会产生非字符串成员。例如 {"rows":[{"addr":A}]} 按规则 1 生成 members=[dict]，随后规则 4 若直接归一化并建索引，会遇到不可哈希的 dict。null、数字、混合列表也未规定处理方式。
+
+建议补：
+“地址候选仅接受非空字符串；成员列表中的其他类型跳过。顶层列表逐项选取 dict，其他项跳过。members 与 addresses 均存在时两者都扫描。优先字段取首个存在的键；其值无效时不向后回退，但仍执行成员索引。”
+
+此外，value 自带 _key 时，“附 _key=key”可能覆盖源字段，与“完整记录”发生冲突。
+
+建议明确：
+“源记录已有 _key 时返回 exit 2，并报告文件及冲突位置；不得静默覆盖。”
+
+工单 :60 还应明确按来源位置去重，不能按记录内容去重；两个内容相同、位置不同的记录仍是两条。
+
+工单 :63 建议显式沿用 inspect 的 next_offset/truncated 公式；:64 补齐 lookup 的 JSONL 坏行策略和解码、读取异常返回 2 的规则。当前 inspect 允许跳过坏行，lookup 仅写“文件不可解析”，不能确定是否共用该宽松读取逻辑。
+
+--json 忽略 --fields、完整保留长字符串和嵌套对象、query 保留全部重复查询、missing 仅计本页，这些融合已通过。现有标准库足够，不需要新增依赖；目前尚无实现，不能据工单认定零写入已验证。
+
+4. 退回：夹具基础正确，七条用例仍需补足可执行细节；RED 实测成立。
+
+make_case:83 建 data/，:219 建 sealed/，:222 运行生成夹具的子进程；必须全部完成后再快照。write_json:63–65 不建父目录，v3 描述正确。A/B/C 均为完整 40 位十六进制地址。
+
+逐例结论：
+
+①退回：补第 3 项的 depth=0 计数断言；另加 --depth -1、标量 offset≥1。
+②通过：坏行计数与损坏 JSON 的退出码要求可执行；broken.json 也应纳入“全部夹具准备完成”的范围。
+③通过：现有 macOS 卷上各负例可执行；./sealed 测到的是原始路径拒绝。
+④退回：现夹具没有 list-of-dict 容器，测不到规则 1＋2 的组合问题。补 {"rows":[{"addr":A}],"E1":{"members":[A,B]}}，断言 A 命中两条来源记录。
+⑤通过：长 note、嵌套 meta、同时传 --fields 已能验证 JSON 完整输出。
+⑥退回：补 --addr-file 的符号链接、绝对路径及 ./sealed 反例；现文只覆盖该入口的 sealed。
+⑦退回：“任何写入都会 PermissionError”不成立。高权限进程可能绕过权限位；文件所有者也能改回权限；代码还可能捕获写入异常后返回 0。文件清单＋SHA 也不能发现创建后删除的临时文件。
+
+建议工单 :85 改为：
+“chmod 与快照作为辅助检查；新增受监测的子进程检查案目录内写打开、创建、删除、重命名、权限修改操作，记录任何尝试并断言为零；监测不依赖命令退出码。遍历快照及恢复权限时不跟随符号链接，恢复原始权限。”
+
+另外，:77 的 HM 在现有测试中未定义，实际常量是 SCRIPT（test_handoff_manifest.py:43）；应直接改用 SCRIPT。:82–84 中 identity_cards 等简称应统一写成真实 data/*.json 路径，并说明各简写命令补齐 --case-dir、地址入口和 --in。
+
+RED 已实际运行：inspect、lookup 均 exit 2，stderr 分别包含 invalid choice: 'inspect'、invalid choice: 'lookup'。未运行会写夹具的七条测试或 run_all，不能报告 GREEN。
+
+5. 通过：UTF-8 字节不增，内存替换后的真实 docs_lint PASS。
+
+split-run.md:72：
+行正文 239 → 234 字节；文件 28135 → 28130 字节，减少 5。
+
+context-discipline.md:27：
+行正文 273 → 272 字节；文件 9257 → 9256 字节，减少 1。
+
+保留换行，仅在内存替换两行，执行 docs_lint.main(all_mode=True)，实际返回 0：
+PASS: 59 个文档，引用无断链、粗体配对完整（--all 全量模式）
+
+未发现其他代码或契约依赖被删整句。schema 常量仍在 handoff_manifest.py:54–59；run_all.py:70 仍登记 test_handoff_manifest.py。历史变更记录中的相关描述不构成依赖。
+
+建议两条替换文本保持原样；工单 :96 的验收命令补成 python3 -B，与 :13 的统一要求一致。
+
+6. 退回：与 T1 顺序施工兼容、白名单基本够用，但当前开工条件不满足。
+
+T1 排除规则现位于 :120–132，add_path 排除处理位于 :274–279，卫生辅助函数位于 :1381–1399，freeze 内调用位于 :1468–1471。
+
+T3 在 :1402 前新增函数、尾部新增 parser/dispatch，不必修改上述逻辑。split-run 的 T1 修改在 :109–110，T3 修改 :72，也不冲突。新增辅助函数、测试和测试登记均可在现有白名单完成。
+
+但工单 :101“既有函数体零改动”字面上包含 main，与明确授权修改 main 的 parser/dispatch 冲突。
+
+建议替换为：
+“既有函数体不变，唯一例外是 main() 新增两个 parser 及 dispatch 两项；generate/verify/receipt/freeze 函数体零改动。”
+
+当前两次 status 均显示白名单外既有修改：
+references/report-template.md
+scripts/tests/test_repair_batch_d.py
+
+因此工单 :10 的开工条件尚未满足。应待 T2 完成交接、重新核对基线后施工；不能覆盖或清理这些改动。v3 的 Fable 验收命令已补齐必要参数，此项修正通过。
+
+本次未修改文件、未执行 Git 写操作、未联网、未读取 /Users/uravvv/.codex/。
