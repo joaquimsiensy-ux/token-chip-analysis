@@ -1,0 +1,85 @@
+
+=== A-RED-contract ===
+COMMAND: python3 -c 'import sys; sys.path.insert(0, "scripts/tests"); import test_adjudication_validator as t; t.test_members_sidecar_contract(); sys.exit(bool(t.FAILS))'
+ENV: PYTHONDONTWRITEBYTECODE=1
+EXIT CODE: 1
+SHA256 scripts/tests/test_adjudication_validator.py: fc3deba6c84f6d3de97f4b46e21f609206a89a86701e91d4803c19923272a949
+SHA256 scripts/report/adjudication_validator.py: 5564708a34ae4aafbf9fa50651c33a3143f8f8b4c6c0c69304817908c36c063c
+--- STDOUT (raw) ---
+FAIL  template 不含 _members_total 且旁车在场
+FAIL  旁车路径不合法即拒且台账未写
+AttributeError: <module 'adjudication_validator' from '/Users/uravvv/.claude/worktrees/tca-three-items/scripts/tests/../report/adjudication_validator.py'> does not have the attribute 'write_members_sidecar'
+FAIL  旁车不可写即拒且台账未写 distribution=False existing=False
+AttributeError: <module 'adjudication_validator' from '/Users/uravvv/.claude/worktrees/tca-three-items/scripts/tests/../report/adjudication_validator.py'> does not have the attribute 'write_members_sidecar'
+FAIL  旁车不可写即拒且台账未写 distribution=False existing=True
+AttributeError: <module 'adjudication_validator' from '/Users/uravvv/.claude/worktrees/tca-three-items/scripts/tests/../report/adjudication_validator.py'> does not have the attribute 'write_members_sidecar'
+FAIL  旁车不可写即拒且台账未写 distribution=True existing=False
+AttributeError: <module 'adjudication_validator' from '/Users/uravvv/.claude/worktrees/tca-three-items/scripts/tests/../report/adjudication_validator.py'> does not have the attribute 'write_members_sidecar'
+FAIL  旁车不可写即拒且台账未写 distribution=True existing=True
+
+--- STDERR (raw) ---
+
+--- END ---
+
+=== A-RED-fill_all ===
+COMMAND: python3 -c 'import sys,tempfile; sys.path.insert(0, "scripts/tests"); import test_adjudication_validator as t; d=tempfile.mkdtemp(); t.make_reports(d); t.fill_all(d)'
+ENV: PYTHONDONTWRITEBYTECODE=1
+EXIT CODE: 1
+SHA256 scripts/tests/test_adjudication_validator.py: 7ca8e9c86e46884d447633da0bb836a1eb1e93000980be8b7fb833ea930cb73f
+SHA256 scripts/report/adjudication_validator.py: 5564708a34ae4aafbf9fa50651c33a3143f8f8b4c6c0c69304817908c36c063c
+--- STDOUT (raw) ---
+
+--- STDERR (raw) ---
+Traceback (most recent call last):
+  File "<string>", line 1, in <module>
+    import sys,tempfile; sys.path.insert(0, "scripts/tests"); import test_adjudication_validator as t; d=tempfile.mkdtemp(); t.make_reports(d); t.fill_all(d)
+                                                                                                                                                ~~~~~~~~~~^^^
+  File "/Users/uravvv/.claude/worktrees/tca-three-items/scripts/tests/test_adjudication_validator.py", line 100, in fill_all
+    side = json.load(open(os.path.join(d, "candidate_adjudications.members.json")))
+                     ~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+FileNotFoundError: [Errno 2] No such file or directory: '/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/tmp9l0er0a_/candidate_adjudications.members.json'
+
+--- END ---
+
+=== A-RED-distribution ===
+COMMAND: python3 scripts/tests/test_distribution_gate.py
+ENV: PYTHONDONTWRITEBYTECODE=1
+EXIT CODE: 1
+SHA256 scripts/tests/test_distribution_gate.py: cd828f46bdde9dbe2386fc4b633f5218f065a51ad91289e4a81764bbb03d17ac
+SHA256 scripts/report/adjudication_validator.py: 5564708a34ae4aafbf9fa50651c33a3143f8f8b4c6c0c69304817908c36c063c
+--- STDOUT (raw) ---
+ok   [CLI 不暴露 skip/阈值/自由披露绕过]
+ok   [解释五判据无绕过参数]
+ok   [源码不接受自由披露理由]
+ok   [handoff_manifest.py 新契约已升版且默认旧版拒收]
+ok   [a4_gate.py 新契约已升版且默认旧版拒收]
+ok   [a5_report_seal.py 新契约已升版且默认旧版拒收]
+ok   [正常长尾不误报]
+ok   [候选阈值已冻结]
+ok   [等额鼓包触发]
+ok   [等额组未达 2% 经济门不触发鼓包]
+ok   [dust 假长尾被隔离且不进入主箱统计]
+ok   [CEX 大额不污染主箱且未识别合约达到 1% 强制披露]
+ok   [头部集中触发]
+ok   [同一快照多个异常簇分别保留]
+ok   [手改 verdict 被重算拒绝]
+ok   [手写排除派生哈希被独立重算拒绝]
+ok   [快照内容漂移被绑定哈希拒绝]
+ok   [重复 owner 快照 fail-closed]
+ok   [sample_line-1 切小样本集中度模式]
+ok   [小样本集中度结果不完整被拒]
+ok   [initial 冒充 final 被拒]
+ok   [唯一 terminal 后禁止再生成轮次]
+ok   [分区冲突 data_broken 且 exit 2]
+ok   [漏登 dist-claims 被 A4 双向闭合拒绝]
+ok   [五判据真实闭合才 EXPLAINED]
+ok   [解释绑定过期 A4 seal 被拒]
+ok   [手搓 EXPLAINED 成员不闭合拒绝]
+ok   [initial NORMAL 到 final ABNORMAL 新簇强制回流且 final 图仍空]
+ok   [删 rounds 台账后不可从非首轮归零]
+FAIL [distribution-template 旁车在场] [adjudication] distribution 模板 2 条 → /private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/tmpl5thtdq1/adj/distribution_adjudications.json
+
+
+--- STDERR (raw) ---
+
+--- END ---

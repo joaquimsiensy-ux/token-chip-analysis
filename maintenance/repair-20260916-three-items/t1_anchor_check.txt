@@ -1,0 +1,43 @@
+# T1 开工核锚记录
+
+HEAD: ea11a6dfb7a1d123e2f1d74183fb13fc0c9aee5d
+Branch: fix/three-items-20260916
+开工 git status --short: 空。
+已全文读取 workorder_t1.md v3.1；用 nl -ba 核对以下施工前锚点，均一致。
+
+- adjudication_validator.py: 11–12, 193, 226, 229–242, 394, 397–422, 581, 591
+- handoff_manifest.py: 29–37, 119–120, 254–280, 298–303, 380, 1366–1432, 1653
+- test_adjudication_validator.py: 99–101, 121
+- test_distribution_gate.py: 377
+- test_handoff_manifest.py: 63–65, 73, 275
+- split-run.md: 90–91（不动）, 109–110
+- scan-schemas.md: 207–208, 523–524
+
+基线 wc -c: split-run.md=28162; scan-schemas.md=104942。
+
+未修改的生产文件及文档 sha256:
+scripts/report/adjudication_validator.py: 5564708a34ae4aafbf9fa50651c33a3143f8f8b4c6c0c69304817908c36c063c
+scripts/report/handoff_manifest.py: 37919a42ff3bf9c97484dc1ec6b8da19223dac0bb10219edd26d53c867deb79e
+references/split-run.md: ab472ed6a5c7de5a70075f37995f61a130ccd0a562a10140f56c05c0131968d7
+references/scan-schemas.md: 2abad493c06e874fadb56de7d2eb0834e5ffae50ae6acf80fd126dabf5c28b11
+
+执行冲突的基线代码原文：
+   201	def git_sha(repo_dir):
+   202	    try:
+   203	        p = subprocess.run(["git", "-C", os.path.expanduser(repo_dir), "rev-parse", "--short=12", "HEAD"],
+   204	                           capture_output=True, text=True, timeout=10)
+   205	        return p.stdout.strip() if p.returncode == 0 else None
+   206	    except Exception:
+   207	        return None
+
+   410	        "status": a.status,
+   411	        "status_reason": a.status_reason,
+   412	        "producer_model": a.producer_model,
+   413	        "generated_at": utcnow(),
+   414	        "skill_git_sha": {"cc": git_sha("~/.claude/skills/token-chip-analysis"),
+   415	                          "codex": git_sha("~/.codex/skills/token-chip-analysis")},
+
+额外沙箱阻断可用性探测（仅执行 /usr/bin/true，未访问被禁目录）：
+sandbox-exec -p '(version 1) (allow default) (deny file-read* (subpath "/Users/uravvv/.codex") (subpath "/Users/uravvv/.claude/skills/token-chip-analysis") (subpath "/Users/uravvv/.claude/skills/_archive"))' /usr/bin/true
+EXIT CODE: 71
+STDERR: sandbox-exec: sandbox_apply: Operation not permitted

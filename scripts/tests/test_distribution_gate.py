@@ -370,11 +370,23 @@ def main() -> int:
                              "--case-dir", str(d), "--scan", "dist_rounds/round_1/distribution_scan.json"],
                             capture_output=True, text=True)
         adj = json.loads((d / "distribution_adjudications.json").read_text()) if (d / "distribution_adjudications.json").is_file() else {}
+        side_path = d / "distribution_adjudications.members.json"
+        if not side_path.is_file():
+            check("distribution-template 旁车在场", False, pt.stdout + pt.stderr)
+            return 1
+        side = json.loads(side_path.read_text())
+        source = json.loads((d / "dist_rounds/round_1/distribution_scan.json").read_text())
+        expected = {"dist-" + row["cluster_id"]: {m["owner"] for m in row["members"]}
+                    for row in source["abnormal_clusters"]}
+        ok &= check("distribution-template 无 _members_total 且旁车成员与源候选完全一致",
+                    pt.returncode == 0 and bool(expected)
+                    and all("_members_total" not in row for row in adj["adjudications"])
+                    and {cid: set(members) for cid, members in side.items()} == expected)
         adj["adjudicated_at"] = "2026-08-05T00:00:00Z"
         for row in adj.get("adjudications", []):
             row["candidate_verdict"] = "excluded"
             row["excluded_members"] = [{"addr": x, "reason": "合成排除证据"}
-                                       for x in row.pop("_members_total", [])]
+                                       for x in side[row["candidate_id"]]]
         write_json(d / "distribution_adjudications.json", adj)
         valid = subprocess.run([sys.executable, str(ADJUDICATION), "distribution-validate",
                                 "--case-dir", str(d)], capture_output=True, text=True)

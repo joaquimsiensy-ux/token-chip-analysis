@@ -97,8 +97,9 @@ def fill_all(d, unresolved_ids=None):
     """template → 全部候选填合法裁决。"""
     p = run(VALIDATOR, ["template", "--case-dir", d, "--force"])
     adj = json.load(open(os.path.join(d, "candidate_adjudications.json")))
+    side = json.load(open(os.path.join(d, "candidate_adjudications.members.json")))
     for r in adj["adjudications"]:
-        members = r.pop("_members_total")
+        members = side[r["candidate_id"]]
         if unresolved_ids and r["candidate_id"] in unresolved_ids:
             r["candidate_verdict"] = "unresolved"
             r["excluded_members"] = [{"addr": m, "reason": "身份待查"} for m in members]
@@ -111,7 +112,60 @@ def fill_all(d, unresolved_ids=None):
     return adj, p
 
 
+def test_members_sidecar_contract():
+    from argparse import Namespace
+    from unittest.mock import patch
+    sys.path.insert(0, os.path.join(HERE, "..", "report"))
+    import adjudication_validator as av
+
+    with tempfile.TemporaryDirectory(prefix="adj_sidecar_") as d:
+        make_reports(d)
+        p = run(VALIDATOR, ["template", "--case-dir", d, "--force"])
+        adj = json.load(open(os.path.join(d, "candidate_adjudications.json")))
+        side_path = os.path.join(d, "candidate_adjudications.members.json")
+        side = json.load(open(side_path)) if os.path.isfile(side_path) else None
+        check("template 不含 _members_total 且旁车在场",
+              p.returncode == 0 and all("_members_total" not in r for r in adj["adjudications"])
+              and isinstance(side, dict)
+              and set(side) == {r["candidate_id"] for r in adj["adjudications"]}
+              and all(isinstance(v, list) and v for v in side.values()))
+    with tempfile.TemporaryDirectory(prefix="adj_sidecar_dir_") as d:
+        make_reports(d)
+        os.mkdir(os.path.join(d, "candidate_adjudications.members.json"))
+        p = run(VALIDATOR, ["template", "--case-dir", d])
+        check("旁车路径不合法即拒且台账未写",
+              p.returncode != 0 and not os.path.exists(os.path.join(d, "candidate_adjudications.json")))
+    for distribution in (False, True):
+        for existing in (False, True):
+            with tempfile.TemporaryDirectory(prefix="adj_sidecar_denied_") as d:
+                make_reports(d)
+                out = "distribution_adjudications.json" if distribution else "candidate_adjudications.json"
+                dest = os.path.join(d, out)
+                old = b'{"old": "preserve exactly"}\n'
+                if existing:
+                    with open(dest, "wb") as fh:
+                        fh.write(old)
+                args = Namespace(case_dir=d, out=out, force=existing, scan="scan.json")
+                wj(d, "scan.json", {})
+                cands = {"dist-test": {"obj": {}, "members": {"A"},
+                                      "kind": "distribution_head_concentration", "raw": 1, "scale_pct": 1}}
+                label = f"旁车不可写即拒且台账未写 distribution={distribution} existing={existing}"
+                try:
+                    with patch.object(av, "write_members_sidecar", side_effect=PermissionError("sidecar denied")):
+                        if distribution:
+                            with patch.object(av, "distribution_candidates", return_value=(os.path.join(d, "scan.json"), {}, cands)):
+                                code = av.cmd_distribution_template(args)
+                        else:
+                            code = av.cmd_template(args)
+                    preserved = open(dest, "rb").read() == old if existing else not os.path.exists(dest)
+                    check(label, code != 0 and preserved)
+                except (AttributeError, ImportError) as exc:
+                    print(f"{type(exc).__name__}: {exc}")
+                    check(label, False)
+
+
 def main():
+    test_members_sidecar_contract()
     root = tempfile.mkdtemp(prefix="adj_test_")
 
     # 0+1. template + 正例
@@ -342,6 +396,16 @@ def main():
     wj(d3b, "wave_scan_report.json", ws)
     p = run(VALIDATOR, ["validate", "--case-dir", d3b])
     check("源报告 schema 错版 exit 2", p.returncode == 2 and "schema" in p.stdout)
+
+    with tempfile.TemporaryDirectory(prefix="adj_legacy_") as legacy:
+        make_reports(legacy)
+        adj, _ = fill_all(legacy)
+        side = json.load(open(os.path.join(legacy, "candidate_adjudications.members.json")))
+        for row in adj["adjudications"]:
+            row["_members_total"] = side[row["candidate_id"]]
+        wj(legacy, "candidate_adjudications.json", adj)
+        p = run(VALIDATOR, ["validate", "--case-dir", legacy])
+        check("老台账带 _members_total 仍 PASS", p.returncode == 0)
 
     print(f"\n{'PASS' if not FAILS else 'FAIL'}：{len(FAILS)} 项失败")
     return 1 if FAILS else 0
