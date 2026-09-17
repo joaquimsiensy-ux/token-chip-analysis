@@ -892,7 +892,7 @@ def check_three_ledgers(case_dir: Path, data: dict, errors: list[str], chain=Non
                     errors.append(f"membership[{i}] as_of_balance_raw 与绑定快照不一致")
         member_map[key] = (entity, status, balance)
 
-    pos_seen, wallet_by_entity, position_by_address = set(), {}, {}
+    pos_seen, wallet_by_entity, expanded_by_entity, position_by_address = set(), {}, {}, {}
     for i, row in enumerate(positions):
         if not isinstance(row, dict):
             errors.append(f"position[{i}] 不是对象")
@@ -912,7 +912,11 @@ def check_three_ledgers(case_dir: Path, data: dict, errors: list[str], chain=Non
             errors.append(f"位置账重复 location/address: {key}")
         pos_seen.add(key)
         amt = raw_int(row.get("amount_raw"), f"position[{i}].amount_raw", errors)
-        wallet_by_entity[entity] = wallet_by_entity.get(entity, 0) + amt
+        wallet_by_entity.setdefault(entity, 0)   # 实体集合语义不变（:966 用 set(wallet_by_entity)）
+        if member_map.get(addr_key, ("", "", None))[1] == "expanded":
+            expanded_by_entity[entity] = expanded_by_entity.get(entity, 0) + amt
+        else:
+            wallet_by_entity[entity] += amt
         position_by_address[addr_key] = position_by_address.get(addr_key, 0) + amt
 
     for address, (entity, status, balance) in member_map.items():
@@ -960,6 +964,27 @@ def check_three_ledgers(case_dir: Path, data: dict, errors: list[str], chain=Non
                             f"economic[{i}].confirmed_economic_control_raw", errors)
         if confirmed != wallet + facility_sum:
             errors.append(f"实体 {entity} 经济控制算术不闭合: {confirmed} != {wallet}+{facility_sum}")
+        # R03（2026-09-17）：expanded 成员只进上限区间，不进可证下限。区间用重算值校验
+        # （不信自报 confirmed）：下限＝严格自持＋已闭合设施；上限 ≥ 下限＋expanded 成员位置之和
+        # （文档 economic-control-accounting §3 允许上限再含"疑似但未确权的设施受益权增量"，
+        # 三账无该增量的来源字段，故上限只验下界——超出部分属登记的残余风险 P10）。
+        want_lo = wallet + facility_sum
+        min_hi = want_lo + expanded_by_entity.get(entity, 0)
+        has_expanded = any(e == entity and s == "expanded" for e, s, _ in member_map.values())
+        if "expanded_economic_control_range_raw" not in row:
+            if has_expanded:
+                errors.append(f"实体 {entity} 有 expanded 成员但缺 expanded_economic_control_range_raw"
+                              f"（须为 [{want_lo}, ≥{min_hi}]）")
+        else:
+            rng = row.get("expanded_economic_control_range_raw")
+            if not isinstance(rng, list) or len(rng) != 2:
+                errors.append(f"economic[{i}].expanded_economic_control_range_raw 须为 [下限, 上限] 两元素数组")
+            else:
+                lo = raw_int(rng[0], f"economic[{i}].expanded_economic_control_range_raw[0]", errors)
+                hi = raw_int(rng[1], f"economic[{i}].expanded_economic_control_range_raw[1]", errors)
+                if lo != want_lo or hi < min_hi:
+                    errors.append(f"实体 {entity} expanded 区间不闭合: [{lo}, {hi}] 须满足下限 == {want_lo}"
+                                  f"（严格自持＋设施）且上限 >= {min_hi}（下限＋expanded 成员位置之和）")
 
     active_entities = {entity for entity, status, _ in member_map.values()
                        if status != "excluded"}

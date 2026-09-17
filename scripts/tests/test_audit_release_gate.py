@@ -553,6 +553,162 @@ def main():
         errors = gate.run(root, report)
         assert any("balance_source sha256" in x for x in errors), errors
 
+    # R03：expanded 成员只进上限区间；各用例独立执行并汇总失败。
+    def _r03_fixture(root, *, expanded_amount="200", position_expanded=True,
+                     econ_overrides=None, drop_range=False):
+        build_case(root, historical=False)
+        write_json(root, "balances_snapshot.json", {
+            "schema": "address-balance-snapshot/v1", "as_of_block": 123,
+            "entries": [
+                {"address": "0xabc", "balance_raw": "100"},
+                {"address": "0xdef", "balance_raw": expanded_amount},
+            ],
+        })
+        members = json.loads((root / "membership_ledger.json").read_text())
+        for row in members["entries"]:
+            row["balance_source"]["sha256"] = sha(root / "balances_snapshot.json")
+        members["entries"].append({
+            "entity_id": "e1", "address": "0xdef", "membership": "expanded",
+            "as_of_balance_raw": expanded_amount,
+            "balance_source": {"path": "balances_snapshot.json",
+                               "sha256": sha(root / "balances_snapshot.json"),
+                               "as_of_block": 123},
+        })
+        write_json(root, "membership_ledger.json", members)
+        positions = json.loads((root / "position_ledger.json").read_text())
+        if position_expanded:
+            positions["entries"].append({
+                "entity_id": "e1", "address": "0xdef",
+                "location_id": "wallet:0xdef", "amount_raw": expanded_amount,
+            })
+        write_json(root, "position_ledger.json", positions)
+        economics = json.loads((root / "economic_control_ledger.json").read_text())
+        row = economics["entries"][0]
+        row.update({"wallet_self_held_raw": "100",
+                    "confirmed_economic_control_raw": "100",
+                    "expanded_economic_control_range_raw":
+                        ["100", str(100 + int(expanded_amount))]})
+        row.update(econ_overrides or {})
+        if drop_range:
+            row.pop("expanded_economic_control_range_raw")
+        write_json(root, "economic_control_ledger.json", economics)
+
+    def _r03_errors(root):
+        data = {n: json.loads((root / n).read_text()) for n in (
+            "membership_ledger.json", "position_ledger.json",
+            "economic_control_ledger.json")}
+        errors = []
+        gate.check_three_ledgers(root, data, errors, chain=None)
+        return errors
+
+    def _r03_case_1(td):
+        root = Path(td)
+        _r03_fixture(root)
+        errors = _r03_errors(root)
+        assert errors == [], errors
+
+    def _r03_case_2(td):
+        root = Path(td)
+        _r03_fixture(root, econ_overrides={
+            "wallet_self_held_raw": "300", "confirmed_economic_control_raw": "300",
+            "expanded_economic_control_range_raw": ["300", "300"],
+        })
+        errors = _r03_errors(root)
+        assert any("钱包自持与位置账不闭合: 300 != 100" in x for x in errors), errors
+
+    def _r03_case_3(td):
+        root = Path(td)
+        _r03_fixture(root, econ_overrides={
+            "expanded_economic_control_range_raw": ["100", "250"],
+        })
+        errors = _r03_errors(root)
+        assert any("expanded 区间不闭合" in x for x in errors), errors
+
+    def _r03_case_4(td):
+        root = Path(td)
+        _r03_fixture(root, econ_overrides={
+            "expanded_economic_control_range_raw": ["90", "300"],
+        })
+        errors = _r03_errors(root)
+        assert any("expanded 区间不闭合" in x for x in errors), errors
+
+    def _r03_case_5(td):
+        root = Path(td)
+        _r03_fixture(root, econ_overrides={
+            "expanded_economic_control_range_raw": ["100", "350"],
+        })
+        errors = _r03_errors(root)
+        assert errors == [], errors
+
+    def _r03_case_6(td):
+        root = Path(td)
+        _r03_fixture(root, econ_overrides={
+            "expanded_economic_control_range_raw": ["100"],
+        })
+        errors = _r03_errors(root)
+        assert any("两元素数组" in x for x in errors), errors
+
+    def _r03_case_7(td):
+        root = Path(td)
+        _r03_fixture(root, econ_overrides={
+            "expanded_economic_control_range_raw": None,
+        })
+        errors = _r03_errors(root)
+        assert any("两元素数组" in x for x in errors), errors
+
+    def _r03_case_8(td):
+        root = Path(td)
+        _r03_fixture(root, drop_range=True)
+        errors = _r03_errors(root)
+        assert any("缺 expanded_economic_control_range_raw" in x for x in errors), errors
+
+    def _r03_case_9(td):
+        root = Path(td)
+        build_case(root, historical=False)
+        errors = _r03_errors(root)
+        assert not any("expanded" in x for x in errors), errors
+        print("ok    R03 case 9 无 expanded 缺字段放行")
+        economics = json.loads((root / "economic_control_ledger.json").read_text())
+        economics["entries"][0]["expanded_economic_control_range_raw"] = ["100", "99"]
+        write_json(root, "economic_control_ledger.json", economics)
+        low_errors = _r03_errors(root)
+        economics["entries"][0]["expanded_economic_control_range_raw"] = ["100", "150"]
+        write_json(root, "economic_control_ledger.json", economics)
+        errors = _r03_errors(root)
+        assert not any("expanded" in x for x in errors), errors
+        print("ok    R03 case 9 无 expanded 上限含疑似设施增量放行")
+        assert any("expanded 区间不闭合" in x for x in low_errors), low_errors
+
+    def _r03_case_10(td):
+        root = Path(td)
+        _r03_fixture(root, position_expanded=False)
+        errors = _r03_errors(root)
+        assert any("逐地址余额" in x for x in errors), errors
+
+    r03_cases = (
+        ("1 R03 绿例", _r03_case_1),
+        ("2 R03 原反例必拒", _r03_case_2),
+        ("3 R03 上限低于下界拒", _r03_case_3),
+        ("4 R03 下限不等拒", _r03_case_4),
+        ("5 R03 上限含疑似设施增量放行", _r03_case_5),
+        ("6 R03 形状错拒", _r03_case_6),
+        ("7 R03 显式 null 拒", _r03_case_7),
+        ("8 R03 有 expanded 缺字段拒", _r03_case_8),
+        ("9 R03 无 expanded 缺字段放行 / 在场须合法", _r03_case_9),
+        ("10 R03 逐地址闭合对 expanded 仍生效", _r03_case_10),
+    )
+    r03_failures = []
+    for name, case in r03_cases:
+        try:
+            with tempfile.TemporaryDirectory() as td:
+                case(td)
+        except AssertionError as exc:
+            print(f"FAIL  {name}: AssertionError: {exc}")
+            r03_failures.append(name)
+        else:
+            print(f"ok    {name}")
+    assert not r03_failures, f"R03 失败 {len(r03_failures)}/10: {r03_failures}"
+
     # P2-01：零余额成员可用显式 zero_balance_proof，位置账缺行按 0 闭合。
     with tempfile.TemporaryDirectory() as td:
         root = Path(td)
