@@ -1,8 +1,8 @@
-# 工单 C7 复核提示词（只读，r1：只复核 workorder_C.md v4 新增的 C7 段；C1–C6 已落地 1b317b3 并经盲审 r1，唯一 minor C-01 即本段来源，见 `blind_C_reply_r1.md`）
+# 工单 C7 复核提示词（只读，r2：对 v5 复核；r1 唯一 minor C7-R01（显式 null 绕过 dual_basis 校验）已按其修法采纳——校验条件改 `"dual_basis" in fi`、用例 15 加 None 变体；只需确认该处置闭合且未引入新问题，其余 r1 已核项不必重跑）
 
 ## 纪律
 1. 禁读 `~/.codex/`（插件启动搜索若已读 memories 如实披露一次，之后不再读）；禁读本仓库 `archive/`、`blind-reviews/`、`.staging_*`、`references/attic.md` 的内容；禁读 `/Users/uravvv/Desktop` 下任何文件。
-2. 只读、离线、不 commit、不改任何文件。报告全文打印到 stdout，首行固定为 `# 工单C7复核：通过` 或 `# 工单C7复核：退回`。退回时逐条给出：编号、工单位置、事实（附 `grep -n -F` 或代码原文）、修订建议。通过时也要列出你实际核过的项。
+2. 只读、离线、不 commit、不改任何文件。报告全文打印到 stdout，首行固定为 `# 工单C7复核：通过` 或 `# 工单C7复核：退回`（r2）。退回时逐条给出：编号、工单位置、事实（附 `grep -n -F` 或代码原文）、修订建议。通过时也要列出你实际核过的项。
 
 ## 任务
 复核 `maintenance/repair-20260917-p0-four/workorder_C.md` **C7 段**。工作目录＝本仓库根（HEAD 的 `facts_gate.py`/`test_report_facts.py` 与 1b317b3 相同）。逐项核：
