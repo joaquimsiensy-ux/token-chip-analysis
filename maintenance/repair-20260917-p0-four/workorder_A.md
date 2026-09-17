@@ -1,4 +1,6 @@
-# 工单 A（v3，融合 codex 复核 r1 七条＋r2 两条）：R08 图 2 对账有限值检查 —— repair-20260917-p0-four 第一段
+# 工单 A（v4，融合 codex 复核 r1 七条＋r2 两条＋r3 一条）：R08 图 2 对账有限值检查 —— repair-20260917-p0-four 第一段
+
+> v4 变更（`review_A_reply_r3.md` A-R3-01）：用例 13 的基线描述订正为"基线在 `:338` 写 PASS 收据时被 mock 的 OSError 炸出、未收敛"，取证改为同时捕获 `SystemExit`/`OSError` 后用 `check()` 断言；新登记两处范围外同族边界（fig1 豁免键超大整数溢出、普通 PASS/FAIL 分支写收据 OSError 仍直接传播）。
 
 > 出处：codex 对 7.0.4 的 review（`REVIEW.md` R08，P0）——`fig2_check_errors` 的末点比较 `abs(NaN - want) > tol` 恒为 False，NaN 末点落进 PASS 分支签收据；用户 2026-09-17 裁决"加有限值检查"。总计划 `~/.claude/plans/r09-p0-codex-codex-codex-starry-feigenbaum.md`。原则：**不增加 skill 上下文**（本段文档零改动）；能删不增、能改不增。
 > v3 变更（`review_A_reply_r2.md`）：A-R2-01 数值检查改用 `_pct_value_ok` 辅助，超大整数的 `OverflowError` 归入非法值进 FAIL 收据分支，新增用例 11/12；A-R2-02 写 FAIL 收据的 `OSError` 收敛为"收据未更新"提示仍 FAIL 退出，新增用例 13；split-run 引用行订正为 `:183`。
@@ -108,7 +110,7 @@ def _load(p, strict=True):
 10. `R08 陈旧 PASS 收据被 FAIL 覆盖（换输入）`：同一 tempdir 先用 ws `[27.8]` 跑一次得 PASS 收据；再把 ws 原文改为 `[NaN]` 跑一次 → `rc != 0`、收据 `verdict == "FAIL"`、收据 `series.sha256` 等于新 ws 文件的 sha256。**RED**：基线第二次仍 PASS。
 11. `R08 超大整数不抛异常、走 FAIL 收据`：ws pct 原文 `[1e400, 1` + 400 个 `0` + `, 27.8]`（401 位整数）→ `rc == 1`、`"非法数值" in out or "非有限" in out`、`"OverflowError" not in out`、收据 `verdict == "FAIL"`。**RED**：基线只看末点 → PASS。（本例专门对 v2 写法：`math.isfinite(10**400)` 抛 OverflowError。）
 12. `R08 同输入陈旧 PASS 收据被覆盖且消费者拒`：ws 原文 `[NaN]`；**手写**一份 PASS 收据到 tempdir（schema `figure2-check-receipt/v1`、mode formal、tol_pp 0.05、verdict PASS、facts/series 的 `{path, sha256}` 用当前文件真实 sha，写法照 `:1170-1196` NC1 段）；先断言基线消费者接受：`errs=[]; gate.check_figure2_receipt(td, 手写收据, errs); errs == []`；再跑 check → `rc != 0`；重读收据 `verdict == "FAIL"`；再 `gate.check_figure2_receipt(td, 重读收据, errs2)` → `any("非 PASS" in x for x in errs2)`。**RED**：基线 check 对 `[NaN]` 仍 PASS，收据 verdict 保持 PASS、消费者不拒。
-13. `R08 收据写入失败仍 FAIL 退出`：进程内：`import argparse, io, contextlib; from unittest import mock`；ws 原文 `[NaN]`；`ns = argparse.Namespace(facts=str(td/"facts.json"), series=str(td/"ws.json"), tol_pp=0.05, exploration=False)`；`with mock.patch.object(ffm, "_write_check_receipt", side_effect=OSError("disk full")):` 调 `ffm.mode_check(ns)` 须抛 `SystemExit`，其 `.code` 为字符串且以 `FAIL:` 开头；捕获 stderr 含 `收据未更新`。RED：基线 `mode_check` 对 `[NaN]` 返回 0 不抛（且无 `_reject_constant`）——在基线上本例以"未抛 SystemExit"记 FAIL。
+13. `R08 收据写入失败仍 FAIL 退出`：进程内：`import argparse, io, contextlib; from unittest import mock`；ws 原文 `[NaN]`；`ns = argparse.Namespace(facts=str(td/"facts.json"), series=str(td/"ws.json"), tol_pp=0.05, exploration=False)`；`with mock.patch.object(ffm, "_write_check_receipt", side_effect=OSError("disk full")), contextlib.redirect_stderr(buf):` 调 `ffm.mode_check(ns)`，**用 `try/except (SystemExit, OSError) as e` 捕获并记录异常**，再用既有 `check()` 断言三条：`isinstance(e, SystemExit)`；`isinstance(e.code, str) and e.code.startswith("FAIL:")`；`"收据未更新" in buf.getvalue()`。基线上捕获到的是 `OSError("disk full")`（基线错误接受 NaN 后在 `:338` `_write_check_receipt(a, "PASS", okc, [])` 处被 mock 炸掉，`return 0` 不会执行），第一条 `check` 即以 AssertionError 记 FAIL（异常原文进证据）；不得把任意异常都算 GREEN。**RED**：基线抛未收敛的 OSError。
 
 RED 证据（改生产代码前）：用内联 Python 逐个调用 `_r08_case_1` … `_r08_case_13`，每个 `try/except AssertionError` 打印用例名与异常原文（不要顺序调用 `t_r08_nonfinite()`——既有 `check` 在首个失败即抛），把 1/2/3/4/6/10/11/12/13 的 FAIL 原文写入 `A_red_evidence.txt`（含命令、被测文件与测试文件 sha256）。改后跑整文件 `test_repair_batch_c.py` 全 PASS。
 
@@ -122,3 +124,5 @@ RED 证据（改生产代码前）：用内联 Python 逐个调用 `_r08_case_1`
 - `stage2_closeout.py:63` 裸 `json.loads` 读序列（`:459/:468`）：范围外；其 `:458` 序列化经 A4、`:464` 对账经 A1/A2 兜底。
 - fig1 state 非豁免键含 NaN 仍进绘图（基线行为，本段不动）。
 - `parse_constant` 管不住其他字段里的 `1e400` 被解析成 inf：pct 由 A2 兜、输出序列由 A4 兜；非 pct 字段范围外。
+- fig1 豁免键（`:141-144`）遇超大整数 `math.isfinite` 仍抛 OverflowError：§0.4 明确不改，范围外。
+- 普通对账 PASS/FAIL 分支写收据（`:334`/`:338`）发生 OSError 仍直接传播：既有边界，A3 只收敛新增的输入失败分支。
