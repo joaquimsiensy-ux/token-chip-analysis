@@ -13,3 +13,10 @@
 ## D3（R5 盲审 D2 附带）`scripts/report/standard_charts.py:283` `plot_whale_vs_price` 文档串"线超 8 条时可将持仓较小的实体合并成一条避免花屏"
 - 性质：仅 docstring 文字；split-run 收口闸 `stage2_closeout.py:197-198` 对 merge_groups 硬拒，merge_groups 属 7.2 遗留清单。零行为影响。
 - 文档侧同错已由工单 R5 D2 删除许可；代码文件按用户原则不动，是否顺手订正待用户决策。
+
+
+## 用户裁决（2026-09-16）
+
+- D1：**选 B**——不改码，文档登记为已知例外（触发评估：翻转窗 ≤1e-16×阈值，需峰值恰等于阈值；APU 案 2753 址中 1 址命中，靠回落理由兜住；每案粗估一至三成概率至少一址静默丢标记）。
+- D2、D3：**改注释/docstring**（零逻辑改动）。
+- 落地工单：`workorder_r7.md`。
