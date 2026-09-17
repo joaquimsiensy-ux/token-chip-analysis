@@ -5,7 +5,7 @@
 相对 v1:
   1. getTransaction 改 JSON-RPC batch(公共 mainnet-beta 默认 8 笔/POST)——单笔串行 0.75s 间隔≈1.3 笔/s,
      批量后同样限速礼貌下 10-20 倍
-  2. 跨地址共享 sig 结果缓存(--cache-dir,按 sig 前 2 字符分 256 片)——庄家关联地址间
+  2. 跨地址共享 sig 结果缓存(--cache-dir,按 sig 前 2 字符分片)——庄家关联地址间
      重复交易极多,第二个地址起大量命中零请求
   3. --rpc 可换端点:默认 api.mainnet-beta(须 --proxy);Helius 免费层免代理但不支持
      JSON-RPC batch，须改用 --workers 单笔并发并遵守账号级 10 RPS

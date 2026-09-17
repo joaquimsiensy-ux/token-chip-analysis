@@ -280,7 +280,7 @@ def plot_whale_vs_price(whale_series, price_series, out_png, token):
                    {"label": "大庄#1", "ts": [...], "pct": [...]}, ...]
                   label 用标签制（项目方/大庄#N/小庄#N/离场庄#N），
                   pct=占总供应量百分数；线色按前缀自动取语义色。
-                  标签实体各画一线；线超 8 条时可将持仓较小的实体合并成一条避免花屏。
+                  标签实体各画一线（本版不支持合并线）。
     price_series: {"ts": [...], "usd": [...]}
     """
     setup()

@@ -10,6 +10,7 @@
 
 ## 版本索引（活跃窗口，新在上；每版一行，详情见下方对应条目）
 
+- **7.1.3**（2026-09-16）drift-audit 待决台账三项用户裁决落地：wave_scan 浮点阈值**不改码**、文档登记为已知例外（+237 B）；decode_txs_v2 与 standard_charts 两处 docstring 订正（零逻辑改动，去 docstring 后 AST 与改前一致）。
 - **7.1.2**（2026-09-16）口径漂移与文档-代码不符审计闭环：codex 盲审七轮（19→8→2→4→2→1→0 条）、六轮工单皆先 codex 只读复核再 codex 施工，46 条/86 处纯文本修复，零代码改动；references 930850→929833（净减 1017 B）、SKILL.md 8024→8021、commands 不变；三项需改代码候选记台账待裁决。
 - **7.1.1**（2026-09-16）三项修复：seal↔正文零地址打架改由附录 F 承接（seal 零改动）；`handoff_manifest inspect/lookup` 两只读查询子命令；`_members_total` 预填删除改旁车、排除规则精确化、显式登记冲突报错、freeze 案根卫生 WARN；四册手册相对 7.0.4 基线合计净减 42 B，SUITE 入口不变。
 - **7.1.0**（2026-09-16）−2 收口与重封命令化：stage2_closeout 四子命令、分布周期归档与停点编排；同步 W1/W2 接口，三册净减 326 字节，SUITE 150→151。
@@ -88,6 +89,12 @@
 - **6.20.1** 2026-08-05 修 5 处阻断级文档漂移（A4 前禁写报告冲突/easy 残留/惯犯回灌 docstring/批量预采集残留/旧 Par 路线历史降级）＋docs_lint 增中文禁词与 Python module docstring 扫描
 
 更早版本（6.20.0 及以前）详见 `archive/CHANGELOG-archive.md`。
+
+## [7.1.3] - 2026-09-16 — drift-audit 待决台账三项裁决落地（零逻辑改动）
+
+- **裁决**：用户 09-16 对 `maintenance/repair-20260916-drift-audit/code_change_pending.md` 三项拍板：①wave_scan 份额阈值浮点比较选 B（不改码，`analyze-workflow.md` "一律整数运算"句后登记已知例外与台账指针）；②③改注释。触发评估在台账：翻转窗 ≤1e-16×阈值，需峰值恰等于 0.1%/0.05%；APU 案 2753 址中 1 址命中（靠回落理由兜住）；每案粗估一至三成概率至少一址静默丢 must 标记。
+- **改动**：`analyze-workflow.md:158` +237 B；`scripts/solana/decode_txs_v2.py:8` 文头注释"分 256 片"→"分片"；`scripts/report/standard_charts.py:283` docstring 删"线超 8 条可合并"。两脚本 `ast.parse` 通过、去 docstring 后 AST 与改前完全一致；无哈希绑定、contract/invariant needle 零撞击。
+- **工艺**：工单 R7 经 codex 只读复核通过后 codex 施工；Fable 九项守卫＋两项引用测试全 PASS。
 
 ## [7.1.2] - 2026-09-16 — 口径漂移与文档-代码不符审计闭环（零代码改动）
 
