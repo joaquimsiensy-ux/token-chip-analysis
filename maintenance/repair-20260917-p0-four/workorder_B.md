@@ -37,7 +37,7 @@
             wallet_by_entity[entity] += amt
 ```
 
-说明：`addr_key` 在 `:906` 已归一（`address.lower() if 0x…`），`member_map[addr_key]` 为 `(entity, status, balance)`。`:907-909` 对未映射/跨实体/excluded 的位置行**只追加错误、不 `continue`**，这类坏行仍会走到本处汇总；它们落入 `else` 分支计入 `wallet_by_entity`，但由于错误已登记，该案必然 FAIL，汇总值无发布意义——这是既有 fail-closed 行为，本段不改。`position_by_address`（`:916`）不变——逐地址闭合对 expanded 仍然适用（文档：expanded 是确权边界不是存放位置边界）。
+说明：`addr_key` 在 `:906` 已归一（`address.lower() if 0x…`），`member_map[addr_key]` 为 `(entity, status, balance)`。`:907-909` 对未映射/跨实体/excluded 的位置行**只追加错误、不 `continue`**，这类坏行仍会走到本处汇总，仍按 `member_map` 里的成员状态分流（未映射行落 `else`），但由于错误已登记，该案必然 FAIL，汇总值无发布意义——这是既有 fail-closed 行为，本段不改。`position_by_address`（`:916`）不变——逐地址闭合对 expanded 仍然适用（文档：expanded 是确权边界不是存放位置边界）。
 
 ### B2 经济控制账：wallet/confirmed 只含 strict，区间字段机器校验
 
@@ -67,7 +67,7 @@
                                   f"（严格自持＋设施）且上限 >= {min_hi}（下限＋expanded 成员位置之和）")
 ```
 
-裁决（已定）：实体有 ≥1 个 expanded 成员 → 字段必填；无 expanded 成员 → 字段可缺；**在场**（含显式 `null`）则必须是两元素数组且 `lo == confirmed 重算值`、`hi ≥ lo`（无 expanded 时 `hi > lo` 的部分＝疑似设施增量，允许）。`raw_int` 为本文件既有辅助（`:601`，非法返回 0 并登记错误；`:914` 同款用法）。非法端点会同时产生 raw 整数错误与区间错误，用例只断言包含式子串。
+裁决（已定）：实体有 ≥1 个 expanded 成员 → 字段必填；无 expanded 成员 → 字段可缺；**在场**（含显式 `null`）则必须是两元素数组且 `lo == confirmed 重算值`、`hi ≥ lo`（无 expanded 时 `hi > lo` 的部分＝疑似设施增量，允许）。`raw_int` 为本文件既有辅助（`:601`，非法返回 0 并登记错误；`:914` 同款用法）。非法端点可能同时产生 raw 整数错误与区间错误（`raw_int` 非法返回 0、负整数保留负值并登记错误），用例只断言包含式子串。
 
 ### B3 测试 `scripts/tests/test_audit_release_gate.py`
 
