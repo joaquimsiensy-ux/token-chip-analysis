@@ -1,26 +1,28 @@
-# 工单 C（v2）：R07 facts.json 由三账自动生成＋发布闸/收口重算 —— repair-20260917-p0-four 第三段
+# 工单 C（v3）：R07 facts.json 由三账自动生成＋发布闸/收口重算 —— repair-20260917-p0-four 第三段
 
 > 出处：codex 对 7.0.4 的 review（`REVIEW.md` R07，P0）——facts.json（报告宏的唯一数字源）与三账之间没有任何数值等式，手抄/手改 facts 不会被任何闸拦。用户 2026-09-17 裁决：**facts 由三账自动生成**；峰值取 `provenance_ledger.json` 的实体峰值锚点、允许显式 override（须带证据）；人工字段（label/symbol/decimals/metrics 等）**复用 `state_source.json`**，不新建文件；总原则"能不新增不新增、skill 上下文不增"。
 > 内容基线：本段白名单源码文件与 commit `8ead156`（A/B 落地）逐字节相同；开工 HEAD 以 `construct_C_prompt.md` 首行标注为准（工单/提示词提交会推进 HEAD，源码不变）。行号均指施工前基线。
 > v2 变更（对 codex r1 八条，见 `review_C_reply_r1.md`）：C-R02/C-R04 → **撤销"在场即验"与 P11**，facts.json 加进 `NEW_ANALYSIS_REQUIRED`（复核实证：真正要求 new-analysis 闸零错误的夹具——batch_d `build_solana_case`（batch15/batch18/batch13/recon_fifth 复用）、P105（batch B 复用）、stage2/reseal——都带 facts，只是手写；一律改为共享助手 `build_facts_from_ledgers` 从三账 build）；C-R01 → stage2 build 放在 `add_camp_series` 之后、A4 finalize 之前；C-R03 → derive 先验三账非空；C-R05 → provenance_ledger 前移进 `build_release_case`，reseal prereq 幂等；C-R06 → batch_d 反例独立 with 块；C-R07 → docs_lint 移出施工方清单（调度方 pre-commit 跑）；C-R08 → HEAD 表述改为随施工提示词。另补：figure2 收据绑定的 facts 必须是本名 `facts.json`（复核指出另名 facts 可让图 2 对账绕开三账重算）。
+> v3 变更（对 codex r2 五条，见 `review_C_reply_r2.md`）：C-R04-r2 → 新增 C4-e：`test_a4_gate.py` 的 `case_new`（唯一走 `build_html --mode analysis-new` 的夹具）改用共享助手 build；C-R05-r2 → reseal 的 overlay 白名单是 W3 专用**不改**，等价验收路径＝调度方 commit 后把 `/tmp/w3_acceptance` worktree 同步到新 HEAD、树干净、overlay 为空再跑（§0.8/§4）；C-R09 → C3 说明移出代码块、§0.4 计数改 11、C4-b 反例改为独立函数 `t_r07_facts_vs_ledgers` 并登记到 `main()`；C-R10 → `derive_facts` 末尾用既有 `gate_check(Facts(facts))` 自检（G2/G3 等）不过即拒（build 出的 facts 必须过既有 facts gate，fail-closed），P105 的 identity 用真实 owner 快照建绑定（`identity_gate_fixture.augment_gate` 加 `balances` 关键字参数，C4-c′）；C-R11 → C1 输入 JSON 严格解析：`parse_constant` 拒 NaN/Infinity 字面量、`parse_float` 拒溢出成 inf 的 `1e999`（§1.5，C4-d 用例 13/14）。
 > 设计要点：①`state_source.json` 只新增**一个**顶层块 `facts_inputs`（`state_from_facts.compile_state` :95-142 按键取值、不展开 source，新块不会漏进 analysis-state.json）。②文档只改 `references/report-template.md:212` 一处（−5 B）；`analyze-workflow.md:147` 不改。③夹具 facts 的峰值一律走 override（夹具无 provenance 锚点）＝confirmed 值，证据文件 `peak_evidence.json` 随案。
 
 ## 0. 开工纪律
 
 - 0.1 工作目录＝`/Users/uravvv/.claude/skills/token-chip-analysis`。开工先跑并贴进 `C_done.md`：`git status --short`（须为空）；`git rev-parse --short HEAD`（须与 `construct_C_prompt.md` 首行标注一致）。不符即停工写 `C_done_attempt1_stopped.md`。
 - 0.2 **禁读** `~/.codex/`（启动搜索若已读 memories 在 done 里披露一次，之后不再读）；禁读 `archive/`、`blind-reviews/`、`.staging_*`、`references/attic.md`；**禁读** `/Users/uravvv/Desktop` 下任何文件（沙箱也读不到；存量案对照由调度方本机跑）。
-- 0.3 **白名单**：生产 `scripts/report/facts_gate.py`、`scripts/report/audit_release_gate.py`、`scripts/report/stage2_closeout.py`；测试 `scripts/tests/test_report_facts.py`、`scripts/tests/test_stage2_closeout.py`、`scripts/tests/test_stage2_reseal.py`、`scripts/tests/test_repair_batch_d.py`、`scripts/tests/test_review_20260804_p105.py`、`scripts/tests/test_audit_release_gate.py`（只加共享助手 `build_facts_from_ledgers`，不动既有用例）；登记 `scripts/tests/invariant_manifest.json`（只按 invariant_scan 报出的缺项增补，见 C5）；文档 `references/report-template.md`（只改 :212 一处）；本目录新建 `C_done.md`、`C_red_evidence.txt`，停工时 `C_done_attempt1_stopped.md`。
-- 0.4 **不改**：`facts_gate.py` 现有 `Facts`/`gate_check`/`load_and_check` 与 `main()` 的 argparse 行为（只在 main 顶部加 `build` 分派）；`audit_release_gate.py` 的 `check_figure2_receipt`（:1368-1390）、`check_three_ledgers`；`stage2_closeout.py` 现有 12 个 record 的名称与顺序；`state_from_facts.py`（不在白名单）；`analyze-workflow.md`、`SKILL.md`、`commands-staging/`、VERSION、pyproject、CHANGELOG、contract_manifest。
+- 0.3 **白名单**：生产 `scripts/report/facts_gate.py`、`scripts/report/audit_release_gate.py`、`scripts/report/stage2_closeout.py`；测试 `scripts/tests/test_report_facts.py`、`scripts/tests/test_stage2_closeout.py`、`scripts/tests/test_stage2_reseal.py`、`scripts/tests/test_repair_batch_d.py`、`scripts/tests/test_review_20260804_p105.py`、`scripts/tests/test_a4_gate.py`（只改 import 与 `case_new` 一处，C4-e）、`scripts/tests/identity_gate_fixture.py`（只给 `augment_gate` 加 `balances=None` 关键字参数，C4-c′）、`scripts/tests/test_audit_release_gate.py`（只加共享助手 `build_facts_from_ledgers`，不动既有用例）；登记 `scripts/tests/invariant_manifest.json`（只按 invariant_scan 报出的缺项增补，见 C5）；文档 `references/report-template.md`（只改 :212 一处）；本目录新建 `C_done.md`、`C_red_evidence.txt`，停工时 `C_done_attempt1_stopped.md`。
+- 0.4 **不改**：`facts_gate.py` 现有 `Facts`/`gate_check`/`load_and_check` 与 `main()` 的 argparse 行为（只在 main 顶部加 `build` 分派）；`audit_release_gate.py` 的 `check_figure2_receipt`（:1368-1390）、`check_three_ledgers`；`stage2_closeout.py` 现有 11 个 record 的名称与顺序；`state_from_facts.py`（不在白名单）；`analyze-workflow.md`、`SKILL.md`、`commands-staging/`、VERSION、pyproject、CHANGELOG、contract_manifest。
 - 0.5 行号均指施工前基线；锚 `grep -n -F` 恰 1 处且行号一致，不符**停工**。删除 > 修改 > 新增。
 - 0.6 离线；不 commit、不 push、不部署；禁 stash/checkout/reset。
 - 0.7 先红后绿：C4 新用例改动前先跑取 RED 写 `C_red_evidence.txt`（逐例独立、逐例捕获 AssertionError，写法照 A/B 段），改后取 GREEN。
-- 0.8 本段只跑：`python3 -B scripts/tests/test_report_facts.py`、`test_stage2_closeout.py`、`test_repair_batch_d.py`、`test_review_20260804_p105.py`、`test_repair_batch_b.py`、`test_audit_release_gate.py`、`test_batch15_three_ledgers_frozen.py`、`test_batch18_shared_bundle_witness.py`、`test_batch13_accounting_target.py`、`test_recon_fifth_check.py`、`test_state_from_facts.py`、`test_figures_from_facts.py`、`python3 -B scripts/tests/invariant_scan.py`。`test_stage2_reseal.py` 硬依赖预建 worktree，沙箱跑不了则注明由调度方本机跑。docs_lint 由调度方在 pre-commit 跑（其扫描面含禁读目录，施工方不跑）。不跑 run_all。
+- 0.8 本段只跑：`python3 -B scripts/tests/test_report_facts.py`、`test_stage2_closeout.py`、`test_repair_batch_d.py`、`test_review_20260804_p105.py`、`test_repair_batch_b.py`、`test_audit_release_gate.py`、`test_batch15_three_ledgers_frozen.py`、`test_batch18_shared_bundle_witness.py`、`test_batch13_accounting_target.py`、`test_recon_fifth_check.py`、`test_state_from_facts.py`、`test_figures_from_facts.py`、`test_a4_gate.py`、`python3 -B scripts/tests/invariant_scan.py`。`test_stage2_reseal.py` **施工方不跑**：它从当前仓库运行时会把未提交改动 overlay 到 `/tmp/w3_acceptance` 且只认 W3 白名单（`:614-621`，本段不改），由调度方 commit 后同步 worktree 到新 HEAD、overlay 为空再跑（§4）。docs_lint 由调度方在 pre-commit 跑（其扫描面含禁读目录，施工方不跑）。不跑 run_all。
 
 ## 1. 硬约束
 
 - 1.1 文档字节：SKILL.md 8021 不变、commands-staging 8798 不变、references **930065**（930070 − 5；命令同工单 A §1.1，只用 stat 不读内容）。
 - 1.2 `git diff --stat` 只含 0.3 白名单。
 - 1.3 `facts_gate.py build` 输出确定性：同输入两次 build 逐字节相同（不写时间戳）。
+- 1.5 输入 JSON 严格解析：`_load_case_json` 用 `parse_constant` 拒 `NaN/Infinity/-Infinity` 字面量、`parse_float` 拒解析后非有限的数（`1e999`→inf 不经 parse_constant，须在 parse_float 拦），任一命中即 ValueError；facts 的全部值都来自这些输入，故产物不可能含非有限值。发布闸侧装载 facts.json 的既有 `load_json` 仍只拒字面量（P7 既有漏口），但 C2 逐键比对会把 facts 里的 `1e999` 与重算值判不一致，闭合本段。
 - 1.4 三账缺件/空账/不闭合的案不得生成 facts：derive 先验三个账本各含非空 `entries|entities` 列表（`check_three_ledgers` 对空账直接 return，:790），再跑 `check_three_ledgers(chain=None)`，任一有错即 exit 2。
 
 ## 2. 逐条施工
@@ -66,9 +68,23 @@ def _case_file(case_dir, rel, label):
     return p
 
 
+def _reject_constant(value):
+    raise ValueError(f"JSON 含非有限常量 {value}（NaN/Infinity 不允许）")
+
+
+def _finite_float(text):
+    v = float(text)
+    if v != v or v in (float("inf"), float("-inf")):
+        raise ValueError(f"JSON 浮点非有限: {text}")
+    return v
+
+
 def _load_case_json(case_dir, rel, label):
     with open(_case_file(case_dir, rel, label), encoding="utf-8") as fh:
-        return json.load(fh)
+        try:
+            return json.load(fh, parse_constant=_reject_constant, parse_float=_finite_float)
+        except ValueError as exc:
+            raise ValueError(f"{label} 解析失败: {exc}") from exc
 
 
 def _raw_str(value, label):
@@ -216,6 +232,10 @@ def derive_facts(case_dir, *, exploration=False):
         "producer": {"path": "scripts/report/facts_gate.py",
                      "sha256": _sha256_path(Path(__file__).resolve())},
     }
+    # 生成物必须过既有 facts gate（G2 供给上界/G3 内部一致等；无 state/渲染文本时 G1/G5 自然跳过）
+    gate_errors, _notes = gate_check(Facts(facts))
+    if gate_errors:
+        raise ValueError("生成的 facts 未过既有 facts gate: " + "; ".join(gate_errors[:3]))
     return facts
 
 
@@ -259,7 +279,7 @@ def build_main(argv):
         return build_main(sys.argv[2:])
 ```
 
-说明：`_int` 为本文件既有（`:73`）。`derive_facts` 与发布闸互相延迟 import（gate 在检查函数内 `import facts_gate`，本函数内 `import audit_release_gate`），两文件同目录、`stage2_closeout.py:31-33` 已同时 import 两者，无循环导入问题。入口 `--source` 只接受固定名（用户裁决"复用 state_source.json 不新建文件"）。
+说明：`_int`（`:73`）、`Facts`（`:93`）、`gate_check`（`:177`）为本文件既有；`gate_check` 定义在 `derive_facts` 之前（插入点 `:250` 在其后），直接引用即可。`derive_facts` 与发布闸互相延迟 import（gate 在检查函数内 `import facts_gate`，本函数内 `import audit_release_gate`），两文件同目录、`stage2_closeout.py:31-33` 已同时 import 两者，无循环导入问题。入口 `--source` 只接受固定名（用户裁决"复用 state_source.json 不新建文件"）。
 
 ### C2 `scripts/report/audit_release_gate.py`：facts.json 进 new-analysis 必需件，新增 `check_facts_vs_ledgers`
 
@@ -332,7 +352,7 @@ def check_facts_vs_ledgers(case_dir: Path, facts, errors: list[str], receipt=Non
                                    receipt=data.get("figure2_check_receipt.json"))
 ```
 
-facts.json 进 `NEW_ANALYSIS_REQUIRED` 后由 `_run` 的 required 循环（:1589-1596）用 `load_json`（严格非有限策略）装载；缺件由既有"缺必需资产"错误覆盖，符号链接由 `_run` 既有装载逻辑处理（施工方核对 `load_json`/`load_adversarial_json` 对符号链接的拒绝行为，若不拒则在此处补 `regular_case_path` 判断）。
+facts.json 进 `NEW_ANALYSIS_REQUIRED` 后由 `_run` 的 required 循环（:1589-1596）用 `load_json`（严格非有限策略）装载；缺件由既有"缺必需资产"错误覆盖，符号链接由 `_run` 既有装载逻辑处理（复核实证：`load_json` 会跟随符号链接而 `regular_case_path` 返回 None——**必须**在 `check_facts_vs_ledgers` 开头补 `if regular_case_path(case_dir, "facts.json") is None: errors.append("facts.json 不是案根常规文件（符号链接/越界）"); return`，`regular_case_path` 为本文件既有 `:482`）。`load_json` 对 `1e999` 的处理见 §1.5。
 
 ### C3 `scripts/report/stage2_closeout.py`：收口新增 `facts_vs_ledgers` 检查（11→12 项）
 
@@ -344,9 +364,9 @@ facts.json 进 `NEW_ANALYSIS_REQUIRED` 后由 `_run` 的 required 循环（:1589
         audit_release_gate.check_facts_vs_ledgers(case, load(case, "facts.json"), errors)
         return errors, [], "PASS"
 
-（stage2 收口不传 receipt；图 2 收据绑定由发布闸验。）
-
 ```
+
+（stage2 收口不传 receipt；图 2 收据绑定由发布闸验。）
 
 - 同一锚行之后插入 `    record("facts_vs_ledgers", facts_vs_ledgers)`（保持 facts_gate 在前）。`load`（`:62`）、`audit_release_gate`（`:31`）既有。
 
@@ -428,12 +448,33 @@ RED：基线无 `facts_vs_ledgers` 键 → KeyError/AssertionError；`check_resu
 - `:963`（锚 `    from test_audit_release_gate import align_ledgers_to_owner_snapshot`）改为 `    from test_audit_release_gate import align_ledgers_to_owner_snapshot, build_facts_from_ledgers`。
 - `:1167-1168`（锚 `        "facts.json": {"token": {"symbol": "SOLX", "decimals": 0,` 与 `                                 "total_supply_raw": "100"}, "entities": {}},`）两行删除。
 - `:1207`（锚 `    write_json(root / "whale_series.json", [])`）之前插入 `    build_facts_from_ledgers(root, symbol="SOLX")`（identity_gate.json 已在 :1200-1206 写出）。
-- 反例：在 `t_b2`（`:1246` 起的函数）所在 with 块**之后**新增独立 `with tempfile.TemporaryDirectory(prefix="d-r07-", dir="/private/tmp") as raw:` 块：`build_solana_case(root)`；`gate.run(..., profile="new-analysis") == []`；把 `facts.json` 的 e1 `current_raw` 改 `"1"` → errors 含 `三账重算值不一致`；删 `facts.json` → errors 含 `缺必需资产: facts.json`。用 `check(...)` 登记两条。
+- 反例：新增**独立函数** `t_r07_facts_vs_ledgers()`，放在 `:1282`（锚 `def t_fd2_unseal_binds_flip_receipt():`）之前；函数体：`import audit_release_gate as gate`，`with tempfile.TemporaryDirectory(prefix="d-r07-", dir="/private/tmp") as raw:` 内 `root = Path(raw)`、`report = build_solana_case(root)`、先断言 `gate.run(root, report, profile="new-analysis") == []`；再把 `facts.json` 的 e1 `current_raw` 改 `"1"` → errors 含 `三账重算值不一致`；再删 `facts.json` → errors 含 `缺必需资产: facts.json`。用 `check(...)` 登记两条。在 `main()` 的 `:1700`（锚 `    t_b1_b2_solana_new_analysis()`）之后加一行 `    t_r07_facts_vs_ledgers()`。
 
 **C4-c `scripts/tests/test_review_20260804_p105.py`**
 
 - `:200-201`（锚 `        "facts.json": {"token": {"symbol": "FX", "decimals": 0,` 与 `                                 "total_supply_raw": "1"}, "entities": {}},`）两行与其上一行注释 `:199`（锚 `        # facts 带最小 token（figure2 check 真跑需要 total_supply_raw>0）`）删除。
+- `:209`（锚 `    identity = augment_gate(bridge_root, {`）：给该调用追加关键字参数 `balances=balances`（`balances`＝本函数 `:142` 的 240-owner 字典，同一作用域）——identity 的 total_supply_raw/收据/绑定从此与 owner 快照同一世界（否则 identity total=100 而三账 e1=owner-000 的 2,000,000，build 自检 G2 必拒；同类失真 `test_a4_gate.py:190-197` 注释已记）。
 - `identity_gate.json` 写出行（锚 `    write_json(root / "identity_gate.json", identity)`，本文件恰 1 处）之后插入 `    fixture.build_facts_from_ledgers(root, symbol="FX")`（`fixture`＝test_audit_release_gate 模块别名，本文件既有）。
+
+**C4-c′ `scripts/tests/identity_gate_fixture.py`**
+
+- `:52`（锚 `def augment_gate(root, gate_obj, *, chain, token="0x" + "a" * 40):`）签名末尾加 `, balances=None`；`:55-57`（锚 `    balances = {row["address"]: 100 for row in rows}` 起三行）改为：
+
+```python
+    if balances is None:
+        balances = {row["address"]: 100 for row in rows}
+        if not balances:
+            balances = {"0x" + "f" * 40: 100}
+    else:
+        balances = {str(k): int(v) for k, v in balances.items()}   # 调用方保证 rows 地址 ⊆ balances
+```
+
+  其余不动（`write_binding` 真跑 `replay_pass1`，对地址只 `lower()` 不校验格式，`replay_pass1.py:79`）。默认行为逐字节不变，既有调用点零影响。
+
+**C4-e `scripts/tests/test_a4_gate.py`（`case_new` 走 `build_html --mode analysis-new`＝new-analysis 闸，`build_html.py:254/:434/:489-493`）**
+
+- `:30`（锚 `from test_audit_release_gate import build_case, refresh_adversarial, sha`）改为 `from test_audit_release_gate import build_case, build_facts_from_ledgers, refresh_adversarial, sha`。
+- `:497`（锚 `    add_camp_series(new_d)`）之后、`:498`（锚 `    p = run(GATE, ["finalize", "--case-dir", new_d,`）之前插入 `    build_facts_from_ledgers(new_d, labels={"e1": "实体1"})`。三账成员已由 `add_distribution_initial` 对齐到 `balances_final.json`（＝identity 世界，`{ENTITY_ADDR:100}`），与 state `whale_groups` 一致（G1）。`:378-381` d 案手写 facts **保留**（d 只走 analysis-audit，不进 new-analysis 闸；case_new 复制后被 build 覆盖）。P1-05 断言 `p_build.returncode == 0` 与 HTML 生成不变。
 
 **C4-d `scripts/tests/test_report_facts.py`（build/derive/闸 单元）**
 
@@ -454,8 +495,10 @@ RED：基线无 `facts_vs_ledgers` 键 → KeyError/AssertionError；`check_resu
 | 10 | 闸拒手改 | facts e1 current_raw "90" → errors 含 "e1"；删 provenance → 含 "provenance"；mode 改 exploration → 含 "exploration"；改 identity_gate total_supply_raw 为 "2000"（不重 build）→ errors 非空；`receipt={"facts":{"path":"facts_alt.json"}}` → 含 "figure2" |
 | 11 | peak<current 拒 | provenance peak stock_raw "50" → ValueError |
 | 12 | 空账拒 | membership `entries: []`（或整键缺失）→ ValueError 含 "空账"；position 同 |
+| 13 | 非有限输入拒 | state_source 的 metrics 值分别写成字面量 `NaN`、`Infinity`、`1e999`（三变体各自独立目录，用字符串拼 JSON 写盘）→ `derive_facts` ValueError 含 "非有限"；闸侧：state_source 正常 build 后把 facts.json 的 metrics 值改写成 `1e999` → `check_facts_vs_ledgers` errors 含 "metrics" |
+| 14 | 产物须过既有 gate | identity_gate total_supply_raw 改 "50"（< current 100，provenance_ledger total 同改 "50"）→ `derive_facts` ValueError 含 "G2" |
 
-RED：基线 `fg` 无 `derive_facts`/`gate` 无 `check_facts_vs_ledgers` → AttributeError 记为该例失败原文。
+RED：基线 `fg` 无 `derive_facts`/`gate` 无 `check_facts_vs_ledgers` → AttributeError 记为该例失败原文。C4-b/C4-e 的 RED＝基线 `test_audit_release_gate` 无 `build_facts_from_ledgers` → ImportError（记原文）。
 
 ### C5 `scripts/tests/invariant_manifest.json`
 
@@ -472,4 +515,5 @@ RED：基线 `fg` 无 `derive_facts`/`gate` 无 `check_facts_vs_ledgers` → Att
 ## 4. 调度方本机验收项（施工方不做）
 
 - APU 0801 对照：把三账＋identity_gate＋provenance_ledger 复制到临时目录，补最小 state_source.json（三实体 label 抄现有 facts），跑 `build --exploration`：current_raw 须 3/3 等于现有 facts；peak 与现有 facts 对照（预期 1/3 相等，另两处需 override）。不写回案目录。
-- 登记 `code_change_pending.md`：P11 撤销（改为 REQUIRED，不再有"在场即验"口子）；P12＝producer.sha256 只记录不比对（facts_gate.py 升级后旧 facts 不强制重 build）；P4 保留（override 数学正确性不验）；APU 0801 再发布须补 state_source.facts_inputs 重 build。
+- `test_stage2_reseal.py`：commit 后 `git -C /tmp/w3_acceptance checkout --detach <新 HEAD>`（worktree 内不得留 `__pycache__`），确认本仓库 `git status --short` 为空，再 `python3 -B scripts/tests/test_stage2_reseal.py`。
+- 登记 `code_change_pending.md`：P7 扩注（发布闸 `load_json` 对 `1e999` 的漏口由 C2 逐键比对兜底，facts_gate 输入侧已严格）；P11 撤销（改为 REQUIRED，不再有"在场即验"口子）；P12＝producer.sha256 只记录不比对（facts_gate.py 升级后旧 facts 不强制重 build）；P4 保留（override 数学正确性不验）；APU 0801 再发布须补 state_source.facts_inputs 重 build。
