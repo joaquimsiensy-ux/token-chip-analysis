@@ -1,0 +1,154 @@
+# 施工 A：A5 改生产代码前 RED 证据
+工单：maintenance/repair-20260917-p0-four/workorder_A.md v4
+HEAD: f710fada900df16caecb82725264155116e98528
+命令原文（shlex 可复现；脚本内设置 PYTHONDONTWRITEBYTECODE=1）：
+/Library/Frameworks/Python.framework/Versions/3.14/Resources/Python.app/Contents/MacOS/Python -B -c 'import contextlib
+import hashlib
+import importlib.util
+import os
+from pathlib import Path
+import shlex
+import subprocess
+import sys
+
+os.environ["PYTHONDONTWRITEBYTECODE"] = "1"
+prod = Path("scripts/report/figures_from_facts.py")
+tests = Path("scripts/tests/test_repair_batch_c.py")
+evidence = Path("maintenance/repair-20260917-p0-four/A_red_evidence.txt")
+baseline_sha = "0ba4e6607cbb8211a0e03311bdfa9dc61d1623bac7f289b7406e48f448213bd8"
+assert hashlib.sha256(prod.read_bytes()).hexdigest() == baseline_sha
+subprocess.run(["git", "diff", "--exit-code", "HEAD", "--", str(prod)], check=True)
+spec = importlib.util.spec_from_file_location("r08_red_tests", tests)
+mod = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(mod)
+with evidence.open("w", encoding="utf-8") as fh, contextlib.redirect_stdout(fh), contextlib.redirect_stderr(fh):
+    print("# 施工 A：A5 改生产代码前 RED 证据")
+    print("工单：maintenance/repair-20260917-p0-four/workorder_A.md v4")
+    print("HEAD:", subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip())
+    print("命令原文（shlex 可复现；脚本内设置 PYTHONDONTWRITEBYTECODE=1）：")
+    print(shlex.join(sys.orig_argv))
+    print("SHA256:")
+    for path in (prod, tests):
+        print(hashlib.sha256(path.read_bytes()).hexdigest(), path)
+    print("生产文件与 HEAD 一致：git diff --exit-code HEAD -- " + str(prod) + " -> exit 0 / stdout 空")
+    failed, passed = [], []
+    for i in range(1, 14):
+        name = f"_r08_case_{i}"
+        print(f"\n[{name}]", flush=True)
+        try:
+            getattr(mod, name)()
+        except AssertionError as exc:
+            failed.append(i)
+            print("FAIL: AssertionError:", str(exc), flush=True)
+        else:
+            passed.append(i)
+            print("PASS", flush=True)
+    print("\nSUMMARY:", f"FAIL={len(failed)} {failed}; PASS={len(passed)} {passed}", flush=True)
+    required = {1, 2, 3, 4, 6, 10, 11, 12, 13}
+    assert required.issubset(failed), (failed, passed)
+    assert failed == [1, 2, 3, 4, 5, 6, 7, 8, 10, 11, 12, 13]
+    assert passed == [9]
+print(evidence.read_text(encoding="utf-8"))
+'
+SHA256:
+0ba4e6607cbb8211a0e03311bdfa9dc61d1623bac7f289b7406e48f448213bd8 scripts/report/figures_from_facts.py
+ffd5a94e277acb2b930a964178cdac19df9c03bfd205e383a796e51952bc0b01 scripts/tests/test_repair_batch_c.py
+生产文件与 HEAD 一致：git diff --exit-code HEAD -- scripts/report/figures_from_facts.py -> exit 0 / stdout 空
+
+[_r08_case_1]
+FAIL: AssertionError: R08 NaN 末点必 FAIL: rc=0; receipt={'schema': 'figure2-check-receipt/v1', 'mode': 'formal', 'tol_pp': 0.05, 'verdict': 'PASS', 'facts': {'path': 'facts.json', 'sha256': '87fc227808df121f7af4a890ca11eaba168ab03c6611bf3d56748bb7cdb13082', 'size': 199}, 'series': {'path': 'ws.json', 'sha256': '31cef2af376da012fa578665a52eadf01a85546c2092881a0b32d03e2bd08760', 'size': 52}, 'lines_checked': 1, 'mismatches': [], 'generated_at_utc': '2026-09-17T11:33:26Z'}
+PASS: 图 2 全部 1 条实体线末点与 facts 当前持仓同源（容差 0.05pp，收据 figure2_check_receipt.json）
+/Users/uravvv/.matplotlib is not a writable directory
+Matplotlib created a temporary cache directory at /var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/matplotlib-9l0t2773 because there was an issue with the default path ({configdir}); it is highly recommended to set the MPLCONFIGDIR environment variable to a writable directory, in particular to speed up the import of Matplotlib and to better support multiprocessing.
+Matplotlib is building the font cache; this may take a moment.
+
+
+[_r08_case_2]
+FAIL: AssertionError: R08 中间点 Inf 全序列拒: rc=0; receipt={'schema': 'figure2-check-receipt/v1', 'mode': 'formal', 'tol_pp': 0.05, 'verdict': 'PASS', 'facts': {'path': 'facts.json', 'sha256': '87fc227808df121f7af4a890ca11eaba168ab03c6611bf3d56748bb7cdb13082', 'size': 199}, 'series': {'path': 'ws.json', 'sha256': '5faab51946855289fba146f5925a13f5be396289dd7518be62decb4e3c4c4368', 'size': 72}, 'lines_checked': 1, 'mismatches': [], 'generated_at_utc': '2026-09-17T11:33:37Z'}
+PASS: 图 2 全部 1 条实体线末点与 facts 当前持仓同源（容差 0.05pp，收据 figure2_check_receipt.json）
+/Users/uravvv/.matplotlib is not a writable directory
+Matplotlib created a temporary cache directory at /var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/matplotlib-epixzr78 because there was an issue with the default path ({configdir}); it is highly recommended to set the MPLCONFIGDIR environment variable to a writable directory, in particular to speed up the import of Matplotlib and to better support multiprocessing.
+Matplotlib is building the font cache; this may take a moment.
+
+
+[_r08_case_3]
+FAIL: AssertionError: R08 字符串 pct 拒: rc=0; receipt={'schema': 'figure2-check-receipt/v1', 'mode': 'formal', 'tol_pp': 0.05, 'verdict': 'PASS', 'facts': {'path': 'facts.json', 'sha256': '87fc227808df121f7af4a890ca11eaba168ab03c6611bf3d56748bb7cdb13082', 'size': 199}, 'series': {'path': 'ws.json', 'sha256': '5b2016692d3fe0c70d9f12b5ac9570a4c8b559f95bfb386463bf41d81699a55a', 'size': 55}, 'lines_checked': 1, 'mismatches': [], 'generated_at_utc': '2026-09-17T11:33:47Z'}
+PASS: 图 2 全部 1 条实体线末点与 facts 当前持仓同源（容差 0.05pp，收据 figure2_check_receipt.json）
+/Users/uravvv/.matplotlib is not a writable directory
+Matplotlib created a temporary cache directory at /var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/matplotlib-21owk8ww because there was an issue with the default path ({configdir}); it is highly recommended to set the MPLCONFIGDIR environment variable to a writable directory, in particular to speed up the import of Matplotlib and to better support multiprocessing.
+Matplotlib is building the font cache; this may take a moment.
+
+
+[_r08_case_4]
+FAIL: AssertionError: R08 null pct 拒且留痕: rc=1; receipt={}
+/Users/uravvv/.matplotlib is not a writable directory
+Matplotlib created a temporary cache directory at /var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/matplotlib-gqwsqk1w because there was an issue with the default path ({configdir}); it is highly recommended to set the MPLCONFIGDIR environment variable to a writable directory, in particular to speed up the import of Matplotlib and to better support multiprocessing.
+Matplotlib is building the font cache; this may take a moment.
+Traceback (most recent call last):
+  File "/Users/uravvv/.claude/skills/token-chip-analysis/scripts/report/figures_from_facts.py", line 464, in <module>
+    sys.exit(main())
+             ~~~~^^
+  File "/Users/uravvv/.claude/skills/token-chip-analysis/scripts/report/figures_from_facts.py", line 460, in main
+    return a.fn(a)
+           ~~~~^^^
+  File "/Users/uravvv/.claude/skills/token-chip-analysis/scripts/report/figures_from_facts.py", line 328, in mode_check
+    errs, okc = fig2_check_errors(Path(a.facts), Path(a.series), a.tol_pp)
+                ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/uravvv/.claude/skills/token-chip-analysis/scripts/report/figures_from_facts.py", line 308, in fig2_check_errors
+    last = float(pct[-1])
+TypeError: float() argument must be a string or a real number, not 'NoneType'
+
+
+[_r08_case_5]
+FAIL: AssertionError: R08 Infinity 字面量解析层拒: rc=1; receipt={'schema': 'figure2-check-receipt/v1', 'mode': 'formal', 'tol_pp': 0.05, 'verdict': 'FAIL', 'facts': {'path': 'facts.json', 'sha256': '87fc227808df121f7af4a890ca11eaba168ab03c6611bf3d56748bb7cdb13082', 'size': 199}, 'series': {'path': 'ws.json', 'sha256': '8e03d998fd8a8851cbae353d1fcd74f42b6dfcf609ead5e263f79198f3ae7427', 'size': 57}, 'lines_checked': 0, 'mismatches': ['entity_id=e1 线末点 inf% ≠ facts 当前 27.8000%（差 infpp > 容差 0.05pp）'], 'generated_at_utc': '2026-09-17T11:34:08Z'}
+[CHECK-FAIL] entity_id=e1 线末点 inf% ≠ facts 当前 27.8000%（差 infpp > 容差 0.05pp）
+FAIL: 图 2 装配数据与 facts 终值 1 处不同源（收据 figure2_check_receipt.json）
+/Users/uravvv/.matplotlib is not a writable directory
+Matplotlib created a temporary cache directory at /var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/matplotlib-alujhuhg because there was an issue with the default path ({configdir}); it is highly recommended to set the MPLCONFIGDIR environment variable to a writable directory, in particular to speed up the import of Matplotlib and to better support multiprocessing.
+Matplotlib is building the font cache; this may take a moment.
+
+
+[_r08_case_6]
+FAIL: AssertionError: R08 exploration 放宽容差不豁免: rc=0; receipt={'schema': 'figure2-check-receipt/v1', 'mode': 'exploration', 'tol_pp': 99.0, 'verdict': 'PASS', 'facts': {'path': 'facts.json', 'sha256': '87fc227808df121f7af4a890ca11eaba168ab03c6611bf3d56748bb7cdb13082', 'size': 199}, 'series': {'path': 'ws.json', 'sha256': '31cef2af376da012fa578665a52eadf01a85546c2092881a0b32d03e2bd08760', 'size': 52}, 'lines_checked': 1, 'mismatches': [], 'generated_at_utc': '2026-09-17T11:34:18Z'}
+[exploration] PASS: 图 2 全部 1 条实体线末点与 facts 当前持仓同源（容差 99.0pp，收据 figure2_check_receipt.json）
+/Users/uravvv/.matplotlib is not a writable directory
+Matplotlib created a temporary cache directory at /var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/matplotlib-7yspap97 because there was an issue with the default path ({configdir}); it is highly recommended to set the MPLCONFIGDIR environment variable to a writable directory, in particular to speed up the import of Matplotlib and to better support multiprocessing.
+Matplotlib is building the font cache; this may take a moment.
+
+
+[_r08_case_7]
+FAIL: AssertionError: R08 facts 含 NaN 字面量同拒: rc=0
+PASS: 图 2 全部 1 条实体线末点与 facts 当前持仓同源（容差 0.05pp，收据 figure2_check_receipt.json）
+/Users/uravvv/.matplotlib is not a writable directory
+Matplotlib created a temporary cache directory at /var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/matplotlib-6dc2aeu7 because there was an issue with the default path ({configdir}); it is highly recommended to set the MPLCONFIGDIR environment variable to a writable directory, in particular to speed up the import of Matplotlib and to better support multiprocessing.
+Matplotlib is building the font cache; this may take a moment.
+
+
+[_r08_case_8]
+/Users/uravvv/.matplotlib is not a writable directory
+Matplotlib created a temporary cache directory at /var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/matplotlib-buenhsep because there was an issue with the default path ({configdir}); it is highly recommended to set the MPLCONFIGDIR environment variable to a writable directory, in particular to speed up the import of Matplotlib and to better support multiprocessing.
+Matplotlib is building the font cache; this may take a moment.
+FAIL: AssertionError: R08 dumps_fig2_series 拒 NaN: 未抛 ValueError: b'[{"entity_id":"e1","pct":[NaN],"ts":["d"]}]'
+
+[_r08_case_9]
+PASS
+
+[_r08_case_10]
+FAIL: AssertionError: R08 陈旧 PASS 收据被 FAIL 覆盖（换输入）: rc=0; receipt={'schema': 'figure2-check-receipt/v1', 'mode': 'formal', 'tol_pp': 0.05, 'verdict': 'PASS', 'facts': {'path': 'facts.json', 'sha256': '87fc227808df121f7af4a890ca11eaba168ab03c6611bf3d56748bb7cdb13082', 'size': 199}, 'series': {'path': 'ws.json', 'sha256': '31cef2af376da012fa578665a52eadf01a85546c2092881a0b32d03e2bd08760', 'size': 52}, 'lines_checked': 1, 'mismatches': [], 'generated_at_utc': '2026-09-17T11:34:40Z'}
+PASS: 图 2 全部 1 条实体线末点与 facts 当前持仓同源（容差 0.05pp，收据 figure2_check_receipt.json）
+
+
+[_r08_case_11]
+FAIL: AssertionError: R08 超大整数不抛异常、走 FAIL 收据: rc=0; receipt={'schema': 'figure2-check-receipt/v1', 'mode': 'formal', 'tol_pp': 0.05, 'verdict': 'PASS', 'facts': {'path': 'facts.json', 'sha256': '87fc227808df121f7af4a890ca11eaba168ab03c6611bf3d56748bb7cdb13082', 'size': 199}, 'series': {'path': 'ws.json', 'sha256': 'ed7b4aa0698647f1e35767c771e71f4eae76d4079e389cb125c652718e04dc4a', 'size': 487}, 'lines_checked': 1, 'mismatches': [], 'generated_at_utc': '2026-09-17T11:34:40Z'}
+PASS: 图 2 全部 1 条实体线末点与 facts 当前持仓同源（容差 0.05pp，收据 figure2_check_receipt.json）
+
+
+[_r08_case_12]
+FAIL: AssertionError: R08 同输入陈旧 PASS 收据被覆盖且消费者拒: rc=0; receipt={'schema': 'figure2-check-receipt/v1', 'mode': 'formal', 'tol_pp': 0.05, 'verdict': 'PASS', 'facts': {'path': 'facts.json', 'sha256': '87fc227808df121f7af4a890ca11eaba168ab03c6611bf3d56748bb7cdb13082', 'size': 199}, 'series': {'path': 'ws.json', 'sha256': '31cef2af376da012fa578665a52eadf01a85546c2092881a0b32d03e2bd08760', 'size': 52}, 'lines_checked': 1, 'mismatches': [], 'generated_at_utc': '2026-09-17T11:34:40Z'}; consumer=[]
+PASS: 图 2 全部 1 条实体线末点与 facts 当前持仓同源（容差 0.05pp，收据 figure2_check_receipt.json）
+
+
+[_r08_case_13]
+FAIL: AssertionError: R08 收据写入失败仍 FAIL 退出: exception=OSError('disk full'); stderr=''
+
+SUMMARY: FAIL=12 [1, 2, 3, 4, 5, 6, 7, 8, 10, 11, 12, 13]; PASS=1 [9]

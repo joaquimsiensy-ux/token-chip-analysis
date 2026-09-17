@@ -1198,6 +1198,318 @@ def t_fc5_receipt_chain():
               any("缺 facts 绑定" in x for x in errs), str(errs))
 
 
+def _r08_case_1():
+    fff = ROOT / "scripts/report/figures_from_facts.py"
+    with tempfile.TemporaryDirectory() as s:
+        td = Path(s)
+        (td / "facts.json").write_text(
+            '{"token":{"symbol":"TT","decimals":0,"total_supply_raw":"1000"},'
+            '"entities":{"e1":{"label":"大庄#1","addresses":["' + A + '"],'
+            '"current_raw":"278","peak_raw":"300"}}}', encoding="utf-8")
+        (td / "ws.json").write_text(
+            '[{"entity_id":"e1","ts":["2026-01-01"],"pct":[NaN]}]',
+            encoding="utf-8")
+        p = run([fff, "check", "--facts", "facts.json", "--series", "ws.json"], td)
+        out = p.stdout + p.stderr
+        rcpt_path = td / "figure2_check_receipt.json"
+        rcpt = json.loads(rcpt_path.read_text()) if rcpt_path.is_file() else {}
+        check("R08 NaN 末点必 FAIL",
+              p.returncode != 0 and "字面量" in out and rcpt.get("verdict") == "FAIL",
+              f"rc={p.returncode}; receipt={rcpt!r}\n{out}")
+
+
+def _r08_case_2():
+    fff = ROOT / "scripts/report/figures_from_facts.py"
+    with tempfile.TemporaryDirectory() as s:
+        td = Path(s)
+        (td / "facts.json").write_text(
+            '{"token":{"symbol":"TT","decimals":0,"total_supply_raw":"1000"},'
+            '"entities":{"e1":{"label":"大庄#1","addresses":["' + A + '"],'
+            '"current_raw":"278","peak_raw":"300"}}}', encoding="utf-8")
+        (td / "ws.json").write_text(
+            '[{"entity_id":"e1","ts":["2026-01-01","2026-01-02"],'
+            '"pct":[1e400,27.8]}]', encoding="utf-8")
+        p = run([fff, "check", "--facts", "facts.json", "--series", "ws.json"], td)
+        out = p.stdout + p.stderr
+        rcpt_path = td / "figure2_check_receipt.json"
+        rcpt = json.loads(rcpt_path.read_text()) if rcpt_path.is_file() else {}
+        check("R08 中间点 Inf 全序列拒",
+              p.returncode == 1 and "非有限" in out and rcpt.get("verdict") == "FAIL",
+              f"rc={p.returncode}; receipt={rcpt!r}\n{out}")
+
+
+def _r08_case_3():
+    fff = ROOT / "scripts/report/figures_from_facts.py"
+    with tempfile.TemporaryDirectory() as s:
+        td = Path(s)
+        (td / "facts.json").write_text(
+            '{"token":{"symbol":"TT","decimals":0,"total_supply_raw":"1000"},'
+            '"entities":{"e1":{"label":"大庄#1","addresses":["' + A + '"],'
+            '"current_raw":"278","peak_raw":"300"}}}', encoding="utf-8")
+        (td / "ws.json").write_text(
+            '[{"entity_id":"e1","ts":["2026-01-01"],"pct":["27.8"]}]',
+            encoding="utf-8")
+        p = run([fff, "check", "--facts", "facts.json", "--series", "ws.json"], td)
+        out = p.stdout + p.stderr
+        rcpt_path = td / "figure2_check_receipt.json"
+        rcpt = json.loads(rcpt_path.read_text()) if rcpt_path.is_file() else {}
+        check("R08 字符串 pct 拒",
+              p.returncode == 1 and "非有限" in out and rcpt.get("verdict") == "FAIL",
+              f"rc={p.returncode}; receipt={rcpt!r}\n{out}")
+
+
+def _r08_case_4():
+    fff = ROOT / "scripts/report/figures_from_facts.py"
+    with tempfile.TemporaryDirectory() as s:
+        td = Path(s)
+        (td / "facts.json").write_text(
+            '{"token":{"symbol":"TT","decimals":0,"total_supply_raw":"1000"},'
+            '"entities":{"e1":{"label":"大庄#1","addresses":["' + A + '"],'
+            '"current_raw":"278","peak_raw":"300"}}}', encoding="utf-8")
+        (td / "ws.json").write_text(
+            '[{"entity_id":"e1","ts":["2026-01-01"],"pct":[null]}]',
+            encoding="utf-8")
+        p = run([fff, "check", "--facts", "facts.json", "--series", "ws.json"], td)
+        out = p.stdout + p.stderr
+        rcpt_path = td / "figure2_check_receipt.json"
+        rcpt = json.loads(rcpt_path.read_text()) if rcpt_path.is_file() else {}
+        check("R08 null pct 拒且留痕",
+              p.returncode == 1 and rcpt.get("verdict") == "FAIL",
+              f"rc={p.returncode}; receipt={rcpt!r}\n{out}")
+
+
+def _r08_case_5():
+    fff = ROOT / "scripts/report/figures_from_facts.py"
+    with tempfile.TemporaryDirectory() as s:
+        td = Path(s)
+        (td / "facts.json").write_text(
+            '{"token":{"symbol":"TT","decimals":0,"total_supply_raw":"1000"},'
+            '"entities":{"e1":{"label":"大庄#1","addresses":["' + A + '"],'
+            '"current_raw":"278","peak_raw":"300"}}}', encoding="utf-8")
+        (td / "ws.json").write_text(
+            '[{"entity_id":"e1","ts":["2026-01-01"],"pct":[Infinity]}]',
+            encoding="utf-8")
+        p = run([fff, "check", "--facts", "facts.json", "--series", "ws.json"], td)
+        out = p.stdout + p.stderr
+        rcpt_path = td / "figure2_check_receipt.json"
+        rcpt = json.loads(rcpt_path.read_text()) if rcpt_path.is_file() else {}
+        mismatches = rcpt.get("mismatches") or []
+        check("R08 Infinity 字面量解析层拒",
+              p.returncode != 0 and "字面量" in out and rcpt.get("verdict") == "FAIL"
+              and bool(mismatches) and "输入不可用" in mismatches[0],
+              f"rc={p.returncode}; receipt={rcpt!r}\n{out}")
+
+
+def _r08_case_6():
+    fff = ROOT / "scripts/report/figures_from_facts.py"
+    with tempfile.TemporaryDirectory() as s:
+        td = Path(s)
+        (td / "facts.json").write_text(
+            '{"token":{"symbol":"TT","decimals":0,"total_supply_raw":"1000"},'
+            '"entities":{"e1":{"label":"大庄#1","addresses":["' + A + '"],'
+            '"current_raw":"278","peak_raw":"300"}}}', encoding="utf-8")
+        (td / "ws.json").write_text(
+            '[{"entity_id":"e1","ts":["2026-01-01"],"pct":[NaN]}]',
+            encoding="utf-8")
+        p = run([fff, "check", "--facts", "facts.json", "--series", "ws.json",
+                 "--exploration", "--tol-pp", "99"], td)
+        out = p.stdout + p.stderr
+        rcpt_path = td / "figure2_check_receipt.json"
+        rcpt = json.loads(rcpt_path.read_text()) if rcpt_path.is_file() else {}
+        check("R08 exploration 放宽容差不豁免",
+              p.returncode != 0 and rcpt.get("verdict") == "FAIL"
+              and rcpt.get("mode") == "exploration",
+              f"rc={p.returncode}; receipt={rcpt!r}\n{out}")
+
+
+def _r08_case_7():
+    fff = ROOT / "scripts/report/figures_from_facts.py"
+    with tempfile.TemporaryDirectory() as s:
+        td = Path(s)
+        (td / "facts.json").write_text(
+            '{"token":{"symbol":"TT","decimals":0,"total_supply_raw":"1000"},'
+            '"entities":{"e1":{"label":"大庄#1","addresses":["' + A + '"],'
+            '"current_raw":"278","peak_raw":"300", "x": NaN}}}', encoding="utf-8")
+        (td / "ws.json").write_text(
+            '[{"entity_id":"e1","ts":["2026-01-01"],"pct":[27.8]}]',
+            encoding="utf-8")
+        p = run([fff, "check", "--facts", "facts.json", "--series", "ws.json"], td)
+        out = p.stdout + p.stderr
+        check("R08 facts 含 NaN 字面量同拒",
+              p.returncode != 0 and "字面量" in out, f"rc={p.returncode}\n{out}")
+
+
+def _r08_case_8():
+    import figures_from_facts as ffm
+    with tempfile.TemporaryDirectory() as s:
+        td = Path(s)
+        (td / "facts.json").write_text(
+            '{"token":{"symbol":"TT","decimals":0,"total_supply_raw":"1000"},'
+            '"entities":{"e1":{"label":"大庄#1","addresses":["' + A + '"],'
+            '"current_raw":"278","peak_raw":"300"}}}', encoding="utf-8")
+        (td / "ws.json").write_text(
+            '[{"entity_id":"e1","ts":["d"],"pct":[NaN]}]', encoding="utf-8")
+        try:
+            blob = ffm.dumps_fig2_series(
+                [{"entity_id": "e1", "ts": ["d"], "pct": [float("nan")]}])
+        except ValueError:
+            check("R08 dumps_fig2_series 拒 NaN", True)
+        else:
+            check("R08 dumps_fig2_series 拒 NaN", False, f"未抛 ValueError: {blob!r}")
+
+
+def _r08_case_9():
+    fff = ROOT / "scripts/report/figures_from_facts.py"
+    with tempfile.TemporaryDirectory() as s:
+        td = Path(s)
+        (td / "facts.json").write_text(
+            '{"token":{"symbol":"TT","decimals":0,"total_supply_raw":"1000"},'
+            '"entities":{"e1":{"label":"大庄#1","addresses":["' + A + '"],'
+            '"current_raw":"278","peak_raw":"300"}}}', encoding="utf-8")
+        (td / "ws.json").write_text(
+            '[{"entity_id":"e1","ts":["2026-01-01"],"pct":[27.8]}]',
+            encoding="utf-8")
+        p = run([fff, "check", "--facts", "facts.json", "--series", "ws.json"], td)
+        out = p.stdout + p.stderr
+        rcpt_path = td / "figure2_check_receipt.json"
+        rcpt = json.loads(rcpt_path.read_text()) if rcpt_path.is_file() else {}
+        check("R08 合法序列仍 PASS",
+              p.returncode == 0 and rcpt.get("verdict") == "PASS",
+              f"rc={p.returncode}; receipt={rcpt!r}\n{out}")
+
+
+def _r08_case_10():
+    fff = ROOT / "scripts/report/figures_from_facts.py"
+    with tempfile.TemporaryDirectory() as s:
+        td = Path(s)
+        (td / "facts.json").write_text(
+            '{"token":{"symbol":"TT","decimals":0,"total_supply_raw":"1000"},'
+            '"entities":{"e1":{"label":"大庄#1","addresses":["' + A + '"],'
+            '"current_raw":"278","peak_raw":"300"}}}', encoding="utf-8")
+        ws = td / "ws.json"
+        ws.write_text('[{"entity_id":"e1","ts":["2026-01-01"],"pct":[27.8]}]',
+                      encoding="utf-8")
+        p = run([fff, "check", "--facts", "facts.json", "--series", "ws.json"], td)
+        rcpt_path = td / "figure2_check_receipt.json"
+        rcpt = json.loads(rcpt_path.read_text()) if rcpt_path.is_file() else {}
+        check("R08 换输入前 PASS 收据在场",
+              p.returncode == 0 and rcpt.get("verdict") == "PASS",
+              f"rc={p.returncode}; receipt={rcpt!r}\n{p.stdout}{p.stderr}")
+        ws.write_text('[{"entity_id":"e1","ts":["2026-01-01"],"pct":[NaN]}]',
+                      encoding="utf-8")
+        p = run([fff, "check", "--facts", "facts.json", "--series", "ws.json"], td)
+        out = p.stdout + p.stderr
+        rcpt = json.loads(rcpt_path.read_text()) if rcpt_path.is_file() else {}
+        check("R08 陈旧 PASS 收据被 FAIL 覆盖（换输入）",
+              p.returncode != 0 and rcpt.get("verdict") == "FAIL"
+              and rcpt.get("series", {}).get("sha256") == hashlib.sha256(ws.read_bytes()).hexdigest(),
+              f"rc={p.returncode}; receipt={rcpt!r}\n{out}")
+
+
+def _r08_case_11():
+    fff = ROOT / "scripts/report/figures_from_facts.py"
+    with tempfile.TemporaryDirectory() as s:
+        td = Path(s)
+        (td / "facts.json").write_text(
+            '{"token":{"symbol":"TT","decimals":0,"total_supply_raw":"1000"},'
+            '"entities":{"e1":{"label":"大庄#1","addresses":["' + A + '"],'
+            '"current_raw":"278","peak_raw":"300"}}}', encoding="utf-8")
+        (td / "ws.json").write_text(
+            '[{"entity_id":"e1","ts":["2026-01-01","2026-01-02","2026-01-03"],'
+            '"pct":[1e400,1' + '0' * 400 + ',27.8]}]', encoding="utf-8")
+        p = run([fff, "check", "--facts", "facts.json", "--series", "ws.json"], td)
+        out = p.stdout + p.stderr
+        rcpt_path = td / "figure2_check_receipt.json"
+        rcpt = json.loads(rcpt_path.read_text()) if rcpt_path.is_file() else {}
+        check("R08 超大整数不抛异常、走 FAIL 收据",
+              p.returncode == 1 and ("非法数值" in out or "非有限" in out)
+              and "OverflowError" not in out and rcpt.get("verdict") == "FAIL",
+              f"rc={p.returncode}; receipt={rcpt!r}\n{out}")
+
+
+def _r08_case_12():
+    fff = ROOT / "scripts/report/figures_from_facts.py"
+    import audit_release_gate as gate
+    with tempfile.TemporaryDirectory() as s:
+        td = Path(s)
+        facts = td / "facts.json"
+        facts.write_text(
+            '{"token":{"symbol":"TT","decimals":0,"total_supply_raw":"1000"},'
+            '"entities":{"e1":{"label":"大庄#1","addresses":["' + A + '"],'
+            '"current_raw":"278","peak_raw":"300"}}}', encoding="utf-8")
+        ws = td / "ws.json"
+        ws.write_text('[{"entity_id":"e1","ts":["2026-01-01"],"pct":[NaN]}]',
+                      encoding="utf-8")
+        rcpt_path = td / "figure2_check_receipt.json"
+        handwritten = {
+            "schema": "figure2-check-receipt/v1", "mode": "formal",
+            "tol_pp": 0.05, "verdict": "PASS",
+            "facts": {"path": "facts.json", "sha256": hashlib.sha256(facts.read_bytes()).hexdigest()},
+            "series": {"path": "ws.json", "sha256": hashlib.sha256(ws.read_bytes()).hexdigest()},
+        }
+        rcpt_path.write_text(json.dumps(handwritten), encoding="utf-8")
+        errs = []
+        gate.check_figure2_receipt(td, handwritten, errs)
+        check("R08 同输入手写 PASS 基线消费者接受", errs == [], str(errs))
+        p = run([fff, "check", "--facts", "facts.json", "--series", "ws.json"], td)
+        out = p.stdout + p.stderr
+        rcpt = json.loads(rcpt_path.read_text()) if rcpt_path.is_file() else {}
+        errs2 = []
+        gate.check_figure2_receipt(td, rcpt, errs2)
+        check("R08 同输入陈旧 PASS 收据被覆盖且消费者拒",
+              p.returncode != 0 and rcpt.get("verdict") == "FAIL"
+              and any("非 PASS" in x for x in errs2),
+              f"rc={p.returncode}; receipt={rcpt!r}; consumer={errs2!r}\n{out}")
+
+
+def _r08_case_13():
+    import argparse
+    import contextlib
+    import io
+    from unittest import mock
+    import figures_from_facts as ffm
+    with tempfile.TemporaryDirectory() as s:
+        td = Path(s)
+        (td / "facts.json").write_text(
+            '{"token":{"symbol":"TT","decimals":0,"total_supply_raw":"1000"},'
+            '"entities":{"e1":{"label":"大庄#1","addresses":["' + A + '"],'
+            '"current_raw":"278","peak_raw":"300"}}}', encoding="utf-8")
+        (td / "ws.json").write_text(
+            '[{"entity_id":"e1","ts":["2026-01-01"],"pct":[NaN]}]',
+            encoding="utf-8")
+        ns = argparse.Namespace(facts=str(td / "facts.json"), series=str(td / "ws.json"),
+                                tol_pp=0.05, exploration=False)
+        buf = io.StringIO()
+        caught = None
+        with mock.patch.object(ffm, "_write_check_receipt", side_effect=OSError("disk full")), \
+                contextlib.redirect_stderr(buf):
+            try:
+                ffm.mode_check(ns)
+            except (SystemExit, OSError) as e:
+                caught = e
+        detail = f"exception={caught!r}; stderr={buf.getvalue()!r}"
+        check("R08 收据写入失败仍 FAIL 退出", isinstance(caught, SystemExit), detail)
+        check("R08 收据写入失败保留 FAIL 原因",
+              isinstance(caught.code, str) and caught.code.startswith("FAIL:"), detail)
+        check("R08 收据写入失败提示未更新", "收据未更新" in buf.getvalue(), detail)
+
+
+def t_r08_nonfinite():
+    _r08_case_1()
+    _r08_case_2()
+    _r08_case_3()
+    _r08_case_4()
+    _r08_case_5()
+    _r08_case_6()
+    _r08_case_7()
+    _r08_case_8()
+    _r08_case_9()
+    _r08_case_10()
+    _r08_case_11()
+    _r08_case_12()
+    _r08_case_13()
+
+
 def t_f04_tolpp_clamp():
     """--tol-pp 同族钳制（同 F-02 模式）：formal 写死默认值，仅 --exploration 可覆盖。"""
     fff = ROOT / "scripts/report/figures_from_facts.py"
@@ -2104,6 +2416,7 @@ def main():
     t_f09_importer_fail_closed()
     t_fixround1()
     t_fc5_receipt_chain()
+    t_r08_nonfinite()
     t_fixround2()
     print(f"PASS: repair batch C (F-05+F-04+fixround1+fixround2) "
           f"{len(PASSED)} checks")

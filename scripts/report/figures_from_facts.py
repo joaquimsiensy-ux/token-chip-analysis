@@ -60,9 +60,25 @@ FIG1_LEGEND_RECEIPT_NAME = "fig1_legend_receipt.json"
 FIG1_LEGEND_RECEIPT_SCHEMA = "figure1-legend/v1"
 
 
-def _load(p):
+def _reject_constant(token):
+    """JSON 的 NaN/Infinity/-Infinity 字面量一律拒（标准 JSON 不允许；Python json 默认放行）。"""
+    raise ValueError(f"JSON 非有限数值字面量 {token} 拒收（NaN/Infinity）")
+
+
+def _pct_value_ok(v):
+    """pct 单点合法：非 bool 的 int/float，且可转为有限 float（超大整数转 float 的
+    OverflowError 也算非法——不能让它在检查阶段抛异常绕过 FAIL 收据分支）。"""
+    if isinstance(v, bool) or not isinstance(v, (int, float)):
+        return False
+    try:
+        return math.isfinite(float(v))
+    except OverflowError:
+        return False
+
+
+def _load(p, strict=True):
     with open(p, encoding="utf-8") as f:
-        return json.load(f)
+        return json.load(f, parse_constant=_reject_constant if strict else None)
 
 
 def _parse_date(s):
@@ -106,7 +122,7 @@ def _read_price_csv(path, cols=None):
 
 
 def mode_fig1(a):
-    state = _load(a.state)
+    state = _load(a.state, strict=False)
     css = state.get("camp_share_series") or {}
     dates, series_by_camp = css.get("dates"), css.get("series")
     if not dates or not series_by_camp:
@@ -305,6 +321,11 @@ def fig2_check_errors(facts_path: Path, series_path: Path, tol_pp: float) -> tup
         if not pct:
             errs.append(f"{key} 线无 pct 数据")
             continue
+        bad = [i for i, v in enumerate(pct) if not _pct_value_ok(v)]
+        if bad:
+            errs.append(f"{key} 线 pct[{bad[0]}] 非有限/非法数值 {pct[bad[0]]!r}"
+                        "（NaN/±Inf/bool/非数/超大整数一律拒，容差不豁免）")
+            continue
         last = float(pct[-1])
         cur = int(str(ent.get("current_raw", "0")))
         want = cur / facts.total_raw * 100 if facts.total_raw else 0.0
@@ -325,7 +346,19 @@ def mode_check(a):
         print(f"FAIL: 正式模式 --tol-pp 写死 {DEFAULT_TOL_PP}pp（收到 {a.tol_pp}）"
               f"——探索性放宽必须显式加 --exploration", file=sys.stderr)
         raise SystemExit(2)
-    errs, okc = fig2_check_errors(Path(a.facts), Path(a.series), a.tol_pp)
+    try:
+        errs, okc = fig2_check_errors(Path(a.facts), Path(a.series), a.tol_pp)
+    except ValueError as exc:
+        # 输入不可用也要留痕：覆盖同目录里可能残留的陈旧 PASS 收据（其输入 sha 仍匹配，
+        # 否则发布闸 check_figure2_receipt 会继续接受它）。两输入任一缺失/非常规文件时
+        # 无法取 sha，只报错不写收据；收据写入过程本身的 OSError（输入不可读、目录不可写、
+        # fsync/replace 失败）也不得吞掉 FAIL 退出——如实提示"收据未更新"。
+        if os.path.isfile(a.facts) and os.path.isfile(a.series):
+            try:
+                _write_check_receipt(a, "FAIL", 0, [f"输入不可用：{exc}"])
+            except OSError as io_exc:
+                print(f"[CHECK-FAIL] 收据未更新（写入失败：{io_exc}）", file=sys.stderr)
+        raise SystemExit(f"FAIL: 图 2 对账输入不可用——{exc}")
     if errs and errs[0] == "--series 应为图 2 whale_series JSON（list of lines）":
         raise SystemExit("FAIL: " + errs[0])
     if errs:
@@ -369,7 +402,7 @@ def build_fig2_series(entity_series_obj, facts_obj, keys) -> list:
 
 def dumps_fig2_series(lines) -> bytes:
     return json.dumps(lines, ensure_ascii=False, sort_keys=True,
-                      separators=(",", ":")).encode("utf-8")
+                      separators=(",", ":"), allow_nan=False).encode("utf-8")
 
 
 def _write_fig2_outputs(out, data, provenance):
