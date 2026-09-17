@@ -1,7 +1,7 @@
 # 工单 E（v3）：版本落地 7.2.0 —— repair-20260917-p0-four 收官（四条 P0：R08 图 2 有限值、R03 expanded 只进上限、R07 facts 由三账生成、R09 日级峰值闸）
 
 > 性质：**纯文档/元数据工单**，零生产代码、零测试代码、零手册改动。新增公开入口 2（`facts_gate.py build` 子命令、`replay_duck.py --only-addrs` 选项）与两个持久化 schema（`facts-provenance/v1`、`block-precision-followup/v1`）。**档位＝7.2.0**（用户 09-17 批准的计划所定；codex 复核 r1 E-01 认为 facts.json 进必需件且旧 facts 必须重 build 属不兼容契约变更、应记 8.0.0——本单按批准计划施工，异议原文写进 CHANGELOG 条目"档位说明"，由用户追认或改判；改判只需改四处版本号与条目标题）。
-> v3 变更（codex r2 唯一项 E-02-r2）：§2:19 残留的"先跑 changelog_lint"改为调度方运行。
+> v3 变更（codex r2 唯一项 E-02-r2）：§2:19 残留的施工者运行 changelog_lint 指令改为调度方运行。
 > v2 变更（codex r1 六条，见 `review_E_reply_r1.md`）：E-01 档位说明入条目待追认；E-02 `changelog_lint`/`docs_lint --all` 读 archive/ 归调度方跑，施工方只跑 `test_version_consistency` 与 `wc -c`；E-03 A 段 13 例（batch_c 244 checks）；E-04 生产文件 6、入口称谓；E-05 FAIL 收据落盘条件；E-06 trigger sha 绑定条件。
 > 内容基线：HEAD 以 `construct_E_prompt.md` 派工副本首行标注为准；四段施工 commit：A 212ede1、B 03507cb、C 1b317b3＋C7 eca1131、D f583039。
 
