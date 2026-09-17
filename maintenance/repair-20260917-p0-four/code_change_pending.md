@@ -11,3 +11,4 @@
 | P4 | 计划 R07 | 发布闸只验 peak override 的证据在位与哈希，不验其数学正确性 | 残余风险 | 登记 |
 | P5 | 工单 A v2 §4（codex r1 f 项） | `stage2_closeout.py:63` 裸 `json.loads` 读序列（:459/:468），未经严格解析 | 范围外；:458 序列化经 A4、:464 对账经 A1/A2 兜底 | 登记 |
 | P6 | 工单 A v2 §4 | fig1 state 非豁免键含 NaN 仍进绘图（`figures_from_facts.py:109` 保留宽松解析以维持 burn_cum_pct 字段级报错契约） | 基线行为 | 登记 |
+| P10 | 工单 B v2 §4（codex r1 B-R1-05） | `expanded_economic_control_range_raw` 上限超出"下限＋Σexpanded"的部分（文档允许的疑似设施受益权增量）无账本来源，闸只验下界 | 残余风险 | 登记 |
