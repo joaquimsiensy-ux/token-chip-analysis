@@ -2,7 +2,7 @@
 
 > 出处：codex 对 7.0.4 的 review（`REVIEW.md` R07，P0）——facts.json（报告宏的唯一数字源）与三账之间没有任何数值等式，手抄/手改 facts 不会被任何闸拦。用户 2026-09-17 裁决：**facts 由三账自动生成**；峰值取 `provenance_ledger.json` 的实体峰值锚点、允许显式 override（须带证据）；人工字段（label/symbol/decimals/metrics 等）**复用 `state_source.json`**，不新建文件；总原则"能不新增不新增、skill 上下文不增"。
 > 内容基线：本段白名单源码文件与 commit `8ead156`（A/B 落地）逐字节相同；开工 HEAD 以 `construct_C_prompt.md` 首行标注为准（工单/提示词提交会推进 HEAD，源码不变）。行号均指施工前基线。
-> v2 变更（对 codex r1 八条，见 `review_C_reply_r1.md`）：C-R02/C-R04 → **撤销"在场即验"与 P11**，facts.json 加进 `NEW_ANALYSIS_REQUIRED`（复核实证：真正要求 new-analysis 闸零错误的夹具——batch_d `build_solana_case`（batch15/batch18/batch13/recon_fifth 复用）、P105（batch B 复用）、stage2/reseal——都带 facts，只是手写；一律改为共享助手 `build_facts_from_ledgers` 从三账 build）；C-R01 → stage2 build 放在 `add_camp_series` 之后、A4 finalize 之前；C-R03 → derive 先验三账非空；C-R05 → provenance_ledger 前移进 `build_release_case`，reseal prereq 幂等；C-R06 → batch_d 反例独立 with 块；C-R07 → docs_lint 移出施工方清单（调度方 pre-commit 跑）；C-R08 → HEAD 表述改为随施工提示词。另补：figure2 收据绑定的 facts 必须是本名 `facts.json`（复核指出另名 facts 可让图 2 对账绕开三账重算）。
+> v2 变更（对 codex r1 八条，见 `review_C_reply_r1.md`）：C-R02/C-R04 → **撤销"在场即验"与 P11**，facts.json 加进 `NEW_ANALYSIS_REQUIRED`（复核实证：真正要求 new-analysis 闸零错误的夹具——batch_d `build_solana_case`（batch15/batch18_shared_bundle_witness/batch18_review_digest 复用；batch13 用 test_r9_batch3 的 build_case、recon_fifth 自建夹具，r3 校准）、P105（batch B 复用）、stage2/reseal——都带 facts，只是手写；一律改为共享助手 `build_facts_from_ledgers` 从三账 build）；C-R01 → stage2 build 放在 `add_camp_series` 之后、A4 finalize 之前；C-R03 → derive 先验三账非空；C-R05 → provenance_ledger 前移进 `build_release_case`，reseal prereq 幂等；C-R06 → batch_d 反例独立 with 块；C-R07 → docs_lint 移出施工方清单（调度方 pre-commit 跑）；C-R08 → HEAD 表述改为随施工提示词。另补：figure2 收据绑定的 facts 必须是本名 `facts.json`（复核指出另名 facts 可让图 2 对账绕开三账重算）。
 > v3 变更（对 codex r2 五条，见 `review_C_reply_r2.md`）：C-R04-r2 → 新增 C4-e：`test_a4_gate.py` 的 `case_new`（唯一走 `build_html --mode analysis-new` 的夹具）改用共享助手 build；C-R05-r2 → reseal 的 overlay 白名单是 W3 专用**不改**，等价验收路径＝调度方 commit 后把 `/tmp/w3_acceptance` worktree 同步到新 HEAD、树干净、overlay 为空再跑（§0.8/§4）；C-R09 → C3 说明移出代码块、§0.4 计数改 11、C4-b 反例改为独立函数 `t_r07_facts_vs_ledgers` 并登记到 `main()`；C-R10 → `derive_facts` 末尾用既有 `gate_check(Facts(facts))` 自检（G2/G3 等）不过即拒（build 出的 facts 必须过既有 facts gate，fail-closed），P105 的 identity 用真实 owner 快照建绑定（`identity_gate_fixture.augment_gate` 加 `balances` 关键字参数，C4-c′）；C-R11 → C1 输入 JSON 严格解析：`parse_constant` 拒 NaN/Infinity 字面量、`parse_float` 拒溢出成 inf 的 `1e999`（§1.5，C4-d 用例 13/14）。
 > 设计要点：①`state_source.json` 只新增**一个**顶层块 `facts_inputs`（`state_from_facts.compile_state` :95-142 按键取值、不展开 source，新块不会漏进 analysis-state.json）。②文档只改 `references/report-template.md:212` 一处（−5 B）；`analyze-workflow.md:147` 不改。③夹具 facts 的峰值一律走 override（夹具无 provenance 锚点）＝confirmed 值，证据文件 `peak_evidence.json` 随案。
 
@@ -420,7 +420,7 @@ def build_facts_from_ledgers(root, *, symbol="TT", decimals=0, labels=None, peak
 ```
 
 - 新增模块级函数 `add_provenance_ledger(case)`（放在 `:36`（锚 `def build_release_case(root):`）之前），函数体逐字搬自 `test_stage2_reseal.py:28-39` `add_reseal_prereqs`（`REPO` 常量本文件已有；写法用本文件 `read`/`write`/`sha`）。
-- `:123`、`:352`、`:590` 三处 `== 11` → `== 12`。
+- `:123`、`:352`、`:590` 三处 `== 11` → `== 12`；`:586` 注释（锚 `    # A failing check cannot short-circuit the other ten checks or receipt emission.`）`ten` → `eleven`（r3 顺手校准，不影响执行）。
 - 新增用例函数（放在 `:593`（锚 `TESTS = [dryrun_profile_exempts_stage3_artifacts, only_findings_changed_is_rejected,`）之前）并登记到 `TESTS` 列表末尾：
 
 ```python
