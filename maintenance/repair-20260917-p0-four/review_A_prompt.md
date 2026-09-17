@@ -1,15 +1,13 @@
-# 工单 A 复核提示词（只读）
+# 工单 A 复核提示词（只读，r2：对 v2 全量复核）
 
 ## 纪律
-1. 禁读 `~/.codex/`（插件启动搜索若已读 memories 如实披露一次，之后不再读）；禁读本仓库 `archive/`、`blind-reviews/`、`.staging_*`、`references/attic.md`。
-2. 只读、离线、不 commit、不改任何文件。报告全文打印到 stdout，首行固定为 `# 工单A复核：通过` 或 `# 工单A复核：退回`。退回时逐条给出：编号、工单位置、事实（附 `grep -n -F` 或代码原文）、修订建议。
+1. 禁读 `~/.codex/`（插件启动搜索若已读 memories 如实披露一次，之后不再读）；禁读本仓库 `archive/`、`blind-reviews/`、`.staging_*`、`references/attic.md` 的内容（统计大小只用 stat）。
+2. 只读、离线、不 commit、不改任何文件。报告全文打印到 stdout，首行固定为 `# 工单A复核：通过` 或 `# 工单A复核：退回`。退回时逐条给出：编号、工单位置、事实（附 `grep -n -F` 或代码原文）、修订建议。通过时也要列出你实际核过的项。
 
 ## 任务
-复核 `maintenance/repair-20260917-p0-four/workorder_A.md`（v1）。工作目录＝本仓库根。逐项核：
-a) §2 每个锚文本 `grep -n -F` 在指定文件恰 1 处且行号一致（`figures_from_facts.py` :60/:63-65/:139-144/:282-286/:304-308/:328/:370-372；`test_repair_batch_c.py` :1109/:1111-1120/:1201/:2106）。
-b) A1：`_reject_constant` 抛 ValueError 是否与 `fig2_check_errors` :282-286 的透传及 `scripts/tests/test_stage2_closeout.py:569-574` 契约一致；`_load` 五路调用方（fig1 state、flow spec、check 双输入、fig2-series）加 `parse_constant` 是否有任何路径会因此从"通过"变"拒"而破坏现有测试（列出你查到的调用点行号与结论）。
-c) A2：插入位置是否正确（在"线无 pct 数据" continue 之后、`last = float(pct[-1])` 之前）；`math` 是否已 import；断言 `1e400` 走 A2 而非 `parse_constant` 是否属实（Python json 对 `1e400` 的行为）。
-d) A3：`mode_check` 加 try/except 后，`:329-330` 的 `--series 应为 …` 特判与后续收据写入逻辑是否不受影响；NaN 字面量路径确认"不写收据、exit 1"。
-e) A5：九个用例的 RED 断言是否成立——基线代码上用例 1/2/3/6 是否真的 PASS（返回码 0）、用例 4 是否 traceback 无收据、用例 5/7/8 的基线行为是否如工单所述；若沙箱允许在临时目录运行 `python3 scripts/report/figures_from_facts.py check …` 请实跑取证，不允许则静态推演并注明"未实跑"。`run`/`check`/`A`/`fff` 辅助与 `sys.path` 设置是否如工单所述可直接复用；用例 8 的模块导入方式是否可行。
-f) §0.4 不改清单与 §1.1 字节约束是否与改动范围自洽；是否遗漏了本段应改而未列的同族点（例如其他读 series 的路径仍裸 `json.load`），若有请列出但注明"是否属本段范围"。
-g) 有无任何一处会让 `scripts/tests/run_all.py` 现有用例变红（重点：`test_repair_batch_c.py`、`test_stage2_closeout.py`、`test_repair_batch_d.py` 端到端夹具的空 series `[]`、`test_figures_from_facts.py`）。
+复核 `maintenance/repair-20260917-p0-four/workorder_A.md`（v2；v1 的七条退回意见见同目录 `review_A_reply_r1.md`）。工作目录＝本仓库根。逐项核：
+a) §2 每个锚文本 `grep -n -F` 在指定文件恰 1 处且行号一致（`figures_from_facts.py` :60/:63-65/:109/:139-144/:201-202/:257/:282-286/:306-308/:328-330/:370-372/:406；`test_repair_batch_c.py` :37-40/:45/:54/:60/:1109/:1111-1120/:1201/:2106）。
+b) v2 对 r1 七条的处置是否各自闭合：A-01（fig1 `:109` strict=False 后 `test_figures_from_facts.py:150-151`、`test_repair_batch1.py:993-994` 是否仍绿；其余 6 处 strict 是否有任何现有测试从通过变失败——请检查 `test_figures_from_facts.py`、`test_stage2_closeout.py`、`test_repair_batch_d.py`、`test_a4_gate.py`、`test_repair_g1_cross_target.py`、`test_review_20260804_p105.py` 中喂给 flow/check/fig2-series 的 JSON 夹具有无 NaN/Infinity 字面量）；A-02（A3 的 except 分支写 FAIL 收据是否可行：`_write_check_receipt`/`_file_ref` 对未解析的文件取 sha 是否无副作用；`os.path.isfile` 守卫是否够；用例 10 是否能证明覆盖）；A-03（锚唯一性）；A-04（子函数拆分与 RED 取证方式）；A-05（stat 命令是否正确且不读内容）；A-06/A-07。
+c) A5 十个用例的 RED/GREEN 断言在基线与改后是否成立（沙箱允许则在临时目录实跑 `python3 scripts/report/figures_from_facts.py check …` 取证，否则静态推演并注明"未实跑"）；用例 5 与 6 新增的收据字段断言（`mismatches[0]` 含"输入不可用"、`mode == "exploration"`）是否与 `_write_check_receipt` 写出的字段一致。
+d) §0.4 不改清单、§0.8 定向测试清单、§1.1 字节约束、§4 登记项是否与改动范围自洽；是否还有遗漏的同族点（列出并注明是否属本段）。
+e) 有无任何一处会让 `scripts/tests/run_all.py` 现有用例变红。
