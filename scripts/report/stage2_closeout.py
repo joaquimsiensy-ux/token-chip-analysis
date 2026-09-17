@@ -572,7 +572,14 @@ def run_checks(case, report_rel, workorder_rel=WORKORDER):
     record("dual_basis", dual)
     record("fig2_series", lambda: rules(lambda: fig2_series_errors(case, workorder_rel)))
     record("workorder", lambda: rules(lambda: workorder_errors(case, report_rel, workorder_rel)))
+
+    def facts_vs_ledgers():
+        errors = []
+        audit_release_gate.check_facts_vs_ledgers(case, load(case, "facts.json"), errors)
+        return errors, [], "PASS"
+
     record("facts_gate", facts_check)
+    record("facts_vs_ledgers", facts_vs_ledgers)
     return checks
 
 

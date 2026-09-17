@@ -209,7 +209,7 @@ python3 scripts/report/build_html.py --mode analysis-new --md 报告.md --out �
 
 **为什么**：数字/地址手抄进报告已第四犯——纪律拦不住的交给架构拦。正文结论数字与附录 B 直接由 facts 宏编译；analysis-state 由 `state_from_facts.py` 读取同一 facts 的实体主键、成员和 raw amount，再合并不重复的 state_source。facts/state 不再各自人工装配，对不上即编译失败。
 
-- **facts.json**（阶段 3 结束、写报告前构建；schema 与宏语法全集见 `scripts/report/facts_gate.py` docstring）：token 总量/decimals + entities（每实体 label/addresses/current_raw/peak_raw，数值一律**原始整数字符串**从落盘数据复制；**多地址实体另填 merge_evidence_earliest**=归并证据最早时间，3.19 A1）+ metrics（自定义分子分母）。entities 字典键即 entity_id 稳定主键，与 analysis-state whale_groups[].entity_id 一致。
+- **facts.json**（阶段 3 结束、写报告前构建；schema 与宏语法全集见 `scripts/report/facts_gate.py` docstring）：token 总量/decimals + entities（每实体 label/addresses/current_raw/peak_raw，由 `facts_gate.py build` 自三账生成，禁手抄；**多地址实体另填 merge_evidence_earliest**=归并证据最早时间，3.19 A1）+ metrics（自定义分子分母）。entities 字典键即 entity_id 稳定主键，与 analysis-state whale_groups[].entity_id 一致。
 - **合并时点措辞（3.19）**：叙述多地址实体在归并证据出现之前的共同行为，用宏 `{{e_x.merged_since}}` 标注时间或写"以最终归并口径回看"——禁写"当时已可确认同一实体"（细则 playbook-evidence-wording.md §11，facts_gate G6 自动提示）。
 - **写作纪律**：报告 md 中实体的持仓枚数/占比/峰值/成员数一律写宏——`{{e1.amount_share}}` → "2.78亿枚【总量27.84%】"（自动满足带【总量%】纪律）、`{{e1.share}}`、`{{e1.peak_share}}`、`{{e1.naddr}}`、`{{m:指标id}}`；附录 B 整块写 `{{appendix_b}}` 自动生成（**手打地址在架构上被消灭**）。禁止手打这些数字；价格/涨跌幅等非实体结论数字暂可手写（G5 会列清单供人工过目）。
 - **宏口径边界**：`{{e.peak_share}}` 只代表日末序列峰值；日内事件占比禁用宏，

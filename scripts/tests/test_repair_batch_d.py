@@ -960,7 +960,7 @@ def _build_solana_exact(root: Path, target: dict, owners_path: Path):
 
 def build_solana_case(root: Path):
     """Solana new-analysis 发布闸 run() 完整端到端夹具（B-2，F-B6② 留账正主）。"""
-    from test_audit_release_gate import align_ledgers_to_owner_snapshot
+    from test_audit_release_gate import align_ledgers_to_owner_snapshot, build_facts_from_ledgers
     root = Path(root)
     target = {"chain": "solana", "token": SOL_MINT, "as_of_block": SOL_SLOT}
     bundle_path, owners_path = _build_solana_bundle(root)
@@ -1164,8 +1164,6 @@ def build_solana_case(root: Path):
         "identity_snapshot_receipt.json": {"schema": "identity-snapshot-receipt/v1"},
         "entity_freeze.json": {"schema": "entity-freeze/v1", "revisions": []},
         "analysis-state.json": state,
-        "facts.json": {"token": {"symbol": "SOLX", "decimals": 0,
-                                 "total_supply_raw": "100"}, "entities": {}},
         "evidence.json": {"source": "fixture"},
         "a4_claims.json": {"schema": "a4-claims/v2", "claims": [{"id": "C1"}]},
     }.items():
@@ -1204,6 +1202,7 @@ def build_solana_case(root: Path):
         "share_basis": "total_supply", "total_supply_raw": "100",
         "snapshot_binding": identity_binding, "rows": [],
     })
+    build_facts_from_ledgers(root, symbol="SOLX")
     write_json(root / "whale_series.json", [])
     fff = HERE.parent / "report/figures_from_facts.py"
     p = subprocess.run([sys.executable, str(fff), "check", "--facts", "facts.json",
@@ -1278,6 +1277,24 @@ def t_b1_b2_solana_new_analysis():
 
 
 # ================= 消化轮 1（F-D1~F-D8；F-D1 用例并入 t_f06_a5_disclosure）=================
+
+def t_r07_facts_vs_ledgers():
+    import audit_release_gate as gate
+    with tempfile.TemporaryDirectory(prefix="d-r07-", dir="/private/tmp") as raw:
+        root = Path(raw)
+        report = build_solana_case(root)
+        assert gate.run(root, report, profile="new-analysis") == []
+        facts = json.loads((root / "facts.json").read_text(encoding="utf-8"))
+        facts["entities"]["e1"]["current_raw"] = "1"
+        write_json(root / "facts.json", facts)
+        errors = gate.run(root, report, profile="new-analysis")
+        check("R07 facts 手改被三账重算拒绝",
+              any("三账重算值不一致" in error for error in errors), errors)
+        (root / "facts.json").unlink()
+        errors = gate.run(root, report, profile="new-analysis")
+        check("R07 new-analysis 缺 facts 必拒",
+              any("缺必需资产: facts.json" in error for error in errors), errors)
+
 
 def t_fd2_unseal_binds_flip_receipt():
     """F-D2：冻结绑定清单含 flip 裁决收据——冻结后改写/删除收据 check-unseal 必拒。"""
@@ -1698,6 +1715,7 @@ def main():
     t_a5_same_source_negative()
     t_b7_ledger_snapshot_binding()
     t_b1_b2_solana_new_analysis()
+    t_r07_facts_vs_ledgers()
     # 消化轮 1
     t_fd2_unseal_binds_flip_receipt()
     t_fd4_receipt_sanity()

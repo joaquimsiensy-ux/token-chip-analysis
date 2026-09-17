@@ -26,17 +26,7 @@ read, write, sha = w2.read, w2.write, w2.sha
 
 
 def add_reseal_prereqs(case):
-    path = case / "provenance_ledger.json"
-    ledger = read(path) if path.exists() else {
-        "schema": "provenance-ledger/v2", "total_supply_raw": "100", "entities": []}
-    files = {}
-    for name, source in (("entity_source_trace.py", REPO / "scripts/report/entity_source_trace.py"),
-                         ("wave_scan.py", REPO / "scripts/report/wave_scan.py"),
-                         ("sqd_cache_identity.py", REPO / "scripts/solana/sqd_cache_identity.py")):
-        files[name] = {"path": str(source.resolve()), "bytes": source.stat().st_size, "sha256": sha(source)}
-    ledger.setdefault("input_binding", {})["algorithm"] = {
-        "script_sha256": files["entity_source_trace.py"]["sha256"], "files": files}
-    write(path, ledger)
+    w2.add_provenance_ledger(case)
 
 
 def snapshot(root):

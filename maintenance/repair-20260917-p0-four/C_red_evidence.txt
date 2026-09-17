@@ -1,0 +1,114 @@
+# 施工 C v3：生产改动前 C4 RED 证据
+UTC: 2026-09-17T14:15:02.273558+00:00
+开工 HEAD: 8dea1ab；git status --short 输出为空。
+执行方式：python3 -B 指定测试；内联 runner 独立捕获 C4 集成断言。
+每个变体独立临时目录；保留 AssertionError/ImportError/AttributeError 原文。
+生产基线命令: git diff --exit-code 8dea1ab -- scripts/report/facts_gate.py scripts/report/audit_release_gate.py scripts/report/stage2_closeout.py
+生产基线 rc=0; stdout=''; stderr=''
+生产 SHA256 before scripts/report/facts_gate.py: 4326ce44aa43399ef9e4ea1dd3d644876cd53826ba7e8fa8da1199e3e88cfc4a
+生产 SHA256 before scripts/report/audit_release_gate.py: 940eedd582a036d0059e5a740eb0e52ac52a1ff045e36698d4db512d06c159c5
+生产 SHA256 before scripts/report/stage2_closeout.py: 1e8b0505224f912e8ff63f1ac9dd9bd413a828f077e5167a5d0dfcc82aa1915c
+
+C4-d command: python3 -B scripts/tests/test_report_facts.py
+FAIL  R07 1 derive 绿例: AttributeError: module 'facts_gate' has no attribute 'derive_facts'
+FAIL  R07 2 CLI build 幂等: AssertionError: usage: facts_gate.py [-h] --facts FACTS [--state STATE] [--md MD]
+facts_gate.py: error: the following arguments are required: --facts
+
+FAIL  R07 3 override valid: AttributeError: module 'facts_gate' has no attribute 'derive_facts'
+FAIL  R07 3 override bad_sha: AttributeError: module 'facts_gate' has no attribute 'derive_facts'
+FAIL  R07 3 override missing_evidence: AttributeError: module 'facts_gate' has no attribute 'derive_facts'
+FAIL  R07 4 formal 无峰值拒 / exploration 放行: AttributeError: module 'facts_gate' has no attribute 'derive_facts'
+FAIL  R07 5 预置绑定拒: AttributeError: module 'facts_gate' has no attribute 'derive_facts'
+FAIL  R07 6 label missing: AttributeError: module 'facts_gate' has no attribute 'derive_facts'
+FAIL  R07 6 label empty: AttributeError: module 'facts_gate' has no attribute 'derive_facts'
+FAIL  R07 6 label extra: AttributeError: module 'facts_gate' has no attribute 'derive_facts'
+FAIL  R07 7 三账不闭合拒: AttributeError: module 'facts_gate' has no attribute 'derive_facts'
+FAIL  R07 8 总量冲突拒: AttributeError: module 'facts_gate' has no attribute 'derive_facts'
+FAIL  R07 9 闸绿例: AttributeError: module 'facts_gate' has no attribute 'derive_facts'
+FAIL  R07 10 闸拒手改 current: AttributeError: module 'facts_gate' has no attribute 'derive_facts'
+FAIL  R07 10 闸拒手改 provenance: AttributeError: module 'facts_gate' has no attribute 'derive_facts'
+FAIL  R07 10 闸拒手改 exploration: AttributeError: module 'facts_gate' has no attribute 'derive_facts'
+FAIL  R07 10 闸拒手改 identity: AttributeError: module 'facts_gate' has no attribute 'derive_facts'
+FAIL  R07 10 闸拒手改 receipt: AttributeError: module 'facts_gate' has no attribute 'derive_facts'
+FAIL  R07 11 peak < current 拒: AttributeError: module 'facts_gate' has no attribute 'derive_facts'
+FAIL  R07 12 空账 membership_ledger.json missing=False: AttributeError: module 'facts_gate' has no attribute 'derive_facts'
+FAIL  R07 12 空账 membership_ledger.json missing=True: AttributeError: module 'facts_gate' has no attribute 'derive_facts'
+FAIL  R07 12 空账 position_ledger.json missing=False: AttributeError: module 'facts_gate' has no attribute 'derive_facts'
+FAIL  R07 12 空账 position_ledger.json missing=True: AttributeError: module 'facts_gate' has no attribute 'derive_facts'
+FAIL  R07 13 非有限输入 NaN: AttributeError: module 'facts_gate' has no attribute 'derive_facts'
+FAIL  R07 13 非有限输入 Infinity: AttributeError: module 'facts_gate' has no attribute 'derive_facts'
+FAIL  R07 13 非有限输入 1e999: AttributeError: module 'facts_gate' has no attribute 'derive_facts'
+FAIL  R07 13 facts 溢出值拒: AttributeError: module 'facts_gate' has no attribute 'derive_facts'
+FAIL  R07 14 产物过既有 G2 gate: AttributeError: module 'facts_gate' has no attribute 'derive_facts'
+Traceback (most recent call last):
+  File "/Users/uravvv/.claude/skills/token-chip-analysis/scripts/tests/test_report_facts.py", line 374, in <module>
+    sys.exit(main())
+             ~~~~^^
+  File "/Users/uravvv/.claude/skills/token-chip-analysis/scripts/tests/test_report_facts.py", line 367, in main
+    _r07_build_cases()
+    ~~~~~~~~~~~~~~~~^^
+  File "/Users/uravvv/.claude/skills/token-chip-analysis/scripts/tests/test_report_facts.py", line 284, in _r07_build_cases
+    assert not failures, f"R07 失败 {len(failures)}/{len(results)}: {failures}"
+           ^^^^^^^^^^^^
+AssertionError: R07 失败 28/28: ['1 derive 绿例', '2 CLI build 幂等', '3 override valid', '3 override bad_sha', '3 override missing_evidence', '4 formal 无峰值拒 / exploration 放行', '5 预置绑定拒', '6 label missing', '6 label empty', '6 label extra', '7 三账不闭合拒', '8 总量冲突拒', '9 闸绿例', '10 闸拒手改 current', '10 闸拒手改 provenance', '10 闸拒手改 exploration', '10 闸拒手改 identity', '10 闸拒手改 receipt', '11 peak < current 拒', '12 空账 membership_ledger.json missing=False', '12 空账 membership_ledger.json missing=True', '12 空账 position_ledger.json missing=False', '12 空账 position_ledger.json missing=True', '13 非有限输入 NaN', '13 非有限输入 Infinity', '13 非有限输入 1e999', '13 facts 溢出值拒', '14 产物过既有 G2 gate']
+
+C4-d RED exit_code=1
+
+FAIL C4-0 shared helper: ImportError: cannot import name 'build_facts_from_ledgers' from 'test_audit_release_gate' (/Users/uravvv/.claude/skills/token-chip-analysis/scripts/tests/test_audit_release_gate.py)
+
+FAIL C4-b hand-edit: ImportError: cannot import name 'build_facts_from_ledgers' from 'test_audit_release_gate' (/Users/uravvv/.claude/skills/token-chip-analysis/scripts/tests/test_audit_release_gate.py)
+
+FAIL C4-b missing facts: ImportError: cannot import name 'build_facts_from_ledgers' from 'test_audit_release_gate' (/Users/uravvv/.claude/skills/token-chip-analysis/scripts/tests/test_audit_release_gate.py)
+
+FAIL C4-e case_new: ImportError: cannot import name 'build_facts_from_ledgers' from 'test_audit_release_gate' (/Users/uravvv/.claude/skills/token-chip-analysis/scripts/tests/test_audit_release_gate.py)
+
+FAIL C4-c P105 fixture helper: AttributeError: module 'audit_fixture_profiles' has no attribute 'build_facts_from_ledgers'
+
+FAIL C4-c-prime balances argument: AssertionError: (root, gate_obj, *, chain, token='0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa')
+
+FAIL C4-a current: AssertionError: expected 12 checks, actual 11; names=['release_gate_dryrun', 'a4_seal_integrity', 'downstream_stale', 'identity_gate', 'a5_provenance_flip', 'a5_distribution', 'caption_same_source', 'dual_basis', 'fig2_series', 'workorder', 'facts_gate']
+
+FAIL C4-a provenance: AssertionError: PASS: release_gate_dryrun
+  允许 A5 缺席；在场 A5 仍由 check_formal_case_chain 核 chain。不装载 claim_registry.json，check_claims 不执行，claim_types 为空，historical-chart 检查跳过。dryrun 的 report 参数只检查非 None；报告内容与 sha 由 closeout #2/#5/#6/#7/#10/#11 承担
+PASS: a4_seal_integrity
+PASS: downstream_stale
+  {"item": "adversarial_review.claim_registry", "expected": "39d22482d2c35b9cfcb41378863631a4637e5cb268ab31e9fc1a25603ba65a52", "actual": "39d22482d2c35b9cfcb41378863631a4637e5cb268ab31e9fc1a25603ba65a52", "status": "ok", "fix_order": "freeze → A4 register/finalize → 受影响复核路 → runner finalize → shared_release_receipt → rounds → A5"}
+  {"item": "shared_release_receipt.adversarial_review", "expected": "db3c186d93c6d3d4ef7d803d796e841f59800d97bc4bc3a303f4c2f2a9e56e0b", "actual": "db3c186d93c6d3d4ef7d803d796e841f59800d97bc4bc3a303f4c2f2a9e56e0b", "status": "ok", "fix_order": "freeze → A4 register/finalize → 受影响复核路 → runner finalize → shared_release_receipt → rounds → A5"}
+  {"item": "rounds.a4_seal_sha", "expected": "b9d5f9237b4d6934eb2895c38c94eb08e1ddebc46cf471d281dbbefe0905b766", "actual": "b9d5f9237b4d6934eb2895c38c94eb08e1ddebc46cf471d281dbbefe0905b766", "status": "ok", "fix_order": "freeze → A4 register/finalize → 受影响复核路 → runner finalize → shared_release_receipt → rounds → A5"}
+  {"item": "rounds.entity_freeze_revision", "expected": 1, "actual": 1, "status": "ok", "fix_order": "freeze → A4 register/finalize → 受影响复核路 → runner finalize → shared_release_receipt → rounds → A5"}
+  {"item": "dormant_warehouse_audit.universe_ref", "expected": "06f606100d2e290b4e36a8105b8c0db573c0d83adcce8c1c7815c087ed7c9866", "actual": "06f606100d2e290b4e36a8105b8c0db573c0d83adcce8c1c7815c087ed7c9866", "status": "ok", "fix_order": "freeze → A4 register/finalize → 受影响复核路 → runner finalize → shared_release_receipt → rounds → A5"}
+  fix_order: freeze → A4 register/finalize → 受影响复核路 → runner finalize → shared_release_receipt → rounds → A5
+PASS: identity_gate
+PASS: a5_provenance_flip
+  status=NO_LEDGER
+PASS: a5_distribution
+  status=LOW_SAMPLE
+PASS: caption_same_source
+  存在性检查，非逐桶配对
+  NOTE: private_dust raw=0，退化为数字存在性检查
+  NOTE: public_facility raw=0，退化为数字存在性检查
+  NOTE: unresolved_contract raw=0，退化为数字存在性检查
+  NOTE: burn_sentinel raw=0，退化为数字存在性检查
+NOTE: dual_basis
+  未声明双口径
+PASS: fig2_series
+  NOTE: time_range 未核
+  只闭合案根 whale_series.json ↔ 工单选材 ↔ entity_series 实物；不能证明 −3 渲染的 PNG 用的是这份序列；plot_whale_vs_price 接受调用方任意数组，figure2_check_receipt 也只绑定被检查的序列文件，同样不能证明 PNG 用了它
+PASS: workorder
+  NOTE: fig3.events_input 是工单 fig3.events 自引用，空哈希不核
+  fig2 required 下限: ['e1']
+  NOTE: 未声明流通量，门槛仅按总供应判
+  flow 下限: ['e1']；图中实体: ['e1']
+PASS: facts_gate
+  G5 疑似手写百分比（新纪律：结论性百分比一律走宏；确认为非结论数字——如价格涨跌幅/费率——可交付）: 0.00% 100.00%
+PASS: −2 可进入装配；待 −3 执行项：fig1/fig2/fig3/流转图渲染、fig1_legend_receipt、figure2_check_receipt、a5_report_seal、build_html
+
+
+FAIL C4-a exploration: AssertionError: expected 12 checks, actual 11; names=['release_gate_dryrun', 'a4_seal_integrity', 'downstream_stale', 'identity_gate', 'a5_provenance_flip', 'a5_distribution', 'caption_same_source', 'dual_basis', 'fig2_series', 'workorder', 'facts_gate']
+
+C4-a-prime：按工单 0.8 不运行 test_stage2_reseal.py；本项仅指定函数体搬移，无独立运行。
+生产 SHA256 after scripts/report/facts_gate.py: 4326ce44aa43399ef9e4ea1dd3d644876cd53826ba7e8fa8da1199e3e88cfc4a
+生产 SHA256 after scripts/report/audit_release_gate.py: 940eedd582a036d0059e5a740eb0e52ac52a1ff045e36698d4db512d06c159c5
+生产 SHA256 after scripts/report/stage2_closeout.py: 1e8b0505224f912e8ff63f1ac9dd9bd413a828f077e5167a5d0dfcc82aa1915c
+生产 SHA256 before == after: PASS
+RED summary: C4-d 28/28; integration 9/9; production unchanged

@@ -5,7 +5,7 @@
 报告 md 里写宏引用，本模块渲染+语义 gate：正文数字、附录 B、analysis-state.json 三处
 永远同源；改一处数据其余处必然跟着变，对不上编译直接失败（fail-closed）。
 
-facts.json schema（每案一份，阶段 3 结束时从落盘数据构建；数值一律**原始整数字符串**）：
+facts.json schema（每案一份，阶段 3 结束时由 build 子命令从三账生成，禁手抄；数值一律**原始整数字符串**）：
 {
   "token": {"symbol": "QUQ", "decimals": 18, "total_supply_raw": "1000...0"},
   "entities": {
@@ -57,11 +57,25 @@ entity_id 匹配**，label 只是展示文案（改措辞不再断链路）；�
 
 用法（库 + CLI 双形态；build_html.py --facts 参数内部调用）：
   python3 facts_gate.py --facts facts.json --state analysis-state.json   # 纯校验
+  python3 facts_gate.py build [--case-dir .] [--source state_source.json] [--out facts.json] [--exploration]
+      # 从三账＋identity_gate＋provenance_ledger＋state_source.facts_inputs 生成 facts.json（7.2.0，R07）
+state_source.facts_inputs schema：
+  symbol: str（必填）；decimals: int≥0（必填）
+  entity_labels: {eid: label}（必填、非空、覆盖全部实体）
+  peak_overrides: {eid: {peak_raw, peak_date, evidence: {path, sha256, note?}}}
+      （可选，优先于 provenance 锚点，证据须为案根常规文件）
+  merge_evidence: {eid: {earliest, note}}（可选）
+  role_notes: {eid: {addr: note}}（可选）
+  metrics: {}（可选透传）；dual_basis: {}（可选透传）
+  禁止 provenance/facts_binding 键；绑定块只能由 build 生成。
 """
 import argparse
+import hashlib
 import json
+import os
 import re
 import sys
+from pathlib import Path
 
 # 字符类含连字符：实体键约定（3.19 起 entities 字典键=stable entity_id）允许
 # ENT-PROJ 型命名——缺连字符时这类宏既不渲染也不被 G4 检出（死宏静默漏进正文，
@@ -247,6 +261,239 @@ def gate_check(facts, state=None, rendered_md=None):
     return errors, notes
 
 
+FACTS_PROVENANCE_SCHEMA = "facts-provenance/v1"
+STATE_SOURCE_SCHEMA = "analysis-state-source/v1"
+FACTS_INPUTS_KEY = "facts_inputs"
+FACTS_LEDGER_INPUTS = ("membership_ledger.json", "position_ledger.json",
+                       "economic_control_ledger.json", "identity_gate.json")
+
+
+def _sha256_path(path):
+    h = hashlib.sha256()
+    with open(path, "rb") as fh:
+        for chunk in iter(lambda: fh.read(1 << 20), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def _norm_addr(value):
+    v = str(value or "").strip()
+    return v.lower() if v.lower().startswith("0x") else v
+
+
+def _case_file(case_dir, rel, label):
+    """案内常规文件：basename 相对案根、非符号链接、必须在场；否则 ValueError。"""
+    name = Path(str(rel or "")).name
+    if not name or name != str(rel):
+        raise ValueError(f"{label} 路径必须是案根内 basename: {rel!r}")
+    p = Path(case_dir) / name
+    if p.is_symlink() or not p.is_file():
+        raise ValueError(f"{label} 不在案根或是符号链接: {name}")
+    return p
+
+
+def _reject_constant(value):
+    raise ValueError(f"JSON 含非有限常量 {value}（NaN/Infinity 不允许）")
+
+
+def _finite_float(text):
+    v = float(text)
+    if v != v or v in (float("inf"), float("-inf")):
+        raise ValueError(f"JSON 浮点非有限: {text}")
+    return v
+
+
+def _load_case_json(case_dir, rel, label):
+    with open(_case_file(case_dir, rel, label), encoding="utf-8") as fh:
+        try:
+            return json.load(fh, parse_constant=_reject_constant, parse_float=_finite_float)
+        except ValueError as exc:
+            raise ValueError(f"{label} 解析失败: {exc}") from exc
+
+
+def _raw_str(value, label):
+    n = _int(value)
+    if n < 0:
+        raise ValueError(f"{label} 不得为负: {value!r}")
+    return str(n)
+
+
+def derive_facts(case_dir, *, exploration=False):
+    """R07（7.2.0）：从三账＋identity_gate＋（可选）provenance_ledger＋state_source.facts_inputs
+    重算 facts.json。纯函数：只读案内文件，不写盘，不带时间戳；build 与发布闸/收口共用，
+    闸用它重算后与落盘 facts 逐字段比对。任何缺件/不闭合/证据不符一律 ValueError（fail-closed）。"""
+    case_dir = Path(case_dir)
+    data = {n: _load_case_json(case_dir, n, n) for n in FACTS_LEDGER_INPUTS[:3]}
+    for name, obj in data.items():
+        rows = obj.get("entries", obj.get("entities")) if isinstance(obj, dict) else None
+        if not isinstance(rows, list) or not rows:
+            raise ValueError(f"{name} 缺 entries/entities 或为空——空账不得生成 facts")
+    import audit_release_gate  # 同目录；三账闭合复用发布闸同一实现
+    errs = []
+    audit_release_gate.check_three_ledgers(case_dir, data, errs, chain=None)
+    if errs:
+        raise ValueError("三账不闭合，拒绝生成 facts: " + "; ".join(errs[:3]))
+    identity = _load_case_json(case_dir, "identity_gate.json", "identity_gate.json")
+    total_raw = _raw_str(identity.get("total_supply_raw"), "identity_gate.total_supply_raw")
+    if int(total_raw) <= 0:
+        raise ValueError("identity_gate.total_supply_raw 必须为正")
+    ledger_path = case_dir / "provenance_ledger.json"
+    ledger = None
+    if ledger_path.is_file() and not ledger_path.is_symlink():
+        ledger = _load_case_json(case_dir, "provenance_ledger.json", "provenance_ledger.json")
+        if not exploration and ledger.get("exploration") is True:
+            raise ValueError("provenance_ledger 为探索产物，formal build 拒绝")
+        lt = ledger.get("total_supply_raw")
+        if lt is not None and _raw_str(lt, "provenance_ledger.total_supply_raw") != total_raw:
+            raise ValueError(f"total_supply_raw 冲突: identity_gate {total_raw} != provenance_ledger {lt}")
+    source = _load_case_json(case_dir, "state_source.json", "state_source.json")
+    if source.get("schema") != STATE_SOURCE_SCHEMA:
+        raise ValueError(f"state_source.schema 必须是 {STATE_SOURCE_SCHEMA}")
+    fi = source.get(FACTS_INPUTS_KEY)
+    if not isinstance(fi, dict):
+        raise ValueError(f"state_source 缺 {FACTS_INPUTS_KEY} 对象")
+    if "provenance" in fi or "facts_binding" in fi:
+        raise ValueError("state_source.facts_inputs 不得预置 provenance/facts_binding——绑定块只能由 build 生成")
+    symbol = str(fi.get("symbol") or "").strip()
+    decimals = fi.get("decimals")
+    if not symbol or isinstance(decimals, bool) or not isinstance(decimals, int) or decimals < 0:
+        raise ValueError("facts_inputs.symbol/decimals 缺失或非法")
+    labels = fi.get("entity_labels")
+    if not isinstance(labels, dict) or not labels:
+        raise ValueError("facts_inputs.entity_labels 缺失或为空")
+    overrides = fi.get("peak_overrides") or {}
+    merges = fi.get("merge_evidence") or {}
+    roles = fi.get("role_notes") or {}
+    if not all(isinstance(x, dict) for x in (overrides, merges, roles)):
+        raise ValueError("facts_inputs.peak_overrides/merge_evidence/role_notes 须为对象")
+
+    members = data["membership_ledger.json"]
+    members = members.get("entries", members.get("entities", []))
+    strict_by_entity = {}
+    for row in members:
+        if str(row.get("membership", "")).strip() == "strict":
+            strict_by_entity.setdefault(str(row.get("entity_id", "")).strip(), set()).add(
+                _norm_addr(row.get("address")))
+    ledger_entities = {}
+    if ledger is not None:
+        for item in ledger.get("entities") or []:
+            if isinstance(item, dict) and item.get("entity_id"):
+                ledger_entities[str(item["entity_id"])] = item
+
+    econ = data["economic_control_ledger.json"]
+    econ = econ.get("entries", econ.get("entities", []))
+    entities, used_overrides = {}, {}
+    for row in econ:
+        eid = str(row.get("entity_id", "")).strip()
+        label = str(labels.get(eid) or "").strip()
+        if not label:
+            raise ValueError(f"facts_inputs.entity_labels 缺实体 {eid} 的 label")
+        current = _raw_str(row.get("confirmed_economic_control_raw"),
+                           f"economic {eid}.confirmed_economic_control_raw")
+        ent = {"label": label, "addresses": sorted(strict_by_entity.get(eid, set())),
+               "current_raw": current}
+        ov = overrides.get(eid)
+        if ov is not None:
+            if not isinstance(ov, dict):
+                raise ValueError(f"peak_overrides.{eid} 须为对象")
+            ev = ov.get("evidence")
+            if not isinstance(ev, dict) or not ev.get("path") or not ev.get("sha256"):
+                raise ValueError(f"peak_overrides.{eid} 缺 evidence.path/sha256")
+            ev_path = _case_file(case_dir, ev["path"], f"peak_overrides.{eid}.evidence")
+            if _sha256_path(ev_path) != str(ev["sha256"]).lower():
+                raise ValueError(f"peak_overrides.{eid}.evidence sha256 与案内实物不一致")
+            peak = _raw_str(ov.get("peak_raw"), f"peak_overrides.{eid}.peak_raw")
+            peak_date = str(ov.get("peak_date") or "").strip()
+            if not peak_date:
+                raise ValueError(f"peak_overrides.{eid} 缺 peak_date")
+            used_overrides[eid] = {"peak_raw": peak, "peak_date": peak_date,
+                                   "evidence": {"path": ev_path.name,
+                                                "sha256": str(ev["sha256"]).lower()}}
+        elif eid in ledger_entities:
+            anchor = ((ledger_entities[eid].get("anchors") or {}).get("peak") or {})
+            peak = _raw_str(anchor.get("stock_raw"), f"provenance_ledger {eid}.anchors.peak.stock_raw")
+            peak_date = str(anchor.get("date") or "").strip()
+            if not peak_date:
+                raise ValueError(f"provenance_ledger {eid}.anchors.peak 缺 date")
+        elif exploration:
+            peak, peak_date = current, None
+        else:
+            raise ValueError(f"实体 {eid} 无峰值来源（provenance_ledger 锚点或 peak_overrides）——formal build 拒绝")
+        if int(peak) < int(current):
+            raise ValueError(f"实体 {eid} peak_raw {peak} < current_raw {current}")
+        ent["peak_raw"] = peak
+        ent["peak_date"] = peak_date
+        m = merges.get(eid)
+        if isinstance(m, dict) and m.get("earliest"):
+            ent["merge_evidence_earliest"] = str(m["earliest"])
+            if m.get("note"):
+                ent["merge_evidence_note"] = str(m["note"])
+        r = roles.get(eid)
+        if isinstance(r, dict) and r:
+            ent["role_notes"] = {str(k): str(v) for k, v in r.items()}
+        entities[eid] = ent
+    unknown = sorted(set(labels) - set(entities))
+    if unknown:
+        raise ValueError(f"facts_inputs.entity_labels 含三账之外的实体: {unknown[:5]}")
+    unknown = sorted(set(overrides) - set(entities))
+    if unknown:
+        raise ValueError(f"facts_inputs.peak_overrides 含三账之外的实体: {unknown[:5]}")
+
+    inputs = {n: {"sha256": _sha256_path(case_dir / n)} for n in FACTS_LEDGER_INPUTS}
+    if ledger is not None:
+        inputs["provenance_ledger.json"] = {"sha256": _sha256_path(ledger_path)}
+    facts = {"token": {"symbol": symbol, "decimals": decimals, "total_supply_raw": total_raw},
+             "entities": entities, "metrics": fi.get("metrics") or {}}
+    if isinstance(fi.get("dual_basis"), dict):
+        facts["dual_basis"] = fi["dual_basis"]
+    facts["provenance"] = {
+        "schema": FACTS_PROVENANCE_SCHEMA, "facts_binding": "ledger-derived",
+        "mode": "exploration" if exploration else "formal",
+        "inputs": inputs,
+        "state_source": {"path": "state_source.json",
+                         "sha256": _sha256_path(case_dir / "state_source.json")},
+        "peak_overrides": used_overrides,
+        "producer": {"path": "scripts/report/facts_gate.py",
+                     "sha256": _sha256_path(Path(__file__).resolve())},
+    }
+    # 生成物必须过既有 facts gate（G2 供给上界/G3 内部一致等；无 state/渲染文本时 G1/G5 自然跳过）
+    gate_errors, _notes = gate_check(Facts(facts))
+    if gate_errors:
+        raise ValueError("生成的 facts 未过既有 facts gate: " + "; ".join(gate_errors[:3]))
+    return facts
+
+
+def build_main(argv):
+    ap = argparse.ArgumentParser(prog="facts_gate.py build")
+    ap.add_argument("--case-dir", default=".")
+    ap.add_argument("--source", default="state_source.json",
+                    help="人工输入文件（basename，须在案根；读取其 facts_inputs 块）")
+    ap.add_argument("--out", default="facts.json")
+    ap.add_argument("--exploration", action="store_true",
+                    help="允许缺峰值来源（peak=current）；产物 provenance.mode=exploration，发布闸/收口必拒")
+    a = ap.parse_args(argv)
+    case_dir = Path(a.case_dir)
+    if a.source != "state_source.json":
+        print("FAIL: --source 只接受案根 state_source.json（人工字段复用该文件，不另立文件）")
+        return 2
+    try:
+        facts = derive_facts(case_dir, exploration=a.exploration)
+    except (KeyError, ValueError, OSError, TypeError) as exc:
+        print(f"FAIL: facts 生成失败——{exc}")
+        return 2
+    out = case_dir / Path(a.out).name
+    payload = json.dumps(facts, ensure_ascii=False, indent=2) + "\n"
+    tmp = out.with_name(out.name + ".tmp")
+    tmp.write_text(payload, encoding="utf-8")
+    os.replace(tmp, out)
+    mode = facts["provenance"]["mode"]
+    print(f"PASS: facts 生成 {out.name}（mode={mode}，实体 {len(facts['entities'])} 个，"
+          f"override {len(facts['provenance']['peak_overrides'])} 个）")
+    if mode == "exploration":
+        print("[exploration] 产物带非正式标记，new-analysis 发布闸与 stage2 收口必拒")
+    return 0
+
+
 def load_and_check(facts_path, state_path=None, md_text=None):
     """build_html.py 的接入点：渲染 md 并跑全 gate。返回 (rendered_md, errors, notes)。"""
     facts = Facts(json.load(open(facts_path, encoding="utf-8")))
@@ -257,6 +504,8 @@ def load_and_check(facts_path, state_path=None, md_text=None):
 
 
 def main():
+    if sys.argv[1:2] == ["build"]:
+        return build_main(sys.argv[2:])
     ap = argparse.ArgumentParser()
     ap.add_argument("--facts", required=True)
     ap.add_argument("--state", help="analysis-state.json（给了才做 G1 成员集合对账）")

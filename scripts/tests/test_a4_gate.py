@@ -27,7 +27,7 @@ import hashlib
 import shutil
 from pathlib import Path
 
-from test_audit_release_gate import build_case, refresh_adversarial, sha
+from test_audit_release_gate import build_case, build_facts_from_ledgers, refresh_adversarial, sha
 from formal_ready_test_harness import run_formal_script
 from identity_gate_fixture import augment_gate
 
@@ -495,6 +495,7 @@ def main():
         Path(new_d, name).unlink(missing_ok=True)
     add_distribution_initial(new_d)
     add_camp_series(new_d)
+    build_facts_from_ledgers(new_d, labels={"e1": "实体1"})
     p = run(GATE, ["finalize", "--case-dir", new_d,
                    "--seal-files", "findings.md,analysis-state.json",
                    "--verdicts-file", os.path.join(new_d, "v_ok.json"),

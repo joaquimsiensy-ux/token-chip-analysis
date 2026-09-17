@@ -196,9 +196,6 @@ def add_new_analysis_distribution(root: Path, report: Path) -> None:
         "identity_snapshot_receipt.json": {"schema": "identity-snapshot-receipt/v1"},
         "entity_freeze.json": {"schema": "entity-freeze/v1", "revisions": []},
         "analysis-state.json": state,
-        # facts 带最小 token（figure2 check 真跑需要 total_supply_raw>0）
-        "facts.json": {"token": {"symbol": "FX", "decimals": 0,
-                                 "total_supply_raw": "1"}, "entities": {}},
         "evidence.json": {"source": "fixture"},
         "a4_claims.json": {"schema": "a4-claims/v2", "claims": [{"id": "C1"}]},
     }.items():
@@ -209,11 +206,12 @@ def add_new_analysis_distribution(root: Path, report: Path) -> None:
     identity = augment_gate(bridge_root, {
         "verdict": "PASS", "state_file": "analysis-state.json",
         "state_sha256": sha(root / "analysis-state.json"),
-    }, chain="bsc", token=fixture.CASE_TOKEN)
+    }, chain="bsc", token=fixture.CASE_TOKEN, balances=balances)
     for key in ("snapshot_file", "receipt_file"):
         identity["snapshot_binding"][key] = \
             f"identity_bridge/{identity['snapshot_binding'][key]}"
     write_json(root / "identity_gate.json", identity)
+    fixture.build_facts_from_ledgers(root, symbol="FX")
     # a4_claims 是对抗复核 v3 的权威锚；夹具改 registry 后必须真重跑 runner/finalize，
     # 不得手补 aggregate 的 sha 自证。
     fixture.refresh_adversarial(root)

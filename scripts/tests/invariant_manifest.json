@@ -177,6 +177,12 @@
   },
   {
    "schemas": [
+    "facts-provenance/v1"
+   ],
+   "script": "scripts/report/facts_gate.py"
+  },
+  {
+   "schemas": [
     "fig2-series-provenance/v1",
     "figure1-legend/v1",
     "figure2-check-receipt/v1"
@@ -464,11 +470,18 @@
     "adversarial-review/v2",
     "adversarial-review/v3",
     "adversarial-review/v4",
+    "facts-provenance/v1",
     "figure2-check-receipt/v1",
     "identity-holder-snapshot/v2",
     "reproduce-receipt/v2"
    ],
    "script": "scripts/report/audit_release_gate.py"
+  },
+  {
+   "schemas": [
+    "analysis-state-source/v1"
+   ],
+   "script": "scripts/report/facts_gate.py"
   },
   {
    "schemas": [
@@ -1041,6 +1054,11 @@
   {
    "locator": "atomic_json",
    "script": "scripts/report/distribution_explanation_check.py",
+   "semantics": "overwrite_single"
+  },
+  {
+   "locator": "build_main",
+   "script": "scripts/report/facts_gate.py",
    "semantics": "overwrite_single"
   },
   {

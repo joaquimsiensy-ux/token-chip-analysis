@@ -49,12 +49,15 @@ def write_binding(root, balances, *, as_of_block=123, chain="bsc",
     }
 
 
-def augment_gate(root, gate_obj, *, chain, token="0x" + "a" * 40):
+def augment_gate(root, gate_obj, *, chain, token="0x" + "a" * 40, balances=None):
     gate = dict(gate_obj)
     rows = [dict(row) for row in gate.get("rows", [])]
-    balances = {row["address"]: 100 for row in rows}
-    if not balances:
-        balances = {"0x" + "f" * 40: 100}
+    if balances is None:
+        balances = {row["address"]: 100 for row in rows}
+        if not balances:
+            balances = {"0x" + "f" * 40: 100}
+    else:
+        balances = {str(k): int(v) for k, v in balances.items()}   # 调用方保证 rows 地址 ⊆ balances
     total, binding = write_binding(root, balances, chain=chain, token=token)
     for row in rows:
         row["share_pct"] = round(balances[row["address"]] / int(total) * 100, 3)

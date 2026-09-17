@@ -199,6 +199,31 @@ def align_ledgers_to_owner_snapshot(root, snap):
                     write_json(root, "reproduce_receipt.json", receipt)
 
 
+def build_facts_from_ledgers(root, *, symbol="TT", decimals=0, labels=None, peak_date="2026-01-01"):
+    """R07（7.2.0）：夹具的 facts.json 一律由 facts_gate.py build 从三账生成（禁手写）。
+    夹具无 provenance 锚点，峰值走 override＝confirmed 值，证据文件 peak_evidence.json 随案。"""
+    root = Path(root)
+    econ = json.loads((root / "economic_control_ledger.json").read_text(encoding="utf-8"))
+    rows = econ.get("entries", econ.get("entities", []))
+    (root / "peak_evidence.json").write_text(
+        json.dumps({"note": "fixture: peak == confirmed"}) + "\n", encoding="utf-8")
+    evidence = {"path": "peak_evidence.json", "sha256": sha(root / "peak_evidence.json")}
+    names, overrides = {}, {}
+    for row in rows:
+        eid = str(row["entity_id"])
+        names[eid] = (labels or {}).get(eid, eid)
+        overrides[eid] = {"peak_raw": str(int(str(row["confirmed_economic_control_raw"]))),
+                          "peak_date": peak_date, "evidence": evidence}
+    write_json(root, "state_source.json", {
+        "schema": "analysis-state-source/v1",
+        "facts_inputs": {"symbol": symbol, "decimals": decimals, "entity_labels": names,
+                         "peak_overrides": overrides, "metrics": {}}})
+    proc = subprocess.run([sys.executable, str(HERE.parent / "report" / "facts_gate.py"),
+                           "build", "--case-dir", str(root)], capture_output=True, text=True)
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    return root / "facts.json"
+
+
 def refresh_adversarial(root):
     """重跑当前 a4_claims.json 对应的结构化复核夹具与 v3 finalize。"""
     root = Path(root)

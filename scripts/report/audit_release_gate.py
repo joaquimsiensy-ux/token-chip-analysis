@@ -49,6 +49,8 @@ NEW_ANALYSIS_REQUIRED = (
     # F-C5：图 2 末点对账留痕收据（figures_from_facts check 每跑必写）——
     # 发布闸复验 mode==formal、tol_pp==默认、verdict==PASS
     "figure2_check_receipt.json",
+    # R07（7.2.0）：facts.json 必须由 facts_gate build 从三账生成，发布闸重算比对
+    "facts.json",
 )
 LEGACY_READONLY_RECEIPT = "legacy_readonly_receipt.json"
 REQUIRED_BY_PROFILE = {
@@ -1341,6 +1343,7 @@ def check_distribution_snapshot_binding(case_dir: Path, data: dict, chain, error
 
 FIGURE2_RECEIPT_SCHEMA = "figure2-check-receipt/v1"
 FIGURE2_DEFAULT_TOL_PP = 0.05
+FACTS_PROVENANCE_SCHEMA = "facts-provenance/v1"
 
 
 def _figure2_input_check(case_dir: Path, ref, label: str, errors: list[str]):
@@ -1363,6 +1366,60 @@ def _figure2_input_check(case_dir: Path, ref, label: str, errors: list[str]):
     if actual != str(ref.get("sha256", "")).lower():
         errors.append(f"figure2 收据绑定的 {label}（{name}）sha256 与案内实物"
                       "不一致——收据不是对当前案内文件跑出来的")
+
+
+def check_facts_vs_ledgers(case_dir: Path, facts, errors: list[str], receipt=None):
+    """R07（7.2.0）：facts.json 必须是 facts_gate build 从三账生成的产物——
+    验 provenance 绑定块（schema/binding/mode=formal），再用 facts_gate.derive_facts 按案内
+    三账＋identity_gate＋provenance_ledger＋state_source 重算，与落盘 facts 逐字段比对
+    （producer.sha256 只记录不比对；inputs/state_source/evidence 的 sha 由重算侧复核）。
+    receipt＝figure2 对账收据（给了就验其 facts 绑定的是本名 facts.json，防另名 facts 绕开）。"""
+    if regular_case_path(case_dir, "facts.json") is None:
+        errors.append("facts.json 不是案根常规文件（符号链接/越界）")
+        return
+    if isinstance(receipt, dict):
+        bound = Path(str((receipt.get("facts") or {}).get("path") or "")).name
+        if bound != "facts.json":
+            errors.append(f"figure2 收据绑定的 facts 是 {bound!r}——必须是案根 facts.json（三账重算比对的对象）")
+    if not isinstance(facts, dict):
+        errors.append("facts.json 顶层必须是对象")
+        return
+    prov = facts.get("provenance")
+    if not isinstance(prov, dict):
+        errors.append("facts.json 缺 provenance 绑定块——须由 facts_gate.py build 从三账生成，禁手写")
+        return
+    if prov.get("schema") != FACTS_PROVENANCE_SCHEMA:
+        errors.append(f"facts.provenance.schema 必须是 {FACTS_PROVENANCE_SCHEMA}")
+    if prov.get("facts_binding") != "ledger-derived":
+        errors.append("facts.provenance.facts_binding 必须是 ledger-derived")
+    if prov.get("mode") != "formal":
+        errors.append(f"facts.provenance.mode={prov.get('mode')!r}——exploration 构建不得进正式发布")
+        return
+    try:
+        import facts_gate
+        rebuilt = facts_gate.derive_facts(case_dir, exploration=False)
+    except (KeyError, ValueError, OSError, TypeError) as exc:
+        errors.append(f"facts 按三账重算失败: {exc}")
+        return
+    got, want = dict(facts), dict(rebuilt)
+    got_prov, want_prov = dict(got.pop("provenance") or {}), dict(want.pop("provenance") or {})
+    got_prov.pop("producer", None)
+    want_prov.pop("producer", None)
+    for key in sorted(set(got) | set(want)):
+        if key == "entities":
+            continue
+        if got.get(key) != want.get(key):
+            errors.append(f"facts.{key} 与三账重算值不一致")
+    ge, we = got.get("entities") or {}, want.get("entities") or {}
+    if set(ge) != set(we):
+        errors.append(f"facts 实体集合与三账不一致: 多 {sorted(set(ge) - set(we))[:3]} "
+                      f"少 {sorted(set(we) - set(ge))[:3]}")
+    for eid in sorted(set(ge) & set(we)):
+        if ge[eid] != we[eid]:
+            diff = sorted(k for k in set(ge[eid]) | set(we[eid]) if ge[eid].get(k) != we[eid].get(k))
+            errors.append(f"facts 实体 {eid} 字段 {diff[:4]} 与三账重算值不一致")
+    if got_prov != want_prov:
+        errors.append("facts.provenance（inputs/state_source/peak_overrides 的 sha 或绑定）与当前案内实物不一致——输入已变，须重新 build")
 
 
 def check_figure2_receipt(case_dir: Path, d: dict, errors: list[str]):
@@ -1643,6 +1700,10 @@ def _run(case_dir: Path, report: Path | None, *, profile="independent-audit"):
         # F-C5/F-C1（批 C 消化轮）：图 2 对账收据复验＋阵营序列 producer 绑定复验
         if profile == "new-analysis" and "figure2_check_receipt.json" in data:
             check_figure2_receipt(case_dir, data["figure2_check_receipt.json"], errors)
+        # R07（7.2.0）：facts.json（new-analysis 必需件，已随 required 装载）按三账重算复核
+        if profile == "new-analysis" and "facts.json" in data:
+            check_facts_vs_ledgers(case_dir, data["facts.json"], errors,
+                                   receipt=data.get("figure2_check_receipt.json"))
         state_path = case_dir / "analysis-state.json"
         if state_path.is_file():
             state_obj = load_json(state_path, errors)

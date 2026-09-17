@@ -16,7 +16,7 @@ sys.path[:0] = [str(HERE), str(REPO / "scripts/report"), str(REPO / "scripts/lib
 os.environ.setdefault("PYTHONDONTWRITEBYTECODE", "1")
 os.environ.setdefault("MPLCONFIGDIR", tempfile.mkdtemp(prefix="w2-mpl-"))
 import test_a4_gate as fixture
-from test_audit_release_gate import build_case, gate
+from test_audit_release_gate import build_case, build_facts_from_ledgers, gate
 from identity_gate_fixture import augment_gate
 from formal_ready_test_harness import run_formal_script, test_vertical_slices
 
@@ -33,6 +33,20 @@ def sha(path):
     return hashlib.sha256(Path(path).read_bytes()).hexdigest()
 
 
+def add_provenance_ledger(case):
+    path = case / "provenance_ledger.json"
+    ledger = read(path) if path.exists() else {
+        "schema": "provenance-ledger/v2", "total_supply_raw": "100", "entities": []}
+    files = {}
+    for name, source in (("entity_source_trace.py", REPO / "scripts/report/entity_source_trace.py"),
+                         ("wave_scan.py", REPO / "scripts/report/wave_scan.py"),
+                         ("sqd_cache_identity.py", REPO / "scripts/solana/sqd_cache_identity.py")):
+        files[name] = {"path": str(source.resolve()), "bytes": source.stat().st_size, "sha256": sha(source)}
+    ledger.setdefault("input_binding", {})["algorithm"] = {
+        "script_sha256": files["entity_source_trace.py"]["sha256"], "files": files}
+    write(path, ledger)
+
+
 def build_release_case(root):
     root = Path(root)
     source = root / "source"
@@ -46,22 +60,20 @@ def build_release_case(root):
     fixture.rebind_case_inputs(source, case)
     (case / "findings.md").write_text("# findings\n复核后终版结论\n", encoding="utf-8")
     state = {"chain": "bsc", "token": {"chain": "bsc"}, "whale_groups": [
-        {"entity_id": "e1", "label": "大庄#1", "addresses": [fixture.ENTITY_ADDR]}],
+        {"entity_id": "e1", "label": "大庄#1", "addresses": ["0xabc"]}],
         "provenance": {"schema_version": "2", "skill_commit": "test", "data_sources": ["fixture"]}}
     write(case / "analysis-state.json", state)
-    write(case / "facts.json", {
-        "token": {"symbol": "TT", "decimals": 0, "total_supply_raw": "100"},
-        "entities": {"e1": {"label": "大庄#1", "addresses": [fixture.ENTITY_ADDR],
-            "current_raw": "100", "peak_raw": "100", "peak_date": "2026-01-01"}}, "metrics": {}})
     identity = augment_gate(str(case), {"chain": "bsc", "state_file": "analysis-state.json",
         "state_sha256": sha(case / "analysis-state.json"), "n_addresses": 1, "n_flags": 0,
-        "rows": [{"address": fixture.ENTITY_ADDR, "entity": "e1", "share_pct": None,
+        "rows": [{"address": "0xabc", "entity": "e1", "share_pct": None,
                   "label": {"name": "fixture", "category": "other", "tier": "identity", "source": "test"},
                   "on_curve": None, "flag": "", "resolution": ""}]}, chain="bsc")
     write(case / "identity_gate.json", identity)
     write(case / "v_ok.json", [{"id": "C1", "verdict": "CONFIRMED"}])
     fixture.add_distribution_initial(str(case))
     fixture.add_camp_series(str(case))
+    add_provenance_ledger(case)   # reseal prereq 同款，先于 facts build 落盘（facts.provenance.inputs 绑它）
+    build_facts_from_ledgers(case, labels={"e1": "大庄#1"})
     proc = fixture.run(fixture.GATE, ["finalize", "--case-dir", str(case),
         "--workflow-type", "new-analysis", "--seal-files", "findings.md,analysis-state.json",
         "--verdicts-file", str(case / "v_ok.json")])
@@ -120,7 +132,7 @@ def check_result(case, expected=0):
     proc = cli(case)
     assert proc.returncode == expected, proc.stdout + proc.stderr
     receipt = read(case / "stage2_closeout_receipt.json")
-    assert len(receipt["checks"]) == 11, receipt
+    assert len(receipt["checks"]) == 12, receipt
     assert receipt["verdict"] == ("PASS" if expected == 0 else "BLOCK"), receipt
     return {row["name"]: row for row in receipt["checks"]}
 
@@ -349,7 +361,7 @@ def amend_passes_with_note(cases):
     proc = cli(case, "amend")
     assert proc.returncode == 0, proc.stdout + proc.stderr
     checks = read(case / "stage2_closeout_receipt.json")["checks"]
-    assert len(checks) == 11 and next(row for row in checks if row["name"] == "dual_basis")["status"] == "NOTE"
+    assert len(checks) == 12 and next(row for row in checks if row["name"] == "dual_basis")["status"] == "NOTE"
 
 
 def fill_never_overwrites_report_anchor(cases):
@@ -583,11 +595,26 @@ def amend_rechecks_all_and_is_atomic(cases):
     proc = cli(case, "amend")
     assert proc.returncode == 2 and "a4_seal_integrity" in proc.stdout and "封口后被改动" in proc.stdout, proc.stdout
     assert (case / "stage2_closeout_receipt.json").read_bytes() == old_receipt
-    # A failing check cannot short-circuit the other ten checks or receipt emission.
+    # A failing check cannot short-circuit the other eleven checks or receipt emission.
     case = cases.fresh()
     (case / "facts.json").write_bytes(b"not-json")
     checks = check_result(case, 2)
-    assert len(checks) == 11 and checks["facts_gate"]["status"] == "BLOCK"
+    assert len(checks) == 12 and checks["facts_gate"]["status"] == "BLOCK"
+
+
+def facts_vs_ledgers_rejects_hand_edit(cases):
+    case = cases.fresh()
+    update(case, "facts.json", lambda obj: obj["entities"]["e1"].update(current_raw="90"))
+    checks = check_result(case, 2)
+    assert checks["facts_vs_ledgers"]["status"] == "BLOCK" and "e1" in "".join(checks["facts_vs_ledgers"]["detail"]), checks
+    case = cases.fresh()
+    update(case, "facts.json", lambda obj: obj.pop("provenance"))
+    checks = check_result(case, 2)
+    assert checks["facts_vs_ledgers"]["status"] == "BLOCK" and "provenance" in "".join(checks["facts_vs_ledgers"]["detail"]), checks
+    case = cases.fresh()
+    update(case, "facts.json", lambda obj: obj["provenance"].update(mode="exploration"))
+    checks = check_result(case, 2)
+    assert checks["facts_vs_ledgers"]["status"] == "BLOCK" and "exploration" in "".join(checks["facts_vs_ledgers"]["detail"]), checks
 
 
 TESTS = [dryrun_profile_exempts_stage3_artifacts, only_findings_changed_is_rejected,
@@ -600,7 +627,8 @@ TESTS = [dryrun_profile_exempts_stage3_artifacts, only_findings_changed_is_rejec
          fig2_sidecar_substitution_rejected, fig2_duplicate_and_label_rejected,
          downstream_check_cli_exit3, amendments_chain_gap_rejected,
          workorder_reference_contracts, receipt_shape_and_fill_nulls,
-         caption_raw_rounding_and_pure_series_errors, amend_rechecks_all_and_is_atomic]
+         caption_raw_rounding_and_pure_series_errors, amend_rechecks_all_and_is_atomic,
+         facts_vs_ledgers_rejects_hand_edit]
 
 
 def main():
