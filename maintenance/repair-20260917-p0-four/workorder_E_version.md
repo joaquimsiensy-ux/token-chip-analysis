@@ -1,6 +1,7 @@
-# 工单 E（v2）：版本落地 7.2.0 —— repair-20260917-p0-four 收官（四条 P0：R08 图 2 有限值、R03 expanded 只进上限、R07 facts 由三账生成、R09 日级峰值闸）
+# 工单 E（v3）：版本落地 7.2.0 —— repair-20260917-p0-four 收官（四条 P0：R08 图 2 有限值、R03 expanded 只进上限、R07 facts 由三账生成、R09 日级峰值闸）
 
 > 性质：**纯文档/元数据工单**，零生产代码、零测试代码、零手册改动。新增公开入口 2（`facts_gate.py build` 子命令、`replay_duck.py --only-addrs` 选项）与两个持久化 schema（`facts-provenance/v1`、`block-precision-followup/v1`）。**档位＝7.2.0**（用户 09-17 批准的计划所定；codex 复核 r1 E-01 认为 facts.json 进必需件且旧 facts 必须重 build 属不兼容契约变更、应记 8.0.0——本单按批准计划施工，异议原文写进 CHANGELOG 条目"档位说明"，由用户追认或改判；改判只需改四处版本号与条目标题）。
+> v3 变更（codex r2 唯一项 E-02-r2）：§2:19 残留的"先跑 changelog_lint"改为调度方运行。
 > v2 变更（codex r1 六条，见 `review_E_reply_r1.md`）：E-01 档位说明入条目待追认；E-02 `changelog_lint`/`docs_lint --all` 读 archive/ 归调度方跑，施工方只跑 `test_version_consistency` 与 `wc -c`；E-03 A 段 13 例（batch_c 244 checks）；E-04 生产文件 6、入口称谓；E-05 FAIL 收据落盘条件；E-06 trigger sha 绑定条件。
 > 内容基线：HEAD 以 `construct_E_prompt.md` 派工副本首行标注为准；四段施工 commit：A 212ede1、B 03507cb、C 1b317b3＋C7 eca1131、D f583039。
 
@@ -16,7 +17,7 @@ VERSION（权威）= `pyproject.toml` `version` = CHANGELOG 最新条目 = `SKIL
 1. `VERSION`：`7.1.3` → `7.2.0`（保持原有换行形态）。
 2. `pyproject.toml:15`：`version = "7.1.3"` → `version = "7.2.0"`。
 3. `SKILL.md:23`：`<!-- skill-version-source: VERSION; skill-version: 7.1.3 -->` → `… 7.2.0 -->`（字节数不变）。
-4. `CHANGELOG.md` 两处插入（**先跑** `python3 -B scripts/tests/changelog_lint.py` 记基线"活跃 75 条"，改后须 76）：
+4. `CHANGELOG.md` 两处插入（原版 `changelog_lint` 读 `archive/`，**施工者不运行**：调度方施工前已跑得基线"活跃 75 条"，施工后由调度方复跑确认 76）：
    - 在索引区 `:13`（锚 `- **7.1.3**（2026-09-16）drift-audit 待决台账三项用户裁决落地`，行首）**之前**插入一行，逐字：
      ```
      - **7.2.0**（2026-09-17）codex 7.0.4 review 四条 P0 修复：R08 图 2 对账拒 NaN/Infinity/非有限末点（非法 pct 以 FAIL 留痕，解析失败时在两输入在场前提下尝试覆盖收据）；R03 三账汇总 expanded 成员只进 `expanded_economic_control_range_raw` 上限、闸验区间；R07 `facts_gate.py build` 从三账＋identity＋provenance＋`state_source.facts_inputs` 生成 facts.json（带 `facts-provenance/v1` 绑定块，峰值 override 须带证据），new-analysis 闸与 stage2 收口用同一 `derive_facts` 重算比对；R09 日级峰值闸 rglob 定位子目录产物、needs 哈希咬合、`replay_duck.py --only-addrs` 出 `block-precision-followup/v1` 覆盖收据。references 净减 9 B，SKILL/commands 不变。
