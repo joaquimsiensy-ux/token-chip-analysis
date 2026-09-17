@@ -66,7 +66,7 @@ state_source.facts_inputs schema：
       （可选，优先于 provenance 锚点，证据须为案根常规文件）
   merge_evidence: {eid: {earliest, note}}（可选）
   role_notes: {eid: {addr: note}}（可选）
-  metrics: {}（可选透传）；dual_basis: {}（可选透传）
+  metrics: {mid: {...}}（可选；对象且每项为对象）；dual_basis: {}（可选；对象）
   禁止 provenance/facts_binding 键；绑定块只能由 build 生成。
 """
 import argparse
@@ -354,10 +354,13 @@ def derive_facts(case_dir, *, exploration=False):
         raise ValueError(f"state_source 缺 {FACTS_INPUTS_KEY} 对象")
     if "provenance" in fi or "facts_binding" in fi:
         raise ValueError("state_source.facts_inputs 不得预置 provenance/facts_binding——绑定块只能由 build 生成")
-    symbol = str(fi.get("symbol") or "").strip()
+    symbol = fi.get("symbol")
     decimals = fi.get("decimals")
-    if not symbol or isinstance(decimals, bool) or not isinstance(decimals, int) or decimals < 0:
-        raise ValueError("facts_inputs.symbol/decimals 缺失或非法")
+    if not isinstance(symbol, str) or not symbol.strip():
+        raise ValueError("facts_inputs.symbol 必须是非空字符串")
+    symbol = symbol.strip()
+    if isinstance(decimals, bool) or not isinstance(decimals, int) or decimals < 0:
+        raise ValueError("facts_inputs.decimals 必须是 ≥0 的整数")
     labels = fi.get("entity_labels")
     if not isinstance(labels, dict) or not labels:
         raise ValueError("facts_inputs.entity_labels 缺失或为空")
@@ -366,6 +369,12 @@ def derive_facts(case_dir, *, exploration=False):
     roles = fi.get("role_notes") or {}
     if not all(isinstance(x, dict) for x in (overrides, merges, roles)):
         raise ValueError("facts_inputs.peak_overrides/merge_evidence/role_notes 须为对象")
+    metrics = fi.get("metrics", {})
+    if not isinstance(metrics, dict) or any(not isinstance(v, dict) for v in metrics.values()):
+        raise ValueError("facts_inputs.metrics 须为对象且每项为对象")
+    dual_basis = fi.get("dual_basis")
+    if "dual_basis" in fi and not isinstance(dual_basis, dict):
+        raise ValueError("facts_inputs.dual_basis 须为对象")
 
     members = data["membership_ledger.json"]
     members = members.get("entries", members.get("entities", []))
@@ -443,9 +452,9 @@ def derive_facts(case_dir, *, exploration=False):
     if ledger is not None:
         inputs["provenance_ledger.json"] = {"sha256": _sha256_path(ledger_path)}
     facts = {"token": {"symbol": symbol, "decimals": decimals, "total_supply_raw": total_raw},
-             "entities": entities, "metrics": fi.get("metrics") or {}}
-    if isinstance(fi.get("dual_basis"), dict):
-        facts["dual_basis"] = fi["dual_basis"]
+             "entities": entities, "metrics": metrics}
+    if dual_basis is not None:
+        facts["dual_basis"] = dual_basis
     facts["provenance"] = {
         "schema": FACTS_PROVENANCE_SCHEMA, "facts_binding": "ledger-derived",
         "mode": "exploration" if exploration else "formal",

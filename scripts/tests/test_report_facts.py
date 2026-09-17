@@ -254,6 +254,10 @@ def _r07_build_cases():
         gate.check_facts_vs_ledgers(root, facts, errors)
         assert any("metrics" in error for error in errors), errors
 
+    def bad_type(root, field, value, text):
+        edit(root, "state_source.json", lambda obj: obj["facts_inputs"].update({field: value}))
+        reject(root, text)
+
     def existing_gate(root):
         for name in ("identity_gate.json", "provenance_ledger.json"):
             edit(root, name, lambda obj: obj.update(total_supply_raw="50"))
@@ -281,8 +285,12 @@ def _r07_build_cases():
         run("13 非有限输入 " + literal, lambda root, v=literal: nonfinite(root, v))
     run("13 facts 溢出值拒", nonfinite_facts)
     run("14 产物过既有 G2 gate", existing_gate)
+    for field, value, text in (("symbol", 123, "symbol"), ("decimals", "18", "decimals"),
+                               ("metrics", [{"value": "7"}], "metrics"), ("metrics", {"m1": "7"}, "metrics"),
+                               ("dual_basis", "x", "dual_basis"), ("dual_basis", None, "dual_basis")):
+        run(f"15 类型非法拒 {field}", lambda root, f=field, v=value, t=text: bad_type(root, f, v, t))
     assert not failures, f"R07 失败 {len(failures)}/{len(results)}: {failures}"
-    print(f"PASS: R07 build/derive/发布闸 14 类、{len(results)} 个独立用例", flush=True)
+    print(f"PASS: R07 build/derive/发布闸 15 类、{len(results)} 个独立用例", flush=True)
 
 
 def main():

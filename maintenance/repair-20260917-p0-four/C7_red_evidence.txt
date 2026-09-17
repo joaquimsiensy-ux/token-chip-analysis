@@ -1,0 +1,16 @@
+# C7 case 15 baseline RED evidence
+HEAD: 72430e9
+Production and test files are unmodified; each variant uses a new fixture.
+Command: PYTHONDONTWRITEBYTECODE=1 python3 -B -c <six-variant baseline harness>
+baseline sha256 scripts/report/facts_gate.py: ad0e4b0ff45c07078d94a6fac8a2a4ab71b5ddc3afd257f7de1d6d354ca8890f
+baseline sha256 scripts/tests/test_report_facts.py: 64e7d726c255950f8d845eca25a521e1791a39b2dd4072b1e2e2f425975f8680
+RED  15.1 symbol=123 | AssertionError: derive_facts 应拒绝该输入: symbol
+GREEN (baseline regression) 15.2 decimals="18" | ValueError: facts_inputs.symbol/decimals 缺失或非法
+RED  15.3 metrics=[{"value": "7"}] | AssertionError: derive_facts 应拒绝该输入: metrics
+RED  15.4 metrics={"m1": "7"} | AssertionError: derive_facts 应拒绝该输入: metrics
+RED  15.5 dual_basis="x" | AssertionError: derive_facts 应拒绝该输入: dual_basis
+RED  15.6 dual_basis=null | AssertionError: derive_facts 应拒绝该输入: dual_basis
+Source files unchanged during RED: true
+SUMMARY: 5 RED / 1 baseline GREEN / 6 independent variants
+Expected: symbol 123, both metrics variants, dual_basis x/null are RED; decimals string 18 is already GREEN.
+Harness exit code: 1
