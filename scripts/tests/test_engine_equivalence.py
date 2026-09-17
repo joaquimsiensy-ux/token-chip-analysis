@@ -233,9 +233,92 @@ def varint_equivalence_case():
             assert sa[k] == sb[k], f"VARINT {k} 不等"
 
 
+def followup_case():
+    """R09：补算与全量块末峰值等价；成功、坏输入与坏事件均不覆盖全量产物。"""
+    events = [(Z, ADDRS[0], 10**20, 1),
+              (ADDRS[0], ADDRS[1], 10**19, 1),
+              (ADDRS[1], ADDRS[2], 5*10**18, 1),
+              (ADDRS[0], ADDRS[1], 2*10**18, 1),
+              (ADDRS[1], ADDRS[0], 5*10**18, 1)]
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        _write_inputs(tmp, events)
+        cmd = [os.path.join(EVM, "replay_duck.py"), "--channels", "channels.json",
+               "--out-dir", "new", "--no-merged", "--threads", "2", "--mem-limit", "2GB"]
+        full = _run(tmp, cmd)
+        assert full.returncode == 0, full.stdout + full.stderr
+        originals = {name: (root / "new" / name).read_bytes() for name in
+                     ("peaks.json", "replay_stats.json", "balances_final.json", "mint_ledger.json")}
+        peaks = json.loads(originals["peaks.json"])
+        needs = root / "needs.json"
+        needs.write_text(json.dumps({"0.0100": [ADDRS[1], ADDRS[2], ADDRS[5]]}),
+                         encoding="utf-8")
+        p = _run(tmp, cmd + ["--only-addrs", str(needs)])
+        receipt = root / "block_precision_followup.json"
+        assert receipt.is_file(), \
+            f"block_precision_followup.json 不存在（rc={p.returncode}）\n{p.stdout}{p.stderr}"
+        assert p.returncode == 0, p.stdout + p.stderr
+        original_receipt = receipt.read_bytes()
+        fu = json.loads(original_receipt)
+        assert fu["schema"] == "block-precision-followup/v1", fu
+        assert fu["engine"] == "replay_duck.py", fu
+        assert fu["inputs"][0] == {"path": "needs.json", "sha256":
+                                   hashlib.sha256(needs.read_bytes()).hexdigest()}, fu
+        assert set(fu["addresses"]) == {ADDRS[1], ADDRS[2], ADDRS[5]}, fu
+        for addr in (ADDRS[1], ADDRS[2]):
+            assert fu["addresses"][addr] == {
+                "peak": peaks[addr]["peak"], "peak_blk": peaks[addr]["peak_blk"]}, fu
+        assert fu["addresses"][ADDRS[5]] == {"peak": "0", "peak_blk": None}, fu
+        for name, before in originals.items():
+            assert (root / "new" / name).read_bytes() == before, name
+        assert not any((root / "new" / name).exists() for name in (
+            "merged.csv", "merged.parquet", "camp_series.json", "entity_series.json"))
+
+        for name, content in (("broken.json", "{"), ("empty.json", "[]"),
+                              ("shape.json", '{"0.0100":"x"}')):
+            bad_input = root / name
+            bad_input.write_text(content, encoding="utf-8")
+            rejected = _run(tmp, cmd + ["--only-addrs", str(bad_input)])
+            assert rejected.returncode == 2, (name, rejected.stdout, rejected.stderr)
+            assert "[only-addrs]" in rejected.stderr, rejected.stderr
+            assert receipt.read_bytes() == original_receipt, name
+
+        for i, cands in enumerate((7, "0xABC", {"0xABC": 1}, None)):
+            td = root / f"bad_trigger_{i}"
+            td.mkdir()
+            trigger = td / "trigger_days.json"
+            trigger.write_text(json.dumps({"days": {"2026-01-01": {
+                "reason": "launch", "count": 1, "active_candidates": cands}}}),
+                encoding="utf-8")
+            rejected = _run(tmp, cmd + ["--only-addrs", str(trigger)])
+            assert rejected.returncode == 2, (cands, rejected.stdout, rejected.stderr)
+            assert "active_candidates" in rejected.stderr, rejected.stderr
+            assert not (td / "block_precision_followup.json").exists(), cands
+
+        bad = root / "bad"
+        bad.mkdir()
+        _write_inputs(str(bad), events + [(ADDRS[0], ADDRS[1], "BAD", 1)])
+        bad_needs = root / "bad_needs"
+        bad_needs.mkdir()
+        bad_needs_path = bad_needs / "needs.json"
+        bad_needs_path.write_bytes(needs.read_bytes())
+        rejected = _run(tmp, [os.path.join(EVM, "replay_duck.py"),
+                              "--channels", "bad/channels.json", "--out-dir", "new",
+                              "--only-addrs", str(bad_needs_path),
+                              "--threads", "2", "--mem-limit", "2GB"])
+        assert rejected.returncode != 0, rejected.stdout + rejected.stderr
+        assert "bad_fields=1" in rejected.stderr, rejected.stdout + rejected.stderr
+        for name, before in originals.items():
+            assert (root / "new" / name).read_bytes() == before, name
+        assert not (bad_needs / "block_precision_followup.json").exists()
+        assert receipt.read_bytes() == original_receipt
+    print("PASS: R09 块级补算峰值等价、零事件地址、非法输入与坏事件不覆盖全量产物")
+
+
 def main():
     equivalence_case()
     varint_equivalence_case()
+    followup_case()
     print("PASS: 三引擎 gate/退出码 10 例 hypothesis 全等；gate PASS 六产物全等；"
           "gate FAIL 正式序列零产物；VARINT 双引擎确定性对表通过")
 

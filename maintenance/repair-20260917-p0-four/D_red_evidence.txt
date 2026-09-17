@@ -1,0 +1,96 @@
+# 施工 D：D4 改动前真实基线取证
+HEAD: f9b3800
+生产代码未修改：git diff --exit-code -- 三个生产文件 -> rc=0
+scripts/evm/peaks_daily.py sha256=0a8ceb05548684a5eced403e69a67c4ef50b611a6135b2fdc4cbae55ef6dfae9
+scripts/evm/replay_duck.py sha256=dd2b926d734c1d1a6c459675fce6522c1613d45a1a47293e841b665c612cad5f
+scripts/report/audit_release_gate.py sha256=aa2cf92dc522c93a0b9366dcbc4fe5fc1b12331413639af154bd5180d1e29b5e
+
+$ python3 -B scripts/tests/test_audit_release_gate.py
+STDOUT:
+ok    1 R03 绿例
+ok    2 R03 原反例必拒
+ok    3 R03 上限低于下界拒
+ok    4 R03 下限不等拒
+ok    5 R03 上限含疑似设施增量放行
+ok    6 R03 形状错拒
+ok    7 R03 显式 null 拒
+ok    8 R03 有 expanded 缺字段拒
+ok    R03 case 9 无 expanded 缺字段放行
+ok    R03 case 9 无 expanded 上限含疑似设施增量放行
+ok    9 R03 无 expanded 缺字段放行 / 在场须合法
+ok    10 R03 逐地址闭合对 expanded 仍生效
+FAIL  1 R09 子目录旧公式拒: AssertionError: []
+ok    2 R09 子目录完整产物放行（GREEN→GREEN）
+FAIL  3 R09 needs 非空缺收据拒: AssertionError: []
+FAIL  4 R09 收据少一址拒: AssertionError: []
+FAIL  5 R09 needs sha 不咬合拒: AssertionError: []
+FAIL  6 R09 多份 summary 拒: AssertionError: []
+FAIL  7 R09 触发日活跃候选进并集: AssertionError: []
+FAIL  8 R09 needs 形状非法拒: AssertionError: (['0xabc'], [])
+FAIL  9 R09 触发日形状非法拒: AssertionError: ('x', [])
+FAIL  10 R09 收据结构非法进 errors 不崩: AssertionError: []
+FAIL  11 R09 收据地址项非法拒: AssertionError: ({'peak': '1'}, [])
+ok    12 R09 地址大小写归一放行（GREEN→GREEN）
+FAIL  13 R09 顶层非对象进 errors 不崩: AttributeError: 'list' object has no attribute 'get'
+
+STDERR:
+Traceback (most recent call last):
+  File "/Users/uravvv/.claude/skills/token-chip-analysis/scripts/tests/test_audit_release_gate.py", line 1202, in <module>
+    raise SystemExit(main())
+                     ~~~~^^
+  File "/Users/uravvv/.claude/skills/token-chip-analysis/scripts/tests/test_audit_release_gate.py", line 1154, in main
+    assert not r09_failures, f"R09 失败 {len(r09_failures)}/13: {r09_failures}"
+           ^^^^^^^^^^^^^^^^
+AssertionError: R09 失败 11/13: ['1 R09 子目录旧公式拒', '3 R09 needs 非空缺收据拒', '4 R09 收据少一址拒', '5 R09 needs sha 不咬合拒', '6 R09 多份 summary 拒', '7 R09 触发日活跃候选进并集', '8 R09 needs 形状非法拒', '9 R09 触发日形状非法拒', '10 R09 收据结构非法进 errors 不崩', '11 R09 收据地址项非法拒', '13 R09 顶层非对象进 errors 不崩']
+
+exit_code=1; elapsed_s=23.115
+
+$ python3 -B scripts/tests/test_engine_equivalence.py
+STDOUT:
+
+STDERR:
+Traceback (most recent call last):
+  File "/Users/uravvv/.claude/skills/token-chip-analysis/scripts/tests/test_engine_equivalence.py", line 327, in <module>
+    main()
+    ~~~~^^
+  File "/Users/uravvv/.claude/skills/token-chip-analysis/scripts/tests/test_engine_equivalence.py", line 321, in main
+    followup_case()
+    ~~~~~~~~~~~~~^^
+  File "/Users/uravvv/.claude/skills/token-chip-analysis/scripts/tests/test_engine_equivalence.py", line 258, in followup_case
+    assert receipt.is_file(), \
+           ~~~~~~~~~~~~~~~^^
+AssertionError: block_precision_followup.json 不存在（rc=2）
+usage: replay_duck.py [-h] --channels CHANNELS --out-dir OUT_DIR
+                      [--camps CAMPS] [--emit-csv] [--merged-parquet]
+                      [--no-merged] [--mem-limit MEM_LIMIT]
+                      [--threads THREADS] [--force-varint]
+replay_duck.py: error: unrecognized arguments: --only-addrs /var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/tmp7zpi33zo/needs.json
+
+
+exit_code=1; elapsed_s=12.480
+
+$ python3 -B scripts/tests/test_peaks_daily.py
+STDOUT:
+ok    正常路径 exit 0
+ok    X 日末峰值=50（同日对冲后日终只剩次日仓）
+ok    X 上界=100（昨收0+当日毛流入100；旧公式 Σmax(day_delta,0) 只给 50=漏检反例）
+ok    X 上界日=对冲当日
+ok    Y 对照：峰值=上界=100
+ok    X 落入 needs_block_precision（L1 50<100≤L2 100）
+ok    Y 不误入名单（L1 已达标）
+ok    summary 带新公式标记 ub_formula=prev_close_plus_gross_in/v2
+ok    summary 触发日哈希与产物咬合（发布闸拒陈旧产物的依据）
+FAIL  summary 登记 needs_block_precision 哈希（发布闸补算覆盖咬合依据）
+ok    trigger_days schema
+ok    触发日活跃候选=仅 X（Y 当日无动作）
+ok    空触发日且无 empty_reason → exit 2
+ok    显式空声明 → exit 0 且 empty_reason 落盘
+
+FAIL：1 项失败
+  - summary 登记 needs_block_precision 哈希（发布闸补算覆盖咬合依据）
+
+STDERR:
+
+exit_code=1; elapsed_s=0.766
+
+逐例分类以原始异常/断言为准；D4-a 2/12 是 GREEN→GREEN。D4-b 以后续收据不存在取 RED，不能把 argparse 的 rc=2 当作非法输入用例验证。D4-c 使用既有 check/finish，保留 FAIL 原文，不伪造 AssertionError。

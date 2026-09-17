@@ -111,6 +111,11 @@ def main():
     check("summary 触发日哈希与产物咬合（发布闸拒陈旧产物的依据）",
           summary.get("trigger_days_file") is True
           and summary.get("trigger_days_sha256") == real_sha)
+    need_sha = hashlib.sha256(
+        open(os.path.join(out1, "needs_block_precision.json"), "rb").read()).hexdigest()
+    check("summary 登记 needs_block_precision 哈希（发布闸补算覆盖咬合依据）",
+          summary.get("needs_block_precision_file") == "needs_block_precision.json"
+          and summary.get("needs_block_precision_sha256") == need_sha)
 
     tdj = json.load(open(os.path.join(out1, "trigger_days.json")))
     check("trigger_days schema", tdj.get("schema") == "trigger-days-replay/v1")

@@ -61,6 +61,7 @@ trigger_days.json（逐触发日列出当日活跃候选地址名单，供块级
     <out>/trigger_days.json          触发日→当日活跃候选名单（仅 --trigger-days 时产出）
     <out>/peaks_summary.json         含 ub_formula 口径标记＋trigger_days_file/
                                      trigger_days_sha256（发布闸靠哈希咬合拒目录残留的陈旧触发日产物）
+                                     needs_block_precision_sha256（发布闸靠它咬合补算收据）
 
 （来源：KOGE(BSC) 3.595 亿行分析，2026-07-25；上界公式修正 2026-08-02）
 """
@@ -169,6 +170,8 @@ def main():
         print(f"  门槛 {lvl*100:>6.2f}%: 日末达标 {ok:>5} 址；"
               f"日末未达但上界达标（需块级精确）{len(hit):>5} 址", flush=True)
     json.dump(need, open(f"{a.out_dir}/needs_block_precision.json", "w"), indent=1)
+    need_sha = hashlib.sha256(
+        open(f"{a.out_dir}/needs_block_precision.json", "rb").read()).hexdigest()
 
     UB_FORMULA = "prev_close_plus_gross_in/v2"
     if a.trigger_days:
@@ -211,6 +214,8 @@ def main():
                "levels_checked": a.levels,
                "trigger_days_file": bool(a.trigger_days),
                "trigger_days_sha256": trig_sha,
+               "needs_block_precision_file": "needs_block_precision.json",
+               "needs_block_precision_sha256": need_sha,
                "elapsed_s": round(time.time() - t0, 1)}
     json.dump(summary, open(f"{a.out_dir}/peaks_summary.json", "w"), indent=1)
     print(json.dumps(summary, indent=1))

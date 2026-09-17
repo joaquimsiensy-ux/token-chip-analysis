@@ -15,3 +15,5 @@
 | P11 | 工单 C v1 §4 | （已撤销）facts 在场即验的口子——v2 起 facts.json 进 NEW_ANALYSIS_REQUIRED | — | 撤销 |
 | P12 | 工单 C v2 §4 | `facts.provenance.producer.sha256` 只记录不比对（facts_gate.py 升级后旧 facts 不强制重 build） | 设计取舍 | 登记 |
 | P4′ | 工单 C §4 | APU 0801 再发布须补 `state_source.facts_inputs`（EXIT-1/OD-A 峰值走 override 带证据）重 build；本机对照 current 3/3、addresses/label/token 全等、peak 1/3（OD-D）、override 路径 3/3 复现 | 存量案待办 | 该案再发布前做 |
+| P13 | 工单 D §4 | 发布闸不验 `block_precision_followup.json` 的 `channels` 与全量重放输入是否同源（只记录 sha） | 残余风险 | 另单 |
+| P3′ | 工单 D §4 | APU 0801 本机对照：改前 `check_daily_peaks` 返回 `[]`（子目录产物被绕过＝缺陷本体），改后报 `needs_block_precision.json 缺失或与 peaks_summary 登记的 sha256 不咬合（旧版 peaks_daily 未登记该哈希＝升级脚本重跑）`；该案再发布前须重跑 peaks_daily＋`replay_duck.py --only-addrs` 补算并清理案根残留 trigger_days.json（P3） | 存量案待办 | 该案再发布前做 |

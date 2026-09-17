@@ -33,7 +33,7 @@ uint256 策略（防浮点退化——UHUGEINT 的 SUM 会静默退化 DOUBLE，
       [--camps camps.json] [--emit-csv] [--merged-parquet] [--no-merged] \
       [--mem-limit 8GB] [--threads 6]
 """
-import argparse, csv, glob, json, os, sys, time
+import argparse, csv, glob, hashlib, json, os, sys, time
 from pathlib import Path
 
 import duckdb
@@ -185,13 +185,17 @@ def build_events(con, chans):
     return acc
 
 
-def replay_pass1(con, out_dir, vt):
-    """聚合出 bal/peak/mint/burn/first/last + stats，写 pass1 四件产物。返回 (stats, mint_total)。"""
+def _create_deltas_view(con, vt):
     con.execute(f"""
         CREATE VIEW deltas AS
         SELECT t2 AS a, b, CAST(v AS {vt}) AS d FROM events
         UNION ALL
         SELECT frm, b, -CAST(v AS {vt}) FROM events WHERE frm <> '{Z}'""")
+
+
+def replay_pass1(con, out_dir, vt):
+    """聚合出 bal/peak/mint/burn/first/last + stats，写 pass1 四件产物。返回 (stats, mint_total)。"""
+    _create_deltas_view(con, vt)
     con.execute("CREATE TABLE bal AS SELECT a, SUM(d) s FROM deltas GROUP BY a")
     mint_total = con.execute(
         f"SELECT COALESCE(SUM(CAST(v AS {vt})), 0) FROM events WHERE frm = '{Z}'").fetchone()[0]
@@ -325,6 +329,92 @@ def replay_pass1(con, out_dir, vt):
         f"SELECT t2, SUM(CAST(v AS {vt})) FROM events WHERE frm = '{Z}' GROUP BY t2").fetchall()},
               open(f"{out_dir}/mint_ledger.json", "w"))
     return stats, mint_total
+
+
+def _load_only_addrs(paths):
+    """--only-addrs 输入三态：needs_block_precision.json（{门槛:[地址]}）、trigger_days.json
+    （{"days":{日:{"active_candidates":[...]}}}）、纯地址列表。返回 (并集(小写), [(basename, sha256)])。"""
+    union, inputs = set(), []
+    for p in paths:
+        try:
+            raw = json.load(open(p, encoding="utf-8"))
+        except (OSError, ValueError) as exc:
+            _fail(f"[only-addrs] 读不了 {p}: {exc}")
+        if isinstance(raw, list):
+            found = raw
+        elif isinstance(raw, dict) and "days" in raw:
+            days = raw["days"]
+            if not isinstance(days, dict) or any(not isinstance(d, dict) for d in days.values()):
+                _fail(f"[only-addrs] {p} trigger_days 形状非法（days 须为 日→对象）")
+            found = []
+            for key, d in days.items():
+                cands = d.get("active_candidates")
+                if not isinstance(cands, list):
+                    _fail(f"[only-addrs] {p} days[{key}].active_candidates 须为列表（缺项/null 不作零候选）")
+                found.extend(cands)
+        elif isinstance(raw, dict):
+            if any(not isinstance(v, list) for v in raw.values()):
+                _fail(f"[only-addrs] {p} needs 形状非法（须 {{门槛: [地址]}}）")
+            found = [x for v in raw.values() for x in v]
+        else:
+            _fail(f"[only-addrs] {p} 格式非法（需 needs 字典 / trigger_days / 地址列表）")
+        if any(not isinstance(x, str) or not x.strip() for x in found):
+            _fail(f"[only-addrs] {p} 地址项须为非空字符串")
+        union.update(x.strip().lower() for x in found)
+        with open(p, "rb") as fh:
+            inputs.append((os.path.basename(p), hashlib.sha256(fh.read()).hexdigest()))
+    if not union:
+        _fail("[only-addrs] 地址并集为空——无需补算（needs 与触发日活跃候选均空）")
+    return union, inputs
+
+
+def _fail(msg):
+    print(msg, file=sys.stderr, flush=True)
+    raise SystemExit(2)
+
+
+def followup_peaks(con, a, vt):
+    """R09（7.2.0）：只对 --only-addrs 并集算块级精确峰值（无门槛、无预筛），写
+    block_precision_followup.json 到第一个 --only-addrs 文件所在目录。整段跳过 pass1/merged/
+    pass2，不碰 replay_stats/peaks.json 等全量产物。窗口 SQL 与 replay_pass1 逐字相同。"""
+    union, inputs = _load_only_addrs(a.only_addrs)
+    _create_deltas_view(con, vt)
+    con.execute("CREATE TABLE only_addrs (a VARCHAR)")
+    con.executemany("INSERT INTO only_addrs VALUES (?)", [(x,) for x in sorted(union)])
+    con.execute("""
+        CREATE TABLE ab AS
+        SELECT a, b, SUM(d) dd FROM deltas
+        WHERE a IN (SELECT a FROM only_addrs) GROUP BY a, b""")
+    try:
+        con.execute("""
+            CREATE TABLE peaks AS
+            WITH cum AS (SELECT a, b, SUM(dd) OVER (PARTITION BY a ORDER BY b) c FROM ab),
+                 mx AS (SELECT a, MAX(c) mc FROM cum GROUP BY a HAVING MAX(c) > 0)
+            SELECT m.a, m.mc, MIN(cum.b) pb FROM mx m
+            JOIN cum ON cum.a = m.a AND cum.c = m.mc GROUP BY m.a, m.mc""")
+        peak_rows = con.execute("SELECT a, mc, pb FROM peaks").fetchall()
+    except duckdb.Error as e:
+        print(f"[only-addrs] SQL 窗口不可用（{str(e)[:80]}），回退 Python 流式", flush=True)
+        peak_rows = _peaks_python(con, 0)
+    found = {str(x): {"peak": str(int(mc)), "peak_blk": int(pb)} for x, mc, pb in peak_rows}
+    addresses = {x: found.get(x, {"peak": "0", "peak_blk": None}) for x in sorted(union)}
+    with open(a.channels, "rb") as fh:
+        chan_sha = hashlib.sha256(fh.read()).hexdigest()
+    with open(__file__, "rb") as fh:
+        self_sha = hashlib.sha256(fh.read()).hexdigest()
+    receipt = {"schema": "block-precision-followup/v1", "engine": "replay_duck.py",
+               "producer": {"path": os.path.basename(__file__), "sha256": self_sha},
+               "value_type": vt,
+               "inputs": [{"path": n, "sha256": s} for n, s in inputs],
+               "channels": {"path": os.path.basename(a.channels), "sha256": chan_sha},
+               "count": len(addresses), "addresses": addresses}
+    out = os.path.join(os.path.dirname(os.path.abspath(a.only_addrs[0])), "block_precision_followup.json")
+    tmp = out + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as fh:
+        json.dump(receipt, fh, ensure_ascii=False, indent=1)
+    os.replace(tmp, out)
+    print(f"[only-addrs] 块级精确峰值 {len(addresses)} 址（有事件 {len(found)}）→ {out}", flush=True)
+    return 0
 
 
 def _peaks_python(con, peak_min):
@@ -553,6 +643,10 @@ def main():
                     help="不写任何 merged 产物（亿级基准/对表跑省盘省时；默认关=行为不变）")
     ap.add_argument("--mem-limit", default="8GB")
     ap.add_argument("--threads", type=int, default=6)
+    ap.add_argument("--only-addrs", action="append", metavar="JSON",
+                    help="只对这些地址算块级精确峰值（needs_block_precision.json / trigger_days.json / "
+                         "地址列表，可重复）；写 block_precision_followup.json 到首个文件所在目录，"
+                         "跳过 pass1/merged/pass2，不覆盖全量产物")
     ap.add_argument("--force-varint", action="store_true",
                     help="强制任意精度 VARINT 路径（HUGEINT 聚合溢出报错时的显式出路；慢 ~5x 仍精确）")
     a = ap.parse_args()
@@ -574,7 +668,10 @@ def main():
         receipt = {**rej, "gate_pass": False,
                    "failure": "rejected_input_rows",
                    "policy": "n_bad_fields == 0 and n_out_of_segment == 0"}
-        json.dump(receipt, open(f"{a.out_dir}/replay_stats.json", "w"), indent=1)
+        if a.only_addrs:
+            print("[only-addrs] 输入含 rejected rows，不写 replay_stats.json（不覆盖全量产物）", file=sys.stderr, flush=True)
+        else:
+            json.dump(receipt, open(f"{a.out_dir}/replay_stats.json", "w"), indent=1)
         raise SystemExit(
             f"[fail-closed] 输入含 rejected rows: bad_fields={rej['n_bad_fields']} "
             f"out_of_segment={rej['n_out_of_segment']}——修复或重新采集后再重放")
@@ -584,6 +681,8 @@ def main():
     maxlen = con.execute("SELECT COALESCE(MAX(LENGTH(v)), 0) FROM events").fetchone()[0]
     vt = "VARINT" if a.force_varint else ("HUGEINT" if maxlen <= 37 else "VARINT")
     print(f"value 最大位数={maxlen} -> {vt} 路径", flush=True)
+    if a.only_addrs:
+        raise SystemExit(followup_peaks(con, a, vt))
     stats, mint_total = replay_pass1(con, a.out_dir, vt)
     stats.update(rej)
     stats.update(replay_provenance(a.out_dir, __file__))

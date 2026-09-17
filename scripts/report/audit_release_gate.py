@@ -1071,14 +1071,50 @@ def check_dormant(case_dir: Path, d: dict, errors: list[str]):
                       f"＋decision_reason 非空；示例 {bad[:3]}）——仅把地址挂进名单不算裁决")
 
 
+BLOCK_PRECISION_FOLLOWUP_SCHEMA = "block-precision-followup/v1"
+
+
+def _find_peaks_summaries(case_dir: Path) -> list[Path]:
+    """R09（7.2.0）：peaks_daily 产物根不限定案根——递归定位 peaks_summary.json；
+    跳过隐藏目录（.duck_tmp 等）、_history 与符号链接路径。"""
+    hits = []
+    for p in sorted(case_dir.rglob("peaks_summary.json")):
+        rel = p.relative_to(case_dir)
+        if any(part.startswith(".") or part == "_history" for part in rel.parts):
+            continue
+        cur, linked = p, False
+        while cur != case_dir:
+            if cur.is_symlink():
+                linked = True
+                break
+            cur = cur.parent
+        if linked or not p.is_file():
+            continue
+        hits.append(p)
+    return hits
+
+
 def check_daily_peaks(case_dir: Path, errors: list[str]):
-    """日级峰值口径闭环（v6.9.1）：案目录出现 peaks_summary.json 即视为用了
+    """日级峰值口径闭环（v6.9.1）：案内出现 peaks_summary.json 即视为用了
     peaks_daily 替代件——旧上界公式产物拒收（Σmax(day_delta,0) 非恒等上界，
-    同日等额进出会漏），且四类触发日必须有显式产物（空也要声明）。"""
-    ps_path = case_dir / "peaks_summary.json"
-    if not ps_path.is_file():
+    同日等额进出会漏），且四类触发日必须有显式产物（空也要声明）。
+    R09（7.2.0）：①产物根按 rglob 定位（原只看案根，data/peaks_daily/ 下的产物整段绕过闸）；
+    ②needs_block_precision.json 与 summary 哈希咬合；③needs ∪ 触发日活跃候选非空时，
+    必须有 replay_duck.py --only-addrs 产出的 block_precision_followup.json 覆盖每一址。"""
+    hits = _find_peaks_summaries(case_dir)
+    if not hits:
         return
+    if len(hits) > 1:
+        errors.append("案内出现多份 peaks_summary.json（"
+                      + ", ".join(str(h.relative_to(case_dir)) for h in hits)
+                      + "）——峰值产物根须唯一，清理陈旧目录后重验")
+        return
+    ps_path = hits[0]
+    pd = ps_path.parent
     ps = load_json(ps_path, errors)
+    if not isinstance(ps, dict):
+        errors.append("peaks_summary.json 顶层须为对象")
+        return
     if str(ps.get("ub_formula")) != "prev_close_plus_gross_in/v2":
         errors.append("peaks_daily 产物是旧上界公式（缺 ub_formula=prev_close_plus_gross_in/v2）"
                       "——同日等额进出会被对冲漏检，升级脚本重跑")
@@ -1088,19 +1124,109 @@ def check_daily_peaks(case_dir: Path, errors: list[str]):
         errors.append("peaks_daily 本次运行未带 --trigger-days（四类触发日义务未履行）"
                       "——目录里残留的旧 trigger_days.json 不作数，带触发日清单重跑")
         return
-    tp = case_dir / "trigger_days.json"
+    tp = pd / "trigger_days.json"
     if not tp.is_file() or tp.is_symlink():
         errors.append("peaks_summary 声称产出触发日但 trigger_days.json 缺失")
         return
-    expected = str(ps.get("trigger_days_sha256", "")).lower()
-    if not expected or sha256_file(tp).lower() != expected:
+    trig_sha = str(ps.get("trigger_days_sha256", "")).lower()
+    if not trig_sha or sha256_file(tp).lower() != trig_sha:
         errors.append("trigger_days.json 与本次 peaks_daily 运行不咬合"
                       "（sha256 不匹配或 summary 未登记）——陈旧/换包产物拒收")
     td = load_json(tp, errors)
+    if not isinstance(td, dict):
+        errors.append("trigger_days.json 顶层须为对象")
+        return
     if str(td.get("schema")) != "trigger-days-replay/v1":
         errors.append("trigger_days.json schema 非法（须 trigger-days-replay/v1）")
     elif not td.get("days") and not td.get("empty_reason"):
         errors.append("trigger_days.json 触发日为空且无 empty_reason 显式声明")
+    # R09 ②：needs 文件必须在场且与 summary 登记哈希咬合（旧版 peaks_daily 未登记＝升级重跑）
+    needs_path = pd / "needs_block_precision.json"
+    needs_sha = str(ps.get("needs_block_precision_sha256", "")).lower()
+    if needs_path.is_symlink() or not needs_path.is_file() or not needs_sha \
+            or sha256_file(needs_path).lower() != needs_sha:
+        errors.append("needs_block_precision.json 缺失或与 peaks_summary 登记的 sha256 不咬合"
+                      "（旧版 peaks_daily 未登记该哈希＝升级脚本重跑）")
+        return
+    need = load_json(needs_path, errors)
+    if not isinstance(need, dict) or any(not isinstance(v, list) for v in need.values()):
+        errors.append("needs_block_precision.json 形状非法（须 {门槛: [地址]} 字典）")
+        return
+    union = set()
+    for bucket in need.values():
+        if any(not isinstance(x, str) or not x.strip() for x in bucket):
+            errors.append("needs_block_precision.json 地址项须为非空字符串")
+            return
+        union.update(x.strip().lower() for x in bucket)
+    days = td.get("days")
+    if days is not None and not isinstance(days, dict):
+        errors.append("trigger_days.json days 须为对象（日→{reason,count,active_candidates}）")
+        return
+    td_union = set()
+    for key, day in (days or {}).items():
+        if not isinstance(day, dict):
+            errors.append(f"trigger_days.json days[{key}] 须为对象")
+            return
+        cands = day.get("active_candidates")
+        if not isinstance(cands, list) or any(not isinstance(x, str) or not x.strip() for x in cands):
+            errors.append(f"trigger_days.json days[{key}].active_candidates 须为地址字符串列表（缺项/null 不作零候选）")
+            return
+        td_union.update(x.strip().lower() for x in cands)
+    union |= td_union
+    if not union:
+        return
+    # R09 ③：补算覆盖收据——每个待补地址都必须有块级精确峰值，且收据绑定当前 needs/触发日
+    fu_path = pd / "block_precision_followup.json"
+    if fu_path.is_symlink() or not fu_path.is_file():
+        errors.append(f"日级峰值有 {len(union)} 址需块级精确补算，但缺 block_precision_followup.json "
+                      "收据（replay_duck.py --only-addrs 产出）——L2 过线地址未补算不得判级")
+        return
+    fu = load_json(fu_path, errors)
+    if not isinstance(fu, dict):
+        errors.append("block_precision_followup.json 顶层须为对象")
+        return
+    if fu.get("schema") != BLOCK_PRECISION_FOLLOWUP_SCHEMA:
+        errors.append(f"block_precision_followup.json schema 非法（须 {BLOCK_PRECISION_FOLLOWUP_SCHEMA}）")
+    if fu.get("engine") != "replay_duck.py":
+        errors.append("block_precision_followup.json engine 非 replay_duck.py——块级补算须走重放引擎")
+    items = fu.get("inputs")
+    if not isinstance(items, list) or any(not isinstance(i, dict) for i in items):
+        errors.append("block_precision_followup.json inputs 须为 [{path, sha256}] 列表")
+        return
+    bound = {Path(str(i.get("path") or "")).name: str(i.get("sha256") or "").lower() for i in items}
+    if bound.get("needs_block_precision.json") != needs_sha:
+        errors.append("block_precision_followup.json 未绑定当前 needs_block_precision.json（inputs sha 不咬合）——needs 变了要重跑补算")
+    if td_union and bound.get("trigger_days.json") != trig_sha:
+        errors.append("block_precision_followup.json 未绑定当前 trigger_days.json（inputs sha 不咬合）——触发日活跃候选也须补算")
+    addrs = fu.get("addresses")
+    if not isinstance(addrs, dict):
+        errors.append("block_precision_followup.json 缺 addresses 映射")
+        return
+    norm = {}
+    for key, entry in addrs.items():
+        k = str(key).strip().lower()
+        if k in norm:
+            errors.append(f"block_precision_followup.json addresses 含大小写重复地址 {k}")
+            return
+        norm[k] = entry
+    missing = sorted(a for a in union if a not in norm)
+    if missing:
+        errors.append(f"块级补算收据未覆盖 {len(missing)} 址（样例 {missing[:3]}）——只多查不漏查")
+    for addr in sorted(union - set(missing)):
+        entry = norm[addr]
+        if not isinstance(entry, dict) or "peak" not in entry or "peak_blk" not in entry:
+            errors.append(f"块级补算收据 {addr} 须含 peak 与 peak_blk 两字段")
+            continue
+        before = len(errors)
+        peak = raw_int(entry.get("peak"), f"block_precision_followup.addresses[{addr}].peak", errors)
+        if len(errors) > before:
+            continue   # peak 本身非法只报根因，不再用替代值 0 判 peak_blk
+        blk = entry.get("peak_blk")
+        if peak > 0:
+            if isinstance(blk, bool) or not isinstance(blk, int) or blk < 0:
+                errors.append(f"块级补算收据 {addr}.peak_blk 须为非负整数区块（peak>0）")
+        elif blk is not None:
+            errors.append(f"块级补算收据 {addr}.peak_blk 在 peak==0 时须为 null")
 
 
 def check_reproduce_receipt(case_dir: Path, rel, cid, errors: list[str]):

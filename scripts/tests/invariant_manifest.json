@@ -11,10 +11,10 @@
   "scripts/*.py"
  ],
  "minimum_counts": {
-  "receipt_producers": 70,
-  "receipt_consumers": 92,
+  "receipt_producers": 81,
+  "receipt_consumers": 118,
   "transport_calls": 65,
-  "atomic_writes": 56,
+  "atomic_writes": 61,
   "formal_entrypoints": 61
  },
  "receipt_producers": [
@@ -69,6 +69,12 @@
     "trigger-days-replay/v1"
    ],
    "script": "scripts/evm/peaks_daily.py"
+  },
+  {
+   "schemas": [
+    "block-precision-followup/v1"
+   ],
+   "script": "scripts/evm/replay_duck.py"
   },
   {
    "schemas": [
@@ -470,6 +476,7 @@
     "adversarial-review/v2",
     "adversarial-review/v3",
     "adversarial-review/v4",
+    "block-precision-followup/v1",
     "facts-provenance/v1",
     "figure2-check-receipt/v1",
     "identity-holder-snapshot/v2",
@@ -955,6 +962,11 @@
    "locator": "main",
    "script": "scripts/evm/observe_supply.py",
    "semantics": "dual_file_txn"
+  },
+  {
+   "locator": "followup_peaks",
+   "script": "scripts/evm/replay_duck.py",
+   "semantics": "overwrite_single"
   },
   {
    "locator": "main",

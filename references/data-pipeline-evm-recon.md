@@ -129,7 +129,7 @@ python3 scripts/evm/verify_recon.py <原参数> \
 KOGE 一级 inflow 预筛（≥0.1% 供应）后**仍剩 157,459 个候选**，块级 dd 表 3 分钟吃 19GB temp 直奔爆盘。
 改日级后 6,217 候选 / 734,079 行 / **164 秒**完成。两级口径保证判级不失真：
 `L1 日末峰值`（主口径）+ `L2 日内上界＝昨日日终余额+当日毛流入`（恒等：日内任意时刻持仓 ≤ 昨收+当日全部进账）；
-凡 L1 未达门槛但 L2 达标者落 `needs_block_precision.json`，对这批再补块级精确值——**只多查不漏查**。
+凡 L1 未达门槛但 L2 达标者落 `needs_block_precision.json`，`replay_duck.py --only-addrs` 出收据过闸。
 ⚠ 旧公式 `Σmax(day_delta,0)` 已废（2026-08-02 codex 复核反例：同日等额进出被日净对冲成 0，同日建仓又清仓的地址两级全盲）；产物 peaks_summary.json 带 `ub_formula=prev_close_plus_gross_in/v2` 标记，audit_release_gate 见旧公式产物即拒。新公式下快进快出的刷量地址会成批入名单（当日毛流入巨大），按 (addr,block) 聚合批量精查消化。
 - **四类触发日强制逐笔（2026-08-02 用户定；同日 codex 复核补机器闭环）**：发射日、毕业日、价格单日 ±50%、单日阵营变动 ≥10pp 的日子，无论 L2 是否报警都对当日活跃地址补块级逐笔回放。清单走机器产物：日期整理成 JSON 喂 `peaks_daily.py --trigger-days`，产出 `trigger_days.json`（逐触发日活跃候选名单；零触发日也须 empty_reason 显式声明）；阵营变动类触发日判级后才算得出——发现新触发日必须回头重跑并重验判级；发布闸对带 peaks_summary.json 的案子强制校验该产物在位。判级口径权威见 tiering"峰值判级口径"条。
 - **候选门槛跟现行判级线走，禁止照抄历史案数字**：恒等式保证峰值 ≥pct 的地址必在 `inflow ≥pct` 内，
