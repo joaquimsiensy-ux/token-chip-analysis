@@ -1,12 +1,12 @@
-# 工单 D 复核提示词（只读，r1：对 v1 复核）
+# 工单 D 复核提示词（只读，r2：对 v2 复核；r1 八条见 `review_D_reply_r1.md`，逐条核 v2 处置是否闭合——D-01 :577 改为 only-addrs 不写 replay_stats＋坏事件反例；D-02/D-03 形状严格校验＋两侧小写归一＋用例 8–12；D-04 裸 `fu.get("schema")`；D-05 `_fail` stderr＋exit 2；D-06 h 例 `:960-970` 整块替换补 needs；D-07 基线声明；D-08 唯一锚 :191/:194、:960/:970；其余 r1 已核项只需确认未被 v2 破坏）
 
 ## 纪律
 1. 禁读 `~/.codex/`（插件启动搜索若已读 memories 如实披露一次，之后不再读）；禁读本仓库 `archive/`、`blind-reviews/`、`.staging_*`、`references/attic.md` 的内容（统计大小只用 stat）。禁读 `/Users/uravvv/Desktop` 下任何文件（APU 存量案对照由调度方本机跑）。
 2. 只读、离线、不 commit、不改任何文件。报告全文打印到 stdout，首行固定为 `# 工单D复核：通过` 或 `# 工单D复核：退回`。退回时逐条给出：编号、工单位置、事实（附 `grep -n -F` 或代码原文）、修订建议。通过时也要列出你实际核过的项。
 
 ## 任务
-复核 `maintenance/repair-20260917-p0-four/workorder_D.md`（v1）。工作目录＝本仓库根（HEAD 含 C 段落地，`audit_release_gate.py`/`invariant_manifest.json` 以此为基线；其余白名单文件与 `4cbfe48` 相同）。逐项核：
-a) §2 每个锚文本 `grep -n -F` 在指定文件恰 1 处且行号一致（peaks_daily.py :60-63/:171/:202/:213；audit_release_gate.py :408/:457/:603/:1074-1103/:1676；replay_duck.py :36/:190-194/:330/:556/:587；test_audit_release_gate.py :964-968/:970/:972；test_engine_equivalence.py :236；test_peaks_daily.py :113；data-pipeline-evm-recon.md:132 与 playbook-entity-cluster-tiering.md:149 子串唯一且字节 −13/+9）。
+复核 `maintenance/repair-20260917-p0-four/workorder_D.md`（v2）。工作目录＝本仓库根（HEAD 含 C 段落地，`audit_release_gate.py`/`invariant_manifest.json` 以此为基线；其余白名单文件与 `4cbfe48` 相同）。逐项核：
+a) §2 每个锚文本 `grep -n -F` 在指定文件恰 1 处且行号一致（peaks_daily.py :60-63/:171/:202/:213；audit_release_gate.py :408/:457/:603/:1074-1103/:1676；replay_duck.py :36/:191/:194/:330/:556/:577/:587；test_audit_release_gate.py :960/:970/:972；test_engine_equivalence.py :236；test_peaks_daily.py :113；data-pipeline-evm-recon.md:132 与 playbook-entity-cluster-tiering.md:149 子串唯一且字节 −13/+9）。
 b) **D2 `check_daily_peaks` 重写**：rglob 定位（跳过隐藏目录、`_history/`、符号链接、`.duck_tmp`）对 APU 型布局 `data/peaks_daily/peaks_summary.json` 是否命中；"零份 return / 多份拒"与 §1.4 一致；`pd`＝summary 所在目录后，`trigger_days.json`/`needs_block_precision.json`/`block_precision_followup.json` 是否全部相对 `pd` 解析；needs sha 咬合（summary 缺 `needs_block_precision_sha256` 时的错误文案是否明确指向"升级脚本重跑"）；并集＝needs 各档 ∪ trigger_days `days[*].active_candidates`；followup 收据 schema/engine/inputs sha/addresses 覆盖每址（含 `peak`/`peak_blk` 形状）各失败分支是否互斥、fail-closed、错误文案可被用例子串断言；原有错误文案（`旧上界公式`、`trigger_days.json 触发日为空且无 empty_reason 显式声明` 等）是否逐字保留使既有断言不变。
 c) **D3 `replay_duck.py --only-addrs`**：`_create_deltas_view` 抽取后 `replay_pass1` 行为逐字节等价；`_load_only_addrs` 对三种输入形态（needs 字典 `{档:[addr]}`、trigger_days、纯 list）的解析与地址小写归一是否与 `build_events` 的归一一致；`followup_peaks` 的窗口 SQL 是否逐字复用 `:285-290`（比对原文）、无门槛（`peak_min=0` 语义核 `_peaks_python` :330 实现）、无事件地址补 `{"peak":"0","peak_blk":null}`；`raise SystemExit(followup_peaks(...))` 放在 `:587` 之前是否真的跳过 pass1/merged/pass2 且不触碰 §1.3 列出的全量产物；收据写到首个 `--only-addrs` 文件目录、`inputs[]` 逐文件 sha、`channels` sha 复验；坏 JSON/空并集 exit 2。
 d) **D4 测试**：`_r09_case_1..7` 的 RED/GREEN 在基线与改后是否成立（用例 2 基线也无错属回归例，工单已注明）；夹具助手 `_r09_write_peaks` 写出的 summary 字段与 D1 新增字段名一致；现有 h 例 `:964-968` 不改后在新闸下是否仍绿（它的 summary 无 `needs_block_precision_sha256`——若新闸对缺该字段报错则 h 例必红，请判定并给出修法：h 例夹具补字段 vs 闸对旧 summary 的兼容策略，二选一须与 §4 APU"改后须报错"预期一致）；`test_engine_equivalence.followup_case` 六址事件下全量 `peaks.json` 与 `--only-addrs` 收据同值、未出现地址 peak 0、`replay_stats.json` 未被覆盖；`test_peaks_daily` :113 后的 needs sha 断言。沙箱允许则实跑取证，否则静态推演注明。
@@ -14,4 +14,5 @@ e) **D5**：`invariant_scan.py` 对 `block-precision-followup/v1` 生产者（re
 f) **D6/§1.1**：两处文档替换后 references 是否恰 930061；docs_lint 粗体配对/引用无断链；被删句"只多查不漏查"的语义是否已由收据覆盖检查（并集每址）承接，不构成口径漂移。
 g) **回归**：§0.8 列出的测试及其他写 `peaks_summary.json` 的夹具（grep 全 `scripts/tests/`）在新闸下有无必红；`run_all.py` 现有用例有无变红；其他读 `peaks_summary.json`/`needs_block_precision.json` 的消费者（grep 全仓 `scripts/`）是否有同族口径遗漏，列出并注明是否属本段。
 h) **§4 APU 预期**：按工单描述的 APU 布局（`data/peaks_daily/` 下 summary 为旧格式无 needs sha、案根残留 `trigger_days.json` P3）推演改后 `check_daily_peaks` 的错误集合，确认与 §4 写的预期一致（多份 summary 是否会被案根残留 `trigger_days.json` 误触发——它不是 summary，应不计）。
+j) **v2 新增点**：①D2 形状校验各 return 是否会遮住后续应报的其他错误（可接受则说明）；`raw_int` 对非法 peak 追加错误后返回 0 是否让 peak_blk 判定误报（peak 非法时应只报一条还是两条，判定并给建议）；`norm` 大小写重复检测；②D3 `_fail` 定义在 `_load_only_addrs` 之后是否可用、`sys` 已 import；`:577` 改动是否在 `main()` 内且不触及 §0.4 保护的函数；坏事件反例的构造可行性（`_write_inputs`/通道收据 sha 绑定是否允许追加坏行，若不允许给出可行写法）；③h 例整块替换后 g 例（:951-958）是否仍绿；用例 8–12 的 RED/GREEN；用例 12 在基线是否确实报未覆盖；④§4 APU 两种前提下的错误集合是否与 D2 代码路径一致。
 i) §0.4 不改清单、§1 硬约束、§4 登记项（P2/P3 维持、P13 新增）是否自洽；有无遗漏同族点。

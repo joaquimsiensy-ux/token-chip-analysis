@@ -1,7 +1,8 @@
-# 工单 D（v1）：R09 日级峰值闸——rglob 定位＋补算覆盖收据＋`replay_duck --only-addrs` 生产者 —— repair-20260917-p0-four 第四段
+# 工单 D（v2）：R09 日级峰值闸——rglob 定位＋补算覆盖收据＋`replay_duck --only-addrs` 生产者 —— repair-20260917-p0-four 第四段
 
 > 出处：codex 对 7.0.4 的 review（`REVIEW.md` R09，P0）：①发布闸 `check_daily_peaks` 只看案根 `peaks_summary.json`，真实案子产物在 `data/peaks_daily/`（APU分析0801 实证：`data/peaks_daily/peaks_summary.json`），闸被整段绕过；②即使找到，闸也不验 `needs_block_precision.json`（L1 未达但 L2 达标、须补块级精确值的地址）是否真的补算过——"同日等额进出"的地址可漏判。用户 2026-09-17 裁决：修，三件套＝闸定位改 rglob、补算覆盖收据、`replay_duck.py --only-addrs` 生产者入口；总原则"能不新增不新增、skill 上下文不增"。
-> 内容基线：HEAD＝C 段落地后的 commit（开工 HEAD 以 `construct_D_prompt.md` 派工副本首行标注为准）。本段白名单文件中 `peaks_daily.py`、`replay_duck.py`、`test_audit_release_gate.py`、`test_engine_equivalence.py`、`test_peaks_daily.py`、两份文档与 `4cbfe48` 逐字节相同（A/B/C 未触及）；`audit_release_gate.py` 经 C 段插入后行号已漂移，本工单全部锚点已在 C 落地后的 HEAD（1b317b3）上重新 `grep -n -F` 实证；`invariant_manifest.json` 以 C 段落地后为基线。行号均指施工前基线。
+> v2 变更（对 codex r1 八条，见 `review_D_reply_r1.md`，全采纳）：D-01 `--only-addrs` 模式下坏事件分支不写 `replay_stats.json`（校验照旧、只不落收据）＋坏事件反例；D-02 needs/触发日形状严格校验＋地址两侧统一小写；D-03 followup 顶层/inputs/addresses 逐项形状校验（peak>0 ⇒ peak_blk 非负整数，peak==0 ⇒ null），结构错误进 errors 不崩；D-04 schema 比对去掉 `str()` 包裹（扫描器只识别裸 `.get("schema")`）；D-05 坏 JSON/空并集/格式非法一律 stderr＋`SystemExit(2)`，测试断言 `== 2`；D-06 h 例夹具补合法空 needs＋summary 两字段并加放行断言（不豁免旧 summary）；D-07 基线声明订正；D-08 deltas 抽取与 h 例改用唯一锚。
+> 内容基线：HEAD＝C 段落地后的 commit（开工 HEAD 以 `construct_D_prompt.md` 派工副本首行标注为准）。本段白名单文件中 `peaks_daily.py`、`replay_duck.py`、`test_engine_equivalence.py`、`test_peaks_daily.py`、两份文档与 `4cbfe48` 逐字节相同（A/B/C 未触及）；`test_audit_release_gate.py` 经 B/C 段各有新增（R03 用例、facts 夹具助手），以 C 落地后为基线；`audit_release_gate.py` 经 C 段插入后行号已漂移，本工单全部锚点已在 C 落地后的 HEAD（1b317b3）上重新 `grep -n -F` 实证；`invariant_manifest.json` 以 C 段落地后为基线。行号均指施工前基线。
 
 ## 0. 开工纪律
 
@@ -118,17 +119,30 @@ def check_daily_peaks(case_dir: Path, errors: list[str]):
                       "（旧版 peaks_daily 未登记该哈希＝升级脚本重跑）")
         return
     need = load_json(needs_path, errors)
+    if not isinstance(need, dict) or any(not isinstance(v, list) for v in need.values()):
+        errors.append("needs_block_precision.json 形状非法（须 {门槛: [地址]} 字典）")
+        return
     union = set()
-    if isinstance(need, dict):
-        for bucket in need.values():
-            if isinstance(bucket, list):
-                union.update(str(x) for x in bucket)
-    td_union = set()
+    for bucket in need.values():
+        if any(not isinstance(x, str) or not x.strip() for x in bucket):
+            errors.append("needs_block_precision.json 地址项须为非空字符串")
+            return
+        union.update(x.strip().lower() for x in bucket)
     days = td.get("days") if isinstance(td, dict) else None
-    if isinstance(days, dict):
-        for day in days.values():
-            if isinstance(day, dict):
-                td_union.update(str(x) for x in (day.get("active_candidates") or []))
+    if days is not None and not isinstance(days, dict):
+        errors.append("trigger_days.json days 须为对象（日→{reason,count,active_candidates}）")
+        return
+    td_union = set()
+    for key, day in (days or {}).items():
+        if not isinstance(day, dict):
+            errors.append(f"trigger_days.json days[{key}] 须为对象")
+            return
+        cands = day.get("active_candidates")
+        cands = [] if cands is None else cands
+        if not isinstance(cands, list) or any(not isinstance(x, str) or not x.strip() for x in cands):
+            errors.append(f"trigger_days.json days[{key}].active_candidates 须为地址字符串列表")
+            return
+        td_union.update(x.strip().lower() for x in cands)
     union |= td_union
     if not union:
         return
@@ -139,14 +153,18 @@ def check_daily_peaks(case_dir: Path, errors: list[str]):
                       "收据（replay_duck.py --only-addrs 产出）——L2 过线地址未补算不得判级")
         return
     fu = load_json(fu_path, errors)
-    if str(fu.get("schema")) != BLOCK_PRECISION_FOLLOWUP_SCHEMA:
+    if not isinstance(fu, dict):
+        errors.append("block_precision_followup.json 顶层须为对象")
+        return
+    if fu.get("schema") != BLOCK_PRECISION_FOLLOWUP_SCHEMA:
         errors.append(f"block_precision_followup.json schema 非法（须 {BLOCK_PRECISION_FOLLOWUP_SCHEMA}）")
-    if str(fu.get("engine")) != "replay_duck.py":
+    if fu.get("engine") != "replay_duck.py":
         errors.append("block_precision_followup.json engine 非 replay_duck.py——块级补算须走重放引擎")
-    bound = {}
-    for item in fu.get("inputs") or []:
-        if isinstance(item, dict):
-            bound[Path(str(item.get("path") or "")).name] = str(item.get("sha256", "")).lower()
+    items = fu.get("inputs")
+    if not isinstance(items, list) or any(not isinstance(i, dict) for i in items):
+        errors.append("block_precision_followup.json inputs 须为 [{path, sha256}] 列表")
+        return
+    bound = {Path(str(i.get("path") or "")).name: str(i.get("sha256") or "").lower() for i in items}
     if bound.get("needs_block_precision.json") != needs_sha:
         errors.append("block_precision_followup.json 未绑定当前 needs_block_precision.json（inputs sha 不咬合）——needs 变了要重跑补算")
     if td_union and bound.get("trigger_days.json") != trig_sha:
@@ -155,25 +173,35 @@ def check_daily_peaks(case_dir: Path, errors: list[str]):
     if not isinstance(addrs, dict):
         errors.append("block_precision_followup.json 缺 addresses 映射")
         return
-    missing = sorted(a for a in union if a not in addrs)
+    norm = {}
+    for key, entry in addrs.items():
+        k = str(key).strip().lower()
+        if k in norm:
+            errors.append(f"block_precision_followup.json addresses 含大小写重复地址 {k}")
+            return
+        norm[k] = entry
+    missing = sorted(a for a in union if a not in norm)
     if missing:
         errors.append(f"块级补算收据未覆盖 {len(missing)} 址（样例 {missing[:3]}）——只多查不漏查")
     for addr in sorted(union - set(missing)):
-        entry = addrs.get(addr)
-        if not isinstance(entry, dict) or entry.get("peak") is None:
-            errors.append(f"块级补算收据 {addr} 缺 peak")
+        entry = norm[addr]
+        if not isinstance(entry, dict) or "peak" not in entry or "peak_blk" not in entry:
+            errors.append(f"块级补算收据 {addr} 须含 peak 与 peak_blk 两字段")
             continue
-        raw_int(entry.get("peak"), f"block_precision_followup.addresses[{addr}].peak", errors)
+        peak = raw_int(entry.get("peak"), f"block_precision_followup.addresses[{addr}].peak", errors)
         blk = entry.get("peak_blk")
-        if blk is not None and (isinstance(blk, bool) or not isinstance(blk, int)):
-            errors.append(f"块级补算收据 {addr}.peak_blk 须为整数或 null")
+        if peak > 0:
+            if isinstance(blk, bool) or not isinstance(blk, int) or blk < 0:
+                errors.append(f"块级补算收据 {addr}.peak_blk 须为非负整数区块（peak>0）")
+        elif blk is not None:
+            errors.append(f"块级补算收据 {addr}.peak_blk 在 peak==0 时须为 null")
 ```
 
 `load_json`（:408）、`sha256_file`（:457）、`raw_int`（:603）为本文件既有。调用点 `:1676`（锚 `    check_daily_peaks(case_dir, errors)`）不变。
 
 ### D3 `scripts/evm/replay_duck.py`：`--only-addrs` 生产者
 
-- `:190-194`（`replay_pass1` 内 `    con.execute(f"""` … `        SELECT frm, b, -CAST(v AS {vt}) FROM events WHERE frm <> '{Z}'""")` 的 `deltas` 视图创建）抽成模块级 `def _create_deltas_view(con, vt):`（SQL 文本逐字不变），`replay_pass1` 原位改为 `    _create_deltas_view(con, vt)`。
+- `:190-194`（`replay_pass1` 内 `deltas` 视图创建；`:190` 的 `    con.execute(f"""` 全文多处不作锚，以 `:191` 锚 `        CREATE VIEW deltas AS` 与 `:194` 锚 `        SELECT frm, b, -CAST(v AS {vt}) FROM events WHERE frm <> '{Z}'""")` 定界）抽成模块级 `def _create_deltas_view(con, vt):`（SQL 文本逐字不变），`replay_pass1` 原位改为 `    _create_deltas_view(con, vt)`。
 - 新增模块级函数（放在 `:330`（锚 `def _peaks_python(con, peak_min):`）之前）：
 
 ```python
@@ -185,22 +213,33 @@ def _load_only_addrs(paths):
         try:
             raw = json.load(open(p, encoding="utf-8"))
         except (OSError, ValueError) as exc:
-            raise SystemExit(f"[only-addrs] 读不了 {p}: {exc}")
+            _fail(f"[only-addrs] 读不了 {p}: {exc}")
         if isinstance(raw, list):
             found = raw
-        elif isinstance(raw, dict) and isinstance(raw.get("days"), dict):
-            found = [x for day in raw["days"].values() if isinstance(day, dict)
-                     for x in (day.get("active_candidates") or [])]
+        elif isinstance(raw, dict) and "days" in raw:
+            days = raw["days"]
+            if not isinstance(days, dict) or any(not isinstance(d, dict) for d in days.values()):
+                _fail(f"[only-addrs] {p} trigger_days 形状非法（days 须为 日→对象）")
+            found = [x for d in days.values() for x in (d.get("active_candidates") or [])]
         elif isinstance(raw, dict):
-            found = [x for v in raw.values() if isinstance(v, list) for x in v]
+            if any(not isinstance(v, list) for v in raw.values()):
+                _fail(f"[only-addrs] {p} needs 形状非法（须 {{门槛: [地址]}}）")
+            found = [x for v in raw.values() for x in v]
         else:
-            raise SystemExit(f"[only-addrs] {p} 格式非法（需 needs 字典 / trigger_days / 地址列表）")
-        union.update(str(x).lower() for x in found)
+            _fail(f"[only-addrs] {p} 格式非法（需 needs 字典 / trigger_days / 地址列表）")
+        if any(not isinstance(x, str) or not x.strip() for x in found):
+            _fail(f"[only-addrs] {p} 地址项须为非空字符串")
+        union.update(x.strip().lower() for x in found)
         with open(p, "rb") as fh:
             inputs.append((os.path.basename(p), hashlib.sha256(fh.read()).hexdigest()))
     if not union:
-        raise SystemExit("[only-addrs] 地址并集为空——无需补算（needs 与触发日活跃候选均空）")
+        _fail("[only-addrs] 地址并集为空——无需补算（needs 与触发日活跃候选均空）")
     return union, inputs
+
+
+def _fail(msg):
+    print(msg, file=sys.stderr, flush=True)
+    raise SystemExit(2)
 
 
 def followup_peaks(con, a, vt):
@@ -256,6 +295,16 @@ def followup_peaks(con, a, vt):
                          "跳过 pass1/merged/pass2，不覆盖全量产物")
 ```
 
+- `:577`（锚 `        json.dump(receipt, open(f"{a.out_dir}/replay_stats.json", "w"), indent=1)`，坏事件分支的全量收据写入）改为：
+
+```python
+        if a.only_addrs:
+            print("[only-addrs] 输入含 rejected rows，不写 replay_stats.json（不覆盖全量产物）", file=sys.stderr, flush=True)
+        else:
+            json.dump(receipt, open(f"{a.out_dir}/replay_stats.json", "w"), indent=1)
+```
+
+  （坏事件校验与随后的 `raise SystemExit(...)` 不动——`--only-addrs` 不绕过事件校验，只不落全量收据。）
 - `:587`（锚 `    stats, mint_total = replay_pass1(con, a.out_dir, vt)`）之前插入：
 
 ```python
@@ -263,11 +312,11 @@ def followup_peaks(con, a, vt):
         raise SystemExit(followup_peaks(con, a, vt))
 ```
 
-`hashlib` 若未 import（`:36` 为 `import argparse, csv, glob, json, os, sys, time`）则在该行加入 `hashlib`。`_peaks_python(con, peak_min)`（`:330`）读 `ab` 表——施工方核对其实现确实只依赖 `ab` 且 `peak_min=0` 语义为"无门槛"，不成立即停工汇报。事件表地址归一方式（`build_events` 是否小写）须与 `_load_only_addrs` 的 `.lower()` 一致，不一致则改为与 events 相同的归一。
+`hashlib` 若未 import（`:36` 为 `import argparse, csv, glob, json, os, sys, time`）则在该行加入 `hashlib`。`_peaks_python(con, peak_min)`（`:330`）读 `ab` 表——施工方核对其实现确实只依赖 `ab` 且 `peak_min=0` 语义为"无门槛"，不成立即停工汇报。事件表地址归一方式（`build_events` 是否小写）须与 `_load_only_addrs` 的 `.lower()` 一致（复核 r1 已证 `build_events` 小写），收据 `addresses` 键一律小写，与 D2 消费者两侧同一归一。
 
 ### D4 测试
 
-**D4-a `scripts/tests/test_audit_release_gate.py`**：在 `:970`（锚 `        assert not any(("trigger" in x or "上界" in x) for x in errors), errors`，h 例末行）之后、`:972`（锚 `    # 6.9.2 修复反例（codex 验收 P1）：挂名≠裁决——空壳候选拒。`）之前插入新块。先在 h 例的 summary（`:964-968`）**不改**（旧断言保留）；新块为独立子函数 `_r09_case_1..7(root)`＋逐例捕获循环（写法照 B 段 `_r03_*`），每例 `build_case(root, historical=False)` 后 `gate.run(root, report)`，夹具助手 `_r09_write_peaks(pd, *, needs, days=None, empty_reason="夹具案：窗内无四类触发日", needs_sha=None, followup=None)` 在目录 `pd` 写 `needs_block_precision.json`(`{"0.0100": needs}`)、`trigger_days.json`、`peaks_summary.json`（ub_formula/trigger_days_file True/trigger_days_sha256/needs_block_precision_sha256＝实算或 `needs_sha` 覆盖）与可选 `block_precision_followup.json`：
+**D4-a `scripts/tests/test_audit_release_gate.py`**：在 `:970`（锚 `        assert not any(("trigger" in x or "上界" in x) for x in errors), errors`，h 例末行）之后、`:972`（锚 `    # 6.9.2 修复反例（codex 验收 P1）：挂名≠裁决——空壳候选拒。`）之前插入新块。**先改 h 例**：`:960`（锚 `        # h) 显式空声明＋哈希咬合 → 峰值/触发日检查放行`，本文件唯一）起至 `:970`（锚 `        assert not any(("trigger" in x or "上界" in x) for x in errors), errors`）共 11 行整块替换为——在写 `trigger_days.json` 之后、写 summary 之前加 `write_json(root, "needs_block_precision.json", {"0.0100": []})`，summary 加 `"needs_block_precision_file": "needs_block_precision.json"` 与 `"needs_block_precision_sha256": sha(root / "needs_block_precision.json")`，原断言保留并追加一行 `assert not any(("needs" in x or "followup" in x) for x in errors), errors`（h 例在基线因新闸报 needs 哈希错误而假绿——不豁免旧 summary，补夹具）；`:953-957` g 例 summary 与 h 同文不作锚、不改。新块为独立子函数 `_r09_case_1..7(root)`＋逐例捕获循环（写法照 B 段 `_r03_*`），每例 `build_case(root, historical=False)` 后 `gate.run(root, report)`，夹具助手 `_r09_write_peaks(pd, *, needs, days=None, empty_reason="夹具案：窗内无四类触发日", needs_sha=None, followup=None)` 在目录 `pd` 写 `needs_block_precision.json`(`{"0.0100": needs}`)、`trigger_days.json`、`peaks_summary.json`（ub_formula/trigger_days_file True/trigger_days_sha256/needs_block_precision_file/needs_block_precision_sha256＝实算或 `needs_sha` 覆盖）与可选 `block_precision_followup.json`：
 
 | # | 名称 | 夹具 | 断言 | 基线 |
 |---|---|---|---|---|
@@ -278,8 +327,13 @@ def followup_peaks(con, a, vt):
 | 5 | R09 needs sha 不咬合拒 | summary `needs_sha="0"*64` | 含 `needs_block_precision.json 缺失或` | RED |
 | 6 | R09 多份 summary 拒 | 案根与 `data/peaks_daily/` 各一份完整 summary | 含 `多份 peaks_summary.json` | RED |
 | 7 | R09 触发日活跃候选进并集 | needs `[]`，days `{"2026-01-01":{"reason":"launch","count":1,"active_candidates":["0xdef"]}}`；无 followup → 含 `followup`；补 followup 覆盖 0xdef 且 inputs 绑 needs+trigger sha → 不含 `followup`/`未覆盖` | RED（前半） |
+| 8 | R09 needs 形状非法拒 | needs 文件内容分别为 `["0xabc"]`、`{"0.0100":"0xabc"}`（summary sha 按实物登记） | 含 `形状非法` | RED（基线放行） |
+| 9 | R09 触发日形状非法拒 | days `{"2026-01-01":"x"}` | 含 `days[2026-01-01] 须为对象` | RED |
+| 10 | R09 收据结构非法进 errors 不崩 | followup 顶层 `[]` → 含 `顶层须为对象`；`inputs: 7` → 含 `inputs 须为`（两变体） | RED（基线无此检查） |
+| 11 | R09 收据地址项非法拒 | needs `["0xabc"]`；followup 覆盖但 `{"peak":"1"}`（缺 peak_blk）→ 含 `两字段`；`{"peak":"1","peak_blk":-1}` → 含 `非负整数`；`{"peak":"0","peak_blk":5}` → 含 `须为 null` | RED |
+| 12 | R09 地址大小写归一放行 | needs `["0xABC"]`；followup addresses 键 `0xabc` `{"peak":"1","peak_blk":1}` 绑定正确 → 不含 `未覆盖`/`followup` | RED（基线报未覆盖） |
 
-**D4-b `scripts/tests/test_engine_equivalence.py`**：在 `:236`（锚 `def main():`）之前新增 `followup_case()`，并在 `main()` 里 `varint_equivalence_case()` 之后调用；确定性事件（照 `varint_equivalence_case` 写法，不用 hypothesis）：`[(Z, ADDRS[0], 10**20, 1), (ADDRS[0], ADDRS[1], 10**19, 1), (ADDRS[1], ADDRS[2], 5*10**18, 1), (ADDRS[0], ADDRS[1], 2*10**18, 1), (ADDRS[1], ADDRS[0], 10**19, 1)]`。步骤：`_write_inputs`；全量 `replay_duck.py --channels channels.json --out-dir new --no-merged --threads 2 --mem-limit 2GB` rc 0，记 `peaks.json`、`replay_stats.json` 字节；写 `needs.json` `{"0.0100": [ADDRS[1], ADDRS[2], ADDRS[5]]}`（ADDRS[5] 无事件）；跑 `--only-addrs needs.json`（同 channels，`--out-dir new`）rc 0；断言：`tmp/block_precision_followup.json` schema/engine/inputs[0].path=="needs.json" 且 sha 正确；ADDRS[1]/[2] 的 `peak`/`peak_blk` 与全量 `peaks.json` 对应项相等；ADDRS[5] == `{"peak":"0","peak_blk":None}`；`peaks.json`/`replay_stats.json` 字节未变；`--only-addrs` 传坏 JSON 文件 → rc 非 0 且无收据更新；传 `[]` → rc 非 0。RED：基线 argparse 拒 `--only-addrs`（rc 2）。
+**D4-b `scripts/tests/test_engine_equivalence.py`**：在 `:236`（锚 `def main():`）之前新增 `followup_case()`，并在 `main()` 里 `varint_equivalence_case()` 之后调用；确定性事件（照 `varint_equivalence_case` 写法，不用 hypothesis）：`[(Z, ADDRS[0], 10**20, 1), (ADDRS[0], ADDRS[1], 10**19, 1), (ADDRS[1], ADDRS[2], 5*10**18, 1), (ADDRS[0], ADDRS[1], 2*10**18, 1), (ADDRS[1], ADDRS[0], 10**19, 1)]`。步骤：`_write_inputs`；全量 `replay_duck.py --channels channels.json --out-dir new --no-merged --threads 2 --mem-limit 2GB` rc 0，记 `peaks.json`、`replay_stats.json` 字节；写 `needs.json` `{"0.0100": [ADDRS[1], ADDRS[2], ADDRS[5]]}`（ADDRS[5] 无事件）；跑 `--only-addrs needs.json`（同 channels，`--out-dir new`）rc 0；断言：`tmp/block_precision_followup.json` schema/engine/inputs[0].path=="needs.json" 且 sha 正确；ADDRS[1]/[2] 的 `peak`/`peak_blk` 与全量 `peaks.json` 对应项相等；ADDRS[5] == `{"peak":"0","peak_blk":None}`；`peaks.json`/`replay_stats.json` 字节未变；`--only-addrs` 传坏 JSON 文件 → rc **== 2** 且无收据更新；传 `[]` → rc == 2；传 `{"0.0100":"x"}` → rc == 2。**坏事件反例**：另建 `bad/` 目录，照 `_write_inputs` 写一份含一条坏记录的通道（按 `build_events` 的 `n_bad_fields` 判定构造，例如 value 非数字；若通道 CSV 受收据 sha 绑定则用同一写法重生成收据——施工方核对 `_write_inputs` 与 `evm_channel_fixture` 的绑定方式），先全量跑一次拿到 `replay_stats.json`（gate_pass False 的拒收收据）记字节，再 `--only-addrs needs.json --out-dir bad` → rc 非 0 且 `bad/replay_stats.json` 字节未变、无 followup 收据。RED：基线 argparse 拒 `--only-addrs`（rc 2）——注意基线 rc 恰为 2 会让"rc == 2"断言在基线假绿，RED 取证以"收据文件不存在"为准。
 
 **D4-c `scripts/tests/test_peaks_daily.py`**：在 `:113`（锚 `          and summary.get("trigger_days_sha256") == real_sha)`）之后加：
 
@@ -295,7 +349,7 @@ RED：基线 summary 无该键 → check FAIL（`finish()` 非零）。
 
 ### D5 `scripts/tests/invariant_manifest.json`
 
-施工完成后跑 `python3 -B scripts/tests/invariant_scan.py`，按其报出缺项逐条增补（预期：`receipt_producers` 加 `{"schemas":["block-precision-followup/v1"],"script":"scripts/evm/replay_duck.py"}`；`receipt_consumers` 的 audit_release_gate.py 条目加 `block-precision-followup/v1`；`atomic_writes` 加 replay_duck.py `followup_peaks` overwrite_single；`minimum_counts` 按实际）。不得整体回填。
+施工完成后跑 `python3 -B scripts/tests/invariant_scan.py`，按其报出缺项逐条增补（消费者 schema 比对必须是裸 `fu.get("schema") != …`，扫描器 `_is_schema_access` 不识别 `str(...)` 包裹；预期：`receipt_producers` 加 `{"schemas":["block-precision-followup/v1"],"script":"scripts/evm/replay_duck.py"}`；`receipt_consumers` 的 audit_release_gate.py 条目加 `block-precision-followup/v1`；`atomic_writes` 加 replay_duck.py `followup_peaks` overwrite_single；`minimum_counts` 按实际）。不得整体回填。
 
 ### D6 文档
 
@@ -308,5 +362,5 @@ RED：基线 summary 无该键 → check FAIL（`finish()` 非零）。
 
 ## 4. 调度方本机验收项（施工方不做）
 
-- APU 0801 对照：改前 `check_daily_peaks` 对案目录返回 `[]`（缺陷本体：子目录产物被绕过）；改后须报错（旧 summary 未登记 needs sha → "升级脚本重跑"），记录原文；该案再发布前须重跑 peaks_daily＋`--only-addrs` 补算（81 址）。
+- APU 0801 对照：改前 `check_daily_peaks` 对案目录返回 `[]`（缺陷本体：子目录产物被绕过）；改后须报错（错误集合取决于子目录 `trigger_days.json` 是否在场：在场且咬合 → needs 哈希缺失"升级脚本重跑"；缺失 → "声称产出触发日但 trigger_days.json 缺失"先返回），记录实际原文，不预设唯一文案；该案再发布前须重跑 peaks_daily＋`--only-addrs` 补算（81 址）。
 - 登记 `code_change_pending.md`：P2（预筛 0.1% vs 1%）、P3（APU trigger_days `days` 键为原因名）维持；新增 P13＝闸不验 followup 收据 `channels` 与全量重放输入是否同源（只记录 sha），另单。
