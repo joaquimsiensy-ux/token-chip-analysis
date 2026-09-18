@@ -24,10 +24,12 @@
   python3 price_check.py --price-file data/cg_price_365d.json --source coingecko \
       --chain bsc --addr 0x4fa7... [--second defillama|binance] \
       [--binance-symbol CAKEUSDT] [--points 3] [--proxy URL] [--out check.json]
+收据（--out）含 price_file_sha256——stage2_closeout 用它把收据绑定到工单 bindings.price_source，并重算 verdict（F05）。
 （来源：A9 小工程件，2026-07-22；QUQ CG vs DefiLlama 实测通过）"""
 import argparse
 import csv
 import datetime
+import hashlib
 import json
 import os
 import sys
@@ -41,6 +43,14 @@ from llama_price import CHAIN_ALIAS  # noqa: E402（复用链名容错表）
 WARN_PCT, FAIL_PCT = 5.0, 15.0
 BINANCE_KLINES = "https://data-api.binance.vision/api/v3/klines"
 LLAMA_HIST = "https://coins.llama.fi/prices/historical"
+
+
+def _sha256_file(path):
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(1 << 20), b""):
+            h.update(chunk)
+    return h.hexdigest()
 
 
 def _load_series(path):
@@ -182,6 +192,7 @@ def main():
                .strftime("%Y-%m-%dT%H:%M:%SZ"),
            "price_file": os.path.abspath(a.price_file), "main_source": a.source,
            "second_source": second, "thresholds": {"warn_pct": WARN_PCT, "fail_pct": FAIL_PCT},
+           "price_file_sha256": _sha256_file(a.price_file),
            "points": results, "verdict": verdict}
     if a.out:
         with open(a.out, "w") as f:

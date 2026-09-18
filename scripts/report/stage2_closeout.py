@@ -235,6 +235,59 @@ def flow_selection_errors(facts, flow):
     return errors, notes
 
 
+PRICE_POINT_STATUSES = ("PASS", "WARN", "SKIP", "FAIL")
+
+
+def price_receipt_errors(case, bindings):
+    """F05：价格双源收据必须是 price_check.py 产物且结论可放行——从 points 按 price_check 同规则
+    重算 verdict 并要求一致；只放行 PASS/WARN（WARN 记 NOTE）；price_file_sha256 须等于
+    bindings.price_source.sha256；引用取 bindings.price_source_checks，否则取内联
+    price_source.dual_source_check.receipt；两者皆无＝纯申报对象，拒。返回 (errors, notes, ref)。"""
+    errors, notes = [], []
+    price_source = bindings.get("price_source") if isinstance(bindings.get("price_source"), dict) else {}
+    ref = bindings.get("price_source_checks")
+    if ref is None:
+        inline = price_source.get("dual_source_check")
+        ref = inline.get("receipt") if isinstance(inline, dict) else None
+    if not (isinstance(ref, dict) and isinstance(ref.get("path"), str)
+            and isinstance(ref.get("sha256"), str) and ref["sha256"]):
+        errors.append(workorder_error("bindings.price_source_checks|price_source.dual_source_check.receipt",
+                                      "price_check.py 收据引用 {path,sha256}（纯申报对象不放行）", ref))
+        return errors, notes, None
+    try:
+        receipt = load(case, ref["path"])
+    except (OSError, ValueError) as exc:
+        errors.append(workorder_error("bindings.price_source_checks.path", "可读取的收据 JSON", str(exc)))
+        return errors, notes, ref
+    points = receipt.get("points") if isinstance(receipt, dict) else None
+    if not isinstance(points, list) or not points:
+        errors.append(workorder_error("bindings.price_source_checks.points", "非空 list", points))
+        return errors, notes, ref
+    statuses = [(p.get("status") if isinstance(p, dict) else None) for p in points]
+    expected = ("FAIL" if any(s not in PRICE_POINT_STATUSES or s == "FAIL" for s in statuses)
+                else "ALL_SKIP" if all(s == "SKIP" for s in statuses)
+                else "WARN" if "WARN" in statuses else "PASS")
+    if receipt.get("verdict") != expected:
+        errors.append(workorder_error("bindings.price_source_checks.verdict",
+                                      f"与 points 重算一致（{expected}）", receipt.get("verdict")))
+    if expected not in ("PASS", "WARN"):
+        errors.append(workorder_error("bindings.price_source_checks.verdict",
+                                      "PASS|WARN（FAIL/ALL_SKIP 禁入装配：换源或人工裁决后重跑 price_check）", expected))
+    for key in ("main_source", "second_source"):
+        if not isinstance(receipt.get(key), str) or not receipt[key].strip():
+            errors.append(workorder_error(f"bindings.price_source_checks.{key}", "非空字符串", receipt.get(key)))
+    bound = receipt.get("price_file_sha256")
+    if not isinstance(bound, str) or not bound:
+        errors.append(workorder_error("bindings.price_source_checks.price_file_sha256",
+                                      "在场（旧收据无此字段：用当前 price_check.py 重跑）", bound))
+    elif bound != price_source.get("sha256"):
+        errors.append(workorder_error("bindings.price_source_checks.price_file_sha256",
+                                      f"= bindings.price_source.sha256 {price_source.get('sha256')}", bound))
+    if not errors and expected == "WARN":
+        notes.append(f"NOTE: 价格双源 WARN 点 {statuses.count('WARN')} 个（>5% 过目口径，见 report-template 2b）")
+    return errors, notes, ref
+
+
 def amendment_errors(row, field):
     errors = []
     if not isinstance(row, dict):
@@ -347,11 +400,11 @@ def workorder_errors(case, report_rel, workorder_rel=WORKORDER, *, obj=None, fac
     price2_path = price2.get("path") if isinstance(price2, dict) else price2
     need("fig2.price_source|price", f"与 bindings.price_source.path={price_path} 同路径",
          price2_path, isinstance(price_path, str) and price2_path == price_path)
-    if "price_source_checks" in bindings:
-        required_refs.append(("bindings.price_source_checks", bindings["price_source_checks"]))
-    else:
-        dual = price_source.get("dual_source_check") if isinstance(price_source, dict) else None
-        need("bindings.price_source_checks|price_source.dual_source_check", "双源检查对象在场", dual, isinstance(dual, dict))
+    price_errors, price_notes, price_ref = price_receipt_errors(case, bindings)
+    errors.extend(price_errors)
+    notes.extend(price_notes)
+    if price_ref is not None:
+        required_refs.append(("bindings.price_source_checks", price_ref))
 
     def self_reference(field, ref):
         return (field == "fig3.events_input" and isinstance(ref, dict)

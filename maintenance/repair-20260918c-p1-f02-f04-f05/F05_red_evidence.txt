@@ -1,0 +1,93 @@
+F05 RED evidence — test-only changes; production unchanged; offline second-source stub
+HEAD=87f962b653104faa1facbd1aca4540a1f95d9871
+PRODUCTION_UNCHANGED scripts/prices/price_check.py sha256=d4f752aadc2d0f646dcfa05e8149e44dd0976776437ddeb79377d730a6023f32
+PRODUCTION_UNCHANGED scripts/report/stage2_closeout.py sha256=12da0ceeb86af910f3d8c3da0a083e2a5179d274125d11b065adfa10f4990dbc
+fixtures=/private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/f05-red-q0xtv765
+  2026-01-01  主源=1  第二源=1  偏差=0.0%  [PASS]  (offline)
+  2026-01-02  主源=1  第二源=1  偏差=0.0%  [PASS]  (offline)
+  2026-01-03  主源=1  第二源=1  偏差=0.0%  [PASS]  (offline)
+[PASS] 3 点：FAIL=0 WARN=0 SKIP=0 -> /private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/f05-red-q0xtv765/baseline/case/price_checks.json
+
+=== SEGMENT 1 (independent case/try-except) ===
+  2026-01-01  主源=1  第二源=2  偏差=66.67%  [FAIL]  (offline)
+  2026-01-02  主源=1  第二源=2  偏差=66.67%  [FAIL]  (offline)
+  2026-01-03  主源=1  第二源=2  偏差=66.67%  [FAIL]  (offline)
+[FAIL] 3 点：FAIL=3 WARN=0 SKIP=0 -> /private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/f05-red-q0xtv765/variant-001/price_checks.json
+PRODUCER second_price=2.0 exit=2 expected=2 verdict=FAIL statuses=['FAIL', 'FAIL', 'FAIL'] points=3
+CONSUMER 1.workorder actual=[]
+RED 1.workorder: AssertionError: []
+CONSUMER 1.full_check actual={'exit': 0, 'verdict': 'PASS', 'workorder': {'detail': ['NOTE: fig3.events_input 是工单 fig3.events 自引用，空哈希不核', "fig2 required 下限: ['e1']", 'NOTE: 未声明流通量，门槛仅按总供应判', "flow 下限: ['e1']；图中实体: ['e1']"], 'name': 'workorder', 'status': 'PASS'}}
+RED 1.full_check: AssertionError: {'exit': 0, 'verdict': 'PASS', 'workorder': {'detail': ['NOTE: fig3.events_input 是工单 fig3.events 自引用，空哈希不核', "fig2 required 下限: ['e1']", 'NOTE: 未声明流通量，门槛仅按总供应判', "flow 下限: ['e1']；图中实体: ['e1']"], 'name': 'workorder', 'status': 'PASS'}}
+
+=== SEGMENT 2 (independent case/try-except) ===
+  2026-01-01  主源=1  第二源=1  偏差=0.0%  [PASS]  (offline)
+  2026-01-02  主源=1  第二源=1  偏差=0.0%  [PASS]  (offline)
+  2026-01-03  主源=1  第二源=1  偏差=0.0%  [PASS]  (offline)
+[PASS] 3 点：FAIL=0 WARN=0 SKIP=0 -> /private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/f05-red-q0xtv765/variant-002/price_checks.json
+PRODUCER second_price=1.0 exit=0 expected=0 verdict=PASS statuses=['PASS', 'PASS', 'PASS'] points=3
+  2026-01-01  主源=1  第二源=2  偏差=66.67%  [FAIL]  (offline)
+  2026-01-02  主源=1  第二源=2  偏差=66.67%  [FAIL]  (offline)
+  2026-01-03  主源=1  第二源=2  偏差=66.67%  [FAIL]  (offline)
+[FAIL] 3 点：FAIL=3 WARN=0 SKIP=0 -> /private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/f05-red-q0xtv765/variant-002/price_checks.json
+PRODUCER second_price=2.0 exit=2 expected=2 verdict=FAIL statuses=['FAIL', 'FAIL', 'FAIL'] points=3
+CONSUMER 2 actual=[]
+RED 2: AssertionError: []
+
+=== SEGMENT 3 (independent case/try-except) ===
+  2026-01-01  主源=1  第二源=1.08  偏差=7.69%  [WARN]  (offline)
+  2026-01-02  主源=1  第二源=1.08  偏差=7.69%  [WARN]  (offline)
+  2026-01-03  主源=1  第二源=1.08  偏差=7.69%  [WARN]  (offline)
+[WARN] 3 点：FAIL=0 WARN=3 SKIP=0 -> /private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/f05-red-q0xtv765/variant-003/price_checks.json
+PRODUCER second_price=1.08 exit=0 expected=0 verdict=WARN statuses=['WARN', 'WARN', 'WARN'] points=3
+CONSUMER 3 actual=['NOTE: fig3.events_input 是工单 fig3.events 自引用，空哈希不核', "fig2 required 下限: ['e1']", 'NOTE: 未声明流通量，门槛仅按总供应判', "flow 下限: ['e1']；图中实体: ['e1']"]
+RED 3: AssertionError: ['NOTE: fig3.events_input 是工单 fig3.events 自引用，空哈希不核', "fig2 required 下限: ['e1']", 'NOTE: 未声明流通量，门槛仅按总供应判', "flow 下限: ['e1']；图中实体: ['e1']"]
+
+=== SEGMENT 4 (independent case/try-except) ===
+  2026-01-01  主源=1  第二源=1  偏差=0.0%  [PASS]  (offline)
+  2026-01-02  主源=1  第二源=1  偏差=0.0%  [PASS]  (offline)
+  2026-01-03  主源=1  第二源=1  偏差=0.0%  [PASS]  (offline)
+[PASS] 3 点：FAIL=0 WARN=0 SKIP=0 -> /private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/f05-red-q0xtv765/variant-004/price_checks.json
+PRODUCER second_price=1.0 exit=0 expected=0 verdict=PASS statuses=['PASS', 'PASS', 'PASS'] points=3
+CONSUMER 4 actual=[]
+RED 4: AssertionError: []
+
+=== SEGMENT 5 (independent case/try-except) ===
+  2026-01-01  主源=1  第二源=1  偏差=0.0%  [PASS]  (offline)
+  2026-01-02  主源=1  第二源=1  偏差=0.0%  [PASS]  (offline)
+  2026-01-03  主源=1  第二源=1  偏差=0.0%  [PASS]  (offline)
+[PASS] 3 点：FAIL=0 WARN=0 SKIP=0 -> /private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/f05-red-q0xtv765/variant-005/price_checks.json
+PRODUCER second_price=1.0 exit=0 expected=0 verdict=PASS statuses=['PASS', 'PASS', 'PASS'] points=3
+CONSUMER 5 actual=[]
+RED 5: AssertionError: []
+
+=== SEGMENT 6 (independent case/try-except) ===
+  2026-01-01  主源=1  第二源=None  偏差=None%  [SKIP]  (offline)
+  2026-01-02  主源=1  第二源=None  偏差=None%  [SKIP]  (offline)
+  2026-01-03  主源=1  第二源=None  偏差=None%  [SKIP]  (offline)
+[ALL_SKIP] 3 点：FAIL=0 WARN=0 SKIP=3 -> /private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/f05-red-q0xtv765/variant-006/price_checks.json
+PRODUCER second_price=None exit=3 expected=3 verdict=ALL_SKIP statuses=['SKIP', 'SKIP', 'SKIP'] points=3
+CONSUMER 6 actual=[]
+RED 6: AssertionError: []
+
+=== SEGMENT 7a (independent case/try-except) ===
+  2026-01-01  主源=1  第二源=1  偏差=0.0%  [PASS]  (offline)
+  2026-01-02  主源=1  第二源=1  偏差=0.0%  [PASS]  (offline)
+  2026-01-03  主源=1  第二源=1  偏差=0.0%  [PASS]  (offline)
+[PASS] 3 点：FAIL=0 WARN=0 SKIP=0 -> /private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/f05-red-q0xtv765/variant-007/price_checks.json
+PRODUCER second_price=1.0 exit=0 expected=0 verdict=PASS statuses=['PASS', 'PASS', 'PASS'] points=3
+CONSUMER 7a actual=[]
+RED 7a: AssertionError: []
+
+=== SEGMENT 7b (independent case/try-except) ===
+  2026-01-01  主源=1  第二源=1  偏差=0.0%  [PASS]  (offline)
+  2026-01-02  主源=1  第二源=1  偏差=0.0%  [PASS]  (offline)
+  2026-01-03  主源=1  第二源=1  偏差=0.0%  [PASS]  (offline)
+[PASS] 3 点：FAIL=0 WARN=0 SKIP=0 -> /private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/f05-red-q0xtv765/variant-008/price_checks.json
+PRODUCER second_price=1.0 exit=0 expected=0 verdict=PASS statuses=['PASS', 'PASS', 'PASS'] points=3
+CONSUMER 7b actual={'errors': [], 'full_check': 'PASS', 'checks': 12}
+GREEN 7b
+
+SUMMARY {"1.full_check": "RED", "1.workorder": "RED", "2": "RED", "3": "RED", "4": "RED", "5": "RED", "6": "RED", "7a": "RED", "7b": "GREEN"}
+EXPECTED {"1.full_check": "RED", "1.workorder": "RED", "2": "RED", "3": "RED", "4": "RED", "5": "RED", "6": "RED", "7a": "RED", "7b": "GREEN"}
+PRODUCTION STILL UNCHANGED
+RED_EVIDENCE PASS

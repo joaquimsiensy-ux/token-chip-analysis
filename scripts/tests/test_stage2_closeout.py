@@ -12,7 +12,7 @@ import tempfile
 
 HERE = Path(__file__).resolve().parent
 REPO = HERE.parent.parent
-sys.path[:0] = [str(HERE), str(REPO / "scripts/report"), str(REPO / "scripts/lib")]
+sys.path[:0] = [str(HERE), str(REPO / "scripts/report"), str(REPO / "scripts/lib"), str(REPO / "scripts/prices")]
 os.environ.setdefault("PYTHONDONTWRITEBYTECODE", "1")
 os.environ.setdefault("MPLCONFIGDIR", tempfile.mkdtemp(prefix="w2-mpl-"))
 import test_a4_gate as fixture
@@ -90,6 +90,21 @@ def cli(case, command="check", *args):
     return run_formal_script(CLOSEOUT, [command, "--case-dir", str(case), "--report", "report.md", *args])
 
 
+def write_price_receipt(case, second_price, out="price_checks.json", prices="price_series.json"):
+    """F05：收据由真实 price_check.py 生成（第二源离线 stub），不手写 PASS。返回退出码（PASS/WARN 0、FAIL 2、ALL_SKIP 3、fatal 1）。"""
+    import price_check
+    from unittest import mock
+    argv = ["price_check.py", "--price-file", str(case / prices), "--source", "coingecko",
+            "--chain", "bsc", "--addr", "0x" + "1" * 40, "--out", str(case / out)]
+    with mock.patch.object(sys, "argv", argv), mock.patch.object(
+            price_check, "second_llama", return_value=(second_price, "offline")):
+        try:
+            price_check.main()
+            return 0
+        except SystemExit as exc:
+            return int(exc.code) if isinstance(exc.code, int) else 1
+
+
 def build_closeout_case(root) -> Path:
     case = build_release_case(root)
     write(case / "entity_series.json", {"dates": ["2026-01-01"], "e1": [100.0]})
@@ -97,9 +112,9 @@ def build_closeout_case(root) -> Path:
         "--keys", "e1", "--labels-from", str(case / "facts.json"), "--out", str(case / "whale_series.json")])
     assert proc.returncode == 0, proc.stdout + proc.stderr
     write(case / "flow_e1.json", {"title": "{{e1.label}}", "nodes": [], "edges": []})
-    write(case / "price_series.json", [[1767225600, 1.0]])
+    write(case / "price_series.json", [[1767225600, 1.0], [1767312000, 1.0], [1767398400, 1.0]])
     write(case / "volume_series.json", [[1767225600, 10]])
-    write(case / "price_checks.json", {"status": "PASS"})
+    assert write_price_receipt(case, second_price=1.0) == 0
     report = case / "report.md"
     report.write_text(report.read_text(encoding="utf-8") +
         "\n私人主桶 100.00%，私人尘埃 0.00%，公共设施 0.00%，未识别合约 0.00%，销毁哨兵 0.00%；"
@@ -531,7 +546,8 @@ def workorder_reference_contracts(cases):
     for old, new in (("final_distribution_scan", "final_scan"), ("final_distribution_png", "terminal_distribution_chart")):
         obj["bindings"][new] = obj["bindings"].pop(old)
     obj["bindings"].pop("price_source_checks")
-    obj["bindings"]["price_source"]["dual_source_check"] = {"status": "PASS"}
+    obj["bindings"]["price_source"]["dual_source_check"] = {
+        "receipt": {"path": "price_checks.json", "sha256": sha(case / "price_checks.json")}, "verdict": "PASS"}
     obj["fig2"]["price"] = {"path": obj["fig2"].pop("price_source")}
     obj["fig3"]["price_input"] = obj["fig3"].pop("price")
     obj["fig3"]["volume_input"] = obj["fig3"].pop("volume")
@@ -602,6 +618,60 @@ def amend_rechecks_all_and_is_atomic(cases):
     assert len(checks) == 12 and checks["facts_gate"]["status"] == "BLOCK"
 
 
+def price_receipt_content_enforced(cases):
+    """F05：真实 price_check 收据的结论/绑定被 closeout 语义消费；纯申报对象不放行。"""
+    import stage2_closeout as closeout
+    case = cases.fresh()
+
+    def rebind():
+        obj = read(case / "a5_assembly_workorder.json")
+        obj["bindings"]["price_source_checks"]["sha256"] = sha(case / "price_checks.json")
+        write(case / "a5_assembly_workorder.json", obj)
+        return closeout.workorder_errors(case, "report.md")
+
+    # 1 真实 FAIL 收据（主 1.0/副 2.0 → 66.67%）退出 2；绑定后 workorder 与完整 check 均 BLOCK
+    assert write_price_receipt(case, second_price=2.0) == 2
+    errors, _ = rebind()
+    assert any("price_source_checks.verdict" in e for e in errors), errors
+    row = check_result(case, 2)["workorder"]
+    assert "price_source_checks.verdict" in detail(row), row
+    # 2 手改 verdict=PASS 但 points 含 FAIL → 重算不一致
+    update(case, "price_checks.json", lambda r: r.update(verdict="PASS"))
+    errors, _ = rebind()
+    assert any("重算一致" in e for e in errors), errors
+    # 3 WARN 收据（主 1.0/副 1.08 → 7.69%）放行并记 NOTE
+    assert write_price_receipt(case, second_price=1.08) == 0
+    errors, notes = rebind()
+    assert not errors, errors
+    assert any("WARN 点 3" in n for n in notes), notes
+    # 4 price_file_sha256 与工单主源不一致
+    update(case, "price_checks.json", lambda r: r.update(price_file_sha256="0" * 64))
+    errors, _ = rebind()
+    assert any("price_file_sha256" in e and "= bindings.price_source.sha256" in e for e in errors), errors
+    # 5 旧收据（无 price_file_sha256）
+    update(case, "price_checks.json", lambda r: r.pop("price_file_sha256"))
+    errors, _ = rebind()
+    assert any("price_file_sha256" in e and "在场" in e for e in errors), errors
+    # 6 全 SKIP → ALL_SKIP 退出 3；绑定后 BLOCK
+    assert write_price_receipt(case, second_price=None) == 3
+    errors, _ = rebind()
+    assert any("ALL_SKIP" in e for e in errors), errors
+    # 7 内联纯申报对象拒；内联带 receipt（ARC 形态）放行
+    assert write_price_receipt(case, second_price=1.0) == 0
+    obj = read(case / "a5_assembly_workorder.json")
+    obj["bindings"].pop("price_source_checks")
+    obj["bindings"]["price_source"]["dual_source_check"] = {"status": "PASS"}
+    write(case / "a5_assembly_workorder.json", obj)
+    errors, _ = closeout.workorder_errors(case, "report.md")
+    assert any("dual_source_check.receipt" in e for e in errors), errors
+    obj["bindings"]["price_source"]["dual_source_check"] = {
+        "receipt": {"path": "price_checks.json", "sha256": sha(case / "price_checks.json")}, "verdict": "PASS"}
+    write(case / "a5_assembly_workorder.json", obj)
+    errors, _ = closeout.workorder_errors(case, "report.md")
+    assert not errors, errors
+    check_result(case)
+
+
 def facts_vs_ledgers_rejects_hand_edit(cases):
     case = cases.fresh()
     update(case, "facts.json", lambda obj: obj["entities"]["e1"].update(current_raw="90"))
@@ -628,7 +698,7 @@ TESTS = [dryrun_profile_exempts_stage3_artifacts, only_findings_changed_is_rejec
          downstream_check_cli_exit3, amendments_chain_gap_rejected,
          workorder_reference_contracts, receipt_shape_and_fill_nulls,
          caption_raw_rounding_and_pure_series_errors, amend_rechecks_all_and_is_atomic,
-         facts_vs_ledgers_rejects_hand_edit]
+         facts_vs_ledgers_rejects_hand_edit, price_receipt_content_enforced]
 
 
 def main():
