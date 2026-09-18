@@ -1,7 +1,7 @@
 # 盲审 F04（只读，常规盲审，非攻击式）
 
 ## 纪律
-1. 禁读 `~/.codex/`（插件启动搜索若已读 memories 如实披露一次，之后不再读）；禁读本仓库 `archive/`、`blind-reviews/`、`.staging_*`、`references/attic.md`、`maintenance/repair-20260918c-p1-f02-f04-f05/` 以外的全部历史 maintenance 目录；禁读 `/Users/uravvv/Desktop`、`/Users/uravvv/Documents`；**禁读 `F04_done.md` 与 `F04_red_evidence.txt`**（盲审不看施工方自述，独立判断）。
+1. 禁读 `~/.codex/`（插件启动搜索若已读 memories 如实披露一次，之后不再读）；禁读本仓库 `archive/`、`blind-reviews/`、`.staging_*`、`references/attic.md`、`maintenance/repair-20260918c-p1-f02-f04-f05/` 以外的全部历史 maintenance 目录；禁读 `/Users/uravvv/Desktop`、`/Users/uravvv/Documents`；**禁读 `F04_done.md` 与 `F04_red_evidence.txt`**（盲审不看施工方自述，独立判断）。 豁免：d) 项测试自身以子进程访问历史 maintenance 目录属测试依赖，允许原样运行，审方本人不主动打开那些历史文件。
 2. 只读、离线、不 commit、不改任何文件。报告全文打印到 stdout，首行固定为 `# 盲审 F04：PASS` 或 `# 盲审 F04：FAIL`。FAIL 时逐条给出：编号（F04-B1-NN）、文件:行、事实、后果、建议。PASS 时列出实际核过的项与实跑的命令/结果尾行。
 3. 工作目录＝`/Users/uravvv/.claude/skills/token-chip-analysis`，以当前 HEAD 为审对象；施工 diff＝`git diff __BASE__ HEAD -- scripts`。
 

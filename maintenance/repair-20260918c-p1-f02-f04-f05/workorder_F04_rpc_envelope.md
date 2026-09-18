@@ -8,9 +8,9 @@
 
 ## 0. 开工纪律
 
-- 0.1 工作目录＝`/Users/uravvv/.claude/skills/token-chip-analysis`。开工先跑并贴进 `F04_done.md`：`git status --short`（须为空）；`git diff --stat 8b041842 HEAD -- scripts references SKILL.md commands-staging VERSION pyproject.toml CHANGELOG.md`（须为空）。不空即停工写 `F04_done_attempt1_stopped.md`。
-- 0.2 **禁读** `~/.codex/`（启动搜索若已读 memories 披露一次，之后不再读）；禁读 `archive/`、`blind-reviews/`、`.staging_*`、`references/attic.md`、本目录（`maintenance/repair-20260918c-p1-f02-f04-f05/`）以外的全部历史 maintenance 目录；禁读 `/Users/uravvv/Desktop`、`/Users/uravvv/Documents`。
-- 0.3 **白名单**：生产 `scripts/lib/net.py`、`scripts/lib/rpc_batch.py`；测试 `scripts/tests/test_batch1_rpc_attestation.py`；本目录新建 `F04_done.md`、`F04_red_evidence.txt`，停工时 `F04_done_attempt1_stopped.md`。
+- 0.1 工作目录＝`/Users/uravvv/.claude/skills/token-chip-analysis`。开工先跑并贴进 `F04_done.md`：`git status --short`（须为空）；`git diff --stat 8b041842 HEAD -- scripts references SKILL.md commands-staging VERSION pyproject.toml CHANGELOG.md`（须为空）。不空即停工写 `F04_done_attempt<N>_stopped.md`。
+- 0.2 **禁读** `~/.codex/`（启动搜索若已读 memories 披露一次，之后不再读）；禁读 `archive/`、`blind-reviews/`、`.staging_*`、`references/attic.md`、本目录（`maintenance/repair-20260918c-p1-f02-f04-f05/`）以外的全部历史 maintenance 目录；禁读 `/Users/uravvv/Desktop`、`/Users/uravvv/Documents`。**豁免（attempt2 停工后补，F04/F05/F02 同款）**：§0.8 指定的测试自身按既有代码以子进程或文件读取方式访问历史 maintenance 目录（如 `test_repair_batch_a.py`/`test_repair_batch_c.py`/`test_exemption_guards.py`/`test_stage2_reseal.py`）属测试依赖，**允许原样运行**、不算违反本条；施工方本人不得主动打开、阅读、复制或修改那些历史文件，完成报告如实披露“仅由测试子进程访问”即可。
+- 0.3 **白名单**：生产 `scripts/lib/net.py`、`scripts/lib/rpc_batch.py`；测试 `scripts/tests/test_batch1_rpc_attestation.py`；本目录新建 `F04_done.md`、`F04_red_evidence.txt`，停工时 `F04_done_attempt<N>_stopped.md`（N＝派工提示词给的尝试序号）。
 - 0.4 **不改**：`net.py` 的 `_attest_endpoint`（`:300-341`）、`_run`（`:349-385`，failover 逻辑不动：单端点不切换；双端点全 `ok=False` 时切下一端点属预期；三端点及以上的轮转缺陷为既有行为，台账 Q13）、`_request_json`、`RETRYABLE_RPC`；`rpc_batch.py` 的 `receipts`/`raw` 分支（`:91-112`）、退出码逻辑（`:123-125`）、docstring `:16-21`（"失败项记 {error}，有失败退出 1"已覆盖新行为）；任何 `references/`、`SKILL.md`、`commands-staging/`、`VERSION`、`pyproject.toml`、`CHANGELOG.md`、`contract_manifest.json`、`invariant_manifest.json`（本段不新增写文件点、不换网络库，manifest 无需登记——复核 r1 已用 invariant_scan 投影证实 0 discrepancies；开工再跑一遍证实）；其他消费 `RpcPool` 的脚本一律不改（它们对 `ok=False` 的既有处理见 §1.4）。
 - 0.5 行号均指施工前基线；锚 `grep -n -F` 恰 1 处且行号一致，不符**停工**。删除 > 修改 > 新增。
 - 0.6 离线；不 commit、不 push、不部署；禁 stash/checkout/reset。
