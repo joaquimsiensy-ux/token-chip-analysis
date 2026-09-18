@@ -1,5 +1,5 @@
 # 施工 E 提示词：按 workorder_E_version.md 最新版施工（写模式，纯文档/元数据）
-# 派工基线 HEAD＝<派工时填>（本提示词自身的 commit 会使实际开工 HEAD 比此多恰一个提交，属预期）
+# 派工基线 HEAD＝1ec7341（本提示词自身的 commit 会使实际开工 HEAD 比此多恰一个提交，属预期）
 
 ## 纪律
 1. **禁读 `~/.codex/` 下任何文件**（插件启动搜索若已读 memories，如实披露一次，之后不再读）。禁读本仓库 `archive/`、`blind-reviews/`、`.staging_*`、`references/attic.md`、`maintenance/repair-20260917-p0-four/` 以外的历史 maintenance 目录；禁读 `/Users/uravvv/Desktop`、`/Users/uravvv/Documents`。
