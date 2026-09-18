@@ -1353,7 +1353,7 @@ def validate_reconciliation_check(root, key, item, target, family):
             bundle_path = _bound_case_ref(
                 root, bundle_ref, "EVM supply_truth observation bundle")
             bundle = json.loads(bundle_path.read_text(encoding="utf-8"))
-            _require(bundle.get("schema") == "evm-observation-bundle/v1",
+            _require(bundle.get("schema") == "evm-observation-bundle/v2",
                      "EVM supply_truth observation bundle schema invalid")
             from evm_observation import validate_evm_observation_bundle
             validate_evm_observation_bundle(
@@ -1758,7 +1758,7 @@ def validate_accounting_receipt(root, accounting=None, expected_target=None):
         bundle_path = _bound_case_ref(
             root, bundle_ref, "EVM accounting observation bundle")
         bundle = json.loads(bundle_path.read_text(encoding="utf-8"))
-        _require(bundle.get("schema") == "evm-observation-bundle/v1",
+        _require(bundle.get("schema") == "evm-observation-bundle/v2",
                  "EVM accounting observation bundle schema invalid")
         from evm_observation import validate_evm_observation_bundle
         validate_evm_observation_bundle(
@@ -1773,6 +1773,8 @@ def validate_accounting_receipt(root, accounting=None, expected_target=None):
                  "EVM accounting observed anchor block mismatch")
         _require(observed.get("block_hash") == bundle["anchor"]["block_hash"],
                  "EVM accounting observed anchor block_hash mismatch")
+        _require(accounting["checks"].get("decimals") == bundle["supply"]["decimals"],
+                 "EVM accounting checks.decimals is not the bundle observed decimals")
         return target, accounting, sha(bundle_path)
 
     bundle_ref = accounting.get("observation_bundle")

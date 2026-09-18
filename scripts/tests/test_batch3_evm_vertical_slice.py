@@ -75,6 +75,8 @@ class FixtureHandler(BaseHTTPRequestHandler):
                 data = call.get("data", "")
                 if data.startswith("0x18160ddd"):
                     amount = type(self).supply
+                elif data.startswith("0x313ce567"):
+                    amount = 0
                 else:
                     address = "0x" + data[-40:]
                     block = params[1]

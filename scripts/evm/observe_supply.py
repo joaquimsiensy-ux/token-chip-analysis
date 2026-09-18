@@ -26,7 +26,7 @@ from receipt_kernel import (assert_distinct_paths, build_envelope,
                             publish_error_receipt, publish_txn)
 
 
-BUNDLE_SCHEMA = "evm-observation-bundle/v1"
+BUNDLE_SCHEMA = "evm-observation-bundle/v2"
 DEFAULT_RPC = {
     "eth": "https://ethereum-rpc.publicnode.com",
     "bsc": "https://bsc-dataseed.bnbchain.org",

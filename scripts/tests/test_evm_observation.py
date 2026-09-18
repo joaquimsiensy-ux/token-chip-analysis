@@ -48,7 +48,7 @@ class FakePool:
 
     def __init__(self, *, chain_id=CHAIN_ID, block_number=AS_OF,
                  invalid_call=False, reorg=False, eip1898_unsupported=False,
-                 endpoint_drift=False, endpoint="https://rpc.example.test"):
+                 endpoint_drift=False, endpoint="https://rpc.example.test", decimals=18):
         self.url = endpoint
         self.chain_id = chain_id
         self.block_number = block_number
@@ -56,6 +56,7 @@ class FakePool:
         self.reorg = reorg
         self.eip1898_unsupported = eip1898_unsupported
         self.endpoint_drift = endpoint_drift
+        self.decimals = decimals
         self.calls = []
         self.business_calls = 0
         self.block_reads = 0
@@ -84,7 +85,7 @@ class FakePool:
             if self.eip1898_unsupported:
                 return {"ok": False, "error": "rpc -32602: unsupported blockHash selector"}
             selector = params[0]["data"][:10]
-            values = {"0x18160ddd": 1_000_000, "0x70a08231": 7}
+            values = {"0x18160ddd": 1_000_000, "0x70a08231": 7, "0x313ce567": self.decimals}
             raw = "not-hex" if self.invalid_call else f"0x{values[selector]:064x}"
             return {"ok": True, "result": raw}
         if method == "eth_getCode":
@@ -131,6 +132,11 @@ def test_wrong_chain_id_zero_business_calls():
 
 def test_invalid_eth_call_result_rejected():
     expect_error(lambda: observe(FakePool(invalid_call=True)), "invalid")
+
+
+def test_decimals_observed_and_uint8_enforced():
+    assert observe()["supply"]["decimals"] == 18
+    expect_error(lambda: observe(FakePool(decimals=256)), "uint8")
 
 
 def test_pre_post_block_hash_mismatch_rejected():
@@ -249,6 +255,7 @@ def main():
     tests = [
         test_wrong_chain_id_zero_business_calls,
         test_invalid_eth_call_result_rejected,
+        test_decimals_observed_and_uint8_enforced,
         test_pre_post_block_hash_mismatch_rejected,
         test_eip1898_unsupported_fails_closed_without_outputs,
         test_declared_as_of_block_mismatch_rejected,

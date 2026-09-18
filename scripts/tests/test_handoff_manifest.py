@@ -154,7 +154,7 @@ def make_case(d, chain="eth", token=TOKEN, as_of_block=999):
         "observation_bundle": bundle_ref,
         "observed_anchor": {"block": as_of_block,
                             "block_hash": bundle["anchor"]["block_hash"]},
-        "checks": {"proxy": {"is_proxy": False}},
+        "checks": {"proxy": {"is_proxy": False}, "decimals": 0},
         "verdict": "PASS", "exit_code": 0,
     })
 

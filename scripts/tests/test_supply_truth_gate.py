@@ -85,7 +85,7 @@ def split_stats(mint=APU_MINT, burn=APU_DEAD, zero=0, dead=APU_DEAD):
 
 
 def write_evm_bundle(root, *, token=TOKEN, chain="eth", as_of=123,
-                     total=APU_MINT, zero=0, dead=APU_DEAD):
+                     total=APU_MINT, zero=0, dead=APU_DEAD, decimals=0):
     """落一份通过工单 A 公共 validator 的 EVM 观测实物。"""
     endpoint = "https://rpc.example.test"
     block = {
@@ -112,9 +112,12 @@ def write_evm_bundle(root, *, token=TOKEN, chain="eth", as_of=123,
         {"seq": 5, "method": "eth_call",
          "params": [{"to": token, "data": balance(DEAD)}, selector],
          "result": word(dead)},
-        {"seq": 6, "method": "eth_getCode", "params": [token, selector],
+        {"seq": 6, "method": "eth_call",
+         "params": [{"to": token, "data": "0x313ce567"}, selector],
+         "result": word(decimals)},
+        {"seq": 7, "method": "eth_getCode", "params": [token, selector],
          "result": RUNTIME_CODE},
-        {"seq": 7, "method": "eth_getBlockByNumber",
+        {"seq": 8, "method": "eth_getBlockByNumber",
          "params": [hex(as_of), False], "result": block},
     ]
     transcript_path = root / "evm_observation_transcript.json"
@@ -133,6 +136,7 @@ def write_evm_bundle(root, *, token=TOKEN, chain="eth", as_of=123,
         "supply": {
             "total_supply_raw": str(total), "zero_balance_raw": str(zero),
             "dead_balance_raw": str(dead),
+            "decimals": decimals,
             "block_binding": "eip1898-block-hash",
         },
         "code": {"runtime_code_sha256": hashlib.sha256(

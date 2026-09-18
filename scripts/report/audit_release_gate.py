@@ -1584,30 +1584,31 @@ def check_facts_vs_ledgers(case_dir: Path, facts, errors: list[str], receipt=Non
 
 
 def check_facts_decimals(case_dir: Path, facts, accounting, errors: list[str]):
-    """F05（7.2.1）：token.decimals 绑定链上观测——solana 家族取 accounting_mode.checks.decimals
-    （accounting_gate_sol 写出），evm 家族取 balance 对账收据绑定的 verify_recon config.decimals
-    （深验 witness 已缓存，不重跑）；取不到即拒，不让调用者自报数量单位。只挂 new-analysis，
-    不进共享 check_facts_vs_ledgers（stage2 收口/reseal 复用后者）。"""
+    """G2（repair-20260918b）：token.decimals 绑定链上观测——两链族一律取
+    accounting_mode.checks.decimals（solana 由 accounting_gate_sol 从 mint 写出；evm 由
+    accounting_gate 从 evm-observation-bundle/v2 的 supply.decimals 写出，
+    validate_accounting_receipt 已核其与 bundle 相等）；evm 另核 verify_recon config.decimals
+    与观测一致（human 供应量级不得自报）。取不到即拒。只挂 new-analysis。"""
     declared = ((facts or {}).get("token") or {}).get("decimals")
-    chain = str((accounting or {}).get("chain") or "")
-    observed = None
+    checks = (accounting or {}).get("checks") if isinstance(accounting, dict) else None
+    observed = checks.get("decimals") if isinstance(checks, dict) else None
+    if isinstance(observed, bool) or not isinstance(observed, int):
+        errors.append("facts.token.decimals 无链上观测来源可核（accounting_mode.checks.decimals 缺失或 checks 非对象）")
+        return
+    if declared != observed:
+        errors.append(f"facts.token.decimals={declared!r} 与链上观测 {observed} 不一致——state_source.facts_inputs.decimals 填错")
     try:
         import shared_release_receipt
-        family = shared_release_receipt.chain_family(chain)
-        if family == "solana":
-            observed = ((accounting or {}).get("checks") or {}).get("decimals")
-        else:
-            witness = _validate_reconciliation_report_once(case_dir)
-            bal = (witness.receipts or {}).get("balance") or {}
-            _, cfg = shared_release_receipt._bound_json_input(case_dir, bal, "config", "verify_recon config")
-            observed = cfg.get("decimals")
+        if shared_release_receipt.chain_family(str((accounting or {}).get("chain") or "")) != "evm":
+            return
+        witness = _validate_reconciliation_report_once(case_dir)
+        bal = (witness.receipts or {}).get("balance") or {}
+        _, cfg = shared_release_receipt._bound_json_input(case_dir, bal, "config", "verify_recon config")
     except Exception as exc:
-        errors.append(f"facts.token.decimals 无法取链上观测值: {exc}")
+        errors.append(f"verify_recon config.decimals 无法对链上观测: {exc}")
         return
-    if isinstance(observed, bool) or not isinstance(observed, int):
-        errors.append("facts.token.decimals 无链上观测来源可核（accounting_mode.checks/对账收据 config 缺 decimals）")
-    elif declared != observed:
-        errors.append(f"facts.token.decimals={declared!r} 与链上观测 {observed} 不一致——state_source.facts_inputs.decimals 填错")
+    if cfg.get("decimals") != observed:
+        errors.append(f"verify_recon config.decimals={cfg.get('decimals')!r} 与链上观测 {observed} 不一致——对账 human 供应量级自报")
 
 
 def check_figure2_receipt(case_dir: Path, d: dict, errors: list[str]):

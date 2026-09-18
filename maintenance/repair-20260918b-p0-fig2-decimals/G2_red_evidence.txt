@@ -1,0 +1,170 @@
+# G2 v4 RED evidence
+
+HEAD: 6412d2e (parent: 5a3f6a6)
+All cases below ran before any production edits.
+Production immutability check: git diff --exit-code -- scripts/lib/evm_observation.py scripts/evm/observe_supply.py scripts/evm/accounting_gate.py scripts/lib/supply_truth_gate.py scripts/report/shared_release_receipt.py scripts/report/audit_release_gate.py
+exit_code=0; stdout is empty.
+
+Initial file SHA256:
+2add4bf7025964e5799d876074e9f237634d73923f8fed81fb279fa68e0793b7 scripts/lib/evm_observation.py
+c52b8f20364a331a9a26e39014b1f1a0f7fd17dcf269b26d1b9aafca37993b3e scripts/evm/observe_supply.py
+76896820c41773aa8b26f5a041b5345c214b920b1e3f2cc960434afbe9d9ecc9 scripts/evm/accounting_gate.py
+bb1d1896c2de879cd61c22b090c4df9b1a51f9da1766f7f2f4dfcd36383c9a5c scripts/lib/supply_truth_gate.py
+97ab29afb97ddb7cebdb1eeb61e527c60a3cf8c93660ab1b456f32bf01604b12 scripts/report/shared_release_receipt.py
+a3fca7bba3cb4d4cddea59392e16b8478407f5bc5ae4d4e91459569eca8b0f03 scripts/report/audit_release_gate.py
+94b3d5d1e69605905c8da9fe922b66dfd05e76b89684e569aa50b04d2b8cbb2c scripts/tests/test_evm_observation.py
+58f632f53923000659062b7788fde3e37a2543d2a1fecd1ba08cc584aaee3b38 scripts/tests/test_evm_observation_release.py
+7977949c88a1f2856c55b23736d3dd64ec5b6e6213363a99ccf4bdc3a38c2215 scripts/tests/test_audit_release_gate.py
+55cef1bdc8169214e851c905e247c4716d67b4fbd5bed6ef083d319eae77f6e7 scripts/tests/test_supply_truth_gate.py
+d2f9d3bf88d562409bc78469eb06b43a9cec8e520755952ed2cf99d2256ddc67 scripts/tests/test_review_20260804_p105.py
+
+========================================================================
+CASE: decimals observation
+COMMAND:
+PYTHONDONTWRITEBYTECODE=1 python3 -B - <<'PY'
+import hashlib
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path('scripts/tests').resolve()))
+for name in ["scripts/lib/evm_observation.py", "scripts/tests/test_evm_observation.py", 'scripts/tests/test_supply_truth_gate.py', 'scripts/tests/test_audit_release_gate.py']:
+    print('sha256', hashlib.sha256(Path(name).read_bytes()).hexdigest(), name, flush=True)
+import test_evm_observation as t
+t.test_decimals_observed_and_uint8_enforced()
+PY
+EXIT_CODE: 1
+OUTPUT (verbatim):
+sha256 2add4bf7025964e5799d876074e9f237634d73923f8fed81fb279fa68e0793b7 scripts/lib/evm_observation.py
+sha256 5023f0da3c79ee0accd62818cdf469dce75fe25bd1b42632c42ac64e391e20b3 scripts/tests/test_evm_observation.py
+sha256 55cef1bdc8169214e851c905e247c4716d67b4fbd5bed6ef083d319eae77f6e7 scripts/tests/test_supply_truth_gate.py
+sha256 7977949c88a1f2856c55b23736d3dd64ec5b6e6213363a99ccf4bdc3a38c2215 scripts/tests/test_audit_release_gate.py
+Traceback (most recent call last):
+  File "<stdin>", line 8, in <module>
+  File "/Users/uravvv/.claude/skills/token-chip-analysis/scripts/tests/test_evm_observation.py", line 138, in test_decimals_observed_and_uint8_enforced
+    assert observe()["supply"]["decimals"] == 18
+           ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^
+KeyError: 'decimals'
+
+========================================================================
+CASE: decimals uint8
+COMMAND:
+PYTHONDONTWRITEBYTECODE=1 python3 -B - <<'PY'
+import hashlib
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path('scripts/tests').resolve()))
+for name in ["scripts/lib/evm_observation.py", "scripts/tests/test_evm_observation.py", 'scripts/tests/test_supply_truth_gate.py', 'scripts/tests/test_audit_release_gate.py']:
+    print('sha256', hashlib.sha256(Path(name).read_bytes()).hexdigest(), name, flush=True)
+import test_evm_observation as t
+t.expect_error(lambda: t.observe(t.FakePool(decimals=256)), 'uint8')
+PY
+EXIT_CODE: 1
+OUTPUT (verbatim):
+sha256 2add4bf7025964e5799d876074e9f237634d73923f8fed81fb279fa68e0793b7 scripts/lib/evm_observation.py
+sha256 5023f0da3c79ee0accd62818cdf469dce75fe25bd1b42632c42ac64e391e20b3 scripts/tests/test_evm_observation.py
+sha256 55cef1bdc8169214e851c905e247c4716d67b4fbd5bed6ef083d319eae77f6e7 scripts/tests/test_supply_truth_gate.py
+sha256 7977949c88a1f2856c55b23736d3dd64ec5b6e6213363a99ccf4bdc3a38c2215 scripts/tests/test_audit_release_gate.py
+Traceback (most recent call last):
+  File "<stdin>", line 8, in <module>
+  File "/Users/uravvv/.claude/skills/token-chip-analysis/scripts/tests/test_evm_observation.py", line 116, in expect_error
+    raise AssertionError(f"invalid EVM observation was accepted; expected {needle!r}")
+AssertionError: invalid EVM observation was accepted; expected 'uint8'
+
+========================================================================
+CASE: accounting decimals mismatch
+COMMAND:
+PYTHONDONTWRITEBYTECODE=1 python3 -B - <<'PY'
+import hashlib
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path('scripts/tests').resolve()))
+for name in ["scripts/report/shared_release_receipt.py", "scripts/tests/test_evm_observation_release.py", 'scripts/tests/test_supply_truth_gate.py', 'scripts/tests/test_audit_release_gate.py']:
+    print('sha256', hashlib.sha256(Path(name).read_bytes()).hexdigest(), name, flush=True)
+import test_evm_observation_release as t
+t.test_accounting_decimals_must_match_bundle()
+PY
+EXIT_CODE: 1
+OUTPUT (verbatim):
+sha256 97ab29afb97ddb7cebdb1eeb61e527c60a3cf8c93660ab1b456f32bf01604b12 scripts/report/shared_release_receipt.py
+sha256 45dda32e3f7ca7e6db79804077dc7d8809cb546dac6aa18902d5ad17e147a7c9 scripts/tests/test_evm_observation_release.py
+sha256 55cef1bdc8169214e851c905e247c4716d67b4fbd5bed6ef083d319eae77f6e7 scripts/tests/test_supply_truth_gate.py
+sha256 7977949c88a1f2856c55b23736d3dd64ec5b6e6213363a99ccf4bdc3a38c2215 scripts/tests/test_audit_release_gate.py
+Traceback (most recent call last):
+  File "<stdin>", line 8, in <module>
+  File "/Users/uravvv/.claude/skills/token-chip-analysis/scripts/tests/test_evm_observation_release.py", line 245, in test_accounting_decimals_must_match_bundle
+    raise AssertionError("accounting checks.decimals=2 accepted against bundle decimals=0")
+AssertionError: accounting checks.decimals=2 accepted against bundle decimals=0
+
+========================================================================
+CASE: checks non-object
+COMMAND:
+PYTHONDONTWRITEBYTECODE=1 python3 -B - <<'PY'
+import hashlib
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path('scripts/tests').resolve()))
+for name in ["scripts/report/audit_release_gate.py", "scripts/tests/test_review_20260804_p105.py", 'scripts/tests/test_supply_truth_gate.py', 'scripts/tests/test_audit_release_gate.py']:
+    print('sha256', hashlib.sha256(Path(name).read_bytes()).hexdigest(), name, flush=True)
+import test_review_20260804_p105 as t
+t.test_evm_decimals_checks_non_object_rejected()
+PY
+EXIT_CODE: 1
+OUTPUT (verbatim):
+sha256 a3fca7bba3cb4d4cddea59392e16b8478407f5bc5ae4d4e91459569eca8b0f03 scripts/report/audit_release_gate.py
+sha256 fc174fdddf390e306c1294b2a6b665845954931e3aa5a1535ae86a27b25a5774 scripts/tests/test_review_20260804_p105.py
+sha256 55cef1bdc8169214e851c905e247c4716d67b4fbd5bed6ef083d319eae77f6e7 scripts/tests/test_supply_truth_gate.py
+sha256 7977949c88a1f2856c55b23736d3dd64ec5b6e6213363a99ccf4bdc3a38c2215 scripts/tests/test_audit_release_gate.py
+G2 checks 非对象 errors=[]
+Traceback (most recent call last):
+  File "<stdin>", line 8, in <module>
+  File "/Users/uravvv/.claude/skills/token-chip-analysis/scripts/tests/test_review_20260804_p105.py", line 306, in test_evm_decimals_checks_non_object_rejected
+    assert any("checks 非对象" in error for error in errors), errors
+           ~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: []
+
+========================================================================
+CASE: self-reported decimals c baseline and regression
+COMMAND:
+PYTHONDONTWRITEBYTECODE=1 python3 -B - <<'PY'
+import hashlib
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path('scripts/tests').resolve()))
+for name in ["scripts/report/audit_release_gate.py", "scripts/tests/test_review_20260804_p105.py", 'scripts/tests/test_supply_truth_gate.py', 'scripts/tests/test_audit_release_gate.py']:
+    print('sha256', hashlib.sha256(Path(name).read_bytes()).hexdigest(), name, flush=True)
+import tempfile
+import test_review_20260804_p105 as t
+with tempfile.TemporaryDirectory() as td:
+    root = Path(td)
+    report = t.fixture.build_case(root, historical=False)
+    t.add_new_analysis_distribution(root, report, decimals=2)
+    errors_a = t.fixture.gate.run(root, report, profile='new-analysis')
+    assert any('与链上观测 0 不一致' in error for error in errors_a), errors_a
+    print(f'BASELINE a already rejects: {errors_a!r}', flush=True)
+    t._rebind_config_decimals(root, 2)
+    errors_c = t.fixture.gate.run(root, report, profile='new-analysis')
+    assert errors_c == [], errors_c
+    print('BASELINE c gate.run(root, report, profile="new-analysis") == []: PASS', flush=True)
+t.test_selfreported_decimals_rejected()
+PY
+EXIT_CODE: 1
+OUTPUT (verbatim):
+sha256 a3fca7bba3cb4d4cddea59392e16b8478407f5bc5ae4d4e91459569eca8b0f03 scripts/report/audit_release_gate.py
+sha256 fc174fdddf390e306c1294b2a6b665845954931e3aa5a1535ae86a27b25a5774 scripts/tests/test_review_20260804_p105.py
+sha256 55cef1bdc8169214e851c905e247c4716d67b4fbd5bed6ef083d319eae77f6e7 scripts/tests/test_supply_truth_gate.py
+sha256 7977949c88a1f2856c55b23736d3dd64ec5b6e6213363a99ccf4bdc3a38c2215 scripts/tests/test_audit_release_gate.py
+/Users/uravvv/.matplotlib is not a writable directory
+Matplotlib created a temporary cache directory at /var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/matplotlib-q2w1ziq3 because there was an issue with the default path ({configdir}); it is highly recommended to set the MPLCONFIGDIR environment variable to a writable directory, in particular to speed up the import of Matplotlib and to better support multiprocessing.
+Matplotlib is building the font cache; this may take a moment.
+BASELINE a already rejects: ['facts.token.decimals=2 与链上观测 0 不一致——state_source.facts_inputs.decimals 填错']
+BASELINE c gate.run(root, report, profile="new-analysis") == []: PASS
+G2 c gate.run errors=[]
+Traceback (most recent call last):
+  File "<stdin>", line 20, in <module>
+  File "/Users/uravvv/.claude/skills/token-chip-analysis/scripts/tests/test_review_20260804_p105.py", line 283, in test_selfreported_decimals_rejected
+    assert any("facts.token.decimals=2 与链上观测 0 不一致" in error
+           ~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+               for error in errors), errors
+               ^^^^^^^^^^^^^^^^^^^^
+AssertionError: []
+
+SUMMARY: All four requested regression groups are RED. Observation and uint8 are captured separately. c baseline explicitly asserts errors == []; new c assertions fail with []. Existing a already rejects. Non-object EVM checks returns [] without an exception before the fix.

@@ -89,7 +89,7 @@ WAIVER_TOLERANCE_BPS_CAP = 100
 TOLERANCE_WAIVER_SCHEMA = "tolerance-waiver/v1"
 OVER_CAP_APPROVAL_SCHEMA = "over-cap-approval/v1"
 SCHEMA_FAMILY = "supply-truth-receipt/"
-EVM_OBSERVATION_SCHEMA = "evm-observation-bundle/v1"
+EVM_OBSERVATION_SCHEMA = "evm-observation-bundle/v2"
 RECEIPT_SCHEMA_BY_MODE = {
     "formal_evm": {"schema": "supply-truth-receipt/v4"},
     "other": {"schema": "supply-truth-receipt/v3"},
@@ -538,7 +538,7 @@ def main(argv=None):
     ap.add_argument("--proxy")
     ap.add_argument("--observation-bundle",
                     help="formal 模式观测件：Solana=solana-observation-bundle/v1，"
-                         "EVM=evm-observation-bundle/v1")
+                         "EVM=evm-observation-bundle/v2")
     ap.add_argument("--min-context-slot", type=int, default=0,
                     help="Solana bundle snapshot lower-bound assertion")
     ap.add_argument("--tolerance-bps", type=int, default=10)

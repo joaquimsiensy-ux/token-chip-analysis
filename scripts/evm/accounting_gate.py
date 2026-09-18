@@ -71,9 +71,8 @@ SLOT_BEACON = "0xa3f0ad74e5423aebfd80d3ef4346578335a9a72aeaee59ff6cb3582b35133d5
 SEL_BALANCE = "0x70a08231"   # balanceOf(address)
 SEL_TOTSUP = "0x18160ddd"    # totalSupply()
 SEL_TRANSFER = "0xa9059cbb"  # transfer(address,uint256)
-SEL_DECIMALS = "0x313ce567"  # decimals()
 PROBE_ADDR = "0x0000000000000000000000000000000000012345"  # 模拟转账收款探针（无私钥地址）
-EVM_OBSERVATION_SCHEMA = "evm-observation-bundle/v1"
+EVM_OBSERVATION_SCHEMA = "evm-observation-bundle/v2"
 RECEIPT_SCHEMA_BY_MODE = {
     "formal": {"schema": "accounting-gate/v2"},
     "exploration": {"schema": "accounting-gate/v1"},
@@ -401,7 +400,7 @@ def main(argv=None):
     ap.add_argument("--samples", type=int, default=8)
     ap.add_argument("--sourcify", default="https://sourcify.dev/server")
     ap.add_argument("--out", default="accounting_mode.json")
-    ap.add_argument("--bundle", help="formal evm-observation-bundle/v1")
+    ap.add_argument("--bundle", help="formal evm-observation-bundle/v2")
     ap.add_argument("--exploration", action="store_true",
                     help="允许独立现场探测；formal 聚合器拒收 exploration")
     ap.add_argument("--as-of-block", type=int, default=None,
@@ -477,6 +476,7 @@ def main(argv=None):
             result["observed_anchor"] = {
                 "block": anchor["number"], "block_hash": anchor["block_hash"],
             }
+            result["checks"]["decimals"] = bundle["supply"]["decimals"]
         except Exception as exc:  # noqa: BLE001 - 观测件非法统一落同路径 FAIL 状态
             result["reasons"].append(str(exc))
             finish("unknown", "FAIL", 1)

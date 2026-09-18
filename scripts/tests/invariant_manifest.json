@@ -60,7 +60,7 @@
   },
   {
    "schemas": [
-    "evm-observation-bundle/v1"
+    "evm-observation-bundle/v2"
    ],
    "script": "scripts/evm/observe_supply.py"
   },
@@ -104,7 +104,7 @@
   },
   {
    "schemas": [
-    "evm-observation-bundle/v1"
+    "evm-observation-bundle/v2"
    ],
    "script": "scripts/lib/evm_observation.py"
   },
@@ -348,7 +348,7 @@
  "receipt_consumers": [
   {
    "schemas": [
-    "evm-observation-bundle/v1"
+    "evm-observation-bundle/v2"
    ],
    "script": "scripts/evm/accounting_gate.py"
   },
@@ -398,7 +398,7 @@
   },
   {
    "schemas": [
-    "evm-observation-bundle/v1"
+    "evm-observation-bundle/v2"
    ],
    "script": "scripts/lib/evm_observation.py"
   },
@@ -417,7 +417,7 @@
   },
   {
    "schemas": [
-    "evm-observation-bundle/v1",
+    "evm-observation-bundle/v2",
     "over-cap-approval/v1",
     "tolerance-waiver/v1"
    ],
@@ -555,7 +555,7 @@
     "adversarial-review/v3",
     "adversarial-review/v4",
     "anchor-plan-receipt/v2",
-    "evm-observation-bundle/v1",
+    "evm-observation-bundle/v2",
     "evm-reconciliation-receipt/v3",
     "gmgn-divergence-note/v1",
     "over-cap-approval/v1",

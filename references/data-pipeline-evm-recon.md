@@ -33,7 +33,7 @@ python3 scripts/evm/verify_recon.py <原参数> \
 | 有差异、说明不合格 | exit 1，且不覆盖原黄灯收据 | 原黄灯仍阻断 |
 | 无差异、却给说明 | exit 1，拒绝预填说明 | 无说明的干净 PASS 收据正常放行 |
 
-**供给真值闸的两种销毁形态（EVM `supply-truth-receipt/v4`，Solana `supply-truth-receipt/v3`）**：EVM formal 必须先运行 `scripts/evm/observe_supply.py`，在冻结块以 EIP-1898 `blockHash` 选择器读取 `totalSupply()`、`balanceOf(ZERO)` 与 `balanceOf(dead)`，落 `evm-observation-bundle/v1`＋调用 transcript；`accounting-gate/v2` 与 supply_truth v4 必须绑定同一 bundle，正式消费阶段不再现场 RPC。主规则继续按形态①校验
+**供给真值闸的两种销毁形态（EVM `supply-truth-receipt/v4`，Solana `supply-truth-receipt/v3`）**：EVM formal 必须先运行 `scripts/evm/observe_supply.py`，在冻结块以 EIP-1898 `blockHash` 选择器读取 `totalSupply()`、`decimals()`、`balanceOf(ZERO)` 与 `balanceOf(dead)`，落 `evm-observation-bundle/v2`＋调用 transcript；`accounting-gate/v2` 与 supply_truth v4 必须绑定同一 bundle，正式消费阶段不再现场 RPC。主规则继续按形态①校验
 `mint_total − burn_total` 与 bundle 的冻结块 `totalSupply()`；只有主规则 FAIL、EVM replay_stats
 同时带齐 ZERO/dead 的流入、流出与净额拆分时，才自动尝试形态②。形态②必须 wei 级同时满足：
 `mint_total == totalSupply()`、ZERO 事件流入等于链上 `balanceOf(ZERO)`、dead 事件净流入

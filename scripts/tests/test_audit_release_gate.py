@@ -308,7 +308,7 @@ def build_case(root, historical=True):
         "execution_mode": "formal", "observation_bundle": bundle_abs,
         "observed_anchor": {"block": 123,
                             "block_hash": bundle["anchor"]["block_hash"]},
-        "checks": {"fot": {"status": "clean"}}})
+        "checks": {"fot": {"status": "clean"}, "decimals": 0}})
     producers = {"balance": "scripts/evm/verify_recon.py",
                  "supply": "scripts/evm/verify_recon.py",
                  "supply_truth": "scripts/lib/supply_truth_gate.py",

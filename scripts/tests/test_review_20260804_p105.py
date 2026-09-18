@@ -8,6 +8,7 @@ import json
 import subprocess
 import sys
 import tempfile
+from decimal import Decimal
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -251,6 +252,61 @@ def add_new_analysis_distribution(root: Path, report: Path, decimals=0) -> None:
     assert p.returncode == 0, p.stdout + p.stderr
 
 
+def _rebind_config_decimals(root: Path, decimals: int) -> None:
+    path = root / "fixture_recon_config.json"
+    config = json.loads(path.read_text(encoding="utf-8"))
+    total = int(config["total_supply_human"])
+    config["decimals"] = decimals
+    config["total_supply_human"] = str(Decimal(total) / (10 ** decimals))
+    write_json(path, config)
+    wrapper_path = root / "reconciliation_report.json"
+    wrapper = json.loads(wrapper_path.read_text(encoding="utf-8"))
+    for key in ("balance", "supply"):
+        receipt_path = root / f"{key}_receipt.json"
+        receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+        receipt["inputs"]["config"] = fixture.artifact_ref(root, path)
+        write_json(receipt_path, receipt)
+        wrapper["checks"][key]["receipt"]["sha256"] = sha(receipt_path)
+    write_json(wrapper_path, wrapper)
+    from shared_release_receipt import create_bundle
+    create_bundle(root)
+
+
+def test_selfreported_decimals_rejected():
+    with tempfile.TemporaryDirectory() as td:
+        root = Path(td)
+        report = fixture.build_case(root, historical=False)
+        add_new_analysis_distribution(root, report, decimals=2)
+        _rebind_config_decimals(root, 2)
+        errors = fixture.gate.run(root, report, profile="new-analysis")
+        print(f"G2 c gate.run errors={errors!r}", flush=True)
+        assert any("facts.token.decimals=2 与链上观测 0 不一致" in error
+                   for error in errors), errors
+        assert any("verify_recon config.decimals=2 与链上观测 0 不一致" in error
+                   for error in errors), errors
+        print("PASS: G2 facts/config decimals 同改仍按观测双拒", flush=True)
+
+
+def test_evm_decimals_checks_non_object_rejected():
+    with tempfile.TemporaryDirectory() as td:
+        root = Path(td)
+        report = fixture.build_case(root, historical=False)
+        add_new_analysis_distribution(root, report, decimals=0)
+        facts = json.loads((root / "facts.json").read_text(encoding="utf-8"))
+        path = root / "accounting_mode.json"
+        accounting = json.loads(path.read_text(encoding="utf-8"))
+        errors = []
+        fixture.gate.check_facts_decimals(root, facts, accounting, errors)
+        assert errors == [], errors
+        accounting["checks"] = ["mistyped"]
+        write_json(path, accounting)
+        errors = []
+        fixture.gate.check_facts_decimals(root, facts, accounting, errors)
+        print(f"G2 checks 非对象 errors={errors!r}", flush=True)
+        assert any("checks 非对象" in error for error in errors), errors
+        print("PASS: G2 EVM checks 非对象拒收且不抛异常", flush=True)
+
+
 def main():
     with tempfile.TemporaryDirectory() as td:
         root = Path(td)
@@ -283,6 +339,9 @@ def main():
         errors = fixture.gate.run(root, report, profile="new-analysis")
         assert errors == [], errors
         print("PASS: F05 decimals 一致放行（GREEN→GREEN）", flush=True)
+
+    test_selfreported_decimals_rejected()
+    test_evm_decimals_checks_non_object_rejected()
 
     print("PASS: P1-05 mandatory new-analysis vs independent-audit release profiles")
     return 0

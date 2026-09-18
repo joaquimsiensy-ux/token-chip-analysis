@@ -4,6 +4,7 @@
 The bundle binds a normalized JSON-RPC request/result transcript, not proof
 that a remote node really executed the requests.  State reads use an EIP-1898
 canonical block-hash selector and fail closed when an endpoint cannot serve it.
+The same block also serves ``decimals()`` so consumers never take the token scale from caller config.
 """
 from __future__ import annotations
 
@@ -20,9 +21,10 @@ from solana_observation import assert_declared_slot
 from supply_semantics import DEAD, ZERO
 
 
-BUNDLE_SCHEMA = "evm-observation-bundle/v1"
+BUNDLE_SCHEMA = "evm-observation-bundle/v2"
 SEL_TOTSUP = "0x18160ddd"
 SEL_BALANCE = "0x70a08231"
+SEL_DECIMALS = "0x313ce567"
 BLOCK_BINDING = "eip1898-block-hash"
 _ADDRESS = re.compile(r"0x[0-9a-f]{40}")
 _HASH32 = re.compile(r"0x[0-9a-fA-F]{64}")
@@ -175,6 +177,7 @@ def observe_evm_supply(pool, chain, token, as_of_block, *, expected_chain_id):
                        "data": _balance_of_data(ZERO)}, block_selector]),
         ("eth_call", [{"to": canonical_token,
                        "data": _balance_of_data(DEAD)}, block_selector]),
+        ("eth_call", [{"to": canonical_token, "data": SEL_DECIMALS}, block_selector]),
     ]
     responses = pool.call_many(eth_calls, progress=False)
     _assert_endpoint(pool, attested_endpoint)
@@ -183,10 +186,13 @@ def observe_evm_supply(pool, chain, token, as_of_block, *, expected_chain_id):
     values = []
     for (method, params), response, label in zip(
             eth_calls, responses,
-            ("totalSupply", "balanceOf(ZERO)", "balanceOf(DEAD)")):
+            ("totalSupply", "balanceOf(ZERO)", "balanceOf(DEAD)", "decimals")):
         value, raw = _eth_call_value(response, label)
         _record(transcript, method, params, raw)
         values.append(value)
+    decimals = values[3]
+    if decimals > 255:
+        raise EvmObservationError(f"decimals() returned {decimals}, exceeds uint8")
 
     code_params = [canonical_token, block_selector]
     code_response = pool.call("eth_getCode", code_params)
@@ -225,6 +231,7 @@ def observe_evm_supply(pool, chain, token, as_of_block, *, expected_chain_id):
             "total_supply_raw": str(values[0]),
             "zero_balance_raw": str(values[1]),
             "dead_balance_raw": str(values[2]),
+            "decimals": decimals,
             "block_binding": BLOCK_BINDING,
         },
         "code": {"runtime_code_sha256": runtime_code_sha256},
@@ -260,11 +267,11 @@ def _transcript_path(bundle, bundle_path):
 
 
 def _validate_transcript(bundle, transcript):
-    if not isinstance(transcript, list) or len(transcript) != 8:
-        raise ValueError("observation transcript must contain exactly 8 calls")
+    if not isinstance(transcript, list) or len(transcript) != 9:
+        raise ValueError("observation transcript must contain exactly 9 calls")
     methods = [
         "eth_chainId", "eth_getBlockByNumber", "eth_blockNumber",
-        "eth_call", "eth_call", "eth_call", "eth_getCode",
+        "eth_call", "eth_call", "eth_call", "eth_call", "eth_getCode",
         "eth_getBlockByNumber",
     ]
     for index, (row, method) in enumerate(zip(transcript, methods)):
@@ -284,7 +291,7 @@ def _validate_transcript(bundle, transcript):
     if transcript[0]["params"] != []:
         raise ValueError("transcript eth_chainId params mismatch")
     if transcript[1]["params"] != expected_block_params \
-            or transcript[7]["params"] != expected_block_params:
+            or transcript[8]["params"] != expected_block_params:
         raise ValueError("transcript block params mismatch")
     if transcript[2]["params"] != []:
         raise ValueError("transcript eth_blockNumber params mismatch")
@@ -293,11 +300,12 @@ def _validate_transcript(bundle, transcript):
         [{"to": token, "data": SEL_TOTSUP}, selector],
         [{"to": token, "data": _balance_of_data(ZERO)}, selector],
         [{"to": token, "data": _balance_of_data(DEAD)}, selector],
+        [{"to": token, "data": SEL_DECIMALS}, selector],
     ]
     for offset, expected in enumerate(expected_call_params, start=3):
         if transcript[offset]["params"] != expected:
             raise ValueError(f"transcript eth_call params mismatch at seq {offset}")
-    if transcript[6]["params"] != [token, selector]:
+    if transcript[7]["params"] != [token, selector]:
         raise ValueError("transcript eth_getCode params mismatch")
 
     attestation = bundle["attestation"]
@@ -311,19 +319,19 @@ def _validate_transcript(bundle, transcript):
     if _quantity(transcript[2]["result"], "transcript tip") != anchor["tip_block"]:
         raise ValueError("transcript tip result mismatch")
     for offset, field in enumerate(
-            ("total_supply_raw", "zero_balance_raw", "dead_balance_raw"), start=3):
+            ("total_supply_raw", "zero_balance_raw", "dead_balance_raw", "decimals"), start=3):
         raw = transcript[offset]["result"]
         if not isinstance(raw, str) or not _HEX_VALUE.fullmatch(raw) \
                 or len(raw) != 66 or int(raw, 16) != int(supply[field]):
             raise ValueError(f"transcript {field} result mismatch")
-    code_raw = transcript[6]["result"]
+    code_raw = transcript[7]["result"]
     if not isinstance(code_raw, str) or not _HEX_DATA.fullmatch(code_raw) \
             or code_raw == "0x":
         raise ValueError("transcript eth_getCode result invalid")
     if hashlib.sha256(bytes.fromhex(code_raw[2:])).hexdigest() \
             != bundle["code"]["runtime_code_sha256"]:
         raise ValueError("transcript runtime code result mismatch")
-    recheck = _block(transcript[7]["result"], "transcript recheck block")
+    recheck = _block(transcript[8]["result"], "transcript recheck block")
     if recheck["number"] != anchor["number"] \
             or recheck["block_hash"] != anchor["recheck_block_hash"]:
         raise ValueError("transcript recheck block result mismatch")
@@ -390,6 +398,9 @@ def validate_evm_observation_bundle(
     supply = bundle.get("supply") or {}
     for field in ("total_supply_raw", "zero_balance_raw", "dead_balance_raw"):
         _non_negative_decimal(supply.get(field), f"supply.{field}")
+    decimals = supply.get("decimals")
+    if isinstance(decimals, bool) or not isinstance(decimals, int) or not 0 <= decimals <= 255:
+        raise ValueError("EVM observation bundle supply.decimals invalid (uint8 required)")
     if supply.get("block_binding") != BLOCK_BINDING:
         raise ValueError("EVM observation bundle supply block binding invalid")
     code = bundle.get("code") or {}

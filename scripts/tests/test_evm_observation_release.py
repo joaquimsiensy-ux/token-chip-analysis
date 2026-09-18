@@ -61,13 +61,13 @@ def write_evm_bundle(root: Path, **kwargs) -> Path:
     if not transcript_path.is_absolute():
         transcript_path = root / transcript_path
     transcript = json.loads(transcript_path.read_text(encoding="utf-8"))
-    for row in transcript[3:6]:
+    for row in transcript[3:7]:
         row["result"] = f"0x{int(row['result'], 16):064x}"
     selector = {
         "blockHash": bundle["anchor"]["block_hash"],
         "requireCanonical": True,
     }
-    transcript[6]["params"] = [bundle["target"]["token"], selector]
+    transcript[7]["params"] = [bundle["target"]["token"], selector]
     write(transcript_path, transcript)
     bundle["inputs"]["transcript"] = file_ref(
         transcript_path, shown=transcript_ref["path"])
@@ -109,7 +109,7 @@ def build_case(root: Path) -> dict:
         "observation_bundle": bundle_abs,
         "observed_anchor": {"block": AS_OF,
                             "block_hash": bundle["anchor"]["block_hash"]},
-        "checks": {"proxy": {"is_proxy": False}},
+        "checks": {"proxy": {"is_proxy": False}, "decimals": 0},
         "verdict": "PASS", "exit_code": 0,
     }
     write(root / "accounting_mode.json", accounting)
@@ -226,6 +226,23 @@ def test_accounting_anchor_mismatch_rejected():
         accounting["observed_anchor"]["block"] += 1
         expect_error(lambda: shared.validate_accounting_receipt(root, accounting),
                      "bundle anchor mismatch")
+
+
+def test_accounting_decimals_must_match_bundle():
+    with tempfile.TemporaryDirectory(prefix="evm-release-accounting-decimals-") as raw:
+        root = Path(raw)
+        build_case(root)
+        path = root / "accounting_mode.json"
+        accounting = json.loads(path.read_text(encoding="utf-8"))
+        accounting["checks"]["decimals"] = 2
+        write(path, accounting)
+        refresh_wrapper(root)
+        try:
+            shared.validate_accounting_receipt(root)
+        except ValueError as exc:
+            assert "checks.decimals" in str(exc), str(exc)
+        else:
+            raise AssertionError("accounting checks.decimals=2 accepted against bundle decimals=0")
 
 
 def test_supply_missing_bundle_rejected():
@@ -434,6 +451,7 @@ def main() -> int:
     tests = (
         test_accounting_missing_bundle_rejected,
         test_accounting_anchor_mismatch_rejected,
+        test_accounting_decimals_must_match_bundle,
         test_supply_missing_bundle_rejected,
         test_supply_n2_mismatch_rejected,
         test_accounting_supply_bundle_same_source_rejected,

@@ -99,7 +99,7 @@ def test_empty_runtime_code_hash_rejected_by_validator():
     core = observe()
     core["code"]["runtime_code_sha256"] = EMPTY_CODE_SHA256
     transcript = copy.deepcopy(core["_transcript"])
-    transcript[6]["result"] = "0x"
+    transcript[7]["result"] = "0x"
     with tempfile.TemporaryDirectory(prefix="evm-empty-code-hash-") as raw:
         case = Path(raw)
         bundle, bundle_path = persist_bundle(case, core, transcript)
@@ -113,7 +113,7 @@ def test_empty_runtime_code_hash_rejected_by_validator():
 def test_legacy_getcode_block_number_rejected_by_transcript_validator():
     core = observe()
     transcript = copy.deepcopy(core["_transcript"])
-    transcript[6]["params"] = [TOKEN, hex(AS_OF)]
+    transcript[7]["params"] = [TOKEN, hex(AS_OF)]
     with tempfile.TemporaryDirectory(prefix="evm-getcode-selector-") as raw:
         case = Path(raw)
         bundle, bundle_path = persist_bundle(case, core, transcript)
@@ -130,6 +130,7 @@ def test_zero_supply_deployed_contract_passes_full_chain():
         "total_supply_raw": "0",
         "zero_balance_raw": "0",
         "dead_balance_raw": "0",
+        "decimals": 0,
         "block_binding": "eip1898-block-hash",
     }
     assert core["code"]["runtime_code_sha256"] != EMPTY_CODE_SHA256
