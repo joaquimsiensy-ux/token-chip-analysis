@@ -1074,11 +1074,19 @@ def check_dormant(case_dir: Path, d: dict, errors: list[str]):
 BLOCK_PRECISION_FOLLOWUP_SCHEMA = "block-precision-followup/v1"
 
 
-def _find_peaks_summaries(case_dir: Path) -> list[Path]:
-    """R09（7.2.0）：peaks_daily 产物根不限定案根——递归定位 peaks_summary.json；
-    跳过隐藏目录（.duck_tmp 等）、_history 与符号链接路径。"""
-    hits = []
-    for p in sorted(case_dir.rglob("peaks_summary.json")):
+PEAKS_DAILY_PRODUCTS = ("peaks_summary.json", "needs_block_precision.json",
+                        "block_precision_followup.json")
+
+
+def _find_peaks_dirs(case_dir: Path) -> list[Path]:
+    """R09（7.2.0）：peaks_daily 产物根不限定案根——递归定位；跳过隐藏目录（.duck_tmp 等）、
+    _history 与符号链接路径。F07（7.2.1）：三件**生成产物**任一在场即认定为峰值产物目录，
+    改名 summary 不再使整段检查零命中；trigger_days.json 既是 --trigger-days 原始输入的常见名
+    也是输出名，不作定位依据。单次遍历；返回去重排序后的目录列表。"""
+    dirs = set()
+    for p in case_dir.rglob("*.json"):
+        if p.name not in PEAKS_DAILY_PRODUCTS:
+            continue
         rel = p.relative_to(case_dir)
         if any(part.startswith(".") or part == "_history" for part in rel.parts):
             continue
@@ -1090,8 +1098,8 @@ def _find_peaks_summaries(case_dir: Path) -> list[Path]:
             cur = cur.parent
         if linked or not p.is_file():
             continue
-        hits.append(p)
-    return hits
+        dirs.add(p.parent)
+    return sorted(dirs)
 
 
 def check_daily_peaks(case_dir: Path, errors: list[str]):
@@ -1100,17 +1108,22 @@ def check_daily_peaks(case_dir: Path, errors: list[str]):
     同日等额进出会漏），且四类触发日必须有显式产物（空也要声明）。
     R09（7.2.0）：①产物根按 rglob 定位（原只看案根，data/peaks_daily/ 下的产物整段绕过闸）；
     ②needs_block_precision.json 与 summary 哈希咬合；③needs ∪ 触发日活跃候选非空时，
-    必须有 replay_duck.py --only-addrs 产出的 block_precision_followup.json 覆盖每一址。"""
-    hits = _find_peaks_summaries(case_dir)
-    if not hits:
+    必须有 replay_duck.py --only-addrs 产出的 block_precision_followup.json 覆盖每一址。
+    F07（7.2.1）：④summary/needs/followup 任一在场即检查（trigger_days 不作定位依据）；⑤followup 须绑定当前 replay_duck.py producer 与 channels 实物。"""
+    dirs = _find_peaks_dirs(case_dir)
+    if not dirs:
         return
-    if len(hits) > 1:
-        errors.append("案内出现多份 peaks_summary.json（"
-                      + ", ".join(str(h.relative_to(case_dir)) for h in hits)
+    if len(dirs) > 1:
+        errors.append("案内出现多个峰值产物目录（"
+                      + ", ".join(str(h.relative_to(case_dir)) for h in dirs)
                       + "）——峰值产物根须唯一，清理陈旧目录后重验")
         return
-    ps_path = hits[0]
-    pd = ps_path.parent
+    pd = dirs[0]
+    ps_path = pd / "peaks_summary.json"
+    if ps_path.is_symlink() or not ps_path.is_file():
+        errors.append(f"峰值产物目录 {pd.relative_to(case_dir)} 缺 peaks_summary.json"
+                      "（needs/trigger/followup 在场而 summary 缺席＝改名或残缺产物，拒）")
+        return
     ps = load_json(ps_path, errors)
     if not isinstance(ps, dict):
         errors.append("peaks_summary.json 顶层须为对象")
@@ -1189,6 +1202,28 @@ def check_daily_peaks(case_dir: Path, errors: list[str]):
         errors.append(f"block_precision_followup.json schema 非法（须 {BLOCK_PRECISION_FOLLOWUP_SCHEMA}）")
     if fu.get("engine") != "replay_duck.py":
         errors.append("block_precision_followup.json engine 非 replay_duck.py——块级补算须走重放引擎")
+    # F07（7.2.1）：消费 producer 已写出的绑定字段——自报收据（只有 engine 字符串）拒
+    producer = fu.get("producer")
+    engine_path = Path(__file__).resolve().parent.parent / "evm" / "replay_duck.py"
+    if (not isinstance(producer, dict) or producer.get("path") != "replay_duck.py"
+            or str(producer.get("sha256") or "").lower() != sha256_file(engine_path).lower()):
+        errors.append("block_precision_followup.json producer 未绑定当前 scripts/evm/replay_duck.py"
+                      "（缺 producer 或 sha256 不符）——旧收据/手写收据拒，用当前引擎重跑 --only-addrs")
+    chan = fu.get("channels")
+    chan_name = Path(str((chan or {}).get("path") or "")).name if isinstance(chan, dict) else ""
+    chan_hits = [p for p in case_dir.rglob(chan_name)
+                 if chan_name and p.is_file() and not p.is_symlink()
+                 and not any(part.startswith(".") or part == "_history"
+                             for part in p.relative_to(case_dir).parts)]
+    if not chan_name or len(chan_hits) != 1 \
+            or sha256_file(chan_hits[0]).lower() != str(chan.get("sha256") or "").lower():
+        errors.append("block_precision_followup.json channels 未绑定案内唯一常规文件"
+                      f"（{chan_name or '缺 path'}：命中 {len(chan_hits)} 个或 sha256 不符）——通道清单须随案")
+    if fu.get("value_type") not in ("HUGEINT", "VARINT"):
+        errors.append("block_precision_followup.json value_type 须为 HUGEINT/VARINT（replay_duck 写出）")
+    addrs_obj = fu.get("addresses")
+    if isinstance(addrs_obj, dict) and fu.get("count") != len(addrs_obj):
+        errors.append("block_precision_followup.json count 与 addresses 条数不一致")
     items = fu.get("inputs")
     if not isinstance(items, list) or any(not isinstance(i, dict) for i in items):
         errors.append("block_precision_followup.json inputs 须为 [{path, sha256}] 列表")

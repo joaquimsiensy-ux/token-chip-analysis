@@ -993,10 +993,15 @@ def main():
             write_json(pd, "block_precision_followup.json", followup)
 
     def _r09_followup(pd, addresses):
+        write_json(pd, "channels.json", {"fixture": "channels"})
         return {"schema": "block-precision-followup/v1", "engine": "replay_duck.py",
+                "producer": {"path": "replay_duck.py",
+                             "sha256": sha(REPO / "scripts/evm/replay_duck.py")},
+                "value_type": "HUGEINT",
                 "inputs": [{"path": name, "sha256": sha(pd / name)} for name in
                            ("needs_block_precision.json", "trigger_days.json")],
-                "addresses": addresses}
+                "channels": {"path": "channels.json", "sha256": sha(pd / "channels.json")},
+                "count": len(addresses), "addresses": addresses}
 
     def _r09_case_1(root):
         report = build_case(root, historical=False)
@@ -1038,7 +1043,7 @@ def main():
         _r09_write_peaks(root, needs=[])
         _r09_write_peaks(root / "data/peaks_daily", needs=[])
         errors = gate.run(root, report)
-        assert any("多份 peaks_summary.json" in x for x in errors), errors
+        assert any("多个峰值产物目录" in x for x in errors), errors
 
     def _r09_case_7(root):
         report = build_case(root, historical=False)
@@ -1126,6 +1131,87 @@ def main():
         assert any("block_precision_followup.addresses[0xabc].peak" in x for x in errors), errors
         assert not any("须为 null" in x for x in errors), errors
 
+    def _r09_case_14(root):
+        report = build_case(root, historical=False)
+        pd = root / "data/peaks_daily"
+        _r09_write_peaks(pd, needs=["0xabc"])
+        (pd / "peaks_summary.json").rename(pd / "renamed_summary.json")
+        errors = gate.run(root, report)
+        assert any("缺 peaks_summary.json" in x for x in errors), errors
+
+    def _r09_case_15(root):
+        report = build_case(root, historical=False)
+        _r09_write_peaks(root, needs=["0xabc"])
+        fu = _r09_followup(root, {"0xabc": {"peak": "0", "peak_blk": None}})
+        fu.pop("producer")
+        write_json(root, "block_precision_followup.json", fu)
+        errors = gate.run(root, report)
+        assert any("producer 未绑定" in x for x in errors), errors
+
+    def _r09_case_16(root):
+        report = build_case(root, historical=False)
+        _r09_write_peaks(root, needs=["0xabc"])
+        fu = _r09_followup(root, {"0xabc": {"peak": "0", "peak_blk": None}})
+        fu["producer"]["sha256"] = "0" * 64
+        write_json(root, "block_precision_followup.json", fu)
+        errors = gate.run(root, report)
+        assert any("producer 未绑定" in x for x in errors), errors
+
+    def _r09_case_17(root):
+        report = build_case(root, historical=False)
+        _r09_write_peaks(root, needs=["0xabc"])
+        write_json(root, "block_precision_followup.json", _r09_followup(root, {
+            "0xabc": {"peak": "0", "peak_blk": None}}))
+        (root / "channels.json").unlink()
+        errors = gate.run(root, report)
+        assert any("channels 未绑定" in x for x in errors), errors
+
+    def _r09_case_18(root):
+        report = build_case(root, historical=False)
+        _r09_write_peaks(root, needs=["0xabc"])
+        write_json(root, "block_precision_followup.json", _r09_followup(root, {
+            "0xabc": {"peak": "0", "peak_blk": None}}))
+        write_json(root, "channels.json", {"fixture": "changed channels"})
+        errors = gate.run(root, report)
+        assert any("channels 未绑定" in x for x in errors), errors
+
+    def _r09_case_19(root):
+        report = build_case(root, historical=False)
+        _r09_write_peaks(root, needs=["0xabc"])
+        fu = _r09_followup(root, {"0xabc": {"peak": "0", "peak_blk": None}})
+        fu["count"] = 7
+        write_json(root, "block_precision_followup.json", fu)
+        errors = gate.run(root, report)
+        assert any("count 与 addresses" in x for x in errors), errors
+
+    def _r09_case_20(root):
+        report = build_case(root, historical=False)
+        pd = root / "data/peaks_daily"
+        pd.mkdir(parents=True)
+        write_json(pd, "needs_block_precision.json", {"0.0100": ["0xabc"]})
+        write_json(pd, "trigger_days.json", {
+            "schema": "trigger-days-replay/v1", "days": {}, "empty_reason": "raw input"})
+        errors = gate.run(root, report)
+        assert any("缺 peaks_summary.json" in x for x in errors), errors
+
+    def _r09_case_21(root):
+        report = build_case(root, historical=False)
+        (root / "data").mkdir()
+        _r09_write_peaks(root / "data/peaks_daily", needs=[])
+        write_json(root / "data", "trigger_days.json", {
+            "schema": "trigger-days-replay/v1", "days": {}, "empty_reason": "raw input"})
+        errors = gate.run(root, report)
+        assert not any("多个峰值产物目录" in x or "缺 peaks_summary.json" in x
+                       for x in errors), errors
+
+    def _r09_case_22(root):
+        report = build_case(root, historical=False)
+        (root / "data").mkdir()
+        write_json(root / "data", "trigger_days.json", {
+            "schema": "trigger-days-replay/v1", "days": {}, "empty_reason": "raw input"})
+        errors = gate.run(root, report)
+        assert not any("峰值" in x or "peaks_summary" in x for x in errors), errors
+
     r09_cases = (
         ("1 R09 子目录旧公式拒", _r09_case_1),
         ("2 R09 子目录完整产物放行（GREEN→GREEN）", _r09_case_2),
@@ -1140,6 +1226,15 @@ def main():
         ("11 R09 收据地址项非法拒", _r09_case_11),
         ("12 R09 地址大小写归一放行（GREEN→GREEN）", _r09_case_12),
         ("13 R09 顶层非对象进 errors 不崩", _r09_case_13),
+        ("14 R09/F07 summary 改名仍检查", _r09_case_14),
+        ("15 F07 followup 缺 producer 拒", _r09_case_15),
+        ("16 F07 followup producer sha 过期拒", _r09_case_16),
+        ("17 F07 followup channels 缺席拒", _r09_case_17),
+        ("18 F07 followup channels sha 不符拒", _r09_case_18),
+        ("19 F07 count 不一致拒", _r09_case_19),
+        ("20 F07 只有 needs/trigger 无 summary 拒", _r09_case_20),
+        ("21 F07 兼容：原始触发日清单在 data/ 不被误判（GREEN→GREEN）", _r09_case_21),
+        ("22 F07 兼容：只有原始触发日清单、无峰值产物（GREEN→GREEN）", _r09_case_22),
     )
     r09_failures = []
     for name, case in r09_cases:
@@ -1151,7 +1246,7 @@ def main():
             r09_failures.append(name)
         else:
             print(f"ok    {name}")
-    assert not r09_failures, f"R09 失败 {len(r09_failures)}/13: {r09_failures}"
+    assert not r09_failures, f"R09 失败 {len(r09_failures)}/{len(r09_cases)}: {r09_failures}"
 
     # 6.9.2 修复反例（codex 验收 P1）：挂名≠裁决——空壳候选拒。
     with tempfile.TemporaryDirectory() as td:

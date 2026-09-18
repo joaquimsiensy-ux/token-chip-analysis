@@ -1,0 +1,130 @@
+# F07 v3 RED evidence
+
+基线 HEAD: 0b0a5f6（19d01e9 后恰一个提示词提交）
+取证时仅测试文件已补齐夹具和用例；生产代码尚未修改。
+从当前测试文件 AST 提取实际 _r09_* 定义和 r09_cases，仅逐例执行 14–22；捕获 Exception 并保留异常类型与完整 traceback。
+环境：PYTHONDONTWRITEBYTECODE=1（由内联程序设置，传递给测试子进程）。
+
+命令原文：
+python3 -B -c 'import ast
+import hashlib
+import os
+from pathlib import Path
+import runpy
+import subprocess
+import sys
+import tempfile
+import traceback
+
+os.environ["PYTHONDONTWRITEBYTECODE"] = "1"
+repo = Path.cwd()
+test_path = repo / "scripts/tests/test_audit_release_gate.py"
+gate_path = repo / "scripts/report/audit_release_gate.py"
+expected_gate_sha = "c35d4a489eb7651e24aa77a872a51fa7c717c103883c74043c177f0613fa3a16"
+print("HEAD=" + subprocess.check_output(["git", "rev-parse", "--short", "HEAD"], text=True).strip(), flush=True)
+for path in (gate_path, test_path):
+    digest = hashlib.sha256(path.read_bytes()).hexdigest()
+    print("sha256=" + digest + "  " + str(path.relative_to(repo)), flush=True)
+assert hashlib.sha256(gate_path.read_bytes()).hexdigest() == expected_gate_sha
+sys.path.insert(0, str(test_path.parent))
+scope = runpy.run_path(str(test_path))
+tree = ast.parse(test_path.read_text(encoding="utf-8"), filename=str(test_path))
+main = next(node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == "main")
+nodes = [node for node in main.body
+         if (isinstance(node, ast.FunctionDef) and node.name.startswith("_r09_"))
+         or (isinstance(node, ast.Assign) and any(isinstance(t, ast.Name) and t.id == "r09_cases" for t in node.targets))]
+exec(compile(ast.Module(body=nodes, type_ignores=[]), str(test_path), "exec"), scope)
+observed = {}
+for name, case in scope["r09_cases"]:
+    number = int(name.split()[0])
+    if not 14 <= number <= 22:
+        continue
+    try:
+        with tempfile.TemporaryDirectory(prefix=f"f07-red-{number}-") as td:
+            case(Path(td))
+    except Exception as exc:
+        observed[number] = type(exc).__name__
+        print(f"RED  {name}: {type(exc).__name__}: {exc}", flush=True)
+        traceback.print_exc(file=sys.stdout)
+    else:
+        observed[number] = "GREEN"
+        print(f"GREEN->GREEN  {name}", flush=True)
+assert observed == {**{n: "AssertionError" for n in range(14, 21)}, 21: "GREEN", 22: "GREEN"}, observed
+assert hashlib.sha256(gate_path.read_bytes()).hexdigest() == expected_gate_sha
+print("RED EVIDENCE PASS: 7 AssertionError RED; 2 baseline GREEN->GREEN; production unchanged.", flush=True)
+'
+
+合并 stdout 原文（本轮 stderr 无输出）：
+HEAD=0b0a5f6
+sha256=c35d4a489eb7651e24aa77a872a51fa7c717c103883c74043c177f0613fa3a16  scripts/report/audit_release_gate.py
+sha256=2c64f22385b9a9834b32d9fc5af0d99e02929c6b9c41ae3aba242336c6adad34  scripts/tests/test_audit_release_gate.py
+RED  14 R09/F07 summary 改名仍检查: AssertionError: []
+Traceback (most recent call last):
+  File "<string>", line 36, in <module>
+    case(Path(td))
+    ~~~~^^^^^^^^^^
+  File "/Users/uravvv/.claude/skills/token-chip-analysis/scripts/tests/test_audit_release_gate.py", line 1140, in _r09_case_14
+    assert any("缺 peaks_summary.json" in x for x in errors), errors
+           ~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: []
+RED  15 F07 followup 缺 producer 拒: AssertionError: []
+Traceback (most recent call last):
+  File "<string>", line 36, in <module>
+    case(Path(td))
+    ~~~~^^^^^^^^^^
+  File "/Users/uravvv/.claude/skills/token-chip-analysis/scripts/tests/test_audit_release_gate.py", line 1149, in _r09_case_15
+    assert any("producer 未绑定" in x for x in errors), errors
+           ~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: []
+RED  16 F07 followup producer sha 过期拒: AssertionError: []
+Traceback (most recent call last):
+  File "<string>", line 36, in <module>
+    case(Path(td))
+    ~~~~^^^^^^^^^^
+  File "/Users/uravvv/.claude/skills/token-chip-analysis/scripts/tests/test_audit_release_gate.py", line 1158, in _r09_case_16
+    assert any("producer 未绑定" in x for x in errors), errors
+           ~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: []
+RED  17 F07 followup channels 缺席拒: AssertionError: []
+Traceback (most recent call last):
+  File "<string>", line 36, in <module>
+    case(Path(td))
+    ~~~~^^^^^^^^^^
+  File "/Users/uravvv/.claude/skills/token-chip-analysis/scripts/tests/test_audit_release_gate.py", line 1167, in _r09_case_17
+    assert any("channels 未绑定" in x for x in errors), errors
+           ~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: []
+RED  18 F07 followup channels sha 不符拒: AssertionError: []
+Traceback (most recent call last):
+  File "<string>", line 36, in <module>
+    case(Path(td))
+    ~~~~^^^^^^^^^^
+  File "/Users/uravvv/.claude/skills/token-chip-analysis/scripts/tests/test_audit_release_gate.py", line 1176, in _r09_case_18
+    assert any("channels 未绑定" in x for x in errors), errors
+           ~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: []
+RED  19 F07 count 不一致拒: AssertionError: []
+Traceback (most recent call last):
+  File "<string>", line 36, in <module>
+    case(Path(td))
+    ~~~~^^^^^^^^^^
+  File "/Users/uravvv/.claude/skills/token-chip-analysis/scripts/tests/test_audit_release_gate.py", line 1185, in _r09_case_19
+    assert any("count 与 addresses" in x for x in errors), errors
+           ~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: []
+RED  20 F07 只有 needs/trigger 无 summary 拒: AssertionError: []
+Traceback (most recent call last):
+  File "<string>", line 36, in <module>
+    case(Path(td))
+    ~~~~^^^^^^^^^^
+  File "/Users/uravvv/.claude/skills/token-chip-analysis/scripts/tests/test_audit_release_gate.py", line 1195, in _r09_case_20
+    assert any("缺 peaks_summary.json" in x for x in errors), errors
+           ~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: []
+GREEN->GREEN  21 F07 兼容：原始触发日清单在 data/ 不被误判（GREEN→GREEN）
+GREEN->GREEN  22 F07 兼容：只有原始触发日清单、无峰值产物（GREEN→GREEN）
+RED EVIDENCE PASS: 7 AssertionError RED; 2 baseline GREEN->GREEN; production unchanged.
+
+exit_code: 0
+总结：14–20 均为 AssertionError: []（7 RED）；21/22 基线为 GREEN，施工后须保持 GREEN。
+
