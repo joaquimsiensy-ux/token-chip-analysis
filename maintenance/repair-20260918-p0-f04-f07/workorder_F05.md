@@ -1,6 +1,7 @@
-# 工单 F05（v2，融合 codex 复核 r1 八条 F05-R1-01..08）：facts 小数位绑定链上观测＋峰值 override 证据类型化＋峰值上界 —— repair-20260918-p0-f04-f07 第四段
+# 工单 F05（v3，融合 codex 复核 r1 八条＋r2 一条 F05-R2-01）：facts 小数位绑定链上观测＋峰值 override 证据类型化＋峰值上界 —— repair-20260918-p0-f04-f07 第四段
 
 > 出处：codex 对 7.2.0（311e6c4）的六视角 review F05（P0，**半修复 R07**）：`facts_gate.derive_facts` 证明了 current/addresses/total 来自三账，却让调用者在 `state_source.facts_inputs` 里自由决定 `decimals`（`:358-363` 只验 ≥0 整数）与 `peak_overrides`（`:404-420` 只验证据文件 path/sha 在场，不看证据内容）；`gate_check`（`:191-203`）只验 peak≥current 与 Σcurrent≤total。反例：review 附录 D `repro_core.py` F05（decimals 0→2、证据 `{"note":"fixture"}`、申报 peak=1,000,000/1900-01-01，facts consumer `[]`，宏渲染 `1.00枚 1000000.00% 1900-01-01`）与 `repro_preseal.py`（同输入放在 A4 前，真实 facts→A4→A5→HTML rc=0，HTML 含错误峰值与日期）。R07 本身就是 APU 案 facts_inputs 小数位真实事故的修复。用户 2026-09-18 裁决：修。总原则：**skill 上下文不增**；能删不增、能改不增；不新立 schema。
+> v3 变更（`review_F05_reply_r2.md` F05-R2-01）：§1.4 迁移链补"改证据后先算新 SHA-256 并更新所有引用该文件的 `peak_overrides[eid].evidence.sha256`（路径变了同步 `evidence.path`）再 build"（`facts_gate.py:412` 在读证据内容前先验哈希）；A4 重封先于 stage2 收口收据（`stage2_closeout.py:608/659` 绑定 A4 哈希）。
 > v2 变更（`review_F05_reply_r1.md`，八条全采纳）：R1-01 decimals 检查改为独立函数 `check_facts_decimals` 只挂 `_run` 的 new-analysis 分支，共享 `check_facts_vs_ledgers` 一字不动（stage2_closeout:578 与 test_report_facts:206 直接调用它）；R1-02 链名经 `shared_release_receipt.chain_family` 归一（真实 Solana 链名为 `"solana"`）；R1-03 白名单加 `test_repair_batch_d.py`（仅 `:984` 补 `"decimals": 0`）；R1-04 `test_report_facts.py:153` 既有 override 用例证据迁移为新格式，§1.4 补完整迁移链；R1-05 decimals a/b 用例改放 `test_review_20260804_p105.py`（`add_new_analysis_distribution` 加 `decimals` 参数），白名单加该文件；R1-06 日期严格 `YYYY-MM-DD`（`isoformat()` 回写相等）并补 `20260102` 负例；R1-07 裁决点改为"真实峰值超过当前总供应的案被保守阻断"，施工按此落地；R1-08 docstring 范围订正 `:2-71` 只改 `:65`，import 区 `:72-78` 允许加 `datetime`。
 > 内容基线：`311e6c4` 加本工程前段（F06/F04/F07）落地 commit；`facts_gate.py`、`test_report_facts.py` 与 311e6c4 逐字节相同；`audit_release_gate.py` 经 F04（`:1571` 起插入约 14 行）与 F07（`:1077-1113` 与 `:1191` 后插入）漂移，**本工单对该文件的锚点（`check_facts_vs_ledgers` `:1497-1548` 及 `_run` 调用处 `:1831`）按 F07 落地后的 HEAD 重新 `grep -n -F` 实证后填入 v2**；`test_audit_release_gate.py` 经 F07 段改动（`_r09_followup`、r09_cases），本工单只在 `build_facts_from_ledgers`（`:202-224`）与新增用例处动。
 
@@ -20,7 +21,7 @@
 - 1.1 文档三处字节不变：SKILL.md 8021、references 930061、commands-staging 8798（命令同工单 F06 §1.1）。
 - 1.2 `git diff --stat` 只含 0.3 白名单。
 - 1.3 `derive_facts` 保持纯函数（只读案内文件、不写盘、不带时间戳、不读时钟）；decimals 的链上一致性放在**发布闸 new-analysis 分支的独立函数**，不进 `derive_facts` 也不进共享 `check_facts_vs_ledgers`（stage2 收口与 reseal 复用后者，必须零行为变化）。
-- 1.4 存量迁移代价（明示）：R07 起用 `peak_overrides` 的案（APU 0801 待重发布案）证据文件须改为 §2.2 格式，随后整条链重做：`facts_gate.py build` 重出 facts → `figures_from_facts.py check` 重出图 2 收据（闸复核 facts 哈希）→ stage2 收口收据/A4/A5 按各自绑定重封；`facts.token.decimals` 与链上观测不符的案在发布闸被拒——这正是目标行为。
+- 1.4 存量迁移代价（明示）：R07 起用 `peak_overrides` 的案（APU 0801 待重发布案）证据文件须改为 §2.2 格式，随后整条链按序重做：改写证据 JSON → 计算新 SHA-256 → 更新 `state_source.facts_inputs.peak_overrides[eid].evidence.sha256`（所有引用该文件的实体；路径变了同步 `evidence.path`；`facts_gate.py:412` 读内容前先验哈希，漏此步 build 即拒）→ `facts_gate.py build` 重出 facts → `figures_from_facts.py check` 重出图 2 收据（闸复核 facts 哈希）→ A4 重封 → stage2 收口收据（`stage2_closeout.py:608/659` 绑定 A4 哈希）→ A5 重封；`facts.token.decimals` 与链上观测不符的案在发布闸被拒——这正是目标行为。
 
 ## 2. 逐条施工
 
