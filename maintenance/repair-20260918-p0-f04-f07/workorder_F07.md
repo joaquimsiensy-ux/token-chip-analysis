@@ -1,6 +1,7 @@
-# 工单 F07（v2，融合 codex 复核 r1 四条 F07-R1-01..04）：日级峰值闸——产物目录按四件任一定位＋补算收据绑定 producer/channels —— repair-20260918-p0-f04-f07 第三段
+# 工单 F07（v3，融合 codex 复核 r1 四条＋r2 一条 F07-R2-01）：日级峰值闸——产物目录按三件生成产物任一定位＋补算收据绑定 producer/channels —— repair-20260918-p0-f04-f07 第三段
 
 > 出处：codex 对 7.2.0（311e6c4）的六视角 review F07（P0，**半修复 R09**）：①`_find_peaks_summaries`（`:1077-1094`）只按文件名 `peaks_summary.json` rglob，零命中即整段 return——把 summary 改名，needs/trigger/followup 还在原位也不再检查；②`check_daily_peaks` 对 `block_precision_followup.json`（`:1179-1229`）只核 schema/engine 字符串、needs/trigger sha 与 peak/peak_blk 形状，不消费真实 producer `replay_duck.py:405-410` 已写出的 `producer`/`channels`/`value_type`/`count` 字段——手写 `{engine:"replay_duck.py", inputs:[needs sha], addresses:{0xabc:{peak:"0",peak_blk:null}}}` 即从阻断变放行。反例：review 附录 D `repro_core.py` F07 段与 `repro_preseal.py` F07-selfreport/F07-rename（真实 `build_html --mode analysis-new` rc 1→0）。用户 2026-09-18 裁决：修。总原则：**skill 上下文不增**；能删不增、能改不增。
+> v3 变更（`review_F07_reply_r2.md` F07-R2-01）：§4 订正——只剩 followup 时会因缺 summary 被拒，不可绕过；只有三件生成产物全部不存在/全部改名才与"未跑 peaks_daily"不可区分；标题与 §2.1 小节名"四件"改"三件生成产物"；用例 22 落地前须先建 `data` 父目录（`write_json` `:36-37` 不自动建目录）。
 > v2 变更（`review_F07_reply_r1.md`，四条全采纳）：R1-01 定位只按**生成产物**三件（summary/needs/followup），`trigger_days.json` 既是 `--trigger-days` 原始输入的常见名也是输出名，不作定位依据；改单次 `rglob("*.json")` 按名过滤；补两条兼容布局用例；R1-02 §1.4 迁移改为 needs＋trigger 双 `--only-addrs`；R1-03 成本表述订正（全量通道仍要读取去重）；R1-04 §0.8 删误挂的 F12 例外。调度方实核 APU 0914 案：`channels.json` 在案根且案内唯一，峰值三件在 `peaks_daily_out/`，`trigger_days.json` 随产物目录。
 > 内容基线：`311e6c4` 加本工程前段（F06、F04）落地 commit；`audit_release_gate.py` 经 F04 段在 `check_figure2_receipt`（`:1571` 起）插入约 14 行，**本工单锚点全部位于 `:1229` 之前，不受漂移影响**；`test_audit_release_gate.py`、`scripts/tests/invariant_manifest.json` 与 311e6c4 逐字节相同。
 
@@ -24,7 +25,7 @@
 
 ## 2. 逐条施工
 
-### 2.1 `scripts/report/audit_release_gate.py` —— 定位改为"四件任一在场即进入检查"
+### 2.1 `scripts/report/audit_release_gate.py` —— 定位改为"三件生成产物任一在场即进入检查"
 
 替换 `:1077-1094`（锚起 `def _find_peaks_summaries(case_dir: Path) -> list[Path]:`，锚止 `    return hits`——`:1094` 的 `return hits` 在 `:1077-1094` 区间内唯一）为：
 
@@ -121,7 +122,7 @@ def _find_peaks_dirs(case_dir: Path) -> list[Path]:
   19 `F07 count 不一致拒`：`count=7` → 含"count 与 addresses"。**RED**。
   20 `F07 只有 needs/trigger 无 summary 拒`：只写 needs＋trigger 两件（不写 summary）→ 含"缺 peaks_summary.json"。**RED**（基线 `[]`）。
   21 `F07 兼容：原始触发日清单在 data/ 不被误判（GREEN→GREEN）`：`_r09_write_peaks(root/"data/peaks_daily", needs=[])` 完整产物，另在 `root/"data/trigger_days.json"` 写一份原始清单 `{"schema": "trigger-days-replay/v1", "days": {}, "empty_reason": "raw input"}` → errors 不含 "多个峰值产物目录"/"缺 peaks_summary.json"。
-  22 `F07 兼容：只有原始触发日清单、无峰值产物（GREEN→GREEN）`：只写 `root/"data/trigger_days.json"` → errors 不含 "峰值"/"peaks_summary" 字样。
+  22 `F07 兼容：只有原始触发日清单、无峰值产物（GREEN→GREEN）`：先 `(root/"data").mkdir()`（`write_json` `:36-37` 不自动建目录），再只写 `root/"data/trigger_days.json"` → errors 不含 "峰值"/"peaks_summary" 字样。用例 21 同样先建目录后再 `_r09_write_peaks`（它自带 `mkdir(parents=True)`，但原始清单要单独写）。
 - `:1154`（锚 `    assert not r09_failures, f"R09 失败 {len(r09_failures)}/13: {r09_failures}"`）的 `13` 改为 `{len(r09_cases)}`。
 - 既有用例 2/12（GREEN→GREEN）与 3–13 用更新后的夹具须仍绿；用例 6"多份 summary 拒"文案若断言 `多份 peaks_summary.json`，改为断言"多个峰值产物目录"（开工 `grep -n '多份' scripts/tests/test_audit_release_gate.py` 核实并写进 done）。
 
@@ -136,4 +137,4 @@ RED 证据：改生产代码前逐例跑 14–22 记（21/22 按真实基线记 
 - 全套字段齐全的手写 followup（含正确 producer sha 与随案 channels）仍可过：闭合它需要闸侧按 channels 重放指定地址（引擎级复算），属另单；本段把"抄近路"的门槛从写 4 个字段抬到完整伪造引擎产物。
 - `channels` 文件内容不验：preflight 校验属采集侧 `channels_preflight`。
 - 峰值口径选择无冻结 manifest（"不用 peaks_daily 的案可不带产物"）：与现行契约一致，不扩。
-- 改名 `needs_block_precision.json`＋`peaks_summary.json` 两件同时改名（只剩 followup 或全部改名）仍可绕过定位：全部改名＝等价于"没跑 peaks_daily"，属口径选择未冻结的同一残余。
+- summary、needs、followup 三件生成产物**全部**不存在或全部改名时，闸无法区分"未跑 peaks_daily"与"隐藏全部产物"，属口径选择未冻结的同一残余；只剩 followup（或只剩 needs）时会因缺 summary 被拒，不是绕过路径。
