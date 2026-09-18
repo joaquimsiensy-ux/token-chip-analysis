@@ -1,8 +1,9 @@
-# 工单 G2（v3，融合 r1 七条＋r2 三条 G2-R2-01/02/03）：EVM decimals 绑定链上观测——observation bundle v2 补 decimals()，闸侧两链族统一读观测 —— repair-20260918b-p0-fig2-decimals 第二段
+# 工单 G2（v4，融合 r1 七条＋r2 三条＋r3 一条 G2-R3-01）：EVM decimals 绑定链上观测——observation bundle v2 补 decimals()，闸侧两链族统一读观测 —— repair-20260918b-p0-fig2-decimals 第二段
 
 > 出处：codex 对 7.2.1（f1f473f3）六视角 review F07（P0，半修复）：7.2.1 F05 新增的 `audit_release_gate.check_facts_decimals`（`:1586-1611`）EVM 分支取 verify_recon **config**.decimals 当"链上观测"，而 `scripts/lib/evm_observation.observe_evm_supply`（`:120-232`）只请求 totalSupply/balanceOf(ZERO)/balanceOf(DEAD)/getCode，从未请求 `decimals()`（选择器 0x313ce567）——闸核的是两份自报是否一致。反例（review 附录 C `decimals_selfreport`）：raw_supply=100 不变，config 由 decimals=0/human=100 改为 decimals=2/human=1 并更新内容哈希，`_recon_bound_reality`（shared_release_receipt `:605-610`）nominal=1×10²=100 仍闭合，decimals 专项闸与完整 new-analysis 发布 errors=[]。用户 09-18 裁决：修（补链上采集，不选"EVM 显式拒"）。总原则：skill 上下文不增、能删不增、能改不增。
 > 修法（单一来源链）：①观测生产者在同一冻结块哈希上多发一笔 `eth_call decimals()`，进 transcript（8→9 笔）与 bundle `supply.decimals`，schema 升 `evm-observation-bundle/v2`（旧 v1 是没有 decimals 的产物，不得静默当 v2 消费）；②EVM 会计闸 `accounting_gate.py` 从已验 bundle 把 `checks.decimals` 写进 accounting_mode；③共享校验器 `validate_accounting_receipt` EVM 分支核 `accounting.checks.decimals == bundle.supply.decimals`；④发布闸 `check_facts_decimals` 两链族统一读 `accounting.checks.decimals`（删 EVM 读 config 的分支），EVM 另核 verify_recon `config.decimals == 观测`（human 供应量级不再自报）。Solana 侧（accounting_gate_sol 从 mint 真写出 `checks.decimals`）不动。
 > v2 变更（`review_G2_reply_r1.md`）：R1-01 §2.5 两处 schema 锚按缩进区分（12 空格＝:1356、8 空格＝:1761），§2.6 止锚改 :1610；R1-02 §2.8 补 `test_evm_observation_nonempty_code.py:129-134` 的 supply 字典断言加 `"decimals": 0`；R1-03（同 G1-R1-03）§2.9 c 例重设计——facts/state_source 与 config 同改 2、human＝N/100、观测 0，基线才放行；R1-04 §2.6 新函数先验 `checks` 为 dict，字段误写走拒收而非抛异常，并补回归；R1-05 §0.2 为守卫/测试进程立精确读取例外，§0.8 点名四个契约守卫脚本；R1-06 §1.3/§2.10/§3 零命中判据排除 `__pycache__`/`*.pyc`/attic；R1-07 §4 与台账 Q7 补两链存量 supply_truth/shared receipt 因 producer 哈希变化整体失效的迁移代价。
+> v4 变更（`review_G2_reply_r3.md`）：R3-01 §2.6 说明句的 checks 非 dict 基线行为改为分链族表述（EVM 基线 `[]`→改后拒收；Solana 基线已拒收须保持），与 §2.9 同步。
 > v3 变更（`review_G2_reply_r2.md`）：R2-01 §0.5/§2.5 整行锚一律 `grep -n -F -x`（8 空格锚是 12 空格锚的子串，不加 `-x` 会双命中）；R2-02 §2.9 checks 非 dict 回归改断 `checks 非对象`（EVM 夹具基线 `[]`→改后拒收＝RED→GREEN），§2.11 清单订正；R2-03 §4/台账 Q7 三类存量产物失效原因分述（supply_truth＝两链共用 producer 改动；wrapper＝自身 producer 未改、需刷新 supply_truth 子项引用；shared receipt＝自身 producer 改动＋下游绑定重建）。
 > 内容基线：`f1f473f3`（v7.2.1）加本工程已入库 commit（含 G1 施工 commit）；本段触及文件在开工时与 f1f473f3 逐字节相同（G1 不触及它们）。
 
@@ -111,7 +112,7 @@ def check_facts_decimals(case_dir: Path, facts, accounting, errors: list[str]):
         errors.append(f"verify_recon config.decimals={cfg.get('decimals')!r} 与链上观测 {observed} 不一致——对账 human 供应量级自报")
 ```
 
-说明：调用点 `:1910` 不动；`_validate_reconciliation_report_once`/`_bound_json_input`/`chain_family` 均为 7.2.1 已用接口；R1-04：`checks` 非 dict（如 `["mistyped"]`）走"缺失或非对象"拒收，不得抛 AttributeError（基线对此返回拒收理由，须保持）。
+说明：调用点 `:1910` 不动；`_validate_reconciliation_report_once`/`_bound_json_input`/`chain_family` 均为 7.2.1 已用接口；R1-04：`checks` 非 dict（如 `["mistyped"]`）走"缺失或非对象"拒收，不得抛 AttributeError（基线分链族：**EVM** 分支在合法绑定且 facts/config decimals 相等时对非 dict checks 返回 `[]`＝放行，改后须变拒收＝RED→GREEN；**Solana** 分支基线捕获异常返回拒收理由，须保持；与 §2.9 一致，R3-01）。
 
 ### 2.7 `scripts/tests/invariant_manifest.json` / `contract_manifest.json`
 - invariant `:63/:107/:351/:401/:420/:558` 六处 `"evm-observation-bundle/v1"` → v2（只改字符串，不动结构）；contract `:150` needle v1→v2。改后跑 `invariant_scan.py`，若报其他缺项**停工汇报**。
