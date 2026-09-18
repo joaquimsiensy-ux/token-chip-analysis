@@ -1,8 +1,9 @@
-# 工单 F04（v2，融合 codex 复核 r1 三条 F04-R1-01/02/03）：RPC 业务响应缺 `result` 键判失败；getCode 只认 `0x`／偶数长度十六进制串 —— repair-20260918c-p1-f02-f04-f05 第一段
+# 工单 F04（v3，融合 codex 复核 r1 三条 F04-R1-01/02/03、r2 两条 F04-R2-01/02）：RPC 业务响应缺 `result` 键判失败；getCode 只认 `0x`／偶数长度十六进制串 —— repair-20260918c-p1-f02-f04-f05 第一段
 
 > 出处：codex 对 8.0.0（8b041842）六视角 review F04（P1，历史漏审 637df73/3.16.0）：`net.py:298` `RpcPool._one` 在传输正常、无 truthy `error` 时直接 `j.get("result")` 并记 `ok=True`——响应是合法 JSON 但缺 `result` 键（提供商/代理/缓存限流时的空壳包）也算成功；`rpc_batch.py:83` `code = r["result"] or "0x"` 把 None 折成空代码，`is_contract=false`，摘要"失败 0"。同文件 `net.py:314-325` 的链身份握手反而严格拒缺失/非法 result，两套标准。用户 09-18 裁决：修。总原则：skill 上下文不增；能删不增、能改不增；references/SKILL/commands 本段零改动。
 > 修法：①网络层统一校验 envelope——`result` 键不在场且无 error → `{"ok": False, "error": "rpc envelope: missing result (no error object)"}`（合法 `"result": null` 键在场，继续 `ok=True, result=None`，各方法消费者自核类型，台账 Q6）；②`rpc_batch getcode` 只把匹配 `0x(?:[0-9a-fA-F]{2})*` 的字符串当合法返回（`"0x"` 为空代码/EOA，其余为合约），非字符串/非十六进制/奇数长度一律记 `{"error": …}`（退出码沿用既有 fail-loud：有失败即 1）。
 > v2 变更（`review_F04_reply_r1.md`）：R1-01 §2.2 改用 `re.fullmatch` 校验十六进制字符（原条件放行 `"0xgg"`），§2.3 增 `badhex` 场景；R1-02 §2.3 RED 取证改为逐场景独立执行并记录，`int` 场景基线预期为 `TypeError`（基线 `len(123)` 抛错，无 rc），缺字段场景加摘要断言"失败 1"/"EOA 0"；R1-03 三端点 failover 既有缺陷（`_run:355/372` 循环内改 `_active_index` 致 A/B 坏、C 好时 C 不被访问）登记台账 Q13 为继承限制，本段不改 `_run`。
+> v3 变更（`review_F04_reply_r2.md`）：R2-01 §2.3 两个新 import 的插入锚拆开——`import contextlib` 插 `:5 import asyncio` 后、`import io` 插 `:7 import importlib.util` 后（原“都插 :5 后”与字母序冲突）；R2-02 §4/台账 Q13 把三端点反例（A→B→A 漏访 C）限定为三端点的确定性结果，更多端点表述为“可能重复访问或漏访，顺序取决于端点数与各次结果”（四端点 A→B→D 成功、八端点 A→B→D→G→C 成功），不再泛化为“三端点及以上必失败”。
 > 内容基线：`8b041842`（v8.0.0）加本工程已入库的裁决/工单 commit；`scripts/` 与 8b041842 逐字节相同。
 
 ## 0. 开工纪律
@@ -58,7 +59,7 @@
 
 ### 2.3 `scripts/tests/test_batch1_rpc_attestation.py` —— 两个新用例
 
-在 `:326`（`def test_remaining_formal_entrypoints_wrong_chain_zero_business` 函数结束后的空行）之后、`:327`（锚 `def main():`，唯一）之前新增（文件已 import `json`/`sys`/`tempfile`/`Path`/`mock`，`:5-14` 开工核实；本段追加 `import contextlib` 与 `import io` 到 `:5`（锚 `import asyncio`，唯一）之后，按字母序各占一行）：
+在 `:326`（`def test_remaining_formal_entrypoints_wrong_chain_zero_business` 函数结束后的空行）之后、`:327`（锚 `def main():`，唯一）之前新增（文件已 import `json`/`sys`/`tempfile`/`Path`/`mock`，`:5-14` 开工核实；本段追加两行 import 并保持字母序：`import contextlib` 插在 `:5`（锚 `import asyncio`，唯一）之后；`import io` 插在 `:7`（锚 `import importlib.util`，唯一）之后。落地后 `:5-10` 依次为 asyncio/contextlib/csv/importlib.util/io/json）：
 
 ```python
 def test_business_envelope_missing_result():
@@ -144,5 +145,5 @@ RED 证据（逐场景独立执行，写 `F04_red_evidence.txt`，每条含场�
 ## 4. 登记不修（`code_change_pending.md` Q5/Q6/Q13，调度方维护）
 
 - 不校验 `id` 回显/`jsonrpc` 版本（Q5）；合法 null 由方法消费者自核，消费者对 null 的既有宽容语义不在本段修（Q6）。
-- **Q13（复核 r1 新登记）**：`_run:354-372` 在循环内更新 `_active_index`，三端点及以上 failover 时若前两个端点都返回坏包，第三个端点不会被访问（A→B→A），最终返回失败——既有缺陷，基线上 A/B 超时同样触发；本段使"缺 result 键"也成为触发条件之一。不在本段修（改 `_run` 会扩大回归面），登记待日后单独工单；单端点/双端点不受影响。
+- **Q13（复核 r1 登记、r2 订正范围）**：`_run:355` 按 `(_active_index + offset) % n` 选端点、`:372` 在循环内回写 `_active_index`，导致多端点 failover 的访问顺序与端点数耦合。确定性反例限于**三端点**：A/B 都返回坏包时第三个端点不被访问（A→B→A），最终返回失败；更多端点则可能重复访问或漏访，实际顺序取决于端点数与各次结果（四端点 A→B→D 成功、八端点 A→B→D→G→C 成功）。既有缺陷，基线上 A/B 超时同样触发；本段使“缺 result 键”也成为触发条件之一。不在本段修（改 `_run` 会扩大回归面），登记待日后单独工单；单端点/双端点不受影响。
 - 存量迁移：无（行为只在坏包时从假成功变失败；已落盘的 getcode 产物若来自坏包，本段不追溯——此类产物在正式路径不作为发布证据；`rpc_batch.py` 是 helper，`test_exemption_guards` 的 `EXEMPT_MODULE` 是 multicall_balances，与本段无关）。
