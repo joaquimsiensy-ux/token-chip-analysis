@@ -1,6 +1,7 @@
-# 工单 F07（v1）：日级峰值闸——产物目录按四件任一定位＋补算收据绑定 producer/channels —— repair-20260918-p0-f04-f07 第三段
+# 工单 F07（v2，融合 codex 复核 r1 四条 F07-R1-01..04）：日级峰值闸——产物目录按四件任一定位＋补算收据绑定 producer/channels —— repair-20260918-p0-f04-f07 第三段
 
 > 出处：codex 对 7.2.0（311e6c4）的六视角 review F07（P0，**半修复 R09**）：①`_find_peaks_summaries`（`:1077-1094`）只按文件名 `peaks_summary.json` rglob，零命中即整段 return——把 summary 改名，needs/trigger/followup 还在原位也不再检查；②`check_daily_peaks` 对 `block_precision_followup.json`（`:1179-1229`）只核 schema/engine 字符串、needs/trigger sha 与 peak/peak_blk 形状，不消费真实 producer `replay_duck.py:405-410` 已写出的 `producer`/`channels`/`value_type`/`count` 字段——手写 `{engine:"replay_duck.py", inputs:[needs sha], addresses:{0xabc:{peak:"0",peak_blk:null}}}` 即从阻断变放行。反例：review 附录 D `repro_core.py` F07 段与 `repro_preseal.py` F07-selfreport/F07-rename（真实 `build_html --mode analysis-new` rc 1→0）。用户 2026-09-18 裁决：修。总原则：**skill 上下文不增**；能删不增、能改不增。
+> v2 变更（`review_F07_reply_r1.md`，四条全采纳）：R1-01 定位只按**生成产物**三件（summary/needs/followup），`trigger_days.json` 既是 `--trigger-days` 原始输入的常见名也是输出名，不作定位依据；改单次 `rglob("*.json")` 按名过滤；补两条兼容布局用例；R1-02 §1.4 迁移改为 needs＋trigger 双 `--only-addrs`；R1-03 成本表述订正（全量通道仍要读取去重）；R1-04 §0.8 删误挂的 F12 例外。调度方实核 APU 0914 案：`channels.json` 在案根且案内唯一，峰值三件在 `peaks_daily_out/`，`trigger_days.json` 随产物目录。
 > 内容基线：`311e6c4` 加本工程前段（F06、F04）落地 commit；`audit_release_gate.py` 经 F04 段在 `check_figure2_receipt`（`:1571` 起）插入约 14 行，**本工单锚点全部位于 `:1229` 之前，不受漂移影响**；`test_audit_release_gate.py`、`scripts/tests/invariant_manifest.json` 与 311e6c4 逐字节相同。
 
 ## 0. 开工纪律
@@ -12,14 +13,14 @@
 - 0.5 行号均指施工前基线；锚 `grep -n -F` 恰 1 处且行号一致，不符**停工**。删除 > 修改 > 新增。
 - 0.6 离线；不 commit、不 push、不部署；禁 stash/checkout/reset。
 - 0.7 先红后绿：§2.3 新用例改动前逐例取 RED 写 `F07_red_evidence.txt`（逐例捕获 Exception 保留类型，按真实基线记 RED 或 GREEN→GREEN）。
-- 0.8 不跑 `run_all.py`。定向跑：`python3 -B scripts/tests/test_audit_release_gate.py`、`test_engine_equivalence.py`（`:257-313` 用真 `replay_duck --only-addrs` 产收据，须仍绿——这是"真产物含全字段"的实证）、`test_peaks_daily.py`、`test_batch15_three_ledgers_frozen.py`、`test_repair_batch_d.py`、`test_stage2_closeout.py`（`dry_run_touches_nothing` 属已知 F12，仅此项失败注明）、`python3 -B scripts/tests/invariant_scan.py`。除注明项外全 PASS。
+- 0.8 不跑 `run_all.py`。定向跑：`python3 -B scripts/tests/test_audit_release_gate.py`、`test_engine_equivalence.py`（`:257-313` 用真 `replay_duck --only-addrs` 产收据，须仍绿——这是"真产物含全字段"的实证）、`test_peaks_daily.py`、`test_batch15_three_ledgers_frozen.py`、`test_repair_batch_d.py`、`test_stage2_closeout.py`、`python3 -B scripts/tests/invariant_scan.py`。全部须 PASS。（F12 环境项 `test_stage2_reseal.py::dry_run_touches_nothing` 由调度方全套验收处理。）
 
 ## 1. 硬约束
 
 - 1.1 文档三处字节不变：SKILL.md 8021、references 930061、commands-staging 8798（命令同工单 F06 §1.1）。
 - 1.2 `git diff --stat` 只含 0.3 白名单。
-- 1.3 "案内四件皆无"仍 return（不强制所有案跑 peaks_daily，与现行契约一致）；"多个产物目录"拒；"有目录但缺 summary"拒。
-- 1.4 存量迁移代价（明示，属裁决已接受）：R09（7.2.0）前产出的 followup 收据缺 `producer`/`channels`/`value_type`/`count` → 本段起被拒，须用当前 `replay_duck.py --only-addrs` 重跑补算（只对 needs 并集地址，成本小）；`producer.sha256` 与仓库当前 `scripts/evm/replay_duck.py` 不符同样拒（升级引擎即重跑补算）。
+- 1.3 "案内三件生成产物（summary/needs/followup）皆无"仍 return（不强制所有案跑 peaks_daily，与现行契约一致）；`trigger_days.json` **不作定位依据**（`peaks_daily.py:91` 接受任意路径的 `--trigger-days` 原始清单，同名文件可能在 `data/` 等目录）；"多个产物目录"拒；"有目录但缺 summary"拒。
+- 1.4 存量迁移代价（明示，属裁决已接受）：R09（7.2.0）前产出的 followup 收据缺 `producer`/`channels`/`value_type`/`count` → 本段起被拒，须用当前 `replay_duck.py --channels <通道清单> --only-addrs <产物目录>/needs_block_precision.json --only-addrs <产物目录>/trigger_days.json`（两件都传：义务＝needs 各档 ∪ 触发日活跃候选，闸 `:1175/:1199` 绑定 trigger 哈希；首个 `--only-addrs` 决定收据落点 `:411`）重跑补算——只限制峰值聚合的地址范围，但仍执行全量通道校验、读取与去重（`:653/:666` 先物化全部 `raw_rows`），耗时与临时空间按案量评估，不是"成本小"；`producer.sha256` 与仓库当前 `scripts/evm/replay_duck.py` 不符同样拒（升级引擎即重跑补算）。
 
 ## 2. 逐条施工
 
@@ -28,29 +29,31 @@
 替换 `:1077-1094`（锚起 `def _find_peaks_summaries(case_dir: Path) -> list[Path]:`，锚止 `    return hits`——`:1094` 的 `return hits` 在 `:1077-1094` 区间内唯一）为：
 
 ```python
-PEAKS_DAILY_FILES = ("peaks_summary.json", "needs_block_precision.json",
-                     "trigger_days.json", "block_precision_followup.json")
+PEAKS_DAILY_PRODUCTS = ("peaks_summary.json", "needs_block_precision.json",
+                        "block_precision_followup.json")
 
 
 def _find_peaks_dirs(case_dir: Path) -> list[Path]:
     """R09（7.2.0）：peaks_daily 产物根不限定案根——递归定位；跳过隐藏目录（.duck_tmp 等）、
-    _history 与符号链接路径。F07（7.2.1）：四件产物**任一**在场即认定为峰值产物目录，
-    改名 summary 不再使整段检查零命中。返回去重排序后的目录列表。"""
+    _history 与符号链接路径。F07（7.2.1）：三件**生成产物**任一在场即认定为峰值产物目录，
+    改名 summary 不再使整段检查零命中；trigger_days.json 既是 --trigger-days 原始输入的常见名
+    也是输出名，不作定位依据。单次遍历；返回去重排序后的目录列表。"""
     dirs = set()
-    for name in PEAKS_DAILY_FILES:
-        for p in case_dir.rglob(name):
-            rel = p.relative_to(case_dir)
-            if any(part.startswith(".") or part == "_history" for part in rel.parts):
-                continue
-            cur, linked = p, False
-            while cur != case_dir:
-                if cur.is_symlink():
-                    linked = True
-                    break
-                cur = cur.parent
-            if linked or not p.is_file():
-                continue
-            dirs.add(p.parent)
+    for p in case_dir.rglob("*.json"):
+        if p.name not in PEAKS_DAILY_PRODUCTS:
+            continue
+        rel = p.relative_to(case_dir)
+        if any(part.startswith(".") or part == "_history" for part in rel.parts):
+            continue
+        cur, linked = p, False
+        while cur != case_dir:
+            if cur.is_symlink():
+                linked = True
+                break
+            cur = cur.parent
+        if linked or not p.is_file():
+            continue
+        dirs.add(p.parent)
     return sorted(dirs)
 ```
 
@@ -73,7 +76,7 @@ def _find_peaks_dirs(case_dir: Path) -> list[Path]:
         return
 ```
 
-紧随其后的 `:1113`（锚 `    pd = ps_path.parent`，唯一）**删除**（pd 已在上面赋值）。docstring `:1101-1103` 的 R09 三点后追加一行 `F07（7.2.1）：④四件任一在场即检查；⑤followup 须绑定当前 replay_duck.py producer 与 channels 实物。`。
+紧随其后的 `:1113`（锚 `    pd = ps_path.parent`，唯一）**删除**（pd 已在上面赋值）。docstring `:1101-1103` 的 R09 三点后追加一行 `F07（7.2.1）：④summary/needs/followup 任一在场即检查（trigger_days 不作定位依据）；⑤followup 须绑定当前 replay_duck.py producer 与 channels 实物。`。
 
 ### 2.2 `scripts/report/audit_release_gate.py` —— followup 绑定 producer/channels/value_type/count
 
@@ -117,10 +120,12 @@ def _find_peaks_dirs(case_dir: Path) -> list[Path]:
   18 `F07 followup channels sha 不符拒`：改写 `channels.json` 内容不更新收据 → 含"channels 未绑定"。**RED**。
   19 `F07 count 不一致拒`：`count=7` → 含"count 与 addresses"。**RED**。
   20 `F07 只有 needs/trigger 无 summary 拒`：只写 needs＋trigger 两件（不写 summary）→ 含"缺 peaks_summary.json"。**RED**（基线 `[]`）。
+  21 `F07 兼容：原始触发日清单在 data/ 不被误判（GREEN→GREEN）`：`_r09_write_peaks(root/"data/peaks_daily", needs=[])` 完整产物，另在 `root/"data/trigger_days.json"` 写一份原始清单 `{"schema": "trigger-days-replay/v1", "days": {}, "empty_reason": "raw input"}` → errors 不含 "多个峰值产物目录"/"缺 peaks_summary.json"。
+  22 `F07 兼容：只有原始触发日清单、无峰值产物（GREEN→GREEN）`：只写 `root/"data/trigger_days.json"` → errors 不含 "峰值"/"peaks_summary" 字样。
 - `:1154`（锚 `    assert not r09_failures, f"R09 失败 {len(r09_failures)}/13: {r09_failures}"`）的 `13` 改为 `{len(r09_cases)}`。
 - 既有用例 2/12（GREEN→GREEN）与 3–13 用更新后的夹具须仍绿；用例 6"多份 summary 拒"文案若断言 `多份 peaks_summary.json`，改为断言"多个峰值产物目录"（开工 `grep -n '多份' scripts/tests/test_audit_release_gate.py` 核实并写进 done）。
 
-RED 证据：改生产代码前逐例跑 14–20 记 AssertionError/异常原文（含命令与被测文件 sha256）。
+RED 证据：改生产代码前逐例跑 14–22 记（21/22 按真实基线记 GREEN→GREEN） AssertionError/异常原文（含命令与被测文件 sha256）。
 
 ## 3. 完成报告 `F07_done.md` 必含
 
@@ -130,4 +135,5 @@ RED 证据：改生产代码前逐例跑 14–20 记 AssertionError/异常原文
 
 - 全套字段齐全的手写 followup（含正确 producer sha 与随案 channels）仍可过：闭合它需要闸侧按 channels 重放指定地址（引擎级复算），属另单；本段把"抄近路"的门槛从写 4 个字段抬到完整伪造引擎产物。
 - `channels` 文件内容不验：preflight 校验属采集侧 `channels_preflight`。
-- 峰值口径选择无冻结 manifest（"不用 peaks_daily 的案可不带四件"）：与现行契约一致，不扩。
+- 峰值口径选择无冻结 manifest（"不用 peaks_daily 的案可不带产物"）：与现行契约一致，不扩。
+- 改名 `needs_block_precision.json`＋`peaks_summary.json` 两件同时改名（只剩 followup 或全部改名）仍可绕过定位：全部改名＝等价于"没跑 peaks_daily"，属口径选择未冻结的同一残余。
