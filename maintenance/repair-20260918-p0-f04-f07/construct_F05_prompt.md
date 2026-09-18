@@ -1,5 +1,5 @@
 # 施工 F05 提示词：按 workorder_F05.md 最新版施工（写模式）
-# 派工基线 HEAD＝<派工时填>
+# 派工基线 HEAD＝bf60b50（本提示词自身的 commit 会使实际开工 HEAD 比此多恰一个提交，属预期）
 
 ## 纪律（首条最重要）
 1. **禁读 `~/.codex/` 下任何文件**（插件启动搜索若已读 memories，如实披露一次，之后不再读）。禁读本仓库 `archive/`、`blind-reviews/`、`.staging_*`、`references/attic.md`、`maintenance/repair-20260917-p0-four/` 以外的历史 maintenance 目录；禁读 `/Users/uravvv/Desktop`、`/Users/uravvv/Documents`（§1.1 统计字节只计大小不读内容）。
