@@ -1,3 +1,13 @@
+# 施工任务 F02（codex --write，按下方工单 v2 逐条执行）
+
+## 派工基线
+- 派工基线：main 分支、HEAD 为包含本提示词文件的最新提交（本提示词入库后 HEAD 才定，故**不以具体 SHA 判定**）；基线判定只看工单 §0.1 两项检查：`git status --short` 为空，且 `git diff --stat 8b041842 HEAD -- scripts references SKILL.md commands-staging VERSION pyproject.toml CHANGELOG.md` 只含 F04、F05 已入库的六个文件（net.py、rpc_batch.py、test_batch1_rpc_attestation.py、price_check.py、stage2_closeout.py、test_stage2_closeout.py）；工单 §0.1 已把须为空的范围限定在 F02 独有的 facts_gate.py 与 test_report_facts.py，共用的 stage2_closeout.py、test_stage2_closeout.py 只核锚唯一性（§0.5）。工作目录＝`/Users/uravvv/.claude/skills/token-chip-analysis`。开工先 `git rev-parse HEAD` 记入完成报告即可。
+- 本任务是**施工**，不是复核：按工单 §2 逐条落地、按 §0.7 先取 RED、按 §0.8 跑定向测试、按 §3 写完成报告 `F02_done.md` 到工单所在目录。
+- 纪律以工单 §0 为准（禁读 `~/.codex/`、白名单、不 commit/push、禁 stash/checkout/reset、锚不符即停工）。工单已由 codex 只读复核通过（`review_F02_reply_r2.md`），施工中若发现工单与代码不符，**停工写 `F02_done_attempt1_stopped.md`**，不得自行改方案。
+- stdout 首行固定 `# 施工 F02：完成` 或 `# 施工 F02：停工`；末尾披露是否读过禁读路径。
+
+---
+
 # 工单 F02（v2，融合 codex 复核 r1 两条 F02-R1-01/02）：流通量声明进 facts 生产者——state_source.facts_inputs.circulating_supply {raw, asof, source} → facts.token；发布重算一致；选材消费者贯通 —— repair-20260918c-p1-f02-f04-f05 第三段
 
 > 出处：codex 对 8.0.0（8b041842）六视角 review F02（P1，修复中新引入：consumer 82bb26c/7.0.4 → producer 1b317b3/7.1.3→7.2.0 R07）：`stage2_closeout.flow_selection_errors`（`:202-235`）按"总供应 20% 或流通量 20%"选流转图，`:205` 读 `facts.token.circulating_supply_raw`；但 `facts_gate.derive_facts` 生成的 token 只有 symbol/decimals/total_supply_raw（`:477`），`facts_inputs` 契约（`:63-69`）无流通量；手补 facts.token 被 `audit_release_gate.check_facts_vs_ledgers`（`:1569-1573`）重算比对拒。已知流通量的正常案（锁仓比例高的币）无合规入口，本该画的流转图漏画，且只留 NOTE。用户 09-18 裁决：修。总原则：skill 上下文不增；能删不增、能改不增；references/SKILL/commands 本段零改动（`report-template.md:179` 已写"≥20% 总供应或 ≥20% 流通"）。
