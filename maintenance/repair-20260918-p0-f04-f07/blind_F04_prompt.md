@@ -1,5 +1,5 @@
 # 盲审 F04（r1）提示词（只读，施工后独立复核）
-# 审查范围 commit＝<施工落地后填：git diff <前>..<后> -- scripts/>
+# 审查范围 commit＝git diff b1ccf23..b794325 -- scripts/（F04 施工 commit b794325）
 
 ## 纪律
 1. 禁读 `~/.codex/`（启动搜索若已读 memories 如实披露一次，之后不再读）；禁读 `archive/`、`blind-reviews/`、`.staging_*`、`references/attic.md`、`maintenance/repair-20260917-p0-four/` 以外的历史 maintenance 目录；禁读 `/Users/uravvv/Desktop`、`/Users/uravvv/Documents`。
