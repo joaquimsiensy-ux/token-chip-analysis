@@ -1,8 +1,9 @@
-# 工单 G2（v2，融合 codex 复核 r1 七条 G2-R1-01…07 与 G1-R1-03）：EVM decimals 绑定链上观测——observation bundle v2 补 decimals()，闸侧两链族统一读观测 —— repair-20260918b-p0-fig2-decimals 第二段
+# 工单 G2（v3，融合 r1 七条＋r2 三条 G2-R2-01/02/03）：EVM decimals 绑定链上观测——observation bundle v2 补 decimals()，闸侧两链族统一读观测 —— repair-20260918b-p0-fig2-decimals 第二段
 
 > 出处：codex 对 7.2.1（f1f473f3）六视角 review F07（P0，半修复）：7.2.1 F05 新增的 `audit_release_gate.check_facts_decimals`（`:1586-1611`）EVM 分支取 verify_recon **config**.decimals 当"链上观测"，而 `scripts/lib/evm_observation.observe_evm_supply`（`:120-232`）只请求 totalSupply/balanceOf(ZERO)/balanceOf(DEAD)/getCode，从未请求 `decimals()`（选择器 0x313ce567）——闸核的是两份自报是否一致。反例（review 附录 C `decimals_selfreport`）：raw_supply=100 不变，config 由 decimals=0/human=100 改为 decimals=2/human=1 并更新内容哈希，`_recon_bound_reality`（shared_release_receipt `:605-610`）nominal=1×10²=100 仍闭合，decimals 专项闸与完整 new-analysis 发布 errors=[]。用户 09-18 裁决：修（补链上采集，不选"EVM 显式拒"）。总原则：skill 上下文不增、能删不增、能改不增。
 > 修法（单一来源链）：①观测生产者在同一冻结块哈希上多发一笔 `eth_call decimals()`，进 transcript（8→9 笔）与 bundle `supply.decimals`，schema 升 `evm-observation-bundle/v2`（旧 v1 是没有 decimals 的产物，不得静默当 v2 消费）；②EVM 会计闸 `accounting_gate.py` 从已验 bundle 把 `checks.decimals` 写进 accounting_mode；③共享校验器 `validate_accounting_receipt` EVM 分支核 `accounting.checks.decimals == bundle.supply.decimals`；④发布闸 `check_facts_decimals` 两链族统一读 `accounting.checks.decimals`（删 EVM 读 config 的分支），EVM 另核 verify_recon `config.decimals == 观测`（human 供应量级不再自报）。Solana 侧（accounting_gate_sol 从 mint 真写出 `checks.decimals`）不动。
 > v2 变更（`review_G2_reply_r1.md`）：R1-01 §2.5 两处 schema 锚按缩进区分（12 空格＝:1356、8 空格＝:1761），§2.6 止锚改 :1610；R1-02 §2.8 补 `test_evm_observation_nonempty_code.py:129-134` 的 supply 字典断言加 `"decimals": 0`；R1-03（同 G1-R1-03）§2.9 c 例重设计——facts/state_source 与 config 同改 2、human＝N/100、观测 0，基线才放行；R1-04 §2.6 新函数先验 `checks` 为 dict，字段误写走拒收而非抛异常，并补回归；R1-05 §0.2 为守卫/测试进程立精确读取例外，§0.8 点名四个契约守卫脚本；R1-06 §1.3/§2.10/§3 零命中判据排除 `__pycache__`/`*.pyc`/attic；R1-07 §4 与台账 Q7 补两链存量 supply_truth/shared receipt 因 producer 哈希变化整体失效的迁移代价。
+> v3 变更（`review_G2_reply_r2.md`）：R2-01 §0.5/§2.5 整行锚一律 `grep -n -F -x`（8 空格锚是 12 空格锚的子串，不加 `-x` 会双命中）；R2-02 §2.9 checks 非 dict 回归改断 `checks 非对象`（EVM 夹具基线 `[]`→改后拒收＝RED→GREEN），§2.11 清单订正；R2-03 §4/台账 Q7 三类存量产物失效原因分述（supply_truth＝两链共用 producer 改动；wrapper＝自身 producer 未改、需刷新 supply_truth 子项引用；shared receipt＝自身 producer 改动＋下游绑定重建）。
 > 内容基线：`f1f473f3`（v7.2.1）加本工程已入库 commit（含 G1 施工 commit）；本段触及文件在开工时与 f1f473f3 逐字节相同（G1 不触及它们）。
 
 ## 0. 开工纪律
@@ -11,7 +12,7 @@
 - 0.2 **禁读** `~/.codex/`；禁读 `archive/`、`blind-reviews/`、`.staging_*`、`references/attic.md`、`maintenance/repair-20260918-p0-f04-f07/` 与本目录以外的历史 maintenance 目录；禁读 `/Users/uravvv/Desktop`、`/Users/uravvv/Documents`。**精确读取例外（R1-05）**：§0.8 要求运行的守卫/测试进程会自行读取上述禁区（`docs_lint.py:129-134` 递归全仓 Markdown、`:268/272/306` 读 attic 与 archive/evals；`test_repair_batch3_gates.py:578/581` 读历史 `r10_ledger.md`）——允许进程自行读取，施工方不得主动阅读、引用或改动这些文件；done 里如实注明例外被哪个脚本触发。
 - 0.3 **白名单**——生产：`scripts/lib/evm_observation.py`、`scripts/evm/observe_supply.py`、`scripts/evm/accounting_gate.py`、`scripts/lib/supply_truth_gate.py`、`scripts/report/shared_release_receipt.py`、`scripts/report/audit_release_gate.py`；测试：`scripts/tests/test_evm_observation.py`、`test_evm_observation_nonempty_code.py`、`test_supply_truth_gate.py`、`test_evm_observation_release.py`、`test_audit_release_gate.py`、`test_handoff_manifest.py`、`test_batch3_evm_vertical_slice.py`、`test_review_20260804_p105.py`；清单：`scripts/tests/invariant_manifest.json`（仅 6 处 `evm-observation-bundle/v1`→`v2`）、`scripts/tests/contract_manifest.json`（仅 `:150` needle v1→v2）；文档（**仅 §2.10 列出的字符替换**）：`references/data-pipeline-evm-recon.md`、`references/independent-audit-protocol.md`、`references/scan-schemas.md`；本目录新建 `G2_done.md`、`G2_red_evidence.txt`，停工时 `G2_done_attempt1_stopped.md`。
 - 0.4 **不改**：`scripts/lib/solana_observation.py`、`scripts/solana/accounting_gate_sol.py`、`scripts/evm/verify_recon.py`、`scripts/report/facts_gate.py`、`handoff_manifest.py`、`receipt_kernel.py`/`receipt_validate.py`；`shared_release_receipt._recon_bound_reality`（`:592-635`）、`validate_evm_observation_source_chain`（`:1809`）；`SKILL.md`、`commands-staging/`、`VERSION`、`pyproject.toml`、`CHANGELOG.md`；其他测试只跑不改（若 §0.8 定向清单外的测试因本段变红，停工汇报，不自行扩白名单）。
-- 0.5 行号均指施工前基线；锚 `grep -n -F` 恰 1 处且行号一致，不符**停工**。删除 > 修改 > 新增。
+- 0.5 行号均指施工前基线；**整行锚用 `grep -n -F -x`（整行精确匹配，含前导空格）恰 1 处且行号一致**，片段锚用 `grep -n -F`；不符**停工**。删除 > 修改 > 新增。
 - 0.6 离线（companion 沙箱无网；本段所有 RPC 均为测试假池/本地假服务）；不 commit、不 push、不部署；禁 stash/checkout/reset。
 - 0.7 先红后绿：§2.11 新用例在改生产代码前逐例取 RED 写 `G2_red_evidence.txt`。
 - 0.8 不跑 `run_all.py`。定向跑（全部须 PASS）：`python3 -B scripts/tests/test_evm_observation.py`、`test_evm_observation_nonempty_code.py`、`test_evm_observation_release.py`、`test_supply_truth_gate.py`、`test_audit_release_gate.py`、`test_handoff_manifest.py`、`test_review_20260804_p105.py`、`test_repair_batch_a.py`、`test_repair_batch_d.py`、`test_batch13_accounting_target.py`、`test_batch14_accounting_bundle_fallback.py`、`test_recon_fifth_check.py`、`test_recon_deep_reverify.py`、`test_batch11_frozen_bundle_binding.py`、`test_a4_gate.py`、`python3 -B scripts/tests/invariant_scan.py`、`python3 -B scripts/tests/docs_lint.py --all`、契约守卫四脚本 `test_contract_routes.py`、`test_commands_deploy_sync.py`、`test_repair_batch3_gates.py`（读取禁区按 §0.2 例外）与 `docs_lint.py` 本身。`test_batch3_evm_vertical_slice.py` 需绑 127.0.0.1（沙箱可能 EPERM）：能跑则跑，不能跑如实写 done 由调度方本机补验。
@@ -69,7 +70,7 @@
 - `:92`（锚 `EVM_OBSERVATION_SCHEMA = "evm-observation-bundle/v1"`）→ v2；`:541`（锚 `                         "EVM=evm-observation-bundle/v1")`）→ v2。
 
 ### 2.5 `scripts/report/shared_release_receipt.py`
-- `:1356`（锚＝12 个前导空格 `            _require(bundle.get("schema") == "evm-observation-bundle/v1",`，唯一）→ v2；`:1761`（锚＝8 个前导空格 `        _require(bundle.get("schema") == "evm-observation-bundle/v1",`，唯一，位于 `validate_accounting_receipt`）→ v2。两锚以缩进区分，`grep -n -F` 各恰 1 处。
+- `:1356`（锚＝12 个前导空格 `            _require(bundle.get("schema") == "evm-observation-bundle/v1",`，唯一）→ v2；`:1761`（锚＝8 个前导空格 `        _require(bundle.get("schema") == "evm-observation-bundle/v1",`，唯一，位于 `validate_accounting_receipt`）→ v2。两锚以缩进区分，**`grep -n -F -x` 各恰 1 处**（不加 `-x` 时 8 空格锚会同时命中 :1356，R2-01）。
 - `:1775`（锚 `                 "EVM accounting observed anchor block_hash mismatch")`）之后、`:1776`（锚 `        return target, accounting, sha(bundle_path)`）之前插入：
 
 ```python
@@ -126,7 +127,7 @@ def check_facts_decimals(case_dir: Path, facts, accounting, errors: list[str]):
 - `test_recon_deep_reverify.py:154/:400` 的 `transcript[...]` 属 verify_recon/time_spotcheck transcript，与本段无关——开工核实后写 done，不改。
 
 ### 2.9 新用例（RED）
-- `test_audit_release_gate.py` 或 `test_review_20260804_p105.py`（择一，写 done）：R1-04 回归——`accounting_mode.json` 的 `checks` 改为 `["mistyped"]` 喂 `gate.check_facts_decimals(root, facts, accounting, errors)`，断言 errors 含 `缺失或非对象` 且**不抛异常**（基线：返回拒收理由；改后须保持——GREEN→GREEN 但文案变化，记入证据）。
+- `test_audit_release_gate.py` 或 `test_review_20260804_p105.py`（择一，写 done）：R1-04 回归——用现成 **EVM** 夹具（facts/config decimals 相等且绑定合法），把 `accounting_mode.json` 的 `checks` 改为 `["mistyped"]` 喂 `gate.check_facts_decimals(root, facts, accounting, errors)`，断言**不抛异常**且 errors 含 `checks 非对象`（R2-02：基线 EVM 分支对此返回 `[]`，改后返回拒收理由＝**RED→GREEN**；Solana 分支基线捕获 AttributeError 返回拒收理由，不作本例夹具）。
 - `test_evm_observation.py`：新 `test_decimals_observed_and_uint8_enforced()`：`observe()["supply"]["decimals"] == 18`（RED：基线 KeyError）；`expect_error(lambda: observe(FakePool(decimals=256)), "uint8")`（RED）；挂进 `main()` 列表。
 - `test_evm_observation_release.py`：新用例（挂进该文件既有用例注册方式）：`build_case` 后把 `accounting_mode.json` 的 `checks.decimals` 改 2、重算 wrapper/manifest 所需 sha（照该文件既有 `refresh_wrapper` 惯例）→ `shared.validate_accounting_receipt(root)` 抛含 `checks.decimals` 的 ValueError（RED：基线不核）。
 - `test_review_20260804_p105.py`：在 F05 decimals a/b 两例（`:271-285`）之后新增 **c 例**（R1-03 重设计——基线必须真放行）：`report = fixture.build_case(root, historical=False)`（照 a/b）→ `add_new_analysis_distribution(root, report, decimals=2)`（facts/state_source decimals＝2；该夹具把 owner 快照总量改为 N raw 并已重建 balance/supply/supply_truth 与 config：`fixture_recon_config.json` decimals=0、`total_supply_human=str(N)`）→ 读 config，取 `N = int(config["total_supply_human"])`，改为 `decimals=2`、`total_supply_human=str(Decimal(N) / 100)`（nominal＝N/100×10²＝N raw，`_recon_bound_reality` 仍闭合）→ 对 `balance_receipt.json`、`supply_receipt.json` 两收据把 `inputs.config` 的 size/sha256 重算（形状照 `test_audit_release_gate.artifact_ref` `:49`）→ `reconciliation_report.json` 的 `checks[balance|supply].receipt.sha256` 重算 → `create_bundle(root)`（照 `:218-219` 惯例）→ **基线**：`gate.run(root, report, profile="new-analysis")` 须 `== []`（facts 2 vs config 2 互证放行——这就是 review 反例；把这条"基线放行"也写进 RED 证据）→ **改后**：errors 同时含 `facts.token.decimals=2 与链上观测 0 不一致` 与 `verify_recon config.decimals=2 与链上观测 0 不一致`。另保留 a 例（facts 2/config 0）不动，并在 done 注明 a 例基线本就拒。允许在本文件内新增私有 helper（如 `_rebind_config_decimals(root, decimals)`）。
@@ -138,7 +139,7 @@ def check_facts_decimals(case_dir: Path, facts, accounting, errors: list[str]):
 - 改后按 §1.3 的排除式 grep 须 0 命中（attic/`__pycache__` 不计）；`docs_lint.py --all` 与四个契约守卫 PASS（读取禁区按 §0.2 例外）。
 
 ### 2.11 RED 证据清单
-§2.9 三处新用例改生产代码前逐例取证（AssertionError/异常原文、命令、被测文件 sha256）写 `G2_red_evidence.txt`。
+§2.9 四处新用例（decimals 观测/uint8、accounting≠bundle、c 例基线放行→双拒、checks 非对象）改生产代码前逐例取证（AssertionError/异常原文、命令、被测文件 sha256）写 `G2_red_evidence.txt`。
 
 ## 3. 完成报告 `G2_done.md` 必含
 
@@ -147,4 +148,4 @@ def check_facts_decimals(case_dir: Path, facts, accounting, errors: list[str]):
 ## 4. 登记不修（`code_change_pending.md` Q5–Q8，调度方维护）
 
 - Solana 侧 checks.decimals↔bundle 相等性另单；非标准 ERC20 在观测阶段 FAIL 属目标行为；存量 EVM 案 v1 bundle BLOCK、迁移＝重跑观测三件＋下游重建；版本档位已裁决 8.0.0。
-- **R1-07 迁移代价补全**：本段改动 `supply_truth_gate.py` 与 `shared_release_receipt.py`，`receipt_validate.py:115-116` 默认只认当前 producer 哈希 → **两链**存量 `supply_truth` 收据、对账 wrapper 与 shared receipt 在 HEAD 下一律 `producer hash mismatch` 失效（Solana 算法未变也不例外）；旧案只能在钉版的完整旧 checkout/执行环境下发布，单填旧版本字段无效；要在新版重发布须整链重跑 supply_truth→reconciliation_report→shared receipt→下游封口。
+- **R1-07/R2-03 迁移代价（分述）**：`receipt_validate.py:115-116` 默认只认当前 producer 哈希。①**supply_truth 收据（两链）**：producer `supply_truth_gate.py` 本段被改，旧收据 producer 哈希失效（Solana 算法未变也不例外）；②**reconciliation wrapper**：自身 producer `reconciliation_report.py` 未改（`shared_release_receipt.py:75 RECON_RUNNERS`），但其 supply_truth 子项的 producer/receipt 引用须随①刷新（重跑 reconciliation_report）；③**shared receipt**：自身 producer `shared_release_receipt.py` 被改（`:2145` "shared receipt producer mismatch"），且下游输入绑定须重建。旧案只能在钉版的完整旧 checkout/执行环境下发布，单填旧版本字段无效；新版重发布须整链重跑 supply_truth→reconciliation_report→shared receipt→下游封口。

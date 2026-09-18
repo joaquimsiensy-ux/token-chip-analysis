@@ -8,5 +8,5 @@
 | Q4 | G1 | 必画下限只按 label 前缀（项目方/大庄/小庄/离场庄），与 stage2_closeout 既有规则同源；不按 tier/category | 与现行契约一致 |
 | Q5 | G2 | Solana 分支 `accounting.checks.decimals` 与 observation bundle `supply.decimals` 的相等性未在共享校验器加核（accounting_gate_sol 从 mint 真写出，F05 闸已消费） | 本轮只修 EVM 缺口；Solana 对称加固另单（需动 batch14/15 夹具） |
 | Q6 | G2 | 非标准 ERC20（无 decimals() 或返回非 uint8）在观测阶段直接 FAIL，正式通路被拒 | 目标行为（review 修复方向原文）；特殊代币需另立有证据的适配 |
-| Q7 | G2 | 存量 EVM 案 v1 bundle 在闸前 BLOCK，须重跑 observe_supply→accounting_gate→supply_truth 三件再重建下游；**且**改 supply_truth_gate/shared_release_receipt 使两链存量 supply_truth/wrapper/shared receipt 的 producer 哈希全部失效（R1-07） | 迁移代价明示；旧案只能在钉版完整旧 checkout 下发布 |
+| Q7 | G2 | 存量 EVM 案 v1 bundle 在闸前 BLOCK，须重跑 observe_supply→accounting_gate→supply_truth 三件再重建下游；**且**两链存量产物分三类失效（R2-03）：supply_truth（producer 改动）、wrapper（子项引用需刷新）、shared receipt（producer 改动＋下游绑定重建） | 迁移代价明示；旧案只能在钉版完整旧 checkout 下发布 |
 | Q8 | 版本 | G2 升 bundle schema v1→v2、旧 v1 拒收＝不兼容契约变更；按 CHANGELOG 头部规则应为主版本；叠加 7.2.1 待决的 8.0.0 争议 | **已裁决 09-18：8.0.0（主版本）**，收官段 E 执行 |
