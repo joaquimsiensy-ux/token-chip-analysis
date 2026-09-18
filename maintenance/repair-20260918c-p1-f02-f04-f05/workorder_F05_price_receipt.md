@@ -1,27 +1,28 @@
-# 工单 F05（v1）：−2 收口真读价格双源收据——重算 verdict、拒 FAIL/ALL_SKIP、收据哈希绑定主源、拒纯申报 —— repair-20260918c-p1-f02-f04-f05 第二段
+# 工单 F05（v2，融合 codex 复核 r1 五条 F05-R1-01～05）：−2 收口真读价格双源收据——重算 verdict、拒 FAIL/ALL_SKIP、收据哈希绑定主源、拒纯申报 —— repair-20260918c-p1-f02-f04-f05 第二段
 
-> 出处：codex 对 8.0.0（8b041842）六视角 review F05（P2，82bb26c/7.0.4 引入时即如此）：`stage2_closeout.py:350-354` 对 `bindings.price_source_checks` 只要求 {path,sha256} 在场（另一分支只查 `price_source.dual_source_check` 是 dict）；`:358-379` 通用遍历只核文件在场与哈希；从不读收据的 `verdict`/`points`。反例：真实 `price_check.py` 在主 50/副 100 时写三点 FAIL 收据并退出 2，人为继续把它绑进工单，`stage2_closeout check` 仍 PASS。夹具 `test_stage2_closeout.py:102` 用手写 `{"status":"PASS"}`，不是生产者 schema，遮蔽了断层。用户 09-18 裁决：修。总原则：skill 上下文不增；能删不增、能改不增；references/SKILL/commands 本段零改动。
-> 修法：①`price_check.py` 收据新增 `price_file_sha256`（生产者一处写出，本段唯一新增字段）；②closeout 新增 `price_receipt_errors`：从 `bindings.price_source_checks` 或内联 `price_source.dual_source_check.receipt` 取收据引用（两者皆无＝纯申报，拒），读收据、按 `price_check.py:178-180` 同规则从 points 重算 verdict 并要求一致、只放行 PASS/WARN（WARN 记 NOTE）、`price_file_sha256` 必须等于 `bindings.price_source.sha256`；③夹具改由真实 `price_check.main()`（第二源离线 stub）生成收据。
-> 存量代价（台账 Q8，明示）：旧收据无 `price_file_sha256` 被拒；APU 0914 案 `price_source_checks.json` 是自定义格式亦被拒——进 −3 前须重跑 price_check 并 amend 工单。
+> 出处：codex 对 8.0.0（8b041842）六视角 review F05（P2，82bb26c/7.0.4 引入时即如此）：`stage2_closeout.py:350-354` 对 `bindings.price_source_checks` 只要求 {path,sha256} 在场（另一分支只查 `price_source.dual_source_check` 是 dict）；`:361-366` 只核引用结构、`:368-381` 只核文件在场与哈希；从不读收据的 `verdict`/`points`。反例：真实 `price_check.py` 在主 50/副 100 时写三点 FAIL 收据并退出 2，人为继续把它绑进工单，`stage2_closeout check` 仍 PASS。夹具 `test_stage2_closeout.py:102` 用手写 `{"status":"PASS"}`，不是生产者 schema，遮蔽了断层。用户 09-18 裁决：修。总原则：skill 上下文不增；能删不增、能改不增；references/SKILL/commands 本段零改动。
+> 修法：①`price_check.py` 收据新增 `price_file_sha256`（收据对象唯一构造处 `:181-185`，唯一落盘点 `:187-188`；本段唯一新增字段）；②closeout 新增 `price_receipt_errors`：从 `bindings.price_source_checks` 或内联 `price_source.dual_source_check.receipt` 取收据引用（两者皆无＝纯申报，拒），读收据、按 `price_check.py:178-180` 同规则从 points 重算 verdict 并要求一致、只放行 PASS/WARN（WARN 记 NOTE）、`price_file_sha256` 必须等于 `bindings.price_source.sha256`；③夹具改由真实 `price_check.main()`（第二源离线 stub）生成收据。
+> 存量迁移（台账 Q8，v2 按 R1-01 订正）：旧收据（无 `price_file_sha256`）、自定义格式收据、纯申报内联 dict、已绑定的 FAIL/ALL_SKIP 收据一律被拒。迁移步骤＝用当前 `price_check.py` 重跑收据 → 直接更新工单 `bindings.price_source_checks`（或内联 `dual_source_check.receipt`）的 path/sha256 → 完整 `stage2_closeout check` 至 PASS → `--receipt-only` 核验。**不得用 `amend`**（`bindings` 属冻结字段，`amend:727-728` 对 frozen_sha256 漂移直接拒；无旧 PASS 收据时 `:719-720` 亦拒）。用户 09-18 裁决：APU 0914 案暂不重跑，进 −3 时再补。
+> v2 变更（`review_F05_reply_r1.md`）：R1-01 迁移步骤改为重跑完整 check、禁用 amend；R1-02 台账 Q8/Q9 表述订正（ARC 内联引用结构可保留但所指旧收据仍须迁移；纯申报 dict 与 FAIL/ALL_SKIP 收据为新增拒收面；Q9 加分支条件），并新登记 Q14（`report-template.md:278` "exit 3 回退人工对 Dexscreener 图"的人工回退路径在本契约下不再能进 −2 收口——待用户裁决）；R1-03 `test_stage2_reseal.py:604-611` overlay 白名单不含本段文件，未提交状态下 `dry_run_touches_nothing` 必红——reseal 补验改由调度方 commit 后在主仓库干净、验收 worktree 同 HEAD 时本机执行，施工方不跑；R1-04 §2.5 段 3 基线预期改为 RED（NOTE 断言基线不可能成立）；R1-05 行号订正（`flow_selection_errors` 返回在 `:235`，`:236-237` 空行；通用引用检查分 `:361-366` 结构与 `:368-381` 文件/哈希两段；`load()` 亦走路径围栏，越界/符号链接收据会得到 helper 与通用遍历两条诊断，可接受，不为消除重复改既有遍历）。
 > 内容基线：`8b041842`（v8.0.0）加本工程已入库 commit；本段在 F04 落地之后施工，F04 不触碰本段任何文件，行号按 8b041842 核。
 
 ## 0. 开工纪律
 
-- 0.1 工作目录＝`/Users/uravvv/.claude/skills/token-chip-analysis`。开工先跑并贴进 `F05_done.md`：`git status --short`（须为空）；`git diff --stat 8b041842 HEAD -- scripts/prices scripts/report/stage2_closeout.py scripts/tests/test_stage2_closeout.py references SKILL.md commands-staging VERSION pyproject.toml CHANGELOG.md`（须为空；`scripts/lib/net.py`、`scripts/lib/rpc_batch.py`、`scripts/tests/test_batch1_rpc_attestation.py` 三文件为 F04 已落地改动，属预期，不在本条范围）。不空即停工写 `F05_done_attempt1_stopped.md`。
+- 0.1 工作目录＝`/Users/uravvv/.claude/skills/token-chip-analysis`。开工先跑并贴进 `F05_done.md`：`git status --short`（须为空）；`git diff --stat 8b041842 HEAD -- scripts/prices scripts/report/stage2_closeout.py scripts/tests/test_stage2_closeout.py references SKILL.md commands-staging VERSION pyproject.toml CHANGELOG.md`（须为空；`scripts/lib/net.py`、`scripts/lib/rpc_batch.py`、`scripts/tests/test_batch1_rpc_attestation.py` 为 F04 已落地改动，属预期，不在本条范围）。不空即停工写 `F05_done_attempt1_stopped.md`。
 - 0.2 **禁读** `~/.codex/`（启动搜索若已读 memories 披露一次，之后不再读）；禁读 `archive/`、`blind-reviews/`、`.staging_*`、`references/attic.md`、本目录以外的全部历史 maintenance 目录；禁读 `/Users/uravvv/Desktop`、`/Users/uravvv/Documents`。
 - 0.3 **白名单**：生产 `scripts/prices/price_check.py`、`scripts/report/stage2_closeout.py`；测试 `scripts/tests/test_stage2_closeout.py`；本目录新建 `F05_done.md`、`F05_red_evidence.txt`，停工时 `F05_done_attempt1_stopped.md`。
-- 0.4 **不改**：`price_check.py` 的 `_load_series`/`_daily_close`/阈值/退出码/第二源函数（F01/F07 用户裁决不修，本段不顺手改）；`stage2_closeout.py` 的 `fig2_selection_errors`/`flow_selection_errors`/`receipt_document`/`receipt_only_errors`/`fill_workorder`/reseal 全部；`:358-379` 通用引用遍历（收据引用仍由它核在场与哈希）；`audit_release_gate.py`、`build_html.py`；任何 `references/`、`SKILL.md`、`commands-staging/`、`VERSION`、`pyproject.toml`、`CHANGELOG.md`、`contract_manifest.json`、`invariant_manifest.json`（price_check 写文件点未增、网络库未换：`--out` 仍是同一处 `json.dump`；开工用 `python3 -B scripts/tests/invariant_scan.py` 证实）。
+- 0.4 **不改**：`price_check.py` 的 `_load_series`/`_daily_close`/阈值/退出码/第二源函数（F01/F07 用户裁决不修，本段不顺手改）；`stage2_closeout.py` 的 `fig2_selection_errors`/`flow_selection_errors`/`receipt_document`/`receipt_only_errors`/`fill_workorder`/`amend`/reseal 全部；`:361-366` 与 `:368-381` 通用引用遍历（收据引用仍由它核在场、哈希、越界、符号链接）；`audit_release_gate.py`、`build_html.py`；`scripts/tests/test_stage2_reseal.py`（其 overlay 白名单不在本段权限内）；任何 `references/`、`SKILL.md`、`commands-staging/`、`VERSION`、`pyproject.toml`、`CHANGELOG.md`、`contract_manifest.json`、`invariant_manifest.json`（复核 r1 已投影扫描 0 discrepancies；开工用 `python3 -B scripts/tests/invariant_scan.py` 再证实）。
 - 0.5 行号均指施工前基线（8b041842）；锚 `grep -n -F` 恰 1 处且行号一致，不符**停工**。删除 > 修改 > 新增。
 - 0.6 离线；不 commit、不 push、不部署；禁 stash/checkout/reset。
-- 0.7 先红后绿：§2.5 新用例在改生产代码前逐段取 RED 写 `F05_red_evidence.txt`。
-- 0.8 不跑 `run_all.py`。定向跑（全部须 PASS）：`python3 -B scripts/tests/test_stage2_closeout.py`、`test_a4_gate.py`、`test_audit_release_gate.py`、`test_batch4_invariant_guards.py`、`test_exemption_guards.py`、`python3 -B scripts/tests/invariant_scan.py`。`test_stage2_reseal.py` 依赖 `/tmp/w3_acceptance` 验收 worktree，沙箱内跑不了时在 done 注明"未实跑，交本机补验"。冷字体缓存环境项：`test_a4_gate.py`/`test_stage2_closeout.py` 遇 `data_broken: '_items'` 时保留首次输出写 done，再 `MPLCONFIGDIR="$HOME/.matplotlib" python3 -B …` 重跑，重跑必须真实 PASS。
+- 0.7 先红后绿：§2.5 新用例在改生产代码前**逐段独立执行**取 RED 写 `F05_red_evidence.txt`（每段各自 try/except，段 1 失败不得截断后续段取证）。
+- 0.8 不跑 `run_all.py`、**不跑 `test_stage2_reseal.py`**（R1-03：其 overlay 白名单不含本段文件，未提交状态必红；由调度方 commit 后本机补验）。定向跑（全部须 PASS）：`python3 -B scripts/tests/test_stage2_closeout.py`、`test_a4_gate.py`、`test_audit_release_gate.py`、`test_batch4_invariant_guards.py`、`test_exemption_guards.py`、`python3 -B scripts/tests/invariant_scan.py`。冷字体缓存环境项：`test_a4_gate.py`/`test_stage2_closeout.py` 遇 `data_broken: '_items'` 时保留首次输出写 done，再 `MPLCONFIGDIR="$HOME/.matplotlib" python3 -B …` 重跑，重跑必须真实 PASS。
 
 ## 1. 硬约束
 
 - 1.1 文档三处字节不变：`SKILL.md` 8021、`references/**/*.md` 合计 930076、`commands-staging/*.md` 合计 8798（命令同 F04 工单 §1.1）。
 - 1.2 `git diff --stat` 只含 0.3 白名单。
 - 1.3 closeout 收据仍 12 项 checks（`test_stage2_closeout.py:135` 断言）；本段不新增 check 项，价格收据校验并入既有 `workorder` 项的 errors/notes。
-- 1.4 `workorder_reference_contracts`（`:499-544`）全部既有 mutation 保持 BLOCK 且错误文案含其 field 名：尤其 `:507` `price_source_checks` pop → 本段新错误文案字段名须含 `price_source_checks`；`:522` 绝对路径拒、`:541-544` 符号链接拒由 `:358-379` 通用遍历继续承担（收据引用仍进 `required_refs`）。
+- 1.4 `workorder_reference_contracts`（`:499-544`）全部 19 条既有 mutation 保持 BLOCK 且错误文案含其 field 名（复核 r1 已逐条演练成立）：尤其 `:507` `price_source_checks` pop → 本段新错误文案字段名含 `price_source_checks`；`:522` 绝对路径拒、`:541-544` 符号链接拒由通用遍历继续承担（收据引用仍进 `required_refs`；此类失败会同时得到 helper 与通用遍历两条诊断，可接受）。
 - 1.5 `price_check.py` 的 stdout 行、退出码（PASS/WARN 0、FAIL 2、ALL_SKIP 3）不变；收据只多一个键 `price_file_sha256`（其余键与 `:181-185` 逐字相同）。
 - 1.6 `workorder_errors` 的返回类型 `(errors, notes)` 不变；`need()`（`:272`）与 `workorder_error()`（`:164`）的错误前缀 `WORKORDER BLOCK: ` 不变。
 
@@ -30,7 +31,7 @@
 ### 2.1 `scripts/prices/price_check.py` —— 收据带主源文件哈希
 
 - `:30`（锚 `import datetime`，唯一）之后插入一行 `import hashlib`。
-- `:45`（`_load_series` 定义 `def _load_series(path):` 在 `:46`，其前一行 `:45` 为空行）之前新增：
+- `:46`（锚 `def _load_series(path):`，唯一；`:44-45` 为两空行）之前新增：
 
 ```python
 def _sha256_file(path):
@@ -54,7 +55,7 @@ def _sha256_file(path):
 
 ### 2.2 `scripts/report/stage2_closeout.py` —— 新增 `price_receipt_errors`
 
-在 `:238`（锚 `def amendment_errors(row, field):`，唯一）之前（即 `flow_selection_errors` 结尾 `:236` `    return errors, notes` 与两空行之后）新增：
+在 `:238`（锚 `def amendment_errors(row, field):`，唯一）之前（即 `flow_selection_errors` 结尾 `:235` `    return errors, notes` 与 `:236-237` 两空行之后）新增：
 
 ```python
 PRICE_POINT_STATUSES = ("PASS", "WARN", "SKIP", "FAIL")
@@ -122,7 +123,7 @@ def price_receipt_errors(case, bindings):
         required_refs.append(("bindings.price_source_checks", price_ref))
 ```
 
-说明：①`errors`/`notes` 是 `workorder_errors` 的局部列表（`:401-404` 同款 extend 用法），开工核实 `:265-275` 定义；②`price_ref` 进 `required_refs` 后由 `:358-379` 通用遍历核在场/哈希/符号链接/越界，本函数不重复；③内联 `dual_source_check` 若为字符串或无 `receipt` 子引用，ref 为 None → 拒（现行 HEAD 对字符串已拒，对 `{"status":"PASS"}` 类纯申报 dict 放行——本段关掉后者）。
+说明：①`errors`/`notes` 在 `workorder_errors:270` 初始化、`required_refs` 在 `:299` 初始化，替换处在其作用域内且先于引用校验（`:401-404` 同款 extend 用法）；②`price_ref` 进 `required_refs` 后由 `:361-366` 核结构、`:368-381` 核在场/哈希/符号链接/越界；helper 内 `load()` 同走 `safe_case_file` 围栏，路径类失败会出现两条诊断，可接受；③内联 `dual_source_check` 若为字符串或无 `receipt` 子引用，ref 为 None → 拒（基线：有顶层 `price_source_checks` 时不检查内联；无顶层时字符串拒、`{"status":"PASS"}` 类纯申报 dict 放行——本段关掉后者）。
 
 ### 2.3 `scripts/tests/test_stage2_closeout.py` —— 夹具改用真实生产者
 
@@ -131,7 +132,7 @@ def price_receipt_errors(case, bindings):
 
 ```python
 def write_price_receipt(case, second_price, out="price_checks.json", prices="price_series.json"):
-    """F05：收据由真实 price_check.py 生成（第二源离线 stub），不手写 PASS。返回退出码。"""
+    """F05：收据由真实 price_check.py 生成（第二源离线 stub），不手写 PASS。返回退出码（PASS/WARN 0、FAIL 2、ALL_SKIP 3、fatal 1）。"""
     import price_check
     from unittest import mock
     argv = ["price_check.py", "--price-file", str(case / prices), "--source", "coingecko",
@@ -147,7 +148,7 @@ def write_price_receipt(case, second_price, out="price_checks.json", prices="pri
 
 ```
 
-- `:100`（锚 `    write(case / "price_series.json", [[1767225600, 1.0]])`，唯一）改为 `    write(case / "price_series.json", [[1767225600, 1.0], [1767312000, 1.0], [1767398400, 1.0]])`（price_check 要求 ≥2 天；开工核实 `grep -n price_series scripts/tests/test_stage2_closeout.py` 无其他断言依赖点数，结果写 done）。
+- `:100`（锚 `    write(case / "price_series.json", [[1767225600, 1.0]])`，唯一）改为 `    write(case / "price_series.json", [[1767225600, 1.0], [1767312000, 1.0], [1767398400, 1.0]])`（price_check 要求 ≥2 天；复核 r1 已确认无断言依赖单点；`test_stage2_reseal.py:21/436/646` 复用 `build_closeout_case` 自动获得新夹具）。
 - `:102`（锚 `    write(case / "price_checks.json", {"status": "PASS"})`，唯一）改为 `    assert write_price_receipt(case, second_price=1.0) == 0`。
 - `:534`（锚 `    obj["bindings"]["price_source"]["dual_source_check"] = {"status": "PASS"}`，唯一）改为：
 
@@ -218,15 +219,17 @@ def price_receipt_content_enforced(cases):
     check_result(case)
 ```
 
-说明：偏差口径 `|a-b|/((a+b)/2)`：1.0/2.0 → 66.67% FAIL；1.0/1.08 → 7.69% WARN；`second_price=None` → 三点 SKIP → ALL_SKIP 退出 3（`price_check.py:165/178-180/193-194`）。`update()`（`:144`）与 `sha()`（`:32`）、`check_result()`（`:131`）为既有 helper。
+说明：偏差口径 `|a-b|/((a+b)/2)`：1.0/2.0 → 66.67% FAIL；1.0/1.08 → 7.69% WARN；`second_price=None` → 三点 SKIP → ALL_SKIP 退出 3（`price_check.py:165/178-180/193-194`；复核 r1 已用真实生产者函数演练确认）。`update()`（`:144`）、`sha()`（`:32`）、`check_result()`（`:131`）为既有 helper。
 
-RED 证据：改生产代码前（此时 `write_price_receipt` 已可用但收据无 `price_file_sha256`）逐段执行：段 1（FAIL 收据放行，errors 为空）、2、4、5、6、7a 基线 **RED**；段 3、7b 基线 GREEN→GREEN。逐段 try/except 各自记录，写 `F05_red_evidence.txt`。
+RED 证据（逐段独立执行，写 `F05_red_evidence.txt`）：先落 §2.3 的 `write_price_receipt` 与 sys.path 改动（生产代码未改，此时收据无 `price_file_sha256`），逐段 try/except 执行：段 1、2、**3（NOTE 断言基线不成立）**、4、5、6、7a 基线 **RED**；段 7b 基线 GREEN→GREEN。段 1 失败不得截断后续段取证。
 
 ## 3. 完成报告 `F05_done.md` 必含
 
-①0.1 两条命令输出；②§2 各处 `git diff` 原文；③RED 摘要；④0.8 各测试结果尾行（含未实跑项说明）；⑤1.1 三个字节数；⑥`git diff --stat`；⑦与工单差异/停工点（含 §2.2 说明①、§2.3 开工核实结果）；⑧禁读披露。stdout 首行 `# 施工 F05：完成` 或 `# 施工 F05：停工`。
+①0.1 两条命令输出；②§2 各处 `git diff` 原文；③RED 摘要（逐段）；④0.8 各测试结果尾行（含"reseal 未实跑、交调度方本机补验"）；⑤1.1 三个字节数；⑥`git diff --stat`；⑦与工单差异/停工点（含 §2.2 说明①作用域核实）；⑧禁读披露。stdout 首行 `# 施工 F05：完成` 或 `# 施工 F05：停工`。
 
-## 4. 登记不修（`code_change_pending.md` Q7/Q8/Q9，调度方维护）
+## 4. 登记不修（`code_change_pending.md` Q7/Q8/Q9/Q14，调度方维护）
 
-- 不重跑第二源（Q7）；存量 APU 0914 案与旧收据须重跑 price_check（Q8）；内联字符串形态存量早已 BLOCK（Q9）。
+- 不重跑第二源（Q7）；存量迁移按导语步骤（Q8，禁用 amend；APU 暂不重跑为用户裁决）；内联字符串形态在无顶层引用时早已 BLOCK（Q9，分支条件已注明）。
+- **Q14（复核 r1 新登记，待用户裁决）**：`report-template.md:278` 允许"双源都无该币 exit 3 回退人工对 Dexscreener 图"，本契约下 ALL_SKIP 收据不能进 −2 收口——正式候选链（ETH/BSC/Base/Solana）一般有 DefiLlama/币安第二源，受影响的是新币早期与 Robinhood 类探索链（本就不进正式发布）。本段按严格口径实施；若用户要开人工旁证口子，另立小工单（需新增字段，违背本轮"不新增"原则，故不自行开）。
 - 文档 `split-run.md:158`"价格源 path＋sha256 及双源检查结果"、`report-template.md:278` 不增字；契约由 CHANGELOG 条目（收官段）与 `price_receipt_errors` docstring 承载。
+- reseal 补验：本段 commit 后由调度方在主仓库干净、`/tmp/w3_acceptance` 同步 HEAD 时执行 `test_stage2_reseal.py`（R1-03）。
