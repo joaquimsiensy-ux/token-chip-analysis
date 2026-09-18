@@ -1556,6 +1556,7 @@ def check_figure2_receipt(case_dir: Path, d: dict, errors: list[str]):
     N-C1（消化轮 2）：series 与 facts 两个输入实物**无条件**验（轮 1 的 series
     条件式验证＋facts 不验被盲审"纯手写收据"攻击穿透——path 写个不存在的名字
     就整段跳过）。
+    F04（7.2.1）：两输入实物在场时用 fig2_check_errors 重算，收据 PASS 不作为放行依据。
     """
     if d.get("schema") != FIGURE2_RECEIPT_SCHEMA:
         errors.append(f"figure2 收据 schema 必须是 {FIGURE2_RECEIPT_SCHEMA}")
@@ -1568,8 +1569,22 @@ def check_figure2_receipt(case_dir: Path, d: dict, errors: list[str]):
                       f"{FIGURE2_DEFAULT_TOL_PP}（判定翻转参数不得放宽）")
     if d.get("verdict") != "PASS":
         errors.append(f"figure2 对账收据 verdict={d.get('verdict')!r} 非 PASS")
+    n0 = len(errors)
     _figure2_input_check(case_dir, d.get("series"), "series", errors)
     _figure2_input_check(case_dir, d.get("facts"), "facts", errors)
+    if len(errors) > n0:
+        return
+    # F04（7.2.1）：收据只是留痕，发布期用同一只读纯校验器按案内实物重算——旧 PASS 收据
+    # （R08 修复前产出）与手改序列在这里失效；exploration/容差放宽已由上面三条拦。
+    series_p = case_dir / Path(str((d.get("series") or {}).get("path") or "")).name
+    facts_p = case_dir / Path(str((d.get("facts") or {}).get("path") or "")).name
+    try:
+        import figures_from_facts
+        errs, _okc = figures_from_facts.fig2_check_errors(facts_p, series_p, FIGURE2_DEFAULT_TOL_PP)
+    except (ValueError, OSError, KeyError, TypeError, AttributeError, OverflowError) as exc:
+        errors.append(f"figure2 发布期重算失败: {exc}")
+        return
+    errors.extend(f"figure2 发布期重算: {e}" for e in errs)
 
 
 def check_figure1_legend_receipt(case_dir: Path, d: dict, state: dict,

@@ -1450,7 +1450,8 @@ def _r08_case_12():
         rcpt_path.write_text(json.dumps(handwritten), encoding="utf-8")
         errs = []
         gate.check_figure2_receipt(td, handwritten, errs)
-        check("R08 同输入手写 PASS 基线消费者接受", errs == [], str(errs))
+        check("R08 消费者对 NaN 手写收据直接拒（F04）",
+              any("重算失败" in x for x in errs), str(errs))
         p = run([fff, "check", "--facts", "facts.json", "--series", "ws.json"], td)
         out = p.stdout + p.stderr
         rcpt = json.loads(rcpt_path.read_text()) if rcpt_path.is_file() else {}
@@ -1494,6 +1495,92 @@ def _r08_case_13():
         check("R08 收据写入失败提示未更新", "收据未更新" in buf.getvalue(), detail)
 
 
+def _f04_case_1():
+    import audit_release_gate as gate
+    with tempfile.TemporaryDirectory() as s:
+        td = Path(s)
+        facts = write_json(td / "facts.json",
+            {"token": {"symbol": "TT", "decimals": 0, "total_supply_raw": "1000"},
+             "entities": {"e1": {"label": "大庄#1", "addresses": [A],
+                                 "current_raw": "278", "peak_raw": "300"}}})
+        ws = write_json(td / "ws.json",
+            [{"entity_id": "e1", "ts": ["2026-01-01"], "pct": [90.0]}])
+        rcpt = {
+            "schema": "figure2-check-receipt/v1", "mode": "formal",
+            "tol_pp": 0.05, "verdict": "PASS",
+            "facts": {"path": "facts.json", "sha256": hashlib.sha256(facts.read_bytes()).hexdigest()},
+            "series": {"path": "ws.json", "sha256": hashlib.sha256(ws.read_bytes()).hexdigest()},
+        }
+        errs = []
+        gate.check_figure2_receipt(td, rcpt, errs)
+        check("F04 手写 PASS 收据末点不同源拒",
+              any("发布期重算" in x and "≠ facts 当前" in x for x in errs), str(errs))
+
+
+def _f04_case_2():
+    import audit_release_gate as gate
+    with tempfile.TemporaryDirectory() as s:
+        td = Path(s)
+        facts = write_json(td / "facts.json",
+            {"token": {"symbol": "TT", "decimals": 0, "total_supply_raw": "1000"},
+             "entities": {"e1": {"label": "大庄#1", "addresses": [A],
+                                 "current_raw": "278", "peak_raw": "300"}}})
+        ws = td / "ws.json"
+        ws.write_text('[{"entity_id":"e1","ts":["2026-01-01"],"pct":[NaN]}]',
+                      encoding="utf-8")
+        rcpt = {
+            "schema": "figure2-check-receipt/v1", "mode": "formal",
+            "tol_pp": 0.05, "verdict": "PASS",
+            "facts": {"path": "facts.json", "sha256": hashlib.sha256(facts.read_bytes()).hexdigest()},
+            "series": {"path": "ws.json", "sha256": hashlib.sha256(ws.read_bytes()).hexdigest()},
+        }
+        errs = []
+        gate.check_figure2_receipt(td, rcpt, errs)
+        check("F04 手写 PASS 收据 NaN 字面量拒",
+              any("重算失败" in x for x in errs), str(errs))
+
+
+def _f04_case_3():
+    fff = ROOT / "scripts/report/figures_from_facts.py"
+    import audit_release_gate as gate
+    with tempfile.TemporaryDirectory() as s:
+        td = Path(s)
+        write_json(td / "facts.json",
+            {"token": {"symbol": "TT", "decimals": 0, "total_supply_raw": "1000"},
+             "entities": {"e1": {"label": "大庄#1", "addresses": [A],
+                                 "current_raw": "278", "peak_raw": "300"}}})
+        write_json(td / "ws.json",
+            [{"entity_id": "e1", "ts": ["2026-01-01"], "pct": [27.8]}])
+        p = run([fff, "check", "--facts", "facts.json", "--series", "ws.json"], td)
+        check("F04 真跑 check 同源收据生成", p.returncode == 0,
+              f"rc={p.returncode}\n{p.stdout}{p.stderr}")
+        rcpt = json.loads((td / "figure2_check_receipt.json").read_text())
+        errs = []
+        gate.check_figure2_receipt(td, rcpt, errs)
+        check("F04 真跑 check 同源收据仍放行（GREEN→GREEN）", errs == [], str(errs))
+
+
+def _f04_case_4():
+    import audit_release_gate as gate
+    with tempfile.TemporaryDirectory() as s:
+        td = Path(s)
+        facts = write_json(td / "facts.json",
+            {"token": {"symbol": "TT", "decimals": 0, "total_supply_raw": "1000"},
+             "entities": {"e1": {"label": "大庄#1", "addresses": [A],
+                                 "current_raw": "278", "peak_raw": "300"}}})
+        rcpt = {
+            "schema": "figure2-check-receipt/v1", "mode": "formal",
+            "tol_pp": 0.05, "verdict": "PASS",
+            "facts": {"path": "facts.json", "sha256": hashlib.sha256(facts.read_bytes()).hexdigest()},
+            "series": {"path": "ws.json", "sha256": "a" * 64},
+        }
+        errs = []
+        gate.check_figure2_receipt(td, rcpt, errs)
+        check("F04 输入缺席不重算不重复报错",
+              len(errs) == 1 and "不在案根" in errs[0]
+              and not any("重算" in x for x in errs), str(errs))
+
+
 def t_r08_nonfinite():
     _r08_case_1()
     _r08_case_2()
@@ -1508,6 +1595,10 @@ def t_r08_nonfinite():
     _r08_case_11()
     _r08_case_12()
     _r08_case_13()
+    _f04_case_1()
+    _f04_case_2()
+    _f04_case_3()
+    _f04_case_4()
 
 
 def t_f04_tolpp_clamp():

@@ -1,0 +1,102 @@
+# F04 RED evidence
+
+Workorder: maintenance/repair-20260918-p0-f04-f07/workorder_F04.md v3
+HEAD: b1ccf2369c81e344c7be997779c90d15d0e8c6aa
+Production code was unchanged before and after every baseline case run.
+The test file contains the four new cases and corrected _r08_case_12 assertion.
+
+Command:
+PYTHONDONTWRITEBYTECODE=1 python3 -B -c 'import hashlib
+import importlib.util
+import sys
+import traceback
+from pathlib import Path
+
+root = Path.cwd()
+prod = root / "scripts/report/audit_release_gate.py"
+expected_sha = "23b6f95bd2a9a7f8a84ac2606886ca3ad503f0b0ce2a6359c3678f0ed81da334"
+assert hashlib.sha256(prod.read_bytes()).hexdigest() == expected_sha
+for name in ("scripts/report/audit_release_gate.py", "scripts/tests/test_repair_batch_c.py", "scripts/report/figures_from_facts.py"):
+    print("sha256", hashlib.sha256((root / name).read_bytes()).hexdigest(), name)
+spec = importlib.util.spec_from_file_location("f04_red_test", root / "scripts/tests/test_repair_batch_c.py")
+mod = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(mod)
+expected = {"_f04_case_1": "RED", "_f04_case_2": "RED", "_f04_case_3": "GREEN→GREEN", "_f04_case_4": "GREEN→GREEN", "_r08_case_12": "RED"}
+observed = {}
+for name in expected:
+    print("\nCALL", name + "()", flush=True)
+    try:
+        getattr(mod, name)()
+    except AssertionError:
+        traceback.print_exc(file=sys.stdout)
+        observed[name] = "RED"
+    else:
+        observed[name] = "GREEN→GREEN"
+    print("RESULT", name, observed[name], flush=True)
+print("\nOBSERVED", observed)
+assert observed == expected, (observed, expected)
+assert hashlib.sha256(prod.read_bytes()).hexdigest() == expected_sha
+print("RED evidence PASS: 3 RED; 2 GREEN→GREEN; production sha256 unchanged")
+'
+
+Output (stdout/stderr):
+sha256 23b6f95bd2a9a7f8a84ac2606886ca3ad503f0b0ce2a6359c3678f0ed81da334 scripts/report/audit_release_gate.py
+sha256 d364329c8182b169904de59476b8e1d09ffbe977ef55ea831560e651c3542a30 scripts/tests/test_repair_batch_c.py
+sha256 557c7099ccec38615771da8fd64facd83deab93928dda0aa2e6c9e6b6a28a9e0 scripts/report/figures_from_facts.py
+
+CALL _f04_case_1()
+Traceback (most recent call last):
+  File "<string>", line 21, in <module>
+    getattr(mod, name)()
+    ~~~~~~~~~~~~~~~~~~^^
+  File "/Users/uravvv/.claude/skills/token-chip-analysis/scripts/tests/test_repair_batch_c.py", line 1516, in _f04_case_1
+    check("F04 手写 PASS 收据末点不同源拒",
+    ~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+          any("发布期重算" in x and "≠ facts 当前" in x for x in errs), str(errs))
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/uravvv/.claude/skills/token-chip-analysis/scripts/tests/test_repair_batch_c.py", line 56, in check
+    raise AssertionError(f"{name}: {detail}")
+AssertionError: F04 手写 PASS 收据末点不同源拒: []
+RESULT _f04_case_1 RED
+
+CALL _f04_case_2()
+Traceback (most recent call last):
+  File "<string>", line 21, in <module>
+    getattr(mod, name)()
+    ~~~~~~~~~~~~~~~~~~^^
+  File "/Users/uravvv/.claude/skills/token-chip-analysis/scripts/tests/test_repair_batch_c.py", line 1539, in _f04_case_2
+    check("F04 手写 PASS 收据 NaN 字面量拒",
+    ~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+          any("重算失败" in x for x in errs), str(errs))
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/uravvv/.claude/skills/token-chip-analysis/scripts/tests/test_repair_batch_c.py", line 56, in check
+    raise AssertionError(f"{name}: {detail}")
+AssertionError: F04 手写 PASS 收据 NaN 字面量拒: []
+RESULT _f04_case_2 RED
+
+CALL _f04_case_3()
+RESULT _f04_case_3 GREEN→GREEN
+
+CALL _f04_case_4()
+RESULT _f04_case_4 GREEN→GREEN
+
+CALL _r08_case_12()
+Traceback (most recent call last):
+  File "<string>", line 21, in <module>
+    getattr(mod, name)()
+    ~~~~~~~~~~~~~~~~~~^^
+  File "/Users/uravvv/.claude/skills/token-chip-analysis/scripts/tests/test_repair_batch_c.py", line 1453, in _r08_case_12
+    check("R08 消费者对 NaN 手写收据直接拒（F04）",
+    ~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+          any("重算失败" in x for x in errs), str(errs))
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/uravvv/.claude/skills/token-chip-analysis/scripts/tests/test_repair_batch_c.py", line 56, in check
+    raise AssertionError(f"{name}: {detail}")
+AssertionError: R08 消费者对 NaN 手写收据直接拒（F04）: []
+RESULT _r08_case_12 RED
+
+OBSERVED {'_f04_case_1': 'RED', '_f04_case_2': 'RED', '_f04_case_3': 'GREEN→GREEN', '_f04_case_4': 'GREEN→GREEN', '_r08_case_12': 'RED'}
+RED evidence PASS: 3 RED; 2 GREEN→GREEN; production sha256 unchanged
+
+Runner exit code: 0
+
