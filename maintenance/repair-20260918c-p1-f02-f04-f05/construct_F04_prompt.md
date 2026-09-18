@@ -1,7 +1,7 @@
 # 施工任务 F04（codex --write，按下方工单 v3 逐条执行）
 
 ## 派工基线
-- 派工时 HEAD＝`95344ff02c65`（main）；`scripts/` 与 8b041842 逐字节相同（F04 为本轮第一段）。工作目录＝`/Users/uravvv/.claude/skills/token-chip-analysis`。
+- 派工基线：main 分支、HEAD 为包含本提示词文件的最新提交（本提示词入库后 HEAD 才定，故**不以具体 SHA 判定**）；基线判定只看工单 §0.1 两项检查：`git status --short` 为空，且 `git diff --stat 8b041842 HEAD -- scripts references SKILL.md commands-staging VERSION pyproject.toml CHANGELOG.md` 为空（F04 为本轮第一段，scripts 与 8b041842 逐字节相同）。工作目录＝`/Users/uravvv/.claude/skills/token-chip-analysis`。开工先 `git rev-parse HEAD` 记入完成报告即可。
 - 本任务是**施工**，不是复核：按工单 §2 逐条落地、按 §0.7 先取 RED、按 §0.8 跑定向测试、按 §3 写完成报告 `F04_done.md` 到工单所在目录。
 - 纪律以工单 §0 为准（禁读 `~/.codex/`、白名单、不 commit/push、禁 stash/checkout/reset、锚不符即停工）。工单已由 codex 只读复核通过（`review_F04_reply_r3.md`），施工中若发现工单与代码不符，**停工写 `F04_done_attempt1_stopped.md`**，不得自行改方案。
 - stdout 首行固定 `# 施工 F04：完成` 或 `# 施工 F04：停工`；末尾披露是否读过禁读路径。
