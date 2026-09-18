@@ -1,6 +1,7 @@
-# 工单 F04（v2，融合 codex 复核 r1 四条 F04-R1-01..04）：new-analysis 发布闸对图 2 收据做发布期重算 —— repair-20260918-p0-f04-f07 第二段
+# 工单 F04（v3，融合 codex 复核 r1 四条＋r2 两条 F04-R2-01/02）：new-analysis 发布闸对图 2 收据做发布期重算 —— repair-20260918-p0-f04-f07 第二段
 
 > 出处：codex 对 7.2.0（311e6c4）的六视角 review F04（P0，**半修复 R08**）：`figures_from_facts.fig2_check_errors`（`:296-337`）已拒非有限值与末点偏差，但 new-analysis 发布消费者 `audit_release_gate.check_figure2_receipt`（`:1551-1572`）只验 schema/mode/tol/verdict 与两输入 sha——只要收据同 schema、sha 对得上，末点差 80pp 或 NaN 的序列照样签发 HTML；R08 修复前产出的旧 PASS 收据也没有失效机制。反例：review 附录 D `repro_core.py` F04-numeric（实际校验报 90% vs 10%，消费者 `[]`）、`repro_formal.py`（真实 A4/A5 案 1% vs 100%，`build_html --mode analysis-new` rc=0）。用户 2026-09-18 裁决：修。总原则：**skill 上下文不增**；能删不增、能改不增；`stage2_closeout` 不改为必经（改动量大，本段不做）。
+> v3 变更（`review_F04_reply_r2.md`）：R2-01 §0.8 补冷字体缓存环境项的处理（`test_a4_gate.py:307`/`test_stage2_closeout.py:17` 自设新缓存目录 → 本机 matplotlib `font_manager.py:275` 读 `_items` 缺键 → `holder_distribution_scan.py:1004` 转 `data_broken`；遇此保留首次失败输出并用 `MPLCONFIGDIR="$HOME/.matplotlib"` 重跑，重跑仍须真实 PASS）；R2-02 订正"生产 `a4_gate.py` 不调发布闸；`test_a4_gate.py:530` 经 build_html 进入 new-analysis 闸，是本段直接回归面"；§4 Agg 引用订正为 `standard_charts.py:38`。
 > v2 变更（`review_F04_reply_r1.md`）：R1-01 用例 3 改用既有 `run()`（它已自动加解释器，不得再传 `sys.executable`）；R1-02 except 补 `AttributeError`/`OverflowError`（series `[null]`/facts 顶层 `[]`/超大 current_raw 实证会绕过 ValueError），并订正异常依据；R1-03 §0.2 为既有测试自身加载 `maintenance/repair-20260814-batch2/import_pythia_legacy.py` 立精确读取例外；R1-04 §0.8 删去误挂的 F12 例外；另补 `_r08_case_12` 定义 `:1430`、旧断言 `:1453` 原文与订正文本，§4 补缓存 I/O 与"旧 PASS 失效"限定。
 > 内容基线：`311e6c4`（v7.2.0）加本工程已入库的工单/提示词/前段施工 commit；`scripts/report/audit_release_gate.py`、`scripts/tests/test_repair_batch_c.py` 在开工时与 311e6c4 逐字节相同（F06 段不触及这两文件）。
 
@@ -13,7 +14,7 @@
 - 0.5 行号均指施工前基线；锚 `grep -n -F` 恰 1 处且行号一致，不符**停工**。删除 > 修改 > 新增。
 - 0.6 离线；不 commit、不 push、不部署；禁 stash/checkout/reset。
 - 0.7 先红后绿：§2.2 新用例改动前逐例取 RED 写 `F04_red_evidence.txt`（逐例捕获 AssertionError，按真实基线记 RED 或 GREEN→GREEN）。
-- 0.8 不跑 `run_all.py`。定向跑：`python3 -B scripts/tests/test_repair_batch_c.py`、`test_figures_from_facts.py`、`test_audit_release_gate.py`、`test_a4_gate.py`、`test_repair_batch_d.py`、`test_repair_g1_cross_target.py`、`test_review_20260804_p105.py`、`test_stage2_closeout.py`、`python3 -B scripts/tests/invariant_scan.py`。全部须 PASS。（F12 环境项 `test_stage2_reseal.py::dry_run_touches_nothing` 不在本段定向清单内，由调度方全套验收处理。`test_a4_gate.py` 不调用 `audit_release_gate.run`，只作回归对照。）
+- 0.8 不跑 `run_all.py`。定向跑：`python3 -B scripts/tests/test_repair_batch_c.py`、`test_figures_from_facts.py`、`test_audit_release_gate.py`、`test_a4_gate.py`、`test_repair_batch_d.py`、`test_repair_g1_cross_target.py`、`test_review_20260804_p105.py`、`test_stage2_closeout.py`、`python3 -B scripts/tests/invariant_scan.py`。全部须 PASS。（F12 环境项 `test_stage2_reseal.py::dry_run_touches_nothing` 不在本段定向清单内，由调度方全套验收处理。生产 `a4_gate.py` 本身不调发布闸；`test_a4_gate.py:530` 经 `build_html --mode analysis-new` 进入 new-analysis 发布闸，是本段直接回归面。**冷字体缓存环境项**：`test_a4_gate.py`/`test_stage2_closeout.py` 自设新 `MPLCONFIGDIR`，本机 matplotlib 字体枚举缺 `_items` 会报 `BLOCK: distribution data_broken: '_items'`——遇此保留首次失败输出写进 done，再用 `MPLCONFIGDIR="$HOME/.matplotlib" python3 -B scripts/tests/<该测试>.py` 重跑，重跑必须真实 PASS，不得当跳过项。）
 
 ## 1. 硬约束
 
@@ -76,6 +77,6 @@ RED 证据：改生产代码前逐个调用 `_f04_case_1..4` 与订正后的 `_r
 ## 4. 登记不修（`code_change_pending.md`，调度方维护）
 
 - 空 series（`lines_checked==0`）仍放行：split-run.md:183 用户 2026-08-18 接受的残余。
-- 发布闸 import `figures_from_facts` 连带 matplotlib（`standard_charts.py:37` 已 `matplotlib.use("Agg")`）：import 会初始化字体/配置缓存，有一次性磁盘 I/O，缓存与临时目录均不可用时抛 OSError（except 内转闸错误）；new-analysis 链 `check_figure1_legend_receipt:1586` 与 `stage2_closeout:410` 本就 import figures，新增的只是直接调用图 2 校验器；若日后要拆，把 `fig2_check_errors`/`_pct_value_ok`/`_load` 迁到无绘图依赖模块属另单。
+- 发布闸 import `figures_from_facts` 连带 matplotlib（`standard_charts.py:38` 已 `matplotlib.use("Agg")`）：import 会初始化字体/配置缓存，有一次性磁盘 I/O，缓存与临时目录均不可用时抛 OSError（except 内转闸错误）；new-analysis 链 `check_figure1_legend_receipt:1586` 与 `stage2_closeout:410` 本就 import figures，新增的只是直接调用图 2 校验器；若日后要拆，把 `fig2_check_errors`/`_pct_value_ok`/`_load` 迁到无绘图依赖模块属另单。
 - `stage2_closeout` 强检查未成必经：本段以重算闭合"错误数据放行"，closeout 必经化属 7.1.0 遗留清单。
 - 收据 schema 不升版：重算只使**输入不符合当前校验规则**的旧 PASS 失效（合法同源旧收据仍过），不需要 v2。
