@@ -80,9 +80,13 @@ def main():
         out = {}
         for addr, r in zip(addrs, res):
             if r["ok"]:
-                code = r["result"] or "0x"
-                out[addr] = {"code_len": max(0, (len(code) - 2) // 2),
-                             "is_contract": code not in ("0x", "0x0", None)}
+                code = r["result"]
+                if not isinstance(code, str) or not re.fullmatch(r"0x(?:[0-9a-fA-F]{2})*", code):
+                    # eth_getCode 合法返回只有 "0x" 或偶数长度十六进制串；其余记失败不猜 EOA（F04）
+                    out[addr] = {"error": f"eth_getCode 非法返回 {type(code).__name__}"}
+                    continue
+                out[addr] = {"code_len": (len(code) - 2) // 2,
+                             "is_contract": code != "0x"}
             else:
                 out[addr] = {"error": r["error"]}
         n_c = sum(1 for v in out.values() if v.get("is_contract"))

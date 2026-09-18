@@ -1,0 +1,212 @@
+F04 RED evidence — production unchanged, tests added first
+{
+  "head": "2a8ee25d3a8bfc9de4af7ee51b9ece55319d2c71",
+  "recorded_at_utc": "2026-09-18T17:14:19.228594+00:00",
+  "production_diff_against_8b041842": "",
+  "method": "逐场景独立调用 run_with_backend / _getcode_scenario；异常逐条捕获；业务请求全部替身，未联网。",
+  "test_command": "PYTHONDONTWRITEBYTECODE=1 python3 -B - (heredoc driver)"
+}
+
+{
+  "scenario": "envelope/missing",
+  "sha256": {
+    "scripts/lib/net.py": "85fed436a2d1d6a1c676d9f6660c9bee6403a1d6392e0ea755ad43897ddb3f1a",
+    "scripts/lib/rpc_batch.py": "f993c16ea846945e24c8d403d5962d3d2deae7c6358663b3ac84eb36f817a5a8",
+    "scripts/tests/test_batch1_rpc_attestation.py": "80af01730c0068e5b6f66883eb1add19b7ff4daddfbe1ba6f18c595dd68ea616"
+  },
+  "exceptions": [
+    {
+      "type": "AssertionError",
+      "text": "{'ok': True, 'result': None}"
+    }
+  ],
+  "got": {
+    "ok": true,
+    "result": null
+  },
+  "status": "RED"
+}
+
+{
+  "scenario": "envelope/null_result",
+  "sha256": {
+    "scripts/lib/net.py": "85fed436a2d1d6a1c676d9f6660c9bee6403a1d6392e0ea755ad43897ddb3f1a",
+    "scripts/lib/rpc_batch.py": "f993c16ea846945e24c8d403d5962d3d2deae7c6358663b3ac84eb36f817a5a8",
+    "scripts/tests/test_batch1_rpc_attestation.py": "80af01730c0068e5b6f66883eb1add19b7ff4daddfbe1ba6f18c595dd68ea616"
+  },
+  "exceptions": [],
+  "got": {
+    "ok": true,
+    "result": null
+  },
+  "status": "GREEN"
+}
+
+{
+  "scenario": "getcode/missing",
+  "sha256": {
+    "scripts/lib/net.py": "85fed436a2d1d6a1c676d9f6660c9bee6403a1d6392e0ea755ad43897ddb3f1a",
+    "scripts/lib/rpc_batch.py": "f993c16ea846945e24c8d403d5962d3d2deae7c6358663b3ac84eb36f817a5a8",
+    "scripts/tests/test_batch1_rpc_attestation.py": "80af01730c0068e5b6f66883eb1add19b7ff4daddfbe1ba6f18c595dd68ea616"
+  },
+  "exceptions": [
+    {
+      "type": "AssertionError",
+      "text": "('missing', 0, {'code_len': 0, 'is_contract': False})"
+    },
+    {
+      "type": "AssertionError",
+      "text": "('missing', '[SUMMARY] 1 址 | 合约 0 | EOA 1 | 失败 0\\n[out] /var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/f04-red-33jyi42v/missing.json\\n')"
+    }
+  ],
+  "rc": 0,
+  "got": {
+    "code_len": 0,
+    "is_contract": false
+  },
+  "stdout": "[SUMMARY] 1 址 | 合约 0 | EOA 1 | 失败 0\n[out] /var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/f04-red-33jyi42v/missing.json\n",
+  "artifact_exists": true,
+  "tmp_artifact_exists": false,
+  "status": "RED"
+}
+
+{
+  "scenario": "getcode/null",
+  "sha256": {
+    "scripts/lib/net.py": "85fed436a2d1d6a1c676d9f6660c9bee6403a1d6392e0ea755ad43897ddb3f1a",
+    "scripts/lib/rpc_batch.py": "f993c16ea846945e24c8d403d5962d3d2deae7c6358663b3ac84eb36f817a5a8",
+    "scripts/tests/test_batch1_rpc_attestation.py": "80af01730c0068e5b6f66883eb1add19b7ff4daddfbe1ba6f18c595dd68ea616"
+  },
+  "exceptions": [
+    {
+      "type": "AssertionError",
+      "text": "('null', 0, {'code_len': 0, 'is_contract': False})"
+    },
+    {
+      "type": "AssertionError",
+      "text": "('null', '[SUMMARY] 1 址 | 合约 0 | EOA 1 | 失败 0\\n[out] /var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/f04-red-33jyi42v/null.json\\n')"
+    }
+  ],
+  "rc": 0,
+  "got": {
+    "code_len": 0,
+    "is_contract": false
+  },
+  "stdout": "[SUMMARY] 1 址 | 合约 0 | EOA 1 | 失败 0\n[out] /var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/f04-red-33jyi42v/null.json\n",
+  "artifact_exists": true,
+  "tmp_artifact_exists": false,
+  "status": "RED"
+}
+
+{
+  "scenario": "getcode/odd",
+  "sha256": {
+    "scripts/lib/net.py": "85fed436a2d1d6a1c676d9f6660c9bee6403a1d6392e0ea755ad43897ddb3f1a",
+    "scripts/lib/rpc_batch.py": "f993c16ea846945e24c8d403d5962d3d2deae7c6358663b3ac84eb36f817a5a8",
+    "scripts/tests/test_batch1_rpc_attestation.py": "80af01730c0068e5b6f66883eb1add19b7ff4daddfbe1ba6f18c595dd68ea616"
+  },
+  "exceptions": [
+    {
+      "type": "AssertionError",
+      "text": "('odd', 0, {'code_len': 0, 'is_contract': False})"
+    },
+    {
+      "type": "AssertionError",
+      "text": "('odd', '[SUMMARY] 1 址 | 合约 0 | EOA 1 | 失败 0\\n[out] /var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/f04-red-33jyi42v/odd.json\\n')"
+    }
+  ],
+  "rc": 0,
+  "got": {
+    "code_len": 0,
+    "is_contract": false
+  },
+  "stdout": "[SUMMARY] 1 址 | 合约 0 | EOA 1 | 失败 0\n[out] /var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/f04-red-33jyi42v/odd.json\n",
+  "artifact_exists": true,
+  "tmp_artifact_exists": false,
+  "status": "RED"
+}
+
+{
+  "scenario": "getcode/badhex",
+  "sha256": {
+    "scripts/lib/net.py": "85fed436a2d1d6a1c676d9f6660c9bee6403a1d6392e0ea755ad43897ddb3f1a",
+    "scripts/lib/rpc_batch.py": "f993c16ea846945e24c8d403d5962d3d2deae7c6358663b3ac84eb36f817a5a8",
+    "scripts/tests/test_batch1_rpc_attestation.py": "80af01730c0068e5b6f66883eb1add19b7ff4daddfbe1ba6f18c595dd68ea616"
+  },
+  "exceptions": [
+    {
+      "type": "AssertionError",
+      "text": "('badhex', 0, {'code_len': 1, 'is_contract': True})"
+    },
+    {
+      "type": "AssertionError",
+      "text": "('badhex', '[SUMMARY] 1 址 | 合约 1 | EOA 0 | 失败 0\\n[out] /var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/f04-red-33jyi42v/badhex.json\\n')"
+    }
+  ],
+  "rc": 0,
+  "got": {
+    "code_len": 1,
+    "is_contract": true
+  },
+  "stdout": "[SUMMARY] 1 址 | 合约 1 | EOA 0 | 失败 0\n[out] /var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/f04-red-33jyi42v/badhex.json\n",
+  "artifact_exists": true,
+  "tmp_artifact_exists": false,
+  "status": "RED"
+}
+
+{
+  "scenario": "getcode/int",
+  "sha256": {
+    "scripts/lib/net.py": "85fed436a2d1d6a1c676d9f6660c9bee6403a1d6392e0ea755ad43897ddb3f1a",
+    "scripts/lib/rpc_batch.py": "f993c16ea846945e24c8d403d5962d3d2deae7c6358663b3ac84eb36f817a5a8",
+    "scripts/tests/test_batch1_rpc_attestation.py": "80af01730c0068e5b6f66883eb1add19b7ff4daddfbe1ba6f18c595dd68ea616"
+  },
+  "exceptions": [
+    {
+      "type": "TypeError",
+      "text": "object of type 'int' has no len()"
+    }
+  ],
+  "rc": null,
+  "artifact_exists": false,
+  "tmp_artifact_exists": false,
+  "status": "RED"
+}
+
+{
+  "scenario": "getcode/eoa",
+  "sha256": {
+    "scripts/lib/net.py": "85fed436a2d1d6a1c676d9f6660c9bee6403a1d6392e0ea755ad43897ddb3f1a",
+    "scripts/lib/rpc_batch.py": "f993c16ea846945e24c8d403d5962d3d2deae7c6358663b3ac84eb36f817a5a8",
+    "scripts/tests/test_batch1_rpc_attestation.py": "80af01730c0068e5b6f66883eb1add19b7ff4daddfbe1ba6f18c595dd68ea616"
+  },
+  "exceptions": [],
+  "rc": 0,
+  "got": {
+    "code_len": 0,
+    "is_contract": false
+  },
+  "stdout": "[SUMMARY] 1 址 | 合约 0 | EOA 1 | 失败 0\n[out] /var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/f04-red-33jyi42v/eoa.json\n",
+  "artifact_exists": true,
+  "tmp_artifact_exists": false,
+  "status": "GREEN"
+}
+
+{
+  "scenario": "getcode/contract",
+  "sha256": {
+    "scripts/lib/net.py": "85fed436a2d1d6a1c676d9f6660c9bee6403a1d6392e0ea755ad43897ddb3f1a",
+    "scripts/lib/rpc_batch.py": "f993c16ea846945e24c8d403d5962d3d2deae7c6358663b3ac84eb36f817a5a8",
+    "scripts/tests/test_batch1_rpc_attestation.py": "80af01730c0068e5b6f66883eb1add19b7ff4daddfbe1ba6f18c595dd68ea616"
+  },
+  "exceptions": [],
+  "rc": 0,
+  "got": {
+    "code_len": 2,
+    "is_contract": true
+  },
+  "stdout": "[SUMMARY] 1 址 | 合约 1 | EOA 0 | 失败 0\n[out] /var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/f04-red-33jyi42v/contract.json\n",
+  "artifact_exists": true,
+  "tmp_artifact_exists": false,
+  "status": "GREEN"
+}

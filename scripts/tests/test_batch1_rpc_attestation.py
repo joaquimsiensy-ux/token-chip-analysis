@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import csv
 import importlib.util
+import io
 import json
 import os
 import subprocess
@@ -324,6 +326,73 @@ def test_remaining_formal_entrypoints_wrong_chain_zero_business():
             assert rc != 0 and methods == ["eth_chainId"], (name, rc, methods)
 
 
+def test_business_envelope_missing_result():
+    """F04：握手正常、业务响应缺 result 键 → ok=False；合法 result=null 仍 ok=True。"""
+    async def missing(client, bucket, method, url, *, json_body=None, attempts=6):
+        if json_body["method"] == "eth_chainId":
+            return {"jsonrpc": "2.0", "id": 1, "result": "0x38"}
+        return {"jsonrpc": "2.0", "id": json_body["id"]}
+
+    pool = net.RpcPool("http://envelope", expected_chain_id=56)
+    got = run_with_backend(pool, missing)
+    assert got["ok"] is False and "result" in got["error"], got
+
+    async def null_result(client, bucket, method, url, *, json_body=None, attempts=6):
+        if json_body["method"] == "eth_chainId":
+            return {"jsonrpc": "2.0", "id": 1, "result": "0x38"}
+        return {"jsonrpc": "2.0", "id": json_body["id"], "result": None}
+
+    pool = net.RpcPool("http://envelope", expected_chain_id=56)
+    got = run_with_backend(pool, null_result, method="eth_getTransactionReceipt")
+    assert got == {"ok": True, "result": None}, got
+
+
+def _getcode_scenario(module, td, name, payload):
+    """跑一次真实 rpc_batch.main()（握手 0x38 正常，业务返回按 payload 构造），返回 (rc, 该地址结果, stdout)。"""
+    address = "0x" + "b" * 40
+
+    async def backend(client, bucket, method, url, *, json_body=None, attempts=6):
+        if json_body["method"] == "eth_chainId":
+            return {"jsonrpc": "2.0", "id": 1, "result": "0x38"}
+        body = {"jsonrpc": "2.0", "id": json_body["id"]}
+        if payload is not None:
+            body.update(payload)
+        return body
+
+    out = Path(td) / f"{name}.json"
+    argv = ["rpc_batch.py", "http://envelope", "getcode", address,
+            "--chain", "bsc", "--out", str(out)]
+    buf = io.StringIO()
+    with mock.patch.object(sys, "argv", argv), mock.patch.object(
+            net, "_request_json", side_effect=backend), contextlib.redirect_stdout(buf):
+        rc = module.main()
+    return rc, json.loads(out.read_text(encoding="utf-8"))[address], buf.getvalue()
+
+
+def test_rpc_batch_getcode_rejects_malformed_code():
+    """F04：rpc_batch getcode 对缺 result / null / 奇数长度 / 非十六进制 / 非字符串记 error 且退出 1，
+    摘要"失败 1 / EOA 0"；"0x" 为 EOA、偶数长度十六进制为合约。"""
+    module = load("scripts/lib/rpc_batch.py", "batch1_rpc_batch_f04")
+    scenarios = [
+        ("missing", None, False),          # 缺 result 键
+        ("null", {"result": None}, False),
+        ("odd", {"result": "0x0"}, False),
+        ("badhex", {"result": "0xgg"}, False),
+        ("int", {"result": 123}, False),
+        ("eoa", {"result": "0x"}, True),
+        ("contract", {"result": "0x6080"}, True),
+    ]
+    with tempfile.TemporaryDirectory(prefix="batch1-rpc-f04-") as td:
+        for name, payload, expect_ok in scenarios:
+            rc, got, stdout = _getcode_scenario(module, td, name, payload)
+            if expect_ok:
+                assert rc == 0 and "error" not in got, (name, rc, got)
+                assert got["is_contract"] is (name == "contract"), (name, got)
+            else:
+                assert rc == 1 and "error" in got and "is_contract" not in got, (name, rc, got)
+                assert "失败 1" in stdout and "EOA 0" in stdout, (name, stdout)
+
+
 def main():
     test_wrong_chain_zero_business()
     test_attestation_failures()
@@ -332,6 +401,8 @@ def main():
     test_registry_factory_rejects_missing_identity()
     test_each_formal_callsite_wrong_chain_zero_business()
     test_remaining_formal_entrypoints_wrong_chain_zero_business()
+    test_business_envelope_missing_result()
+    test_rpc_batch_getcode_rejects_malformed_code()
     print("PASS B1-B RPC session: wrong-chain zero business/fail-closed/correct/failover")
     return 0
 

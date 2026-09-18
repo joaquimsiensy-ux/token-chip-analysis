@@ -295,7 +295,10 @@ class RpcPool:
                     detail = redact_endpoint_text(err.get("message"), [endpoint])
                     return {"ok": False,
                             "error": f"rpc {err.get('code')}: {detail[:120]}"}
-            return {"ok": True, "result": j.get("result")}
+            if not isinstance(j, dict) or "result" not in j:
+                # JSON-RPC envelope 缺 result 且无 error：提供商/代理/缓存的空壳包，不是成功（F04）
+                return {"ok": False, "error": "rpc envelope: missing result (no error object)"}
+            return {"ok": True, "result": j["result"]}
 
     async def _attest_endpoint(self, client, bucket, endpoint):
         if self.expected_chain_id is None:
