@@ -1,4 +1,4 @@
-# 工单 G1（v2，融合 codex 复核 r1 三条 G1-R1-01/02/03）：图 2 校验器补必画下限——空 series／缺线／重复线拒 —— repair-20260918b-p0-fig2-decimals 第一段
+# 工单 G1（v2，融合 codex 复核 r1 三条 G1-R1-01/02/03；r2 通过，含 r2 标题勘误）：图 2 校验器补必画下限——空 series／缺线／重复线拒 —— repair-20260918b-p0-fig2-decimals 第一段
 
 > 出处：codex 对 7.2.1（f1f473f3）六视角 review F01（P0，半修复）：`figures_from_facts.fig2_check_errors`（`:296-337`）对 `whale_series=[]` 返回 `([], 0)`，producer `check` 写 PASS 收据、发布闸 `check_figure2_receipt` 发布期重算同样 `[]`、`build_html --mode analysis-new` rc=0 出正式 HTML——facts 里明明有"大庄#1"实体却一条线都没画。7.2.1 F04 工单把它登记为 P2 残余的依据是 split-run.md 3b.5"fig2 必画下限由 stage2_closeout 承担"，但普通 build_html 不消费 closeout 收据，该兜底在主轨上实际不存在。用户 09-18 裁决：修。总原则：skill 上下文不增；能删不增、能改不增；references/SKILL/commands 本段零改动。
 > 修法：必画规则已存在于 `stage2_closeout.fig2_selection_errors`（`:168-178`：label 以 项目方/大庄/小庄/离场庄 起头即必画）。把它提为 `figures_from_facts` 的共享函数，`fig2_check_errors` 在末尾核"必画集合 ⊆ 已匹配线集合"并拒重复线；closeout 改为调用同一函数（单一来源）。发布闸 `check_figure2_receipt`（7.2.1 F04）已调用 `fig2_check_errors`，自动继承，不改。
@@ -101,7 +101,7 @@ def fig2_required_entity_ids(entities) -> set:
         assert r.returncode != 0 and "重复出现" in r.stdout, f"重复线应挂: {r.stdout}"
 ```
 
-### 2.5 `scripts/tests/test_repair_batch_c.py` —— 新用例 `_g1_case_1..3` 挂进 `t_r08_nonfinite`
+### 2.5 `scripts/tests/test_repair_batch_c.py` —— 新用例 `_g1_case_1..4` 挂进 `t_r08_nonfinite`
 
 在 `:1563`（锚 `def _f04_case_4():`，唯一）所在函数结束后、`:1584`（锚 `def t_r08_nonfinite():`，唯一）之前新增四个子函数（各自 tempdir；`check`/`run`/`write_json`/`ROOT`/`A` 为既有；facts 夹具照 `:1502-1505`）；在 `:1601`（锚 `    _f04_case_4()`，唯一）之后紧接四行调用 `_g1_case_1()` … `_g1_case_4()`。`main()` 不动。
 
