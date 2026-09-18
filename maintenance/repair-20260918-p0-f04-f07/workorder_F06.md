@@ -1,6 +1,7 @@
-# 工单 F06（v1）：G8 身份闸消费侧重推公共设施 flag —— repair-20260918-p0-f04-f07 第一段
+# 工单 F06（v2，融合 codex 复核 r1 一条 F06-R1-01）：G8 身份闸消费侧重推公共设施 flag —— repair-20260918-p0-f04-f07 第一段
 
 > 出处：codex 对 7.2.0（311e6c4）的六视角 review F06（P0）：`entity_identity_gate.validate_gate` 只验 flag 属于枚举，对"无标签实体成员"重推 BIG_UNLABELED/PDA_UNRESOLVED，却**不对已带 `tier=exclude` 标签的实体成员重推 INFRA_IN_ENTITY**——把 flag 清空并同步 n_flags 即可跳过 resolution 义务。反例：`review 附录 D repro_core.py` F06 段（真实 replay_pass1/identity snapshot receipt 绑定、余额 100、row label tier=exclude、flag 清空后 `validate_gate` 返回 `[]`）。用户 2026-09-18 裁决：修（威胁模型＝自己人抄近路，不是外人造假）。总原则：**skill 上下文不增**（references/SKILL.md/commands-staging 零改动）；能删不增、能改不增。
+> v2 变更（`review_F06_reply_r1.md` F06-R1-01）：§0.8 删去误挂在 `test_stage2_closeout.py` 上的 F12 例外说明，定向测试全部须 PASS；F12 归全套验收。
 > 内容基线：commit `311e6c4`（v7.2.0）；本工单与提示词单独 commit，HEAD 会晚于 311e6c4，但 `scripts/`、`references/`、`SKILL.md`、`commands-staging/`、`VERSION`、`pyproject.toml`、`CHANGELOG.md` 与 311e6c4 逐字节相同。
 
 ## 0. 开工纪律
@@ -12,7 +13,7 @@
 - 0.5 行号均指施工前基线；改动前 `grep -n -F '<锚文本>'` 核验恰 1 处且行号一致，不符**停工**不猜改。删除 > 修改 > 新增。
 - 0.6 离线；不 commit（Fable 代 commit）、不 push、不部署 `~/.claude/commands/`；禁 stash/checkout/reset。
 - 0.7 先红后绿：§2.2 新用例先在改动前跑取 RED 写 `F06_red_evidence.txt`，再改生产代码，再取 GREEN。
-- 0.8 不跑 `run_all.py`。定向跑：`python3 -B scripts/tests/test_entity_identity_gate.py`、`test_batch17_identity_chain_alias.py`、`test_round4_identity_emitter.py`、`test_v2_identity_history.py`、`test_audit_release_gate.py`、`test_a4_gate.py`、`test_stage2_closeout.py`（其中 `dry_run_touches_nothing` 依赖外部 worktree 属已知环境项 F12，若仅此项失败注明即可）、`python3 -B scripts/tests/invariant_scan.py`。除注明项外须全 PASS。
+- 0.8 不跑 `run_all.py`。定向跑：`python3 -B scripts/tests/test_entity_identity_gate.py`、`test_batch17_identity_chain_alias.py`、`test_round4_identity_emitter.py`、`test_v2_identity_history.py`、`test_audit_release_gate.py`、`test_a4_gate.py`、`test_stage2_closeout.py`、`python3 -B scripts/tests/invariant_scan.py`。全部须 PASS。（F12 环境项 `test_stage2_reseal.py::dry_run_touches_nothing` 依赖外部 worktree 与 overlay 白名单，不在本段定向清单内，由调度方在全套验收时处理。）
 
 ## 1. 硬约束
 
