@@ -1,18 +1,19 @@
-# 工单 G1（v1）：图 2 校验器补必画下限——空 series／缺线／重复线拒 —— repair-20260918b-p0-fig2-decimals 第一段
+# 工单 G1（v2，融合 codex 复核 r1 三条 G1-R1-01/02/03）：图 2 校验器补必画下限——空 series／缺线／重复线拒 —— repair-20260918b-p0-fig2-decimals 第一段
 
 > 出处：codex 对 7.2.1（f1f473f3）六视角 review F01（P0，半修复）：`figures_from_facts.fig2_check_errors`（`:296-337`）对 `whale_series=[]` 返回 `([], 0)`，producer `check` 写 PASS 收据、发布闸 `check_figure2_receipt` 发布期重算同样 `[]`、`build_html --mode analysis-new` rc=0 出正式 HTML——facts 里明明有"大庄#1"实体却一条线都没画。7.2.1 F04 工单把它登记为 P2 残余的依据是 split-run.md 3b.5"fig2 必画下限由 stage2_closeout 承担"，但普通 build_html 不消费 closeout 收据，该兜底在主轨上实际不存在。用户 09-18 裁决：修。总原则：skill 上下文不增；能删不增、能改不增；references/SKILL/commands 本段零改动。
 > 修法：必画规则已存在于 `stage2_closeout.fig2_selection_errors`（`:168-178`：label 以 项目方/大庄/小庄/离场庄 起头即必画）。把它提为 `figures_from_facts` 的共享函数，`fig2_check_errors` 在末尾核"必画集合 ⊆ 已匹配线集合"并拒重复线；closeout 改为调用同一函数（单一来源）。发布闸 `check_figure2_receipt`（7.2.1 F04）已调用 `fig2_check_errors`，自动继承，不改。
+> v2 变更（`review_G1_reply_r1.md`）：R1-01 §2.5 用例 1 的 producer/消费者两断言改为"先执行并记录、末尾汇总断言"，避免 `check()` 首断言抛错截断 RED 取证；§0.7 编号订正为 §2.4/§2.5；R1-02 §2.5 新增用例 4"两必画实体、非空 series 只画一个"（缺线 RED→补齐 GREEN）；R1-03 属 G2 §2.9 前提，随 G2 v2 修订；另按 r1 订正 §0.2 importer 引用行号（:1641/:2117），§4 补旧 PASS 收据迁移说明。
 > 内容基线：`f1f473f3`（v7.2.1）加本工程已入库的裁决/工单 commit；`scripts/` 与 f1f473f3 逐字节相同。
 
 ## 0. 开工纪律
 
 - 0.1 工作目录＝`/Users/uravvv/.claude/skills/token-chip-analysis`。开工先跑并贴进 `G1_done.md`：`git status --short`（须为空）；`git diff --stat f1f473f3 HEAD -- scripts references SKILL.md commands-staging VERSION pyproject.toml CHANGELOG.md`（须为空）。不空即停工写 `G1_done_attempt1_stopped.md`。
-- 0.2 **禁读** `~/.codex/`（启动搜索若已读 memories 披露一次，之后不再读）；禁读 `archive/`、`blind-reviews/`、`.staging_*`、`references/attic.md`、`maintenance/repair-20260918-p0-f04-f07/` 与本目录以外的历史 maintenance 目录；禁读 `/Users/uravvv/Desktop`、`/Users/uravvv/Documents`。精确读取例外：`scripts/tests/test_repair_batch_c.py:1549`／`:2025-2030` 附近既有用例会 `importlib` 加载 `maintenance/repair-20260814-batch2/import_pythia_legacy.py`——允许测试进程自行加载，施工方不得主动阅读/引用/改动。
+- 0.2 **禁读** `~/.codex/`（启动搜索若已读 memories 披露一次，之后不再读）；禁读 `archive/`、`blind-reviews/`、`.staging_*`、`references/attic.md`、`maintenance/repair-20260918-p0-f04-f07/` 与本目录以外的历史 maintenance 目录；禁读 `/Users/uravvv/Desktop`、`/Users/uravvv/Documents`。精确读取例外：`scripts/tests/test_repair_batch_c.py:1641`／`:2117` 的既有用例会 `importlib` 加载 `maintenance/repair-20260814-batch2/import_pythia_legacy.py`——允许测试进程自行加载，施工方不得主动阅读/引用/改动。
 - 0.3 **白名单**：生产 `scripts/report/figures_from_facts.py`、`scripts/report/stage2_closeout.py`；测试 `scripts/tests/test_figures_from_facts.py`、`scripts/tests/test_repair_batch_c.py`；本目录新建 `G1_done.md`、`G1_red_evidence.txt`，停工时 `G1_done_attempt1_stopped.md`。
 - 0.4 **不改**：`audit_release_gate.py`（`check_figure2_receipt` 通过 `fig2_check_errors` 自动继承）、`build_html.py`、`a5_report_seal.py`、`facts_gate.py`；`figures_from_facts.py` 的 `mode_check`（`:340-375`）、`build_fig2_series`（`:378-400`）、`_write_check_receipt`、收据 schema；`stage2_closeout.fig2_series_errors`（`:409` 起）；任何 `references/`、`SKILL.md`、`commands-staging/`、`VERSION`、`pyproject.toml`、`CHANGELOG.md`、`contract_manifest.json`、`invariant_manifest.json`；其他测试只跑不改。
 - 0.5 行号均指施工前基线；锚 `grep -n -F` 恰 1 处且行号一致，不符**停工**。删除 > 修改 > 新增。
 - 0.6 离线；不 commit、不 push、不部署；禁 stash/checkout/reset。
-- 0.7 先红后绿：§2.3/§2.4 新用例在改生产代码前逐例取 RED 写 `G1_red_evidence.txt`（逐例捕获 AssertionError／非零 rc，按真实基线记 RED 或 GREEN→GREEN）。
+- 0.7 先红后绿：§2.4/§2.5 新用例在改生产代码前逐例取 RED 写 `G1_red_evidence.txt`（逐例捕获 AssertionError／非零 rc，按真实基线记 RED 或 GREEN→GREEN）。
 - 0.8 不跑 `run_all.py`。定向跑（全部须 PASS）：`python3 -B scripts/tests/test_figures_from_facts.py`、`test_repair_batch_c.py`、`test_stage2_closeout.py`、`test_a4_gate.py`、`test_repair_batch_d.py`、`test_review_20260804_p105.py`、`test_repair_batch_b.py`、`test_audit_release_gate.py`、`test_repair_g1_cross_target.py`、`python3 -B scripts/tests/invariant_scan.py`。冷字体缓存环境项：`test_a4_gate.py`/`test_stage2_closeout.py` 自设 `MPLCONFIGDIR` 遇 `data_broken: '_items'` 时保留首次输出写 done，再 `MPLCONFIGDIR="$HOME/.matplotlib" python3 -B …` 重跑，重跑必须真实 PASS。
 
 ## 1. 硬约束
@@ -102,13 +103,14 @@ def fig2_required_entity_ids(entities) -> set:
 
 ### 2.5 `scripts/tests/test_repair_batch_c.py` —— 新用例 `_g1_case_1..3` 挂进 `t_r08_nonfinite`
 
-在 `:1563`（锚 `def _f04_case_4():`，唯一）所在函数结束后、`:1584`（锚 `def t_r08_nonfinite():`，唯一）之前新增三个子函数（各自 tempdir；`check`/`run`/`write_json`/`ROOT`/`A` 为既有；facts 夹具照 `:1502-1505`）；在 `:1601`（锚 `    _f04_case_4()`，唯一）之后紧接三行调用。`main()` 不动。
+在 `:1563`（锚 `def _f04_case_4():`，唯一）所在函数结束后、`:1584`（锚 `def t_r08_nonfinite():`，唯一）之前新增四个子函数（各自 tempdir；`check`/`run`/`write_json`/`ROOT`/`A` 为既有；facts 夹具照 `:1502-1505`）；在 `:1601`（锚 `    _f04_case_4()`，唯一）之后紧接四行调用 `_g1_case_1()` … `_g1_case_4()`。`main()` 不动。
 
-1. `G1 空 series 对非空必画实体：producer FAIL＋消费者拒`：facts e1 label `大庄#1`；ws `[]`；`p = run([fff, "check", "--facts", "facts.json", "--series", "ws.json"], td)` → `check(..., p.returncode != 0 and "缺必画实体线" in p.stdout)`；再手写 PASS 收据（写法照 `:1508-1513`，sha 用真实文件）→ `gate.check_figure2_receipt(td, rcpt, errs)` → `check(..., any("缺必画实体线" in x for x in errs))`。两断言基线均 **RED**（基线 rc 0、errs `[]`）。
+1. `G1 空 series 对非空必画实体：producer FAIL＋消费者拒`：facts e1 label `大庄#1`；ws `[]`；**先执行再断言**（`check()` `:54-56` 首断言即抛错，若先断 producer 则消费者 RED 取不到证据——R1-01）：`p = run([fff, "check", "--facts", "facts.json", "--series", "ws.json"], td)` 记 `prod_rc, prod_out`；再手写 PASS 收据（写法照 `:1508-1513`，sha 用真实文件）→ `errs = []; gate.check_figure2_receipt(td, rcpt, errs)`；最后两条 `check`：`check("G1 空 series producer 拒", prod_rc != 0 and "缺必画实体线" in prod_out, prod_out)`、`check("G1 空 series 消费者拒", any("缺必画实体线" in x for x in errs), str(errs))`。RED 取证时逐条 try/except 各自记录。两断言基线均 **RED**（基线 rc 0、errs `[]`）。
 2. `G1 重复线拒`：ws `[{"entity_id":"e1","ts":["2026-01-01"],"pct":[27.8]}] * 2` → producer rc != 0 且 stdout 含 `重复出现`。**RED**。
 3. `G1 非必画实体空 series 仍放行（GREEN→GREEN）`：facts e1 label `观察实体`；ws `[]` → producer rc == 0；收据 verdict PASS；消费者 errs `[]`。
+4. `G1 非空 series 漏必画实体拒→补齐放行`（R1-02）：facts 两实体 `e1` label `大庄#1`（current 278）、`e2` label `小庄#2`（current 100，total 1000 → 10.0）；ws 只含 e1 一条（pct `[27.8]`）→ producer rc != 0 且 stdout 含 `缺必画实体线 ['e2']`；手写 PASS 收据喂消费者 → errs 含 `['e2']`（同样先执行后汇总断言）；再把 ws 补成 e1+e2 两条（e2 pct `[10.0]`）→ producer rc == 0、消费者 errs `[]`。缺线两断言基线 **RED**，补齐段 GREEN→GREEN。
 
-RED 证据：改生产代码前逐个调用 `_g1_case_1/2` 与 §2.4 两条 assert，记录 AssertionError／rc 原文（含命令与被测文件 sha256）。
+RED 证据：改生产代码前逐个调用 `_g1_case_1/2/4`（用例内各断言独立捕获）与 §2.4 两条 assert，记录 AssertionError／rc 原文（含命令与被测文件 sha256）。
 
 ## 3. 完成报告 `G1_done.md` 必含
 
@@ -117,3 +119,4 @@ RED 证据：改生产代码前逐个调用 `_g1_case_1/2` 与 §2.4 两条 asse
 ## 4. 登记不修（`code_change_pending.md` Q3/Q4，调度方维护）
 
 - 文档 `report-template.md:222` 不增字；必画下限只按 label 前缀（与 closeout 同源），不按 tier/category。
+- 存量迁移（明示）：旧案若 whale_series 缺必画线或有重复线，其既有 PASS 收据在新发布闸重算时失效——须修序列（`fig2-series` 重装配）→ 重跑 `check` → 重建 A4/stage2 收口/A5 下游封口；schema 不升版，合法完整的旧收据仍过。CHANGELOG 登记由收官段 E 承担（本段禁改 CHANGELOG）。
