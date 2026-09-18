@@ -1,0 +1,19 @@
+F02 RED evidence — independent per-case capture before production edits
+HEAD: 830ce9f8323bb57ef7d896eb4608f84d866ca796
+git diff -- scripts/report/facts_gate.py scripts/report/stage2_closeout.py: (empty)
+scripts/report/facts_gate.py sha256: f898ac87986351946e66d7bd6c198313dbb76a0c70dc51b9ab441e7f38fb9dac
+scripts/report/stage2_closeout.py sha256: a889e6c75f94e08cbd274ce5f92830ff4891d461b4da991c08da10e447ebd37e
+Method: execute the newly added test bodies; replace only nested run in memory with independent try/except capture. No test-file catch-list changes. Temporary fixtures are retained, with no cleanup deletion.
+RED: 22 F02 流通量声明→token 带字段、发布重算一致 | KeyError: 'circulating_supply_raw'
+RED: 23.1 23 F02 流通量非法拒 total_supply_raw input={"circulating_supply": {"raw": "2000", "asof": "2026-01-03", "source": "x"}} | AssertionError: derive_facts 应拒绝该输入: total_supply_raw
+RED: 23.2 23 F02 流通量非法拒 total_supply_raw input={"circulating_supply": {"raw": "0", "asof": "2026-01-03", "source": "x"}} | AssertionError: derive_facts 应拒绝该输入: total_supply_raw
+RED: 23.3 23 F02 流通量非法拒 非 YYYY-MM-DD input={"circulating_supply": {"raw": "400", "asof": "20260103", "source": "x"}} | AssertionError: derive_facts 应拒绝该输入: 非 YYYY-MM-DD
+RED: 23.4 23 F02 流通量非法拒 source input={"circulating_supply": {"raw": "400", "asof": "2026-01-03", "source": " "}} | AssertionError: derive_facts 应拒绝该输入: source
+RED: 23.5 23 F02 流通量非法拒 须为对象 input={"circulating_supply": "400"} | AssertionError: derive_facts 应拒绝该输入: 须为对象
+RED: 23.6 23 F02 流通量非法拒 键名错位 input={"circulating_supply_raw": "400"} | AssertionError: derive_facts 应拒绝该输入: 键名错位
+GREEN: 24 F02 手补 token.circulating_supply_raw 无声明→闸拒（GREEN→GREEN）
+GREEN: §2.6 前半 — 无流通量新键、未命中总量下限、NOTE 未声明流通量
+Fixture: total=1000, current=100, label=大庄#1, peak=150, mode=formal, peak_overrides={}
+RED: §2.6 后半 — 声明后 producer→consumer | KeyError: 'circulating_supply_raw'
+Compatibility fixture retained for post-change comparison: /private/tmp/f02-compat-m2k_7ln4
+SUMMARY: 22 RED; 23 six variants each RED; 24 GREEN; §2.6 prefix GREEN / declaration suffix RED. Expected RED distribution verified.

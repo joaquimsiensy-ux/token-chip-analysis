@@ -8,6 +8,7 @@
 facts.json schema（每案一份，阶段 3 结束时由 build 子命令从三账生成，禁手抄；数值一律**原始整数字符串**）：
 {
   "token": {"symbol": "QUQ", "decimals": 18, "total_supply_raw": "1000...0"},
+           # 可选（F02）：circulating_supply_raw + circulating_supply_source {asof, source}，来自 facts_inputs.circulating_supply
   "entities": {
     "e_big1": {"label": "大庄#1(bot体系)",
                "addresses": ["0x完整地址", ...],
@@ -64,6 +65,7 @@ state_source.facts_inputs schema：
   entity_labels: {eid: label}（必填、非空、覆盖全部实体）
   peak_overrides: {eid: {peak_raw, peak_date, evidence: {path, sha256}}}，证据 JSON 须为 {entity_id: {peak_raw, peak_date}} 与申报相等
       （可选，优先于 provenance 锚点，证据须为案根常规文件）
+  circulating_supply: {raw, asof, source}（可选；raw 正整数串且 ≤ total_supply_raw、asof 严格 YYYY-MM-DD、source 非空口径说明；写入 token.circulating_supply_raw/circulating_supply_source；扁平键 circulating_supply_raw 拒）
   merge_evidence: {eid: {earliest, note}}（可选）
   role_notes: {eid: {addr: note}}（可选）
   metrics: {mid: {...}}（可选；对象且每项为对象）；dual_basis: {}（可选；对象）
@@ -378,6 +380,28 @@ def derive_facts(case_dir, *, exploration=False):
     dual_basis = fi.get("dual_basis")
     if "dual_basis" in fi and not isinstance(dual_basis, dict):
         raise ValueError("facts_inputs.dual_basis 须为对象")
+    if "circulating_supply_raw" in fi:
+        raise ValueError("facts_inputs.circulating_supply_raw 键名错位——流通量须写成 "
+                         "circulating_supply: {raw, asof, source}")
+    circ = fi.get("circulating_supply")
+    circulating = None
+    if circ is not None:
+        if not isinstance(circ, dict):
+            raise ValueError("facts_inputs.circulating_supply 须为对象 {raw, asof, source}")
+        circ_raw = _raw_str(circ.get("raw"), "facts_inputs.circulating_supply.raw")
+        if not 0 < int(circ_raw) <= int(total_raw):
+            raise ValueError(f"facts_inputs.circulating_supply.raw {circ_raw} 须在 (0, total_supply_raw={total_raw}] 内")
+        asof = str(circ.get("asof") or "").strip()
+        try:
+            asof_ok = _dt.date.fromisoformat(asof).isoformat() == asof
+        except ValueError:
+            asof_ok = False
+        if not asof_ok:
+            raise ValueError(f"facts_inputs.circulating_supply.asof {asof!r} 非 YYYY-MM-DD")
+        src = circ.get("source")
+        if not isinstance(src, str) or not src.strip():
+            raise ValueError("facts_inputs.circulating_supply.source 须为非空口径说明（如 'CoinGecko circulating 2026-09-14'）")
+        circulating = {"raw": circ_raw, "asof": asof, "source": src.strip()}
 
     members = data["membership_ledger.json"]
     members = members.get("entries", members.get("entities", []))
@@ -474,7 +498,11 @@ def derive_facts(case_dir, *, exploration=False):
     inputs = {n: {"sha256": _sha256_path(case_dir / n)} for n in FACTS_LEDGER_INPUTS}
     if ledger is not None:
         inputs["provenance_ledger.json"] = {"sha256": _sha256_path(ledger_path)}
-    facts = {"token": {"symbol": symbol, "decimals": decimals, "total_supply_raw": total_raw},
+    token = {"symbol": symbol, "decimals": decimals, "total_supply_raw": total_raw}
+    if circulating is not None:
+        token["circulating_supply_raw"] = circulating["raw"]
+        token["circulating_supply_source"] = {"asof": circulating["asof"], "source": circulating["source"]}
+    facts = {"token": token,
              "entities": entities, "metrics": metrics}
     if dual_basis is not None:
         facts["dual_basis"] = dual_basis

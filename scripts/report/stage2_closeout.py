@@ -207,6 +207,8 @@ def flow_selection_errors(facts, flow):
         notes.append("NOTE: 未声明流通量，门槛仅按总供应判")
     else:
         circulating = int(circulating)
+        src = facts.get("token", {}).get("circulating_supply_source") or {}
+        notes.append(f"NOTE: 流通量 {circulating}（口径 {src.get('source')}，{src.get('asof')}）")
     required = set()
     for entity_id, entity in facts["entities"].items():
         if str(entity.get("label") or "").strip().startswith(("项目方", "大庄")):

@@ -324,8 +324,44 @@ def _r07_build_cases():
     run("20 F05 peak_date 晚于当前锚点日拒", f05_after_current)
     run("21 F05 证据非对象拒", lambda root: f05_override(
         root, "150", "2026-01-02", [1, 2], "证据内容"))
+
+    def circ(root, value, needle=None):
+        edit(root, "state_source.json", lambda obj: obj["facts_inputs"].update(value))
+        if needle:
+            reject(root, needle)
+            return None
+        return build(root)
+
+    def circ_green(root):
+        facts = circ(root, {"circulating_supply": {"raw": "400", "asof": "2026-01-03", "source": "test circulating"}})
+        assert facts["token"]["circulating_supply_raw"] == "400", facts
+        assert facts["token"]["circulating_supply_source"] == {"asof": "2026-01-03", "source": "test circulating"}, facts
+        assert set(facts["token"]) == {"symbol", "decimals", "total_supply_raw",
+                                       "circulating_supply_raw", "circulating_supply_source"}, facts
+        errors = []
+        gate.check_facts_vs_ledgers(root, facts, errors)
+        assert errors == [], errors
+
+    def circ_hand_edit(root):
+        facts = build(root)
+        facts["token"]["circulating_supply_raw"] = "400"
+        _r07_write(root, "facts.json", facts)
+        errors = []
+        gate.check_facts_vs_ledgers(root, facts, errors)
+        assert any("facts.token" in error for error in errors), errors
+
+    run("22 F02 流通量声明→token 带字段、发布重算一致", circ_green)
+    for value, needle in (
+            ({"circulating_supply": {"raw": "2000", "asof": "2026-01-03", "source": "x"}}, "total_supply_raw"),
+            ({"circulating_supply": {"raw": "0", "asof": "2026-01-03", "source": "x"}}, "total_supply_raw"),
+            ({"circulating_supply": {"raw": "400", "asof": "20260103", "source": "x"}}, "非 YYYY-MM-DD"),
+            ({"circulating_supply": {"raw": "400", "asof": "2026-01-03", "source": " "}}, "source"),
+            ({"circulating_supply": "400"}, "须为对象"),
+            ({"circulating_supply_raw": "400"}, "键名错位")):
+        run("23 F02 流通量非法拒 " + needle, lambda root, v=value, n=needle: circ(root, v, n))
+    run("24 F02 手补 token.circulating_supply_raw 无声明→闸拒（GREEN→GREEN）", circ_hand_edit)
     assert not failures, f"R07 失败 {len(failures)}/{len(results)}: {failures}"
-    print(f"PASS: R07 build/derive/发布闸 21 类、{len(results)} 个独立用例", flush=True)
+    print(f"PASS: R07 build/derive/发布闸 24 类、{len(results)} 个独立用例", flush=True)
 
 
 def main():

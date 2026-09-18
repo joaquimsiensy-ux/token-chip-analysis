@@ -672,6 +672,29 @@ def price_receipt_content_enforced(cases):
     check_result(case)
 
 
+def circulating_supply_producer_to_consumer(cases):
+    """F02：流通量由 state_source 声明 → facts_gate.derive_facts 产出 → flow_selection_errors 按流通量分母命中必画。
+    用 test_report_facts._r07_case（total 1000 / e1 current 100 = 10%，总量分支不命中；声明流通量 400 → 25% 命中）；
+    公共 closeout seed 为 100/100 不可辨，故独立建案。不落盘 facts。"""
+    import facts_gate
+    import stage2_closeout as closeout
+    from test_report_facts import _r07_case
+    root = Path(tempfile.mkdtemp(prefix="f02-circ-", dir="/private/tmp"))
+    _r07_case(root)
+    baseline = facts_gate.derive_facts(root)
+    assert "circulating_supply_raw" not in baseline["token"], baseline["token"]
+    errors, notes = closeout.flow_selection_errors(baseline, {"eligible_entity_ids": [], "charts": []})
+    assert not any("包含下限" in e for e in errors), errors
+    assert any("未声明流通量" in n for n in notes), notes
+    update(root, "state_source.json", lambda s: s["facts_inputs"].update(
+        circulating_supply={"raw": "400", "asof": "2026-01-03", "source": "fixture circulating"}))
+    facts = facts_gate.derive_facts(root)
+    assert facts["token"]["circulating_supply_raw"] == "400", facts["token"]
+    errors, notes = closeout.flow_selection_errors(facts, {"eligible_entity_ids": [], "charts": []})
+    assert any("包含下限 ['e1']" in e for e in errors), errors
+    assert any("口径 fixture circulating" in n for n in notes), notes
+
+
 def facts_vs_ledgers_rejects_hand_edit(cases):
     case = cases.fresh()
     update(case, "facts.json", lambda obj: obj["entities"]["e1"].update(current_raw="90"))
@@ -698,7 +721,7 @@ TESTS = [dryrun_profile_exempts_stage3_artifacts, only_findings_changed_is_rejec
          downstream_check_cli_exit3, amendments_chain_gap_rejected,
          workorder_reference_contracts, receipt_shape_and_fill_nulls,
          caption_raw_rounding_and_pure_series_errors, amend_rechecks_all_and_is_atomic,
-         facts_vs_ledgers_rejects_hand_edit, price_receipt_content_enforced]
+         facts_vs_ledgers_rejects_hand_edit, price_receipt_content_enforced, circulating_supply_producer_to_consumer]
 
 
 def main():
