@@ -467,7 +467,7 @@ PASS: four protected files byte-identical to baseline
 存量影响按 §1.4：缺 `producer/channels/value_type/count` 的旧 followup 或 producer SHA256 不匹配当前引擎的收据会被拒，须用当前引擎同时传 needs 与 trigger 两件输入重跑；首个 `--only-addrs` 决定收据落点：
 
 ```sh
-python3 -B scripts/evm/replay_duck.py --channels <通道清单> --only-addrs <产物目录>/needs_block_precision.json --only-addrs <产物目录>/trigger_days.json
+python3 -B scripts/evm/replay_duck.py --channels <通道清单> --out-dir <补算工作目录> --only-addrs <产物目录>/needs_block_precision.json --only-addrs <产物目录>/trigger_days.json
 ```
 
 该参数仅限制峰值聚合地址范围，仍执行全量通道校验、读取与去重；耗时和临时空间须按案量评估。案内无 summary/needs/followup 三件生成产物时仍按既有契约 return；仅有原始 `trigger_days.json` 不会触发峰值产物定位。工单 §4 残余保持由调度方登记，本次未扩展修复。

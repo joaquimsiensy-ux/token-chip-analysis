@@ -21,7 +21,7 @@
 - 1.1 文档三处字节不变：SKILL.md 8021、references 930061、commands-staging 8798（命令同工单 F06 §1.1）。
 - 1.2 `git diff --stat` 只含 0.3 白名单。
 - 1.3 "案内三件生成产物（summary/needs/followup）皆无"仍 return（不强制所有案跑 peaks_daily，与现行契约一致）；`trigger_days.json` **不作定位依据**（`peaks_daily.py:91` 接受任意路径的 `--trigger-days` 原始清单，同名文件可能在 `data/` 等目录）；"多个产物目录"拒；"有目录但缺 summary"拒。
-- 1.4 存量迁移代价（明示，属裁决已接受）：R09（7.2.0）前产出的 followup 收据缺 `producer`/`channels`/`value_type`/`count` → 本段起被拒，须用当前 `replay_duck.py --channels <通道清单> --only-addrs <产物目录>/needs_block_precision.json --only-addrs <产物目录>/trigger_days.json`（两件都传：义务＝needs 各档 ∪ 触发日活跃候选，闸 `:1175/:1199` 绑定 trigger 哈希；首个 `--only-addrs` 决定收据落点 `:411`）重跑补算——只限制峰值聚合的地址范围，但仍执行全量通道校验、读取与去重（`:653/:666` 先物化全部 `raw_rows`），耗时与临时空间按案量评估，不是"成本小"；`producer.sha256` 与仓库当前 `scripts/evm/replay_duck.py` 不符同样拒（升级引擎即重跑补算）。
+- 1.4 存量迁移代价（明示，属裁决已接受）：R09（7.2.0）前产出的 followup 收据缺 `producer`/`channels`/`value_type`/`count` → 本段起被拒，须用当前 `replay_duck.py --channels <通道清单> --out-dir <补算工作目录> --only-addrs <产物目录>/needs_block_precision.json --only-addrs <产物目录>/trigger_days.json`（两件都传：义务＝needs 各档 ∪ 触发日活跃候选，闸 `:1175/:1199` 绑定 trigger 哈希；首个 `--only-addrs` 决定收据落点 `:411`）重跑补算——只限制峰值聚合的地址范围，但仍执行全量通道校验、读取与去重（`:653/:666` 先物化全部 `raw_rows`），耗时与临时空间按案量评估，不是"成本小"；`producer.sha256` 与仓库当前 `scripts/evm/replay_duck.py` 不符同样拒（升级引擎即重跑补算）。
 
 ## 2. 逐条施工
 
