@@ -275,6 +275,11 @@ def validate_gate(gate_path, state_path=None, require_resolved=True):
                 else 'BIG_UNLABELED'
             if flag != required:
                 errors.append(f'{address} 无标签实体成员必须为 {required}')
+        # 与 producer（build，tier=exclude 的实体成员必出 INFRA_IN_ENTITY）对称：consumer 按
+        # 绑定标签重推必需 flag，不让 flag 字段自行清空来解除 resolution 义务。
+        if address in expected_entities and isinstance(label, dict) \
+                and label.get('tier') == 'exclude' and flag != 'INFRA_IN_ENTITY':
+            errors.append(f'{address} 公共设施标签（tier=exclude）实体成员必须为 INFRA_IN_ENTITY')
         if require_resolved and flag and not str(row.get('resolution', '')).strip():
             errors.append(f'{address} {flag} 无 resolution')
     missing = sorted(set(expected_entities) - {r.get('address') for r in rows if isinstance(r, dict)})

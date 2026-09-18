@@ -1,0 +1,110 @@
+# F06 RED evidence: unmodified production
+tested_file=scripts/report/entity_identity_gate.py
+tested_file_sha256=62eecf07ccb6ebffc096e493bbc33bdc6e596940e85d83b229ab184530dc1232
+[identity_gate] 1 址入闸，1 个 flag 待解决 → /var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/tmpz4ynh_k5/identity_gate.json
+  [BIG_UNLABELED] 0x1234567890abcdef1234567890abcdef12345678  entity=e1 share=100.0%
+[identity_gate][PASS] 1 址全部过闸
+F06 清空 flag 不得解除 INFRA 义务
+validate_gate_return=[]
+check_exit_code=0
+expected_check_exit_code=1
+case_result=RED
+[identity_gate][FAIL] 1 项严格校验错误：
+  - 0x1234567890abcdef1234567890abcdef12345678 INFRA_IN_ENTITY 无 resolution
+F06 INFRA 无 resolution 仍拒（既有行为回归）
+validate_gate_return=["0x1234567890abcdef1234567890abcdef12345678 INFRA_IN_ENTITY 无 resolution"]
+check_exit_code=1
+expected_check_exit_code=1
+case_result=GREEN
+[identity_gate][PASS] 1 址全部过闸
+F06 INFRA 带 resolution 放行
+validate_gate_return=[]
+check_exit_code=0
+expected_check_exit_code=0
+case_result=GREEN
+baseline_reproduction=CONFIRMED
+RED harness exit code=1
+
+# Inline reproduction source (python3 -B -c)
+import contextlib
+import hashlib
+import io
+import json
+import sys
+import tempfile
+from pathlib import Path
+
+sys.path.insert(0, str(Path("scripts/tests").resolve()))
+from test_entity_identity_gate import ADDR, dump, gate, write_binding
+
+production = Path("scripts/report/entity_identity_gate.py")
+evidence = Path("maintenance/repair-20260918-p0-f04-f07/F06_red_evidence.txt")
+output = io.StringIO()
+cases = [
+    ("f06_a.json", "", "", 0, 1, "F06 清空 flag 不得解除 INFRA 义务"),
+    ("f06_b.json", "INFRA_IN_ENTITY", "", 1, 1, "F06 INFRA 无 resolution 仍拒（既有行为回归）"),
+    ("f06_c.json", "INFRA_IN_ENTITY", "已核：DEX 池地址，已从实体成员剔除", 1, 0, "F06 INFRA 带 resolution 放行"),
+]
+results = []
+with contextlib.redirect_stdout(output), contextlib.redirect_stderr(output):
+    print("# F06 RED evidence: unmodified production")
+    print("tested_file=" + str(production))
+    print("tested_file_sha256=" + hashlib.sha256(production.read_bytes()).hexdigest())
+    with tempfile.TemporaryDirectory() as tmp:
+        state_path = Path(tmp) / "analysis-state.json"
+        state = {"chain": "bsc", "whale_groups": [
+            {"entity_id": "e1", "addresses": [ADDR]}]}
+        dump(state_path, state)
+        total, _ = write_binding(tmp, {ADDR: 100})
+        snapshot = Path(tmp) / "balances_final.json"
+        receipt = Path(tmp) / "identity_holders_receipt.json"
+        gate_path = Path(tmp) / "identity_gate.json"
+        built = gate.build(str(state_path), "bsc", str(snapshot), out_path=str(gate_path),
+                           total_supply_raw=total, snapshot_receipt_path=str(receipt))
+        for filename, flag, resolution, n_flags, expected, title in cases:
+            candidate = json.loads(json.dumps(built))
+            candidate["rows"][0]["label"] = {"name": "public-infra", "category": "dex", "tier": "exclude", "source": "test"}
+            candidate["rows"][0]["flag"] = flag
+            candidate["rows"][0]["resolution"] = resolution
+            candidate["n_flags"] = n_flags
+            path = Path(tmp) / filename
+            dump(path, candidate)
+            errors = gate.validate_gate(str(path))
+            actual = gate.check(str(path))
+            results.append((errors, actual))
+            print(title)
+            print("validate_gate_return=" + json.dumps(errors, ensure_ascii=False))
+            print("check_exit_code=" + str(actual))
+            print("expected_check_exit_code=" + str(expected))
+            print("case_result=" + ("GREEN" if actual == expected else "RED"))
+    reproduced = results[0] == ([], 0) and results[1][1] == 1 and results[2] == ([], 0)
+    print("baseline_reproduction=" + ("CONFIRMED" if reproduced else "UNEXPECTED"))
+    print("RED harness exit code=" + ("1" if reproduced else "2"))
+evidence.write_text(output.getvalue(), encoding="utf-8")
+print(output.getvalue(), end="")
+raise SystemExit(1 if reproduced else 2)
+
+# New test against unchanged production
+$ python3 -B scripts/tests/test_entity_identity_gate.py
+[identity_gate] 1 址入闸，1 个 flag 待解决 → /var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/tmpu9jtgcb_/identity_gate.json
+  [BIG_UNLABELED] 0x1234567890abcdef1234567890abcdef12345678  entity=e1 share=100.0%
+[identity_gate][PASS] 1 址全部过闸
+[identity_gate][FAIL] 4 项严格校验错误：
+  - schema 必须为 identity_gate_v3
+  - 0x1234567890abcdef1234567890abcdef12345678 无标签实体成员必须为 BIG_UNLABELED
+  - n_addresses 应为 1，实为 999
+  - n_flags 应为 0，实为 999
+[identity_gate][FAIL] 1 项严格校验错误：
+  - 地址重复: 0x1234567890abcdef1234567890abcdef12345678
+[identity_gate][FAIL] 1 项严格校验错误：
+  - 0x1234567890abcdef1234567890abcdef12345678 entity 与 state 不一致
+[identity_gate][PASS] 1 址全部过闸
+Traceback (most recent call last):
+  File "/Users/uravvv/.claude/skills/token-chip-analysis/scripts/tests/test_entity_identity_gate.py", line 99, in <module>
+    sys.exit(main())
+             ~~~~^^
+  File "/Users/uravvv/.claude/skills/token-chip-analysis/scripts/tests/test_entity_identity_gate.py", line 74, in main
+    assert gate.check(str(f06_a_path)) != 0, "F06 清空 flag 不得解除 INFRA 义务"
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: F06 清空 flag 不得解除 INFRA 义务
+process_exit_code=1

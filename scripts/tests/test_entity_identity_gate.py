@@ -64,7 +64,34 @@ def main():
         dump(mismatch_path, mismatch)
         assert gate.check(str(mismatch_path)) != 0, "逐行实体必须与 state 一致"
 
-    print("PASS: P1-01 无标签实体成员 + 严格 identity gate schema/计数/唯一性/实体绑定")
+        f06_a = json.loads(json.dumps(built))
+        f06_a["rows"][0]["label"] = {"name": "public-infra", "category": "dex", "tier": "exclude", "source": "test"}
+        f06_a["rows"][0]["flag"] = ""
+        f06_a["rows"][0]["resolution"] = ""
+        f06_a["n_flags"] = 0
+        f06_a_path = Path(tmp) / "f06_a.json"
+        dump(f06_a_path, f06_a)
+        assert gate.check(str(f06_a_path)) != 0, "F06 清空 flag 不得解除 INFRA 义务"
+
+        f06_b = json.loads(json.dumps(built))
+        f06_b["rows"][0]["label"] = {"name": "public-infra", "category": "dex", "tier": "exclude", "source": "test"}
+        f06_b["rows"][0]["flag"] = "INFRA_IN_ENTITY"
+        f06_b["rows"][0]["resolution"] = ""
+        f06_b["n_flags"] = 1
+        f06_b_path = Path(tmp) / "f06_b.json"
+        dump(f06_b_path, f06_b)
+        assert gate.check(str(f06_b_path)) != 0, "F06 INFRA 无 resolution 仍拒（既有行为回归）"
+
+        f06_c = json.loads(json.dumps(built))
+        f06_c["rows"][0]["label"] = {"name": "public-infra", "category": "dex", "tier": "exclude", "source": "test"}
+        f06_c["rows"][0]["flag"] = "INFRA_IN_ENTITY"
+        f06_c["rows"][0]["resolution"] = "已核：DEX 池地址，已从实体成员剔除"
+        f06_c["n_flags"] = 1
+        f06_c_path = Path(tmp) / "f06_c.json"
+        dump(f06_c_path, f06_c)
+        assert gate.check(str(f06_c_path)) == 0, "F06 INFRA 带 resolution 放行"
+
+    print("PASS: P1-01 无标签实体成员 + 严格 identity gate schema/计数/唯一性/实体绑定/F06 exclude 标签重推 INFRA")
     return 0
 
 
