@@ -168,14 +168,13 @@ def workorder_error(field, expected, actual):
 def fig2_selection_errors(facts, fig2):
     errors, notes = [], []
     entities = facts["entities"]
-    required = set()
     for entity_id, entity in entities.items():
         label = entity.get("label")
         if not isinstance(label, str) or not label.strip():
             errors.append(workorder_error(f"facts.entities.{entity_id}.label",
                                          f"实体 {entity_id} 无标签，无法判定必画", label))
-        elif label.strip().startswith(("项目方", "大庄", "小庄", "离场庄")):
-            required.add(entity_id)
+    import figures_from_facts
+    required = figures_from_facts.fig2_required_entity_ids(entities)
     lines = fig2.get("lines")
     declared = fig2.get("required_entity_ids")
     if not isinstance(lines, list) or not lines:

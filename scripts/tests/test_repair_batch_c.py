@@ -1581,6 +1581,103 @@ def _f04_case_4():
               and not any("重算" in x for x in errs), str(errs))
 
 
+def _g1_case_1():
+    fff = ROOT / "scripts/report/figures_from_facts.py"
+    import audit_release_gate as gate
+    with tempfile.TemporaryDirectory() as s:
+        td = Path(s)
+        facts = write_json(td / "facts.json",
+            {"token": {"symbol": "TT", "decimals": 0, "total_supply_raw": "1000"},
+             "entities": {"e1": {"label": "大庄#1", "addresses": [A],
+                                 "current_raw": "278", "peak_raw": "300"}}})
+        ws = write_json(td / "ws.json", [])
+        p = run([fff, "check", "--facts", "facts.json", "--series", "ws.json"], td)
+        prod_rc, prod_out = p.returncode, p.stdout
+        rcpt = {
+            "schema": "figure2-check-receipt/v1", "mode": "formal",
+            "tol_pp": 0.05, "verdict": "PASS",
+            "facts": {"path": "facts.json", "sha256": hashlib.sha256(facts.read_bytes()).hexdigest()},
+            "series": {"path": "ws.json", "sha256": hashlib.sha256(ws.read_bytes()).hexdigest()},
+        }
+        errs = []
+        gate.check_figure2_receipt(td, rcpt, errs)
+        check("G1 空 series producer 拒", prod_rc != 0 and "缺必画实体线" in prod_out, prod_out)
+        check("G1 空 series 消费者拒", any("缺必画实体线" in x for x in errs), str(errs))
+
+
+def _g1_case_2():
+    fff = ROOT / "scripts/report/figures_from_facts.py"
+    with tempfile.TemporaryDirectory() as s:
+        td = Path(s)
+        write_json(td / "facts.json",
+            {"token": {"symbol": "TT", "decimals": 0, "total_supply_raw": "1000"},
+             "entities": {"e1": {"label": "大庄#1", "addresses": [A],
+                                 "current_raw": "278", "peak_raw": "300"}}})
+        write_json(td / "ws.json",
+            [{"entity_id": "e1", "ts": ["2026-01-01"], "pct": [27.8]}] * 2)
+        p = run([fff, "check", "--facts", "facts.json", "--series", "ws.json"], td)
+        check("G1 重复线拒", p.returncode != 0 and "重复出现" in p.stdout,
+              f"rc={p.returncode}\n{p.stdout}{p.stderr}")
+
+
+def _g1_case_3():
+    fff = ROOT / "scripts/report/figures_from_facts.py"
+    import audit_release_gate as gate
+    with tempfile.TemporaryDirectory() as s:
+        td = Path(s)
+        write_json(td / "facts.json",
+            {"token": {"symbol": "TT", "decimals": 0, "total_supply_raw": "1000"},
+             "entities": {"e1": {"label": "观察实体", "addresses": [A],
+                                 "current_raw": "278", "peak_raw": "300"}}})
+        write_json(td / "ws.json", [])
+        p = run([fff, "check", "--facts", "facts.json", "--series", "ws.json"], td)
+        rcpt = json.loads((td / "figure2_check_receipt.json").read_text())
+        errs = []
+        gate.check_figure2_receipt(td, rcpt, errs)
+        check("G1 非必画实体空 series producer 放行", p.returncode == 0,
+              f"rc={p.returncode}\n{p.stdout}{p.stderr}")
+        check("G1 非必画实体空 series 收据 PASS", rcpt.get("verdict") == "PASS", str(rcpt))
+        check("G1 非必画实体空 series 消费者放行", errs == [], str(errs))
+
+
+def _g1_case_4():
+    fff = ROOT / "scripts/report/figures_from_facts.py"
+    import audit_release_gate as gate
+    with tempfile.TemporaryDirectory() as s:
+        td = Path(s)
+        facts = write_json(td / "facts.json",
+            {"token": {"symbol": "TT", "decimals": 0, "total_supply_raw": "1000"},
+             "entities": {"e1": {"label": "大庄#1", "addresses": [A],
+                                 "current_raw": "278", "peak_raw": "300"},
+                          "e2": {"label": "小庄#2", "addresses": [B],
+                                 "current_raw": "100", "peak_raw": "100"}}})
+        lines = [{"entity_id": "e1", "ts": ["2026-01-01"], "pct": [27.8]}]
+        ws = write_json(td / "ws.json", lines)
+        p = run([fff, "check", "--facts", "facts.json", "--series", "ws.json"], td)
+        prod_rc, prod_out = p.returncode, p.stdout
+        rcpt = {
+            "schema": "figure2-check-receipt/v1", "mode": "formal",
+            "tol_pp": 0.05, "verdict": "PASS",
+            "facts": {"path": "facts.json", "sha256": hashlib.sha256(facts.read_bytes()).hexdigest()},
+            "series": {"path": "ws.json", "sha256": hashlib.sha256(ws.read_bytes()).hexdigest()},
+        }
+        errs = []
+        gate.check_figure2_receipt(td, rcpt, errs)
+        lines.append({"entity_id": "e2", "ts": ["2026-01-01"], "pct": [10.0]})
+        write_json(ws, lines)
+        complete = run([fff, "check", "--facts", "facts.json", "--series", "ws.json"], td)
+        complete_rcpt = json.loads((td / "figure2_check_receipt.json").read_text())
+        complete_errs = []
+        gate.check_figure2_receipt(td, complete_rcpt, complete_errs)
+        check("G1 非空 series 漏必画实体 producer 拒",
+              prod_rc != 0 and "缺必画实体线 ['e2']" in prod_out, prod_out)
+        check("G1 非空 series 漏必画实体消费者拒",
+              any("缺必画实体线 ['e2']" in x for x in errs), str(errs))
+        check("G1 补齐必画实体 producer 放行", complete.returncode == 0,
+              f"rc={complete.returncode}\n{complete.stdout}{complete.stderr}")
+        check("G1 补齐必画实体消费者放行", complete_errs == [], str(complete_errs))
+
+
 def t_r08_nonfinite():
     _r08_case_1()
     _r08_case_2()
@@ -1599,6 +1696,10 @@ def t_r08_nonfinite():
     _f04_case_2()
     _f04_case_3()
     _f04_case_4()
+    _g1_case_1()
+    _g1_case_2()
+    _g1_case_3()
+    _g1_case_4()
 
 
 def t_f04_tolpp_clamp():

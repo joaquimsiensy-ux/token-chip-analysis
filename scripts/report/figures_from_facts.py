@@ -27,6 +27,7 @@
          python3 figures_from_facts.py check --facts facts.json \
              --series charts/whale_series.json [--tol-pp 0.05]
          series 条目带 entity_id 的按 id 对 facts 实体；否则按 label 匹配。
+         必画下限：label 以 项目方/大庄/小庄/离场庄 起头的实体须各有一条线，缺线/重复线/空 series 拒。
          图 2 的时间序列本身无法从快照型 state 重建（需重放中间序列），故此处
          做终值对账而非生成——序列中间值的正确性仍由重放脚本+对账关卡负责。
 
@@ -58,6 +59,15 @@ import standard_charts as charts  # noqa: E402
 
 FIG1_LEGEND_RECEIPT_NAME = "fig1_legend_receipt.json"
 FIG1_LEGEND_RECEIPT_SCHEMA = "figure1-legend/v1"
+FIG2_REQUIRED_LABEL_PREFIXES = ("项目方", "大庄", "小庄", "离场庄")
+
+
+def fig2_required_entity_ids(entities) -> set:
+    """图 2 必画下限：facts.entities 中 label 以 项目方/大庄/小庄/离场庄 起头的实体
+    （与 stage2_closeout 工单选材同一规则；刷量地址/观察实体不在下限内）。"""
+    return {str(eid) for eid, ent in (entities or {}).items()
+            if isinstance(ent, dict)
+            and str(ent.get("label") or "").strip().startswith(FIG2_REQUIRED_LABEL_PREFIXES)}
 
 
 def _reject_constant(token):
@@ -304,7 +314,7 @@ def fig2_check_errors(facts_path: Path, series_path: Path, tol_pp: float) -> tup
         return ["--series 应为图 2 whale_series JSON（list of lines）"], 0
     by_label = {(e.get("label") or "").strip(): (eid, e)
                 for eid, e in facts.entities.items()}
-    errs, okc = [], 0
+    errs, okc, seen = [], 0, set()
     for line in series:
         eid = (line.get("entity_id") or "").strip()
         lbl = (line.get("label") or "").strip()
@@ -317,6 +327,10 @@ def fig2_check_errors(facts_path: Path, series_path: Path, tol_pp: float) -> tup
             errs.append(f"线「{lbl or eid}」在 facts.entities 中无匹配"
                         "（加 entity_id 字段或对齐 label）")
             continue
+        if eid in seen:
+            errs.append(f"{key} 线重复出现（同一实体只能一条线）")
+            continue
+        seen.add(eid)
         pct = line.get("pct") or []
         if not pct:
             errs.append(f"{key} 线无 pct 数据")
@@ -334,6 +348,11 @@ def fig2_check_errors(facts_path: Path, series_path: Path, tol_pp: float) -> tup
                         f"（差 {abs(last-want):.4f}pp > 容差 {tol_pp}pp）")
         else:
             okc += 1
+    missing = sorted(fig2_required_entity_ids(facts.entities) - seen)
+    if missing:
+        errs.append(f"图 2 缺必画实体线 {missing}（label 以 "
+                    f"{'/'.join(FIG2_REQUIRED_LABEL_PREFIXES)} 起头的实体必须各有一条线；"
+                    "空 series 不得放行）")
     return errs, okc
 
 

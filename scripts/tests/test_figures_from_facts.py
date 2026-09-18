@@ -180,6 +180,15 @@ def main():
                   open(ser_p, "w"))
         r = run(["check", "--facts", fp, "--series", ser_p])
         assert r.returncode != 0 and "不同源" in r.stdout, f"偏 0.5pp 应挂: {r.stdout}"
+        # 4b) G1：facts 有必画实体（大庄#1）而 series 为空 → FAIL（不得 PASS 0 条）
+        json.dump([], open(ser_p, "w"))
+        r = run(["check", "--facts", fp, "--series", ser_p])
+        assert r.returncode != 0 and "缺必画实体线" in r.stdout, f"空 series 应挂: {r.stdout}"
+        # 4c) G1：同一实体两条线 → FAIL
+        json.dump([{"entity_id": "e1", "ts": ["2026-01-03"], "pct": [27.84]}] * 2,
+                  open(ser_p, "w"))
+        r = run(["check", "--facts", fp, "--series", ser_p])
+        assert r.returncode != 0 and "重复出现" in r.stdout, f"重复线应挂: {r.stdout}"
 
         # 5) fig1 --overlay 合并口径线（v3.33）：正常出图 + 两条 fail-closed
         out5 = os.path.join(td, "fig1_ov.png")

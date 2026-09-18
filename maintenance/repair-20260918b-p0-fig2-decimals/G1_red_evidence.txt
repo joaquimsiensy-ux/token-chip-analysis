@@ -1,0 +1,392 @@
+G1 workorder v2: pre-production RED evidence
+Command: PYTHONDONTWRITEBYTECODE=1 python3 -B - <<'PY'
+import sys
+
+import ast
+import hashlib
+import importlib.util
+import json
+import os
+import shlex
+import subprocess
+import tempfile
+from datetime import datetime, timezone
+from pathlib import Path
+from unittest.mock import patch
+
+root = Path.cwd()
+print('Recorded at:', datetime.now(timezone.utc).isoformat())
+print('HEAD:', subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip())
+production = ['scripts/report/figures_from_facts.py', 'scripts/report/stage2_closeout.py']
+for name in production:
+    assert (root / name).read_bytes() == subprocess.check_output(['git', 'show', 'HEAD:' + name]), name
+print('Both production files are byte-identical to HEAD before RED execution.')
+for name in production + ['scripts/report/audit_release_gate.py', 'scripts/report/facts_gate.py',
+                         'scripts/tests/test_figures_from_facts.py', 'scripts/tests/test_repair_batch_c.py']:
+    print('SHA256', name, hashlib.sha256((root / name).read_bytes()).hexdigest())
+
+def load_module(name, path):
+    spec = importlib.util.spec_from_file_location(name, path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+def trace_run(fn, cmd, cwd, *args, **kwargs):
+    print('COMMAND:', shlex.join([sys.executable] + [str(x) for x in cmd]))
+    print('CWD:', cwd)
+    for flag in ('--facts', '--series'):
+        if flag in cmd:
+            path = Path(cmd[cmd.index(flag) + 1])
+            if not path.is_absolute():
+                path = Path(cwd) / path
+            print('INPUT SHA256', path.name, hashlib.sha256(path.read_bytes()).hexdigest())
+    p = fn(*args, **kwargs)
+    print('RETURN CODE:', p.returncode)
+    print('STDOUT BEGIN\n' + p.stdout + 'STDOUT END')
+    print('STDERR BEGIN\n' + p.stderr + 'STDERR END')
+    return p
+
+statuses = []
+fig_path = root / 'scripts/tests/test_figures_from_facts.py'
+fig = load_module('g1_figures_red', fig_path)
+tree = ast.parse(fig_path.read_text(), filename=str(fig_path))
+main = next(node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == 'main')
+body = main.body[0].body
+fig_run = fig.run
+for marker in ('空 series 应挂', '重复线应挂'):
+    index = next(i for i, node in enumerate(body)
+                 if isinstance(node, ast.Assert) and marker in ast.unparse(node.msg))
+    section = ast.Module(body=body[index - 2:index + 1], type_ignores=[])
+    with tempfile.TemporaryDirectory(prefix='g1-red-fig-') as raw:
+        fp = str(Path(raw) / 'facts.json')
+        ser_p = str(Path(raw) / 'ws.json')
+        Path(fp).write_text(json.dumps(fig.FACTS))
+        def traced_fig_run(args):
+            return trace_run(lambda: fig_run(args), [fig.FFF] + args, os.getcwd())
+        namespace = dict(vars(fig), fp=fp, ser_p=ser_p, run=traced_fig_run)
+        print('\nCASE: §2.4', marker, '(exact inserted AST statements)')
+        try:
+            exec(compile(section, str(fig_path), 'exec'), namespace)
+        except AssertionError as exc:
+            print('RED AssertionError:', str(exc))
+            statuses.append(('RED', marker))
+        else:
+            print('GREEN baseline:', marker)
+            statuses.append(('GREEN', marker))
+
+batch = load_module('g1_batch_c_red', root / 'scripts/tests/test_repair_batch_c.py')
+import audit_release_gate as gate
+original_run = batch.run
+original_check = batch.check
+original_gate = gate.check_figure2_receipt
+
+def traced_batch_run(cmd, cwd, env=None):
+    return trace_run(lambda: original_run(cmd, cwd, env), cmd, cwd)
+
+def independent_check(name, cond, detail=''):
+    try:
+        original_check(name, cond, detail)
+    except AssertionError as exc:
+        print('RED AssertionError:', str(exc))
+        statuses.append(('RED', name))
+    else:
+        print('GREEN baseline:', name, 'detail=', detail)
+        statuses.append(('GREEN', name))
+
+def traced_gate(case, rcpt, errs):
+    print('CALL: audit_release_gate.check_figure2_receipt(case, rcpt, errs)')
+    print('RECEIPT:', json.dumps(rcpt, ensure_ascii=False, sort_keys=True))
+    result = original_gate(case, rcpt, errs)
+    print('CONSUMER ERRS:', repr(errs))
+    return result
+
+with patch.object(batch, 'run', traced_batch_run), patch.object(batch, 'check', independent_check), \
+        patch.object(gate, 'check_figure2_receipt', traced_gate):
+    for i in (1, 2, 3, 4):
+        print('\nCALL: test_repair_batch_c._g1_case_' + str(i) + '()')
+        getattr(batch, '_g1_case_' + str(i))()
+
+for name in production:
+    assert (root / name).read_bytes() == subprocess.check_output(['git', 'show', 'HEAD:' + name]), name
+red_count = sum(status == 'RED' for status, name in statuses)
+green_count = sum(status == 'GREEN' for status, name in statuses)
+print('\nSUMMARY:', json.dumps(statuses, ensure_ascii=False))
+print(f'RED={red_count}; GREEN baseline (expected GREEN→GREEN)={green_count}')
+assert red_count == 7 and green_count == 5, statuses
+print('Evidence capture PASS; all seven expected regression assertions fail on unchanged production.')
+
+PY
+
+=== Actual execution output ===
+Recorded at: 2026-09-18T10:34:16.401518+00:00
+HEAD: 40c090a0cf4fc8f35f11d34302bc2efc3dcda0f3
+Both production files are byte-identical to HEAD before RED execution.
+SHA256 scripts/report/figures_from_facts.py 557c7099ccec38615771da8fd64facd83deab93928dda0aa2e6c9e6b6a28a9e0
+SHA256 scripts/report/stage2_closeout.py d765356dfacc688f9ebda216fd68f1c8afb4c62bc466a86c4d5849bb7b989e5e
+SHA256 scripts/report/audit_release_gate.py a3fca7bba3cb4d4cddea59392e16b8478407f5bc5ae4d4e91459569eca8b0f03
+SHA256 scripts/report/facts_gate.py f898ac87986351946e66d7bd6c198313dbb76a0c70dc51b9ab441e7f38fb9dac
+SHA256 scripts/tests/test_figures_from_facts.py df446223bcefc91e72190c94faf01f7dfdc8a50407234f30bc8e8965170fc46e
+SHA256 scripts/tests/test_repair_batch_c.py 190787cf6dde29692734eb0bf64f575a9cc03b11402c94ad3a06ef585fd26ead
+
+Harness attempt 1 exit=1 before running cases: AttributeError: 'NoneType' object has no attribute '_fields'; ast.unparse was called on an Assert without msg. This is not a product RED.
+Harness-only correction: add node.msg is not None to AST assertion selection. Production and tests unchanged.
+Corrected command: PYTHONDONTWRITEBYTECODE=1 python3 -B - <<'PY'
+import sys
+
+import ast
+import hashlib
+import importlib.util
+import json
+import os
+import shlex
+import subprocess
+import tempfile
+from datetime import datetime, timezone
+from pathlib import Path
+from unittest.mock import patch
+
+root = Path.cwd()
+print('Recorded at:', datetime.now(timezone.utc).isoformat())
+print('HEAD:', subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip())
+production = ['scripts/report/figures_from_facts.py', 'scripts/report/stage2_closeout.py']
+for name in production:
+    assert (root / name).read_bytes() == subprocess.check_output(['git', 'show', 'HEAD:' + name]), name
+print('Both production files are byte-identical to HEAD before RED execution.')
+for name in production + ['scripts/report/audit_release_gate.py', 'scripts/report/facts_gate.py',
+                         'scripts/tests/test_figures_from_facts.py', 'scripts/tests/test_repair_batch_c.py']:
+    print('SHA256', name, hashlib.sha256((root / name).read_bytes()).hexdigest())
+
+def load_module(name, path):
+    spec = importlib.util.spec_from_file_location(name, path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+def trace_run(fn, cmd, cwd, *args, **kwargs):
+    print('COMMAND:', shlex.join([sys.executable] + [str(x) for x in cmd]))
+    print('CWD:', cwd)
+    for flag in ('--facts', '--series'):
+        if flag in cmd:
+            path = Path(cmd[cmd.index(flag) + 1])
+            if not path.is_absolute():
+                path = Path(cwd) / path
+            print('INPUT SHA256', path.name, hashlib.sha256(path.read_bytes()).hexdigest())
+    p = fn(*args, **kwargs)
+    print('RETURN CODE:', p.returncode)
+    print('STDOUT BEGIN\n' + p.stdout + 'STDOUT END')
+    print('STDERR BEGIN\n' + p.stderr + 'STDERR END')
+    return p
+
+statuses = []
+fig_path = root / 'scripts/tests/test_figures_from_facts.py'
+fig = load_module('g1_figures_red', fig_path)
+tree = ast.parse(fig_path.read_text(), filename=str(fig_path))
+main = next(node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == 'main')
+body = main.body[0].body
+fig_run = fig.run
+for marker in ('空 series 应挂', '重复线应挂'):
+    index = next(i for i, node in enumerate(body)
+                 if isinstance(node, ast.Assert) and node.msg is not None and marker in ast.unparse(node.msg))
+    section = ast.Module(body=body[index - 2:index + 1], type_ignores=[])
+    with tempfile.TemporaryDirectory(prefix='g1-red-fig-') as raw:
+        fp = str(Path(raw) / 'facts.json')
+        ser_p = str(Path(raw) / 'ws.json')
+        Path(fp).write_text(json.dumps(fig.FACTS))
+        def traced_fig_run(args):
+            return trace_run(lambda: fig_run(args), [fig.FFF] + args, os.getcwd())
+        namespace = dict(vars(fig), fp=fp, ser_p=ser_p, run=traced_fig_run)
+        print('\nCASE: §2.4', marker, '(exact inserted AST statements)')
+        try:
+            exec(compile(section, str(fig_path), 'exec'), namespace)
+        except AssertionError as exc:
+            print('RED AssertionError:', str(exc))
+            statuses.append(('RED', marker))
+        else:
+            print('GREEN baseline:', marker)
+            statuses.append(('GREEN', marker))
+
+batch = load_module('g1_batch_c_red', root / 'scripts/tests/test_repair_batch_c.py')
+import audit_release_gate as gate
+original_run = batch.run
+original_check = batch.check
+original_gate = gate.check_figure2_receipt
+
+def traced_batch_run(cmd, cwd, env=None):
+    return trace_run(lambda: original_run(cmd, cwd, env), cmd, cwd)
+
+def independent_check(name, cond, detail=''):
+    try:
+        original_check(name, cond, detail)
+    except AssertionError as exc:
+        print('RED AssertionError:', str(exc))
+        statuses.append(('RED', name))
+    else:
+        print('GREEN baseline:', name, 'detail=', detail)
+        statuses.append(('GREEN', name))
+
+def traced_gate(case, rcpt, errs):
+    print('CALL: audit_release_gate.check_figure2_receipt(case, rcpt, errs)')
+    print('RECEIPT:', json.dumps(rcpt, ensure_ascii=False, sort_keys=True))
+    result = original_gate(case, rcpt, errs)
+    print('CONSUMER ERRS:', repr(errs))
+    return result
+
+with patch.object(batch, 'run', traced_batch_run), patch.object(batch, 'check', independent_check), \
+        patch.object(gate, 'check_figure2_receipt', traced_gate):
+    for i in (1, 2, 3, 4):
+        print('\nCALL: test_repair_batch_c._g1_case_' + str(i) + '()')
+        getattr(batch, '_g1_case_' + str(i))()
+
+for name in production:
+    assert (root / name).read_bytes() == subprocess.check_output(['git', 'show', 'HEAD:' + name]), name
+red_count = sum(status == 'RED' for status, name in statuses)
+green_count = sum(status == 'GREEN' for status, name in statuses)
+print('\nSUMMARY:', json.dumps(statuses, ensure_ascii=False))
+print(f'RED={red_count}; GREEN baseline (expected GREEN→GREEN)={green_count}')
+assert red_count == 7 and green_count == 5, statuses
+print('Evidence capture PASS; all seven expected regression assertions fail on unchanged production.')
+
+PY
+
+=== Corrected actual execution output ===
+Recorded at: 2026-09-18T10:34:29.565962+00:00
+HEAD: 40c090a0cf4fc8f35f11d34302bc2efc3dcda0f3
+Both production files are byte-identical to HEAD before RED execution.
+SHA256 scripts/report/figures_from_facts.py 557c7099ccec38615771da8fd64facd83deab93928dda0aa2e6c9e6b6a28a9e0
+SHA256 scripts/report/stage2_closeout.py d765356dfacc688f9ebda216fd68f1c8afb4c62bc466a86c4d5849bb7b989e5e
+SHA256 scripts/report/audit_release_gate.py a3fca7bba3cb4d4cddea59392e16b8478407f5bc5ae4d4e91459569eca8b0f03
+SHA256 scripts/report/facts_gate.py f898ac87986351946e66d7bd6c198313dbb76a0c70dc51b9ab441e7f38fb9dac
+SHA256 scripts/tests/test_figures_from_facts.py df446223bcefc91e72190c94faf01f7dfdc8a50407234f30bc8e8965170fc46e
+SHA256 scripts/tests/test_repair_batch_c.py 190787cf6dde29692734eb0bf64f575a9cc03b11402c94ad3a06ef585fd26ead
+
+CASE: §2.4 空 series 应挂 (exact inserted AST statements)
+COMMAND: /usr/local/bin/python3 /Users/uravvv/.claude/skills/token-chip-analysis/scripts/tests/../report/figures_from_facts.py check --facts /var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/g1-red-fig-nzamywhm/facts.json --series /var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/g1-red-fig-nzamywhm/ws.json
+CWD: /Users/uravvv/.claude/skills/token-chip-analysis
+INPUT SHA256 facts.json db84e022248c42094728fb90f2d4919d5ea7e6f415b9272fd9e76ff24746dfa4
+INPUT SHA256 ws.json 4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945
+RETURN CODE: 0
+STDOUT BEGIN
+PASS: 图 2 全部 0 条实体线末点与 facts 当前持仓同源（容差 0.05pp，收据 figure2_check_receipt.json）
+STDOUT END
+STDERR BEGIN
+/Users/uravvv/.matplotlib is not a writable directory
+Matplotlib created a temporary cache directory at /var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/matplotlib-frmypraz because there was an issue with the default path ({configdir}); it is highly recommended to set the MPLCONFIGDIR environment variable to a writable directory, in particular to speed up the import of Matplotlib and to better support multiprocessing.
+Matplotlib is building the font cache; this may take a moment.
+STDERR END
+RED AssertionError: 空 series 应挂: PASS: 图 2 全部 0 条实体线末点与 facts 当前持仓同源（容差 0.05pp，收据 figure2_check_receipt.json）
+
+
+CASE: §2.4 重复线应挂 (exact inserted AST statements)
+COMMAND: /usr/local/bin/python3 /Users/uravvv/.claude/skills/token-chip-analysis/scripts/tests/../report/figures_from_facts.py check --facts /var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/g1-red-fig-0mnypz_q/facts.json --series /var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/g1-red-fig-0mnypz_q/ws.json
+CWD: /Users/uravvv/.claude/skills/token-chip-analysis
+INPUT SHA256 facts.json db84e022248c42094728fb90f2d4919d5ea7e6f415b9272fd9e76ff24746dfa4
+INPUT SHA256 ws.json 29e22224b28687081bb5fe808e77f3ef2401a0286ec1c95958bd9efa4c0efcc6
+RETURN CODE: 0
+STDOUT BEGIN
+PASS: 图 2 全部 2 条实体线末点与 facts 当前持仓同源（容差 0.05pp，收据 figure2_check_receipt.json）
+STDOUT END
+STDERR BEGIN
+/Users/uravvv/.matplotlib is not a writable directory
+Matplotlib created a temporary cache directory at /var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/matplotlib-r0k6c6qh because there was an issue with the default path ({configdir}); it is highly recommended to set the MPLCONFIGDIR environment variable to a writable directory, in particular to speed up the import of Matplotlib and to better support multiprocessing.
+Matplotlib is building the font cache; this may take a moment.
+STDERR END
+RED AssertionError: 重复线应挂: PASS: 图 2 全部 2 条实体线末点与 facts 当前持仓同源（容差 0.05pp，收据 figure2_check_receipt.json）
+
+
+CALL: test_repair_batch_c._g1_case_1()
+COMMAND: /usr/local/bin/python3 /Users/uravvv/.claude/skills/token-chip-analysis/scripts/report/figures_from_facts.py check --facts facts.json --series ws.json
+CWD: /var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/tmpbq_4kgmv
+INPUT SHA256 facts.json e8afe16089138dd0716c6b736522ec870ccb9e8eba6fd517350366ceac7e2457
+INPUT SHA256 ws.json 37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570
+RETURN CODE: 0
+STDOUT BEGIN
+PASS: 图 2 全部 0 条实体线末点与 facts 当前持仓同源（容差 0.05pp，收据 figure2_check_receipt.json）
+STDOUT END
+STDERR BEGIN
+/Users/uravvv/.matplotlib is not a writable directory
+Matplotlib created a temporary cache directory at /var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/matplotlib-n1_5cxxh because there was an issue with the default path ({configdir}); it is highly recommended to set the MPLCONFIGDIR environment variable to a writable directory, in particular to speed up the import of Matplotlib and to better support multiprocessing.
+Matplotlib is building the font cache; this may take a moment.
+STDERR END
+CALL: audit_release_gate.check_figure2_receipt(case, rcpt, errs)
+RECEIPT: {"facts": {"path": "facts.json", "sha256": "e8afe16089138dd0716c6b736522ec870ccb9e8eba6fd517350366ceac7e2457"}, "mode": "formal", "schema": "figure2-check-receipt/v1", "series": {"path": "ws.json", "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"}, "tol_pp": 0.05, "verdict": "PASS"}
+/Users/uravvv/.matplotlib is not a writable directory
+Matplotlib created a temporary cache directory at /var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/matplotlib-xzdxvdez because there was an issue with the default path ({configdir}); it is highly recommended to set the MPLCONFIGDIR environment variable to a writable directory, in particular to speed up the import of Matplotlib and to better support multiprocessing.
+Matplotlib is building the font cache; this may take a moment.
+CONSUMER ERRS: []
+RED AssertionError: G1 空 series producer 拒: PASS: 图 2 全部 0 条实体线末点与 facts 当前持仓同源（容差 0.05pp，收据 figure2_check_receipt.json）
+
+RED AssertionError: G1 空 series 消费者拒: []
+
+CALL: test_repair_batch_c._g1_case_2()
+COMMAND: /usr/local/bin/python3 /Users/uravvv/.claude/skills/token-chip-analysis/scripts/report/figures_from_facts.py check --facts facts.json --series ws.json
+CWD: /var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/tmpjaf_xuxf
+INPUT SHA256 facts.json e8afe16089138dd0716c6b736522ec870ccb9e8eba6fd517350366ceac7e2457
+INPUT SHA256 ws.json 4d52c690fd56c7d2874d399ce689e8ee27d07e7127fd678c5de1b56cfcb1a817
+RETURN CODE: 0
+STDOUT BEGIN
+PASS: 图 2 全部 2 条实体线末点与 facts 当前持仓同源（容差 0.05pp，收据 figure2_check_receipt.json）
+STDOUT END
+STDERR BEGIN
+STDERR END
+RED AssertionError: G1 重复线拒: rc=0
+PASS: 图 2 全部 2 条实体线末点与 facts 当前持仓同源（容差 0.05pp，收据 figure2_check_receipt.json）
+
+
+CALL: test_repair_batch_c._g1_case_3()
+COMMAND: /usr/local/bin/python3 /Users/uravvv/.claude/skills/token-chip-analysis/scripts/report/figures_from_facts.py check --facts facts.json --series ws.json
+CWD: /var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/tmpeom1mrpp
+INPUT SHA256 facts.json 20f8ec77a4c7874f79ae6142d569d640df681b581d9b9552c710cdc70a0457e4
+INPUT SHA256 ws.json 37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570
+RETURN CODE: 0
+STDOUT BEGIN
+PASS: 图 2 全部 0 条实体线末点与 facts 当前持仓同源（容差 0.05pp，收据 figure2_check_receipt.json）
+STDOUT END
+STDERR BEGIN
+STDERR END
+CALL: audit_release_gate.check_figure2_receipt(case, rcpt, errs)
+RECEIPT: {"facts": {"path": "facts.json", "sha256": "20f8ec77a4c7874f79ae6142d569d640df681b581d9b9552c710cdc70a0457e4", "size": 296}, "generated_at_utc": "2026-09-18T10:35:18Z", "lines_checked": 0, "mismatches": [], "mode": "formal", "schema": "figure2-check-receipt/v1", "series": {"path": "ws.json", "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570", "size": 3}, "tol_pp": 0.05, "verdict": "PASS"}
+CONSUMER ERRS: []
+GREEN baseline: G1 非必画实体空 series producer 放行 detail= rc=0
+PASS: 图 2 全部 0 条实体线末点与 facts 当前持仓同源（容差 0.05pp，收据 figure2_check_receipt.json）
+
+GREEN baseline: G1 非必画实体空 series 收据 PASS detail= {'schema': 'figure2-check-receipt/v1', 'mode': 'formal', 'tol_pp': 0.05, 'verdict': 'PASS', 'facts': {'path': 'facts.json', 'sha256': '20f8ec77a4c7874f79ae6142d569d640df681b581d9b9552c710cdc70a0457e4', 'size': 296}, 'series': {'path': 'ws.json', 'sha256': '37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570', 'size': 3}, 'lines_checked': 0, 'mismatches': [], 'generated_at_utc': '2026-09-18T10:35:18Z'}
+GREEN baseline: G1 非必画实体空 series 消费者放行 detail= []
+
+CALL: test_repair_batch_c._g1_case_4()
+COMMAND: /usr/local/bin/python3 /Users/uravvv/.claude/skills/token-chip-analysis/scripts/report/figures_from_facts.py check --facts facts.json --series ws.json
+CWD: /var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/tmpnos_9mzt
+INPUT SHA256 facts.json 0d9d815ce1e71cccfd585e6bf55c641e60b934f582d8932eabb3918b94e73a91
+INPUT SHA256 ws.json 54f83939f8e9faa1eb59ac58718610fff59c6812ead35cfd4680d4506f55c028
+RETURN CODE: 0
+STDOUT BEGIN
+PASS: 图 2 全部 1 条实体线末点与 facts 当前持仓同源（容差 0.05pp，收据 figure2_check_receipt.json）
+STDOUT END
+STDERR BEGIN
+STDERR END
+CALL: audit_release_gate.check_figure2_receipt(case, rcpt, errs)
+RECEIPT: {"facts": {"path": "facts.json", "sha256": "0d9d815ce1e71cccfd585e6bf55c641e60b934f582d8932eabb3918b94e73a91"}, "mode": "formal", "schema": "figure2-check-receipt/v1", "series": {"path": "ws.json", "sha256": "54f83939f8e9faa1eb59ac58718610fff59c6812ead35cfd4680d4506f55c028"}, "tol_pp": 0.05, "verdict": "PASS"}
+CONSUMER ERRS: []
+COMMAND: /usr/local/bin/python3 /Users/uravvv/.claude/skills/token-chip-analysis/scripts/report/figures_from_facts.py check --facts facts.json --series ws.json
+CWD: /var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/tmpnos_9mzt
+INPUT SHA256 facts.json 0d9d815ce1e71cccfd585e6bf55c641e60b934f582d8932eabb3918b94e73a91
+INPUT SHA256 ws.json 280612d60814ea45ef9b09c56c72caa1d2e9eceb28849bdd330e7297e2a0a37c
+RETURN CODE: 0
+STDOUT BEGIN
+PASS: 图 2 全部 2 条实体线末点与 facts 当前持仓同源（容差 0.05pp，收据 figure2_check_receipt.json）
+STDOUT END
+STDERR BEGIN
+STDERR END
+CALL: audit_release_gate.check_figure2_receipt(case, rcpt, errs)
+RECEIPT: {"facts": {"path": "facts.json", "sha256": "0d9d815ce1e71cccfd585e6bf55c641e60b934f582d8932eabb3918b94e73a91", "size": 473}, "generated_at_utc": "2026-09-18T10:35:19Z", "lines_checked": 2, "mismatches": [], "mode": "formal", "schema": "figure2-check-receipt/v1", "series": {"path": "ws.json", "sha256": "280612d60814ea45ef9b09c56c72caa1d2e9eceb28849bdd330e7297e2a0a37c", "size": 203}, "tol_pp": 0.05, "verdict": "PASS"}
+CONSUMER ERRS: []
+RED AssertionError: G1 非空 series 漏必画实体 producer 拒: PASS: 图 2 全部 1 条实体线末点与 facts 当前持仓同源（容差 0.05pp，收据 figure2_check_receipt.json）
+
+RED AssertionError: G1 非空 series 漏必画实体消费者拒: []
+GREEN baseline: G1 补齐必画实体 producer 放行 detail= rc=0
+PASS: 图 2 全部 2 条实体线末点与 facts 当前持仓同源（容差 0.05pp，收据 figure2_check_receipt.json）
+
+GREEN baseline: G1 补齐必画实体消费者放行 detail= []
+
+SUMMARY: [["RED", "空 series 应挂"], ["RED", "重复线应挂"], ["RED", "G1 空 series producer 拒"], ["RED", "G1 空 series 消费者拒"], ["RED", "G1 重复线拒"], ["GREEN", "G1 非必画实体空 series producer 放行"], ["GREEN", "G1 非必画实体空 series 收据 PASS"], ["GREEN", "G1 非必画实体空 series 消费者放行"], ["RED", "G1 非空 series 漏必画实体 producer 拒"], ["RED", "G1 非空 series 漏必画实体消费者拒"], ["GREEN", "G1 补齐必画实体 producer 放行"], ["GREEN", "G1 补齐必画实体消费者放行"]]
+RED=7; GREEN baseline (expected GREEN→GREEN)=5
+Evidence capture PASS; all seven expected regression assertions fail on unchanged production.
