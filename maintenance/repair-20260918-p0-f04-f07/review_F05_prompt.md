@@ -1,0 +1,15 @@
+# 工单 F05 复核提示词（只读，r1）
+
+## 纪律
+1. 禁读 `~/.codex/`（插件启动搜索若已读 memories 如实披露一次，之后不再读）；禁读本仓库 `archive/`、`blind-reviews/`、`.staging_*`、`references/attic.md`、`maintenance/repair-20260917-p0-four/` 以外的历史 maintenance 目录；禁读 `/Users/uravvv/Desktop`、`/Users/uravvv/Documents`（统计大小只用 stat）。
+2. 只读、离线、不 commit、不改任何文件。报告全文打印到 stdout，首行固定为 `# 工单F05复核：通过` 或 `# 工单F05复核：退回`。退回时逐条给出：编号（F05-R1-NN）、工单位置、事实（附 `grep -n -F` 或代码原文）、修订建议。通过时也要列出你实际核过的项。
+3. 这是对**修复计划**的复核，不是攻击式验收：目标是拦住工单里"想得不周"的地方——锚点错、修法有副作用、既有测试会变红、同族入口漏了、迁移代价没说清。
+
+## 任务
+复核 `maintenance/repair-20260918-p0-f04-f07/workorder_F05.md`（v1）。工作目录＝本仓库根（HEAD 含本工程工单 commit；`scripts/` 与 311e6c4 逐字节相同，行号按 311e6c4 核）。逐项核：
+a) §2.1–§2.4 每个锚文本 `grep -n -F` 恰 1 处且行号一致（`facts_gate.py` :97-186/:191-203/:198-199/:306-311/:314-318/:321/:357-363/:404-420/:408/:420/:421-426/:431/:454-467、顶部 import 段、docstring 中 `peak_overrides` 行；`audit_release_gate.py` :111-118/:1497-1502/:1547-1548/:1830-1832（按 311e6c4，F04/F07 落地后会漂移，本轮只核 311e6c4）；`test_audit_release_gate.py` :59-60/:202-224/:271/:1156；`test_report_facts.py` :49-74/:77/:278-293；`shared_release_receipt.py` :559-567/:592-593/:1834-1848/:2031-2050）。
+b) 修法正确性与副作用：①§2.3 `witness.receipts` 的键名——`grep -n "return_receipts" scripts/report/shared_release_receipt.py` 定位 `validate_reconciliation_report` 返回的 receipts dict，确认 EVM balance 收据的键是否为 `"balance"`，其对象是否就是含 `inputs.config` 的 verify_recon 收据；`_bound_json_input` 对该对象是否可直接用；②`_validate_reconciliation_report_once` 在 `_run` 中是否在 `check_facts_vs_ledgers` 之前已被调用过（缓存命中）以及异常时的行为；③Solana：`accounting_gate_sol.py` 写出的 formal `accounting_mode.json` 是否含 `checks.decimals`；`test_repair_batch_d.py` 的 `build_solana_case` 夹具 accounting_mode 是否含该键——缺则指出需要改哪个文件（是否在白名单）；④§2.2 证据格式 `{eid:{peak_raw,peak_date}}` 是否与 R07 的 CHANGELOG/docstring 描述冲突到需要改文档（工单要求文档零改动）；`_raw_str` 对证据里非法值抛 ValueError 的文案是否符合用例 21 断言；⑤§2.2 日期校验对 provenance 锚路径也生效——`entity_source_trace.py` 写出的 `anchors.current.date` 与 `anchors.peak.date` 格式是否都是 ISO `YYYY-MM-DD`（`:635-674`），会不会误拒真实产物；⑥§2.1 G2 上界对现有夹具（`facts_obj()` :35、`_r07_case`、`build_facts_from_ledgers`）是否都成立。
+c) 回归面：所有调用 `build_facts_from_ledgers` 的夹具（`test_stage2_closeout.py`、`test_repair_batch_d.py`、`test_review_20260804_p105.py`、`test_a4_gate.py`、`test_audit_release_gate.py`）在证据格式改后是否仍绿；`test_state_from_facts.py`、`test_figures_from_facts.py` 是否用手写 facts 含 peak>total；`test_stage2_closeout.py` 的 `facts_vs_ledgers` record 是否受 decimals 检查影响（应不受，检查只在闸）。
+d) §2.4 用例 16–21 与 a/b 的 RED/GREEN 是否成立；用例 a 的前提"`build_case(root, historical=False)` 满足 new-analysis 全部 required"是否成立（列出 `NEW_ANALYSIS_REQUIRED` 逐项在 build_case 里有无）——不成立时给出可行夹具并指出所需白名单调整。
+e) §0.4/§0.8/§1/§4 是否自洽；`invariant_manifest.json` 是否需登记；§4 第一条"峰值上界一刀切"的用户裁决点是否表述准确。
+f) 有无任何一处会让 `run_all.py` 现有用例变红。
