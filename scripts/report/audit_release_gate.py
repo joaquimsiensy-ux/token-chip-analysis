@@ -1583,6 +1583,33 @@ def check_facts_vs_ledgers(case_dir: Path, facts, errors: list[str], receipt=Non
         errors.append("facts.provenance（inputs/state_source/peak_overrides 的 sha 或绑定）与当前案内实物不一致——输入已变，须重新 build")
 
 
+def check_facts_decimals(case_dir: Path, facts, accounting, errors: list[str]):
+    """F05（7.2.1）：token.decimals 绑定链上观测——solana 家族取 accounting_mode.checks.decimals
+    （accounting_gate_sol 写出），evm 家族取 balance 对账收据绑定的 verify_recon config.decimals
+    （深验 witness 已缓存，不重跑）；取不到即拒，不让调用者自报数量单位。只挂 new-analysis，
+    不进共享 check_facts_vs_ledgers（stage2 收口/reseal 复用后者）。"""
+    declared = ((facts or {}).get("token") or {}).get("decimals")
+    chain = str((accounting or {}).get("chain") or "")
+    observed = None
+    try:
+        import shared_release_receipt
+        family = shared_release_receipt.chain_family(chain)
+        if family == "solana":
+            observed = ((accounting or {}).get("checks") or {}).get("decimals")
+        else:
+            witness = _validate_reconciliation_report_once(case_dir)
+            bal = (witness.receipts or {}).get("balance") or {}
+            _, cfg = shared_release_receipt._bound_json_input(case_dir, bal, "config", "verify_recon config")
+            observed = cfg.get("decimals")
+    except Exception as exc:
+        errors.append(f"facts.token.decimals 无法取链上观测值: {exc}")
+        return
+    if isinstance(observed, bool) or not isinstance(observed, int):
+        errors.append("facts.token.decimals 无链上观测来源可核（accounting_mode.checks/对账收据 config 缺 decimals）")
+    elif declared != observed:
+        errors.append(f"facts.token.decimals={declared!r} 与链上观测 {observed} 不一致——state_source.facts_inputs.decimals 填错")
+
+
 def check_figure2_receipt(case_dir: Path, d: dict, errors: list[str]):
     """F-C5：图 2 末点对账收据复验（new-analysis 必经）。
 
@@ -1880,6 +1907,7 @@ def _run(case_dir: Path, report: Path | None, *, profile="independent-audit"):
         if profile == "new-analysis" and "facts.json" in data:
             check_facts_vs_ledgers(case_dir, data["facts.json"], errors,
                                    receipt=data.get("figure2_check_receipt.json"))
+            check_facts_decimals(case_dir, data["facts.json"], data.get("accounting_mode.json"), errors)
         state_path = case_dir / "analysis-state.json"
         if state_path.is_file():
             state_obj = load_json(state_path, errors)

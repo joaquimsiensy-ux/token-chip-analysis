@@ -62,7 +62,7 @@ entity_id 匹配**，label 只是展示文案（改措辞不再断链路）；�
 state_source.facts_inputs schema：
   symbol: str（必填）；decimals: int≥0（必填）
   entity_labels: {eid: label}（必填、非空、覆盖全部实体）
-  peak_overrides: {eid: {peak_raw, peak_date, evidence: {path, sha256, note?}}}
+  peak_overrides: {eid: {peak_raw, peak_date, evidence: {path, sha256}}}，证据 JSON 须为 {entity_id: {peak_raw, peak_date}} 与申报相等
       （可选，优先于 provenance 锚点，证据须为案根常规文件）
   merge_evidence: {eid: {earliest, note}}（可选）
   role_notes: {eid: {addr: note}}（可选）
@@ -70,6 +70,7 @@ state_source.facts_inputs schema：
   禁止 provenance/facts_binding 键；绑定块只能由 build 生成。
 """
 import argparse
+import datetime as _dt
 import hashlib
 import json
 import os
@@ -197,6 +198,8 @@ def gate_check(facts, state=None, rendered_md=None):
         peak = _int(ent.get("peak_raw", ent.get("current_raw", "0")))
         if cur > peak:
             errors.append(f"G3 {eid} current_raw > peak_raw（{cur} > {peak}）")
+        if facts.total_raw and peak > facts.total_raw:
+            errors.append(f"G2 {eid} peak_raw {peak} 超过总供应 {facts.total_raw}")
     # G2 供给上界
     total_cur = sum(_int(e.get("current_raw", "0")) for e in facts.entities.values())
     if facts.total_raw and total_cur > facts.total_raw:
@@ -415,6 +418,15 @@ def derive_facts(case_dir, *, exploration=False):
             peak_date = str(ov.get("peak_date") or "").strip()
             if not peak_date:
                 raise ValueError(f"peak_overrides.{eid} 缺 peak_date")
+            # F05（7.2.1）：证据内容须可解释——JSON 对象，以 entity_id 为键，给出与申报相等的
+            # peak_raw/peak_date；hash 只证明文件没变，不证明值来自文件。
+            ev_obj = _load_case_json(case_dir, ev["path"], f"peak_overrides.{eid}.evidence")
+            ev_ent = ev_obj.get(eid) if isinstance(ev_obj, dict) else None
+            if (not isinstance(ev_ent, dict)
+                    or _raw_str(ev_ent.get("peak_raw"), f"evidence[{eid}].peak_raw") != peak
+                    or str(ev_ent.get("peak_date") or "").strip() != peak_date):
+                raise ValueError(f"peak_overrides.{eid} 证据内容与申报 peak_raw/peak_date 不一致"
+                                 f"（证据须为 {{\"{eid}\": {{\"peak_raw\", \"peak_date\"}}}}）")
             used_overrides[eid] = {"peak_raw": peak, "peak_date": peak_date,
                                    "evidence": {"path": ev_path.name,
                                                 "sha256": str(ev["sha256"]).lower()}}
@@ -428,6 +440,17 @@ def derive_facts(case_dir, *, exploration=False):
             peak, peak_date = current, None
         else:
             raise ValueError(f"实体 {eid} 无峰值来源（provenance_ledger 锚点或 peak_overrides）——formal build 拒绝")
+        if peak_date is not None:
+            try:
+                peak_day = _dt.date.fromisoformat(peak_date)
+            except ValueError as exc:
+                raise ValueError(f"实体 {eid} peak_date {peak_date!r} 非 YYYY-MM-DD: {exc}") from exc
+            if peak_day.isoformat() != peak_date:
+                raise ValueError(f"实体 {eid} peak_date {peak_date!r} 非 YYYY-MM-DD（fromisoformat 接受 20260102/周格式，此处严格）")
+            cur_date = str((((ledger_entities.get(eid) or {}).get("anchors") or {})
+                            .get("current") or {}).get("date") or "").strip()
+            if cur_date and peak_day > _dt.date.fromisoformat(cur_date):
+                raise ValueError(f"实体 {eid} peak_date {peak_date} 晚于 provenance 当前锚点日 {cur_date}")
         if int(peak) < int(current):
             raise ValueError(f"实体 {eid} peak_raw {peak} < current_raw {current}")
         ent["peak_raw"] = peak

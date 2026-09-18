@@ -206,7 +206,9 @@ def build_facts_from_ledgers(root, *, symbol="TT", decimals=0, labels=None, peak
     econ = json.loads((root / "economic_control_ledger.json").read_text(encoding="utf-8"))
     rows = econ.get("entries", econ.get("entities", []))
     (root / "peak_evidence.json").write_text(
-        json.dumps({"note": "fixture: peak == confirmed"}) + "\n", encoding="utf-8")
+        json.dumps({str(row["entity_id"]): {
+            "peak_raw": str(int(str(row["confirmed_economic_control_raw"]))),
+            "peak_date": peak_date} for row in rows}) + "\n", encoding="utf-8")
     evidence = {"path": "peak_evidence.json", "sha256": sha(root / "peak_evidence.json")}
     names, overrides = {}, {}
     for row in rows:

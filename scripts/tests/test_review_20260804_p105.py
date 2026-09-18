@@ -138,7 +138,7 @@ def bind_balance_receipt_to_snapshot(root: Path, snap: Path) -> None:
     create_bundle(root)
 
 
-def add_new_analysis_distribution(root: Path, report: Path) -> None:
+def add_new_analysis_distribution(root: Path, report: Path, decimals=0) -> None:
     balances = {f"owner-{i:03d}": max(1, int(2_000_000 / (1.035 ** i))) for i in range(240)}
     snap = root / "data/holders_owners.json"; write_json(snap, balances)
     bind_balance_receipt_to_snapshot(root, snap)
@@ -211,7 +211,7 @@ def add_new_analysis_distribution(root: Path, report: Path) -> None:
         identity["snapshot_binding"][key] = \
             f"identity_bridge/{identity['snapshot_binding'][key]}"
     write_json(root / "identity_gate.json", identity)
-    fixture.build_facts_from_ledgers(root, symbol="FX")
+    fixture.build_facts_from_ledgers(root, symbol="FX", decimals=decimals)
     # a4_claims 是对抗复核 v3 的权威锚；夹具改 registry 后必须真重跑 runner/finalize，
     # 不得手补 aggregate 的 sha 自证。
     fixture.refresh_adversarial(root)
@@ -267,6 +267,22 @@ def main():
         root = Path(td)
         report = fixture.build_case(root, historical=False)
         assert not fixture.gate.run(root, report, profile="independent-audit")
+
+    with tempfile.TemporaryDirectory() as td:
+        root = Path(td)
+        report = fixture.build_case(root, historical=False)
+        add_new_analysis_distribution(root, report, decimals=2)
+        errors = fixture.gate.run(root, report, profile="new-analysis")
+        assert any("与链上观测 0 不一致" in error for error in errors), errors
+        print("PASS: F05 decimals 与链上观测不符拒", flush=True)
+
+    with tempfile.TemporaryDirectory() as td:
+        root = Path(td)
+        report = fixture.build_case(root, historical=False)
+        add_new_analysis_distribution(root, report, decimals=0)
+        errors = fixture.gate.run(root, report, profile="new-analysis")
+        assert errors == [], errors
+        print("PASS: F05 decimals 一致放行（GREEN→GREEN）", flush=True)
 
     print("PASS: P1-05 mandatory new-analysis vs independent-audit release profiles")
     return 0

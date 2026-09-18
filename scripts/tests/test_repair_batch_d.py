@@ -981,7 +981,7 @@ def build_solana_case(root: Path):
         "observation_bundle": {"path": "supply_receipt.json",
                                "size": bundle_path.stat().st_size,
                                "sha256": sha_file(bundle_path)},
-        "checks": {"fot": {"status": "clean"}}})
+        "checks": {"fot": {"status": "clean"}, "decimals": 0}})
     producers = {"balance": "scripts/solana/anchor_sampler.py",
                  "supply": "scripts/solana/scan_token_accounts.py",
                  "supply_truth": "scripts/lib/supply_truth_gate.py",

@@ -1,0 +1,119 @@
+# F05 RED evidence — workorder_F05.md v3
+开工 HEAD: d7baf54（父提交 bf60b50；多一个施工提示词提交符合派工约定）
+顺序：只改测试 → 本文件保存 RED → 修改生产代码。
+生产文件在本轮 RED 期间未改；下列生产 SHA-256 与开工值一致。
+收集器为了继续检查 b，会捕获 a 的预期 AssertionError；收集器 exit=0 不代表 a 通过。
+临时 Matplotlib 缓存提示为运行环境输出，a/b 最终均完成并返回 errors=[]。
+
+$ shasum -a 256 scripts/report/facts_gate.py scripts/report/audit_release_gate.py scripts/tests/test_report_facts.py scripts/tests/test_review_20260804_p105.py
+b9bc055919af6d9264e0323d5fd2f70fb63a05826aeacb20812490aa254994b2  scripts/report/facts_gate.py
+07cad8c9aeeccc950b7dcf2dfcfdf6323f943aa5ea5fdf79e123a151873c0e80  scripts/report/audit_release_gate.py
+2b6d42eceb029924d0df5a9ce6ff59829c6e43a74ffb54d7a28951d09ce0ded5  scripts/tests/test_report_facts.py
+d2f9d3bf88d562409bc78469eb06b43a9cec8e520755952ed2cf99d2256ddc67  scripts/tests/test_review_20260804_p105.py
+
+$ git diff --stat -- scripts/report/facts_gate.py scripts/report/audit_release_gate.py
+(空输出，exit=0)
+
+$ PYTHONDONTWRITEBYTECODE=1 python3 -B scripts/tests/test_report_facts.py
+ok    R07 1 derive 绿例
+ok    R07 2 CLI build 幂等
+ok    R07 3 override valid
+ok    R07 3 override bad_sha
+ok    R07 3 override missing_evidence
+ok    R07 4 formal 无峰值拒 / exploration 放行
+ok    R07 5 预置绑定拒
+ok    R07 6 label missing
+ok    R07 6 label empty
+ok    R07 6 label extra
+ok    R07 7 三账不闭合拒
+ok    R07 8 总量冲突拒
+ok    R07 9 闸绿例
+ok    R07 10 闸拒手改 current
+ok    R07 10 闸拒手改 provenance
+ok    R07 10 闸拒手改 exploration
+ok    R07 10 闸拒手改 identity
+ok    R07 10 闸拒手改 receipt
+ok    R07 11 peak < current 拒
+ok    R07 12 空账 membership_ledger.json missing=False
+ok    R07 12 空账 membership_ledger.json missing=True
+ok    R07 12 空账 position_ledger.json missing=False
+ok    R07 12 空账 position_ledger.json missing=True
+ok    R07 13 非有限输入 NaN
+ok    R07 13 非有限输入 Infinity
+ok    R07 13 非有限输入 1e999
+ok    R07 13 facts 溢出值拒
+ok    R07 14 产物过既有 G2 gate
+ok    R07 15 类型非法拒 symbol
+ok    R07 15 类型非法拒 decimals
+ok    R07 15 类型非法拒 metrics
+ok    R07 15 类型非法拒 metrics
+ok    R07 15 类型非法拒 dual_basis
+ok    R07 15 类型非法拒 dual_basis
+FAIL  R07 16 F05 证据内容与申报不一致拒: AssertionError: derive_facts 应拒绝该输入: 证据内容与申报
+ok    R07 17 F05 证据一致放行（GREEN）
+FAIL  R07 18 F05 peak 超总供应拒: AssertionError: derive_facts 应拒绝该输入: 超过总供应
+FAIL  R07 19 F05 peak_date 非法拒 1900-1-1x: AssertionError: derive_facts 应拒绝该输入: 非 YYYY-MM-DD
+FAIL  R07 19 F05 peak_date 非法拒 20260102: AssertionError: derive_facts 应拒绝该输入: 非 YYYY-MM-DD
+FAIL  R07 20 F05 peak_date 晚于当前锚点日拒: AssertionError: derive_facts 应拒绝该输入: 晚于
+FAIL  R07 21 F05 证据非对象拒: AssertionError: derive_facts 应拒绝该输入: 证据内容
+Traceback (most recent call last):
+  File "/Users/uravvv/.claude/skills/token-chip-analysis/scripts/tests/test_report_facts.py", line 417, in <module>
+    sys.exit(main())
+             ~~~~^^
+  File "/Users/uravvv/.claude/skills/token-chip-analysis/scripts/tests/test_report_facts.py", line 410, in main
+    _r07_build_cases()
+    ~~~~~~~~~~~~~~~~^^
+  File "/Users/uravvv/.claude/skills/token-chip-analysis/scripts/tests/test_report_facts.py", line 327, in _r07_build_cases
+    assert not failures, f"R07 失败 {len(failures)}/{len(results)}: {failures}"
+           ^^^^^^^^^^^^
+AssertionError: R07 失败 6/41: ['16 F05 证据内容与申报不一致拒', '18 F05 peak 超总供应拒', '19 F05 peak_date 非法拒 1900-1-1x', '19 F05 peak_date 非法拒 20260102', '20 F05 peak_date 晚于当前锚点日拒', '21 F05 证据非对象拒']
+exit=1
+
+$ PYTHONDONTWRITEBYTECODE=1 python3 -B -c 'import hashlib, json, sys, tempfile, traceback
+from pathlib import Path
+sys.path.insert(0, str(Path("scripts/tests").resolve()))
+import test_review_20260804_p105 as case
+for path in ("scripts/report/facts_gate.py", "scripts/report/audit_release_gate.py", "scripts/tests/test_review_20260804_p105.py", "scripts/tests/test_audit_release_gate.py"):
+    print("SHA256", hashlib.sha256(Path(path).read_bytes()).hexdigest(), path, flush=True)
+for label, decimals in (("a", 2), ("b", 0)):
+    with tempfile.TemporaryDirectory(prefix="f05-decimals-red-", dir="/private/tmp") as td:
+        root=Path(td)
+        report=case.fixture.build_case(root, historical=False)
+        case.add_new_analysis_distribution(root, report, decimals=decimals)
+        errors=case.fixture.gate.run(root, report, profile="new-analysis")
+        print(f"F05 {label} baseline decimals={decimals}: errors="+json.dumps(errors, ensure_ascii=False), flush=True)
+        assert errors == [], errors
+        if label == "a":
+            try:
+                assert any("与链上观测 0 不一致" in error for error in errors), errors
+            except AssertionError:
+                traceback.print_exc(file=sys.stdout)
+                print("F05 a expected rejection assertion: RED", flush=True)
+            else:
+                raise AssertionError("F05 a 未取得 RED")
+        else:
+            print("F05 b equality assertion: GREEN baseline", flush=True)
+'
+SHA256 b9bc055919af6d9264e0323d5fd2f70fb63a05826aeacb20812490aa254994b2 scripts/report/facts_gate.py
+SHA256 07cad8c9aeeccc950b7dcf2dfcfdf6323f943aa5ea5fdf79e123a151873c0e80 scripts/report/audit_release_gate.py
+SHA256 d2f9d3bf88d562409bc78469eb06b43a9cec8e520755952ed2cf99d2256ddc67 scripts/tests/test_review_20260804_p105.py
+SHA256 2c64f22385b9a9834b32d9fc5af0d99e02929c6b9c41ae3aba242336c6adad34 scripts/tests/test_audit_release_gate.py
+/Users/uravvv/.matplotlib is not a writable directory
+Matplotlib created a temporary cache directory at /var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/matplotlib-n859u5e_ because there was an issue with the default path ({configdir}); it is highly recommended to set the MPLCONFIGDIR environment variable to a writable directory, in particular to speed up the import of Matplotlib and to better support multiprocessing.
+Matplotlib is building the font cache; this may take a moment.
+F05 a baseline decimals=2: errors=[]
+Traceback (most recent call last):
+  File "<string>", line 17, in <module>
+    assert any("与链上观测 0 不一致" in error for error in errors), errors
+           ~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: []
+F05 a expected rejection assertion: RED
+F05 b baseline decimals=0: errors=[]
+F05 b equality assertion: GREEN baseline
+exit=0
+
+结果：
+16 RED；17 GREEN 基线；18 RED；19 两个日期各 RED；20 RED；21 RED。
+a decimals=2 基线 errors=[]，目标拒绝断言 RED（AssertionError: []）。
+b decimals=0 基线 errors=[]，一致放行断言 GREEN。
+

@@ -150,7 +150,7 @@ def _r07_build_cases():
         assert proc.returncode == 2, proc.stdout + proc.stderr
 
     def override(root, variant):
-        evidence = _r07_write(root, "peak_evidence.json", {"note": "observed peak"})
+        evidence = _r07_write(root, "peak_evidence.json", {"e1": {"peak_raw": "160", "peak_date": "2026-01-03"}})
         ov = {"peak_raw": "160", "peak_date": "2026-01-03",
               "evidence": {"path": evidence.name, "sha256": _r07_sha(evidence)}}
         if variant == "bad_sha":
@@ -289,8 +289,43 @@ def _r07_build_cases():
                                ("metrics", [{"value": "7"}], "metrics"), ("metrics", {"m1": "7"}, "metrics"),
                                ("dual_basis", "x", "dual_basis"), ("dual_basis", None, "dual_basis")):
         run(f"15 类型非法拒 {field}", lambda root, f=field, v=value, t=text: bad_type(root, f, v, t))
+
+    def f05_override(root, peak_raw, peak_date, evidence_obj, error=""):
+        evidence = _r07_write(root, "peak_evidence.json", evidence_obj)
+        ov = {"peak_raw": peak_raw, "peak_date": peak_date,
+              "evidence": {"path": evidence.name, "sha256": _r07_sha(evidence)}}
+        edit(root, "state_source.json", lambda obj: obj["facts_inputs"].update(peak_overrides={"e1": ov}))
+        if error:
+            reject(root, error)
+        else:
+            facts = build(root)
+            assert facts["entities"]["e1"]["peak_raw"] == "150", facts
+
+    def f05_bad_date(root, value):
+        edit(root, "provenance_ledger.json", lambda obj:
+             obj["entities"][0]["anchors"]["peak"].update(date=value))
+        reject(root, "非 YYYY-MM-DD")
+
+    def f05_after_current(root):
+        edit(root, "provenance_ledger.json", lambda obj:
+             obj["entities"][0]["anchors"]["current"].update(date="2026-01-01"))
+        reject(root, "晚于")
+
+    run("16 F05 证据内容与申报不一致拒", lambda root: f05_override(
+        root, "1000000", "1900-01-01",
+        {"e1": {"peak_raw": "100", "peak_date": "2026-01-01"}}, "证据内容与申报"))
+    run("17 F05 证据一致放行（GREEN）", lambda root: f05_override(
+        root, "150", "2026-01-02", {"e1": {"peak_raw": "150", "peak_date": "2026-01-02"}}))
+    run("18 F05 peak 超总供应拒", lambda root: f05_override(
+        root, "2000", "2026-01-02",
+        {"e1": {"peak_raw": "2000", "peak_date": "2026-01-02"}}, "超过总供应"))
+    for value in ("1900-1-1x", "20260102"):
+        run("19 F05 peak_date 非法拒 " + value, lambda root, v=value: f05_bad_date(root, v))
+    run("20 F05 peak_date 晚于当前锚点日拒", f05_after_current)
+    run("21 F05 证据非对象拒", lambda root: f05_override(
+        root, "150", "2026-01-02", [1, 2], "证据内容"))
     assert not failures, f"R07 失败 {len(failures)}/{len(results)}: {failures}"
-    print(f"PASS: R07 build/derive/发布闸 15 类、{len(results)} 个独立用例", flush=True)
+    print(f"PASS: R07 build/derive/发布闸 21 类、{len(results)} 个独立用例", flush=True)
 
 
 def main():
