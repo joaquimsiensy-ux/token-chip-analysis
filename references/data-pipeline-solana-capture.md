@@ -36,21 +36,21 @@
 2. **发射期精确定价**：GeckoTerminal 分钟 K `/ohlcv/minute?aggregate=1&limit=1000&before_timestamp=`（池创建起就有）；小时 K 翻页可拿全历史。pump.fun"发射即迁移"币无内盘 K 线，内盘成本用 GMGN dev avg_cost 近似。
 3. **资金同源（gas 溯源）**：公共 RPC `getSignaturesForAddress`（翻到最老）+ `getTransaction(jsonParsed)` 找首笔 system transfer 入金 source；0.25s 间隔，代理经 `CHIP_PROXY`/`--proxy` 解析（`scripts/lib/proxy_config.py`）。母钱包收敛只作候选线索，须先按 casebook E-05 排除公共服务来源，再补独立控制证据。
 4. **双跳换仓溯源**：老仓→一次性中转→新址的双跳必须重放溯源，禁止把前端 `transfer_in` 当独立新仓。（判例：casebook/entity-clustering.md E-04）
-5. **铸造受益人全清单**：创建 tx 的全部铸造受益地址都作为 creator 系起点。（判例：casebook/entity-clustering.md E-12）
+5. **铸造受益人全清单**：创建 tx 的全部铸造受益地址都作为 creator 系起点。（判例：casebook E-12）
 6. **bonding curve 成本校准**：枚数按 token 守恒重建；标准虚拟储备参数算出的 SOL 成本可能系统性低估约 10%，关键笔必须用 `getTransaction` 实付真值校准，批量值报告修正区间，并剔除毕业迁移笔。（判例：casebook/supply-accounting.md S-05）
 
 （CLAW，07-12，经 onchain-data-accounts 记忆转录；第 5/6 条为 PUB 07-14 补充）
 
 ## 9. 锚点法演变重建 + gas 溯源加固（LAYOFF(Solana) 2026-07-15 实战）
 
-针对"4-5 个月币龄全量 SQD 挂机不现实"的 Plan B 的一个更轻量替代，已在 LAYOFF 跑通：
+已在 LAYOFF 跑通：
 
 1. **锚点法演变重建（免全量 SQD，`scripts/solana/build_evolution.py`）**：不重放每一笔，而是——①`fetch_pool_sigs.py` 拉主池全史签名；②等距抽签名做**池子余额锚点**（`decode_txs_v2.py --pool <池owner>` 每笔落 `pool_balance`）；③核心实体（top 大户 + 离场盈利榜 + 上游中转）用 `whale_deep.py` 拉 ATA 级全流水；④`build_evolution.py` 在时间点插值：各实体持仓从其逐笔流水累积、流动性池用锚点曲线、散户=总供应−已知−池−销毁残差。产出 `sol-anchor-rows` 序列，仅探索辅助、不进正式编译链（正式序列走 replay_edges/replay_duck）。**精度声明**：中小散户是残差估算，量级正确、单点精度有限，报告局限性须写明。
 2. **decode 通道坑**：`getTransaction` 直连 `api.mainnet-beta` **恒 429**，须使用已配置代理（`decode_txs_v2.py --proxy "$CHIP_PROXY"`）；代理统一经 `CHIP_PROXY`/`--proxy` 解析（`scripts/lib/proxy_config.py`），不得写死端口。金额只用 raw integer，输出 `deltas_raw/pool_balance_raw + decimals`，UI 字段仅为精确十进制字符串；缓存及断点输出绑定 mint/pool/RPC，`decode_fail` 不算 done。v1 `decode_txs.py` 仅保留为逐笔兼容入口，已复用 v2 的输出身份、completed_sigs 和完整性 receipt；两版最终仍有失败签名都以非零退出。
 3. **gas 溯源翻页上限（`gas_origin.py` 合并版）**：翻页上限已并入 `gas_origin.py`——默认 `max_pages=2`、超深地址标 `approx`，`--full` 恢复翻到最老的全量行为；落仓户签名少一页到底、秒完成。历史来源：gas_fast 加固，BONK 等案。
 4. **服务 funder 排除**：gas 聚类只取最早 SOL 入金；候选 funder 必查余额与近千签名时间跨度。（判例：casebook/entity-clustering.md E-05）
 5. **发射窗路由噪声**：owner delta 中的 AMM/路由瞬时余额不得直接判持仓。（判例：casebook/entity-clustering.md E-02）
-6. **creator 履历与变更**：拉 creator 全发币履历、RugCheck 风险并对比 `set_creator` 前后身份。（判例：casebook/entity-clustering.md E-12）
+6. **creator 履历与变更**：拉 creator 全发币履历、RugCheck 风险并对比 `set_creator` 前后身份。（判例：casebook E-12）
 7. **Streamflow feePayer**：服务 feePayer 不作控制边，去向必须靠代币流穿透。（判例：casebook/entity-clustering.md E-02/E-05）
 8. **GPA 缓存与仲裁**：错误体禁缓存、缓存命中报告 mtime、增量前真扫；对账冲突先用第三通道查关键地址。（判例：casebook/supply-accounting.md S-04）
 
@@ -68,7 +68,7 @@
 
 ## 11. 长币龄混合重建 + 高密度期定向采集（USELESS(Solana) 2026-07-21 实战）
 
-§8"全程 SQD 重放不现实"与 §9 锚点法的合体升级——14 个月+币龄、13.5 万持仓账户量级标的实战定型：
+14 个月+币龄、13.5 万持仓账户量级标的实战定型：
 
 1. **混合重建演变架构（长币龄标准件，两端精确、中段插值）**：①发射窗（发射日起 24-48h）用 `window_fetch.py` 拉全量边（精确——狙击/bundle 分析必须逐笔）②核心实体（庄/项目方/大户）ATA 级全流水（`whale_deep.py`，精确）③中段日级锚点前向填充（`anchor_sampler.py`）④**当前快照封口 + 末日快照注入**——把 data_cutoff 日全量快照作为最后一个锚点注入序列，修"清仓发生在锚点观测窗外则旧值永久残留"的系统性尾部误差。图 1/图 2 由 ①②③④ 合成，散户=残差；精度声明照 §9 写进局限性（USELESS，07-21）。专案脚本不可直接复用：实体分组、发射日、价格文件名按案硬编码，新案仅参考算法结构重写；通用化抽象列遗留。
 2. **SQD 高密度期定向拉取用小段+并发（`window_fetch.py`）**：密集期正解=**2000 slot 小段 × 8 并发**并强制 `--receipt`。gaps 非空时只留 `.partial`＋覆盖回执并 exit 2，正式文件名不存在；gaps 为空才原子发布。旧 gap 部分文件不得 cat 追加，补拉后整段替换或全字段 dedup；重放负余额暴增先查重复合并。发射窗峰值榜仍须剔除 pump.fun 官方毕业迁移钱包。
@@ -80,7 +80,7 @@
    USELESS 案分片全量未跑完（publicnode 间歇 504），对账改用"8 样本独立单查 + top20 对表"替代过关——**分片器待后续标的全量验证**。**死角地图更新（GOAT 实测）**：24.7 万 token account / 67MB 响应量级，Helius + `--compressed`(gzip) + 300s 长超时**一次拉全成功**（publicnode 恒 504、Helius 默认 120s 超时也断；
    见 §1 实测升级行）——大盘子 mint 的 GPA 正解就位，分片器降级为末位备选（GOAT，07-22）。
 5. **whale_deep 按地址频率分派（先估频再选通道）**：深挖前先 getSignaturesForAddress 拉一页估频——高频地址（creator 类，签名 7 万+）ATA 级全 decode 需数小时/地址不可行，改**事件窗定向拉**（只 decode 关键时间窗）；低频囤仓户（15-172 笔）全量 decode 秒-分钟级。一刀切全量 decode 会把预算烧在单个高频地址上。**cap 截断样本的用途边界 + Helius 并发纪律**：高频地址签名史翻到工具 cap（如 2000 笔）即**截断样本**——起点余额非零，**不可从零累积重建持仓时间线**，只能作"最近 N 笔行为定性样本"（流向画像/对手方指纹），时间线必须锚点/快照兜底且报告局限声明注明"截断样本"；Helius 免费档 10 RPS 是**账号级**配额——多进程并行互抢配额反而整体拖慢，正解 = `whale_deep.py --out` 分组独立文件防写冲突 + 总并发贴 10 RPS 不超发。
-6. **letsbonk creator 经济流**：追踪 dev 直分后续流向、Raydium Lock harvest 与毕业迁移平台常数。（判例：casebook/entity-clustering.md E-12）
+6. **letsbonk creator 经济流**：追踪 dev 直分后续流向、Raydium Lock harvest 与毕业迁移平台常数。（判例：casebook E-12）
 
 ## 12. 销户账户覆盖审计（SQD 边集对账盲区加固，2026-07-21）
 
@@ -234,7 +234,7 @@ JSON-RPC batch + 跨地址共享 sig 缓存（`--cache-dir`,按 sig 前 2 字符
 
 ## 15. pump.fun 长内盘期全量重建（签名史双索引法；TROLL 2026-07-29 实战）
 
-**适用场景**：老 pump.fun 币在内盘（bonding curve）滞留数月甚至一年以上才毕业——内盘期交易稀疏，但**不能不采**：做量脉冲、早期集群、毕业前试盘仓全藏在这段。用 SQD 扫这段 slot 区间在死亡期每响应仅推进 ~3900 slot，工程上极不划算。与 §8 CLUDE"Plan B 混合架构"的分工：那是**高密度短币龄**的取舍方案；本节是**稀疏长内盘期**的全量精确解——稀疏恰恰使逐笔 decode 可行。
+**适用场景**：老 pump.fun 币在内盘（bonding curve）滞留数月甚至一年以上才毕业——内盘期交易稀疏，但**不能不采**：做量脉冲、早期集群、毕业前试盘仓全藏在这段。用 SQD 扫这段 slot 区间在死亡期每响应仅推进 ~3900 slot，工程上极不划算。本节是**稀疏长内盘期**的全量精确解——稀疏恰恰使逐笔 decode 可行。
 
 **方法（双索引 ∪ 迭代补边）**：
 1. **curve PDA 签名史全翻**（getSignaturesForAddress 到最老）——内盘期所有对售货机的买卖必经它；

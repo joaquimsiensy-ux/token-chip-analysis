@@ -252,11 +252,11 @@ size 与 SHA-256；全部通过后才原子将 v2/v3/pre-schema done 升为
 | V4 池发现与量能 | V4 单例必须纳入池发现；量能真实性检查必须包含 V4 毛量占比 | （判例：casebook/supply-accounting.md S-04） |
 | **V4 PoolManager 标签复核** | vanity 全零前缀命中攻击者/bot 标签时，必须 `getCode` + 行为复核 | （判例：casebook/entity-clustering.md E-02） |
 | **V4/Infinity 单例余额归属** | 单例余额只作上界；精确归属须逐头寸闭合，权威见 `lp-fee-accounting.md` | （判例：casebook/supply-accounting.md S-07） |
-| CEX 归集身份 | 必须核下游对象身份，禁止只凭高入度低出度判 CEX | （判例：casebook/cex-custody.md C-06） |
+| CEX 归集身份 | 必须核下游对象身份，禁止只凭高入度低出度判 CEX | （判例：casebook C-06） |
 | DexScreener dexId "uniswap" 无版本标注可能是 V3 池 | Swap topic：V3=`0xc42079f9…`、V2=`0xd78ad95f…`；dexId 只写 "uniswap" 不标版本时，先按 log topic 判池版本再解析，按错版本解析买卖归因全错 | （外部 bibi 考古，07） |
 | four.meme 内盘量化 / 克隆快判 | 内盘额度恰 8 亿/80%，dev-buy 同 tx 按 bonding curve 买断内盘凑满即秒毕业、创世后约 8 块（~4s）TokenManager2 注 20% 入 Pancake V2；"创世同秒单钱包拿走 ~80%"=dev buy。`7777` 后缀=另一发射台 CREATE2（与 4444 并列，平台特征非指纹）。正身可试 meme-api（历史实测见 data-pipeline-evm-sources，当前可用性须实测），或查创世 tx HTML 是否触及 TokenManager2/部署器（创建者从合约页 Contract Creator 取，href 单引号，正则 `["']?`） | （外部 TCC/bibi 考古，07） |
 | **PancakeSwap/Uniswap V3 topic** | Pancake V3=`0x19b47279…`（7×32B），Uniswap V3=`0xc42079f9…`（5 字段）；目标池静默 0 行即阻断并复核 topic/布局 | （判例：casebook/supply-accounting.md S-04） |
-| four.meme creator/收币实体 | 同收币地址不得直接判项目方马甲；平台 creator 与收币实体按身份权威规则分账 | （判例：casebook/entity-clustering.md E-12） |
+| four.meme creator/收币实体 | 同收币地址不得直接判项目方马甲；平台 creator 与收币实体按身份权威规则分账 | （判例：casebook E-12） |
 | **币安 Alpha 结算引擎桥** | 高吞吐 + 净持≈0 + 交易所/路由/池对手方应归 CEX 基础设施，不得判庄 | （判例：casebook/cex-custody.md C-01） |
 | **CEX 归集批次节奏** | 充值时间对齐必须建同窗对照组；同窗地址数 >10 时该时序零区分力 | （判例：casebook/entity-clustering.md E-04） |
 | **dust/funder 与幽灵地址** | 投毒/公共 funder 不作聚类边；进入实体表的地址必须在 `merged.csv` 验存在性与走量 | （判例：casebook/entity-clustering.md E-05/E-10） |
