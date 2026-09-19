@@ -656,6 +656,37 @@ def price_receipt_content_enforced(cases):
     assert write_price_receipt(case, second_price=None) == 3
     errors, _ = rebind()
     assert any("ALL_SKIP" in e for e in errors), errors
+    # 6b F01：主价格文件含 NaN 或 0 → 生产者 [fatal] 退出 1、不写收据
+    for name, first in (("price_nan.json", float("nan")), ("price_zero.json", 0.0)):
+        write(case / name, [[1767225600, first], [1767312000, 1.0], [1767398400, 1.0]])
+        assert write_price_receipt(case, second_price=1.0, prices=name, out="price_bad_checks.json") == 1, name
+        assert not (case / "price_bad_checks.json").exists(), name
+    # 6c F01：第二源返回 NaN → 按无数据 SKIP，ALL_SKIP 退出 3，收据可序列化且 second_price 为 null
+    assert write_price_receipt(case, second_price=float("nan")) == 3
+    assert all(q["second_price"] is None and q["status"] == "SKIP" for q in read(case / "price_checks.json")["points"])
+    # 6d F01：收据主价被改成 NaN（status 仍 PASS）→ 消费者拒"有限正数"
+    assert write_price_receipt(case, second_price=1.0) == 0
+    update(case, "price_checks.json", lambda r: r["points"][0].update(main_price=float("nan")))
+    errors, _ = rebind()
+    assert any("points[0].main_price" in e for e in errors), errors
+    # 6e F01：收据主价被改成 0.0（status 仍 PASS）→ 同样拒（消费者与改后生产者同口径：有限正数）
+    update(case, "price_checks.json", lambda r: r["points"][0].update(main_price=0.0))
+    errors, _ = rebind()
+    assert any("points[0].main_price" in e for e in errors), errors
+    # 6f F01：收据第二价被改成 2.0（偏差 66.67%）但 status 仍 PASS → 逐点重算不一致
+    assert write_price_receipt(case, second_price=1.0) == 0
+    update(case, "price_checks.json", lambda r: r["points"][1].update(second_price=2.0))
+    errors, _ = rebind()
+    assert any("points[1].status" in e and "FAIL" in e for e in errors), errors
+    # 6g F01：两端阈值相等；WARN 边界（1.0/1.052 → 5.07% WARN）真实收据放行，手改 status=PASS 后拒
+    import price_check
+    assert (closeout.PRICE_WARN_PCT, closeout.PRICE_FAIL_PCT) == (price_check.WARN_PCT, price_check.FAIL_PCT) == (5.0, 15.0)
+    assert write_price_receipt(case, second_price=1.052) == 0
+    errors, _ = rebind()
+    assert not errors, errors
+    update(case, "price_checks.json", lambda r: ([q.update(status="PASS") for q in r["points"]], r.update(verdict="PASS")))
+    errors, _ = rebind()
+    assert any("points[0].status" in e and "WARN" in e for e in errors), errors
     # 7 内联纯申报对象拒；内联带 receipt（ARC 形态）放行
     assert write_price_receipt(case, second_price=1.0) == 0
     obj = read(case / "a5_assembly_workorder.json")

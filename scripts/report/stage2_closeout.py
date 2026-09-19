@@ -12,6 +12,7 @@ import argparse
 from datetime import date, datetime, timezone
 import hashlib
 import json
+import math
 import os
 from pathlib import Path
 import re
@@ -238,11 +239,12 @@ def flow_selection_errors(facts, flow):
 
 
 PRICE_POINT_STATUSES = ("PASS", "WARN", "SKIP", "FAIL")
+PRICE_WARN_PCT, PRICE_FAIL_PCT = 5.0, 15.0  # 与 scripts/prices/price_check.py:43 同值；report 层离线不 import 该 requests 类脚本
 
 
 def price_receipt_errors(case, bindings):
-    """F05：价格双源收据必须是 price_check.py 产物且结论可放行——从 points 按 price_check 同规则
-    重算 verdict 并要求一致；只放行 PASS/WARN（WARN 记 NOTE）；price_file_sha256 须等于
+    """F05/F01：价格双源收据必须是 price_check.py 产物且结论可放行——逐点用 main/second_price 按 price_check
+    同规则重算 status（主价非有限正数即拒）再汇总 verdict，均须与声明一致；只放行 PASS/WARN（WARN 记 NOTE）；price_file_sha256 须等于
     bindings.price_source.sha256；引用取 bindings.price_source_checks，否则取内联
     price_source.dual_source_check.receipt；两者皆无＝纯申报对象，拒。返回 (errors, notes, ref)。"""
     errors, notes = [], []
@@ -266,6 +268,23 @@ def price_receipt_errors(case, bindings):
         errors.append(workorder_error("bindings.price_source_checks.points", "非空 list", points))
         return errors, notes, ref
     statuses = [(p.get("status") if isinstance(p, dict) else None) for p in points]
+    for i, p in enumerate(points):
+        if not isinstance(p, dict):
+            continue
+        p1, p2 = p.get("main_price"), p.get("second_price")
+        ok1 = isinstance(p1, (int, float)) and not isinstance(p1, bool) and math.isfinite(p1) and p1 > 0
+        ok2 = isinstance(p2, (int, float)) and not isinstance(p2, bool) and math.isfinite(p2) and p2 > 0
+        if not ok1:
+            errors.append(workorder_error(f"bindings.price_source_checks.points[{i}].main_price", "有限正数", p1))
+            continue
+        if not ok2:
+            status = "SKIP"
+        else:
+            dev = round(abs(p1 - p2) / ((p1 + p2) / 2) * 100, 2)
+            status = "FAIL" if dev > PRICE_FAIL_PCT else ("WARN" if dev > PRICE_WARN_PCT else "PASS")
+        if p.get("status") != status:
+            errors.append(workorder_error(f"bindings.price_source_checks.points[{i}].status",
+                                          f"与 main/second_price 重算一致（{status}）", p.get("status")))
     expected = ("FAIL" if any(s not in PRICE_POINT_STATUSES or s == "FAIL" for s in statuses)
                 else "ALL_SKIP" if all(s == "SKIP" for s in statuses)
                 else "WARN" if "WARN" in statuses else "PASS")

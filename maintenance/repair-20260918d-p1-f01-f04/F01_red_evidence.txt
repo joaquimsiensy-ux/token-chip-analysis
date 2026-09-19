@@ -1,0 +1,126 @@
+F01 RED evidence — production code unchanged
+UTC: 2026-09-19T03:26:31.869094+00:00
+HEAD: 838f9184b4c79ae35be5b3fa66ad2a9b01ed74f7
+Production diff exit: 0
+Production SHA256: scripts/prices/price_check.py 87da4a31849128192978762664ecf0272a2d0117fe8370d4fa2d2986ea2d21d5
+Production SHA256: scripts/report/stage2_closeout.py c1d53931584c54a3c9f85ed97b005f387caa937f9ab51cf45d7b2aece5e59670
+fixtures: /private/tmp/f01-red-32de39q_
+  2026-01-01  主源=1  第二源=1  偏差=0.0%  [PASS]  (offline)
+  2026-01-02  主源=1  第二源=1  偏差=0.0%  [PASS]  (offline)
+  2026-01-03  主源=1  第二源=1  偏差=0.0%  [PASS]  (offline)
+[PASS] 3 点：FAIL=0 WARN=0 SKIP=0 -> /private/tmp/f01-red-32de39q_/baseline/case/price_checks.json
+
+===== 6b/price_nan.json =====
+  2026-01-01  主源=nan  第二源=1  偏差=nan%  [PASS]  (offline)
+  2026-01-02  主源=1  第二源=1  偏差=0.0%  [PASS]  (offline)
+  2026-01-03  主源=1  第二源=1  偏差=0.0%  [PASS]  (offline)
+[PASS] 3 点：FAIL=0 WARN=0 SKIP=0 -> /private/tmp/f01-red-32de39q_/variant-001/price_bad_checks.json
+write_price_receipt: prices='price_nan.json', second_price=1.0, rc=0, receipt_exists=True
+receipt.verdict = 'PASS'
+receipt.points = [{'day': '2026-01-01', 'main_price': nan, 'second_price': 1.0, 'second_note': 'offline', 'deviation_pct': nan, 'status': 'PASS'}, {'day': '2026-01-02', 'main_price': 1.0, 'second_price': 1.0, 'second_note': 'offline', 'deviation_pct': 0.0, 'status': 'PASS'}, {'day': '2026-01-03', 'main_price': 1.0, 'second_price': 1.0, 'second_note': 'offline', 'deviation_pct': 0.0, 'status': 'PASS'}]
+RED: AssertionError: price_nan.json
+Traceback (most recent call last):
+  File "<stdin>", line 70, in run_segment
+  File "<F01-RED-6b/price_nan.json>", line 4, in <module>
+AssertionError: price_nan.json
+
+===== 6b/price_zero.json =====
+  2026-01-01  主源=0  第二源=1  偏差=None%  [SKIP]  (offline)
+  2026-01-02  主源=1  第二源=1  偏差=0.0%  [PASS]  (offline)
+  2026-01-03  主源=1  第二源=1  偏差=0.0%  [PASS]  (offline)
+[PASS] 3 点：FAIL=0 WARN=0 SKIP=1 -> /private/tmp/f01-red-32de39q_/variant-002/price_bad_checks.json
+write_price_receipt: prices='price_zero.json', second_price=1.0, rc=0, receipt_exists=True
+receipt.verdict = 'PASS'
+receipt.points = [{'day': '2026-01-01', 'main_price': 0.0, 'second_price': 1.0, 'second_note': 'offline', 'deviation_pct': None, 'status': 'SKIP'}, {'day': '2026-01-02', 'main_price': 1.0, 'second_price': 1.0, 'second_note': 'offline', 'deviation_pct': 0.0, 'status': 'PASS'}, {'day': '2026-01-03', 'main_price': 1.0, 'second_price': 1.0, 'second_note': 'offline', 'deviation_pct': 0.0, 'status': 'PASS'}]
+RED: AssertionError: price_zero.json
+Traceback (most recent call last):
+  File "<stdin>", line 70, in run_segment
+  File "<F01-RED-6b/price_zero.json>", line 4, in <module>
+AssertionError: price_zero.json
+
+===== 6c =====
+  2026-01-01  主源=1  第二源=nan  偏差=nan%  [PASS]  (offline)
+  2026-01-02  主源=1  第二源=nan  偏差=nan%  [PASS]  (offline)
+  2026-01-03  主源=1  第二源=nan  偏差=nan%  [PASS]  (offline)
+[PASS] 3 点：FAIL=0 WARN=0 SKIP=0 -> /private/tmp/f01-red-32de39q_/variant-003/price_checks.json
+write_price_receipt: prices='price_series.json', second_price=nan, rc=0, receipt_exists=True
+receipt.verdict = 'PASS'
+receipt.points = [{'day': '2026-01-01', 'main_price': 1.0, 'second_price': nan, 'second_note': 'offline', 'deviation_pct': nan, 'status': 'PASS'}, {'day': '2026-01-02', 'main_price': 1.0, 'second_price': nan, 'second_note': 'offline', 'deviation_pct': nan, 'status': 'PASS'}, {'day': '2026-01-03', 'main_price': 1.0, 'second_price': nan, 'second_note': 'offline', 'deviation_pct': nan, 'status': 'PASS'}]
+RED: AssertionError: 
+Traceback (most recent call last):
+  File "<stdin>", line 70, in run_segment
+  File "<F01-RED-6c>", line 2, in <module>
+AssertionError
+
+===== 6d =====
+  2026-01-01  主源=1  第二源=1  偏差=0.0%  [PASS]  (offline)
+  2026-01-02  主源=1  第二源=1  偏差=0.0%  [PASS]  (offline)
+  2026-01-03  主源=1  第二源=1  偏差=0.0%  [PASS]  (offline)
+[PASS] 3 点：FAIL=0 WARN=0 SKIP=0 -> /private/tmp/f01-red-32de39q_/variant-004/price_checks.json
+write_price_receipt: prices='price_series.json', second_price=1.0, rc=0, receipt_exists=True
+receipt.verdict = 'PASS'
+receipt.points = [{'day': '2026-01-01', 'main_price': 1.0, 'second_price': 1.0, 'second_note': 'offline', 'deviation_pct': 0.0, 'status': 'PASS'}, {'day': '2026-01-02', 'main_price': 1.0, 'second_price': 1.0, 'second_note': 'offline', 'deviation_pct': 0.0, 'status': 'PASS'}, {'day': '2026-01-03', 'main_price': 1.0, 'second_price': 1.0, 'second_note': 'offline', 'deviation_pct': 0.0, 'status': 'PASS'}]
+errors = []
+notes = ['NOTE: fig3.events_input 是工单 fig3.events 自引用，空哈希不核', "fig2 required 下限: ['e1']", 'NOTE: 未声明流通量，门槛仅按总供应判', "flow 下限: ['e1']；图中实体: ['e1']"]
+RED: AssertionError: []
+Traceback (most recent call last):
+  File "<stdin>", line 70, in run_segment
+  File "<F01-RED-6d>", line 5, in <module>
+AssertionError: []
+
+===== 6e =====
+errors = []
+notes = ['NOTE: fig3.events_input 是工单 fig3.events 自引用，空哈希不核', "fig2 required 下限: ['e1']", 'NOTE: 未声明流通量，门槛仅按总供应判', "flow 下限: ['e1']；图中实体: ['e1']"]
+RED: AssertionError: []
+Traceback (most recent call last):
+  File "<stdin>", line 70, in run_segment
+  File "<F01-RED-6e>", line 4, in <module>
+AssertionError: []
+
+===== 6f =====
+  2026-01-01  主源=1  第二源=1  偏差=0.0%  [PASS]  (offline)
+  2026-01-02  主源=1  第二源=1  偏差=0.0%  [PASS]  (offline)
+  2026-01-03  主源=1  第二源=1  偏差=0.0%  [PASS]  (offline)
+[PASS] 3 点：FAIL=0 WARN=0 SKIP=0 -> /private/tmp/f01-red-32de39q_/variant-006/price_checks.json
+write_price_receipt: prices='price_series.json', second_price=1.0, rc=0, receipt_exists=True
+receipt.verdict = 'PASS'
+receipt.points = [{'day': '2026-01-01', 'main_price': 1.0, 'second_price': 1.0, 'second_note': 'offline', 'deviation_pct': 0.0, 'status': 'PASS'}, {'day': '2026-01-02', 'main_price': 1.0, 'second_price': 1.0, 'second_note': 'offline', 'deviation_pct': 0.0, 'status': 'PASS'}, {'day': '2026-01-03', 'main_price': 1.0, 'second_price': 1.0, 'second_note': 'offline', 'deviation_pct': 0.0, 'status': 'PASS'}]
+errors = []
+notes = ['NOTE: fig3.events_input 是工单 fig3.events 自引用，空哈希不核', "fig2 required 下限: ['e1']", 'NOTE: 未声明流通量，门槛仅按总供应判', "flow 下限: ['e1']；图中实体: ['e1']"]
+RED: AssertionError: []
+Traceback (most recent call last):
+  File "<stdin>", line 70, in run_segment
+  File "<F01-RED-6f>", line 5, in <module>
+AssertionError: []
+
+===== 6g/thresholds =====
+RED: AttributeError: module 'stage2_closeout' has no attribute 'PRICE_WARN_PCT'
+Traceback (most recent call last):
+  File "<stdin>", line 70, in run_segment
+  File "<F01-RED-6g/thresholds>", line 3, in <module>
+AttributeError: module 'stage2_closeout' has no attribute 'PRICE_WARN_PCT'
+
+===== 6g/WARN-original =====
+  2026-01-01  主源=1  第二源=1.052  偏差=5.07%  [WARN]  (offline)
+  2026-01-02  主源=1  第二源=1.052  偏差=5.07%  [WARN]  (offline)
+  2026-01-03  主源=1  第二源=1.052  偏差=5.07%  [WARN]  (offline)
+[WARN] 3 点：FAIL=0 WARN=3 SKIP=0 -> /private/tmp/f01-red-32de39q_/variant-007/price_checks.json
+write_price_receipt: prices='price_series.json', second_price=1.052, rc=0, receipt_exists=True
+receipt.verdict = 'WARN'
+receipt.points = [{'day': '2026-01-01', 'main_price': 1.0, 'second_price': 1.052, 'second_note': 'offline', 'deviation_pct': 5.07, 'status': 'WARN'}, {'day': '2026-01-02', 'main_price': 1.0, 'second_price': 1.052, 'second_note': 'offline', 'deviation_pct': 5.07, 'status': 'WARN'}, {'day': '2026-01-03', 'main_price': 1.0, 'second_price': 1.052, 'second_note': 'offline', 'deviation_pct': 5.07, 'status': 'WARN'}]
+errors = []
+notes = ['NOTE: 价格双源 WARN 点 3 个（>5% 过目口径，见 report-template 2b）', 'NOTE: fig3.events_input 是工单 fig3.events 自引用，空哈希不核', "fig2 required 下限: ['e1']", 'NOTE: 未声明流通量，门槛仅按总供应判', "flow 下限: ['e1']；图中实体: ['e1']"]
+GREEN: assertions passed
+
+===== 6g/WARN-mutated-PASS =====
+errors = []
+notes = ['NOTE: fig3.events_input 是工单 fig3.events 自引用，空哈希不核', "fig2 required 下限: ['e1']", 'NOTE: 未声明流通量，门槛仅按总供应判', "flow 下限: ['e1']；图中实体: ['e1']"]
+RED: AssertionError: []
+Traceback (most recent call last):
+  File "<stdin>", line 70, in run_segment
+  File "<F01-RED-6g/WARN-mutated-PASS>", line 3, in <module>
+AssertionError: []
+
+OUTCOMES: {'6b/price_nan.json': 'RED', '6b/price_zero.json': 'RED', '6c': 'RED', '6d': 'RED', '6e': 'RED', '6f': 'RED', '6g/thresholds': 'RED', '6g/WARN-original': 'GREEN', '6g/WARN-mutated-PASS': 'RED'}
+Production diff after RED exit: 0
+RED CAPTURE COMPLETE: all six segments independently observed; 6b both inputs and 6g three subchecks recorded.

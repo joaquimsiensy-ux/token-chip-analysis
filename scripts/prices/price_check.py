@@ -15,7 +15,7 @@
   - price_series.json：[[ts_sec, price], ...]
   - CG market_chart / llama series：{"prices": [[ts_ms, price], ...]}
   - CSV：表头嗅探时间列（ts/timestamp/time/date）+ 价格列（price/close）
-  时间戳 >1e12 自动判毫秒。
+  时间戳 >1e12 自动判毫秒；任一点非有限（NaN/inf）或非正即 [fatal] 退出 1，先清洗主价格文件再抽查（F01）。
 
 网络：DefiLlama 与 data-api.binance.vision 均实测直连通（api-keys.md 免注册通道节）；
 个别网络环境不通时加 --proxy <proxy-url>，代理地址推荐统一放在 CHIP_PROXY。
@@ -31,6 +31,7 @@ import csv
 import datetime
 import hashlib
 import json
+import math
 import os
 import sys
 import time
@@ -82,6 +83,9 @@ def _load_series(path):
         else:
             sys.exit(f"[fatal] 价格 JSON 认不出结构（既非 [[ts,p]] 也非 {{'prices':...}}）")
     out = [(t // 1000 if t > 10 ** 12 else t, p) for t, p in out]
+    bad = [t for t, p in out if not (math.isfinite(p) and p > 0)]
+    if bad:
+        sys.exit(f"[fatal] 价格文件含非有限或非正价格 {len(bad)} 点（首个 ts={bad[0]}）：主价格文件先清洗再抽查")
     return sorted(out)
 
 
@@ -172,6 +176,7 @@ def main():
             p2, src2 = second_llama(day, a.chain, a.addr, a.proxy)
         else:
             p2, src2 = second_binance(day, a.binance_symbol, a.proxy)
+        p2 = p2 if p2 is None or math.isfinite(p2) else None  # 第二源非有限→按无数据 SKIP（收据可序列化）
         if p2 is None or p2 <= 0 or p1 <= 0:
             status, dev = "SKIP", None
             n_skip += 1
@@ -196,7 +201,7 @@ def main():
            "points": results, "verdict": verdict}
     if a.out:
         with open(a.out, "w") as f:
-            json.dump(out, f, ensure_ascii=False, indent=1)
+            json.dump(out, f, ensure_ascii=False, indent=1, allow_nan=False)
     print(f"[{verdict}] {len(picks)} 点：FAIL={n_fail} WARN={n_warn} SKIP={n_skip}"
           + (f" -> {a.out}" if a.out else ""))
     if verdict == "FAIL":
