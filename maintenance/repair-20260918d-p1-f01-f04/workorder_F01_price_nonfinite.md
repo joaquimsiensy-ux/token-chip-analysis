@@ -1,8 +1,9 @@
-# 工单 F01（v2，融合 codex 复核 r1 五条 F01-R1-01～05）：主价格文件非有限/非正值 fail-closed、第二源非有限按无数据、收据序列化拒 NaN、−2 收口逐点重算价格状态 —— repair-20260918d-p1-f01-f04 第二段
+# 工单 F01（v3，融合 codex 复核 r1 五条 F01-R1-01～05、r2 一条 F01-R2-01）：主价格文件非有限/非正值 fail-closed、第二源非有限按无数据、收据序列化拒 NaN、−2 收口逐点重算价格状态 —— repair-20260918d-p1-f01-f04 第二段
 
 > 出处：codex 对 9.0.0（868d3f61）六视角 review F01（P1，A2/B2；半修复 8e566ef2→47e9efb0）：`scripts/prices/price_check.py:75/:79/:81` 把价格 `float()` 后不核有限性；`:175` 只判 `None/≤0`（NaN 与 0 比较为假，不落 SKIP），`:179` 偏差算成 NaN，`:180` 两个 `>` 比较均为假 → **PASS**；`:199` `json.dump` 默认 `allow_nan=True` 写出含 `NaN` 字面量的收据。`scripts/report/stage2_closeout.py:268-271` 只从各点自报 `status` 汇总 verdict，不看 `main_price/second_price` 数值。反例：三天 `close=NaN` CSV → 真实生产者 `rc=0, verdict=PASS`、三点 `main_price/deviation_pct=NaN`、收口 `errors=[]`。用户 09-18 裁决：修。总原则：skill 上下文不增；能删不增、能改不增；references/SKILL/commands 本段零改动。
 > 修法：①生产者 `_load_series` 解析后任一点**非有限或非正** → `[fatal]` 退出 1（主价格文件是报告图 1 正式输入，含 NaN/0/负价本身就是坏文件，抽查前先清洗；存量按真实解析规则核验 0 命中，台账 Q4）；②`:175` 之前把非有限的第二源价规范化为 `None`（既有 SKIP 分支接手，收据可序列化，台账 Q1）；③`:199` `allow_nan=False`（收据层纵深防御）；④closeout `price_receipt_errors` 逐点用 `main_price/second_price` 按 `price_check.py:175-180` 同规则重算 status 并要求与声明一致，主价非有限正数直接拒（与①同口径；严于基线生产者"p1≤0→SKIP"，存量无任何 price_check 收据故零实际影响，Q4）；阈值常量复制自 `price_check.py:43`、不 import（Q2），两端相等由测试 6g 断言守。
 > v2 变更（`review_F01_reply_r1.md`）：R1-01 第二源非有限值原会以 `p2=nan` 进 results 撞 `allow_nan=False` 抛 `ValueError`——改为 `:175` 前规范化为 `None`，并加带 `--out` 的用例 6c；R1-02 消费者拒有限非正主价严于基线生产者——生产者 `_load_series` 同步拒非正（两端同口径），兼容范围与存量代价按 Q4 实证明写；R1-03 阈值漂移改由 6g 相等断言＋WARN 边界用例守；R1-04 汇总层诊断改"0～2 条"；R1-05 Q4 存量核验改用 `price_check._load_series` 真实解析规则由调度方本机执行；另 §0.4 CSV 日期截断口径位置订正为 `_load_series:70-72`。
+> v3 变更（`review_F01_reply_r2.md`）：R2-01 §1.5 兼容前提由"全有限"订正为"主价格文件各点均为有限正数、第二源为 None 或有限数"，并明确非正主价改为 fatal 1 属本轮预期变化（与 §1.7、6b 一致）。
 > 内容基线：`868d3f61`（v9.0.0）加本工程已入库 commit；本段在 F04 落地之后施工，F04 不触碰本段任何文件，行号按 868d3f61 核。
 
 ## 0. 开工纪律
@@ -23,7 +24,7 @@
 - 1.3 closeout 收据仍 12 项 checks（`test_stage2_closeout.py:618` 断言）；本段不新增 check 项，逐点重算错误并入既有 `workorder` 项的 errors。
 - 1.4 `workorder_reference_contracts`（`:514-561`）全部 19 条既有 mutation 保持 BLOCK 且错误文案含其 field 名；`price_receipt_content_enforced` 段 1-7 断言不变（段 3 WARN 收据仍放行并记 NOTE：1.0/1.08 重算 7.69% WARN 与声明一致）。
 - 1.7 兼容范围（明写）：消费者要求每点 `main_price` 为有限正数、`status` 与重算一致；基线生产者对 `p1≤0` 判 SKIP 并可汇总 PASS 的收据在新消费者下被拒——存量案卷经 Q4 核验**不存在任何 `price_check.py` 生成的收据**（0 份含 `points`），故无实际迁移对象；今后收据一律由改后生产者生成，两端同口径。
-- 1.5 `price_check.py` 对**合法**输入（全有限）的 stdout 行、退出码（PASS/WARN 0、FAIL 2、ALL_SKIP 3）、收据键集合逐字不变；本段**不新增收据键**。
+- 1.5 `price_check.py` 对**合法**输入（主价格文件各点均为有限正数、第二源为 None 或有限数）的 stdout 行、退出码（PASS/WARN 0、FAIL 2、ALL_SKIP 3）、收据键集合逐字不变；本段**不新增收据键**。主价格文件含 0/负价在基线为 SKIP 并可汇总 PASS，改后为 `[fatal]` 退出 1——属本轮**预期变化**（与 §1.7、用例 6b 一致），不是兼容性承诺的例外。
 - 1.6 `price_receipt_errors` 返回类型 `(errors, notes, ref)` 不变；`workorder_error()` 前缀 `WORKORDER BLOCK: ` 不变。
 
 ## 2. 逐条施工
