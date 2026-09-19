@@ -1,6 +1,6 @@
-# 工单 R2：v9.0.1 口径漂移与文档-代码不符 3 条纯文本修复 v1
+# 工单 R2：v9.0.1 口径漂移与文档-代码不符 3 条纯文本修复 v2
 
-内容基线：`07c97d6`（R1 施工落地后的内容态；施工 HEAD 可含 maintenance/ 提交，但 §0.1 差异校验须为空）。来源：盲审 R2a 2 条（`blind_r2a_report.md` D1/D2）＋ Fable 补报 1 条（R2a 首派因配额中断前抛出的线索，Fable 亲核属实；R2b 报 0 条）。本单全部为纯文本修复，零代码改动；**所有锚与替换文本均为代码块内整行片段，不含首尾空白**。
+内容基线：`07c97d6`（R1 施工落地后的内容态；施工 HEAD 可含 maintenance/ 提交，但 §0.1 差异校验须为空）。来源：盲审 R2a 2 条（`blind_r2a_report.md` D1/D2）＋ Fable 补报 1 条（R2a 首派因配额中断前抛出的线索，Fable 亲核属实；R2b 报 0 条）。本单全部为纯文本修复，零代码改动；v2 采纳 codex 复核 r1（`review_wo2_reply.md`）非阻断精简建议：D1b 改为仅保留指针 `见 §3.5`（§3.5 已含禁止改源码要求）；**所有锚与替换文本均为代码块内整行片段，不含首尾空白**。
 
 ## §0 施工纪律
 0.1 开工先确认 `git status --short` 为空并记录施工 HEAD；`git diff --stat 07c97d6 HEAD -- SKILL.md references scripts commands-staging VERSION CHANGELOG.md` 须为空，不符即停工汇报。
@@ -10,7 +10,7 @@
 0.5 不 commit、不 push、不部署；不改 `scripts/`、`commands-staging/`、`CHANGELOG.md`、两份 manifest。
 
 ## §1 硬约束
-1.1 字节：`SKILL.md` = 8021、`commands-staging/*.md` 合计 = 8789 不变；references 三组 glob（`references/*.md references/casebook/*.md references/labels/*.md`）合计 ≤ 930160（基线 930145；Fable 本机按四处替换逐字模拟净减 36 B → 930109，实测数写入报告）。
+1.1 字节：`SKILL.md` = 8021、`commands-staging/*.md` 合计 = 8789 不变；references 三组 glob（`references/*.md references/casebook/*.md references/labels/*.md`）合计 ≤ 930160（基线 930145；Fable 本机按四处替换逐字模拟净减 66 B → 930079（复核 r1 独立重算一致），实测数写入报告）。
 1.2 守卫全绿：`python3 scripts/tests/docs_lint.py`、`docs_lint.py --all`、`casebook_lint.py`、`changelog_lint.py`、`test_contract_routes.py`、`test_sixlens_docs.py`、`test_g3_docs_guards.py`、`test_version_consistency.py`、`test_commands_deploy_sync.py`，原始输出贴进 r2_done.md。
 1.3 `git diff --stat` 只含 §0.3 白名单。
 
@@ -31,7 +31,7 @@ D1b `references/data-pipeline-evm-sources.md:28`（删除重复且不全的参�
 ```
 →
 ```
-见 §3.5；禁止改源码注入标的
+见 §3.5
 ```
 依据 `scripts/evm/multicall_balances.py:90-92`（`--chain` 默认 `bsc`）、`:107-112`（按 `args.chain` 做 RPC chain id attest，不匹配退出 1）、`scripts/lib/net.py:339-342`（`eth_chainId` ≠ expected 即 `RpcChainMismatch`）。
 
