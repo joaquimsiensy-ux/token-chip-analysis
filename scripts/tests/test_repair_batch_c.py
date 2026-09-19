@@ -157,6 +157,10 @@ def t_f05_unit():
     # 失败分支：值非列表 / 非法阵营名
     check("F05 值非列表硬拒", rejected({"camp_A": "not-a-list"}, "evm"))
     check("F05 空阵营名硬拒", rejected({"": [A]}, "evm"))
+    # F04（review 9.0.0）：EVM 残差桶不得显式配置；Solana 分格式语义不变（build_evolution 默认桶）
+    check("F04 EVM 显式散户桶硬拒", rejected({"大庄": [A], "散户": [B]}, "evm"))
+    check("F04 solana 显式散户不误杀",
+          validate_camp_spec({"散户": [SA]}, chain_family="solana") == {"散户": [SA]})
     # 绿例：规范化返回（EVM lower、保序）
     out = validate_camp_spec({"甲": ["0xAbC0000000000000000000000000000000000001", B]},
                              chain_family="evm")
@@ -249,11 +253,17 @@ def compile_state_cli(td: Path, *extra):
 def t_f05_evm_engines():
     """两 EVM 引擎同批同深度：重复 spec 双双 exit 2；合法 spec 双双照常出货。"""
     dup_spec = {"camps": {"camp_A": [A], "camp_B": [A]}, "entities": {}}
+    retail_spec = {"camps": {"大庄": [A], "散户": [B]}, "entities": {}}
     ok_spec = {"camps": {"项目方": [A], "大庄": [B]}, "entities": {"实体X": [B]}}
     with tempfile.TemporaryDirectory() as s:
         td = Path(s)
         p = build_evm_case(td, dup_spec, expect_rc=2)
         check("F05 replay_duck 跨营重复 exit2", "camp-spec" in p.stderr, p.stderr[-300:])
+    with tempfile.TemporaryDirectory() as s:
+        td = Path(s)
+        p = build_evm_case(td, retail_spec, expect_rc=2)
+        check("F04 replay_duck 显式散户桶 exit2 且不产序列",
+              "残差桶" in p.stderr and not (td / "data/camp_series.json").exists(), p.stderr[-300:])
     with tempfile.TemporaryDirectory() as s:
         td = Path(s)
         build_evm_case(td, ok_spec)
@@ -270,6 +280,11 @@ def t_f05_evm_engines():
         p = run([ROOT / "scripts/evm/replay_pass2.py", "camps.json",
                  "--data-dir", "data"], td)
         check("F05 replay_pass2 合法 spec 绿例", p.returncode == 0, p.stderr[-300:])
+        (td / "camps_retail.json").write_text(json.dumps(retail_spec, ensure_ascii=False))
+        p = run([ROOT / "scripts/evm/replay_pass2.py", "camps_retail.json",
+                 "--data-dir", "data"], td)
+        check("F04 replay_pass2 显式散户桶 exit2",
+              p.returncode == 2 and "残差桶" in p.stderr, f"rc={p.returncode} {p.stderr[-300:]}")
         check("F04 replay_pass2 sidecar 落盘",
               (td / "data/camp_series.provenance.json").is_file()
               and (td / "data/entity_series.provenance.json").is_file())

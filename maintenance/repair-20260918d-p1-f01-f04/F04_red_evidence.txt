@@ -1,0 +1,110 @@
+# F04 RED 证据（修改生产代码之前）
+
+基线 HEAD: a4a0f2ccb5cb4beae1c20949fe2f5bae1f68afa9
+分支: main
+内容基线检查、开工 git status --short: 输出均为空。
+取证完成后 git diff --exit-code -- scripts/lib/camp_spec.py scripts/tests/test_repair_batch_c.py: rc=0，输出为空。
+脚本: /private/tmp/f04-construction-u3tf2_ws/f04_probe.py（仓库外临时脚本）
+各条件分别由独立 python3 -B 进程求值，未执行整份测试或调用 raise 型 check()。
+第 3 项调用 build_evm_case(..., expect_rc=0)；第 4 项使用第 3 项同一临时目录，先 --emit-csv。
+所有子进程继承 PYTHONDONTWRITEBYTECODE=1；全程离线。
+
+表达式汇总：
+1. EVM 显式散户拒收：False（RED）；validation rc=0；stderr 尾行为空；无序列（单元级）。
+2. Solana 显式散户接受：True（GREEN 对照）；validation rc=0；stderr 尾行为空；无序列（单元级）。
+3. replay_duck 残差桶错误且不产序列：False（RED）；engine rc=0；序列存在，dates=4，散户=8；stderr 尾行为空。
+4. replay_pass2 exit2 且残差桶错误：False（RED）；engine rc=0；序列存在，dates=4，散户=8；stderr 尾行为空。
+两引擎基线散户值均为 [0.0, 0, 40.0, 0, 40.0, 10.0, 36.8421, 10.5263]。
+
+$ python3 -B /private/tmp/f04-construction-u3tf2_ws/f04_probe.py red1
+expression_driver_rc=0
+{
+  "item": 1,
+  "expression": "rejected({\"大庄\":[A],\"散户\":[B]},\"evm\")",
+  "condition_result": false,
+  "validation_exit_code": 0,
+  "stderr_tail": "",
+  "retail_values": null,
+  "retail_length": null,
+  "series_note": "unit expression: no replay"
+}
+
+$ python3 -B /private/tmp/f04-construction-u3tf2_ws/f04_probe.py red2
+expression_driver_rc=0
+{
+  "item": 2,
+  "expression": "validate_camp_spec({\"散户\":[SA]},chain_family=\"solana\") == {\"散户\":[SA]}",
+  "condition_result": true,
+  "validation_exit_code": 0,
+  "stderr_tail": "",
+  "retail_values": null,
+  "retail_length": null,
+  "series_note": "unit expression: no replay"
+}
+
+$ python3 -B /private/tmp/f04-construction-u3tf2_ws/f04_probe.py red3
+expression_driver_rc=0
+{
+  "item": 3,
+  "setup": "build_evm_case(td, retail_spec, expect_rc=0)",
+  "expression": "\"残差桶\" in p.stderr and not (td / \"data/camp_series.json\").exists()",
+  "condition_result": false,
+  "engine_exit_code": 0,
+  "exit2_requirement": false,
+  "stderr_tail": "",
+  "series_exists": true,
+  "dates": [
+    "2026-01-01",
+    "2026-01-02",
+    "2026-01-03",
+    "2026-01-04"
+  ],
+  "dates_length": 4,
+  "retail_values": [
+    0.0,
+    0,
+    40.0,
+    0,
+    40.0,
+    10.0,
+    36.8421,
+    10.5263
+  ],
+  "retail_length": 8,
+  "baseline_symptom": true
+}
+
+$ python3 -B /private/tmp/f04-construction-u3tf2_ws/f04_probe.py red4
+expression_driver_rc=0
+{
+  "item": 4,
+  "setup": "same retail_case; replay_duck --emit-csv; replay_pass2.py camps_retail.json --data-dir data",
+  "expression": "p.returncode == 2 and \"残差桶\" in p.stderr",
+  "condition_result": false,
+  "emit_csv_exit_code": 0,
+  "emit_csv_stderr_tail": "",
+  "engine_exit_code": 0,
+  "stderr_tail": "",
+  "series_exists": true,
+  "dates": [
+    "2026-01-01",
+    "2026-01-02",
+    "2026-01-03",
+    "2026-01-04"
+  ],
+  "dates_length": 4,
+  "retail_values": [
+    0.0,
+    0,
+    40.0,
+    0,
+    40.0,
+    10.0,
+    36.8421,
+    10.5263
+  ],
+  "retail_length": 8,
+  "baseline_symptom": true
+}
+
+

@@ -19,7 +19,7 @@ solana/build_evolution.py）此前各自手写 `addr2camp[addr] = camp` 式装�
 边界（by design，不在本模块管辖）：
   - 互斥只属 camps 域；entities 域一个地址可属多个实体（图 2 实体线与阵营
     本来就允许重叠），不查重。
-  - "销毁"阵营由引擎自动补列（烧入 0x0 的量），spec 里可不配置。
+  - "销毁"阵营由引擎自动补列（烧入 0x0 的量），spec 里可不配置；EVM 的"散户"是引擎残差桶（100−已知阵营），spec 里配置即拒（F04，2026-09-18）。
 """
 from __future__ import annotations
 
@@ -59,6 +59,9 @@ def validate_camp_spec(camps, *, chain_family: str, source_label: str = "camps")
     for camp, addrs in camps.items():
         if not isinstance(camp, str) or not camp.strip():
             _fail(f"{source_label} 含非法阵营名: {camp!r}")
+        if chain_family == "evm" and camp == "散户":
+            _fail(f"{source_label} 阵营「散户」是 EVM 引擎的残差桶（100−已知阵营），不得在 spec 里配置"
+                  f"——显式配置会让 replay_pass2/replay_duck 同日写两个元素；把这些地址归入其他阵营或删掉")
         if not isinstance(addrs, list):
             _fail(f"{source_label} 阵营「{camp}」的值必须是地址列表，"
                   f"收到 {type(addrs).__name__}")
