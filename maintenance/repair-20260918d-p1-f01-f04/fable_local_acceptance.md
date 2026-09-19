@@ -25,3 +25,12 @@
 
 ## 5. 待补验
 版本落地（工单 E）施工后：`test_version_consistency`（须 9.0.1）、`changelog_lint`（活跃 79→80）、`docs_lint --all`、`wc -c SKILL.md`＝8021，结果追加到本文件 §6。
+
+## 6. 工单 E 施工后复验（工作树＝008beb5＋codex 施工 E 未提交改动，09-19）
+- `git diff --stat`：恰四文件 `CHANGELOG.md` +11 / `SKILL.md` 1↔1 / `VERSION` 1↔1 / `pyproject.toml` 1↔1，另新增 `E_done.md`。
+- CHANGELOG 新增索引行（:13）与详细段（:98–107，段后空行再接原 `## [9.0.0]` :108）与工单 v2 §2.4 两个代码块去缩进后**逐字相同**（Python 机器对照 True/True）；`git diff` 无删除行。
+- `python3 -B scripts/tests/test_version_consistency.py` → `PASS: M-03 version metadata consistent at 9.0.1`
+- `python3 -B scripts/tests/changelog_lint.py` → `PASS: 版本号唯一（豁免 2 组历史撞号存档）、顺序正确；活跃 80 条 + 归档 139 条`（79→80）
+- `python3 -B scripts/tests/docs_lint.py --all` → `PASS: 59 个文档，引用无断链、粗体配对完整（--all 全量模式）`
+- `wc -c SKILL.md` → 8021（不变）；`VERSION` 为 `9.0.1\n`（6 字节、单 LF）。
+- `E_done.md` §6 禁读披露干净（未读 `~/.codex/`、archive 等）。
