@@ -664,7 +664,7 @@ QUQ 与 PYTHIA 只用于算法层探索定标。防伪链测试使用合成 fixt
 | `skipped_confirmation.endpoint_fingerprint` | string | 是 |  |
 | `skipped_confirmation.blocks_bitmap` | object | 是 | path,size,sha256,from_slot,to_slot,encoding |
 | `skipped_confirmation.ranges` | array[object] | 是 | from,to,response_sha256,count,response_ok,array_monotonic_unique,array_in_range |
-| `shared_map` | object\|null | 是 | asset_path,version,sha256,supersedes,generated_at,reused_ranges,unverified_ranges,recheck_stats,canary{slots[64],counts_sha256,verified_at} |
+| `shared_map` | object\|null | 是 | asset_path,version,sha256,supersedes,generated_at,reused_ranges,unverified_ranges,recheck_stats,canary{slots,counts_sha256,verified_at} |
 | `ledger` | object | 是 | path,size,sha256,requests,success_ranges_sha256 |
 | `summary` | object | 是 | 饱和计数 |
 | `verdict` | string | 是 | NO_KNOWN_NONCE_OMISSION_DETECTED/DEFECTS_CONFIRMED/INCONCLUSIVE；须重算 |
@@ -685,14 +685,14 @@ QUQ 与 PYTHIA 只用于算法层探索定标。防伪链测试使用合成 fixt
 | `skipped_confirmation.ranges[].array_monotonic_unique` | boolean | 是 |  |
 | `skipped_confirmation.ranges[].array_in_range` | boolean | 是 |  |
 | `shared_map.asset_path` | string | 是 |  |
-| `shared_map.version` | string | 是 |  |
-| `shared_map.sha256` | string (sha256 hex) | 是 |  |
+| `shared_map.version` | string\|null | 是 |  |
+| `shared_map.sha256` | string (sha256 hex)\|null | 是 |  |
 | `shared_map.supersedes` | string\|null | 是 |  |
-| `shared_map.generated_at` | string | 是 |  |
+| `shared_map.generated_at` | string\|null | 是 |  |
 | `shared_map.reused_ranges` | array[object] | 是 | 本案实际复用的连续子区间；不含未验证段及案区间外 slot |
 | `shared_map.unverified_ranges` | array[object] | 是 | 首轮请求失败且末尾统一重试仍失败的原始 recheck 区间；元素为 from_slot,to_slot |
 | `shared_map.recheck_stats` | object | 是 | `verified`/`unverified`/`retried` 均按 recheck 连续请求区间计数；retried 是首轮失败后进入末尾重试的区间数 |
-| `shared_map.canary.slots` | array[integer] | 是 | 长度64 |
+| `shared_map.canary.slots` | array[integer] | 是 | 长度0或64；复用成功时为64 |
 | `shared_map.canary.counts_sha256` | string (sha256 hex) | 是 |  |
 | `shared_map.canary.verified_at` | string | 是 |  |
 | `ledger.path` | string | 是 |  |
@@ -711,7 +711,7 @@ QUQ 与 PYTHIA 只用于算法层探索定标。防伪链测试使用合成 fixt
 - 无 UNSCANNED；解压长度等于区间长度；ledger 成功区间并集无洞且等于 scan_ranges 并集。
 - skipped_confirmation.ranges[] 每段字段恰为 {from,to,response_sha256,count,response_ok,array_monotonic_unique,array_in_range}。
 - complete 不落盘；离线 validator 的 complete 合取式＝response_ok ∧ array_monotonic_unique ∧ array_in_range ∧ (to−from+1) ≤ 500,000 ∧ reference_head_at_check ≥ to ∧ 位图该段长度 == to−from+1 ∧ popcount == count ∧ count ≤ 区间长度。
-- array_monotonic_unique 与 array_in_range 是生产时对原始响应数组的断言结果；任一为 false 则该段 unconfirmed，其 NO_HEADER 保持未确认，有效 verdict 为 INCONCLUSIVE；--live-canary 重拉若干段与位图切片对表。
+- array_monotonic_unique 与 array_in_range 是生产时对原始响应数组的断言结果；任一为 false 则该段 unconfirmed，其 NO_HEADER 保持未确认，有效 verdict 为 INCONCLUSIVE。
 - era_params 固定为 {window:1000000,min_headers:10000,min_ratio_num:99,min_ratio_den:100}；判定使用整数交叉相乘 nonce_blocks*min_ratio_den >= header_blocks*min_ratio_num。
 - summary/verdict 从 slot_counts 重算。
 - 探针不可变；重跑产生新 probe_id。
@@ -792,7 +792,7 @@ QUQ 与 PYTHIA 只用于算法层探索定标。防伪链测试使用合成 fixt
 | `census[].state_in_map` | string | 是 |  |
 | `census[].result` | string | 是 | confirmed_nonce_defect/confirmed_other_defect/confirmed_missing_block/refuted |
 | `census[].sqd_tx_count` | integer | 是 |  |
-| `census[].sqd_blockhash` | string | 是 |  |
+| `census[].sqd_blockhash` | string\|null | 是 |  |
 | `census[].ref_tx_count` | integer | 是 |  |
 | `census[].ref_nonvote_count` | integer | 是 |  |
 | `census[].ref_blockhash` | string | 是 |  |
