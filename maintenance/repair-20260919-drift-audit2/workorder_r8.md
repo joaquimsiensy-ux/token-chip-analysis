@@ -1,6 +1,6 @@
-# 工单 R8：v9.0.1 口径漂移与文档-代码不符 4 条纯文本修复 v1
+# 工单 R8：v9.0.1 口径漂移与文档-代码不符 4 条纯文本修复 v2（吸收 codex 复核：D3 补 :46/:71 两处同源失效引用、D1 措辞压缩）
 
-内容基线：`c16bf8e`（R7 施工落地后的内容态；施工 HEAD 可含 maintenance/ 提交，但 §0.1 差异校验须为空）。来源：盲审 R8a 1 条 minor＋1 条待确认（Fable 亲核升为发现）（`blind_r8a_report.md`）＋ R8b 2 条 nit（`blind_r8b_report.md`），共 4 条、5 文件、9 行；Fable 逐条亲核两侧原文属实。本单全部为纯文本修复，零代码改动；**所有锚均为目标文件整行原文，按代码块内整行字面处理**。
+内容基线：`c16bf8e`（R7 施工落地后的内容态；施工 HEAD 可含 maintenance/ 提交，但 §0.1 差异校验须为空）。来源：盲审 R8a 1 条 minor＋1 条待确认（Fable 亲核升为发现）（`blind_r8a_report.md`）＋ R8b 2 条 nit（`blind_r8b_report.md`），共 4 条、5 文件、11 行；Fable 逐条亲核两侧原文属实。本单全部为纯文本修复，零代码改动；**所有锚均为目标文件整行原文，按代码块内整行字面处理**。
 
 ## §0 施工纪律
 0.1 开工先确认 `git status --short` 为空并记录施工 HEAD；`git diff --stat c16bf8e HEAD -- SKILL.md references scripts commands-staging VERSION CHANGELOG.md` 须为空，不符即停工汇报。
@@ -10,7 +10,7 @@
 0.5 不 commit、不 push、不部署；不改 `scripts/`、`commands-staging/`、`CHANGELOG.md`、两份 manifest。
 
 ## §1 硬约束
-1.1 字节：`SKILL.md` = 8021、`commands-staging/*.md` 合计 = 8789 不变；references 三组 glob（`references/*.md references/casebook/*.md references/labels/*.md`）合计 = 929324（基线 929528；九处整行替换按 UTF-8 字面模拟净减 204 B：D1 -2、D2 +4、D3 -92、D4 -114；实测数写入报告，须等于该值）。
+1.1 字节：`SKILL.md` = 8021、`commands-staging/*.md` 合计 = 8789 不变；references 三组 glob（`references/*.md references/casebook/*.md references/labels/*.md`）合计 = 929154（基线 929528；十一处整行替换按 UTF-8 字面模拟净减 374 B；实测数写入报告，须等于该值）。
 1.2 守卫全绿：`python3 scripts/tests/docs_lint.py`、`docs_lint.py --all`、`casebook_lint.py`、`changelog_lint.py`、`test_contract_routes.py`、`test_sixlens_docs.py`、`test_g3_docs_guards.py`、`test_version_consistency.py`、`test_commands_deploy_sync.py`，原始输出贴进 r8_done.md。
 1.3 `git diff --stat` 只含 §0.3 白名单。
 
@@ -23,7 +23,7 @@
 ```
 →
 ```
-- 坑预警（Token-2022 实测升级）`[VERIFIED·CLUDE实战]`：先 `getAccountInfo(<MINT>)` 看 mint 归属程序。若是 Token-2022（`TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb`）：①pump.fun 新币标准是 Token-2022，账户主流 dataSize=165 与 170 双形态并存，但**还有零星其他 dataSize**（CLUDE 实测 165/170 双扫漏 14 个账户 0.036% 供应，对账不闭合）——正解是 **api.mainnet-beta 无 dataSize 过滤全扫**（见 §0a Token-2022 行，publicnode 此路 504）+ `memcmp offset=0` 按 mint 过滤；②扫描器 `--datasizes` 仅兼容参数，一律不按 dataSize 过滤；Token-2022 显式 165/170 会拒绝，账户加总不等于 `getTokenSupply` 也不会写正式 holders 产物。（CLUDE，07-13；2026-08-02 加固）
+- 坑预警（Token-2022 实测升级）`[VERIFIED·CLUDE实战]`：先 `getAccountInfo(<MINT>)` 看 mint 归属程序。若是 Token-2022（`TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb`）：①pump.fun 新币标准是 Token-2022，账户主流 dataSize=165 与 170 双形态并存，但**还有零星其他 dataSize**（CLUDE 实测 165/170 双扫漏 14 个账户 0.036% 供应，对账不闭合）——正解是 **api.mainnet-beta 无 dataSize 过滤全扫**（见 §0a Token-2022 行，publicnode 此路 504）+ `memcmp offset=0` 按 mint 过滤；②扫描器不按 dataSize 过滤，`--datasizes` 仅兼容；Token-2022 显式 165/170 会拒绝，账户加总不等于 `getTokenSupply` 也不会写正式 holders 产物。（CLUDE，07-13；2026-08-02 加固）
 ```
 依据 `scripts/lib/solana_observation.py:400-405`（filters 仅 `memcmp offset=0 mint`，无 dataSize；两程序同一路径）、`scripts/solana/scan_token_accounts.py:149-150`（`--datasizes` 注明 compatibility option）、`:212-213`（仅 Token-2022 显式非 auto/all 拒绝）、`:60`（`choose_datasizes` 在 `main` 内无调用）。
 
@@ -48,6 +48,24 @@
 **适用场景**：老 pump.fun 币在内盘（bonding curve）滞留数月甚至一年以上才毕业——内盘期交易稀疏，但**不能不采**：做量脉冲、早期集群、毕业前试盘仓全藏在这段。用 SQD 扫这段 slot 区间在死亡期每响应仅推进 ~3900 slot，工程上极不划算。本节是**稀疏长内盘期**的全量精确解——稀疏恰恰使逐笔 decode 可行。
 ```
 依据同文件 §8（:30-42）无 Plan B 定义、:46 仅一句提及无定义。删去失效比较半句，保留"本节是稀疏长内盘期…"。
+
+同文件两处同源失效引用（复核补入）：
+`references/data-pipeline-solana-capture.md:46`。锚（整行）：
+```
+针对"4-5 个月币龄全量 SQD 挂机不现实"的 Plan B 的一个更轻量替代，已在 LAYOFF 跑通：
+```
+→
+```
+已在 LAYOFF 跑通：
+```
+`references/data-pipeline-solana-capture.md:71`。锚（整行）：
+```
+§8"全程 SQD 重放不现实"与 §9 锚点法的合体升级——14 个月+币龄、13.5 万持仓账户量级标的实战定型：
+```
+→
+```
+14 个月+币龄、13.5 万持仓账户量级标的实战定型：
+```
 
 ### D4（R8b D2）C-06/E-12 六处引用指向主册，条目实在 `-methods` 续册
 改法沿用文档既有"判例见 casebook C-07"不带路径惯例（全库同款已有多处），把 `casebook/cex-custody.md C-06`→`casebook C-06`、`casebook/entity-clustering.md E-12`→`casebook E-12`，比补路径更短。依据 `references/casebook/cex-custody-methods.md:5`、`references/casebook/entity-clustering-methods.md:5`（条目所在）；主册 `cex-custody.md`/`entity-clustering.md` 无 C-06/E-12 标题。六处整行：
