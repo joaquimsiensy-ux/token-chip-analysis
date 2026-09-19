@@ -10,4 +10,4 @@
 | Q6 | F04 | 不改两 EVM 引擎的 append 结构（"显式散户与残差合并后只 append 一次"）：fail-closed 拒配置改动更小，且「散户」设计上就是残差桶、正式案从未配置过（review 全量检索 0 实例） | 能改不增 |
 | Q7 | F04 | references 零改动：文档无"散户可在 camps 里配置"的示例（`monitoring-package.md:79` 是序列输出示例、`scan-schemas.md:613/621` 已写"散户残差"）；契约由 `camp_spec.py` docstring 边界段与 CHANGELOG 承载 | 本轮文档零改动 |
 | Q8 | 环境 | 上轮 Q15 沿用：本机跑 `test_stage2_closeout.py`/`test_a4_gate.py` 须 `export MPLCONFIGDIR=$HOME/.matplotlib`（macOS 27 字体枚举空→matplotlib 建缓存 KeyError） | 环境项不改代码 |
-| Q9 | 版本 | 9.0.1 vs 10.0.0（`ruling_20260918.md`） | **待用户追认** |
+| Q9 | 版本 | 9.0.1 vs 10.0.0（`ruling_20260918.md`） | **用户 09-18 裁决：9.0.1** |
