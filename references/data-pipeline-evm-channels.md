@@ -211,7 +211,7 @@ size 与 SHA-256；全部通过后才原子将 v2/v3/pre-schema done 升为
 
 ### 3.4 Etherscan V2（scripts/evm/fetch_etherscan.py，仅 ETH 主网）
 - `https://api.etherscan.io/v2/api?chainid=1&module=account&action=tokentx|txlist|txlistinternal&apikey=KEY`；tokentx 每页 10000 条，按末行 block 续页拉全。（OPN，07）
-- 免费 key 仅 chainid=1 可用；跨链代币的 ETH 侧全量转账、金库地址 txlist/txlistinternal（vesting 释放追踪）都走它。（OPN，07）
+- 跨链代币的 ETH 侧全量转账、金库地址 txlist/txlistinternal（vesting 释放追踪）都走它。（OPN，07）
 
 ### 3.5 Multicall3 批量余额（scripts/evm/multicall_balances.py）
 - 参数化调用：`python3 scripts/evm/multicall_balances.py --token 0x... --input addresses.txt --out balances.json [--chain <链> --rpc URL ...]`。默认 4 个公共节点仅适用于 BSC；跨链必须显式传对应链的 `--chain` 与 `--rpc`，禁止改源码注入标的。
