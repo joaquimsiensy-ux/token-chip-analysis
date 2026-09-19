@@ -10,7 +10,7 @@
 0.5 不 commit、不 push、不部署；不改 `scripts/`、`commands-staging/`、`CHANGELOG.md`、两份 manifest。
 
 ## §1 硬约束
-1.1 字节：`SKILL.md` = 8021、`commands-staging/*.md` 合计 = 8789 不变；references 三组 glob（`references/*.md references/casebook/*.md references/labels/*.md`）合计 ≤ 930260（基线 930079；Fable 本机按六处替换逐字模拟净增 +157 B → 930236，实测数写入报告）。本轮为 schema 字段表补正类型与条件，无可删冗余，净增不可避免。
+1.1 字节：`SKILL.md` = 8021、`commands-staging/*.md` 合计 = 8789 不变；references 三组 glob（`references/*.md references/casebook/*.md references/labels/*.md`）合计 ≤ 930260（基线 930079；Fable 本机按六处替换逐字模拟净增 +156 B → 930235，实测数写入报告）。本轮为 schema 字段表补正类型与条件，无可删冗余，净增不可避免。
 1.2 守卫全绿：`python3 scripts/tests/docs_lint.py`、`docs_lint.py --all`、`casebook_lint.py`、`changelog_lint.py`、`test_contract_routes.py`、`test_sixlens_docs.py`、`test_g3_docs_guards.py`、`test_version_consistency.py`、`test_commands_deploy_sync.py`，原始输出贴进 r3_done.md。
 1.3 `git diff --stat` 只含 §0.3 白名单。
 
