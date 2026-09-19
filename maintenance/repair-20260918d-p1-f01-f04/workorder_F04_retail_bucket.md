@@ -1,7 +1,8 @@
-# 工单 F04（v1）：EVM camps spec 显式「散户」桶在共享校验层硬拒 —— repair-20260918d-p1-f01-f04 第一段
+# 工单 F04（v2，融合 codex 复核 r1 四条 F04-R1-01～04）：EVM camps spec 显式「散户」桶在共享校验层硬拒 —— repair-20260918d-p1-f01-f04 第一段
 
 > 出处：codex 对 9.0.0（868d3f61）六视角 review F04（P1，A2/B2；历史漏审 0fe2d601/ff477632）：`scripts/lib/camp_spec.py:59-61` 只验阵营名非空、成员互斥，不拒保留桶；`scripts/evm/replay_pass2.py:102-106`（`snap()` 先对 `stack` 每桶 append 一次，`:106` 再对 `series["散户"]` append 残差）与 `scripts/evm/replay_duck.py:555-560` 同构——spec 显式配置「散户」时，「散户」既在 `stack` 里被 append 一次、又作残差被 append 一次，同一天两个元素，两引擎 rc=0 产出坏形状序列；`camp_series_provenance.py:426` 的长度检查才拦（报错过晚、白跑一遍重放）。反例：mint 100→A、A→B 40，`camps={大庄:[A],散户:[B]}` → 两引擎 rc=0、dates 长度 1、「散户」=[40,0]。用户 09-18 裁决：修。总原则：skill 上下文不增；能删不增、能改不增；references/SKILL/commands 本段零改动。
 > 修法：在四入口共享的 `validate_camp_spec` 里，`chain_family == "evm"` 且阵营名恰为「散户」→ `_fail`（exit 2，与既有互斥拒同通道）。不改两引擎的 append 结构（台账 Q6）；Solana 不拒（台账 Q5：`build_evolution.py:173` 以「散户」为默认桶、`:181` 标量加残差无重复；LAYOFF 案 `entity_camps.json` 27 处显式「散户」为存量）。
+> v2 变更（`review_F04_reply_r1.md`）：R1-01 RED 第 3/4 项的基线序列长度按 `build_evm_case` 四天数据订正为 `len(散户)==2*len(dates)==8`，基线取证用 `expect_rc=0`（`expect_rc=2` 会先在工厂 `:207` 断言处抛、拿不到 `p`）；R1-02 台账 Q5 改为 producer 分列/consumer 并桶、并记显式散户会触发既有末点对账冲突；R1-03 duck 序列写盘行号订正为 `:577`，保证限定为"全新输出目录不生成 `camp_series.json`"（`:467` 之前 pass1 已写余额/统计文件）；R1-04 检索命中分类订正（含 `standard_charts.py:81` 颜色映射），"正式案零实例"标为此前 review 记录、LAYOFF 27 处为调度方本机核验。
 > 内容基线：`868d3f61`（v9.0.0）加本工程已入库 commit；本段先于 F01 施工，行号按 868d3f61 核。
 
 ## 0. 开工纪律
@@ -12,7 +13,7 @@
 - 0.4 **不改**：`scripts/evm/replay_pass2.py`、`scripts/evm/replay_duck.py`、`scripts/solana/replay_edges.py`、`scripts/solana/build_evolution.py`（四入口调用点不动，`validate_camp_spec` 签名不动）；`camp_spec.py` 的 `_normalize`/`load_addr_camp_json`/互斥查重逻辑；`camp_series_provenance.py`；任何 `references/`、`SKILL.md`、`commands-staging/`、`VERSION`、`pyproject.toml`、`CHANGELOG.md`、`contract_manifest.json`、`invariant_manifest.json`（开工用 `python3 -B scripts/tests/invariant_scan.py` 证实无需登记）。
 - 0.5 行号均指施工前基线（868d3f61）；锚 `grep -n -F` 恰 1 处且行号一致，不符**停工**。删除 > 修改 > 新增。
 - 0.6 离线；不 commit、不 push、不部署；禁 stash/checkout/reset。
-- 0.7 先红后绿：§2.3 四个新 check 在改生产代码前**逐表达式独立执行**取 RED 写 `F04_red_evidence.txt`（`check()`（`:54-57`）是 raise 型，不能靠跑整测试取证；用 `python3 -c` 或临时脚本分别求值四个条件表达式并记录 True/False 与 stderr 尾行；临时脚本不得留在仓库）。
+- 0.7 先红后绿：§2.2、§2.3 共四项（三项 RED、一项 GREEN 对照）在改生产代码前**逐表达式独立执行**取证写 `F04_red_evidence.txt`（`check()`（`:54-57`）是 raise 型，不能靠跑整测试取证；用 `python3 -c` 或临时脚本分别求值四个条件表达式并记录 True/False 与 stderr 尾行；临时脚本不得留在仓库）。
 - 0.8 不跑 `run_all.py`、不跑 `test_stage2_reseal.py`。定向跑（全部须 PASS）：`python3 -B scripts/tests/test_repair_batch_c.py`、`test_repair_batch_d.py`、`test_engine_equivalence.py`、`test_fault_injection.py`、`test_batch4_invariant_guards.py`、`test_exemption_guards.py`、`python3 -B scripts/tests/invariant_scan.py`。冷字体缓存环境项：遇 `data_broken: '_items'` 时保留首次输出写 done，再 `MPLCONFIGDIR="$HOME/.matplotlib" python3 -B …` 重跑，重跑必须真实 PASS。
 
 ## 1. 硬约束
@@ -37,7 +38,7 @@
                   f"——显式配置会让 replay_pass2/replay_duck 同日写两个元素；把这些地址归入其他阵营或删掉")
 ```
 
-说明：①放在阵营名非空检查之后、值类型检查之前，对非法 `chain_family` 的既有报错顺序不变（`_normalize` 仍在有地址时才校验 chain_family；`chain_family="x"` 配「散户」会先被本条放过再在 `_normalize` 拒——可接受，本条只认 `"evm"`）；②精确匹配 `"散户"`，不 strip：带空白的变体（如 `" 散户"`）不会撞 `series["散户"]` 键、不构成本缺陷；③`_load_camps_spec`（`camp_series_provenance.py:780-789`）consumer 侧重读 spec 走同一函数，EVM 正式案 spec 从未配置「散户」（review 全量检索 0 实例；本仓库 `grep -rn '"散户"\s*:' scripts` 命中全是序列值非配置键），无存量影响。
+说明：①放在阵营名非空检查之后、值类型检查之前，对非法 `chain_family` 的既有报错顺序不变（`_normalize` 仍在有地址时才校验 chain_family；`chain_family="x"` 配「散户」会先被本条放过再在 `_normalize` 拒——可接受，本条只认 `"evm"`）；②精确匹配 `"散户"`，不 strip：带空白的变体（如 `" 散户"`）不会撞 `series["散户"]` 键、不构成本缺陷；③`_load_camps_spec`（`camp_series_provenance.py:780-789`）consumer 侧重读 spec 走同一函数。存量面：本仓库 `grep -rn '"散户"\s*:' scripts` 未发现 EVM camps 地址配置显式含「散户」，命中为序列字段、输出示例与绘图颜色映射（`report/standard_charts.py:81`）；"正式案零实例"为此前 review（868d3f61 六视角 §F04）全量检索的记录；LAYOFF 案 27 处为调度方本机核验（Solana 路径，不受本条影响）。
 
 ### 2.2 `scripts/tests/test_repair_batch_c.py` —— 单元级
 
@@ -74,14 +75,14 @@
               p.returncode == 2 and "残差桶" in p.stderr, f"rc={p.returncode} {p.stderr[-300:]}")
 ```
 
-说明：①`build_evm_case`（`:184-209`）以 `expect_rc` 断言 `replay_duck` 退出码；duck 的 `validate_camp_spec` 在 `:467`，早于 `:567` 的序列写盘，拒收时 `data/camp_series.json` 不存在；②pass2 用例放在合法绿例之后：`:270-272` 已用 `camps.json` 产出 `data/camp_series.json`，pass2 在 `:57` 校验处退出、不覆盖产物，`:273-275` sidecar 断言不受影响；③沿用同函数既有 `run()`/`ROOT`/`tempfile` 与 `A`/`B`/`SA` 常量（`:44-49`），不新增 helper。
+说明：①`build_evm_case`（`:184-209`）以 `expect_rc` 断言 `replay_duck` 退出码；duck 的 `validate_camp_spec` 在 `:467`，早于 `:577` 的 `camp_series.json` 写盘（`:467` 之前 pass1 已写余额/统计等文件，故保证限定为"全新输出目录不生成序列"），拒收时 `data/camp_series.json` 不存在；②pass2 用例放在合法绿例之后：`:270-272` 已用 `camps.json` 产出 `data/camp_series.json`，pass2 在 `:57` 校验处退出、不覆盖产物，`:273-275` sidecar 断言不受影响；③沿用同函数既有 `run()`/`ROOT`/`tempfile` 与 `A`/`B`/`SA` 常量（`:44-49`），不新增 helper。
 
 RED 证据（改 `camp_spec.py` 之前，逐表达式独立执行，写 `F04_red_evidence.txt`）：
 1. `rejected({"大庄":[A],"散户":[B]},"evm")` 基线 **False**（RED）；
 2. `validate_camp_spec({"散户":[SA]},chain_family="solana") == {"散户":[SA]}` 基线 True（GREEN→GREEN，防误杀对照）；
-3. duck：临时目录里按 `build_evm_case` 同款输入跑 `replay_duck.py --camps`（配 `retail_spec`）基线 **rc=0 且 `data/camp_series.json` 存在、「散户」长度 2**（RED）；
-4. pass2：同目录 `--emit-csv` 后跑 `replay_pass2.py camps_retail.json --data-dir data` 基线 **rc=0**（RED）。
-记录每项的 rc、stderr 尾行、序列「散户」值。
+3. duck：临时目录里 `build_evm_case(td, retail_spec, expect_rc=0)`（基线取证用 0，勿用 2）基线 **rc=0 且 `data/camp_series.json` 存在、`len(散户) == 2*len(dates) == 8`**（工厂为四天数据，每天两次 append）（RED）；
+4. pass2：同目录 `--emit-csv` 后跑 `replay_pass2.py camps_retail.json --data-dir data` 基线 **rc=0、序列「散户」长度同样 8**（RED）。
+记录每项的 rc、stderr 尾行、序列「散户」值与长度。
 
 ## 3. 完成报告 `F04_done.md` 必含
 
