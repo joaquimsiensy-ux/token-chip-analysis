@@ -58,7 +58,7 @@
 
 旧研报为锚点法（非全量流水重放）时，增量更新**不必补拉全量转账**，走快照对比五步：
 
-1. **新全量快照**：`scan_token_accounts.py`（Token-2022 记得 `--rpc api.mainnet-beta` + 先把旧 `_gpa_raw_*` 改名存档，见 §9.8）；同时 `getTokenSupply` 复验供给闭合（窗口内销毁体现在总量差）。
+1. **新全量快照**：`scan_token_accounts.py`（Token-2022 `--rpc https://api.mainnet-beta.solana.com` + 先把旧 `_gpa_raw_*` 改名存档，见 §9.8）；`getTokenSupply` 复验供给闭合（窗口内销毁体现在总量差）。
 2. **快照 diff**：`snapshot_diff.py --old 旧owners --new 新owners --entities 实体表` → 实体逐址变动 + 大额变动榜（新面孔/清零标注）。**排名变化不是证据**（持有人增多会把静止地址挤出 topN），一切以余额 Δ 为准。
 3. **窗口变动全覆盖定性**：`probe_window_moves.py --targets 变动榜 --cutoff <ISO时间>` → 每址 pool_buy/pool_sell/direct_transfer 分类 + 直转对汇总；大额变动地址必须 100% 覆盖，直转对按对手方 |Δ|。（判例：casebook/supply-accounting.md S-04）
 4. **对账三查（轻量版）**：新快照加总=getTokenSupply（diff=0）；top20 与 `getTokenLargestAccounts` 双源对表（活跃池允许时点差）；重点地址签名史净额 vs 快照 Δ 分毫互验。
