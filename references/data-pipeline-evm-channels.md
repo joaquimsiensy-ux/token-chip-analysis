@@ -198,7 +198,7 @@ size 与 SHA-256；全部通过后才原子将 v2/v3/pre-schema done 升为
 
 ### 3.2 Alchemy getAssetTransfers（scripts/evm/fetch_alchemy.py）
 - POST `https://bnb-mainnet.g.alchemy.com/v2/{KEY}`，method=`alchemy_getAssetTransfers`，params 含 `contractAddresses`、`category:["erc20"]`、`maxCount:"0x3e8"`、`pageKey` 分页；返回自带时间戳。（SIREN，07）
-- pageKey 有有效期，长任务中断后必过期：断点续拉一律读 CSV 末行区块号置 fromBlock 重开游标，容忍少量重复、下游按 tx hash 去重。（SIREN，07）
+- pageKey 有有效期，长任务中断后必过期：断点续拉一律读 CSV 末行区块号置 fromBlock 重开游标，容忍少量重复。（SIREN，07）
 - 会遇平台级 429（"global traffic"，与自身配额无关、恢复时间不可控）：脚本内置指数退避（最长 20 分钟）+ 外层 while 冷却重启；卡点超 1-2 小时必须并行准备第二通道并用 AskUserQuestion 摆路径，绝不单通道死等。（SIREN，07）
 - **正式资格已除名**：该协议的 pageKey 只证明分页关系，不能证明 provider 已扫描到某个块上界，因此不支持 `evm-collector-run/v2` 正式 receipt，仅可探索采集。恢复资格需先升版为能表达分页完成证据的分型收据。
 
