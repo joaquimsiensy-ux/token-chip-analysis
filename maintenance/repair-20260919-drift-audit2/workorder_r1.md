@@ -10,7 +10,7 @@
 0.5 不 commit、不 push、不部署 `~/.claude/commands/`（部署由 Fable 做）；不改 `scripts/`、`contract_manifest.json`、`invariant_manifest.json`。
 
 ## §1 硬约束
-1.1 字节：`SKILL.md` = 8021 不变；references 三组 glob（`references/*.md references/casebook/*.md references/labels/*.md`，含 attic.md 与 *.bak_* 文件）合计 ≤ 930130（基线 930076，`stat -f %z` 逐文件求和；复核 r1 按其建议文本核算为净减 3 B，v2 的 D2 比该建议多约 +20 B，故预算留至 +54 B；实测数写入报告）；`commands-staging/*.md` 合计 = 8789（基线 8798，D9 删"第⑤条"净减 9 B）。
+1.1 字节：`SKILL.md` = 8021 不变；references 三组 glob（`references/*.md references/casebook/*.md references/labels/*.md`，含 attic.md 与 *.bak_* 文件）合计 ≤ 930160（基线 930076，`stat -f %z` 逐文件求和；Fable 本机按 v2 七处替换逐字模拟净增 +69 B → 930145，预算留至 +84 B；实测数写入报告）；`commands-staging/*.md` 合计 = 8789（基线 8798，D9 删"第⑤条"净减 9 B）。
 1.2 守卫全绿：`python3 scripts/tests/docs_lint.py`、`docs_lint.py --all`、`casebook_lint.py`、`changelog_lint.py`、`test_contract_routes.py`、`test_sixlens_docs.py`、`test_g3_docs_guards.py`、`test_version_consistency.py`，原始输出贴进 r1_done.md。`test_commands_deploy_sync.py` 在本单施工后**预期 FAIL**（token-analyze-2.md 与已部署版不一致，部署由 Fable 做后复验），照跑并贴输出，不算停工条件。
 1.3 `git diff --stat` 只含 §0.3 白名单。
 
