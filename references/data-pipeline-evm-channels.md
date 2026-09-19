@@ -205,10 +205,8 @@ size 与 SHA-256；全部通过后才原子将 v2/v3/pre-schema done 升为
 ### 3.3 bloXroute getLogs 扫块
 
 正式操作入口为 `scripts/evm/scan_bloxroute_seg.py`。旧 `scan_transfers.py` 仅保留历史/诊断用途，不得作为正式或冷启动主线。
-- 断点续传：done-segments 清单跳过已完成段；多线程必留失败段，扫完自动列 remaining 并补扫，remaining=0 才算采集完成。（OPN，07）
+- 断点续传：`<out>.done.json` 记已完成段，重跑跳过；收尾 `fails=` 最多列 20 个失败段，须重跑补采至 `fails=[]`。（OPN，07）
 - 起始块定位：勿用 eth_getCode 二分找部署块（免费节点历史状态请求被拒，会找错块导致空扫秒退）；改按"块时间戳 >= 已知安全起始日期"二分，起始日期用 GMGN start_holding_at 或跨链铸造日锚定，多扫无害。（OPN/SIREN，07）
-- 同脚本顺带采时间戳锚点：每隔固定块距 eth_getBlockByNumber 取块头时间戳（数百个锚点几分钟采完），分析期 bisect 线性插值，省数千次逐块 RPC。（OPN，07）
-- **起点缓存坑**：`<chain>_scan_meta.json` 缓存 start_block/head，改 config 的 start_time_utc 后必须删除该文件才会重新二分，否则沿用旧起点空跑。（哈基米，07-18）
 - HTTP 客户端用 subprocess 调系统 curl（或 requests），绝不裸 urllib——macOS 证书链坑两次会话都踩过。（OPN/SIREN，07）
 
 ### 3.4 Etherscan V2（scripts/evm/fetch_etherscan.py，仅 ETH 主网）

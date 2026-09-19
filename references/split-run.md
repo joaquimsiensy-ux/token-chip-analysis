@@ -12,7 +12,7 @@
 
 ```
 用户在 codex CLI（主轨 GPT-5.6）："对 <币> 跑 −1（机械段）"
-  或 CC 开 Opus 会话（备轨）跑 /token-analyze-1 <币> [链]
+  或 CC 开 Opus 会话（备轨）跑 /token-analyze-1 <币> full [链]
         ↓ 产物全部落 <币>分析/ 工作目录，完成即停
 用户手动新开 Fable 5 会话（CC），同目录跑 /token-analyze-2 <币> full
         ↓ −2 判断收口：报告正文成稿＋产 a5_assembly_workorder.json，完成即停
