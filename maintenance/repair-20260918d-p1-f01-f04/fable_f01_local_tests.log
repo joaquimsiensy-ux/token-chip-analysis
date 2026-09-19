@@ -1,0 +1,29 @@
+=== test_stage2_closeout.py
+ok    price_receipt_content_enforced
+ok    circulating_supply_producer_to_consumer
+stage2_closeout: 30/30 PASS
+rc=0
+=== test_a4_gate.py
+ok    D-07 help 不再暴露不可达 skip gate 参数
+========================================
+a4_gate 契约测试全部通过（23 项）
+rc=0
+=== test_audit_release_gate.py
+ok    21 F07 兼容：原始触发日清单在 data/ 不被误判（GREEN→GREEN）
+ok    22 F07 兼容：只有原始触发日清单、无峰值产物（GREEN→GREEN）
+PASS: audit_release_gate 净室资产/哈希/CEX受益权/阴性结论/图表封口与负钳零/对抗复核否决/四查WARN拦截/双线阈值/嵌套未决暴露/静置仓全集对账/日级峰值口径闭环十一类契约全过
+rc=0
+=== test_batch4_invariant_guards.py
+INJECT R9-B4-STALE-02 remove formal producer artifact registration -> RED
+INJECT B4F2-STALE-04 newly added standalone producer -> RED
+PASS B4-G1: bare pool / labels / vertical slice / denominator injections
+rc=0
+=== test_exemption_guards.py
+PASS EX-01: --chain choices remain exploration-derived
+INJECT EX-01-RED production import -> RED
+PASS: exemption guards (EX-01 full-F-03)
+rc=0
+=== invariant_scan.py
+PASS invariant manifest: receipt_producers=81, receipt_consumers=118, transport_calls=65, atomic_writes=61, formal_entrypoints=61, exceptions=0
+rc=0
+DONE

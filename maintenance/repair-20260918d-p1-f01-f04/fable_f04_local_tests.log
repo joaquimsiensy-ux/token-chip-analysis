@@ -1,0 +1,31 @@
+=== test_repair_batch_c.py
+  So1BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB              300  33.333%  (现货300+质押0)
+有效持仓末态已写 data/effective_balances.json
+PASS: repair batch C (F-05+F-04+fixround1+fixround2) 263 checks
+rc=0
+=== test_repair_batch_d.py
+ok    F-D3 ④ A5 seal 同案收口（state→figures→A4→A5 全链一案贯通）
+================================================
+BATCH D 全部通过
+rc=0
+=== test_engine_equivalence.py
+PASS: R09 块级补算峰值等价、零事件地址、非法输入与坏事件不覆盖全量产物
+PASS: 三引擎 gate/退出码 10 例 hypothesis 全等；gate PASS 六产物全等；gate FAIL 正式序列零产物；VARINT 双引擎确定性对表通过
+rc=0
+=== test_fault_injection.py
+PASS: 故障注入 F0–F5 + P0-02 四类通道完整性×三引擎 + R1 receipt 生成/漂移
+rc=0
+=== test_batch4_invariant_guards.py
+INJECT R9-B4-STALE-02 remove formal producer artifact registration -> RED
+INJECT B4F2-STALE-04 newly added standalone producer -> RED
+PASS B4-G1: bare pool / labels / vertical slice / denominator injections
+rc=0
+=== test_exemption_guards.py
+PASS EX-01: --chain choices remain exploration-derived
+INJECT EX-01-RED production import -> RED
+PASS: exemption guards (EX-01 full-F-03)
+rc=0
+=== invariant_scan.py
+PASS invariant manifest: receipt_producers=81, receipt_consumers=118, transport_calls=65, atomic_writes=61, formal_entrypoints=61, exceptions=0
+rc=0
+DONE
