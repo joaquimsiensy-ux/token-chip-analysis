@@ -1,0 +1,2 @@
+[verify] FAIL（fail-closed，逐条修复或退回 −1）:
+  ✗ reconciliation/accounting 公共深验失败: reconciliation time producer/runner is not current repository script
