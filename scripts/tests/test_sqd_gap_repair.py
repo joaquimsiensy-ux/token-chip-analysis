@@ -3,7 +3,9 @@
 
 from __future__ import annotations
 
+import errno
 import gzip
+import io
 import hashlib
 import importlib
 import importlib.util
@@ -13,8 +15,11 @@ import shutil
 import subprocess
 import sys
 import tempfile
+from contextlib import redirect_stderr
+from copy import deepcopy
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import patch
 
 from sqd_v4_test_fixture import FETCH_SHA256, MINT
 
@@ -767,6 +772,9 @@ def batch3b_semantic_regressions():
             (uninterrupted_parent / "CURRENT.json").read_text())
         assert interrupted_pointer["gid"] == uninterrupted_pointer["gid"]
 
+        # E27(d): trusted predecessor adoption, v1 requests and crash boundaries.
+        adoption_regressions(root / "adoption", repair, exact, missing)
+
         # E27(b): crash at CAS after immutable rename; resume uses the existing
         # generation without transport and publishes idempotently.
         crash = root / "crash"
@@ -807,6 +815,350 @@ def batch3b_semantic_regressions():
 
     print("GREEN E25 beta E2E/tamper/subset/no-residual; E26 state abort; "
           "E27 quota-resume/crash/CAS fault injection")
+
+
+def adoption_regressions(root, repair, exact, missing):
+    """E27(d): independently copied trusted sources; no production registry edits."""
+    old_sha = "25f04ff10bc494be977e4c5b3193c3a928c0764fa529d8d5a47563fe2a825e66"
+    active = repair.historical_producer_hashes(
+        "scripts/solana/sqd_gap_repair.py", "sqd-solana-repair-bundle/v1")
+    assert old_sha in active
+    unknown_sha = "f" * 64
+    assert unknown_sha not in active
+    key = hashlib.sha256(MINT.encode()).hexdigest()
+    fp = repair.reference_endpoint_identity("fixture://helius")["sha256"]
+    templates = {}
+
+    def read_rows(directory):
+        return repair._parse_ledger_prefix((directory / "rpc_ledger.jsonl").read_bytes())
+
+    def write_rows(directory, rows):
+        (directory / "rpc_ledger.jsonl").write_bytes(repair._jsonl_bytes(rows))
+
+    def snapshot(directory):
+        return {str(p.relative_to(directory)): repair.sha256_file(p)
+                for p in directory.rglob("*") if p.is_file()}
+
+    def responses_for(slots, *, quota_last=False, version_one=False):
+        responses = {}
+        for index, slot in enumerate(slots):
+            tx = deepcopy(missing[index % len(missing)])
+            tx["transaction"]["signatures"] = [f"AdoptionMissingSignature{slot}"]
+            assert tx.get("version") != 1
+            if version_one:
+                tx["version"] = 1
+                tx["transaction"]["message"]["transactionConfig"] = {}
+            responses.update(repair_slot_responses(
+                repair, slot, tx, nonce_count=0,
+                quota=quota_last and index == len(slots) - 1))
+        return responses
+
+    # One successful row + quota; two successful rows + third-slot quota.
+    for count in (1, 2):
+        slots = list(range(19_999 - count, 20_000))
+        base = root / f"source-{count}"
+        case = build_batch3b_case(base, set(slots), [
+            [i + 1, slot, 0, -1, ZERO, f"Base{i}", 1]
+            for i, slot in enumerate(slots)])
+        fixture = write_repair_fixture(base / "quota", responses_for(slots, quota_last=True))
+        assert repair.main([
+            "repair", "--mint", MINT, "--case-root", str(case),
+            "--transport-fixture", str(fixture)]) == 3
+        plan, _, _ = repair._plan(case, MINT, reference_fingerprint=fp)
+        previous = deepcopy(plan)
+        previous["producer"]["sha256"] = old_sha
+        previous["plan_digest"] = repair.compute_plan_digest(previous)
+        parent = case / "data/sqd_repair" / key
+        pending = parent / f"pending-{plan['plan_digest']}"
+        old = parent / f"pending-{previous['plan_digest']}"
+        pending.rename(old)
+        rows = read_rows(old)
+        assert len(rows) == count + 1
+        rows[0]["plan_digest"] = previous["plan_digest"]
+        for row in rows[1:]:
+            row["params_digest"] = exact._repair_getblock_params_digest(row["slot"], 0)
+        write_rows(old, rows)
+        templates[count] = (case, old.name, slots)
+
+    def copy_source(name, count=1):
+        template, old_name, slots = templates[count]
+        case = root / name / "case"
+        shutil.copytree(template, case)
+        plan, _, _ = repair._plan(case, MINT, reference_fingerprint=fp)
+        parent = case / "data/sqd_repair" / key
+        return case, parent / old_name, parent / f"pending-{plan['plan_digest']}", plan, slots
+
+    def command(case, old, fixture, *, resume=True, adopt=True):
+        args = ["repair", "--mint", MINT, "--case-root", str(case),
+                "--transport-fixture", str(fixture)]
+        if resume:
+            args.append("--resume")
+        if adopt:
+            args += ["--adopt-pending", str(old)]
+        return args
+
+    def generation(case):
+        parent = case / "data/sqd_repair" / key
+        pointer = json.loads((parent / "CURRENT.json").read_text())
+        return parent / f"gen-{pointer['gid']}"
+
+    def deep_check(case, gen, plan):
+        return exact.validate_repair_bundle_deep(
+            gen / "bundle.json", case_root=case,
+            current_base={"edge_sha256": plan["base"]["edge_sha256"]})
+
+    # Positive + torn tail: source bytes remain unchanged, even after publication.
+    case, old, pending, plan, slots = copy_source("positive")
+    original_rows = read_rows(old)
+    with (old / "rpc_ledger.jsonl").open("ab") as handle:
+        handle.write(b'{"seq":')
+    old_snapshot = snapshot(old)
+    fixture = write_repair_fixture(
+        case.parent / "remaining", responses_for(slots[1:], version_one=True))
+    observed = []
+    original_call = repair.RepairFixtureTransport.call
+
+    def observe_v1(self, kind, body):
+        if kind == "reference-getBlock":
+            assert body["params"][1]["maxSupportedTransactionVersion"] == 1
+            observed.append(body["params"][0])
+        result = original_call(self, kind, body)
+        if kind == "reference-getBlock" and result.ok:
+            assert any(tx.get("version") == 1 and "transactionConfig" in
+                       tx["transaction"]["message"]
+                       for tx in result.value["result"]["transactions"])
+        return result
+
+    with patch.object(repair.RepairFixtureTransport, "call", observe_v1):
+        assert repair.main(command(case, old, fixture)) == 0
+    assert observed == slots[1:]
+    gen = generation(case)
+    adopted_rows = read_rows(gen)
+    record = adopted_rows[0]["adopted"]
+    assert record["rows"] == 1 and record["predecessor_producer_sha256"] == old_sha
+    assert adopted_rows[1] == original_rows[1]
+    # Explicit independent oracle: do not use repair._rpc_body for this assertion.
+    expected_v1 = {
+        "jsonrpc": "2.0", "id": slots[1], "method": "getBlock",
+        "params": [slots[1], {"commitment": "finalized", "transactionDetails": "full",
+                               "encoding": "json", "rewards": False,
+                               "maxSupportedTransactionVersion": 1}],
+    }
+    assert adopted_rows[2]["params_digest"] == hashlib.sha256(
+        canonical_bytes(expected_v1)).hexdigest()
+    assert snapshot(old) == old_snapshot
+    checked = deep_check(case, gen, plan)
+    assert checked["ok"], checked
+    for suffix in ("sqd", "ref"):
+        name = f"{slots[0]}.{suffix}.json"
+        assert (old / "evidence" / name).stat().st_ino == (gen / "evidence" / name).stat().st_ino
+
+    # Independent current/previous digest reconstruction, including a beta-only slot.
+    bundle = json.loads((gen / "bundle.json").read_text())
+    resolution = json.loads((gen / "coverage_resolution.json").read_text())
+    assert exact._plan_digest_from_generation(
+        bundle, resolution, bundle["producer"]["sha256"]) == repair.compute_plan_digest(plan)
+    synthetic_resolution = {"plan_candidates": {"coverage": [10, 20], "beta": [20, 30]}}
+    synthetic_plan = deepcopy(plan)
+    synthetic_plan["candidate_slots"] = [10, 20, 30]
+    for sha in (plan["producer"]["sha256"], old_sha):
+        synthetic_plan["producer"]["sha256"] = sha
+        assert exact._plan_digest_from_generation(
+            bundle, synthetic_resolution, sha) == repair.compute_plan_digest(synthetic_plan)
+
+    # Deep validation rejects ledger mutations after updating its outer size/hash.
+    ledger_bytes = (gen / "rpc_ledger.jsonl").read_bytes()
+    bundle_bytes = (gen / "bundle.json").read_bytes()
+    for mutation, reason in (
+            (lambda rows: rows[0]["adopted"].update(predecessor_producer_sha256=unknown_sha),
+             "adopted record invalid"),
+            (lambda rows: rows[0]["adopted"].update(predecessor_plan_digest="0" * 16),
+             "adopted record invalid"),
+            (lambda rows: rows[1].update(endpoint_fingerprint="0" * 64),
+             "reference fingerprint mismatch"),
+            (lambda rows: rows[0]["reference"].update(endpoint_fingerprint="0" * 64),
+             "reference fingerprint mismatch"),
+            (lambda rows: rows[0]["adopted"].update(rows=True), "adopted record invalid"),
+            (lambda rows: rows[0].update(adopted=None), "adopted record invalid")):
+        rows = repair._parse_ledger_prefix(ledger_bytes)
+        mutation(rows)
+        write_rows(gen, rows)
+        altered = deepcopy(bundle)
+        altered["rpc_ledger"].update(size=(gen / "rpc_ledger.jsonl").stat().st_size,
+                                     sha256=repair.sha256_file(gen / "rpc_ledger.jsonl"))
+        (gen / "bundle.json").write_bytes(canonical_bytes(altered))
+        checked = deep_check(case, gen, plan)
+        assert not checked["ok"] and any(reason in r for r in checked["reasons"]), checked
+        (gen / "rpc_ledger.jsonl").write_bytes(ledger_bytes)
+        (gen / "bundle.json").write_bytes(bundle_bytes)
+
+    # Longest evidence-aligned prefix from a two-row predecessor.
+    case, old, pending, plan, slots = copy_source("longest", 2)
+    bad_ref = old / f"evidence/{slots[1]}.ref.json"
+    value = json.loads(bad_ref.read_text())
+    value["raw_response_sha256"] = "0" * 64
+    bad_ref.write_bytes(canonical_bytes(value))
+    before = snapshot(old)
+    fixture = write_repair_fixture(case.parent / "remaining", responses_for(slots[1:]))
+    assert repair.main(command(case, old, fixture)) == 0
+    assert read_rows(generation(case))[0]["adopted"]["rows"] == 1
+    assert snapshot(old) == before
+
+    # 1..9: independent sources; rejection changes no source/target artifact bytes.
+    for vector in range(1, 10):
+        case, old, pending, plan, slots = copy_source(f"reject-{vector}", 2 if vector == 9 else 1)
+        rows = read_rows(old)
+        expected = "adopt:"
+        if vector == 1:
+            previous = deepcopy(plan)
+            previous["producer"]["sha256"] = unknown_sha
+            digest = repair.compute_plan_digest(previous)
+            renamed = old.parent / f"pending-{digest}"
+            old.rename(renamed)
+            old = renamed
+            rows[0]["plan_digest"] = digest
+            write_rows(old, rows)
+            expected = "predecessor plan_digest is not reproducible"
+        elif vector == 2:
+            rows[0]["reference"]["endpoint_fingerprint"] = "0" * 64
+            write_rows(old, rows)
+        elif vector == 3:
+            pending.mkdir()
+            write_rows(pending, [repair._ledger_header(plan)])
+            expected = "adopt requires no target ledger"
+        elif vector == 4:
+            path = old / f"evidence/{slots[0]}.ref.json"
+            value = json.loads(path.read_text())
+            value["raw_response_sha256"] = "0" * 64
+            path.write_bytes(canonical_bytes(value))
+            expected = "no adoptable prefix"
+        elif vector == 5:
+            expected = "--adopt-pending requires --resume"
+        elif vector == 6:
+            foreign = case.parent / "foreign" / old.name
+            shutil.copytree(old, foreign)
+            old = foreign
+        elif vector == 7:
+            rows[0]["adopted"] = {}
+            write_rows(old, rows)
+        elif vector == 8:
+            outside = slots[0] - 1
+            rows[1]["slot"] = outside
+            rows[1]["params_digest"] = exact._repair_getblock_params_digest(outside, 0)
+            for suffix in ("sqd", "ref"):
+                path = old / f"evidence/{slots[0]}.{suffix}.json"
+                value = json.loads(path.read_text())
+                value["slot"] = outside
+                path.write_bytes(canonical_bytes(value))
+                path.rename(old / f"evidence/{outside}.{suffix}.json")
+            write_rows(old, rows)
+            assert repair._verify_ledger_rows(old, rows[1:], rows[0]) == {outside}
+            expected = "adopted slots are not a candidate prefix"
+        elif vector == 9:
+            (pending / "evidence").mkdir(parents=True)
+            (pending / f"evidence/{slots[1]}.sqd.json").write_text('{}')
+            expected = "target evidence conflicts"
+        before = snapshot(old), snapshot(pending)
+        fixture = write_repair_fixture(case.parent / "unused", {})
+        errors = io.StringIO()
+        with redirect_stderr(errors):
+            assert repair.main(command(case, old, fixture, resume=vector != 5)) == 2
+        assert expected in errors.getvalue(), (vector, errors.getvalue())
+        assert (snapshot(old), snapshot(pending)) == before, vector
+        if vector == 9:
+            assert not (pending / f"evidence/{slots[0]}.sqd.json").exists()
+
+    # 10: interrupt only the target ledger publication after evidence links exist.
+    case, old, pending, plan, slots = copy_source("before-commit")
+    before = snapshot(old)
+    fixture = write_repair_fixture(case.parent / "remaining", responses_for(slots[1:]))
+    publish = repair.publish_exclusive
+
+    def fail_ledger(path, payload):
+        if Path(path) == pending / "rpc_ledger.jsonl":
+            raise OSError("injected ledger publication interruption")
+        return publish(path, payload)
+
+    with patch.object(repair, "publish_exclusive", fail_ledger):
+        assert repair.main(command(case, old, fixture)) == 2
+    assert not (pending / "rpc_ledger.jsonl").exists()
+    assert (pending / f"evidence/{slots[0]}.ref.json").is_file()
+    assert repair.main(command(case, old, fixture)) == 0
+    assert snapshot(old) == before
+
+    # 11: ledger committed, then quota; adopt must reject and normal resume succeeds.
+    case, old, pending, plan, slots = copy_source("after-commit")
+    fixture = write_repair_fixture(
+        case.parent / "quota", responses_for(slots[1:], quota_last=True))
+    assert repair.main(command(case, old, fixture)) == 3
+    committed = read_rows(pending)
+    before = snapshot(old), snapshot(pending)
+    errors = io.StringIO()
+    with redirect_stderr(errors):
+        assert repair.main(command(case, old, fixture)) == 2
+    assert "adopt requires no target ledger" in errors.getvalue()
+    assert (snapshot(old), snapshot(pending)) == before
+    try:
+        repair.load_resume_slots(pending, repair._ledger_header(plan))
+    except ValueError as exc:
+        assert "adopted record invalid" in str(exc)
+    else:
+        raise AssertionError("adopted ledger resumed without plan")
+    fixture = write_repair_fixture(case.parent / "remaining", responses_for(slots[1:]))
+    assert repair.main(command(case, old, fixture, adopt=False)) == 0
+    resumed = read_rows(generation(case))
+    assert resumed[:len(committed)] == committed
+
+    # 12: EXDEV only for old evidence -> target evidence. Kernel temp links pass.
+    case, old, pending, plan, slots = copy_source("copy-retry")
+    before = snapshot(old)
+    fixture = write_repair_fixture(case.parent / "remaining", responses_for(slots[1:]))
+    original_link = os.link
+    copies = []
+    destination = pending / f"evidence/{slots[0]}.sqd.json"
+
+    def cross_device(src, dst, *args, **kwargs):
+        if Path(src).parent == old / "evidence" and Path(dst).parent == pending / "evidence":
+            raise OSError(errno.EXDEV, "injected cross-device link")
+        return original_link(src, dst, *args, **kwargs)
+
+    def observe_copy(path, payload):
+        if Path(path).parent == pending / "evidence" and isinstance(payload, repair.RawBytes):
+            copies.append(Path(path).name)
+        return publish(path, payload)
+
+    def fail_evidence(path, payload):
+        if Path(path) == destination:
+            raise OSError("injected atomic evidence publication interruption")
+        return observe_copy(path, payload)
+
+    with patch.object(os, "link", cross_device):
+        with patch.object(repair, "publish_exclusive", fail_evidence):
+            assert repair.main(command(case, old, fixture)) == 2
+        assert not destination.exists() and not (pending / "rpc_ledger.jsonl").exists()
+        with patch.object(repair, "publish_exclusive", observe_copy):
+            assert repair.main(command(case, old, fixture)) == 0
+    gen = generation(case)
+    assert set(copies) == {f"{slots[0]}.sqd.json", f"{slots[0]}.ref.json"}
+    for name in copies:
+        src, dst = old / "evidence" / name, gen / "evidence" / name
+        assert repair.sha256_file(src) == repair.sha256_file(dst)
+        assert src.stat().st_ino != dst.stat().st_ino
+    assert snapshot(old) == before
+
+    # Trust boundary: consistent forged hashes cannot authenticate the old source.
+    case, old, pending, plan, slots = copy_source("trusted-input-boundary")
+    rows = read_rows(old)
+    rows[1]["result_sha256"] = "e" * 64
+    write_rows(old, rows)
+    path = old / f"evidence/{slots[0]}.ref.json"
+    ref = json.loads(path.read_text())
+    ref["raw_response_sha256"] = rows[1]["result_sha256"]
+    path.write_bytes(canonical_bytes(ref))
+    (pending / "evidence").mkdir(parents=True)
+    repair.adopt_predecessor_pending(old, pending, plan, old.parent)
+    assert read_rows(pending)[1] == rows[1]
+    print("GREEN E27(d): predecessor adoption/v1/torn tail/longest prefix/12 fault vectors/deep digest")
 
 
 def main():

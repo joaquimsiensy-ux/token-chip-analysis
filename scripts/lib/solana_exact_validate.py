@@ -29,6 +29,12 @@ except ModuleNotFoundError:  # Package import: scripts.lib.solana_exact_validate
     from .producer_history import historical_producer_hashes
 
 
+try:
+    from endpoint_identity import SOLANA_MAX_SUPPORTED_TX_VERSION
+except ImportError:  # Package import: scripts.lib.solana_exact_validate.
+    from .endpoint_identity import SOLANA_MAX_SUPPORTED_TX_VERSION
+
+
 COVERAGE_SCHEMA = "sqd-solana-coverage/v1"
 COVERAGE_POINTER_SCHEMA = "sqd-solana-coverage-pointer/v1"
 ERA_PARAMS = {
@@ -1205,15 +1211,35 @@ def _repair_state_matches(state, header_present, nonce_count):
     return False
 
 
-def _repair_getblock_params_digest(slot):
-    body = {
+def repair_getblock_body(slot, max_version=SOLANA_MAX_SUPPORTED_TX_VERSION):
+    return {
         "jsonrpc": "2.0", "id": slot, "method": "getBlock",
         "params": [slot, {"commitment": "finalized",
                           "transactionDetails": "full", "encoding": "json",
                           "rewards": False,
-                          "maxSupportedTransactionVersion": 0}],
+                          "maxSupportedTransactionVersion": max_version}],
     }
-    return sha256_bytes(canonical_json(body))
+
+
+def _repair_getblock_params_digest(slot, max_version=SOLANA_MAX_SUPPORTED_TX_VERSION):
+    return sha256_bytes(canonical_json(repair_getblock_body(slot, max_version)))
+
+
+def _plan_digest_from_generation(bundle, resolution, producer_sha256):
+    """Independently mirror sqd_repair_core.compute_plan_digest material."""
+    material = {
+        "base": {"edge_sha256": bundle["base"]["edge_sha256"],
+                 "meta_sha256": bundle["base"]["meta_sha256"]},
+        "coverage": {"probe_id": bundle["coverage"]["probe_id"],
+                     "map_sha256": bundle["coverage"]["map"]["sha256"]},
+        "candidate_slots": sorted(set(resolution["plan_candidates"]["coverage"])
+                                  | set(resolution["plan_candidates"]["beta"])),
+        "mode": bundle["mode"],
+        "reference": {"kind": bundle["reference"]["kind"],
+                      "endpoint_fingerprint": bundle["reference"]["endpoint_fingerprint"]},
+        "producer": {"sha256": producer_sha256},
+    }
+    return sha256_bytes(canonical_json(material))[:16]
 
 
 def validate_repair_bundle_deep(bundle_path, *, case_root, current_base,
@@ -1308,7 +1334,33 @@ def validate_repair_bundle_deep(bundle_path, *, case_root, current_base,
         reasons.append("plan_digest differs across generation")
     ledger_by_slot = {}
     ledger_data_count = ledger_row_count - 1
+    adopted = ledger_header.get("adopted") if ledger_row_count else None
+    has_adopted = bool(ledger_row_count and "adopted" in ledger_header)
+    adopted_valid = False
+    if has_adopted:
+        adopted_valid = (
+            isinstance(adopted, dict) and set(adopted) == {
+                "predecessor_plan_digest", "predecessor_producer_sha256",
+                "rows", "source", "ts"}
+            and isinstance(adopted.get("predecessor_plan_digest"), str)
+            and re.fullmatch(r"[0-9a-f]{16}", adopted["predecessor_plan_digest"]) is not None
+            and adopted["predecessor_plan_digest"] != digest
+            and isinstance(adopted.get("predecessor_producer_sha256"), str)
+            and re.fullmatch(r"[0-9a-f]{64}", adopted["predecessor_producer_sha256"]) is not None
+            and adopted["predecessor_producer_sha256"] in historical_producer_hashes(
+                "scripts/solana/sqd_gap_repair.py", REPAIR_BUNDLE_SCHEMA)
+            and _integer(adopted.get("rows")) and 0 < adopted["rows"] <= ledger_data_count
+            and isinstance(adopted.get("source"), str) and _integer(adopted.get("ts")))
+        if not adopted_valid:
+            reasons.append("RPC ledger adopted record invalid")
     if ledger_row_count:
+        ledger_reference = ledger_header.get("reference")
+        bundle_reference = bundle.get("reference")
+        ledger_fingerprint = (ledger_reference.get("endpoint_fingerprint")
+                              if isinstance(ledger_reference, dict) else None)
+        if ledger_fingerprint is None or not isinstance(bundle_reference, dict) \
+                or ledger_fingerprint != bundle_reference.get("endpoint_fingerprint"):
+            reasons.append("RPC ledger reference fingerprint mismatch")
         if ledger_header.get("plan_digest") != digest:
             reasons.append("RPC ledger header plan_digest mismatch")
         seq_contiguous = True
@@ -1330,6 +1382,16 @@ def validate_repair_bundle_deep(bundle_path, *, case_root, current_base,
                             "params_digest", "endpoint_fingerprint",
                             "result_sha256")):
                 reasons.append("RPC ledger row contract invalid")
+            if row.get("endpoint_fingerprint") != ledger_fingerprint:
+                reasons.append("RPC ledger reference fingerprint mismatch")
+            if adopted_valid and expected_seq < adopted["rows"]:
+                try:
+                    if row["params_digest"] not in {
+                            _repair_getblock_params_digest(row["slot"], version)
+                            for version in range(SOLANA_MAX_SUPPORTED_TX_VERSION + 1)}:
+                        raise ValueError
+                except (KeyError, TypeError, ValueError):
+                    reasons.append("RPC ledger adopted record invalid")
             slot = row.get("slot")
             if slot in ledger_slots:
                 duplicate_ledger_slot = True
@@ -1455,6 +1517,16 @@ def validate_repair_bundle_deep(bundle_path, *, case_root, current_base,
         reasons.append("beta candidates require beta_trace evidence")
     all_candidates = set(plan_candidates["coverage"]) | set(
         plan_candidates["beta"])
+    if adopted_valid:
+        try:
+            if _plan_digest_from_generation(
+                    bundle, resolution, bundle["producer"]["sha256"]) != digest \
+                    or _plan_digest_from_generation(
+                        bundle, resolution, adopted["predecessor_producer_sha256"]
+                    ) != adopted["predecessor_plan_digest"]:
+                raise ValueError
+        except (KeyError, TypeError, ValueError):
+            reasons.append("RPC ledger adopted record invalid")
     if not all_candidates.issubset(census_slots):
         reasons.append("plan candidates lack census disposition")
     effective = ("INCONCLUSIVE" if not all_candidates.issubset(census_slots)
@@ -1530,7 +1602,9 @@ def validate_repair_bundle_deep(bundle_path, *, case_root, current_base,
             ledger_row = ledger_by_slot.get(slot)
             ref_row = evidence_get(f"evidence/{slot}.ref.json", {})
             if not isinstance(ledger_row, dict) \
-                    or ledger_row.get("params_digest") != _repair_getblock_params_digest(slot) \
+                    or ledger_row.get("params_digest") not in {
+                        _repair_getblock_params_digest(slot, version)
+                        for version in range(SOLANA_MAX_SUPPORTED_TX_VERSION + 1)} \
                     or ledger_row.get("result_sha256") != ref_row.get(
                         "raw_response_sha256"):
                 reasons.append(f"repair ledger/evidence resume identity mismatch for {slot}")

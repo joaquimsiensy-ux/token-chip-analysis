@@ -352,6 +352,28 @@ def bare_rpc_pool_errors(*, files=None, root=ROOT):
     return errors
 
 
+def hardcoded_tx_version_errors(*, files=None, root=ROOT):
+    errors = []
+    for path in production_files() if files is None else files:
+        if path.suffix != ".py":
+            continue
+        try:
+            rel = path.relative_to(root).as_posix()
+        except ValueError:
+            rel = path.as_posix()
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Dict):
+                continue
+            for key, value in zip(node.keys, node.values):
+                if isinstance(key, ast.Constant) \
+                        and key.value == "maxSupportedTransactionVersion" \
+                        and isinstance(value, ast.Constant) \
+                        and isinstance(value.value, (int, float, complex)):
+                    errors.append(f"hardcoded tx version: {rel}:{value.lineno}")
+    return errors
+
+
 def _direct_value_returns(function):
     """Return value-bearing Return nodes, excluding nested functions/lambdas."""
     found = []
@@ -1328,6 +1350,7 @@ def validate_manifest(manifest, actual):
         if not re.fullmatch(r"\d+\.\d+\.\d+", str(item.get("expiry_version", ""))):
             errors.append(f"exceptions: invalid expiry_version for {item.get('id')}")
     errors += bare_rpc_pool_errors()
+    errors += hardcoded_tx_version_errors()
     errors += main_exit_propagation_errors()
     errors += label_chain_surface_errors()
     errors += vertical_slice_errors()

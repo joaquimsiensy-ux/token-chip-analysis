@@ -110,3 +110,107 @@ A1 第 2 条的数量断言与实况不符，触发本段用户纪律第 7 条�
 - 本记录仅供调度方接手，不表示第 2 段施工完成。
 
 待调度方 commit
+
+
+## 第 2 段续工：A1 完成（2026-09-23）
+
+- 开工仍为 `fix/solana-txv1`，第 1 段 16 文件差异，无其他改动；A1.1 已订正「其余 10 个」，前述停工原因已解除。§2、§4 所引用基线 `813ca6d` 行号及锚点已核对。
+- 常量与三行注释移至 `scripts/lib/endpoint_identity.py:10`（定义 `:13`）；`scripts/lib/solana_attested_session.py` 恢复 HEAD 原字节，撤销常量和导入回退。
+- 导入改指 endpoint_identity：`scripts/lib/solana_exact_validate.py:32`（含相对导入回退）、`scripts/lib/solana_observation.py:16`、`scripts/solana/sqd_gap_repair.py:24`；其余十文件为 `audit_closed_accounts.py:41`、`decode_txs.py:12`、`decode_txs_v2.py:25`、`fast_probe_tops.py:16`、`gas_origin.py:19`、`probe_escrows.py:21`、`probe_window_moves.py:26`、`stake_decode.py:23`、`trace_wallet.py:15`、`whale_deep.py:23`（均在 `scripts/solana/`）。decode_txs 的 lib path 保留。
+- 与工单差异：仅按 A1 替代 v5 常量落点及隔离导入验收；endpoint_identity 的写入由 A1 明确授权。§3、§5 未执行。历史红证据④作废，勘误依据改记「常量在 session 时 invariant_scan 报 12 条 transport_calls 不符」（A1 调度方已给证据）。
+- 验证环境：`MPLCONFIGDIR=$HOME/.matplotlib PYTHONDONTWRITEBYTECODE=1`；均使用 `python3 -B`。
+  - `invariant_scan.py`：exit 0；尾行 `PASS invariant manifest: receipt_producers=81, receipt_consumers=118, transport_calls=65, atomic_writes=61, formal_entrypoints=61, exceptions=0`。
+  - `test_batch4_invariant_guards.py`：exit 0；尾行 `PASS B4-G1: bare pool / labels / vertical slice / denominator injections`。
+  - `python3 -B -c "import scripts.lib.endpoint_identity, scripts.lib.solana_exact_validate"`：exit 0，无输出。
+- 未读禁区；离线；未启动子代理；未执行 git add/commit/push；未删除文件。
+
+
+## 第 2 段：§2 完成（2026-09-23）
+
+- `scripts/solana/sqd_gap_repair.py:689,707`：抽取只读解析，续跑外壳保留原落盘行为。
+- 同文件 `:729,745,783`：兼容两参数续跑、独立数据行验真、0..当前版本摘要接受集合、认领记录形状与前代摘要复验。
+- 同文件 `:816`：同 parent 直接前代校验、ACTIVE sha 摘要复现、最长对齐候选前缀、全目标冲突预验、硬链接与仅 EXDEV 原子复制、证据目录同步后原子提交 ledger。
+- 同文件 `:1110,1415,1541`：live resume 传 plan、入口认领、发布前复验；CLI 加 `--adopt-pending` 并强制 `--resume`（`:1738`）。
+- `scripts/lib/solana_exact_validate.py:1228`：独立重建 plan 摘要，固定 coverage.map.sha256 与 coverage/beta 并集映射；`:1337,1385,1520,1605`：认领记录形状/前代重算、参考源指纹一致、历史版本摘要接受集合。
+- 与工单差异：无功能范围差异；§3、§5 未动。现有测试先出现一次本次编辑的续行语法错误，已修正；不涉及工单行号/断言不符。
+- 验证环境同 A1；`test_sqd_gap_repair.py` exit 0，尾行 `GREEN 29c implemented validate_current_candidates 已实现`；`test_batch8_repair_scale.py` exit 0，尾行 `PASS batch8: key-neutral identity/pool failover/ordered workers/resume/streaming`。
+- §4 故障向量及全量定向验收接续施工；当前不宣称全部验收完成。未读禁区、未联网、未启动子代理、未执行 git 写操作。
+
+
+## 第 2 段：§4 代码完成，验收停工（2026-09-23）
+
+- `scripts/tests/test_sqd_gap_repair.py:775`：E27(a) 后接 E27(d)；`:820` 新增 `adoption_regressions`，复用工单指定夹具函数。
+- 同文件 `:863`：分别用两候选/三候选配额中断生成一行/两行来源，改为真实 ACTIVE 前代 `25f04ff1…` 摘要和版本 0 请求摘要，各向量独立复制。
+- 同文件 `:910,956,969,995`：版本 1 实际请求与独立完整 body 摘要、深拷贝 v1/transactionConfig 交易、残尾只读、来源全文件哈希不变、硬链接 inode、当前/前代摘要与 coverage/beta 并集、深验篡改、最长对齐前缀。
+- 同文件 `:1007,1071,1089,1112,1149`：入口/冲突负向①—⑨；目标 ledger 发布前中断⑩；提交后配额中断与普通 resume⑪；限定 EXDEV + 原子复制失败重试⑫；同步伪造哈希的可信来源边界。
+- 与工单差异：E27(d) 由锚点调用同文件辅助函数承载；额外覆盖 header 指纹、adopted 为 null/rows 为 bool、无 plan 续跑拒绝。首次新增夹具测试因跨 slot 重用签名被深验拒绝，已将深拷贝交易的测试签名按 slot 唯一化后通过，不改生产逻辑。
+- `test_sqd_gap_repair.py` exit 0；E27(d) 证据行：`GREEN E27(d): predecessor adoption/v1/torn tail/longest prefix/12 fault vectors/deep digest`；最终尾行：`GREEN 29c implemented validate_current_candidates 已实现`。
+- `test_batch8_repair_scale.py` exit 0；尾行：`PASS batch8: key-neutral identity/pool failover/ordered workers/resume/streaming`。
+- §4 新增测试已通过；全定向验收未通过，原因如下。§3、§5 未执行。
+
+## 停工原因（本次续工，新发现）
+
+工单 v5 的 §2.3 第 6 条、§0.4 与 §0.7 同时执行发生确定性冲突，依用户纪律第 7 条停工；未修改 manifest 或弱化扫描器。
+
+- `workorder_W1_v5.md:89` 明确要求在认领提交阶段 `os.link(src, dst)`；已实现于 `scripts/solana/sqd_gap_repair.py:886`（函数 `adopt_predecessor_pending`）。
+- `scripts/tests/invariant_scan.py:1113-1114` 的 `AtomicVisitor.visit_Call` 将每个直接 `os.link` 所在函数登记为原子写入点；`:1302-1303` 对照 manifest 检查遗漏。
+- `scripts/tests/invariant_manifest.json:1186` 的既有 sqd_gap_repair 原子写入登记只有 `locator: main`，没有新增函数。
+- `workorder_W1_v5.md:20`（§0.4）禁止改 invariant_manifest；`:23`（§0.7）又要求 invariant_scan PASS。按要求实现后的实况为 exit 1：
+
+```text
+FAIL atomic_writes: code point missing from manifest: ('scripts/solana/sqd_gap_repair.py', 'adopt_predecessor_pending')
+invariant manifest FAIL: 1 discrepancy(s)
+```
+
+- A1 阶段扫描确实为绿；该新增不符由 §2 规定的原子链接引入，与已修复的 transport_calls 无关。
+- 建议调度方勘误授权新增这个 atomic_writes 登记及相应计数，或明确另一种符合守卫的实现方案。当前不通过换名/别名隐藏 os.link，也不擅改 §0.4。
+- 发现冲突后停止生产/测试代码修改；仅收集已启动的定向测试结果、核对保护文件并补交接报告。不是因为 git 只读停工。
+
+
+## 第 2 段定向验收汇总及尾行
+
+全部命令在仓库根目录执行，统一环境 `MPLCONFIGDIR=$HOME/.matplotlib PYTHONDONTWRITEBYTECODE=1`，形式为 `python3 -B scripts/tests/<下列脚本与参数>`；未跑 `run_all.py`。原始日志在 `/private/tmp/w1-final-directed/`，摘要 `summary.json`。下表自包含保留每项尾行，不依赖临时日志长期存在。
+
+| 测试 | exit / 状态 | 实际最后一行 |
+|---|---|---|
+| `changelog_lint.py` | 0 / PASS | `PASS: 版本号唯一（豁免 2 组历史撞号存档）、顺序正确；活跃 82 条 + 归档 139 条` |
+| `docs_lint.py --all` | 0 / PASS | `PASS: 59 个文档，引用无断链、粗体配对完整（--all 全量模式）` |
+| `invariant_scan.py` | 1 / FAIL（停工） | `invariant manifest FAIL: 1 discrepancy(s)` |
+| `test_batch2d_stream_tail.py` | 0 / PASS | `PASS batch2d SQD stream tail: 4/4 groups` |
+| `test_batch3_solana_producers.py` | 0 / PASS | `PASS B3-G2: Solana slot/envelope/txn/timestamp producer guards` |
+| `test_batch3_solana_vertical_slice.py` | 1 / SANDBOX-BLOCKED | `PermissionError: [Errno 1] Operation not permitted` |
+| `test_batch3c_census_fields.py` | 0 / PASS | `PASS batch3c census fields match the SQD contract` |
+| `test_batch4_invariant_guards.py` | 0 / PASS | `PASS B4-G1: bare pool / labels / vertical slice / denominator injections` |
+| `test_batch7_validator_coverage_gaps.py` | 0 / PASS | `批7 validator 覆盖缺口加固回归全部 GREEN (缺口1遍历主键 + 缺口3边slot窗口)` |
+| `test_batch8_repair_scale.py` | 0 / PASS | `PASS batch8: key-neutral identity/pool failover/ordered workers/resume/streaming` |
+| `test_f03_sharedmap_reuse.py` | 0 / PASS | `PASS F-03 shared-map reuse: 15/15 groups` |
+| `test_param_scripts.py` | 0 / PASS | `PASS: 三脚本参数反例、旧案字面量与 cadence identity 绑定` |
+| `test_producer_registry_current.py` | 1 / EXPECTED-FAIL | `producer registry: 4 FAIL` |
+| `test_r9_batch2_solana_sqd_adapter.py` | 0 / PASS | `PASS R9 B2-G3: SQD dataset scope fixed and Solana mainnet RPC anchored` |
+| `test_r9_batch3_solana_observation.py` | 0 / PASS | `PASS R9 B3-G1/G4: Solana observation protocol and negative variants` |
+| `test_r9_solana_attested_session.py` | 0 / PASS | `PASS R9 SolanaAttestedSession: 10/10` |
+| `test_reconcile_v4_receipt.py` | 0 / PASS | `GREEN 32 verdict/exit_code/gate_pass 三元互洽` |
+| `test_repair_batch1.py` | 0 / PASS | `PASS v6.41.0 batch1 steps 1-6 RV-07/RV-04/RV-17/F-03/F-01/A5v3/F-04` |
+| `test_repair_batch_d.py` | 0 / PASS | `BATCH D 全部通过` |
+| `test_review_solana_integrity.py` | 0 / PASS | `PASS: B-06/B-07/B-08 + P1-03 v1/v2 decode retry, identity and failure receipts` |
+| `test_sqd_collector_meta_v4.py` | 0 / PASS | `PASS: SQD v4 collector meta logical evidence matches replay` |
+| `test_sqd_consumer_v4.py` | 0 / PASS | `PASS: SQD v4 consumer split-mode regressions` |
+| `test_sqd_coverage_probe.py` | 0 / PASS | `PASS SQD coverage probe: 12/12 offline groups` |
+| `test_sqd_gap_repair.py` | 0 / PASS | `GREEN 29c implemented validate_current_candidates 已实现` |
+| `test_version_consistency.py` | 0 / PASS | `PASS: M-03 version metadata consistent at 9.0.3` |
+
+- 汇总：25 项已运行；22 项 PASS，1 项 invariant FAIL，1 项 registry 预期 FAIL，1 项 vertical slice SANDBOX-BLOCKED。不宣称全套 PASS。
+- registry 的四个 FAIL 均为当前 sqd_gap_repair producer sha 尚未登记，协议分别为 cache/v4、coverage-resolution/v1、repair-bundle/v1、repair-pointer/v1。工作树脚本 sha256：`977a4823f819559de070e53be681a66808861deb602fed108aa027c5af88c0c7`（仅供核对，不是代码 commit 证明）；按用户指令留待调度方 commit 后另派 §3。
+- vertical slice 在 `ThreadingHTTPServer(("127.0.0.1", 0), FixtureHandler)` → `socket.bind` 被沙箱拒绝；实际尾行如表，未当作代码回归或 PASS。
+- `test_repair_batch_d.py` 出现 `$HOME/.matplotlib` 不可写提示，库自动使用系统临时缓存，最终 exit 0；命令仍遵循工单 MPLCONFIGDIR 设置。
+- A1 指定隔离导入 `python3 -B -c "import scripts.lib.endpoint_identity, scripts.lib.solana_exact_validate"` 再次 exit 0，无输出。
+- `git diff --check` exit 0，无输出。§0.4 保护文件、两个 manifest、commands-staging、producer_history、session 以及 §5 文档/版本文件逐字节与 HEAD 核对一致。
+- 当前 18 个已跟踪文件有改动：第 1 段 session 改动已撤销，增加 endpoint_identity、test_sqd_gap_repair 与本交接报告；其余延续授权清单。新增认领实现及测试留在工作树，未暂存/提交。
+
+## 本段最终交接状态
+
+A1 完成且守卫通过；§2 认领代码已落地；§4 新增测试通过，但最终不变量验收因上述工单冲突停工。调度方需先裁决新增 atomic_writes 登记。§3 登记、§5 版本/文档未施工，版本仍为 9.0.3。报告前部的历史停工记录保留，当前状态以本段为准。
+
+未读取 `~/.codex`、`~/Documents`、`~/Desktop`；离线施工，未访问外部 API；未启动子代理；未执行 git add/commit/push；未批量删除文件或目录（测试自身临时夹具按原有生命周期清理）。
+
+待调度方 commit

@@ -13,6 +13,7 @@ import argparse, json, subprocess, sys, time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
+from endpoint_identity import SOLANA_MAX_SUPPORTED_TX_VERSION
 from proxy_config import resolve_proxy
 
 RPC = "https://api.mainnet-beta.solana.com"
@@ -51,7 +52,7 @@ def rpc(method, params, retries=4):
 
 def probe_tx(sig, owner):
     tx = rpc("getTransaction", [sig, {"encoding": "jsonParsed",
-                                      "maxSupportedTransactionVersion": 0}])
+                                      "maxSupportedTransactionVersion": SOLANA_MAX_SUPPORTED_TX_VERSION}])
     if tx is None:
         return None
     meta = tx.get("meta") or {}

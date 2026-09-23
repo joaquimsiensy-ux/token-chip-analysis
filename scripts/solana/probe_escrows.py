@@ -18,6 +18,7 @@ import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
+from endpoint_identity import SOLANA_MAX_SUPPORTED_TX_VERSION
 from proxy_config import resolve_proxy
 
 RPC = "https://api.mainnet-beta.solana.com"
@@ -147,7 +148,7 @@ def main():
         rec = {"addr": addr, "label": label, "oldest_sig": sig, "oldest_blocktime": bt}
         if sig:
             tx = rpc("getTransaction", [sig, {"encoding": "jsonParsed",
-                                              "maxSupportedTransactionVersion": 0}])
+                                              "maxSupportedTransactionVersion": SOLANA_MAX_SUPPORTED_TX_VERSION}])
             if tx:
                 progs, accts = set(), []
                 msg = tx["transaction"]["message"]

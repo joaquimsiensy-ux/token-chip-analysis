@@ -20,6 +20,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
+from endpoint_identity import SOLANA_MAX_SUPPORTED_TX_VERSION
 from proxy_config import resolve_proxy
 
 RPC = "https://api.mainnet-beta.solana.com"
@@ -93,7 +94,7 @@ def all_sigs(addr, cap):
 
 
 def decode(sig, self_owner, mint):
-    tx = rpc("getTransaction", [sig, {"encoding": "jsonParsed", "maxSupportedTransactionVersion": 0}])
+    tx = rpc("getTransaction", [sig, {"encoding": "jsonParsed", "maxSupportedTransactionVersion": SOLANA_MAX_SUPPORTED_TX_VERSION}])
     if tx is None:
         raise ObservationError(f"交易解码观测失败：{sig}")
     meta = tx.get("meta") or {}

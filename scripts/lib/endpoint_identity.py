@@ -7,6 +7,12 @@ import re
 from urllib.parse import parse_qsl, unquote, urlsplit, urlunsplit
 
 
+# Solana 主网 2026-09 起出现版本 1 交易；本仓库所有 getBlock/getTransaction 请求声明的最高交易版本。
+# 升此值、或改动修复请求模板（repair_getblock_body）任何字段语义时，须同步改 sqd_gap_repair.py 的版本钉
+# （使 producer 换代并在 producer_history 登记）并记 CHANGELOG。
+SOLANA_MAX_SUPPORTED_TX_VERSION = 1
+
+
 _CREDENTIAL_PREFIXES = frozenset({"v1", "v2", "v3", "key", "token", "apikey", "api-key"})
 _UUID = re.compile(
     r"^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",

@@ -33,6 +33,18 @@ def test_bare_rpc_pool_injection(scan, root):
     print("INJECT B4-RPC-01 bare RpcPool -> RED")
 
 
+def test_hardcoded_tx_version_injection(scan, root):
+    sample = root / "hardcoded_tx_version.py"
+    sample.write_text('{"maxSupportedTransactionVersion": 0}\n')
+    errors = scan.hardcoded_tx_version_errors(files=[sample], root=root)
+    assert errors == ["hardcoded tx version: hardcoded_tx_version.py:1"], errors
+    sample.write_text(
+        '{"maxSupportedTransactionVersion": SOLANA_MAX_SUPPORTED_TX_VERSION}\n')
+    assert scan.hardcoded_tx_version_errors(files=[sample], root=root) == []
+    assert scan.hardcoded_tx_version_errors() == []
+    print("INJECT W1-TXV-01 numeric tx version -> RED; shared constant -> GREEN")
+
+
 def _copy_label_surfaces(scan, root):
     for rel, _kind, _locator in scan.LABEL_CHAIN_SURFACES:
         src = ROOT / rel
@@ -511,6 +523,7 @@ def main():
         root = Path(td)
         cases = (
             test_bare_rpc_pool_injection,
+            test_hardcoded_tx_version_injection,
             test_label_surface_injections,
             test_formal_entrypoint_source_diagnostic,
             test_vertical_slice_double_binding_injections,

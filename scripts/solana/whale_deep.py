@@ -20,6 +20,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
+from endpoint_identity import SOLANA_MAX_SUPPORTED_TX_VERSION
 from proxy_config import resolve_proxy
 
 RPC = "https://api.mainnet-beta.solana.com"
@@ -61,7 +62,7 @@ def resolve_mint(cli):
 def atas_from_tx(sig, owner, mint):
     """从一笔已知交易的 tokenBalances 反查该 owner 的 ATA 地址（销户后可用）。"""
     atas = set()
-    tx = rpc("getTransaction", [sig, {"encoding": "jsonParsed", "maxSupportedTransactionVersion": 0}])
+    tx = rpc("getTransaction", [sig, {"encoding": "jsonParsed", "maxSupportedTransactionVersion": SOLANA_MAX_SUPPORTED_TX_VERSION}])
     if not tx:
         return atas
     keys = [a["pubkey"] if isinstance(a, dict) else a
@@ -151,7 +152,7 @@ def main():
             print(f"  {ata} 签名 {len(sigs)}")
             for s in sigs:
                 tx = rpc("getTransaction", [s["signature"], {"encoding": "jsonParsed",
-                                                             "maxSupportedTransactionVersion": 0}])
+                                                             "maxSupportedTransactionVersion": SOLANA_MAX_SUPPORTED_TX_VERSION}])
                 time.sleep(0.15)
                 if not tx:
                     continue

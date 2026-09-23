@@ -16,6 +16,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
+from endpoint_identity import SOLANA_MAX_SUPPORTED_TX_VERSION
 from proxy_config import resolve_proxy
 
 RPC = "https://api.mainnet-beta.solana.com"
@@ -78,7 +79,7 @@ def oldest_sigs(addr, want=3, max_pages=2):
 def get_funder(sig, addr):
     """返回 gas_fast 的 funder/my_sol_delta，并保留 gas_origin 的完整 SOL deltas。"""
     tx = rpc("getTransaction", [sig, {"encoding": "jsonParsed",
-                                      "maxSupportedTransactionVersion": 0}])
+                                      "maxSupportedTransactionVersion": SOLANA_MAX_SUPPORTED_TX_VERSION}])
     if not tx:
         return None, None, None
     keys = [k["pubkey"] if isinstance(k, dict) else k

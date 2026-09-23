@@ -23,6 +23,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
+from endpoint_identity import SOLANA_MAX_SUPPORTED_TX_VERSION
 from proxy_config import resolve_proxy
 
 
@@ -118,7 +119,7 @@ def main():
         pool_flow = transfer_flow = 0
         for bt, sig in win_sigs[:args.max_parse]:
             tx = rpc(args.rpc, args.proxy, "getTransaction",
-                     [sig, {"encoding": "jsonParsed", "maxSupportedTransactionVersion": 0}])
+                     [sig, {"encoding": "jsonParsed", "maxSupportedTransactionVersion": SOLANA_MAX_SUPPORTED_TX_VERSION}])
             time.sleep(args.pause)
             if not tx:
                 continue

@@ -13,7 +13,7 @@ import json
 import time
 from pathlib import Path
 
-from endpoint_identity import endpoint_fingerprint
+from endpoint_identity import endpoint_fingerprint, SOLANA_MAX_SUPPORTED_TX_VERSION
 from receipt_kernel import build_envelope, finalize_envelope
 from receipt_validate import validate_receipt
 from solana_attested_session import (SOLANA_MAINNET_GENESIS_HASH,
@@ -267,7 +267,7 @@ def _activity_validation(session, mint, pre_slot, post_slot, *, deadline_seconds
         try:
             tx = session.call("getTransaction", [row["signature"], {
                 "commitment": "finalized", "encoding": "jsonParsed",
-                "maxSupportedTransactionVersion": 0,
+                "maxSupportedTransactionVersion": SOLANA_MAX_SUPPORTED_TX_VERSION,
             }])
             rpc_calls += 1
         except Exception as exc:

@@ -38,6 +38,7 @@ import argparse, gzip, json, random, subprocess, sys, time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
+from endpoint_identity import SOLANA_MAX_SUPPORTED_TX_VERSION
 from proxy_config import resolve_proxy
 from spl_edge_core import validate_edge_row
 from sqd_cache_identity import resolve_formal_cache
@@ -227,7 +228,7 @@ def sample_inits_from_blocks(rpc, mint, lo, hi, n_blocks, target, wall_dl, wall_
         for try_slot in range(s, min(s + 4, hi + 1)):  # 空块（skipped slot）顺移重试
             blk = rpc.call("getBlock", [try_slot, {
                 "encoding": "jsonParsed", "transactionDetails": "full",
-                "rewards": False, "maxSupportedTransactionVersion": 0}])
+                "rewards": False, "maxSupportedTransactionVersion": SOLANA_MAX_SUPPORTED_TX_VERSION}])
             if blk:
                 break
         if not blk:
@@ -416,7 +417,7 @@ def main():
                 log("初始化事件抽样触墙钟保险丝（样本无效）")
                 break
             tx = rpc.call("getTransaction", [sig, {"encoding": "jsonParsed",
-                                                   "maxSupportedTransactionVersion": 0}])
+                                                   "maxSupportedTransactionVersion": SOLANA_MAX_SUPPORTED_TX_VERSION}])
             decoded += 1
             if not tx:
                 continue
@@ -479,7 +480,7 @@ def main():
             if r.get("err") is not None:
                 continue
             tx = rpc.call("getTransaction", [r["signature"], {"encoding": "jsonParsed",
-                                                              "maxSupportedTransactionVersion": 0}])
+                                                              "maxSupportedTransactionVersion": SOLANA_MAX_SUPPORTED_TX_VERSION}])
             if not tx:
                 continue
             d = account_deltas(tx, acc, mint)

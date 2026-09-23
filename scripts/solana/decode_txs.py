@@ -7,6 +7,9 @@
 """
 import argparse, json, sys, time
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
+from endpoint_identity import SOLANA_MAX_SUPPORTED_TX_VERSION
 import requests
 from decode_txs_v2 import decode_result, finalize_decode, prepare_output
 
@@ -36,7 +39,7 @@ def main():
 
     def rpc(sig, retries=5):
         body = {"jsonrpc": "2.0", "id": 1, "method": "getTransaction",
-                "params": [sig, {"encoding": "jsonParsed", "maxSupportedTransactionVersion": 0,
+                "params": [sig, {"encoding": "jsonParsed", "maxSupportedTransactionVersion": SOLANA_MAX_SUPPORTED_TX_VERSION,
                                  "commitment": "confirmed"}]}
         for i in range(retries):
             try:

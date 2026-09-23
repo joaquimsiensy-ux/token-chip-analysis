@@ -4,15 +4,18 @@ from __future__ import annotations
 
 import argparse
 import concurrent.futures
+import errno
 import fcntl
 import gzip
 import hashlib
 import json
 import os
+import re
 import sys
 import tempfile
 import threading
 import time
+from copy import deepcopy
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -22,9 +25,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import net  # noqa: E402
 from endpoint_identity import (endpoint_fingerprint, public_endpoint,
-                               redact_endpoint_text)  # noqa: E402
-from receipt_kernel import publish_exclusive, publish_overwrite  # noqa: E402
-from solana_exact_validate import validate_coverage, validate_repair_bundle_deep  # noqa: E402
+                               redact_endpoint_text, SOLANA_MAX_SUPPORTED_TX_VERSION)  # noqa: E402
+from producer_history import historical_producer_hashes  # noqa: E402
+from receipt_kernel import RawBytes, publish_exclusive, publish_overwrite  # noqa: E402
+from solana_exact_validate import (_repair_getblock_params_digest,
+                                   repair_getblock_body, validate_coverage,
+                                   validate_repair_bundle_deep)  # noqa: E402
 from spl_edge_core import soltx_cache_paths, sqd_repair_paths  # noqa: E402
 from sqd_coverage_probe import sqd_query_body  # noqa: E402
 from sqd_cache_identity import (resolve_formal_cache,
@@ -35,6 +41,12 @@ from sqd_repair_core import (canonical_json, compute_gid, compute_plan_digest,
                              is_nonce_transaction, is_vote_transaction, merge_edges,
                              owner_activity, parse_routea_cache, read_edge_file,
                              sha256_bytes, sha256_file)  # noqa: E402
+
+
+# 版本钉：共享常量/请求模板变化不会改变本脚本 sha（只哈希本文件）。升 SOLANA_MAX_SUPPORTED_TX_VERSION
+# 或改 repair_getblock_body 任何字段语义时必须改这里 ⇒ producer 换代 ⇒ producer_history 登记。
+if SOLANA_MAX_SUPPORTED_TX_VERSION != 1:
+    raise RuntimeError("repair producer tx-version pin must be updated")
 
 
 CACHE_SCHEMA = "sqd-solana-cache/v4"
@@ -625,12 +637,7 @@ def _plan(case_root, mint, blocks_cache=None, reference_fingerprint=None,
 
 
 def _rpc_body(slot):
-    return {
-        "jsonrpc": "2.0", "id": slot, "method": "getBlock",
-        "params": [slot, {"commitment": "finalized", "transactionDetails": "full",
-                          "encoding": "json", "rewards": False,
-                          "maxSupportedTransactionVersion": 0}],
-    }
+    return repair_getblock_body(slot)
 
 
 def _census_body(slot):
@@ -679,11 +686,8 @@ def _ledger_header(plan):
     }
 
 
-def _read_ledger_prefix(path):
-    path = Path(path)
-    if not path.is_file():
-        return []
-    raw = path.read_bytes()
+def _parse_ledger_prefix(raw: bytes):
+    """Parse complete rows without changing the source, including its torn tail."""
     complete = raw
     if raw and not raw.endswith(b"\n"):
         cut = raw.rfind(b"\n")
@@ -697,6 +701,15 @@ def _read_ledger_prefix(path):
         if not isinstance(value, dict):
             raise ValueError("RPC ledger complete line must be an object")
         rows.append(value)
+    return rows
+
+
+def _read_ledger_prefix(path):
+    path = Path(path)
+    if not path.is_file():
+        return []
+    raw = path.read_bytes()
+    rows = _parse_ledger_prefix(raw)
     clean = _jsonl_bytes(rows)
     if clean != raw:
         with path.open("wb") as handle:
@@ -713,7 +726,7 @@ def _append_ledger_row(path, row):
         os.fsync(handle.fileno())
 
 
-def load_resume_slots(pending, header):
+def load_resume_slots(pending, header, plan=None):
     """Return slots whose evidence pair and successful ledger row align."""
     pending = Path(pending)
     ledger_path = pending / "rpc_ledger.jsonl"
@@ -722,14 +735,22 @@ def load_resume_slots(pending, header):
         _publish_bytes_exclusive(ledger_path, _jsonl_bytes([header]))
         return set(), []
     if rows[0].get("schema") != "sqd-solana-rpc-ledger/v1" \
-            or rows[0] != header:
+            or {k: v for k, v in rows[0].items() if k != "adopted"} != header:
         raise ValueError("resume RPC ledger header differs from plan")
+    if "adopted" in rows[0]:
+        _verify_adopted_record(rows[0], rows[1:], plan)
+    return _verify_ledger_rows(pending, rows[1:], header), rows[1:]
+
+
+def _verify_ledger_rows(pending, data_rows, header):
+    """Verify data rows only; return the slots with aligned evidence pairs."""
+    pending = Path(pending)
     completed = set()
     seen_slots = set()
     required = {"seq", "ts", "method", "params_digest", "slot",
                 "endpoint_fingerprint", "http_status", "bytes",
                 "credits_estimate", "result_sha256", "attempt"}
-    for expected_seq, row in enumerate(rows[1:]):
+    for expected_seq, row in enumerate(data_rows):
         slot = row.get("slot")
         if set(row) != required or row.get("seq") != expected_seq \
                 or row.get("method") != "getBlock" \
@@ -747,14 +768,131 @@ def load_resume_slots(pending, header):
             ref = _json(ref_path)
         except (OSError, ValueError, json.JSONDecodeError):
             continue
-        expected_params = sha256_bytes(canonical_json(_rpc_body(slot)))
-        if row.get("params_digest") == expected_params \
+        expected_params = {_repair_getblock_params_digest(slot, version)
+                           for version in range(SOLANA_MAX_SUPPORTED_TX_VERSION + 1)}
+        if row.get("params_digest") in expected_params \
                 and row.get("endpoint_fingerprint") == header["reference"][
                     "endpoint_fingerprint"] \
+                and isinstance(sqd, dict) and isinstance(ref, dict) \
                 and sqd.get("slot") == slot and ref.get("slot") == slot \
                 and ref.get("raw_response_sha256") == row.get("result_sha256"):
             completed.add(slot)
-    return completed, rows[1:]
+    return completed
+
+
+def _verify_adopted_record(header, data_rows, plan):
+    """Reproduce the registered direct predecessor before resume/publication."""
+    try:
+        adopted = header["adopted"]
+        if plan is None or not isinstance(adopted, dict) or set(adopted) != {
+                "predecessor_plan_digest", "predecessor_producer_sha256",
+                "rows", "source", "ts"}:
+            raise ValueError
+        digest = adopted["predecessor_plan_digest"]
+        sha = adopted["predecessor_producer_sha256"]
+        count = adopted["rows"]
+        if not isinstance(digest, str) or re.fullmatch(r"[0-9a-f]{16}", digest) is None \
+                or digest == header["plan_digest"] \
+                or not isinstance(sha, str) or re.fullmatch(r"[0-9a-f]{64}", sha) is None \
+                or sha not in historical_producer_hashes(
+                    "scripts/solana/sqd_gap_repair.py", "sqd-solana-repair-bundle/v1") \
+                or type(count) is not int or not 0 < count <= len(data_rows) \
+                or not isinstance(adopted["source"], str) \
+                or type(adopted["ts"]) is not int:
+            raise ValueError
+        previous = deepcopy(plan)
+        previous["producer"]["sha256"] = sha
+        if compute_plan_digest(previous) != digest:
+            raise ValueError
+        for row in data_rows[:count]:
+            if row["params_digest"] not in {
+                    _repair_getblock_params_digest(row["slot"], version)
+                    for version in range(SOLANA_MAX_SUPPORTED_TX_VERSION + 1)}:
+                raise ValueError
+    except (KeyError, TypeError, ValueError) as exc:
+        raise ValueError("RPC ledger adopted record invalid") from exc
+
+
+def adopt_predecessor_pending(old, pending, plan, parent):
+    """Migrate a trusted direct predecessor; preflight never changes artifacts.
+
+    Source trust is an input assumption. Hard-linked evidence shares an inode:
+    neither this flow nor later flows may rewrite that evidence in place.
+    """
+    old, pending, parent = Path(old), Path(pending), Path(parent)
+    ledger_path = pending / "rpc_ledger.jsonl"
+    if ledger_path.exists() or ledger_path.is_symlink():
+        raise ValueError("adopt requires no target ledger")
+    if old.is_symlink() or not old.resolve().is_dir() \
+            or old.resolve().parent != parent.resolve() \
+            or old.resolve() == pending.resolve() \
+            or re.fullmatch(r"pending-[0-9a-f]{16}", old.name) is None:
+        raise ValueError("adopt: source must be a sibling predecessor pending")
+    try:
+        rows = _parse_ledger_prefix((old / "rpc_ledger.jsonl").read_bytes())
+    except OSError as exc:
+        raise ValueError("adopt: source ledger unreadable") from exc
+    if not rows or rows[0].get("schema") != "sqd-solana-rpc-ledger/v1" \
+            or rows[0].get("plan_digest") != old.name[len("pending-"):] \
+            or rows[0].get("reference") != _ledger_header(plan)["reference"] \
+            or "adopted" in rows[0]:
+        raise ValueError("adopt: source ledger header invalid")
+    candidates = historical_producer_hashes(
+        "scripts/solana/sqd_gap_repair.py", "sqd-solana-repair-bundle/v1"
+    ) - {plan["producer"]["sha256"]}
+    predecessor_sha = None
+    for sha in sorted(candidates):
+        previous = deepcopy(plan)
+        previous["producer"]["sha256"] = sha
+        if compute_plan_digest(previous) == rows[0]["plan_digest"]:
+            predecessor_sha = sha
+            break
+    if predecessor_sha is None:
+        raise ValueError("adopt: predecessor plan_digest is not reproducible from a registered producer")
+    completed = _verify_ledger_rows(old, rows[1:], rows[0])
+    adopted_rows = []
+    for row in rows[1:]:
+        if row["slot"] not in completed:
+            break
+        adopted_rows.append(row)
+    if not adopted_rows:
+        raise ValueError("adopt: no adoptable prefix")
+    if [row["slot"] for row in adopted_rows] != plan["candidate_slots"][:len(adopted_rows)]:
+        raise ValueError("adopt: adopted slots are not a candidate prefix")
+    # Check every destination before publishing even the first evidence file.
+    evidence_pairs = []
+    for row in adopted_rows:
+        for suffix in ("sqd", "ref"):
+            name = f"{row['slot']}.{suffix}.json"
+            src, dst = old / "evidence" / name, pending / "evidence" / name
+            if dst.exists() or dst.is_symlink():
+                try:
+                    equal = _json(dst) == _json(src)
+                except (OSError, ValueError):
+                    equal = False
+                if not equal:
+                    raise ValueError("adopt: target evidence conflicts")
+            evidence_pairs.append((src, dst))
+    new_header = _ledger_header(plan)
+    new_header["adopted"] = {
+        "predecessor_plan_digest": rows[0]["plan_digest"],
+        "predecessor_producer_sha256": predecessor_sha,
+        "rows": len(adopted_rows), "source": old.name, "ts": int(time.time()),
+    }
+    for src, dst in evidence_pairs:
+        if dst.exists():
+            continue
+        try:
+            os.link(src, dst)
+        except OSError as exc:
+            if exc.errno != errno.EXDEV:
+                raise
+            publish_exclusive(dst, RawBytes(src.read_bytes()))
+            if sha256_file(dst) != sha256_file(src):
+                raise ValueError("adopt: copied evidence hash mismatch")
+    _fsync_dir(pending / "evidence")
+    publish_exclusive(ledger_path, RawBytes(_jsonl_bytes([new_header] + adopted_rows)))
+    _fsync_dir(pending)
 
 
 def _sqd_call_with_backoff(transport, kind, body, slot, failure):
@@ -969,7 +1107,7 @@ def _live_payloads(args, candidate_slots, reference_endpoints,
     reference_pool = ReferenceEndpointPool(reference_endpoints, transport_factory)
     sqd_transport = transport_factory(reference_endpoints[0])
     header = _ledger_header(plan)
-    completed, ledger = load_resume_slots(pending, header)
+    completed, ledger = load_resume_slots(pending, header, plan)
     workers = getattr(args, "workers", 1)
 
     def restored(slot):
@@ -1274,6 +1412,8 @@ def _produce_blocks(args):
     guard_coverage_writes([pending])
     evidence_dir = pending / "evidence"
     evidence_dir.mkdir(exist_ok=True)
+    if getattr(args, "adopt_pending", None):
+        adopt_predecessor_pending(Path(args.adopt_pending), pending, plan, parent)
     beta_trace = getattr(args, "beta_trace", None)
     beta_trace_ref = None
     if beta_trace is not None and beta_trace.get("residual_owners"):
@@ -1398,9 +1538,13 @@ def _produce_blocks(args):
         _publish_bytes_exclusive(ledger_path,
                                  _jsonl_bytes([ledger_header, *rpc_rows]))
     complete_rows = _read_ledger_prefix(ledger_path)
-    if not complete_rows or complete_rows[0] != ledger_header:
+    if not complete_rows or {
+            k: v for k, v in complete_rows[0].items() if k != "adopted"
+    } != ledger_header:
         raise ValueError("RPC ledger header differs from plan")
     rpc_rows = complete_rows[1:]
+    if "adopted" in complete_rows[0]:
+        _verify_adopted_record(complete_rows[0], rpc_rows, plan)
     stopped_path = pending / "STOPPED.json"
     if stopped_path.is_file():
         stopped_path.unlink()
@@ -1542,6 +1686,7 @@ def build_parser():
         item.add_argument("--beta", action="store_true")
         item.add_argument("--beta-rounds", type=int, default=1)
         item.add_argument("--resume", action="store_true")
+        item.add_argument("--adopt-pending")
     verify = sub.add_parser("verify")
     verify.add_argument("gid")
     verify.add_argument("--mint", required=True)
@@ -1590,6 +1735,8 @@ def main(argv=None):
         args.reference_fingerprint = None
         args.beta_trace = None
         args.beta_slots = []
+        if args.adopt_pending and not args.resume:
+            raise ValueError("--adopt-pending requires --resume")
         if args.beta_rounds < 1 or args.beta_rounds > 3:
             raise ValueError("beta rounds must be within 1..3")
         if args.residual_owners and not args.beta:
