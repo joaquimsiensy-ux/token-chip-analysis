@@ -1004,8 +1004,8 @@ QUQ 与 PYTHIA 只用于算法层探索定标。防伪链测试使用合成 fixt
 | `header.adopted` | object | 否 | 可选；存在时下列五子字段全部必填；认领自同 parent、登记 ACTIVE 前代 producer 的 pending |
 | `header.adopted.predecessor_plan_digest` | string (16hex) | 是（认领时） | 与当前 plan_digest 不同；续跑、发布、深验均重算前代 digest |
 | `header.adopted.predecessor_producer_sha256` | string (sha256 hex) | 是（认领时） | producer_history 登记的 ACTIVE 前代 producer 哈希 |
-| `header.adopted.rows` | integer | 是（认领时） | 正整数（不接受 bool），不超过数据行数；成功前缀中证据对齐的最长候选前缀行数 |
-| `header.adopted.source` | string | 是（认领时） | 旧 pending 目录名 |
+| `header.adopted.rows` | integer | 是（认领时） | 正整数（不接受 bool），不超过数据行数；成功前缀中证据对齐的最长候选前缀行数；前 rows 行的 slot 序列须等于候选集（coverage∪beta 排序）的前缀，续跑/深验复核 |
+| `header.adopted.source` | string | 是（认领时） | 旧 pending 目录名，必须等于 `pending-<predecessor_plan_digest>`；续跑/深验复核 |
 | `header.adopted.ts` | integer | 是（认领时） | 认领时间戳 |
 | `seq` | integer | 是 |  |
 | `ts` | integer | 是 |  |

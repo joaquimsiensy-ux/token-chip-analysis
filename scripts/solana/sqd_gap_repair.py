@@ -797,12 +797,14 @@ def _verify_adopted_record(header, data_rows, plan):
                 or sha not in historical_producer_hashes(
                     "scripts/solana/sqd_gap_repair.py", "sqd-solana-repair-bundle/v1") \
                 or type(count) is not int or not 0 < count <= len(data_rows) \
-                or not isinstance(adopted["source"], str) \
+                or adopted["source"] != f"pending-{digest}" \
                 or type(adopted["ts"]) is not int:
             raise ValueError
         previous = deepcopy(plan)
         previous["producer"]["sha256"] = sha
         if compute_plan_digest(previous) != digest:
+            raise ValueError
+        if [row["slot"] for row in data_rows[:count]] != plan["candidate_slots"][:count]:
             raise ValueError
         for row in data_rows[:count]:
             if row["params_digest"] not in {

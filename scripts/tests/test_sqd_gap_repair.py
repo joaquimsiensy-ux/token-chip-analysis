@@ -966,10 +966,22 @@ def adoption_regressions(root, repair, exact, missing):
         assert exact._plan_digest_from_generation(
             bundle, synthetic_resolution, sha) == repair.compute_plan_digest(synthetic_plan)
 
+    def reorder_prefix(rows):
+        rows[1], rows[2] = rows[2], rows[1]
+        for seq, row in enumerate(rows[1:]):
+            row["seq"] = seq
+
+    wrong_digest = "0" * 16 if record["predecessor_plan_digest"] != "0" * 16 else "1" * 16
+
+    def change_source(rows):
+        rows[0]["adopted"]["source"] = "pending-" + wrong_digest
+
     # Deep validation rejects ledger mutations after updating its outer size/hash.
     ledger_bytes = (gen / "rpc_ledger.jsonl").read_bytes()
     bundle_bytes = (gen / "bundle.json").read_bytes()
     for mutation, reason in (
+            (reorder_prefix, "RPC ledger adopted record invalid"),
+            (change_source, "RPC ledger adopted record invalid"),
             (lambda rows: rows[0]["adopted"].update(predecessor_producer_sha256=unknown_sha),
              "adopted record invalid"),
             (lambda rows: rows[0]["adopted"].update(predecessor_plan_digest="0" * 16),
@@ -991,6 +1003,40 @@ def adoption_regressions(root, repair, exact, missing):
         assert not checked["ok"] and any(reason in r for r in checked["reasons"]), checked
         (gen / "rpc_ledger.jsonl").write_bytes(ledger_bytes)
         (gen / "bundle.json").write_bytes(bundle_bytes)
+    checked = deep_check(case, gen, plan)
+    assert checked["ok"], checked
+
+    # Resume mutations use independent copies of the published two-slot evidence.
+    resume_pending = gen.parent / f"pending-{adopted_rows[0]['plan_digest']}"
+    assert not resume_pending.exists()
+    resume_pending.mkdir()
+    shutil.copy2(gen / "rpc_ledger.jsonl", resume_pending / "rpc_ledger.jsonl")
+    (resume_pending / "evidence").mkdir()
+    assert len(adopted_rows) == 3 and record["rows"] == 1
+    completed_slots = {row["slot"] for row in adopted_rows[1:]}
+    assert completed_slots == set(slots) and len(completed_slots) == 2
+    for slot in completed_slots:
+        for suffix in ("sqd", "ref"):
+            name = f"{slot}.{suffix}.json"
+            shutil.copy2(gen / "evidence" / name, resume_pending / "evidence" / name)
+    resume_ledger = resume_pending / "rpc_ledger.jsonl"
+    resume_bytes = resume_ledger.read_bytes()
+    for mutation in (reorder_prefix, change_source):
+        rows = repair._parse_ledger_prefix(resume_bytes)
+        mutation(rows)
+        write_rows(resume_pending, rows)
+        try:
+            repair.load_resume_slots(resume_pending, repair._ledger_header(plan), plan)
+        except ValueError as exc:
+            assert str(exc) == "RPC ledger adopted record invalid", exc
+        else:
+            raise AssertionError("tampered adopted ledger resumed")
+        resume_ledger.write_bytes(resume_bytes)
+        completed, _ = repair.load_resume_slots(
+            resume_pending, repair._ledger_header(plan), plan)
+        assert completed == completed_slots, completed
+    assert (gen / "rpc_ledger.jsonl").read_bytes() == ledger_bytes
+    assert (gen / "bundle.json").read_bytes() == bundle_bytes
 
     # Longest evidence-aligned prefix from a two-row predecessor.
     case, old, pending, plan, slots = copy_source("longest", 2)

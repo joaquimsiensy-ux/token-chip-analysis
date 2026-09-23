@@ -1,0 +1,81 @@
+W2 baseline red evidence
+HEAD: 5ea0686bf90bfc6ff60fe2a87cbf95170b39934b
+Offline fixture-only execution; MPLCONFIGDIR=$HOME/.matplotlib; PYTHONDONTWRITEBYTECODE=1.
+Loaded unchanged test_sqd_gap_repair.py in memory, injected the following hook before its deep-mutation loop, then called batch3b_semantic_regressions().
+No production monkeypatches; mutations use fresh original ledger bytes and synchronize bundle size/sha256.
+
+    # W2 baseline-only in-memory reproduction; production code is unchanged.
+    ledger_bytes = (gen / "rpc_ledger.jsonl").read_bytes()
+    bundle_bytes = (gen / "bundle.json").read_bytes()
+    for vector in ("reordered-prefix", "empty-source", "wrong-source"):
+        rows = repair._parse_ledger_prefix(ledger_bytes)
+        if vector == "reordered-prefix":
+            rows[1], rows[2] = rows[2], rows[1]
+            for seq, row in enumerate(rows[1:]):
+                row["seq"] = seq
+        else:
+            rows[0]["adopted"]["source"] = ("" if vector == "empty-source" else
+                "pending-" + ("0" if record["predecessor_plan_digest"] != "0" * 16 else "1") * 16)
+        assert rows[0]["adopted"]["rows"] == 1 and len(rows) == 3
+        repair._verify_adopted_record(rows[0], rows[1:], plan)
+        write_rows(gen, rows)
+        altered = deepcopy(bundle)
+        altered["rpc_ledger"].update(size=(gen / "rpc_ledger.jsonl").stat().st_size,
+                                    sha256=repair.sha256_file(gen / "rpc_ledger.jsonl"))
+        (gen / "bundle.json").write_bytes(canonical_bytes(altered))
+        checked = deep_check(case, gen, plan)
+        assert "RPC ledger adopted record invalid" not in checked["reasons"], checked
+        print(f"W2 RED {vector}: producer ACCEPTED; deep adopted-invalid ABSENT; "
+              f"deep_ok={checked['ok']}; reasons={checked['reasons']}")
+        (gen / "rpc_ledger.jsonl").write_bytes(ledger_bytes)
+        (gen / "bundle.json").write_bytes(bundle_bytes)
+        restored = deep_check(case, gen, plan)
+        assert restored["ok"], restored
+    print("W2 RED baseline reproduction: 3 vectors confirmed; restored generation PASS")
+
+Observed output:
+W2 RED reordered-prefix: producer ACCEPTED; deep adopted-invalid ABSENT; deep_ok=True; reasons=[]
+W2 RED empty-source: producer ACCEPTED; deep adopted-invalid ABSENT; deep_ok=True; reasons=[]
+W2 RED wrong-source: producer ACCEPTED; deep adopted-invalid ABSENT; deep_ok=True; reasons=[]
+W2 RED baseline reproduction: 3 vectors confirmed; restored generation PASS
+sqd gap repair failed: SQD coverage state changed before repair
+{"completed_slots": [19998], "cursor": 19999, "plan_digest": "53b63b2d2ae9413e", "reason": "reference-quota"}
+{"completed_slots": [19998], "cursor": 19999, "plan_digest": "eebdee58bd8fe875", "reason": "reference-quota"}
+{"completed_slots": [19997, 19998], "cursor": 19999, "plan_digest": "407823f087b618f3", "reason": "reference-quota"}
+GREEN E25-beta-e2e mechanism derive_residual_owners
+GREEN E25-beta-tamper mechanism validate_beta_trace
+GREEN E26-state mechanism validate_coverage_state_consistency
+GREEN E27-a-quota mechanism load_resume_slots
+GREEN E27-b-crash mechanism resume_published_generation
+GREEN E27-c-cas mechanism assert_resume_cas
+GREEN functional canonical/gid/E17/routeA truth/CAS regressions
+{"probe_id": "3cbbc73e00410a78", "status": "published", "verdict": "NO_KNOWN_NONCE_OMISSION_DETECTED"}
+{"gid": "a4acf60dbda72ced", "plan_digest": "dea1a16525c260b7", "repair_edges": 1, "status": "exploration-not-published"}
+GREEN --blocks-cache exploration generation/deep validation/no pointer
+{"probe_id": "59df8978c3e3e058", "status": "published", "verdict": "INCONCLUSIVE"}
+{"gid": "dc71dc30adcc3e9d", "plan_digest": "f74ac8e4450e4cc7", "repair_edges": 0, "status": "published"}
+GREEN live Helius getBlock/SQD census mock transport/formal pointer
+{"probe_id": "81ce702533ab781f", "status": "published", "verdict": "INCONCLUSIVE"}
+{"gid": "ae29a85e99c75d50", "plan_digest": "afcf4ea2dc8edd86", "repair_edges": 0, "status": "published"}
+{"probe_id": "a05ea7270472e89a", "status": "published", "verdict": "INCONCLUSIVE"}
+{"probe_id": "c9622260ded8bdd5", "status": "published", "verdict": "INCONCLUSIVE"}
+{"probe_id": "776bc910e8c8a2f9", "status": "published", "verdict": "INCONCLUSIVE"}
+{"gid": "f84b214863c330fb", "plan_digest": "53b63b2d2ae9413e", "repair_edges": 0, "status": "published"}
+{"gid": "f84b214863c330fb", "plan_digest": "53b63b2d2ae9413e", "repair_edges": 0, "status": "published"}
+{"probe_id": "70e1cadf68fabd2d", "status": "published", "verdict": "INCONCLUSIVE"}
+{"probe_id": "46a3e9c51f695921", "status": "published", "verdict": "INCONCLUSIVE"}
+{"gid": "7165f4ccddf25fc3", "plan_digest": "eebdee58bd8fe875", "repair_edges": 0, "status": "published"}
+Traceback (most recent call last):
+  File "/Users/uravvv/.claude/tca-fix-txv1/scripts/tests/test_sqd_gap_repair.py", line 1299, in <module>
+    sys.exit(main())
+             ~~~~^^
+  File "/Users/uravvv/.claude/tca-fix-txv1/scripts/tests/test_sqd_gap_repair.py", line 1216, in main
+    batch3b_semantic_regressions()
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "/Users/uravvv/.claude/tca-fix-txv1/scripts/tests/test_sqd_gap_repair.py", line 776, in batch3b_semantic_regressions
+    adoption_regressions(root / "adoption", repair, exact, missing)
+    ~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/uravvv/.claude/tca-fix-txv1/scripts/tests/test_sqd_gap_repair.py", line 1003, in adoption_regressions
+    assert not checked["ok"] and any(reason in r for r in checked["reasons"]), checked
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: {'ok': True, 'reasons': [], 'bundle': {'base': {'edge_file': 'data/soltx-4eb8d4d0e921d2f9c873ff102f98fa6b65f15cdd45aba80bfdf5b0ac2108359f.jsonl.gz', 'edge_logical_sha256': 'f47459ffd557d66857e40668fc86117033e5b8cf7951ec6631f2d55cf1b53da8', 'edge_rows': 2, 'edge_sha256': '833f3bc74bf3a937e8b79de1a7bb7ab90e3f5960b33d7000434a1a659dfd9feb', 'finalized_upper_slot': 19999, 'meta_file': 'data/soltx-4eb8d4d0e921d2f9c873ff102f98fa6b65f15cdd45aba80bfdf5b0ac2108359f.meta.json', 'meta_sha256': '283a97ee7f43f2671e898b9773752a4b4b69e6cc531f4d99a2ed6078457afad3'}, 'coverage': {'map': {'path': 'data/sqd_coverage/70e1cadf68fabd2d/coverage_map.json', 'sha256': '90392e196cf07c19e80cb6e552e8b31ecfafad751e47ce94c1fa9bf099c25288', 'size': 2096}, 'probe_id': '70e1cadf68fabd2d', 'slot_counts': {'path': 'data/sqd_coverage/70e1cadf68fabd2d/slot_counts.bin.gz', 'sha256': 'dbdc7bdaef8099f92b4de572cf30e55e9a5a113f99e0ad276ef2e7ff42ac44b2', 'size': 46}}, 'coverage_resolution': {'path': 'coverage_resolution.json', 'sha256': '95f5675c65ac0621d9ff897cfe24c5905d5d9dfd67968ca6cf82e0b0ea2a81cd', 'size': 2129}, 'evidence_manifest': {'path': 'evidence_manifest.json', 'sha256': '2e69550ac7b7690308d789cac47eb5c107f7c8183a883a293917aaae99e42f60', 'size': 589}, 'generated_at': '2026-09-23T07:26:09.222982+00:00', 'gid': '7165f4ccddf25fc3', 'kind': 'repair', 'merged': {'edge_file': 'soltx-4eb8d4d0e921d2f9c873ff102f98fa6b65f15cdd45aba80bfdf5b0ac2108359f.repaired.jsonl.gz', 'edge_logical_sha256': 'f47459ffd557d66857e40668fc86117033e5b8cf7951ec6631f2d55cf1b53da8', 'edge_rows': 2, 'edge_sha256': '8ec13f87091c4bb5224dabe882480b20c2bdf23acd3d79105bfb6d6ef7d2659d', 'meta_file': 'soltx-4eb8d4d0e921d2f9c873ff102f98fa6b65f15cdd45aba80bfdf5b0ac2108359f.repaired.meta.json', 'meta_sha256': '6ccbb86ca4d9621a313beac2572ab5a17208da9435612aed53d413d8275c7c21'}, 'mint': 'So1AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA', 'mode': 'formal', 'plan_digest': 'eebdee58bd8fe875', 'producer': {'path': 'scripts/solana/sqd_gap_repair.py', 'sha256': '977a4823f819559de070e53be681a66808861deb602fed108aa027c5af88c0c7'}, 'reference': {'endpoint_fingerprint': '6383cc50e74bdc7459929a8eb443c64f5a740d38084ee50cfdaec85d410082d8', 'kind': 'helius-getBlock', 'source': 'live'}, 'repair_layer': {'edges': 0, 'path': 'repair_layer.jsonl', 'sha256': '10e458dfd6fc150f80d41cd8b4f0194af054d859e80a0f3ac92e9332049b1569', 'size': 1118, 'transactions': 2}, 'rpc_ledger': {'credits_estimate': 20, 'path': 'rpc_ledger.jsonl', 'requests': 2, 'sha256': 'aa47ba972dfafcb2ac0d273452012cd8f99d59f0ab879328476ee29a0113ce33', 'size': 1175}, 'schema': 'sqd-solana-repair-bundle/v1', 'slot_index_map': {'path': 'slot_index_map.jsonl', 'sha256': 'df87ccef4e12cbc0a294ddb593c5439e6475decc67a7a42441d6e07f56533540', 'size': 366, 'slots': 2}, 'supersedes': None}, 'gid': '7165f4ccddf25fc3', 'effective_verdict': 'DEFECTS_CONFIRMED', 'edge_rows': 2}

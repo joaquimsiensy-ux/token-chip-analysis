@@ -1350,7 +1350,8 @@ def validate_repair_bundle_deep(bundle_path, *, case_root, current_base,
             and adopted["predecessor_producer_sha256"] in historical_producer_hashes(
                 "scripts/solana/sqd_gap_repair.py", REPAIR_BUNDLE_SCHEMA)
             and _integer(adopted.get("rows")) and 0 < adopted["rows"] <= ledger_data_count
-            and isinstance(adopted.get("source"), str) and _integer(adopted.get("ts")))
+            and adopted.get("source") == f"pending-{adopted['predecessor_plan_digest']}"
+            and _integer(adopted.get("ts")))
         if not adopted_valid:
             reasons.append("RPC ledger adopted record invalid")
     if ledger_row_count:
@@ -1366,6 +1367,7 @@ def validate_repair_bundle_deep(bundle_path, *, case_root, current_base,
         seq_contiguous = True
         ledger_slots = set()
         duplicate_ledger_slot = False
+        adopted_prefix_slots = []
         for expected_seq, row in enumerate(_jsonl_data(refs["rpc_ledger"])):
             if row.get("seq") != expected_seq:
                 seq_contiguous = False
@@ -1385,6 +1387,7 @@ def validate_repair_bundle_deep(bundle_path, *, case_root, current_base,
             if row.get("endpoint_fingerprint") != ledger_fingerprint:
                 reasons.append("RPC ledger reference fingerprint mismatch")
             if adopted_valid and expected_seq < adopted["rows"]:
+                adopted_prefix_slots.append(row.get("slot"))
                 try:
                     if row["params_digest"] not in {
                             _repair_getblock_params_digest(row["slot"], version)
@@ -1519,6 +1522,8 @@ def validate_repair_bundle_deep(bundle_path, *, case_root, current_base,
         plan_candidates["beta"])
     if adopted_valid:
         try:
+            if adopted_prefix_slots != sorted(all_candidates)[:adopted["rows"]]:
+                raise ValueError
             if _plan_digest_from_generation(
                     bundle, resolution, bundle["producer"]["sha256"]) != digest \
                     or _plan_digest_from_generation(
