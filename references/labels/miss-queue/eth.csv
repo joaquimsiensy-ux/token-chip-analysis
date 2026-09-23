@@ -459,3 +459,14 @@ address,chain,reason,weight,context,seen_date
 0xff8ba4d1fc3762f6154cc942ccf30049a2a0cec6,eth,守门员FUNNEL in102/out149 ret=0.000（漏斗形状，判明身份后回填标签库）,7143,APU分析0801 cluster,2026-08-01
 0xd152f549545093347a162dce210e7293f1452150,eth,守门员FUNNEL in41/out1210 ret=0.000（漏斗形状，判明身份后回填标签库）,1312,APU分析0801 cluster,2026-08-01
 0x82d88875d64d60cbe9cbea47cb960ae0f04ebd4d,eth,守门员FUNNEL in35/out96 ret=0.000（漏斗形状，判明身份后回填标签库）,474,APU分析0801 cluster,2026-08-01
+0x3dd160879f299948f2d98f17a000a588bdde7c44,eth,高度数节点 deg=202（疑似路由/分发设施）,202,BITCOIN cluster,2026-09-21
+0x94bae3f65602a5fdf8a63aca5bf1d6bf9f1af06a,eth,高度数节点 deg=255（疑似路由/分发设施）,255,BITCOIN cluster,2026-09-21
+0x47eb32dd0b4ebf064e89326f3b6e8b2323844005,eth,高度数节点 deg=216（疑似路由/分发设施）,216,BITCOIN cluster,2026-09-21
+0x62425cd6bdcb6bfe51558ea465b063486b70dc9f,eth,共同 gas funder 服务 4 地址（疑似热钱包/代付服务）,4,BITCOIN cluster,2026-09-21
+0x2cff890f0378a11913b6129b2e97417a2c302680,eth,共同 gas funder 服务 4 地址（疑似热钱包/代付服务）,4,BITCOIN cluster,2026-09-21
+0x00000011f84b9aa48e5f8aa8b9897600006289be,eth,共同 gas funder 服务 6 地址（疑似热钱包/代付服务）,6,BITCOIN cluster,2026-09-21
+0x0000000000000068f116a894984e2db1123eb395,eth,共同 gas funder 服务 7 地址（疑似热钱包/代付服务）,7,BITCOIN cluster,2026-09-21
+0x5d98f54d829708eeb2aa555badb96bcb5400def1,eth,共同 gas funder 服务 3 地址（疑似热钱包/代付服务）,3,BITCOIN cluster,2026-09-21
+0xd08243bcc8d231203d46d9c51276da3137697ac2,eth,共同 gas funder 服务 5 地址（疑似热钱包/代付服务）,5,BITCOIN cluster,2026-09-21
+0x3dd160879f299948f2d98f17a000a588bdde7c44,eth,守门员FUNNEL in161/out93 ret=0.049（漏斗形状，判明身份后回填标签库）,2781,BITCOIN cluster,2026-09-21
+0x0889e9327b98d7d1be3c301a4585ff3330502c9a,eth,守门员FUNNEL in57/out110 ret=0.000（漏斗形状，判明身份后回填标签库）,1424,BITCOIN cluster,2026-09-21
