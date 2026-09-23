@@ -1,0 +1,24 @@
+# T1 baseline RED evidence
+HEAD=e498a1d6ae689a0b7d9751468ef074fd21a9e49f
+Production and repository test files unchanged; only _produce_plan is expanded in memory for the specified 24-row directory fixture.
+Each probe gets an independent fixture; all three execute even if another raises.
+
+[1]
+fixture: directory=/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/t1_red_1_wgq27upl/v2, manifest=/private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/t1_red_1_wgq27upl/plan/anchor_plan.input.json, matrix=4, forced=9
+main exit=1, captured inputs.input=None
+[fatal] output/transcript 路径冲突: output parent contains symlink: /var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/t1_red_1_wgq27upl/time_spotcheck.json
+captured keys=[]; output exists? False
+PROBE ERROR: KeyError: 'input'
+
+[2]
+fixture: directory=/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/t1_red_2_t3rlg0_c/v2, manifest=/private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/t1_red_2_t3rlg0_c/plan/anchor_plan.input.json, matrix=4, forced=9
+ValueError: time plan authority chain broken: time plan input identity is not a regular file
+RED CONFIRMED: valid directory plan rejected by release consumer.
+
+[3]
+fixture: directory=/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/t1_red_3_jam7de_6/v2, manifest=/private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/t1_red_3_jam7de_6/plan/anchor_plan.input.json, matrix=4, forced=9
+ValueError: time plan authority chain broken: plan receipt envelope invalid: ['input input_manifest size mismatch']
+NEGATIVE PASS: physical manifest tampering rejected (not required to be RED).
+
+All three expected baseline observations: False
+Forbidden paths read: none. External network calls: 0.

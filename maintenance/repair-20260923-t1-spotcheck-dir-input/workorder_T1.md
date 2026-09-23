@@ -1,4 +1,4 @@
-# 工单 T1（v3，融合 codex 复核 r1/r2 全部意见）：time_spotcheck 与发布校验器对「v2 目录输入」的收据绑定对齐 —— repair-20260923-t1-spotcheck-dir-input
+# 工单 T1（v4，融合 codex 复核 r1/r2 全部意见＋施工 attempt1 停工勘误）：time_spotcheck 与发布校验器对「v2 目录输入」的收据绑定对齐 —— repair-20260923-t1-spotcheck-dir-input
 
 > 出处：QUQ 0922 案 −1 阻塞点 ANOM-008（调度方本机复现）。`anchor_plan.py` 至少在 1a7e685（2026-08-07）的父提交中已接受目录输入（1a7e685 将相关逻辑收敛到共享核心 `anchor_selection`：`input_identity` 对目录产 `kind=directory`＋文件清单哈希；`_detect_input` 读 `run_*/logs.parquet`），并把清单写成 `anchor_plan.input.json`、以该**清单文件**绑进 `anchor_plan.receipt.json`（`anchor_plan.py:194-203`）。但下游两处仍假定输入是普通文件：
 > ① 生产者 `scripts/lib/time_spotcheck.py:417-421` 把 CLI `--input`（目录）原样交给 `receipt_kernel.build_envelope`，`_resolved_input`（`receipt_kernel.py:53-78`，`:77` 判 `is_file`）拒 `input is not a regular file: data/v2` → exit 1，`time_spotcheck.json` 不产；语义重放（`:350-351`，对目录已跑通）在其之前，故退出码是 1 不是 2。
@@ -7,6 +7,7 @@
 > 用户 2026-09-22 裁决：走方案 A 改 skill；原则＝skill 上下文不增、能删不增、能改不增；codex 施工、codex 常规盲审（三次 FAIL 才换 opus）、收官 codex review 确认问题真正消失；版本 9.0.3（修：既有 CLI、计划生产者与语义重放已承诺目录输入，本次修通失效路径；收据 schema/键不变；不新增公开接口）。
 > v2 变更（`review_T1_reply_r1.md`）：整行锚订正（418–420、521、references:158 与 CHANGELOG 13/99 全文）；文件分支保持原校验顺序、清单正文核验保留；helper 改私有 `_bound_input_ref` 并复用既有 try/except；文档改 0 B 等价替换；RED 三项改为"main 接线/消费者放行/篡改拒收"并要求 main 级 mock 接线断言；测试改造 `_produce_plan(root, *, directory=False)` 不新增第二个生产函数；补消费者篡改与自洽重绑负例；验收 diff 命令改为对工作树；历史引入时间、绝对路径保证范围、案情来源限定三处措辞订正。
 > v3 变更（`review_T1_reply_r2.md`，仅工单文本）：§0.5 补列非唯一事实行 time:422/424、shared:369；§2.4 文档锚改为代码围栏（去掉误入的字面反斜杠）；§2.5 CHANGELOG:13 给出完整整行原文；§2.3 说明④确定为绝对路径形态（`receipt_validate._input_file:67-78` 接受案根内绝对路径）；§3 去掉"取哪一形态"。修法、测试、白名单、版本档位与 v2 相同。
+> v4 变更（`T1_done_attempt1_stopped.md`，仅测试夹具一行）：§2.3 新用例 `root = Path(td).resolve()`——macOS `tempfile` 目录经 `/var`→`/private/var` symlink，`time_spotcheck.py:409` 的 `assert_distinct_paths` 经 `receipt_kernel._secure_target`（`:248-249`）拒父级 symlink 输出路径，mock 接线前即返回 1；归一后无 symlink 父级（调度方本机实证）。§0.7 RED 第①项夹具同此写法。其余与 v3 相同；本条为施工方停工报告已考证结论，调度方亲核采纳。
 > 内容基线：`f4f80567c21f`（v9.0.2 + labels miss-queue 追加），行号按此核。
 
 ## 0. 开工纪律
@@ -17,7 +18,7 @@
 - 0.4 **不改**：`scripts/lib/receipt_kernel.py`（`_resolved_input` 只收普通文件是收据核契约，不放宽）、`scripts/lib/anchor_selection.py`、`scripts/lib/anchor_plan.py`、`scripts/lib/receipt_validate.py`、`scripts/lib/producer_history.py`（time_spotcheck 不在 `PRODUCER_HISTORY`/`CURRENT_PRODUCERS`，不登记、不扩历史哈希集）、`scripts/report/handoff_manifest.py`、`scripts/report/reconciliation_report.py`、`scripts/tests/test_time_spotcheck.py`（dry-run 不经收据封装，不在此加用例）、`invariant_manifest.json`/`contract_manifest.json`（开工与完工各跑一次 `python3 -B scripts/tests/invariant_scan.py` 证实无需登记）、`commands-staging/`、其余 references。
 - 0.5 行号均指基线 f4f80567c21f；施工锚使用目标文件**整行原文**，以 `grep -n -F -x` 核验恰 1 处且行号一致，不符**停工**。`time_spotcheck.py:416、422、424` 为非唯一事实引用，以 `:415` 的唯一整行及其后收据封装 try/except 定位；`shared_release_receipt.py:369、371、377、997` 为非唯一事实引用，前三项按 `bound_case_ref`、末项按 `_validated_time_plan_authority` 定位。删除 > 修改 > 新增；新增代码只准放在 §2 指定位置。
 - 0.6 离线；不 commit、不 push；禁 stash/checkout/reset。
-- 0.7 先红后绿，基线独立记录三项写 `T1_red_evidence.txt`：①生产者 main 向 `build_envelope` 传入目录而非清单（按 §2.3 的 mock 接线法在基线上求值，基线应捕获到目录路径）；②目录计划的消费者放行（基线 `_validated_time_plan_authority` 抛 `time plan input identity is not a regular file`）；③消费者篡改拒收结果。前两项是修复前失败、修复后通过的 RED；篡改拒收属于保持通过的负例，不要求在基线变红。各项隔离求值，不因首个异常跳过后项；不得仅用新增 helper 不存在的 AttributeError 证明原缺陷。临时脚本不得留在仓库。
+- 0.7 先红后绿，基线独立记录三项写 `T1_red_evidence.txt`（attempt1 已取得第②③项证据，可沿用其结果并注明来源）：①生产者 main 向 `build_envelope` 传入目录而非清单（按 §2.3 的 mock 接线法在基线上求值，夹具根目录须 `Path(td).resolve()`，基线应捕获到目录路径）；②目录计划的消费者放行（基线 `_validated_time_plan_authority` 抛 `time plan input identity is not a regular file`）；③消费者篡改拒收结果。前两项是修复前失败、修复后通过的 RED；篡改拒收属于保持通过的负例，不要求在基线变红。各项隔离求值，不因首个异常跳过后项；不得仅用新增 helper 不存在的 AttributeError 证明原缺陷。临时脚本不得留在仓库。
 - 0.8 不跑 `run_all.py`（调度方本机跑）。定向跑（全部须 PASS，贴尾行）：`python3 -B scripts/tests/test_anchor_plan_v3.py`、`test_time_spotcheck.py`、`test_recon_deep_reverify.py`、`test_handoff_manifest.py`、`test_audit_release_gate.py`、`test_batch3_evm_vertical_slice.py`、`python3 -B scripts/tests/invariant_scan.py`、`python3 -B scripts/tests/changelog_lint.py`。沙箱临时目录不可写报 `No usable temporary directory found` 的记 `SANDBOX-BLOCKED`（贴错误行）不计 FAIL，由调度方本机补验。
 
 ## 1. 硬约束
@@ -97,7 +98,7 @@ def _bound_input_ref(raw_input, plan):
 ```python
 def test_16_directory_input_binds_signed_manifest():
     with tempfile.TemporaryDirectory(prefix="anchor_v3_dir_") as td:
-        root = Path(td)
+        root = Path(td).resolve()  # macOS TMPDIR 经 /var symlink，receipt_kernel 拒父级 symlink 输出路径
         source, plan_path, receipt_path = _produce_plan(root, directory=True)
         plan = time_spotcheck.load_validated_plan(plan_path, receipt_path)
         assert plan["input"]["kind"] == "directory"
