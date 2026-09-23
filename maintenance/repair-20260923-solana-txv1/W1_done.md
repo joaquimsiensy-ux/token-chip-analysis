@@ -73,3 +73,40 @@ RED evidence complete: all four baseline assertions reproduced.
 ## 待裁决
 
 请调度方提供允许对本克隆 `.git` 正常写入的施工环境，以便先提交现有 §1 改动（`W1(1):` 中文主题及指定 Co-Authored-By），再继续 §2—§5。当前会话不能申请提权；未获得具备该能力的环境前，不继续跨节施工。恢复时应核对本报告记录的工作树改动，不能将其误当作开工前的外来脏文件。
+
+
+## 第 2 段开工核验（2026-09-23）
+
+- 当前分支 `fix/solana-txv1`；`git diff --stat` 为 16 个文件，与第 1 段「已做改动」一致；`git ls-files --others --exclude-standard` 无输出。未发现其他工作树改动。
+- 本段用户指令覆盖前述「待裁决」中的 git 写入要求：`.git` 只读，git add/commit 由调度方完成，不以不能提交为停工理由。
+- 已按顺序读取 A1、v5 与本报告；尚未修改生产或测试文件。
+
+## 停工原因
+
+A1 第 2 条的数量断言与实况不符，触发本段用户纪律第 7 条「工单里任何行号/断言与实况不符：停工」。
+
+- 工单位置：`maintenance/repair-20260923-solana-txv1/workorder_W1_amendment_A1.md:7`。该条先单独规定 `sqd_gap_repair.py` 的导入调整，随后写「其余 11 个 `scripts/solana/*.py`」。
+- 实况：该目录共 11 个文件使用 `from solana_attested_session import SOLANA_MAX_SUPPORTED_TX_VERSION`；扣除已经单列的 `sqd_gap_repair.py:27` 后，其余只有 10 个。清单及当前行号如下：
+  - `scripts/solana/audit_closed_accounts.py:41`
+  - `scripts/solana/decode_txs.py:12`
+  - `scripts/solana/decode_txs_v2.py:25`
+  - `scripts/solana/fast_probe_tops.py:16`
+  - `scripts/solana/gas_origin.py:19`
+  - `scripts/solana/probe_escrows.py:21`
+  - `scripts/solana/probe_window_moves.py:26`
+  - `scripts/solana/stake_decode.py:23`
+  - `scripts/solana/trace_wallet.py:15`
+  - `scripts/solana/whale_deep.py:23`
+
+- 复核方式：`rg -n 'from solana_attested_session import SOLANA_MAX_SUPPORTED_TX_VERSION' scripts/solana`，并用 Python 枚举该目录的 `*.py` 文件复核，数量断言 `len(files) == 11 and len(remaining) == 10` 通过。
+- 建议调度方将 A1 第 2 条「其余 11 个」更正为「其余 10 个」。没有擅自更改工单或按推测继续施工。
+
+### 本段改动、差异及验证记录
+
+- 仅追加 `maintenance/repair-20260923-solana-txv1/W1_done.md` 本段开工及停工记录；第 1 段 16 个生产/测试文件改动保持原状。
+- A1、§2、§4 均未完成；§3、§5 未执行。与计划的差异原因是上述数量断言不符，不是 git 写权限。
+- 测试尾行：无。本段在开工核验阶段触发停工，未运行 A1 验收、§0.7 定向测试或 registry 测试；不宣称任何测试 PASS。
+- 未读取 `~/.codex`、`~/Documents`、`~/Desktop`；全程离线；未启动子代理；未执行 git add/commit/push；未删除文件。
+- 本记录仅供调度方接手，不表示第 2 段施工完成。
+
+待调度方 commit
