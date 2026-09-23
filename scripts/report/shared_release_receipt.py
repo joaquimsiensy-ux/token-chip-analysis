@@ -1033,14 +1033,30 @@ def _validated_time_plan_authority(root, receipt, target):
         identity = plan_receipt.get("input_identity")
         _require(isinstance(identity, dict) and plan.get("input") == identity,
                  "plan input identity differs from signed receipt")
-        identity_path = _bound_case_ref(root, identity, "time plan input identity")
-        _require(identity_path == input_path,
-                 "signed input identity is not the time receipt input object")
+        if identity.get("kind") != "directory":
+            identity_path = _bound_case_ref(root, identity, "time plan input identity")
+            _require(identity_path == input_path,
+                     "signed input identity is not the time receipt input object")
 
         manifest = (plan_receipt.get("inputs") or {}).get("input_manifest")
-        _bound_case_ref(root, manifest, "time plan input manifest")
+        manifest_path = _bound_case_ref(root, manifest, "time plan input manifest")
         _require(isinstance(manifest, dict) and plan.get("input_manifest") == manifest,
                  "plan input manifest differs from signed receipt binding")
+        if identity.get("kind") == "directory":
+            # v2 目录输入：目录不是普通文件，时间收据 inputs.input 绑的是签名清单；
+            # 清单正文 input 须与签名身份全等，目录只做案根内存在性检查，不重算哈希
+            _require(input_path == manifest_path,
+                     "directory input identity is not bound through the signed input manifest")
+            manifest_doc = strict_json_loads(
+                manifest_path.read_text(encoding="utf-8"),
+                parse_constant=_reject_constant)
+            _require(isinstance(manifest_doc, dict) and manifest_doc.get("input") == identity,
+                     "input manifest identity differs from signed identity")
+            directory = Path(str(identity.get("path") or ""))
+            _require(directory.is_absolute() and not directory.is_symlink()
+                     and directory.resolve().is_dir()
+                     and directory.resolve().is_relative_to(Path(root).resolve()),
+                     "signed directory identity is not a directory inside the case root")
 
         output = plan_receipt.get("output")
         output_path = _bound_case_ref(root, output, "time signed plan output")

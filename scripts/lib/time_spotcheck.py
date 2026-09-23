@@ -177,6 +177,20 @@ def _replayed_points_for_schema(replayed, schema):
     return projected
 
 
+def _bound_input_ref(raw_input, plan):
+    """收据 inputs.input 绑定对象：文件输入绑文件本身；v2 目录输入绑 anchor_plan 已签名的清单
+    anchor_plan.input.json（receipt_kernel 只收普通文件；目录身份已由 validate_semantic_replay
+    重算哈希核过）。清单正文 input 须与 plan.input 全等，否则 fail-closed。"""
+    if not Path(raw_input).expanduser().is_dir():
+        return raw_input
+    manifest_path = Path(str((plan.get("input_manifest") or {}).get("path") or ""))
+    with open(manifest_path, "r", encoding="utf-8") as fh:
+        manifest = json.load(fh)
+    if not isinstance(manifest, dict) or manifest.get("input") != plan.get("input"):
+        raise ValueError("anchor_plan.input.json input identity differs from plan.input")
+    return str(manifest_path)
+
+
 def validate_semantic_replay(plan, raw_input, *, mem_limit="6GB", threads=4):
     """Recompute selection from the real input and compare all deterministic results."""
     schema = plan.get("schema")
@@ -414,10 +428,11 @@ def main():
     token = a.token.lower()
     target = {"chain": a.chain, "token": token, "as_of_block": a.final_block}
     try:
+        bound_input = _bound_input_ref(a.input, plan)
         envelope = build_envelope(SCHEMA, target, __file__, execution_mode,
                                   inputs={"plan": a.plan,
                                           "plan_receipt": plan_receipt,
-                                          "input": a.input},
+                                          "input": bound_input},
                                   input_base=Path(a.out).expanduser().resolve().parent)
     except Exception as exc:
         print(f"[fatal] receipt envelope 构建失败: {exc}", file=sys.stderr)

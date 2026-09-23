@@ -22,3 +22,30 @@ NEGATIVE PASS: physical manifest tampering rejected (not required to be RED).
 
 All three expected baseline observations: False
 Forbidden paths read: none. External network calls: 0.
+
+
+===== attempt 2 / v4 (all three probes rerun) =====
+# T1 attempt 2 baseline RED evidence
+HEAD=b52cbedf230218e5da46334cf99b7111235e8367
+v4 fixture: root = Path(td).resolve(); repository production/test files unchanged.
+All three probes rerun independently; attempt1 evidence below retained for provenance.
+
+[attempt2:1]
+fixture: directory=/private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/t1_attempt2_red_1_2fmlay8t/v2, manifest=/private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/t1_attempt2_red_1_2fmlay8t/plan/anchor_plan.input.json, matrix=4, forced=9
+main exit=1, captured inputs.input=/private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/t1_attempt2_red_1_2fmlay8t/v2
+[fatal] receipt envelope 构建失败: stop-before-rpc
+output exists? False
+RED CONFIRMED: main passes directory, not signed manifest, to build_envelope.
+
+[attempt2:2]
+fixture: directory=/private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/t1_attempt2_red_2_wz8o9pkg/v2, manifest=/private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/t1_attempt2_red_2_wz8o9pkg/plan/anchor_plan.input.json, matrix=4, forced=9
+ValueError: time plan authority chain broken: time plan input identity is not a regular file
+RED CONFIRMED: valid directory plan rejected by release consumer.
+
+[attempt2:3]
+fixture: directory=/private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/t1_attempt2_red_3_ourfaa8h/v2, manifest=/private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/t1_attempt2_red_3_ourfaa8h/plan/anchor_plan.input.json, matrix=4, forced=9
+ValueError: time plan authority chain broken: plan receipt envelope invalid: ['input input_manifest size mismatch']
+NEGATIVE PASS: physical manifest tampering rejected (not required to be RED).
+
+All three expected baseline observations: True
+Forbidden paths read: none. External network calls: 0.

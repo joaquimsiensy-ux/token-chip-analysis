@@ -10,6 +10,7 @@
 
 ## 版本索引（活跃窗口，新在上；每版一行，详情见下方对应条目）
 
+- **9.0.3**（2026-09-23）修复 v2 目录输入的时间抽查收据绑定（QUQ 0922 案 ANOM-008）：生产者目录输入时 inputs.input 绑 anchor_plan 已签名输入清单，发布消费者对 kind=directory 验证清单身份、不重算目录哈希；文件分支校验顺序保留。schema/键不变，references/SKILL/commands 字节不增；测试 +1 目录回归用例；版本档位 修。
 - **9.0.2**（2026-09-19）口径漂移与文档-代码不符审计第二期闭环（针对 7.2.0→9.0.1 六版代码大改而文档零改动）：codex 两路盲审十三轮（a 路全范围术语表法 9→2→3→4→2→2→2→2→1→1→2→0→1，b 路 7.2.0 起代码变更区专审 0→0→2→1→1→0→1→2→2→0→0→0→0；用户裁决 R13 修完即收官），十二份工单皆先 codex 只读复核（退回 9 次全在派工前拦下）再 codex 施工，38 条/21 文件纯文本修复，零代码改动；references 930076→929092（净减 984 B）、SKILL.md 8021 不变、commands-staging 8798→8789；范围外残留一条登记（fetch_sqd_transfers_v2 帮助文字，改则变采集器 sha）。
 - **9.0.1**（2026-09-18）codex 9.0.0 六视角 review 两条 P1 修复（既定契约内加固，不改任何 schema/键，故记修版本）：F04 `camp_spec.validate_camp_spec` 对 EVM 链族拒 spec 显式配置「散户」（引擎残差桶；原先 replay_pass2/replay_duck 对显式散户同日 append 两次、rc=0 产坏形状序列，靠下游长度检查兜底）；F01 `price_check._load_series` 任一点非有限或非正即 `[fatal]` 退出 1、第二源非有限规范化为 None 走 SKIP、收据 `allow_nan=False`（原先 NaN 主价判 PASS 并写含 NaN 的收据），`stage2_closeout.price_receipt_errors` 逐点按 main/second_price 同规则重算 status 并核声明、主价非有限正数即拒（原先只核 status 集合）。references/SKILL/commands 零改动。F02/F03/F05–F10 用户裁决本轮不修。
 - **9.0.0**（2026-09-18）codex 8.0.0 六视角 review 三条修复（P1×2、P2×1），−2 收口价格双源收据契约收紧（旧收据/纯申报/FAIL 一律拒、存量案须重跑 price_check 迁移，故记主版本）：F04 `RpcPool._one` 对无 error 且缺 `result` 键的 JSON-RPC 响应判失败（原先记 `ok=True, result=None`，`rpc_batch getcode` 再把 None 折成 `0x` 记 EOA、摘要"失败 0"），getcode 只认 `0x`/偶数长度十六进制串，其余记 error 退出 1；F05 `stage2_closeout` 新增 `price_receipt_errors`——按 points 以 price_check 同规则重算 verdict 并要求一致、只放行 PASS/WARN（WARN 记 NOTE）、收据新字段 `price_file_sha256` 须等于 `bindings.price_source.sha256`、内联 `dual_source_check` 须带 receipt 引用（原先只核 {path,sha256} 在场，FAIL 收据绑进工单仍 PASS）；F02 `facts_inputs.circulating_supply {raw,asof,source}` 可选通道→`facts.token.circulating_supply_raw/circulating_supply_source`，扁平键 `circulating_supply_raw` 拒，closeout NOTE 记口径（原先流通量分母无任何生产者，"必画"按流通量口径永不触发）。references/SKILL/commands 零改动。F01（日线取最高价）用户裁决不修；F03 峰值 override 沿 8.0.0 裁决不修；Q13 三端点 failover 轮转、Q14 ALL_SKIP 人工回退口子登记待裁决。
@@ -95,6 +96,14 @@
 - **6.20.1** 2026-08-05 修 5 处阻断级文档漂移（A4 前禁写报告冲突/easy 残留/惯犯回灌 docstring/批量预采集残留/旧 Par 路线历史降级）＋docs_lint 增中文禁词与 Python module docstring 扫描
 
 更早版本（6.20.0 及以前）详见 `archive/CHANGELOG-archive.md`。
+
+## [9.0.3] - 2026-09-23 — QUQ ANOM-008：v2 目录输入的时间抽查收据绑定对齐（生产者＋发布校验器）
+
+- **出处与裁决**：QUQ 0922 案 ANOM-008（调度方提供案情，本次未访问原案独立验证）：anchor_plan 与语义重放已支持 v2 目录输入，time_spotcheck 收据封装与发布消费者仍按普通文件处理，导致目录路径失败。用户 2026-09-22 裁决走方案 A 修 skill，版本 9.0.3（修）；按工单 T1 v4 施工，skill 上下文不增。验证边界：发布消费者不重算目录哈希，不证明目录内容自生产完成后未改变；目录内容身份由时间生产者语义重放时重算核对。
+- **生产者改法**：time_spotcheck 在 validate_semantic_replay 前新增唯一私有辅助函数 _bound_input_ref，在既有 build_envelope 的 try/except 内接线。目录输入绑定 plan.input_manifest 所指的 anchor_plan.input.json，要求清单正文 input 与 plan.input 全等；文件输入仍绑原文件。沿用计划生产者的绝对路径清单约定，不新增相对路径兜底；time-spotcheck/v3 schema、plan/plan_receipt/input/transcript 四键与 verdict/exit 契约不变。
+- **消费者改法与信任链**：shared_release_receipt 对 kind=directory 先验证时间收据 inputs.input 的 path/size/sha256，再验证其与 plan receipt 已绑定清单为同一实物，且清单正文 input＝input_identity＝plan.input；目录须为案根内存在的目录、绝对路径且末级非 symlink。文件分支保留 identity 校验→同一实物校验→manifest 校验顺序；不新增函数或 import，不放宽 receipt_kernel 普通文件契约，不改历史生产者哈希集与 invariant/contract manifest。
+- **字节与测试**：scripts 三文件 +124/−14（生产者 +16/−1、消费者 +20/−4、测试 +88/−9）；references 929092→929092，唯一改动行为 326→326 B（merged input 替换为文件/清单）；SKILL.md 8021→8021、commands-staging 8789→8789。新增 1 个目录回归用例，覆盖 helper、main 的 build_envelope 接线、消费者清单放行/错绑拒收、清单实物篡改与自洽重绑拒收；基线三项独立取证保存在 T1_red_evidence.txt，验收命令与实际结果见同目录 T1_done_attempt2_stopped.md（本地测试服务器监听被沙箱拒绝，验收未闭合）。不运行 run_all.py，由调度方本机验收。
+- **成本-质量指标**：生产逻辑文件 2、新公开入口 0、私有辅助函数 1、新增产物输出键 0、外部网络 0；不运行真实案卷判断链。
 
 ## [9.0.2] - 2026-09-19 — 口径漂移与文档-代码不符审计第二期闭环（零代码改动）
 

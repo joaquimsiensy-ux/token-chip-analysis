@@ -96,15 +96,35 @@ def _expect_all_reject(cases):
             f"accepted={accepted or 'none'} wrong_errors={wrong_errors or 'none'}")
 
 
-def _produce_plan(root):
-    source = root / "transfers.csv"
-    rows = ["block,ts,tx,from,to,value"]
-    for index in range(1, 25):
-        rows.append(
-            f"{99 + index},2025-01-{1 + (index % 3):02d}T00:00:00Z,0xt{index},"
-            f"0x{'0' * 40},0x{index:040x},100"
-        )
-    source.write_text("\n".join(rows) + "\n", encoding="utf-8")
+def _produce_plan(root, *, directory=False):
+    if directory:
+        import duckdb
+
+        source = root / "v2"
+        run = source / "run_1"
+        run.mkdir(parents=True)
+        with duckdb.connect() as con:
+            con.execute("CREATE TABLE logs (block_number BIGINT, block_hash VARCHAR, "
+                        "log_index BIGINT, transaction_hash VARCHAR, topic1 VARCHAR, "
+                        "topic2 VARCHAR, data VARCHAR)")
+            con.execute("CREATE TABLE blocks (number BIGINT, timestamp BIGINT)")
+            for index in range(1, 25):
+                con.execute("INSERT INTO logs VALUES (?, ?, ?, ?, ?, ?, ?)",
+                            [99 + index, f"0xb{index}", 0, f"0xt{index}", "0x" + "0" * 64,
+                             "0x" + "0" * 24 + f"{index:040x}", "0x" + f"{100:064x}"])
+                con.execute("INSERT INTO blocks VALUES (?, ?)",
+                            [99 + index, 1735689600 + 86400 * (index % 3)])
+            con.execute("COPY logs TO ? (FORMAT parquet)", [str(run / "logs.parquet")])
+            con.execute("COPY blocks TO ? (FORMAT parquet)", [str(run / "blocks.parquet")])
+    else:
+        source = root / "transfers.csv"
+        rows = ["block,ts,tx,from,to,value"]
+        for index in range(1, 25):
+            rows.append(
+                f"{99 + index},2025-01-{1 + (index % 3):02d}T00:00:00Z,0xt{index},"
+                f"0x{'0' * 40},0x{index:040x},100"
+            )
+        source.write_text("\n".join(rows) + "\n", encoding="utf-8")
     out = root / "plan"
     proc = subprocess.run(
         [
@@ -516,6 +536,65 @@ def test_15_schema_dispatch_v2_field_and_enum_type_fail_closed():
     malformed["matrix_points"] = [malformed_point]
     _expect_reject(lambda: time_spotcheck.classify(malformed),
                    "balance_block_source invalid")
+
+
+def test_16_directory_input_binds_signed_manifest():
+    with tempfile.TemporaryDirectory(prefix="anchor_v3_dir_") as td:
+        root = Path(td).resolve()  # macOS TMPDIR 经 /var symlink，receipt_kernel 拒父级 symlink 输出路径
+        source, plan_path, receipt_path = _produce_plan(root, directory=True)
+        plan = time_spotcheck.load_validated_plan(plan_path, receipt_path)
+        assert plan["input"]["kind"] == "directory"
+        time_spotcheck.validate_semantic_replay(plan, source)
+        manifest_path = Path(plan["input_manifest"]["path"])
+        # 生产者 helper：目录输入绑清单文件；文件输入绑文件本身
+        assert Path(time_spotcheck._bound_input_ref(str(source), plan)) == manifest_path
+        assert time_spotcheck._bound_input_ref(str(plan_path), plan) == str(plan_path)
+        # 生产者 main 接线：mock build_envelope 记录 inputs 并以受控异常终止（在任何 RPC 之前）
+        captured = {}
+        def fake_envelope(*args, **kwargs):
+            captured.update(kwargs.get("inputs") or {})
+            raise RuntimeError("stop-before-rpc")
+        real_envelope, real_argv = time_spotcheck.build_envelope, sys.argv
+        out = root / "time_spotcheck.json"
+        sys.argv = ["time_spotcheck.py", "--plan", str(plan_path), "--input", str(source),
+                    "--chain", "bsc", "--token", TOKEN, "--final-block", "300",
+                    "--rpc", "http://127.0.0.1:9", "--out", str(out)]
+        try:
+            time_spotcheck.build_envelope = fake_envelope
+            assert time_spotcheck.main() == 1
+        finally:
+            time_spotcheck.build_envelope, sys.argv = real_envelope, real_argv
+        assert Path(captured["input"]) == manifest_path
+        assert not out.exists()
+        # 消费者：inputs.input=清单 → 放行；=计划文件 → 拒
+        assert _shared_authority(root, manifest_path, plan_path, receipt_path) == plan
+        _expect_reject(lambda: _shared_authority(root, plan_path, plan_path, receipt_path),
+                       "directory input identity is not bound through the signed input manifest")
+        # 清单实物篡改：先由 plan receipt envelope 校验拒绝（生产者 helper 亦拒）
+        original = manifest_path.read_bytes()
+        tampered = json.loads(original.decode("utf-8"))
+        tampered["input"]["sha256"] = "0" * 64
+        manifest_path.write_text(json.dumps(tampered, ensure_ascii=False, indent=2),
+                                 encoding="utf-8")
+        _expect_reject(lambda: _shared_authority(root, manifest_path, plan_path, receipt_path),
+                       "plan receipt envelope invalid")
+        _expect_reject(lambda: time_spotcheck._bound_input_ref(str(source), plan),
+                       "input identity differs from plan.input")
+        # 自洽重绑：同步更新清单引用与 plan 输出哈希、保持 plan.input/input_identity 不变 → 正文身份检查拒
+        new_ref = _ref(manifest_path, root)
+        new_ref["path"] = str(manifest_path)
+        plan_doc = json.loads(plan_path.read_text(encoding="utf-8"))
+        receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+        plan_doc["input_manifest"] = new_ref
+        receipt["inputs"]["input_manifest"] = new_ref
+        plan_path.write_text(json.dumps(plan_doc, ensure_ascii=False, indent=2) + "\n",
+                             encoding="utf-8")
+        receipt_path.write_text(json.dumps(receipt, ensure_ascii=False, indent=2) + "\n",
+                                encoding="utf-8")
+        _refresh_receipt(plan_path, receipt_path)
+        _expect_reject(lambda: _shared_authority(root, manifest_path, plan_path, receipt_path),
+                       "input manifest identity differs from signed identity")
+        manifest_path.write_bytes(original)
 
 
 def main():
