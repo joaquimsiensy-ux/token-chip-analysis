@@ -2,7 +2,7 @@
 
 纪律（优先级高于工单正文）：
 1. **禁读 `~/.codex`**（启动自动披露除外）；禁读 `~/Documents`、`~/Desktop`。
-2. **`.git` 对你只读，git add/commit 由调度方代做**——不要尝试 git 写操作，也不以此停工。开工 `git status --short` 应为空，HEAD 应为 `9e6c8ced7db910e8de52c950e988451ca0528591`（仅比代码提交多一个施工提示词文件；登记的 `commit` 用代码提交 `7846184f9f2ba758027cd6c5ddb1b21e87b3c16f`，两个提交下 `sqd_gap_repair.py` 的 sha256 相同，可自行 `git show` 复核）。
+2. **`.git` 对你只读，git add/commit 由调度方代做**——不要尝试 git 写操作，也不以此停工。开工 `git status --short` 应为空；HEAD 是代码提交 `7846184f9f2ba758027cd6c5ddb1b21e87b3c16f` 的后代，且 `git diff --stat 7846184f9f2ba758027cd6c5ddb1b21e87b3c16f HEAD` 只含 `maintenance/` 下的提示词文件（不核对具体 HEAD 哈希）；登记的 `commit` 用代码提交 `7846184f9f2ba758027cd6c5ddb1b21e87b3c16f`。
 3. 离线；所有 Python 验证设 `MPLCONFIGDIR=$HOME/.matplotlib PYTHONDONTWRITEBYTECODE=1`。
 4. 白名单：仅 `scripts/lib/producer_history.py` 与本目录 `W2s2_done.md`。
 
