@@ -1,3 +1,15 @@
+# 施工任务 T2（codex --write，按下方工单 v3 逐条执行）
+
+## 派工基线
+- 派工基线：main 分支、HEAD 为包含本提示词文件的最新提交（本提示词入库后 HEAD 才定，故**不以具体 SHA 判定**）；基线判定只看工单 §0.1：`git status --short` 为空、`git merge-base --is-ancestor d2d6641 HEAD` exit 0、`git diff --quiet d2d6641 HEAD -- scripts references SKILL.md commands-staging VERSION pyproject.toml CHANGELOG.md` exit 0；行号以 `d2d6641` 为准。
+- 本任务是**施工**，不是复核：按工单 §2 逐条落地、按 §0.7 先取 RED、按 §0.8 跑定向测试（`changelog_lint.py` 本轮不跑，记"调度方待验"）、按 §3 写完成报告 `T2_done.md` 到工单所在目录 `maintenance/repair-20260923-t1-spotcheck-dir-input/`。
+- 纪律以工单 §0 为准（禁读 `~/.codex/`——插件启动搜索若已读 memories 披露一次，之后不再读；白名单；不 commit/push；禁 stash/checkout/reset；锚不符即停工）。工单已由 codex 只读复核三轮（`review_T2_reply_r1/r2/r3.md`；r3 仅剩一处标点已订正），施工中若发现工单与源码事实不符，停工报告，不自行改方案。
+- 沙箱不能 bind loopback 的测试记 SANDBOX-BLOCKED；临时目录用 `tempfile` 并 `Path(td).resolve()`（macOS `/var` symlink 坑）。
+- stdout 首行固定 `# 施工 T2：完成` 或 `# 施工 T2：停工`；停工报告名 `T2_done_attempt1_stopped.md`；末尾披露是否读过禁读路径。
+
+---
+
+# 工单 T2（v3，融合 codex 复核 r1/r2 全部意见）：time_spotcheck 旧生产者哈希登记＋发布校验器两层精确接线（收官 review FR-01）＋文档一行（FR-03）—— 版本 9.0.4
 # 工单 T2（v3，融合 codex 复核 r1/r2 全部意见）：time_spotcheck 旧生产者哈希登记＋发布校验器两层精确接线（收官 review FR-01）＋文档一行（FR-03）—— 版本 9.0.4
 
 > 出处：`final_review_T1_reply_r1.md` FR-01（P1）与 FR-03（P2）。FR-02 不在本工单（边界重议交用户裁决，另单）。
