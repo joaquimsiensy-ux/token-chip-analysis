@@ -1205,6 +1205,18 @@ def _validate_anchor_receipt(root, receipt, target):
     _require(not failures, "PASS anchor receipt contains error rows")
 
 
+def _time_producer_history(family, key, owner):
+    if family != "evm" or key != "time" or not isinstance(owner, dict):
+        return None
+    producer = owner.get("producer")
+    if not isinstance(producer, dict):
+        return None
+    path = producer.get("path")
+    if not isinstance(path, str) or path not in RECON_PRODUCERS["evm"]["time"]:
+        return None
+    return historical_producer_hashes(path, "time-spotcheck/v3")
+
+
 def validate_reconciliation_check(root, key, item, target, family):
     """Validate one producer receipt semantically; wrapper fields are comparisons, not truth."""
     root = Path(root).resolve()
@@ -1218,7 +1230,9 @@ def validate_reconciliation_check(root, key, item, target, family):
     migration = "存量案例须重跑对应生产者获取当前回执"
     # A-3/B-6：正式消费线对全部 envelope inputs 强制案根约束（相对路径基于案根解析；
     # 绝对路径解析后也必须在案根内）——EVM inputs.balances 等同族输入不再可绑案外实物。
-    envelope_errors = validate_receipt(receipt, case_root=root)
+    envelope_errors = validate_receipt(
+        receipt, case_root=root,
+        allowed_producer_hashes=_time_producer_history(family, key, receipt))
     if envelope_errors:
         raise ValueError(
             f"reconciliation {key} receipt envelope invalid: {envelope_errors[0]}；{migration}")
@@ -1456,8 +1470,10 @@ def validate_reconciliation_report(root, expected_target=None, *, return_receipt
         if (not isinstance(item, dict) or item.get("status") != "PASS"
                 or item.get("exit_code") != 0):
             raise ValueError(f"reconciliation {key} lacks PASS execution receipt")
-        repo_ref_ok(item.get("producer"), RECON_PRODUCERS[family][key],
-                    f"reconciliation {key}")
+        repo_ref_ok(
+            item.get("producer"), RECON_PRODUCERS[family][key],
+            f"reconciliation {key}",
+            allowed_hashes=_time_producer_history(family, key, item))
         receipts[key] = validate_reconciliation_check(root, key, item, target, family)
     if family == "evm":
         # A-5（N-1 第二建议）：EVM 的 balance/supply（verify_recon）与 supply_truth 三份

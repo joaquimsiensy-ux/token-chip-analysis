@@ -240,6 +240,14 @@ PRODUCER_HISTORY = (
         "status": "ACTIVE",
         "reason": "Batch 4 registers the v3 formal Solana window producer frozen at the T1 tip.",
     },
+    {
+        "script": "scripts/lib/time_spotcheck.py",
+        "sha256": "87bbad2246f07afa2db4b37a7289fff2fc6ac16387284411e75104e1109f0a39",
+        "commit": "b52cbedf230218e5da46334cf99b7111235e8367",
+        "protocol": "time-spotcheck/v3",
+        "status": "ACTIVE",
+        "reason": "v9.0.4 registers the pre-9.0.3 time-spotcheck/v3 producer: 9.0.3 changed only the directory-input binding, so file-input receipts it signed stay valid.",
+    },
 )
 
 

@@ -1,0 +1,12 @@
+# T2 RED evidence — unmodified baseline 1624b86
+1. Baseline historical registry (python3 -c):
+command: ['python3', '-B', '-c', 'import sys; sys.path.insert(0, "scripts/lib"); from producer_history import historical_producer_hashes; print(historical_producer_hashes("scripts/lib/time_spotcheck.py", "time-spotcheck/v3"))']
+set()
+2. H11: current producer / file input, changed only receipt producer hash:
+[time_spotcheck] PASS  4/4 一致（balance 3 + tx 1；mismatch 0，rpc_err 0）→ /private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/t2-red-u1qbmr_m/time_spotcheck.json
+EXPECTED RED: ValueError reconciliation time receipt envelope invalid: producer hash mismatch；存量案例须重跑对应生产者获取当前回执
+3. Dispatcher OPN evidence (no access to case files):
+source: maintenance/repair-20260923-t1-spotcheck-dir-input/T2_red_evidence_opn_verify.log
+[verify] FAIL（fail-closed，逐条修复或退回 −1）:
+  ✗ reconciliation/accounting 公共深验失败: reconciliation time producer/runner is not current repository script
+Exit 2 was reported by dispatcher; the stored log has no independent exit-code field.

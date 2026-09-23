@@ -10,6 +10,7 @@
 
 ## 版本索引（活跃窗口，新在上；每版一行，详情见下方对应条目）
 
+- **9.0.4**（2026-09-23）登记旧 time-spotcheck/v3 哈希并接通 EVM 时间收据两层校验，恢复存量文件案兼容；补充同一输入目录用法。schema 不变，版本档位 修。
 - **9.0.3**（2026-09-23）修复 v2 目录输入的时间抽查收据绑定（QUQ 0922 案 ANOM-008）：生产者目录输入时 inputs.input 绑 anchor_plan 已签名输入清单，发布消费者对 kind=directory 验证清单身份、不重算目录哈希；文件分支校验顺序保留。schema/键不变，references/SKILL/commands 字节不增；测试 +1 目录回归用例；版本档位 修。
 - **9.0.2**（2026-09-19）口径漂移与文档-代码不符审计第二期闭环（针对 7.2.0→9.0.1 六版代码大改而文档零改动）：codex 两路盲审十三轮（a 路全范围术语表法 9→2→3→4→2→2→2→2→1→1→2→0→1，b 路 7.2.0 起代码变更区专审 0→0→2→1→1→0→1→2→2→0→0→0→0；用户裁决 R13 修完即收官），十二份工单皆先 codex 只读复核（退回 9 次全在派工前拦下）再 codex 施工，38 条/21 文件纯文本修复，零代码改动；references 930076→929092（净减 984 B）、SKILL.md 8021 不变、commands-staging 8798→8789；范围外残留一条登记（fetch_sqd_transfers_v2 帮助文字，改则变采集器 sha）。
 - **9.0.1**（2026-09-18）codex 9.0.0 六视角 review 两条 P1 修复（既定契约内加固，不改任何 schema/键，故记修版本）：F04 `camp_spec.validate_camp_spec` 对 EVM 链族拒 spec 显式配置「散户」（引擎残差桶；原先 replay_pass2/replay_duck 对显式散户同日 append 两次、rc=0 产坏形状序列，靠下游长度检查兜底）；F01 `price_check._load_series` 任一点非有限或非正即 `[fatal]` 退出 1、第二源非有限规范化为 None 走 SKIP、收据 `allow_nan=False`（原先 NaN 主价判 PASS 并写含 NaN 的收据），`stage2_closeout.price_receipt_errors` 逐点按 main/second_price 同规则重算 status 并核声明、主价非有限正数即拒（原先只核 status 集合）。references/SKILL/commands 零改动。F02/F03/F05–F10 用户裁决本轮不修。
@@ -96,6 +97,13 @@
 - **6.20.1** 2026-08-05 修 5 处阻断级文档漂移（A4 前禁写报告冲突/easy 残留/惯犯回灌 docstring/批量预采集残留/旧 Par 路线历史降级）＋docs_lint 增中文禁词与 Python module docstring 扫描
 
 更早版本（6.20.0 及以前）详见 `archive/CHANGELOG-archive.md`。
+
+## [9.0.4] - 2026-09-23 — 时间抽查历史生产者登记与发布两层校验接线
+
+- **出处与裁决**：final_review_T1_reply_r1.md 的 FR-01/FR-03；按工单 T2 v3.1 施工，review_T2_reply_r1/r2/r3.md 修订要求以工单为准。用户 2026-09-22 裁决保持 skill 上下文不增、能删不增、能改不增；FR-02 留另单。源码基线 d2d6641，开工 HEAD 1624b86；登记来源 git commit b52cbedf230218e5da46334cf99b7111235e8367 的 time_spotcheck.py 可复现 87bbad2246f07afa2db4b37a7289fff2fc6ac16387284411e75104e1109f0a39。本轮不 commit/push。
+- **改法**：登记 time-spotcheck/v3 的 ACTIVE 历史哈希，并同步 HISTORICAL_ONLY 精确 script/protocol 对；私有函数 _time_producer_history 只对 EVM/time 且 owner/producer 为对象、producer.path 属于时间生产者白名单时查询历史集，envelope 与 wrapper 分别取自身 producer.path。当前哈希仍有效，默认验证器与其他查项/家族不变；不按 input.kind 分流，目录输入仍须满足既有身份、清单和信任链校验。receipt_kernel/receipt_validate、schema 与产物键不变；文档明确使用生成 plan 的同一文件或 v2 目录及 runner/data_map 文件登记规则。
+- **字节与测试**：scripts 四文件 +102/−7（登记 +8/−0、消费者 +19/−3、登记守卫 +5/−4、深验测试 +70/−0）；references 929092→929085，文档两行 111→110 B、326→320 B，净减 7 B；SKILL.md 8021→8021、commands-staging 8789→8789。RED 证据见 maintenance/repair-20260923-t1-spotcheck-dir-input/T2_red_evidence.txt；新增 H11–H16 与类型边界，H16 复用 make_case 走真实 wrapper。定向测试退出码与尾行见同目录 T2_done.md；changelog_lint 因禁读 archive 留调度方待验，run_all 与真实 OPN 复验由调度方执行，loopback 沙箱受阻项单列，不记 PASS。
+- **成本-质量指标**：生产逻辑文件 2、测试文件 2、新公开入口 0、私有历史准入函数 1、新增产物输出键 0、外部网络 0；references 净减 7 B，SKILL/commands 字节不增；不访问真实案卷。
 
 ## [9.0.3] - 2026-09-23 — QUQ ANOM-008：v2 目录输入的时间抽查收据绑定对齐（生产者＋发布校验器）
 
