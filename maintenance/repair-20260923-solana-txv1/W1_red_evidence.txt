@@ -1,0 +1,29 @@
+W1 v5 基线红证据；HEAD=9f74b851935a4a97667108881dedd311f26ccde6
+scripts/lib/solana_exact_validate.py:1214: maxSupportedTransactionVersion = literal 0
+scripts/lib/solana_observation.py:270: maxSupportedTransactionVersion = literal 0
+scripts/solana/audit_closed_accounts.py:230: maxSupportedTransactionVersion = literal 0
+scripts/solana/audit_closed_accounts.py:419: maxSupportedTransactionVersion = literal 0
+scripts/solana/audit_closed_accounts.py:482: maxSupportedTransactionVersion = literal 0
+scripts/solana/decode_txs.py:39: maxSupportedTransactionVersion = literal 0
+scripts/solana/decode_txs_v2.py:295: maxSupportedTransactionVersion = literal 0
+scripts/solana/decode_txs_v2.py:340: maxSupportedTransactionVersion = literal 0
+scripts/solana/fast_probe_tops.py:54: maxSupportedTransactionVersion = literal 0
+scripts/solana/gas_origin.py:81: maxSupportedTransactionVersion = literal 0
+scripts/solana/probe_escrows.py:150: maxSupportedTransactionVersion = literal 0
+scripts/solana/probe_window_moves.py:121: maxSupportedTransactionVersion = literal 0
+scripts/solana/sqd_gap_repair.py:632: maxSupportedTransactionVersion = literal 0
+scripts/solana/stake_decode.py:96: maxSupportedTransactionVersion = literal 0
+scripts/solana/trace_wallet.py:76: maxSupportedTransactionVersion = literal 0
+scripts/solana/whale_deep.py:64: maxSupportedTransactionVersion = literal 0
+scripts/solana/whale_deep.py:154: maxSupportedTransactionVersion = literal 0
+AST: 13 files / 17 occurrences
+isolated import exit=1
+Traceback (most recent call last):
+  File "<string>", line 1, in <module>
+    import scripts.lib.solana_attested_session
+  File "/Users/uravvv/.claude/tca-fix-txv1/scripts/lib/solana_attested_session.py", line 10, in <module>
+    from endpoint_identity import public_endpoint, redact_endpoint_text
+ModuleNotFoundError: No module named 'endpoint_identity'
+repair argparse options: ['-h', '--help', '--mint', '--case-root', '--blocks-cache', '--reference-rpc', '--reference-keys-file', '--workers', '--transport-fixture', '--residual-owners', '--beta', '--beta-rounds', '--resume']
+load_resume_slots(version=1 params_digest): completed=set(), data_rows=1
+RED evidence complete: all four baseline assertions reproduced.
