@@ -1,4 +1,4 @@
-# 工单 T2（v2，融合 codex 复核 r1 全部意见）：time_spotcheck 旧生产者哈希登记＋发布校验器两层精确接线（收官 review FR-01）＋文档一行（FR-03）—— 版本 9.0.4
+# 工单 T2（v3，融合 codex 复核 r1/r2 全部意见）：time_spotcheck 旧生产者哈希登记＋发布校验器两层精确接线（收官 review FR-01）＋文档一行（FR-03）—— 版本 9.0.4
 
 > 出处：`final_review_T1_reply_r1.md` FR-01（P1）与 FR-03（P2）。FR-02 不在本工单（边界重议交用户裁决，另单）。
 > 事实（调度方本机亲核，基线 HEAD `d2d6641`）：
@@ -7,6 +7,7 @@
 > ③ 消费者两层均只认当前哈希：envelope 层 `shared_release_receipt.py:1221` `validate_receipt(receipt, case_root=root)` 未传 `allowed_producer_hashes`；wrapper 层 `:1459-1460` `repo_ref_ok(item.get("producer"), RECON_PRODUCERS[family][key], ...)` 未传 `allowed_hashes`。先例：anchor_plan 在 `:1007-1019` 两层接线（`historical_producer_hashes` → `validate_receipt(allowed_producer_hashes=)` 与 `repo_ref_ok(allowed_hashes=)`）。`historical_producer_hashes` 已在 `:44` import。
 > ④ 真实存量案复现（只读）：`python3 -B scripts/report/handoff_manifest.py verify --case-dir <OPN 案>` 在 HEAD 下 exit 2：`✗ reconciliation/accounting 公共深验失败: reconciliation time producer/runner is not current repository script`（`T2_red_evidence_opn_verify.log`）。受影响存量案：OPN、BITCOIN（均 `time-spotcheck/v3`、producer 87bbad…、文件输入）；QUQ 已是新哈希不受影响。
 > ⑤ FR-03：源码确认 runner `inputs` 可省略（`_validate_spec:225`/`_input_items:68-70`/`run_job:237-238`）；显式登记时仍只接受文件（`:56/:85`），`data_map.files` 也只登记文件（`handoff_manifest:301-315`）。时间脚本 `--input` 示例仅见 `references/data-pipeline-evm-recon.md:152`。处置＝改 `:152` 明确"生成 plan 的同一输入"，压缩 `:158` 并补 runner 与 data_map 的文件登记规则，合计 −7 B；契约不动。（调度方提供、复核未独立核验：QUQ 案 wrapper `inputs` 为 null 仍四查 PASS；OPN 案 data_map 172 件含 v2 叶子，由案内 rglob 脚本产出。）
+> v3 变更（`review_T2_reply_r2.md`，仅工单文本）：§1.2 错误路径说明加前置条件限定并收窄"不新增符号"措辞；H16 子目录兜底明确"先 make_case、后 _produce_time/H11，统一 case root"；§2.1 注释锚补全中间行。
 > v2 变更（`review_T2_reply_r1.md`）：登记守卫 `test_producer_registry_current.py` 须同步精确 `HISTORICAL_ONLY` 对（否则 2 FAIL）；两层准入收为一个私有函数 `_time_producer_history`（修 `[]` 收据从 ValueError 变 AttributeError 的回归）；H16 改为复用 `test_handoff_manifest.make_case` 走真实 wrapper 路径；H14/H15 收紧；FR-03 改两行 −7 B；开工 HEAD 条件改为祖先＋源码基线无差；`changelog_lint.py` 因读 archive 改由调度方执行；`:242` 锚改两侧唯一锚；CHANGELOG 索引行压到 200 B。
 > 用户裁决（2026-09-22）：codex 施工、codex 复核/盲审、收官 codex review；原则＝skill 上下文不增、能删不增、能改不增。
 
@@ -24,7 +25,7 @@
 ## 1. 硬约束
 
 - 1.1 历史哈希**只**对 `family == "evm" and key == "time"` 生效，两层（envelope `:1221`、wrapper `:1459`）都接；其他 key 与 solana 家族一律仍传 `None`（行为逐字不变）。
-- 1.2 历史集的 `script` 参数取自被校验 ref 自身的 `producer.path`（envelope 层＝`receipt["producer"]["path"]`，wrapper 层＝`item["producer"]["path"]`），且仅当该 path `in RECON_PRODUCERS["evm"]["time"]` 时才查询；否则传 `None`。`protocol` 两层都用字面量 `"time-spotcheck/v3"`（与 `:1404` 同一字面量，不抽常量、不新增符号）。理由：`validate_receipt` docstring 要求调用方保证集合与 `producer.path` 对应；固定 protocol 使 v2 schema 旧收据在 `:1404` 以"unknown schema"被拒而非含混的"hash mismatch"。
+- 1.2 历史集的 `script` 参数取自被校验 ref 自身的 `producer.path`（envelope 层＝receipt 的 producer.path，wrapper 层＝item 的 producer.path）；仅当 owner、producer 均为 dict、path 为 str 且属于 `RECON_PRODUCERS["evm"]["time"]` 时查询，否则传 `None`。两层共用 `_time_producer_history`，查询 `protocol` 固定为字面量 `"time-spotcheck/v3"`，不新增协议常量。该限定保证历史集与 producer.path 对应；仅当生产者哈希及此前全部校验通过时，v2 schema 才会在原 `:1404` 被报 `unknown schema`，陌生哈希仍先报 `producer hash mismatch`。
 - 1.3 仅放宽 EVM/time/v3 的指定生产者哈希准入，不改文件/目录语义校验；该准入不额外按 `input.kind` 分流（满足目录语义的 EVM/time v3 收据同样可携带登记旧哈希过哈希关，不得宣称历史豁免只覆盖文件输入）。默认不传历史集时仍拒非当前旧哈希；旧哈希收据仍须通过其后全部语义校验（`:1399-1407` formal/schema/`_validate_time_receipt`，含 9.0.3 的 identity/清单/目录信任链）。`receipt_kernel`/`receipt_validate` 字节不变。
 - 1.4 登记条目必须 git 可复现（§出处①），`status: "ACTIVE"`，字段集合与既有条目完全一致（script/sha256/commit/protocol/status/reason 六键，commit 为 40 位；`test_anchor_plan_v3.py` 原样验证格式）。`test_producer_registry_current.py` 按 §2.1 精确登记同步后须 PASS（它要求非 `HISTORICAL_ONLY` 的脚本登记当前哈希，故不同步则 2 FAIL）。
 - 1.5 生产代码不新增公开函数、import 或模块常量；允许一个私有历史准入函数 `_time_producer_history` 及局部变量。测试允许局部导入既有夹具，旧哈希使用函数内常量。
@@ -58,7 +59,15 @@ HISTORICAL_ONLY = {
 }
 ```
 
-  并把 `:21-23` 三行注释（以 `# receipt_validate.py:115-116 默认以当前文件哈希为允许集；登记表两条只是` 起、`# validate_receipt(...) 证明当前哈希无错误。豁免仅限下述精确协议对。` 止）替换为一行：
+  并把 `:21-23` 以下三行注释分别按整行核验恰 1 处且行号一致，再整体替换为下方一行：
+
+```python
+# receipt_validate.py:115-116 默认以当前文件哈希为允许集；登记表两条只是
+# 历史 anchor-plan/v2。test_anchor_plan_v3.py:376-377 的 assert not
+# validate_receipt(...) 证明当前哈希无错误。豁免仅限下述精确协议对。
+```
+
+  替换为：
 
 ```python
 # 默认验证器接受当前源码哈希；以下精确 script/protocol 对仅登记历史哈希。
@@ -112,7 +121,7 @@ def _time_producer_history(family, key, owner):
   - H14 跨查项：对 `_produce_recon` 产出的 balance 收据分别使用①原 `verify_recon.py` path＋`old_hash`、②`scripts/lib/time_spotcheck.py` path＋`old_hash`，`validate_reconciliation_check(root,"balance",...)` 均须报 envelope `producer hash mismatch`；沿用同一模式断言 `shared._time_producer_history("solana","time",{"producer":{"path":"scripts/solana/anchor_sampler.py","sha256":old_hash}})` 返回 None（Solana 不取得时间历史集）。
   - H15 默认路径：`receipt_validate.validate_receipt(<H11 收据 dict>, case_root=root)` 不传 allowed，断言结果恰为 `["producer hash mismatch"]`。
   - 类型边界：①收据文件内容为 `[]` 时 `validate_reconciliation_check(root,"time",...)` 仍抛 `ValueError` 且含 `receipt must be an object`；②`producer.path` 为 list 时 `_time_producer_history("evm","time",{"producer":{"path":["x"]}})` 返回 None 不抛。
-  - H16 真实 wrapper 路径（必做，禁止免测出口）：复用 `test_handoff_manifest.make_case` 在同一 `root` 生成 EVM 四查 wrapper，time 项指向 H11 收据，调用真实 `shared.validate_reconciliation_report(root, TARGET)`；禁止替换/mock `repo_ref_ok`、`validate_receipt`、`validate_reconciliation_check`。另加一个只破坏 wrapper producer 哈希的负例。参考接法（放在 `h11_item` 与 `old_hash` 之后，共 17 行；`make_case` 的 plan 夹具用 `fixture_` 前缀不覆盖 `_produce_time` 的 anchor_plan 绑定，但它会写 `time_spotcheck.json`，故 wrapper 必须指向 H11 另写的文件；若实跑发现 `make_case` 与既有夹具其他文件冲突，改在 `root` 下新建子目录重新 `_produce_time` 后再做 H11/H16，并在完成报告说明）：
+  - H16 真实 wrapper 路径（必做，禁止免测出口）：复用 `test_handoff_manifest.make_case` 在同一 `root` 生成 EVM 四查 wrapper，time 项指向 H11 收据，调用真实 `shared.validate_reconciliation_report(root, TARGET)`；禁止替换/mock `repo_ref_ok`、`validate_receipt`、`validate_reconciliation_check`。另加一个只破坏 wrapper producer 哈希的负例。参考接法（放在 `h11_item` 与 `old_hash` 之后，共 17 行；`make_case` 的 plan 夹具用 `fixture_` 前缀不覆盖 `_produce_time` 的 anchor_plan 绑定，但它会写 `time_spotcheck.json`，故 wrapper 必须指向 H11 另写的文件；若实跑发现其他夹具文件冲突，使用新建子目录作为 H16 的独立 case root：先在该目录调用 `make_case`，再调用 `_produce_time`，再另存 H11 收据并生成相对于该目录的 item 引用；随后读取该目录的 wrapper、替换 time 项并执行正负例。该分支不再重复调用 `make_case`，不得混用父目录的 `h11_item` 或引用基准，并在完成报告说明冲突文件及处理顺序）：
 
 ```python
     from test_handoff_manifest import make_case
