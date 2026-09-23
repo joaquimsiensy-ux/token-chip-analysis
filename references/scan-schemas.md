@@ -1026,9 +1026,9 @@ QUQ 与 PYTHIA 只用于算法层探索定标。防伪链测试使用合成 fixt
 - 异常先 redact，key 不落盘。
 - resume 以 (plan_digest, params_digest ∈ 同模板显式版本 0..`endpoint_identity.SOLANA_MAX_SUPPORTED_TX_VERSION` 集, result_sha256) 判完成；plan_digest 取自首行 header；header.adopted 存在时其前 rows 行迁自前代 pending，字段值不变、seq 连续。
 - **来源可信是输入前提**；目录归属检查与深验只验证本案归属及结构/内容一致性，不提供来源真实性或对抗性证明。
-- **硬链接成功的**采纳证据在新旧 pending 间共享 inode（EXDEV 复制出的文件不共享）；发布后 evidence_manifest 深验重算大小与哈希，能发现任何一侧的后续改写，但不能隔离它——本流程及任何后续流程**禁止原地改写已链接证据**（只允许删除目录项或原子替换）。
+- **硬链接成功的**采纳证据在新旧 pending 间共享 inode（EXDEV 复制出的文件不共享）；发布后 evidence_manifest 深验核对所列证据的大小与哈希，但不能隔离共享 inode 的原地改写——本流程及任何后续流程**禁止原地改写已链接证据**（只允许删除目录项或原子替换）。
 - header.plan_digest==所在 pending-<plan_digest> 目录名==bundle.plan_digest。
-- 残缺尾行丢弃。
+- 残缺尾行：当前 pending 普通恢复时截除；来源 pending 仅解析时忽略，字节不变。
 
 注记：
 
