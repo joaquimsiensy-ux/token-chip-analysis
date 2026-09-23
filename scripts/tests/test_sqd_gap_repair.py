@@ -984,7 +984,7 @@ def adoption_regressions(root, repair, exact, missing):
             (change_source, "RPC ledger adopted record invalid"),
             (lambda rows: rows[0]["adopted"].update(predecessor_producer_sha256=unknown_sha),
              "adopted record invalid"),
-            (lambda rows: rows[0]["adopted"].update(predecessor_plan_digest="0" * 16),
+            (lambda rows: rows[0]["adopted"].update(predecessor_plan_digest=wrong_digest, source="pending-" + wrong_digest),
              "adopted record invalid"),
             (lambda rows: rows[1].update(endpoint_fingerprint="0" * 64),
              "reference fingerprint mismatch"),
