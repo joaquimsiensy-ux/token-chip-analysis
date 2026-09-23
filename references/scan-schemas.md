@@ -1001,6 +1001,12 @@ QUQ 与 PYTHIA 只用于算法层探索定标。防伪链测试使用合成 fixt
 | `header.plan_digest` | string | 是 | rpc_ledger.jsonl 首行 header；其后逐行不重复；等于 pending-<plan_digest> 目录名且等于 bundle.plan_digest |
 | `header.reference.kind` | string | 是 | rpc_ledger.jsonl 首行 header |
 | `header.reference.endpoint_fingerprint` | string | 是 | rpc_ledger.jsonl 首行 header |
+| `header.adopted` | object | 否 | 可选；存在时下列五子字段全部必填；认领自同 parent、登记 ACTIVE 前代 producer 的 pending |
+| `header.adopted.predecessor_plan_digest` | string (16hex) | 是（认领时） | 与当前 plan_digest 不同；续跑、发布、深验均重算前代 digest |
+| `header.adopted.predecessor_producer_sha256` | string (sha256 hex) | 是（认领时） | producer_history 登记的 ACTIVE 前代 producer 哈希 |
+| `header.adopted.rows` | integer | 是（认领时） | 正整数（不接受 bool），不超过数据行数；成功前缀中证据对齐的最长候选前缀行数 |
+| `header.adopted.source` | string | 是（认领时） | 旧 pending 目录名 |
+| `header.adopted.ts` | integer | 是（认领时） | 认领时间戳 |
 | `seq` | integer | 是 |  |
 | `ts` | integer | 是 |  |
 | `method` | string | 是 | getBlock/getBlocks |
@@ -1018,7 +1024,9 @@ QUQ 与 PYTHIA 只用于算法层探索定标。防伪链测试使用合成 fixt
 
 - slot/range 按 method 二选一。
 - 异常先 redact，key 不落盘。
-- resume 以 (plan_digest,params_digest,result_sha256) 判完成；plan_digest 取自首行 header。
+- resume 以 (plan_digest, params_digest ∈ 同模板显式版本 0..`endpoint_identity.SOLANA_MAX_SUPPORTED_TX_VERSION` 集, result_sha256) 判完成；plan_digest 取自首行 header；header.adopted 存在时其前 rows 行迁自前代 pending，字段值不变、seq 连续。
+- **来源可信是输入前提**；目录归属检查与深验只验证本案归属及结构/内容一致性，不提供来源真实性或对抗性证明。
+- **硬链接成功的**采纳证据在新旧 pending 间共享 inode（EXDEV 复制出的文件不共享）；发布后 evidence_manifest 深验重算大小与哈希，能发现任何一侧的后续改写，但不能隔离它——本流程及任何后续流程**禁止原地改写已链接证据**（只允许删除目录项或原子替换）。
 - header.plan_digest==所在 pending-<plan_digest> 目录名==bundle.plan_digest。
 - 残缺尾行丢弃。
 

@@ -10,6 +10,7 @@
 
 ## 版本索引（活跃窗口，新在上；每版一行，详情见下方对应条目）
 
+- **9.1.0**（2026-09-23）Solana 交易版本上限统一为 `endpoint_identity.SOLANA_MAX_SUPPORTED_TX_VERSION=1`；新增 `--resume --adopt-pending` 与可选 `header.adopted`，支持可信前代 pending 证据认领、历史版本请求续跑及前代摘要复验；登记新 producer，旧 producer 保持 ACTIVE。新公开接口与持久化契约扩展，记次版本。
 - **9.0.3**（2026-09-23）修复 v2 目录输入的时间抽查收据绑定（QUQ 0922 案 ANOM-008）：生产者目录输入时 inputs.input 绑 anchor_plan 已签名输入清单，发布消费者对 kind=directory 验证清单身份、不重算目录哈希；文件分支校验顺序保留。schema/键不变，references/SKILL/commands 字节不增；测试 +1 目录回归用例；版本档位 修。
 - **9.0.2**（2026-09-19）口径漂移与文档-代码不符审计第二期闭环（针对 7.2.0→9.0.1 六版代码大改而文档零改动）：codex 两路盲审十三轮（a 路全范围术语表法 9→2→3→4→2→2→2→2→1→1→2→0→1，b 路 7.2.0 起代码变更区专审 0→0→2→1→1→0→1→2→2→0→0→0→0；用户裁决 R13 修完即收官），十二份工单皆先 codex 只读复核（退回 9 次全在派工前拦下）再 codex 施工，38 条/21 文件纯文本修复，零代码改动；references 930076→929092（净减 984 B）、SKILL.md 8021 不变、commands-staging 8798→8789；范围外残留一条登记（fetch_sqd_transfers_v2 帮助文字，改则变采集器 sha）。
 - **9.0.1**（2026-09-18）codex 9.0.0 六视角 review 两条 P1 修复（既定契约内加固，不改任何 schema/键，故记修版本）：F04 `camp_spec.validate_camp_spec` 对 EVM 链族拒 spec 显式配置「散户」（引擎残差桶；原先 replay_pass2/replay_duck 对显式散户同日 append 两次、rc=0 产坏形状序列，靠下游长度检查兜底）；F01 `price_check._load_series` 任一点非有限或非正即 `[fatal]` 退出 1、第二源非有限规范化为 None 走 SKIP、收据 `allow_nan=False`（原先 NaN 主价判 PASS 并写含 NaN 的收据），`stage2_closeout.price_receipt_errors` 逐点按 main/second_price 同规则重算 status 并核声明、主价非有限正数即拒（原先只核 status 集合）。references/SKILL/commands 零改动。F02/F03/F05–F10 用户裁决本轮不修。
@@ -96,6 +97,14 @@
 - **6.20.1** 2026-08-05 修 5 处阻断级文档漂移（A4 前禁写报告冲突/easy 残留/惯犯回灌 docstring/批量预采集残留/旧 Par 路线历史降级）＋docs_lint 增中文禁词与 Python module docstring 扫描
 
 更早版本（6.20.0 及以前）详见 `archive/CHANGELOG-archive.md`。
+
+## [9.1.0] - 2026-09-23 — Solana 交易版本 1 与可信前代 pending 认领
+
+- **版本与请求**：按 W1 v5、A1、A2 施工；新增公开接口 `--adopt-pending` 与可选持久化字段 `header.adopted`，记次版本。Solana 请求统一引用 `endpoint_identity.SOLANA_MAX_SUPPORTED_TX_VERSION=1`，修复请求模板只保留一份；升上限或改模板字段语义须同步修改 producer 版本钉、登记哈希并记 CHANGELOG。AST 守卫拒绝请求字典内写死数字上限。
+- **认领与恢复**：`--resume --adopt-pending <旧目录>` 从同 parent、本案冻结物料一致、ACTIVE 已登记且未被认领的直接前代 pending 迁入最长对齐候选前缀；保留行字段值与 seq，不改来源字节。目标证据全部预验后硬链接，仅 EXDEV 回退原子复制，证据同步后原子发布台账；ledger 提交前重跑认领命令，提交后用普通 `--resume`。续跑、发布、深验均重算前代 digest；同模板显式版本 0..当前的成功历史证据保留原 params_digest。
+- **信任与硬链接边界**：来源可信是输入前提；目录归属检查与深验只验证本案归属及结构/内容一致性，不提供来源真实性或对抗性证明。硬链接成功的采纳证据在新旧 pending 间共享 inode（EXDEV 复制出的文件不共享）；发布后 evidence_manifest 深验重算大小与哈希，能发现任何一侧的后续改写，但不能隔离它——本流程及任何后续流程禁止原地改写已链接证据（只允许删除目录项或原子替换）。
+- **登记与验证**：代码提交 `a1f1594a144a9042a529e8c829e4afd2c63e7633` 的修复 producer 在四个协议登记，前代 `25f04ff1…` 保持 ACTIVE；A2 仅新增 `adopt_predecessor_pending` 的 multi_file_txn 登记。E27(d) 覆盖版本 1 请求、认领、残尾只读、最长前缀、12 个故障向量与独立深验摘要；本段定向测试及尾行见 `maintenance/repair-20260923-solana-txv1/W1_done.md`，不运行 run_all.py。
+- **成本-质量指标**：分 3 段施工；本段仅登记、文档与版本，新增生产逻辑 0；外部网络调用 0。历史红证据、勘误及各段验收状态保留在 W1_done.md，不以定向测试代替调度方全套验收。
 
 ## [9.0.3] - 2026-09-23 — QUQ ANOM-008：v2 目录输入的时间抽查收据绑定对齐（生产者＋发布校验器）
 

@@ -214,3 +214,60 @@ A1 完成且守卫通过；§2 认领代码已落地；§4 新增测试通过，
 未读取 `~/.codex`、`~/Documents`、`~/Desktop`；离线施工，未访问外部 API；未启动子代理；未执行 git add/commit/push；未批量删除文件或目录（测试自身临时夹具按原有生命周期清理）。
 
 待调度方 commit
+
+
+## 第 3 段：A2 登记、v5 §3 producer_history、§5 文档与版本完成（2026-09-23）
+
+### 开工核验与裁决执行
+
+- 开工 `git status --short` 为空；`git branch --show-current` 为 `fix/solana-txv1`。第 1、2 段已由调度方提交，本段未执行任何 git 写操作。
+- 首先读取 A2，再读取 v5 与 A1；核对本段使用的行号与锚点：manifest `:1186-1190`、invariant_scan `:1113-1114/:1302-1303`、producer_history 四条旧登记 `:204-233`、registry 守卫 `:43-50`、scan-schemas 表与不变量 `:998-1023`、capture `:198`、pyproject `:15`、SKILL `:23` 均符合。未发现本段工单行号或断言与实况不符。
+- 执行 `git show a1f1594a144a9042a529e8c829e4afd2c63e7633:scripts/solana/sqd_gap_repair.py | shasum -a 256`，实得 `977a4823f819559de070e53be681a66808861deb602fed108aa027c5af88c0c7`，与 A2 一致；再次用 Python 核对该 git 对象与当前脚本 SHA256 相同。
+- 按 A2 先仅补原子写入登记；invariant_scan 立即 exit 0，atomic_writes=62，无 semantics 不符。随后登记四协议，再完成文档、CHANGELOG 与版本。
+- 修改 CHANGELOG 前先跑 changelog_lint，exit 0，尾行：`PASS: 版本号唯一（豁免 2 组历史撞号存档）、顺序正确；活跃 82 条 + 归档 139 条`。
+
+### 改动清单（本段完成后行号）
+
+- `scripts/tests/invariant_manifest.json:1186`：只新增 `adopt_predecessor_pending` / `scripts/solana/sqd_gap_repair.py` / `multi_file_txn` 一条，紧邻该脚本既有 main 登记；原有条目保持不变。
+- `scripts/lib/producer_history.py:235,243,251,259`：新增 cache/v4、repair-bundle/v1、coverage-resolution/v1、repair-pointer/v1 四条 ACTIVE 登记；commit 与 sha 使用上述 A2 参数，reason 原样按 v5 §3；旧 `25f04ff1…` 四条 ACTIVE 登记字节不变。
+- `references/scan-schemas.md:1004`：§14.8 表新增 header.adopted 及五个子字段；`:1027` 更新 resume 历史请求版本集合，`:1028-1029` 写明「来源可信是输入前提」与硬链接成功时共享 inode、EXDEV 不共享、深验发现改写但不隔离、禁止原地改写的完整边界。
+- `references/data-pipeline-solana-capture.md:198`：只在正式产物窄门第 2 条句末补认领接口、前代登记/摘要复验、可信输入前提及常量归属与 producer 换代要求。
+- `CHANGELOG.md:13,101`：新增 9.1.0 索引与正文，说明新接口、header.adopted 契约扩展、交易版本 1 修复、恢复与信任边界、登记和验证依据；常量归属写 `endpoint_identity.SOLANA_MAX_SUPPORTED_TX_VERSION`。
+- `VERSION:1`、`pyproject.toml:15`、`SKILL.md:23`：同步至 9.1.0；SKILL 只改版本注释。
+- `maintenance/repair-20260923-solana-txv1/W1_done.md:219`：追加本段记录，历史记录不改。
+
+### 与工单差异及范围复核
+
+- 无实现范围差异。按 A2 仅放开 manifest 一条登记；按 A1/A2 将文档常量归属统一为 endpoint_identity；capture 中「来源可信是前提」按当前指令与 §2.1 写成「来源可信是输入前提」。
+- 用户当前施工纪律覆盖 v5 §0.8：`.git` 只读，add/commit 留给调度方；本段登记基于已经落定的代码 commit。本段仅运行用户指定的十项定向测试，不重跑前两段其余测试；不运行 run_all.py。
+- 结构核对通过：manifest 删除唯一新增项后与 HEAD 完全相同；producer_history 删除四条新项后与 HEAD 原登记序列完全相同，前代四条仍 ACTIVE；scan-schemas 的 §14.8 以外字节不变；capture 仅第 198 行追加，原句保留。
+- 报告写入前 `git diff --name-only` 恰为上述八个登记/文档/版本文件，暂存区为空；生产逻辑、测试脚本、contract_manifest、commands-staging 及其余不改项均未改动。追加报告后共九个文件。
+- 红证据沿用前两段 `W1_red_evidence.txt` 和本报告历史段落；本段未改红证据。A2 已解除第 2 段 atomic_writes 停工原因，registry 的四个预期 FAIL 也已消除。
+
+### 本段定向测试尾行
+
+全部从仓库根目录执行：`MPLCONFIGDIR="$HOME/.matplotlib" PYTHONDONTWRITEBYTECODE=1 python3 -B scripts/tests/<脚本与参数>`。下列十项全部 exit 0 / PASS；表中保留实际最后一行（registry 的 `0 FAIL` 与 SQD 的 `GREEN` 均为成功尾行）。
+
+| 测试 | exit / 状态 | 实际最后一行 |
+|---|---|---|
+| `invariant_scan.py` | 0 / PASS | `PASS invariant manifest: receipt_producers=81, receipt_consumers=118, transport_calls=65, atomic_writes=62, formal_entrypoints=61, exceptions=0` |
+| `test_producer_registry_current.py` | 0 / PASS | `producer registry: 0 FAIL` |
+| `test_version_consistency.py` | 0 / PASS | `PASS: M-03 version metadata consistent at 9.1.0` |
+| `changelog_lint.py` | 0 / PASS | `PASS: 版本号唯一（豁免 2 组历史撞号存档）、顺序正确；活跃 83 条 + 归档 139 条` |
+| `docs_lint.py --all` | 0 / PASS | `PASS: 59 个文档，引用无断链、粗体配对完整（--all 全量模式）` |
+| `test_sqd_gap_repair.py` | 0 / PASS | `GREEN 29c implemented validate_current_candidates 已实现` |
+| `test_batch8_repair_scale.py` | 0 / PASS | `PASS batch8: key-neutral identity/pool failover/ordered workers/resume/streaming` |
+| `test_batch4_invariant_guards.py` | 0 / PASS | `PASS B4-G1: bare pool / labels / vertical slice / denominator injections` |
+| `test_r7_findings.py` | 0 / PASS | `PASS R7 regression suite: 15/15 observed green; EXPECTED_RED=0` |
+| `test_sixlens_docs.py` | 0 / PASS | `PASS: 六视角批⑤大小口径与 archive 路由` |
+
+- E27(d) 另有成功证据行：`GREEN E27(d): predecessor adoption/v1/torn tail/longest prefix/12 fault vectors/deep digest`。
+- `git diff --check` exit 0，无输出。上述测试中的故障注入错误输出属于预期负向用例，均以进程 exit 0 和最终尾行为准。
+
+### 纪律自报与交接
+
+未读取 `~/.codex`、`~/Documents`、`~/Desktop`；仓库内 `SKILL.md` 仅作为授权版本目标读取和修改，未读取被禁止目录下的 Skill。全程离线，未访问外部 API；未启动子代理；未执行 git add/commit/push 或其他 git 写操作；未主动删除文件或目录（现有测试按自身生命周期清理临时夹具）。使用工单要求的 MPLCONFIGDIR，禁止生成 Python 字节码缓存。
+
+本段 A2、§3、§5 已完成；版本 9.1.0，十项定向测试全部 PASS。本段工作区变更留给调度方审查与提交。
+
+待调度方 commit

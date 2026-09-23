@@ -1184,6 +1184,11 @@
    "semantics": "overwrite_single"
   },
   {
+   "locator": "adopt_predecessor_pending",
+   "script": "scripts/solana/sqd_gap_repair.py",
+   "semantics": "multi_file_txn"
+  },
+  {
    "locator": "main",
    "script": "scripts/solana/sqd_gap_repair.py",
    "semantics": "multi_file_txn"

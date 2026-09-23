@@ -195,7 +195,7 @@ JSON-RPC batch + 跨地址共享 sig 缓存（`--cache-dir`,按 sig 前 2 字符
 **正式产物窄门**（完整字段和消费者清单见 `scan-schemas.md` §14）：
 
 1. 探针发布 `sqd-solana-coverage/v1` 和 `sqd-solana-coverage-pointer/v1`；`CURRENT.json` 是当前 coverage 的原子指针。
-2. `sqd_gap_repair.py/v1` 只修已确认缺陷，产 `sqd-solana-coverage-resolution/v1`、repaired `sqd-solana-cache/v4`、`sqd-solana-repair-bundle/v1` 与 `sqd-solana-repair-pointer/v1`。交易按签名取参考源真值，并统一成 `reference-nonvote-ordinal/v1`。
+2. `sqd_gap_repair.py/v1` 只修已确认缺陷，产 `sqd-solana-coverage-resolution/v1`、repaired `sqd-solana-cache/v4`、`sqd-solana-repair-bundle/v1` 与 `sqd-solana-repair-pointer/v1`。交易按签名取参考源真值，并统一成 `reference-nonvote-ordinal/v1`。producer 升版后同案旧 pending 可经 `--resume --adopt-pending <旧目录>` 认领（前代 sha 须在 producer_history 登记、台账 header 记 `adopted`、深验重算前代 digest；来源可信是输入前提）；Solana 请求的交易版本上限统一取 `endpoint_identity.SOLANA_MAX_SUPPORTED_TX_VERSION`，升版本或改修复请求模板须同步换代 producer。
 3. pending（尚未发布目录）不能被消费；bundle、代、base、coverage 与指针必须全套同代。**修过账不退回 base、base 重采即代全作废**：resolver（正式边源解析器）一旦确认当前 base 需要修复，就不得静默回退原账；base 内容一变，旧修复代的绑定自然失效，必须重探、重修、重发。
 4. A2 的 Solana 对账是五查：coverage 是 `exact_reconcile` 的强制输入；`solana-reconcile/v4` 与 wrapper `reconciliation-report/v3` 任一深验失败都停。下游 wave/flow/entity/curve/audit/evolution 产物必须带 `edge_source_binding`（边源绑定），并与 exact receipt 的 `{cache_kind,gid,soltx_edges_sha256,soltx_meta_sha256,edge_logical_sha256}` 全等。
 
