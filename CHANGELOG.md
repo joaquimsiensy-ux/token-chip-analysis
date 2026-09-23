@@ -106,7 +106,7 @@
 - **认领与恢复**：`--resume --adopt-pending <旧目录>` 从同 parent、本案冻结物料一致、ACTIVE 已登记且 header 无 adopted 的历史 producer pending 迁入最长对齐候选前缀；保留行字段值与 seq，不改来源字节。目标证据全部预验后硬链接，仅 EXDEV 回退原子复制，证据同步后原子发布台账；ledger 提交前重跑认领命令，提交后用普通 `--resume`。续跑、发布、深验均重算前代 digest，复核认领行的 slot 序列等于排序候选集的前缀、来源目录名等于 `pending-<predecessor_plan_digest>`；同模板显式版本 0..当前的成功历史证据保留原 params_digest。
 - **信任与硬链接边界**：来源可信是输入前提；目录归属检查与深验只验证本案归属及结构/内容一致性，不提供来源真实性或对抗性证明。硬链接成功的采纳证据在新旧 pending 间共享 inode（EXDEV 复制出的文件不共享）；发布后 evidence_manifest 深验核对所列证据的大小与哈希，但不能隔离共享 inode 的原地改写——本流程及任何后续流程禁止原地改写已链接证据（只允许删除目录项或原子替换）。
 - **登记与验证**：修复 producer 纳入四个协议登记，前代 `25f04ff1…` 保持 ACTIVE；`adopt_predecessor_pending` 纳入 multi_file_txn 登记。E27(d) 覆盖版本 1 请求、认领、残尾只读、最长前缀、12 个故障向量与独立深验摘要，并覆盖深验和续跑对乱序认领前缀、错误来源目录名的拒绝及恢复后的正向验证。
-- **成本-质量指标**：工单复核 codex 7 轮（5＋2）；盲审 codex 第 1 轮 FAIL（P0 0/P1 1/P2 1）；外部链上调用 3 次（Helius getBlock 复现，约 30 credits）；Bash 调用数未统计；交付用时自 2026-09-23 05:13Z 起计。
+- **成本-质量指标**：工单复核 codex 9 轮（W1 5／W2 2／W3 1／W4 1）；施工 codex 7 段；盲审 codex 3 轮（r1 FAIL P1 1/P2 1；r2 PASS P2 1；r3 PASS）；收官 review codex 2 轮（r1 P0/P1 0、P2 4；r2 PASS）；codex 任务 27（含 2 次调度方误派取消）；外部链上调用 3 次（Helius getBlock 复现，约 30 credits）；Bash 调用数未统计；交付 2026-09-23 05:13Z→09:00Z；本机 run_all 分支树与合并树均 142 PASS／1 环境红（reseal 预建 worktree）。
 
 ## [9.0.5] - 2026-09-23 — 目录案发布消费期重算完整输入身份
 
