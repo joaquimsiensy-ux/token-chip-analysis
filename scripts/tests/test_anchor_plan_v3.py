@@ -597,6 +597,64 @@ def test_16_directory_input_binds_signed_manifest():
         manifest_path.write_bytes(original)
 
 
+def test_17_directory_input_recomputed_at_consumption():
+    with tempfile.TemporaryDirectory(prefix="anchor_v3_dir_recompute_") as td:
+        root = Path(td).resolve()
+        source, plan_path, receipt_path = _produce_plan(root, directory=True)
+        plan = time_spotcheck.load_validated_plan(plan_path, receipt_path)
+        manifest_path = Path(plan["input_manifest"]["path"])
+
+        def consume():
+            return _shared_authority(root, manifest_path, plan_path, receipt_path)
+
+        assert consume() == plan
+        needle = "time plan input directory content differs from signed identity"
+
+        logs = source / "run_1" / "logs.parquet"
+        original = logs.read_bytes()
+        logs.write_bytes(original[:-1] + bytes([original[-1] ^ 1]))
+        assert logs.stat().st_size == len(original)
+        _expect_reject(consume, needle)
+        logs.write_bytes(original)
+        assert consume() == plan
+
+        extra = source / "run_1" / "extra.bin"
+        extra.write_bytes(b"t3-extra-leaf")
+        _expect_reject(consume, needle)
+        extra.unlink()
+        assert consume() == plan
+
+        blocks = source / "run_1" / "blocks.parquet"
+        backup = root / "blocks.bak"
+        assert not backup.exists()
+        blocks.rename(backup)
+        _expect_reject(consume, needle)
+        backup.rename(blocks)
+        assert consume() == plan
+
+        link = source / "run_1" / "link.parquet"
+        link.symlink_to(logs)
+        _expect_reject(consume, "input directory contains symlink")
+        link.unlink()
+        assert consume() == plan
+
+    with tempfile.TemporaryDirectory(prefix="anchor_v3_file_control_") as td:
+        root2 = Path(td).resolve()
+        source, plan_path, receipt_path = _produce_plan(root2, directory=False)
+        plan = time_spotcheck.load_validated_plan(plan_path, receipt_path)
+
+        def consume_file():
+            return _shared_authority(root2, source, plan_path, receipt_path)
+
+        assert consume_file() == plan
+        original = source.read_bytes()
+        source.write_bytes(original[:-1] + bytes([original[-1] ^ 1]))
+        assert source.stat().st_size == len(original)
+        _expect_reject(consume_file, "time plan input identity sha256 mismatch")
+        source.write_bytes(original)
+        assert consume_file() == plan
+
+
 def main():
     tests = [
         value for name, value in sorted(globals().items())

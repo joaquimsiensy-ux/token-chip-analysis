@@ -1,0 +1,58 @@
+# T3 RED evidence; unmodified baseline HEAD 492b53c
+
+$ PYTHONDONTWRITEBYTECODE=1 python3 -B - <<'PY'
+import json
+import sys
+import tempfile
+from pathlib import Path
+sys.path.insert(0, str(Path("scripts/tests").resolve()))
+import test_anchor_plan_v3 as t
+
+with tempfile.TemporaryDirectory(prefix="t3_red_") as td:
+    root = Path(td).resolve()
+    source, plan_path, receipt_path = t._produce_plan(root, directory=True)
+    plan = t.time_spotcheck.load_validated_plan(plan_path, receipt_path)
+    manifest_path = Path(plan["input_manifest"]["path"])
+    def accepted():
+        assert t._shared_authority(root, manifest_path, plan_path, receipt_path) == plan
+    accepted()
+    print("BASELINE: directory fixture accepted")
+    logs = source / "run_1" / "logs.parquet"
+    original = logs.read_bytes()
+    logs.write_bytes(original[:-1] + bytes([original[-1] ^ 1]))
+    assert logs.stat().st_size == len(original)
+    accepted()
+    print("RED-1: same-length logs.parquet last-byte flip STILL ACCEPTED")
+    logs.write_bytes(original)
+    accepted()
+    print("RESTORED-1: accepted")
+    blocks = source / "run_1" / "blocks.parquet"
+    backup = root / "blocks.bak"
+    assert not backup.exists()
+    blocks.rename(backup)
+    accepted()
+    print("RED-2: blocks.parquet removed from identity root STILL ACCEPTED")
+    backup.rename(blocks)
+    accepted()
+    print("RESTORED-2: accepted")
+    extra = source / "run_1" / "extra.bin"
+    extra.write_bytes(b"t3-extra-leaf")
+    accepted()
+    print("RED-3: extra.bin added STILL ACCEPTED")
+    extra.unlink()
+    accepted()
+    print("RESTORED-3: accepted")
+PY
+
+stdout:
+BASELINE: directory fixture accepted
+RED-1: same-length logs.parquet last-byte flip STILL ACCEPTED
+RESTORED-1: accepted
+RED-2: blocks.parquet removed from identity root STILL ACCEPTED
+RESTORED-2: accepted
+RED-3: extra.bin added STILL ACCEPTED
+RESTORED-3: accepted
+
+stderr:
+
+exit=0

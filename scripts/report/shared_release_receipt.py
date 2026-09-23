@@ -36,6 +36,7 @@ from adversarial_review_runner import (
 )
 from chain_registry import (evm_chain_id_for, evm_family, formal_ready,
                             recon_adapter_for, resolve_alias)
+from anchor_selection import input_identity
 from anchor_point_contract import (LEGACY_FINAL_BLOCK_EDGE_KIND, V2_SCHEMA,
                                    V3_SCHEMA,
                                    balance_block_source_of,
@@ -1044,7 +1045,7 @@ def _validated_time_plan_authority(root, receipt, target):
                  "plan input manifest differs from signed receipt binding")
         if identity.get("kind") == "directory":
             # v2 目录输入：目录不是普通文件，时间收据 inputs.input 绑的是签名清单；
-            # 清单正文 input 须与签名身份全等，目录只做案根内存在性检查，不重算哈希
+            # 清单正文 input 须与签名身份全等；目录先查案根内存在性，再重算完整身份（9.0.5，FR-02 方案 C）
             _require(input_path == manifest_path,
                      "directory input identity is not bound through the signed input manifest")
             manifest_doc = strict_json_loads(
@@ -1057,6 +1058,8 @@ def _validated_time_plan_authority(root, receipt, target):
                      and directory.resolve().is_dir()
                      and directory.resolve().is_relative_to(Path(root).resolve()),
                      "signed directory identity is not a directory inside the case root")
+            _require(input_identity(directory)[0] == identity,
+                     "time plan input directory content differs from signed identity")
 
         output = plan_receipt.get("output")
         output_path = _bound_case_ref(root, output, "time signed plan output")

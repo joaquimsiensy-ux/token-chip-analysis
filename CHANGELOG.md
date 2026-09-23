@@ -10,6 +10,7 @@
 
 ## 版本索引（活跃窗口，新在上；每版一行，详情见下方对应条目）
 
+- **9.0.5**（2026-09-23）修复目录案消费期漏验：重算完整身份，拒叶子覆写、增删及 symlink（FR-02 C）；文件分支、schema 不变，档位 修。
 - **9.0.4**（2026-09-23）登记旧 time-spotcheck/v3 哈希并接通 EVM 时间收据两层校验，恢复存量文件案兼容；补充同一输入目录用法。schema 不变，版本档位 修。
 - **9.0.3**（2026-09-23）修复 v2 目录输入的时间抽查收据绑定（QUQ 0922 案 ANOM-008）：生产者目录输入时 inputs.input 绑 anchor_plan 已签名输入清单，发布消费者对 kind=directory 验证清单身份、不重算目录哈希；文件分支校验顺序保留。schema/键不变，references/SKILL/commands 字节不增；测试 +1 目录回归用例；版本档位 修。
 - **9.0.2**（2026-09-19）口径漂移与文档-代码不符审计第二期闭环（针对 7.2.0→9.0.1 六版代码大改而文档零改动）：codex 两路盲审十三轮（a 路全范围术语表法 9→2→3→4→2→2→2→2→1→1→2→0→1，b 路 7.2.0 起代码变更区专审 0→0→2→1→1→0→1→2→2→0→0→0→0；用户裁决 R13 修完即收官），十二份工单皆先 codex 只读复核（退回 9 次全在派工前拦下）再 codex 施工，38 条/21 文件纯文本修复，零代码改动；references 930076→929092（净减 984 B）、SKILL.md 8021 不变、commands-staging 8798→8789；范围外残留一条登记（fetch_sqd_transfers_v2 帮助文字，改则变采集器 sha）。
@@ -97,6 +98,13 @@
 - **6.20.1** 2026-08-05 修 5 处阻断级文档漂移（A4 前禁写报告冲突/easy 残留/惯犯回灌 docstring/批量预采集残留/旧 Par 路线历史降级）＋docs_lint 增中文禁词与 Python module docstring 扫描
 
 更早版本（6.20.0 及以前）详见 `archive/CHANGELOG-archive.md`。
+
+## [9.0.5] - 2026-09-23 — 目录案发布消费期重算完整输入身份
+
+- **出处与裁决**：final_review_T1_reply_r1.md 的 FR-02（P1）与 final_review_T2_reply_r2.md §c；用户 2026-09-23 裁决采用方案 C，限目录案。按工单 T3 v2 与 review_T3_reply_r1/r2.md 施工，源码基线 2197505，开工 HEAD 492b53c；本轮不 commit/push。
+- **改法与成本**：shared_release_receipt 仅在 kind=directory 既有清单绑定、案根包含与目录存在性检查后，调用生产者共用的 anchor_selection.input_identity，将返回身份 dict 与签名身份全等比较；拒绝叶子覆写、增删及目录内 symlink。文件时间校验分支、schema 与错误文本不变；所有旧 shared_release_receipt.json（文件案与目录案）因本文件 producer.sha256 改变须通过现有 create_bundle 流程重建，此约束自 9.0.3 起已存在，不放宽兼容校验。T3_cost_quq_v2_identity.log 记录单次完整身份计算 3.5 s（7.62 GB / 61 文件、match_signed=True）；正常 verify 重算一次、EVM 发布闸两次，估计分别增加约 3.5 s／7 s。检查覆盖本次深验时的目录实物；同一次发布中继续改目录、长期保留 witness 后直接消费及搬移支持不在本单保证内。
+- **字节与测试**：生产 +4/−1（import 1 行、注释替换 1 行、校验新增 2 行），新增 test_17 覆盖目录基线、同长度覆写、新增叶子、移出叶子、symlink 与文件分支对照，每次恢复后再次放行，不刷新签名或清单。SKILL.md 8021→8021、commands-staging 8789→8789、references 929085→929085；SKILL 仅升版本号，后两者零改动，索引行 176 B。三条基线 RED 命令与输出见 maintenance/repair-20260923-t1-spotcheck-dir-input/T3_red_evidence.txt；定向测试结果见同目录 T3_done.md，loopback 沙箱受阻项单列，不记 PASS；changelog_lint 与 run_all 由调度方执行。
+- **成本-质量指标**：生产逻辑文件 1、测试文件 1、新公开函数/模块常量 0、新增 import 1、新增产物输出键 0、外部网络 0；完整目录身份定义复用既有实现，生产改动 4 行（按增删合计 5 行），不改 receipt_kernel/receipt_validate、invariant/contract manifest，不访问真实案卷。
 
 ## [9.0.4] - 2026-09-23 — 时间抽查历史生产者登记与发布两层校验接线
 
