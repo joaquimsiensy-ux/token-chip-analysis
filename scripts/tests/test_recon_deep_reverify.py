@@ -590,6 +590,75 @@ def _test_anchor_mutations(root: Path, target: dict, receipt: dict) -> None:
     _expect_error(lambda: validate(duplicate_item), "duplicate dates")
 
 
+def _test_time_producer_history(root, receipt):
+    import producer_history
+    import receipt_validate
+
+    old_hash = "87bbad2246f07afa2db4b37a7289fff2fc6ac16387284411e75104e1109f0a39"
+    assert old_hash in producer_history.historical_producer_hashes(
+        "scripts/lib/time_spotcheck.py", "time-spotcheck/v3")
+    validate = lambda item: shared.validate_reconciliation_check(
+        root, "time", item, TARGET, "evm")
+
+    # H11-H13: only the registered time producer hash/path pair is accepted.
+    h11_item = _mutate_receipt(
+        root, receipt, "h11_old_time.json",
+        lambda value: value["producer"].__setitem__("sha256", old_hash))
+    validate(h11_item)
+    h12_item = _mutate_receipt(
+        root, receipt, "h12_unknown_time.json",
+        lambda value: value["producer"].__setitem__("sha256", "0" * 64))
+    _expect_error(lambda: validate(h12_item), "producer hash mismatch")
+    h13_item = _mutate_receipt(
+        root, receipt, "h13_wrong_path.json",
+        lambda value: value["producer"].update(
+            path="scripts/lib/anchor_plan.py", sha256=old_hash))
+    _expect_error(lambda: validate(h13_item), "producer hash mismatch")
+
+    # H14: neither another check nor Solana obtains the time history.
+    _, balance_receipt = _produce_recon(root)
+    for index, path in enumerate((balance_receipt["producer"]["path"],
+                                  "scripts/lib/time_spotcheck.py")):
+        item = _mutate_receipt(
+            root, balance_receipt, f"h14_balance_{index}.json",
+            lambda value, path=path: value["producer"].update(
+                path=path, sha256=old_hash))
+        _expect_error(
+            lambda item=item: shared.validate_reconciliation_check(
+                root, "balance", item, TARGET, "evm"),
+            "receipt envelope invalid: producer hash mismatch")
+    assert shared._time_producer_history("solana", "time", {"producer": {
+        "path": "scripts/solana/anchor_sampler.py", "sha256": old_hash}}) is None
+
+    # H15: the default envelope validator still accepts only current code.
+    h11_receipt = json.loads((root / h11_item["receipt"]["path"]).read_text())
+    assert receipt_validate.validate_receipt(h11_receipt, case_root=root) == [
+        "producer hash mismatch"]
+    non_object = _item(_write_json(root / "time_non_object.json", []), root)
+    _expect_error(lambda: validate(non_object), "receipt must be an object")
+    assert shared._time_producer_history(
+        "evm", "time", {"producer": {"path": ["x"]}}) is None
+
+    # H16: use the real four-check wrapper and both real validation layers.
+    from test_handoff_manifest import make_case
+    make_case(str(root), token=TARGET["token"],
+              as_of_block=TARGET["as_of_block"])
+    report_path = root / "reconciliation_report.json"
+    wrapper = json.loads(report_path.read_text())
+    old_ref = {"path": "scripts/lib/time_spotcheck.py", "sha256": old_hash}
+    wrapper["checks"]["time"] = {**h11_item, "producer": old_ref}
+    _write_json(report_path, wrapper)
+    shared.validate_reconciliation_report(root, TARGET)
+    wrapper["checks"]["time"]["producer"]["sha256"] = "0" * 64
+    _write_json(report_path, wrapper)
+    _expect_error(
+        lambda: shared.validate_reconciliation_report(root, TARGET),
+        "reconciliation time producer/runner is not current repository script")
+    wrapper["checks"]["time"]["producer"]["sha256"] = old_hash
+    _write_json(report_path, wrapper)
+    shared.validate_reconciliation_report(root, TARGET)
+
+
 def main() -> None:
     with tempfile.TemporaryDirectory(prefix="f07-deep-reverify-") as raw:
         root = Path(raw).resolve()
@@ -599,6 +668,7 @@ def main() -> None:
         time_dir = root / "time"; time_dir.mkdir()
         _, time_receipt = _produce_time(time_dir)
         _test_time_authority_vectors(time_dir, time_receipt)
+        _test_time_producer_history(time_dir, time_receipt)
         _test_r1_final_block_contract(time_dir, time_receipt)
         _test_time_mutations(time_dir, time_receipt)
         anchor_dir = root / "anchor"; anchor_dir.mkdir()

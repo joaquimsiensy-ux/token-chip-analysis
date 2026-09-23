@@ -18,10 +18,11 @@ CURRENT_PRODUCERS = {
         "sqd-solana-coverage/v1", "sqd-solana-coverage-pointer/v1"},
     "scripts/solana/window_fetch.py": {"solana-window-fetch-receipt/v3"},
 }
-# receipt_validate.py:115-116 默认以当前文件哈希为允许集；登记表两条只是
-# 历史 anchor-plan/v2。test_anchor_plan_v3.py:376-377 的 assert not
-# validate_receipt(...) 证明当前哈希无错误。豁免仅限下述精确协议对。
-HISTORICAL_ONLY = {("scripts/lib/anchor_plan.py", "anchor-plan/v2")}
+# 默认验证器接受当前源码哈希；以下精确 script/protocol 对仅登记历史哈希。
+HISTORICAL_ONLY = {
+    ("scripts/lib/anchor_plan.py", "anchor-plan/v2"),
+    ("scripts/lib/time_spotcheck.py", "time-spotcheck/v3"),
+}
 
 
 def main():

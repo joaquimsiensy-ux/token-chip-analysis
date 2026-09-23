@@ -1,0 +1,18 @@
+# 盲审 T2 r1（常规盲审，非攻击式；以可写沙箱运行，仅为允许创建临时夹具）
+
+## 纪律
+1. 禁读 `~/.codex/`（插件启动搜索若已读 memories 如实披露一次，之后不再读）；禁读本仓库 `archive/`、`blind-reviews/`、`.staging_*`、`.hypothesis/`、`references/attic.md`、`maintenance/repair-20260923-t1-spotcheck-dir-input/` 以外的全部历史 maintenance 目录；禁读 `/Users/uravvv/Desktop`、`/Users/uravvv/Documents`；**禁读本工程目录内的 `T2_done*.md`、`review_T2_reply_*.md`、`T1_*`、`blind_T1_*`、`final_review_T1_*`**（盲审＝只看工单与代码，不看施工方与复核方的自述）。
+2. 离线、不 commit、**禁止修改或新建仓库内任何文件**（`/Users/uravvv/.claude/skills/token-chip-analysis` 下一字不动；临时夹具一律用 `tempfile`，结束前删除）；报告末尾必须贴 `git status --short` 全文且须为空。**报告全文放在最终答复消息里**（不要 print 到 stdout）。首行固定 `# 盲审T2：PASS` 或 `# 盲审T2：FAIL`。
+3. 工作目录＝`/Users/uravvv/.claude/skills/token-chip-analysis`，以当前 HEAD 为审对象；施工 diff＝`git diff d2d6641 HEAD -- scripts references SKILL.md commands-staging VERSION pyproject.toml CHANGELOG.md`。工单＝`maintenance/repair-20260923-t1-spotcheck-dir-input/workorder_T2.md`（v3.1）；`changelog_lint.py` 读 archive 属允许（仅测试子进程读取，你不得自行阅读 archive）。
+
+## 任务
+审 T2 施工是否**真正解决**缺陷（存量文件输入案的旧 time-spotcheck/v3 收据在 HEAD 被拒）并符合工单：
+a) **终点判据（必做，独立复现，不得只依赖新增测试断言）**：
+   - 从 Git 取旧生产者 `git show b52cbedf230218e5da46334cf99b7111235e8367:scripts/lib/time_spotcheck.py`，验证其 sha256 ＝ `87bbad2246f07afa2db4b37a7289fff2fc6ac16387284411e75104e1109f0a39`，且登记条目（`scripts/lib/producer_history.py`）与之一致、`historical_producer_hashes("scripts/lib/time_spotcheck.py","time-spotcheck/v3")` 含它。
+   - 用 `scripts/tests/test_recon_deep_reverify.py` 的夹具（`_produce_time`/`_produce_recon`）或 `test_handoff_manifest.make_case` 自行生成文件输入的 EVM 四查 wrapper；把 time 收据 `producer.sha256` 与 wrapper `checks.time.producer.sha256` 均改为旧哈希（其余绑定合法）。**基线 d2d6641**（临时 worktree 或 `git show d2d6641:<文件>` 内存对照，勿从临时文件路径加载被审模块以免误报"not current repository script"）下 `validate_reconciliation_report` 拒（哪一层、哪句）；**HEAD** 放行。
+   - 反例组：旧哈希 + `producer.path` 改 `anchor_plan.py` → 拒；balance 收据带时间旧哈希 → 拒 `producer hash mismatch`；`"0"*64` → 拒；不传 allowed 的 `validate_receipt(旧哈希收据, case_root=root)` 恰 `["producer hash mismatch"]`；收据 JSON 为 `[]` → 仍 `ValueError` 含 `receipt must be an object`（非 AttributeError）；Solana family/其他 key 不取得历史集。
+   - 当前哈希（新生产者产的收据）在 HEAD 仍放行；目录输入（kind=directory）语义校验未被历史准入绕过（可复用 `test_anchor_plan_v3.py` 的目录夹具思路做一组：旧哈希＋目录收据，仍须走清单信任链）。
+b) **修法与工单一致**：`producer_history.py` 仅追加一条 ACTIVE 条目（六键、commit 40 位、git 可复现）；`shared_release_receipt.py` 仅新增私有 `_time_producer_history` 并在 `:1221`/`:1459-1460` 两处接线，其他行不变；`test_producer_registry_current.py` 仅 `HISTORICAL_ONLY` 扩一对＋注释一行，检查逻辑不变；`receipt_kernel.py`/`receipt_validate.py`/`time_spotcheck.py`/`handoff_manifest.py` 字节不变。
+c) **白名单与字节**：`git diff --stat d2d6641 HEAD -- scripts references SKILL.md commands-staging VERSION pyproject.toml CHANGELOG.md` 只含 `scripts/lib/producer_history.py`、`scripts/report/shared_release_receipt.py`、`scripts/tests/test_recon_deep_reverify.py`、`scripts/tests/test_producer_registry_current.py`、`references/data-pipeline-evm-recon.md`、`VERSION`、`pyproject.toml`、`SKILL.md`、`CHANGELOG.md`；`SKILL.md` 8021 B 仅版本号；`commands-staging` 8789 B 不变；references 仅 `:152`（111→110 B）与 `:158`（326→320 B）两行；版本四处 9.0.4；CHANGELOG 索引行 200 B＋详细段。
+d) **实跑**（贴尾行；沙箱不能 bind loopback 的记 `SANDBOX-BLOCKED` 不计 FAIL，由调度方本机补验）：`python3 -B scripts/tests/test_producer_registry_current.py`、`test_recon_deep_reverify.py`、`test_anchor_plan_v3.py`、`test_time_spotcheck.py`、`test_handoff_manifest.py`、`test_audit_release_gate.py`、`test_batch4_invariant_guards.py`、`test_exemption_guards.py`、`python3 -B scripts/tests/invariant_scan.py`、`python3 -B scripts/tests/changelog_lint.py`。
+e) 结论规则：a) 各组在基线可复现原缺陷、HEAD 按预期变通/变拒，且 b)/c) 全过、d) 无真实 FAIL → PASS；否则 FAIL 并指出哪条未闭合。逐条给证据（命令与尾行），不要笼统。

@@ -11,6 +11,8 @@
 ## 版本索引（活跃窗口，新在上；每版一行，详情见下方对应条目）
 
 - **9.1.0**（2026-09-23）Solana 交易版本上限统一为 `endpoint_identity.SOLANA_MAX_SUPPORTED_TX_VERSION=1`；新增 `--resume --adopt-pending` 与可选 `header.adopted`，支持可信前代 pending 证据认领、历史版本请求续跑及前代摘要复验；登记新 producer，旧 producer 保持 ACTIVE。新公开接口与持久化契约扩展，记次版本。
+- **9.0.5**（2026-09-23）修复目录案消费期漏验：重算完整身份，拒叶子覆写、增删及 symlink（FR-02 C）；文件分支、schema 不变，档位 修。
+- **9.0.4**（2026-09-23）登记旧 time-spotcheck/v3 哈希并接通 EVM 时间收据两层校验，恢复存量文件案兼容；补充同一输入目录用法。schema 不变，版本档位 修。
 - **9.0.3**（2026-09-23）修复 v2 目录输入的时间抽查收据绑定（QUQ 0922 案 ANOM-008）：生产者目录输入时 inputs.input 绑 anchor_plan 已签名输入清单，发布消费者对 kind=directory 验证清单身份、不重算目录哈希；文件分支校验顺序保留。schema/键不变，references/SKILL/commands 字节不增；测试 +1 目录回归用例；版本档位 修。
 - **9.0.2**（2026-09-19）口径漂移与文档-代码不符审计第二期闭环（针对 7.2.0→9.0.1 六版代码大改而文档零改动）：codex 两路盲审十三轮（a 路全范围术语表法 9→2→3→4→2→2→2→2→1→1→2→0→1，b 路 7.2.0 起代码变更区专审 0→0→2→1→1→0→1→2→2→0→0→0→0；用户裁决 R13 修完即收官），十二份工单皆先 codex 只读复核（退回 9 次全在派工前拦下）再 codex 施工，38 条/21 文件纯文本修复，零代码改动；references 930076→929092（净减 984 B）、SKILL.md 8021 不变、commands-staging 8798→8789；范围外残留一条登记（fetch_sqd_transfers_v2 帮助文字，改则变采集器 sha）。
 - **9.0.1**（2026-09-18）codex 9.0.0 六视角 review 两条 P1 修复（既定契约内加固，不改任何 schema/键，故记修版本）：F04 `camp_spec.validate_camp_spec` 对 EVM 链族拒 spec 显式配置「散户」（引擎残差桶；原先 replay_pass2/replay_duck 对显式散户同日 append 两次、rc=0 产坏形状序列，靠下游长度检查兜底）；F01 `price_check._load_series` 任一点非有限或非正即 `[fatal]` 退出 1、第二源非有限规范化为 None 走 SKIP、收据 `allow_nan=False`（原先 NaN 主价判 PASS 并写含 NaN 的收据），`stage2_closeout.price_receipt_errors` 逐点按 main/second_price 同规则重算 status 并核声明、主价非有限正数即拒（原先只核 status 集合）。references/SKILL/commands 零改动。F02/F03/F05–F10 用户裁决本轮不修。
@@ -105,6 +107,20 @@
 - **信任与硬链接边界**：来源可信是输入前提；目录归属检查与深验只验证本案归属及结构/内容一致性，不提供来源真实性或对抗性证明。硬链接成功的采纳证据在新旧 pending 间共享 inode（EXDEV 复制出的文件不共享）；发布后 evidence_manifest 深验核对所列证据的大小与哈希，但不能隔离共享 inode 的原地改写——本流程及任何后续流程禁止原地改写已链接证据（只允许删除目录项或原子替换）。
 - **登记与验证**：修复 producer 纳入四个协议登记，前代 `25f04ff1…` 保持 ACTIVE；`adopt_predecessor_pending` 纳入 multi_file_txn 登记。E27(d) 覆盖版本 1 请求、认领、残尾只读、最长前缀、12 个故障向量与独立深验摘要，并覆盖深验和续跑对乱序认领前缀、错误来源目录名的拒绝及恢复后的正向验证。
 - **成本-质量指标**：工单复核 codex 7 轮（5＋2）；盲审 codex 第 1 轮 FAIL（P0 0/P1 1/P2 1）；外部链上调用 3 次（Helius getBlock 复现，约 30 credits）；Bash 调用数未统计；交付用时自 2026-09-23 05:13Z 起计。
+
+## [9.0.5] - 2026-09-23 — 目录案发布消费期重算完整输入身份
+
+- **出处与裁决**：final_review_T1_reply_r1.md 的 FR-02（P1）与 final_review_T2_reply_r2.md §c；用户 2026-09-23 裁决采用方案 C，限目录案。按工单 T3 v2 与 review_T3_reply_r1/r2.md 施工，源码基线 2197505，开工 HEAD 492b53c；本轮不 commit/push。
+- **改法与成本**：shared_release_receipt 仅在 kind=directory 既有清单绑定、案根包含与目录存在性检查后，调用生产者共用的 anchor_selection.input_identity，将返回身份 dict 与签名身份全等比较；拒绝叶子覆写、增删及目录内 symlink。文件时间校验分支、schema 与错误文本不变；所有旧 shared_release_receipt.json（文件案与目录案）因本文件 producer.sha256 改变须通过现有 create_bundle 流程重建，此约束自 9.0.3 起已存在，不放宽兼容校验。T3_cost_quq_v2_identity.log 记录单次完整身份计算 3.5 s（7.62 GB / 61 文件、match_signed=True）；正常 verify 重算一次、EVM 发布闸两次，估计分别增加约 3.5 s／7 s。检查覆盖本次深验时的目录实物；同一次发布中继续改目录、长期保留 witness 后直接消费及搬移支持不在本单保证内。
+- **字节与测试**：生产 +4/−1（import 1 行、注释替换 1 行、校验新增 2 行），新增 test_17 覆盖目录基线、同长度覆写、新增叶子、移出叶子、symlink 与文件分支对照，每次恢复后再次放行，不刷新签名或清单。SKILL.md 8021→8021、commands-staging 8789→8789、references 929085→929085；SKILL 仅升版本号，后两者零改动，索引行 176 B。三条基线 RED 命令与输出见 maintenance/repair-20260923-t1-spotcheck-dir-input/T3_red_evidence.txt；定向测试结果见同目录 T3_done.md，loopback 沙箱受阻项单列，不记 PASS；changelog_lint 与 run_all 由调度方执行。
+- **成本-质量指标**：生产逻辑文件 1、测试文件 1、新公开函数/模块常量 0、新增 import 1、新增产物输出键 0、外部网络 0；完整目录身份定义复用既有实现，生产改动 4 行（按增删合计 5 行），不改 receipt_kernel/receipt_validate、invariant/contract manifest，不访问真实案卷。
+
+## [9.0.4] - 2026-09-23 — 时间抽查历史生产者登记与发布两层校验接线
+
+- **出处与裁决**：final_review_T1_reply_r1.md 的 FR-01/FR-03；按工单 T2 v3.1 施工，review_T2_reply_r1/r2/r3.md 修订要求以工单为准。用户 2026-09-22 裁决保持 skill 上下文不增、能删不增、能改不增；FR-02 留另单。源码基线 d2d6641，开工 HEAD 1624b86；登记来源 git commit b52cbedf230218e5da46334cf99b7111235e8367 的 time_spotcheck.py 可复现 87bbad2246f07afa2db4b37a7289fff2fc6ac16387284411e75104e1109f0a39。本轮不 commit/push。
+- **改法**：登记 time-spotcheck/v3 的 ACTIVE 历史哈希，并同步 HISTORICAL_ONLY 精确 script/protocol 对；私有函数 _time_producer_history 只对 EVM/time 且 owner/producer 为对象、producer.path 属于时间生产者白名单时查询历史集，envelope 与 wrapper 分别取自身 producer.path。当前哈希仍有效，默认验证器与其他查项/家族不变；不按 input.kind 分流，目录输入仍须满足既有身份、清单和信任链校验。receipt_kernel/receipt_validate、schema 与产物键不变；文档明确使用生成 plan 的同一文件或 v2 目录及 runner/data_map 文件登记规则。
+- **字节与测试**：scripts 四文件 +102/−7（登记 +8/−0、消费者 +19/−3、登记守卫 +5/−4、深验测试 +70/−0）；references 929092→929085，文档两行 111→110 B、326→320 B，净减 7 B；SKILL.md 8021→8021、commands-staging 8789→8789。RED 证据见 maintenance/repair-20260923-t1-spotcheck-dir-input/T2_red_evidence.txt；新增 H11–H16 与类型边界，H16 复用 make_case 走真实 wrapper。定向测试退出码与尾行见同目录 T2_done.md；changelog_lint 因禁读 archive 留调度方待验，run_all 与真实 OPN 复验由调度方执行，loopback 沙箱受阻项单列，不记 PASS。
+- **成本-质量指标**：生产逻辑文件 2、测试文件 2、新公开入口 0、私有历史准入函数 1、新增产物输出键 0、外部网络 0；references 净减 7 B，SKILL/commands 字节不增；不访问真实案卷。
 
 ## [9.0.3] - 2026-09-23 — QUQ ANOM-008：v2 目录输入的时间抽查收据绑定对齐（生产者＋发布校验器）
 

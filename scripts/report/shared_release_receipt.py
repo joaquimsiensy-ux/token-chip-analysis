@@ -36,6 +36,7 @@ from adversarial_review_runner import (
 )
 from chain_registry import (evm_chain_id_for, evm_family, formal_ready,
                             recon_adapter_for, resolve_alias)
+from anchor_selection import input_identity
 from anchor_point_contract import (LEGACY_FINAL_BLOCK_EDGE_KIND, V2_SCHEMA,
                                    V3_SCHEMA,
                                    balance_block_source_of,
@@ -1044,7 +1045,7 @@ def _validated_time_plan_authority(root, receipt, target):
                  "plan input manifest differs from signed receipt binding")
         if identity.get("kind") == "directory":
             # v2 目录输入：目录不是普通文件，时间收据 inputs.input 绑的是签名清单；
-            # 清单正文 input 须与签名身份全等，目录只做案根内存在性检查，不重算哈希
+            # 清单正文 input 须与签名身份全等；目录先查案根内存在性，再重算完整身份（9.0.5，FR-02 方案 C）
             _require(input_path == manifest_path,
                      "directory input identity is not bound through the signed input manifest")
             manifest_doc = strict_json_loads(
@@ -1057,6 +1058,8 @@ def _validated_time_plan_authority(root, receipt, target):
                      and directory.resolve().is_dir()
                      and directory.resolve().is_relative_to(Path(root).resolve()),
                      "signed directory identity is not a directory inside the case root")
+            _require(input_identity(directory)[0] == identity,
+                     "time plan input directory content differs from signed identity")
 
         output = plan_receipt.get("output")
         output_path = _bound_case_ref(root, output, "time signed plan output")
@@ -1205,6 +1208,18 @@ def _validate_anchor_receipt(root, receipt, target):
     _require(not failures, "PASS anchor receipt contains error rows")
 
 
+def _time_producer_history(family, key, owner):
+    if family != "evm" or key != "time" or not isinstance(owner, dict):
+        return None
+    producer = owner.get("producer")
+    if not isinstance(producer, dict):
+        return None
+    path = producer.get("path")
+    if not isinstance(path, str) or path not in RECON_PRODUCERS["evm"]["time"]:
+        return None
+    return historical_producer_hashes(path, "time-spotcheck/v3")
+
+
 def validate_reconciliation_check(root, key, item, target, family):
     """Validate one producer receipt semantically; wrapper fields are comparisons, not truth."""
     root = Path(root).resolve()
@@ -1218,7 +1233,9 @@ def validate_reconciliation_check(root, key, item, target, family):
     migration = "存量案例须重跑对应生产者获取当前回执"
     # A-3/B-6：正式消费线对全部 envelope inputs 强制案根约束（相对路径基于案根解析；
     # 绝对路径解析后也必须在案根内）——EVM inputs.balances 等同族输入不再可绑案外实物。
-    envelope_errors = validate_receipt(receipt, case_root=root)
+    envelope_errors = validate_receipt(
+        receipt, case_root=root,
+        allowed_producer_hashes=_time_producer_history(family, key, receipt))
     if envelope_errors:
         raise ValueError(
             f"reconciliation {key} receipt envelope invalid: {envelope_errors[0]}；{migration}")
@@ -1456,8 +1473,10 @@ def validate_reconciliation_report(root, expected_target=None, *, return_receipt
         if (not isinstance(item, dict) or item.get("status") != "PASS"
                 or item.get("exit_code") != 0):
             raise ValueError(f"reconciliation {key} lacks PASS execution receipt")
-        repo_ref_ok(item.get("producer"), RECON_PRODUCERS[family][key],
-                    f"reconciliation {key}")
+        repo_ref_ok(
+            item.get("producer"), RECON_PRODUCERS[family][key],
+            f"reconciliation {key}",
+            allowed_hashes=_time_producer_history(family, key, item))
         receipts[key] = validate_reconciliation_check(root, key, item, target, family)
     if family == "evm":
         # A-5（N-1 第二建议）：EVM 的 balance/supply（verify_recon）与 supply_truth 三份
