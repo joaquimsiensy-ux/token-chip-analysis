@@ -312,6 +312,22 @@ PRODUCER_HISTORY = (
         "status": "ACTIVE",
         "reason": "9.2.0 α/β 候选修复状态探针并入 census 请求（W4）",
     },
+    {
+        "script": "scripts/solana/sqd_coverage_probe.py",
+        "sha256": "d4adc0c88f87bc03b3d847db7df9c9f7e588cb503734dfd977b818b581d998d8",
+        "commit": "f78b5c4575ebe1db36f2cf3a96e75b79731f3fc6",
+        "protocol": "sqd-solana-coverage/v1",
+        "status": "ACTIVE",
+        "reason": "9.2.0 驳回继承导出/继承（W1）＋find-known-map（W2）",
+    },
+    {
+        "script": "scripts/solana/sqd_coverage_probe.py",
+        "sha256": "d4adc0c88f87bc03b3d847db7df9c9f7e588cb503734dfd977b818b581d998d8",
+        "commit": "f78b5c4575ebe1db36f2cf3a96e75b79731f3fc6",
+        "protocol": "sqd-solana-coverage-pointer/v1",
+        "status": "ACTIVE",
+        "reason": "9.2.0 驳回继承导出/继承（W1）＋find-known-map（W2）",
+    },
 )
 
 
