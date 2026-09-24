@@ -17,3 +17,10 @@
 ## 顺序调整（2026-09-24，r2 复核后）
 
 实际施工顺序：**W3（先行）→ W1 → W4 源码提交 → WR-a 登记提交及真实注册表入口验收 → W4 最终收官 → W2 源码提交 → WR-b 登记提交及最终 probe 注册核验 → 工程最终验收与 codex 收官 review**。W3 与 W1/W4 无文件交集。各单经只读复核通过后施工，由调度方验收、commit，再经只读盲审；盲审连败三次换 opus。W4 与工程最终收官分别以完成 WR-a、WR-b 的对应验收为前置，具体按 `workorder_WR.md` §0.6–0.8 执行。施工者不 commit。
+
+## 收官（2026-09-24）
+- **结局**：六单＋一返修＋一文档修正全部收官，版本 9.1.1→**9.2.0**。W3（`net.py --compressed`，6b36dcd）；W1（驳回继承 `INHERITED_REFUTED`＋副本见证＋fail-closed 校验，2c3b17d/65132ab；返修 W1F cfe2f41 后盲审 r3 PASS）；W4（α/β 候选状态探针并入 census 单次 SQD 请求，59f88b8）；WR-a（repair sha `15822564…` 四协议登记 70e14a8，真实入口验收 `WR-a_formal_entry.md` PASS）；W2（`find-known-map` 子命令＋−1 开工硬性文档＋版本，f78b5c4，盲审一次 PASS）；WR-b（probe sha `d4adc0c8…` 两协议登记 8ba3de9，`WR-b_formal_entry.md` PASS，登记守卫 0 FAIL）；收官 review `review_final_reply_r1.md` PASS（P0/P1 空）；P2/P3 由 W5 文档修正关闭（64f4d1a，盲审 PASS）。
+- **本机终验**：docs_lint/changelog_lint PASS；run_all 150/151（唯一红＝reseal 验收 worktree 缺失环境项）；`~/.claude/commands/token-analyze-1.md` 已与 commands-staging 逐字同步（备份 `.bak_20260924_081152`）。
+- **过程数字**：codex 复核退回 W1 3 轮／W4 2 轮／W3 1 轮／W2 2 轮／W1F 1 轮／WR-a 1 轮／W5 2 轮；盲审 FAIL 3 次（W1 r2＝真缺陷→W1F；W4 r1/r2 与 WR-a r1＝非代码：正式入口待登记／只读沙箱无 tempfile，改派写模式验收任务），未触发换 opus。
+- **残余与未做（如实）**：继承重查只证「块头在、零 AdvanceNonce」，不证交易集合未变（用户裁决接受）；完整生产链路吞吐收益未证明（仅单 slot gzip 6.1× 与查询内容对照）；仓库唯一共享地图 `20260827.json` 已于 09-24 03:17 UTC 过期，`find-known-map` 对其返回 exit 2；**案卷侧待做**：PYTHIA 修复代发布后用 `export-shared-map --repair-gid` 导出新图入库（PYTHIA 按用户指令等 QUQ 跑完再跑）。
+- **教训**（详见记忆）：派工前树必须干净；zsh `"${C}:path"`；整行锚以 `-` 开头须 `grep -e`；codex 只读沙箱无 tempfile 时改派写权限极窄的验收任务；盲审提示词避免"篡改/绕过"措辞。
