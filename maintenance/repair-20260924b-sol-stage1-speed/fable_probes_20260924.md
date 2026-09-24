@@ -34,3 +34,11 @@ slot 326000396，`transactionDetails=full, encoding=json, rewards=false, maxSupp
 
 说明：probe-only 与 combined 的 `instructions` 都只含匹配 AdvanceNonce 的指令（每项仅 `transactionIndex`），非匹配指令不可由该查询观察；「健康块同时含其他指令」由交易数（402）远大于匹配指令数（53）间接支持。范围查询 326000380–326000440 全部 61 个 slot 均有块头，本段未含无块头样本（见 P4）。
 原始结果：调度方 scratchpad `sqd3_results.json`/`sqd3b_results.json`（不入仓库）。
+
+## P4 SQD 无目标块头样本三组对照（W4 复核 r2 建议项）
+范围查询 326000000–326000999 中 SQD 无块头的 slot 有 127 个（首段 326000873–…）。对其中两个 slot 分别发 probe/census/combined 三组：
+```
+326000873 {'probe': {'http': 200, 'raw_bytes': 305, 'nblocks': 1}, 'census': {'http': 200, 'raw_bytes': 38705, 'nblocks': 1}, 'combined': {'http': 200, 'raw_bytes': 38924, 'nblocks': 1}}
+326000874 {'probe': {'http': 200, 'raw_bytes': 410, 'nblocks': 1}, 'census': {'http': 200, 'raw_bytes': 36719, 'nblocks': 1}, 'combined': {'http': 200, 'raw_bytes': 37043, 'nblocks': 1}}
+```
+结论：三组对无块头 slot 的响应形态一致（HTTP 与块数相同，均无目标块头），combined 不引入额外差异。原始输出：scratchpad `p4.txt`（不入仓库）。
