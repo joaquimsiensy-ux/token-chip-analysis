@@ -1312,8 +1312,246 @@ def test_w1_origin_membership_and_export_index_compaction():
             assert result["refuted_evidence"][0]["refuted_count"] == 1
 
 
+
+def _find_test_asset(directory, name="20260901", *, start=100, end=299,
+                     generated="2026-09-01T00:00:00+00:00", refuted=()):
+    directory.mkdir(parents=True, exist_ok=True)
+    asset = {
+        "schema": "sqd-solana-shared-coverage-map/v1", "version": name,
+        "ttl_days": 30, "generated_at": generated, "supersedes": None,
+        "sqd": {"query_body_sha256": probe.sqd_query_template_sha256()},
+        "candidate_slots": sorted(set(refuted) | {start, end}),
+        "refuted_slots": list(refuted),
+        "canary": {"slots": list(range(start, start + 64)), "counts": [3] * 64},
+    }
+    for key, encoding in (("slot_counts", probe.COUNT_ENCODING),
+                          ("blocks_bitmap", probe.BITMAP_ENCODING)):
+        binary = directory / f"{name}.{key}.gz"
+        # Deliberately not gzip, and deliberately not its real digest: find must
+        # only stat binaries. Full validation belongs to --known-map.
+        binary.write_bytes(b"tiny")
+        asset[key] = {"path": binary.name, "size": 4, "sha256": "a" * 64,
+                      "from_slot": start, "to_slot": end, "encoding": encoding}
+    if refuted:
+        asset["refuted_origin"] = [0] * len(refuted)
+        asset["refuted_evidence"] = [{
+            "kind": "repair-census", "source_mint": MINT, "probe_id": "a" * 16,
+            "repair_gid": "b" * 16, "plan_digest": "c" * 16,
+            "resolution_sha256": "d" * 64, "bundle_sha256": "e" * 64,
+            "producer": {"path": "scripts/solana/sqd_gap_repair.py", "sha256": "f" * 64},
+            "refuted_count": len(refuted), "origin_generated_at": "2026-09-01T00:00:00+00:00",
+            "origin_asset_sha256": None, "asset_sha256": None,
+        }]
+    path = directory / f"{name}.json"
+    path.write_text(json.dumps(asset), encoding="utf-8")
+    return path, asset
+
+
+def _find_test_call(root, *extra, lower=150, upper=249):
+    import io
+    from contextlib import ExitStack, redirect_stdout, redirect_stderr
+    stdout, stderr = io.StringIO(), io.StringIO()
+    with ExitStack() as stack:
+        stack.enter_context(mock.patch.object(probe, "__file__", str(root / "scripts/solana/probe.py")))
+        stack.enter_context(mock.patch.object(probe, "utc_now", return_value="2026-09-24T00:00:00+00:00"))
+        for owner, name in ((probe, "validate_shared_map"), (probe, "LiveTransport"),
+                            (probe.net, "curl_json"), (gzip, "decompress"),
+                            (probe, "sha256_file"), (probe, "classify_four_states"),
+                            (Path, "read_bytes")):
+            stack.enter_context(mock.patch.object(owner, name, side_effect=AssertionError(name)))
+        stack.enter_context(redirect_stdout(stdout))
+        stack.enter_context(redirect_stderr(stderr))
+        try:
+            code = probe.main(["find-known-map", "--from-slot", str(lower),
+                               "--to-slot", str(upper), *map(str, extra)])
+        except SystemExit as exc:
+            assert exc.code == 2 and not stdout.getvalue() and stderr.getvalue()
+            return 2, None  # argparse exit 2 is NOT a no-map result.
+    assert stderr.getvalue() == ""
+    assert len(stdout.getvalue().splitlines()) == 1
+    result = json.loads(stdout.getvalue())
+    assert set(result) == {"chosen", "accepted", "rejected"}
+    assert result["chosen"] == (result["accepted"][0] if result["accepted"] else None)
+    for item in result["accepted"]:
+        assert set(item) == {"path", "version", "generated_at", "expires_at",
+                             "overlap_slots", "overlap_ratio", "candidate_count", "refuted_count"}
+        assert Path(item["path"]).is_absolute()
+        assert item["generated_at"].endswith("+00:00") and item["expires_at"].endswith("+00:00")
+    assert all(set(item) == {"path", "reason"} and Path(item["path"]).is_absolute()
+               and item["reason"] for item in result["rejected"])
+    return code, result
+
+
+def test_find_known_map_expiry_overlap_and_legacy():
+    with tempfile.TemporaryDirectory(prefix="w2-find-") as td:
+        root = Path(td).resolve()
+        directory = root / "assets/sqd-solana-coverage-map"
+        directory.mkdir(parents=True)
+        assert _find_test_call(root) == (2, {"chosen": None, "accepted": [], "rejected": []})
+        good, _ = _find_test_asset(directory, refuted=())
+        _find_test_asset(directory, "20260801", generated="2026-08-01T00:00:00Z")
+        _find_test_asset(directory, "20260902", start=300, end=399)
+        code, result = _find_test_call(root)
+        assert code == 0 and len(result["rejected"]) == 2
+        chosen = result["chosen"]
+        assert chosen["path"] == str(good) and chosen["overlap_slots"] == 100
+        assert chosen["overlap_ratio"] == 1 and chosen["candidate_count"] == chosen["refuted_count"] == 0
+        # TTL boundary inclusive, date/version independent, timezone normalized.
+        _, boundary = _find_test_asset(root / "boundary", "12345678",
+                                      generated="2026-08-24T20:00:00-04:00")
+        path = root / "boundary/12345678.json"
+        code, result = _find_test_call(root, "--search-dir", path.parent)
+        assert code == 0 and any(i["version"] == "12345678" for i in result["accepted"])
+        boundary["generated_at"] = "2026-08-24T19:59:59-04:00"
+        path.write_text(json.dumps(boundary))
+        assert len(_find_test_call(root, "--search-dir", path.parent)[1]["rejected"]) == 3
+    print("PASS find expiry/overlap/empty/legacy/UTC/TTL boundary")
+
+
+def test_find_known_map_sorting_and_directory_dedup():
+    with tempfile.TemporaryDirectory(prefix="w2-find-sort-") as td:
+        root = Path(td).resolve()
+        default = root / "assets/sqd-solana-coverage-map"
+        a, _ = _find_test_asset(default, "20260901", refuted=(160, 260))
+        b, _ = _find_test_asset(default, "20260902", refuted=(160, 260),
+                                generated="2026-09-01T01:00:00+01:00")
+        c, _ = _find_test_asset(root / "extra", "20260903", refuted=(160,),
+                                generated="2026-09-02T00:00:00Z")
+        d, _ = _find_test_asset(root / "extra", "20260904", refuted=(160, 170),
+                                generated="2026-08-31T00:00:00Z")
+        e, _ = _find_test_asset(root / "extra", "20260905", start=160, end=299,
+                                refuted=(160, 170, 180))
+        alias = root / "alias"
+        alias.symlink_to(default, target_is_directory=True)
+        (root / "extra/20260906.json").symlink_to(a)
+        _find_test_asset(root / "extra/nested", "20260907")
+        (default / "２０２６０９０８.json").write_text("invalid ignored filename")
+        (default / "20260909.json").mkdir()  # Only direct files.
+        cwd = Path.cwd()
+        try:
+            os.chdir(root / "extra")
+            code, result = _find_test_call(root, "--search-dir", root / "extra",
+                                          "--search-dir", alias, "--search-dir", default,
+                                          "--search-dir", root / "extra")
+        finally:
+            os.chdir(cwd)
+        assert code == 0 and not result["rejected"]
+        assert [i["path"] for i in result["accepted"]] == list(map(str, (d, c, a, b, e)))
+        assert result["accepted"][-1]["overlap_ratio"] == 0.9
+        assert result["accepted"][2]["refuted_count"] == 1
+        assert result["accepted"][0]["candidate_count"] == 2
+    print("PASS find overlap/refuted/UTC/path sorting, directory/file dedup, cwd independence")
+
+
+def test_find_known_map_rejects_malformed_assets():
+    with tempfile.TemporaryDirectory(prefix="w2-find-bad-") as td:
+        root = Path(td).resolve()
+        directory = root / "assets/sqd-solana-coverage-map"
+        path, original = _find_test_asset(directory, refuted=(160,))
+        (directory / "nested").mkdir()
+        (directory / "nested/binary.gz").write_bytes(b"tiny")
+        (root / "outside.gz").write_bytes(b"tiny")
+        (directory / "escaped.gz").symlink_to(root / "outside.gz")
+        mutations = [
+            lambda a: [], lambda a: {**a, "schema": "wrong"},
+            lambda a: {**a, "version": "２０２６０９０１"},
+            lambda a: {**a, "ttl_days": True}, lambda a: {**a, "ttl_days": 30.0},
+            lambda a: {**a, "generated_at": "2026-09-01"},
+            lambda a: {**a, "generated_at": False},
+            lambda a: {**a, "supersedes": 1}, lambda a: {k: v for k, v in a.items() if k != "supersedes"},
+            lambda a: {**a, "sqd": {"query_body_sha256": "f" * 64}},
+            lambda a: {**a, "candidate_slots": [True, 160]},
+            lambda a: {**a, "candidate_slots": [160, 160]},
+            lambda a: {**a, "candidate_slots": [160, 100]},
+            lambda a: {**a, "candidate_slots": [99, 160]},
+            lambda a: {**a, "refuted_slots": [170]},
+            lambda a: {**a, "refuted_slots": [True]},
+            lambda a: {**a, "refuted_origin": []},
+            lambda a: {**a, "refuted_origin": [True]},
+            lambda a: {**a, "refuted_origin": [1]},
+            lambda a: {**a, "refuted_evidence": [{**a["refuted_evidence"][0], "refuted_count": 2}]},
+            lambda a: {**a, "refuted_evidence": [{**a["refuted_evidence"][0], "refuted_count": True}]},
+            lambda a: {**a, "refuted_evidence": [{**a["refuted_evidence"][0], "kind": "bad"}]},
+            lambda a: {**a, "canary": {"slots": list(range(100, 164)), "counts": [True] * 64}},
+            lambda a: {**a, "canary": {"slots": [100] * 64, "counts": [3] * 64}},
+            lambda a: {**a, "canary": {"slots": [100], "counts": [3]}},
+        ]
+        for key, value in (("size", True), ("size", -1), ("size", 5),
+                           ("sha256", "z" * 64), ("from_slot", True), ("to_slot", 99),
+                           ("encoding", "wrong"), ("path", "missing.gz"),
+                           ("path", "nested/binary.gz"), ("path", str(root / "outside.gz")),
+                           ("path", "escaped.gz"), ("path", None)):
+            mutations.append(lambda a, k=key, v=value: {**a, "slot_counts": {**a["slot_counts"], k: v}})
+        mutations.append(lambda a: {**a, "blocks_bitmap": {**a["blocks_bitmap"], "to_slot": 300}})
+        for mutate in mutations:
+            path.write_text(json.dumps(mutate(deepcopy(original))))
+            code, result = _find_test_call(root)
+            assert code == 2 and result["chosen"] is None and len(result["rejected"]) == 1
+        path.write_text("{bad JSON")
+        assert _find_test_call(root)[0] == 2
+        path.write_bytes(b"\xff")
+        assert _find_test_call(root)[0] == 2
+        path.write_text(json.dumps(original))
+        assert _find_test_call(root)[0] == 0
+        read_text = Path.read_text
+        def unreadable(self, *args, **kwargs):
+            if self == path:
+                raise PermissionError("candidate unreadable")
+            return read_text(self, *args, **kwargs)
+        with mock.patch.object(Path, "read_text", unreadable):
+            assert _find_test_call(root)[0] == 2
+    print(f"PASS find {len(mutations)} malformed shapes, corrupt JSON/UTF-8, candidate read failure")
+
+
+def test_find_known_map_scan_failures_and_cli_contract():
+    with tempfile.TemporaryDirectory(prefix="w2-find-errors-") as td:
+        root = Path(td).resolve()
+        default = root / "assets/sqd-solana-coverage-map"
+        good, _ = _find_test_asset(default)
+        denied = root / "denied"
+        denied.mkdir()
+        iterdir = Path.iterdir
+        def fail_directory(self):
+            if self == denied:
+                raise PermissionError("fixture denied directory")
+            return iterdir(self)
+        def usable(code, result):
+            return result["chosen"] if code == 0 and result else None
+        with mock.patch.object(Path, "iterdir", fail_directory):
+            code, result = _find_test_call(root, "--search-dir", denied)
+            assert code == 1 and result["chosen"]["path"] == str(good)
+            assert len(result["accepted"]) == len(result["rejected"]) == 1
+            assert usable(code, result) is None
+        code, result = _find_test_call(root, "--search-dir", root / "missing")
+        assert code == 0 and usable(code, result)["path"] == str(good)
+        assert len(result["rejected"]) == 1
+        code, result = _find_test_call(root / "absent")
+        assert code == 2 and result["chosen"] is None and result["rejected"]
+        for lower, upper in ((-1, 1), (2, 1), ("bad", 3)):
+            assert _find_test_call(root, lower=lower, upper=upper) == (2, None)
+        assert _find_test_call(root, "--unknown-option") == (2, None)
+        # A path that is a file is a scan error, not a missing directory.
+        code, result = _find_test_call(root, "--search-dir", good)
+        assert code == 1 and result["accepted"]
+        with mock.patch.object(Path, "iterdir", side_effect=PermissionError("all denied")):
+            code, result = _find_test_call(root)
+            assert code == 1 and result["chosen"] is None
+        # Iteration can fail after yielding an accepted candidate.
+        def partial(self):
+            yield good
+            raise OSError("enumeration failed after first entry")
+        with mock.patch.object(Path, "iterdir", partial):
+            code, result = _find_test_call(root)
+            assert code == 1 and result["chosen"]["path"] == str(good)
+    print("PASS find one-line JSON, partial scan exit 1, missing directory, argparse exit 2 distinction")
+
+
 def main():
     tests = [
+        test_find_known_map_expiry_overlap_and_legacy,
+        test_find_known_map_sorting_and_directory_dedup,
+        test_find_known_map_rejects_malformed_assets,
+        test_find_known_map_scan_failures_and_cli_contract,
         test_batch1b_red_to_green_symbols,
         test_four_states_and_integer_era,
         test_probe_id_and_canonical_float_rejection,

@@ -1,6 +1,8 @@
 # Solana SQD 共享覆盖地图
 
-本目录存放由 `scripts/solana/sqd_coverage_probe.py --full` 在可联网主机完成全史扫描后发布的、可复算的 SQD 覆盖资产。批 2 只交付生产程序与协议说明，不放首版数据；首版由 Fable 本机完成 ARC 全扫并验收后入库。
+本目录存放由已发布案级 coverage 经 `sqd_coverage_probe.py export-shared-map` 导出的共享覆盖三件套；源 coverage 可来自全扫或成功的地图复用。
+
+coverage 开工先 find-known-map；有 chosen 必用 --known-map，完整加载失败时按探针规则回退。coverage 发布后按 split-run §1.3 回填，有修复代指定 --repair-gid，无代使用 --no-repair。调度方验收后将三件套入库。
 
 每版由三件组成：
 

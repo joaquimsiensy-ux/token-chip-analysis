@@ -33,7 +33,7 @@ from solana_exact_validate import (  # noqa: E402
     derive_getblocks_complete, encode_bitmap, merge_ranges, ranges_cover,
     sha256_bytes, sha256_file, validate_blocks_bitmap, validate_coverage,
     validate_coverage_map, validate_shared_map, validate_slot_counts,
-    validate_repair_export_source,
+    validate_repair_export_source, validate_refuted_evidence,
 )
 try:
     from spl_edge_core import sqd_repair_paths  # noqa: E402
@@ -1548,8 +1548,163 @@ def build_export_parser():
     return parser
 
 
+def _find_map_time(value):
+    if not isinstance(value, str):
+        raise ValueError("timestamp must be a timezone-aware ISO-8601 string")
+    parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    if parsed.utcoffset() is None:
+        raise ValueError("timestamp must have a timezone")
+    return parsed.astimezone(timezone.utc)
+
+
+def _find_map_candidate(path, lower, upper, now):
+    """Read JSON and stat its binaries; leave content proofs to the loader."""
+    asset = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(asset, dict):
+        raise ValueError("shared map must be object")
+    if asset.get("schema") != "sqd-solana-shared-coverage-map/v1":
+        raise ValueError("shared map schema mismatch")
+    version = asset.get("version")
+    if not isinstance(version, str) or re.fullmatch(r"[0-9]{8}", version) is None:
+        raise ValueError("version must contain eight ASCII digits")
+    if type(asset.get("ttl_days")) is not int or asset["ttl_days"] != 30:
+        raise ValueError("ttl_days must be integer 30")
+    generated = _find_map_time(asset.get("generated_at"))
+    expires = generated + timedelta(days=30)
+    if now > expires:
+        raise ValueError("shared map expired")
+    if "supersedes" not in asset or (asset["supersedes"] is not None
+                                     and not isinstance(asset["supersedes"], str)):
+        raise ValueError("supersedes invalid")
+    sqd = asset.get("sqd")
+    if not isinstance(sqd, dict) or sqd.get("query_body_sha256") != sqd_query_template_sha256():
+        raise ValueError("SQD query template mismatch")
+    intervals = []
+    for key, encoding in (("slot_counts", COUNT_ENCODING),
+                          ("blocks_bitmap", BITMAP_ENCODING)):
+        meta = asset.get(key)
+        if not isinstance(meta, dict) or set(meta) != {
+                "path", "size", "sha256", "from_slot", "to_slot", "encoding"}:
+            raise ValueError(f"{key} metadata shape invalid")
+        if meta["encoding"] != encoding:
+            raise ValueError(f"{key} encoding mismatch")
+        start, end = meta["from_slot"], meta["to_slot"]
+        if type(start) is not int or type(end) is not int or not 0 <= start <= end:
+            raise ValueError(f"{key} interval invalid")
+        intervals.append((start, end))
+        if type(meta["size"]) is not int or meta["size"] < 0:
+            raise ValueError(f"{key} size invalid")
+        if not isinstance(meta["sha256"], str) or re.fullmatch(
+                r"[0-9a-f]{64}", meta["sha256"]) is None:
+            raise ValueError(f"{key} sha256 invalid")
+        if not isinstance(meta["path"], str) or not meta["path"]:
+            raise ValueError(f"{key} path invalid")
+        binary = (path.parent / meta["path"]).resolve()
+        if binary.parent != path.parent or not binary.is_file():
+            raise ValueError(f"{key} path escapes asset directory or is missing")
+        if binary.stat().st_size != meta["size"]:
+            raise ValueError(f"{key} size mismatch")
+    if intervals[0] != intervals[1]:
+        raise ValueError("binary intervals differ")
+    start, end = intervals[0]
+    overlap_start, overlap_end = max(lower, start), min(upper, end)
+    if overlap_start > overlap_end:
+        raise ValueError("shared map does not overlap requested range")
+
+    def ordered_slots(value, label):
+        if not isinstance(value, list) or any(
+                type(slot) is not int or not start <= slot <= end for slot in value) \
+                or value != sorted(set(value)):
+            raise ValueError(f"{label} must be sorted unique integers within asset range")
+        return value
+
+    candidates = ordered_slots(asset.get("candidate_slots"), "candidate_slots")
+    refuted = ordered_slots(asset.get("refuted_slots"), "refuted_slots")
+    if not set(refuted).issubset(candidates):
+        raise ValueError("refuted_slots must be a subset of candidate_slots")
+    validate_refuted_evidence(asset)
+    canary = asset.get("canary")
+    if not isinstance(canary, dict):
+        raise ValueError("canary must be object")
+    slots = ordered_slots(canary.get("slots"), "canary slots")
+    counts = canary.get("counts")
+    if len(slots) != 64 or not isinstance(counts, list) or len(counts) != 64 \
+            or any(type(value) is not int or not 2 <= value <= 255 for value in counts):
+        raise ValueError("canary must contain 64 slots and header counts")
+    overlap = overlap_end - overlap_start + 1
+    return {
+        "path": str(path), "version": version,
+        "generated_at": generated.isoformat(), "expires_at": expires.isoformat(),
+        "overlap_slots": overlap, "overlap_ratio": overlap / (upper - lower + 1),
+        "candidate_count": sum(overlap_start <= slot <= overlap_end for slot in candidates),
+        "refuted_count": sum(overlap_start <= slot <= overlap_end for slot in refuted),
+    }
+
+
+def _find_known_map(args):
+    accepted, rejected = [], []
+    directories, candidates = set(), set()
+    scan_failed = False
+    now = _find_map_time(utc_now())
+    default = Path(__file__).resolve().parents[2] / "assets/sqd-solana-coverage-map"
+    for directory in [default, *map(Path, args.search_dir)]:
+        # Retain a printable absolute path even when symlink resolution fails.
+        directory = directory.absolute()
+        try:
+            directory = directory.resolve()
+            if directory in directories:
+                continue
+            directories.add(directory)
+            try:
+                directory.stat()
+            except FileNotFoundError:
+                rejected.append({"path": str(directory), "reason": "directory missing"})
+                continue
+            for entry in directory.iterdir():
+                if re.fullmatch(r"[0-9]{8}\.json", entry.name) is None:
+                    continue
+                path = entry
+                try:
+                    path = entry.resolve()
+                    if path in candidates or path.is_dir():
+                        continue
+                    candidates.add(path)
+                    if not path.is_file():
+                        raise ValueError("candidate is not a regular file")
+                    accepted.append(_find_map_candidate(
+                        path, args.from_slot, args.to_slot, now))
+                except (OSError, ValueError, TypeError, KeyError, OverflowError, RuntimeError) as exc:
+                    rejected.append({"path": str(path), "reason": str(exc)})
+        except (OSError, RuntimeError) as exc:
+            scan_failed = True
+            rejected.append({"path": str(directory), "reason": f"directory scan failed: {exc}"})
+    # Stable passes implement descending metrics/time and ascending path.
+    accepted.sort(key=lambda item: item["path"])
+    accepted.sort(key=lambda item: _find_map_time(item["generated_at"]), reverse=True)
+    accepted.sort(key=lambda item: (item["overlap_slots"], item["refuted_count"]), reverse=True)
+    rejected.sort(key=lambda item: (item["path"], item["reason"]))
+    chosen = accepted[0] if accepted else None
+    print(json.dumps({"chosen": chosen, "accepted": accepted, "rejected": rejected},
+                     ensure_ascii=False))
+    return 1 if scan_failed else (0 if chosen else 2)
+
+
+def _build_find_parser():
+    parser = argparse.ArgumentParser(description="Find shared SQD maps by offline light screening")
+    parser.add_argument("--from-slot", type=int, required=True)
+    parser.add_argument("--to-slot", type=int, required=True)
+    parser.add_argument("--search-dir", action="append", default=[])
+    return parser
+
+
 def main(argv=None):
     argv = list(sys.argv[1:] if argv is None else argv)
+    if argv and argv[0] == "find-known-map":
+        parser = _build_find_parser()
+        args = parser.parse_args(argv[1:])
+        if not 0 <= args.from_slot <= args.to_slot:
+            parser.error("require 0 <= --from-slot <= --to-slot")
+        return _find_known_map(args)
     if argv and argv[0] == "export-shared-map":
         args = build_export_parser().parse_args(argv[1:])
         try:

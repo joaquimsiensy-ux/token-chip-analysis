@@ -10,6 +10,7 @@
 
 ## 版本索引（活跃窗口，新在上；每版一行，详情见下方对应条目）
 
+- **9.2.0**（2026-09-24）Solana −1 提速：驳回继承、find-known-map 开工硬性、curl_json 压缩、修复 α 合并 SQD 请求；producer 登记，档位 次。
 - **9.1.1**（2026-09-24）flow 扫描候选边物化，消除逐候选底层全量重扫（QUQ ANOM-009）；参数、schema 与判据不变，档位 修。
 - **9.1.0**（2026-09-23）Solana 交易版本上限统一为 `endpoint_identity.SOLANA_MAX_SUPPORTED_TX_VERSION=1`；新增 `--resume --adopt-pending` 与可选 `header.adopted`，支持可信前代 pending 证据认领、历史版本请求续跑及前代摘要复验；登记新 producer，旧 producer 保持 ACTIVE。新公开接口与持久化契约扩展，记次版本。
 - **9.0.5**（2026-09-23）修复目录案消费期漏验：重算完整身份，拒叶子覆写、增删及 symlink（FR-02 C）；文件分支、schema 不变，档位 修。
@@ -100,6 +101,13 @@
 - **6.20.1** 2026-08-05 修 5 处阻断级文档漂移（A4 前禁写报告冲突/easy 残留/惯犯回灌 docstring/批量预采集残留/旧 Par 路线历史降级）＋docs_lint 增中文禁词与 Python module docstring 扫描
 
 更早版本（6.20.0 及以前）详见 `archive/CHANGELOG-archive.md`。
+
+## [9.2.0] - 2026-09-24 — Solana −1 机械段提速
+
+- **出处与裁决**：用户 2026-09-24 裁决要求 −1 执行者使用共享覆盖地图；按 W2 v3.2 收官登记。新增公开 find-known-map 子命令与向后兼容驳回继承字段，档位 次；地图轻筛不替代完整加载、在线身份与 slot 重查。
+- **改法**：按 W3→W1→W4→WR-a→W2→WR-b 顺序：curl_json 压缩；可信来源驳回继承、原始时效及来源副本绑定；α/β 候选状态探针并入 census（β 搜索不变）；repair 四协议登记 15822564…、旧 3f89aab1… 保持 ACTIVE；find-known-map 离线轻筛、确定性排序与扫描故障优先 exit 1，−1 非 resume 开工查图及导出回填纪律；WR-b 探针最终 sha 登记待调度方执行，本单未登记。resume 不加载或叠图且不保留驳回继承。
+- **字节与测试**：记录见 [W3_done.md](maintenance/repair-20260924b-sol-stage1-speed/W3_done.md)、[W1_done.md](maintenance/repair-20260924b-sol-stage1-speed/W1_done.md)、[W4_done.md](maintenance/repair-20260924b-sol-stage1-speed/W4_done.md)、[WR-a_done.md](maintenance/repair-20260924b-sol-stage1-speed/WR-a_done.md)、[W2_done.md](maintenance/repair-20260924b-sol-stage1-speed/W2_done.md)。W3 生产 +2/−0；W1 探针 +130/−7、校验器 +352/−5；W4 生产增删合计 52 行；WR-a 登记 +32/−0。W2 生产 +156/−1、测试 +238/−0；相对 W2_BASE references +1,716 B、commands +121 B，SKILL 8,021→8,021 B，索引 173 B。W2 六项允许的离线检查通过，probe/export 24/24 组（含新增 find 4 组）；W1/W3/W4 的禁读受限项仍依各报告移交。docs_lint.py、changelog_lint.py、run_all.py 待调度方本机验收，不记 PASS；WR-a 报告中 probe 两协议未登记失败留待 WR-b。
+- **成本-质量指标**：W2 生产文件 1、测试文件 1、新公开子命令 1、新私有 helper 4；沙箱外部网络调用 0。W3 压缩联网验收及 W4 合并查询线上实测未记录，待调度方补录；W4 离线 workers=1/4 逐候选 slot 为 SQD census=1、旧 probe=0、Helius getBlock=1。W2 新增轻筛拒绝 38 类非法形态，并测损坏 JSON/UTF-8、文件读取失败及部分扫描错误；不重算二进制摘要、不解压、不逐 slot 分类。全工程轮次数、Bash 调用数、交付用时、初稿关键结论数、复核判定分布、漏检实体数与传播级数字错误数未记录；不预填线上收益。
 
 ## [9.1.1] - 2026-09-24 — flow 扫描候选边物化
 

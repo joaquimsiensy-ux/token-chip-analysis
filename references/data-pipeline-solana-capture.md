@@ -104,7 +104,7 @@
 
 ### 13a. 传输层实测真相（改变所有 SQD 件的三个数字）
 
-- **gzip 压缩 = 21 倍**：同段对照实测明文 4.65 slots/s vs `--compressed` 98 slots/s（wSOL 高密度压测,压缩比 ~40x；普通 mint 预计 5-15x）。requests.Session 默认协商 gzip——**新脚本一律 requests,遗留 curl 件必须补 `--compressed`**。
+- **gzip 压缩 = 21 倍**：同段对照实测明文 4.65 slots/s vs `--compressed` 98 slots/s（wSOL 高密度压测,压缩比 ~40x；普通 mint 预计 5-15x）。requests.Session 默认协商 gzip——**新脚本一律 requests,遗留 curl 件必须补 `--compressed`**。 （9.2.0 起 `scripts/lib/net.py::curl_json` 内置 `--compressed`，经该层的 Helius getBlock 与 SQD 请求自动协商压缩；ledger 字节/哈希按解码后内容计算不受影响）
 - **限流真相**：文档标称 20 请求/10 秒,长流模式实测**碰不到**（串行 30 请求 0 个 429、8 路长流并发全 200）;真实瓶颈=**单 IP 总带宽整形 ~1MB/s**（3 路与 8 路聚合吞吐相同——加流数不加总量,多注册 key 无意义）。
 - **服务端单响应上限**：解压后 ~32MB 自动截断,客户端按最后 slot 续拉即可（v1 的 50K 段超时死循环是明文时代 150 秒传不完一个响应所致,压缩后自愈）。
 - **SQD gateway key**（api-keys.md 第 15 节「SQD Portal」,存 `~/.config/sqd/api-key`）：公共 datasets 路径实测**完全不认证**（真/假 key 全 200）——**直接匿名调用即可,不需要配 key**。该 key 实为旧版 SDK 网关用途,Portal 正式 key 体系官方尚未上线,**不存在"专属端点 URL",无需再等用户抄回**（2026-07-21 定论,2026-07-25 复核确认）。
@@ -195,11 +195,11 @@ JSON-RPC batch + 跨地址共享 sig 缓存（`--cache-dir`,按 sig 前 2 字符
 **正式产物窄门**（完整字段和消费者清单见 `scan-schemas.md` §14）：
 
 1. 探针发布 `sqd-solana-coverage/v1` 和 `sqd-solana-coverage-pointer/v1`；`CURRENT.json` 是当前 coverage 的原子指针。
-2. `sqd_gap_repair.py/v1` 只修已确认缺陷，产 `sqd-solana-coverage-resolution/v1`、repaired `sqd-solana-cache/v4`、`sqd-solana-repair-bundle/v1` 与 `sqd-solana-repair-pointer/v1`。交易按签名取参考源真值，并统一成 `reference-nonvote-ordinal/v1`。producer 升版后同案旧 pending 可经 `--resume --adopt-pending <旧目录>` 认领（前代 sha 须在 producer_history 登记、台账 header 记 `adopted`、深验重算前代 digest；来源可信是输入前提）；Solana 请求的交易版本上限统一取 `endpoint_identity.SOLANA_MAX_SUPPORTED_TX_VERSION`，升版本或改修复请求模板须同步换代 producer。
+2. `sqd_gap_repair.py/v1` 只修已确认缺陷，产 `sqd-solana-coverage-resolution/v1`、repaired `sqd-solana-cache/v4`、`sqd-solana-repair-bundle/v1` 与 `sqd-solana-repair-pointer/v1`。交易按签名取参考源真值，并统一成 `reference-nonvote-ordinal/v1`。producer 升版后同案旧 pending 可经 `--resume --adopt-pending <旧目录>` 认领（前代 sha 须在 producer_history 登记、台账 header 记 `adopted`、深验重算前代 digest；来源可信是输入前提）；Solana 请求的交易版本上限统一取 `endpoint_identity.SOLANA_MAX_SUPPORTED_TX_VERSION`，升版本或改修复请求模板须同步换代 producer。 9.2.0 起共用修复流程将状态探针并入 census；无重试时每候选 slot 一次 SQD 请求（含 β 候选），β 搜索不变；新采 evidence 的 `coverage_probe_query_sha256/coverage_probe_response_sha256` 与 `query_body_sha256/response_sha256` 分别同值。
 3. pending（尚未发布目录）不能被消费；bundle、代、base、coverage 与指针必须全套同代。**修过账不退回 base、base 重采即代全作废**：resolver（正式边源解析器）一旦确认当前 base 需要修复，就不得静默回退原账；base 内容一变，旧修复代的绑定自然失效，必须重探、重修、重发。
 4. A2 的 Solana 对账是五查：coverage 是 `exact_reconcile` 的强制输入；`solana-reconcile/v4` 与 wrapper `reconciliation-report/v3` 任一深验失败都停。下游 wave/flow/entity/curve/audit/evolution 产物必须带 `edge_source_binding`（边源绑定），并与 exact receipt 的 `{cache_kind,gid,soltx_edges_sha256,soltx_meta_sha256,edge_logical_sha256}` 全等。
 
-**共享地图生命周期**：已知缺陷地图只省重复探测，不替代本案证据。地图 TTL（有效期）为 30 天；已知缺陷 slot 仍逐个复核；每次运行抽 canary（哨兵 slot）验证健康区和已知缺陷区，任一不符就停止复用并重建地图。
+**共享地图生命周期**：地图 TTL 为源 coverage 发布后 30 天；驳回时效从首次直接 census 所属 coverage 发布时间算，链式导出不续期。资产 refuted slot 仅在本案成功复用且非 unverified 区间，重查值＝资产值＝2 且证据未过期才记 `INHERITED_REFUTED`，不入候选、免修复 Helius getBlock；getBlocks 照常。重查只证块头在、零 AdvanceNonce，不证交易集合未变；须信任来源，导出不深验源案全量证据。值变整图回退，失败按规则重试。refuted 来自发布修复 census 或继承；refuted-only 无代，只能导出继承。有效发布且满足导出条件才回填：`sqd_coverage_probe.py export-shared-map --case-root <案目录> --probe-id <probe_id> --out <skill根>/assets/sqd-solana-coverage-map/ --repair-gid <gid>`；无代改用 `--no-repair`；调度方验收入库。
 
 **参考源与额度**：正式修复的唯一参考源是 Helius。准确性优先，工单不设预算上限；但“无上限”不等于无限重试。遇配额耗尽或计费拒绝，先原子落 STOPPED/ledger（停工状态和额度台账），干净退出，再换已登记 key 续跑；禁止降级到另一 RPC 拼出“看起来闭合”的代。
 
