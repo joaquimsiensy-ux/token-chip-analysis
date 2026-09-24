@@ -23,10 +23,12 @@ fixtures/pythia_anchors.json）：
       （meaningful_recipient_count==1、top1_recipient_share_pct==1.99）
   15. v4 producer 不产零值边；仅 5 个真实收方不得凑过收方线
   16. MidSpray 残余缝负例：50 收方匀速 100 天三口径全不中（覆盖真空边界锚定）
+  17. MixedHub 同址 sink/spray：自转净额为零、非合格入边仅计净额；慢速 top 截断为 500
 用法：python3 scripts/tests/test_flow_anomaly.py   退出码 0=PASS / 1=FAIL
 """
 import json
 import os
+from pathlib import Path
 import subprocess
 import sys
 import tempfile
@@ -65,7 +67,7 @@ def day(n):
 
 
 def main():
-    d = tempfile.mkdtemp(prefix="flow_test_")
+    d = str(Path(tempfile.mkdtemp(prefix="flow_test_")).resolve())
     edges = []
     # 8 个合格来源（各峰值 ≥0.02%＝2e8）
     SRC = [f"Src{i}" for i in range(8)]
@@ -168,6 +170,14 @@ def main():
     for i in range(50):
         edges.append((day(600 + i), "MidSpray", f"MidR{i:02d}", 6 * 10 ** 8))
 
+    # 17. 同址 sink/spray：非合格入边计净额，自转不计流入/流出。
+    for i in range(5):
+        edges.append((day(700), SRC[i], "MixedHub", 6 * 10 ** 9))
+    for i in range(20):
+        edges.append((day(701), "MixedHub", f"MixedRecv{i:02d}", 10 ** 9))
+    edges.append((day(701), "MixedHub", "MixedHub", 10 ** 9))
+    edges.append((day(701), "TinySrc", "MixedHub", 10 ** 8))
+
     out1 = os.path.join(d, "r1.json")
     p = run(edges, out1)
     check("主场景 exit 0", p.returncode == 0)
@@ -199,6 +209,15 @@ def main():
         check(f"sink {s['addr']} sources 闭合", len(s["sources"]) == s["best_window"]["source_count"])
 
     sp = {s["addr"]: s for s in r["sprays"]}
+    check("MixedHub 同时命中 sink/spray", "MixedHub" in sids and "MixedHub" in sp)
+    if "MixedHub" in sids:
+        mixed = sids["MixedHub"]
+        check("MixedHub 净额含非合格入边且排除自转",
+              mixed["all_time"]["net_inflow_pct"] == round(
+                  (5*6*10**9 + 10**8 - 20*10**9) * 100.0 / TOTAL, 4))
+        check("MixedHub 合格流入 3%、来源仅 5 个",
+              mixed["all_time"]["qualified_inflow_pct"] == round(5*6*10**9 * 100.0 / TOTAL, 4)
+              and len(mixed["sources"]) == 5)
     # ---- 4. pulse 正例＋子集关系＋闭合 ----
     check("spray 脉冲正例命中且 mode=pulse",
           "PulseSpray" in sp and sp["PulseSpray"]["mode"] == "pulse")
@@ -215,6 +234,8 @@ def main():
           "SlowSpray" in sp and sp["SlowSpray"]["mode"] == "slow_spray")
     if "SlowSpray" in sp:
         ss = sp["SlowSpray"]
+        check("SlowSpray 全史 600 收方、top 仅 500",
+              len(ss["recipients_top"]) == 500 and ss["all_time"]["recipient_count"] == 600)
         check("slow_spray 全史收方数=600", ss["all_time"]["recipient_count"] == 600)
         check("slow_spray 主模式不带 best_window 且 pulse_all 未中（窗金额不达）",
               ss["best_window"] is None and not ss["mode_hits"]["pulse_all"]["hit"])

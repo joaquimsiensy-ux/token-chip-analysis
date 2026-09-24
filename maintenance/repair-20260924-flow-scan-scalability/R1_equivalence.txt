@@ -1,0 +1,501 @@
+R1 等价性证据 — PASS（17 组，同入口新旧比较）
+基线源码 634c083；开工 HEAD ff9fbab；临时输入与原始报告目录 /private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/R1_gqro5g85
+先生成并冻结输入与 formal_cli_args，17 组基线 CLI 运行全部完成、冻结报告后才修改生产文件。
+baseline_reports_frozen.json 写入时间 UTC: 2026-09-24T02:35:45.039915+00:00
+基线命令 python3 -B <root>/flow_baseline.py；PYTHONPATH=<repo>/scripts/lib:<repo>/scripts/solana:<repo>/scripts/report；同目录 wave_scan.py 为 git show 634c083 副本。
+新实现使用同一 jobs.json 中的输入路径和参数；out 与运行工作目录不同（out 不入 params）。无并列比较直接删除原始报告 generated_at 所在行后比较 bytes，不重新编码 JSON、不排序数组。
+并列判定：先核 sinks/sprays 原生产键降序与同键 ID 成员，再逐 ID 比其余字段；sources 仅相同 pct 组内允许重排；recipients_top 单独用全体原始边累计金额验证降序、长度 500、唯一、全部严格高于边界者入选、低于边界者不入选。不进行通用数组排序。
+主夹具: {
+  "rows": 300000,
+  "addresses": 4843,
+  "span_days": 800,
+  "sum_raw": 1674471003500,
+  "decoded_exact_multiset": "PASS",
+  "recipient_cumulative_amounts_unique": "PASS"
+}
+主夹具有 8 sinks；三个 Solana 变体依次 8/7/6。Sink2 全史合格流入高于单窗；MixedHub 同时是 sink/spray；Slow0/Slow1 各 600 收方、top 500。
+主夹具顶层 mode pulse/pulse_all/slow_spray = 3/2/2，mode_hits = 3/5/2；Refill0/1 先建仓后补货，fresh=0。
+构造与断言：sink 窗 pct、spray 全史 pct、每个 sink 的 sources pct、慢速收方累计金额分别两两不同；固定随机种子 20260924；拆分原边金额保总量，放大夹具 3,000,000 边。
+entity A = Sink0+Src0..4，entity B = Sink1：Sink0 消失、Sink1 保留且其相关字段与无 entity 相同；exclude Sink3 后其候选消失。实体只影响 eflow，不改变 addr/eligible 构建来源。
+主夹具 EVM 编码固定 lower hex 地址映射，保留 Z/DEAD；两个 run 的全局 block 区间分别 [1,150000]/[150001,300000]，放大为 [1,1500000]/[1500001,3000000]；timestamp 为十进制 Unix 秒字符串。所有 EVM 日志均命中“区间互斥——VIEW 轻路径”，报告无 edge_source_binding。
+EVM 主夹具实际解码所有 (ts,f,t,amt) 以 Counter 多重集逐项比较原边映射，边数/重复度/金额/地址全等；DuckDB 同一原边集存 edges(ts BIGINT,f VARCHAR,t VARCHAR,amt HUGEINT)。
+
+逐变体覆盖/计数/结果：
+[
+  {
+    "name": "main_sol",
+    "verdict": "PASS bytes after removing generated_at only (no array sorting)",
+    "sinks": 8,
+    "sprays": 7,
+    "mode": {
+      "slow_spray": 2,
+      "pulse_all": 2,
+      "pulse": 3
+    },
+    "mode_hits": {
+      "pulse": 3,
+      "pulse_all": 5,
+      "slow_spray": 2
+    }
+  },
+  {
+    "name": "main_sol_entity",
+    "verdict": "PASS bytes after removing generated_at only (no array sorting)",
+    "sinks": 7,
+    "sprays": 7,
+    "mode": {
+      "slow_spray": 2,
+      "pulse_all": 2,
+      "pulse": 3
+    },
+    "mode_hits": {
+      "pulse": 3,
+      "pulse_all": 5,
+      "slow_spray": 2
+    }
+  },
+  {
+    "name": "main_sol_entity_exclude",
+    "verdict": "PASS bytes after removing generated_at only (no array sorting)",
+    "sinks": 6,
+    "sprays": 7,
+    "mode": {
+      "slow_spray": 2,
+      "pulse_all": 2,
+      "pulse": 3
+    },
+    "mode_hits": {
+      "pulse": 3,
+      "pulse_all": 5,
+      "slow_spray": 2
+    }
+  },
+  {
+    "name": "main_duck",
+    "verdict": "PASS bytes after removing generated_at only (no array sorting)",
+    "sinks": 8,
+    "sprays": 7,
+    "mode": {
+      "slow_spray": 2,
+      "pulse_all": 2,
+      "pulse": 3
+    },
+    "mode_hits": {
+      "pulse": 3,
+      "pulse_all": 5,
+      "slow_spray": 2
+    }
+  },
+  {
+    "name": "main_evm",
+    "verdict": "PASS bytes after removing generated_at only (no array sorting)",
+    "sinks": 8,
+    "sprays": 7,
+    "mode": {
+      "slow_spray": 2,
+      "pulse_all": 2,
+      "pulse": 3
+    },
+    "mode_hits": {
+      "pulse": 3,
+      "pulse_all": 5,
+      "slow_spray": 2
+    }
+  },
+  {
+    "name": "ties_sol",
+    "verdict": "PASS tie groups and rank-500 boundary contract",
+    "sinks": 2,
+    "sprays": 2,
+    "mode": {
+      "slow_spray": 2
+    },
+    "mode_hits": {
+      "pulse": 0,
+      "pulse_all": 0,
+      "slow_spray": 2
+    }
+  },
+  {
+    "name": "ties_duck",
+    "verdict": "PASS tie groups and rank-500 boundary contract",
+    "sinks": 2,
+    "sprays": 2,
+    "mode": {
+      "slow_spray": 2
+    },
+    "mode_hits": {
+      "pulse": 0,
+      "pulse_all": 0,
+      "slow_spray": 2
+    }
+  },
+  {
+    "name": "ties_evm",
+    "verdict": "PASS tie groups and rank-500 boundary contract",
+    "sinks": 2,
+    "sprays": 2,
+    "mode": {
+      "slow_spray": 2
+    },
+    "mode_hits": {
+      "pulse": 0,
+      "pulse_all": 0,
+      "slow_spray": 2
+    }
+  },
+  {
+    "name": "empty_candidates_sol",
+    "verdict": "PASS bytes after removing generated_at only (no array sorting)",
+    "sinks": 0,
+    "sprays": 0,
+    "mode": {},
+    "mode_hits": {
+      "pulse": 0,
+      "pulse_all": 0,
+      "slow_spray": 0
+    }
+  },
+  {
+    "name": "empty_candidates_duck",
+    "verdict": "PASS bytes after removing generated_at only (no array sorting)",
+    "sinks": 0,
+    "sprays": 0,
+    "mode": {},
+    "mode_hits": {
+      "pulse": 0,
+      "pulse_all": 0,
+      "slow_spray": 0
+    }
+  },
+  {
+    "name": "empty_candidates_evm",
+    "verdict": "PASS bytes after removing generated_at only (no array sorting)",
+    "sinks": 0,
+    "sprays": 0,
+    "mode": {},
+    "mode_hits": {
+      "pulse": 0,
+      "pulse_all": 0,
+      "slow_spray": 0
+    }
+  },
+  {
+    "name": "empty_elig_sol",
+    "verdict": "PASS bytes after removing generated_at only (no array sorting)",
+    "sinks": 0,
+    "sprays": 0,
+    "mode": {},
+    "mode_hits": {
+      "pulse": 0,
+      "pulse_all": 0,
+      "slow_spray": 0
+    }
+  },
+  {
+    "name": "empty_elig_evm",
+    "verdict": "PASS bytes after removing generated_at only (no array sorting)",
+    "sinks": 0,
+    "sprays": 0,
+    "mode": {},
+    "mode_hits": {
+      "pulse": 0,
+      "pulse_all": 0,
+      "slow_spray": 0
+    }
+  },
+  {
+    "name": "empty_elig_duck_duck",
+    "verdict": "PASS bytes after removing generated_at only (no array sorting)",
+    "sinks": 0,
+    "sprays": 1,
+    "mode": {
+      "pulse": 1
+    },
+    "mode_hits": {
+      "pulse": 1,
+      "pulse_all": 1,
+      "slow_spray": 1
+    }
+  },
+  {
+    "name": "mixed_duck",
+    "verdict": "PASS equal-key source groups; MixedHub net/qualified/sources/positive recipients PASS",
+    "sinks": 1,
+    "sprays": 1,
+    "mode": {
+      "pulse": 1
+    },
+    "mode_hits": {
+      "pulse": 1,
+      "pulse_all": 1,
+      "slow_spray": 0
+    }
+  },
+  {
+    "name": "negative_duck",
+    "verdict": "PASS equal-key source groups; MixedHub net/qualified/sources/positive recipients PASS",
+    "sinks": 1,
+    "sprays": 1,
+    "mode": {
+      "pulse": 1
+    },
+    "mode_hits": {
+      "pulse": 1,
+      "pulse_all": 1,
+      "slow_spray": 0
+    }
+  },
+  {
+    "name": "large_evm",
+    "verdict": "PASS bytes after removing generated_at only (no array sorting)",
+    "sinks": 8,
+    "sprays": 7,
+    "mode": {
+      "slow_spray": 2,
+      "pulse_all": 2,
+      "pulse": 3
+    },
+    "mode_hits": {
+      "pulse": 3,
+      "pulse_all": 5,
+      "slow_spray": 2
+    }
+  }
+]
+
+专项微夹具：
+空候选三个入口新旧均 sinks/sprays=0；诊断重放进一步核 duck 预筛 sink=[]、spray=[]。
+空 elig：Solana/EVM 均无合格地址；DuckDB 1001 边含空字符串来源，基线与新实现均 eligible=0，sink 预筛集合恰 [EmptyHub]，候选行恰 [[0,"",30000000000]]。spray 预筛集合与每个候选行也相同；并非仅比较最终空 sinks。
+正值自转与非合格入边：ties 与 MixedHub 场景共同覆盖，自转不计净额和收方，TinySrc 峰值未达 0.02%；其 10^8 入边计净额但不计合格流入和 sources。
+MixedHub 独立 DuckDB 正值副本：net_inflow_pct=1.01、qualified_inflow_pct=3.0、sources=5、recipient_count=20；负值副本在 day(701) 加 NegIn→MixedHub -10^8、MixedHub→NegOut -3×10^8 后 net=1.03，其余三项保持 3.0/5/20。另加 MixedHub→ZeroOnly 的零值边，ZeroOnly 不入 recipients。上述断言对基线和新实现分别成立。
+同 ts 同额多来源：TieSinkA/B 各五来源；sink 排序键并列，TieSlowA/B 的全史排序键也并列。以下 top500 每个全体收方集合 540：490 严格高于边界、40 同边界、10 低于边界；每次选取 490+10、唯一 500，边界金额 50000000。
+[
+  {
+    "run": "baseline_ties_sol",
+    "addr": "TieSlowA",
+    "selected": 500,
+    "unique": 500,
+    "strictly_above": 490,
+    "boundary": 10,
+    "below": 0
+  },
+  {
+    "run": "baseline_ties_sol",
+    "addr": "TieSlowB",
+    "selected": 500,
+    "unique": 500,
+    "strictly_above": 490,
+    "boundary": 10,
+    "below": 0
+  },
+  {
+    "run": "new_ties_sol",
+    "addr": "TieSlowB",
+    "selected": 500,
+    "unique": 500,
+    "strictly_above": 490,
+    "boundary": 10,
+    "below": 0
+  },
+  {
+    "run": "new_ties_sol",
+    "addr": "TieSlowA",
+    "selected": 500,
+    "unique": 500,
+    "strictly_above": 490,
+    "boundary": 10,
+    "below": 0
+  },
+  {
+    "run": "baseline_ties_duck",
+    "addr": "TieSlowB",
+    "selected": 500,
+    "unique": 500,
+    "strictly_above": 490,
+    "boundary": 10,
+    "below": 0
+  },
+  {
+    "run": "baseline_ties_duck",
+    "addr": "TieSlowA",
+    "selected": 500,
+    "unique": 500,
+    "strictly_above": 490,
+    "boundary": 10,
+    "below": 0
+  },
+  {
+    "run": "new_ties_duck",
+    "addr": "TieSlowB",
+    "selected": 500,
+    "unique": 500,
+    "strictly_above": 490,
+    "boundary": 10,
+    "below": 0
+  },
+  {
+    "run": "new_ties_duck",
+    "addr": "TieSlowA",
+    "selected": 500,
+    "unique": 500,
+    "strictly_above": 490,
+    "boundary": 10,
+    "below": 0
+  },
+  {
+    "run": "baseline_ties_evm",
+    "addr": "0x0000000000000000000000000000000000000225",
+    "selected": 500,
+    "unique": 500,
+    "strictly_above": 490,
+    "boundary": 10,
+    "below": 0
+  },
+  {
+    "run": "baseline_ties_evm",
+    "addr": "0x0000000000000000000000000000000000000008",
+    "selected": 500,
+    "unique": 500,
+    "strictly_above": 490,
+    "boundary": 10,
+    "below": 0
+  },
+  {
+    "run": "new_ties_evm",
+    "addr": "0x0000000000000000000000000000000000000008",
+    "selected": 500,
+    "unique": 500,
+    "strictly_above": 490,
+    "boundary": 10,
+    "below": 0
+  },
+  {
+    "run": "new_ties_evm",
+    "addr": "0x0000000000000000000000000000000000000225",
+    "selected": 500,
+    "unique": 500,
+    "strictly_above": 490,
+    "boundary": 10,
+    "below": 0
+  }
+]
+
+去 generated_at 后原始字节 SHA256（并列组可以不同）：
+main_sol baseline=2704cc2fca22f76e0b9410df6f34b63155d70f738499d925f5953ebd1b9432cb new=2704cc2fca22f76e0b9410df6f34b63155d70f738499d925f5953ebd1b9432cb
+main_sol_entity baseline=debbcaed9a5f254552d875974f0fa29a1565d43c689675538ab77332dd85b1bd new=debbcaed9a5f254552d875974f0fa29a1565d43c689675538ab77332dd85b1bd
+main_sol_entity_exclude baseline=3b6d5685319275b624d97e710ee372da01fbe1f3320f5b9390f2bed74921429c new=3b6d5685319275b624d97e710ee372da01fbe1f3320f5b9390f2bed74921429c
+main_duck baseline=635afa725671d3b6f05bbc4e09a51145eefc548903188458fec876966c8d5cd8 new=635afa725671d3b6f05bbc4e09a51145eefc548903188458fec876966c8d5cd8
+main_evm baseline=e6923b39b9b50f99dd4d85d7c826360bc514402c51d909df1e5cba15b07718e1 new=e6923b39b9b50f99dd4d85d7c826360bc514402c51d909df1e5cba15b07718e1
+ties_sol baseline=0f6db20c646d5ec96d1f8ab4c8e7fd3811978e727787bb2fe32d83b8dcf0712a new=e6962482342986240fe141613307d1b06cca25e1e647a7babf0b3d6ce07dd4e4
+ties_duck baseline=05bbd6bee617f2fb44f4030249a11c33f7a4cb90db2d506a91b5a981d34858cd new=47085144f7744dd0d6be15e57c62df5ca08cf7a8e88a95d37c6eaa67b7d47bed
+ties_evm baseline=0e6704ecc77be492c8e550555356d2fa3ab69f011da4da6dc3faf38008799fca new=64fe5a51738a89a3010064ea817e7263834ed96c6f28b37191b87c0ff428a2ac
+empty_candidates_sol baseline=41f3fcc57df10a7a918c9a7ef36afab31e92e79807174583bfb1ab0fd0f79652 new=41f3fcc57df10a7a918c9a7ef36afab31e92e79807174583bfb1ab0fd0f79652
+empty_candidates_duck baseline=56724aaff1e2869fcda509cf125c0272f8e853d249c2a84ebaabc4b71d97865c new=56724aaff1e2869fcda509cf125c0272f8e853d249c2a84ebaabc4b71d97865c
+empty_candidates_evm baseline=df206220f0828f2064e136efeef1afac18daba35567bad4e27b3e8619915f554 new=df206220f0828f2064e136efeef1afac18daba35567bad4e27b3e8619915f554
+empty_elig_sol baseline=acf725d4000f3a8201ac50d1e21bbd642ff26df57ad55a40b2f37a53e07381c9 new=acf725d4000f3a8201ac50d1e21bbd642ff26df57ad55a40b2f37a53e07381c9
+empty_elig_evm baseline=57f1899e4b5da6e735ca9047967d0e82c20a1aad90af40cc3a837b3efbecd9a8 new=57f1899e4b5da6e735ca9047967d0e82c20a1aad90af40cc3a837b3efbecd9a8
+empty_elig_duck_duck baseline=c533d40519108935e91773baa04a4e53950c8435f3299675b78623098238335c new=c533d40519108935e91773baa04a4e53950c8435f3299675b78623098238335c
+mixed_duck baseline=2ee00fc0dfcc85cf232134323a57f9a4632ba51a5ff42e9b86a79ea7e160fa4f new=f4ec6b9e0547ee009edb21ac7603cbc1223c55210e22b414cbf74784e5b2e546
+negative_duck baseline=57117b34921550705a9fe01c041ac3459cfd3b310868e678732219fb48c94c8e new=71513d3af492504c081563b8b56fbfc5c10d76e9a37ce3fffcbe2a4fe1628783
+large_evm baseline=925f43cf35401ffe81359a4159f8f4643fdc81a3ed52079fa6b0410cf55a2cfd new=925f43cf35401ffe81359a4159f8f4643fdc81a3ed52079fa6b0410cf55a2cfd
+
+输入及基线文件冻结哈希：
+{
+  "entity.json": "306a3a7441a78ba3a8dd9eee146d18da2a7479a7faaa807b877b1385346a9b68",
+  "flow_baseline.py": "4aa167cde768825ff276476a45a9b865eb618bb344392ef4f1d18b5c76a064b6",
+  "exclude.json": "5698591e557bf9d63f52c7974928bf6094e86c743215cafde121dd66dced095d",
+  "wave_scan.py": "9f8c176eff0592f6173eb7d8b7edf28cd47c07f986f703af74f063c20cbcbdc8",
+  "jobs.json": "209ccf6f5a35838c6789ab37d60e7e0caa33415a9dbb89d6e2713dee7c62f274",
+  "empty_candidates/edges.duckdb": "09edf382020c58deb6c0b28e379ce0832171915a928d9f3dbe8ee9fb364f4c04",
+  "empty_candidates/mapping.json": "26c89f24982f0a80e5c243d597b492e7c478189f4b1f0179e96f37869ebfe82b",
+  "empty_candidates/edges.jsonl": "362312c8b0c1495c9728ac7644052085265154393acf0a8098e21f4166c5c8a1",
+  "empty_candidates/rows.json": "4773882b6f225ee9ff3d17352eece6e3533f55efb24a99ecd8381f340fb5ff49",
+  "large/mapping.json": "85cdb7239d6958b25ddd4e5c928141b8b4f4edd3514b57350c27d55d6c824b7c",
+  "large/rows.json": "e7477f3707d83e9e2d5fe65a0a233e87416af2903d0333d768a5f3768020e5ea",
+  "empty_elig_duck/edges.duckdb": "f7d0515852a05e89c4e0abf5ee8ff635e0ac08275d036325332c890fd72e03d4",
+  "empty_elig_duck/mapping.json": "22a73ed6302be465e0f16195fff837affe6bd7d6b87e2fda2acb30bef66b2c80",
+  "empty_elig_duck/rows.json": "0e7f39dbe10febfe6a58997be8043012b5abe6776b6d1e160d0b99b2118e39ea",
+  "mixed/edges.duckdb": "2ddeab03feace0ddf0a36e8f6721c0ae0b0995613ada5b5777f7adcf475a178b",
+  "mixed/mapping.json": "fa923231f45707496634174ae87dfb645c47f502db6aaaf2a3d80c6a6aab1a98",
+  "mixed/rows.json": "19fcc826b80b8381092f2136ff1f860ac0bb83c9104a709aeb07d9c67611e0c7",
+  "negative/edges.duckdb": "812e6bf217a61e0a2d533adfb1d06d1b14367b2e26d4f99396aafc33d3584270",
+  "negative/mapping.json": "9712bc98bd0ac8706c76989327ca8c08617eeaadb72245de382d2d805ac8d3a1",
+  "negative/rows.json": "e1183e018858714e97a64976c60d95e8cf22e3882f0e5ded30fdd144b1440654",
+  "main/edges.duckdb": "5f0f5e4f7e864bf2c18af332caebb6b84626b70be2347331ad59f9a89779cb34",
+  "main/mapping.json": "85cdb7239d6958b25ddd4e5c928141b8b4f4edd3514b57350c27d55d6c824b7c",
+  "main/edges.jsonl": "d6d426f202ec1b9e44ebd0cc42e4f43fc6126e52720b25bfe891ad65dd48beec",
+  "main/rows.json": "49dd219acbc91a13aeffb129445d8c891012b7498accca075ffaafbb8f4db363",
+  "ties/edges.duckdb": "37a704acc4c6a76e6c079f2b3fd57e9edf479b985b734ee870be22fc52c9e318",
+  "ties/mapping.json": "cdf6f602b5f385ebb13bb53e0b3d1d1fe5bf4325a1e007f80d607c07733fff6a",
+  "ties/edges.jsonl": "e6947a0459dc4721c78e68b9b6320efba45bb875016e5c1b5b866ecd78b91b36",
+  "ties/rows.json": "eb39393a47abd2d8f6fd6b230ad130d70ffb3ce7d29ec449adf7be4e50099c33",
+  "empty_elig/mapping.json": "26c89f24982f0a80e5c243d597b492e7c478189f4b1f0179e96f37869ebfe82b",
+  "empty_elig/edges.jsonl": "3c85dc6f01a7e1994fccce1662b6a7438ba00f7d69d1ebb55626425115432d66",
+  "empty_elig/rows.json": "ddc2d0c78e9b284526bff92e1bb2c40c78a69342abc2e0326dbee1b9570c7e0d",
+  "empty_elig/data/soltx-4eb8d4d0e921d2f9c873ff102f98fa6b65f15cdd45aba80bfdf5b0ac2108359f.jsonl.gz": "5a5760c793781d44a9273232be275aa1f88af50c2123b24dbbac56e3b07bc9cc",
+  "empty_elig/data/soltx-4eb8d4d0e921d2f9c873ff102f98fa6b65f15cdd45aba80bfdf5b0ac2108359f.meta.json": "d2102e88b5716917080616df1b9ba0b86cd4670b4b7576cbde2a0932453169a7",
+  "empty_elig/evm/run_1/blocks.parquet": "b27b2c73b74d22ec97b3271242749db0d9efae8cc9e293c06e5ed82bd4724ce3",
+  "empty_elig/evm/run_1/logs.parquet": "05ff093657dfe5c72fb8ed9a65044c6dfda4e19b6ab537ef619ccc1ce790d66c",
+  "empty_elig/evm/run_0/blocks.parquet": "55874d41cc835535ffd160bc4839a7d5f179bde717b830c79d2bf0fd39b5a371",
+  "empty_elig/evm/run_0/logs.parquet": "f5b0841ca9c17ad8ea8fcdb187d82d755cdeef9baaa17bc3f3474bcade4ebb59",
+  "ties/data/soltx-4eb8d4d0e921d2f9c873ff102f98fa6b65f15cdd45aba80bfdf5b0ac2108359f.jsonl.gz": "0c2a0c939831f6aebac91bd8b6bc08ab28c19031e69e5e6887154149d3c08d15",
+  "ties/data/soltx-4eb8d4d0e921d2f9c873ff102f98fa6b65f15cdd45aba80bfdf5b0ac2108359f.meta.json": "911969d68c2af79b1803a3bfa2a267f5ecac91364ed689f1816931308958eb0c",
+  "ties/evm/run_1/blocks.parquet": "4ff17362c3ef11defb98d6bbb938a037d44476fcd5f8220251887c380a31d015",
+  "ties/evm/run_1/logs.parquet": "2a691241bb55961c90acb808f74e20c0db7441b17c2c47527876218adb696dd3",
+  "ties/evm/run_0/blocks.parquet": "511091536e926b74a37a5c3390ffb0308381bf4169974b4d074c2ad368d4a882",
+  "ties/evm/run_0/logs.parquet": "89bf78ab15964b2c62b70822e542ab149afc5ee8b1940a37930235a605ef1f06",
+  "main/data/soltx-4eb8d4d0e921d2f9c873ff102f98fa6b65f15cdd45aba80bfdf5b0ac2108359f.jsonl.gz": "a9f1e6f960ea3eb78199610bf80caad9c53d66c9f2d9b4efb08fdafc3bfef6b4",
+  "main/data/soltx-4eb8d4d0e921d2f9c873ff102f98fa6b65f15cdd45aba80bfdf5b0ac2108359f.meta.json": "01d62b448f4ffd684fa714b4ea73e02cb907803dd5d179c56bf1efc8433efd9a",
+  "main/evm/run_1/blocks.parquet": "6ea73eb6b7b7ccbcf8b007be53fd3135641db36144dec93f4275e7c59942b4a2",
+  "main/evm/run_1/logs.parquet": "8072e12bee4d34d4176aaf7b877f353dab2ef344d8b3f594d00e6727f06e024d",
+  "main/evm/run_0/blocks.parquet": "a830c97409178b4a864949ad24d3ae39f272d3e349d90e17676b85358bb939fa",
+  "main/evm/run_0/logs.parquet": "98f622a38c6991718047b64bf03ef98e80895a8e19e507ee7c230776796f3ebd",
+  "large/evm/run_1/blocks.parquet": "e73f9a5410056d17da1d2608343e0a6331432c88e88d1780757bfefb21578c00",
+  "large/evm/run_1/logs.parquet": "c6d59b4115af480f96e4473e7fa3ae81dacb803209ca473ca0a053264be719bd",
+  "large/evm/run_0/blocks.parquet": "5f2e05008b5fbf09c492546786deaa699d5a69df413fd09ac181942d04a0cc8b",
+  "large/evm/run_0/logs.parquet": "6906b09ff180c630094f84553175fc72e301eaaad61e1925a28acf772fbbea07",
+  "empty_candidates/data/soltx-4eb8d4d0e921d2f9c873ff102f98fa6b65f15cdd45aba80bfdf5b0ac2108359f.jsonl.gz": "1329173e792f62e29fc7fe4fe89296637b94e039e9662c624ec59a22a00e9c50",
+  "empty_candidates/data/soltx-4eb8d4d0e921d2f9c873ff102f98fa6b65f15cdd45aba80bfdf5b0ac2108359f.meta.json": "4fe2d18c42ee56b872b49308d4c19d057f53cf0d72580c92d4e0dbcd04fd5177",
+  "empty_candidates/evm/run_1/blocks.parquet": "b27b2c73b74d22ec97b3271242749db0d9efae8cc9e293c06e5ed82bd4724ce3",
+  "empty_candidates/evm/run_1/logs.parquet": "10ff3a6b669b01fc32424f5b72f85254068afd38df657b6056688f83efb7b580",
+  "empty_candidates/evm/run_0/blocks.parquet": "55874d41cc835535ffd160bc4839a7d5f179bde717b830c79d2bf0fd39b5a371",
+  "empty_candidates/evm/run_0/logs.parquet": "5825d5b3de2c30137b7e69d63e732bbbf98538fbfe9a1454dceda9067535a40d"
+}
+基线报告冻结哈希：
+{
+  "baseline_main_sol/report.json": "831f5578dd2da142d587e30d840fbe66f190effb54fb9c6ec228ed13e87dfa68",
+  "baseline_main_sol_entity/report.json": "d0111ab0a99cdb2a8710332e8c48517376b32e7077a0f10029454c6723163fd1",
+  "baseline_main_sol_entity_exclude/report.json": "695d8fc90311504494847e4f4b8cd063ce357785a7300cef07835285be8fcd80",
+  "baseline_main_duck/report.json": "9f3d59fc00ab2475c93c8466ab072b844a99795750c83d06b5809dc880133d93",
+  "baseline_main_evm/report.json": "8409e3d666dad503494acba41fdc1f470377debc0f8df9b66b41324698b7423d",
+  "baseline_ties_sol/report.json": "d134c39e5ce8d56b75769ee3d4c801a112e7b9589aed83632bc894a83c1a89cc",
+  "baseline_ties_duck/report.json": "9df80640437e190dbef25c2f249f9a5b9233531a3e9658eac06e2de6fd02e345",
+  "baseline_ties_evm/report.json": "a523723feae231dd1b97d433edbe0a1cdd1b1fe04a5ade57eab77a9562580b26",
+  "baseline_empty_candidates_sol/report.json": "cc852c52b921d79d215b591cd804c9bf2180f4c80ea28eb6cf21267692631b7a",
+  "baseline_empty_candidates_duck/report.json": "c4fb705604f0521ef7c39bf11c0c53686b5670c0b5cd8b906413789d4c41ad7e",
+  "baseline_empty_candidates_evm/report.json": "ae50f20cb88db91e6d6cda00ea0139222f7d54904526041cb898246c188c1203",
+  "baseline_empty_elig_sol/report.json": "8570d2a6ae2a607fef83e01a130599c79a6699045b76bbdef52f9ea43b9fb2ff",
+  "baseline_empty_elig_evm/report.json": "40b12a252307a473c11922c1dbfb03fc1c55c193528921945f3245d0c29b5ec2",
+  "baseline_empty_elig_duck_duck/report.json": "32a1a23d300d2f364135bf052ee37961b392f61c85c7995fe77fb026e1c694a8",
+  "baseline_mixed_duck/report.json": "9f29b11289b870a5e40db55ac7bac449b2ec464600de03174c24485d7074f588",
+  "baseline_negative_duck/report.json": "8c24db8b55c9ae34644b3234fcbb8f559c170a06bbe7eb2519952480273a64d0",
+  "baseline_large_evm/report.json": "b80ab1a7eb144990ce2c88eb250d56abc7507384abf4a989cacc7ee42eb34ce0"
+}
+
+额外静态核验：
+{
+  "CLI_AST_unchanged": true,
+  "public_attributes_preserved": true,
+  "predicate_helpers_AST_unchanged": true,
+  "production_added": 49,
+  "production_removed": 26,
+  "production_changed": 75
+}
+
+复现：通过 tempfile.mkdtemp() 取 root 后 Path(root).resolve()；git show 634c083:scripts/report/flow_anomaly_scan.py 写 root/flow_baseline.py，git show 634c083:scripts/report/wave_scan.py 写 root/wave_scan.py。
+python3 -B maintenance/repair-20260924-flow-scan-scalability/R1_fixture_tools.py prepare <root>
+python3 -B maintenance/repair-20260924-flow-scan-scalability/R1_fixture_tools.py run <root> baseline
+python3 -B maintenance/repair-20260924-flow-scan-scalability/R1_fixture_tools.py run <root> new
+python3 -B maintenance/repair-20260924-flow-scan-scalability/R1_fixture_tools.py compare <root>
+输入不可重建后与旧报告混比；prepare 只运行一次。脚本保持原始 frozen.json 和 baseline_reports_frozen.json（若存在）的 hash 校验。

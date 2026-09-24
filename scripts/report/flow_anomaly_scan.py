@@ -53,6 +53,10 @@ references/scan-schemas.md）。
     旧备注"匀速出货任何 14 日窗 <0.2%"仅对 fresh 口径成立（v2 订正），全收方口径下
     其中派发器存在双达标窗者归 pulse_all 属预期迁移，不是回归。
   - Q1Ac6Y 的 spray 候选保持 mode=pulse（2025-08-13 窗灌新仓）。
+
+9.1.1 查询重组：地址集合表替代反复解析的字面量列表；候选边物化替代逐候选
+底层全扫；全史净流入一次聚合替代逐候选聚合。两次预筛、三次物化各扫描
+抵消视图 eflow 一次，候选点查只读物化表；判据与报告排序键不变。
 """
 import argparse
 import json
@@ -135,6 +139,15 @@ def best_window_scan(rows, win_sec, min_val, min_keys):
     return best
 
 
+def _materialize_edges(con, name, select_sql):
+    con.execute("SET preserve_insertion_order=true")
+    try:
+        con.execute(f"CREATE TEMP TABLE {name} AS {select_sql}")
+    finally:
+        con.execute("SET preserve_insertion_order=false")
+    log(f"物化 {name}: {con.execute(f'SELECT COUNT(*) FROM {name}').fetchone()[0]:,} 行")
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     src = ap.add_mutually_exclusive_group(required=True)
@@ -203,6 +216,9 @@ def main():
     else:
         n_edges = attach_duckdb(con, a.duckdb, a.edges_table)
     log(f"边表就绪 {n_edges:,} 条")
+    log(f"DuckDB {duckdb.__version__} 资源: " + ", ".join(
+        f"{k}={con.execute(f"SELECT current_setting('{k}')").fetchone()[0]}"
+        for k in ("memory_limit", "temp_directory", "max_temp_directory_size")))
 
     build_addr_summary(con, exclude, a.first_meaningful_ratio)
     min_peak_raw = pct_to_raw(total, a.min_peak_pct)
@@ -227,25 +243,35 @@ def main():
             WHERE mf.eid IS NULL OR mt.eid IS NULL OR mf.eid <> mt.eid""")
     else:
         con.execute("CREATE VIEW eflow AS SELECT ts, f, t, amt FROM edges")
-    sent_ph = "', '".join(sorted(sentinels))
     data_first_day = con.execute("SELECT MIN(ts) // 86400 FROM edges").fetchone()[0] or 0
 
     # ---------------- ① 汇集点 ----------------
     sink_min_raw = pct_to_raw(total, a.sink_min_inflow_pct)
-    elig_ph = "', '".join(sorted(eligible - sentinels))
+    con.execute("CREATE TEMP TABLE elig(addr VARCHAR)")
+    con.execute("CREATE TEMP TABLE sent(addr VARCHAR)")
+    con.executemany("INSERT INTO elig VALUES (?)", [(x,) for x in sorted(eligible - sentinels) or [""]])
+    con.executemany("INSERT INTO sent VALUES (?)", [(x,) for x in sorted(sentinels)])
     # amt > 0：零值转账既凑不了金额也不许凑来源/收方数（v2，spray 同款）
-    pre_sinks = [r[0] for r in con.execute(f"""
-        SELECT t FROM eflow
-        WHERE f IN ('{elig_ph}') AND t NOT IN ('{sent_ph}') AND f <> t AND amt > 0
-        GROUP BY t HAVING SUM(amt) >= {sink_min_raw}""").fetchall()]
+    con.execute(f"""CREATE TEMP TABLE presink AS SELECT t AS addr FROM eflow
+        WHERE f IN (SELECT addr FROM elig) AND t NOT IN (SELECT addr FROM sent) AND f <> t AND amt > 0
+        GROUP BY t HAVING SUM(amt) >= {sink_min_raw}""")
+    pre_sinks = [r[0] for r in con.execute("SELECT addr FROM presink").fetchall()]
     log(f"汇集点预筛 {len(pre_sinks)} 个（合格来源总流入 ≥{a.sink_min_inflow_pct}%）")
+    _materialize_edges(con, "sink_edges", """SELECT ts, f, t, amt FROM eflow
+        WHERE t IN (SELECT addr FROM presink) AND f IN (SELECT addr FROM elig)
+        AND f <> t AND amt > 0 ORDER BY t, ts""")
+    con.execute("""CREATE TEMP TABLE sink_net AS
+        SELECT CASE WHEN k = 0 THEN t ELSE f END AS addr,
+               SUM(CASE WHEN k = 0 THEN amt ELSE -amt END) AS net
+        FROM eflow CROSS JOIN (VALUES (0), (1)) sides(k)
+        WHERE f <> t AND CASE WHEN k = 0 THEN t ELSE f END IN (SELECT addr FROM presink)
+        GROUP BY 1""")
+    net_map = dict(con.execute("SELECT addr, net FROM sink_net").fetchall())
+    log(f"物化 sink_net: {len(net_map):,} 行")
     win_sec = a.sink_window_days * 86400
     sinks = []
     for t in pre_sinks:
-        rows = con.execute(f"""
-            SELECT ts, f, amt FROM eflow
-            WHERE t = '{t}' AND f IN ('{elig_ph}') AND f <> t AND amt > 0
-            ORDER BY ts""").fetchall()
+        rows = con.execute("SELECT ts, f, amt FROM sink_edges WHERE t = ? ORDER BY ts", [t]).fetchall()
         best_sum, best_srcs, w0, w1 = best_window_scan(
             [(int(ts), f, int(v)) for ts, f, v in rows], win_sec,
             sink_min_raw, a.sink_min_sources)
@@ -256,10 +282,7 @@ def main():
             if w0 <= int(ts) <= w1 and f in best_srcs:
                 src_pct[f] = src_pct.get(f, 0) + int(v)
         qualified_in = sum(int(v) for _, _, v in rows)
-        net_in = con.execute(f"""
-            SELECT COALESCE(SUM(CASE WHEN t = '{t}' AND f <> t THEN amt
-                                     WHEN f = '{t}' AND t <> f THEN -amt ELSE 0 END), 0)
-            FROM eflow WHERE t = '{t}' OR f = '{t}'""").fetchone()[0]
+        net_in = net_map.get(t, 0)
         hist_peak, current_bal = info.get(t, (0, 0, 0))[:2]
         sinks.append({
             "id": f"sink-{t}",
@@ -280,23 +303,25 @@ def main():
             "launch_window": (w0 // 86400) <= data_first_day + 3,
         })
     sinks.sort(key=lambda s: -s["best_window"]["inflow_pct"])
+    con.execute("DROP TABLE sink_edges; DROP TABLE sink_net")
 
     # ---------------- ② 分发点（v2 三口径多命中） ----------------
     spray_min_raw = pct_to_raw(total, a.spray_min_outflow_pct)
     # 浓度线：窗内"有意义收方"＝单收方窗内累计 ≥0.001% 总供应（与 wave_scan D 指纹同线）
     meaningful_recv_raw = pct_to_raw(total, 0.001)
-    pre_sprays = [r[0] for r in con.execute(f"""
-        SELECT f FROM eflow
-        WHERE t NOT IN ('{sent_ph}') AND f NOT IN ('{sent_ph}') AND f <> t AND amt > 0
-        GROUP BY f HAVING SUM(amt) >= {spray_min_raw}""").fetchall()]
+    con.execute(f"""CREATE TEMP TABLE prespray AS SELECT f AS addr FROM eflow
+        WHERE t NOT IN (SELECT addr FROM sent) AND f NOT IN (SELECT addr FROM sent) AND f <> t AND amt > 0
+        GROUP BY f HAVING SUM(amt) >= {spray_min_raw}""")
+    pre_sprays = [r[0] for r in con.execute("SELECT addr FROM prespray").fetchall()]
     log(f"分发点预筛 {len(pre_sprays)} 个（总流出 ≥{a.spray_min_outflow_pct}%）")
+    _materialize_edges(con, "spray_edges", """SELECT ts, f, t, amt FROM eflow
+        WHERE f IN (SELECT addr FROM prespray) AND t NOT IN (SELECT addr FROM sent)
+        AND f <> t AND amt > 0 ORDER BY f, ts""")
     win_sec2 = a.spray_window_days * 86400
     sprays = []
     for f in pre_sprays:
-        rows = [(int(ts), t, int(v)) for ts, t, v in con.execute(f"""
-            SELECT ts, t, amt FROM eflow
-            WHERE f = '{f}' AND t NOT IN ('{sent_ph}') AND f <> t AND amt > 0
-            ORDER BY ts""").fetchall()]
+        rows = [(int(ts), t, int(v)) for ts, t, v in con.execute(
+            "SELECT ts, t, amt FROM spray_edges WHERE f = ? ORDER BY ts", [f]).fetchall()]
         all_recv = {t for _, t, _ in rows}
         all_out = sum(v for _, _, v in rows)
         # "喂新地址"的边：该笔发生日 == 收方 first_meaningful_day（首建即来自此来源）
@@ -374,10 +399,8 @@ def main():
             entry["recipients"] = sorted(a_recv)
         else:
             # 慢速模式收方列 top（按累计收量）——显式摘要非静默截断，全量数在 all_time.recipient_count
-            top = con.execute(f"""
-                SELECT t, SUM(amt) AS v FROM eflow
-                WHERE f = '{f}' AND t NOT IN ('{sent_ph}') AND f <> t AND amt > 0
-                GROUP BY t ORDER BY v DESC LIMIT 500""").fetchall()
+            top = con.execute("SELECT t, SUM(amt) AS v FROM spray_edges WHERE f = ? "
+                              "GROUP BY t ORDER BY v DESC LIMIT 500", [f]).fetchall()
             entry["recipients_top"] = [r[0] for r in top]
         sprays.append(entry)
     sprays.sort(key=lambda s: -s["all_time"]["outflow_pct"])

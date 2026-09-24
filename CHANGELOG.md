@@ -10,6 +10,7 @@
 
 ## 版本索引（活跃窗口，新在上；每版一行，详情见下方对应条目）
 
+- **9.1.1**（2026-09-24）flow 扫描候选边物化，消除逐候选底层全量重扫（QUQ ANOM-009）；参数、schema 与判据不变，档位 修。
 - **9.1.0**（2026-09-23）Solana 交易版本上限统一为 `endpoint_identity.SOLANA_MAX_SUPPORTED_TX_VERSION=1`；新增 `--resume --adopt-pending` 与可选 `header.adopted`，支持可信前代 pending 证据认领、历史版本请求续跑及前代摘要复验；登记新 producer，旧 producer 保持 ACTIVE。新公开接口与持久化契约扩展，记次版本。
 - **9.0.5**（2026-09-23）修复目录案消费期漏验：重算完整身份，拒叶子覆写、增删及 symlink（FR-02 C）；文件分支、schema 不变，档位 修。
 - **9.0.4**（2026-09-23）登记旧 time-spotcheck/v3 哈希并接通 EVM 时间收据两层校验，恢复存量文件案兼容；补充同一输入目录用法。schema 不变，版本档位 修。
@@ -99,6 +100,13 @@
 - **6.20.1** 2026-08-05 修 5 处阻断级文档漂移（A4 前禁写报告冲突/easy 残留/惯犯回灌 docstring/批量预采集残留/旧 Par 路线历史降级）＋docs_lint 增中文禁词与 Python module docstring 扫描
 
 更早版本（6.20.0 及以前）详见 `archive/CHANGELOG-archive.md`。
+
+## [9.1.1] - 2026-09-24 — flow 扫描候选边物化
+
+- **出处与裁决**：QUQ(BSC) 0922 案 ANOM-009；用户 2026-09-24 选择 skill 修复，按 R1 v3.1 工单施工。消除 flow 汇集点/分发点逐候选底层全量重扫，不改 wave 共用装载器，不重写存量案报告。
+- **改法**：elig/sent 地址集合表与 presink/prespray 预筛 CTAS；从抵消视图 eflow 常数次扫描物化 sink_edges、sink_net、spray_edges。净额含非合格来源及负值边、自转为零；两张边表按候选列与时间排序，建表期间 preserve_insertion_order=true 且 finally 恢复 false；sink 阶段结束释放两表。四处候选查询改为物化表点查或净额字典查询，参数、schema、判据、排序键与 ID 不变。
+- **字节与测试**：生产 +49/−26（合计 75 行），回归 +22/−1；references 与 commands-staging 零改动，SKILL.md 仅版本号。R1_equivalence.txt 记录 17 组同入口新旧对照全部通过：无并列报告只去 generated_at 后字节相等，并列组与 top500 边界专项通过，负值净额 1.01%→1.03%。R1_timing.txt 记录 30 万边 EVM 墙钟 2.120→1.191 秒、300 万边 EVM 14.422→7.458 秒及逐进程 RSS、临时盘采样、执行计划；定向测试结果见 R1_done.md。
+- **成本-质量指标**：生产文件 1、模块私有 helper 1、新 CLI 参数 0、新报告键 0、外部网络调用 0；两次预筛与三次物化各读取 eflow 一次，候选查询不再扫 parquet。物化增加内存占用；未验证亿级实跑，不承诺任意规模完成。run_all.py 与 changelog_lint.py 由调度方执行，本次不 commit/push。
 
 ## [9.1.0] - 2026-09-23 — Solana 交易版本 1 与可信前代 pending 认领
 

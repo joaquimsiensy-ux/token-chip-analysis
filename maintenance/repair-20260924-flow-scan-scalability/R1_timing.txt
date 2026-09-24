@@ -1,0 +1,3839 @@
+R1 耗时与查询计划证据 — 无阈值验收，不外推亿级可完成
+原始日志/逐进程测量/诊断计划目录 /private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/R1_gqro5g85
+环境：macOS Darwin，Python 3.14.6，DuckDB 1.5.4。原始 CLI 测时与诊断重放分离；全部目标 CLI 逐个串行运行，无同时执行本工程其他数据处理/测试子进程。
+有效配置：memory_limit=7.4 GiB（CLI 默认 8GB），temp_directory=.tmp，max_temp_directory_size=90% of available disk space。新实现每次 CLI stdout 直接记录；基线不打印资源，基线配置由其源码 SET 与相同入口独立诊断重放 current_setting 读取验证，并非声称原基线 stdout 含该行。
+墙钟为父进程 monotonic 从 Popen 前至该子进程 wait4 返回，包含最多约 50ms 轮询等待；RSS 为每次 os.wait4(该 PID) 返回的 rusage.ru_maxrss，macOS 单位 bytes，不取累计 RUSAGE_CHILDREN。
+每次 CLI 使用独立 cwd，默认 .tmp 未改；运行中每 50ms 轮询其文件 stat.st_blocks*512 求占用总和，保留最大值和样本数。34 次采样观察峰值均 0 bytes；这是本次运行采样下界，短于采样周期的瞬时真实峰值测不到。不把默认 90% 上限或结束时目录大小冒充使用峰值。
+固定 300,000 边主夹具和同构 3,000,000 边 EVM 放大夹具；相同输入/参数/候选语义。全量时间与内存记录如下。
+name | baseline_s | new_s | baseline_RSS_bytes | new_RSS_bytes | sampled_temp_peak_bytes(old/new)
+main_sol | 48.167872 | 49.778858 | 216629248 | 272777216 | 0/0
+main_sol_entity | 59.225198 | 54.778778 | 227901440 | 269778944 | 0/0
+main_sol_entity_exclude | 57.876967 | 59.460582 | 231374848 | 280117248 | 0/0
+main_duck | 0.763553 | 0.973183 | 136364032 | 242515968 | 0/0
+main_evm | 2.120313 | 1.190840 | 347226112 | 440582144 | 0/0
+ties_sol | 0.707387 | 0.656589 | 159875072 | 159531008 | 0/0
+ties_duck | 0.163990 | 0.437151 | 88178688 | 161234944 | 0/0
+ties_evm | 0.157788 | 0.442053 | 95191040 | 172425216 | 0/0
+empty_candidates_sol | 0.435843 | 0.383361 | 148340736 | 148357120 | 0/0
+empty_candidates_duck | 0.111898 | 0.379990 | 75628544 | 150224896 | 0/0
+empty_candidates_evm | 0.111744 | 0.430556 | 76021760 | 151945216 | 0/0
+empty_elig_sol | 0.432636 | 0.380177 | 146735104 | 145276928 | 0/0
+empty_elig_evm | 0.165942 | 0.441592 | 73957376 | 153042944 | 0/0
+empty_elig_duck_duck | 0.213466 | 0.380376 | 85557248 | 163905536 | 0/0
+mixed_duck | 0.165851 | 0.384552 | 78217216 | 157810688 | 0/0
+negative_duck | 0.111948 | 0.385486 | 81756160 | 157286400 | 0/0
+large_evm | 14.422499 | 7.457681 | 1281933312 | 1798799360 | 0/0
+
+内存代价：30 万 EVM RSS 347226112→440582144 bytes；300 万 EVM 1281933312→1798799360 bytes。主 Solana 与 DuckDB 总时间未普遍改善，保留全部结果，不以单个加速比代替机制验证。
+
+机制核验：每个 CTAS 的 EXPLAIN JSON 均验证源扫描数；EVM 每份 eflow 展开仅 1 logs reader + 1 blocks reader（两个 READ_PARQUET 节点是一次边源扫描的两个输入，不是两次 eflow）。DuckDB 微夹具每个 CTAS 只有 1 src.edges scan。
+sink_net 计划为 CROSS_PRODUCT 两行 sides + HASH_JOIN SEMI（CASE WHEN k=0 THEN t ELSE f END=#0）+ HASH_GROUP_BY；没有 DELIM_JOIN 或逐候选 OR/非等值连接。
+四处原逐候选操作：sink rows→sink_edges WHERE t=? ORDER BY ts；net→net_map.get(t,0) 无 SQL；spray rows→spray_edges WHERE f=? ORDER BY ts；top→spray_edges WHERE f=? GROUP BY t ORDER BY v DESC LIMIT 500。新候选查询计划只含物化表，无 READ_PARQUET、edges、eflow。
+保序：诊断在两个 CTAS 执行后直接读取 current_setting 确认 true，按 rowid 的 (候选列,ts) 相邻下降数均 0；生产 helper 的 finally 恢复 false。sink_edges/sink_net 在建 spray_edges 前 DROP。
+过滤效果边界：计划含候选地址过滤，输出 cardinality 显著少于物化表行数，但采到的 operator_rows_scanned 等于物化表总行数；这些统计不能证明跳过 row groups。结论仅为消除逐候选底层 parquet 重扫；不宣称所有物化点查避免全表扫描。
+逐候选均耗时来自独立诊断执行的 SQL execute+fetchall，按 sink/spray/top 三类分别取平均，含结果传入 Python；不含 EXPLAIN、本候选 Python 滑窗/报告组装和基线 net 单独聚合。新 net 字典读取未单独计时。诊断过程中计划/ANALYZE 会影响缓存，不用其重放总时间替代无插桩 CLI 墙钟。
+
+六组诊断摘要（含候选数、三表行数、rowid 检查、每候选均耗时和可取得扫描统计）：
+[
+  {
+    "name": "main_evm",
+    "prescreen_count": {
+      "sink": 8,
+      "spray": 12
+    },
+    "metrics": {
+      "resources": {
+        "duckdb": "1.5.4",
+        "memory_limit": "7.4 GiB",
+        "temp_directory": ".tmp",
+        "max_temp_directory_size": "90% of available disk space"
+      },
+      "presink": {
+        "rows": 8,
+        "seconds": 0.03516625000338536
+      },
+      "sink_edges": {
+        "rows": 9360,
+        "seconds": 0.03865283299819566,
+        "rowid_descents": 0
+      },
+      "sink_net": {
+        "rows": 8,
+        "seconds": 0.024612416003947146
+      },
+      "prespray": {
+        "rows": 12,
+        "seconds": 0.036581541993655264
+      },
+      "spray_edges": {
+        "rows": 283190,
+        "seconds": 0.09142083300685044,
+        "rowid_descents": 0
+      }
+    },
+    "ctas": [
+      {
+        "table": "presink",
+        "parquet_readers": 2,
+        "edge_table_scans": 0,
+        "operators": [
+          "CREATE_TABLE_AS",
+          "PROJECTION",
+          "FILTER",
+          "HASH_GROUP_BY",
+          "PROJECTION",
+          "PROJECTION",
+          "FILTER",
+          "HASH_JOIN",
+          "HASH_JOIN",
+          "PROJECTION",
+          "HASH_JOIN",
+          "FILTER",
+          "READ_PARQUET",
+          "PROJECTION",
+          "FILTER",
+          "PROJECTION",
+          "HASH_GROUP_BY",
+          "PROJECTION",
+          "PROJECTION",
+          "READ_PARQUET",
+          "SEQ_SCAN",
+          "SEQ_SCAN"
+        ]
+      },
+      {
+        "table": "sink_edges",
+        "parquet_readers": 2,
+        "edge_table_scans": 0,
+        "operators": [
+          "BATCH_CREATE_TABLE_AS",
+          "ORDER_BY",
+          "HASH_JOIN",
+          "SEQ_SCAN",
+          "HASH_JOIN",
+          "PROJECTION",
+          "HASH_JOIN",
+          "FILTER",
+          "READ_PARQUET",
+          "PROJECTION",
+          "FILTER",
+          "PROJECTION",
+          "HASH_GROUP_BY",
+          "PROJECTION",
+          "PROJECTION",
+          "READ_PARQUET",
+          "SEQ_SCAN"
+        ]
+      },
+      {
+        "table": "sink_net",
+        "parquet_readers": 2,
+        "edge_table_scans": 0,
+        "operators": [
+          "CREATE_TABLE_AS",
+          "HASH_GROUP_BY",
+          "PROJECTION",
+          "PROJECTION",
+          "HASH_JOIN",
+          "CROSS_PRODUCT",
+          "PROJECTION",
+          "HASH_JOIN",
+          "FILTER",
+          "READ_PARQUET",
+          "PROJECTION",
+          "FILTER",
+          "PROJECTION",
+          "HASH_GROUP_BY",
+          "PROJECTION",
+          "PROJECTION",
+          "READ_PARQUET",
+          "COLUMN_DATA_SCAN",
+          "SEQ_SCAN"
+        ]
+      },
+      {
+        "table": "prespray",
+        "parquet_readers": 2,
+        "edge_table_scans": 0,
+        "operators": [
+          "CREATE_TABLE_AS",
+          "PROJECTION",
+          "FILTER",
+          "HASH_GROUP_BY",
+          "PROJECTION",
+          "PROJECTION",
+          "FILTER",
+          "HASH_JOIN",
+          "PROJECTION",
+          "FILTER",
+          "HASH_JOIN",
+          "PROJECTION",
+          "HASH_JOIN",
+          "FILTER",
+          "READ_PARQUET",
+          "PROJECTION",
+          "FILTER",
+          "PROJECTION",
+          "HASH_GROUP_BY",
+          "PROJECTION",
+          "PROJECTION",
+          "READ_PARQUET",
+          "SEQ_SCAN",
+          "SEQ_SCAN"
+        ]
+      },
+      {
+        "table": "spray_edges",
+        "parquet_readers": 2,
+        "edge_table_scans": 0,
+        "operators": [
+          "BATCH_CREATE_TABLE_AS",
+          "ORDER_BY",
+          "PROJECTION",
+          "FILTER",
+          "HASH_JOIN",
+          "HASH_JOIN",
+          "PROJECTION",
+          "HASH_JOIN",
+          "FILTER",
+          "READ_PARQUET",
+          "PROJECTION",
+          "FILTER",
+          "PROJECTION",
+          "HASH_GROUP_BY",
+          "PROJECTION",
+          "PROJECTION",
+          "READ_PARQUET",
+          "SEQ_SCAN",
+          "SEQ_SCAN"
+        ]
+      }
+    ],
+    "points": [
+      {
+        "family": "sink",
+        "tables": [
+          "\"temp\".main.sink_edges"
+        ],
+        "scan_statistics": [
+          {
+            "operator_name": "SEQ_SCAN",
+            "operator_rows_scanned": 9360,
+            "operator_cardinality": 1040,
+            "extra_info": {
+              "Table": "\"temp\".main.sink_edges",
+              "Type": "Sequential Scan",
+              "Projections": [
+                "ts",
+                "f",
+                "amt"
+              ],
+              "Filters": "t='0x0000000000000000000000000000000000000e2e'",
+              "Estimated Cardinality": "1040"
+            }
+          }
+        ]
+      },
+      {
+        "family": "spray",
+        "tables": [
+          "\"temp\".main.spray_edges"
+        ],
+        "scan_statistics": [
+          {
+            "operator_name": "SEQ_SCAN",
+            "operator_rows_scanned": 283190,
+            "operator_cardinality": 4992,
+            "extra_info": {
+              "Table": "\"temp\".main.spray_edges",
+              "Type": "Sequential Scan",
+              "Projections": [
+                "ts",
+                "t",
+                "amt"
+              ],
+              "Filters": "f='0x0000000000000000000000000000000000000df7'",
+              "Estimated Cardinality": "23600"
+            }
+          }
+        ]
+      },
+      {
+        "family": "top",
+        "tables": [
+          "\"temp\".main.spray_edges"
+        ],
+        "scan_statistics": [
+          {
+            "operator_name": "SEQ_SCAN",
+            "operator_rows_scanned": 283190,
+            "operator_cardinality": 124301,
+            "extra_info": {
+              "Table": "\"temp\".main.spray_edges",
+              "Type": "Sequential Scan",
+              "Projections": [
+                "t",
+                "amt"
+              ],
+              "Filters": "f='0x0000000000000000000000000000000000001089'",
+              "Estimated Cardinality": "23600"
+            }
+          }
+        ]
+      }
+    ],
+    "baseline_sink_mean_seconds": 0.07955178624979453,
+    "baseline_spray_mean_seconds": 0.04545121541620271,
+    "baseline_top_mean_seconds": 0.056343458003539126,
+    "new_sink_mean_seconds": 0.0014626612501160707,
+    "new_spray_mean_seconds": 0.02277544808142314,
+    "new_top_mean_seconds": 0.003360645496286452
+  },
+  {
+    "name": "large_evm",
+    "prescreen_count": {
+      "sink": 8,
+      "spray": 12
+    },
+    "metrics": {
+      "resources": {
+        "duckdb": "1.5.4",
+        "memory_limit": "7.4 GiB",
+        "temp_directory": ".tmp",
+        "max_temp_directory_size": "90% of available disk space"
+      },
+      "presink": {
+        "rows": 8,
+        "seconds": 0.23856254099518992
+      },
+      "sink_edges": {
+        "rows": 94455,
+        "seconds": 0.28293683400261216,
+        "rowid_descents": 0
+      },
+      "sink_net": {
+        "rows": 8,
+        "seconds": 0.19081312499474734
+      },
+      "prespray": {
+        "rows": 12,
+        "seconds": 0.24783266700978857
+      },
+      "spray_edges": {
+        "rows": 2862193,
+        "seconds": 0.7901102079922566,
+        "rowid_descents": 0
+      }
+    },
+    "ctas": [
+      {
+        "table": "presink",
+        "parquet_readers": 2,
+        "edge_table_scans": 0,
+        "operators": [
+          "CREATE_TABLE_AS",
+          "PROJECTION",
+          "FILTER",
+          "HASH_GROUP_BY",
+          "PROJECTION",
+          "PROJECTION",
+          "FILTER",
+          "HASH_JOIN",
+          "HASH_JOIN",
+          "PROJECTION",
+          "HASH_JOIN",
+          "FILTER",
+          "READ_PARQUET",
+          "PROJECTION",
+          "FILTER",
+          "PROJECTION",
+          "HASH_GROUP_BY",
+          "PROJECTION",
+          "PROJECTION",
+          "READ_PARQUET",
+          "SEQ_SCAN",
+          "SEQ_SCAN"
+        ]
+      },
+      {
+        "table": "sink_edges",
+        "parquet_readers": 2,
+        "edge_table_scans": 0,
+        "operators": [
+          "BATCH_CREATE_TABLE_AS",
+          "ORDER_BY",
+          "HASH_JOIN",
+          "HASH_JOIN",
+          "PROJECTION",
+          "HASH_JOIN",
+          "FILTER",
+          "READ_PARQUET",
+          "PROJECTION",
+          "FILTER",
+          "PROJECTION",
+          "HASH_GROUP_BY",
+          "PROJECTION",
+          "PROJECTION",
+          "READ_PARQUET",
+          "SEQ_SCAN",
+          "SEQ_SCAN"
+        ]
+      },
+      {
+        "table": "sink_net",
+        "parquet_readers": 2,
+        "edge_table_scans": 0,
+        "operators": [
+          "CREATE_TABLE_AS",
+          "HASH_GROUP_BY",
+          "PROJECTION",
+          "PROJECTION",
+          "HASH_JOIN",
+          "CROSS_PRODUCT",
+          "PROJECTION",
+          "HASH_JOIN",
+          "FILTER",
+          "READ_PARQUET",
+          "PROJECTION",
+          "FILTER",
+          "PROJECTION",
+          "HASH_GROUP_BY",
+          "PROJECTION",
+          "PROJECTION",
+          "READ_PARQUET",
+          "COLUMN_DATA_SCAN",
+          "SEQ_SCAN"
+        ]
+      },
+      {
+        "table": "prespray",
+        "parquet_readers": 2,
+        "edge_table_scans": 0,
+        "operators": [
+          "CREATE_TABLE_AS",
+          "PROJECTION",
+          "FILTER",
+          "HASH_GROUP_BY",
+          "PROJECTION",
+          "PROJECTION",
+          "FILTER",
+          "HASH_JOIN",
+          "PROJECTION",
+          "FILTER",
+          "HASH_JOIN",
+          "PROJECTION",
+          "HASH_JOIN",
+          "FILTER",
+          "READ_PARQUET",
+          "PROJECTION",
+          "FILTER",
+          "PROJECTION",
+          "HASH_GROUP_BY",
+          "PROJECTION",
+          "PROJECTION",
+          "READ_PARQUET",
+          "SEQ_SCAN",
+          "SEQ_SCAN"
+        ]
+      },
+      {
+        "table": "spray_edges",
+        "parquet_readers": 2,
+        "edge_table_scans": 0,
+        "operators": [
+          "BATCH_CREATE_TABLE_AS",
+          "ORDER_BY",
+          "PROJECTION",
+          "FILTER",
+          "HASH_JOIN",
+          "HASH_JOIN",
+          "PROJECTION",
+          "HASH_JOIN",
+          "FILTER",
+          "READ_PARQUET",
+          "PROJECTION",
+          "FILTER",
+          "PROJECTION",
+          "HASH_GROUP_BY",
+          "PROJECTION",
+          "PROJECTION",
+          "READ_PARQUET",
+          "SEQ_SCAN",
+          "SEQ_SCAN"
+        ]
+      }
+    ],
+    "points": [
+      {
+        "family": "sink",
+        "tables": [
+          "\"temp\".main.sink_edges"
+        ],
+        "scan_statistics": [
+          {
+            "operator_name": "SEQ_SCAN",
+            "operator_rows_scanned": 94455,
+            "operator_cardinality": 10495,
+            "extra_info": {
+              "Table": "\"temp\".main.sink_edges",
+              "Type": "Sequential Scan",
+              "Projections": [
+                "ts",
+                "f",
+                "amt"
+              ],
+              "Filters": "t='0x0000000000000000000000000000000000000e2d'",
+              "Estimated Cardinality": "10495"
+            }
+          }
+        ]
+      },
+      {
+        "family": "spray",
+        "tables": [
+          "\"temp\".main.spray_edges"
+        ],
+        "scan_statistics": [
+          {
+            "operator_name": "SEQ_SCAN",
+            "operator_rows_scanned": 2862193,
+            "operator_cardinality": 18891,
+            "extra_info": {
+              "Table": "\"temp\".main.spray_edges",
+              "Type": "Sequential Scan",
+              "Projections": [
+                "ts",
+                "t",
+                "amt"
+              ],
+              "Filters": "f='0x00000000000000000000000000000000000012e6'",
+              "Estimated Cardinality": "238517"
+            }
+          }
+        ]
+      },
+      {
+        "family": "top",
+        "tables": [
+          "\"temp\".main.spray_edges"
+        ],
+        "scan_statistics": [
+          {
+            "operator_name": "SEQ_SCAN",
+            "operator_rows_scanned": 2862193,
+            "operator_cardinality": 1259228,
+            "extra_info": {
+              "Table": "\"temp\".main.spray_edges",
+              "Type": "Sequential Scan",
+              "Projections": [
+                "t",
+                "amt"
+              ],
+              "Filters": "f='0x0000000000000000000000000000000000000e30'",
+              "Estimated Cardinality": "238517"
+            }
+          }
+        ]
+      }
+    ],
+    "baseline_sink_mean_seconds": 0.4468506562479888,
+    "baseline_spray_mean_seconds": 0.3571198610807187,
+    "baseline_top_mean_seconds": 0.18783056249958463,
+    "new_sink_mean_seconds": 0.014134156372165307,
+    "new_spray_mean_seconds": 0.23482800691757197,
+    "new_top_mean_seconds": 0.012278750495170243
+  },
+  {
+    "name": "ties_duck",
+    "prescreen_count": {
+      "sink": 2,
+      "spray": 2
+    },
+    "metrics": {
+      "resources": {
+        "duckdb": "1.5.4",
+        "memory_limit": "7.4 GiB",
+        "temp_directory": ".tmp",
+        "max_temp_directory_size": "90% of available disk space"
+      },
+      "presink": {
+        "rows": 2,
+        "seconds": 0.0007071669970173389
+      },
+      "sink_edges": {
+        "rows": 10,
+        "seconds": 0.0005436249921331182,
+        "rowid_descents": 0
+      },
+      "sink_net": {
+        "rows": 2,
+        "seconds": 0.0005682500050170347
+      },
+      "prespray": {
+        "rows": 2,
+        "seconds": 0.0005578749987762421
+      },
+      "spray_edges": {
+        "rows": 1080,
+        "seconds": 0.0007693750085309148,
+        "rowid_descents": 0
+      }
+    },
+    "ctas": [
+      {
+        "table": "presink",
+        "parquet_readers": 0,
+        "edge_table_scans": 1,
+        "operators": [
+          "CREATE_TABLE_AS",
+          "PROJECTION",
+          "FILTER",
+          "PROJECTION",
+          "HASH_GROUP_BY",
+          "PROJECTION",
+          "PROJECTION",
+          "PROJECTION",
+          "FILTER",
+          "HASH_JOIN",
+          "HASH_JOIN",
+          "PROJECTION",
+          "FILTER",
+          "PROJECTION",
+          "STREAMING_WINDOW",
+          "SEQ_SCAN",
+          "SEQ_SCAN",
+          "SEQ_SCAN"
+        ]
+      },
+      {
+        "table": "sink_edges",
+        "parquet_readers": 0,
+        "edge_table_scans": 1,
+        "operators": [
+          "BATCH_CREATE_TABLE_AS",
+          "PROJECTION",
+          "ORDER_BY",
+          "PROJECTION",
+          "HASH_JOIN",
+          "HASH_JOIN",
+          "PROJECTION",
+          "FILTER",
+          "PROJECTION",
+          "STREAMING_WINDOW",
+          "SEQ_SCAN",
+          "SEQ_SCAN",
+          "SEQ_SCAN"
+        ]
+      },
+      {
+        "table": "sink_net",
+        "parquet_readers": 0,
+        "edge_table_scans": 1,
+        "operators": [
+          "CREATE_TABLE_AS",
+          "HASH_GROUP_BY",
+          "PROJECTION",
+          "PROJECTION",
+          "HASH_JOIN",
+          "CROSS_PRODUCT",
+          "PROJECTION",
+          "FILTER",
+          "PROJECTION",
+          "STREAMING_WINDOW",
+          "SEQ_SCAN",
+          "COLUMN_DATA_SCAN",
+          "SEQ_SCAN"
+        ]
+      },
+      {
+        "table": "prespray",
+        "parquet_readers": 0,
+        "edge_table_scans": 1,
+        "operators": [
+          "CREATE_TABLE_AS",
+          "PROJECTION",
+          "FILTER",
+          "HASH_GROUP_BY",
+          "PROJECTION",
+          "PROJECTION",
+          "FILTER",
+          "HASH_JOIN",
+          "PROJECTION",
+          "FILTER",
+          "HASH_JOIN",
+          "PROJECTION",
+          "FILTER",
+          "PROJECTION",
+          "STREAMING_WINDOW",
+          "SEQ_SCAN",
+          "SEQ_SCAN",
+          "SEQ_SCAN"
+        ]
+      },
+      {
+        "table": "spray_edges",
+        "parquet_readers": 0,
+        "edge_table_scans": 1,
+        "operators": [
+          "BATCH_CREATE_TABLE_AS",
+          "PROJECTION",
+          "ORDER_BY",
+          "PROJECTION",
+          "PROJECTION",
+          "FILTER",
+          "HASH_JOIN",
+          "HASH_JOIN",
+          "PROJECTION",
+          "FILTER",
+          "PROJECTION",
+          "STREAMING_WINDOW",
+          "SEQ_SCAN",
+          "SEQ_SCAN",
+          "SEQ_SCAN"
+        ]
+      }
+    ],
+    "points": [
+      {
+        "family": "sink",
+        "tables": [
+          "\"temp\".main.sink_edges"
+        ],
+        "scan_statistics": [
+          {
+            "operator_name": "SEQ_SCAN",
+            "operator_rows_scanned": 10,
+            "operator_cardinality": 5,
+            "extra_info": {
+              "Table": "\"temp\".main.sink_edges",
+              "Type": "Sequential Scan",
+              "Projections": [
+                "ts",
+                "f",
+                "amt"
+              ],
+              "Filters": "t='TieSinkA'",
+              "Estimated Cardinality": "5"
+            }
+          }
+        ]
+      },
+      {
+        "family": "spray",
+        "tables": [
+          "\"temp\".main.spray_edges"
+        ],
+        "scan_statistics": [
+          {
+            "operator_name": "SEQ_SCAN",
+            "operator_rows_scanned": 1080,
+            "operator_cardinality": 540,
+            "extra_info": {
+              "Table": "\"temp\".main.spray_edges",
+              "Type": "Sequential Scan",
+              "Projections": [
+                "ts",
+                "t",
+                "amt"
+              ],
+              "Filters": "f='TieSlowA'",
+              "Estimated Cardinality": "216"
+            }
+          }
+        ]
+      },
+      {
+        "family": "top",
+        "tables": [
+          "\"temp\".main.spray_edges"
+        ],
+        "scan_statistics": [
+          {
+            "operator_name": "SEQ_SCAN",
+            "operator_rows_scanned": 1080,
+            "operator_cardinality": 540,
+            "extra_info": {
+              "Table": "\"temp\".main.spray_edges",
+              "Type": "Sequential Scan",
+              "Projections": [
+                "t",
+                "amt"
+              ],
+              "Filters": "f='TieSlowA'",
+              "Estimated Cardinality": "216"
+            }
+          }
+        ]
+      }
+    ],
+    "baseline_sink_mean_seconds": 0.0007083124946802855,
+    "baseline_spray_mean_seconds": 0.0006684164982289076,
+    "baseline_top_mean_seconds": 0.0008226039935834706,
+    "new_sink_mean_seconds": 0.00019012499978998676,
+    "new_spray_mean_seconds": 0.000545750001037959,
+    "new_top_mean_seconds": 0.0006212915031937882
+  },
+  {
+    "name": "empty_elig_duck_duck",
+    "prescreen_count": {
+      "sink": 1,
+      "spray": 2
+    },
+    "metrics": {
+      "resources": {
+        "duckdb": "1.5.4",
+        "memory_limit": "7.4 GiB",
+        "temp_directory": ".tmp",
+        "max_temp_directory_size": "90% of available disk space"
+      },
+      "presink": {
+        "rows": 1,
+        "seconds": 0.000654957999358885
+      },
+      "sink_edges": {
+        "rows": 1,
+        "seconds": 0.0005669579986715689,
+        "rowid_descents": 0
+      },
+      "sink_net": {
+        "rows": 1,
+        "seconds": 0.0006993340066401288
+      },
+      "prespray": {
+        "rows": 2,
+        "seconds": 0.0005634580011246726
+      },
+      "spray_edges": {
+        "rows": 1001,
+        "seconds": 0.0006586669915122911,
+        "rowid_descents": 0
+      }
+    },
+    "ctas": [
+      {
+        "table": "presink",
+        "parquet_readers": 0,
+        "edge_table_scans": 1,
+        "operators": [
+          "CREATE_TABLE_AS",
+          "PROJECTION",
+          "FILTER",
+          "PROJECTION",
+          "HASH_GROUP_BY",
+          "PROJECTION",
+          "PROJECTION",
+          "PROJECTION",
+          "FILTER",
+          "HASH_JOIN",
+          "HASH_JOIN",
+          "PROJECTION",
+          "FILTER",
+          "PROJECTION",
+          "STREAMING_WINDOW",
+          "SEQ_SCAN",
+          "SEQ_SCAN",
+          "SEQ_SCAN"
+        ]
+      },
+      {
+        "table": "sink_edges",
+        "parquet_readers": 0,
+        "edge_table_scans": 1,
+        "operators": [
+          "BATCH_CREATE_TABLE_AS",
+          "PROJECTION",
+          "ORDER_BY",
+          "PROJECTION",
+          "HASH_JOIN",
+          "HASH_JOIN",
+          "PROJECTION",
+          "FILTER",
+          "PROJECTION",
+          "STREAMING_WINDOW",
+          "SEQ_SCAN",
+          "SEQ_SCAN",
+          "SEQ_SCAN"
+        ]
+      },
+      {
+        "table": "sink_net",
+        "parquet_readers": 0,
+        "edge_table_scans": 1,
+        "operators": [
+          "CREATE_TABLE_AS",
+          "PROJECTION",
+          "HASH_GROUP_BY",
+          "PROJECTION",
+          "PROJECTION",
+          "HASH_JOIN",
+          "CROSS_PRODUCT",
+          "PROJECTION",
+          "FILTER",
+          "PROJECTION",
+          "STREAMING_WINDOW",
+          "SEQ_SCAN",
+          "COLUMN_DATA_SCAN",
+          "SEQ_SCAN"
+        ]
+      },
+      {
+        "table": "prespray",
+        "parquet_readers": 0,
+        "edge_table_scans": 1,
+        "operators": [
+          "CREATE_TABLE_AS",
+          "PROJECTION",
+          "FILTER",
+          "PROJECTION",
+          "HASH_GROUP_BY",
+          "PROJECTION",
+          "PROJECTION",
+          "PROJECTION",
+          "FILTER",
+          "HASH_JOIN",
+          "PROJECTION",
+          "FILTER",
+          "HASH_JOIN",
+          "PROJECTION",
+          "FILTER",
+          "PROJECTION",
+          "STREAMING_WINDOW",
+          "SEQ_SCAN",
+          "SEQ_SCAN",
+          "SEQ_SCAN"
+        ]
+      },
+      {
+        "table": "spray_edges",
+        "parquet_readers": 0,
+        "edge_table_scans": 1,
+        "operators": [
+          "BATCH_CREATE_TABLE_AS",
+          "PROJECTION",
+          "ORDER_BY",
+          "PROJECTION",
+          "PROJECTION",
+          "FILTER",
+          "HASH_JOIN",
+          "HASH_JOIN",
+          "PROJECTION",
+          "FILTER",
+          "PROJECTION",
+          "STREAMING_WINDOW",
+          "SEQ_SCAN",
+          "SEQ_SCAN",
+          "SEQ_SCAN"
+        ]
+      }
+    ],
+    "points": [
+      {
+        "family": "sink",
+        "tables": [
+          "\"temp\".main.sink_edges"
+        ],
+        "scan_statistics": [
+          {
+            "operator_name": "SEQ_SCAN",
+            "operator_rows_scanned": 1,
+            "operator_cardinality": 1,
+            "extra_info": {
+              "Table": "\"temp\".main.sink_edges",
+              "Type": "Sequential Scan",
+              "Projections": [
+                "ts",
+                "f",
+                "amt"
+              ],
+              "Filters": "t='EmptyHub'",
+              "Estimated Cardinality": "1"
+            }
+          }
+        ]
+      },
+      {
+        "family": "spray",
+        "tables": [
+          "\"temp\".main.spray_edges"
+        ],
+        "scan_statistics": [
+          {
+            "operator_name": "SEQ_SCAN",
+            "operator_rows_scanned": 1001,
+            "operator_cardinality": 1000,
+            "extra_info": {
+              "Table": "\"temp\".main.spray_edges",
+              "Type": "Sequential Scan",
+              "Projections": [
+                "ts",
+                "t",
+                "amt"
+              ],
+              "Filters": "f='EmptyHub'",
+              "Estimated Cardinality": "501"
+            }
+          }
+        ]
+      }
+    ],
+    "baseline_sink_mean_seconds": 0.0006939580052858219,
+    "baseline_spray_mean_seconds": 0.000688312495185528,
+    "baseline_top_mean_seconds": null,
+    "new_sink_mean_seconds": 0.00018320800154469907,
+    "new_spray_mean_seconds": 0.000498249995871447,
+    "new_top_mean_seconds": null
+  },
+  {
+    "name": "empty_candidates_duck",
+    "prescreen_count": {
+      "sink": 0,
+      "spray": 0
+    },
+    "metrics": {
+      "resources": {
+        "duckdb": "1.5.4",
+        "memory_limit": "7.4 GiB",
+        "temp_directory": ".tmp",
+        "max_temp_directory_size": "90% of available disk space"
+      },
+      "presink": {
+        "rows": 0,
+        "seconds": 0.0006972499977564439
+      },
+      "sink_edges": {
+        "rows": 0,
+        "seconds": 0.00047729199286550283,
+        "rowid_descents": 0
+      },
+      "sink_net": {
+        "rows": 0,
+        "seconds": 0.0004162499972153455
+      },
+      "prespray": {
+        "rows": 0,
+        "seconds": 0.0004806669894605875
+      },
+      "spray_edges": {
+        "rows": 0,
+        "seconds": 0.0005359580100048333,
+        "rowid_descents": 0
+      }
+    },
+    "ctas": [
+      {
+        "table": "presink",
+        "parquet_readers": 0,
+        "edge_table_scans": 1,
+        "operators": [
+          "CREATE_TABLE_AS",
+          "PROJECTION",
+          "FILTER",
+          "PROJECTION",
+          "HASH_GROUP_BY",
+          "PROJECTION",
+          "PROJECTION",
+          "PROJECTION",
+          "FILTER",
+          "HASH_JOIN",
+          "HASH_JOIN",
+          "SEQ_SCAN",
+          "PROJECTION",
+          "FILTER",
+          "PROJECTION",
+          "STREAMING_WINDOW",
+          "SEQ_SCAN",
+          "SEQ_SCAN"
+        ]
+      },
+      {
+        "table": "sink_edges",
+        "parquet_readers": 0,
+        "edge_table_scans": 1,
+        "operators": [
+          "BATCH_CREATE_TABLE_AS",
+          "PROJECTION",
+          "ORDER_BY",
+          "PROJECTION",
+          "HASH_JOIN",
+          "SEQ_SCAN",
+          "HASH_JOIN",
+          "PROJECTION",
+          "FILTER",
+          "PROJECTION",
+          "STREAMING_WINDOW",
+          "SEQ_SCAN",
+          "SEQ_SCAN"
+        ]
+      },
+      {
+        "table": "sink_net",
+        "parquet_readers": 0,
+        "edge_table_scans": 1,
+        "operators": [
+          "CREATE_TABLE_AS",
+          "HASH_GROUP_BY",
+          "PROJECTION",
+          "PROJECTION",
+          "HASH_JOIN",
+          "CROSS_PRODUCT",
+          "COLUMN_DATA_SCAN",
+          "PROJECTION",
+          "FILTER",
+          "PROJECTION",
+          "STREAMING_WINDOW",
+          "SEQ_SCAN",
+          "SEQ_SCAN"
+        ]
+      },
+      {
+        "table": "prespray",
+        "parquet_readers": 0,
+        "edge_table_scans": 1,
+        "operators": [
+          "CREATE_TABLE_AS",
+          "PROJECTION",
+          "FILTER",
+          "HASH_GROUP_BY",
+          "PROJECTION",
+          "PROJECTION",
+          "FILTER",
+          "HASH_JOIN",
+          "PROJECTION",
+          "FILTER",
+          "HASH_JOIN",
+          "PROJECTION",
+          "FILTER",
+          "PROJECTION",
+          "STREAMING_WINDOW",
+          "SEQ_SCAN",
+          "SEQ_SCAN",
+          "SEQ_SCAN"
+        ]
+      },
+      {
+        "table": "spray_edges",
+        "parquet_readers": 0,
+        "edge_table_scans": 1,
+        "operators": [
+          "BATCH_CREATE_TABLE_AS",
+          "PROJECTION",
+          "ORDER_BY",
+          "PROJECTION",
+          "PROJECTION",
+          "FILTER",
+          "HASH_JOIN",
+          "HASH_JOIN",
+          "PROJECTION",
+          "FILTER",
+          "PROJECTION",
+          "STREAMING_WINDOW",
+          "SEQ_SCAN",
+          "SEQ_SCAN",
+          "SEQ_SCAN"
+        ]
+      }
+    ],
+    "points": [],
+    "baseline_sink_mean_seconds": null,
+    "baseline_spray_mean_seconds": null,
+    "baseline_top_mean_seconds": null,
+    "new_sink_mean_seconds": null,
+    "new_spray_mean_seconds": null,
+    "new_top_mean_seconds": null
+  },
+  {
+    "name": "negative_duck",
+    "prescreen_count": {
+      "sink": 1,
+      "spray": 1
+    },
+    "metrics": {
+      "resources": {
+        "duckdb": "1.5.4",
+        "memory_limit": "7.4 GiB",
+        "temp_directory": ".tmp",
+        "max_temp_directory_size": "90% of available disk space"
+      },
+      "presink": {
+        "rows": 1,
+        "seconds": 0.0006924999906914309
+      },
+      "sink_edges": {
+        "rows": 5,
+        "seconds": 0.0006018330022925511,
+        "rowid_descents": 0
+      },
+      "sink_net": {
+        "rows": 1,
+        "seconds": 0.0005624579935101792
+      },
+      "prespray": {
+        "rows": 1,
+        "seconds": 0.0006377079989761114
+      },
+      "spray_edges": {
+        "rows": 20,
+        "seconds": 0.0005159170104889199,
+        "rowid_descents": 0
+      }
+    },
+    "ctas": [
+      {
+        "table": "presink",
+        "parquet_readers": 0,
+        "edge_table_scans": 1,
+        "operators": [
+          "CREATE_TABLE_AS",
+          "PROJECTION",
+          "FILTER",
+          "PROJECTION",
+          "HASH_GROUP_BY",
+          "PROJECTION",
+          "PROJECTION",
+          "PROJECTION",
+          "FILTER",
+          "HASH_JOIN",
+          "HASH_JOIN",
+          "SEQ_SCAN",
+          "PROJECTION",
+          "FILTER",
+          "PROJECTION",
+          "STREAMING_WINDOW",
+          "SEQ_SCAN",
+          "SEQ_SCAN"
+        ]
+      },
+      {
+        "table": "sink_edges",
+        "parquet_readers": 0,
+        "edge_table_scans": 1,
+        "operators": [
+          "BATCH_CREATE_TABLE_AS",
+          "PROJECTION",
+          "ORDER_BY",
+          "PROJECTION",
+          "HASH_JOIN",
+          "SEQ_SCAN",
+          "HASH_JOIN",
+          "PROJECTION",
+          "FILTER",
+          "PROJECTION",
+          "STREAMING_WINDOW",
+          "SEQ_SCAN",
+          "SEQ_SCAN"
+        ]
+      },
+      {
+        "table": "sink_net",
+        "parquet_readers": 0,
+        "edge_table_scans": 1,
+        "operators": [
+          "CREATE_TABLE_AS",
+          "HASH_GROUP_BY",
+          "PROJECTION",
+          "PROJECTION",
+          "HASH_JOIN",
+          "CROSS_PRODUCT",
+          "PROJECTION",
+          "FILTER",
+          "PROJECTION",
+          "STREAMING_WINDOW",
+          "SEQ_SCAN",
+          "COLUMN_DATA_SCAN",
+          "SEQ_SCAN"
+        ]
+      },
+      {
+        "table": "prespray",
+        "parquet_readers": 0,
+        "edge_table_scans": 1,
+        "operators": [
+          "CREATE_TABLE_AS",
+          "PROJECTION",
+          "FILTER",
+          "HASH_GROUP_BY",
+          "PROJECTION",
+          "PROJECTION",
+          "FILTER",
+          "HASH_JOIN",
+          "PROJECTION",
+          "FILTER",
+          "HASH_JOIN",
+          "PROJECTION",
+          "FILTER",
+          "PROJECTION",
+          "STREAMING_WINDOW",
+          "SEQ_SCAN",
+          "SEQ_SCAN",
+          "SEQ_SCAN"
+        ]
+      },
+      {
+        "table": "spray_edges",
+        "parquet_readers": 0,
+        "edge_table_scans": 1,
+        "operators": [
+          "BATCH_CREATE_TABLE_AS",
+          "PROJECTION",
+          "ORDER_BY",
+          "PROJECTION",
+          "PROJECTION",
+          "FILTER",
+          "HASH_JOIN",
+          "HASH_JOIN",
+          "PROJECTION",
+          "FILTER",
+          "PROJECTION",
+          "STREAMING_WINDOW",
+          "SEQ_SCAN",
+          "SEQ_SCAN",
+          "SEQ_SCAN"
+        ]
+      }
+    ],
+    "points": [
+      {
+        "family": "sink",
+        "tables": [
+          "\"temp\".main.sink_edges"
+        ],
+        "scan_statistics": [
+          {
+            "operator_name": "SEQ_SCAN",
+            "operator_rows_scanned": 5,
+            "operator_cardinality": 5,
+            "extra_info": {
+              "Table": "\"temp\".main.sink_edges",
+              "Type": "Sequential Scan",
+              "Projections": [
+                "ts",
+                "f",
+                "amt"
+              ],
+              "Filters": "t='MixedHub'",
+              "Estimated Cardinality": "1"
+            }
+          }
+        ]
+      },
+      {
+        "family": "spray",
+        "tables": [
+          "\"temp\".main.spray_edges"
+        ],
+        "scan_statistics": [
+          {
+            "operator_name": "SEQ_SCAN",
+            "operator_rows_scanned": 20,
+            "operator_cardinality": 20,
+            "extra_info": {
+              "Table": "\"temp\".main.spray_edges",
+              "Type": "Sequential Scan",
+              "Projections": [
+                "ts",
+                "t",
+                "amt"
+              ],
+              "Filters": "f='MixedHub'",
+              "Estimated Cardinality": "4"
+            }
+          }
+        ]
+      }
+    ],
+    "baseline_sink_mean_seconds": 0.000505082993186079,
+    "baseline_spray_mean_seconds": 0.0003412500082049519,
+    "baseline_top_mean_seconds": null,
+    "new_sink_mean_seconds": 0.0002468330058036372,
+    "new_spray_mean_seconds": 0.00022229200112633407,
+    "new_top_mean_seconds": null
+  }
+]
+
+同入口基线/新预筛集合及候选行对照全部通过；空候选表行数为零也成功建表，空 elig 的空字符串兼容核到内部行。
+
+可审查的完整计划样本（主 EVM 的五个 CTAS、每类首个点查）：
+{
+  "sql": "CREATE TEMP TABLE presink AS SELECT t AS addr FROM eflow WHERE f IN (SELECT addr FROM elig) AND t NOT IN (SELECT addr FROM sent) AND f <> t AND amt > 0 GROUP BY t HAVING SUM(amt) >= 20000000000",
+  "params": null,
+  "plan": [
+    {
+      "name": "CREATE_TABLE_AS",
+      "children": [
+        {
+          "name": "PROJECTION",
+          "children": [
+            {
+              "name": "FILTER",
+              "children": [
+                {
+                  "name": "HASH_GROUP_BY",
+                  "children": [
+                    {
+                      "name": "PROJECTION",
+                      "children": [
+                        {
+                          "name": "PROJECTION",
+                          "children": [
+                            {
+                              "name": "FILTER",
+                              "children": [
+                                {
+                                  "name": "HASH_JOIN",
+                                  "children": [
+                                    {
+                                      "name": "HASH_JOIN",
+                                      "children": [
+                                        {
+                                          "name": "PROJECTION",
+                                          "children": [
+                                            {
+                                              "name": "HASH_JOIN",
+                                              "children": [
+                                                {
+                                                  "name": "FILTER",
+                                                  "children": [
+                                                    {
+                                                      "name": "READ_PARQUET",
+                                                      "children": [],
+                                                      "extra_info": {
+                                                        "Function": "READ_PARQUET",
+                                                        "Projections": [
+                                                          "block_number",
+                                                          "data",
+                                                          "topic1",
+                                                          "topic2"
+                                                        ],
+                                                        "Filters": "((data IN ('', '0x')) OR (length(data) = 66))",
+                                                        "Estimated Cardinality": "60000"
+                                                      }
+                                                    }
+                                                  ],
+                                                  "extra_info": {
+                                                    "Expression": "((('0x' || \"right\"(lower(topic1), 40)) != ('0x' || \"right\"(lower(topic2), 40))) AND (CASE  WHEN (((data = '') OR (data = '0x'))) THEN (0) ELSE ((CAST(CAST(('0x' || substr(data, 35, 16)) AS UBIGINT) AS HUGEINT) * 18446744073709551616) + CAST(CAST(('0x' || substr(data, 51, 16)) AS UBIGINT) AS HUGEINT)) END > 0))",
+                                                    "Estimated Cardinality": "12000"
+                                                  }
+                                                },
+                                                {
+                                                  "name": "PROJECTION",
+                                                  "children": [
+                                                    {
+                                                      "name": "FILTER",
+                                                      "children": [
+                                                        {
+                                                          "name": "PROJECTION",
+                                                          "children": [
+                                                            {
+                                                              "name": "HASH_GROUP_BY",
+                                                              "children": [
+                                                                {
+                                                                  "name": "PROJECTION",
+                                                                  "children": [
+                                                                    {
+                                                                      "name": "PROJECTION",
+                                                                      "children": [
+                                                                        {
+                                                                          "name": "READ_PARQUET",
+                                                                          "children": [],
+                                                                          "extra_info": {
+                                                                            "Function": "READ_PARQUET",
+                                                                            "Projections": [
+                                                                              "number",
+                                                                              "timestamp"
+                                                                            ],
+                                                                            "Estimated Cardinality": "60000"
+                                                                          }
+                                                                        }
+                                                                      ],
+                                                                      "extra_info": {
+                                                                        "Projections": [
+                                                                          "__internal_compress_integral_uinteger(#0, 1)",
+                                                                          "#1"
+                                                                        ],
+                                                                        "Estimated Cardinality": "60000"
+                                                                      }
+                                                                    }
+                                                                  ],
+                                                                  "extra_info": {
+                                                                    "Projections": [
+                                                                      "number",
+                                                                      "timestamp"
+                                                                    ],
+                                                                    "Estimated Cardinality": "60000"
+                                                                  }
+                                                                }
+                                                              ],
+                                                              "extra_info": {
+                                                                "Groups": "#0",
+                                                                "Aggregates": "any_value(#1)",
+                                                                "Estimated Cardinality": "54380"
+                                                              }
+                                                            }
+                                                          ],
+                                                          "extra_info": {
+                                                            "Projections": [
+                                                              "__internal_decompress_integral_bigint(#0, 1)",
+                                                              "#1"
+                                                            ],
+                                                            "Estimated Cardinality": "54380"
+                                                          }
+                                                        }
+                                                      ],
+                                                      "extra_info": {
+                                                        "Expression": "(TRY_CAST(any_value(timestamp) AS UBIGINT) IS NOT NULL)",
+                                                        "Estimated Cardinality": "10876"
+                                                      }
+                                                    }
+                                                  ],
+                                                  "extra_info": {
+                                                    "Projections": "#0",
+                                                    "Estimated Cardinality": "10876"
+                                                  }
+                                                }
+                                              ],
+                                              "extra_info": {
+                                                "Join Type": "INNER",
+                                                "Conditions": "block_number = number",
+                                                "Estimated Cardinality": "435"
+                                              }
+                                            }
+                                          ],
+                                          "extra_info": {
+                                            "Projections": [
+                                              "f",
+                                              "t",
+                                              "amt"
+                                            ],
+                                            "Estimated Cardinality": "435"
+                                          }
+                                        },
+                                        {
+                                          "name": "SEQ_SCAN",
+                                          "children": [],
+                                          "extra_info": {
+                                            "Table": "\"temp\".main.elig",
+                                            "Type": "Sequential Scan",
+                                            "Projections": "addr",
+                                            "Estimated Cardinality": "141"
+                                          }
+                                        }
+                                      ],
+                                      "extra_info": {
+                                        "Join Type": "SEMI",
+                                        "Conditions": "f = #0",
+                                        "Estimated Cardinality": "87"
+                                      }
+                                    },
+                                    {
+                                      "name": "SEQ_SCAN",
+                                      "children": [],
+                                      "extra_info": {
+                                        "Table": "\"temp\".main.sent",
+                                        "Type": "Sequential Scan",
+                                        "Projections": "addr",
+                                        "Estimated Cardinality": "2"
+                                      }
+                                    }
+                                  ],
+                                  "extra_info": {
+                                    "Join Type": "MARK",
+                                    "Conditions": "t = #0",
+                                    "Estimated Cardinality": "87"
+                                  }
+                                }
+                              ],
+                              "extra_info": {
+                                "Expression": "(NOT SUBQUERY)",
+                                "Estimated Cardinality": "17"
+                              }
+                            }
+                          ],
+                          "extra_info": {
+                            "Projections": [
+                              "#0",
+                              "#1"
+                            ],
+                            "Estimated Cardinality": "17"
+                          }
+                        }
+                      ],
+                      "extra_info": {
+                        "Projections": [
+                          "t",
+                          "amt"
+                        ],
+                        "Estimated Cardinality": "17"
+                      }
+                    }
+                  ],
+                  "extra_info": {
+                    "Groups": "#0",
+                    "Aggregates": "sum(#1)",
+                    "Estimated Cardinality": "16"
+                  }
+                }
+              ],
+              "extra_info": {
+                "Expression": "(sum(amt) >= 20000000000)",
+                "Estimated Cardinality": "3"
+              }
+            }
+          ],
+          "extra_info": {
+            "Projections": "#0",
+            "Estimated Cardinality": "3"
+          }
+        }
+      ],
+      "extra_info": {}
+    }
+  ]
+}
+{
+  "sql": "CREATE TEMP TABLE sink_edges AS SELECT ts, f, t, amt FROM eflow WHERE t IN (SELECT addr FROM presink) AND f IN (SELECT addr FROM elig) AND f <> t AND amt > 0 ORDER BY t, ts",
+  "params": null,
+  "plan": [
+    {
+      "name": "BATCH_CREATE_TABLE_AS",
+      "children": [
+        {
+          "name": "ORDER_BY",
+          "children": [
+            {
+              "name": "HASH_JOIN",
+              "children": [
+                {
+                  "name": "SEQ_SCAN",
+                  "children": [],
+                  "extra_info": {
+                    "Table": "\"temp\".main.elig",
+                    "Type": "Sequential Scan",
+                    "Projections": "addr",
+                    "Estimated Cardinality": "141"
+                  }
+                },
+                {
+                  "name": "HASH_JOIN",
+                  "children": [
+                    {
+                      "name": "PROJECTION",
+                      "children": [
+                        {
+                          "name": "HASH_JOIN",
+                          "children": [
+                            {
+                              "name": "FILTER",
+                              "children": [
+                                {
+                                  "name": "READ_PARQUET",
+                                  "children": [],
+                                  "extra_info": {
+                                    "Function": "READ_PARQUET",
+                                    "Projections": [
+                                      "block_number",
+                                      "data",
+                                      "topic1",
+                                      "topic2"
+                                    ],
+                                    "Filters": "((data IN ('', '0x')) OR (length(data) = 66))",
+                                    "Estimated Cardinality": "60000"
+                                  }
+                                }
+                              ],
+                              "extra_info": {
+                                "Expression": "((('0x' || \"right\"(lower(topic1), 40)) != ('0x' || \"right\"(lower(topic2), 40))) AND (CASE  WHEN (((data = '') OR (data = '0x'))) THEN (0) ELSE ((CAST(CAST(('0x' || substr(data, 35, 16)) AS UBIGINT) AS HUGEINT) * 18446744073709551616) + CAST(CAST(('0x' || substr(data, 51, 16)) AS UBIGINT) AS HUGEINT)) END > 0))",
+                                "Estimated Cardinality": "12000"
+                              }
+                            },
+                            {
+                              "name": "PROJECTION",
+                              "children": [
+                                {
+                                  "name": "FILTER",
+                                  "children": [
+                                    {
+                                      "name": "PROJECTION",
+                                      "children": [
+                                        {
+                                          "name": "HASH_GROUP_BY",
+                                          "children": [
+                                            {
+                                              "name": "PROJECTION",
+                                              "children": [
+                                                {
+                                                  "name": "PROJECTION",
+                                                  "children": [
+                                                    {
+                                                      "name": "READ_PARQUET",
+                                                      "children": [],
+                                                      "extra_info": {
+                                                        "Function": "READ_PARQUET",
+                                                        "Projections": [
+                                                          "number",
+                                                          "timestamp"
+                                                        ],
+                                                        "Estimated Cardinality": "60000"
+                                                      }
+                                                    }
+                                                  ],
+                                                  "extra_info": {
+                                                    "Projections": [
+                                                      "__internal_compress_integral_uinteger(#0, 1)",
+                                                      "#1"
+                                                    ],
+                                                    "Estimated Cardinality": "60000"
+                                                  }
+                                                }
+                                              ],
+                                              "extra_info": {
+                                                "Projections": [
+                                                  "number",
+                                                  "timestamp"
+                                                ],
+                                                "Estimated Cardinality": "60000"
+                                              }
+                                            }
+                                          ],
+                                          "extra_info": {
+                                            "Groups": "#0",
+                                            "Aggregates": "any_value(#1)",
+                                            "Estimated Cardinality": "54380"
+                                          }
+                                        }
+                                      ],
+                                      "extra_info": {
+                                        "Projections": [
+                                          "__internal_decompress_integral_bigint(#0, 1)",
+                                          "#1"
+                                        ],
+                                        "Estimated Cardinality": "54380"
+                                      }
+                                    }
+                                  ],
+                                  "extra_info": {
+                                    "Expression": "(TRY_CAST(any_value(timestamp) AS UBIGINT) IS NOT NULL)",
+                                    "Estimated Cardinality": "10876"
+                                  }
+                                }
+                              ],
+                              "extra_info": {
+                                "Projections": [
+                                  "number",
+                                  "ts_i"
+                                ],
+                                "Estimated Cardinality": "10876"
+                              }
+                            }
+                          ],
+                          "extra_info": {
+                            "Join Type": "INNER",
+                            "Conditions": "block_number = number",
+                            "Estimated Cardinality": "435"
+                          }
+                        }
+                      ],
+                      "extra_info": {
+                        "Projections": [
+                          "ts",
+                          "f",
+                          "t",
+                          "amt"
+                        ],
+                        "Estimated Cardinality": "435"
+                      }
+                    },
+                    {
+                      "name": "SEQ_SCAN",
+                      "children": [],
+                      "extra_info": {
+                        "Table": "\"temp\".main.presink",
+                        "Type": "Sequential Scan",
+                        "Projections": "addr",
+                        "Estimated Cardinality": "8"
+                      }
+                    }
+                  ],
+                  "extra_info": {
+                    "Join Type": "SEMI",
+                    "Conditions": "t = #0",
+                    "Estimated Cardinality": "87"
+                  }
+                }
+              ],
+              "extra_info": {
+                "Join Type": "RIGHT_SEMI",
+                "Conditions": "#0 = f",
+                "Estimated Cardinality": "17"
+              }
+            }
+          ],
+          "extra_info": {
+            "Order By": [
+              "memory.main.eflow.t ASC",
+              "memory.main.eflow.ts ASC"
+            ]
+          }
+        }
+      ],
+      "extra_info": {}
+    }
+  ]
+}
+{
+  "sql": "CREATE TEMP TABLE sink_net AS SELECT CASE WHEN k = 0 THEN t ELSE f END AS addr, SUM(CASE WHEN k = 0 THEN amt ELSE -amt END) AS net FROM eflow CROSS JOIN (VALUES (0), (1)) sides(k) WHERE f <> t AND CASE WHEN k = 0 THEN t ELSE f END IN (SELECT addr FROM presink) GROUP BY 1",
+  "params": null,
+  "plan": [
+    {
+      "name": "CREATE_TABLE_AS",
+      "children": [
+        {
+          "name": "HASH_GROUP_BY",
+          "children": [
+            {
+              "name": "PROJECTION",
+              "children": [
+                {
+                  "name": "PROJECTION",
+                  "children": [
+                    {
+                      "name": "HASH_JOIN",
+                      "children": [
+                        {
+                          "name": "CROSS_PRODUCT",
+                          "children": [
+                            {
+                              "name": "PROJECTION",
+                              "children": [
+                                {
+                                  "name": "HASH_JOIN",
+                                  "children": [
+                                    {
+                                      "name": "FILTER",
+                                      "children": [
+                                        {
+                                          "name": "READ_PARQUET",
+                                          "children": [],
+                                          "extra_info": {
+                                            "Function": "READ_PARQUET",
+                                            "Projections": [
+                                              "block_number",
+                                              "data",
+                                              "topic1",
+                                              "topic2"
+                                            ],
+                                            "Filters": "((data IN ('', '0x')) OR (length(data) = 66))",
+                                            "Estimated Cardinality": "60000"
+                                          }
+                                        }
+                                      ],
+                                      "extra_info": {
+                                        "Expression": "(('0x' || \"right\"(lower(topic1), 40)) != ('0x' || \"right\"(lower(topic2), 40)))",
+                                        "Estimated Cardinality": "12000"
+                                      }
+                                    },
+                                    {
+                                      "name": "PROJECTION",
+                                      "children": [
+                                        {
+                                          "name": "FILTER",
+                                          "children": [
+                                            {
+                                              "name": "PROJECTION",
+                                              "children": [
+                                                {
+                                                  "name": "HASH_GROUP_BY",
+                                                  "children": [
+                                                    {
+                                                      "name": "PROJECTION",
+                                                      "children": [
+                                                        {
+                                                          "name": "PROJECTION",
+                                                          "children": [
+                                                            {
+                                                              "name": "READ_PARQUET",
+                                                              "children": [],
+                                                              "extra_info": {
+                                                                "Function": "READ_PARQUET",
+                                                                "Projections": [
+                                                                  "number",
+                                                                  "timestamp"
+                                                                ],
+                                                                "Estimated Cardinality": "60000"
+                                                              }
+                                                            }
+                                                          ],
+                                                          "extra_info": {
+                                                            "Projections": [
+                                                              "__internal_compress_integral_uinteger(#0, 1)",
+                                                              "#1"
+                                                            ],
+                                                            "Estimated Cardinality": "60000"
+                                                          }
+                                                        }
+                                                      ],
+                                                      "extra_info": {
+                                                        "Projections": [
+                                                          "number",
+                                                          "timestamp"
+                                                        ],
+                                                        "Estimated Cardinality": "60000"
+                                                      }
+                                                    }
+                                                  ],
+                                                  "extra_info": {
+                                                    "Groups": "#0",
+                                                    "Aggregates": "any_value(#1)",
+                                                    "Estimated Cardinality": "54380"
+                                                  }
+                                                }
+                                              ],
+                                              "extra_info": {
+                                                "Projections": [
+                                                  "__internal_decompress_integral_bigint(#0, 1)",
+                                                  "#1"
+                                                ],
+                                                "Estimated Cardinality": "54380"
+                                              }
+                                            }
+                                          ],
+                                          "extra_info": {
+                                            "Expression": "(TRY_CAST(any_value(timestamp) AS UBIGINT) IS NOT NULL)",
+                                            "Estimated Cardinality": "10876"
+                                          }
+                                        }
+                                      ],
+                                      "extra_info": {
+                                        "Projections": "#0",
+                                        "Estimated Cardinality": "10876"
+                                      }
+                                    }
+                                  ],
+                                  "extra_info": {
+                                    "Join Type": "INNER",
+                                    "Conditions": "block_number = number",
+                                    "Estimated Cardinality": "435"
+                                  }
+                                }
+                              ],
+                              "extra_info": {
+                                "Projections": [
+                                  "f",
+                                  "t",
+                                  "amt"
+                                ],
+                                "Estimated Cardinality": "435"
+                              }
+                            },
+                            {
+                              "name": "COLUMN_DATA_SCAN",
+                              "children": [],
+                              "extra_info": {
+                                "Estimated Cardinality": "2"
+                              }
+                            }
+                          ],
+                          "extra_info": {}
+                        },
+                        {
+                          "name": "SEQ_SCAN",
+                          "children": [],
+                          "extra_info": {
+                            "Table": "\"temp\".main.presink",
+                            "Type": "Sequential Scan",
+                            "Projections": "addr",
+                            "Estimated Cardinality": "8"
+                          }
+                        }
+                      ],
+                      "extra_info": {
+                        "Join Type": "SEMI",
+                        "Conditions": "CASE  WHEN ((k = 0)) THEN (t) ELSE f END = #0",
+                        "Estimated Cardinality": "174"
+                      }
+                    }
+                  ],
+                  "extra_info": {
+                    "Projections": [
+                      "(k = 0)",
+                      "t",
+                      "f",
+                      "amt"
+                    ],
+                    "Estimated Cardinality": "174"
+                  }
+                }
+              ],
+              "extra_info": {
+                "Projections": [
+                  "addr",
+                  "CASE  WHEN (#0) THEN (amt) ELSE -(amt) END"
+                ],
+                "Estimated Cardinality": "174"
+              }
+            }
+          ],
+          "extra_info": {
+            "Groups": "#0",
+            "Aggregates": "sum(#1)",
+            "Estimated Cardinality": "87"
+          }
+        }
+      ],
+      "extra_info": {}
+    }
+  ]
+}
+{
+  "sql": "SELECT ts, f, amt FROM sink_edges WHERE t = ? ORDER BY ts",
+  "params": [
+    "0x0000000000000000000000000000000000000e2e"
+  ],
+  "plan": [
+    {
+      "name": "PROJECTION",
+      "children": [
+        {
+          "name": "ORDER_BY",
+          "children": [
+            {
+              "name": "PROJECTION",
+              "children": [
+                {
+                  "name": "SEQ_SCAN",
+                  "children": [],
+                  "extra_info": {
+                    "Table": "\"temp\".main.sink_edges",
+                    "Type": "Sequential Scan",
+                    "Projections": [
+                      "ts",
+                      "f",
+                      "amt"
+                    ],
+                    "Filters": "t='0x0000000000000000000000000000000000000e2e'",
+                    "Estimated Cardinality": "1040"
+                  }
+                }
+              ],
+              "extra_info": {
+                "Projections": [
+                  "__internal_compress_integral_uinteger(#0, 4320000)",
+                  "#1",
+                  "__internal_compress_integral_uinteger(#2, 24038461)"
+                ],
+                "Estimated Cardinality": "1040"
+              }
+            }
+          ],
+          "extra_info": {
+            "Order By": "\"temp\".main.sink_edges.ts ASC"
+          }
+        }
+      ],
+      "extra_info": {
+        "Projections": [
+          "__internal_decompress_integral_bigint(#0, 4320000)",
+          "#1",
+          "__internal_decompress_integral_hugeint(#2, 24038461)"
+        ],
+        "Estimated Cardinality": "0"
+      }
+    }
+  ],
+  "family": "sink",
+  "analyze": {
+    "total_memory_allocated": 786432,
+    "total_bytes_written": 0,
+    "total_bytes_read": 0,
+    "system_peak_temp_dir_size": 0,
+    "system_peak_buffer_memory": 10339856,
+    "rows_returned": 0,
+    "result_set_size": 0,
+    "latency": 0.000375917,
+    "wal_replay_entry_count": 0,
+    "extra_info": {},
+    "commit_local_storage_latency": 0.0,
+    "attach_load_storage_latency": 0.0,
+    "query_name": "EXPLAIN (ANALYZE, FORMAT JSON) SELECT ts, f, amt FROM sink_edges WHERE t = ? ORDER BY ts",
+    "cpu_time": 7.8332e-05,
+    "checkpoint_latency": 0.0,
+    "cumulative_cardinality": 4160,
+    "waiting_to_attach_latency": 0.0,
+    "write_to_wal_latency": 0.0,
+    "attach_replay_wal_latency": 0.0,
+    "blocked_thread_time": 0.0,
+    "cumulative_rows_scanned": 9360,
+    "children": [
+      {
+        "system_peak_temp_dir_size": 0,
+        "result_set_size": 0,
+        "operator_type": "EXPLAIN_ANALYZE",
+        "operator_timing": 1.66e-07,
+        "operator_rows_scanned": 0,
+        "extra_info": {},
+        "system_peak_buffer_memory": 0,
+        "cumulative_rows_scanned": 9360,
+        "cpu_time": 7.8332e-05,
+        "operator_name": "EXPLAIN_ANALYZE",
+        "cumulative_cardinality": 4160,
+        "operator_cardinality": 0,
+        "children": [
+          {
+            "cumulative_cardinality": 4160,
+            "operator_cardinality": 1040,
+            "cumulative_rows_scanned": 9360,
+            "operator_name": "PROJECTION",
+            "cpu_time": 7.8166e-05,
+            "operator_rows_scanned": 0,
+            "system_peak_buffer_memory": 0,
+            "extra_info": {
+              "Projections": [
+                "__internal_decompress_integral_bigint(#0, 4320000)",
+                "#1",
+                "__internal_decompress_integral_hugeint(#2, 24038461)"
+              ],
+              "Estimated Cardinality": "0"
+            },
+            "operator_timing": 2.708e-06,
+            "system_peak_temp_dir_size": 0,
+            "result_set_size": 41600,
+            "operator_type": "PROJECTION",
+            "children": [
+              {
+                "system_peak_temp_dir_size": 0,
+                "result_set_size": 24960,
+                "operator_type": "ORDER_BY",
+                "operator_timing": 2.7748999999999998e-05,
+                "operator_rows_scanned": 0,
+                "extra_info": {
+                  "Order By": "\"temp\".main.sink_edges.ts ASC"
+                },
+                "system_peak_buffer_memory": 0,
+                "cumulative_rows_scanned": 9360,
+                "cpu_time": 7.5458e-05,
+                "operator_name": "ORDER_BY",
+                "cumulative_cardinality": 3120,
+                "operator_cardinality": 1040,
+                "children": [
+                  {
+                    "cumulative_cardinality": 2080,
+                    "operator_cardinality": 1040,
+                    "cumulative_rows_scanned": 9360,
+                    "operator_name": "PROJECTION",
+                    "cpu_time": 4.770899999999999e-05,
+                    "operator_rows_scanned": 0,
+                    "system_peak_buffer_memory": 0,
+                    "extra_info": {
+                      "Projections": [
+                        "__internal_compress_integral_uinteger(#0, 4320000)",
+                        "#1",
+                        "__internal_compress_integral_uinteger(#2, 24038461)"
+                      ],
+                      "Estimated Cardinality": "1040"
+                    },
+                    "operator_timing": 3.167e-06,
+                    "system_peak_temp_dir_size": 0,
+                    "result_set_size": 24960,
+                    "operator_type": "PROJECTION",
+                    "children": [
+                      {
+                        "system_peak_temp_dir_size": 0,
+                        "result_set_size": 41600,
+                        "operator_type": "TABLE_SCAN",
+                        "operator_timing": 4.4541999999999995e-05,
+                        "operator_rows_scanned": 9360,
+                        "extra_info": {
+                          "Table": "\"temp\".main.sink_edges",
+                          "Type": "Sequential Scan",
+                          "Projections": [
+                            "ts",
+                            "f",
+                            "amt"
+                          ],
+                          "Filters": "t='0x0000000000000000000000000000000000000e2e'",
+                          "Estimated Cardinality": "1040"
+                        },
+                        "system_peak_buffer_memory": 0,
+                        "cumulative_rows_scanned": 9360,
+                        "cpu_time": 4.4541999999999995e-05,
+                        "operator_name": "SEQ_SCAN",
+                        "cumulative_cardinality": 1040,
+                        "operator_cardinality": 1040,
+                        "children": []
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}
+{
+  "sql": "CREATE TEMP TABLE prespray AS SELECT f AS addr FROM eflow WHERE t NOT IN (SELECT addr FROM sent) AND f NOT IN (SELECT addr FROM sent) AND f <> t AND amt > 0 GROUP BY f HAVING SUM(amt) >= 20000000000",
+  "params": null,
+  "plan": [
+    {
+      "name": "CREATE_TABLE_AS",
+      "children": [
+        {
+          "name": "PROJECTION",
+          "children": [
+            {
+              "name": "FILTER",
+              "children": [
+                {
+                  "name": "HASH_GROUP_BY",
+                  "children": [
+                    {
+                      "name": "PROJECTION",
+                      "children": [
+                        {
+                          "name": "PROJECTION",
+                          "children": [
+                            {
+                              "name": "FILTER",
+                              "children": [
+                                {
+                                  "name": "HASH_JOIN",
+                                  "children": [
+                                    {
+                                      "name": "PROJECTION",
+                                      "children": [
+                                        {
+                                          "name": "FILTER",
+                                          "children": [
+                                            {
+                                              "name": "HASH_JOIN",
+                                              "children": [
+                                                {
+                                                  "name": "PROJECTION",
+                                                  "children": [
+                                                    {
+                                                      "name": "HASH_JOIN",
+                                                      "children": [
+                                                        {
+                                                          "name": "FILTER",
+                                                          "children": [
+                                                            {
+                                                              "name": "READ_PARQUET",
+                                                              "children": [],
+                                                              "extra_info": {
+                                                                "Function": "READ_PARQUET",
+                                                                "Projections": [
+                                                                  "block_number",
+                                                                  "data",
+                                                                  "topic1",
+                                                                  "topic2"
+                                                                ],
+                                                                "Filters": "((data IN ('', '0x')) OR (length(data) = 66))",
+                                                                "Estimated Cardinality": "60000"
+                                                              }
+                                                            }
+                                                          ],
+                                                          "extra_info": {
+                                                            "Expression": "((('0x' || \"right\"(lower(topic1), 40)) != ('0x' || \"right\"(lower(topic2), 40))) AND (CASE  WHEN (((data = '') OR (data = '0x'))) THEN (0) ELSE ((CAST(CAST(('0x' || substr(data, 35, 16)) AS UBIGINT) AS HUGEINT) * 18446744073709551616) + CAST(CAST(('0x' || substr(data, 51, 16)) AS UBIGINT) AS HUGEINT)) END > 0))",
+                                                            "Estimated Cardinality": "12000"
+                                                          }
+                                                        },
+                                                        {
+                                                          "name": "PROJECTION",
+                                                          "children": [
+                                                            {
+                                                              "name": "FILTER",
+                                                              "children": [
+                                                                {
+                                                                  "name": "PROJECTION",
+                                                                  "children": [
+                                                                    {
+                                                                      "name": "HASH_GROUP_BY",
+                                                                      "children": [
+                                                                        {
+                                                                          "name": "PROJECTION",
+                                                                          "children": [
+                                                                            {
+                                                                              "name": "PROJECTION",
+                                                                              "children": [
+                                                                                {
+                                                                                  "name": "READ_PARQUET",
+                                                                                  "children": [],
+                                                                                  "extra_info": {
+                                                                                    "Function": "READ_PARQUET",
+                                                                                    "Projections": [
+                                                                                      "number",
+                                                                                      "timestamp"
+                                                                                    ],
+                                                                                    "Estimated Cardinality": "60000"
+                                                                                  }
+                                                                                }
+                                                                              ],
+                                                                              "extra_info": {
+                                                                                "Projections": [
+                                                                                  "__internal_compress_integral_uinteger(#0, 1)",
+                                                                                  "#1"
+                                                                                ],
+                                                                                "Estimated Cardinality": "60000"
+                                                                              }
+                                                                            }
+                                                                          ],
+                                                                          "extra_info": {
+                                                                            "Projections": [
+                                                                              "number",
+                                                                              "timestamp"
+                                                                            ],
+                                                                            "Estimated Cardinality": "60000"
+                                                                          }
+                                                                        }
+                                                                      ],
+                                                                      "extra_info": {
+                                                                        "Groups": "#0",
+                                                                        "Aggregates": "any_value(#1)",
+                                                                        "Estimated Cardinality": "54380"
+                                                                      }
+                                                                    }
+                                                                  ],
+                                                                  "extra_info": {
+                                                                    "Projections": [
+                                                                      "__internal_decompress_integral_bigint(#0, 1)",
+                                                                      "#1"
+                                                                    ],
+                                                                    "Estimated Cardinality": "54380"
+                                                                  }
+                                                                }
+                                                              ],
+                                                              "extra_info": {
+                                                                "Expression": "(TRY_CAST(any_value(timestamp) AS UBIGINT) IS NOT NULL)",
+                                                                "Estimated Cardinality": "10876"
+                                                              }
+                                                            }
+                                                          ],
+                                                          "extra_info": {
+                                                            "Projections": "#0",
+                                                            "Estimated Cardinality": "10876"
+                                                          }
+                                                        }
+                                                      ],
+                                                      "extra_info": {
+                                                        "Join Type": "INNER",
+                                                        "Conditions": "block_number = number",
+                                                        "Estimated Cardinality": "435"
+                                                      }
+                                                    }
+                                                  ],
+                                                  "extra_info": {
+                                                    "Projections": [
+                                                      "f",
+                                                      "t",
+                                                      "amt"
+                                                    ],
+                                                    "Estimated Cardinality": "435"
+                                                  }
+                                                },
+                                                {
+                                                  "name": "SEQ_SCAN",
+                                                  "children": [],
+                                                  "extra_info": {
+                                                    "Table": "\"temp\".main.sent",
+                                                    "Type": "Sequential Scan",
+                                                    "Projections": "addr",
+                                                    "Estimated Cardinality": "2"
+                                                  }
+                                                }
+                                              ],
+                                              "extra_info": {
+                                                "Join Type": "MARK",
+                                                "Conditions": "t = #0",
+                                                "Estimated Cardinality": "435"
+                                              }
+                                            }
+                                          ],
+                                          "extra_info": {
+                                            "Expression": "(NOT SUBQUERY)",
+                                            "Estimated Cardinality": "87"
+                                          }
+                                        }
+                                      ],
+                                      "extra_info": {
+                                        "Projections": [
+                                          "#0",
+                                          "#1"
+                                        ],
+                                        "Estimated Cardinality": "87"
+                                      }
+                                    },
+                                    {
+                                      "name": "SEQ_SCAN",
+                                      "children": [],
+                                      "extra_info": {
+                                        "Table": "\"temp\".main.sent",
+                                        "Type": "Sequential Scan",
+                                        "Projections": "addr",
+                                        "Estimated Cardinality": "2"
+                                      }
+                                    }
+                                  ],
+                                  "extra_info": {
+                                    "Join Type": "MARK",
+                                    "Conditions": "f = #0",
+                                    "Estimated Cardinality": "87"
+                                  }
+                                }
+                              ],
+                              "extra_info": {
+                                "Expression": "(NOT SUBQUERY)",
+                                "Estimated Cardinality": "17"
+                              }
+                            }
+                          ],
+                          "extra_info": {
+                            "Projections": [
+                              "#0",
+                              "#1"
+                            ],
+                            "Estimated Cardinality": "17"
+                          }
+                        }
+                      ],
+                      "extra_info": {
+                        "Projections": [
+                          "f",
+                          "amt"
+                        ],
+                        "Estimated Cardinality": "17"
+                      }
+                    }
+                  ],
+                  "extra_info": {
+                    "Groups": "#0",
+                    "Aggregates": "sum(#1)",
+                    "Estimated Cardinality": "16"
+                  }
+                }
+              ],
+              "extra_info": {
+                "Expression": "(sum(amt) >= 20000000000)",
+                "Estimated Cardinality": "3"
+              }
+            }
+          ],
+          "extra_info": {
+            "Projections": "#0",
+            "Estimated Cardinality": "3"
+          }
+        }
+      ],
+      "extra_info": {}
+    }
+  ]
+}
+{
+  "sql": "CREATE TEMP TABLE spray_edges AS SELECT ts, f, t, amt FROM eflow WHERE f IN (SELECT addr FROM prespray) AND t NOT IN (SELECT addr FROM sent) AND f <> t AND amt > 0 ORDER BY f, ts",
+  "params": null,
+  "plan": [
+    {
+      "name": "BATCH_CREATE_TABLE_AS",
+      "children": [
+        {
+          "name": "ORDER_BY",
+          "children": [
+            {
+              "name": "PROJECTION",
+              "children": [
+                {
+                  "name": "FILTER",
+                  "children": [
+                    {
+                      "name": "HASH_JOIN",
+                      "children": [
+                        {
+                          "name": "HASH_JOIN",
+                          "children": [
+                            {
+                              "name": "PROJECTION",
+                              "children": [
+                                {
+                                  "name": "HASH_JOIN",
+                                  "children": [
+                                    {
+                                      "name": "FILTER",
+                                      "children": [
+                                        {
+                                          "name": "READ_PARQUET",
+                                          "children": [],
+                                          "extra_info": {
+                                            "Function": "READ_PARQUET",
+                                            "Projections": [
+                                              "block_number",
+                                              "data",
+                                              "topic1",
+                                              "topic2"
+                                            ],
+                                            "Filters": "((data IN ('', '0x')) OR (length(data) = 66))",
+                                            "Estimated Cardinality": "60000"
+                                          }
+                                        }
+                                      ],
+                                      "extra_info": {
+                                        "Expression": "((('0x' || \"right\"(lower(topic1), 40)) != ('0x' || \"right\"(lower(topic2), 40))) AND (CASE  WHEN (((data = '') OR (data = '0x'))) THEN (0) ELSE ((CAST(CAST(('0x' || substr(data, 35, 16)) AS UBIGINT) AS HUGEINT) * 18446744073709551616) + CAST(CAST(('0x' || substr(data, 51, 16)) AS UBIGINT) AS HUGEINT)) END > 0))",
+                                        "Estimated Cardinality": "12000"
+                                      }
+                                    },
+                                    {
+                                      "name": "PROJECTION",
+                                      "children": [
+                                        {
+                                          "name": "FILTER",
+                                          "children": [
+                                            {
+                                              "name": "PROJECTION",
+                                              "children": [
+                                                {
+                                                  "name": "HASH_GROUP_BY",
+                                                  "children": [
+                                                    {
+                                                      "name": "PROJECTION",
+                                                      "children": [
+                                                        {
+                                                          "name": "PROJECTION",
+                                                          "children": [
+                                                            {
+                                                              "name": "READ_PARQUET",
+                                                              "children": [],
+                                                              "extra_info": {
+                                                                "Function": "READ_PARQUET",
+                                                                "Projections": [
+                                                                  "number",
+                                                                  "timestamp"
+                                                                ],
+                                                                "Estimated Cardinality": "60000"
+                                                              }
+                                                            }
+                                                          ],
+                                                          "extra_info": {
+                                                            "Projections": [
+                                                              "__internal_compress_integral_uinteger(#0, 1)",
+                                                              "#1"
+                                                            ],
+                                                            "Estimated Cardinality": "60000"
+                                                          }
+                                                        }
+                                                      ],
+                                                      "extra_info": {
+                                                        "Projections": [
+                                                          "number",
+                                                          "timestamp"
+                                                        ],
+                                                        "Estimated Cardinality": "60000"
+                                                      }
+                                                    }
+                                                  ],
+                                                  "extra_info": {
+                                                    "Groups": "#0",
+                                                    "Aggregates": "any_value(#1)",
+                                                    "Estimated Cardinality": "54380"
+                                                  }
+                                                }
+                                              ],
+                                              "extra_info": {
+                                                "Projections": [
+                                                  "__internal_decompress_integral_bigint(#0, 1)",
+                                                  "#1"
+                                                ],
+                                                "Estimated Cardinality": "54380"
+                                              }
+                                            }
+                                          ],
+                                          "extra_info": {
+                                            "Expression": "(TRY_CAST(any_value(timestamp) AS UBIGINT) IS NOT NULL)",
+                                            "Estimated Cardinality": "10876"
+                                          }
+                                        }
+                                      ],
+                                      "extra_info": {
+                                        "Projections": [
+                                          "number",
+                                          "ts_i"
+                                        ],
+                                        "Estimated Cardinality": "10876"
+                                      }
+                                    }
+                                  ],
+                                  "extra_info": {
+                                    "Join Type": "INNER",
+                                    "Conditions": "block_number = number",
+                                    "Estimated Cardinality": "435"
+                                  }
+                                }
+                              ],
+                              "extra_info": {
+                                "Projections": [
+                                  "ts",
+                                  "f",
+                                  "t",
+                                  "amt"
+                                ],
+                                "Estimated Cardinality": "435"
+                              }
+                            },
+                            {
+                              "name": "SEQ_SCAN",
+                              "children": [],
+                              "extra_info": {
+                                "Table": "\"temp\".main.prespray",
+                                "Type": "Sequential Scan",
+                                "Projections": "addr",
+                                "Estimated Cardinality": "12"
+                              }
+                            }
+                          ],
+                          "extra_info": {
+                            "Join Type": "SEMI",
+                            "Conditions": "f = #0",
+                            "Estimated Cardinality": "87"
+                          }
+                        },
+                        {
+                          "name": "SEQ_SCAN",
+                          "children": [],
+                          "extra_info": {
+                            "Table": "\"temp\".main.sent",
+                            "Type": "Sequential Scan",
+                            "Projections": "addr",
+                            "Estimated Cardinality": "2"
+                          }
+                        }
+                      ],
+                      "extra_info": {
+                        "Join Type": "MARK",
+                        "Conditions": "t = #0",
+                        "Estimated Cardinality": "87"
+                      }
+                    }
+                  ],
+                  "extra_info": {
+                    "Expression": "(NOT SUBQUERY)",
+                    "Estimated Cardinality": "17"
+                  }
+                }
+              ],
+              "extra_info": {
+                "Projections": [
+                  "#0",
+                  "#1",
+                  "#2",
+                  "#3"
+                ],
+                "Estimated Cardinality": "17"
+              }
+            }
+          ],
+          "extra_info": {
+            "Order By": [
+              "memory.main.eflow.f ASC",
+              "memory.main.eflow.ts ASC"
+            ]
+          }
+        }
+      ],
+      "extra_info": {}
+    }
+  ]
+}
+{
+  "sql": "SELECT ts, t, amt FROM spray_edges WHERE f = ? ORDER BY ts",
+  "params": [
+    "0x0000000000000000000000000000000000000df7"
+  ],
+  "plan": [
+    {
+      "name": "PROJECTION",
+      "children": [
+        {
+          "name": "ORDER_BY",
+          "children": [
+            {
+              "name": "PROJECTION",
+              "children": [
+                {
+                  "name": "SEQ_SCAN",
+                  "children": [],
+                  "extra_info": {
+                    "Table": "\"temp\".main.spray_edges",
+                    "Type": "Sequential Scan",
+                    "Projections": [
+                      "ts",
+                      "t",
+                      "amt"
+                    ],
+                    "Filters": "f='0x0000000000000000000000000000000000000df7'",
+                    "Estimated Cardinality": "23600"
+                  }
+                }
+              ],
+              "extra_info": {
+                "Projections": [
+                  "__internal_compress_integral_uinteger(#0, 4320000)",
+                  "#1",
+                  "__internal_compress_integral_uinteger(#2, 240384)"
+                ],
+                "Estimated Cardinality": "23600"
+              }
+            }
+          ],
+          "extra_info": {
+            "Order By": "\"temp\".main.spray_edges.ts ASC"
+          }
+        }
+      ],
+      "extra_info": {
+        "Projections": [
+          "__internal_decompress_integral_bigint(#0, 4320000)",
+          "#1",
+          "__internal_decompress_integral_hugeint(#2, 240384)"
+        ],
+        "Estimated Cardinality": "0"
+      }
+    }
+  ],
+  "family": "spray",
+  "analyze": {
+    "total_memory_allocated": 786432,
+    "total_bytes_written": 0,
+    "total_bytes_read": 0,
+    "system_peak_temp_dir_size": 0,
+    "system_peak_buffer_memory": 83113488,
+    "rows_returned": 0,
+    "result_set_size": 0,
+    "latency": 0.001039791,
+    "wal_replay_entry_count": 0,
+    "extra_info": {},
+    "commit_local_storage_latency": 0.0,
+    "attach_load_storage_latency": 0.0,
+    "query_name": "EXPLAIN (ANALYZE, FORMAT JSON) SELECT ts, t, amt FROM spray_edges WHERE f = ? ORDER BY ts",
+    "cpu_time": 0.001313253,
+    "checkpoint_latency": 0.0,
+    "cumulative_cardinality": 19968,
+    "waiting_to_attach_latency": 0.0,
+    "write_to_wal_latency": 0.0,
+    "attach_replay_wal_latency": 0.0,
+    "blocked_thread_time": 0.0,
+    "cumulative_rows_scanned": 283190,
+    "children": [
+      {
+        "system_peak_temp_dir_size": 0,
+        "result_set_size": 0,
+        "operator_type": "EXPLAIN_ANALYZE",
+        "operator_timing": 8.4e-08,
+        "operator_rows_scanned": 0,
+        "extra_info": {},
+        "system_peak_buffer_memory": 0,
+        "cumulative_rows_scanned": 283190,
+        "cpu_time": 0.001313253,
+        "operator_name": "EXPLAIN_ANALYZE",
+        "cumulative_cardinality": 19968,
+        "operator_cardinality": 0,
+        "children": [
+          {
+            "cumulative_cardinality": 19968,
+            "operator_cardinality": 4992,
+            "cumulative_rows_scanned": 283190,
+            "operator_name": "PROJECTION",
+            "cpu_time": 0.0013131689999999999,
+            "operator_rows_scanned": 0,
+            "system_peak_buffer_memory": 0,
+            "extra_info": {
+              "Projections": [
+                "__internal_decompress_integral_bigint(#0, 4320000)",
+                "#1",
+                "__internal_decompress_integral_hugeint(#2, 240384)"
+              ],
+              "Estimated Cardinality": "0"
+            },
+            "operator_timing": 1.1458000000000001e-05,
+            "system_peak_temp_dir_size": 0,
+            "result_set_size": 199680,
+            "operator_type": "PROJECTION",
+            "children": [
+              {
+                "system_peak_temp_dir_size": 0,
+                "result_set_size": 119808,
+                "operator_type": "ORDER_BY",
+                "operator_timing": 0.000103709,
+                "operator_rows_scanned": 0,
+                "extra_info": {
+                  "Order By": "\"temp\".main.spray_edges.ts ASC"
+                },
+                "system_peak_buffer_memory": 0,
+                "cumulative_rows_scanned": 283190,
+                "cpu_time": 0.0013017109999999999,
+                "operator_name": "ORDER_BY",
+                "cumulative_cardinality": 14976,
+                "operator_cardinality": 4992,
+                "children": [
+                  {
+                    "cumulative_cardinality": 9984,
+                    "operator_cardinality": 4992,
+                    "cumulative_rows_scanned": 283190,
+                    "operator_name": "PROJECTION",
+                    "cpu_time": 0.0011980019999999999,
+                    "operator_rows_scanned": 0,
+                    "system_peak_buffer_memory": 0,
+                    "extra_info": {
+                      "Projections": [
+                        "__internal_compress_integral_uinteger(#0, 4320000)",
+                        "#1",
+                        "__internal_compress_integral_uinteger(#2, 240384)"
+                      ],
+                      "Estimated Cardinality": "23600"
+                    },
+                    "operator_timing": 1.2375e-05,
+                    "system_peak_temp_dir_size": 0,
+                    "result_set_size": 119808,
+                    "operator_type": "PROJECTION",
+                    "children": [
+                      {
+                        "system_peak_temp_dir_size": 0,
+                        "result_set_size": 199680,
+                        "operator_type": "TABLE_SCAN",
+                        "operator_timing": 0.0011856269999999999,
+                        "operator_rows_scanned": 283190,
+                        "extra_info": {
+                          "Table": "\"temp\".main.spray_edges",
+                          "Type": "Sequential Scan",
+                          "Projections": [
+                            "ts",
+                            "t",
+                            "amt"
+                          ],
+                          "Filters": "f='0x0000000000000000000000000000000000000df7'",
+                          "Estimated Cardinality": "23600"
+                        },
+                        "system_peak_buffer_memory": 0,
+                        "cumulative_rows_scanned": 283190,
+                        "cpu_time": 0.0011856269999999999,
+                        "operator_name": "SEQ_SCAN",
+                        "cumulative_cardinality": 4992,
+                        "operator_cardinality": 4992,
+                        "children": []
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}
+{
+  "sql": "SELECT t, SUM(amt) AS v FROM spray_edges WHERE f = ? GROUP BY t ORDER BY v DESC LIMIT 500",
+  "params": [
+    "0x0000000000000000000000000000000000001089"
+  ],
+  "plan": [
+    {
+      "name": "TOP_N",
+      "children": [
+        {
+          "name": "HASH_GROUP_BY",
+          "children": [
+            {
+              "name": "PROJECTION",
+              "children": [
+                {
+                  "name": "SEQ_SCAN",
+                  "children": [],
+                  "extra_info": {
+                    "Table": "\"temp\".main.spray_edges",
+                    "Type": "Sequential Scan",
+                    "Projections": [
+                      "t",
+                      "amt"
+                    ],
+                    "Filters": "f='0x0000000000000000000000000000000000001089'",
+                    "Estimated Cardinality": "23600"
+                  }
+                }
+              ],
+              "extra_info": {
+                "Projections": [
+                  "t",
+                  "amt"
+                ],
+                "Estimated Cardinality": "23600"
+              }
+            }
+          ],
+          "extra_info": {
+            "Groups": "#0",
+            "Aggregates": "sum(#1)",
+            "Estimated Cardinality": "360"
+          }
+        }
+      ],
+      "extra_info": {
+        "Top": "500",
+        "Order By": "sum(\"temp\".main.spray_edges.amt) DESC"
+      }
+    }
+  ],
+  "family": "top",
+  "analyze": {
+    "total_memory_allocated": 13631488,
+    "total_bytes_written": 0,
+    "total_bytes_read": 0,
+    "system_peak_temp_dir_size": 0,
+    "system_peak_buffer_memory": 105895440,
+    "rows_returned": 0,
+    "result_set_size": 0,
+    "latency": 0.002979042,
+    "wal_replay_entry_count": 0,
+    "extra_info": {},
+    "commit_local_storage_latency": 0.0,
+    "attach_load_storage_latency": 0.0,
+    "query_name": "EXPLAIN (ANALYZE, FORMAT JSON) SELECT t, SUM(amt) AS v FROM spray_edges WHERE f = ? GROUP BY t ORDER BY v DESC LIMIT 500",
+    "cpu_time": 0.003986630999999998,
+    "checkpoint_latency": 0.0,
+    "cumulative_cardinality": 249702,
+    "waiting_to_attach_latency": 0.0,
+    "write_to_wal_latency": 0.0,
+    "attach_replay_wal_latency": 0.0,
+    "blocked_thread_time": 0.0,
+    "cumulative_rows_scanned": 283190,
+    "children": [
+      {
+        "system_peak_temp_dir_size": 0,
+        "result_set_size": 0,
+        "operator_type": "EXPLAIN_ANALYZE",
+        "operator_timing": 4.2e-08,
+        "operator_rows_scanned": 0,
+        "extra_info": {},
+        "system_peak_buffer_memory": 0,
+        "cumulative_rows_scanned": 283190,
+        "cpu_time": 0.003986630999999998,
+        "operator_name": "EXPLAIN_ANALYZE",
+        "cumulative_cardinality": 249702,
+        "operator_cardinality": 0,
+        "children": [
+          {
+            "cumulative_cardinality": 249702,
+            "operator_cardinality": 500,
+            "cumulative_rows_scanned": 283190,
+            "operator_name": "TOP_N",
+            "cpu_time": 0.003986588999999999,
+            "operator_rows_scanned": 0,
+            "system_peak_buffer_memory": 0,
+            "extra_info": {
+              "Top": "500",
+              "Order By": "sum(\"temp\".main.spray_edges.amt) DESC"
+            },
+            "operator_timing": 3.766600000000001e-05,
+            "system_peak_temp_dir_size": 0,
+            "result_set_size": 16000,
+            "operator_type": "TOP_N",
+            "children": [
+              {
+                "system_peak_temp_dir_size": 0,
+                "result_set_size": 19200,
+                "operator_type": "HASH_GROUP_BY",
+                "operator_timing": 0.002668206999999999,
+                "operator_rows_scanned": 0,
+                "extra_info": {
+                  "Groups": "#0",
+                  "Aggregates": "sum(#1)",
+                  "Estimated Cardinality": "360"
+                },
+                "system_peak_buffer_memory": 0,
+                "cumulative_rows_scanned": 283190,
+                "cpu_time": 0.003948922999999998,
+                "operator_name": "HASH_GROUP_BY",
+                "cumulative_cardinality": 249202,
+                "operator_cardinality": 600,
+                "children": [
+                  {
+                    "cumulative_cardinality": 248602,
+                    "operator_cardinality": 124301,
+                    "cumulative_rows_scanned": 283190,
+                    "operator_name": "PROJECTION",
+                    "cpu_time": 0.0012807159999999997,
+                    "operator_rows_scanned": 0,
+                    "system_peak_buffer_memory": 0,
+                    "extra_info": {
+                      "Projections": [
+                        "t",
+                        "amt"
+                      ],
+                      "Estimated Cardinality": "23600"
+                    },
+                    "operator_timing": 4.884000000000001e-06,
+                    "system_peak_temp_dir_size": 0,
+                    "result_set_size": 3977632,
+                    "operator_type": "PROJECTION",
+                    "children": [
+                      {
+                        "system_peak_temp_dir_size": 0,
+                        "result_set_size": 3977632,
+                        "operator_type": "TABLE_SCAN",
+                        "operator_timing": 0.0012758319999999997,
+                        "operator_rows_scanned": 283190,
+                        "extra_info": {
+                          "Table": "\"temp\".main.spray_edges",
+                          "Type": "Sequential Scan",
+                          "Projections": [
+                            "t",
+                            "amt"
+                          ],
+                          "Filters": "f='0x0000000000000000000000000000000000001089'",
+                          "Estimated Cardinality": "23600"
+                        },
+                        "system_peak_buffer_memory": 0,
+                        "cumulative_rows_scanned": 283190,
+                        "cpu_time": 0.0012758319999999997,
+                        "operator_name": "SEQ_SCAN",
+                        "cumulative_cardinality": 124301,
+                        "operator_cardinality": 124301,
+                        "children": []
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}
+
+34 次原始计时记录（含精确命令、RSS 单位 bytes、采样次数）：
+[
+  {
+    "name": "main_sol",
+    "stage": "baseline",
+    "seconds": 48.16787220799597,
+    "peak_rss_bytes": 216629248,
+    "temp_sampled_peak_allocated_bytes": 0,
+    "sample_count": 816,
+    "temp_sampling": "50ms Python stat st_blocks*512 sum of default cwd/.tmp; sampled lower bound",
+    "command": [
+      "/usr/local/bin/python3",
+      "-B",
+      "/private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/R1_gqro5g85/flow_baseline.py",
+      "--edges-sol",
+      "/private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/R1_gqro5g85/main/edges.jsonl",
+      "--case-root",
+      "/private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/R1_gqro5g85/main",
+      "--edges-sol",
+      "/private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/R1_gqro5g85/main/data/soltx-4eb8d4d0e921d2f9c873ff102f98fa6b65f15cdd45aba80bfdf5b0ac2108359f.jsonl.gz",
+      "--sol-cache-meta",
+      "/private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/R1_gqro5g85/main/data/soltx-4eb8d4d0e921d2f9c873ff102f98fa6b65f15cdd45aba80bfdf5b0ac2108359f.meta.json",
+      "--mint",
+      "So1AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+      "--total-supply",
+      "1000000000000",
+      "--out",
+      "/private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/R1_gqro5g85/baseline_main_sol/report.json"
+    ],
+    "exit": 0
+  },
+  {
+    "name": "main_sol_entity",
+    "stage": "baseline",
+    "seconds": 59.22519829199882,
+    "peak_rss_bytes": 227901440,
+    "temp_sampled_peak_allocated_bytes": 0,
+    "sample_count": 1005,
+    "temp_sampling": "50ms Python stat st_blocks*512 sum of default cwd/.tmp; sampled lower bound",
+    "command": [
+      "/usr/local/bin/python3",
+      "-B",
+      "/private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/R1_gqro5g85/flow_baseline.py",
+      "--edges-sol",
+      "/private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/R1_gqro5g85/main/edges.jsonl",
+      "--case-root",
+      "/private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/R1_gqro5g85/main",
+      "--edges-sol",
+      "/private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/R1_gqro5g85/main/data/soltx-4eb8d4d0e921d2f9c873ff102f98fa6b65f15cdd45aba80bfdf5b0ac2108359f.jsonl.gz",
+      "--sol-cache-meta",
+      "/private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/R1_gqro5g85/main/data/soltx-4eb8d4d0e921d2f9c873ff102f98fa6b65f15cdd45aba80bfdf5b0ac2108359f.meta.json",
+      "--mint",
+      "So1AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+      "--total-supply",
+      "1000000000000",
+      "--entity-file",
+      "/private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/R1_gqro5g85/entity.json",
+      "--out",
+      "/private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/R1_gqro5g85/baseline_main_sol_entity/report.json"
+    ],
+    "exit": 0
+  },
+  {
+    "name": "main_sol_entity_exclude",
+    "stage": "baseline",
+    "seconds": 57.87696708399744,
+    "peak_rss_bytes": 231374848,
+    "temp_sampled_peak_allocated_bytes": 0,
+    "sample_count": 1020,
+    "temp_sampling": "50ms Python stat st_blocks*512 sum of default cwd/.tmp; sampled lower bound",
+    "command": [
+      "/usr/local/bin/python3",
+      "-B",
+      "/private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/R1_gqro5g85/flow_baseline.py",
+      "--edges-sol",
+      "/private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/R1_gqro5g85/main/edges.jsonl",
+      "--case-root",
+      "/private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/R1_gqro5g85/main",
+      "--edges-sol",
+      "/private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/R1_gqro5g85/main/data/soltx-4eb8d4d0e921d2f9c873ff102f98fa6b65f15cdd45aba80bfdf5b0ac2108359f.jsonl.gz",
+      "--sol-cache-meta",
+      "/private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/R1_gqro5g85/main/data/soltx-4eb8d4d0e921d2f9c873ff102f98fa6b65f15cdd45aba80bfdf5b0ac2108359f.meta.json",
+      "--mint",
+      "So1AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+      "--total-supply",
+      "1000000000000",
+      "--entity-file",
+      "/private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/R1_gqro5g85/entity.json",
+      "--exclude-file",
+      "/private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/R1_gqro5g85/exclude.json",
+      "--out",
+      "/private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/R1_gqro5g85/baseline_main_sol_entity_exclude/report.json"
+    ],
+    "exit": 0
+  },
+  {
+    "name": "main_duck",
+    "stage": "baseline",
+    "seconds": 0.7635528340033488,
+    "peak_rss_bytes": 136364032,
+    "temp_sampled_peak_allocated_bytes": 0,
+    "sample_count": 15,
+    "temp_sampling": "50ms Python stat st_blocks*512 sum of default cwd/.tmp; sampled lower bound",
+    "command": [
+      "/usr/local/bin/python3",
+      "-B",
+      "/private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/R1_gqro5g85/flow_baseline.py",
+      "--duckdb",
+      "/private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/R1_gqro5g85/main/edges.duckdb",
+      "--total-supply",
+      "1000000000000",
+      "--out",
+      "/private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/R1_gqro5g85/baseline_main_duck/report.json"
+    ],
+    "exit": 0
+  },
+  {
+    "name": "main_evm",
+    "stage": "baseline",
+    "seconds": 2.1203130840003723,
+    "peak_rss_bytes": 347226112,
+    "temp_sampled_peak_allocated_bytes": 0,
+    "sample_count": 40,
+    "temp_sampling": "50ms Python stat st_blocks*512 sum of default cwd/.tmp; sampled lower bound",
+    "command": [
+      "/usr/local/bin/python3",
+      "-B",
+      "/private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/R1_gqro5g85/flow_baseline.py",
+      "--edges-evm-v2",
+      "/private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/R1_gqro5g85/main/evm",
+      "--total-supply",
+      "1000000000000",
+      "--out",
+      "/private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/R1_gqro5g85/baseline_main_evm/report.json"
+    ],
+    "exit": 0
+  },
+  {
+    "name": "ties_sol",
+    "stage": "baseline",
+    "seconds": 0.7073870000021998,
+    "peak_rss_bytes": 159875072,
+    "temp_sampled_peak_allocated_bytes": 0,
+    "sample_count": 14,
+    "temp_sampling": "50ms Python stat st_blocks*512 sum of default cwd/.tmp; sampled lower bound",
+    "command": [
+      "/usr/local/bin/python3",
+      "-B",
+      "/private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/R1_gqro5g85/flow_baseline.py",
+      "--edges-sol",
+      "/private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/R1_gqro5g85/ties/edges.jsonl",
+      "--case-root",
+      "/private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/R1_gqro5g85/ties",
+      "--edges-sol",
+      "/private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/R1_gqro5g85/ties/data/soltx-4eb8d4d0e921d2f9c873ff102f98fa6b65f15cdd45aba80bfdf5b0ac2108359f.jsonl.gz",
+      "--sol-cache-meta",
+      "/private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/R1_gqro5g85/ties/data/soltx-4eb8d4d0e921d2f9c873ff102f98fa6b65f15cdd45aba80bfdf5b0ac2108359f.meta.json",
+      "--mint",
+      "So1AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+      "--total-supply",
+      "1000000000000",
+      "--out",
+      "/private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/R1_gqro5g85/baseline_ties_sol/report.json"
+    ],
+    "exit": 0
+  },
+  {
+    "name": "ties_duck",
+    "stage": "baseline",
+    "seconds": 0.16398970800219104,
+    "peak_rss_bytes": 88178688,
+    "temp_sampled_peak_allocated_bytes": 0,
+    "sample_count": 4,
+    "temp_sampling": "50ms Python stat st_blocks*512 sum of default cwd/.tmp; sampled lower bound",
+    "command": [
+      "/usr/local/bin/python3",
+      "-B",
+      "/private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/R1_gqro5g85/flow_baseline.py",
+      "--duckdb",
+      "/private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/R1_gqro5g85/ties/edges.duckdb",
+      "--total-supply",
+      "1000000000000",
+      "--out",
+      "/private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/R1_gqro5g85/baseline_ties_duck/report.json"
+    ],
+    "exit": 0
+  },
+  {
+    "name": "ties_evm",
+    "stage": "baseline",
+    "seconds": 0.15778845800377894,
+    "peak_rss_bytes": 95191040,
+    "temp_sampled_peak_allocated_bytes": 0,
+    "sample_count": 4,
+    "temp_sampling": "50ms Python stat st_blocks*512 sum of default cwd/.tmp; sampled lower bound",
+    "command": [
+      "/usr/local/bin/python3",
+      "-B",
+      "/private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/R1_gqro5g85/flow_baseline.py",
+      "--edges-evm-v2",
+      "/private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/R1_gqro5g85/ties/evm",
+      "--total-supply",
+      "1000000000000",
+      "--out",
+      "/private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/R1_gqro5g85/baseline_ties_evm/report.json"
+    ],
+    "exit": 0
+  },
+  {
+    "name": "empty_candidates_sol",
+    "stage": "baseline",
+    "seconds": 0.4358427919942187,
+    "peak_rss_bytes": 148340736,
+    "temp_sampled_peak_allocated_bytes": 0,
+    "sample_count": 9,
+    "temp_sampling": "50ms Python stat st_blocks*512 sum of default cwd/.tmp; sampled lower bound",
+    "command": [
+      "/usr/local/bin/python3",
+      "-B",
+      "/private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/R1_gqro5g85/flow_baseline.py",
+      "--edges-sol",
+      "/private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/R1_gqro5g85/empty_candidates/edges.jsonl",
+      "--case-root",
+      "/private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/R1_gqro5g85/empty_candidates",
+      "--edges-sol",
+      "/private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/R1_gqro5g85/empty_candidates/data/soltx-4eb8d4d0e921d2f9c873ff102f98fa6b65f15cdd45aba80bfdf5b0ac2108359f.jsonl.gz",
+      "--sol-cache-meta",
+      "/private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/R1_gqro5g85/empty_candidates/data/soltx-4eb8d4d0e921d2f9c873ff102f98fa6b65f15cdd45aba80bfdf5b0ac2108359f.meta.json",
+      "--mint",
+      "So1AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+      "--total-supply",
+      "1000000000000",
+      "--out",
+      "/private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/R1_gqro5g85/baseline_empty_candidates_sol/report.json"
+    ],
+    "exit": 0
+  },
+  {
+    "name": "empty_candidates_duck",
+    "stage": "baseline",
+    "seconds": 0.11189820899744518,
+    "peak_rss_bytes": 75628544,
+    "temp_sampled_peak_allocated_bytes": 0,
+    "sample_count": 3,
+    "temp_sampling": "50ms Python stat st_blocks*512 sum of default cwd/.tmp; sampled lower bound",
+    "command": [
+      "/usr/local/bin/python3",
+      "-B",
+      "/private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/R1_gqro5g85/flow_baseline.py",
+      "--duckdb",
+      "/private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/R1_gqro5g85/empty_candidates/edges.duckdb",
+      "--total-supply",
+      "1000000000000",
+      "--out",
+      "/private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/R1_gqro5g85/baseline_empty_candidates_duck/report.json"
+    ],
+    "exit": 0
+  },
+  {
+    "name": "empty_candidates_evm",
+    "stage": "baseline",
+    "seconds": 0.11174441700859461,
+    "peak_rss_bytes": 76021760,
+    "temp_sampled_peak_allocated_bytes": 0,
+    "sample_count": 3,
+    "temp_sampling": "50ms Python stat st_blocks*512 sum of default cwd/.tmp; sampled lower bound",
+    "command": [
+      "/usr/local/bin/python3",
+      "-B",
+      "/private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/R1_gqro5g85/flow_baseline.py",
+      "--edges-evm-v2",
+      "/private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/R1_gqro5g85/empty_candidates/evm",
+      "--total-supply",
+      "1000000000000",
+      "--out",
+      "/private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/R1_gqro5g85/baseline_empty_candidates_evm/report.json"
+    ],
+    "exit": 0
+  },
+  {
+    "name": "empty_elig_sol",
+    "stage": "baseline",
+    "seconds": 0.43263608300185297,
+    "peak_rss_bytes": 146735104,
+    "temp_sampled_peak_allocated_bytes": 0,
+    "sample_count": 9,
+    "temp_sampling": "50ms Python stat st_blocks*512 sum of default cwd/.tmp; sampled lower bound",
+    "command": [
+      "/usr/local/bin/python3",
+      "-B",
+      "/private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/R1_gqro5g85/flow_baseline.py",
+      "--edges-sol",
+      "/private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/R1_gqro5g85/empty_elig/edges.jsonl",
+      "--case-root",
+      "/private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/R1_gqro5g85/empty_elig",
+      "--edges-sol",
+      "/private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/R1_gqro5g85/empty_elig/data/soltx-4eb8d4d0e921d2f9c873ff102f98fa6b65f15cdd45aba80bfdf5b0ac2108359f.jsonl.gz",
+      "--sol-cache-meta",
+      "/private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/R1_gqro5g85/empty_elig/data/soltx-4eb8d4d0e921d2f9c873ff102f98fa6b65f15cdd45aba80bfdf5b0ac2108359f.meta.json",
+      "--mint",
+      "So1AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+      "--total-supply",
+      "1000000000000",
+      "--out",
+      "/private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/R1_gqro5g85/baseline_empty_elig_sol/report.json"
+    ],
+    "exit": 0
+  },
+  {
+    "name": "empty_elig_evm",
+    "stage": "baseline",
+    "seconds": 0.16594249999616295,
+    "peak_rss_bytes": 73957376,
+    "temp_sampled_peak_allocated_bytes": 0,
+    "sample_count": 4,
+    "temp_sampling": "50ms Python stat st_blocks*512 sum of default cwd/.tmp; sampled lower bound",
+    "command": [
+      "/usr/local/bin/python3",
+      "-B",
+      "/private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/R1_gqro5g85/flow_baseline.py",
+      "--edges-evm-v2",
+      "/private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/R1_gqro5g85/empty_elig/evm",
+      "--total-supply",
+      "1000000000000",
+      "--out",
+      "/private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/R1_gqro5g85/baseline_empty_elig_evm/report.json"
+    ],
+    "exit": 0
+  },
+  {
+    "name": "empty_elig_duck_duck",
+    "stage": "baseline",
+    "seconds": 0.21346574999915902,
+    "peak_rss_bytes": 85557248,
+    "temp_sampled_peak_allocated_bytes": 0,
+    "sample_count": 5,
+    "temp_sampling": "50ms Python stat st_blocks*512 sum of default cwd/.tmp; sampled lower bound",
+    "command": [
+      "/usr/local/bin/python3",
+      "-B",
+      "/private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/R1_gqro5g85/flow_baseline.py",
+      "--duckdb",
+      "/private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/R1_gqro5g85/empty_elig_duck/edges.duckdb",
+      "--total-supply",
+      "1000000000000",
+      "--out",
+      "/private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/R1_gqro5g85/baseline_empty_elig_duck_duck/report.json"
+    ],
+    "exit": 0
+  },
+  {
+    "name": "mixed_duck",
+    "stage": "baseline",
+    "seconds": 0.16585145800490864,
+    "peak_rss_bytes": 78217216,
+    "temp_sampled_peak_allocated_bytes": 0,
+    "sample_count": 4,
+    "temp_sampling": "50ms Python stat st_blocks*512 sum of default cwd/.tmp; sampled lower bound",
+    "command": [
+      "/usr/local/bin/python3",
+      "-B",
+      "/private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/R1_gqro5g85/flow_baseline.py",
+      "--duckdb",
+      "/private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/R1_gqro5g85/mixed/edges.duckdb",
+      "--total-supply",
+      "1000000000000",
+      "--out",
+      "/private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/R1_gqro5g85/baseline_mixed_duck/report.json"
+    ],
+    "exit": 0
+  },
+  {
+    "name": "negative_duck",
+    "stage": "baseline",
+    "seconds": 0.11194833301124163,
+    "peak_rss_bytes": 81756160,
+    "temp_sampled_peak_allocated_bytes": 0,
+    "sample_count": 3,
+    "temp_sampling": "50ms Python stat st_blocks*512 sum of default cwd/.tmp; sampled lower bound",
+    "command": [
+      "/usr/local/bin/python3",
+      "-B",
+      "/private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/R1_gqro5g85/flow_baseline.py",
+      "--duckdb",
+      "/private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/R1_gqro5g85/negative/edges.duckdb",
+      "--total-supply",
+      "1000000000000",
+      "--out",
+      "/private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/R1_gqro5g85/baseline_negative_duck/report.json"
+    ],
+    "exit": 0
+  },
+  {
+    "name": "large_evm",
+    "stage": "baseline",
+    "seconds": 14.422498707994237,
+    "peak_rss_bytes": 1281933312,
+    "temp_sampled_peak_allocated_bytes": 0,
+    "sample_count": 264,
+    "temp_sampling": "50ms Python stat st_blocks*512 sum of default cwd/.tmp; sampled lower bound",
+    "command": [
+      "/usr/local/bin/python3",
+      "-B",
+      "/private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/R1_gqro5g85/flow_baseline.py",
+      "--edges-evm-v2",
+      "/private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/R1_gqro5g85/large/evm",
+      "--total-supply",
+      "1000000000000",
+      "--out",
+      "/private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/R1_gqro5g85/baseline_large_evm/report.json"
+    ],
+    "exit": 0
+  },
+  {
+    "name": "main_sol",
+    "stage": "new",
+    "seconds": 49.77885750000132,
+    "peak_rss_bytes": 272777216,
+    "temp_sampled_peak_allocated_bytes": 0,
+    "sample_count": 916,
+    "temp_sampling": "50ms Python stat st_blocks*512 sum of default cwd/.tmp; sampled lower bound",
+    "command": [
+      "/usr/local/bin/python3",
+      "-B",
+      "/Users/uravvv/.claude/skills/token-chip-analysis/scripts/report/flow_anomaly_scan.py",
+      "--edges-sol",
+      "/private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/R1_gqro5g85/main/edges.jsonl",
+      "--case-root",
+      "/private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/R1_gqro5g85/main",
+      "--edges-sol",
+      "/private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/R1_gqro5g85/main/data/soltx-4eb8d4d0e921d2f9c873ff102f98fa6b65f15cdd45aba80bfdf5b0ac2108359f.jsonl.gz",
+      "--sol-cache-meta",
+      "/private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/R1_gqro5g85/main/data/soltx-4eb8d4d0e921d2f9c873ff102f98fa6b65f15cdd45aba80bfdf5b0ac2108359f.meta.json",
+      "--mint",
+      "So1AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+      "--total-supply",
+      "1000000000000",
+      "--out",
+      "/private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/R1_gqro5g85/new_main_sol/report.json"
+    ],
+    "exit": 0
+  },
+  {
+    "name": "main_sol_entity",
+    "stage": "new",
+    "seconds": 54.77877750000334,
+    "peak_rss_bytes": 269778944,
+    "temp_sampled_peak_allocated_bytes": 0,
+    "sample_count": 1008,
+    "temp_sampling": "50ms Python stat st_blocks*512 sum of default cwd/.tmp; sampled lower bound",
+    "command": [
+      "/usr/local/bin/python3",
+      "-B",
+      "/Users/uravvv/.claude/skills/token-chip-analysis/scripts/report/flow_anomaly_scan.py",
+      "--edges-sol",
+      "/private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/R1_gqro5g85/main/edges.jsonl",
+      "--case-root",
+      "/private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/R1_gqro5g85/main",
+      "--edges-sol",
+      "/private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/R1_gqro5g85/main/data/soltx-4eb8d4d0e921d2f9c873ff102f98fa6b65f15cdd45aba80bfdf5b0ac2108359f.jsonl.gz",
+      "--sol-cache-meta",
+      "/private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/R1_gqro5g85/main/data/soltx-4eb8d4d0e921d2f9c873ff102f98fa6b65f15cdd45aba80bfdf5b0ac2108359f.meta.json",
+      "--mint",
+      "So1AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+      "--total-supply",
+      "1000000000000",
+      "--entity-file",
+      "/private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/R1_gqro5g85/entity.json",
+      "--out",
+      "/private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/R1_gqro5g85/new_main_sol_entity/report.json"
+    ],
+    "exit": 0
+  },
+  {
+    "name": "main_sol_entity_exclude",
+    "stage": "new",
+    "seconds": 59.46058220800478,
+    "peak_rss_bytes": 280117248,
+    "temp_sampled_peak_allocated_bytes": 0,
+    "sample_count": 1095,
+    "temp_sampling": "50ms Python stat st_blocks*512 sum of default cwd/.tmp; sampled lower bound",
+    "command": [
+      "/usr/local/bin/python3",
+      "-B",
+      "/Users/uravvv/.claude/skills/token-chip-analysis/scripts/report/flow_anomaly_scan.py",
+      "--edges-sol",
+      "/private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/R1_gqro5g85/main/edges.jsonl",
+      "--case-root",
+      "/private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/R1_gqro5g85/main",
+      "--edges-sol",
+      "/private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/R1_gqro5g85/main/data/soltx-4eb8d4d0e921d2f9c873ff102f98fa6b65f15cdd45aba80bfdf5b0ac2108359f.jsonl.gz",
+      "--sol-cache-meta",
+      "/private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/R1_gqro5g85/main/data/soltx-4eb8d4d0e921d2f9c873ff102f98fa6b65f15cdd45aba80bfdf5b0ac2108359f.meta.json",
+      "--mint",
+      "So1AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+      "--total-supply",
+      "1000000000000",
+      "--entity-file",
+      "/private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/R1_gqro5g85/entity.json",
+      "--exclude-file",
+      "/private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/R1_gqro5g85/exclude.json",
+      "--out",
+      "/private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/R1_gqro5g85/new_main_sol_entity_exclude/report.json"
+    ],
+    "exit": 0
+  },
+  {
+    "name": "main_duck",
+    "stage": "new",
+    "seconds": 0.9731826670031296,
+    "peak_rss_bytes": 242515968,
+    "temp_sampled_peak_allocated_bytes": 0,
+    "sample_count": 19,
+    "temp_sampling": "50ms Python stat st_blocks*512 sum of default cwd/.tmp; sampled lower bound",
+    "command": [
+      "/usr/local/bin/python3",
+      "-B",
+      "/Users/uravvv/.claude/skills/token-chip-analysis/scripts/report/flow_anomaly_scan.py",
+      "--duckdb",
+      "/private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/R1_gqro5g85/main/edges.duckdb",
+      "--total-supply",
+      "1000000000000",
+      "--out",
+      "/private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/R1_gqro5g85/new_main_duck/report.json"
+    ],
+    "exit": 0
+  },
+  {
+    "name": "main_evm",
+    "stage": "new",
+    "seconds": 1.1908397499937564,
+    "peak_rss_bytes": 440582144,
+    "temp_sampled_peak_allocated_bytes": 0,
+    "sample_count": 23,
+    "temp_sampling": "50ms Python stat st_blocks*512 sum of default cwd/.tmp; sampled lower bound",
+    "command": [
+      "/usr/local/bin/python3",
+      "-B",
+      "/Users/uravvv/.claude/skills/token-chip-analysis/scripts/report/flow_anomaly_scan.py",
+      "--edges-evm-v2",
+      "/private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/R1_gqro5g85/main/evm",
+      "--total-supply",
+      "1000000000000",
+      "--out",
+      "/private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/R1_gqro5g85/new_main_evm/report.json"
+    ],
+    "exit": 0
+  },
+  {
+    "name": "ties_sol",
+    "stage": "new",
+    "seconds": 0.656588500001817,
+    "peak_rss_bytes": 159531008,
+    "temp_sampled_peak_allocated_bytes": 0,
+    "sample_count": 13,
+    "temp_sampling": "50ms Python stat st_blocks*512 sum of default cwd/.tmp; sampled lower bound",
+    "command": [
+      "/usr/local/bin/python3",
+      "-B",
+      "/Users/uravvv/.claude/skills/token-chip-analysis/scripts/report/flow_anomaly_scan.py",
+      "--edges-sol",
+      "/private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/R1_gqro5g85/ties/edges.jsonl",
+      "--case-root",
+      "/private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/R1_gqro5g85/ties",
+      "--edges-sol",
+      "/private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/R1_gqro5g85/ties/data/soltx-4eb8d4d0e921d2f9c873ff102f98fa6b65f15cdd45aba80bfdf5b0ac2108359f.jsonl.gz",
+      "--sol-cache-meta",
+      "/private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/R1_gqro5g85/ties/data/soltx-4eb8d4d0e921d2f9c873ff102f98fa6b65f15cdd45aba80bfdf5b0ac2108359f.meta.json",
+      "--mint",
+      "So1AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+      "--total-supply",
+      "1000000000000",
+      "--out",
+      "/private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/R1_gqro5g85/new_ties_sol/report.json"
+    ],
+    "exit": 0
+  },
+  {
+    "name": "ties_duck",
+    "stage": "new",
+    "seconds": 0.43715054099448025,
+    "peak_rss_bytes": 161234944,
+    "temp_sampled_peak_allocated_bytes": 0,
+    "sample_count": 9,
+    "temp_sampling": "50ms Python stat st_blocks*512 sum of default cwd/.tmp; sampled lower bound",
+    "command": [
+      "/usr/local/bin/python3",
+      "-B",
+      "/Users/uravvv/.claude/skills/token-chip-analysis/scripts/report/flow_anomaly_scan.py",
+      "--duckdb",
+      "/private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/R1_gqro5g85/ties/edges.duckdb",
+      "--total-supply",
+      "1000000000000",
+      "--out",
+      "/private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/R1_gqro5g85/new_ties_duck/report.json"
+    ],
+    "exit": 0
+  },
+  {
+    "name": "ties_evm",
+    "stage": "new",
+    "seconds": 0.4420529170020018,
+    "peak_rss_bytes": 172425216,
+    "temp_sampled_peak_allocated_bytes": 0,
+    "sample_count": 9,
+    "temp_sampling": "50ms Python stat st_blocks*512 sum of default cwd/.tmp; sampled lower bound",
+    "command": [
+      "/usr/local/bin/python3",
+      "-B",
+      "/Users/uravvv/.claude/skills/token-chip-analysis/scripts/report/flow_anomaly_scan.py",
+      "--edges-evm-v2",
+      "/private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/R1_gqro5g85/ties/evm",
+      "--total-supply",
+      "1000000000000",
+      "--out",
+      "/private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/R1_gqro5g85/new_ties_evm/report.json"
+    ],
+    "exit": 0
+  },
+  {
+    "name": "empty_candidates_sol",
+    "stage": "new",
+    "seconds": 0.3833609580033226,
+    "peak_rss_bytes": 148357120,
+    "temp_sampled_peak_allocated_bytes": 0,
+    "sample_count": 8,
+    "temp_sampling": "50ms Python stat st_blocks*512 sum of default cwd/.tmp; sampled lower bound",
+    "command": [
+      "/usr/local/bin/python3",
+      "-B",
+      "/Users/uravvv/.claude/skills/token-chip-analysis/scripts/report/flow_anomaly_scan.py",
+      "--edges-sol",
+      "/private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/R1_gqro5g85/empty_candidates/edges.jsonl",
+      "--case-root",
+      "/private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/R1_gqro5g85/empty_candidates",
+      "--edges-sol",
+      "/private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/R1_gqro5g85/empty_candidates/data/soltx-4eb8d4d0e921d2f9c873ff102f98fa6b65f15cdd45aba80bfdf5b0ac2108359f.jsonl.gz",
+      "--sol-cache-meta",
+      "/private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/R1_gqro5g85/empty_candidates/data/soltx-4eb8d4d0e921d2f9c873ff102f98fa6b65f15cdd45aba80bfdf5b0ac2108359f.meta.json",
+      "--mint",
+      "So1AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+      "--total-supply",
+      "1000000000000",
+      "--out",
+      "/private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/R1_gqro5g85/new_empty_candidates_sol/report.json"
+    ],
+    "exit": 0
+  },
+  {
+    "name": "empty_candidates_duck",
+    "stage": "new",
+    "seconds": 0.37998979099211283,
+    "peak_rss_bytes": 150224896,
+    "temp_sampled_peak_allocated_bytes": 0,
+    "sample_count": 8,
+    "temp_sampling": "50ms Python stat st_blocks*512 sum of default cwd/.tmp; sampled lower bound",
+    "command": [
+      "/usr/local/bin/python3",
+      "-B",
+      "/Users/uravvv/.claude/skills/token-chip-analysis/scripts/report/flow_anomaly_scan.py",
+      "--duckdb",
+      "/private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/R1_gqro5g85/empty_candidates/edges.duckdb",
+      "--total-supply",
+      "1000000000000",
+      "--out",
+      "/private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/R1_gqro5g85/new_empty_candidates_duck/report.json"
+    ],
+    "exit": 0
+  },
+  {
+    "name": "empty_candidates_evm",
+    "stage": "new",
+    "seconds": 0.43055574999016244,
+    "peak_rss_bytes": 151945216,
+    "temp_sampled_peak_allocated_bytes": 0,
+    "sample_count": 9,
+    "temp_sampling": "50ms Python stat st_blocks*512 sum of default cwd/.tmp; sampled lower bound",
+    "command": [
+      "/usr/local/bin/python3",
+      "-B",
+      "/Users/uravvv/.claude/skills/token-chip-analysis/scripts/report/flow_anomaly_scan.py",
+      "--edges-evm-v2",
+      "/private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/R1_gqro5g85/empty_candidates/evm",
+      "--total-supply",
+      "1000000000000",
+      "--out",
+      "/private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/R1_gqro5g85/new_empty_candidates_evm/report.json"
+    ],
+    "exit": 0
+  },
+  {
+    "name": "empty_elig_sol",
+    "stage": "new",
+    "seconds": 0.3801765410025837,
+    "peak_rss_bytes": 145276928,
+    "temp_sampled_peak_allocated_bytes": 0,
+    "sample_count": 8,
+    "temp_sampling": "50ms Python stat st_blocks*512 sum of default cwd/.tmp; sampled lower bound",
+    "command": [
+      "/usr/local/bin/python3",
+      "-B",
+      "/Users/uravvv/.claude/skills/token-chip-analysis/scripts/report/flow_anomaly_scan.py",
+      "--edges-sol",
+      "/private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/R1_gqro5g85/empty_elig/edges.jsonl",
+      "--case-root",
+      "/private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/R1_gqro5g85/empty_elig",
+      "--edges-sol",
+      "/private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/R1_gqro5g85/empty_elig/data/soltx-4eb8d4d0e921d2f9c873ff102f98fa6b65f15cdd45aba80bfdf5b0ac2108359f.jsonl.gz",
+      "--sol-cache-meta",
+      "/private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/R1_gqro5g85/empty_elig/data/soltx-4eb8d4d0e921d2f9c873ff102f98fa6b65f15cdd45aba80bfdf5b0ac2108359f.meta.json",
+      "--mint",
+      "So1AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+      "--total-supply",
+      "1000000000000",
+      "--out",
+      "/private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/R1_gqro5g85/new_empty_elig_sol/report.json"
+    ],
+    "exit": 0
+  },
+  {
+    "name": "empty_elig_evm",
+    "stage": "new",
+    "seconds": 0.44159162500000093,
+    "peak_rss_bytes": 153042944,
+    "temp_sampled_peak_allocated_bytes": 0,
+    "sample_count": 9,
+    "temp_sampling": "50ms Python stat st_blocks*512 sum of default cwd/.tmp; sampled lower bound",
+    "command": [
+      "/usr/local/bin/python3",
+      "-B",
+      "/Users/uravvv/.claude/skills/token-chip-analysis/scripts/report/flow_anomaly_scan.py",
+      "--edges-evm-v2",
+      "/private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/R1_gqro5g85/empty_elig/evm",
+      "--total-supply",
+      "1000000000000",
+      "--out",
+      "/private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/R1_gqro5g85/new_empty_elig_evm/report.json"
+    ],
+    "exit": 0
+  },
+  {
+    "name": "empty_elig_duck_duck",
+    "stage": "new",
+    "seconds": 0.38037624998833053,
+    "peak_rss_bytes": 163905536,
+    "temp_sampled_peak_allocated_bytes": 0,
+    "sample_count": 8,
+    "temp_sampling": "50ms Python stat st_blocks*512 sum of default cwd/.tmp; sampled lower bound",
+    "command": [
+      "/usr/local/bin/python3",
+      "-B",
+      "/Users/uravvv/.claude/skills/token-chip-analysis/scripts/report/flow_anomaly_scan.py",
+      "--duckdb",
+      "/private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/R1_gqro5g85/empty_elig_duck/edges.duckdb",
+      "--total-supply",
+      "1000000000000",
+      "--out",
+      "/private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/R1_gqro5g85/new_empty_elig_duck_duck/report.json"
+    ],
+    "exit": 0
+  },
+  {
+    "name": "mixed_duck",
+    "stage": "new",
+    "seconds": 0.3845524999924237,
+    "peak_rss_bytes": 157810688,
+    "temp_sampled_peak_allocated_bytes": 0,
+    "sample_count": 8,
+    "temp_sampling": "50ms Python stat st_blocks*512 sum of default cwd/.tmp; sampled lower bound",
+    "command": [
+      "/usr/local/bin/python3",
+      "-B",
+      "/Users/uravvv/.claude/skills/token-chip-analysis/scripts/report/flow_anomaly_scan.py",
+      "--duckdb",
+      "/private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/R1_gqro5g85/mixed/edges.duckdb",
+      "--total-supply",
+      "1000000000000",
+      "--out",
+      "/private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/R1_gqro5g85/new_mixed_duck/report.json"
+    ],
+    "exit": 0
+  },
+  {
+    "name": "negative_duck",
+    "stage": "new",
+    "seconds": 0.3854858749982668,
+    "peak_rss_bytes": 157286400,
+    "temp_sampled_peak_allocated_bytes": 0,
+    "sample_count": 8,
+    "temp_sampling": "50ms Python stat st_blocks*512 sum of default cwd/.tmp; sampled lower bound",
+    "command": [
+      "/usr/local/bin/python3",
+      "-B",
+      "/Users/uravvv/.claude/skills/token-chip-analysis/scripts/report/flow_anomaly_scan.py",
+      "--duckdb",
+      "/private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/R1_gqro5g85/negative/edges.duckdb",
+      "--total-supply",
+      "1000000000000",
+      "--out",
+      "/private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/R1_gqro5g85/new_negative_duck/report.json"
+    ],
+    "exit": 0
+  },
+  {
+    "name": "large_evm",
+    "stage": "new",
+    "seconds": 7.4576807920093415,
+    "peak_rss_bytes": 1798799360,
+    "temp_sampled_peak_allocated_bytes": 0,
+    "sample_count": 138,
+    "temp_sampling": "50ms Python stat st_blocks*512 sum of default cwd/.tmp; sampled lower bound",
+    "command": [
+      "/usr/local/bin/python3",
+      "-B",
+      "/Users/uravvv/.claude/skills/token-chip-analysis/scripts/report/flow_anomaly_scan.py",
+      "--edges-evm-v2",
+      "/private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/R1_gqro5g85/large/evm",
+      "--total-supply",
+      "1000000000000",
+      "--out",
+      "/private/var/folders/z6/mlppyd097493blf6v8_h29dw0000gp/T/R1_gqro5g85/new_large_evm/report.json"
+    ],
+    "exit": 0
+  }
+]
+
+复现诊断：对 baseline/new 依次运行 R1_fixture_tools.py probe <root> <stage> <job>；job 为 main_evm、large_evm、ties_duck、empty_elig_duck_duck、empty_candidates_duck、negative_duck。随后 audit <root> 和 decode <root>。诊断不用外部网络，不改变生产文件。
