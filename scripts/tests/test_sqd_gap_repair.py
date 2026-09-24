@@ -1207,7 +1207,121 @@ def adoption_regressions(root, repair, exact, missing):
     print("GREEN E27(d): predecessor adoption/v1/torn tail/longest prefix/12 fault vectors/deep digest")
 
 
+def test_w1_inherited_beta_and_reconcile_paths():
+    """Self-contained inheritance -> independent beta -> formal repaired gate."""
+    from scripts.solana import sqd_gap_repair as repair, replay_edges
+    from scripts.lib import solana_exact_validate as exact
+    import test_sqd_coverage_probe as coverage_tests
+    from sqd_v4_test_fixture import write_v4_meta
+
+    for header, nonce, accepted in ((True, 0, True), (False, 0, False), (True, 1, False)):
+        assert exact._repair_state_matches("INHERITED_REFUTED", header, nonce) is accepted
+        try:
+            repair.validate_coverage_state_consistency(
+                "INHERITED_REFUTED", header_present=header, nonce_count=nonce, beta_candidate=True)
+        except ValueError:
+            assert not accepted
+        else:
+            assert accepted
+    try:
+        repair.validate_coverage_state_consistency("INHERITED_REFUTED", header_present=True, nonce_count=0)
+    except ValueError as exc:
+        assert str(exc) == "non-candidate coverage state entered alpha"
+    else:
+        raise AssertionError("inherited state entered alpha")
+
+    with tempfile.TemporaryDirectory(prefix="w1-beta-") as td, \
+            patch.object(coverage_tests, "MINT", MINT), \
+            patch.object(coverage_tests, "W1_SLOTS", [9998, 9999]):
+        root = Path(td).resolve()
+        asset_path, _ = coverage_tests._w1_asset(root)
+        case, (_, _, coverage) = coverage_tests._w1_run(root / "target", asset_path=asset_path)
+        assert coverage["candidate_slots"] == []
+        data = case / "data"
+        key = hashlib.sha256(MINT.encode()).hexdigest()
+        edge = data / f"soltx-{key}.jsonl.gz"
+        meta = data / f"soltx-{key}.meta.json"
+        rows = [[1_700_000_000, 0, 0, -1, ZERO, "OwnerA", 5],
+                [1_700_009_999, 9999, 0, -1, ZERO, "OwnerA", 5]]
+        edge.write_bytes(gzip.compress(b"".join((json.dumps(row) + "\n").encode() for row in rows), mtime=0))
+        write_v4_meta(edge, mint=MINT, meta_path=meta)
+        owners = data / "holders_owners.json"
+        snapshot = data / "holders_snapshot_meta.json"
+
+        def write_snapshot(amount):
+            owners.write_text(json.dumps({"OwnerA": amount}))
+            snapshot.write_text(json.dumps({
+                "schema": "solana-holder-snapshot-v2", "mint": MINT,
+                "target": {"chain": "solana", "token": MINT, "as_of_block": 9999},
+                "closed": True, "supply_raw": str(amount),
+                "outputs": {"holders_owners": coverage_tests.probe._sha_ref(owners, owners.name)}}))
+
+        def reconcile(name):
+            with patch.object(sys, "argv", ["replay_edges.py", "reconcile", "--mint", MINT,
+                    "--case-root", str(case), "--as-of-slot", "9999", "--receipt", f"data/{name}", "--no-labels"]):
+                assert replay_edges.main() == 0
+            return json.loads((data / name).read_text())
+
+        write_snapshot(10)
+        base_receipt = reconcile("w1-base.json")
+        assert base_receipt["gate_pass"] is True
+        assert base_receipt["edge_source_binding"]["cache_kind"] == "base"
+        assert base_receipt["coverage_effective_verdict"] == "NO_KNOWN_NONCE_OMISSION_DETECTED"
+        base_checked = exact.validate_reconcile_receipt_deep(data / "w1-base.json", case_root=case)
+        assert base_checked["ok"], base_checked
+        write_snapshot(12)
+        (data / "reconcile_receipt.json").write_text(json.dumps({
+            "schema": "solana-reconcile/v3", "gate_pass": False,
+            "negative_balance_count": 0, "snapshot_mismatch_count": 1}))
+        subset = root / "subset.json"
+        subset.write_text(json.dumps(["OwnerA"]))
+        missing = {
+            "transaction": {"signatures": ["W1MissingNonceTransaction"], "message": {
+                "accountKeys": ["AccountA"], "instructions": [
+                    {"programId": "11111111111111111111111111111111", "data": "6vx8P"}]}},
+            "meta": {"err": None, "loadedAddresses": {}, "preTokenBalances": [
+                {"accountIndex": 0, "mint": MINT, "owner": "OwnerA", "uiTokenAmount": {"amount": "0"}}],
+                "postTokenBalances": [{"accountIndex": 0, "mint": MINT, "owner": "OwnerA",
+                                       "uiTokenAmount": {"amount": "2"}}]},
+        }
+        responses = repair_slot_responses(repair, 9999, missing, nonce_count=0)
+        add_beta_responses(repair, responses, "OwnerA", 0, 9999)
+        fixture = write_repair_fixture(root / "repair-fixture", responses)
+        assert repair.main(["repair", "--mint", MINT, "--case-root", str(case), "--beta",
+                            "--residual-owners", str(subset), "--transport-fixture", str(fixture)]) == 0
+        parent, current, _ = repair.sqd_repair_paths(case, MINT)
+        pointer = json.loads(current.read_text())
+        generation = parent / f"gen-{pointer['gid']}"
+        resolution = json.loads((generation / "coverage_resolution.json").read_text())
+        assert resolution["plan_candidates"] == {"coverage": [], "beta": [9999]}
+        assert resolution["census"][0]["coverage_state"] == "INHERITED_REFUTED"
+        assert resolution["census"][0]["result"] == "confirmed_nonce_defect"
+        checked = exact.validate_repair_bundle_deep(generation / "bundle.json", case_root=case,
+                                                   current_base={"edge_sha256": exact.sha256_file(edge)})
+        assert checked["ok"], checked
+        # Producer registration belongs to a separate work order. As in the
+        # existing consumer regression, admit only this exact current producer
+        # in the test process; all bundle/census/deep checks still run.
+        import sqd_cache_identity as identity
+        original_history = identity.historical_producer_hashes
+        current_sha = exact.sha256_file(ROOT / "scripts/solana/sqd_gap_repair.py")
+
+        def with_current(script, protocol):
+            allowed = original_history(script, protocol)
+            return allowed | {current_sha} if script == "scripts/solana/sqd_gap_repair.py" else allowed
+
+        with patch.object(identity, "historical_producer_hashes", side_effect=with_current):
+            repaired_receipt = reconcile("w1-repaired.json")
+        assert repaired_receipt["gate_pass"] is True
+        assert repaired_receipt["edge_source_binding"]["cache_kind"] == "repaired"
+        assert repaired_receipt["coverage_effective_verdict"] == "DEFECTS_CONFIRMED"
+    print("PASS W1 self-contained inherited alpha/beta, base gate, beta formal repair, and repaired gate")
+
+
 def main():
+    tests = [test_w1_inherited_beta_and_reconcile_paths]
+    for test in tests:
+        test()
     red = batch3b_mechanism_gate()
 
     functional_repair_regressions()

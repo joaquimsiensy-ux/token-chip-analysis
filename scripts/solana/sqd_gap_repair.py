@@ -582,7 +582,7 @@ def validate_coverage_state_consistency(state, *, header_present,
         raise ValueError("non-candidate coverage state entered alpha")
     if state in {"NO_HEADER", "MISSING_BLOCK", "SKIPPED_CONFIRMED"}:
         matches = not header_present
-    elif state in {"DEFECT_CANDIDATE", "ERA_UNCERTAIN"}:
+    elif state in {"DEFECT_CANDIDATE", "ERA_UNCERTAIN", "INHERITED_REFUTED"}:
         matches = header_present and nonce_count == 0
     elif state == "HEALTHY":
         matches = header_present and nonce_count > 0

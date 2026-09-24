@@ -26,14 +26,19 @@ sys.path.insert(0, str(LIB))
 
 import net  # noqa: E402
 from endpoint_identity import endpoint_fingerprint, redact_endpoint_text  # noqa: E402
-from receipt_kernel import publish_exclusive, publish_overwrite  # noqa: E402
+from receipt_kernel import RawBytes, publish_exclusive, publish_overwrite  # noqa: E402
 from solana_exact_validate import (  # noqa: E402
     BITMAP_ENCODING, COUNT_ENCODING, ERA_PARAMS, canonical_json,
     classify_four_states, compute_probe_id,
     derive_getblocks_complete, encode_bitmap, merge_ranges, ranges_cover,
     sha256_bytes, sha256_file, validate_blocks_bitmap, validate_coverage,
     validate_coverage_map, validate_shared_map, validate_slot_counts,
+    validate_repair_export_source,
 )
+try:
+    from spl_edge_core import sqd_repair_paths  # noqa: E402
+except ModuleNotFoundError:
+    from .spl_edge_core import sqd_repair_paths
 
 
 COVERAGE_SCHEMA = "sqd-solana-coverage/v1"
@@ -347,12 +352,16 @@ def _scan_request(transport, start, end, seq, endpoints, *, mode="full"):
             row.update(bytes=len(raw), response_sha256=sha256_bytes(raw),
                        slots_covered=end - start + 1,
                        empty_response=True, ok=True)
+            if mode == "recheck":
+                row["recheck_response"] = []
             return row, bytes([1]) * (end - start + 1)
         row["error"] = _result_error(result, endpoints)
         return row, None
     value = result.value
     blocks = value if isinstance(value, list) else [value]
     raw = canonical_json(blocks)
+    if mode == "recheck":
+        row["recheck_response"] = blocks
     row.update(bytes=len(raw), response_sha256=sha256_bytes(raw))
     if not blocks:
         row.update(slots_covered=end - start + 1, empty_response=True, ok=True)
@@ -605,12 +614,14 @@ def _recheck_known_slots(transport, recheck, asset_counts, afrom, workers,
             expected = end - start + 1
             if part is None or len(part) != expected:
                 row["counts_coverage"] = False
+                row["recheck_outcome"] = "request-failed"
                 outcomes.append((start, end, "request-failed", None, row, None))
                 _append_ledger(ledger, [row])
                 continue
             mismatch = next((start + offset for offset, value in enumerate(part)
                              if value != asset_counts[start + offset - afrom]), None)
             outcome = "mismatch" if mismatch is not None else "verified"
+            row["recheck_outcome"] = outcome
             outcomes.append((start, end, outcome, mismatch, row, part))
             _append_ledger(ledger, [row])
         return outcomes
@@ -684,6 +695,7 @@ def _load_known_map(path, mint_from, mint_to, sqd_identity, metadata,
         if not shared_checked["ok"]:
             raise ValueError("shared-map-invalid:" + ";".join(
                 shared_checked["reasons"]))
+        source_bytes = asset_path.read_bytes()
         asset = _read_json(asset_path)
         if asset.get("schema") != "sqd-solana-shared-coverage-map/v1":
             raise ValueError("shared-map-schema-invalid")
@@ -691,7 +703,7 @@ def _load_known_map(path, mint_from, mint_to, sqd_identity, metadata,
             raise ValueError("ttl-days-must-be-30")
         if "supersedes" not in asset:
             raise ValueError("supersedes-missing")
-        info.update(version=asset.get("version"), sha256=sha256_file(asset_path),
+        info.update(version=asset.get("version"), sha256=sha256_bytes(source_bytes),
                     supersedes=asset.get("supersedes"),
                     generated_at=asset.get("generated_at"))
         expires = _parse_time(asset["generated_at"]) + timedelta(
@@ -775,6 +787,29 @@ def _load_known_map(path, mint_from, mint_to, sqd_identity, metadata,
             if row.get("mode") == "recheck" and row.get("counts_coverage") is True \
                     and (row.get("from") < mint_from or row.get("to") > mint_to):
                 row["counts_coverage"] = False
+        if asset != shared_checked["asset"] or json.loads(source_bytes) != asset:
+            raise ValueError("shared-map-changed-after-validation")
+        verified_at = utc_now()
+        inherited, origins = [], []
+        for slot, origin in zip(asset.get("refuted_slots", []),
+                                asset.get("refuted_origin", [])):
+            evidence = asset["refuted_evidence"][origin]
+            if actual.get(slot) == asset_counts[slot - afrom] == 2 \
+                    and any(item["from_slot"] <= slot <= item["to_slot"]
+                            for item in info["reused_ranges"]) \
+                    and not any(start <= slot <= end for start, end in unverified) \
+                    and _parse_time(verified_at) <= _parse_time(
+                        evidence["origin_generated_at"]) + timedelta(days=30):
+                inherited.append(slot)
+                origins.append(origin)
+        if inherited:
+            info["inherited_refuted"] = {
+                "slots": inherited, "count": len(inherited),
+                "asset_sha256": info["sha256"], "verified_at": verified_at,
+                "origin": origins, "refuted_evidence": asset["refuted_evidence"],
+                "source_ref": {"path": "shared_map_source.json",
+                               "size": len(source_bytes), "sha256": info["sha256"]},
+            }
         return info, bytes(reused), overlap_from, overlap_to
     except Exception as exc:
         for row in ledger[ledger_start:]:
@@ -827,6 +862,76 @@ def export_shared_map(args):
     counts_source = generation / "slot_counts.bin.gz"
     blocks_source = generation / "blocks.bin.gz"
     counts = gzip.decompress(counts_source.read_bytes())
+    raw_candidates = classify_four_states(
+        counts, slot_meta["from_slot"], confirmation=coverage["skipped_confirmation"],
+        blocks_bitmap=gzip.decompress(blocks_source.read_bytes()),
+        inherited_refuted=frozenset())["candidate_slots"]
+    mint = coverage["mint"]
+    repair_parent, current_path, _ = sqd_repair_paths(case_root, mint)
+    has_current = current_path.exists() or current_path.is_symlink()
+    repair_gid = args.repair_gid
+    source = None
+    if repair_gid is None and has_current:
+        if not args.no_repair:
+            raise ValueError("repair CURRENT exists; pass --repair-gid <gid> or --no-repair")
+        repair_gid = _read_json(current_path).get("gid")
+    if args.repair_gid is not None or has_current:
+        source = validate_repair_export_source(
+            case_root, mint, repair_gid, expected_probe_id=coverage["probe_id"],
+            coverage_map_sha256=sha256_file(coverage_path),
+            effective_candidates=checked["recomputed"]["candidate_slots"],
+            coverage_path=coverage_path, coverage_from_slot=slot_meta["from_slot"],
+            coverage_counts=counts, coverage_states=checked["recomputed"]["states"])
+        if not source["ok"]:
+            raise ValueError("repair export source invalid: " + "; ".join(source["reasons"]))
+    own = set(source["own_refuted"] if source and not args.no_repair else [])
+    confirmed = set(source["confirmed_slots"] if source else [])
+    raw_set = set(raw_candidates)
+    if not own.issubset(raw_set):
+        raise ValueError("own refuted contains non-raw candidate")
+    shared = coverage.get("shared_map") or {}
+    inherited = shared.get("inherited_refuted", {})
+    by_origin = {}
+    excluded_raw = excluded_confirmed = excluded_expired = 0
+    now = datetime.now(timezone.utc)
+    for slot, index in zip(inherited.get("slots", []), inherited.get("origin", [])):
+        original = inherited["refuted_evidence"][index]
+        if slot not in raw_set:
+            excluded_raw += 1
+        elif slot in confirmed:
+            excluded_confirmed += 1
+        elif now > _parse_time(original["origin_generated_at"]) + timedelta(days=30):
+            excluded_expired += 1
+        elif slot not in own:
+            by_origin.setdefault(index, []).append(slot)
+    print(f"refuted excluded non-raw={excluded_raw} confirmed={excluded_confirmed} "
+          f"expired={excluded_expired}", file=sys.stderr)
+    evidence, slot_origin = [], {}
+    if own:
+        evidence.append({
+            "kind": "repair-census", "source_mint": mint,
+            "probe_id": coverage["probe_id"], "repair_gid": repair_gid,
+            "plan_digest": source["plan_digest"],
+            "resolution_sha256": source["resolution_sha256"],
+            "bundle_sha256": source["bundle_sha256"], "producer": source["producer"],
+            "refuted_count": len(own), "origin_generated_at": pointer["published_at"],
+            "origin_asset_sha256": None, "asset_sha256": None,
+        })
+        slot_origin.update((slot, 0) for slot in own)
+    for index, members in sorted(by_origin.items()):
+        original = inherited["refuted_evidence"][index]
+        new_index = len(evidence)
+        evidence.append({
+            "kind": "inherited", "source_mint": mint, "probe_id": coverage["probe_id"],
+            "repair_gid": None, "plan_digest": None, "resolution_sha256": None,
+            "bundle_sha256": None, "producer": coverage["producer"],
+            "refuted_count": len(members),
+            "origin_generated_at": original["origin_generated_at"],
+            "origin_asset_sha256": original["origin_asset_sha256"] or shared["sha256"],
+            "asset_sha256": shared["sha256"],
+        })
+        slot_origin.update((slot, new_index) for slot in members)
+    refuted_slots = sorted(slot_origin)
     version = args.version or datetime.now(timezone.utc).strftime("%Y%m%d")
     if not isinstance(version, str) or len(version) != 8 or not version.isdigit():
         raise ValueError("shared map version must be YYYYMMDD")
@@ -855,10 +960,13 @@ def export_shared_map(args):
                           "from_slot": bitmap_meta["from_slot"],
                           "to_slot": bitmap_meta["to_slot"],
                           "encoding": BITMAP_ENCODING},
-        "candidate_slots": checked["recomputed"]["candidate_slots"],
-        "refuted_slots": [],
+        "candidate_slots": raw_candidates,
+        "refuted_slots": refuted_slots,
         "canary": {"slots": slots, "counts": canary_counts},
     }
+    if refuted_slots:
+        asset.update(refuted_origin=[slot_origin[slot] for slot in refuted_slots],
+                     refuted_evidence=evidence)
     asset_path = out / f"{version}.json"
     _publish_bytes_overwrite(asset_path, canonical_json(asset) + b"\n")
     asset_checked = validate_shared_map(asset_path)
@@ -1006,7 +1114,7 @@ def _remove_one(path):
 
 def _same_generation(left, right):
     names = ("coverage_map.json", "slot_counts.bin.gz", "blocks.bin.gz",
-             "ledger.jsonl")
+             "ledger.jsonl", "shared_map_source.json")
     for name in names:
         lpath, rpath = left / name, right / name
         if lpath.exists() != rpath.exists():
@@ -1018,7 +1126,8 @@ def _same_generation(left, right):
 
 def _clear_pending(pending):
     for name in ("coverage_map.json", "slot_counts.bin.gz", "blocks.bin.gz",
-                 "ledger.jsonl", "resume_state.json", "STOPPED.json"):
+                 "ledger.jsonl", "resume_state.json", "STOPPED.json",
+                 "shared_map_source.json"):
         _remove_one(pending / name)
     try:
         pending.rmdir()
@@ -1310,8 +1419,19 @@ def run_probe(args):
         blocks_ref = _sha_ref(pending / "blocks.bin.gz", "blocks.bin.gz")
         confirmation["blocks_bitmap"].update(
             size=blocks_ref["size"], sha256=blocks_ref["sha256"])
+    inherited = (shared_map or {}).get("inherited_refuted", {})
+    if inherited:
+        source_bytes = Path(shared_map["asset_path"]).read_bytes()
+        if sha256_bytes(source_bytes) != shared_map["sha256"]:
+            raise ValueError("shared map source changed before publication")
+        publish_exclusive(pending / "shared_map_source.json", RawBytes(source_bytes))
+        inherited["source_ref"] = _sha_ref(
+            pending / "shared_map_source.json", "shared_map_source.json")
+        if inherited["source_ref"]["sha256"] != shared_map["sha256"]:
+            raise ValueError("shared map source copy sha256 mismatch")
     classified = classify_four_states(
-        counts, args.from_slot, confirmation=confirmation, blocks_bitmap=bitmap)
+        counts, args.from_slot, confirmation=confirmation, blocks_bitmap=bitmap,
+        inherited_refuted=frozenset(inherited.get("slots", [])))
     success_ranges = merge_ranges(item for item in (
         _successful_coverage_range(row) for row in ledger) if item is not None)
     producer_path = Path(__file__).resolve()
@@ -1422,6 +1542,9 @@ def build_export_parser():
     parser.add_argument("--probe-id", required=True)
     parser.add_argument("--out", required=True)
     parser.add_argument("--version")
+    repair = parser.add_mutually_exclusive_group()
+    repair.add_argument("--repair-gid")
+    repair.add_argument("--no-repair", action="store_true")
     return parser
 
 

@@ -664,9 +664,9 @@ QUQ 与 PYTHIA 只用于算法层探索定标。防伪链测试使用合成 fixt
 | `skipped_confirmation.endpoint_fingerprint` | string | 是 |  |
 | `skipped_confirmation.blocks_bitmap` | object | 是 | path,size,sha256,from_slot,to_slot,encoding |
 | `skipped_confirmation.ranges` | array[object] | 是 | from,to,response_sha256,count,response_ok,array_monotonic_unique,array_in_range |
-| `shared_map` | object\|null | 是 | asset_path,version,sha256,supersedes,generated_at,reused_ranges,unverified_ranges,recheck_stats,canary{slots,counts_sha256,verified_at} |
+| `shared_map` | object\|null | 是 | asset_path,version,sha256,supersedes,generated_at,reused_ranges,unverified_ranges,recheck_stats,canary{slots,counts_sha256,verified_at},inherited_refuted{slots,count,asset_sha256,verified_at,origin,refuted_evidence,source_ref} |
 | `ledger` | object | 是 | path,size,sha256,requests,success_ranges_sha256 |
-| `summary` | object | 是 | 饱和计数 |
+| `summary` | object | 是 | 饱和计数；含 inherited_refuted 键当且仅当继承集非空 |
 | `verdict` | string | 是 | NO_KNOWN_NONCE_OMISSION_DETECTED/DEFECTS_CONFIRMED/INCONCLUSIVE；须重算 |
 | `scan_ranges[].from_slot` | integer | 是 |  |
 | `scan_ranges[].to_slot` | integer | 是 |  |
@@ -695,6 +695,14 @@ QUQ 与 PYTHIA 只用于算法层探索定标。防伪链测试使用合成 fixt
 | `shared_map.canary.slots` | array[integer] | 是 | 长度0或64；复用成功时为64 |
 | `shared_map.canary.counts_sha256` | string (sha256 hex) | 是 |  |
 | `shared_map.canary.verified_at` | string | 是 |  |
+| `shared_map.inherited_refuted` | object | 否 | 仅成功复用且实际继承非空时存在 |
+| `shared_map.inherited_refuted.slots` | array[integer] | 条件 | 本案实际继承 slot，升序唯一，排除 bool |
+| `shared_map.inherited_refuted.count` | integer | 条件 | 等于 slots 长度 |
+| `shared_map.inherited_refuted.asset_sha256` | string (sha256 hex) | 条件 | 等于 shared_map.sha256 与 source_ref.sha256 |
+| `shared_map.inherited_refuted.verified_at` | string | 条件 | 本次验证时点，UTC ISO-8601；日后离线校验仍按此时点核原始 30 天时效 |
+| `shared_map.inherited_refuted.origin` | array[integer] | 条件 | 与 slots 等长；每项是来源副本 refuted_evidence 的合法索引，排除 bool |
+| `shared_map.inherited_refuted.refuted_evidence` | array[object] | 条件 | 与来源副本完整 evidence 全等；refuted_count 按副本全部成员核算，不按本案子集缩减 |
+| `shared_map.inherited_refuted.source_ref` | object | 条件 | path,size,sha256；path 固定为该发布代内 shared_map_source.json；不加入 pointer.inputs |
 | `ledger.path` | string | 是 |  |
 | `ledger.size` | integer | 是 |  |
 | `ledger.sha256` | string (sha256 hex) | 是 |  |
@@ -704,6 +712,8 @@ QUQ 与 PYTHIA 只用于算法层探索定标。防伪链测试使用合成 fixt
 不变量：
 
 - scan_ranges 并集覆盖案区间；sample_ranges 不计入。
+- 状态 `INHERITED_REFUTED` 只由复用地图的 refuted_slots 经 recheck 值相同（＝2）且证据未过原始时效产生；不入候选；只证块头在、零 AdvanceNonce，不证交易集合未变（残余风险）；resume 不保留继承。α 拒绝该状态；独立 β 仍可按有块头、零 nonce 验证并修复。
+- 继承 recheck 独立核完整请求范围、标准查询摘要、`recheck_outcome=verified`，并对账本内 `recheck_response` 重算响应字节数、response_sha256 和逐 slot 值。跨案边界的成功行即使 counts_coverage=false，也只可证明交集内的继承；不扩大 counts 覆盖。资产 JSON 副本绑定来源成员关系与原始时效，不含源二进制计数，不能单凭副本重新核源 counts。副本缺失、摘要不符或任何继承条件失败均拒收，并清空继承后重算分类。
 - `identity-anchor` ledger 行记录本次 SQD 对历史锚 slot 的块号/块哈希实测，固定 `counts_coverage=false`。identity-anchor 行只证明历史锚，不计入 counts 覆盖并集；只有实际连续拉取的 `recheck` 行才声明对应重验点覆盖。
 - recheck 每个连续请求区间分为 verified（完整返回且逐 slot 等于资产）、mismatch（完整返回但至少一值不同）、request-failed（transport 失败、part 缺失、返回长度短于请求区间或 worker 异常）。首轮 request-failed 区间在同一并发池末尾统一重试一次；失败行直接 `counts_coverage=false`。
 - 任一 mismatch 仍使整张地图回退 full，原因保持 `recheck-mismatch:<slot>`；canary 值逐值不等仍为 `canary-counts-changed`。canary 所在区间重试后仍 request-failed 时整图回退，原因为 `canary-recheck-unavailable`。

@@ -22,8 +22,8 @@ import sqd_coverage_probe as probe  # noqa: E402
 
 
 MINT = "11111111111111111111111111111111"
-OLD_HEAD = 1_000
-NEW_HEAD = 1_010
+OLD_HEAD = 20_000
+NEW_HEAD = 20_010
 LOWER = 100
 UPPER = 199
 ANCHOR_HASH = "anchor-hash-at-1000"
@@ -49,11 +49,16 @@ def _metadata(head=OLD_HEAD, block_hash=ANCHOR_HASH):
 def _write_asset(root, *, counts=None):
     counts = bytearray([3] * (UPPER - LOWER + 1)) if counts is None else bytearray(counts)
     counts[70] = 1  # getBlocks says slot 170 exists, so it recomputes as a candidate.
+    counts[71] = counts[80] = 2
+    # W1: retain the same case/recheck points, but give zero-nonce refutations
+    # the 10,000 same-era headers required to be genuine raw candidates.
+    asset_counts = bytes(counts) + bytes([3]) * 9901
+    asset_upper = LOWER + len(asset_counts) - 1
     counts_path = root / "map.counts.bin.gz"
-    counts_path.write_bytes(gzip.compress(bytes(counts), mtime=0))
+    counts_path.write_bytes(gzip.compress(asset_counts, mtime=0))
     blocks_path = root / "map.blocks.bin.gz"
     blocks_path.write_bytes(gzip.compress(
-        exact.encode_bitmap(range(LOWER, UPPER + 1), LOWER, UPPER), mtime=0))
+        exact.encode_bitmap(range(LOWER, asset_upper + 1), LOWER, asset_upper), mtime=0))
     metadata = _metadata()
     asset = {
         "schema": "sqd-solana-shared-coverage-map/v1", "version": "20260827",
@@ -70,14 +75,23 @@ def _write_asset(root, *, counts=None):
         "slot_counts": {
             "path": counts_path.name, "size": counts_path.stat().st_size,
             "sha256": exact.sha256_file(counts_path), "from_slot": LOWER,
-            "to_slot": UPPER, "encoding": exact.COUNT_ENCODING,
+            "to_slot": asset_upper, "encoding": exact.COUNT_ENCODING,
         },
         "blocks_bitmap": {
             "path": blocks_path.name, "size": blocks_path.stat().st_size,
             "sha256": exact.sha256_file(blocks_path), "from_slot": LOWER,
-            "to_slot": UPPER, "encoding": exact.BITMAP_ENCODING,
+            "to_slot": asset_upper, "encoding": exact.BITMAP_ENCODING,
         },
-        "candidate_slots": [170], "refuted_slots": [171, 180],
+        "candidate_slots": [170, 171, 180], "refuted_slots": [171, 180],
+        "refuted_origin": [0, 0],
+        "refuted_evidence": [{
+            "kind": "repair-census", "source_mint": MINT, "probe_id": "1" * 16,
+            "repair_gid": "2" * 16, "plan_digest": "3" * 16,
+            "resolution_sha256": "4" * 64, "bundle_sha256": "5" * 64,
+            "producer": {"path": "scripts/solana/sqd_gap_repair.py", "sha256": "6" * 64},
+            "refuted_count": 2, "origin_generated_at": datetime.now(timezone.utc).isoformat(),
+            "origin_asset_sha256": None, "asset_sha256": None,
+        }],
         "canary": {"slots": list(range(LOWER, LOWER + 64)),
                    "counts": list(counts[:64])},
     }
@@ -581,7 +595,7 @@ def test_fallback_rechecks_removed_from_published_coverage():
         root = Path(td)
         asset_path, _asset, asset_counts = _write_asset(root)
         target_slot = 180
-        assert asset_counts[target_slot - LOWER] == 3
+        assert asset_counts[target_slot - LOWER] == 2
 
         raw = {"number": NEW_HEAD, "hash": "new-head-hash"}
         responses = {
@@ -747,7 +761,8 @@ def test_shared_map_validator_depth_and_malformed_inputs():
         root = Path(td)
         _asset_path, asset, counts = _write_asset(root)
 
-        bad_counts = bytearray(counts)
+        bad_counts = bytearray(gzip.decompress(
+            (root / asset["slot_counts"]["path"]).read_bytes()))
         bad_counts[5] = 0
         bad_path = root / "bad-zero.counts.bin.gz"
         bad_path.write_bytes(gzip.compress(bytes(bad_counts), mtime=0))
@@ -766,7 +781,7 @@ def test_shared_map_validator_depth_and_malformed_inputs():
         changed["candidate_slots"] = ["170"]
         mutations.append((changed, "shared map candidate_slots invalid"))
         changed = copy.deepcopy(asset)
-        changed["candidate_slots"] = [UPPER + 1]
+        changed["candidate_slots"] = [asset["slot_counts"]["to_slot"] + 1]
         mutations.append((changed, "shared map candidate_slots invalid"))
         changed = copy.deepcopy(asset)
         changed["sqd"]["metadata_sha256"] = "0" * 64

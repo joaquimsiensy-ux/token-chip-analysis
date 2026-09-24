@@ -19,7 +19,7 @@ import json
 import re
 import sqlite3
 import tempfile
-from datetime import datetime
+from datetime import datetime, timedelta
 from itertools import groupby
 from pathlib import Path
 
@@ -221,7 +221,7 @@ def _window_stats(counts, from_slot):
 
 
 def classify_four_states(counts, from_slot, *, confirmation=None,
-                         blocks_bitmap=None):
+                         blocks_bitmap=None, inherited_refuted=frozenset()):
     """Classify each slot without run-length heuristics."""
     stats = _window_stats(counts, from_slot)
     complete_segments = []
@@ -244,6 +244,8 @@ def classify_four_states(counts, from_slot, *, confirmation=None,
         "skipped_confirmed": 0, "missing_block_candidate": 0,
         "no_header_unconfirmed": 0, "saturated_nonce_count": 0,
     }
+    if inherited_refuted:
+        summary["inherited_refuted"] = 0
     for offset, code in enumerate(counts):
         slot = from_slot + offset
         if code == 0:
@@ -273,7 +275,10 @@ def classify_four_states(counts, from_slot, *, confirmation=None,
                 and item["nonce_blocks"] * ERA_PARAMS["min_ratio_den"]
                 >= item["headers"] * ERA_PARAMS["min_ratio_num"]
             )
-            if calibrated:
+            if slot in inherited_refuted:
+                state = "INHERITED_REFUTED"
+                summary["inherited_refuted"] += 1
+            elif calibrated:
                 state = "DEFECT_CANDIDATE"
                 summary["defect_candidate"] += 1
                 candidates.append(slot)
@@ -453,6 +458,212 @@ def _success_ranges(rows, reasons):
                     reasons.append("nonempty SQD response cursor facts inconsistent")
         ranges.append((start, actual_end))
     return ranges, empty_response_count
+
+
+def _ordered_slots(value, label):
+    if not isinstance(value, list) or any(
+            not _integer(slot) or slot < 0 for slot in value) \
+            or value != sorted(set(value)):
+        raise ValueError(f"{label} must be sorted unique nonnegative integers")
+    return value
+
+
+def _utc_time(value):
+    if not isinstance(value, str):
+        raise ValueError("timestamp must be a UTC ISO-8601 string")
+    parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    if parsed.utcoffset() != timedelta(0):
+        raise ValueError("timestamp must have UTC timezone")
+    return parsed
+
+
+def _hex(value, length):
+    return isinstance(value, str) and re.fullmatch(
+        rf"[0-9a-f]{{{length}}}", value) is not None
+
+
+def validate_refuted_evidence(asset):
+    """Check the complete JSON member witness; this does not read source counts."""
+    slots = _ordered_slots(asset.get("refuted_slots"), "refuted_slots")
+    origins, evidence = asset.get("refuted_origin", []), asset.get("refuted_evidence", [])
+    if not isinstance(origins, list) or not isinstance(evidence, list) \
+            or len(origins) != len(slots) or any(
+                not _integer(index) or not 0 <= index < len(evidence)
+                for index in origins):
+        raise ValueError("refuted origin indexes invalid")
+    tallies = [0] * len(evidence)
+    for index in origins:
+        tallies[index] += 1
+    fields = {"kind", "source_mint", "probe_id", "repair_gid", "plan_digest",
+              "resolution_sha256", "bundle_sha256", "producer", "refuted_count",
+              "origin_generated_at", "origin_asset_sha256", "asset_sha256"}
+    for index, item in enumerate(evidence):
+        if not isinstance(item, dict) or set(item) != fields:
+            raise ValueError("refuted evidence fields invalid")
+        if not isinstance(item["source_mint"], str) or not item["source_mint"] \
+                or not _hex(item["probe_id"], 16):
+            raise ValueError("refuted evidence source invalid")
+        producer = item["producer"]
+        if not isinstance(producer, dict) or set(producer) != {"path", "sha256"} \
+                or not isinstance(producer["path"], str) or not producer["path"] \
+                or not _hex(producer["sha256"], 64):
+            raise ValueError("refuted evidence producer invalid")
+        if not _integer(item["refuted_count"]) \
+                or item["refuted_count"] <= 0 or item["refuted_count"] != tallies[index]:
+            raise ValueError("refuted evidence count differs from complete mapping")
+        _utc_time(item["origin_generated_at"])
+        repair_fields = {"repair_gid": 16, "plan_digest": 16,
+                         "resolution_sha256": 64, "bundle_sha256": 64}
+        if item["kind"] == "repair-census":
+            if any(not _hex(item[key], width) for key, width in repair_fields.items()) \
+                    or item["asset_sha256"] is not None \
+                    or item["origin_asset_sha256"] is not None:
+                raise ValueError("repair-census evidence binding invalid")
+        elif item["kind"] == "inherited":
+            if any(item[key] is not None for key in repair_fields) \
+                    or not _hex(item["asset_sha256"], 64) \
+                    or not _hex(item["origin_asset_sha256"], 64):
+                raise ValueError("inherited evidence binding invalid")
+        else:
+            raise ValueError("refuted evidence kind invalid")
+    return dict(zip(slots, origins)), evidence
+
+
+def _inherited_recheck_values(row, template_sha):
+    """Recompute values from the ledger's digest-bound decoded SQD response."""
+    if row.get("provider") != "SQD" or row.get("mode") != "recheck" \
+            or row.get("ok") is not True or row.get("recheck_outcome") != "verified":
+        return {}
+    if row.get("http_status") != 200 or not isinstance(row.get("counts_coverage"), bool):
+        raise ValueError("recheck success flags invalid")
+    start, end = _range_pair(row, "from", "to")
+    body = {
+        "type": "solana", "fromBlock": start, "toBlock": end,
+        "includeAllBlocks": True,
+        "fields": {"block": {"number": True},
+                   "instruction": {"transactionIndex": True}},
+        "instructions": [{"programId": ["11111111111111111111111111111111"],
+                          "d4": ["0x04000000"]}],
+    }
+    if start < 0 or row.get("query_body_sha256") != sha256_bytes(canonical_json(body)):
+        raise ValueError("recheck query binding invalid")
+    body.update(fromBlock=0, toBlock=0)
+    if template_sha != sha256_bytes(canonical_json(body)):
+        raise ValueError("recheck template identity invalid")
+    blocks = row.get("recheck_response")
+    if not isinstance(blocks, list):
+        raise ValueError("recheck response witness missing")
+    raw = canonical_json(blocks)
+    if row.get("response_sha256") != sha256_bytes(raw) \
+            or type(row.get("bytes")) is not int or row["bytes"] != len(raw):
+        raise ValueError("recheck response digest/size binding invalid")
+    if type(row.get("slots_covered")) is not int or row["slots_covered"] != end - start + 1:
+        raise ValueError("recheck short response")
+    if not blocks:
+        if row.get("empty_response") is not True or row.get("returned_from") is not None \
+                or row.get("returned_to") is not None or type(row.get("n_blocks")) is not int \
+                or row["n_blocks"] != 0:
+            raise ValueError("empty recheck response facts invalid")
+        return {}
+    values = {}
+    previous = start - 1
+    for block in blocks:
+        if not isinstance(block, dict) or not isinstance(block.get("header"), dict):
+            raise ValueError("recheck block invalid")
+        slot = block["header"].get("number")
+        instructions = block.get("instructions") or []
+        if not _integer(slot) or not previous < slot <= end \
+                or not isinstance(instructions, list):
+            raise ValueError("recheck block range/order/instructions invalid")
+        values[slot] = min(255, 2 + len(instructions))
+        previous = slot
+    if previous != end or row.get("empty_response") is not False \
+            or type(row.get("n_blocks")) is not int or row["n_blocks"] != len(blocks) \
+            or type(row.get("returned_from")) is not int \
+            or row["returned_from"] != next(iter(values)) \
+            or type(row.get("returned_to")) is not int or row["returned_to"] != end:
+        raise ValueError("recheck complete response facts invalid")
+    return values
+
+
+def _validated_inherited(coverage, coverage_path, counts, from_slot, rows, reasons):
+    shared = coverage.get("shared_map")
+    if not isinstance(shared, dict) or "inherited_refuted" not in shared:
+        return frozenset()
+    try:
+        claim = shared["inherited_refuted"]
+        if not isinstance(claim, dict) or "fallback_reason" in shared:
+            raise ValueError("claim is not successful map reuse")
+        slots = _ordered_slots(claim.get("slots"), "slots")
+        if not slots or not _integer(claim.get("count")) or claim["count"] != len(slots):
+            raise ValueError("count invalid or empty claim")
+        if any(not from_slot <= slot < from_slot + len(counts) for slot in slots):
+            raise ValueError("slot outside case counts")
+        verified = _utc_time(claim.get("verified_at"))
+        ref = claim.get("source_ref")
+        if not isinstance(ref, dict) or ref.get("path") != "shared_map_source.json" \
+                or not _integer(ref.get("size")) or ref["size"] <= 0 \
+                or not _hex(ref.get("sha256"), 64) \
+                or ref["sha256"] != shared.get("sha256") \
+                or ref["sha256"] != claim.get("asset_sha256"):
+            raise ValueError("source reference binding invalid")
+        problems = []
+        source = _check_file_ref(coverage_path.parent, ref, "source", problems)
+        if problems or source != coverage_path.parent / "shared_map_source.json":
+            raise ValueError("source copy invalid: " + "; ".join(problems))
+        asset = json.loads(source.read_text(encoding="utf-8"))
+        if not isinstance(asset, dict) or asset.get("schema") != SHARED_MAP_SCHEMA:
+            raise ValueError("source copy schema invalid")
+        membership, evidence = validate_refuted_evidence(asset)
+        if not set(membership).issubset(_ordered_slots(asset.get("candidate_slots"), "source candidates")):
+            raise ValueError("source refuted members are not declared candidates")
+        if canonical_json(claim.get("refuted_evidence")) != canonical_json(evidence):
+            raise ValueError("evidence differs from source copy")
+        origins = claim.get("origin")
+        if not isinstance(origins, list) or len(origins) != len(slots) or any(
+                not _integer(index) or not 0 <= index < len(evidence) for index in origins):
+            raise ValueError("origin indexes invalid")
+        reused = [_range_pair(item) for item in shared["reused_ranges"]]
+        unverified = [_range_pair(item) for item in shared["unverified_ranges"]]
+        proven_reuse = []
+        for row in rows:
+            if row.get("provider") != "shared-map" or row.get("mode") != "map-reuse" \
+                    or row.get("ok") is not True or row.get("counts_coverage") is not True:
+                continue
+            start, end = _range_pair(row, "from", "to")
+            if not from_slot <= start <= end < from_slot + len(counts):
+                raise ValueError("map reuse ledger escapes case counts")
+            part = counts[start - from_slot:end - from_slot + 1]
+            if type(row.get("slots_covered")) is not int or row["slots_covered"] != len(part) \
+                    or row.get("response_sha256") != sha256_bytes(part) \
+                    or row.get("query_body_sha256") != sha256_bytes(canonical_json({"asset": shared["sha256"]})):
+                raise ValueError("map reuse ledger counts/asset binding invalid")
+            proven_reuse.append((start, end))
+        if merge_ranges(reused) != merge_ranges(proven_reuse):
+            raise ValueError("reused ranges differ from actual map reuse ledger")
+        actual = {}
+        for row in rows:
+            if row.get("mode") == "recheck" and row.get("recheck_outcome") == "mismatch":
+                raise ValueError("recheck mismatch cannot prove inheritance")
+            measured = _inherited_recheck_values(row, coverage["sqd"]["query_body_sha256"])
+            for slot, value in measured.items():
+                if slot in actual and actual[slot] != value:
+                    raise ValueError("recheck results conflict")
+                actual[slot] = value
+        for slot, index in zip(slots, origins):
+            if membership.get(slot) != index:
+                raise ValueError("slot/origin differs from source membership")
+            if counts[slot - from_slot] != 2 or actual.get(slot) != 2:
+                raise ValueError("slot lacks matching complete zero-nonce recheck")
+            if not any(start <= slot <= end for start, end in reused) \
+                    or any(start <= slot <= end for start, end in unverified):
+                raise ValueError("slot outside verified reuse ranges")
+            if verified > _utc_time(evidence[index]["origin_generated_at"]) + timedelta(days=30):
+                raise ValueError("original evidence expired at verification")
+        return frozenset(slots)
+    except (OSError, ValueError, TypeError, KeyError, IndexError, OverflowError) as exc:
+        reasons.append(f"inherited refuted {exc}")
+        return frozenset()
 
 
 def validate_coverage(case_root, coverage_path, pointer_path,
@@ -673,8 +884,11 @@ def validate_coverage(case_root, coverage_path, pointer_path,
             if not ranges_cover(segment_pairs, from_slot, to_slot):
                 reasons.append("getBlocks ranges do not cover slot_counts interval")
 
+    inherited = _validated_inherited(
+        coverage, coverage_path, counts, from_slot, ledger_rows, reasons)
     classified = classify_four_states(
-        counts, from_slot, confirmation=confirmation, blocks_bitmap=blocks_raw)
+        counts, from_slot, confirmation=confirmation, blocks_bitmap=blocks_raw,
+        inherited_refuted=inherited)
     recomputed.update(classified)
     recomputed["probe_id"] = compute_probe_id(coverage)
     recomputed["getblocks_complete"] = getblocks_complete
@@ -861,6 +1075,10 @@ def validate_shared_map(asset_json_path):
 
     candidates = checked_slots(asset.get("candidate_slots"), "candidate_slots")
     refuted = checked_slots(asset.get("refuted_slots"), "refuted_slots")
+    try:
+        validate_refuted_evidence(asset)
+    except (ValueError, TypeError, KeyError) as exc:
+        reasons.append(f"shared map {exc}")
     if interval_valid and len(counts) == upper - lower + 1:
         confirmation = None
         if blocks:
@@ -878,6 +1096,9 @@ def validate_shared_map(asset_json_path):
             counts, lower, confirmation=confirmation, blocks_bitmap=blocks)
         if candidates is not None and candidates != classified["candidate_slots"]:
             reasons.append("shared map candidate_slots do not recompute from binaries")
+        if refuted is not None and (not set(refuted).issubset(classified["candidate_slots"])
+                                   or any(counts[slot - lower] != 2 for slot in refuted)):
+            reasons.append("shared map refuted_slots must be raw zero-nonce candidates")
     return {"ok": not reasons, "reasons": reasons, "asset": asset,
             "counts": counts, "blocks_bitmap": blocks}
 
@@ -1057,6 +1278,132 @@ def validate_repair_pointer(pointer, *, expected_mint, expected_gid,
     return {"ok": not reasons, "reasons": reasons}
 
 
+def validate_repair_export_source(case_root, mint, gid, *, expected_probe_id,
+                                  coverage_map_sha256, effective_candidates,
+                                  coverage_path, coverage_from_slot,
+                                  coverage_counts, coverage_states):
+    """Bind the current formal census without replaying its evidence directory."""
+    try:
+        from spl_edge_core import sqd_repair_paths
+    except ModuleNotFoundError:
+        from ..solana.spl_edge_core import sqd_repair_paths
+    reasons = []
+    result = {"own_refuted": [], "confirmed_slots": [], "bundle_sha256": None,
+              "resolution_sha256": None, "plan_digest": None, "producer": None}
+    try:
+        case_root = Path(case_root).resolve()
+        parent, current_path, _ = sqd_repair_paths(case_root, mint)
+        if not _hex(gid, 16):
+            raise ValueError("repair gid must be lowercase hex16")
+        if not current_path.is_file():
+            raise ValueError("repair CURRENT missing; unpublished generation rejected")
+        current_path = _safe_case_path(case_root, str(current_path.relative_to(case_root)))
+        generation = parent / f"gen-{gid}"
+        bundle_path = _safe_case_path(case_root, str((generation / "bundle.json").relative_to(case_root)))
+        pointer = json.loads(current_path.read_text(encoding="utf-8"))
+        bundle_sha = sha256_file(bundle_path)
+        checked = validate_repair_pointer(
+            pointer, expected_mint=mint, expected_gid=gid,
+            expected_bundle_sha256=bundle_sha)
+        reasons.extend(checked["reasons"])
+        bound = _repair_ref(case_root, parent, pointer.get("inputs", {}).get("bundle"),
+                            "repair CURRENT bundle", reasons)
+        if bound != bundle_path or parent not in bundle_path.resolve().parents:
+            reasons.append("repair CURRENT bundle path differs from selected generation")
+        bundle = json.loads(bundle_path.read_text(encoding="utf-8"))
+        if bundle.get("schema") != REPAIR_BUNDLE_SCHEMA \
+                or bundle.get("kind") != "repair" or bundle.get("mint") != mint \
+                or bundle.get("gid") != gid or bundle.get("mode") != "formal" \
+                or bundle.get("reference", {}).get("source") != "live":
+            reasons.append("repair bundle is not bound formal live repair")
+        coverage = bundle.get("coverage", {})
+        map_ref = coverage.get("map", {})
+        bound_map = _repair_ref(case_root, generation, map_ref, "repair coverage map", reasons)
+        if bound_map != Path(coverage_path).resolve() \
+                or map_ref.get("sha256") != coverage_map_sha256 \
+                or coverage.get("probe_id") != expected_probe_id:
+            reasons.append("repair coverage map/probe binding mismatch")
+        resolution_path = _repair_ref(case_root, generation, bundle.get("coverage_resolution"),
+                                     "repair coverage resolution", reasons)
+        if resolution_path is None or generation not in resolution_path.parents:
+            raise ValueError("repair resolution missing or outside generation")
+        resolution = json.loads(resolution_path.read_text(encoding="utf-8"))
+        plan_digest = resolution.get("plan_digest")
+        if resolution.get("schema") != REPAIR_RESOLUTION_SCHEMA \
+                or resolution.get("mint") != mint or not _hex(plan_digest, 16) \
+                or plan_digest != bundle.get("plan_digest") \
+                or resolution.get("coverage", {}).get("probe_id") != expected_probe_id \
+                or resolution.get("coverage", {}).get("map_sha256") != coverage_map_sha256:
+            reasons.append("repair resolution binding mismatch")
+        producer = bundle.get("producer")
+        producer_path = "scripts/solana/sqd_gap_repair.py"
+        allowed = historical_producer_hashes(producer_path, REPAIR_BUNDLE_SCHEMA) | {
+            sha256_file(Path(__file__).resolve().parents[2] / producer_path)}
+        if not isinstance(producer, dict) or producer.get("path") != producer_path \
+                or not _hex(producer.get("sha256"), 64) or producer["sha256"] not in allowed:
+            reasons.append("repair bundle producer invalid")
+        plan = resolution.get("plan_candidates", {})
+        alpha = _ordered_slots(plan.get("coverage"), "coverage plan")
+        beta = _ordered_slots(plan.get("beta"), "beta plan")
+        alpha_set = set(alpha)
+        if alpha != effective_candidates:
+            reasons.append("repair coverage candidates differ from validated coverage")
+        census = resolution.get("census")
+        if not isinstance(census, list) or any(not isinstance(row, dict) for row in census):
+            raise ValueError("repair census must be object array")
+        census_slots = _ordered_slots([row.get("slot") for row in census], "census slots")
+        if census_slots != sorted(set(alpha) | set(beta)):
+            reasons.append("repair census differs from complete plan union")
+        if len(coverage_states) != len(coverage_counts):
+            raise ValueError("validated source state/count lengths differ")
+        own, confirmed = [], []
+        for row in census:
+            slot = row["slot"]
+            offset = slot - coverage_from_slot
+            if not 0 <= offset < len(coverage_counts):
+                raise ValueError("census slot outside validated coverage")
+            state, code = coverage_states[offset], coverage_counts[offset]
+            nonce = row.get("sqd_nonce_count_at_repair")
+            if row.get("coverage_state") != state \
+                    or not _repair_state_matches(state, code >= 2, nonce) \
+                    or (code >= 2 and min(255, 2 + nonce) != code):
+                raise ValueError("census state/count contradict validated coverage")
+            disposition = row.get("result")
+            if disposition not in {"refuted", "confirmed_missing_block",
+                                   "confirmed_nonce_defect", "confirmed_other_defect"}:
+                raise ValueError("census result invalid")
+            for key in ("missing_total", "missing_nonce", "missing_err_excluded",
+                        "sqd_tx_count", "ref_tx_count", "ref_nonvote_count"):
+                if not _integer(row.get(key)) or row[key] < 0:
+                    raise ValueError(f"census {key} must be nonnegative integer")
+            if row["missing_nonce"] > row["missing_total"] \
+                    or row["missing_err_excluded"] > row["missing_total"]:
+                raise ValueError("census missing counts inconsistent")
+            if disposition.startswith("confirmed_"):
+                confirmed.append(slot)
+                continue
+            if any(row[key] != 0 for key in (
+                    "missing_total", "missing_nonce", "missing_err_excluded")) \
+                    or not isinstance(row.get("sqd_blockhash"), str) \
+                    or not row["sqd_blockhash"] or row["sqd_blockhash"] != row.get("ref_blockhash"):
+                raise ValueError("refuted census lacks equal block hashes and zero missing counts")
+            if state == "DEFECT_CANDIDATE":
+                if code != 2 or nonce != 0 or slot not in alpha_set:
+                    raise ValueError("own refuted is not a zero-nonce coverage candidate")
+                own.append(slot)
+        effective = "DEFECTS_CONFIRMED" if confirmed else "NO_KNOWN_NONCE_OMISSION_DETECTED"
+        if resolution.get("effective_verdict") != effective or effective != "DEFECTS_CONFIRMED":
+            reasons.append("repair source requires recomputed DEFECTS_CONFIRMED")
+        result.update(own_refuted=own, confirmed_slots=confirmed, bundle_sha256=bundle_sha,
+                      resolution_sha256=sha256_file(resolution_path),
+                      plan_digest=plan_digest, producer=producer)
+    except (OSError, ValueError, TypeError, KeyError, AttributeError) as exc:
+        reasons.append(f"repair export source {exc}")
+    if reasons:
+        result.update(own_refuted=[], confirmed_slots=[])
+    return {"ok": not reasons, "reasons": reasons, **result}
+
+
 def validate_beta_trace(trace, *, case_root, generation=None):
     """Independently validate E25 trace structure and its three live inputs."""
     reasons = []
@@ -1204,7 +1551,7 @@ def _repair_state_matches(state, header_present, nonce_count):
         return False
     if state in {"NO_HEADER", "MISSING_BLOCK", "SKIPPED_CONFIRMED"}:
         return not header_present
-    if state in {"DEFECT_CANDIDATE", "ERA_UNCERTAIN"}:
+    if state in {"DEFECT_CANDIDATE", "ERA_UNCERTAIN", "INHERITED_REFUTED"}:
         return header_present and nonce_count == 0
     if state == "HEALTHY":
         return header_present and nonce_count > 0
