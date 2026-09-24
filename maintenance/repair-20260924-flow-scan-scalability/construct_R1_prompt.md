@@ -1,3 +1,18 @@
+# 施工任务 R1（codex --write，按下方工单 v3.1 逐条执行）
+
+## 派工基线
+- 派工基线：main 分支、HEAD 为包含本提示词文件的最新提交（本提示词入库后 HEAD 才定，故**不以具体 SHA 判定**）；基线判定只看工单 §0.1：`git status --short` 为空、`git merge-base --is-ancestor 634c083 HEAD` exit 0、`git diff --quiet 634c083 HEAD -- scripts references SKILL.md commands-staging VERSION pyproject.toml CHANGELOG.md` exit 0；行号以 `634c083` 为准（首次修改前统一核锚）。
+- 本任务是**施工**，不是复核：按工单 §0.6-0.8 先取基线副本、生成夹具、冻结基线报告；按 §2 逐条落地；按 §0.7/0.8 产等价性与耗时证据；按 §0.9 跑定向测试；按 §3 写完成报告 `R1_done.md` 到工单所在目录 `maintenance/repair-20260924-flow-scan-scalability/`。
+- 纪律以工单 §0 为准（禁读 `~/.codex/`——插件启动搜索若已读 memories 披露一次，之后不再读；白名单；不 commit/push；禁 stash/checkout/reset；锚不符即停工）。工单已由 codex 只读复核通过（`review_R1_reply_r1.md`/`review_R1_reply_r2.md`/`review_R1_reply_r3.md`，r3 唯一退回项已按其原文订正为 v3.1），施工中若发现工单与源码事实不符，停工报告，不自行改方案。
+- 临时目录用 `tempfile` 并 `Path(td).resolve()`（macOS `/var` symlink 坑）；沙箱离线、不通网络。每完成一组改动可在完成报告里记录阶段性 diff 行数，但**不 commit**。
+- stdout 首行固定 `# 施工 R1：完成` 或 `# 施工 R1：停工`；停工报告名 `R1_done_attempt1_stopped.md`；末尾披露是否读过禁读路径。
+
+---
+
+
+---
+# 以下为工单 R1 v3.1 全文（与本目录 workorder_R1.md 逐字一致）
+
 # 工单 R1（v3.1，融合 codex 复核 r1/r2/r3 全部意见）：flow_anomaly_scan 候选边物化，消除逐候选底层全量重扫——版本 9.1.1
 
 > 出处：QUQ(BSC) 0922 案 ANOM-009（案卷由调度方持有，本仓库不含）。`flow_anomaly_scan.py` 在 EVM v2 目录直读（`load_evm_v2` 互斥段 VIEW 轻路径，边表 1.097 亿行）下：汇集点预筛 7,093 个后**逐候选**对 `eflow` 全量重扫；调度方本机实测单候选一次查询 117.9 s（与在跑进程争 CPU；`EXPLAIN` 显示 5,086 址字面量 IN 列表被下推为 parquet 扫描过滤、每次查询重新聚合 blocks 表并 HASH_JOIN），7,093 × ≥60 s ≈ 5 天；try1 7h14m、try3 18h35m 均未走出汇集点阶段。前案 OPN(BSC，255 万边)同脚本数分钟完成。用户 2026-09-24 裁决：走 skill 修复（选 A），流程＝工单→codex 复核→codex 施工→codex 盲审→codex 收官 review。
