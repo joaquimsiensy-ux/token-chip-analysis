@@ -1,0 +1,3 @@
+core_equal: True | slow_spray addrs A/B: 1 1 | same addr set: True
+  0x317cd61fa24e… top500 第500名值=145356626890000000000 合法=True 并列于阈值的收方数=13650
+recipients_top_valid: True

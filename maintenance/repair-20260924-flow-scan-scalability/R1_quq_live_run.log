@@ -1,0 +1,30 @@
+[wave_scan] 20 个 run 块区间互斥——VIEW 轻路径（每次查询流式重扫 parquet）
+[flow_anomaly] 边表就绪 109,681,418 条
+[flow_anomaly] DuckDB 1.5.4 资源: memory_limit=7.4 GiB, temp_directory=.tmp, max_temp_directory_size=90% of available disk space
+[flow_anomaly] 合格地址（峰值≥0.02%）5,088 个
+[flow_anomaly] 汇集点预筛 7093 个（合格来源总流入 ≥2.0%）
+[flow_anomaly] 物化 sink_edges: 26,094,518 行
+[flow_anomaly] 物化 sink_net: 7,093 行
+[flow_anomaly] 分发点预筛 42064 个（总流出 ≥2.0%）
+[flow_anomaly] 物化 spray_edges: 106,359,203 行
+[flow_anomaly] 汇集点 1779 个 / 分发点 69 个 → <scratchpad>/quq_flow_head.json
+[flow_anomaly]   sink 0xb300000b72de… 窗2025-07-05起 流入109990.4791% 来源741 | 历史峰值0.0% 净流入0.0%
+[flow_anomaly]   sink 0xde9e4fe32b04… 窗2025-10-07起 流入54081.1273% 来源12 | 历史峰值0.0% 净流入0.0%
+[flow_anomaly]   sink 0x6e4141d33021… 窗2025-09-21起 流入37199.2145% 来源7 | 历史峰值0.0% 净流入0.0%
+[flow_anomaly]   sink 0x09ad820aac57… 窗2026-05-27起 流入17225.9172% 来源7 | 历史峰值0.0% 净流入0.0%
+[flow_anomaly]   sink 0xd2b37ade1470… 窗2025-10-25起 流入16830.6952% 来源7 | 历史峰值0.0% 净流入0.0%
+[flow_anomaly]   sink 0x1231deb6f574… 窗2026-06-02起 流入16761.8877% 来源5 | 历史峰值0.0% 净流入0.0%
+[flow_anomaly]   sink 0x3b0aa7d38bf3… 窗2025-09-25起 流入13673.3888% 来源7 | 历史峰值0.0% 净流入0.0%
+[flow_anomaly]   sink 0x3d90f66b534d… 窗2026-06-23起 流入13544.9387% 来源8 | 历史峰值0.0% 净流入0.0%
+[flow_anomaly]   sink 0x8c864d0c8e47… 窗2025-10-20起 流入11938.0678% 来源7 | 历史峰值0.0% 净流入0.0%
+[flow_anomaly]   sink 0x2a5a88fdf7c4… 窗2026-04-21起 流入10510.2307% 来源9 | 历史峰值56.7877% 净流入0.0%
+[flow_anomaly]   spray[脉冲] 0xb300000b72de… 窗2025-07-02起 流出14273.9178% 新收方38240（全收方43852，有效43297）
+[flow_anomaly]   spray[脉冲] 0xe1acb466421e… 窗2026-04-15起 流出1908.1621% 新收方18361（全收方22832，有效22505）
+[flow_anomaly]   spray[脉冲] 0x9485ff32b6b4… 窗2025-07-06起 流出2452.8357% 新收方5161（全收方5451，有效5154）
+[flow_anomaly]   spray[脉冲] 0x28e2ea090877… 窗2026-06-26起 流出452.2219% 新收方538（全收方4531，有效4287）
+[flow_anomaly]   spray[脉冲] 0x1231deb6f574… 窗2025-09-23起 流出3977.6184% 新收方2712（全收方8144，有效8109）
+[flow_anomaly]   spray[脉冲] 0x111111125421… 窗2025-09-17起 流出905.5648% 新收方702（全收方4764，有效4663）
+[flow_anomaly]   spray[脉冲] 0x6e4141d33021… 窗2025-07-08起 流出2.213% 新收方23（全收方37，有效20）
+[flow_anomaly]   spray[脉冲] 0x3d90f66b534d… 窗2026-04-21起 流出1200.7634% 新收方1607（全收方1745，有效1728）
+[flow_anomaly]   spray[脉冲] 0x00948a4bce32… 窗2026-04-22起 流出138.171% 新收方7189（全收方14017，有效13091）
+[flow_anomaly]   spray[脉冲] 0x308110fdb9f7… 窗2026-05-04起 流出98.9486% 新收方2910（全收方10737，有效10136）
