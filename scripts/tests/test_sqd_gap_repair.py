@@ -16,6 +16,7 @@ import subprocess
 import sys
 import tempfile
 from contextlib import redirect_stderr
+from collections import Counter
 from copy import deepcopy
 from pathlib import Path
 from types import SimpleNamespace
@@ -248,6 +249,7 @@ def repair_slot_responses(repair, slot, missing_tx, *, nonce_count=0,
                               else [present_tx, missing_tx])}
     census = [{"header": {"number": slot, "hash": blockhash,
                            "parentSlot": slot - 1},
+               "instructions": [{"transactionIndex": i} for i in range(nonce_count)],
                "transactions": [{"transactionIndex": 0,
                                   "signatures": [present_signature],
                                   "err": None}]}]
@@ -1318,8 +1320,268 @@ def test_w1_inherited_beta_and_reconcile_paths():
     print("PASS W1 self-contained inherited alpha/beta, base gate, beta formal repair, and repaired gate")
 
 
+def w4_missing_transaction(slot):
+    """Self-contained nonce transaction with a mint balance increase."""
+    return {
+        "transaction": {"signatures": [f"W4Missing{slot}"], "message": {
+            "accountKeys": ["AccountA"], "instructions": [{
+                "programId": "11111111111111111111111111111111", "data": "6vx8P"}]}},
+        "meta": {"err": None, "loadedAddresses": {},
+                 "preTokenBalances": [{"accountIndex": 0, "mint": MINT,
+                     "owner": "OwnerA", "uiTokenAmount": {"amount": "0"}}],
+                 "postTokenBalances": [{"accountIndex": 0, "mint": MINT,
+                     "owner": "OwnerA", "uiTokenAmount": {"amount": "2"}}]},
+    }
+
+
+def test_w4_combined_vectors():
+    from scripts.solana import sqd_gap_repair as repair
+
+    slot = 19_999
+    body = repair._census_body(slot)
+    probe = repair.sqd_query_body(slot, slot)
+    assert list(body) == ["type", "fromBlock", "toBlock", "includeAllBlocks",
+                          "fields", "transactions", "instructions"]
+    assert list(body["fields"]) == ["block", "transaction", "instruction"]
+    assert body["fields"]["instruction"] == probe["fields"]["instruction"]
+    assert body["instructions"] == probe["instructions"]
+    assert body["transactions"] == [{}]
+    header = {"number": slot, "hash": f"blockhash-{slot}"}
+    changed = "SQD coverage state changed before repair"
+    vectors = [
+        ("DEFECT_CANDIDATE", False, [{"header": header, "instructions": [{}]}], changed, 1),
+        ("DEFECT_CANDIDATE", False, [{"header": header}] * 2, "duplicated", 0),
+        ("DEFECT_CANDIDATE", False, [{"header": header}], None, 0),
+        ("DEFECT_CANDIDATE", False, [{"header": header, "instructions": None}], None, 0),
+        ("DEFECT_CANDIDATE", False, [{"header": header, "instructions": []}], None, 0),
+        ("MISSING_BLOCK", False, [], None, 0),
+        ("MISSING_BLOCK", False, None, None, 0),
+        ("MISSING_BLOCK", False, [{"header": {"number": slot - 1},
+                                   "instructions": [{}]}], None, 0),
+        ("MISSING_BLOCK", False, [{"header": header}], changed, 0),
+        ("INHERITED_REFUTED", True, [{"header": header}], None, 0),
+        ("INHERITED_REFUTED", False, [{"header": header}],
+         "non-candidate coverage state entered alpha", 0),
+        ("INHERITED_REFUTED", True, [], changed, 0),
+        ("INHERITED_REFUTED", True, [{"header": header, "instructions": [{}]}], changed, 1),
+    ]
+    vectors += [("HEALTHY", True, [{"header": header, "instructions": [{}] * count}],
+                 None, count) for count in (253, 255, 256)]
+    # Non-target blocks never affect present/nonce_count; a dict response is supported.
+    vectors += [("DEFECT_CANDIDATE", False,
+                 [{"header": {"number": slot - 1}, "instructions": [{}]},
+                  {"header": header}], None, 0),
+                ("DEFECT_CANDIDATE", False, {"header": header}, None, 0)]
+    original_call = repair.RepairFixtureTransport.call
+    for state, beta, blocks, error, count in vectors:
+        with tempfile.TemporaryDirectory(prefix="w4-vector-") as td:
+            root = Path(td).resolve()
+            responses = repair_slot_responses(repair, slot, w4_missing_transaction(slot))
+            responses[repair.request_digest("sqd-census", repair._census_body(slot))]["value"] = blocks
+            fixture = write_repair_fixture(root / "fixture", responses)
+            pending = root / "pending"
+            pending.mkdir()
+            fp = repair.reference_endpoint_identity("fixture://helius")["sha256"]
+            plan = {"plan_digest": "a" * 16, "reference": {
+                "kind": "helius-getBlock", "endpoint_fingerprint": fp}}
+            args = SimpleNamespace(transport_fixture=fixture, workers=1, mint=MINT)
+            calls = []
+
+            def observe(self, kind, body):
+                calls.append(kind)
+                return original_call(self, kind, body)
+
+            with patch.object(repair.RepairFixtureTransport, "call", observe):
+                try:
+                    payloads = list(repair._live_payloads(
+                        args, [slot], ["fixture://helius"], fp, pending=pending,
+                        plan=plan, coverage_states={slot: state},
+                        beta_slots={slot} if beta else set()))
+                except ValueError as exc:
+                    assert error and error in str(exc), (state, exc)
+                    assert calls == ["sqd-census"]
+                else:
+                    assert error is None, state
+                    assert calls == ["sqd-census", "reference-getBlock"]
+                    evidence = json.loads((pending / f"evidence/{slot}.sqd.json").read_text())
+                    assert type(evidence["sqd_nonce_count_at_repair"]) is int
+                    assert evidence["sqd_nonce_count_at_repair"] == count
+                    assert evidence["coverage_probe_query_sha256"] == evidence["query_body_sha256"]
+                    assert evidence["coverage_probe_response_sha256"] == evidence["response_sha256"]
+                    assert payloads[0]["coverage_state"] == state
+            ledger = repair._parse_ledger_prefix((pending / "rpc_ledger.jsonl").read_bytes())
+            assert len(ledger) == (1 if error else 2)
+            if error:
+                assert not (pending / f"evidence/{slot}.sqd.json").exists()
+    print("PASS W4 combined state/duplicate/missing/null/empty/raw counts/inherited vectors")
+
+
+def test_w4_formal_request_counts():
+    from scripts.solana import sqd_gap_repair as repair
+
+    slots = [19_997, 19_998, 19_999]
+    original_call = repair.RepairFixtureTransport.call
+    for workers in (1, 4):
+        with tempfile.TemporaryDirectory(prefix="w4-counts-") as td:
+            root = Path(td).resolve()
+            case = build_batch3b_case(root, set(slots), [
+                [i + 1, slot, 0, -1, ZERO, f"Base{i}", 1]
+                for i, slot in enumerate(slots)])
+            responses = {}
+            for slot in slots:
+                responses.update(repair_slot_responses(repair, slot, w4_missing_transaction(slot)))
+            fixture = write_repair_fixture(root / "fixture", responses)
+            calls = []
+
+            def observe(self, kind, body):
+                calls.append((kind, body["params"][0] if kind == "reference-getBlock"
+                              else body["fromBlock"]))
+                return original_call(self, kind, body)
+
+            with patch.object(repair.RepairFixtureTransport, "call", observe):
+                assert repair.main(["repair", "--mint", MINT, "--case-root", str(case),
+                    "--transport-fixture", str(fixture), "--workers", str(workers)]) == 0
+            counts = Counter(calls)
+            for slot in slots:
+                assert counts["sqd-census", slot] == counts["reference-getBlock", slot] == 1
+                assert counts["sqd-probe", slot] == 0
+            assert Counter(kind for kind, _ in calls) == {
+                "sqd-census": len(slots), "reference-getBlock": len(slots)}
+            parent, pointer, _ = repair.sqd_repair_paths(case, MINT)
+            gen = parent / f"gen-{json.loads(pointer.read_text())['gid']}"
+            rows = repair._parse_ledger_prefix((gen / "rpc_ledger.jsonl").read_bytes())
+            assert [row["slot"] for row in rows[1:]] == slots
+            assert [row["seq"] for row in rows[1:]] == list(range(len(slots)))
+    print("PASS W4 formal per-slot single census/zero probe/single Helius workers=1,4")
+
+
+def w4_old_payload_and_ledger(repair, slot, fp, seq):
+    """Frozen two-query oracle, independent of current SQD template helpers."""
+    probe_body = {
+        "type": "solana", "fromBlock": slot, "toBlock": slot, "includeAllBlocks": True,
+        "fields": {"block": {"number": True}, "instruction": {"transactionIndex": True}},
+        "instructions": [{"programId": ["11111111111111111111111111111111"],
+                          "d4": ["0x04000000"]}],
+    }
+    census_body = {
+        "type": "solana", "fromBlock": slot, "toBlock": slot, "includeAllBlocks": True,
+        "fields": {"block": {"number": True, "hash": True}, "transaction": {
+            "transactionIndex": True, "signatures": True, "err": True}},
+        "transactions": [{}],
+    }
+    signature = f"PresentSignature{slot}"
+    blockhash = f"blockhash-{slot}"
+    probe_response = [{"header": {"number": slot}, "instructions": []}]
+    census_response = [{"header": {"number": slot, "hash": blockhash},
+                        "transactions": [{"transactionIndex": 0,
+                                          "signatures": [signature], "err": None}]}]
+    missing = w4_missing_transaction(slot)
+    present = {"transaction": {"signatures": [signature], "message": {
+        "accountKeys": ["PresentAccount"], "instructions": []}}, "meta": {"err": None}}
+    block = {"blockhash": blockhash, "parentSlot": slot - 1,
+             "blockTime": 1_700_000_000 + slot, "transactions": [present, missing]}
+
+    def digest(value):
+        return hashlib.sha256(canonical_bytes(value)).hexdigest()
+
+    payload = {
+        "slot": slot, "blockhash": blockhash, "sqd_blockhash": blockhash,
+        "parentSlot": slot - 1, "blockTime": block["blockTime"],
+        "helius_sigs": [signature, missing["transaction"]["signatures"][0]],
+        "sqd_sigs": [signature], "sqd_transactions": [
+            {"index": 0, "signature": signature, "err": None}],
+        "missing_full": [{"pos": 1, "sig": missing["transaction"]["signatures"][0],
+                          "nonce": True, "failed": False, "tx": missing}],
+        "reference_response_sha256": digest(block),
+        "coverage_state": "DEFECT_CANDIDATE", "sqd_nonce_count_at_repair": 0,
+        "coverage_probe_query_sha256": digest(probe_body),
+        "coverage_probe_response_sha256": digest(probe_response),
+        "census_query_body_sha256": digest(census_body),
+        "census_response_sha256": digest(census_response),
+    }
+    old_rpc = {"jsonrpc": "2.0", "id": slot, "method": "getBlock", "params": [slot, {
+        "commitment": "finalized", "transactionDetails": "full", "encoding": "json",
+        "rewards": False, "maxSupportedTransactionVersion": 0}]}
+    ledger = {"seq": seq, "ts": 1_700_000_000, "method": "getBlock", "slot": slot,
+              "params_digest": digest(old_rpc), "endpoint_fingerprint": fp,
+              "http_status": 200, "bytes": len(canonical_bytes(block)),
+              "credits_estimate": 10, "result_sha256": digest(block), "attempt": 1}
+    return payload, ledger
+
+
+def test_w4_evidence_generations():
+    from scripts.lib import solana_exact_validate as exact
+    from scripts.solana import sqd_gap_repair as repair
+
+    slots = [19_998, 19_999]
+    old_sha = "25f04ff10bc494be977e4c5b3193c3a928c0764fa529d8d5a47563fe2a825e66"
+    assert old_sha in repair.historical_producer_hashes(
+        "scripts/solana/sqd_gap_repair.py", "sqd-solana-repair-bundle/v1")
+    fp = repair.reference_endpoint_identity("fixture://helius")["sha256"]
+    original_call = repair.RepairFixtureTransport.call
+    for label, old_count in (("old", 2), ("new", 0), ("mixed", 1)):
+        with tempfile.TemporaryDirectory(prefix=f"w4-{label}-") as td:
+            root = Path(td).resolve()
+            case = build_batch3b_case(root, set(slots), [
+                [i + 1, slot, 0, -1, ZERO, f"Base{i}", 1]
+                for i, slot in enumerate(slots)])
+            plan, _, _ = repair._plan(case, MINT, reference_fingerprint=fp)
+            parent, pointer, _ = repair.sqd_repair_paths(case, MINT)
+            old_bytes = {}
+            args = ["repair", "--mint", MINT, "--case-root", str(case)]
+            if old_count:
+                previous = deepcopy(plan)
+                previous["producer"]["sha256"] = old_sha
+                previous["plan_digest"] = repair.compute_plan_digest(previous)
+                old = parent / f"pending-{previous['plan_digest']}"
+                old.mkdir(parents=True)
+                repair.load_resume_slots(old, repair._ledger_header(previous))
+                for seq, slot in enumerate(slots[:old_count]):
+                    payload, ledger = w4_old_payload_and_ledger(repair, slot, fp, seq)
+                    repair._persist_live_slot(old, payload, MINT, ledger)
+                old_bytes = {str(p.relative_to(old)): p.read_bytes()
+                             for p in old.rglob("*") if p.is_file()}
+                args += ["--resume", "--adopt-pending", str(old)]
+            responses = {}
+            for slot in slots[old_count:]:
+                responses.update(repair_slot_responses(repair, slot, w4_missing_transaction(slot)))
+            fixture = write_repair_fixture(root / "fixture", responses)
+            calls = []
+
+            def observe(self, kind, body):
+                calls.append((kind, body["params"][0] if kind == "reference-getBlock"
+                              else body["fromBlock"]))
+                return original_call(self, kind, body)
+
+            with patch.object(repair.RepairFixtureTransport, "call", observe):
+                assert repair.main(args + ["--transport-fixture", str(fixture)]) == 0
+            assert Counter(calls) == Counter((kind, slot) for slot in slots[old_count:]
+                for kind in ("sqd-census", "reference-getBlock"))
+            gen = parent / f"gen-{json.loads(pointer.read_text())['gid']}"
+            for name, content in old_bytes.items():
+                assert (old / name).read_bytes() == content
+                if name.startswith("evidence/"):
+                    assert (gen / name).read_bytes() == content
+            rows = repair._parse_ledger_prefix((gen / "rpc_ledger.jsonl").read_bytes())
+            if old_count:
+                assert rows[0]["adopted"]["rows"] == old_count
+                assert rows[1:old_count + 1] == repair._parse_ledger_prefix(
+                    old_bytes["rpc_ledger.jsonl"])[1:]
+            for i, slot in enumerate(slots):
+                ev = json.loads((gen / f"evidence/{slot}.sqd.json").read_text())
+                assert (ev["coverage_probe_query_sha256"] == ev["query_body_sha256"]) == (i >= old_count)
+                assert (ev["coverage_probe_response_sha256"] == ev["response_sha256"]) == (i >= old_count)
+            resolution = json.loads((gen / "coverage_resolution.json").read_text())
+            assert any(row["result"] == "confirmed_nonce_defect" for row in resolution["census"])
+            checked = exact.validate_repair_bundle_deep(gen / "bundle.json", case_root=case,
+                current_base={"edge_sha256": plan["base"]["edge_sha256"]})
+            assert checked["ok"], checked
+    print("PASS W4 old/new/mixed evidence deep validation; old bytes/ledger preserved; no refetch")
+
+
 def main():
-    tests = [test_w1_inherited_beta_and_reconcile_paths]
+    tests = [test_w1_inherited_beta_and_reconcile_paths, test_w4_combined_vectors,
+             test_w4_formal_request_counts, test_w4_evidence_generations]
     for test in tests:
         test()
     red = batch3b_mechanism_gate()

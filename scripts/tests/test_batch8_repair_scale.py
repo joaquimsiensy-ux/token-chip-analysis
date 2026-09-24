@@ -14,6 +14,7 @@ from collections import Counter
 from contextlib import contextmanager
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import patch
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -62,6 +63,7 @@ class SimulatedLiveState:
                 return repair.net.Result(ok=True, value=[{
                     "header": {"number": slot, "hash": f"blockhash-{slot}",
                                "parentSlot": slot - 1},
+                    "instructions": [],
                     "transactions": [{"transactionIndex": 0,
                                       "signatures": [present_signature],
                                       "err": None}],
@@ -308,21 +310,88 @@ def test_sqd_retry_schedule():
                     "http_status": 529, "retryable": True})
             return repair.net.Result(ok=True, value=[])
 
-    transport = FlakySQD()
-    delays = []
-    original_sleep = repair.time.sleep
-    repair.time.sleep = delays.append
-    try:
-        assert repair._sqd_call_with_backoff(
-            transport, "sqd-probe", repair.sqd_query_body(1, 1), 1,
-            "SQD coverage-state recheck failed") == []
-    finally:
-        repair.time.sleep = original_sleep
-    assert transport.calls == 4
-    assert delays == [2, 4, 8]
+    for kind, body, failure in (
+            ("sqd-probe", repair.sqd_query_body(1, 1), "SQD coverage-state recheck failed"),
+            ("sqd-census", repair._census_body(1), "SQD census failed")):
+        transport = FlakySQD()
+        delays = []
+        with patch.object(repair.time, "sleep", delays.append):
+            assert repair._sqd_call_with_backoff(transport, kind, body, 1, failure) == []
+        assert transport.calls == 4
+        assert delays == [2, 4, 8]
+
+
+def test_w4_fault_order_and_prefix():
+    """A failing SQD census wins over quota; successful census reaches STOPPED."""
+    slots = [19_998, 19_999]
+    transactions = [legacy.w4_missing_transaction(slot) for slot in slots]
+
+    class FaultState(SimulatedLiveState):
+        def call(self, endpoint, kind, body):
+            result = super().call(endpoint, kind, body)
+            if kind == "sqd-census" and body["fromBlock"] == slots[1]:
+                if fault == "sqd-exhausted":
+                    return repair.net.Result(ok=False, error={
+                        "category": "http_status", "message": "overloaded",
+                        "http_status": 529, "retryable": True})
+                if fault == "duplicate":
+                    return repair.net.Result(ok=True, value=result.value * 2)
+            return result
+
+    for fault in ("sqd-exhausted", "duplicate", "helius-quota"):
+        with tempfile.TemporaryDirectory(prefix="w4-fault-") as td:
+            root = Path(td).resolve()
+            case = build_case(root, slots)
+            state = FaultState(slots, transactions, quota=lambda _ep, slot: slot == slots[1])
+            delays = []
+            args = ["repair", "--mint", MINT, "--case-root", str(case),
+                    "--reference-rpc", endpoint("w4-fixture-key")]
+            with simulated_live(state), patch.object(repair.time, "sleep", delays.append):
+                rc = repair.main(args)
+            parent, current, _ = repair.sqd_repair_paths(case, MINT)
+            pending = next(parent.glob("pending-*"))
+            rows = repair._parse_ledger_prefix((pending / "rpc_ledger.jsonl").read_bytes())
+            assert [row["slot"] for row in rows[1:]] == slots[:1]
+            assert not current.exists()
+            assert not (pending / f"evidence/{slots[1]}.sqd.json").exists()
+            assert not (pending / f"evidence/{slots[1]}.ref.json").exists()
+            calls = [(kind, slot) for kind, slot, _ in state.calls]
+            attempts = 4 if fault == "sqd-exhausted" else 1
+            expected = [("sqd-census", slots[0]), ("reference-getBlock", slots[0])]
+            expected += [("sqd-census", slots[1])] * attempts
+            if fault == "helius-quota":
+                expected.append(("reference-getBlock", slots[1]))
+                assert rc == 3
+                stopped = json.loads((pending / "STOPPED.json").read_text())
+                assert stopped["cursor"] == slots[1]
+                assert stopped["completed_slots"] == slots[:1]
+                before = {p.name: p.read_bytes() for p in (pending / "evidence").glob("*.json")}
+                resumed = SimulatedLiveState(slots, transactions)
+                with simulated_live(resumed):
+                    assert repair.main(args + ["--resume"]) == 0
+                assert [(kind, slot) for kind, slot, _ in resumed.calls] == [
+                    ("sqd-census", slots[1]), ("reference-getBlock", slots[1])]
+                gen = parent / f"gen-{json.loads(current.read_text())['gid']}"
+                for name, content in before.items():
+                    assert (gen / "evidence" / name).read_bytes() == content
+            else:
+                assert rc == 2
+                assert not (pending / "STOPPED.json").exists()
+            assert calls == expected
+            assert delays == ([2, 4, 8] if fault == "sqd-exhausted" else [])
+    print("PASS W4 SQD failure precedes quota; rc=2/3; STOPPED/success prefix/resume")
+
+
+def test_w4_self_contained_scale():
+    transactions = [legacy.w4_missing_transaction(slot) for slot in range(10_000, 10_020)]
+    test_concurrent_order_and_hot_failover(transactions)
+    test_all_quota_receipt_and_cross_key_resume(transactions)
+    print("PASS W4 self-contained concurrent order/hot failover/all-quota/cross-key resume")
 
 
 def main():
+    test_w4_fault_order_and_prefix()
+    test_w4_self_contained_scale()
     test_key_neutral_identity()
     test_key_file_precedence()
     transactions = legacy.staged_missing_transactions(20)

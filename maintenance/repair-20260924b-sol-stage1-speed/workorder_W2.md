@@ -44,7 +44,7 @@
 - 0.3 **白名单**：生产 `scripts/solana/sqd_coverage_probe.py`（仅 `find-known-map`：私有 helper、parser、`main` 接线及必需 import；不得借此改 `_dry_run`、`_load_known_map`、export 或查询模板语义）；测试 `scripts/tests/test_sqd_coverage_probe.py`（仅新增 find 用例＋登记 main 列表）；文档 `references/split-run.md`、`references/data-pipeline-solana-capture.md`、`commands-staging/token-analyze-1.md`、`assets/sqd-solana-coverage-map/README.md`；版本 `VERSION`、`pyproject.toml`、`SKILL.md:23`、`CHANGELOG.md`；完成报告 `maintenance/repair-20260924b-sol-stage1-speed/W2_done.md`。资产数据文件与仓库外 commands 不在白名单。
 - 0.4 **不改**：`scripts/lib/solana_exact_validate.py`、`scripts/solana/sqd_gap_repair.py`、`scripts/lib/net.py`、`scripts/lib/producer_history.py`、`scripts/tests/invariant_manifest.json`、`references/scan-schemas.md`、其他。
 - 0.4a 调度方派工前置检查：W1 收官的 `invariant_scan.py` 结果证明探针无新增 schema 消费者；若缺 → 退回 W1 收口，不得改 manifest 规避。
-- 0.5 锚用事实③列出的**完整整行**（`grep -n -F -x`），派工时由调度方重核；不能把「以……开头」当整行参数。
+- 0.5 锚用事实③列出的**完整整行**（`grep -n -F -x -e "<整行>"`；`split-run.md:41` 与 `capture.md:107` 两行以 `-` 开头，**必须用 `-e` 传参**，否则 grep 把它当选项、显示零命中——这不是锚漂移），派工时由调度方重核；不能把「以……开头」当整行参数。
 - 0.6 离线、不 commit/push、禁 stash/checkout/reset、不建 worktree；测试用系统 `tempfile`；**禁止 `rm -rf` 等批量删除**。
 - 0.7 只运行经源码确认不越禁读范围的离线定向测试：`test_sqd_coverage_probe.py`、`invariant_scan.py`、`test_batch4_invariant_guards.py`、`test_exemption_guards.py`、`test_g3_docs_guards.py`（仅作既有文档回归）、`test_review_scale_guards.py`。`docs_lint.py`、`changelog_lint.py` 读禁区（`archive/`、`attic.md`、其他 maintenance），**交调度方本机运行**；报告写「待调度方验收」不得写 PASS，不得改检查器跳过禁区。
 

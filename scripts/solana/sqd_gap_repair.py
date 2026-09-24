@@ -45,6 +45,9 @@ from sqd_repair_core import (canonical_json, compute_gid, compute_plan_digest,
 
 # 版本钉：共享常量/请求模板变化不会改变本脚本 sha（只哈希本文件）。升 SOLANA_MAX_SUPPORTED_TX_VERSION
 # 或改 repair_getblock_body 任何字段语义时必须改这里 ⇒ producer 换代 ⇒ producer_history 登记。
+# 9.2.0：α/β 候选共用修复流程的状态探针并入 census，_census_body 经 sqd_query_body 复用选择器。
+# β 搜索查询保持不变；新采 evidence 的 coverage_probe_* 与 query_body_sha256/response_sha256 同值。
+# 改 _census_body 语义须换代并登记 producer_history。
 if SOLANA_MAX_SUPPORTED_TX_VERSION != 1:
     raise RuntimeError("repair producer tx-version pin must be updated")
 
@@ -641,6 +644,7 @@ def _rpc_body(slot):
 
 
 def _census_body(slot):
+    probe_body = sqd_query_body(slot, slot)
     return {
         "type": "solana", "fromBlock": slot, "toBlock": slot,
         "includeAllBlocks": True,
@@ -648,8 +652,10 @@ def _census_body(slot):
             "block": {"number": True, "hash": True},
             "transaction": {"transactionIndex": True, "signatures": True,
                             "err": True},
+            "instruction": probe_body["fields"]["instruction"],
         },
         "transactions": [{}],
+        "instructions": probe_body["instructions"],
     }
 
 
@@ -914,27 +920,6 @@ def _sqd_call_with_backoff(transport, kind, body, slot, failure):
     raise AssertionError("unreachable SQD retry state")
 
 
-def _state_probe(transport, slot, *, retry=False):
-    body = sqd_query_body(slot, slot)
-    if retry:
-        value = _sqd_call_with_backoff(
-            transport, "sqd-probe", body, slot,
-            "SQD coverage-state recheck failed")
-    else:
-        result = transport.call("sqd-probe", body)
-        value, error = _result_value(result)
-        if error is not None:
-            raise ValueError(f"SQD coverage-state recheck failed at slot {slot}")
-    matching = [block for block in _blocks(value) if isinstance(block, dict)
-                and (block.get("header") or {}).get("number") == slot]
-    if len(matching) > 1:
-        raise ValueError(f"SQD coverage-state recheck duplicated slot {slot}")
-    present = bool(matching)
-    count = len((matching[0].get("instructions") or [])) if present else 0
-    raw = canonical_json(_blocks(value))
-    return present, count, sha256_bytes(canonical_json(body)), sha256_bytes(raw)
-
-
 def _payload_from_evidence(sqd_ev, ref_ev):
     transaction_by_signature = {
         row["signature"]: row for row in ref_ev.get("transactions", [])}
@@ -1021,8 +1006,19 @@ def assert_resume_cas(bundle, current):
 
 def _fetch_live_slot(slot, state, beta_slots, reference_pool, sqd_transport,
                      reference_fingerprint):
-    present, nonce_count, probe_query_sha, probe_response_sha = _state_probe(
-        sqd_transport, slot, retry=True)
+    census_body = _census_body(slot)
+    census_value = _sqd_call_with_backoff(
+        sqd_transport, "sqd-census", census_body, slot, "SQD census failed")
+    blocks = _blocks(census_value)
+    matching = [item for item in blocks if isinstance(item, dict)
+                and (item.get("header") or {}).get("number") == slot]
+    if len(matching) > 1:
+        raise ValueError(f"SQD census duplicated slot {slot}")
+    present = bool(matching)
+    nonce_count = len(matching[0].get("instructions") or []) if present else 0
+    census_raw = canonical_json(blocks)
+    probe_query_sha = sha256_bytes(canonical_json(census_body))
+    probe_response_sha = sha256_bytes(census_raw)
     validate_coverage_state_consistency(
         state, header_present=present, nonce_count=nonce_count,
         beta_candidate=slot in beta_slots)
@@ -1041,17 +1037,7 @@ def _fetch_live_slot(slot, state, beta_slots, reference_pool, sqd_transport,
         "bytes": len(raw), "credits_estimate": 10,
         "result_sha256": sha256_bytes(raw), "attempt": attempts,
     }
-    census_body = _census_body(slot)
-    census_value = _sqd_call_with_backoff(
-        sqd_transport, "sqd-census", census_body, slot, "SQD census failed")
-    blocks = census_value if isinstance(census_value, list) else [census_value]
-    census_raw = canonical_json(blocks)
-    matching = [item for item in blocks if isinstance(item, dict)
-                and (item.get("header") or {}).get("number") == slot]
     sqd_block = matching[0] if matching else None
-    if bool(sqd_block) != present:
-        raise ValueError(
-            f"SQD state probe/census header disagreement at slot {slot}")
     sqd_transactions = (sqd_block.get("transactions") or []) if sqd_block else []
     normalized_sqd = []
     for row in sqd_transactions:
