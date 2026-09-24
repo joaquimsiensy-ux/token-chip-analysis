@@ -37,3 +37,13 @@ slot 326000396，`transactionDetails=full, encoding=json, rewards=false, maxSupp
 
 ## P4 无目标块头样本（W4 复核 r2 建议项）——**未取得，且调度方一次误判已订正**
 初版记录曾把范围查询 326000000–326000999 中未返回的 127 个 slot 当作「SQD 无块头」，后对其中 326000873/326000874 单 slot 三组查询均 HTTP 200 且返回 1 块（probe 305 B / census 38,705 B / combined 38,924 B）——**它们有块头**。根因：SQD stream 单次响应有大小上限，1000-slot 范围查询被截断成分页尾巴，不是缺块（现役探针按 450-slot 分页正是为此）。结论：本工程未取得 SQD 无目标块头的在线样本，`present=False` 路径由 W4 §2.5 离线 MISSING_BLOCK 正反例覆盖。教训：范围查询判缺块必须按流分页游标续拉，不能以单响应缺失当缺块。
+
+## P5 W3 调度方本机联网验收（施工 commit 6b36dcd 后，2026-09-24）
+curl 8.7.1 (x86_64-apple-darwin26.0) libcurl/8.7.1 SecureTransport LibreSSL/3.3.6 zlib/1.2.12。同一 finalized slot 326000396、相同 getBlock 请求体（transactionDetails full、encoding json、rewards false、maxSupportedTransactionVersion 1）、同一 Helius 端点：
+
+| 方式 | HTTP | rc | size_download | time_total | Content-Encoding | result 规范化 sha256（前 16） |
+|---|---|---|---|---|---|---|
+| identity | 200 | 0 | 4,516,539 | 3.21 s | 无 | 349090c1147eebdb |
+| `--compressed` | 200 | 0 | 736,729 | 2.54 s | gzip | 349090c1147eebdb |
+
+解析后 result 规范化摘要相等；实际协商编码 gzip；传输字节 6.1×。不用 ledger.bytes 衡量传输节省。W3 收官：施工 commit 6b36dcd，本机定向 8 项 PASS（含施工方受禁读拦截未跑成的 `test_sqd_gap_repair.py` rc=0），盲审 r1 PASS（`blind_W3_reply_r1.md`），run_all 结果见 `W3_acceptance.md`。

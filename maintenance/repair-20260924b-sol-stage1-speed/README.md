@@ -16,4 +16,4 @@
 
 ## 顺序调整（2026-09-24，r2 复核后）
 
-实际施工顺序：**W3（已通过复核，先行）→ W1 → W4 → WR-a（登记 repair sha）→ W2 → WR-b（登记 probe sha）→ 收官 codex review**。W3 与 W1/W4 无文件交集；WR 登记单见 `workorder_WR.md`。每单：工单 → codex 只读复核（通过才派）→ codex `--write` 施工 → 调度方本机验收（定向测试＋run_all）→ commit → codex 只读盲审（PASS 才进下一单；连败三次换 opus）。
+实际施工顺序：**W3（先行）→ W1 → W4 源码提交 → WR-a 登记提交及真实注册表入口验收 → W4 最终收官 → W2 源码提交 → WR-b 登记提交及最终 probe 注册核验 → 工程最终验收与 codex 收官 review**。W3 与 W1/W4 无文件交集。各单经只读复核通过后施工，由调度方验收、commit，再经只读盲审；盲审连败三次换 opus。W4 与工程最终收官分别以完成 WR-a、WR-b 的对应验收为前置，具体按 `workorder_WR.md` §0.6–0.8 执行。施工者不 commit。
