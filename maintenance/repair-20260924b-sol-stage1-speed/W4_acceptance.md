@@ -20,3 +20,8 @@
 - run_all（本机）：PASS 149 项；红 2 项同 W1/W1F——① producer 登记守卫 6 FAIL（probe 哈希 `ab2371f5…`、repair 哈希 `15822564…` 未登记；WR-a/WR-b 登记后消）；② reseal 环境项。日志 scratchpad `run_all_W4.log`。
 - 施工者结束检查报告 `workorder_W2.md` 有外部修改：系调度方在施工期间补记 §0.5 grep `-e` 说明（工作树、未 commit），不影响 W4。
 - 后续：codex 盲审（`blind_W4_prompt.md`→`blind_W4_reply_r1.md`）；WR-a 登记（`workorder_WR-a.md`）；登记后真实注册表入口验收记于 `WR-a_acceptance.md`。
+
+## 追记：盲审与收官（2026-09-24）
+- 盲审 r1（`blind_W4_reply_r1.md`）FAIL＝正式入口未成立（producer 未登记，工单 §3 既定后置）；a–d、f–h 及拒收向量全部独立通过。
+- WR-a 登记（70e14a8）后盲审 r2（`blind_W4_reply_r2.md`）FAIL＝只读沙箱无 tempfile 无法执行 e 项三类产物真实入口；其余项复核无回归（39 组 present/nonce_count 对照、退避、拒收向量 Helius 0 次）。
+- e 项由写模式任务 `WR-a_formal_entry.md` 执行：三类产物真实入口 PASS＋移除登记对照拒收。**W4 收官**（代码层两轮盲审无回归＋正式入口验收 PASS）。两次 FAIL 均非代码缺陷，不计入「codex 连续三次盲审失败换 opus」。

@@ -1,0 +1,156 @@
+{
+  "python": "3.14.6 (v3.14.6:c63aec69bd5, Jun 10 2026, 08:07:54) [Clang 21.0.0 (clang-2100.1.1.101)]",
+  "executable": "/usr/local/bin/python3",
+  "tempfile": "/private/tmp/WR-a-formal-entry-22smuw9u",
+  "removed": [
+    {
+      "script": "scripts/solana/sqd_gap_repair.py",
+      "sha256": "15822564046e654b46300edcc26aeb51b397217ecce0fb555df0e891d98a1a33",
+      "commit": "59f88b84c9ab9eeb95c92a15e342d8cbe09925db",
+      "protocol": "sqd-solana-cache/v4",
+      "status": "ACTIVE",
+      "reason": "9.2.0 α/β 候选修复状态探针并入 census 请求（W4）"
+    },
+    {
+      "script": "scripts/solana/sqd_gap_repair.py",
+      "sha256": "15822564046e654b46300edcc26aeb51b397217ecce0fb555df0e891d98a1a33",
+      "commit": "59f88b84c9ab9eeb95c92a15e342d8cbe09925db",
+      "protocol": "sqd-solana-repair-bundle/v1",
+      "status": "ACTIVE",
+      "reason": "9.2.0 α/β 候选修复状态探针并入 census 请求（W4）"
+    },
+    {
+      "script": "scripts/solana/sqd_gap_repair.py",
+      "sha256": "15822564046e654b46300edcc26aeb51b397217ecce0fb555df0e891d98a1a33",
+      "commit": "59f88b84c9ab9eeb95c92a15e342d8cbe09925db",
+      "protocol": "sqd-solana-coverage-resolution/v1",
+      "status": "ACTIVE",
+      "reason": "9.2.0 α/β 候选修复状态探针并入 census 请求（W4）"
+    },
+    {
+      "script": "scripts/solana/sqd_gap_repair.py",
+      "sha256": "15822564046e654b46300edcc26aeb51b397217ecce0fb555df0e891d98a1a33",
+      "commit": "59f88b84c9ab9eeb95c92a15e342d8cbe09925db",
+      "protocol": "sqd-solana-repair-pointer/v1",
+      "status": "ACTIVE",
+      "reason": "9.2.0 α/β 候选修复状态探针并入 census 请求（W4）"
+    }
+  ],
+  "cases": [
+    {
+      "label": "old",
+      "old_count": 2,
+      "case": "/private/tmp/WR-a-formal-entry-22smuw9u/w4-old-81uce3e3/case",
+      "gen": "/private/tmp/WR-a-formal-entry-22smuw9u/w4-old-81uce3e3/case/data/sqd_repair/4eb8d4d0e921d2f9c873ff102f98fa6b65f15cdd45aba80bfdf5b0ac2108359f/gen-290b57be199a484d",
+      "base_edge": "/private/tmp/WR-a-formal-entry-22smuw9u/w4-old-81uce3e3/case/data/soltx-4eb8d4d0e921d2f9c873ff102f98fa6b65f15cdd45aba80bfdf5b0ac2108359f.jsonl.gz",
+      "confirmed": [
+        19998,
+        19999
+      ],
+      "gid": "290b57be199a484d",
+      "calls": [],
+      "B_validate": "PASS: returned bundle gid=290b57be199a484d, mode=formal",
+      "B_resolve": "PASS: kind=repaired, gid=290b57be199a484d, binding.cache_kind=repaired; edge/meta=CURRENT-selected generation",
+      "edge": "/private/tmp/WR-a-formal-entry-22smuw9u/w4-old-81uce3e3/case/data/sqd_repair/4eb8d4d0e921d2f9c873ff102f98fa6b65f15cdd45aba80bfdf5b0ac2108359f/gen-290b57be199a484d/soltx-4eb8d4d0e921d2f9c873ff102f98fa6b65f15cdd45aba80bfdf5b0ac2108359f.repaired.jsonl.gz",
+      "meta": "/private/tmp/WR-a-formal-entry-22smuw9u/w4-old-81uce3e3/case/data/sqd_repair/4eb8d4d0e921d2f9c873ff102f98fa6b65f15cdd45aba80bfdf5b0ac2108359f/gen-290b57be199a484d/soltx-4eb8d4d0e921d2f9c873ff102f98fa6b65f15cdd45aba80bfdf5b0ac2108359f.repaired.meta.json",
+      "binding": {
+        "cache_kind": "repaired",
+        "gid": "290b57be199a484d",
+        "soltx_edges_sha256": "6e5f6b71773e64bce4a0f9b136702f0467dc8ef1d26af322f47a6c24d94e32f7",
+        "soltx_meta_sha256": "e0de4de629c8ef79ad24fdcbeeaa59e1281a1ebb48a769860a3aa8296f28affc",
+        "edge_logical_sha256": "b134592098920a3b4414b360f3d92eec1381e936b7abe3c00e699cec2ba3c1b3"
+      },
+      "C": {
+        "validate_repair_bundle": "ValueError: formal repair producer is not registered",
+        "resolve_formal_cache": "ValueError: formal repair producer is not registered"
+      },
+      "PASS": true
+    },
+    {
+      "label": "new",
+      "old_count": 0,
+      "case": "/private/tmp/WR-a-formal-entry-22smuw9u/w4-new-c046vooc/case",
+      "gen": "/private/tmp/WR-a-formal-entry-22smuw9u/w4-new-c046vooc/case/data/sqd_repair/4eb8d4d0e921d2f9c873ff102f98fa6b65f15cdd45aba80bfdf5b0ac2108359f/gen-065f1e4ce2f03b9e",
+      "base_edge": "/private/tmp/WR-a-formal-entry-22smuw9u/w4-new-c046vooc/case/data/soltx-4eb8d4d0e921d2f9c873ff102f98fa6b65f15cdd45aba80bfdf5b0ac2108359f.jsonl.gz",
+      "confirmed": [
+        19998,
+        19999
+      ],
+      "gid": "065f1e4ce2f03b9e",
+      "calls": [
+        [
+          "sqd-census",
+          19998
+        ],
+        [
+          "reference-getBlock",
+          19998
+        ],
+        [
+          "sqd-census",
+          19999
+        ],
+        [
+          "reference-getBlock",
+          19999
+        ]
+      ],
+      "B_validate": "PASS: returned bundle gid=065f1e4ce2f03b9e, mode=formal",
+      "B_resolve": "PASS: kind=repaired, gid=065f1e4ce2f03b9e, binding.cache_kind=repaired; edge/meta=CURRENT-selected generation",
+      "edge": "/private/tmp/WR-a-formal-entry-22smuw9u/w4-new-c046vooc/case/data/sqd_repair/4eb8d4d0e921d2f9c873ff102f98fa6b65f15cdd45aba80bfdf5b0ac2108359f/gen-065f1e4ce2f03b9e/soltx-4eb8d4d0e921d2f9c873ff102f98fa6b65f15cdd45aba80bfdf5b0ac2108359f.repaired.jsonl.gz",
+      "meta": "/private/tmp/WR-a-formal-entry-22smuw9u/w4-new-c046vooc/case/data/sqd_repair/4eb8d4d0e921d2f9c873ff102f98fa6b65f15cdd45aba80bfdf5b0ac2108359f/gen-065f1e4ce2f03b9e/soltx-4eb8d4d0e921d2f9c873ff102f98fa6b65f15cdd45aba80bfdf5b0ac2108359f.repaired.meta.json",
+      "binding": {
+        "cache_kind": "repaired",
+        "gid": "065f1e4ce2f03b9e",
+        "soltx_edges_sha256": "6e5f6b71773e64bce4a0f9b136702f0467dc8ef1d26af322f47a6c24d94e32f7",
+        "soltx_meta_sha256": "1c6d3668767e906431bd5bb14e949c5a1abadc69184f527d3331e2c494179075",
+        "edge_logical_sha256": "b134592098920a3b4414b360f3d92eec1381e936b7abe3c00e699cec2ba3c1b3"
+      },
+      "C": {
+        "validate_repair_bundle": "ValueError: formal repair producer is not registered",
+        "resolve_formal_cache": "ValueError: formal repair producer is not registered"
+      },
+      "PASS": true
+    },
+    {
+      "label": "mixed",
+      "old_count": 1,
+      "case": "/private/tmp/WR-a-formal-entry-22smuw9u/w4-mixed-xze0xrau/case",
+      "gen": "/private/tmp/WR-a-formal-entry-22smuw9u/w4-mixed-xze0xrau/case/data/sqd_repair/4eb8d4d0e921d2f9c873ff102f98fa6b65f15cdd45aba80bfdf5b0ac2108359f/gen-9d4be46e62d00ad4",
+      "base_edge": "/private/tmp/WR-a-formal-entry-22smuw9u/w4-mixed-xze0xrau/case/data/soltx-4eb8d4d0e921d2f9c873ff102f98fa6b65f15cdd45aba80bfdf5b0ac2108359f.jsonl.gz",
+      "confirmed": [
+        19998,
+        19999
+      ],
+      "gid": "9d4be46e62d00ad4",
+      "calls": [
+        [
+          "sqd-census",
+          19999
+        ],
+        [
+          "reference-getBlock",
+          19999
+        ]
+      ],
+      "B_validate": "PASS: returned bundle gid=9d4be46e62d00ad4, mode=formal",
+      "B_resolve": "PASS: kind=repaired, gid=9d4be46e62d00ad4, binding.cache_kind=repaired; edge/meta=CURRENT-selected generation",
+      "edge": "/private/tmp/WR-a-formal-entry-22smuw9u/w4-mixed-xze0xrau/case/data/sqd_repair/4eb8d4d0e921d2f9c873ff102f98fa6b65f15cdd45aba80bfdf5b0ac2108359f/gen-9d4be46e62d00ad4/soltx-4eb8d4d0e921d2f9c873ff102f98fa6b65f15cdd45aba80bfdf5b0ac2108359f.repaired.jsonl.gz",
+      "meta": "/private/tmp/WR-a-formal-entry-22smuw9u/w4-mixed-xze0xrau/case/data/sqd_repair/4eb8d4d0e921d2f9c873ff102f98fa6b65f15cdd45aba80bfdf5b0ac2108359f/gen-9d4be46e62d00ad4/soltx-4eb8d4d0e921d2f9c873ff102f98fa6b65f15cdd45aba80bfdf5b0ac2108359f.repaired.meta.json",
+      "binding": {
+        "cache_kind": "repaired",
+        "gid": "9d4be46e62d00ad4",
+        "soltx_edges_sha256": "6e5f6b71773e64bce4a0f9b136702f0467dc8ef1d26af322f47a6c24d94e32f7",
+        "soltx_meta_sha256": "e4ddf05703fede8ac11cc361f683587573dcb9d8738c95e33eba2bde578b1d6f",
+        "edge_logical_sha256": "b134592098920a3b4414b360f3d92eec1381e936b7abe3c00e699cec2ba3c1b3"
+      },
+      "C": {
+        "validate_repair_bundle": "ValueError: formal repair producer is not registered",
+        "resolve_formal_cache": "ValueError: formal repair producer is not registered"
+      },
+      "PASS": true
+    }
+  ],
+  "blocked_events": [],
+  "PASS": true
+}
