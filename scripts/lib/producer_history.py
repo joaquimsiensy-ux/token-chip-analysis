@@ -280,6 +280,38 @@ PRODUCER_HISTORY = (
         "status": "ACTIVE",
         "reason": "v9.0.4 registers the pre-9.0.3 time-spotcheck/v3 producer: 9.0.3 changed only the directory-input binding, so file-input receipts it signed stay valid.",
     },
+    {
+        "script": "scripts/solana/sqd_gap_repair.py",
+        "sha256": "15822564046e654b46300edcc26aeb51b397217ecce0fb555df0e891d98a1a33",
+        "commit": "59f88b84c9ab9eeb95c92a15e342d8cbe09925db",
+        "protocol": "sqd-solana-cache/v4",
+        "status": "ACTIVE",
+        "reason": "9.2.0 α/β 候选修复状态探针并入 census 请求（W4）",
+    },
+    {
+        "script": "scripts/solana/sqd_gap_repair.py",
+        "sha256": "15822564046e654b46300edcc26aeb51b397217ecce0fb555df0e891d98a1a33",
+        "commit": "59f88b84c9ab9eeb95c92a15e342d8cbe09925db",
+        "protocol": "sqd-solana-repair-bundle/v1",
+        "status": "ACTIVE",
+        "reason": "9.2.0 α/β 候选修复状态探针并入 census 请求（W4）",
+    },
+    {
+        "script": "scripts/solana/sqd_gap_repair.py",
+        "sha256": "15822564046e654b46300edcc26aeb51b397217ecce0fb555df0e891d98a1a33",
+        "commit": "59f88b84c9ab9eeb95c92a15e342d8cbe09925db",
+        "protocol": "sqd-solana-coverage-resolution/v1",
+        "status": "ACTIVE",
+        "reason": "9.2.0 α/β 候选修复状态探针并入 census 请求（W4）",
+    },
+    {
+        "script": "scripts/solana/sqd_gap_repair.py",
+        "sha256": "15822564046e654b46300edcc26aeb51b397217ecce0fb555df0e891d98a1a33",
+        "commit": "59f88b84c9ab9eeb95c92a15e342d8cbe09925db",
+        "protocol": "sqd-solana-repair-pointer/v1",
+        "status": "ACTIVE",
+        "reason": "9.2.0 α/β 候选修复状态探针并入 census 请求（W4）",
+    },
 )
 
 
