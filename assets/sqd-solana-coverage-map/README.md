@@ -2,7 +2,7 @@
 
 本目录存放由已发布案级 coverage 经 `sqd_coverage_probe.py export-shared-map` 导出的共享覆盖三件套；源 coverage 可来自全扫或成功的地图复用。
 
-coverage 开工先 find-known-map；有 chosen 必用 --known-map，完整加载失败时按探针规则回退。coverage 发布后按 split-run §1.3 回填，有修复代指定 --repair-gid，无代使用 --no-repair。调度方验收后将三件套入库。
+coverage 开工先 find-known-map；仅 exit 0 才采用 chosen 并用 --known-map；仅 exit 2 且合法 JSON 中 chosen=null 才全扫；其余先处理错误，不得采用部分结果。完整加载失败时按探针规则回退。coverage 发布后按 split-run §1.3 回填，有修复代指定 --repair-gid，无代使用 --no-repair。调度方验收后将三件套入库。
 
 每版由三件组成：
 
