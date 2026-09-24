@@ -9,6 +9,11 @@
 | W1 | 共享地图 `refuted_slots` 由修复 census 填充；探针复用地图时对重查未变的 refuted slot 记 `INHERITED_REFUTED`，不再进候选；校验器同步重算 | `scripts/solana/sqd_coverage_probe.py`、`scripts/lib/solana_exact_validate.py` | 1 |
 | W4 | 修复阶段每候选 slot 的 SQD 请求由 2 次（探针＋census）合并为 1 次 | `scripts/solana/sqd_gap_repair.py` | 2 |
 | W3 | `net.py::curl_json` 加 `--compressed` | `scripts/lib/net.py` | 3 |
-| W2 | `find-known-map` 子命令；split-run/命令/分册/README 文档硬性；版本 9.2.0 与 producer_history 登记 | 文档＋`sqd_coverage_probe.py`＋版本四处＋`producer_history.py` | 4 |
+| W2 | `find-known-map` 子命令；split-run/命令/分册/README 文档硬性；版本 9.2.0；源码提交后由 WR-b 登记 probe | 文档＋`sqd_coverage_probe.py`＋版本四处；producer_history 仅由 WR 修改 | 4 |
 
 施工严格串行（同一工作树）；复核/盲审只读可并行。基线：W1＝`cc6298b`（9.1.1）；后续各单基线＝前一单收官 commit（派工时更新工单 §0.1 与行号）。
+
+
+## 顺序调整（2026-09-24，r2 复核后）
+
+实际施工顺序：**W3（已通过复核，先行）→ W1 → W4 → WR-a（登记 repair sha）→ W2 → WR-b（登记 probe sha）→ 收官 codex review**。W3 与 W1/W4 无文件交集；WR 登记单见 `workorder_WR.md`。每单：工单 → codex 只读复核（通过才派）→ codex `--write` 施工 → 调度方本机验收（定向测试＋run_all）→ commit → codex 只读盲审（PASS 才进下一单；连败三次换 opus）。
