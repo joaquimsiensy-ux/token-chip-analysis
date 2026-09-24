@@ -564,7 +564,7 @@ def _inherited_recheck_values(row, template_sha):
                 or row.get("returned_to") is not None or type(row.get("n_blocks")) is not int \
                 or row["n_blocks"] != 0:
             raise ValueError("empty recheck response facts invalid")
-        return {}
+        return {slot: 1 for slot in range(start, end + 1)}
     values = {}
     previous = start - 1
     for block in blocks:
@@ -583,7 +583,7 @@ def _inherited_recheck_values(row, template_sha):
             or row["returned_from"] != next(iter(values)) \
             or type(row.get("returned_to")) is not int or row["returned_to"] != end:
         raise ValueError("recheck complete response facts invalid")
-    return values
+    return {slot: values.get(slot, 1) for slot in range(start, end + 1)}
 
 
 def _validated_inherited(coverage, coverage_path, counts, from_slot, rows, reasons):

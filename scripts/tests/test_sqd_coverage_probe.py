@@ -978,6 +978,80 @@ def test_w1_inherited_tamper_rejection():
                            for reason in checked["reasons"]), (label, checked)
 
 
+def _w1f_recheck_case(root, asset_path, label):
+    case, (_, generation, coverage) = _w1_run(root, asset_path=asset_path, upper=600)
+    rows = [json.loads(line) for line in (generation / "ledger.jsonl").read_text().splitlines()]
+    correct = [row for row in rows if row.get("mode") == "recheck"
+               and row["from"] == row["to"] == 500]
+    assert len(correct) == 1 and correct[0]["recheck_outcome"] == "verified"
+    assert exact._inherited_recheck_values(correct[0], coverage["sqd"]["query_body_sha256"]) == {500: 2}
+    if label != "single":
+        row = deepcopy(correct[0])
+        if label in {"empty", "prefix", "false-first"}:
+            blocks = [] if label == "empty" else [{"header": {"number": 501}, "instructions": []}]
+            end = 500 if label == "empty" else 501
+            raw = exact.canonical_json(blocks)
+            row.update(to=end, recheck_response=blocks, slots_covered=end - 500 + 1,
+                       empty_response=not blocks, n_blocks=len(blocks),
+                       returned_from=None if not blocks else 501,
+                       returned_to=None if not blocks else 501,
+                       bytes=len(raw), response_sha256=exact.sha256_bytes(raw),
+                       query_body_sha256=exact.sha256_bytes(exact.canonical_json(
+                           probe.sqd_query_body(500, end))))
+            if label == "false-first":
+                row["returned_from"] = 500
+        assert row["recheck_outcome"] == "verified"
+        rows.append(row)
+    _w1_reseal(case, coverage, rows)
+    return case, coverage, rows
+
+
+def test_w1f_inherited_recheck_missing_slot_conflicts():
+    with tempfile.TemporaryDirectory(prefix="w1f-conflicts-") as td:
+        root = Path(td).resolve()
+        path, _ = _w1_asset(root)
+        for label in ("single", "duplicate", "empty", "prefix", "false-first"):
+            case, _, _ = _w1f_recheck_case(root / label, path, label)
+            checked = _w1_check(case)
+            reasons = checked["reasons"]
+            assert not any(any(word in reason for word in (
+                "reference", "pointer", "digest", "sha256", "seq", "probe_id"))
+                for reason in reasons), (label, checked)
+            if label in {"single", "duplicate"}:
+                assert checked["ok"] and reasons == [], (label, checked)
+                assert checked["recomputed"]["states"][500] == "INHERITED_REFUTED"
+            else:
+                reason = ("inherited refuted recheck complete response facts invalid"
+                          if label == "false-first" else
+                          "inherited refuted recheck results conflict")
+                assert not checked["ok"] and reason in reasons, (label, checked)
+
+
+def test_w1f_recheck_helper_prefix_hole():
+    # Decode a correctly bound witness only: a missing required slot would not
+    # be marked verified by the normal producer.
+    blocks = [{"header": {"number": 501}, "instructions": []}]
+    raw = exact.canonical_json(blocks)
+    row = {
+        "provider": "SQD", "mode": "recheck", "ok": True,
+        "recheck_outcome": "verified", "http_status": 200, "counts_coverage": True,
+        "from": 500, "to": 501, "slots_covered": 2,
+        "empty_response": False, "n_blocks": 1, "returned_from": 501, "returned_to": 501,
+        "recheck_response": blocks, "bytes": len(raw),
+        "response_sha256": exact.sha256_bytes(raw),
+        "query_body_sha256": exact.sha256_bytes(exact.canonical_json(probe.sqd_query_body(500, 501))),
+    }
+    template_sha = exact.sha256_bytes(exact.canonical_json(probe.sqd_query_body(0, 0)))
+    assert exact._inherited_recheck_values(row, template_sha) == {500: 1, 501: 2}
+    row["returned_from"] = 500
+    try:
+        exact._inherited_recheck_values(row, template_sha)
+    except ValueError as exc:
+        assert str(exc) == "recheck complete response facts invalid"
+    else:
+        raise AssertionError("false first returned block accepted")
+
+
 def _w1_repair(case, *, confirmed=(700,), beta=()):
     pointer, generation, coverage = read_current(case)
     checked = _w1_check(case)
@@ -1254,6 +1328,8 @@ def main():
         test_guard_fixture_budget_and_no_run_threshold_detector,
         test_w1_inheritance_and_partial_retry_fallback,
         test_w1_inherited_tamper_rejection,
+        test_w1f_inherited_recheck_missing_slot_conflicts,
+        test_w1f_recheck_helper_prefix_hole,
         test_w1_repair_export_binding_and_conflicts,
         test_w1_chain_origin_ttl_and_reindex,
         test_w1_compatibility_determinism_resume_and_copy_protocol,
