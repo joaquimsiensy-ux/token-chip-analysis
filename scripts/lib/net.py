@@ -91,6 +91,7 @@ def curl_json(url, *, post_json=None, headers=None, proxy=None,
     return codes are transport failures.  Empty, truncated, or otherwise invalid
     JSON/NDJSON is a decode failure.  Business adapters remain responsible for
     proving whether a successfully decoded empty value covers their requested range.
+    `--compressed`：协商当前 curl 支持的压缩编码并由 curl 透明解压；上层既有字节数与哈希计算口径不变。
     """
     if not isinstance(attempts, int) or attempts < 1:
         raise ValueError("attempts must be a positive integer")
@@ -104,6 +105,7 @@ def curl_json(url, *, post_json=None, headers=None, proxy=None,
         raise TypeError("no_retry_statuses must contain integer HTTP statuses") from exc
 
     command = ["curl", "--silent", "--show-error", "--fail-with-body",
+               "--compressed",
                "--max-time", str(float(timeout)),
                "--write-out", "\n__CURL_HTTP_STATUS__:%{http_code}"]
     if proxy:

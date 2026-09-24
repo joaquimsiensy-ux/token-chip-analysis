@@ -1,6 +1,7 @@
-# 工单 W4（v2）：修复生产者每候选 slot 的 SQD 请求由两次（状态探针＋census）合并为一次 —— 归属版本 9.2.0（producer 换代；登记走 `workorder_WR.md` 登记单 WR-a）
+# 工单 W4（v3）：修复生产者每候选 slot 的 SQD 请求由两次（状态探针＋census）合并为一次 —— 归属版本 9.2.0（producer 换代；登记走 `workorder_WR.md` 登记单 WR-a）
 
 > 出处：用户 2026-09-24 裁决第 4 条「同一个候选 slot 被 SQD 探两次，看看怎么修复」。
+> v3 变更：吸收 codex 复核 r2（`review_W4_reply_r2.md`）——必改 1（事实⑥收窄为已记录证据，调度方已补三组内容对照实测 P3）；建议 2（无块头样本：范围查询截断误判，未取得 SQD 无块头在线样本，改由离线夹具覆盖 MISSING_BLOCK）、3（深验兼容自包含构造路线）、4（W1 保护边界与继承状态合并路径回归）采纳。
 > v2 变更：吸收 codex 复核 r1（`review_W4_reply_r1.md`）9 条——必改 1–8 全采纳（事实⑤/⑥/② 改写、d4 经 `sqd_query_body` 复用、请求次数与 β 范围与错误时序明示、新采/认领证据区分、测试计数与故障向量、producer 登记前移为独立登记单 WR-a、禁读夹具与临时目录纪律）；建议 9 采纳（≤60 行保留、锚精确）。
 > 事实（调度方本机亲核，基线 `cc6298b`；**派工基线＝W1 收官 commit `<W4_BASE>`，届时行号重核**，W1 只改本脚本 `validate_coverage_state_consistency` 一函数）：
 > ① `scripts/solana/sqd_gap_repair.py:1022` `_fetch_live_slot`：`:1024` 先 `_state_probe(sqd_transport, slot, retry=True)`（`:917`，请求体 `sqd_query_body(slot, slot)`＝`includeAllBlocks`＋`fields.block.number`＋`fields.instruction.transactionIndex`＋System Program `d4=0x04000000` 的 AdvanceNonce 指令过滤；`:933` `nonce_count=len(block.instructions or [])`，返回 present/nonce_count/请求 sha/响应 sha）→ `:1026` `validate_coverage_state_consistency` → `:1030` Helius `getBlock` → `:1044` `census_body=_census_body(slot)`（`:643-653`：`includeAllBlocks`＋`fields.block.number/hash`＋`fields.transaction.transactionIndex/signatures/err`＋`transactions:[{}]`）再请求 SQD → `:1052-1054` 校验 census 块头与探针一致。即**无重试时每候选 slot 两次 SQD 调用**；`_sqd_call_with_backoff(:900-913)` 最多调 transport 四次，Helius pool（`:181-190`）可切 key 重试。`_plan(:607-608)` 候选＝α ∪ β，共用 `_fetch_live_slot`。
@@ -8,7 +9,7 @@
 > ③ transport：`:108` `RepairLiveTransport.call` 对 `{"sqd-census","sqd-probe","sqd-beta"}` 同走 `net.curl_json(f"{DEFAULT_SQD}/stream")`；`RepairFixtureTransport(:78)` 按 `request_digest(kind, body)` 查表。β 搜索 `_probe_fingerprint(:483)` 用 `sqd-probe` 区间查询——**保留**。
 > ④ 测试夹具：`test_sqd_gap_repair.py:255-266` 每 slot 三条响应（`sqd-probe` 块含 `instructions`×nonce_count、`reference-getBlock`、`sqd-census` 块含 header/transactions 无 instructions）；`test_batch8_repair_scale.py:57-59` fake transport `sqd-probe` 分支、`:61-68` **已有** `sqd-census` 分支、`:316-322` 测 `_sqd_call_with_backoff` 重试（四次调用、2/4/8 秒），未调 `_state_probe`；`adoption_regressions(:842-880)` 用当前生产者生成 pending 再换 producer 标识。`main` 入口：`test_sqd_gap_repair.py:1210`、`test_batch8_repair_scale.py:325`。
 > ⑤ `compute_plan_digest`（`sqd_repair_core.py:59-82`）绑定 producer sha；`_plan(:619-620)` 取当前脚本文件 sha，本单改脚本即换代。`:46-49` 注释针对 `SOLANA_MAX_SUPPORTED_TX_VERSION` 与 `repair_getblock_body`，未提 `_census_body`。跨代认领须满足前代 sha 已登记、除 producer 外 plan 身份可重现、成功记录构成候选前缀等条件。正式消费入口 `sqd_cache_identity.py:143-147` 要求 bundle.producer.sha256 ∈ `historical_producer_hashes(REPAIR_COLLECTOR_SCRIPT, "sqd-solana-cache/v4")`——**未登记的新代会被正式 resolver 拒绝**（深验 `:1611` 可过、指针可发，但消费被拒），故登记为收官前置（§3）。
-> ⑥ **组合选择器实测（调度方本机 2026-09-24，`fable_probes_20260924.md` §P2）**：请求体＝现役 `_census_body` 加 `instructions:[{programId:[System],d4:["0x04000000"]}]` 与 `fields.instruction.transactionIndex`：健康 slot 326000400（有 nonce 匹配指令且含其他指令）→ 响应块键 `header/instructions/transactions`，transactions 402，instructions 53（只含匹配项、每项只 `transactionIndex`）与单独探针 53 一致；零匹配有头块 326000396/426241113 → 块键 `header/transactions`、`instructions` 键缺失。结论：合并请求同时得到全交易与仅匹配 AdvanceNonce 的指令；零匹配时键缺失（`or []` 语义成立）。
+> ⑥ **组合选择器实测（调度方本机 2026-09-24，`fable_probes_20260924.md` §P2/§P3）**：对同一 finalized slot 分别发 probe-only、census-only、combined 三组查询并比较：三组 `header` 全等；combined 与 census-only 的 `transactions` 规范化 JSON 全等；combined 与 probe-only 的 `instructions` 规范化 JSON 全等（重复项保留）。样本：有匹配 AdvanceNonce 指令的有头块 326000400（tx 402、匹配指令 53；交易数远大于匹配指令数，间接支持「同时含其他指令」）及 326000391/393/395；有块头零匹配块 326000396（tx 482、combined 无 `instructions` 键）。全部 HTTP 200、三方一致。529 为 SQD 服务端过载（census-only 单独请求亦出现），退避重试即恢复。**无块头样本**：范围查询 1000 slot 时 SQD 流被截断（分页尾巴），误判为缺块，单 slot 查询证实有块头；本工程未取得 SQD 无目标块头的在线样本，`present=False` 路径由 §2.5 离线 MISSING_BLOCK 正反例覆盖。结论：合并请求可等价替代「探针＋census」两次请求；零匹配时 `instructions` 键缺失（`or []` 语义成立）。
 
 ## 0. 开工纪律
 
@@ -24,7 +25,7 @@
 
 - 1.1 对本轮尚未恢复的 live 修复候选，每 slot 只执行**一次合并 SQD 查询流程**；无故障、无重试时为一次 `sqd-census` transport 调用，状态校验通过后一次 `reference_pool.get_block`。保留 SQD 重试与 Helius 多 key 故障转移（实际请求数可大于一）；已恢复 slot 不再请求。β 搜索阶段的 `_beta_body`、`_probe_fingerprint` 及其请求模板不变；β 候选进入共用修复流程后同样使用合并查询。
 - 1.2 evidence/ledger/resolution/bundle schema 与字段名不变。**本单新采集**的 evidence：`coverage_probe_query_sha256==query_body_sha256`、`coverage_probe_response_sha256==response_sha256`；**从前代恢复或认领**的 evidence 保留原摘要，不要求相等，不得改写以制造相等；允许同一新代同时含前代分离摘要与本代合并摘要。formal `sqd_nonce_count_at_repair` 仍为非负整数。
-- 1.3 与被替换的 `_state_probe` 保持相同 present/nonce_count 计算：只统计 `header.number==slot` 的块，匹配块 >1 → 拒绝；无匹配块 present=False、nonce_count=0；有匹配块 `nonce_count=len(block.get("instructions") or [])`（缺键/null/空数组均为零；保存原始长度，**不按 255 截断**——coverage 普查的 `min(255, 2+len)` 是另一编码层）。`validate_coverage_state_consistency` 保持在 Helius 调用之前，函数判定与异常文案不变。
+- 1.3 与被替换的 `_state_probe` 保持相同 present/nonce_count 计算：只统计 `header.number==slot` 的块，匹配块 >1 → 拒绝；无匹配块 present=False、nonce_count=0；有匹配块 `nonce_count=len(block.get("instructions") or [])`（缺键/null/空数组均为零；保存原始长度，**不按 255 截断**——coverage 普查的 `min(255, 2+len)` 是另一编码层）。`validate_coverage_state_consistency` 保持在 Helius 调用之前，函数判定与异常文案以 `<W4_BASE>` 的 W1 收官实现为准：**W4 不修改该函数体**，保留 W1 对 `INHERITED_REFUTED` 的 β 兼容与 α 拒绝规则。
 - 1.4 `_census_body` 保持现有 block/transaction fields、`transactions` 选择器及原有键相对顺序，只追加探针所需 instruction fields 与 instructions 选择器——**通过本文件已导入的 `sqd_query_body(slot, slot)` 取得**，不新增或复制 SYSTEM_PROGRAM/d4 常量，不修改探针模板，无需新增 import。
 - 1.5 `_state_probe`：删除前确认允许读取范围内只有定义 `:917` 与调用 `:1024` 两处命中（「仅一处」指调用）；删除后无剩余引用；保留 `_probe_fingerprint:483` 及 `sqd-probe` transport 支持；`_sqd_call_with_backoff` 不变。
 - 1.6 生产文件增删合计 ≤60 行（`git diff --numstat <W4_BASE> -- scripts/solana/sqd_gap_repair.py`；测试与报告不计）；不得为压行数省略输入处理、改变既有重试或压缩可读性；不新增 CLI 参数。
@@ -44,6 +45,8 @@
   - SQD 重试耗尽与 Helius quota 组合故障：断言先后顺序、返回码、STOPPED 与成功 ledger 前缀符合 2.2；保留现有额度切换、resume、并发有序落盘与 β 搜索回归。
   - `test_sqd_gap_repair.py:255-266` 夹具 census 块加 `"instructions": [{"transactionIndex": i} ...]×nonce_count`；`sqd-probe` 条目按是否仍有用途保留或删除。`test_batch8_repair_scale.py:61-68` 已有 census 分支在此追加 instructions；`:57-59` probe 分支按用途保留/删除，不得改名遮蔽；`:316-322` 保留四次调用/2/4/8 秒断言，可增 `sqd-census` 参数覆盖。
   - **深验兼容**：保留独立的旧格式证据构造（显式用旧 probe-only 与 census-only 请求及分离响应计算摘要，不随 `_census_body` 改动自动变新格式）；分别验证旧格式、新格式、「认领旧格式前缀＋新格式剩余 slot」混合代：断言旧 evidence 字节不变、旧 slot 无重新请求、新 slot 两组摘要相等、深验通过。
+  - **深验兼容构造路线**：复用 `build_batch3b_case`（`test_sqd_gap_repair.py:170-222` 自包含 10,000-slot coverage/base 构造器），missing transaction 使用测试代码内构造的 nonce 交易及 token balance 变化（`:277-302`），不调用 `staged_missing_transactions`；旧格式 helper 显式固定旧 probe-only/census-only 模板及各自响应，独立计算四个摘要并形成 evidence/ledger；选择已登记前代 sha，保持 base、coverage、候选及 reference 身份不变，重算前代 plan_digest（参考 `:820-954` 现有组织方式）；分别构造全旧格式、全新格式、旧前缀＋新剩余 slot 三类用例；用于发布及深验的用例至少含一个 confirmed 缺失交易（避免 refuted-only 提前返回不到 bundle 深验入口）。登记前的直接深验不替代 §3 登记后的正式入口验收。
+  - **继承状态合并路径回归**（自包含）：`INHERITED_REFUTED`＋β＋有头＋零 nonce 通过；同状态非 β 拒绝；β 下无头或非零 nonce 拒绝，且拒绝发生在 Helius 调用前。保留 W1 已加入测试文件及 main 的用例，不得覆盖。
   - 新增测试接入各文件实际 `main` 入口。
 
 ## 3. 完成报告 `W4_done.md` 与收官前置

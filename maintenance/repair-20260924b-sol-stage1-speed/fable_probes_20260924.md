@@ -35,10 +35,5 @@ slot 326000396，`transactionDetails=full, encoding=json, rewards=false, maxSupp
 说明：probe-only 与 combined 的 `instructions` 都只含匹配 AdvanceNonce 的指令（每项仅 `transactionIndex`），非匹配指令不可由该查询观察；「健康块同时含其他指令」由交易数（402）远大于匹配指令数（53）间接支持。范围查询 326000380–326000440 全部 61 个 slot 均有块头，本段未含无块头样本（见 P4）。
 原始结果：调度方 scratchpad `sqd3_results.json`/`sqd3b_results.json`（不入仓库）。
 
-## P4 SQD 无目标块头样本三组对照（W4 复核 r2 建议项）
-范围查询 326000000–326000999 中 SQD 无块头的 slot 有 127 个（首段 326000873–…）。对其中两个 slot 分别发 probe/census/combined 三组：
-```
-326000873 {'probe': {'http': 200, 'raw_bytes': 305, 'nblocks': 1}, 'census': {'http': 200, 'raw_bytes': 38705, 'nblocks': 1}, 'combined': {'http': 200, 'raw_bytes': 38924, 'nblocks': 1}}
-326000874 {'probe': {'http': 200, 'raw_bytes': 410, 'nblocks': 1}, 'census': {'http': 200, 'raw_bytes': 36719, 'nblocks': 1}, 'combined': {'http': 200, 'raw_bytes': 37043, 'nblocks': 1}}
-```
-结论：三组对无块头 slot 的响应形态一致（HTTP 与块数相同，均无目标块头），combined 不引入额外差异。原始输出：scratchpad `p4.txt`（不入仓库）。
+## P4 无目标块头样本（W4 复核 r2 建议项）——**未取得，且调度方一次误判已订正**
+初版记录曾把范围查询 326000000–326000999 中未返回的 127 个 slot 当作「SQD 无块头」，后对其中 326000873/326000874 单 slot 三组查询均 HTTP 200 且返回 1 块（probe 305 B / census 38,705 B / combined 38,924 B）——**它们有块头**。根因：SQD stream 单次响应有大小上限，1000-slot 范围查询被截断成分页尾巴，不是缺块（现役探针按 450-slot 分页正是为此）。结论：本工程未取得 SQD 无目标块头的在线样本，`present=False` 路径由 W4 §2.5 离线 MISSING_BLOCK 正反例覆盖。教训：范围查询判缺块必须按流分页游标续拉，不能以单响应缺失当缺块。

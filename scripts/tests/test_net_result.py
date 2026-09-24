@@ -34,6 +34,7 @@ def main():
         (_run("upstream rejected", returncode=22, status=429), "http_status"),
         (_run(""), "decode"),
         (_run("not-json"), "decode"),
+        (_run('{"ready":true}', returncode=61, stderr="bad content encoding"), "transport"),
     ]
     for completed, category in cases:
         with mock.patch.object(net.subprocess, "run", return_value=completed):
@@ -44,6 +45,9 @@ def main():
         if completed.returncode:
             expected_keys.add("returncode")
         assert set(got.error) == expected_keys, got.error
+        if completed.returncode == 61:
+            assert got.error["returncode"] == 61 and got.error["http_status"] == 200
+            assert got.error["retryable"] is True
 
     calls = []
     with mock.patch.object(net.subprocess, "run", side_effect=lambda *a, **k: (
@@ -69,8 +73,20 @@ def main():
         got = net.curl_json(endpoint, attempts=1)
     assert secret not in json.dumps(got.error), got.error
 
-    with mock.patch.object(net.subprocess, "run", return_value=_run('{"ready":true}')):
-        got = net.curl_json("https://fixture.invalid", attempts=1)
+    url = "https://fixture.invalid"
+    argv_calls = []
+    def capture(argv, **kwargs):
+        argv_calls.append(list(argv))
+        return _run('{"ready":true}')
+    with mock.patch.object(net.subprocess, "run", side_effect=capture):
+        got = net.curl_json(url, attempts=1)
+    assert len(argv_calls) == 1, argv_calls
+    argv = argv_calls[0]
+    assert argv.count("--compressed") == 1, argv
+    assert argv.index("--compressed") == argv.index("--fail-with-body") + 1
+    assert "--write-out" in argv, argv
+    assert argv[argv.index("--write-out") + 1] == "\n__CURL_HTTP_STATUS__:%{http_code}"
+    assert argv[-1] == url, argv
     assert got.ok is True and got.value == {"ready": True} and got.error is None, got
 
     ndjson = '{"header":{"number":1}}\n{"header":{"number":2}}\n'
