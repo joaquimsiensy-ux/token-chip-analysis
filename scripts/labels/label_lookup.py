@@ -22,13 +22,14 @@ CREATE2 canonical=同部署流程，普通合约同址≠同实体需现场核�
 
 惯犯层延迟揭盲（A2–A3 盲化、A4 揭盲）：聚类期加 --blind-serial（或 CHIP_BLIND_SERIAL=1）——
 [SERIAL] 命中不进主输出（等同未命中），完整详情封存 sealed_serial_hits.jsonl，防先入之见；
-实体冻结后复核期 --unseal 揭盲作定向复核线索。设施类（cex/infra/bridge…）输出不受影响。
+实体冻结后复核期 --unseal 揭盲作定向复核线索。不含惯犯标记的设施行不受影响。
 """
 import argparse, json, os, sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from labels_resolver import (LabelResolver, KNOWN_CHAINS, norm_addr, SERIAL_CATEGORY,
                              blind_serial_env, seal_serial_hits, blind_notice, read_sealed)
+from risk_flags import parse_risk_flags
 
 SECTIONS = ('serial', 'risk', 'candidate', 'unknown', 'exclude', 'identity', 'privacy')
 SECTION_HEAD = {
@@ -41,6 +42,26 @@ SECTION_HEAD = {
                 'locker/分发/募集/慈善类禁作合并边）',
     'privacy': '[PRIVACY] Tornado 使用记录——陈述事实不定性（资金源头自 Tornado 提取则必写）',
 }
+
+
+def serial_marked(row) -> bool:
+    """是否含须盲化的惯犯层结构化标记；list 仅为本函数的输入兼容。"""
+    if row.get('serial') is True or (row.get('category') or '').strip() == SERIAL_CATEGORY:
+        return True
+    flags = row.get('risk_flags')
+    if isinstance(flags, str):
+        if 'serial-offender' in parse_risk_flags(flags):
+            return True
+    elif isinstance(flags, list):
+        if any(not isinstance(flag, str) or flag.strip() == 'serial-offender' for flag in flags):
+            return True
+    elif flags:
+        # 非空非法类型不能证明不带惯犯标记，保守封存。
+        return True
+    source = row.get('source')
+    return isinstance(source, str) and 'serial-offenders' in {
+        part.strip() for part in source.split('+')
+    }
 
 
 def read_addrs(args):
@@ -148,7 +169,7 @@ def main():
         # 故不能只隐 [SERIAL] 段）；主输出中该地址等同未命中，真相进封存文件。
         sealed, kept = [], []
         for chain, na, row in hits:
-            if row.get('serial'):
+            if serial_marked(row):
                 sealed.append({'chain': chain, 'address': na,
                                **{k: v for k, v in row.items() if k != 'row'}})
                 if args.chain != 'all':
