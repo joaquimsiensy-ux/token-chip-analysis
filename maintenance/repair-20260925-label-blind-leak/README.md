@@ -11,3 +11,9 @@
 - `--unseal` 与盲化参数同时给出时的优先级未写清。
 
 **裁决记录**：混合行整行封存（盲化承诺优先于设施便利，A4 揭盲恢复）；`serial` 定义不改。
+
+**收官审查（`review_final_reply.md`，2026-09-26，PASS，P0/P1 无）**：父提交 84006ae 复现泄露、HEAD 整行封存；同族 9 种变体全按精确匹配裁决行为；`scripts/` 全扫未发现未登记的只按 serial 封存的消费者。P2 两项登记如下，另单处理：
+- 上文「后续单候选」第 2 条措辞订正：`replay_edges.py` 72–77、`build_evolution.py` 110–113 **已有**盲化分支但只看 `serial`（不是"无盲化判断"）；`build_evolution.py` 108–109 还先收集设施信息再封存。
+- `references/analyze-workflow.md:88`「serial-actor 命中」「设施类标签照常输出」与 9.2.1 整行封存判据矛盾，须另单改文档。
+
+**结局**：main 9.2.1（W1 代码 e1fa33f；盲审 r1 环境阻断→r2 窄写权限 PASS；收官审查 PASS）已 push。
