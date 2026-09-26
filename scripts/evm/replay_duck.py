@@ -32,6 +32,12 @@ uint256 策略（防浮点退化——UHUGEINT 的 SUM 会静默退化 DOUBLE，
   python3 replay_duck.py --channels channels.json --out-dir out \
       [--camps camps.json] [--emit-csv] [--merged-parquet] [--no-merged] \
       [--mem-limit 8GB] [--threads 6]
+
+9.2.2 --only-addrs 哈希分桶流式：不物化全量事件表。
+  哈希分桶 ⇒ 同键同桶 ⇒ 与全局 GROUP BY 冲突查重等价。
+  每桶两条覆盖源范围的查询，以 IO 换内存；查询次数不等于完整文件字节读取倍数。
+  另有预检、reject、保留行 COUNT、值域探测和 maxlen 扫描，失败取样另计。
+  SEG_ROWS 是目标平均规模非上限，偏斜可能形成大桶；CHIP_REPLAY_SEG_ROWS 仅测试。
 """
 import argparse, csv, glob, hashlib, json, os, sys, time
 from pathlib import Path
@@ -42,6 +48,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
 from camp_spec import validate_camp_spec
 from channels_preflight import preflight_channels, replay_provenance
 from supply_semantics import DEAD, ZERO as Z
+
+SEG_ROWS = 5_000_000
 
 
 def _v2_select(c, dir_):
@@ -86,12 +94,13 @@ def _v2_probe(con, c, dir_):
                          f" UDF 十进制路径（VARINT 乘法退化 DOUBLE 不可用），先人工核数据")
 
 
-def build_events(con, chans):
+def build_events(con, chans, *, materialize=True):
     """各通道段过滤+字段清洗+段内 keep-last 去重 → events 表。返回 reject 记账 dict。
 
     通道格式：path 为目录 → v2 parquet（run_*/logs.parquet）；否则 v1 7列 CSV。
     可用 "format": "v2"|"v1csv" 显式指定。"""
     parts, acc = [], {"n_source_rows": 0, "n_bad_fields": 0, "n_out_of_segment": 0}
+    kept_rows = 0
     for c in chans:
         if not os.path.exists(c["path"]):
             print(f"[warn] 缺文件 {c['path']}（tag={c['tag']}），跳过")
@@ -113,6 +122,7 @@ def build_events(con, chans):
             acc["n_out_of_segment"] += seg
             parts.append(part)
             n = con.execute(f"SELECT COUNT(*) FROM ({part})").fetchone()[0]
+            kept_rows += n
             print(f"{c['tag']}=[{c['lo']},{c['hi']}) v2 收 {n} 条", flush=True)
             continue
         with open(c["path"], newline="") as fh:
@@ -153,10 +163,17 @@ def build_events(con, chans):
               AND TRY_CAST(block AS BIGINT) >= {c['lo']}
               AND TRY_CAST(block AS BIGINT) < {c['hi']}""")
         n = con.execute(f"SELECT COUNT(*) FROM ({parts[-1]})").fetchone()[0]
+        kept_rows += n
         print(f"{c['tag']}=[{c['lo']},{c['hi']}) 收 {n} 条", flush=True)
     if not parts:
         raise SystemExit("无可用通道数据")
     union = " UNION ALL ".join(parts)
+    if not materialize:
+        con.execute(f"CREATE VIEW raw_rows AS {union}" if len(parts) == 1
+                    else f"CREATE VIEW raw_rows AS SELECT * FROM ({union})")
+        acc["_kept_rows"] = kept_rows
+        print(f"合计保留源行 {kept_rows}（only-addrs：不物化，冲突查重在分桶阶段执行）", flush=True)
+        return acc
     con.execute(f"CREATE TABLE raw_rows AS {union}" if len(parts) == 1
                 else f"CREATE TABLE raw_rows AS SELECT * FROM ({union})")
     # 段内 (tag,tx,li) 去重。旧引擎是 dict 覆盖=keep-last；正常数据同键必同值（同一链上
@@ -373,18 +390,75 @@ def _fail(msg):
     raise SystemExit(2)
 
 
-def followup_peaks(con, a, vt):
+def _bucketed_ab(con, vt, kept_rows, seg_rows):
+    """同去重键必同桶；先查全桶冲突，后过滤端点，最后跨桶合并块末增量。"""
+    started = time.monotonic()
+    k = max(1, (kept_rows + seg_rows - 1) // seg_rows)
+    total = largest = accumulated = 0
+    settings = con.execute("SELECT current_setting('memory_limit'), current_setting('threads'), "
+                           "current_setting('temp_directory'), current_setting('max_temp_directory_size')").fetchone()
+    print(f"[only-addrs] DuckDB {duckdb.__version__} memory_limit/threads/temp_directory/max_temp_directory_size={settings}", flush=True)
+    con.execute(f"CREATE TABLE ab_raw (a VARCHAR, b BIGINT, dd {vt})")
+    for i in range(k):
+        tick = time.monotonic()
+        predicate = f"hash(tag, tx, li) % {k} = {i}"
+        n, conflicts = con.execute(f"""
+            WITH g AS (
+              SELECT tag, tx, li, COUNT(*) n, COUNT(DISTINCT (b, ts, frm, t2, v)) variants
+              FROM raw_rows WHERE {predicate} GROUP BY tag, tx, li)
+            SELECT COALESCE(SUM(n), 0), COUNT(*) FILTER (WHERE variants > 1) FROM g""").fetchone()
+        if conflicts:
+            print(f"[only-addrs] 桶 {i}/{k} 冲突取样：额外 1 条源查询", flush=True)
+            sample = con.execute(f"""
+                SELECT tag, tx, li, COUNT(*) FROM raw_rows WHERE {predicate}
+                GROUP BY tag, tx, li HAVING COUNT(DISTINCT (b, ts, frm, t2, v)) > 1 LIMIT 3""").fetchall()
+            raise SystemExit(f"[fail-closed] {conflicts} 个去重键对应多个不同事件内容"
+                             f"（桶 {i}/{k}，样本 {sample}）——数据损坏，先仲裁再重放")
+        total += n
+        largest = max(largest, n)
+        if n > 4 * seg_rows:
+            print(f"[only-addrs][警告] 桶偏斜 {i}/{k} 行 {n} > 4×SEG_ROWS={4 * seg_rows}", flush=True)
+        con.execute(f"""
+            INSERT INTO ab_raw
+            WITH seg AS MATERIALIZED (
+              SELECT ANY_VALUE(b) b, ANY_VALUE(frm) frm, ANY_VALUE(t2) t2, ANY_VALUE(v) v
+              FROM raw_rows WHERE {predicate}
+                AND (frm IN (SELECT a FROM only_addrs) OR t2 IN (SELECT a FROM only_addrs))
+              GROUP BY tag, tx, li),
+            d AS (
+              SELECT t2 AS a, b, CAST(v AS {vt}) AS d FROM seg
+              UNION ALL
+              SELECT frm, b, -CAST(v AS {vt}) FROM seg WHERE frm <> '{Z}')
+            SELECT a, b, SUM(d) FROM d WHERE a IN (SELECT a FROM only_addrs) GROUP BY a, b""")
+        now = con.execute("SELECT COUNT(*) FROM ab_raw").fetchone()[0]
+        print(f"[only-addrs] 桶 {i}/{k} 行 {n} 冲突 0 过滤后 {now - accumulated} "
+              f"累计 ab_raw 行 {now} 耗时 {time.monotonic() - tick:.3f}s", flush=True)
+        accumulated = now
+    if total != kept_rows:
+        raise SystemExit(f"[fail-closed] 桶行数总和 {total} != 保留源行 {kept_rows}")
+    con.execute("CREATE TABLE ab AS SELECT a, b, SUM(dd) dd FROM ab_raw GROUP BY a, b")
+    con.execute("DROP TABLE ab_raw")
+    n_ab = con.execute("SELECT COUNT(*) FROM ab").fetchone()[0]
+    print(f"[only-addrs] 汇总 K={k} 总行数={total} 最大桶行数={largest} ab 行数={n_ab} "
+          f"墙钟={time.monotonic() - started:.3f}s 源查询={2 * k}（分桶阶段）", flush=True)
+
+
+def followup_peaks(con, a, vt, *, kept_rows=None):
     """R09（7.2.0）：只对 --only-addrs 并集算块级精确峰值（无门槛、无预筛），写
     block_precision_followup.json 到第一个 --only-addrs 文件所在目录。整段跳过 pass1/merged/
     pass2，不碰 replay_stats/peaks.json 等全量产物。窗口 SQL 与 replay_pass1 逐字相同。"""
     union, inputs = _load_only_addrs(a.only_addrs)
-    _create_deltas_view(con, vt)
+    if kept_rows is None:
+        _create_deltas_view(con, vt)
     con.execute("CREATE TABLE only_addrs (a VARCHAR)")
     con.executemany("INSERT INTO only_addrs VALUES (?)", [(x,) for x in sorted(union)])
-    con.execute("""
-        CREATE TABLE ab AS
-        SELECT a, b, SUM(d) dd FROM deltas
-        WHERE a IN (SELECT a FROM only_addrs) GROUP BY a, b""")
+    if kept_rows is None:
+        con.execute("""
+            CREATE TABLE ab AS
+            SELECT a, b, SUM(d) dd FROM deltas
+            WHERE a IN (SELECT a FROM only_addrs) GROUP BY a, b""")
+    else:
+        _bucketed_ab(con, vt, kept_rows, getattr(a, "_seg_rows", SEG_ROWS))
     try:
         con.execute("""
             CREATE TABLE peaks AS
@@ -650,6 +724,13 @@ def main():
     ap.add_argument("--force-varint", action="store_true",
                     help="强制任意精度 VARINT 路径（HUGEINT 聚合溢出报错时的显式出路；慢 ~5x 仍精确）")
     a = ap.parse_args()
+    if a.only_addrs:
+        try:
+            a._seg_rows = int(os.environ.get("CHIP_REPLAY_SEG_ROWS", str(SEG_ROWS)))
+            if a._seg_rows <= 0:
+                raise ValueError
+        except ValueError:
+            _fail("[only-addrs] CHIP_REPLAY_SEG_ROWS 须为正整数（仅供测试覆盖）")
     chans = preflight_channels(a.channels, a.out_dir)
 
     tmp = os.path.join(a.out_dir, ".duck_tmp")
@@ -663,7 +744,7 @@ def main():
     con.execute(f"SET max_temp_directory_size='{max(int(free_gb) - 5, 5)}GB'")
     con.execute("SET preserve_insertion_order=false")
 
-    rej = build_events(con, chans)
+    rej = build_events(con, chans, materialize=not a.only_addrs)
     if rej["n_bad_fields"] or rej["n_out_of_segment"]:
         receipt = {**rej, "gate_pass": False,
                    "failure": "rejected_input_rows",
@@ -678,11 +759,12 @@ def main():
     # uint256 策略：events.v 统一为十进制字符串，探最大位数（≤37 走 HUGEINT，超界
     # VARINT——注意 VARINT 仅可加/SUM，乘法退化 DOUBLE）；HUGEINT 聚合若仍溢出
     # DuckDB 会硬报错（实测 fail-loud 不静默环绕），届时 --force-varint 重跑
-    maxlen = con.execute("SELECT COALESCE(MAX(LENGTH(v)), 0) FROM events").fetchone()[0]
+    src = "raw_rows" if a.only_addrs else "events"
+    maxlen = con.execute(f"SELECT COALESCE(MAX(LENGTH(v)), 0) FROM {src}").fetchone()[0]
     vt = "VARINT" if a.force_varint else ("HUGEINT" if maxlen <= 37 else "VARINT")
     print(f"value 最大位数={maxlen} -> {vt} 路径", flush=True)
     if a.only_addrs:
-        raise SystemExit(followup_peaks(con, a, vt))
+        raise SystemExit(followup_peaks(con, a, vt, kept_rows=rej["_kept_rows"]))
     stats, mint_total = replay_pass1(con, a.out_dir, vt)
     stats.update(rej)
     stats.update(replay_provenance(a.out_dir, __file__))

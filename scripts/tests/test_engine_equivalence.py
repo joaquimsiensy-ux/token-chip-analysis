@@ -14,7 +14,7 @@
 环境无 duckdb 时整测试 SKIP（离线全家桶不因缺依赖挂）。
 用法：python3 scripts/tests/test_engine_equivalence.py   （约 30-60 秒）
 """
-import datetime, hashlib, json, os, subprocess, sys, tempfile
+import datetime, hashlib, json, os, re, subprocess, sys, tempfile
 from pathlib import Path
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -80,7 +80,7 @@ def _parquet_meta(path, block_col):
             "max_block": hi, "sha256": hashlib.sha256(path.read_bytes()).hexdigest()}
 
 
-def _write_v2_inputs(tmp, events):
+def _write_v2_inputs(tmp, events, *, duplicate_rows=0, bounds=(0, 99999999999), conflict=None):
     """Mirror the semantic event list into a formally receipted v2 parquet channel."""
     root = Path(tmp) / "v2_input"
     url = "https://fixture.hypersync.xyz"
@@ -108,14 +108,21 @@ def _write_v2_inputs(tmp, events):
             con.execute("INSERT INTO blocks VALUES (?,?)", [blk, 1700000000 + blk])
             seen_blocks.add(blk)
         li += 1
+    if duplicate_rows:
+        con.execute("INSERT INTO logs SELECT * FROM logs ORDER BY log_index LIMIT ?", [duplicate_rows])
+    if conflict:
+        expr = "'0x' || repeat('0', 63) || '1'" if conflict == "value" else "block_number + 1"
+        col = "data" if conflict == "value" else "block_number"
+        con.execute(f"INSERT INTO logs SELECT * REPLACE ({expr} AS {col}) "
+                    "FROM logs ORDER BY log_index LIMIT 1")
     con.execute(f"COPY logs TO '{run_dir / 'logs.parquet'}' (FORMAT parquet)")
     con.execute(f"COPY blocks TO '{run_dir / 'blocks.parquet'}' (FORMAT parquet)")
     con.close()
 
     done = {
         "schema": MANIFEST_SCHEMA, "query_schema": QUERY_SCHEMA,
-        "capture_from": 0, "from_block": 0, "to_block": 99999999999,
-        "next_block": 99999999999, "token": ADDRS[0], "url": url,
+        "capture_from": bounds[0], "from_block": bounds[0], "to_block": bounds[1],
+        "next_block": bounds[1], "token": ADDRS[0], "url": url,
         "files": {
             "logs.parquet": _parquet_meta(run_dir / "logs.parquet", "block_number"),
             "blocks.parquet": _parquet_meta(run_dir / "blocks.parquet", "number"),
@@ -127,22 +134,22 @@ def _write_v2_inputs(tmp, events):
     receipt = Path(tmp) / "v2.receipt.json"
     made = _run(tmp, [os.path.join(EVM, "make_channel_receipt.py"),
                       "--data", root, "--format", "v2", "--token", ADDRS[0],
-                      "--lo", "0", "--hi", "99999999999", "--tag", "v2",
+                      "--lo", str(bounds[0]), "--hi", str(bounds[1]), "--tag", "v2",
                       "--out", receipt])
     assert made.returncode == 0, made.stdout + made.stderr
     manifest = Path(tmp) / "channels_v2.json"
     manifest.write_text(json.dumps({
         "schema": "evm-channels/v2", "token": ADDRS[0],
-        "expected_from": 0, "expected_to": 99999999999,
-        "channels": [{"path": str(root), "lo": 0, "hi": 99999999999,
+        "expected_from": bounds[0], "expected_to": bounds[1],
+        "channels": [{"path": str(root), "lo": bounds[0], "hi": bounds[1],
                       "tag": "v2", "format": "v2", "receipt": str(receipt)}],
     }), encoding="utf-8")
     return manifest
 
 
-def _run(tmp, cmd):
+def _run(tmp, cmd, *, env=None, timeout=120):
     p = subprocess.run([sys.executable] + cmd, cwd=tmp,
-                       capture_output=True, text=True, timeout=120)
+                       capture_output=True, text=True, env=env, timeout=timeout)
     return p
 
 
@@ -315,10 +322,91 @@ def followup_case():
     print("PASS: R09 块级补算峰值等价、零事件地址、非法输入与坏事件不覆盖全量产物")
 
 
+def followup_bucketed_case():
+    """300 raw / 280 unique rows: bucket merging, independent block peaks and fail-closed."""
+    events = [(Z, ADDRS[0], 10**20, 0), (ADDRS[0], ADDRS[1], 1, 0)]
+    events += [(ADDRS[0], [ADDRS[2], Z, DEAD, ADDRS[0]][i % 4], i % 11,
+                int(i % 5 == 0)) for i in range(278)]
+    missing = "0x" + "f" * 40
+    wanted = {ADDRS[0], ADDRS[1], ADDRS[2], Z, DEAD, missing}
+    deltas, block = {}, 100
+    for frm, to, val, step in events:
+        block += step
+        deltas[to, block] = deltas.get((to, block), 0) + val
+        if frm != Z:
+            deltas[frm, block] = deltas.get((frm, block), 0) - val
+    expected = {}
+    for addr in wanted:
+        bal, peak, pb = 0, 0, None
+        for b in sorted(b for a, b in deltas if a == addr):
+            bal += deltas[addr, b]
+            if bal > peak:
+                peak, pb = bal, b
+        expected[addr] = {"peak": str(peak), "peak_blk": pb}
+    env = {**os.environ, "CHIP_REPLAY_SEG_ROWS": "50"}
+    with tempfile.TemporaryDirectory() as td:
+        root = Path(td).resolve()
+        channels = _write_v2_inputs(str(root), events, duplicate_rows=20, bounds=(100, 160))
+        cmd = [os.path.join(EVM, "replay_duck.py"), "--channels", str(channels),
+               "--out-dir", "new", "--no-merged", "--threads", "2", "--mem-limit", "2GB"]
+        full = _run(root, cmd, env=env, timeout=300)
+        assert full.returncode == 0, full.stdout + full.stderr
+        originals = {name: (root / "new" / name).read_bytes() for name in
+                     ("peaks.json", "replay_stats.json", "balances_final.json", "mint_ledger.json")}
+        peaks = json.loads(originals["peaks.json"])
+        needs, trigger = root / "needs.json", root / "trigger_days.json"
+        needs.write_text(json.dumps({"0.0100": sorted(wanted)}))
+        trigger.write_text(json.dumps({"days": {"2026-01-01": {
+            "active_candidates": [ADDRS[1], ADDRS[2]]}}}))
+        only = cmd + ["--only-addrs", str(needs), "--only-addrs", str(trigger)]
+        p = _run(root, only, env=env, timeout=300)
+        assert p.returncode == 0, p.stdout + p.stderr
+        buckets = re.findall(r"\[only-addrs\] 桶 (\d+)/(\d+) 行 (\d+)", p.stdout)
+        assert len(buckets) == 6 and {k for _, k, _ in buckets} == {"6"}, p.stdout
+        assert sum(int(n) for _, _, n in buckets) == 300, buckets
+        receipt = root / "block_precision_followup.json"
+        fu = json.loads(receipt.read_bytes())
+        assert fu["addresses"] == expected, (fu, expected)
+        assert fu["count"] == len(wanted), fu
+        assert fu["inputs"] == [{"path": p.name, "sha256": hashlib.sha256(p.read_bytes()).hexdigest()}
+                                for p in (needs, trigger)], fu
+        assert expected[ADDRS[1]]["peak"] == "1" and ADDRS[1] not in peaks, peaks
+        assert expected[missing] == {"peak": "0", "peak_blk": None}, expected
+        for addr in wanted & peaks.keys():
+            assert expected[addr] == {k: peaks[addr][k] for k in ("peak", "peak_blk")}, addr
+        for name, before in originals.items():
+            assert (root / "new" / name).read_bytes() == before, name
+        for value in ("0", "-1", "abc", ""):
+            bad = root / ("invalid_" + (value or "empty"))
+            bad.mkdir()
+            npath = bad / "needs.json"
+            npath.write_bytes(needs.read_bytes())
+            badenv = {**os.environ, "CHIP_REPLAY_SEG_ROWS": value}
+            p = _run(root, cmd + ["--only-addrs", str(npath)], env=badenv, timeout=300)
+            assert p.returncode == 2 and "CHIP_REPLAY_SEG_ROWS" in p.stderr, p.stderr
+            assert not (bad / receipt.name).exists(), bad
+            p = _run(root, cmd, env=badenv, timeout=300)
+            assert p.returncode == 0, p.stdout + p.stderr
+        for variant in ("value", "block"):
+            bad = root / variant
+            bad.mkdir()
+            channel = _write_v2_inputs(str(bad), events, bounds=(100, 160), conflict=variant)
+            npath = bad / "needs.json"
+            npath.write_bytes(needs.read_bytes())
+            base = [cmd[0], "--channels", str(channel), "--out-dir", str(bad / "out"),
+                    "--no-merged", "--threads", "2", "--mem-limit", "2GB"]
+            for extra in ([], ["--only-addrs", str(npath)]):
+                p = _run(root, base + extra, env=env, timeout=300)
+                assert p.returncode != 0 and "去重键对应多个不同事件内容" in p.stderr, p.stderr
+                assert not (bad / receipt.name).exists(), bad
+    print("PASS: W1 300 行/6 桶、Python 块末峰值、低门槛、重复行、跨块冲突、非法环境变量")
+
+
 def main():
     equivalence_case()
     varint_equivalence_case()
     followup_case()
+    followup_bucketed_case()
     print("PASS: 三引擎 gate/退出码 10 例 hypothesis 全等；gate PASS 六产物全等；"
           "gate FAIL 正式序列零产物；VARINT 双引擎确定性对表通过")
 
