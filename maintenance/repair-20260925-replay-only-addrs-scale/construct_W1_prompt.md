@@ -1,3 +1,16 @@
+# 施工任务 W1（codex --write，按下方工单逐条执行）
+
+## 派工基线
+- 工作目录＝`/Users/uravvv/.claude/worktrees/tca-only-addrs`（分支 `fix/replay-only-addrs-scale`），派工基线＝包含本提示词文件的最新提交（不以具体 SHA 判定）；开工门禁只看工单 §0.1：`git status --short` 为空、分支名正确、`git merge-base --is-ancestor 8457f70 HEAD` exit 0。
+- 本任务是**施工**，不是复核：按工单 §0.6 取基线副本、§0.7 生成夹具并冻结基线对照、§2 逐条落地、§0.7/0.8 产等价性与资源证据、§0.9 跑定向测试、§3 写完成报告 `W1_done.md` 到工单所在目录 `maintenance/repair-20260925-replay-only-addrs-scale/`。
+- 纪律以工单 §0 为准（禁读 `~/.codex/`——插件启动搜索若已读 memories 披露一次，之后不再读；白名单；不 commit/push；禁 stash/checkout/reset/rebase；锚不符即停工；不得进入主仓库 `/Users/uravvv/.claude/skills/token-chip-analysis`）。工单已经 codex 只读复核三轮（`review_W1_reply_r1/r2/r3.md`，r3 仅两处文字修订已落地），本文 v3.1 为定稿。
+- 临时目录用 `tempfile` 并 `Path(td).resolve()`（macOS `/var` symlink 坑）；沙箱离线、不通网络；若 `/private/tmp` 不可写按工单 §0.6 用 `.staging_w1/tmp`；若整个工作区只读则直接停工报告环境阻断。
+- 施工顺序建议：先写 `W1_fixture_tools.py` 与 2.2 测试（先红：对基线脚本运行新测试应失败于分桶断言，把失败尾行贴进 `W1_done.md`），再改生产代码，再跑证据与定向测试（后绿）。
+- stdout 首行固定 `# 施工 W1：完成` 或 `# 施工 W1：停工`；停工报告名 `W1_done_attempt1_stopped.md`；末尾披露是否读过禁读路径。
+
+---
+# 以下为工单 W1 全文（与本目录 workorder_W1.md 逐字一致）
+
 # 工单 W1（v3.1，融合 codex 复核 r1/r2/r3 全部意见——定稿）：`replay_duck.py --only-addrs` 按去重键哈希分桶流式补算，消除全量事件表物化与全局 GROUP BY——版本 9.2.2
 
 > v3.1 变更（`review_W1_reply_r3.md`，两处文字修订全部采纳）：`_run` 调用数 14→13（不含函数定义）；0.7-5 偏斜验收边界改为严格大于 4×`SEG_ROWS`（与 1.5 告警条件 `>` 对齐）。r3 亲核通过：哈希分桶/四类冲突/首末桶/跨桶 ab 合并/HUGEINT·VARINT/kept_rows 传递/合并查询/验收设计。
